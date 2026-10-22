@@ -3,3 +3,9 @@ __pycache__/
 /artifacts/
 /private/
 /work/
+/records/
+/evidence/
+/local-only/
+/builds/
+*.img
+*.dtb

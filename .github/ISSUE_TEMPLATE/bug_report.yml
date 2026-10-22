@@ -1,0 +1,28 @@
+name: Bug report / 问题报告
+description: Report a reproducible cas issue with sanitized evidence / 提供可复现问题与脱敏证据
+title: "[cas] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please read the validation limits first. Do not upload serial numbers, stock firmware, DTBs, GPT dumps, recovery backups or proprietary OS images.
+        请先阅读验收边界；不要上传序列号、原厂固件、DTB、GPT、恢复备份或专有系统镜像。
+  - type: textarea
+    id: versions
+    attributes:
+      label: Device and versions / 设备与版本
+      description: Model, firmware version, source commits and image SHA-256; omit unique identifiers.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps and observed result / 步骤与实际结果
+      description: Include the exact menu action, expected behavior, actual behavior and recovery outcome.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Sanitized evidence / 脱敏证据
+      description: Distinguish human observations, host logs and emulator results. Report what was actually tested.

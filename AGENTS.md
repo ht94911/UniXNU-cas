@@ -1,7 +1,13 @@
-# cas device source instructions
+# cas source contributions
 
-Read `/mnt/i/Code/UniXNU-cas/AGENTS.md`, `START-HERE.md`, and the validated
-progress ledger before development. That directory owns the development plan,
-reports and evidence; this directory owns device source files.
-Do not claim a build works on hardware without matching device evidence.
-Do not spawn subagents without explicit human authorization.
+Read README.md, docs/build.md, docs/validation.md and CONTRIBUTING.md before
+changing the port. This is the public device source repository. The companion
+uefi-cas repository owns firmware sources; both form one cas device project.
+
+Keep hardware-tested tags and accepted artifacts immutable. Distinguish source,
+host, build, emulator and actual device evidence. Never claim a new image works
+on hardware based on another image's result. Keep bilingual docs in sync.
+
+If a local management/evidence workspace is supplied by the human, follow its
+AGENTS.md and validated ledger as well. Do not publish private device data or
+original firmware. Do not spawn subagents without explicit human authorization.

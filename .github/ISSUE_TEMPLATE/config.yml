@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Build and operations / 构建与操作
+    url: https://github.com/ht94911/UniXNU-cas#start-here
+    about: Read the project guides and validated scope before opening an issue.
