@@ -74,6 +74,14 @@ class PreflightTest(unittest.TestCase):
         with self.assertRaisesRegex(p.Rejected, "missing module source"):
             self.audit()
 
+    def test_literal_inf_macro_and_unknown_macro(self):
+        self.inf.write_text("[Defines]\nDEFINE SOURCE_DIR = .\n[Sources]\n$(SOURCE_DIR)/Minimal.c\n")
+        report, _ = self.audit()
+        self.assertEqual(report["modules"][0]["source_macros"], {"SOURCE_DIR": "."})
+        self.inf.write_text("[Sources]\n$(UNRESOLVED_DIR)/Minimal.c\n")
+        with self.assertRaisesRegex(p.Rejected, "computed source"):
+            self.audit()
+
     def test_binary_inf_even_with_source(self):
         self.inf.write_text("[Sources]\nMinimal.c\n[Binaries.AARCH64]\nPE32|vendor.efi\n")
         with self.assertRaisesRegex(p.Rejected, "binary INF"):

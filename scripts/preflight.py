@@ -164,6 +164,18 @@ def audit_descriptions(uefi, policy, entries):
         lines = list(source_lines(path))
         if any(line.lower().startswith("[binaries") for _, line in lines):
             raise Rejected(f"binary INF is forbidden: {path}")
+        # BaseFdtLib pins its source subdirectory with a local literal DEFINE.
+        # Resolve only these in-file constants; no environment/CLI expressions.
+        macros = {}
+        section = ""
+        for _, line in lines:
+            if line.startswith("["):
+                section = line.lower()
+            if section == "[defines]" and (match := re.fullmatch(r"DEFINE\s+(\w+)\s*=\s*([A-Za-z0-9_./-]+)", line)):
+                if match[1] in macros:
+                    raise Rejected(f"duplicate source macro: {path}: {match[1]}")
+                contained(path.parent, match[2])
+                macros[match[1]] = match[2]
         sources = []
         section = ""
         for _, line in lines:
@@ -172,6 +184,7 @@ def audit_descriptions(uefi, policy, entries):
                 continue
             if section.startswith("[sources"):
                 member = line.split("|", 1)[0].strip()
+                member = re.sub(r"\$\((\w+)\)", lambda m: macros.get(m[1], m[0]), member)
                 if "$" in member:
                     raise Rejected(f"generated/computed source requires review: {path}: {member}")
                 source = contained(path.parent, member)
@@ -180,7 +193,7 @@ def audit_descriptions(uefi, policy, entries):
                 sources.append({"path": str(source), "sha256": digest(source)})
         if not sources:
             raise Rejected(f"module without auditable source: {path}")
-        modules.append({"inf": name, "sha256": digest(path), "sources": sources})
+        modules.append({"inf": name, "sha256": digest(path), "source_macros": macros, "sources": sources})
     if not modules:
         raise Rejected("empty firmware selection")
     return {"descriptions": [{"path": str(p), "sha256": v} for p, v in visited.items()],
