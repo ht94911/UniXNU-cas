@@ -10,6 +10,8 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+from provenance import file_ref, source_state
+
 DEVICE = Path(__file__).resolve().parents[1]
 
 
@@ -46,6 +48,9 @@ def main():
             raise RuntimeError(f"{name} failed with code {result.returncode}")
 
     try:
+        sources = source_state(uefi, DEVICE)
+        (out / "source-state.json").write_text(json.dumps(sources, indent=2) + "\n")
+        manifest["source_state"] = file_ref(out / "source-state.json")
         # Unconditionally perform target checks immediately before BaseTools.
         run([sys.executable, DEVICE / "scripts/preflight.py", "--uefi", uefi, "--out", out / "preflight.json"], "preflight.log")
         run([sys.executable, DEVICE / "scripts/generate_memory_map.py", "--uefi", uefi], "memory-compare.log")
@@ -67,8 +72,16 @@ def main():
         if args.phase != "build":
             command.append(args.phase)
         run(command, "build.log")
+        if sources != source_state(uefi, DEVICE):
+            raise RuntimeError("sources changed during the build; keep this attempt and rebuild")
+        if args.phase == "build":
+            fd = out / "Build/DEBUG_CLANGPDB/FV/SILICIUM_UEFI.fd"
+            if fd.stat().st_size != 0x800000:
+                raise RuntimeError("cas FD must be exactly8MiB")
+            manifest["fd"] = file_ref(fd)
+            manifest["build_report"] = file_ref(out / "BuildReport.txt")
         manifest["result"] = "pass"
-    except (OSError, RuntimeError, subprocess.SubprocessError) as error:
+    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
         manifest.update(result="fail", error=str(error))
     manifest["ended_at"] = datetime.now(timezone.utc).isoformat()
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
