@@ -30,7 +30,10 @@ def build(uefi, out):
     for source in sources:
         obj = out / (source.stem + ".o")
         flags = ["--target=aarch64-none-elf", "-ffreestanding", "-fpie", "-fno-stack-protector", "-fno-builtin",
-                 "-fno-unwind-tables", "-fno-asynchronous-unwind-tables", "-mgeneral-regs-only", "-O2", "-Wall", "-Wextra", "-Werror"]
+                 "-fno-unwind-tables", "-fno-asynchronous-unwind-tables", "-mgeneral-regs-only",
+                 # The MMU is off and SCTLR.A may be set. FDT values are only
+                 # four-byte aligned, including fields decoded as 64 bits.
+                 "-mstrict-align", "-O2", "-Wall", "-Wextra", "-Werror"]
         run(["clang", *flags, "-I", include, "-c", source, "-o", obj], log)
         objects.append(obj)
     elf = out / "shim.elf"
