@@ -112,6 +112,7 @@ def audit_descriptions(uefi, policy, entries):
     allowed = {contained(uefi, item["path"]): item["sha256"] for item in policy["pinned_includes"]}
     local = contained(uefi, "Platforms/Xiaomi/casPkg")
     visited, visiting, references, statements = {}, set(), set(), []
+    dsc_components, fdf_components = set(), set()
 
     def read(path):
         path = path.resolve()
@@ -126,6 +127,7 @@ def audit_descriptions(uefi, policy, entries):
             raise Rejected(f"unreviewed external include: {path}")
         visiting.add(path)
         in_rule = False
+        in_apriori = False
         for lineno, line in source_lines(path):
             where = f"{path}:{lineno}"
             if line.startswith("["):
@@ -144,6 +146,10 @@ def audit_descriptions(uefi, policy, entries):
                 if not trusted:
                     raise Rejected(f"unreviewed FDF rule: {where}")
                 continue
+            if re.fullmatch(r"APRIORI\s+DXE\s*\{", line, re.I):
+                in_apriori = True
+            elif in_apriori and line == "}":
+                in_apriori = False
             if re.search(r"\bRuleOverride\b|\bSECTION\s+(RAW|PE32|TE)\b", line, re.I):
                 raise Rejected(f"direct binary input is forbidden: {where}")
             for prefix in policy["forbidden_prefixes"]:
@@ -153,6 +159,12 @@ def audit_descriptions(uefi, policy, entries):
             if ".inf" in line.lower() and (not infs or "$" in line):
                 raise Rejected(f"unresolved INF expression: {where}")
             references.update(infs)
+            component = re.fullmatch(r"INF\s+([A-Za-z0-9_./-]+\.inf)", line, re.I)
+            if component and not in_apriori:
+                fdf_components.add(component[1])
+            component = re.fullmatch(r"([A-Za-z0-9_./-]+\.inf)(?:\s*\{)?", line, re.I)
+            if component:
+                dsc_components.add(component[1])
             statements.append(line)
         visiting.remove(path)
         visited[path] = digest(path)
@@ -167,11 +179,13 @@ def audit_descriptions(uefi, policy, entries):
             raise Rejected(f"binary INF is forbidden: {path}")
         # BaseFdtLib pins its source subdirectory with a local literal DEFINE.
         # Resolve only these in-file constants; no environment/CLI expressions.
-        macros = {}
+        macros, defines = {}, {}
         section = ""
         for _, line in lines:
             if line.startswith("["):
                 section = line.lower()
+            if section == "[defines]" and (match := re.fullmatch(r"(BASE_NAME|FILE_GUID|MODULE_TYPE)\s*=\s*(\S+)", line)):
+                defines[match[1]] = match[2]
             if section == "[defines]" and (match := re.fullmatch(r"DEFINE\s+(\w+)\s*=\s*([A-Za-z0-9_./-]+)", line)):
                 if match[1] in macros:
                     raise Rejected(f"duplicate source macro: {path}: {match[1]}")
@@ -194,11 +208,52 @@ def audit_descriptions(uefi, policy, entries):
                 sources.append({"path": str(source), "sha256": digest(source)})
         if not sources:
             raise Rejected(f"module without auditable source: {path}")
-        modules.append({"inf": name, "sha256": digest(path), "source_macros": macros, "sources": sources})
+        modules.append({"inf": name, "sha256": digest(path), "defines": defines,
+                        "source_macros": macros, "sources": sources})
     if not modules:
         raise Rejected("empty firmware selection")
     return {"descriptions": [{"path": str(p), "sha256": v} for p, v in visited.items()],
-            "modules": modules}, statements
+            "modules": modules,
+            "component_selection": {"dsc": sorted(dsc_components), "fdf": sorted(fdf_components)}}, statements
+
+
+def check_architectural_protocols(uefi, policy, audit):
+    """Check the pinned Core's real requirements against reviewed providers.
+
+    This proves source selection and declarations, not successful installation
+    on a device. Explicit DSC components and actual FV entries must agree;
+    an APRIORI ordering reference or a library reference is not an FV module.
+    """
+    selection = audit["component_selection"]
+    dsc, fdf = set(selection["dsc"]), set(selection["fdf"])
+    if not dsc or dsc != fdf:
+        raise Rejected(f"DSC/FDF component mismatch: DSC-only={sorted(dsc-fdf)}, FDF-only={sorted(fdf-dsc)}")
+    path = contained(uefi, policy["architecture_protocol_table"])
+    source = re.sub(r"/\*.*?\*/|//[^\n]*", "", path.read_text(), flags=re.S)
+    table = re.search(r"\bmArchProtocols\s*\[\s*\]\s*=\s*\{(.*?)^\s*\};", source, re.S | re.M)
+    if not table:
+        raise Rejected("cannot read pinned DXE architectural protocol table")
+    required = re.findall(r"&\s*(g\w+ProtocolGuid)\b", table[1])
+    providers = policy["required_architectural_protocols"]
+    if not required or len(required) != len(set(required)) or set(required) != set(providers):
+        raise Rejected("architecture provider policy disagrees with pinned DXE Core requirements")
+    result = []
+    for protocol in required:
+        provider = providers[protocol]
+        if provider not in fdf:
+            raise Rejected(f"missing architectural provider: {protocol}: {provider}")
+        inf = resolve_package(uefi, policy["package_roots"], provider)
+        declarations, section = set(), ""
+        for _, line in source_lines(inf):
+            if line.startswith("["):
+                section = line.lower()
+            elif section.startswith("[protocols"):
+                declarations.add(line)
+        if protocol not in declarations:
+            raise Rejected(f"architectural provider does not declare {protocol}: {provider}")
+        result.append({"protocol": protocol, "provider": provider, "inf_sha256": digest(inf)})
+    return {"core_table": {"path": str(path), "sha256": digest(path)}, "providers": result,
+            "limitation": "Reviewed source declarations and actual component selection; runtime installation still requires hardware evidence."}
 
 
 def check_target(policy, roots, memory):
@@ -218,6 +273,7 @@ def check_target(policy, roots, memory):
         number(regions["uefi_fd"]["base"]), number(regions["uefi_fd"]["size"])):
         raise Rejected("FD config disagrees with memory design")
     audit, lines = audit_descriptions(uefi, policy, [paths["dsc"], paths["fdf"]])
+    audit["architectural_protocols"] = check_architectural_protocols(uefi, policy, audit)
     for pcd, expected in policy["required_pcds"].items():
         values = [s.split("|", 1)[1].strip() for s in lines if s.startswith(pcd + "|")]
         if not values or any(v != expected for v in values):

@@ -110,6 +110,22 @@
     "gEfiMdeModulePkgTokenSpaceGuid.PcdEmuVariableNvModeEnable": "TRUE",
     "gEfiMdeModulePkgTokenSpaceGuid.PcdResetOnMemoryTypeInformationChange": "FALSE"
   },
+  "architecture_protocol_table": "Mu_Basecore/MdeModulePkg/Core/Dxe/DxeMain/DxeProtocolNotify.c",
+  "required_architectural_protocols": {
+    "gEfiSecurityArchProtocolGuid": "MdeModulePkg/Universal/SecurityStubDxe/SecurityStubDxe.inf",
+    "gEfiCpuArchProtocolGuid": "ArmPkg/Drivers/CpuDxe/CpuDxe.inf",
+    "gEfiMetronomeArchProtocolGuid": "EmbeddedPkg/MetronomeDxe/MetronomeDxe.inf",
+    "gEfiTimerArchProtocolGuid": "ArmPkg/Drivers/TimerDxe/TimerDxe.inf",
+    "gEfiBdsArchProtocolGuid": "casPkg/Drivers/CasBdsDxe/CasBdsDxe.inf",
+    "gEfiWatchdogTimerArchProtocolGuid": "MdeModulePkg/Universal/WatchdogTimerDxe/WatchdogTimer.inf",
+    "gEfiRuntimeArchProtocolGuid": "MdeModulePkg/Core/RuntimeDxe/RuntimeDxe.inf",
+    "gEfiVariableArchProtocolGuid": "MdeModulePkg/Universal/Variable/RuntimeDxe/VariableRuntimeDxe.inf",
+    "gEfiVariableWriteArchProtocolGuid": "MdeModulePkg/Universal/Variable/RuntimeDxe/VariableRuntimeDxe.inf",
+    "gEfiCapsuleArchProtocolGuid": "casPkg/Drivers/CasNoCapsuleDxe/CasNoCapsuleDxe.inf",
+    "gEfiMonotonicCounterArchProtocolGuid": "EmbeddedPkg/EmbeddedMonotonicCounter/EmbeddedMonotonicCounter.inf",
+    "gEfiResetArchProtocolGuid": "MdeModulePkg/Universal/ResetSystemRuntimeDxe/ResetSystemRuntimeDxe.inf",
+    "gEfiRealTimeClockArchProtocolGuid": "EmbeddedPkg/RealTimeClockRuntimeDxe/RealTimeClockRuntimeDxe.inf"
+  },
   "forbidden_prefixes": [
     "Binaries/",
     "QcomPkg/QcomPkg.dsc.inc",
