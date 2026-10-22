@@ -81,7 +81,7 @@ def main():
         fd_path = out / "SILICIUM_UEFI.fd"
         shutil.copyfile(build_run["fd"]["path"], fd_path)
         dtb_path, dts_path = out / "cas.dtb", uefi / "Resources/DTBs/cas.dts"
-        command(["dtc", "-I", "dts", "-O", "dtb", "-o", dtb_path, dts_path], "dtc-build.log")
+        command(["dtc", "-I", "dts", "-O", "dtb", "-p", str(config["boot_image_dtb"]["padding"]), "-o", dtb_path, dts_path], "dtc-build.log")
         command(["dtc", "-I", "dtb", "-O", "dts", "-o", out / "cas-unpacked.dts", dtb_path], "dtc-readback.log")
         shim_path = build_shim(uefi, out / "shim")
         ramdisk_path = out / "ramdisk.empty"

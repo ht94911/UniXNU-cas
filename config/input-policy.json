@@ -87,6 +87,9 @@
     "builder": "Platforms/Xiaomi/casPkg/DeviceBuild.py"
   },
   "config_values": {
+    "boot_image_dtb": {
+      "padding": 8192
+    },
     "boot_shim": {
       "requires_kernel_header": true,
       "text_offset": 524288

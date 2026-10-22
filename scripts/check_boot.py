@@ -119,6 +119,13 @@ def inspect(image, fd, shim, dtb, ramdisk, config, memory):
     require(image[576:608] == digest.digest() + bytes(12), "Android image ID mismatch")
     require(parts["ramdisk"] == ramdisk and parts["dtb"] == dtb, "ramdisk/DTB content mismatch")
     require(len(dtb) >= 40 and dtb[:4] == b"\xd0\x0d\xfe\xed" and struct.unpack_from(">I", dtb, 4)[0] == len(dtb), "not exactly one complete DTB")
+    _, _, structure, strings, reserve, version, compatible, _, strings_size, structure_size = struct.unpack_from(">10I", dtb)
+    require(version == 17 and compatible <= 17 and 40 <= structure <= len(dtb) and 40 <= strings <= len(dtb)
+            and 40 <= reserve <= len(dtb) - 16 and structure_size <= len(dtb) - structure
+            and strings_size <= len(dtb) - strings, "invalid DTB block bounds")
+    tree_end = max(structure + structure_size, strings + strings_size)
+    padding = config["boot_image_dtb"]["padding"]
+    require(padding == 8192 and len(dtb) - tree_end == padding and not any(dtb[tree_end:]), "DTB expansion padding missing or corrupt")
     require(len(shim) >= 64 and len(shim) % 4096 == 0 and shim[56:60] == b"ARM\x64", "invalid ARM64 shim")
     text_offset, image_size, flags = struct.unpack_from("<QQQ", shim, 8)
     require(text_offset == config["boot_shim"]["text_offset"] == 0x80000, "ARM64 text_offset mismatch")
@@ -136,7 +143,8 @@ def inspect(image, fd, shim, dtb, ramdisk, config, memory):
     parts.update(kernel_decompressed=raw, shim=raw[:len(shim)], fd=raw[len(shim):])
     return {"result": "pass", "hardware_proven": False, "sizes": sizes, "header": h, "parts": ranges,
             "arm64": {"text_offset": text_offset, "image_size": image_size, "flags": flags},
-            "fd": fd_report, "boot_sha256": hashlib.sha256(image).hexdigest()}, parts
+            "fd": fd_report, "dtb_expansion_padding": padding,
+            "boot_sha256": hashlib.sha256(image).hexdigest()}, parts
 
 
 def main():

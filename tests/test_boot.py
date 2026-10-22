@@ -54,7 +54,7 @@ class BootImageChecks(unittest.TestCase):
         struct.pack_into("<II6Q4sI", shim, 0, 0x14000010, 0xd503201f, 0x80000,
                          len(shim) + len(cls.fd), 0, 0, 0, 0, b"ARM\x64", 0)
         cls.shim = bytes(shim)
-        cls.dtb = struct.pack(">10I", 0xd00dfeed, 72, 56, 72, 40, 17, 16, 0, 0, 16) + bytes(16) + struct.pack(">4I", 1, 0, 2, 9)
+        cls.dtb = struct.pack(">10I", 0xd00dfeed, 72 + 8192, 56, 72, 40, 17, 16, 0, 0, 16) + bytes(16) + struct.pack(">4I", 1, 0, 2, 9) + bytes(8192)
         cls.raw = cls.shim + cls.fd
         cls.kernel = gzip.compress(cls.raw, compresslevel=9, mtime=0)
 
@@ -153,6 +153,12 @@ class BootImageChecks(unittest.TestCase):
     def test_second_dtb_rejected(self):
         dtb = self.dtb + self.dtb
         with self.assertRaisesRegex(ValueError, "one complete DTB"):
+            self.check(self.make_image(dtb=dtb), dtb=dtb)
+
+    def test_dtb_expansion_padding_required(self):
+        dtb = bytearray(self.dtb[:-8192])
+        struct.pack_into(">I", dtb, 4, len(dtb))
+        with self.assertRaisesRegex(ValueError, "expansion padding"):
             self.check(self.make_image(dtb=dtb), dtb=dtb)
 
     def test_fd_checksum_and_sec_target(self):
