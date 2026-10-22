@@ -8,11 +8,6 @@
   "inputs": [
     {
       "root": "uefi",
-      "path": "Resources/DTBs/cas.dts",
-      "sha256": "e2b29a7bcb0580d3ccaa0183c9dedeb96dfd8be25fcb0151ed7bfb2570659c5f"
-    },
-    {
-      "root": "uefi",
       "path": "Resources/Scripts/mkbootimg.py",
       "sha256": "55037fd1a6d6cd861add76c2083d5d4321373bf714acae3f6a40deb004c27d47"
     },
@@ -88,6 +83,10 @@
   },
   "config_values": {
     "boot_image_dtb": {
+      "source": "stock-soc-dtb",
+      "source_bytes": 536890,
+      "source_sha256": "0eae9bf6a42b38ce8490f100ff24a681f50a67da53b8dd366ef7e6e119a59963",
+      "prepared_sha256": "414deae1dc24634bb9a06f8ffefa050658de1e35205879e4d405283e3c7277ab",
       "padding": 8192
     },
     "boot_shim": {
@@ -130,6 +129,6 @@
     "MdeModulePkg/Universal/FaultTolerantWriteDxe/",
     "EmbeddedPkg/Drivers/NorFlashDxe/"
   ],
-  "limits_note": "config/memory-map.json is the sole bounds source; artifact checks require FD/DTB/shim/boot/ramdisk.",
+  "limits_note": "config/memory-map.json is the sole bounds source; artifact checks require FD/DTB/shim/boot/ramdisk and the pinned private stock base-DTB source. Firmware executable modules remain source-only; DTB is descriptive data.",
   "audit_limit": "Restricted-description structural audit. Compiler AutoGen/build report and final FDF/image inspection remain mandatory."
 }

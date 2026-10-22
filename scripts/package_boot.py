@@ -20,6 +20,7 @@ from pathlib import Path
 from build_shim import build as build_shim
 from check_boot import inspect
 from provenance import check_ref, file_ref, require_clean, source_state
+from prepare_boot_dtb import prepare as prepare_dtb
 
 DEVICE = Path(__file__).resolve().parents[1]
 EPOCH = "1792643741"
@@ -31,6 +32,7 @@ def main():
     ap.add_argument("--firmware-build", type=Path, required=True)
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--environment", type=Path, required=True)
+    ap.add_argument("--stock-dtb", type=Path, required=True, help="private original cas base DTB2; exact hash required")
     a = ap.parse_args()
     uefi, build, out = a.uefi.resolve(), a.firmware_build.resolve(), a.out.resolve()
     out.mkdir(parents=True, exist_ok=False)
@@ -71,6 +73,8 @@ def main():
         memory_path = DEVICE / "config/memory-map.json"
         config = tomllib.loads(config_path.read_text())
         memory = json.loads(memory_path.read_text())
+        stock_dtb_ref = file_ref(a.stock_dtb.resolve())
+        prepared_dtb = prepare_dtb(a.stock_dtb.read_bytes(), config["boot_image_dtb"], memory["limits"]["dtb"]["max_bytes"])
         versions = {"python": sys.version, "platform": platform.platform(), "zlib": zlib.ZLIB_RUNTIME_VERSION}
         for program in ("clang", "lld-link", "ld.lld", "llvm-objcopy", "dtc", "git"):
             versions[program] = subprocess.check_output([program, "--version"], env=env, text=True).strip()
@@ -80,8 +84,8 @@ def main():
 
         fd_path = out / "SILICIUM_UEFI.fd"
         shutil.copyfile(build_run["fd"]["path"], fd_path)
-        dtb_path, dts_path = out / "cas.dtb", uefi / "Resources/DTBs/cas.dts"
-        command(["dtc", "-I", "dts", "-O", "dtb", "-p", str(config["boot_image_dtb"]["padding"]), "-o", dtb_path, dts_path], "dtc-build.log")
+        dtb_path = out / "cas.dtb"
+        dtb_path.write_bytes(prepared_dtb)
         command(["dtc", "-I", "dtb", "-O", "dts", "-o", out / "cas-unpacked.dts", dtb_path], "dtc-readback.log")
         shim_path = build_shim(uefi, out / "shim")
         ramdisk_path = out / "ramdisk.empty"
@@ -102,7 +106,8 @@ def main():
         (out / "image-check.json").write_text(json.dumps(check, indent=2) + "\n")
         command([sys.executable, DEVICE / "scripts/preflight.py", "--uefi", uefi, "--stage", "artifacts",
                  "--fd", fd_path, "--dtb", dtb_path, "--shim", shim_path, "--boot-image", image_path,
-                 "--ramdisk", ramdisk_path, "--out", out / "preflight-artifacts.json"], "preflight-artifacts.log")
+                 "--ramdisk", ramdisk_path, "--stock-dtb", a.stock_dtb.resolve(),
+                 "--out", out / "preflight-artifacts.json"], "preflight-artifacts.log")
         (out / "firmware").mkdir()
         for source in build.iterdir():
             if source.is_file() and (source.suffix in (".json", ".log") or source.name == "BuildReport.txt"):
@@ -120,8 +125,9 @@ def main():
             shutil.copyfile(source, target)
         if sources != source_state(uefi, DEVICE):
             raise ValueError("sources changed during packaging")
+        check_ref(stock_dtb_ref)
         input_files = [a.environment.resolve(), build_run_path, Path(build_run["source_state"]["path"]),
-                       config_path, dts_path, memory_path, uefi / "Resources/Scripts/mkbootimg.py"]
+                       config_path, a.stock_dtb.resolve(), memory_path, uefi / "Resources/Scripts/mkbootimg.py"]
         input_files += sorted((uefi / "Platforms/Xiaomi/casPkg").rglob("*"))
         input_files += sorted((uefi / "BootShim").glob("CasBoot*"))
         input_files += sorted((DEVICE / "config").glob("*.json"))
@@ -131,7 +137,8 @@ def main():
                     "source_date_epoch": EPOCH, "gzip_mtime": 0, "tools": versions,
                     "build_run": build_run, "pack_commands": run["commands"],
                     "inputs": [file_ref(p) for p in sorted(set(input_files)) if p.is_file()],
-                    "vendor_inputs": [], "efi_payload": None, "ramdisk": file_ref(ramdisk_path),
+                    "vendor_inputs": [], "device_data_inputs": [dict(stock_dtb_ref, role="stock SoC DTB; non-executable")],
+                    "dtb_policy": config["boot_image_dtb"], "efi_payload": None, "ramdisk": file_ref(ramdisk_path),
                     "image": file_ref(image_path), "image_checks": check,
                     "outputs": [file_ref(p) for p in sorted(out.rglob("*")) if p.is_file() and p != run_path]}
         manifest_path = out / "source-manifest.json"

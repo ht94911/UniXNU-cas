@@ -17,6 +17,7 @@ import tomllib
 from pathlib import Path, PurePosixPath
 
 from check_memory import number, validate_map, validate_sizes
+from prepare_boot_dtb import prepare as prepare_dtb
 
 
 class Rejected(ValueError):
@@ -245,6 +246,7 @@ def main():
     ap.add_argument("--uefi", type=Path, required=True)
     ap.add_argument("--policy", type=Path)
     ap.add_argument("--stage", choices=("inputs", "target", "artifacts"), default="target")
+    ap.add_argument("--stock-dtb", type=Path, help="required private source for artifact-stage DTB provenance")
     for name in ("fd", "dtb", "shim", "boot_image", "ramdisk"):
         ap.add_argument("--" + name.replace("_", "-"), type=Path)
     ap.add_argument("--out", type=Path, help="new JSON result, never overwrites an earlier check")
@@ -265,6 +267,14 @@ def main():
         if args.stage == "artifacts":
             files = {k: getattr(args, k) for k in ("fd", "dtb", "shim", "boot_image", "ramdisk") if getattr(args, k)}
             result["artifacts"] = check_artifacts(memory, files)
+            if not args.stock_dtb or not args.stock_dtb.is_file():
+                raise Rejected("artifact stage requires the pinned stock DTB source")
+            config = tomllib.loads(contained(roots["uefi"], policy["target"]["config"]).read_text())
+            prepared = prepare_dtb(args.stock_dtb.read_bytes(), config["boot_image_dtb"], memory["limits"]["dtb"]["max_bytes"])
+            if files["dtb"].read_bytes() != prepared:
+                raise Rejected("artifact DTB is not the prepared pinned stock source")
+            result["stock_dtb"] = {"path": str(args.stock_dtb.resolve()), "sha256": digest(args.stock_dtb),
+                                   "role": "non-executable device-tree data"}
         result["result"] = "pass"
     except (ValueError, OSError, KeyError, TypeError) as exc:
         result.update(result="fail", build_ready=False, error=str(exc))

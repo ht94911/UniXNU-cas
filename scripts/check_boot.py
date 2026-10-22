@@ -139,11 +139,14 @@ def inspect(image, fd, shim, dtb, ramdisk, config, memory):
         raise ValueError("invalid gzip stream or CRC") from exc
     require(decoder.eof and not decoder.unused_data and not decoder.unconsumed_tail, "gzip is truncated, concatenated or exceeds kernel bound")
     require(raw == shim + fd, "decompressed kernel is not exact shim+FD (appended DTB/padding forbidden)")
+    require(config["boot_image_dtb"]["source"] == "stock-soc-dtb" and
+            hashlib.sha256(dtb).hexdigest() == config["boot_image_dtb"]["prepared_sha256"],
+            "DTB does not match the pinned prepared stock tree")
     fd_report = inspect_fd(fd, config["uefi_fd"]["base"])
     parts.update(kernel_decompressed=raw, shim=raw[:len(shim)], fd=raw[len(shim):])
     return {"result": "pass", "hardware_proven": False, "sizes": sizes, "header": h, "parts": ranges,
             "arm64": {"text_offset": text_offset, "image_size": image_size, "flags": flags},
-            "fd": fd_report, "dtb_expansion_padding": padding,
+            "fd": fd_report, "dtb_expansion_padding": padding, "dtb_source": "stock-soc-dtb",
             "boot_sha256": hashlib.sha256(image).hexdigest()}, parts
 
 

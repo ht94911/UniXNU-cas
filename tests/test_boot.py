@@ -4,6 +4,7 @@ These fixtures are never device images. The production checker is also run on
 the actual FD and exact boot.img as part of package_boot.py.
 """
 import gzip
+import hashlib
 import json
 import struct
 import subprocess
@@ -55,6 +56,8 @@ class BootImageChecks(unittest.TestCase):
                          len(shim) + len(cls.fd), 0, 0, 0, 0, b"ARM\x64", 0)
         cls.shim = bytes(shim)
         cls.dtb = struct.pack(">10I", 0xd00dfeed, 72 + 8192, 56, 72, 40, 17, 16, 0, 0, 16) + bytes(16) + struct.pack(">4I", 1, 0, 2, 9) + bytes(8192)
+        # Synthetic policy is local to these fixtures, never a production pin.
+        cls.config["boot_image_dtb"]["prepared_sha256"] = hashlib.sha256(cls.dtb).hexdigest()
         cls.raw = cls.shim + cls.fd
         cls.kernel = gzip.compress(cls.raw, compresslevel=9, mtime=0)
 
@@ -159,6 +162,12 @@ class BootImageChecks(unittest.TestCase):
         dtb = bytearray(self.dtb[:-8192])
         struct.pack_into(">I", dtb, 4, len(dtb))
         with self.assertRaisesRegex(ValueError, "expansion padding"):
+            self.check(self.make_image(dtb=dtb), dtb=dtb)
+
+    def test_other_valid_dtb_with_recomputed_image_id_rejected(self):
+        dtb = bytearray(self.dtb)
+        struct.pack_into(">I", dtb, 28, 1)  # Still a valid FDT; changes boot_cpuid_phys.
+        with self.assertRaisesRegex(ValueError, "pinned prepared stock"):
             self.check(self.make_image(dtb=dtb), dtb=dtb)
 
     def test_fd_checksum_and_sec_target(self):
