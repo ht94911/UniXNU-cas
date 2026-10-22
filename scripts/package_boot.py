@@ -2,7 +2,7 @@
 """Package a verified cas full build into a new, audited base boot image.
 
 No adb/fastboot, network, repository update, persistent-variable or partition
-operation exists here. This F-04 base profile always has an empty ramdisk.
+operation exists here. The optional EFI-only profile uses the deterministically generated RAM FAT.
 """
 import argparse
 import gzip
@@ -21,6 +21,7 @@ from build_shim import build as build_shim
 from check_boot import inspect
 from provenance import check_ref, file_ref, require_clean, source_state
 from prepare_boot_dtb import prepare as prepare_dtb
+from make_ram_fat import build as build_ram_fat
 
 DEVICE = Path(__file__).resolve().parents[1]
 EPOCH = "1792643741"
@@ -33,13 +34,14 @@ def main():
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--environment", type=Path, required=True)
     ap.add_argument("--stock-dtb", type=Path, required=True, help="private original cas base DTB2; exact hash required")
+    ap.add_argument("--efi-ram-fat", action="store_true", help="build the checked EFI-only RAM FAT from this full build")
     a = ap.parse_args()
     uefi, build, out = a.uefi.resolve(), a.firmware_build.resolve(), a.out.resolve()
     out.mkdir(parents=True, exist_ok=False)
     env = os.environ.copy()
     env.update(SOURCE_DATE_EPOCH=EPOCH, PYTHONHASHSEED="0", LC_ALL="C.UTF-8", TZ="UTC")
     run = {"started_at": datetime.now(timezone.utc).isoformat(), "result": "running", "board": "cas",
-           "build_id": out.name, "hardware_proven": False, "commands": [], "profile": "base-empty-ramdisk"}
+           "build_id": out.name, "hardware_proven": False, "commands": [], "profile": "efi-only-ram-fat" if a.efi_ram_fat else "base-empty-ramdisk"}
     run_path = out / "package-run.json"
 
     def save_run():
@@ -88,8 +90,11 @@ def main():
         dtb_path.write_bytes(prepared_dtb)
         command(["dtc", "-I", "dtb", "-O", "dts", "-o", out / "cas-unpacked.dts", dtb_path], "dtc-readback.log")
         shim_path = build_shim(uefi, out / "shim")
-        ramdisk_path = out / "ramdisk.empty"
-        ramdisk_path.write_bytes(b"")
+        ramdisk_path = out / ("payload-fat.img" if a.efi_ram_fat else "ramdisk.empty")
+        payload_config = DEVICE / "config/unixnu.toml"
+        payload_efi = build / "Build/DEBUG_CLANGPDB/AARCH64/CasSmoke.efi"
+        ramdisk_data = build_ram_fat(payload_config.read_bytes(), payload_efi.read_bytes()) if a.efi_ram_fat else b""
+        ramdisk_path.write_bytes(ramdisk_data)
         kernel_path = out / "kernel.gz"
         kernel_path.write_bytes(gzip.compress(shim_path.read_bytes() + fd_path.read_bytes(), compresslevel=9, mtime=0))
         image_path = out / "boot.img"
@@ -99,7 +104,7 @@ def main():
         for key in ("header_version", "pagesize", "base", "kernel_offset", "ramdisk_offset", "dtb_offset", "tags_offset"):
             cmd += ["--" + key, str(b[key])]
         command([*cmd, "--output", image_path, "--id"], "mkbootimg.log")
-        check, parts = inspect(image_path.read_bytes(), fd_path.read_bytes(), shim_path.read_bytes(), dtb_path.read_bytes(), b"", config, memory)
+        check, parts = inspect(image_path.read_bytes(), fd_path.read_bytes(), shim_path.read_bytes(), dtb_path.read_bytes(), ramdisk_data, config, memory)
         (out / "unpacked").mkdir()
         for name, data in parts.items():
             (out / "unpacked" / (name + ".bin")).write_bytes(data)
@@ -132,13 +137,15 @@ def main():
         input_files += sorted((uefi / "BootShim").glob("CasBoot*"))
         input_files += sorted((DEVICE / "config").glob("*.json"))
         input_files += sorted((DEVICE / "scripts").glob("*.py"))
+        if a.efi_ram_fat:
+            input_files += [payload_config, payload_efi]
         manifest = {"schema_version": 1, "board": "cas", "build_id": out.name, "profile": run["profile"],
                     "result": "pass", "hardware_proven": False, "repositories": sources,
                     "source_date_epoch": EPOCH, "gzip_mtime": 0, "tools": versions,
                     "build_run": build_run, "pack_commands": run["commands"],
                     "inputs": [file_ref(p) for p in sorted(set(input_files)) if p.is_file()],
                     "vendor_inputs": [], "device_data_inputs": [dict(stock_dtb_ref, role="stock SoC DTB; non-executable")],
-                    "dtb_policy": config["boot_image_dtb"], "efi_payload": None, "ramdisk": file_ref(ramdisk_path),
+                    "dtb_policy": config["boot_image_dtb"], "efi_payload": {"config": file_ref(payload_config), "program": file_ref(payload_efi)} if a.efi_ram_fat else None, "ramdisk": file_ref(ramdisk_path),
                     "image": file_ref(image_path), "image_checks": check,
                     "outputs": [file_ref(p) for p in sorted(out.rglob("*")) if p.is_file() and p != run_path]}
         manifest_path = out / "source-manifest.json"
