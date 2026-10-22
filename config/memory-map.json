@@ -1,0 +1,310 @@
+{
+  "schema_version": 1,
+  "board": "cas",
+  "design_id": "cas-memory-001",
+  "address_bits": 64,
+  "basis": "B-01 captured FDT and D-01 /proc/iomem; known ABL ELF envelope separately excluded. This is a candidate, not measured ABL placement.",
+  "ram_banks": [
+    {
+      "base": "0x80000000",
+      "size": "0x39900000"
+    },
+    {
+      "base": "0xc0000000",
+      "size": "0x140000000"
+    },
+    {
+      "base": "0x200000000",
+      "size": "0x180000000"
+    }
+  ],
+  "protected": [
+    {
+      "name": "/reserved-memory/hyp_region",
+      "base": "0x80000000",
+      "size": "0x600000",
+      "basis": "B-01 live DT fixed reservation"
+    },
+    {
+      "name": "/reserved-memory/xbl_aop_region",
+      "base": "0x80600000",
+      "size": "0x260000",
+      "basis": "B-01 live DT fixed reservation"
+    },
+    {
+      "name": "/reserved-memory/reserved-memory",
+      "base": "0x80860000",
+      "size": "0x20000",
+      "basis": "B-01 live DT fixed reservation"
+    },
+    {
+      "name": "/reserved-memory/res_xbl_uefi_log_region",
+      "base": "0x80880000",
+      "size": "0x14000",
+      "basis": "B-01 live DT fixed reservation"
+    },
+    {
+      "name": "/reserved-memory/smem_region",
+      "base": "0x80900000",
+      "size": "0x200000",
+      "basis": "B-01 live DT fixed reservation"
+    },
+    {
+      "name": "/reserved-memory/removed_region",
+      "base": "0x80b00000",
+      "size": "0x5300000",
+      "basis": "B-01 live DT fixed reservation"
+    },
+    {
+      "name": "/reserved-memory/pil_camera_region",
+      "base": "0x86200000",
+      "size": "0x500000",
+      "basis": "B-01 live DT fixed reservation"
+    },
+    {
+      "name": "/reserved-memory/pil_wlan_fw_region",
+      "base": "0x86700000",
+      "size": "0x100000",
+      "basis": "B-01 live DT fixed reservation"
+    },
+    {
+      "name": "/reserved-memory/pil_ipa_fw_region",
+      "base": "0x86800000",
+      "size": "0x10000",
+      "basis": "B-01 live DT fixed reservation"
+    },
+    {
+      "name": "/reserved-memory/pil_ipa_gsi_region",
+      "base": "0x86810000",
+      "size": "0xa000",
+      "basis": "B-01 live DT fixed reservation"
+    },
+    {
+      "name": "/reserved-memory/pil_gpu_region",
+      "base": "0x8681a000",
+      "size": "0x2000",
+      "basis": "B-01 live DT fixed reservation"
+    },
+    {
+      "name": "/reserved-memory/pil_npu_region",
+      "base": "0x86900000",
+      "size": "0x500000",
+      "basis": "B-01 live DT fixed reservation"
+    },
+    {
+      "name": "/reserved-memory/pil_video_region",
+      "base": "0x86e00000",
+      "size": "0x500000",
+      "basis": "B-01 live DT fixed reservation"
+    },
+    {
+      "name": "/reserved-memory/pil_cvp_region",
+      "base": "0x87300000",
+      "size": "0x500000",
+      "basis": "B-01 live DT fixed reservation"
+    },
+    {
+      "name": "/reserved-memory/pil_cdsp_region",
+      "base": "0x87800000",
+      "size": "0x1400000",
+      "basis": "B-01 live DT fixed reservation"
+    },
+    {
+      "name": "/reserved-memory/pil_slpi_region",
+      "base": "0x88c00000",
+      "size": "0x2f00000",
+      "basis": "B-01 live DT fixed reservation"
+    },
+    {
+      "name": "/reserved-memory/pil_adsp_region",
+      "base": "0x8bb00000",
+      "size": "0x2500000",
+      "basis": "B-01 live DT fixed reservation"
+    },
+    {
+      "name": "/reserved-memory/pil_spss_region",
+      "base": "0x8e000000",
+      "size": "0x100000",
+      "basis": "B-01 live DT fixed reservation"
+    },
+    {
+      "name": "/reserved-memory/cdsp_secure_heap",
+      "base": "0x8e100000",
+      "size": "0x4600000",
+      "basis": "B-01 live DT fixed reservation"
+    },
+    {
+      "name": "/reserved-memory/cont_splash_region@9c000000",
+      "base": "0x9c000000",
+      "size": "0x2300000",
+      "basis": "B-01 live DT fixed reservation"
+    },
+    {
+      "name": "/reserved-memory/disp_rdump_region@9c000000",
+      "base": "0xb0400000",
+      "size": "0x1000000",
+      "basis": "B-01 live DT fixed reservation"
+    },
+    {
+      "name": "/reserved-memory/dfps_data_region@9e300000",
+      "base": "0x9e300000",
+      "size": "0x100000",
+      "basis": "B-01 live DT fixed reservation"
+    },
+    {
+      "name": "abl-elf-envelope",
+      "base": "0x9fa00000",
+      "size": "0x40000",
+      "basis": "Local ABL ELF PT_LOAD plus signature region rounded up; decompressed ABL runtime address remains unknown."
+    }
+  ],
+  "regions": [
+    {
+      "name": "dxe_heap",
+      "base": "0x94000000",
+      "size": "0x8000000",
+      "alignment": 4096,
+      "memory_type": "EfiConventionalMemory",
+      "attributes": "Normal WB; DXE allocations may set page permissions"
+    },
+    {
+      "name": "uefi_fd",
+      "base": "0x9f000000",
+      "size": "0x800000",
+      "alignment": 4096,
+      "memory_type": "EfiBootServicesData",
+      "attributes": "Normal WB executable; ROM source copied here"
+    },
+    {
+      "name": "dtb_copy",
+      "base": "0x9f800000",
+      "size": "0x100000",
+      "alignment": 4096,
+      "memory_type": "EfiReservedMemoryType",
+      "attributes": "Normal WB XN; owned copy of bounded entry x0 FDT"
+    },
+    {
+      "name": "uefi_stack",
+      "base": "0x9f900000",
+      "size": "0x40000",
+      "alignment": 4096,
+      "memory_type": "EfiBootServicesData",
+      "attributes": "Normal WB XN"
+    },
+    {
+      "name": "boot_log",
+      "base": "0x9f940000",
+      "size": "0x40000",
+      "alignment": 4096,
+      "memory_type": "EfiReservedMemoryType",
+      "attributes": "Normal non-cacheable XN; bounded boot log and handoff metadata"
+    },
+    {
+      "name": "kernel_input",
+      "base": "0xa0000000",
+      "size": "0x4000000",
+      "alignment": 4096,
+      "memory_type": "EfiReservedMemoryType",
+      "attributes": "Normal WB XN after shim; never allocator memory"
+    },
+    {
+      "name": "payload_copy",
+      "base": "0xa4000000",
+      "size": "0x4000000",
+      "alignment": 4096,
+      "memory_type": "EfiReservedMemoryType",
+      "attributes": "Normal WB XN; FAT BlockIO exported read-only"
+    },
+    {
+      "name": "upper_input",
+      "base": "0xa8000000",
+      "size": "0x8000000",
+      "alignment": 4096,
+      "memory_type": "EfiReservedMemoryType",
+      "attributes": "Normal WB XN; incoming FDT/initrd only"
+    }
+  ],
+  "mmio": [
+    {
+      "name": "spmi-core",
+      "base": "0xc440000",
+      "size": "0x2000",
+      "attributes": "Device-nGnRnE XN; access limited to required registers"
+    },
+    {
+      "name": "spmi-observer",
+      "base": "0xe600000",
+      "size": "0x100000",
+      "attributes": "Device-nGnRnE XN; access limited to required registers"
+    },
+    {
+      "name": "spmi-configuration",
+      "base": "0xc40a000",
+      "size": "0x26000",
+      "attributes": "Device-nGnRnE XN; access limited to required registers"
+    },
+    {
+      "name": "gicd",
+      "base": "0x17a00000",
+      "size": "0x10000",
+      "attributes": "Device-nGnRnE XN; access limited to required registers"
+    },
+    {
+      "name": "gicr",
+      "base": "0x17a60000",
+      "size": "0x100000",
+      "attributes": "Device-nGnRnE XN; access limited to required registers"
+    },
+    {
+      "name": "mdp",
+      "base": "0xae00000",
+      "size": "0x85000",
+      "attributes": "Device-nGnRnE XN; access limited to required registers"
+    }
+  ],
+  "input_windows": {
+    "kernel": {
+      "base": "0xa0000000",
+      "size": "0x04000000"
+    },
+    "dtb": {
+      "base": "0xa0000000",
+      "size": "0x10000000"
+    },
+    "ramdisk": {
+      "base": "0xa0000000",
+      "size": "0x10000000"
+    }
+  },
+  "limits": {
+    "fd": {
+      "max_bytes": 8388608,
+      "exact": true
+    },
+    "dtb": {
+      "max_bytes": 1048576
+    },
+    "ramdisk": {
+      "max_bytes": 67108864
+    },
+    "shim": {
+      "max_bytes": 65536
+    },
+    "boot_image": {
+      "max_bytes": 134217728
+    },
+    "fastboot_download": {
+      "max_bytes": 805306368
+    }
+  },
+  "arm64_image_text_offset": "0x80000",
+  "runtime_requirements": [
+    "Shim verifies its actual kernel extent and entry x0 against input windows before writing the FD destination.",
+    "SEC copies the bounded FDT before initializing the heap/MMU and logs CurrentEL, SCTLR, CNTFRQ, kernel/x0/initrd addresses.",
+    "initrd is validated in 64-bit arithmetic against protected/control regions and copied with overlap-safe semantics to payload_copy; no input corridor becomes pool memory.",
+    "Only dxe_heap is published as allocator RAM. Boot memory driver must not import the remaining 12 GB.",
+    "Framebuffer uses only a verified subrange of the splash reservation; no pool allocations use display memory.",
+    "The old header addresses 0x8000/0x1000000/0x1f00000 are ABL input fields. They are not physical RAM mappings.",
+    "Static pass cannot prove secure firmware carveouts absent from FDT, ABL placement or memory surviving reset; unexpected runtime ranges fail closed."
+  ]
+}
