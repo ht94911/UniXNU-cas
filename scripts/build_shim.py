@@ -23,7 +23,9 @@ def build(uefi, out):
     log = out / "commands.log"
     root = uefi.resolve()
     include = root / "Platforms/Xiaomi/casPkg/Include"
-    sources = [root / "BootShim/CasBootShim.S", root / "BootShim/CasBootValidate.c"]
+    display = root / "Platforms/Xiaomi/casPkg/Library/CasDisplayLib"
+    sources = [root / "BootShim/CasBootShim.S", root / "BootShim/CasBootValidate.c",
+               display / "DisplayDecode.c", display / "DisplayHardware.c"]
     objects = []
     for source in sources:
         obj = out / (source.stem + ".o")
@@ -51,7 +53,7 @@ def build(uefi, out):
               "sha256": hashlib.sha256(data).hexdigest(), "text_offset": "0x80000", "image_size": len(data) + 0x800000,
               "symbols": parsed, "relocations": relocations.strip(), "sources": [
                   {"path": str(path), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()} for path in
-                  [*sources, include / "CasPlatform.h", root / "BootShim/CasBootShim.lds"]]}
+                  [*sources, include / "CasPlatform.h", include / "CasDisplay.h", root / "BootShim/CasBootShim.lds"]]}
     (out / "check.json").write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps({k: report[k] for k in ("result", "hardware_proven", "shim_bytes", "sha256", "text_offset", "image_size")}, indent=2))
     return out / "shim.bin"

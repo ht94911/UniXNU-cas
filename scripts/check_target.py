@@ -52,7 +52,21 @@ def check(uefi, device):
                      "INF casPkg/Sec/Sec.inf"):
         if required not in fdf:
             raise ValueError("FDF layout does not bind the validated FD/SEC values")
+    display = json.loads((device / "config/display-profile.json").read_text())
+    header = (pkg / "Include/CasDisplay.h").read_text()
+    display_macros = dict(re.findall(r"^#define\s+(CAS_\w+)\s+(0x[0-9a-fA-F]+|[0-9]+)\s*$", header, re.M))
+    for macro, key in (("CAS_MDP_BASE", "mdp_base"), ("CAS_MDP_SIZE", "mdp_mapped_size"),
+                       ("CAS_PANEL_WIDTH", "width"), ("CAS_PANEL_HEIGHT", "height")):
+        if number(display_macros.get(macro, "-1")) != number(display[key]):
+            raise ValueError(f"display profile/header mismatch: {macro}")
+    hardware = (pkg / "Library/CasDisplayLib/DisplayHardware.c").read_text()
+    for name, key in (("PipeOffsets", "sspp_offsets"), ("CtlOffsets", "ctl_offsets"),
+                      ("IntfOffsets", "dsi_intf_offsets"), ("PpOffsets", "pingpong_offsets")):
+        values = re.search(r"\b" + name + r"\[[^\]]+\]\s*=\s*\{([^}]+)\}", hardware)
+        if values is None or [number(x.strip()) for x in values[1].split(",")] != [number(x) for x in display[key]]:
+            raise ValueError(f"display register offsets differ from profile: {name}")
     return {"result": "pass", "board": "cas", "soc": "SM8250", "design_id": memory["design_id"],
+            "display_design_id": display["design_id"], "display_runtime_observed": display["actual_handoff_observed"],
             "hardware_proven": False, "header_macros": macros, "pcds_checked": expected_pcds,
             "boot_header_version": config["boot_image"]["header_version"], "text_offset": "0x80000"}
 
