@@ -28,7 +28,7 @@ def main():
                WORKSPACE=str(uefi), EDK_TOOLS_PATH=str(uefi / "Mu_Basecore/BaseTools"),
                PYTHON_COMMAND=sys.executable, CONF_PATH=str(out / "Conf"))
     prefixes = ("Platforms/Xiaomi", "Common/Mu", "Common/Mu_OEM_Sample", "Mu_Basecore", "Silicon/Qualcomm", "Silicon/Silicium")
-    env["PACKAGES_PATH"] = os.pathsep.join(str(uefi / name) for name in prefixes)
+    env["PACKAGES_PATH"] = os.pathsep.join([*(str(uefi / name) for name in prefixes), str(uefi.parent / "UniXNU/package")])
     env["PATH"] = str(uefi / "Mu_Basecore/BaseTools/BinWrappers/PosixLike") + os.pathsep + env["PATH"]
     env["PYTHONPATH"] = str(uefi / "Mu_Basecore/BaseTools/Source/Python")
     commands = []

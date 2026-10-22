@@ -65,6 +65,10 @@ def check_inputs(policy, roots):
         raise Rejected("unsupported policy version or wrong board")
     if policy.get("firmware_mode") != "source-only" or policy.get("vendor_inputs") != []:
         raise Rejected("this policy admits no vendor binary inputs")
+    if "@unixnu" in policy["package_roots"]:
+        unixnu = roots["uefi"].parent / "UniXNU"
+        if git(unixnu, "rev-parse", "HEAD") != policy.get("unixnu_commit") or git(unixnu, "status", "--porcelain"):
+            raise Rejected("UniXNU must be clean at the explicitly pinned commit")
     files = [verify_file(roots[item["root"]], item) for item in policy["inputs"]]
     for item in policy["pinned_includes"]:
         files.append(verify_file(roots["uefi"], item))
@@ -94,7 +98,10 @@ def source_lines(path):
 
 
 def resolve_package(uefi, packages, name):
-    matches = [contained(uefi, prefix + "/" + name) for prefix in packages]
+    # Only this explicit token admits the single registered sibling checkout.
+    # Names still undergo containment checks; no arbitrary external path syntax.
+    matches = [contained(Path(uefi).parent / "UniXNU/package", name) if prefix == "@unixnu"
+               else contained(uefi, prefix + "/" + name) for prefix in packages]
     matches = [path for path in matches if path.is_file()]
     if len(matches) != 1:
         raise Rejected(f"missing/ambiguous package input: {name}")

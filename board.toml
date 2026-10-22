@@ -1,0 +1,18 @@
+# cas EFI-only integration. No kernel, IPSW or userdata build is required.
+[board]
+name = "cas"
+arch = "AARCH64"
+
+[firmware]
+config = "cas"
+dsc = "casPkg/cas.dsc"
+fd = "Build/casPkg/{target}_CLANGPDB/FV/SILICIUM_UEFI.fd"
+packages = ["{uefi}/Platforms/Xiaomi", "{uefi}/Common/Mu", "{uefi}/Common/Mu_OEM_Sample", "{uefi}/Mu_Basecore", "{uefi}/Silicon/Qualcomm", "{uefi}/Silicon/Silicium", "{uefi}/../UniXNU/package"]
+preflight = ["scripts/cas_generic_build_guard.py"]
+
+[cas]
+builder = "scripts/build_firmware.py"
+preflight = "scripts/preflight.py"
+profile = "efi-only-ram"
+# The generic firmware/bootimg path does not implement cas provenance/BootShim.
+# Use DeviceBuild.py and the checked cas packer; CLI status/Context are supported.

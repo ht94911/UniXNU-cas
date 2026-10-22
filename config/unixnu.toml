@@ -1,0 +1,33 @@
+version = 1
+[boot]
+default = "smoke"
+timeout = -1
+rotate = 0
+fallback_timeout = 10
+connect_all = false
+[ui]
+title = "UniXNU - Xiaomi 10 Ultra"
+layout = "portrait"
+console = "graphics"
+scale = 2
+logo = true
+[[entry]]
+id = "smoke"
+title = "Run CasSmoke EFI test"
+type = "efi"
+path = "\\EFI\\Tools\\CasSmoke.efi"
+[[entry]]
+id = "missing"
+title = "Check missing EFI handling"
+type = "efi"
+path = "\\EFI\\Tools\\Missing.efi"
+[[entry]]
+id = "android"
+title = "Reboot to Android"
+type = "action"
+action = "reset"
+[[entry]]
+id = "firmware"
+title = "Return to firmware information"
+type = "action"
+action = "exit"

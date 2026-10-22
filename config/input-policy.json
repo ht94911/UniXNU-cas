@@ -72,7 +72,8 @@
     "Common/Mu_OEM_Sample",
     "Mu_Basecore",
     "Silicon/Qualcomm",
-    "Silicon/Silicium"
+    "Silicon/Silicium",
+    "@unixnu"
   ],
   "target": {
     "config": "Resources/Configs/cas.toml",
@@ -146,5 +147,6 @@
     "EmbeddedPkg/Drivers/NorFlashDxe/"
   ],
   "limits_note": "config/memory-map.json is the sole bounds source; artifact checks require FD/DTB/shim/boot/ramdisk and the pinned private stock base-DTB source. Firmware executable modules remain source-only; DTB is descriptive data.",
-  "audit_limit": "Restricted-description structural audit. Compiler AutoGen/build report and final FDF/image inspection remain mandatory."
+  "audit_limit": "Restricted-description structural audit. Compiler AutoGen/build report and final FDF/image inspection remain mandatory.",
+  "unixnu_commit": "67e8ef0aa2a0a1fcb940889fb39ed1752b4b1593"
 }
