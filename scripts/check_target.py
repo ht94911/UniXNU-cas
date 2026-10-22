@@ -65,7 +65,14 @@ def check(uefi, device):
         values = re.search(r"\b" + name + r"\[[^\]]+\]\s*=\s*\{([^}]+)\}", hardware)
         if values is None or [number(x.strip()) for x in values[1].split(",")] != [number(x) for x in display[key]]:
             raise ValueError(f"display register offsets differ from profile: {name}")
+    keys = json.loads((device / "config/input-profile.json").read_text())
+    key_header = (pkg / "Include/CasInput.h").read_text()
+    key_macros = dict(re.findall(r"^#define\s+(CAS_\w+)\s+(0x[0-9a-fA-F]+|[0-9]+)\s*$", key_header, re.M))
+    for macro, value in keys["constants"].items():
+        if number(key_macros.get(macro, "-1")) != number(value):
+            raise ValueError(f"input profile/header mismatch: {macro}")
     return {"result": "pass", "board": "cas", "soc": "SM8250", "design_id": memory["design_id"],
+            "input_design_id": keys["design_id"], "spmi_runtime_observed": keys["runtime_spmi_version_observed"],
             "display_design_id": display["design_id"], "display_runtime_observed": display["actual_handoff_observed"],
             "hardware_proven": False, "header_macros": macros, "pcds_checked": expected_pcds,
             "boot_header_version": config["boot_image"]["header_version"], "text_offset": "0x80000"}
