@@ -1,0 +1,64 @@
+{
+  "result": "pass",
+  "board": "cas",
+  "cpu_profile": "all",
+  "mode": "fixture",
+  "nodes": 51,
+  "properties_including_names": 152,
+  "cpu_affinities": [
+    0,
+    256,
+    512,
+    768,
+    1024,
+    1280,
+    1536,
+    1792
+  ],
+  "timebase_hz": 19200000,
+  "gic": {
+    "compatible": "arm,gic-v3",
+    "distributor": {
+      "base": 396361728,
+      "size": 65536
+    },
+    "redistributor": {
+      "base": 396754944,
+      "size": 1048576
+    },
+    "redistributor_stride": 131072
+  },
+  "nvram": {
+    "version": "CHRP v1",
+    "bank_bytes": 8192,
+    "variables": 0,
+    "checksums_valid": true
+  },
+  "ranges": {
+    "bank_count": 3,
+    "bank_total": 12776898560,
+    "reservation_count": 31,
+    "mmio_count": 6,
+    "candidate": {
+      "base": "0x100000000",
+      "end_exclusive": "0x120000000",
+      "request_size": "0x10000000"
+    },
+    "ranges_static_pass": true,
+    "current_memory_qualified": false,
+    "framebuffer": "Entire historical splash excluded; actual base/stride/format require current GOP."
+  },
+  "entropy_bytes": 0,
+  "identity_fields": [],
+  "root_volume_fields": [],
+  "boot_ready": false,
+  "hardware_tested": false,
+  "pending": [
+    "X-05 current FDT/SMEM/UEFI owned-memory validation",
+    "current GOP boot_args.Video and exception level",
+    "X-06 loader/kernel integration",
+    "XNU runtime verification",
+    "Fresh private entropy required; fixture must never be booted",
+    "Eight-CPU tree is host-audit only; SMP candidate requires X-11/X-12"
+  ]
+}
