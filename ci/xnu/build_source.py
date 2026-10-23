@@ -11,6 +11,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import re
 import shutil
 import struct
 import subprocess
@@ -196,7 +197,7 @@ def kernel_identity(path):
 
 
 def audit_page_size(tree, logs):
-    record_path = tree / OBJ / 'osfmk/DEVELOPMENT/startup.o.json'
+    record_path = tree / OBJ / 'osfmk/DEVELOPMENT/arm_init.o.json'
     record = json.loads(record_path.read_text().strip().rstrip(','))
     command = list(record['arguments'])
     command.remove('-c')
@@ -216,12 +217,26 @@ def audit_page_size(tree, logs):
                 return name
             name = macros[name]
         raise ValueError('Cyclic page-size macro')
-    if (resolve('ARM_PGSHIFT') != '12' or resolve('PAGE_SHIFT_CONST') != '12'
-            or '__ARM_16K_PG__' in macros or 'ARM64_BOARD_CONFIG_BCM2837' not in macros):
-        raise ValueError('Actual startup compiler preprocessing does not select the fixed 4KiB ABI')
-    return {'page_bytes': 4096, 'proof': 'Actual startup compile record reprocessed by the same compiler/flags',
-            'startup_record_sha256': digest(record_path), 'command': command,
-            'selected_macros': {n: macros[n] for n in ('ARM_PGSHIFT', 'PAGE_SHIFT_CONST', 'ARM64_BOARD_CONFIG_BCM2837')},
+    if (resolve('ARM_PGSHIFT') != '12' or '__ARM_16K_PG__' in macros
+            or 'APPLE_ARM64_ARCH_FAMILY' in macros or 'ARM64_BOARD_CONFIG_BCM2837' not in macros):
+        raise ValueError('Actual arm_init compiler preprocessing does not select the non-Apple 4KiB ABI')
+    # PAGE_SHIFT_CONST is a runtime variable on arm64. Verify its compiled
+    # initialization path rather than pretending it is a preprocessor constant.
+    source_path = logs / 'page-size-source.i'
+    source_command = list(command)
+    source_command[source_command.index('-o') + 1] = str(source_path)
+    source_command[source_command.index('-dM')] = '-P'
+    with (logs / 'page-size-source-compiler.log').open('w') as log:
+        subprocess.run(source_command, cwd=record['directory'], stdout=log, stderr=subprocess.STDOUT, check=True)
+    source = source_path.read_text()
+    assignments = {name: re.findall(r'\b' + name + r'\s*=(?!=)\s*([^;]+);', source)
+                   for name in ('PAGE_SHIFT_CONST', 'page_shift_user32')}
+    if any(values != ['12'] for values in assignments.values()):
+        raise ValueError('Actual arm_init does not initialize both advertised page shifts to 12')
+    return {'page_bytes': 4096, 'proof': 'Actual arm_init compile record reprocessed by the same compiler/flags',
+            'arm_init_record_sha256': digest(record_path), 'command': command, 'source_command': source_command,
+            'selected_macros': {n: macros[n] for n in ('ARM_PGSHIFT', 'ARM64_BOARD_CONFIG_BCM2837')},
+            'compiled_assignments': assignments, 'source_output_sha256': digest(source_path),
             'macro_output_sha256': digest(macros_path), 'runtime_page_size': 'not_run'}
 
 
@@ -340,7 +355,8 @@ def main():
             report['result'] = 'prepared_only'; report['xnu_build'] = 'not_run'
             return 0
         run('bootstrap', ['bash', 'scripts/build-xnu-4k-baseline.sh'], {'XNU_BOOTSTRAP': '1'}, required=False)
-        for path in ('osfmk/DEVELOPMENT/startup.o.json', 'osfmk/DEVELOPMENT/prng_random.o.json',
+        for path in ('osfmk/DEVELOPMENT/startup.o.json', 'osfmk/DEVELOPMENT/arm_init.o.json',
+                     'osfmk/DEVELOPMENT/prng_random.o.json',
                      'iokit/DEVELOPMENT/IOPlatformExpert.cpo.json', 'link.filelist'):
             if not (tree / OBJ / path).is_file():
                 raise ValueError('Bootstrap did not create required compile records: ' + path)
@@ -378,7 +394,8 @@ def main():
         with tarfile.open(exports / 'logs.tar.gz', 'w:gz') as tar:
             tar.add(logs, arcname='logs')
             if tree.exists():
-                for relative in ('osfmk/DEVELOPMENT/startup.o.json', 'osfmk/DEVELOPMENT/prng_random.o.json',
+                for relative in ('osfmk/DEVELOPMENT/startup.o.json', 'osfmk/DEVELOPMENT/arm_init.o.json',
+                                 'osfmk/DEVELOPMENT/prng_random.o.json',
                                  'iokit/DEVELOPMENT/IOPlatformExpert.cpo.json', 'link.filelist'):
                     path = tree / OBJ / relative
                     if path.is_file():

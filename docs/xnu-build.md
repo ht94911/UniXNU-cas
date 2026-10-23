@@ -87,9 +87,10 @@ supplemental header. Bootstrap creates compile records only. Real crypto, pthrea
 ArmCpu and ArmDTPlatform archives precede the final kernel link. No prelink or
 IPSW path is called.
 
-The compiler audit replays the real startup compile record in preprocessing mode
-and verifies `ARM_PGSHIFT` and `PAGE_SHIFT_CONST` resolve to 12. Its `page-size.json`
-records the actual command and macro hashes; runtime page size remains untested.
+The compiler audit replays the real `arm_init` compile record in preprocessing mode
+and verifies `ARM_PGSHIFT` resolves to 12, with the non-Apple code assigning 12 to
+both runtime page-shift variables. `PAGE_SHIFT_CONST` is a runtime variable on arm64.
+`page-size.json` records actual commands, assignments and hashes; runtime remains untested.
 
 Successful exports retain the unstripped ARM64 kernel, symbols generated directly
 from that kernel, configuration, input manifests, adaptation hashes and complete logs,
