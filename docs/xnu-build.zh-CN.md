@@ -21,6 +21,11 @@ sheng、umi 参考路线一致。umi 记载的 donor 二进制内核另为
 架构和最低部署版本。runner 镜像和 Homebrew 包会变化，每轮以实际记录为准。
 这是执行端资格检查，**不构建或启动 XNU**。
 
+首轮实际运行 [39974022970](https://github.com/ht94911/UniXNU-cas/actions/runs/39974022970)
+已成功编译并取回测试目标文件，解密后的文件哈希与运行身份一致。本地和实际
+macOS 各十项测试通过。后续预检另记录 ditto、plutil、Perl 等构建工具，并通过
+`xcrun --find` 区分系统 make/unifdef 调度入口与所选 Xcode 的实际执行文件。
+
 工作流可手工触发，也会响应 `codex/xnu-executor-001` 分支的指定文件推送。
 不需要手机、IPSW、crypto 源码或私有固件；只申请仓库读取权限，不保留 Git
 凭据，产物保存七天。历史固件标签、镜像和相应真机验收仍保持原身份。

@@ -23,6 +23,12 @@ header and deployment target. Runner images and Homebrew packages can move;
 the resulting attestation identifies the tools actually used on that run.
 This is executor qualification. It does **not** build or boot XNU.
 
+The first real run, [39974022970](https://github.com/ht94911/UniXNU-cas/actions/runs/39974022970),
+compiled and returned the test object successfully. Decrypted file hashes and run identity
+matched. All ten tests passed locally and on the actual macOS runner. Further preflights
+also record ditto, plutil, Perl and other build utilities, and use `xcrun --find` to distinguish
+the system make/unifdef dispatch shims from the selected Xcode executables.
+
 The workflow accepts manual dispatch and pushes to `codex/xnu-executor-001`.
 It uses no phone, IPSW, crypto source or private firmware. It requests only
 repository read permission, does not persist Git credentials, and retains its

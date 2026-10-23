@@ -66,13 +66,13 @@ def run(profile, output):
     output = Path(output)
     output.mkdir(parents=True, exist_ok=False)
     errors, probes, tools, sdks = [], {}, {}, {}
-    def probe(name, argv):
+    def probe(name, argv, accepted=(0,)):
         try:
             record = command(argv)
         except (OSError, subprocess.TimeoutExpired) as error:
             record = {'argv': list(map(str, argv)), 'error': str(error), 'exit_code': None}
         probes[name] = record
-        return record.get('stdout', '').strip() if record.get('exit_code') == 0 else None
+        return record.get('stdout', '').strip() if record.get('exit_code') in accepted else None
     if platform.system() != profile['system']:
         errors.append('Host must be Darwin')
     if platform.machine() != profile['machine']:
@@ -100,6 +100,20 @@ def run(profile, output):
         if probe(name, argv) is None:
             errors.append('Tool probe failed: ' + name)
     tools['python'] = identity(sys.executable)
+    # /usr/bin/make and unifdef can be Xcode dispatch shims. Keep those hashes,
+    # then resolve their actual selected executables below as separate inputs.
+    for name in ('xcrun', 'xcodebuild', 'xcode-select', 'sw_vers', 'ditto', 'plutil', 'perl', 'awk', 'sed', 'sort'):
+        path = shutil.which(name)
+        if path:
+            tools[name] = identity(path)
+        else:
+            errors.append('Missing build utility: ' + name)
+    if probe('ditto', ['ditto', '--help'], accepted=(0, 1)) is None:
+        errors.append('ditto probe failed')
+    if probe('plutil', ['plutil', '-help']) is None:
+        errors.append('plutil probe failed')
+    if probe('perl', ['perl', '-v']) is None:
+        errors.append('Perl probe failed')
     for sdk in ('iphoneos', 'macosx'):
         version = probe(sdk + '_version', ['xcrun', '--sdk', sdk, '--show-sdk-version'])
         path = probe(sdk + '_path', ['xcrun', '--sdk', sdk, '--show-sdk-path'])
@@ -115,7 +129,8 @@ def run(profile, output):
             else:
                 errors.append('Missing SDK input: ' + sdk + '/' + rel)
         sdks[sdk] = {'version': version, 'build': build, 'path': path, 'files': files}
-    for name in ('clang', 'clang++', 'ld', 'ar', 'nm', 'otool', 'libtool', 'mig', 'dsymutil'):
+    for name in ('clang', 'clang++', 'ld', 'ar', 'nm', 'otool', 'libtool', 'mig', 'dsymutil',
+                 'make', 'unifdef', 'xcodebuild'):
         path = probe('find_' + name, ['xcrun', '--sdk', 'iphoneos', '--find', name])
         if path and Path(path).is_file():
             tools['xcrun_' + name] = identity(path)
