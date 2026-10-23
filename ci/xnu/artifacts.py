@@ -138,7 +138,12 @@ def unseal(bundle, key, output):
         raw = Path(tmp) / 'bundle.tar'
         openssl(['cms', '-decrypt', '-binary', '-inform', 'DER', '-in', cipher,
                  '-inkey', key, '-out', raw])
-        return unpack_verified(raw, output)
+        try:
+            return unpack_verified(raw, output)
+        except tarfile.TarError:
+            # Some OpenSSL builds implicitly reject a wrong RSA key by emitting
+            # unusable plaintext with exit status zero. Still reject it before output.
+            raise ValueError('Decrypted artifact is not a valid archive') from None
 
 
 if __name__ == '__main__':

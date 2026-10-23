@@ -61,8 +61,10 @@ python3 -B ci/xnu/artifacts.py unseal \
 首轮实际 macOS 构建在 bootstrap 阶段发现继承的可选 GPU addon 补丁引用了
 未定义的 `BINDM_FORCE_ROOT`。输入锁 `ci/xnu/inputs.json` 固定框架、4 个选中
 模块、6 个源码输入、55 个基线内核补丁、两组补充头文件提交和两项候选适配。
-最小配置先验证全部 55 份原始补丁哈希，再明确排除整个 GPU addon 覆盖补丁，
-有效补丁为 54 份。`patch-selection.json` 保存基线、排除原因与实际顺序。
+最小配置先验证全部 55 份原始补丁哈希，再明确排除整个 GPU addon 覆盖补丁及
+依赖它的 staged-app 补丁及未启用的 progress 补丁，有效补丁为 52 份。`patch-selection.json`
+保存基线、排除原因与实际顺序。WSL 准备步骤实际将 52 份补丁应用到 XNU，
+并在 `patched-source.json` 记录 57 份改变的源码身份。
 内核最终链接仍待实际构建验证。
 输入来自固定的公开源码及受限的 2023 crypto 镜像；当前范围为内部正确性和
 集成验证，原件及衍生产物不作为公开发布包。

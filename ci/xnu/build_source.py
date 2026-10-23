@@ -93,6 +93,23 @@ def select_kernel_patches(tree, output, spec):
             'effective': [i for i in spec['kernel_patches'] if i['path'] not in names]}
 
 
+def apply_kernel_patches(tree, work, log):
+    applied = []
+    paths = sorted(tree.glob('patches/xnu/*.patch')) + sorted(tree.glob('kits/NativePrelink/patches/*.patch'))
+    for patch in paths:
+        log.write(str(patch.relative_to(tree)) + '\n'); log.flush()
+        for flags in (['--check'], []):
+            subprocess.run(['git', '-C', work, 'apply', *flags, patch],
+                           check=True, stdout=log, stderr=subprocess.STDOUT, timeout=30)
+        applied.append({'path': str(patch.relative_to(tree)), 'sha256': digest(patch)})
+    changed = []
+    for name in git(work, 'diff', '--name-only', '-z').split(b'\0'):
+        if name:
+            name = os.fsdecode(name)
+            changed.append({'path': name, 'sha256': digest(work / name)})
+    return {'applied': applied, 'changed_sources': changed}
+
+
 def prepare_headers(tree, xnu, spec):
     """Restore/hash all fixed header blobs, including files already present."""
     records = []
@@ -276,6 +293,9 @@ def main():
                        check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         headers = prepare_headers(tree, tree / 'refer/xnu', spec['supplemental_headers'])
         (exports / 'headers.json').write_text(json.dumps(headers, indent=2) + '\n')
+        with (logs / 'kernel-patches.log').open('w') as log:
+            patched = apply_kernel_patches(tree, work, log)
+        (exports / 'patched-source.json').write_text(json.dumps(patched, indent=2) + '\n')
         (exports / 'source-inputs.json').write_text(json.dumps(source_inputs, indent=2) + '\n')
         shutil.copyfile(HERE / 'build_arm_driver.py', tree / 'scripts/build-cas-arm-driver.py')
         enabled = ['SOURCE_CORECRYPTO14', 'SOURCE_PTHREAD', 'ARMCPU', 'NATIVE_ARCH_TIMER',

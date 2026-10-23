@@ -72,8 +72,11 @@ undefined `BINDM_FORCE_ROOT` from the inherited optional GPU addon patch. The in
 pins the framework, four selected modules, six source inputs, 55 baseline kernel
 patches, two supplemental-header commits and two candidate adaptations. The minimal
 profile verifies all 55 original hashes and explicitly excludes the whole GPU addon
-overlay patch, leaving 54 effective patches. `patch-selection.json` records the
-baseline, disabled feature and effective order. A successful kernel link remains unverified.
+overlay patch, its dependent staged-app patch and the unused progress hooks, leaving
+52 effective patches. `patch-selection.json` records the
+baseline, disabled features and effective order. WSL preparation actually applies all 52
+patches to XNU and records the 57 changed source files in `patched-source.json`.
+A successful kernel link remains unverified.
 The selected 2023 crypto mirror is a restricted internal correctness/integration
 verification input; its source and derived outputs are excluded from public releases.
 

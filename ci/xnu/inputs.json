@@ -300,6 +300,14 @@
     {
       "path": "patches/xnu/zzy-native-gpu-addon-mount.patch",
       "reason": "Optional system-volume GPU addon overlays are outside the minimal CPU/platform/crypto/pthread closure. This inherited patch references BINDM_FORCE_ROOT, which has no definition or consumer in the fixed XNU source; the actual first macOS build failed there. Exclude the whole feature without inventing ownership behavior."
+    },
+    {
+      "path": "patches/xnu/zzy-staged-system-apps.patch",
+      "reason": "Optional system-app installation is outside the minimal closure and its patch context requires the disabled GPU addon code."
+    },
+    {
+      "path": "patches/xnu/zzz-boot-progress.patch",
+      "reason": "Optional later boot progress hooks and helper header are outside the minimal CPU/platform/crypto/pthread profile, which does not enable XNU_BOOT_PROGRESS."
     }
   ],
   "supplemental_headers": [

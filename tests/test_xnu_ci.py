@@ -67,6 +67,21 @@ class ArtifactTests(unittest.TestCase):
             artifacts.unseal(self.root / 'sealed', self.keys / 'other.key', self.root / 'opened')
         self.assertFalse((self.root / 'opened').exists())
 
+    def test_decrypted_invalid_archive_has_no_output(self):
+        self.seal()
+        raw = self.root / 'invalid-plaintext'
+        raw.write_bytes(b'not a tar archive\n' * 100)
+        cipher = self.root / 'sealed/bundle.cms'
+        artifacts.openssl(['cms', '-encrypt', '-binary', '-aes-256-cbc', '-in', raw,
+                           '-out', cipher, '-outform', 'DER', self.keys / 'owner.pem'])
+        path = self.root / 'sealed/envelope.json'
+        envelope = json.loads(path.read_text())
+        envelope.update(ciphertext_sha256=artifacts.sha(cipher), ciphertext_bytes=cipher.stat().st_size)
+        path.write_text(json.dumps(envelope))
+        with self.assertRaisesRegex(ValueError, 'not a valid archive'):
+            artifacts.unseal(cipher.parent, self.keys / 'owner.key', self.root / 'opened')
+        self.assertFalse((self.root / 'opened').exists())
+
     def test_ciphertext_corruption_is_rejected(self):
         self.seal()
         cipher = self.root / 'sealed/bundle.cms'

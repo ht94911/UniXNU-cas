@@ -61,6 +61,7 @@ jobs:
               raise SystemExit('No source build result directory was created')
           allowed = {'build-report.json', 'logs.tar.gz', 'toolchain.json', 'headers.json',
                      'source-inputs.json', 'configuration.json', 'adaptations.json', 'patch-selection.json',
+                     'patched-source.json',
                      'kernel.unstripped.macho', 'kernel.symbols.txt'}
           names = {p.name for p in root.iterdir()}
           if not {'build-report.json', 'logs.tar.gz'} <= names or not names <= allowed:
