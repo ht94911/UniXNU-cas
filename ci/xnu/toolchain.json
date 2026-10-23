@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "runner": "macos-15",
+  "system": "Darwin",
+  "machine": "arm64",
+  "developer_dir": "/Applications/Xcode_16.4.app/Contents/Developer",
+  "xcode_version": "16.4",
+  "xcode_build": "16F6",
+  "iphoneos_sdk": "18.5",
+  "macosx_sdk": "15.5",
+  "target": "arm64-apple-ios17.0",
+  "python_minimum": [3, 11, 0],
+  "framework_commit": "67e8ef0aa2a0a1fcb940889fb39ed1752b4b1593",
+  "xnu_commit": "d8b80295118ef25ac3a784134bcf95cd8e88109f",
+  "kernel_config": "DEVELOPMENT_ARM64_BCM2837",
+  "page_size": 4096,
+  "target_system": {
+    "product": "iPad7,1",
+    "device_class": "j120ap",
+    "version": "17.7.11",
+    "build": "21H461",
+    "source_xnu": "10063.141.1",
+    "darwin": "23.6.0",
+    "donor_binary_xnu_reported_by_umi": "10063.142.1.703.8"
+  },
+  "scope": "Toolchain probe only; no kernel or device execution. Runner images are mutable; record ImageVersion and executable hashes for each run."
+}
