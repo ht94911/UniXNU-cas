@@ -195,6 +195,36 @@ def kernel_identity(path):
             'segments': segments}
 
 
+def audit_page_size(tree, logs):
+    record_path = tree / OBJ / 'osfmk/DEVELOPMENT/startup.o.json'
+    record = json.loads(record_path.read_text().strip().rstrip(','))
+    command = list(record['arguments'])
+    command.remove('-c')
+    macros_path = logs / 'page-size-macros.txt'
+    command[command.index('-o') + 1] = str(macros_path)
+    command.extend(['-E', '-dM'])
+    with (logs / 'page-size-compiler.log').open('w') as log:
+        subprocess.run(command, cwd=record['directory'], stdout=log, stderr=subprocess.STDOUT, check=True)
+    macros = {}
+    for line in macros_path.read_text().splitlines():
+        if line.startswith('#define '):
+            parts = line.split(maxsplit=2)
+            macros[parts[1]] = parts[2] if len(parts) == 3 else ''
+    def resolve(name):
+        for _ in range(8):
+            if name not in macros:
+                return name
+            name = macros[name]
+        raise ValueError('Cyclic page-size macro')
+    if (resolve('ARM_PGSHIFT') != '12' or resolve('PAGE_SHIFT_CONST') != '12'
+            or '__ARM_16K_PG__' in macros or 'ARM64_BOARD_CONFIG_BCM2837' not in macros):
+        raise ValueError('Actual startup compiler preprocessing does not select the fixed 4KiB ABI')
+    return {'page_bytes': 4096, 'proof': 'Actual startup compile record reprocessed by the same compiler/flags',
+            'startup_record_sha256': digest(record_path), 'command': command,
+            'selected_macros': {n: macros[n] for n in ('ARM_PGSHIFT', 'PAGE_SHIFT_CONST', 'ARM64_BOARD_CONFIG_BCM2837')},
+            'macro_output_sha256': digest(macros_path), 'runtime_page_size': 'not_run'}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--out', type=Path, required=True)
@@ -314,6 +344,9 @@ def main():
                      'iokit/DEVELOPMENT/IOPlatformExpert.cpo.json', 'link.filelist'):
             if not (tree / OBJ / path).is_file():
                 raise ValueError('Bootstrap did not create required compile records: ' + path)
+        page_size = audit_page_size(tree, logs)
+        (exports / 'page-size.json').write_text(json.dumps(page_size, indent=2) + '\n')
+        report['page_bytes'] = page_size['page_bytes']
         run('crypto-plain', [sys.executable, 'scripts/build-corecrypto-14.py'])
         run('crypto-namespaced', [sys.executable, 'scripts/build-corecrypto-14.py', '--namespace'])
         run('pthread', [sys.executable, 'scripts/build-libpthread-kernel.py'])

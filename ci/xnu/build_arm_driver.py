@@ -40,7 +40,7 @@ def main():
             command.append(argument)
     command += ['-Wall', '-Wextra', '-Werror', '-Wno-unused-parameter',
                 '-Wno-c99-designator', '-Wno-reorder-init-list',
-                '-Wno-deprecated-enum-enum-conversion', '-Wno-unnecessary-virtual-specifier',
+                '-Wno-deprecated-enum-enum-conversion',
                 '-I', str(ROOT / '.cache/xnu-work/osfmk')]
     (output / 'compile-command.json').write_text(json.dumps(command, indent=2) + '\n')
     with (output / 'compile.log').open('w') as log:

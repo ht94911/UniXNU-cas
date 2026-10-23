@@ -74,6 +74,10 @@ python3 -B ci/xnu/artifacts.py unseal \
 校验补充头文件。bootstrap 只用于生成编译记录；之后实际构建 crypto、pthread、
 ArmCpu 与 ArmDTPlatform，再执行最终内核链接。它不调用预链接和 IPSW 流程。
 
+编译器审计会按实际 startup 编译记录执行预处理，核对 `ARM_PGSHIFT` 和
+`PAGE_SHIFT_CONST` 均解析为 12。`page-size.json` 保存实际命令与宏输出哈希；
+运行时页大小仍待验证。
+
 成功输出保留未剥离的 ARM64 内核、从该内核直接生成的符号列表、配置、输入
 清单、补丁前后哈希和完整日志，并加密取回。符号记录绑定内核 SHA；内核自带
 真实符号表。这不保证已有完整源码行号调试信息，运行与 crypto 自检仍待后续验证。
