@@ -19,8 +19,17 @@ def require(condition):
     if not condition:
         raise ValueError("EFI-only FAT input/configuration invariant failed")
 
-def validate_config(data):
+def validate_config(data, *, diagnostics=False):
     config = tomllib.loads(data.decode("utf-8"))
+    if diagnostics:
+        require(config["version"] == 1 and set(config) == {"version", "boot", "ui", "entry"})
+        require(config["boot"] == {"default":"diag", "timeout":-1, "rotate":0, "fallback_timeout":10, "connect_all":False})
+        require(config["ui"] == {"layout":"portrait"})
+        require([(e["id"], e["type"]) for e in config["entry"]] == [("diag","efi"),("android","action"),("firmware","action")])
+        require(config["entry"][0] == {"id":"diag","title":"Run cas memory and log diagnostics","type":"efi","path":"\\EFI\\Tools\\CasDiag.efi"})
+        require(config["entry"][1] == {"id":"android","title":"Reboot to Android","type":"action","action":"reset"})
+        require(config["entry"][2] == {"id":"firmware","title":"Return to firmware","type":"action","action":"exit"})
+        return config
     require(config["version"] == 1)
     require(set(config) == {"version", "boot", "ui", "entry"})
     require(config["boot"] == {"default": "smoke", "timeout": -1, "rotate": 0, "fallback_timeout": 10, "connect_all": False})
@@ -32,8 +41,8 @@ def validate_config(data):
     require(all(set(e) <= {"id", "title", "type", "path", "action"} for e in config["entry"]))
     return config
 
-def build(config, program):
-    validate_config(config)
+def build(config, program, *, diagnostics=False):
+    validate_config(config, diagnostics=diagnostics)
     if program[:2] != b"MZ" or len(program) < 64:
         raise ValueError("CasSmoke must be a PE executable")
     pe = struct.unpack_from("<I", program, 60)[0]
@@ -90,7 +99,7 @@ def build(config, program):
     directory(efi, 0, [entry(b"UNIXNU     ",0x10,unixnu),entry(b"TOOLS      ",0x10,tools)])
     short = b"UNIXNU~1TOM"
     directory(unixnu,efi,[long_entry("unixnu.toml",short),entry(short,0x20,cfg,len(config))])
-    directory(tools,efi,[entry(b"CASSMOKEEFI",0x20,app,len(program))])
+    directory(tools,efi,[entry(b"CASDIAG EFI" if diagnostics else b"CASSMOKEEFI",0x20,app,len(program))])
     root = entry(b"CAS_EFI    ",8,0) + entry(b"EFI        ",0x10,efi)
     image[ROOT*512:ROOT*512+len(root)] = root
     image[512:(1+FAT_SECTORS)*512] = fat

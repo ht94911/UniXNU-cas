@@ -18,7 +18,7 @@ def run(command, log):
     return result.stdout
 
 
-def build(uefi, out):
+def build(uefi, out, *, diagnostics=False):
     out.mkdir(parents=True, exist_ok=False)
     log = out / "commands.log"
     root = uefi.resolve()
@@ -34,6 +34,8 @@ def build(uefi, out):
                  # The MMU is off and SCTLR.A may be set. FDT values are only
                  # four-byte aligned, including fields decoded as 64 bits.
                  "-mstrict-align", "-O2", "-Wall", "-Wextra", "-Werror"]
+        if diagnostics:
+            flags += ["-DCAS_XNU_DIAGNOSTICS=1"]
         run(["clang", *flags, "-I", include, "-c", source, "-o", obj], log)
         objects.append(obj)
     elf = out / "shim.elf"
@@ -52,7 +54,7 @@ def build(uefi, out):
         raise ValueError("incorrect ARM64 text_offset/image_size")
     if parsed["_ScratchStackTop"] - parsed["_ScratchStackBase"] != 0x4000:
         raise ValueError("scratch stack size mismatch")
-    report = {"result": "pass", "hardware_proven": False, "shim_bytes": len(data),
+    report = {"result": "pass", "hardware_proven": False, "diagnostics": diagnostics, "shim_bytes": len(data),
               "sha256": hashlib.sha256(data).hexdigest(), "text_offset": "0x80000", "image_size": len(data) + 0x800000,
               "symbols": parsed, "relocations": relocations.strip(), "sources": [
                   {"path": str(path), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()} for path in
@@ -66,5 +68,6 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--uefi", type=Path, required=True)
     ap.add_argument("--out", type=Path, required=True)
+    ap.add_argument("--diagnostics", action="store_true")
     options = ap.parse_args()
-    build(options.uefi, options.out)
+    build(options.uefi, options.out, diagnostics=options.diagnostics)

@@ -1,0 +1,25 @@
+# RAM-only diagnostic entry; no XNU or donor payload.
+version = 1
+[boot]
+default = "diag"
+timeout = -1
+rotate = 0
+fallback_timeout = 10
+connect_all = false
+[ui]
+layout = "portrait"
+[[entry]]
+id = "diag"
+title = "Run cas memory and log diagnostics"
+type = "efi"
+path = '\EFI\Tools\CasDiag.efi'
+[[entry]]
+id = "android"
+title = "Reboot to Android"
+type = "action"
+action = "reset"
+[[entry]]
+id = "firmware"
+title = "Return to firmware"
+type = "action"
+action = "exit"

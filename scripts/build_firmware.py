@@ -20,6 +20,7 @@ def main():
     ap.add_argument("--uefi", type=Path, required=True)
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--phase", choices=("genc", "modules", "build"), default="build")
+    ap.add_argument("--diagnostics", action="store_true", help="independent cas-diag DSC/FDF and retained-log profile")
     args = ap.parse_args()
     uefi, out = args.uefi.resolve(), args.out.resolve()
     out.mkdir(parents=True, exist_ok=False)
@@ -33,7 +34,7 @@ def main():
     env["PYTHONPATH"] = str(uefi / "Mu_Basecore/BaseTools/Source/Python")
     commands = []
     manifest = {"phase": args.phase, "started_at": datetime.now(timezone.utc).isoformat(), "commands": commands,
-                "source_date_epoch": env["SOURCE_DATE_EPOCH"], "result": "running", "hardware_proven": False}
+                "source_date_epoch": env["SOURCE_DATE_EPOCH"], "result": "running", "hardware_proven": False, "diagnostics": args.diagnostics}
     manifest_path = out / "run.json"
 
     def run(command, name, cwd=uefi):
@@ -52,7 +53,8 @@ def main():
         (out / "source-state.json").write_text(json.dumps(sources, indent=2) + "\n")
         manifest["source_state"] = file_ref(out / "source-state.json")
         # Unconditionally perform target checks immediately before BaseTools.
-        run([sys.executable, DEVICE / "scripts/preflight.py", "--uefi", uefi, "--out", out / "preflight.json"], "preflight.log")
+        policy = DEVICE / "config" / ("diagnostics-policy.json" if args.diagnostics else "input-policy.json")
+        run([sys.executable, DEVICE / "scripts/preflight.py", "--uefi", uefi, "--policy", policy, "--out", out / "preflight.json"], "preflight.log")
         run([sys.executable, DEVICE / "scripts/generate_memory_map.py", "--uefi", uefi], "memory-compare.log")
         run([sys.executable, DEVICE / "scripts/check_target.py", "--uefi", uefi], "target-constants.log")
         clang = subprocess.run(["clang", "--version"], env=env, text=True, capture_output=True, check=True).stdout
@@ -65,7 +67,7 @@ def main():
         (out / "Conf").mkdir()
         for source, name in (("target.template", "target.txt"), ("tools_def.template", "tools_def.txt"), ("build_rule.template", "build_rule.txt")):
             shutil.copyfile(base / "Conf" / source, out / "Conf" / name)
-        command = ["build", "-a", "AARCH64", "-t", "CLANGPDB", "-b", "DEBUG", "-p", "casPkg/cas.dsc", "-n", env.get("CAS_JOBS", "8"),
+        command = ["build", "-a", "AARCH64", "-t", "CLANGPDB", "-b", "DEBUG", "-p", ("casPkg/cas-diag.dsc" if args.diagnostics else "casPkg/cas.dsc"), "-n", env.get("CAS_JOBS", "8"),
                    "--conf=" + str(out / "Conf"), "-D", "CAS_BUILD_DIR=" + str(out / "Build"), "-y", out / "BuildReport.txt"]
         for kind in ("PCD", "DEPEX", "FLASH", "BUILD_FLAGS", "LIBRARY", "FIXED_ADDRESS", "HASH"):
             command += ["-Y", kind]

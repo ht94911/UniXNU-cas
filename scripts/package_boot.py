@@ -35,13 +35,14 @@ def main():
     ap.add_argument("--environment", type=Path, required=True)
     ap.add_argument("--stock-dtb", type=Path, required=True, help="private original cas base DTB2; exact hash required")
     ap.add_argument("--efi-ram-fat", action="store_true", help="build the checked EFI-only RAM FAT from this full build")
+    ap.add_argument("--diagnostics", action="store_true", help="only accepts a matching independent diagnostic firmware build")
     a = ap.parse_args()
     uefi, build, out = a.uefi.resolve(), a.firmware_build.resolve(), a.out.resolve()
     out.mkdir(parents=True, exist_ok=False)
     env = os.environ.copy()
     env.update(SOURCE_DATE_EPOCH=EPOCH, PYTHONHASHSEED="0", LC_ALL="C.UTF-8", TZ="UTC")
     run = {"started_at": datetime.now(timezone.utc).isoformat(), "result": "running", "board": "cas",
-           "build_id": out.name, "hardware_proven": False, "commands": [], "profile": "efi-only-ram-fat" if a.efi_ram_fat else "base-empty-ramdisk"}
+           "build_id": out.name, "hardware_proven": False, "commands": [], "profile": "cas-memory-log-diagnostics" if a.diagnostics else ("efi-only-ram-fat" if a.efi_ram_fat else "base-empty-ramdisk")}
     run_path = out / "package-run.json"
 
     def save_run():
@@ -59,17 +60,22 @@ def main():
             raise RuntimeError(log_name + " failed; preserved output is not a usable image")
 
     try:
+        if a.diagnostics and not a.efi_ram_fat:
+            raise ValueError("diagnostic profile requires diagnostic RAM FAT")
+        policy = DEVICE / "config" / ("diagnostics-policy.json" if a.diagnostics else "input-policy.json")
         sources = source_state(uefi, DEVICE)
         require_clean(sources)
         build_run_path = build / "run.json"
         build_run = json.loads(build_run_path.read_text())
         if build_run["phase"] != "build" or build_run["result"] != "pass":
             raise ValueError("a successful full-FD build is required")
+        if build_run.get("diagnostics", False) is not a.diagnostics:
+            raise ValueError("firmware/shim/payload diagnostic profile mismatch")
         for key in ("source_state", "fd", "build_report"):
             check_ref(build_run[key])
         if json.loads(Path(build_run["source_state"]["path"]).read_text()) != sources:
             raise ValueError("current sources differ from the successful full build")
-        command([sys.executable, DEVICE / "scripts/preflight.py", "--uefi", uefi, "--out", out / "preflight-target.json"], "preflight-target.log")
+        command([sys.executable, DEVICE / "scripts/preflight.py", "--uefi", uefi, "--policy", policy, "--out", out / "preflight-target.json"], "preflight-target.log")
         command([sys.executable, DEVICE / "scripts/check_target.py", "--uefi", uefi], "target-constants.log")
         config_path = uefi / "Resources/Configs/cas.toml"
         memory_path = DEVICE / "config/memory-map.json"
@@ -89,11 +95,11 @@ def main():
         dtb_path = out / "cas.dtb"
         dtb_path.write_bytes(prepared_dtb)
         command(["dtc", "-I", "dtb", "-O", "dts", "-o", out / "cas-unpacked.dts", dtb_path], "dtc-readback.log")
-        shim_path = build_shim(uefi, out / "shim")
+        shim_path = build_shim(uefi, out / "shim", diagnostics=a.diagnostics)
         ramdisk_path = out / ("payload-fat.img" if a.efi_ram_fat else "ramdisk.empty")
-        payload_config = DEVICE / "config/unixnu.toml"
-        payload_efi = build / "Build/DEBUG_CLANGPDB/AARCH64/CasSmoke.efi"
-        ramdisk_data = build_ram_fat(payload_config.read_bytes(), payload_efi.read_bytes()) if a.efi_ram_fat else b""
+        payload_config = DEVICE / "config" / ("diagnostics.toml" if a.diagnostics else "unixnu.toml")
+        payload_efi = build / "Build/DEBUG_CLANGPDB/AARCH64" / ("CasDiag.efi" if a.diagnostics else "CasSmoke.efi")
+        ramdisk_data = build_ram_fat(payload_config.read_bytes(), payload_efi.read_bytes(), diagnostics=a.diagnostics) if a.efi_ram_fat else b""
         ramdisk_path.write_bytes(ramdisk_data)
         kernel_path = out / "kernel.gz"
         kernel_path.write_bytes(gzip.compress(shim_path.read_bytes() + fd_path.read_bytes(), compresslevel=9, mtime=0))
@@ -109,7 +115,7 @@ def main():
         for name, data in parts.items():
             (out / "unpacked" / (name + ".bin")).write_bytes(data)
         (out / "image-check.json").write_text(json.dumps(check, indent=2) + "\n")
-        command([sys.executable, DEVICE / "scripts/preflight.py", "--uefi", uefi, "--stage", "artifacts",
+        command([sys.executable, DEVICE / "scripts/preflight.py", "--uefi", uefi, "--policy", policy, "--stage", "artifacts",
                  "--fd", fd_path, "--dtb", dtb_path, "--shim", shim_path, "--boot-image", image_path,
                  "--ramdisk", ramdisk_path, "--stock-dtb", a.stock_dtb.resolve(),
                  "--out", out / "preflight-artifacts.json"], "preflight-artifacts.log")
