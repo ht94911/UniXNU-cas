@@ -8,7 +8,7 @@ import tempfile
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'ci/xnu'))
-from build_source import kernel_identity, tracked_manifest
+from build_source import kernel_identity, tracked_manifest, select_kernel_patches
 
 
 def fixture(cpu=0x100000c, count=1, symoff=80):
@@ -57,6 +57,28 @@ class SourceTests(unittest.TestCase):
             (path / 'source.c').write_text('int changed;\n')
             with self.assertRaises(ValueError):
                 tracked_manifest(path)
+
+    def test_patch_selection_checks_full_baseline_before_exclusion(self):
+        with tempfile.TemporaryDirectory() as root:
+            tree = Path(root) / 'tree'
+            patches = tree / 'patches/xnu'
+            patches.mkdir(parents=True)
+            baseline = []
+            for name in ('core.patch', 'optional.patch'):
+                data = ('patch ' + name).encode()
+                (patches / name).write_bytes(data)
+                baseline.append({'path': 'patches/xnu/' + name, 'sha256': hashlib.sha256(data).hexdigest()})
+            spec = {'kernel_patches': baseline, 'excluded_kernel_patches': [
+                {'path': baseline[1]['path'], 'reason': 'Optional feature disabled'}]}
+            (patches / 'optional.patch').write_bytes(b'changed')
+            with self.assertRaises(ValueError):
+                select_kernel_patches(tree, Path(root), spec)
+            self.assertTrue((patches / 'core.patch').is_file())
+            (patches / 'optional.patch').write_bytes(b'patch optional.patch')
+            selection = select_kernel_patches(tree, Path(root), spec)
+            self.assertEqual(selection['effective'], baseline[:1])
+            self.assertTrue((Path(root) / 'excluded-kernel-patches/optional.patch').is_file())
+            self.assertFalse((patches / 'optional.patch').exists())
 
 
 if __name__ == '__main__':

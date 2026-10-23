@@ -58,8 +58,12 @@ python3 -B ci/xnu/artifacts.py unseal \
 ## 最小源码内核候选
 
 独立的 `xnu-source.yml` 和 `ci/xnu/build_source.py` 实现首次源码构建通道。
-该通道仍待实际内核构建验证。输入锁 `ci/xnu/inputs.json` 固定框架、4 个选中
-模块、6 个源码输入、55 个有序内核补丁、两组补充头文件提交和两项候选适配。
+首轮实际 macOS 构建在 bootstrap 阶段发现继承的可选 GPU addon 补丁引用了
+未定义的 `BINDM_FORCE_ROOT`。输入锁 `ci/xnu/inputs.json` 固定框架、4 个选中
+模块、6 个源码输入、55 个基线内核补丁、两组补充头文件提交和两项候选适配。
+最小配置先验证全部 55 份原始补丁哈希，再明确排除整个 GPU addon 覆盖补丁，
+有效补丁为 54 份。`patch-selection.json` 保存基线、排除原因与实际顺序。
+内核最终链接仍待实际构建验证。
 输入来自固定的公开源码及受限的 2023 crypto 镜像；当前范围为内部正确性和
 集成验证，原件及衍生产物不作为公开发布包。
 

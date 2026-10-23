@@ -71,6 +71,28 @@ def tracked_manifest(path):
     return files
 
 
+def select_kernel_patches(tree, output, spec):
+    """Verify the complete baseline before excluding explicitly disabled features."""
+    ordered = sorted(tree.glob('patches/xnu/*.patch')) + sorted(tree.glob('kits/NativePrelink/patches/*.patch'))
+    actual = [(str(p.relative_to(tree)), digest(p)) for p in ordered]
+    expected = [(i['path'], i['sha256']) for i in spec['kernel_patches']]
+    if actual != expected:
+        raise ValueError('Kernel patch list/order/hash differs from the fixed baseline')
+    excluded = spec.get('excluded_kernel_patches', [])
+    names = [i['path'] for i in excluded]
+    if len(set(names)) != len(names) or not set(names) <= {p for p, _ in expected}:
+        raise ValueError('Patch exclusions must be unique members of the verified baseline')
+    if any(not i.get('reason', '').strip() for i in excluded):
+        raise ValueError('A disabled feature needs an explicit reason')
+    for item in excluded:
+        source = tree / item['path']
+        destination = output / 'excluded-kernel-patches' / source.name
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        source.rename(destination)
+    return {'baseline': spec['kernel_patches'], 'excluded': excluded,
+            'effective': [i for i in spec['kernel_patches'] if i['path'] not in names]}
+
+
 def prepare_headers(tree, xnu, spec):
     """Restore/hash all fixed header blobs, including files already present."""
     records = []
@@ -230,9 +252,8 @@ def main():
                 files = tracked_manifest(target) if feed['name'] == 'corecrypto-2023' else None
                 source_inputs.append({'name': feed['name'], 'url': feed['git'], 'commit': feed['commit'],
                                       'tree': git(target, 'rev-parse', 'HEAD^{tree}').decode().strip(), 'files': files})
-        ordered = sorted(tree.glob('patches/xnu/*.patch')) + sorted(tree.glob('kits/NativePrelink/patches/*.patch'))
-        if [(str(p.relative_to(tree)), digest(p)) for p in ordered] != [(i['path'], i['sha256']) for i in spec['kernel_patches']]:
-            raise ValueError('Kernel patch list/order/hash differs from X-01')
+        selection = select_kernel_patches(tree, output, spec)
+        (exports / 'patch-selection.json').write_text(json.dumps(selection, indent=2) + '\n')
         adaptations = []
         for patch in spec['adaptations']:
             source = HERE / patch['file']
@@ -304,6 +325,11 @@ def main():
         with tarfile.open(exports / 'logs.tar.gz', 'w:gz') as tar:
             tar.add(logs, arcname='logs')
             if tree.exists():
+                for relative in ('osfmk/DEVELOPMENT/startup.o.json', 'osfmk/DEVELOPMENT/prng_random.o.json',
+                                 'iokit/DEVELOPMENT/IOPlatformExpert.cpo.json', 'link.filelist'):
+                    path = tree / OBJ / relative
+                    if path.is_file():
+                        tar.add(path, arcname='details/xnu/' + relative)
                 for pattern in ('build/*/compile-command*.json', 'build/*/report.json', 'build/*/build-report*.json',
                                 'build/*/link-survey*.json', 'build/*/compile.log'):
                     for path in tree.glob(pattern):

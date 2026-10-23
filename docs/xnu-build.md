@@ -67,9 +67,13 @@ explicitly. This workflow does not implement that later build.
 ## Minimal source-kernel candidate
 
 The separate `xnu-source.yml` and `ci/xnu/build_source.py` implement the first
-source-build route. Actual kernel compilation remains unverified. The input lock
-pins the framework, four selected modules, six source inputs, 55 ordered kernel
-patches, two supplemental-header commits and two candidate adaptations.
+source-build route. The first actual macOS build stopped in bootstrap with an
+undefined `BINDM_FORCE_ROOT` from the inherited optional GPU addon patch. The input lock
+pins the framework, four selected modules, six source inputs, 55 baseline kernel
+patches, two supplemental-header commits and two candidate adaptations. The minimal
+profile verifies all 55 original hashes and explicitly excludes the whole GPU addon
+overlay patch, leaving 54 effective patches. `patch-selection.json` records the
+baseline, disabled feature and effective order. A successful kernel link remains unverified.
 The selected 2023 crypto mirror is a restricted internal correctness/integration
 verification input; its source and derived outputs are excluded from public releases.
 

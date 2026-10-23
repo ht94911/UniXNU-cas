@@ -296,6 +296,12 @@
       "sha256": "d0a2da8ca1a0b4021629b0ecaadad20c0e6cf7b3205f8d780242a60034f44d91"
     }
   ],
+  "excluded_kernel_patches": [
+    {
+      "path": "patches/xnu/zzy-native-gpu-addon-mount.patch",
+      "reason": "Optional system-volume GPU addon overlays are outside the minimal CPU/platform/crypto/pthread closure. This inherited patch references BINDM_FORCE_ROOT, which has no definition or consumer in the fixed XNU source; the actual first macOS build failed there. Exclude the whole feature without inventing ownership behavior."
+    }
+  ],
   "supplemental_headers": [
     {
       "name": "driverkit",
