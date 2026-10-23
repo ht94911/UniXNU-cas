@@ -62,7 +62,7 @@ this path for later kernel and matching symbol bundles.
 This transport does not grant permission to use or redistribute Apple inputs.
 A later source-kernel build must satisfy the selected component input contracts
 and list its kernel, matching symbols, configuration, patches and manifests
-explicitly. This workflow does not implement that later build.
+explicitly. The preflight workflow tests transport; the separate source workflow below retains the actual kernel and symbols.
 
 ## Minimal source-kernel candidate
 
@@ -76,7 +76,7 @@ overlay patch, its dependent staged-app patch and the unused progress hooks, lea
 52 effective patches. `patch-selection.json` records the
 baseline, disabled features and effective order. WSL preparation actually applies all 52
 patches to XNU and records the 57 changed source files in `patched-source.json`.
-A successful kernel link remains unverified.
+The two actual clean builds below now verify the source-kernel link.
 The selected 2023 crypto mirror is a restricted internal correctness/integration
 verification input; its source and derived outputs are excluded from public releases.
 
@@ -96,11 +96,29 @@ Successful exports retain the unstripped ARM64 kernel, symbols generated directl
 from that kernel, configuration, input manifests, adaptation hashes and complete logs,
 encrypted for retrieval. Symbol metadata binds the kernel SHA and the real symbol
 table stays in the kernel. Full source-line debugging is not guaranteed; runtime and
-crypto selftests remain unverified. A second clean build follows the first successful link.
+crypto selftests remain unverified. Two clean builds have now been compared.
 
 `--prepare-only` can check preparation on WSL without compiling a kernel.
 `--platform qemu` selects ArmVirtPlatform for a separately identified virtual candidate;
 the cas profile uses ArmDTPlatform.
+
+## Actual source-build result
+
+[Run 39986603109, attempt 1](https://github.com/ht94911/UniXNU-cas/actions/runs/39986603109/attempts/1)
+and [attempt 2](https://github.com/ht94911/UniXNU-cas/actions/runs/39986603109/attempts/2)
+built commit `0ce99faf43ef0c8facee11073425da8962c1569f` on separate clean hosted VMs.
+Both produced a 21,392,120-byte ordinary ARM64 kernel. The actual `arm_init` compiler
+audit selected 4 KiB; both candidate adaptations passed target compilation. Each
+unstripped kernel retains 279,022 symbol-table entries and a matching 71,178-line
+nondebug symbol list. Both encrypted outputs were retrieved and verified locally.
+
+Code, nondebug symbols, configuration, inputs, patched-source manifests and actual
+tool identities match. Whole kernel hashes differ: 1,928 different bytes are entirely
+explained by build-date banners, Mach-O UUID and object modification times in N_OSO.
+This is a verified clean-build comparison, not a claim of whole-file byte identity.
+Independent POST HMAC recomputation matches both code sections. Runtime crypto
+selftests, source-line debugging, QEMU XNU, DarwinBoot integration and cas hardware
+boot remain unverified. No new Android boot image was produced.
 
 ## Local checks
 

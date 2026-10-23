@@ -53,7 +53,7 @@ python3 -B ci/xnu/artifacts.py unseal \
 
 传输工具不授予 Apple 输入的使用或再分发权限。后续源码内核构建须满足所选
 组件的输入契约，并显式列出内核、匹配符号、配置、补丁和清单。
-当前工作流尚未实现这一步。
+预检工作流只验证传输；下述独立源码工作流负责保留实际内核与符号。
 
 ## 最小源码内核候选
 
@@ -65,7 +65,7 @@ python3 -B ci/xnu/artifacts.py unseal \
 依赖它的 staged-app 补丁及未启用的 progress 补丁，有效补丁为 52 份。`patch-selection.json`
 保存基线、排除原因与实际顺序。WSL 准备步骤实际将 52 份补丁应用到 XNU，
 并在 `patched-source.json` 记录 57 份改变的源码身份。
-内核最终链接仍待实际构建验证。
+下述两次实际清洁构建现已验证源码内核链接。
 输入来自固定的公开源码及受限的 2023 crypto 镜像；当前范围为内部正确性和
 集成验证，原件及衍生产物不作为公开发布包。
 
@@ -81,10 +81,25 @@ ArmCpu 与 ArmDTPlatform，再执行最终内核链接。它不调用预链接�
 成功输出保留未剥离的 ARM64 内核、从该内核直接生成的符号列表、配置、输入
 清单、补丁前后哈希和完整日志，并加密取回。符号记录绑定内核 SHA；内核自带
 真实符号表。这不保证已有完整源码行号调试信息，运行与 crypto 自检仍待后续验证。
-首次链接成功之后，再从第二个干净输出比较构建结果。
+两次实际清洁构建现已完成比较。
 
 `--prepare-only` 可以在 WSL 验证准备步骤；它不会编译或生成内核。`--platform qemu`
 另选 ArmVirtPlatform，仅用于单独命名的虚拟平台候选；cas 配置使用 ArmDTPlatform。
+
+## 实际源码构建结果
+
+[39986603109 / attempt 1](https://github.com/ht94911/UniXNU-cas/actions/runs/39986603109/attempts/1)
+和 [attempt 2](https://github.com/ht94911/UniXNU-cas/actions/runs/39986603109/attempts/2)
+在两个独立干净的 hosted VM 上构建提交 `0ce99faf43ef0c8facee11073425da8962c1569f`。
+两次均生成 21,392,120 字节的普通 ARM64 内核，实际 `arm_init` 编译审计选中 4 KiB，
+两项候选适配通过目标编译。未剥离内核各含 279,022 项符号表记录，另存匹配的
+71,178 行非调试符号列表；两组加密产物均已取回并在本地核对。
+
+代码、非调试符号、配置、输入、改变源码清单和实际工具身份一致。整文件 SHA
+不同：1,928 个差异字节全部来自构建日期字符串、Mach-O UUID 与 N_OSO 对象时间值。
+此结论为清洁构建比较通过，不声称整文件逐字节一致。两组代码段的 POST HMAC
+独立复算一致；运行时 crypto 自检、源码行号调试、QEMU XNU、DarwinBoot 接线和
+cas 真机启动仍待验证。本阶段未生成新的 Android boot.img。
 
 ## 本地检查
 
