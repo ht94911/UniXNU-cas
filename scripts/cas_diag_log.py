@@ -8,7 +8,7 @@ MAGIC=b"CASLOG01"
 HEADER=96
 CAPACITY=65536
 
-def decode(raw, expected_build="cas-diag-001", current_boot=None):
+def decode(raw, expected_build="cas-diag-002", current_boot=None):
     if len(raw)>CAPACITY:
         raise ValueError("record exceeds reserved slot")
     if len(raw)<8:

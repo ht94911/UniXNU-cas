@@ -2,7 +2,7 @@
 
 [English](cas-diagnostics.md)
 
-独立 `cas-diag-001` profile 构建只在 RAM 中运行的 EFI 诊断程序，用于收集当前内存依据、拒绝未取得所有权的高地址访问，并检查结构化 RAM 日志的恢复。程序不加载 XNU。默认 `cas.dsc` / `cas-complete-001` 路线保留原行为。
+独立 `cas-diag-002` profile 构建只在 RAM 中运行的 EFI 诊断程序，用于收集当前内存依据、拒绝未取得所有权的高地址访问，并检查结构化 RAM 日志的恢复。程序不加载 XNU。默认 `cas.dsc` / `cas-complete-001` 路线保留原行为。
 
 ## 构建和打包
 
@@ -12,11 +12,11 @@
 source environment/cas-env.sh
 python3 -m unittest discover -s tests -v
 python3 scripts/build_firmware.py --uefi ../uefi-cas --diagnostics \
-  --out "$HOME/cas-work/builds/cas-diag-001"
+  --out "$HOME/cas-work/builds/cas-diag-002"
 python3 scripts/package_boot.py --uefi ../uefi-cas \
-  --firmware-build "$HOME/cas-work/builds/cas-diag-001" \
+  --firmware-build "$HOME/cas-work/builds/cas-diag-002" \
   --environment environment/cas-env.sh --stock-dtb /path/to/private/boot-02.dtb \
-  --efi-ram-fat --diagnostics --out "$HOME/cas-work/artifacts/cas-diag-001"
+  --efi-ram-fat --diagnostics --out "$HOME/cas-work/artifacts/cas-diag-002"
 ```
 
 原 stock DTB 的固定身份、RAM 临时启动与恢复流程见[构建说明](build.zh-CN.md)和[操作说明](operations.zh-CN.md)。打包器绑定诊断固件、shim 和 FAT，拒绝默认/诊断 profile 混用。FAT 只允许一个 EFI 路径 `\EFI\Tools\CasDiag.efi`，另有普通回 Android 和返回固件动作；没有 donor、内核或根卷。脚本不调用 ADB/Fastboot。
@@ -29,21 +29,27 @@ python3 scripts/package_boot.py --uefi ../uefi-cas \
 
 | 项目 | 动作 |
 | --- | --- |
-| 枚举 | 读取本轮有界 FDT 副本、RAM/保留区、当前 UEFI 描述符、GOP，以及可用时的 RAM-partition 协议；结构化记录写入固件自有 RAM 槽。 |
+| 枚举 | 读取本轮有界 FDT 副本、RAM/保留区、当前 UEFI 描述符、GOP，以及有界原始 SMEM RAM 表；结构化记录写入固件自有 RAM 槽。 |
 | 测试高地址 256 MiB | 重新枚举并满足所有门限后，才请求精确 UEFI 分配；拒绝时不访问高地址。 |
 | 读日志 | 显示上一记录的校验状态、构建、序号、flags、boot stamp，并分页显示本轮/历史文本。 |
 | Warm reset | 提交 reset-request 标记后调用 `ResetSystem(EfiResetWarm)`；后续检查标记是否还在，不预设保存成功。 |
 | 返回 | 提交退出标记，返回 UniXNU。 |
 
-枚举不修改 FDT、SMEM、存储、变量或分配器拓扑；快照使用普通有界 pool，诊断文本只写自有 RAM 日志。当前固件**没有选入 SMEM/RAM-partition provider**，程序明确报告缺失，不直接读未映射 SMEM。将来使用 provider 前必须审查其源码。动态或未解析的 FDT 保留区同样阻止探测。
+枚举不修改 FDT、SMEM、存储、变量或分配器拓扑；快照使用普通有界 pool，诊断文本只写自有 RAM 日志。诊断专用 memory-map 库只将既有 SMEM 保留区 `[0x80900000, 0x80b00000)` 映射为 NC reserved，SEC 在进入 DXE 前设置 RO/XP；默认生成表保持原内容，分配器仍为 128 MiB。任何 SMEM 读取前，程序要求**本次** FDT `qcom,smem` 的 `memory-region` phandle 恰好指向该 `no-map` 保留区、当前 UEFI reserved/UC 描述符覆盖该区，且 Memory Attribute Protocol 实际确认 RO/XP、无 RP。不获取硬件锁、不写 SMEM。动态或未解析的 FDT 保留区同样阻止探测。
+
+`SmemCore.c` 只读分配元数据和 item 402。支持 SMEM heap 11、12（12 仅限 **uncached global partition**），RAM 表 1/2/3 版分别采用 24 字节 header 后的 64/72/72 字节条目。辅助区、仅 cached 项、未知版本、重复/重叠、magic/count/padding 错误及溢出全部拒绝。所有读取限制在 2 MiB 内，每次最多 4096 字节、每轮最多 1200 次读取与 64 KiB 轨迹、最多 32 行 RAM 表。两轮观察的有序 offset、length、原始字节必须完全相同；这能发现观察到的数据变化，不声称原子快照，也不替代 Qualcomm 远程锁协议。不读、不记录其他 item 的 payload。
+
+线格式核对来源为 [Linux v4.19 SMEM](https://github.com/torvalds/linux/blob/v4.19/drivers/soc/qcom/smem.c)、[固定 LK RAM 表定义](https://github.com/msm8916-mainline/lk2nd/blob/5e6f1adcb1c070e28a70dc1f3d807ce9538f61c5/platform/msm_shared/smem.h)、[Qualcomm v3 RAM 表定义](https://www.mail-archive.com/u-boot%40lists.denx.de/msg570801.html)。有界解码器独立编写，没有引入这些驱动代码。
+
+每行数字字段均输出；仅明确 read/write、APPS/shared domain 的 SDRAM/system-memory 行参与高地址门限，其他行及不可用尾部作为排除区。未知或默认 attr/domain 只能成为观察，不能成为所有权。
 
 FDT 只能来自已验证的 cas 固定地址和大小，RAM/保留区必须使用支持的双 cell 宽度，每个区间均检查。输出包含 FDT CRC 和完整 UEFI 描述符的类型、物理/虚拟地址、长度、属性。当前 GOP 用于排除 framebuffer；历史 RAM bank 本身不能证明所有权。
 
 ## 探测契约
 
-固定测试候选为 `[0x100000000, 0x110000000)`，256 MiB，位于较大的历史 512 MiB 调查区。它必须 2 MiB 对齐，并完整位于一条当前 FDT bank、一条当前 RAM-partition entry 和一段当前 UEFI conventional WB 区间内。当前 FDT 保留区、preloaded image 和 framebuffer 全部排除；低 4 GiB 的整体排除还覆盖固件、栈、输入走廊、控制与日志区。算术、数量、重叠、缺失依据均失败即拒绝。
+固定测试候选为 `[0x100000000, 0x110000000)`，256 MiB，位于较大的历史 512 MiB 调查区。它必须 2 MiB 对齐，并完整位于一条当前 FDT bank、一条当前 RAM-partition entry 和一段当前 UEFI conventional WB 区间内。当前 FDT 保留区、不合格 SMEM 行/尾部和 framebuffer 全部排除；低 4 GiB 的整体排除还覆盖固件、栈、输入走廊、控制与日志区。算术、数量、重叠、缺失依据均失败即拒绝。
 
-当前固件只发布原有 **128 MiB 低地址 allocator**，且没有 RAM-partition provider，因此本 profile 预期会**拒绝高地址测试**。拒绝是诊断结果，不是高地址通过。程序不会用 `AddMemorySpace`、历史 bank 导入或直接读写绕过门限。X-05 应先收集真实输出，再决定后续 allocator/provider 候选如何调整。
+当前固件只发布原有 **128 MiB 低地址 allocator**，因此本 profile 预期会**拒绝高地址测试**。拒绝是诊断结果，不是高地址通过。程序不会用 `AddMemorySpace`、历史 bank 导入或直接读写绕过门限。X-05 应先收集真实输出，再决定后续 allocator 候选如何调整。
 
 门限通过后才执行共享 C 事务：
 
@@ -77,13 +83,13 @@ EFI viewer 是机上的恢复读取器。已保存到本地的 slot 还可离线
 
 ```sh
 python3 scripts/read-cas-diag-log.py /path/to/saved-slot.bin \
-  --build cas-diag-001 --current-boot 0x1234
+  --build cas-diag-002 --current-boot 0x1234
 ```
 
 该命令只读文件，不会取得物理内存 dump。诊断格式尚未接入 XNU panic/logging；该接口属于 X-06。
 
 ## 验证边界
 
-可移植 `DiagCore.c` 就是 EFI 使用的范围门限、日志 codec 和分配/清理事务。24 项主机测试实际编译并调用该 C 代码，与独立 Python reader 交叉核对记录、破坏/截断记录并注入 callback 失败。首轮完整源码回归 219 项通过，含已有 ARM64 主机回归；诊断输入预检和真实严格对齐 BootShim 编译也通过。
+可移植 `DiagCore.c` 就是 EFI 使用的范围门限、日志 codec 和分配/清理事务。24 项主机测试实际编译并调用该 C 代码，与独立 Python reader 交叉核对记录、破坏/截断记录并注入 callback 失败。SMEM 测试实际编译并调用 `SmemCore.c`，使用合成内存注入元数据/内容变化和读取失败，覆盖坏表、未知版本、越界、cached/辅助区拒绝和读取预算。独立 C harness 编译真实诊断映射 wrapper，核对只改变 SMEM HOB 选项、重复调用稳定、类型错误拒绝，且 conventional heap 仍为 128 MiB。各次实际测试数量和构建结果以候选报告为准。
 
 完整固件/镜像构建报告另行标识实际产物。编译和主机测试不能证明当前 cas 内存所有权、高地址 cache 行为、实体按键、warm reset 保留或 XNU/iOS 启动；这些必须来自新镜像哈希绑定的 X-05 真机观察，不能复用旧 UEFI 候选的成功结果。

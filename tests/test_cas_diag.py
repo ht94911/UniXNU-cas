@@ -104,14 +104,14 @@ class Core(unittest.TestCase):
   a=self.lib.CasDiagPattern(0x100000000,0);b=self.lib.CasDiagPattern(0,0)
   self.assertNotEqual(a,b);self.assertEqual(a^self.lib.CasDiagPattern(0x100000000,1),2**64-1)
  def encoded(self,payload=b'ENUM facts\nRETURN\n',flags=0):
-  out=c.create_string_buffer(65536);n=self.lib.CasDiagLogEncode(out,len(out),payload,len(payload),4,123,flags,b'cas-diag-001');self.assertGreater(n,0);return out.raw[:n]
- def ccheck(self,raw,build=b'cas-diag-001'):
+  out=c.create_string_buffer(65536);n=self.lib.CasDiagLogEncode(out,len(out),payload,len(payload),4,123,flags,b'cas-diag-002');self.assertGreater(n,0);return out.raw[:n]
+ def ccheck(self,raw,build=b'cas-diag-002'):
   info=Log();status=self.lib.CasDiagLogValidate(raw,len(raw),build,c.byref(info));return status,info
  def test_real_c_record_decodes_with_independent_python_reader(self):
   raw=self.encoded(flags=1);report=decode(raw,current_boot=123)
   self.assertEqual(report['payload'],'ENUM facts\nRETURN\n');self.assertEqual(report['sequence'],4);self.assertEqual(report['boot_relation'],'same_boot');self.assertFalse(report['persistence_verified']);self.assertTrue(report['warm_reset_requested'])
  def test_hand_encoded_python_fixture_decodes_in_c(self):
-  payload=b'HOST ONLY\n';raw=bytearray(96+len(payload));raw[:8]=b'CASLOG01';struct.pack_into('<IIIIQQII',raw,8,1,96,len(raw),len(payload),7,456,0,0);raw[48:60]=b'cas-diag-001\0';raw[96:]=payload;struct.pack_into('<I',raw,44,zlib.crc32(raw))
+  payload=b'HOST ONLY\n';raw=bytearray(96+len(payload));raw[:8]=b'CASLOG01';struct.pack_into('<IIIIQQII',raw,8,1,96,len(raw),len(payload),7,456,0,0);raw[48:60]=b'cas-diag-002\0';raw[96:]=payload;struct.pack_into('<I',raw,44,zlib.crc32(raw))
   status,info=self.ccheck(bytes(raw));self.assertEqual((status,info.length,info.sequence,info.boot),(0,len(payload),7,456))
  def test_every_truncation_is_rejected_by_both_readers(self):
   raw=self.encoded()
@@ -127,8 +127,8 @@ class Core(unittest.TestCase):
     self.assertNotEqual(self.ccheck(bytes(raw))[0],0)
     with self.assertRaises(ValueError):decode(bytes(raw))
  def test_foreign_build_and_prior_boot_are_explicit(self):
-  raw=self.encoded();status,_=self.ccheck(raw,b'cas-diag-002');self.assertEqual(status,5)
-  report=decode(raw,'cas-diag-002',999);self.assertEqual(report['result'],'foreign_build');self.assertEqual(report['boot_relation'],'prior_boot_candidate');self.assertFalse(report['persistence_verified'])
+  raw=self.encoded();status,_=self.ccheck(raw,b'cas-diag-foreign');self.assertEqual(status,5)
+  report=decode(raw,'cas-diag-foreign',999);self.assertEqual(report['result'],'foreign_build');self.assertEqual(report['boot_relation'],'prior_boot_candidate');self.assertFalse(report['persistence_verified'])
  def test_header_lengths_versions_and_reserved_bytes_rejected_even_with_new_crc(self):
   original=self.encoded()
   for offset,value in [(8,2),(12,80),(16,65537),(20,0xffffffff),(40,8),(80,1)]:
@@ -137,7 +137,7 @@ class Core(unittest.TestCase):
    with self.assertRaises(ValueError):decode(bytes(raw))
  def test_zero_stamps_non_ascii_and_overflow_not_encoded(self):
   out=c.create_string_buffer(65536)
-  for payload,seq,boot,flags,build in [(b'a',0,1,0,b'cas-diag-001'),(b'a',1,0,0,b'cas-diag-001'),(b'\xff',1,1,0,b'cas-diag-001'),(b'a',1,1,8,b'cas-diag-001'),(b'a',1,1,0,b'x'*32),(b'a'*65536,1,1,0,b'cas-diag-001')]:self.assertEqual(self.lib.CasDiagLogEncode(out,65536,payload,len(payload),seq,boot,flags,build),0)
+  for payload,seq,boot,flags,build in [(b'a',0,1,0,b'cas-diag-002'),(b'a',1,0,0,b'cas-diag-002'),(b'\xff',1,1,0,b'cas-diag-002'),(b'a',1,1,8,b'cas-diag-002'),(b'a',1,1,0,b'x'*32),(b'a'*65536,1,1,0,b'cas-diag-002')]:self.assertEqual(self.lib.CasDiagLogEncode(out,65536,payload,len(payload),seq,boot,flags,build),0)
  def test_cli_reads_saved_record_without_changing_it(self):
   p=Path(self.temp.name)/'saved-record.bin';raw=self.encoded();p.write_bytes(raw)
   r=subprocess.run([sys.executable,str(ROOT/'scripts/read-cas-diag-log.py'),str(p),'--current-boot','123'],capture_output=True,text=True);self.assertEqual(r.returncode,0,r.stderr);self.assertEqual(json.loads(r.stdout)['boot_relation'],'same_boot');self.assertEqual(p.read_bytes(),raw)
