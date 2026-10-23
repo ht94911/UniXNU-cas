@@ -64,6 +64,32 @@ A later source-kernel build must satisfy the selected component input contracts
 and list its kernel, matching symbols, configuration, patches and manifests
 explicitly. This workflow does not implement that later build.
 
+## Minimal source-kernel candidate
+
+The separate `xnu-source.yml` and `ci/xnu/build_source.py` implement the first
+source-build route. Actual kernel compilation remains unverified. The input lock
+pins the framework, four selected modules, six source inputs, 55 ordered kernel
+patches, two supplemental-header commits and two candidate adaptations.
+The selected 2023 crypto mirror is a restricted internal correctness/integration
+verification input; its source and derived outputs are excluded from public releases.
+
+Each run creates a new temporary stage. Source references remain separate from
+patched files. The builder verifies original patch order and hashes, applies the
+ArmCpu Darwin assembly and optional-display fixes, and restores and hashes every
+supplemental header. Bootstrap creates compile records only. Real crypto, pthread,
+ArmCpu and ArmDTPlatform archives precede the final kernel link. No prelink or
+IPSW path is called.
+
+Successful exports retain the unstripped ARM64 kernel, symbols generated directly
+from that kernel, configuration, input manifests, adaptation hashes and complete logs,
+encrypted for retrieval. Symbol metadata binds the kernel SHA and the real symbol
+table stays in the kernel. Full source-line debugging is not guaranteed; runtime and
+crypto selftests remain unverified. A second clean build follows the first successful link.
+
+`--prepare-only` can check preparation on WSL without compiling a kernel.
+`--platform qemu` selects ArmVirtPlatform for a separately identified virtual candidate;
+the cas profile uses ArmDTPlatform.
+
 ## Local checks
 
 ```sh

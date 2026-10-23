@@ -1,0 +1,342 @@
+{
+  "schema_version": 1,
+  "scope": "Minimal source-only internal verification build; no donor or distribution input.",
+  "framework": {
+    "git": "https://github.com/UniXNU/UniXNU.git",
+    "commit": "67e8ef0aa2a0a1fcb940889fb39ed1752b4b1593"
+  },
+  "modules": [
+    {
+      "name": "drivers/ArmCpu",
+      "git": "https://github.com/UniXNU/ArmCpu.git",
+      "commit": "1951cc8444b340d7d8879e9418220cf29eb711d7"
+    },
+    {
+      "name": "drivers/ArmDTPlatform",
+      "git": "https://github.com/UniXNU/ArmDTPlatform.git",
+      "commit": "0d544705c2e89725caabc0542bb96bc8febd8c70"
+    },
+    {
+      "name": "drivers/ArmVirtPlatform",
+      "git": "https://github.com/UniXNU/ArmVirtPlatform.git",
+      "commit": "532de8c017e394e69a0b48dc0ffc4ac0d0701177"
+    },
+    {
+      "name": "kits/NativePrelink",
+      "git": "https://github.com/UniXNU/NativePrelink.git",
+      "commit": "2b6ffb50117eee820b98aca9bd51b5c7dfb2970e"
+    }
+  ],
+  "feeds": [
+    {
+      "name": "xnu",
+      "kind": "refer",
+      "git": "https://github.com/apple-oss-distributions/xnu.git",
+      "ref": "xnu-10063.141.1",
+      "commit": "d8b80295118ef25ac3a784134bcf95cd8e88109f",
+      "darwin": "23.6.0",
+      "version": "10063.141.1",
+      "driverkit_tag": "xnu-10063.121.3",
+      "trustcache_tag": "xnu-8796.101.5"
+    },
+    {
+      "name": "libplatform",
+      "kind": "refer",
+      "git": "https://github.com/apple-oss-distributions/libplatform.git",
+      "ref": "libplatform-316.100.10",
+      "commit": "a00a4cc36da2110578bcf3b8eeeeb93dcc7f4e11"
+    },
+    {
+      "name": "libdispatch",
+      "kind": "refer",
+      "git": "https://github.com/apple-oss-distributions/libdispatch.git",
+      "ref": "libdispatch-1477.100.9",
+      "commit": "30fe6a7d945340ce69cef121132f049e810089a5"
+    },
+    {
+      "name": "AvailabilityVersions",
+      "kind": "refer",
+      "git": "https://github.com/apple-oss-distributions/AvailabilityVersions.git",
+      "ref": "AvailabilityVersions-141.1",
+      "commit": "933f9360f1b70dfbda5548386a3d65e0358b4f7d"
+    },
+    {
+      "name": "libpthread",
+      "kind": "refer",
+      "git": "https://github.com/apple-oss-distributions/libpthread.git",
+      "ref": "libpthread-519.120.4",
+      "commit": "c0e60fb5ecfc54cf379c261d3f9572cc22ded891"
+    },
+    {
+      "name": "corecrypto-2023",
+      "kind": "refer",
+      "git": "https://github.com/ONLYA/corecrypto-2023.git",
+      "commit": "11fba65b12d8830630e248dfa8344caf8b065f26"
+    }
+  ],
+  "kernel_patches": [
+    {
+      "path": "patches/xnu/apple-only-cpu-tunables.patch",
+      "sha256": "91e431249a4d756bfca8b1800b4b283340c86d1899ec8196a2fe873e8d3c251e"
+    },
+    {
+      "path": "patches/xnu/architectural-timer-entry.patch",
+      "sha256": "809b0c951545d889a2a37c730189283e7e890340894bab6d937c914dbd20b8e5"
+    },
+    {
+      "path": "patches/xnu/armvirt-platform-personality.patch",
+      "sha256": "00e7054c9ff2ae82b66f27bfbefd7620e9000503ea5b38b80aa90aab1e4b7225"
+    },
+    {
+      "path": "patches/xnu/cxx-flag-dependencies.patch",
+      "sha256": "a435e8797ed24a8338db53d0eaac49c163f90170c1fb7946d0c5cdee9d7d4b52"
+    },
+    {
+      "path": "patches/xnu/disabled-deferred-reclaim.patch",
+      "sha256": "817a0b017aebb21f773aafe2b92a81be076abc66e29275d57220635339a407e1"
+    },
+    {
+      "path": "patches/xnu/external-archive-dependencies.patch",
+      "sha256": "0a571de8361845266d7d419b0b3d5ebadbef986840c7e06eb981c0960d7fe374"
+    },
+    {
+      "path": "patches/xnu/kernel-sdk-root.patch",
+      "sha256": "2bcf10f4bf171afbc358cb64e9bc742563dd21f5eadf0e7a17936e87fa8ba43d"
+    },
+    {
+      "path": "patches/xnu/local-availability.patch",
+      "sha256": "a051857d524f8836068fd2f1182ebe9e9d9ccf28b9560fb27ad634b0cb93270e"
+    },
+    {
+      "path": "patches/xnu/mockfs-intermediate-lookup.patch",
+      "sha256": "51a5b76873c2a39b777bd4f1f5e78730ce72e93d548de6fbe4655f107731fa00"
+    },
+    {
+      "path": "patches/xnu/mockfs-memory-device-width.patch",
+      "sha256": "506f4ba36e30a700f0d27370d07abbde6e2c689d13fbad3400a6b940569ae30a"
+    },
+    {
+      "path": "patches/xnu/mockfs-statfs.patch",
+      "sha256": "58c9a51909b12dca9cd1ac2fdb94be748b43be1c979383b9504a0304fb16a809"
+    },
+    {
+      "path": "patches/xnu/mockfs-test-file.patch",
+      "sha256": "4a1ef86e0bdca7b633f59885961be1939574f8ba9814d1d75ebbfd0a7a8bd919"
+    },
+    {
+      "path": "patches/xnu/mockfs-typed-allocation.patch",
+      "sha256": "44dfe8ea590336fae48a4d5f7b8fd478a435d591a34ba77fe1d0a961c630ad57"
+    },
+    {
+      "path": "patches/xnu/native-4k-bootstrap-capacity.patch",
+      "sha256": "4ac39b497d88b28432bc7844c7137c8d2acc1992bef53f68c3512523a80b13a3"
+    },
+    {
+      "path": "patches/xnu/native-4k-signature-hash-cache.patch",
+      "sha256": "f9a8b4d39022a726ba1e0e4842248d57b20fe3a05fbf41b3a01f6700b2e3ca72"
+    },
+    {
+      "path": "patches/xnu/native-4k-user-abi.patch",
+      "sha256": "981ac483ae898426486aab475e22b2286bc1d820ad047c566182c3fbf435f6d4"
+    },
+    {
+      "path": "patches/xnu/native-aes-personality.patch",
+      "sha256": "02fe52c87a6bd801e602d03b54ce51de1362a2f2c6f75f5fc08122d3901aefff"
+    },
+    {
+      "path": "patches/xnu/native-arm-pan.patch",
+      "sha256": "7948f0ca8ad0ac5313a32bc8d9377290f88a7d64c880bbfac8e2b4c092e916f6"
+    },
+    {
+      "path": "patches/xnu/native-dt-panic-region.patch",
+      "sha256": "b60c2a9a72ea23832f1e64348a5c5d1152cf05db6c156283dd8a93c804cd89cb"
+    },
+    {
+      "path": "patches/xnu/native-priv-work-interval.patch",
+      "sha256": "6250b487e67dd35e97da59cc79040aa5d73f11106fbe5bc07e81047c4c33e2ed"
+    },
+    {
+      "path": "patches/xnu/native-quiet-managed-page-report.patch",
+      "sha256": "3044601dad4bcb731a46285e65e82129bbc3a6d5e85138e29543b06f18d13a3c"
+    },
+    {
+      "path": "patches/xnu/native-smp-secondary.patch",
+      "sha256": "cc16c2d53cbcc50eb2547e2c6f5b61f325348d07495378d9cdf187246b4d315c"
+    },
+    {
+      "path": "patches/xnu/native-text-fixup.patch",
+      "sha256": "c4dabb43d79fe23970ef24498f9cccaf15d1a9f6af23b7f2952bd75b3f248d9b"
+    },
+    {
+      "path": "patches/xnu/native-trust-cache-runtime.patch",
+      "sha256": "19e000ca6f70a8ddfefa503d2936894dd8315fae3ca2fb3e50d666d65252de79"
+    },
+    {
+      "path": "patches/xnu/native-union-getattrlistbulk.patch",
+      "sha256": "f5d665fd7250717cfacced8408a0b94f282eb2764e514f61a378f7d085c7a03b"
+    },
+    {
+      "path": "patches/xnu/native-work-interval-soft-fail.patch",
+      "sha256": "b163b85e0340abf2da104527a3b5c3c4e72abe6cacabb3bacb6001e84a67f3fe"
+    },
+    {
+      "path": "patches/xnu/native-work-interval-trace.patch",
+      "sha256": "f2c11511c172929572c3b075b0b0f3b8ae2c63d6f229c489c0339acc4f39815c"
+    },
+    {
+      "path": "patches/xnu/non-apple-cache-monitor.patch",
+      "sha256": "116ee4e61fb68e4a403049e349ceb23334e2eff0bec0eb11dc3bd5f3259fabdf"
+    },
+    {
+      "path": "patches/xnu/non-apple-iommu-bootstrap.patch",
+      "sha256": "a53aaf1073976aed1561cb609763c7a4214e245a50fb534cc77b643808df9e70"
+    },
+    {
+      "path": "patches/xnu/non-apple-pmap-field.patch",
+      "sha256": "82fe0a5021d59ddb766884f802f960ad67d61be63596f0bde136bf3875ff3ff8"
+    },
+    {
+      "path": "patches/xnu/null-root-media.patch",
+      "sha256": "a67ce9afd5af8178e83089ace6ce5d21f5e820b69e4c70dfc2cdae1be274678a"
+    },
+    {
+      "path": "patches/xnu/offline-component-load-probes.patch",
+      "sha256": "1f228c5c6d8387b13cd8e0964ddeb56c858a5dae16478f3ed2baae8a2e4da1e9"
+    },
+    {
+      "path": "patches/xnu/offline-legacy-start.patch",
+      "sha256": "a6ed6012f215e2c13c09f1b89fe986616af0a0674b0f6e4afd2194d4b8de4c0c"
+    },
+    {
+      "path": "patches/xnu/offline-native-gpu-broker.patch",
+      "sha256": "dc7590c3298ead78a843f098d3f47df57350e15b30746890b162a24b6eb182f5"
+    },
+    {
+      "path": "patches/xnu/offline-owner-boot-manifest.patch",
+      "sha256": "840a73448459b0ddad1ad7d8525ffb3bd0826d58a7e732f8283a4222c2df175e"
+    },
+    {
+      "path": "patches/xnu/offline-owner-cache-carrier.patch",
+      "sha256": "11b292274599c7161d5eaef627d11934166b136c5e8c31098bcabb2569da3d0e"
+    },
+    {
+      "path": "patches/xnu/offline-owner-root-binding-audit.patch",
+      "sha256": "f77d07af625d8cf2404185717e58738841ff453735f260fd7dc3c4e8526a4e69"
+    },
+    {
+      "path": "patches/xnu/offline-owner-root-crypto-probe.patch",
+      "sha256": "35415f0a13a2770d835f0e837ecc47e6fa51934a6faa1edfc6900e5f5d479e4d"
+    },
+    {
+      "path": "patches/xnu/offline-owner-systemos-mount.patch",
+      "sha256": "db4b279fa071c04c6e77045ebdb16c4a1435fa61f776f2d02f501a815f1b6e60"
+    },
+    {
+      "path": "patches/xnu/offline-owner-z-air-init.patch",
+      "sha256": "5b1b1252a0614eee6926fb05def89c49008a6d891dc8760e7d126d1a444ac6d9"
+    },
+    {
+      "path": "patches/xnu/offline-pgz-alignment-probe.patch",
+      "sha256": "632daaab2392352c69226670750285ead5bbf5aa90ea93198a7c79525a23ea0f"
+    },
+    {
+      "path": "patches/xnu/pgz-aligned-validation.patch",
+      "sha256": "b1c0e2a78de033f9c9b234820e9be93756dcd6765af8a1ecb76b209476058f25"
+    },
+    {
+      "path": "patches/xnu/public-entitlements-header.patch",
+      "sha256": "c6922bcfde308a02b39570f5f9af8d24e4cf4d88254a80e80218b6d410a784b8"
+    },
+    {
+      "path": "patches/xnu/published-freezer-condition.patch",
+      "sha256": "644646451d10ea720414c8ed7b31a5aa63846018a3bb686b966565169fbc9688"
+    },
+    {
+      "path": "patches/xnu/sheng-platform-power.patch",
+      "sha256": "6e68dbcdac670624f2a9806a61fef42110bfe6586029b3f1a0acb068c3a23ec2"
+    },
+    {
+      "path": "patches/xnu/source-corecrypto14-bootstrap.patch",
+      "sha256": "041f0d0627e83f5c276cfa87130cec04907cdd02682428d069af2a9af2a16ebd"
+    },
+    {
+      "path": "patches/xnu/source-machine-layer.patch",
+      "sha256": "1538783d2e5956f8ba65baeca4e9490711c43b8825123860847778b256291573"
+    },
+    {
+      "path": "patches/xnu/source-pthread-bootstrap.patch",
+      "sha256": "1bbf00cc2b4e8f227dddf2807818d10e07325beea8e6c2c0b12106228d31d643"
+    },
+    {
+      "path": "patches/xnu/zzw-native-adreno-sandbox-grant.patch",
+      "sha256": "07992b1f83014191fcf422d6924fa53b3008560d9eb73a4d2cf340941e564c56"
+    },
+    {
+      "path": "patches/xnu/zzx-pmap-sync-64bit-pa.patch",
+      "sha256": "b8419e7779f49c9c5360a8ae8e9b52a78968511a9e24e43b9edb799793e04496"
+    },
+    {
+      "path": "patches/xnu/zzy-native-gpu-addon-mount.patch",
+      "sha256": "944bb120458f2733e98c89bea036c1256b50dab6e00f6504c9553b011faa82bd"
+    },
+    {
+      "path": "patches/xnu/zzy-staged-system-apps.patch",
+      "sha256": "1103abc87d9611496d3458c9e5b36107fc27901739f19fec0de6da7cbd1c1844"
+    },
+    {
+      "path": "patches/xnu/zzz-boot-progress.patch",
+      "sha256": "6e04d6ebe9035bb897920eceb3f6fddef1f5c6d0afa771a1f39dce741ee9b2be"
+    },
+    {
+      "path": "kits/NativePrelink/patches/xnu-10063.141.1-security-init.patch",
+      "sha256": "f9ea76df15b01c8073c0fe8e38a1c05ac9db9202c393811756f6b616275b4675"
+    },
+    {
+      "path": "kits/NativePrelink/patches/xnu-10063.141.1-sparse-index.patch",
+      "sha256": "d0a2da8ca1a0b4021629b0ecaadad20c0e6cf7b3205f8d780242a60034f44d91"
+    }
+  ],
+  "supplemental_headers": [
+    {
+      "name": "driverkit",
+      "git": "https://github.com/apple-oss-distributions/xnu.git",
+      "tag_observed": "xnu-10063.121.3",
+      "commit": "2c2f96dc2b9a4408a43d3150ae9c105355ca3daa",
+      "paths": [
+        "iokit/DriverKit",
+        "iokit/DriverKit/crypto"
+      ],
+      "required_build_override": {
+        "UNIXNU_DRIVERKIT_TAG": "2c2f96dc2b9a4408a43d3150ae9c105355ca3daa"
+      },
+      "header_manifest": null,
+      "requirement": "Populate a new clean stage by this commit; verify each header blob and SHA-256, including already-present files."
+    },
+    {
+      "name": "trustcache",
+      "git": "https://github.com/apple-oss-distributions/xnu.git",
+      "tag_observed": "xnu-8796.101.5",
+      "commit": "aca3beaa3dfbd42498b42c5e5ce20a938e6554e5",
+      "paths": [
+        "EXTERNAL_HEADERS/TrustCache"
+      ],
+      "required_build_override": {
+        "UNIXNU_TRUSTCACHE_TAG": "aca3beaa3dfbd42498b42c5e5ce20a938e6554e5"
+      },
+      "header_manifest": null,
+      "requirement": "Populate a new clean stage by this commit; verify each header blob and SHA-256, including already-present files."
+    }
+  ],
+  "adaptations": [
+    {
+      "file": "patches/darwin-asm-separators.patch",
+      "sha256": "15893fd689f266184c3273135761d7eff0d71aa0c42e29d1d71666a0abd60e8f",
+      "target": "drivers/ArmCpu"
+    },
+    {
+      "file": "patches/0001-guard-optional-legacy-display.patch",
+      "sha256": "86fa152c567558bdf3cdcf551e19c6caa5ea0a81173cb14e80c472a156a85104",
+      "target": "."
+    }
+  ]
+}
