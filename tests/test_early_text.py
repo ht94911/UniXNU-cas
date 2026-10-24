@@ -11,7 +11,7 @@ PKG = UEFI/'Platforms/Xiaomi/casPkg'
 U, Q = c.c_uint32, c.c_uint64
 
 class Text(c.Structure):
-    _fields_ = [(n,U) for n in 'magic version size row column busy bytes frames frozen match'.split()] + [('cells',(c.c_ubyte*56)*16)]
+    _fields_ = [(n,U) for n in 'magic version size row column busy bytes frames frozen match'.split()] + [('cells',(c.c_ubyte*56)*16)] + [('pc_match',U),('pc_pending',U)]
 
 class Frame(c.Structure):
     _fields_ = [('base',Q),('bytes',Q)] + [(n,U) for n in 'width height stride red green blue reserved rshift gshift bshift pipes ctls manual intfs'.split()]
@@ -97,6 +97,41 @@ class EarlyText(unittest.TestCase):
         f=Frame();f.base=c.addressof(self.mem)+128;f.bytes=stride*height
         f.width=width;f.height=height;f.stride=stride;f.rshift=16;f.gshift=8;f.bshift=0;f.reserved=0xff000000
         return f
+
+    def test_first_pc_freezes_only_after_the_complete_line(self):
+        self.feed(b'Loading driver at 0x9bb00000 EntryPoint=0x9bb01264\nSynchronous Exception at 0x9bb09500\n')
+        pc=b'PC 0x00009bb09500 (0x00009bb00000+0x00009500) [ 0] module'
+        self.feed(pc)
+        self.assertEqual((self.t.frozen,self.t.pc_pending),(0,1))
+        self.feed(b'\nV0 register spam\nStack dump:\n')
+        self.assertEqual(self.t.frozen,1)
+        self.assertIn(b'Loading driver at 0x9bb00000',bytes(self.t.cells))
+        self.assertIn(b'0x00009500',bytes(self.t.cells))
+        self.assertNotIn(b'V0 register spam',bytes(self.t.cells))
+
+    def test_pc_marker_is_chunk_safe_and_keeps_wrapped_crlf_line(self):
+        line=b'PC 0x00009bb09500 (0x00009bb00000+0x00009500) [ 0] very-long-module-name.pdb\r\n'
+        for split in range(len(line)+1):
+            self.lib.CasEarlyTextReset(c.byref(self.t))
+            self.feed(line[:split]);self.feed(line[split:]+b'V register\n'*30)
+            self.assertEqual(self.t.frozen,1)
+            self.assertIn(b'0x00009500',bytes(self.t.cells))
+            self.assertIn(b'very-long-module-name.pdb',bytes(self.t.cells))
+            self.assertNotIn(b'V register',bytes(self.t.cells))
+
+    def test_embedded_or_display_wrapped_pc_is_not_a_handler_line(self):
+        self.feed(b'ordinary PC 0x123 text\n'+b'x'*56+b'PC 0x456 wrapped\n')
+        self.assertEqual(self.t.frozen,0)
+        self.feed(b'PC 0x00009bb09500\nignored')
+        self.assertEqual(self.t.frozen,1)
+        self.assertNotIn(b'ignored',bytes(self.t.cells))
+
+    def test_corrupt_pc_state_is_reset_before_use(self):
+        self.t.pc_match=6;self.feed(b'recovered\n')
+        self.assertTrue(self.lib.CasEarlyTextValid(c.byref(self.t)))
+        self.assertEqual(self.t.pc_pending,0)
+        self.t.pc_pending=2;self.feed(b'PC 0x1\n')
+        self.assertEqual(self.t.frozen,1)
 
     def test_render_preserves_guard_padding_and_stage_bands(self):
         self.feed(b'ASSERT: 0x80900000\n')
@@ -253,5 +288,17 @@ class SerialIntegration(unittest.TestCase):
         self.assertEqual(U.from_address(0x9f941004).value,0x30000-0x1000-16)
         self.assertGreater(U.from_address(0x9f941008).value,0)
         self.assertEqual(bytes(tail),b'\xa5'*65536)
+
+    def test_first_pc_screen_capture_still_logs_all_registers_and_stack(self):
+        context=b'Loading driver at 0x9bb00000 EntryPoint=0x9bb01264\nPC 0x00009bb09500\n'
+        self.write(context)
+        self.assertEqual(self.t.frozen,1)
+        saved=bytes(self.t);frames=self.lib.RefreshCount()
+        rest=b'X0 original\nV31 original\nESR 0x02000000\nStack dump:\n'+b'full stack\n'*20
+        self.write(rest)
+        self.assertEqual(bytes(self.t),saved)
+        self.assertEqual(self.lib.RefreshCount(),frames)
+        used=U.from_address(0x9f941004).value
+        self.assertEqual(c.string_at(0x9f941010,used),context+rest)
 
 if __name__=='__main__':unittest.main()

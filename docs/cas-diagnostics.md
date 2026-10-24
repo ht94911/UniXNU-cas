@@ -2,7 +2,7 @@
 
 [简体中文](cas-diagnostics.zh-CN.md)
 
-The independent `cas-diag-008` profile builds a RAM-only EFI diagnostic application. Its purpose is to collect current memory evidence, refuse unsafe high-memory access and test recovery of a structured RAM log. It does not load XNU. The default `cas.dsc` / `cas-complete-001` route keeps its original behavior.
+The independent `cas-diag-009` profile builds a RAM-only EFI diagnostic application. Its purpose is to collect current memory evidence, refuse unsafe high-memory access and test recovery of a structured RAM log. It does not load XNU. The default `cas.dsc` / `cas-complete-001` route keeps its original behavior.
 
 ## Build and package
 
@@ -12,11 +12,11 @@ Use the registered sibling source directories and the existing pinned environmen
 source environment/cas-env.sh
 python3 -m unittest discover -s tests -v
 python3 scripts/build_firmware.py --uefi ../uefi-cas --diagnostics \
-  --out "$HOME/cas-work/builds/cas-diag-008"
+  --out "$HOME/cas-work/builds/cas-diag-009"
 python3 scripts/package_boot.py --uefi ../uefi-cas \
-  --firmware-build "$HOME/cas-work/builds/cas-diag-008" \
+  --firmware-build "$HOME/cas-work/builds/cas-diag-009" \
   --environment environment/cas-env.sh --stock-dtb /path/to/private/boot-02.dtb \
-  --efi-ram-fat --diagnostics --out "$HOME/cas-work/artifacts/cas-diag-008"
+  --efi-ram-fat --diagnostics --out "$HOME/cas-work/artifacts/cas-diag-009"
 ```
 
 The unchanged stock-DTB identity and temporary-boot/recovery procedure are described in [build](build.md) and [operations](operations.md). Packaging binds the diagnostic firmware, shim and FAT profile; a mixed default/diagnostic build is refused. The FAT admits one EFI path, `\EFI\Tools\CasDiag.efi`, plus ordinary Android reset and firmware-return actions. No donor/kernel/root volume is packaged. No script runs ADB/Fastboot.
@@ -83,7 +83,7 @@ The EFI viewer is the on-device recovery reader. A saved local slot can also be 
 
 ```sh
 python3 scripts/read-cas-diag-log.py /path/to/saved-slot.bin \
-  --build cas-diag-008 --current-boot 0x1234
+  --build cas-diag-009 --current-boot 0x1234
 ```
 
 This command reads a file only; it does not obtain a physical-memory dump. Diagnostic state is not yet an XNU panic/logging adapter; that connection belongs to X-06.
@@ -185,3 +185,20 @@ ownership checks remain required. Output adds SMEM global offset/size/flags/
 cacheline; rejection telemetry remains available. Synthetic tests reuse only the
 observed directory words; the unobserved partition/item bodies are synthetic.
 Reference:[Linux v4.19 SMEM](https://github.com/torvalds/linux/blob/v4.19/drivers/soc/qcom/smem.c).
+
+## Diagnostic 009 first PC line retention
+
+008 hardware showed a CPU exception after stage7, ELR0x9bb09500/ESR0x02000000,
+then recovered Android by holding Power. The photo lacked a runtime module base,
+so static module maps cannot uniquely symbolize that physical address.
+009 latches the screen after the first complete source line beginning PC 0x,
+preserving preceding load/exception context. The Stack dump latch remains the
+fallback when no PC line appears. The raw RAM serial log still receives every
+register and stack line. Exception handling, SMEM, permissions and layout are unchanged.
+Text state is version3/944 bytes inside the existing log+0xc00 to+0x1000 gap.
+
+Host tests cover split writes, no latch before newline, CRLF/wrapping, embedded
+PC text refusal, corrupt-state recovery and complete raw logging after the
+screen freezes.009 gathers missing exception evidence; it does not establish a
+CPU exception fix. If the menu is reached, enumerate only. If an exception
+recurs, capture the first PC and preceding loader context, then recover Android.

@@ -2,7 +2,7 @@
 
 [English](cas-diagnostics.md)
 
-独立 `cas-diag-008` profile 构建只在 RAM 中运行的 EFI 诊断程序，用于收集当前内存依据、拒绝未取得所有权的高地址访问，并检查结构化 RAM 日志的恢复。程序不加载 XNU。默认 `cas.dsc` / `cas-complete-001` 路线保留原行为。
+独立 `cas-diag-009` profile 构建只在 RAM 中运行的 EFI 诊断程序，用于收集当前内存依据、拒绝未取得所有权的高地址访问，并检查结构化 RAM 日志的恢复。程序不加载 XNU。默认 `cas.dsc` / `cas-complete-001` 路线保留原行为。
 
 ## 构建和打包
 
@@ -12,11 +12,11 @@
 source environment/cas-env.sh
 python3 -m unittest discover -s tests -v
 python3 scripts/build_firmware.py --uefi ../uefi-cas --diagnostics \
-  --out "$HOME/cas-work/builds/cas-diag-008"
+  --out "$HOME/cas-work/builds/cas-diag-009"
 python3 scripts/package_boot.py --uefi ../uefi-cas \
-  --firmware-build "$HOME/cas-work/builds/cas-diag-008" \
+  --firmware-build "$HOME/cas-work/builds/cas-diag-009" \
   --environment environment/cas-env.sh --stock-dtb /path/to/private/boot-02.dtb \
-  --efi-ram-fat --diagnostics --out "$HOME/cas-work/artifacts/cas-diag-008"
+  --efi-ram-fat --diagnostics --out "$HOME/cas-work/artifacts/cas-diag-009"
 ```
 
 原 stock DTB 的固定身份、RAM 临时启动与恢复流程见[构建说明](build.zh-CN.md)和[操作说明](operations.zh-CN.md)。打包器绑定诊断固件、shim 和 FAT，拒绝默认/诊断 profile 混用。FAT 只允许一个 EFI 路径 `\EFI\Tools\CasDiag.efi`，另有普通回 Android 和返回固件动作；没有 donor、内核或根卷。脚本不调用 ADB/Fastboot。
@@ -83,7 +83,7 @@ EFI viewer 是机上的恢复读取器。已保存到本地的 slot 还可离线
 
 ```sh
 python3 scripts/read-cas-diag-log.py /path/to/saved-slot.bin \
-  --build cas-diag-008 --current-boot 0x1234
+  --build cas-diag-009 --current-boot 0x1234
 ```
 
 该命令只读文件，不会取得物理内存 dump。诊断格式尚未接入 XNU panic/logging；该接口属于 X-06。
@@ -165,3 +165,17 @@ hosts0xfffe/0xfffe、cacheline32，reserved七word均0。v4.19 Linux定义目录
 输出SMEM global offset/size/flags/cacheline，失败继续显示007的具体拒绝点和metadata。
 合成测试只复用照片已知的目录项；未观察的partition/item内容明确为synthetic。
 参考：[Linux v4.19 SMEM](https://github.com/torvalds/linux/blob/v4.19/drivers/soc/qcom/smem.c)。
+
+## 诊断009的首PC行保留
+
+008真机照片出现阶段7后的CPU异常，ELR0x9bb09500/ESR0x02000000；随后长按Power
+已回Android。照片缺少模块加载基址，静态模块映射不能唯一符号化这个物理地址。
+009把屏显锁存提前至第一条行首PC 0x...完整换行后，保留其前面的装载/异常上下文。
+没有PC行时，原Stack dump锁存仍作为fallback。原始串口RAM日志继续记录全部寄存器
+和堆栈；只改变镜像屏显，不改异常处理器、SMEM、权限或内存布局。
+屏显状态为version3/944字节，仍位于log+0xc00到+0x1000的既有空隙。
+
+主机测试覆盖前缀/完整行的跨write拆分、换行前不锁存、CRLF/折行、嵌入PC字样拒绝、
+坏状态恢复，以及屏显锁存后原RAM日志继续完整接收。009用于补齐未知异常的定位证据；
+不能把该呈现改动称为CPU异常已修复。若菜单到达，继续原来的仅枚举；若再异常，拍全
+保留的首PC行和其前装载信息后恢复Android。
