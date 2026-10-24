@@ -2,7 +2,7 @@
 
 [简体中文](cas-diagnostics.zh-CN.md)
 
-The independent `cas-diag-009` profile builds a RAM-only EFI diagnostic application. Its purpose is to collect current memory evidence, refuse unsafe high-memory access and test recovery of a structured RAM log. It does not load XNU. The default `cas.dsc` / `cas-complete-001` route keeps its original behavior.
+The independent `cas-diag-012` profile builds a RAM-only EFI diagnostic application. Its purpose is to collect current memory evidence, refuse unsafe high-memory access and test recovery of a structured RAM log. It does not load XNU. The default `cas.dsc` / `cas-complete-001` route keeps its original behavior.
 
 ## Build and package
 
@@ -12,11 +12,11 @@ Use the registered sibling source directories and the existing pinned environmen
 source environment/cas-env.sh
 python3 -m unittest discover -s tests -v
 python3 scripts/build_firmware.py --uefi ../uefi-cas --diagnostics \
-  --out "$HOME/cas-work/builds/cas-diag-009"
+  --out "$HOME/cas-work/builds/cas-diag-012"
 python3 scripts/package_boot.py --uefi ../uefi-cas \
-  --firmware-build "$HOME/cas-work/builds/cas-diag-009" \
+  --firmware-build "$HOME/cas-work/builds/cas-diag-012" \
   --environment environment/cas-env.sh --stock-dtb /path/to/private/boot-02.dtb \
-  --efi-ram-fat --diagnostics --out "$HOME/cas-work/artifacts/cas-diag-009"
+  --efi-ram-fat --diagnostics --out "$HOME/cas-work/artifacts/cas-diag-012"
 ```
 
 The unchanged stock-DTB identity and temporary-boot/recovery procedure are described in [build](build.md) and [operations](operations.md). Packaging binds the diagnostic firmware, shim and FAT profile; a mixed default/diagnostic build is refused. The FAT admits one EFI path, `\EFI\Tools\CasDiag.efi`, plus ordinary Android reset and firmware-return actions. No donor/kernel/root volume is packaged. No script runs ADB/Fastboot.
@@ -37,11 +37,11 @@ Volume keys select an item; tap Power to run it; hold Power to return. The recov
 
 Enumeration does not modify the FDT, SMEM, storage, variables or allocator topology. It uses ordinary bounded pool allocations for its snapshots and writes diagnostic text only to its own RAM log. The diagnostic-only memory-map library maps the existing SMEM reservation `[0x80900000, 0x80b00000)` as noncached reserved memory. SEC sets RO/XP before DXE. The generated default map stays unchanged; the allocator remains 128 MiB. Before any SMEM read, the app requires the **current** `qcom,smem` FDT node to resolve its `memory-region` phandle to exactly that reserved, `no-map` region, current UEFI reserved/UC coverage, and Memory Attribute Protocol confirmation of RO/XP without RP. No hardware lock or SMEM write is issued. Unresolved FDT reservations deny probing. Bounded dynamic reservations exclude their entire allowed allocation ranges.
 
-`SmemCore.c` reads only allocation metadata and item 402. It supports SMEM heaps 11 and 12 (the v12 **uncached global partition**), and RAM table versions 1/2/3 with 64/72/72-byte entries after a 24-byte header. Auxiliary regions, cached-only items, unknown versions, duplicate/overlapping ranges, bad magic/count/padding and overflow are refused. All reads stay inside the 2 MiB reservation: at most 4096 bytes per read, 1200 read calls and a 64 KiB trace per observation, at most 32 RAM rows. Two observations must have identical ordered offsets, lengths and bytes. This detects changes in the observed data; it does not establish an atomic snapshot or replace Qualcomm's remote locking protocol. Other items' payloads are not read or logged.
+`SmemCore.c` reads only allocation metadata and item 402. It supports SMEM heaps 11 and 12 (the v12 **uncached global partition**), and RAM table versions 1/2/3 with 64/72/72-byte entries after a 24-byte header. Auxiliary regions, cached-only items, unknown versions, unsupported duplicates/overlaps (see typed containment below), bad magic/count/padding and overflow are refused. All reads stay inside the 2 MiB reservation: at most 4096 bytes per read, 1200 read calls and a 64 KiB trace per observation, at most 32 RAM rows. Two observations must have identical ordered offsets, lengths and bytes. This detects changes in the observed data; it does not establish an atomic snapshot or replace Qualcomm's remote locking protocol. Other items' payloads are not read or logged.
 
 Wire formats were checked against [Linux v4.19 SMEM](https://github.com/torvalds/linux/blob/v4.19/drivers/soc/qcom/smem.c), [fixed LK RAM table definitions](https://github.com/msm8916-mainline/lk2nd/blob/5e6f1adcb1c070e28a70dc1f3d807ce9538f61c5/platform/msm_shared/smem.h), and [Qualcomm's v3 RAM table definitions](https://www.mail-archive.com/u-boot%40lists.denx.de/msg570801.html). The bounded decoder was written independently and does not incorporate those drivers.
 
-Every numeric RAM row is logged. Only SDRAM/system-memory rows with explicit read/write attribute and APPS/shared domain can contribute to the high-memory gate; other rows and unavailable tails are exclusions. Unsupported/default attributes and domains therefore yield observations without ownership.
+Every numeric RAM row is logged. Only valid SDRAM/system-memory rows with explicit read/write attribute and DEFAULT/APPS/shared domain can contribute evidence to the high-memory gate; other rows and unavailable tails are full exclusions. DEFAULT domain0 is unspecified, not allocation permission. MODEM-only/unknown domains and unsupported attributes never qualify. Current FDT, UEFI allocation ownership and all exclusions remain independently required.
 
 The copied FDT is accepted only at the validated cas address and size. Its memory and reserved-memory cells must match the supported two-cell widths; every parsed range is checked. The output includes the FDT CRC and full UEFI descriptors with type, physical/virtual address, byte length and attributes. GOP is read for the current framebuffer exclusion. No historical RAM bank alone establishes ownership.
 
@@ -83,7 +83,7 @@ The EFI viewer is the on-device recovery reader. A saved local slot can also be 
 
 ```sh
 python3 scripts/read-cas-diag-log.py /path/to/saved-slot.bin \
-  --build cas-diag-009 --current-boot 0x1234
+  --build cas-diag-012 --current-boot 0x1234
 ```
 
 This command reads a file only; it does not obtain a physical-memory dump. Diagnostic state is not yet an XNU panic/logging adapter; that connection belongs to X-06.
@@ -238,3 +238,29 @@ If another exception banner appears before all fields, it marks NESTED/UNBOUND
 and refuses later values instead of pairing a nested ESR with the first PC.
 Version4 state is1024 bytes, within the same log+0xc00..+0x1000 gap. This is a
 diagnostic improvement, not a CPU/MMU fix; SMEM/permissions/allocator are unchanged.
+
+## Diagnostic 012 typed RAM table containment
+
+011 hardware captured table3/count6, partial5 and overlap indexes4,0. Row4 is
+SDRAM/category14/type2 (BOOT_REGION_MEMORY1), entirely inside row0's
+category14/type1 system RAM description. The old blanket overlap check rejected
+this known carveout before decoding the final row or performing observation2.
+The pinned LK and author-submitted Qualcomm v3 definitions also identify domain0
+as DEFAULT/unspecified, not a MODEM-only restriction or a UEFI ownership grant.
+
+012 supports only a known Boot1 row with known attribute/domain, properly and
+wholly contained in a supported system row. It remains a FULL exclusion, even
+if available_length is zero. Duplicate/crossing banks, unknown relationships,
+other unqualified overlaps and invalid ranges still refuse. System evidence is
+bounded SDRAM14/type1/RW1/domain0,1,3 with a nonzero page-aligned available prefix;
+MODEM2/unknown domains, other kinds/attributes and unavailable tails are excluded.
+Both equal ordered observations and all current FDT/UEFI/reservation gates remain.
+The firmware allocator is still128MiB: this change is parsing/evidence, not a
+256MiB ownership pass, RAM publishing or MMU fix.
+
+New actual-C tests compare frozen011, exercise the documented exception in both
+row orders, default domain, proper boundaries/unknown refusal, two-pass changes,
+and prove an otherwise covered candidate is denied by the full Boot1 exclusion
+or missing UEFI ownership. The six-row fixture contains photo-confirmed critical
+relationships plus explicitly SYNTHETIC unobserved fields/tail; it is not a raw
+capture of the phone's full RAM table.

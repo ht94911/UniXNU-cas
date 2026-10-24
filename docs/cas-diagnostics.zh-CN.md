@@ -2,7 +2,7 @@
 
 [English](cas-diagnostics.md)
 
-独立 `cas-diag-009` profile 构建只在 RAM 中运行的 EFI 诊断程序，用于收集当前内存依据、拒绝未取得所有权的高地址访问，并检查结构化 RAM 日志的恢复。程序不加载 XNU。默认 `cas.dsc` / `cas-complete-001` 路线保留原行为。
+独立 `cas-diag-012` profile 构建只在 RAM 中运行的 EFI 诊断程序，用于收集当前内存依据、拒绝未取得所有权的高地址访问，并检查结构化 RAM 日志的恢复。程序不加载 XNU。默认 `cas.dsc` / `cas-complete-001` 路线保留原行为。
 
 ## 构建和打包
 
@@ -12,11 +12,11 @@
 source environment/cas-env.sh
 python3 -m unittest discover -s tests -v
 python3 scripts/build_firmware.py --uefi ../uefi-cas --diagnostics \
-  --out "$HOME/cas-work/builds/cas-diag-009"
+  --out "$HOME/cas-work/builds/cas-diag-012"
 python3 scripts/package_boot.py --uefi ../uefi-cas \
-  --firmware-build "$HOME/cas-work/builds/cas-diag-009" \
+  --firmware-build "$HOME/cas-work/builds/cas-diag-012" \
   --environment environment/cas-env.sh --stock-dtb /path/to/private/boot-02.dtb \
-  --efi-ram-fat --diagnostics --out "$HOME/cas-work/artifacts/cas-diag-009"
+  --efi-ram-fat --diagnostics --out "$HOME/cas-work/artifacts/cas-diag-012"
 ```
 
 原 stock DTB 的固定身份、RAM 临时启动与恢复流程见[构建说明](build.zh-CN.md)和[操作说明](operations.zh-CN.md)。打包器绑定诊断固件、shim 和 FAT，拒绝默认/诊断 profile 混用。FAT 只允许一个 EFI 路径 `\EFI\Tools\CasDiag.efi`，另有普通回 Android 和返回固件动作；没有 donor、内核或根卷。脚本不调用 ADB/Fastboot。
@@ -41,7 +41,7 @@ python3 scripts/package_boot.py --uefi ../uefi-cas \
 
 线格式核对来源为 [Linux v4.19 SMEM](https://github.com/torvalds/linux/blob/v4.19/drivers/soc/qcom/smem.c)、[固定 LK RAM 表定义](https://github.com/msm8916-mainline/lk2nd/blob/5e6f1adcb1c070e28a70dc1f3d807ce9538f61c5/platform/msm_shared/smem.h)、[Qualcomm v3 RAM 表定义](https://www.mail-archive.com/u-boot%40lists.denx.de/msg570801.html)。有界解码器独立编写，没有引入这些驱动代码。
 
-每行数字字段均输出；仅明确 read/write、APPS/shared domain 的 SDRAM/system-memory 行参与高地址门限，其他行及不可用尾部作为排除区。未知或默认 attr/domain 只能成为观察，不能成为所有权。
+每行数字字段均输出；有界SDRAM/system-memory且明确read/write、DEFAULT/APPS/shared domain的行只参与三源交叉核验的证据。domain0是未指定域，不授予分配权限；MODEM独占/未知域、其他类型/属性和不可用尾部均全范围排除。FDT、UEFI实际所有权和全部保留区检查仍独立执行。
 
 FDT 只能来自已验证的 cas 固定地址和大小，RAM/保留区必须使用支持的双 cell 宽度，每个区间均检查。输出包含 FDT CRC 和完整 UEFI 描述符的类型、物理/虚拟地址、长度、属性。当前 GOP 用于排除 framebuffer；历史 RAM bank 本身不能证明所有权。
 
@@ -83,7 +83,7 @@ EFI viewer 是机上的恢复读取器。已保存到本地的 slot 还可离线
 
 ```sh
 python3 scripts/read-cas-diag-log.py /path/to/saved-slot.bin \
-  --build cas-diag-009 --current-boot 0x1234
+  --build cas-diag-012 --current-boot 0x1234
 ```
 
 该命令只读文件，不会取得物理内存 dump。诊断格式尚未接入 XNU panic/logging；该接口属于 X-06。
@@ -205,3 +205,21 @@ ESR/FAR精确源行；每值最多16个hex、仅记录一次。原屏上方另�
 保护及stage8停止屏显不变。字段齐全前若出现新的异常banner，标NESTED/UNBOUND并拒绝
 后续值，避免将嵌套异常的ESR与首PC错配。version4状态1024字节，仍在log+0xc00..+0x1000空隙。
 这是补证，不是CPU/MMU修复；SMEM门禁、权限和allocator不变。
+
+## 诊断012的RAM类型与包含关系
+
+011真机表3/count6、partial5、冲突索引4,0。第4行category14/type2为BOOT_REGION_MEMORY1，
+完整位于第0行category14/type1的系统RAM描述内；旧的任意重叠拒绝在这里提前退出，
+未解码末行或执行第二次观察。固定LK和Qualcomm v3投稿定义也明确domain0是DEFAULT/
+未指定域，不是MODEM独占标志，更不是UEFI所有权许可。
+
+012仅允许已知Boot1行（已知属性/域）完整且严格包含于受支持系统行；它仍作全范围排除，
+即使available_length为0也不缩小保留。银行重复/交叉、未知关系、其他不合格重叠和坏范围
+继续拒绝。系统证据要求有界SDRAM14/type1/RW1/domain0、1或3及非零页对齐available前缀；
+MODEM2/未知域、其他类型/属性和不可用尾部均排除。此节替代前文初版“只接收APPS/shared”
+与“一切重叠都拒绝”的历史假设；不是移除门禁。
+
+两次相同有序观察、当前FDT/UEFI/全部保留区门禁不变，allocator仍128MiB，不发布新RAM，
+不构成256MiB owned-memory通过，也不修MMU。新增真实C测试对比冻结011，覆盖对称行序、
+类型/域/完整边界/未知拒绝/变化检测，并证明Boot1全排除或缺UEFI所有权仍阻止访问。
+六行夹具只复用照片确认的关键关系，其余未见字段/末行明确为synthetic，不冒充原始RAM表。
