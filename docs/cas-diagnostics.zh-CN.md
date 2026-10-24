@@ -179,3 +179,15 @@ hosts0xfffe/0xfffe、cacheline32，reserved七word均0。v4.19 Linux定义目录
 坏状态恢复，以及屏显锁存后原RAM日志继续完整接收。009用于补齐未知异常的定位证据；
 不能把该呈现改动称为CPU异常已修复。若菜单到达，继续原来的仅枚举；若再异常，拍全
 保留的首PC行和其前装载信息后恢复Android。
+
+## 诊断010的部分RAM数字行
+
+009真机已到heap12/RAM表3，item offset0x7ab0/2328字节，在check44重叠拒绝，
+尚未看到冲突行。010记录已解码前缀长度、两个从0开始的冲突索引；失败时只输出
+各已解码行的base/size/available及attribute/category/domain/type，明确标NO OWNERSHIP。
+不打印名称、opaque item payload或未解析行；前缀最多32行，包括被拒绝的当前行。
+每次观察先重置前缀/索引sentinel，第二次观察在metadata失败时不会把第一次行当作当前行。
+
+不改变任何接受条件、物理读取顺序、权限门禁、内存映射或allocator。真实C测试对比009
+返回码/Info/callback，并覆盖前缀/数量边界、冲突数字、work复用及双次观察失败。
+看到重叠不等于证明可以去掉门禁；先依据实际行类型和格式来源解释，再独立证明owned-memory。

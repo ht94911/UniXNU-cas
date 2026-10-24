@@ -202,3 +202,20 @@ PC text refusal, corrupt-state recovery and complete raw logging after the
 screen freezes.009 gathers missing exception evidence; it does not establish a
 CPU exception fix. If the menu is reached, enumerate only. If an exception
 recurs, capture the first PC and preceding loader context, then recover Android.
+
+## Diagnostic 010 partial numeric RAM rows
+
+009 hardware reached heap12/RAM table3 and refused check44 (overlap), with
+item offset0x7ab0/2328 bytes; the conflicting rows were not yet observable.
+010 records the decoded prefix length and both zero-based conflict indexes.
+On failure the app prints only each decoded row's base/size/available and
+attribute/category/domain/type, explicitly marked NO OWNERSHIP. It never prints
+names, opaque item payload or unparsed rows. The rejected row is included in the
+bounded prefix (at most32). Each observation resets the prefix/index sentinels,
+so a second-pass metadata failure cannot expose the first pass as current rows.
+
+No acceptance predicate, physical-read order, permission gate, memory map or
+allocator changes. Actual-C tests compare status, Info and callbacks with009,
+plus partial/count bounds, conflict fields, work reuse and two-pass failures.
+Reaching an overlap is not proof it is safe to remove the gate: interpret actual
+row types against format sources, then independently prove owned memory.
