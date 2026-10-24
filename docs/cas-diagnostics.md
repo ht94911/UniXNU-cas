@@ -2,7 +2,7 @@
 
 [简体中文](cas-diagnostics.zh-CN.md)
 
-The independent `cas-diag-004` profile builds a RAM-only EFI diagnostic application. Its purpose is to collect current memory evidence, refuse unsafe high-memory access and test recovery of a structured RAM log. It does not load XNU. The default `cas.dsc` / `cas-complete-001` route keeps its original behavior.
+The independent `cas-diag-005` profile builds a RAM-only EFI diagnostic application. Its purpose is to collect current memory evidence, refuse unsafe high-memory access and test recovery of a structured RAM log. It does not load XNU. The default `cas.dsc` / `cas-complete-001` route keeps its original behavior.
 
 ## Build and package
 
@@ -12,11 +12,11 @@ Use the registered sibling source directories and the existing pinned environmen
 source environment/cas-env.sh
 python3 -m unittest discover -s tests -v
 python3 scripts/build_firmware.py --uefi ../uefi-cas --diagnostics \
-  --out "$HOME/cas-work/builds/cas-diag-004"
+  --out "$HOME/cas-work/builds/cas-diag-005"
 python3 scripts/package_boot.py --uefi ../uefi-cas \
-  --firmware-build "$HOME/cas-work/builds/cas-diag-004" \
+  --firmware-build "$HOME/cas-work/builds/cas-diag-005" \
   --environment environment/cas-env.sh --stock-dtb /path/to/private/boot-02.dtb \
-  --efi-ram-fat --diagnostics --out "$HOME/cas-work/artifacts/cas-diag-004"
+  --efi-ram-fat --diagnostics --out "$HOME/cas-work/artifacts/cas-diag-005"
 ```
 
 The unchanged stock-DTB identity and temporary-boot/recovery procedure are described in [build](build.md) and [operations](operations.md). Packaging binds the diagnostic firmware, shim and FAT profile; a mixed default/diagnostic build is refused. The FAT admits one EFI path, `\EFI\Tools\CasDiag.efi`, plus ordinary Android reset and firmware-return actions. No donor/kernel/root volume is packaged. No script runs ADB/Fastboot.
@@ -35,7 +35,7 @@ Volume keys select an item; tap Power to run it; hold Power to return. The recov
 | Warm reset | Commit a reset-request marker, issue `ResetSystem(EfiResetWarm)` and later check whether the marker survived. Survival is not assumed. |
 | Return | Commit an exit marker and return to UniXNU. |
 
-Enumeration does not modify the FDT, SMEM, storage, variables or allocator topology. It uses ordinary bounded pool allocations for its snapshots and writes diagnostic text only to its own RAM log. The diagnostic-only memory-map library maps the existing SMEM reservation `[0x80900000, 0x80b00000)` as noncached reserved memory. SEC sets RO/XP before DXE. The generated default map stays unchanged; the allocator remains 128 MiB. Before any SMEM read, the app requires the **current** `qcom,smem` FDT node to resolve its `memory-region` phandle to exactly that reserved, `no-map` region, current UEFI reserved/UC coverage, and Memory Attribute Protocol confirmation of RO/XP without RP. No hardware lock or SMEM write is issued. Dynamic/unresolved FDT reservations also deny probing.
+Enumeration does not modify the FDT, SMEM, storage, variables or allocator topology. It uses ordinary bounded pool allocations for its snapshots and writes diagnostic text only to its own RAM log. The diagnostic-only memory-map library maps the existing SMEM reservation `[0x80900000, 0x80b00000)` as noncached reserved memory. SEC sets RO/XP before DXE. The generated default map stays unchanged; the allocator remains 128 MiB. Before any SMEM read, the app requires the **current** `qcom,smem` FDT node to resolve its `memory-region` phandle to exactly that reserved, `no-map` region, current UEFI reserved/UC coverage, and Memory Attribute Protocol confirmation of RO/XP without RP. No hardware lock or SMEM write is issued. Unresolved FDT reservations deny probing. Bounded dynamic reservations exclude their entire allowed allocation ranges.
 
 `SmemCore.c` reads only allocation metadata and item 402. It supports SMEM heaps 11 and 12 (the v12 **uncached global partition**), and RAM table versions 1/2/3 with 64/72/72-byte entries after a 24-byte header. Auxiliary regions, cached-only items, unknown versions, duplicate/overlapping ranges, bad magic/count/padding and overflow are refused. All reads stay inside the 2 MiB reservation: at most 4096 bytes per read, 1200 read calls and a 64 KiB trace per observation, at most 32 RAM rows. Two observations must have identical ordered offsets, lengths and bytes. This detects changes in the observed data; it does not establish an atomic snapshot or replace Qualcomm's remote locking protocol. Other items' payloads are not read or logged.
 
@@ -83,7 +83,7 @@ The EFI viewer is the on-device recovery reader. A saved local slot can also be 
 
 ```sh
 python3 scripts/read-cas-diag-log.py /path/to/saved-slot.bin \
-  --build cas-diag-004 --current-boot 0x1234
+  --build cas-diag-005 --current-boot 0x1234
 ```
 
 This command reads a file only; it does not obtain a physical-memory dump. Diagnostic state is not yet an XNU panic/logging adapter; that connection belongs to X-06.
@@ -115,3 +115,17 @@ line-start `Stack dump:` marker, including split serial writes. The exact raw
 RAM logger continues receiving the full stack and assertion. Text state is now
 version2/936 bytes in the same slot. Exception handling, SMEM permissions and
 the allocator are unchanged. The original exception cause awaits actual evidence.
+
+## Diagnostic 005 collection changes
+
+Dynamic reserved-memory nodes are bounded by their current `size`, optional
+power-of-two `alignment` and complete `alloc-ranges`. The diagnostic excludes
+each entire allowed range; it never guesses where a dynamic region was placed.
+Missing or invalid bounds keep the FDT incomplete. SMEM provider, UEFI coverage
+and actual RO/XP protocol results are printed separately before any permitted
+bounded SMEM read. The allocator and mapping/permission requirements are unchanged.
+
+The log viewer queries the actual console dimensions and explicitly splits
+payload rows to fit. Headers show byte offsets. Short Power advances, Volume up
+returns to the previous page, and holding Power returns to the diagnostic menu.
+This changes only presentation; original RAM log bytes remain unchanged.
