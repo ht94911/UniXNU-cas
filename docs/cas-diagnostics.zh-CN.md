@@ -191,3 +191,17 @@ hosts0xfffe/0xfffe、cacheline32，reserved七word均0。v4.19 Linux定义目录
 不改变任何接受条件、物理读取顺序、权限门禁、内存映射或allocator。真实C测试对比009
 返回码/Info/callback，并覆盖前缀/数量边界、冲突数字、work复用及双次观察失败。
 看到重叠不等于证明可以去掉门禁；先依据实际行类型和格式来源解释，再独立证明owned-memory。
+
+## 诊断011的首PC与数字异常摘要
+
+010在CasDiag前失败：实测ArmCpuDxe load0x9bb05000/entry0x9bb061cc和PC0x9bb07500
+对应实际RVA0x2500，属于UpdateRegionMappingRecursive。静态指令为ldr x0,[sp,#0x20]；
+未取得本次运行时opcode/ESR/FAR/SP。009与010的ArmCpuDxe字节相同，不能据此认定
+新增partial行代码出错或MMU helper已确认为致因。
+
+011保留原16行加载/首PC屏显。锁存后只解析固定串口handler的SP/ELR/SPSR/FPSR与
+ESR/FAR精确源行；每值最多16个hex、仅记录一次。原屏上方另用四行显示已知字段，
+缺失字段显示问号并标PARTIAL；绝不解引用打印的地址。原RAM日志完整保留，IRQ/重入
+保护及stage8停止屏显不变。字段齐全前若出现新的异常banner，标NESTED/UNBOUND并拒绝
+后续值，避免将嵌套异常的ESR与首PC错配。version4状态1024字节，仍在log+0xc00..+0x1000空隙。
+这是补证，不是CPU/MMU修复；SMEM门禁、权限和allocator不变。

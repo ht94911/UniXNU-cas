@@ -11,7 +11,7 @@ PKG = UEFI/'Platforms/Xiaomi/casPkg'
 U, Q = c.c_uint32, c.c_uint64
 
 class Text(c.Structure):
-    _fields_ = [(n,U) for n in 'magic version size row column busy bytes frames frozen match'.split()] + [('cells',(c.c_ubyte*56)*16)] + [('pc_match',U),('pc_pending',U)]
+    _fields_ = [(n,U) for n in 'magic version size row column busy bytes frames frozen match'.split()] + [('cells',(c.c_ubyte*56)*16)] + [('pc_match',U),('pc_pending',U)] + [(n,U) for n in 'fault_state fault_slot fault_match fault_digits fault_mask'.split()] + [('fault_values',Q*6),('fault_exception_match',U)]
 
 class Frame(c.Structure):
     _fields_ = [('base',Q),('bytes',Q)] + [(n,U) for n in 'width height stride red green blue reserved rshift gshift bshift pipes ctls manual intfs'.split()]
@@ -140,7 +140,7 @@ class EarlyText(unittest.TestCase):
         self.assertEqual(list(self.mem[-32:]),[0x12345678]*32)
         for y in range(600):
             row=self.mem[32+y*1088:32+(y+1)*1088]
-            if 136 <= y < 520:
+            if 28 <= y < 124 or 136 <= y < 520:
                 self.assertEqual(row[:12],[0x12345678]*12)
                 self.assertEqual(row[1020:],[0x12345678]*68)
             else:self.assertEqual(row,[0x12345678]*1088)
@@ -219,6 +219,13 @@ int RefreshCount(void) {return Refreshes;}
 void NestOnRefresh(void) {Nested=1;}
 void SetStage(unsigned x) {((CAS_BOOT_INFO *)(uintptr_t)CAS_LOG_BASE)->Stage=x;}
 void BadFrame(void) {CasDisplayState()->Framebuffer.Base=CAS_HEAP_BASE;}
+void Teardown(void) {
+ if(Mapped) {
+  munmap((void *)(uintptr_t)CAS_LOG_BASE,CAS_LOG_SIZE);
+  munmap((void *)(uintptr_t)CAS_SPLASH_BASE,1080*2340*4);
+  Mapped=0;
+ }
+}
 """
 
 class SerialIntegration(unittest.TestCase):
@@ -236,7 +243,9 @@ class SerialIntegration(unittest.TestCase):
         cls.lib=c.CDLL(str(out));cls.lib.SerialPortWrite.argtypes=[c.c_void_p,c.c_size_t];cls.lib.SerialPortWrite.restype=c.c_size_t
 
     @classmethod
-    def tearDownClass(cls):cls.tmp.cleanup()
+    def tearDownClass(cls):
+        cls.lib.Teardown()
+        cls.tmp.cleanup()
 
     def setUp(self):
         self.assertEqual(self.lib.Setup(),0)

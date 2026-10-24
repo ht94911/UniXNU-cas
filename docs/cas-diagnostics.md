@@ -219,3 +219,22 @@ allocator changes. Actual-C tests compare status, Info and callbacks with009,
 plus partial/count bounds, conflict fields, work reuse and two-pass failures.
 Reaching an overlap is not proof it is safe to remove the gate: interpret actual
 row types against format sources, then independently prove owned memory.
+
+## Diagnostic 011 first-PC plus numeric exception summary
+
+010 failed before CasDiag: the observed ArmCpuDxe load0x9bb05000/entry0x9bb061cc
+and PC0x9bb07500 bind to actual RVA0x2500 in UpdateRegionMappingRecursive.
+The static instruction is ldr x0,[sp,#0x20]; no runtime opcode/ESR/FAR/SP was
+captured.009 and010 contain identical ArmCpuDxe bytes, so this does not identify
+a new partial-row bug or prove the MMU helper caused the fault.
+
+011 retains the unchanged16-row loading/first-PC screen. After that latch it
+parses only the pinned serial handler's exact SP/ELR/SPSR/FPSR and ESR/FAR source
+lines, up to16 hex digits per numeric field, once only. Four extra rows above
+the frozen context display known fields; absent fields are question marks and
+the header says PARTIAL. Printed addresses are never dereferenced. Raw RAM
+logging, interrupt/reentrant guards and the stage8 screen stop remain in force.
+If another exception banner appears before all fields, it marks NESTED/UNBOUND
+and refuses later values instead of pairing a nested ESR with the first PC.
+Version4 state is1024 bytes, within the same log+0xc00..+0x1000 gap. This is a
+diagnostic improvement, not a CPU/MMU fix; SMEM/permissions/allocator are unchanged.
