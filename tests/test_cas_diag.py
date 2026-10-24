@@ -140,7 +140,7 @@ class Core(unittest.TestCase):
   for payload,seq,boot,flags,build in [(b'a',0,1,0,b'cas-diag-002'),(b'a',1,0,0,b'cas-diag-002'),(b'\xff',1,1,0,b'cas-diag-002'),(b'a',1,1,8,b'cas-diag-002'),(b'a',1,1,0,b'x'*32),(b'a'*65536,1,1,0,b'cas-diag-002')]:self.assertEqual(self.lib.CasDiagLogEncode(out,65536,payload,len(payload),seq,boot,flags,build),0)
  def test_cli_reads_saved_record_without_changing_it(self):
   p=Path(self.temp.name)/'saved-record.bin';raw=self.encoded();p.write_bytes(raw)
-  r=subprocess.run([sys.executable,str(ROOT/'scripts/read-cas-diag-log.py'),str(p),'--current-boot','123'],capture_output=True,text=True);self.assertEqual(r.returncode,0,r.stderr);self.assertEqual(json.loads(r.stdout)['boot_relation'],'same_boot');self.assertEqual(p.read_bytes(),raw)
+  r=subprocess.run([sys.executable,str(ROOT/'scripts/read-cas-diag-log.py'),str(p),'--build','cas-diag-002','--current-boot','123'],capture_output=True,text=True);self.assertEqual(r.returncode,0,r.stderr);self.assertEqual(json.loads(r.stdout)['boot_relation'],'same_boot');self.assertEqual(p.read_bytes(),raw)
  def test_diagnostic_fat_only_admits_its_single_efi_entry(self):
   config=(ROOT/'config/diagnostics.toml').read_bytes();self.assertEqual(validate_config(config,diagnostics=True)['boot']['default'],'diag')
   with self.assertRaises(ValueError):validate_config(config)

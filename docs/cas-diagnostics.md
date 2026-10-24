@@ -2,7 +2,7 @@
 
 [简体中文](cas-diagnostics.zh-CN.md)
 
-The independent `cas-diag-002` profile builds a RAM-only EFI diagnostic application. Its purpose is to collect current memory evidence, refuse unsafe high-memory access and test recovery of a structured RAM log. It does not load XNU. The default `cas.dsc` / `cas-complete-001` route keeps its original behavior.
+The independent `cas-diag-003` profile builds a RAM-only EFI diagnostic application. Its purpose is to collect current memory evidence, refuse unsafe high-memory access and test recovery of a structured RAM log. It does not load XNU. The default `cas.dsc` / `cas-complete-001` route keeps its original behavior.
 
 ## Build and package
 
@@ -12,11 +12,11 @@ Use the registered sibling source directories and the existing pinned environmen
 source environment/cas-env.sh
 python3 -m unittest discover -s tests -v
 python3 scripts/build_firmware.py --uefi ../uefi-cas --diagnostics \
-  --out "$HOME/cas-work/builds/cas-diag-002"
+  --out "$HOME/cas-work/builds/cas-diag-003"
 python3 scripts/package_boot.py --uefi ../uefi-cas \
-  --firmware-build "$HOME/cas-work/builds/cas-diag-002" \
+  --firmware-build "$HOME/cas-work/builds/cas-diag-003" \
   --environment environment/cas-env.sh --stock-dtb /path/to/private/boot-02.dtb \
-  --efi-ram-fat --diagnostics --out "$HOME/cas-work/artifacts/cas-diag-002"
+  --efi-ram-fat --diagnostics --out "$HOME/cas-work/artifacts/cas-diag-003"
 ```
 
 The unchanged stock-DTB identity and temporary-boot/recovery procedure are described in [build](build.md) and [operations](operations.md). Packaging binds the diagnostic firmware, shim and FAT profile; a mixed default/diagnostic build is refused. The FAT admits one EFI path, `\EFI\Tools\CasDiag.efi`, plus ordinary Android reset and firmware-return actions. No donor/kernel/root volume is packaged. No script runs ADB/Fastboot.
@@ -83,7 +83,7 @@ The EFI viewer is the on-device recovery reader. A saved local slot can also be 
 
 ```sh
 python3 scripts/read-cas-diag-log.py /path/to/saved-slot.bin \
-  --build cas-diag-002 --current-boot 0x1234
+  --build cas-diag-003 --current-boot 0x1234
 ```
 
 This command reads a file only; it does not obtain a physical-memory dump. Diagnostic state is not yet an XNU panic/logging adapter; that connection belongs to X-06.
@@ -93,3 +93,16 @@ This command reads a file only; it does not obtain a physical-memory dump. Diagn
 The portable `DiagCore.c` is the actual guard, log codec and allocation/cleanup transaction used by the EFI program. Twenty-four host tests compile and call that C code, independently compare its record format with the Python reader, corrupt/truncate records and inject callback failures. The SMEM tests compile and call the actual `SmemCore.c` with synthetic memory, inject metadata/data changes and read failures, and check malformed/unknown layouts, overflow, cached/auxiliary refusal and hard budgets. A separate C harness compiles the real diagnostic mapping wrapper and checks that only the SMEM HOB option changes, a second call is stable, a wrong memory type is refused, and the conventional heap remains 128 MiB. Actual test counts and build results are recorded in the candidate report.
 
 The complete firmware/image build report identifies actual artifacts separately. Compilation and host tests do not prove current cas allocator ownership, high-address cache behavior, physical keys, warm-reset retention or XNU/iOS startup. Those results must come from a new, hash-bound X-05 device observation; the prior accepted UEFI image's success cannot be reused for this profile.
+
+## 003 early screen log
+
+One temporary hardware boot of 002 displayed stages 1–7 without a menu; holding
+Power recovered Android. Stage 7 follows SEC decompression; stage 8 is actually
+in CasBdsInitialize. The cause remains unknown. Only the diagnostic profile
+selects SerialDiagLib in 003. It preserves the original case-sensitive RAM log
+and mirrors the last 16 lines of 56 characters onto the inherited framebuffer,
+with uppercase display glyphs. Text state occupies existing log+0xc00; compile
+time checks keep it disjoint from display/input state and the raw log. Bounded
+GOP blits and the inherited refresh path preserve the bottom stage/fault bands;
+mirroring stops at stage 8. SMEM mapping and the 128MiB allocator remain as in
+002. The new screen mirror still requires hardware validation.

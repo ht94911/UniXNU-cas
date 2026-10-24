@@ -2,7 +2,7 @@
 
 [English](cas-diagnostics.md)
 
-独立 `cas-diag-002` profile 构建只在 RAM 中运行的 EFI 诊断程序，用于收集当前内存依据、拒绝未取得所有权的高地址访问，并检查结构化 RAM 日志的恢复。程序不加载 XNU。默认 `cas.dsc` / `cas-complete-001` 路线保留原行为。
+独立 `cas-diag-003` profile 构建只在 RAM 中运行的 EFI 诊断程序，用于收集当前内存依据、拒绝未取得所有权的高地址访问，并检查结构化 RAM 日志的恢复。程序不加载 XNU。默认 `cas.dsc` / `cas-complete-001` 路线保留原行为。
 
 ## 构建和打包
 
@@ -12,11 +12,11 @@
 source environment/cas-env.sh
 python3 -m unittest discover -s tests -v
 python3 scripts/build_firmware.py --uefi ../uefi-cas --diagnostics \
-  --out "$HOME/cas-work/builds/cas-diag-002"
+  --out "$HOME/cas-work/builds/cas-diag-003"
 python3 scripts/package_boot.py --uefi ../uefi-cas \
-  --firmware-build "$HOME/cas-work/builds/cas-diag-002" \
+  --firmware-build "$HOME/cas-work/builds/cas-diag-003" \
   --environment environment/cas-env.sh --stock-dtb /path/to/private/boot-02.dtb \
-  --efi-ram-fat --diagnostics --out "$HOME/cas-work/artifacts/cas-diag-002"
+  --efi-ram-fat --diagnostics --out "$HOME/cas-work/artifacts/cas-diag-003"
 ```
 
 原 stock DTB 的固定身份、RAM 临时启动与恢复流程见[构建说明](build.zh-CN.md)和[操作说明](operations.zh-CN.md)。打包器绑定诊断固件、shim 和 FAT，拒绝默认/诊断 profile 混用。FAT 只允许一个 EFI 路径 `\EFI\Tools\CasDiag.efi`，另有普通回 Android 和返回固件动作；没有 donor、内核或根卷。脚本不调用 ADB/Fastboot。
@@ -83,7 +83,7 @@ EFI viewer 是机上的恢复读取器。已保存到本地的 slot 还可离线
 
 ```sh
 python3 scripts/read-cas-diag-log.py /path/to/saved-slot.bin \
-  --build cas-diag-002 --current-boot 0x1234
+  --build cas-diag-003 --current-boot 0x1234
 ```
 
 该命令只读文件，不会取得物理内存 dump。诊断格式尚未接入 XNU panic/logging；该接口属于 X-06。
@@ -93,3 +93,13 @@ python3 scripts/read-cas-diag-log.py /path/to/saved-slot.bin \
 可移植 `DiagCore.c` 就是 EFI 使用的范围门限、日志 codec 和分配/清理事务。24 项主机测试实际编译并调用该 C 代码，与独立 Python reader 交叉核对记录、破坏/截断记录并注入 callback 失败。SMEM 测试实际编译并调用 `SmemCore.c`，使用合成内存注入元数据/内容变化和读取失败，覆盖坏表、未知版本、越界、cached/辅助区拒绝和读取预算。独立 C harness 编译真实诊断映射 wrapper，核对只改变 SMEM HOB 选项、重复调用稳定、类型错误拒绝，且 conventional heap 仍为 128 MiB。各次实际测试数量和构建结果以候选报告为准。
 
 完整固件/镜像构建报告另行标识实际产物。编译和主机测试不能证明当前 cas 内存所有权、高地址 cache 行为、实体按键、warm reset 保留或 XNU/iOS 启动；这些必须来自新镜像哈希绑定的 X-05 真机观察，不能复用旧 UEFI 候选的成功结果。
+
+## 003 早期屏显日志
+
+002 的一次真机临时启动仅显示阶段1～7，未到菜单；长按电源后已回Android。
+阶段7是SEC解压后标记，阶段8实际位于CasBdsInitialize，具体停滞原因未知。
+003仅为诊断profile选择SerialDiagLib：原始RAM日志保持完整大小写，另外将最近
+16行、每行56字符绘到继承framebuffer，屏显字母转大写。文本位于原控制页
+log+0xc00，编译时检查与显示、按键、raw log不重叠；不分配新物理区。
+绘制复用有边界Blt和继承refresh，保留底部阶段/故障条，在阶段8后停止。
+003的SMEM映射和128MiB allocator沿用002；新增屏显本身尚须真机验证。

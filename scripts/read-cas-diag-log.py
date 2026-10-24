@@ -9,7 +9,7 @@ from cas_diag_log import CAPACITY,decode
 def main():
     ap=argparse.ArgumentParser(description=__doc__)
     ap.add_argument("path")
-    ap.add_argument("--build",default="cas-diag-002")
+    ap.add_argument("--build",default="cas-diag-003")
     ap.add_argument("--current-boot",type=lambda value:int(value,0))
     args=ap.parse_args()
     try:
