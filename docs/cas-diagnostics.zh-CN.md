@@ -2,7 +2,7 @@
 
 [English](cas-diagnostics.md)
 
-独立 `cas-diag-005` profile 构建只在 RAM 中运行的 EFI 诊断程序，用于收集当前内存依据、拒绝未取得所有权的高地址访问，并检查结构化 RAM 日志的恢复。程序不加载 XNU。默认 `cas.dsc` / `cas-complete-001` 路线保留原行为。
+独立 `cas-diag-006` profile 构建只在 RAM 中运行的 EFI 诊断程序，用于收集当前内存依据、拒绝未取得所有权的高地址访问，并检查结构化 RAM 日志的恢复。程序不加载 XNU。默认 `cas.dsc` / `cas-complete-001` 路线保留原行为。
 
 ## 构建和打包
 
@@ -12,11 +12,11 @@
 source environment/cas-env.sh
 python3 -m unittest discover -s tests -v
 python3 scripts/build_firmware.py --uefi ../uefi-cas --diagnostics \
-  --out "$HOME/cas-work/builds/cas-diag-005"
+  --out "$HOME/cas-work/builds/cas-diag-006"
 python3 scripts/package_boot.py --uefi ../uefi-cas \
-  --firmware-build "$HOME/cas-work/builds/cas-diag-005" \
+  --firmware-build "$HOME/cas-work/builds/cas-diag-006" \
   --environment environment/cas-env.sh --stock-dtb /path/to/private/boot-02.dtb \
-  --efi-ram-fat --diagnostics --out "$HOME/cas-work/artifacts/cas-diag-005"
+  --efi-ram-fat --diagnostics --out "$HOME/cas-work/artifacts/cas-diag-006"
 ```
 
 原 stock DTB 的固定身份、RAM 临时启动与恢复流程见[构建说明](build.zh-CN.md)和[操作说明](operations.zh-CN.md)。打包器绑定诊断固件、shim 和 FAT，拒绝默认/诊断 profile 混用。FAT 只允许一个 EFI 路径 `\EFI\Tools\CasDiag.efi`，另有普通回 Android 和返回固件动作；没有 donor、内核或根卷。脚本不调用 ADB/Fastboot。
@@ -83,7 +83,7 @@ EFI viewer 是机上的恢复读取器。已保存到本地的 slot 还可离线
 
 ```sh
 python3 scripts/read-cas-diag-log.py /path/to/saved-slot.bin \
-  --build cas-diag-005 --current-boot 0x1234
+  --build cas-diag-006 --current-boot 0x1234
 ```
 
 该命令只读文件，不会取得物理内存 dump。诊断格式尚未接入 XNU panic/logging；该接口属于 X-06。
@@ -121,3 +121,18 @@ log+0xc00，编译时检查与显示、按键、raw log不重叠；不分配新�
 日志查看器查询实际控制台尺寸，显式拆分每一物理行，页头显示字节位置。
 短按 Power 下一页，音量上回上一页，长按 Power 返回诊断菜单。
 这些只改变呈现，原始 RAM 日志字节保持不变。
+
+## 诊断006的权限准备
+
+005真机最后页为mask13/15：provider与UEFI reserved/UC通过，但实际权限只有XP。
+固定DXE NX策略会替换原访问位，不能假定SEC设置的RO一直保留；尚无逐阶段真机trace。
+006在完整当前FDT/UEFI和provider验证后，先查询精确SMEM 2MiB区间权限。
+仅当查询成功且无RP/未知位时，才通过Memory Attribute Protocol补加RO|XP；
+不清除任何权限、不新增映射、不导入GCD、不改SMEM内容或allocator拓扑。
+调用前保存意图日志，成功后重新查询；已满足权限的路径不调用setter但也重新查询。
+读回必须恰为RO|XP，之后才允许原有有界SMEM读取；错误、缺协议或不同权限全部拒绝。
+
+主机测试提取并编译EFI实际使用的权限函数，注入协议/查询/设置/读回故障，
+验证调用顺序、精确地址与长度、幂等和RP拒绝。这不是硬件页表或手机运行证据。
+下一次手机只枚举，先确认006编号和权限before/verified、SMEM结果及最终mask。
+128MiB allocator未变；即使枚举完整，也不意味着256MiB owned-memory通过。

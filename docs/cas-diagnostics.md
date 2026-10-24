@@ -2,7 +2,7 @@
 
 [简体中文](cas-diagnostics.zh-CN.md)
 
-The independent `cas-diag-005` profile builds a RAM-only EFI diagnostic application. Its purpose is to collect current memory evidence, refuse unsafe high-memory access and test recovery of a structured RAM log. It does not load XNU. The default `cas.dsc` / `cas-complete-001` route keeps its original behavior.
+The independent `cas-diag-006` profile builds a RAM-only EFI diagnostic application. Its purpose is to collect current memory evidence, refuse unsafe high-memory access and test recovery of a structured RAM log. It does not load XNU. The default `cas.dsc` / `cas-complete-001` route keeps its original behavior.
 
 ## Build and package
 
@@ -12,11 +12,11 @@ Use the registered sibling source directories and the existing pinned environmen
 source environment/cas-env.sh
 python3 -m unittest discover -s tests -v
 python3 scripts/build_firmware.py --uefi ../uefi-cas --diagnostics \
-  --out "$HOME/cas-work/builds/cas-diag-005"
+  --out "$HOME/cas-work/builds/cas-diag-006"
 python3 scripts/package_boot.py --uefi ../uefi-cas \
-  --firmware-build "$HOME/cas-work/builds/cas-diag-005" \
+  --firmware-build "$HOME/cas-work/builds/cas-diag-006" \
   --environment environment/cas-env.sh --stock-dtb /path/to/private/boot-02.dtb \
-  --efi-ram-fat --diagnostics --out "$HOME/cas-work/artifacts/cas-diag-005"
+  --efi-ram-fat --diagnostics --out "$HOME/cas-work/artifacts/cas-diag-006"
 ```
 
 The unchanged stock-DTB identity and temporary-boot/recovery procedure are described in [build](build.md) and [operations](operations.md). Packaging binds the diagnostic firmware, shim and FAT profile; a mixed default/diagnostic build is refused. The FAT admits one EFI path, `\EFI\Tools\CasDiag.efi`, plus ordinary Android reset and firmware-return actions. No donor/kernel/root volume is packaged. No script runs ADB/Fastboot.
@@ -83,7 +83,7 @@ The EFI viewer is the on-device recovery reader. A saved local slot can also be 
 
 ```sh
 python3 scripts/read-cas-diag-log.py /path/to/saved-slot.bin \
-  --build cas-diag-005 --current-boot 0x1234
+  --build cas-diag-006 --current-boot 0x1234
 ```
 
 This command reads a file only; it does not obtain a physical-memory dump. Diagnostic state is not yet an XNU panic/logging adapter; that connection belongs to X-06.
@@ -129,3 +129,24 @@ The log viewer queries the actual console dimensions and explicitly splits
 payload rows to fit. Headers show byte offsets. Short Power advances, Volume up
 returns to the previous page, and holding Power returns to the diagnostic menu.
 This changes only presentation; original RAM log bytes remain unchanged.
+
+## Diagnostic 006 permission preparation
+
+The final 005 hardware page reported mask13/15: provider and UEFI reserved/UC
+passed, but live permissions were XP only. The pinned DXE NX policy replaces
+access bits, so SEC's RO cannot be assumed to persist; no per-stage hardware
+trace has independently identified the last permission writer.
+After complete current FDT/UEFI and provider checks, 006 queries the exact 2MiB
+SMEM reservation. Only a successful query with no RP or unknown bits permits
+adding RO|XP through the Memory Attribute Protocol. It never clears attributes,
+adds mappings, imports GCD memory, writes SMEM, or changes allocator topology.
+It persists intent before the setter and queries again after success. An already
+protected region skips the setter but is still requeried. Readback must equal
+RO|XP before the existing bounded reader runs; errors or mismatches refuse it.
+
+Host tests extract and compile the actual EFI permission function and inject
+protocol/query/set/readback failures, checking order, exact range, idempotence
+and RP refusal. These are not hardware page-table or phone execution tests.
+The next hardware attempt is enumeration only: confirm 006, before/verified
+permissions, SMEM output and final mask. The 128MiB allocator is unchanged;
+complete enumeration would still not prove 256MiB owned memory.
