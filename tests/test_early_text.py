@@ -11,7 +11,7 @@ PKG = UEFI/'Platforms/Xiaomi/casPkg'
 U, Q = c.c_uint32, c.c_uint64
 
 class Text(c.Structure):
-    _fields_ = [(n,U) for n in 'magic version size row column busy bytes frames'.split()] + [('cells',(c.c_ubyte*56)*16)]
+    _fields_ = [(n,U) for n in 'magic version size row column busy bytes frames frozen match'.split()] + [('cells',(c.c_ubyte*56)*16)]
 
 class Frame(c.Structure):
     _fields_ = [('base',Q),('bytes',Q)] + [(n,U) for n in 'width height stride red green blue reserved rshift gshift bshift pipes ctls manual intfs'.split()]
@@ -69,6 +69,27 @@ class EarlyText(unittest.TestCase):
         self.feed(b'\x80\xff')
         self.assertEqual(self.line(),b'??')
         self.assertEqual(self.t.bytes,0xffffffff)
+
+    def test_latch_preserves_registers_before_stack_overwrites_them(self):
+        self.feed(b'ELR 0x9bb6f418\nESR 0x9600000d FAR 0x80900000\nStack dump:\n'+b'stack data\n'*30)
+        self.assertEqual(self.t.frozen,1)
+        saved=bytes(self.t)
+        self.feed(b'ASSERT handler438\n')
+        self.assertEqual(bytes(self.t),saved)
+        self.assertIn(b'ESR 0x9600000d FAR 0x80900000',bytes(self.t.cells))
+        self.assertNotIn(b'stack data',bytes(self.t.cells))
+
+    def test_line_marker_handles_every_chunk_split_and_rejects_embedded_phrase(self):
+        marker=b'Stack dump:'
+        for split in range(len(marker)+1):
+            self.lib.CasEarlyTextReset(c.byref(self.t))
+            self.feed(b'ESR test\n'+marker[:split]);self.feed(marker[split:]+b'\ntrash')
+            self.assertEqual(self.t.frozen,1)
+            self.assertNotIn(b'trash',bytes(self.t.cells))
+        self.lib.CasEarlyTextReset(c.byref(self.t))
+        self.feed(b'ordinary Stack dump: text\nStack dummy:\nSTaCk DUMP:')
+        self.assertEqual(self.t.frozen,1)
+        self.assertIn(b'ordinary Stack dump: text',bytes(self.t.cells))
 
     def frame(self):
         width,height,stride=1080,600,1088*4
@@ -211,6 +232,19 @@ class SerialIntegration(unittest.TestCase):
         self.assertEqual(self.lib.RefreshCount(),0)
         self.assertEqual(self.lib.SerialPortWrite(None,10),0)
         self.assertEqual(self.lib.GetInterruptState(),1)
+
+    def test_latched_screen_keeps_full_raw_log_and_stops_refreshing(self):
+        self.write(b'ELR pc\nESR syndrome FAR address\n')
+        self.write(b'Stack dump:\n' + b'dump line\n'*32)
+        self.assertEqual(self.t.frozen,1)
+        saved=bytes(self.t);frames=self.lib.RefreshCount()
+        self.write(b'ASSERT handler438\n')
+        self.assertEqual(bytes(self.t),saved)
+        self.assertEqual(self.lib.RefreshCount(),frames)
+        used=U.from_address(0x9f941004).value
+        raw=c.string_at(0x9f941010,used)
+        self.assertIn(b'dump line\n'*32,raw)
+        self.assertTrue(raw.endswith(b'ASSERT handler438\n'))
 
     def test_raw_log_capacity_preserves_structured_tail(self):
         tail=(c.c_ubyte*65536).from_address(0x9f970000)

@@ -2,7 +2,7 @@
 
 [简体中文](cas-diagnostics.zh-CN.md)
 
-The independent `cas-diag-003` profile builds a RAM-only EFI diagnostic application. Its purpose is to collect current memory evidence, refuse unsafe high-memory access and test recovery of a structured RAM log. It does not load XNU. The default `cas.dsc` / `cas-complete-001` route keeps its original behavior.
+The independent `cas-diag-004` profile builds a RAM-only EFI diagnostic application. Its purpose is to collect current memory evidence, refuse unsafe high-memory access and test recovery of a structured RAM log. It does not load XNU. The default `cas.dsc` / `cas-complete-001` route keeps its original behavior.
 
 ## Build and package
 
@@ -12,11 +12,11 @@ Use the registered sibling source directories and the existing pinned environmen
 source environment/cas-env.sh
 python3 -m unittest discover -s tests -v
 python3 scripts/build_firmware.py --uefi ../uefi-cas --diagnostics \
-  --out "$HOME/cas-work/builds/cas-diag-003"
+  --out "$HOME/cas-work/builds/cas-diag-004"
 python3 scripts/package_boot.py --uefi ../uefi-cas \
-  --firmware-build "$HOME/cas-work/builds/cas-diag-003" \
+  --firmware-build "$HOME/cas-work/builds/cas-diag-004" \
   --environment environment/cas-env.sh --stock-dtb /path/to/private/boot-02.dtb \
-  --efi-ram-fat --diagnostics --out "$HOME/cas-work/artifacts/cas-diag-003"
+  --efi-ram-fat --diagnostics --out "$HOME/cas-work/artifacts/cas-diag-004"
 ```
 
 The unchanged stock-DTB identity and temporary-boot/recovery procedure are described in [build](build.md) and [operations](operations.md). Packaging binds the diagnostic firmware, shim and FAT profile; a mixed default/diagnostic build is refused. The FAT admits one EFI path, `\EFI\Tools\CasDiag.efi`, plus ordinary Android reset and firmware-return actions. No donor/kernel/root volume is packaged. No script runs ADB/Fastboot.
@@ -83,7 +83,7 @@ The EFI viewer is the on-device recovery reader. A saved local slot can also be 
 
 ```sh
 python3 scripts/read-cas-diag-log.py /path/to/saved-slot.bin \
-  --build cas-diag-003 --current-boot 0x1234
+  --build cas-diag-004 --current-boot 0x1234
 ```
 
 This command reads a file only; it does not obtain a physical-memory dump. Diagnostic state is not yet an XNU panic/logging adapter; that connection belongs to X-06.
@@ -106,3 +106,12 @@ time checks keep it disjoint from display/input state and the raw log. Bounded
 GOP blits and the inherited refresh path preserve the bottom stage/fault bands;
 mirroring stops at stage 8. SMEM mapping and the 128MiB allocator remain as in
 002. The new screen mirror still requires hardware validation.
+
+## 004 exception summary retention
+
+The 003 photo confirmed screen mirroring and the final CPU exception assertion,
+but the stack dump scrolled ESR/ELR/FAR off screen. 004 latches the mirror at the
+line-start `Stack dump:` marker, including split serial writes. The exact raw
+RAM logger continues receiving the full stack and assertion. Text state is now
+version2/936 bytes in the same slot. Exception handling, SMEM permissions and
+the allocator are unchanged. The original exception cause awaits actual evidence.
