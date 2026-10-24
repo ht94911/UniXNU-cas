@@ -73,7 +73,7 @@ class RejectTelemetry(unittest.TestCase):
         toc = 0x1ff000
         for offset, value, check, read_offset, size in [
             (toc, 0, 20, toc, 32), (toc + 12, 1, 20, toc, 32),
-            (toc + 40, 1, 22, toc + 32, 48), (toc + 52, 1, 22, toc + 32, 48),
+            (toc + 56, 1, 22, toc + 32, 48), (toc + 52, 1, 22, toc + 32, 48),
             (0x3000, 0, 25, 0x3000, 32), (0x3014, 1, 25, 0x3000, 32),
             (0x3020, 0, 28, 0x3020, 16), (0x302c, 1, 28, 0x3020, 16),
         ]:
@@ -119,7 +119,7 @@ class RejectTelemetry(unittest.TestCase):
         code, work, _, _ = self.observe(valid, work=work)
         self.assertEqual((code, work.check, work.sample_bytes, bytes(work.sample)), (0, 0, 0, bytes(48)))
 
-    def test_telemetry_does_not_change_006_acceptance_output_or_read_sequence(self):
+    def test_006_differential_changes_only_the_documented_unused_flag_cases(self):
         toc = 0x1ff000
         cases = []
         for heap in (11, 12):
@@ -131,17 +131,107 @@ class RejectTelemetry(unittest.TestCase):
                    toc+40, toc+44, toc+48, toc+52, 0x3000, 0x3004, 0x3008,
                    0x300c, 0x3010, 0x3014, 0x3020, 0x3024, 0x3028, 0x302c,
                    item, item+4, item+8, item+12, item+16, item+20)
+        unused_flag_cases = set()
         for offset in offsets:
             for value in (0, 1, 0xffffffff):
                 changed = bytearray(mem)
                 put(changed, offset, 'I', value)
+                if offset == toc + 40 and value != 0:
+                    unused_flag_cases.add(len(cases))
                 cases.append(changed)
         for index, case in enumerate(cases):
             with self.subTest(case=index):
                 current = self.observe(case, self.libraries[0])
                 baseline = self.observe(case, self.libraries[1])
+                if index in unused_flag_cases:
+                    self.assertEqual((baseline[0], current[0]), (2, 0))
+                    self.assertEqual(current[1].partition_flags, struct.unpack_from('<I', case, toc + 40)[0])
+                    continue
                 self.assertEqual((current[0], bytes(current[2]), current[3]),
                                  (baseline[0], bytes(baseline[2]), baseline[3]))
+
+    def cas_directory_fixture(self, flags=3):
+        """Observed 007 directory words; unobserved partition/item bodies are synthetic."""
+        mem, old_item = fixture()
+        used = struct.unpack_from('<I', mem, 0x300c)[0]
+        mem[0x1000:0x1000 + used] = mem[0x3000:0x3000 + used]
+        put(mem, 0x1008, 'I', 0x146000)
+        put(mem, 0x1010, 'I', 0x146000)
+        toc = 0x1ff000
+        put(mem, toc + 8, 'I', 10)
+        for index in range(9):
+            put(mem, toc + 32 + index * 48, 'IIIHHI', 0, 0, 0, index, index + 1, 32)
+        put(mem, 0x1ff1d0, 'IIIHHI', 0x1000, 0x146000, flags, 0xfffe, 0xfffe, 32)
+        return mem, old_item - 0x2000
+
+    def test_actual_007_directory_words_accept_synthetic_v12_partition(self):
+        mem, offset = self.cas_directory_fixture()
+        code, work, info, calls = self.observe(mem)
+        self.assertEqual((code, work.check, info.offset), (0, 0, offset))
+        self.assertEqual((work.partition_offset, work.partition_size, work.partition_flags, work.partition_cacheline),
+                         (0x1000, 0x146000, 3, 32))
+        self.assertEqual((info.smem_version, info.table_version, info.count), (12, 2, 2))
+        self.assertIn((0x1ff1d0, 48), calls)
+        self.assertIn((0x1000, 32), calls)
+        old, _, _, old_calls = self.observe(mem, self.libraries[1])
+        self.assertEqual(old, 2)
+        self.assertNotIn((0x1000, 32), old_calls)
+
+    def test_unused_flags_never_affect_ram_fields_or_read_sequence(self):
+        baseline = None
+        for flags in (0, 1, 2, 3, 0x80000000, 0xffffffff):
+            mem, _ = self.cas_directory_fixture(flags)
+            code, work, info, calls = self.observe(mem)
+            self.assertEqual((code, work.partition_flags), (0, flags))
+            current = (bytes(info), calls)
+            if baseline is None:
+                baseline = current
+            else:
+                self.assertEqual(current, baseline)
+
+    def test_v12_first_page_and_alignment_still_protected(self):
+        for offset in (0, 208, 0xff8, 0x1001, 0xfffffff8):
+            mem, _ = self.cas_directory_fixture()
+            put(mem, 0x1ff1d0, 'I', offset)
+            code, work, _, calls = self.observe(mem)
+            self.assertEqual((code, work.check), (5, 23))
+            self.assertEqual(calls[-1], (0x1ff1d0, 48))
+
+    def test_v12_partition_cannot_overlap_final_directory_or_wrap(self):
+        for size in (0, 31, 0x1fe008, 0xffffffff):
+            mem, _ = self.cas_directory_fixture()
+            put(mem, 0x1ff1d4, 'I', size)
+            code, work, _, calls = self.observe(mem)
+            self.assertEqual((code, work.check), (5, 23))
+            self.assertEqual(calls[-1], (0x1ff1d0, 48))
+
+    def test_duplicate_global_with_unused_flags_still_refused(self):
+        mem, _ = self.cas_directory_fixture()
+        put(mem, 0x1ff008, 'I', 11)
+        mem[0x1ff200:0x1ff230] = mem[0x1ff1d0:0x1ff200]
+        code, work, _, calls = self.observe(mem)
+        self.assertEqual((code, work.check), (2, 22))
+        self.assertNotIn((0x1000, 32), calls)
+
+    def test_nonzero_reserved_with_flags3_still_refused(self):
+        for word in range(7):
+            mem, _ = self.cas_directory_fixture()
+            put(mem, 0x1ff1d0 + 20 + word * 4, 'I', 1)
+            code, work, _, calls = self.observe(mem)
+            self.assertEqual((code, work.check), (2, 22))
+            self.assertNotIn((0x1000, 32), calls)
+
+    def test_v11_keeps_the_8400_byte_legacy_table_exclusion(self):
+        mem, _ = fixture(heap=11)
+        put(mem, 208 + 402 * 16 + 4, 'I', 0x1000)
+        code, work, _, calls = self.observe(mem)
+        self.assertEqual((code, work.check), (5, 15))
+        self.assertNotIn((0x1000, 32), calls)
+
+    def test_partition_metadata_change_between_observations_refuses(self):
+        mem, _ = self.cas_directory_fixture()
+        code, work, _, _ = self.observe(mem, change=0x1ff1d0)
+        self.assertEqual((code, work.check, work.compare), (6, 5, 1))
 
     def test_known_and_unknown_check_names_are_bounded_static_strings(self):
         for check in (0, 1, 2, 3, 4, 5, 10, 11, 12, 13, 14, 15, 20, 21, 22,

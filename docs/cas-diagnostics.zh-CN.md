@@ -2,7 +2,7 @@
 
 [English](cas-diagnostics.md)
 
-独立 `cas-diag-007` profile 构建只在 RAM 中运行的 EFI 诊断程序，用于收集当前内存依据、拒绝未取得所有权的高地址访问，并检查结构化 RAM 日志的恢复。程序不加载 XNU。默认 `cas.dsc` / `cas-complete-001` 路线保留原行为。
+独立 `cas-diag-008` profile 构建只在 RAM 中运行的 EFI 诊断程序，用于收集当前内存依据、拒绝未取得所有权的高地址访问，并检查结构化 RAM 日志的恢复。程序不加载 XNU。默认 `cas.dsc` / `cas-complete-001` 路线保留原行为。
 
 ## 构建和打包
 
@@ -12,11 +12,11 @@
 source environment/cas-env.sh
 python3 -m unittest discover -s tests -v
 python3 scripts/build_firmware.py --uefi ../uefi-cas --diagnostics \
-  --out "$HOME/cas-work/builds/cas-diag-007"
+  --out "$HOME/cas-work/builds/cas-diag-008"
 python3 scripts/package_boot.py --uefi ../uefi-cas \
-  --firmware-build "$HOME/cas-work/builds/cas-diag-007" \
+  --firmware-build "$HOME/cas-work/builds/cas-diag-008" \
   --environment environment/cas-env.sh --stock-dtb /path/to/private/boot-02.dtb \
-  --efi-ram-fat --diagnostics --out "$HOME/cas-work/artifacts/cas-diag-007"
+  --efi-ram-fat --diagnostics --out "$HOME/cas-work/artifacts/cas-diag-008"
 ```
 
 原 stock DTB 的固定身份、RAM 临时启动与恢复流程见[构建说明](build.zh-CN.md)和[操作说明](operations.zh-CN.md)。打包器绑定诊断固件、shim 和 FAT，拒绝默认/诊断 profile 混用。FAT 只允许一个 EFI 路径 `\EFI\Tools\CasDiag.efi`，另有普通回 Android 和返回固件动作；没有 donor、内核或根卷。脚本不调用 ADB/Fastboot。
@@ -83,7 +83,7 @@ EFI viewer 是机上的恢复读取器。已保存到本地的 slot 还可离线
 
 ```sh
 python3 scripts/read-cas-diag-log.py /path/to/saved-slot.bin \
-  --build cas-diag-007 --current-boot 0x1234
+  --build cas-diag-008 --current-boot 0x1234
 ```
 
 该命令只读文件，不会取得物理内存 dump。诊断格式尚未接入 XNU panic/logging；该接口属于 X-06。
@@ -151,3 +151,17 @@ log+0xc00，编译时检查与显示、按键、raw log不重叠；不分配新�
 25 partition-header（magic/hosts/size/reserved）、28 item-header（canary/reserved）。
 元数据按小端32位word显示，+xx是相对last-read offset的字节偏移。
 编号和原始字段用于定位失败；未知布局仍然拒绝，不能据遥测跳过门禁。
+
+## 诊断008的v12目录兼容
+
+007真机check22的48字节原始目录项为offset0x1000、size0x146000、flags3、
+hosts0xfffe/0xfffe、cacheline32，reserved七word均0。v4.19 Linux定义目录flags
+为unused且global定位不以flags为条件；008只记录它，不把它当RAM行的访问权限。
+007的Part>=8400沿用了v11的512-entry allocation table；008的v12布局保留首4KiB、
+末4KiB目录，要求分区8字节对齐、完整落在中间范围。v11仍保护8400字节旧表。
+
+唯一global、零reserved、正确partition header/hosts/size、uncached范围、item头、
+读预算、双次一致观察与RAM表本身的属性/所有权检查继续执行。
+输出SMEM global offset/size/flags/cacheline，失败继续显示007的具体拒绝点和metadata。
+合成测试只复用照片已知的目录项；未观察的partition/item内容明确为synthetic。
+参考：[Linux v4.19 SMEM](https://github.com/torvalds/linux/blob/v4.19/drivers/soc/qcom/smem.c)。

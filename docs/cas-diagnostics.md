@@ -2,7 +2,7 @@
 
 [简体中文](cas-diagnostics.zh-CN.md)
 
-The independent `cas-diag-007` profile builds a RAM-only EFI diagnostic application. Its purpose is to collect current memory evidence, refuse unsafe high-memory access and test recovery of a structured RAM log. It does not load XNU. The default `cas.dsc` / `cas-complete-001` route keeps its original behavior.
+The independent `cas-diag-008` profile builds a RAM-only EFI diagnostic application. Its purpose is to collect current memory evidence, refuse unsafe high-memory access and test recovery of a structured RAM log. It does not load XNU. The default `cas.dsc` / `cas-complete-001` route keeps its original behavior.
 
 ## Build and package
 
@@ -12,11 +12,11 @@ Use the registered sibling source directories and the existing pinned environmen
 source environment/cas-env.sh
 python3 -m unittest discover -s tests -v
 python3 scripts/build_firmware.py --uefi ../uefi-cas --diagnostics \
-  --out "$HOME/cas-work/builds/cas-diag-007"
+  --out "$HOME/cas-work/builds/cas-diag-008"
 python3 scripts/package_boot.py --uefi ../uefi-cas \
-  --firmware-build "$HOME/cas-work/builds/cas-diag-007" \
+  --firmware-build "$HOME/cas-work/builds/cas-diag-008" \
   --environment environment/cas-env.sh --stock-dtb /path/to/private/boot-02.dtb \
-  --efi-ram-fat --diagnostics --out "$HOME/cas-work/artifacts/cas-diag-007"
+  --efi-ram-fat --diagnostics --out "$HOME/cas-work/artifacts/cas-diag-008"
 ```
 
 The unchanged stock-DTB identity and temporary-boot/recovery procedure are described in [build](build.md) and [operations](operations.md). Packaging binds the diagnostic firmware, shim and FAT profile; a mixed default/diagnostic build is refused. The FAT admits one EFI path, `\EFI\Tools\CasDiag.efi`, plus ordinary Android reset and firmware-return actions. No donor/kernel/root volume is packaged. No script runs ADB/Fastboot.
@@ -83,7 +83,7 @@ The EFI viewer is the on-device recovery reader. A saved local slot can also be 
 
 ```sh
 python3 scripts/read-cas-diag-log.py /path/to/saved-slot.bin \
-  --build cas-diag-007 --current-boot 0x1234
+  --build cas-diag-008 --current-boot 0x1234
 ```
 
 This command reads a file only; it does not obtain a physical-memory dump. Diagnostic state is not yet an XNU panic/logging adapter; that connection belongs to X-06.
@@ -168,3 +168,20 @@ Key checks:11 primary-header (initialized/reserved),20 directory-header
 25 partition-header (magic/hosts/size/reserved),28 item-header (canary/reserved).
 Metadata is displayed as little-endian32-bit words; +xx is the byte offset from
 the last-read offset. Unknown layouts still refuse access pending interpretation.
+
+## Diagnostic 008 v12 directory compatibility
+
+007 hardware check22 captured a48-byte directory entry: offset0x1000,
+size0x146000, flags3, hosts0xfffe/0xfffe, cacheline32, seven zero reserved words.
+Linux v4.19 defines directory flags as unused and does not gate global lookup on
+their value.008 records them without interpreting them as RAM-row permissions.
+007's Part>=8400 reused the v11 allocation-table limit.008's v12 profile reserves
+the first4KiB and final4KiB directory, requires8-byte partition alignment and
+full containment in between. v11 retains its8400-byte allocation-table exclusion.
+
+A unique global partition, zero reserved words, matching partition magic/hosts/
+size, uncached item bounds, read budgets, two equal observations and RAM-row
+ownership checks remain required. Output adds SMEM global offset/size/flags/
+cacheline; rejection telemetry remains available. Synthetic tests reuse only the
+observed directory words; the unobserved partition/item bodies are synthetic.
+Reference:[Linux v4.19 SMEM](https://github.com/torvalds/linux/blob/v4.19/drivers/soc/qcom/smem.c).
