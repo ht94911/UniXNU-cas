@@ -2,7 +2,7 @@
 
 [English](cas-diagnostics.md)
 
-独立 `cas-diag-006` profile 构建只在 RAM 中运行的 EFI 诊断程序，用于收集当前内存依据、拒绝未取得所有权的高地址访问，并检查结构化 RAM 日志的恢复。程序不加载 XNU。默认 `cas.dsc` / `cas-complete-001` 路线保留原行为。
+独立 `cas-diag-007` profile 构建只在 RAM 中运行的 EFI 诊断程序，用于收集当前内存依据、拒绝未取得所有权的高地址访问，并检查结构化 RAM 日志的恢复。程序不加载 XNU。默认 `cas.dsc` / `cas-complete-001` 路线保留原行为。
 
 ## 构建和打包
 
@@ -12,11 +12,11 @@
 source environment/cas-env.sh
 python3 -m unittest discover -s tests -v
 python3 scripts/build_firmware.py --uefi ../uefi-cas --diagnostics \
-  --out "$HOME/cas-work/builds/cas-diag-006"
+  --out "$HOME/cas-work/builds/cas-diag-007"
 python3 scripts/package_boot.py --uefi ../uefi-cas \
-  --firmware-build "$HOME/cas-work/builds/cas-diag-006" \
+  --firmware-build "$HOME/cas-work/builds/cas-diag-007" \
   --environment environment/cas-env.sh --stock-dtb /path/to/private/boot-02.dtb \
-  --efi-ram-fat --diagnostics --out "$HOME/cas-work/artifacts/cas-diag-006"
+  --efi-ram-fat --diagnostics --out "$HOME/cas-work/artifacts/cas-diag-007"
 ```
 
 原 stock DTB 的固定身份、RAM 临时启动与恢复流程见[构建说明](build.zh-CN.md)和[操作说明](operations.zh-CN.md)。打包器绑定诊断固件、shim 和 FAT，拒绝默认/诊断 profile 混用。FAT 只允许一个 EFI 路径 `\EFI\Tools\CasDiag.efi`，另有普通回 Android 和返回固件动作；没有 donor、内核或根卷。脚本不调用 ADB/Fastboot。
@@ -83,7 +83,7 @@ EFI viewer 是机上的恢复读取器。已保存到本地的 slot 还可离线
 
 ```sh
 python3 scripts/read-cas-diag-log.py /path/to/saved-slot.bin \
-  --build cas-diag-006 --current-boot 0x1234
+  --build cas-diag-007 --current-boot 0x1234
 ```
 
 该命令只读文件，不会取得物理内存 dump。诊断格式尚未接入 XNU panic/logging；该接口属于 X-06。
@@ -136,3 +136,18 @@ log+0xc00，编译时检查与显示、按键、raw log不重叠；不分配新�
 验证调用顺序、精确地址与长度、幂等和RP拒绝。这不是硬件页表或手机运行证据。
 下一次手机只枚举，先确认006编号和权限before/verified、SMEM结果及最终mask。
 128MiB allocator未变；即使枚举完整，也不意味着256MiB owned-memory通过。
+
+## 诊断007的格式拒绝定位
+
+006真机确认SMEM权限从0x4000补加到0x24000，三个预读条件均通过，随后
+返回CdSmemFormat（2）、heap12、item尚未定位，最终mask13/15；006经菜单回Android。
+007保留006的全部接受条件和读取顺序，输出稳定检查编号/名称、pass、读取次数、
+轨迹字节及最后读取的offset/length。只复制已经读取的至多48字节元数据；
+不增加物理读取，不复制RAM item payload/名称。callback失败时样本清零。
+主机将真实007 C与冻结006 C进行有效/坏格式输入的返回码、Info和callback序列对比。
+
+重点检查编号：11 primary-header（initialized/reserved）、20 directory-header
+（magic/version/reserved）、22 directory-entry（重复global/flags/reserved）、
+25 partition-header（magic/hosts/size/reserved）、28 item-header（canary/reserved）。
+元数据按小端32位word显示，+xx是相对last-read offset的字节偏移。
+编号和原始字段用于定位失败；未知布局仍然拒绝，不能据遥测跳过门禁。

@@ -2,7 +2,7 @@
 
 [简体中文](cas-diagnostics.zh-CN.md)
 
-The independent `cas-diag-006` profile builds a RAM-only EFI diagnostic application. Its purpose is to collect current memory evidence, refuse unsafe high-memory access and test recovery of a structured RAM log. It does not load XNU. The default `cas.dsc` / `cas-complete-001` route keeps its original behavior.
+The independent `cas-diag-007` profile builds a RAM-only EFI diagnostic application. Its purpose is to collect current memory evidence, refuse unsafe high-memory access and test recovery of a structured RAM log. It does not load XNU. The default `cas.dsc` / `cas-complete-001` route keeps its original behavior.
 
 ## Build and package
 
@@ -12,11 +12,11 @@ Use the registered sibling source directories and the existing pinned environmen
 source environment/cas-env.sh
 python3 -m unittest discover -s tests -v
 python3 scripts/build_firmware.py --uefi ../uefi-cas --diagnostics \
-  --out "$HOME/cas-work/builds/cas-diag-006"
+  --out "$HOME/cas-work/builds/cas-diag-007"
 python3 scripts/package_boot.py --uefi ../uefi-cas \
-  --firmware-build "$HOME/cas-work/builds/cas-diag-006" \
+  --firmware-build "$HOME/cas-work/builds/cas-diag-007" \
   --environment environment/cas-env.sh --stock-dtb /path/to/private/boot-02.dtb \
-  --efi-ram-fat --diagnostics --out "$HOME/cas-work/artifacts/cas-diag-006"
+  --efi-ram-fat --diagnostics --out "$HOME/cas-work/artifacts/cas-diag-007"
 ```
 
 The unchanged stock-DTB identity and temporary-boot/recovery procedure are described in [build](build.md) and [operations](operations.md). Packaging binds the diagnostic firmware, shim and FAT profile; a mixed default/diagnostic build is refused. The FAT admits one EFI path, `\EFI\Tools\CasDiag.efi`, plus ordinary Android reset and firmware-return actions. No donor/kernel/root volume is packaged. No script runs ADB/Fastboot.
@@ -83,7 +83,7 @@ The EFI viewer is the on-device recovery reader. A saved local slot can also be 
 
 ```sh
 python3 scripts/read-cas-diag-log.py /path/to/saved-slot.bin \
-  --build cas-diag-006 --current-boot 0x1234
+  --build cas-diag-007 --current-boot 0x1234
 ```
 
 This command reads a file only; it does not obtain a physical-memory dump. Diagnostic state is not yet an XNU panic/logging adapter; that connection belongs to X-06.
@@ -150,3 +150,21 @@ and RP refusal. These are not hardware page-table or phone execution tests.
 The next hardware attempt is enumeration only: confirm 006, before/verified
 permissions, SMEM output and final mask. The 128MiB allocator is unchanged;
 complete enumeration would still not prove 256MiB owned memory.
+
+## Diagnostic 007 format rejection location
+
+006 hardware confirmed SMEM permissions changed from 0x4000 to 0x24000 and all
+three pre-read gates passed. The reader then returned CdSmemFormat (2), heap12,
+without locating the RAM item; the final mask was13/15. Android recovery was confirmed.
+007 preserves the 006 predicates and read sequence. It prints stable check IDs
+and names, pass, read count, trace bytes, and the last requested offset/length.
+It copies at most48 bytes of metadata already read, with no extra physical read.
+RAM item payload/names are excluded; a failed callback leaves a zeroed sample.
+Host tests compare the actual007 C with frozen006 C on valid and malformed inputs,
+including return codes, parsed Info and ordered callback requests.
+
+Key checks:11 primary-header (initialized/reserved),20 directory-header
+(magic/version/reserved),22 directory-entry (duplicate global/flags/reserved),
+25 partition-header (magic/hosts/size/reserved),28 item-header (canary/reserved).
+Metadata is displayed as little-endian32-bit words; +xx is the byte offset from
+the last-read offset. Unknown layouts still refuse access pending interpretation.

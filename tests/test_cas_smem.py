@@ -12,7 +12,7 @@ UEFI=Path(os.environ.get('CAS_UEFI_ROOT',ROOT.parent/'uefi-cas'))
 READ=c.CFUNCTYPE(c.c_int,c.c_void_p,c.c_uint,c.c_uint,c.POINTER(c.c_ubyte))
 class Part(c.Structure):_fields_=[('base',c.c_ulonglong),('size',c.c_ulonglong),('available',c.c_ulonglong),('attr',c.c_uint),('category',c.c_uint),('domain',c.c_uint),('type',c.c_uint)]
 class Info(c.Structure):_fields_=[(n,c.c_uint) for n in ('smem_version','table_version','offset','size','count','reads','trace_bytes')]+[('parts',Part*32)]
-class Work(c.Structure):_fields_=[('trace',c.c_ubyte*65536),('table',c.c_ubyte*4096)]+[(n,c.c_uint) for n in ('used','cursor','reads','compare')]+[('read',READ),('context',c.c_void_p)]
+class Work(c.Structure):_fields_=[('trace',c.c_ubyte*65536),('table',c.c_ubyte*4096)]+[(n,c.c_uint) for n in ('used','cursor','reads','compare')]+[('read',READ),('context',c.c_void_p)]+[(n,c.c_uint) for n in ('check','read_offset','read_length','sample_bytes')]+[('sample',c.c_ubyte*48)]
 def put(mem,off,fmt,*values):struct.pack_into('<'+fmt,mem,off,*values)
 def fixture(heap=12,table=2,rows=None,prefix=1):
  mem=bytearray(0x200000);put(mem,92,'I',heap<<16);put(mem,192,'IIII',1,0,0,0)
