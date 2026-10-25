@@ -18,7 +18,7 @@ def run(command, log):
     return result.stdout
 
 
-def build(uefi, out, *, diagnostics=False):
+def build(uefi, out, *, diagnostics=False, trace_recovery=False):
     out.mkdir(parents=True, exist_ok=False)
     log = out / "commands.log"
     root = uefi.resolve()
@@ -26,6 +26,12 @@ def build(uefi, out, *, diagnostics=False):
     display = root / "Platforms/Xiaomi/casPkg/Library/CasDisplayLib"
     sources = [root / "BootShim/CasBootShim.S", root / "BootShim/CasBootLog.S", root / "BootShim/CasBootValidate.c",
                display / "DisplayDecode.c", display / "DisplayHardware.c"]
+    if trace_recovery:
+        if not diagnostics:
+            raise ValueError('early trace recovery requires the diagnostic retained-log profile')
+        sources += [root / 'BootShim/CasTraceRecover.c',
+                    root / 'Platforms/Xiaomi/casPkg/Library/SerialDiagLib/EarlyText.c',
+                    root / 'Platforms/Xiaomi/casPkg/Library/CasDisplayLib/DisplayBlt.c']
     objects = []
     for source in sources:
         obj = out / (source.stem + ".o")
@@ -36,6 +42,8 @@ def build(uefi, out, *, diagnostics=False):
                  "-mstrict-align", "-O2", "-Wall", "-Wextra", "-Werror"]
         if diagnostics:
             flags += ["-DCAS_XNU_DIAGNOSTICS=1"]
+        if trace_recovery:
+            flags += ["-DCAS_TRACE_RECOVERY_ONLY=1"]
         run(["clang", *flags, "-I", include, "-c", source, "-o", obj], log)
         objects.append(obj)
     elf = out / "shim.elf"
@@ -55,7 +63,7 @@ def build(uefi, out, *, diagnostics=False):
     if parsed["_ScratchStackTop"] - parsed["_ScratchStackBase"] != 0x4000:
         raise ValueError("scratch stack size mismatch")
     report = {"result": "pass", "hardware_proven": False, "diagnostics": diagnostics, "shim_bytes": len(data),
-              "sha256": hashlib.sha256(data).hexdigest(), "text_offset": "0x80000", "image_size": len(data) + 0x800000,
+              "trace_recovery_only": trace_recovery, "sha256": hashlib.sha256(data).hexdigest(), "text_offset": "0x80000", "image_size": len(data) + 0x800000,
               "symbols": parsed, "relocations": relocations.strip(), "sources": [
                   {"path": str(path), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()} for path in
                   [*sources, include / "CasPlatform.h", include / "CasDisplay.h", root / "BootShim/CasBootShim.lds"]]}
@@ -69,5 +77,6 @@ if __name__ == "__main__":
     ap.add_argument("--uefi", type=Path, required=True)
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--diagnostics", action="store_true")
+    ap.add_argument("--trace-recovery", action="store_true", help="stop before UEFI and display retained004 trace read only")
     options = ap.parse_args()
-    build(options.uefi, options.out, diagnostics=options.diagnostics)
+    build(options.uefi, options.out, diagnostics=options.diagnostics, trace_recovery=options.trace_recovery)
