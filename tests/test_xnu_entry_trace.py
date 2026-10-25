@@ -15,4 +15,10 @@ class EntryTraceTests(unittest.TestCase):
    p=Path(root)/profile['source'];p.parent.mkdir(parents=True);p.write_text('different source')
    with self.assertRaisesRegex(ValueError,'hash mismatch'):build_source.apply_entry_trace(Path(root),io.StringIO())
    run.assert_not_called()
+ def test_wrong_wrapper_is_rejected_without_staging(self):
+  profile=json.loads((build_source.HERE/'entry-trace.json').read_text())
+  with tempfile.TemporaryDirectory() as root:
+   tree=Path(root);p=tree/'scripts/build-xnu-4k-baseline.sh';p.parent.mkdir();p.write_text('unrelated wrapper')
+   with self.assertRaisesRegex(ValueError,'wrapper hash mismatch'):build_source.stage_entry_trace_wrapper(tree,profile)
+   self.assertFalse((tree/'patches').exists())
 if __name__=='__main__':unittest.main()

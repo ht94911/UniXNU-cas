@@ -24,5 +24,6 @@
     "Does not prove MMU or arm_init reached",
     "Does not copy umi ramoops address or page tables"
   ],
-  "reference": "reAAAq/UniXNU-umi@3eb72578597d2ca16471b172d45eddc096a34a04/patches/umi-xnu/early-entry-trace.patch"
+  "reference": "reAAAq/UniXNU-umi@3eb72578597d2ca16471b172d45eddc096a34a04/patches/umi-xnu/early-entry-trace.patch",
+  "build_wrapper_before_sha256": "387f9ba67153c66abf989c655d68bc7ab204403dfb6e37233d64ab2cf12817f3"
 }

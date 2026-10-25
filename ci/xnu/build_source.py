@@ -128,6 +128,27 @@ def apply_entry_trace(work, log):
         raise ValueError('Entry trace result hash mismatch')
     return profile
 
+
+def stage_entry_trace_wrapper(tree, profile):
+    """Keep the baseline's reverse/check/reapply semantics with the late trace."""
+    wrapper = tree / 'scripts/build-xnu-4k-baseline.sh'
+    before = digest(wrapper)
+    if before != profile['build_wrapper_before_sha256']:
+        raise ValueError('Entry trace build wrapper hash mismatch')
+    destination = tree / 'patches/xnu/zzzz-cas-entry-trace.patch'
+    if destination.exists():
+        raise ValueError('Entry trace staging patch already exists')
+    shutil.copyfile(HERE / profile['patch'], destination)
+    text = wrapper.read_text()
+    context = 'for LATE_PATCH in "$ROOT/patches/xnu/zzz-boot-progress.patch"'
+    if text.count(context) != 1:
+        raise ValueError('Entry trace late-patch context mismatch')
+    wrapper.write_text(text.replace(context, 'for LATE_PATCH in "$ROOT/patches/xnu/zzzz-cas-entry-trace.patch" "$ROOT/patches/xnu/zzz-boot-progress.patch"', 1))
+    return {'source': str(wrapper.relative_to(tree)), 'before_sha256': before,
+            'after_sha256': digest(wrapper), 'late_patch': str(destination.relative_to(tree)),
+            'late_patch_sha256': digest(destination),
+            'semantics': 'Reverse only the exact applied trace before the inherited baseline checks; reapply it last.'}
+
 def prepare_headers(tree, xnu, spec):
     """Restore/hash all fixed header blobs, including files already present."""
     records = []
@@ -364,6 +385,7 @@ def main():
                 raise ValueError('cas entry trace cannot be used with another platform')
             with (logs / 'entry-trace.log').open('w') as log:
                 trace_profile = apply_entry_trace(work, log)
+            trace_profile['build_wrapper'] = stage_entry_trace_wrapper(tree, trace_profile)
             (exports / 'entry-trace.json').write_text(json.dumps(trace_profile, indent=2) + '\n')
             report['entry_trace'] = trace_profile
 
@@ -386,6 +408,8 @@ def main():
                      'iokit/DEVELOPMENT/IOPlatformExpert.cpo.json', 'link.filelist'):
             if not (tree / OBJ / path).is_file():
                 raise ValueError('Bootstrap did not create required compile records: ' + path)
+        if args.entry_trace and digest(work / trace_profile['source']) != trace_profile['after_sha256']:
+            raise ValueError('Entry trace source changed during bootstrap')
         page_size = audit_page_size(tree, logs)
         (exports / 'page-size.json').write_text(json.dumps(page_size, indent=2) + '\n')
         report['page_bytes'] = page_size['page_bytes']

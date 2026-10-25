@@ -79,7 +79,7 @@ def prepare(framework,out):
  (out/'DarwinBoot.c.diff').write_text(''.join(difflib.unified_diff(original.decode().splitlines(True),patched.splitlines(True),fromfile=PIN+'/DarwinBoot.c',tofile='cas-x06-dryrun/DarwinBoot.c')))
  if before!=state(source):raise ValueError('upstream changed during staging')
  result={'profile':'cas-x06-dryrun','upstream':before,'input_sha256':inputs,'trace_sha256':digest(trace.read_bytes()),
-         'kernel_execution_compiled':False,'exit_boot_services_compiled':False,
+         'kernel_execution_call_compiled':False,'exit_boot_services_call_compiled':False,
          'stage':'source overlay only','files':{str(p.relative_to(out)):digest(p.read_bytes()) for p in out.rglob('*') if p.is_file()}}
  (out/'overlay.json').write_text(json.dumps(result,indent=2)+'\n');return result
 
