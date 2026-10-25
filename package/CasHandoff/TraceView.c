@@ -33,7 +33,14 @@ STATIC CONST CHAR16 *Phase(UINT64 Stage) {
  case 0x50:return L"arm_init rebased";case 0x51:return L"early PE(FALSE) returned";
  case 0x52:return L"before arm_vm_init";case 0x56:return L"VM tables ready, before TTBR switch";
  case 0x53:return L"VM returned, mailbox IO mapped";case 0x54:return L"early PE(TRUE) returned";
- case 0x55:return L"diagnostic stop before clocks/IOKit";case 0xe0:return L"terminal early exception";
+ case 0x55:return L"diagnostic stop before clocks/IOKit";
+ case 0x5f:return L"platform gate refused; diagnostic stop";
+ case 0x60:return L"actual platform snapshot committed";
+ case 0x61:return L"before cpu_timebase_init";case 0x62:return L"cpu_timebase_init returned";
+ case 0x63:return L"before PE_init_cpu";case 0x64:return L"PE_init_cpu returned";
+ case 0x65:return L"final platform snapshot boundary";
+ case 0x66:return L"clock stop before machine_startup";
+ case 0xe0:return L"terminal early exception";
  case 0x7f:return L"pre-EBS failure/cleanup";
  default:return L"UNKNOWN (not accepted)";
  }

@@ -14,6 +14,8 @@ STATIC_ASSERT (sizeof (CAS_HANDOFF_TRACE) == 256, "trace ABI");
 STATIC_ASSERT (OFFSET_OF (CAS_HANDOFF_TRACE, RawStage) == 240, "raw marker ABI");
 #define CAS_VM_EXCEPTION_MAGIC 0x315845534143ULL
 #define CAS_VM_EXCEPTION_OFFSET 256
+#define CAS_TRACE_TOTAL_BYTES 512
+#define CAS_PLATFORM_TRACE_OFFSET 384
 typedef struct {
   UINT64 Magic, BootStamp, Candidate, Vector, Esr, Far, Elr, Spsr;
   UINT64 Sctlr, Tcr, Ttbr0, Ttbr1, Stack, PreviousStage, PayloadXor, MagicInverse;

@@ -13,6 +13,7 @@ def ref(p):return {'path':str(p.resolve()),'bytes':p.stat().st_size,'sha256':sha
 def main():
  ap=argparse.ArgumentParser(description=__doc__)
  for name in ['uefi','base-package','firmware-build','loader-build','adt-dir','kernel','symbols','out']:ap.add_argument('--'+name,type=Path,required=True)
+ ap.add_argument('--normal-shim-proof',type=Path)
  a=ap.parse_args();a.out=a.out.resolve();private_directory(a.out);os.umask(0o077)
  uefi=a.uefi.resolve();sources=source_state(uefi,ROOT);require_clean(sources)
  commands=[]
@@ -33,6 +34,14 @@ def main():
  check_ref(firmware['source_state']);check_ref(firmware['fd'])
  if sha(base/'SILICIUM_UEFI.fd')!=firmware['fd']['sha256']:raise ValueError('base FD differs from retained firmware build')
  reuse=firmware_reuse(previous_firmware_sources,sources,ROOT)
+ if reuse['UEFI_recovery_only_changed_paths']:
+  if a.normal_shim_proof is None:raise ValueError('Recovery-only source changes require explicit unchanged normal-shim proof')
+  proof=json.loads(a.normal_shim_proof.read_text());normal=a.normal_shim_proof.parent/'shim.bin'
+  if proof['result']!='pass' or not proof.get('diagnostics') or proof.get('trace_recovery_only') or sha(normal)!=proof['sha256'] or normal.read_bytes()!=(base/'shim/shim.bin').read_bytes():raise ValueError('normal shim differs from retained003')
+  for item in proof['sources']:
+   if sha(Path(item['path']))!=item['sha256']:raise ValueError('normal-shim source changed after proof')
+  reuse['normal_shim_proof']=ref(a.normal_shim_proof)
+  reuse['normal_shim_sha256']=proof['sha256']
  private_write(a.out/'firmware-reuse.json',(json.dumps(reuse,indent=2)+'\n').encode())
  loader_sources=json.loads((a.loader_build/'intent.json').read_text())['sources']
  for repo in [ROOT,uefi,uefi.parent/'UniXNU']:

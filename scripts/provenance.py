@@ -53,9 +53,17 @@ def firmware_reuse(previous, current, device):
     """
     require_clean(previous)
     require_clean(current)
-    for name in ('uefi-cas', 'UniXNU'):
-        if previous[name] != current[name]:
-            raise ValueError('Firmware reuse source changed: ' + name)
+    if previous['UniXNU'] != current['UniXNU']:
+        raise ValueError('Firmware reuse framework source changed')
+    for key in set(previous['uefi-cas']) | set(current['uefi-cas']):
+        if key != 'commit' and previous['uefi-cas'].get(key) != current['uefi-cas'].get(key):
+            raise ValueError('Firmware reuse UEFI state/submodules changed: ' + key)
+    uefi_changes = subprocess.check_output(['git', '-C', current['uefi-cas']['path'],
+        'diff', '--name-only', previous['uefi-cas']['commit'], current['uefi-cas']['commit'], '--']).decode().splitlines()
+    recovery_only = {'BootShim/CasBootShim.S', 'BootShim/CasTraceRecover.c',
+                     'Platforms/Xiaomi/casPkg/Include/CasTraceRecover.h'}
+    if any(name not in recovery_only for name in uefi_changes):
+        raise ValueError('Firmware reuse has non-recovery UEFI changes')
     before, after = previous['UniXNU-cas'], current['UniXNU-cas']
     allowed = {
         'package/CasHandoff/Trace.h', 'package/CasHandoff/TraceAbi.h',
@@ -63,6 +71,7 @@ def firmware_reuse(previous, current, device):
         'scripts/cas_cpu0.py', 'scripts/cpu0_payload.py',
         'scripts/package_cpu0.py', 'scripts/check_cpu0_host.py',
         'scripts/check_trace_view_host.py', 'scripts/provenance.py',
+        'scripts/build_shim.py',
         'tests/cpu0_host.c',
     }
     changed = subprocess.check_output(['git', '-C', str(device), 'diff', '--name-only',
@@ -72,7 +81,9 @@ def firmware_reuse(previous, current, device):
     if unknown:
         raise ValueError('Unclassified firmware reuse changes: ' + ', '.join(unknown))
     return {'result': 'pass', 'firmware_rebuilt': False,
-            'uefi_and_framework_sources_identical': True,
+            'uefi_and_framework_sources_identical': not uefi_changes,
+            'UEFI_FD_compile_sources_unchanged': True,
+            'UEFI_recovery_only_changed_paths': uefi_changes,
             'previous_device_commit': before['commit'], 'current_device_commit': after['commit'],
             'changed_paths_outside_firmware_inputs': changed,
-            'reason': 'Only separate kernel/loader/build-evidence tools changed; firmware, shim, menu overlay, DTB and memory inputs unchanged.'}
+            'reason': 'FD compile sources, framework, menu overlay, DTB and memory inputs unchanged. Only separate kernel/loader/recovery-only shim tools changed; original normal shim bytes require an explicit proof.'}

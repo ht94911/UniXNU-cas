@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
-  "profile": "cas-cpu0-004-vm-observe",
+  "profile": "cas-cpu0-005-platform-clock",
   "cpu_count": 1,
   "kernel": {
-    "sha256": "b5e428922606300c5f81b49884146f2a74939995d29bc148d6319c5a1d73a83e",
-    "bytes": 21392192,
-    "symbols_sha256": "469f052712bca18cc12433b3d889d70ce5a4d2aac3be619fa91367ba38f36cd2",
-    "source_commit": "9dc42efc82bd9e1178f7e7fecc7a192099ca83e9",
-    "source_run": 40217312445,
-    "vm_observe_profile_sha256": "c964127c9713b6663cb8786ed0a41b7628e339b8c5f19086e405c228f33f4f91"
+    "sha256": "853bf350a2f8a413548e025d38d2f1450c49923fad74b99cc98c4c9e0e0e0ff9",
+    "bytes": 21392312,
+    "symbols_sha256": "57213ae325a785704f8aaf72611b7bf8b41c76f4c94c8616b73ef117a54350ad",
+    "source_commit": "bae4311fe0a8c9b8d4258fe66a19b2615c3d4adb",
+    "source_run": 40222550037,
+    "observation_profile_sha256": "f25a2b327053a221c69e70f0e2ffea93692b7c045c8a25f8c5ae5c72a3b573e7"
   },
   "menu_sha256": "9b642f2e12dfcc5d9b7d1e7b8b4c4e01277af66c8ef1bd11336182b2ec8ddd8d",
   "owned": {
@@ -22,7 +22,7 @@
   },
   "trace": {
     "base": "0x9f960000",
-    "bytes": 384,
+    "bytes": 512,
     "raw_stage_offset": 240,
     "inverse_offset": 248,
     "guard_pass_fields": "Reserved[0..3] = bootstamp, PA, bytes, 1",
@@ -41,7 +41,9 @@
     ],
     "exception_extension_offset": 256,
     "exception_extension_bytes": 128,
-    "candidate_source_offset": 152
+    "candidate_source_offset": 152,
+    "platform_snapshot_offset": 384,
+    "platform_snapshot_bytes": 128
   },
   "command_lines": {
     "execute": "-v keepsyms=1 debug=0x14e cpus=1",

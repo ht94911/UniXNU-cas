@@ -37,7 +37,7 @@ STATIC BOOLEAN CasTraceStart (VOID) {
   if(Boot[0]!=0x0000000148534143ULL || (UINT32)Boot[1]!=128 || Boot[13]==0)return FALSE;
   // Only a new loader request clears the extension; the viewer is read only.
   { volatile UINT8 *Extension=(VOID *)(UINTN)(CAS_TRACE_BASE+CAS_VM_EXCEPTION_OFFSET);
-    for(I=0;I<sizeof(CAS_VM_EXCEPTION);I++)Extension[I]=0;MemoryFence(); }
+    for(I=0;I<CAS_TRACE_TOTAL_BYTES-sizeof(mTrace);I++)Extension[I]=0;MemoryFence(); }
   ZeroMem(&mTrace,sizeof(mTrace));mTrace.Magic=CAS_TRACE_MAGIC;mTrace.Version=1;
   mTrace.Bytes=sizeof(mTrace);mTrace.BootStamp=Boot[13];mTraceReady=TRUE;
   CasTrace(1,EFI_SUCCESS,0,0,0,0);return mTraceReady;

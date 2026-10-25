@@ -50,7 +50,7 @@ def prepare(framework,out):
  shutil.copyfile(source,pkg/'TraceView/CasPlatform.h')
  abi=driver/'TraceAbi.h';abi_text=abi.read_text()
  abi_text=parent.replace_once(abi_text,'#define CAS_TRACE_BASE 0x9f960000ULL','#include "CasPlatform.h"\n#define CAS_TRACE_BASE 0x9f960000ULL')
- abi_text=parent.replace_once(abi_text,'#endif','STATIC_ASSERT(CAS_TRACE_BASE == (UINT64)CAS_LOG_BASE + CAS_HANDOFF_LOG_OFFSET, "trace/shim address ABI");\nSTATIC_ASSERT(sizeof(CAS_HANDOFF_TRACE) <= CAS_HANDOFF_LOG_SIZE, "trace fits retained slot");\nSTATIC_ASSERT(CAS_VM_EXCEPTION_OFFSET + sizeof(CAS_VM_EXCEPTION) <= CAS_HANDOFF_LOG_SIZE, "exception fits retained slot");\n#endif')
+ abi_text=parent.replace_once(abi_text,'#endif','STATIC_ASSERT(CAS_TRACE_BASE == (UINT64)CAS_LOG_BASE + CAS_HANDOFF_LOG_OFFSET, "trace/shim address ABI");\nSTATIC_ASSERT(sizeof(CAS_HANDOFF_TRACE) <= CAS_HANDOFF_LOG_SIZE, "trace fits retained slot");\nSTATIC_ASSERT(CAS_VM_EXCEPTION_OFFSET + sizeof(CAS_VM_EXCEPTION) <= CAS_HANDOFF_LOG_SIZE, "exception fits retained slot");\nSTATIC_ASSERT(CAS_TRACE_TOTAL_BYTES <= CAS_HANDOFF_LOG_SIZE, "all records fit retained slot");\n#endif')
  abi.write_text(abi_text);(pkg/'TraceView/TraceAbi.h').write_text(abi_text)
 
  p=driver/'DarwinBoot.c';s=p.read_text()
