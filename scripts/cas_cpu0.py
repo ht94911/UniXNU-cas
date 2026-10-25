@@ -23,7 +23,9 @@ def prepare(framework,out):
   if repo_state['dirty']:raise ValueError('CPU0 candidate requires frozen clean sources')
   source_heads[label]=repo_state['head']
  tag=candidate_tag(contract,MODE,adt_meta['adt_sha256'],source_heads)
- tag_header='// SPDX-License-Identifier: BSD-2-Clause-Patent\n#define CAS_CPU0_CANDIDATE_TAG 0x%016xULL\n'%tag
+ require_recovered=contract.get('requires_recovered_validation',True)
+ if type(require_recovered) is not bool:raise ValueError('explicit boolean recovery policy required')
+ tag_header='// SPDX-License-Identifier: BSD-2-Clause-Patent\n#define CAS_CPU0_CANDIDATE_TAG 0x%016xULL\n#define CAS_CPU0_REQUIRE_RECOVERED %d\n'%(tag,int(require_recovered))
  (driver/'CandidateTag.h').write_text(tag_header);(pkg/'TraceView/CandidateTag.h').write_text(tag_header)
 
  app=uefi/'Platforms/Xiaomi/casPkg/Applications/CasDiag'
@@ -48,7 +50,7 @@ def prepare(framework,out):
  shutil.copyfile(source,pkg/'TraceView/CasPlatform.h')
  abi=driver/'TraceAbi.h';abi_text=abi.read_text()
  abi_text=parent.replace_once(abi_text,'#define CAS_TRACE_BASE 0x9f960000ULL','#include "CasPlatform.h"\n#define CAS_TRACE_BASE 0x9f960000ULL')
- abi_text=parent.replace_once(abi_text,'#endif','STATIC_ASSERT(CAS_TRACE_BASE == (UINT64)CAS_LOG_BASE + CAS_HANDOFF_LOG_OFFSET, "trace/shim address ABI");\nSTATIC_ASSERT(sizeof(CAS_HANDOFF_TRACE) <= CAS_HANDOFF_LOG_SIZE, "trace fits retained slot");\n#endif')
+ abi_text=parent.replace_once(abi_text,'#endif','STATIC_ASSERT(CAS_TRACE_BASE == (UINT64)CAS_LOG_BASE + CAS_HANDOFF_LOG_OFFSET, "trace/shim address ABI");\nSTATIC_ASSERT(sizeof(CAS_HANDOFF_TRACE) <= CAS_HANDOFF_LOG_SIZE, "trace fits retained slot");\nSTATIC_ASSERT(CAS_VM_EXCEPTION_OFFSET + sizeof(CAS_VM_EXCEPTION) <= CAS_HANDOFF_LOG_SIZE, "exception fits retained slot");\n#endif')
  abi.write_text(abi_text);(pkg/'TraceView/TraceAbi.h').write_text(abi_text)
 
  p=driver/'DarwinBoot.c';s=p.read_text()
@@ -63,7 +65,7 @@ def prepare(framework,out):
   '  if (AsciiStrCmp (CommandLine, "-v keepsyms=1 debug=0x14e cpus=1") != 0 &&\n      AsciiStrCmp (CommandLine, "-v keepsyms=1 debug=0x14e cpus=1 cas-validate=1") != 0) { return EFI_INVALID_PARAMETER; }\n  if (!CasTraceStart ()) { return EFI_UNSUPPORTED; }')
  s=parent.replace_once(s,'#if CAS_HANDOFF_DRY_RUN',
   '  if (AsciiStrCmp (CommandLine, "-v keepsyms=1 debug=0x14e cpus=1 cas-validate=1") == 0) {\n    Print (L"CAS CPU0: full fresh guard/copy passed; validation-only request returns before EBS\\n");\n    Status = EFI_SUCCESS;\n    goto Fail;\n  }\n#if CAS_HANDOFF_DRY_RUN')
- s=parent.replace_once(s,'  if (!CasTraceStart ()) { return EFI_UNSUPPORTED; }','  mCpuRequireRecovered = AsciiStrCmp (CommandLine, "-v keepsyms=1 debug=0x14e cpus=1") == 0;\n  if (!CasTraceStart ()) {\n    Print (L"CAS CPU0: matching prior-boot validation/control region required; previous record retained\\n");\n    return EFI_NOT_READY;\n  }')
+ s=parent.replace_once(s,'  if (!CasTraceStart ()) { return EFI_UNSUPPORTED; }','  mCpuRequireRecovered = CAS_CPU0_REQUIRE_RECOVERED && AsciiStrCmp (CommandLine, "-v keepsyms=1 debug=0x14e cpus=1") == 0;\n  if (!CasTraceStart ()) {\n    Print (L"CAS CPU0: matching prior-boot validation/control region required; previous record retained\\n");\n    return EFI_NOT_READY;\n  }')
  s=s.replace('CAS X06:','CAS CPU0:');p.write_text(s)
  # Mu can legitimately change a code allocation from XP to executable. Neither
  # RO/RP nor mixed/changed permissions are accepted; the held map must be WB.
@@ -80,7 +82,7 @@ STATIC BOOLEAN CasCpu0PreviousValidation(UINT64 CurrentBoot) {
 }
 """
  s=parent.replace_once(s,'STATIC BOOLEAN mTraceReady;',recovery+'\nSTATIC BOOLEAN mTraceReady;')
- s=parent.replace_once(s,'  ZeroMem(&mTrace,sizeof(mTrace));','  mCpuRecoveredValidation=CasCpu0PreviousValidation(Boot[13]);\n  if(mCpuRequireRecovered && !mCpuRecoveredValidation)return FALSE;\n  ZeroMem(&mTrace,sizeof(mTrace));')
+ s=parent.replace_once(s,'  // Only a new loader request clears the extension;', '  mCpuRecoveredValidation=CasCpu0PreviousValidation(Boot[13]);\n  if(mCpuRequireRecovered && !mCpuRecoveredValidation)return FALSE;\n  // Only a new loader request clears the extension;')
  p.write_text(s)
  p=driver/'DarwinBoot.inf';s=p.read_text().replace('  DarwinBoot.c\n','  DarwinBoot.c\n  Guard.c\n  Guard.h\n  DiagCore.c\n  SmemCore.c\n').replace('  MdePkg/MdePkg.dec','  MdePkg/MdePkg.dec\n  EmbeddedPkg/EmbeddedPkg.dec')
  s=s.replace('[LibraryClasses]','[LibraryClasses]\n  CacheMaintenanceLib\n  FdtLib\n  DxeServicesTableLib\n  UefiRuntimeServicesTableLib')
@@ -90,7 +92,7 @@ STATIC BOOLEAN CasCpu0PreviousValidation(UINT64 CurrentBoot) {
  p.write_text(s)
  p=pkg/'TraceView/TraceView.c';s=p.read_text();s=parent.replace_once(s,'#include "TraceAbi.h"','#include "TraceAbi.h"\n#include "CandidateTag.h"');anchor='  Print(L"Status %lx  window %lx\\r\\nPA %lx  args %lx\\r\\nentry %lx\\r\\n",A.Status,A.Window,A.Address,A.Args,A.Entry);'
  s=parent.replace_once(s,anchor,anchor+'\n  if(A.Reserved[3]==1)Print(L"Held probe: boot %lx  PA %lx  bytes %lx\\r\\n",A.Reserved[0],A.Reserved[1],A.Reserved[2]);');s=parent.replace_once(s,'  Print(L"Status %lx  window %lx', '  Print(L"Candidate %lx expected %lx: %s\\r\\n",A.Reserved[4],(UINT64)CAS_CPU0_CANDIDATE_TAG,A.Reserved[4]==CAS_CPU0_CANDIDATE_TAG ? L"MATCH" : L"different candidate");\n  Print(L"Status %lx  window %lx');s=parent.replace_once(s,'  Print(L"Pre-EBS EL', '  Print(L"MPIDR %lx  affinity %lx (expected 0)\\r\\n",A.Reserved[5],A.Reserved[6]);\n  Print(L"Pre-EBS EL');p.write_text(s)
- manifest={'profile':'cas-cpu0-'+MODE,'parent_x06':original,'mode':MODE,'candidate_tag':hex(tag),'source_heads':source_heads,'MPIDR_affinity_0_required':True,'private_adt_sha256':adt_meta['adt_sha256'],'recovered_validation_required':True,'kernel_execution_call_compiled':MODE=='execute','fresh_exact_range_probe_required':True,'fact_sources':staged,'legacy_diagnostic_probe_changed':False,
+ manifest={'profile':'cas-cpu0-'+MODE,'parent_x06':original,'mode':MODE,'candidate_tag':hex(tag),'source_heads':source_heads,'MPIDR_affinity_0_required':True,'private_adt_sha256':adt_meta['adt_sha256'],'recovered_validation_required':require_recovered,'boot_gate':'fresh current facts and exact held readback every Boot; prior trace never substitutes','kernel_execution_call_compiled':MODE=='execute','fresh_exact_range_probe_required':True,'fact_sources':staged,'legacy_diagnostic_probe_changed':False,
   'files':{str(p.relative_to(out)):parent.digest(p.read_bytes()) for p in out.rglob('*') if p.is_file()}}
  (out/'overlay.json').write_text(json.dumps(manifest,indent=2)+'\n');return manifest
 def main():

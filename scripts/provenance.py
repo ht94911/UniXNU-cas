@@ -43,3 +43,36 @@ def check_ref(ref):
     if actual != ref:
         raise ValueError("build input/product changed: " + ref["path"])
 
+
+
+def firmware_reuse(previous, current, device):
+    """Reuse accepted bytes only when every actual firmware input is unchanged.
+
+    The device checkout contains separate loader/kernel tools. Their commits may
+    advance without recompiling the firmware. Unknown changed paths fail closed.
+    """
+    require_clean(previous)
+    require_clean(current)
+    for name in ('uefi-cas', 'UniXNU'):
+        if previous[name] != current[name]:
+            raise ValueError('Firmware reuse source changed: ' + name)
+    before, after = previous['UniXNU-cas'], current['UniXNU-cas']
+    allowed = {
+        'package/CasHandoff/Trace.h', 'package/CasHandoff/TraceAbi.h',
+        'package/CasHandoff/TraceView.c', 'config/cpu0-contract.json',
+        'scripts/cas_cpu0.py', 'scripts/cpu0_payload.py',
+        'scripts/package_cpu0.py', 'scripts/check_cpu0_host.py',
+        'scripts/check_trace_view_host.py', 'scripts/provenance.py',
+        'tests/cpu0_host.c',
+    }
+    changed = subprocess.check_output(['git', '-C', str(device), 'diff', '--name-only',
+                                       before['commit'], after['commit'], '--']).decode().splitlines()
+    unknown = [p for p in changed if p not in allowed and not p.startswith('ci/xnu/') and
+               p != '.github/workflows/xnu-source.yml' and not p.startswith('docs/')]
+    if unknown:
+        raise ValueError('Unclassified firmware reuse changes: ' + ', '.join(unknown))
+    return {'result': 'pass', 'firmware_rebuilt': False,
+            'uefi_and_framework_sources_identical': True,
+            'previous_device_commit': before['commit'], 'current_device_commit': after['commit'],
+            'changed_paths_outside_firmware_inputs': changed,
+            'reason': 'Only separate kernel/loader/build-evidence tools changed; firmware, shim, menu overlay, DTB and memory inputs unchanged.'}

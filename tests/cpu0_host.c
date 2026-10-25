@@ -150,12 +150,12 @@ int main(int Argc,char **Argv){
  SeedPriorValidation();
  {int Jump=setjmp(ExitPoint);if(Jump==0)Status=Boot(NULL,&Request);else Status=Jump==1?EFI_SUCCESS:EFI_ABORTED;}
  {FILE *F=fopen(Argv[4],"wb");if(!F || fwrite((VOID *)(UINTN)CAS_TRACE_BASE,1,256,F)!=256)abort();fclose(F);}
- if((Mode==0 || Mode==6 || Mode==9) && (Status!=EFI_SUCCESS || BranchCalls!=1 || Verified!=1 || !HeldPassed || FreeCount!=0 || !Allocated))abort();
+ if((Mode==0 || Mode==6 || Mode==9 || (!CAS_CPU0_REQUIRE_RECOVERED && Mode>=16 && Mode!=28)) && (Status!=EFI_SUCCESS || BranchCalls!=1 || Verified!=1 || !HeldPassed || FreeCount!=0 || !Allocated))abort();
  if((Mode==10 || Mode==11 || Mode==12) && (DeadCalls!=1 || BranchCalls || !Allocated))abort();
- if(Mode!=0 && Mode!=6 && Mode!=9 && Mode!=10 && Mode!=11 && Mode!=12 && Mode!=14 && (!EFI_ERROR(Status) || EbsCalls || BranchCalls || Allocated || PoolCount))abort();
+ if(Mode!=0 && Mode!=6 && Mode!=9 && Mode!=10 && Mode!=11 && Mode!=12 && Mode!=14 && (CAS_CPU0_REQUIRE_RECOVERED || Mode<16 || Mode==28) && (!EFI_ERROR(Status) || EbsCalls || BranchCalls || Allocated || PoolCount))abort();
  if(Mode==14 && (Status!=EFI_SUCCESS || EbsCalls || BranchCalls || !HeldPassed || FreeCount!=1 || Verified!=1 || Allocated || PoolCount || mTrace.Stage!=5))abort();
  if(Mode==15 && (PreflightCalls || AllocCount || EbsCalls || BranchCalls))abort();
- if(Mode>=16 && Mode!=28 && (PreflightCalls || HeldCalls || AllocCount || EbsCalls || BranchCalls || memcmp((VOID *)(UINTN)CAS_TRACE_BASE,&BeforeRequest,256)))abort();
+ if(CAS_CPU0_REQUIRE_RECOVERED && Mode>=16 && Mode!=28 && (PreflightCalls || HeldCalls || AllocCount || EbsCalls || BranchCalls || memcmp((VOID *)(UINTN)CAS_TRACE_BASE,&BeforeRequest,256)))abort();
  if(Mode==9 && EbsCalls!=2)abort();if(Mode==11 && EbsCalls!=3)abort();
  printf("{\"mode\":%d,\"status\":\"0x%lx\",\"allocations\":%d,\"releases_before_EBS\":%d,\"layout_verified\":%d,\"ebs_calls\":%d,\"handoff_stub_calls\":%d,\"dead_loop_stub_calls\":%d,\"fresh_preflight_calls\":%d,\"held_probe_calls\":%d,\"held_passed\":%d,\"retained_pool_objects\":%d,\"XNU_executed\":false}\n",Mode,Status,AllocCount,FreeCount,Verified,EbsCalls,BranchCalls,DeadCalls,PreflightCalls,HeldCalls,HeldPassed,PoolCount);
  if(Mode==28 && (PreflightCalls || AllocCount || EbsCalls || BranchCalls || mTrace.Reserved[6]!=1))abort();

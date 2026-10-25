@@ -1,13 +1,14 @@
 {
   "schema_version": 1,
-  "profile": "cas-cpu0-003",
+  "profile": "cas-cpu0-004-vm-observe",
   "cpu_count": 1,
   "kernel": {
-    "sha256": "6c4993dea6d94544bc6f0c89bd72c6d292401ce2e19caaf65725749434c0c648",
-    "bytes": 21392120,
-    "symbols_sha256": "2d70970c94377380755741ca9b889575511db7c69401745355775b0ad432173e",
-    "source_commit": "ddee02fe532fb5c9f989ea945c27f7d424451af0",
-    "source_run": 40192605485
+    "sha256": "b5e428922606300c5f81b49884146f2a74939995d29bc148d6319c5a1d73a83e",
+    "bytes": 21392192,
+    "symbols_sha256": "469f052712bca18cc12433b3d889d70ce5a4d2aac3be619fa91367ba38f36cd2",
+    "source_commit": "9dc42efc82bd9e1178f7e7fecc7a192099ca83e9",
+    "source_run": 40217312445,
+    "vm_observe_profile_sha256": "c964127c9713b6663cb8786ed0a41b7628e339b8c5f19086e405c228f33f4f91"
   },
   "menu_sha256": "9b642f2e12dfcc5d9b7d1e7b8b4c4e01277af66c8ef1bd11336182b2ec8ddd8d",
   "owned": {
@@ -21,7 +22,7 @@
   },
   "trace": {
     "base": "0x9f960000",
-    "bytes": 256,
+    "bytes": 384,
     "raw_stage_offset": 240,
     "inverse_offset": 248,
     "guard_pass_fields": "Reserved[0..3] = bootstamp, PA, bytes, 1",
@@ -37,7 +38,10 @@
     "retained_diag_slot": [
       "0x30000",
       "0x40000"
-    ]
+    ],
+    "exception_extension_offset": 256,
+    "exception_extension_bytes": 128,
+    "candidate_source_offset": 152
   },
   "command_lines": {
     "execute": "-v keepsyms=1 debug=0x14e cpus=1",
@@ -55,5 +59,7 @@
   "default_menu": "read-only trace",
   "automatic_boot": false,
   "GitHub_mutations_allowed": false,
-  "candidate_tag_binding": "profile,mode,kernel,private ADT,all three source commits"
+  "candidate_tag_binding": "profile,mode,kernel,private ADT,all three source commits",
+  "requires_recovered_validation": false,
+  "recovery_policy_reason": "003 already proved cross-Android log retention. Each Boot still performs fresh FDT/SMEM/UEFI facts, CPU affinity, exact AllocateAddress256MiB, two full patterns/readback/cache/clear and candidate-bound handoff. A separate prior-boot Validate adds no new memory ownership."
 }

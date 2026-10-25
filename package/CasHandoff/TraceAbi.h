@@ -12,4 +12,12 @@ typedef struct {
 } CAS_HANDOFF_TRACE;
 STATIC_ASSERT (sizeof (CAS_HANDOFF_TRACE) == 256, "trace ABI");
 STATIC_ASSERT (OFFSET_OF (CAS_HANDOFF_TRACE, RawStage) == 240, "raw marker ABI");
+#define CAS_VM_EXCEPTION_MAGIC 0x315845534143ULL
+#define CAS_VM_EXCEPTION_OFFSET 256
+typedef struct {
+  UINT64 Magic, BootStamp, Candidate, Vector, Esr, Far, Elr, Spsr;
+  UINT64 Sctlr, Tcr, Ttbr0, Ttbr1, Stack, PreviousStage, PayloadXor, MagicInverse;
+} CAS_VM_EXCEPTION;
+STATIC_ASSERT (sizeof (CAS_VM_EXCEPTION) == 128, "VM exception extension ABI");
+STATIC_ASSERT (OFFSET_OF (CAS_VM_EXCEPTION, PayloadXor) == 112, "exception checksum ABI");
 #endif

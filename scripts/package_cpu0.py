@@ -5,7 +5,7 @@ import argparse,hashlib,json,os,shutil,stat,subprocess,sys,tomllib
 from pathlib import Path
 from cpu0_payload import build as build_payload
 from check_boot import inspect
-from provenance import source_state,require_clean,check_ref
+from provenance import source_state,require_clean,check_ref,firmware_reuse
 from cas_adt import private_directory,private_write
 ROOT=Path(__file__).resolve().parents[1]
 def sha(p):return hashlib.sha256(p.read_bytes()).hexdigest()
@@ -29,7 +29,11 @@ def main():
  if not shim_check.get('diagnostics') or 'CasBootClearVolatileLog' not in shim_check.get('symbols',{}):raise ValueError('candidate requires actual retained-log clear helper')
  for path in [base/'source-manifest.json',base/'boot.img']:
   expected=base_run['source_manifest'] if path.name=='source-manifest.json' else base_run['image'];check_ref(expected)
- if json.loads(Path(firmware['source_state']['path']).read_text())!=sources:raise ValueError('current sources differ from base firmware build')
+ previous_firmware_sources=json.loads(Path(firmware['source_state']['path']).read_text())
+ check_ref(firmware['source_state']);check_ref(firmware['fd'])
+ if sha(base/'SILICIUM_UEFI.fd')!=firmware['fd']['sha256']:raise ValueError('base FD differs from retained firmware build')
+ reuse=firmware_reuse(previous_firmware_sources,sources,ROOT)
+ private_write(a.out/'firmware-reuse.json',(json.dumps(reuse,indent=2)+'\n').encode())
  loader_sources=json.loads((a.loader_build/'intent.json').read_text())['sources']
  for repo in [ROOT,uefi,uefi.parent/'UniXNU']:
   state=loader_sources[str(repo)];head=subprocess.check_output(['git','rev-parse','HEAD'],cwd=repo,text=True).strip()
@@ -68,9 +72,9 @@ def main():
  archive=a.out/'source-cpu0.tar'
  with archive.open('xb') as stream:subprocess.run(['git','archive','--format=tar','HEAD'],cwd=ROOT,stdout=stream,check=True)
  manifest={'schema_version':1,'board':'cas','build_id':contract['profile'],'profile':'CPU0 RAM boot; no UFS/Data/touch/GPU','result':'pass','repositories':sources,'source_date_epoch':'1792643741',
-  'base_package_manifest':ref(base/'source-manifest.json'),'firmware_build':firmware,'loader_build':loader,'overlay':overlay,'contract':contract,
+  'base_package_manifest':ref(base/'source-manifest.json'),'firmware_reuse':reuse,'firmware_build':firmware,'loader_build':loader,'overlay':overlay,'contract':contract,
   'ADT_private_audit':audit,'payload':{'files':files,**payload_audit},'image_checks':check,'commands':commands,'image':ref(image),
-  'private_candidate':True,'runtime_success':False,'requires_validation_return_then_distinct_boot':True,'candidate_tag':overlay['candidate_tag'],
+  'private_candidate':True,'runtime_success':False,'requires_validation_return_then_distinct_boot':contract.get('requires_recovered_validation',True),'candidate_tag':overlay['candidate_tag'],
   'configuration_inputs':[ref(ROOT/'config/cpu0.toml'),ref(ROOT/'config/cpu0-contract.json'),ref(uefi/'Resources/Configs/cas.toml'),ref(ROOT/'config/memory-map.json')],
   'outputs':[ref(p) for p in sorted(a.out.rglob('*')) if p.is_file()]}
  if source_state(uefi,ROOT)!=sources:raise ValueError('sources changed during packaging')

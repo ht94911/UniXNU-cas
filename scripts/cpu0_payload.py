@@ -22,7 +22,7 @@ def build(config,diag,driver,kernel,adt,viewer,*,adt_report,loader_report,overla
  if loader_report.get('result')!='pass' or not loader_report.get('sources_unchanged') or loader_report['efi']['sha256']!=sha(driver):raise ValueError('loader build identity mismatch')
  if overlay.get('profile')!='cas-cpu0-execute' or not overlay.get('fresh_exact_range_probe_required'):raise ValueError('CPU0 guard profile missing')
  expected_tag=candidate_tag(contract,'execute',adt_report['adt_sha256'],overlay['source_heads'])
- if not overlay.get('MPIDR_affinity_0_required') or not overlay.get('recovered_validation_required') or overlay.get('candidate_tag')!=hex(expected_tag) or overlay.get('private_adt_sha256')!=adt_report['adt_sha256']:raise ValueError('candidate recovery tag mismatch')
+ if not overlay.get('MPIDR_affinity_0_required') or overlay.get('recovered_validation_required') != contract.get('requires_recovered_validation',True) or overlay.get('candidate_tag')!=hex(expected_tag) or overlay.get('private_adt_sha256')!=adt_report['adt_sha256']:raise ValueError('candidate recovery tag mismatch')
  if adt_report.get('mode')!='private' or adt_report.get('cpu_profile')!='cpu0' or adt_report.get('entropy_bytes')!=64 or not adt_report.get('roundtrip_verified') or adt_report['adt_sha256']!=sha(adt) or adt_report['source_audit']['result']!='pass':raise ValueError('private CPU0 ADT provenance mismatch')
  tree=decode(adt);audit=audit_tree(tree,load_json(ROOT/'config/cas-adt-facts.json'),load_schema(ROOT/'config/cas-adt-schema.json'),cpu_profile='cpu0',mode='private')
  if audit['result']!='pass' or tree.encode()!=adt:raise ValueError('CPU0 ADT audit failed')
