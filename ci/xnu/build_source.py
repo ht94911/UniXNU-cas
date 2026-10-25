@@ -149,6 +149,51 @@ def stage_entry_trace_wrapper(tree, profile):
             'late_patch_sha256': digest(destination),
             'semantics': 'Reverse only the exact applied trace before the inherited baseline checks; reapply it last.'}
 
+def apply_vm_observe(work, log):
+    """Incremental diagnostic-only profile, after the fixed entry patch."""
+    profile = json.loads((HERE / 'vm-observe.json').read_text())
+    patch = HERE / profile['patch']
+    if git(work, 'rev-parse', 'HEAD').decode().strip() != profile['xnu_commit']:
+        raise ValueError('VM observation XNU commit mismatch')
+    if digest(patch) != profile['patch_sha256']:
+        raise ValueError('VM observation patch hash mismatch')
+    for name, identity in profile['files'].items():
+        if digest(work / name) != identity['before_sha256']:
+            raise ValueError('VM observation source hash mismatch: ' + name)
+    for flags in (['--check'], []):
+        subprocess.run(['git', '-C', work, 'apply', *flags, patch], check=True,
+                       stdout=log, stderr=subprocess.STDOUT, timeout=30)
+    verify_vm_observe(work, profile)
+    return profile
+
+
+def verify_vm_observe(work, profile):
+    for name, identity in profile['files'].items():
+        if digest(work / name) != identity['after_sha256']:
+            raise ValueError('VM observation result hash mismatch: ' + name)
+
+
+def stage_vm_observe_wrapper(tree, profile):
+    """Reverse VM before entry, then reapply in the same sorted order."""
+    wrapper = tree / 'scripts/build-xnu-4k-baseline.sh'
+    before = digest(wrapper)
+    if before != profile['build_wrapper_before_sha256']:
+        raise ValueError('VM observation build wrapper hash mismatch')
+    destination = tree / 'patches/xnu/zzzzz-cas-vm-observe.patch'
+    if destination.exists():
+        raise ValueError('VM observation staging patch already exists')
+    text = wrapper.read_text()
+    context = 'for LATE_PATCH in "$ROOT/patches/xnu/zzzz-cas-entry-trace.patch"'
+    if text.count(context) != 1:
+        raise ValueError('VM observation late-patch context mismatch')
+    shutil.copyfile(HERE / profile['patch'], destination)
+    wrapper.write_text(text.replace(context, 'for LATE_PATCH in "$ROOT/patches/xnu/zzzzz-cas-vm-observe.patch" "$ROOT/patches/xnu/zzzz-cas-entry-trace.patch"', 1))
+    return {'source': str(wrapper.relative_to(tree)), 'before_sha256': before,
+            'after_sha256': digest(wrapper), 'late_patch': str(destination.relative_to(tree)),
+            'late_patch_sha256': digest(destination),
+            'semantics': 'Reverse exact VM first, entry second; preserve baseline checks and reapply entry then VM last.'}
+
+
 def prepare_headers(tree, xnu, spec):
     """Restore/hash all fixed header blobs, including files already present."""
     records = []
@@ -288,7 +333,10 @@ def main():
     parser.add_argument('--prepare-only', action='store_true')
     parser.add_argument('-j', '--jobs', type=int, default=4)
     parser.add_argument('--entry-trace', action='store_true', help='separate fixed cas CPU0 entry markers; no runtime claim')
+    parser.add_argument('--vm-observe', action='store_true', help='CPU0 diagnostic MMU/VM markers and terminal exception record; implies entry trace')
     args = parser.parse_args()
+    if args.vm_observe:
+        args.entry_trace = True
     if args.jobs < 1:
         parser.error('jobs must be positive')
     if not args.prepare_only and platform.system() != 'Darwin':
@@ -388,6 +436,13 @@ def main():
             trace_profile['build_wrapper'] = stage_entry_trace_wrapper(tree, trace_profile)
             (exports / 'entry-trace.json').write_text(json.dumps(trace_profile, indent=2) + '\n')
             report['entry_trace'] = trace_profile
+        if args.vm_observe:
+            with (logs / 'vm-observe.log').open('w') as log:
+                vm_profile = apply_vm_observe(work, log)
+            vm_profile['build_wrapper'] = stage_vm_observe_wrapper(tree, vm_profile)
+            (exports / 'vm-observe.json').write_text(json.dumps(vm_profile, indent=2) + '\n')
+            report['vm_observe'] = vm_profile
+
 
         (exports / 'source-inputs.json').write_text(json.dumps(source_inputs, indent=2) + '\n')
         shutil.copyfile(HERE / 'build_arm_driver.py', tree / 'scripts/build-cas-arm-driver.py')
@@ -408,7 +463,9 @@ def main():
                      'iokit/DEVELOPMENT/IOPlatformExpert.cpo.json', 'link.filelist'):
             if not (tree / OBJ / path).is_file():
                 raise ValueError('Bootstrap did not create required compile records: ' + path)
-        if args.entry_trace and digest(work / trace_profile['source']) != trace_profile['after_sha256']:
+        if args.vm_observe:
+            verify_vm_observe(work, vm_profile)
+        elif args.entry_trace and digest(work / trace_profile['source']) != trace_profile['after_sha256']:
             raise ValueError('Entry trace source changed during bootstrap')
         page_size = audit_page_size(tree, logs)
         (exports / 'page-size.json').write_text(json.dumps(page_size, indent=2) + '\n')
@@ -420,6 +477,8 @@ def main():
         for component in (selected_platform, 'ArmCpu'):
             run(component, [sys.executable, 'scripts/build-cas-arm-driver.py', component])
         run('kernel', ['bash', 'scripts/build-xnu-4k-baseline.sh'])
+        if args.vm_observe:
+            verify_vm_observe(work, vm_profile)
         kernel = tree / OBJ / 'mach.development.bcm2837.unstripped.noctf'
         report['kernel'] = kernel_identity(kernel)
         shutil.copyfile(kernel, exports / 'kernel.unstripped.macho')

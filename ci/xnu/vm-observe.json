@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "profile": "cas-vm-observe-001",
+  "xnu_commit": "d8b80295118ef25ac3a784134bcf95cd8e88109f",
+  "requires_existing_entry_trace": true,
+  "patch": "patches/cas-vm-observe.patch",
+  "patch_sha256": "8caedf0a780a84be31928d94ddf76c5877db2c98fbe55bac98ce186c10d56bbc",
+  "files": {
+    "osfmk/arm64/start.s": {
+      "before_sha256": "4526e6da9983571b3ca533f9e4bf99b119603c71a006a7dfcbca3bade6d8f06c",
+      "after_sha256": "d79e8e4f70e6157a9602d34152030f5aff1f7bcba2eaba2a4b2f3ee4462a6e3c"
+    },
+    "osfmk/arm/arm_init.c": {
+      "before_sha256": "02b768806f3b56e2db6ae57b8e6e9ad6783a7686d1ebc50ec170f543be369a46",
+      "after_sha256": "c684c967e64bae9ebb9fadc97903a6042c553610760202e6659c2eaa33410741"
+    },
+    "osfmk/arm64/arm_vm_init.c": {
+      "before_sha256": "372d0449a312dc4391aa1e6b5adee35dd2a87b4c7beb0000954a3d84808493e3",
+      "after_sha256": "5e0457c0e753b59e60f3c505a5465d630938986f6d64139e39c63a6214922737"
+    }
+  },
+  "phases": {
+    "0x42": "OSLAR completed",
+    "0x43": "low vectors/boot_args ready",
+    "0x44": "bootstrap maps/mailbox installed",
+    "0x45": "before MMU enable",
+    "0x46": "MMU on, diagnostic VBAR KVA installed",
+    "0x47": "before arm_init",
+    "0x50": "arm_init after pre-sign/image rebasing",
+    "0x51": "early PE(FALSE) returned",
+    "0x52": "before arm_vm_init",
+    "0x56": "VM tables prepared, before TTBR switch",
+    "0x53": "arm_vm_init returned, permanent mailbox IO mapping",
+    "0x54": "early PE(TRUE) returned",
+    "0x55": "diagnostic stop before clocks/IOKit/storage",
+    "0xe0": "terminal early exception, inspect extension"
+  },
+  "slot": "0x9f960000",
+  "page_bytes": 4096,
+  "exception_extension": {
+    "offset": 256,
+    "bytes": 128,
+    "magic": "0x315845534143",
+    "boot_offset": 264,
+    "candidate_offset": 272,
+    "vector_offset": 280,
+    "ESR_offset": 288,
+    "FAR_offset": 296,
+    "ELR_offset": 304,
+    "SPSR_offset": 312,
+    "SCTLR_offset": 320,
+    "TCR_offset": 328,
+    "TTBR0_offset": 336,
+    "TTBR1_offset": 344,
+    "SP_offset": 352,
+    "previous_phase_offset": 360,
+    "payload_xor_offset": 368,
+    "magic_inverse_offset": 376,
+    "commit": "clear magic, write payload/XOR/inverse, DSB, magic last, DSB; preserve v1 CRC"
+  },
+  "mapping": {
+    "block": "0x9f800000",
+    "bytes": 2097152,
+    "L1_index": 2,
+    "L2_offset": "0x7e0",
+    "pool_pages_used": 5,
+    "NX": true,
+    "cache": "device nGnRnE",
+    "overlap": "refuse occupied TTBR0 L1[2]"
+  },
+  "limits": [
+    "Diagnostic CPU0 only; no secondary or normal exception dispatch",
+    "PE(FALSE/TRUE) are early PE, not ArmDTPlatform IOKit configure; cannot alone complete X09 platform_init",
+    "Exception capture deliberately disabled from final VM TTBR switch until permanent IO mapping; a last0x56 does not identify the fault",
+    "No panic-string capture; a panic may stop with only the previous phase",
+    "Runtime not yet executed; compile success does not establish VM success"
+  ],
+  "reference": "reAAAq/UniXNU-umi@3eb72578597d2ca16471b172d45eddc096a34a04/patches/umi-xnu/early-entry-trace.patch",
+  "license": "Apple notices retained; local additions BSD-2-Clause-Patent",
+  "build_wrapper_before_sha256": "7f2640f9b1bc7252bf5e43c5d086e9d4b079dfb7105eb0f3f227c06d9baa066d"
+}

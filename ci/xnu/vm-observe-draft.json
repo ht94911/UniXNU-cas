@@ -81,5 +81,6 @@
       "tail_not_in_initial_2MiB_bootstrap_map_bytes": 16384,
       "status": "Static mapping arithmetic; not a proven device fault. No fix applied without observing the actual later stage."
     }
-  }
+  },
+  "superseded_by": "vm-observe.json"
 }
