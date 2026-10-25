@@ -27,3 +27,9 @@ boot_args、释放、失败路径和日志 CRC。仅替换寄存器读取与主�
 参考 umi@3eb72578597d2ca16471b172d45eddc096a34a04 的寄存器/阶段分离设计，
 不复制其 ramoops 地址和页表。新增代码遵循 BSD-2-Clause-Patent，Apple patch
 保留 APSL 上下文。源码、构建、模拟服务和真实硬件证据分别记录。
+
+菜单新增 CasTraceView.efi：两次读取稳定记录，检查CRC/ABI及raw阶段/反码，显示本次
+与记录boot stamp，返回时不改变日志。不同启动的记录单独标识。主机实际C查看器用例
+覆盖有效、坏CRC、反码撕裂、零阶段、未知阶段，并逐例确认整槽未改。最终host配置
+绑定新编译插桩内核SHA、dry-run驱动SHA和菜单原字节；内核CI提交与后续loader/viewer
+提交分别记录，两者使用相同的256字节版本ABI。

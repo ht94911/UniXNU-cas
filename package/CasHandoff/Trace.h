@@ -2,17 +2,7 @@
 // Independent X06 RAM mailbox. Never evidence that the kernel has executed.
 #ifndef CAS_HANDOFF_TRACE_H
 #define CAS_HANDOFF_TRACE_H
-#define CAS_TRACE_BASE 0x9f960000ULL
-#define CAS_TRACE_MAGIC 0x363048534143ULL
-typedef struct {
-  UINT64 Magic, Version, Bytes, BootStamp, Sequence, Stage, Status;
-  UINT64 Address, Args, Entry, Window, CurrentEl, Sctlr, Tcr, Stack;
-  UINT64 Reserved[14];
-  UINT32 Crc32, CrcPadding;
-  UINT64 RawStage, RawStageInverse;
-} CAS_HANDOFF_TRACE;
-STATIC_ASSERT (sizeof (CAS_HANDOFF_TRACE) == 256, "trace ABI");
-STATIC_ASSERT (OFFSET_OF (CAS_HANDOFF_TRACE, RawStage) == 240, "raw marker ABI");
+#include "TraceAbi.h"
 STATIC BOOLEAN mTraceReady;
 STATIC CAS_HANDOFF_TRACE mTrace;
 STATIC VOID CasTrace (UINT64 Stage, EFI_STATUS Status, UINT64 Address,

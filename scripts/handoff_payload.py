@@ -7,7 +7,8 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
 TOTAL=65536;FAT_SECTORS=128;ROOT_SECTOR=257;DATA_SECTOR=289;CLUSTER=1024
 DATE=((2026-1980)<<9)|(10<<5)|25
-KERNEL_SHA='2cb7292b7510141f199caee3639743c883200e723d58f5bf749c5276a5f47fb0'
+KERNEL_SHA='6c4993dea6d94544bc6f0c89bd72c6d292401ce2e19caaf65725749434c0c648'
+DRIVER_SHA='ff6712315585ee940ba08ac049c396af945cf554927203f6f02d3c27b17db8d2'
 FIXTURE_SHA='b0d09551ce2e8098953fa6679f52c63777f71b23812ce5aea21ca9186c65b9a4'
 def sha(data):return hashlib.sha256(data).hexdigest()
 def pe(raw,subsystem):
@@ -31,11 +32,13 @@ def lfn(name,short):
   for offset,value in zip([1,3,5,7,9,14,16,18,20,22,24,28,30],units[index*13:index*13+13]):struct.pack_into('<H',item,offset,value)
   result+=item
  return result
-def build(config,diag,driver,kernel,adt):
+def build(config,diag,driver,kernel,adt,viewer):
  parsed=tomllib.loads(config.decode())
  expected=tomllib.loads((ROOT/'config/handoff-dryrun.toml').read_text())
+ if sha(config)!='9fff86baae6752c8905af6b6f59aa3e264db92ee4342ce193baa45b5f90ee607':raise ValueError('dry-run menu identity mismatch')
  if parsed!=expected:raise ValueError('fixed dry-run menu required')
- pe(diag,10);pe(driver,11)
+ pe(diag,10);pe(driver,11);pe(viewer,10)
+ if sha(driver)!=DRIVER_SHA:raise ValueError('fixed dry-run driver identity mismatch')
  if sha(kernel)!=KERNEL_SHA or sha(adt)!=FIXTURE_SHA:raise ValueError('X06 host kernel/fixture identity mismatch')
  image=bytearray(TOTAL*512);image[:3]=b'\xeb\x3c\x90';image[3:11]=b'CASX0632'
  struct.pack_into('<HBHBHHBHHHII',image,11,512,2,1,2,512,0,0xf8,FAT_SECTORS,32,64,0,TOTAL)
@@ -53,6 +56,7 @@ def build(config,diag,driver,kernel,adt):
  content=[('EFI/UniXNU/unixnu.toml','UNIXNU','unixnu.toml',b'UNIXNU~1TOM',config),
           ('EFI/Tools/CasDiag.efi','TOOLS','CasDiag.efi',b'CASDIAG EFI',diag),
           ('EFI/Drivers/DarwinBoot.efi','DRIVERS','DarwinBoot.efi',b'DARWIN~1EFI',driver),
+          ('EFI/Tools/CasTraceView.efi','TOOLS','CasTraceView.efi',b'CASTRA~1EFI',viewer),
           ('XNU/kernel.macho','XNU','kernel.macho',b'KERNEL~1MAC',kernel),
           ('XNU/kernel.macho.adt','XNU','kernel.macho.adt',b'KERNEL~1ADT',adt)]
  children={name:[] for name in dirs};refs={}
@@ -69,9 +73,9 @@ def build(config,diag,driver,kernel,adt):
  return bytes(image),refs
 def main():
  ap=argparse.ArgumentParser(description=__doc__)
- for name in ('diag','driver','kernel','adt','out'):ap.add_argument('--'+name,type=Path,required=True)
+ for name in ('diag','driver','kernel','adt','viewer','out'):ap.add_argument('--'+name,type=Path,required=True)
  a=ap.parse_args();a.out.mkdir(parents=True,exist_ok=False)
- data,files=build((ROOT/'config/handoff-dryrun.toml').read_bytes(),a.diag.read_bytes(),a.driver.read_bytes(),a.kernel.read_bytes(),a.adt.read_bytes())
+ data,files=build((ROOT/'config/handoff-dryrun.toml').read_bytes(),a.diag.read_bytes(),a.driver.read_bytes(),a.kernel.read_bytes(),a.adt.read_bytes(),a.viewer.read_bytes())
  (a.out/'payload-fat.img').write_bytes(data)
  (a.out/'manifest.json').write_text(json.dumps({'profile':'cas-x06-host-fixture','fat_bytes':len(data),'fat_sha256':sha(data),'files':files,
   'boot_ready':False,'kernel_executed':False,'host_fixture_contains_entropy':False,'phone_boot_forbidden':True,

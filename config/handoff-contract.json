@@ -3,8 +3,8 @@
   "profile": "cas-x06-host-fixture",
   "phone_boot_allowed": false,
   "kernel": {
-    "source_build": "X-02 run005",
-    "sha256": "2cb7292b7510141f199caee3639743c883200e723d58f5bf749c5276a5f47fb0",
+    "source_build": "X06 run40192605485 (macos-15/Xcode16.4), matching encrypted artifacts verified",
+    "sha256": "6c4993dea6d94544bc6f0c89bd72c6d292401ce2e19caaf65725749434c0c648",
     "base_va": "0xfffffff007004000",
     "entry_va": "0xfffffff0073f9488",
     "file_bytes": 21392120,
@@ -67,7 +67,9 @@
       "0x40",
       "0x41"
     ],
-    "kernel_trace_profile": "../ci/xnu/entry-trace.json"
+    "kernel_trace_profile": "../ci/xnu/entry-trace.json",
+    "viewer": "\\EFI\\Tools\\CasTraceView.efi",
+    "viewer_never_modifies_record": true
   },
   "requires_new_candidate": [
     "fresh private entropy ADT",

@@ -17,6 +17,11 @@ title = "Run cas memory and log diagnostics"
 type = "efi"
 path = '\EFI\Tools\CasDiag.efi'
 [[entry]]
+id = "trace"
+title = "Read XNU handoff trace (read only)"
+type = "efi"
+path = '\EFI\Tools\CasTraceView.efi'
+[[entry]]
 id = "xnu-dryrun"
 title = "XNU load and release (no kernel execution)"
 type = "xnu"

@@ -7,6 +7,7 @@ ap=argparse.ArgumentParser(description='Run the full dry-run DarwinBoot with hos
 ap.add_argument('--driver-build',type=Path,required=True)
 ap.add_argument('--evidence-root',type=Path,required=True)
 ap.add_argument('--out',type=Path,required=True)
+ap.add_argument('--kernel',type=Path)
 a=ap.parse_args();DEVICE=Path(__file__).resolve().parents[1]
 BASE=DEVICE/'tests';ROOT=a.evidence_root.resolve();WORK=DEVICE.parent
 BUILD=a.driver_build.resolve();DRIVER=BUILD/'overlay/DarwinBootPkg/Driver'
@@ -28,7 +29,7 @@ assert code==0,(OUT/'compile.log').read_text()
 results=[]
 for mode in range(6):
  tracefile=OUT/f'trace-{mode}.bin'
- p=subprocess.run([str(OUT/'probe'),str(ROOT/'records/xnu-build/x02-001/run-005/decrypted/kernel.unstripped.macho'),str(ROOT/'records/xnu-adt/xa01-001/fixture-cpu0-001/cas.adt'),str(mode),str(tracefile)],capture_output=True,text=True)
+ p=subprocess.run([str(OUT/'probe'),str(a.kernel.resolve() if a.kernel else ROOT/'records/xnu-build/x02-001/run-005/decrypted/kernel.unstripped.macho'),str(ROOT/'records/xnu-adt/xa01-001/fixture-cpu0-001/cas.adt'),str(mode),str(tracefile)],capture_output=True,text=True)
  (OUT/f'run-{mode}.log').write_text(p.stdout+p.stderr)
  assert p.returncode==0,(mode,p.returncode,p.stdout,p.stderr)
  item=json.loads(p.stdout);item['case']=['load-copy-zero-args-adt-release','wrong-CPU','memory-permissions','no-conventional-window','unreserved-log-region','missing-ADT'][mode]

@@ -69,10 +69,15 @@ def prepare(framework,out):
  (driver/'Entry.S').write_text(asm)
 
  trace=ROOT/'package/CasHandoff/Trace.h';shutil.copyfile(trace,driver/'Trace.h')
+ shutil.copyfile(ROOT/'package/CasHandoff/TraceAbi.h',driver/'TraceAbi.h')
+ viewer=pkg/'TraceView';viewer.mkdir()
+ for name in ['TraceView.c','TraceView.inf','TraceAbi.h']:shutil.copyfile(ROOT/'package/CasHandoff'/name,viewer/name)
  inf=(driver/'DarwinBoot.inf').read_text().replace('  DarwinBoot.c\n','  DarwinBoot.c\n  Trace.h\n').replace('  gEfiGraphicsOutputProtocolGuid ## CONSUMES','  gEfiGraphicsOutputProtocolGuid ## CONSUMES\n  gEfiMemoryAttributeProtocolGuid ## CONSUMES')
  (driver/'DarwinBoot.inf').write_text(inf)
  dsc=(source/'DarwinBootPkg/DarwinBoot.dsc').read_text().replace('  Test/Validation.inf','')
  dsc=dsc.replace('OUTPUT_DIRECTORY = build/DarwinBoot','OUTPUT_DIRECTORY = $(CAS_HANDOFF_BUILD_DIR)')
+ dsc=dsc.replace('  DarwinBootPkg/Driver/DarwinBoot.inf','  DarwinBootPkg/Driver/DarwinBoot.inf\n  DarwinBootPkg/TraceView/TraceView.inf')
+ dsc=dsc.replace('  UefiDriverEntryPoint|','  UefiApplicationEntryPoint|MdePkg/Library/UefiApplicationEntryPoint/UefiApplicationEntryPoint.inf\n  UefiDriverEntryPoint|')
  dsc += '\n[BuildOptions]\n  *_CLANGPDB_*_DLINK_FLAGS = /DEBUG:NONE /ALIGN:0x1000\n  *_CLANGPDB_*_CC_FLAGS = -Wno-unused-variable -Wno-unused-but-set-variable -Wno-unused-function\n'
  (pkg/'DarwinBoot.dsc').write_text(dsc)
  shutil.copyfile(source/'LICENSE',out/'LICENSE.DarwinBoot')

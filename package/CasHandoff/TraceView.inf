@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: BSD-2-Clause-Patent
+[Defines]
+ INF_VERSION = 0x0001001B
+ BASE_NAME = CasTraceView
+ FILE_GUID = 8e835867-1f31-4e47-8e4d-d5368a296661
+ MODULE_TYPE = UEFI_APPLICATION
+ ENTRY_POINT = CasTraceViewEntry
+[Sources]
+ TraceView.c
+ TraceAbi.h
+[Packages]
+ MdePkg/MdePkg.dec
+[LibraryClasses]
+ UefiApplicationEntryPoint
+ UefiBootServicesTableLib
+ UefiLib
+ BaseLib
+ BaseMemoryLib
+ MemoryAllocationLib

@@ -40,3 +40,12 @@ Reference: reAAAq/UniXNU-umi@3eb72578597d2ca16471b172d45eddc096a34a04;
 its scratch-register/phase separation informed this integration. Its ramoops
 address and page-table mapping are not copied. Original additions follow the
 repository BSD-2-Clause-Patent license; Apple source patches retain APSL context.
+
+The menu also provides CasTraceView.efi. It reads a stable record twice, checks
+CRC/ABI and the raw stage/inverse pair, displays both record/current boot stamps,
+and returns without changing the mailbox. A different boot remains explicitly
+identified. The host checker exercises valid, bad-CRC, torn, zero and unknown
+raw-stage records and verifies the complete slot is unchanged in every case.
+The final host profile pins the separately rebuilt trace kernel SHA, the dry-run
+driver SHA and exact menu bytes. Kernel source commit and later loader/viewer
+source commit are recorded separately; they retain the same versioned 256-byte ABI.
