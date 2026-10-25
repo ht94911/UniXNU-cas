@@ -264,3 +264,31 @@ and prove an otherwise covered candidate is denied by the full Boot1 exclusion
 or missing UEFI ownership. The six-row fixture contains photo-confirmed critical
 relationships plus explicitly SYNTHETIC unobserved fields/tail; it is not a raw
 capture of the phone's full RAM table.
+
+## Diagnostic 013 guarded high-RAM preparation
+
+012 hardware recorded complete enumeration and a stage1/gate5 refusal before
+allocation. The low128MiB allocator does not contain the high256MiB probe.
+013 adds a separate512MiB WB/XP mapping at0x100000000 in the diagnostic-only
+MemoryMapDiagLib. NoHob plus MEM_RES/Reserv produces neither a resource nor an
+allocation HOB, so mapping alone does not publish RAM to the allocator. The
+normal profile and low heap remain unchanged.
+
+Select **Prepare high RAM ownership (512 MiB)**. This re-enumerates current
+facts and qualifies the entire512MiB against FDT, SMEM and every reservation.
+It requires a full unowned GCD NonExistent interval, no overlapping current
+UEFI descriptor, and verified XP permissions before one AddMemorySpace call.
+The call can publish memory immediately and an error may have partial effects;
+the application verifies actual GCD, permissions and the current memory map.
+Any failure disables further probes in that app invocation and requires
+recovery. Repeating Prepare does not repeat publication. No RAM data is read
+or written by Prepare, and publication is not a memory-test pass.
+
+After successful preparation, return to the menu and select **Probe owned high
+256 MiB (guards first)**. It independently refreshes facts and retains the
+original exact-allocation, two full address/complement patterns, cache, full
+readback, clearing and release checks. Photograph the final HIGH lines, then
+return to UniXNU and Android. Do not add an initial enumeration: Prepare and
+Probe already each save a complete bounded observation in the64KiB log.
+Only one candidate's actual hardware evidence can establish its own success.
+This source update itself does not establish013 hardware success or XNU entry.

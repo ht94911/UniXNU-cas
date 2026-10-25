@@ -115,12 +115,13 @@ class Smem(unittest.TestCase):
   s,i,calls=self.run_reader(mem);self.assertEqual(s,0);self.assertEqual((i.parts[0].available,i.parts[0].category),(0,99))
 
 class Mapping(unittest.TestCase):
- def test_actual_mapping_changes_only_reserved_smem_and_is_repeatable(self):
+ def test_actual_mapping_stages_high_without_hobs_and_keeps_low_heap(self):
   with tempfile.TemporaryDirectory(prefix='cas-diag-map-') as tmp:
    tmp=Path(tmp);(tmp/'Library').mkdir()
    (tmp/'Library/MemoryMapLib.h').write_text("""
 #include <stdint.h>
 #define STATIC static
+#define CONST const
 #define VOID void
 #define TRUE 1
 #define FALSE 0
@@ -138,19 +139,23 @@ typedef struct {char Name[32];uint64_t Address,Length;int HobOption,ResourceType
 int main(void) {
  EFI_MEMORY_REGION_DESCRIPTOR *Map,Before[128],Expected;UINT8 Count,Original;UINTN I,Changes=0;uint64_t Heap=0;
  CasDefaultGetMemoryMap(&Map,&Original);memcpy(Before,Map,Original*sizeof(*Map));
- GetMemoryMap(&Map,&Count);if(Count!=Original)return 1;
- for(I=0;I<Count;++I) {
+ GetMemoryMap(&Map,&Count);if(Count!=Original+1)return 1;
+ for(I=0;I<Original;++I) {
   Expected=Before[I];
   if(Expected.Address==CAS_SMEM_BASE && Expected.Length==CAS_SMEM_SIZE) {Expected.HobOption=AddMem;++Changes;}
   if(memcmp(&Expected,&Map[I],sizeof(Expected)))return 2;
   if(Map[I].MemoryType==Conv)Heap+=Map[I].Length;
  }
  if(Changes!=1 || Heap!=0x8000000)return 3;
- GetMemoryMap(&Map,&Count);if(Count!=Original)return 4;
- mApplied=FALSE;
- for(I=0;I<Count;++I)if(Map[I].Address==CAS_SMEM_BASE) {Map[I].HobOption=HobOnlyNoCacheSetting;Map[I].MemoryType=Conv;}
+ if(Map[Original].Address!=CAS_DIAG_HIGH_BASE || Map[Original].Length!=CAS_DIAG_HIGH_SIZE ||
+    Map[Original].HobOption!=NoHob || Map[Original].ResourceType!=MEM_RES ||
+    Map[Original].MemoryType!=Reserv || Map[Original].ResourceAttribute!=0 ||
+    Map[Original].ArmAttributes!=ARM_MEMORY_REGION_ATTRIBUTE_WRITE_BACK_XP)return 6;
+ GetMemoryMap(&Map,&Count);if(Count!=Original+1)return 4;
+ mApplied=FALSE;CasDefaultGetMemoryMap(&Map,&Count);
+ for(I=0;I<Count;++I)if(Map[I].Address==CAS_SMEM_BASE)Map[I].MemoryType=Conv;
  GetMemoryMap(&Map,&Count);if(Count!=0)return 5;
- puts("only reserved SMEM HOB option changed; repeat call stable; bad type refused; heap=128MiB");return 0;
+ puts("reserved SMEM plus separate NoHob high mapping; repeat stable; bad type refused; low heap=128MiB");return 0;
 }
 """)
    cc=shutil.which('clang-18') or shutil.which('cc');out=tmp/'mapping'

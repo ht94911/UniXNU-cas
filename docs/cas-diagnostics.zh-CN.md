@@ -223,3 +223,22 @@ MODEM2/未知域、其他类型/属性和不可用尾部均排除。此节替代
 不构成256MiB owned-memory通过，也不修MMU。新增真实C测试对比冻结011，覆盖对称行序、
 类型/域/完整边界/未知拒绝/变化检测，并证明Boot1全排除或缺UEFI所有权仍阻止访问。
 六行夹具只复用照片确认的关键关系，其余未见字段/末行明确为synthetic，不冒充原始RAM表。
+
+## 诊断013的高RAM受控准备
+
+012真机已得到完整枚举，以及分配前的stage1/gate5拒绝。低128MiB allocator不包含
+高地址256MiB探测区。013只在诊断MemoryMapDiagLib中为0x100000000起的独立512MiB
+增加WB/XP映射。NoHob加MEM_RES/Reserv既不生成资源HOB也不生成分配HOB，映射本身
+不向分配器发布RAM；普通profile与低heap保持不变。
+
+选择 **Prepare high RAM ownership (512 MiB)**：重新采集当前事实，对整个512MiB检查
+FDT、SMEM和全部保留区；要求GCD为完整、无owner的NonExistent区间，当前UEFI无任何
+相交描述符，并确认已有XP权限后，才调用一次AddMemorySpace。该接口会即时发布内存，
+错误可能已经产生部分副作用；应用会再核对实际GCD、权限和当前内存图。任一步失败，
+本次应用禁止后续Probe并要求恢复；重复Prepare不再次发布。Prepare不读写RAM数据，
+发布本身不记为内存测试通过。
+
+准备成功后返回菜单，选择 **Probe owned high 256 MiB (guards first)**。它独立刷新事实，
+保留原来的精确分配、两遍地址/反码、缓存、全范围读回、清零和释放检查。拍下最后HIGH行，
+然后返回UniXNU和Android。直接按Prepare→Probe操作即可；两者各自采集完整有界观察，
+共同使用64KiB日志。新候选必须有自己的真实证据，此源码更新不代表013真机或XNU入口通过。
