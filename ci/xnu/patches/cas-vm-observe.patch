@@ -1,0 +1,130 @@
+--- a/osfmk/arm64/start.s
++++ b/osfmk/arm64/start.s
+@@ -490,6 +490,7 @@
+ 
+ 	// Unlock the core for debugging
+ 	msr		OSLAR_EL1, xzr
++	CAS_ENTRY_TRACE 0x42
+ 	msr		DAIFSet, #(DAIFSC_ALL)				// Disable all interrupts
+ 
+ 	mov		x20, x0
+@@ -507,6 +508,7 @@
+ 	ldr		x24, [x20, BA_MEM_SIZE]				// Get the physical memory size
+ 	adrp	x25, EXT(bootstrap_pagetables)@page	// Get the start of the page tables
+ 	ldr		x26, [x20, BA_BOOT_FLAGS]			// Get the kernel boot flags
++	CAS_ENTRY_TRACE 0x43
+ 
+ 	// Clear the registers that will be used to store the userspace thread pointer and CPU number.
+ 	// We may not actually be booting from ordinal CPU 0, so this register will be updated
+@@ -640,6 +642,21 @@
+ 	/* Setup the KVA bootstrap mapping */
+ 	lsr		x5,  x24, #(ARM_TT_L2_SHIFT)
+ 	create_bootstrap_mapping x14, x15, x5, x3, x2, x9, x10, x11, x12, x13
++
++
++ // cas CPU0 trace: one fresh, uncached, PXN/UXN2MiB identity block in
++ // TTBR0. Do not replace an existing L1 slot or use another board's ramoops.
++ ldr x9, [x25, #16]
++ cbnz x9, Lbootstrap_tables_exhausted
++ mov x0, #0x9f800000
++ mov x4, x0
++ mov x5, #1
++ mov x1, x25
++ create_bootstrap_mapping x0, x4, x5, x1, x2, x6, x10, x11, x12, x13
++ add x9, x2, #0x7e0
++ MOV64 x10, (0x9f800000 | ARM_TTE_TYPE_BLOCK | ARM_TTE_VALID | ARM_TTE_BLOCK_AF | ARM_TTE_BLOCK_SH(SH_OUTER_MEMORY) | ARM_TTE_BLOCK_ATTRINDX(CACHE_ATTRINDX_DISABLE) | ARM_TTE_BLOCK_PNX | ARM_TTE_BLOCK_NX)
++ str x10, [x9]
++ CAS_ENTRY_TRACE 0x44
+ 
+ 	b Lbootstrap_tables_ready
+ Lbootstrap_tables_exhausted:
+@@ -787,8 +804,10 @@
+ 
+ 	// Enable caches, MMU, ROP and JOP
+ 	MOV64   x0, SCTLR_EL1_DEFAULT
++	CAS_ENTRY_TRACE 0x45
+ 	MSR_SCTLR_EL1_X0
+ 	isb		sy
++	CAS_ENTRY_TRACE 0x46
+ 
+ #if !VMAPPLE
+ 	MOV64   x1, SCTLR_EL1_DEFAULT
+@@ -855,6 +874,7 @@
+ #endif
+ 
+ 	// Return to arm_init()
++	CAS_ENTRY_TRACE 0x47
+ 	ret
+ 
+ Ltrampoline:
+@@ -917,3 +937,19 @@
+ //#include	"globals_asm.h"
+ 
+ /* vim: set ts=4: */
++
++
++ // C ABI: x0=phase, x1=explicit mapped mailbox. Leaf/no stack/no firmware.
++ .text
++ .align 2
++ .globl EXT(cas_vm_trace)
++LEXT(cas_vm_trace)
++ mrs x3, daif
++ msr daifset, #3
++ mov x9, x1
++ mov x10, x0
++ mvn x11, x10
++ stp x10, x11, [x9, #240]
++ dsb sy
++ msr daif, x3
++ ret
+--- a/osfmk/arm/arm_init.c
++++ b/osfmk/arm/arm_init.c
+@@ -90,6 +90,7 @@
+ #include <IOKit/IOPlatformExpert.h>
+ #endif /* HIBERNATION */
+ 
++extern void cas_vm_trace(unsigned long phase, unsigned long mapped_mailbox);
+ extern void     patch_low_glo(void);
+ extern int      serial_init(void);
+ extern void sleep_token_buffer_init(void);
+@@ -353,6 +354,8 @@
+ 	DTEntry chosen = NULL;
+ 	unsigned int dt_entry_size = 0;
+ 
++	vm_offset_t cas_trace = 0x9f960000;
++	cas_vm_trace(0x50, cas_trace);
+ 	arm_setup_pre_sign();
+ 
+ 	arm_slide_rebase_and_sign_image();
+@@ -369,6 +372,7 @@
+ #endif /* defined(HAS_APPLE_PAC) */
+ 
+ 	PE_init_platform(FALSE, args); /* Get platform expert set up */
++	cas_vm_trace(0x51, cas_trace);
+ 
+ #if __arm64__
+ 	configure_timer_apple_regs();
+@@ -529,7 +533,12 @@
+ 	__builtin_arm_wsr("pan", 1);
+ #endif  /* __ARM_PAN_AVAILABLE__ */
+ 
++	cas_vm_trace(0x52, cas_trace);
+ 	arm_vm_init(xmaxmem, args);
++	/* arm_vm_init removes TTBR0; acquire a permanent IO VA before writing. */
++	cas_trace = ml_io_map(0x9f960000, 0x1000);
++	if (cas_trace == 0) { for (;;) { __asm__ volatile ("wfe"); } }
++	cas_vm_trace(0x53, cas_trace);
+ 
+ 	if (debug_boot_arg) {
+ 		patch_low_glo();
+@@ -598,6 +607,10 @@
+ 	cpu_machine_idle_init(TRUE);
+ 
+ 	PE_init_platform(TRUE, &BootCpuData);
++	cas_vm_trace(0x54, cas_trace);
++	/* Early CPU/platform boundary only, before clocks/storage/machine_startup. */
++	cas_vm_trace(0x55, cas_trace);
++	for (;;) { __asm__ volatile ("wfe"); }
+ 
+ #if __arm64__
+ 	extern bool cpu_config_correct;
