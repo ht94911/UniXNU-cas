@@ -24,6 +24,9 @@ def main():
  base=a.base_package.resolve();base_run=json.loads((base/'package-run.json').read_text())
  firmware=json.loads((a.firmware_build/'run.json').read_text());loader=json.loads((a.loader_build/'result.json').read_text());overlay=json.loads((a.loader_build/'overlay/overlay.json').read_text())
  if base_run.get('result')!='pass' or firmware.get('result')!='pass' or not firmware.get('diagnostics'):raise ValueError('successful matching diagnostic base required')
+ if firmware.get('menu_overlay',{}).get('profile')!='cpu0-menu-scroll':raise ValueError('CPU0 candidate requires audited scrolling menu overlay')
+ shim_check=json.loads((base/'shim/check.json').read_text())
+ if not shim_check.get('diagnostics') or 'CasBootClearVolatileLog' not in shim_check.get('symbols',{}):raise ValueError('candidate requires actual retained-log clear helper')
  for path in [base/'source-manifest.json',base/'boot.img']:
   expected=base_run['source_manifest'] if path.name=='source-manifest.json' else base_run['image'];check_ref(expected)
  if json.loads(Path(firmware['source_state']['path']).read_text())!=sources:raise ValueError('current sources differ from base firmware build')

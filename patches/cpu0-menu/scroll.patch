@@ -1,0 +1,85 @@
+--- a/Library/UniXNULib/Internal.h
++++ b/Library/UniXNULib/Internal.h
+@@ -512,6 +512,7 @@
+   UINTN                           MenuWidth;
+   UINTN                           FooterTop;
+   UINTN                           VisibleRows;
++  UINTN                           FirstVisible;     ///< Logical index of the first displayed entry.
+   UINTN                           TextColumns;      ///< Text mode only.
+   UINTN                           TextRows;
+   CHAR16                          Info[96];         ///< Injection summary line.
+--- a/Library/UniXNULib/Menu.c
++++ b/Library/UniXNULib/Menu.c
+@@ -12,6 +12,7 @@
+ **/
+ 
+ #include "Internal.h"
++#include "MenuViewport.h"
+ 
+ #define TICK_MS             100
+ #define DEFAULT_ROTATE_SEC  2
+@@ -124,6 +125,7 @@
+     RotateMs = DEFAULT_ROTATE_SEC * 1000;
+   }
+ 
++  Ui->FirstVisible = UniXNUMenuFirstVisible (Count, Ui->VisibleRows, Selected, 0);
+   UniXNUUiDrawFrame (Ui, Config);
+   for (Index = 0; Index < Count; Index++) {
+     UniXNUUiDrawEntry (Ui, Config, Index, Index == Selected);
+@@ -237,8 +239,16 @@
+     }
+ 
+     if (Selected != Previous) {
+-      UniXNUUiDrawEntry (Ui, Config, Previous, FALSE);
+-      UniXNUUiDrawEntry (Ui, Config, Selected, TRUE);
++      UINTN First = UniXNUMenuFirstVisible (Count, Ui->VisibleRows, Selected, Ui->FirstVisible);
++      if (First != Ui->FirstVisible) {
++        Ui->FirstVisible = First;
++        for (Index = 0; Index < Count; Index++) {
++          UniXNUUiDrawEntry (Ui, Config, Index, Index == Selected);
++        }
++      } else {
++        UniXNUUiDrawEntry (Ui, Config, Previous, FALSE);
++        UniXNUUiDrawEntry (Ui, Config, Selected, TRUE);
++      }
+     }
+   }
+ 
+--- a/Library/UniXNULib/Ui.c
++++ b/Library/UniXNULib/Ui.c
+@@ -573,7 +573,7 @@
+   Fch   = UNIXNU_GLYPH_HEIGHT * Fs;
+   Pad   = Ch / 2;
+   X     = Ui->Margin;
+-  Y     = Ui->MenuTop + Index * Ui->RowHeight;
++  Y     = Ui->MenuTop + (Index - Ui->FirstVisible) * Ui->RowHeight;
+   Width = Ui->Width - 2 * Ui->Margin;
+   Bg    = Selected ? mAccent : mRow;
+ 
+@@ -818,7 +818,7 @@
+   CONST CHAR16                   *Tag;
+   CHAR16                         Line[160];
+ 
+-  if (Index >= Ui->VisibleRows) {
++  if (Index >= Config->EntryCount || Index < Ui->FirstVisible || Index - Ui->FirstVisible >= Ui->VisibleRows) {
+     return;
+   }
+ 
+@@ -827,7 +827,7 @@
+     UnicodeSPrint (Line, sizeof (Line), L" %c %u. %s  [%s]", Selected ? L'>' : L' ', (UINT32)Index + 1, Entry->Title, TypeTag (Entry));
+     TextPrintAt (
+       Ui,
+-      Ui->MenuTop + Index,
++      Ui->MenuTop + Index - Ui->FirstVisible,
+       Selected ? (EFI_WHITE | EFI_BACKGROUND_RED) : (EFI_LIGHTGRAY | EFI_BACKGROUND_BLACK),
+       Line
+       );
+@@ -845,7 +845,7 @@
+ 
+   Cw  = UNIXNU_GLYPH_WIDTH * Ui->Scale;
+   Ch  = UNIXNU_GLYPH_HEIGHT * Ui->Scale;
+-  Y   = Ui->MenuTop + Index * Ui->RowHeight;
++  Y   = Ui->MenuTop + (Index - Ui->FirstVisible) * Ui->RowHeight;
+   Pad = (Ui->RowHeight - Ch) / 2;
+   Bg  = Selected ? mAccent : mRow;
+   Tag = TypeTag (Entry);

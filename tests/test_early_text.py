@@ -291,12 +291,15 @@ class SerialIntegration(unittest.TestCase):
         self.assertTrue(raw.endswith(b'ASSERT handler438\n'))
 
     def test_raw_log_capacity_preserves_structured_tail(self):
+        handoff=(c.c_ubyte*65536).from_address(0x9f960000)
+        for i in range(len(handoff)):handoff[i]=0x5a
         tail=(c.c_ubyte*65536).from_address(0x9f970000)
         for i in range(len(tail)):tail[i]=0xa5
         self.lib.SetStage(8);self.write(b'x'*210000)
-        self.assertEqual(U.from_address(0x9f941004).value,0x30000-0x1000-16)
+        self.assertEqual(U.from_address(0x9f941004).value,0x20000-0x1000-16)
         self.assertGreater(U.from_address(0x9f941008).value,0)
         self.assertEqual(bytes(tail),b'\xa5'*65536)
+        self.assertEqual(bytes(handoff),b'\x5a'*65536)
 
     def test_first_pc_screen_capture_still_logs_all_registers_and_stack(self):
         context=b'Loading driver at 0x9bb00000 EntryPoint=0x9bb01264\nPC 0x00009bb09500\n'

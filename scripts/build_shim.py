@@ -24,7 +24,7 @@ def build(uefi, out, *, diagnostics=False):
     root = uefi.resolve()
     include = root / "Platforms/Xiaomi/casPkg/Include"
     display = root / "Platforms/Xiaomi/casPkg/Library/CasDisplayLib"
-    sources = [root / "BootShim/CasBootShim.S", root / "BootShim/CasBootValidate.c",
+    sources = [root / "BootShim/CasBootShim.S", root / "BootShim/CasBootLog.S", root / "BootShim/CasBootValidate.c",
                display / "DisplayDecode.c", display / "DisplayHardware.c"]
     objects = []
     for source in sources:

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "profile": "cas-cpu0-002",
+  "profile": "cas-cpu0-003",
   "cpu_count": 1,
   "kernel": {
     "sha256": "6c4993dea6d94544bc6f0c89bd72c6d292401ce2e19caaf65725749434c0c648",
@@ -28,7 +28,16 @@
     "MPIDR_EL1_field": "Reserved[5]",
     "affinity_field": "Reserved[6]",
     "expected_affinity": 0,
-    "affinity_mask": "0xFF00FFFFFF"
+    "affinity_mask": "0xFF00FFFFFF",
+    "volatile_log_end_offset": "0x20000",
+    "retained_handoff_slot": [
+      "0x20000",
+      "0x30000"
+    ],
+    "retained_diag_slot": [
+      "0x30000",
+      "0x40000"
+    ]
   },
   "command_lines": {
     "execute": "-v keepsyms=1 debug=0x14e cpus=1",

@@ -45,6 +45,12 @@ def prepare(framework,out):
  for name in ['Guard.c','Guard.h']:
   source=ROOT/'package/CasCpu0'/name;shutil.copyfile(source,driver/name);staged[str(source)]=parent.digest(source.read_bytes())
  source=uefi/'Platforms/Xiaomi/casPkg/Include/CasPlatform.h';shutil.copyfile(source,driver/'CasPlatform.h');staged[str(source)]=parent.digest(source.read_bytes())
+ shutil.copyfile(source,pkg/'TraceView/CasPlatform.h')
+ abi=driver/'TraceAbi.h';abi_text=abi.read_text()
+ abi_text=parent.replace_once(abi_text,'#define CAS_TRACE_BASE 0x9f960000ULL','#include "CasPlatform.h"\n#define CAS_TRACE_BASE 0x9f960000ULL')
+ abi_text=parent.replace_once(abi_text,'#endif','STATIC_ASSERT(CAS_TRACE_BASE == (UINT64)CAS_LOG_BASE + CAS_HANDOFF_LOG_OFFSET, "trace/shim address ABI");\nSTATIC_ASSERT(sizeof(CAS_HANDOFF_TRACE) <= CAS_HANDOFF_LOG_SIZE, "trace fits retained slot");\n#endif')
+ abi.write_text(abi_text);(pkg/'TraceView/TraceAbi.h').write_text(abi_text)
+
  p=driver/'DarwinBoot.c';s=p.read_text()
  if MODE=='execute':s=parent.replace_once(s,'#define CAS_HANDOFF_DRY_RUN 1','#define CAS_HANDOFF_DRY_RUN 0')
  s=parent.replace_once(s,'#include "Trace.h"','#include "Trace.h"\n#include "Guard.h"')

@@ -1,0 +1,21 @@
+{
+  "framework_commit": "67e8ef0aa2a0a1fcb940889fb39ed1752b4b1593",
+  "files": {
+    "Internal.h": {
+      "before_sha256": "183dfe7e89f9d64ad38c14601967f6f23a3a0fb3f0efd3eacd267fe33e5545dd",
+      "after_sha256": "f0ef09a0f92bfa3960a0900ec042faf84e19650b0b9115b1dc6c38c284f2f7f3"
+    },
+    "Menu.c": {
+      "before_sha256": "aca6ce5b73aac9c2baa7abaeb10683399e98d4b7efccb3f9afdbc32f3311bc17",
+      "after_sha256": "3a11ebf9a3ae56f47d0937fb0da600963b4a2be1b49d8de1bfb92e45dad46c4d"
+    },
+    "Ui.c": {
+      "before_sha256": "04bd798e1774697d85ee0eb0b2331bfd3016e32a01828fed0a37e6c7777723e9",
+      "after_sha256": "57fa740d999fff759e81faf1620eaf7d8078da55f5121ae57813b7ceabd25769"
+    }
+  },
+  "patch_sha256": "57578eaa94d86b6ee8105a88c80b21da08888f1e2ac4bb3c05988953dcb1d469",
+  "viewport_sha256": "b21b59f2fab3677aaa8aa791b61143ac314567f1a42834e63819b391b8482222",
+  "scope": "Display viewport only; original physical navigation/selection/confirmation/countdown/reset actions retained",
+  "license": "BSD-2-Clause-Patent; upstream notices preserved"
+}

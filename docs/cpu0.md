@@ -64,3 +64,25 @@ Every output path is new. Keep the private ADT/image permissions and all SHA,
 source, target IR, map, input and restoration records. No build tool calls a phone.
 
 Candidate002 records actual MPIDR_EL1 in Reserved[5] and masked affinity in[6], rejects affinity other than0 before allocation, and displays both. The direct EBS/Entry.S/kernel branch path contains no CPU transfer; bind the recovered XNU marker to this pre-EBS CPU identity. The tag now includes all three clean source commits.
+
+## Candidate003 retained-log layout and menu scrolling
+
+The diagnostic volatile prefix ends at offset0x20000. The0x20000..0x30000
+handoff slot and0x30000..0x40000 legacy diagnostic slot are retained by the
+production BootShim clear helper and excluded from the diagnostic serial buffer.
+Normal firmware keeps its full-log clear behavior. The real clear helper is
+executed under QEMU at EL1/EL2 for both profiles; serial flood checks both slots.
+This fixes a local destructive path. Actual survival through Android still
+requires a new validation/Android/recovery pair on the SAME003 image.
+
+The menu now keeps the selected logical entry in its visible row window. The
+original entry numbers, physical input, default/timeout rules and reset actions
+remain. A source-hash-guarded patch is staged only in the build output; the
+shared framework checkout and ABI baseline are unchanged. Host tests execute
+the actual patched menu loop and text/portrait/landscape draw coordinates.
+Phone display/navigation acceptance is separate from those host checks.
+
+The CPU0 packager requires both the scrolling overlay identity and the actual
+diagnostic clear-helper symbol. Trace ABI assertions bind its address/size to
+the shared retained-slot definitions. Source commits and fresh private ADT SHA
+change the candidate tag, so002 records cannot authorize003 execution.

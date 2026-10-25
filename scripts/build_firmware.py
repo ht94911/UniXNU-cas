@@ -21,7 +21,10 @@ def main():
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--phase", choices=("genc", "modules", "build"), default="build")
     ap.add_argument("--diagnostics", action="store_true", help="independent cas-diag DSC/FDF and retained-log profile")
+    ap.add_argument("--cpu0-menu-scroll", action="store_true", help="independent hash-guarded menu viewport overlay; diagnostics only")
     args = ap.parse_args()
+    if args.cpu0_menu_scroll and not args.diagnostics:
+        ap.error("CPU0 menu overlay requires diagnostic profile")
     uefi, out = args.uefi.resolve(), args.out.resolve()
     out.mkdir(parents=True, exist_ok=False)
     env = os.environ.copy()
@@ -52,6 +55,10 @@ def main():
         sources = source_state(uefi, DEVICE)
         (out / "source-state.json").write_text(json.dumps(sources, indent=2) + "\n")
         manifest["source_state"] = file_ref(out / "source-state.json")
+        if args.cpu0_menu_scroll:
+            from cas_menu_overlay import stage
+            manifest["menu_overlay"] = stage(uefi.parent / "UniXNU", out / "menu-overlay")
+            env["PACKAGES_PATH"] = str(out / "menu-overlay") + os.pathsep + env["PACKAGES_PATH"]
         # Unconditionally perform target checks immediately before BaseTools.
         policy = DEVICE / "config" / ("diagnostics-policy.json" if args.diagnostics else "input-policy.json")
         run([sys.executable, DEVICE / "scripts/preflight.py", "--uefi", uefi, "--policy", policy, "--out", out / "preflight.json"], "preflight.log")
