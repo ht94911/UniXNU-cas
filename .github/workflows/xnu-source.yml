@@ -3,6 +3,10 @@ name: XNU source kernel
 on:
   workflow_dispatch:
     inputs:
+      vm_observe:
+        description: Build the diagnostic CPU0 MMU/VM observation kernel
+        type: boolean
+        default: false
       entry_trace:
         description: Build the separate cas CPU0 entry trace candidate
         type: boolean
@@ -53,6 +57,7 @@ jobs:
           --toolchain-report "$RUNNER_TEMP/cas-build-toolchain/toolchain.json"
           --platform cas -j 4
           ${{ inputs.entry_trace && '--entry-trace' || '' }}
+          ${{ inputs.vm_observe && '--vm-observe' || '' }}
       - name: Encrypt the actual results and complete logs
         if: always()
         shell: bash
@@ -67,7 +72,7 @@ jobs:
               raise SystemExit('No source build result directory was created')
           allowed = {'build-report.json', 'logs.tar.gz', 'toolchain.json', 'headers.json',
                      'source-inputs.json', 'configuration.json', 'adaptations.json', 'patch-selection.json',
-                     'patched-source.json', 'page-size.json', 'entry-trace.json',
+                     'patched-source.json', 'page-size.json', 'entry-trace.json', 'vm-observe.json',
                      'kernel.unstripped.macho', 'kernel.symbols.txt'}
           names = {p.name for p in root.iterdir()}
           if not {'build-report.json', 'logs.tar.gz'} <= names or not names <= allowed:

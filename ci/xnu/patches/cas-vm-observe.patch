@@ -1,0 +1,350 @@
+--- a/osfmk/arm64/start.s
++++ b/osfmk/arm64/start.s
+@@ -259,41 +259,121 @@
+ 	.align 12, 0
+ 	.global	EXT(LowExceptionVectorBase)
+ LEXT(LowExceptionVectorBase)
+-	/* EL1 SP 0 */
+-	b		.
+-	.align	7
+-	b		.
+-	.align	7
+-	b		.
+-	.align	7
+-	b		.
+-	/* EL1 SP1 */
+-	.align	7
+-	b		.
+-	.align	7
+-	b		.
+-	.align	7
+-	b		.
+-	.align	7
+-	b		.
+-	/* EL0 64 */
+-	.align	7
+-	b		.
+-	.align	7
+-	b		.
+-	.align	7
+-	b		.
+-	.align	7
+-	b		.
+-	/* EL0 32 */
+-	.align	7
+-	b		.
+-	.align	7
+-	b		.
+-	.align	7
+-	b		.
+-	.align	7
+-	b		.
++	// cas CPU0 diagnostic vectors; each slot has an explicit identity.
++	mov x16, #0
++	b Lcas_vm_exception
++	.align 7
++	mov x16, #1
++	b Lcas_vm_exception
++	.align 7
++	mov x16, #2
++	b Lcas_vm_exception
++	.align 7
++	mov x16, #3
++	b Lcas_vm_exception
++	.align 7
++	mov x16, #4
++	b Lcas_vm_exception
++	.align 7
++	mov x16, #5
++	b Lcas_vm_exception
++	.align 7
++	mov x16, #6
++	b Lcas_vm_exception
++	.align 7
++	mov x16, #7
++	b Lcas_vm_exception
++	.align 7
++	mov x16, #8
++	b Lcas_vm_exception
++	.align 7
++	mov x16, #9
++	b Lcas_vm_exception
++	.align 7
++	mov x16, #10
++	b Lcas_vm_exception
++	.align 7
++	mov x16, #11
++	b Lcas_vm_exception
++	.align 7
++	mov x16, #12
++	b Lcas_vm_exception
++	.align 7
++	mov x16, #13
++	b Lcas_vm_exception
++	.align 7
++	mov x16, #14
++	b Lcas_vm_exception
++	.align 7
++	mov x16, #15
++	b Lcas_vm_exception
++
++Lcas_vm_exception:
++	msr daifset, #15
++	adrp x9, EXT(cas_vm_trace_address)@page
++	ldr x9, [x9, EXT(cas_vm_trace_address)@pageoff]
++	// Sentinel1 means the TTBR switch/IO remap gap: do not recursively fault.
++	cmp x9, #1
++	b.eq Lcas_vm_exception_stop
++	ldr x10, [x9]
++	MOV64 x11, 0x363048534143
++	cmp x10, x11
++	b.ne Lcas_vm_exception_stop
++	str xzr, [x9, #256]
++	ldr x10, [x9, #24]
++	str x10, [x9, #264]
++	mov x11, x10
++	ldr x10, [x9, #120]
++	str x10, [x9, #272]
++	eor x11, x11, x10
++	mov x10, x16
++	str x10, [x9, #280]
++	eor x11, x11, x10
++	mrs x10, ESR_EL1
++	str x10, [x9, #288]
++	eor x11, x11, x10
++	mrs x10, FAR_EL1
++	str x10, [x9, #296]
++	eor x11, x11, x10
++	mrs x10, ELR_EL1
++	str x10, [x9, #304]
++	eor x11, x11, x10
++	mrs x10, SPSR_EL1
++	str x10, [x9, #312]
++	eor x11, x11, x10
++	mrs x10, SCTLR_EL1
++	str x10, [x9, #320]
++	eor x11, x11, x10
++	mrs x10, TCR_EL1
++	str x10, [x9, #328]
++	eor x11, x11, x10
++	mrs x10, TTBR0_EL1
++	str x10, [x9, #336]
++	eor x11, x11, x10
++	mrs x10, TTBR1_EL1
++	str x10, [x9, #344]
++	eor x11, x11, x10
++	mov x10, sp
++	str x10, [x9, #352]
++	eor x11, x11, x10
++	ldr x10, [x9, #240]
++	str x10, [x9, #360]
++	eor x11, x11, x10
++
++	str x11, [x9, #368]
++	MOV64 x10, 0x315845534143
++	mvn x11, x10
++	str x11, [x9, #376]
++	dsb sy
++	str x10, [x9, #256]
++	dsb sy
++	mov x10, #0xe0
++	mvn x11, x10
++	stp x10, x11, [x9, #240]
++	dsb sy
++Lcas_vm_exception_stop:
++	wfe
++	b Lcas_vm_exception_stop
+ 	.align 12, 0
+ 
+ #if defined(KERNEL_INTEGRITY_KTRR) || defined(KERNEL_INTEGRITY_CTRR)
+@@ -490,6 +570,7 @@
+ 
+ 	// Unlock the core for debugging
+ 	msr		OSLAR_EL1, xzr
++	CAS_ENTRY_TRACE 0x42
+ 	msr		DAIFSet, #(DAIFSC_ALL)				// Disable all interrupts
+ 
+ 	mov		x20, x0
+@@ -507,6 +588,7 @@
+ 	ldr		x24, [x20, BA_MEM_SIZE]				// Get the physical memory size
+ 	adrp	x25, EXT(bootstrap_pagetables)@page	// Get the start of the page tables
+ 	ldr		x26, [x20, BA_BOOT_FLAGS]			// Get the kernel boot flags
++	CAS_ENTRY_TRACE 0x43
+ 
+ 	// Clear the registers that will be used to store the userspace thread pointer and CPU number.
+ 	// We may not actually be booting from ordinal CPU 0, so this register will be updated
+@@ -640,6 +722,21 @@
+ 	/* Setup the KVA bootstrap mapping */
+ 	lsr		x5,  x24, #(ARM_TT_L2_SHIFT)
+ 	create_bootstrap_mapping x14, x15, x5, x3, x2, x9, x10, x11, x12, x13
++
++	// cas diagnostic mailbox only: fresh TTBR0 L1[2], one uncached NX block.
++	// All table slots were cleared above. Refuse occupied L1 or pool overflow.
++	ldr x9, [x25, #16]
++	cbnz x9, Lbootstrap_tables_exhausted
++	mov x0, #0x9f800000
++	mov x4, x0
++	mov x5, #1
++	mov x1, x25
++	create_bootstrap_mapping x0, x4, x5, x1, x2, x6, x10, x11, x12, x13
++	// x2 is the actual last allocated L2 page, not the next free page.
++	add x9, x2, #0x7e0
++	MOV64 x10, (0x9f800000 | ARM_TTE_TYPE_BLOCK | ARM_TTE_VALID | ARM_TTE_BLOCK_AF | ARM_TTE_BLOCK_SH(SH_OUTER_MEMORY) | ARM_TTE_BLOCK_ATTRINDX(CACHE_ATTRINDX_DISABLE) | ARM_TTE_BLOCK_PNX | ARM_TTE_BLOCK_NX)
++	str x10, [x9]
++	CAS_ENTRY_TRACE 0x44
+ 
+ 	b Lbootstrap_tables_ready
+ Lbootstrap_tables_exhausted:
+@@ -764,21 +861,9 @@
+ 	MSR_TTBR1_EL1_X0
+ 1:
+ 
+-	// Set up the exception vectors
+-#if __ARM_KERNEL_PROTECT__
+-	/* If this is not the first reset of the boot CPU, the alternate mapping
+-	 * for the exception vectors will be set up, so use it.  Otherwise, we
+-	 * should use the mapping located in the kernelcache mapping.
+-	 */
+-	MOV64	x0, ARM_KERNEL_PROTECT_EXCEPTION_START
+-
+-	cbnz		x21, 1f
+-#endif /* __ARM_KERNEL_PROTECT__ */
+-	adrp	x0, EXT(ExceptionVectorsBase)@page			// Load exception vectors base address
+-	add		x0, x0, EXT(ExceptionVectorsBase)@pageoff
+-	add		x0, x0, x22									// Convert exception vector address to KVA
+-	sub		x0, x0, x23
+-1:
++	// Keep the terminal diagnostic vector physically addressed until MMU is on.
++	adrp x0, EXT(LowExceptionVectorBase)@page
++	add x0, x0, EXT(LowExceptionVectorBase)@pageoff
+ 	MSR_VBAR_EL1_X0
+ 
+ #if HAS_APPLE_PAC
+@@ -787,8 +872,17 @@
+ 
+ 	// Enable caches, MMU, ROP and JOP
+ 	MOV64   x0, SCTLR_EL1_DEFAULT
++	CAS_ENTRY_TRACE 0x45
+ 	MSR_SCTLR_EL1_X0
+-	isb		sy
++	isb sy
++	// Switch VBAR to the KVA alias before arm_vm_init removes TTBR0.
++	adrp x9, EXT(LowExceptionVectorBase)@page
++	add x9, x9, EXT(LowExceptionVectorBase)@pageoff
++	add x9, x9, x22
++	sub x9, x9, x23
++	msr VBAR_EL1, x9
++	isb sy
++	CAS_ENTRY_TRACE 0x46
+ 
+ #if !VMAPPLE
+ 	MOV64   x1, SCTLR_EL1_DEFAULT
+@@ -855,6 +949,7 @@
+ #endif
+ 
+ 	// Return to arm_init()
++	CAS_ENTRY_TRACE 0x47
+ 	ret
+ 
+ Ltrampoline:
+@@ -917,3 +1012,26 @@
+ //#include	"globals_asm.h"
+ 
+ /* vim: set ts=4: */
++
++	// C ABI leaf; called only after arm_setup_pre_sign/image rebasing.
++	// Caller-saved x2,x3,x9..x11/NZCV only; no stack or firmware calls.
++	.text
++	.align 2
++	.globl EXT(cas_vm_trace)
++LEXT(cas_vm_trace)
++	mrs x3, daif
++	msr daifset, #15
++	adrp x2, EXT(cas_vm_trace_address)@page
++	str x1, [x2, EXT(cas_vm_trace_address)@pageoff]
++	mov x9, x1
++	mov x10, x0
++	mvn x11, x10
++	stp x10, x11, [x9, #240]
++	dsb sy
++	msr daif, x3
++	ret
++	.data
++	.align 3
++	.globl EXT(cas_vm_trace_address)
++LEXT(cas_vm_trace_address)
++	.quad 0x9f960000
+--- a/osfmk/arm/arm_init.c
++++ b/osfmk/arm/arm_init.c
+@@ -90,6 +90,7 @@
+ #include <IOKit/IOPlatformExpert.h>
+ #endif /* HIBERNATION */
+ 
++extern void cas_vm_trace(unsigned long phase, unsigned long mapped_mailbox);
+ extern void     patch_low_glo(void);
+ extern int      serial_init(void);
+ extern void sleep_token_buffer_init(void);
+@@ -356,6 +357,8 @@
+ 	arm_setup_pre_sign();
+ 
+ 	arm_slide_rebase_and_sign_image();
++	vm_offset_t cas_trace = 0x9f960000;
++	cas_vm_trace(0x50, cas_trace);
+ 
+ 	/* If kernel integrity is supported, use a constant copy of the boot args. */
+ 	const_boot_args = *args;
+@@ -369,6 +372,7 @@
+ #endif /* defined(HAS_APPLE_PAC) */
+ 
+ 	PE_init_platform(FALSE, args); /* Get platform expert set up */
++	cas_vm_trace(0x51, cas_trace);
+ 
+ #if __arm64__
+ 	configure_timer_apple_regs();
+@@ -529,7 +533,12 @@
+ 	__builtin_arm_wsr("pan", 1);
+ #endif  /* __ARM_PAN_AVAILABLE__ */
+ 
++	cas_vm_trace(0x52, cas_trace);
+ 	arm_vm_init(xmaxmem, args);
++	// The VM table switch invalidated the bootstrap mailbox alias.
++	cas_trace = ml_io_map(0x9f960000, 0x1000);
++	if (cas_trace == 0) { for (;;) { __asm__ volatile ("wfe"); } }
++	cas_vm_trace(0x53, cas_trace);
+ 
+ 	if (debug_boot_arg) {
+ 		patch_low_glo();
+@@ -598,6 +607,11 @@
+ 	cpu_machine_idle_init(TRUE);
+ 
+ 	PE_init_platform(TRUE, &BootCpuData);
++	cas_vm_trace(0x54, cas_trace);
++	// Early PE only: stop before clocks, IOKit, machine_startup or storage.
++	cas_vm_trace(0x55, cas_trace);
++	for (;;) { __asm__ volatile ("wfe"); }
++
+ 
+ #if __arm64__
+ 	extern bool cpu_config_correct;
+--- a/osfmk/arm64/arm_vm_init.c
++++ b/osfmk/arm64/arm_vm_init.c
+@@ -25,6 +25,9 @@
+  *
+  * @APPLE_OSREFERENCE_LICENSE_HEADER_END@
+  */
++
++extern void cas_vm_trace(unsigned long phase, unsigned long mapped_mailbox);
++extern unsigned long cas_vm_trace_address;
+ 
+ #include <mach_kdp.h>
+ #include <debug.h>
+@@ -2148,6 +2151,9 @@
+ 	arm_set_user_tbi();
+ 
+ 	arm_vm_physmap_init(args);
++	cas_vm_trace(0x56, 0x9f960000); // Final VM tables prepared, not VM-ready.
++	cas_vm_trace_address = 1; // No mailbox accesses across the TTBR/remap gap.
++	__asm__ volatile ("dsb sy" ::: "memory");
+ 	set_mmu_ttb_alternate(cpu_ttep & TTBR_BADDR_MASK);
+ 
+ #if XNU_MONITOR
