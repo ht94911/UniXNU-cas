@@ -149,9 +149,9 @@ def stage_entry_trace_wrapper(tree, profile):
             'late_patch_sha256': digest(destination),
             'semantics': 'Reverse only the exact applied trace before the inherited baseline checks; reapply it last.'}
 
-def apply_vm_observe(work, log):
+def apply_vm_observe(work, log, profile_name='vm-observe.json'):
     """Incremental diagnostic-only profile, after the fixed entry patch."""
-    profile = json.loads((HERE / 'vm-observe.json').read_text())
+    profile = json.loads((HERE / profile_name).read_text())
     patch = HERE / profile['patch']
     if git(work, 'rev-parse', 'HEAD').decode().strip() != profile['xnu_commit']:
         raise ValueError('VM observation XNU commit mismatch')
@@ -334,7 +334,10 @@ def main():
     parser.add_argument('-j', '--jobs', type=int, default=4)
     parser.add_argument('--entry-trace', action='store_true', help='separate fixed cas CPU0 entry markers; no runtime claim')
     parser.add_argument('--vm-observe', action='store_true', help='CPU0 diagnostic MMU/VM markers and terminal exception record; implies entry trace')
+    parser.add_argument('--platform-clock-observe', action='store_true', help='bounded platform/clock observation; implies VM and entry traces')
     args = parser.parse_args()
+    if args.platform_clock_observe:
+        args.vm_observe = True
     if args.vm_observe:
         args.entry_trace = True
     if args.jobs < 1:
@@ -438,7 +441,7 @@ def main():
             report['entry_trace'] = trace_profile
         if args.vm_observe:
             with (logs / 'vm-observe.log').open('w') as log:
-                vm_profile = apply_vm_observe(work, log)
+                vm_profile = apply_vm_observe(work, log, 'platform-clock-observe.json' if args.platform_clock_observe else 'vm-observe.json')
             vm_profile['build_wrapper'] = stage_vm_observe_wrapper(tree, vm_profile)
             (exports / 'vm-observe.json').write_text(json.dumps(vm_profile, indent=2) + '\n')
             report['vm_observe'] = vm_profile

@@ -3,6 +3,10 @@ name: XNU source kernel
 on:
   workflow_dispatch:
     inputs:
+      platform_clock_observe:
+        description: Observe actual cas ADT and CPU0 clock init then stop before machine_startup
+        type: boolean
+        default: false
       vm_observe:
         description: Build the diagnostic CPU0 MMU/VM observation kernel
         type: boolean
@@ -58,6 +62,7 @@ jobs:
           --platform cas -j 4
           ${{ inputs.entry_trace && '--entry-trace' || '' }}
           ${{ inputs.vm_observe && '--vm-observe' || '' }}
+          ${{ inputs.platform_clock_observe && '--platform-clock-observe' || '' }}
       - name: Encrypt the actual results and complete logs
         if: always()
         shell: bash
