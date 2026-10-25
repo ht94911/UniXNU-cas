@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "profile": "cas-cpu0-001",
+  "cpu_count": 1,
+  "kernel": {
+    "sha256": "6c4993dea6d94544bc6f0c89bd72c6d292401ce2e19caaf65725749434c0c648",
+    "bytes": 21392120,
+    "symbols_sha256": "2d70970c94377380755741ca9b889575511db7c69401745355775b0ad432173e",
+    "source_commit": "ddee02fe532fb5c9f989ea945c27f7d424451af0",
+    "source_run": 40192605485
+  },
+  "menu_sha256": "9b642f2e12dfcc5d9b7d1e7b8b4c4e01277af66c8ef1bd11336182b2ec8ddd8d",
+  "owned": {
+    "base": "0x100004000",
+    "bytes": 268435456,
+    "mapped_container_base": "0x100000000",
+    "mapped_container_bytes": 536870912,
+    "requires_fresh_facts": true,
+    "requires_held_2_pattern_readback": true,
+    "old_X05_success_not_a_gate": true
+  },
+  "trace": {
+    "base": "0x9f960000",
+    "bytes": 256,
+    "raw_stage_offset": 240,
+    "inverse_offset": 248,
+    "guard_pass_fields": "Reserved[0..3] = bootstamp, PA, bytes, 1"
+  },
+  "command_lines": {
+    "execute": "-v keepsyms=1 debug=0x14e cpus=1",
+    "validate": "-v keepsyms=1 debug=0x14e cpus=1 cas-validate=1"
+  },
+  "internal_storage": false,
+  "Data_volume": false,
+  "touch": false,
+  "GPU": false,
+  "ramdisk": null,
+  "trustcache": null,
+  "gpuaddon": null,
+  "required_private_entropy_bytes": 64,
+  "runtime_success_claimed": false,
+  "default_menu": "read-only trace",
+  "automatic_boot": false,
+  "GitHub_mutations_allowed": false
+}

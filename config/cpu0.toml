@@ -1,0 +1,45 @@
+# SPDX-License-Identifier: BSD-2-Clause-Patent
+version = 1
+[boot]
+default = "trace"
+timeout = -1
+rotate = 0
+fallback_timeout = 10
+connect_all = false
+[ui]
+layout = "portrait"
+[[driver]]
+path = '\EFI\Drivers\DarwinBoot.efi'
+connect = false
+[[entry]]
+id = "trace"
+title = "Read CPU0 handoff trace (read only)"
+type = "efi"
+path = '\EFI\Tools\CasTraceView.efi'
+[[entry]]
+id = "diag"
+title = "Prepare high RAM ownership (cas diagnostics)"
+type = "efi"
+path = '\EFI\Tools\CasDiag.efi'
+[[entry]]
+id = "validate"
+title = "Validate CPU0 memory and load, then return"
+type = "xnu"
+path = '\XNU\kernel.macho'
+args = "-v keepsyms=1 debug=0x14e cpus=1 cas-validate=1"
+[[entry]]
+id = "cpu0"
+title = "Boot XNU CPU0 (fresh held-memory guard)"
+type = "xnu"
+path = '\XNU\kernel.macho'
+args = "-v keepsyms=1 debug=0x14e cpus=1"
+[[entry]]
+id = "android"
+title = "Reboot to Android"
+type = "action"
+action = "reset"
+[[entry]]
+id = "firmware"
+title = "Return to firmware"
+type = "action"
+action = "exit"

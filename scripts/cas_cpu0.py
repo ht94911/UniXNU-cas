@@ -1,0 +1,88 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: BSD-2-Clause-Patent
+"""Local CPU0/held-range guard overlay; no device or GitHub operations."""
+import argparse,hashlib,json,shutil
+from pathlib import Path
+import cas_handoff as parent
+ORIGINAL_PREPARE=parent.prepare
+ROOT=Path(__file__).resolve().parents[1]
+MODE='execute'
+ADT_AUDIT=None
+def prepare(framework,out):
+ original=ORIGINAL_PREPARE(framework,out)
+ (out/'overlay.json').rename(out/'parent-x06-overlay.json')
+ pkg=out/'DarwinBootPkg';driver=pkg/'Driver';uefi=framework.parent/'uefi-cas'
+ if ADT_AUDIT is None:raise ValueError('private ADT audit required for candidate identity')
+ adt_meta=json.loads(ADT_AUDIT.read_text())
+ if adt_meta.get('mode')!='private' or adt_meta.get('cpu_profile')!='cpu0' or adt_meta.get('entropy_bytes')!=64:raise ValueError('private CPU0 entropy audit required')
+ contract=json.loads((ROOT/'config/cpu0-contract.json').read_text())
+ tag=int.from_bytes(hashlib.sha256((contract['profile']+MODE+contract['kernel']['sha256']+adt_meta['adt_sha256']).encode()).digest()[:8],'little')
+ tag_header='// SPDX-License-Identifier: BSD-2-Clause-Patent\n#define CAS_CPU0_CANDIDATE_TAG 0x%016xULL\n'%tag
+ (driver/'CandidateTag.h').write_text(tag_header);(pkg/'TraceView/CandidateTag.h').write_text(tag_header)
+
+ app=uefi/'Platforms/Xiaomi/casPkg/Applications/CasDiag'
+ staged={}
+ for name in ['CasDiag.c','DiagCore.c','DiagCore.h','SmemCore.c','SmemCore.h']:
+  source=app/name;shutil.copyfile(source,driver/name);staged[str(source)]=parent.digest(source.read_bytes())
+ # Keep only the exact reviewed facts and held-probe helpers. The loader
+ # translation unit contains no publication action, menu, warm reset or legacy
+ # allocation/release probe. The original app retains those explicit actions.
+ source=driver/'CasDiag.c';facts=source.read_text()
+ for marker in ['// These helpers query descriptors','STATIC BOOLEAN HighUefiAbsent(', 'STATIC int ProbeWrite(', 'STATIC int ProbeFree(']:
+  if facts.count(marker)!=1:raise ValueError('facts source boundary mismatch: '+marker)
+ selected=facts.split('// These helpers query descriptors',1)[0]
+ selected+='// These helpers query descriptors'+facts.split('// These helpers query descriptors',1)[1].split('STATIC BOOLEAN HighUefiAbsent(',1)[0]
+ selected+= 'STATIC int ProbeWrite('+facts.split('STATIC int ProbeWrite(',1)[1].split('STATIC int ProbeFree(',1)[0]
+ selected=selected.replace(' || !gDS->AddMemorySpace','')
+ if 'AddMemorySpace(' in selected or '->AddMemorySpace(' in selected or 'AllocatePages(' in selected or 'ResetSystem(' in selected:raise ValueError('mutating action leaked into facts stage')
+ source.write_text(selected)
+ for name in ['Guard.c','Guard.h']:
+  source=ROOT/'package/CasCpu0'/name;shutil.copyfile(source,driver/name);staged[str(source)]=parent.digest(source.read_bytes())
+ source=uefi/'Platforms/Xiaomi/casPkg/Include/CasPlatform.h';shutil.copyfile(source,driver/'CasPlatform.h');staged[str(source)]=parent.digest(source.read_bytes())
+ p=driver/'DarwinBoot.c';s=p.read_text()
+ if MODE=='execute':s=parent.replace_once(s,'#define CAS_HANDOFF_DRY_RUN 1','#define CAS_HANDOFF_DRY_RUN 0')
+ s=parent.replace_once(s,'#include "Trace.h"','#include "Trace.h"\n#include "Guard.h"')
+ s=parent.replace_once(s,'  Status = AllocateWindow (&Kernel, WindowSize, &Address);',
+  '  Status = CasCpu0Preflight (0x100004000ULL, WindowSize);\n  if (EFI_ERROR (Status)) { goto Fail; }\n  Status = AllocateWindow (&Kernel, WindowSize, &Address);')
+ s=parent.replace_once(s,'  CasTrace (3, EFI_SUCCESS, Address, 0, Address + Kernel.Entry - Kernel.Base, WindowSize);',
+  '  Status = CasCpu0ProbeHeld (Address, WindowSize);\n  if (EFI_ERROR (Status)) { goto Fail; }\n  mTrace.Reserved[0] = mTrace.BootStamp;\n  mTrace.Reserved[1] = Address;\n  mTrace.Reserved[2] = WindowSize;\n  mTrace.Reserved[3] = 1;\n  mTrace.Reserved[4] = CAS_CPU0_CANDIDATE_TAG;\n  CasTrace (3, EFI_SUCCESS, Address, 0, Address + Kernel.Entry - Kernel.Base, WindowSize);')
+ s=parent.replace_once(s,'  if (!CasTraceStart ()) { return EFI_UNSUPPORTED; }',
+  '  if (AsciiStrCmp (CommandLine, "-v keepsyms=1 debug=0x14e cpus=1") != 0 &&\n      AsciiStrCmp (CommandLine, "-v keepsyms=1 debug=0x14e cpus=1 cas-validate=1") != 0) { return EFI_INVALID_PARAMETER; }\n  if (!CasTraceStart ()) { return EFI_UNSUPPORTED; }')
+ s=parent.replace_once(s,'#if CAS_HANDOFF_DRY_RUN',
+  '  if (AsciiStrCmp (CommandLine, "-v keepsyms=1 debug=0x14e cpus=1 cas-validate=1") == 0) {\n    Print (L"CAS CPU0: full fresh guard/copy passed; validation-only request returns before EBS\\n");\n    Status = EFI_SUCCESS;\n    goto Fail;\n  }\n#if CAS_HANDOFF_DRY_RUN')
+ s=parent.replace_once(s,'  if (!CasTraceStart ()) { return EFI_UNSUPPORTED; }','  mCpuRequireRecovered = AsciiStrCmp (CommandLine, "-v keepsyms=1 debug=0x14e cpus=1") == 0;\n  if (!CasTraceStart ()) {\n    Print (L"CAS CPU0: matching prior-boot validation/control region required; previous record retained\\n");\n    return EFI_NOT_READY;\n  }')
+ s=s.replace('CAS X06:','CAS CPU0:');p.write_text(s)
+ # Mu can legitimately change a code allocation from XP to executable. Neither
+ # RO/RP nor mixed/changed permissions are accepted; the held map must be WB.
+ p=driver/'Trace.h';s=p.read_text();s=parent.replace_once(s,'A!=EFI_MEMORY_XP','(A!=0 && A!=EFI_MEMORY_XP)')
+ recovery="""
+#include "CandidateTag.h"
+STATIC BOOLEAN mCpuRecoveredValidation,mCpuRequireRecovered;
+STATIC BOOLEAN CasCpu0PreviousValidation(UINT64 CurrentBoot) {
+ CAS_HANDOFF_TRACE A,B;UINTN I;UINT32 Crc;volatile CONST UINT8 *P=(VOID *)(UINTN)CAS_TRACE_BASE;
+ for(I=0;I<sizeof(A);I++)((UINT8 *)&A)[I]=P[I];MemoryFence();
+ for(I=0;I<sizeof(B);I++)((UINT8 *)&B)[I]=P[I];MemoryFence();
+ if(CompareMem(&A,&B,sizeof(A)) || A.Magic!=CAS_TRACE_MAGIC || A.Version!=1 || A.Bytes!=sizeof(A) || !A.Sequence || !A.BootStamp || A.BootStamp==CurrentBoot || A.Stage!=5 || A.Status!=EFI_SUCCESS || A.RawStage!=5 || A.RawStageInverse!=~5ULL || A.Reserved[0]!=A.BootStamp || A.Reserved[1]!=0x100004000ULL || A.Reserved[2]!=SIZE_256MB || A.Reserved[3]!=1 || A.Reserved[4]!=CAS_CPU0_CANDIDATE_TAG)return FALSE;
+ return !EFI_ERROR(gBS->CalculateCrc32(&A,232,&Crc)) && A.Crc32==Crc;
+}
+"""
+ s=parent.replace_once(s,'STATIC BOOLEAN mTraceReady;',recovery+'\nSTATIC BOOLEAN mTraceReady;')
+ s=parent.replace_once(s,'  ZeroMem(&mTrace,sizeof(mTrace));','  mCpuRecoveredValidation=CasCpu0PreviousValidation(Boot[13]);\n  if(mCpuRequireRecovered && !mCpuRecoveredValidation)return FALSE;\n  ZeroMem(&mTrace,sizeof(mTrace));')
+ p.write_text(s)
+ p=driver/'DarwinBoot.inf';s=p.read_text().replace('  DarwinBoot.c\n','  DarwinBoot.c\n  Guard.c\n  Guard.h\n  DiagCore.c\n  SmemCore.c\n').replace('  MdePkg/MdePkg.dec','  MdePkg/MdePkg.dec\n  EmbeddedPkg/EmbeddedPkg.dec')
+ s=s.replace('[LibraryClasses]','[LibraryClasses]\n  CacheMaintenanceLib\n  FdtLib\n  DxeServicesTableLib\n  UefiRuntimeServicesTableLib')
+ s+='\n[Guids]\n  gFdtTableGuid\n';p.write_text(s)
+ p=pkg/'DarwinBoot.dsc';s=p.read_text().replace('[LibraryClasses]','[LibraryClasses]\n  CacheMaintenanceLib|ArmPkg/Library/ArmCacheMaintenanceLib/ArmCacheMaintenanceLib.inf\n  ArmLib|MdePkg/Library/ArmLib/ArmBaseLib.inf\n  FdtLib|MdePkg/Library/BaseFdtLib/BaseFdtLib.inf\n  DxeServicesTableLib|MdePkg/Library/DxeServicesTableLib/DxeServicesTableLib.inf')
+ s += '\n[BuildOptions]\n  *_CLANGPDB_*_CC_FLAGS = -D CAS_XNU_DIAGNOSTICS=1\n'
+ p.write_text(s)
+ p=pkg/'TraceView/TraceView.c';s=p.read_text();s=parent.replace_once(s,'#include "TraceAbi.h"','#include "TraceAbi.h"\n#include "CandidateTag.h"');anchor='  Print(L"Status %lx  window %lx\\r\\nPA %lx  args %lx\\r\\nentry %lx\\r\\n",A.Status,A.Window,A.Address,A.Args,A.Entry);'
+ s=parent.replace_once(s,anchor,anchor+'\n  if(A.Reserved[3]==1)Print(L"Held probe: boot %lx  PA %lx  bytes %lx\\r\\n",A.Reserved[0],A.Reserved[1],A.Reserved[2]);');s=parent.replace_once(s,'  Print(L"Status %lx  window %lx', '  Print(L"Candidate %lx expected %lx: %s\\r\\n",A.Reserved[4],(UINT64)CAS_CPU0_CANDIDATE_TAG,A.Reserved[4]==CAS_CPU0_CANDIDATE_TAG ? L"MATCH" : L"different candidate");\n  Print(L"Status %lx  window %lx');p.write_text(s)
+ manifest={'profile':'cas-cpu0-'+MODE,'parent_x06':original,'mode':MODE,'candidate_tag':hex(tag),'private_adt_sha256':adt_meta['adt_sha256'],'recovered_validation_required':True,'kernel_execution_call_compiled':MODE=='execute','fresh_exact_range_probe_required':True,'fact_sources':staged,'legacy_diagnostic_probe_changed':False,
+  'files':{str(p.relative_to(out)):parent.digest(p.read_bytes()) for p in out.rglob('*') if p.is_file()}}
+ (out/'overlay.json').write_text(json.dumps(manifest,indent=2)+'\n');return manifest
+def main():
+ global MODE,ADT_AUDIT
+ ap=argparse.ArgumentParser(description=__doc__);ap.add_argument('--framework',type=Path,required=True);ap.add_argument('--uefi',type=Path,required=True);ap.add_argument('--out',type=Path,required=True);ap.add_argument('--adt-audit',type=Path,required=True);ap.add_argument('--mode',choices=['execute','validate'],default='execute');a=ap.parse_args();MODE=a.mode;ADT_AUDIT=a.adt_audit.resolve()
+ parent.prepare=prepare
+ print(json.dumps(parent.build(a.framework.resolve(),a.uefi.resolve(),a.out.resolve()),indent=2))
+if __name__=='__main__':main()
