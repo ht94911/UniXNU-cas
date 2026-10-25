@@ -171,6 +171,11 @@ def verify_vm_observe(work, profile):
     for name, identity in profile['files'].items():
         if digest(work / name) != identity['after_sha256']:
             raise ValueError('VM observation result hash mismatch: ' + name)
+    helper = profile.get('continuous_helper')
+    if helper:
+        path = HERE / helper['file']
+        if digest(path) != helper['sha256'] or path.read_text() not in (work / helper['target']).read_text():
+            raise ValueError('Continuous helper is not the exact tested source')
 
 
 def stage_vm_observe_wrapper(tree, profile):
@@ -192,6 +197,25 @@ def stage_vm_observe_wrapper(tree, profile):
             'after_sha256': digest(wrapper), 'late_patch': str(destination.relative_to(tree)),
             'late_patch_sha256': digest(destination),
             'semantics': 'Reverse exact VM first, entry second; preserve baseline checks and reapply entry then VM last.'}
+
+
+def stage_continuous_driver(tree, profile):
+    spec = profile['armcpu_observer']
+    source = tree / spec['source']
+    patch = HERE / spec['patch']
+    include = HERE / spec['include']
+    if digest(source) != spec['before_sha256'] or digest(patch) != spec['patch_sha256'] or digest(include) != spec['include_sha256']:
+        raise ValueError('Continuous ArmCpu input identity mismatch')
+    for flags in (['--check'], []):
+        subprocess.run(['git', 'apply', *flags, patch], cwd=source.parent, check=True,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if digest(source) != spec['after_sha256']:
+        raise ValueError('Continuous ArmCpu result identity mismatch')
+    target = source.parent / spec['include']
+    if target.exists():
+        raise ValueError('Continuous observer include already exists')
+    shutil.copyfile(include, target)
+    return dict(spec)
 
 
 def prepare_headers(tree, xnu, spec):
@@ -335,8 +359,12 @@ def main():
     parser.add_argument('--entry-trace', action='store_true', help='separate fixed cas CPU0 entry markers; no runtime claim')
     parser.add_argument('--vm-observe', action='store_true', help='CPU0 diagnostic MMU/VM markers and terminal exception record; implies entry trace')
     parser.add_argument('--platform-clock-observe', action='store_true', help='bounded platform/clock observation; implies VM and entry traces')
+    parser.add_argument('--continuous-boot', action='store_true', help='CPU0 continuous startup with real IRQ observations; implies VM and entry traces')
+    parser.add_argument('--user-fixture', action='store_true', help='also build own signed static PID1 and RAM-only mockfs support; requires continuous boot')
     args = parser.parse_args()
-    if args.platform_clock_observe:
+    if args.user_fixture and not args.continuous_boot:
+        parser.error('--user-fixture requires --continuous-boot')
+    if args.platform_clock_observe or args.continuous_boot:
         args.vm_observe = True
     if args.vm_observe:
         args.entry_trace = True
@@ -441,10 +469,14 @@ def main():
             report['entry_trace'] = trace_profile
         if args.vm_observe:
             with (logs / 'vm-observe.log').open('w') as log:
-                vm_profile = apply_vm_observe(work, log, 'platform-clock-observe.json' if args.platform_clock_observe else 'vm-observe.json')
+                vm_profile = apply_vm_observe(work, log, 'continuous-boot-observe.json' if args.continuous_boot else ('platform-clock-observe.json' if args.platform_clock_observe else 'vm-observe.json'))
             vm_profile['build_wrapper'] = stage_vm_observe_wrapper(tree, vm_profile)
             (exports / 'vm-observe.json').write_text(json.dumps(vm_profile, indent=2) + '\n')
             report['vm_observe'] = vm_profile
+            if args.continuous_boot:
+                continuous = stage_continuous_driver(tree, vm_profile)
+                report['continuous_driver'] = continuous
+                (exports / 'continuous-driver.json').write_text(json.dumps(continuous, indent=2) + '\n')
 
 
         (exports / 'source-inputs.json').write_text(json.dumps(source_inputs, indent=2) + '\n')
@@ -454,6 +486,8 @@ def main():
         settings = {'XNU_' + name: '1' for name in enabled}
         settings.update(XNU_CRYPTO_BOOTSTRAP='source', UNIXNU_DRIVERKIT_TAG=spec['supplemental_headers'][0]['commit'],
                         UNIXNU_TRUSTCACHE_TAG=spec['supplemental_headers'][1]['commit'])
+        if args.user_fixture:
+            settings.update(XNU_SOURCE_MOCKFS='1', XNU_TRUST_CACHE_RUNTIME='1')
         environment.update(settings)
         (exports / 'configuration.json').write_text(json.dumps(settings, indent=2) + '\n')
         report['input_lock_sha256'] = digest(HERE / 'inputs.json')
@@ -479,6 +513,16 @@ def main():
         selected_platform = 'ArmDTPlatform' if args.platform == 'cas' else 'ArmVirtPlatform'
         for component in (selected_platform, 'ArmCpu'):
             run(component, [sys.executable, 'scripts/build-cas-arm-driver.py', component])
+        if args.user_fixture:
+            run('mockfs', [sys.executable, 'scripts/build-mockfs-fixture.py'])
+            run('user-fixture', [sys.executable, 'scripts/build-native-user-fixture.py', '--output', str(tree / 'build/cas-user-fixture')])
+            own = tree / 'build/cas-user-fixture'
+            for source_name, export_name in [('launchd.macho', 'user-fixture.macho'), ('trustcache.bundle', 'user-fixture.trustcache'), ('trustcache.json', 'user-fixture.json'), ('addresses.json', 'user-fixture-addresses.json')]:
+                shutil.copyfile(own / source_name, exports / export_name)
+            own_report = json.loads((own / 'trustcache.json').read_text())
+            if own_report['process_sha256'] != digest(own / 'launchd.macho') or own_report['bundle_sha256'] != digest(own / 'trustcache.bundle'):
+                raise ValueError('Own user fixture identity mismatch')
+            report['user_fixture'] = own_report
         run('kernel', ['bash', 'scripts/build-xnu-4k-baseline.sh'])
         if args.vm_observe:
             verify_vm_observe(work, vm_profile)

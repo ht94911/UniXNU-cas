@@ -3,6 +3,14 @@ name: XNU source kernel
 on:
   workflow_dispatch:
     inputs:
+      continuous_boot:
+        description: Continue CPU0 through real IRQ, scheduler, IOKit and available userland
+        type: boolean
+        default: false
+      user_fixture:
+        description: Build own static iOS17 PID1 and RAM-only mockfs support
+        type: boolean
+        default: false
       platform_clock_observe:
         description: Observe actual cas ADT and CPU0 clock init then stop before machine_startup
         type: boolean
@@ -63,6 +71,8 @@ jobs:
           ${{ inputs.entry_trace && '--entry-trace' || '' }}
           ${{ inputs.vm_observe && '--vm-observe' || '' }}
           ${{ inputs.platform_clock_observe && '--platform-clock-observe' || '' }}
+          ${{ inputs.continuous_boot && '--continuous-boot' || '' }}
+          ${{ inputs.user_fixture && '--user-fixture' || '' }}
       - name: Encrypt the actual results and complete logs
         if: always()
         shell: bash

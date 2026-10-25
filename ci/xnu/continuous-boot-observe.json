@@ -1,0 +1,191 @@
+{
+  "schema_version": 1,
+  "profile": "cas-continuous-cpu0-001",
+  "xnu_commit": "d8b80295118ef25ac3a784134bcf95cd8e88109f",
+  "requires_existing_entry_trace": true,
+  "patch": "patches/cas-continuous-boot.patch",
+  "patch_sha256": "1cbddd57bf18119ec63c49689ee611c54395e04f69a9860c5bd382874a46770f",
+  "files": {
+    "osfmk/arm64/start.s": {
+      "before_sha256": "4526e6da9983571b3ca533f9e4bf99b119603c71a006a7dfcbca3bade6d8f06c",
+      "after_sha256": "2259d62a08569b922ddf2174292820c70d2666b3956f94ce7cb3d2c983de0239"
+    },
+    "osfmk/arm/arm_init.c": {
+      "before_sha256": "02b768806f3b56e2db6ae57b8e6e9ad6783a7686d1ebc50ec170f543be369a46",
+      "after_sha256": "1232f4534bc290af1bf64fa54cb4120053da54638c7c0f4033c495c00d2e14a0"
+    },
+    "osfmk/arm64/arm_vm_init.c": {
+      "before_sha256": "372d0449a312dc4391aa1e6b5adee35dd2a87b4c7beb0000954a3d84808493e3",
+      "after_sha256": "5e0457c0e753b59e60f3c505a5465d630938986f6d64139e39c63a6214922737"
+    },
+    "osfmk/kern/startup.c": {
+      "before_sha256": "80c4cc3b5db23f09a368b5f7aee4cb6c4309bfd830e1c81d4cb468494988f693",
+      "after_sha256": "f5d3de9b7b67745116677f008ff9796a39c4dd8d8762543ecacfed07b562d5b9"
+    },
+    "bsd/kern/bsd_init.c": {
+      "before_sha256": "8ec81c8ba37c515e9f2c379fafef665d05226929a6e8c8bd977bd3124fac61ea",
+      "after_sha256": "a424147a6a78da0ea08b39d65c6bfa58ae0353256ceda423a48563654b96184d"
+    },
+    "osfmk/kern/debug.c": {
+      "before_sha256": "03300886ebf0ccf6159756491ae6af0e7cef031df70e15c9de71d8aea8ff42a5",
+      "after_sha256": "b7c8a04eb0bdc4c809c53e0a18ee56d09c0017925363ecc546c344b0e5811343"
+    },
+    "bsd/kern/kern_prot.c": {
+      "before_sha256": "36110562914c50f434f1fd2d0471ed3588d9a858d097b9af3ed9afc6c1bf85eb",
+      "after_sha256": "b8272ff80aca365c34cda793a782e2688c94aafa279665f24ba75b836be0b9aa"
+    }
+  },
+  "phases": {
+    "0x42": "OSLAR completed",
+    "0x43": "low vectors/boot_args ready",
+    "0x44": "bootstrap maps/mailbox installed",
+    "0x45": "before MMU enable",
+    "0x46": "MMU on, diagnostic VBAR KVA installed",
+    "0x47": "before arm_init",
+    "0x50": "arm_init after pre-sign/image rebasing",
+    "0x51": "early PE(FALSE) returned",
+    "0x52": "before arm_vm_init",
+    "0x56": "VM tables prepared, before TTBR switch",
+    "0x53": "arm_vm_init returned, permanent mailbox IO mapping",
+    "0x54": "early PE(TRUE) returned",
+    "0xe0": "terminal early exception, inspect extension",
+    "0x5f": "platform property/clock/masked-IRQ gate refused; diagnostic stop",
+    "0x60": "bounded actual SecureDT/PE/CNTFRQ packet committed",
+    "0x61": "before cpu_timebase_init",
+    "0x62": "cpu_timebase_init returned",
+    "0x63": "before PE_init_cpu",
+    "0x64": "PE_init_cpu returned",
+    "0x65": "before final platform snapshot",
+    "0x66": "same successful early platform point; now continues",
+    "0x70": "normal XNU vectors installed; calling machine_startup",
+    "0x71": "kernel_bootstrap entered",
+    "0x72": "kernel_bootstrap_thread entered",
+    "0x73": "before PE_init_iokit",
+    "0x74": "PE_init_iokit returned",
+    "0x75": "normal spllo returned; asynchronous IRQs allowed",
+    "0x76": "before bsd_init",
+    "0x77": "bsd_init entered",
+    "0x78": "before root setconf",
+    "0x79": "before vfs_mountroot",
+    "0x7a": "vfs_mountroot returned success",
+    "0x7b": "before load_init_program",
+    "0x7c": "load_init_program returned; not yet proof of EL0",
+    "0x7d": "PID1 getpid syscall handler",
+    "0x90": "first runtime panic recorded; original panic path continues"
+  },
+  "slot": "0x9f960000",
+  "page_bytes": 4096,
+  "exception_extension": {
+    "offset": 256,
+    "bytes": 128,
+    "magic": "0x315845534143",
+    "boot_offset": 264,
+    "candidate_offset": 272,
+    "vector_offset": 280,
+    "ESR_offset": 288,
+    "FAR_offset": 296,
+    "ELR_offset": 304,
+    "SPSR_offset": 312,
+    "SCTLR_offset": 320,
+    "TCR_offset": 328,
+    "TTBR0_offset": 336,
+    "TTBR1_offset": 344,
+    "SP_offset": 352,
+    "previous_phase_offset": 360,
+    "payload_xor_offset": 368,
+    "magic_inverse_offset": 376,
+    "commit": "clear magic, write payload/XOR/inverse, DSB, magic last, DSB; preserve v1 CRC",
+    "candidate_source_offset": 152,
+    "SP_semantics": "Interrupted SP_EL0 for vectors0..3; interrupted/handler SP_EL1 for vectors4..15 (lower EL is outside this CPU0 diagnostic profile)."
+  },
+  "mapping": {
+    "block": "0x9f800000",
+    "bytes": 2097152,
+    "L1_index": 2,
+    "L2_offset": "0x7e0",
+    "pool_pages_used": 5,
+    "NX": true,
+    "cache": "device nGnRnE",
+    "overlap": "refuse occupied TTBR0 L1[2]"
+  },
+  "limits": [
+    "CPU0 only; SMP deferred by human direction",
+    "No deliberate stop on successful VM/platform/scheduler/IOKit/root/getpid checkpoints",
+    "Uses real XNU exception dispatch before machine_startup; early terminal vectors only cover bootstrap",
+    "Does not enable a UFS driver or persistent storage",
+    "Root/userland points are observations only; a matching root image must be supplied before claiming their execution",
+    "Panic format is bounded and literal; arguments are not printf-expanded",
+    "Full macOS kernel build and device behavior remain untested"
+  ],
+  "reference": "reAAAq/UniXNU-umi@3eb72578597d2ca16471b172d45eddc096a34a04/patches/umi-xnu/early-entry-trace.patch",
+  "license": "Apple notices retained; local additions BSD-2-Clause-Patent",
+  "build_wrapper_before_sha256": "7f2640f9b1bc7252bf5e43c5d086e9d4b079dfb7105eb0f3f227c06d9baa066d",
+  "platform_snapshot": {
+    "offset": 384,
+    "bytes": 128,
+    "magic": "0x31504c534143",
+    "fields": [
+      "magic",
+      "boot",
+      "candidate",
+      "valid_mask",
+      "DT_bytes_low32_CPU_count_high32",
+      "PE_timebase",
+      "CNTFRQ",
+      "MPIDR",
+      "GICD",
+      "GICR",
+      "NVRAM_proxy_bytes",
+      "DAIF",
+      "CNTVCT",
+      "matched_model_FNV32",
+      "payload_xor",
+      "magic_inverse"
+    ],
+    "required_mask": "0x7f",
+    "IRQ_FIQ_must_remain_masked": true,
+    "commit": "magic invalidated, payload/XOR/inverse, DSB, magic last, DSB"
+  },
+  "armcpu_observer": {
+    "source": "drivers/ArmCpu/ArmCpu.cpp",
+    "before_sha256": "0c3643427672848b87cee1a86d9b4109863b3dc63ca00462913211316536337a",
+    "after_sha256": "e66616882c41ad58d2c7e2aefabb6809c74197a089e5c0882ac6bef1b37cd07f",
+    "patch": "patches/cas-armcpu-observer.patch",
+    "patch_sha256": "a75bcf38c5985b4f4fcbcc2e361fc500537cefef29023ff79246d2f6e5ce1af7",
+    "include": "CasArmCpuTrace.inc",
+    "include_sha256": "2edc5f28188662a6e8212f9dba0aced877475252cd3eb93596ca0e24710fb38a",
+    "upstream": "reAAAq/UniXNU-umi@3eb72578597d2ca16471b172d45eddc096a34a04",
+    "sampling": "IRQs1,2,8, then every64; driver and rtclock retain their actual behavior",
+    "license": {
+      "file": "third-party/UniXNU-umi-LICENSE",
+      "sha256": "5b1d3d911103cb0f41641ec0964c5ac1f7e229f57aa072b6ac38bae913a1307b"
+    }
+  },
+  "runtime_packets": {
+    "irq": {
+      "offset": 512,
+      "bytes": 320,
+      "magic": "0x31515249534143",
+      "values": 32
+    },
+    "startup": {
+      "offset": 832,
+      "bytes": 128,
+      "magic": "0x314e5552534143"
+    },
+    "panic": {
+      "offset": 1024,
+      "bytes": 256,
+      "magic": "0x31434e50534143",
+      "literal_format_bytes": 112
+    },
+    "commit": "magic invalidated; boot/tag/payload/XOR/inverse; DSB; magic last; DSB",
+    "snapshot_bytes": 1280,
+    "mapping_bytes": 4096
+  },
+  "continuous_helper": {
+    "file": "CasContinuousTrace.inc",
+    "sha256": "2c7571be90b9635add896528411ed3baeee7d8e6db62b80bebc4243e41b0bb9b",
+    "target": "osfmk/arm/arm_init.c"
+  }
+}
