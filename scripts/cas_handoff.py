@@ -28,8 +28,9 @@ def transform(source):
  text=replace_once(text,'  Status = GetMap (&Map, &Capacity, &MapSize, &Key, &Stride);\n  if (EFI_ERROR (Status)) { goto Fail; }\n  Print (L"DARWINBOOT: ARM64',
  '  CasTrace (4, EFI_SUCCESS, Address, ArgsAddress, Address + Kernel.Entry - Kernel.Base, WindowSize);\n#if CAS_HANDOFF_DRY_RUN\n  Print (L"CAS X06: kernel/ADT/boot_args loaded; dry-run frees owned memory; no ExitBootServices or kernel execution\\n");\n  Status = EFI_SUCCESS;\n  goto Fail;\n#else\n  Status = GetMap (&Map, &Capacity, &MapSize, &Key, &Stride);\n  if (EFI_ERROR (Status)) { goto Fail; }\n  Print (L"DARWINBOOT: ARM64')
  text=replace_once(text,'means the kernel entry code ran.','marks the loader before the kernel branch.')
- text=replace_once(text,'    Status = gBS->ExitBootServices (mImage, Key);','    CasTrace (0x10, EFI_SUCCESS, Address, ArgsAddress, Address + Kernel.Entry - Kernel.Base, WindowSize);\n    Status = gBS->ExitBootServices (mImage, Key);')
- # C trace helper uses boot services: NEVER call it after successful EBS.
+ text=replace_once(text,'  for (Attempt = 0; Attempt < 3; Attempt++) {\n    MapSize = Capacity;','  CasTrace (0x10, EFI_SUCCESS, Address, ArgsAddress, Address + Kernel.Entry - Kernel.Base, WindowSize);\n  for (Attempt = 0; Attempt < 3; Attempt++) {\n    MapSize = Capacity;')
+ # Commit C trace before the first GetMemoryMap/EBS attempt. The retry loop
+ # may call only GetMemoryMap/EBS; raw assembly markers use no boot services.
  text=replace_once(text,'  return EFI_ABORTED;\nFail:','  return EFI_ABORTED;\n#endif\nFail:')
  text=replace_once(text,'  if (Address != 0) { gBS->FreePages (Address, EFI_SIZE_TO_PAGES (WindowSize)); }\n  Print (L"DARWINBOOT: boot refused: %r; firmware retained\\n", Status);',
  '  if (Address != 0) {\n    EFI_STATUS Released = gBS->FreePages (Address, EFI_SIZE_TO_PAGES (WindowSize));\n    if (EFI_ERROR (Released)) { Status = Released; }\n  }\n  CasTrace (EFI_ERROR (Status) ? 0x7f : 5, Status, Address, 0, 0, WindowSize);\n  Print (L"CAS X06: load/release returned %r; firmware retained\\n", Status);')
