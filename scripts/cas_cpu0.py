@@ -4,6 +4,7 @@
 import argparse,hashlib,json,shutil
 from pathlib import Path
 import cas_handoff as parent
+from cpu0_identity import candidate_tag
 ORIGINAL_PREPARE=parent.prepare
 ROOT=Path(__file__).resolve().parents[1]
 MODE='execute'
@@ -16,7 +17,12 @@ def prepare(framework,out):
  adt_meta=json.loads(ADT_AUDIT.read_text())
  if adt_meta.get('mode')!='private' or adt_meta.get('cpu_profile')!='cpu0' or adt_meta.get('entropy_bytes')!=64:raise ValueError('private CPU0 entropy audit required')
  contract=json.loads((ROOT/'config/cpu0-contract.json').read_text())
- tag=int.from_bytes(hashlib.sha256((contract['profile']+MODE+contract['kernel']['sha256']+adt_meta['adt_sha256']).encode()).digest()[:8],'little')
+ source_heads={}
+ for label,repo in [('device',ROOT),('uefi',uefi),('framework',framework)]:
+  repo_state=parent.state(repo)
+  if repo_state['dirty']:raise ValueError('CPU0 candidate requires frozen clean sources')
+  source_heads[label]=repo_state['head']
+ tag=candidate_tag(contract,MODE,adt_meta['adt_sha256'],source_heads)
  tag_header='// SPDX-License-Identifier: BSD-2-Clause-Patent\n#define CAS_CPU0_CANDIDATE_TAG 0x%016xULL\n'%tag
  (driver/'CandidateTag.h').write_text(tag_header);(pkg/'TraceView/CandidateTag.h').write_text(tag_header)
 
@@ -42,6 +48,7 @@ def prepare(framework,out):
  p=driver/'DarwinBoot.c';s=p.read_text()
  if MODE=='execute':s=parent.replace_once(s,'#define CAS_HANDOFF_DRY_RUN 1','#define CAS_HANDOFF_DRY_RUN 0')
  s=parent.replace_once(s,'#include "Trace.h"','#include "Trace.h"\n#include "Guard.h"')
+ s=parent.replace_once(s,'  Root = NULL;\n  Image = NULL;','  mTrace.Reserved[5] = READ_SYSREG (mpidr_el1);\n  mTrace.Reserved[6] = mTrace.Reserved[5] & 0xFF00FFFFFFULL;\n  CasTrace (1, EFI_SUCCESS, 0, 0, 0, 0);\n  if (mTrace.Reserved[6] != 0) {\n    CasTrace (0x7f, EFI_UNSUPPORTED, 0, 0, 0, 0);\n    Print (L"CAS CPU0: unexpected BSP affinity; no allocation or kernel branch\\n");\n    return EFI_UNSUPPORTED;\n  }\n  Root = NULL;\n  Image = NULL;')
  s=parent.replace_once(s,'  Status = AllocateWindow (&Kernel, WindowSize, &Address);',
   '  Status = CasCpu0Preflight (0x100004000ULL, WindowSize);\n  if (EFI_ERROR (Status)) { goto Fail; }\n  Status = AllocateWindow (&Kernel, WindowSize, &Address);')
  s=parent.replace_once(s,'  CasTrace (3, EFI_SUCCESS, Address, 0, Address + Kernel.Entry - Kernel.Base, WindowSize);',
@@ -62,7 +69,7 @@ STATIC BOOLEAN CasCpu0PreviousValidation(UINT64 CurrentBoot) {
  CAS_HANDOFF_TRACE A,B;UINTN I;UINT32 Crc;volatile CONST UINT8 *P=(VOID *)(UINTN)CAS_TRACE_BASE;
  for(I=0;I<sizeof(A);I++)((UINT8 *)&A)[I]=P[I];MemoryFence();
  for(I=0;I<sizeof(B);I++)((UINT8 *)&B)[I]=P[I];MemoryFence();
- if(CompareMem(&A,&B,sizeof(A)) || A.Magic!=CAS_TRACE_MAGIC || A.Version!=1 || A.Bytes!=sizeof(A) || !A.Sequence || !A.BootStamp || A.BootStamp==CurrentBoot || A.Stage!=5 || A.Status!=EFI_SUCCESS || A.RawStage!=5 || A.RawStageInverse!=~5ULL || A.Reserved[0]!=A.BootStamp || A.Reserved[1]!=0x100004000ULL || A.Reserved[2]!=SIZE_256MB || A.Reserved[3]!=1 || A.Reserved[4]!=CAS_CPU0_CANDIDATE_TAG)return FALSE;
+ if(CompareMem(&A,&B,sizeof(A)) || A.Magic!=CAS_TRACE_MAGIC || A.Version!=1 || A.Bytes!=sizeof(A) || !A.Sequence || !A.BootStamp || A.BootStamp==CurrentBoot || A.Stage!=5 || A.Status!=EFI_SUCCESS || A.RawStage!=5 || A.RawStageInverse!=~5ULL || A.Reserved[0]!=A.BootStamp || A.Reserved[1]!=0x100004000ULL || A.Reserved[2]!=SIZE_256MB || A.Reserved[3]!=1 || A.Reserved[4]!=CAS_CPU0_CANDIDATE_TAG || (A.Reserved[5]&0xFF00FFFFFFULL)!=0 || A.Reserved[6]!=0)return FALSE;
  return !EFI_ERROR(gBS->CalculateCrc32(&A,232,&Crc)) && A.Crc32==Crc;
 }
 """
@@ -76,8 +83,8 @@ STATIC BOOLEAN CasCpu0PreviousValidation(UINT64 CurrentBoot) {
  s += '\n[BuildOptions]\n  *_CLANGPDB_*_CC_FLAGS = -D CAS_XNU_DIAGNOSTICS=1\n'
  p.write_text(s)
  p=pkg/'TraceView/TraceView.c';s=p.read_text();s=parent.replace_once(s,'#include "TraceAbi.h"','#include "TraceAbi.h"\n#include "CandidateTag.h"');anchor='  Print(L"Status %lx  window %lx\\r\\nPA %lx  args %lx\\r\\nentry %lx\\r\\n",A.Status,A.Window,A.Address,A.Args,A.Entry);'
- s=parent.replace_once(s,anchor,anchor+'\n  if(A.Reserved[3]==1)Print(L"Held probe: boot %lx  PA %lx  bytes %lx\\r\\n",A.Reserved[0],A.Reserved[1],A.Reserved[2]);');s=parent.replace_once(s,'  Print(L"Status %lx  window %lx', '  Print(L"Candidate %lx expected %lx: %s\\r\\n",A.Reserved[4],(UINT64)CAS_CPU0_CANDIDATE_TAG,A.Reserved[4]==CAS_CPU0_CANDIDATE_TAG ? L"MATCH" : L"different candidate");\n  Print(L"Status %lx  window %lx');p.write_text(s)
- manifest={'profile':'cas-cpu0-'+MODE,'parent_x06':original,'mode':MODE,'candidate_tag':hex(tag),'private_adt_sha256':adt_meta['adt_sha256'],'recovered_validation_required':True,'kernel_execution_call_compiled':MODE=='execute','fresh_exact_range_probe_required':True,'fact_sources':staged,'legacy_diagnostic_probe_changed':False,
+ s=parent.replace_once(s,anchor,anchor+'\n  if(A.Reserved[3]==1)Print(L"Held probe: boot %lx  PA %lx  bytes %lx\\r\\n",A.Reserved[0],A.Reserved[1],A.Reserved[2]);');s=parent.replace_once(s,'  Print(L"Status %lx  window %lx', '  Print(L"Candidate %lx expected %lx: %s\\r\\n",A.Reserved[4],(UINT64)CAS_CPU0_CANDIDATE_TAG,A.Reserved[4]==CAS_CPU0_CANDIDATE_TAG ? L"MATCH" : L"different candidate");\n  Print(L"Status %lx  window %lx');s=parent.replace_once(s,'  Print(L"Pre-EBS EL', '  Print(L"MPIDR %lx  affinity %lx (expected 0)\\r\\n",A.Reserved[5],A.Reserved[6]);\n  Print(L"Pre-EBS EL');p.write_text(s)
+ manifest={'profile':'cas-cpu0-'+MODE,'parent_x06':original,'mode':MODE,'candidate_tag':hex(tag),'source_heads':source_heads,'MPIDR_affinity_0_required':True,'private_adt_sha256':adt_meta['adt_sha256'],'recovered_validation_required':True,'kernel_execution_call_compiled':MODE=='execute','fresh_exact_range_probe_required':True,'fact_sources':staged,'legacy_diagnostic_probe_changed':False,
   'files':{str(p.relative_to(out)):parent.digest(p.read_bytes()) for p in out.rglob('*') if p.is_file()}}
  (out/'overlay.json').write_text(json.dumps(manifest,indent=2)+'\n');return manifest
 def main():

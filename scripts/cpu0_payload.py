@@ -4,6 +4,7 @@
 import hashlib,json,os,stat,tomllib
 from pathlib import Path
 from fat16_payload import build as fat_build
+from cpu0_identity import candidate_tag
 from handoff_payload import pe
 from adt_codec import decode
 from cas_adt import audit_tree,load_json,load_schema
@@ -20,8 +21,8 @@ def build(config,diag,driver,kernel,adt,viewer,*,adt_report,loader_report,overla
  if len(kernel)!=contract['kernel']['bytes'] or sha(kernel)!=contract['kernel']['sha256']:raise ValueError('actual trace kernel identity mismatch')
  if loader_report.get('result')!='pass' or not loader_report.get('sources_unchanged') or loader_report['efi']['sha256']!=sha(driver):raise ValueError('loader build identity mismatch')
  if overlay.get('profile')!='cas-cpu0-execute' or not overlay.get('fresh_exact_range_probe_required'):raise ValueError('CPU0 guard profile missing')
- expected_tag=int.from_bytes(hashlib.sha256((contract['profile']+'execute'+contract['kernel']['sha256']+adt_report['adt_sha256']).encode()).digest()[:8],'little')
- if not overlay.get('recovered_validation_required') or overlay.get('candidate_tag')!=hex(expected_tag) or overlay.get('private_adt_sha256')!=adt_report['adt_sha256']:raise ValueError('candidate recovery tag mismatch')
+ expected_tag=candidate_tag(contract,'execute',adt_report['adt_sha256'],overlay['source_heads'])
+ if not overlay.get('MPIDR_affinity_0_required') or not overlay.get('recovered_validation_required') or overlay.get('candidate_tag')!=hex(expected_tag) or overlay.get('private_adt_sha256')!=adt_report['adt_sha256']:raise ValueError('candidate recovery tag mismatch')
  if adt_report.get('mode')!='private' or adt_report.get('cpu_profile')!='cpu0' or adt_report.get('entropy_bytes')!=64 or not adt_report.get('roundtrip_verified') or adt_report['adt_sha256']!=sha(adt) or adt_report['source_audit']['result']!='pass':raise ValueError('private CPU0 ADT provenance mismatch')
  tree=decode(adt);audit=audit_tree(tree,load_json(ROOT/'config/cas-adt-facts.json'),load_schema(ROOT/'config/cas-adt-schema.json'),cpu_profile='cpu0',mode='private')
  if audit['result']!='pass' or tree.encode()!=adt:raise ValueError('CPU0 ADT audit failed')

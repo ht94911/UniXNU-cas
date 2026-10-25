@@ -17,6 +17,8 @@ static void *Pools[4096];static UINTN PoolSlots;
 static UINT8 *KernelInput,*TreeInput;static UINTN KernelBytes,TreeBytes;
 static KERNEL ExpectedKernel;static int Mode,Allocated,AllocCount,FreeCount,Verified,PoolCount;
 EFI_BOOT_SERVICES *gBS;EFI_SYSTEM_TABLE *gST;
+STATIC UINT64 CasHostReadReg(CONST CHAR8 *Name){if(!strcmp(Name,"mpidr_el1"))return Mode==28?0x80000001ULL:0x80000000ULL;return 4;}
+
 EFI_GUID gEfiFileInfoGuid,gEfiSimpleFileSystemProtocolGuid,gEfiGraphicsOutputProtocolGuid;
 EFI_GUID gEfiMemoryAttributeProtocolGuid,gEfiLoadedImageProtocolGuid,gUniXNULoaderProtocolGuid;
 VOID *EFIAPI AllocatePool(UINTN N){VOID *P;if(EbsCalls)abort();P=malloc(N);if(P){if(PoolSlots>=4096)abort();Pools[PoolSlots++]=P;PoolCount++;}return P;}
@@ -42,7 +44,7 @@ VOID EFIAPI DebugAssert(CONST CHAR8 *F,UINTN L,CONST CHAR8 *D){fprintf(stderr,"a
 VOID EFIAPI CpuDeadLoop(VOID){if(Mode<10 || Mode>12)abort();DeadCalls++;longjmp(ExitPoint,2);}
 UINT64 EFIAPI DarwinCurrentEl(VOID){return 4;}
 VOID EFIAPI DarwinEnter(UINT64 A,UINT64 E,UINT64 M,UINT64 S,UINT64 V,UINT64 B){(void)V;(void)B;
- if(!EbsCalls || !HeldPassed || S!=SIZE_256MB || M!=0x100004000ULL || E!=M+ExpectedKernel.Entry-ExpectedKernel.Base || A!=ALIGN_VALUE(M+ExpectedKernel.End-ExpectedKernel.Base,SIZE_16KB) || mTrace.Stage!=0x10 || mTrace.Reserved[0]!=mTrace.BootStamp || mTrace.Reserved[1]!=M || mTrace.Reserved[2]!=S || mTrace.Reserved[3]!=1 || mTrace.Reserved[4]!=CAS_CPU0_CANDIDATE_TAG)abort();
+ if(!EbsCalls || !HeldPassed || S!=SIZE_256MB || M!=0x100004000ULL || E!=M+ExpectedKernel.Entry-ExpectedKernel.Base || A!=ALIGN_VALUE(M+ExpectedKernel.End-ExpectedKernel.Base,SIZE_16KB) || mTrace.Stage!=0x10 || mTrace.Reserved[0]!=mTrace.BootStamp || mTrace.Reserved[1]!=M || mTrace.Reserved[2]!=S || mTrace.Reserved[3]!=1 || mTrace.Reserved[4]!=CAS_CPU0_CANDIDATE_TAG || mTrace.Reserved[6]!=0)abort();
  VerifyLoaded(M);BranchCalls++;longjmp(ExitPoint,1);}
 
 static EFI_STATUS EFIAPI Crc(VOID *Data,UINTN N,UINT32 *Out){UINT32 V=~0U;UINTN I,J;if(EbsCalls)abort();for(I=0;I<N;I++){V^=((UINT8 *)Data)[I];for(J=0;J<8;J++)V=(V>>1)^((V&1)?0xedb88320:0);}*Out=~V;return EFI_SUCCESS;}
@@ -119,7 +121,7 @@ static void SeedPriorValidation(void){
  CAS_HANDOFF_TRACE T={0};UINT32 C;
  if(Mode!=14 && Mode!=20){
   T.Magic=CAS_TRACE_MAGIC;T.Version=1;T.Bytes=256;T.BootStamp=0x50001;T.Sequence=1;T.Stage=5;T.RawStage=5;T.RawStageInverse=~5ULL;
-  T.Reserved[0]=T.BootStamp;T.Reserved[1]=0x100004000ULL;T.Reserved[2]=SIZE_256MB;T.Reserved[3]=1;T.Reserved[4]=CAS_CPU0_CANDIDATE_TAG;
+  T.Reserved[0]=T.BootStamp;T.Reserved[1]=0x100004000ULL;T.Reserved[2]=SIZE_256MB;T.Reserved[3]=1;T.Reserved[4]=CAS_CPU0_CANDIDATE_TAG;T.Reserved[5]=0x80000000ULL;T.Reserved[6]=0;
   if(Mode==17)T.Reserved[4]^=1;
   if(Mode==18){T.BootStamp=0x60001;T.Reserved[0]=T.BootStamp;}
   if(Mode==19){T.Stage=0x10;T.RawStage=0x41;T.RawStageInverse=~0x41ULL;}
@@ -130,6 +132,7 @@ static void SeedPriorValidation(void){
   if(Mode==25)T.Reserved[3]=0;
   if(Mode==26){T.BootStamp=0;T.Reserved[0]=0;}
   if(Mode==27)T.Sequence=0;
+  if(Mode==29){T.Reserved[5]=0x80000001ULL;T.Reserved[6]=1;}
   Crc(&T,232,&C);T.Crc32=C;if(Mode==16)T.Address^=1;
  }
  memcpy((VOID *)(UINTN)CAS_TRACE_BASE,&T,256);BeforeRequest=T;
@@ -152,9 +155,10 @@ int main(int Argc,char **Argv){
  if(Mode!=0 && Mode!=6 && Mode!=9 && Mode!=10 && Mode!=11 && Mode!=12 && Mode!=14 && (!EFI_ERROR(Status) || EbsCalls || BranchCalls || Allocated || PoolCount))abort();
  if(Mode==14 && (Status!=EFI_SUCCESS || EbsCalls || BranchCalls || !HeldPassed || FreeCount!=1 || Verified!=1 || Allocated || PoolCount || mTrace.Stage!=5))abort();
  if(Mode==15 && (PreflightCalls || AllocCount || EbsCalls || BranchCalls))abort();
- if(Mode>=16 && (PreflightCalls || HeldCalls || AllocCount || EbsCalls || BranchCalls || memcmp((VOID *)(UINTN)CAS_TRACE_BASE,&BeforeRequest,256)))abort();
+ if(Mode>=16 && Mode!=28 && (PreflightCalls || HeldCalls || AllocCount || EbsCalls || BranchCalls || memcmp((VOID *)(UINTN)CAS_TRACE_BASE,&BeforeRequest,256)))abort();
  if(Mode==9 && EbsCalls!=2)abort();if(Mode==11 && EbsCalls!=3)abort();
  printf("{\"mode\":%d,\"status\":\"0x%lx\",\"allocations\":%d,\"releases_before_EBS\":%d,\"layout_verified\":%d,\"ebs_calls\":%d,\"handoff_stub_calls\":%d,\"dead_loop_stub_calls\":%d,\"fresh_preflight_calls\":%d,\"held_probe_calls\":%d,\"held_passed\":%d,\"retained_pool_objects\":%d,\"XNU_executed\":false}\n",Mode,Status,AllocCount,FreeCount,Verified,EbsCalls,BranchCalls,DeadCalls,PreflightCalls,HeldCalls,HeldPassed,PoolCount);
+ if(Mode==28 && (PreflightCalls || AllocCount || EbsCalls || BranchCalls || mTrace.Reserved[6]!=1))abort();
  // Host-only teardown, outside the firmware/loader. No boot service after EBS.
  if(Allocated)munmap((void *)(UINTN)0x100004000ULL,SIZE_256MB);
  {UINTN I;for(I=0;I<PoolSlots;I++)if(Pools[I])free(Pools[I]);}

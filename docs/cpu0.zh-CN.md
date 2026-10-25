@@ -39,3 +39,5 @@ VM、平台初始化、用户态或iOS。
 EBS与handoff明确为主机替身；package_cpu0.py创建私有32MiB FAT和独立解析的boot。
 输出路径不可复用，保存私有权限、全部输入/源码/目标IR/map/SHA与恢复资料。构建工具
 不操作手机，原始固件、带熵ADT和镜像不进入公开包。
+
+002候选在Reserved[5]保存实际MPIDR_EL1，[6]保存masked affinity；非0在分配前拒绝，查看器显示两者。EBS/Entry.S到内核的直接分支没有CPU转移，恢复的XNU标记与该pre-EBS执行核身份共同判定。tag新增绑定三仓干净源码提交，不能挪用001记录。

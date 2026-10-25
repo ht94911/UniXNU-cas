@@ -64,7 +64,7 @@ def main():
  for name,path in [('kernel.macho',a.kernel),('kernel.symbols.txt',a.symbols),('cas.adt',adt),('DarwinBoot.efi',driver),('CasTraceView.efi',viewer),('CasDiag.efi',diag)]:shutil.copyfile(path,a.out/name)
  archive=a.out/'source-cpu0.tar'
  with archive.open('xb') as stream:subprocess.run(['git','archive','--format=tar','HEAD'],cwd=ROOT,stdout=stream,check=True)
- manifest={'schema_version':1,'board':'cas','build_id':'cas-cpu0-001','profile':'CPU0 RAM boot; no UFS/Data/touch/GPU','result':'pass','repositories':sources,'source_date_epoch':'1792643741',
+ manifest={'schema_version':1,'board':'cas','build_id':contract['profile'],'profile':'CPU0 RAM boot; no UFS/Data/touch/GPU','result':'pass','repositories':sources,'source_date_epoch':'1792643741',
   'base_package_manifest':ref(base/'source-manifest.json'),'firmware_build':firmware,'loader_build':loader,'overlay':overlay,'contract':contract,
   'ADT_private_audit':audit,'payload':{'files':files,**payload_audit},'image_checks':check,'commands':commands,'image':ref(image),
   'private_candidate':True,'runtime_success':False,'requires_validation_return_then_distinct_boot':True,'candidate_tag':overlay['candidate_tag'],

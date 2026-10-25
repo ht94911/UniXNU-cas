@@ -62,3 +62,5 @@ core with explicit host platform/EBS/handoff doubles. Use scripts/package_cpu0.p
 to create the private32MiB FAT and independently decoded Android boot image.
 Every output path is new. Keep the private ADT/image permissions and all SHA,
 source, target IR, map, input and restoration records. No build tool calls a phone.
+
+Candidate002 records actual MPIDR_EL1 in Reserved[5] and masked affinity in[6], rejects affinity other than0 before allocation, and displays both. The direct EBS/Entry.S/kernel branch path contains no CPU transfer; bind the recovered XNU marker to this pre-EBS CPU identity. The tag now includes all three clean source commits.
