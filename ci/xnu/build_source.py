@@ -111,6 +111,23 @@ def apply_kernel_patches(tree, work, log):
     return {'applied': applied, 'changed_sources': changed}
 
 
+
+def apply_entry_trace(work, log):
+    """Apply the separate cas CPU0 trace only after the verified baseline patches."""
+    profile = json.loads((HERE / 'entry-trace.json').read_text())
+    patch = HERE / profile['patch']
+    source = work / profile['source']
+    if git(work, 'rev-parse', 'HEAD').decode().strip() != profile['xnu_commit']:
+        raise ValueError('Entry trace XNU commit mismatch')
+    if digest(patch) != profile['patch_sha256'] or digest(source) != profile['before_sha256']:
+        raise ValueError('Entry trace patch/source hash mismatch')
+    for flags in (['--check'], []):
+        subprocess.run(['git', '-C', work, 'apply', *flags, patch], check=True,
+                       stdout=log, stderr=subprocess.STDOUT, timeout=30)
+    if digest(source) != profile['after_sha256']:
+        raise ValueError('Entry trace result hash mismatch')
+    return profile
+
 def prepare_headers(tree, xnu, spec):
     """Restore/hash all fixed header blobs, including files already present."""
     records = []
@@ -249,6 +266,7 @@ def main():
     parser.add_argument('--platform', choices=('cas', 'qemu'), default='cas')
     parser.add_argument('--prepare-only', action='store_true')
     parser.add_argument('-j', '--jobs', type=int, default=4)
+    parser.add_argument('--entry-trace', action='store_true', help='separate fixed cas CPU0 entry markers; no runtime claim')
     args = parser.parse_args()
     if args.jobs < 1:
         parser.error('jobs must be positive')
@@ -341,6 +359,14 @@ def main():
         with (logs / 'kernel-patches.log').open('w') as log:
             patched = apply_kernel_patches(tree, work, log)
         (exports / 'patched-source.json').write_text(json.dumps(patched, indent=2) + '\n')
+        if args.entry_trace:
+            if args.platform != 'cas':
+                raise ValueError('cas entry trace cannot be used with another platform')
+            with (logs / 'entry-trace.log').open('w') as log:
+                trace_profile = apply_entry_trace(work, log)
+            (exports / 'entry-trace.json').write_text(json.dumps(trace_profile, indent=2) + '\n')
+            report['entry_trace'] = trace_profile
+
         (exports / 'source-inputs.json').write_text(json.dumps(source_inputs, indent=2) + '\n')
         shutil.copyfile(HERE / 'build_arm_driver.py', tree / 'scripts/build-cas-arm-driver.py')
         enabled = ['SOURCE_CORECRYPTO14', 'SOURCE_PTHREAD', 'ARMCPU', 'NATIVE_ARCH_TIMER',

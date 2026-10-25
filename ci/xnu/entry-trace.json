@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "xnu_commit": "d8b80295118ef25ac3a784134bcf95cd8e88109f",
+  "patch": "patches/cas-entry-trace.patch",
+  "patch_sha256": "7cbac1299cb9b3b8d1b1fc2d414880731756f7b5bcac2abfc9cc6e237aba312b",
+  "source": "osfmk/arm64/start.s",
+  "before_sha256": "bf9864bfa4afbc56e31040a445fd078f08be7f702321e146e356d960719022e3",
+  "after_sha256": "4526e6da9983571b3ca533f9e4bf99b119603c71a006a7dfcbca3bade6d8f06c",
+  "page_bytes": 4096,
+  "slot": {
+    "base": "0x9f960000",
+    "raw_stage_offset": 240,
+    "stage_inverse_offset": 248,
+    "record_bytes": 256,
+    "magic": "0x363048534143"
+  },
+  "phases": {
+    "0x40": "actual XNU __start trampoline",
+    "0x41": "actual XNU start_first_cpu before OSLAR_EL1"
+  },
+  "constraints": [
+    "CPU0 only",
+    "MMU off at these two entry locations",
+    "Does not prove MMU or arm_init reached",
+    "Does not copy umi ramoops address or page tables"
+  ],
+  "reference": "reAAAq/UniXNU-umi@3eb72578597d2ca16471b172d45eddc096a34a04/patches/umi-xnu/early-entry-trace.patch"
+}

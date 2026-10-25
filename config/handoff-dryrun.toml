@@ -1,0 +1,34 @@
+# SPDX-License-Identifier: BSD-2-Clause-Patent
+version = 1
+[boot]
+default = "diag"
+timeout = -1
+rotate = 0
+fallback_timeout = 10
+connect_all = false
+[ui]
+layout = "portrait"
+[[driver]]
+path = '\EFI\Drivers\DarwinBoot.efi'
+connect = false
+[[entry]]
+id = "diag"
+title = "Run cas memory and log diagnostics"
+type = "efi"
+path = '\EFI\Tools\CasDiag.efi'
+[[entry]]
+id = "xnu-dryrun"
+title = "XNU load and release (no kernel execution)"
+type = "xnu"
+path = '\XNU\kernel.macho'
+args = "-v keepsyms=1 debug=0x14e cpus=1"
+[[entry]]
+id = "android"
+title = "Reboot to Android"
+type = "action"
+action = "reset"
+[[entry]]
+id = "firmware"
+title = "Return to firmware"
+type = "action"
+action = "exit"

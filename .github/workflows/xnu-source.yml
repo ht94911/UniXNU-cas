@@ -2,6 +2,11 @@ name: XNU source kernel
 
 on:
   workflow_dispatch:
+    inputs:
+      entry_trace:
+        description: Build the separate cas CPU0 entry trace candidate
+        type: boolean
+        default: false
   push:
     branches: [codex/xnu-executor-001]
     paths:
@@ -47,6 +52,7 @@ jobs:
           --out "$RUNNER_TEMP/cas-source"
           --toolchain-report "$RUNNER_TEMP/cas-build-toolchain/toolchain.json"
           --platform cas -j 4
+          ${{ inputs.entry_trace && '--entry-trace' || '' }}
       - name: Encrypt the actual results and complete logs
         if: always()
         shell: bash
@@ -61,7 +67,7 @@ jobs:
               raise SystemExit('No source build result directory was created')
           allowed = {'build-report.json', 'logs.tar.gz', 'toolchain.json', 'headers.json',
                      'source-inputs.json', 'configuration.json', 'adaptations.json', 'patch-selection.json',
-                     'patched-source.json', 'page-size.json',
+                     'patched-source.json', 'page-size.json', 'entry-trace.json',
                      'kernel.unstripped.macho', 'kernel.symbols.txt'}
           names = {p.name for p in root.iterdir()}
           if not {'build-report.json', 'logs.tar.gz'} <= names or not names <= allowed:
