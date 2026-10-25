@@ -4,11 +4,11 @@
   "xnu_commit": "d8b80295118ef25ac3a784134bcf95cd8e88109f",
   "requires_existing_entry_trace": true,
   "patch": "patches/cas-vm-observe.patch",
-  "patch_sha256": "8caedf0a780a84be31928d94ddf76c5877db2c98fbe55bac98ce186c10d56bbc",
+  "patch_sha256": "32fbb13fedf0402dd0a118dae9e389bf271e8b195001911035d13257e9953cf7",
   "files": {
     "osfmk/arm64/start.s": {
       "before_sha256": "4526e6da9983571b3ca533f9e4bf99b119603c71a006a7dfcbca3bade6d8f06c",
-      "after_sha256": "d79e8e4f70e6157a9602d34152030f5aff1f7bcba2eaba2a4b2f3ee4462a6e3c"
+      "after_sha256": "32aed538e319d8162eb757366cfbb2cebad069dee26d0b63322054d46e66764c"
     },
     "osfmk/arm/arm_init.c": {
       "before_sha256": "02b768806f3b56e2db6ae57b8e6e9ad6783a7686d1ebc50ec170f543be369a46",
@@ -56,7 +56,9 @@
     "previous_phase_offset": 360,
     "payload_xor_offset": 368,
     "magic_inverse_offset": 376,
-    "commit": "clear magic, write payload/XOR/inverse, DSB, magic last, DSB; preserve v1 CRC"
+    "commit": "clear magic, write payload/XOR/inverse, DSB, magic last, DSB; preserve v1 CRC",
+    "candidate_source_offset": 152,
+    "SP_semantics": "Interrupted SP_EL0 for vectors0..3; interrupted/handler SP_EL1 for vectors4..15 (lower EL is outside this CPU0 diagnostic profile)."
   },
   "mapping": {
     "block": "0x9f800000",
