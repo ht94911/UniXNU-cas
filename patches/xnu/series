@@ -1,3 +1,1 @@
-# After arch, SM8250 and matching iPadOS17 profile patches.
-cas-entry-trace.patch
-cas-continuous-cpu0.patch
+# Device XNU patches, applied after the arch, SM8250 and iPadOS 17 profile series.

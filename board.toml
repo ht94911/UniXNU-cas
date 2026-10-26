@@ -7,7 +7,7 @@ kit = "cas"
 soc = "SM8250"
 soc_source = "sm8250"
 os_profile = "ipados-17.7.11-21H461"
-description = "Xiaomi10Ultra: single-core continuous iOS17 bring-up with RAM-only storage"
+description = "Xiaomi 10 Ultra (cas): iPadOS 17.7.11 on UniXNU"
 
 [components]
 include = ["ArmDTPlatform", "ArmCpu", "SoftwareAES", "XnuPrelink", "DarwinBoot"]
@@ -16,7 +16,9 @@ include = ["ArmDTPlatform", "ArmCpu", "SoftwareAES", "XnuPrelink", "DarwinBoot"]
 defconfig = "cas_defconfig"
 config_fragments = ["arch:configs/common.config", "soc:configs/sm8250.config", "os:configs/ipados.config"]
 patch_series = ["arch:patches/xnu/series", "soc:patches/xnu/series", "os:patches/xnu/series", "device:patches/xnu/series"]
-archives = ["build-corecrypto-14.py", "build-corecrypto-14.py --namespace", "component:ArmDTPlatform", "build-cas-armcpu-overlay.py", "component:ArmCpu", "component:SoftwareAES", "build-software-aes-bindings.py", "build-mockfs-fixture.py", "build-libpthread-kernel.py"]
+# cas-armcpu-asm-fix.py must run before component:ArmCpu: it stages ArmCpu with the
+# Darwin assembler separator fix that upstream ArmCpu 9066b53 still lacks.
+archives = ["build-corecrypto-14.py", "build-corecrypto-14.py --namespace", "component:ArmDTPlatform", "cas-armcpu-asm-fix.py", "component:ArmCpu", "component:SoftwareAES", "build-software-aes-bindings.py", "build-mockfs-fixture.py", "build-libpthread-kernel.py"]
 
 [device_tree]
 source = "device:dts/cas.dts"
@@ -28,30 +30,34 @@ export_arch_timer = true
 config = "cas"
 dsc = "casPkg/cas-upstream.dsc"
 fd = "Build/casUpstream001/{target}_CLANGPDB/FV/SILICIUM_UEFI.fd"
-preflight = ["scripts/cas_upstream_firmware.py"]
 defines = { CAS_BUILD_DIR = "Build/casUpstream001" }
 packages = ["{uefi}/Platforms/Xiaomi", "{uefi}/Common/Mu", "{uefi}/Common/Mu_OEM_Sample", "{uefi}/Mu_Basecore", "{uefi}/Silicon/Qualcomm", "{uefi}/Silicon/Silicium", "{tree}/package", "{tree}/drivers/DarwinBoot", "{edk2}"]
+
+# userdata on LUN0 (sda34), measured from the cas GPT; it holds the iOS root image.
+[userdata]
+first_lba = 0x2c0000
+last_lba = 0x3b4b7fa
+lba_bytes = 4096
+windows = [
+  { name = "OS", component = "OS" },
+  { name = "SystemOS", component = "Cryptex1,SystemOS" },
+]
 
 [payload]
 volume = "CAS_IOS17"
 size_mib = 64
 loader = "firmware"
-title = "cas iOS17 CPU0 continuous"
-timeout = -1
-kernel_args = ["-v", "keepsyms=1", "debug=0x14e", "cpus=1"]
+title = "cas iPadOS 17"
+timeout = 3
+panic_screen = true
+kernel_args = ["-v", "keepsyms=1", "debug=0x14e", "kt_fixed_zones=120"]
 
 [payload.adt]
 chip_id = "8011"
-owned_memory_size = "0x10000000"
+owned_memory_size = "0x130000000"
 cpu_regs = "0"
 psci_method = "smc"
 unique_chip_id = "required"
 
 [adt.root.string]
 hardware-model = "Qualcomm Technologies, Inc. xiaomi cas"
-
-[cas]
-temporary_boot_only = true
-persistent_storage_enabled = false
-source_contract = "XNU10063.141.1/4KiB/iPadOS17.7.11-j120ap"
-accepted_baseline = "cas-complete-001; CPU0 milestone005 is frozen separately"
