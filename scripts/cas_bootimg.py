@@ -5,7 +5,7 @@
 The ABL on cas takes an Android boot image header v2 with the DTB in the
 header's dtb area (not appended to the kernel). The kernel part is
 gzip(CasBootShim + SILICIUM_UEFI.fd). The ramdisk is the UniXNU payload FAT
-from `./unixnu payload`; CasBootShim copies at most 64 MiB of it.
+from `./unixnu payload`; CasBootShim copies at most 192 MiB of it.
 """
 import argparse
 import gzip
@@ -24,7 +24,7 @@ from build_shim import build as build_shim  # noqa: E402
 from prepare_boot_dtb import prepare as prepare_dtb  # noqa: E402
 
 FD_BYTES = 0x800000
-RAMDISK_MAX = 0x4000000  # CAS_PAYLOAD_SIZE in uefi-cas casPkg/Include/CasPlatform.h
+RAMDISK_MAX = 0xc000000  # CAS_PAYLOAD_SIZE in uefi-cas casPkg/Include/CasPlatform.h
 
 
 def sha(data):
