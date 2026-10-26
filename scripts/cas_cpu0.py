@@ -17,6 +17,12 @@ def prepare(framework,out,uefi=None,contract_file=None):
  adt_meta=json.loads(ADT_AUDIT.read_text())
  if adt_meta.get('mode')!='private' or adt_meta.get('cpu_profile')!='cpu0' or adt_meta.get('entropy_bytes')!=64:raise ValueError('private CPU0 entropy audit required')
  contract=json.loads((contract_file or ROOT/'config/cpu0-contract.json').read_text())
+ requested_base=int(contract['owned']['base'],0)
+ if contract['owned']['bytes']!=0x10000000 or requested_base%4096 or requested_base<0x100000000 or requested_base+0x10000000>0x120000000:raise ValueError('fixed CPU0 range must fit the existing512MiB container')
+ if contract.get('identity_version',1)==2:
+  expected_base=0x100000000+(int(contract['kernel']['minimum_va'],0)&0x1fffff)
+  if requested_base!=expected_base:raise ValueError('fixed PA must match the actual Mach-O minimum VA modulo2MiB')
+
  base_args='-v keepsyms=1 debug=0x14e cpus=1'
  execute_args=contract['command_lines']['execute']
  if execute_args not in (base_args,base_args+' rd=md0') or contract['command_lines']['validate']!=execute_args+' cas-validate=1':raise ValueError('only explicit single-core RAM-root arguments are supported')
@@ -95,6 +101,11 @@ STATIC BOOLEAN CasCpu0PreviousValidation(UINT64 CurrentBoot) {
  p=pkg/'DarwinBoot.dsc';s=p.read_text().replace('[LibraryClasses]','[LibraryClasses]\n  CacheMaintenanceLib|ArmPkg/Library/ArmCacheMaintenanceLib/ArmCacheMaintenanceLib.inf\n  ArmLib|MdePkg/Library/ArmLib/ArmBaseLib.inf\n  FdtLib|MdePkg/Library/BaseFdtLib/BaseFdtLib.inf\n  DxeServicesTableLib|MdePkg/Library/DxeServicesTableLib/DxeServicesTableLib.inf')
  s += '\n[BuildOptions]\n  *_CLANGPDB_*_CC_FLAGS = -D CAS_XNU_DIAGNOSTICS=1\n'
  p.write_text(s)
+ if requested_base!=0x100004000:
+  for target in [driver/'DarwinBoot.c',driver/'Trace.h',driver/'DiagCore.h']:
+   raw=target.read_text()
+   if '0x100004000ULL' not in raw:raise ValueError('fixed range source context absent: '+str(target))
+   target.write_text(raw.replace('0x100004000ULL','0x%xULL'%requested_base))
  p=pkg/'TraceView/TraceView.c';s=p.read_text();s=parent.replace_once(s,'#include "TraceAbi.h"','#include "TraceAbi.h"\n#include "CandidateTag.h"');anchor='  Print(L"Status %lx  window %lx\\r\\nPA %lx  args %lx\\r\\nentry %lx\\r\\n",A.Status,A.Window,A.Address,A.Args,A.Entry);'
  s=parent.replace_once(s,anchor,anchor+'\n  if(A.Reserved[3]==1)Print(L"Held probe: boot %lx  PA %lx  bytes %lx\\r\\n",A.Reserved[0],A.Reserved[1],A.Reserved[2]);');s=parent.replace_once(s,'  Print(L"Status %lx  window %lx', '  Print(L"Candidate %lx expected %lx: %s\\r\\n",A.Reserved[4],(UINT64)CAS_CPU0_CANDIDATE_TAG,A.Reserved[4]==CAS_CPU0_CANDIDATE_TAG ? L"MATCH" : L"different candidate");\n  Print(L"Status %lx  window %lx');s=parent.replace_once(s,'  Print(L"Pre-EBS EL', '  Print(L"MPIDR %lx  affinity %lx (expected 0)\\r\\n",A.Reserved[5],A.Reserved[6]);\n  Print(L"Pre-EBS EL');p.write_text(s)
  manifest={'profile':'cas-cpu0-'+MODE,'parent_x06':original,'mode':MODE,'candidate_tag':hex(tag),'source_heads':source_heads,'MPIDR_affinity_0_required':True,'private_adt_sha256':adt_meta['adt_sha256'],'recovered_validation_required':require_recovered,'boot_gate':'fresh current facts and exact held readback every Boot; prior trace never substitutes','kernel_execution_call_compiled':MODE=='execute','fresh_exact_range_probe_required':True,'fact_sources':staged,'legacy_diagnostic_probe_changed':False,
