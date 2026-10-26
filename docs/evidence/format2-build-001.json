@@ -92,5 +92,21 @@
   },
   "device_execution": "not_run",
   "user_process": "own signed static ARM64/iOS17 fixture; not Apple launchd",
-  "binary_distribution": "encrypted owner artifact; no plaintext kernel, donor or device image in Git"
+  "binary_distribution": "encrypted owner artifact; no plaintext kernel, donor or device image in Git",
+  "complete_UEFI_build": {
+    "result": "pass",
+    "device_source_revision": "3575e946b8abee7c577ad01712370ccf78febedc",
+    "UEFI_source_revision": "9d7ed704c3733fe23864ee4e1e4d7668c484c668",
+    "framework_revision": "13ef9f7bfb16af56d10f70fc284e5276daa62e38",
+    "profile": "cas-upstream.dsc",
+    "target": "AARCH64/DEBUG/CLANGPDB",
+    "FD": {
+      "sha256": "31560eacdd51bec98a03aa34f974250b8b30621289ce0d439e584388e4c73380",
+      "bytes": 8388608
+    },
+    "generated_loader_guard_verified": true,
+    "input_verification": "Only named files extracted from hash-bound final RAM FAT; kernel/ADT/root/trustcache digests checked.",
+    "Mu_Basecore": "Pinned checkout from uefi-cas; explicit refer:edk2 local override",
+    "device_execution": "not_run"
+  }
 }

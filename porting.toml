@@ -14,7 +14,7 @@ paths = [".github/**", ".gitignore", "board.toml", "ci/xnu/**", "ci/xnu/artifact
 inputs = ["Format2 resolves arch, SM8250, iPadOS17.7.11 and cas layers."]
 configuration = ["schema_version=2; SM8250 source and ipados-17.7.11-21H461 profile; cas_continuous_defconfig.", "Ordered61-patch closure with canonical component revisions and complete lock."]
 procedure = ["Use standard defconfig/status/fetch/tree/build commands; pin the complete source closure."]
-findings = ["Standard resolver and ordered source preparation passed locally; full macOS build is a separate result."]
+findings = ["Standard resolver and ordered source preparation passed locally; full macOS build is a separate result.", "Firmware preflight reads named inputs from the final RAM FAT after shared staging cleanup; the complete guarded firmware build passed."]
 completion = ["Resolve the published source closure without local overrides and pass Porting record."]
 limits = ["Full source resolution and compilation are qualified independently of phone execution."]
 next_action = ["Verify the current macOS kernel/prelink result and retain its exact source identity."]
@@ -22,17 +22,17 @@ evidence = [{ kind = "source", reference = "board.toml", result = "Standard reso
 
 [[area]]
 id = "firmware"
-status = "implemented"
+status = "host-verified"
 components = ["DarwinBoot"]
 paths = ["docs/build*", "proprietary-files.txt", "scripts/DeviceBuild.py", "scripts/cas_menu_overlay.py", "scripts/package_boot.py", "tests/fixtures/arm64-retained-log/entry.S", "tests/fixtures/arm64-retained-log/probe.lds", "tests/menu_host_prefix.c", "tests/test_early_text.py", "tests/test_menu_scroll.py", "tests/test_retained_log_arm64.py"]
 inputs = ["Keep the bounded cas BootShim, inherited framebuffer and RAM-only input policy."]
 configuration = ["cas-upstream.dsc/fdf; FD0x9f000000/8MiB; payload copy0xa4000000/64MiB maximum.", "Pinned Mu_Basecore, standard loader/RAM-disk modules and generated ownership guard."]
 procedure = ["The accepted EFI milestone remains immutable; qualify new framework integration separately."]
-findings = ["UEFI menu/EFI return/Android recovery passed on the frozen candidate; new DSC/FDF integration is not yet a device result."]
+findings = ["UEFI menu/EFI return/Android recovery passed on the frozen candidate; new DSC/FDF integration is not yet a device result.", "The complete8MiB cas-upstream FD compiles with the generated ownership-guard loader and standard shared RAM driver; no new device execution is claimed."]
 completion = ["Build the complete FD and checked boot image; observe UniXNU entry and Android recovery for that image."]
 limits = ["New format2 FD has not been executed on hardware."]
 next_action = ["Bind the new kernel/ADT contract, build the guarded loader and complete FD."]
-evidence = [{ kind = "source", reference = "docs/validation.md", result = "UEFI menu/EFI return/Android recovery passed on the frozen candidate; new DSC/FDF integration is not yet a device result." }]
+evidence = [{ kind = "source", reference = "docs/validation.md", result = "UEFI menu/EFI return/Android recovery passed on the frozen candidate; new DSC/FDF integration is not yet a device result." }, { kind = "host", reference = "docs/evidence/format2-build-001.json", command = "./unixnu build firmware -D ../UniXNU-cas --uefi ../uefi-cas --edk2 ../uefi-cas/Mu_Basecore --local-module refer:edk2=../uefi-cas/Mu_Basecore", revision = "3575e946b8abee7c577ad01712370ccf78febedc", result = "Complete8MiB AARCH64 DEBUG firmware built after exact final-FAT/kernel/ADT/root/trustcache verification." }]
 
 [[area]]
 id = "cpu"
