@@ -8,9 +8,9 @@ summary = "Single-core continuous iOS17 bring-up; frozen EFI and005 evidence are
 
 [[area]]
 id = "configuration"
-status = "implemented"
+status = "host-verified"
 components = ["ArmDTPlatform", "ArmCpu", "SoftwareAES", "XnuPrelink", "DarwinBoot"]
-paths = ["board.toml", "feeds.toml", "unixnu.lock", "configs/**", "ci/xnu/format2*", "ci/xnu/build_format2.py", ".github/**"]
+paths = [".github/**", ".gitignore", "board.toml", "ci/xnu/**", "ci/xnu/artifact-recipient.pem", "ci/xnu/build_arm_driver.py", "ci/xnu/build_format2.py", "ci/xnu/build_source.py", "ci/xnu/entry-trace.json", "ci/xnu/format2*", "ci/xnu/patches/cas-entry-trace.patch", "ci/xnu/patches/cas-platform-clock-observe.patch", "ci/xnu/patches/cas-vm-observe.patch", "ci/xnu/patches/darwin-asm-separators.patch", "ci/xnu/platform-clock-observe.json", "ci/xnu/preflight.py", "ci/xnu/third-party/UniXNU-umi-LICENSE", "ci/xnu/toolchain.json", "ci/xnu/vm-observe-draft.json", "ci/xnu/vm-observe.json", "config/*.json", "configs/**", "feeds.toml", "legacy/**", "requirements*.txt", "scripts/build_firmware.py", "scripts/build_shim.py", "scripts/cas_upstream_firmware.py", "scripts/preflight.py", "scripts/provenance.py", "source-pins.json", "tests/test_xnu_ci.py", "tests/test_xnu_source.py", "unixnu.lock"]
 inputs = ["Format2 resolves arch, SM8250, iPadOS17.7.11 and cas layers."]
 configuration = ["schema_version=2; SM8250 source and ipados-17.7.11-21H461 profile; cas_continuous_defconfig.", "Ordered61-patch closure with canonical component revisions and complete lock."]
 procedure = ["Use standard defconfig/status/fetch/tree/build commands; pin the complete source closure."]
@@ -18,13 +18,13 @@ findings = ["Standard resolver and ordered source preparation passed locally; fu
 completion = ["Resolve the published source closure without local overrides and pass Porting record."]
 limits = ["Full source resolution and compilation are qualified independently of phone execution."]
 next_action = ["Verify the current macOS kernel/prelink result and retain its exact source identity."]
-evidence = [{ kind = "source", reference = "board.toml", result = "Standard resolver and ordered source preparation passed locally; full macOS build is a separate result." }]
+evidence = [{ kind = "source", reference = "board.toml", result = "Standard resolver and ordered source preparation passed locally; full macOS build is a separate result." }, { kind = "host", reference = "docs/evidence/format2-build-001.json", command = "python3 ci/xnu/build_format2.py --out \"$RUNNER_TEMP/cas-format2-001\" -j4", revision = "9cdf91ff95fa3add3f1aabe82625775104821747", result = "Standard format2 source resolution,61-patch kernel build and matching prelink completed on macos-26/Xcode26.6." }]
 
 [[area]]
 id = "firmware"
 status = "implemented"
 components = ["DarwinBoot"]
-paths = ["scripts/DeviceBuild.py", "scripts/package_boot.py", "proprietary-files.txt", "docs/build*"]
+paths = ["docs/build*", "proprietary-files.txt", "scripts/DeviceBuild.py", "scripts/cas_menu_overlay.py", "scripts/package_boot.py", "tests/fixtures/arm64-retained-log/entry.S", "tests/fixtures/arm64-retained-log/probe.lds", "tests/menu_host_prefix.c", "tests/test_early_text.py", "tests/test_menu_scroll.py", "tests/test_retained_log_arm64.py"]
 inputs = ["Keep the bounded cas BootShim, inherited framebuffer and RAM-only input policy."]
 configuration = ["cas-upstream.dsc/fdf; FD0x9f000000/8MiB; payload copy0xa4000000/64MiB maximum.", "Pinned Mu_Basecore, standard loader/RAM-disk modules and generated ownership guard."]
 procedure = ["The accepted EFI milestone remains immutable; qualify new framework integration separately."]
@@ -38,11 +38,11 @@ evidence = [{ kind = "source", reference = "docs/validation.md", result = "UEFI 
 id = "cpu"
 status = "implemented"
 components = ["ArmCpu"]
-paths = ["package/CasTrace/**", "scripts/build-cas-armcpu-overlay.py", "patches/xnu/**", "dts/**"]
+paths = ["config/cpu0.toml", "config/handoff-dryrun.toml", "dts/**", "package/CasCpu0/**", "package/CasHandoff/**", "package/CasTrace/**", "patches/cpu0-menu/MenuViewport.h", "patches/cpu0-menu/scroll.patch", "patches/cpu0-menu/source-lock.json", "patches/xnu/**", "scripts/build-cas-armcpu-overlay.py", "scripts/cas_cpu0.py", "scripts/cas_handoff.py", "scripts/cpu0_identity.py", "tests/test_cas_cpu0_guard.py", "tests/test_cpu0*.py", "tests/test_xnu_entry_trace.py"]
 inputs = ["Enable CPU0 only; use the real GICv3 and 19.2MHz architectural timer."]
 configuration = ["CPU0 affinity0 enabled; other DTS CPU nodes disabled; cpus=1.", "GICD0x17a00000, GICR0x17a60000; architectural timer19.2MHz/PPI27."]
 procedure = ["Stage the declared observer in generated build output and retain the canonical ArmCpu build recipe."]
-findings = ["Frozen005 reached true XNU VM and platform initialization. Continuous IRQ/EOI/reload observations are source work until the new binary runs."]
+findings = ["Frozen005 reached true XNU VM and platform initialization. Continuous IRQ/EOI/reload observations are source work until the new binary runs.", "The loader accepts only an explicit base CPU0 command or its candidate-bound rd=md0 RAM-root variant."]
 completion = ["Observe the actual timer handler, rtclock return, EOI and continuing counter growth without a storm."]
 limits = ["Timer IRQ, SMP and later startup are not covered by the005 platform snapshot."]
 next_action = ["Read IRQ/startup/panic packets from the integrated continuous candidate."]
@@ -52,7 +52,7 @@ evidence = [{ kind = "source", reference = "patches/xnu/cas-continuous-cpu0.patc
 id = "memory"
 status = "implemented"
 components = ["ArmDTPlatform"]
-paths = ["config/cas-adt-facts.json", "dts/**", "scripts/cas_adt.py", "scripts/adt_codec.py"]
+paths = ["config/cas-adt-facts.json", "config/diagnostics.toml", "dts/**", "scripts/adt_codec.py", "scripts/audit-cas-adt-consumers.py", "scripts/audit_cas_format2.py", "scripts/cas_adt.py", "scripts/cas_diag_log.py", "scripts/make-cas-adt.py", "scripts/read-cas-diag-log.py", "tests/fixtures/adt_consumer.c", "tests/fixtures/cas-adt/all.adt", "tests/fixtures/cas-adt/all.json", "tests/fixtures/cas-adt/cpu0.adt", "tests/fixtures/cas-adt/cpu0.json", "tests/test_cas_adt.py", "tests/test_cas_cpu0_held_map.py", "tests/test_cas_diag.py", "tests/test_cas_diag_inputs_view.py", "tests/test_cas_high_publish.py", "tests/test_cas_smem.py", "tests/test_cas_smem_partial.py", "tests/test_cas_smem_permissions.py", "tests/test_cas_smem_reject.py", "tests/test_cas_smem_roles.py"]
 inputs = ["Describe three DRAM banks and31 reserved regions; UEFI allocation remains the ownership authority."]
 configuration = ["Three DRAM banks and31 reserved ranges from config/cas-adt-facts.json.", "Explicit preserve_memory_ranges; owned request256MiB at0x100004000, within the existing512MiB mapped container."]
 procedure = ["Generate ADT from board DTS with explicit multibank preservation; compare CPU, GIC, timer and reservations."]
@@ -64,7 +64,7 @@ evidence = [{ kind = "source", reference = "dts/cas.dts", result = "Host compari
 
 [[area]]
 id = "storage"
-status = "implemented"
+status = "host-verified"
 components = []
 paths = ["configs/**", "docs/porting-status.md"]
 inputs = ["RAM-only mockfs support and an own static user process are selected; UFS and persistence remain disabled."]
@@ -74,7 +74,7 @@ findings = ["Source preparation exists; neither a mounted new root nor an EL0 pr
 completion = ["Observe successful vfs_mountroot, init loading and a PID1 syscall from the configured RAM root."]
 limits = ["No APFS or persistent filesystem result; the own executable does not establish iOS services."]
 next_action = ["Package the matching signed process and trust cache with the new kernel."]
-evidence = [{ kind = "source", reference = "configs/cas_continuous_defconfig", result = "Source preparation exists; neither a mounted new root nor an EL0 process is claimed." }]
+evidence = [{ kind = "source", reference = "configs/cas_continuous_defconfig", result = "Source preparation exists; neither a mounted new root nor an EL0 process is claimed." }, { kind = "host", reference = "docs/evidence/format2-build-001.json", command = "python3 ci/xnu/build_format2.py --out \"$RUNNER_TEMP/cas-format2-001\" -j4", revision = "9cdf91ff95fa3add3f1aabe82625775104821747", result = "Mockfs source archive and own signed ARM64/iOS17 process built; root mount and process execution remain untested." }]
 
 [[area]]
 id = "display"
@@ -164,11 +164,11 @@ evidence = [{ kind = "source", reference = "docs/porting-status.md", result = "R
 id = "packaging"
 status = "implemented"
 components = ["XnuPrelink"]
-paths = ["scripts/package_boot.py", "package/Kit.toml", "local.toml.example", "docs/build*"]
+paths = ["docs/build*", "local.toml.example", "package/Kit.toml", "scripts/cpu0_payload.py", "scripts/fat16_payload.py", "scripts/handoff_payload.py", "scripts/make_ram_fat.py", "scripts/package_boot.py", "scripts/package_cpu0.py", "tests/test_boot*.py", "tests/test_ram*.py"]
 inputs = ["Keep private stock DTB and iPadOS inputs outside Git; candidates use fresh identifiers."]
 configuration = ["XNU10063.141.1/4KiB with iPadOS17.7.11 j120ap prelink inputs.", "Read-only RAM FAT; explicit private stock DTB and checked cas BootShim packer."]
 procedure = ["Use the checked RAM-only packer and authenticated/encrypted owner artifact transport."]
-findings = ["No raw firmware, donor, recovery image or private key is a source deliverable."]
+findings = ["No raw firmware, donor, recovery image or private key is a source deliverable.", "Canonical payload filenames are scratch-data.img and kernel.macho.trustcache; both are checked against the new candidate contract."]
 completion = ["All payload files match the candidate manifest; image geometry and firmware modules pass the checked packer."]
 limits = ["Boot images, private DTB/ADT and keys are local inputs or encrypted owner outputs."]
 next_action = ["Assemble the new kernel, root, trust cache, ADT and guarded firmware into a uniquely identified RAM image."]
@@ -176,9 +176,9 @@ evidence = [{ kind = "source", reference = "scripts/package_boot.py", result = "
 
 [[area]]
 id = "diagnostics"
-status = "implemented"
+status = "host-verified"
 components = []
-paths = ["patches/xnu/**", "ci/xnu/Cas*", "ci/xnu/artifacts.py", "docs/porting-status.md"]
+paths = ["ci/xnu/Cas*", "docs/porting-status.md", "patches/xnu/**", "scripts/check*host.py", "tests/*host.c", "tests/test_exception*.py"]
 inputs = ["Preserve the bounded boot-tagged mailbox, real IRQ samples, first panic and startup phase history."]
 configuration = ["4KiB reserved mailbox at0x9f960000;1280-byte decoder.", "Boot/candidate-bound loader, exception, platform, IRQ, startup and first-panic records."]
 procedure = ["Successful checkpoints log and continue; capture the actual final failure before returning to Android."]
@@ -186,4 +186,4 @@ findings = ["Entry, VM and005 platform evidence are reused. Continuous scheduler
 completion = ["Decode stable records from the actual candidate through its furthest reached stage and preserve first failure context."]
 limits = ["Unreached phases remain unverified."]
 next_action = ["Use the integrated candidate reader; capture the final meaningful state once."]
-evidence = [{ kind = "source", reference = "patches/xnu/cas-continuous-cpu0.patch", result = "Entry, VM and005 platform evidence are reused. Continuous scheduler/root/userland points remain unexecuted until a new run." }]
+evidence = [{ kind = "source", reference = "patches/xnu/cas-continuous-cpu0.patch", result = "Entry, VM and005 platform evidence are reused. Continuous scheduler/root/userland points remain unexecuted until a new run." }, { kind = "host", reference = "docs/evidence/format2-build-001.json", command = "python3 ci/xnu/build_format2.py --out \"$RUNNER_TEMP/cas-format2-001\" -j4", revision = "9cdf91ff95fa3add3f1aabe82625775104821747", result = "Unstripped kernel contains all five required continuous trace and real timer observation symbols." }]
