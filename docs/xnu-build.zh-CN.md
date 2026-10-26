@@ -1,3 +1,5 @@
+> 当前活动构建入口已迁移到[格式2流程](build-format2.zh-CN.md)和标准有序series；以下旧source-only命令仅保留历史可复现说明。
+
 # XNU 构建执行端准备
 
 [English](xnu-build.md)

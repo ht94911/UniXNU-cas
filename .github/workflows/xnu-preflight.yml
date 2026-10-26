@@ -1,62 +1,22 @@
-name: XNU executor preflight
-
-on:
-  workflow_dispatch:
-  push:
-    branches: [codex/xnu-executor-001]
-    paths: ['ci/xnu/**', '.github/workflows/xnu-preflight.yml', 'tests/test_xnu_ci.py']
-
+name: Format2 source preflight
+on: [workflow_dispatch]
 permissions:
   contents: read
-
-concurrency:
-  group: xnu-preflight-${{ github.ref }}
-  cancel-in-progress: false
-
 jobs:
-  preflight:
-    runs-on: macos-15
-    timeout-minutes: 20
-    env:
-      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
-      HOMEBREW_NO_AUTO_UPDATE: 1
-      HOMEBREW_NO_INSTALL_CLEANUP: 1
+  source:
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - name: Install missing probe tools
-        shell: bash
+      - name: Parse board and source contracts
         run: |
-          set -euo pipefail
-          for tool in cmake ninja unifdef; do
-            if ! command -v "$tool" >/dev/null; then brew install "$tool"; fi
-          done
-      - name: Test artifact checks
-        run: python3 -B -m unittest discover -s tests -p test_xnu_ci.py -v
-      - name: Record executor and compile an ARM64 object
-        run: python3 -B ci/xnu/preflight.py --profile ci/xnu/toolchain.json --out "$RUNNER_TEMP/cas-preflight"
-      - name: Seal test artifacts for local retrieval
-        run: >-
-          python3 -B ci/xnu/artifacts.py seal
-          --root "$RUNNER_TEMP/cas-preflight"
-          --file toolchain.json --file target-probe.c --file target-probe.o
-          --recipient ci/xnu/artifact-recipient.pem
-          --out "$RUNNER_TEMP/cas-sealed"
-      - name: Upload the encrypted test artifacts
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: cas-xnu-preflight-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            ${{ runner.temp }}/cas-sealed/bundle.cms
-            ${{ runner.temp }}/cas-sealed/envelope.json
-          if-no-files-found: error
-          retention-days: 7
-      - name: Upload toolchain failure report
-        if: failure()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: cas-xnu-preflight-failure-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/cas-preflight/toolchain.json
-          if-no-files-found: ignore
-          retention-days: 7
+          python3 - <<'PY'
+          import ast, json, pathlib, tomllib
+          root = pathlib.Path('.')
+          for name in ['board.toml','porting.toml','feeds.toml','unixnu.lock']:
+              tomllib.loads((root/name).read_text())
+          json.loads((root/'ci/xnu/format2-sources.json').read_text())
+          for name in ['ci/xnu/build_format2.py','scripts/cas_upstream_firmware.py','scripts/audit_cas_format2.py']:
+              ast.parse((root/name).read_text())
+          PY

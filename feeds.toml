@@ -1,0 +1,36 @@
+# Versioned source identity; local development override belongs in ignored local.toml.
+[[source]]
+name = "sm8250"
+kind = "soc"
+git = "https://github.com/ht94911/UniXNU-sm8250-common.git"
+commit = "b415a1bbde8ffabb232bcdc872c2a135b9984e1a"
+
+[[source]]
+name = "ArmCpu"
+kind = "driver"
+git = "https://github.com/UniXNU/ArmCpu.git"
+commit = "9066b53bbc82e92a98ec44a11dd50fd13eaf1a1b"
+
+[[source]]
+name = "ArmDTPlatform"
+kind = "driver"
+git = "https://github.com/UniXNU/ArmDTPlatform.git"
+commit = "417ff95d6a6e8607ddea9309ec45c3bfd4a67c60"
+
+[[source]]
+name = "SoftwareAES"
+kind = "driver"
+git = "https://github.com/UniXNU/SoftwareAES.git"
+commit = "4a45326da5c2cd6fe6813d79ee43db20805628af"
+
+[[source]]
+name = "DarwinBoot"
+kind = "driver"
+git = "https://github.com/UniXNU/DarwinBoot.git"
+commit = "3325e352d7df68a9f9ad74832ed94a6acbbd7390"
+
+[[source]]
+name = "XnuPrelink"
+kind = "kit"
+git = "https://github.com/UniXNU/XnuPrelink.git"
+commit = "f876e3ee62e18fc06653dd75ed7dafcfb3950ac0"

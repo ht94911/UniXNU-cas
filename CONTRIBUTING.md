@@ -27,3 +27,15 @@ Remove serial numbers, IMEIs, MAC addresses, account details, IP addresses and t
 ## License
 
 Original contributions follow [BSD-2-Clause-Patent](LICENSE). Retain existing copyright and license notices for reused code. Reference material must be identified accurately.
+
+## Current format2 integration
+
+Use board.toml schema2, feeds.toml/unixnu.lock, the SM8250 common layer and the
+matched iPadOS17.7.11 profile. The active build is docs/build-format2.md; old EFI
+and source-only profiles remain historical. Keep runtime identifiers distinct
+from canonical repository names. Standard XNU series order is arch/SoC/OS/device.
+Keep the source module checkouts unchanged when staging cas-only observations.
+Record all13 areas in porting.toml; source/host/device evidence are distinct.
+The active direction is single-core continuous startup toward userland/UI, SMP
+afterward. Successful checkpoints never require a separate stop or old test rerun.
+Private images, identities and keys stay outside Git; device use is RAM-only.

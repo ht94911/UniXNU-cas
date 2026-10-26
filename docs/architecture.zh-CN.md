@@ -1,3 +1,5 @@
+> 当前活动路线、配置归属和完成度见[格式2构建](build-format2.zh-CN.md)及[移植状态](porting-status.md)。以下保留冻结EFI设计说明。
+
 # 架构与后续方向
 
 [English](architecture.md) · [项目首页](../README.zh-CN.md)

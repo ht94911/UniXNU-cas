@@ -1,107 +1,40 @@
 name: XNU source kernel
-
 on:
   workflow_dispatch:
-    inputs:
-      continuous_boot:
-        description: Continue CPU0 through real IRQ, scheduler, IOKit and available userland
-        type: boolean
-        default: false
-      user_fixture:
-        description: Build own static iOS17 PID1 and RAM-only mockfs support
-        type: boolean
-        default: false
-      platform_clock_observe:
-        description: Observe actual cas ADT and CPU0 clock init then stop before machine_startup
-        type: boolean
-        default: false
-      vm_observe:
-        description: Build the diagnostic CPU0 MMU/VM observation kernel
-        type: boolean
-        default: false
-      entry_trace:
-        description: Build the separate cas CPU0 entry trace candidate
-        type: boolean
-        default: false
-  push:
-    branches: [codex/xnu-executor-001]
-    paths:
-      - ci/xnu/build_source.py
-      - ci/xnu/build_arm_driver.py
-      - ci/xnu/inputs.json
-      - ci/xnu/patches/**
-      - .github/workflows/xnu-source.yml
-
 permissions:
   contents: read
-
 concurrency:
-  group: xnu-source-${{ github.ref }}
+  group: cas-format2-${{ github.ref }}
   cancel-in-progress: false
-
 jobs:
   source:
-    runs-on: macos-15
-    timeout-minutes: 75
+    runs-on: macos-26
+    timeout-minutes: 180
     env:
-      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
       HOMEBREW_NO_AUTO_UPDATE: 1
       HOMEBREW_NO_INSTALL_CLEANUP: 1
+      GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - name: Install missing build tools
+      - name: Install current upstream build tools
         shell: bash
         run: |
           set -euo pipefail
-          for tool in cmake ninja unifdef; do
-            if ! command -v "$tool" >/dev/null; then brew install "$tool"; fi
+          for tool in cmake ninja unifdef llvm lld; do
+            if ! brew list --versions "$tool" >/dev/null 2>&1; then brew install "$tool"; fi
           done
-      - name: Qualify the actual compiler environment
-        run: python3 -B ci/xnu/preflight.py --profile ci/xnu/toolchain.json --out "$RUNNER_TEMP/cas-build-toolchain"
-      - name: Test source and artifact checks
-        run: python3 -B -m unittest discover -s tests -p 'test_xnu_*.py' -v
-      - name: Build the minimal cas source kernel
-        run: >-
-          python3 -B ci/xnu/build_source.py
-          --out "$RUNNER_TEMP/cas-source"
-          --toolchain-report "$RUNNER_TEMP/cas-build-toolchain/toolchain.json"
-          --platform cas -j 4
-          ${{ inputs.entry_trace && '--entry-trace' || '' }}
-          ${{ inputs.vm_observe && '--vm-observe' || '' }}
-          ${{ inputs.platform_clock_observe && '--platform-clock-observe' || '' }}
-          ${{ inputs.continuous_boot && '--continuous-boot' || '' }}
-          ${{ inputs.user_fixture && '--user-fixture' || '' }}
-      - name: Encrypt the actual results and complete logs
-        if: always()
-        shell: bash
-        run: |
-          python3 -B - <<'PY'
-          import os, sys
-          from pathlib import Path
-          sys.path.insert(0, 'ci/xnu')
-          from artifacts import seal
-          root = Path(os.environ['RUNNER_TEMP']) / 'cas-source/exports'
-          if not root.is_dir():
-              raise SystemExit('No source build result directory was created')
-          allowed = {'build-report.json', 'logs.tar.gz', 'toolchain.json', 'headers.json',
-                     'source-inputs.json', 'configuration.json', 'adaptations.json', 'patch-selection.json',
-                     'patched-source.json', 'page-size.json', 'entry-trace.json', 'vm-observe.json',
-                     'kernel.unstripped.macho', 'kernel.symbols.txt'}
-          names = {p.name for p in root.iterdir()}
-          if not {'build-report.json', 'logs.tar.gz'} <= names or not names <= allowed:
-              raise SystemExit('Unexpected build export set')
-          seal(root, sorted(names), Path('ci/xnu/artifact-recipient.pem'),
-               Path(os.environ['RUNNER_TEMP']) / 'cas-source-sealed')
-          PY
-      - name: Retain encrypted kernel, symbols and diagnostics
+      - name: Build standard layered continuous kernel and own user process
+        run: python3 -B ci/xnu/build_format2.py --out "$RUNNER_TEMP/cas-format2-001" -j4
+      - name: Retain encrypted owner results
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
-          name: cas-xnu-source-${{ github.run_id }}-${{ github.run_attempt }}
+          name: cas-format2-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
-            ${{ runner.temp }}/cas-source-sealed/bundle.cms
-            ${{ runner.temp }}/cas-source-sealed/envelope.json
+            ${{ runner.temp }}/cas-format2-001/sealed/bundle.cms
+            ${{ runner.temp }}/cas-format2-001/sealed/envelope.json
           if-no-files-found: error
           retention-days: 7

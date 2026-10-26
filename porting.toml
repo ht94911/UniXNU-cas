@@ -1,0 +1,189 @@
+schema_version = 1
+
+[device]
+name = "cas"
+soc = "SM8250"
+os_profile = "ipados-17.7.11-21H461"
+summary = "Single-core continuous iOS17 bring-up; frozen EFI and005 evidence are preserved."
+
+[[area]]
+id = "configuration"
+status = "implemented"
+components = ["ArmDTPlatform", "ArmCpu", "SoftwareAES", "XnuPrelink", "DarwinBoot"]
+paths = ["board.toml", "feeds.toml", "unixnu.lock", "configs/**", "ci/xnu/format2*", "ci/xnu/build_format2.py", ".github/**"]
+inputs = ["Format2 resolves arch, SM8250, iPadOS17.7.11 and cas layers."]
+configuration = ["Use the cas format2 board and the matched iPadOS17.7.11/XNU10063.141.1/4KiB contract."]
+procedure = ["Use standard defconfig/status/fetch/tree/build commands; pin the complete source closure."]
+findings = ["Standard resolver and ordered source preparation passed locally; full macOS build is a separate result."]
+completion = ["Record the exact source, host build and device result separately; only the actual result advances this area."]
+limits = ["A source implementation is not a new binary or device success. SMP follows single-core userland/UI."]
+next_action = ["Complete the full macOS source build and then address its actual blocking result."]
+evidence = [{ kind = "source", reference = "board.toml", result = "Standard resolver and ordered source preparation passed locally; full macOS build is a separate result." }]
+
+[[area]]
+id = "firmware"
+status = "implemented"
+components = ["DarwinBoot"]
+paths = ["scripts/DeviceBuild.py", "scripts/package_boot.py", "proprietary-files.txt", "docs/build*"]
+inputs = ["Keep the bounded cas BootShim, inherited framebuffer and RAM-only input policy."]
+configuration = ["Use the cas format2 board and the matched iPadOS17.7.11/XNU10063.141.1/4KiB contract."]
+procedure = ["The accepted EFI milestone remains immutable; qualify new framework integration separately."]
+findings = ["UEFI menu/EFI return/Android recovery passed on the frozen candidate; new DSC/FDF integration is not yet a device result."]
+completion = ["Record the exact source, host build and device result separately; only the actual result advances this area."]
+limits = ["A source implementation is not a new binary or device success. SMP follows single-core userland/UI."]
+next_action = ["Complete the full macOS source build and then address its actual blocking result."]
+evidence = [{ kind = "source", reference = "docs/validation.md", result = "UEFI menu/EFI return/Android recovery passed on the frozen candidate; new DSC/FDF integration is not yet a device result." }]
+
+[[area]]
+id = "cpu"
+status = "implemented"
+components = ["ArmCpu"]
+paths = ["package/CasTrace/**", "scripts/build-cas-armcpu-overlay.py", "patches/xnu/**", "dts/**"]
+inputs = ["Enable CPU0 only; use the real GICv3 and 19.2MHz architectural timer."]
+configuration = ["Use the cas format2 board and the matched iPadOS17.7.11/XNU10063.141.1/4KiB contract."]
+procedure = ["Stage the declared observer in generated build output and retain the canonical ArmCpu build recipe."]
+findings = ["Frozen005 reached true XNU VM and platform initialization. Continuous IRQ/EOI/reload observations are source work until the new binary runs."]
+completion = ["Record the exact source, host build and device result separately; only the actual result advances this area."]
+limits = ["A source implementation is not a new binary or device success. SMP follows single-core userland/UI."]
+next_action = ["Complete the full macOS source build and then address its actual blocking result."]
+evidence = [{ kind = "source", reference = "patches/xnu/cas-continuous-cpu0.patch", result = "Frozen005 reached true XNU VM and platform initialization. Continuous IRQ/EOI/reload observations are source work until the new binary runs." }]
+
+[[area]]
+id = "memory"
+status = "implemented"
+components = ["ArmDTPlatform"]
+paths = ["config/cas-adt-facts.json", "dts/**", "scripts/cas_adt.py", "scripts/adt_codec.py"]
+inputs = ["Describe three DRAM banks and31 reserved regions; UEFI allocation remains the ownership authority."]
+configuration = ["Use the cas format2 board and the matched iPadOS17.7.11/XNU10063.141.1/4KiB contract."]
+procedure = ["Generate ADT from board DTS with explicit multibank preservation; compare CPU, GIC, timer and reservations."]
+findings = ["Host comparison passed. Standard16MiB arm-io alignment changes logical offsets while preserving physical GIC addresses."]
+completion = ["Record the exact source, host build and device result separately; only the actual result advances this area."]
+limits = ["A source implementation is not a new binary or device success. SMP follows single-core userland/UI."]
+next_action = ["Complete the full macOS source build and then address its actual blocking result."]
+evidence = [{ kind = "source", reference = "dts/cas.dts", result = "Host comparison passed. Standard16MiB arm-io alignment changes logical offsets while preserving physical GIC addresses." }]
+
+[[area]]
+id = "storage"
+status = "implemented"
+components = []
+paths = ["configs/**", "docs/porting-status.md"]
+inputs = ["RAM-only mockfs support and an own static user process are selected; UFS and persistence remain disabled."]
+configuration = ["Use the cas format2 board and the matched iPadOS17.7.11/XNU10063.141.1/4KiB contract."]
+procedure = ["Build the root-support archive and own signed fixture with the same ARM64/iOS17 ABI."]
+findings = ["Source preparation exists; neither a mounted new root nor an EL0 process is claimed."]
+completion = ["Record the exact source, host build and device result separately; only the actual result advances this area."]
+limits = ["A source implementation is not a new binary or device success. SMP follows single-core userland/UI."]
+next_action = ["Complete the full macOS source build and then address its actual blocking result."]
+evidence = [{ kind = "source", reference = "configs/cas_continuous_defconfig", result = "Source preparation exists; neither a mounted new root nor an EL0 process is claimed." }]
+
+[[area]]
+id = "display"
+status = "planned"
+components = []
+paths = ["docs/porting-status.md"]
+inputs = ["Preserve ABL GOP1080x2340 in the firmware path; userland display is a later integration point."]
+configuration = ["Use the cas format2 board and the matched iPadOS17.7.11/XNU10063.141.1/4KiB contract."]
+procedure = ["Reuse applicable framebuffer code after the single-core root path progresses."]
+findings = ["UEFI display passed; no iOS interface or accelerated display result exists."]
+completion = ["Record the exact source, host build and device result separately; only the actual result advances this area."]
+limits = ["A source implementation is not a new binary or device success. SMP follows single-core userland/UI."]
+next_action = ["Implement only when the required hardware and OS inputs are established."]
+evidence = [{ kind = "source", reference = "docs/porting-status.md", result = "UEFI display passed; no iOS interface or accelerated display result exists." }]
+
+[[area]]
+id = "input"
+status = "planned"
+components = []
+paths = ["docs/porting-status.md"]
+inputs = ["UEFI physical keys work; cas touch requires its own ST FTS hardware support."]
+configuration = ["Use the cas format2 board and the matched iPadOS17.7.11/XNU10063.141.1/4KiB contract."]
+procedure = ["Reuse matching cas implementations; never substitute SM8550 Novatek addresses."]
+findings = ["UEFI key evidence does not establish XNU HID or touch."]
+completion = ["Record the exact source, host build and device result separately; only the actual result advances this area."]
+limits = ["A source implementation is not a new binary or device success. SMP follows single-core userland/UI."]
+next_action = ["Implement only when the required hardware and OS inputs are established."]
+evidence = [{ kind = "source", reference = "docs/porting-status.md", result = "UEFI key evidence does not establish XNU HID or touch." }]
+
+[[area]]
+id = "gpu"
+status = "planned"
+components = []
+paths = ["docs/porting-status.md"]
+inputs = ["cas uses SM8250/Adreno650; Adreno740 is not compatible hardware."]
+configuration = ["Use the cas format2 board and the matched iPadOS17.7.11/XNU10063.141.1/4KiB contract."]
+procedure = ["Keep GPU components disabled until resources, firmware and ABI are established."]
+findings = ["No GPU acceleration is claimed."]
+completion = ["Record the exact source, host build and device result separately; only the actual result advances this area."]
+limits = ["A source implementation is not a new binary or device success. SMP follows single-core userland/UI."]
+next_action = ["Implement only when the required hardware and OS inputs are established."]
+evidence = [{ kind = "source", reference = "docs/porting-status.md", result = "No GPU acceleration is claimed." }]
+
+[[area]]
+id = "network"
+status = "planned"
+components = []
+paths = ["docs/porting-status.md"]
+inputs = ["WiFi/cellular are not selected for the current CPU0 candidate."]
+configuration = ["Use the cas format2 board and the matched iPadOS17.7.11/XNU10063.141.1/4KiB contract."]
+procedure = ["Inventory actual controllers, firmware and OS dependencies before enabling drivers."]
+findings = ["No network or baseband service result exists."]
+completion = ["Record the exact source, host build and device result separately; only the actual result advances this area."]
+limits = ["A source implementation is not a new binary or device success. SMP follows single-core userland/UI."]
+next_action = ["Implement only when the required hardware and OS inputs are established."]
+evidence = [{ kind = "source", reference = "docs/porting-status.md", result = "No network or baseband service result exists." }]
+
+[[area]]
+id = "audio"
+status = "planned"
+components = []
+paths = ["docs/porting-status.md"]
+inputs = ["Board audio dependencies are not selected in the current source closure."]
+configuration = ["Use the cas format2 board and the matched iPadOS17.7.11/XNU10063.141.1/4KiB contract."]
+procedure = ["Inventory codec, transport and matching iOS ABI after the minimal root path."]
+findings = ["No audio result exists."]
+completion = ["Record the exact source, host build and device result separately; only the actual result advances this area."]
+limits = ["A source implementation is not a new binary or device success. SMP follows single-core userland/UI."]
+next_action = ["Implement only when the required hardware and OS inputs are established."]
+evidence = [{ kind = "source", reference = "docs/porting-status.md", result = "No audio result exists." }]
+
+[[area]]
+id = "power"
+status = "planned"
+components = []
+paths = ["docs/porting-status.md"]
+inputs = ["PSCI uses the cas SMC conduit; charging, thermal and idle policy remain separate work."]
+configuration = ["Use the cas format2 board and the matched iPadOS17.7.11/XNU10063.141.1/4KiB contract."]
+procedure = ["Reuse SM8250 facts and applicable drivers; do not enable SM8550 PMGR hooks."]
+findings = ["Returning to Android is verified on the accepted firmware; full XNU power policy is not."]
+completion = ["Record the exact source, host build and device result separately; only the actual result advances this area."]
+limits = ["A source implementation is not a new binary or device success. SMP follows single-core userland/UI."]
+next_action = ["Implement only when the required hardware and OS inputs are established."]
+evidence = [{ kind = "source", reference = "docs/porting-status.md", result = "Returning to Android is verified on the accepted firmware; full XNU power policy is not." }]
+
+[[area]]
+id = "packaging"
+status = "implemented"
+components = ["XnuPrelink"]
+paths = ["scripts/package_boot.py", "package/Kit.toml", "local.toml.example", "docs/build*"]
+inputs = ["Keep private stock DTB and iPadOS inputs outside Git; candidates use fresh identifiers."]
+configuration = ["Use the cas format2 board and the matched iPadOS17.7.11/XNU10063.141.1/4KiB contract."]
+procedure = ["Use the checked RAM-only packer and authenticated/encrypted owner artifact transport."]
+findings = ["No raw firmware, donor, recovery image or private key is a source deliverable."]
+completion = ["Record the exact source, host build and device result separately; only the actual result advances this area."]
+limits = ["A source implementation is not a new binary or device success. SMP follows single-core userland/UI."]
+next_action = ["Complete the full macOS source build and then address its actual blocking result."]
+evidence = [{ kind = "source", reference = "scripts/package_boot.py", result = "No raw firmware, donor, recovery image or private key is a source deliverable." }]
+
+[[area]]
+id = "diagnostics"
+status = "implemented"
+components = []
+paths = ["patches/xnu/**", "ci/xnu/Cas*", "ci/xnu/artifacts.py", "docs/porting-status.md"]
+inputs = ["Preserve the bounded boot-tagged mailbox, real IRQ samples, first panic and startup phase history."]
+configuration = ["Use the cas format2 board and the matched iPadOS17.7.11/XNU10063.141.1/4KiB contract."]
+procedure = ["Successful checkpoints log and continue; capture the actual final failure before returning to Android."]
+findings = ["Entry, VM and005 platform evidence are reused. Continuous scheduler/root/userland points remain unexecuted until a new run."]
+completion = ["Record the exact source, host build and device result separately; only the actual result advances this area."]
+limits = ["A source implementation is not a new binary or device success. SMP follows single-core userland/UI."]
+next_action = ["Complete the full macOS source build and then address its actual blocking result."]
+evidence = [{ kind = "source", reference = "patches/xnu/cas-continuous-cpu0.patch", result = "Entry, VM and005 platform evidence are reused. Continuous scheduler/root/userland points remain unexecuted until a new run." }]

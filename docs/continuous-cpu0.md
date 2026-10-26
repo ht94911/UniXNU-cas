@@ -1,3 +1,5 @@
+> The active build uses [format2](build-format2.md) and the standard ordered series. Legacy source-only commands below are retained for historical reproducibility.
+
 # Continuous CPU0 boot toward iOS 17
 
 This local source profile follows the 2026-10-26 direction to keep XNU10063 / native4KiB / iPadOS17.7.11, run one CPU toward userspace first, and defer SMP until after an interactive interface. Frozen005 has already reached its deliberate VM/platform stop; it is not repeated.

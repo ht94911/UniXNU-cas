@@ -9,3 +9,14 @@ __pycache__/
 /builds/
 *.img
 *.dtb
+
+# Canonical build/private inputs
+local.toml
+unixnu.local.toml
+/.cache/
+/out/
+*.ipsw
+*.dmg
+*.macho
+*.dbr
+*.key

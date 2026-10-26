@@ -1,0 +1,49 @@
+diff --git a/osfmk/arm64/start.s b/osfmk/arm64/start.s
+index 11de723..80804d1 100644
+--- a/osfmk/arm64/start.s
++++ b/osfmk/arm64/start.s
+@@ -38,6 +38,28 @@
+ #endif
+ #include <arm64/exception_asm.h>
+ 
++// cas CPU0 trace: fixed firmware-reserved NC mailbox, before XNU enables MMU.
++// x9..x11 and NZCV are scratch at the reviewed __start/start_first_cpu entries.
++// No stack, calls, allocation, boot services, storage or ramoops assumptions.
++#if ARM_PGSHIFT != 12
++#error cas entry trace requires the fixed 4KiB XNU profile
++#endif
++.macro CAS_ENTRY_TRACE
++ mov x9, #0x9f960000
++ ldr x10, [x9]
++ mov x11, #0x4143
++ movk x11, #0x4853, lsl #16
++ movk x11, #0x3630, lsl #32
++ cmp x10, x11
++ b.ne 9f
++ mov x10, $0
++ mvn x11, x10
++ stp x10, x11, [x9, #240]
++ dsb sy
++9:
++.endmacro
++
++
+ #if __ARM_KERNEL_PROTECT__
+ #include <arm/pmap.h>
+ #endif /* __ARM_KERNEL_PROTECT__ */
+@@ -224,6 +246,7 @@ LEXT(ResetHandlerData)
+ 	.align	3
+ 	.globl EXT(_start)
+ LEXT(_start)
++	CAS_ENTRY_TRACE 0x40
+ 	b	EXT(start_first_cpu)
+ 
+ 
+@@ -463,6 +486,7 @@ start_cpu:
+ 	.align 2
+ 	.globl EXT(start_first_cpu)
+ LEXT(start_first_cpu)
++	CAS_ENTRY_TRACE 0x41
+ 
+ 	// Unlock the core for debugging
+ 	msr		OSLAR_EL1, xzr

@@ -1,3 +1,5 @@
+> The active format2 ownership, continuous route and actual capability boundaries are in [current build](build-format2.md) and [porting status](porting-status.md). The frozen EFI design below remains historical.
+
 # Architecture and future work
 
 [简体中文](architecture.zh-CN.md) · [Project home](../README.md)

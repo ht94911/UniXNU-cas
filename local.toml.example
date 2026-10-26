@@ -1,0 +1,5 @@
+# Development-only overrides; copy to ignored local.toml when needed.
+# [[source]]
+# name = "sm8250"
+# kind = "soc"
+# local = "../UniXNU-sm8250-common"

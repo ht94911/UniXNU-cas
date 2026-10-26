@@ -7,12 +7,13 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
 PIN='d099354d0eab34df5088ca1ba89c9c88bc3260bb'
 SOURCE_SHA='db189a520fb7af3decb80f6ad65e2b7ab2aa9e3e6c5ab6e2286a23df6108d8f2'
+REVIEWED_PINS={PIN:SOURCE_SHA,'3325e352d7df68a9f9ad74832ed94a6acbbd7390':'d13facd71aa802e02a33b8c463d83a7a9a2f9d5b0a5e5a5fcd96cfdce7985e1a'}
 def digest(data):return hashlib.sha256(data).hexdigest()
 def replace_once(text,old,new):
  if text.count(old)!=1:raise ValueError('fixed source context mismatch: '+old[:100])
  return text.replace(old,new,1)
 def transform(source):
- if digest(source)!=SOURCE_SHA:raise ValueError('DarwinBoot source hash mismatch')
+ if digest(source) not in REVIEWED_PINS.values():raise ValueError('DarwinBoot source hash mismatch')
  text=source.decode()
  text=replace_once(text,'#include "WindowSize.h"','#include "WindowSize.h"\n#include <Protocol/MemoryAttribute.h>\n#define CAS_HANDOFF_DRY_RUN 1')
  text=replace_once(text,'STATIC UINT32 U32 (','#include "Trace.h"\n\nSTATIC UINT32 U32 (')
@@ -27,7 +28,8 @@ def transform(source):
  '  Status = CasWindowPermissions (Address, WindowSize);\n  if (EFI_ERROR (Status)) { goto Fail; }\n  CasTrace (3, EFI_SUCCESS, Address, 0, Address + Kernel.Entry - Kernel.Base, WindowSize);\n  ArgsAddress = ALIGN_VALUE (Address + Kernel.End - Kernel.Base, SIZE_16KB);')
  text=replace_once(text,'  Status = GetMap (&Map, &Capacity, &MapSize, &Key, &Stride);\n  if (EFI_ERROR (Status)) { goto Fail; }\n  Print (L"DARWINBOOT: ARM64',
  '  CasTrace (4, EFI_SUCCESS, Address, ArgsAddress, Address + Kernel.Entry - Kernel.Base, WindowSize);\n#if CAS_HANDOFF_DRY_RUN\n  Print (L"CAS X06: kernel/ADT/boot_args loaded; dry-run frees owned memory; no ExitBootServices or kernel execution\\n");\n  Status = EFI_SUCCESS;\n  goto Fail;\n#else\n  Status = GetMap (&Map, &Capacity, &MapSize, &Key, &Stride);\n  if (EFI_ERROR (Status)) { goto Fail; }\n  Print (L"DARWINBOOT: ARM64')
- text=replace_once(text,'means the kernel entry code ran.','marks the loader before the kernel branch.')
+ if 'means the kernel entry code ran.' in text:text=replace_once(text,'means the kernel entry code ran.','marks the loader before the kernel branch.')
+ elif 'DEBUG ((DEBUG_ERROR, "\\nExiting boot services. A green bar across the top\\nmarks the loader handoff before the kernel branch.\\n"));' not in text:raise ValueError('reviewed green-bar wording mismatch')
  text=replace_once(text,'  for (Attempt = 0; Attempt < 3; Attempt++) {\n    MapSize = Capacity;','  CasTrace (0x10, EFI_SUCCESS, Address, ArgsAddress, Address + Kernel.Entry - Kernel.Base, WindowSize);\n  for (Attempt = 0; Attempt < 3; Attempt++) {\n    MapSize = Capacity;')
  # Commit C trace before the first GetMemoryMap/EBS attempt. The retry loop
  # may call only GetMemoryMap/EBS; raw assembly markers use no boot services.
@@ -45,7 +47,8 @@ def state(path):
          'untracked_sha256':{p:digest((path/p).read_bytes()) for p in subprocess.check_output(['git','ls-files','--others','--exclude-standard'],cwd=path,text=True).splitlines()}}
 def prepare(framework,out):
  source=framework/'drivers/DarwinBoot';before=state(source)
- if before['head']!=PIN or before['dirty']:raise ValueError('pinned DarwinBoot must be clean')
+ if before['head'] not in REVIEWED_PINS or before['dirty']:raise ValueError('pinned DarwinBoot must be clean')
+ if digest((source/'DarwinBootPkg/Driver/DarwinBoot.c').read_bytes())!=REVIEWED_PINS[before['head']]:raise ValueError('reviewed loader commit/blob mismatch')
  out.mkdir(parents=True,exist_ok=False);pkg=out/'DarwinBootPkg';pkg.mkdir();driver=pkg/'Driver';driver.mkdir()
  inputs={}
  for path in (source/'DarwinBootPkg/Driver').iterdir():

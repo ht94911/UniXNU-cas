@@ -1,18 +1,57 @@
-# cas EFI-only integration. No kernel, IPSW or userdata build is required.
+schema_version = 2
+
 [board]
 name = "cas"
 arch = "AARCH64"
+kit = "cas"
+soc = "SM8250"
+soc_source = "sm8250"
+os_profile = "ipados-17.7.11-21H461"
+description = "Xiaomi10Ultra: single-core continuous iOS17 bring-up with RAM-only storage"
+
+[components]
+include = ["ArmDTPlatform", "ArmCpu", "SoftwareAES", "XnuPrelink", "DarwinBoot"]
+
+[kernel]
+defconfig = "cas_defconfig"
+config_fragments = ["arch:configs/common.config", "soc:configs/sm8250.config", "os:configs/ipados.config"]
+patch_series = ["arch:patches/xnu/series", "soc:patches/xnu/series", "os:patches/xnu/series", "device:patches/xnu/series"]
+archives = ["build-corecrypto-14.py", "build-corecrypto-14.py --namespace", "component:ArmDTPlatform", "build-cas-armcpu-overlay.py", "component:ArmCpu", "component:SoftwareAES", "build-software-aes-bindings.py", "build-mockfs-fixture.py", "build-libpthread-kernel.py"]
+
+[device_tree]
+source = "device:dts/cas.dts"
+include_dirs = ["soc:dts"]
+preserve_memory_ranges = true
+export_arch_timer = true
 
 [firmware]
 config = "cas"
-dsc = "casPkg/cas.dsc"
-fd = "Build/casPkg/{target}_CLANGPDB/FV/SILICIUM_UEFI.fd"
-packages = ["{uefi}/Platforms/Xiaomi", "{uefi}/Common/Mu", "{uefi}/Common/Mu_OEM_Sample", "{uefi}/Mu_Basecore", "{uefi}/Silicon/Qualcomm", "{uefi}/Silicon/Silicium", "{uefi}/../UniXNU/package"]
-preflight = ["scripts/cas_generic_build_guard.py"]
+dsc = "casPkg/cas-upstream.dsc"
+fd = "Build/casUpstream001/{target}_CLANGPDB/FV/SILICIUM_UEFI.fd"
+preflight = ["scripts/cas_upstream_firmware.py"]
+defines = { CAS_BUILD_DIR = "Build/casUpstream001" }
+packages = ["{uefi}/Platforms/Xiaomi", "{uefi}/Common/Mu", "{uefi}/Common/Mu_OEM_Sample", "{uefi}/Mu_Basecore", "{uefi}/Silicon/Qualcomm", "{uefi}/Silicon/Silicium", "{tree}/package", "{tree}/drivers/DarwinBoot", "{edk2}"]
+
+[payload]
+volume = "CAS_IOS17"
+size_mib = 64
+loader = "firmware"
+title = "cas iOS17 CPU0 continuous"
+timeout = -1
+kernel_args = ["-v", "keepsyms=1", "debug=0x14e", "cpus=1"]
+
+[payload.adt]
+chip_id = "8011"
+owned_memory_size = "0x10000000"
+cpu_regs = "0"
+psci_method = "smc"
+unique_chip_id = "required"
+
+[adt.root.string]
+hardware-model = "Qualcomm Technologies, Inc. xiaomi cas"
 
 [cas]
-builder = "scripts/build_firmware.py"
-preflight = "scripts/preflight.py"
-profile = "efi-only-ram"
-# The generic firmware/bootimg path does not implement cas provenance/BootShim.
-# Use DeviceBuild.py and the checked cas packer; CLI status/Context are supported.
+temporary_boot_only = true
+persistent_storage_enabled = false
+source_contract = "XNU10063.141.1/4KiB/iPadOS17.7.11-j120ap"
+accepted_baseline = "cas-complete-001; CPU0 milestone005 is frozen separately"

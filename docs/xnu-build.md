@@ -1,3 +1,5 @@
+> The active build uses [format2](build-format2.md) and the standard ordered series. Legacy source-only commands below are retained for historical reproducibility.
+
 # XNU executor preparation
 
 [简体中文](xnu-build.zh-CN.md)

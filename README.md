@@ -9,7 +9,7 @@ A community port for **Xiaomi 10 Ultra / Mi 10 Ultra (`cas`, M2007J1SC, SM8250)*
 
 **Current milestone:** UEFI and the real UniXNU menu run on the tested phone. Physical buttons work; a test EFI application loads from read-only RAM FAT, executes and returns to the menu; the phone reboots to its existing Android installation. The same candidate passed **three independent complete runs** and a **byte-identical rebuild of 34 artifacts**.
 
-DarwinBoot handoff, XNU and iOS have **not been tested**. This release is an early hardware bring-up milestone.
+**Current development:** real XNU CPU0 entry, VM and early platform initialization were established after this frozen EFI release. Format2 migration and continuous single-core work are described in [porting status](docs/porting-status.md), [the current build](docs/build-format2.md) and `porting.toml`. An iOS interface is not yet verified.
 
 ## What works
 

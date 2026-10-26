@@ -1,0 +1,16 @@
+{
+  "source": "drivers/ArmCpu/ArmCpu.cpp",
+  "before_sha256": "0c3643427672848b87cee1a86d9b4109863b3dc63ca00462913211316536337a",
+  "after_sha256": "e66616882c41ad58d2c7e2aefabb6809c74197a089e5c0882ac6bef1b37cd07f",
+  "patch": "cas-armcpu-observer.patch",
+  "patch_sha256": "a75bcf38c5985b4f4fcbcc2e361fc500537cefef29023ff79246d2f6e5ce1af7",
+  "include": "CasArmCpuTrace.inc",
+  "include_sha256": "2edc5f28188662a6e8212f9dba0aced877475252cd3eb93596ca0e24710fb38a",
+  "upstream": "reAAAq/UniXNU-umi@3eb72578597d2ca16471b172d45eddc096a34a04",
+  "sampling": "IRQs1,2,8, then every64; driver and rtclock retain their actual behavior",
+  "license": {
+    "file": "third-party/UniXNU-umi-LICENSE",
+    "sha256": "5b1d3d911103cb0f41641ec0964c5ac1f7e229f57aa072b6ac38bae913a1307b"
+  },
+  "asm_patch": "darwin-asm-separators.patch"
+}

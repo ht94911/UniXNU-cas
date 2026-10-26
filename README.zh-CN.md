@@ -1,3 +1,5 @@
+> 当前开发已证明真实XNU CPU0入口、VM与早期平台初始化；以下冻结EFI里程碑保留不变。新格式2、单核连续启动及实际限制见[移植状态](docs/porting-status.md)、[当前构建](docs/build-format2.zh-CN.md)与`porting.toml`。iOS界面尚未验证。
+
 <p align="center"><img src="docs/assets/cas-banner.svg" alt="小米 10 Ultra — cas UEFI 与 UniXNU 社区适配" width="100%"></p>
 
 <p align="center"><a href="README.md">English</a> · <strong>简体中文</strong></p>

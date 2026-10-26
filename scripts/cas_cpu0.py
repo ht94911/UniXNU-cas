@@ -9,14 +9,14 @@ ORIGINAL_PREPARE=parent.prepare
 ROOT=Path(__file__).resolve().parents[1]
 MODE='execute'
 ADT_AUDIT=None
-def prepare(framework,out):
+def prepare(framework,out,uefi=None,contract_file=None):
  original=ORIGINAL_PREPARE(framework,out)
  (out/'overlay.json').rename(out/'parent-x06-overlay.json')
- pkg=out/'DarwinBootPkg';driver=pkg/'Driver';uefi=framework.parent/'uefi-cas'
+ pkg=out/'DarwinBootPkg';driver=pkg/'Driver';uefi=uefi or framework.parent/'uefi-cas'
  if ADT_AUDIT is None:raise ValueError('private ADT audit required for candidate identity')
  adt_meta=json.loads(ADT_AUDIT.read_text())
  if adt_meta.get('mode')!='private' or adt_meta.get('cpu_profile')!='cpu0' or adt_meta.get('entropy_bytes')!=64:raise ValueError('private CPU0 entropy audit required')
- contract=json.loads((ROOT/'config/cpu0-contract.json').read_text())
+ contract=json.loads((contract_file or ROOT/'config/cpu0-contract.json').read_text())
  source_heads={}
  for label,repo in [('device',ROOT),('uefi',uefi),('framework',framework)]:
   repo_state=parent.state(repo)

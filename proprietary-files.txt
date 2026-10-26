@@ -1,0 +1,5 @@
+# No redistributable vendor binary is required by the active source-only firmware profile.
+# The stock SoC DTB is a local input, not a committed blob; fixed source/hash:
+# config cas Resources/Configs/cas.toml boot_image_dtb; source evidence remains private.
+# iPadOS17.7.11(j120ap) IPSW/kernelcache/trust caches are OS-profile inputs and stay outside Git.
+# Future GPU/UFS/touch firmware must be listed here with source and SHA before enabling its component.
