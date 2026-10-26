@@ -1,0 +1,17 @@
+#!/bin/bash
+# logrun NAME COMMAND...: run COMMAND with all of its output in $LOGS/NAME.log (sealed with the results, not printed); on failure
+# show the log's tail.
+name=$1
+shift
+logs=${LOGS:-${RUNNER_TEMP:-/tmp}/logs}
+mkdir -p "$logs"
+start=$(date +%s)
+if "$@" > "$logs/$name.log" 2>&1; then
+  echo "== $name: ok in $(( $(date +%s) - start )) s"
+  exit 0
+else
+  rc=$?
+fi
+echo "::error::$name failed with exit status $rc after $(( $(date +%s) - start )) s"
+tail -n 150 "$logs/$name.log"
+exit $rc

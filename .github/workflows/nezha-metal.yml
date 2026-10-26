@@ -1,0 +1,118 @@
+name: nezha Metal userland
+# Temporary (branch tmp/nezha-metal-20261027 of ht94911/UniXNU-cas, deleted with its run after one build): the macOS-only part
+# of the nezha GPU path (Xiaomi 17 Ultra, Adreno 840, iPadOS 17.7.11). The cas gpu-userland recipe without its host checks:
+# Turnip with the Darwin kernel backend, the metal2vulkan bridge and the NativeAdrenoMetal plugin for iOS 17 arm64 from UniXNU
+# ae68700 and its pinned components. Results leave the runner only as a CMS envelope for ci/xnu/artifact-recipient.pem.
+on:
+  push:
+    branches: [tmp/nezha-metal-20261027]
+  workflow_dispatch:
+    inputs:
+      xcode:
+        description: Xcode version under /Applications (empty = the image default)
+        required: false
+        default: ""
+permissions:
+  contents: read
+concurrency:
+  group: nezha-metal-${{ github.ref }}
+  cancel-in-progress: true
+defaults:
+  run:
+    shell: bash
+env:
+  UNIXNU_COMMIT: ae687009348296e97e49ce6e925795044f363ce6
+  ADRENO740_COMMIT: 5c8c1453c67d6ef6b10ec43ab1f8fc570a2f33e1
+  ABI_SHA256: 20ac9298bb390d86788c1fc58155e1f9581ffa942e222752efc95c67cb5670d2
+  PROFILE_CHIP_ID: "0x06050002"
+  PROFILE_GMEM_BYTES: "0x120000"
+  PROFILE_GMEM_BASE: "0x0"
+  RUST_TOOLCHAIN: 1.98.0
+  HOMEBREW_NO_AUTO_UPDATE: 1
+  HOMEBREW_NO_INSTALL_CLEANUP: 1
+  HOMEBREW_NO_ENV_HINTS: 1
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 345
+    steps:
+      - name: Check out this branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          path: device
+          persist-credentials: false
+
+      - name: Check out UniXNU at the pinned commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: UniXNU/UniXNU
+          ref: ae687009348296e97e49ce6e925795044f363ce6
+          path: unixnu
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.13"
+
+      - name: Install the build tools
+        env:
+          XCODE: ${{ inputs.xcode }}
+        run: |
+          set -euo pipefail
+          echo "LOGS=$RUNNER_TEMP/logs" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/logs"
+          if [ -n "${XCODE:-}" ]; then sudo xcode-select -s "/Applications/Xcode_${XCODE}.app"; fi
+          brew install glslang shaderc spirv-tools molten-vk vulkan-headers llvm ninja openssl@3 > "$RUNNER_TEMP/logs/brew.log" 2>&1 \
+            || { tail -n 80 "$RUNNER_TEMP/logs/brew.log"; exit 1; }
+          if ! command -v rustup > /dev/null; then
+            curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none > /dev/null
+            echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+            export PATH="$HOME/.cargo/bin:$PATH"
+          fi
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --target aarch64-apple-ios > "$RUNNER_TEMP/logs/rustup.log" 2>&1 \
+            || { tail -n 40 "$RUNNER_TEMP/logs/rustup.log"; exit 1; }
+          { sw_vers; xcode-select -p; xcodebuild -version; xcrun --sdk iphoneos --show-sdk-version; rustc "+$RUST_TOOLCHAIN" -V
+            /opt/homebrew/opt/llvm/bin/llvm-as --version; glslangValidator --version; glslc --version; spirv-val --version
+            ls -l /opt/homebrew/lib/libMoltenVK.dylib /opt/homebrew/include/vulkan/vulkan.h; } > "$RUNNER_TEMP/logs/tools.log" 2>&1
+
+      - name: Prepare the pinned sources and tools
+        run: device/ci/gpu-userland/logrun prepare python3 device/ci/gpu-userland/prepare.py --unixnu unixnu --record "$LOGS/sources.json"
+
+      - name: Build Turnip for iOS
+        id: turnip_ios
+        working-directory: unixnu
+        run: ../device/ci/gpu-userland/logrun turnip-ios python3 scripts/build-turnip-darwin.py --target ios
+
+      - name: Build the Metal bridge and the plugin
+        id: plugin
+        working-directory: unixnu
+        env:
+          UNIXNU_TURNIP_REPLAY: "0"
+        run: ../device/ci/gpu-userland/logrun plugin python3 scripts/build-adreno-metal-plugin.py
+
+      - name: Collect and seal the results for the owner
+        if: always()
+        env:
+          OUTCOME_TURNIP_IOS: ${{ steps.turnip_ios.outcome }}
+          OUTCOME_PLUGIN: ${{ steps.plugin.outcome }}
+        run: |
+          set -euo pipefail
+          if prefix=$(brew --prefix openssl@3 2>/dev/null) && [ -x "$prefix/bin/openssl" ]; then export PATH="$prefix/bin:$PATH"; fi
+          python3 device/ci/gpu-userland/collect.py --unixnu unixnu --device device --logs "$LOGS" \
+            --out "$RUNNER_TEMP/out" --sealed "$RUNNER_TEMP/sealed" > "$RUNNER_TEMP/collect.log" 2>&1 \
+            || { tail -n 40 "$RUNNER_TEMP/collect.log"; exit 1; }
+
+      - name: Upload the sealed bundle
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: nezha-metal-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/sealed/bundle.cms
+            ${{ runner.temp }}/sealed/envelope.json
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Remove the build outputs
+        if: always()
+        run: rm -rf unixnu/build unixnu/.cache "$RUNNER_TEMP/out" "$RUNNER_TEMP/sealed" "$RUNNER_TEMP/logs"
