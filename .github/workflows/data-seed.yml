@@ -1,0 +1,243 @@
+name: Data seed
+# One-time macOS step of the cas port: build the writable APFS Data seed (DBRDISK1) for UniXNU --data-ramdisk from the
+# unchanged iPadOS 17.7.11 (21H461, iPad7,1/j120ap) OS image, grow it, make a Setup-done copy and record the OS root volume
+# UUID. Apple-derived results leave the runner only as a CMS envelope for ci/xnu/artifact-recipient.pem (ci/xnu/artifacts.py).
+on:
+  push:
+    branches: [build/data-seed]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: data-seed-${{ github.ref }}
+  cancel-in-progress: true
+defaults:
+  run:
+    shell: bash
+env:
+  UNIXNU_COMMIT: ae687009348296e97e49ce6e925795044f363ce6
+  DARWINBOOT_COMMIT: 3325e352d7df68a9f9ad74832ed94a6acbbd7390
+  IPSW_URL: https://updates.cdn-apple.com/2025SpringFCS/fullrestores/122-77166/DCA6CFE8-90E9-4B92-880D-3DE171798E40/iPad_Pro_HFR_17.7.11_21H461_Restore.ipsw
+  OS_MEMBER: 044-76040-038.dmg
+  OS_BYTES: "5157406069"
+  OS_SHA256: 3f99b859c9728379110b66657c7b15285bcb1925ad8b5726542e2cdcf8b1028d
+  GROW_GIB: "4"
+  HOMEBREW_NO_AUTO_UPDATE: 1
+jobs:
+  seed:
+    runs-on: macos-26
+    timeout-minutes: 120
+    steps:
+      - name: Check out this branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          path: device
+          persist-credentials: false
+
+      - name: Check out UniXNU at the pinned commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: UniXNU/UniXNU
+          ref: ae687009348296e97e49ce6e925795044f363ce6
+          path: unixnu
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.13"
+
+      - name: Prepare the framework scripts
+        working-directory: unixnu
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$UNIXNU_COMMIT"
+          # seed-data-grow.py and seed-data-skip-setup.py import drivers/DarwinBoot/Test/packed_ramdisk.py.
+          git submodule update --init --depth 1 drivers/DarwinBoot
+          test "$(git -C drivers/DarwinBoot rev-parse HEAD)" = "$DARWINBOOT_COMMIT"
+          mkdir -p build .cache/firmware/target-volumes "$RUNNER_TEMP/out" "$RUNNER_TEMP/osroot"
+          sw_vers
+          uname -m
+          python3 --version
+          shasum -a 256 scripts/prepare-owner-data-fixture.py scripts/seed-data-grow.py scripts/seed-data-skip-setup.py \
+            drivers/DarwinBoot/Test/packed_ramdisk.py
+          df -h "$GITHUB_WORKSPACE" "$RUNNER_TEMP"
+
+      - name: Fetch the OS image from the IPSW with HTTP ranges
+        run: |
+          python3 device/ci/data-seed/fetch_ipsw_member.py --url "$IPSW_URL" --member "$OS_MEMBER" --bytes "$OS_BYTES" \
+            --sha256 "$OS_SHA256" "unixnu/.cache/firmware/target-volumes/$OS_MEMBER"
+
+      - name: Attach the OS image read-only and record its root volume
+        run: |
+          set -euo pipefail
+          hdiutil attach -readonly -nobrowse -noverify -noautoopen -owners off -mountroot "$RUNNER_TEMP/osroot" -plist \
+            "unixnu/.cache/firmware/target-volumes/$OS_MEMBER" > "$RUNNER_TEMP/os-attach.plist"
+          python3 - <<'PY'
+          import hashlib, json, os, plistlib, re, subprocess
+          from pathlib import Path
+          temp = Path(os.environ['RUNNER_TEMP'])
+          volumes = Path(os.environ['GITHUB_WORKSPACE']) / 'unixnu/.cache/firmware/target-volumes'
+          entities = plistlib.loads((temp / 'os-attach.plist').read_bytes())['system-entities']
+          whole = next(e['dev-entry'] for e in entities if re.fullmatch(r'/dev/disk[0-9]+', e['dev-entry']))
+          (temp / 'os-device').write_text(whole + '\n')
+          mounted = [Path(e['mount-point']) for e in entities if e.get('mount-point')]
+          roots = [m for m in mounted if (m / 'sbin/launchd').is_file()]
+          if len(roots) != 1:
+              raise SystemExit(f'Expected one mounted root volume, found {len(roots)} of {len(mounted)} mounted volumes')
+          root = roots[0]
+          # prepare-owner-data-fixture.py reads the unchanged OS at .cache/firmware/target-volumes/os-mount.
+          (volumes / 'os-mount').symlink_to(root)
+          info = plistlib.loads(subprocess.check_output(['diskutil', 'info', '-plist', str(root)]))
+          listing = plistlib.loads(subprocess.check_output(['diskutil', 'apfs', 'list', '-plist']))
+          found = [(c, v) for c in listing['Containers'] for v in c.get('Volumes', [])
+                   if v.get('DeviceIdentifier') == info['DeviceIdentifier']]
+          if len(found) != 1:
+              raise SystemExit('The root volume is not listed once by diskutil apfs list')
+          container, volume = found[0]
+          if info.get('VolumeUUID') != volume.get('APFSVolumeUUID'):
+              raise SystemExit('diskutil info and diskutil apfs list disagree on the volume UUID')
+          # The tree prepare-owner-data-fixture.py copies; os.walk there skips unreadable directories silently.
+          errors, counts = [], dict(directories=0, regular_files=0, symlinks=0, other=0, regular_bytes=0)
+          for current, dirs, files in os.walk(root / 'private/var', onerror=lambda e: errors.append(f'{e.filename}: {e.strerror}')):
+              dirs[:] = [d for d in dirs if d != 'staged_system_apps']
+              for name in dirs + files:
+                  path = Path(current) / name
+                  if path.is_symlink():
+                      counts['symlinks'] += 1
+                  elif path.is_dir():
+                      counts['directories'] += 1
+                  elif path.is_file():
+                      counts['regular_files'] += 1
+                      counts['regular_bytes'] += path.lstat().st_size
+                  else:
+                      counts['other'] += 1
+          record = dict(member=os.environ['OS_MEMBER'], member_sha256=os.environ['OS_SHA256'],
+                        launchd_sha256=hashlib.sha256((root / 'sbin/launchd').read_bytes()).hexdigest(),
+                        root_volume_uuid=info['VolumeUUID'], volume_name=info.get('VolumeName'), roles=volume.get('Roles'),
+                        device=info['DeviceIdentifier'], container_uuid=container.get('ContainerUUID'),
+                        container_volumes=[dict(name=v.get('Name'), roles=v.get('Roles'), uuid=v.get('APFSVolumeUUID'),
+                                                device=v.get('DeviceIdentifier')) for v in container.get('Volumes', [])],
+                        private_var_excluding_staged_system_apps=counts, private_var_walk_errors=errors,
+                        diskutil_info=info, diskutil_apfs_container=container)
+          (temp / 'out/os-volume.json').write_text(json.dumps(record, indent=2, default=str) + '\n')
+          print('root volume UUID', info['VolumeUUID'], '| name', info.get('VolumeName'), '| roles', volume.get('Roles'),
+                '| volumes in container', len(container.get('Volumes', [])))
+          print('private/var', counts, '| walk errors', len(errors))
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+              summary.write(f"OS image root volume UUID: `{info['VolumeUUID']}` ({info.get('VolumeName')}, roles {volume.get('Roles')})\n\n")
+          PY
+
+      - name: Create the Data seed from the OS private/var
+        working-directory: unixnu
+        run: python3 scripts/prepare-owner-data-fixture.py
+
+      - name: Detach and delete the OS image
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/os-device" ]; then
+            hdiutil detach "$(cat "$RUNNER_TEMP/os-device")" || hdiutil detach -force "$(cat "$RUNNER_TEMP/os-device")"
+          fi
+          rm -f "unixnu/.cache/firmware/target-volumes/$OS_MEMBER" unixnu/.cache/firmware/target-volumes/os-mount
+
+      - name: Pack, grow and mark Setup done
+        working-directory: unixnu
+        run: |
+          set -euo pipefail
+          OUT="$RUNNER_TEMP/out"
+          cp build/owner-data-fixture/owner-data-32.cdr build/owner-data-fixture/seed.json "$OUT/"
+          python3 drivers/DarwinBoot/Test/packed_ramdisk.py "$OUT/owner-data-32.cdr" "$OUT/data-base-32m.dbr" | tee "$RUNNER_TEMP/pack.json"
+          python3 scripts/seed-data-grow.py --gib "$GROW_GIB" "$OUT/data-base-32m.dbr" "$OUT/data.dbr" | tee "$RUNNER_TEMP/grow.json"
+          python3 scripts/seed-data-skip-setup.py "$OUT/data.dbr" "$OUT/data-skip-setup.dbr" --no-auto-dim
+
+      - name: Write and check the identity JSON files
+        working-directory: unixnu
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os, platform, subprocess, sys
+          from pathlib import Path
+          sys.path.insert(0, 'drivers/DarwinBoot/Test')
+          import packed_ramdisk
+          temp = Path(os.environ['RUNNER_TEMP'])
+          out = temp / 'out'
+          sha = lambda path: hashlib.sha256(Path(path).read_bytes()).hexdigest()
+          seed = json.loads((out / 'seed.json').read_text())
+          uuid = seed['volume_uuid']
+          base = json.loads((temp / 'pack.json').read_text())
+          (out / 'data-base-32m.json').write_text(json.dumps(dict(
+              base, volume_uuid=uuid, raw='owner-data-32.cdr', raw_sha256=seed['sha256'],
+              tool='drivers/DarwinBoot/Test/packed_ramdisk.py'), indent=2) + '\n')
+          grow = json.loads((temp / 'grow.json').read_text())
+          (out / 'data.json').write_text(json.dumps(dict(
+              grow, base='data-base-32m.dbr', base_file_sha256=sha(out / 'data-base-32m.dbr'), volume_uuid=uuid,
+              tool='scripts/seed-data-grow.py --gib ' + os.environ['GROW_GIB']), indent=2) + '\n')
+          # seed-data-skip-setup.py writes its own report next to the output; add the flat identity (the packed_ramdisk.inspect
+          # keys at top level, as an adjacent identity JSON is checked) without dropping anything it wrote.
+          path = out / 'data-skip-setup.json'
+          report = json.loads(path.read_text())
+          path.write_text(json.dumps(dict(report, **report['output'], base='data.dbr', base_file_sha256=sha(out / 'data.dbr'),
+                                          volume_uuid=uuid), indent=2) + '\n')
+          for name in ('data-base-32m', 'data', 'data-skip-setup'):
+              seed_path = out / f'{name}.dbr'
+              identity = json.loads(seed_path.with_suffix('.json').read_text())
+              actual, header = packed_ramdisk.inspect(seed_path)
+              if not actual['packed'] or header[32:36] != b'NXSB' or any(actual[k] != identity[k] for k in actual):
+                  raise SystemExit(f'{name}: the packed seed differs from its identity JSON')
+              print(name, json.dumps(actual))
+          if json.loads((out / 'data.json').read_text())['bytes'] != int(os.environ['GROW_GIB']) * 1024**3:
+              raise SystemExit('The grown seed has the wrong logical size')
+          scripts = ['scripts/prepare-owner-data-fixture.py', 'scripts/seed-data-grow.py', 'scripts/seed-data-skip-setup.py',
+                     'drivers/DarwinBoot/Test/packed_ramdisk.py']
+          info = dict(repository=os.environ['GITHUB_REPOSITORY'], commit=os.environ['GITHUB_SHA'], run_id=os.environ['GITHUB_RUN_ID'],
+                      run_attempt=os.environ['GITHUB_RUN_ATTEMPT'], runner=os.environ.get('ImageOS'),
+                      runner_version=os.environ.get('ImageVersion'), macos=platform.mac_ver()[0],
+                      sw_vers=subprocess.check_output(['sw_vers'], text=True), python=sys.version,
+                      unixnu=dict(repository='UniXNU/UniXNU', commit=os.environ['UNIXNU_COMMIT'],
+                                  darwinboot_commit=os.environ['DARWINBOOT_COMMIT'], scripts={s: sha(s) for s in scripts}),
+                      ipsw=os.environ['IPSW_URL'], os_member=os.environ['OS_MEMBER'], os_sha256=os.environ['OS_SHA256'],
+                      grow_gib=int(os.environ['GROW_GIB']), skip_setup_args=['--no-auto-dim'],
+                      outputs={p.name: dict(bytes=p.stat().st_size, sha256=sha(p)) for p in sorted(out.iterdir())})
+          (out / 'run-info.json').write_text(json.dumps(info, indent=2) + '\n')
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+              summary.write('| File | Bytes | SHA-256 |\n| --- | --- | --- |\n')
+              for name, item in info['outputs'].items():
+                  summary.write(f"| {name} | {item['bytes']} | `{item['sha256']}` |\n")
+          PY
+
+      - name: Seal the results for the owner
+        run: |
+          set -euo pipefail
+          if prefix=$(brew --prefix openssl@3 2>/dev/null) && [ -x "$prefix/bin/openssl" ]; then export PATH="$prefix/bin:$PATH"; fi
+          openssl version
+          args=()
+          for f in data.dbr data.json data-skip-setup.dbr data-skip-setup.json data-base-32m.dbr data-base-32m.json \
+                   owner-data-32.cdr seed.json os-volume.json run-info.json; do
+            args+=(--file "$f")
+          done
+          python3 device/ci/xnu/artifacts.py seal --root "$RUNNER_TEMP/out" "${args[@]}" \
+            --recipient device/ci/xnu/artifact-recipient.pem --out "$RUNNER_TEMP/sealed"
+          cat "$RUNNER_TEMP/sealed/envelope.json"
+          { echo; echo '```json'; cat "$RUNNER_TEMP/sealed/envelope.json"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the sealed bundle
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: data-seed-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/sealed/bundle.cms
+            ${{ runner.temp }}/sealed/envelope.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Remove Apple-derived files
+        if: always()
+        run: |
+          python3 - <<'PY' || true
+          import plistlib, re, subprocess
+          for image in plistlib.loads(subprocess.check_output(['hdiutil', 'info', '-plist'])).get('images', []):
+              path = image.get('image-path', '')
+              if '/work/' in path or '/_temp/' in path:
+                  devices = [e['dev-entry'] for e in image.get('system-entities', []) if re.fullmatch(r'/dev/disk[0-9]+', e['dev-entry'])]
+                  if devices:
+                      subprocess.run(['hdiutil', 'detach', '-force', devices[0]])
+          PY
+          rm -rf "$RUNNER_TEMP/out" "$RUNNER_TEMP/osroot" "$RUNNER_TEMP/os-attach.plist" unixnu/build unixnu/.cache
