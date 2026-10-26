@@ -33,3 +33,11 @@ Firmware and boot image assembly must retain the cas BootShim, correct EDK2 ABI,
 loader ownership guard and bounded input audit. The generic packer cannot replace
 the checked cas packer by simply changing a command. Never run `userdata` for this
 RAM-only target. See [status](porting-status.md) and `porting.toml` for actual limits.
+
+## 最小RAM根卷
+
+上游mockfs使用自有签名静态Mach-O作为内存设备，在`/sbin/launchd`提供该程序。
+通过`build-native-user-fixture.py`构建后，将程序作为`--data-ramdisk`输入，
+对应bundle作为`--trust-cache`输入，候选参数增加`rd=md0`。设备loader只接受
+显式契约绑定的内核、ADT、根卷和trust-cache哈希。该程序用于最小系统调用验证，
+不代表Apple launchd或iOS界面。

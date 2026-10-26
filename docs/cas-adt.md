@@ -81,8 +81,8 @@ A second check compiles the actual fixed XNU `device_tree.c`, exact DarwinBoot `
 
 ```sh
 python3 scripts/audit-cas-adt-consumers.py \
-  --framework /home/hua/cas-work/UniXNU \
-  --xnu /home/hua/cas-work/xnu-builds/x02-patchcheck-004/xnu-work \
+  --framework ../UniXNU \
+  --xnu ../build/xnu-work \
   --evidence-root /mnt/i/Code/UniXNU-cas \
   --out "$HOME/cas-private/consumer-001"
 ```

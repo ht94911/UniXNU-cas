@@ -77,4 +77,4 @@ If the original Android installation no longer starts, stop additional trials an
 
 ## Evidence to retain
 
-Save distinct observations for menu, keys, EFI marker, return to the menu and Android return, with times and image SHA-256. A five-minute stability window must be continuously observed; an interruption is not observed runtime. Record human observations separately from host/emulator logs. Read [the milestone acceptance](validation.md) before making wider claims.
+Save distinct observations for menu, keys, EFI marker, return to the menu and Android return, with times and image SHA-256. A five-minute stability window must be continuously observed; an interruption is not observed runtime. Record on-device observations separately from host/emulator logs. Read [the milestone acceptance](validation.md) before making wider claims.

@@ -2,7 +2,7 @@
 
 本地候选固定 XNU10063.141.1/4KiB、CPU0、新鲜私有熵、DarwinBoot、显式高RAM发布和
 只读trace查看器，不含UFS、Data、触摸、GPU、ramdisk、trustcache或addon。构建通过
-不代表手机执行通过。未经当次明确人类要求，不推送GitHub、不派发Actions。
+不代表手机执行通过。
 
 默认菜单只读trace，没有超时自动启动。验证与XNU入口的命令行各自固定，其他参数拒绝。
 候选tag绑定profile、执行模式、kernel SHA和私有ADT SHA；随机值不进源码或日志。

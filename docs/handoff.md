@@ -32,8 +32,7 @@ The separate optional source-kernel `--entry-trace` adds stages0x40/0x41 at
 enable. It retains the fixed 10063/4KiB baseline and hashes its exact input/patch.
 No post-MMU XNU trace, CPU0 runtime, or iOS success is claimed here.
 
-The existing macos-15/Xcode16.4 encrypted source-build workflow accepts the
-explicit entry_trace option. A local Mac is unnecessary. Preserve remote run,
+The historical source-build workflow used macos-15/Xcode16.4 and the entry_trace option. Current builds use the [format2 workflow](build-format2.md). Preserve remote run,
 commit, artifact digest, decrypted kernel and matching symbols for every build.
 
 Reference: reAAAq/UniXNU-umi@3eb72578597d2ca16471b172d45eddc096a34a04;

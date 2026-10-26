@@ -1,15 +1,39 @@
-> The active build uses [format2](build-format2.md) and the standard ordered series. Legacy source-only commands below are retained for historical reproducibility.
+# Continuous CPU0 startup
 
-# Continuous CPU0 boot toward iOS 17
+The active target uses XNU10063.141.1, native 4 KiB pages and the iPadOS 17.7.11
+ABI. It starts one CPU and continues through scheduler, IOKit, root selection
+and init loading. SMP follows the single-core userspace path.
 
-This local source profile follows the 2026-10-26 direction to keep XNU10063 / native4KiB / iPadOS17.7.11, run one CPU toward userspace first, and defer SMP until after an interactive interface. Frozen005 has already reached its deliberate VM/platform stop; it is not repeated.
+The device XNU series preserves entry and VM observations, restores the normal
+XNU exception vectors before machine_startup, and records subsequent phases in
+reserved RAM. Successful phases continue. Invalid memory or platform inputs
+retain their existing failure paths.
 
-`ci/xnu/build_source.py --continuous-boot` retains the proven entry and memory path, restores XNU's normal exception vector base before `machine_startup`, and continues through scheduler, IOKit, root selection and init loading. Successful checkpoints only write the reserved RAM trace. They do not stop or reboot the machine. Existing failure gates still stop invalid memory/platform inputs.
+The ArmCpu observer samples the actual PPI27 handler, rtclock_intr return and
+ICC_EOIR 1_EL 1 completion. It samples interrupts 1,2,8 and every 64 thereafter.
+It does not replace the interrupt controller, alter timer programming, or invoke
+the handler to manufacture a result. Its adaptation source is
+UniXNU-umi@3 eb 72578597 d 2 ca 16471 b 172 d 45 eddc 096 a 34 a 04; retained notices are in
+third-party/UniXNU-umi-LICENSE.
 
-The ArmCpu observer is adapted from UniXNU-umi3eb72578597d2ca16471b172d45eddc096a34a04. It observes the actual PPI27 handler, `rtclock_intr` return and `ICC_EOIR1_EL1`; it leaves GIC and timer behavior unchanged. It samples the first, second and eighth IRQ, then every64IRQs. The typed packets bind boot identity, candidate tag, sequence, payload XOR and magic inverse. Writes fit inside the existing4KiB mailbox mapping. A separate first-panic record retains the caller, reason, exception register snapshot and up to111bytes of literal format text.
+| Record | Mailbox byte range | Contents |
+| --- | --- | --- |
+| Loader |0..256| Boot identity, allocation, entry and CRC; separate raw stage pair |
+| Early exception |256..384| Vector, syndrome, fault address, registers and prior phase |
+| Platform |384..512| Actual CPU, clock, GIC and volatile NVRAM properties |
+| IRQ |512..832| Handler, return, EOI and timer counters |
+| Startup |832..960| Scheduler, IOKit, root and init phases |
+| First panic |1024..1280| Caller, reason, register snapshot and bounded literal format |
 
-`--user-fixture` additionally compiles XNU mockfs support, runtime trust-cache support and the framework's own signed static ARM64/iOS17 process. Its two intended syscalls are getpid and HW_PAGESIZE. This is a minimal userspace instrument, not Apple launchd or an iOS interface. The exported process and trust cache still need a new bounded RAM payload/ADT/loader contract before any phone execution; the frozen CPU0 payload deliberately rejects those additions.
+Records use the existing 4 KiB mapping and bind the firmware boot and candidate.
+The runtime packets use a sequence, payload XOR and magic/inverse commit. The
+1280-byte recovery reader checks stable snapshots; older 512-byte readers do
+not cover the new packets.
 
-The main packets occupy offsets512..832 (IRQ),832..960 (startup), and1024..1280 (panic). Original256B header and platform/early-exception records retain their offsets. A matching recovery reader is required for the enlarged records. The old512B reader cannot qualify new runtime packets.
+The minimal root path uses upstream mockfs and an own signed static ARM64/iOS 17
+process. That process exercises getpid and HW_PAGESIZE; it is not Apple launchd.
+The guarded loader accepts the base CPU0 command or its explicitly bound rd=md0
+variant, with exact kernel, ADT, root and trust-cache hashes.
 
-Validation so far: exact seven-file XNU patch application and reversal, exact adapted ArmCpu patch application, real packet writer under ASan/UBSan, and ARM64/iOS17 compilation of the writer and observer. Full XNU linking, own-process signing, enlarged payload and phone behavior remain untested. No Github push or Actions dispatch is implied by this local profile.
+See [build](build-format 2.md), [status](porting-status.md) and porting.toml for
+the source versions, build results and remaining device validation.

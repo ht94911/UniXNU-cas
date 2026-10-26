@@ -3,8 +3,7 @@
 This local candidate uses XNU10063.141.1/4KiB, one CPU, fresh private entropy,
 DarwinBoot, an explicit high-RAM publication app and a read-only trace viewer.
 It has no UFS, Data, touch, GPU, ramdisk, trustcache or addon payload. Host/target
-build results do not prove execution on the phone. Do not push this work or
-dispatch GitHub Actions without a new explicit human request.
+build results do not prove execution on the phone. 
 
 The default menu only reads the trace. There is no automatic timeout boot.
 The validation entry and XNU entry use fixed different command lines; other

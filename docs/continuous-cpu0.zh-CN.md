@@ -1,15 +1,32 @@
-> 当前活动构建入口已迁移到[格式2流程](build-format2.zh-CN.md)和标准有序series；以下旧source-only命令仅保留历史可复现说明。
+# CPU0连续启动
 
-# 单核连续启动到 iOS 17 用户态
+当前目标使用XNU10063.141.1、原生4KiB页及iPadOS17.7.11 ABI。仅启用CPU0，
+依次进入调度器、IOKit、根卷选择和init加载；SMP在单核用户态之后接入。
 
-按2026-10-26人类指令，保留XNU10063／原生4KiB／iPadOS17.7.11，先用CPU0推进用户态和界面，SMP后置。005已完成VM和早期平台检查，不再重跑。
+设备补丁保留入口和VM记录，在machine_startup前恢复XNU正常异常向量，后续阶段
+写入保留RAM。成功阶段继续执行；内存和平台输入不满足条件时保留原有失败路径。
 
-`ci/xnu/build_source.py --continuous-boot`保留已通过的入口与内存路径，在`machine_startup`前恢复XNU正常异常向量，继续运行调度器、IOKit、根卷选择及init装载。成功点只写保留RAM日志，不主动停机或重启；无效内存/平台输入仍由原门禁阻止。
+ArmCpu观察器记录实际PPI27处理、rtclock_intr返回和ICC_EOIR1_EL1完成，采样
+第1、2、8次及此后每64次中断。它不替换中断控制器、不改变定时器编程，也不主动
+调用处理函数生成结果。适配来源为UniXNU-umi@3eb72578597d2ca16471b172d45eddc096a34a04，
+许可位于third-party/UniXNU-umi-LICENSE。
 
-ArmCpu观察器复用UniXNU-umi3eb72578597d2ca16471b172d45eddc096a34a04的真实PPI27 handler、`rtclock_intr`返回与`ICC_EOIR1_EL1`位置，不改变GIC和timer行为。记录第1、2、8次及之后每64次IRQ。独立packet绑定boot、候选tag、sequence、payload XOR和magic反码，位于现有4KiB mailbox映射内。首个panic另存caller、reason、异常寄存器快照及最多111字节原始格式串。
+| 记录 | 邮箱字节范围 | 内容 |
+| --- | --- | --- |
+| Loader |0..256| 启动身份、分配、入口和CRC，另有原始阶段/反码对 |
+| 早期异常 |256..384| 异常向量、syndrome、故障地址、寄存器和前一阶段 |
+| 平台 |384..512| 实际CPU、时钟、GIC和易失NVRAM属性 |
+| IRQ |512..832| 处理、返回、EOI及定时器计数 |
+| 启动 |832..960| 调度、IOKit、根卷与init阶段 |
+| 首次panic |1024..1280| 调用地址、原因、寄存器快照及有界格式字符串 |
 
-`--user-fixture`同时构建XNU mockfs、运行时trust-cache支持和框架自有签名ARM64/iOS17静态程序，预期调用getpid与HW_PAGESIZE。这是最小用户态工具，不是Apple launchd或iOS界面。进手机前仍须新的有界RAM payload／ADT／loader契约，冻结CPU0载荷会拒绝这些新增输入。
+所有记录位于既有4KiB映射内，并绑定固件启动和候选。运行时包使用序号、payload
+异或校验及magic/反码提交；1280字节恢复读取器核对稳定快照，旧512字节读取器
+不能覆盖新增包。
 
-IRQ位于512..832，启动位于832..960，panic位于1024..1280；原256B头、早期异常与平台记录偏移不变。需要对应的扩展读取镜像，旧512B reader不能验收新增packet。
+最小根卷沿用上游mockfs及自有签名ARM64/iOS17静态进程。该程序验证getpid与
+HW_PAGESIZE，不是Apple launchd。受保护loader仅接受CPU0基本参数及显式绑定的
+rd=md0变体，并核对内核、ADT、根卷和trust-cache的实际哈希。
 
-已验证：7个XNU文件精确补丁应用/反向还原、已适配ArmCpu补丁、实际packet核心ASan/UBSan和ARM64/iOS17写入器/观察器编译。完整XNU链接、自有程序签名、扩展载荷和真机尚未执行。本地代码不构成GitHub推送或Actions派发授权。
+构建和验证范围见[构建流程](build-format2.zh-CN.md)、[移植状态](porting-status.md)
+及porting.toml。

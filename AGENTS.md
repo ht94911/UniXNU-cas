@@ -1,27 +1,38 @@
-# cas source contributions
+# cas source maintenance
 
-Read README.md, docs/build.md, docs/validation.md and CONTRIBUTING.md before
-changing the port. This is the public device source repository. The companion
-uefi-cas repository owns firmware sources; both form one cas device project.
+Read README.md, CONTRIBUTING.md, porting.toml and docs/build-format2.md before
+changing this repository. The device target is Xiaomi10Ultra(cas), SM8250,
+XNU10063.141.1, native4KiB pages and iPadOS17.7.11(j120ap).
 
-Keep hardware-tested tags and accepted artifacts immutable. Distinguish source,
-host, build, emulator and actual device evidence. Never claim a new image works
-on hardware based on another image's result. Keep bilingual docs in sync.
+## Source boundaries
 
-If a local management/evidence workspace is supplied by the human, follow its
-AGENTS.md and validated ledger as well. Do not publish private device data or
-original firmware. Do not spawn subagents without explicit human authorization.
+- Board wiring, RAM reservations, policy and packaging belong here.
+- Shared CPU/controller resources belong in UniXNU-sm8250-common.
+- Generic build logic and OS profiles belong in UniXNU; reusable drivers remain
+  in their component repositories. Use canonical component IDs and preserve
+  their runtime ABI names.
+- The companion uefi-cas repository owns the BootShim and UEFI platform code.
 
-2026-10-25 latest human instruction: do not push to GitHub without a new explicit request. Do not dispatch remote Actions or publish artifacts without that request. Continue local work and save local commits/patches; read-only reference queries remain permitted.
+## Changes and validation
 
-## Current format2 integration
+Use the standard architecture/SoC/OS/device configuration and patch order.
+Keep feeds.toml and unixnu.lock complete. Local paths belong in ignored
+local.toml. Stage board-specific component overlays in generated output;
+retain clean, pinned component source checkouts.
 
-Use board.toml schema2, feeds.toml/unixnu.lock, the SM8250 common layer and the
-matched iPadOS17.7.11 profile. The active build is docs/build-format2.md; old EFI
-and source-only profiles remain historical. Keep runtime identifiers distinct
-from canonical repository names. Standard XNU series order is arch/SoC/OS/device.
-Keep the source module checkouts unchanged when staging cas-only observations.
-Record all13 areas in porting.toml; source/host/device evidence are distinct.
-The active direction is single-core continuous startup toward userland/UI, SMP
-afterward. Successful checkpoints never require a separate stop or old test rerun.
-Private images, identities and keys stay outside Git; device use is RAM-only.
+Update the affected porting.toml areas with concrete findings or evidence.
+Record source checks, host builds and device execution separately. Reuse valid
+evidence for unchanged inputs. Keep accepted tags, images and reports immutable.
+The active boot target is continuous CPU0 startup through minimal userland;
+SMP and additional hardware are separate work. Successful checkpoints log
+without introducing a stop or a separate reboot cycle.
+
+## Inputs and output
+
+Only RAM temporary boot and read-only RAM storage are supported. Preserve
+the bounded BootShim, exact allocation and held-range checks. Exclude original
+firmware, IPSW, private ADT/identity, recovery data and private keys from Git.
+Public changes require source review, applicable checks and bilingual documents.
+
+References: https://unixnu.com/porting/device-repository,
+https://unixnu.com/porting/soc-support and https://unixnu.com/building.

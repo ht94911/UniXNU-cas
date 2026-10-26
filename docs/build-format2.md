@@ -39,3 +39,12 @@ The guarded firmware step also requires `--edk2 UEFI/Mu_Basecore`, `CAS_ADT_AUDI
 and `CAS_CPU0_CONTRACT` referring to a new private candidate. The former is generated
 by `scripts/audit_cas_format2.py` from the actual canonical ADT; the latter must
 bind the actual new kernel hash. Missing or mismatched inputs refuse the build.
+
+## Minimal RAM root
+
+The upstream mockfs fixture accepts an own signed static Mach-O as the memory
+device backing `/sbin/launchd`. Build it with `build-native-user-fixture.py`, then
+pass the resulting process as `--data-ramdisk` and its bundle as `--trust-cache`.
+The candidate command adds `rd=md0`. The device loader accepts this variant only
+through an explicit contract binding the kernel, ADT, root and trust-cache hashes.
+The process is a minimal syscall test, not Apple's launchd or an iOS interface.

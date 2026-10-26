@@ -81,8 +81,8 @@ DarwinBoot 从**内核路径加 `.adt` 后缀**读取 Apple tree。请求中的 
 
 ```sh
 python3 scripts/audit-cas-adt-consumers.py \
-  --framework /home/hua/cas-work/UniXNU \
-  --xnu /home/hua/cas-work/xnu-builds/x02-patchcheck-004/xnu-work \
+  --framework ../UniXNU \
+  --xnu ../build/xnu-work \
   --evidence-root /mnt/i/Code/UniXNU-cas \
   --out "$HOME/cas-private/consumer-001"
 ```
