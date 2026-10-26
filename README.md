@@ -2,8 +2,8 @@
 
 [简体中文](README.zh-CN.md) · [Build](docs/build-format2.md) · [Porting record](porting.toml) · [Validation](docs/validation.md)
 
-Device configuration and platform integration for Xiaomi10Ultra/Mi10Ultra
-(`cas`, SM8250). The current target is XNU10063.141.1 with native4KiB pages and
+Device configuration and platform integration for Xiaomi 10 Ultra / Mi 10 Ultra
+(`cas`, SM8250). The current target is XNU 10063.141.1 with native 4 KiB pages and
 the iPadOS17.7.11(j120ap) ABI. The boot target uses CPU0 and RAM-backed storage;
 SMP follows the minimal userspace path.
 

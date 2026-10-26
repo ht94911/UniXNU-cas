@@ -17,11 +17,11 @@ python3 scripts/make-cas-adt.py --cpu-profile all --mode fixture --out /tmp/cas-
 
 # Verify the original local evidence as well as the generated contract.
 python3 scripts/make-cas-adt.py --mode fixture \
-  --evidence-root /mnt/i/Code/UniXNU-cas --out /tmp/cas-adt-traced-001
+  --evidence-root "$EVIDENCE_ROOT" --out /tmp/cas-adt-traced-001
 
 # New OS entropy; keep this output on a private Linux filesystem.
 python3 scripts/make-cas-adt.py --mode private \
-  --evidence-root /mnt/i/Code/UniXNU-cas \
+  --evidence-root "$EVIDENCE_ROOT" \
   --out "$HOME/cas-private/adt-001"
 
 python3 -m unittest discover -s tests -p test_cas_adt.py -v
@@ -83,7 +83,7 @@ A second check compiles the actual fixed XNU `device_tree.c`, exact DarwinBoot `
 python3 scripts/audit-cas-adt-consumers.py \
   --framework ../UniXNU \
   --xnu ../build/xnu-work \
-  --evidence-root /mnt/i/Code/UniXNU-cas \
+  --evidence-root "$EVIDENCE_ROOT" \
   --out "$HOME/cas-private/consumer-001"
 ```
 

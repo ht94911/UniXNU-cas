@@ -17,11 +17,11 @@ python3 scripts/make-cas-adt.py --cpu-profile all --mode fixture --out /tmp/cas-
 
 # 同时核验本地原始证据的哈希和字段来源。
 python3 scripts/make-cas-adt.py --mode fixture \
-  --evidence-root /mnt/i/Code/UniXNU-cas --out /tmp/cas-adt-traced-001
+  --evidence-root "$EVIDENCE_ROOT" --out /tmp/cas-adt-traced-001
 
 # 使用新 OS 熵，输出保存在私有 Linux 文件系统。
 python3 scripts/make-cas-adt.py --mode private \
-  --evidence-root /mnt/i/Code/UniXNU-cas \
+  --evidence-root "$EVIDENCE_ROOT" \
   --out "$HOME/cas-private/adt-001"
 
 python3 -m unittest discover -s tests -p test_cas_adt.py -v
@@ -83,7 +83,7 @@ DarwinBoot 从**内核路径加 `.adt` 后缀**读取 Apple tree。请求中的 
 python3 scripts/audit-cas-adt-consumers.py \
   --framework ../UniXNU \
   --xnu ../build/xnu-work \
-  --evidence-root /mnt/i/Code/UniXNU-cas \
+  --evidence-root "$EVIDENCE_ROOT" \
   --out "$HOME/cas-private/consumer-001"
 ```
 

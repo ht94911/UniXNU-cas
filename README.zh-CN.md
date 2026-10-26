@@ -2,8 +2,8 @@
 
 [English](README.md) · [构建](docs/build-format2.zh-CN.md) · [移植记录](porting.toml) · [验证](docs/validation.zh-CN.md)
 
-本仓库提供Xiaomi10Ultra/Mi10Ultra（`cas`、SM8250）的板级配置和平台集成。
-当前目标为XNU10063.141.1、原生4KiB页及iPadOS17.7.11（j120ap）ABI。
+本仓库提供Xiaomi 10 Ultra / Mi 10 Ultra（`cas`、SM8250）的板级配置和平台集成。
+当前目标为XNU 10063.141.1、原生4KiB页及iPadOS17.7.11（j120ap）ABI。
 启动目标仅使用CPU0和RAM存储，SMP在最小用户态之后接入。
 
 ## 状态
