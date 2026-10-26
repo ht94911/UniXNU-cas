@@ -10,7 +10,20 @@ def required(name):
 device=required('UNIXNU_DEVICE');framework=required('UNIXNU_FRAMEWORK');uefi=required('UNIXNU_UEFI');edk2=required('UNIXNU_EDK2');tree=required('UNIXNU_BUILD_TREE');work=required('UNIXNU_BUILD_WORK')
 if edk2!=(uefi/'Mu_Basecore').resolve():raise SystemExit('cas must use its pinned Mu_Basecore ABI; pass --edk2 UEFI/Mu_Basecore')
 audit=required('CAS_ADT_AUDIT');contract_path=required('CAS_CPU0_CONTRACT');contract=json.loads(contract_path.read_text());report=json.loads(audit.read_text())
-kernel=work/'payload/stage/EFI/UniXNU/Payloads/kernel.macho';adt=kernel.with_suffix('.macho.adt')
+image=work/'payload/payload.img';payload_report=json.loads((work/'payload/payload.json').read_text())
+if contract.get('payload_sha256')!=hashlib.sha256(image.read_bytes()).hexdigest() or payload_report['payload_sha256']!=contract['payload_sha256']:raise SystemExit('Actual RAM FAT differs from the candidate contract')
+inputs=work/'cas-candidate-inputs'
+expected={'kernel.macho':contract['kernel']['sha256'],'kernel.macho.adt':report['adt_sha256']}
+for key,name in [('ramdisk','scratch-data.img'),('trustcache','kernel.macho.trustcache')]:
+ if contract.get(key):expected[name]=contract[key]['sha256']
+if not inputs.exists():
+ inputs.mkdir(mode=0o700)
+ for name in expected:subprocess.run(['mcopy','-i',str(image),'::/EFI/UniXNU/Payloads/'+name,str(inputs/name)],check=True)
+if {p.name for p in inputs.iterdir()}!=set(expected):raise SystemExit('Unexpected extracted candidate inputs')
+for name,digest in expected.items():
+ path=inputs/name
+ if path.is_symlink() or not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest()!=digest:raise SystemExit('Extracted candidate input differs: '+name)
+kernel=inputs/'kernel.macho';adt=inputs/'kernel.macho.adt'
 def sha(p):return hashlib.sha256(p.read_bytes()).hexdigest()
 if contract['kernel']['sha256']!=sha(kernel) or report['adt_sha256']!=sha(adt):raise SystemExit('Actual payload differs from candidate contract/audit')
 if contract.get('cpu_count')!=1 or contract.get('internal_storage') or contract.get('Data_volume') or contract.get('requires_recovered_validation') is not False:raise SystemExit('Expected single-core RAM-only candidate without repeated prior-boot validation')
