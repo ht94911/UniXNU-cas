@@ -41,3 +41,7 @@ RAM-only target. See [status](porting-status.md) and `porting.toml` for actual l
 对应bundle作为`--trust-cache`输入，候选参数增加`rd=md0`。设备loader只接受
 显式契约绑定的内核、ADT、根卷和trust-cache哈希。该程序用于最小系统调用验证，
 不代表Apple launchd或iOS界面。
+
+固件preflight读取哈希绑定的最终RAM FAT。共享payload构建器会删除临时staging，
+因此preflight只提取指定的内核、ADT、根卷及trust-cache文件，并在生成loader前
+逐项核对摘要；提取目录位于私有候选工作区。

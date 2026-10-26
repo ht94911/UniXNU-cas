@@ -48,3 +48,8 @@ pass the resulting process as `--data-ramdisk` and its bundle as `--trust-cache`
 The candidate command adds `rd=md0`. The device loader accepts this variant only
 through an explicit contract binding the kernel, ADT, root and trust-cache hashes.
 The process is a minimal syscall test, not Apple's launchd or an iOS interface.
+
+Firmware preflight reads the final, hash-bound RAM FAT. The shared payload builder
+removes its temporary staging tree, so the preflight extracts only the named
+kernel, ADT, root and trust-cache files into a private candidate directory and
+verifies each digest before generating the loader.
