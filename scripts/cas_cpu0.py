@@ -17,6 +17,9 @@ def prepare(framework,out,uefi=None,contract_file=None):
  adt_meta=json.loads(ADT_AUDIT.read_text())
  if adt_meta.get('mode')!='private' or adt_meta.get('cpu_profile')!='cpu0' or adt_meta.get('entropy_bytes')!=64:raise ValueError('private CPU0 entropy audit required')
  contract=json.loads((contract_file or ROOT/'config/cpu0-contract.json').read_text())
+ base_args='-v keepsyms=1 debug=0x14e cpus=1'
+ execute_args=contract['command_lines']['execute']
+ if execute_args not in (base_args,base_args+' rd=md0') or contract['command_lines']['validate']!=execute_args+' cas-validate=1':raise ValueError('only explicit single-core RAM-root arguments are supported')
  source_heads={}
  for label,repo in [('device',ROOT),('uefi',uefi),('framework',framework)]:
   repo_state=parent.state(repo)
@@ -66,7 +69,9 @@ def prepare(framework,out,uefi=None,contract_file=None):
  s=parent.replace_once(s,'#if CAS_HANDOFF_DRY_RUN',
   '  if (AsciiStrCmp (CommandLine, "-v keepsyms=1 debug=0x14e cpus=1 cas-validate=1") == 0) {\n    Print (L"CAS CPU0: full fresh guard/copy passed; validation-only request returns before EBS\\n");\n    Status = EFI_SUCCESS;\n    goto Fail;\n  }\n#if CAS_HANDOFF_DRY_RUN')
  s=parent.replace_once(s,'  if (!CasTraceStart ()) { return EFI_UNSUPPORTED; }','  mCpuRequireRecovered = CAS_CPU0_REQUIRE_RECOVERED && AsciiStrCmp (CommandLine, "-v keepsyms=1 debug=0x14e cpus=1") == 0;\n  if (!CasTraceStart ()) {\n    Print (L"CAS CPU0: matching prior-boot validation/control region required; previous record retained\\n");\n    return EFI_NOT_READY;\n  }')
- s=s.replace('CAS X06:','CAS CPU0:');p.write_text(s)
+ s=s.replace('CAS X06:','CAS CPU0:')
+ if execute_args!=base_args:s=s.replace(base_args,execute_args)
+ p.write_text(s)
  # Mu can legitimately change a code allocation from XP to executable. Neither
  # RO/RP nor mixed/changed permissions are accepted; the held map must be WB.
  p=driver/'Trace.h';s=p.read_text();s=parent.replace_once(s,'A!=EFI_MEMORY_XP','(A!=0 && A!=EFI_MEMORY_XP)')

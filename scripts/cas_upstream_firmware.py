@@ -14,6 +14,11 @@ kernel=work/'payload/stage/EFI/UniXNU/Payloads/kernel.macho';adt=kernel.with_suf
 def sha(p):return hashlib.sha256(p.read_bytes()).hexdigest()
 if contract['kernel']['sha256']!=sha(kernel) or report['adt_sha256']!=sha(adt):raise SystemExit('Actual payload differs from candidate contract/audit')
 if contract.get('cpu_count')!=1 or contract.get('internal_storage') or contract.get('Data_volume') or contract.get('requires_recovered_validation') is not False:raise SystemExit('Expected single-core RAM-only candidate without repeated prior-boot validation')
+for key,name in [('ramdisk','scratch-data.img'),('trustcache','kernel.macho.trustcache')]:
+ entry=contract.get(key)
+ if entry:
+  path=kernel.parent/name
+  if not path.is_file() or entry['sha256']!=sha(path) or entry['bytes']!=path.stat().st_size:raise SystemExit('Actual RAM-root input differs: '+key)
 link=tree/'drivers/DarwinBoot';staged=work/'cas-guarded-loader'
 if staged.exists():raise SystemExit('Use a fresh firmware candidate directory; existing loader stage is preserved')
 sys.path.insert(0,str(device/'scripts'));import cas_cpu0

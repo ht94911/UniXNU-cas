@@ -3,7 +3,7 @@
 name = "sm8250"
 kind = "soc"
 git = "https://github.com/ht94911/UniXNU-sm8250-common.git"
-commit = "b415a1bbde8ffabb232bcdc872c2a135b9984e1a"
+commit = "0c13f177195b9bfc51aa81ab209cc378e45d274f"
 
 [[source]]
 name = "ArmCpu"

@@ -2,7 +2,7 @@
   "schema_version": 1,
   "framework": {
     "git": "https://github.com/ht94911/UniXNU.git",
-    "commit": "f01db4ec16e7c1ac030786d933d3c9630e77b495",
+    "commit": "13ef9f7bfb16af56d10f70fc284e5276daa62e38",
     "upstream_base": "ae687009348296e97e49ce6e925795044f363ce6"
   },
   "uefi": {
@@ -11,7 +11,7 @@
   },
   "soc": {
     "git": "https://github.com/ht94911/UniXNU-sm8250-common.git",
-    "commit": "b415a1bbde8ffabb232bcdc872c2a135b9984e1a"
+    "commit": "0c13f177195b9bfc51aa81ab209cc378e45d274f"
   },
   "ABI": {
     "XNU": "10063.141.1",
