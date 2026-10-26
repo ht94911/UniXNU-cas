@@ -2,7 +2,7 @@ schema = 1
 [kit]
 name = "cas"
 version = "0.2.0"
-description = "cas board policy and bounded diagnostics; no firmware blobs"
+description = "cas board package; no firmware blobs"
 [match]
 arch = "AARCH64"
 fdt_compatible = ["qcom,kona-mtp", "qcom,kona", "qcom,mtp"]

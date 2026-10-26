@@ -18,7 +18,7 @@ def run(command, log):
     return result.stdout
 
 
-def build(uefi, out, *, diagnostics=False, trace_recovery=False, expected_trace_tag=0x5862dbb7383d971a):
+def build(uefi, out):
     out.mkdir(parents=True, exist_ok=False)
     log = out / "commands.log"
     root = uefi.resolve()
@@ -26,14 +26,6 @@ def build(uefi, out, *, diagnostics=False, trace_recovery=False, expected_trace_
     display = root / "Platforms/Xiaomi/casPkg/Library/CasDisplayLib"
     sources = [root / "BootShim/CasBootShim.S", root / "BootShim/CasBootLog.S", root / "BootShim/CasBootValidate.c",
                display / "DisplayDecode.c", display / "DisplayHardware.c"]
-    if trace_recovery:
-        if not isinstance(expected_trace_tag, int) or not 0 < expected_trace_tag < (1 << 64):
-            raise ValueError('expected trace tag must be a nonzero64-bit value')
-        if not diagnostics:
-            raise ValueError('early trace recovery requires the diagnostic retained-log profile')
-        sources += [root / 'BootShim/CasTraceRecover.c',
-                    root / 'Platforms/Xiaomi/casPkg/Library/SerialDiagLib/EarlyText.c',
-                    root / 'Platforms/Xiaomi/casPkg/Library/CasDisplayLib/DisplayBlt.c']
     objects = []
     for source in sources:
         obj = out / (source.stem + ".o")
@@ -42,10 +34,6 @@ def build(uefi, out, *, diagnostics=False, trace_recovery=False, expected_trace_
                  # The MMU is off and SCTLR.A may be set. FDT values are only
                  # four-byte aligned, including fields decoded as 64 bits.
                  "-mstrict-align", "-O2", "-Wall", "-Wextra", "-Werror"]
-        if diagnostics:
-            flags += ["-DCAS_XNU_DIAGNOSTICS=1"]
-        if trace_recovery:
-            flags += ["-DCAS_TRACE_RECOVERY_ONLY=1", "-DCAS_TRACE_RECOVERY_TAG=0x%016xULL" % expected_trace_tag]
         run(["clang", *flags, "-I", include, "-c", source, "-o", obj], log)
         objects.append(obj)
     elf = out / "shim.elf"
@@ -64,13 +52,13 @@ def build(uefi, out, *, diagnostics=False, trace_recovery=False, expected_trace_
         raise ValueError("incorrect ARM64 text_offset/image_size")
     if parsed["_ScratchStackTop"] - parsed["_ScratchStackBase"] != 0x4000:
         raise ValueError("scratch stack size mismatch")
-    report = {"result": "pass", "hardware_proven": False, "diagnostics": diagnostics, "shim_bytes": len(data),
-              "trace_recovery_only": trace_recovery, "expected_trace_tag": hex(expected_trace_tag) if trace_recovery else None, "sha256": hashlib.sha256(data).hexdigest(), "text_offset": "0x80000", "image_size": len(data) + 0x800000,
+    report = {"result": "pass", "shim_bytes": len(data),
+              "sha256": hashlib.sha256(data).hexdigest(), "text_offset": "0x80000", "image_size": len(data) + 0x800000,
               "symbols": parsed, "relocations": relocations.strip(), "sources": [
                   {"path": str(path), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()} for path in
                   [*sources, include / "CasPlatform.h", include / "CasDisplay.h", root / "BootShim/CasBootShim.lds"]]}
     (out / "check.json").write_text(json.dumps(report, indent=2) + "\n")
-    print(json.dumps({k: report[k] for k in ("result", "hardware_proven", "shim_bytes", "sha256", "text_offset", "image_size")}, indent=2))
+    print(json.dumps({k: report[k] for k in ("result", "shim_bytes", "sha256", "text_offset", "image_size")}, indent=2))
     return out / "shim.bin"
 
 
@@ -78,8 +66,5 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--uefi", type=Path, required=True)
     ap.add_argument("--out", type=Path, required=True)
-    ap.add_argument("--diagnostics", action="store_true")
-    ap.add_argument("--trace-recovery", action="store_true", help="stop before UEFI and display retained004 trace read only")
-    ap.add_argument("--expected-trace-tag", type=lambda value: int(value, 0), default=0x5862dbb7383d971a)
     options = ap.parse_args()
-    build(options.uefi, options.out, diagnostics=options.diagnostics, trace_recovery=options.trace_recovery, expected_trace_tag=options.expected_trace_tag)
+    build(options.uefi, options.out)

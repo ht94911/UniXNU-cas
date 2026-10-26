@@ -10,7 +10,7 @@ summary = "Xiaomi 10 Ultra: UEFI menu and CPU0 platform start verified; moving t
 id = "configuration"
 status = "implemented"
 components = ["ArmDTPlatform", "ArmCpu", "SoftwareAES", "XnuPrelink", "DarwinBoot"]
-paths = ["board.toml", "feeds.toml", "unixnu.lock", "configs/**", ".github/**", ".gitignore", "ci/**", "environment/**", "local.toml.example", "source-pins.json", "AGENTS.md", "README*.md", "CONTRIBUTING.md", "LICENSE"]
+paths = ["board.toml", "feeds.toml", "unixnu.lock", "configs/**", ".github/**", ".gitignore", "ci/**", "local.toml.example", "AGENTS.md", "README*.md", "CONTRIBUTING.md", "LICENSE"]
 inputs = ["UniXNU format 2 layers: arm64, sm8250 SoC source, ipados-17.7.11-21H461 OS profile and the cas board."]
 configuration = ["board.toml schema 2 with soc_source sm8250 and defconfig cas_defconfig."]
 procedure = ["Run ./unixnu defconfig cas_defconfig, fetch, status and tree from the UniXNU checkout."]
@@ -24,7 +24,7 @@ evidence = [{ kind = "source", reference = "board.toml", result = "Format 2 boar
 id = "firmware"
 status = "device-verified"
 components = ["DarwinBoot"]
-paths = ["proprietary-files.txt", "scripts/build_firmware.py", "scripts/build_shim.py", "scripts/cas_upstream_firmware.py", "scripts/cas_generic_build_guard.py", "scripts/cas_menu_overlay.py", "scripts/preflight.py", "scripts/check_boot.py", "scripts/check_target.py", "patches/cpu0-menu/**"]
+paths = ["proprietary-files.txt", "scripts/build_shim.py", "scripts/prepare_boot_dtb.py"]
 inputs = ["uefi-cas Mu-Silicium firmware with the bounded CasBootShim, inherited framebuffer and SPMI buttons."]
 configuration = ["FD 0x9f000000 / 8 MiB; Android boot image header v2, page 4096; stock SoC DTB index 2."]
 procedure = ["Boot the image with fastboot boot; ABL applies the existing DTBO."]
@@ -38,7 +38,7 @@ evidence = [{ kind = "device", reference = "https://github.com/ht94911/UniXNU-ca
 id = "cpu"
 status = "device-verified"
 components = ["ArmCpu"]
-paths = ["package/CasCpu0/**", "package/CasTrace/**", "patches/xnu/**", "scripts/*cpu0*", "scripts/build-cas-armcpu-overlay.py"]
+paths = ["package/armcpu/**", "patches/xnu/**", "scripts/cas-armcpu-asm-fix.py"]
 inputs = ["Eight CPUs with MPIDR 0x000 to 0x700, PSCI smc, GICv3 0x17a00000/0x17a60000 and a 19.2 MHz timer."]
 configuration = ["CPU0 enabled; ArmCpu with the Darwin assembler separator fix."]
 procedure = ["Boot the kernel and read the CPU0 platform checkpoints."]
@@ -52,7 +52,7 @@ evidence = [{ kind = "device", reference = "https://github.com/ht94911/UniXNU-ca
 id = "memory"
 status = "implemented"
 components = ["ArmDTPlatform"]
-paths = ["dts/**", "config/**", "scripts/*adt*", "scripts/generate_memory_map.py", "scripts/check_memory.py"]
+paths = ["dts/**"]
 inputs = ["DRAM banks 0x80000000+0x39900000, 0xc0000000+5 GiB and 0x200000000+6 GiB with 31 reserved regions."]
 configuration = ["dts/cas.dts describes the banks and reservations; DarwinBoot owns the kernel window."]
 procedure = ["Compile the board DTS through the format 2 payload step."]
@@ -164,21 +164,21 @@ evidence = []
 id = "packaging"
 status = "implemented"
 components = ["XnuPrelink"]
-paths = ["package/Kit.toml", "scripts/package_*.py", "scripts/*payload*.py", "scripts/make_ram_fat.py", "scripts/prepare_boot_dtb.py", "scripts/provenance.py"]
+paths = ["package/Kit.toml", "scripts/cas_bootimg.py"]
 inputs = ["Prelinked kernel, ADT, payload FAT, UEFI FD and the stock SoC DTB."]
 configuration = ["The payload FAT holds unixnu.toml, the kernel and its ADT."]
 procedure = ["Run ./unixnu payload and ./unixnu bootimg."]
 findings = ["The prelinked iPadOS 17.7.11 kernel links with the selected components."]
 completion = ["The standard bootimg step produces the image booted on the phone."]
-limits = ["The cas boot image is still assembled by the board script."]
-next_action = ["Move boot image assembly to the standard bootimg step."]
+limits = ["The framework bootimg step does not support the cas header v2 DTB area and CasBootShim, so scripts/cas_bootimg.py packs the image."]
+next_action = ["Add the Data seed and trust cache to the payload for the root and userland stage."]
 evidence = [{ kind = "source", reference = "board.toml", result = "Payload and kernel settings for the standard payload step." }]
 
 [[area]]
 id = "diagnostics"
 status = "planned"
 components = []
-paths = ["package/CasHandoff/**", "package/boot-progress/**", "scripts/*diag*", "scripts/*handoff*", "scripts/check_*_host.py", "scripts/audit*", "tests/**"]
+paths = ["package/boot-progress/**", "scripts/build-boot-progress.py"]
 inputs = ["Framebuffer at 0x9c000000 and the XNU console mapping."]
 configuration = ["boot-progress=2 and the panic screen."]
 procedure = ["Port the UniXNU-umi boot-progress package."]
