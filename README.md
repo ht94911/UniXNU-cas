@@ -1,51 +1,38 @@
-# UniXNU for Xiaomi 10 Ultra
+# UniXNU for Xiaomi 10 Ultra (cas)
 
-[简体中文](README.zh-CN.md) · [Build](docs/build-format2.md) · [Porting record](porting.toml) · [Validation](docs/validation.md)
+[简体中文](README.zh-CN.md)
 
-Device configuration and platform integration for Xiaomi 10 Ultra / Mi 10 Ultra
-(`cas`, SM8250). The current target is XNU 10063.141.1 with native 4 KiB pages and
-the iPadOS17.7.11(j120ap) ABI. The boot target uses CPU0 and RAM-backed storage;
-SMP follows the minimal userspace path.
+Board configuration for running iPadOS 17.7.11 on the Xiaomi 10 Ultra / Mi 10 Ultra (`cas`, SM8250) through [UniXNU](https://github.com/UniXNU/UniXNU). The kernel is XNU 10063.141.1 with 4 KiB pages; the donor is iPad7,1 / 17.7.11 / 21H461 (j120ap).
 
 ## Status
 
-| Capability | Result |
+| Area | State |
 | --- | --- |
-| UEFI | Temporary boot, inherited GOP, physical keys, read-only RAM FAT, EFI execution/return and Android recovery verified |
-| XNU CPU0 | Kernel entry, VM and early platform/timebase initialization verified on candidate005 |
-| Current build | Format2 continuous kernel, matching prelink and own signed static user process built on macos-26/Xcode26.6 |
-| Runtime work | Sustained timer IRQs, RAM-root mount, EL0 and the iOS interface require new device evidence |
+| UEFI and UniXNU menu | Verified on hardware: temporary `fastboot boot`, inherited framebuffer, physical buttons, RAM FAT, EFI run and return (tag `cas-complete-001`) |
+| XNU | CPU0 reaches VM and early platform initialization on hardware |
+| In progress | Standard UniXNU build, UFS root volume on userdata, eight CPUs, Hello screen, ST FTS touch |
 
-The [build record](docs/evidence/format2-build-001.json) fixes the source, compiler,
-output hashes and CI run. The static process is an independent syscall fixture,
-not Apple's launchd. Current scope and remaining hardware work are recorded in
-[porting.toml](porting.toml) and [support status](docs/porting-status.md).
+## Repositories
 
-## Source layout
-
-| Repository | Responsibility |
+| Repository | Role |
 | --- | --- |
-| UniXNU-cas | Board DTS, RAM reservations, component selection, guarded packaging and device records |
-| [UniXNU-sm8250-common](https://github.com/ht94911/UniXNU-sm8250-common) | Shared CPU topology, GIC and timer resources |
-| [uefi-cas](https://github.com/ht94911/uefi-cas) | BootShim, SEC/DXE integration, GOP, keys and reset support |
-| [UniXNU](https://github.com/UniXNU/UniXNU) | Build framework, OS profiles and shared components |
+| UniXNU-cas | Board configuration, device tree, defconfig, board package and patches |
+| [uefi-cas](https://github.com/ht94911/uefi-cas) | Mu-Silicium firmware: BootShim, SEC/DXE, GOP and buttons |
+| [UniXNU-sm8250-common](https://github.com/ht94911/UniXNU-sm8250-common) | Shared SM8250 CPU, GIC and timer resources |
+| [UniXNU](https://github.com/UniXNU/UniXNU) | Build framework, OS profile and shared components |
 
 ## Build
 
-Use the framework revision in `ci/xnu/format2-sources.json`. From its checkout:
+From a UniXNU checkout next to this repository:
 
 ```sh
-./unixnu defconfig cas_continuous_defconfig -D ../UniXNU-cas
-./unixnu fetch -D ../UniXNU-cas
-./unixnu status --json -D ../UniXNU-cas
-./unixnu build kernel -D ../UniXNU-cas -j4
+./unixnu defconfig cas_defconfig -D ../UniXNU-cas
+./unixnu fetch
+./unixnu build kernel
 ```
 
-The [build guide](docs/build-format2.md) covers source pins, private inputs and
-the guarded firmware path. Follow [controls and recovery](docs/operations.md)
-for the accepted EFI release. The frozen `cas-complete-001` source and
-[v0.1.0 validation](docs/validation.md) remain available independently.
+The stock device tree, IPSW components, Data seed and other private inputs are not distributed.
 
-This port uses temporary RAM boot. Proprietary inputs, private ADT/identity,
-recovery backups and device-bound boot images are excluded from Git. See
-[contributing](CONTRIBUTING.md) and the upstream [device repository guide](https://unixnu.com/porting/device-repository).
+## Credits
+
+Hardware support follows [UniXNU-umi](https://github.com/reAAAq/UniXNU-umi) (Xiaomi Mi 10, same SoC and touch controller), [UniXNU-sheng](https://github.com/UniXNU/UniXNU-sheng) and the HackiOS cas notes. Licensed under [BSD-2-Clause-Patent](LICENSE); reused files keep their original notices.

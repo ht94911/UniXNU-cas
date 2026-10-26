@@ -1,38 +1,16 @@
-# cas source maintenance
+# UniXNU-cas 设备仓库
 
-Read README.md, CONTRIBUTING.md, porting.toml and docs/build-format2.md before
-changing this repository. The device target is Xiaomi10Ultra(cas), SM8250,
-XNU10063.141.1, native4KiB pages and iPadOS17.7.11(j120ap).
+工作规则、路线和进度以本地管理仓库为准：`I:\Code\UniXNU-cas\AGENTS.md`（WSL：`/mnt/i/Code/UniXNU-cas/AGENTS.md`）。先读那里，再改这里的代码。
 
-## Source boundaries
+本仓库负责 cas 的 `board.toml`、`dts/`、`configs/`、板级 `package/` 和 `patches/`。工作分支是 `dev`；`legacy/*` 分支是旧流程遗留，不要在上面工作。
 
-- Board wiring, RAM reservations, policy and packaging belong here.
-- Shared CPU/controller resources belong in UniXNU-sm8250-common.
-- Generic build logic and OS profiles belong in UniXNU; reusable drivers remain
-  in their component repositories. Use canonical component IDs and preserve
-  their runtime ABI names.
-- The companion uefi-cas repository owns the BootShim and UEFI platform code.
+构建入口是框架仓库的 `./unixnu`（`/home/hua/cas-work/UniXNU`），命令见管理仓库的 `docs/BUILD.md`。
 
-## Changes and validation
+注意：以下内容属于旧的自制流水线，按计划在 M1 跑通标准流水线后删除，不要再扩展：
 
-Use the standard architecture/SoC/OS/device configuration and patch order.
-Keep feeds.toml and unixnu.lock complete. Local paths belong in ignored
-local.toml. Stage board-specific component overlays in generated output;
-retain clean, pinned component source checkouts.
+- `config/`、`package/CasCpu0`、`package/CasHandoff`、`package/CasTrace`
+- `patches/cpu0-menu`、`patches/xnu/cas-*.patch`
+- `environment/`
+- 大部分 `scripts/` 和 `tests/`
 
-Update the affected porting.toml areas with concrete findings or evidence.
-Record source checks, host builds and device execution separately. Reuse valid
-evidence for unchanged inputs. Keep accepted tags, images and reports immutable.
-The active boot target is continuous CPU0 startup through minimal userland;
-SMP and additional hardware are separate work. Successful checkpoints log
-without introducing a stop or a separate reboot cycle.
-
-## Inputs and output
-
-Only RAM temporary boot and read-only RAM storage are supported. Preserve
-the bounded BootShim, exact allocation and held-range checks. Exclude original
-firmware, IPSW, private ADT/identity, recovery data and private keys from Git.
-Public changes require source review, applicable checks and bilingual documents.
-
-References: https://unixnu.com/porting/device-repository,
-https://unixnu.com/porting/soc-support and https://unixnu.com/building.
+删除清单见管理仓库 `docs/PLAN.md` 的 M1。

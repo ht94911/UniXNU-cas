@@ -1,41 +1,6 @@
 # Contributing
 
-[简体中文](CONTRIBUTING.zh-CN.md) · [Project home](README.md)
-
-Read the [architecture](docs/architecture.md), [build guide](docs/build.md) and [validation limits](docs/validation.md) before changing the port.
-
-## Choose the source repository
-
-Device configuration, kernel configuration, board scripts, device drivers, patches and public documentation belong in `UniXNU-cas`. Firmware startup, the cas drivers, BootShim and CasSmoke belong in [uefi-cas](https://github.com/ht94911/uefi-cas). Generic changes can be proposed to [UniXNU upstream](https://github.com/UniXNU/UniXNU).
-
-## Submit a change
-
-1. Use a focused branch and preserve existing work. Keep the hardware-tested `cas-complete-001` tags immutable.
-2. Explain the trigger, resulting behavior and affected candidate. Keep English and Simplified Chinese documentation aligned.
-3. Run the relevant offline checks in the build guide. Report skipped or unavailable checks explicitly.
-4. Save new output under a new identifier. Source inspection, a successful build, QEMU and phone observations are distinct evidence levels.
-5. If the candidate changes, record new applicable hardware validation. A previous image's success does not transfer to new bytes.
-
-Commit subjects can use `docs:`, `fix(cas):`, `feat(cas):` or `build(cas):`. Describe the final change and the actual validation in the pull request.
-
-## Report a problem
-
-Include the board/model, relevant firmware versions, source commits, image SHA-256, exact menu action, observed result and recovery outcome. State whether the observation is from a person, host command, emulator or serial log. A failed attempt is useful evidence; retain its own identifier.
-
-Remove serial numbers, IMEIs, MAC addresses, account details, IP addresses and tokens from public logs. Do not attach stock firmware, DTBs extracted from a phone, GPT dumps, recovery backups, proprietary OS images or a complete device-bound boot image. Use the [issue form](https://github.com/ht94911/UniXNU-cas/issues/new/choose).
-
-## License
-
-Original contributions follow [BSD-2-Clause-Patent](LICENSE). Retain existing copyright and license notices for reused code. Reference material must be identified accurately.
-
-## Current format2 integration
-
-Use board.toml schema2, feeds.toml/unixnu.lock, the SM8250 common layer and the
-matched iPadOS17.7.11 profile. The active build is docs/build-format2.md; old EFI
-and source-only profiles remain historical. Keep runtime identifiers distinct
-from canonical repository names. Standard XNU series order is arch/SoC/OS/device.
-Keep the source module checkouts unchanged when staging cas-only observations.
-Record all13 areas in porting.toml; source/host/device evidence are distinct.
-The active direction is single-core continuous startup toward userland/UI, SMP
-afterward. Successful checkpoints never require a separate stop or old test rerun.
-Private images, identities and keys stay outside Git; device use is RAM-only.
+- Board configuration, device tree, defconfig, board package and patches belong in this repository. Firmware belongs in [uefi-cas](https://github.com/ht94911/uefi-cas), shared SM8250 resources in [UniXNU-sm8250-common](https://github.com/ht94911/UniXNU-sm8250-common), and generic changes in [UniXNU](https://github.com/UniXNU/UniXNU).
+- Describe what changed and how it was tested (host build or phone observation).
+- Do not attach stock firmware, phone-extracted device trees, GPT dumps, backups, Apple OS images or device-bound boot images. Remove serial numbers, IMEIs and account details from logs.
+- New code is licensed under [BSD-2-Clause-Patent](LICENSE). Keep the copyright and license notices of reused code.

@@ -25,7 +25,7 @@ def main():
   framework=out/'UniXNU';run('framework-clone',['git','clone','--no-checkout',manifest['framework']['git'],framework]);run('framework-pin',['git','checkout','--detach',manifest['framework']['commit']],framework)
   if capture(['git','-C',str(framework),'rev-parse','HEAD'])!=manifest['framework']['commit']:raise ValueError('Framework pin mismatch')
   driver=framework/'unixnu';common=['-D',DEVICE,'--out',out/'out','-j',str(a.j)]
-  for label,cmd in [('defconfig',[driver,'defconfig','cas_continuous_defconfig',*common]),('fetch',[driver,'fetch',*common]),('status',[driver,'status','--json',*common]),('porting',[sys.executable,framework/'scripts/porting-record.py','check','--device',DEVICE]),('tree',[driver,'tree',*common]),('kernel',[driver,'build','kernel',*common])]:run(label,cmd,framework)
+  for label,cmd in [('defconfig',[driver,'defconfig','cas_defconfig',*common]),('fetch',[driver,'fetch',*common]),('status',[driver,'status','--json',*common]),('porting',[sys.executable,framework/'scripts/porting-record.py','check','--device',DEVICE]),('tree',[driver,'tree',*common]),('kernel',[driver,'build','kernel',*common])]:run(label,cmd,framework)
   work=out/'out/cas/ipados-17.7.11-21H461/cas_continuous';tree=work/'tree';obj=tree/'build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837'
   # Reuse independent Mach-O and actual compiler page-size checks, without the legacy build path.
   sys.path.insert(0,str(HERE));from build_source import kernel_identity,audit_page_size
