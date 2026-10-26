@@ -178,7 +178,7 @@ evidence = [{ kind = "source", reference = "scripts/package_boot.py", result = "
 id = "diagnostics"
 status = "host-verified"
 components = []
-paths = ["ci/xnu/Cas*", "docs/porting-status.md", "patches/xnu/**", "scripts/check*host.py", "tests/*host.c", "tests/test_exception*.py"]
+paths = ["docs/evidence/format2-build-001.json", "ci/xnu/Cas*", "docs/porting-status.md", "patches/xnu/**", "scripts/check*host.py", "tests/*host.c", "tests/test_exception*.py"]
 inputs = ["Preserve the bounded boot-tagged mailbox, real IRQ samples, first panic and startup phase history."]
 configuration = ["4KiB reserved mailbox at0x9f960000;1280-byte decoder.", "Boot/candidate-bound loader, exception, platform, IRQ, startup and first-panic records."]
 procedure = ["Successful checkpoints log and continue; capture the actual final failure before returning to Android."]
