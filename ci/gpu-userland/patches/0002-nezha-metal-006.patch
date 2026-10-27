@@ -1,0 +1,31 @@
+diff --git a/NativeBridgeMetalFrontend.mm b/NativeBridgeMetalFrontend.mm
+index 09175ef..da0f266 100644
+--- a/NativeBridgeMetalFrontend.mm
++++ b/NativeBridgeMetalFrontend.mm
+@@ -1774,6 +1774,12 @@ static bool pipelineArchives(NSArray *list,std::vector<NmbBinaryArchive *> &arch
+ - (id<MTLBinaryArchive>)newBinaryArchiveWithDescriptor:(MTLBinaryArchiveDescriptor *)d error:(NSError **)error {
+  if(d.url && !d.url.isFileURL){if(error)*error=nbError(@"a file URL is required");return nil;}
+  NmbBinaryArchive *handle=nmb_binary_archive_new(gDevice,d.url?d.url.fileSystemRepresentation:nullptr);
++ // QuartzCore may offer its Apple GPU metallib as a binary archive. It is not a
++ // metal2vulkan cache: fall back to an empty archive only for this known OS input,
++ // so the normal shader compilation path is used. Other invalid files still fail.
++ if(!handle && d.url && [d.url.path isEqualToString:@"/System/Library/Frameworks/QuartzCore.framework/default.metallib"] &&
++    [lastError() containsString:@"BinaryArchive(InvalidFile"])
++  handle=nmb_binary_archive_new(gDevice,nullptr);
+  if(!handle)return failWith<id<MTLBinaryArchive>>(error,@"binary archive",nil);
+  NBBinaryArchive *archive=[NBBinaryArchive new];archive.handle=handle;if(error)*error=nil;return (id<MTLBinaryArchive>)archive;
+ }
+@@ -1827,7 +1833,12 @@ static void installAnswers(Class cls) {
+   SEL sel=sel_registerName(name);uint64_t value=0;
+   switch(kind) {
+   case NMB_ANSWER_COUNT: case NMB_ANSWER_FLAG:
+-   if(!nmb_device_answer(gDevice,name,0,&value)){NBLOG(@"native-metal: no device answer: %@",lastError());continue;}
++   if(!nmb_device_answer(gDevice,name,0,&value)){
++    // The runtime deliberately has no measurement for this private selector. Preserve the
++    // inherited neutral NO, and do not advertise an unverified A8xx capability.
++    if(kind==NMB_ANSWER_FLAG && !strcmp(name,"supportsConditionalLoadStore"))value=0;
++    else {NBLOG(@"native-metal: no device answer: %@",lastError());continue;}
++   }
+    // Extended-range 10-bit (XR10) framebuffers are withheld: this display chain presents 8-bit BGRX scanout only. The render server picks its
+    // wide-gamut 64-bit (and Apple-compressed) framebuffer when a device offers them, and the display driver could not show it (int-089: the
+    // swap's surface was '&w4a', 8 bytes per pixel, and every swap was refused).
