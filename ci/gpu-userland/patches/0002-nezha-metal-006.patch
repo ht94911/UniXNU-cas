@@ -46,7 +46,7 @@ index 1e8f18d..a5a0b97 100644
          // The status line (GPU8) every ten seconds, and the display hand-off client on its own thread: both only read or serve, neither is the discovery's.
          pthread_t monitor, scanout;
 diff --git a/NativeBridgeMetalFrontend.mm b/NativeBridgeMetalFrontend.mm
-index 09175ef..d768c21 100644
+index 09175ef..9b021b6 100644
 --- a/NativeBridgeMetalFrontend.mm
 +++ b/NativeBridgeMetalFrontend.mm
 @@ -10,6 +10,7 @@
@@ -345,14 +345,22 @@ index 09175ef..d768c21 100644
     // Extended-range 10-bit (XR10) framebuffers are withheld: this display chain presents 8-bit BGRX scanout only. The render server picks its
     // wide-gamut 64-bit (and Apple-compressed) framebuffer when a device offers them, and the display driver could not show it (int-089: the
     // swap's surface was '&w4a', 8 bytes per pixel, and every swap was refused).
-@@ -1888,13 +2000,13 @@ extern "C" bool native_bridge_metal_work_stats(uint64_t out[10]) {
+@@ -1886,15 +1998,21 @@ extern "C" bool native_bridge_metal_work_stats(uint64_t out[10]) {
+  return gDevice && nmb_device_work_stats(gDevice,out);
+ }
  
++// n5-metal-015: this image's load address, so a backboardd user PC outside the shared cache (NEZHA BB THREADS) can be symbolized.
++static uintptr_t pluginImageBase() {
++ static uintptr_t base;
++ if(!base){Dl_info info={};if(dladdr((const void *)&pluginImageBase,&info))base=(uintptr_t)info.dli_fbase;}
++ return base;
++}
  extern "C" size_t native_bridge_metal_status(char *out,size_t size) {
   std::lock_guard<std::mutex> lock(gProblemLock);
 - return (size_t)snprintf(out,size,"c%llu/%llu d%llu p%llu x%llu R%llu D%llu F%llu M%llu C%llu B%llu %s | %s",(unsigned long long)gCommits.load(),(unsigned long long)gCommitFailures.load(),(unsigned long long)gCompleted.load(),
 -  (unsigned long long)gPipelines.load(),(unsigned long long)gProblems.load(),(unsigned long long)gPasses.load(),(unsigned long long)gDraws.load(),(unsigned long long)gFullScreenPasses.load(),(unsigned long long)(gBiggestPass.load()>>10),(unsigned long long)gDispatches.load(),(unsigned long long)gBlits.load(),gLastProblems[0],gLastProblems[1]);
-+ return (size_t)snprintf(out,size,"c%llu/%llu d%llu p%llu x%llu R%llu D%llu F%llu M%llu C%llu B%llu T%llu %s | %s",(unsigned long long)gCommits.load(),(unsigned long long)gCommitFailures.load(),(unsigned long long)gCompleted.load(),
-+  (unsigned long long)gPipelines.load(),(unsigned long long)gProblems.load(),(unsigned long long)gPasses.load(),(unsigned long long)gDraws.load(),(unsigned long long)gFullScreenPasses.load(),(unsigned long long)(gBiggestPass.load()>>10),(unsigned long long)gDispatches.load(),(unsigned long long)gBlits.load(),(unsigned long long)gWaitTimeouts.load(),gLastProblems[0],gLastProblems[1]);
++ return (size_t)snprintf(out,size,"c%llu/%llu d%llu p%llu x%llu R%llu D%llu F%llu M%llu C%llu B%llu T%llu tp%llu/%llu/%llu tl%llu tf%llu I%llx %s | %s",(unsigned long long)gCommits.load(),(unsigned long long)gCommitFailures.load(),(unsigned long long)gCompleted.load(),
++  (unsigned long long)gPipelines.load(),(unsigned long long)gProblems.load(),(unsigned long long)gPasses.load(),(unsigned long long)gDraws.load(),(unsigned long long)gFullScreenPasses.load(),(unsigned long long)(gBiggestPass.load()>>10),(unsigned long long)gDispatches.load(),(unsigned long long)gBlits.load(),(unsigned long long)gWaitTimeouts.load(),(unsigned long long)gTimePipeline.count.load(),(unsigned long long)(gTimePipeline.total.load()/1000),(unsigned long long)(gTimePipeline.slowest.load()/1000),(unsigned long long)(gTimeLibrary.total.load()/1000),(unsigned long long)(gTimeFunction.total.load()/1000),(unsigned long long)pluginImageBase(),gLastProblems[0],gLastProblems[1]);
  }
  
  static size_t native_bridge_metal_formats_locked(char *out,size_t size) {
@@ -363,7 +371,7 @@ index 09175ef..d768c21 100644
   for(unsigned i=0;i<gFormatCount && n>0 && (size_t)n<size;i++)n+=snprintf(out+n,size-(size_t)n,"%u ",gFormats[i]);
   return n>0?(size_t)n:0;
  }
-@@ -2001,7 +2113,7 @@ extern "C" size_t native_bridge_metal_telemetry(char *out,size_t size) {
+@@ -2001,7 +2119,7 @@ extern "C" size_t native_bridge_metal_telemetry(char *out,size_t size) {
   row("G commit-to-complete n=%llu total=%llums max=%llums mean=%lluus",(unsigned long long)gTimeEncodeToCommit.count.load(),ms(gTimeEncodeToCommit.total.load()),
    ms(gTimeEncodeToCommit.slowest.load()),(unsigned long long)(gTimeEncodeToCommit.count.load()?gTimeEncodeToCommit.total.load()/gTimeEncodeToCommit.count.load():0));
   row("J scheduled wait n=%llu total=%llums max=%llums",(unsigned long long)gTimeWaitScheduled.count.load(),ms(gTimeWaitScheduled.total.load()),ms(gTimeWaitScheduled.slowest.load()));
