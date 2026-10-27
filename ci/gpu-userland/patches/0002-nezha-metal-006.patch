@@ -1,8 +1,82 @@
+diff --git a/NativeAdrenoMetalPlugin.mm b/NativeAdrenoMetalPlugin.mm
+index 1e8f18d..e00eecd 100644
+--- a/NativeAdrenoMetalPlugin.mm
++++ b/NativeAdrenoMetalPlugin.mm
+@@ -164,8 +164,19 @@ static unsigned gClientPort;
+ static void clientFailure(unsigned port, const char *step, const char *detail) {
+     if (Gpu *gpu = makeGpu(port)) {
+         char text[64];
+-        snprintf(text, sizeof text, "%.14s %.46s", step, detail ? detail : "");
+-        streamText(*gpu, text);
++        const char *message=detail ? detail : "";
++        if (!strcmp(step, "problem")) {
++            // The existing kernel text channel prints every message, while each
++            // message has a 60-byte limit. Send ordered pieces on the same hook.
++            const size_t length=strlen(message);
++            for (size_t at=0, part=0; at<length && part<8; at+=46, ++part) {
++                snprintf(text, sizeof text, "problem%zu %.46s", part, message+at);
++                streamText(*gpu, text);
++            }
++        } else {
++            snprintf(text, sizeof text, "%.14s %.46s", step, message);
++            streamText(*gpu, text);
++        }
+     }
+ }
+ static id clientDevice(unsigned port) {
 diff --git a/NativeBridgeMetalFrontend.mm b/NativeBridgeMetalFrontend.mm
-index 09175ef..da0f266 100644
+index 09175ef..955cce8 100644
 --- a/NativeBridgeMetalFrontend.mm
 +++ b/NativeBridgeMetalFrontend.mm
-@@ -1774,6 +1774,12 @@ static bool pipelineArchives(NSArray *list,std::vector<NmbBinaryArchive *> &arch
+@@ -263,9 +263,16 @@ static void noteProblem(NSString *what) {
+  gProblems++;
+  std::lock_guard<std::mutex> lock(gProblemLock);
+  // A device answer the runtime lacks is reported at creation in every process and is harmless: the first problem is the next one.
++ bool sentFirst=false;
+  if(!gFirstProblem[0] && ![what hasPrefix:@"native-metal: no device answer"]) {
+   strlcpy(gFirstProblem,what.UTF8String?:"?",sizeof gFirstProblem);
+-  if(native_bridge_metal_problem_hook)native_bridge_metal_problem_hook(gFirstProblem);
++  if(native_bridge_metal_problem_hook){native_bridge_metal_problem_hook(gFirstProblem);sentFirst=true;}
++ }
++ // Reuse the existing problem text channel for a bounded number of pipeline
++ // refusals: the first startup problem need not be the pipeline that fails later.
++ static unsigned pipelineReports;
++ if(!sentFirst && native_bridge_metal_problem_hook && [what hasPrefix:@"render pipeline:"] && pipelineReports<8) {
++  ++pipelineReports;native_bridge_metal_problem_hook(what.UTF8String?:"?");
+  }
+  memcpy(gLastProblems[1],gLastProblems[0],sizeof gLastProblems[0]);
+  strlcpy(gLastProblems[0],what.UTF8String?:"?",sizeof gLastProblems[0]);
+@@ -1723,7 +1730,14 @@ static bool pipelineArchives(NSArray *list,std::vector<NmbBinaryArchive *> &arch
+  if(!pipelineArchives(d.binaryArchives,archives,error))return nil;
+  const NmbPipelineOptions creation={(uint64_t)options,archives.data(),archives.size()};
+  const uint64_t pipelineBegan=nowUs();
+- NmbComputePipeline *handle=nmb_compute_pipeline_new_with_descriptor(gDevice,&p,&creation);gTimePipeline.add(pipelineBegan);
++ NmbComputePipeline *handle=nmb_compute_pipeline_new_with_descriptor(gDevice,&p,&creation);
++ // An Apple archive cannot contain our translated pipelines. A strict archive
++ // miss is retried once with the fail-on-miss bit clear, leaving other errors intact.
++ if(!handle && (options & MTLPipelineOptionFailOnBinaryArchiveMiss) && [lastError() containsString:@"BinaryArchiveMiss("]) {
++  const NmbPipelineOptions fallback={(uint64_t)(options & ~MTLPipelineOptionFailOnBinaryArchiveMiss),archives.data(),archives.size()};
++  handle=nmb_compute_pipeline_new_with_descriptor(gDevice,&p,&fallback);
++ }
++ gTimePipeline.add(pipelineBegan);
+  if(!handle)return failWith<id<MTLComputePipelineState>>(error,@"compute pipeline",nil);
+  NBComputePipeline *state=[NBComputePipeline new];state.handle=handle;state.label=d.label;gPipelines++;
+  if(error)*error=nil;return (id<MTLComputePipelineState>)state;
+@@ -1740,7 +1754,12 @@ static bool pipelineArchives(NSArray *list,std::vector<NmbBinaryArchive *> &arch
+  if(!pipelineArchives(d.binaryArchives,archives,error)){delete p;return nil;}
+  const NmbPipelineOptions creation={(uint64_t)options,archives.data(),archives.size()};
+  const uint64_t pipelineBegan=nowUs();const NBCost costBegan=NBCost::now();
+- NmbRenderPipeline *handle=nmb_render_pipeline_new_with_options(gDevice,p,&creation);delete p;gTimePipeline.add(pipelineBegan);
++ NmbRenderPipeline *handle=nmb_render_pipeline_new_with_options(gDevice,p,&creation);
++ if(!handle && (options & MTLPipelineOptionFailOnBinaryArchiveMiss) && [lastError() containsString:@"BinaryArchiveMiss("]) {
++  const NmbPipelineOptions fallback={(uint64_t)(options & ~MTLPipelineOptionFailOnBinaryArchiveMiss),archives.data(),archives.size()};
++  handle=nmb_render_pipeline_new_with_options(gDevice,p,&fallback);
++ }
++ delete p;gTimePipeline.add(pipelineBegan);
+  journalRenderPipeline(d,pipelineBegan,handle?nullptr:nmb_last_error(),gJournalPath.empty()?std::string():NBCost::now().since(costBegan));
+  if(!handle)return failWith<id<MTLRenderPipelineState>>(error,@"render pipeline",nil);
+  NBRenderPipeline *state=[NBRenderPipeline new];state.handle=handle;gPipelines++;if(error)*error=nil;return (id<MTLRenderPipelineState>)state;
+@@ -1774,6 +1793,12 @@ static bool pipelineArchives(NSArray *list,std::vector<NmbBinaryArchive *> &arch
  - (id<MTLBinaryArchive>)newBinaryArchiveWithDescriptor:(MTLBinaryArchiveDescriptor *)d error:(NSError **)error {
   if(d.url && !d.url.isFileURL){if(error)*error=nbError(@"a file URL is required");return nil;}
   NmbBinaryArchive *handle=nmb_binary_archive_new(gDevice,d.url?d.url.fileSystemRepresentation:nullptr);
@@ -15,7 +89,7 @@ index 09175ef..da0f266 100644
   if(!handle)return failWith<id<MTLBinaryArchive>>(error,@"binary archive",nil);
   NBBinaryArchive *archive=[NBBinaryArchive new];archive.handle=handle;if(error)*error=nil;return (id<MTLBinaryArchive>)archive;
  }
-@@ -1827,7 +1833,12 @@ static void installAnswers(Class cls) {
+@@ -1827,7 +1852,12 @@ static void installAnswers(Class cls) {
    SEL sel=sel_registerName(name);uint64_t value=0;
    switch(kind) {
    case NMB_ANSWER_COUNT: case NMB_ANSWER_FLAG:
