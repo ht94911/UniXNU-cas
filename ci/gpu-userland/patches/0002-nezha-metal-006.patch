@@ -46,10 +46,19 @@ index 1e8f18d..a5a0b97 100644
          // The status line (GPU8) every ten seconds, and the display hand-off client on its own thread: both only read or serve, neither is the discovery's.
          pthread_t monitor, scanout;
 diff --git a/NativeBridgeMetalFrontend.mm b/NativeBridgeMetalFrontend.mm
-index 09175ef..4f54cc4 100644
+index 09175ef..a6793a9 100644
 --- a/NativeBridgeMetalFrontend.mm
 +++ b/NativeBridgeMetalFrontend.mm
-@@ -263,9 +263,16 @@ static void noteProblem(NSString *what) {
+@@ -259,13 +259,25 @@ static char gLastProblems[2][200];
+ static char gFirstProblem[200];
+ // Called once with the first problem, on the thread that hit it: a polling reader missed WidgetRenderer's, which crashed within its first second.
+ void (*native_bridge_metal_problem_hook)(const char *);
++// A tile entry point is a kernel in AIR, but priming has no render pass descriptor.
++// Keep that expected deferral in prime.log; real client pipeline failures retain full telemetry.
++static thread_local bool gPrimingProbe;
++extern "C" void native_bridge_metal_priming_probe(bool active) {gPrimingProbe=active;}
+ static void noteProblem(NSString *what) {
++ if(gPrimingProbe && [what containsString:@"NeedsInput(TileAttachments)"])return;
   gProblems++;
   std::lock_guard<std::mutex> lock(gProblemLock);
   // A device answer the runtime lacks is reported at creation in every process and is harmless: the first problem is the next one.
@@ -62,12 +71,68 @@ index 09175ef..4f54cc4 100644
 + // Reuse the existing problem text channel for a bounded number of pipeline
 + // refusals: the first startup problem need not be the pipeline that fails later.
 + static unsigned pipelineReports;
-+ if(!sentFirst && native_bridge_metal_problem_hook && [what hasPrefix:@"render pipeline:"] && pipelineReports<8) {
++ if(!sentFirst && native_bridge_metal_problem_hook && ([what hasPrefix:@"render pipeline:"] || [what hasPrefix:@"compute pipeline:"] || [what hasPrefix:@"tile pipeline:"]) && pipelineReports<8) {
 +  ++pipelineReports;native_bridge_metal_problem_hook(what.UTF8String?:"?");
   }
   memcpy(gLastProblems[1],gLastProblems[0],sizeof gLastProblems[0]);
   strlcpy(gLastProblems[0],what.UTF8String?:"?",sizeof gLastProblems[0]);
-@@ -1374,7 +1381,7 @@ struct NBCost {
+@@ -663,11 +675,10 @@ static std::string quartzCoreCallers();
+ @end
+ @implementation NBRenderPipeline
+ - (void)dealloc {nmb_render_pipeline_release(_handle);}
+-// The threadgroup size a tile dispatch of this pipeline could use: the device's limit (no tile shaders are offered).
+-- (NSUInteger)maxTotalThreadsPerThreadgroup {
+- uint64_t s[3]={};if(!nmb_device_max_threads_per_threadgroup(gDevice,s))return 0;
+- return s[0];
+-}
++- (NSUInteger)maxTotalThreadsPerThreadgroup {return nmb_render_pipeline_tile_info(_handle,0);}
++- (BOOL)threadgroupSizeMatchesTileSize {return nmb_render_pipeline_tile_info(_handle,1)!=0;}
++- (NSUInteger)imageblockSampleLength {return nmb_render_pipeline_tile_info(_handle,2);}
++- (NSUInteger)imageblockMemoryLengthForDimensions:(MTLSize)s {return nmb_render_pipeline_imageblock_length(_handle,s.width,s.height,s.depth);}
+ @end
+ @interface NBSampler : NBObject
+ @property(nonatomic) NmbSampler *handle;
+@@ -905,14 +916,23 @@ static void waitForResource(id resource) {
+ - (void)setFragmentTexture:(id<MTLTexture>)t atTextureIndex:(NSUInteger)ti samplerState:(id<MTLSamplerState>)s atSamplerIndex:(NSUInteger)si {
+  [self texture:t index:ti stage:2];[self sampler:s index:si stage:2];
+ }
+-// Tile shaders and imageblock tile memory (Apple GPU families 4 and up) are not offered: supportsTileShaders answers no, and a call that
+-// reaches one anyway fails its command buffer.
+-- (NSUInteger)tileWidth {return 0;}
+-- (NSUInteger)tileHeight {return 0;}
+-- (void)setTileTexture:(id<MTLTexture>)t atIndex:(NSUInteger)i {(void)t;(void)i;[self.commandBuffer refuse:@"tile shaders are not supported"];}
+-- (void)setTileBytes:(const void *)p length:(NSUInteger)n atIndex:(NSUInteger)i {(void)p;(void)n;(void)i;[self.commandBuffer refuse:@"tile shaders are not supported"];}
+-- (void)dispatchThreadsPerTile:(MTLSize)size {(void)size;[self.commandBuffer refuse:@"tile shaders are not supported"];}
+-- (void)dispatchThreadsPerTile:(MTLSize)size inRegion:(MTLRegion)region {(void)size;(void)region;[self.commandBuffer refuse:@"tile shaders are not supported"];}
++// The runtime lowers a tile pipeline with its descriptor's attachment formats and dispatches it in this render pass.
++- (NSUInteger)tileWidth {return nmb_render_tile_size(self.handle,false);}
++- (NSUInteger)tileHeight {return nmb_render_tile_size(self.handle,true);}
++- (void)setTileTexture:(id<MTLTexture>)t atIndex:(NSUInteger)i {[self texture:t index:i stage:3];}
++- (void)setTileBytes:(const void *)p length:(NSUInteger)n atIndex:(NSUInteger)i {[self bytes:p length:n index:i stage:3];}
++- (void)setTileBuffer:(id<MTLBuffer>)b offset:(NSUInteger)o atIndex:(NSUInteger)i {[self buffer:b offset:o index:i stage:3];}
++- (void)setTileBufferOffset:(NSUInteger)o atIndex:(NSUInteger)i {[self offset:o index:i stage:3];}
++- (void)setTileSamplerState:(id<MTLSamplerState>)s atIndex:(NSUInteger)i {[self sampler:s index:i stage:3];}
++- (void)dispatchThreadsPerTile:(MTLSize)s {[self check:nmb_render_dispatch_tile(self.handle,s.width,s.height,s.depth) what:"dispatchThreadsPerTile"];}
++- (void)dispatchThreadsPerTile:(MTLSize)s inRegion:(MTLRegion)r {
++ const uint64_t o[3]={r.origin.x,r.origin.y,r.origin.z},n[3]={r.size.width,r.size.height,r.size.depth};
++ [self check:nmb_render_dispatch_tile_region(self.handle,s.width,s.height,s.depth,o,n,0) what:"dispatchThreadsPerTile:inRegion"];
++}
++- (void)dispatchThreadsPerTile:(MTLSize)s inRegion:(MTLRegion)r withRenderTargetArrayIndex:(NSUInteger)i {
++ const uint64_t o[3]={r.origin.x,r.origin.y,r.origin.z},n[3]={r.size.width,r.size.height,r.size.depth};
++ [self check:nmb_render_dispatch_tile_region(self.handle,s.width,s.height,s.depth,o,n,(uint32_t)i) what:"dispatchThreadsPerTile:inRegion:withRenderTargetArrayIndex"];
++}
+ - (void)setStencilReferenceValue:(uint32_t)v {[self check:nmb_render_set_stencil_reference(self.handle,v,v) what:"setStencilReferenceValue"];}
+ - (void)setStencilFrontReferenceValue:(uint32_t)f backReferenceValue:(uint32_t)b {
+  [self check:nmb_render_set_stencil_reference(self.handle,f,b) what:"setStencilReferenceValues"];
+@@ -1106,6 +1126,7 @@ extern "C" void NBWaitInFlight(uint64_t beforeUs);
+  }
+  if(!attachment(d.depthAttachment,pass.depth) || !attachment(d.stencilAttachment,pass.stencil)){[self refuse:@"foreign depth/stencil attachment"];return nil;}
+  pass.depth.clear[0]=d.depthAttachment.clearDepth;pass.stencil.clear[0]=d.stencilAttachment.clearStencil;
++ pass.tile_width=d.tileWidth;pass.tile_height=d.tileHeight;
+  pass.width=d.renderTargetWidth;pass.height=d.renderTargetHeight;pass.array_length=d.renderTargetArrayLength;pass.samples=d.defaultRasterSampleCount;
+  if(d.visibilityResultBuffer) {
+   if(![(id)d.visibilityResultBuffer isKindOfClass:[NBBuffer class]]){[self refuse:@"foreign visibility result buffer"];return nil;}
+@@ -1374,7 +1395,7 @@ struct NBCost {
  // One journal line of a render pipeline creation begun at `began` (microseconds), `refused` its refusal or null. The label is the
  // caller's name for the pipeline (QuartzCore's: its spec's encoded name).
  static void journalRenderPipeline(MTLRenderPipelineDescriptor *d,uint64_t began,const char *refused,const std::string &cost) {
@@ -76,7 +141,7 @@ index 09175ef..4f54cc4 100644
   const uint64_t ended=nowUs();uint64_t tid=0;pthread_threadid_np(nullptr,&tid);
   char head[256];
   snprintf(head,sizeof head,"R t=%llu tid=%llu main=%d us=%llu ok=%d samples=%lu topo=%lu ds=%lu/%lu",(unsigned long long)((began-gJournalBegan)/1000),
-@@ -1405,6 +1412,22 @@ static void journalRenderPipeline(MTLRenderPipelineDescriptor *d,uint64_t began,
+@@ -1405,6 +1426,22 @@ static void journalRenderPipeline(MTLRenderPipelineDescriptor *d,uint64_t began,
   line+=" | ";line+=quartzCoreCallers();
   for(char &c:line)if(c=='\n')c=' ';
   journal(line);
@@ -99,7 +164,7 @@ index 09175ef..4f54cc4 100644
  }
  // A render pipeline descriptor in the bridge's form; false, with the error, for a function of another device.
  static bool renderDescriptor(MTLRenderPipelineDescriptor *d,NmbRenderPipelineDescriptor *p,NSError **error) {
-@@ -1721,9 +1744,16 @@ static bool pipelineArchives(NSArray *list,std::vector<NmbBinaryArchive *> &arch
+@@ -1721,13 +1758,39 @@ static bool pipelineArchives(NSArray *list,std::vector<NmbBinaryArchive *> &arch
   if(!computeDescriptor(d,&p,linked,privateLinked,error))return nil;
   std::vector<NmbBinaryArchive *> archives;
   if(!pipelineArchives(d.binaryArchives,archives,error))return nil;
@@ -118,7 +183,30 @@ index 09175ef..4f54cc4 100644
   if(!handle)return failWith<id<MTLComputePipelineState>>(error,@"compute pipeline",nil);
   NBComputePipeline *state=[NBComputePipeline new];state.handle=handle;state.label=d.label;gPipelines++;
   if(error)*error=nil;return (id<MTLComputePipelineState>)state;
-@@ -1738,9 +1768,14 @@ static bool pipelineArchives(NSArray *list,std::vector<NmbBinaryArchive *> &arch
+ }
++- (id<MTLRenderPipelineState>)newRenderPipelineStateWithTileDescriptor:(MTLTileRenderPipelineDescriptor *)d options:(MTLPipelineOption)options
++                                                        reflection:(MTLAutoreleasedRenderPipelineReflection *)reflection error:(NSError **)error {
++ if(reflection)*reflection=nil;
++ if(![(id)d.tileFunction isKindOfClass:[NBFunction class]]){if(error)*error=nbError(@"foreign tile function");return nil;}
++ NmbTilePipelineDescriptor p={};p.function=[(NBFunction *)d.tileFunction handle];
++ for(unsigned i=0;i<8;i++)p.colors[i]=d.colorAttachments[i].pixelFormat;
++ p.samples=d.rasterSampleCount;p.matches_tile=d.threadgroupSizeMatchesTileSize;p.max_threads=d.maxTotalThreadsPerThreadgroup;p.max_stack=1;
++ if([d respondsToSelector:sel_registerName("maxCallStackDepth")])p.max_stack=((NSUInteger(*)(id,SEL))objc_msgSend)(d,sel_registerName("maxCallStackDepth"));
++ std::vector<NmbBinaryArchive *> archives;
++ if(!pipelineArchives(d.binaryArchives,archives,error))return nil;
++ const NmbPipelineOptions creation={(uint64_t)(options & ~MTLPipelineOptionFailOnBinaryArchiveMiss),archives.data(),archives.size()};
++ const uint64_t began=nowUs();NmbRenderPipeline *handle=nmb_tile_pipeline_new(gDevice,&p,&creation);gTimePipeline.add(began);
++ if(!handle)return failWith<id<MTLRenderPipelineState>>(error,@"tile pipeline",nil);
++ NBRenderPipeline *state=[NBRenderPipeline new];state.handle=handle;state.label=d.label;gPipelines++;if(error)*error=nil;return (id<MTLRenderPipelineState>)state;
++}
++- (void)newRenderPipelineStateWithTileDescriptor:(MTLTileRenderPipelineDescriptor *)d options:(MTLPipelineOption)options
++                            completionHandler:(MTLNewRenderPipelineStateWithReflectionCompletionHandler)handler {
++ NSError *error=nil;id<MTLRenderPipelineState> state=[(id<MTLDevice>)self newRenderPipelineStateWithTileDescriptor:d options:options reflection:nil error:&error];handler(state,nil,error);
++}
+ - (id<MTLRenderPipelineState>)newRenderPipelineStateWithDescriptor:(MTLRenderPipelineDescriptor *)d error:(NSError **)error {
+  return [(id<MTLDevice>)self newRenderPipelineStateWithDescriptor:d options:MTLPipelineOptionNone reflection:nil error:error];
+ }
+@@ -1738,9 +1801,14 @@ static bool pipelineArchives(NSArray *list,std::vector<NmbBinaryArchive *> &arch
   if(!renderDescriptor(d,p,error)){delete p;return nil;}
   std::vector<NmbBinaryArchive *> archives;
   if(!pipelineArchives(d.binaryArchives,archives,error)){delete p;return nil;}
@@ -135,7 +223,7 @@ index 09175ef..4f54cc4 100644
   journalRenderPipeline(d,pipelineBegan,handle?nullptr:nmb_last_error(),gJournalPath.empty()?std::string():NBCost::now().since(costBegan));
   if(!handle)return failWith<id<MTLRenderPipelineState>>(error,@"render pipeline",nil);
   NBRenderPipeline *state=[NBRenderPipeline new];state.handle=handle;gPipelines++;if(error)*error=nil;return (id<MTLRenderPipelineState>)state;
-@@ -1774,6 +1809,12 @@ static bool pipelineArchives(NSArray *list,std::vector<NmbBinaryArchive *> &arch
+@@ -1774,6 +1842,12 @@ static bool pipelineArchives(NSArray *list,std::vector<NmbBinaryArchive *> &arch
  - (id<MTLBinaryArchive>)newBinaryArchiveWithDescriptor:(MTLBinaryArchiveDescriptor *)d error:(NSError **)error {
   if(d.url && !d.url.isFileURL){if(error)*error=nbError(@"a file URL is required");return nil;}
   NmbBinaryArchive *handle=nmb_binary_archive_new(gDevice,d.url?d.url.fileSystemRepresentation:nullptr);
@@ -148,7 +236,7 @@ index 09175ef..4f54cc4 100644
   if(!handle)return failWith<id<MTLBinaryArchive>>(error,@"binary archive",nil);
   NBBinaryArchive *archive=[NBBinaryArchive new];archive.handle=handle;if(error)*error=nil;return (id<MTLBinaryArchive>)archive;
  }
-@@ -1827,7 +1868,12 @@ static void installAnswers(Class cls) {
+@@ -1827,7 +1901,13 @@ static void installAnswers(Class cls) {
    SEL sel=sel_registerName(name);uint64_t value=0;
    switch(kind) {
    case NMB_ANSWER_COUNT: case NMB_ANSWER_FLAG:
@@ -156,17 +244,26 @@ index 09175ef..4f54cc4 100644
 +   if(!nmb_device_answer(gDevice,name,0,&value)){
 +    // The runtime deliberately has no measurement for this private selector. Preserve the
 +    // inherited neutral NO, and do not advertise an unverified A8xx capability.
-+    if(kind==NMB_ANSWER_FLAG && !strcmp(name,"supportsConditionalLoadStore"))value=0;
++    if(kind==NMB_ANSWER_FLAG && (!strcmp(name,"supportsConditionalLoadStore") ||
++       !strcmp(name,"isLargeMRTSupported") || !strcmp(name,"supportsComputeCompressedTextureWrite")))value=0;
 +    else {NBLOG(@"native-metal: no device answer: %@",lastError());continue;}
 +   }
     // Extended-range 10-bit (XR10) framebuffers are withheld: this display chain presents 8-bit BGRX scanout only. The render server picks its
     // wide-gamut 64-bit (and Apple-compressed) framebuffer when a device offers them, and the display driver could not show it (int-089: the
     // swap's surface was '&w4a', 8 bytes per pixel, and every swap was refused).
 diff --git a/PrimeShaders.h b/PrimeShaders.h
-index b8d453e..73930f1 100644
+index b8d453e..4df0869 100644
 --- a/PrimeShaders.h
 +++ b/PrimeShaders.h
-@@ -226,6 +226,12 @@ static std::string library(id<MTLDevice> device, const std::string &path, const
+@@ -25,6 +25,7 @@
+ #include <string>
+ #include <vector>
+ 
++extern "C" void native_bridge_metal_priming_probe(bool active);
+ extern "C" unsigned native_bridge_metal_recent_commits(uint64_t windowUs);
+ 
+ @interface NSObject (NBPrimeZeroConstants)
+@@ -226,10 +227,17 @@ static std::string library(id<MTLDevice> device, const std::string &path, const
                  if (!function) {++refused; continue;}
                  const MTLFunctionType type = function.functionType;
                  if (type != MTLFunctionTypeKernel && type != MTLFunctionTypeVertex) continue;
@@ -179,11 +276,94 @@ index b8d453e..73930f1 100644
                  waited += waitForQuiet();
                  writeCurrent(current, key);
                  native_prime_compiling = 1;
+                 bool ok = false;
++                native_bridge_metal_priming_probe(true);
+                 @try {
+                     if (type == MTLFunctionTypeKernel) {
+                         ++kernels;
+@@ -266,7 +274,13 @@ static std::string library(id<MTLDevice> device, const std::string &path, const
+                 } @catch (NSException *exception) {
+                     ok = false;
+                 }
++                native_bridge_metal_priming_probe(false);
+                 native_prime_compiling = 0;
++                if(!ok && [error.localizedDescription containsString:@"NeedsInput(TileAttachments)"]) {
++                    ++skipped;
++                    if(firstRefusal.empty())firstRefusal=std::string(" deferred-tile=")+name.UTF8String+": caller attachment formats required";
++                    error=nil;continue;
++                }
+                 ok ? ++made : ++refused;
+                 if (ok) native_prime_made = native_prime_made + 1;
+                 if (!ok && firstRefusal.empty()) {
+diff --git a/bridge/NativeMetalObjects.h b/bridge/NativeMetalObjects.h
+index ac9a390..5e755a8 100644
+--- a/bridge/NativeMetalObjects.h
++++ b/bridge/NativeMetalObjects.h
+@@ -159,6 +159,13 @@ struct NmbComputePipelineDescriptor {
+ NmbComputePipeline *nmb_compute_pipeline_new_with_options(NmbDevice *, NmbFunction *, const struct NmbPipelineOptions *);
+ NmbComputePipeline *nmb_compute_pipeline_new_with_descriptor(NmbDevice *, const struct NmbComputePipelineDescriptor *, const struct NmbPipelineOptions *);
+ NmbRenderPipeline *nmb_render_pipeline_new_with_options(NmbDevice *, const struct NmbRenderPipelineDescriptor *, const struct NmbPipelineOptions *);
++/* Tile attachment formats come from the real Metal tile descriptor, never guessed for a compute kernel. */
++struct NmbTilePipelineDescriptor {
++    NmbFunction *function; uint64_t colors[8], samples, matches_tile, max_threads, max_stack;
++};
++NmbRenderPipeline *nmb_tile_pipeline_new(NmbDevice *, const struct NmbTilePipelineDescriptor *, const struct NmbPipelineOptions *);
++uint64_t nmb_render_pipeline_tile_info(const NmbRenderPipeline *, uint32_t which);
++uint64_t nmb_render_pipeline_imageblock_length(const NmbRenderPipeline *, uint64_t w, uint64_t h, uint64_t d);
+ /* The archive makes the state as the matching new call does and keeps what it used (addRender/ComputePipelineFunctionsWithDescriptor:). */
+ bool nmb_binary_archive_add_render(NmbBinaryArchive *, const struct NmbRenderPipelineDescriptor *);
+ bool nmb_binary_archive_add_compute(NmbBinaryArchive *, NmbFunction *);
+@@ -229,12 +236,17 @@ struct NmbRenderPassDescriptor {
+     struct NmbPassAttachment colors[8], depth, stencil;
+     uint64_t width, height, array_length, samples;
+     NmbBuffer *visibility; /* the pass's visibility result buffer, or null */
++    uint64_t tile_width, tile_height;
+ };
+ NmbEncoder *nmb_render_encoder_new(NmbCommandBuffer *, const struct NmbRenderPassDescriptor *);
+ bool nmb_encoder_end(NmbEncoder *);
+ void nmb_encoder_discard(NmbEncoder *);
+ 
+-/* stage: 0 compute, 1 vertex, 2 fragment */
++/* stage: 0 compute, 1 vertex, 2 fragment, 3 tile */
++uint64_t nmb_render_tile_size(NmbEncoder *, bool height);
++bool nmb_render_dispatch_tile(NmbEncoder *, uint64_t w, uint64_t h, uint64_t d);
++bool nmb_render_dispatch_tile_region(NmbEncoder *, uint64_t w, uint64_t h, uint64_t d,
++                                    const uint64_t origin[3], const uint64_t size[3], uint32_t layer);
+ bool nmb_encoder_set_buffer(NmbEncoder *, uint32_t stage, NmbBuffer *, uint64_t offset, uint32_t index);
+ bool nmb_encoder_set_buffer_offset(NmbEncoder *, uint32_t stage, uint64_t offset, uint32_t index);
+ bool nmb_encoder_set_bytes(NmbEncoder *, uint32_t stage, const void *bytes, size_t length, uint32_t index);
 diff --git a/bridge/NativeMetalObjects.rs b/bridge/NativeMetalObjects.rs
-index c98c14e..d7c08ae 100644
+index c98c14e..3af68e6 100644
 --- a/bridge/NativeMetalObjects.rs
 +++ b/bridge/NativeMetalObjects.rs
-@@ -1292,7 +1292,13 @@ pub unsafe extern "C" fn nmb_render_pipeline_new_with_options(device: *mut NmbDe
+@@ -13,7 +13,7 @@ use metal2vulkan::metal::{
+     TextureUsage, TriangleFillMode, VertexFormat, VertexStepFunction, Winding,
+ };
+ use metal2vulkan::pipeline::{
+-    ColorAttachmentDescriptor, ComputePipelineDescriptor, LinkedFunction, LinkedFunctions, RenderPipelineDescriptor, StageSource, VertexAttributeDescriptor, VertexBufferLayoutDescriptor,
++    ColorAttachmentDescriptor, ComputePipelineDescriptor, LinkedFunction, LinkedFunctions, RenderPipelineDescriptor, StageSource, TileRenderPipelineDescriptor, VertexAttributeDescriptor, VertexBufferLayoutDescriptor,
+     VertexDescriptor,
+ };
+ use metal2vulkan_runtime::{
+@@ -1127,7 +1127,7 @@ pub unsafe extern "C" fn nmb_compute_pipeline_new_with_options(device: *mut NmbD
+     guard(std::ptr::null_mut(), || {
+         let resolved = unsafe { pipeline_options(options)? };
+         let state = get(device)?.0.new_compute_pipeline_state_with_function(&get(function)?.0, &resolved);
+-        Ok(boxed(NmbComputePipeline(state.map_err(e("compute pipeline"))?)))
++        Ok(boxed(NmbComputePipeline(state.map_err(|why| format!("compute pipeline: {why:?}; function={}", get(function).map(|f| f.0.name()).unwrap_or("?")))?)))
+     })
+ }
+ 
+@@ -1186,7 +1186,7 @@ pub unsafe extern "C" fn nmb_compute_pipeline_new_with_descriptor(device: *mut N
+                                                                  options: *const NmbPipelineOptions) -> *mut NmbComputePipeline {
+     guard(std::ptr::null_mut(), || {
+         let resolved = unsafe { pipeline_options(options)? };
+-        let state = get(device)?.0.new_compute_pipeline_state(&compute_descriptor(descriptor)?, &resolved).map_err(e("compute pipeline"))?;
++        let state = get(device)?.0.new_compute_pipeline_state(&compute_descriptor(descriptor)?, &resolved).map_err(|why| format!("compute pipeline: {why:?}; function={}", get(descriptor).and_then(|d| get(d.function)).map(|f| f.0.name()).unwrap_or("?")))?;
+         Ok(boxed(NmbComputePipeline(state)))
+     })
+ }
+@@ -1292,11 +1292,66 @@ pub unsafe extern "C" fn nmb_render_pipeline_new_with_options(device: *mut NmbDe
      guard(std::ptr::null_mut(), || {
          let device = &get(device)?.0;
          let resolved = unsafe { pipeline_options(options)? };
@@ -198,6 +378,155 @@ index c98c14e..d7c08ae 100644
          Ok(boxed(NmbRenderPipeline(state)))
      })
  }
+ 
++#[repr(C)]
++pub struct NmbTilePipelineDescriptor {
++    pub function: *mut NmbFunction,
++    pub colors: [u64; 8],
++    pub samples: u64,
++    pub matches_tile: u64,
++    pub max_threads: u64,
++    pub max_stack: u64,
++}
++
++/// # Safety
++/// The optional archive array and the descriptor's function remain live during this call.
++#[unsafe(no_mangle)]
++pub unsafe extern "C" fn nmb_tile_pipeline_new(device: *mut NmbDevice, descriptor: *const NmbTilePipelineDescriptor,
++                                               options: *const NmbPipelineOptions) -> *mut NmbRenderPipeline {
++    guard(std::ptr::null_mut(), || {
++        let d = get(descriptor)?;
++        let mut out = TileRenderPipelineDescriptor::new(StageSource::Function(get(d.function)?.0.function_descriptor()));
++        for (slot, value) in out.color_attachment_formats.iter_mut().zip(d.colors) {
++            *slot = optional_format(value)?;
++        }
++        out.raster_sample_count = u32::try_from(d.samples.max(1)).map_err(e("tile samples"))?;
++        out.threadgroup_size_matches_tile_size = d.matches_tile != 0;
++        if d.max_threads != 0 { out.max_total_threads_per_threadgroup = Some(u32::try_from(d.max_threads).map_err(e("tile max threads"))?); }
++        out.max_call_stack_depth = u32::try_from(d.max_stack.max(1)).map_err(e("tile max stack"))?;
++        let options = unsafe { pipeline_options(options)? };
++        let state = get(device)?.0.new_tile_render_pipeline_state(&out, &options).map_err(e("tile pipeline"))?;
++        Ok(boxed(NmbRenderPipeline(state)))
++    })
++}
++
++#[unsafe(no_mangle)]
++pub extern "C" fn nmb_render_pipeline_tile_info(pipeline: *const NmbRenderPipeline, which: u32) -> u64 {
++    guard(0, || {
++        let p = &get(pipeline)?.0;
++        match which {
++            0 => Ok(u64::from(p.max_total_threads_per_threadgroup())),
++            1 => Ok(u64::from(p.threadgroup_size_matches_tile_size())),
++            2 => p.imageblock_sample_length().map_err(e("imageblock sample length")),
++            _ => Err("invalid tile pipeline query".into()),
++        }
++    })
++}
++
++#[unsafe(no_mangle)]
++pub extern "C" fn nmb_render_pipeline_imageblock_length(pipeline: *const NmbRenderPipeline, w: u64, h: u64, d: u64) -> u64 {
++    guard(0, || get(pipeline)?.0.imageblock_memory_length_for_dimensions(Size::new(w,h,d)).map_err(e("imageblock memory length")))
++}
++
+ fn render_descriptor(descriptor: *const NmbRenderPipelineDescriptor) -> Result<RenderPipelineDescriptor, String> {
+         let d = get(descriptor)?;
+         let mut out = RenderPipelineDescriptor::new(StageSource::Function(get(d.vertex)?.0.function_descriptor()));
+@@ -1797,6 +1852,8 @@ pub struct NmbRenderPassDescriptor {
+     pub array_length: u64,
+     pub samples: u64,
+     pub visibility: *const NmbBuffer,
++    pub tile_width: u64,
++    pub tile_height: u64,
+ }
+ 
+ fn texture_of(a: &NmbPassAttachment) -> Result<Option<Texture>, String> {
+@@ -1834,6 +1891,8 @@ pub extern "C" fn nmb_render_encoder_new(command_buffer: *mut NmbCommandBuffer,
+         stencil.load_action = LoadAction::from_raw(d.stencil.load).map_err(e("load action"))?;
+         stencil.store_action = StoreAction::from_raw(d.stencil.store).map_err(e("store action"))?;
+         stencil.clear_stencil = d.stencil.clear[0] as u32;
++        pass.tile_width = d.tile_width;
++        pass.tile_height = d.tile_height;
+         pass.render_target_width = d.width;
+         pass.render_target_height = d.height;
+         pass.render_target_array_length = d.array_length;
+@@ -1897,6 +1956,37 @@ fn optional<'a, T>(handle: *const T) -> Result<Option<&'a T>, String> {
+ const COMPUTE: u32 = 0;
+ const VERTEX: u32 = 1;
+ const FRAGMENT: u32 = 2;
++const TILE: u32 = 3;
++
++#[unsafe(no_mangle)]
++pub extern "C" fn nmb_render_tile_size(encoder: *mut NmbEncoder, height: bool) -> u64 {
++    guard(0, || {
++        let r = render(encoder)?;
++        if height { r.tile_height() } else { r.tile_width() }.map_err(e("tile size"))
++    })
++}
++
++#[unsafe(no_mangle)]
++pub extern "C" fn nmb_render_dispatch_tile(encoder: *mut NmbEncoder, w: u64, h: u64, d: u64) -> bool {
++    guard(false, || {
++        render(encoder)?.dispatch_threads_per_tile(Size::new(w,h,d)).map_err(e("tile dispatch"))?;
++        Ok(true)
++    })
++}
++
++/// # Safety
++/// The region's origin and size each name three u64 values.
++#[unsafe(no_mangle)]
++pub unsafe extern "C" fn nmb_render_dispatch_tile_region(encoder: *mut NmbEncoder, w: u64, h: u64, d: u64,
++                                                         origin: *const u64, size: *const u64, layer: u32) -> bool {
++    guard(false, || {
++        if origin.is_null() || size.is_null() { return Err("null tile region".into()); }
++        let (o,s) = unsafe { (std::slice::from_raw_parts(origin,3),std::slice::from_raw_parts(size,3)) };
++        render(encoder)?.dispatch_threads_per_tile_in_region(Size::new(w,h,d),
++            Region::new_3d(o[0],o[1],o[2],s[0],s[1],s[2]),Some(layer)).map_err(e("tile region dispatch"))?;
++        Ok(true)
++    })
++}
+ 
+ fn bad_stage(stage: u32) -> String {
+     format!("stage {stage} does not fit this encoder")
+@@ -1910,6 +2000,7 @@ pub extern "C" fn nmb_encoder_set_buffer(encoder: *mut NmbEncoder, stage: u32, b
+             (NmbEncoder::Compute(c), COMPUTE) => c.set_buffer(buffer, offset, index),
+             (NmbEncoder::Render(r), VERTEX) => r.set_vertex_buffer(buffer, offset, index),
+             (NmbEncoder::Render(r), FRAGMENT) => r.set_fragment_buffer(buffer, offset, index),
++            (NmbEncoder::Render(r), TILE) => r.set_tile_buffer(buffer, offset, index),
+             _ => return Err(bad_stage(stage)),
+         }
+         .map_err(e("set buffer"))?;
+@@ -1924,6 +2015,7 @@ pub extern "C" fn nmb_encoder_set_buffer_offset(encoder: *mut NmbEncoder, stage:
+             (NmbEncoder::Compute(c), COMPUTE) => c.set_buffer_offset(offset, index),
+             (NmbEncoder::Render(r), VERTEX) => r.set_vertex_buffer_offset(offset, index),
+             (NmbEncoder::Render(r), FRAGMENT) => r.set_fragment_buffer_offset(offset, index),
++            (NmbEncoder::Render(r), TILE) => r.set_tile_buffer_offset(offset, index),
+             _ => return Err(bad_stage(stage)),
+         }
+         .map_err(e("set buffer offset"))?;
+@@ -1946,6 +2038,7 @@ pub unsafe extern "C" fn nmb_encoder_set_bytes(encoder: *mut NmbEncoder, stage:
+             (NmbEncoder::Compute(c), COMPUTE) => c.set_bytes(bytes, index),
+             (NmbEncoder::Render(r), VERTEX) => r.set_vertex_bytes(bytes, index),
+             (NmbEncoder::Render(r), FRAGMENT) => r.set_fragment_bytes(bytes, index),
++            (NmbEncoder::Render(r), TILE) => r.set_tile_bytes(bytes, index),
+             _ => return Err(bad_stage(stage)),
+         }
+         .map_err(e("set bytes"))?;
+@@ -1961,6 +2054,7 @@ pub extern "C" fn nmb_encoder_set_texture(encoder: *mut NmbEncoder, stage: u32,
+             (NmbEncoder::Compute(c), COMPUTE) => c.set_texture(texture, index),
+             (NmbEncoder::Render(r), VERTEX) => r.set_vertex_texture(texture, index),
+             (NmbEncoder::Render(r), FRAGMENT) => r.set_fragment_texture(texture, index),
++            (NmbEncoder::Render(r), TILE) => r.set_tile_texture(texture, index),
+             _ => return Err(bad_stage(stage)),
+         }
+         .map_err(e("set texture"))?;
+@@ -1976,6 +2070,7 @@ pub extern "C" fn nmb_encoder_set_sampler(encoder: *mut NmbEncoder, stage: u32,
+             (NmbEncoder::Compute(c), COMPUTE) => c.set_sampler_state(sampler, index),
+             (NmbEncoder::Render(r), VERTEX) => r.set_vertex_sampler_state(sampler, index),
+             (NmbEncoder::Render(r), FRAGMENT) => r.set_fragment_sampler_state(sampler, index),
++            (NmbEncoder::Render(r), TILE) => r.set_tile_sampler_state(sampler, index),
+             _ => return Err(bad_stage(stage)),
+         }
+         .map_err(e("set sampler"))?;
 diff --git a/bridge/patches/0017-nezha-ycbcr-render-upstream.patch b/bridge/patches/0017-nezha-ycbcr-render-upstream.patch
 new file mode 100644
 index 0000000..15d2228

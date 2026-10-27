@@ -1,11 +1,11 @@
 name: nezha Metal userland
-# Temporary (branch tmp/nezha-metal-plugin-011-20261028 of ht94911/UniXNU-cas, deleted with its run after one build): the macOS-only part
+# Temporary (branch tmp/nezha-metal-plugin-012-20261028 of ht94911/UniXNU-cas, retained with its run and artifact): the macOS-only part
 # of the nezha GPU path (Xiaomi 17 Ultra, Adreno 840, iPadOS 17.7.11). The cas gpu-userland recipe without its host checks:
 # Turnip with the Darwin kernel backend, the metal2vulkan bridge and the NativeAdrenoMetal plugin for iOS 17 arm64 from UniXNU
 # ae68700 and its pinned components. Results leave the runner only as a CMS envelope for ci/xnu/artifact-recipient.pem.
 on:
   push:
-    branches: [tmp/nezha-metal-plugin-011-20261028]
+    branches: [tmp/nezha-metal-plugin-012-20261028]
   workflow_dispatch:
     inputs:
       xcode:
