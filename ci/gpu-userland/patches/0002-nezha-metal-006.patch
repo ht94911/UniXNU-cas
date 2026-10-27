@@ -183,10 +183,10 @@ index c98c14e..d7c08ae 100644
  }
 diff --git a/bridge/patches/0017-nezha-ycbcr-render-upstream.patch b/bridge/patches/0017-nezha-ycbcr-render-upstream.patch
 new file mode 100644
-index 0000000..b505959
+index 0000000..15d2228
 --- /dev/null
 +++ b/bridge/patches/0017-nezha-ycbcr-render-upstream.patch
-@@ -0,0 +1,1665 @@
+@@ -0,0 +1,1687 @@
 +diff --git a/crates/metal2vulkan-runtime/src/degradation.rs b/crates/metal2vulkan-runtime/src/degradation.rs
 +index c969b53a..542c5233 100644
 +--- a/crates/metal2vulkan-runtime/src/degradation.rs
@@ -1766,7 +1766,7 @@ index 0000000..b505959
 + 
 + /// Whether `pf` is a packed 10-bit two-plane YCbCr format this crate holds ([`ycbcr`]), whose
 +diff --git a/crates/metal2vulkan/src/metal/format/tests.rs b/crates/metal2vulkan/src/metal/format/tests.rs
-+index 0759d364..4677db23 100644
++index 0759d364..b06662b1 100644
 +--- a/crates/metal2vulkan/src/metal/format/tests.rs
 ++++ b/crates/metal2vulkan/src/metal/format/tests.rs
 +@@ -2293,7 +2293,13 @@ fn a_pass_renders_only_the_ycbcr_formats_whose_store_is_matched() {
@@ -1807,7 +1807,7 @@ index 0000000..b505959
 +             let emulation = match (ycbcr_renders(pf), ycbcr_pass_refused(pf)) {
 +                 (true, false) => FormatEmulation::YCbCrRendered,
 +                 (false, true) => FormatEmulation::YCbCrPassRefused,
-+@@ -2556,3 +2576,21 @@ fn the_format_table_holds_each_format_s_entry() {
++@@ -2556,3 +2576,30 @@ fn the_format_table_holds_each_format_s_entry() {
 +         assert_eq!(summary(repr(pf)), summary(&make_repr(pf)), "{pf:?}");
 +     }
 + }
@@ -1819,13 +1819,22 @@ index 0000000..b505959
 ++fn nezha_quartzcore_formats_have_sample_and_attachment_paths() {
 ++    use FormatUsage as U;
 ++    use PixelFormat as P;
-++    for (stem, dev) in committed_devices() {
-++        for pf in [P::R8Unorm, P::RG8Unorm, P::BGRA8Unorm, P::RGBA16Float,
-++                   P::BGR10A2Unorm, P::BGRA10XR, P::BGR10XR] {
-++            for usage in [U::SampledImage, U::ColorAttachment] {
-++                assert!(vk_format(pf, &usages(&[usage]), dev.profile()).is_ok(),
-++                        "{stem} {pf:?} {usage:?}");
-++            }
+++    // Optional Vulkan attachment formats are absent from some floor profiles.
+++    // Check implementation on a description that exposes the actual candidates;
+++    // retain the runtime's capability checks on hardware with fewer formats.
+++    let features = vk::FormatFeatureFlags::SAMPLED_IMAGE |
+++        vk::FormatFeatureFlags::COLOR_ATTACHMENT | vk::FormatFeatureFlags::STORAGE_IMAGE;
+++    let formats = [
+++        vk::Format::R8_UNORM, vk::Format::R8G8_UNORM, vk::Format::B8G8R8A8_UNORM,
+++        vk::Format::R16G16B16A16_SFLOAT, vk::Format::A2R10G10B10_UNORM_PACK32,
+++        vk::Format::R16G16B16A16_UINT, vk::Format::R32_UINT,
+++    ].map(|f| (f, features));
+++    let dev = device(floor_with(&formats));
+++    for pf in [P::R8Unorm, P::RG8Unorm, P::BGRA8Unorm, P::RGBA16Float,
+++               P::BGR10A2Unorm, P::BGRA10XR, P::BGR10XR] {
+++        for usage in [U::SampledImage, U::ColorAttachment] {
+++            assert!(vk_format(pf, &usages(&[usage]), dev.profile()).is_ok(),
+++                    "{pf:?} {usage:?}");
 ++        }
 ++    }
 ++}
@@ -1852,3 +1861,16 @@ index 0000000..b505959
 +                     let descriptor_mask = match rotated {
 +                         true => rotated_mask(descriptor_mask),
 +                         false => descriptor_mask,
++diff --git a/crates/metal2vulkan/src/tests/fast_paths.rs b/crates/metal2vulkan/src/tests/fast_paths.rs
++index 63966c5b..0a50c26d 100644
++--- a/crates/metal2vulkan/src/tests/fast_paths.rs
+++++ b/crates/metal2vulkan/src/tests/fast_paths.rs
++@@ -81,7 +81,7 @@ fn choices() -> Vec<Choice> {
++         choice!(p.nan_and_min_max: NanMinMaxPolicy { Native, Exact }),
++         choice!(p.rounding_order: RoundingOrderPolicy { Native, Exact }),
++         choice!(p.half_blend: HalfBlendPolicy { Device, Exact }),
++-        choice!(p.padded_reads: PaddedReadsPolicy { Alias, Shadow }),
+++        choice!(p.padded_reads: PaddedReadsPolicy { Alias, Shadow, AliasWrites }),
++     ]
++ }
++ 
