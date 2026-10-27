@@ -46,10 +46,18 @@ index 1e8f18d..a5a0b97 100644
          // The status line (GPU8) every ten seconds, and the display hand-off client on its own thread: both only read or serve, neither is the discovery's.
          pthread_t monitor, scanout;
 diff --git a/NativeBridgeMetalFrontend.mm b/NativeBridgeMetalFrontend.mm
-index 09175ef..a6793a9 100644
+index 09175ef..d8a7ffa 100644
 --- a/NativeBridgeMetalFrontend.mm
 +++ b/NativeBridgeMetalFrontend.mm
-@@ -259,13 +259,25 @@ static char gLastProblems[2][200];
+@@ -10,6 +10,7 @@
+ #import <Metal/Metal.h>
+ #import <IOSurface/IOSurfaceRef.h>
+ #import <objc/runtime.h>
++#import <objc/message.h>
+ #include <algorithm>
+ #include <atomic>
+ #include <mutex>
+@@ -259,13 +260,25 @@ static char gLastProblems[2][200];
  static char gFirstProblem[200];
  // Called once with the first problem, on the thread that hit it: a polling reader missed WidgetRenderer's, which crashed within its first second.
  void (*native_bridge_metal_problem_hook)(const char *);
@@ -66,7 +74,7 @@ index 09175ef..a6793a9 100644
   if(!gFirstProblem[0] && ![what hasPrefix:@"native-metal: no device answer"]) {
    strlcpy(gFirstProblem,what.UTF8String?:"?",sizeof gFirstProblem);
 -  if(native_bridge_metal_problem_hook)native_bridge_metal_problem_hook(gFirstProblem);
-+  if(native_bridge_metal_problem_hook){native_bridge_metal_problem_hook(gFirstProblem);sentFirst=true;}
++  if(native_bridge_metal_problem_hook){native_bridge_metal_problem_hook(what.UTF8String?:"?");sentFirst=true;}
 + }
 + // Reuse the existing problem text channel for a bounded number of pipeline
 + // refusals: the first startup problem need not be the pipeline that fails later.
@@ -76,7 +84,7 @@ index 09175ef..a6793a9 100644
   }
   memcpy(gLastProblems[1],gLastProblems[0],sizeof gLastProblems[0]);
   strlcpy(gLastProblems[0],what.UTF8String?:"?",sizeof gLastProblems[0]);
-@@ -663,11 +675,10 @@ static std::string quartzCoreCallers();
+@@ -663,11 +676,10 @@ static std::string quartzCoreCallers();
  @end
  @implementation NBRenderPipeline
  - (void)dealloc {nmb_render_pipeline_release(_handle);}
@@ -92,7 +100,7 @@ index 09175ef..a6793a9 100644
  @end
  @interface NBSampler : NBObject
  @property(nonatomic) NmbSampler *handle;
-@@ -905,14 +916,23 @@ static void waitForResource(id resource) {
+@@ -905,14 +917,23 @@ static void waitForResource(id resource) {
  - (void)setFragmentTexture:(id<MTLTexture>)t atTextureIndex:(NSUInteger)ti samplerState:(id<MTLSamplerState>)s atSamplerIndex:(NSUInteger)si {
   [self texture:t index:ti stage:2];[self sampler:s index:si stage:2];
  }
@@ -124,7 +132,7 @@ index 09175ef..a6793a9 100644
  - (void)setStencilReferenceValue:(uint32_t)v {[self check:nmb_render_set_stencil_reference(self.handle,v,v) what:"setStencilReferenceValue"];}
  - (void)setStencilFrontReferenceValue:(uint32_t)f backReferenceValue:(uint32_t)b {
   [self check:nmb_render_set_stencil_reference(self.handle,f,b) what:"setStencilReferenceValues"];
-@@ -1106,6 +1126,7 @@ extern "C" void NBWaitInFlight(uint64_t beforeUs);
+@@ -1106,6 +1127,7 @@ extern "C" void NBWaitInFlight(uint64_t beforeUs);
   }
   if(!attachment(d.depthAttachment,pass.depth) || !attachment(d.stencilAttachment,pass.stencil)){[self refuse:@"foreign depth/stencil attachment"];return nil;}
   pass.depth.clear[0]=d.depthAttachment.clearDepth;pass.stencil.clear[0]=d.stencilAttachment.clearStencil;
@@ -132,7 +140,7 @@ index 09175ef..a6793a9 100644
   pass.width=d.renderTargetWidth;pass.height=d.renderTargetHeight;pass.array_length=d.renderTargetArrayLength;pass.samples=d.defaultRasterSampleCount;
   if(d.visibilityResultBuffer) {
    if(![(id)d.visibilityResultBuffer isKindOfClass:[NBBuffer class]]){[self refuse:@"foreign visibility result buffer"];return nil;}
-@@ -1374,7 +1395,7 @@ struct NBCost {
+@@ -1374,7 +1396,7 @@ struct NBCost {
  // One journal line of a render pipeline creation begun at `began` (microseconds), `refused` its refusal or null. The label is the
  // caller's name for the pipeline (QuartzCore's: its spec's encoded name).
  static void journalRenderPipeline(MTLRenderPipelineDescriptor *d,uint64_t began,const char *refused,const std::string &cost) {
@@ -141,7 +149,7 @@ index 09175ef..a6793a9 100644
   const uint64_t ended=nowUs();uint64_t tid=0;pthread_threadid_np(nullptr,&tid);
   char head[256];
   snprintf(head,sizeof head,"R t=%llu tid=%llu main=%d us=%llu ok=%d samples=%lu topo=%lu ds=%lu/%lu",(unsigned long long)((began-gJournalBegan)/1000),
-@@ -1405,6 +1426,22 @@ static void journalRenderPipeline(MTLRenderPipelineDescriptor *d,uint64_t began,
+@@ -1405,6 +1427,22 @@ static void journalRenderPipeline(MTLRenderPipelineDescriptor *d,uint64_t began,
   line+=" | ";line+=quartzCoreCallers();
   for(char &c:line)if(c=='\n')c=' ';
   journal(line);
@@ -164,7 +172,7 @@ index 09175ef..a6793a9 100644
  }
  // A render pipeline descriptor in the bridge's form; false, with the error, for a function of another device.
  static bool renderDescriptor(MTLRenderPipelineDescriptor *d,NmbRenderPipelineDescriptor *p,NSError **error) {
-@@ -1721,13 +1758,39 @@ static bool pipelineArchives(NSArray *list,std::vector<NmbBinaryArchive *> &arch
+@@ -1721,13 +1759,39 @@ static bool pipelineArchives(NSArray *list,std::vector<NmbBinaryArchive *> &arch
   if(!computeDescriptor(d,&p,linked,privateLinked,error))return nil;
   std::vector<NmbBinaryArchive *> archives;
   if(!pipelineArchives(d.binaryArchives,archives,error))return nil;
@@ -206,7 +214,7 @@ index 09175ef..a6793a9 100644
  - (id<MTLRenderPipelineState>)newRenderPipelineStateWithDescriptor:(MTLRenderPipelineDescriptor *)d error:(NSError **)error {
   return [(id<MTLDevice>)self newRenderPipelineStateWithDescriptor:d options:MTLPipelineOptionNone reflection:nil error:error];
  }
-@@ -1738,9 +1801,14 @@ static bool pipelineArchives(NSArray *list,std::vector<NmbBinaryArchive *> &arch
+@@ -1738,9 +1802,14 @@ static bool pipelineArchives(NSArray *list,std::vector<NmbBinaryArchive *> &arch
   if(!renderDescriptor(d,p,error)){delete p;return nil;}
   std::vector<NmbBinaryArchive *> archives;
   if(!pipelineArchives(d.binaryArchives,archives,error)){delete p;return nil;}
@@ -223,7 +231,7 @@ index 09175ef..a6793a9 100644
   journalRenderPipeline(d,pipelineBegan,handle?nullptr:nmb_last_error(),gJournalPath.empty()?std::string():NBCost::now().since(costBegan));
   if(!handle)return failWith<id<MTLRenderPipelineState>>(error,@"render pipeline",nil);
   NBRenderPipeline *state=[NBRenderPipeline new];state.handle=handle;gPipelines++;if(error)*error=nil;return (id<MTLRenderPipelineState>)state;
-@@ -1774,6 +1842,12 @@ static bool pipelineArchives(NSArray *list,std::vector<NmbBinaryArchive *> &arch
+@@ -1774,6 +1843,12 @@ static bool pipelineArchives(NSArray *list,std::vector<NmbBinaryArchive *> &arch
  - (id<MTLBinaryArchive>)newBinaryArchiveWithDescriptor:(MTLBinaryArchiveDescriptor *)d error:(NSError **)error {
   if(d.url && !d.url.isFileURL){if(error)*error=nbError(@"a file URL is required");return nil;}
   NmbBinaryArchive *handle=nmb_binary_archive_new(gDevice,d.url?d.url.fileSystemRepresentation:nullptr);
@@ -236,7 +244,7 @@ index 09175ef..a6793a9 100644
   if(!handle)return failWith<id<MTLBinaryArchive>>(error,@"binary archive",nil);
   NBBinaryArchive *archive=[NBBinaryArchive new];archive.handle=handle;if(error)*error=nil;return (id<MTLBinaryArchive>)archive;
  }
-@@ -1827,7 +1901,13 @@ static void installAnswers(Class cls) {
+@@ -1827,7 +1902,13 @@ static void installAnswers(Class cls) {
    SEL sel=sel_registerName(name);uint64_t value=0;
    switch(kind) {
    case NMB_ANSWER_COUNT: case NMB_ANSWER_FLAG:
