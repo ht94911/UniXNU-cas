@@ -111,12 +111,12 @@ def main():
         sys.exit(f'NativeAdrenoABI.h sha256 {sha(abi)} differs from {EXPECT["abi_sha256"]}')
     record.update(unixnu=head, submodules=modules,
                   abi=dict(path='drivers/Adreno740/NativeAdrenoABI.h', sha256=sha(abi), adreno740_commit=modules['drivers/Adreno740']))
-    # Exact delta ce5e19e..a1e70d2 from the locally reviewed nezha Metal branch.
+    # Exact delta ce5e19e..2b0e97f from the locally reviewed nezha Metal branch.
     patch = HERE / 'patches/0002-nezha-metal-006.patch'
     must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', '--check', patch])
     must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', patch])
     record['nezha_metal_patch'] = dict(source_base=modules['drivers/AdrenoMetal'],
-                                       local_source_commit='a1e70d2', sha256=sha(patch))
+                                       local_source_commit='2b0e97f', sha256=sha(patch))
     alias = root / 'drivers/NativeMobileDisplay'
     if not alias.exists():
         alias.symlink_to('GopFramebuffer', target_is_directory=True)
