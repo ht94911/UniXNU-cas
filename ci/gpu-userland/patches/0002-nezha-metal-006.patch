@@ -162,6 +162,23 @@ index 09175ef..4f54cc4 100644
     // Extended-range 10-bit (XR10) framebuffers are withheld: this display chain presents 8-bit BGRX scanout only. The render server picks its
     // wide-gamut 64-bit (and Apple-compressed) framebuffer when a device offers them, and the display driver could not show it (int-089: the
     // swap's surface was '&w4a', 8 bytes per pixel, and every swap was refused).
+diff --git a/PrimeShaders.h b/PrimeShaders.h
+index b8d453e..73930f1 100644
+--- a/PrimeShaders.h
++++ b/PrimeShaders.h
+@@ -226,6 +226,12 @@ static std::string library(id<MTLDevice> device, const std::string &path, const
+                 if (!function) {++refused; continue;}
+                 const MTLFunctionType type = function.functionType;
+                 if (type != MTLFunctionTypeKernel && type != MTLFunctionTypeVertex) continue;
++                // A library name is not a render descriptor. The old BGRA8 guess supplied
++                // neither a vertex layout nor required function constants, creating the
++                // VertexAttribute/FunctionConstant failures seen in nezha 009b. Keep the
++                // decoded library cached; compile graphics when the real caller supplies
++                // its complete descriptor. Kernel priming retains its measured fallback.
++                if (type == MTLFunctionTypeVertex) {++skipped; continue;}
+                 waited += waitForQuiet();
+                 writeCurrent(current, key);
+                 native_prime_compiling = 1;
 diff --git a/bridge/NativeMetalObjects.rs b/bridge/NativeMetalObjects.rs
 index c98c14e..d7c08ae 100644
 --- a/bridge/NativeMetalObjects.rs
