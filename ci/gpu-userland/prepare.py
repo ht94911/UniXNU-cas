@@ -111,12 +111,12 @@ def main():
         sys.exit(f'NativeAdrenoABI.h sha256 {sha(abi)} differs from {EXPECT["abi_sha256"]}')
     record.update(unixnu=head, submodules=modules,
                   abi=dict(path='drivers/Adreno740/NativeAdrenoABI.h', sha256=sha(abi), adreno740_commit=modules['drivers/Adreno740']))
-    # Exact delta ce5e19e..6f4728a from the locally reviewed nezha Metal branch.
+    # Exact delta ce5e19e..2f1410c from the locally reviewed nezha Metal branch.
     patch = HERE / 'patches/0002-nezha-metal-006.patch'
     must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', '--check', patch])
     must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', patch])
     record['nezha_metal_patch'] = dict(source_base=modules['drivers/AdrenoMetal'],
-                                       local_source_commit='6f4728a', sha256=sha(patch))
+                                       local_source_commit='2f1410c', sha256=sha(patch))
     alias = root / 'drivers/NativeMobileDisplay'
     if not alias.exists():
         alias.symlink_to('GopFramebuffer', target_is_directory=True)
@@ -190,6 +190,9 @@ def main():
     for patch, where in [('0001-plugin-turnip-replay-switch.patch', root)]:
         must(['git', '-C', where, 'apply', HERE / 'patches' / patch])
         applied[patch] = sha(HERE / 'patches' / patch)
+    patch = HERE / 'patches/0003-register-runtime-render-patch.patch'
+    must(['git', '-C', root, 'apply', patch])
+    applied[patch.name] = sha(patch)
     record['recipe_patches'] = applied
 
     # 6. The device repository check this runner cannot run.

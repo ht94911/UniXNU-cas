@@ -1,8 +1,8 @@
 diff --git a/NativeAdrenoMetalPlugin.mm b/NativeAdrenoMetalPlugin.mm
-index 1e8f18d..23e1699 100644
+index 1e8f18d..a5a0b97 100644
 --- a/NativeAdrenoMetalPlugin.mm
 +++ b/NativeAdrenoMetalPlugin.mm
-@@ -164,8 +164,19 @@ static unsigned gClientPort;
+@@ -164,8 +164,21 @@ static unsigned gClientPort;
  static void clientFailure(unsigned port, const char *step, const char *detail) {
      if (Gpu *gpu = makeGpu(port)) {
          char text[64];
@@ -17,6 +17,8 @@ index 1e8f18d..23e1699 100644
 +                snprintf(text, sizeof text, "problem%zu %.46s", part, message+at);
 +                streamText(*gpu, text);
 +            }
++            // Flush the last piece immediately, before a stalled render server can stop its monitor.
++            streamText(*gpu, "problem-end");
 +        } else {
 +            snprintf(text, sizeof text, "%.14s %.46s", step, message);
 +            streamText(*gpu, text);
@@ -24,7 +26,7 @@ index 1e8f18d..23e1699 100644
      }
  }
  static id clientDevice(unsigned port) {
-@@ -266,6 +277,7 @@ static id deviceForPort(unsigned port) {
+@@ -266,6 +279,7 @@ static id deviceForPort(unsigned port) {
          setenv("CA_DISABLE_FRAMEBUFFER_COMPRESSION", "1", 1);
          // The runtime's creation log reports each VkPipeline making's time to the device's sink, which the telemetry's V row sums.
          setenv("METAL2VULKAN_LOG_PIPELINES", "1", 0);
@@ -32,7 +34,7 @@ index 1e8f18d..23e1699 100644
          CFPreferencesSetAppValue(CFSTR("CAEnableFramebufferCompression"), kCFBooleanFalse, kCFPreferencesCurrentApplication);
          CFPreferencesSetAppValue(CFSTR("CAEnableIOSurfaceCompression"), kCFBooleanFalse, kCFPreferencesCurrentApplication);
          char candidates[5][512] = {};
-@@ -308,6 +320,10 @@ static id deviceForPort(unsigned port) {
+@@ -308,6 +322,10 @@ static id deviceForPort(unsigned port) {
              streamText(*gpu, text);
              return nil;
          }
@@ -44,7 +46,7 @@ index 1e8f18d..23e1699 100644
          // The status line (GPU8) every ten seconds, and the display hand-off client on its own thread: both only read or serve, neither is the discovery's.
          pthread_t monitor, scanout;
 diff --git a/NativeBridgeMetalFrontend.mm b/NativeBridgeMetalFrontend.mm
-index 09175ef..33f8915 100644
+index 09175ef..4f54cc4 100644
 --- a/NativeBridgeMetalFrontend.mm
 +++ b/NativeBridgeMetalFrontend.mm
 @@ -263,9 +263,16 @@ static void noteProblem(NSString *what) {
@@ -65,6 +67,15 @@ index 09175ef..33f8915 100644
   }
   memcpy(gLastProblems[1],gLastProblems[0],sizeof gLastProblems[0]);
   strlcpy(gLastProblems[0],what.UTF8String?:"?",sizeof gLastProblems[0]);
+@@ -1374,7 +1381,7 @@ struct NBCost {
+ // One journal line of a render pipeline creation begun at `began` (microseconds), `refused` its refusal or null. The label is the
+ // caller's name for the pipeline (QuartzCore's: its spec's encoded name).
+ static void journalRenderPipeline(MTLRenderPipelineDescriptor *d,uint64_t began,const char *refused,const std::string &cost) {
+- if(gJournalPath.empty())return;
++ // The kernel problem channel remains available even when the file journal is unavailable.
+  const uint64_t ended=nowUs();uint64_t tid=0;pthread_threadid_np(nullptr,&tid);
+  char head[256];
+  snprintf(head,sizeof head,"R t=%llu tid=%llu main=%d us=%llu ok=%d samples=%lu topo=%lu ds=%lu/%lu",(unsigned long long)((began-gJournalBegan)/1000),
 @@ -1405,6 +1412,22 @@ static void journalRenderPipeline(MTLRenderPipelineDescriptor *d,uint64_t began,
   line+=" | ";line+=quartzCoreCallers();
   for(char &c:line)if(c=='\n')c=' ';
@@ -151,3 +162,1693 @@ index 09175ef..33f8915 100644
     // Extended-range 10-bit (XR10) framebuffers are withheld: this display chain presents 8-bit BGRX scanout only. The render server picks its
     // wide-gamut 64-bit (and Apple-compressed) framebuffer when a device offers them, and the display driver could not show it (int-089: the
     // swap's surface was '&w4a', 8 bytes per pixel, and every swap was refused).
+diff --git a/bridge/NativeMetalObjects.rs b/bridge/NativeMetalObjects.rs
+index c98c14e..d7c08ae 100644
+--- a/bridge/NativeMetalObjects.rs
++++ b/bridge/NativeMetalObjects.rs
+@@ -1292,7 +1292,13 @@ pub unsafe extern "C" fn nmb_render_pipeline_new_with_options(device: *mut NmbDe
+     guard(std::ptr::null_mut(), || {
+         let device = &get(device)?.0;
+         let resolved = unsafe { pipeline_options(options)? };
+-        let state = device.new_render_pipeline_state(&render_descriptor(descriptor)?, &resolved).map_err(e("render pipeline"))?;
++        let state = device.new_render_pipeline_state(&render_descriptor(descriptor)?, &resolved).map_err(|why| {
++            let colors: Vec<String> = get(descriptor).map(|d| d.colors.iter().enumerate()
++                .filter(|(_, c)| c.format != 0)
++                .map(|(i, c)| format!("c{i}=format:{} blend:{} mask:{}", c.format, c.blending, c.write_mask))
++                .collect()).unwrap_or_default();
++            format!("render pipeline: {why:?}; {}", colors.join(" "))
++        })?;
+         Ok(boxed(NmbRenderPipeline(state)))
+     })
+ }
+diff --git a/bridge/patches/0017-nezha-ycbcr-render-upstream.patch b/bridge/patches/0017-nezha-ycbcr-render-upstream.patch
+new file mode 100644
+index 0000000..b505959
+--- /dev/null
++++ b/bridge/patches/0017-nezha-ycbcr-render-upstream.patch
+@@ -0,0 +1,1665 @@
++diff --git a/crates/metal2vulkan-runtime/src/degradation.rs b/crates/metal2vulkan-runtime/src/degradation.rs
++index c969b53a..542c5233 100644
++--- a/crates/metal2vulkan-runtime/src/degradation.rs
+++++ b/crates/metal2vulkan-runtime/src/degradation.rs
++@@ -1080,6 +1080,26 @@ degradations! {
++         RotatedLoadTiles = "rotated-load-tiles", Precision,
++             "the tiles no draw reaches land mirrored as the tiles it reaches do, where Metal keeps \
++              their texels in place";
+++        /// A render pass that draws loads and stores a two-plane YCbCr texture
+++        /// (`metal::format::ycbcr_renders`) whose draws reach the tiles their primitives touch
+++        /// (`ycbcr.rs`): the pass stores every 32x32 tile of the rectangle bounding its draws'
+++        /// scissors, each texel's codes re-encoded from the texel it loaded (its chroma the
+++        /// filtered pairs), where Metal stores only the tiles a draw's primitives reach (the M3
+++        /// Max under macOS 27.0.1) and keeps the planes' bytes of the others. Announced at the
+++        /// pass's end, naming the attachment.
+++        YCbCrLoadTiles = "ycbcr-load-tiles", Precision,
+++            "in the tiles no draw reaches the planes' codes are re-encoded from the texels the \
+++             pass loaded, the chroma from its filtered pairs, where Metal keeps their bytes";
+++        /// A draw that blends into a color attachment of a two-plane YCbCr texture
+++        /// (`metal::format::ycbcr_renders`, `ycbcr.rs`): the device blends the pass's floats,
+++        /// where Metal's tile blends halves, an 8-bit format's in half arithmetic (the source and
+++        /// its alpha rounded to `half`, each product, and a fused sum), a 10-bit one's in `float`
+++        /// rounded toward zero to `half` (the M3 Max under macOS 27.0.1, every code of 4096
+++        /// blended texels matched by those rules). Announced at the draw, naming the attachment.
+++        YCbCrBlendRounding = "ycbcr-blend-rounding", Precision,
+++            "a blended texel's codes can miss Metal's by one, where Metal's blend in half \
+++             arithmetic rounds otherwise than the device's in float, or over a texel an earlier \
+++             draw of the pass wrote (Metal holds it as a half)";
++         /// A command buffer's command named a buffer over the caller's host pages (a binding, a
++         /// blit's operand, an attachment, a texture over the pages, an indirect command's
++         /// resolved buffer) that was rebound (`rebind_bytes_no_copy`) after the command was
++diff --git a/crates/metal2vulkan-runtime/src/owned_kernel.rs b/crates/metal2vulkan-runtime/src/owned_kernel.rs
++index d2968cf1..898959be 100644
++--- a/crates/metal2vulkan-runtime/src/owned_kernel.rs
+++++ b/crates/metal2vulkan-runtime/src/owned_kernel.rs
++@@ -75,7 +75,7 @@ pub(super) enum OwnedModule {
++     /// `bind::ycbcr_convert_module`: a YCbCr texture's texels converted from its surface's two
++     /// planes into its image (`ycbcr.rs`), which it binds as a storage image: converted values,
++     /// or (`YCbCrOutput::Codes`) the packed codes.
++-    YCbCrConvert(YCbCrOutput),
+++    YCbCrConvert(YCbCrOutput, bool),
++     /// `bind::two_plane_texels_module`: a heap's two-plane extended-range texture's texels moved
++     /// between its image and its two planes in the heap's bytes (`texture/heap_two_planes.rs`).
++     TwoPlaneTexels,
++@@ -129,7 +129,7 @@ impl OwnedModule {
++     /// The module's storage-image bindings, which come after its sampled images.
++     fn storage_images(self) -> u32 {
++         match self {
++-            OwnedModule::YCbCrConvert(_) | OwnedModule::YCbCrWrite => 1,
+++            OwnedModule::YCbCrConvert(..) | OwnedModule::YCbCrWrite => 1,
++             OwnedModule::ExtendedShadowLoad(_) => 2,
++             _ => 0,
++         }
++@@ -207,10 +207,11 @@ impl OwnedModule {
++                     .map_err(Error::Compile)?;
++                 Ok((module.spirv.to_vec(), 5, 0))
++             }
++-            OwnedModule::YCbCrConvert(output) => {
++-                let module =
++-                    metal2vulkan::bind::ycbcr_convert_module(device.compile_device(), output)
++-                        .map_err(Error::Compile)?;
+++            OwnedModule::YCbCrConvert(output, floats) => {
+++                let module = match floats {
+++                    true => metal2vulkan::bind::ycbcr_convert_floats_module(device.compile_device(), output),
+++                    false => metal2vulkan::bind::ycbcr_convert_module(device.compile_device(), output),
+++                }.map_err(Error::Compile)?;
++                 Ok((module.spirv.to_vec(), 2, 0))
++             }
++             OwnedModule::RotateTexels => {
++@@ -332,7 +333,7 @@ pub(super) struct OwnedKernels {
++     plane_copy: Option<OwnedKernel>,
++     index_rewrites: HashMap<(RewriteProgram, RewritePhase), OwnedKernel>,
++     rotate_texels: Option<OwnedKernel>,
++-    ycbcr_converts: HashMap<YCbCrOutput, OwnedKernel>,
+++    ycbcr_converts: HashMap<(YCbCrOutput, bool), OwnedKernel>,
++     two_plane_texels: Option<OwnedKernel>,
++     plane_bytes_copy: Option<OwnedKernel>,
++     ycbcr_write: Option<OwnedKernel>,
++@@ -392,7 +393,7 @@ impl OwnedKernels {
++             OwnedModule::IndexRewrite(program, phase) => {
++                 self.index_rewrites.get(&(program, phase)).copied()
++             }
++-            OwnedModule::YCbCrConvert(output) => self.ycbcr_converts.get(&output).copied(),
+++            OwnedModule::YCbCrConvert(output, floats) => self.ycbcr_converts.get(&(output, floats)).copied(),
++             OwnedModule::UnusedBits(form, words) => self.unused_bits.get(&(form, words)).copied(),
++             OwnedModule::CompressedBlit(rule) => self.compressed_blits.get(&rule).copied(),
++             OwnedModule::ExtendedShadowLoad(form) => self.extended_shadow_loads.get(&form).copied(),
++@@ -410,8 +411,8 @@ impl OwnedKernels {
++             OwnedModule::IndexRewrite(program, phase) => {
++                 self.index_rewrites.insert((program, phase), kernel);
++             }
++-            OwnedModule::YCbCrConvert(output) => {
++-                self.ycbcr_converts.insert(output, kernel);
+++            OwnedModule::YCbCrConvert(output, floats) => {
+++                self.ycbcr_converts.insert((output, floats), kernel);
++             }
++             OwnedModule::UnusedBits(form, words) => {
++                 self.unused_bits.insert((form, words), kernel);
++@@ -447,7 +448,7 @@ impl OwnedKernels {
++             OwnedModule::ShadowMerge => &mut self.shadow_merge,
++             OwnedModule::MipmapFilter(_)
++             | OwnedModule::IndexRewrite(..)
++-            | OwnedModule::YCbCrConvert(_)
+++            | OwnedModule::YCbCrConvert(..)
++             | OwnedModule::UnusedBits(..)
++             | OwnedModule::CompressedBlit(_)
++             | OwnedModule::ExtendedShadowLoad(_)
++diff --git a/crates/metal2vulkan-runtime/src/render.rs b/crates/metal2vulkan-runtime/src/render.rs
++index 5cd377c9..ffc62fab 100644
++--- a/crates/metal2vulkan-runtime/src/render.rs
+++++ b/crates/metal2vulkan-runtime/src/render.rs
++@@ -332,6 +332,7 @@ use metal2vulkan::cache::SpecializationKey;
++ use metal2vulkan::device::{DriverFact, FormatUsage, VkFeature};
++ use metal2vulkan::error::BindError;
++ use metal2vulkan::error::Feature as ErrorFeature;
+++use metal2vulkan::metal::format::ycbcr_renders;
++ use metal2vulkan::metal::state::DepthStencilDescriptor;
++ use metal2vulkan::metal::{
++     CullMode, DepthClipMode, IndexType, PixelFormat, PrimitiveTopologyClass, PrimitiveType,
++@@ -3274,7 +3275,7 @@ impl RenderCommandEncoder {
++             .map(|color| {
++                 color
++                     .as_ref()
++-                    .is_some_and(|color| color.load == LoadAction::Load)
+++                    .is_some_and(|color| color.load == LoadAction::Load && !(reach == clear_reach::PassReach::Every && ycbcr_renders(color.target.texture.pixel_format())))
++             })
++             .collect();
++         let tiles = match reach {
++@@ -3304,6 +3305,19 @@ impl RenderCommandEncoder {
++         // the inverse of its store: every tile turns, where Metal turns only those a draw
++         // reaches (`rotated.rs`), but where the pass's draws reach every tile.
++         let draws = reach == clear_reach::PassReach::Draws;
+++        // A two-plane YCbCr texture the pass loads and stores: its render shadow's copy back
+++        // stores every tile of the rectangle bounding the draws' scissors, where Metal stores
+++        // only those a draw's primitives reach (`ycbcr.rs`), but where they reach every tile.
+++        if let Some(named) = draws.then(|| shadows::ycbcr_loaded(&layout)).flatten() {
+++            device.degrade(Degradation::YCbCrLoadTiles, || {
+++                (
+++                    named,
+++                    "Metal loads and stores only the tiles a draw's primitives reach, which \
+++                     depend on where the GPU places the vertices"
+++                        .to_owned(),
+++                )
+++            });
+++        }
++         if let Some(named) = draws.then(|| shadows::loaded_apart(&layout)).flatten() {
++             device.degrade(Degradation::RotatedLoadTiles, || {
++                 (
++@@ -5163,6 +5177,42 @@ impl RenderCommandEncoder {
++             });
++     }
++ 
+++    /// Announce `ycbcr-blend-rounding` at a draw whose state blends into a color of the pass
+++    /// that is a two-plane YCbCr texture's render shadow (`metal::format::ycbcr_renders`): the
+++    /// device blends its floats, where Metal's tile blends halves (`ycbcr.rs`).
+++    fn degrade_ycbcr_blends(&mut self) {
+++        let Some(RenderStateKind::Graphics(state)) =
+++            self.pipeline.as_ref().map(RenderPipelineState::kind)
+++        else {
+++            return;
+++        };
+++        let descriptor = state.descriptor();
+++        let blended = (0u32..)
+++            .zip(&self.layout.colors)
+++            .find_map(|(index, color)| {
+++                let format = color.as_ref()?.target.texture.pixel_format();
+++                let attachment = descriptor
+++                    .color_attachments()
+++                    .get(index as usize)
+++                    .copied()
+++                    .flatten()?;
+++                (ycbcr_renders(format) && attachment.blending_enabled).then_some((index, format))
+++            });
+++        let Some((index, format)) = blended else {
+++            return;
+++        };
+++        let draw = descriptor.draw_at(index);
+++        self.core.device().degrade(Degradation::YCbCrBlendRounding, || {
+++            (
+++                format!("{draw}, blending into color {index} of its render pass, a {format:?} texture"),
+++                "Metal's tile blends the attachment's halves, an 8-bit format's in half \
+++                 arithmetic and a 10-bit one's in float rounded toward zero, where the device \
+++                 blends floats: a blended texel's codes can miss Metal's by one"
+++                    .to_owned(),
+++            )
+++        });
+++    }
+++
++     /// Announce `extended-range-blends-stored-codes` at an execution of render commands in a
++     /// pass with an extended-range color, whose commands may blend onto each other or onto
++     /// the pass's earlier draws, and note every such color as written: the commands' states are
++@@ -5680,6 +5730,7 @@ impl RenderCommandEncoder {
++             self.degrade_unused_bits();
++             self.rewrites_unused_bits = true;
++             self.degrade_extended_range_blends();
+++            self.degrade_ycbcr_blends();
++         }
++         self.draw_calls += 1;
++         self.command_encoded(reads);
++diff --git a/crates/metal2vulkan-runtime/src/render/shadows.rs b/crates/metal2vulkan-runtime/src/render/shadows.rs
++index 57a37868..f22bfaf8 100644
++--- a/crates/metal2vulkan-runtime/src/render/shadows.rs
+++++ b/crates/metal2vulkan-runtime/src/render/shadows.rs
++@@ -49,7 +49,7 @@ use crate::error::Error;
++ use crate::render_pass::{PassLayout, Target};
++ use crate::render_values::{LoadAction, StoreAction};
++ use crate::resource::ResourceKey;
++-use crate::shadow::{self, ShadowCopy, ShadowTarget, ShadowUse};
+++use crate::shadow::{self, ShadowCopy, ShadowUse};
++ use crate::tracker::{Access, Use, UseRange};
++ use ash::vk;
++ use metal2vulkan::metal::TextureType;
++@@ -283,6 +283,32 @@ pub(super) fn loaded_apart(layout: &PassLayout) -> Option<String> {
++     })
++ }
++ 
+++/// A color attachment of `layout`'s pass that the pass loads and stores and that is a two-plane
+++/// YCbCr texture's render shadow, which stores every texel of the tiles its copy back covers
+++/// (`ycbcr.rs`), named as a degrade notice names it.
+++pub(super) fn ycbcr_loaded(layout: &PassLayout) -> Option<String> {
+++    layout.colors.iter().enumerate().find_map(|(index, color)| {
+++        let color = color.as_ref()?;
+++        let stores = matches!(
+++            color.store,
+++            StoreAction::Store | StoreAction::StoreAndMultisampleResolve | StoreAction::Unknown
+++        );
+++        let texture = &color.target.texture;
+++        let rendered = texture
+++            .shadow()
+++            .is_some_and(|copies| copies.left_untouched())
+++            && metal2vulkan::metal::format::ycbcr_renders(texture.pixel_format());
+++        (color.load == LoadAction::Load && stores && rendered).then(|| {
+++            format!(
+++                "color attachment {index} of a render pass, a {}x{} {:?} texture, loaded",
+++                texture.width(),
+++                texture.height(),
+++                texture.pixel_format()
+++            )
+++        })
+++    })
+++}
+++
++ /// The shadowed textures among a pass's attachments and resolve targets: a store writes through
++ /// one (an unknown store action counts as one), and so does a resolve. A depth or stencil
++ /// attachment's are heap shadows (`texture/heap.rs`): its texture, each aspect's where the two are
++@@ -393,8 +419,7 @@ fn attachment_shadows(
++         let own = color.stand_in.as_ref().map(|s| &s.own);
++         for target in std::iter::once(&color.target).chain(own) {
++             if let Some(copies) = target.texture.shadow() {
++-                let plain = matches!(copies.target(), Some(ShadowTarget::Image { .. }));
++-                if untouched && plain && !copies.drops_writes {
+++                if untouched && copies.left_untouched() {
++                     continue;
++                 }
++                 let used = ShadowUse {
++diff --git a/crates/metal2vulkan-runtime/src/render_pass.rs b/crates/metal2vulkan-runtime/src/render_pass.rs
++index 55c26029..6f224a55 100644
++--- a/crates/metal2vulkan-runtime/src/render_pass.rs
+++++ b/crates/metal2vulkan-runtime/src/render_pass.rs
++@@ -1246,14 +1246,10 @@ pub(super) fn layout(
++             colors.push(None);
++             continue;
++         };
++-        // A two-plane YCbCr attachment's store is matched for a pass that clears it or leaves
++-        // it to the pass (`DontCare`), stores it, and resolves nothing: a load (its texels then
++-        // the planes' converted reads), another store and a resolve are not measured.
+++        // A two-plane YCbCr attachment loads, stores and blends as Metal's tile of halves
+++        // (`texture/ycbcr_image.rs`); a resolve into or out of one is not measured.
++         if ycbcr_renders(texture.pixel_format())
++-            && (color.load_action == LoadAction::Load
++-                || color.store_action != StoreAction::Store
++-                || color.resolve_texture.is_some()
++-                || color.store_action_options != StoreActionOptions::NONE)
+++            && (color.resolve_texture.is_some() || color.store_action.resolves())
++         {
++             return Err(Error::Unsupported(
++                 Unsupported::not_implemented(Feature::Format).naming_format(texture.pixel_format()),
++diff --git a/crates/metal2vulkan-runtime/src/shadow.rs b/crates/metal2vulkan-runtime/src/shadow.rs
++index 9e37fb96..fc62b01f 100644
++--- a/crates/metal2vulkan-runtime/src/shadow.rs
+++++ b/crates/metal2vulkan-runtime/src/shadow.rs
++@@ -78,10 +78,13 @@
++ //!   above are the same: a copy back leaves the texture's converted texels stale, so they convert
++ //!   again at their next use, and a command writing the planes two ways is refused, as no merge
++ //!   serves the planes. A pass's color attachment of such a texture renders into its render shadow,
++-//!   a texture whose shadow is one of these over floats: its copy back stores every texel's codes,
++-//!   the marks not read.
++-//! - **Two planes in a heap** (`texture/heap_two_planes.rs`): a heap's one-level 2D two-plane
++-//!   extended-range texture is an image of its texels whose truth is its two planes in the heap's
+++//!   a texture whose shadow is one of these over floats: its copy in converts the planes into every
+++//!   texel, as the texture reads them (the pass's load), and its copy back stores every texel's
+++//!   codes, the marks not read, of the tiles of 32 texels a side that meet its area where it has
+++//!   one ([`ShadowCopy::area`]: the pass loads the attachment and its draws' scissors bound what
+++//!   it changes).
+++//! - **Two planes in a heap** (`texture/heap_two_planes.rs`): a heap's two-plane extended-range
+++//!   texture is an image of its texels whose truth is its first level's planes in the heap's
++ //!   bytes, as Metal lays them ([`ShadowTarget::Planes`]): its copies go through a staging buffer
++ //!   of the bytes as laid out and a tight one of the image's texels, the two-plane kernel moving
++ //!   them between the two. The rules above are the same, but for a command writing the bytes two
++@@ -329,6 +332,20 @@ impl ShadowCopies {
++         }
++     }
++ 
+++    /// Whether a render pass that reaches no tile and loads this shadow's texture leaves it to
+++    /// its truth, which keeps every texel: an image of a buffer's bytes (`ShadowTarget::Image`),
+++    /// which the texture's own image holds, and a two-plane YCbCr texture's render shadow,
+++    /// whose copy back would store the planes' codes again (`ycbcr.rs`), where Metal keeps them.
+++    pub(super) fn left_untouched(&self) -> bool {
+++        match &self.source {
+++            ShadowSource::Bytes { target, .. } => {
+++                matches!(target, ShadowTarget::Image { .. }) && !self.drops_writes
+++            }
+++            ShadowSource::YCbCrWrite { write_back, .. } => write_back.loads(),
+++            ShadowSource::Image { .. } | ShadowSource::Converted { .. } => false,
+++        }
+++    }
+++
++     /// Whether a render pass that draws loads this shadow other than by the inverse of its
++     /// store: a rotated texture's frame of rotation 4 (`rotated.rs`).
++     pub(super) fn loads_apart(&self) -> bool {
++@@ -543,6 +560,11 @@ impl ShadowCopy {
++             );
++         let converted = matches!(self.copies.source, ShadowSource::Converted { .. });
++         let encoded = matches!(self.copies.source, ShadowSource::YCbCrWrite { .. });
+++        // A render shadow's copy in loads it through the conversion kernel (`ycbcr.rs`).
+++        let loaded = matches!(
+++            &self.copies.source,
+++            ShadowSource::YCbCrWrite { write_back, .. } if write_back.loads()
+++        );
++         match self.step {
++             Step::Merge(_) => {
++                 vk::PipelineStageFlags2::TRANSFER | vk::PipelineStageFlags2::COMPUTE_SHADER
++@@ -559,6 +581,9 @@ impl ShadowCopy {
++             Step::Back if encoded => {
++                 vk::PipelineStageFlags2::TRANSFER | vk::PipelineStageFlags2::COMPUTE_SHADER
++             }
+++            Step::Into if loaded => {
+++                vk::PipelineStageFlags2::TRANSFER | vk::PipelineStageFlags2::COMPUTE_SHADER
+++            }
++             Step::Into | Step::Back | Step::Keep(_) => vk::PipelineStageFlags2::TRANSFER,
++         }
++     }
++@@ -585,6 +610,10 @@ impl ShadowCopy {
++         }
++         if let ShadowSource::YCbCrWrite { write_back, .. } = &c.source {
++             return match &self.step {
+++                // A render shadow's load converts the planes into every texel.
+++                Step::Into if write_back.loads() => {
+++                    write_back.load_uses(Use::reads(truth, c.tracked, range, read), c)
+++                }
++                 // A clear of every texel: nothing of the truth is read.
++                 Step::Into => vec![Use::writes(
++                     c.shadow_key,
++@@ -655,7 +684,10 @@ impl ShadowCopy {
++                 write_back,
++                 ..
++             } => {
++-                if into_shadow {
+++                if into_shadow && write_back.loads() {
+++                    // SAFETY: the caller's contract, which the load's record takes.
+++                    unsafe { write_back.record_load(device, command_buffer, buffer.raw()) };
+++                } else if into_shadow {
++                     let range = vk::ImageSubresourceRange {
++                         aspect_mask: vk::ImageAspectFlags::COLOR,
++                         base_mip_level: 0,
++@@ -677,7 +709,7 @@ impl ShadowCopy {
++                     }
++                 } else {
++                     // SAFETY: the caller's contract, which the write-back's record takes.
++-                    unsafe { write_back.record(device, command_buffer, buffer.raw()) };
+++                    unsafe { write_back.record(device, command_buffer, buffer.raw(), self.area) };
++                 }
++                 return;
++             }
++diff --git a/crates/metal2vulkan-runtime/src/texture/ycbcr_image.rs b/crates/metal2vulkan-runtime/src/texture/ycbcr_image.rs
++index 9c67ea3a..f66cf955 100644
++--- a/crates/metal2vulkan-runtime/src/texture/ycbcr_image.rs
+++++ b/crates/metal2vulkan-runtime/src/texture/ycbcr_image.rs
++@@ -324,7 +324,8 @@ impl Texture {
++             usage: ImageUsageFlags::STORAGE,
++         })?;
++         let (raw, at) = texels.buffer.at(span.start);
++-        let write_back = YCbCrWriteBack::new(device, (&planes, span.clone()), at, (view, false))?;
+++        let write_back =
+++            YCbCrWriteBack::new(device, (&planes, span.clone()), at, (view, false), None)?;
++         let (bytes, tracked) = texels.buffer.tracked(span);
++         let copies = ShadowCopies {
++             source: ShadowSource::YCbCrWrite {
++@@ -354,9 +355,10 @@ impl Texture {
++     /// (`metal::format::ycbcr_renders`), for Metal's `call`, made at its first need and kept
++     /// with the texture: a texture of the texture's format and size over its planes whose image
++     /// is `R32G32B32A32_SFLOAT`, the color attachment a pass renders the values it leaves in
++-    /// each texel into (`FormatEmulation::YCbCrRendered`), and its copies, a clear in and the
++-    /// store of every texel's codes back into the planes (`ShadowSource::YCbCrWrite` of a
++-    /// store, `ycbcr.rs`), which leaves the texture's converted texels stale. Refused
+++    /// each texel into (`FormatEmulation::YCbCrRendered`), and its copies: in, a clear, or for a
+++    /// pass that loads the attachment the planes converted into floats; back, the store of each
+++    /// stored texel's codes into the planes (`ShadowSource::YCbCrWrite` of a store, `ycbcr.rs`),
+++    /// which leaves the texture's converted texels stale. Refused
++     /// (`Unsupported`, `NotImplemented`, `Feature::Format`, naming the format) for a texture
++     /// over plane 1 of its surface, one of a size its chroma blocks do not tile, and one whose
++     /// texels are no conversion of planes, none of whose stores is measured; as `new_texture`
++@@ -405,19 +407,24 @@ impl Texture {
++         let facts = device.shared().textures.facts(profile);
++         let plan = plan_image(&float, usage, false, &facts)
++             .map_err(|refusal| image_error(call, refusal))?;
++-        // Rendered, read by the store through a view of its bits, and cleared.
+++        // Rendered, read by the store through a view of its bits, cleared, and written by the
+++        // load's conversion.
++         let needed = ImageUsageFlags::COLOR_ATTACHMENT
++             | ImageUsageFlags::STORAGE
++             | ImageUsageFlags::TRANSFER_DST;
++         let mapping =
++             vk_format(pf, &[FormatUsage::ColorAttachment].into(), profile).map_err(|_| gap())?;
++         let bits = Format::R32G32B32A32_UINT;
+++        let storage = |f| {
+++            facts
+++                .optimal(f)
+++                .contains(FormatFeatureFlags2::STORAGE_IMAGE)
+++        };
++         if plan.format != Format::R32G32B32A32_SFLOAT
++             || mapping.format != plan.format
++             || !plan.usage.contains(needed)
++-            || !facts
++-                .optimal(bits)
++-                .contains(FormatFeatureFlags2::STORAGE_IMAGE)
+++            || !storage(bits)
+++            || !storage(plan.format)
++         {
++             return Err(gap());
++         }
++@@ -451,8 +458,26 @@ impl Texture {
++             layer_count: 1,
++             usage: ImageUsageFlags::STORAGE,
++         })?;
+++        // The load's (`ycbcr.rs`), which converts the planes into the floats.
+++        let floats = image.view(&VkView {
+++            view_type: ImageViewType::TYPE_2D,
+++            format: Format::R32G32B32A32_SFLOAT,
+++            components: ComponentMapping::IDENTITY,
+++            aspect: ImageAspectFlags::COLOR,
+++            base_level: 0,
+++            level_count: 1,
+++            base_layer: 0,
+++            layer_count: 1,
+++            usage: ImageUsageFlags::STORAGE,
+++        })?;
++         let (raw, at) = texels.buffer.at(span.start);
++-        let write_back = YCbCrWriteBack::new(device, (&planes, span.clone()), at, (view, true))?;
+++        let write_back = YCbCrWriteBack::new(
+++            device,
+++            (&planes, span.clone()),
+++            at,
+++            (view, true),
+++            Some(floats),
+++        )?;
++         let (bytes, tracked) = texels.buffer.tracked(span);
++         let copies = ShadowCopies {
++             source: ShadowSource::YCbCrWrite {
++diff --git a/crates/metal2vulkan-runtime/src/ycbcr.rs b/crates/metal2vulkan-runtime/src/ycbcr.rs
++index 7e545d2b..3c17a0b2 100644
++--- a/crates/metal2vulkan-runtime/src/ycbcr.rs
+++++ b/crates/metal2vulkan-runtime/src/ycbcr.rs
++@@ -100,25 +100,33 @@
++ //!   (`bind::ycbcr_write_module`), which stores the codes of the marked texels, and copies the
++ //!   planes' rows of codes back. The texture's converted texels then convert again at their next
++ //!   use, as after any write of the planes. Exact, so announced nowhere.
++-//! - **Passes** (EVs XRR2-ycr1-m4, GSM2-yt1-m4 and GSM2-yt2-m4 on an Apple M4 under macOS 27.0.1,
++-//!   and XRR2's probe on the consumer's Apple M3 Max under macOS 26.7, byte for byte alike). Metal
++-//!   stores a pass's color attachment of `YCBCR8_420_2P`, `YCBCR8_422_2P` and `YCBCR8_444_2P` (500,
++-//!   502, 503) over plane 0 into both planes at its store: every texel's luma code, drawn or
++-//!   not, and each chroma pair's codes of the block of texels it covers, the codes
++-//!   `metal2vulkan::bind::ycbcr_store` states (`metal::format::ycbcr_renders`). The pass renders
++-//!   into the texture's render shadow (`texture/ycbcr_image.rs`), an `R32G32B32A32_SFLOAT`
++-//!   image of the texture's size, cleared at its copy in; its copy back is the write-back above
+++//! - **Passes** (on an Apple M4 under macOS 27.0.1, and on an Apple M3 Max under macOS 26.7 and
+++//!   27.0.1, byte for byte alike). Metal's tile holds a color attachment of `YCBCR8_420_2P`,
+++//!   `YCBCR8_422_2P`, `YCBCR8_444_2P` or their 10-bit formats (500 to 507) over plane 0 as halves
+++//!   of red, green and blue, and its store converts the tile back into both planes: every texel's
+++//!   luma code, drawn or not, and each chroma pair's codes of the block of texels it covers, the
+++//!   codes `metal2vulkan::bind::ycbcr_store` states (`metal::format::ycbcr_renders`). The pass
+++//!   renders into the texture's render shadow (`texture/ycbcr_image.rs`), an
+++//!   `R32G32B32A32_SFLOAT` image of the texture's size; its copy back is the write-back above
++ //!   storing every texel ([`YCbCrWriteBack`] of a store), and the texture's converted texels
++-//!   convert again at their next use. Exact for a pass that clears the attachment or leaves it
++-//!   to the pass (`DontCare`) and stores it, a draw writing red, green and blue unblended; a
++-//!   load, another store action, a resolve, a blend and a partial write mask are refused
++-//!   (`NotImplemented(Format)`, naming the format, at the pass or the pipeline), as are a
++-//!   texture over plane 1 and one whose size the chroma blocks do not tile, none measured; the
++-//!   other formats' passes stay refused (the 10-bit ones' draws match no rule yet). A packed
++-//!   10-bit format's pipeline is made, as Metal makes it, and its pass refused at its start,
++-//!   naming the format (`metal::format::ycbcr_pass_refused`): Metal fails the pass's command
++-//!   buffer, its error and the luma bytes it leaves varying from run to run (EVs GSM2-pk1-m4 and
++-//!   GSM2-pk2-m4), so no exact form exists.
+++//!   convert again at their next use. A pass that clears the attachment, or leaves it to the pass
+++//!   (`DontCare`), clears the shadow at its copy in and stores every texel, exact. A pass that
+++//!   loads it loads each texel as the texture reads it ([`YCbCrLoad`], the conversion kernel
+++//!   writing floats), and Metal stores only the 32x32 tiles its draws reach, every texel of each
+++//!   re-encoded, leaving the others' bytes (a load with no draw stores nothing): the copy back
+++//!   stores the tiles of the pass's drawn area (`render/shadows.rs`'s `DrawnArea`, the scissored
+++//!   bounds of its draws), so a tile inside that area that no primitive reaches is re-encoded
+++//!   where Metal keeps its bytes, announced (`ycbcr-load-tiles`). A `DontCare` store, and a store
+++//!   left `Unknown`, store nothing, as Metal's do. A write mask keeps the masked channels' cleared
+++//!   or loaded values, exact. A blend blends the shadow's floats where Metal blends its halves (an
+++//!   8-bit format's in half arithmetic, a 10-bit one's in `float` rounded toward zero), within a
+++//!   code of Metal's, announced at the draw (`ycbcr-blend-rounding`); on a device that does not
+++//!   blend `R32G32B32A32_SFLOAT` such a pipeline is refused, naming the need. A resolve is refused
+++//!   (`NotImplemented(Format)`, naming the format, at the pass), as are a texture over plane 1 and
+++//!   one whose size the chroma blocks do not tile, and the other formats' passes. A packed 10-bit
+++//!   format's pipeline is made, as Metal makes it, and its pass refused at its start, naming the
+++//!   format (`metal::format::ycbcr_pass_refused`): Metal fails the pass's command buffer, its error
+++//!   and the luma bytes it leaves varying from run to run, so no exact form exists.
++ //! - **Linear filtering** is Metal's, exact: the function emulates Metal's filter of the texels on
++ //!   their grid of 1/2048 or 1/8192 (`metal2vulkan::metal::texel_format::PackedTexels::YCbCr2048`,
++ //!   `YCbCr8192`), under MoltenVK through the slot's YCbCr variant, and announces, naming the slot,
++@@ -446,7 +454,7 @@ impl YCbCrConversion {
++         let (raw, start) = staging.at(0);
++         let (identity, range) = staging.tracked(0..BYTES_AT + held);
++         let shape = YCbCrConvertModule::shape(planes);
++-        let kernel = device.owned_kernel(OwnedModule::YCbCrConvert(planes.codes.output))?;
+++        let kernel = device.owned_kernel(OwnedModule::YCbCrConvert(planes.codes.output, false))?;
++         let set = OwnedSet {
++             images: Vec::new(),
++             storage_images: vec![view],
++@@ -581,9 +589,12 @@ impl YCbCrConversion {
++ /// module docs): the copy back of its write shadow (`ShadowSource::YCbCrWrite`). The planes'
++ /// bytes go into a staging buffer of the texture's, the encode kernel (`bind::ycbcr_write_module`,
++ /// `owned_kernel.rs`) stores the codes of every texel the shadow marks written, and the planes'
++-/// rows of codes go back; the bytes between the rows stay as they were.
+++/// rows of codes go back; the bytes between the rows stay as they were. A render shadow's
+++/// write-back stores every texel, of the tiles a pass changed alone where it knows them
+++/// ([`YCbCrWriteBack::record`]), and loads the shadow too ([`YCbCrLoad`]).
++ pub(super) struct YCbCrWriteBack {
++-    /// The shape at its start, the planes' bytes from `BYTES_AT`; held for the texture's life.
+++    /// The shape at its start, the planes' bytes from `BYTES_AT`, and a load's shape after them;
+++    /// held for the texture's life.
++     staging: Buffer,
++     /// The staging buffer's identity and its bytes.
++     staging_use: (ResourceKey, Range<u64>),
++@@ -592,13 +603,36 @@ pub(super) struct YCbCrWriteBack {
++     shape: [u8; YCbCrWriteModule::SHAPE_WORDS as usize * 4],
++     /// The planes' bytes from the surface's buffer into the staging buffer.
++     into: vk::BufferCopy,
++-    /// Each row of codes of both planes from the staging buffer back into the surface's buffer.
++-    back: Vec<vk::BufferCopy>,
+++    /// Where the planes' bytes start in the staging buffer's `VkBuffer`, and in the surface's
+++    /// buffer's.
+++    bytes_at: [u64; 2],
+++    /// The planes, whose rows of codes go back.
+++    planes: YCbCrPlanes,
+++    kernel: OwnedKernel,
+++    sets: OwnedSets,
+++    groups: [u32; 2],
+++    /// The load of a render shadow, `None` for a write shadow.
+++    load: Option<YCbCrLoad>,
+++}
+++
+++/// The load of a render shadow (the module docs' **Passes**): the copy in of a pass that loads
+++/// the attachment, which converts the planes' bytes into the shadow as floats through the
+++/// conversion kernel (`bind::ycbcr_convert_floats_module`), each texel what the texture reads.
+++/// It shares the write-back's staging buffer, its shape past the planes' bytes.
+++struct YCbCrLoad {
+++    /// Where the shape lies in the staging buffer's `VkBuffer`.
+++    shape_at: u64,
+++    shape: [u8; YCbCrConvertModule::SHAPE_WORDS as usize * 4],
++     kernel: OwnedKernel,
++     sets: OwnedSets,
++     groups: [u32; 2],
++ }
++ 
+++/// The side of the tiles Metal loads and stores a render pass's attachment by
+++/// (`bind::tile_reach`): a pass that loads a two-plane YCbCr attachment stores every texel of
+++/// each tile it reaches, its codes re-encoded from what the tile loaded.
+++const TILE: u32 = 32;
+++
++ impl YCbCrWriteBack {
++     /// The write-back into `planes` (a layout `bind::ycbcr_write` encodes, over plane 0), whose
++     /// bytes lie in `bytes` of their buffer, at `at` of its `VkBuffer`, of the written texels in
++@@ -611,13 +645,21 @@ impl YCbCrWriteBack {
++         (planes, bytes_in): (&YCbCrPlanes, Range<u64>),
++         at: u64,
++         (view, all): (vk::ImageView, bool),
+++        load_view: Option<vk::ImageView>,
++     ) -> Result<YCbCrWriteBack, Error> {
++         let span = bytes_in.end - bytes_in.start;
++         // The kernel reads and writes whole words: a row's last may reach past the span's end.
++         let held = span.next_multiple_of(4);
++-        let staging = device.own_buffer(BYTES_AT + held, ResourceOptions::private())?;
+++        // A load's shape past the planes' bytes, at a multiple of every
+++        // `minStorageBufferOffsetAlignment`.
+++        let load_shape_at = BYTES_AT + held.next_multiple_of(BYTES_AT);
+++        let length = match load_view {
+++            Some(_) => load_shape_at + 4 * u64::from(YCbCrConvertModule::SHAPE_WORDS),
+++            None => BYTES_AT + held,
+++        };
+++        let staging = device.own_buffer(length, ResourceOptions::private())?;
++         let (raw, start) = staging.at(0);
++-        let (identity, range) = staging.tracked(0..BYTES_AT + held);
+++        let (identity, range) = staging.tracked(0..length);
++         let shape = YCbCrWriteModule::shape(planes, all);
++         let kernel = device.owned_kernel(OwnedModule::YCbCrWrite)?;
++         let set = OwnedSet {
++@@ -638,23 +680,16 @@ impl YCbCrWriteBack {
++                 "a YCbCr texture past the device's workgroup counts",
++             ));
++         }
++-        // Each plane's rows of codes: the luma plane's a code a texel, the chroma plane's a pair.
++-        let unit = u64::from(planes.codes.bytes);
++-        let [width, height] = planes.size.map(u64::from);
++-        let [chroma_width, chroma_height] = planes.chroma_size().map(u64::from);
++-        let rows = |[offset, row]: [u32; 2], rows: u64, bytes: u64| {
++-            (0..rows).map(move |y| {
++-                let first = u64::from(offset) + y * u64::from(row);
++-                vk::BufferCopy {
++-                    src_offset: start + BYTES_AT + first,
++-                    dst_offset: at + first,
++-                    size: bytes,
++-                }
++-            })
+++        let load = match load_view {
+++            Some(view) => Some(YCbCrLoad::new(
+++                device,
+++                planes,
+++                (raw, start, load_shape_at),
+++                held,
+++                view,
+++            )?),
+++            None => None,
++         };
++-        let back = rows(planes.luma, height, unit * width)
++-            .chain(rows(planes.chroma, chroma_height, 2 * unit * chroma_width))
++-            .collect();
++         Ok(YCbCrWriteBack {
++             staging_use: (identity.key, range),
++             shape_at: start,
++@@ -664,14 +699,65 @@ impl YCbCrWriteBack {
++                 dst_offset: start + BYTES_AT,
++                 size: span,
++             },
++-            back,
+++            bytes_at: [start + BYTES_AT, at],
+++            planes: *planes,
++             staging,
++             kernel,
++             sets,
++             groups,
+++            load,
++         })
++     }
++ 
+++    /// Whether it loads a render shadow ([`YCbCrLoad`]): its copy in converts the planes.
+++    pub(super) fn loads(&self) -> bool {
+++        self.load.is_some()
+++    }
+++
+++    /// The rows of codes of both planes it copies back from the staging buffer: of every texel,
+++    /// or, `area` (`[x0, y0, x1, y1)` of the texture's texels), of the tiles of [`TILE`] texels
+++    /// a side from the texture's origin that it meets, clipped to the texture; each chroma pair
+++    /// of the luma texels it covers.
+++    fn back(&self, area: Option<[u32; 4]>) -> Vec<vk::BufferCopy> {
+++        let planes = &self.planes;
+++        let [width, height] = planes.size;
+++        let [x0, y0, x1, y1] = match area {
+++            Some([x0, y0, x1, y1]) => [
+++                x0 - x0 % TILE,
+++                y0 - y0 % TILE,
+++                x1.next_multiple_of(TILE).min(width),
+++                y1.next_multiple_of(TILE).min(height),
+++            ],
+++            None => [0, 0, width, height],
+++        };
+++        if x0 >= x1 || y0 >= y1 {
+++            return Vec::new();
+++        }
+++        let unit = u64::from(planes.codes.bytes);
+++        let [from, to] = self.bytes_at;
+++        let rows = |[offset, row]: [u32; 2], rows: Range<u32>, columns: Range<u32>, pair: u64| {
+++            rows.map(move |y| {
+++                let first = u64::from(offset) + u64::from(y) * u64::from(row);
+++                let first = first + pair * unit * u64::from(columns.start);
+++                vk::BufferCopy {
+++                    src_offset: from + first,
+++                    dst_offset: to + first,
+++                    size: pair * unit * u64::from(columns.end - columns.start),
+++                }
+++            })
+++        };
+++        let [across, down] = planes.codes.subsampling.halved();
+++        let halve = |v: u32, halved: bool| if halved { v.div_ceil(2) } else { v };
+++        let luma = rows(planes.luma, y0..y1, x0..x1, 1);
+++        let chroma = rows(
+++            planes.chroma,
+++            halve(y0, down)..halve(y1, down),
+++            halve(x0, across)..halve(x1, across),
+++            2,
+++        );
+++        luma.chain(chroma).collect()
+++    }
+++
++     /// The write-back's uses: `truth`, the read and the write of the planes' bytes, then the
++     /// staging buffer's writes and reads, and the read of every texel of the shadow of `copies`.
++     pub(super) fn uses(
++@@ -720,8 +806,13 @@ impl YCbCrWriteBack {
++         device: &ash::Device,
++         command_buffer: vk::CommandBuffer,
++         source: vk::Buffer,
+++        area: Option<[u32; 4]>,
++     ) {
++         let staging = self.staging.at(0).0;
+++        let back = self.back(area);
+++        if back.is_empty() {
+++            return;
+++        }
++         // SAFETY: the caller's contract; the shape, the copy in and the rows lie in the staging
++         // buffer and in `source` (checked when the texture was made), and the set binds them.
++         unsafe {
++@@ -743,7 +834,103 @@ impl YCbCrWriteBack {
++             );
++             device.cmd_dispatch(command_buffer, self.groups[0], self.groups[1], 1);
++             Barrier::everything().record(device, command_buffer);
++-            device.cmd_copy_buffer(command_buffer, staging, source, &self.back);
+++            device.cmd_copy_buffer(command_buffer, staging, source, &back);
++         }
++     }
+++
+++    /// The load's uses ([`YCbCrLoad`]): `truth`, the read of the planes' bytes, then the staging
+++    /// buffer's writes and reads, and the write of every texel of the shadow of `copies`.
+++    pub(super) fn load_uses(
+++        &self,
+++        truth: Use<ResourceKey>,
+++        copies: &ShadowCopies,
+++    ) -> Vec<Use<ResourceKey>> {
+++        let mut uses = self.uses(truth, copies);
+++        if let Some(shadow) = uses.last_mut() {
+++            *shadow = Use::writes(
+++                copies.shadow_key,
+++                copies.tracked,
+++                copies.shadow_range.clone(),
+++                Access::new(
+++                    vk::PipelineStageFlags2::COMPUTE_SHADER,
+++                    vk::AccessFlags2::SHADER_STORAGE_WRITE,
+++                ),
+++            );
+++        }
+++        uses
+++    }
+++
+++    /// Record the load of the render shadow ([`YCbCrLoad`]) from the planes in `source` (the
+++    /// surface's buffer's `VkBuffer` now) into `command_buffer`: nothing for a write shadow.
+++    ///
+++    /// # Safety
+++    ///
+++    /// As [`record`](Self::record)'s.
+++    pub(super) unsafe fn record_load(
+++        &self,
+++        device: &ash::Device,
+++        command_buffer: vk::CommandBuffer,
+++        source: vk::Buffer,
+++    ) {
+++        let Some(load) = &self.load else {
+++            return;
+++        };
+++        let staging = self.staging.at(0).0;
+++        // SAFETY: the caller's contract; the shape and the copy in lie in the staging buffer and
+++        // in `source` (checked when the texture was made), and the load's set binds them.
+++        unsafe {
+++            device.cmd_update_buffer(command_buffer, staging, load.shape_at, &load.shape);
+++            device.cmd_copy_buffer(command_buffer, source, staging, &[self.into]);
+++            Barrier::everything().record(device, command_buffer);
+++            device.cmd_bind_pipeline(
+++                command_buffer,
+++                vk::PipelineBindPoint::COMPUTE,
+++                load.kernel.pipeline,
+++            );
+++            device.cmd_bind_descriptor_sets(
+++                command_buffer,
+++                vk::PipelineBindPoint::COMPUTE,
+++                load.kernel.layout,
+++                0,
+++                &load.sets.sets,
+++                &[],
+++            );
+++            device.cmd_dispatch(command_buffer, load.groups[0], load.groups[1], 1);
+++        }
+++    }
+++}
+++
+++impl YCbCrLoad {
+++    /// The load of `planes` into `view`, a float storage view of the render shadow, through the
+++    /// staging buffer `staging` (its `VkBuffer`, its first byte there, and the load's shape's
+++    /// offset in it), whose planes' bytes are `held` bytes from `BYTES_AT`.
+++    fn new(
+++        device: &Device,
+++        planes: &YCbCrPlanes,
+++        (raw, start, shape_at): (vk::Buffer, u64, u64),
+++        held: u64,
+++        view: vk::ImageView,
+++    ) -> Result<YCbCrLoad, Error> {
+++        let shape = YCbCrConvertModule::shape(planes);
+++        let kernel = device.owned_kernel(OwnedModule::YCbCrConvert(planes.codes.output, true))?;
+++        let set = OwnedSet {
+++            images: Vec::new(),
+++            storage_images: vec![view],
+++            buffers: vec![
+++                (raw, start + shape_at, shape.len() as u64),
+++                (raw, start + BYTES_AT, held),
+++            ],
+++        };
+++        let sets = OwnedSets::write_each(device, &[kernel], &[set])?;
+++        let groups = planes
+++            .size
+++            .map(|n| n.div_ceil(YCbCrConvertModule::LOCAL_SIZE));
+++        Ok(YCbCrLoad {
+++            shape_at: start + shape_at,
+++            shape,
+++            kernel,
+++            sets,
+++            groups,
+++        })
+++    }
++ }
++diff --git a/crates/metal2vulkan/src/bind/mod.rs b/crates/metal2vulkan/src/bind/mod.rs
++index 27a2797a..86bcda72 100644
++--- a/crates/metal2vulkan/src/bind/mod.rs
+++++ b/crates/metal2vulkan/src/bind/mod.rs
++@@ -270,7 +270,7 @@ pub use visibility_resolve::{
++     visibility_resolve_module, VisibilityResolve, VisibilityResolveModule,
++ };
++ pub use ycbcr_convert::{
++-    ycbcr_convert_module, ycbcr_read, ycbcr_texel, YCbCrCodes, YCbCrConvertModule, YCbCrMatrix,
++-    YCbCrOutput, YCbCrPlanes, YCbCrRange,
+++    ycbcr_convert_floats_module, ycbcr_convert_module, ycbcr_read, ycbcr_texel, YCbCrCodes,
+++    YCbCrConvertModule, YCbCrMatrix, YCbCrOutput, YCbCrPlanes, YCbCrRange,
++ };
++ pub use ycbcr_write::{ycbcr_store, ycbcr_write, ycbcr_write_module, YCbCrWriteModule};
++diff --git a/crates/metal2vulkan/src/bind/ycbcr_convert.rs b/crates/metal2vulkan/src/bind/ycbcr_convert.rs
++index c6cbb475..e964e596 100644
++--- a/crates/metal2vulkan/src/bind/ycbcr_convert.rs
+++++ b/crates/metal2vulkan/src/bind/ycbcr_convert.rs
++@@ -65,7 +65,7 @@
++ //!
++ //! | Binding | Resource |
++ //! |---|---|
++-//! | [`YCbCrConvertModule::IMAGE_BINDING`] | the texture's image, a 2D storage image, written: `Rgba16f` of the converted texels, `Rgba32f` of the sRGB ones, or `R32ui` of the codes packed as `A2B10G10R10_UNORM_PACK32` (10 bits) or `R8G8B8A8_UNORM` (8 bits) packs them (a view of that image) |
+++//! | [`YCbCrConvertModule::IMAGE_BINDING`] | the texture's image, a 2D storage image, written: `Rgba16f` of the converted texels, `Rgba32f` of the sRGB ones, or `R32ui` of the codes packed as `A2B10G10R10_UNORM_PACK32` (10 bits) or `R8G8B8A8_UNORM` (8 bits) packs them (a view of that image); `Rgba32f` of any texels, as floats, from [`ycbcr_convert_floats_module`] |
++ //! | [`YCbCrConvertModule::SHAPE_BINDING`] | the planes' shape ([`YCbCrConvertModule::shape`]), a storage buffer |
++ //! | [`YCbCrConvertModule::BYTES_BINDING`] | the surface's bytes, 4 to a word, a storage buffer |
++ //!
++@@ -681,9 +681,10 @@ impl Cx {
++ }
++ 
++ /// The module of `output` as a typed module, before serialization: the module
++-/// [`ycbcr_convert_module`] serializes, which the CPU interpreter runs. Its bindings are the
++-/// symbols `IMAGE`, `SHAPE` and `BYTES` (the module docs).
++-fn typed_module(output: YCbCrOutput) -> BResult<TypedModule> {
+++/// [`ycbcr_convert_module`] serializes (or, `floats`, [`ycbcr_convert_floats_module`]), which
+++/// the CPU interpreter runs. Its bindings are the symbols `IMAGE`, `SHAPE` and `BYTES` (the module
+++/// docs).
+++fn typed_module(output: YCbCrOutput, floats: bool) -> BResult<TypedModule> {
++     let mut b = ModuleBuilder::new();
++     let u32_ = b.ty(Type::Int {
++         width: 32,
++@@ -693,6 +694,7 @@ fn typed_module(output: YCbCrOutput) -> BResult<TypedModule> {
++     let uvec2 = b.ty(Type::Vector { elem: u32_, len: 2 })?;
++     let uvec3 = b.ty(Type::Vector { elem: u32_, len: 3 })?;
++     let (sampled_type, format) = match output {
+++        _ if floats => (f32_, crate::spv::ImageFormat::Rgba32f),
++         YCbCrOutput::Converted => (f32_, crate::spv::ImageFormat::Rgba16f),
++         YCbCrOutput::Srgb => (f32_, crate::spv::ImageFormat::Rgba32f),
++         YCbCrOutput::Codes => (u32_, crate::spv::ImageFormat::R32ui),
++@@ -814,6 +816,17 @@ fn typed_module(output: YCbCrOutput) -> BResult<TypedModule> {
++         }
++         let coord = f.composite_construct(uvec2, &[x, y])?;
++         let texel = match output {
+++            YCbCrOutput::Codes if floats => {
+++                // Each code over the largest, red Cr, green Y and blue Cb, and alpha 1.
+++                let max = f.convert(ConvOp::ConvertUToF, max, f32_)?;
+++                let mut channels = Vec::with_capacity(4);
+++                for code in [chroma[1], luma, chroma[0]] {
+++                    let code = f.convert(ConvOp::ConvertUToF, code, f32_)?;
+++                    channels.push(f.binary(BinOp::FDiv, code, max)?);
+++                }
+++                channels.push(scalar(f, f32_, u64::from(1.0f32.to_bits()))?);
+++                f.composite_construct(texel_ty, &channels)?
+++            }
++             YCbCrOutput::Codes => {
++                 // `A2B10G10R10_UNORM_PACK32`'s or `R8G8B8A8_UNORM`'s bits, `b` each: red Cr,
++                 // green Y, blue Cb, and alpha every bit above (3 of 10-bit codes, 255 of 8-bit).
++@@ -928,9 +941,31 @@ fn binding_of(sym: &Symbol) -> Option<u32> {
++ pub fn ycbcr_convert_module(
++     device: &Device,
++     output: YCbCrOutput,
+++) -> Result<YCbCrConvertModule, Error> {
+++    module_of(device, output, false)
+++}
+++
+++/// The YCbCr conversion module of `device` that writes the texels of `output` as floats into an
+++/// `Rgba32f` image, whatever the output's own image: a converted texel's `v / 2048` and an sRGB
+++/// one's `v / 8192`, as [`ycbcr_convert_module`] writes them, and codes read as codes each `code
+++/// / (2^b - 1)` (red Cr, green Y, blue Cb), alpha 1. A render pass that loads a two-plane YCbCr
+++/// color attachment loads its render shadow, an `R32G32B32A32_SFLOAT` image, through it. Built and
+++/// checked as [`ycbcr_convert_module`] is.
+++pub fn ycbcr_convert_floats_module(
+++    device: &Device,
+++    output: YCbCrOutput,
+++) -> Result<YCbCrConvertModule, Error> {
+++    module_of(device, output, true)
+++}
+++
+++/// [`ycbcr_convert_module`], or, `floats`, [`ycbcr_convert_floats_module`].
+++fn module_of(
+++    device: &Device,
+++    output: YCbCrOutput,
+++    floats: bool,
++ ) -> Result<YCbCrConvertModule, Error> {
++     let profile = device.profile();
++-    let m = typed_module(output)?;
+++    let m = typed_module(output, floats)?;
++     let mut meter = Meter::new(&Budget::default());
++     crate::spirv::verify::verify(&m, profile, &mut meter)?;
++     let r = crate::spirv::serialize::serialize(m)?;
++diff --git a/crates/metal2vulkan/src/bind/ycbcr_convert/tests.rs b/crates/metal2vulkan/src/bind/ycbcr_convert/tests.rs
++index f69f082a..e5c98b96 100644
++--- a/crates/metal2vulkan/src/bind/ycbcr_convert/tests.rs
+++++ b/crates/metal2vulkan/src/bind/ycbcr_convert/tests.rs
++@@ -18,7 +18,9 @@ fn the_ycbcr_conversion_kernels_are_valid_on_every_committed_profile() {
++             YCbCrOutput::Codes,
++             YCbCrOutput::Srgb,
++         ] {
++-            assert_valid(typed_module(output).expect("module"), &p);
+++            for floats in [false, true] {
+++                assert_valid(typed_module(output, floats).expect("module"), &p);
+++            }
++         }
++     }
++ }
++@@ -289,7 +291,7 @@ impl Surface {
++     /// one), or its code, both invocation orders alike; alpha checked to be 1.
++     fn converted(&self) -> Vec<[u16; 3]> {
++         let output = self.planes.codes.output;
++-        let m = typed_module(output).expect("module");
+++        let m = typed_module(output, false).expect("module");
++         let [w, h] = self.planes.size;
++         let groups = [w, h].map(|n| n.div_ceil(YCbCrConvertModule::LOCAL_SIZE));
++         let mut runs = Vec::new();
++@@ -348,6 +350,86 @@ impl Surface {
++     }
++ }
++ 
+++impl Surface {
+++    /// The floats module's texels ([`super::ycbcr_convert_floats_module`]), as `f32`s.
+++    fn floats(&self) -> Vec<[f32; 4]> {
+++        let m = typed_module(self.planes.codes.output, true).expect("module");
+++        let [w, h] = self.planes.size;
+++        let groups = [w, h].map(|n| n.div_ceil(YCbCrConvertModule::LOCAL_SIZE));
+++        let part = |slot, bytes: Vec<u8>| Buffer {
+++            slot: Some(slot),
+++            address: None,
+++            bytes,
+++        };
+++        let shape = YCbCrConvertModule::shape(&self.planes);
+++        let res = Resources {
+++            buffers: vec![part(SHAPE, shape.to_vec()), part(BYTES, self.bytes.clone())],
+++            push: Vec::new(),
+++            spec: Default::default(),
+++        };
+++        let cfg = Config {
+++            workgroups: [groups[0], groups[1], 1],
+++            ..Config::default()
+++        };
+++        let image = Image::new(IMAGE, [w, h, 1], 1, 1, 1);
+++        let (_, images) = run_with_images(&m, &cfg, res, vec![image]).expect("run");
+++        images[0]
+++            .texels
+++            .iter()
+++            .map(|t| std::array::from_fn(|c| f32::from_bits(t[c])))
+++            .collect()
+++    }
+++}
+++
+++/// The floats module writes each texel the conversion reads as floats: a converted texel's
+++/// `v / 2048` and an sRGB one's `v / 8192`, bit for bit, and a code read as codes as its code over
+++/// the largest, within a thousandth of a code; alpha 1.
+++#[test]
+++fn the_floats_module_writes_the_texels_as_floats() {
+++    let mut random = Random(0x5eed_f10a);
+++    for codes in layouts().into_iter().chain(subsampled_layouts()) {
+++        let mask = (1u16 << codes.bits) - 1;
+++        let size = [17, 9];
+++        let [w, h] = size;
+++        for conversion in CONVERSIONS {
+++            let luma: Vec<u16> = (0..w * h)
+++                .map(|_| u16::from_le_bytes([random.next(), random.next()]) & mask)
+++                .collect();
+++            let [cw, ch] = YCbCrPlanes::new(size, [0; 2], [0; 2], conversion, codes).chroma_size();
+++            let chroma: Vec<u16> = (0..2 * cw * ch)
+++                .map(|_| u16::from_le_bytes([random.next(), random.next()]) & mask)
+++                .collect();
+++            let rows = [48, row_bytes(codes, 2 * cw).next_multiple_of(16)];
+++            let surface = Surface::new(
+++                size,
+++                512,
+++                rows,
+++                (conversion, codes),
+++                &|x, y| luma[(y * w + x) as usize],
+++                &|x, y| {
+++                    let i = (2 * (y * cw + x)) as usize;
+++                    [chroma[i], chroma[i + 1]]
+++                },
+++            );
+++            let model = surface.modelled();
+++            for (i, (got, want)) in surface.floats().iter().zip(&model).enumerate() {
+++                assert_eq!(got[3], 1.0, "{codes:?} texel {i}: alpha 1");
+++                for c in 0..3 {
+++                    let want = f32::from(want[c]);
+++                    match codes.output {
+++                        YCbCrOutput::Converted => assert_eq!(got[c], want / 2048.0),
+++                        YCbCrOutput::Srgb => assert_eq!(got[c], want / 8192.0),
+++                        YCbCrOutput::Codes => {
+++                            let code = got[c] * f32::from(mask);
+++                            assert!((code - want).abs() < 1e-3, "{codes:?} {i}: {code} {want}");
+++                        }
+++                    }
+++                }
+++            }
+++        }
+++    }
+++}
+++
++ /// Where code `index` of the row whose first byte is at `row` lies: its unit's first byte, and
++ /// the shift that takes the unit's little-endian bytes to it (the module docs).
++ fn place(codes: YCbCrCodes, row: u32, index: u32) -> (u32, u32) {
++diff --git a/crates/metal2vulkan/src/bind/ycbcr_write.rs b/crates/metal2vulkan/src/bind/ycbcr_write.rs
++index 5fdacf5b..546f4deb 100644
++--- a/crates/metal2vulkan/src/bind/ycbcr_write.rs
+++++ b/crates/metal2vulkan/src/bind/ycbcr_write.rs
++@@ -1,11 +1,10 @@
++ //! A function's writes to a 4:4:4 two-plane YCbCr texture, stored into its IOSurface's two planes
++ //! as Metal stores them.
++ //!
++-//! **Metal's answers** (EVs XRR2-ycw1-m4, XRR2-ycw2-m4, XRR2-ycw3-m4 and XRR2-ycw4-m4, an Apple
++-//! M4 under macOS 27.0.1, and XRR2-ycw2-m3, an Apple M3 Max under macOS 26.7, byte for byte the
++-//! same; our own probes over CoreVideo `444v`, `444f`, `x444` and `xf44` surfaces, every texel
++-//! written with fresh values: on the grid of `1 / 2048`, finer, ties of the grid and an ulp
++-//! either side, any `float` in `[0, 1]`, out of range, NaNs, infinities, `-0` and subnormals;
+++//! **Metal's answers** (an Apple M4 under macOS 27.0.1, and an Apple M3 Max under macOS 26.7, byte
+++//! for byte the same; our own probes over CoreVideo `444v`, `444f`, `x444` and `xf44` surfaces,
+++//! every texel written with fresh values: on the grid of `1 / 2048`, finer, ties of the grid and an
+++//! ulp either side, any `float` in `[0, 1]`, out of range, NaNs, infinities, `-0` and subnormals;
++ //! `float` and `half` writes; no matrix, BT.601, BT.709 and BT.2020; 2.4 million texels in all).
++ //! A texture of `YCBCR8_444_2P`, `YCBCR10_444_2P`, `RGB8_444_2P` or `RGB10_444_2P` made over an
++ //! IOSurface's plane 0 stores a written texel's luma code into the luma plane at its place and
++@@ -25,32 +24,37 @@
++ //!   chroma.
++ //! - **Codes** ([`YCbCrOutput::Codes`], `RGB*_444_2P`): Y the green channel, Cb the blue, Cr the
++ //!   red, each `round(clamp(v, 0, 1) · (2^b - 1))` of the exact product, to nearest (a NaN 0).
++-//!   The `float` product rounded instead misses about 1 in 14 values within 3 ulps of a tie
++-//!   (EV XRR2-ycw4-m4).
+++//!   The `float` product rounded instead misses about 1 in 14 values within 3 ulps of a tie.
++ //!
++-//! The `_sRGB` twins' writes follow none of these (their linear value steps by `1 / 8192`, then a
++-//! curve that is not the reads' inverse), and the packed formats' writes are stored by the M4 and
++-//! dropped by the M3: neither is encoded here ([`ycbcr_write`] answers `None`).
+++//! The `_sRGB` twins' writes follow none of these (their linear value is taken through a
+++//! linear-to-sRGB curve within a code of the exact curve, not the reads' inverse), and the packed
+++//! formats' writes are dropped (the M3 Max under macOS 27.0.1; an M4 stores them): neither is
+++//! encoded here ([`ycbcr_write`] answers `None`).
++ //!
++ //! **A render pass's store** (our own probes over CoreVideo `420v`, `420f`, `422v`, `444v` and
++-//! `444f` surfaces on an Apple M4 under macOS 27.0.1: EV XRR2-ycr1-m4, every byte of the converted
++-//! 8-bit formats' clears and full-screen draws, 16 x 8, no matrix and BT.709, the consumer's Apple
++-//! M3 Max under macOS 26.7 storing the same bytes; and EVs GSM2-yt1-m4 and GSM2-yt2-m4, every byte
++-//! of full-screen draws, 64 x 32, of floats beside the ties of the 1/2048 grid and uniform ones,
++-//! and of clears to colors beside them, the M3 Max's bytes the same; for the 10-bit formats, EV
++-//! GSM2-ten2-m4, every byte of 128 x 128 draws over `x420`, `xf20`, `x422`, `xf22`, `x444` and
++-//! `xf44` of every `half` in `[0, 1]`, a 1/16384 grid and values beside the ties of four grids,
++-//! `float` and `half` fragments, and of 64 clears a surface). A pass whose color attachment is such
++-//! a texture stores every texel of it, drawn or not, into both planes. Each texel's value is held
++-//! as a `half`, and its `x` is the grid step of that: a drawn `float` channel rounded to nearest
++-//! even at 8 bits, toward zero at 10 bits; a `half` a fragment returns kept; a clear's color
++-//! rounded to nearest even at both (the runtime puts a clear into the pass's texels as its `half`s,
++-//! which either rounding keeps). Each texel's term of a row is `t = (c · x) >> (20 + b - 8)`, its
++-//! row counted at 2^-6 of an 8-bit code (2^-4 of a 10-bit one) and truncated; and a code is
++-//! `clamp(o + ((Σ t + 2^(T - 1 + k)) >> (T + k)), 0, 2^b - 1)`, `T` 6 at 8 bits and 4 at 10,
++-//! over the block of `2^k` texels the code covers: a texel's own luma, and each chroma pair's
++-//! 2 x 2 texels at 4:2:0, 2 x 1 at 4:2:2, its own at 4:4:4 ([`ycbcr_store`]). A code of one
++-//! texel is a function's write's code of the `half`.
+++//! `444f` surfaces on an Apple M4 under macOS 27.0.1: every byte of the converted 8-bit formats'
+++//! clears and full-screen draws, 16 x 8, no matrix and BT.709, the consumer's Apple M3 Max under
+++//! macOS 26.7 storing the same bytes; and every byte of full-screen draws, 64 x 32, of floats
+++//! beside the ties of the 1/2048 grid and uniform ones, and of clears to colors beside them, the M3
+++//! Max's bytes the same; for the 10-bit formats, every byte of 128 x 128 draws over `x420`, `xf20`,
+++//! `x422`, `xf22`, `x444` and `xf44` of every `half` in `[0, 1]`, a 1/16384 grid and values beside
+++//! the ties of four grids, `float` and `half` fragments, and of 64 clears a surface). A pass whose
+++//! color attachment is such a texture stores every texel of it, drawn or not, into both planes.
+++//! Each texel's value is held as a `half`, and its `x` is the grid step of that: a drawn `float`
+++//! channel rounded to nearest even at 8 bits, toward zero at 10 bits; a `half` a fragment returns
+++//! kept; a clear's color rounded to nearest even at both (the runtime puts a clear into the pass's
+++//! texels as its `half`s, which either rounding keeps). Each texel's term of a row is `t = (c · x)
+++//! >> (20 + b - 8)`, its row counted at 2^-6 of an 8-bit code (2^-4 of a 10-bit one) and truncated;
+++//! and a code is `clamp(o + ((Σ t + 2^(T - 1 + k)) >> (T + k)), 0, 2^b - 1)`, `T` 6 at 8 bits and 4
+++//! at 10, over the block of `2^k` texels the code covers: a texel's own luma, and each chroma
+++//! pair's 2 x 2 texels at 4:2:0, 2 x 1 at 4:2:2, its own at 4:4:4 ([`ycbcr_store`]). A code of one
+++//! texel is a function's write's code of the `half`. A pass into a code format (`RGB8_420_2P` to
+++//! `RGB10_444_2P`, 540 to 545; our probes over `420v`, `422f`, `444v`, `x420`, `xf22` and `x444`
+++//! surfaces on an Apple M3 Max under macOS 27.0.1, every byte of 64 x 64 draws of values in
+++//! `[-0.25, 1.75)`, NaNs, infinities and zeros among them, and of draws over loads) stores each
+++//! texel's luma code as a write of its green channel's `half` (so rounded) stores it, and each
+++//! chroma pair's Cb and Cr codes the mean of its block's blue and red codes so made, rounded half
+++//! up: `(Σ code + 2^(k - 1)) >> k` over the block of `2^k` texels.
++ //!
++ //! **The module** (one per device). One `GLCompute` entry `main` with local size
++ //! ([`YCbCrWriteModule::LOCAL_SIZE`], [`YCbCrWriteModule::LOCAL_SIZE`], 1), no push constants,
++@@ -182,22 +186,21 @@ pub(crate) fn write_rows(
++     [0, 1, 2].map(|i| (rows[i], offsets[i]))
++ }
++ 
++-/// A pass's channel's `x`: `v` rounded to a `half` as Metal's pass holds it, to nearest even, or
++-/// `toward_zero`, then [`grid_step`]'s.
++-fn half_grid_step(v: f32, toward_zero: bool) -> i64 {
+++/// A pass's channel: `v` rounded to a `half` as Metal's pass holds it, to nearest even, or
+++/// `toward_zero` (of `v` clamped to `[0, 1]`; a NaN stays one).
+++fn pass_half(v: f32, toward_zero: bool) -> f32 {
++     if !toward_zero {
++-        return grid_step(f16_bits_to_f32(f32_to_f16_bits(v)));
+++        return f16_bits_to_f32(f32_to_f16_bits(v));
++     }
++     if v.is_nan() {
++-        return 0;
+++        return v;
++     }
++     // Of `v` in `[0, 1]` of exponent `E` (at least -14, a subnormal half's step), the half's
++     // significand `q = floor(v · 2^(10 - E))`, its value `q · 2^(E - 10)`: each product exact.
++     let v = v.clamp(0.0, 1.0);
++     let exponent = (((v.to_bits() >> 23) & 0xff) as i32 - 127).max(-14);
++     let scale = f64::powi(2.0, 10 - exponent);
++-    let half = (f64::from(v) * scale).floor() / scale;
++-    grid_step(half as f32)
+++    ((f64::from(v) * scale).floor() / scale) as f32
++ }
++ 
++ /// A channel's `x = rint(clamp(v, 0, 1) · 2048)`, ties to even, a NaN 0.
++@@ -252,16 +255,15 @@ pub fn ycbcr_write(
++ /// a texture of `size` texels) into the planes of a two-plane YCbCr texture of `codes` over a
++ /// surface of `range` and `matrix` (the module docs): each texel's luma code, row by row, and each
++ /// chroma pair's Cb and Cr codes of the block of texels it covers, row by row of the chroma
++-/// plane. `None` for a layout whose store is not encoded (codes read as codes or through the sRGB
++-/// curve, and packed ones), for a size the chroma blocks do not tile, or for `texels` not
++-/// `size`'s.
+++/// plane. `None` for a layout whose store is not encoded (codes read through the sRGB curve, and
+++/// packed ones), for a size the chroma blocks do not tile, or for `texels` not `size`'s.
++ pub fn ycbcr_store(
++     codes: YCbCrCodes,
++     (range, matrix): (YCbCrRange, YCbCrMatrix),
++     texels: &[[f32; 3]],
++     size: [u32; 2],
++ ) -> Option<(Vec<u16>, Vec<[u16; 2]>)> {
++-    if codes.packed || codes.output != YCbCrOutput::Converted {
+++    if codes.packed || codes.output == YCbCrOutput::Srgb {
++         return None;
++     }
++     let [w, h] = size.map(|n| n as usize);
++@@ -269,6 +271,35 @@ pub fn ycbcr_store(
++     if texels.len() != w * h || w % (1 << sx) != 0 || h % (1 << sy) != 0 {
++         return None;
++     }
+++    let toward_zero = pass_rounds_toward_zero(codes);
+++    let k = (sx + sy) as u32;
+++    // Each chroma pair's block of texels, by their indices.
+++    let block = |cx: usize, cy: usize| {
+++        (0..1 << sy)
+++            .flat_map(move |dy| (0..1 << sx).map(move |dx| ((cy << sy) + dy) * w + (cx << sx) + dx))
+++    };
+++    if codes.output == YCbCrOutput::Codes {
+++        // Each channel's code of its `half`: luma green's, Cb blue's and Cr red's; a pair's the
+++        // mean of its block's, rounded half up.
+++        let max = (1u32 << codes.bits) - 1;
+++        let own: Vec<[u16; 3]> = texels
+++            .iter()
+++            .map(|&[r, g, b]| [g, b, r].map(|v| code_of(pass_half(v, toward_zero), max)))
+++            .collect();
+++        let luma = own.iter().map(|&[y, _, _]| y).collect();
+++        let mut chroma = Vec::with_capacity((w >> sx) * (h >> sy));
+++        for cy in 0..h >> sy {
+++            for cx in 0..w >> sx {
+++                let mut sums = [0u32; 2];
+++                for i in block(cx, cy) {
+++                    sums[0] += u32::from(own[i][1]);
+++                    sums[1] += u32::from(own[i][2]);
+++                }
+++                chroma.push(sums.map(|s| ((s + ((1 << k) >> 1)) >> k) as u16));
+++            }
+++        }
+++        return Some((luma, chroma));
+++    }
++     let max = (1i64 << codes.bits) - 1;
++     let rows = write_rows(range, matrix, codes.bits);
++     let term_bits = term_bits(codes.bits);
++@@ -283,26 +314,21 @@ pub fn ycbcr_store(
++         let code = i64::from(o) + ((sum + (1 << (shift - 1))) >> shift);
++         code.clamp(0, max) as u16
++     };
++-    let toward_zero = pass_rounds_toward_zero(codes);
++     let steps: Vec<[i64; 3]> = texels
++         .iter()
++-        .map(|t| t.map(|v| half_grid_step(v, toward_zero)))
+++        .map(|t| t.map(|v| grid_step(pass_half(v, toward_zero))))
++         .collect();
++     let luma = steps
++         .iter()
++         .map(|&x| encode(rows[0], term(rows[0], x), 0))
++         .collect();
++-    let k = (sx + sy) as u32;
++     let mut chroma = Vec::with_capacity((w >> sx) * (h >> sy));
++     for cy in 0..h >> sy {
++         for cx in 0..w >> sx {
++             let mut sums = [0i64; 2];
++-            for dy in 0..1 << sy {
++-                for dx in 0..1 << sx {
++-                    let x = steps[((cy << sy) + dy) * w + (cx << sx) + dx];
++-                    sums[0] += term(rows[1], x);
++-                    sums[1] += term(rows[2], x);
++-                }
+++            for i in block(cx, cy) {
+++                sums[0] += term(rows[1], steps[i]);
+++                sums[1] += term(rows[2], steps[i]);
++             }
++             chroma.push([encode(rows[1], sums[0], k), encode(rows[2], sums[1], k)]);
++         }
++@@ -523,6 +549,42 @@ impl Cx {
++         f.convert(ConvOp::ConvertFToU, x, self.u32_)
++     }
++ 
+++    /// A pass's channel `bits` (a `u32`) as its `half`'s `float` bits (a `u32`): the value of
+++    /// `[0, 1]` rounded to a `half`, to nearest even, or toward zero where `toward_zero` (a
+++    /// `bool`). Of `v` of exponent `E` (at least -14), `q = rint(v · 2^(10 - E))` (or its floor)
+++    /// is the half's significand and `q · 2^(E - 10)` its value, each product of a power of two
+++    /// exact.
+++    fn pass_half(
+++        &self,
+++        f: &mut FunctionBuilder<'_>,
+++        bits: Value,
+++        toward_zero: Value,
+++    ) -> BResult<Value> {
+++        let v = self.unit(f, bits)?;
+++        let raw = f.convert(ConvOp::Bitcast, v, self.u32_)?;
+++        let twenty_three = self.uint(f, 23)?;
+++        let exponent = f.binary(BinOp::ShiftRightLogical, raw, twenty_three)?;
+++        let byte = self.uint(f, 0xff)?;
+++        let exponent = f.binary(BinOp::BitwiseAnd, exponent, byte)?;
+++        let least = self.uint(f, 127 - 14)?;
+++        let exponent = f.glsl(GlslOp::UMax, &[exponent, least])?;
+++        // `2^(10 - E)` and `2^(E - 10)` as floats: biased exponents `264 - e` and `e - 10`.
+++        let top = self.uint(f, 127 + 10 + 127)?;
+++        let up = f.binary(BinOp::ISub, top, exponent)?;
+++        let up = f.binary(BinOp::ShiftLeftLogical, up, twenty_three)?;
+++        let up = f.convert(ConvOp::Bitcast, up, self.f32_)?;
+++        let ten = self.uint(f, 10)?;
+++        let down = f.binary(BinOp::ISub, exponent, ten)?;
+++        let down = f.binary(BinOp::ShiftLeftLogical, down, twenty_three)?;
+++        let down = f.convert(ConvOp::Bitcast, down, self.f32_)?;
+++        let q = f.binary(BinOp::FMul, v, up)?;
+++        let nearest = f.glsl(GlslOp::RoundEven, &[q])?;
+++        let below = f.glsl(GlslOp::Floor, &[q])?;
+++        let q = f.select(toward_zero, below, nearest)?;
+++        let h = f.binary(BinOp::FMul, q, down)?;
+++        f.convert(ConvOp::Bitcast, h, self.u32_)
+++    }
+++
++     /// The code of channel `bits` (a `u32`) of `max` (a `u32`, at most 1023):
++     /// `round(v · max)` of the exact product, to nearest. Of `v` in `(0, 1)`, `M · 2^-s` with
++     /// `M` its significand (its implicit bit included; a subnormal's at `s = 149`) and `s` at
++@@ -570,11 +632,12 @@ impl Cx {
++     }
++ 
++     /// The code `component` (0 luma, 1 Cb, 2 Cr; a `u32`) of the four reads `texels` (each a
++-    /// `uvec4`) of its block: the codes' own of the first; converted, the sum of the reads'
++-    /// terms ([`YCbCrWriteModule::READS_BITS`]), each its row `c · x` counted at 2^-T of a code
++-    /// and truncated, `(Σ hi · x + (Σ lo · x >> 12)) >> S` for the shape's `term_shift`
++-    /// `S = 14 - T`, its `x` a pass's ([`half_grid_step`](Self::half_grid_step), toward zero
++-    /// where `toward_zero`, a `bool`) where `pass` (a `bool`).
+++    /// `uvec4`) of its block: codes, the mean of the reads' own codes rounded half up,
+++    /// `(Σ code + 2) >> 2`, each of a pass's `half` ([`pass_half`](Self::pass_half), toward
+++    /// zero where `toward_zero`, a `bool`) where `pass` (a `bool`); converted, the sum of the
+++    /// reads' terms ([`YCbCrWriteModule::READS_BITS`]), each its row `c · x` counted at 2^-T of a
+++    /// code and truncated, `(Σ hi · x + (Σ lo · x >> 12)) >> S` for the shape's `term_shift`
+++    /// `S = 14 - T`, its `x` a pass's ([`half_grid_step`](Self::half_grid_step)) where `pass`.
++     fn code_of(
++         &self,
++         f: &mut FunctionBuilder<'_>,
++@@ -583,15 +646,24 @@ impl Cx {
++         (max, codes, pass): (Value, Value, Value),
++         (term_shift, toward_zero): (Value, Value),
++     ) -> BResult<Value> {
++-        let channels: Vec<Value> = (0..3)
++-            .map(|c| f.composite_extract(texels[0], &[c]))
++-            .collect::<BResult<_>>()?;
++         // Codes: luma the green channel, Cb the blue, Cr the red.
++         let is_luma = f.binary(BinOp::IEqual, component, self.zero)?;
++         let is_cb = f.binary(BinOp::IEqual, component, self.one)?;
++-        let channel = f.select(is_cb, channels[2], channels[0])?;
++-        let channel = f.select(is_luma, channels[1], channel)?;
++-        let own = self.code(f, channel, max)?;
+++        let mut own = self.zero;
+++        for &texel in &texels {
+++            let channels: Vec<Value> = (0..3)
+++                .map(|c| f.composite_extract(texel, &[c]))
+++                .collect::<BResult<_>>()?;
+++            let channel = f.select(is_cb, channels[2], channels[0])?;
+++            let channel = f.select(is_luma, channels[1], channel)?;
+++            let halved = self.pass_half(f, channel, toward_zero)?;
+++            let channel = f.select(pass, halved, channel)?;
+++            let code = self.code(f, channel, max)?;
+++            own = f.binary(BinOp::IAdd, own, code)?;
+++        }
+++        let two = self.uint(f, 2)?;
+++        let own = f.binary(BinOp::IAdd, own, two)?;
+++        let own = f.binary(BinOp::ShiftRightLogical, own, two)?;
++         // Converted: the row of the code.
++         let row_words = self.uint(f, word::ROW_WORDS)?;
++         let at = f.binary(BinOp::IMul, component, row_words)?;
++diff --git a/crates/metal2vulkan/src/bind/ycbcr_write/tests.rs b/crates/metal2vulkan/src/bind/ycbcr_write/tests.rs
++index dd3bafa3..ef518916 100644
++--- a/crates/metal2vulkan/src/bind/ycbcr_write/tests.rs
+++++ b/crates/metal2vulkan/src/bind/ycbcr_write/tests.rs
++@@ -217,11 +217,10 @@ fn digest(codes: impl IntoIterator<Item = u16>) -> u32 {
++     h
++ }
++ 
++-/// One of our probes' cases (EVs XRR2-ycw3-m4 and XRR2-ycw4-m4, an Apple M4 under macOS 27.0.1;
++-/// the `ycw3` cases alike on an Apple M3 Max under macOS 26.7, EV XRR2-ycw3-m3): a 256 x 256
++-/// texture of `format` over a surface of `range` and `matrix`, every texel written `float`
++-/// values, or `half` ones (`half`), of `mode` from `seed`; and the digest of the luma, Cb and Cr
++-/// codes Metal stored, texel by texel, row by row.
+++/// One of our probes' cases (an Apple M4 under macOS 27.0.1; the `ycw3` cases alike on an Apple M3
+++/// Max under macOS 26.7): a 256 x 256 texture of `format` over a surface of `range` and `matrix`,
+++/// every texel written `float` values, or `half` ones (`half`), of `mode` from `seed`; and the
+++/// digest of the luma, Cb and Cr codes Metal stored, texel by texel, row by row.
++ struct ProbeCase {
++     format: PixelFormat,
++     surface: (YCbCrRange, YCbCrMatrix),
++@@ -628,21 +627,27 @@ fn the_kernel_stores_metal_s_codes_of_the_probes_first_rows() {
++     }
++ }
++ 
++-/// The formats whose passes' stores the reference encodes: the converted ones of unpacked 8- and
++-/// 10-bit codes, each of which a pass renders (`metal::format::ycbcr_renders`).
++-const RENDERED: [PixelFormat; 6] = [
+++/// The formats whose passes' stores the reference encodes: those of unpacked 8- and 10-bit codes
+++/// read converted or as codes, each of which a pass renders (`metal::format::ycbcr_renders`).
+++const RENDERED: [PixelFormat; 12] = [
++     PixelFormat::YCBCR84202P,
++     PixelFormat::YCBCR84222P,
++     PixelFormat::YCBCR84442P,
++     PixelFormat::YCBCR104202P,
++     PixelFormat::YCBCR104222P,
++     PixelFormat::YCBCR104442P,
+++    PixelFormat::RGB84202P,
+++    PixelFormat::RGB84222P,
+++    PixelFormat::RGB84442P,
+++    PixelFormat::RGB104202P,
+++    PixelFormat::RGB104222P,
+++    PixelFormat::RGB104442P,
++ ];
++ 
++-/// The reference encodes a pass's store of the converted unpacked layouts only, of sizes the chroma
++-/// blocks tile, and of a texel for every texel of the size.
+++/// The reference encodes a pass's store of the unpacked layouts read converted or as codes only,
+++/// of sizes the chroma blocks tile, and of a texel for every texel of the size.
++ #[test]
++-fn the_store_reference_encodes_the_converted_unpacked_layouts_of_tiled_sizes() {
+++fn the_store_reference_encodes_the_unpacked_layouts_of_tiled_sizes() {
++     let video = (YCbCrRange::Video, YCbCrMatrix::Bt709);
++     for pf in PixelFormat::ALL.iter().copied() {
++         let Some(codes) = ycbcr_format(pf).and_then(YCbCrCodes::of) else {
++@@ -664,8 +669,8 @@ fn the_store_reference_encodes_the_converted_unpacked_layouts_of_tiled_sizes() {
++ }
++ 
++ /// The kernel stores the reference's codes of a pass's every texel into both planes, the marks not
++-/// read, and keeps every other byte (the rows' padding), for each converted unpacked layout over
++-/// each range and matrix, on sizes whose rows end mid-word.
+++/// read, and keeps every other byte (the rows' padding), for each unpacked layout read converted
+++/// or as codes over each range and matrix, on sizes whose rows end mid-word.
++ #[test]
++ fn the_kernel_stores_the_reference_s_codes_of_a_pass_s_every_texel() {
++     use YCbCrMatrix::{Bt2020, Bt601, Bt709};
++@@ -701,19 +706,19 @@ fn the_kernel_stores_the_reference_s_codes_of_a_pass_s_every_texel() {
++ /// The values one of our probe's draws wrote, of its generator.
++ #[derive(Clone, Copy, Debug)]
++ enum PassValues {
++-    /// Each channel `k / 4096`, one texel in eight's mapped to `[-0.5, 1.5]` (EV XRR2-ycr1-m4).
+++    /// Each channel `k / 4096`, one texel in eight's mapped to `[-0.5, 1.5]`.
++     Grid,
++     /// Each channel beside a tie of the 1/2048 grid (up to 3 ulps either side; a quarter of them
++-    /// below 1/2, where a `half` rounds them), or a multiple of 2^-24 (EV GSM2-yt1-m4).
+++    /// below 1/2, where a `half` rounds them), or a multiple of 2^-24.
++     Ties,
++ }
++ 
++ /// One of our probes' passes into a texture of `size` and `format` over plane 0 of a CoreVideo
++-/// surface of `surface` (EVs XRR2-ycr1-m4 and GSM2-yt1-m4, an Apple M4 under macOS 27.0.1; the
++-/// consumer's run of the first on an Apple M3 Max under macOS 26.7 stored the same bytes): a
++-/// clear to a color from `seed`, or a full-screen draw of values from it at every texel
++-/// (`draw`); the planes' `plane_bytes` the generator filled first, and the digest of the luma
++-/// codes Metal stored, row by row, then of the Cb and Cr codes of each pair, row by row.
+++/// surface of `surface` (an Apple M4 under macOS 27.0.1; the consumer's run of the first on an
+++/// Apple M3 Max under macOS 26.7 stored the same bytes): a clear to a color from `seed`, or a
+++/// full-screen draw of values from it at every texel (`draw`); the planes' `plane_bytes` the
+++/// generator filled first, and the digest of the luma codes Metal stored, row by row, then of the
+++/// Cb and Cr codes of each pair, row by row.
++ struct PassCase {
++     format: PixelFormat,
++     surface: (YCbCrRange, YCbCrMatrix),
++@@ -920,7 +925,63 @@ fn the_store_reference_and_kernel_store_metal_s_codes_of_the_probe_s_passes() {
++     }
++ }
++ 
++-/// What one of our probe `ten1`'s rows left in its pass's texels (EV GSM2-ten2-m4).
+++/// The values of our probe's draws into the code formats, `[r, g, b, a]` of each of `n` texels:
+++/// channel `k = 4 i + c` from `x = k · 2654435761 mod 2^32`, one in 16 a special (a NaN, the
+++/// infinities, `-0`, 1, 0, 1/2 or the least subnormal), the rest `((x >> 9) - 2^20) / 2^22`, in
+++/// `[-0.25, 1.75)`.
+++fn code_pass_values(n: usize) -> Vec<[f32; 4]> {
+++    const SPECIALS: [f32; 8] = [
+++        f32::NAN,
+++        f32::NEG_INFINITY,
+++        f32::INFINITY,
+++        -0.0,
+++        1.0,
+++        0.0,
+++        0.5,
+++        1.0e-45,
+++    ];
+++    let value = |k: u32| {
+++        let x = k.wrapping_mul(2_654_435_761);
+++        match x % 16 {
+++            0 => SPECIALS[(x >> 4) as usize % 8],
+++            _ => ((x >> 9) as i32 - (1 << 20)) as f32 / (1 << 22) as f32,
+++        }
+++    };
+++    (0..n as u32)
+++        .map(|i| std::array::from_fn(|c| value(4 * i + c as u32)))
+++        .collect()
+++}
+++
+++/// The reference stores Metal's codes of our probe's draws into the code formats (an Apple M3 Max
+++/// under macOS 27.0.1): a 64 x 64 texture of each over a CoreVideo surface (`420v`, `422f`,
+++/// `444v`, `x420`, `xf22` and `x444`), every texel drawn [`code_pass_values`]; each case's digest
+++/// of Metal's luma codes row by row, then of each pair's Cb and Cr codes. The kernel stores the
+++/// reference's codes of the first eight rows.
+++#[test]
+++fn the_store_reference_and_kernel_store_metal_s_codes_of_the_code_formats_passes() {
+++    use PixelFormat as P;
+++    let surface = (YCbCrRange::Video, YCbCrMatrix::Bt601);
+++    let values = code_pass_values(64 * 64);
+++    let texels: Vec<[f32; 3]> = values.iter().map(|&[r, g, b, _]| [r, g, b]).collect();
+++    for (format, metal) in [
+++        (P::RGB84202P, 0x303a_28c9),
+++        (P::RGB84222P, 0xd414_7cb3),
+++        (P::RGB84442P, 0x8d03_3f71),
+++        (P::RGB104202P, 0x9416_b68b),
+++        (P::RGB104222P, 0x6d8f_8efa),
+++        (P::RGB104442P, 0x7f29_8fea),
+++    ] {
+++        let codes = codes_of(format);
+++        let (luma, chroma) = ycbcr_store(codes, surface, &texels, [64, 64]).expect("stored");
+++        let all = luma.iter().copied().chain(chroma.iter().flatten().copied());
+++        assert_eq!(digest(all), metal, "{format:?}");
+++        let mut s = Surface::new(format, surface, [64, 8], 7);
+++        s.texels = texels[..64 * 8].iter().map(|&t| (t, false)).collect();
+++        assert_eq!(s.encoded(true), s.stored(), "{format:?}");
+++    }
+++}
+++
+++/// What one of our probe `ten1`'s rows left in its pass's texels.
++ #[derive(Clone, Copy, Debug)]
++ enum TenValues {
++     /// A draw of random channels: ties of the 1/2048, 1/4096, 1/8192 and 1/1023 grids up to 3
++@@ -935,7 +996,7 @@ enum TenValues {
++     Clears,
++ }
++ 
++-/// One of our probe `ten1`'s rows (EV GSM2-ten2-m4, an Apple M4 under macOS 27.0.1): passes into
+++/// One of our probe `ten1`'s rows (an Apple M4 under macOS 27.0.1): passes into
++ /// a texture of `size` and `format` over plane 0 of a CoreVideo surface of `surface`, the
++ /// planes' `plane_bytes` the generator filled first; and the digest of the codes Metal stored,
++ /// each pass's luma codes row by row, then its Cb and Cr codes of each pair, row by row.
++diff --git a/crates/metal2vulkan/src/cache/mod.rs b/crates/metal2vulkan/src/cache/mod.rs
++index 0af8abe5..72f2c4c4 100644
++--- a/crates/metal2vulkan/src/cache/mod.rs
+++++ b/crates/metal2vulkan/src/cache/mod.rs
++@@ -60,7 +60,7 @@ mod tests;
++ /// unchanged version, and its bless records the version. Independent of the crate's version and of
++ /// [`ARTIFACT_FORMAT_VERSION`]. The commit that bumps it says what changed; this comment keeps no
++ /// history.
++-pub const SEMANTICS_VERSION: u32 = 1698;
+++pub const SEMANTICS_VERSION: u32 = 101698;
++ 
++ /// The byte-layout version of encoded artifacts (`CompiledFunction::to_bytes` and the
++ /// [`PipelineArtifact`] encodings). Every encoded artifact carries it, and a decode under another
++@@ -93,7 +93,7 @@ pub const ARTIFACT_FORMAT_VERSION: u32 = 399;
++ /// changes no behaviour, and then updates that hash alone with the commit saying why, or changes
++ /// behaviour and also bumps this version. The commit that bumps it says what changed; this comment
++ /// keeps no history.
++-pub const RUNTIME_VERSION: u32 = 1211;
+++pub const RUNTIME_VERSION: u32 = 101211;
++ 
++ /// The digest of the sources this build of the crate was compiled from: SHA-256, as lowercase hex,
++ /// of the manifest, the build script, and exactly the files the crate roots' module tree compiles
++diff --git a/crates/metal2vulkan/src/metal/format/mod.rs b/crates/metal2vulkan/src/metal/format/mod.rs
++index 1d94ca0a..e65000f9 100644
++--- a/crates/metal2vulkan/src/metal/format/mod.rs
+++++ b/crates/metal2vulkan/src/metal/format/mod.rs
++@@ -130,11 +130,14 @@ pub enum FormatEmulation {
++     RotatedView,
++     /// A render pass's color attachment of a two-plane YCbCr format whose store Metal's planes
++     /// are matched for ([`ycbcr_renders`]): `R32G32B32A32_SFLOAT` of the values the pass leaves
++-    /// in each texel (the fragment function's output, or the clear color through `float`),
++-    /// which the consumer encodes into the surface's planes as the pass stores
++-    /// (`bind::ycbcr_store`, the encode kernel's store of every texel). Exact for an attachment
++-    /// a fragment function writes unblended through a mask of red, green and blue; admitted for
++-    /// that usage only (no blend: the pipeline refuses one).
+++    /// in each texel (the fragment function's output, the clear color through `float`, or the
+++    /// texel the pass loads), which the consumer encodes into the surface's planes as the pass
+++    /// stores (`bind::ycbcr_store`, the encode kernel's store of every texel). Exact for an
+++    /// attachment a fragment function writes unblended, under any write mask (a masked channel
+++    /// keeps the texel's value, as Metal's tile keeps it). Admitted for a color attachment and
+++    /// its blend (where the device blends `R32G32B32A32_SFLOAT`), which the device computes in
+++    /// floats where Metal's tile blends halves: within a code of Metal's, which the consumer
+++    /// announces.
++     YCbCrRendered,
++     /// A pipeline's color attachment of a packed 10-bit two-plane YCbCr format whose pass is
++     /// refused ([`ycbcr_pass_refused`]): `R32G32B32A32_SFLOAT`, which no pass renders into.
++@@ -188,9 +191,10 @@ impl FormatEmulation {
++             FormatEmulation::YCbCr => {
++                 matches!(usage, U::SampledImage | U::SampledImageFilterLinear)
++             }
++-            FormatEmulation::YCbCrRendered | FormatEmulation::YCbCrPassRefused => {
++-                usage == U::ColorAttachment
+++            FormatEmulation::YCbCrRendered => {
+++                matches!(usage, U::ColorAttachment | U::ColorAttachmentBlend)
++             }
+++            FormatEmulation::YCbCrPassRefused => usage == U::ColorAttachment,
++             FormatEmulation::XChannel => matches!(
++                 usage,
++                 U::SampledImage
++@@ -1731,20 +1735,20 @@ pub fn ycbcr_writes_stored(pf: PixelFormat) -> bool {
++ /// ([`ycbcr`]) into the texture's planes as Metal stores it: the converted formats of unpacked
++ /// 8- and 10-bit codes, `YCBCR8_420_2P`, `YCBCR8_422_2P`, `YCBCR8_444_2P`, `YCBCR10_420_2P`,
++ /// `YCBCR10_422_2P` and `YCBCR10_444_2P`. Metal re-encodes every texel of the attachment, drawn
++-/// or not, into both planes at the pass's store, by the codes `bind::ycbcr_store` states (EV
++-/// XRR2-ycr1-m4, an Apple M4 under macOS 27.0.1: every byte of the 8-bit formats' clears and
++-/// full-screen draws over `420v`, `420f`, `422v` and `444v` surfaces, no matrix and BT.709; the
++-/// consumer's run of the same probe on an Apple M3 Max under macOS 26.7: the M4's bytes in every
++-/// case; EV GSM2-ten2-m4, the same M4: every byte of the 10-bit formats' draws and clears over
++-/// `x420`, `xf20`, `x422`, `xf22`, `x444` and `xf44`). Such an attachment renders into
++-/// `R32G32B32A32_SFLOAT` ([`FormatEmulation::YCbCrRendered`]), unblended, through a mask of red,
++-/// green and blue (the pipeline refuses a blend or a partial mask, `NotImplemented(Format)`). Not
++-/// the `_sRGB`, code or packed formats, whose stores no rule matches yet (a packed one's pass is
++-/// refused, [`ycbcr_pass_refused`]).
+++/// or not, into both planes at the pass's store, by the codes `bind::ycbcr_store` states (an Apple
+++/// M4 under macOS 27.0.1: every byte of the 8-bit formats' clears and full-screen draws over
+++/// `420v`, `420f`, `422v` and `444v` surfaces, no matrix and BT.709; the consumer's run of the same
+++/// probe on an Apple M3 Max under macOS 26.7: the M4's bytes in every case; the same M4: every byte
+++/// of the 10-bit formats' draws and clears over `x420`, `xf20`, `x422`, `xf22`, `x444` and `xf44`).
+++/// Such an attachment renders into `R32G32B32A32_SFLOAT` ([`FormatEmulation::YCbCrRendered`]),
+++/// through any write mask and, where the device blends that format, any blend (within a code of
+++/// Metal's, the runtime announces it; refused elsewhere, `Unsupported(Format)` naming the need).
+++/// Not the `_sRGB`, code or packed formats, whose stores no rule matches yet (a packed one's pass
+++/// is refused, [`ycbcr_pass_refused`]).
++ pub fn ycbcr_renders(pf: PixelFormat) -> bool {
++     // Every such layout is held ([`ycbcr`]), whose representation asks this.
++     ycbcr_format(pf)
++-        .is_some_and(|f| !f.packed && matches!(f.bits, 8 | 10) && f.reads == YCbCrReads::Converted)
+++        .is_some_and(|f| !f.packed && matches!(f.bits, 8 | 10) && matches!(f.reads, YCbCrReads::Converted | YCbCrReads::Codes))
++ }
++ 
++ /// Whether `pf` is a packed 10-bit two-plane YCbCr format this crate holds ([`ycbcr`]), whose
++diff --git a/crates/metal2vulkan/src/metal/format/tests.rs b/crates/metal2vulkan/src/metal/format/tests.rs
++index 0759d364..4677db23 100644
++--- a/crates/metal2vulkan/src/metal/format/tests.rs
+++++ b/crates/metal2vulkan/src/metal/format/tests.rs
++@@ -2293,7 +2293,13 @@ fn a_pass_renders_only_the_ycbcr_formats_whose_store_is_matched() {
++             P::YCBCR84442P,
++             P::YCBCR104202P,
++             P::YCBCR104222P,
++-            P::YCBCR104442P
+++            P::YCBCR104442P,
+++            P::RGB84202P,
+++            P::RGB84222P,
+++            P::RGB84442P,
+++            P::RGB104202P,
+++            P::RGB104222P,
+++            P::RGB104442P
++         ]
++     );
++     let refused: Vec<PixelFormat> = PixelFormat::ALL
++@@ -2322,7 +2328,21 @@ fn a_pass_renders_only_the_ycbcr_formats_whose_store_is_matched() {
++             );
++             let not_implemented: Result<FormatMapping, Error> =
++                 Err(Unsupported::not_implemented(Feature::Format).into());
++-            assert_eq!(blended, not_implemented, "{stem} {pf:?}");
+++            // A blend is the device's blend of the floats, where it blends them.
+++            let floats_blend = vk_format(
+++                P::RGBA32Float,
+++                &usages(&[U::ColorAttachment, U::ColorAttachmentBlend]),
+++                dev.profile(),
+++            )
+++            .is_ok();
+++            match (ycbcr_renders(pf), floats_blend) {
+++                (true, true) => assert_eq!(blended, attachment, "{stem} {pf:?}"),
+++                (true, false) => assert!(
+++                    matches!(&blended, Err(Error::Unsupported(u)) if u.feature == Feature::Format),
+++                    "{stem} {pf:?}: {blended:?}"
+++                ),
+++                (false, _) => assert_eq!(blended, not_implemented, "{stem} {pf:?}"),
+++            }
++             let emulation = match (ycbcr_renders(pf), ycbcr_pass_refused(pf)) {
++                 (true, false) => FormatEmulation::YCbCrRendered,
++                 (false, true) => FormatEmulation::YCbCrPassRefused,
++@@ -2556,3 +2576,21 @@ fn the_format_table_holds_each_format_s_entry() {
++         assert_eq!(summary(repr(pf)), summary(&make_repr(pf)), "{pf:?}");
++     }
++ }
+++
+++/// QuartzCore formats used by nezha: ordinary channels, HDR, packed 10-bit and XR.
+++/// These use the existing direct/extended-range paths; do not silently replace them
+++/// with an 8-bit format when a render target is requested.
+++#[test]
+++fn nezha_quartzcore_formats_have_sample_and_attachment_paths() {
+++    use FormatUsage as U;
+++    use PixelFormat as P;
+++    for (stem, dev) in committed_devices() {
+++        for pf in [P::R8Unorm, P::RG8Unorm, P::BGRA8Unorm, P::RGBA16Float,
+++                   P::BGR10A2Unorm, P::BGRA10XR, P::BGR10XR] {
+++            for usage in [U::SampledImage, U::ColorAttachment] {
+++                assert!(vk_format(pf, &usages(&[usage]), dev.profile()).is_ok(),
+++                        "{stem} {pf:?} {usage:?}");
+++            }
+++        }
+++    }
+++}
++diff --git a/crates/metal2vulkan/src/pipeline/link/graphics.rs b/crates/metal2vulkan/src/pipeline/link/graphics.rs
++index 4b88ffdf..1683a46a 100644
++--- a/crates/metal2vulkan/src/pipeline/link/graphics.rs
+++++ b/crates/metal2vulkan/src/pipeline/link/graphics.rs
++@@ -332,18 +332,6 @@ pub fn graphics_state(
++                         usages.insert(FormatUsage::ColorAttachmentBlend);
++                     }
++                     let descriptor_mask = color_write_mask(a.write_mask)?;
++-                    // A YCbCr attachment's store is matched for writes of its red, green and
++-                    // blue together (`metal::format::ycbcr_renders`); a mask of some of them is
++-                    // not.
++-                    let rgb = vk::ColorComponentFlags::R
++-                        | vk::ColorComponentFlags::G
++-                        | vk::ColorComponentFlags::B;
++-                    if metal::format::ycbcr_renders(a.pixel_format)
++-                        && !(descriptor_mask & rgb).is_empty()
++-                        && !descriptor_mask.contains(rgb)
++-                    {
++-                        return Err(Unsupported::not_implemented(Feature::Format).into());
++-                    }
++                     let descriptor_mask = match rotated {
++                         true => rotated_mask(descriptor_mask),
++                         false => descriptor_mask,
