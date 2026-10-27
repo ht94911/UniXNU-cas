@@ -1,5 +1,5 @@
 diff --git a/NativeAdrenoMetalPlugin.mm b/NativeAdrenoMetalPlugin.mm
-index 1e8f18d..ebc3511 100644
+index 1e8f18d..23e1699 100644
 --- a/NativeAdrenoMetalPlugin.mm
 +++ b/NativeAdrenoMetalPlugin.mm
 @@ -164,8 +164,19 @@ static unsigned gClientPort;
@@ -13,7 +13,7 @@ index 1e8f18d..ebc3511 100644
 +            // The existing kernel text channel prints every message, while each
 +            // message has a 60-byte limit. Send ordered pieces on the same hook.
 +            const size_t length=strlen(message);
-+            for (size_t at=0, part=0; at<length && part<32; at+=46, ++part) {
++            for (size_t at=0, part=0; at<length; at+=46, ++part) {
 +                snprintf(text, sizeof text, "problem%zu %.46s", part, message+at);
 +                streamText(*gpu, text);
 +            }
@@ -44,7 +44,7 @@ index 1e8f18d..ebc3511 100644
          // The status line (GPU8) every ten seconds, and the display hand-off client on its own thread: both only read or serve, neither is the discovery's.
          pthread_t monitor, scanout;
 diff --git a/NativeBridgeMetalFrontend.mm b/NativeBridgeMetalFrontend.mm
-index 09175ef..179c4bb 100644
+index 09175ef..33f8915 100644
 --- a/NativeBridgeMetalFrontend.mm
 +++ b/NativeBridgeMetalFrontend.mm
 @@ -263,9 +263,16 @@ static void noteProblem(NSString *what) {
@@ -65,19 +65,30 @@ index 09175ef..179c4bb 100644
   }
   memcpy(gLastProblems[1],gLastProblems[0],sizeof gLastProblems[0]);
   strlcpy(gLastProblems[0],what.UTF8String?:"?",sizeof gLastProblems[0]);
-@@ -1405,6 +1412,11 @@ static void journalRenderPipeline(MTLRenderPipelineDescriptor *d,uint64_t began,
+@@ -1405,6 +1412,22 @@ static void journalRenderPipeline(MTLRenderPipelineDescriptor *d,uint64_t began,
   line+=" | ";line+=quartzCoreCallers();
   for(char &c:line)if(c=='\n')c=' ';
   journal(line);
 + // Reuse the existing problem stream for complete failing descriptors, including
 + // the actual functions, constants and attachment formats/blend settings.
-+ static std::atomic<unsigned> reported{0};
-+ if(refused && native_bridge_metal_problem_hook && reported.fetch_add(1)<4)
-+  native_bridge_metal_problem_hook(line.c_str());
++ if(refused && native_bridge_metal_problem_hook) {
++  static std::mutex reportLock;
++  static std::vector<std::string> reported;
++  // Ignore the changing time/cost prefix when deduplicating: repeated early
++  // errors must not consume the reports for a different pipeline later.
++  const size_t keyAt=line.find(" label=");
++  const std::string key=keyAt==std::string::npos?line:line.substr(keyAt);
++  bool send=false;
++  {std::lock_guard<std::mutex> lock(reportLock);
++   if(reported.size()<32 && std::find(reported.begin(),reported.end(),key)==reported.end()) {
++    reported.push_back(key);send=true;
++   }}
++  if(send)native_bridge_metal_problem_hook(line.c_str());
++ }
  }
  // A render pipeline descriptor in the bridge's form; false, with the error, for a function of another device.
  static bool renderDescriptor(MTLRenderPipelineDescriptor *d,NmbRenderPipelineDescriptor *p,NSError **error) {
-@@ -1721,9 +1733,16 @@ static bool pipelineArchives(NSArray *list,std::vector<NmbBinaryArchive *> &arch
+@@ -1721,9 +1744,16 @@ static bool pipelineArchives(NSArray *list,std::vector<NmbBinaryArchive *> &arch
   if(!computeDescriptor(d,&p,linked,privateLinked,error))return nil;
   std::vector<NmbBinaryArchive *> archives;
   if(!pipelineArchives(d.binaryArchives,archives,error))return nil;
@@ -96,7 +107,7 @@ index 09175ef..179c4bb 100644
   if(!handle)return failWith<id<MTLComputePipelineState>>(error,@"compute pipeline",nil);
   NBComputePipeline *state=[NBComputePipeline new];state.handle=handle;state.label=d.label;gPipelines++;
   if(error)*error=nil;return (id<MTLComputePipelineState>)state;
-@@ -1738,9 +1757,14 @@ static bool pipelineArchives(NSArray *list,std::vector<NmbBinaryArchive *> &arch
+@@ -1738,9 +1768,14 @@ static bool pipelineArchives(NSArray *list,std::vector<NmbBinaryArchive *> &arch
   if(!renderDescriptor(d,p,error)){delete p;return nil;}
   std::vector<NmbBinaryArchive *> archives;
   if(!pipelineArchives(d.binaryArchives,archives,error)){delete p;return nil;}
@@ -113,7 +124,7 @@ index 09175ef..179c4bb 100644
   journalRenderPipeline(d,pipelineBegan,handle?nullptr:nmb_last_error(),gJournalPath.empty()?std::string():NBCost::now().since(costBegan));
   if(!handle)return failWith<id<MTLRenderPipelineState>>(error,@"render pipeline",nil);
   NBRenderPipeline *state=[NBRenderPipeline new];state.handle=handle;gPipelines++;if(error)*error=nil;return (id<MTLRenderPipelineState>)state;
-@@ -1774,6 +1798,12 @@ static bool pipelineArchives(NSArray *list,std::vector<NmbBinaryArchive *> &arch
+@@ -1774,6 +1809,12 @@ static bool pipelineArchives(NSArray *list,std::vector<NmbBinaryArchive *> &arch
  - (id<MTLBinaryArchive>)newBinaryArchiveWithDescriptor:(MTLBinaryArchiveDescriptor *)d error:(NSError **)error {
   if(d.url && !d.url.isFileURL){if(error)*error=nbError(@"a file URL is required");return nil;}
   NmbBinaryArchive *handle=nmb_binary_archive_new(gDevice,d.url?d.url.fileSystemRepresentation:nullptr);
@@ -126,7 +137,7 @@ index 09175ef..179c4bb 100644
   if(!handle)return failWith<id<MTLBinaryArchive>>(error,@"binary archive",nil);
   NBBinaryArchive *archive=[NBBinaryArchive new];archive.handle=handle;if(error)*error=nil;return (id<MTLBinaryArchive>)archive;
  }
-@@ -1827,7 +1857,12 @@ static void installAnswers(Class cls) {
+@@ -1827,7 +1868,12 @@ static void installAnswers(Class cls) {
    SEL sel=sel_registerName(name);uint64_t value=0;
    switch(kind) {
    case NMB_ANSWER_COUNT: case NMB_ANSWER_FLAG:
