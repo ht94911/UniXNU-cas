@@ -46,7 +46,7 @@ index 1e8f18d..a5a0b97 100644
          // The status line (GPU8) every ten seconds, and the display hand-off client on its own thread: both only read or serve, neither is the discovery's.
          pthread_t monitor, scanout;
 diff --git a/NativeBridgeMetalFrontend.mm b/NativeBridgeMetalFrontend.mm
-index 09175ef..9b021b6 100644
+index 09175ef..abeec60 100644
 --- a/NativeBridgeMetalFrontend.mm
 +++ b/NativeBridgeMetalFrontend.mm
 @@ -10,6 +10,7 @@
@@ -66,7 +66,29 @@ index 09175ef..9b021b6 100644
  // What the render server actually asks of the GPU (int-141: 59 commits in 200 s, and a desktop that behaves like CPU compositing): render passes,
  // draws, the pixels of their first colour attachment, compute dispatches, blits and the largest pass (pixels).
  static std::atomic<uint64_t> gPasses,gDraws,gPassPixels,gDispatches,gBlits,gBiggestPass,gFullScreenPasses;
-@@ -259,13 +260,25 @@ static char gLastProblems[2][200];
+@@ -201,6 +202,11 @@ static void sampleWriteProfile(uint32_t &consumed,int &fd,const char *const *pat
+  if(write(fd,out.data(),out.size())<0)return;
+ }
+ static void traceStartWriter() {
++ // n5-metal-018: frames.trace and cpu.profile live in backboardd's Caches. Every other Metal client (WidgetRenderer_Default,
++ // iconservicesagent, PosterBoard) is denied by its sandbox, and the writer retried the open every 400 ms: a sandbox report
++ // each time ("11 duplicate reports" over and over in 017). Only the render server writes them.
++ static const bool renderServer=!strcmp(getprogname(),"backboardd");
++ if(!renderServer)return;
+  bool expected=false;
+  if(!gTraceStarted.compare_exchange_strong(expected,true))return;
+  std::thread([]{
+@@ -213,7 +219,8 @@ static void traceStartWriter() {
+    usleep(400000);
+    sampleWriteProfile(sampled,profileFd,profilePaths);
+    if(fd<0)for(const char *path:paths){fd=open(path,O_WRONLY|O_CREAT|O_TRUNC,0644);if(fd>=0)break;}
+-   if(fd<0)continue;
++   static unsigned refused;
++   if(fd<0){if(++refused>=10)return;continue;}   // n5-metal-018: give up after ten refused opens
+    uint32_t head=gTraceHead.load();
+    if(head<written+4)continue;
+    head-=4;                                   // records still being filled stay for the next round
+@@ -259,13 +266,25 @@ static char gLastProblems[2][200];
  static char gFirstProblem[200];
  // Called once with the first problem, on the thread that hit it: a polling reader missed WidgetRenderer's, which crashed within its first second.
  void (*native_bridge_metal_problem_hook)(const char *);
@@ -93,7 +115,7 @@ index 09175ef..9b021b6 100644
   }
   memcpy(gLastProblems[1],gLastProblems[0],sizeof gLastProblems[0]);
   strlcpy(gLastProblems[0],what.UTF8String?:"?",sizeof gLastProblems[0]);
-@@ -274,7 +287,7 @@ static void noteProblem(NSString *what) {
+@@ -274,7 +293,7 @@ static void noteProblem(NSString *what) {
  // The pixel formats textures were asked for (first eight distinct), with how many were refused: native_bridge_metal_formats.
  static uint32_t gFormats[8];static unsigned gFormatCount;static std::atomic<uint64_t> gTextureRefusals;
  // Textures over IOSurfaces: made, refused, and how many of the requests named a planar surface.
@@ -102,7 +124,7 @@ index 09175ef..9b021b6 100644
  // The last refused surface texture: the check that refused it (1 plane, 2 base, 3 plane range, 4 import, 5 texture), the surface's format,
  // planes, requested plane, plane offset, plane row bytes and allocation, and the descriptor's size and pixel format.
  struct SurfaceRefusal {uint32_t step,format,planes,plane,pixelFormat;uint64_t offset,row,allocation,width,height;};
-@@ -502,12 +515,32 @@ static NBTexture *textureOnBuffer(NBBuffer *buffer,MTLTextureDescriptor *d,NSUIn
+@@ -502,12 +521,32 @@ static NBTexture *textureOnBuffer(NBBuffer *buffer,MTLTextureDescriptor *d,NSUIn
   NBTexture *texture=[NBTexture new];texture.handle=handle;nmb_texture_describe(handle,&descriptor);texture.descriptor=descriptor;
   texture.buffer=buffer;texture.offset=offset;texture.rowBytes=row;return texture;
  }
@@ -136,7 +158,7 @@ index 09175ef..9b021b6 100644
   if(!handle){NBLOG(@"native-metal: texture over surface refused: %@",lastError());return nil;}
   NBTexture *texture=[NBTexture new];texture.handle=handle;nmb_texture_describe(handle,&descriptor);texture.descriptor=descriptor;
   texture.buffer=buffer;texture.offset=offset;texture.rowBytes=row;return texture;
-@@ -663,11 +696,10 @@ static std::string quartzCoreCallers();
+@@ -663,11 +702,10 @@ static std::string quartzCoreCallers();
  @end
  @implementation NBRenderPipeline
  - (void)dealloc {nmb_render_pipeline_release(_handle);}
@@ -152,7 +174,7 @@ index 09175ef..9b021b6 100644
  @end
  @interface NBSampler : NBObject
  @property(nonatomic) NmbSampler *handle;
-@@ -905,14 +937,23 @@ static void waitForResource(id resource) {
+@@ -905,14 +943,23 @@ static void waitForResource(id resource) {
  - (void)setFragmentTexture:(id<MTLTexture>)t atTextureIndex:(NSUInteger)ti samplerState:(id<MTLSamplerState>)s atSamplerIndex:(NSUInteger)si {
   [self texture:t index:ti stage:2];[self sampler:s index:si stage:2];
  }
@@ -184,7 +206,7 @@ index 09175ef..9b021b6 100644
  - (void)setStencilReferenceValue:(uint32_t)v {[self check:nmb_render_set_stencil_reference(self.handle,v,v) what:"setStencilReferenceValue"];}
  - (void)setStencilFrontReferenceValue:(uint32_t)f backReferenceValue:(uint32_t)b {
   [self check:nmb_render_set_stencil_reference(self.handle,f,b) what:"setStencilReferenceValues"];
-@@ -1106,6 +1147,7 @@ extern "C" void NBWaitInFlight(uint64_t beforeUs);
+@@ -1106,6 +1153,7 @@ extern "C" void NBWaitInFlight(uint64_t beforeUs);
   }
   if(!attachment(d.depthAttachment,pass.depth) || !attachment(d.stencilAttachment,pass.stencil)){[self refuse:@"foreign depth/stencil attachment"];return nil;}
   pass.depth.clear[0]=d.depthAttachment.clearDepth;pass.stencil.clear[0]=d.stencilAttachment.clearStencil;
@@ -192,7 +214,7 @@ index 09175ef..9b021b6 100644
   pass.width=d.renderTargetWidth;pass.height=d.renderTargetHeight;pass.array_length=d.renderTargetArrayLength;pass.samples=d.defaultRasterSampleCount;
   if(d.visibilityResultBuffer) {
    if(![(id)d.visibilityResultBuffer isKindOfClass:[NBBuffer class]]){[self refuse:@"foreign visibility result buffer"];return nil;}
-@@ -1207,9 +1249,18 @@ extern "C" void NBWaitInFlight(uint64_t beforeUs);
+@@ -1207,9 +1255,18 @@ extern "C" void NBWaitInFlight(uint64_t beforeUs);
  - (void)waitUntilCompleted {
   if(!self.committed)return;
   const uint64_t began=nowUs();
@@ -213,7 +235,7 @@ index 09175ef..9b021b6 100644
   {
    TraceRec rec={};rec.type=2;rec.t0=began;rec.t1=nowUs();rec.tid=threadIdLow();rec.a=(uint32_t)(uintptr_t)__builtin_return_address(0);
    rec.cpu0=cpuStart;rec.cpu1=threadCpuUs();traceNote(rec.tid);tracePush(rec);
-@@ -1374,7 +1425,7 @@ struct NBCost {
+@@ -1374,7 +1431,7 @@ struct NBCost {
  // One journal line of a render pipeline creation begun at `began` (microseconds), `refused` its refusal or null. The label is the
  // caller's name for the pipeline (QuartzCore's: its spec's encoded name).
  static void journalRenderPipeline(MTLRenderPipelineDescriptor *d,uint64_t began,const char *refused,const std::string &cost) {
@@ -222,7 +244,7 @@ index 09175ef..9b021b6 100644
   const uint64_t ended=nowUs();uint64_t tid=0;pthread_threadid_np(nullptr,&tid);
   char head[256];
   snprintf(head,sizeof head,"R t=%llu tid=%llu main=%d us=%llu ok=%d samples=%lu topo=%lu ds=%lu/%lu",(unsigned long long)((began-gJournalBegan)/1000),
-@@ -1405,6 +1456,22 @@ static void journalRenderPipeline(MTLRenderPipelineDescriptor *d,uint64_t began,
+@@ -1405,6 +1462,22 @@ static void journalRenderPipeline(MTLRenderPipelineDescriptor *d,uint64_t began,
   line+=" | ";line+=quartzCoreCallers();
   for(char &c:line)if(c=='\n')c=' ';
   journal(line);
@@ -245,7 +267,7 @@ index 09175ef..9b021b6 100644
  }
  // A render pipeline descriptor in the bridge's form; false, with the error, for a function of another device.
  static bool renderDescriptor(MTLRenderPipelineDescriptor *d,NmbRenderPipelineDescriptor *p,NSError **error) {
-@@ -1668,8 +1735,10 @@ static bool pipelineArchives(NSArray *list,std::vector<NmbBinaryArchive *> &arch
+@@ -1668,8 +1741,10 @@ static bool pipelineArchives(NSArray *list,std::vector<NmbBinaryArchive *> &arch
   if(planes)gSurfacePlanar++;
   void *base=IOSurfaceGetBaseAddress(surface);const size_t page=(size_t)getpagesize(),allocation=IOSurfaceGetAllocSize(surface);
   if(!page || (page&(page-1)) || !base || ((uintptr_t)base&(page-1)) || !allocation || allocation>SIZE_MAX-(page-1)){refuseSurface(2,surface,d,plane,(uintptr_t)base,0);return nil;}
@@ -258,7 +280,7 @@ index 09175ef..9b021b6 100644
   if(start<(uintptr_t)base || start-(uintptr_t)base>=allocation || !row){refuseSurface(3,surface,d,plane,start-(uintptr_t)base,row);return nil;}
   const size_t bytes=(allocation+page-1)&~(page-1);
   NBBuffer *buffer=surfaceBuffer(surface,base,bytes);if(!buffer){refuseSurface(4,surface,d,plane,start-(uintptr_t)base,row);return nil;}
-@@ -1721,13 +1790,39 @@ static bool pipelineArchives(NSArray *list,std::vector<NmbBinaryArchive *> &arch
+@@ -1721,13 +1796,39 @@ static bool pipelineArchives(NSArray *list,std::vector<NmbBinaryArchive *> &arch
   if(!computeDescriptor(d,&p,linked,privateLinked,error))return nil;
   std::vector<NmbBinaryArchive *> archives;
   if(!pipelineArchives(d.binaryArchives,archives,error))return nil;
@@ -300,7 +322,7 @@ index 09175ef..9b021b6 100644
  - (id<MTLRenderPipelineState>)newRenderPipelineStateWithDescriptor:(MTLRenderPipelineDescriptor *)d error:(NSError **)error {
   return [(id<MTLDevice>)self newRenderPipelineStateWithDescriptor:d options:MTLPipelineOptionNone reflection:nil error:error];
  }
-@@ -1738,9 +1833,14 @@ static bool pipelineArchives(NSArray *list,std::vector<NmbBinaryArchive *> &arch
+@@ -1738,9 +1839,14 @@ static bool pipelineArchives(NSArray *list,std::vector<NmbBinaryArchive *> &arch
   if(!renderDescriptor(d,p,error)){delete p;return nil;}
   std::vector<NmbBinaryArchive *> archives;
   if(!pipelineArchives(d.binaryArchives,archives,error)){delete p;return nil;}
@@ -317,7 +339,7 @@ index 09175ef..9b021b6 100644
   journalRenderPipeline(d,pipelineBegan,handle?nullptr:nmb_last_error(),gJournalPath.empty()?std::string():NBCost::now().since(costBegan));
   if(!handle)return failWith<id<MTLRenderPipelineState>>(error,@"render pipeline",nil);
   NBRenderPipeline *state=[NBRenderPipeline new];state.handle=handle;gPipelines++;if(error)*error=nil;return (id<MTLRenderPipelineState>)state;
-@@ -1774,6 +1874,12 @@ static bool pipelineArchives(NSArray *list,std::vector<NmbBinaryArchive *> &arch
+@@ -1774,6 +1880,12 @@ static bool pipelineArchives(NSArray *list,std::vector<NmbBinaryArchive *> &arch
  - (id<MTLBinaryArchive>)newBinaryArchiveWithDescriptor:(MTLBinaryArchiveDescriptor *)d error:(NSError **)error {
   if(d.url && !d.url.isFileURL){if(error)*error=nbError(@"a file URL is required");return nil;}
   NmbBinaryArchive *handle=nmb_binary_archive_new(gDevice,d.url?d.url.fileSystemRepresentation:nullptr);
@@ -330,7 +352,7 @@ index 09175ef..9b021b6 100644
   if(!handle)return failWith<id<MTLBinaryArchive>>(error,@"binary archive",nil);
   NBBinaryArchive *archive=[NBBinaryArchive new];archive.handle=handle;if(error)*error=nil;return (id<MTLBinaryArchive>)archive;
  }
-@@ -1827,7 +1933,13 @@ static void installAnswers(Class cls) {
+@@ -1827,7 +1939,13 @@ static void installAnswers(Class cls) {
    SEL sel=sel_registerName(name);uint64_t value=0;
    switch(kind) {
    case NMB_ANSWER_COUNT: case NMB_ANSWER_FLAG:
@@ -345,7 +367,7 @@ index 09175ef..9b021b6 100644
     // Extended-range 10-bit (XR10) framebuffers are withheld: this display chain presents 8-bit BGRX scanout only. The render server picks its
     // wide-gamut 64-bit (and Apple-compressed) framebuffer when a device offers them, and the display driver could not show it (int-089: the
     // swap's surface was '&w4a', 8 bytes per pixel, and every swap was refused).
-@@ -1886,15 +1998,21 @@ extern "C" bool native_bridge_metal_work_stats(uint64_t out[10]) {
+@@ -1886,15 +2004,21 @@ extern "C" bool native_bridge_metal_work_stats(uint64_t out[10]) {
   return gDevice && nmb_device_work_stats(gDevice,out);
  }
  
@@ -359,7 +381,7 @@ index 09175ef..9b021b6 100644
   std::lock_guard<std::mutex> lock(gProblemLock);
 - return (size_t)snprintf(out,size,"c%llu/%llu d%llu p%llu x%llu R%llu D%llu F%llu M%llu C%llu B%llu %s | %s",(unsigned long long)gCommits.load(),(unsigned long long)gCommitFailures.load(),(unsigned long long)gCompleted.load(),
 -  (unsigned long long)gPipelines.load(),(unsigned long long)gProblems.load(),(unsigned long long)gPasses.load(),(unsigned long long)gDraws.load(),(unsigned long long)gFullScreenPasses.load(),(unsigned long long)(gBiggestPass.load()>>10),(unsigned long long)gDispatches.load(),(unsigned long long)gBlits.load(),gLastProblems[0],gLastProblems[1]);
-+ return (size_t)snprintf(out,size,"c%llu/%llu d%llu p%llu x%llu R%llu D%llu F%llu M%llu C%llu B%llu T%llu tp%llu/%llu/%llu tl%llu tf%llu I%llx %s | %s",(unsigned long long)gCommits.load(),(unsigned long long)gCommitFailures.load(),(unsigned long long)gCompleted.load(),
++ return (size_t)snprintf(out,size,"c%llu/%llu sf%llu/%lluM/%llums rw%llums wc%llums ec%llums d%llu p%llu x%llu R%llu D%llu F%llu M%llu C%llu B%llu T%llu tp%llu/%llu/%llu tl%llu tf%llu I%llx %s | %s",(unsigned long long)gCommits.load(),(unsigned long long)gCommitFailures.load(),(unsigned long long)gTimeSurfaceFlush.count.load(),(unsigned long long)(gSurfaceFlushBytes.load()>>20),(unsigned long long)(gTimeSurfaceFlush.total.load()/1000),(unsigned long long)(gTimeResourceWait.total.load()/1000),(unsigned long long)(gTimeWaitCompleted.total.load()/1000),(unsigned long long)(gTimeEncodeToCommit.total.load()/1000),(unsigned long long)gCompleted.load(),
 +  (unsigned long long)gPipelines.load(),(unsigned long long)gProblems.load(),(unsigned long long)gPasses.load(),(unsigned long long)gDraws.load(),(unsigned long long)gFullScreenPasses.load(),(unsigned long long)(gBiggestPass.load()>>10),(unsigned long long)gDispatches.load(),(unsigned long long)gBlits.load(),(unsigned long long)gWaitTimeouts.load(),(unsigned long long)gTimePipeline.count.load(),(unsigned long long)(gTimePipeline.total.load()/1000),(unsigned long long)(gTimePipeline.slowest.load()/1000),(unsigned long long)(gTimeLibrary.total.load()/1000),(unsigned long long)(gTimeFunction.total.load()/1000),(unsigned long long)pluginImageBase(),gLastProblems[0],gLastProblems[1]);
  }
  
@@ -371,7 +393,7 @@ index 09175ef..9b021b6 100644
   for(unsigned i=0;i<gFormatCount && n>0 && (size_t)n<size;i++)n+=snprintf(out+n,size-(size_t)n,"%u ",gFormats[i]);
   return n>0?(size_t)n:0;
  }
-@@ -2001,7 +2119,7 @@ extern "C" size_t native_bridge_metal_telemetry(char *out,size_t size) {
+@@ -2001,7 +2125,7 @@ extern "C" size_t native_bridge_metal_telemetry(char *out,size_t size) {
   row("G commit-to-complete n=%llu total=%llums max=%llums mean=%lluus",(unsigned long long)gTimeEncodeToCommit.count.load(),ms(gTimeEncodeToCommit.total.load()),
    ms(gTimeEncodeToCommit.slowest.load()),(unsigned long long)(gTimeEncodeToCommit.count.load()?gTimeEncodeToCommit.total.load()/gTimeEncodeToCommit.count.load():0));
   row("J scheduled wait n=%llu total=%llums max=%llums",(unsigned long long)gTimeWaitScheduled.count.load(),ms(gTimeWaitScheduled.total.load()),ms(gTimeWaitScheduled.slowest.load()));

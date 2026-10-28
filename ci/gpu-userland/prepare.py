@@ -116,7 +116,7 @@ def main():
     must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', '--check', patch])
     must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', patch])
     record['nezha_metal_patch'] = dict(source_base=modules['drivers/AdrenoMetal'],
-                                       local_source_commit='419939f', sha256=sha(patch))
+                                       local_source_commit='ec281fd', sha256=sha(patch))
     alias = root / 'drivers/NativeMobileDisplay'
     if not alias.exists():
         alias.symlink_to('GopFramebuffer', target_is_directory=True)
