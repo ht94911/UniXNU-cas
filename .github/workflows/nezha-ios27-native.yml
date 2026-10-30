@@ -1,7 +1,7 @@
-name: nezha iPhone27 native kernel
+name: nezha iPhone27 standalone native kernel
 on:
   push:
-    branches: [codex/ios27-native-003-20261030]
+    branches: [codex/ios27-standalone-010-20261031]
   workflow_dispatch:
 permissions:
   contents: read

@@ -1,13 +1,13 @@
 {
   "schema": 1,
-  "purpose": "iPhone27 source-built native kernel with USB hooks; no phone or proprietary IPSW upload",
+  "purpose": "macOS-only standalone early arm64e build; native003 fileset input retained; no donor/root/phone files",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
     "source_revision": "18f348a419153e545668072e6c174504f20d8db2",
     "source_tree": "3720af8f23387aced0d628526046b5b23a21dea5"
   },
-  "device_revision": "c85ab5f489a6b3dc425c70a226061310bcf70d83",
+  "device_revision": "652220c4ecba9d38f3858a3bc7b83dae6c34a9c5",
   "soc_revision": "7279542eb460a5113b56657c85740a1a10aa3df9",
   "xcode": "26.6",
   "files": {
@@ -30,7 +30,8 @@
     "source/soc/patches/xnu-12377/sheng-platform-power.patch": "6e68dbcdac670624f2a9806a61fef42110bfe6586029b3f1a0acb068c3a23ec2",
     "source/soc/soc.toml": "9cebcadf2d5a271ceb44ee5fc378ed739cff0e7e5a940007164a9917042fd92f",
     "source/device/patches/xnu-12377/zzzz-nezha-optional-runtime.patch": "0fb75b91889ce2f4251d65be02f2fecdeb1f70db857229d8d785a2b9710b574b",
-    "source/usb.bundle": "f3b7f47048eeb406e4224692a1460fa03ce5ced442e500ec7b3200b471543167"
+    "source/usb.bundle": "f3b7f47048eeb406e4224692a1460fa03ce5ced442e500ec7b3200b471543167",
+    "source/device/configs/nezha_ios27_native_defconfig": "076283a7deb546b2518886bfd1bb6ad86801ef0ab3000f4be5fdc94a35b84e45"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
@@ -42,5 +43,6 @@
     "source_tree": "ada6798052f145bc39849a27c1c76e434859d8b3",
     "history": "single shallow source commit only; restore declared boundary before checkout",
     "repository": "https://github.com/xiaoleGun/QcomXnuUsbDebug.git"
-  }
+  },
+  "defconfig": "nezha_ios27_native_defconfig"
 }

@@ -102,13 +102,36 @@ def build(framework, work):
         return probe
     config = work / 'build.toml'
     commands = [
-        ['python3', framework / 'unixnu', 'defconfig', 'nezha_ios27_defconfig', '--config', config],
+        ['python3', framework / 'unixnu', 'defconfig', json.loads((ROOT / 'inputs.json').read_text())['defconfig'], '--config', config],
         ['python3', framework / 'unixnu', 'kernel', '--skip-prelink', '--config', config],
     ]
     for index, command in enumerate(commands):
         code = run(command, cwd=framework, log=logs / ('step-' + str(index) + '.log'))
         if code:
             return code
+    # A native-only trial must have the upstream standalone relocation form.
+    import struct
+    kernels = list((work / 'out').glob('**/kernel/kernel.macho'))
+    if len(kernels) != 1:
+        raise ValueError('one standalone kernel expected')
+    data = kernels[0].read_bytes()
+    thread_bytes, chained = 0, False
+    offset = 32
+    for _ in range(struct.unpack_from('<I', data, 16)[0]):
+        cmd, size = struct.unpack_from('<II', data, offset)
+        chained |= cmd == 0x80000034
+        if cmd == 0x19:
+            for index in range(struct.unpack_from('<I', data, offset + 64)[0]):
+                at = offset + 72 + index * 80
+                if data[at:at+16].rstrip(b'\0') == b'__thread_starts':
+                    thread_bytes = struct.unpack_from('<Q', data, at + 40)[0]
+        offset += size
+    report = dict(kernel_sha256=sha(kernels[0]), MachO_type=struct.unpack_from('<I', data, 12)[0],
+                  chained_fixups=chained, thread_starts_bytes=thread_bytes, standalone_target=True,
+                  runtime_execution_verified=False)
+    (work / 'standalone-format-report.json').write_text(json.dumps(report, indent=2) + '\n')
+    if report['MachO_type'] != 2 or chained or thread_bytes <= 4:
+        raise ValueError('standalone output did not qualify: require MH_EXECUTE, threaded starts and no chained-fixups command')
     return 0
 
 
@@ -127,7 +150,7 @@ def collect(framework, work, sealed):
 
     add(ROOT / 'inputs.json', 'inputs.json')
     for name in ('source-report.json', 'compiler-report.json', 'authenticated-null.c',
-                 'authenticated-null.o', 'authenticated-null.s'):
+                 'authenticated-null.o', 'authenticated-null.s', 'standalone-format-report.json'):
         add(work / name, name)
     for path in sorted((work / 'logs').glob('*.log')):
         add(path, 'logs/' + path.name)
