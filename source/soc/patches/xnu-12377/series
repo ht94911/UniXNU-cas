@@ -1,0 +1,5 @@
+# Existing UniXNU SMP and myron Aff2 changes; validate/port against xnu12377 before build.
+native-smp-secondary.patch
+native-smp-wide-affinity.patch
+# Shared conditional PMGR call site required by upstream OS boot-progress patch; no SM8550 MMIO.
+sheng-platform-power.patch

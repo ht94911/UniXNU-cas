@@ -1,0 +1,65 @@
+name: nezha iPhone27 native kernel
+on:
+  push:
+    branches: [codex/ios27-native-001-20261030]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: nezha-ios27-native-${{ github.ref }}
+  cancel-in-progress: false
+defaults:
+  run:
+    shell: bash
+env:
+  HOMEBREW_NO_AUTO_UPDATE: 1
+  HOMEBREW_NO_INSTALL_CLEANUP: 1
+  HOMEBREW_NO_ENV_HINTS: 1
+  DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 345
+    steps:
+      - name: Check out the dedicated build inputs
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          path: task
+          persist-credentials: false
+      - name: Check out the pinned upstream framework
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: UniXNU/UniXNU
+          ref: 88604d01c191727bf4b4113269b3a9518bb730d3
+          path: unixnu
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.13'
+      - name: Install host build tools
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/ios27/setup-logs"
+          brew install cmake ninja unifdef llvm openssl@3 > "$RUNNER_TEMP/ios27/setup-logs/brew.log" 2>&1
+      - name: Reconstruct and verify the exact integration source tree
+        run: python3 task/ci/native.py prepare --framework unixnu --work "$RUNNER_TEMP/ios27/work"
+      - name: Qualify compiler and run the standard native build
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 task/ci/native.py build --framework unixnu --work "$RUNNER_TEMP/ios27/work"
+      - name: Seal outputs and diagnostics using the existing owner envelope
+        if: always()
+        run: |
+          set -euo pipefail
+          export PATH="$(brew --prefix openssl@3)/bin:$PATH"
+          python3 task/ci/native.py collect --framework unixnu --work "$RUNNER_TEMP/ios27/work" --sealed "$RUNNER_TEMP/ios27/sealed"
+      - name: Upload only the encrypted artifact
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: nezha-ios27-native-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/ios27/sealed/bundle.cms
+            ${{ runner.temp }}/ios27/sealed/envelope.json
+          if-no-files-found: error
+          retention-days: 90

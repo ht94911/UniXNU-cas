@@ -1,0 +1,190 @@
+# Local machine-checkable integration contract; no published porting record or hardware claim.
+schema_version = 1
+
+[device]
+name = "nezha"
+soc = "SM8850"
+os_profile = "ios-27.0.1-24A446-iphone14-4"
+summary = "Isolated real iPhone iOS27 desktop-first integration; Android and iPadOS17 preserved."
+
+[[area]]
+id = "configuration"
+status = "planned"
+components = ["ArmDTPlatform", "ArmCpu", "XnuPrelink"]
+paths = ["board.toml", "feeds.toml", "unixnu.lock", "configs/**", "porting.toml"]
+inputs = ["Format2 iPhone14,4 / d16ap / 27.0.1-24A446; isolated codex/ios27-integration."]
+configuration = ["board.toml and configs/nezha_ios27_defconfig select the current source-only step."]
+procedure = ["Use ./unixnu with isolated local inputs/out, jobs=32; preserve existing Android/ios17 and active Wi-Fi workspace."]
+findings = ["Official resolver selects arm64e; 76 ordered patches apply, including all five unchanged sheng device patches."]
+completion = ["Real iPhone iOS27 desktop/settings operable with protection verification; validate this area separately before promotion."]
+limits = ["No iOS27 device execution, donor ABI qualification or phone allocation is claimed."]
+next_action = ["Finish native compile and archive closure; never treat source/host checks as desktop acceptance."]
+evidence = []
+
+[[area]]
+id = "firmware"
+status = "planned"
+components = []
+paths = ["package/**", "dts/**"]
+inputs = ["Existing nezha multiboot UEFI and fixed widgets003/018A recovery identities."]
+configuration = ["board.toml and configs/nezha_ios27_defconfig select the current source-only step."]
+procedure = ["Use ./unixnu with isolated local inputs/out, jobs=32; preserve existing Android/ios17 and active Wi-Fi workspace."]
+findings = ["No iOS27 firmware image or phone window; shared selector and controller handoff remain unqualified."]
+completion = ["Real iPhone iOS27 desktop/settings operable with protection verification; validate this area separately before promotion."]
+limits = ["No iOS27 device execution, donor ABI qualification or phone allocation is claimed."]
+next_action = ["Reuse accepted BootShim/UEFI/DarwinBoot chain after memory and payload policy checks."]
+evidence = []
+
+[[area]]
+id = "cpu"
+status = "planned"
+components = ["ArmCpu", "ArmDTPlatform"]
+paths = ["patches/xnu-12377/**", "scripts/*armcpu*"]
+inputs = ["SM8850 MPIDR Aff2 and existing UniXNU SMP implementation; upstream arm64e native PAC patches."]
+configuration = ["board.toml and configs/nezha_ios27_defconfig select the current source-only step."]
+procedure = ["Use ./unixnu with isolated local inputs/out, jobs=32; preserve existing Android/ios17 and active Wi-Fi workspace."]
+findings = ["xnu12377 machine profile already defines eight CPUs; only reset affinity and lookup deltas are ported."]
+completion = ["Real iPhone iOS27 desktop/settings operable with protection verification; validate this area separately before promotion."]
+limits = ["No iOS27 device execution, donor ABI qualification or phone allocation is claimed."]
+next_action = ["First native compile with cpus=1; later verify exceptions/timer then secondary cores."]
+evidence = []
+
+[[area]]
+id = "memory"
+status = "planned"
+components = []
+paths = ["dts/**"]
+inputs = ["Existing nezha 4KiB reserved ranges and private translated SMMU ownership."]
+configuration = ["board.toml and configs/nezha_ios27_defconfig select the current source-only step."]
+procedure = ["Use ./unixnu with isolated local inputs/out, jobs=32; preserve existing Android/ios17 and active Wi-Fi workspace."]
+findings = ["No iOS27 DMA resources enabled; USB/GPU/UFS ownership and io_submap budget must be checked jointly."]
+completion = ["Real iPhone iOS27 desktop/settings operable with protection verification; validate this area separately before promotion."]
+limits = ["No iOS27 device execution, donor ABI qualification or phone allocation is claimed."]
+next_action = ["Account for every mapping and DMA lease before an observation candidate."]
+evidence = []
+
+[[area]]
+id = "storage"
+status = "planned"
+components = []
+paths = ["scripts/nezha-*root*", "scripts/nezha-storage*"]
+inputs = ["Only future /data/unixnu/ios27/{root,data,log,payload}.img; current ios17 mappings forbidden."]
+configuration = ["board.toml and configs/nezha_ios27_defconfig select the current source-only step."]
+procedure = ["Use ./unixnu with isolated local inputs/out, jobs=32; preserve existing Android/ios17 and active Wi-Fi workspace."]
+findings = ["No iOS27 phone files exist; OS UUIDs/digests and iPhone IOStorage ABI are pending."]
+completion = ["Real iPhone iOS27 desktop/settings operable with protection verification; validate this area separately before promotion."]
+limits = ["No iOS27 device execution, donor ABI qualification or phone allocation is claimed."]
+next_action = ["Reuse sheng storage algorithm with global pinned-file allowlist and no whole-userdata fallback."]
+evidence = []
+
+[[area]]
+id = "display"
+status = "planned"
+components = []
+paths = ["scripts/build-gop-legacy-display.py", "scripts/nezha_macho_late.py"]
+inputs = ["sheng27 Legacy display source and exact iPhone kernel audit."]
+configuration = ["board.toml and configs/nezha_ios27_defconfig select the current source-only step."]
+procedure = ["Use ./unixnu with isolated local inputs/out, jobs=32; preserve existing Android/ios17 and active Wi-Fi workspace."]
+findings = ["Legacy379 raw vector has one candidate; field/callback/PAC binding is not yet qualified."]
+completion = ["Real iPhone iOS27 desktop/settings operable with protection verification; validate this area separately before promotion."]
+limits = ["No iOS27 device execution, donor ABI qualification or phone allocation is claimed."]
+next_action = ["Reuse sheng27 builder and validate iPhone class ownership/fields before enabling display archive."]
+evidence = []
+
+[[area]]
+id = "input"
+status = "planned"
+components = []
+paths = ["scripts/nezha-input.py"]
+inputs = ["Existing SM8850 touch hardware path plus sheng HID source."]
+configuration = ["board.toml and configs/nezha_ios27_defconfig select the current source-only step."]
+procedure = ["Use ./unixnu with isolated local inputs/out, jobs=32; preserve existing Android/ios17 and active Wi-Fi workspace."]
+findings = ["IOHIDDevice registration size agrees with reference; multiple vtable candidates remain."]
+completion = ["Real iPhone iOS27 desktop/settings operable with protection verification; validate this area separately before promotion."]
+limits = ["No iOS27 device execution, donor ABI qualification or phone allocation is claimed."]
+next_action = ["Prove class/vtable ownership and callbacks; recompile for arm64e instead of reusing 17 binaries."]
+evidence = []
+
+[[area]]
+id = "gpu"
+status = "planned"
+components = []
+paths = ["scripts/nezha-gpu.py"]
+inputs = ["Existing accepted 17 GPU implementation and upstream 27 graphics interfaces."]
+configuration = ["board.toml and configs/nezha_ios27_defconfig select the current source-only step."]
+procedure = ["Use ./unixnu with isolated local inputs/out, jobs=32; preserve existing Android/ios17 and active Wi-Fi workspace."]
+findings = ["GPU optimization outside desktop-first milestone; 17 binary/ABI cannot be transplanted."]
+completion = ["Real iPhone iOS27 desktop/settings operable with protection verification; validate this area separately before promotion."]
+limits = ["No iOS27 device execution, donor ABI qualification or phone allocation is claimed."]
+next_action = ["Use CPU display path for first desktop; add Metal only after correct 27 source ABI."]
+evidence = []
+
+[[area]]
+id = "network"
+status = "planned"
+components = []
+paths = ["scripts/dev/**"]
+inputs = ["Separate active Wi-Fi work owns the phone; no Wi-Fi code imported into this branch."]
+configuration = ["board.toml and configs/nezha_ios27_defconfig select the current source-only step."]
+procedure = ["Use ./unixnu with isolated local inputs/out, jobs=32; preserve existing Android/ios17 and active Wi-Fi workspace."]
+findings = ["Association/IP is not a prerequisite for this desktop milestone."]
+completion = ["Real iPhone iOS27 desktop/settings operable with protection verification; validate this area separately before promotion."]
+limits = ["No iOS27 device execution, donor ABI qualification or phone allocation is claimed."]
+next_action = ["Keep this work computer-only until a coordinated authorized phone window exists."]
+evidence = []
+
+[[area]]
+id = "audio"
+status = "planned"
+components = []
+paths = ["patches/xnu-12377/zzyd-sheng-audio-addon-mount.patch"]
+inputs = ["Unchanged sheng conditional addon mount patch."]
+configuration = ["board.toml and configs/nezha_ios27_defconfig select the current source-only step."]
+procedure = ["Use ./unixnu with isolated local inputs/out, jobs=32; preserve existing Android/ios17 and active Wi-Fi workspace."]
+findings = ["Patch reuse does not qualify an iPhone audio addon or codec driver; no audio archive enabled."]
+completion = ["Real iPhone iOS27 desktop/settings operable with protection verification; validate this area separately before promotion."]
+limits = ["No iOS27 device execution, donor ABI qualification or phone allocation is claimed."]
+next_action = ["Retain source chain and defer actual audio resources until after desktop."]
+evidence = []
+
+[[area]]
+id = "power"
+status = "planned"
+components = []
+paths = ["patches/xnu-12377/**"]
+inputs = ["Existing conditional sheng PMGR call and SM8850 power ownership."]
+configuration = ["board.toml and configs/nezha_ios27_defconfig select the current source-only step."]
+procedure = ["Use ./unixnu with isolated local inputs/out, jobs=32; preserve existing Android/ios17 and active Wi-Fi workspace."]
+findings = ["No SM8550 register values introduced; PMGR private class/field ABI remains pending."]
+completion = ["Real iPhone iOS27 desktop/settings operable with protection verification; validate this area separately before promotion."]
+limits = ["No iOS27 device execution, donor ABI qualification or phone allocation is claimed."]
+next_action = ["Audit AMFI/PMGR contract and preserve both reset timers at zero."]
+evidence = []
+
+[[area]]
+id = "packaging"
+status = "planned"
+components = []
+paths = ["board.toml", "scripts/nezha_bootimg.py"]
+inputs = ["Official unixnu kernel/prelink/payload/bootimg outputs and isolated iPhone profile."]
+configuration = ["board.toml and configs/nezha_ios27_defconfig select the current source-only step."]
+procedure = ["Use ./unixnu with isolated local inputs/out, jobs=32; preserve existing Android/ios17 and active Wi-Fi workspace."]
+findings = ["Native-only compile configuration is not a bootable desktop package; no Data seed/root or payload produced."]
+completion = ["Real iPhone iOS27 desktop/settings operable with protection verification; validate this area separately before promotion."]
+limits = ["No iOS27 device execution, donor ABI qualification or phone allocation is claimed."]
+next_action = ["Finish source closure, donor bindings and restricted disk manifest before payload assembly."]
+evidence = []
+
+[[area]]
+id = "diagnostics"
+status = "planned"
+components = []
+paths = ["scripts/**"]
+inputs = ["Pinned USB004/c058ffe and existing QcomEarlyLog/host protocol; current native compile logs."]
+configuration = ["board.toml and configs/nezha_ios27_defconfig select the current source-only step."]
+procedure = ["Use ./unixnu with isolated local inputs/out, jobs=32; preserve existing Android/ios17 and active Wi-Fi workspace."]
+findings = ["USB archive/hooks not enabled yet; earliest PAC/page-table failures cannot promise COM output."]
+completion = ["Real iPhone iOS27 desktop/settings operable with protection verification; validate this area separately before promotion."]
+limits = ["No iOS27 device execution, donor ABI qualification or phone allocation is claimed."]
+next_action = ["Port versioned XNU12377 hooks; CPU-only early queue, hardware init on normal boot thread; no remote reset."]
+evidence = []

@@ -1,0 +1,30 @@
+# iPhone iOS27 integration; source-only first compile, NOT a bootable desktop package yet.
+schema_version = 2
+[board]
+name = "nezha"
+soc = "SM8850"
+soc_source = "sm8850"
+os_profile = "ios-27.0.1-24A446-iphone14-4"
+kit = "nezha"
+description = "Xiaomi 17 Ultra: isolated iPhone iOS27 integration, pinned-file policy required"
+[components]
+include = ["ArmDTPlatform", "ArmCpu", "XnuPrelink"]
+[kernel]
+defconfig = "nezha_ios27_defconfig"
+config_fragments = ["arch:configs/common.config", "soc:configs/sm8850.config", "os:configs/ipados.config"]
+patch_series = ["arch:patches/xnu/series", "soc:patches/xnu-12377/series", "os:patches/xnu/series", "device:patches/xnu-12377/series"]
+archives = ["build-corecrypto-14.py", "build-corecrypto-14.py --namespace", "component:ArmDTPlatform", "component:ArmCpu", "build-libpthread-kernel.py"]
+[device_tree]
+source = "device:dts/nezha.dts"
+include_dirs = ["soc:dts"]
+preserve_memory_ranges = true
+[payload]
+volume = "NEZHA_IOS27"
+size_mib = 176
+loader = "firmware"
+title = "nezha iPhone iOS27 development"
+timeout = -1
+panic_screen = true
+# No root or persistence until the separate ios27 mapping and source ABI are qualified.
+# USB archive/hooks must be integrated and verified before the G2 observation candidate.
+kernel_args = ["-v", "cpus=1", "native-source-storage=0", "native-ufs-root=0", "sheng-data-persist=0", "sheng-data-reset=0", "sheng-log=0", "nezha-reboot-after=0", "nezha-panic-reset=0"]

@@ -1,0 +1,38 @@
+{
+  "schema": 1,
+  "purpose": "iPhone27 native-only compiler/kernel closure; no phone or proprietary IPSW upload",
+  "framework": {
+    "upstream_repository": "UniXNU/UniXNU",
+    "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
+    "source_revision": "d9e24fc82ce57fa99ede657cbdefbf1e37a7a2ce",
+    "source_tree": "fe708470097f78be266684119f2db505b70143f4"
+  },
+  "device_revision": "6d955a35df80ab2b421a4aa74c7b8fe6df004530",
+  "soc_revision": "7279542eb460a5113b56657c85740a1a10aa3df9",
+  "xcode": "26.6",
+  "files": {
+    "source/device/board.toml": "7ddb94eca0e3c4db42f07959c87fcbab178ef8232ecb90243a99f11850e74548",
+    "source/device/configs/nezha_ios27_defconfig": "411e439cbaa4009ac18af9ae8deef384309713dd59b8117947401d0eb9dcd859",
+    "source/device/feeds.toml": "b50afa396f14b81ff0ff3f7e40fae2fb3385e7d06063ec134daa03ca252beb0d",
+    "source/device/patches/xnu-12377/series": "3d60bed40f86fe99a8b60e109c48fde1419c98bc0207e2d879d93c6cc023b8e9",
+    "source/device/patches/xnu-12377/source-storage-runtime.patch": "25c377c60db417b15fcc137acf380f0319cbff9d5ba012af1907f3485602b584",
+    "source/device/patches/xnu-12377/zzyd-sheng-audio-addon-mount.patch": "b51ed480b34c92452ea984fe056e5fce310bd929992d418f383a7e9268313c51",
+    "source/device/patches/xnu-12377/zzye-sheng-cpu-idle.patch": "95f57fb9994796c3de2429fe82b6a521620b9f13b83e29eba12185f5ada4da86",
+    "source/device/patches/xnu-12377/zzyf-sheng-amp.patch": "07abb7ce25c626ddc37069ecc9e168b85a1da8e02b42b19649a10f667aa5a56b",
+    "source/device/patches/xnu-12377/zzzz-sheng-ipados27-bringup.patch": "c882c9c97d27c67ecf5fcb43aee86dfd761129bc602fdbd7490e771164adaa30",
+    "source/device/porting.toml": "7ac71bc5e3bc1ba472a434f7cd8d42cb0b93b35dfe275f49785a50618036707f",
+    "source/device/unixnu.lock": "20bddaafe9eabe0874d433fd101156d0db2b3e5786681062de46afe971639daf",
+    "source/framework.patch": "6401475c118e39539ef6f0d3c9ecb85e95c9339cb4c011cd81d0314a9ce6d1bf",
+    "source/soc/configs/sm8850.config": "5510debad6dc3326908a4d23082f715e62d32a1a5e6587197da3dbf18977e5bc",
+    "source/soc/patches/xnu-12377/native-smp-secondary.patch": "9d9164921da548a9f13ccbd6093c799583f54e590ef3d562288dcea9ba5a2774",
+    "source/soc/patches/xnu-12377/native-smp-wide-affinity.patch": "792c8a08e4c8eb2101c70705fbf83e9b514129c36ee176b3133d1db5d4e84125",
+    "source/soc/patches/xnu-12377/series": "bb95255800677aae6c7ba2742e892e0d40b4c34eb40816b58214c1393759bc1d",
+    "source/soc/patches/xnu-12377/sheng-platform-power.patch": "6e68dbcdac670624f2a9806a61fef42110bfe6586029b3f1a0acb068c3a23ec2",
+    "source/soc/soc.toml": "9cebcadf2d5a271ceb44ee5fc378ed739cff0e7e5a940007164a9917042fd92f"
+  },
+  "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
+  "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
+  "certificate_sha256": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
+  "device_executed": false,
+  "usb_enabled": false
+}

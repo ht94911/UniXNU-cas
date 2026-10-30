@@ -1,0 +1,11 @@
+# Fixed independent SoC and arm64e CPU implementation; local.toml supplies this machine's SoC path.
+[[source]]
+name = "sm8850"
+kind = "soc"
+git = "https://github.com/ht94911/UniXNU-sm8850-common.git"
+commit = "91ccb7a55d15ee1f17fcd3b0b2d65ff31569364c"
+[[source]]
+name = "ArmCpu"
+kind = "driver"
+git = "https://github.com/UniXNU/ArmCpu.git"
+commit = "4bd3230f48121e47a0badb4ea2d1674715ba2197"
