@@ -1,7 +1,7 @@
-name: nezha iPhone27 native kernel
+name: nezha iPhone27 comparison reference
 on:
   push:
-    branches: [codex/ios27-native-003-20261030]
+    branches: [codex/ios27-reference-004-20261031]
   workflow_dispatch:
 permissions:
   contents: read
@@ -47,6 +47,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: python3 task/ci/native.py build --framework unixnu --work "$RUNNER_TEMP/ios27/work"
+      - name: Build the upstream RELEASE comparison input
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 task/ci/native.py reference --framework unixnu --work "$RUNNER_TEMP/ios27/work"
       - name: Seal outputs and diagnostics using the existing owner envelope
         if: always()
         run: |

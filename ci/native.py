@@ -112,6 +112,16 @@ def build(framework, work):
     return 0
 
 
+def reference(framework, work):
+    targets = list((work / 'out/nezha/ios-27.0.1-24A446-iphone14-4').glob('*'))
+    targets = [p for p in targets if (p / 'tree/.cache/xnu-work').is_dir()]
+    if len(targets) != 1:
+        raise ValueError('select exactly one prepared source target for the comparison reference')
+    return run(['python3', framework / 'scripts/build-fileset-release-reference.py',
+                '--tree', targets[0] / 'tree', '--ios-version', '27.0', '--jobs', '3', '--lto'],
+               cwd=framework, log=work / 'logs/reference-step.log')
+
+
 def collect(framework, work, sealed):
     collected = work.parent / 'collected'
     collected.mkdir(exist_ok=False)
@@ -153,6 +163,13 @@ def collect(framework, work, sealed):
         objects = tree / 'build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837'
         for name in ('link.filelist', 'all-alias.exp'):
             add(objects / name, 'objects/' + name)
+        reference = tree / 'build/xnu/fileset-reference'
+        for path in sorted(reference.glob('*.json')):
+            add(path, 'reference/' + path.name)
+        for path in sorted(reference.glob('*.log')):
+            add(path, 'reference/' + path.name)
+        add(reference / 'lto-obj/RELEASE_ARM64_BCM2837/mach.release.bcm2837.unstripped.noctf',
+            'reference/kernel.macho')
         for stem in ('start', 'pe_kprintf', 'debug', 'printf', 'serial_console', 'serial_general',
                      'bsd_init', 'subr_prf', 'arm_init', 'startup'):
             for path in sorted(objects.glob('**/' + stem + '.o*')):
@@ -166,7 +183,7 @@ def collect(framework, work, sealed):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=('prepare', 'build', 'collect'))
+    parser.add_argument('action', choices=('prepare', 'build', 'reference', 'collect'))
     parser.add_argument('--framework', type=Path, required=True)
     parser.add_argument('--work', type=Path, required=True)
     parser.add_argument('--sealed', type=Path)
@@ -176,6 +193,8 @@ def main():
         prepare(framework, work)
     elif args.action == 'build':
         return build(framework, work)
+    elif args.action == 'reference':
+        return reference(framework, work)
     elif args.action == 'collect':
         if args.sealed is None:
             parser.error('--sealed required')

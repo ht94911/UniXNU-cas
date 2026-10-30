@@ -1,11 +1,11 @@
 {
   "schema": 1,
-  "purpose": "iPhone27 source-built native kernel with USB hooks; no phone or proprietary IPSW upload",
+  "purpose": "Build native prerequisites and the upstream symbol-bearing RELEASE/LTO comparison input; reference is never a boot candidate",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
-    "source_revision": "18f348a419153e545668072e6c174504f20d8db2",
-    "source_tree": "3720af8f23387aced0d628526046b5b23a21dea5"
+    "source_revision": "9d3c0c0ba32bfb57ea9abd5c0e436cf33670f722",
+    "source_tree": "61681a3b22b28c681ade4c26d1e6773e62845c19"
   },
   "device_revision": "c85ab5f489a6b3dc425c70a226061310bcf70d83",
   "soc_revision": "7279542eb460a5113b56657c85740a1a10aa3df9",
@@ -22,7 +22,7 @@
     "source/device/patches/xnu-12377/zzzz-sheng-ipados27-bringup.patch": "c882c9c97d27c67ecf5fcb43aee86dfd761129bc602fdbd7490e771164adaa30",
     "source/device/porting.toml": "0e849c8efdb00860d847bbb6e05aa23290c1a6464761a8a6e9851bab86381e44",
     "source/device/unixnu.lock": "20bddaafe9eabe0874d433fd101156d0db2b3e5786681062de46afe971639daf",
-    "source/framework.patch": "784c183751d9e3bab6dff58b9741a7e4cb914ebb9da4b1ec6dc9266d35755e1d",
+    "source/framework.patch": "d72adc01ebced468cfff436d4cdbea684b94a43f44fde2eddd8d2ab59a358b0b",
     "source/soc/configs/sm8850.config": "5510debad6dc3326908a4d23082f715e62d32a1a5e6587197da3dbf18977e5bc",
     "source/soc/patches/xnu-12377/native-smp-secondary.patch": "9d9164921da548a9f13ccbd6093c799583f54e590ef3d562288dcea9ba5a2774",
     "source/soc/patches/xnu-12377/native-smp-wide-affinity.patch": "792c8a08e4c8eb2101c70705fbf83e9b514129c36ee176b3133d1db5d4e84125",
@@ -42,5 +42,6 @@
     "source_tree": "ada6798052f145bc39849a27c1c76e434859d8b3",
     "history": "single shallow source commit only; restore declared boundary before checkout",
     "repository": "https://github.com/xiaoleGun/QcomXnuUsbDebug.git"
-  }
+  },
+  "comparison_reference": true
 }
