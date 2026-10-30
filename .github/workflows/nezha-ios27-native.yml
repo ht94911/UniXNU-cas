@@ -1,7 +1,7 @@
 name: nezha iPhone27 comparison reference
 on:
   push:
-    branches: [codex/ios27-reference-005-20261031]
+    branches: [codex/ios27-reference-006-20261031]
   workflow_dispatch:
 permissions:
   contents: read

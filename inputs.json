@@ -4,8 +4,8 @@
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
-    "source_revision": "331a352d512103d9138674bf2fc6d9054cda6534",
-    "source_tree": "efeda3e87e980af83bf13a89e15123ac80f6ea9f"
+    "source_revision": "cf4656290ccf60f473910fa8651b26dd5753123d",
+    "source_tree": "5ad6e178c954c9fd81eba18e08d68413c4e6d913"
   },
   "device_revision": "c85ab5f489a6b3dc425c70a226061310bcf70d83",
   "soc_revision": "7279542eb460a5113b56657c85740a1a10aa3df9",
@@ -22,7 +22,7 @@
     "source/device/patches/xnu-12377/zzzz-sheng-ipados27-bringup.patch": "c882c9c97d27c67ecf5fcb43aee86dfd761129bc602fdbd7490e771164adaa30",
     "source/device/porting.toml": "0e849c8efdb00860d847bbb6e05aa23290c1a6464761a8a6e9851bab86381e44",
     "source/device/unixnu.lock": "20bddaafe9eabe0874d433fd101156d0db2b3e5786681062de46afe971639daf",
-    "source/framework.patch": "166768c2e92cdff04f5d17747e28c6a0fd825e099d83335f9a89722c6d4b6258",
+    "source/framework.patch": "02dc7af960eb31c92433bc4701786aa3024b52d71c2dd2b27455a09ef1f2a282",
     "source/soc/configs/sm8850.config": "5510debad6dc3326908a4d23082f715e62d32a1a5e6587197da3dbf18977e5bc",
     "source/soc/patches/xnu-12377/native-smp-secondary.patch": "9d9164921da548a9f13ccbd6093c799583f54e590ef3d562288dcea9ba5a2774",
     "source/soc/patches/xnu-12377/native-smp-wide-affinity.patch": "792c8a08e4c8eb2101c70705fbf83e9b514129c36ee176b3133d1db5d4e84125",

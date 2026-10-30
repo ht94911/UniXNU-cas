@@ -174,7 +174,7 @@ index 0000000..3a6b424
 +# Disk images of this OS, in window order; the device sets the partition geometry.
 +windows = [{ name = "OS", component = "OS" }, { name = "SystemOS", component = "Cryptex1,SystemOS", optional = true }]
 diff --git a/scripts/build-fileset-release-reference.py b/scripts/build-fileset-release-reference.py
-index 247541c..d80d045 100644
+index 247541c..e044180 100644
 --- a/scripts/build-fileset-release-reference.py
 +++ b/scripts/build-fileset-release-reference.py
 @@ -7,18 +7,36 @@ import hashlib
@@ -220,17 +220,17 @@ index 247541c..d80d045 100644
      misplaced = '\n\tboot_progress_user_breakpoint(state, esr);\n#if __has_feature(ptrauth_calls)'
      if misplaced in text:
          sleh.write_text(text.replace(misplaced, '\n#if __has_feature(ptrauth_calls)', 1))
-+    # sheng's observation code calls proc_pid in RELEASE as well. The
-+    # DEVELOPMENT include graph exposed its declaration indirectly; require
-+    # the real public header in this private comparison copy instead of
-+    # accepting an implicit prototype or altering exception behavior.
++    # sheng's observation calls proc_pid in RELEASE too. DEVELOPMENT's
++    # vm_protos.h exposes it indirectly; sys/proc.h cannot be included in a
++    # Mach-domain TU (BSD dev_t/clock_t conflict with Mach/libsa). Reuse the
++    # exact forward declaration from XNU task.c/arm/model_dep.c.
 +    exception = source / 'osfmk/kern/exception.c'
 +    text = exception.read_text()
-+    if 'proc_pid(get_bsdtask_info(task))' in text and '#include <sys/proc.h>' not in text:
-+        anchor = '#include <sys/reason.h>\n'
++    if 'proc_pid(get_bsdtask_info(task))' in text and 'extern int      proc_pid(struct proc *p);' not in text:
++        anchor = 'extern int      proc_selfpid(void);\n'
 +        if text.count(anchor) != 1:
 +            raise SystemExit('reference exception header anchor changed')
-+        exception.write_text(text.replace(anchor, anchor + '#include <sys/proc.h>\n', 1))
++        exception.write_text(text.replace(anchor, anchor + 'extern int      proc_pid(struct proc *p);\n', 1))
      manifest = {str(p.relative_to(source)): hashlib.sha256(p.read_bytes()).hexdigest()
                  for p in source.rglob('*') if p.is_file()}
      (output/'source-sha256.json').write_text(json.dumps(manifest,indent=2)+'\n')
