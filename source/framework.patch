@@ -50,10 +50,10 @@ index 0000000..05a5fe4
 +arch:../../../patches/xnu-12377/darwin26-shared-region.patch
 diff --git a/profiles/os/ios-27.0.1-24A446-iphone14-4/profile.toml b/profiles/os/ios-27.0.1-24A446-iphone14-4/profile.toml
 new file mode 100644
-index 0000000..3a6b424
+index 0000000..288271e
 --- /dev/null
 +++ b/profiles/os/ios-27.0.1-24A446-iphone14-4/profile.toml
-@@ -0,0 +1,119 @@
+@@ -0,0 +1,121 @@
 +# iPhone integration input derived from UniXNU27/sheng. Not boot-qualified.
 +# Apple donor is xnu13432; source-built compatibility base remains xnu12377.
 +# Root UUID/digests and AMFI private binding intentionally absent until audited.
@@ -97,7 +97,9 @@ index 0000000..3a6b424
 +# Bring-up: match against the symbol-bearing RELEASE build of the same XNU source
 +# (scripts/build-fileset-release-reference.py --lto) and send unmatched calls to the
 +# reporting stub of fileset-unmapped-call.patch.
-+"extra_args" = ["--fileset-reference", "build/xnu/fileset-reference/mach.release.bcm2837.unstripped.noctf", "--allow-missing"]
++# First donor qualification refuses to emit with unresolved mappings. Any
++# explicitly requested diagnostic allow-missing run keeps its own identity.
++"extra_args" = ["--fileset-reference", "build/xnu/fileset-reference/mach.release.bcm2837.unstripped.noctf"]
 +"roots" = ["com.apple.AppleFSCompression.AppleFSCompressionTypeZlib", "com.apple.driver.AppleARMPlatform", "com.apple.driver.AppleARMWatchdogTimer", "com.apple.driver.AppleAudioClockLibs", "com.apple.driver.AppleEffaceableStorage", "com.apple.driver.AppleIISController", "com.apple.driver.AppleM2ScalerCSCDriver", "com.apple.driver.AppleMobileFileIntegrity", "com.apple.driver.ApplePMGR", "com.apple.driver.IODARTFamily", "com.apple.filesystems.apfs", "com.apple.iokit.CoreAnalyticsFamily", "com.apple.iokit.IOAVFamily", "com.apple.iokit.IOAudio2Family", "com.apple.iokit.IOCECFamily", "com.apple.iokit.IOCryptoAcceleratorFamily", "com.apple.iokit.IOGPUFamily", "com.apple.iokit.IOHDCPFamily", "com.apple.iokit.IOMobileGraphicsFamily", "com.apple.iokit.IOReportFamily", "com.apple.iokit.IOSlowAdaptiveClockingFamily", "com.apple.iokit.IOStorageFamily", "com.apple.iokit.IOSurface", "com.apple.kec.Libm", "com.apple.kec.corecrypto", "com.apple.kext.AppleMatch", "com.apple.kext.CoreTrust", "com.apple.security.AppleImage4", "com.apple.security.sandbox", "com.apple.iokit.IOHIDFamily", "com.apple.iokit.IOHIDEventDriver"]
 +
 +
@@ -174,7 +176,7 @@ index 0000000..3a6b424
 +# Disk images of this OS, in window order; the device sets the partition geometry.
 +windows = [{ name = "OS", component = "OS" }, { name = "SystemOS", component = "Cryptex1,SystemOS", optional = true }]
 diff --git a/scripts/build-fileset-release-reference.py b/scripts/build-fileset-release-reference.py
-index 247541c..e044180 100644
+index 247541c..5e8c819 100644
 --- a/scripts/build-fileset-release-reference.py
 +++ b/scripts/build-fileset-release-reference.py
 @@ -7,18 +7,36 @@ import hashlib
@@ -234,7 +236,7 @@ index 247541c..e044180 100644
      manifest = {str(p.relative_to(source)): hashlib.sha256(p.read_bytes()).hexdigest()
                  for p in source.rglob('*') if p.is_file()}
      (output/'source-sha256.json').write_text(json.dumps(manifest,indent=2)+'\n')
-@@ -37,24 +66,42 @@ forced = [root/f'build/{folder}/{name}' for folder,name in (
+@@ -37,24 +66,51 @@ forced = [root/f'build/{folder}/{name}' for folder,name in (
  assert all(p.is_file() for p in archives+forced)
  env = dict(os.environ, KERNEL_SDKROOT=str(sdk),
             XNU_AVAILABILITY_PL=str(sdk/'usr/local/libexec/availability.pl'))
@@ -253,6 +255,13 @@ index 247541c..e044180 100644
 -    'LDFLAGS_KERNEL_LTO=-miphoneos-version-min=26.0 -Wl,-mllvm,-inline-threshold=100',
 +    f'BUILD_LTO={int(options.lto)}','BOUND_CHECKS=0','BUILD_WERROR=0',f'MAKEJOBS=-j{options.jobs}',
 +    f'LDFLAGS_KERNEL_LTO=-miphoneos-version-min={options.ios_version} -Wl,-mllvm,-inline-threshold=100',
++    # The public RELEASE export list also names Apple-only UAT/DART/SPTM
++    # implementations excluded by BCM2837. This is a symbol-bearing naming
++    # reference, not a kext-export ABI or boot candidate. Use XNU's own
++    # no-export-list/-rdynamic strategy, retaining LTO and normal undefined
++    # call checks. No missing function is stubbed or dynamically resolved.
++    'LDFLAGS_KERNEL_ONLY_CONFIG_RELEASEARM64=',
++    'LDFLAGS_KERNEL_STRIP_LTO=-rdynamic',
      f'CFLAGS_EXTRA={flags}',
      'copyio.o_CFLAGS_ADD=-march=armv8.1-a','pcb.o_CFLAGS_ADD=-march=armv8.1-a',
      'LD_KERNEL_ARCHIVES='+' '.join([f'-L{sdk}/usr/local/lib/kernel','-lfirehose_kernel',
@@ -279,6 +288,8 @@ index 247541c..e044180 100644
 +    canonical.symlink_to(reference.relative_to(output))
 +(output/f'{mode}-scope.json').write_text(json.dumps({'source_revision': revision,
 +    'ios_version': options.ios_version, 'purpose': 'symbol-bearing comparison input only',
++    'apple_only_export_list_enforced': False, 'global_symbol_names_retained': True,
++    'undefined_calls_allowed': False,
 +    'bootable_candidate': False, 'device_executed': False,
 +    'exit_code': result.returncode,
 +    'kernel_sha256': hashlib.sha256(reference.read_bytes()).hexdigest() if reference.is_file() else None}, indent=2) + '\n')
