@@ -9,3 +9,10 @@ name = "ArmCpu"
 kind = "driver"
 git = "https://github.com/UniXNU/ArmCpu.git"
 commit = "4bd3230f48121e47a0badb4ea2d1674715ba2197"
+
+# Local-only integration commit; export with the dedicated macOS build inputs.
+[[source]]
+name = "QcomXnuUsbDebug"
+kind = "driver"
+git = "https://github.com/xiaoleGun/QcomXnuUsbDebug.git"
+commit = "870cc7ea389eea5ce94bec319924f666ff218a28"

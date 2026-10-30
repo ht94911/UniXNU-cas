@@ -1,3 +1,33 @@
+diff --git a/components.toml b/components.toml
+index f3fa049..b131882 100644
+--- a/components.toml
++++ b/components.toml
+@@ -76,6 +76,25 @@ build_stage = "firmware"
+ build = []
+ outputs = []
+ 
++[[component]]
++id = "QcomXnuUsbDebug"
++kind = "driver"
++function = "Bounded USB logs and diagnostics through the existing private translated DMA backend"
++scope = "soc"
++repository = "https://github.com/xiaoleGun/QcomXnuUsbDebug.git"
++revision = "870cc7ea389eea5ce94bec319924f666ff218a28"
++path = "drivers/QcomXnuUsbDebug"
++hardware = ["Qualcomm inherited DEVICE-mode DWC3 and SMMUv2"]
++os_abi = ["XNU 12377.121.6 after pinned UniXNU/sheng consumer chain; compile/hardware qualification pending"]
++board_dependencies = ["Exited firmware, boot CPU normal thread, exclusive controller and SMMU resources"]
++verified_devices = []
++dependencies = []
++source_files = ["kernel/QcomXnuUsbDebug.c", "kernel/QcomUsbScreenshot.c", "kernel/QcomUsbDiagnostic.c", "usb/Dwc3.c", "soc/QcomUsbQualify.c", "soc/QcomUsbDmaDomain.c"]
++runtime_identifiers = ["qcom_usb_debug_init", "qcom_usb_debug_poll"]
++build_stage = "kernel"
++build = ["build-qcom-usb-debug.py", "--component", "{component}", "--soc", "soc/Sm8850.h", "--profile", "darwin25-xnu12377-unixnu"]
++outputs = ["build/qcom-usb-debug/libQcomXnuUsbDebug.a", "build/qcom-usb-debug/build-report.json"]
++
+ [[component]]
+ id = "Adreno740"
+ repository_id = 1426848889
 diff --git a/profiles/os/ios-27.0.1-24A446-iphone14-4/configs/ipados.config b/profiles/os/ios-27.0.1-24A446-iphone14-4/configs/ipados.config
 new file mode 100644
 index 0000000..4ee9042
@@ -140,6 +170,144 @@ index 0000000..8329489
 +[userdata]
 +# Disk images of this OS, in window order; the device sets the partition geometry.
 +windows = [{ name = "OS", component = "OS" }, { name = "SystemOS", component = "Cryptex1,SystemOS", optional = true }]
+diff --git a/scripts/build-qcom-usb-debug.py b/scripts/build-qcom-usb-debug.py
+new file mode 100644
+index 0000000..220b7c5
+--- /dev/null
++++ b/scripts/build-qcom-usb-debug.py
+@@ -0,0 +1,64 @@
++#!/usr/bin/env python3
++"""Adapt the pinned standalone USB archive recipe to UniXNU's component outputs.
++
++The module owns all driver compilation and symbol audits. Use this target's
++real PE record; never reuse an archive from another kernel or candidate.
++"""
++import argparse
++import hashlib
++import json
++from pathlib import Path
++import shutil
++import subprocess
++import tempfile
++
++from kernel_target import check_object
++
++ROOT = Path(__file__).resolve().parents[1]
++
++
++def main():
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument('--component', type=Path, required=True)
++    parser.add_argument('--soc', required=True)
++    parser.add_argument('--profile', required=True)
++    args = parser.parse_args()
++    component = args.component.resolve()
++    if subprocess.check_output(['git', '-C', component, 'status', '--porcelain']):
++        raise SystemExit('USB component must be a clean pinned source checkout')
++    record = ROOT / 'build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837/pexpert/DEVELOPMENT/pe_kprintf.o.json'
++    if not record.is_file():
++        raise SystemExit('Generate the actual target PE compile record before building USB')
++    patch_state = json.loads(subprocess.check_output([
++        'python3', component / 'scripts/xnu_patches.py', 'status', '--profile', args.profile,
++        '--xnu', ROOT / '.cache/xnu-work'], text=True))
++    if patch_state['state_before'] != 'applied':
++        raise SystemExit('Apply the complete versioned USB hooks before compiling the component')
++    cache = ROOT / '.cache/qcom-usb-debug'
++    cache.mkdir(parents=True, exist_ok=True)
++    # Standalone build.py deliberately rejects reused output directories.
++    # Keep failed evidence; every attempt recompiles with this target's headers.
++    attempt = Path(tempfile.mkdtemp(prefix='archive-', dir=cache)) / 'module'
++    subprocess.run(['python3', component / 'scripts/build.py', '--compile-record', record,
++                    '--soc', args.soc, '--output', attempt], check=True)
++    for obj in sorted(attempt.glob('*.o')):
++        check_object(obj.read_bytes(), str(obj))
++    archive = attempt / 'libQcomXnuUsbDebug.a'
++    report = json.loads((attempt / 'build-report.json').read_text())
++    if hashlib.sha256(archive.read_bytes()).hexdigest() != report['archive_sha256']:
++        raise SystemExit('Standalone USB archive report/hash mismatch')
++    report.update(component_revision=subprocess.check_output(
++        ['git', '-C', component, 'rev-parse', 'HEAD'], text=True).strip(),
++        target_objects_validated=True, evidence_directory=str(attempt))
++    report['consumer_patch_state'] = patch_state
++    output = ROOT / 'build/qcom-usb-debug'
++    output.mkdir(parents=True, exist_ok=True)
++    temporary = output / 'libQcomXnuUsbDebug.a.new'
++    shutil.copyfile(archive, temporary)
++    temporary.replace(output / archive.name)
++    (output / 'build-report.json').write_text(json.dumps(report, indent=2) + '\n')
++    print(output / archive.name)
++
++
++if __name__ == '__main__':
++    main()
+diff --git a/scripts/build-xnu-4k-baseline.sh b/scripts/build-xnu-4k-baseline.sh
+index 1ade502..bc92798 100755
+--- a/scripts/build-xnu-4k-baseline.sh
++++ b/scripts/build-xnu-4k-baseline.sh
+@@ -271,6 +271,24 @@ if [ -d "$MOCKFS_OBJECT_DIR" ]; then
+ fi
+ EXTRA_MAKE_ARGS+=("ubc_subr.o_CFLAGS_ADD=-DXNU_NATIVE_CS_HASH_CACHE=$CS_HASH_CACHE_MODE")
+ EXTRA_CFLAGS=${XNU_EXTRA_CFLAGS:--Wno-reserved-identifier -Wno-pre-c11-compat -Wno-missing-designated-field-initializers -Wno-suggest-override -Wno-unnecessary-virtual-specifier -Wno-suggest-destructor-override -Wno-ms-bitfield-padding}
++QCOM_USB_DEBUG=${XNU_QCOM_USB_DEBUG:-0}
++if [ "$QCOM_USB_DEBUG" != 0 ] && [ "$QCOM_USB_DEBUG" != 1 ]; then
++  echo 'XNU_QCOM_USB_DEBUG must be 0 or 1' >&2
++  exit 1
++fi
++EXTRA_CFLAGS="$EXTRA_CFLAGS -DXNU_QCOM_USB_DEBUG=$QCOM_USB_DEBUG"
++SOURCE_STORAGE=${XNU_SOURCE_STORAGE:-0}
++if [ "$SOURCE_STORAGE" != 0 ] && [ "$SOURCE_STORAGE" != 1 ]; then
++  echo 'XNU_SOURCE_STORAGE must be 0 or 1' >&2
++  exit 1
++fi
++EXTRA_CFLAGS="$EXTRA_CFLAGS -DXNU_SOURCE_STORAGE=$SOURCE_STORAGE"
++if [ "$QCOM_USB_DEBUG" = 1 ]; then
++  QCOM_USB_INCLUDE=$ROOT/drivers/QcomXnuUsbDebug/include
++  test -f "$QCOM_USB_INCLUDE/QcomXnuUsbDebug.h"
++  test -f "$QCOM_USB_INCLUDE/QcomEarlyLog.h"
++  EXTRA_CFLAGS="$EXTRA_CFLAGS -I$QCOM_USB_INCLUDE"
++fi
+ OWNER_ROOT_PROBE=${XNU_VERIFIED_ROOT_PROBE:-0}
+ if [ "$OWNER_ROOT_PROBE" != 0 ] && [ "$OWNER_ROOT_PROBE" != 1 ]; then
+   echo 'XNU_VERIFIED_ROOT_PROBE must be 0 or 1' >&2
+@@ -564,12 +582,24 @@ if [ "$NATIVE_ARCH_TIMER" = 1 ] && [ "${XNU_ARMCPU:-0}" != 1 ]; then
+   echo 'Architectural timer entry requires the actual ArmCpu interrupt provider' >&2
+   exit 1
+ fi
+-EXTRA_MAKE_ARGS+=("start.o_SFLAGS_ADD=-DXNU_NATIVE_ARCH_TIMER=$NATIVE_ARCH_TIMER")
++EXTRA_MAKE_ARGS+=("start.o_SFLAGS_ADD=-DXNU_NATIVE_ARCH_TIMER=$NATIVE_ARCH_TIMER -DXNU_QCOM_USB_DEBUG=$QCOM_USB_DEBUG")
+ NATIVE_TIMER_STAMP=$ROOT/build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837/.native-arch-timer-mode
+ if [ "$(cat "$NATIVE_TIMER_STAMP" 2>/dev/null || echo 0)" != "$NATIVE_ARCH_TIMER" ]; then
+   rm -f "$ROOT/build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837/osfmk/DEVELOPMENT/start.o"
+   printf '%s\n' "$NATIVE_ARCH_TIMER" > "$NATIVE_TIMER_STAMP"
+ fi
++QCOM_USB_STAMP=$ROOT/build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837/.qcom-usb-debug-mode
++if [ "$(cat "$QCOM_USB_STAMP" 2>/dev/null || echo 0)" != "$QCOM_USB_DEBUG" ]; then
++  # The cold entry uses SFLAGS rather than CFLAGS_EXTRA. Rebuild every hook
++  # when changing this optional component; never retain a disabled start.o.
++  for object in pexpert/DEVELOPMENT/pe_kprintf.o osfmk/DEVELOPMENT/debug.o \
++      osfmk/DEVELOPMENT/printf.o osfmk/DEVELOPMENT/serial_console.o \
++      osfmk/DEVELOPMENT/serial_general.o bsd/DEVELOPMENT/bsd_init.o \
++      bsd/DEVELOPMENT/subr_prf.o osfmk/DEVELOPMENT/arm_init.o osfmk/DEVELOPMENT/start.o; do
++    rm -f "$ROOT/build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837/$object"
++  done
++  printf '%s\n' "$QCOM_USB_DEBUG" > "$QCOM_USB_STAMP"
++fi
+ NATIVE_PAN=${XNU_NATIVE_PAN:-0}
+ if [ "$NATIVE_PAN" != 0 ] && [ "$NATIVE_PAN" != 1 ]; then
+   echo 'XNU_NATIVE_PAN must be 0 or 1' >&2
+@@ -770,6 +800,12 @@ PY_BINDINGS
+     KERNEL_EXTRA_ARCHIVES="$KERNEL_EXTRA_ARCHIVES -Wl,-force_load,$PMGR_ARCHIVE"
+     KERNEL_ARCHIVE_DEPENDENCIES="$KERNEL_ARCHIVE_DEPENDENCIES $PMGR_ARCHIVE"
+   fi
++  if [ "$QCOM_USB_DEBUG" = 1 ]; then
++    QCOM_USB_ARCHIVE=$ROOT/build/qcom-usb-debug/libQcomXnuUsbDebug.a
++    test -f "$QCOM_USB_ARCHIVE"
++    KERNEL_EXTRA_ARCHIVES="$KERNEL_EXTRA_ARCHIVES -Wl,-force_load,$QCOM_USB_ARCHIVE"
++    KERNEL_ARCHIVE_DEPENDENCIES="$KERNEL_ARCHIVE_DEPENDENCIES $QCOM_USB_ARCHIVE"
++  fi
+   # Optional extra link inputs (e.g. a stub for an unselected offline probe hook).
+   if [ "$BOOT_PROGRESS" = 1 ]; then
+     KERNEL_EXTRA_ARCHIVES="$KERNEL_EXTRA_ARCHIVES -Wl,-force_load,$ROOT/build/boot-progress/libBootProgress.a"
 diff --git a/scripts/unixnu/kernel.py b/scripts/unixnu/kernel.py
 index 49aea5a..01cd147 100644
 --- a/scripts/unixnu/kernel.py

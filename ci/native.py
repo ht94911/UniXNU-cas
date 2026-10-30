@@ -47,7 +47,22 @@ def prepare(framework, work):
     work.mkdir(parents=True, exist_ok=False)
     for name in ('device', 'soc'):
         shutil.copytree(ROOT / 'source' / name, work / name)
-    (work / 'device/local.toml').write_text('[[source]]\nname = "sm8850"\nkind = "soc"\nlocal = "../soc"\n')
+    usb = work / 'usb'
+    run(['git', 'init', '-q', usb])
+    run(['git', '-C', usb, 'bundle', 'unbundle', ROOT / 'source/usb.bundle'])
+    # Git bundles do not transport shallow boundary metadata. This bundle is
+    # deliberately a single audited source tree, not the source repo history.
+    (usb / '.git/shallow').write_text(manifest['usb']['source_revision'] + '\n')
+    run(['git', '-C', usb, 'checkout', '--quiet', '--detach', manifest['usb']['source_revision']])
+    if run(['git', '-C', usb, 'rev-parse', 'HEAD^{tree}']) != manifest['usb']['source_tree']:
+        raise ValueError('USB source tree mismatch')
+    if run(['git', '-C', usb, 'status', '--porcelain']):
+        raise ValueError('USB source is not clean')
+    run(['git', '-C', usb, 'remote', 'add', 'origin', manifest['usb']['repository']])
+    run(['git', '-C', usb, 'remote', 'set-url', '--push', 'origin', 'DISABLED-no-push'])
+    (work / 'device/local.toml').write_text(
+        '[[source]]\nname = "sm8850"\nkind = "soc"\nlocal = "../soc"\n'
+        '\n[[source]]\nname = "QcomXnuUsbDebug"\nkind = "driver"\nlocal = "../usb"\n')
     jobs = max(1, min(os.cpu_count() or 1, 3))  # hosted M1 memory/CPU budget; local builds retain 32.
     config = {'device': str(work / 'device'), 'out': str(work / 'out'), 'jobs': jobs}
     text = '[build]\n' + ''.join(k + ' = ' + json.dumps(v) + '\n' for k, v in config.items())
@@ -129,6 +144,12 @@ def collect(framework, work, sealed):
         tree = target / 'tree'
         for path in sorted((tree / 'build').glob('*/lib*.a')):
             add(path, 'archives/' + path.parent.name + '/' + path.name)
+        add(tree / 'build/qcom-usb-debug/build-report.json', 'archives/qcom-usb-debug/build-report.json')
+        # A failed standalone compile retains its exact flags and diagnostics.
+        for attempt in sorted((tree / '.cache/qcom-usb-debug').glob('archive-*/module')):
+            for path in sorted(attempt.iterdir()):
+                if path.suffix in ('.log', '.json', '.o'):
+                    add(path, 'usb-attempts/' + attempt.parent.name + '/' + path.name)
         objects = tree / 'build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837'
         for stem in ('start', 'pe_kprintf', 'debug', 'printf', 'serial_console', 'serial_general',
                      'bsd_init', 'subr_prf', 'arm_init', 'startup'):
