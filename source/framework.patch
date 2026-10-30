@@ -1,5 +1,5 @@
 diff --git a/components.toml b/components.toml
-index f3fa049..b131882 100644
+index f3fa049..6a91cae 100644
 --- a/components.toml
 +++ b/components.toml
 @@ -76,6 +76,25 @@ build_stage = "firmware"
@@ -12,7 +12,7 @@ index f3fa049..b131882 100644
 +function = "Bounded USB logs and diagnostics through the existing private translated DMA backend"
 +scope = "soc"
 +repository = "https://github.com/xiaoleGun/QcomXnuUsbDebug.git"
-+revision = "870cc7ea389eea5ce94bec319924f666ff218a28"
++revision = "0a2daefa3f51e3eeeb7fa926f47607d9ac486148"
 +path = "drivers/QcomXnuUsbDebug"
 +hardware = ["Qualcomm inherited DEVICE-mode DWC3 and SMMUv2"]
 +os_abi = ["XNU 12377.121.6 after pinned UniXNU/sheng consumer chain; compile/hardware qualification pending"]
@@ -172,7 +172,7 @@ index 0000000..8329489
 +windows = [{ name = "OS", component = "OS" }, { name = "SystemOS", component = "Cryptex1,SystemOS", optional = true }]
 diff --git a/scripts/build-qcom-usb-debug.py b/scripts/build-qcom-usb-debug.py
 new file mode 100644
-index 0000000..220b7c5
+index 0000000..d4de690
 --- /dev/null
 +++ b/scripts/build-qcom-usb-debug.py
 @@ -0,0 +1,64 @@
@@ -218,7 +218,7 @@ index 0000000..220b7c5
 +    # Keep failed evidence; every attempt recompiles with this target's headers.
 +    attempt = Path(tempfile.mkdtemp(prefix='archive-', dir=cache)) / 'module'
 +    subprocess.run(['python3', component / 'scripts/build.py', '--compile-record', record,
-+                    '--soc', args.soc, '--output', attempt], check=True)
++                    '--soc', args.soc, '--xnu-profile', args.profile, '--output', attempt], check=True)
 +    for obj in sorted(attempt.glob('*.o')):
 +        check_object(obj.read_bytes(), str(obj))
 +    archive = attempt / 'libQcomXnuUsbDebug.a'
@@ -309,7 +309,7 @@ index 1ade502..bc92798 100755
    if [ "$BOOT_PROGRESS" = 1 ]; then
      KERNEL_EXTRA_ARCHIVES="$KERNEL_EXTRA_ARCHIVES -Wl,-force_load,$ROOT/build/boot-progress/libBootProgress.a"
 diff --git a/scripts/unixnu/kernel.py b/scripts/unixnu/kernel.py
-index 49aea5a..01cd147 100644
+index 49aea5a..e733b26 100644
 --- a/scripts/unixnu/kernel.py
 +++ b/scripts/unixnu/kernel.py
 @@ -3,6 +3,7 @@ import os
@@ -361,14 +361,76 @@ index 49aea5a..01cd147 100644
              'CCC_OVERRIDE_OPTIONS': '# +-Wno-missing-designated-field-initializers +-Wno-unused-but-set-global'}
  
  
+@@ -200,7 +212,16 @@ def build(ctx, modules):
+         try:
+             run(['bash', script], cwd=ctx.tree, env=subprocess_env, log_file=ctx.logs / 'kernel-bootstrap.log')
+         except Error:
+-            if not record.is_file():
++            # A startup record can already exist while another translation
++            # unit failed. Archive symbol surveys require the complete native
++            # object list, not just an early compile record.
++            filelist = record.parents[2] / 'link.filelist'
++            objects = [line.strip() for line in filelist.read_text().splitlines()
++                       if line.strip()] if filelist.is_file() else []
++            inputs_ready = bool(objects) and all(
++                (Path(name) if Path(name).is_absolute() else ctx.tree / name).is_file()
++                for name in objects)
++            if not record.is_file() or not inputs_ready:
+                 raise
+     # Revalidate the selected source and regenerate headers on every archive build.
+     # A pre-existing directory can belong to a different OS profile/revision.
 diff --git a/scripts/unixnu/test_kernel.py b/scripts/unixnu/test_kernel.py
-index ee7e7c9..7049d39 100644
+index ee7e7c9..5936176 100644
 --- a/scripts/unixnu/test_kernel.py
 +++ b/scripts/unixnu/test_kernel.py
-@@ -16,6 +16,32 @@ from unixnu.util import Error
+@@ -16,6 +16,76 @@ from unixnu.util import Error
  
  
  class NativeKernelTests(unittest.TestCase):
++    def bootstrap_failure(self, object_state):
++        with tempfile.TemporaryDirectory() as directory:
++            root = Path(directory)
++            script = root / 'scripts/build-xnu-4k-baseline.sh'
++            script.parent.mkdir()
++            script.touch()
++            logs = root / 'logs'
++            logs.mkdir()
++            objects = root / 'build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837'
++            record = objects / 'osfmk/DEVELOPMENT/startup.o.json'
++            ctx = SimpleNamespace(tree=root, logs=logs, schema_version=1, jobs=32,
++                                  need_config=lambda: {})
++
++            def compile_pass(command, **kwargs):
++                if kwargs['env'].get('XNU_BOOTSTRAP') == '1':
++                    record.parent.mkdir(parents=True)
++                    record.write_text('{}')
++                    if object_state != 'no-filelist':
++                        (objects / 'link.filelist').write_text(str(objects / 'native.o') + '\n')
++                    if object_state == 'complete-native-inputs':
++                        (objects / 'native.o').touch()
++                    raise Error('original bootstrap failure')
++
++            with patch.object(kernel.platform, 'system', return_value='Darwin'), \
++                    patch.object(kernel, 'tool', return_value='/mock/tool'), \
++                    patch.object(kernel, 'run', side_effect=compile_pass), \
++                    patch.object(kernel, 'build_archives') as archives:
++                if object_state == 'complete-native-inputs':
++                    kernel.build(ctx, {})
++                    archives.assert_called_once()
++                else:
++                    with self.assertRaisesRegex(Error, 'original bootstrap failure'):
++                        kernel.build(ctx, {})
++                    archives.assert_not_called()
++
++    def test_compile_failure_with_early_record_does_not_build_archives(self):
++        self.bootstrap_failure('no-filelist')
++
++    def test_incomplete_native_object_manifest_does_not_build_archives(self):
++        self.bootstrap_failure('missing-native-object')
++
++    def test_expected_bootstrap_link_failure_still_allows_archives(self):
++        self.bootstrap_failure('complete-native-inputs')
++
 +    def linux_target(self, architecture, version):
 +        ctx = SimpleNamespace(schema_version=2, tree=Path('/isolated/tree'),
 +                              profile_roots={'arch': Path('/profile/arch')},

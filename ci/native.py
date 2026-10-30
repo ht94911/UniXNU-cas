@@ -151,6 +151,8 @@ def collect(framework, work, sealed):
                 if path.suffix in ('.log', '.json', '.o'):
                     add(path, 'usb-attempts/' + attempt.parent.name + '/' + path.name)
         objects = tree / 'build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837'
+        for name in ('link.filelist', 'all-alias.exp'):
+            add(objects / name, 'objects/' + name)
         for stem in ('start', 'pe_kprintf', 'debug', 'printf', 'serial_console', 'serial_general',
                      'bsd_init', 'subr_prf', 'arm_init', 'startup'):
             for path in sorted(objects.glob('**/' + stem + '.o*')):

@@ -4,16 +4,16 @@
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
-    "source_revision": "f3d910c1e56336648acf215fc264a3ec23436ddf",
-    "source_tree": "91f1a36302eb8d175fdf18ae5dedafb35fff1ec8"
+    "source_revision": "18f348a419153e545668072e6c174504f20d8db2",
+    "source_tree": "3720af8f23387aced0d628526046b5b23a21dea5"
   },
-  "device_revision": "b6eb963bcef38662d8a41eca1bc1635c897d8161",
+  "device_revision": "c85ab5f489a6b3dc425c70a226061310bcf70d83",
   "soc_revision": "7279542eb460a5113b56657c85740a1a10aa3df9",
   "xcode": "26.6",
   "files": {
     "source/device/board.toml": "bc749f2eb50283d65687fb61c4a9f052a93bfe1271ef6ada32ac140a9541375a",
     "source/device/configs/nezha_ios27_defconfig": "a28b8d6864e475889e38607872d9099a25a597d9fbeddc14c04a5a9408db13bb",
-    "source/device/feeds.toml": "bb2d22336bf81393b1db844ea369f3736d943d9d98627c644cb4de5c1804ebf5",
+    "source/device/feeds.toml": "bfdaf6f7f9a91ded49448512d4a3873d315effccd37e7276462d0fded2a8f86e",
     "source/device/patches/xnu-12377/series": "390c0648c4dffe0a83fc0214a30d80acc57e4d5a01ba69107a58a552b2c7d754",
     "source/device/patches/xnu-12377/source-storage-runtime.patch": "25c377c60db417b15fcc137acf380f0319cbff9d5ba012af1907f3485602b584",
     "source/device/patches/xnu-12377/zzyd-sheng-audio-addon-mount.patch": "b51ed480b34c92452ea984fe056e5fce310bd929992d418f383a7e9268313c51",
@@ -22,7 +22,7 @@
     "source/device/patches/xnu-12377/zzzz-sheng-ipados27-bringup.patch": "c882c9c97d27c67ecf5fcb43aee86dfd761129bc602fdbd7490e771164adaa30",
     "source/device/porting.toml": "0e849c8efdb00860d847bbb6e05aa23290c1a6464761a8a6e9851bab86381e44",
     "source/device/unixnu.lock": "20bddaafe9eabe0874d433fd101156d0db2b3e5786681062de46afe971639daf",
-    "source/framework.patch": "8b1dcbd3f7bc00be82e0007ed4e256dc7f477e375aba4e8acf254ddb45560b5b",
+    "source/framework.patch": "784c183751d9e3bab6dff58b9741a7e4cb914ebb9da4b1ec6dc9266d35755e1d",
     "source/soc/configs/sm8850.config": "5510debad6dc3326908a4d23082f715e62d32a1a5e6587197da3dbf18977e5bc",
     "source/soc/patches/xnu-12377/native-smp-secondary.patch": "9d9164921da548a9f13ccbd6093c799583f54e590ef3d562288dcea9ba5a2774",
     "source/soc/patches/xnu-12377/native-smp-wide-affinity.patch": "792c8a08e4c8eb2101c70705fbf83e9b514129c36ee176b3133d1db5d4e84125",
@@ -30,7 +30,7 @@
     "source/soc/patches/xnu-12377/sheng-platform-power.patch": "6e68dbcdac670624f2a9806a61fef42110bfe6586029b3f1a0acb068c3a23ec2",
     "source/soc/soc.toml": "9cebcadf2d5a271ceb44ee5fc378ed739cff0e7e5a940007164a9917042fd92f",
     "source/device/patches/xnu-12377/zzzz-nezha-optional-runtime.patch": "0fb75b91889ce2f4251d65be02f2fecdeb1f70db857229d8d785a2b9710b574b",
-    "source/usb.bundle": "b9df88b01ff68d1dcbf07f9eac9fed54025cdc6657e92bfaebc1221887a0334b"
+    "source/usb.bundle": "f3b7f47048eeb406e4224692a1460fa03ce5ced442e500ec7b3200b471543167"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
@@ -38,8 +38,8 @@
   "device_executed": false,
   "usb_enabled": true,
   "usb": {
-    "source_revision": "870cc7ea389eea5ce94bec319924f666ff218a28",
-    "source_tree": "e46848e9de87f9740ee10285dd631e9512473a10",
+    "source_revision": "0a2daefa3f51e3eeeb7fa926f47607d9ac486148",
+    "source_tree": "ada6798052f145bc39849a27c1c76e434859d8b3",
     "history": "single shallow source commit only; restore declared boundary before checkout",
     "repository": "https://github.com/xiaoleGun/QcomXnuUsbDebug.git"
   }
