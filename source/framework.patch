@@ -1,5 +1,5 @@
 diff --git a/components.toml b/components.toml
-index f3fa049..6a91cae 100644
+index f3fa049..532be9b 100644
 --- a/components.toml
 +++ b/components.toml
 @@ -76,6 +76,25 @@ build_stage = "firmware"
@@ -28,26 +28,498 @@ index f3fa049..6a91cae 100644
  [[component]]
  id = "Adreno740"
  repository_id = 1426848889
+@@ -343,7 +362,7 @@ kind = "kit"
+ function = "XNU kernelcache prelink and ABI inspection"
+ scope = "tool"
+ repository = "https://github.com/UniXNU/XnuPrelink.git"
+-revision = "f876e3ee62e18fc06653dd75ed7dafcfb3950ac0"
++revision = "370293dacf3cc81b02ebaed6c71ac27d4a441d00"
+ path = "kits/XnuPrelink"
+ hardware = []
+ os_abi = []
+diff --git a/docs/reference/boot-configuration.md b/docs/reference/boot-configuration.md
+index 947d9f0..8ac7b7c 100644
+--- a/docs/reference/boot-configuration.md
++++ b/docs/reference/boot-configuration.md
+@@ -2,6 +2,13 @@
+ 
+ The UniXNU boot manager reads `\EFI\UniXNU\unixnu.toml` from the volume it was started from, then from every other volume. A kit directory contains `Kit.toml` with the same match and injection sections.
+ 
++A firmware environment selector may launch UniXNU with the exact UTF-16 load
++option `unixnu:selected-payload`. In that mode the configuration must come from
++the loaded image's own device handle and must parse without error. A missing,
++invalid or fallback-volume configuration returns failure before publishing
++slices, injecting drivers or starting a kernel. Ordinary application and
++firmware launches keep the existing discovery behavior.
++
+ Boot arguments are stored in the payload's `EFI/UniXNU/unixnu.toml`. After changing them, run `./unixnu payload` and `./unixnu bootimg`, then boot the new image. See [apply boot arguments](/xnu/boot-arguments#apply-arguments) for precedence and inspection commands.
+ 
+ ## Procedure {#procedure}
+diff --git a/kits/XnuPrelink b/kits/XnuPrelink
+index 76452c6..2b39ff7 160000
+--- a/kits/XnuPrelink
++++ b/kits/XnuPrelink
+@@ -1 +1 @@
+-Subproject commit 76452c6e6b6014747c5500b1e57c544fbc1c3249
++Subproject commit 2b39ff73dc4d49ad64e349c711ca4aa8d1dd64ea
+diff --git a/package/UniXNUPkg/Include/Protocol/UniXNUSelectedVolume.h b/package/UniXNUPkg/Include/Protocol/UniXNUSelectedVolume.h
+new file mode 100644
+index 0000000..70d6b35
+--- /dev/null
++++ b/package/UniXNUPkg/Include/Protocol/UniXNUSelectedVolume.h
+@@ -0,0 +1,7 @@
++/** @file Explicitly bind a launched UniXNU instance to its source volume.
++  SPDX-License-Identifier: BSD-2-Clause-Patent
++**/
++#ifndef UNIXNU_SELECTED_VOLUME_H_
++#define UNIXNU_SELECTED_VOLUME_H_
++#define UNIXNU_SELECTED_VOLUME_OPTIONS L"unixnu:selected-payload"
++#endif
+diff --git a/package/UniXNUPkg/Library/UniXNULib/Main.c b/package/UniXNUPkg/Library/UniXNULib/Main.c
+index 482f4d6..ab03be0 100644
+--- a/package/UniXNUPkg/Library/UniXNULib/Main.c
++++ b/package/UniXNUPkg/Library/UniXNULib/Main.c
+@@ -8,6 +8,7 @@
+ #include "Internal.h"
+ 
+ #include <Protocol/SerialIo.h>
++#include <Protocol/UniXNUSelectedVolume.h>
+ 
+ STATIC EFI_SERIAL_IO_PROTOCOL  *mSerial;
+ 
+@@ -61,6 +62,9 @@ UniXNURun (
+   BOOLEAN          Countdown;
+   UNIXNU_ENTRY         *Entry;
+   UNIXNU_ENTRY         BootCopy;
++  EFI_LOADED_IMAGE_PROTOCOL *SelectedImage = NULL;
++  BOOLEAN SelectedVolumeOnly = FALSE;
++  STATIC CONST CHAR16 SelectedMarker[] = UNIXNU_SELECTED_VOLUME_OPTIONS;
+ 
+   //
+   // A boot manager waits for people; the 5 minute BDS watchdog does not.
+@@ -82,7 +86,17 @@ UniXNURun (
+     UniXNUConnectAll ();
+   }
+ 
++  if (!EFI_ERROR (gBS->HandleProtocol (ImageHandle, &gEfiLoadedImageProtocolGuid, (VOID **)&SelectedImage)) &&
++      SelectedImage->LoadOptions != NULL && SelectedImage->LoadOptionsSize == sizeof (SelectedMarker) &&
++      CompareMem (SelectedImage->LoadOptions, SelectedMarker, sizeof (SelectedMarker)) == 0) {
++    SelectedVolumeOnly = TRUE;
++  }
+   UniXNUConfigLoad (ImageHandle, &Config);
++  if (SelectedVolumeOnly && (SelectedImage->DeviceHandle == NULL ||
++      Config.Volume != SelectedImage->DeviceHandle || Config.Error[0] != '\0')) {
++    UniXNULog ("selected payload refused; no fallback volume or entry will boot");
++    return EFI_LOAD_ERROR;
++  }
+   UniXNULog (
+     "config: %u entries, %u drivers, %u dt patches, %u acpi tables, %u slices, %u kits loaded, %u skipped",
+     (UINT32)Config.EntryCount,
+diff --git a/patches/xnu-12377/iokit-platform-function-client.patch b/patches/xnu-12377/iokit-platform-function-client.patch
+new file mode 100644
+index 0000000..726cf67
+--- /dev/null
++++ b/patches/xnu-12377/iokit-platform-function-client.patch
+@@ -0,0 +1,170 @@
++--- a/iokit/IOKit/IOService.h
+++++ b/iokit/IOKit/IOService.h
++@@ -404,6 +404,16 @@
++ class IOService : public IORegistryEntry
++ {
++ 	OSDeclareDefaultStructorsWithDispatch(IOService);
+++
+++#if XNU_IOS27_PLATFORM_FUNCTION_CLIENT
+++public:
+++    /* IIG client only: existing Invoke/provider dispatch returns real status.
+++     * There is deliberately no new server case or _Impl returning a constant.
+++     */
+++    kern_return_t CallPlatformFunction(OSString *functionName, bool waitForFunction,
+++        OSDictionary *inParam, OSDictionary **outParam,
+++        OSDispatchMethod supermethod = NULL) __attribute__((used));
+++#endif
++ 
++ #if XNU_KERNEL_PRIVATE
++ public:
++--- a/iokit/Kernel/IOUserServer.cpp
+++++ b/iokit/Kernel/IOUserServer.cpp
++@@ -8046,3 +8046,148 @@
++ {
++ 	return kIOReturnUnsupported;
++ }
+++
+++#if XNU_IOS27_PLATFORM_FUNCTION_CLIENT
+++/* Generated by Apple's DriverKit-440 IIG from complete public source
+++ * declarations, with serialized OSString/OSDictionary operands (run41351733717).
+++ * Method ID and 140/84-byte kernel layouts match 24A446; native host IORPC
+++ * flags/Invoke semantics are retained rather than copying donor internals.
+++ * Preserve Invoke, super dispatch, reply validation and dynamic type checks.
+++ * This client does not claim a server capability that the provider lacks.
+++ */
+++#define IOService_CallPlatformFunction_ID 0xbf66f4287c60ef85ULL
+++struct IOService_CallPlatformFunction_Msg_Content
+++{
+++    IORPCMessage __hdr;
+++    OSObjectRef  __object;
+++    OSString * functionName;
+++#if !defined(__LP64__)
+++    uint32_t __functionNamePad;
+++#endif /* !defined(__LP64__) */
+++    OSDictionary * inParam;
+++#if !defined(__LP64__)
+++    uint32_t __inParamPad;
+++#endif /* !defined(__LP64__) */
+++    bool  waitForFunction;
+++};
+++#pragma pack(4)
+++struct IOService_CallPlatformFunction_Msg
+++{
+++    IORPCMessageMach           mach;
+++    mach_msg_port_descriptor_t __object__descriptor;
+++    mach_msg_ool_descriptor_t  functionName__descriptor;
+++    mach_msg_ool_descriptor_t  inParam__descriptor;
+++};
+++struct IOService_CallPlatformFunction_Msg_With_Content
+++{
+++    IORPCMessageMach           mach;
+++    mach_msg_port_descriptor_t __object__descriptor;
+++    mach_msg_ool_descriptor_t  functionName__descriptor;
+++    mach_msg_ool_descriptor_t  inParam__descriptor;
+++    IOService_CallPlatformFunction_Msg_Content content;
+++};
+++#pragma pack()
+++#define IOService_CallPlatformFunction_Msg_ObjRefs (3)
+++
+++struct IOService_CallPlatformFunction_Rpl_Content
+++{
+++    IORPCMessage __hdr;
+++    OSDictionary * outParam;
+++#if !defined(__LP64__)
+++    uint32_t __outParamPad;
+++#endif /* !defined(__LP64__) */
+++};
+++#pragma pack(4)
+++struct IOService_CallPlatformFunction_Rpl
+++{
+++    IORPCMessageMach           mach;
+++    mach_msg_ool_descriptor_t  outParam__descriptor;
+++};
+++struct IOService_CallPlatformFunction_Rpl_With_Content
+++{
+++    IORPCMessageMach           mach;
+++    mach_msg_ool_descriptor_t  outParam__descriptor;
+++    IOService_CallPlatformFunction_Rpl_Content content;
+++};
+++#pragma pack()
+++#define IOService_CallPlatformFunction_Rpl_ObjRefs (1)
+++
+++static_assert(sizeof(IOService_CallPlatformFunction_Msg_With_Content) == 140, "CallPlatformFunction request ABI");
+++static_assert(sizeof(IOService_CallPlatformFunction_Rpl_With_Content) == 84, "CallPlatformFunction reply ABI");
+++static_assert(__builtin_offsetof(IOService_CallPlatformFunction_Msg_With_Content, content) == 84, "CallPlatformFunction content ABI");
+++static_assert(sizeof(IORPC) == 32, "kernel IORPC call ABI");
+++kern_return_t
+++IOService::CallPlatformFunction(
+++        OSString * functionName,
+++        bool waitForFunction,
+++        OSDictionary * inParam,
+++        OSDictionary ** outParam,
+++        OSDispatchMethod supermethod)
+++{
+++    kern_return_t ret;
+++    union
+++    {
+++        IOService_CallPlatformFunction_Msg_With_Content msg;
+++        struct
+++        {
+++            IOService_CallPlatformFunction_Rpl_With_Content rpl;
+++            mach_msg_max_trailer_t trailer;
+++        } rpl;
+++    } buf;
+++    struct IOService_CallPlatformFunction_Msg_With_Content * msg = &buf.msg;
+++    struct IOService_CallPlatformFunction_Rpl_With_Content * rpl = &buf.rpl.rpl;
+++
+++    memset(msg, 0, sizeof(*msg));
+++    msg->mach.msgh.msgh_id   = kIORPCVersion190615;
+++    msg->mach.msgh.msgh_size = sizeof(*msg);
+++    msg->content.__hdr.flags = 0*kIORPCMessageOneway
+++                             | 0*kIORPCMessageSimpleReply
+++                             | 0*kIORPCMessageLocalHost
+++                             | 0*kIORPCMessageOnqueue;
+++    msg->content.__hdr.msgid = IOService_CallPlatformFunction_ID;
+++    msg->content.__object = (OSObjectRef) this;
+++    msg->content.__hdr.objectRefs = IOService_CallPlatformFunction_Msg_ObjRefs;
+++    msg->mach.msgh_body.msgh_descriptor_count = 3;
+++
+++    msg->__object__descriptor.type = MACH_MSG_PORT_DESCRIPTOR;
+++
+++    msg->functionName__descriptor.type = MACH_MSG_OOL_DESCRIPTOR;
+++    msg->functionName__descriptor.copy = MACH_MSG_VIRTUAL_COPY;
+++    msg->functionName__descriptor.address = (void *) __builtin_offsetof(IOService_CallPlatformFunction_Msg_Content, functionName);
+++    msg->content.functionName = functionName;
+++
+++    msg->content.waitForFunction = waitForFunction;
+++
+++    msg->inParam__descriptor.type = MACH_MSG_OOL_DESCRIPTOR;
+++    msg->inParam__descriptor.copy = MACH_MSG_VIRTUAL_COPY;
+++    msg->inParam__descriptor.address = (void *) __builtin_offsetof(IOService_CallPlatformFunction_Msg_Content, inParam);
+++    msg->content.inParam = inParam;
+++
+++#ifdef KERNEL
+++    IORPC rpc = { .message = &buf.msg.mach, .reply = &buf.rpl.rpl.mach, .sendSize = sizeof(buf.msg), .replySize = sizeof(buf.rpl), .kernelContent = &buf.msg.content.__hdr };
+++#else /* KERNEL */
+++    IORPC rpc = { .message = &buf.msg.mach, .reply = &buf.rpl.rpl.mach, .sendSize = sizeof(buf.msg), .replySize = sizeof(buf.rpl) };
+++#endif /* KERNEL */
+++    if (supermethod) ret = supermethod((OSObject *)this, rpc);
+++    else             ret = ((OSObject *)this)->Invoke(rpc);
+++
+++    if (kIOReturnSuccess == ret)
+++    do {
+++        {
+++            if (rpl->mach.msgh.msgh_size                  != sizeof(*rpl)) { ret = kIOReturnIPCError; break; };
+++            if (rpl->content.__hdr.msgid                  != IOService_CallPlatformFunction_ID) { ret = kIOReturnIPCError; break; };
+++            if (rpl->mach.msgh_body.msgh_descriptor_count != 1) { ret = kIOReturnIPCError; break; };
+++            if (IOService_CallPlatformFunction_Rpl_ObjRefs   != rpl->content.__hdr.objectRefs) { ret = kIOReturnIPCError; break; };
+++        }
+++    }
+++    while (false);
+++    if (kIOReturnSuccess == ret)
+++    {
+++        *outParam = OSDynamicCast(OSDictionary, (OSObject *) rpl->content.outParam);
+++        if (rpl->content.outParam && !*outParam) ret = kIOReturnBadArgument;
+++    }
+++
+++
+++    return (ret);
+++}
+++#endif
+diff --git a/patches/xnu-12377/native-topology-v3-compat.patch b/patches/xnu-12377/native-topology-v3-compat.patch
+new file mode 100644
+index 0000000..f6a7c9c
+--- /dev/null
++++ b/patches/xnu-12377/native-topology-v3-compat.patch
+@@ -0,0 +1,199 @@
++--- a/osfmk/arm64/machine_routines.c
+++++ b/osfmk/arm64/machine_routines.c
++@@ -169,6 +169,27 @@
++ 	.clusters = topology_cluster_array,
++ };
++ 
+++#if XNU_TOPOLOGY_V3_COMPAT
+++#include <arm/topology_v3_compat.h>
+++SECURITY_READ_ONLY_LATE(static unixnu_topology_cpu_v3_t) topology_cpu_v3[MAX_CPUS];
+++SECURITY_READ_ONLY_LATE(static unixnu_topology_cluster_v3_t) topology_cluster_v3[MAX_CPU_CLUSTERS];
+++SECURITY_READ_ONLY_LATE(static unixnu_topology_info_v3_t) topology_info_v3;
+++SECURITY_READ_ONLY_LATE(static unsigned int) topology_soc_die_ids[MAX_CPUS];
+++static void
+++unixnu_sync_topology_v3(void)
+++{
+++    unixnu_topology_copy_v3(&topology_info, topology_soc_die_ids,
+++        &topology_info_v3, topology_cpu_v3, topology_cluster_v3);
+++}
+++/* Prelink binds this entry after LTO; it has no native C caller. */
+++const unixnu_topology_info_v3_t *unixnu_ml_get_topology_info_v3(void) __attribute__((used));
+++const unixnu_topology_info_v3_t *
+++unixnu_ml_get_topology_info_v3(void)
+++{
+++    return topology_info_v3.version == 3 ? &topology_info_v3 : NULL;
+++}
+++#endif
+++
++ _Atomic unsigned int cluster_type_num_active_cpus[MAX_CPU_TYPES];
++ 
++ /**
++@@ -1214,6 +1235,9 @@
++ 		topology_info.max_cpu_id = MAX(topology_info.max_cpu_id, cpu->cpu_id);
++ 
++ 		cpu->die_id = (int)ml_readprop(child, "die-id", 0);
+++#if XNU_TOPOLOGY_V3_COMPAT
+++		topology_soc_die_ids[cpu->cpu_id] = (unsigned int)ml_readprop(child, "soc-die-id", 0);
+++#endif
++ 		topology_info.max_die_id = MAX(topology_info.max_die_id, cpu->die_id);
++ 
++ 		cpu->phys_id = (uint32_t)ml_readprop(child, "reg", ML_READPROP_MANDATORY);
++@@ -1352,6 +1376,9 @@
++ 	__builtin_arm_wsr64("TPIDR_EL0", tpidr_el0);
++ 
++ 	__builtin_arm_wsr64("TPIDRRO_EL0", 0);
+++#if XNU_TOPOLOGY_V3_COMPAT
+++	unixnu_sync_topology_v3();
+++#endif
++ }
++ 
++ const ml_topology_info_t *
++@@ -1385,6 +1412,9 @@
++ 			cluster->cpm_IMPL_regs = (vm_offset_t)ml_io_map(cluster->cpm_IMPL_pa, cluster->cpm_IMPL_len);
++ 		}
++ 	}
+++#if XNU_TOPOLOGY_V3_COMPAT
+++	unixnu_sync_topology_v3();
+++#endif
++ }
++ 
++ __mockable unsigned int
++@@ -1642,6 +1672,9 @@
++ 		}
++ 		topology_info.cpus[cpu_id].cpu_pset_id = processor_array[cpu_id]->processor_set->pset_id;
++ 	}
+++#if XNU_TOPOLOGY_V3_COMPAT
+++	unixnu_sync_topology_v3();
+++#endif
++ }
++ STARTUP(SCHED, STARTUP_RANK_SECOND, ml_bootstrap_processors);
++ 
++--- /dev/null
+++++ b/osfmk/arm/topology_v3_compat.h
++@@ -0,0 +1,126 @@
+++/* Optional Darwin 27 consumer view of the native v2 CPU topology.
+++ * The canonical scheduler/ArmCpu structures keep their original ABI.
+++ * soc_die_id follows the ADT property, whose documented parser default is 0.
+++ * Updated only during serialized bootstrap, before late read-only lockdown.
+++ */
+++#ifndef _ARM_TOPOLOGY_V3_COMPAT_H_
+++#define _ARM_TOPOLOGY_V3_COMPAT_H_
+++typedef struct {
+++    unsigned int cpu_id;
+++    uint32_t phys_id;
+++    unsigned int cluster_id, die_id, soc_die_id;
+++    cluster_type_t cluster_type;
+++    uint32_t l2_access_penalty, l2_cache_size, l2_cache_id;
+++    uint32_t l3_cache_size, l3_cache_id;
+++    vm_offset_t cpu_IMPL_regs;
+++    uint64_t cpu_IMPL_pa, cpu_IMPL_len;
+++    vm_offset_t cpu_UTTDBG_regs;
+++    uint64_t cpu_UTTDBG_pa, cpu_UTTDBG_len;
+++    vm_offset_t coresight_regs;
+++    uint64_t coresight_pa, coresight_len;
+++    unsigned int die_cluster_id, cluster_core_id;
+++    pset_id_t cpu_pset_id;
+++} unixnu_topology_cpu_v3_t;
+++typedef struct {
+++    unsigned int cluster_id;
+++    cluster_type_t cluster_type;
+++    unsigned int num_cpus, first_cpu_id;
+++    uint64_t cpu_mask;
+++    unsigned int die_id, soc_die_id, die_cluster_id;
+++    vm_offset_t acc_IMPL_regs;
+++    uint64_t acc_IMPL_pa, acc_IMPL_len;
+++    vm_offset_t cpm_IMPL_regs;
+++    uint64_t cpm_IMPL_pa, cpm_IMPL_len;
+++} unixnu_topology_cluster_v3_t;
+++typedef struct {
+++    unsigned int version, num_cpus, max_cpu_id, num_clusters;
+++    unsigned int max_cluster_id, max_die_id, max_soc_die_id;
+++    unixnu_topology_cpu_v3_t *cpus;
+++    unixnu_topology_cluster_v3_t *clusters;
+++    unixnu_topology_cpu_v3_t *boot_cpu;
+++    unixnu_topology_cluster_v3_t *boot_cluster;
+++    unsigned int chip_revision, cluster_types;
+++    unsigned int cluster_type_num_cpus[5];
+++    unsigned int cluster_type_num_clusters[5];
+++    unsigned int cluster_power_down;
+++} unixnu_topology_info_v3_t;
+++_Static_assert(sizeof(unixnu_topology_cpu_v3_t) == 136, "v3 CPU stride");
+++_Static_assert(sizeof(unixnu_topology_cluster_v3_t) == 88, "v3 cluster stride");
+++_Static_assert(__builtin_offsetof(unixnu_topology_cpu_v3_t, soc_die_id) == 16, "soc die");
+++_Static_assert(__builtin_offsetof(unixnu_topology_cpu_v3_t, cluster_type) == 20, "CPU type");
+++_Static_assert(__builtin_offsetof(unixnu_topology_cpu_v3_t, cpu_IMPL_regs) == 48, "CPU MMIO");
+++_Static_assert(__builtin_offsetof(unixnu_topology_cpu_v3_t, cpu_pset_id) == 128, "CPU pset");
+++_Static_assert(__builtin_offsetof(unixnu_topology_cluster_v3_t, soc_die_id) == 28, "cluster soc die");
+++_Static_assert(__builtin_offsetof(unixnu_topology_info_v3_t, cpus) == 32, "v3 cpus");
+++_Static_assert(__builtin_offsetof(unixnu_topology_info_v3_t, chip_revision) == 64, "v3 chip revision");
+++_Static_assert(__builtin_offsetof(unixnu_topology_info_v3_t, cluster_type_num_cpus) == 72, "v3 CPU counts");
+++_Static_assert(__builtin_offsetof(unixnu_topology_info_v3_t, cluster_type_num_clusters) == 92, "v3 cluster counts");
+++_Static_assert(__builtin_offsetof(unixnu_topology_info_v3_t, cluster_power_down) == 112, "v3 power flag");
+++_Static_assert(MAX_CPU_TYPES == 4, "review required for a different native enum");
+++
+++/* The caller supplies storage and serializes publication. Copies no stale
+++ * native pointers into the new ABI; all four pointers reference view storage.
+++ */
+++static void
+++unixnu_topology_copy_v3(const ml_topology_info_t *source,
+++    const unsigned int *soc_die_ids, unixnu_topology_info_v3_t *view,
+++    unixnu_topology_cpu_v3_t *cpus, unixnu_topology_cluster_v3_t *clusters)
+++{
+++    assert(source->version == 2);
+++    assert(source->num_cpus <= MAX_CPUS);
+++    assert(source->num_clusters <= MAX_CPU_CLUSTERS);
+++    view->version = 0;
+++    view->num_cpus = source->num_cpus;
+++    view->max_cpu_id = source->max_cpu_id;
+++    view->num_clusters = source->num_clusters;
+++    view->max_cluster_id = source->max_cluster_id;
+++    view->max_die_id = source->max_die_id;
+++    view->max_soc_die_id = 0;
+++    view->cpus = cpus;
+++    view->clusters = clusters;
+++    view->chip_revision = source->chip_revision;
+++    view->cluster_types = source->cluster_types;
+++    view->cluster_power_down = source->cluster_power_down;
+++    for (unsigned int i = 0; i < 5; ++i) {
+++        view->cluster_type_num_cpus[i] = i < MAX_CPU_TYPES ? source->cluster_type_num_cpus[i] : 0;
+++        view->cluster_type_num_clusters[i] = i < MAX_CPU_TYPES ? source->cluster_type_num_clusters[i] : 0;
+++    }
+++    for (unsigned int i = 0; i < source->num_cpus; ++i) {
+++        const ml_topology_cpu_t *s = &source->cpus[i];
+++        unixnu_topology_cpu_v3_t *d = &cpus[i];
+++#define COPY_CPU(f) d->f = s->f
+++        COPY_CPU(cpu_id); COPY_CPU(phys_id); COPY_CPU(cluster_id);
+++        COPY_CPU(die_id); COPY_CPU(cluster_type); COPY_CPU(l2_access_penalty);
+++        COPY_CPU(l2_cache_size); COPY_CPU(l2_cache_id);
+++        COPY_CPU(l3_cache_size); COPY_CPU(l3_cache_id);
+++        COPY_CPU(cpu_IMPL_regs); COPY_CPU(cpu_IMPL_pa); COPY_CPU(cpu_IMPL_len);
+++        COPY_CPU(cpu_UTTDBG_regs); COPY_CPU(cpu_UTTDBG_pa); COPY_CPU(cpu_UTTDBG_len);
+++        COPY_CPU(coresight_regs); COPY_CPU(coresight_pa); COPY_CPU(coresight_len);
+++        COPY_CPU(die_cluster_id); COPY_CPU(cluster_core_id); COPY_CPU(cpu_pset_id);
+++#undef COPY_CPU
+++        d->soc_die_id = soc_die_ids[i];
+++        if (d->soc_die_id > view->max_soc_die_id) view->max_soc_die_id = d->soc_die_id;
+++    }
+++    for (unsigned int i = 0; i < source->num_clusters; ++i) {
+++        const ml_topology_cluster_t *s = &source->clusters[i];
+++        unixnu_topology_cluster_v3_t *d = &clusters[i];
+++#define COPY_CLUSTER(f) d->f = s->f
+++        COPY_CLUSTER(cluster_id); COPY_CLUSTER(cluster_type);
+++        COPY_CLUSTER(num_cpus); COPY_CLUSTER(first_cpu_id); COPY_CLUSTER(cpu_mask);
+++        COPY_CLUSTER(die_id); COPY_CLUSTER(die_cluster_id);
+++        COPY_CLUSTER(acc_IMPL_regs); COPY_CLUSTER(acc_IMPL_pa); COPY_CLUSTER(acc_IMPL_len);
+++        COPY_CLUSTER(cpm_IMPL_regs); COPY_CLUSTER(cpm_IMPL_pa); COPY_CLUSTER(cpm_IMPL_len);
+++#undef COPY_CLUSTER
+++        assert(s->first_cpu_id < source->num_cpus);
+++        d->soc_die_id = soc_die_ids[s->first_cpu_id];
+++        for (unsigned int j = 0; j < source->num_cpus; ++j) {
+++            assert(source->cpus[j].cluster_id != s->cluster_id || soc_die_ids[j] == d->soc_die_id);
+++        }
+++    }
+++    assert(source->boot_cpu >= source->cpus && source->boot_cpu < source->cpus + source->num_cpus);
+++    assert(source->boot_cluster >= source->clusters && source->boot_cluster < source->clusters + source->num_clusters);
+++    view->boot_cpu = cpus + (source->boot_cpu - source->cpus);
+++    view->boot_cluster = clusters + (source->boot_cluster - source->clusters);
+++    view->version = 3;
+++}
+++#endif
 diff --git a/profiles/os/ios-27.0.1-24A446-iphone14-4/configs/ipados.config b/profiles/os/ios-27.0.1-24A446-iphone14-4/configs/ipados.config
 new file mode 100644
-index 0000000..4ee9042
+index 0000000..c9e7a70
 --- /dev/null
 +++ b/profiles/os/ios-27.0.1-24A446-iphone14-4/configs/ipados.config
-@@ -0,0 +1,2 @@
+@@ -0,0 +1,4 @@
 +CONFIG_XNU_CRYPTO_BOOTSTRAP="prelinked"
 +CONFIG_XNU_NATIVE_CS_HASH_CACHE=y
++CONFIG_XNU_TOPOLOGY_V3_COMPAT=y
++CONFIG_XNU_IOS27_PLATFORM_FUNCTION_CLIENT=y
 diff --git a/profiles/os/ios-27.0.1-24A446-iphone14-4/patches/xnu/series b/profiles/os/ios-27.0.1-24A446-iphone14-4/patches/xnu/series
 new file mode 100644
-index 0000000..05a5fe4
+index 0000000..80ea4af
 --- /dev/null
 +++ b/profiles/os/ios-27.0.1-24A446-iphone14-4/patches/xnu/series
-@@ -0,0 +1,6 @@
+@@ -0,0 +1,8 @@
 +# OS patch paths for xnu-12377.121.6, one per line in application order.
 +# Reuse the full sheng compatibility patch chain; Apple donor is Darwin27/xnu13432.
 +arch:../../../patches/xnu-12377/zzz-boot-progress.patch
 +arch:../../../patches/xnu-12377/darwin26-syscalls.patch
 +arch:../../../patches/xnu-12377/darwin26-kpi.patch
 +arch:../../../patches/xnu-12377/darwin26-shared-region.patch
++arch:../../../patches/xnu-12377/native-topology-v3-compat.patch
++arch:../../../patches/xnu-12377/iokit-platform-function-client.patch
 diff --git a/profiles/os/ios-27.0.1-24A446-iphone14-4/profile.toml b/profiles/os/ios-27.0.1-24A446-iphone14-4/profile.toml
 new file mode 100644
 index 0000000..288271e
@@ -176,124 +648,230 @@ index 0000000..288271e
 +# Disk images of this OS, in window order; the device sets the partition geometry.
 +windows = [{ name = "OS", component = "OS" }, { name = "SystemOS", component = "Cryptex1,SystemOS", optional = true }]
 diff --git a/scripts/build-fileset-release-reference.py b/scripts/build-fileset-release-reference.py
-index 247541c..5e8c819 100644
+index 247541c..58f110b 100644
 --- a/scripts/build-fileset-release-reference.py
 +++ b/scripts/build-fileset-release-reference.py
-@@ -7,18 +7,36 @@ import hashlib
+@@ -2,59 +2,170 @@
+ """Build a symbol-bearing RELEASE comparison kernel in an isolated output tree."""
+ import json
+ import os
++import re
+ import shutil
+ import hashlib
  import argparse
++import fnmatch
  from pathlib import Path
  import subprocess
-+import re
  
- repo = Path(__file__).resolve().parents[1]
- parser = argparse.ArgumentParser(description=__doc__)
- parser.add_argument('--lto', action='store_true', help='enable the RELEASE default link-time optimization')
-+parser.add_argument('--tree', type=Path, required=True, help='explicit prepared UniXNU target tree')
-+parser.add_argument('--ios-version', required=True, help='deployment target of the selected OS profile')
-+parser.add_argument('-j', '--jobs', type=int, default=int(os.environ.get('JOBS', '32')))
- options = parser.parse_args()
-+if not re.fullmatch(r'[0-9]+\.[0-9]+(?:\.[0-9]+)?', options.ios_version) or options.jobs < 1:
-+    parser.error('select a dotted iOS target and positive job count')
- mode = 'lto' if options.lto else 'snapshot'
+-repo = Path(__file__).resolve().parents[1]
+-parser = argparse.ArgumentParser(description=__doc__)
+-parser.add_argument('--lto', action='store_true', help='enable the RELEASE default link-time optimization')
+-options = parser.parse_args()
+-mode = 'lto' if options.lto else 'snapshot'
 -root = repo / 'out/sheng/ipados-26.5.2-23F84/sheng_ipados26/tree'
-+root = options.tree.resolve()
-+prepared_source = root / '.cache/xnu-work'
-+revision = subprocess.check_output(['git', '-C', prepared_source, 'rev-parse', 'HEAD'], text=True).strip()
-+if revision != 'ac9718fb1af618d5ce8678d0dc6e8a58f252216f':
-+    parser.error('this reference recipe requires the pinned XNU12377 source')
- output = root / 'build/xnu/fileset-reference'
- output.mkdir(parents=True, exist_ok=True)
- source = output / 'source'
-+input_record = root.parent/'xnu-inputs.json'
-+snapshot_record = output/'source-inputs.json'
-+if input_record.is_file():
-+    if source.exists() and (not snapshot_record.is_file() or
-+            snapshot_record.read_bytes() != input_record.read_bytes()):
-+        raise SystemExit('reference source inputs changed; use a fresh candidate output')
-+    if not source.exists():
-+        shutil.copyfile(input_record, snapshot_record)
- if not source.exists():
+-output = root / 'build/xnu/fileset-reference'
+-output.mkdir(parents=True, exist_ok=True)
+-source = output / 'source'
+-if not source.exists():
 -    shutil.copytree(root/'.cache/xnu-work', source, symlinks=True,
-+    shutil.copytree(prepared_source, source, symlinks=True,
-                     ignore=shutil.ignore_patterns('.git'))
-     # The shared tree currently has this observation hook at file scope. The
-     # reference build disables observation hooks; repair only its private copy.
-@@ -27,6 +45,17 @@ if not source.exists():
-     misplaced = '\n\tboot_progress_user_breakpoint(state, esr);\n#if __has_feature(ptrauth_calls)'
-     if misplaced in text:
-         sleh.write_text(text.replace(misplaced, '\n#if __has_feature(ptrauth_calls)', 1))
-+    # sheng's observation calls proc_pid in RELEASE too. DEVELOPMENT's
-+    # vm_protos.h exposes it indirectly; sys/proc.h cannot be included in a
-+    # Mach-domain TU (BSD dev_t/clock_t conflict with Mach/libsa). Reuse the
-+    # exact forward declaration from XNU task.c/arm/model_dep.c.
-+    exception = source / 'osfmk/kern/exception.c'
-+    text = exception.read_text()
-+    if 'proc_pid(get_bsdtask_info(task))' in text and 'extern int      proc_pid(struct proc *p);' not in text:
-+        anchor = 'extern int      proc_selfpid(void);\n'
-+        if text.count(anchor) != 1:
-+            raise SystemExit('reference exception header anchor changed')
-+        exception.write_text(text.replace(anchor, anchor + 'extern int      proc_pid(struct proc *p);\n', 1))
-     manifest = {str(p.relative_to(source)): hashlib.sha256(p.read_bytes()).hexdigest()
-                 for p in source.rglob('*') if p.is_file()}
-     (output/'source-sha256.json').write_text(json.dumps(manifest,indent=2)+'\n')
-@@ -37,24 +66,51 @@ forced = [root/f'build/{folder}/{name}' for folder,name in (
- assert all(p.is_file() for p in archives+forced)
- env = dict(os.environ, KERNEL_SDKROOT=str(sdk),
-            XNU_AVAILABILITY_PL=str(sdk/'usr/local/libexec/availability.pl'))
+-                    ignore=shutil.ignore_patterns('.git'))
+-    # The shared tree currently has this observation hook at file scope. The
+-    # reference build disables observation hooks; repair only its private copy.
+-    sleh = source / 'osfmk/arm64/sleh.c'
+-    text = sleh.read_text()
+-    misplaced = '\n\tboot_progress_user_breakpoint(state, esr);\n#if __has_feature(ptrauth_calls)'
+-    if misplaced in text:
+-        sleh.write_text(text.replace(misplaced, '\n#if __has_feature(ptrauth_calls)', 1))
+-    manifest = {str(p.relative_to(source)): hashlib.sha256(p.read_bytes()).hexdigest()
+-                for p in source.rglob('*') if p.is_file()}
+-    (output/'source-sha256.json').write_text(json.dumps(manifest,indent=2)+'\n')
+-sdk = root / '.cache/fakeroot'
+-archives = [root/'build/corecrypto-2023/libcorecrypto_kernel_noasm-namespaced.a']
+-forced = [root/f'build/{folder}/{name}' for folder,name in (
+-    ('libpthread-kernel','libpthread_kernel.a'),('armdt-platform','libArmDTPlatform.a'),('armcpu','libArmCpu.a'))]
+-assert all(p.is_file() for p in archives+forced)
+-env = dict(os.environ, KERNEL_SDKROOT=str(sdk),
+-           XNU_AVAILABILITY_PL=str(sdk/'usr/local/libexec/availability.pl'))
 -flags = '-Wno-reserved-identifier -Wno-pre-c11-compat -Wno-missing-designated-field-initializers -Wno-suggest-override -Wno-unnecessary-virtual-specifier -Wno-suggest-destructor-override -Wno-ms-bitfield-padding -DXNU_NATIVE_PAN=1 -DXNU_SOURCE_CORECRYPTO14=1 -DXNU_BOOT_PROGRESS=0'
-+flags = '-Wno-reserved-identifier -Wno-pre-c11-compat -Wno-missing-designated-field-initializers -Wno-suggest-override -Wno-unnecessary-virtual-specifier -Wno-suggest-destructor-override -Wno-ms-bitfield-padding -DXNU_NATIVE_PAN=1 -DXNU_SOURCE_CORECRYPTO14=1 -DXNU_BOOT_PROGRESS=0 -DXNU_QCOM_USB_DEBUG=0 -DXNU_SOURCE_STORAGE=0'
- args = ['make','-C',str(source),'build','SDKROOT=iphoneos',
-     'ARCH_CONFIGS=ARM64','MACHINE_CONFIGS=BCM2837','KERNEL_CONFIGS=RELEASE',
-     'ARCH_STRING_FOR_CURRENT_MACHINE_CONFIG=arm64e','LARGE_MEMORY_DEFINE=-UARM_LARGE_MEMORY',
-     'ARM64_LINK_ADDR=0xfffffff007004000','ARM64_PLKSEG_ADDR=0xfffffff004004000',
+-args = ['make','-C',str(source),'build','SDKROOT=iphoneos',
+-    'ARCH_CONFIGS=ARM64','MACHINE_CONFIGS=BCM2837','KERNEL_CONFIGS=RELEASE',
+-    'ARCH_STRING_FOR_CURRENT_MACHINE_CONFIG=arm64e','LARGE_MEMORY_DEFINE=-UARM_LARGE_MEMORY',
+-    'ARM64_LINK_ADDR=0xfffffff007004000','ARM64_PLKSEG_ADDR=0xfffffff004004000',
 -    'DEPLOYMENT_TARGET_FLAGS=-miphoneos-version-min=26.0 -DXNU_TARGET_OS_IOS',
 -    'DEPLOYMENT_LINKER_FLAGS=-Wl,-ios_version_min,26.0',
-+    f'DEPLOYMENT_TARGET_FLAGS=-miphoneos-version-min={options.ios_version} -DXNU_TARGET_OS_IOS',
-+    f'DEPLOYMENT_LINKER_FLAGS=-Wl,-ios_version_min,{options.ios_version}',
-     'RC_DARWIN_KERNEL_VERSION=25.5.0','RC_ProjectSourceVersion=12377.121.6',
+-    'RC_DARWIN_KERNEL_VERSION=25.5.0','RC_ProjectSourceVersion=12377.121.6',
 -    f'BUILD_LTO={int(options.lto)}','BOUND_CHECKS=0','BUILD_WERROR=0','MAKEJOBS=-j8',
 -    'LDFLAGS_KERNEL_LTO=-miphoneos-version-min=26.0 -Wl,-mllvm,-inline-threshold=100',
-+    f'BUILD_LTO={int(options.lto)}','BOUND_CHECKS=0','BUILD_WERROR=0',f'MAKEJOBS=-j{options.jobs}',
-+    f'LDFLAGS_KERNEL_LTO=-miphoneos-version-min={options.ios_version} -Wl,-mllvm,-inline-threshold=100',
-+    # The public RELEASE export list also names Apple-only UAT/DART/SPTM
-+    # implementations excluded by BCM2837. This is a symbol-bearing naming
-+    # reference, not a kext-export ABI or boot candidate. Use XNU's own
-+    # no-export-list/-rdynamic strategy, retaining LTO and normal undefined
-+    # call checks. No missing function is stubbed or dynamically resolved.
-+    'LDFLAGS_KERNEL_ONLY_CONFIG_RELEASEARM64=',
-+    'LDFLAGS_KERNEL_STRIP_LTO=-rdynamic',
-     f'CFLAGS_EXTRA={flags}',
-     'copyio.o_CFLAGS_ADD=-march=armv8.1-a','pcb.o_CFLAGS_ADD=-march=armv8.1-a',
-     'LD_KERNEL_ARCHIVES='+' '.join([f'-L{sdk}/usr/local/lib/kernel','-lfirehose_kernel',
-                                     *map(str,archives),*(f'-Wl,-force_load,{p}' for p in forced)]),
-     'XNU_EXTERNAL_KERNEL_ARCHIVES='+' '.join(map(str,archives+forced)),
-     f'OBJROOT={output}/{mode}-obj',f'SYMROOT={output}/{mode}-sym',f'DSTROOT={output}/{mode}-dst']
+-    f'CFLAGS_EXTRA={flags}',
+-    'copyio.o_CFLAGS_ADD=-march=armv8.1-a','pcb.o_CFLAGS_ADD=-march=armv8.1-a',
+-    'LD_KERNEL_ARCHIVES='+' '.join([f'-L{sdk}/usr/local/lib/kernel','-lfirehose_kernel',
+-                                    *map(str,archives),*(f'-Wl,-force_load,{p}' for p in forced)]),
+-    'XNU_EXTERNAL_KERNEL_ARCHIVES='+' '.join(map(str,archives+forced)),
+-    f'OBJROOT={output}/{mode}-obj',f'SYMROOT={output}/{mode}-sym',f'DSTROOT={output}/{mode}-dst']
 -(output/f'{mode}-command.json').write_text(json.dumps(args,indent=2)+'\n')
-+command_record = output/f'{mode}-command.json'
-+if command_record.is_file() and json.loads(command_record.read_text()) != args:
-+    raise SystemExit('reference configuration changed; use a fresh candidate output')
-+command_record.write_text(json.dumps(args,indent=2)+'\n')
- with (output/f'{mode}-build.log').open('w') as log:
-     result = subprocess.run(args,cwd=root,env=env,stdout=log,stderr=subprocess.STDOUT)
- print('RELEASE reference exit',result.returncode,'log',output/f'{mode}-build.log',flush=True)
-+reference = output/f'{mode}-obj/RELEASE_ARM64_BCM2837/mach.release.bcm2837.unstripped.noctf'
-+if result.returncode == 0:
-+    if not reference.is_file():
-+        raise SystemExit('successful reference build did not produce its declared Mach-O')
-+    canonical = output/'mach.release.bcm2837.unstripped.noctf'
-+    if canonical.is_symlink():
-+        canonical.unlink()
-+    elif canonical.exists():
-+        raise SystemExit('use a fresh reference output; canonical path is an existing regular file')
-+    canonical.symlink_to(reference.relative_to(output))
-+(output/f'{mode}-scope.json').write_text(json.dumps({'source_revision': revision,
-+    'ios_version': options.ios_version, 'purpose': 'symbol-bearing comparison input only',
-+    'apple_only_export_list_enforced': False, 'global_symbol_names_retained': True,
-+    'undefined_calls_allowed': False,
-+    'bootable_candidate': False, 'device_executed': False,
-+    'exit_code': result.returncode,
-+    'kernel_sha256': hashlib.sha256(reference.read_bytes()).hexdigest() if reference.is_file() else None}, indent=2) + '\n')
- raise SystemExit(result.returncode)
+-with (output/f'{mode}-build.log').open('w') as log:
+-    result = subprocess.run(args,cwd=root,env=env,stdout=log,stderr=subprocess.STDOUT)
+-print('RELEASE reference exit',result.returncode,'log',output/f'{mode}-build.log',flush=True)
+-raise SystemExit(result.returncode)
++
++def file_hash(path):
++    with path.open('rb') as stream:
++        return hashlib.file_digest(stream, 'sha256').hexdigest()
++
++
++def tree_hash(path):
++    """Hash inputs by content; follow SDK header-directory links as the compiler does."""
++    if not path.is_dir():
++        raise FileNotFoundError(path)
++    digest = hashlib.sha256()
++    for directory, dirs, files in os.walk(path, followlinks=True):
++        dirs[:] = sorted(d for d in dirs if d != '.git')
++        for name in sorted(files):
++            item = Path(directory) / name
++            digest.update(str(item.relative_to(path)).encode() + b'\0')
++            digest.update(file_hash(item).encode() + b'\0')
++    return digest.hexdigest()
++
++
++def reusable(final, record, inputs):
++    try:
++        saved = json.loads(record.read_text())
++        return saved['inputs'] == inputs and saved['sha256'] == file_hash(final)
++    except (OSError, ValueError, KeyError):
++        return False
++
++
++def linked_objects(directory, lto):
++    if lto:
++        # XNU splits the final link into non-LTO objects and the code generated
++        # by its intermediate LTO link. There is no link.filelist in this mode.
++        objects = (directory / 'nonltolink.filelist').read_text().splitlines()
++        generated = directory / 'justlto.o'
++        objects += [str(p) for p in sorted(generated.glob('*.o'))] if generated.is_dir() else [str(generated)]
++    else:
++        objects = (directory / 'link.filelist').read_text().splitlines()
++        objects += [str(directory / name) for name in
++                    ('version.o', 'lastkerneldataconst.o', 'lastkernelconstructor.o')
++                    if (directory / name).is_file()]
++    return [str(Path(name) if Path(name).is_absolute() else directory / name)
++            for name in objects if name.strip()]
++
++
++def main():
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument('--tree', required=True, type=Path, help='prepared XNU build tree of the OS profile')
++    parser.add_argument('--lto', action='store_true', help='enable the RELEASE default link-time optimization')
++    parser.add_argument('--jobs', type=int, default=32, help='parallel build jobs; bounded by the runner memory budget')
++    options = parser.parse_args()
++    if options.jobs < 1:
++        parser.error('--jobs must be positive')
++    mode = 'lto' if options.lto else 'snapshot'
++    topology_v3 = os.environ.get('XNU_TOPOLOGY_V3_COMPAT', '0')
++    if topology_v3 not in ('0', '1'):
++        raise SystemExit('XNU_TOPOLOGY_V3_COMPAT must be 0 or 1')
++    platform_client = os.environ.get('XNU_IOS27_PLATFORM_FUNCTION_CLIENT', '0')
++    if platform_client not in ('0', '1'):
++        raise SystemExit('XNU_IOS27_PLATFORM_FUNCTION_CLIENT must be 0 or 1')
++
++
++    root = options.tree.resolve()
++    build_root = root / 'build/xnu/fileset-reference'
++    final = build_root / 'mach.release.bcm2837.unstripped.noctf'
++    cache_record = final.with_suffix('.json')
++    sdk = root / '.cache/fakeroot'
++    archives = [root/'build/corecrypto-2023/libcorecrypto_kernel_noasm-namespaced.a']
++    forced = [root/f'build/{folder}/{name}' for folder,name in (
++        ('libpthread-kernel','libpthread_kernel.a'),('armdt-platform','libArmDTPlatform.a'),('armcpu','libArmCpu.a'))]
++    inputs = {
++        'mode': mode,
++        'script': file_hash(Path(__file__)),
++        'source': tree_hash(root / '.cache/xnu-work'),
++        'sdk': tree_hash(sdk),
++        'archives': {str(p.relative_to(root)): file_hash(p) for p in archives + forced},
++        'versions': {name: os.environ.get(name, default) for name, default in (
++            ('UNIXNU_IOS_VERSION', '26.0'), ('UNIXNU_XNU_DARWIN', '25.5.0'),
++            ('UNIXNU_XNU_VERSION', '12377.121.6'))},
++        'compiler': subprocess.check_output(['xcrun', 'clang', '--version'], text=True),
++        'environment': {name: value for name, value in os.environ.items()
++                        if name.startswith(('XNU_', 'RC_', 'CCC_')) or name in ('CC', 'CXX', 'LD')},
++    }
++    if reusable(final, cache_record, inputs):
++        print(f'reference inputs and digest match ({mode}): {final}')
++        return
++    # Separate workspaces prevent non-LTO objects and stale patched sources from
++    # being reused after a mode, source, SDK, archive or compiler change.
++    key = hashlib.sha256(json.dumps(inputs, sort_keys=True).encode()).hexdigest()
++    output = build_root / f'{mode}-{key[:16]}'
++    output.mkdir(parents=True, exist_ok=True)
++    (output / 'inputs.json').write_text(json.dumps(inputs, indent=2) + '\n')
++    source = output / 'source'
++    if not source.exists():
++        shutil.copytree(root/'.cache/xnu-work', source, symlinks=True,
++                        ignore=shutil.ignore_patterns('.git'))
++        # The shared tree currently has this observation hook at file scope. The
++        # reference build disables observation hooks; repair only its private copy.
++        sleh = source / 'osfmk/arm64/sleh.c'
++        text = sleh.read_text()
++        misplaced = '\n\tboot_progress_user_breakpoint(state, esr);\n#if __has_feature(ptrauth_calls)'
++        if misplaced in text:
++            sleh.write_text(text.replace(misplaced, '\n#if __has_feature(ptrauth_calls)', 1))
++        # Keep the precise Mach-domain declaration used by the qualified 007
++        # comparison; importing sys/proc.h here conflicts with Mach/libsa types.
++        exception = source / 'osfmk/kern/exception.c'
++        if exception.is_file():
++            text = exception.read_text()
++            declaration = 'extern int      proc_pid(struct proc *p);'
++            if 'proc_pid(get_bsdtask_info(task))' in text and declaration not in text:
++                anchor = 'extern int      proc_selfpid(void);\n'
++                if text.count(anchor) != 1:
++                    raise SystemExit('reference exception declaration anchor changed')
++                exception.write_text(text.replace(anchor, anchor + declaration + '\n', 1))
++        manifest = {str(p.relative_to(source)): hashlib.sha256(p.read_bytes()).hexdigest()
++                    for p in source.rglob('*') if p.is_file()}
++        (output/'source-sha256.json').write_text(json.dumps(manifest,indent=2)+'\n')
++    env = dict(os.environ, KERNEL_SDKROOT=str(sdk),
++               XNU_AVAILABILITY_PL=str(sdk/'usr/local/libexec/availability.pl'))
++    flags = '-Wno-reserved-identifier -Wno-pre-c11-compat -Wno-missing-designated-field-initializers -Wno-suggest-override -Wno-unnecessary-virtual-specifier -Wno-suggest-destructor-override -Wno-ms-bitfield-padding -DXNU_NATIVE_PAN=1 -DXNU_SOURCE_CORECRYPTO14=1 -DXNU_BOOT_PROGRESS=0'
++    flags += f' -DXNU_TOPOLOGY_V3_COMPAT={topology_v3}'
++    flags += f' -DXNU_IOS27_PLATFORM_FUNCTION_CLIENT={platform_client}'
++    flags += ' -DXNU_QCOM_USB_DEBUG=0 -DXNU_SOURCE_STORAGE=0'
++    args = ['make','-C',str(source),'build','SDKROOT=iphoneos',
++        'ARCH_CONFIGS=ARM64','MACHINE_CONFIGS=BCM2837','KERNEL_CONFIGS=RELEASE',
++        'ARCH_STRING_FOR_CURRENT_MACHINE_CONFIG=arm64e','LARGE_MEMORY_DEFINE=-UARM_LARGE_MEMORY',
++        'ARM64_LINK_ADDR=0xfffffff007004000','ARM64_PLKSEG_ADDR=0xfffffff004004000',
++        f'DEPLOYMENT_TARGET_FLAGS=-miphoneos-version-min={os.environ.get("UNIXNU_IOS_VERSION", "26.0")} -DXNU_TARGET_OS_IOS',
++        f'DEPLOYMENT_LINKER_FLAGS=-Wl,-ios_version_min,{os.environ.get("UNIXNU_IOS_VERSION", "26.0")}',
++        f'RC_DARWIN_KERNEL_VERSION={os.environ.get("UNIXNU_XNU_DARWIN", "25.5.0")}',
++        f'RC_ProjectSourceVersion={os.environ.get("UNIXNU_XNU_VERSION", "12377.121.6")}',
++        f'BUILD_LTO={int(options.lto)}','BOUND_CHECKS=0','BUILD_WERROR=0',f'MAKEJOBS=-j{options.jobs}',
++        f'LDFLAGS_KERNEL_LTO=-miphoneos-version-min={inputs["versions"]["UNIXNU_IOS_VERSION"]} -Wl,-mllvm,-inline-threshold=100',
++        # Same strict, symbol-bearing RELEASE strategy as qualified 007.
++        # Drop only the forced export list; actual undefined calls still fail.
++        'LDFLAGS_KERNEL_ONLY_CONFIG_RELEASEARM64=',
++        'LDFLAGS_KERNEL_STRIP_LTO=-rdynamic',
++        f'CFLAGS_EXTRA={flags}',
++        'copyio.o_CFLAGS_ADD=-march=armv8.1-a','pcb.o_CFLAGS_ADD=-march=armv8.1-a',
++        'LD_KERNEL_ARCHIVES='+' '.join([f'-L{sdk}/usr/local/lib/kernel','-lfirehose_kernel',
++                                        *map(str,archives),*(f'-Wl,-force_load,{p}' for p in forced)]),
++        'XNU_EXTERNAL_KERNEL_ARCHIVES='+' '.join(map(str,archives+forced)),
++        f'OBJROOT={output}/{mode}-obj',f'SYMROOT={output}/{mode}-sym',f'DSTROOT={output}/{mode}-dst']
++    (output/f'{mode}-command.json').write_text(json.dumps(args,indent=2)+'\n')
++    with (output/f'{mode}-build.log').open('w') as log:
++        result = subprocess.run(args,cwd=root,env=env,stdout=log,stderr=subprocess.STDOUT)
++    print('RELEASE reference exit',result.returncode,'log',output/f'{mode}-build.log',flush=True)
++    if result.returncode:
++        raise SystemExit(result.returncode)
++    built = output / f'{mode}-obj/RELEASE_ARM64_BCM2837/mach.release.bcm2837.unstripped'
++    temporary = final.with_suffix('.tmp')
++    shutil.copyfile(built, temporary)
++    os.replace(temporary, final)
++    cache_record.write_text(json.dumps({'inputs': inputs, 'sha256': file_hash(final),
++                                  'build': str(output)}, indent=2) + '\n')
++    print('reference', final)
++
++
++if __name__ == '__main__':
++    main()
 diff --git a/scripts/build-libpthread-kernel.py b/scripts/build-libpthread-kernel.py
 index 08d9f68..4a18d23 100644
 --- a/scripts/build-libpthread-kernel.py
@@ -375,7 +953,7 @@ index 0000000..d4de690
 +if __name__ == '__main__':
 +    main()
 diff --git a/scripts/build-xnu-4k-baseline.sh b/scripts/build-xnu-4k-baseline.sh
-index 1ade502..bc92798 100755
+index 1ade502..b47cdef 100755
 --- a/scripts/build-xnu-4k-baseline.sh
 +++ b/scripts/build-xnu-4k-baseline.sh
 @@ -271,6 +271,24 @@ if [ -d "$MOCKFS_OBJECT_DIR" ]; then
@@ -403,7 +981,7 @@ index 1ade502..bc92798 100755
  OWNER_ROOT_PROBE=${XNU_VERIFIED_ROOT_PROBE:-0}
  if [ "$OWNER_ROOT_PROBE" != 0 ] && [ "$OWNER_ROOT_PROBE" != 1 ]; then
    echo 'XNU_VERIFIED_ROOT_PROBE must be 0 or 1' >&2
-@@ -564,12 +582,24 @@ if [ "$NATIVE_ARCH_TIMER" = 1 ] && [ "${XNU_ARMCPU:-0}" != 1 ]; then
+@@ -564,17 +582,42 @@ if [ "$NATIVE_ARCH_TIMER" = 1 ] && [ "${XNU_ARMCPU:-0}" != 1 ]; then
    echo 'Architectural timer entry requires the actual ArmCpu interrupt provider' >&2
    exit 1
  fi
@@ -429,7 +1007,25 @@ index 1ade502..bc92798 100755
  NATIVE_PAN=${XNU_NATIVE_PAN:-0}
  if [ "$NATIVE_PAN" != 0 ] && [ "$NATIVE_PAN" != 1 ]; then
    echo 'XNU_NATIVE_PAN must be 0 or 1' >&2
-@@ -770,6 +800,12 @@ PY_BINDINGS
+   exit 1
+ fi
++TOPOLOGY_V3_COMPAT=${XNU_TOPOLOGY_V3_COMPAT:-0}
++if [ "$TOPOLOGY_V3_COMPAT" != 0 ] && [ "$TOPOLOGY_V3_COMPAT" != 1 ]; then
++  echo 'XNU_TOPOLOGY_V3_COMPAT must be 0 or 1' >&2
++  exit 1
++fi
++EXTRA_CFLAGS="$EXTRA_CFLAGS -DXNU_TOPOLOGY_V3_COMPAT=$TOPOLOGY_V3_COMPAT"
++PLATFORM_FUNCTION_CLIENT=${XNU_IOS27_PLATFORM_FUNCTION_CLIENT:-0}
++if [ "$PLATFORM_FUNCTION_CLIENT" != 0 ] && [ "$PLATFORM_FUNCTION_CLIENT" != 1 ]; then
++  echo 'XNU_IOS27_PLATFORM_FUNCTION_CLIENT must be 0 or 1' >&2
++  exit 1
++fi
++EXTRA_CFLAGS="$EXTRA_CFLAGS -DXNU_IOS27_PLATFORM_FUNCTION_CLIENT=$PLATFORM_FUNCTION_CLIENT"
++
+ EXTRA_CFLAGS="$EXTRA_CFLAGS -DXNU_NATIVE_PAN=$NATIVE_PAN"
+ if [ "$NATIVE_PAN" = 1 ]; then
+   EXTRA_MAKE_ARGS+=("copyio.o_CFLAGS_ADD=-march=armv8.1-a")
+@@ -770,6 +813,12 @@ PY_BINDINGS
      KERNEL_EXTRA_ARCHIVES="$KERNEL_EXTRA_ARCHIVES -Wl,-force_load,$PMGR_ARCHIVE"
      KERNEL_ARCHIVE_DEPENDENCIES="$KERNEL_ARCHIVE_DEPENDENCIES $PMGR_ARCHIVE"
    fi
@@ -442,8 +1038,969 @@ index 1ade502..bc92798 100755
    # Optional extra link inputs (e.g. a stub for an unselected offline probe hook).
    if [ "$BOOT_PROGRESS" = 1 ]; then
      KERNEL_EXTRA_ARCHIVES="$KERNEL_EXTRA_ARCHIVES -Wl,-force_load,$ROOT/build/boot-progress/libBootProgress.a"
+diff --git a/scripts/patch-xnu-entry-probe.py b/scripts/patch-xnu-entry-probe.py
+index 9e3e598..febce27 100644
+--- a/scripts/patch-xnu-entry-probe.py
++++ b/scripts/patch-xnu-entry-probe.py
+@@ -17,7 +17,9 @@ channels. The stage code lives in the zero padding after the kernel entry
+                                         their format string on the
+                                         kernel's own frame buffer mapping and
+                                         stops (scripts/xnu-panic-screen.c).
+-                                        --no-reset leaves out stages 3 and 4.
++                                        --no-reset leaves out reset stages 3 and 4.
++  --mmu-stage-bar                       no-reset yellow band after MMU; shared paint
++                                        keeps the checked panic padding available.
+   stage 4 (--reset-after SYMBOL)        the same wait and reset, but placed after
+                                         the call to SYMBOL in --in FUNCTION (the
+                                         Nth call, --occurrence). It replaces
+@@ -118,6 +120,136 @@ _start:
+ """ + ".ltorg\n",
+ }
+ 
++
++# Same paint operation shared by all three checkpoints. Stage3 executes on the
++# identity alias immediately after the original SCTLR/ISB/check sequence. No C
++# or stack writes have run with caches enabled there. Briefly restore physical
++# uncached addressing for GOP, then restore the exact SCTLR; never resets.
++MMU_STAGE_BARS = """.text
++.global _start, _probe_stage2, _probe_stage3
++_start:
++  mov x20, x0
++  mov x4, #1
++  movz w6, #0x00ff
++  movk w6, #0xff00, lsl #16
++  adr x8, entry_target
++  b paint
++_probe_stage2:
++  mov x4, #2
++  movz w6, #0x00ff
++  movk w6, #0xffff, lsl #16
++  adr x8, stage2_resume
++  b paint
++stage2_resume:
++  msr SCTLR_EL1, x0
++  b mmu_resume
++_probe_stage3:
++  mrs x7, SCTLR_EL1
++  bic x9, x7, #1
++  bic x9, x9, #4
++  msr SCTLR_EL1, x9
++  isb
++  mov x4, #3
++  movz w6, #0xff00
++  movk w6, #0xffff, lsl #16
++  adr x8, stage3_resume
++  b paint
++stage3_resume:
++  msr SCTLR_EL1, x7
++  isb
++  mov x0, #0x300000
++  b post_mmu_resume
++paint:
++  ldr x1, [x20, #0x28]
++  ldr x2, [x20, #0x38]
++  ldr x3, [x20, #0x48]
++  mul x2, x2, x3
++  lsr x2, x2, #4
++  bic x2, x2, #7
++  mul x5, x2, x4
++  add x1, x1, x5
++1:
++  stp w6, w6, [x1], #8
++  subs x2, x2, #8
++  b.hi 1b
++  dsb sy
++  br x8
++"""
++
++
++# arm_init has only executed PACIBSP at this checkpoint: SP is unchanged and
++# there have still been no stack stores after cache enable. Enter the identity
++# alias before clearing M/C, preserve the signed LR and all callee-saved state,
++# restore the exact SCTLR, replay the displaced SP subtract, and return on the
++# original high virtual alias. This does not stand for PAC authentication/ABI.
++ARM_INIT_STAGE3 = """_probe_stage3:
++  adr x9, physical_stage3
++  sub x9, x9, x22
++  add x9, x9, x23
++  br x9
++physical_stage3:
++  mrs x7, SCTLR_EL1
++  bic x9, x7, #1
++  bic x9, x9, #4
++  msr SCTLR_EL1, x9
++  isb
++  mov x4, #3
++  movz w6, #0xffff
++  movk w6, #0xff00, lsl #16
++  adr x8, arm_stage3_resume
++  b paint
++arm_stage3_resume:
++  msr SCTLR_EL1, x7
++  isb
++  add x0, x20, x22
++  sub x0, x0, x23
++  .inst {stack_instruction:#x}
++  adrp x9, arm_init_resume
++  add x9, x9, :lo12:arm_init_resume
++  add x9, x9, x22
++  sub x9, x9, x23
++  br x9
++"""
++
++
++# Terminal-only observation before PE_init_platform(FALSE, boot_args). C has
++# already used cached stack/data: preload the GOP fields while that alias is
++# valid, return TCR to the verified bootstrap layout, enter the identity alias,
++# then clear M/C only to paint and halt. Never resumes C or discards dirty state
++# into a running kernel. No PSCI, reset, storage, or new trace protocol.
++PRE_PLATFORM_STOP = """_probe_stage3:
++  mov x20, x1
++  ldp x22, x23, [x20, #8]
++  ldr x1, [x20, #0x28]
++  ldr x2, [x20, #0x38]
++  ldr x3, [x20, #0x48]
++  movz x9, #0x251a
++  movk x9, #0xa51a, lsl #16
++  movk x9, #0x32, lsl #32
++  movk x9, #0x8, lsl #48
++  msr TCR_EL1, x9
++  isb
++  adr x9, physical_stage3
++  sub x9, x9, x22
++  add x9, x9, x23
++  br x9
++physical_stage3:
++  mrs x7, SCTLR_EL1
++  bic x9, x7, #1
++  bic x9, x9, #4
++  dsb sy
++  msr SCTLR_EL1, x9
++  isb
++  mov x4, #3
++  movz w6, #0xffff
++  movk w6, #0xffff, lsl #16
++  adr x8, terminal_halt
++  b paint_loaded
++terminal_halt:
++  wfe
++  b terminal_halt
++"""
++
+ RESET_BEFORE = """.text
+ .global _start
+ _start:
+@@ -134,7 +266,25 @@ _start:
+ 
+ 
+ def kernel_symbols(kernel):
+-    """Address -> name for the kernel's symbols, from llvm-nm."""
++    """Read actual native symbols; collections select their rebuilt kernel entry."""
++    raw = Path(kernel).read_bytes()
++    if struct.unpack_from('<I', raw, 12)[0] == 12:
++        # The collection root has Apple's stripped table. Its rebuilt native
++        # entry carries symbols with final relocated addresses and absolute
++        # collection file offsets; never infer them from a uniform slide.
++        sys.path.insert(0, str(ROOT / 'kits/XnuPrelink'))
++        from kc_image import Image
++        collection = Image(raw)
++        if 'com.apple.kernel' not in collection.entries:
++            raise SystemExit('Collection has no rebuilt native kernel entry')
++        _, offset = collection.entries['com.apple.kernel']
++        image = Image(raw, offset)
++        if image.kind != 2:
++            raise SystemExit('Collection kernel entry is not MH_EXECUTE')
++        symbols = image.symbols()
++        if not any('_start_first_cpu' in names for names in symbols.values()):
++            raise SystemExit('Collection native startup symbols are unavailable')
++        return {address: min(names) for address, names in symbols.items()}
+     nm = shutil.which('llvm-nm') or '/opt/homebrew/opt/llvm/bin/llvm-nm'
+     table = {}
+     for line in subprocess.run([nm, '-n', kernel], capture_output=True, text=True, check=True).stdout.splitlines():
+@@ -361,9 +511,15 @@ def main():
+     parser.add_argument('--reset-before', action='store_true', help='reset at the call site before invoking SYMBOL (requires --reset-after)')
+     parser.add_argument('--panic-screen', action='store_true', help='draw panic() messages on the screen')
+     parser.add_argument('--no-reset', action='store_true', help='no reset probe at all')
++    parser.add_argument('--mmu-stage-bar', action='store_true', help='shared blue/magenta/yellow probes, including after MMU; requires --no-reset')
++    parser.add_argument('--mmu-stage-at', choices=('mmu', 'arm-init', 'pre-platform-stop', 'post-platform-stop', 'pre-tcr-stop', 'post-tcr-stop', 'pre-sign-stop'), default='mmu', help='yellow immediately after MMU, or cyan at arm_init after its first PACIBSP')
+     parser.add_argument('--occurrence', type=int, default=1, help='which call to SYMBOL (1 = first)')
+     parser.add_argument('--in', dest='function', default='_arm_init', help='function that makes the call (default _arm_init)')
+     args = parser.parse_args()
++    if args.mmu_stage_at != 'mmu' and not args.mmu_stage_bar:
++        parser.error('--mmu-stage-at requires --mmu-stage-bar')
++    if args.mmu_stage_bar and (not args.no_reset or args.reset_after):
++        parser.error('--mmu-stage-bar requires --no-reset and excludes reset call probes')
+     if args.reset_before and not args.reset_after:
+         raise SystemExit('--reset-before requires --reset-after')
+     data = bytearray(args.kernel.read_bytes())
+@@ -395,18 +551,106 @@ def main():
+         sites.append((AFTER_MMU_VA, 3, {'target': AFTER_MMU_VA + 4}))
+         description = f'stage 3 reset {args.reset_delay} s after the MMU is on'
+ 
+-    with tempfile.TemporaryDirectory() as tmp:
+-        for site, stage, symbols in sites:
+-            source = RESET_BEFORE if (stage == 4 and args.reset_before) else SOURCES[stage].format(ticks=TIMEBASE * args.reset_delay)
+-            code = assemble(source, CAVES[stage], symbols, Path(tmp))
+-            if len(code) > CAVE_SIZE:
+-                raise SystemExit(f'Stage {stage} code is too large')
+-            data[file_offset(CAVES[stage]):file_offset(CAVES[stage]) + len(code)] = code
+-    for site, stage, _ in sites:
+-        struct.pack_into('<I', data, file_offset(site), branch(site, CAVES[stage]))
++    probe_ends = []
++    if args.mmu_stage_bar:
++        source = MMU_STAGE_BARS
++        targets = {'entry_target': START_FIRST_CPU, 'mmu_resume': MMU_ENABLE_VA + 4,
++                   'post_mmu_resume': AFTER_MMU_VA + 4}
++        third_site = AFTER_MMU_VA
++        checkpoint = 'yellow post-MMU checkpoint'
++        if args.mmu_stage_at == 'arm-init':
++            arm = kernel_names.get('_arm_init')
++            if arm is None or word(arm) != 0xD503237F or word(arm + 4) != 0xD10343FF:
++                raise SystemExit('arm_init requires verified PACIBSP / SUB SP,SP,#0xd0 prologue')
++            third_site = arm + 4
++            targets['arm_init_resume'] = arm + 8
++            # Reuse only the verified zero bytes immediately after the one-word
++            # kernel entry branch. This gains space without discarding panic.
++            CAVES[1] = (ENTRY_VA + 4 + 7) & ~7
++            begin = source.index('_probe_stage3:\n')
++            end_stage = source.index('paint:\n', begin)
++            source = source[:begin] + ARM_INIT_STAGE3.format(stack_instruction=word(third_site)) + source[end_stage:]
++            checkpoint = 'cyan arm_init checkpoint after original PACIBSP; auth/ABI unproven'
++        if args.mmu_stage_at in ('pre-platform-stop', 'post-platform-stop', 'pre-tcr-stop', 'post-tcr-stop', 'pre-sign-stop'):
++            name = {'pre-platform-stop': '_PE_init_platform', 'post-platform-stop': '_PE_init_platform', 'pre-sign-stop': '_OSRuntimeSignStructors'}.get(args.mmu_stage_at, '_set_tcr')
++            third_site, callee = find_call(data, kernel_symbols(args.kernel), '_arm_init', name, 1)
++            terminal = PRE_PLATFORM_STOP
++            if args.mmu_stage_at in ('pre-platform-stop', 'post-platform-stop'):
++                if word(third_site - 8) != 0x52800000 or word(third_site - 4) != 0xAA1403E1:
++                    raise SystemExit('PE checkpoint requires verified W0=FALSE / X1=boot_args call arguments')
++                if args.mmu_stage_at == 'pre-platform-stop':
++                    terminal = terminal.replace('  movz w6, #0xffff\n', '  movz w6, #0x8000\n', 1)
++                else:
++                    if word(third_site + 4) & 0x9F00001F != 0x90000000:
++                        raise SystemExit('post-platform checkpoint requires original ADRP X0 return site')
++                    # X20 holds the copied boot_args across the real C call;
++                    # it is callee-saved. X1 is caller-saved after the call.
++                    terminal = terminal.replace('  mov x20, x1\n', '', 1)
++                    third_site += 4
++            elif args.mmu_stage_at == 'pre-sign-stop':
++                if word(third_site - 4) != 0xAA1603E0:
++                    raise SystemExit('structor checkpoint requires verified X0=Mach-O header argument')
++                if word(kernel_names['_arm_init'] + 36) != 0xAA0003F3:
++                    raise SystemExit('structor checkpoint requires original X19 boot_args capture')
++                terminal = terminal.replace('  mov x20, x1\n', '  mov x20, x19\n', 1)
++            else:
++                expected = (0xD284B220, 0xF2B4A340, 0xF2C00640, 0xF2E00100)
++                if tuple(word(third_site - 16 + i * 4) for i in range(4)) != expected:
++                    raise SystemExit('set_tcr checkpoint requires verified original boot TCR argument')
++                arm = kernel_names['_arm_init']
++                if word(arm + 36) != 0xAA0003F3:
++                    raise SystemExit('set_tcr checkpoint requires unchanged X19 boot_args capture')
++                terminal = terminal.replace('  mov x20, x1\n', '  mov x20, x19\n', 1)
++                if args.mmu_stage_at == 'post-tcr-stop':
++                    if tuple(word(third_site + i * 4) for i in (1, 2, 3)) != (0xD508871F, 0xD503379F, 0xD5033FDF):
++                        raise SystemExit('post-TCR checkpoint requires original TLBI / DSB NSH / ISB sequence')
++                    third_site += 16
++            # Match the exact original TCR MOVK sequence before relying on its
++            # TTBR0 identity layout in a diagnostic that never resumes.
++            tcr = struct.pack('<5I', 0xF2E00101, 0xF2C00641, 0xF2B4A341, 0xF284A341, 0xD5182041)
++            if bytes(data).count(tcr) != 1:
++                raise SystemExit('Require unique verified native bootstrap TCR layout')
++            CAVES[1] = (ENTRY_VA + 4 + 7) & ~7
++            begin = source.index('_probe_stage3:\n')
++            paint = source.index('paint:\n', begin)
++            source = source[:begin] + terminal + source[paint:]
++            source = source.replace('  mul x2, x2, x3\n', 'paint_loaded:\n  mul x2, x2, x3\n', 1)
++            when = {'post-tcr-stop': 'after set_tcr and TLB flush', 'post-platform-stop': 'after PE_init_platform'}.get(args.mmu_stage_at, 'before ' + name)
++            checkpoint = f'{"orange" if args.mmu_stage_at == "pre-platform-stop" else "white"} terminal stop {when} at {third_site:#x}; never resumes'
++        with tempfile.TemporaryDirectory() as tmp:
++            code = assemble(source, CAVES[1], targets, Path(tmp))
++            probe_names = {name: va for va, name in kernel_symbols(Path(tmp) / 'cave.elf').items()}
++        end = CAVES[1] + len(code)
++        if end > PANIC_CAVE_END or any(data[file_offset(CAVES[1]):file_offset(CAVES[1]) + len(code)]):
++            raise SystemExit('Shared stage probes exceed verified empty entry padding')
++        for name in ('_probe_stage2', '_probe_stage3'):
++            if not CAVES[1] <= probe_names.get(name, 0) < end:
++                raise SystemExit('Shared probe entry missing or outside its checked padding')
++        data[file_offset(CAVES[1]):file_offset(CAVES[1]) + len(code)] = code
++        probe_ends.append(end)
++        for site, target in ((ENTRY_VA, CAVES[1]), (MMU_ENABLE_VA, probe_names['_probe_stage2']),
++                             (third_site, probe_names['_probe_stage3'])):
++            struct.pack_into('<I', data, file_offset(site), branch(site, target))
++        description = f'no reset; {checkpoint}; shared probe {len(code):#x} bytes'
++    else:
++        with tempfile.TemporaryDirectory() as tmp:
++            for site, stage, symbols in sites:
++                source = RESET_BEFORE if (stage == 4 and args.reset_before) else SOURCES[stage].format(ticks=TIMEBASE * args.reset_delay)
++                code = assemble(source, CAVES[stage], symbols, Path(tmp))
++                if len(code) > CAVE_SIZE:
++                    raise SystemExit(f'Stage {stage} code is too large')
++                data[file_offset(CAVES[stage]):file_offset(CAVES[stage]) + len(code)] = code
++                probe_ends.append(CAVES[stage] + len(code))
++        for site, stage, _ in sites:
++            struct.pack_into('<I', data, file_offset(site), branch(site, CAVES[stage]))
+     if args.panic_screen:
+         # Right after the last probe cave in use, so the padding is shared as tightly as possible.
+-        PANIC_CAVE = max(CAVES[stage] for _, stage, _ in sites) + CAVE_SIZE
++        # The stage slots are bounded reservations, not all executable bytes.
++        # Reuse verified zero tail padding after their actual instruction ends;
++        # the larger arm64e native build can otherwise miss by a few bytes.
++        # The complete panic blob is still bounded by PANIC_CAVE_END and its
++        # destination must remain zero before any byte is written there.
++        PANIC_CAVE = (max(probe_ends) + 7) & ~7
+         if word(PANIC_VA) in (0, 0xFFFFFFFF) or any(data[file_offset(PANIC_CAVE):file_offset(PANIC_CAVE_END)]):
+             raise SystemExit('panic() or the panic screen padding is not as expected')
+         with tempfile.TemporaryDirectory() as tmp:
+diff --git a/scripts/probe-stock-entry.py b/scripts/probe-stock-entry.py
+index 1e27c00..ec21e91 100755
+--- a/scripts/probe-stock-entry.py
++++ b/scripts/probe-stock-entry.py
+@@ -12,6 +12,7 @@ import re
+ import shutil
+ import struct
+ import subprocess
++import sys
+ import time
+ 
+ ROOT = Path(__file__).resolve().parent.parent
+@@ -20,13 +21,20 @@ BOOT_ARGS_PA = 0x5ff00000
+ 
+ 
+ def prepare(kernel, output, phys_base=PHYS_BASE, boot_args_pa=BOOT_ARGS_PA, device_tree=None,
+-            command_line='-v serial=3 debug=0x14e'):
++            command_line='-v serial=3 debug=0x14e', darwinboot_source=None):
+     data = kernel.read_bytes()
+     if data[:4] != b'\xcf\xfa\xed\xfe':
+         raise ValueError('Expected decompressed little-endian 64-bit Mach-O')
+     cpu, subtype, kind, count, commands = struct.unpack_from('<IIIII', data, 4)
+-    if cpu != 0x100000c or kind != 2 or commands > len(data) - 32:
+-        raise ValueError('Expected AArch64 MH_EXECUTE with complete load commands')
++    if cpu != 0x100000c or kind not in (2, 12) or commands > len(data) - 32:
++        raise ValueError('Expected AArch64 executable/fileset with complete load commands')
++    parsed = None
++    if kind == 12:
++        if darwinboot_source is None:
++            raise ValueError('Fileset fixture requires explicit production --darwinboot-source')
++        sys.path.insert(0, str(ROOT / 'scripts/qemu-entry'))
++        from darwinboot_parser import parse_kernel
++        parsed = parse_kernel(darwinboot_source, data)
+     offset = 32
+     segments = []
+     entry = None
+@@ -51,6 +59,10 @@ def prepare(kernel, output, phys_base=PHYS_BASE, boot_args_pa=BOOT_ARGS_PA, devi
+         offset += size
+     if offset != 32 + commands or not segments or entry is None:
+         raise ValueError('Missing Mach-O entry or inconsistent command extent')
++    if parsed is not None:
++        described = [(name, va, size, off, length) for name, va, size, off, length, _ in parsed['segments']]
++        if described != segments or entry != parsed['entry']:
++            raise ValueError('Fixture geometry differs from production DarwinBoot parser')
+     segments.sort(key=lambda s: s[1])
+     for left, right in zip(segments, segments[1:]):
+         if left[1] + left[2] > right[1]:
+@@ -83,6 +95,8 @@ def prepare(kernel, output, phys_base=PHYS_BASE, boot_args_pa=BOOT_ARGS_PA, devi
+         struct.pack_into('<QI', boot, 0x60, base + boot_args_pa + 0x1000 - phys_base, len(tree))
+     (output / 'boot-args.bin').write_bytes(boot)
+     return {'sha256': hashlib.sha256(data).hexdigest(), 'cpu_subtype': subtype,
++            'mach_o_filetype': kind,
++            'production_parser_sha256': parsed['parser_source_sha256'] if parsed else None,
+             'virtual_base': hex(base), 'physical_base': hex(phys_base),
+             'boot_args_pa': hex(boot_args_pa), 'entry_va': hex(entry),
+             'command_line': command_line,
+@@ -100,12 +114,14 @@ if __name__ == '__main__':
+     parser.add_argument('--phys-base', type=lambda value: int(value, 0), default=PHYS_BASE)
+     parser.add_argument('--boot-args-pa', type=lambda value: int(value, 0), default=BOOT_ARGS_PA)
+     parser.add_argument('--device-tree', type=Path)
++    parser.add_argument('--darwinboot-source', type=Path,
++                        help='Unchanged production DarwinBoot.c, required to validate fileset layout')
+     parser.add_argument('--command-line', default='-v serial=3 debug=0x14e')
+     args = parser.parse_args()
+     output = args.output.resolve()
+     output.mkdir(parents=True, exist_ok=True)
+     report = prepare(args.kernel, output, args.phys_base, args.boot_args_pa, args.device_tree,
+-                     args.command_line)
++                     args.command_line, args.darwinboot_source)
+     compiler = shutil.which('clang')
+     linker = shutil.which('ld.lld')
+     objcopy = shutil.which('llvm-objcopy')
+diff --git a/scripts/qemu-entry/darwinboot_parser.py b/scripts/qemu-entry/darwinboot_parser.py
+new file mode 100644
+index 0000000..162cdd5
+--- /dev/null
++++ b/scripts/qemu-entry/darwinboot_parser.py
+@@ -0,0 +1,72 @@
++"""Read a kernel layout through DarwinBoot's unchanged production C parser.
++
++Host fixture adapter only: no loader code, relocations, or guest modifications.
++The preamble is the existing component test's literal host typedef shim.
++"""
++import ast
++import ctypes
++import hashlib
++from pathlib import Path
++import shutil
++import struct
++import subprocess
++import tempfile
++
++
++def parse_kernel(source, data):
++    source = Path(source).resolve()
++    text = source.read_text()
++    # Driver source is DarwinBootPkg/Driver/DarwinBoot.c.
++    test = source.parents[2] / 'Test/test-kernel-parser.py'
++    shim = None
++    for node in ast.parse(test.read_text()).body:
++        if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == 'preamble' for t in node.targets):
++            shim = ast.literal_eval(node.value)
++    if shim is None:
++        raise ValueError('DarwinBoot host parser test has no literal preamble')
++    types = text[text.index('typedef struct {'):text.index('STATIC EFI_HANDLE')]
++    parser = text[text.index('STATIC\nEFI_STATUS\nParseKernelHeader'):text.index('STATIC\nBOOLEAN\nAdtNode')]
++    wrapper = '''
++int describe(const UINT8 *p, UINTN n, UINT64 *v, UINTN capacity) {
++  KERNEL k; EFI_STATUS status = ParseKernel(p, n, &k);
++  if (status != EFI_SUCCESS) return status;
++  if (capacity < 4 + k.Count * 5) return 1;
++  v[0] = k.Base; v[1] = k.End; v[2] = k.Entry; v[3] = k.Count;
++  for (UINTN i = 0; i < k.Count; ++i) {
++    v[4+i*5] = k.Segments[i].Address; v[5+i*5] = k.Segments[i].Size;
++    v[6+i*5] = k.Segments[i].FileOffset; v[7+i*5] = k.Segments[i].FileSize;
++    v[8+i*5] = k.Segments[i].Protection;
++  }
++  return 0;
++}
++'''
++    compiler = shutil.which('clang')
++    if not compiler:
++        raise ValueError('clang is required for the production parser fixture')
++    with tempfile.TemporaryDirectory(prefix='darwinboot-layout-') as directory:
++        root = Path(directory)
++        (root / 'parser.c').write_text(shim + types + parser + wrapper)
++        subprocess.run([compiler, '-Wall', '-Wextra', '-Werror', '-shared', '-fPIC',
++                        str(root / 'parser.c'), '-o', str(root / 'parser.so')], check=True)
++        library = ctypes.CDLL(str(root / 'parser.so'))
++        library.describe.argtypes = [ctypes.c_void_p, ctypes.c_size_t,
++                                     ctypes.POINTER(ctypes.c_uint64), ctypes.c_size_t]
++        values = (ctypes.c_uint64 * (4 + 64 * 5))()
++        status = library.describe(ctypes.create_string_buffer(data), len(data), values, len(values))
++        if status:
++            raise ValueError(f'Production DarwinBoot parser refused kernel: EFI status {status}')
++    # Names are labels only; geometry and acceptance come exclusively from C.
++    names, offset = [], 32
++    for _ in range(struct.unpack_from('<I', data, 16)[0]):
++        command, size = struct.unpack_from('<II', data, offset)
++        if command == 0x19 and struct.unpack_from('<Q', data, offset + 32)[0]:
++            names.append(data[offset + 8:offset + 24].rstrip(b'\0').decode('ascii'))
++        offset += size
++    if len(names) != values[3]:
++        raise ValueError('Production segment count differs from label count')
++    segments = []
++    for i, name in enumerate(names):
++        start = 4 + i * 5
++        segments.append((name, *values[start:start + 5]))
++    return {'base': values[0], 'end': values[1], 'entry': values[2], 'segments': segments,
++            'parser_source': str(source), 'parser_source_sha256': hashlib.sha256(source.read_bytes()).hexdigest()}
+diff --git a/scripts/qemu-entry/gdb-stop.py b/scripts/qemu-entry/gdb-stop.py
+index 8e0efdb..9f7b19d 100755
+--- a/scripts/qemu-entry/gdb-stop.py
++++ b/scripts/qemu-entry/gdb-stop.py
+@@ -1454,7 +1454,11 @@ with (fixture / 'gdb-stderr.log').open('w') as errors:
+             saved = report['stack_pointer_memory'].get('3', {}).get('bytes', '')
+             if len(saved) == 608 and not saved.startswith('E'):
+                 raw_state = bytes.fromhex(saved)
+-                if struct.unpack_from('<2I', raw_state) == (21, 72):
++                # XNU12377 arm_saved_state64 adds an arm64e jophash tail
++                # (74 words instead of72); the x0-x3 prefix stays identical.
++                # Read the captured header before interpreting that prefix.
++                if struct.unpack_from('<2I', raw_state) in ((21, 72), (21, 74)):
++                    report['saved_exception_state_flavor_count'] = list(struct.unpack_from('<2I', raw_state))
+                     report['saved_exception_registers'] = {}
+                     report['saved_exception_argument_memory'] = {}
+                     for index in range(4):
+diff --git a/scripts/test-fileset-reference.py b/scripts/test-fileset-reference.py
+new file mode 100644
+index 0000000..c8efd8c
+--- /dev/null
++++ b/scripts/test-fileset-reference.py
+@@ -0,0 +1,132 @@
++"""A cached comparison kernel must belong to the requested build inputs."""
++import importlib.util
++import json
++import os
++from pathlib import Path
++import tempfile
++from types import SimpleNamespace
++import unittest
++from unittest.mock import patch
++
++spec = importlib.util.spec_from_file_location(
++    'reference', Path(__file__).with_name('build-fileset-release-reference.py'))
++reference = importlib.util.module_from_spec(spec)
++spec.loader.exec_module(reference)
++
++
++class ReferenceCacheTests(unittest.TestCase):
++    def test_lto_filelist_paths_are_relative_to_the_object_directory(self):
++        with tempfile.TemporaryDirectory() as directory:
++            root = Path(directory)
++            (root / 'nonltolink.filelist').write_text('lastkernelconstructor.o\nnonlto.o\n')
++            self.assertEqual(reference.linked_objects(root, True),
++                             [str(root / name) for name in
++                              ('lastkernelconstructor.o', 'nonlto.o', 'justlto.o')])
++
++    def test_builder_rebuilds_snapshot_as_lto_then_reuses_matching_output(self):
++        with tempfile.TemporaryDirectory() as directory:
++            root = Path(directory)
++            files = ['.cache/xnu-work/osfmk/arm64/sleh.c',
++                     '.cache/xnu-work/config/Private.exports',
++                     '.cache/xnu-work/config/Private.arm64.exports',
++                     '.cache/fakeroot/usr/include/header.h',
++                     'build/corecrypto-2023/libcorecrypto_kernel_noasm-namespaced.a',
++                     'build/libpthread-kernel/libpthread_kernel.a',
++                     'build/armdt-platform/libArmDTPlatform.a',
++                     'build/armcpu/libArmCpu.a']
++            for name in files:
++                path = root / name
++                path.parent.mkdir(parents=True, exist_ok=True)
++                path.write_text('')
++            builds = []
++            compiler_flags = []
++
++            def make(command, **kwargs):
++                if command[:2] == ['xcrun', 'nm']:
++                    return SimpleNamespace(returncode=0, stdout='')
++                values = dict(arg.split('=', 1) for arg in command if '=' in arg)
++                mode = values['BUILD_LTO']
++                builds.append(mode)
++                compiler_flags.append(values['CFLAGS_EXTRA'])
++                output = Path(values['OBJROOT']) / 'RELEASE_ARM64_BCM2837'
++                output.mkdir(parents=True, exist_ok=True)
++                if mode == '1':
++                    (output / 'nonltolink.filelist').write_text('')
++                    (output / 'justlto.o').write_bytes(b'object')
++                else:
++                    (output / 'link.filelist').write_text('')
++                (output / 'mach.release.bcm2837.unstripped').write_text(mode)
++                return SimpleNamespace(returncode=0)
++
++            argv = ['reference', '--tree', str(root)]
++            with patch.object(reference.subprocess, 'run', side_effect=make), \
++                    patch.object(reference.subprocess, 'check_output', return_value='compiler'), \
++                    patch('sys.argv', argv):
++                reference.main()
++                self.assertEqual(builds, ['0'])
++                argv.append('--lto')
++                reference.main()
++                self.assertEqual(builds, ['0', '1'])
++                reference.main()
++                self.assertEqual(builds, ['0', '1'])
++                final = root / 'build/xnu/fileset-reference/mach.release.bcm2837.unstripped.noctf'
++                self.assertEqual(final.read_text(), '1')
++
++                # A v3-enabled native build needs its own matching comparison
++                # kernel. Reusing the v2 comparison would mislead prelink.
++                with patch.dict(os.environ, {'XNU_TOPOLOGY_V3_COMPAT': '1'}):
++                    reference.main()
++                    self.assertEqual(builds, ['0', '1', '1'])
++                    self.assertIn('-DXNU_TOPOLOGY_V3_COMPAT=1', compiler_flags[-1])
++                    reference.main()
++                    self.assertEqual(len(builds), 3)
++
++                    with patch.dict(os.environ, {'XNU_IOS27_PLATFORM_FUNCTION_CLIENT': '1'}):
++                        reference.main()
++                        self.assertEqual(len(builds), 4)
++                        self.assertIn('-DXNU_IOS27_PLATFORM_FUNCTION_CLIENT=1', compiler_flags[-1])
++                        reference.main()
++                        self.assertEqual(len(builds), 4)
++
++    def test_invalid_topology_option_is_rejected_before_build(self):
++        with patch('sys.argv', ['reference', '--tree', '/unused']), \
++                patch.dict(os.environ, {'XNU_TOPOLOGY_V3_COMPAT': 'yes'}):
++            with self.assertRaisesRegex(SystemExit, 'must be 0 or 1'):
++                reference.main()
++
++    def test_old_snapshot_cannot_satisfy_lto_request(self):
++        with tempfile.TemporaryDirectory() as directory:
++            final = Path(directory) / 'reference'
++            record = Path(directory) / 'record.json'
++            final.write_bytes(b'comparison kernel')
++            snapshot = {'mode': 'snapshot', 'source': 'old'}
++            self.assertFalse(reference.reusable(final, record, snapshot))
++            record.write_text(json.dumps({'inputs': snapshot, 'sha256': reference.file_hash(final)}))
++            self.assertTrue(reference.reusable(final, record, snapshot))
++            self.assertFalse(reference.reusable(final, record, dict(snapshot, mode='lto')))
++            self.assertFalse(reference.reusable(final, record, dict(snapshot, source='changed')))
++            final.write_bytes(b'corrupt kernel')
++            self.assertFalse(reference.reusable(final, record, snapshot))
++
++    def test_source_content_and_linked_sdk_headers_invalidate_cache(self):
++        with tempfile.TemporaryDirectory() as directory:
++            root = Path(directory)
++            source = root / 'source'
++            source.mkdir()
++            header = source / 'header.h'
++            header.write_text('old')
++            timestamp = header.stat().st_mtime_ns
++            first = reference.tree_hash(source)
++            header.write_text('new')
++            os.utime(header, ns=(timestamp, timestamp))
++            self.assertNotEqual(first, reference.tree_hash(source))
++            sdk = root / 'sdk'
++            sdk.mkdir()
++            (sdk / 'include').symlink_to(source, target_is_directory=True)
++            first = reference.tree_hash(sdk)
++            header.write_text('next')
++            self.assertNotEqual(first, reference.tree_hash(sdk))
++
++
++if __name__ == '__main__':
++    unittest.main()
+diff --git a/scripts/test-platform-function-client.py b/scripts/test-platform-function-client.py
+new file mode 100644
+index 0000000..5590663
+--- /dev/null
++++ b/scripts/test-platform-function-client.py
+@@ -0,0 +1,119 @@
++"""Host checks of the IIG-generated CallPlatformFunction client.
++
++The ABI fixture matches the donor's 140/84-byte kernel messages. Provider
++responses are simulated; this does not qualify a native server or a boot.
++"""
++import argparse,json,pathlib,subprocess,tempfile
++parser=argparse.ArgumentParser(description=__doc__)
++parser.add_argument('--output-dir',type=pathlib.Path)
++parser.add_argument('--cxx',default='g++')
++args=parser.parse_args()
++temporary=tempfile.TemporaryDirectory(prefix='unixnu-platform-client-')
++O=args.output_dir or pathlib.Path(temporary.name)
++O.mkdir(parents=True,exist_ok=True)
++patch=(pathlib.Path(__file__).resolve().parents[1]/'patches/xnu-12377/iokit-platform-function-client.patch').read_text()
++section=patch.split('+++ b/iokit/Kernel/IOUserServer.cpp\n',1)[1]
++added='\n'.join(line[1:] for line in section.splitlines() if line.startswith('+'))+'\n'
++start=added.index('struct IOService_CallPlatformFunction_Msg_Content')
++end=added.rindex('\n#endif')
++(O/'iig-client-implementation.cpp').write_text(added[start:end])
++
++prefix=r'''
++#include <cstdint>
++#include <cstddef>
++#include <cstring>
++#include <cassert>
++#include <cstdio>
++#define KERNEL 1
++using kern_return_t=int;
++using OSObjectRef=uintptr_t;
++constexpr int kIOReturnSuccess=0,kIOReturnIPCError=-1,kIOReturnBadArgument=-2;
++constexpr int kIORPCVersion190615=0x4da2b68c;
++constexpr unsigned kIORPCMessageOneway=8,kIORPCMessageSimpleReply=128,kIORPCMessageLocalHost=2,kIORPCMessageOnqueue=32;
++constexpr unsigned MACH_MSG_PORT_DESCRIPTOR=0,MACH_MSG_OOL_DESCRIPTOR=1,MACH_MSG_VIRTUAL_COPY=1;
++#pragma pack(push,4)
++struct mach_msg_header_t {uint32_t msgh_bits,msgh_size;uintptr_t remote,local;uint32_t voucher,msgh_id;};
++struct mach_msg_body_t {uint32_t msgh_descriptor_count;};
++struct mach_msg_port_descriptor_t {uintptr_t name;uint32_t pad;uint16_t pad2;uint8_t disposition,type;};
++struct mach_msg_ool_descriptor_t {void *address;uint8_t deallocate,copy,pad,type;uint32_t size;};
++struct IORPCMessageMach {mach_msg_header_t msgh;mach_msg_body_t msgh_body;};
++struct IORPCMessage {uint64_t msgid,flags,objectRefs;};
++#pragma pack(pop)
++struct mach_msg_max_trailer_t {uint8_t raw[68];};
++struct IORPC {IORPCMessageMach *message,*reply;uint32_t sendSize,replySize;IORPCMessage *kernelContent;};
++class OSMetaClassBase {public: virtual ~OSMetaClassBase()=default;};
++using OSDispatchMethod=kern_return_t(*)(OSMetaClassBase*,const IORPC);
++class OSObject:public OSMetaClassBase {public:virtual kern_return_t Invoke(const IORPC);};
++class OSString:public OSObject {};
++class OSDictionary:public OSObject {};
++#define OSDynamicCast(type,value) dynamic_cast<type*>(value)
++class IOService:public OSObject {public:
++ kern_return_t CallPlatformFunction(OSString*,bool,OSDictionary*,OSDictionary**,OSDispatchMethod=nullptr);
++};
++#define IOService_CallPlatformFunction_ID 0xbf66f4287c60ef85ULL
++'''
++test=r'''
++static_assert(sizeof(IOService_CallPlatformFunction_Msg_With_Content)==140);
++static_assert(sizeof(IOService_CallPlatformFunction_Rpl_With_Content)==84);
++static_assert(offsetof(IOService_CallPlatformFunction_Msg_With_Content,content)==84);
++static_assert(offsetof(IOService_CallPlatformFunction_Rpl_With_Content,content)==52);
++static OSString name;static OSDictionary input,output;static OSObject wrong;
++static unsigned calls=0,supercalls=0;static int mode=0;static bool expected_wait=false;
++static int dispatch(OSMetaClassBase *target,const IORPC rpc) {
++ assert(target!=nullptr);assert(rpc.sendSize==140 && rpc.replySize==152);
++ auto *msg=(IOService_CallPlatformFunction_Msg_With_Content*)rpc.message;
++ assert(msg->mach.msgh.msgh_size==140 && msg->mach.msgh.msgh_id==(uint32_t)kIORPCVersion190615);
++ assert(msg->mach.msgh_body.msgh_descriptor_count==3);
++ assert(msg->content.__hdr.objectRefs==3 && msg->content.__hdr.msgid==0xbf66f4287c60ef85ULL);
++ assert(msg->content.__object==(OSObjectRef)target);
++ assert(msg->content.functionName==&name);
++ assert(msg->content.inParam==&input);
++ assert(msg->content.__hdr.flags==0);
++ assert(msg->__object__descriptor.type==MACH_MSG_PORT_DESCRIPTOR);
++ assert(msg->functionName__descriptor.type==MACH_MSG_OOL_DESCRIPTOR && msg->inParam__descriptor.type==MACH_MSG_OOL_DESCRIPTOR);
++ assert(msg->functionName__descriptor.copy==MACH_MSG_VIRTUAL_COPY && msg->inParam__descriptor.copy==MACH_MSG_VIRTUAL_COPY);
++ assert(msg->functionName__descriptor.address==(void*)32 && msg->inParam__descriptor.address==(void*)40);
++ assert(!msg->functionName__descriptor.deallocate && !msg->inParam__descriptor.deallocate);
++ assert(msg->content.waitForFunction==expected_wait);
++ assert(rpc.kernelContent==&msg->content.__hdr);
++ if(mode==1)return 0x123456;
++ auto *reply=(IOService_CallPlatformFunction_Rpl_With_Content*)rpc.reply;
++ memset(reply,0,sizeof(*reply));reply->mach.msgh.msgh_size=84;
++ reply->mach.msgh_body.msgh_descriptor_count=1;
++ reply->content.__hdr.msgid=IOService_CallPlatformFunction_ID;
++ reply->content.__hdr.objectRefs=1;reply->content.outParam=&output;
++ switch(mode) {
++  case 2:reply->mach.msgh.msgh_size=83;break;
++  case 3:reply->content.__hdr.msgid^=1;break;
++  case 4:reply->mach.msgh_body.msgh_descriptor_count=2;break;
++  case 5:reply->content.__hdr.objectRefs=2;break;
++  case 6:reply->content.outParam=reinterpret_cast<OSDictionary*>(&wrong);break;
++  case 7:reply->content.outParam=0;break;
++ }
++ return 0;
++}
++kern_return_t OSObject::Invoke(const IORPC rpc) {calls++;return dispatch(this,rpc);}
++static kern_return_t super_dispatch(OSMetaClassBase *self,const IORPC rpc) {supercalls++;return dispatch(self,rpc);}
++int main() {
++ IOService service;unsigned cases=0;
++ for(unsigned wait=0;wait<2;wait++)for(unsigned use_super=0;use_super<2;use_super++)for(mode=0;mode<8;mode++) {
++  expected_wait=wait;OSDictionary *out=(OSDictionary*)uintptr_t(0x1234);
++  unsigned c=calls,s=supercalls;
++  int result=service.CallPlatformFunction(&name,wait,&input,&out,use_super?super_dispatch:nullptr);
++  assert(calls==c+(use_super?0:1));assert(supercalls==s+(use_super?1:0));
++  if(mode==1)assert(result==0x123456 && out==(OSDictionary*)uintptr_t(0x1234));
++  else if(mode>=2 && mode<=5)assert(result==kIOReturnIPCError && out==(OSDictionary*)uintptr_t(0x1234));
++  else if(mode==6)assert(result==kIOReturnBadArgument && out==nullptr);
++  else assert(result==0 && out==(mode==7?nullptr:&output));
++  cases++;
++ }
++ printf("%u IIG client wire/reply/error/super-dispatch cases passed; server capability unclaimed\n",cases);
++}
++'''
++src=O/'platform-client-host-test.cpp';src.write_text(prefix+(O/'iig-client-implementation.cpp').read_text()+test)
++commands=[[args.cxx,'-std=c++17','-O1','-g','-Wall','-Wextra','-Werror','-fsanitize=address,undefined',str(src),'-o',str(O/'platform-client-host-test')],[str(O/'platform-client-host-test')]]
++result=[]
++for cmd in commands:
++ p=subprocess.run(cmd,capture_output=True,text=True);result.append(dict(command=cmd,returncode=p.returncode,stdout=p.stdout,stderr=p.stderr));print(p.returncode,p.stdout,p.stderr[:4000]);
++ if p.returncode:break
++(O/'client-host-check.json').write_text(json.dumps(result,indent=2));assert len(result)==2 and all(x['returncode']==0 for x in result)
+diff --git a/scripts/test-topology-v3.py b/scripts/test-topology-v3.py
+new file mode 100644
+index 0000000..3e8689c
+--- /dev/null
++++ b/scripts/test-topology-v3.py
+@@ -0,0 +1,112 @@
++"""Check the optional v3 view against a real selected XNU v2 source tree.
++
++Compiles and executes the conversion with ASan/UBSan, checks byte offsets used
++by retained PMGR, and compiles the same conversion for arm64e. This does not
++enable the patch, map a donor symbol, or qualify a complete kernel image.
++"""
++import argparse,json,pathlib,re,subprocess,tempfile
++parser=argparse.ArgumentParser(description=__doc__)
++parser.add_argument('--source',type=pathlib.Path,required=True,help='selected XNU v2 source tree')
++parser.add_argument('--clang',default='/opt/unixnu-linux/llvm/bin/clang')
++parser.add_argument('--cc',default='gcc')
++parser.add_argument('--output-dir',type=pathlib.Path)
++args=parser.parse_args()
++S=args.source.resolve()
++temporary=tempfile.TemporaryDirectory(prefix='unixnu-topology-v3-')
++O=args.output_dir or pathlib.Path(temporary.name)
++O.mkdir(parents=True,exist_ok=True)
++patch=(pathlib.Path(__file__).resolve().parents[1]/'patches/xnu-12377/native-topology-v3-compat.patch').read_text()
++added=patch.split('+++ b/osfmk/arm/topology_v3_compat.h\n',1)[1].splitlines()
++header='\n'.join(line[1:] for line in added if line.startswith('+'))+'\n'
++(O/'topology_v3_compat.h').write_text(header)
++
++old=(S/'osfmk/arm/cpu_topology.h').read_text();old='\n'.join(x for x in old.splitlines() if not x.startswith('#include'))
++machine=(S/'osfmk/arm/machine_routines.h').read_text();enum=re.search(r'typedef enum \{\s*CLUSTER_TYPE_INVALID.*?\} cluster_type_t;',machine,re.S).group()
++assert 'typedef uint8_t pset_id_t;' in (S/'osfmk/kern/kern_types.h').read_text()
++prefix='''#include <stdint.h>
++#include <stddef.h>
++#include <assert.h>
++#include <stdio.h>
++#include <string.h>
++typedef uintptr_t vm_offset_t;
++typedef uint8_t pset_id_t;
++#define MAX_CPUS 64
++#define MAX_CPU_CLUSTERS 32
++'''
++test=r'''
++static unsigned char *bytes(void *p) {return p;}
++int main(void) {
++  ml_topology_cpu_t oldcpu[MAX_CPUS]; ml_topology_cluster_t oldcluster[MAX_CPU_CLUSTERS];
++  unixnu_topology_cpu_v3_t newcpu[MAX_CPUS]; unixnu_topology_cluster_v3_t newcluster[MAX_CPU_CLUSTERS];
++  unsigned int soc[MAX_CPUS]; unsigned cases=0;
++  for(unsigned count=1;count<=MAX_CPUS;count++) for(unsigned boot=0;boot<count;boot++) {
++    memset(oldcpu,0,sizeof(oldcpu));memset(oldcluster,0,sizeof(oldcluster));
++    memset(newcpu,0,sizeof(newcpu));memset(newcluster,0,sizeof(newcluster));
++    unsigned nc=(count+3)/4;
++    ml_topology_info_t source={.version=2,.cpus=oldcpu,.clusters=oldcluster,
++      .num_cpus=count,.num_clusters=nc,.max_cpu_id=count-1,.max_cluster_id=nc-1,.max_die_id=2,
++      .chip_revision=0x12345678,.cluster_types=15,.cluster_power_down=1};
++    source.boot_cpu=&oldcpu[boot];source.boot_cluster=&oldcluster[boot/4];
++    for(unsigned i=0;i<count;i++) {
++      for(unsigned j=0;j<sizeof(oldcpu[i]);j++) bytes(&oldcpu[i])[j]=(unsigned char)(i*13+j*7);
++      oldcpu[i].cpu_id=i;oldcpu[i].cluster_id=i/4;oldcpu[i].die_id=i/32;
++      oldcpu[i].cluster_type=(cluster_type_t)((i/4)%4);oldcpu[i].phys_id=0x100+(i/4)*0x100+i%4;
++      soc[i]=i/16;
++    }
++    for(unsigned i=0;i<nc;i++) {
++      for(unsigned j=0;j<sizeof(oldcluster[i]);j++) bytes(&oldcluster[i])[j]=(unsigned char)(i*31+j*3);
++      oldcluster[i].cluster_id=i;oldcluster[i].first_cpu_id=i*4;
++      oldcluster[i].num_cpus=count-i*4<4?count-i*4:4;oldcluster[i].cpu_mask=0;
++      for(unsigned j=i*4;j<count && j<i*4+4;j++)oldcluster[i].cpu_mask|=1ULL<<j;
++    }
++    for(unsigned i=0;i<MAX_CPU_TYPES;i++) {source.cluster_type_num_cpus[i]=100+i;source.cluster_type_num_clusters[i]=200+i;}
++    unsigned char beforecpu[sizeof(oldcpu)],beforecluster[sizeof(oldcluster)];
++    memcpy(beforecpu,oldcpu,sizeof(oldcpu));memcpy(beforecluster,oldcluster,sizeof(oldcluster));
++    unixnu_topology_info_v3_t view={0};
++    unixnu_topology_copy_v3(&source,soc,&view,newcpu,newcluster);
++    assert(!memcmp(beforecpu,oldcpu,sizeof(oldcpu)));assert(!memcmp(beforecluster,oldcluster,sizeof(oldcluster)));
++    assert(view.version==3 && view.max_soc_die_id==(count-1)/16);
++    assert(view.boot_cpu==&newcpu[boot] && view.boot_cluster==&newcluster[boot/4]);
++    assert(*(uint32_t*)(bytes(&view)+64)==source.chip_revision);
++    assert(*(void**)(bytes(&view)+32)==newcpu && *(void**)(bytes(&view)+40)==newcluster);
++    assert(*(uint32_t*)(bytes(&view)+112)==source.cluster_power_down);
++    for(unsigned i=0;i<5;i++) {
++      assert(*(uint32_t*)(bytes(&view)+72+i*4)==(i<4?100+i:0));
++      assert(*(uint32_t*)(bytes(&view)+92+i*4)==(i<4?200+i:0));
++    }
++    for(unsigned i=0;i<count;i++) {
++      unsigned char *o=bytes(oldcpu)+i*128,*n=bytes(newcpu)+i*136;
++      assert(!memcmp(o,n,16));assert(!memcmp(o+16,n+20,24));assert(!memcmp(o+40,n+48,80));
++      assert(n[128]==o[120]);assert(*(uint32_t*)(n+16)==soc[i]);
++    }
++    for(unsigned i=0;i<nc;i++) {
++      unsigned char *o=bytes(oldcluster)+i*80,*n=bytes(newcluster)+i*88;
++      assert(!memcmp(o,n,28));assert(!memcmp(o+28,n+32,4));assert(!memcmp(o+32,n+40,48));
++      assert(*(uint32_t*)(n+28)==soc[i*4]);
++    }
++    /* Re-publish after canonical MMIO mapping and processor-set initialization. */
++    oldcpu[boot].cpu_IMPL_regs=0xabcdef00;oldcpu[boot].cpu_pset_id=7;
++    oldcluster[boot/4].acc_IMPL_regs=0x12340000;
++    unixnu_topology_copy_v3(&source,soc,&view,newcpu,newcluster);
++    assert(view.boot_cpu==&newcpu[boot] && view.boot_cpu->cpu_IMPL_regs==0xabcdef00);
++    assert(view.boot_cpu->cpu_pset_id==7 && view.boot_cluster->acc_IMPL_regs==0x12340000);
++    cases++;
++  }
++  printf("%u mixed-layout/boot-pointer cases passed\n",cases);return 0;
++}
++'''
++src=prefix+enum+'\n'+old+'\n'+(O/'topology_v3_compat.h').read_text()+test
++(O/'topology-v3-test.c').write_text(src)
++commands=[[args.cc,'-std=c11','-O1','-g','-Wall','-Wextra','-Werror','-fsanitize=address,undefined',str(O/'topology-v3-test.c'),'-o',str(O/'topology-v3-test')],[str(O/'topology-v3-test')]]
++results=[]
++for cmd in commands:
++ p=subprocess.run(cmd,capture_output=True,text=True);results.append(dict(command=cmd,returncode=p.returncode,stdout=p.stdout,stderr=p.stderr));print(p.returncode,p.stdout,p.stderr[:2500]);
++ if p.returncode:break
++resource=subprocess.check_output([args.clang,'-print-resource-dir'],text=True).strip()
++arm_prefix=prefix.replace('#include <assert.h>','#define assert(x) ((x) ? (void)0 : __builtin_trap())').replace('#include <stdio.h>','').replace('#include <string.h>','')+'\n#define __BEGIN_DECLS\n#define __END_DECLS\n'
++arm_src=arm_prefix+enum+'\n'+old+'\n'+(O/'topology_v3_compat.h').read_text()+'''\nvoid check_copy(const ml_topology_info_t *s, const unsigned int *ids, unixnu_topology_info_v3_t *v, unixnu_topology_cpu_v3_t *c, unixnu_topology_cluster_v3_t *k) { unixnu_topology_copy_v3(s,ids,v,c,k); }\n'''
++(O/'topology-v3-arm64e.c').write_text(arm_src)
++cmd=[args.clang,'--target=arm64e-apple-ios27','-std=c11','-ffreestanding','-nostdinc','-isystem',resource+'/include','-O2','-Wall','-Wextra','-Werror','-msign-return-address=all','-c',str(O/'topology-v3-arm64e.c'),'-o',str(O/'topology-v3-test-arm64e.o')]
++p=subprocess.run(cmd,capture_output=True,text=True);results.append(dict(command=cmd,returncode=p.returncode,stdout=p.stdout,stderr=p.stderr));print('arm64e',p.returncode,p.stderr[:2500])
++(O/'topology-v3-check.json').write_text(json.dumps(results,indent=2))
++assert all(r['returncode']==0 for r in results)
+diff --git a/scripts/unixnu/devicetree.py b/scripts/unixnu/devicetree.py
+index bbb1fe6..037dab1 100644
+--- a/scripts/unixnu/devicetree.py
++++ b/scripts/unixnu/devicetree.py
+@@ -203,7 +203,7 @@ def arm_io_window(hardware):
+ 
+ 
+ STRINGS = {'compatible', 'device_type', 'reg-names', 'interrupt-names', 'clock-names', 'method'}
+-U32 = {'phandle', 'linux,phandle', '#interrupt-cells', '#iommu-cells', '#clock-cells', 'clock-frequency', 'timebase-frequency'}
++U32 = {'phandle', 'linux,phandle', 'AAPL,phandle', '#interrupt-cells', '#iommu-cells', '#clock-cells', 'clock-frequency', 'timebase-frequency'}
+ U64 = {'redistributor-stride'}
+ FLAGS = {'interrupt-controller', 'dma-coherent'}
+ REFERENCES = {'interrupt-parent': None, 'iommus': '#iommu-cells', 'clocks': '#clock-cells'}
+@@ -253,6 +253,17 @@ def hardware_properties(entry, handles, base=0):
+         elif key == 'reg':
+             pairs = [(physical(entry.parent, address, size) - base, size) for address, size in registers(entry)]
+             properties.append((key, b''.join(struct.pack('<QQ', *pair) for pair in pairs)))
++    # XNU IODT AddPHandle indexes interrupt parents by AAPL,phandle, not
++    # Linux phandle. Keep Linux properties for the native platform drivers,
++    # and export the identical Apple alias for the unmodified IOKit mapper.
++    if '#interrupt-cells' in entry.properties:
++        identifiers = [entry.scalar(key) for key in ('phandle', 'linux,phandle', 'AAPL,phandle')
++                       if key in entry.properties]
++        if identifiers:
++            if len(set(identifiers)) != 1 or not 0 < identifiers[0] < 0xffffffff:
++                raise Error(f'{entry.name}: inconsistent interrupt-controller phandle aliases')
++            if 'AAPL,phandle' not in entry.properties:
++                properties.append(('AAPL,phandle', struct.pack('<I', identifiers[0])))
+     return properties
+ 
+ 
+@@ -300,9 +311,18 @@ def generate(dtb, config, *, unique_chip_id=None, data=False, trust=False, addon
+     payload, platform = config.get('payload', {}), config.get('adt', {})
+     options = payload.get('adt', {})
+     memory = [entry for entry in root.children if entry.strings('device_type') == ['memory'] and entry.enabled()]
+-    if len(memory) != 1 or len(registers(memory[0])) != 1:
+-        raise Error('ADT handoff requires one contiguous DRAM range')
+-    dram_base, dram_size = registers(memory[0])[0]
++    ranges = sorted(pair for entry in memory for pair in registers(entry))
++    if not ranges or any(size <= 0 or base < 0 or base + size > 1 << 64 for base, size in ranges):
++        raise Error('Hardware DTS requires bounded nonempty DRAM ranges')
++    if any(base + size > following for (base, size), (following, _) in zip(ranges, ranges[1:])):
++        raise Error('Hardware DTS DRAM ranges overlap')
++    if len(ranges) != 1 and not config.get('device_tree', {}).get('preserve_memory_ranges'):
++        raise Error('Multiple DRAM banks require device_tree.preserve_memory_ranges')
++    # These are physical topology summaries, never allocator ownership. Preserve
++    # discontiguous ranges instead of inventing RAM in their address-space gaps.
++    dram_base, dram_size = ranges[0][0], sum(size for _, size in ranges)
++    if dram_size >= 1 << 64:
++        raise Error('DRAM size summary overflows u64')
+     if payload.get('dram_size') is not None and int(str(payload['dram_size']), 0) != dram_size:
+         raise Error('payload.dram_size differs from the hardware DTS')
+     # xnu-12377 takes 4 x 64 seed bytes on ARM and panics with fewer; older kernels read the first 64.
+@@ -337,7 +357,22 @@ def generate(dtb, config, *, unique_chip_id=None, data=False, trust=False, addon
+     mappings += [('TrustCache', bytes(16))] if trust else []
+     mappings += [('GpuAddon', bytes(16))] if addon else []
+     mappings += [('RootPolicies', bytes(16))] if root_policies else []
++    if config.get('device_tree', {}).get('preserve_memory_ranges'):
++        chosen.append(('dram-ranges', b''.join(struct.pack('<QQ', *pair) for pair in ranges)))
+     children = [node('chosen', chosen, [node('memory-map', mappings), node('manifest-properties')])]
++    if config.get('device_tree', {}).get('preserve_memory_ranges'):
++        children.append(node('memory', [('device_type', b'memory\0'),
++                                      ('reg', b''.join(struct.pack('<QQ', *pair) for pair in ranges))]))
++        reserved = next((entry for entry in root.children if entry.name == 'reserved-memory'), None)
++        if reserved:
++            children.append(node('reserved-memory', children=[
++                node(entry.name.split('@', 1)[0], [('reg', b''.join(struct.pack('<QQ', *pair) for pair in registers(entry)))])
++                for entry in reserved.children if entry.enabled()]))
++    if config.get('device_tree', {}).get('export_arch_timer'):
++        timer = next((entry for entry in root.children if entry.name == 'timer' and entry.enabled()), None)
++        if timer:
++            children.append(node('timer', hardware_properties(timer, handles)))
++
+     cpus = next((entry for entry in root.children if entry.name == 'cpus'), None)
+     if cpus is None:
+         raise Error('Hardware DTS requires /cpus')
+diff --git a/scripts/unixnu/firmware.py b/scripts/unixnu/firmware.py
+index 5388f78..1af250c 100644
+--- a/scripts/unixnu/firmware.py
++++ b/scripts/unixnu/firmware.py
+@@ -1,5 +1,6 @@
+ """Device UEFI firmware: the EDK II build of a Mu-Silicium checkout (uefi-sheng), driven by board.toml [firmware]."""
+ import os
++import shlex
+ import shutil
+ from pathlib import Path
+ 
+@@ -29,8 +30,11 @@ def build(ctx, modules, uefi, edk2, target='DEBUG'):
+         # Upstream Mu-Silicium submodules the board needs (Mu_Basecore is provided separately).
+         log('firmware: initializing submodules of the Mu-Silicium checkout')
+         run(['git', '-C', uefi, 'submodule', 'update', '--init', '--depth', '1', '--', *fw['submodules']])
+-    for script in [] if ctx.args.skip_preflight else fw.get('preflight', []):
+-        run(['python3', ctx.tree / script], cwd=ctx.tree, log_file=ctx.logs / 'firmware-preflight.log')
++    for entry in [] if ctx.args.skip_preflight else fw.get('preflight', []):
++        parts = shlex.split(entry)
++        script = Path(parts[0]) if Path(parts[0]).is_absolute() else ctx.tree / parts[0]
++        run(['python3', script, *parts[1:]], cwd=ctx.tree,
++            env=dict(os.environ, UNIXNU_UEFI=str(uefi), UNIXNU_DEVICE=str(ctx.device)), log_file=ctx.logs / 'firmware-preflight.log')
+     defines = {'FD_BASE': hex(base), 'FD_SIZE': hex(size), 'FD_BLOCKS': str(size // 0x1000)}
+     defines.update({key: str(value) for key, value in fw.get('defines', {}).items()})
+     fields = {'uefi': str(uefi), 'edk2': str(edk2), 'tree': str(ctx.tree)}
 diff --git a/scripts/unixnu/kernel.py b/scripts/unixnu/kernel.py
-index 49aea5a..e733b26 100644
+index 49aea5a..8129da0 100644
 --- a/scripts/unixnu/kernel.py
 +++ b/scripts/unixnu/kernel.py
 @@ -3,6 +3,7 @@ import os
@@ -495,6 +2052,15 @@ index 49aea5a..e733b26 100644
              'CCC_OVERRIDE_OPTIONS': '# +-Wno-missing-designated-field-initializers +-Wno-unused-but-set-global'}
  
  
+@@ -142,7 +154,7 @@ def build_archives(ctx, env):
+     """Build ordered component recipes and auxiliary archives from compile records."""
+     if not ctx.need_config().get('XNU_BUILD_ARCHIVES'):
+         return
+-    env = dict(env, PATH=toolchain_path(env.get('PATH')))
++    env = dict(env, PATH=toolchain_path(env.get('PATH')), UNIXNU_DEVICE=str(ctx.device))
+     for index, (kind, entry) in enumerate(archive_plan(ctx), 1):
+         if kind == 'component':
+             spec = entry
 @@ -200,7 +212,16 @@ def build(ctx, modules):
          try:
              run(['bash', script], cwd=ctx.tree, env=subprocess_env, log_file=ctx.logs / 'kernel-bootstrap.log')
@@ -513,6 +2079,26 @@ index 49aea5a..e733b26 100644
                  raise
      # Revalidate the selected source and regenerate headers on every archive build.
      # A pre-existing directory can belong to a different OS profile/revision.
+diff --git a/scripts/unixnu/payload.py b/scripts/unixnu/payload.py
+index d7a9867..512a8ad 100644
+--- a/scripts/unixnu/payload.py
++++ b/scripts/unixnu/payload.py
+@@ -146,10 +146,14 @@ def build(ctx, kernel=None):
+     payloads.mkdir(parents=True)
+     shutil.copyfile(kernel, payloads / 'kernel.macho')
+     # The entry probe (stage bars, optional reset) is wanted with either setting; the panic screen is only one part of it.
+-    if spec.get('panic_screen') or spec.get('entry_probe_reset_delay'):
++    if spec.get('panic_screen') or spec.get('entry_probe_reset_delay') or spec.get('mmu_stage_bar'):
+         probe = (['--reset-delay', str(int(spec['entry_probe_reset_delay']))]
+                  if spec.get('entry_probe_reset_delay') else ['--no-reset'])
+         screen = ['--panic-screen'] if spec.get('panic_screen') else []
++        if spec.get('mmu_stage_bar'):
++            if spec.get('entry_probe_reset_delay'):
++                raise Error('mmu_stage_bar excludes automatic reset probes')
++            probe += ['--mmu-stage-bar', '--mmu-stage-at', spec.get('mmu_stage_at', 'mmu')]
+         if spec.get('entry_probe_reset_delay') and spec.get('entry_probe_reset_after'):
+             # Stage 4 in place of stage 3: reset after the Nth call to SYMBOL in FUNCTION.
+             probe += ['--reset-after', spec['entry_probe_reset_after'], '--in', spec.get('entry_probe_reset_in', '_arm_init'),
 diff --git a/scripts/unixnu/test_kernel.py b/scripts/unixnu/test_kernel.py
 index ee7e7c9..5936176 100644
 --- a/scripts/unixnu/test_kernel.py
@@ -594,3 +2180,18 @@ index ee7e7c9..5936176 100644
      def test_prelink_failure_preserves_previous_output_and_keeps_diagnostics(self):
          self.check_prelink_publication(fail=True)
  
+diff --git a/scripts/unixnu/tree.py b/scripts/unixnu/tree.py
+index 6241409..8b7d016 100644
+--- a/scripts/unixnu/tree.py
++++ b/scripts/unixnu/tree.py
+@@ -35,7 +35,9 @@ def _copy_scripts(source, destination):
+         target = destination / relative
+         if target.is_symlink():
+             target.unlink()
+-        if target.exists() and target.stat().st_size == path.stat().st_size and target.stat().st_mtime >= path.stat().st_mtime:
++        # Content, not size and mtime: a pure move of code keeps the size, and a checkout can make
++        # the source look older than a stale tree copy.
++        if target.exists() and target.read_bytes() == path.read_bytes():
+             continue
+         target.parent.mkdir(parents=True, exist_ok=True)
+         shutil.copy2(path, target)
