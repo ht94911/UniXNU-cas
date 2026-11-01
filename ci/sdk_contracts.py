@@ -25,6 +25,27 @@ for sdk in ['macosx','iphoneos']:
     if name.endswith('.tbd') and 'Kernel.framework' in rel:
      matches=[line.strip() for line in source.read_text().splitlines() if any(k in line for k in ['image4','Image4','CallPlatformFunction','ml_get_topology_info'])]
      if matches:report['exports'].append(dict(sdk=sdk,path=rel,matches=matches))
+# Generate the public SDK method declaration with Apple's own IIG. The
+# complete generated client is sealed, not logged or claimed boot-qualified.
+iigdir=out/'iig';iigdir.mkdir()
+source=iigdir/'IOService.iig'
+source.write_text("""#define KERNEL __attribute__((annotate(\"kernel\")))
+#define LOCAL __attribute__((annotate(\"local\")))
+#define SERIALIZABLE __attribute__((annotate(\"serializable\")))
+typedef int kern_return_t;
+class SERIALIZABLE OSString;
+class SERIALIZABLE OSDictionary;
+class OSObject { public: virtual void free(); };
+class KERNEL IOService : public OSObject { public:
+virtual kern_return_t CallPlatformFunction(OSString * functionName, bool waitForFunction, OSDictionary * inParam, OSDictionary ** outParam) LOCAL SERIALIZABLE;
+};
+""")
+found=command(['xcrun','--sdk','macosx','--find','iig']);report['iig_tool']=found
+if found['returncode']==0:
+    report['iig_generate']=command([found['stdout'].strip(),'--def',str(source),'--header',str(iigdir/'IOService.h'),'--impl',str(iigdir/'IOService.iig.cpp'),'--framework-name','DriverKit','--','-x','c++','-std=gnu++2b','-D__IIG=1'])
+for sourcefile in sorted(iigdir.iterdir()):
+    if sourcefile.is_file() and sourcefile.suffix in ('.h','.cpp','.iig'):
+        names.append(str(sourcefile.relative_to(out)))
 (out/'report.json').write_text(json.dumps(report,indent=2)+'\n');names.append('report.json')
 spec=importlib.util.spec_from_file_location('existing_artifacts',P(__file__).with_name('artifacts.py'));m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
 m.seal(out,names,P(__file__).with_name('artifact-recipient.pem'),out.parent/'ios27-sdk-sealed')

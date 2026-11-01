@@ -1,7 +1,7 @@
-name: nezha iPhone27 SDK contract inventory
+name: nezha iPhone27 Apple IIG contract generation
 on:
   push:
-    branches: [codex/ios27-sdk-contracts-023-20261102]
+    branches: [codex/ios27-iig-contracts-024-20261102]
 permissions:
   contents: read
 concurrency:
