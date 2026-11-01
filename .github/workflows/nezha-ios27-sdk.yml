@@ -1,0 +1,40 @@
+name: nezha iPhone27 SDK contract inventory
+on:
+  push:
+    branches: [codex/ios27-sdk-contracts-023-20261102]
+permissions:
+  contents: read
+concurrency:
+  group: nezha-ios27-sdk-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  inventory:
+    runs-on: xcode-27
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.13'
+      - name: Inspect bounded SDK contracts and seal the result
+        shell: bash
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: 1
+          HOMEBREW_NO_INSTALL_CLEANUP: 1
+          HOMEBREW_NO_ENV_HINTS: 1
+        run: |
+          set -euo pipefail
+          brew install openssl@3 >/dev/null 2>&1
+          export PATH="$(brew --prefix openssl@3)/bin:$PATH"
+          python3 ci/sdk_contracts.py
+      - name: Upload only CMS/envelope
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: nezha-ios27-sdk-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/ios27-sdk-sealed/bundle.cms
+            ${{ runner.temp }}/ios27-sdk-sealed/envelope.json
+          if-no-files-found: error
+          retention-days: 90
