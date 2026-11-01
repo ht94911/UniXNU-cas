@@ -1,7 +1,7 @@
-name: nezha iPhone27 SDK contract inventory
+name: nezha Darwin27 kernel contract inventory
 on:
   push:
-    branches: [codex/ios27-sdk-contracts-023-20261102]
+    branches: [codex/ios27-kernel-contracts-027-20261102]
 permissions:
   contents: read
 concurrency:

@@ -1,31 +1,30 @@
-"""Bounded SDK contract inventory; no phone or kernel execution."""
-import hashlib,importlib.util,json,os,pathlib,shutil,subprocess,sys
-P=pathlib.Path;out=P(os.environ['RUNNER_TEMP'])/'ios27-sdk-contracts';out.mkdir(exist_ok=False);names=[];report={'purpose':'installed SDK API/type inventory only','phone_operations':False,'headers':[],'exports':[]}
-def command(argv):
- p=subprocess.run(argv,capture_output=True,text=True);return dict(command=argv,returncode=p.returncode,stdout=p.stdout,stderr=p.stderr)
-report['xcode']=command(['xcodebuild','-version']);report['compiler']=command(['xcrun','clang','--version'])
-report['sdks']=[];total=0
-markers=['/TrustedExecutionMonitor/','/image4/','/img4/','/arm/cpu_topology.h','/arm/machine_routines.h','/kern/kern_types.h','/IOKit/IOService.h','/DriverKit/IOService.h','/DriverKit/IORPC.h','/sys/code_signing.h','/sys/code_signing_internal.h']
-for sdk in ['macosx','iphoneos']:
- data=command(['xcrun','--sdk',sdk,'--show-sdk-path']);report['sdks'].append(data)
- if data['returncode']:continue
- root=P(data['stdout'].strip()).resolve()
- # Search only selected SDK header/framework scopes; cap output and sizes.
- for relative in ['System/Library/Frameworks/Kernel.framework','usr/include','System/Library/Frameworks/DriverKit.framework']:
-  scope=root/relative
-  if not scope.exists():continue
-  for directory,dirs,files in os.walk(scope,followlinks=False):
-   for name in sorted(files):
-    source=P(directory)/name;rel=source.relative_to(root).as_posix();match=any(m in '/'+rel for m in markers)
-    if name.endswith('.h') and match:
-     data=source.read_bytes();total+=len(data)
-     if len(data)>2*1024**2 or total>10*1024**2 or len(report['headers'])>=200:raise ValueError('SDK inventory exceeded its fixed bound')
-     dest='sdk/'+sdk+'/'+rel;target=out/dest;target.parent.mkdir(parents=True,exist_ok=True);target.write_bytes(data);names.append(dest)
-     report['headers'].append(dict(sdk=sdk,path=rel,bytes=len(data),sha256=hashlib.sha256(data).hexdigest()))
-    if name.endswith('.tbd') and 'Kernel.framework' in rel:
-     matches=[line.strip() for line in source.read_text().splitlines() if any(k in line for k in ['image4','Image4','CallPlatformFunction','ml_get_topology_info'])]
-     if matches:report['exports'].append(dict(sdk=sdk,path=rel,matches=matches))
-(out/'report.json').write_text(json.dumps(report,indent=2)+'\n');names.append('report.json')
+"""Read only fixed system kernel collection paths; seal bounded API evidence."""
+import bisect,hashlib,importlib.util,json,os,pathlib,subprocess,sys
+from kc_image import Image
+P=pathlib.Path;out=P(os.environ['RUNNER_TEMP'])/'ios27-sdk-contracts';out.mkdir(exist_ok=False);files=[]
+report={'scope':'Darwin27 system kernel exported contract names and bounded code samples; no phone or user data','inputs':[],'phone_operations':False}
+report['kernel_version']=subprocess.run(['uname','-r'],capture_output=True,text=True).stdout.strip()
+for pathname in ['/System/Library/KernelCollections/BootKernelExtensions.kc','/System/Library/KernelCollections/SystemKernelExtensions.kc','/System/Library/Kernels/kernel']:
+    path=P(pathname);record={'path':pathname};report['inputs'].append(record)
+    if not path.is_file():record['exists']=False;continue
+    record['bytes']=path.stat().st_size
+    if record['bytes']>1024**3:record['skipped']='1GiB input bound';continue
+    try:
+        raw=path.read_bytes();record['sha256']=hashlib.sha256(raw).hexdigest();image=Image(raw);record['entries']=list(image.entries)
+        core=Image(raw,image.entries['com.apple.kernel'][1]) if 'com.apple.kernel' in image.entries else image
+        symbols=core.symbols();starts=core.function_starts();selected=[];total=0
+        for address,names in symbols.items():
+            labels=[n for n in names if any(s in n.lower() for s in ['image4','callplatformfunction','ml_get_topology_info','code_signing_configuration'])]
+            if not labels:continue
+            row={'address':hex(address),'names':labels};selected.append(row)
+            i=bisect.bisect_left(starts,address)
+            if i>=len(starts) or starts[i]!=address or i+1>=len(starts):continue
+            length=starts[i+1]-address
+            if not 0<length<=4096 or total+length>1024**2:continue
+            data=core.read(address,length);name='code/'+path.name+'/'+hex(address)+'.bin';target=out/name;target.parent.mkdir(parents=True,exist_ok=True);target.write_bytes(data);files.append(name);total+=length;row.update(bytes=length,code=name,sha256=hashlib.sha256(data).hexdigest())
+        record.update(symbol_count=sum(map(len,symbols.values())),function_start_count=len(starts),selected=selected,code_bytes=total)
+    except Exception as error:record['error']=type(error).__name__+': '+str(error)
+(out/'report.json').write_text(json.dumps(report,indent=2)+'\n');files.append('report.json')
 spec=importlib.util.spec_from_file_location('existing_artifacts',P(__file__).with_name('artifacts.py'));m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
-m.seal(out,names,P(__file__).with_name('artifact-recipient.pem'),out.parent/'ios27-sdk-sealed')
-print('SDK contract inventory sealed:',len(report['headers']),'headers;',total,'bytes; no device operations')
+m.seal(out,files,P(__file__).with_name('artifact-recipient.pem'),out.parent/'ios27-sdk-sealed')
+print('fixed-path kernel API inventory sealed; files:',len(files))
