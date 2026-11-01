@@ -117,9 +117,11 @@ def reference(framework, work):
     targets = [p for p in targets if (p / 'tree/.cache/xnu-work').is_dir()]
     if len(targets) != 1:
         raise ValueError('select exactly one prepared source target for the comparison reference')
+    env = dict(os.environ, UNIXNU_IOS_VERSION='27.0', UNIXNU_XNU_DARWIN='25.5.0',
+               UNIXNU_XNU_VERSION='12377.121.6', XNU_TOPOLOGY_V3_COMPAT='1')
     return run(['python3', framework / 'scripts/build-fileset-release-reference.py',
-                '--tree', targets[0] / 'tree', '--ios-version', '27.0', '--jobs', '3', '--lto'],
-               cwd=framework, log=work / 'logs/reference-step.log')
+                '--tree', targets[0] / 'tree', '--jobs', '3', '--lto'],
+               cwd=framework, env=env, log=work / 'logs/reference-step.log')
 
 
 def collect(framework, work, sealed):
@@ -168,10 +170,22 @@ def collect(framework, work, sealed):
             add(path, 'reference/' + path.name)
         for path in sorted(reference.glob('*.log')):
             add(path, 'reference/' + path.name)
-        add(reference / 'lto-obj/RELEASE_ARM64_BCM2837/mach.release.bcm2837.unstripped.noctf',
-            'reference/kernel.macho')
+        add(reference / 'mach.release.bcm2837.unstripped.noctf', 'reference/kernel.macho')
+        record = reference / 'mach.release.bcm2837.unstripped.json'
+        # The canonical executable's .with_suffix('.json') cache record is
+        # adjacent to it and carries the exact isolated build directory.
+        records = list(reference.glob('*.json'))
+        for candidate in records:
+            data = json.loads(candidate.read_text())
+            if 'inputs' not in data or 'build' not in data:
+                continue
+            selected = Path(data['build']).resolve()
+            if not selected.is_relative_to(reference.resolve()):
+                raise ValueError('comparison build directory escaped its output scope')
+            for name in ('inputs.json', 'source-sha256.json', 'lto-command.json', 'lto-build.log'):
+                add(selected / name, 'reference/' + name)
         for stem in ('start', 'pe_kprintf', 'debug', 'printf', 'serial_console', 'serial_general',
-                     'bsd_init', 'subr_prf', 'arm_init', 'startup'):
+                     'bsd_init', 'subr_prf', 'arm_init', 'startup', 'machine_routines'):
             for path in sorted(objects.glob('**/' + stem + '.o*')):
                 if path.suffix in ('.o', '.json'):
                     add(path, 'objects/' + str(path.relative_to(objects)))
