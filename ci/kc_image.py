@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read arm64e kernel images: fileset entries, chained fixups, function starts and code references."""
+"""Metadata-only inventory reader for arm64e and x86_64 (no instruction scan on x86): fileset entries, chained fixups, function starts and code references."""
 import struct
 
 LC_SEGMENT_64, LC_SYMTAB, LC_FUNCTION_STARTS = 0x19, 0x2, 0x26
@@ -13,7 +13,7 @@ class Image:
     def __init__(self, data, at=0):
         self.data, self.at = data, at
         magic, cpu, _, self.kind, count, size = struct.unpack_from('<6I', data, at)
-        if (magic, cpu) != (0xfeedfacf, 0x100000c):
+        if magic != 0xfeedfacf or cpu not in (0x100000c, 0x1000007):
             raise ValueError('Expected a 64-bit ARM Mach-O header')
         self.segments, self.sections, self.commands = [], [], []
         self.entries = {}
