@@ -29,20 +29,28 @@ for sdk in ['macosx','iphoneos']:
 # complete generated client is sealed, not logged or claimed boot-qualified.
 iigdir=out/'iig';iigdir.mkdir()
 source=iigdir/'IOService.iig'
-source.write_text("""#define KERNEL __attribute__((annotate(\"kernel\")))
-#define LOCAL __attribute__((annotate(\"local\")))
-#define SERIALIZABLE __attribute__((annotate(\"serializable\")))
-typedef int kern_return_t;
-class SERIALIZABLE OSString;
-class SERIALIZABLE OSDictionary;
-class OSObject { public: virtual void free(); };
-class KERNEL IOService : public OSObject { public:
-virtual kern_return_t CallPlatformFunction(OSString * functionName, bool waitForFunction, OSDictionary * inParam, OSDictionary ** outParam) LOCAL SERIALIZABLE;
-};
-""")
+# Apple IIG requires the real OSObject/OSMetaClassBase declarations; the
+# deliberately minimal layout experiment was not sufficient for its frontend.
+import urllib.request
+source_digests={'OSObject.iig': 'bcd00a8dfda6bbb511156ca23cb9a6b1685a828c6b91bb589144bba91215aca1', 'IOService.iig': '874c48d99a6663f339a21479d05fd39d2fdca0f6fdf0c1515d8d71391826363a'}
+include=iigdir/'include/DriverKit';include.mkdir(parents=True)
+for filename,digest in source_digests.items():
+    url='https://raw.githubusercontent.com/apple-oss-distributions/xnu/ac9718fb1af618d5ce8678d0dc6e8a58f252216f/iokit/DriverKit/'+filename
+    raw=urllib.request.urlopen(url,timeout=40).read()
+    if hashlib.sha256(raw).hexdigest()!=digest:raise ValueError('pinned public IIG source changed')
+    text=raw.decode()
+    if filename=='IOService.iig':
+        anchor='class KERNEL IOService : public OSObject\n{\npublic:'
+        if text.count(anchor)!=1:raise ValueError('IOService source declaration changed')
+        method='\n    virtual kern_return_t CallPlatformFunction(OSString *functionName, bool waitForFunction, OSDictionary *inParam, OSDictionary **outParam) LOCAL IIG_SERIALIZABLE;'
+        source.write_text(text.replace(anchor,anchor+method,1))
+    else:(include/filename).write_text(text)
 found=command(['xcrun','--sdk','macosx','--find','iig']);report['iig_tool']=found
+sdk=P(command(['xcrun','--sdk','macosx','--show-sdk-path'])['stdout'].strip())
+kernel_headers=sdk/'System/Library/Frameworks/Kernel.framework/Headers'
 if found['returncode']==0:
-    report['iig_generate']=command([found['stdout'].strip(),'--def',str(source),'--header',str(iigdir/'IOService.h'),'--impl',str(iigdir/'IOService.iig.cpp'),'--framework-name','DriverKit','--','-x','c++','-std=gnu++2b','-D__IIG=1'])
+    report['iig_generate']=command([found['stdout'].strip(),'--def',str(source),'--header',str(iigdir/'IOService.h'),'--impl',str(iigdir/'IOService.iig.cpp'),'--framework-name','DriverKit','--','-x','c++','-std=gnu++2b','-D__IIG=1','-DDRIVERKIT_PRIVATE=1','-I'+str(iigdir/'include'),'-I'+str(kernel_headers),'-isysroot',str(sdk)])
+report['pinned_iig_sources']=source_digests
 for sourcefile in sorted(iigdir.iterdir()):
     if sourcefile.is_file() and sourcefile.suffix in ('.h','.cpp','.iig'):
         names.append(str(sourcefile.relative_to(out)))
