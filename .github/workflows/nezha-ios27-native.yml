@@ -1,7 +1,7 @@
-name: nezha iPhone27 unattended057 USB reset/snapshot native kernel Intel host
+name: nezha iPhone27 A840 gpu27-002 native kernel Intel host
 on:
   push:
-    branches: [codex/ios27-unattended057b-20261103]
+    branches: [codex/ios27-gpu27-002-20261103]
   workflow_dispatch:
 permissions:
   contents: read

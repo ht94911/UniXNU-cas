@@ -47,6 +47,8 @@ def prepare(framework, work):
     work.mkdir(parents=True, exist_ok=False)
     for name in ('device', 'soc'):
         shutil.copytree(ROOT / 'source' / name, work / name)
+    for name in ('adreno', 'metal'):
+        shutil.copytree(ROOT / 'source' / name, work / name)
     usb = work / 'usb'
     run(['git', 'init', '-q', usb])
     run(['git', '-C', usb, 'bundle', 'unbundle', ROOT / 'source/usb.bundle'])
@@ -88,6 +90,9 @@ def prepare(framework, work):
         output.write('\n[[source]]\nname = "ShengUfs"\nkind = "driver"\nlocal = "../ufs"\n')
     with (work / 'device/local.toml').open('a') as output:
         output.write('\n[[source]]\nname = "RamBlock"\nkind = "driver"\nlocal = "../ramblock"\n')
+    with (work / 'device/local.toml').open('a') as output:
+        output.write('\n[[source]]\nname = "Adreno740"\nkind = "refer"\nlocal = "../adreno"\n'
+                     '\n[[source]]\nname = "AdrenoMetal"\nkind = "refer"\nlocal = "../metal"\n')
     config = {'device': str(work / 'device'), 'out': str(work / 'out'), 'jobs': jobs}
     text = '[build]\n' + ''.join(k + ' = ' + json.dumps(v) + '\n' for k, v in config.items())
     (work / 'build.toml').write_text(text)
@@ -201,6 +206,9 @@ def collect(framework, work, sealed):
         for path in sorted((tree / 'build/nezha27-usb-control').glob('*')):
             if path.is_file() and path.suffix in ('.json','.log','.o','.c'):
                 add(path, 'archives/nezha27-usb-control/' + path.name)
+        for path in sorted((tree / 'build/adreno840').glob('*')):
+            if path.is_file() and path.suffix in ('.json','.log','.o','.S','.h','.cpp'):
+                add(path, 'archives/adreno840/' + path.name)
         for path in sorted((tree / 'build/boot-progress').glob('*')):
             if path.is_file() and path.suffix in ('.json','.asm','.o','.c','.h'):
                 add(path, 'archives/boot-progress/' + path.name)
