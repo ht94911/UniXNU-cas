@@ -1,7 +1,7 @@
-name: nezha iPhone27 platform031 native kernel and reference
+name: nezha iPhone27 userspace043 native kernel and reference
 on:
   push:
-    branches: [codex/ios27-platform-031-20261102]
+    branches: [codex/ios27-userspace-044-20261102]
   workflow_dispatch:
 permissions:
   contents: read
@@ -47,7 +47,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: python3 task/ci/native.py build --framework unixnu --work "$RUNNER_TEMP/ios27/work"
-      - name: Build the upstream RELEASE comparison input
+      - name: Build the matching DEVELOPMENT comparison input
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: python3 task/ci/native.py reference --framework unixnu --work "$RUNNER_TEMP/ios27/work"
