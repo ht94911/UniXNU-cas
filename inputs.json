@@ -1,25 +1,25 @@
 {
   "schema": 1,
-  "purpose": "Build iPhone27 native fileset prerequisites and strict RELEASE/LTO comparison with v3 topology view; neither output is a phone candidate",
+  "purpose": "Build isolated iPhone27 platform prerequisites: reused PMGR class publisher and XNU12377 removable USB MMIO, with matching strict RELEASE/LTO reference; no phone candidate or operations",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
-    "source_revision": "06cb948b39b57716b7026f8ae51e392e463213f6",
-    "source_tree": "b16bbee3a8778be5d5ad6ae7c61919f164eca241",
-    "review_tree": "aaf0d75a2c32a703443888e74bc378c5240d854a",
+    "source_revision": "412a98deec037151cc1e1c5ac168a7913ef23310",
+    "source_tree": "ae2d5360dd5d2c589a6fc621b409c85a4f7a06d7",
+    "review_tree": "538b53854c272a79128f61fab82347d06744e71e",
     "ci_gitlink_override": {
       "path": "kits/XnuPrelink",
-      "review_commit": "b269f5bf807352d33763ae73b0d367c562e611f2",
+      "review_commit": "94acbcb1f64d99011ee5eb4dd13af1613bb00d95",
       "ci_commit": "2b39ff73dc4d49ad64e349c711ca4aa8d1dd64ea",
-      "reason": "prelink is not executed in source-only CI; local matcher remains unchanged"
+      "reason": "native-only CI does not execute local matcher; preserve public fetchability"
     }
   },
-  "device_revision": "8dd3729b6aab753ee20036d5bf67939dbb25458a",
+  "device_revision": "1b13882a12b73937eafb9101d4711e4b3bfac841",
   "soc_revision": "7279542eb460a5113b56657c85740a1a10aa3df9",
   "xcode": "26.6",
   "files": {
-    "source/device/board.toml": "bc749f2eb50283d65687fb61c4a9f052a93bfe1271ef6ada32ac140a9541375a",
-    "source/device/configs/nezha_ios27_defconfig": "a28b8d6864e475889e38607872d9099a25a597d9fbeddc14c04a5a9408db13bb",
+    "source/device/board.toml": "6dd0945369546a79f3884adb5d2b39ab9442c6e6a522d713c3fa0a7a2013d63d",
+    "source/device/configs/nezha_ios27_defconfig": "64d88e16ed1fc4a75fec1a88a653abf50dc2783af496e0f51296438f4db018d5",
     "source/device/feeds.toml": "bfdaf6f7f9a91ded49448512d4a3873d315effccd37e7276462d0fded2a8f86e",
     "source/device/patches/xnu-12377/series": "390c0648c4dffe0a83fc0214a30d80acc57e4d5a01ba69107a58a552b2c7d754",
     "source/device/patches/xnu-12377/source-storage-runtime.patch": "25c377c60db417b15fcc137acf380f0319cbff9d5ba012af1907f3485602b584",
@@ -27,9 +27,9 @@
     "source/device/patches/xnu-12377/zzye-sheng-cpu-idle.patch": "95f57fb9994796c3de2429fe82b6a521620b9f13b83e29eba12185f5ada4da86",
     "source/device/patches/xnu-12377/zzyf-sheng-amp.patch": "07abb7ce25c626ddc37069ecc9e168b85a1da8e02b42b19649a10f667aa5a56b",
     "source/device/patches/xnu-12377/zzzz-sheng-ipados27-bringup.patch": "c882c9c97d27c67ecf5fcb43aee86dfd761129bc602fdbd7490e771164adaa30",
-    "source/device/porting.toml": "0e849c8efdb00860d847bbb6e05aa23290c1a6464761a8a6e9851bab86381e44",
+    "source/device/porting.toml": "ef94eb58f04af8ccdc8003298c0d50f04137a5bd4f7f6c2c685f871feb695fcc",
     "source/device/unixnu.lock": "20bddaafe9eabe0874d433fd101156d0db2b3e5786681062de46afe971639daf",
-    "source/framework.patch": "9004447905f9878a468a9a13f1998bb62caeb69e27937f8787420611fa05ae57",
+    "source/framework.patch": "289141a9434d93106d4f00a2363e0211c5e4b59a128b46319a1f8232445b03e6",
     "source/soc/configs/sm8850.config": "5510debad6dc3326908a4d23082f715e62d32a1a5e6587197da3dbf18977e5bc",
     "source/soc/patches/xnu-12377/native-smp-secondary.patch": "9d9164921da548a9f13ccbd6093c799583f54e590ef3d562288dcea9ba5a2774",
     "source/soc/patches/xnu-12377/native-smp-wide-affinity.patch": "792c8a08e4c8eb2101c70705fbf83e9b514129c36ee176b3133d1db5d4e84125",
@@ -37,7 +37,9 @@
     "source/soc/patches/xnu-12377/sheng-platform-power.patch": "6e68dbcdac670624f2a9806a61fef42110bfe6586029b3f1a0acb068c3a23ec2",
     "source/soc/soc.toml": "9cebcadf2d5a271ceb44ee5fc378ed739cff0e7e5a940007164a9917042fd92f",
     "source/device/patches/xnu-12377/zzzz-nezha-optional-runtime.patch": "0fb75b91889ce2f4251d65be02f2fecdeb1f70db857229d8d785a2b9710b574b",
-    "source/usb.bundle": "f3b7f47048eeb406e4224692a1460fa03ce5ced442e500ec7b3200b471543167"
+    "source/usb.bundle": "aaf52d52efc967e7737c0f2c17f20817fa5b846ce603934862c6e925fd999db4",
+    "source/device/package/NezhaIOS27Pmgr.cpp": "b4952c31eeeed66050359bb0923ca966373cd0d86d0c02678df598a8b7a06a50",
+    "source/device/scripts/build-ios27-pmgr.py": "f88a0596937cbf0504922751a3194e3a33bba609f683a415262887d2b64241e4"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
@@ -45,8 +47,8 @@
   "device_executed": false,
   "usb_enabled": true,
   "usb": {
-    "source_revision": "0a2daefa3f51e3eeeb7fa926f47607d9ac486148",
-    "source_tree": "ada6798052f145bc39849a27c1c76e434859d8b3",
+    "source_revision": "0ec5d41afef83017d1a8662a56a332fa69cb4eda",
+    "source_tree": "e924f2dba223ceb8162c4d4c945c1802ac61da2d",
     "history": "single shallow source commit only; restore declared boundary before checkout",
     "repository": "https://github.com/xiaoleGun/QcomXnuUsbDebug.git"
   },

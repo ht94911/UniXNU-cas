@@ -118,7 +118,7 @@ def reference(framework, work):
     if len(targets) != 1:
         raise ValueError('select exactly one prepared source target for the comparison reference')
     env = dict(os.environ, UNIXNU_IOS_VERSION='27.0', UNIXNU_XNU_DARWIN='25.5.0',
-               UNIXNU_XNU_VERSION='12377.121.6', XNU_TOPOLOGY_V3_COMPAT='1', XNU_IOS27_PLATFORM_FUNCTION_CLIENT='1', XNU_IOS27_IMAGE4_V2_NOMONITOR='1')
+               UNIXNU_XNU_VERSION='12377.121.6', XNU_TOPOLOGY_V3_COMPAT='1', XNU_IOS27_PLATFORM_FUNCTION_CLIENT='1', XNU_IOS27_IMAGE4_V2_NOMONITOR='1', XNU_SHENG_PMGR='1')
     return run(['python3', framework / 'scripts/build-fileset-release-reference.py',
                 '--tree', targets[0] / 'tree', '--jobs', '3', '--lto'],
                cwd=framework, env=env, log=work / 'logs/reference-step.log')
@@ -156,6 +156,9 @@ def collect(framework, work, sealed):
         tree = target / 'tree'
         for path in sorted((tree / 'build').glob('*/lib*.a')):
             add(path, 'archives/' + path.parent.name + '/' + path.name)
+        for path in sorted((tree / 'build/sheng-platform-power').glob('*')):
+            if path.suffix in ('.json', '.log', '.o'):
+                add(path, 'archives/sheng-platform-power/' + path.name)
         add(tree / 'build/qcom-usb-debug/build-report.json', 'archives/qcom-usb-debug/build-report.json')
         # A failed standalone compile retains its exact flags and diagnostics.
         for attempt in sorted((tree / '.cache/qcom-usb-debug').glob('archive-*/module')):

@@ -188,3 +188,17 @@ completion = ["Real iPhone iOS27 desktop/settings operable with protection verif
 limits = ["No iOS27 device execution, donor ABI qualification or phone allocation is claimed."]
 next_action = ["Port versioned XNU12377 hooks; CPU-only early queue, hardware init on normal boot thread; no remote reset."]
 evidence = []
+
+[[area]]
+id = "ios27-early-platform"
+status = "planned"
+components = ["ArmCpu", "QcomXnuUsbDebug"]
+paths = ["package/NezhaIOS27Pmgr.cpp", "scripts/build-ios27-pmgr.py", "dts/nezha.dts", "board.toml", "configs/nezha_ios27_defconfig"]
+inputs = ["Sirius PMGR publisher f269452c36eceb7f91446fccc4c3bed175aaa98e; original iPhone14,4 24A446 AMFI/ApplePMGR call contracts."]
+configuration = ["Existing XNU_SHENG_PMGR hook and sheng-pmgr=2 publish the dynamically allocated donor class; no fabricated Apple hardware provider or VMM declaration.", "Declare absent Apple CTRR as kernel-ctrr-to-be-enabled=0 and follow sheng use_contiguous_hint=0."]
+procedure = ["Compile through the normal Format2 archive plan on the authorized macOS source/CMS builder; strict prelink and physical-policy QEMU observation before phone packaging."]
+findings = ["Original AMFI matches ApplePMGRNub then reads, ORs 4 and writes; donor null-provider read returns 0xffffffff and write performs no MMIO. This is compatibility service publication, not Apple PMGR hardware emulation."]
+completion = ["Actual class allocation/publication and unchanged AMFI invocation observed; subsequent hardware bring-up accepted separately."]
+limits = ["No actual PMGR power management/latch readback, device USB qualification, complete system or new phone payload deployment claimed."]
+next_action = ["Complete the source build and strict runtime qualification before promoting this independent candidate."]
+evidence = []
