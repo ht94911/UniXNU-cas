@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Unattended27 bringup:qualified4GiB volatile Data and retained CPU display;explicit one-use board USB reboot and bounded RGB snapshot. All OS,firmware,phone data and private keys remain absent.",
+  "purpose": "Unattended27 bringup:qualified4GiB volatile Data and retained CPU display;explicit one-use board USB reboot and bounded RGB snapshot. All OS,firmware,phone data and private keys remain absent. Corrected independently verified9-unit consumer hash after actual worker patch;no runtime source/body changes from057.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,13 +14,13 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "7155cfcad1bcbc82da206f024e31a6d26d4e3ccf",
+  "device_revision": "1d9ec64c09c460704f1f9c7f240129f19faca0b2",
   "soc_revision": "7279542eb460a5113b56657c85740a1a10aa3df9",
   "xcode": "26.6",
   "files": {
     "source/device/board.toml": "6db3430887754d393b59b2dddee1cc038f5b68b80e752dc32500ee37ab84f6c8",
     "source/device/configs/nezha_ios27_defconfig": "aeb8a25e2e809b3451edfaa265e5da40ff5b5e9d78515bf3bbf0cc83a4100fb3",
-    "source/device/feeds.toml": "391302ad12236f59ef9c71da99aad0472daa2100b941557f335011985a7f3bc6",
+    "source/device/feeds.toml": "2e395a4fbfed97fc61163646c11e27fec31b632dcaaf6d357a92eee932bbf15b",
     "source/device/patches/xnu-12377/series": "eda5eae5d465862451593e8bd45f3fe013ac6c8a1f47917d66247b3332c52754",
     "source/device/patches/xnu-12377/source-storage-runtime.patch": "25c377c60db417b15fcc137acf380f0319cbff9d5ba012af1907f3485602b584",
     "source/device/patches/xnu-12377/zzyd-sheng-audio-addon-mount.patch": "b51ed480b34c92452ea984fe056e5fce310bd929992d418f383a7e9268313c51",
@@ -37,7 +37,7 @@
     "source/soc/patches/xnu-12377/sheng-platform-power.patch": "6e68dbcdac670624f2a9806a61fef42110bfe6586029b3f1a0acb068c3a23ec2",
     "source/soc/soc.toml": "9cebcadf2d5a271ceb44ee5fc378ed739cff0e7e5a940007164a9917042fd92f",
     "source/device/patches/xnu-12377/zzzz-nezha-optional-runtime.patch": "0fb75b91889ce2f4251d65be02f2fecdeb1f70db857229d8d785a2b9710b574b",
-    "source/usb.bundle": "e5307db71e87d0c63917a050fb256895b761fcacf530086a38d491bcebc1f858",
+    "source/usb.bundle": "088e5cedf7340886871d9442ce476f1d20534248f9173195ef23d9919d94c321",
     "source/device/package/NezhaIOS27Pmgr.cpp": "b4952c31eeeed66050359bb0923ca966373cd0d86d0c02678df598a8b7a06a50",
     "source/device/scripts/build-ios27-pmgr.py": "f88a0596937cbf0504922751a3194e3a33bba609f683a415262887d2b64241e4",
     "source/device/package/.gitkeep": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
@@ -97,8 +97,8 @@
   "device_executed": false,
   "usb_enabled": true,
   "usb": {
-    "source_revision": "20e5e378a152d3c77ccd30637bb8457f716dfa00",
-    "source_tree": "cae85376a51f9d6442a5d189a09df68f1623c1e4",
+    "source_revision": "19030348ef06896231869795f91662572a3676fe",
+    "source_tree": "d2b2d45047b5ebd945753b33a8dd3b2e10ed976f",
     "history": "single shallow reviewed27 I/O binding plus already-qualified one-use reset-owner contract;no private source history",
     "repository": "https://github.com/xiaoleGun/QcomXnuUsbDebug.git"
   },
