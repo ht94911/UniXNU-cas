@@ -52,7 +52,7 @@ def install_tool(work):
             shutil.copyfileobj(source, out)
     (target / 'ipsw').chmod(0o755)
     os.environ['PATH'] = str(target) + os.pathsep + os.environ['PATH']
-    version = run(target / 'ipsw', '--version').decode().strip()
+    version = run(target / 'ipsw', 'version').decode().strip()
     assert '3.1.741' in version
     return dict(url=TOOL_URL, archive_sha256=TOOL_SHA, version=version)
 
