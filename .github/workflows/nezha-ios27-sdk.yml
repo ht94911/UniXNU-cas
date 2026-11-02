@@ -1,7 +1,7 @@
-name: nezha Darwin27 kernel contract inventory
+name: nezha Darwin27 root API contract inventory
 on:
   push:
-    branches: [codex/ios27-kernel-contracts-028-20261102]
+    branches: [codex/ios27-root-contracts-033-20261102]
 permissions:
   contents: read
 concurrency:

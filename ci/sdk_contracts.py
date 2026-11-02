@@ -25,9 +25,16 @@ for pathname in ['/System/Library/KernelCollections/BootKernelExtensions.kc','/S
         core=Image(raw,image.entries['com.apple.kernel'][1]) if 'com.apple.kernel' in image.entries else image
         symbols=core.symbols();starts=core.function_starts();selected=[];total=0
         for address,names in symbols.items():
-            labels=[n for n in names if any(s in n.lower() for s in ['image4','callplatformfunction','ml_get_topology_info','code_signing_configuration'])]
+            labels=[n for n in names if any(s in n.lower() for s in ['proc_exiting','proc_in_teardown','proc_lifecycle','fifo_lookup','bufattr_','buf_vnode','vnode_usecount','kauth_cred_getuid','kauth_cred_getgid','thread_tid','smr_enter','iopmrootdomaingetwillshutdown','pe_arm_debug_panic_hook','pe_panic_hook','lck_rw_gate_init','iosimplelocktrylock','lck_spin_try_lock','decmpfs_cnode_free'])]
             if not labels:continue
             row={'address':hex(address),'names':labels};selected.append(row)
+            section=core.section(address)
+            if section:row['section']={k:v for k,v in section.items() if k in ('name','segment','va','size')}
+            if section and section['name'] != '__text':
+                length=8
+                try:data=core.read(address,length)
+                except ValueError:continue
+                name='code/'+path.name+'/'+hex(address)+'.data.bin';target=out/name;target.parent.mkdir(parents=True,exist_ok=True);target.write_bytes(data);files.append(name);row.update(bytes=length,data=name,sha256=hashlib.sha256(data).hexdigest());continue
             i=bisect.bisect_left(starts,address)
             if i>=len(starts) or starts[i]!=address or i+1>=len(starts):continue
             length=starts[i+1]-address
