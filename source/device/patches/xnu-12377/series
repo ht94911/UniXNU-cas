@@ -7,3 +7,7 @@ zzzz-sheng-ipados27-bringup.patch
 
 # Kernel static linking cannot leave these optional weak imports unresolved.
 zzzz-nezha-optional-runtime.patch
+
+# Existing owner checkpoint -> qualified USB console, no new thread or protocol.
+zzzzz-nezha-owner-cache-console.patch
+zzzzz-nezha-owner-data-console.patch
