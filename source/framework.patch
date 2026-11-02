@@ -55,6 +55,13 @@ index 947d9f0..8ac7b7c 100644
  Boot arguments are stored in the payload's `EFI/UniXNU/unixnu.toml`. After changing them, run `./unixnu payload` and `./unixnu bootimg`, then boot the new image. See [apply boot arguments](/xnu/boot-arguments#apply-arguments) for precedence and inspection commands.
  
  ## Procedure {#procedure}
+diff --git a/drivers/GopFramebuffer b/drivers/GopFramebuffer
+index 4975bc8..19ef3a7 160000
+--- a/drivers/GopFramebuffer
++++ b/drivers/GopFramebuffer
+@@ -1 +1 @@
+-Subproject commit 4975bc84eb87e16d629125dcffb30cc30dfd2d86
++Subproject commit 19ef3a75ad2c53da85b8d923553d922716fce377
 diff --git a/kits/XnuPrelink b/kits/XnuPrelink
 index 76452c6..2b39ff7 160000
 --- a/kits/XnuPrelink
@@ -2711,3 +2718,16 @@ index 6241409..8b7d016 100644
              continue
          target.parent.mkdir(parents=True, exist_ok=True)
          shutil.copy2(path, target)
+diff --git a/scripts/xnu-panic-screen.c b/scripts/xnu-panic-screen.c
+index 188a2c8..11c01f2 100644
+--- a/scripts/xnu-panic-screen.c
++++ b/scripts/xnu-panic-screen.c
+@@ -38,7 +38,7 @@ struct ctx {
+ #ifndef PANIC_TEXT
+ #define PANIC_TEXT 0UL
+ #endif
+-#define PANIC_TEXT_BYTES 2048   /* boot_progress_panic_text: a data abort's message with every register, then the frames */
++#define PANIC_TEXT_BYTES 256    /* Existing BootProgress exports a256-byte first-panic buffer. Screen rendering continues after the copy fills. */
+ 
+ __attribute__((noreturn)) static void park (void)
+ {

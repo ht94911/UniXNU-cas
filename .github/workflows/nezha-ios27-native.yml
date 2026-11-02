@@ -1,7 +1,7 @@
-name: nezha iPhone27 live screen054 native kernel Intel host
+name: nezha iPhone27 CPU display055 native kernel Intel host
 on:
   push:
-    branches: [codex/ios27-screen054d-20261103]
+    branches: [codex/ios27-display055-20261103]
   workflow_dispatch:
 permissions:
   contents: read

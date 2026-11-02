@@ -1,12 +1,12 @@
 {
   "schema": 1,
-  "purpose": "Compile existing provider-aware colored live kernel diagnostics and SpringBoard exception observation for actual iPhone27. Keep current source storage, volatile Data and USB. Source only; no phone identity, images, maps, logs, backups or private keys.",
+  "purpose": "Source-only real iPhone27 CPU GOP Legacy display with qualified interface metadata, original source storage/RAM Data/USB and live kernel diagnostics. No OS images, phone identities/maps/logs, backups or private keys.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
-    "source_revision": "bd5c6a777135612cc0c3632f96711918c51afce7",
-    "source_tree": "a0a58207b0c6d804d9a5956aaa8afcea9ce2089b",
-    "review_tree": "5921f05f44d87ca47c966d6e7ffd95860ca3c0b4",
+    "source_revision": "dc9279827bbaf66446408634276225357842176c",
+    "source_tree": "48f16fb6979a54f47275bc1629c2ed4de28d8dd0",
+    "review_tree": "c396a6db9ec975f95a3cda1c5452924632e4e2d4",
     "ci_gitlink_override": {
       "path": "kits/XnuPrelink",
       "review_commit": "1437041119a6fd38802efb9f18961f1c0443d6c6",
@@ -14,13 +14,13 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "7dd8752bd9db75662787483713c4d80069a0508b",
+  "device_revision": "e59766e270e69aa2d8b8f5f0c2819a761582dfac",
   "soc_revision": "7279542eb460a5113b56657c85740a1a10aa3df9",
   "xcode": "26.6",
   "files": {
-    "source/device/board.toml": "b35058afb40229369dd9e9347d0b39781a5fa65920411040066187769df36296",
-    "source/device/configs/nezha_ios27_defconfig": "39960fa1b633ef152eecb63c2828bf767dbcdd5d67b3932fa04ea82befe890bc",
-    "source/device/feeds.toml": "bfdaf6f7f9a91ded49448512d4a3873d315effccd37e7276462d0fded2a8f86e",
+    "source/device/board.toml": "1d70fae7ede5a8ef0a53d5579054a372893048c851ca89235cba9889b27af26b",
+    "source/device/configs/nezha_ios27_defconfig": "3b1b59632de6d614bbbd9693b12d3421d26e74f1e7602c24a052a7ebf0c82fb5",
+    "source/device/feeds.toml": "42a22a8abbfd122a12e83c6acd690a2a3bde16b9db347d10922ae885830c6de7",
     "source/device/patches/xnu-12377/series": "eda5eae5d465862451593e8bd45f3fe013ac6c8a1f47917d66247b3332c52754",
     "source/device/patches/xnu-12377/source-storage-runtime.patch": "25c377c60db417b15fcc137acf380f0319cbff9d5ba012af1907f3485602b584",
     "source/device/patches/xnu-12377/zzyd-sheng-audio-addon-mount.patch": "b51ed480b34c92452ea984fe056e5fce310bd929992d418f383a7e9268313c51",
@@ -29,7 +29,7 @@
     "source/device/patches/xnu-12377/zzzz-sheng-ipados27-bringup.patch": "c882c9c97d27c67ecf5fcb43aee86dfd761129bc602fdbd7490e771164adaa30",
     "source/device/porting.toml": "ef94eb58f04af8ccdc8003298c0d50f04137a5bd4f7f6c2c685f871feb695fcc",
     "source/device/unixnu.lock": "20bddaafe9eabe0874d433fd101156d0db2b3e5786681062de46afe971639daf",
-    "source/framework.patch": "10b40219055e21bd9d7518e682a22cd3eeddc5231756ab040b07f63f64c1680c",
+    "source/framework.patch": "d7c29666f9ee7ee3f988da027254d2d27cca3112cad722cebe15dfc3df4da27e",
     "source/soc/configs/sm8850.config": "5510debad6dc3326908a4d23082f715e62d32a1a5e6587197da3dbf18977e5bc",
     "source/soc/patches/xnu-12377/native-smp-secondary.patch": "9d9164921da548a9f13ccbd6093c799583f54e590ef3d562288dcea9ba5a2774",
     "source/soc/patches/xnu-12377/native-smp-wide-affinity.patch": "792c8a08e4c8eb2101c70705fbf83e9b514129c36ee176b3133d1db5d4e84125",
@@ -82,7 +82,11 @@
     "source/device/package/boot-progress/UmiUserWire.h": "dfb45bf8a0d0a4d84a565f466d991074ef43b9ab31e5322ff68916ca99c5b1cf",
     "source/device/package/boot-progress/UmiUserspaceProbe.c": "ec20306bfc7359cf21c5a20102b459cf7f6a264a60dcb7ee2b00f2a9158d0f60",
     "source/device/package/boot-progress/UmiWaitTrace.h": "b8183c4e9defd5ec9c3ed231451cf89c204629d7285cb125de7e366f9b13858b",
-    "source/device/package/boot-progress/upstream.json": "bbcd4cc639b104c9d4619076c8350cfb90483a92347dcd5e39443ba0f8fd8a13"
+    "source/device/package/boot-progress/upstream.json": "bbcd4cc639b104c9d4619076c8350cfb90483a92347dcd5e39443ba0f8fd8a13",
+    "source/device/scripts/build-gop-legacy-display-27.py": "15dd91a351b2e485af58c6e85b7c57382ee7a2803d8c5bc90bc93d4dfeafa12d",
+    "source/device/scripts/legacy-display-iphone-24A446.json": "8959d9ba711dc480ca2870e3c078d0619355bf572270247c41871affc572ef13",
+    "source/device/package/LegacyDisplayProbe.cpp": "9eea8cb9a370b227a3f8a9c318b58a795ab480bcc08532d34bb90c487be2c0a7",
+    "source/device/package/KeyStoreProbe.cpp": "068ef978260969e3d67d743459802d72e5fad9e4a20c7c27828587a2dd9779d9"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",

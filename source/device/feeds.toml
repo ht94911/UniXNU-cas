@@ -16,3 +16,15 @@ name = "QcomXnuUsbDebug"
 kind = "driver"
 git = "https://github.com/xiaoleGun/QcomXnuUsbDebug.git"
 commit = "0a2daefa3f51e3eeeb7fa926f47607d9ac486148"
+
+[[source]]
+name = "GopFramebuffer"
+kind = "driver"
+git = "https://github.com/UniXNU/GopFramebuffer.git"
+commit = "19ef3a75ad2c53da85b8d923553d922716fce377"
+
+[[source]]
+name = "AppleKeyStoreState"
+kind = "driver"
+git = "https://github.com/UniXNU/AppleKeyStoreState.git"
+commit = "42ff83e08b2265fe741d4adaf084bebe003452ba"
