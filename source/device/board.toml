@@ -33,7 +33,7 @@ panic_screen = true
 root_policies = "{tree}/build/sheng-source-storage/root-policies.bin"
 # Root input remains independent of 17; no Data/log persistence or remote reset.
 #031 USB/early-kernel diagnostics are retained for the first read-only root test.
-kernel_args = ["-v", "keepsyms=1", "debug=0x14e", "cpus=1", "-enable_kprintf_spam", "boot-progress=2", "nezha-log=0", "native-source-storage=1", "native-source-storage-require-usb=1", "native-ufs-root=1", "sheng-data-persist=0", "sheng-data-reset=0", "sheng-log=0", "nezha-reboot-after=0", "nezha-panic-reset=0", "qcom-usb-debug=1", "qcom-usb-ctl=1", "use_contiguous_hint=0", "sheng-pmgr=2", "sheng-disable-watchdogd=1"]
+kernel_args = ["-v", "keepsyms=1", "debug=0x14e", "cpus=1", "-enable_kprintf_spam", "boot-progress=2", "nezha-log=0", "native-source-storage=1", "native-source-storage-require-usb=1", "native-ufs-root=1", "sheng-data-persist=0", "sheng-data-reset=0", "sheng-log=0", "nezha-reboot-after=0", "nezha-panic-reset=0", "qcom-usb-debug=1", "qcom-usb-ctl=1", "use_contiguous_hint=0", "sheng-pmgr=2", "sheng-disable-watchdogd=1", "sheng-exc-name=SpringBoard,backboardd,liveactivitiesd"]
 
 # Format2 exports chosen metadata from the typed ADT table.
 [adt.chosen.u32]
