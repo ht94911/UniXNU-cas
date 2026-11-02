@@ -114,6 +114,13 @@ def main():
                                   gop_framebuffer_commit=modules['drivers/GopFramebuffer'], alias='drivers/NativeMobileDisplay')
 
     # 2. Mesa at the pin with the recorded patches.
+    # Explicit new-file metadata makes this upstream patch portable to the
+    # Intel runner's git. The added header and all executable changes are
+    # unchanged; the existing full reverse reconstruction stays mandatory.
+    metadata_patch = HERE / 'patches/mesa-new-file-mode.patch'
+    must(['git', '-C', root, 'apply', '--check', metadata_patch])
+    must(['git', '-C', root, 'apply', metadata_patch])
+    record['mesa_patch_metadata_fix'] = sha(metadata_patch)
     pins = json.loads((root / 'scripts/data/adreno-compiler-inputs.json').read_text())
     mesa = root / '.cache/mesa-work'
     url = fetch_commit(mesa, MESA_MIRRORS, pins['mesa']['commit'], pins['mesa']['sparse_directories'])

@@ -1,0 +1,10 @@
+diff --git a/patches/mesa/turnip-frame-diagnostics.patch b/patches/mesa/turnip-frame-diagnostics.patch
+index c2dd1fa..3591d23 100644
+--- a/patches/mesa/turnip-frame-diagnostics.patch
++++ b/patches/mesa/turnip-frame-diagnostics.patch
+@@ -1,4 +1,5 @@
+ diff --git a/src/freedreno/vulkan/tu_frame_diagnostic.h b/src/freedreno/vulkan/tu_frame_diagnostic.h
++new file mode 100644
+ --- /dev/null
+ +++ b/src/freedreno/vulkan/tu_frame_diagnostic.h
+ @@ -0,0 +1,16 @@

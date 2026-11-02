@@ -21,6 +21,11 @@
     "current upstream pins and replay option",
     "Intel host Rust triple only",
     "omit obsolete frontend patches and original-QuartzCore stand-in",
-    "collect independent raw plugin outputs without device staging"
-  ]
+    "collect independent raw plugin outputs without device staging",
+    "Explicit new-file mode in upstream diagnostic patch; complete real Mesa patch chain qualified locally"
+  ],
+  "local_preparation": {
+    "source_record_sha256": "651a0cc1c9fd02e14da14e1b543deb064fac9999990cb98e5486cac33a2c0c8d",
+    "mesa_patch_count": 14
+  }
 }

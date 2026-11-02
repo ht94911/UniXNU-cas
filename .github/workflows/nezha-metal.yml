@@ -1,7 +1,7 @@
 name: nezha iPhone27 A840 GPU userland Intel host
 on:
   push:
-    branches: [codex/ios27-gpu27-metal-001-20261103]
+    branches: [codex/ios27-gpu27-metal-002-20261103]
   workflow_dispatch:
 permissions:
   contents: read
