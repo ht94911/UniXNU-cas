@@ -198,6 +198,9 @@ def collect(framework, work, sealed):
         for path in sorted((tree / 'build/ram-block').glob('*')):
             if path.is_file() and path.suffix in ('.json','.log','.o','.cpp','.h'):
                 add(path, 'archives/ram-block/' + path.name)
+        for path in sorted((tree / 'build/nezha27-usb-control').glob('*')):
+            if path.is_file() and path.suffix in ('.json','.log','.o','.c'):
+                add(path, 'archives/nezha27-usb-control/' + path.name)
         for path in sorted((tree / 'build/boot-progress').glob('*')):
             if path.is_file() and path.suffix in ('.json','.asm','.o','.c','.h'):
                 add(path, 'archives/boot-progress/' + path.name)

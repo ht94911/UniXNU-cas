@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Original055 CPU display and live diagnostics with qualified independent4GiB RAM-only Data; explicit volatile driver policy and canonical seed identity. No phone input or image uploaded.",
+  "purpose": "Unattended27 bringup:qualified4GiB volatile Data and retained CPU display;explicit one-use board USB reboot and bounded RGB snapshot. All OS,firmware,phone data and private keys remain absent.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,13 +14,13 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "56d141defcac2803d896249b0c8e77e7e664c450",
+  "device_revision": "7155cfcad1bcbc82da206f024e31a6d26d4e3ccf",
   "soc_revision": "7279542eb460a5113b56657c85740a1a10aa3df9",
   "xcode": "26.6",
   "files": {
-    "source/device/board.toml": "d6f45379b980d02222fda6dc0b947e7d69163337204ef639fbf45d8c4a2ba48d",
-    "source/device/configs/nezha_ios27_defconfig": "60dce262671d9b9816ccac0e2c6a58b494a730978cc2f1a4da7df13674b88cc9",
-    "source/device/feeds.toml": "68cce26459760f66b4c341fd2d9ca3dbda10bd5f82f235f6cd028c396d114971",
+    "source/device/board.toml": "6db3430887754d393b59b2dddee1cc038f5b68b80e752dc32500ee37ab84f6c8",
+    "source/device/configs/nezha_ios27_defconfig": "aeb8a25e2e809b3451edfaa265e5da40ff5b5e9d78515bf3bbf0cc83a4100fb3",
+    "source/device/feeds.toml": "391302ad12236f59ef9c71da99aad0472daa2100b941557f335011985a7f3bc6",
     "source/device/patches/xnu-12377/series": "eda5eae5d465862451593e8bd45f3fe013ac6c8a1f47917d66247b3332c52754",
     "source/device/patches/xnu-12377/source-storage-runtime.patch": "25c377c60db417b15fcc137acf380f0319cbff9d5ba012af1907f3485602b584",
     "source/device/patches/xnu-12377/zzyd-sheng-audio-addon-mount.patch": "b51ed480b34c92452ea984fe056e5fce310bd929992d418f383a7e9268313c51",
@@ -37,7 +37,7 @@
     "source/soc/patches/xnu-12377/sheng-platform-power.patch": "6e68dbcdac670624f2a9806a61fef42110bfe6586029b3f1a0acb068c3a23ec2",
     "source/soc/soc.toml": "9cebcadf2d5a271ceb44ee5fc378ed739cff0e7e5a940007164a9917042fd92f",
     "source/device/patches/xnu-12377/zzzz-nezha-optional-runtime.patch": "0fb75b91889ce2f4251d65be02f2fecdeb1f70db857229d8d785a2b9710b574b",
-    "source/usb.bundle": "aaf52d52efc967e7737c0f2c17f20817fa5b846ce603934862c6e925fd999db4",
+    "source/usb.bundle": "e5307db71e87d0c63917a050fb256895b761fcacf530086a38d491bcebc1f858",
     "source/device/package/NezhaIOS27Pmgr.cpp": "b4952c31eeeed66050359bb0923ca966373cd0d86d0c02678df598a8b7a06a50",
     "source/device/scripts/build-ios27-pmgr.py": "f88a0596937cbf0504922751a3194e3a33bba609f683a415262887d2b64241e4",
     "source/device/package/.gitkeep": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
@@ -87,7 +87,9 @@
     "source/device/scripts/legacy-display-iphone-24A446.json": "8959d9ba711dc480ca2870e3c078d0619355bf572270247c41871affc572ef13",
     "source/device/package/LegacyDisplayProbe.cpp": "9eea8cb9a370b227a3f8a9c318b58a795ab480bcc08532d34bb90c487be2c0a7",
     "source/device/package/KeyStoreProbe.cpp": "068ef978260969e3d67d743459802d72e5fad9e4a20c7c27828587a2dd9779d9",
-    "source/ramblock.bundle": "28d547819358f3f45ccd5b572685848ff2327c97b378719285c50552f10114fd"
+    "source/ramblock.bundle": "28d547819358f3f45ccd5b572685848ff2327c97b378719285c50552f10114fd",
+    "source/device/package/Nezha27UsbControl.c": "2ef6ed0b19fd7cf9516b394ad1df5ac82c6cae4a3b287099b24dfa350ab3d918",
+    "source/device/scripts/build-nezha27-usb-control.py": "92be41e9adcce30e88c3a64fb6a1490587d87e80c74d50e3c2690c127dccb65c"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
@@ -95,9 +97,9 @@
   "device_executed": false,
   "usb_enabled": true,
   "usb": {
-    "source_revision": "0ec5d41afef83017d1a8662a56a332fa69cb4eda",
-    "source_tree": "e924f2dba223ceb8162c4d4c945c1802ac61da2d",
-    "history": "single shallow source commit only; restore declared boundary before checkout",
+    "source_revision": "20e5e378a152d3c77ccd30637bb8457f716dfa00",
+    "source_tree": "cae85376a51f9d6442a5d189a09df68f1623c1e4",
+    "history": "single shallow reviewed27 I/O binding plus already-qualified one-use reset-owner contract;no private source history",
     "repository": "https://github.com/xiaoleGun/QcomXnuUsbDebug.git"
   },
   "comparison_reference": true,
