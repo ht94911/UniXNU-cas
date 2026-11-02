@@ -1,7 +1,7 @@
 name: nezha iPhone27 bounded RAM Data052 native kernel
 on:
   push:
-    branches: [codex/ios27-data052-20261103]
+    branches: [codex/ios27-screen054b-20261103]
   workflow_dispatch:
 permissions:
   contents: read

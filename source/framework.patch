@@ -1261,9 +1261,21 @@ index 86e03f6..484ed9f 100644
      (out / 'report.json').write_text(json.dumps(report, indent=2) + '\n')
      print(archive)
 diff --git a/scripts/build-xnu-4k-baseline.sh b/scripts/build-xnu-4k-baseline.sh
-index 1ade502..1512394 100755
+index 1ade502..7f79c85 100755
 --- a/scripts/build-xnu-4k-baseline.sh
 +++ b/scripts/build-xnu-4k-baseline.sh
+@@ -81,9 +81,9 @@ if [ "$BOOT_PROGRESS" != 0 ] && [ "$BOOT_PROGRESS" != 1 ]; then
+ fi
+ if [ "$BOOT_PROGRESS" = 1 ]; then
+   # The board diagnostics use the UFS/owner-root paths; they do not touch the Virtio block driver.
+-  if [ "${XNU_NATIVE_UFS:-0}" != 1 ] || [ "${XNU_OWNER_ROOT_AUDIT:-0}" != 1 ] || \
++  if { [ "${XNU_NATIVE_UFS:-0}" != 1 ] && [ "${XNU_SOURCE_STORAGE:-0}" != 1 ]; } || [ "${XNU_OWNER_ROOT_AUDIT:-0}" != 1 ] || \
+      [ "${XNU_SOURCE_CORECRYPTO14:-0}" != 1 ]; then
+-    echo 'Boot progress requires the audited UFS/owner-root and source-corecrypto build' >&2
++    echo 'Boot progress requires audited native/source UFS, owner-root and source-corecrypto' >&2
+     exit 1
+   fi
+   python3 scripts/build-boot-progress.py
 @@ -271,6 +271,24 @@ if [ -d "$MOCKFS_OBJECT_DIR" ]; then
  fi
  EXTRA_MAKE_ARGS+=("ubc_subr.o_CFLAGS_ADD=-DXNU_NATIVE_CS_HASH_CACHE=$CS_HASH_CACHE_MODE")

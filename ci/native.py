@@ -179,6 +179,9 @@ def collect(framework, work, sealed):
         for path in sorted((tree / 'build/sheng-source-storage').glob('*')):
             if path.is_file() and path.suffix in ('.json','.log','.o'):
                 add(path, 'archives/sheng-source-storage/' + path.name)
+        for path in sorted((tree / 'build/boot-progress').glob('*')):
+            if path.is_file() and path.suffix in ('.json','.asm','.o','.c','.h'):
+                add(path, 'archives/boot-progress/' + path.name)
         add(tree / 'build/qcom-usb-debug/build-report.json', 'archives/qcom-usb-debug/build-report.json')
         # A failed standalone compile retains its exact flags and diagnostics.
         for attempt in sorted((tree / '.cache/qcom-usb-debug').glob('archive-*/module')):
