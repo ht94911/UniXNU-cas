@@ -158,7 +158,7 @@ def build(work):
             os_device, os_info = attach(image, work / 'original-OS', True)
             assert os_info['VolumeUUID'].upper() == '28E4CF35-9C12-417E-B8FF-906618C6FD22'
             assert sha(work / 'original-OS/sbin/launchd') == PINS['launchd_sha256']
-            seed = work / 'data512.cdr'
+            seed = work / 'data4096.cdr'
             run('hdiutil', 'create', '-size', str(PINS['new_Data_MiB']) + 'm', '-layout', 'NONE',
                 '-fs', 'APFS', '-volname', 'Nezha27Data', '-type', 'UDTO', seed)
             data_device, info = attach(seed, work / 'new-Data', False)
@@ -175,13 +175,13 @@ def build(work):
         assert seed.stat().st_size == PINS['new_Data_MiB'] * 1024**2
         with seed.open('rb') as stream:
             assert stream.read(4096)[32:36] == b'NXSB'
-        packed = work / 'data512.dbr'
+        packed = work / 'data4096.dbr'
         packed_ramdisk.pack(seed, packed)
         identity, header = packed_ramdisk.inspect(packed)
-        assert identity['sha256'] == sha(seed) and header[32:36] == b'NXSB'
+        assert identity['sha256'] == packed_ramdisk.seed_identity(*packed_ramdisk.regions(packed.read_bytes())) and header[32:36] == b'NXSB'
         report.update(status='complete', volume_uuid=uuid, counts=counts, seed=identity,
                       original_OS_sha256=PINS['OS_image_sha256'], manifest_sha256=PINS['manifest_sha256'],
-                      fresh_independent_Data=True, owners_and_modes_preserved=True, initial_files_decompressed=True,
+                      fresh_independent_Data=True, allocation_bytes=seed.stat().st_size, sparse_seed_identity_scheme='SHNGSEED2 (>2GiB); not the plain full-file SHA', original_plain_image_sha256=sha(seed), owners_and_modes_preserved=True, initial_files_decompressed=True,
                       runtime_writable=True, hardware_qualified=False, phone_operations=False)
         (work / 'seed.json').write_text(json.dumps(report, indent=2))
         print('Fresh independent iPhone27 Data seed complete; runtime qualification remains separate', flush=True)
@@ -198,7 +198,7 @@ def seal(work, output):
         if (work / name).is_file():
             names.append(name)
     if (work / 'seed.json').is_file() and json.loads((work / 'seed.json').read_text())['status'] == 'complete':
-        names.append('data512.dbr')
+        names.append('data4096.dbr')
     artifacts.seal(work, names, ROOT / 'artifact-recipient.pem', output)
 
 
