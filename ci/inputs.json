@@ -1,0 +1,19 @@
+{
+  "apple_url": "https://updates.cdn-apple.com/2026FallFCS/0748752a-4554-47fe-b07e-36b5702830b8/iPhone14,4_27.0.1_24A446_Restore.ipsw",
+  "product": "iPhone14,4",
+  "version": "27.0.1",
+  "build": "24A446",
+  "device_class": "d16ap",
+  "chip_id": 33040,
+  "board_id": 8,
+  "manifest_sha256": "8076b37d5d5e2895909e600a9f2131cc8371a9d517d601e0aec2f0ab991f92d2",
+  "OS_member": "043-69531-664.dmg.aea",
+  "OS_aea_sha256": "aca90b5ae70a57dbfd09c0658ad26808967e56a93e3bc7cc4ec10d7cc62bb30a",
+  "OS_image_sha256": "d7037ea730b12d11f72e751884c23b1f3c67bb12ccb828c750f9df5765ad093c",
+  "launchd_sha256": "c640246d38aaeb2d2372aff1e5aa0de59dec267f53c0dfc155f7837e717af68b",
+  "original_var_files": 50,
+  "original_var_directories": 179,
+  "original_var_symlinks": 1,
+  "original_var_bytes": 668198,
+  "new_Data_MiB": 512
+}

@@ -1,0 +1,54 @@
+name: Fresh independent iPhone27 APFS Data seed
+on:
+  push:
+    branches: [codex/ios27-data-seed047-20261102]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: nezha-ios27-data-seed-${{ github.ref }}
+  cancel-in-progress: false
+defaults:
+  run:
+    shell: bash
+env:
+  HOMEBREW_NO_AUTO_UPDATE: 1
+  HOMEBREW_NO_INSTALL_CLEANUP: 1
+  HOMEBREW_NO_ENV_HINTS: 1
+jobs:
+  seed:
+    runs-on: macos-26
+    timeout-minutes: 120
+    steps:
+      - name: Check out reviewed source and public recipient only
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          path: task
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.13'
+      - name: Install existing CMS implementation
+        run: brew install openssl@3
+      - name: Build fresh seed from pinned public Apple OS
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/data047/work"
+          sudo env PATH="$PATH" "$(command -v python3)" task/ci/data.py build --work "$RUNNER_TEMP/data047/work" > "$RUNNER_TEMP/data047/work/build.log" 2>&1
+      - name: Seal only explicit packed seed and diagnostics
+        if: always()
+        run: |
+          set -euo pipefail
+          export PATH="$(brew --prefix openssl@3)/bin:$PATH"
+          sudo env PATH="$PATH" GITHUB_REPOSITORY="$GITHUB_REPOSITORY" GITHUB_SHA="$GITHUB_SHA" GITHUB_RUN_ID="$GITHUB_RUN_ID" GITHUB_RUN_ATTEMPT="$GITHUB_RUN_ATTEMPT" "$(command -v python3)" task/ci/data.py seal --work "$RUNNER_TEMP/data047/work" --sealed "$RUNNER_TEMP/data047/sealed"
+          sudo chmod -R a+rX "$RUNNER_TEMP/data047/sealed"
+      - name: Upload encrypted CMS artifact only
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: nezha-ios27-data-seed-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/data047/sealed/bundle.cms
+            ${{ runner.temp }}/data047/sealed/envelope.json
+          if-no-files-found: error
+          retention-days: 90
