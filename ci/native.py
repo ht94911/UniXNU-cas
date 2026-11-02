@@ -60,10 +60,21 @@ def prepare(framework, work):
         raise ValueError('USB source is not clean')
     run(['git', '-C', usb, 'remote', 'add', 'origin', manifest['usb']['repository']])
     run(['git', '-C', usb, 'remote', 'set-url', '--push', 'origin', 'DISABLED-no-push'])
+    ufs = work / 'ufs'
+    run(['git', 'init', '-q', ufs])
+    run(['git', '-C', ufs, 'bundle', 'unbundle', ROOT / 'source/ufs.bundle'])
+    (ufs / '.git/shallow').write_text(manifest['ufs']['source_revision'] + '\n')
+    run(['git', '-C', ufs, 'checkout', '--quiet', '--detach', manifest['ufs']['source_revision']])
+    if run(['git', '-C', ufs, 'rev-parse', 'HEAD^{tree}']) != manifest['ufs']['source_tree']:
+        raise ValueError('UFS source tree mismatch')
+    run(['git', '-C', ufs, 'remote', 'add', 'origin', manifest['ufs']['repository']])
+    run(['git', '-C', ufs, 'remote', 'set-url', '--push', 'origin', 'DISABLED-no-push'])
     (work / 'device/local.toml').write_text(
         '[[source]]\nname = "sm8850"\nkind = "soc"\nlocal = "../soc"\n'
         '\n[[source]]\nname = "QcomXnuUsbDebug"\nkind = "driver"\nlocal = "../usb"\n')
     jobs = max(1, min(os.cpu_count() or 1, 3))  # hosted M1 memory/CPU budget; local builds retain 32.
+    with (work / 'device/local.toml').open('a') as output:
+        output.write('\n[[source]]\nname = "ShengUfs"\nkind = "driver"\nlocal = "../ufs"\n')
     config = {'device': str(work / 'device'), 'out': str(work / 'out'), 'jobs': jobs}
     text = '[build]\n' + ''.join(k + ' = ' + json.dumps(v) + '\n' for k, v in config.items())
     (work / 'build.toml').write_text(text)
@@ -118,7 +129,7 @@ def reference(framework, work):
     if len(targets) != 1:
         raise ValueError('select exactly one prepared source target for the comparison reference')
     env = dict(os.environ, UNIXNU_IOS_VERSION='27.0', UNIXNU_XNU_DARWIN='25.5.0',
-               UNIXNU_XNU_VERSION='12377.121.6', XNU_TOPOLOGY_V3_COMPAT='1', XNU_IOS27_PLATFORM_FUNCTION_CLIENT='1', XNU_IOS27_IMAGE4_V2_NOMONITOR='1', XNU_SHENG_PMGR='1')
+               UNIXNU_XNU_VERSION='12377.121.6', XNU_TOPOLOGY_V3_COMPAT='1', XNU_IOS27_PLATFORM_FUNCTION_CLIENT='1', XNU_IOS27_IMAGE4_V2_NOMONITOR='1', XNU_SHENG_PMGR='1', XNU_SOURCE_STORAGE='1', XNU_OWNER_ROOT_AUDIT='1', XNU_OWNER_ROOT_TRUST='1', XNU_QCOM_USB_DEBUG='1')
     return run(['python3', framework / 'scripts/build-fileset-release-reference.py',
                 '--tree', targets[0] / 'tree', '--jobs', '3', '--lto'],
                cwd=framework, env=env, log=work / 'logs/reference-step.log')
@@ -159,6 +170,9 @@ def collect(framework, work, sealed):
         for path in sorted((tree / 'build/sheng-platform-power').glob('*')):
             if path.suffix in ('.json', '.log', '.o'):
                 add(path, 'archives/sheng-platform-power/' + path.name)
+        for path in sorted((tree / 'build/sheng-source-storage').glob('*')):
+            if path.is_file() and path.suffix in ('.json','.log','.o'):
+                add(path, 'archives/sheng-source-storage/' + path.name)
         add(tree / 'build/qcom-usb-debug/build-report.json', 'archives/qcom-usb-debug/build-report.json')
         # A failed standalone compile retains its exact flags and diagnostics.
         for attempt in sorted((tree / '.cache/qcom-usb-debug').glob('archive-*/module')):
