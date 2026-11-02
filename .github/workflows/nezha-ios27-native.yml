@@ -1,7 +1,7 @@
-name: nezha iPhone27 security029 native kernel and reference
+name: nezha iPhone27 platform030 native kernel and reference
 on:
   push:
-    branches: [codex/ios27-security-029-20261102]
+    branches: [codex/ios27-platform-030-20261102]
   workflow_dispatch:
 permissions:
   contents: read
