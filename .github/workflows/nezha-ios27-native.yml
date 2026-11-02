@@ -1,7 +1,7 @@
-name: nezha iPhone27 bounded RAM Data052 native kernel
+name: nezha iPhone27 live screen054 native kernel Intel host
 on:
   push:
-    branches: [codex/ios27-screen054b-20261103]
+    branches: [codex/ios27-screen054c-20261103]
   workflow_dispatch:
 permissions:
   contents: read
@@ -18,7 +18,7 @@ env:
   DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
 jobs:
   build:
-    runs-on: macos-26
+    runs-on: macos-26-intel
     timeout-minutes: 345
     steps:
       - name: Check out the dedicated build inputs
