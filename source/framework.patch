@@ -2719,7 +2719,7 @@ index 6241409..8b7d016 100644
          target.parent.mkdir(parents=True, exist_ok=True)
          shutil.copy2(path, target)
 diff --git a/scripts/xnu-panic-screen.c b/scripts/xnu-panic-screen.c
-index 188a2c8..11c01f2 100644
+index 188a2c8..525a4a9 100644
 --- a/scripts/xnu-panic-screen.c
 +++ b/scripts/xnu-panic-screen.c
 @@ -38,7 +38,7 @@ struct ctx {
@@ -2731,3 +2731,88 @@ index 188a2c8..11c01f2 100644
  
  __attribute__((noreturn)) static void park (void)
  {
+@@ -52,7 +52,7 @@ static void put (struct ctx *g, u8 c)
+   const u32 cell = 6 * SCALE, line = 14 * SCALE;
+   u32 row, col, dy, dx;
+ 
+-  if (g->log && g->logn < PANIC_TEXT_BYTES - 1 && c >= 9 && c <= 126) {
++  if (g->log && g->logn < PANIC_TEXT_BYTES - 2 && c >= 9 && c <= 126) {
+     g->log[g->logn++] = (c < 32) ? ' ' : c;
+     g->log[g->logn] = 0;
+   }
+@@ -233,37 +233,45 @@ __attribute__((noreturn, used, section(".text.b_main"))) void panic_screen_main
+   /* First panic wins: a marker in the last row's first two pixels means a panic already drew
+    * the screen; a later panic (another thread or exception) must not overwrite it. */
+   volatile u32 *mark = (volatile u32 *)(g.base + (u64)(g.h - 1) * g.rb);
+-  if (mark[0] == 0xC0FFEE11u && mark[1] == 0x5CEEDA7Au) {
++  /* The firmware framebuffer can survive warm reboot. Claim this boot's
++   * zeroed diagnostic BSS instead; reserve the last text byte for ownership. */
++  if (PANIC_TEXT) {
++    if (__atomic_exchange_n ((u8 *)PANIC_TEXT + PANIC_TEXT_BYTES - 1, 1, __ATOMIC_ACQ_REL)) {
++      park ();
++    }
++  } else if (mark[0] == 0xC0FFEE11u && mark[1] == 0x5CEEDA7Au) {
+     park ();
+   }
+   g.x = 0;
+   g.y = g.h / 8;
+-  g.log = 0;
+-  g.logn = 0;
+   for (row = g.y; row < g.h; row++) {
+     for (col = 0; col < g.w; col++) {
+       *(volatile u32 *)(g.base + (u64)row * g.rb + (u64)col * 4) = 0;
+     }
+   }
+   g.y += 8;
+-  /* The board's live banner keeps showing this text after the next swap paints over the screen (BootProgress.c,
+-   * boot_progress_panic_text). The first panic's text is kept: a buffer that already holds one is left alone. */
+-  if (PANIC_TEXT && *(volatile u8 *)PANIC_TEXT == 0) {
+-    g.log = (u8 *)PANIC_TEXT;
+-  }
++  /* The boot-local atomic claim above already owns the first panic. The live
++   * banner reads this same BSS buffer after subsequent display swaps. */
++  g.log = (u8 *)PANIC_TEXT;
++  g.logn = 0;
+   format (&g, fmt, args);
+   /* The return addresses up the frame pointer chain: the exception entry links the panic's frames to the code that faulted, so this
+    * names the callers the message leaves out. Stops at a pointer outside the kernel's range, a misaligned one or one that does not
+    * move up the stack. */
+   {
+     const u64 *fp = (const u64 *)__builtin_frame_address (0);
+-    text (&g, "\nframes");
++    u64 tcr;
++    __asm__ volatile ("mrs %0, tcr_el1" : "=r" (tcr));
++    const u32 t1sz = (tcr >> 16) & 63;
++    /* Unsigned left shift discards PAC; ARM64 arithmetic right shift restores
++     * the canonical TTBR1 sign bit. T1SZ's masked range avoids shift-by64. */
++    text (&g, "\nLR");
+     for (unsigned i = 0; i < 24; i++) {
+       const u64 at = (u64)fp;
+       if (at < 0xfffffff000000000UL || (at & 15)) break;
+-      const u64 next = fp[0], lr = fp[1] & 0x0000007fffffffffUL;   /* the return address without its pointer authentication bits */
++      const u64 next = fp[0], lr = (u64)((long)(fp[1] << t1sz) >> t1sz); /* Strip PAC using this boot's actual VA width. */
+       put (&g, ' ');
+-      number (&g, lr | 0xffffff8000000000UL, 16, 16, 1);
++      number (&g, lr, 16, 16, 1);
+       if (next <= at) break;
+       fp = (const u64 *)next;
+     }
+@@ -273,11 +281,15 @@ __attribute__((noreturn, used, section(".text.b_main"))) void panic_screen_main
+   /* Resolved from this candidate's symbols by the patcher, never fixed addresses.
+    * Values are sampled at panic time and need not form an atomic VM snapshot. */
+   (void)MAX_MEM;
+-  hex (&g, "\npages=", *(volatile const u32 *)PAGE_TOTAL);
++  hex (&g, "\npg=", *(volatile const u32 *)PAGE_TOTAL);
+   hex (&g, "\nfree=", *(volatile const u32 *)PAGE_FREE);
+   /* The raw argument slots are not dumped: the formatted message above already carries them (room for the PANIC_TEXT copy). */
+-  mark[0] = 0xC0FFEE11u;
+-  mark[1] = 0x5CEEDA7Au;
++  if (PANIC_TEXT) {
++    __atomic_store_n ((u8 *)PANIC_TEXT + PANIC_TEXT_BYTES - 1, 2, __ATOMIC_RELEASE);
++  } else {
++    mark[0] = 0xC0FFEE11u;
++    mark[1] = 0x5CEEDA7Au;
++  }
+   __asm__ volatile ("dsb sy");
+   park ();
+ }

@@ -69,12 +69,25 @@ def prepare(framework, work):
         raise ValueError('UFS source tree mismatch')
     run(['git', '-C', ufs, 'remote', 'add', 'origin', manifest['ufs']['repository']])
     run(['git', '-C', ufs, 'remote', 'set-url', '--push', 'origin', 'DISABLED-no-push'])
+    ramblock = work / 'ramblock'
+    run(['git', 'init', '-q', ramblock])
+    run(['git', '-C', ramblock, 'bundle', 'unbundle', ROOT / 'source/ramblock.bundle'])
+    (ramblock / '.git/shallow').write_text(manifest['ramblock']['source_revision'] + '\n')
+    run(['git', '-C', ramblock, 'checkout', '--quiet', '--detach', manifest['ramblock']['source_revision']])
+    if run(['git', '-C', ramblock, 'rev-parse', 'HEAD^{tree}']) != manifest['ramblock']['source_tree']:
+        raise ValueError('RamBlock source tree mismatch')
+    if run(['git', '-C', ramblock, 'status', '--porcelain']):
+        raise ValueError('RamBlock source is not clean')
+    run(['git', '-C', ramblock, 'remote', 'add', 'origin', manifest['ramblock']['repository']])
+    run(['git', '-C', ramblock, 'remote', 'set-url', '--push', 'origin', 'DISABLED-no-push'])
     (work / 'device/local.toml').write_text(
         '[[source]]\nname = "sm8850"\nkind = "soc"\nlocal = "../soc"\n'
         '\n[[source]]\nname = "QcomXnuUsbDebug"\nkind = "driver"\nlocal = "../usb"\n')
     jobs = max(1, min(os.cpu_count() or 1, 3))  # hosted M1 memory/CPU budget; local builds retain 32.
     with (work / 'device/local.toml').open('a') as output:
         output.write('\n[[source]]\nname = "ShengUfs"\nkind = "driver"\nlocal = "../ufs"\n')
+    with (work / 'device/local.toml').open('a') as output:
+        output.write('\n[[source]]\nname = "RamBlock"\nkind = "driver"\nlocal = "../ramblock"\n')
     config = {'device': str(work / 'device'), 'out': str(work / 'out'), 'jobs': jobs}
     text = '[build]\n' + ''.join(k + ' = ' + json.dumps(v) + '\n' for k, v in config.items())
     (work / 'build.toml').write_text(text)
@@ -182,6 +195,9 @@ def collect(framework, work, sealed):
         for path in sorted((tree / 'build/native-legacy-display').glob('*')):
             if path.is_file() and path.suffix in ('.json','.log','.o','.S','.h','.cpp'):
                 add(path, 'archives/native-legacy-display/' + path.name)
+        for path in sorted((tree / 'build/ram-block').glob('*')):
+            if path.is_file() and path.suffix in ('.json','.log','.o','.cpp','.h'):
+                add(path, 'archives/ram-block/' + path.name)
         for path in sorted((tree / 'build/boot-progress').glob('*')):
             if path.is_file() and path.suffix in ('.json','.asm','.o','.c','.h'):
                 add(path, 'archives/boot-progress/' + path.name)

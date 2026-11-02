@@ -28,3 +28,9 @@ name = "AppleKeyStoreState"
 kind = "driver"
 git = "https://github.com/UniXNU/AppleKeyStoreState.git"
 commit = "42ff83e08b2265fe741d4adaf084bebe003452ba"
+
+[[source]]
+name = "RamBlock"
+kind = "driver"
+git = "https://github.com/UniXNU/RamBlock.git"
+commit = "1c861fce7b246f3728a6a28d0cabe6448821de85"
