@@ -1,0 +1,25 @@
+diff --git a/scripts/build-adreno-metal-bridge.py b/scripts/build-adreno-metal-bridge.py
+index c89881a..82b781a 100644
+--- a/scripts/build-adreno-metal-bridge.py
++++ b/scripts/build-adreno-metal-bridge.py
+@@ -8,6 +8,7 @@ import argparse
+ import hashlib
+ import json
+ import os
++import platform
+ from pathlib import Path
+ import shutil
+ import subprocess
+@@ -140,7 +141,11 @@ manifest.write_text('\n'.join([
+ if args.manifest_only:
+     print(manifest)
+     raise SystemExit(0)
+-triple = {'ios': 'aarch64-apple-ios', 'ios27': 'arm64e-apple-ios', 'host': 'aarch64-apple-darwin'}[args.target]
++host_arch = platform.machine()
++if args.target == 'host' and host_arch not in ('arm64', 'aarch64', 'x86_64'):
++    raise SystemExit('Unsupported macOS host architecture: ' + host_arch)
++host_triple = 'x86_64-apple-darwin' if host_arch == 'x86_64' else 'aarch64-apple-darwin'
++triple = {'ios': 'aarch64-apple-ios', 'ios27': 'arm64e-apple-ios', 'host': host_triple}[args.target]
+ # arm64e has no prebuilt std: it is built from rust-src (RUSTC_BOOTSTRAP for -Z); the iPadOS 27 processes that load the plugin are arm64e.
+ cargo = ['cargo', '+1.98.0'] + (['-Z', 'build-std=std,panic_unwind'] if args.target == 'ios27' else [])
+ # The translator source the runtime is built from (its pin and recorded patches), which keys the shader cache: shader priming keeps what it

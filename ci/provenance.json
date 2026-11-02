@@ -1,0 +1,26 @@
+{
+  "purpose": "Current iPhone27/A840 GPU userland through established Intel macOS CMS workflow",
+  "upstream": "a3faa4a43cadcd288fbe9cee3794d5a120629742",
+  "inherited_adapter": {
+    "source": "ht94911/UniXNU-cas tmp/nezha-metal-plugin-018-20261028",
+    "files": {
+      "ci/gpu-userland/prepare.py": "d25d70a7c10e07847097ffc1a04c44c13a7508fb52d83df82452cab5e5bf2bc1",
+      "ci/gpu-userland/collect.py": "b05f8435556446e4677376054ecca05520f71cc3975bba8d757662285a91de00",
+      "ci/gpu-userland/logrun": "198238859a216de477dd2d72102e5760804e304495e1cf0e0407b1a51f8bbac7",
+      "ci/xnu/artifacts.py": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c"
+    }
+  },
+  "common_native_abi_sha256": "d1c8a27d6e61787073c2c56a779ff4d5c43d86f2d23ac0c0fba0368af8dcdeae",
+  "native_gpu_branch_abi_equal": true,
+  "no_old17_binaries": true,
+  "phone_operations": false,
+  "private_firmware_uploaded": false,
+  "stock_os_uploaded": false,
+  "changes": [
+    "iOS27 target and arm64e verification",
+    "current upstream pins and replay option",
+    "Intel host Rust triple only",
+    "omit obsolete frontend patches and original-QuartzCore stand-in",
+    "collect independent raw plugin outputs without device staging"
+  ]
+}

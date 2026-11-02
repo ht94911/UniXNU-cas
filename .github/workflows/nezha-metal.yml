@@ -1,0 +1,97 @@
+name: nezha iPhone27 A840 GPU userland Intel host
+on:
+  push:
+    branches: [codex/ios27-gpu27-metal-001-20261103]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: nezha-gpu27-metal-${{ github.ref }}
+  cancel-in-progress: false
+defaults:
+  run:
+    shell: bash
+env:
+  UNIXNU_COMMIT: a3faa4a43cadcd288fbe9cee3794d5a120629742
+  ADRENO740_COMMIT: 1030485546ef7ebb9abbfb7c17fbca93cca40971
+  ABI_SHA256: d1c8a27d6e61787073c2c56a779ff4d5c43d86f2d23ac0c0fba0368af8dcdeae
+  PROFILE_CHIP_ID: "0x44050a31"
+  PROFILE_GMEM_BYTES: "0x1200000"
+  PROFILE_GMEM_BASE: "0x4000000"
+  RUST_TOOLCHAIN: 1.98.0
+  CARGO_BUILD_JOBS: 3
+  HOMEBREW_NO_AUTO_UPDATE: 1
+  HOMEBREW_NO_INSTALL_CLEANUP: 1
+  HOMEBREW_NO_ENV_HINTS: 1
+  DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+jobs:
+  build:
+    runs-on: macos-26-intel
+    timeout-minutes: 345
+    steps:
+      - name: Check out the dedicated source inputs
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          path: device
+          persist-credentials: false
+      - name: Check out the pinned upstream framework
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: UniXNU/UniXNU
+          ref: a3faa4a43cadcd288fbe9cee3794d5a120629742
+          path: unixnu
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.13"
+      - name: Install and identify the host tools
+        run: |
+          set -euo pipefail
+          echo "LOGS=$RUNNER_TEMP/logs" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/logs"
+          brew install glslang shaderc spirv-tools molten-vk vulkan-headers llvm ninja openssl@3 > "$RUNNER_TEMP/logs/brew.log" 2>&1
+          echo "$(brew --prefix llvm)/bin" >> "$GITHUB_PATH"
+          export PATH="$(brew --prefix llvm)/bin:$HOME/.cargo/bin:$PATH"
+          if ! command -v rustup > /dev/null; then
+            curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none > "$RUNNER_TEMP/logs/rustup-install.log" 2>&1
+          fi
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --component rust-src --target aarch64-apple-ios > "$RUNNER_TEMP/logs/rustup.log" 2>&1
+          { sw_vers; xcodebuild -version; xcrun --sdk iphoneos --show-sdk-version; rustc "+$RUST_TOOLCHAIN" -vV;
+            llvm-as --version; glslangValidator --version; glslc --version; spirv-val --version; } > "$RUNNER_TEMP/logs/tools.log" 2>&1
+          echo "NMB_HOST_LOADER=$(brew --prefix molten-vk)/lib/libMoltenVK.dylib" >> "$GITHUB_ENV"
+      - name: Prepare the exact public source and patch inputs
+        run: device/ci/gpu-userland/logrun prepare python3 device/ci/gpu-userland/prepare.py --unixnu unixnu --record "$LOGS/sources.json"
+      - name: Build Turnip for arm64e iOS27
+        id: turnip_ios27
+        working-directory: unixnu
+        run: ../device/ci/gpu-userland/logrun turnip-ios27 python3 scripts/build-turnip-darwin.py --target ios27
+      - name: Build the arm64e Metal bridge and plugin
+        id: plugin
+        working-directory: unixnu
+        run: ../device/ci/gpu-userland/logrun plugin python3 scripts/build-adreno-metal-plugin.py --target ios27 --no-replay
+      - name: Run the maintained frontend checks on the host Vulkan driver
+        id: frontend_host
+        continue-on-error: true
+        working-directory: unixnu
+        run: ../device/ci/gpu-userland/logrun frontend-host python3 scripts/check-native-metal-frontend-host.py
+      - name: Verify and seal independent outputs and all diagnostics
+        if: always()
+        env:
+          OUTCOME_TURNIP_IOS27: ${{ steps.turnip_ios27.outcome }}
+          OUTCOME_PLUGIN: ${{ steps.plugin.outcome }}
+          OUTCOME_FRONTEND_HOST: ${{ steps.frontend_host.outcome }}
+        run: |
+          set -euo pipefail
+          export PATH="$(brew --prefix openssl@3)/bin:$PATH"
+          python3 device/ci/gpu-userland/collect.py --unixnu unixnu --device device --logs "$RUNNER_TEMP/logs" --out "$RUNNER_TEMP/out" --sealed "$RUNNER_TEMP/sealed" > "$RUNNER_TEMP/collect.log" 2>&1
+      - name: Upload only the CMS encrypted artifact
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: nezha-gpu27-metal-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/sealed/bundle.cms
+            ${{ runner.temp }}/sealed/envelope.json
+          if-no-files-found: error
+          retention-days: 90

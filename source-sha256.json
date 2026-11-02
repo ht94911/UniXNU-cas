@@ -1,0 +1,11 @@
+{
+  ".gitignore": "862263fa1f46c20f0d1e4dac5ffcc75abd55c08211b2c3864c5f8764b9d87793",
+  "ci/provenance.json": "fbaaa0c8630997b614ddc0319c99e3ff743ad597031ed7653ea983975fe3ed0a",
+  "ci/gpu-userland/prepare.py": "94b2c6606739e89fc0380f67bf70903b501b3dcb9678d5810e747f886272dc19",
+  "ci/gpu-userland/collect.py": "583145389059d6c47757eab8545afba8b05cd361ec97432a7519deceb687d88c",
+  "ci/gpu-userland/logrun": "198238859a216de477dd2d72102e5760804e304495e1cf0e0407b1a51f8bbac7",
+  "ci/xnu/artifact-recipient.pem": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
+  "ci/xnu/artifacts.py": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
+  "ci/gpu-userland/patches/intel-host-bridge.patch": "ac6426b639e492f3480fb0ff012512b18ecdbeb495ade7e69d8d86ebfc246595",
+  ".github/workflows/nezha-metal.yml": "e03943f30c94c3a46068fb3056f513a6f17876f04043a40a9a5af25ad2a98371"
+}
