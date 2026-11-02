@@ -8,12 +8,12 @@ os_profile = "ios-27.0.1-24A446-iphone14-4"
 kit = "nezha"
 description = "Xiaomi 17 Ultra: isolated iPhone iOS27 integration, pinned-file policy required"
 [components]
-include = ["ArmDTPlatform", "ArmCpu", "XnuPrelink", "QcomXnuUsbDebug"]
+include = ["ArmDTPlatform", "ArmCpu", "XnuPrelink", "QcomXnuUsbDebug", "ShengUfs", "RamBlock"]
 [kernel]
 defconfig = "nezha_ios27_defconfig"
 config_fragments = ["arch:configs/common.config", "soc:configs/sm8850.config", "os:configs/ipados.config"]
 patch_series = ["arch:patches/xnu/series", "soc:patches/xnu-12377/series", "os:patches/xnu/series", "device:patches/xnu-12377/series", "component:QcomXnuUsbDebug/patches/darwin25-xnu12377-unixnu/series"]
-archives = ["build-corecrypto-14.py", "build-corecrypto-14.py --namespace", "component:ArmDTPlatform", "component:ArmCpu", "build-libpthread-kernel.py", "component:QcomXnuUsbDebug", "build-ios27-pmgr.py"]
+archives = ["build-corecrypto-14.py", "build-corecrypto-14.py --namespace", "component:ArmDTPlatform", "component:ArmCpu", "build-libpthread-kernel.py", "component:QcomXnuUsbDebug", "build-ios27-pmgr.py", "component:ShengUfs", "component:RamBlock"]
 [device_tree]
 source = "device:dts/nezha.dts"
 include_dirs = ["soc:dts"]
@@ -25,6 +25,21 @@ loader = "firmware"
 title = "nezha iPhone iOS27 development"
 timeout = -1
 panic_screen = true
-# No root or persistence until the separate ios27 mapping and source ABI are qualified.
-# USB source integration is present; compilation/MMIO/SMMU budget and G2 hardware remain unqualified.
-kernel_args = ["-v", "cpus=1", "native-source-storage=0", "native-ufs-root=0", "sheng-data-persist=0", "sheng-data-reset=0", "sheng-log=0", "nezha-reboot-after=0", "nezha-panic-reset=0", "qcom-usb-debug=1", "qcom-usb-ctl=1", "use_contiguous_hint=0", "sheng-pmgr=2"]
+# Only the local pack step stages the authenticated sidecar; CI carries no policies.
+root_policies = "{tree}/build/sheng-source-storage/root-policies.bin"
+# Root input remains independent of 17; no Data/log persistence or remote reset.
+#031 USB/early-kernel diagnostics are retained for the first read-only root test.
+kernel_args = ["-v", "keepsyms=1", "debug=0x14e", "cpus=1", "-enable_kprintf_spam", "boot-progress=2", "nezha-log=0", "native-source-storage=1", "native-source-storage-require-usb=1", "native-ufs-root=1", "sheng-data-persist=0", "sheng-data-reset=0", "sheng-log=0", "nezha-reboot-after=0", "nezha-panic-reset=0", "qcom-usb-debug=1", "qcom-usb-ctl=1", "use_contiguous_hint=0", "sheng-pmgr=2"]
+
+# Format2 exports chosen metadata from the typed ADT table.
+[adt.chosen.u32]
+"kernel-ctrr-to-be-enabled" = 0
+
+# First root mount: use the real independently verified iPhone OS identity.
+[root]
+os_volume_uuid = "28E4CF35-9C12-417E-B8FF-906618C6FD22"
+systemos_volume_uuid = "FFADDA0D-7102-4121-8AB8-48818B912D06"
+os_image_sha256 = "d7037ea730b12d11f72e751884c23b1f3c67bb12ccb828c750f9df5765ad093c"
+systemos_image_sha256 = "00fac48583c9d347aa9403c9cecf8d511650fba28f670aa70265e4c61f46aad8"
+[payload.adt]
+root_match_volume_uuid = "28E4CF35-9C12-417E-B8FF-906618C6FD22"

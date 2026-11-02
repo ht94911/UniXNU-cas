@@ -1,25 +1,25 @@
 {
   "schema": 1,
-  "purpose": "Build isolated iPhone27 platform prerequisites: reused PMGR class publisher and XNU12377 removable USB MMIO, with matching strict RELEASE/LTO reference; no phone candidate or operations",
+  "purpose": "Compile isolated read-only iPhone27 root runtime using existing source storage, pinned SM8850 resources and independent public owner anchor. No OS images, private keys, phone maps or runtime policy headers uploaded.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
-    "source_revision": "412a98deec037151cc1e1c5ac168a7913ef23310",
-    "source_tree": "ae2d5360dd5d2c589a6fc621b409c85a4f7a06d7",
-    "review_tree": "538b53854c272a79128f61fab82347d06744e71e",
+    "source_revision": "e7e5f2211248d99130e012566565eb7f5d205800",
+    "source_tree": "c32afce374ac8291f0b6f3772ef9bb68fc89ce4f",
+    "review_tree": "e1433ce6f4189a0be3d70cf81f8921d616edb68f",
     "ci_gitlink_override": {
       "path": "kits/XnuPrelink",
-      "review_commit": "94acbcb1f64d99011ee5eb4dd13af1613bb00d95",
+      "review_commit": "1437041119a6fd38802efb9f18961f1c0443d6c6",
       "ci_commit": "2b39ff73dc4d49ad64e349c711ca4aa8d1dd64ea",
-      "reason": "native-only CI does not execute local matcher; preserve public fetchability"
+      "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "1b13882a12b73937eafb9101d4711e4b3bfac841",
+  "device_revision": "de56b27b8ad966878616aeed3801c418933b4830",
   "soc_revision": "7279542eb460a5113b56657c85740a1a10aa3df9",
   "xcode": "26.6",
   "files": {
-    "source/device/board.toml": "6dd0945369546a79f3884adb5d2b39ab9442c6e6a522d713c3fa0a7a2013d63d",
-    "source/device/configs/nezha_ios27_defconfig": "64d88e16ed1fc4a75fec1a88a653abf50dc2783af496e0f51296438f4db018d5",
+    "source/device/board.toml": "b3cf506072af7d3c307e5bef566bf78dee8f42d211e682c99ec02d0d0d089a7b",
+    "source/device/configs/nezha_ios27_defconfig": "ecd1b987915b924f29ac78671231eb502ddc3d83fefbd96bc2b79a59b519c616",
     "source/device/feeds.toml": "bfdaf6f7f9a91ded49448512d4a3873d315effccd37e7276462d0fded2a8f86e",
     "source/device/patches/xnu-12377/series": "390c0648c4dffe0a83fc0214a30d80acc57e4d5a01ba69107a58a552b2c7d754",
     "source/device/patches/xnu-12377/source-storage-runtime.patch": "25c377c60db417b15fcc137acf380f0319cbff9d5ba012af1907f3485602b584",
@@ -29,7 +29,7 @@
     "source/device/patches/xnu-12377/zzzz-sheng-ipados27-bringup.patch": "c882c9c97d27c67ecf5fcb43aee86dfd761129bc602fdbd7490e771164adaa30",
     "source/device/porting.toml": "ef94eb58f04af8ccdc8003298c0d50f04137a5bd4f7f6c2c685f871feb695fcc",
     "source/device/unixnu.lock": "20bddaafe9eabe0874d433fd101156d0db2b3e5786681062de46afe971639daf",
-    "source/framework.patch": "289141a9434d93106d4f00a2363e0211c5e4b59a128b46319a1f8232445b03e6",
+    "source/framework.patch": "0b9427ba94283a1848259acf89f18274b8bc9bb4f7bf5c6bcd0b63458c804152",
     "source/soc/configs/sm8850.config": "5510debad6dc3326908a4d23082f715e62d32a1a5e6587197da3dbf18977e5bc",
     "source/soc/patches/xnu-12377/native-smp-secondary.patch": "9d9164921da548a9f13ccbd6093c799583f54e590ef3d562288dcea9ba5a2774",
     "source/soc/patches/xnu-12377/native-smp-wide-affinity.patch": "792c8a08e4c8eb2101c70705fbf83e9b514129c36ee176b3133d1db5d4e84125",
@@ -39,7 +39,24 @@
     "source/device/patches/xnu-12377/zzzz-nezha-optional-runtime.patch": "0fb75b91889ce2f4251d65be02f2fecdeb1f70db857229d8d785a2b9710b574b",
     "source/usb.bundle": "aaf52d52efc967e7737c0f2c17f20817fa5b846ce603934862c6e925fd999db4",
     "source/device/package/NezhaIOS27Pmgr.cpp": "b4952c31eeeed66050359bb0923ca966373cd0d86d0c02678df598a8b7a06a50",
-    "source/device/scripts/build-ios27-pmgr.py": "f88a0596937cbf0504922751a3194e3a33bba609f683a415262887d2b64241e4"
+    "source/device/scripts/build-ios27-pmgr.py": "f88a0596937cbf0504922751a3194e3a33bba609f683a415262887d2b64241e4",
+    "source/device/package/.gitkeep": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+    "source/device/package/BootDiagExport.c": "88f65a92490b54444ca68ecf99e887ba1c7f6ee3d5145b8e6eed13bf90c7a92d",
+    "source/device/package/BootLog.c": "b8a76a03be5b1595c09ab8181acadf6332f88196022c086eb4628addac25acb3",
+    "source/device/package/BootProcessProbe.c": "d694aa0caa007e605660a7d1ef9a27756e3eca33ab9967453165812b80b74337",
+    "source/device/package/BootProcessWorker.c": "3794da8877841cf58869babfa3d0b575993c9c9640fb4d989a619cac0946067e",
+    "source/device/package/BootReset.c": "c5357752d7fff8c4f16ddcb22685df48e939b0d27184c439366c1cde78adc5a6",
+    "source/device/package/BootResetCore.h": "9211ed8aa8174a8999829c29b51351fb839807c1473c6239ae09e069e294a5f6",
+    "source/device/package/BootUiTraceCore.h": "9404d7be6386f936904e6af34c870d86ec809b4d97161fd892d904d8334f2753",
+    "source/device/package/BootUiTraceDetails.h": "b9c0d9afbc80359a08f2aabb87cf6ee94c5227e64212dffb05ea8d9e08a8473e",
+    "source/device/package/BootUiTraceProbe.c": "e9c75e3b5bb4d882eb9140c2586b1b1993064ace9c28056c4324fdffb79c30f6",
+    "source/device/package/BootWatchdogPolicy.c": "faa5e09020ea97301b69710aefc0209d533232dd6197a41509a0d4a69ff5b16e",
+    "source/device/package/ShengAudioAbi.h": "9ef369877cfae3d2255129f7fdf332448b71300a0fc840d6522ec83e09754b52",
+    "source/device/package/SourceRootBinding.cpp": "f395a15d37b89a10bc9e965d9093dc29d0ff54d5eb61ded87ef623300cdf0f20",
+    "source/device/package/SourceRootPolicies.cpp": "714af8d95b5a8db89058be9f14a7e71a5fc2e97ded4d067c39e04299f0db27d5",
+    "source/device/package/SourceStorage.cpp": "2d19a00a6253172443b01c6260e0dae7474f575517a06dfceff24ba9bbb34af5",
+    "source/device/package/ios27-root-owner-public.pem": "0afc03662d11ce57d705807de90f1c5491555280e56f300bb6e560af4513c1ad",
+    "source/ufs.bundle": "25655129fad2b05a33278ad33f7d5bdd4d7544a65fcf3712b082adb4ec82e821"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
@@ -54,5 +71,11 @@
   },
   "comparison_reference": true,
   "phone_operations": false,
-  "private_inputs_uploaded": false
+  "private_inputs_uploaded": false,
+  "ufs": {
+    "source_revision": "a02e323279264d8fb42206e5b79fbd0b3628c5e0",
+    "source_tree": "5f35e62b406dcea5f16d6620688ed37aca6619ea",
+    "repository": "https://github.com/UniXNU/ShengUfs.git",
+    "history": "single shallow public-source adaptation commit only"
+  }
 }
