@@ -14,11 +14,11 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "e59766e270e69aa2d8b8f5f0c2819a761582dfac",
+  "device_revision": "48a7e4b57d41639d3689981de0e9f3a6acfad992",
   "soc_revision": "7279542eb460a5113b56657c85740a1a10aa3df9",
   "xcode": "26.6",
   "files": {
-    "source/device/board.toml": "1d70fae7ede5a8ef0a53d5579054a372893048c851ca89235cba9889b27af26b",
+    "source/device/board.toml": "381e36610fbe32283541d359bab4ec0d76322525eb705b7a137ddf7eae0b0928",
     "source/device/configs/nezha_ios27_defconfig": "3b1b59632de6d614bbbd9693b12d3421d26e74f1e7602c24a052a7ebf0c82fb5",
     "source/device/feeds.toml": "42a22a8abbfd122a12e83c6acd690a2a3bde16b9db347d10922ae885830c6de7",
     "source/device/patches/xnu-12377/series": "eda5eae5d465862451593e8bd45f3fe013ac6c8a1f47917d66247b3332c52754",
