@@ -1,7 +1,7 @@
 name: nezha iPhone27 live screen054 native kernel Intel host
 on:
   push:
-    branches: [codex/ios27-screen054c-20261103]
+    branches: [codex/ios27-screen054d-20261103]
   workflow_dispatch:
 permissions:
   contents: read
@@ -41,6 +41,8 @@ jobs:
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/ios27/setup-logs"
           brew install cmake ninja unifdef llvm openssl@3 > "$RUNNER_TEMP/ios27/setup-logs/brew.log" 2>&1
+          test -x "$(brew --prefix llvm)/bin/llvm-objdump"
+          printf 'UNIXNU_LLVM_OBJDUMP=%s/bin/llvm-objdump\n' "$(brew --prefix llvm)" >> "$GITHUB_ENV"
       - name: Reconstruct and verify the exact integration source tree
         run: python3 task/ci/native.py prepare --framework unixnu --work "$RUNNER_TEMP/ios27/work"
       - name: Qualify compiler and run the standard native build

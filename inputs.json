@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "957f8878397f4cb475275b3e2e3e4a47253cc3f0",
+  "device_revision": "7dd8752bd9db75662787483713c4d80069a0508b",
   "soc_revision": "7279542eb460a5113b56657c85740a1a10aa3df9",
   "xcode": "26.6",
   "files": {
@@ -60,7 +60,7 @@
     "source/device/patches/xnu-12377/zzzzz-nezha-owner-data-console.patch": "cb29cedb0b5f7d388fcdff028140c6973628d65ea108d7796e23dcb956542828",
     "source/device/patches/xnu-12377/zzzzz-nezha-owner-data-ready.patch": "306414945401c128472d3b0acddd03c88bec57ec47d6988660173d0b432c3e4b",
     "source/ufs.bundle": "25655129fad2b05a33278ad33f7d5bdd4d7544a65fcf3712b082adb4ec82e821",
-    "source/device/scripts/build-boot-progress.py": "c0ec6e2b7bffd1559942af4e215ba4b190c693a859c713d0c77fb55647f127f9",
+    "source/device/scripts/build-boot-progress.py": "a210eb1f0443574eb1506932aa9e8181d5c73aecf99397d8cc731568bd3210ba",
     "source/device/package/boot-progress/BootFaultProbe.c": "f6b5b8b74aa30b4c163ebc73c5814a50596d62213fd100e8029f7c2fefb116f8",
     "source/device/package/boot-progress/BootProcessProbe.c": "f32a68c701c5bc56848a31760431429ab3d5097406832410ec5f8ff707f102af",
     "source/device/package/boot-progress/BootProgress.c": "6e852ef29712049875e55100076990c961b86ea94bc86c8dc89e624e4270ee24",

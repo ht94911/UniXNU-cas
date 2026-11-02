@@ -97,7 +97,7 @@ def compile_command(name, source, obj):
 
 
 def inspect(obj, required=()):
-    asm = subprocess.check_output(['llvm-objdump', '-d', str(obj)], text=True)
+    asm = subprocess.check_output([os.environ.get('UNIXNU_LLVM_OBJDUMP') or 'llvm-objdump', '-d', str(obj)], text=True)
     operands = '\n'.join(re.findall(r'^[ \t]*[0-9a-f]+:[ \t]+(?:[0-9a-f]{8}|(?:[0-9a-f]{2} ){3}[0-9a-f]{2})[ \t]+\w+[ \t]+([^\n]+)', asm, re.M))
     if re.search(r'\b(?:[qds][0-9]+|v[0-9]+(?:\.[0-9a-z]+)?)\b', operands):
         raise SystemExit('FP/SIMD found in ' + obj.name)
