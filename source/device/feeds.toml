@@ -1,5 +1,36 @@
 # Fixed independent SoC and arm64e CPU implementation; local.toml supplies this machine's SoC path.
 [[source]]
+name = "Adreno840"
+kind = "driver"
+local = "package/gpu"
+
+# Reuse these canonical source repositories without selecting the SM8550
+# hardware component or importing its board dependencies.
+[[source]]
+name = "Adreno740"
+kind = "refer"
+git = "https://github.com/UniXNU/Adreno740.git"
+commit = "1030485546ef7ebb9abbfb7c17fbca93cca40971"
+
+[[source]]
+name = "AdrenoMetal"
+kind = "refer"
+git = "https://github.com/UniXNU/AdrenoMetal.git"
+commit = "816022307852de7e1741ac05ae9111982318763f"
+
+[[source]]
+name = "ArmSmmu4K"
+kind = "kit"
+git = "https://github.com/UniXNU/ArmSmmu4K.git"
+commit = "83969cd874503e65997ff7639f7dcf3d0a92cd17"
+
+[[source]]
+name = "AdrenoPM4"
+kind = "kit"
+git = "https://github.com/UniXNU/AdrenoPM4.git"
+commit = "282606b528b2595bc4274ea7490b62b323f35a5f"
+
+[[source]]
 name = "sm8850"
 kind = "soc"
 git = "https://github.com/ht94911/UniXNU-sm8850-common.git"

@@ -8,16 +8,16 @@ os_profile = "ios-27.0.1-24A446-iphone14-4"
 kit = "nezha"
 description = "Xiaomi 17 Ultra: isolated iPhone iOS27 integration, pinned-file policy required"
 [components]
-include = ["ArmDTPlatform", "ArmCpu", "XnuPrelink", "QcomXnuUsbDebug", "ShengUfs", "RamBlock", "GopFramebuffer", "AppleKeyStoreState"]
+include = ["ArmDTPlatform", "ArmCpu", "XnuPrelink", "QcomXnuUsbDebug", "ShengUfs", "RamBlock", "GopFramebuffer", "AppleKeyStoreState", "Adreno840"]
 [kernel]
 defconfig = "nezha_ios27_defconfig"
 config_fragments = ["arch:configs/common.config", "soc:configs/sm8850.config", "os:configs/ipados.config"]
 patch_series = ["arch:patches/xnu/series", "soc:patches/xnu-12377/series", "os:patches/xnu/series", "device:patches/xnu-12377/series", "component:QcomXnuUsbDebug/patches/darwin25-xnu12377-unixnu/series"]
-archives = ["build-corecrypto-14.py", "build-corecrypto-14.py --namespace", "component:ArmDTPlatform", "component:ArmCpu", "build-libpthread-kernel.py", "component:QcomXnuUsbDebug", "build-ios27-pmgr.py", "component:ShengUfs", "component:RamBlock", "component:AppleKeyStoreState", "build-gop-legacy-display-27.py"]
+archives = ["build-corecrypto-14.py", "build-corecrypto-14.py --namespace", "component:ArmDTPlatform", "component:ArmCpu", "build-libpthread-kernel.py", "component:QcomXnuUsbDebug", "build-ios27-pmgr.py", "component:ShengUfs", "component:RamBlock", "component:AppleKeyStoreState", "build-gop-legacy-display-27.py", "component:Adreno840"]
 # G3 read-only root closure. Explicit IOStorageFamily retains its generic
 # IOBlockStorageDriver/IOMediaBSDClient matching; dependency-only strips it.
 [kernel.prelink]
-roots = ["com.apple.security.AppleImage4", "com.apple.driver.AppleMobileFileIntegrity", "com.apple.filesystems.apfs", "com.apple.iokit.IOStorageFamily", "com.apple.AppleFSCompression.AppleFSCompressionTypeZlib", "com.apple.security.sandbox", "com.apple.iokit.IOMobileGraphicsFamily", "com.apple.iokit.IOSurface"]
+roots = ["com.apple.security.AppleImage4", "com.apple.driver.AppleMobileFileIntegrity", "com.apple.filesystems.apfs", "com.apple.iokit.IOStorageFamily", "com.apple.AppleFSCompression.AppleFSCompressionTypeZlib", "com.apple.security.sandbox", "com.apple.iokit.IOMobileGraphicsFamily", "com.apple.iokit.IOSurface", "com.apple.iokit.IOGPUFamily"]
 [device_tree]
 source = "device:dts/nezha.dts"
 include_dirs = ["soc:dts"]
@@ -33,7 +33,7 @@ panic_screen = true
 root_policies = "{tree}/build/sheng-source-storage/root-policies.bin"
 # Root input remains independent of 17; no Data/log persistence or remote reset.
 #031 USB/early-kernel diagnostics are retained for the first read-only root test.
-kernel_args = ["-v", "keepsyms=1", "debug=0x14e", "cpus=1", "-enable_kprintf_spam", "boot-progress=2", "nezha-log=0", "native-source-storage=1", "native-source-storage-require-usb=1", "native-ufs-root=1", "sheng-data-persist=0", "sheng-data-reset=0", "sheng-log=0", "nezha-reboot-after=0", "nezha-panic-reset=0", "qcom-usb-debug=1", "qcom-usb-ctl=1", "use_contiguous_hint=0", "sheng-pmgr=2", "sheng-disable-watchdogd=1", "sheng-exc-name=SpringBoard,backboardd,liveactivitiesd", "offline-mobile-graphics-load=1", "offline-legacy-register=1", "offline-legacy-gop=1", "offline-legacy-unit-scale=3", "offline-legacy-pm=1", "offline-legacy-validate=1", "offline-legacy-transfer=1", "offline-legacy-cpu-present=1", "offline-legacy-phase=4", "offline-key-events=1", "sheng-aks=1", "sheng-fb-gpu=0", "sheng-dpu-scanout=0", "boot-diag-resume=5"]
+kernel_args = ["-v", "keepsyms=1", "debug=0x14e", "cpus=1", "-enable_kprintf_spam", "boot-progress=2", "nezha-log=0", "native-source-storage=1", "native-source-storage-require-usb=1", "native-ufs-root=1", "sheng-data-persist=0", "sheng-data-reset=0", "sheng-log=0", "nezha-reboot-after=0", "nezha-panic-reset=0", "qcom-usb-debug=1", "qcom-usb-ctl=1", "use_contiguous_hint=0", "sheng-pmgr=2", "sheng-disable-watchdogd=1", "sheng-exc-name=SpringBoard,backboardd,liveactivitiesd", "offline-mobile-graphics-load=1", "offline-legacy-register=1", "offline-legacy-gop=1", "offline-legacy-unit-scale=3", "offline-legacy-pm=1", "offline-legacy-validate=1", "offline-legacy-transfer=1", "offline-legacy-cpu-present=1", "offline-legacy-phase=4", "offline-key-events=1", "sheng-aks=1", "sheng-fb-gpu=0", "sheng-dpu-scanout=0", "boot-diag-resume=5", "nezha-gpu=1", "nezha-gpu-metal=0", "sheng-gpu-pt=1", "sheng-gpu-preempt=0"]
 
 # Format2 exports chosen metadata from the typed ADT table.
 [adt.chosen.u32]

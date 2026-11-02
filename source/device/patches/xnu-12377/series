@@ -12,3 +12,6 @@ zzzz-nezha-optional-runtime.patch
 zzzzz-nezha-owner-cache-console.patch
 zzzzz-nezha-owner-data-console.patch
 zzzzz-nezha-owner-data-ready.patch
+
+# A840 optional board thread; linked by this GPU configuration.
+zzzzzz-nezha-adreno840-start.patch
