@@ -170,6 +170,10 @@
 #include <pexpert/pexpert.h>
 #include <vm/pmap.h>
 #include <vm/vm_kern.h>
+#if NEZHA_GPU_SHARED_BACKEND
+/* XNU 12377 exposes the real contiguous-allocation wrapper and KMA flags here. */
+#include <vm/vm_kern_xnu.h>
+#endif
 #include <arm/caches_internal.h>
 #include <kern/kalloc.h>
 #include <kern/locks.h>
@@ -742,7 +746,12 @@ smmu_ctx_up(const char *who, struct smmu_ctx *c, struct gmu_buf *bufs, unsigned 
 	}
 	gpu_step("SMMU: ACTLR, then program and enable the context");
 	gpu_wr(smmu, (uint32_t)cb + 4, GMU_ACTLR);
-	c->ctx = (ArmSmmu4KContextConfig){ &c->tcfg, NULL, &c->tables, NULL, id0, id2, asid, 0, 0, 0 };
+	c->ctx = (ArmSmmu4KContextConfig){
+		.lower = &c->tcfg, .upper = NULL,
+		.lower_tables = &c->tables, .upper_tables = NULL,
+		.id0 = id0, .id2 = id2, .asid = asid,
+		.coherent_walk = 0, .stall_on_fault = 0, .continue_after_fault = 0,
+	}; /* All later fields stay zero: this GMU context never switches TTBR0. */
 	st = ArmSmmu4KProgramDisabledContext(&smmu_io, bank, &c->ctx, 1000, &c->prog);
 	printf("PANDORA GPU: %s SMMU context: status %d phase %u writes %u enabled %u fsr %08x actlr %08x sctlr %08x "
 	    "tcr %08x ttbr0 %#llx mair0 %08x\n", who, st, c->prog.phase, c->prog.writes, c->prog.enabled,

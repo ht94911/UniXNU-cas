@@ -21,6 +21,9 @@
 #include <machine/machine_routines.h>
 #include <pexpert/pexpert.h>
 #include <vm/vm_kern.h>
+#if NEZHA_GPU_SHARED_BACKEND
+#include <vm/vm_kern_xnu.h>
+#endif
 #include <vm/pmap.h>
 #include <arm/caches_internal.h>
 

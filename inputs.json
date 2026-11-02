@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "1fafe007a5dc7604d34b70a281ab21011eb0b8cd",
+  "device_revision": "116cf4b0c11fe935770bc9cfe8278bbe9885c2bb",
   "soc_revision": "7279542eb460a5113b56657c85740a1a10aa3df9",
   "xcode": "26.6",
   "files": {
@@ -119,12 +119,12 @@
     "source/device/package/boot-progress/UmiWaitTrace.h": "b8183c4e9defd5ec9c3ed231451cf89c204629d7285cb125de7e366f9b13858b",
     "source/device/package/boot-progress/upstream.json": "bbcd4cc639b104c9d4619076c8350cfb90483a92347dcd5e39443ba0f8fd8a13",
     "source/device/package/gpu/NezhaAdreno840.cpp": "df56329f2e38edbef6c2f660edf1e3d0c2832cc3cb9f687a6383236f34286642",
-    "source/device/package/gpu/NezhaGpu.c": "9cc7136da7811e661a36be3e5777fc83865c0f999156222f78dd617a41fcce33",
+    "source/device/package/gpu/NezhaGpu.c": "b4aab894f8ec52822e838fa2354a206bf7fa844e2c4a98e03dc14ccbd1855793",
     "source/device/package/gpu/NezhaGpuFirmware.cpp": "6318b3d5cbd478f185dd0669a597440f2a3878d2991fd611fe6741a5d58b3909",
     "source/device/package/gpu/NezhaGpuFirmware.h": "fd75af351256dcbb72d0cf83ceeda4cee524475324edaf086b50ae34093d580e",
     "source/device/package/gpu/NezhaGpuFirmwareSlot.S": "294d44bf227df3db03fe8c9343c7179c8c03962d52a999a564ac99f7d7356d82",
     "source/device/package/gpu/NezhaGpuPlatform.h": "f2f6be46409f7be859448c09bbacb483fdc05dcb7f408d97fac1eaae148b3e5b",
-    "source/device/package/gpu/NezhaScm.c": "0941e55c9319c1f7e5d9c1d0eee8ac49e859dc8c835f6c8d2f7c9447c52fffeb",
+    "source/device/package/gpu/NezhaScm.c": "d5eff9fb85bd9215411e9c9ef56f40b5bc28334b9e1dd246d4f61b4f6aae4ab3",
     "source/device/package/ios27-root-owner-public.pem": "0afc03662d11ce57d705807de90f1c5491555280e56f300bb6e560af4513c1ad",
     "source/device/patches/xnu-12377/series": "d2242611264c34b4f2c22821a2162e5d41030f139713048e1d93501c6f021df1",
     "source/device/patches/xnu-12377/source-storage-runtime.patch": "25c377c60db417b15fcc137acf380f0319cbff9d5ba012af1907f3485602b584",
