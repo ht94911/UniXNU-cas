@@ -400,7 +400,7 @@ sources = [ROOT / 'drivers/GopFramebuffer/NativeLegacyDisplay.cpp', ROOT / 'driv
 (OUT / 'build-report.json').write_text(json.dumps(dict(
     source_sha256={str(p.relative_to(ROOT)): sha(p) for p in sources}, generated_abi_sha256=sha(OUT / 'OriginalLegacyFramebufferABI.h'),
     kernelcache_sha256=abi['kernelcache_sha256'], compiled_object_sha256=sha(obj), archive_sha256=sha(archive),
-    sheng_recipe_revision='69c3c6037e761e63b8c527829deaa09c6c49f6a8', original_GOP_source_sha256=sha(upstream/'NativeLegacyDisplay.cpp'), absent_optional_providers=absent, actual_BootProgress_provider_required=True, HID_GPU_SM8550_probes_selected=False,
+    sheng_recipe_revision='69c3c6037e761e63b8c527829deaa09c6c49f6a8', original_GOP_source_sha256=sha(upstream/'NativeLegacyDisplay.cpp'), absent_optional_providers=absent, actual_BootProgress_provider_required=True, HID_nezha_input_selected=True, GPU_SM8550_probes_selected=False,
     bindings={n: hex(v) for n, v in bindings.items()}, virtual_entries=len(slots), owned_entries=owned,
     inherited_native_entries=native, original_bindings='fixed-collection-addresses', original_instructions_modified=False), indent=2) + '\n')
 print(f'Built the owned Legacy backend on the iPadOS 27 class: {len(owned)} owned, {len(native)} native, {len(bindings)} original bindings')
