@@ -1,7 +1,7 @@
-name: nezha iPhone27 unattended057 USB reset/snapshot native kernel Intel host
+name: nezha iPhone27 input058 qualified publicHID/Synaptics native kernel Intel host
 on:
   push:
-    branches: [codex/ios27-unattended057b-20261103]
+    branches: [codex/ios27-input058-20261103]
   workflow_dispatch:
 permissions:
   contents: read
