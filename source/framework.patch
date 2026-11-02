@@ -719,10 +719,10 @@ index 0000000..288271e
 +# Disk images of this OS, in window order; the device sets the partition geometry.
 +windows = [{ name = "OS", component = "OS" }, { name = "SystemOS", component = "Cryptex1,SystemOS", optional = true }]
 diff --git a/scripts/build-fileset-release-reference.py b/scripts/build-fileset-release-reference.py
-index 247541c..cdf692a 100644
+index 247541c..1e55416 100644
 --- a/scripts/build-fileset-release-reference.py
 +++ b/scripts/build-fileset-release-reference.py
-@@ -2,59 +2,182 @@
+@@ -2,59 +2,234 @@
  """Build a symbol-bearing RELEASE comparison kernel in an isolated output tree."""
  import json
  import os
@@ -833,7 +833,10 @@ index 247541c..cdf692a 100644
 +    parser.add_argument('--tree', required=True, type=Path, help='prepared XNU build tree of the OS profile')
 +    parser.add_argument('--lto', action='store_true', help='enable the RELEASE default link-time optimization')
 +    parser.add_argument('--jobs', type=int, default=32, help='parallel build jobs; bounded by the runner memory budget')
++    parser.add_argument('--kernel-config', choices=('RELEASE', 'DEVELOPMENT'), default='RELEASE',
++                        help='owner startup composition uses the original DEVELOPMENT-only implementation')
 +    options = parser.parse_args()
++    kernel_config = options.kernel_config
 +    if options.jobs < 1:
 +        parser.error('--jobs must be positive')
 +    mode = 'lto' if options.lto else 'snapshot'
@@ -853,9 +856,22 @@ index 247541c..cdf692a 100644
 +    if sheng_pmgr not in ('0', '1'):
 +        raise SystemExit('XNU_SHENG_PMGR must be 0 or 1')
 +
++    source_storage = os.environ.get('XNU_SOURCE_STORAGE', '0')
++    if source_storage not in ('0', '1'):
++        raise SystemExit('XNU_SOURCE_STORAGE must be 0 or 1')
++    root_flags = {name: os.environ.get(name, '0') for name in
++                  ('XNU_OWNER_ROOT_AUDIT', 'XNU_OWNER_ROOT_TRUST',
++                   'XNU_OWNER_CACHE_MOUNT', 'XNU_OWNER_CACHE_STARTUP',
++                   'XNU_OWNER_BOOT_MANIFEST', 'XNU_OWNER_UNION_SYSTEMOS', 'XNU_OWNER_DATA_MOUNT')}
++    if any(value not in ('0', '1') for value in root_flags.values()):
++        raise SystemExit('Root audit/trust flags must be 0 or 1')
++    startup = any(root_flags[n] == '1' for n in ('XNU_OWNER_CACHE_MOUNT', 'XNU_OWNER_CACHE_STARTUP',
++                         'XNU_OWNER_BOOT_MANIFEST', 'XNU_OWNER_UNION_SYSTEMOS', 'XNU_OWNER_DATA_MOUNT'))
++    if startup and kernel_config != 'DEVELOPMENT':
++        raise SystemExit('Owner startup comparison requires DEVELOPMENT; do not weaken its source guards')
 +    root = options.tree.resolve()
 +    build_root = root / 'build/xnu/fileset-reference'
-+    final = build_root / 'mach.release.bcm2837.unstripped.noctf'
++    final = build_root / ('mach.' + kernel_config.lower() + '.bcm2837.unstripped.noctf')
 +    cache_record = final.with_suffix('.json')
 +    sdk = root / '.cache/fakeroot'
 +    archives = [root/'build/corecrypto-2023/libcorecrypto_kernel_noasm-namespaced.a']
@@ -863,8 +879,20 @@ index 247541c..cdf692a 100644
 +        ('libpthread-kernel','libpthread_kernel.a'),('armdt-platform','libArmDTPlatform.a'),('armcpu','libArmCpu.a'))]
 +    if sheng_pmgr == '1':
 +        forced.append(root/'build/sheng-platform-power/libShengPlatformPower.a')
++    if source_storage == '1':
++        forced.append(root/'build/sheng-source-storage/libShengSourceStorage.a')
++    # SourceStorage may use the selected module's public status API while
++    # the comparison kernel keeps its own observation hooks disabled. Link
++    # the real archive dependency, never a fake status function.
++    if source_storage == '1' and os.environ.get('XNU_QCOM_USB_DEBUG', '0') == '1':
++        forced.append(root/'build/qcom-usb-debug/libQcomXnuUsbDebug.a')
++    owner_header = root/'build/xnu/owner-data-volume.h'
++    if startup and not owner_header.is_file():
++        raise SystemExit('Owner startup comparison requires the actual generated native volume header')
 +    inputs = {
 +        'mode': mode,
++        'kernel_config': kernel_config,
++        'owner_volume_header_sha256': file_hash(owner_header) if startup else None,
 +        'script': file_hash(Path(__file__)),
 +        'source': tree_hash(root / '.cache/xnu-work'),
 +        'sdk': tree_hash(sdk),
@@ -907,6 +935,19 @@ index 247541c..cdf692a 100644
 +                if text.count(anchor) != 1:
 +                    raise SystemExit('reference exception declaration anchor changed')
 +                exception.write_text(text.replace(anchor, anchor + declaration + '\n', 1))
++        if source_storage == '1' and kernel_config == 'RELEASE':
++            # DEVELOPMENT-built source archives carry real minimal UBSan
++            # imports. RELEASE normally omits that runtime. Select XNU's own
++            # five trap handlers in this private comparison config; do not
++            # remove archive instrumentation or supply empty replacements.
++            master = source / 'config/MASTER.arm64.bcm2837'
++            text = master.read_text()
++            import re
++            pattern = r'(?m)^(#\s+VM_RELEASE\s*=\s*\[\s*VM_BASE)(\s*\])$'
++            text, count = re.subn(pattern, r'\1 ubsan_minimal\2', text)
++            if count != 1:
++                raise SystemExit('reference RELEASE minimal-runtime anchor changed')
++            master.write_text(text)
 +        manifest = {str(p.relative_to(source)): hashlib.sha256(p.read_bytes()).hexdigest()
 +                    for p in source.rglob('*') if p.is_file()}
 +        (output/'source-sha256.json').write_text(json.dumps(manifest,indent=2)+'\n')
@@ -917,9 +958,15 @@ index 247541c..cdf692a 100644
 +    flags += f' -DXNU_TOPOLOGY_V3_COMPAT={topology_v3}'
 +    flags += f' -DXNU_IOS27_PLATFORM_FUNCTION_CLIENT={platform_client}'
 +    flags += f' -DXNU_IOS27_IMAGE4_V2_NOMONITOR={image4_no_monitor}'
-+    flags += ' -DXNU_QCOM_USB_DEBUG=0 -DXNU_SOURCE_STORAGE=0'
++    flags += f' -DXNU_QCOM_USB_DEBUG=0 -DXNU_SOURCE_STORAGE={source_storage}'
++    flags += ''.join(f' -D{name}={value}' for name, value in root_flags.items())
++    if startup:
++        header = root/'build/xnu/owner-data-volume.h'
++        if not header.is_file():
++            raise SystemExit('Owner startup comparison requires the actual generated native volume header')
++        flags += ' -include ' + str(header)
 +    args = ['make','-C',str(source),'build','SDKROOT=iphoneos',
-+        'ARCH_CONFIGS=ARM64','MACHINE_CONFIGS=BCM2837','KERNEL_CONFIGS=RELEASE',
++        'ARCH_CONFIGS=ARM64','MACHINE_CONFIGS=BCM2837',f'KERNEL_CONFIGS={kernel_config}',
 +        'ARCH_STRING_FOR_CURRENT_MACHINE_CONFIG=arm64e','LARGE_MEMORY_DEFINE=-UARM_LARGE_MEMORY',
 +        'ARM64_LINK_ADDR=0xfffffff007004000','ARM64_PLKSEG_ADDR=0xfffffff004004000',
 +        f'DEPLOYMENT_TARGET_FLAGS=-miphoneos-version-min={os.environ.get("UNIXNU_IOS_VERSION", "26.0")} -DXNU_TARGET_OS_IOS',
@@ -930,7 +977,7 @@ index 247541c..cdf692a 100644
 +        f'LDFLAGS_KERNEL_LTO=-miphoneos-version-min={inputs["versions"]["UNIXNU_IOS_VERSION"]} -Wl,-mllvm,-inline-threshold=100',
 +        # Same strict, symbol-bearing RELEASE strategy as qualified 007.
 +        # Drop only the forced export list; actual undefined calls still fail.
-+        'LDFLAGS_KERNEL_ONLY_CONFIG_RELEASEARM64=',
++        f'LDFLAGS_KERNEL_ONLY_CONFIG_{kernel_config}ARM64=',
 +        'LDFLAGS_KERNEL_STRIP_LTO=-rdynamic',
 +        f'CFLAGS_EXTRA={flags}',
 +        'copyio.o_CFLAGS_ADD=-march=armv8.1-a','pcb.o_CFLAGS_ADD=-march=armv8.1-a',
@@ -941,10 +988,15 @@ index 247541c..cdf692a 100644
 +    (output/f'{mode}-command.json').write_text(json.dumps(args,indent=2)+'\n')
 +    with (output/f'{mode}-build.log').open('w') as log:
 +        result = subprocess.run(args,cwd=root,env=env,stdout=log,stderr=subprocess.STDOUT)
-+    print('RELEASE reference exit',result.returncode,'log',output/f'{mode}-build.log',flush=True)
++    print(kernel_config, 'reference exit',result.returncode,'log',output/f'{mode}-build.log',flush=True)
++    # Retain failed comparison attempt provenance independently of the final
++    # successful cache record, so encrypted collectors can keep the real log.
++    attempt = dict(inputs=inputs, build=str(output), successful=result.returncode == 0,
++                   exit_code=result.returncode)
++    (build_root/'last-attempt.json').write_text(json.dumps(attempt, indent=2)+'\n')
 +    if result.returncode:
 +        raise SystemExit(result.returncode)
-+    built = output / f'{mode}-obj/RELEASE_ARM64_BCM2837/mach.release.bcm2837.unstripped'
++    built = output / f'{mode}-obj/{kernel_config}_ARM64_BCM2837/mach.{kernel_config.lower()}.bcm2837.unstripped'
 +    temporary = final.with_suffix('.tmp')
 +    shutil.copyfile(built, temporary)
 +    os.replace(temporary, final)
@@ -1035,6 +1087,179 @@ index 0000000..d4de690
 +
 +if __name__ == '__main__':
 +    main()
+diff --git a/scripts/build-sheng-source-storage.py b/scripts/build-sheng-source-storage.py
+index 86e03f6..484ed9f 100644
+--- a/scripts/build-sheng-source-storage.py
++++ b/scripts/build-sheng-source-storage.py
+@@ -61,16 +61,28 @@ def weak_defaults(source):
+     return '\n'.join(includes + pragma + lines) + '\n'
+ 
+ 
++def owner_anchor(path):
++    """Explicit public-only compile input; runtime still requires signed policy handoff."""
++    path = Path(path)
++    if not path.is_file() or b'PRIVATE KEY' in path.read_bytes():
++        raise ValueError('Require an explicit public owner key, never private material')
++    manifest = helper('source_policy_manifest', ROOT / 'kits/VerifiedRoot/tools/manifest.py')
++    return manifest.public_anchor(path)
++
++
+ def main():
+     parser = argparse.ArgumentParser(description=__doc__)
+     parser.add_argument('--tree', type=Path, default=ROOT)
+     parser.add_argument('--device', type=Path)
+     parser.add_argument('--storage-source', type=Path)
++    parser.add_argument('--owner-public-key', type=Path,
++                        default=os.environ.get('XNU_SOURCE_STORAGE_OWNER_PUBLIC_KEY'),
++                        help='Compile only the public owner anchor; authenticated policy handoff remains mandatory at runtime')
+     parser.add_argument('--policy-dir', type=Path,
+                         help='Directory containing OS/ and SystemOS/ signed policies and verification.json')
+     args = parser.parse_args()
+     tree = args.tree.resolve()
+-    device = (args.device or tree).resolve()
++    device = Path(args.device or os.environ.get('UNIXNU_DEVICE') or tree).resolve()
+     storage = (args.storage_source or tree / 'refer/IOStorageFamily').resolve()
+     # The OS profile names the root images ([root]); kernel.py passes them in the environment.
+     build_id = os.environ.get('UNIXNU_IPSW_BUILD')
+@@ -85,6 +97,13 @@ def main():
+     else:
+         package_dirs += [tree / 'kits/sheng']
+ 
++    board = device / 'board.toml'
++    if board.is_file():
++        import tomllib
++        kit = tomllib.loads(board.read_text()).get('board', {}).get('kit')
++        if kit:
++            package_dirs.insert(0, tree / 'kits' / kit)
++
+     def device_source(relative, *extra):
+         for directory in list(extra) + package_dirs + [device, tree]:
+             candidate = directory / relative
+@@ -109,37 +128,49 @@ def main():
+                 if name.strip() in ('OS', 'SystemOS')]
+     if not selected:
+         parser.error('UNIXNU_SOURCE_STORAGE_POLICIES names no policy')
+-    manifest_paths = [policies / name / 'manifest.bin' for name in selected]
+-    key = (policies / f'{selected[0]}/trusted-key.bin').read_bytes()
+-    if len(key) != 395 or any(key != (policies / f'{name}/trusted-key.bin').read_bytes() for name in selected):
+-        parser.error('All selected policies must share the same complete explicit owner anchor')
+-    manifests = []
+-    expected = {}
+-    for name, prefix in (('OS', 'UNIXNU_ROOT_OS'), ('SystemOS', 'UNIXNU_ROOT_SYSTEMOS')):
+-        digest, identity = os.environ.get(prefix + '_SHA256'), os.environ.get(prefix + '_UUID')
+-        if name in selected and not (digest and identity):
+-            parser.error(f'the OS profile has no [root] {name.lower()}_image_sha256 and {name.lower()}_volume_uuid')
+-        expected[name] = (digest, identity and identity.upper())
+-    for path in manifest_paths:
+-        verification = json.loads(path.with_name('verification.json').read_text())
+-        digest, identity = expected[path.parent.name]
+-        if (not verification['real_c_signature_and_block_verification'] or
+-                verification['image_sha256'] != digest or verification['volume_uuid'] != identity or
+-                verification['trusted_key_sha256'] != hashlib.sha256(key).hexdigest()):
+-            parser.error(f'{path.parent.name}: require complete verification of the actual {build_id} image')
+-        data = path.read_bytes()
+-        if len(data) < 544 or data[56:88].hex() != digest:
+-            parser.error(f'{path}: manifest does not describe the selected image')
+-        # With the tables in userdata only the 544-byte signed header goes into the boot image;
+-        # NativeUfs reads "<window>.vroot" from the root image and vr_open checks it against the header.
+-        manifests.append(data[:544] if tables_in_userdata else data)
+-    cursor = 32 + 16 * len(manifests)
+-    table = bytearray()
+-    for data in manifests:
+-        table += struct.pack('<QQ', cursor, len(data))
+-        cursor += len(data)
+-    bundle = struct.pack('<8sQQQ', b'VROOTB01', 1, len(manifests), cursor) + table + b''.join(manifests)
+-    (out / 'root-policies.bin').write_bytes(bundle)
++    anchor_only = args.owner_public_key is not None
++    if anchor_only:
++        if args.policy_dir is not None:
++            parser.error('--owner-public-key excludes --policy-dir; policy verification is a separate local step')
++        try:
++            key = owner_anchor(args.owner_public_key)
++        except ValueError as error:
++            parser.error(str(error))
++        # No empty or fake policy bundle is emitted. SourceRootPolicies still
++        # rejects missing/invalid handoff before any hardware class starts.
++        (out / 'root-policies.bin').unlink(missing_ok=True)
++    else:
++        manifest_paths = [policies / name / 'manifest.bin' for name in selected]
++        key = (policies / f'{selected[0]}/trusted-key.bin').read_bytes()
++        if len(key) != 395 or any(key != (policies / f'{name}/trusted-key.bin').read_bytes() for name in selected):
++            parser.error('All selected policies must share the same complete explicit owner anchor')
++        manifests = []
++        expected = {}
++        for name, prefix in (('OS', 'UNIXNU_ROOT_OS'), ('SystemOS', 'UNIXNU_ROOT_SYSTEMOS')):
++            digest, identity = os.environ.get(prefix + '_SHA256'), os.environ.get(prefix + '_UUID')
++            if name in selected and not (digest and identity):
++                parser.error(f'the OS profile has no [root] {name.lower()}_image_sha256 and {name.lower()}_volume_uuid')
++            expected[name] = (digest, identity and identity.upper())
++        for path in manifest_paths:
++            verification = json.loads(path.with_name('verification.json').read_text())
++            digest, identity = expected[path.parent.name]
++            if (not verification['real_c_signature_and_block_verification'] or
++                    verification['image_sha256'] != digest or verification['volume_uuid'] != identity or
++                    verification['trusted_key_sha256'] != hashlib.sha256(key).hexdigest()):
++                parser.error(f'{path.parent.name}: require complete verification of the actual {build_id} image')
++            data = path.read_bytes()
++            if len(data) < 544 or data[56:88].hex() != digest:
++                parser.error(f'{path}: manifest does not describe the selected image')
++            # With the tables in userdata only the 544-byte signed header goes into the boot image;
++            # NativeUfs reads "<window>.vroot" from the root image and vr_open checks it against the header.
++            manifests.append(data[:544] if tables_in_userdata else data)
++        cursor = 32 + 16 * len(manifests)
++        table = bytearray()
++        for data in manifests:
++            table += struct.pack('<QQ', cursor, len(data))
++            cursor += len(data)
++        bundle = struct.pack('<8sQQQ', b'VROOTB01', 1, len(manifests), cursor) + table + b''.join(manifests)
++        (out / 'root-policies.bin').write_bytes(bundle)
+     # Only the independent trust anchor is linked into the kernel. The large
+     # signed hash tables are a separate firmware handoff, authenticated in XNU.
+     boot_log_defaults = out / 'BootLogDefaults.c'
+@@ -170,12 +201,20 @@ OSDefineOperatorMethods(IOBlockStorageDevice)
+                 '-I', str(ROOT / 'drivers/VirtioMmioBlock'), '-I', str(tree / '.cache/xnu-work/osfmk')]
+     flags = ['-DNATIVE_UFS_SOURCE_API=1', '-DNATIVE_VERIFIED_BLOCK=1',
+              '-DNATIVE_VERIFIED_BLOCK_MULTI_POLICY=1', '-DNATIVE_VERIFIED_POLICY_HANDOFF=1']
++    reset_provider = os.environ.get('XNU_SOURCE_STORAGE_BOARD_RESET', '1')
++    if reset_provider not in ('0', '1'):
++        parser.error('XNU_SOURCE_STORAGE_BOARD_RESET must be 0 or 1')
++    diag_export = os.environ.get('XNU_SOURCE_STORAGE_DIAG_EXPORT', '1')
++    if diag_export not in ('0', '1'):
++        parser.error('XNU_SOURCE_STORAGE_DIAG_EXPORT must be 0 or 1')
+     # The RAM disk carries the Data seed; like NativeUfs its class registers with the source storage classes.
+-    sources = [base, device / 'drivers/ShengUfs/NativeUfs.cpp', ROOT / 'drivers/RamBlock/NativeRamBlock.cpp',
++    sources = [base, tree / 'drivers/ShengUfs/NativeUfs.cpp', ROOT / 'drivers/RamBlock/NativeRamBlock.cpp',
+                device_source('SourceStorage.cpp'), device_source('SourceRootPolicies.cpp'),
+-               device_source('SourceRootBinding.cpp'), device_source('BootLog.c'), boot_log_defaults, device_source('BootReset.c'),
++               device_source('SourceRootBinding.cpp'), device_source('BootLog.c'), boot_log_defaults,
+                ROOT / 'kits/VerifiedRoot/src/verified_root.c',
+                ROOT / 'kits/VerifiedRoot/adapters/xnu_crypto.c', anchor]
++    if reset_provider == '1':
++        sources.append(device_source('BootReset.c'))
+     if int(os.environ['UNIXNU_IOS_VERSION'].split('.')[0]) >= 27:
+         # The source path does not run BootProgress's process worker. Reuse its
+         # native capture code in a separate worker owned by the UFS log.
+@@ -186,7 +225,8 @@ OSDefineOperatorMethods(IOBlockStorageDevice)
+         # iPadOS 17; the kernel runs it after the Data mount.
+         sources.append(device_source('BootWatchdogPolicy.c'))
+         # The diagnostic file export (sheng-diag-export): the unified log, crash reports and a screenshot, read through the VFS.
+-        sources.append(device_source('BootDiagExport.c'))
++        if diag_export == '1':
++            sources.append(device_source('BootDiagExport.c'))
+     objects, inputs = [], {}
+     objcopy = shutil.which('llvm-objcopy') or '/opt/homebrew/opt/llvm/bin/llvm-objcopy'
+     for source in sources:
+@@ -218,7 +258,9 @@ OSDefineOperatorMethods(IOBlockStorageDevice)
+     shutil.copyfile(archive, catalog_output)
+     report = dict(archive=str(archive), archive_sha256=build.sha(archive), sources=inputs,
+                   headers=header_report, target=target.TRIPLE,
+-                  policy_bundle_sha256=build.sha(out / 'root-policies.bin'),
++                  policy_bundle_sha256=None if anchor_only else build.sha(out / 'root-policies.bin'),
++                  owner_anchor_only=anchor_only, runtime_policy_handoff_required=True,
++                  board_reset_provider=reset_provider == '1', diagnostic_file_export=diag_export == '1',
+                   trusted_key_sha256=hashlib.sha256(key).hexdigest(), runtime_qualified=False)
+     (out / 'report.json').write_text(json.dumps(report, indent=2) + '\n')
+     print(archive)
 diff --git a/scripts/build-xnu-4k-baseline.sh b/scripts/build-xnu-4k-baseline.sh
 index 1ade502..1512394 100755
 --- a/scripts/build-xnu-4k-baseline.sh
@@ -1129,7 +1354,7 @@ index 1ade502..1512394 100755
    if [ "$BOOT_PROGRESS" = 1 ]; then
      KERNEL_EXTRA_ARCHIVES="$KERNEL_EXTRA_ARCHIVES -Wl,-force_load,$ROOT/build/boot-progress/libBootProgress.a"
 diff --git a/scripts/patch-xnu-entry-probe.py b/scripts/patch-xnu-entry-probe.py
-index 9e3e598..febce27 100644
+index 9e3e598..bbf6567 100644
 --- a/scripts/patch-xnu-entry-probe.py
 +++ b/scripts/patch-xnu-entry-probe.py
 @@ -17,7 +17,9 @@ channels. The stage code lives in the zero padding after the kernel entry
@@ -1307,7 +1532,24 @@ index 9e3e598..febce27 100644
      nm = shutil.which('llvm-nm') or '/opt/homebrew/opt/llvm/bin/llvm-nm'
      table = {}
      for line in subprocess.run([nm, '-n', kernel], capture_output=True, text=True, check=True).stdout.splitlines():
-@@ -361,9 +511,15 @@ def main():
+@@ -318,6 +468,16 @@ def rebase(kernel, data):
+             raise SystemExit('Require one verified SCTLR/ISB/CPACR entry sequence')
+         MMU_ENABLE_VA = matches[0]
+         AFTER_MMU_VA = MMU_ENABLE_VA + 0x20
++    # The next entry-page object is the actual exception vector. Old fixed
++    # geometry retained an unused eight-byte margin; on a larger arm64e build
++    # the renderer can need that margin. Use the real aligned vector boundary,
++    # while the caller still verifies every destination byte is zero and never
++    # writes the vector itself. Older kernels without the symbol keep the bound.
++    vector = names.get('_LowExceptionVectorBase')
++    if vector is not None:
++        if vector & 0xfff or not ENTRY_VA < vector <= ENTRY_VA + 0x1000:
++            raise SystemExit('Invalid exception-vector boundary after the kernel entry')
++        PANIC_CAVE_END = vector
+     if '_panic' in names and '_vinfo' in names:
+         PANIC_VA = names['_panic']
+         # Board diagnostics seed this ABI-compatible prefix from valid console
+@@ -361,9 +521,15 @@ def main():
      parser.add_argument('--reset-before', action='store_true', help='reset at the call site before invoking SYMBOL (requires --reset-after)')
      parser.add_argument('--panic-screen', action='store_true', help='draw panic() messages on the screen')
      parser.add_argument('--no-reset', action='store_true', help='no reset probe at all')
@@ -1323,7 +1565,7 @@ index 9e3e598..febce27 100644
      if args.reset_before and not args.reset_after:
          raise SystemExit('--reset-before requires --reset-after')
      data = bytearray(args.kernel.read_bytes())
-@@ -395,18 +551,106 @@ def main():
+@@ -395,18 +561,106 @@ def main():
          sites.append((AFTER_MMU_VA, 3, {'target': AFTER_MMU_VA + 4}))
          description = f'stage 3 reset {args.reset_delay} s after the MMU is on'
  
@@ -1609,10 +1851,10 @@ index 8e0efdb..9f7b19d 100755
                      for index in range(4):
 diff --git a/scripts/test-fileset-reference.py b/scripts/test-fileset-reference.py
 new file mode 100644
-index 0000000..788dd84
+index 0000000..c2fa63a
 --- /dev/null
 +++ b/scripts/test-fileset-reference.py
-@@ -0,0 +1,148 @@
+@@ -0,0 +1,177 @@
 +"""A cached comparison kernel must belong to the requested build inputs."""
 +import importlib.util
 +import json
@@ -1649,11 +1891,15 @@ index 0000000..788dd84
 +                     'build/libpthread-kernel/libpthread_kernel.a',
 +                     'build/armdt-platform/libArmDTPlatform.a',
 +                     'build/armcpu/libArmCpu.a',
-+                     'build/sheng-platform-power/libShengPlatformPower.a']
++                     'build/sheng-platform-power/libShengPlatformPower.a',
++                     'build/sheng-source-storage/libShengSourceStorage.a',
++                     'build/qcom-usb-debug/libQcomXnuUsbDebug.a']
 +            for name in files:
 +                path = root / name
 +                path.parent.mkdir(parents=True, exist_ok=True)
 +                path.write_text('')
++            master = root / '.cache/xnu-work/config/MASTER.arm64.bcm2837'
++            master.write_text('#  VM_RELEASE =     [ VM_BASE ]\n#  VM_DEV = [ VM_BASE ubsan_minimal ]\n')
 +            builds = []
 +            compiler_flags = []
 +            linker_flags = []
@@ -1661,6 +1907,9 @@ index 0000000..788dd84
 +            def make(command, **kwargs):
 +                if command[:2] == ['xcrun', 'nm']:
 +                    return SimpleNamespace(returncode=0, stdout='')
++                master = Path(command[2]) / 'config/MASTER.arm64.bcm2837'
++                selected = 'VM_BASE ubsan_minimal ]' in master.read_text().splitlines()[0]
++                self.assertEqual(selected, os.environ.get('XNU_SOURCE_STORAGE', '0') == '1')
 +                values = dict(arg.split('=', 1) for arg in command if '=' in arg)
 +                mode = values['BUILD_LTO']
 +                builds.append(mode)
@@ -1718,6 +1967,28 @@ index 0000000..788dd84
 +                    (root / 'build/sheng-platform-power/libShengPlatformPower.a').write_bytes(b'new archive')
 +                    reference.main()
 +                    self.assertEqual(len(builds), count + 2)
++
++                with patch.dict(os.environ, {'XNU_SOURCE_STORAGE': '1', 'XNU_OWNER_ROOT_AUDIT': '1', 'XNU_OWNER_ROOT_TRUST': '1'}):
++                    count = len(builds)
++                    reference.main()
++                    self.assertEqual(len(builds), count + 1)
++                    self.assertIn('-DXNU_SOURCE_STORAGE=1', compiler_flags[-1])
++                    self.assertIn('-DXNU_OWNER_ROOT_AUDIT=1', compiler_flags[-1])
++                    self.assertIn('-DXNU_OWNER_ROOT_TRUST=1', compiler_flags[-1])
++                    self.assertIn('libShengSourceStorage.a', linker_flags[-1])
++                    reference.main()
++                    self.assertEqual(len(builds), count + 1)
++
++                    with patch.dict(os.environ, {'XNU_QCOM_USB_DEBUG': '1'}):
++                        count = len(builds)
++                        reference.main()
++                        self.assertEqual(len(builds), count + 1)
++                        self.assertIn('libQcomXnuUsbDebug.a', linker_flags[-1])
++                        # Only the linked source storage API dependency is
++                        # enabled, not the comparison's own USB boot hooks.
++                        self.assertIn('-DXNU_QCOM_USB_DEBUG=0', compiler_flags[-1])
++                        reference.main()
++                        self.assertEqual(len(builds), count + 1)
 +
 +    def test_invalid_topology_option_is_rejected_before_build(self):
 +        with patch('sys.argv', ['reference', '--tree', '/unused']), \
@@ -1806,6 +2077,38 @@ index 0000000..0aa78e2
 +assert observed=={3,8}
 +result_record=dict(cases=counts,total=sum(counts.values()),stock_kernel_sha256=inputs[0]['sha256'],stock_run_id=41354262114,source_patch_sha256=hashlib.sha256(args.patch.read_bytes()).hexdigest(),monitor_enabled_compile_rejected=True,observed_results=sorted(observed),successful_trust_result_observed=False,scope='actual Intel stock leaf execution versus portable C; selected NoMonitor contract only',phone_operations=False)
 +(args.out/'golden-parity.json').write_text(json.dumps(result_record,indent=2));print(json.dumps(result_record,indent=2))
+diff --git a/scripts/test-owner-reference.py b/scripts/test-owner-reference.py
+new file mode 100644
+index 0000000..3eae55e
+--- /dev/null
++++ b/scripts/test-owner-reference.py
+@@ -0,0 +1,26 @@
++"""Selected startup source, generated volume identity and comparison mode must agree."""
++import importlib.util,os,tempfile,unittest,json
++from pathlib import Path
++from unittest.mock import patch
++from types import SimpleNamespace
++spec=importlib.util.spec_from_file_location('reference',Path(__file__).with_name('build-fileset-release-reference.py'));m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
++class OwnerReference(unittest.TestCase):
++ def test_development_cache_and_exact_owner_header(self):
++  with tempfile.TemporaryDirectory() as td:
++   r=Path(td)
++   for n in ['.cache/xnu-work/osfmk/arm64/sleh.c','.cache/fakeroot/usr/include/header.h','build/corecrypto-2023/libcorecrypto_kernel_noasm-namespaced.a','build/libpthread-kernel/libpthread_kernel.a','build/armdt-platform/libArmDTPlatform.a','build/armcpu/libArmCpu.a','build/xnu/owner-data-volume.h']:
++    p=r/n;p.parent.mkdir(parents=True,exist_ok=True);p.write_text('')
++   header=r/'build/xnu/owner-data-volume.h';header.write_text('#define XNU_OWNER_CACHE_VOLUME_UUID "FFADDA0D-7102-4121-8AB8-48818B912D06"\n');calls=[]
++   def build(command,**kw):
++    values=dict(a.split('=',1) for a in command if '=' in a);calls.append(values);out=Path(values['OBJROOT'])/(values['KERNEL_CONFIGS']+'_ARM64_BCM2837');out.mkdir(parents=True,exist_ok=True);(out/('mach.'+values['KERNEL_CONFIGS'].lower()+'.bcm2837.unstripped')).write_bytes(b'actual-config-fixture');return SimpleNamespace(returncode=0)
++   env={'XNU_OWNER_CACHE_MOUNT':'1','XNU_OWNER_CACHE_STARTUP':'1','XNU_OWNER_ROOT_AUDIT':'1','XNU_OWNER_ROOT_TRUST':'1'}
++   with patch.dict(os.environ,env),patch.object(m.subprocess,'run',side_effect=build),patch.object(m.subprocess,'check_output',return_value=b'compiler'),patch('sys.argv',['ref','--tree',str(r),'--kernel-config','DEVELOPMENT','--lto']):
++    # Compiler output in production is text.
++    with patch.object(m.subprocess,'check_output',return_value='compiler'):
++     m.main();self.assertEqual(len(calls),1);self.assertEqual(calls[0]['KERNEL_CONFIGS'],'DEVELOPMENT');self.assertIn('-DXNU_OWNER_CACHE_MOUNT=1',calls[0]['CFLAGS_EXTRA']);self.assertIn('-include '+str(header),calls[0]['CFLAGS_EXTRA']);m.main();self.assertEqual(len(calls),1)
++     header.write_text(header.read_text()+'/* different generated identity/header */\n');m.main();self.assertEqual(len(calls),2)
++     header.unlink()
++     with self.assertRaisesRegex(SystemExit,'actual generated native volume header'):m.main()
++   with patch.dict(os.environ,env),patch('sys.argv',['ref','--tree',str(r)]):
++    with self.assertRaisesRegex(SystemExit,'requires DEVELOPMENT'):m.main()
++if __name__=='__main__':unittest.main()
 diff --git a/scripts/test-platform-function-client.py b/scripts/test-platform-function-client.py
 new file mode 100644
 index 0000000..5590663
@@ -1931,6 +2234,40 @@ index 0000000..5590663
 + p=subprocess.run(cmd,capture_output=True,text=True);result.append(dict(command=cmd,returncode=p.returncode,stdout=p.stdout,stderr=p.stderr));print(p.returncode,p.stdout,p.stderr[:4000]);
 + if p.returncode:break
 +(O/'client-host-check.json').write_text(json.dumps(result,indent=2));assert len(result)==2 and all(x['returncode']==0 for x in result)
+diff --git a/scripts/test-source-storage-owner.py b/scripts/test-source-storage-owner.py
+new file mode 100644
+index 0000000..7004817
+--- /dev/null
++++ b/scripts/test-source-storage-owner.py
+@@ -0,0 +1,28 @@
++"""Actual public-anchor parsing rejects private or wrong-size input."""
++import importlib.util
++from pathlib import Path
++import subprocess
++import tempfile
++import unittest
++
++spec = importlib.util.spec_from_file_location('source_storage', Path(__file__).with_name('build-sheng-source-storage.py'))
++storage = importlib.util.module_from_spec(spec)
++spec.loader.exec_module(storage)
++
++class OwnerAnchorTests(unittest.TestCase):
++    def test_public_anchor_is_canonical_and_private_material_is_refused(self):
++        with tempfile.TemporaryDirectory() as directory:
++            root=Path(directory)
++            private, public=root/'owner.pem', root/'public.pem'
++            subprocess.run(['openssl','genpkey','-algorithm','RSA','-pkeyopt','rsa_keygen_bits:3072','-out',private],check=True,capture_output=True)
++            subprocess.run(['openssl','pkey','-in',private,'-pubout','-out',public],check=True,capture_output=True)
++            anchor=storage.owner_anchor(public)
++            self.assertEqual(len(anchor),395)
++            self.assertEqual(anchor[:8],b'VROOTKEY')
++            self.assertEqual(anchor[-3:],b'\x01\x00\x01')
++            with self.assertRaisesRegex(ValueError,'public owner key'):
++                storage.owner_anchor(private)
++            with self.assertRaisesRegex(ValueError,'public owner key'):
++                storage.owner_anchor(root/'absent')
++
++if __name__=='__main__':unittest.main()
 diff --git a/scripts/test-topology-v3.py b/scripts/test-topology-v3.py
 new file mode 100644
 index 0000000..3e8689c
