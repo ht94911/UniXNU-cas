@@ -38,6 +38,18 @@ def sha(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
+def object_layout(path):
+    # Reuse build-adreno740-accelerator.py's layout-only adapter: Mach-O
+    # relocatable objects have no fileoff-zero executable segment. Validate
+    # the real arm64e object first; mask subtype only in the parser's copy.
+    # The original bytes, PAC relocations and emitted object are unchanged.
+    from native_prelink import macho as ordinary_macho
+    raw = Path(path).read_bytes()
+    check_object(raw, str(path))
+    require(struct.unpack_from('<I', raw, 12)[0] == 1, 'late staging expects MH_OBJECT')
+    return ordinary_macho(raw[:8] + bytes(4) + raw[12:])
+
+
 def record(path):
     data = json.loads(path.read_text().strip().rstrip(','))
     arguments = data['arguments']
@@ -173,13 +185,14 @@ def main():
                     '--globalize-symbol=__GLOBAL__sub_I_NativeAdrenoAccelerator.cpp',
                     str(OUT / 'NativeAdrenoAccelerator.o'), str(late)], check=True)
     sys.path.insert(0, str(ROOT / 'kits/XnuPrelink'))
-    from kc_image import Image
     def text_bytes(path):
-        im = Image(path.read_bytes())
-        section = next(s for s in im.sections if s['name'] == '__text')
-        return im.read(section['va'], section['size'])
+        raw = path.read_bytes()
+        section = next(s for segment in object_layout(path)['segments']
+                       for s in segment['sections'] if s['name'] == '__text')
+        return raw[section['fileoff']:section['fileoff'] + section['size']]
     require(text_bytes(late) == text_bytes(OUT / 'NativeAdrenoAccelerator.o'), 'late staging changed executable code')
-    require(not any(s['name'] == '__mod_init_func' for s in Image(late.read_bytes()).sections), 'accelerator still has an early initializer')
+    require(not any(s['name'] == '__mod_init_func' for segment in object_layout(late)['segments']
+                    for s in segment['sections']), 'accelerator still has an early initializer')
     bindings = {
         '__ZN15IOAcceleratorESC2EPK11OSMetaClass': int(profile['protected_compatible_constructor_aliases'][0], 16),
         '__ZN15IOAcceleratorESD2Ev': int(profile['nondeleting_destructor'], 16),

@@ -52,7 +52,7 @@ commit = "a173dedceb3e6cbaa98ea259afaea7d142869dac"
 name = "GopFramebuffer"
 kind = "driver"
 git = "https://github.com/UniXNU/GopFramebuffer.git"
-commit = "19ef3a75ad2c53da85b8d923553d922716fce377"
+commit = "589e02907fb0431c7ce246a3fd8a0ada1afdfeb4"
 
 [[source]]
 name = "AppleKeyStoreState"

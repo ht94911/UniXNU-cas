@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Bind the owned GOP backend to the original IOMobileFramebufferLegacy of the iPadOS 27 (24A446) fileset.
+"""Bind the owned GOP backend to the original IOMobileFramebufferLegacy of the iPhone iOS27 (24A446) fileset.
 
 The class ABI (vtable targets and diversities, instance size, field offsets, original bindings) comes from the reviewed fixture
-legacy-display-24A446.json. The kernel is arm64e: every vtable entry of the owned subclass must carry the diversity the original
+legacy-display-iphone-24A446.json. The kernel is arm64e: every vtable entry of the owned subclass must carry the diversity the original
 callers authenticate with, so every original slot is declared under a name whose discriminator is that slot's diversity. Original
 code is bound at its fileset address plus the collection slide; no original instruction or vtable is changed.
 """
@@ -179,7 +179,12 @@ if staged.exists():
 else:
     shutil.copytree(upstream,staged,ignore=shutil.ignore_patterns('.git','__pycache__'))
 text=(upstream/'NativeLegacyDisplay.cpp').read_text()
-absent=['native_ufs_dpu_map','native_ufs_dpu_state','native_adreno_fences']
+require(any(token.rsplit(',',1)[-1].endswith('/build/adreno840/libAdreno840.a')
+            for token in os.environ.get('XNU_EXTRA_LD_ARCHIVES','').split()),
+        'GPU integration requires the declared A840 fence/trace archive')
+# Keep SM8550 DPU access absent. Rendering fences and trace are real symbols
+# from the selected A840 archive; its publication gate preserves CPU fallback.
+absent=['native_ufs_dpu_map','native_ufs_dpu_state']
 for name in absent:
     pattern=re.compile(r'^extern "C"[^\n;]*\b'+name+r'\b[^\n;]*__attribute__\(\(weak_import\)\);$',re.M)
     require(len(pattern.findall(text))==1,'Exact optional display declaration: '+name)

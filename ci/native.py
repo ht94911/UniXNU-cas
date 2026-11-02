@@ -82,6 +82,17 @@ def prepare(framework, work):
         raise ValueError('RamBlock source is not clean')
     run(['git', '-C', ramblock, 'remote', 'add', 'origin', manifest['ramblock']['repository']])
     run(['git', '-C', ramblock, 'remote', 'set-url', '--push', 'origin', 'DISABLED-no-push'])
+    gop = work / 'gop'
+    run(['git', 'init', '-q', gop])
+    run(['git', '-C', gop, 'bundle', 'unbundle', ROOT / 'source/gop.bundle'])
+    (gop / '.git/shallow').write_text(manifest['gop']['source_revision'] + '\n')
+    run(['git', '-C', gop, 'checkout', '--quiet', '--detach', manifest['gop']['source_revision']])
+    if run(['git', '-C', gop, 'rev-parse', 'HEAD^{tree}']) != manifest['gop']['source_tree']:
+        raise ValueError('GOP source tree mismatch')
+    if run(['git', '-C', gop, 'status', '--porcelain']):
+        raise ValueError('GOP source is not clean')
+    run(['git', '-C', gop, 'remote', 'add', 'origin', manifest['gop']['repository']])
+    run(['git', '-C', gop, 'remote', 'set-url', '--push', 'origin', 'DISABLED-no-push'])
     (work / 'device/local.toml').write_text(
         '[[source]]\nname = "sm8850"\nkind = "soc"\nlocal = "../soc"\n'
         '\n[[source]]\nname = "QcomXnuUsbDebug"\nkind = "driver"\nlocal = "../usb"\n')
@@ -93,6 +104,8 @@ def prepare(framework, work):
     with (work / 'device/local.toml').open('a') as output:
         output.write('\n[[source]]\nname = "Adreno740"\nkind = "refer"\nlocal = "../adreno"\n'
                      '\n[[source]]\nname = "AdrenoMetal"\nkind = "refer"\nlocal = "../metal"\n')
+    with (work / 'device/local.toml').open('a') as output:
+        output.write('\n[[source]]\nname = "GopFramebuffer"\nkind = "driver"\nlocal = "../gop"\n')
     config = {'device': str(work / 'device'), 'out': str(work / 'out'), 'jobs': jobs}
     text = '[build]\n' + ''.join(k + ' = ' + json.dumps(v) + '\n' for k, v in config.items())
     (work / 'build.toml').write_text(text)

@@ -35,6 +35,13 @@ volatile uint32_t native_adreno840_stage,native_adreno840_status,native_adreno84
 volatile uint32_t native_adreno840_fence,native_adreno840_completed,native_adreno840_metal;
 volatile uint32_t native_adreno840_board_error,native_adreno840_wptr_retries;
 }
+// A display may use its CPU path before any Metal renderer is discoverable.
+// Once publication starts this is monotonic: a GPU failure never converts an
+// unknown fence into a CPU-complete frame.
+extern "C" bool native_adreno_gpu_rendering_active(void)
+{
+    return __atomic_load_n(&native_adreno840_metal,__ATOMIC_ACQUIRE)!=0;
+}
 namespace {
 NezhaGpuPlatform platform;
 NativeAdrenoRing ring;
@@ -173,7 +180,8 @@ IOReturn publishMetal()
     service->setProperty("MetalPluginClassName","NativeAdrenoMetalDevice");
     service->setProperty("NativeSandboxGrantProcess","*");
     if(!service->attach(IOService::getPlatform())) {service->release();return kIOReturnNotAttached;}
-    service->registerService();native_adreno840_metal=1;
+    __atomic_store_n(&native_adreno840_metal,1u,__ATOMIC_RELEASE);
+    service->registerService();
     return kIOReturnSuccess;
 }
 
