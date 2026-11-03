@@ -10,7 +10,7 @@ import argparse
 import hashlib
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import shutil
 import subprocess
 import sys
@@ -54,6 +54,32 @@ def sha(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
+def verify_ci_sources(ci_root):
+    """Verify the complete tracked CI input set before downloads or builds."""
+    declared = json.loads((ci_root / 'source-sha256.json').read_text())
+    tracked = set(subprocess.check_output(
+        ['git', '-C', str(ci_root), 'ls-files', '-z'], text=True).split('\0'))
+    tracked.discard('')
+    tracked.discard('source-sha256.json')
+    if not tracked or set(declared) != tracked:
+        raise ValueError('CI source manifest coverage differs: unlisted=' +
+                         repr(sorted(tracked - set(declared))) + ', untracked=' +
+                         repr(sorted(set(declared) - tracked)))
+    mismatches = []
+    for name, digest in declared.items():
+        relative = PurePosixPath(name)
+        path = ci_root / name
+        if (relative.is_absolute() or '..' in relative.parts or
+                '\\' in name or str(relative) != name or path.is_symlink() or
+                not path.is_file() or not path.resolve().is_relative_to(ci_root.resolve())):
+            raise ValueError('Unsafe or absent CI source: ' + name)
+        if sha(path) != digest:
+            mismatches.append(name)
+    if mismatches:
+        raise ValueError('CI source identity differs: ' + ', '.join(mismatches))
+    return declared
+
+
 def fetch_commit(dest, urls, commit, sparse=None):
     """Shallow fetch of exactly `commit` into a fresh repository at dest (first URL that serves it), then a detached checkout."""
     dest.mkdir(parents=True)
@@ -74,16 +100,20 @@ def fetch_commit(dest, urls, commit, sparse=None):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('--unixnu', type=Path, required=True)
-    parser.add_argument('--record', type=Path, required=True)
+    parser.add_argument('--unixnu', type=Path)
+    parser.add_argument('--record', type=Path)
+    parser.add_argument('--check-sources-only', action='store_true')
     args = parser.parse_args()
+    ci_root = HERE.parents[1]
+    declared = verify_ci_sources(ci_root)
+    if args.check_sources_only:
+        print(json.dumps({'passed': True, 'tracked_inputs': len(declared),
+                          'network_access': False, 'phone_operations': False}))
+        return
+    if args.unixnu is None or args.record is None:
+        parser.error('--unixnu and --record are required unless --check-sources-only')
     root = args.unixnu.resolve()
     record = dict(expect=EXPECT)
-    ci_root = HERE.parents[1]
-    declared = json.loads((ci_root / 'source-sha256.json').read_text())
-    for name, digest in declared.items():
-        if sha(ci_root / name) != digest:
-            raise ValueError('CI source identity differs: ' + name)
     record['ci_source_sha256'] = declared
 
     # 1. UniXNU, its submodules and the user-client ABI header.

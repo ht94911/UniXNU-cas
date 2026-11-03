@@ -1,7 +1,7 @@
-name: nezha GPU frontend Intel host qualification 007
+name: nezha GPU frontend Intel host qualification 008
 on:
   push:
-    branches: [codex/ios27-gpu27-metal-host-007-20261103]
+    branches: [codex/ios27-gpu27-metal-host-008-20261103]
   workflow_dispatch:
 permissions:
   contents: read
@@ -45,6 +45,10 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: "3.13"
+      - name: Verify complete CI source identity before installing tools
+        run: |
+          python3 device/ci/gpu-userland/prepare.py --check-sources-only
+          python3 device/ci/gpu-userland/test-source-manifest.py
       - name: Install and identify the host tools
         run: |
           set -euo pipefail

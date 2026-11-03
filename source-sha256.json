@@ -1,15 +1,17 @@
 {
+  ".github/workflows/nezha-metal.yml": "bd4cd273b83466dd92a3593ba9d84e74132dbee0df86f40017bf4b3b0c7731fd",
   ".gitignore": "862263fa1f46c20f0d1e4dac5ffcc75abd55c08211b2c3864c5f8764b9d87793",
-  "ci/provenance.json": "1adf7e5b853602c83779db3da03236bed87ead24d79c4ea8c452a946c4828db2",
-  "ci/gpu-userland/prepare.py": "7db9217490c0fbd1f032401a6e7796249b768f178eab5ca9fb8e5bb188956f6c",
-  "ci/gpu-userland/collect.py": "ea4768a988890fe84f1f288400550c0c28444724439357af73ce8eaf04f4a8a2",
-  "ci/gpu-userland/logrun": "198238859a216de477dd2d72102e5760804e304495e1cf0e0407b1a51f8bbac7",
-  "ci/xnu/artifact-recipient.pem": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
-  "ci/xnu/artifacts.py": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
-  "ci/gpu-userland/patches/mesa-new-file-mode.patch": "e032d6f8d2bd8d03a21f24f2bf2237fc0f3fce12a7354fd0be85cd59cc710744",
-  "ci/gpu-userland/patches/intel-host-bridge.patch": "4ca8907888b08bb9218abe7d95a5c0bf8b11443f1d2fb6cbaad067a1c6862c78",
-  ".github/workflows/nezha-metal.yml": "804f3abea340c7b6144affaadc4f7cf622d64c55788981f5a0395844b891b9a6",
+  "ci/gpu-userland/check-host-driver.py": "9fe035c13f1e3a897821f763e4c68c48bfee26e18e17e3860f92e4598a944d5b",
   "ci/gpu-userland/check-intel-frontend.py": "3b6c515c49e9379c13c840412de651279015820eb8169ee129aa00a6e9e04b29",
+  "ci/gpu-userland/collect.py": "c05a4a1c7da5c5319875d2995985ea6bb5468095b4c030f5b527ad050d66af4f",
+  "ci/gpu-userland/diagnose-host.py": "e25be66e0df78d26d5f323b9eee205f9cf692783129cd11a7cea08a28a02c39c",
+  "ci/gpu-userland/logrun": "198238859a216de477dd2d72102e5760804e304495e1cf0e0407b1a51f8bbac7",
+  "ci/gpu-userland/patches/intel-host-bridge.patch": "4ca8907888b08bb9218abe7d95a5c0bf8b11443f1d2fb6cbaad067a1c6862c78",
   "ci/gpu-userland/patches/intel-signal-context.patch": "605c60d9d800809539ce359a79706c63531cd70641b036255f4eee385c034335",
-  "ci/gpu-userland/diagnose-host.py": "0fddfff378bf625daaab5ed37d93b2cc1740eb734f3f4c82374627fd2de44642"
+  "ci/gpu-userland/patches/mesa-new-file-mode.patch": "e032d6f8d2bd8d03a21f24f2bf2237fc0f3fce12a7354fd0be85cd59cc710744",
+  "ci/gpu-userland/prepare.py": "e23dba6cb0125311131d64f7d61aa7fff7bdd3eceab99f7eb30c5fa11f03d01e",
+  "ci/gpu-userland/test-source-manifest.py": "45facca72e7b39766333d7499b1b3a4abd936d2b60c662a80923707534a38759",
+  "ci/provenance.json": "1adf7e5b853602c83779db3da03236bed87ead24d79c4ea8c452a946c4828db2",
+  "ci/xnu/artifact-recipient.pem": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
+  "ci/xnu/artifacts.py": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c"
 }
