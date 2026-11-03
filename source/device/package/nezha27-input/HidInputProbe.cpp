@@ -46,7 +46,7 @@ bool native_hid_input_requested(void) {
         if(autoFirst && autoFrequency)autoNext=counterNow()+(uint64_t)autoFirst*autoFrequency;
     }
     if(autoFirst && autoFrequency && autoSent<autoCount && counterNow()>=autoNext) {
-        ++autoSent;autoNext+=(uint64_t)autoInterval*autoFrequency;return true;
+        ++autoSent;autoNext+=(uint64_t)autoInterval*autoFrequency;printf("NEZHA INPUT AUTOHOME: attempt=%u ticks=%llu\n",autoSent,(unsigned long long)counterNow());return true;
     }
     if(native_hid_input_command!=1)return false;
     native_hid_input_command=0;return true;
@@ -136,6 +136,11 @@ __attribute__((noinline)) void native_hid_live_checkpoint(IOService *device) {
         // driver-internal state from a foreign thread; only the cheap Built-In readback stays.
         appendProperty(driver,"Built-In","BI",props);
         appendProperty(driver,"PrimaryUsagePage","PP",props);appendProperty(driver,"PrimaryUsage","PU",props);
+        static bool printed; if(!printed){printed=true;
+            appendProperty(driver,"DeviceUsagePairs","SERVICE_PAIRS",props);appendProperty(driver,"DeviceUsagePage","SERVICE_DP",props);appendProperty(driver,"DeviceUsage","SERVICE_DU",props);
+            appendProperty(device,"DeviceUsagePairs","DEVICE_PAIRS",props);appendProperty(device,"PrimaryUsagePage","DEVICE_PP",props);appendProperty(device,"PrimaryUsage","DEVICE_PU",props);
+            printf("NEZHA INPUT CLASS: %s\n",native_hid_input_props);
+        }
     }
     __asm__ volatile("" ::: "memory");
 }
