@@ -166,6 +166,10 @@ def build(work):
             assert uuid not in ('28E4CF35-9C12-417E-B8FF-906618C6FD22', 'FFADDA0D-7102-4121-8AB8-48818B912D06')
             counts, records = populate(work / 'original-OS/private/var', work / 'new-Data')
             (work / 'original-var-inventory.json').write_text(json.dumps(records, indent=2))
+            import setup_policy
+            setup=setup_policy.apply_to_mount(ROOT/'seed-data-skip-setup.py',work/'new-Data',PINS['build'],owner=(501,501))
+            (work/'setup-policy.json').write_text(json.dumps(setup,indent=2))
+            report['setup_policy']=setup
             run('sync')
         finally:
             if data_device:
@@ -194,7 +198,7 @@ def build(work):
 
 def seal(work, output):
     names = ['build.log']
-    for name in ['build-state.json', 'seed.json', 'original-var-inventory.json']:
+    for name in ['build-state.json', 'seed.json', 'original-var-inventory.json', 'setup-policy.json']:
         if (work / name).is_file():
             names.append(name)
     if (work / 'seed.json').is_file() and json.loads((work / 'seed.json').read_text())['status'] == 'complete':
