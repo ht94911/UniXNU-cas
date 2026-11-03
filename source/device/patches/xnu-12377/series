@@ -12,3 +12,6 @@ zzzz-nezha-optional-runtime.patch
 zzzzz-nezha-owner-cache-console.patch
 zzzzz-nezha-owner-data-console.patch
 zzzzz-nezha-owner-data-ready.patch
+
+# Real self-IPI owns signal enablement; retain original startup assertions.
+zzzzzz-nezha-sigp-startup-order.patch

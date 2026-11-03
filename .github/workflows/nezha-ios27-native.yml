@@ -1,7 +1,7 @@
-name: nezha iPhone27 multicore063 actual SGI and barriers native kernel Intel host
+name: nezha iPhone27 multicore064 native startup ordering native kernel Intel host
 on:
   push:
-    branches: [codex/ios27-multicore063-20261103]
+    branches: [codex/ios27-multicore064-20261103]
   workflow_dispatch:
 permissions:
   contents: read

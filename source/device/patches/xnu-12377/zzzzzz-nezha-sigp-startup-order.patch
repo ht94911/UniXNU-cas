@@ -1,0 +1,78 @@
+--- a/osfmk/arm/cpu_common.c
++++ b/osfmk/arm/cpu_common.c
+@@ -409,21 +409,9 @@
+ 	return cpu_xcall_internal(SIGPxcallImm, cpu_number, func, param);
+ }
+ 
+-/* sheng (UniXNU): a started core whose SIGPdisabled is still set lost the self-IPI that should have cleared it (seen as random early hangs
+- * and UFS root failures under SMP: the I/O thread's wakeup IPI to that core was silently dropped). A core in InitState|StartedState runs and
+- * takes interrupts, so the flag is cleared here and the signal sent. Counted in sheng_sigp_recovered. */
+-volatile uint32_t sheng_sigp_recovered;
+-bool
+-sheng_sigp_recover(cpu_data_t *target_proc)
+-{
+-	if ((os_atomic_load(&target_proc->cpu_flags, relaxed) & (InitState | StartedState)) != (InitState | StartedState)) {
+-		return false;
+-	}
+-	os_atomic_andnot(&target_proc->cpu_signal, SIGPdisabled, acq_rel);
+-	os_atomic_inc(&sheng_sigp_recovered, relaxed);
+-	return true;
+-}
+-
++/* Native self-IPI clears SIGPdisabled after processor_cpu_reinit's disabled
++ * assertion. InitState|StartedState alone precedes that boundary: a remote
++ * sender must never clear this bit on behalf of an initializing CPU. */
+ static kern_return_t
+ cpu_signal_internal(cpu_data_t *target_proc,
+     cpu_signal_t signal,
+@@ -453,9 +441,6 @@
+ 
+ 		do {
+ 			current_signals = target_proc->cpu_signal;
+-			if ((current_signals & SIGPdisabled) == SIGPdisabled && sheng_sigp_recover(target_proc)) {
+-				current_signals = target_proc->cpu_signal;
+-			}
+ 			if ((current_signals & SIGPdisabled) == SIGPdisabled) {
+ 				ml_set_interrupts_enabled(interruptible);
+ 				return KERN_FAILURE;
+@@ -499,9 +484,6 @@
+ 	} else {
+ 		do {
+ 			current_signals = target_proc->cpu_signal;
+-			if ((current_signals & SIGPdisabled) == SIGPdisabled && current_proc != target_proc && sheng_sigp_recover(target_proc)) {
+-				current_signals = target_proc->cpu_signal;
+-			}
+ 			if ((current_signals & SIGPdisabled) == SIGPdisabled) {
+ 				if (current_proc == target_proc) {
+ 					panic("cpu_signal of self while signals are disabled");
+--- a/osfmk/arm64/cpu.c
++++ b/osfmk/arm64/cpu.c
+@@ -482,8 +482,7 @@
+  *	Routine:	cpu_idle
+  *	Function:
+  */
+-extern bool sheng_sigp_recover(cpu_data_t *target_proc);
+-volatile uint32_t sheng_idle_sigp_cleared, sheng_idle_sigp_refused, sheng_idle_enter[8], sheng_idle_disallowed[8];
++volatile uint32_t sheng_idle_sigp_refused, sheng_idle_enter[8], sheng_idle_disallowed[8];
+ 
+ void __attribute__((noreturn))
+ cpu_idle(void)
+@@ -496,15 +495,9 @@
+ 	if (__improbable((!idle_enable))) {
+ 		idle_disallowed = true;
+ 	} else if (__improbable(cpu_data_ptr->cpu_signal & SIGPdisabled)) {
+-		/* sheng (UniXNU): SIGPdisabled leaves a core only when it takes an IPI, and an idle core is never signalled, so a core that
+-		 * missed its start-up self-IPI kept this flag and spun in the idle thread at full speed (every cluster read busy=100% on the
+-		 * idle desktop). A started core takes interrupts: clear the flag here instead of refusing to idle. */
+-		if (sheng_sigp_recover(cpu_data_ptr)) {
+-			sheng_idle_sigp_cleared++;
+-		} else {
+-			sheng_idle_sigp_refused++;
+-			idle_disallowed = true;
+-		}
++		/* Preserve the kernel disabled-signal invariant; real self-IPI enables it. */
++		sheng_idle_sigp_refused++;
++		idle_disallowed = true;
+ 	}
+ 
+ 	sheng_idle_enter[cpu_data_ptr->cpu_number & 7]++;
