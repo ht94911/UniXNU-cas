@@ -365,14 +365,17 @@ static void interpose(IOUserClient *client,int pid) {
     ++seenClientCount;
     *reinterpret_cast<uintptr_t **>(client)=copy;
 }
-// The display object's state words the original wait selector tests (offsets 5832..5864, as dwords), for the log.
+// Actual selected iPhone24A446 state offsets,verified from request241/action365,
+// apply375 and queue-wait178;only snapshot normal RAM,no object or PM state writes.
 extern "C" unsigned native_legacy_state_words(char *out,unsigned cap) {
-    out[0]=0;
+    if(!out || !cap)return 0;out[0]=0;
     const unsigned char *object=reinterpret_cast<const unsigned char *>(native_legacy_object);
-    if(!object)return 0;
-    unsigned at=snprintf(out,cap,"d+5808:");
-    for(unsigned o=5808;o<5872 && at+16<cap;o+=4){uint32_t v;memcpy(&v,object+o,4);at+=snprintf(out+at,cap-at," %x",v);}
-    return at;
+    if(!object || native_legacy_stage!=10 || native_legacy_released)return 0;
+    const unsigned offsets[]={0x1c0c,0x1c10,0x1c1c,0x1c20};uint32_t words[4];
+    for(unsigned i=0;i<4;++i)words[i]=__atomic_load_n(reinterpret_cast<const uint32_t *>(object+offsets[i]),__ATOMIC_ACQUIRE);
+    int n=snprintf(out,cap,"IOMFB requested=%u powered=%u queued=%u pending=%u PMstage=%u PMcalls=%u PMcallbacks=%u PMstatus=%x",
+        words[0],words[1],words[2],words[3],native_legacy_pm_stage,native_legacy_pm_calls,native_legacy_pm_callbacks,(unsigned)native_legacy_pm_status);
+    return n>0?(unsigned)n<cap?(unsigned)n:cap-1:0;
 }
 extern "C" unsigned native_legacy_clients_dump(char *out,unsigned cap) {
     unsigned at=0;out[0]=0;

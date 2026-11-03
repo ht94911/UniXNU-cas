@@ -2055,6 +2055,8 @@ void
 nezha_input_start(void)
 {
 	/*27 input owns only touch/keys;GPU,USB,storage and power have separate owners. */
+	extern void nezha_resource_probe_start(void);
+	nezha_resource_probe_start();
 	unsigned enabled = 1;
 	(void)PE_parse_boot_argn("nezha-input", &enabled, sizeof(enabled));
 	if (!enabled) {
