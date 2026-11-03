@@ -7,6 +7,9 @@
 #include <libkern/c++/OSMetaClass.h>
 #include <libkern/c++/OSSymbol.h>
 #include <libkern/c++/OSIterator.h>
+#include <libkern/c++/OSArray.h>
+#include <libkern/c++/OSDictionary.h>
+#include <libkern/c++/OSNumber.h>
 #include <libkern/c++/OSKext.h>
 #include <pexpert/pexpert.h>
 #include <mach/kmod.h>
@@ -32,7 +35,7 @@ char native_hid_input_props[1024];
 // offline-hid-auto-home=<seconds after the second presented frame>, offline-hid-auto-home-count (default 1)
 // and offline-hid-auto-home-interval (default 20 s). Disabled unless the first argument is set.
 static unsigned autoConfigured,autoFirst,autoCount,autoInterval,autoSent;
-static uint64_t autoNext,autoFrequency;
+static uint64_t autoNext,autoFrequency,autoHomeTick;
 static uint64_t counterNow(void){uint64_t v;__asm__ volatile("isb\n\tmrs %0, cntpct_el0":"=r"(v));return v;}
 bool native_hid_input_requested(void) {
 
@@ -46,7 +49,7 @@ bool native_hid_input_requested(void) {
         if(autoFirst && autoFrequency)autoNext=counterNow()+(uint64_t)autoFirst*autoFrequency;
     }
     if(autoFirst && autoFrequency && autoSent<autoCount && counterNow()>=autoNext) {
-        ++autoSent;autoNext+=(uint64_t)autoInterval*autoFrequency;return true;
+        ++autoSent;autoHomeTick=counterNow();autoNext+=(uint64_t)autoInterval*autoFrequency;printf("NEZHA INPUT AUTOHOME: attempt=%u ticks=%llu\n",autoSent,(unsigned long long)autoHomeTick);return true;
     }
     if(native_hid_input_command!=1)return false;
     native_hid_input_command=0;return true;
@@ -78,9 +81,13 @@ static IORegistryEntry *findEventDriver(IORegistryEntry *parent,unsigned depth) 
     it->release();return found;
 }
 static void appendProperty(IORegistryEntry *driver,const char *key,const char *label,size_t &used) {
+    if (used >= sizeof(native_hid_input_props) - 1) return;
     OSObject *value=driver->copyProperty(key);
     int n=snprintf(native_hid_input_props+used,sizeof(native_hid_input_props)-used,"%s:",label);
-    if(n>0)used+=n;
+    if (n > 0) {
+        size_t available = sizeof(native_hid_input_props) - used - 1;
+        used += (size_t)n < available ? (size_t)n : available;
+    }
     if(value) {
         OSSerialize *text=OSSerialize::withCapacity(4096);
         if(text && value->serialize(text)) {
@@ -107,9 +114,66 @@ static void appendProperty(IORegistryEntry *driver,const char *key,const char *l
     } else if(used<sizeof(native_hid_input_props)-6) {memcpy(native_hid_input_props+used,"none ",5);used+=5;}
     native_hid_input_props[used]=0;
 }
+// Read numeric fields directly. The compact XML dump elides references.
+static OSDictionary *findTouchUsage(OSArray *pairs) {
+    if (!pairs) return nullptr;
+    for (unsigned index = 0; index < pairs->getCount(); ++index) {
+        auto *pair = OSDynamicCast(OSDictionary, pairs->getObject(index));
+        if (!pair) continue;
+        auto *page = OSDynamicCast(OSNumber, pair->getObject("DeviceUsagePage"));
+        auto *usage = OSDynamicCast(OSNumber, pair->getObject("DeviceUsage"));
+        if (page && usage && page->unsigned32BitValue() == 0x0d &&
+            usage->unsigned32BitValue() == 4) return pair;
+    }
+    return nullptr;
+}
+
+static void observeTouchUsage(IORegistryEntry *driver, IOService *device) {
+    OSObject *deviceProperty = device->copyProperty("DeviceUsagePairs");
+    OSObject *serviceProperty = driver->copyProperty("DeviceUsagePairs");
+    bool deviceDeclaresTouch = findTouchUsage(OSDynamicCast(OSArray, deviceProperty)) != nullptr;
+    bool serviceDeclaresTouch = findTouchUsage(OSDynamicCast(OSArray, serviceProperty)) != nullptr;
+    printf("NEZHA INPUT USAGE: descriptor=%u service=%u\n",
+        (unsigned)deviceDeclaresTouch, (unsigned)serviceDeclaresTouch);
+    OSSafeReleaseNULL(serviceProperty);
+    OSSafeReleaseNULL(deviceProperty);
+}
+
+// These are the original IOHIDFamily registry serializers, sampled from
+// the owned input workloop while the attached event service is live.
+static void observeDriverKit(IORegistryEntry *driver) {
+    size_t used = 0;
+    native_hid_input_props[0] = 0;
+    IORegistryEntry *interface = driver->getParentEntry(gIOServicePlane);
+    if (interface && interface->metaCast("IOHIDInterface"))
+        appendProperty(interface, "DebugState", "interface", used);
+    appendProperty(driver, "DebugState", "service", used);
+    OSIterator *children = driver->getChildIterator(gIOServicePlane);
+    unsigned observed = 0;
+    if (children) {
+        while (observed < 4) {
+            OSObject *child = children->getNextObject();
+            if (!child) break;
+            auto *entry = OSDynamicCast(IORegistryEntry, child);
+            if (!entry || !entry->metaCast("IOHIDEventServiceUserClient")) continue;
+            appendProperty(entry, "DebugState", "client", used);
+            ++observed;
+        }
+        children->release();
+    }
+    printf("NEZHA INPUT DRIVERKIT: clients=%u %s\n", observed, native_hid_input_props);
+}
+
 __attribute__((noinline)) void native_hid_live_checkpoint(IOService *device) {
     size_t used=0;native_hid_input_registry[0]=0;describeInput(device,0,used);
     if(IORegistryEntry *driver=findEventDriver(device,4)) {
+        static uint64_t lastDriverKitSample;
+        uint64_t now = counterNow();
+        if (autoHomeTick && autoFrequency && now - autoHomeTick >= 5 * autoFrequency &&
+            now - lastDriverKitSample >= 10 * autoFrequency) {
+            lastDriverKitSample = now;
+            observeDriverKit(driver);
+        }
         size_t props=0;native_hid_input_props[0]=0;
         // backboardd's digitizer service classification reads Built-In/DisplayIntegrated from the event service it
         // opened, not from the HID device below it; publish them on the service itself (idempotent, once per second).
@@ -132,10 +196,23 @@ __attribute__((noinline)) void native_hid_live_checkpoint(IOService *device) {
                 interface->setProperty("PrimaryUsagePage",(unsigned long long)0x0d,32);interface->setProperty("PrimaryUsage",(unsigned long long)4,32);
             }
         }
+        // Wait until the regular system driver has finished publishing its
+        // properties. The automatic Home marker anchors a later measurement.
+        static bool usageChecked;
+        if (!usageChecked && device->getProperty("DisplayIntegrated") &&
+            autoHomeTick && counterNow() - autoHomeTick >= 30 * autoFrequency) {
+            usageChecked = true;
+            observeTouchUsage(driver, device);
+        }
         // The Digitizer/DebugState dumps (appendProperty) are not read on hardware runs without a photograph and walk
         // driver-internal state from a foreign thread; only the cheap Built-In readback stays.
         appendProperty(driver,"Built-In","BI",props);
         appendProperty(driver,"PrimaryUsagePage","PP",props);appendProperty(driver,"PrimaryUsage","PU",props);
+        static bool printed; if(!printed){printed=true;
+            appendProperty(driver,"DeviceUsagePairs","SERVICE_PAIRS",props);appendProperty(driver,"DeviceUsagePage","SERVICE_DP",props);appendProperty(driver,"DeviceUsage","SERVICE_DU",props);
+            appendProperty(device,"DeviceUsagePairs","DEVICE_PAIRS",props);appendProperty(device,"PrimaryUsagePage","DEVICE_PP",props);appendProperty(device,"PrimaryUsage","DEVICE_PU",props);
+            printf("NEZHA INPUT CLASS: %s\n",native_hid_input_props);
+        }
     }
     __asm__ volatile("" ::: "memory");
 }
