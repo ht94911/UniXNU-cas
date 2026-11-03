@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Open the real host Vulkan driver before compiling the frontend instrument.
 
-Run006's crash report names MoltenVK1.4.2 argument-size discovery and the
-paravirtual Metal driver's unimplemented argument encoder. The documented
-MoltenVK option disables that host-only path; no phone capability is changed.
+Run008 established that the runtime's VK_EXT_layer_settings request enables
+argument buffers over an environment-only off switch. Reproduce that exact
+required setting before spending time building the frontend on another host.
 This is a device-open prerequisite, not a shader or pixel test.
 """
 import argparse
@@ -42,7 +42,21 @@ int main(int argc, char **argv) {
     app.apiVersion = VK_API_VERSION_1_1;
     VkInstanceCreateInfo ci{VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};
     ci.pApplicationInfo = &app;
+    // Match metal2vulkan-runtime/src/device/{create,argument_buffers}.rs:
+    // an instance layer setting overrides MVK_CONFIG_* in the environment.
+    VkBool32 useArgumentBuffers = VK_TRUE;
+    VkLayerSettingEXT setting{"MoltenVK", "MVK_CONFIG_USE_METAL_ARGUMENT_BUFFERS",
+                             VK_LAYER_SETTING_TYPE_BOOL32_EXT, 1, &useArgumentBuffers};
+    VkLayerSettingsCreateInfoEXT settings{VK_STRUCTURE_TYPE_LAYER_SETTINGS_CREATE_INFO_EXT};
+    settings.settingCount = 1;
+    settings.pSettings = &setting;
+    const char *extensions[] = {VK_EXT_LAYER_SETTINGS_EXTENSION_NAME};
+    ci.enabledExtensionCount = 1;
+    ci.ppEnabledExtensionNames = extensions;
+    ci.pNext = &settings;
     VkInstance instance = VK_NULL_HANDLE;
+    std::puts("Opening the actual runtime-required argument-buffer contract (layer setting true)");
+    std::fflush(stdout);
     VkResult result = create(&ci, nullptr, &instance);
     std::printf("vkCreateInstance=%d\n", result);
     if (result != VK_SUCCESS) return 6;
@@ -90,7 +104,8 @@ except subprocess.TimeoutExpired:
 passed = code == 0 and 'PASS: actual host Vulkan instance' in log
 report = {'passed': passed, 'exit_code': code, 'loader': str(loader.resolve()),
           'loader_sha256': hashlib.sha256(loader.read_bytes()).hexdigest(),
-          'MVK_CONFIG_USE_METAL_ARGUMENT_BUFFERS': '0',
+          'environment_MVK_CONFIG_USE_METAL_ARGUMENT_BUFFERS': '0',
+          'runtime_VK_EXT_layer_setting_argument_buffers': True,
           'compiler_command': command, 'pixel_test_passed': False,
           'phone_operations': False, 'target_plugin_modified': False}
 (out / 'report.json').write_text(json.dumps(report, indent=2) + '\n')

@@ -1,7 +1,7 @@
-name: nezha GPU frontend Intel host qualification 008
+name: nezha GPU public Vulkan frontend ARM host qualification 010
 on:
   push:
-    branches: [codex/ios27-gpu27-metal-host-008-20261103]
+    branches: [codex/ios27-gpu27-metal-host-010-20261103]
   workflow_dispatch:
 permissions:
   contents: read
@@ -27,7 +27,7 @@ env:
   DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
 jobs:
   build:
-    runs-on: macos-26-intel
+    runs-on: macos-26
     timeout-minutes: 150
     steps:
       - name: Check out the dedicated source inputs
@@ -65,16 +65,16 @@ jobs:
           { sw_vers; xcodebuild -version; xcrun --sdk iphoneos --show-sdk-version; rustc "+$RUST_TOOLCHAIN" -vV;
             llvm-as --version; glslangValidator --version; glslc --version; spirv-val --version; } > "$RUNNER_TEMP/logs/tools.log" 2>&1
           echo "NMB_HOST_LOADER=$(brew --prefix molten-vk)/lib/libMoltenVK.dylib" >> "$GITHUB_ENV"
-      - name: Verify the real host Vulkan device without unsupported argument encoders
+      - name: Verify the real runtime-required Vulkan argument-buffer contract
         id: host_driver
         continue-on-error: true
         run: device/ci/gpu-userland/logrun host-driver python3 device/ci/gpu-userland/check-host-driver.py --logs "$LOGS"
       - name: Prepare the exact public source and patch inputs
         run: device/ci/gpu-userland/logrun prepare python3 device/ci/gpu-userland/prepare.py --unixnu unixnu --record "$LOGS/sources.json"
-      - name: Qualify Intel syntax and actual iOS ARM signal handlers
+      - name: Qualify host syntax and actual iOS ARM signal handlers
         id: frontend_targets
         run: device/ci/gpu-userland/logrun frontend-targets python3 device/ci/gpu-userland/check-intel-frontend.py --unixnu unixnu --report "$LOGS/frontend-target-equality.json"
-      - name: Run the maintained frontend checks on the host Vulkan driver
+      - name: Run the maintained public-Vulkan frontend phase with explicit private-fixture omissions
         id: frontend_host
         if: steps.host_driver.outcome == 'success'
         continue-on-error: true
@@ -82,7 +82,7 @@ jobs:
           RUST_BACKTRACE: full
           NSUnbufferedIO: "YES"
         working-directory: unixnu
-        run: ../device/ci/gpu-userland/logrun frontend-host python3 scripts/check-native-metal-frontend-host.py
+        run: ../device/ci/gpu-userland/logrun frontend-host python3 ../device/ci/gpu-userland/check-public-frontend.py --unixnu .
       - name: Record host GPU availability and actual abort backtraces
         if: always()
         run: device/ci/gpu-userland/logrun host-diagnostics python3 device/ci/gpu-userland/diagnose-host.py --unixnu unixnu --logs "$LOGS"
@@ -106,3 +106,14 @@ jobs:
             ${{ runner.temp }}/sealed/envelope.json
           if-no-files-found: error
           retention-days: 90
+      - name: Report the actual qualification outcome after evidence upload
+        if: always()
+        env:
+          HOST_DRIVER: ${{ steps.host_driver.outcome }}
+          TARGETS: ${{ steps.frontend_targets.outcome }}
+          PUBLIC_FRONTEND: ${{ steps.frontend_host.outcome }}
+        run: |
+          set -euo pipefail
+          test "$HOST_DRIVER" = success
+          test "$TARGETS" = success
+          test "$PUBLIC_FRONTEND" = success

@@ -142,7 +142,9 @@ info = dict(
     frontend_host_scope='host Vulkan instrument only; original QuartzCore fixture not provided')
 if args.host_only:
     equality = args.logs / 'frontend-target-equality.json'
-    info['purpose'] = 'Intel macOS host frontend pixel/lifetime tests plus actual arm64 iOS17 and arm64e iOS27 compilations and signal-handler code/relocation comparison. Whole objects have changed diagnostic line constants. Does not replace the fixed Metal002 plugin.'
+    info['purpose'] = 'macOS ' + platform.machine() + ' public-Vulkan frontend phase plus actual arm64 iOS17 and arm64e iOS27 signal-handler comparison. Private QuartzCore/selector fixtures and later Turnip software-CP/CoreImage phases are not covered. Does not replace the fixed Metal002 plugin.'
+    public_phase = ROOT / 'build/adreno-metal-frontend-host/public-phase.json'
+    info['checks']['public_vulkan_phase'] = json.loads(public_phase.read_text()) if public_phase.is_file() else None
     info['host_only'] = True
     info['host_device_base'] = 'default maintained _MTLDevice; target plugin unchanged'
     info['host_driver_configuration'] = {'MVK_CONFIG_USE_METAL_ARGUMENT_BUFFERS': os.environ.get('MVK_CONFIG_USE_METAL_ARGUMENT_BUFFERS'), 'scope': 'host MoltenVK only; no iPhone driver capability changed', 'prior_abort': '006 crash: MVKPhysicalDevice::initMetalFeatures -> MTLIOAccelDevice newIndirectArgumentEncoderWithLayout'}

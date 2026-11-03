@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compile on Intel and both iOS targets; compare the actual ARM signal-handler code and relocations.
+"""Compile on the selected host and both iOS targets; compare ARM signal-handler code and relocations.
 
 The rest of the translation unit contains ENCODE(__LINE__). Inserting the
 host branch changes those diagnostic line constants, so whole-object identity
@@ -8,6 +8,7 @@ is recorded, not claimed. The deployed Metal002 plugin remains unchanged.
 import argparse
 import hashlib
 import json
+import platform
 from pathlib import Path
 import subprocess
 import tempfile
@@ -71,7 +72,7 @@ flags = ['-std=c++17', '-fobjc-arc', '-O2', '-g0', '-fstack-protector-strong',
          '-I', str(kit), '-I', str(root / 'drivers/Adreno740'), '-I', str(root / '.cache/mesa-work/include')]
 subprocess.run(['xcrun', 'clang++', *flags, '-fsyntax-only', str(source)], check=True)
 sdk = subprocess.check_output(['xcrun', '--sdk', 'iphoneos', '--show-sdk-path'], text=True).strip()
-report = {'Intel_frontend_syntax_passed': True, 'original_source_sha256': hashlib.sha256(original).hexdigest(),
+report = {'host_frontend_syntax_passed': True, 'host_architecture': platform.machine(), 'original_source_sha256': hashlib.sha256(original).hexdigest(),
           'updated_source_sha256': hashlib.sha256(source.read_bytes()).hexdigest(), 'targets': []}
 with tempfile.TemporaryDirectory(prefix='frontend-target-') as temp:
     work = Path(temp)
