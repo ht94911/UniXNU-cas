@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Source-only iPhone14,4 24A446 arm64e A840 native archive and inherited CPU display/USB. Empty firmware slot; not a runnable GPU candidate until local resource finalization and new strict prelink. No phone operations.",
+  "purpose": "Source-only iPhone14,4 24A446 arm64e A840 native archive integrated with verified061 touch/identity/vnode configuration. GPU firmware slot empty in CI; mandatory local resources and fresh strict HID+GPU prelink before any hardware candidate. No phone operations.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "f9f8636c455f734cfe4e5196e6bc500c52d0dde7",
+  "device_revision": "71016d2e9fe21d867c00dd3f6ed896cbea944f4f",
   "soc_revision": "7279542eb460a5113b56657c85740a1a10aa3df9",
   "xcode": "26.6",
   "files": {
@@ -74,8 +74,8 @@
     "source/adreno/NativeGpuTrace.h": "0ea52f88d6a27e98a77e101f6ce222ddc009ac6b2dbba242ff29fd581927de33",
     "source/adreno/NativeGpuTrace.inc": "ef74e9fab68355b846d44f4d37954ae2642222e5a6b8dee070fc5c5e09b77595",
     "source/adreno/NativeGpuTraceStore.h": "4a2984192bc2c68383146f558212d1000c920a8d9cbe54ccec8badd935844823",
-    "source/device/board.toml": "dd9784a7cf9684c601045a3b7af59ce2e180dce59ac97a563a10b6fab3327b31",
-    "source/device/configs/nezha_ios27_defconfig": "c2cf62d37b61c2c3087b6e2dac52800712ecc7e120463e2482f570b762571c4f",
+    "source/device/board.toml": "6088f3688698770bf31976a35fa6e0e7b0e479f2c59c687d1d7c783e37bc6883",
+    "source/device/configs/nezha_ios27_defconfig": "faed2b6d294d691db204e27ff01227d305effaab7570bf906dfff3f5ed012c5f",
     "source/device/feeds.toml": "342b46aa87a5ec29b500cce910a2951af98f11924c2bd93b148ed08f1c0c80e3",
     "source/device/package/.gitkeep": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
     "source/device/package/BootDiagExport.c": "88f65a92490b54444ca68ecf99e887ba1c7f6ee3d5145b8e6eed13bf90c7a92d",
@@ -89,7 +89,7 @@
     "source/device/package/BootUiTraceProbe.c": "e9c75e3b5bb4d882eb9140c2586b1b1993064ace9c28056c4324fdffb79c30f6",
     "source/device/package/BootWatchdogPolicy.c": "faa5e09020ea97301b69710aefc0209d533232dd6197a41509a0d4a69ff5b16e",
     "source/device/package/KeyStoreProbe.cpp": "068ef978260969e3d67d743459802d72e5fad9e4a20c7c27828587a2dd9779d9",
-    "source/device/package/LegacyDisplayProbe.cpp": "9eea8cb9a370b227a3f8a9c318b58a795ab480bcc08532d34bb90c487be2c0a7",
+    "source/device/package/LegacyDisplayProbe.cpp": "c90aecc734b2089d2950627c4716b991dc9732b90a4343c49842eda763fc8708",
     "source/device/package/Nezha27UsbControl.c": "2ef6ed0b19fd7cf9516b394ad1df5ac82c6cae4a3b287099b24dfa350ab3d918",
     "source/device/package/NezhaIOS27Pmgr.cpp": "b4952c31eeeed66050359bb0923ca966373cd0d86d0c02678df598a8b7a06a50",
     "source/device/package/ShengAudioAbi.h": "9ef369877cfae3d2255129f7fdf332448b71300a0fc840d6522ec83e09754b52",
@@ -126,6 +126,10 @@
     "source/device/package/gpu/NezhaGpuPlatform.h": "f2f6be46409f7be859448c09bbacb483fdc05dcb7f408d97fac1eaae148b3e5b",
     "source/device/package/gpu/NezhaScm.c": "d5eff9fb85bd9215411e9c9ef56f40b5bc28334b9e1dd246d4f61b4f6aae4ab3",
     "source/device/package/ios27-root-owner-public.pem": "0afc03662d11ce57d705807de90f1c5491555280e56f300bb6e560af4513c1ad",
+    "source/device/package/nezha27-input/HidInputProbe.cpp": "b76895caf6c271d339b1faad89f83ef99eab6a310936ba8d634c2e2a479c9b61",
+    "source/device/package/nezha27-input/NativeHidInput.cpp": "9ded4ae6d609d67f8d2e6fc9ae36ffa96d7f37929aa7f5ccc211688a3251659a",
+    "source/device/package/nezha27-input/NezhaInput.c": "2410012a60d96f82b24f4971d0af37ea113564da80c98271177cbaee827ee9fb",
+    "source/device/package/nezha27-input/NezhaInput.h": "b1e34b185e3159f2d8eb565cb9e66edbb1e58c0ba087c28e4da55dbf0c8b74f3",
     "source/device/patches/xnu-12377/series": "d2242611264c34b4f2c22821a2162e5d41030f139713048e1d93501c6f021df1",
     "source/device/patches/xnu-12377/source-storage-runtime.patch": "25c377c60db417b15fcc137acf380f0319cbff9d5ba012af1907f3485602b584",
     "source/device/patches/xnu-12377/zzyd-sheng-audio-addon-mount.patch": "b51ed480b34c92452ea984fe056e5fce310bd929992d418f383a7e9268313c51",
@@ -140,10 +144,12 @@
     "source/device/porting.toml": "7ff6b93940f1052dee205e6dca484b9a2d9791c0b97e5bb621405f6e76c070eb",
     "source/device/scripts/build-adreno840.py": "9bea136fb974f1cfd91b3715c5e7dbe12cfc8be66d3206989b1ab43b5cee46e9",
     "source/device/scripts/build-boot-progress.py": "a210eb1f0443574eb1506932aa9e8181d5c73aecf99397d8cc731568bd3210ba",
-    "source/device/scripts/build-gop-legacy-display-27.py": "6e686537e47d72551e79d73529ec847c2346a167f71dfc48b6c505a5fa73d0fe",
+    "source/device/scripts/build-gop-legacy-display-27.py": "4cbfc681c171ca2c52643c952cfa13e08944de51a52b55ccd862bac1508fe46a",
     "source/device/scripts/build-ios27-pmgr.py": "f88a0596937cbf0504922751a3194e3a33bba609f683a415262887d2b64241e4",
+    "source/device/scripts/build-nezha27-input.py": "6b905e15dd7e73cf16c70059d0c574d7bc0c3b6b821d2154d1a9dfb87035cdaf",
     "source/device/scripts/build-nezha27-usb-control.py": "92be41e9adcce30e88c3a64fb6a1490587d87e80c74d50e3c2690c127dccb65c",
     "source/device/scripts/data/ioaccelerator-base-iphone-24A446.json": "cecf694fb175a2276757a12deca7008b032b99fad7c5b7fe9ad700af2303c04c",
+    "source/device/scripts/hid-device-iphone-24A446.json": "af4668764ba1d2a4649b9c45d1ddbbabcb69e27659e7c35fbf9899f8f6bdbc7d",
     "source/device/scripts/legacy-display-iphone-24A446.json": "8959d9ba711dc480ca2870e3c078d0619355bf572270247c41871affc572ef13",
     "source/device/unixnu.lock": "20bddaafe9eabe0874d433fd101156d0db2b3e5786681062de46afe971639daf",
     "source/framework.patch": "f512d59876db84a36cfdbddc639a8c12f1e8337d4cb9e2abc2c5a1dceac05c8d",
@@ -159,7 +165,7 @@
     "source/soc/soc.toml": "9cebcadf2d5a271ceb44ee5fc378ed739cff0e7e5a940007164a9917042fd92f",
     "source/ufs.bundle": "25655129fad2b05a33278ad33f7d5bdd4d7544a65fcf3712b082adb4ec82e821",
     "source/usb.bundle": "9071c6ea5e9a44423c0a81de4fae57ed65520dad5c546bd3b81acba2de86493b",
-    "ci/native.py": "543921ef86a35300da1c857493c1b17081d682c2efe9a065e50baa45fc588306"
+    "ci/native.py": "8b2288c90958d73ce850545fb92b9c33b51634f1b85222b740f66d24a89369db"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
@@ -188,15 +194,13 @@
     "history": "single shallow reviewed explicit4GiB volatile support and actual identity tests"
   },
   "integration_base": {
-    "device": "1d9ec64c09c460704f1f9c7f240129f19faca0b2",
-    "usb": "19030348ef06896231869795f91662572a3676fe",
-    "ci": "38e5d50bef5376183ef36346dd5d3d3ae58487a9",
-    "preserved": [
-      "4GiB RAM Data UUID/capacity",
-      "controlled USB module (permission remains external)",
-      "CPU Legacy display",
-      "real BootProgress"
-    ]
+    "actual_verified_candidate": "061",
+    "device": "cb30358dda19b758f57fa1e91ad2c65cfb57b1ca",
+    "native_base": "058",
+    "previous_GPU_native": "f0373e6e610bc8dbcc722c6e28ca399892077a2a",
+    "Data_logical_bytes": 4294967296,
+    "Data_UUID": "86C69021-08F9-472A-A91F-65332582AE60",
+    "unverified064b_selected": false
   },
   "gpu": {
     "common_revision": "c1df13ab22a01084a18412bc7b89903d80e60c48",
@@ -211,5 +215,6 @@
     "source_tree": "b576be1d943540683d46b19c5cf453bd3ec441b8",
     "repository": "https://github.com/UniXNU/GopFramebuffer.git",
     "history": "Single current upstream source plus explicit CPU scan preservation and monotonic GPU publication gate"
-  }
+  },
+  "local_prelink_revision": "c9efdef702d3440536d12e70d73fcde8d15444c5"
 }

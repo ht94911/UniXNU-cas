@@ -489,6 +489,7 @@ void native_legacy_display_probe(void) {
 }
 void native_legacy_display_late_probe(void);
 extern void native_hid_input_probe(void);
+extern void nezha_input_start(void);
 extern void native_keystore_probe(void);
 extern void native_touch_probe(void);
 extern void sheng_cpufreq_probe(void);
@@ -502,8 +503,9 @@ extern void sheng_backlight_probe(void);
 extern "C" void sheng_dpu_probe(void);
 void native_legacy_display_late_probe(void) {
     native_keystore_probe();
-    // This board selects CPU GOP presentation and its existing source storage.
-    // SM8550 peripheral and HID/GPU probes have no selected055 hardware owner.
+    // Same post-IOBSD source lifecycle;only nezha touch/keys and selected27 HID.
+    nezha_input_start();
+    native_hid_input_probe();
     IOService *display=pendingLegacyDisplay;if(!display)return;pendingLegacyDisplay=nullptr;
     native_legacy_surface_status=OSKextLoadKextWithIdentifier("com.apple.iokit.IOSurface");
     OSDictionary *matching=IOService::nameMatching("IOCoreSurfaceRoot");
