@@ -1,7 +1,7 @@
-name: nezha GPU frontend Intel host qualification 005
+name: nezha GPU frontend Intel host qualification 006
 on:
   push:
-    branches: [codex/ios27-gpu27-metal-host-005-20261103]
+    branches: [codex/ios27-gpu27-metal-host-006-20261103]
   workflow_dispatch:
 permissions:
   contents: read
@@ -68,8 +68,15 @@ jobs:
       - name: Run the maintained frontend checks on the host Vulkan driver
         id: frontend_host
         continue-on-error: true
+        env:
+          NMB_DEVICE_BASE_NSOBJECT: "1"
+          RUST_BACKTRACE: full
+          NSUnbufferedIO: "YES"
         working-directory: unixnu
         run: ../device/ci/gpu-userland/logrun frontend-host python3 scripts/check-native-metal-frontend-host.py
+      - name: Record host GPU availability and actual abort backtraces
+        if: always()
+        run: device/ci/gpu-userland/logrun host-diagnostics python3 device/ci/gpu-userland/diagnose-host.py --unixnu unixnu --logs "$LOGS"
       - name: Verify and seal independent outputs and all diagnostics
         if: always()
         env:

@@ -118,6 +118,9 @@ for pattern in ['.cache/mesa-tu-*.log', 'build/adreno-metal-bridge/build-*.log',
         target = OUT / 'logs' / source.parent.name.lstrip('.') / source.name
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source, target)
+host_debug = ROOT / 'build/host-debug'
+if args.host_only and host_debug.is_dir():
+    shutil.copytree(host_debug, OUT / 'host-debug')
 
 outcomes = {k[len('OUTCOME_'):].lower(): v for k, v in os.environ.items() if k.startswith('OUTCOME_') and v}
 record = json.loads((args.logs / 'sources.json').read_text()) if (args.logs / 'sources.json').is_file() else None
@@ -141,6 +144,7 @@ if args.host_only:
     equality = args.logs / 'frontend-target-equality.json'
     info['purpose'] = 'Intel macOS host frontend pixel/lifetime tests plus actual arm64 iOS17 and arm64e iOS27 compilations and signal-handler code/relocation comparison. Whole objects have changed diagnostic line constants. Does not replace the fixed Metal002 plugin.'
     info['host_only'] = True
+    info['host_device_base'] = 'maintained NMB_DEVICE_BASE_NSOBJECT=1 host instrument; original device plugin is unchanged'
     info['checks']['frontend_targets'] = json.loads(equality.read_text()) if equality.is_file() else None
     if not equality.is_file():
         problems.append('target equality qualification missing')
