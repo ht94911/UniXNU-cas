@@ -46,13 +46,14 @@ if test.is_file() and loader:
             env['NMB_DEVICE_BASE_NSOBJECT'] = '1'
         cache = out / (label + '-cache')
         cache.mkdir(exist_ok=True)
-        run(label, ['xcrun', 'lldb', '-b', '-o', 'run', '-o', 'thread backtrace all',
-                    '-o', 'register read', '-o', 'quit', '--', str(test), loader, str(cache), ''], env, timeout=180)
+        run(label, ['xcrun', 'lldb', '-b', '-o', 'run', '-k', 'thread backtrace all',
+                    '-k', 'register read',
+                    '-o', 'thread backtrace all', '-o', 'register read', '-o', 'quit', '--', str(test), loader, str(cache), ''], env, timeout=180)
     saved = root / 'build/host-debug'
     saved.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(test, saved / 'frontend_host')
     bridge = root / 'build/adreno-metal-bridge/host/libadreno_metal_bridge.a'
-    if bridge.is_file():
+    if bridge.is_file() and os.environ.get("NMB_SAVE_BRIDGE") == "1":
         shutil.copyfile(bridge, saved / bridge.name)
 reports = Path.home() / 'Library/Logs/DiagnosticReports'
 if reports.is_dir():

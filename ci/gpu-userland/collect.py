@@ -144,7 +144,8 @@ if args.host_only:
     equality = args.logs / 'frontend-target-equality.json'
     info['purpose'] = 'Intel macOS host frontend pixel/lifetime tests plus actual arm64 iOS17 and arm64e iOS27 compilations and signal-handler code/relocation comparison. Whole objects have changed diagnostic line constants. Does not replace the fixed Metal002 plugin.'
     info['host_only'] = True
-    info['host_device_base'] = 'maintained NMB_DEVICE_BASE_NSOBJECT=1 host instrument; original device plugin is unchanged'
+    info['host_device_base'] = 'default maintained _MTLDevice; target plugin unchanged'
+    info['host_driver_configuration'] = {'MVK_CONFIG_USE_METAL_ARGUMENT_BUFFERS': os.environ.get('MVK_CONFIG_USE_METAL_ARGUMENT_BUFFERS'), 'scope': 'host MoltenVK only; no iPhone driver capability changed', 'prior_abort': '006 crash: MVKPhysicalDevice::initMetalFeatures -> MTLIOAccelDevice newIndirectArgumentEncoderWithLayout'}
     info['checks']['frontend_targets'] = json.loads(equality.read_text()) if equality.is_file() else None
     if not equality.is_file():
         problems.append('target equality qualification missing')
