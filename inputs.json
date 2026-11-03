@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Unattended27 bringup:qualified4GiB volatile Data and retained CPU display;explicit one-use board USB reboot and bounded RGB snapshot. All OS,firmware,phone data and private keys remain absent. Corrected independently verified9-unit consumer hash after actual worker patch;no runtime source/body changes from057.",
+  "purpose": "Nezha input060:actual27 IOUserHIDEventDriver consumer gate after hardware058 identification; reuse proven17 Synaptics producer/ordered queues with pinned27 public IOHIDFamily and actual iPhone207 auth slots;retain qualified4GiB RAM Data,CPU display and controlledUSB restart;no firmware/images/phone data/private keys.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,12 +14,12 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "1d9ec64c09c460704f1f9c7f240129f19faca0b2",
+  "device_revision": "e34e984c5477f4254aec42f0ed7994ed71c4ac47",
   "soc_revision": "7279542eb460a5113b56657c85740a1a10aa3df9",
   "xcode": "26.6",
   "files": {
-    "source/device/board.toml": "6db3430887754d393b59b2dddee1cc038f5b68b80e752dc32500ee37ab84f6c8",
-    "source/device/configs/nezha_ios27_defconfig": "aeb8a25e2e809b3451edfaa265e5da40ff5b5e9d78515bf3bbf0cc83a4100fb3",
+    "source/device/board.toml": "638ccd9f0112efbf4bac1d7d993617b81455e9aecd99e0ae1471d7f59a920adf",
+    "source/device/configs/nezha_ios27_defconfig": "961d9e2fffbbd9b6ddf2ad67abaf76557e12e5ec4897e325f4335c8bedfe6bc9",
     "source/device/feeds.toml": "2e395a4fbfed97fc61163646c11e27fec31b632dcaaf6d357a92eee932bbf15b",
     "source/device/patches/xnu-12377/series": "eda5eae5d465862451593e8bd45f3fe013ac6c8a1f47917d66247b3332c52754",
     "source/device/patches/xnu-12377/source-storage-runtime.patch": "25c377c60db417b15fcc137acf380f0319cbff9d5ba012af1907f3485602b584",
@@ -83,13 +83,20 @@
     "source/device/package/boot-progress/UmiUserspaceProbe.c": "ec20306bfc7359cf21c5a20102b459cf7f6a264a60dcb7ee2b00f2a9158d0f60",
     "source/device/package/boot-progress/UmiWaitTrace.h": "b8183c4e9defd5ec9c3ed231451cf89c204629d7285cb125de7e366f9b13858b",
     "source/device/package/boot-progress/upstream.json": "bbcd4cc639b104c9d4619076c8350cfb90483a92347dcd5e39443ba0f8fd8a13",
-    "source/device/scripts/build-gop-legacy-display-27.py": "15dd91a351b2e485af58c6e85b7c57382ee7a2803d8c5bc90bc93d4dfeafa12d",
+    "source/device/scripts/build-gop-legacy-display-27.py": "b3d60414978387bb9c9903873f092b157e999626cdba27845e25b39b9e430ec8",
     "source/device/scripts/legacy-display-iphone-24A446.json": "8959d9ba711dc480ca2870e3c078d0619355bf572270247c41871affc572ef13",
-    "source/device/package/LegacyDisplayProbe.cpp": "9eea8cb9a370b227a3f8a9c318b58a795ab480bcc08532d34bb90c487be2c0a7",
+    "source/device/package/LegacyDisplayProbe.cpp": "c90aecc734b2089d2950627c4716b991dc9732b90a4343c49842eda763fc8708",
     "source/device/package/KeyStoreProbe.cpp": "068ef978260969e3d67d743459802d72e5fad9e4a20c7c27828587a2dd9779d9",
     "source/ramblock.bundle": "28d547819358f3f45ccd5b572685848ff2327c97b378719285c50552f10114fd",
     "source/device/package/Nezha27UsbControl.c": "2ef6ed0b19fd7cf9516b394ad1df5ac82c6cae4a3b287099b24dfa350ab3d918",
-    "source/device/scripts/build-nezha27-usb-control.py": "92be41e9adcce30e88c3a64fb6a1490587d87e80c74d50e3c2690c127dccb65c"
+    "source/device/scripts/build-nezha27-usb-control.py": "92be41e9adcce30e88c3a64fb6a1490587d87e80c74d50e3c2690c127dccb65c",
+    "source/device/package/nezha27-input/NezhaInput.c": "2410012a60d96f82b24f4971d0af37ea113564da80c98271177cbaee827ee9fb",
+    "source/device/package/nezha27-input/NezhaInput.h": "b1e34b185e3159f2d8eb565cb9e66edbb1e58c0ba087c28e4da55dbf0c8b74f3",
+    "source/device/package/nezha27-input/NativeHidInput.cpp": "bca9671a54fce5c8554b9f03bdae4b4664446a2e0d4ab8e05f81457c1d92171a",
+    "source/device/package/nezha27-input/HidInputProbe.cpp": "46e67b176ab4344feba7a49ebc0ab5e6154e1f076337a70fe40dd99ba409781b",
+    "source/device/package/nezha27-input/NezhaHidConsumer.h": "7f0160d02d0a3aeeb283a5943fd125cfe0b02962a14bfcf6bbd9d5f5814749c7",
+    "source/device/scripts/build-nezha27-input.py": "6b905e15dd7e73cf16c70059d0c574d7bc0c3b6b821d2154d1a9dfb87035cdaf",
+    "source/device/scripts/hid-device-iphone-24A446.json": "af4668764ba1d2a4649b9c45d1ddbbabcb69e27659e7c35fbf9899f8f6bdbc7d"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
