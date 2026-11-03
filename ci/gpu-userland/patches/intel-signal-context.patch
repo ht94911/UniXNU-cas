@@ -1,0 +1,48 @@
+diff --git a/NativeBridgeMetalFrontend.mm b/NativeBridgeMetalFrontend.mm
+index aec500d..44421b2 100644
+--- a/NativeBridgeMetalFrontend.mm
++++ b/NativeBridgeMetalFrontend.mm
+@@ -90,6 +90,7 @@ static void abortProbe(int signal, siginfo_t *si, void *context) {
+  at = probeText(at, "native-metal abort probe: signal "); *at++ = char('0' + signal / 10); *at++ = char('0' + signal % 10);
+  at = probeText(at, " address "); at = probeHex(at, (uint64_t)(uintptr_t)si->si_addr); *at++ = '\n';
+  (void)!write(2, line, (size_t)(at - line)); at = line;
++#if defined(__arm64__)
+  const __darwin_arm_thread_state64 &ss = ((ucontext_t *)context)->uc_mcontext->__ss;
+  for (int r = 0; r < 33; ++r) {
+   const uint64_t value = r < 29 ? ss.__x[r] : r == 29 ? __darwin_arm_thread_state64_get_fp(ss) : r == 30 ? (uint64_t)(uintptr_t)__darwin_arm_thread_state64_get_lr_fptr(ss) : r == 31 ? __darwin_arm_thread_state64_get_sp(ss) : (uint64_t)(uintptr_t)__darwin_arm_thread_state64_get_pc_fptr(ss);
+@@ -108,13 +109,35 @@ static void abortProbe(int signal, siginfo_t *si, void *context) {
+   }
+   *at++ = '\n'; (void)!write(2, line, (size_t)(at - line));
+  }
++#elif defined(__x86_64__)
++ // The Intel macOS host instrument has an x86 signal context. Keep the
++ // arm64/arm64e device probe above intact; never reinterpret these registers.
++ const auto &ss = ((ucontext_t *)context)->uc_mcontext->__ss;
++ const struct {const char *name; uint64_t value;} registers[] = {
++  {"rax",ss.__rax},{"rbx",ss.__rbx},{"rcx",ss.__rcx},{"rdx",ss.__rdx},
++  {"rdi",ss.__rdi},{"rsi",ss.__rsi},{"rbp",ss.__rbp},{"rsp",ss.__rsp},
++  {"r8",ss.__r8},{"r9",ss.__r9},{"r10",ss.__r10},{"r11",ss.__r11},
++  {"r12",ss.__r12},{"r13",ss.__r13},{"r14",ss.__r14},{"r15",ss.__r15},
++  {"rip",ss.__rip},{"rflags",ss.__rflags}};
++ for (const auto &r : registers) {
++  at = line; at = probeText(at, "  "); at = probeText(at, r.name);
++  *at++ = ' '; at = probeHex(at, r.value); *at++ = '\n';
++  (void)!write(2, line, (size_t)(at - line));
++ }
++#else
++#error Unsupported Darwin signal-context architecture
++#endif
+  at = line;
+  at = probeText(at, "native-metal abort probe: stack guard now "); at = probeHex(at, __stack_chk_guard);
+  at = probeText(at, ", at load "); at = probeHex(at, gGuardAtLoad); at = probeText(at, "; around it:");
+  const volatile uintptr_t *guard = &__stack_chk_guard;
+  for (int i = -4; i <= 4; ++i) {*at++ = ' '; at = probeHex(at, guard[i]);}
+  *at++ = '\n'; (void)!write(2, line, (size_t)(at - line));
++#if defined(__arm64__)
+  uint64_t fp = __darwin_arm_thread_state64_get_fp(((ucontext_t *)context)->uc_mcontext->__ss);
++#else
++ uint64_t fp = ss.__rbp;
++#endif
+  for (int frame = 0; frame < 8 && fp && !(fp & 7); ++frame) {
+   if (!probeReadable(fp) || !probeReadable(fp - 96)) break;
+   const volatile uint64_t *f = (const volatile uint64_t *)fp;

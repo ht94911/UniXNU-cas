@@ -1,7 +1,7 @@
-name: nezha iPhone27 A840 GPU userland Intel host
+name: nezha GPU frontend Intel host qualification 003
 on:
   push:
-    branches: [codex/ios27-gpu27-metal-002-20261103]
+    branches: [codex/ios27-gpu27-metal-host-003-20261103]
   workflow_dispatch:
 permissions:
   contents: read
@@ -27,7 +27,7 @@ env:
 jobs:
   build:
     runs-on: macos-26-intel
-    timeout-minutes: 345
+    timeout-minutes: 150
     steps:
       - name: Check out the dedicated source inputs
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -62,14 +62,9 @@ jobs:
           echo "NMB_HOST_LOADER=$(brew --prefix molten-vk)/lib/libMoltenVK.dylib" >> "$GITHUB_ENV"
       - name: Prepare the exact public source and patch inputs
         run: device/ci/gpu-userland/logrun prepare python3 device/ci/gpu-userland/prepare.py --unixnu unixnu --record "$LOGS/sources.json"
-      - name: Build Turnip for arm64e iOS27
-        id: turnip_ios27
-        working-directory: unixnu
-        run: ../device/ci/gpu-userland/logrun turnip-ios27 python3 scripts/build-turnip-darwin.py --target ios27
-      - name: Build the arm64e Metal bridge and plugin
-        id: plugin
-        working-directory: unixnu
-        run: ../device/ci/gpu-userland/logrun plugin python3 scripts/build-adreno-metal-plugin.py --target ios27 --no-replay
+      - name: Qualify Intel syntax and unchanged iOS17 and iOS27 frontend objects
+        id: frontend_targets
+        run: device/ci/gpu-userland/logrun frontend-targets python3 device/ci/gpu-userland/check-intel-frontend.py --unixnu unixnu --report "$LOGS/frontend-target-equality.json"
       - name: Run the maintained frontend checks on the host Vulkan driver
         id: frontend_host
         continue-on-error: true
@@ -78,13 +73,12 @@ jobs:
       - name: Verify and seal independent outputs and all diagnostics
         if: always()
         env:
-          OUTCOME_TURNIP_IOS27: ${{ steps.turnip_ios27.outcome }}
-          OUTCOME_PLUGIN: ${{ steps.plugin.outcome }}
+          OUTCOME_FRONTEND_TARGETS: ${{ steps.frontend_targets.outcome }}
           OUTCOME_FRONTEND_HOST: ${{ steps.frontend_host.outcome }}
         run: |
           set -euo pipefail
           export PATH="$(brew --prefix openssl@3)/bin:$PATH"
-          python3 device/ci/gpu-userland/collect.py --unixnu unixnu --device device --logs "$RUNNER_TEMP/logs" --out "$RUNNER_TEMP/out" --sealed "$RUNNER_TEMP/sealed" > "$RUNNER_TEMP/collect.log" 2>&1
+          python3 device/ci/gpu-userland/collect.py --host-only --unixnu unixnu --device device --logs "$RUNNER_TEMP/logs" --out "$RUNNER_TEMP/out" --sealed "$RUNNER_TEMP/sealed" > "$RUNNER_TEMP/collect.log" 2>&1
       - name: Upload only the CMS encrypted artifact
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9

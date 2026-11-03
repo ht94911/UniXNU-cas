@@ -106,6 +106,11 @@ def main():
     record.update(unixnu=head, submodules=modules,
                   abi=dict(path='drivers/Adreno740/NativeAdrenoABI.h', sha256=sha(abi), adreno740_commit=modules['drivers/Adreno740']))
     record['metal_source_policy'] = 'Current pinned upstream; no old17 frontend patch applied.'
+    host_context = HERE / 'patches/intel-signal-context.patch'
+    must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', '--check', host_context])
+    must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', host_context])
+    record['host_signal_context_patch'] = sha(host_context)
+    record['metal_source_policy'] = 'Pinned upstream plus Intel-only signal-context diagnostics; actual ARM object equality is a separate required gate.'
     alias = root / 'drivers/NativeMobileDisplay'
     if not alias.exists():
         alias.symlink_to('GopFramebuffer', target_is_directory=True)

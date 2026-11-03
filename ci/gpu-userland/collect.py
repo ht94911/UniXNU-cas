@@ -25,6 +25,7 @@ parser.add_argument('--device', type=Path, required=True)
 parser.add_argument('--logs', type=Path, required=True)
 parser.add_argument('--out', type=Path, required=True)
 parser.add_argument('--sealed', type=Path, required=True)
+parser.add_argument('--host-only', action='store_true')
 args = parser.parse_args()
 ROOT, DEVICE, OUT = args.unixnu.resolve(), args.device.resolve(), args.out.resolve()
 PLUGIN = ROOT / 'build/adreno-metal-plugin27'
@@ -75,7 +76,7 @@ if OUT.exists():
 checks, problems = {}, []
 
 # The plugin as built, the Turnip library with its symbols, and the GPU addons.
-if (PLUGIN / 'NativeAdrenoMetal.bundle/NativeAdrenoMetal').is_file():
+if not args.host_only and (PLUGIN / 'NativeAdrenoMetal.bundle/NativeAdrenoMetal').is_file():
     shutil.copytree(PLUGIN, OUT / 'adreno-metal-plugin', symlinks=False,
                     ignore=shutil.ignore_patterns('AdrenoPM4.o'))
     bundle = PLUGIN / 'NativeAdrenoMetal.bundle'
@@ -96,10 +97,10 @@ if (PLUGIN / 'NativeAdrenoMetal.bundle/NativeAdrenoMetal').is_file():
     checks['turnip_exports'] = {s: (' T ' + s) in exports for s in ['_vk_icdGetInstanceProcAddr', '_vkGetInstanceProcAddr']}
     if not all(checks['turnip_exports'].values()):
         problems.append('turnip exports')
-else:
+elif not args.host_only:
     problems.append('plugin not built')
 turnip = ROOT / 'build/mesa-tu-ios27/src/freedreno/vulkan/libvulkan_freedreno.dylib'
-if turnip.is_file():
+if not args.host_only and turnip.is_file():
     (OUT / 'turnip-ios27').mkdir()
     shutil.copyfile(turnip, OUT / 'turnip-ios27/libvulkan_freedreno.dylib')
     shutil.copyfile(ROOT / 'build/mesa-tu-ios27/builtin-build-profile.json', OUT / 'turnip-ios27/builtin-build-profile.json')
@@ -118,7 +119,7 @@ for pattern in ['.cache/mesa-tu-*.log', 'build/adreno-metal-bridge/build-*.log',
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source, target)
 
-outcomes = {k[len('OUTCOME_'):].lower(): v for k, v in os.environ.items() if k.startswith('OUTCOME_')}
+outcomes = {k[len('OUTCOME_'):].lower(): v for k, v in os.environ.items() if k.startswith('OUTCOME_') and v}
 record = json.loads((args.logs / 'sources.json').read_text()) if (args.logs / 'sources.json').is_file() else None
 info = dict(
     purpose='GPU userland: Turnip with the Darwin kernel backend, the metal2vulkan bridge and the NativeAdrenoMetal plugin for '
@@ -136,6 +137,16 @@ info = dict(
                priming_cache=None, m2vpack=None),
     outcomes=outcomes, checks=checks, problems=problems, hardware_verified=False,
     frontend_host_scope='host Vulkan instrument only; original QuartzCore fixture not provided')
+if args.host_only:
+    equality = args.logs / 'frontend-target-equality.json'
+    info['purpose'] = 'Intel macOS host frontend pixel/lifetime tests and exact before/after arm64 iOS17 and arm64e iOS27 object comparison. Does not replace the fixed Metal002 plugin.'
+    info['host_only'] = True
+    info['checks']['frontend_targets'] = json.loads(equality.read_text()) if equality.is_file() else None
+    if not equality.is_file():
+        problems.append('target equality qualification missing')
+    for name, outcome in outcomes.items():
+        if outcome != 'success':
+            problems.append(name + ' ' + outcome)
 files = sorted(p.relative_to(OUT).as_posix() for p in OUT.rglob('*') if p.is_file())
 info['outputs'] = {name: dict(bytes=(OUT / name).stat().st_size, sha256=sha(OUT / name)) for name in files
                    if not name.startswith('logs/')}
