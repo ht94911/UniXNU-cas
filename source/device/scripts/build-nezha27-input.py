@@ -4,7 +4,7 @@
 Binding algorithm reused from sheng27 recipe69c3;no old unsigned-vptr patch.
 """
 from pathlib import Path
-import importlib.util,json,subprocess,hashlib,struct,shutil,tomllib,shlex
+import importlib.util,json,subprocess,hashlib,struct,shutil,tomllib,shlex,os
 from kernel_target import ARCH,TRIPLE,check_object
 ROOT=Path(__file__).resolve().parents[1];OUT=ROOT/'build/nezha27-input';OUT.mkdir(parents=True,exist_ok=True)
 def run(cmd,**kw):return subprocess.check_output([str(x) for x in cmd],timeout=300,**kw)
@@ -25,9 +25,16 @@ for source_dir,relative in [(hid/'IOHIDFamily','IOKit/hid'),(hid/'IOHIDSystem/IO
  dest=include/relative;dest.mkdir(parents=True,exist_ok=True)
  for p in sorted(source_dir.glob('*.h')):shutil.copyfile(p,dest/p.name)
 sdk=Path(headers['sdk']);includes=['-I',str(include),'-idirafter',str(sdk/'System/Library/Frameworks/Kernel.framework/Versions/A/Headers')]
+# Controller protocol is supplied by the resolved,independent SoC source.
+physical_device=Path(os.environ['UNIXNU_DEVICE']).resolve()
+local_sources=tomllib.loads((physical_device/'local.toml').read_text())['source']
+soc_source=next(item for item in local_sources if item['name']=='sm8850' and item['kind']=='soc')
+soc_header=(physical_device/soc_source['local']).resolve()/'include/Sm8850DsiFifo.h'
+require(sha(soc_header)=='5f9a2ce924585f327c088bcdaf03e6f30fe4b1573b65b3df10eb02b71bc3442f','qualified SM8850 FIFO protocol identity')
+shutil.copyfile(soc_header,include/'Sm8850DsiFifo.h')
 base=ROOT/'build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837';sources=ROOT/'kits/nezha/nezha27-input';records={False:json.loads((base/'iokit/DEVELOPMENT/IOPlatformExpert.cpo.json').read_text().strip().rstrip(',')),True:json.loads((base/'bsd/DEVELOPMENT/bsd_init.o.json').read_text().strip().rstrip(','))};details={}
-for name in ['NativeHidInput.cpp','HidInputProbe.cpp','NezhaInput.c']:
- source=sources/name;obj=OUT/(source.stem+'.o');rc=records[source.suffix=='.c'];command=helper.compile_command(rc,source,obj,includes,['-I',str(ROOT/'.cache/xnu-work/osfmk'),'-I',str(sources),'-Wno-unknown-warning-option','-Wno-unused-variable'])
+for name in ['NativeHidInput.cpp','HidInputProbe.cpp','NezhaInput.c','ResourceProbe.c','InputChainProbe.cpp','BacklightProbe.cpp']:
+ source=ROOT/'kits/nezha/backlight'/name if name=='BacklightProbe.cpp' else sources/name;obj=OUT/(source.stem+'.o');rc=records[source.suffix=='.c'];command=helper.compile_command(rc,source,obj,includes,['-I',str(ROOT/'.cache/xnu-work/osfmk'),'-I',str(sources),'-I',str(ROOT/'kits/nezha/backlight'),'-Wno-unknown-warning-option','-Wno-unused-variable'])
  (OUT/(source.stem+'-command.json')).write_text(json.dumps(command,indent=2));r=subprocess.run(command,cwd=rc['directory'],capture_output=True,text=True);(OUT/(source.stem+'.log')).write_text(r.stdout+r.stderr);require(not r.returncode,r.stdout+r.stderr);check_object(obj.read_bytes(),name);details[name]=dict(source_sha256=sha(source),object_sha256=sha(obj))
  deps={}
  for n in shlex.split(obj.with_suffix('.d').read_text().replace(chr(92)+chr(10),'').split(':',1)[1]):
@@ -125,4 +132,30 @@ for name,va in sorted(bindings.items()):
 sdk=run(['xcrun','--sdk','iphoneos','--show-sdk-path'],text=True).strip()
 for stem,data in [('hid-bindings',text),('hid-addresses',addresses)]:
  p=OUT/(stem+'.S');p.write_text(data);run(['xcrun','clang','-target',TRIPLE,'-isysroot',sdk,'-c',p,'-o',OUT/(stem+'.o')])
-llvm=Path(run(['brew','--prefix','llvm'],text=True).strip())/'bin';late=OUT/'NativeHidInput.late.o';run([llvm/'llvm-objcopy','--remove-section=__DATA,__mod_init_func','--globalize-symbol=__GLOBAL__sub_I_NativeHidInput.cpp',OUT/'NativeHidInput.o',late]);archive=OUT/'libNezha27Input.a';archive.unlink(missing_ok=True);objects=[late,OUT/'HidInputProbe.o',OUT/'NezhaInput.o',OUT/'hid-bindings.o',OUT/'hid-addresses.o'];run(['xcrun','ar','rcs',archive,*objects]);report=dict(source_recipe='sheng27 build-gop-legacy-display-27.py69c3 HID source API binding algorithm',source_17='nezha widgets003 f5b0fdd Synaptics/ordered queues only',original_bindings='fixed-collection-addresses',kernelcache_sha256=abi['kernelcache_sha256'],bindings={n:hex(v) for n,v in bindings.items()},public_HID_commit=hid_pin,compiled_slots=207,owned_vtables=vtables,objects=details,archive_sha256=sha(archive),late_no_mod_init=True,hardware_qualified=False);(OUT/'build-report.json').write_text(json.dumps(report,indent=2));print('compiled27 native touch/keys,207 actual HID PAC slots verified;hardware pending')
+# The new backlight class is explicitly unregistered until its postIOBSD
+# opt-in probe. All169 owned entries must match the real original class PAC.
+backlight=json.loads(Path(__file__).with_name('backlight-iphone-24A446.json').read_text())
+require(backlight['kernelcache_sha256']==abi['kernelcache_sha256'] and backlight['virtual_entries']==169,'original27 backlight fixture')
+raw_bl=(OUT/'BacklightProbe.o').read_bytes();bl_found=object_symbols(raw_bl)
+bl_vtables=[n for n,_,k in bl_found if n.startswith('__ZTV') and k!=1 and '9MetaClassE' not in n]
+require(len(bl_vtables)==1,'one owned backlight subclass vtable')
+bl_entries=object_vtable(raw_bl,bl_found,bl_vtables[0],169);require(all(bl_entries),'all169 backlight entries')
+bl_slots={}
+for i,(name,word) in enumerate(bl_entries):
+ require(word>>63 and word>>48&1 and word>>49&3==0 and (word>>32)&65535==int(backlight['slots'][i][1],16),f'backlight slot{i} PAC differs from original')
+ if '17AppleARMBacklight' in name:bl_slots[name]=i
+bl_bindings={n:int(v,16) for n,v in backlight['bindings'].items()}
+for name in sorted({n for n,_,k in bl_found if k==1 and '17AppleARMBacklight' in n}-set(bl_bindings)):
+ require(name in bl_slots,'unqualified backlight base import '+name)
+ bl_bindings[name]=int(backlight['slots'][bl_slots[name]][0],16)
+bl_text='.text\n.p2align 2\n';bl_addresses=''
+for name,va in sorted(bl_bindings.items()):
+ if name in {'__ZN17AppleARMBacklight10gMetaClassE','__ZTV17AppleARMBacklight'}:bl_addresses+=f'.globl {name}\n.set {name}, {va:#x}\n'
+ else:
+  bl_addresses+=f'.globl {name}.original\n.set {name}.original, {va:#x}\n'
+  bl_text+=f'.globl {name}\n{name}:\n bti c\n b {name}.original\n'
+for stem,text_bl in [('backlight-bindings',bl_text),('backlight-addresses',bl_addresses)]:
+ p=OUT/(stem+'.S');p.write_text(text_bl);run(['xcrun','clang','-target',TRIPLE,'-isysroot',sdk,'-c',p,'-o',OUT/(stem+'.o')])
+(OUT/'backlight-bindings.json').write_text(json.dumps(dict(kernelcache_sha256=backlight['kernelcache_sha256'],bindings={n:hex(v) for n,v in bl_bindings.items()},compiled_original_PAC_slots=169,owned_class=bl_vtables[0],publication=False,hardware_access=False),indent=2))
+
+llvm=Path(run(['brew','--prefix','llvm'],text=True).strip())/'bin';late=OUT/'NativeHidInput.late.o';run([llvm/'llvm-objcopy','--remove-section=__DATA,__mod_init_func','--globalize-symbol=__GLOBAL__sub_I_NativeHidInput.cpp',OUT/'NativeHidInput.o',late]);bl_late=OUT/'BacklightProbe.late.o';run([llvm/'llvm-objcopy','--remove-section=__DATA,__mod_init_func','--globalize-symbol=__GLOBAL__sub_I_BacklightProbe.cpp',OUT/'BacklightProbe.o',bl_late]);archive=OUT/'libNezha27Input.a';archive.unlink(missing_ok=True);objects=[late,OUT/'HidInputProbe.o',OUT/'NezhaInput.o',OUT/'ResourceProbe.o',OUT/'InputChainProbe.o',OUT/'hid-bindings.o',OUT/'hid-addresses.o',bl_late,OUT/'backlight-bindings.o',OUT/'backlight-addresses.o'];run(['xcrun','ar','rcs',archive,*objects]);report=dict(source_recipe='sheng27 build-gop-legacy-display-27.py69c3 HID source API binding algorithm',source_17='nezha widgets003 f5b0fdd Synaptics/ordered queues only',original_bindings='fixed-collection-addresses',kernelcache_sha256=abi['kernelcache_sha256'],bindings={n:hex(v) for n,v in bindings.items()},public_HID_commit=hid_pin,compiled_slots=207,backlight_compiled_PAC_slots=169,backlight_qualified_source_only=True,owned_vtables=vtables,objects=details,archive_sha256=sha(archive),late_no_mod_init=True,hardware_qualified=False);(OUT/'build-report.json').write_text(json.dumps(report,indent=2));print('compiled27 native touch/keys,207 actual HID PAC slots verified;hardware pending')
