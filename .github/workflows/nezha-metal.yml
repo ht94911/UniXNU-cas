@@ -1,7 +1,7 @@
-name: nezha GPU frontend Intel host qualification 003
+name: nezha GPU frontend Intel host qualification 004
 on:
   push:
-    branches: [codex/ios27-gpu27-metal-host-003-20261103]
+    branches: [codex/ios27-gpu27-metal-host-004-20261103]
   workflow_dispatch:
 permissions:
   contents: read
@@ -62,7 +62,7 @@ jobs:
           echo "NMB_HOST_LOADER=$(brew --prefix molten-vk)/lib/libMoltenVK.dylib" >> "$GITHUB_ENV"
       - name: Prepare the exact public source and patch inputs
         run: device/ci/gpu-userland/logrun prepare python3 device/ci/gpu-userland/prepare.py --unixnu unixnu --record "$LOGS/sources.json"
-      - name: Qualify Intel syntax and unchanged iOS17 and iOS27 frontend objects
+      - name: Qualify Intel syntax and actual iOS ARM signal handlers
         id: frontend_targets
         run: device/ci/gpu-userland/logrun frontend-targets python3 device/ci/gpu-userland/check-intel-frontend.py --unixnu unixnu --report "$LOGS/frontend-target-equality.json"
       - name: Run the maintained frontend checks on the host Vulkan driver

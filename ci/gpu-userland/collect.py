@@ -139,7 +139,7 @@ info = dict(
     frontend_host_scope='host Vulkan instrument only; original QuartzCore fixture not provided')
 if args.host_only:
     equality = args.logs / 'frontend-target-equality.json'
-    info['purpose'] = 'Intel macOS host frontend pixel/lifetime tests and exact before/after arm64 iOS17 and arm64e iOS27 object comparison. Does not replace the fixed Metal002 plugin.'
+    info['purpose'] = 'Intel macOS host frontend pixel/lifetime tests plus actual arm64 iOS17 and arm64e iOS27 compilations and signal-handler code/relocation comparison. Whole objects have changed diagnostic line constants. Does not replace the fixed Metal002 plugin.'
     info['host_only'] = True
     info['checks']['frontend_targets'] = json.loads(equality.read_text()) if equality.is_file() else None
     if not equality.is_file():

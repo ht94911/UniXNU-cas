@@ -110,7 +110,7 @@ def main():
     must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', '--check', host_context])
     must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', host_context])
     record['host_signal_context_patch'] = sha(host_context)
-    record['metal_source_policy'] = 'Pinned upstream plus Intel-only signal-context diagnostics; actual ARM object equality is a separate required gate.'
+    record['metal_source_policy'] = 'Pinned upstream plus Intel signal-context diagnostics; actual ARM signal-handler equality and both iOS target compilations are required. ENCODE source-line constants are not claimed byte-identical.'
     alias = root / 'drivers/NativeMobileDisplay'
     if not alias.exists():
         alias.symlink_to('GopFramebuffer', target_is_directory=True)
