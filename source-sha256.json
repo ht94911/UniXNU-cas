@@ -7,8 +7,8 @@
   "ci/xnu/artifact-recipient.pem": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
   "ci/xnu/artifacts.py": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
   "ci/gpu-userland/patches/mesa-new-file-mode.patch": "e032d6f8d2bd8d03a21f24f2bf2237fc0f3fce12a7354fd0be85cd59cc710744",
-  "ci/gpu-userland/patches/intel-host-bridge.patch": "ac6426b639e492f3480fb0ff012512b18ecdbeb495ade7e69d8d86ebfc246595",
-  ".github/workflows/nezha-metal.yml": "7dab654449c5cb674e6a08fca1ad78312a84b8b8d16a90686727c6602dcaccac",
+  "ci/gpu-userland/patches/intel-host-bridge.patch": "4ca8907888b08bb9218abe7d95a5c0bf8b11443f1d2fb6cbaad067a1c6862c78",
+  ".github/workflows/nezha-metal.yml": "b56cb2886301c9b9a697a718bbc067838f88540d8641658d7f3468442d13c611",
   "ci/gpu-userland/check-intel-frontend.py": "3b6c515c49e9379c13c840412de651279015820eb8169ee129aa00a6e9e04b29",
   "ci/gpu-userland/patches/intel-signal-context.patch": "605c60d9d800809539ce359a79706c63531cd70641b036255f4eee385c034335"
 }

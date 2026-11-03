@@ -1,5 +1,5 @@
 diff --git a/scripts/build-adreno-metal-bridge.py b/scripts/build-adreno-metal-bridge.py
-index c89881a..82b781a 100644
+index c89881a..e6af833 100644
 --- a/scripts/build-adreno-metal-bridge.py
 +++ b/scripts/build-adreno-metal-bridge.py
 @@ -8,6 +8,7 @@ import argparse
@@ -10,7 +10,15 @@ index c89881a..82b781a 100644
  from pathlib import Path
  import shutil
  import subprocess
-@@ -140,7 +141,11 @@ manifest.write_text('\n'.join([
+@@ -81,6 +82,7 @@ PATCHES = [ROOT / 'drivers/AdrenoMetal/bridge/patches' / name for name in [
+ def git_tree(*steps):
+     # The source tree a scratch index holds after HEAD and the given commands, without touching the source's own index.
+     index = ROOT / 'build/adreno-metal-bridge-index'
++    index.parent.mkdir(parents=True, exist_ok=True)
+     env = dict(os.environ, GIT_INDEX_FILE=str(index))
+     subprocess.run(['git', '-C', str(SOURCE), 'read-tree', 'HEAD'], env=env, check=True)
+     for step in steps:
+@@ -140,7 +142,11 @@ manifest.write_text('\n'.join([
  if args.manifest_only:
      print(manifest)
      raise SystemExit(0)
