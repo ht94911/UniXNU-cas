@@ -15,3 +15,4 @@ zzzzz-nezha-owner-data-ready.patch
 
 # Real self-IPI owns signal enablement; retain original startup assertions.
 zzzzzz-nezha-sigp-startup-order.patch
+zzzzzz-nezha-input-chain-trace.patch
