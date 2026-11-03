@@ -210,6 +210,9 @@ def collect(framework, work, sealed):
         for path in sorted((tree / 'build/armcpu').glob('*')):
             if path.is_file() and path.suffix in ('.json','.asm','.o'):
                 add(path, 'archives/armcpu/' + path.name)
+        for path in sorted((tree / 'build/armcpu').glob('*')):
+            if path.is_file() and path.suffix in ('.json','.asm','.o'):
+                add(path, 'archives/armcpu/' + path.name)
         for path in sorted((tree / 'build/boot-progress').glob('*')):
             if path.is_file() and path.suffix in ('.json','.asm','.o','.c','.h'):
                 add(path, 'archives/boot-progress/' + path.name)

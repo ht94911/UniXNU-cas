@@ -53,7 +53,7 @@
   */
 -extern bool sheng_sigp_recover(cpu_data_t *target_proc);
 -volatile uint32_t sheng_idle_sigp_cleared, sheng_idle_sigp_refused, sheng_idle_enter[8], sheng_idle_disallowed[8];
-+volatile uint32_t sheng_idle_sigp_refused, sheng_idle_enter[8], sheng_idle_disallowed[8];
++volatile uint32_t sheng_idle_sigp_cleared, sheng_idle_sigp_refused, sheng_idle_enter[8], sheng_idle_disallowed[8];
  
  void __attribute__((noreturn))
  cpu_idle(void)
