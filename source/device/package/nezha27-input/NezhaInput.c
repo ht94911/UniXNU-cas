@@ -58,6 +58,7 @@ extern kern_return_t thread_terminate(thread_t);
 extern kern_return_t kernel_thread_start_priority(thread_continue_t continuation,
     void *parameter, integer_t priority, thread_t *new_thread);
 #include "NezhaInput.h"
+#include "NezhaInputTelemetry.h"
 static void pandora_touch_init(void);
 static void nz_stage(int stage, int err);
 static char nz_part[17];             /* identify part name, for the boot-progress row */
@@ -1330,6 +1331,37 @@ volatile int nezha_touch_stage, nezha_touch_err;     /* stage reached / last err
 static struct nezha_touch_frame nz_frames[64], nz_state;
 static unsigned nz_producer, nz_consumer, nz_drops;
 
+volatile struct nzi_frame nezha_raw_input_diag,nezha_hid_input_diag;
+static unsigned nz_trace_down,nz_trace_up,nz_trace_id,nz_trace_errors;
+static void nz_publish_raw(void) {
+    volatile struct nzi_frame *d=&nezha_raw_input_diag;uint32_t stamp=nzi_begin(d);
+    nzi_put(d,R_VERSION,1);nzi_put(d,R_PACKETS,pt.reports);nzi_put(d,R_IC_REPORTS,pt.touch_reports);
+    nzi_put(d,R_ERRORS,nz_trace_errors);nzi_put(d,R_FRAME,nz_state.sequence);nzi_put(d,R_MASK,pt.active);
+    nzi_put(d,R_DOWN,nz_trace_down);nzi_put(d,R_UP,nz_trace_up);
+    nzi_put(d,R_PRODUCER,__atomic_load_n(&nz_producer,__ATOMIC_ACQUIRE));nzi_put(d,R_CONSUMER,__atomic_load_n(&nz_consumer,__ATOMIC_ACQUIRE));
+    nzi_put(d,R_DROP,nz_drops);nzi_put(d,R_ID,nz_trace_id);nzi_put(d,R_X,pt.px[nz_trace_id]);nzi_put(d,R_Y,pt.py[nz_trace_id]);
+    nzi_time(d,R_TICKLO,mach_absolute_time());nzi_put(d,R_STAGE,(uint32_t)nezha_touch_stage);nzi_put(d,R_THRESHOLD,pt.thp_thr);nzi_end(d,stamp);
+}
+#include "InputChainTrace.h"
+
+static void nz_trace_thread(void *arg,wait_result_t result) {
+    (void)arg;(void)result;
+    for(;;) {
+        uint32_t r[NZI_WORDS],h[NZI_WORDS];bool rv=nzi_copy(&nezha_raw_input_diag,r),hv=nzi_copy(&nezha_hid_input_diag,h);
+        if(rv)printf("NEZHA INPUT RAW: v=%u st=%d packets=%u ic=%u err=%u frame=%u mask=%x down=%u up=%u q=%u/%u drop=%u id=%u panel=%u,%u thr=%u rawticks=%llu\n",
+            r[R_VERSION],(int32_t)r[R_STAGE],r[R_PACKETS],r[R_IC_REPORTS],r[R_ERRORS],r[R_FRAME],r[R_MASK],r[R_DOWN],r[R_UP],
+            r[R_PRODUCER],r[R_CONSUMER],r[R_DROP],r[R_ID],r[R_X],r[R_Y],r[R_THRESHOLD],(unsigned long long)nzi_u64(r,R_TICKLO));
+        else printf("NEZHA INPUT RAW: snapshot busy\n");
+        if(hv)printf("NEZHA INPUT HID: v=%u tick=%u ready=%u stop=%u in=%u seen=%u frame=%u mask=%x ack=%x down=%u up=%u call=%u ret=%u ok=%u fail=%u id=%u panel=%u,%u wire=%u,%u count=%u result=%d coalesced=%llu ticktime=%llu started=%llu finished=%llu\n",
+            h[H_VERSION],h[H_TICKS],h[H_READY],h[H_STOP],h[H_IN_CALL],h[H_SEEN],h[H_FRAME],h[H_MASK],h[H_ACK_MASK],h[H_DOWN],h[H_UP],
+            h[H_ATTEMPT],h[H_RETURN],h[H_OK],h[H_ERROR],h[H_ID],h[H_X],h[H_Y],h[H_WIRE_X],h[H_WIRE_Y],h[H_CONTACTS],(int32_t)h[H_RESULT],(unsigned long long)nzi_u64(h,H_COALLO),(unsigned long long)nzi_u64(h,H_TICKLO),(unsigned long long)nzi_u64(h,H_STARTLO),(unsigned long long)nzi_u64(h,H_ENDLO));
+        else printf("NEZHA INPUT HID: snapshot busy\n");
+        nezha_input_chain_flush();
+        pt_sleep(1000);
+    }
+}
+
+
 bool
 nezha_touch_next(struct nezha_touch_frame *frame)
 {
@@ -1397,7 +1429,11 @@ pt_deliver(uint32_t mask, const int *px, const int *py)
 	native_touch_count = n;
 	__asm__ volatile("dmb ish" ::: "memory");
 	__atomic_store_n(&native_touch_seq, (seq | 1u) + 1u, __ATOMIC_RELEASE);
+	nz_trace_down+=(unsigned)__builtin_popcount(mask & ~pt.active);
+	nz_trace_up+=(unsigned)__builtin_popcount(pt.active & ~mask);
+	if(mask)nz_trace_id=(unsigned)__builtin_ctz(mask);
 	pt.active = mask;
+	nz_publish_raw();
 	nz_row();
 }
 
@@ -1750,6 +1786,7 @@ pt_thread(void *arg, wait_result_t result)
 			nz_stage(-8, EIO);
 			break;
 		}
+		nz_trace_errors=errors;nz_publish_raw();
 		uint64_t period = (pt.active || now - last_irq < recent_abs) ? active_abs : idle_abs;
 		next += period;
 		now = mach_absolute_time();
@@ -1759,6 +1796,7 @@ pt_thread(void *arg, wait_result_t result)
 		pt_sleep_until(next);
 	}
 out:
+	nz_publish_raw();
 	printf("NEZHA TOUCH: stopped\n");
 	(void)thread_terminate(current_thread());
 	thread_block(THREAD_CONTINUE_NULL);
@@ -2055,11 +2093,15 @@ void
 nezha_input_start(void)
 {
 	/*27 input owns only touch/keys;GPU,USB,storage and power have separate owners. */
+	extern void nezha_resource_probe_start(void);
+	nezha_resource_probe_start();
 	unsigned enabled = 1;
 	(void)PE_parse_boot_argn("nezha-input", &enabled, sizeof(enabled));
 	if (!enabled) {
 		return;
 	}
+	static bool trace_started;
+	if(!trace_started){thread_t observer;if(kernel_thread_start(nz_trace_thread,NULL,&observer)==KERN_SUCCESS){trace_started=true;thread_deallocate(observer);}}
 	native_touch_stage_req = 1;
 	nz_row();
 	nezha_keys_init();
