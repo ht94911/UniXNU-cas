@@ -37,6 +37,8 @@ static unsigned render_busy;
 static unsigned resume_after,last_scanout_at;
 // Optional clean system frames; default preserves the original live overlay.
 static unsigned post_scanout_overlay=1;
+static unsigned console_diag;
+extern unsigned native_legacy_state_words(char *,unsigned) __attribute__((weak_import));
 static char build_tag[32];
 static struct bp_pulse pulse;
 struct bp_panic_info boot_progress_panic_vinfo;
@@ -86,6 +88,8 @@ extern void boot_ui_trace_snapshot(unsigned) __attribute__((weak_import));
 extern char boot_ui_trace_rows[14][120] __attribute__((weak_import));
 extern char boot_ui_trace_label[120] __attribute__((weak_import));
 extern unsigned boot_ui_trace_ready __attribute__((weak_import));
+extern unsigned boot_ui_trace_role_rows(unsigned,char [][120],unsigned,unsigned) __attribute__((weak_import));
+extern unsigned boot_ui_trace_hot_rows(char [][120],unsigned) __attribute__((weak_import));
 extern volatile unsigned boot_ui_trace_phase __attribute__((weak_import));
 extern volatile unsigned boot_ui_trace_index __attribute__((weak_import));
 extern void boot_process_capture(void) __attribute__((weak_import));
@@ -531,6 +535,7 @@ void boot_progress_init(void) {
   PE_parse_boot_argn("nezha-build-tag",build_tag,sizeof(build_tag));build_tag[sizeof(build_tag)-1]=0;
   if (PE_parse_boot_argn("boot-diag-resume",&resume_after,sizeof(resume_after)) && (resume_after<5 || resume_after>3600)) resume_after=0;
   PE_parse_boot_argn("boot-diag-overlay",&post_scanout_overlay,sizeof(post_scanout_overlay));
+  PE_parse_boot_argn("boot-diag-console",&console_diag,sizeof(console_diag));
   boot_progress_stage("PE initialized; early native mappings");
   umi_boot_progress_record(1);
 }
@@ -983,6 +988,31 @@ static void monitor(void *arg, wait_result_t result) {
     if(nprocs>0 && !named){thread_set_thread_name(current_thread(),"boot_progress");named=1;}
     if(boot_process_snapshot)boot_process_snapshot();
     if(boot_ui_trace_snapshot)boot_ui_trace_snapshot(now);
+    // Existing process/UI snapshots exported as bounded console text even while
+    // the compositor owns the scanout;no new sampling or kernel/user mutation.
+    static unsigned console_at;
+    if((console_diag==1 || console_diag==2) && now>=60 && now-console_at>=30) {
+      console_at=now;char row[256]={0};
+      printf("NEZHA BOOT SNAP: t=%u SMP=%u/%u procs=%d\n",now,BP_OPTIONAL(armcpu_smp_running),BP_OPTIONAL(armcpu_smp_requested),nprocs);
+      if(native_legacy_state_words && native_legacy_state_words(row,sizeof(row)))printf("NEZHA STATE SNAP: %s\n",row);
+      if(boot_process_rows)for(unsigned i=0;i<10;++i)printf("NEZHA PROC SNAP: %.119s\n",boot_process_rows[i]);
+      if(boot_ui_trace_rows)for(unsigned i=0;i<14;++i)printf("NEZHA UI SNAP: %.119s\n",boot_ui_trace_rows[i]);
+      // The rotating banner can alias a fixed console interval. Export the
+      // existing full snapshots, including workers, without resampling tasks.
+      static unsigned stacks_at;
+      if(console_diag==2 && now>=120 && now<=600 && now-stacks_at>=60) {
+        static char stacks[64][120];stacks_at=now;
+        if(boot_ui_trace_role_rows)for(unsigned role=0;role<4;++role) {
+          unsigned count=boot_ui_trace_role_rows(role,stacks,64,2);
+          for(unsigned i=0;i<count && i<64;++i)printf("NEZHA STACK SNAP: %.119s\n",stacks[i]);
+        }
+        if(boot_ui_trace_hot_rows) {
+          unsigned count=boot_ui_trace_hot_rows(stacks,32);
+          for(unsigned i=0;i<count && i<32;++i)printf("NEZHA HOT SNAP: %.119s\n",stacks[i]);
+        }
+      }
+    }
+
     if(&boot_process_attempts && &boot_process_busy) {
       unsigned attempt=__atomic_load_n(&boot_process_attempts,__ATOMIC_RELAXED);
       unsigned capturing=__atomic_load_n(&boot_process_busy,__ATOMIC_ACQUIRE);
