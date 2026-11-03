@@ -1,7 +1,7 @@
 {
-  ".github/workflows/nezha-metal.yml": "bd4cd273b83466dd92a3593ba9d84e74132dbee0df86f40017bf4b3b0c7731fd",
+  ".github/workflows/nezha-metal.yml": "cc8d2f18054def2c93015ab8ed479fcfeb60c0e348f8ab76dda8f5b06805cfb0",
   ".gitignore": "862263fa1f46c20f0d1e4dac5ffcc75abd55c08211b2c3864c5f8764b9d87793",
-  "ci/gpu-userland/check-host-driver.py": "9fe035c13f1e3a897821f763e4c68c48bfee26e18e17e3860f92e4598a944d5b",
+  "ci/gpu-userland/check-host-driver.py": "c935dabcea4c13ce15138eb03d983ad7f335d4e06d5cf718427dd267d8e3ffc0",
   "ci/gpu-userland/check-intel-frontend.py": "3b6c515c49e9379c13c840412de651279015820eb8169ee129aa00a6e9e04b29",
   "ci/gpu-userland/collect.py": "c05a4a1c7da5c5319875d2995985ea6bb5468095b4c030f5b527ad050d66af4f",
   "ci/gpu-userland/diagnose-host.py": "e25be66e0df78d26d5f323b9eee205f9cf692783129cd11a7cea08a28a02c39c",

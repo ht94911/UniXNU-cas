@@ -1,104 +1,64 @@
-name: nezha GPU frontend Intel host qualification 008
+name: nezha GPU Metal runtime capability 009 on ARM macOS
 on:
   push:
-    branches: [codex/ios27-gpu27-metal-host-008-20261103]
+    branches: [codex/ios27-gpu27-metal-capability-009-20261103]
   workflow_dispatch:
 permissions:
   contents: read
 concurrency:
-  group: nezha-gpu27-metal-${{ github.ref }}
+  group: nezha-gpu27-metal-capability-${{ github.ref }}
   cancel-in-progress: false
 defaults:
   run:
     shell: bash
 env:
   MVK_CONFIG_USE_METAL_ARGUMENT_BUFFERS: "0"
-  UNIXNU_COMMIT: a3faa4a43cadcd288fbe9cee3794d5a120629742
-  ADRENO740_COMMIT: 1030485546ef7ebb9abbfb7c17fbca93cca40971
-  ABI_SHA256: d1c8a27d6e61787073c2c56a779ff4d5c43d86f2d23ac0c0fba0368af8dcdeae
-  PROFILE_CHIP_ID: "0x44050a31"
-  PROFILE_GMEM_BYTES: "0x1200000"
-  PROFILE_GMEM_BASE: "0x4000000"
-  RUST_TOOLCHAIN: 1.98.0
-  CARGO_BUILD_JOBS: 3
   HOMEBREW_NO_AUTO_UPDATE: 1
   HOMEBREW_NO_INSTALL_CLEANUP: 1
-  HOMEBREW_NO_ENV_HINTS: 1
   DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
 jobs:
-  build:
-    runs-on: macos-26-intel
-    timeout-minutes: 150
+  capability:
+    runs-on: macos-26
+    timeout-minutes: 20
     steps:
-      - name: Check out the dedicated source inputs
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          path: device
-          persist-credentials: false
-      - name: Check out the pinned upstream framework
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          repository: UniXNU/UniXNU
-          ref: a3faa4a43cadcd288fbe9cee3794d5a120629742
-          path: unixnu
           persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: "3.13"
-      - name: Verify complete CI source identity before installing tools
-        run: |
-          python3 device/ci/gpu-userland/prepare.py --check-sources-only
-          python3 device/ci/gpu-userland/test-source-manifest.py
-      - name: Install and identify the host tools
+      - name: Verify the exact committed source inputs
+        run: python3 ci/gpu-userland/prepare.py --check-sources-only
+      - name: Prepare only the host capability tools
         run: |
           set -euo pipefail
-          echo "LOGS=$RUNNER_TEMP/logs" >> "$GITHUB_ENV"
           mkdir -p "$RUNNER_TEMP/logs"
-          brew install glslang shaderc spirv-tools molten-vk vulkan-headers llvm ninja openssl@3 > "$RUNNER_TEMP/logs/brew.log" 2>&1
-          echo "$(brew --prefix llvm)/bin" >> "$GITHUB_PATH"
-          export PATH="$(brew --prefix llvm)/bin:$HOME/.cargo/bin:$PATH"
-          if ! command -v rustup > /dev/null; then
-            curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none > "$RUNNER_TEMP/logs/rustup-install.log" 2>&1
-          fi
-          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
-          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --component rust-src --target aarch64-apple-ios > "$RUNNER_TEMP/logs/rustup.log" 2>&1
-          { sw_vers; xcodebuild -version; xcrun --sdk iphoneos --show-sdk-version; rustc "+$RUST_TOOLCHAIN" -vV;
-            llvm-as --version; glslangValidator --version; glslc --version; spirv-val --version; } > "$RUNNER_TEMP/logs/tools.log" 2>&1
+          echo "LOGS=$RUNNER_TEMP/logs" >> "$GITHUB_ENV"
+          brew install molten-vk vulkan-headers openssl@3 > "$RUNNER_TEMP/logs/brew.log" 2>&1
           echo "NMB_HOST_LOADER=$(brew --prefix molten-vk)/lib/libMoltenVK.dylib" >> "$GITHUB_ENV"
-      - name: Verify the real host Vulkan device without unsupported argument encoders
-        id: host_driver
+          { uname -m; sw_vers; xcodebuild -version; xcrun --sdk iphoneos --show-sdk-version; } > "$RUNNER_TEMP/logs/tools.log"
+      - name: Exercise the runtime-required argument-buffer configuration
+        id: capability
         continue-on-error: true
-        run: device/ci/gpu-userland/logrun host-driver python3 device/ci/gpu-userland/check-host-driver.py --logs "$LOGS"
-      - name: Prepare the exact public source and patch inputs
-        run: device/ci/gpu-userland/logrun prepare python3 device/ci/gpu-userland/prepare.py --unixnu unixnu --record "$LOGS/sources.json"
-      - name: Qualify Intel syntax and actual iOS ARM signal handlers
-        id: frontend_targets
-        run: device/ci/gpu-userland/logrun frontend-targets python3 device/ci/gpu-userland/check-intel-frontend.py --unixnu unixnu --report "$LOGS/frontend-target-equality.json"
-      - name: Run the maintained frontend checks on the host Vulkan driver
-        id: frontend_host
-        if: steps.host_driver.outcome == 'success'
-        continue-on-error: true
-        env:
-          RUST_BACKTRACE: full
-          NSUnbufferedIO: "YES"
-        working-directory: unixnu
-        run: ../device/ci/gpu-userland/logrun frontend-host python3 scripts/check-native-metal-frontend-host.py
-      - name: Record host GPU availability and actual abort backtraces
-        if: always()
-        run: device/ci/gpu-userland/logrun host-diagnostics python3 device/ci/gpu-userland/diagnose-host.py --unixnu unixnu --logs "$LOGS"
-      - name: Verify and seal independent outputs and all diagnostics
+        run: ci/gpu-userland/logrun runtime-contract python3 ci/gpu-userland/check-host-driver.py --logs "$LOGS"
+      - name: Seal capability evidence, never a frontend or phone qualification
         if: always()
         env:
-          OUTCOME_FRONTEND_TARGETS: ${{ steps.frontend_targets.outcome }}
-          OUTCOME_HOST_DRIVER: ${{ steps.host_driver.outcome }}
-          OUTCOME_FRONTEND_HOST: ${{ steps.frontend_host.outcome }}
+          CAPABILITY_OUTCOME: ${{ steps.capability.outcome }}
         run: |
-          set -euo pipefail
           export PATH="$(brew --prefix openssl@3)/bin:$PATH"
-          python3 device/ci/gpu-userland/collect.py --host-only --unixnu unixnu --device device --logs "$RUNNER_TEMP/logs" --out "$RUNNER_TEMP/out" --sealed "$RUNNER_TEMP/sealed" > "$RUNNER_TEMP/collect.log" 2>&1
-      - name: Upload only the CMS encrypted artifact
+          python3 - <<'PY'
+          import importlib.util,json,os,pathlib
+          spec=importlib.util.spec_from_file_location('sealed', 'ci/xnu/artifacts.py')
+          module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+          logs=pathlib.Path(os.environ['RUNNER_TEMP'])/'logs';logs.mkdir(exist_ok=True)
+          state={'scope':'ARM macOS Vulkan argument-buffer capability only','outcome':os.environ.get('CAPABILITY_OUTCOME'),'frontend_pixel_tested':False,'phone_operations':False}
+          (logs/'capability-state.json').write_text(json.dumps(state,indent=2)+'\n')
+          names=[p.relative_to(logs).as_posix() for p in sorted(logs.rglob('*')) if p.is_file() and not p.is_symlink()]
+          module.seal(logs,names,pathlib.Path('ci/xnu/artifact-recipient.pem'),pathlib.Path(os.environ['RUNNER_TEMP'])/'sealed')
+          PY
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: nezha-gpu27-metal-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
