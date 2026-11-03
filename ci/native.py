@@ -109,6 +109,9 @@ def prepare(framework, work):
     config = {'device': str(work / 'device'), 'out': str(work / 'out'), 'jobs': jobs}
     text = '[build]\n' + ''.join(k + ' = ' + json.dumps(v) + '\n' for k, v in config.items())
     (work / 'build.toml').write_text(text)
+    run([sys.executable, work / 'device/scripts/check-adreno840-integration.py',
+         '--framework', framework, '--device', work / 'device',
+         '--out', work / 'integration-source-qualified.json'])
     (work / 'source-report.json').write_text(json.dumps({
         'source_inputs': manifest, 'actual_framework_base': run(['git', 'rev-parse', 'HEAD'], cwd=framework),
         'actual_framework_tree': tree, 'source_tree_verified': True, 'jobs': jobs,
@@ -186,7 +189,7 @@ def collect(framework, work, sealed):
         names.append(name)
 
     add(ROOT / 'inputs.json', 'inputs.json')
-    for name in ('source-report.json', 'compiler-report.json', 'authenticated-null.c',
+    for name in ('source-report.json', 'integration-source-qualified.json', 'compiler-report.json', 'authenticated-null.c',
                  'authenticated-null.o', 'authenticated-null.s'):
         add(work / name, name)
     for path in sorted((work / 'logs').glob('*.log')):
@@ -204,6 +207,9 @@ def collect(framework, work, sealed):
         tree = target / 'tree'
         for path in sorted((tree / 'build').glob('*/lib*.a')):
             add(path, 'archives/' + path.parent.name + '/' + path.name)
+        for path in sorted((tree / 'build/armcpu').glob('*')):
+            if path.is_file() and path.suffix in ('.json', '.log', '.o', '.asm'):
+                add(path, 'archives/armcpu/' + path.name)
         for path in sorted((tree / 'build/sheng-platform-power').glob('*')):
             if path.suffix in ('.json', '.log', '.o'):
                 add(path, 'archives/sheng-platform-power/' + path.name)

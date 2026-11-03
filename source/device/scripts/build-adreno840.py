@@ -38,6 +38,20 @@ def sha(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
+def final_link_providers():
+    # Use the existing final-link inventory before spending time compiling the
+    # GPU. A selected but not-yet-built archive is an ordering error, not an
+    # absent optional observer that may be silently replaced with NULL.
+    sys.path.insert(0, str(ROOT / 'scripts'))
+    spec = importlib.util.spec_from_file_location('actual_boot_progress', ROOT / 'scripts/build-boot-progress.py')
+    observer = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(observer)
+    providers = [p for p in observer.linked_inputs() if p != OUT / 'libAdreno840.a']
+    missing = [str(p) for p in providers if not p.is_file()]
+    require(not missing, 'actual final-link providers missing before A840: ' + ', '.join(missing))
+    return providers
+
+
 def object_layout(path):
     # Reuse build-adreno740-accelerator.py's layout-only adapter: Mach-O
     # relocatable objects have no fileoff-zero executable segment. Validate
@@ -98,6 +112,7 @@ def main():
     global TRACE_ID
     require(ARCH == 'arm64e' and IOS_VERSION.startswith('27.'), 'iPhone27 A840 recipe requires arm64e/iOS27')
     OUT.mkdir(parents=True, exist_ok=True)
+    providers = final_link_providers()
     c = record(OBJ / 'bsd/DEVELOPMENT/bsd_init.o.json')
     cpp = record(OBJ / 'iokit/DEVELOPMENT/IOPlatformExpert.cpo.json')
     compiler = subprocess.check_output([cpp['arguments'][0], '--version'], text=True)
@@ -140,10 +155,6 @@ def main():
     # absent optional observer is a typed null, not a fabricated provider.
     sys.path.insert(0, str(ROOT / 'scripts'))
     import xnu_symbols
-    spec = importlib.util.spec_from_file_location('actual_boot_progress', ROOT / 'scripts/build-boot-progress.py')
-    observer = importlib.util.module_from_spec(spec); spec.loader.exec_module(observer)
-    providers = [p for p in observer.linked_inputs() if p != OUT / 'libAdreno840.a']
-    require(all(p.is_file() for p in providers), 'an actual final-link provider is missing')
     compiled = [Path(r['object']) for r in results]
     defined = xnu_symbols.kernel_names(ROOT) | xnu_symbols.defined_names(providers + compiled, True)
     weak = set()

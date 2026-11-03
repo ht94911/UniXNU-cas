@@ -1,7 +1,7 @@
-name: nezha iPhone27 A840 gpu27-005 on verified061 native kernel Intel host
+name: nezha iPhone27 A840 gpu27-006 verified064b CPU and ordered HID providers
 on:
   push:
-    branches: [codex/ios27-gpu27-005-20261103]
+    branches: [codex/ios27-gpu27-006-20261103]
   workflow_dispatch:
 permissions:
   contents: read

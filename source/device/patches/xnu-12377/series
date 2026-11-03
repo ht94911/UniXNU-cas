@@ -15,3 +15,6 @@ zzzzz-nezha-owner-data-ready.patch
 
 # Optional A840 worker after actual IOKitBSDInit.
 zzzzzz-nezha-adreno840-start.patch
+
+# Verified064b: real self-IPI owns signal enablement; preserve XNU assertions.
+zzzzzz-nezha-sigp-startup-order.patch
