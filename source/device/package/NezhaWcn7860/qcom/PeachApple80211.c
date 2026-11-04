@@ -290,11 +290,8 @@ static int set(const AppleRequest *r)
         if (r->length < sizeof(power)) return EINVAL;
         int err = copyin(r->data, power, sizeof(power));
         if (err) return err;
-        PeachNetInfo info; peach_net_info(&info);
-        /* Idempotent power-on only. Do not acknowledge power-off or
-         * restart before hardware teardown/drain has been implemented. */
-        return power[0] == 1 && power[1] == 1 && power[2] == 1 && info.powered &&
-            info.state != PeachNetFailed ? 0 : EOPNOTSUPP;
+        if (power[0] != 1 || power[1] != 1 || power[2] > 1) return EINVAL;
+        return peach_net_power(power[2]);
     }
     return EOPNOTSUPP;
 }

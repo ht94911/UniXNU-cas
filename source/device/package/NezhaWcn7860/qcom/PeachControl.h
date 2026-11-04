@@ -5,9 +5,9 @@
 #define PEACH_CONTROL_NAME "org.unixnu.nezha.wifi"
 #define PEACH_CONTROL_VERSION 1u
 #define PEACH_CONTROL_BSS 32u
-enum { PeachControlStatus = 1, PeachControlJoin, PeachControlScan, PeachControlLeave };
+enum { PeachControlStatus = 1, PeachControlJoin, PeachControlScan, PeachControlLeave, PeachControlPower };
 enum { PeachNetStarting, PeachNetReady, PeachNetScanning, PeachNetAssociating,
-       PeachNetHandshake, PeachNetOnline, PeachNetFailed, PeachNetRecovering };
+       PeachNetHandshake, PeachNetOnline, PeachNetFailed, PeachNetRecovering, PeachNetOff };
 typedef struct {
     uint32_t frequency, ssid_bytes, privacy, reserved;
     int32_t rssi;

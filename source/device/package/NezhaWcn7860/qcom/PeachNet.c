@@ -31,7 +31,7 @@ static PeachWmiBss net_bss[PEACH_WMI_BSS_ENTRIES];
 static PeachWmiScanChannel net_channels[PEACH_WMI_SCAN_CHANNELS];
 static unsigned net_channel_count, net_join_pending, net_scan_pending, net_leave_pending;
 static PeachNetRequest net_request;
-static unsigned net_join_layout;
+static unsigned net_join_layout, net_power_requested = 1;
 static uint64_t net_next_request, net_join_request, net_active_join;
 static mbuf_t net_queue[TX_QUEUE], net_pending;
 static unsigned net_head, net_count, net_online, net_data_blocked;
@@ -45,8 +45,9 @@ int peach_net_request(const PeachNetRequest *request)
 {
     if (!request) return EINVAL;
     unsigned opt = request->action;
-    if (opt != PeachControlJoin && opt != PeachControlScan && opt != PeachControlLeave)
+    if (opt != PeachControlJoin && opt != PeachControlScan && opt != PeachControlLeave && opt != PeachControlPower)
         return ENOPROTOOPT;
+    if (opt == PeachControlPower && request->radio_power > 1) return EINVAL;
     if (opt == PeachControlJoin) {
         const PeachControlJoinData *j = &request->join;
         if (j->version != PEACH_CONTROL_VERSION || j->security > PeachStationWpa2Psk ||
@@ -60,12 +61,15 @@ int peach_net_request(const PeachNetRequest *request)
     }
     lck_mtx_lock(&net_lock);
     unsigned finishing_leave = opt == PeachControlJoin && net_leave_pending;
-    unsigned cancelling_join = opt == PeachControlLeave && net_join_pending;
+    unsigned cancelling_join = (opt == PeachControlLeave ||
+        (opt == PeachControlPower && !request->radio_power)) && net_join_pending;
     unsigned during_scan = opt != PeachControlScan && net_scan_pending;
     unsigned replace = (finishing_leave && net_request.action == PeachControlLeave) ||
         (cancelling_join && net_request.action == PeachControlJoin);
     int err = net_snapshot.state == PeachNetFailed ? ENXIO :
+        (!net_power_requested && opt != PeachControlPower && opt != PeachControlLeave) ? ENETDOWN :
         ((net_snapshot.state != PeachNetReady && net_snapshot.state != PeachNetOnline &&
+          !(net_snapshot.state == PeachNetOff && opt == PeachControlPower) &&
           !finishing_leave && !cancelling_join && !during_scan) ||
          (net_request.action && !replace) || (net_scan_pending && !during_scan)) ? EBUSY : 0;
     unsigned cancelled = 0, cancelled_layout = net_join_layout;
@@ -75,6 +79,7 @@ int peach_net_request(const PeachNetRequest *request)
         net_request = *request;
         net_request.request_id = ++net_next_request;
         if (opt != PeachControlScan) net_data_blocked = 1;
+        if (opt == PeachControlPower) net_power_requested = request->radio_power;
         if (cancelling_join) { net_join_pending = 0; net_info_data.result = 2; cancelled = 1; }
         if (opt == PeachControlLeave) net_leave_pending = 1;
         if (opt == PeachControlJoin) {
@@ -94,6 +99,10 @@ int peach_net_request(const PeachNetRequest *request)
 static errno_t control_set(kern_ctl_ref c, u_int32_t u, void *p, int opt, void *data, size_t len)
 {
     (void)c; (void)u; (void)p;
+    if (opt == PeachControlPower) {
+        if (!data || len != sizeof(uint32_t)) return EINVAL;
+        uint32_t enabled; memcpy(&enabled, data, sizeof(enabled)); return peach_net_power(enabled);
+    }
     if (((opt == PeachControlScan || opt == PeachControlLeave) && len) ||
         (opt == PeachControlJoin && (!data || len != sizeof(PeachControlJoinData)))) return EINVAL;
     PeachNetRequest request = {0}; request.action = opt;
@@ -111,6 +120,25 @@ static errno_t control_get(kern_ctl_ref c, u_int32_t u, void *p, int opt, void *
     if (*len < sizeof(net_snapshot)) { *len = sizeof(net_snapshot); return EMSGSIZE; }
     lck_mtx_lock(&net_lock); memcpy(data, &net_snapshot, sizeof(net_snapshot)); lck_mtx_unlock(&net_lock);
     *len = sizeof(net_snapshot); return 0;
+}
+int peach_net_power(unsigned enabled)
+{
+    if (enabled > 1) return EINVAL;
+    lck_mtx_lock(&net_lock);
+    unsigned failed = net_snapshot.state == PeachNetFailed;
+    unsigned same = net_power_requested == enabled &&
+        (net_info_data.powered == enabled || (net_request.action == PeachControlPower && net_request.radio_power == enabled));
+    lck_mtx_unlock(&net_lock);
+    if (failed) return ENXIO;
+    if (same) return 0;
+    PeachNetRequest request = {.action = PeachControlPower, .radio_power = enabled};
+    return peach_net_request(&request);
+}
+void peach_net_power_complete(unsigned enabled, int error)
+{
+    lck_mtx_lock(&net_lock); net_info_data.powered = !error && enabled; lck_mtx_unlock(&net_lock);
+    peach_net_status(NULL, error ? PeachNetFailed : enabled ? PeachNetReady : PeachNetOff, error);
+    peach_apple80211_event(PeachApplePowerChanged);
 }
 int peach_net_init(void)
 {
@@ -146,7 +174,7 @@ void peach_net_status(const PeachWmi *w, unsigned state, int error)
      * request and completion must survive the old connection's teardown. */
     if (state == PeachNetReady || state == PeachNetOnline) {
         if (net_request.action == PeachControlJoin) state = PeachNetAssociating;
-        else if (net_request.action == PeachControlLeave) state = PeachNetRecovering;
+        else if (net_request.action == PeachControlLeave || net_request.action == PeachControlPower) state = PeachNetRecovering;
     }
     if (state == PeachNetReady || state == PeachNetAssociating ||
         state == PeachNetOnline || state == PeachNetFailed ||
@@ -154,12 +182,12 @@ void peach_net_status(const PeachWmi *w, unsigned state, int error)
         net_leave_pending = 0;
     unsigned scan_done = (net_scan_pending &&
         (state == PeachNetReady || state == PeachNetOnline || state == PeachNetAssociating ||
-         state == PeachNetFailed || state == PeachNetRecovering)) ||
+         state == PeachNetFailed || state == PeachNetOff || state == PeachNetRecovering)) ||
         (net_snapshot.state == PeachNetRecovering && w && w->scan_finished && !w->scan_active &&
          (state == PeachNetReady || state == PeachNetOnline || state == PeachNetAssociating));
     if (scan_done) net_scan_pending = 0;
-    unsigned join_done = net_join_pending && net_active_join == net_join_request &&
-        (state == PeachNetOnline || state == PeachNetReady || state == PeachNetFailed || state == PeachNetRecovering);
+    unsigned join_done = net_join_pending && (net_active_join == net_join_request || state == PeachNetFailed) &&
+        (state == PeachNetOnline || state == PeachNetReady || state == PeachNetFailed || state == PeachNetOff || state == PeachNetRecovering);
     net_snapshot.state = state; net_snapshot.error = error;
     if (state == PeachNetRecovering) net_snapshot.count = 0;
     if (join_done) {
@@ -188,7 +216,7 @@ void peach_net_status(const PeachWmi *w, unsigned state, int error)
     unsigned char bssid[6]; memcpy(bssid, net_info_data.current.bssid, 6);
     lck_mtx_unlock(&net_lock);
     if (state == PeachNetOnline) peach_net_link(1);
-    else if (state == PeachNetReady || state == PeachNetHandshake || state == PeachNetFailed ||
+    else if (state == PeachNetReady || state == PeachNetOff || state == PeachNetHandshake || state == PeachNetFailed ||
              state == PeachNetRecovering) peach_net_link(0);
     if (scan_done) peach_apple80211_event(PeachAppleScanDone);
     if (join_done) peach_apple80211_join_done(layout, result, bssid, request_id);

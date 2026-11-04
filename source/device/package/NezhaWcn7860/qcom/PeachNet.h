@@ -4,7 +4,7 @@
 #include "PeachControl.h"
 #include "PeachStation.h"
 typedef struct {
-    unsigned action, apple_layout;
+    unsigned action, apple_layout, radio_power;
     uint64_t request_id;
     PeachControlJoinData join;
     unsigned passphrase_bytes;
@@ -17,6 +17,8 @@ typedef struct {
     PeachWmiBss current;
 } PeachNetInfo;
 int peach_net_init(void);
+int peach_net_power(unsigned enabled);
+void peach_net_power_complete(unsigned enabled, int error);
 int peach_net_request(const PeachNetRequest *);
 int peach_net_take_request(PeachNetRequest *);
 void peach_net_status(const PeachWmi *, unsigned state, int error);

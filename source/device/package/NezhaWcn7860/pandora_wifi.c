@@ -104,7 +104,7 @@ static vm_offset_t wifi_owned_dma[WIFI_DMA_ALLOCATIONS];
 #define WIFI_TABLE_BYTES 0x90000u
 #define WIFI_MSI_OFFSET 0x808000u
 static uint64_t wifi_arena_iova = WIFI_IOVA;
-static unsigned wifi_recoveries;
+static unsigned wifi_recoveries, wifi_radio_off;
 #define WIFI_TRY(expr) do { int err_ = (expr); if (err_) return err_; } while (0)
 static int wifi_dma_health(void);
 
@@ -1147,24 +1147,39 @@ wifi_boot_firmware(PeachMhiDma calibration)
     return 0;
 }
 
+static int wifi_disable_radio(void)
+{
+    /* Stop this endpoint's MSI and bus mastering before asserting its
+     * physical reset/enable lines. No DMA allocation is freed on this proof. */
+    WIFI_TRY(wifi_mask_interrupts());
+    WIFI_TRY(wifi_pin(W_PERST, 0, 0, 1, 0, 0));
+    WIFI_TRY(wifi_pin(W_EN, 0, 0, 1, 0, 0));
+    uint32_t reset, enable;
+    WIFI_TRY(wifi_rd(W_PERST, 4, &reset)); WIFI_TRY(wifi_rd(W_EN, 4, &enable));
+    if ((reset | enable) & 2) return EBUSY;
+    wifi_radio_off = 1; return 0;
+}
 static int wifi_reset_endpoint(void)
 {
-    /* This resets only the owned WLAN endpoint. It does not prove that an
-     * old DMA allocation may be released or reused after a firmware crash. */
-    uint32_t command, check;
-    WIFI_TRY(wifi_rd(W_CFG, 4, &command));
-    WIFI_TRY(wifi_wr(W_CFG, 4, command & 0xfffbu));
-    WIFI_TRY(wifi_rd(W_CFG, 4, &check));
-    if (check & 4) return EBUSY;
-    WIFI_TRY(wifi_pin(W_PERST, 0, 0, 1, 0, 0));
-    WIFI_TRY(wifi_rd(W_PERST, 4, &check));
-    if (check & 2) return EBUSY;
+    /* A prior successful radio-off leaves config space inaccessible. It has
+     * already disabled DMA; use only the always-on GPIOs until power is back. */
+    if (!wifi_radio_off) {
+        uint32_t command, check;
+        WIFI_TRY(wifi_rd(W_CFG, 4, &command));
+        WIFI_TRY(wifi_wr(W_CFG, 4, command & 0xfffbu));
+        WIFI_TRY(wifi_rd(W_CFG, 4, &check));
+        if (check & 4) return EBUSY;
+        WIFI_TRY(wifi_pin(W_PERST, 0, 0, 1, 0, 0));
+        WIFI_TRY(wifi_rd(W_PERST, 4, &check));
+        if (check & 2) return EBUSY;
+    }
     wifi_sleep(NULL, 100000);
     WIFI_TRY(wifi_power());
     WIFI_TRY(wifi_pcie_resources());
     WIFI_TRY(wifi_pcie_link());
     WIFI_TRY(wifi_dma_health());
     wifi_target_window = 0xffffffffu;
+    wifi_radio_off = 0;
     return 0;
 }
 
@@ -1315,6 +1330,21 @@ static int wifi_connection_request(void)
 {
     if (!peach_net_take_request(&wifi_request)) return 0;
     int err = 0;
+    if (wifi_request.action == PeachControlPower) {
+        if (!wifi_request.radio_power) {
+            peach_net_leave(); peach_rsn_clear(&wifi_rsn);
+            if (!wifi_radio_off) err = wifi_disable_radio();
+            wifi_net_state = err ? PeachNetFailed : PeachNetOff;
+            wifi_step = "WLAN_EN/PERST asserted; radio off, DMA retained";
+        } else if (wifi_radio_off) {
+            if (wifi_recoveries >= WIFI_RECOVERIES) err = ENOSPC;
+            else { ++wifi_recoveries; err = wifi_restart_mission(wifi_wlfw.calibration); }
+            wifi_net_state = err ? PeachNetFailed : PeachNetReady;
+            if (!err) peach_net_status(&wifi_wmi, wifi_net_state, 0);
+        }
+        peach_net_power_complete(wifi_request.radio_power, err);
+        goto clear_request;
+    }
     if (wifi_request.action == PeachControlScan) {
         wifi_step = "requested passive scan";
         int err = peach_wmi_passive_scan(&wifi_wmi);
@@ -1529,6 +1559,11 @@ wifi_thread(void *unused, wait_result_t result)
         nezha_wifi_diagnostic_publish(wifi_phase, wifi_net_state, 0,
             wifi_rx.received, wifi_tx.submitted, wifi_tx.dropped, wifi_tx.in_flight,
             wifi_bank, wifi_slot, wifi_step);
+        if (wifi_radio_off) {
+            err = wifi_connection_request();
+            if (!err) wifi_sleep(NULL, 100000);
+            continue;
+        }
         err = peach_htc_poll(&wifi_htc);
         if (!err) err = wifi_station.error;
         unsigned rsn_phase = wifi_rsn.phase;
@@ -1560,7 +1595,8 @@ wifi_thread(void *unused, wait_result_t result)
         wifi_rx.received, wifi_tx.submitted, wifi_tx.dropped, wifi_tx.in_flight,
         wifi_bank, wifi_slot, wifi_step);
     peach_net_stop(err); peach_rsn_clear(&wifi_rsn);
-    wifi_mhi_failure(); wifi_contain();
+    if (!wifi_radio_off) wifi_mhi_failure();
+    wifi_contain();
     printf("NEZHA WIFI: phase %u stopped in %s: %d; data link down\n",
         wifi_phase, wifi_step, err);
     thread_terminate(current_thread());

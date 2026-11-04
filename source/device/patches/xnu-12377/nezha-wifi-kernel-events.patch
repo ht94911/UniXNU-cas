@@ -5,7 +5,7 @@
  #endif /* SKYWALK && XNU_TARGET_OS_OSX */
  
 -	/* Verify the message is small enough to fit in one mbuf w/o cluster */
-+	/* iPadOS 27 association events carry a 540-byte result structure. */
++	/* iPhone iOS 27 association events carry a 540-byte result structure. */
 +	u_int32_t maximum = event_msg->vendor_code == KEV_VENDOR_APPLE &&
 +	    event_msg->kev_class == KEV_IEEE80211_CLASS ? MCLBYTES : MLEN;
  	total_size = KEV_MSG_HEADER_SIZE;

@@ -229,6 +229,10 @@ def collect(framework, work, sealed):
                 if path.suffix in ('.log', '.json', '.o'):
                     add(path, 'usb-attempts/' + attempt.parent.name + '/' + path.name)
         objects = tree / 'build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837'
+        for pattern in ('IOPlatformExpert.cpo*', 'uipc_mbuf.o*'):
+            for path in sorted(objects.glob('**/' + pattern)):
+                if path.suffix in ('.o', '.cpo', '.json'):
+                    add(path, 'objects/' + str(path.relative_to(objects)))
         for name in ('link.filelist', 'all-alias.exp'):
             add(objects / name, 'objects/' + name)
         add(tree / 'build/xnu/owner-data-volume.h', 'build/owner-data-volume.h')

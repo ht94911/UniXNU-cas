@@ -57,6 +57,10 @@ static int capture_snapshot(void *cookie,uint8_t *rgb,size_t capacity,uint32_t *
 }
 void nezha27_usb_control_prepare(void) {
  if(__atomic_exchange_n(&prepared,1,__ATOMIC_ACQ_REL))return;
+ // Optional network worker starts at this existing board hook. Keep the
+ // independently pinned XNU/USB consumer sources byte-identical.
+ extern void nezha_wifi_init(void);
+ nezha_wifi_init();
  nezha27_usb_snapshot_registered=qcom_usb_debug_register_screenshot(capture_snapshot,NULL);
  unsigned ctl=0,opt=0;
  if(!PE_parse_boot_argn("qcom-usb-ctl",&ctl,sizeof(ctl))||ctl!=1||
