@@ -1,7 +1,7 @@
-name: nezha iPhone27 A840 on accepted078 desktop copy - native010
+name: nezha iPhone27 A840 diagnostic accelerator on078 - native011
 on:
   push:
-    branches: [codex/ios27-gpu27-main078-010-20261104]
+    branches: [codex/ios27-gpu27-main078-011-20261105]
   workflow_dispatch:
 permissions:
   contents: read

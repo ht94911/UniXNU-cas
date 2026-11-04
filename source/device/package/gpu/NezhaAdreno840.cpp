@@ -4,6 +4,9 @@
  * One attempt, one ring, CPU table switching, no implicit reset or scanout. */
 #include "NezhaGpuPlatform.h"
 #include "NezhaGpuFirmware.h"
+// NEZHA_GPU_DIAGNOSTIC_PUBLICATION_BEGIN
+#include "NezhaGpuPublicationMode.h"
+// NEZHA_GPU_DIAGNOSTIC_PUBLICATION_END
 #include "NativeAdrenoClient.h"
 #include "NativeAdrenoCpInit.h"
 #include "NativeAdrenoGpuContext.h"
@@ -43,6 +46,9 @@ extern "C" bool native_adreno_gpu_rendering_active(void)
     return __atomic_load_n(&native_adreno840_metal,__ATOMIC_ACQUIRE)!=0;
 }
 namespace {
+// NEZHA_GPU_DIAGNOSTIC_PUBLICATION_BEGIN
+NezhaGpuPublicationMode publicationMode = NezhaGpuPublicationMode::Off;
+// NEZHA_GPU_DIAGNOSTIC_PUBLICATION_END
 NezhaGpuPlatform platform;
 NativeAdrenoRing ring;
 NativeAdrenoCpInit cp;
@@ -180,7 +186,16 @@ IOReturn publishMetal()
     service->setProperty("MetalPluginClassName","NativeAdrenoMetalDevice");
     service->setProperty("NativeSandboxGrantProcess","*");
     if(!service->attach(IOService::getPlatform())) {service->release();return kIOReturnNotAttached;}
+    // NEZHA_GPU_DIAGNOSTIC_PUBLICATION_BEGIN
+    // The maintained plugin's default diagnostic path starts its real GPU
+    // tests and returns nil to Metal discovery. Only published UI rendering
+    // selects GPU display fences; diagnostic work keeps CPU presentation.
+    if (nezhaGpuUsesDisplayFences(publicationMode)) {
+    // NEZHA_GPU_DIAGNOSTIC_PUBLICATION_END
     __atomic_store_n(&native_adreno840_metal,1u,__ATOMIC_RELEASE);
+    // NEZHA_GPU_DIAGNOSTIC_PUBLICATION_BEGIN
+    }
+    // NEZHA_GPU_DIAGNOSTIC_PUBLICATION_END
     service->registerService();
     return kIOReturnSuccess;
 }
@@ -240,6 +255,13 @@ IOReturn bringUp()
     status=native_adreno_publish(vm,&submit,&ring,&clock,&timer,&info,context->inputBits(),report.output_bits);
     if(checkpoint(13,status,"NativeAdreno user client"))return status;
     int metal=0;PE_parse_boot_argn("nezha-gpu-metal",&metal,sizeof metal);
+    // NEZHA_GPU_DIAGNOSTIC_PUBLICATION_BEGIN
+    publicationMode = nezhaGpuPublicationMode(metal);
+    if (publicationMode == NezhaGpuPublicationMode::Invalid)
+        return checkpoint(14,kIOReturnBadArgument,"unsupported accelerator publication mode");
+    if (publicationMode == NezhaGpuPublicationMode::Diagnostic)
+        IOLog("NEZHA A840: diagnostic accelerator discovery; CPU presentation retained; no Metal device publication claim\n");
+    // NEZHA_GPU_DIAGNOSTIC_PUBLICATION_END
     if(metal && (status=checkpoint(14,publishMetal(),"27 accelerator publication")))return status;
     return checkpoint(15,kIOReturnSuccess,"ready; Metal/rendering still require independent tests");
 }

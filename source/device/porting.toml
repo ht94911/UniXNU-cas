@@ -286,3 +286,16 @@ completion = ["Original service publishes touchscreen primary13:4 and actual UI 
 limits = ["Speculative computer candidate.077 mature service readback and actual UI acceptance are pending"]
 next_action = ["Build and inspect native while observing077.Only deploy if service classification mismatch is confirmed"]
 evidence = []
+[[area]]
+id = "ios27-gpu-diagnostic007"
+status = "planned"
+components = ["Adreno840", "GopFramebuffer"]
+paths = ["package/gpu/NezhaAdreno840.cpp", "package/gpu/NezhaGpuPublicationMode.h"]
+inputs = ["GPU006 actual CP64 guards fence3 and human-confirmed desktop", "Original078 input root trust and independent4GiB RAM seed", "Target-built iPhone27 Metal002 plugin and Turnip with separately verified signatures"]
+configuration = ["nezha-gpu-metal=2 enables diagnostic discovery but not GPU display fences", "Existing plugin diagnostic path returns nil and runs real GPU tests on a worker", "No publish marker and no daemon;addon is installed only into RAM Data", "All fixed reset values remain zero"]
+procedure = ["Qualify actual Apple code and strict closed fileset", "Retain POST-safe compact layout,full original078 runtime checks and owner trust verification", "Perform protected fixed-candidate temporary boot and read actual shader pixels independently of desktop"]
+findings = ["006 restored startup past the keystore/storage lock wait and preserved real CP completion", "Settings hangs on both original078 and006;human deferred that separate problem", "77 prelink host tests and actual006 memory equivalence passed;not a compact runtime pass"]
+completion = ["Real GPU shader and Metal output readback passes with correct fences and protected Android return"]
+limits = ["New diagnostic source not yet built or hardware-qualified", "Complete Metal UI and main promotion remain unaccepted"]
+next_action = ["Build Native011 then qualify the complete GPU007 addon candidate"]
+evidence = []
