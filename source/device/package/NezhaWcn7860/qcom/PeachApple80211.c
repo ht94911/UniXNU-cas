@@ -1,7 +1,8 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
-/* iOS27 Apple80211 ioctl/event ABI adapted from the checked24A446
- * UniXNU-sheng WifiNet contract. Retain the original Peach hardware API. Only implemented Peach operations/capabilities are
- * exposed. All mutable protocol state stays on pandora_wifi's worker. */
+/* iOS27 Apple80211 ioctl/event bridge starts from UniXNU-sheng WifiNet,
+ * with all selected wire sizes checked against original iPhone24A446 IO80211.
+ * Retain Peach hardware/protocol APIs and expose only implemented capabilities.
+ * All mutable protocol state stays on pandora_wifi's worker. */
 #include "PeachApple80211.h"
 #include "PeachNet.h"
 #include "PeachAppleWire.h"
@@ -49,8 +50,10 @@ typedef struct {
     uint32_t age_ms;
     uint8_t flags, unused2;
     uint16_t ie_bytes;
-    uint8_t ies[1024];
+    uint8_t ies[2048];
+    uint8_t extension[92]; /* opaque scan selector + unsupported newer metadata */
 } AppleScanResult;
+enum { AppleScanLegacyBytes = 5456, AppleResultLegacyBytes = 1164 };
 typedef struct {
     uint32_t version, bss_type;
     uint8_t bssid[6], unused0[2];
@@ -63,7 +66,9 @@ typedef struct {
     uint64_t flags;
     uint32_t unused2, name_count;
     uint8_t names[10][56];
-    uint32_t short_ssid, unused3;
+    uint32_t short_ssid;
+    char scan_identifier[64];
+    uint8_t extension[12];
 } AppleScanRequest;
 typedef struct {
     uint8_t down, unused0[3];
@@ -77,8 +82,10 @@ _Static_assert(sizeof(AppleRequest) == 40 && offsetof(AppleRequest, data) == 32,
                "Apple80211 ioctl envelope");
 _Static_assert(sizeof(AppleChannels) == 4824 && sizeof(AppleChannelsInfo) == 10016 &&
                offsetof(AppleChannelsInfo, flags) == 0x12d0, "Apple80211 channels");
-_Static_assert(sizeof(AppleScanRequest) == 5456 && sizeof(AppleScanResult) == 1164 &&
-               offsetof(AppleScanResult, ies) == 0x8c, "Apple80211 scan ABI");
+_Static_assert(sizeof(AppleScanRequest) == 5528 && sizeof(AppleScanResult) == 2280 &&
+               offsetof(AppleScanRequest, scan_identifier) == 0x154c &&
+               offsetof(AppleScanResult, ies) == 0x8c &&
+               offsetof(AppleScanResult, extension) == 0x88c, "24A446 scan ABI");
 _Static_assert(sizeof(AppleLink) == 32, "Apple80211 link ABI");
 static LCK_GRP_DECLARE(apple_group, "nezha-apple80211");
 static LCK_MTX_DECLARE(apple_lock, &apple_group);
@@ -115,19 +122,24 @@ static AppleChannel bss_channel(unsigned frequency)
 }
 static int network(AppleRequest *r, const PeachWmiBss *b)
 {
+    /* Accept only observed layouts, never a partial structure or a guessed
+     * future length. The old public Peach layout remains explicitly separate. */
+    if (r->length != sizeof(AppleScanResult) && r->length != AppleResultLegacyBytes) return EINVAL;
+    if (b->ssid_bytes > sizeof(b->ssid) || b->ie_bytes > sizeof(b->ies)) return EINVAL;
     AppleScanResult *out = kalloc_data(sizeof(*out), Z_WAITOK | Z_ZERO);
     if (!out) return ENOMEM;
-    unsigned room = sizeof(out->ies);
-    int err = r->length < offsetof(AppleScanResult, ies) ? EINVAL :
-        copyin(r->data, out, offsetof(AppleScanResult, ies));
+    unsigned room = r->length == AppleResultLegacyBytes ? 1024 : sizeof(out->ies);
+    int err = copyin(r->data, out, offsetof(AppleScanResult, ies));
     if (err) { kfree_data(out, sizeof(*out)); return err; }
     if (out->ie_bytes < room) room = out->ie_bytes;
+    /* Never silently strip RSN/security IEs and advance the scan cursor. */
+    if (b->ie_bytes > room) { kfree_data(out, sizeof(*out)); return EMSGSIZE; }
     memset(out, 0, sizeof(*out));
     out->version = 1; out->channel = bss_channel(b->frequency);
     out->rssi = b->rssi; out->beacon_interval = b->beacon_interval; out->capability = b->capability;
     memcpy(out->bssid, b->bssid, 6); out->ssid_bytes = b->ssid_bytes;
     memcpy(out->ssid, b->ssid, b->ssid_bytes);
-    out->ie_bytes = b->ie_bytes <= room ? b->ie_bytes : 0;
+    out->ie_bytes = b->ie_bytes;
     memcpy(out->ies, b->ies, out->ie_bytes);
     uint64_t ns;
     absolutetime_to_nanoseconds(mach_absolute_time(), &ns);
@@ -142,21 +154,21 @@ static int network(AppleRequest *r, const PeachWmiBss *b)
             }
         off += n + 2;
     }
-    err = give(r, out, sizeof(*out)); kfree_data(out, sizeof(*out)); return err;
+    err = give(r, out, r->length); kfree_data(out, sizeof(*out)); return err;
 }
 static int get(AppleRequest *r)
 {
     PeachNetInfo info; peach_net_info(&info);
     switch (r->type) {
     case 43: case 44: {
-        static const char name[256] = "UniXNU Nezha WCN7860 Peach v2";
-        return give(r, name, sizeof(name));
+        static const char name[384] = "UniXNU Nezha WCN7860 Peach v2";
+        return give(r, name, r->length == 256 ? 256 : sizeof(name));
     }
     case 12: {
         /* AES, AES-CCM, short preamble/slot, WPA2 and WME. No HT, power-save
          * or PMF capability until their actual protocol paths exist. */
-        const uint8_t capabilities[12] = {0x0c, 0x46, 0x02};
-        return give(r, capabilities, sizeof(capabilities));
+        const uint8_t capabilities[23] = {0x0c, 0x46, 0x02};
+        return give(r, capabilities, r->length == 12 ? 12 : sizeof(capabilities));
     }
     case 15: return answer_value(r, 1); /* station */
     case 19: {
@@ -274,12 +286,12 @@ static int set(const AppleRequest *r)
         return peach_net_request(&request);
     }
     if (r->type == 10) {
-        if (r->length != sizeof(AppleScanRequest)) return EINVAL;
-        AppleScanRequest *a = kalloc_data(sizeof(*a), Z_WAITOK);
+        if (r->length != sizeof(AppleScanRequest) && r->length != AppleScanLegacyBytes) return EINVAL;
+        AppleScanRequest *a = kalloc_data(sizeof(*a), Z_WAITOK | Z_ZERO);
         if (!a) return ENOMEM;
-        int err = copyin(r->data, a, sizeof(*a));
+        int err = copyin(r->data, a, r->length);
         if (!err && (a->version != 1 || a->ssid_bytes > 32 || a->channel_count > 400 ||
-            a->name_count > 10 || (a->scan_type != 1 && a->scan_type != 2))) err = EINVAL;
+            a->name_count > 10 || (a->scan_type < 1 || a->scan_type > 3))) err = EINVAL;
         /* Backend performs a full passive scan. It never transmits probes
          * or overrides the firmware's board-specific regulatory rules. */
         if (!err) { PeachNetRequest request = { .action = PeachControlScan }; err = peach_net_request(&request); }

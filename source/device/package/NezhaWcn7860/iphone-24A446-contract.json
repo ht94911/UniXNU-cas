@@ -12,9 +12,21 @@
     "validity_offset": 536,
     "authentication_lower": 1,
     "WPA2_personal_upper": 16,
-    "key_version": 1
+    "key_version": 1,
+    "scan_request_bytes": 5528,
+    "scan_result_bytes": 2280,
+    "scan_result_IE_capacity": 2048,
+    "scan_result_IE_offset": 140,
+    "scan_request_identifier_offset": 5452,
+    "scan_result_extension_offset": 2188,
+    "power_bytes": 24,
+    "card_capability_query_bytes": 23,
+    "identity_query_bytes": 384
   },
   "raw_private_evidence": "../private/donor-network",
   "native_cpp_networking_abi_used": false,
-  "hardware_tested": false
+  "hardware_tested": false,
+  "scan_result_backend_IE_limit": 1024,
+  "scan_raw_evidence": "private/donor-network/scan-power-contract.json",
+  "source_reference_sizes_do_not_define_iPhone_donor_ABI": true
 }

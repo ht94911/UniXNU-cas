@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "40c429dbcfa7d6f4c240b5424c2144ca1b610a9e",
+  "device_revision": "abe81f69a69e42ee1dd4b77a7d0aa50d718cecde",
   "soc_revision": "6ee1ee7e114a13c690f209698d3a9fc28306e46c",
   "xcode": "26.6",
   "files": {
@@ -51,13 +51,13 @@
     "source/device/package/NezhaWcn7860/adreno/ArmSmmu4KStreams.h": "1cfca0b4e3acba420cc829098b52d61c4905ec64d2aa57883dedae9dfb212969",
     "source/device/package/NezhaWcn7860/adreno/LICENSE.ArmSmmu4K": "7a730b868c1ff986cdfc210a7b140ab4e0a31bf7db1d15db901427973efaa70f",
     "source/device/package/NezhaWcn7860/adreno/upstream.json": "00a47aa0f3d63dcc10f8dc6ac4292936bba93c1e2a659d128d003065a8dd863f",
-    "source/device/package/NezhaWcn7860/iphone-24A446-contract.json": "1bae1fda717ddbb3c192b0472988d5035149166ca20e204bd69c69b431744c62",
+    "source/device/package/NezhaWcn7860/iphone-24A446-contract.json": "b3f4c7ad70ca0f85b23b8b8bcf4c1cbf622422eb65f405a63b681c660740ca86",
     "source/device/package/NezhaWcn7860/licenses/APSL-2.0.txt": "e5881019d8766c1e88a5fe1dbca4ba40c78011d41fcb18f6e9f50df60182685b",
     "source/device/package/NezhaWcn7860/licenses/GPL-2.0-only.txt": "aaf135472f81c5b4a0dca9367e5bb5e9750032b5bebe5442b36e4c0a47430df3",
     "source/device/package/NezhaWcn7860/licenses/MIT.txt": "f984c0a808afdeb2e050ceb47bc24d764156daa29b5dfde10fb9afec2f83f351",
     "source/device/package/NezhaWcn7860/pandora_wifi.c": "921fbee10cba089c21ac0dd9be3526b7bc1883706be5152b65957b87b49d522d",
     "source/device/package/NezhaWcn7860/qcom/NezhaPcieData.h": "b7ff65c41e77cdffeb9816c20cbf938ba203778c77f05a0eb8ec9bcb842130c6",
-    "source/device/package/NezhaWcn7860/qcom/PeachApple80211.c": "245195c9981b6f79c135c0ce1343b2e842f0215da1bb38b5099b3422b99896ac",
+    "source/device/package/NezhaWcn7860/qcom/PeachApple80211.c": "774c21571828d3b1519f910b3255196c68fd2dcd83ddae1cc335cfb7921a17a0",
     "source/device/package/NezhaWcn7860/qcom/PeachApple80211.h": "6dc785b22d4a5bf9fd898fa24ef855b52da6a6afa4bb49d0dd945e20f687007a",
     "source/device/package/NezhaWcn7860/qcom/PeachAppleWire.c": "924a5408a8c87ac673dd3d6ac2620b74db62bbebd652c51cf2f30f50a5e886c7",
     "source/device/package/NezhaWcn7860/qcom/PeachAppleWire.h": "611393e7975574795c6e561e03524c4a4acf110144d3a0fc80ff2e986ca4c0c0",
@@ -149,7 +149,7 @@
     "source/device/patches/xnu-12377/zzzzz-nezha-owner-data-ready.patch": "306414945401c128472d3b0acddd03c88bec57ec47d6988660173d0b432c3e4b",
     "source/device/patches/xnu-12377/zzzzzz-nezha-input-chain-trace.patch": "c4d05419e7ec3af0de619754bdb6c2deb69b74d714c2219e509360ebfe1b947e",
     "source/device/patches/xnu-12377/zzzzzz-nezha-sigp-startup-order.patch": "18275910b909d187e459c68f5d937cc09bc01923180141dc155aa7f4ff14aaf9",
-    "source/device/porting.toml": "11963e9c89bafede71d5fe7b5264c270575fbf4222877e893318c6a893869e12",
+    "source/device/porting.toml": "1bbc77542c2b3bc12d071e349c1d5fdd24c6c7e6365a544029389562bda0cdee",
     "source/device/scripts/backlight-iphone-24A446.json": "446eb5fe6440335bfe9fca75b32f7d815ddcafbb8a3c2d7f697c1e5c3f40f6cb",
     "source/device/scripts/build-boot-progress.py": "a210eb1f0443574eb1506932aa9e8181d5c73aecf99397d8cc731568bd3210ba",
     "source/device/scripts/build-gop-legacy-display-27.py": "b3d60414978387bb9c9903873f092b157e999626cdba27845e25b39b9e430ec8",
@@ -210,5 +210,5 @@
     "revision": "e55c8696764cfa03eec8628fad4afdf1f5bab51e",
     "old_objects_linked": false
   },
-  "qualification_iteration": "native004: XNU typed-memory adapter separated from BSD worker; actual 24A446 en0 naming contract; standard net_init_add hook independent of USB; QEMU-only lifecycle tests"
+  "qualification_iteration": "native005: original24A446 5528-byte scan requests,2280-byte full results and bounded ioctl semantics; typed memory/naming implementation unchanged from successful native004"
 }

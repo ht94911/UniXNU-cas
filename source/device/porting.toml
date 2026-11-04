@@ -10,7 +10,7 @@ summary = "Isolated real iPhone iOS27 desktop-first integration; Android and iPa
 [[area]]
 id = "configuration"
 status = "planned"
-components = ["ArmDTPlatform", "ArmCpu", "XnuPrelink", "QcomXnuUsbDebug"]
+components = ["ArmDTPlatform", "ArmCpu", "XnuPrelink", "QcomXnuUsbDebug", "AppleKeyStoreState"]
 paths = ["board.toml", "feeds.toml", "unixnu.lock", "configs/**", "porting.toml", ".gitattributes"]
 inputs = ["Format2 iPhone14,4 / d16ap / 27.0.1-24A446; isolated codex/ios27-integration."]
 configuration = ["board.toml and configs/nezha_ios27_defconfig select the current source-only step."]
@@ -66,7 +66,7 @@ evidence = []
 [[area]]
 id = "storage"
 status = "planned"
-components = []
+components = ["ShengUfs", "RamBlock", "VerifiedRoot", "VirtioMmioBlock"]
 paths = ["scripts/nezha-*root*", "scripts/nezha-storage*"]
 inputs = ["Only future /data/unixnu/ios27/{root,data,log,payload}.img; current ios17 mappings forbidden."]
 configuration = ["board.toml and configs/nezha_ios27_defconfig select the current source-only step."]
@@ -121,17 +121,17 @@ evidence = []
 
 [[area]]
 id = "network"
-status = "planned"
-components = []
-paths = ["scripts/dev/**"]
-inputs = ["Separate active Wi-Fi work owns the phone; no Wi-Fi code imported into this branch."]
-configuration = ["board.toml and configs/nezha_ios27_defconfig select the current source-only step."]
-procedure = ["Use ./unixnu with isolated local inputs/out, jobs=32; preserve existing Android/ios17 and active Wi-Fi workspace."]
-findings = ["Association/IP is not a prerequisite for this desktop milestone."]
-completion = ["Real iPhone iOS27 desktop/settings operable with protection verification; validate this area separately before promotion."]
-limits = ["No iOS27 device execution, donor ABI qualification or phone allocation is claimed."]
-next_action = ["Keep this work computer-only until a coordinated authorized phone window exists."]
-evidence = []
+status = "implemented"
+components = ["QcomXnuUsbDebug"]
+paths = ["package/NezhaWcn7860/**", "scripts/build-nezha27-wifi.py", "tools/*wifi27*", "tests/wifi27/**", "patches/xnu-12377/nezha-wifi-*.patch", "package/Nezha27Pmgr.cpp"]
+inputs = ["Public0452 WCN7860 e55c8696764cfa03eec8628fad4afdf1f5bab51e hardware/protocol source;no original objects or old pandora_files.", "Actual iPhone14,4/24A446 IO80211 and configd wire/naming contracts;source XNU12377.121.6 arm64e with Xcode26.6.", "Independent ArmSmmu4K83969cd8 namespace and bounded SM8850 RPMh provider;local private five-file firmware input differs from the author's firmware hash."]
+configuration = ["Standard Format2 board archive build-nezha27-wifi.py and actual BSD/OSFMK/IOKit compile records.", "nezha_wifi=1 requires xiaomi,nezha,real USB lease,input readiness and RAM-only policy;default off.", "nezha_wifi=2 is explicitly restricted to linux,dummy-virt for real kernel class/memory checks,with no radio or simulated network success.", "Firmware is delivered only through the existing authenticated RAM addon;SHA digests are injected locally through ADT,no persistent phone fallback."]
+procedure = ["Audit63 upstream files and mixed licenses,then compile every object for the actual target.", "Run production protocol/ring/RX/RSN/state/ioctl/SMMU/RPMh/firmware/diagnostic tests with explicit host dependencies,ASan and UBSan.", "Qualify native identities,imports,late classes and preserved CPU/input/display/USB;strictly prelink and observe actual QEMU lifecycle before the readiness report.", "Wait for explicit human GPU-main completion notice;then verify its identities and returned window,create a separate copy and integrate Wi-Fi before any phone test."]
+findings = ["The public driver is a usable hardware/protocol base,not a complete27 platform implementation;its author-only iOS16 network evidence is unavailable here.", "Actual24A446 uses5528B scans,2280B results with2048B IE capacity,656B associations,540B completion events and en0 registry-ID naming;reference source sizes alone are insufficient.", "Host tests reproduced and corrected old scan rejection,incomplete result initialization,terminal join completion and radio-off authorization;these are not radio acceptance.", "Wi-Fi apps SMMU15000000/SID1401 is distinct from GPU03da0000;other live app streams are preserved,but actual GPU coexistence remains untested."]
+completion = ["Real scan,association,WPA2 four-way/key confirmation,DHCP,DNS and system TCP/TLS/HTTP return traffic.", "Reconnect and at least two independent boots with simultaneous verified GPU rendering/network traffic,followed by all Android/root/17/six-file protection checks."]
+limits = ["Native004 Actions completed successfully for40c429d;sealed-file/object checks and actual strict prelink/QEMU are pending.The newer scan fix needs a separate native build.", "Open/WPA2-PSK CCMP128,passive2.4/5GHz and legacy20MHz single-stream only;no WPA3/6GHz/Wi-Fi7 claim.", "Peach retains1024B of beacon IEs and a single scan cursor;bounded DMA restart budget and same-slot rekey limits remain explicit.", "No phone operation,GPU tree edit,main package change,persistent27 Data/log creation or cross-chat message."]
+next_action = ["Finish actual native and QEMU computer qualification,then report the user-requested GPU-main waiting point without claiming real networking."]
+evidence = [{kind = "source", reference = "package/NezhaWcn7860/iphone-24A446-contract.json", result = "Original donor layout and identity findings;private disassembly retained only locally."}, {kind = "source", reference = "package/NezhaWcn7860/upstream.json", result = "Fixed public source checksums,license retention and old binary/installer exclusions."}]
 
 [[area]]
 id = "audio"
