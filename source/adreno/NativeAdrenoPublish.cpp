@@ -23,6 +23,11 @@
 #include "NativeAdrenoUserClient.h"
 #include "NativeAdrenoGpuContext.h"
 #include "NativeGpuTrace.inc"
+#include "NativeGpuTextStream.h"
+
+static NativeGpuTextStream gpuTextStream;
+static IOLock *gpuTextLock;
+extern "C" int proc_selfpid(void);
 
 extern "C" void proc_selfname(char *, int);
 extern "C" volatile uint32_t native_adreno_table_switches[8];
@@ -874,6 +879,9 @@ IOReturn AGXDeviceUserClient::externalMethod(uint32_t selector,IOExternalMethodA
         const IOReturn tunneled=run(header[1],reinterpret_cast<const uint8_t *>(arguments->structureInput)+8,
             arguments->structureInputSize-8,arguments->structureOutput,arguments->structureOutputSize);
         native_adreno_metal_diag.ext_status=uint32_t(tunneled);
+        if(native_gpu_trace_enabled() && tunneled && header[1]!=NativeAdrenoMethodSetMetadata)
+            IOLog("NEZHA GPU RPC: pid %d method %u status %#x input %u output %u\n",proc_selfpid(),header[1],
+                unsigned(tunneled),unsigned(arguments->structureInputSize-8),unsigned(arguments->structureOutputSize));
         return tunneled;
     }
     native_adreno_metal_diag.ext_selector=selector;
@@ -886,6 +894,8 @@ IOReturn AGXDeviceUserClient::externalMethod(uint32_t selector,IOExternalMethodA
     const IOReturn result=IOUserClient::externalMethod(selector,arguments,const_cast<IOExternalMethodDispatch *>(&table[selector-1]),
         target?target:this,reference);
     native_adreno_metal_diag.ext_status=uint32_t(result);
+    if(native_gpu_trace_enabled() && result && selector!=NativeAdrenoMethodSetMetadata)
+        IOLog("NEZHA GPU RPC: pid %d direct %u status %#x\n",proc_selfpid(),unsigned(selector),unsigned(result));
     return result;
 }
 /* limit > 0 caps the connections ever granted: a plugin that crashes its host process on every launch (the process respawns and
@@ -899,6 +909,17 @@ extern "C" IOReturn native_adreno_new_user_client(IOService *provider,task_t own
      * that a sandbox that admits neither selectors nor mapping, or a crash, still leaves a trace of how far it got. */
     if((type>>16)==NativeAdrenoPluginOpenType && (type&0xffff)) {
         const uint32_t value=type&0xffff,slot=native_adreno_metal_diag.marks_total&15;
+        if(native_gpu_trace_enabled() && value<0x7000)
+            IOLog("NEZHA GPU MARK: pid %d phase %#x\n",proc_selfpid(),value);
+        if(native_gpu_trace_enabled() && value>=0x7000 && value<0x8000 && gpuTextLock) {
+            NativeGpuTextStream::Message message;
+            IOLockLock(gpuTextLock);
+            const bool complete=gpuTextStream.accept(uint32_t(proc_selfpid()),value,message);
+            const uint32_t lost=gpuTextStream.dropped;
+            IOLockUnlock(gpuTextLock);
+            if(complete)IOLog("NEZHA GPU NOTE: pid %u channel %u truncated %u legacy %u dropped %u %s\n",
+                message.pid,message.channel,message.truncated,message.legacy,lost,message.text);
+        }
         /* Text stream into report2, one character per marker: 0x7fff starts a line, 0x70cc appends character cc. It needs no connection,
          * so the plugin's Turnip watchdog can report while Turnip itself holds its connection slot. Not counted as markers. */
         if(value>=0x8000) {
@@ -1165,6 +1186,28 @@ extern "C" bool native_adreno_fences(uint32_t *submitted,uint32_t *retired)
 {
     return native_adreno_fences_detail(submitted,retired,nullptr);
 }
+/* Ordinary CPU observer, independent of the GPU queue lock. These are sampled
+ * software counters/rows, not an atomic hardware snapshot. It performs no MMIO,
+ * reset, recovery or allocation; a hung GPU call still leaves its inflight ID.
+ */
+static void nativeAdrenoDiagnosticObserver(void *,wait_result_t)
+{
+    uint32_t hashes[48]={};
+    for(;;) {
+        IOSleep(2000);
+        auto &d=native_adreno_metal_diag;
+        IOLog("NEZHA GPU SNAP: sampled opens %u closes %u busy %u bad %u name_reads %u calls %u method %u status %#x inflight %u since %u marks %u table_status %#x\n",
+            d.opens,d.closes,d.busy,d.bad,d.name_reads,d.calls,d.last_selector,d.last_status,
+            d.inflight,d.inflight_since_calls,d.marks_total,native_adreno_table_switches[6]);
+        for(unsigned i=0;i<48;++i) {
+            char row[96];memcpy(row,native_adreno_metal_rows[i],sizeof(row));row[95]=0;
+            uint32_t hash=2166136261u;
+            for(unsigned j=0;j<95 && row[j];++j)hash=(hash^uint8_t(row[j]))*16777619u;
+            if(row[0] && hash!=hashes[i])IOLog("NEZHA GPU ROW: sampled %u %s\n",i,row);
+            hashes[i]=hash;
+        }
+    }
+}
 /* Publishes the service once. Everything passed in must outlive the system (the board probe keeps them in statics) and
  * the VM, submit object and ring must already be attached to the live GPU context. The core must not be open. */
 extern "C" IOReturn native_adreno_publish(NativeAdrenoVm *vm,NativeAdrenoSubmit *submit,NativeAdrenoRing *ring,
@@ -1173,6 +1216,7 @@ extern "C" IOReturn native_adreno_publish(NativeAdrenoVm *vm,NativeAdrenoSubmit 
 {
     if(g.published || !vm || !submit || !ring || !clock || !clock->now_us)return kIOReturnBadArgument;
     gpuTraceInit();
+    if(native_gpu_trace_enabled())gpuTextLock=IOLockAlloc();
     g.lock=IOLockAlloc();
     NativeAdrenoGpuPublished *service=new NativeAdrenoGpuPublished;
     if(!g.lock || !service || !service->init() || !service->attach(IOService::getPlatform())) {
@@ -1207,6 +1251,12 @@ extern "C" IOReturn native_adreno_publish(NativeAdrenoVm *vm,NativeAdrenoSubmit 
     {
         thread_t thread=nullptr;
         if(kernel_thread_start(nativeAdrenoHangcheck,nullptr,&thread)==KERN_SUCCESS)thread_deallocate(thread);
+    }
+    if(native_gpu_trace_enabled()) {
+        thread_t thread=nullptr;
+        const kern_return_t result=kernel_thread_start(nativeAdrenoDiagnosticObserver,nullptr,&thread);
+        if(result==KERN_SUCCESS)thread_deallocate(thread);
+        IOLog("NEZHA GPU DIAG: existing USB/console sink; text_lock %u observer %#x\n",gpuTextLock!=nullptr,unsigned(result));
     }
     service->setName("NativeAdrenoGpu");
     service->registerService();

@@ -1,7 +1,7 @@
-name: nezha iPhone27 A840 diagnostic accelerator on078 - native011
+name: nezha iPhone27 full GPU chain console diagnostics - native012
 on:
   push:
-    branches: [codex/ios27-gpu27-main078-011-20261105]
+    branches: [codex/ios27-gpu27-main078-012-20261105]
   workflow_dispatch:
 permissions:
   contents: read

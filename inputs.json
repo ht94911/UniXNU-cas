@@ -46,7 +46,7 @@
     "source/adreno/NativeAdrenoMemory.h": "8cf705d9896ce44e7fc976a52baff525a4a2b2935e9fb4421adf380bf69f24f4",
     "source/adreno/NativeAdrenoPreempt.cpp": "59336613d70291a3d16abd0c3a10025fc8dae5ba2796f76ce8e7c60234f328bb",
     "source/adreno/NativeAdrenoPreempt.h": "33b1804ba28d36d5a8aa3c67ec6476f737803e1864c049804bb6fcd3512d91b6",
-    "source/adreno/NativeAdrenoPublish.cpp": "a63badf1ff69c439719c3b6bfcf761107c028bb4b5218bcb93c65a4fbc14319f",
+    "source/adreno/NativeAdrenoPublish.cpp": "16764d70eef5397d546a91b445c44ad8c9ebee389dd40a348716b912c82304b1",
     "source/adreno/NativeAdrenoPwrup.h": "708830fae4f6a5cea765992d44135126d7a034a239adece94f094d862819e889",
     "source/adreno/NativeAdrenoPwrupRegs.h": "8067d9625e922173912eea09e6a504d9c1b31234d4656f8dd4148855882918e1",
     "source/adreno/NativeAdrenoRing.cpp": "fa43ae842bbc2b76cfdf4d595a0f05c02ea31081893dd262aea77ee9f695f501",
@@ -70,6 +70,7 @@
     "source/adreno/NativeAdrenoVmAlias.h": "35fe908bd80389a18e395eb3bfdd5a40cb2c133fe6634dbead8d68cf2822eeea",
     "source/adreno/NativeGpuLatency.h": "6d090da81c80bf23f0ea875dbf5fd41acb4072c93e9d223172165f95528cf709",
     "source/adreno/NativeGpuPerfCounters.h": "388abc2f0423606c770fa2f71c1942c5155abc22308ed0871fb482d7cb6b738a",
+    "source/adreno/NativeGpuTextStream.h": "59be0074aaf9b35eda089a0c8c6519894b42f8d9e2f3221fbec855854c4fe874",
     "source/adreno/NativeGpuThreadTargets.h": "547da33caf52a6e1de08e5c9b0991625cbda171a2b235a63ac01c2ab43e33457",
     "source/adreno/NativeGpuTrace.h": "0ea52f88d6a27e98a77e101f6ce222ddc009ac6b2dbba242ff29fd581927de33",
     "source/adreno/NativeGpuTrace.inc": "ef74e9fab68355b846d44f4d37954ae2642222e5a6b8dee070fc5c5e09b77595",
@@ -232,7 +233,7 @@
     "main_package_modified": false
   },
   "gpu": {
-    "common_revision": "42e954617e1e8b0e08f4c6075f5328340ee768e7",
+    "common_revision": "f98db84fda0d614218f3e4425bc95f7850b00311",
     "common_upstream": "1030485546ef7ebb9abbfb7c17fbca93cca40971",
     "metal_revision": "816022307852de7e1741ac05ae9111982318763f",
     "firmware_uploaded": false,
