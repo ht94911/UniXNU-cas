@@ -9,6 +9,11 @@
 #define NEZHA_WIFI_RDDM_BYTES 0x780000u
 /* Fixed normal-thread APIs. No physical address comes from USB or userspace. */
 unsigned nezha_wifi_mmio_access(uintptr_t, uint64_t *, unsigned, unsigned);
+uintptr_t nezha_wifi_map_device(uint64_t, size_t);
+uintptr_t nezha_wifi_allocate_pages(size_t, unsigned);
+uint64_t nezha_wifi_physical(uintptr_t);
+int nezha_wifi_make_uncached(uintptr_t, size_t);
+void nezha_wifi_clean_tables(uint64_t, size_t);
 int nezha_wifi_firmware_prepare(void);
 int nezha_wifi_firmware_pread(const char *, uint64_t, void *, size_t, uint64_t *);
 void nezha_wifi_domain_lock(void);

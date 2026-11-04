@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "e201003f68a5c4e28be5537db77fdbc3560ddf5b",
+  "device_revision": "40c429dbcfa7d6f4c240b5424c2144ca1b610a9e",
   "soc_revision": "6ee1ee7e114a13c690f209698d3a9fc28306e46c",
   "xcode": "26.6",
   "files": {
@@ -34,12 +34,13 @@
     "source/device/package/BootWatchdogPolicy.c": "faa5e09020ea97301b69710aefc0209d533232dd6197a41509a0d4a69ff5b16e",
     "source/device/package/KeyStoreProbe.cpp": "068ef978260969e3d67d743459802d72e5fad9e4a20c7c27828587a2dd9779d9",
     "source/device/package/LegacyDisplayProbe.cpp": "3276bed638028882be8c888d1691b987efda888c7fafa52b7b6bcb1c7c1c9d8a",
-    "source/device/package/Nezha27UsbControl.c": "1d2a7bce09d39281851a664f23bec73465a5206b4116f6b1b3ab27bc3417f903",
-    "source/device/package/NezhaIOS27Pmgr.cpp": "b4952c31eeeed66050359bb0923ca966373cd0d86d0c02678df598a8b7a06a50",
+    "source/device/package/Nezha27UsbControl.c": "2ef6ed0b19fd7cf9516b394ad1df5ac82c6cae4a3b287099b24dfa350ab3d918",
+    "source/device/package/NezhaIOS27Pmgr.cpp": "559f1a0009c9fd721b895450cc657b4f9674390bf23891da694eef1941720ffe",
     "source/device/package/NezhaWcn7860/NezhaWifiDiagnostic.c": "984e2b51b139c142bc924a852531c0f8059512d4a1a28a9ace44c830239c6119",
     "source/device/package/NezhaWcn7860/NezhaWifiFirmware.c": "d998319ffaf5db1513c4cbd6e100aa4e8ec06d61d3793465d3e5e227b2e24569",
-    "source/device/package/NezhaWcn7860/NezhaWifiPlatform.h": "580f80e9cd2a9902f8f8ecdc6d60387f80035fb8098e1976d3f6117ada608aa2",
-    "source/device/package/NezhaWcn7860/PeachWLAN.cpp": "371fd6f9830ce519a972670d86dab3e83023d13b0e8d0732322fdc045afccbbf",
+    "source/device/package/NezhaWcn7860/NezhaWifiMemory.c": "e5f634d8ec8517d6e7abd7b8fc5e2c6fc850363b420f366f59e819707ac58961",
+    "source/device/package/NezhaWcn7860/NezhaWifiPlatform.h": "6304b91c789d06d7535bba97476098d4ab484de8c799fac04f18383af0058d7b",
+    "source/device/package/NezhaWcn7860/PeachWLAN.cpp": "4130a55f3fb942c0961e4138da7712c15a5ecc27e1b6cda9cf7bc5bebd32fe7a",
     "source/device/package/NezhaWcn7860/adreno/ArmSmmu4K.c": "0adb19b483e56e723014ed6cfe2c29f9d9735ae2770f62cf0057b22937dbd157",
     "source/device/package/NezhaWcn7860/adreno/ArmSmmu4K.h": "e25063b9134afc7eb79e7c030bc2858608cf0ade5da714d5dfd600fee5007e8e",
     "source/device/package/NezhaWcn7860/adreno/ArmSmmu4KContext.c": "fb993f53ef899b9969a71311b61b5dbe9446c515d7a6e6ad7d4840796eb1b6a3",
@@ -54,7 +55,7 @@
     "source/device/package/NezhaWcn7860/licenses/APSL-2.0.txt": "e5881019d8766c1e88a5fe1dbca4ba40c78011d41fcb18f6e9f50df60182685b",
     "source/device/package/NezhaWcn7860/licenses/GPL-2.0-only.txt": "aaf135472f81c5b4a0dca9367e5bb5e9750032b5bebe5442b36e4c0a47430df3",
     "source/device/package/NezhaWcn7860/licenses/MIT.txt": "f984c0a808afdeb2e050ceb47bc24d764156daa29b5dfde10fb9afec2f83f351",
-    "source/device/package/NezhaWcn7860/pandora_wifi.c": "732b9799c191ace5f50361f3e49e4ef1fd6389805c2f4a7d033ee7e1aea16636",
+    "source/device/package/NezhaWcn7860/pandora_wifi.c": "921fbee10cba089c21ac0dd9be3526b7bc1883706be5152b65957b87b49d522d",
     "source/device/package/NezhaWcn7860/qcom/NezhaPcieData.h": "b7ff65c41e77cdffeb9816c20cbf938ba203778c77f05a0eb8ec9bcb842130c6",
     "source/device/package/NezhaWcn7860/qcom/PeachApple80211.c": "245195c9981b6f79c135c0ce1343b2e842f0215da1bb38b5099b3422b99896ac",
     "source/device/package/NezhaWcn7860/qcom/PeachApple80211.h": "6dc785b22d4a5bf9fd898fa24ef855b52da6a6afa4bb49d0dd945e20f687007a",
@@ -71,8 +72,8 @@
     "source/device/package/NezhaWcn7860/qcom/PeachMhiFirmware.h": "5301d71f6c3a6fb47da7f1af2cb623ffc8668b3b8c09529170eff7dacdf3dd0d",
     "source/device/package/NezhaWcn7860/qcom/PeachMhiHost.c": "f0c8718b94b101add68541d5c1eaea501ccc4141e6bcd446d78aa672e29e9491",
     "source/device/package/NezhaWcn7860/qcom/PeachMhiHost.h": "9f09037da0d098c34dc94c5b1fb427728b5a3ddef9d6569f4066205f204e7547",
-    "source/device/package/NezhaWcn7860/qcom/PeachNet.c": "948766b957dfa70c0f5d1bf2e77fad1c2da98bfd8f8262b4bd8f19736f3e95c9",
-    "source/device/package/NezhaWcn7860/qcom/PeachNet.h": "0aff6356bb7d1551657ce5cfc0abddb6fc47e21cddd5e3c5bd0fd42b7fbdfa93",
+    "source/device/package/NezhaWcn7860/qcom/PeachNet.c": "1bbf364a6233baf0b658897193102b9b8db4da1a894686bfab2e21ef9652b313",
+    "source/device/package/NezhaWcn7860/qcom/PeachNet.h": "6b15a555f9927a2ff3d8093953397461ce20d80096ec3a3d6dcede7e11498749",
     "source/device/package/NezhaWcn7860/qcom/PeachRsn.c": "3403190db58f1b593e58b25e680e0687bfcfa166b98c10e30d455408d58fd919",
     "source/device/package/NezhaWcn7860/qcom/PeachRsn.h": "beb8c0fd615f7ba1cf1d2740dd3fd7aa7875e787dbcb923b5f87327def75520e",
     "source/device/package/NezhaWcn7860/qcom/PeachRx.c": "faeb321fbe50ca3d1d96fd8dc03eb9befce1e22a0244ccdcb2083c7af96c9a92",
@@ -155,7 +156,7 @@
     "source/device/scripts/build-ios27-pmgr.py": "f88a0596937cbf0504922751a3194e3a33bba609f683a415262887d2b64241e4",
     "source/device/scripts/build-nezha27-input.py": "cd559fad30207962411546b32ffb5547ae29379e7fa992d16eaab09a39b6cd28",
     "source/device/scripts/build-nezha27-usb-control.py": "92be41e9adcce30e88c3a64fb6a1490587d87e80c74d50e3c2690c127dccb65c",
-    "source/device/scripts/build-nezha27-wifi.py": "f7409c8f5299c750e869d78d022c2a1b7cc5d3158cd722b799d80a1ea94f759a",
+    "source/device/scripts/build-nezha27-wifi.py": "e301b5f4f0acaeff47c4449968ce76901409a29253da2392cc34ed24e1a2d250",
     "source/device/scripts/hid-device-iphone-24A446.json": "af4668764ba1d2a4649b9c45d1ddbbabcb69e27659e7c35fbf9899f8f6bdbc7d",
     "source/device/scripts/legacy-display-iphone-24A446.json": "8959d9ba711dc480ca2870e3c078d0619355bf572270247c41871affc572ef13",
     "source/device/scripts/nezha-armcpu-asm-fix.py": "3d37c0c0e3613453c901a9622bc45a077c9acbd35ffe449046fa575b3b57af3a",
@@ -209,5 +210,5 @@
     "revision": "e55c8696764cfa03eec8628fad4afdf1f5bab51e",
     "old_objects_linked": false
   },
-  "qualification_iteration": "native003: actual Mach-private memory, OSSymbol and VFS APIs; QEMU-only lifecycle/fault probe; explicit RAM addon truncation"
+  "qualification_iteration": "native004: XNU typed-memory adapter separated from BSD worker; actual 24A446 en0 naming contract; standard net_init_add hook independent of USB; QEMU-only lifecycle tests"
 }

@@ -16,9 +16,6 @@
 #include <machine/machine_routines.h>
 #include <pexpert/pexpert.h>
 #include <pexpert/device_tree.h>
-#include <vm/vm_kern.h>
-#include <vm/pmap.h>
-#include <arm/caches_internal.h>
 #include "adreno/ArmSmmu4KStreams.h"
 #include "NezhaWifiPlatform.h"
 #include "Sm8850Rpmh.h"
@@ -37,6 +34,7 @@
 #include "qcom/PeachNet.h"
 #include "qcom/NezhaPcieData.h"
 
+extern kern_return_t thread_terminate(thread_t);
 void nezha_wifi_init(void);
 
 enum { W_GCC, W_PARF, W_PHY, W_SM, W_CRM, W_COMMON, W_CRMC, W_DBI,
@@ -128,18 +126,9 @@ static int
 wifi_map(unsigned index)
 {
     struct wifi_window *w = &wifi_windows[index];
-    uint64_t pa = w->pa & ~(uint64_t)PAGE_MASK;
-    vm_size_t bytes = round_page(w->bytes + (w->pa - pa));
-    vm_offset_t va = 0;
     if (w->va) return 0;
-    if (kmem_alloc(kernel_map, &va, bytes, KMA_VAONLY | KMA_KOBJECT | KMA_NOPAGEWAIT,
-        VM_KERN_MEMORY_IOKIT) != KERN_SUCCESS) return ENOMEM;
-    for (vm_size_t off = 0; off < bytes; off += PAGE_SIZE) {
-        if (pmap_enter_options_addr(kernel_pmap, va + off, pa + off,
-            VM_PROT_READ | VM_PROT_WRITE, VM_PROT_NONE, VM_WIMG_IO, TRUE,
-            PMAP_OPTIONS_NOWAIT, NULL) != KERN_SUCCESS) return ENOMEM;
-    }
-    w->va = va + (w->pa - pa);
+    w->va = nezha_wifi_map_device(w->pa, w->bytes);
+    if (!w->va) return ENOMEM;
     return 0;
 }
 
@@ -507,22 +496,16 @@ static int wifi_smmu_barrier(void *c)
 
 static vm_offset_t wifi_contig(size_t bytes, uint64_t *pa)
 {
-    vm_offset_t va = 0;
-    if (kmem_alloc_contig(kernel_map, &va, bytes, PAGE_MASK, 0, 0,
-        KMA_DATA | KMA_ZERO | KMA_PERMANENT, VM_KERN_MEMORY_IOKIT) != KERN_SUCCESS) return 0;
-    *pa = ptoa_64(pmap_find_phys(kernel_pmap, va));
+    vm_offset_t va = nezha_wifi_allocate_pages(bytes, 1);
+    if (!va) return 0;
+    *pa = nezha_wifi_physical(va);
+    if (!*pa) return 0;
     return va;
 }
 
 /* pmap changes every CPU alias and performs the required cache/TLB transition.
  * Use normal NC for shared rings/data, avoiding an assumption that a newly
  * powered endpoint already has snoop attributes configured like Android. */
-static void wifi_nocache(vm_offset_t va, size_t bytes)
-{
-    for (size_t off = 0; off < bytes; off += PAGE_SIZE)
-        pmap_set_cache_attributes(pmap_find_phys(kernel_pmap, va + off), VM_WIMG_WCOMB);
-    __asm__ volatile("dsb sy" ::: "memory");
-}
 
 static int
 wifi_dma_locked(void)
@@ -571,7 +554,7 @@ wifi_dma_locked(void)
     wifi_arena = wifi_contig(WIFI_DMA_BYTES, &wifi_arena_pa);
     wifi_tables = wifi_contig(WIFI_TABLE_BYTES, &wifi_tables_pa);
     if (!wifi_arena || !wifi_tables) return ENOMEM;
-    wifi_nocache(wifi_arena, WIFI_DMA_BYTES);
+    if (nezha_wifi_make_uncached(wifi_arena, WIFI_DMA_BYTES)) return EIO;
     static const uint8_t widths[] = {32, 36, 40, 42, 44, 48};
     unsigned encoding = (id2 >> 4) & 15;
     if (encoding >= sizeof(widths) || (wifi_arena_pa + WIFI_DMA_BYTES) >> widths[encoding] ||
@@ -582,7 +565,7 @@ wifi_dma_locked(void)
         ArmSmmu4KRead | ArmSmmu4KWrite, 0, 2};
     if (ArmSmmu4KBuild(&wifi_table_config, &range, 1, (uint64_t *)wifi_tables,
         WIFI_TABLE_BYTES / 0x1000, &wifi_table_result) != ArmSmmu4KSuccess) return ENOTSUP;
-    clean_dcache64(wifi_tables_pa, WIFI_TABLE_BYTES, TRUE);
+    nezha_wifi_clean_tables(wifi_tables_pa, WIFI_TABLE_BYTES);
     wifi_context = (ArmSmmu4KContextConfig){&wifi_table_config, NULL, &wifi_table_result,
         NULL, id0, id2, asid, 0, 0, 0, 0}; /* exact TTBR, no GPU switching policy */
     /* No qcom,actlr entry in the captured apps SMMU DT matches SID 0x1401. */
@@ -655,16 +638,15 @@ wifi_allocate_dma(void *unused, size_t bytes, PeachMhiDma *out)
     while (alignment < rounded) alignment <<= 1;
     uint64_t iova = (wifi_dma_next + alignment - 1) & ~(alignment - 1);
     if (iova >= WIFI_DMA_LIMIT || rounded > WIFI_DMA_LIMIT - iova) return ENOMEM;
-    vm_offset_t va = 0;
-    if (kmem_alloc(kernel_map, &va, rounded, KMA_DATA | KMA_ZERO | KMA_PERMANENT,
-        VM_KERN_MEMORY_IOKIT) != KERN_SUCCESS) return ENOMEM;
+    vm_offset_t va = nezha_wifi_allocate_pages(rounded, 0);
+    if (!va) return ENOMEM;
     wifi_owned_dma[wifi_allocations++] = va;
-    wifi_nocache(va, rounded);
+    if (nezha_wifi_make_uncached(va, rounded)) return EIO;
     nezha_wifi_domain_lock();
     int err = wifi_dma_health();
     for (size_t off = 0; !err && off < rounded; off += 0x1000) {
         uint64_t address = iova + off;
-        uint64_t pa = ptoa_64(pmap_find_phys(kernel_pmap, va + off)) + ((va + off) & PAGE_MASK);
+        uint64_t pa = nezha_wifi_physical(va + off);
         if (!pa || (pa & 0xfff) || pa >> wifi_table_config.output_bits) { err = EIO; break; }
         uint64_t *table = (uint64_t *)wifi_tables;
         for (unsigned level = wifi_table_result.start_level; level < 3; level++) {
@@ -686,7 +668,7 @@ wifi_allocate_dma(void *unused, size_t bytes, PeachMhiDma *out)
         if (*leaf) { err = EBUSY; break; }
         *leaf = pa | (3ull << 53) | 1u << 11 | 1u << 10 | 2u << 8 | 1u << 6 | 3;
     }
-    clean_dcache64(wifi_tables_pa, WIFI_TABLE_BYTES, TRUE);
+    nezha_wifi_clean_tables(wifi_tables_pa, WIFI_TABLE_BYTES);
     __asm__ volatile("dsb sy" ::: "memory");
     if (!err) {
         *out = (PeachMhiDma){(void *)va, iova, bytes};
@@ -1328,6 +1310,8 @@ static int wifi_connection_request(void)
     int err = 0;
     if (wifi_request.action == PeachControlPower) {
         if (!wifi_request.radio_power) {
+            /* Open networks have no RSN owner, so gate TX explicitly too. */
+            (void)peach_tx_authorize(&wifi_tx, 0);
             peach_net_leave(); peach_rsn_clear(&wifi_rsn);
             if (!wifi_radio_off) err = wifi_disable_radio();
             wifi_net_state = err ? PeachNetFailed : PeachNetOff;
@@ -1352,8 +1336,8 @@ static int wifi_connection_request(void)
         return err;
     }
     if (wifi_request.action == PeachControlJoin)
-        printf("NEZHA WIFI: manual join SSID %.*s security %u\n",
-            wifi_request.join.ssid_bytes, wifi_request.join.ssid, wifi_request.join.security);
+        printf("NEZHA WIFI: manual join SSID bytes %u security %u\n",
+            wifi_request.join.ssid_bytes, wifi_request.join.security);
     if (wifi_tx.bound) {
         /* Keyed peer retirement is not implemented. Reuse the checked
          * endpoint reset and fresh DMA path instead of reusing live keys,
@@ -1568,6 +1552,7 @@ wifi_thread(void *unused, wait_result_t result)
             printf("NEZHA WIFI: RSN phase %u -> %u error %d action %u\n",
                 rsn_phase, wifi_rsn.phase, err, wifi_rsn.tx_action);
         if (!err) err = wifi_connection_request();
+        if (!err && wifi_radio_off) continue; /* do not reopen link from old TX state */
         if (err) err = wifi_connection_recover(err);
         if (!err && wifi_tx.authorized) {
             if (!err && wifi_net_state != PeachNetOnline) {
@@ -1612,11 +1597,24 @@ static void wifi_offline_thread(void *unused, wait_result_t result)
     extern int peach_wlan_offline_check(void);
     uint64_t word = 0x12345678, value = 0;
     nezha_wifi_offline_stage = 1;
-    int error = nezha_wifi_mmio_access((uintptr_t)&word, &value, 0, 1);
+    /* Actual guest page allocation/cache transition and a virtual PL011
+     * mapping qualify this kernel binding; no WCN7860 DMA is simulated. */
+    uintptr_t page = nezha_wifi_allocate_pages(4096, 0);
+    uintptr_t contiguous = nezha_wifi_allocate_pages(8192, 1);
+    int error = (!page || !contiguous || !nezha_wifi_physical(page) ||
+        nezha_wifi_physical(contiguous + 4096) != nezha_wifi_physical(contiguous) + 4096) ? ENOMEM : 0;
+    if (!error && nezha_wifi_make_uncached(page, 4096)) error = EIO;
+    if (!error) {
+        *(volatile uint64_t *)page = 0x1122334455667788ull;
+        if (*(volatile uint64_t *)page != 0x1122334455667788ull) error = EIO;
+    }
+    uintptr_t pl011 = error ? 0 : nezha_wifi_map_device(0x09000000, 4096);
+    if (!error && (!pl011 || nezha_wifi_mmio_access(pl011 + 0x18, &value, 0, 0))) error = EIO;
+    if (!error) error = (int)nezha_wifi_mmio_access((uintptr_t)&word, &value, 0, 1);
     if (!error && value != word) error = EIO;
     if (!error) {
         value = 0xabcdef;
-        error = nezha_wifi_mmio_access((uintptr_t)&word, &value, 1, 1);
+        error = (int)nezha_wifi_mmio_access((uintptr_t)&word, &value, 1, 1);
         if (!error && word != value) error = EIO;
     }
     if (!error) {

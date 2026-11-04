@@ -27,6 +27,7 @@ void peach_net_info(PeachNetInfo *);
 int peach_net_bss(unsigned index, PeachWmiBss *);
 unsigned peach_net_channels(PeachWmiScanChannel *, unsigned capacity);
 int peach_net_attach(const unsigned char mac[6]);
+int peach_net_verify_attached(void);
 void peach_net_link(unsigned up);
 void peach_net_leave(void);
 int peach_net_transmit(PeachTx *);

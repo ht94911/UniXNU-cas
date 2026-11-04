@@ -12,6 +12,8 @@
 #include <sys/sockio.h>
 #include <kern/locks.h>
 #include <net/kpi_interface.h>
+#include <net/init.h>
+#include <pexpert/pexpert.h>
 #include <net/if.h>
 #include <net/if_dl.h>
 #include <net/if_media.h>
@@ -338,6 +340,28 @@ int peach_net_attach(const unsigned char mac[6])
     lck_mtx_unlock(&net_lock);
     extern int peach_wlan_publish(const char *, const unsigned char *);
     return peach_wlan_publish(net_snapshot.interface_name, mac);
+}
+void nezha_wifi_register(void)
+{
+    extern void nezha_wifi_init(void);
+    unsigned mode = 0;
+    if (!PE_parse_boot_argn("nezha_wifi", &mode, sizeof(mode)) || (mode != 1 && mode != 2)) return;
+    static unsigned queued;
+    if (__atomic_exchange_n(&queued, 1, __ATOMIC_ACQ_REL)) return;
+    int error = net_init_add(nezha_wifi_init);
+    if (error == EALREADY) nezha_wifi_init();
+    else if (error) printf("NEZHA WIFI: net_init_add failed %d; worker not started\n", error);
+}
+int peach_net_verify_attached(void)
+{
+    if (!net_interface) return ENXIO;
+    ifnet_t found = NULL;
+    int error = ifnet_find_by_name("en0", &found);
+    if (error) return error;
+    unsigned same = found == net_interface && ifnet_unit(found) == 0 &&
+        ifnet_type(found) == IFT_ETHER && !strcmp(ifnet_name(found), "en");
+    ifnet_release(found);
+    return same ? 0 : ENXIO;
 }
 static void set_link(unsigned up, unsigned voluntary)
 {

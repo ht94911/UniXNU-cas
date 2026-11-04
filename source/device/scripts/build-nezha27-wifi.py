@@ -68,7 +68,7 @@ def main():
     for source in selected:
         # Device mappings/allocations require the real Mach-private interface;
         # VFS and the network frontend retain this target's BSD build contract.
-        record = records['platform' if source.name == 'pandora_wifi.c' else source.suffix]
+        record = records['platform' if source.name == 'NezhaWifiMemory.c' else source.suffix]
         obj = OUT / (source.stem + '.raw.o')
         command = helper.compile_command(record, source, obj, include_flags, extra)
         # XNU's socket header names an Apple-internal warning group unavailable
