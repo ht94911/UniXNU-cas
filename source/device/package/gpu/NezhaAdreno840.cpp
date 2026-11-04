@@ -209,7 +209,7 @@ IOReturn bringUp()
     if((status=ioResult(nezha_gpu_platform_program_cp(GpuSqeIova,GpuMemptrsIova))))return checkpoint(6,status,"CP registers");
     NativeAdrenoRingIo io{nullptr,write32,read32,barrier,nullptr,nullptr};
     NativeAdrenoRingCache cache{nullptr,publish,acquire};
-    if((status=ring.useChip(&NativeAdrenoChipA8xx)))return status;
+    if((status=checkpoint(6,ring.useChip(&NativeAdrenoChipA8xx),"select validated A8xx ring profile")))return status;
     status=ring.attach(&io,&cache,context->buffer(1).mapping(),context->buffer(1).bytes(),GpuRingIova,
         context->buffer(2).mapping(),context->buffer(2).bytes(),GpuMemptrsIova);
     if(checkpoint(7,status,"single A840 ring"))return status;

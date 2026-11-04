@@ -106,8 +106,30 @@ IOReturn NativeAdrenoRing::poison()
 IOReturn NativeAdrenoRing::useChip(const NativeAdrenoChipRegs *chip)
 {
     if(attached_ || poisoned_ || ring_ || fence_)return kIOReturnBusy;
-    if(!chip || (chip!=&NativeAdrenoChipA7xx && chip!=&NativeAdrenoChipA8xx))return kIOReturnBadArgument;
-    chip_=chip;return kIOReturnSuccess;
+    if(!chip)return kIOReturnBadArgument;
+    // Apple kernel linking can keep identical inline constants at different
+    // addresses across objects. Verify every register fact, then keep this
+    // component's immutable canonical table (never caller-owned storage).
+    const auto matches=[chip](const NativeAdrenoChipRegs &known) {
+        return chip->generation==known.generation &&
+            chip->cp_sqe_instr_base==known.cp_sqe_instr_base &&
+            chip->cp_scratch2==known.cp_scratch2 &&
+            chip->perfctr_sram_init_cmd==known.perfctr_sram_init_cmd &&
+            chip->perfctr_sram_init_status==known.perfctr_sram_init_status &&
+            chip->slice_perfctr_sram_init_cmd==known.slice_perfctr_sram_init_cmd &&
+            chip->rbbm_int_status==known.rbbm_int_status &&
+            chip->rbbm_int_clear==known.rbbm_int_clear &&
+            chip->rbbm_int_mask==known.rbbm_int_mask &&
+            chip->cp_int_status==known.cp_int_status &&
+            chip->cp_error_bits==known.cp_error_bits &&
+            chip->cp_protect_status==known.cp_protect_status &&
+            chip->cp_always_on_counter==known.cp_always_on_counter &&
+            chip->gmu_always_on_counter==known.gmu_always_on_counter;
+    };
+    const auto *known=matches(NativeAdrenoChipA7xx)?&NativeAdrenoChipA7xx:
+        matches(NativeAdrenoChipA8xx)?&NativeAdrenoChipA8xx:nullptr;
+    if(!known)return kIOReturnBadArgument;
+    chip_=known;return kIOReturnSuccess;
 }
 uint32_t NativeAdrenoRing::resetWords() const
 {

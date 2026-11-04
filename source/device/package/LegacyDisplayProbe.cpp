@@ -506,10 +506,19 @@ extern void sheng_buttons_probe(void);
 extern void sheng_backlight_probe(void);
 extern "C" void sheng_dpu_probe(void);
 void native_legacy_display_late_probe(void) {
+    // NEZHA_GPU_STARTUP_DIAG_BEGIN
+    IOLog("NEZHA LATE INIT: enter keystore\n");
+    // NEZHA_GPU_STARTUP_DIAG_END
     native_keystore_probe();
+    // NEZHA_GPU_STARTUP_DIAG_BEGIN
+    IOLog("NEZHA LATE INIT: keystore returned; enter input\n");
+    // NEZHA_GPU_STARTUP_DIAG_END
     // Same post-IOBSD source lifecycle;only nezha touch/keys and selected27 HID.
     nezha_input_start();
     native_hid_input_probe();
+    // NEZHA_GPU_STARTUP_DIAG_BEGIN
+    IOLog("NEZHA LATE INIT: HID returned; enter IOSurface\n");
+    // NEZHA_GPU_STARTUP_DIAG_END
     IOService *display=pendingLegacyDisplay;if(!display)return;pendingLegacyDisplay=nullptr;
     native_legacy_surface_status=OSKextLoadKextWithIdentifier("com.apple.iokit.IOSurface");
     OSDictionary *matching=IOService::nameMatching("IOCoreSurfaceRoot");

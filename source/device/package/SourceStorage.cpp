@@ -9,6 +9,9 @@
 #include <pexpert/pexpert.h>
 #include <IOKit/IOLib.h>
 #include <kern/thread.h>
+// NEZHA_GPU_STARTUP_DIAG_BEGIN
+#include <kern/misc_protos.h>
+// NEZHA_GPU_STARTUP_DIAG_END
 #include <mach/thread_act.h>
 #if XNU_QCOM_USB_DEBUG
 #include "QcomXnuUsbDebug.h"
@@ -86,7 +89,13 @@ static void start_data_disk(IOService *provider)
 
 static void source_storage_start_body(void)
 {
+    // NEZHA_GPU_STARTUP_DIAG_BEGIN
+    printf("NEZHA ROOT INIT: enter IOStorageFamily load\n");
+    // NEZHA_GPU_STARTUP_DIAG_END
     OSReturn status = OSKextLoadKextWithIdentifier("com.apple.iokit.IOStorageFamily");
+    // NEZHA_GPU_STARTUP_DIAG_BEGIN
+    printf("NEZHA ROOT INIT: IOStorageFamily returned %#x\n",status);
+    // NEZHA_GPU_STARTUP_DIAG_END
     if (status != kOSReturnSuccess)
         panic("SourceStorage: IOStorageFamily load failed %x", status);
     const OSSymbol *name = OSSymbol::withCString("IOBlockStorageDevice");
@@ -98,23 +107,47 @@ static void source_storage_start_body(void)
 
     // Authenticate policies before registering hardware-facing classes. The
     // firmware hands off the envelope; the trusted anchor is compiled in.
+    // NEZHA_GPU_STARTUP_DIAG_BEGIN
+    printf("NEZHA ROOT INIT: original parent ready; authenticate policies\n");
+    // NEZHA_GPU_STARTUP_DIAG_END
     if (!native_source_root_policies_load())
         panic("SourceStorage: root policy handoff or authentication failed");
+    // NEZHA_GPU_STARTUP_DIAG_BEGIN
+    printf("NEZHA ROOT INIT: policies accepted; enter APFS load\n");
+    // NEZHA_GPU_STARTUP_DIAG_END
     status = OSKextLoadKextWithIdentifier("com.apple.filesystems.apfs");
+    // NEZHA_GPU_STARTUP_DIAG_BEGIN
+    printf("NEZHA ROOT INIT: APFS returned %#x; enter preModLoad\n",status);
+    // NEZHA_GPU_STARTUP_DIAG_END
     if (status != kOSReturnSuccess)
         panic("SourceStorage: APFS load failed %x", status);
     void *handle = OSMetaClass::preModLoad(g_kernel_kmod_info.name);
     if (!handle) panic("SourceStorage: cannot begin class registration");
+    // NEZHA_GPU_STARTUP_DIAG_BEGIN
+    printf("NEZHA ROOT INIT: preModLoad acquired; invoke base/UFS/RAM constructors\n");
+    // NEZHA_GPU_STARTUP_DIAG_END
     source_storage_base_init();
     source_storage_ufs_init();
     source_storage_ram_init();
+    // NEZHA_GPU_STARTUP_DIAG_BEGIN
+    printf("NEZHA ROOT INIT: constructors returned; enter postModLoad\n");
+    // NEZHA_GPU_STARTUP_DIAG_END
     status = OSMetaClass::postModLoad(handle);
+    // NEZHA_GPU_STARTUP_DIAG_BEGIN
+    printf("NEZHA ROOT INIT: postModLoad returned %#x\n",status);
+    // NEZHA_GPU_STARTUP_DIAG_END
     if (status != kOSReturnSuccess)
         panic("SourceStorage: class registration failed %x", status);
 
     OSDictionary *matching = IOService::serviceMatching("IOPlatformExpertDevice");
+    // NEZHA_GPU_STARTUP_DIAG_BEGIN
+    printf("NEZHA ROOT INIT: resolve platform provider\n");
+    // NEZHA_GPU_STARTUP_DIAG_END
     IOService *provider = matching ? IOService::waitForMatchingService(matching, 5000000000ULL) : nullptr;
     if (!provider) panic("SourceStorage: platform root unavailable");
+    // NEZHA_GPU_STARTUP_DIAG_BEGIN
+    printf("NEZHA ROOT INIT: platform provider ready; create UFS\n");
+    // NEZHA_GPU_STARTUP_DIAG_END
     storageDriver = native_ufs_source_create();
     if (!storageDriver) panic("SourceStorage: cannot allocate UFS service");
     const char *step = !storageDriver->init() ? "init" : !storageDriver->attach(provider) ? "attach" :
@@ -142,6 +175,9 @@ extern "C" volatile uint32_t native_source_storage_boot_state;
 volatile uint32_t native_source_storage_boot_state; // 1 queued, 2 wait USB, 3 UFS, 4 done, 5 thread error, 6 USB unavailable
 static void source_storage_after_usb(void *, wait_result_t)
 {
+    // NEZHA_GPU_STARTUP_DIAG_BEGIN
+    thread_set_thread_name(current_thread(),"nezha-root-init");
+    // NEZHA_GPU_STARTUP_DIAG_END
 #if XNU_QCOM_USB_DEBUG
     unsigned waited = 0;
     qcom_usb_debug_status status = {};
@@ -179,6 +215,9 @@ extern "C" void native_source_storage_start(void)
     unsigned enabled = 0, require_usb = 0;
     if (!PE_parse_boot_argn("native-source-storage", &enabled, sizeof(enabled)) || enabled != 1 ||
         __atomic_exchange_n(&attempted, true, __ATOMIC_ACQ_REL)) return;
+    // NEZHA_GPU_STARTUP_DIAG_BEGIN
+    thread_set_thread_name(current_thread(),"nezha-bsd-init");
+    // NEZHA_GPU_STARTUP_DIAG_END
     PE_parse_boot_argn("native-source-storage-require-usb", &require_usb, sizeof(require_usb));
     if (require_usb != 1) {
         source_storage_start_body();

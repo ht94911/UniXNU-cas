@@ -90,6 +90,9 @@ extern char boot_ui_trace_label[120] __attribute__((weak_import));
 extern unsigned boot_ui_trace_ready __attribute__((weak_import));
 extern unsigned boot_ui_trace_role_rows(unsigned,char [][120],unsigned,unsigned) __attribute__((weak_import));
 extern unsigned boot_ui_trace_hot_rows(char [][120],unsigned) __attribute__((weak_import));
+// NEZHA_GPU_STARTUP_DIAG_BEGIN
+extern int boot_kthread_report(const char *,char *,unsigned) __attribute__((weak_import));
+// NEZHA_GPU_STARTUP_DIAG_END
 extern volatile unsigned boot_ui_trace_phase __attribute__((weak_import));
 extern volatile unsigned boot_ui_trace_index __attribute__((weak_import));
 extern void boot_process_capture(void) __attribute__((weak_import));
@@ -994,6 +997,16 @@ static void monitor(void *arg, wait_result_t result) {
     if((console_diag==1 || console_diag==2) && now>=60 && now-console_at>=30) {
       console_at=now;char row[256]={0};
       printf("NEZHA BOOT SNAP: t=%u SMP=%u/%u procs=%d\n",now,BP_OPTIONAL(armcpu_smp_running),BP_OPTIONAL(armcpu_smp_requested),nprocs);
+      // NEZHA_GPU_STARTUP_DIAG_BEGIN
+      if(console_diag==2 && nprocs==0 && now<=240 && boot_kthread_report) {
+        static const char *const names[]={"nezha-bsd-init","nezha-root-init"};
+        for(unsigned i=0;i<2;++i) {
+          char kernel_row[512]={0};
+          int kr=boot_kthread_report(names[i],kernel_row,sizeof(kernel_row));
+          printf("NEZHA KTHREAD: %s result=%d %s\n",names[i],kr,kernel_row);
+        }
+      }
+      // NEZHA_GPU_STARTUP_DIAG_END
       if(native_legacy_state_words && native_legacy_state_words(row,sizeof(row)))printf("NEZHA STATE SNAP: %s\n",row);
       if(boot_process_rows)for(unsigned i=0;i<10;++i)printf("NEZHA PROC SNAP: %.119s\n",boot_process_rows[i]);
       if(boot_ui_trace_rows)for(unsigned i=0;i<14;++i)printf("NEZHA UI SNAP: %.119s\n",boot_ui_trace_rows[i]);
