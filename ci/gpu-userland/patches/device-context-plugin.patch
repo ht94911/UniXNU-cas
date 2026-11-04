@@ -1,0 +1,66 @@
+diff --git a/NativeAdrenoMetalPlugin.mm b/NativeAdrenoMetalPlugin.mm
+index 81740c2..aa1aa6e 100644
+--- a/NativeAdrenoMetalPlugin.mm
++++ b/NativeAdrenoMetalPlugin.mm
+@@ -423,7 +423,9 @@ static id deviceForPort(unsigned port) {
+                 Gpu *anchor = static_cast<Gpu *>(arg);
+                 anchor->mark(0x6900);
+                 streamText7(*anchor, "FULL begin: raw,Turnip,Metal checks; UI remains independent");
+-                gAfterTurnip = bridgephase::runChecksOnly;
++                gAfterTurnip = [](Gpu &testGpu, const char *path) {
++                    bridgephase::runChecksOnly(testGpu, path, gCacheDirectory.c_str());
++                };
+                 @try {
+                     const int cp = adrenoUserTest(anchor->port, getprogname());
+                     char line[64];
+diff --git a/NativeMetalBridgePhase.h b/NativeMetalBridgePhase.h
+index 40ce5d6..9ce7501 100644
+--- a/NativeMetalBridgePhase.h
++++ b/NativeMetalBridgePhase.h
+@@ -141,14 +141,27 @@ static void serveScanout(Gpu &gpu, id device) {
+     }
+     streamText7(gpu, line);
+ }
+-static void runChecks(Gpu &gpu, const char *turnipPath, bool permitScanout) {
++static void runChecks(Gpu &gpu, const char *turnipPath, bool permitScanout, const char *runtimeCache = nullptr) {
+     gpu.mark(0x6500);
+     Job *job = new Job{};
+     job->turnip = turnipPath;
+-    // A per-user cache directory of the host process (its sandbox allows it); the translated-shader cache goes in a subdirectory.
+-    if (!confstr(_CS_DARWIN_USER_CACHE_DIR, job->cache, sizeof job->cache - 16)) strlcpy(job->cache, "/tmp/", sizeof job->cache);
+-    strlcat(job->cache, "m2v", sizeof job->cache);
+-    mkdir(job->cache, 0700);
++    // The published runtime already found a usable directory under this
++    // process's actual sandbox. Do not replace it with an unverified confstr
++    // result (/private/var/tmp/m2v was refused on the real iPhone27 process).
++    if (runtimeCache && *runtimeCache) {
++        if (strlcpy(job->cache, runtimeCache, sizeof job->cache) >= sizeof job->cache ||
++            access(job->cache, W_OK) != 0) {
++            streamText7(gpu, "M cache rejected; test not started; UI remains independent");
++            gpu.mark(0x65f1);
++            delete job;
++            return;
++        }
++        streamText7(gpu, "M cache: reuse published runtime writable directory");
++    } else {
++        if (!confstr(_CS_DARWIN_USER_CACHE_DIR, job->cache, sizeof job->cache - 16)) strlcpy(job->cache, "/tmp/", sizeof job->cache);
++        strlcat(job->cache, "m2v", sizeof job->cache);
++        mkdir(job->cache, 0700);
++    }
+     gGpu = &gpu;
+     gJob = job;
+     pthread_attr_t attr;
+@@ -194,8 +207,12 @@ static void runChecks(Gpu &gpu, const char *turnipPath, bool permitScanout) {
+         sleep(8);
+         serveScanout(gpu, gDevice);
+     }
++    // The published mode already has its own device/scanout owner. Drop this
++    // test device's owner reference after the checks; it must not invalidate
++    // any other live Vulkan device in the process.
++    if (!permitScanout) gDevice = nil;
+     gGpu = nullptr;
+ }
+ static void run(Gpu &gpu, const char *turnipPath) { runChecks(gpu, turnipPath, true); }
+-__attribute__((unused)) static void runChecksOnly(Gpu &gpu, const char *turnipPath) { runChecks(gpu, turnipPath, false); }
++__attribute__((unused)) static void runChecksOnly(Gpu &gpu, const char *turnipPath, const char *runtimeCache = nullptr) { runChecks(gpu, turnipPath, false, runtimeCache); }
+ }  // namespace bridgephase

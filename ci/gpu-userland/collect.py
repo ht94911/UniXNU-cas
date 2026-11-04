@@ -26,7 +26,11 @@ parser.add_argument('--logs', type=Path, required=True)
 parser.add_argument('--out', type=Path, required=True)
 parser.add_argument('--sealed', type=Path, required=True)
 parser.add_argument('--host-only', action='store_true')
+parser.add_argument('--debug-out', type=Path)
+parser.add_argument('--debug-sealed', type=Path)
 args = parser.parse_args()
+if bool(args.debug_out) != bool(args.debug_sealed):
+    parser.error('--debug-out and --debug-sealed must be paired')
 ROOT, DEVICE, OUT = args.unixnu.resolve(), args.device.resolve(), args.out.resolve()
 PLUGIN = ROOT / 'build/adreno-metal-plugin27'
 REPLAY_MARK = b'F %u/%u o%x c%u e%c'   # NativeAdrenoUserTest.h freshScan, compiled only with TurnipReplay.h
@@ -78,7 +82,7 @@ checks, problems = {}, []
 # The plugin as built, the Turnip library with its symbols, and the GPU addons.
 if not args.host_only and (PLUGIN / 'NativeAdrenoMetal.bundle/NativeAdrenoMetal').is_file():
     shutil.copytree(PLUGIN, OUT / 'adreno-metal-plugin', symlinks=False,
-                    ignore=shutil.ignore_patterns('AdrenoPM4.o'))
+                    ignore=shutil.ignore_patterns('*.o', '*.a', '*.dSYM'))
     bundle = PLUGIN / 'NativeAdrenoMetal.bundle'
     trust = json.loads((PLUGIN / 'trust.json').read_text())
     for name, path, cdhash in [('NativeAdrenoMetal', bundle / 'NativeAdrenoMetal', trust['cdhash']),
@@ -161,6 +165,24 @@ info['outputs'] = {name: dict(bytes=(OUT / name).stat().st_size, sha256=sha(OUT 
 files.append('run-info.json')
 
 envelope = artifacts.seal(OUT, files, DEVICE / 'ci/xnu/artifact-recipient.pem', args.sealed.resolve())
+debug_envelope = None
+if args.debug_out and PLUGIN.is_dir():
+    debug = args.debug_out.resolve()
+    debug.mkdir(parents=True, exist_ok=False)
+    for item in sorted(PLUGIN.iterdir()):
+        if item.suffix == '.dSYM' and item.is_dir():
+            shutil.copytree(item, debug / item.name, symlinks=False)
+        elif item.suffix in ('.a', '.o') and item.is_file():
+            shutil.copyfile(item, debug / item.name)
+    debug_files = sorted(p.relative_to(debug).as_posix() for p in debug.rglob('*') if p.is_file())
+    if debug_files:
+        (debug / 'debug-identity.json').write_text(json.dumps(dict(
+            run=info['run'], production_outputs=info['outputs'],
+            purpose='Optional exact debug symbols and build archives;not needed for phone deployment',
+            files={name: dict(bytes=(debug / name).stat().st_size, sha256=sha(debug / name)) for name in debug_files}
+        ), indent=2) + '\n')
+        debug_files.append('debug-identity.json')
+        debug_envelope = artifacts.seal(debug, debug_files, DEVICE / 'ci/xnu/artifact-recipient.pem', args.debug_sealed.resolve())
 summary = os.environ.get('GITHUB_STEP_SUMMARY')
 if summary:
     with open(summary, 'a') as stream:
@@ -170,4 +192,5 @@ if summary:
                 stream.write(f"| {name} | {item['bytes']} | `{item['sha256']}` |\n")
         stream.write('\nStep outcomes: ' + ', '.join(f'{k} {v}' for k, v in sorted(outcomes.items())) + '\n')
         stream.write('\nProblems: ' + (', '.join(problems) or 'none') + '\n\n```json\n' + json.dumps(envelope, indent=2) + '\n```\n')
-print(json.dumps(dict(files=len(files), problems=problems, outcomes=outcomes, envelope=envelope), indent=2))
+print(json.dumps(dict(files=len(files), problems=problems, outcomes=outcomes, envelope=envelope,
+                     encrypted_debug_retained_separately=debug_envelope is not None), indent=2))

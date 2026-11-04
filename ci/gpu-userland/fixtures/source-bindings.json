@@ -1,0 +1,6 @@
+{
+  ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc": "13c919e7ba3b696e1405adb195b47414a1ed84e46e4230aa639fd712d8f14322",
+  ".cache/mesa-work/src/freedreno/vulkan/tu_cmd_buffer.cc": "5b29c2ebc80247f53c0b2c2d62b698bcbfc638c29398ff5fc449c6c42c8d3b7a",
+  "drivers/AdrenoMetal/NativeAdrenoMetalPlugin.mm": "17eabfca12eff6056484d80a150ddd4bd68255cf984c7e9df52549983061e736",
+  "drivers/AdrenoMetal/NativeMetalBridgePhase.h": "62fcabb4a1cbfa583e850a9b669fd36a26b370d8e6405ce7b0c025b9f3922f6c"
+}
