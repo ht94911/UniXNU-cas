@@ -1,7 +1,7 @@
-name: nezha GPU public Vulkan frontend ARM host qualification 010
+name: nezha iPhone27 full GPU Metal target integration 011
 on:
   push:
-    branches: [codex/ios27-gpu27-metal-host-010-20261103]
+    branches: [codex/ios27-gpu27-metal-full-011-20261105]
   workflow_dispatch:
 permissions:
   contents: read
@@ -27,8 +27,8 @@ env:
   DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
 jobs:
   build:
-    runs-on: macos-26
-    timeout-minutes: 150
+    runs-on: macos-26-intel
+    timeout-minutes: 345
     steps:
       - name: Check out the dedicated source inputs
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -65,37 +65,33 @@ jobs:
           { sw_vers; xcodebuild -version; xcrun --sdk iphoneos --show-sdk-version; rustc "+$RUST_TOOLCHAIN" -vV;
             llvm-as --version; glslangValidator --version; glslc --version; spirv-val --version; } > "$RUNNER_TEMP/logs/tools.log" 2>&1
           echo "NMB_HOST_LOADER=$(brew --prefix molten-vk)/lib/libMoltenVK.dylib" >> "$GITHUB_ENV"
-      - name: Verify the real runtime-required Vulkan argument-buffer contract
-        id: host_driver
-        continue-on-error: true
-        run: device/ci/gpu-userland/logrun host-driver python3 device/ci/gpu-userland/check-host-driver.py --logs "$LOGS"
       - name: Prepare the exact public source and patch inputs
         run: device/ci/gpu-userland/logrun prepare python3 device/ci/gpu-userland/prepare.py --unixnu unixnu --record "$LOGS/sources.json"
       - name: Qualify host syntax and actual iOS ARM signal handlers
         id: frontend_targets
         run: device/ci/gpu-userland/logrun frontend-targets python3 device/ci/gpu-userland/check-intel-frontend.py --unixnu unixnu --report "$LOGS/frontend-target-equality.json"
-      - name: Run the maintained public-Vulkan frontend phase with explicit private-fixture omissions
-        id: frontend_host
-        if: steps.host_driver.outcome == 'success'
-        continue-on-error: true
-        env:
-          RUST_BACKTRACE: full
-          NSUnbufferedIO: "YES"
+      - name: Build Turnip for the actual A840 arm64e iOS27 target
+        id: turnip_ios27
         working-directory: unixnu
-        run: ../device/ci/gpu-userland/logrun frontend-host python3 ../device/ci/gpu-userland/check-public-frontend.py --unixnu .
-      - name: Record host GPU availability and actual abort backtraces
-        if: always()
-        run: device/ci/gpu-userland/logrun host-diagnostics python3 device/ci/gpu-userland/diagnose-host.py --unixnu unixnu --logs "$LOGS"
+        run: ../device/ci/gpu-userland/logrun turnip-ios27 python3 scripts/build-turnip-darwin.py --target ios27
+      - name: Build the iPhone-safe full-chain Metal plugin
+        id: plugin
+        working-directory: unixnu
+        run: ../device/ci/gpu-userland/logrun plugin python3 scripts/build-adreno-metal-plugin.py --target ios27 --iphone-24a446 --no-replay
+      - name: Verify the actual signed target and full-chain code selection
+        id: full_target
+        run: device/ci/gpu-userland/logrun full-target python3 device/ci/gpu-userland/check-full-target.py --unixnu unixnu --logs "$LOGS"
       - name: Verify and seal independent outputs and all diagnostics
         if: always()
         env:
           OUTCOME_FRONTEND_TARGETS: ${{ steps.frontend_targets.outcome }}
-          OUTCOME_HOST_DRIVER: ${{ steps.host_driver.outcome }}
-          OUTCOME_FRONTEND_HOST: ${{ steps.frontend_host.outcome }}
+          OUTCOME_TURNIP_IOS27: ${{ steps.turnip_ios27.outcome }}
+          OUTCOME_PLUGIN: ${{ steps.plugin.outcome }}
+          OUTCOME_FULL_TARGET: ${{ steps.full_target.outcome }}
         run: |
           set -euo pipefail
           export PATH="$(brew --prefix openssl@3)/bin:$PATH"
-          python3 device/ci/gpu-userland/collect.py --host-only --unixnu unixnu --device device --logs "$RUNNER_TEMP/logs" --out "$RUNNER_TEMP/out" --sealed "$RUNNER_TEMP/sealed" > "$RUNNER_TEMP/collect.log" 2>&1
+          python3 device/ci/gpu-userland/collect.py --unixnu unixnu --device device --logs "$RUNNER_TEMP/logs" --out "$RUNNER_TEMP/out" --sealed "$RUNNER_TEMP/sealed" > "$RUNNER_TEMP/collect.log" 2>&1
       - name: Upload only the CMS encrypted artifact
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
@@ -109,11 +105,13 @@ jobs:
       - name: Report the actual qualification outcome after evidence upload
         if: always()
         env:
-          HOST_DRIVER: ${{ steps.host_driver.outcome }}
           TARGETS: ${{ steps.frontend_targets.outcome }}
-          PUBLIC_FRONTEND: ${{ steps.frontend_host.outcome }}
+          TURNIP: ${{ steps.turnip_ios27.outcome }}
+          PLUGIN: ${{ steps.plugin.outcome }}
+          FULL_TARGET: ${{ steps.full_target.outcome }}
         run: |
           set -euo pipefail
-          test "$HOST_DRIVER" = success
           test "$TARGETS" = success
-          test "$PUBLIC_FRONTEND" = success
+          test "$TURNIP" = success
+          test "$PLUGIN" = success
+          test "$FULL_TARGET" = success

@@ -1,0 +1,54 @@
+diff --git a/scripts/build-adreno-metal-plugin.py b/scripts/build-adreno-metal-plugin.py
+index a593449..e6bce4b 100644
+--- a/scripts/build-adreno-metal-plugin.py
++++ b/scripts/build-adreno-metal-plugin.py
+@@ -20,8 +20,11 @@ ROOT = Path(__file__).resolve().parents[1]
+ parser = argparse.ArgumentParser(description=__doc__)
+ parser.add_argument('--target', choices=('ios', 'ios27'), default='ios')
+ parser.add_argument('--no-replay', action='store_true', help='omit the optional host simulation capture used by diagnostic probes')
++parser.add_argument('--iphone-24a446', action='store_true', help='iPhone27 profile: exclude iPad-specific raw QuartzCore layout access')
+ args = parser.parse_args()
+ IOS27 = args.target == 'ios27'
++if args.iphone_24a446 and not IOS27:
++    parser.error('--iphone-24a446 requires --target ios27')
+ OUT = ROOT / ('build/adreno-metal-plugin27' if IOS27 else 'build/adreno-metal-plugin')
+ bundle = OUT / 'NativeAdrenoMetal.bundle'
+ if OUT.exists():
+@@ -37,7 +40,10 @@ for path in sorted((ROOT / 'drivers/AdrenoMetal').rglob('*')):
+         source_hash.update(path.read_bytes())
+ metal_build_id = source_hash.hexdigest()
+ base += ['-DNATIVE_METAL_BUILD_ID="' + metal_build_id + '"']
+-(bundle / 'gpu-build.json').write_text(json.dumps({'metal_source_sha256': metal_build_id, 'target': args.target}, indent=2)+'\n')
++if args.iphone_24a446:
++    base += ['-DNATIVE_METAL_IPHONE24A446=1']
++(bundle / 'gpu-build.json').write_text(json.dumps({'metal_source_sha256': metal_build_id, 'target': args.target,
++    'iphone_24a446': args.iphone_24a446, 'ipad_private_layout_enabled': not args.iphone_24a446}, indent=2)+'\n')
+ VULKAN_INCLUDE = ROOT / '.cache/mesa-work/include'
+ TURNIP = ROOT / ('build/mesa-tu-ios27' if IOS27 else 'build/mesa-tu-ios') / 'src/freedreno/vulkan/libvulkan_freedreno.dylib'
+ turnip_profile = TURNIP.parents[3] / 'builtin-build-profile.json'
+diff --git a/scripts/make-gpu-addon.py b/scripts/make-gpu-addon.py
+index 6ccd488..6264b17 100644
+--- a/scripts/make-gpu-addon.py
++++ b/scripts/make-gpu-addon.py
+@@ -36,8 +36,11 @@ def pad(data):
+ 
+ def main():
+     no_daemon = '--no-daemon' in sys.argv[1:]
+-    args = [a for a in sys.argv[1:] if a not in ('--publish', '--no-daemon')]
++    fulltest = '--fulltest' in sys.argv[1:]
++    args = [a for a in sys.argv[1:] if a not in ('--publish', '--no-daemon', '--fulltest')]
+     publish = '--publish' in sys.argv[1:]
++    if fulltest and not publish:
++        sys.exit('--fulltest requires --publish: diagnostic-only discovery already runs the checks')
+     wallpaper = None
+     floating = None
+     if '--wallpaper-floating' in args:
+@@ -83,6 +86,8 @@ def main():
+         files.append(('addons/NativeAdrenoMetal.bundle/' + path.relative_to(BUNDLE).as_posix(), mode, path.read_bytes()))
+     if publish:
+         files.append(('addons/NativeAdrenoMetal.publish', 0o644, b'1\n'))
++    if fulltest:
++        files.append(('addons/NativeAdrenoMetal.fulltest', 0o644, b'1\n'))
+     if prime_list:
+         files.append(('addons/NativeAdrenoMetal.primelist', 0o644, prime_list.read_bytes()))
+     if cache_export:   # the plugin sends its cache directory to the UFS log (CacheExport.h)

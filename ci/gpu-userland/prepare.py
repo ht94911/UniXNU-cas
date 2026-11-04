@@ -221,6 +221,14 @@ def main():
     must(['git', '-C', root, 'apply', '--check', patch])
     must(['git', '-C', root, 'apply', patch])
     record['recipe_patches'] = {patch.name: sha(patch)}
+    for repository, name in [(root, 'full-iphone-recipes.patch'),
+                             (root / 'drivers/AdrenoMetal', 'full-iphone-plugin.patch')]:
+        selected = HERE / 'patches' / name
+        must(['git', '-C', repository, 'apply', '--check', selected])
+        must(['git', '-C', repository, 'apply', selected])
+        record.setdefault('full_chain_patches', {})[name] = sha(selected)
+    record['iphone_private_layout_policy'] = 'Explicit --iphone-24a446 excludes all iPad raw QuartzCore layout access; public policy only'
+    record['integrated_fulltest'] = 'One optional backboardd worker runs existing raw/Turnip/Metal checks alongside normal publication,without duplicate scanout'
     record['quartzcore_fixture'] = 'not supplied: real iPhone metallibs remain local'
     record['replay'] = 'disabled by the current upstream --no-replay option'
     record['target'] = 'arm64e-apple-ios27.0'

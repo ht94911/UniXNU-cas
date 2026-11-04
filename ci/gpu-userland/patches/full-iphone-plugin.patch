@@ -1,0 +1,138 @@
+diff --git a/NativeAdrenoMetalPlugin.mm b/NativeAdrenoMetalPlugin.mm
+index d453d5e..81740c2 100644
+--- a/NativeAdrenoMetalPlugin.mm
++++ b/NativeAdrenoMetalPlugin.mm
+@@ -75,6 +75,7 @@ static std::string gCacheDirectory;   // the runtime's cache directory (the one
+ static unsigned gDiagBits;
+ // Reads of the render server's own state for the framebuffer-format question (diagnostic only, for the exact QuartzCore of the target image; a read
+ // that fails or a build that differs reports zeros). Each value is one marker, 0x7Kvv: K picks the item, vv the value.
++#if !defined(NATIVE_METAL_IPHONE24A446)
+ static bool readTask(uintptr_t address, void *out, size_t size) {
+     vm_size_t got = 0;
+     return vm_read_overwrite(mach_task_self(), address, size, (vm_address_t) out, &got) == KERN_SUCCESS && got == size;
+@@ -82,6 +83,7 @@ static bool readTask(uintptr_t address, void *out, size_t size) {
+ static bool writeTask(uintptr_t address, const void *data, size_t size) {
+     return vm_write(mach_task_self(), address, (vm_offset_t) data, (mach_msg_type_number_t) size) == KERN_SUCCESS;
+ }
++#endif
+ // EXPERIMENT (second report onward): this display path takes plain 8-bit BGRA only, so tell the render server's display that it has neither the deep
+ // (10-bit) framebuffer nor universal buffer compression. Whether the state it reads those from is the whole story is what the markers show.
+ // EXPERIMENT (boot-arg sheng-fb-bgra=1): the render server's framebuffer format with every other virtualized answer left as it is.
+@@ -94,6 +96,7 @@ static bool bootArgSet(const char *key) {
+     size_t size = sizeof args - 1;
+     return sysctlbyname("kern.bootargs", args, &size, nullptr, 0) == 0 && strstr(args, key);
+ }
++#if !defined(NATIVE_METAL_IPHONE24A446)
+ static unsigned patchFramebufferBranch(uintptr_t slide) {
+     const uintptr_t site = 0x184461928 + slide;
+     uint32_t word = 0;
+@@ -110,6 +113,7 @@ static unsigned patchFramebufferBranch(uintptr_t slide) {
+     if (!restored) return 0x6E53;
+     return 0x6E42;
+ }
++#endif
+ // Every process other than the render server: the same runtime on its own connection, with none of the render server's threads (no
+ // display hand-off, telemetry, benchmark or cache export). Its shader cache lives in its own cache or temp directory.
+ // The reason a client's device failed, as a text line the driver keeps per process (the render server's report row is rewritten every ten seconds):
+@@ -288,7 +292,14 @@ static id deviceForPort(unsigned port) {
+         }
+         // The render server compresses its framebuffer (an Apple/AGX layout this GPU does not write) unless told not to; the display driver takes plain rows.
+         setenv("CA_DISABLE_FRAMEBUFFER_COMPRESSION", "1", 1);
+-#if defined(__arm64e__)
++#if defined(__arm64e__) && defined(NATIVE_METAL_IPHONE24A446)
++        // These public options also exist on iPhone. No iPad image-relative
++        // pointer, instruction patch or delayed raw-memory reader is admitted.
++        setenv("CA_DISPLAY_EDR_HEADROOM", "1", 1);
++        setenv("CA_FP16_MIN_HEADROOM", "1e30", 1);
++        setenv("CA_ALLOW_EDR_MIRRORING", "0", 1);
++        streamText(*gpu, "PUB iPhone24A446: public policy; iPad raw offsets disabled");
++#elif defined(__arm64e__)
+         // iPadOS 27 picks a 64-bit half-float framebuffer ('RGhA') whenever the display's EDR headroom is above 1 (this panel reports XDR
+         // headroom), which the display path can only show converted, slowly and greyed. As on iPadOS 17, where the render server drew plain
+         // 8-bit BGRA, the headroom is held at 1. IOMFBDisplay::framebuffer_pixel_format (24A446 0x184461838, asked on every update) takes
+@@ -398,6 +409,38 @@ static id deviceForPort(unsigned port) {
+             return nil;
+         }
+         gpu->mark(0x6802);
++        // One integrated trial can exercise the full maintained raw/Turnip/
++        // bridge/frontend checks while normal Metal discovery continues.
++        // The checks have their own connections and no second scanout server.
++        char fullTest[1024];
++        if (requestedPath("NativeAdrenoMetal.fulltest", fullTest, sizeof fullTest)) {
++            pthread_attr_t testAttributes;
++            pthread_attr_init(&testAttributes);
++            pthread_attr_setdetachstate(&testAttributes, PTHREAD_CREATE_DETACHED);
++            pthread_attr_setstacksize(&testAttributes, 8u << 20);
++            pthread_t testThread;
++            const int started = pthread_create(&testThread, &testAttributes, [](void *arg) -> void * {
++                Gpu *anchor = static_cast<Gpu *>(arg);
++                anchor->mark(0x6900);
++                streamText7(*anchor, "FULL begin: raw,Turnip,Metal checks; UI remains independent");
++                gAfterTurnip = bridgephase::runChecksOnly;
++                @try {
++                    const int cp = adrenoUserTest(anchor->port, getprogname());
++                    char line[64];
++                    snprintf(line, sizeof line, "FULL returned CP=%d; T/M/F are separate verdicts", cp);
++                    streamText7(*anchor, line);
++                    anchor->mark(0x69ff); // returned, not a blanket PASS
++                } @catch (NSException *exception) {
++                    char line[64];
++                    snprintf(line, sizeof line, "FULL exception %.40s", exception.name.UTF8String ?: "?");
++                    streamText7(*anchor, line);
++                    anchor->mark(0x69fe);
++                }
++                return nullptr;
++            }, gpu);
++            pthread_attr_destroy(&testAttributes);
++            if (started) {gpu->mark(0x69fd);streamText7(*gpu, "FULL worker creation failed; normal Metal path continues");}
++        }
+         // The display hand-off client on its own thread: it only serves, not the discovery.
+         pthread_t scanout;
+         pthread_attr_t attributes;
+diff --git a/NativeAdrenoUserTest.h b/NativeAdrenoUserTest.h
+index 2ed55dd..1345e89 100644
+--- a/NativeAdrenoUserTest.h
++++ b/NativeAdrenoUserTest.h
+@@ -188,6 +188,7 @@ static void streamText(Gpu &gpu, const char *text) {
+     pthread_mutex_lock(&gStreamLock);
+     gpu.mark(0x7fff);
+     for (unsigned i = 0; i < 63 && text[i]; ++i) gpu.mark(0x7000 | (uint8_t)text[i]);
++    gpu.mark(0x7100); // Optional end marker: the kernel can export this complete PID-scoped line immediately.
+     pthread_mutex_unlock(&gStreamLock);
+ }
+ 
+@@ -196,6 +197,7 @@ __attribute__((unused)) static void streamText7(Gpu &gpu, const char *text) {
+     pthread_mutex_lock(&gStreamLock);
+     gpu.mark(0x7ffe);
+     for (unsigned i = 0; i < 63 && text[i]; ++i) gpu.mark(0x7000 | (uint8_t)text[i]);
++    gpu.mark(0x7100);
+     pthread_mutex_unlock(&gStreamLock);
+ }
+ 
+diff --git a/NativeMetalBridgePhase.h b/NativeMetalBridgePhase.h
+index 1f7ce14..40ce5d6 100644
+--- a/NativeMetalBridgePhase.h
++++ b/NativeMetalBridgePhase.h
+@@ -141,7 +141,7 @@ static void serveScanout(Gpu &gpu, id device) {
+     }
+     streamText7(gpu, line);
+ }
+-static void run(Gpu &gpu, const char *turnipPath) {
++static void runChecks(Gpu &gpu, const char *turnipPath, bool permitScanout) {
+     gpu.mark(0x6500);
+     Job *job = new Job{};
+     job->turnip = turnipPath;
+@@ -190,10 +190,12 @@ static void run(Gpu &gpu, const char *turnipPath) {
+     gJob = nullptr;
+     delete job;
+     // After the checks' verdict has been on the page for a while: serve the display driver's frames with the GPU.
+-    if (scanout) {
++    if (scanout && permitScanout) {
+         sleep(8);
+         serveScanout(gpu, gDevice);
+     }
+     gGpu = nullptr;
+ }
++static void run(Gpu &gpu, const char *turnipPath) { runChecks(gpu, turnipPath, true); }
++__attribute__((unused)) static void runChecksOnly(Gpu &gpu, const char *turnipPath) { runChecks(gpu, turnipPath, false); }
+ }  // namespace bridgephase
