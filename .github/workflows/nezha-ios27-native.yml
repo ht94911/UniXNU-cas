@@ -1,7 +1,7 @@
-name: nezha iPhone27 A840 on accepted078 desktop copy - native007
+name: nezha iPhone27 A840 on accepted078 desktop copy - native008
 on:
   push:
-    branches: [codex/ios27-gpu27-main078-007-20261104]
+    branches: [codex/ios27-gpu27-main078-008-20261104]
   workflow_dispatch:
 permissions:
   contents: read

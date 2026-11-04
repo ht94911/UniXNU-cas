@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "415ad5af5bbcef175e51ea26668cab350fa6e8ab",
+  "device_revision": "083e5f65b656c0b362b5a4fd07f515c45533e24c",
   "soc_revision": "5a71f9eb5724ff58eddf49f7f5baecc9f4233a7c",
   "xcode": "26.6",
   "files": {
@@ -76,7 +76,7 @@
     "source/adreno/NativeGpuTraceStore.h": "4a2984192bc2c68383146f558212d1000c920a8d9cbe54ccec8badd935844823",
     "source/device/board.toml": "b63db8d50f3a3f78c8b1ce43df3fa12d175c32e96d7311d09225a667d1780e15",
     "source/device/configs/nezha_ios27_defconfig": "6f771ac6d84d2a094a9b4b4088ba1fe5cb172444cc76ae5584e68b94f090d121",
-    "source/device/feeds.toml": "f50c46c1069974599dd018553a9643299bae728fdbf0ec371821bb1b9e72c3f2",
+    "source/device/feeds.toml": "89cd3214bf98295e76dacf3606cfce03f4a903c27e865d6558e45bacd3e154b0",
     "source/device/package/.gitkeep": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
     "source/device/package/BootDiagExport.c": "88f65a92490b54444ca68ecf99e887ba1c7f6ee3d5145b8e6eed13bf90c7a92d",
     "source/device/package/BootLog.c": "b8a76a03be5b1595c09ab8181acadf6332f88196022c086eb4628addac25acb3",
@@ -188,7 +188,7 @@
     "source/soc/patches/xnu-12377/sheng-platform-power.patch": "6e68dbcdac670624f2a9806a61fef42110bfe6586029b3f1a0acb068c3a23ec2",
     "source/soc/soc.toml": "9cebcadf2d5a271ceb44ee5fc378ed739cff0e7e5a940007164a9917042fd92f",
     "source/ufs.bundle": "25655129fad2b05a33278ad33f7d5bdd4d7544a65fcf3712b082adb4ec82e821",
-    "source/usb.bundle": "088e5cedf7340886871d9442ce476f1d20534248f9173195ef23d9919d94c321",
+    "source/usb.bundle": "9071c6ea5e9a44423c0a81de4fae57ed65520dad5c546bd3b81acba2de86493b",
     "ci/native.py": "13d56b5e612e91af7d7b71f0f2c612c685120d3a1bb16eedcfbcb0bc7e3879fb"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
@@ -197,9 +197,9 @@
   "device_executed": false,
   "usb_enabled": true,
   "usb": {
-    "source_revision": "19030348ef06896231869795f91662572a3676fe",
-    "source_tree": "d2b2d45047b5ebd945753b33a8dd3b2e10ed976f",
-    "history": "single shallow reviewed27 I/O binding plus already-qualified one-use reset-owner contract;no private source history",
+    "source_revision": "a173dedceb3e6cbaa98ea259afaea7d142869dac",
+    "source_tree": "d16416c780f64af318b3460549e605da6ddf40fe",
+    "history": "Single reviewed main057b source commit plus the A840 three-line IOBSD consumer identity; no USB implementation change",
     "repository": "https://github.com/xiaoleGun/QcomXnuUsbDebug.git"
   },
   "comparison_reference": false,

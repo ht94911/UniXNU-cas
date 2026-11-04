@@ -45,7 +45,8 @@ commit = "4bd3230f48121e47a0badb4ea2d1674715ba2197"
 name = "QcomXnuUsbDebug"
 kind = "driver"
 git = "https://github.com/xiaoleGun/QcomXnuUsbDebug.git"
-commit = "19030348ef06896231869795f91662572a3676fe"
+# Same078 runtime/patch bytes; only the prequalified A840 IOBSD consumer hash differs.
+commit = "a173dedceb3e6cbaa98ea259afaea7d142869dac"
 
 [[source]]
 name = "GopFramebuffer"
