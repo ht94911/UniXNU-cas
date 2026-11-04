@@ -7,7 +7,10 @@ static_assert(sizeof(IOHIDDevice)==208,"selected27 IOHIDDevice base layout");
 // nezha: umi package/touch/NativeHidInput.cpp with the nezha producer (NezhaInput.c: Synaptics TCM touch frames in
 // 1200 x 2608 panel pixels, PMK8850/TLMM key masks) and report 2 = Home, Power, Volume Increment, Volume Decrement (sheng bits).
 #include "NezhaInput.h"
+#include "NezhaHidPacing.h"
+#include "NezhaInputTelemetry.h"
 #include <IOKit/IOBufferMemoryDescriptor.h>
+#include <IOKit/IOLib.h>
 #include <IOKit/IOWorkLoop.h>
 #include <IOKit/IOTimerEventSource.h>
 #include <libkern/c++/OSString.h>
@@ -60,29 +63,62 @@ class NativeHidInput : public IOHIDDevice {
     // (Digitizer/Touch Screen) and the Built-In flag, which a combined keyboard-first descriptor would not provide.
     bool touchOnly=false;
     bool eventDriverFound=false;
-    nezha_touch_frame delivered={},pending={};
+    struct nezha_hid_pacer touchState={};
+    IOBufferMemoryDescriptor *touchBuffer=nullptr;
+    bool touchFailed=false;
+    unsigned touchLogged=0;
     uint32_t keyMask=0;            // report 2 bits of the physical keys currently down
     uint32_t sent=0;               // report 2 bits last accepted by handleReport
     unsigned homeHold=0;           // ticks left for a synthetic Home press
-    bool hasPending=false;
+    static bool readTouch(void *,struct nezha_touch_frame *out) {return nezha_touch_next(out);}
     static void touchTick(OSObject *owner,IOTimerEventSource *source) {
         NativeHidInput *self=OSDynamicCast(NativeHidInput,owner);if(!self)return;
-        source->setTimeoutMS(8);
-        if(!self->hasEventDriverCached())return;
-        // Drain up to eight ordered snapshots. In particular, a fast down/up
-        // pair must not disappear between the timer's seqlock snapshots.
-        for(unsigned n=0;n<8;++n) {
-            if(!self->hasPending)self->hasPending=nezha_touch_next(&self->pending);
-            if(!self->hasPending)return;
-            unsigned char report[62];unsigned count=touchReport(&self->delivered,&self->pending,report);
-            if(!count){self->delivered=self->pending;self->hasPending=false;continue;}
-            IOBufferMemoryDescriptor *buffer=IOBufferMemoryDescriptor::withBytes(report,sizeof(report),kIODirectionNone);
-            IOReturn result=buffer?self->handleReport(buffer,kIOHIDReportTypeInput,0):kIOReturnNoMemory;
-            OSSafeReleaseNULL(buffer);native_hid_input_observed(6,result);
-            native_touch_hid_reports=native_touch_hid_reports+1;
-            if(result!=kIOReturnSuccess)return; // Preserve the frame for retry.
-            self->delivered=self->pending;self->hasPending=false;
+        volatile struct nzi_frame *d=&nezha_hid_input_diag;uint32_t stamp=nzi_begin(d);
+        nzi_put(d,H_VERSION,1);nzi_put(d,H_TICKS,nzi_get(d,H_TICKS)+1);nzi_put(d,H_STOP,self->touchFailed);
+        nzi_time(d,H_TICKLO,mach_absolute_time());nzi_end(d,stamp);
+        if(self->touchFailed)return;
+        source->setTimeoutMS(16);
+        bool ready=self->hasEventDriverCached();stamp=nzi_begin(d);nzi_put(d,H_READY,ready);nzi_end(d,stamp);
+        if(!ready || !self->touchBuffer)return;
+        if(!nezha_hid_pick(&self->touchState,readTouch,nullptr))return;
+        stamp=nzi_begin(d);nzi_put(d,H_SEEN,self->touchState.pending.sequence);nzi_time(d,H_COALLO,self->touchState.coalesced);nzi_end(d,stamp);
+        if(nezha_hid_same_contacts(&self->touchState.delivered,&self->touchState.pending)) {
+            nezha_hid_commit(&self->touchState);return;
         }
+        unsigned char report[62];unsigned count=touchReport(&self->touchState.delivered,&self->touchState.pending,report);
+        if(!count){nezha_hid_commit(&self->touchState);return;}
+        uint32_t mask=self->touchState.pending.active;
+        unsigned id=(unsigned)__builtin_ctz(mask?mask:self->touchState.delivered.active);
+        stamp=nzi_begin(d);nzi_put(d,H_ATTEMPT,nzi_get(d,H_ATTEMPT)+1);nzi_put(d,H_IN_CALL,1);
+        nzi_put(d,H_FRAME,self->touchState.pending.sequence);nzi_put(d,H_MASK,mask);nzi_put(d,H_ID,id);
+        nzi_put(d,H_X,mask?self->touchState.pending.x[id]:self->touchState.delivered.x[id]);
+        nzi_put(d,H_Y,mask?self->touchState.pending.y[id]:self->touchState.delivered.y[id]);
+        nzi_put(d,H_WIRE_X,(uint32_t)report[3+id*6]|((uint32_t)report[4+id*6]<<8));
+        nzi_put(d,H_WIRE_Y,(uint32_t)report[5+id*6]|((uint32_t)report[6+id*6]<<8));
+        nzi_put(d,H_CONTACTS,count);nzi_time(d,H_STARTLO,mach_absolute_time());nzi_end(d,stamp);
+        IOReturn result=kIOReturnNoMemory;
+        if(self->touchBuffer->writeBytes(0,report,sizeof(report))==sizeof(report))
+            result=self->handleReport(self->touchBuffer,kIOHIDReportTypeInput,0);
+        native_hid_input_observed(6,result);native_touch_hid_reports=native_touch_hid_reports+1;
+        stamp=nzi_begin(d);nzi_put(d,H_RETURN,nzi_get(d,H_RETURN)+1);nzi_put(d,H_IN_CALL,0);nzi_put(d,H_RESULT,(uint32_t)result);
+        if(result==kIOReturnSuccess){uint32_t before=nzi_get(d,H_ACK_MASK);nzi_put(d,H_OK,nzi_get(d,H_OK)+1);
+            nzi_put(d,H_DOWN,nzi_get(d,H_DOWN)+(unsigned)__builtin_popcount(mask&~before));nzi_put(d,H_UP,nzi_get(d,H_UP)+(unsigned)__builtin_popcount(before&~mask));nzi_put(d,H_ACK_MASK,mask);}
+        else nzi_put(d,H_ERROR,nzi_get(d,H_ERROR)+1);
+        nzi_time(d,H_ENDLO,mach_absolute_time());nzi_end(d,stamp);
+        if(self->touchLogged<12 || result!=kIOReturnSuccess) {
+            ++self->touchLogged;
+            printf("NEZHA HID: paced touch seq=%u active=%x records=%u result=%x\n",self->touchState.pending.sequence,
+                   self->touchState.pending.active,count,result);
+        }
+        if(result!=kIOReturnSuccess) {
+            self->touchFailed=true;stamp=nzi_begin(d);nzi_put(d,H_STOP,1);nzi_end(d,stamp);source->cancelTimeout();
+            printf("NEZHA HID: touch report stopped after error;pending preserved,no automatic replay\n");return;
+        }
+        nezha_hid_commit(&self->touchState);
+        // handleReport synchronously reads this board buffer;DriverKit owns a
+        // separate copied pool buffer (selected IOHIDInterface source). Do not
+        // reuse that pool or infer its completion from this return code.
+        source->setTimeoutMS(16);
     }
     // Report 3 from two contact sets: active contacts with tip, lifted ones once with tip clear; 0..32767 on both axes.
     static unsigned touchReport(const nezha_touch_frame *previous,const nezha_touch_frame *next,unsigned char report[62]) {
@@ -155,11 +191,16 @@ public:
         unsigned char combined[sizeof(descriptor)+sizeof(touchDescriptor)];
         size_t size;
         if(touchOnly){size=sizeof(touchDescriptor);memcpy(combined,touchDescriptor,size);}
-        else{
-            size=sizeof(descriptor);memcpy(combined,descriptor,size);
-            // Default: one device, keyboard collection first, digitizer second (the arrangement whose event driver
-            // and user client attach on hardware); the separate digitizer device is the opt-in sheng-touch-split.
-            if(touchEnabled){memcpy(combined+size,touchDescriptor,sizeof(touchDescriptor));size+=sizeof(touchDescriptor);}
+        else {
+            // The selected original service derives its primary usage from
+            // the first application collection when its deferred start runs.
+            size=0;
+            if(touchEnabled) {
+                memcpy(combined,touchDescriptor,sizeof(touchDescriptor));
+                size=sizeof(touchDescriptor);
+            }
+            memcpy(combined+size,descriptor,sizeof(descriptor));
+            size+=sizeof(descriptor);
         }
         *out=IOBufferMemoryDescriptor::withBytes(combined,size,kIODirectionNone);
         return *out?kIOReturnSuccess:kIOReturnNoMemory;
@@ -178,6 +219,8 @@ public:
             OSSafeReleaseNULL(timer);IOHIDDevice::stop(provider);return false;
         }
         if(touchOnly||touchEnabled) {
+            unsigned char initial[62]={};touchBuffer=IOBufferMemoryDescriptor::withBytes(initial,sizeof(initial),kIODirectionNone);
+            if(!touchBuffer){inputLoop->removeEventSource(timer);OSSafeReleaseNULL(timer);IOHIDDevice::stop(provider);return false;}
             touchTimer=IOTimerEventSource::timerEventSource(this,touchTick);
             if(touchTimer && inputLoop->addEventSource(touchTimer)==kIOReturnSuccess)touchTimer->setTimeoutMS(1000);
             else OSSafeReleaseNULL(touchTimer);
@@ -189,9 +232,9 @@ public:
     void stop(IOService *provider) override {
         if(touchTimer){touchTimer->cancelTimeout();inputLoop->removeEventSource(touchTimer);OSSafeReleaseNULL(touchTimer);}
         if(timer){timer->cancelTimeout();inputLoop->removeEventSource(timer);OSSafeReleaseNULL(timer);}
-        IOHIDDevice::stop(provider);
+        OSSafeReleaseNULL(touchBuffer);IOHIDDevice::stop(provider);
     }
-    void free() override {OSSafeReleaseNULL(inputLoop);IOHIDDevice::free();}
+    void free() override {OSSafeReleaseNULL(touchBuffer);OSSafeReleaseNULL(inputLoop);IOHIDDevice::free();}
 };
 OSDefineMetaClassAndStructors(NativeHidInput,IOHIDDevice)
 extern "C" IOService *native_hid_input_allocate(void) {return new NativeHidInput;}
