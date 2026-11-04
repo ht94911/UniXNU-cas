@@ -1,7 +1,7 @@
-name: nezha iPhone27 multicore064 native startup ordering native kernel Intel host
+name: nezha iPhone27 WCN7860 source qualification native001 Intel
 on:
   push:
-    branches: [codex/ios27-touch078-20261103]
+    branches: [codex/ios27-wifi27-native001-20261105]
   workflow_dispatch:
 permissions:
   contents: read

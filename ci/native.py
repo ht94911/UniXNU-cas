@@ -201,6 +201,9 @@ def collect(framework, work, sealed):
         for path in sorted((tree / 'build/nezha27-usb-control').glob('*')):
             if path.is_file() and path.suffix in ('.json','.log','.o','.c'):
                 add(path, 'archives/nezha27-usb-control/' + path.name)
+        for path in sorted((tree / 'build/nezha27-wifi').rglob('*')):
+            if path.is_file() and path.suffix in ('.json', '.log', '.o', '.txt', '.d'):
+                add(path, 'archives/nezha27-wifi/' + str(path.relative_to(tree / 'build/nezha27-wifi')))
         for path in sorted((tree / 'build/nezha27-input').glob('*')):
             if path.is_file() and path.suffix in ('.json','.log','.o','.S'):
                 add(path, 'archives/nezha27-input/' + path.name)
@@ -249,7 +252,7 @@ def collect(framework, work, sealed):
             for name in ('inputs.json', 'source-sha256.json', 'lto-command.json', 'lto-build.log'):
                 add(selected / name, 'reference/' + name)
         for stem in ('start', 'pe_kprintf', 'debug', 'printf', 'serial_console', 'serial_general',
-                     'bsd_init', 'subr_prf', 'arm_init', 'startup', 'machine_routines', 'IOUserServer'):
+                     'bsd_init', 'subr_prf', 'arm_init', 'startup', 'machine_routines', 'machine_routines_asm', 'sleh', 'kern_event', 'IOUserServer'):
             for path in sorted(objects.glob('**/' + stem + '.o*')):
                 if path.suffix in ('.o', '.json'):
                     add(path, 'objects/' + str(path.relative_to(objects)))

@@ -16,3 +16,8 @@ zzzzz-nezha-owner-data-ready.patch
 # Real self-IPI owns signal enablement; retain original startup assertions.
 zzzzzz-nezha-sigp-startup-order.patch
 zzzzzz-nezha-input-chain-trace.patch
+
+# WCN7860: bounded MMIO, actual27 events and opt-in worker.
+nezha-wifi-mmio-recovery.patch
+nezha-wifi-kernel-events.patch
+nezha-wifi-start.patch
