@@ -16,8 +16,8 @@ constexpr int KERN_SUCCESS=0,kIOReturnBadArgument=(int)0xe00002c2u,kIOReturnUnsu
 constexpr int VK_SUCCESS=0,VK_ERROR_OUT_OF_HOST_MEMORY=-1,VK_ERROR_INITIALIZATION_FAILED=-3,VK_ERROR_INCOMPATIBLE_DRIVER=-9;
 constexpr int VK_SYSTEM_ALLOCATION_SCOPE_DEVICE=0,kIOMainPortDefault=0;
 using VkResult=int;
-struct rb_node{};struct rb_tree{};
-#define rb_tree_foreach_safe(type,var,tree,member) for(type *var=nullptr;var;var=nullptr)
+#include "rb_tree.h"
+template<typename... A> static void mesa_loge(const char*,A...){}
 struct tu_instance{};
 struct tu_physical_device {tu_instance *instance;struct {uint32_t chip_id;} dev_id;uint64_t va_start,va_size;};
 struct tu_device {int fd=0;void *darwin_retire=nullptr;struct {int alloc=0;} vk;tu_physical_device *physical_device;};
@@ -159,6 +159,155 @@ tu_darwin_bo_cache_stats(uint64_t out[8])
       pthread_mutex_unlock(&retire->lock);
    }
    pthread_mutex_unlock(&dw_registry_lock);
+}
+static int
+darwin_va_cmp_address(const struct rb_node *a, const struct rb_node *b)
+{
+   const struct darwin_va_hole *x = rb_node_data(struct darwin_va_hole, a, by_address);
+   const struct darwin_va_hole *y = rb_node_data(struct darwin_va_hole, b, by_address);
+   return x->start > y->start ? -1 : x->start < y->start ? 1 : 0;
+}
+static int
+darwin_va_cmp_size(const struct rb_node *a, const struct rb_node *b)
+{
+   const struct darwin_va_hole *x = rb_node_data(struct darwin_va_hole, a, by_size);
+   const struct darwin_va_hole *y = rb_node_data(struct darwin_va_hole, b, by_size);
+   if (x->size != y->size)
+      return x->size > y->size ? -1 : 1;
+   return x->start > y->start ? -1 : x->start < y->start ? 1 : 0;
+}
+static struct darwin_va_hole *
+darwin_va_smallest_fit(struct darwin_va *va, uint64_t size)
+{
+   struct rb_node *best = NULL;
+   for (struct rb_node *x = va->size.root; x;) {
+      if (rb_node_data(struct darwin_va_hole, x, by_size)->size >= size) {
+         best = x;
+         x = x->left;
+      } else {
+         x = x->right;
+      }
+   }
+   return best ? rb_node_data(struct darwin_va_hole, best, by_size) : NULL;
+}
+static struct darwin_va_hole *
+darwin_va_hole_at_or_below(struct darwin_va *va, uint64_t address)
+{
+   struct rb_node *best = NULL;
+   for (struct rb_node *x = va->address.root; x;) {
+      if (rb_node_data(struct darwin_va_hole, x, by_address)->start <= address) {
+         best = x;
+         x = x->right;
+      } else {
+         x = x->left;
+      }
+   }
+   return best ? rb_node_data(struct darwin_va_hole, best, by_address) : NULL;
+}
+static bool
+darwin_va_add(struct darwin_va *va, uint64_t start, uint64_t size)
+{
+   if (!size)
+      return true;
+   struct darwin_va_hole *hole = (struct darwin_va_hole *)calloc(1, sizeof(*hole));
+   if (!hole)
+      return false;   /* the range is lost, not reused: never handed out twice */
+   hole->start = start;
+   hole->size = size;
+   rb_tree_insert(&va->address, &hole->by_address, darwin_va_cmp_address);
+   rb_tree_insert(&va->size, &hole->by_size, darwin_va_cmp_size);
+   ++va->holes;
+   return true;
+}
+static void
+darwin_va_del(struct darwin_va *va, struct darwin_va_hole *hole)
+{
+   rb_tree_remove(&va->address, &hole->by_address);
+   rb_tree_remove(&va->size, &hole->by_size);
+   --va->holes;
+   free(hole);
+}
+static void
+darwin_va_finish(struct darwin_va *va)
+{
+   /* rb_tree_foreach_safe caches only the successor. That successor can still
+    * follow parent pointers through the node just freed. Unlink both indices
+    * before releasing any hole, using the same removal as carve and merge. */
+   while (struct rb_node *node = rb_tree_first(&va->address))
+      darwin_va_del(va, rb_node_data(struct darwin_va_hole, node, by_address));
+}
+static void
+darwin_va_carve(struct darwin_va *va, struct darwin_va_hole *hole, uint64_t at, uint64_t size)
+{
+   const uint64_t begin = hole->start, end = hole->start + hole->size;
+   darwin_va_del(va, hole);
+   darwin_va_add(va, begin, at - begin);
+   darwin_va_add(va, at + size, end - (at + size));
+   ++va->allocs;
+   va->used += size;
+}
+static uint64_t
+darwin_va_alloc(struct darwin_va *va, uint64_t size, uint64_t alignment, bool high)
+{
+   if (!size || !alignment || (alignment & (alignment - 1)))
+      return 0;
+   struct darwin_va_hole *hole = darwin_va_smallest_fit(va, size);
+   while (hole) {
+      const uint64_t end = hole->start + hole->size;
+      uint64_t at;
+      bool fits;
+      if (high) {
+         at = (end - size) & ~(alignment - 1);
+         fits = at >= hole->start;
+      } else {
+         at = (hole->start + alignment - 1) & ~(alignment - 1);
+         fits = at >= hole->start && at <= end && end - at >= size;
+      }
+      if (fits) {
+         darwin_va_carve(va, hole, at, size);
+         return at;
+      }
+      struct rb_node *next = rb_node_next(&hole->by_size);
+      hole = next ? rb_node_data(struct darwin_va_hole, next, by_size) : NULL;
+   }
+   return 0;
+}
+static bool
+darwin_va_alloc_at(struct darwin_va *va, uint64_t address, uint64_t size)
+{
+   struct darwin_va_hole *hole = darwin_va_hole_at_or_below(va, address);
+   if (!size || !hole || address - hole->start >= hole->size || hole->start + hole->size - address < size)
+      return false;
+   darwin_va_carve(va, hole, address, size);
+   return true;
+}
+static void
+darwin_va_free(struct darwin_va *va, uint64_t address, uint64_t size)
+{
+   if (!size)
+      return;
+   struct darwin_va_hole *below = darwin_va_hole_at_or_below(va, address);
+   struct rb_node *after = below ? rb_node_next(&below->by_address) : rb_tree_first(&va->address);
+   struct darwin_va_hole *above = after ? rb_node_data(struct darwin_va_hole, after, by_address) : NULL;
+   if ((below && below->start + below->size > address) || (above && above->start < address + size)) {
+      mesa_loge("darwin: GPU range %#llx+%#llx freed over a free hole", (unsigned long long)address,
+                (unsigned long long)size);
+      return;
+   }
+   uint64_t begin = address, end = address + size;
+   if (below && below->start + below->size == address) {
+      begin = below->start;
+      darwin_va_del(va, below);
+      ++va->merges;
+   }
+   if (above && above->start == end) {
+      end = above->start + above->size;
+      darwin_va_del(va, above);
+      ++va->merges;
+   }
+   darwin_va_add(va, begin, end - begin);
+   ++va->frees;
+   va->used -= size;
 }
 static kern_return_t
 dw_call(struct dw_connection &dw, uint32_t method, const void *in, size_t in_size, void *out,
@@ -389,8 +538,7 @@ darwin_device_finish(struct tu_device *dev)
                    retire->count, (unsigned long long)retire->pressure_waits);
       if (retire->cache_stats.lookups)
          darwin_cache_log(retire);
-      rb_tree_foreach_safe(struct darwin_va_hole, hole, &retire->va.address, by_address)
-         free(hole);
+      darwin_va_finish(&retire->va);
       pthread_mutex_destroy(&retire->connection.lock);
       pthread_mutex_destroy(&retire->lock);
       free(retire->entries);
@@ -421,6 +569,9 @@ static void map_same_va(tu_device &d){
  assert(dw_call(dw_device(&d),NativeAdrenoMethodBoAlloc,&a,sizeof a,&r,sizeof r)==0);
  NativeAdrenoAbiBoMap m{};m.handle=r.handle;m.iova=0x20000000;m.permissions=3;NativeAdrenoAbiBoMapReply mr{};
  assert(dw_call(dw_device(&d),NativeAdrenoMethodBoMap,&m,sizeof m,&mr,sizeof mr)==0);
+ auto *state=(darwin_retire_state*)d.darwin_retire;
+ for(unsigned i=0;i<17;i++)assert(darwin_va_add(&state->va,0x21000000ull+i*8192,4096));
+ __atomic_store_n(&state->va_holes_sample,state->va.holes,__ATOMIC_RELAXED);
 }
 int main(){
  auto primary=make_device();assert(darwin_device_init(&primary)==0);auto saved=dw_device(&primary).conn;assert(live()==1);

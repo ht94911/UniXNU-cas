@@ -1,7 +1,7 @@
-name: nezha iPhone27 isolated Vulkan device lifetime integration 012
+name: nezha iPhone27 upstream GMEM and complete GPU lifetime integration 013
 on:
   push:
-    branches: [codex/ios27-gpu27-metal-full-012-20261105]
+    branches: [codex/ios27-gpu27-metal-full-013-20261105]
   workflow_dispatch:
 permissions:
   contents: read
@@ -67,7 +67,7 @@ jobs:
           echo "NMB_HOST_LOADER=$(brew --prefix molten-vk)/lib/libMoltenVK.dylib" >> "$GITHUB_ENV"
       - name: Prepare the exact public source and patch inputs
         run: device/ci/gpu-userland/logrun prepare python3 device/ci/gpu-userland/prepare.py --unixnu unixnu --record "$LOGS/sources.json"
-      - name: Check actual-source device lifetimes and allocation/cache failure guards
+      - name: Check actual-source real Mesa trees,device lifetimes and swap API guards
         id: device_contexts
         run: device/ci/gpu-userland/logrun device-contexts python3 device/ci/gpu-userland/check-device-context-host.py --unixnu unixnu --logs "$LOGS"
       - name: Qualify host syntax and actual iOS ARM signal handlers

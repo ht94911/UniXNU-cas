@@ -160,6 +160,10 @@ def main():
     must(['git', '-C', root, 'apply', '--check', context_recipe])
     must(['git', '-C', root, 'apply', context_recipe])
     record['device_context_recipe_patch'] = sha(context_recipe)
+    upstream_recipe = HERE / 'patches/upstream-gpu-recipes.patch'
+    must(['git', '-C', root, 'apply', '--check', upstream_recipe])
+    must(['git', '-C', root, 'apply', upstream_recipe])
+    record['reviewed_upstream_GPU_recipe_patch'] = sha(upstream_recipe)
     pins = json.loads((root / 'scripts/data/adreno-compiler-inputs.json').read_text())
     mesa = root / '.cache/mesa-work'
     url = fetch_commit(mesa, MESA_MIRRORS, pins['mesa']['commit'], pins['mesa']['sparse_directories'])
@@ -232,10 +236,16 @@ def main():
         must(['git', '-C', repository, 'apply', '--check', selected])
         must(['git', '-C', repository, 'apply', selected])
         record.setdefault('full_chain_patches', {})[name] = sha(selected)
+    selected = HERE / 'patches/upstream-gpu-plugin.patch'
+    must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', '--check', selected])
+    must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', selected])
+    record['reviewed_upstream_GPU_plugin_patch'] = sha(selected)
     record['iphone_private_layout_policy'] = 'Explicit --iphone-24a446 excludes all iPad raw QuartzCore layout access; public policy only'
     record['integrated_fulltest'] = 'One optional backboardd worker runs existing raw/Turnip/Metal checks alongside normal publication,without duplicate scanout'
     record['device_context_policy'] = 'Each VkDevice has its own connection,VA/cache/fence state;enumeration does not touch live ports;CS startup failures return before writes'
     record['fulltest_cache_policy'] = 'Reuse the writable published runtime directory and release the test frontend device owner reference'
+    record['GMEM_policy'] = 'Reviewed upstream memory-side colour/lazy-transient fixes;thread-local colour checks and race-free cached boot mode;device and imported host pixels verified only on hardware'
+    record['VA_teardown_policy'] = 'Remove both actual Mesa RB indices before freeing;actual-source real-RB and fake-Vulkan regression fixtures are mandatory'
     record['quartzcore_fixture'] = 'not supplied: real iPhone metallibs remain local'
     record['replay'] = 'disabled by the current upstream --no-replay option'
     record['target'] = 'arm64e-apple-ios27.0'

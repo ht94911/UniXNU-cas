@@ -1,0 +1,261 @@
+[
+  {
+    "fixture": "new.cpp",
+    "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc",
+    "marker": "darwin_va_cmp_address",
+    "kind": "function",
+    "sha256": "04207c1f8556f4fc50cb20a72a4de5e5633aa4ff37580fc0639ff9cf6bc53723"
+  },
+  {
+    "fixture": "new.cpp",
+    "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc",
+    "marker": "darwin_va_cmp_size",
+    "kind": "function",
+    "sha256": "7e38d9a01342f9512e6d331a92eee6a4c9ae7c4f7dbac81ae80808ec3123cb92"
+  },
+  {
+    "fixture": "new.cpp",
+    "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc",
+    "marker": "darwin_va_smallest_fit",
+    "kind": "function",
+    "sha256": "5f9b7f4c6dc556727f4323198450909445d7a394d9dda5edc773a786aeebb9b3"
+  },
+  {
+    "fixture": "new.cpp",
+    "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc",
+    "marker": "darwin_va_hole_at_or_below",
+    "kind": "function",
+    "sha256": "d515589083ae8666a1a6079e418ccf5df290ab0e74e1c5018f7c9abf1820a168"
+  },
+  {
+    "fixture": "new.cpp",
+    "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc",
+    "marker": "darwin_va_add",
+    "kind": "function",
+    "sha256": "838130b47d5b8e5039509dbd8ab70f02216470a16f2deaf52d37690be00db4dd"
+  },
+  {
+    "fixture": "new.cpp",
+    "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc",
+    "marker": "darwin_va_del",
+    "kind": "function",
+    "sha256": "154708b4f27c6794995a408bee5fff6311a219a015828167cee8be6b9ae8ba38"
+  },
+  {
+    "fixture": "new.cpp",
+    "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc",
+    "marker": "darwin_va_finish",
+    "kind": "function",
+    "sha256": "5cbe34734d9b661f50919370607be11e2f28f865d8318cb3fae6fafd05db9bfd"
+  },
+  {
+    "fixture": "new.cpp",
+    "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc",
+    "marker": "darwin_va_carve",
+    "kind": "function",
+    "sha256": "9037c2ec490c77d7588e71fd8d2ece66c2ff5ab0bbfc3b38a35e66676a1d679f"
+  },
+  {
+    "fixture": "new.cpp",
+    "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc",
+    "marker": "darwin_va_alloc",
+    "kind": "function",
+    "sha256": "4ef934e61bd72d2ec5e6edf3b42bfc0fc0f9d3f6e49caa9d2ade4ea090ec0524"
+  },
+  {
+    "fixture": "new.cpp",
+    "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc",
+    "marker": "darwin_va_alloc_at",
+    "kind": "function",
+    "sha256": "969cee3e42e60f5da70fcd6e756688f2d3f995c8e9bd73fe4030ddd397ee0818"
+  },
+  {
+    "fixture": "new.cpp",
+    "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc",
+    "marker": "darwin_va_free",
+    "kind": "function",
+    "sha256": "02215de604ecc13332eeb6176df4dd3d7a77a8da22eee121539e0b996cc1cf73"
+  },
+  {
+    "fixture": "new.cpp",
+    "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc",
+    "marker": "dw_call",
+    "kind": "function",
+    "sha256": "ed402853bbc403359ceaedfef8700abd9c84bb78cafa79b24a7c73c6f688e8db"
+  },
+  {
+    "fixture": "new.cpp",
+    "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc",
+    "marker": "dw_probe_selector",
+    "kind": "function",
+    "sha256": "ea2f2d4cb7faeedf821141c5c67f5f8e178a21a50781ed3719bc7f444a4dba0a"
+  },
+  {
+    "fixture": "new.cpp",
+    "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc",
+    "marker": "dw_open_connection",
+    "kind": "function",
+    "sha256": "4bfd1c1fe27a065c7c598bc891c305d3ceb66ffc283f066963305cfe9870de82"
+  },
+  {
+    "fixture": "new.cpp",
+    "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc",
+    "marker": "tu_darwin_set_priority",
+    "kind": "function",
+    "sha256": "bd482b4e12c91b6fe97ff4af6488293e168e3b641ea627ee0469b0832cb32c85"
+  },
+  {
+    "fixture": "new.cpp",
+    "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc",
+    "marker": "tu_darwin_note",
+    "kind": "function",
+    "sha256": "082d13d96f4fe132efcbc258379940939ef749fd19715b7b82a6eb7826882101"
+  },
+  {
+    "fixture": "new.cpp",
+    "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc",
+    "marker": "tu_darwin_frame_diagnostic",
+    "kind": "function",
+    "sha256": "0453290c401f86662c5d6ac5f3325fa086f773a15398d48746a615d475746b72"
+  },
+  {
+    "fixture": "new.cpp",
+    "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc",
+    "marker": "dw_close_connection",
+    "kind": "function",
+    "sha256": "523d45384bedf8ea49c57449563320e810a5dbd7b2d92b1ae3b7c8f7b3b73f39"
+  },
+  {
+    "fixture": "new.cpp",
+    "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc",
+    "marker": "darwin_device_init",
+    "kind": "function",
+    "sha256": "3b4b6a3aa1a6d38c3d5cd9dd98bcf336b10022b7d232f17cf5c9139ed7377a26"
+  },
+  {
+    "fixture": "new.cpp",
+    "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc",
+    "marker": "darwin_device_finish",
+    "kind": "function",
+    "sha256": "aa7666705bf268bf399ed9a04dffcd4332bb07e6b347ed4fc384785d4d28f670"
+  },
+  {
+    "fixture": "new.cpp",
+    "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc",
+    "marker": "darwin_note_fence",
+    "kind": "function",
+    "sha256": "bf55835b424e4b6eb9dde50a58b5d4e5a78b4dc35a4a68ca374bb90bc5bb4fb9"
+  },
+  {
+    "fixture": "va-new.cpp",
+    "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc",
+    "marker": "darwin_va_cmp_address",
+    "kind": "function",
+    "sha256": "04207c1f8556f4fc50cb20a72a4de5e5633aa4ff37580fc0639ff9cf6bc53723"
+  },
+  {
+    "fixture": "va-new.cpp",
+    "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc",
+    "marker": "darwin_va_cmp_size",
+    "kind": "function",
+    "sha256": "7e38d9a01342f9512e6d331a92eee6a4c9ae7c4f7dbac81ae80808ec3123cb92"
+  },
+  {
+    "fixture": "va-new.cpp",
+    "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc",
+    "marker": "darwin_va_smallest_fit",
+    "kind": "function",
+    "sha256": "5f9b7f4c6dc556727f4323198450909445d7a394d9dda5edc773a786aeebb9b3"
+  },
+  {
+    "fixture": "va-new.cpp",
+    "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc",
+    "marker": "darwin_va_hole_at_or_below",
+    "kind": "function",
+    "sha256": "d515589083ae8666a1a6079e418ccf5df290ab0e74e1c5018f7c9abf1820a168"
+  },
+  {
+    "fixture": "va-new.cpp",
+    "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc",
+    "marker": "darwin_va_add",
+    "kind": "function",
+    "sha256": "838130b47d5b8e5039509dbd8ab70f02216470a16f2deaf52d37690be00db4dd"
+  },
+  {
+    "fixture": "va-new.cpp",
+    "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc",
+    "marker": "darwin_va_del",
+    "kind": "function",
+    "sha256": "154708b4f27c6794995a408bee5fff6311a219a015828167cee8be6b9ae8ba38"
+  },
+  {
+    "fixture": "va-new.cpp",
+    "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc",
+    "marker": "darwin_va_finish",
+    "kind": "function",
+    "sha256": "5cbe34734d9b661f50919370607be11e2f28f865d8318cb3fae6fafd05db9bfd"
+  },
+  {
+    "fixture": "va-new.cpp",
+    "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc",
+    "marker": "darwin_va_carve",
+    "kind": "function",
+    "sha256": "9037c2ec490c77d7588e71fd8d2ece66c2ff5ab0bbfc3b38a35e66676a1d679f"
+  },
+  {
+    "fixture": "va-new.cpp",
+    "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc",
+    "marker": "darwin_va_alloc",
+    "kind": "function",
+    "sha256": "4ef934e61bd72d2ec5e6edf3b42bfc0fc0f9d3f6e49caa9d2ade4ea090ec0524"
+  },
+  {
+    "fixture": "va-new.cpp",
+    "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc",
+    "marker": "darwin_va_alloc_at",
+    "kind": "function",
+    "sha256": "969cee3e42e60f5da70fcd6e756688f2d3f995c8e9bd73fe4030ddd397ee0818"
+  },
+  {
+    "fixture": "va-new.cpp",
+    "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc",
+    "marker": "darwin_va_free",
+    "kind": "function",
+    "sha256": "02215de604ecc13332eeb6176df4dd3d7a77a8da22eee121539e0b996cc1cf73"
+  },
+  {
+    "fixture": "swap.cpp",
+    "source": "drivers/AdrenoMetal/NativeTurnipSwapTest.h",
+    "marker": "struct Fns {",
+    "kind": "marker",
+    "sha256": "1e2531382eaeb5fb6a7e311452f5faf4503b94fb0bccd08e5ba8ecd7293aba01"
+  },
+  {
+    "fixture": "swap.cpp",
+    "source": "drivers/AdrenoMetal/NativeTurnipSwapTest.h",
+    "marker": "struct Target {",
+    "kind": "marker",
+    "sha256": "3a1487e7ff1eecf7a3071573b94a074b93dc51276dbd74aadac8c876e9b62375"
+  },
+  {
+    "fixture": "swap.cpp",
+    "source": "drivers/AdrenoMetal/NativeTurnipSwapTest.h",
+    "marker": "static void destroy(",
+    "kind": "marker",
+    "sha256": "e867c7fbe35ccd84099172141f429e16e206ff687451394947351d0371e81bac"
+  },
+  {
+    "fixture": "swap.cpp",
+    "source": "drivers/AdrenoMetal/NativeTurnipSwapTest.h",
+    "marker": "static int makeTarget(",
+    "kind": "marker",
+    "sha256": "fb0879bbab18782719fae07b44bf9ada6e5504f2d0ca01f03d951d4eb809da57"
+  },
+  {
+    "fixture": "swap.cpp",
+    "source": "drivers/AdrenoMetal/NativeTurnipSwapTest.h",
+    "marker": "static VkResult submitAndDrain(",
+    "kind": "marker",
+    "sha256": "057515468fd917b6e2203a15076a0196f214b0dff3d77e82657dcbbc90be13ca"
+  }
+]

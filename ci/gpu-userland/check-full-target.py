@@ -25,22 +25,106 @@ subprocess.run(['codesign','--verify','--strict',str(bundle)],check=True)
 assert b'M cache: reuse published runtime writable directory' in data
 assert b'M cache rejected; test not started; UI remains independent' in data
 library=root/'build/mesa-tu-ios27/src/freedreno/vulkan/libvulkan_freedreno.dylib'
+producer=json.loads((root/'build/mesa-tu-ios27/builtin-build-profile.json').read_text())['profile']
+mesa=root/'.cache/mesa-work'
+actual_diff=subprocess.check_output(['git','-C',str(mesa),'diff','HEAD','--binary'])
+assert producer['source_diff_sha256']==hashlib.sha256(actual_diff).hexdigest()
+for name,digest in producer['extra_sources'].items():
+    assert hashlib.sha256((mesa/name).read_bytes()).hexdigest()==digest,name
 symbols=subprocess.check_output(['nm',str(library)],text=True)
 assert not re.search(r'_+ZL2dw(?:\b|\.)',symbols), 'old process-global connection survived'
-assert 'dw_registry_lock' in symbols and 'darwin_states' in symbols
-matches=[line.split()[-1] for line in symbols.splitlines() if 'tu_cmd_buffer_begin' in line and ' T ' in line]
-assert len(matches)==1,matches
-assembly=subprocess.check_output(['llvm-objdump','--disassemble-symbols='+matches[0],'--no-show-raw-insn',str(library)],text=True)
-assert 'tu_cs_reserve_space' in assembly
-assert re.search(r'mov\s+w1,\s*#(?:0x1000|4096)\b',assembly)
-(a.logs/'actual-command-begin-guard.asm').write_text(assembly)
+for marker in (b'M-body cleanup-pending', b'SWAP begin: upstream GMEM/sysmem device+host colour checks',
+               b'bad%u/%u', b'metal-work cb=', b'metal-device %s reg='):
+    assert marker in data,marker
+# Local data names can be stripped and local functions can have type t. Verify
+# the actual lifecycle instructions/import stubs, never a discarded data label.
+text_symbols=[line.split()[-1] for line in symbols.splitlines()
+              if len(line.split())>=3 and line.split()[-2] in ('t','T') and '.cold' not in line]
+def one(needle):
+    found=[name for name in text_symbols if needle in name]
+    assert len(found)==1,(needle,found)
+    return found[0]
+names=[one(n) for n in ['tu_knl_darwin_load','darwin_device_init','darwin_device_finish',
+                       'dw_open_connection','tu_cmd_buffer_begin','tu_darwin_bo_cache_stats']]
+names+= [name for name in text_symbols if 'darwin_va_finish' in name or 'darwin_va_del' in name]
+assembly=subprocess.check_output(['llvm-objdump','--disassemble-symbols='+','.join(names),'--no-show-raw-insn',str(library)],text=True)
+blocks={};current=None
+for line in assembly.splitlines():
+    match=re.match(r'^([0-9a-fA-F]+) <(.+)>:$',line)
+    if match:current=match[2];blocks[current]=[];continue
+    match=re.match(r'^\s*([0-9a-fA-F]+):\s+(.+)$',line)
+    if match and current:blocks[current].append((int(match[1],16),re.sub(r'\s+',' ',match[2]).split(' ;')[0]))
+assert all(name in blocks for name in names)
+indirect=subprocess.check_output(['llvm-objdump','--macho','--indirect-symbols',str(library)],text=True)
+stubs={}
+for address,_,name in re.findall(r'^(0x[0-9a-fA-F]+)\s+(\d+)\s+(\S+)$',indirect,re.M):
+    stubs.setdefault(name,set()).add(int(address,16))
+def target(op):
+    match=re.match(r'(?:bl|b) (0x[0-9a-fA-F]+)',op)
+    return int(match[1],16) if match else None
+def sites(block,name):return [i for i,(_,op) in enumerate(block) if target(op) in stubs[name]]
+enum,init,finish,opener,begin,stats=[blocks[name] for name in names[:6]]
+ei=next(i for i,(_,op) in enumerate(enum) if '<'+names[3]+'>' in op)
+stack=re.match(r'add x0, sp, #(0x[0-9a-f]+|\d+)',enum[ei-2][1]);assert stack
+enum_offset=int(stack[1],0)
+for site in sites(enum,'_IOServiceClose'):
+    match=re.match(r'ldr w0, \[sp, #(0x[0-9a-f]+|\d+)\]',enum[site-1][1]);assert match and int(match[1],0)==enum_offset
+assert len(sites(enum,'_IOServiceClose'))==2
+ii=next(i for i,(_,op) in enumerate(init) if '<'+names[3]+'>' in op)
+owner=re.match(r'mov x0, (x\d+)',init[ii-1][1]);assert owner
+owner=owner[1]
+assert any(op=='mov '+owner+', x0' for _,op in init[:ii])
+assert any(re.fullmatch(r'mov w1, #(?:0x1f0|496)',op) for _,op in init[:ii])
+assert any(re.match(r'str '+owner+r', \[x\d+, #(?:0x1b00|6912)\]',op) for _,op in init[ii:])
+state=[re.match(r'ldr (x\d+), \[x0, #(?:0x1b00|6912)\]',op) for _,op in finish[:25]]
+state=[m[1] for m in state if m];assert len(state)==1;state=state[0]
+closes=sites(finish,'_IOServiceClose');assert len(closes)==1
+assert finish[closes[0]-1][1]=='ldr w0, ['+state+']'
+lock=sites(finish,'_pthread_mutex_lock')[0];unlock=sites(finish,'_pthread_mutex_unlock')[0]
+assert lock<unlock<closes[0]
+next_registers=[m[1] for _,op in finish[lock:unlock]
+                if (m:=re.match(r'ldr (x\d+), \['+state+r', #(?:0xd0|208)\]',op))]
+assert any(re.fullmatch(r'str '+reg+r', \[x\d+\]',op) for reg in next_registers for _,op in finish[lock:unlock])
+assert any(re.match(r'str xzr, \[x\d+, #(?:0x1b00|6912)\]',op) for _,op in finish)
+def mutex_address(block):
+    site=sites(block,'_pthread_mutex_lock')[0]
+    page=re.match(r'adrp x0, (0x[0-9a-f]+)',block[site-2][1])
+    offset=re.match(r'add x0, x0, #(0x[0-9a-f]+|\d+)',block[site-1][1])
+    assert page and offset,block[max(0,site-5):site]
+    return int(page[1],16)+int(offset[1],0)
+registry=[mutex_address(block) for block in (init,finish,stats)]
+assert len(set(registry))==1,'lifecycle and diagnostic callback guards differ'
+# The deletion helper can be inlined or out of line. Inspect the actual reachable
+# selected helper bodies; neither path may iterate through a freed parent.
+reachable={names[2]}
+for _ in range(len(names)):
+    for name in list(reachable):
+        for _,op in blocks[name]:
+            for child in names[6:]:
+                if '<'+child+'>' in op:reachable.add(child)
+clear='\n'.join(op for name in reachable for _,op in blocks[name])
+assert 'rb_node_next' not in clear
+assert 'rb_tree_first' in clear and clear.count('rb_augmented_tree_remove')>=2
+reserve=next(i for i,(_,op) in enumerate(begin) if 'tu_cs_reserve_space' in op)
+assert re.fullmatch(r'mov w1, #(?:0x1000|4096)',begin[reserve-1][1])
+branch=re.match(r'cbz w0, (0x[0-9a-f]+)',begin[reserve+1][1]);assert branch
+assert re.match(r'str w0, \[x\d+, #(?:0x5a4|1444)\]',begin[reserve+2][1])
+success=int(branch[1],16)
+assert any(op=='retab' and pc<success for pc,op in begin[reserve+2:])
+(a.logs/'actual-device-lifetimes-and-command-guard.asm').write_text(assembly)
+(a.logs/'actual-import-stubs.txt').write_text(indirect)
 contexts=json.loads((a.logs/'device-context-qualified.json').read_text())
 assert contexts['actual_prepared_sources_match'] and contexts['new_ownership_and_guard_cases_passed']
+assert contexts['real_Mesa_RB_used'] and contexts['old_VA_UAF_reproduced'] and contexts['actual_swap_API_and_lifetime_guards_passed']
 report=dict(actual_target_checked=True,plugin_sha256=hashlib.sha256(data).hexdigest(),
             profile=profile,required_markers_present=True,iPad_raw_reader_markers_absent=True,
             bundle_signature_verified=True,host_pixel_result='reuse unchanged-runtime host010 failure evidence;not passed',
             actual_device_registry_compiled=True,old_singleton_symbol_absent=True,
             actual_initial_command_reserve_compiled=True,fulltest_runtime_cache_handoff_compiled=True,
+            actual_VA_tree_unlink_before_free_compiled=True,
+            actual_registry_mutex_address=hex(registry[0]),static_local_data_names_not_required=True,
+            actual_Mesa_producer_sources_verified=True,
+            actual_enum_stack_connection_offset=enum_offset,
             actual_Mac_source_bound_context_tests=contexts,
             real_A840_shader_or_UI_verified=False,phone_operations=False)
 (a.logs/'full-target-qualified.json').write_text(json.dumps(report,indent=2)+'\n')
