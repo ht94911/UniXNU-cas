@@ -16,3 +16,6 @@ zzzzz-nezha-owner-data-ready.patch
 # Real self-IPI owns signal enablement; retain original startup assertions.
 zzzzzz-nezha-sigp-startup-order.patch
 zzzzzz-nezha-input-chain-trace.patch
+
+# Optional bounded A840 worker after IOKitBSDInit; existing078 patches retained.
+zzzzzz-nezha-adreno840-start.patch

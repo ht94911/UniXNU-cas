@@ -179,7 +179,11 @@ if staged.exists():
 else:
     shutil.copytree(upstream,staged,ignore=shutil.ignore_patterns('.git','__pycache__'))
 text=(upstream/'NativeLegacyDisplay.cpp').read_text()
-absent=['native_ufs_dpu_map','native_ufs_dpu_state','native_adreno_fences']
+require(any(token.rsplit(',',1)[-1].endswith('/build/adreno840/libAdreno840.a')
+            for token in os.environ.get('XNU_EXTRA_LD_ARCHIVES','').split()),
+        'GPU integration requires the declared A840 fence/trace archive')
+# Keep the SM8550 DPU absent; only selected A840 owns fences/trace.
+absent=['native_ufs_dpu_map','native_ufs_dpu_state']
 for name in absent:
     pattern=re.compile(r'^extern "C"[^\n;]*\b'+name+r'\b[^\n;]*__attribute__\(\(weak_import\)\);$',re.M)
     require(len(pattern.findall(text))==1,'Exact optional display declaration: '+name)
@@ -400,7 +404,7 @@ sources = [ROOT / 'drivers/GopFramebuffer/NativeLegacyDisplay.cpp', ROOT / 'driv
 (OUT / 'build-report.json').write_text(json.dumps(dict(
     source_sha256={str(p.relative_to(ROOT)): sha(p) for p in sources}, generated_abi_sha256=sha(OUT / 'OriginalLegacyFramebufferABI.h'),
     kernelcache_sha256=abi['kernelcache_sha256'], compiled_object_sha256=sha(obj), archive_sha256=sha(archive),
-    sheng_recipe_revision='69c3c6037e761e63b8c527829deaa09c6c49f6a8', original_GOP_source_sha256=sha(upstream/'NativeLegacyDisplay.cpp'), absent_optional_providers=absent, actual_BootProgress_provider_required=True, HID_nezha_input_selected=True, GPU_SM8550_probes_selected=False,
+    sheng_recipe_revision='69c3c6037e761e63b8c527829deaa09c6c49f6a8', original_GOP_source_sha256=sha(upstream/'NativeLegacyDisplay.cpp'), absent_optional_providers=absent, actual_BootProgress_provider_required=True, HID_nezha_input_selected=True, A840_backend_selected=True, GPU_SM8550_probes_selected=False,
     bindings={n: hex(v) for n, v in bindings.items()}, virtual_entries=len(slots), owned_entries=owned,
     inherited_native_entries=native, original_bindings='fixed-collection-addresses', original_instructions_modified=False), indent=2) + '\n')
 print(f'Built the owned Legacy backend on the iPadOS 27 class: {len(owned)} owned, {len(native)} native, {len(bindings)} original bindings')

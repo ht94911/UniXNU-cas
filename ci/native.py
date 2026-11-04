@@ -47,6 +47,8 @@ def prepare(framework, work):
     work.mkdir(parents=True, exist_ok=False)
     for name in ('device', 'soc'):
         shutil.copytree(ROOT / 'source' / name, work / name)
+    for name in ('adreno', 'metal'):
+        shutil.copytree(ROOT / 'source' / name, work / name)
     usb = work / 'usb'
     run(['git', 'init', '-q', usb])
     run(['git', '-C', usb, 'bundle', 'unbundle', ROOT / 'source/usb.bundle'])
@@ -80,6 +82,17 @@ def prepare(framework, work):
         raise ValueError('RamBlock source is not clean')
     run(['git', '-C', ramblock, 'remote', 'add', 'origin', manifest['ramblock']['repository']])
     run(['git', '-C', ramblock, 'remote', 'set-url', '--push', 'origin', 'DISABLED-no-push'])
+    gop = work / 'gop'
+    run(['git', 'init', '-q', gop])
+    run(['git', '-C', gop, 'bundle', 'unbundle', ROOT / 'source/gop.bundle'])
+    (gop / '.git/shallow').write_text(manifest['gop']['source_revision'] + '\n')
+    run(['git', '-C', gop, 'checkout', '--quiet', '--detach', manifest['gop']['source_revision']])
+    if run(['git', '-C', gop, 'rev-parse', 'HEAD^{tree}']) != manifest['gop']['source_tree']:
+        raise ValueError('GOP source tree mismatch')
+    if run(['git', '-C', gop, 'status', '--porcelain']):
+        raise ValueError('GOP source is not clean')
+    run(['git', '-C', gop, 'remote', 'add', 'origin', manifest['gop']['repository']])
+    run(['git', '-C', gop, 'remote', 'set-url', '--push', 'origin', 'DISABLED-no-push'])
     (work / 'device/local.toml').write_text(
         '[[source]]\nname = "sm8850"\nkind = "soc"\nlocal = "../soc"\n'
         '\n[[source]]\nname = "QcomXnuUsbDebug"\nkind = "driver"\nlocal = "../usb"\n')
@@ -88,9 +101,17 @@ def prepare(framework, work):
         output.write('\n[[source]]\nname = "ShengUfs"\nkind = "driver"\nlocal = "../ufs"\n')
     with (work / 'device/local.toml').open('a') as output:
         output.write('\n[[source]]\nname = "RamBlock"\nkind = "driver"\nlocal = "../ramblock"\n')
+    with (work / 'device/local.toml').open('a') as output:
+        output.write('\n[[source]]\nname = "Adreno740"\nkind = "refer"\nlocal = "../adreno"\n'
+                     '\n[[source]]\nname = "AdrenoMetal"\nkind = "refer"\nlocal = "../metal"\n')
+    with (work / 'device/local.toml').open('a') as output:
+        output.write('\n[[source]]\nname = "GopFramebuffer"\nkind = "driver"\nlocal = "../gop"\n')
     config = {'device': str(work / 'device'), 'out': str(work / 'out'), 'jobs': jobs}
     text = '[build]\n' + ''.join(k + ' = ' + json.dumps(v) + '\n' for k, v in config.items())
     (work / 'build.toml').write_text(text)
+    run([sys.executable, work / 'device/scripts/check-adreno840-integration.py',
+         '--framework', framework, '--device', work / 'device',
+         '--out', work / 'integration-source-qualified.json'])
     (work / 'source-report.json').write_text(json.dumps({
         'source_inputs': manifest, 'actual_framework_base': run(['git', 'rev-parse', 'HEAD'], cwd=framework),
         'actual_framework_tree': tree, 'source_tree_verified': True, 'jobs': jobs,
@@ -168,7 +189,7 @@ def collect(framework, work, sealed):
         names.append(name)
 
     add(ROOT / 'inputs.json', 'inputs.json')
-    for name in ('source-report.json', 'compiler-report.json', 'authenticated-null.c',
+    for name in ('source-report.json', 'integration-source-qualified.json', 'compiler-report.json', 'authenticated-null.c',
                  'authenticated-null.o', 'authenticated-null.s'):
         add(work / name, name)
     for path in sorted((work / 'logs').glob('*.log')):
@@ -186,6 +207,9 @@ def collect(framework, work, sealed):
         tree = target / 'tree'
         for path in sorted((tree / 'build').glob('*/lib*.a')):
             add(path, 'archives/' + path.parent.name + '/' + path.name)
+        for path in sorted((tree / 'build/armcpu').glob('*')):
+            if path.is_file() and path.suffix in ('.json', '.log', '.o', '.asm'):
+                add(path, 'archives/armcpu/' + path.name)
         for path in sorted((tree / 'build/sheng-platform-power').glob('*')):
             if path.suffix in ('.json', '.log', '.o'):
                 add(path, 'archives/sheng-platform-power/' + path.name)
@@ -202,20 +226,11 @@ def collect(framework, work, sealed):
             if path.is_file() and path.suffix in ('.json','.log','.o','.c'):
                 add(path, 'archives/nezha27-usb-control/' + path.name)
         for path in sorted((tree / 'build/nezha27-input').glob('*')):
-            if path.is_file() and path.suffix in ('.json','.log','.o','.S'):
+            if path.is_file() and path.suffix in ('.json','.log','.o','.S','.h','.cpp','.c'):
                 add(path, 'archives/nezha27-input/' + path.name)
-        for path in sorted((tree / 'build/armcpu').glob('*')):
-            if path.is_file() and path.suffix in ('.json','.asm','.o'):
-                add(path, 'archives/armcpu/' + path.name)
-        for path in sorted((tree / 'build/armcpu').glob('*')):
-            if path.is_file() and path.suffix in ('.json','.asm','.o'):
-                add(path, 'archives/armcpu/' + path.name)
-        for path in sorted((tree / 'build/armcpu').glob('*')):
-            if path.is_file() and path.suffix in ('.json','.asm','.o'):
-                add(path, 'archives/armcpu/' + path.name)
-        for path in sorted((tree / 'build/armcpu').glob('*')):
-            if path.is_file() and path.suffix in ('.json','.asm','.o'):
-                add(path, 'archives/armcpu/' + path.name)
+        for path in sorted((tree / 'build/adreno840').glob('*')):
+            if path.is_file() and path.suffix in ('.json','.log','.o','.S','.h','.cpp'):
+                add(path, 'archives/adreno840/' + path.name)
         for path in sorted((tree / 'build/boot-progress').glob('*')):
             if path.is_file() and path.suffix in ('.json','.asm','.o','.c','.h'):
                 add(path, 'archives/boot-progress/' + path.name)

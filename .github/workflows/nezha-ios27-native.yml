@@ -1,7 +1,7 @@
-name: nezha iPhone27 multicore064 native startup ordering native kernel Intel host
+name: nezha iPhone27 A840 on accepted078 desktop copy - native007
 on:
   push:
-    branches: [codex/ios27-touch078-20261103]
+    branches: [codex/ios27-gpu27-main078-007-20261104]
   workflow_dispatch:
 permissions:
   contents: read

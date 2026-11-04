@@ -1,8 +1,33 @@
 diff --git a/components.toml b/components.toml
-index f3fa049..532be9b 100644
+index f3fa049..a33b898 100644
 --- a/components.toml
 +++ b/components.toml
-@@ -76,6 +76,25 @@ build_stage = "firmware"
+@@ -1,5 +1,24 @@
+ schema_version = 1
+ 
++# Local nezha component. The device feed supplies its source; Adreno740 is
++# retained as a pinned reference for shared software, not selected as hardware.
++[[component]]
++id = "Adreno840"
++kind = "driver"
++function = "SM8850 A840 board backend over the maintained NativeAdreno core"
++scope = "gpu"
++path = "drivers/Adreno840"
++hardware = ["SM8850", "Adreno 840"]
++os_abi = ["source XNU12377; iPhone14,4 24A446 under qualification"]
++board_dependencies = ["local A840 firmware resource", "GPU bank/stream ownership", "board OPP and command database"]
++verified_devices = []
++dependencies = ["ArmSmmu4K", "AdrenoPM4"]
++source_files = ["NezhaGpu.c", "NezhaScm.c", "NezhaAdreno840.cpp", "NezhaGpuFirmware.cpp"]
++runtime_identifiers = ["NativeAdrenoGpu", "AGXDeviceUserClient", "AGXAccelerator", "NativeAdrenoMetal"]
++build_stage = "kernel"
++build = ["build-adreno840.py"]
++outputs = ["build/adreno840/libAdreno840.a"]
++
+ [[component]]
+ id = "ArmCpu"
+ kind = "driver"
+@@ -76,6 +95,25 @@ build_stage = "firmware"
  build = []
  outputs = []
  
@@ -28,7 +53,7 @@ index f3fa049..532be9b 100644
  [[component]]
  id = "Adreno740"
  repository_id = 1426848889
-@@ -343,7 +362,7 @@ kind = "kit"
+@@ -343,7 +381,7 @@ kind = "kit"
  function = "XNU kernelcache prelink and ABI inspection"
  scope = "tool"
  repository = "https://github.com/UniXNU/XnuPrelink.git"
