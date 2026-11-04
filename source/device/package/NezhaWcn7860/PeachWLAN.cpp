@@ -12,6 +12,7 @@
 #include <libkern/c++/OSData.h>
 #include <libkern/c++/OSKext.h>
 #include <libkern/c++/OSMetaClass.h>
+#include <libkern/c++/OSSymbol.h>
 #include <sys/errno.h>
 #include <mach/kmod.h>
 
@@ -60,21 +61,34 @@ OSDefineMetaClassAndStructors(IONetworkStack, IOService);
 extern "C" kmod_info_t g_kernel_kmod_info;
 extern "C" void peach_wlan_static_init(void) __asm__("__GLOBAL__sub_I_PeachWLAN.cpp");
 static unsigned registered, published;
+static int class_exists(const char *name)
+{
+    const OSSymbol *symbol = OSSymbol::withCStringNoCopy(name);
+    if (!symbol) return -ENOMEM;
+    int exists = OSMetaClass::getMetaClassWithName(symbol) != nullptr;
+    symbol->release(); return exists;
+}
 static int initialize_classes(void)
 {
     if (registered) return registered == 1 ? 0 : EIO;
     const char *names[] = {"IO80211Controller", "IONetworkInterface", "IO80211Interface",
                           "IONetworkStack", "IONetworkStackUserClient"};
-    for (const char *name : names)
-        if (OSMetaClass::getMetaClassWithName(name)) return EEXIST;
+    for (const char *name : names) {
+        int exists = class_exists(name);
+        if (exists < 0) return -exists;
+        if (exists) return EEXIST;
+    }
     registered = 2; /* one attempt, never rerun partially initialized globals */
     void *handle = OSMetaClass::preModLoad(g_kernel_kmod_info.name);
     if (!handle) return ENOMEM;
     peach_wlan_static_init();
     OSReturn result = OSMetaClass::postModLoad(handle);
     if (result != kOSReturnSuccess) return EIO;
-    for (const char *name : names)
-        if (!OSMetaClass::getMetaClassWithName(name)) return ENOENT;
+    for (const char *name : names) {
+        int exists = class_exists(name);
+        if (exists < 0) return -exists;
+        if (!exists) return ENOENT;
+    }
     registered = 1; return 0;
 }
 extern "C" int peach_wlan_publish(const char *name, const unsigned char *mac)
@@ -116,4 +130,24 @@ out:
     OSSafeReleaseNULL(address); OSSafeReleaseNULL(interface);
     OSSafeReleaseNULL(controller); OSSafeReleaseNULL(stack);
     return error;
+}
+
+/* Called only by the explicitly selected synthetic-QEMU worker. Exercise the
+ * actual owned metaclasses and allocate/init/virtual-call/release paths. */
+extern "C" int peach_wlan_offline_check(void)
+{
+    if (!published || registered != 1 ||
+        IO80211Interface::gMetaClass.getClassSize() != sizeof(IO80211Interface) ||
+        IONetworkStack::gMetaClass.getClassSize() != sizeof(IONetworkStack)) return EIO;
+    for (unsigned i = 0; i < 16; i++) {
+        IO80211Interface *interface = OSTypeAlloc(IO80211Interface);
+        if (!interface) return ENOMEM;
+        bool initialized = interface->init();
+        IOUserClient *client = reinterpret_cast<IOUserClient *>(1);
+        IOReturn result = initialized ? interface->newUserClient(nullptr, nullptr, 0, nullptr, &client) : kIOReturnError;
+        interface->release();
+        if (!initialized || result != kIOReturnUnsupported || client) return EIO;
+    }
+    const unsigned char test_mac[6] = {2, 0, 0, 0, 0, 1};
+    return peach_wlan_publish("en0", test_mac) == EINVAL ? 0 : EIO;
 }

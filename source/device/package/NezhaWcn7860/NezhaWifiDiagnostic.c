@@ -6,6 +6,7 @@
 #include <sys/errno.h>
 #include <kern/kalloc.h>
 #include <kern/locks.h>
+#include <pexpert/pexpert.h>
 #include <QcomXnuUsbDebug.h>
 #include <QcomUsbDiagnostic.h>
 #include <corecrypto/ccdigest.h>
@@ -20,6 +21,8 @@ extern volatile uint64_t native_data_persist_writes;
 int nezha_wifi_platform_ready(void)
 {
     struct qcom_usb_debug_status s; qcom_usb_debug_get_status(&s);
+    unsigned persist = ~0u;
+    if (!PE_parse_boot_argn("sheng-data-persist", &persist, sizeof(persist)) || persist != 0) return 0;
     /* Touch only programs its inherited fixed streams during initial start;
      * USB owns a permanent translated lease before ACTIVE. UFS retains SID60.
      * GPU uses the separate 0x03da0000 SMMU. Never race initial apps claims. */
@@ -37,6 +40,7 @@ static struct wifi_snapshot latest;
 static unsigned snapshot_lock, registered;
 static uint8_t *dump;
 static uint32_t dump_length, dump_crc;
+static uint32_t dump_declared_bytes, dump_header_valid, dump_version;
 static char dump_sha[65];
 static const char hex[] = "0123456789abcdef";
 static int take(void)
@@ -63,10 +67,12 @@ static int snapshot(void *cookie, char *out, size_t capacity, size_t *bytes, uns
     int n = snprintf(out, capacity,
         "{\"version\":1,\"phase\":%u,\"state\":%u,\"error\":%d,\"rx\":%llu,\"tx\":%llu,"
         "\"dropped\":%llu,\"in_flight\":%u,\"bank\":%u,\"slot\":%u,\"ticks\":%llu,"
-        "\"dump_bytes\":%u,\"dump_crc32\":%u,\"dump_sha256\":\"%s\",\"step\":\"%s\"}",
+        "\"dump_bytes\":%u,\"dump_crc32\":%u,\"dump_sha256\":\"%s\","
+        "\"dump_header_valid\":%u,\"dump_declared_bytes\":%u,\"dump_version\":%u,\"step\":\"%s\"}",
         s.phase, s.state, s.error, (unsigned long long)s.rx, (unsigned long long)s.tx,
         (unsigned long long)s.dropped, s.in_flight, s.bank, s.slot, (unsigned long long)s.ticks,
-        length, length ? dump_crc : 0, length ? dump_sha : "", s.step);
+        length, length ? dump_crc : 0, length ? dump_sha : "", length ? dump_header_valid : 0,
+        length ? dump_declared_bytes : 0, length ? dump_version : 0, s.step);
     if (n < 0 || (size_t)n >= capacity) { *bytes = 0; *truncated = 1; return QUD_FAILED; }
     *bytes = (size_t)n; *truncated = 0; return QUD_OK;
 }
@@ -114,8 +120,23 @@ int nezha_wifi_diagnostic_dump(const void *source, size_t bytes)
     uint8_t digest[32]; ccdigest(ccsha256_di(), bytes, dump, digest);
     for (unsigned i = 0; i < 32; i++) { dump_sha[i * 2] = hex[digest[i] >> 4]; dump_sha[i * 2 + 1] = hex[digest[i] & 15]; }
     dump_sha[64] = 0;
+    /* Transport completion covers the allocated DMA buffer, including padding.
+     * Separately validate the firmware's declared file table before calling
+     * its payload complete. Preserve the entire buffer even if it is invalid. */
+    uint32_t header_bytes;
+    memcpy(&dump_version, dump, 4); memcpy(&header_bytes, dump + 4, 4);
+    if (header_bytes >= 8 + 64 && header_bytes <= 8 + 12 * 64 && !((header_bytes - 8) % 64)) {
+        size_t end = header_bytes;
+        dump_header_valid = 1;
+        for (unsigned i = 0; i < (header_bytes - 8) / 64; i++) {
+            uint64_t file_bytes; memcpy(&file_bytes, dump + 8 + i * 64 + 16, 8);
+            if (file_bytes > bytes - end) { dump_header_valid = 0; break; }
+            end += (size_t)file_bytes;
+        }
+        if (dump_header_valid) dump_declared_bytes = (uint32_t)end;
+    }
     __atomic_store_n(&dump_length, (uint32_t)bytes, __ATOMIC_RELEASE);
-    printf("NEZHA WIFI: complete RDDM frozen bytes=%lu CRC32=%08x SHA256=%s; provider6 read-only export\n",
-        (unsigned long)bytes, dump_crc, dump_sha);
-    return 0;
+    printf("NEZHA WIFI: RDDM DMA buffer frozen bytes=%lu CRC32=%08x SHA256=%s header-valid=%u declared=%u; provider6 read-only export\n",
+        (unsigned long)bytes, dump_crc, dump_sha, dump_header_valid, dump_declared_bytes);
+    return dump_header_valid ? 0 : EINVAL;
 }

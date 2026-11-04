@@ -20,3 +20,4 @@ zzzzzz-nezha-input-chain-trace.patch
 # WCN7860: bounded MMIO and actual27 events. Worker uses the existing board hook.
 nezha-wifi-mmio-recovery.patch
 nezha-wifi-kernel-events.patch
+nezha-wifi-addon-truncate.patch

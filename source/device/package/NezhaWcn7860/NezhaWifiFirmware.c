@@ -43,7 +43,7 @@ static int load(unsigned index)
     char path[160];
     if (snprintf(path, sizeof(path), "%s/%s", NEZHA_WIFI_FIRMWARE_ROOT, firmware[index].name) >= (int)sizeof(path)) return EINVAL;
     vfs_context_t ctx = vfs_context_kernel(); vnode_t file = NULLVP;
-    error = vnode_open(path, FREAD | FNOFOLLOW, 0, 0, &file, ctx);
+    error = vnode_open(path, FREAD | O_NOFOLLOW, 0, 0, &file, ctx);
     if (error) return error;
     struct vnode_attr va; VATTR_INIT(&va); VATTR_WANTED(&va, va_data_size);
     error = vnode_getattr(file, &va, ctx);

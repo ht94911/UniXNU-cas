@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "d9f89eb6911c14d1ac8a41c47a617fc01760fcae",
+  "device_revision": "e201003f68a5c4e28be5537db77fdbc3560ddf5b",
   "soc_revision": "6ee1ee7e114a13c690f209698d3a9fc28306e46c",
   "xcode": "26.6",
   "files": {
@@ -36,10 +36,10 @@
     "source/device/package/LegacyDisplayProbe.cpp": "3276bed638028882be8c888d1691b987efda888c7fafa52b7b6bcb1c7c1c9d8a",
     "source/device/package/Nezha27UsbControl.c": "1d2a7bce09d39281851a664f23bec73465a5206b4116f6b1b3ab27bc3417f903",
     "source/device/package/NezhaIOS27Pmgr.cpp": "b4952c31eeeed66050359bb0923ca966373cd0d86d0c02678df598a8b7a06a50",
-    "source/device/package/NezhaWcn7860/NezhaWifiDiagnostic.c": "4784b3dc1cfd2b1a7c979e8df98607c90f13c0162d917faaa7773c4241cf3961",
-    "source/device/package/NezhaWcn7860/NezhaWifiFirmware.c": "fafc623535098c669b95fcf45345dbfb99655a025f40829287e3ebe64a5dc7f2",
+    "source/device/package/NezhaWcn7860/NezhaWifiDiagnostic.c": "984e2b51b139c142bc924a852531c0f8059512d4a1a28a9ace44c830239c6119",
+    "source/device/package/NezhaWcn7860/NezhaWifiFirmware.c": "d998319ffaf5db1513c4cbd6e100aa4e8ec06d61d3793465d3e5e227b2e24569",
     "source/device/package/NezhaWcn7860/NezhaWifiPlatform.h": "580f80e9cd2a9902f8f8ecdc6d60387f80035fb8098e1976d3f6117ada608aa2",
-    "source/device/package/NezhaWcn7860/PeachWLAN.cpp": "af622cce721d3f326274bd8ecaac4cb4d7dfdc4c8330323ff4bdc57a8f2b5f04",
+    "source/device/package/NezhaWcn7860/PeachWLAN.cpp": "371fd6f9830ce519a972670d86dab3e83023d13b0e8d0732322fdc045afccbbf",
     "source/device/package/NezhaWcn7860/adreno/ArmSmmu4K.c": "0adb19b483e56e723014ed6cfe2c29f9d9735ae2770f62cf0057b22937dbd157",
     "source/device/package/NezhaWcn7860/adreno/ArmSmmu4K.h": "e25063b9134afc7eb79e7c030bc2858608cf0ade5da714d5dfd600fee5007e8e",
     "source/device/package/NezhaWcn7860/adreno/ArmSmmu4KContext.c": "fb993f53ef899b9969a71311b61b5dbe9446c515d7a6e6ad7d4840796eb1b6a3",
@@ -54,7 +54,7 @@
     "source/device/package/NezhaWcn7860/licenses/APSL-2.0.txt": "e5881019d8766c1e88a5fe1dbca4ba40c78011d41fcb18f6e9f50df60182685b",
     "source/device/package/NezhaWcn7860/licenses/GPL-2.0-only.txt": "aaf135472f81c5b4a0dca9367e5bb5e9750032b5bebe5442b36e4c0a47430df3",
     "source/device/package/NezhaWcn7860/licenses/MIT.txt": "f984c0a808afdeb2e050ceb47bc24d764156daa29b5dfde10fb9afec2f83f351",
-    "source/device/package/NezhaWcn7860/pandora_wifi.c": "baf326e9b12d1578136b0d25620531e935701e78e3b139a6fc9ab927c0410d63",
+    "source/device/package/NezhaWcn7860/pandora_wifi.c": "732b9799c191ace5f50361f3e49e4ef1fd6389805c2f4a7d033ee7e1aea16636",
     "source/device/package/NezhaWcn7860/qcom/NezhaPcieData.h": "b7ff65c41e77cdffeb9816c20cbf938ba203778c77f05a0eb8ec9bcb842130c6",
     "source/device/package/NezhaWcn7860/qcom/PeachApple80211.c": "245195c9981b6f79c135c0ce1343b2e842f0215da1bb38b5099b3422b99896ac",
     "source/device/package/NezhaWcn7860/qcom/PeachApple80211.h": "6dc785b22d4a5bf9fd898fa24ef855b52da6a6afa4bb49d0dd945e20f687007a",
@@ -133,9 +133,10 @@
     "source/device/package/nezha27-input/NezhaInputTelemetry.h": "5483fb9b489a0f7517e26102f20cdfa050b7f61214f2a3495b95820e122e0022",
     "source/device/package/nezha27-input/NezhaTouchSelfTest.h": "9262f7035de652a7336f8dd9b0a65bb6c1213cec0a0f8c4ce41d0b00037b1fd7",
     "source/device/package/nezha27-input/ResourceProbe.c": "c92b2ba262f2885d90499ba4bfa97c5bc2904c42e4ba3b48618bdac98bd49524",
+    "source/device/patches/xnu-12377/nezha-wifi-addon-truncate.patch": "c3b980c547fbc138ac7aedfd735d350cfef85d2a32ff78ec7bef894c4068ce63",
     "source/device/patches/xnu-12377/nezha-wifi-kernel-events.patch": "967cf792a5202711d0063463fe08bda58c554621b690b87f66904c18f81d057f",
     "source/device/patches/xnu-12377/nezha-wifi-mmio-recovery.patch": "89642756f4fe3179d44f076fbfd4786d21d0089ec7786943cb717b3eb78ecbe1",
-    "source/device/patches/xnu-12377/series": "11b4330cbc95f5c9c1bcc88de7dba25861c627df38330d9b676544f19a3760a5",
+    "source/device/patches/xnu-12377/series": "978c7c3eeb60653b97de73f2a45caf04ffd78980a0b3d26446bd718daeb9ae6c",
     "source/device/patches/xnu-12377/source-storage-runtime.patch": "25c377c60db417b15fcc137acf380f0319cbff9d5ba012af1907f3485602b584",
     "source/device/patches/xnu-12377/zzyd-sheng-audio-addon-mount.patch": "b51ed480b34c92452ea984fe056e5fce310bd929992d418f383a7e9268313c51",
     "source/device/patches/xnu-12377/zzye-sheng-cpu-idle.patch": "95f57fb9994796c3de2429fe82b6a521620b9f13b83e29eba12185f5ada4da86",
@@ -154,7 +155,7 @@
     "source/device/scripts/build-ios27-pmgr.py": "f88a0596937cbf0504922751a3194e3a33bba609f683a415262887d2b64241e4",
     "source/device/scripts/build-nezha27-input.py": "cd559fad30207962411546b32ffb5547ae29379e7fa992d16eaab09a39b6cd28",
     "source/device/scripts/build-nezha27-usb-control.py": "92be41e9adcce30e88c3a64fb6a1490587d87e80c74d50e3c2690c127dccb65c",
-    "source/device/scripts/build-nezha27-wifi.py": "4efa6007c2ab9cdf60b6e973535ca05e38b1cb901c1e8763223a31b178e60173",
+    "source/device/scripts/build-nezha27-wifi.py": "f7409c8f5299c750e869d78d022c2a1b7cc5d3158cd722b799d80a1ea94f759a",
     "source/device/scripts/hid-device-iphone-24A446.json": "af4668764ba1d2a4649b9c45d1ddbbabcb69e27659e7c35fbf9899f8f6bdbc7d",
     "source/device/scripts/legacy-display-iphone-24A446.json": "8959d9ba711dc480ca2870e3c078d0619355bf572270247c41871affc572ef13",
     "source/device/scripts/nezha-armcpu-asm-fix.py": "3d37c0c0e3613453c901a9622bc45a077c9acbd35ffe449046fa575b3b57af3a",
@@ -208,5 +209,5 @@
     "revision": "e55c8696764cfa03eec8628fad4afdf1f5bab51e",
     "old_objects_linked": false
   },
-  "qualification_iteration": "native002: preserve exact USB consumer hooks;radio lifecycle and WCN7860 source qualification"
+  "qualification_iteration": "native003: actual Mach-private memory, OSSymbol and VFS APIs; QEMU-only lifecycle/fault probe; explicit RAM addon truncation"
 }

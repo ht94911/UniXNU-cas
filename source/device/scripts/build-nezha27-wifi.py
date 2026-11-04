@@ -56,6 +56,7 @@ def main():
     records = {
         '.c': json.loads((base / 'bsd/DEVELOPMENT/bsd_init.o.json').read_text().strip().rstrip(',')),
         '.cpp': json.loads((base / 'iokit/DEVELOPMENT/IOPlatformExpert.cpo.json').read_text().strip().rstrip(',')),
+        'platform': json.loads((base / 'osfmk/DEVELOPMENT/startup.o.json').read_text().strip().rstrip(',')),
     }
     include_flags = ['-I', str(include), '-idirafter',
                      str(sdk / 'System/Library/Frameworks/Kernel.framework/Versions/A/Headers')]
@@ -65,9 +66,14 @@ def main():
                 *sorted((sources / 'adreno').glob('*.c')), sources / 'PeachWLAN.cpp', soc / 'Sm8850Rpmh.c']
     objects, details = [], []
     for source in selected:
-        record = records[source.suffix]
+        # Device mappings/allocations require the real Mach-private interface;
+        # VFS and the network frontend retain this target's BSD build contract.
+        record = records['platform' if source.name == 'pandora_wifi.c' else source.suffix]
         obj = OUT / (source.stem + '.raw.o')
         command = helper.compile_command(record, source, obj, include_flags, extra)
+        # XNU's socket header names an Apple-internal warning group unavailable
+        # in this qualified Xcode. Keep Werror and all supported diagnostics.
+        command += ['-Wno-unknown-warning-option']
         (OUT / (source.stem + '-command.json')).write_text(json.dumps(command, indent=2) + '\n')
         result = subprocess.run(command, cwd=record['directory'], capture_output=True, text=True)
         (OUT / (source.stem + '.log')).write_text(result.stdout + result.stderr)

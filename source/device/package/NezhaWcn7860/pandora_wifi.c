@@ -37,11 +37,6 @@
 #include "qcom/PeachNet.h"
 #include "qcom/NezhaPcieData.h"
 
-extern kern_return_t thread_terminate(thread_t);
-extern ppnum_t pmap_find_phys(pmap_t, addr64_t);
-extern void pmap_set_cache_attributes(ppnum_t, unsigned int);
-extern kern_return_t pmap_enter_options_addr(pmap_t, vm_map_offset_t, uint64_t,
-    vm_prot_t, vm_prot_t, unsigned, boolean_t, unsigned, void *);
 void nezha_wifi_init(void);
 
 enum { W_GCC, W_PARF, W_PHY, W_SM, W_CRM, W_COMMON, W_CRMC, W_DBI,
@@ -989,8 +984,9 @@ wifi_stage_firmware(void)
 static int
 wifi_rddm_reason(void)
 {
-    /* Retain the locally qualified7.5MiB allocation, not the upstream
-     * package's6MiB/truncated framebuffer slot. Never reuse after a crash. */
+    /* Retain the 7.5 MiB capacity from the existing local 067/068 path.
+     * Capacity is not the firmware-declared payload length; the diagnostic
+     * publisher validates those separately. Never reuse after a crash. */
     const size_t bytes = NEZHA_WIFI_RDDM_BYTES;
     if (!wifi_rddm.bytes || !wifi_rddm_session) return ENOENT;
     wifi_check_at = 0;
@@ -1002,7 +998,7 @@ wifi_rddm_reason(void)
     wifi_check_at = 0;
     WIFI_TRY(wifi_dma_health());
     int saved = nezha_wifi_diagnostic_dump(wifi_rddm.bytes, bytes);
-    printf("NEZHA WIFI: complete RDDM retention result %d\n", saved);
+    printf("NEZHA WIFI: RDDM DMA buffer retention result %d\n", saved);
     /* cnss2 rddm_header: two u32s followed by at most twelve 64-byte entries.
      * File contents follow the header in table order, not at target PAs. */
     uint32_t header[2];
@@ -1602,28 +1598,71 @@ wifi_thread(void *unused, wait_result_t result)
     thread_terminate(current_thread());
 }
 
+/* Offline checks are reachable only on the existing synthetic QEMU board,
+ * with a separate explicit option. No radio/firmware/domain function is used.
+ * These observations never advertise link-up, keys, IP or real RF reception. */
+volatile unsigned nezha_wifi_offline_stage;
+volatile int nezha_wifi_offline_error;
+__attribute__((noinline)) void nezha_wifi_offline_complete(void)
+{ __asm__ volatile("" ::: "memory"); }
+static void wifi_offline_thread(void *unused, wait_result_t result)
+{
+    (void)unused; (void)result;
+    thread_set_thread_name(current_thread(), "wifi27-offline-check");
+    extern int peach_wlan_offline_check(void);
+    uint64_t word = 0x12345678, value = 0;
+    nezha_wifi_offline_stage = 1;
+    int error = nezha_wifi_mmio_access((uintptr_t)&word, &value, 0, 1);
+    if (!error && value != word) error = EIO;
+    if (!error) {
+        value = 0xabcdef;
+        error = nezha_wifi_mmio_access((uintptr_t)&word, &value, 1, 1);
+        if (!error && word != value) error = EIO;
+    }
+    if (!error) {
+        nezha_wifi_offline_stage = 2;
+        /* Unmapped guest kernel address, never a physical or live MMIO address. */
+        if (nezha_wifi_mmio_access(0xfffffff000001000ull, &value, 0, 0) != 1) error = EIO;
+    }
+    if (!error) { nezha_wifi_offline_stage = 3; error = peach_net_init(); }
+    if (!error) {
+        const unsigned char test_mac[6] = {2, 0, 0, 0, 0, 1};
+        error = peach_net_attach(test_mac);
+    }
+    if (!error) { nezha_wifi_offline_stage = 4; error = peach_wlan_offline_check(); }
+    PeachNetInfo info; peach_net_info(&info);
+    if (!error && (info.powered || info.state == PeachNetOnline)) error = EIO;
+    nezha_wifi_offline_error = error;
+    if (!error) nezha_wifi_offline_stage = 5;
+    printf("NEZHA WIFI OFFLINE: QEMU-only stage=%u error=%d; real kernel/IOKit lifecycle, no radio or network link\n",
+        nezha_wifi_offline_stage, error);
+    nezha_wifi_offline_complete();
+    thread_terminate(current_thread());
+}
+
 void
 nezha_wifi_init(void)
 {
     int on = 0;
     thread_t thread;
     (void)PE_parse_boot_argn("nezha_wifi", &on, sizeof(on));
-    if (on != 1) return;
+    if (on != 1 && on != 2) return;
     DTEntry root;
     const void *data;
     unsigned size = 0;
     if (SecureDTLookupEntry(NULL, "/", &root) != kSuccess ||
         SecureDTGetProperty(root, "compatible", &data, &size) != kSuccess) return;
-    bool nezha = false;
+    bool nezha = false, offline = false;
     for (unsigned off = 0; off < size;) {
         size_t n = strnlen((const char *)data + off, size - off);
         if (n == size - off) return;
         if (n == 12 && !memcmp((const char *)data + off, "xiaomi,nezha", 12)) nezha = true;
+        if (n == 16 && !memcmp((const char *)data + off, "linux,dummy-virt", 16)) offline = true;
         off += (unsigned)n + 1;
     }
-    if (!nezha) return;
+    if ((on == 1 && !nezha) || (on == 2 && (!offline || nezha))) return;
     static unsigned started;
     if (__atomic_exchange_n(&started, 1, __ATOMIC_ACQ_REL)) return;
-    if (kernel_thread_start(wifi_thread, NULL, &thread) == KERN_SUCCESS) thread_deallocate(thread);
+    if (kernel_thread_start(on == 2 ? wifi_offline_thread : wifi_thread, NULL, &thread) == KERN_SUCCESS) thread_deallocate(thread);
 }
 #endif
