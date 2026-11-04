@@ -42,15 +42,17 @@ struct bt_prev {uint64_t tid,at,cpu;uint32_t cs;};
 struct bt_hotrow {unsigned rate,cpu;char role;int peer;uint64_t tid,pc,lr,frames[BT_HOT_FRAMES],kernel[BT_KFRAMES];unsigned state,hint;int pri;uint64_t event,trap,args[3];};
 static uint64_t sample_k[BT_MAX_THREADS][BT_KFRAMES],sample_event[BT_MAX_THREADS];
 static unsigned sample_state[BT_MAX_THREADS],sample_hint[BT_MAX_THREADS];static int sample_pri[BT_MAX_THREADS];
-// Where a blocked thread sits in the kernel: the link register and frame chain its context switch saved (the thread is not running while
-// it is blocked; for a running one the chain is merely stale, and every step stays inside its kernel stack).
+// All callers hold sched_lock. Switch-out can detach the stack before it takes
+// that lock and clears TH_RUN, even after the thread has set TH_WAIT.
 static void bt_kernel_stack(thread_t thread,uint64_t *out) {
  memset(out,0,BT_KFRAMES*sizeof(uint64_t));
- if(!thread->kernel_stack)return;
- const uint64_t low=(uint64_t)thread->kernel_stack,high=low+(uint64_t)kernel_stack_size;
+ if((thread->state & (TH_WAIT|TH_RUN|TH_TERMINATE|TH_TERMINATE2)) != TH_WAIT)return;
+ const uintptr_t low=thread->kernel_stack,size=kernel_stack_size;
+ if(!low)return;
  thread_kernel_state_t state=thread_get_kernel_state(thread);
+ if(!state || size<sizeof(*state) || (uintptr_t)state<low || (uintptr_t)state-low>size-sizeof(*state))return;
  uint64_t fp=state->machine.ss.fp;out[0]=state->machine.ss.lr;
- for(unsigned i=1;i<BT_KFRAMES && fp>=low && fp+16<=high && !(fp&15);++i) {
+ for(unsigned i=1;i<BT_KFRAMES && fp>=low && fp-low<=size-16 && !(fp&15);++i) {
   const uint64_t *frame=(const uint64_t *)fp;out[i]=frame[1];
   const uint64_t next=frame[0];if(next<=fp)break;fp=next;
  }

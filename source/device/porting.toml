@@ -299,3 +299,17 @@ completion = ["Real GPU shader and Metal output readback passes with correct fen
 limits = ["New diagnostic source not yet built or hardware-qualified", "Complete Metal UI and main promotion remain unaccepted"]
 next_action = ["Build Native011 then qualify the complete GPU007 addon candidate"]
 evidence = []
+
+[[area]]
+id = "ios27-gpu-upstream009"
+status = "planned"
+components = ["Adreno840", "GopFramebuffer"]
+paths = ["package/BootUiTraceProbe.c", "scripts/check-stable-kernel-stack.py", "scripts/check-main078-retention.py"]
+inputs = ["GPU008 shader and destructor crash evidence; no complete Metal or UI acceptance", "UniXNU-sheng c498750f98cea8893546f84ef0dfee6e3ed38a0e stable waiting-stack guard", "Adreno740 6fa7bae2a5b3b523e790eb3e0348af4d98969e4d compatible GMEM trace event IDs"]
+configuration = ["Keep078 input,USB,root policy and4GiB RAM seed", "No A740 preemption or SM8550 register changes on A840", "Fixed timed resets remain zero"]
+procedure = ["Extract the real sampler for ASan/UBSan state/bounds tests", "Permit only the exact guarded function in078 retention checks", "Build and qualify a new native candidate before hardware"]
+findings = ["The inherited sampler can read a saved state while TH_WAIT and TH_RUN overlap;the upstream guard is applicable to this source", "256 thread-state combinations and saved-state/frame bounds pass on host", "New GMEM memory-side colour and transient allocation fixes are being integrated into the separate userland build"]
+completion = ["Native artifact and PAC/strict closure checks pass", "Real shader,Metal and system presentation results recorded separately with Android protection postflight"]
+limits = ["Source/host evidence only;not a new hardware result", "Original078 and17 masters unchanged;no main promotion"]
+next_action = ["Complete integrated009 qualification and use the113 GPU window"]
+evidence = [{kind = "source", reference = "scripts/check-stable-kernel-stack.py", result = "Actual function extraction;ASan/UBSan pass256 state variants,short/null/out-of-range saved state,overflow/misaligned/cyclic frames and preserved normal three-frame output;arm64e PAC checked separately on the native artifact."}]

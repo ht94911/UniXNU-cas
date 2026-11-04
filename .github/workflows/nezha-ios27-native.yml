@@ -1,7 +1,7 @@
-name: nezha iPhone27 full GPU chain console diagnostics - native012
+name: nezha iPhone27 upstream GPU diagnostics and stable stack guard - native013
 on:
   push:
-    branches: [codex/ios27-gpu27-main078-012-20261105]
+    branches: [codex/ios27-gpu27-main078-013-20261105]
   workflow_dispatch:
 permissions:
   contents: read
@@ -45,6 +45,8 @@ jobs:
           printf 'UNIXNU_LLVM_OBJDUMP=%s/bin/llvm-objdump\n' "$(brew --prefix llvm)" >> "$GITHUB_ENV"
       - name: Reconstruct and verify the exact integration source tree
         run: python3 task/ci/native.py prepare --framework unixnu --work "$RUNNER_TEMP/ios27/work"
+      - name: Check the actual guarded waiting-stack sampler
+        run: python3 task/source/device/scripts/check-stable-kernel-stack.py
       - name: Qualify compiler and run the standard native build
         env:
           GITHUB_TOKEN: ${{ github.token }}
