@@ -116,7 +116,7 @@ procedure = ["Build the accepted078 source COPY with selective GPU additions; ne
 findings = ["GPU004 and its byte-identical kernel/GPU-disabled control both stalled before root/userland; neither promotes the main. Actual GMU/HFI/GX and the48-bit GPU context passed on004. Native008 contains equal A8xx constants at two addresses, while the ring accepted only its own address; the actual call necessarily returned BadArgument. Value-checked canonical selection passed the duplicate-profile and every-field-negative ring tests plus generation controls. Startup diagnosis reuses bounded existing kernel-thread reports and marked entry/return logs; removal reproduces078 source exactly, and logging timing is not a stable fix."]
 completion = ["Retain the078 desktop and physical touch, verify GMU/HFI/CP readback/fences, then real shader/Metal pixels and presentation, with complete Android protection postflight."]
 limits = ["No hardware GPU, shader or Metal pass; no main-package promotion. Desktop through CPU is not GPU acceptance."]
-next_action = ["Complete native CI and final artifact checks, perform the authorized local test, retain or revert based on actual runtime evidence."]
+next_action = ["Qualify the kernel-owned late class lock-order patch in native/QEMU and on the device. Keep005's real CP/readback/fence success separate from the unresolved startup regression; no Metal or main-package promotion."]
 evidence = [{kind = "source", reference = "docs/GPU27.md", result = "Fixed078 copy plus selective GPU integration; all actual hardware results remain separately gated."}]
 
 [[area]]
