@@ -29,7 +29,7 @@ def arguments(text):
     return result
 
 
-def validate(framework, device, board, builtin):
+def validate(framework, device, board, builtin, wifi_ram_test=False):
     from unixnu import components, kernel
     ctx = SimpleNamespace(root=framework, board=board, schema_version=2)
     ctx.component_specs = components.selected(ctx)
@@ -61,11 +61,21 @@ def validate(framework, device, board, builtin):
               'sheng-data-persist': '2', 'ram-data-volatile-4g': '0',
               'sheng-data-reset': '0', 'nezha-usb-reboot': '1',
               'boot-diag-overlay': '0', 'input-test': '0'}
+    if wifi_ram_test:
+        wanted.update({'sheng-data-persist': '0', 'ram-data-volatile-4g': '1',
+                       'nezha-usb-reboot': '2', 'nezha_wifi': '1'})
+        require('build-nezha27-wifi.py' in ordered, 'Wi-Fi archive absent')
+        require(board['adt']['chosen']['u32'].get('nezha-wifi-autojoin-rearm') == 1,
+                'explicit test-network rearm property absent')
+        require(effective.get('sheng-disable-jobs') ==
+                'com.apple.cameracaptured,com.apple.CommCenter',
+                'qualified camera/CommCenter RAM policy changed')
     require(all(effective.get(key) == value for key, value in wanted.items()),
             'effective CPU/GPU/diagnostic/protection policy changed')
     require(explicit.get('cpus') == '8', 'loader must explicitly select eight CPUs')
     return {'archive_plan': ordered, 'command_line_bytes': len(line.encode('ascii')),
-            'command_line_limit': 1000, 'effective_required_arguments': wanted}
+            'command_line_limit': 1000, 'effective_required_arguments': wanted,
+            'profile': 'wifi-ram-test' if wifi_ram_test else 'persistent-main'}
 
 
 def main():
@@ -73,6 +83,8 @@ def main():
     parser.add_argument('--framework', type=Path, required=True)
     parser.add_argument('--device', type=Path, default=Path(__file__).resolve().parents[1])
     parser.add_argument('--out', type=Path)
+    parser.add_argument('--wifi-ram-test', action='store_true',
+                        help='Explicit independent Wi-Fi test; reject persistent Data access')
     args = parser.parse_args()
     framework, device = args.framework.resolve(), args.device.resolve()
     sys.path.insert(0, str(framework / 'scripts'))
@@ -81,7 +93,7 @@ def main():
     matches = re.findall(r'char PE_builtin_boot_args\[\]\s*=\s*("[^"\n]*");', policy)
     require(len(matches) == 1, 'one existing board builtin argument definition')
     builtin = json.loads(matches[0])
-    result = validate(framework, device, board, builtin)
+    result = validate(framework, device, board, builtin, args.wifi_ram_test)
     rejected = []
     for name in ('late-hid-provider', 'unqualified-armcpu', 'oversized-line',
                  'single-cpu-regression', 'fixed-reset-enabled', 'missing-smp-default',
@@ -94,6 +106,9 @@ def main():
                    'direct-persistent-reset':('nezha-usb-reboot=1','nezha-usb-reboot=2'),
                    'overlay-enabled':('boot-diag-overlay=0','boot-diag-overlay=1'),
                    'automatic-settings':('input-test=0','input-test=1')}
+        if args.wifi_ram_test:
+            mutations.update({'volatile-data': ('sheng-data-persist=0', 'sheng-data-persist=2'),
+                              'direct-persistent-reset': ('nezha-usb-reboot=2', 'nezha-usb-reboot=1')})
         if name in mutations:
             old,new=mutations[name]
             candidate['payload']['kernel_args']=[x.replace(old,new) for x in candidate['payload']['kernel_args']]
@@ -122,11 +137,27 @@ def main():
         elif name == 'missing-gpu-default':
             defaults = defaults.replace('nezha-gpu=1', '')
         try:
-            validate(framework, device, candidate, defaults)
+            validate(framework, device, candidate, defaults, args.wifi_ram_test)
         except ValueError as error:
             rejected.append({'case': name, 'reason': str(error)})
         else:
             raise ValueError('negative case was accepted: ' + name)
+    if args.wifi_ram_test:
+        for name in ('missing-wifi', 'missing-rearm', 'missing-CommCenter-policy', 'not-persistent-main'):
+            candidate, defaults = copy.deepcopy(board), builtin
+            if name == 'missing-wifi':
+                candidate['payload']['kernel_args'] = [x.replace('nezha_wifi=1', 'nezha_wifi=0')
+                                                       for x in candidate['payload']['kernel_args']]
+            elif name == 'missing-rearm':
+                candidate['adt']['chosen']['u32']['nezha-wifi-autojoin-rearm'] = 0
+            elif name == 'missing-CommCenter-policy':
+                defaults = defaults.replace(',com.apple.CommCenter', '')
+            try:
+                validate(framework, device, candidate, defaults, name != 'not-persistent-main')
+            except ValueError as error:
+                rejected.append({'case': name, 'reason': str(error)})
+            else:
+                raise ValueError('negative case was accepted: ' + name)
     result.update(passed=True, rejected_cases=rejected,
                   board_sha256=hashlib.sha256((device / 'board.toml').read_bytes()).hexdigest(),
                   builtin_source_sha256=hashlib.sha256(policy.encode()).hexdigest(),
