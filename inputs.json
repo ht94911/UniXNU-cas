@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "dafead817c4b452ff4056ce226493711a8e4cef6",
+  "device_revision": "690afc992dbf2bdfa8d84de053c9711f60de5263",
   "soc_revision": "5a71f9eb5724ff58eddf49f7f5baecc9f4233a7c",
   "xcode": "26.6",
   "files": {
@@ -172,7 +172,7 @@
     "source/device/scripts/check-adreno840-integration.py": "b91a6085a467f749e0bb87334a00a52724602ce19a507e85930b09e9d4988a7f",
     "source/device/scripts/check-iosurface-plane-27.py": "092f98e807491b17df3e10835d23f1c44ae25c8820cc43c6343c56fa75c3c4c8",
     "source/device/scripts/check-persistent-data.py": "5ccfabaeaefd3105393e029d9ba6e584e4c6e0995581229804d73d1d7c01e9f6",
-    "source/device/scripts/check-persistent-marker.py": "2f87552b72fa8e4b59877bf321d36bcce2160173a9b00b52827c030be2a6749c",
+    "source/device/scripts/check-persistent-marker.py": "429a20412e26d168cc36a1f37300e606bd6fa87cea7f7598044ea7bf681ecd46",
     "source/device/scripts/check-stable-kernel-stack.py": "18ba63991ba388395d0bd02befcef792dce0fbd1ede8749b22fa3e392f73f394",
     "source/device/scripts/data/ioaccelerator-base-iphone-24A446.json": "cecf694fb175a2276757a12deca7008b032b99fad7c5b7fe9ad700af2303c04c",
     "source/device/scripts/data/iosurface-plane-iphone-24A446.json": "156d6a3631f95ea34be5c4af5b39208c8665a909961145d639b65cc8479d2e21",

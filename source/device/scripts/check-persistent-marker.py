@@ -11,7 +11,7 @@ pre=r'''
 #include <string.h>
 #include <assert.h>
 #include <errno.h>
-typedef int proc_t;typedef long user_ssize_t;
+typedef int proc_t;typedef int64_t user_ssize_t;
 #define O_RDONLY 0
 #define O_WRONLY 1
 #define O_CREAT 0x100
