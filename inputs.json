@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "93b7d0ef60e881fd515b6e98442e6e15a642830f",
+  "device_revision": "b9b35328294dc552367e2262842a4bdd3dbd9342",
   "soc_revision": "5a71f9eb5724ff58eddf49f7f5baecc9f4233a7c",
   "xcode": "26.6",
   "files": {
@@ -91,7 +91,7 @@
     "source/device/package/BootUiTraceProbe.c": "22a3e64f66a6386e0129dc0673d673c628aa6f52bce72fa7145962312d123dad",
     "source/device/package/BootWatchdogPolicy.c": "ba22f3ce6c0ec4fe1ab39395cce29d6e8534a6d68e1e7a8a4f28116c3792fef8",
     "source/device/package/KeyStoreProbe.cpp": "068ef978260969e3d67d743459802d72e5fad9e4a20c7c27828587a2dd9779d9",
-    "source/device/package/LegacyDisplayProbe.cpp": "c15d6d288092eee992288d20f85983442f930e005594451bd2ef074d4866d273",
+    "source/device/package/LegacyDisplayProbe.cpp": "3f8a96513f97ad835606b1832bb0c6a9459c3e4bf644ea7725b23fd54bebadfd",
     "source/device/package/Nezha27UsbControl.c": "2ef6ed0b19fd7cf9516b394ad1df5ac82c6cae4a3b287099b24dfa350ab3d918",
     "source/device/package/NezhaIOS27Pmgr.cpp": "b4952c31eeeed66050359bb0923ca966373cd0d86d0c02678df598a8b7a06a50",
     "source/device/package/ShengAudioAbi.h": "9ef369877cfae3d2255129f7fdf332448b71300a0fc840d6522ec83e09754b52",
@@ -161,7 +161,7 @@
     "source/device/patches/xnu-12377/zzzzzz-nezha-input-chain-trace.patch": "c4d05419e7ec3af0de619754bdb6c2deb69b74d714c2219e509360ebfe1b947e",
     "source/device/patches/xnu-12377/zzzzzz-nezha-kernel-class-lock-order.patch": "cd90c61d6838f4e6a7248da81b6180f14db03d00f2f7a64f4bbe4034c0aa8dcb",
     "source/device/patches/xnu-12377/zzzzzz-nezha-sigp-startup-order.patch": "18275910b909d187e459c68f5d937cc09bc01923180141dc155aa7f4ff14aaf9",
-    "source/device/porting.toml": "e7249bc16630dfa22a122d2b3fb361b14e8d4c14d9c90e78941328bc16cfa4d4",
+    "source/device/porting.toml": "8aab4cba358beb2bf0893ecdb85abe27e87a1283cf7f2e0601bd08af4380cb04",
     "source/device/scripts/backlight-iphone-24A446.json": "446eb5fe6440335bfe9fca75b32f7d815ddcafbb8a3c2d7f697c1e5c3f40f6cb",
     "source/device/scripts/build-adreno840.py": "09da7c944e865bccf642e2668526cbcdef72de44e28d891ab40feb35c2573644",
     "source/device/scripts/build-boot-progress.py": "a210eb1f0443574eb1506932aa9e8181d5c73aecf99397d8cc731568bd3210ba",
@@ -170,10 +170,12 @@
     "source/device/scripts/build-nezha27-input.py": "cd559fad30207962411546b32ffb5547ae29379e7fa992d16eaab09a39b6cd28",
     "source/device/scripts/build-nezha27-usb-control.py": "92be41e9adcce30e88c3a64fb6a1490587d87e80c74d50e3c2690c127dccb65c",
     "source/device/scripts/check-adreno840-integration.py": "6f07b8bdedb843cb9932f92acaf66e3855176074043af535835e4316cc17b86d",
+    "source/device/scripts/check-iosurface-plane-27.py": "092f98e807491b17df3e10835d23f1c44ae25c8820cc43c6343c56fa75c3c4c8",
     "source/device/scripts/check-stable-kernel-stack.py": "18ba63991ba388395d0bd02befcef792dce0fbd1ede8749b22fa3e392f73f394",
     "source/device/scripts/data/ioaccelerator-base-iphone-24A446.json": "cecf694fb175a2276757a12deca7008b032b99fad7c5b7fe9ad700af2303c04c",
+    "source/device/scripts/data/iosurface-plane-iphone-24A446.json": "156d6a3631f95ea34be5c4af5b39208c8665a909961145d639b65cc8479d2e21",
     "source/device/scripts/hid-device-iphone-24A446.json": "af4668764ba1d2a4649b9c45d1ddbbabcb69e27659e7c35fbf9899f8f6bdbc7d",
-    "source/device/scripts/legacy-display-iphone-24A446.json": "8959d9ba711dc480ca2870e3c078d0619355bf572270247c41871affc572ef13",
+    "source/device/scripts/legacy-display-iphone-24A446.json": "6f08ddf9377cc5c92a4a60ff75c3b452eb1a536720ebdf8fda9361846d8c8fea",
     "source/device/scripts/nezha-armcpu-asm-fix.py": "3d37c0c0e3613453c901a9622bc45a077c9acbd35ffe449046fa575b3b57af3a",
     "source/device/scripts/qualify-armcpu-instructions.py": "dae7cb3b9faecaac7b268212bbd324ae172d3dffa0e94b06afc4581c9f4abe9b",
     "source/device/tests/input-chain-trace.c": "9170cb8675b3ce94e9e1cfd5af0aaa4f322655fb1ef177789aef888a13348669",
@@ -181,7 +183,7 @@
     "source/device/tests/input-telemetry.c": "2af3696ccd9dcfccd4f8864a5f3ffb2144d7acac43b5fc98f34dcb280cf7bd75",
     "source/device/unixnu.lock": "20bddaafe9eabe0874d433fd101156d0db2b3e5786681062de46afe971639daf",
     "source/framework.patch": "f512d59876db84a36cfdbddc639a8c12f1e8337d4cb9e2abc2c5a1dceac05c8d",
-    "source/gop.bundle": "658d1deb9b540950d3430ada4e38818ad37ba3cf7edc9434916a1568997633cb",
+    "source/gop.bundle": "f34490ac928abedadcb704558e1fbc59a793ba6ecb6c79f477218b4c82aecb2a",
     "source/metal/LICENSE": "c51a32dfc2140d3d56f796a3a7010e574f2e3649b97c42e010303ad57f848265",
     "source/metal/OriginalAcceleratorABI.h": "211e922f9b760ddec2e3453db6584bac57597b3d39e4bf0d013c1b2debd53365",
     "source/ramblock.bundle": "28d547819358f3f45ccd5b572685848ff2327c97b378719285c50552f10114fd",
@@ -193,7 +195,7 @@
     "source/soc/patches/xnu-12377/sheng-platform-power.patch": "6e68dbcdac670624f2a9806a61fef42110bfe6586029b3f1a0acb068c3a23ec2",
     "source/soc/soc.toml": "9cebcadf2d5a271ceb44ee5fc378ed739cff0e7e5a940007164a9917042fd92f",
     "source/ufs.bundle": "25655129fad2b05a33278ad33f7d5bdd4d7544a65fcf3712b082adb4ec82e821",
-    "source/usb.bundle": "9071c6ea5e9a44423c0a81de4fae57ed65520dad5c546bd3b81acba2de86493b",
+    "source/usb.bundle": "39f8e0b00062a34dffeb875d1fdcfbfcfb1f4109d111e9e8ce64530607e96a77",
     "ci/native.py": "13d56b5e612e91af7d7b71f0f2c612c685120d3a1bb16eedcfbcb0bc7e3879fb"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
@@ -202,9 +204,9 @@
   "device_executed": false,
   "usb_enabled": true,
   "usb": {
-    "source_revision": "a173dedceb3e6cbaa98ea259afaea7d142869dac",
-    "source_tree": "d16416c780f64af318b3460549e605da6ddf40fe",
-    "history": "Single reviewed main057b source commit plus the A840 three-line IOBSD consumer identity; no USB implementation change",
+    "source_revision": "62472486be37ab596442dc56dd37a31b8fcc8377",
+    "source_tree": "eb380af5bc397994df3a03334f52e11df1ea8360",
+    "history": "Single reviewed current source tree; no parent history; GPU011 usb fix",
     "repository": "https://github.com/xiaoleGun/QcomXnuUsbDebug.git"
   },
   "comparison_reference": false,
@@ -223,10 +225,10 @@
     "history": "single shallow reviewed explicit4GiB volatile support and actual identity tests"
   },
   "gop": {
-    "source_revision": "589e02907fb0431c7ce246a3fd8a0ada1afdfeb4",
-    "source_tree": "b576be1d943540683d46b19c5cf453bd3ec441b8",
+    "source_revision": "3b0e03f9fca498a45125c6c75f41411e0eb4fe3a",
+    "source_tree": "04b4a24f48b999689ed247b0ebd23f507d442bb4",
     "repository": "https://github.com/UniXNU/GopFramebuffer.git",
-    "history": "Single current upstream source plus explicit CPU scan preservation and monotonic GPU publication gate"
+    "history": "Single reviewed current source tree; no parent history; GPU011 gop fix"
   },
   "integration_base": {
     "version": "078",
