@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Actual iPhone27 source build for the human-requested independent078 CPU desktop Wi-Fi test. Optional local RAM two-line input, background real Peach join, DHCP metadata, actual BSD IPv4 and cached screen rows. No credential, firmware, donor, device identity or phone input is uploaded. GPU acceptance stays separate.",
+  "purpose": "Rebuild the independent078 Wi-Fi candidate after real trial001: correct ARC AUX capacity from32 bytes to32 u16 levels, and identify the PCIe ARC vote in existing logs. No firmware, credentials, donor or device identity uploaded; no GPU or protected input changes.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,11 +14,11 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "959d3ce096bdd0503b00e60264109b78add7f3bf",
-  "soc_revision": "6ee1ee7e114a13c690f209698d3a9fc28306e46c",
+  "device_revision": "c315f604fd60acf5a7deeaeaa55349f2fea0fd1f",
+  "soc_revision": "3435fa55c3e835a4aaebf7d833473fd5d20073fd",
   "xcode": "26.6",
   "files": {
-    "source/device/board.toml": "eabc99db36b4a09ea22c3f62254b68aca6970d4e20fcc6e0453b865f4a8af697",
+    "source/device/board.toml": "0068a4b002c54a61027711947fca5d3abd570a9b4ab73be531dca549e03953ad",
     "source/device/configs/nezha_ios27_defconfig": "c050b0b517d9ef0b1f430933d150a37fda5510dac4b0d371dc489f22c16a550f",
     "source/device/feeds.toml": "3a8ff52c53ebdbbefbcb4afa7986f683c184512f7f7fd8cdfbcba29bbb908a37",
     "source/device/package/.gitkeep": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
@@ -55,7 +55,7 @@
     "source/device/package/NezhaWcn7860/licenses/APSL-2.0.txt": "e5881019d8766c1e88a5fe1dbca4ba40c78011d41fcb18f6e9f50df60182685b",
     "source/device/package/NezhaWcn7860/licenses/GPL-2.0-only.txt": "aaf135472f81c5b4a0dca9367e5bb5e9750032b5bebe5442b36e4c0a47430df3",
     "source/device/package/NezhaWcn7860/licenses/MIT.txt": "f984c0a808afdeb2e050ceb47bc24d764156daa29b5dfde10fb9afec2f83f351",
-    "source/device/package/NezhaWcn7860/pandora_wifi.c": "ca4e4a8b2191bb130dd33863833b0c72aecd9aa6a4794ef292179cb5358accfd",
+    "source/device/package/NezhaWcn7860/pandora_wifi.c": "d820c37f159be49aedb0b5a0cdde23a1041a2682dc4f0d631672b59d3e67e1e7",
     "source/device/package/NezhaWcn7860/qcom/NezhaPcieData.h": "b7ff65c41e77cdffeb9816c20cbf938ba203778c77f05a0eb8ec9bcb842130c6",
     "source/device/package/NezhaWcn7860/qcom/PeachApple80211.c": "774c21571828d3b1519f910b3255196c68fd2dcd83ddae1cc335cfb7921a17a0",
     "source/device/package/NezhaWcn7860/qcom/PeachApple80211.h": "6dc785b22d4a5bf9fd898fa24ef855b52da6a6afa4bb49d0dd945e20f687007a",
@@ -167,7 +167,7 @@
     "source/device/unixnu.lock": "20bddaafe9eabe0874d433fd101156d0db2b3e5786681062de46afe971639daf",
     "source/framework.patch": "db8a2ed44b14ab2db989c0633efd795dbc8290c26d46e28b61c4cbcf8ba17f8f",
     "source/ramblock.bundle": "28d547819358f3f45ccd5b572685848ff2327c97b378719285c50552f10114fd",
-    "source/soc/Sm8850Rpmh.c": "60065544173af6e6907bba9df1a8c01f0da89d3377441aa919ebafe0cfc8dc16",
+    "source/soc/Sm8850Rpmh.c": "9307dc367f8d50d70a809391abb5b9fe3f09f48e9c0558ece1f0c21dfabebe38",
     "source/soc/configs/sm8850.config": "5510debad6dc3326908a4d23082f715e62d32a1a5e6587197da3dbf18977e5bc",
     "source/soc/include/Sm8850DsiFifo.h": "5f9a2ce924585f327c088bcdaf03e6f30fe4b1573b65b3df10eb02b71bc3442f",
     "source/soc/include/Sm8850Rpmh.h": "4e3903210dacf1c53f87e77c7422d817cbdc39a59ac1c2b3aa5f3417f1bc10af",
@@ -214,5 +214,5 @@
     "revision": "e55c8696764cfa03eec8628fad4afdf1f5bab51e",
     "old_objects_linked": false
   },
-  "qualification_iteration": "native006: source-only private RAM configuration/observations and existing BootProgress callback; all26 Wi-Fi objects rebuilt"
+  "qualification_iteration": "native007: production RPMh length fix and PCIe power-vote diagnostics; same26 Wi-Fi objects and original baseline"
 }

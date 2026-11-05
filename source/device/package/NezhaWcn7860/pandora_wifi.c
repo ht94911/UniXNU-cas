@@ -283,7 +283,10 @@ wifi_pcie_resources(void)
         WIFI_TRY(wifi_wr(W_SM, 0x1000 + 4 * i, wifi_sm_branch[i]));
     WIFI_TRY(wifi_modify(W_SM, 0x1090, 0, 1));
     /* GCC's captured mx provider has init-voltage-level=384. */
-    WIFI_TRY(wifi_rpmh_arc("lmx.lvl", 384));
+    wifi_step = "PCIe MX ARC vote";
+    int arc_error = wifi_rpmh_arc("lmx.lvl", 384);
+    printf("NEZHA WIFI: PCIe lmx.lvl request 384 result %d\n", arc_error);
+    if (arc_error) return arc_error;
     wifi_step = "PCIe PHY GDSC";
     WIFI_TRY(wifi_modify(W_GCC, 0x6c000, 0xfff002, 0x222000));
     WIFI_TRY(wifi_modify(W_GCC, 0x5214c, 4, 0));

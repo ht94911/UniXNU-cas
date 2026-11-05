@@ -105,7 +105,9 @@ int Sm8850RpmhResource(Sm8850Rpmh *r, const char *name, uint32_t offset, uint32_
 int Sm8850RpmhArc(Sm8850Rpmh *r, const char *name, uint32_t virtual_level)
 {
     uint32_t a, aux, n; TRY(lookup(r, name, 3, &a, &aux, &n));
-    if (!n || (n & 1) || n > 32) return Invalid;
+    /* cmd-db len is bytes; Qualcomm's ARC capacity is 32 u16 levels.
+     * A valid zero-padded 20-level table therefore occupies 40 bytes. */
+    if (!n || (n & 1) || n / sizeof(uint16_t) > 32) return Invalid;
     uint32_t previous = 0;
     for (unsigned i = 0; i < n / 2; i++) {
         uint32_t level; TRY(db16(r, aux + i * 2, &level));
