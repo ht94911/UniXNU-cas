@@ -25,3 +25,6 @@ zzzzzz-nezha-kernel-class-lock-order.patch
 
 # Retain authenticated system code through the normal process/DEXT shutdown.
 zzzz-native-systemos-shutdown.patch
+
+# Kernel cwd borrows the global root reference during native union replacement.
+zzzz-native-root-cwd-ownership.patch
