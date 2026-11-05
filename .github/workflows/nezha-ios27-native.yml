@@ -1,7 +1,7 @@
 name: nezha iPhone27 plane view and controlled USB drain - native015
 on:
   push:
-    branches: [codex/ios27-gpu-persist002-017b-20261106]
+    branches: [codex/ios27-gpu-persist003-018-20261106]
   workflow_dispatch:
 permissions:
   contents: read
