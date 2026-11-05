@@ -1,7 +1,7 @@
 name: nezha iPhone27 plane view and controlled USB drain - native015
 on:
   push:
-    branches: [codex/ios27-main-persist-016c-20261105]
+    branches: [codex/ios27-gpu-persist002-017-20261106]
   workflow_dispatch:
 permissions:
   contents: read
@@ -49,6 +49,7 @@ jobs:
         run: |
           python3 "$RUNNER_TEMP/ios27/work/device/scripts/check-persistent-data.py" --ufs "$RUNNER_TEMP/ios27/work/ufs" --device "$RUNNER_TEMP/ios27/work/device" --usb "$RUNNER_TEMP/ios27/work/usb" --output "$RUNNER_TEMP/ios27/persist-contracts"
           python3 "$RUNNER_TEMP/ios27/work/device/scripts/check-persistent-marker.py" --device "$RUNNER_TEMP/ios27/work/device" --output "$RUNNER_TEMP/ios27/persist-marker"
+          python3 "$RUNNER_TEMP/ios27/work/device/scripts/check-touch-edge.py" --output "$RUNNER_TEMP/ios27/touch-edge"
           python3 "$RUNNER_TEMP/ios27/work/gop/Test/check-plane-view.py" --output "$RUNNER_TEMP/ios27/gop-view-check"
       - name: Check the actual guarded waiting-stack sampler
         run: python3 task/source/device/scripts/check-stable-kernel-stack.py

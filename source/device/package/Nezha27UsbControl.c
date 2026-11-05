@@ -20,6 +20,7 @@ extern volatile uint64_t native_data_persist_writes,native_data_persist_errors;
 extern int native_ufs_store_ready(void);
 extern int native_ufs_store_sync(void);
 extern unsigned native_ufs_store_gpt_check(void);
+extern uint32_t system_inshutdown,final_shutdown_stage;
 static unsigned normal_shutdown_started;
 struct nz27_video {unsigned height,width,depth,stride;uintptr_t frame;};
 extern struct nz27_video boot_progress_panic_vinfo;
@@ -48,10 +49,21 @@ __attribute__((noreturn)) static void psci_reset(void) {
  for(;;)__asm__ volatile("wfe" :::"memory");
 }
 static int restart_owner(unsigned type) {
- if(type!=1 || (mode!=1 && mode!=2) || !storage_ready() ||
-    (!ram_only() && !normal_shutdown_started) ||
-    __atomic_load_n(&PE_halt_restart,__ATOMIC_ACQUIRE)!=restart_owner ||
-    !qcom_usb_debug_control_consume_reboot())return -10;
+ if(type!=1 || (mode!=1 && mode!=2) ||
+    __atomic_load_n(&PE_halt_restart,__ATOMIC_ACQUIRE)!=restart_owner)return -10;
+ if(mode==1) {
+  // The session-bound USB ticket was consumed before entering reboot_kernel.
+  // That routine sets final_shutdown_stage only after its normal process,
+  // filesystem/unmount, buffer and network shutdown work. Never require an
+  // active USB controller or take its runtime lock from the final PE callback.
+  unsigned expected=1;
+  if(__atomic_load_n(&system_inshutdown,__ATOMIC_ACQUIRE)!=1 ||
+     __atomic_load_n(&final_shutdown_stage,__ATOMIC_ACQUIRE)!=1 ||
+     native_data_persist_errors!=0 ||
+     !__atomic_compare_exchange_n(&normal_shutdown_started,&expected,2,0,
+       __ATOMIC_ACQ_REL,__ATOMIC_ACQUIRE))return -10;
+ } else if(!ram_only() || !storage_ready() ||
+           !qcom_usb_debug_control_consume_reboot())return -10;
  nezha27_usb_reset_phase=5;
  psci_reset();
 }
@@ -98,9 +110,17 @@ static void reboot_worker(void *arg,wait_result_t wr) {
  if(!qcom_usb_debug_control_arm_reboot()){result=-4;goto out;}
  nezha27_usb_reset_phase=3;
  if(mode==2)result=restart_owner(1);
- else if(mode==1){normal_shutdown_started=1;result=reboot_kernel(0,NULL);normal_shutdown_started=0;}
+ else if(mode==1){
+  if(!qcom_usb_debug_control_begin_shutdown()){result=-13;goto out;}
+  __atomic_store_n(&normal_shutdown_started,1,__ATOMIC_RELEASE);
+  nezha27_usb_reset_phase=4;
+  printf("NEZHA27 USB REBOOT: session ticket consumed;normal XNU shutdown;diagnostic log resumed\n");
+  result=reboot_kernel(0,NULL);
+  __atomic_store_n(&normal_shutdown_started,0,__ATOMIC_RELEASE);
+ }
  else result=-7;
  out:
+ __atomic_store_n(&normal_shutdown_started,0,__ATOMIC_RELEASE);
  qcom_usb_debug_control_reboot_failed(result?result:-5);
  __atomic_store_n(&reboot_state,4,__ATOMIC_RELEASE);thread_bind(PROCESSOR_NULL);thread_terminate_self();
 }
