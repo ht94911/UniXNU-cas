@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "7d272bba0e6c24411758353871972cae6fb3f9d8",
+  "device_revision": "93b7d0ef60e881fd515b6e98442e6e15a642830f",
   "soc_revision": "5a71f9eb5724ff58eddf49f7f5baecc9f4233a7c",
   "xcode": "26.6",
   "files": {
@@ -44,9 +44,10 @@
     "source/adreno/NativeAdrenoKernelTime.h": "c7fcd3e339984278c3c5af98b0de87a72471e04c9855f42ff5934c271d71ec06",
     "source/adreno/NativeAdrenoMemory.cpp": "130928e5d862d61660ad54af25c363e5477fc6c4d41f3386daf3c8b2f4d1040b",
     "source/adreno/NativeAdrenoMemory.h": "8cf705d9896ce44e7fc976a52baff525a4a2b2935e9fb4421adf380bf69f24f4",
+    "source/adreno/NativeAdrenoPollLog.h": "8b6519cec2aeade0870f91db08087462f03ffc2a0eabf6e0d6183216e6c35645",
     "source/adreno/NativeAdrenoPreempt.cpp": "59336613d70291a3d16abd0c3a10025fc8dae5ba2796f76ce8e7c60234f328bb",
     "source/adreno/NativeAdrenoPreempt.h": "33b1804ba28d36d5a8aa3c67ec6476f737803e1864c049804bb6fcd3512d91b6",
-    "source/adreno/NativeAdrenoPublish.cpp": "161164e67cd34027229cc23f7a5c0fd754c872734a0ae2b404df95ce7de85855",
+    "source/adreno/NativeAdrenoPublish.cpp": "d5f62585d3e6abb5f3529e3ff3c5868831e904682a345b7dc5d75b568a003482",
     "source/adreno/NativeAdrenoPwrup.h": "708830fae4f6a5cea765992d44135126d7a034a239adece94f094d862819e889",
     "source/adreno/NativeAdrenoPwrupRegs.h": "8067d9625e922173912eea09e6a504d9c1b31234d4656f8dd4148855882918e1",
     "source/adreno/NativeAdrenoRing.cpp": "fa43ae842bbc2b76cfdf4d595a0f05c02ea31081893dd262aea77ee9f695f501",
@@ -73,7 +74,7 @@
     "source/adreno/NativeGpuTextStream.h": "59be0074aaf9b35eda089a0c8c6519894b42f8d9e2f3221fbec855854c4fe874",
     "source/adreno/NativeGpuThreadTargets.h": "547da33caf52a6e1de08e5c9b0991625cbda171a2b235a63ac01c2ab43e33457",
     "source/adreno/NativeGpuTrace.h": "7636d053085adfdc8e15a69241f6f6a3399af2802c4fd93d05eb2a01275d1e65",
-    "source/adreno/NativeGpuTrace.inc": "ef74e9fab68355b846d44f4d37954ae2642222e5a6b8dee070fc5c5e09b77595",
+    "source/adreno/NativeGpuTrace.inc": "4548d80aaa1fce93ad0eb241921c7d397cad4147a7a62de7a82da30c3907b98c",
     "source/adreno/NativeGpuTraceStore.h": "4a2984192bc2c68383146f558212d1000c920a8d9cbe54ccec8badd935844823",
     "source/device/board.toml": "8a10cd536be7adfc3a8fb7f3bf073152e797ecbac232749f3ade691e9a10e4f4",
     "source/device/configs/nezha_ios27_defconfig": "6f771ac6d84d2a094a9b4b4088ba1fe5cb172444cc76ae5584e68b94f090d121",
@@ -90,7 +91,7 @@
     "source/device/package/BootUiTraceProbe.c": "22a3e64f66a6386e0129dc0673d673c628aa6f52bce72fa7145962312d123dad",
     "source/device/package/BootWatchdogPolicy.c": "ba22f3ce6c0ec4fe1ab39395cce29d6e8534a6d68e1e7a8a4f28116c3792fef8",
     "source/device/package/KeyStoreProbe.cpp": "068ef978260969e3d67d743459802d72e5fad9e4a20c7c27828587a2dd9779d9",
-    "source/device/package/LegacyDisplayProbe.cpp": "6cdd2e73099b469b14a3e1f9180f5ae073dbf156952b73d073e046ff9d60e061",
+    "source/device/package/LegacyDisplayProbe.cpp": "c15d6d288092eee992288d20f85983442f930e005594451bd2ef074d4866d273",
     "source/device/package/Nezha27UsbControl.c": "2ef6ed0b19fd7cf9516b394ad1df5ac82c6cae4a3b287099b24dfa350ab3d918",
     "source/device/package/NezhaIOS27Pmgr.cpp": "b4952c31eeeed66050359bb0923ca966373cd0d86d0c02678df598a8b7a06a50",
     "source/device/package/ShengAudioAbi.h": "9ef369877cfae3d2255129f7fdf332448b71300a0fc840d6522ec83e09754b52",
@@ -234,7 +235,7 @@
     "main_package_modified": false
   },
   "gpu": {
-    "common_revision": "02f43118597cc1f86eb21439d7f461c4236c1da0",
+    "common_revision": "a014f53b495e3b351672cc06f8869081d2f5dd17",
     "common_upstream": "6fa7bae2a5b3b523e790eb3e0348af4d98969e4d",
     "metal_revision": "816022307852de7e1741ac05ae9111982318763f",
     "firmware_uploaded": false,

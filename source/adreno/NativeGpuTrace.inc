@@ -10,6 +10,25 @@ static NativeGpuTraceStore gpuTrace;
 static uint32_t gpuTraceOn;
 static NativeGpuTraceRecord *gpuMetadata;
 static uint32_t gpuMetadataBusy;
+static uint8_t gpuProblemReported[NativeGpuTraceMetadata];
+/* Metadata slots are assigned to one (PID,event,text) tuple for this boot.
+ * Copy new problem text in bounded batches; the observer prints after release.
+ * Trace producers never wait on this latch and the full ring stays unchanged.
+ */
+static uint32_t gpuTraceCopyNewProblems(NativeGpuTraceRecord *out,uint32_t capacity)
+{
+    if(!gpuMetadata || !out || !capacity || capacity>8)return 0;
+    uint32_t free=0;
+    if(!__atomic_compare_exchange_n(&gpuMetadataBusy,&free,1,false,__ATOMIC_ACQUIRE,__ATOMIC_RELAXED))return 0;
+    uint32_t copied=0;
+    for(unsigned i=0;i<NativeGpuTraceMetadata && copied<capacity;++i) {
+        if(gpuMetadata[i].event!=GpuTraceProblem || gpuProblemReported[i])continue;
+        out[copied++]=gpuMetadata[i];
+        gpuProblemReported[i]=1;
+    }
+    __atomic_store_n(&gpuMetadataBusy,0,__ATOMIC_RELEASE);
+    return copied;
+}
 static void gpuTraceInit()
 {
     unsigned enabled=0;

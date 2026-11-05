@@ -130,6 +130,15 @@ volatile uint32_t native_legacy_rej_state[3],native_legacy_rej_options[3],native
 char native_legacy_rej_class[32];
 volatile uint64_t native_legacy_rej_surface[7];   // width, height, format, planes, stride, allocation, descriptor bytes of the last rejected surface
 void native_legacy_surface_rejected(uint64_t width,uint64_t height,uint32_t format,uint32_t planes,uint64_t stride,uint64_t allocation,uint64_t bytes) {
+    static uint64_t observations;
+    const uint64_t n=__atomic_add_fetch(&observations,uint64_t(1),__ATOMIC_RELAXED);
+    // Keep the first surfaces and later powers of two without repeating a
+    // line at the compositor's retry rate. This hook does not accept a swap.
+    if(n<=4 || (n && !(n&(n-1)))) {
+        unsigned trace=0;PE_parse_boot_argn("sheng-gpu-trace",&trace,sizeof(trace));
+        if(trace==1)IOLog("NEZHA SWAP SURFACE: rejected=%llu wh=%llux%llu fmt=%08x planes=%u stride=%llu alloc=%llu descriptor=%llu\n",
+            n,width,height,format,planes,stride,allocation,bytes);
+    }
     native_legacy_rej_surface[0]=width;native_legacy_rej_surface[1]=height;native_legacy_rej_surface[2]=format;native_legacy_rej_surface[3]=planes;
     native_legacy_rej_surface[4]=stride;native_legacy_rej_surface[5]=allocation;native_legacy_rej_surface[6]=bytes;
 }

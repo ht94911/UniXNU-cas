@@ -24,9 +24,18 @@
 #include "NativeAdrenoGpuContext.h"
 #include "NativeGpuTrace.inc"
 #include "NativeGpuTextStream.h"
+#include "NativeAdrenoPollLog.h"
 
 static NativeGpuTextStream gpuTextStream;
 static IOLock *gpuTextLock;
+static NativeAdrenoPollLog gpuPollLog;
+static bool reportRpcResult(uint32_t method,IOReturn result) {
+    if(result!=kIOReturnTimeout)return true;
+    if(method==NativeAdrenoMethodWaitFence)return gpuPollLog.keep(0);
+    // 0x7000 + NGP_METHOD_WAIT_SWAP: the existing display hand-off wait.
+    if(method==0x7002)return gpuPollLog.keep(1);
+    return true;
+}
 extern "C" int proc_selfpid(void);
 
 extern "C" void proc_selfname(char *, int);
@@ -880,7 +889,7 @@ IOReturn AGXDeviceUserClient::externalMethod(uint32_t selector,IOExternalMethodA
         const IOReturn tunneled=run(header[1],reinterpret_cast<const uint8_t *>(arguments->structureInput)+8,
             arguments->structureInputSize-8,arguments->structureOutput,arguments->structureOutputSize);
         native_adreno_metal_diag.ext_status=uint32_t(tunneled);
-        if(native_gpu_trace_enabled() && tunneled && header[1]!=NativeAdrenoMethodSetMetadata)
+        if(native_gpu_trace_enabled() && tunneled && header[1]!=NativeAdrenoMethodSetMetadata && reportRpcResult(header[1],tunneled))
             IOLog("NEZHA GPU RPC: pid %d method %u status %#x input %u output %u\n",proc_selfpid(),header[1],
                 unsigned(tunneled),unsigned(arguments->structureInputSize-8),unsigned(arguments->structureOutputSize));
         return tunneled;
@@ -895,7 +904,7 @@ IOReturn AGXDeviceUserClient::externalMethod(uint32_t selector,IOExternalMethodA
     const IOReturn result=IOUserClient::externalMethod(selector,arguments,const_cast<IOExternalMethodDispatch *>(&table[selector-1]),
         target?target:this,reference);
     native_adreno_metal_diag.ext_status=uint32_t(result);
-    if(native_gpu_trace_enabled() && result && selector!=NativeAdrenoMethodSetMetadata)
+    if(native_gpu_trace_enabled() && result && selector!=NativeAdrenoMethodSetMetadata && reportRpcResult(selector,result))
         IOLog("NEZHA GPU RPC: pid %d direct %u status %#x\n",proc_selfpid(),unsigned(selector),unsigned(result));
     return result;
 }
@@ -1194,12 +1203,30 @@ extern "C" bool native_adreno_fences(uint32_t *submitted,uint32_t *retired)
 static void nativeAdrenoDiagnosticObserver(void *,wait_result_t)
 {
     uint32_t hashes[48]={};
+    uint64_t lastPolls[2]={};
     for(;;) {
         IOSleep(2000);
         auto &d=native_adreno_metal_diag;
         IOLog("NEZHA GPU SNAP: sampled opens %u closes %u busy %u bad %u name_reads %u calls %u method %u status %#x inflight %u since %u marks %u table_status %#x\n",
             d.opens,d.closes,d.busy,d.bad,d.name_reads,d.calls,d.last_selector,d.last_status,
             d.inflight,d.inflight_since_calls,d.marks_total,native_adreno_table_switches[6]);
+        const uint64_t fencePolls=gpuPollLog.count(0),framePolls=gpuPollLog.count(1);
+        if(fencePolls!=lastPolls[0] || framePolls!=lastPolls[1]) {
+            IOLog("NEZHA GPU POLL: sampled fence_timeouts=%llu frame_timeouts=%llu; repeated lines counted\n",fencePolls,framePolls);
+            lastPolls[0]=fencePolls;lastPolls[1]=framePolls;
+        }
+        // Problem/notification text is already retained as event 65 by the
+        // upstream ABI. Copy at most eight unseen metadata entries, release
+        // the metadata latch, then log; never print while holding that latch.
+        NativeGpuTraceRecord problems[8];
+        const unsigned problemCount=gpuTraceCopyNewProblems(problems,8);
+        for(unsigned i=0;i<problemCount;++i) {
+            char text[89];memcpy(text,&problems[i].value[1],88);text[88]=0;
+            for(unsigned j=0;j<88 && text[j];++j)
+                if(uint8_t(text[j])<32 || uint8_t(text[j])==127)text[j]=' ';
+            IOLog("NEZHA GPU PROBLEM: pid %u part %llu seq %llu %s\n",problems[i].pid,
+                problems[i].value[0],problems[i].sequence,text);
+        }
         for(unsigned i=0;i<48;++i) {
             char row[96];memcpy(row,native_adreno_metal_rows[i],sizeof(row));row[95]=0;
             uint32_t hash=2166136261u;
