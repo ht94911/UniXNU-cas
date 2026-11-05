@@ -22,3 +22,6 @@ zzzzzz-nezha-adreno840-start.patch
 
 # Kernel-owned late class registration follows OSKext -> stalled-class lock order.
 zzzzzz-nezha-kernel-class-lock-order.patch
+
+# Retain authenticated system code through the normal process/DEXT shutdown.
+zzzz-native-systemos-shutdown.patch
