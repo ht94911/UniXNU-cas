@@ -1,0 +1,18 @@
+{
+  "repository": "https://github.com/UniXNU/ArmSmmu4K",
+  "commit": "83969cd874503e65997ff7639f7dcf3d0a92cd17",
+  "files": {
+    "ArmSmmu4K.c": "0adb19b483e56e723014ed6cfe2c29f9d9735ae2770f62cf0057b22937dbd157",
+    "ArmSmmu4KContext.c": "fb993f53ef899b9969a71311b61b5dbe9446c515d7a6e6ad7d4840796eb1b6a3",
+    "ArmSmmu4KProgram.c": "93df000cefafd06cc46a24f0079a08dda312a74c7f35f901f255efc74e6919ee",
+    "ArmSmmu4KStreams.c": "359610de6974c1885b4b7bbf72e6b321a013e1cc44200e1a8f566d09722c009a",
+    "ArmSmmu4K.h": "e25063b9134afc7eb79e7c030bc2858608cf0ade5da714d5dfd600fee5007e8e",
+    "ArmSmmu4KContext.h": "34070b4739dd6c5b59159b9c2ed66e966ff659994db66b8677655273a1f02647",
+    "ArmSmmu4KProgram.h": "76b3b06f4ee63f24e7ac39d1f046c0edb9a1739584aece9108a31ae9f618f46d",
+    "ArmSmmu4KStreams.h": "1cfca0b4e3acba420cc829098b52d61c4905ec64d2aa57883dedae9dfb212969",
+    "LICENSE": "7a730b868c1ff986cdfc210a7b140ab4e0a31bf7db1d15db901427973efaa70f"
+  },
+  "private_namespace": "NezhaWifiArmSmmu4K*",
+  "ttbr0_switched": false,
+  "note": "Supplied0452 context header predates ttbr0_switched. Use the complete matching public implementation and headers; never call the GPU copy with a different struct size."
+}
