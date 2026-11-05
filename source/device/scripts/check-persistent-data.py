@@ -120,19 +120,37 @@ checker=(USB/'tests/check_reboot_drain27.py').read_text()
 ns={};exec(compile(checker,str(USB/'tests/check_reboot_drain27.py'),'exec'),{'__name__':'fixture','__file__':str(USB/'tests/check_reboot_drain27.py')},ns)
 cut=ns['cut'];cut.__globals__['function']=function;cut.__globals__['re']=__import__('re')
 native=(USB/'kernel/QcomXnuUsbDebug.c').read_text();board=(D/'package/Nezha27UsbControl.c').read_text()
-names=[('qcom_usb_debug_control_reset_available','int'),('qcom_usb_debug_control_use_restart_owner','int'),('control_mix','static uint64_t'),('control_rotate_session_owned','static void'),('qcom_usb_debug_control_start','int'),('append_text','static char *'),('append_decimal','static char *'),('control_reply_reboot','static size_t'),('control_handle_frame','static void'),('qcom_usb_debug_control_take_reboot','int'),('control_reboot_valid_owned','static int'),('qcom_usb_debug_control_arm_reboot','int'),('qcom_usb_debug_control_consume_reboot','int'),('qcom_usb_debug_control_reboot_failed','void'),('qcom_usb_debug_wait_drained','int')]
+names=[('qcom_usb_debug_control_reset_available','int'),('qcom_usb_debug_control_use_restart_owner','int'),('control_mix','static uint64_t'),('control_rotate_session_owned','static void'),('qcom_usb_debug_control_start','int'),('append_text','static char *'),('append_decimal','static char *'),('control_reply_reboot','static size_t'),('control_handle_frame','static void'),('qcom_usb_debug_control_take_reboot','int'),('control_reboot_valid_owned','static int'),('qcom_usb_debug_control_arm_reboot','int'),('qcom_usb_debug_control_consume_reboot','int'),('qcom_usb_debug_control_begin_shutdown','int'),('qcom_usb_debug_control_reboot_failed','void'),('qcom_usb_debug_wait_drained','int')]
 bnames=[('ram_only','static int'),('persistent_selected','static int'),('storage_ready','static int'),('restart_owner','static int'),('nezha27_usb_control_prepare','void'),('reboot_worker','static void'),('nezha27_usb_control_service','void')]
 code='\n'.join([cut(native,n,r) for n,r in names]+[cut(board,n,r) for n,r in bnames])
 (O/'reboot27-production.inc').write_text(code)
 fixture=(USB/'tests/test_reboot_drain27.c').read_text()
 fixture=fixture.replace('static uint64_t native_data_persist_writes;', '''static uint64_t native_data_persist_writes,native_data_persist_errors;
 static unsigned normal_shutdown_started,persistent_real_shutdown;
+static thread_t normal_shutdown_thread;
+static thread_t running_thread=1;
+static uint32_t system_inshutdown,final_shutdown_stage;
+static unsigned after_ticket;
 static int store_ready=1,store_sync=1,store_gpt=0;
 static int native_ufs_store_ready(void){return store_ready;}
 static int native_ufs_store_sync(void){return store_sync;}
 static unsigned native_ufs_store_gpt_check(void){return store_gpt;}
 static int restart_owner(unsigned);''')
-fixture=fixture.replace('shutdown_calls++;return -99;', 'shutdown_calls++;if(persistent_real_shutdown){assert(normal_shutdown_started);return restart_owner(1);}return -99;')
+fixture=fixture.replace('static int current_thread(void){return 1;}',
+                        'static int current_thread(void){return running_thread;}')
+fixture=fixture.replace('shutdown_calls++;return -99;', '''shutdown_calls++;
+ if(persistent_real_shutdown){
+  assert(normal_shutdown_started==1 && control_reboot_armed==2);
+  assert(!soc_usb_buffer_is_quiesced(&usb_log_buffer));
+  system_inshutdown=1;final_shutdown_stage=1;
+  if(after_ticket==1){ready=0;generation++;native.core_initialized=0;native.status.phase=QCOM_USB_DEBUG_STOPPED;guard_forever=1;}
+  if(after_ticket==2)final_shutdown_stage=0;
+  if(after_ticket==3)system_inshutdown=0;
+  if(after_ticket==4)native_data_persist_errors=1;
+  if(after_ticket==5)PE_halt_restart=foreign_owner;
+  if(after_ticket==6)running_thread=2;
+  return restart_owner(1);
+ }return -99;''')
 needle=' nezha27_usb_control_prepare();assert(qcom_usb_debug_control_start());'
 addition='''
  if(!strncmp(test,"persist-",8)){
@@ -143,15 +161,21 @@ addition='''
   if(!strcmp(test,"persist-bad-gpt"))store_gpt=3;
   if(!strcmp(test,"persist-sync-fail"))store_sync=0;
   if(!strcmp(test,"persist-bad-state"))native_data_persist_state=7;
+  if(!strcmp(test,"persist-transport-off-after-ticket"))after_ticket=1;
+  if(!strcmp(test,"persist-before-final-stage"))after_ticket=2;
+  if(!strcmp(test,"persist-without-XNU-start"))after_ticket=3;
+  if(!strcmp(test,"persist-write-error-after-ticket"))after_ticket=4;
+  if(!strcmp(test,"persist-owner-after-ticket"))after_ticket=5;
+  if(!strcmp(test,"persist-other-thread"))after_ticket=6;
  }
 '''+needle+'''
  if(!strncmp(test,"persist-",8)){
   assert(qcom_usb_debug_control_reset_available());request(usb_control_context.state.session);
   assert(control_reboot_requested);
   if(!setjmp(reset_exit))nezha27_usb_control_service();
-  int ok=!strcmp(test,"persist-resume")||!strcmp(test,"persist-fresh");
-  assert(reset_calls==(unsigned)ok && shutdown_calls==(unsigned)ok);
-  if(ok){assert(normal_shutdown_started && control_reboot_armed==2);}
+  int ok=!strcmp(test,"persist-resume")||!strcmp(test,"persist-fresh")||after_ticket==1;
+  assert(reset_calls==(unsigned)ok && shutdown_calls==(unsigned)(ok||after_ticket));
+  if(ok){assert(normal_shutdown_started==2 && control_reboot_armed==2);assert(restart_owner(1)==-10);}
   else{assert(!normal_shutdown_started);assert_resumed();}
   goto done;
  }
@@ -160,7 +184,8 @@ assert fixture.count(needle)==1;fixture=fixture.replace(needle,addition)
 (O/'test_reboot_persist.c').write_text(fixture)
 cmd=['gcc','-std=c11','-O1','-g','-Wall','-Wextra','-Werror','-Wno-unused-function','-Wno-unused-variable','-fsanitize=address,undefined','-fno-sanitize-recover=all','-I'+str(USB/'include'),'-I'+str(USB),'-I'+str(O),str(O/'test_reboot_persist.c'),str(USB/'kernel/QcomUsbScreenshot.c'),'-o',str(O/'reboot-persist')]
 subprocess.run(cmd,check=True)
-cases=['success','continuous-log','guard-busy','buffer-busy','drain-fail','guard-timeout','old-session','old-generation','owner-changed','disconnect','cancel','poll-fail','generation-during-drain','owner-during-drain','session-during-drain','cancel-during-drain','create-fail','wrong-cpu','no-control','no-mode','persistent-data','RAM-writes','owner-after-arm','queue-after-arm','log-after-arm','generation-after-arm','consume-once','not-armed','not-drained','failed-without-request','normal-shutdown-return','nonreboot-continuous','generic-drain','persist-resume','persist-fresh','persist-error','persist-missing','persist-bad-gpt','persist-sync-fail','persist-bad-state']
+cases=['success','continuous-log','guard-busy','buffer-busy','drain-fail','guard-timeout','old-session','old-generation','owner-changed','disconnect','cancel','poll-fail','generation-during-drain','owner-during-drain','session-during-drain','cancel-during-drain','create-fail','wrong-cpu','no-control','no-mode','persistent-data','RAM-writes','owner-after-arm','queue-after-arm','log-after-arm','generation-after-arm','consume-once','not-armed','not-drained','failed-without-request','normal-shutdown-return','nonreboot-continuous','generic-drain','persist-resume','persist-fresh','persist-error','persist-missing','persist-bad-gpt','persist-sync-fail','persist-bad-state','persist-transport-off-after-ticket','persist-before-final-stage','persist-without-XNU-start','persist-write-error-after-ticket','persist-owner-after-ticket']
+cases.append('persist-other-thread')
 results={case:subprocess.check_output([str(O/'reboot-persist'),case],text=True).strip() for case in cases}
 report=dict(phone_operations=False,ufs_actual_commands=ufs_output,root_command_regression=read_output,usb_actual_protocol_and_board_cases=results,sources={str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in [U/'RootCommands.h',U/'PinnedDataWindow.h',U/'NativeUfs.cpp',D/'package/Nezha27UsbControl.c',USB/'kernel/QcomXnuUsbDebug.c']})
 (O/'report.json').write_text(json.dumps(report,indent=2)+'\n')
