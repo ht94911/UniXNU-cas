@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "b9b35328294dc552367e2262842a4bdd3dbd9342",
+  "device_revision": "dafead817c4b452ff4056ce226493711a8e4cef6",
   "soc_revision": "5a71f9eb5724ff58eddf49f7f5baecc9f4233a7c",
   "xcode": "26.6",
   "files": {
@@ -76,7 +76,7 @@
     "source/adreno/NativeGpuTrace.h": "7636d053085adfdc8e15a69241f6f6a3399af2802c4fd93d05eb2a01275d1e65",
     "source/adreno/NativeGpuTrace.inc": "4548d80aaa1fce93ad0eb241921c7d397cad4147a7a62de7a82da30c3907b98c",
     "source/adreno/NativeGpuTraceStore.h": "4a2984192bc2c68383146f558212d1000c920a8d9cbe54ccec8badd935844823",
-    "source/device/board.toml": "8a10cd536be7adfc3a8fb7f3bf073152e797ecbac232749f3ade691e9a10e4f4",
+    "source/device/board.toml": "dccfde7cae4e0b1eb6ab8b6af78136c0014a8d8d861449cd7694eb8867527c57",
     "source/device/configs/nezha_ios27_defconfig": "6f771ac6d84d2a094a9b4b4088ba1fe5cb172444cc76ae5584e68b94f090d121",
     "source/device/feeds.toml": "89cd3214bf98295e76dacf3606cfce03f4a903c27e865d6558e45bacd3e154b0",
     "source/device/package/.gitkeep": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
@@ -89,10 +89,10 @@
     "source/device/package/BootUiTraceCore.h": "9404d7be6386f936904e6af34c870d86ec809b4d97161fd892d904d8334f2753",
     "source/device/package/BootUiTraceDetails.h": "b9c0d9afbc80359a08f2aabb87cf6ee94c5227e64212dffb05ea8d9e08a8473e",
     "source/device/package/BootUiTraceProbe.c": "22a3e64f66a6386e0129dc0673d673c628aa6f52bce72fa7145962312d123dad",
-    "source/device/package/BootWatchdogPolicy.c": "ba22f3ce6c0ec4fe1ab39395cce29d6e8534a6d68e1e7a8a4f28116c3792fef8",
+    "source/device/package/BootWatchdogPolicy.c": "8eeb7e51439604dc81bf6f0805b9d88b6f716e086e7aedb9641657c20f8be4f7",
     "source/device/package/KeyStoreProbe.cpp": "068ef978260969e3d67d743459802d72e5fad9e4a20c7c27828587a2dd9779d9",
     "source/device/package/LegacyDisplayProbe.cpp": "3f8a96513f97ad835606b1832bb0c6a9459c3e4bf644ea7725b23fd54bebadfd",
-    "source/device/package/Nezha27UsbControl.c": "2ef6ed0b19fd7cf9516b394ad1df5ac82c6cae4a3b287099b24dfa350ab3d918",
+    "source/device/package/Nezha27UsbControl.c": "cd8729daf62b0c5c0bd50d2ac7742ad19e494e2d232ae229cc57cad276314ef0",
     "source/device/package/NezhaIOS27Pmgr.cpp": "b4952c31eeeed66050359bb0923ca966373cd0d86d0c02678df598a8b7a06a50",
     "source/device/package/ShengAudioAbi.h": "9ef369877cfae3d2255129f7fdf332448b71300a0fc840d6522ec83e09754b52",
     "source/device/package/SourceRootBinding.cpp": "f395a15d37b89a10bc9e965d9093dc29d0ff54d5eb61ded87ef623300cdf0f20",
@@ -168,9 +168,11 @@
     "source/device/scripts/build-gop-legacy-display-27.py": "f6f0e2cb69003dff292441f92b3e0431e5bd2519c24fbdef49e9365d519c07ea",
     "source/device/scripts/build-ios27-pmgr.py": "f88a0596937cbf0504922751a3194e3a33bba609f683a415262887d2b64241e4",
     "source/device/scripts/build-nezha27-input.py": "cd559fad30207962411546b32ffb5547ae29379e7fa992d16eaab09a39b6cd28",
-    "source/device/scripts/build-nezha27-usb-control.py": "92be41e9adcce30e88c3a64fb6a1490587d87e80c74d50e3c2690c127dccb65c",
-    "source/device/scripts/check-adreno840-integration.py": "6f07b8bdedb843cb9932f92acaf66e3855176074043af535835e4316cc17b86d",
+    "source/device/scripts/build-nezha27-usb-control.py": "a2cd48a8e07a1cc43cc54488d7492c45f63aaa21121ea85667e34752b83d4971",
+    "source/device/scripts/check-adreno840-integration.py": "b91a6085a467f749e0bb87334a00a52724602ce19a507e85930b09e9d4988a7f",
     "source/device/scripts/check-iosurface-plane-27.py": "092f98e807491b17df3e10835d23f1c44ae25c8820cc43c6343c56fa75c3c4c8",
+    "source/device/scripts/check-persistent-data.py": "5ccfabaeaefd3105393e029d9ba6e584e4c6e0995581229804d73d1d7c01e9f6",
+    "source/device/scripts/check-persistent-marker.py": "2f87552b72fa8e4b59877bf321d36bcce2160173a9b00b52827c030be2a6749c",
     "source/device/scripts/check-stable-kernel-stack.py": "18ba63991ba388395d0bd02befcef792dce0fbd1ede8749b22fa3e392f73f394",
     "source/device/scripts/data/ioaccelerator-base-iphone-24A446.json": "cecf694fb175a2276757a12deca7008b032b99fad7c5b7fe9ad700af2303c04c",
     "source/device/scripts/data/iosurface-plane-iphone-24A446.json": "156d6a3631f95ea34be5c4af5b39208c8665a909961145d639b65cc8479d2e21",
@@ -194,7 +196,7 @@
     "source/soc/patches/xnu-12377/series": "bb95255800677aae6c7ba2742e892e0d40b4c34eb40816b58214c1393759bc1d",
     "source/soc/patches/xnu-12377/sheng-platform-power.patch": "6e68dbcdac670624f2a9806a61fef42110bfe6586029b3f1a0acb068c3a23ec2",
     "source/soc/soc.toml": "9cebcadf2d5a271ceb44ee5fc378ed739cff0e7e5a940007164a9917042fd92f",
-    "source/ufs.bundle": "25655129fad2b05a33278ad33f7d5bdd4d7544a65fcf3712b082adb4ec82e821",
+    "source/ufs.bundle": "3a7c1c6ac7e5a39e6cb4adcc6143fa1e4c6c24ae862aa501102f9fb70c21a534",
     "source/usb.bundle": "39f8e0b00062a34dffeb875d1fdcfbfcfb1f4109d111e9e8ce64530607e96a77",
     "ci/native.py": "13d56b5e612e91af7d7b71f0f2c612c685120d3a1bb16eedcfbcb0bc7e3879fb"
   },
@@ -213,10 +215,10 @@
   "phone_operations": false,
   "private_inputs_uploaded": false,
   "ufs": {
-    "source_revision": "a02e323279264d8fb42206e5b79fbd0b3628c5e0",
-    "source_tree": "5f35e62b406dcea5f16d6620688ed37aca6619ea",
+    "source_revision": "988b3e1eb9274af2ab9d9602e2e237bd263f25fb",
+    "source_tree": "a85c7025769cfeb660ef0ee48a0a761b03509dc0",
     "repository": "https://github.com/UniXNU/ShengUfs.git",
-    "history": "single shallow public-source adaptation commit only"
+    "history": "One source-only current tree; pinned independent Data, no private maps or parent history"
   },
   "ramblock": {
     "source_revision": "1c861fce7b246f3728a6a28d0cabe6448821de85",

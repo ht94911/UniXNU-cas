@@ -54,11 +54,13 @@ def validate(framework, device, board, builtin):
     effective = arguments(builtin) | explicit
     wanted = {'cpus': '8', 'sheng-smp': '1', 'armcpu-self-ipi': '1',
               'armcpu-spi-ipi': '0', 'armcpu-edge': '1', 'nezha-gpu': '1',
-              'nezha-gpu-metal': '2', 'sheng-gpu-trace': '1', 'sheng-gpu-addon': '1',
+              'nezha-gpu-metal': '1', 'sheng-gpu-trace': '1', 'sheng-gpu-addon': '1',
               'boot-progress': '2', 'offline-legacy-cpu-present': '1',
-              'sheng-fb-gpu': '0', 'sheng-dpu-scanout': '0',
+              'sheng-fb-gpu': '1', 'sheng-dpu-scanout': '0',
               'nezha-reboot-after': '0', 'nezha-panic-reset': '0',
-              'sheng-data-persist': '0', 'ram-data-volatile-4g': '1'}
+              'sheng-data-persist': '2', 'ram-data-volatile-4g': '0',
+              'sheng-data-reset': '0', 'nezha-usb-reboot': '1',
+              'boot-diag-overlay': '0', 'input-test': '0'}
     require(all(effective.get(key) == value for key, value in wanted.items()),
             'effective CPU/GPU/diagnostic/protection policy changed')
     require(explicit.get('cpus') == '8', 'loader must explicitly select eight CPUs')
@@ -83,10 +85,19 @@ def main():
     rejected = []
     for name in ('late-hid-provider', 'unqualified-armcpu', 'oversized-line',
                  'single-cpu-regression', 'fixed-reset-enabled', 'missing-smp-default',
-                 'rendering-not-diagnostic', 'missing-addon', 'missing-gpu-default'):
+                 'diagnostic-not-rendering', 'missing-addon', 'missing-gpu-default',
+                 'volatile-data', 'destructive-reset', 'direct-persistent-reset', 'overlay-enabled', 'automatic-settings'):
         candidate, defaults = copy.deepcopy(board), builtin
         archive = candidate['kernel']['archives']
-        if name == 'late-hid-provider':
+        mutations={'volatile-data':('sheng-data-persist=2','sheng-data-persist=0'),
+                   'destructive-reset':('sheng-data-reset=0','sheng-data-reset=1'),
+                   'direct-persistent-reset':('nezha-usb-reboot=1','nezha-usb-reboot=2'),
+                   'overlay-enabled':('boot-diag-overlay=0','boot-diag-overlay=1'),
+                   'automatic-settings':('input-test=0','input-test=1')}
+        if name in mutations:
+            old,new=mutations[name]
+            candidate['payload']['kernel_args']=[x.replace(old,new) for x in candidate['payload']['kernel_args']]
+        elif name == 'late-hid-provider':
             archive.remove('build-nezha27-input.py')
             archive.append('build-nezha27-input.py')
         elif name == 'unqualified-armcpu':
@@ -102,8 +113,8 @@ def main():
                                                  for x in candidate['payload']['kernel_args']]
         elif name == 'missing-smp-default':
             defaults = defaults.replace('sheng-smp=1', 'sheng-smp=0')
-        elif name == 'rendering-not-diagnostic':
-            candidate['payload']['kernel_args'] = [x.replace('nezha-gpu-metal=2', 'nezha-gpu-metal=1')
+        elif name == 'diagnostic-not-rendering':
+            candidate['payload']['kernel_args'] = [x.replace('nezha-gpu-metal=1', 'nezha-gpu-metal=2')
                                                  for x in candidate['payload']['kernel_args']]
         elif name == 'missing-addon':
             candidate['payload']['kernel_args'] = [x.replace('sheng-gpu-addon=1', 'sheng-gpu-addon=0')

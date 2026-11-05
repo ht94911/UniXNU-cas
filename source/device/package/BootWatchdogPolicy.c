@@ -8,6 +8,7 @@
 #include <sys/fcntl.h>
 #include <sys/stat.h>
 #include <pexpert/pexpert.h>
+#include <kern/clock.h>
 
 static const char policy_head[] =
  "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
@@ -72,9 +73,50 @@ static int append_job(const char **cursor) {
  *cursor=*e?e+1:e;return 0;
 }
 
+
+// One private diagnostic file proves filesystem continuity across boots. It
+// is created with O_EXCL only; an existing file is read, never replaced.
+static int nezha_persist_check(proc_t p,uint64_t scratch) {
+ unsigned persist=0;
+ if(!PE_parse_boot_argn("sheng-data-persist",&persist,sizeof(persist)) || persist!=2)return 0;
+ const char *path="/private/var/db/nezha27-persistence-check";
+ static const char prefix[]="NEZHA27-DATA-v1:";
+ char content[64]={0};int error=0,fd=-1,created=0;int32_t result=0;
+ if((error=copyout(path,scratch,strlen(path)+1)))goto out;
+ struct open_args op={.path=scratch,.flags=O_RDONLY|O_NOFOLLOW,.mode=0};
+ error=open(p,&op,&result);
+ if(error==ENOENT) {
+  op.flags=O_WRONLY|O_CREAT|O_EXCL|O_NOFOLLOW;op.mode=0600;
+  if((error=open(p,&op,&result)))goto out;
+  fd=result;created=1;
+  snprintf(content,sizeof(content),"%s%llu",prefix,(unsigned long long)mach_absolute_time());
+  if((error=copyout(content,scratch+0x200,sizeof(content))))goto out;
+  struct write_args wr={.fd=fd,.cbuf=scratch+0x200,.nbyte=sizeof(content)};user_ssize_t count=0;
+  if((error=write(p,&wr,&count)))goto out;
+  if(count!=sizeof(content)){error=EIO;goto out;}
+  struct fsync_args sy={.fd=fd};if((error=fsync(p,&sy,&result)))goto out;
+ } else {
+  if(error)goto out;
+  fd=result;
+  struct read_args rd={.fd=fd,.cbuf=scratch+0x200,.nbyte=sizeof(content)};user_ssize_t count=0;
+  if((error=read(p,&rd,&count)))goto out;
+  if(count!=sizeof(content)){error=EINVAL;goto out;}
+  if((error=copyin(rd.cbuf,content,sizeof(content))))goto out;
+  if(memcmp(content,prefix,sizeof(prefix)-1) || content[63]){error=EINVAL;goto out;}
+ }
+ struct fstat64_args sa={.fd=fd,.ub=scratch+0x800};struct stat64 st={0};
+ if((error=sys_fstat64(p,&sa,&result)) || (error=copyin(sa.ub,&st,sizeof(st))))goto out;
+ if(st.st_uid!=0 || st.st_gid!=0 || !S_ISREG(st.st_mode) || (st.st_mode&0777)!=0600 || st.st_size!=sizeof(content))error=EINVAL;
+ out:
+ if(fd>=0){struct close_args cl={.fd=fd};int e=sys_close(p,&cl,&result);if(!error)error=e;}
+ printf("NEZHA27 PERSIST PROBE: created=%d status=%d token=%s\n",created,error,error?"unverified":content);
+ return error;
+}
+
 int sheng_boot_watchdog_policy(void *process, uint64_t scratch) {
  proc_t p=process;
  int enabled=0,error=0,fd=-1;int32_t result=0;
+ if((error=nezha_persist_check(p,scratch)))return error;
  PE_parse_boot_argn("sheng-disable-watchdogd",&enabled,sizeof(enabled));
  if(!PE_parse_boot_argn("sheng-disable-jobs",jobs,sizeof(jobs)))jobs[0]=0;jobs[sizeof(jobs)-1]=0;
  int lite=0;PE_parse_boot_argn("sheng-lite",&lite,sizeof(lite));if(lite!=1)lite=0;

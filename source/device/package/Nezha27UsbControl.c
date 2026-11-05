@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Reuses qualified17 USB worker/reset policy and owned GOP snapshot geometry.
-// iOS27: original OS/SystemOS readonly; Data strictly volatile. No disk writes.
+// iOS27: OS/SystemOS stay readonly. A pinned persistent Data permits only
+// normal XNU shutdown; direct PSCI remains restricted to the RAM-only mode.
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/reboot.h>
@@ -15,7 +16,11 @@ extern processor_t thread_bind(processor_t);
 extern void thread_terminate_self(void);
 extern int (*PE_halt_restart)(unsigned int);
 extern volatile uint32_t native_data_persist_state;
-extern volatile uint64_t native_data_persist_writes;
+extern volatile uint64_t native_data_persist_writes,native_data_persist_errors;
+extern int native_ufs_store_ready(void);
+extern int native_ufs_store_sync(void);
+extern unsigned native_ufs_store_gpt_check(void);
+static unsigned normal_shutdown_started;
 struct nz27_video {unsigned height,width,depth,stride;uintptr_t frame;};
 extern struct nz27_video boot_progress_panic_vinfo;
 static unsigned mode,prepared,reboot_state;
@@ -27,6 +32,15 @@ static int ram_only(void) {
  return PE_parse_boot_argn("sheng-data-persist",&persist,sizeof(persist)) && persist==0 &&
         native_data_persist_state==0 && native_data_persist_writes==0;
 }
+static int persistent_selected(void) {
+ unsigned persist=0;
+ return PE_parse_boot_argn("sheng-data-persist",&persist,sizeof(persist)) && persist==2;
+}
+static int storage_ready(void) {
+ return ram_only() || (mode==1 && persistent_selected() &&
+   (native_data_persist_state==2 || native_data_persist_state==3) &&
+   native_data_persist_errors==0 && native_ufs_store_ready());
+}
 __attribute__((noreturn)) static void psci_reset(void) {
  // Existing nezha17/UEFI-qualified PSCI SYSTEM_RESET via SMC. No timer path.
  __asm__ volatile("movz w0,#9\nmovk w0,#0x8400,lsl #16\nmov x1,xzr\nmov x2,xzr\nmov x3,xzr\ndsb sy\nsmc #0"
@@ -34,7 +48,8 @@ __attribute__((noreturn)) static void psci_reset(void) {
  for(;;)__asm__ volatile("wfe" :::"memory");
 }
 static int restart_owner(unsigned type) {
- if(type!=1 || (mode!=1 && mode!=2) || !ram_only() ||
+ if(type!=1 || (mode!=1 && mode!=2) || !storage_ready() ||
+    (!ram_only() && !normal_shutdown_started) ||
     __atomic_load_n(&PE_halt_restart,__ATOMIC_ACQUIRE)!=restart_owner ||
     !qcom_usb_debug_control_consume_reboot())return -10;
  nezha27_usb_reset_phase=5;
@@ -60,12 +75,14 @@ void nezha27_usb_control_prepare(void) {
  nezha27_usb_snapshot_registered=qcom_usb_debug_register_screenshot(capture_snapshot,NULL);
  unsigned ctl=0,opt=0;
  if(!PE_parse_boot_argn("qcom-usb-ctl",&ctl,sizeof(ctl))||ctl!=1||
-    !PE_parse_boot_argn("nezha-usb-reboot",&opt,sizeof(opt))||(opt!=1&&opt!=2)||!ram_only())return;
+    !PE_parse_boot_argn("nezha-usb-reboot",&opt,sizeof(opt))||(opt!=1&&opt!=2)||
+    !(ram_only() || (opt==1 && persistent_selected())))return;
  int (*empty)(unsigned int)=NULL;
  if(!__atomic_compare_exchange_n(&PE_halt_restart,&empty,restart_owner,0,__ATOMIC_ACQ_REL,__ATOMIC_ACQUIRE)&&empty!=restart_owner)return;
  mode=opt;
  nezha27_usb_reset_owner_ready=qcom_usb_debug_control_use_restart_owner(restart_owner);
- printf("NEZHA27 USB: screenshot=%u restart-owner=%u mode=%u RAM-only;controlled commands only\n",nezha27_usb_snapshot_registered,nezha27_usb_reset_owner_ready,mode);
+ printf("NEZHA27 USB: screenshot=%u restart-owner=%u mode=%u Data=%s;controlled commands only\n",
+  nezha27_usb_snapshot_registered,nezha27_usb_reset_owner_ready,mode,persistent_selected()?"persistent-normal-shutdown":"RAM-only");
 }
 static void reboot_worker(void *arg,wait_result_t wr) {
  (void)arg;(void)wr;int result=-1;processor_t cpu=cpu_to_processor(boot_cpu_id);
@@ -73,13 +90,15 @@ static void reboot_worker(void *arg,wait_result_t wr) {
  if(cpu==PROCESSOR_NULL)goto out;
  thread_bind(cpu);thread_block(THREAD_CONTINUE_NULL);
  if(cpu_number()!=boot_cpu_id){result=-2;goto out;}
+ if(!storage_ready()){result=-11;goto out;}
+ if(persistent_selected() && (native_ufs_store_gpt_check()!=0 || !native_ufs_store_sync())){result=-12;goto out;}
  nezha27_usb_reset_phase=1;
  printf("NEZHA27 USB REBOOT: mode=%u;ACK/log drain then %s\n",mode,mode==2?"RAM-only direct PSCI":"normal XNU shutdown");
  if(!qcom_usb_debug_wait_drained(2000)){result=-3;goto out;}
  if(!qcom_usb_debug_control_arm_reboot()){result=-4;goto out;}
  nezha27_usb_reset_phase=3;
  if(mode==2)result=restart_owner(1);
- else if(mode==1)result=reboot_kernel(0,NULL);
+ else if(mode==1){normal_shutdown_started=1;result=reboot_kernel(0,NULL);normal_shutdown_started=0;}
  else result=-7;
  out:
  qcom_usb_debug_control_reboot_failed(result?result:-5);
