@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Rebuild the independent078 Wi-Fi candidate after real trial001: correct ARC AUX capacity from32 bytes to32 u16 levels, and identify the PCIe ARC vote in existing logs. No firmware, credentials, donor or device identity uploaded; no GPU or protected input changes.",
+  "purpose": "Rebuild the independent078 Wi-Fi candidate after real trial002: complete the upstream QDSS RAM input catalog and enforce its SHA table count. Preserve proven ARC/PCIe/MHI progress and upstream protocols. No firmware, credentials, donor or device identity uploaded; no GPU or protected input changes.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "c315f604fd60acf5a7deeaeaa55349f2fea0fd1f",
+  "device_revision": "7f948f48e5ee21f403c8bb9ada40889c6bee99af",
   "soc_revision": "3435fa55c3e835a4aaebf7d833473fd5d20073fd",
   "xcode": "26.6",
   "files": {
@@ -37,9 +37,9 @@
     "source/device/package/Nezha27UsbControl.c": "2ef6ed0b19fd7cf9516b394ad1df5ac82c6cae4a3b287099b24dfa350ab3d918",
     "source/device/package/NezhaIOS27Pmgr.cpp": "559f1a0009c9fd721b895450cc657b4f9674390bf23891da694eef1941720ffe",
     "source/device/package/NezhaWcn7860/NezhaWifiDiagnostic.c": "984e2b51b139c142bc924a852531c0f8059512d4a1a28a9ace44c830239c6119",
-    "source/device/package/NezhaWcn7860/NezhaWifiFirmware.c": "d998319ffaf5db1513c4cbd6e100aa4e8ec06d61d3793465d3e5e227b2e24569",
+    "source/device/package/NezhaWcn7860/NezhaWifiFirmware.c": "c90ceb138e9d28eaf7e12bfd6d068066461d34d2fb352835e196f0af3e532ff6",
     "source/device/package/NezhaWcn7860/NezhaWifiMemory.c": "e5f634d8ec8517d6e7abd7b8fc5e2c6fc850363b420f366f59e819707ac58961",
-    "source/device/package/NezhaWcn7860/NezhaWifiPlatform.h": "6304b91c789d06d7535bba97476098d4ab484de8c799fac04f18383af0058d7b",
+    "source/device/package/NezhaWcn7860/NezhaWifiPlatform.h": "64b0aa69d8e0a57821573e154f62258ef22600fadbec3a62cfa26b791f4299bc",
     "source/device/package/NezhaWcn7860/PeachWLAN.cpp": "4130a55f3fb942c0961e4138da7712c15a5ecc27e1b6cda9cf7bc5bebd32fe7a",
     "source/device/package/NezhaWcn7860/adreno/ArmSmmu4K.c": "0adb19b483e56e723014ed6cfe2c29f9d9735ae2770f62cf0057b22937dbd157",
     "source/device/package/NezhaWcn7860/adreno/ArmSmmu4K.h": "e25063b9134afc7eb79e7c030bc2858608cf0ade5da714d5dfd600fee5007e8e",
@@ -149,7 +149,7 @@
     "source/device/patches/xnu-12377/zzzzz-nezha-owner-data-ready.patch": "306414945401c128472d3b0acddd03c88bec57ec47d6988660173d0b432c3e4b",
     "source/device/patches/xnu-12377/zzzzzz-nezha-input-chain-trace.patch": "c4d05419e7ec3af0de619754bdb6c2deb69b74d714c2219e509360ebfe1b947e",
     "source/device/patches/xnu-12377/zzzzzz-nezha-sigp-startup-order.patch": "18275910b909d187e459c68f5d937cc09bc01923180141dc155aa7f4ff14aaf9",
-    "source/device/porting.toml": "dbd6eea3a3d829c07995592e5014cf0fd02a78ef53103be6dc422a12f7ac5b44",
+    "source/device/porting.toml": "aa32dc5af09d47cb19322dfda64bf86a36d27f72053797d376a7f2ce6c47d47d",
     "source/device/scripts/backlight-iphone-24A446.json": "446eb5fe6440335bfe9fca75b32f7d815ddcafbb8a3c2d7f697c1e5c3f40f6cb",
     "source/device/scripts/build-boot-progress.py": "a210eb1f0443574eb1506932aa9e8181d5c73aecf99397d8cc731568bd3210ba",
     "source/device/scripts/build-gop-legacy-display-27.py": "b3d60414978387bb9c9903873f092b157e999626cdba27845e25b39b9e430ec8",
@@ -214,5 +214,5 @@
     "revision": "e55c8696764cfa03eec8628fad4afdf1f5bab51e",
     "old_objects_linked": false
   },
-  "qualification_iteration": "native007: production RPMh length fix and PCIe power-vote diagnostics; same26 Wi-Fi objects and original baseline"
+  "qualification_iteration": "native008: production six-file firmware catalog and exact digest-table sizing; same26 Wi-Fi objects,ARC fix and original baseline"
 }

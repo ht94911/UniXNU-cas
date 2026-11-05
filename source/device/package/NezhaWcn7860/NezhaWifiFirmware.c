@@ -19,7 +19,10 @@ static struct { const char *name; uint8_t *bytes; size_t length; } firmware[] = 
     {"peach/amss20.bin", NULL, 0}, {"peach/regdb_xiaomi.bin", NULL, 0},
     {"peach/bd_p1.elf", NULL, 0}, {"peach/phy_ucode20.elf", NULL, 0},
     {"peach/aux_ucode20.elf", NULL, 0},
+    {"peach/qdss_trace_config_v2.cfg", NULL, 0},
 };
+_Static_assert(sizeof(firmware) / sizeof(firmware[0]) == NEZHA_WIFI_FIRMWARE_FILES,
+               "firmware slots must match the ADT digest table");
 static uint8_t expected[NEZHA_WIFI_FIRMWARE_FILES][32];
 static unsigned manifest_ready;
 static int manifest(void)

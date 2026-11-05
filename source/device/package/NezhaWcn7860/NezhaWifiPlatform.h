@@ -5,7 +5,7 @@
 #include <stddef.h>
 #define NEZHA_WIFI_FIRMWARE_PREFIX "firmware/wcn7860"
 #define NEZHA_WIFI_FIRMWARE_ROOT "/private/var/ngpu/" NEZHA_WIFI_FIRMWARE_PREFIX
-#define NEZHA_WIFI_FIRMWARE_FILES 5u
+#define NEZHA_WIFI_FIRMWARE_FILES 6u
 #define NEZHA_WIFI_RDDM_BYTES 0x780000u
 /* Fixed normal-thread APIs. No physical address comes from USB or userspace. */
 unsigned nezha_wifi_mmio_access(uintptr_t, uint64_t *, unsigned, unsigned);
