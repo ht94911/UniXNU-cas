@@ -28,10 +28,10 @@ static unsigned persist=2,exists,opened,reads,writes,syncs,closed,foreign_owner,
 static uint64_t ticks=12345;static uint8_t user[4096],saved[64];
 static int PE_parse_boot_argn(const char *n,void *v,int b){assert(!strcmp(n,"sheng-data-persist")&&b==4);*(unsigned *)v=persist;return 1;}
 static uint64_t mach_absolute_time(void){return ++ticks;}
-static int copyout(const void *src,uint64_t dst,size_t n){assert(dst>=0x10000&&dst-0x10000+n<=sizeof(user));memcpy(user+dst-0x10000,src,n);return 0;}
-static int copyin(uint64_t src,void *dst,size_t n){assert(src>=0x10000&&src-0x10000+n<=sizeof(user));memcpy(dst,user+src-0x10000,n);return 0;}
+static int copyout(const void *src,uint64_t dst,size_t n){assert(dst>=0x10000&&dst-0x10000+n<=sizeof(user));memcpy(user+(dst-0x10000),src,n);return 0;}
+static int copyin(uint64_t src,void *dst,size_t n){assert(src>=0x10000&&src-0x10000+n<=sizeof(user));memcpy(dst,user+(src-0x10000),n);return 0;}
 static int open(proc_t p,struct open_args *a,int32_t *ret){
- assert(p==1 && (a->flags&O_NOFOLLOW));assert(!strcmp((char *)user+a->path-0x10000,"/private/var/db/nezha27-persistence-check"));
+ assert(p==1 && (a->flags&O_NOFOLLOW));assert(!strcmp((char *)user+(a->path-0x10000),"/private/var/db/nezha27-persistence-check"));
  if(symlinked)return ELOOP;
  if(a->flags&O_CREAT){assert(a->flags&O_EXCL);if(race||exists)return EEXIST;assert(a->mode==0600);exists=1;}
  else if(!exists)return ENOENT;
