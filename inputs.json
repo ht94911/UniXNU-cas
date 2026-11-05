@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Isolated WCN7860 source adaptation for actual iPhone14,4/24A446. Rebuild every Wi-Fi object for arm64e with the proven078 CPU/input/USB source; qualify control ABI, typed KPIs and strict dependencies only. No phone package, no firmware or device operations. Final hardware integration waits for explicit human notice of the accepted GPU main package.",
+  "purpose": "Actual iPhone27 source build for the human-requested independent078 CPU desktop Wi-Fi test. Optional local RAM two-line input, background real Peach join, DHCP metadata, actual BSD IPv4 and cached screen rows. No credential, firmware, donor, device identity or phone input is uploaded. GPU acceptance stays separate.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,11 +14,11 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "abe81f69a69e42ee1dd4b77a7d0aa50d718cecde",
+  "device_revision": "959d3ce096bdd0503b00e60264109b78add7f3bf",
   "soc_revision": "6ee1ee7e114a13c690f209698d3a9fc28306e46c",
   "xcode": "26.6",
   "files": {
-    "source/device/board.toml": "04ec103583a201683e69c6e56593552d422cb94308a2a05ec0f71db4b104016e",
+    "source/device/board.toml": "eabc99db36b4a09ea22c3f62254b68aca6970d4e20fcc6e0453b865f4a8af697",
     "source/device/configs/nezha_ios27_defconfig": "c050b0b517d9ef0b1f430933d150a37fda5510dac4b0d371dc489f22c16a550f",
     "source/device/feeds.toml": "3a8ff52c53ebdbbefbcb4afa7986f683c184512f7f7fd8cdfbcba29bbb908a37",
     "source/device/package/.gitkeep": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
@@ -55,7 +55,7 @@
     "source/device/package/NezhaWcn7860/licenses/APSL-2.0.txt": "e5881019d8766c1e88a5fe1dbca4ba40c78011d41fcb18f6e9f50df60182685b",
     "source/device/package/NezhaWcn7860/licenses/GPL-2.0-only.txt": "aaf135472f81c5b4a0dca9367e5bb5e9750032b5bebe5442b36e4c0a47430df3",
     "source/device/package/NezhaWcn7860/licenses/MIT.txt": "f984c0a808afdeb2e050ceb47bc24d764156daa29b5dfde10fb9afec2f83f351",
-    "source/device/package/NezhaWcn7860/pandora_wifi.c": "921fbee10cba089c21ac0dd9be3526b7bc1883706be5152b65957b87b49d522d",
+    "source/device/package/NezhaWcn7860/pandora_wifi.c": "ca4e4a8b2191bb130dd33863833b0c72aecd9aa6a4794ef292179cb5358accfd",
     "source/device/package/NezhaWcn7860/qcom/NezhaPcieData.h": "b7ff65c41e77cdffeb9816c20cbf938ba203778c77f05a0eb8ec9bcb842130c6",
     "source/device/package/NezhaWcn7860/qcom/PeachApple80211.c": "774c21571828d3b1519f910b3255196c68fd2dcd83ddae1cc335cfb7921a17a0",
     "source/device/package/NezhaWcn7860/qcom/PeachApple80211.h": "6dc785b22d4a5bf9fd898fa24ef855b52da6a6afa4bb49d0dd945e20f687007a",
@@ -72,8 +72,8 @@
     "source/device/package/NezhaWcn7860/qcom/PeachMhiFirmware.h": "5301d71f6c3a6fb47da7f1af2cb623ffc8668b3b8c09529170eff7dacdf3dd0d",
     "source/device/package/NezhaWcn7860/qcom/PeachMhiHost.c": "f0c8718b94b101add68541d5c1eaea501ccc4141e6bcd446d78aa672e29e9491",
     "source/device/package/NezhaWcn7860/qcom/PeachMhiHost.h": "9f09037da0d098c34dc94c5b1fb427728b5a3ddef9d6569f4066205f204e7547",
-    "source/device/package/NezhaWcn7860/qcom/PeachNet.c": "1bbf364a6233baf0b658897193102b9b8db4da1a894686bfab2e21ef9652b313",
-    "source/device/package/NezhaWcn7860/qcom/PeachNet.h": "6b15a555f9927a2ff3d8093953397461ce20d80096ec3a3d6dcede7e11498749",
+    "source/device/package/NezhaWcn7860/qcom/PeachNet.c": "df0d63d5db01069e5803db6cd317314e1ba2adfc09947430f223799af34f9ca5",
+    "source/device/package/NezhaWcn7860/qcom/PeachNet.h": "431bf717cc33d61381472daa34c44b791b65479a974e904c11a2a85776be8697",
     "source/device/package/NezhaWcn7860/qcom/PeachRsn.c": "3403190db58f1b593e58b25e680e0687bfcfa166b98c10e30d455408d58fd919",
     "source/device/package/NezhaWcn7860/qcom/PeachRsn.h": "beb8c0fd615f7ba1cf1d2740dd3fd7aa7875e787dbcb923b5f87327def75520e",
     "source/device/package/NezhaWcn7860/qcom/PeachRx.c": "faeb321fbe50ca3d1d96fd8dc03eb9befce1e22a0244ccdcb2083c7af96c9a92",
@@ -101,7 +101,7 @@
     "source/device/package/backlight/OriginalAppleARMBacklightABI.h": "dab34c394c2123ae4cbfd6648980d5e7b024539773abe5852f7d2622f9bf7b8b",
     "source/device/package/boot-progress/BootFaultProbe.c": "f6b5b8b74aa30b4c163ebc73c5814a50596d62213fd100e8029f7c2fefb116f8",
     "source/device/package/boot-progress/BootProcessProbe.c": "f32a68c701c5bc56848a31760431429ab3d5097406832410ec5f8ff707f102af",
-    "source/device/package/boot-progress/BootProgress.c": "b5ded6605e60320e6a7ee9aa996603df60dee4a2a074c886a46c8c1365abc215",
+    "source/device/package/boot-progress/BootProgress.c": "912846a4085471937c1e88ae2967b82880e44a4fa1a685adbbc1a69d2484e39f",
     "source/device/package/boot-progress/BootProgressCore.h": "b336397b7aa1e903705ecc78f668f67dd31d7136e8a47acfc801322ada30ee04",
     "source/device/package/boot-progress/BootProgressDisplay.h": "231f580758e4e98592fd7f41203be00ca5670b912508a520bf83fb82d3af10d9",
     "source/device/package/boot-progress/BootProgressLifecycle.h": "eaf777e5b71db7b5affaa9a64d0a2806277730b538d9aa96a457f425ccbada6a",
@@ -149,7 +149,7 @@
     "source/device/patches/xnu-12377/zzzzz-nezha-owner-data-ready.patch": "306414945401c128472d3b0acddd03c88bec57ec47d6988660173d0b432c3e4b",
     "source/device/patches/xnu-12377/zzzzzz-nezha-input-chain-trace.patch": "c4d05419e7ec3af0de619754bdb6c2deb69b74d714c2219e509360ebfe1b947e",
     "source/device/patches/xnu-12377/zzzzzz-nezha-sigp-startup-order.patch": "18275910b909d187e459c68f5d937cc09bc01923180141dc155aa7f4ff14aaf9",
-    "source/device/porting.toml": "1bbc77542c2b3bc12d071e349c1d5fdd24c6c7e6365a544029389562bda0cdee",
+    "source/device/porting.toml": "dbd6eea3a3d829c07995592e5014cf0fd02a78ef53103be6dc422a12f7ac5b44",
     "source/device/scripts/backlight-iphone-24A446.json": "446eb5fe6440335bfe9fca75b32f7d815ddcafbb8a3c2d7f697c1e5c3f40f6cb",
     "source/device/scripts/build-boot-progress.py": "a210eb1f0443574eb1506932aa9e8181d5c73aecf99397d8cc731568bd3210ba",
     "source/device/scripts/build-gop-legacy-display-27.py": "b3d60414978387bb9c9903873f092b157e999626cdba27845e25b39b9e430ec8",
@@ -177,7 +177,11 @@
     "source/soc/patches/xnu-12377/sheng-platform-power.patch": "6e68dbcdac670624f2a9806a61fef42110bfe6586029b3f1a0acb068c3a23ec2",
     "source/soc/soc.toml": "9cebcadf2d5a271ceb44ee5fc378ed739cff0e7e5a940007164a9917042fd92f",
     "source/ufs.bundle": "25655129fad2b05a33278ad33f7d5bdd4d7544a65fcf3712b082adb4ec82e821",
-    "source/usb.bundle": "088e5cedf7340886871d9442ce476f1d20534248f9173195ef23d9919d94c321"
+    "source/usb.bundle": "088e5cedf7340886871d9442ce476f1d20534248f9173195ef23d9919d94c321",
+    "source/device/package/NezhaWcn7860/NezhaWifiAuto.c": "c5a8b1b8e52b3790276cfa4c139e205ff4e8aa1594263fbcf08bc5dc53c3f511",
+    "source/device/package/NezhaWcn7860/NezhaWifiAuto.h": "2dbdf3c62eb1ee842be10d2eb2c3c0c09400a9844060194e6b4f76499868fef4",
+    "source/device/package/NezhaWcn7860/NezhaWifiAutoConfig.h": "32f18e1f4a8b25683fc4acd2435a1664aa083d20a8ac3d60594feeafae8c7cdc",
+    "source/device/package/NezhaWcn7860/qcom/PeachDhcp.h": "cdf702c298ddb3aa793915919615586992e6c2f93f82ae0bf3bbf83eaf7ac628"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
@@ -210,5 +214,5 @@
     "revision": "e55c8696764cfa03eec8628fad4afdf1f5bab51e",
     "old_objects_linked": false
   },
-  "qualification_iteration": "native005: original24A446 5528-byte scan requests,2280-byte full results and bounded ioctl semantics; typed memory/naming implementation unchanged from successful native004"
+  "qualification_iteration": "native006: source-only private RAM configuration/observations and existing BootProgress callback; all26 Wi-Fi objects rebuilt"
 }

@@ -1,7 +1,7 @@
-name: nezha iPhone27 WCN7860 source qualification native005 Intel
+name: nezha iPhone27 WCN7860 source qualification native006 Intel
 on:
   push:
-    branches: [codex/ios27-wifi27-native005-20261105]
+    branches: [codex/ios27-wifi27-native006-20261105]
   workflow_dispatch:
 permissions:
   contents: read

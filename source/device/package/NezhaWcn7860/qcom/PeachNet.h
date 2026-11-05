@@ -16,6 +16,13 @@ typedef struct {
     uint32_t country;
     PeachWmiBss current;
 } PeachNetInfo;
+typedef struct {
+    uint64_t tx_frames, rx_frames, tx_bytes, rx_bytes;
+    unsigned dhcp_tx, dhcp_rx, dhcp_tx_type, dhcp_rx_type, dhcp_ack, valid_ipv4;
+    unsigned char ipv4[4], offered[4], mask[4], router[4], dns[4];
+} PeachNetNetwork;
+/* Read the actual BSD address list; never derive an installed IP from DHCP. */
+void peach_net_network(PeachNetNetwork *);
 int peach_net_init(void);
 int peach_net_power(unsigned enabled);
 void peach_net_power_complete(unsigned enabled, int error);

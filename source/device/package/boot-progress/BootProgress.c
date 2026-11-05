@@ -97,6 +97,7 @@ extern void boot_process_snapshot(void) __attribute__((weak_import));
 extern char boot_process_rows[10][120] __attribute__((weak_import));
 extern char native_touch_rows[4][120] __attribute__((weak_import));
 extern char native_cpufreq_row[120] __attribute__((weak_import));
+extern unsigned native_wifi27_screen_rows(char (*)[120],unsigned) __attribute__((weak_import));
 extern volatile uint32_t native_hid_input_events[8] __attribute__((weak_import));
 extern volatile int native_hid_input_results[8] __attribute__((weak_import));
 extern volatile uint32_t native_touch_loop_step __attribute__((weak_import));
@@ -812,16 +813,20 @@ static void crash_banner(unsigned now) {
   uint64_t signature=(&native_legacy_copy_n?native_legacy_copy_n:0)*1000003ULL+(now/10)*977ULL+(&native_wi_count?native_wi_count:0)*7919ULL+exit_records.crashes*131ULL+exit_records.failed+gpu_sig*17ULL;
   if(signature==banner_signature)return;
   banner_signature=signature;banner_second=now;
-  char rows[26][120];unsigned n=0;
+  char rows[29][120];unsigned n=0;
+  // The optional Wi-Fi provider copies bounded cached rows without hardware
+  // access or waiting for its worker. Keep the original diagnostic rows too.
+  if(native_wifi27_screen_rows)n=native_wifi27_screen_rows(rows,3);
+  unsigned wifi_rows=n;
   if(__atomic_exchange_n(&exit_lock,1,__ATOMIC_ACQUIRE))return;
   unsigned crashes=exit_records.crashes,failed=exit_records.failed;
   // The two latest crash records, each wrapped over up to four rows (header, then the frame-pointer backtrace); then the last exits.
   for(unsigned i=0;i<2 && i<crashes;++i) {
     const char *text=exit_records.crash[(crashes-1-i)%3];
-    for(unsigned part=0;part<4 && text[part*108] && n<10;++part)
+    for(unsigned part=0;part<4 && text[part*108] && n<wifi_rows+10;++part)
       snprintf(rows[n++],120,"%s%.108s",part?"      ":"CRASH ",text+part*108);
   }
-  for(unsigned part=0;part<3 && exit_records.reason[part*108] && n<12;++part)
+  for(unsigned part=0;part<3 && exit_records.reason[part*108] && n<wifi_rows+12;++part)
     snprintf(rows[n++],120,"%s%.108s",part?"       ":"REASON ",exit_records.reason+part*108);
   for(unsigned i=0;i<3 && i<failed;++i)snprintf(rows[n++],120,"EXIT  %.100s",exit_records.failures[(failed-1-i)%3]);
   __atomic_store_n(&exit_lock,0,__ATOMIC_RELEASE);
@@ -872,10 +877,10 @@ static void crash_banner(unsigned now) {
   // The extension slots are drawn only on the boot page (display bound); the GPU slots 2-7 also go to the live banner.
   // Slots 2 and 3 carry the IPI self-test and the exec observer from the GPU probe once it has run (before that they hold the early
   // zap/interrupt lines, which are worth seeing too), so the banner shows slots 2-7 as GPU1-GPU6.
-  for(unsigned i=2;i<8 && n<26;++i)if(boot_progress_ext[i][0] && boot_progress_ext[i][0]!=' ')snprintf(rows[n++],120,"GPU%u  %.47s",i-1,boot_progress_ext[i]);
-  for(unsigned i=0;i<2 && n<26;++i)if(boot_progress_ext_wide[i][0])snprintf(rows[n++],120,"GPU%u  %.111s",i+7,boot_progress_ext_wide[i]);
+  for(unsigned i=2;i<8 && n<wifi_rows+26;++i)if(boot_progress_ext[i][0] && boot_progress_ext[i][0]!=' ')snprintf(rows[n++],120,"GPU%u  %.47s",i-1,boot_progress_ext[i]);
+  for(unsigned i=0;i<2 && n<wifi_rows+26;++i)if(boot_progress_ext_wide[i][0])snprintf(rows[n++],120,"GPU%u  %.111s",i+7,boot_progress_ext_wide[i]);
   // A panic that drew the panic screen and was then painted over: its message, wrapped over up to three rows.
-  for(unsigned part=0;part<3 && boot_progress_panic_text[part*108] && n<26;++part) {
+  for(unsigned part=0;part<3 && boot_progress_panic_text[part*108] && n<wifi_rows+26;++part) {
     char piece[109];unsigned k=0;
     for(;k<108 && part*108+k<255 && boot_progress_panic_text[part*108+k];++k){char ch=boot_progress_panic_text[part*108+k];piece[k]=(ch>=32&&ch<127)?ch:' ';}
     piece[k]=0;
@@ -902,7 +907,7 @@ static void crash_banner(unsigned now) {
     const char *r=rows[i];
     // Colour by row kind: failures red, exit records yellow, GPU results cyan, timing and load rows grey.
     uint32_t color=!strncmp(r,"CRASH",5)||!strncmp(r,"PANIC",5)?0xffff5a5a:!strncmp(r,"REASON",6)?0xffff9a70:
-      !strncmp(r,"EXIT",4)?0xffffe066:!strncmp(r,"GPU",3)?0xff66e0ff:r[0]==' '?0xffff8a8a:0xffb4bcc6;
+      !strncmp(r,"EXIT",4)?0xffffe066:(!strncmp(r,"GPU",3)||!strncmp(r,"WIFI",4))?0xff66e0ff:r[0]==' '?0xffff8a8a:0xffb4bcc6;
     px_text(0,top+i*cell,r,cols,color,0xff0d1117);
   }
 }

@@ -18,6 +18,7 @@
 #include <pexpert/device_tree.h>
 #include "adreno/ArmSmmu4KStreams.h"
 #include "NezhaWifiPlatform.h"
+#include "NezhaWifiAuto.h"
 #include "Sm8850Rpmh.h"
 #include "qcom/PeachMhiFirmware.h"
 #include "qcom/PeachMhiHost.h"
@@ -1522,6 +1523,7 @@ wifi_thread(void *unused, wait_result_t result)
     if (!err && !nezha_wifi_platform_ready()) err = ETIMEDOUT;
     while (!err) {
         int ready = nezha_wifi_firmware_prepare();
+        if (!ready) ready = nezha_wifi_auto_prepare();
         if (!ready) break;
         if ((ready != ENOENT && ready != EAGAIN) || wifi_now(NULL) >= deadline) { err = ready; break; }
         wifi_sleep(NULL, 100000);
@@ -1539,6 +1541,7 @@ wifi_thread(void *unused, wait_result_t result)
         nezha_wifi_diagnostic_publish(wifi_phase, wifi_net_state, 0,
             wifi_rx.received, wifi_tx.submitted, wifi_tx.dropped, wifi_tx.in_flight,
             wifi_bank, wifi_slot, wifi_step);
+        nezha_wifi_auto_tick(wifi_now(NULL));
         if (wifi_radio_off) {
             err = wifi_connection_request();
             if (!err) wifi_sleep(NULL, 100000);
@@ -1576,6 +1579,7 @@ wifi_thread(void *unused, wait_result_t result)
         wifi_rx.received, wifi_tx.submitted, wifi_tx.dropped, wifi_tx.in_flight,
         wifi_bank, wifi_slot, wifi_step);
     peach_net_stop(err); peach_rsn_clear(&wifi_rsn);
+    nezha_wifi_auto_stop(err); nezha_wifi_auto_tick(wifi_now(NULL));
     if (!wifi_radio_off) wifi_mhi_failure();
     wifi_contain();
     printf("NEZHA WIFI: phase %u stopped in %s: %d; data link down\n",

@@ -2,6 +2,7 @@
 /* BSD Ethernet and control snapshots over the single Peach protocol worker. */
 #include "PeachNet.h"
 #include "PeachApple80211.h"
+#include "PeachDhcp.h"
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/errno.h>
@@ -21,6 +22,7 @@
 #include <net/ethernet.h>
 #include <net/if_ether.h>
 #include <net/bpf.h>
+#include <netinet/in.h>
 
 #define TX_QUEUE 64u
 static LCK_GRP_DECLARE(net_group, "nezha-wifi");
@@ -38,6 +40,10 @@ static uint64_t net_next_request, net_join_request, net_active_join;
 static mbuf_t net_queue[TX_QUEUE], net_pending;
 static unsigned net_head, net_count, net_online, net_data_blocked;
 static unsigned net_trace[2], net_seen[2];
+/* Packet observation and address sampling run on the single protocol worker. */
+static PeachNetNetwork net_observed;
+static unsigned char net_mac[6], net_dhcp_xid[4];
+static unsigned net_dhcp_xid_valid;
 static unsigned char net_frame[1518]; /* worker-owned, never exposed as DMA */
 static errno_t control_connect(kern_ctl_ref c, struct sockaddr_ctl *s, void **p)
 { (void)c; (void)s; *p = NULL; return 0; }
@@ -229,6 +235,7 @@ void peach_net_selection(const PeachWmiBss *b, unsigned security)
     lck_mtx_unlock(&net_lock);
     net_trace[0] = net_trace[1] = 0;
     net_seen[0] = net_seen[1] = 0;
+    memset(&net_observed, 0, sizeof(net_observed)); net_dhcp_xid_valid = 0;
 }
 void peach_net_info(PeachNetInfo *out)
 {
@@ -328,6 +335,7 @@ int peach_net_attach(const unsigned char mac[6])
     err = ifnet_attach(p, NULL);
     if (err) { ifnet_release(p); return err; }
     net_interface = p; /* retain until reboot, including a later link failure */
+    memcpy(net_mac, mac, sizeof(net_mac));
     err = ifnet_set_lladdr(p, mac, 6);
     if (err) return err;
     /* IPConfiguration receives DHCP via BPF. BSD input alone does not
@@ -391,10 +399,56 @@ static void set_link(unsigned up, unsigned voluntary)
 }
 void peach_net_link(unsigned up) { set_link(up, 0); }
 void peach_net_leave(void) { set_link(0, 1); }
+void peach_net_network(PeachNetNetwork *out)
+{
+    *out = net_observed;
+    memset(out->ipv4, 0, sizeof(out->ipv4)); out->valid_ipv4 = 0;
+    lck_mtx_lock(&net_lock); unsigned online = net_online && !net_data_blocked; lck_mtx_unlock(&net_lock);
+    if (!net_interface || !online) return;
+    ifaddr_t *list = NULL;
+    if (ifnet_get_address_list_family(net_interface, &list, AF_INET) || !list) return;
+    for (unsigned i = 0; list[i]; i++) {
+        struct sockaddr_in address = {0};
+        if (ifaddr_address(list[i], (struct sockaddr *)&address, sizeof(address)) || address.sin_family != AF_INET) continue;
+        const unsigned char *p = (const void *)&address.sin_addr;
+        if (!(p[0] | p[1] | p[2] | p[3])) continue;
+        memcpy(out->ipv4, p, sizeof(out->ipv4));
+        if (p[0] && p[0] != 127 && p[0] < 224 && !(p[0] == 169 && p[1] == 254)) {
+            out->valid_ipv4 = 1; break;
+        }
+    }
+    ifnet_free_address_list(list);
+}
+static void observe_frame(unsigned incoming, const unsigned char *p, size_t bytes)
+{
+    if (incoming) { net_observed.rx_frames++; net_observed.rx_bytes += bytes; }
+    else { net_observed.tx_frames++; net_observed.tx_bytes += bytes; }
+    PeachDhcpObservation d;
+    if (!peach_dhcp_inspect(p, bytes, &d) || d.outbound == incoming || memcmp(d.client, net_mac, 6)) return;
+    if (!incoming) {
+        net_observed.dhcp_tx++; net_observed.dhcp_tx_type = d.message;
+        if (d.message == 1 || d.message == 3) {
+            memcpy(net_dhcp_xid, d.xid, sizeof(net_dhcp_xid)); net_dhcp_xid_valid = 1;
+            net_observed.dhcp_ack = 0;
+        }
+    } else {
+        if (!net_dhcp_xid_valid || memcmp(d.xid, net_dhcp_xid, sizeof(net_dhcp_xid))) return;
+        net_observed.dhcp_rx++; net_observed.dhcp_rx_type = d.message;
+        if (d.message == 2 || d.message == 5) memcpy(net_observed.offered, d.address, 4);
+        if (d.message == 5) {
+            net_observed.dhcp_ack = 1; memcpy(net_observed.mask, d.mask, 4);
+            memcpy(net_observed.router, d.router, 4); memcpy(net_observed.dns, d.dns, 4);
+        } else if (d.message == 6) net_observed.dhcp_ack = 0;
+    }
+    if (net_observed.dhcp_tx + net_observed.dhcp_rx <= 32)
+        printf("NEZHA WIFI DHCP: %s type=%u matching client/transaction; yiaddr=%u.%u.%u.%u (observed, not system IP)\n",
+            incoming ? "RX" : "TX", d.message, d.address[0], d.address[1], d.address[2], d.address[3]);
+}
 /* Bounded metadata only: enough to distinguish DHCP/ARP/DNS data flow.
  * Runs on the protocol worker, without packet payloads or key material. */
 static void trace_frame(unsigned incoming, const unsigned char *p, size_t bytes)
 {
+    observe_frame(incoming, p, bytes);
     if (bytes < 14 || (net_trace[incoming] >= 8 && net_seen[incoming] == 15)) return;
     unsigned type = p[12] * 256u + p[13], protocol = 0, source = 0, dest = 0;
     unsigned ipv4 = type == 0x800 && bytes >= 34 && (p[14] >> 4) == 4;
