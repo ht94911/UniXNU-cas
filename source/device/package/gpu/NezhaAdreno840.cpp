@@ -17,6 +17,7 @@
 #include <IOKit/IOService.h>
 #include <IOKit/IOPlatformExpert.h>
 #include <kern/clock.h>
+#include <kern/cpu_data.h>
 #include <kern/thread.h>
 #include <kern/sched_prim.h>
 #include <pexpert/pexpert.h>
