@@ -327,3 +327,18 @@ completion = ["Actual Home gesture and Safari are usable on the fixed Wi-Fi cand
 limits = ["010 Home initially passed human interaction, then Calendar-to-Home failed and password input became unusable; stable interaction and Safari are unverified", "The subsequent sleep watchdog panic does not identify a failing GPU or input service", "No new GPU performance or persistent-shutdown changes are imported"]
 next_action = ["Retain the exact accepted edge bridge, preserve010 failure evidence for GPU review, and keep interaction acceptance separate from source/object identity"]
 evidence = [{kind = "source", reference = "package/nezha27-input/NezhaTouchEdge.h", revision = "430c75e55c1d2cbe368f4c13f3a9a8ec84526bca", result = "Exact previously tested input source;remaining source/object/runtime checks remain explicit."}]
+
+
+[[area]]
+id = "ios27-wifi-aes013"
+status = "implemented"
+components = ["SoftwareAES"]
+paths = ["scripts/build-software-aes-iphone.py", "scripts/aes-iphone-24A446.json", "package/software-aes/NativeAESBootstrap.cpp", "patches/xnu-12377/zzz-wifi-aes-late-personality.patch", "tools/audit-wifi27-aes-abi.py"]
+inputs = ["Actual iPhone14,4/24A446 original kernelcache d99b7719ad4b", "012 six complete busy-tree observations: defaults busy1, Wi-Fi services quiet, delayed DHCP", "Maintained SoftwareAES4a45326 implementation with arm64e declaring-class correction"]
+configuration = ["Use existing source corecrypto and software-key-only CBC", "181 compiled virtual slots must match original PAC and symbols", "Late source metaclass registration follows real IOCryptoAcceleratorFamily loading and live size/ancestry checks", "Keep diagnostics, RAM Data, fixed reset0 and all original protected volumes"]
+procedure = ["Verify actual donor constructors/destructors, ancestry and authenticated wait imports", "Run native class/PAC build checks, strict prelink and final-image checks", "Execute runtime CBC/buffer/completion self-tests, inspect defaults busy and first system DHCP"]
+findings = ["Original AppleImage4 waits indefinitely for the absent IOAESAccelerator", "The actual crypto base owns getAlgorithmName; declaring it first in the AES class changes PAC43427 to the required25751", "012 association and DHCP worked after the wait; the missing provider is a supported causal hypothesis, not a tested repair"]
+completion = ["Actual provider self-tests and publication pass, defaults/platform/root become quiet, and DHCP starts promptly while manual association and webpage access remain usable"]
+limits = ["Native build and runtime results pending", "Unavailable hardware keys remain unsupported; no fabricated ignition success or cleared busy counts", "No change to GPU runtime, original security code, main package or persistent Data"]
+next_action = ["Build and qualify the complete013 candidate; preserve GPU phone ownership until the next applicable window"]
+evidence = [{kind = "source", reference = "tools/audit-wifi27-aes-abi.py", result = "Actual donor181-slot,162 inherited-method,constructor/destructor and Image4 wait audit passes;no hardware claim."}]

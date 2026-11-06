@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Enable the already-selected upstream sheng launch-constraint compatibility hook after original WebKit self constraints failed on hardware, and inspect remaining busy services on a separate six-sample observer. Keep signature validation and the USB diagnostic sampler unchanged. Retain011 manual association,008 radio/DMA recovery and fixed GPU/Home dependencies. Independent RAM-only test profile; no firmware, credentials, donor, phone identity, logs or persistent Data uploaded.",
+  "purpose": "Supply the real software-key-only AES-CBC service awaited by original AppleImage4 on defaults. Keep the existing source corecrypto and CBC algorithm; correct the arm64e declaring-class ABI, require every one of181 original PAC slots, and load/validate the genuine parent before late source registration. Runtime NIST/buffer/completion tests must pass before publication. Preserve012 Wi-Fi,WebKit,Home,GPU and independent RAM Data. No firmware,credentials,donor,phone identity,logs or persistent Data uploaded.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "aa46d6ac3d81326d67855f5f2edc904180b435bb",
+  "device_revision": "5e0c1698a0b0003b34ecaea5d7247db51146ea0b",
   "soc_revision": "3435fa55c3e835a4aaebf7d833473fd5d20073fd",
   "xcode": "26.6",
   "files": {
@@ -76,8 +76,8 @@
     "source/adreno/NativeGpuTrace.h": "7636d053085adfdc8e15a69241f6f6a3399af2802c4fd93d05eb2a01275d1e65",
     "source/adreno/NativeGpuTrace.inc": "4548d80aaa1fce93ad0eb241921c7d397cad4147a7a62de7a82da30c3907b98c",
     "source/adreno/NativeGpuTraceStore.h": "4a2984192bc2c68383146f558212d1000c920a8d9cbe54ccec8badd935844823",
-    "source/device/board.toml": "5c192a876a6660d6a7214f50b39589ba398425d88c8e66af209f8853a6895717",
-    "source/device/configs/nezha_ios27_defconfig": "87034e4b92795e53e138ae86cd617a9e9d81544579a97042b77d76670c11bfed",
+    "source/device/board.toml": "ced0884fc8df80cce785a12adf3ec9581a7b4ab77df1ac74b15887115ef039ba",
+    "source/device/configs/nezha_ios27_defconfig": "d107daa42c1679acf8cdbb6df5540765c52e23c2f02fd02d58d36a2232b6b201",
     "source/device/feeds.toml": "89cd3214bf98295e76dacf3606cfce03f4a903c27e865d6558e45bacd3e154b0",
     "source/device/package/.gitkeep": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
     "source/device/package/BootDiagExport.c": "88f65a92490b54444ca68ecf99e887ba1c7f6ee3d5145b8e6eed13bf90c7a92d",
@@ -147,7 +147,7 @@
     "source/device/package/nezha27-input/NezhaInputTelemetry.h": "5483fb9b489a0f7517e26102f20cdfa050b7f61214f2a3495b95820e122e0022",
     "source/device/package/nezha27-input/NezhaTouchSelfTest.h": "9262f7035de652a7336f8dd9b0a65bb6c1213cec0a0f8c4ce41d0b00037b1fd7",
     "source/device/package/nezha27-input/ResourceProbe.c": "c92b2ba262f2885d90499ba4bfa97c5bc2904c42e4ba3b48618bdac98bd49524",
-    "source/device/patches/xnu-12377/series": "229d92653aabc573e31dc985cc9f015b900538b4d018f018d763b7e1b9c5b5d6",
+    "source/device/patches/xnu-12377/series": "fcb18bd668aa6fafbe2d1ca998063b0f1b9ff9f1fa6740c4af85e575bc952370",
     "source/device/patches/xnu-12377/source-storage-runtime.patch": "25c377c60db417b15fcc137acf380f0319cbff9d5ba012af1907f3485602b584",
     "source/device/patches/xnu-12377/zzyd-sheng-audio-addon-mount.patch": "b51ed480b34c92452ea984fe056e5fce310bd929992d418f383a7e9268313c51",
     "source/device/patches/xnu-12377/zzye-sheng-cpu-idle.patch": "95f57fb9994796c3de2429fe82b6a521620b9f13b83e29eba12185f5ada4da86",
@@ -161,7 +161,7 @@
     "source/device/patches/xnu-12377/zzzzzz-nezha-input-chain-trace.patch": "c4d05419e7ec3af0de619754bdb6c2deb69b74d714c2219e509360ebfe1b947e",
     "source/device/patches/xnu-12377/zzzzzz-nezha-kernel-class-lock-order.patch": "cd90c61d6838f4e6a7248da81b6180f14db03d00f2f7a64f4bbe4034c0aa8dcb",
     "source/device/patches/xnu-12377/zzzzzz-nezha-sigp-startup-order.patch": "18275910b909d187e459c68f5d937cc09bc01923180141dc155aa7f4ff14aaf9",
-    "source/device/porting.toml": "7d6fb276ef9613696b72c48c6fde0194dcf69983e61b74d4ce9c1ece19153627",
+    "source/device/porting.toml": "6952ce6626d96f2e674b14987e4104be4f97a22641185d0f855caa883b252f4e",
     "source/device/scripts/backlight-iphone-24A446.json": "446eb5fe6440335bfe9fca75b32f7d815ddcafbb8a3c2d7f697c1e5c3f40f6cb",
     "source/device/scripts/build-adreno840.py": "09da7c944e865bccf642e2668526cbcdef72de44e28d891ab40feb35c2573644",
     "source/device/scripts/build-boot-progress.py": "a210eb1f0443574eb1506932aa9e8181d5c73aecf99397d8cc731568bd3210ba",
@@ -198,7 +198,7 @@
     "source/soc/soc.toml": "9cebcadf2d5a271ceb44ee5fc378ed739cff0e7e5a940007164a9917042fd92f",
     "source/ufs.bundle": "3a7c1c6ac7e5a39e6cb4adcc6143fa1e4c6c24ae862aa501102f9fb70c21a534",
     "source/usb.bundle": "39f8e0b00062a34dffeb875d1fdcfbfcfb1f4109d111e9e8ce64530607e96a77",
-    "ci/native.py": "8ffa6a1b7e107605760ce6abdfcf7f1c11e8ca0732a7558b758845c39019deae",
+    "ci/native.py": "6d72e4caa58f42341a08001855f977346916751b725e8d2a09852c02e0cfa14d",
     "source/device/package/NezhaWcn7860/NezhaWifiDiagnostic.c": "aaf74f12b3315df772ef2260bd1b7dc0fea0475627c4d0b8c4ca024d75526c3f",
     "source/device/package/NezhaWcn7860/NezhaWifiFirmware.c": "c90ceb138e9d28eaf7e12bfd6d068066461d34d2fb352835e196f0af3e532ff6",
     "source/device/package/NezhaWcn7860/NezhaWifiMemory.c": "e5f634d8ec8517d6e7abd7b8fc5e2c6fc850363b420f366f59e819707ac58961",
@@ -265,7 +265,15 @@
     "source/device/package/NezhaWcn7860/NezhaWifiDma.c": "be8276ac114648ef2dd53c1e4956f279bad118e5880723290c868edd14a3c43d",
     "source/device/package/NezhaWcn7860/NezhaWifiDma.h": "04860e31fc38e2bf6e311fce041bc23cc87badb6ea1c4cc2e930fcd4aa195640",
     "source/device/package/NezhaWcn7860/NezhaWifiRegistry.h": "dd94ded497bfa2d9980e60b5f366f5092d4ea5eff9132f7dabd887d23c54963f",
-    "source/device/package/nezha27-input/NezhaTouchEdge.h": "d132e77508b3b01d4ac01a13ec8617881ebe816fdd608461de1d7dd34c4b31dd"
+    "source/device/package/nezha27-input/NezhaTouchEdge.h": "d132e77508b3b01d4ac01a13ec8617881ebe816fdd608461de1d7dd34c4b31dd",
+    "source/device/package/software-aes/NativeAESBootstrap.cpp": "98ed3f7df7df676d475bdf096409bf588e0d6d4773263878f368f953452d9bbd",
+    "source/device/scripts/build-software-aes-iphone.py": "ad408438aca47fcb9e7daae4c53b77fa81c00bd0c9ff34cffca244cb324a08e0",
+    "source/device/scripts/aes-iphone-24A446.json": "d55ed6d1d65fdff5de46dd602552eaf3309d1f7370fcd3f15eddb391225ffe8a",
+    "source/device/patches/xnu-12377/zzz-wifi-aes-late-personality.patch": "6ad2b2c0f1fc3e39aa485cfc22612b6f3085062248e6603b176a34aaa6c12dac",
+    "source/software-aes/NativeAES.cpp": "15cd9a1b721bd498685d49773de8734daa4303e1e298ccd31157148fa2d54a1e",
+    "source/software-aes/OriginalAESABI.h": "80ff874a6556d6908826e74622e449fb82eb217e99bd4384418fe08e06c95e2f",
+    "source/software-aes/LICENSE": "03a8ab50f4b3b4c65f070d07302a3522e7badbf54dde090cca59bb3e746bba3f",
+    "source/software-aes/README.md": "fb6af9b196316b4a39aa504e3ff92ebbaa7b6a0bb005c35f27bc360490dd52a4"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
@@ -301,7 +309,7 @@
   },
   "integration_base": {
     "GPU_main_source": "675500a330010da4f4eed35c07a66f0445177a18",
-    "WiFi_source": "aa46d6ac3d81326d67855f5f2edc904180b435bb",
+    "WiFi_source": "5e0c1698a0b0003b34ecaea5d7247db51146ea0b",
     "main_package_modified": false,
     "test_storage": "RAM-only",
     "Home_input_source": "430c75e55c1d2cbe368f4c13f3a9a8ec84526bca"
@@ -314,5 +322,12 @@
     "firmware_slot_bytes": 262144,
     "snapshot_scope": "listed headers and native implementation units only"
   },
-  "qualification_iteration": "native017: sheng WebKit launch compatibility and finite service-busy observer,993-byte RAM profile"
+  "qualification_iteration": "native018: actual iPhone AES ABI and original-parent dependency, unchanged012 Wi-Fi and993-byte RAM profile",
+  "software_aes": {
+    "source_revision": "c9ce79e16e6a4e74cbbb7f4315ad2ec342933c89",
+    "upstream_revision": "4a45326da5c2cd6fe6813d79ee43db20805628af",
+    "snapshot": "four explicitly listed source/license files; no repository history",
+    "runtime_crypto_KAT_required": true,
+    "original_security_code_changed": false
+  }
 }

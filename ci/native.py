@@ -47,7 +47,7 @@ def prepare(framework, work):
     work.mkdir(parents=True, exist_ok=False)
     for name in ('device', 'soc'):
         shutil.copytree(ROOT / 'source' / name, work / name)
-    for name in ('adreno', 'metal'):
+    for name in ('adreno', 'metal', 'software-aes'):
         shutil.copytree(ROOT / 'source' / name, work / name)
     usb = work / 'usb'
     run(['git', 'init', '-q', usb])
@@ -106,6 +106,8 @@ def prepare(framework, work):
                      '\n[[source]]\nname = "AdrenoMetal"\nkind = "refer"\nlocal = "../metal"\n')
     with (work / 'device/local.toml').open('a') as output:
         output.write('\n[[source]]\nname = "GopFramebuffer"\nkind = "driver"\nlocal = "../gop"\n')
+    with (work / 'device/local.toml').open('a') as output:
+        output.write('\n[[source]]\nname = "SoftwareAES"\nkind = "driver"\nlocal = "../software-aes"\n')
     config = {'device': str(work / 'device'), 'out': str(work / 'out'), 'jobs': jobs}
     text = '[build]\n' + ''.join(k + ' = ' + json.dumps(v) + '\n' for k, v in config.items())
     (work / 'build.toml').write_text(text)
@@ -228,6 +230,9 @@ def collect(framework, work, sealed):
         for path in sorted((tree / 'build/nezha27-wifi').rglob('*')):
             if path.is_file() and path.suffix in ('.json', '.log', '.o', '.txt', '.d'):
                 add(path, 'archives/nezha27-wifi/' + str(path.relative_to(tree / 'build/nezha27-wifi')))
+        for path in sorted((tree / 'build/software-aes').glob('*')):
+            if path.is_file() and path.suffix in ('.a', '.o', '.json', '.log', '.d', '.S'):
+                add(path, 'archives/software-aes/' + path.name)
         for path in sorted((tree / 'build/nezha27-input').glob('*')):
             if path.is_file() and path.suffix in ('.json','.log','.o','.S','.h','.cpp','.c'):
                 add(path, 'archives/nezha27-input/' + path.name)

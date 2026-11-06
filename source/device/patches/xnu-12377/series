@@ -27,3 +27,6 @@ zzzzzz-nezha-kernel-class-lock-order.patch
 nezha-wifi-mmio-recovery.patch
 nezha-wifi-kernel-events.patch
 nezha-wifi-addon-truncate.patch
+
+# Real software AES provider; defer its original-parent metaclass until IOBSD.
+zzz-wifi-aes-late-personality.patch
