@@ -121,17 +121,17 @@ evidence = [{kind = "source", reference = "docs/GPU27.md", result = "Fixed078 co
 
 [[area]]
 id = "network"
-status = "planned"
-components = []
-paths = ["scripts/dev/**"]
-inputs = ["Separate active Wi-Fi work owns the phone; no Wi-Fi code imported into this branch."]
-configuration = ["board.toml and configs/nezha_ios27_defconfig select the current source-only step."]
-procedure = ["Use ./unixnu with isolated local inputs/out, jobs=32; preserve existing Android/ios17 and active Wi-Fi workspace."]
-findings = ["Association/IP is not a prerequisite for this desktop milestone."]
-completion = ["Real iPhone iOS27 desktop/settings operable with protection verification; validate this area separately before promotion."]
-limits = ["No iOS27 device execution, donor ABI qualification or phone allocation is claimed."]
-next_action = ["Keep this work computer-only until a coordinated authorized phone window exists."]
-evidence = []
+status = "implemented"
+components = ["QcomXnuUsbDebug", "Adreno840"]
+paths = ["package/NezhaWcn7860/**", "scripts/build-nezha27-wifi.py", "tools/*wifi27*", "tests/wifi27/**", "patches/xnu-12377/nezha-wifi-*.patch", "package/NezhaIOS27Pmgr.cpp"]
+inputs = ["Public WCN7860 0452 e55c8696764cfa03eec8628fad4afdf1f5bab51e, actual iPhone14,4/24A446 ABI and private local firmware inputs retained from verified Wi-Fi004/005.", "Fixed GPU main source675500a330010da4f4eed35c07a66f0445177a18 and matching native/Metal/GOP/USB dependencies; no active GPU HEAD tracking."]
+configuration = ["Full GPU rendering and Wi-Fi on one independent RAM-only test profile;995-byte explicit arguments and existing builtin policy.", "The existing27 persistent Data stays protected and unused;no reset,new file or partition write.", "Explicit chosen/nezha-wifi-autojoin-rearm=1 rechecks the same digest-pinned RAM config after an actual completed radio off/on;it never turns the radio on."]
+procedure = ["Compile the combined source through the existing Format2/Mac/CMS path;strict new prelink with zero missing/stubs and real baseline/GPU/Wi-Fi checks.", "Qualify each actual candidate before fresh seven-file/GPT/boot-chain checks and temporary boot;controlled one-shot USB reboot and full Android postflight."]
+findings = ["Combined GPU/Wi-Fi007 completed actual WPA2, system DHCP and GPU T/M self-tests; one human-confirmed radio cycle recovered the system address. Both observed reconstructions timed out at PCIe L2 and used quarantine, so007 did not enable physical DMA recycling.", "The actual Nezha cnss2 suspend routine and matching downstream source enter endpoint D3hot before link suspend.008 adds discovered PM-capability validation, D3hot readback/settle before fresh L2 proof, and D0 restore before BAR use; all previous containment and retention gates remain.", "007 firmware completed warm scans with32 BSS, while the human intermittently saw no other networks. A later USB screenshot showed other networks again. The current cached iterator fails a second original-style enumeration; sheng resets at terminal EIO.008 preserves the terminating error and resets the cursor epoch for the next reader.", "Actual production C with explicit MMIO/OS mocks passes256 DMA cycles, old007 D3-aware timeout control, capability/D0 failure cases and three complete32-BSS cached enumerations. Delayed copyout cannot advance a new enumeration or scan. The old007 iterator fails the same repeated-enumeration control.", "Bounded Apple request/result/event logs now include caller PID and scalar lengths/errors; SSID, BSSID and key content are omitted. Manual association and browser interaction remain unverified."]
+completion = ["Real repeated WPA2 association,system DHCP,DNS and browser TCP/TLS/HTTP;manual power cycle/reconnect and UI interaction with concurrent verified GPU rendering.", "At least two independent full-core passes plus complete Android/root/17/seven-file protection;no main-package promotion by this branch."]
+limits = ["008 D3/D0 and cursor changes are not yet native-built or hardware-qualified.007 L2 timeouts remain actual failures; host controls do not prove their hardware cause or resolution. No stable-baseline or main-package promotion.", "The iterator defect is reproduced in production code, but is not yet proved to be the only cause of intermittent empty Settings lists. Manual iPhone association remains unresolved.", "Initial IP delay and the fixed GPU baseline long-run limitations remain open; no unrelated GPU or userland changes.", "WPA2/legacy20MHz2.4/5GHz only; no Wi-Fi7/WPA3 or broad sleep-wake claim."]
+next_action = ["Build008 through the existing Mac/CMS path and qualify actual native objects/strict fileset. First verify one real D3-to-L2 stop and recycling before requesting extended cycles; then verify repeated Settings results, manual selection and browser with full protection."]
+evidence = [{kind = "host", reference = "README.md", revision = "d9425265bf37b4a3fbd2da06d9da6421730653da", command = "python3 tools/test-wifi27-autojoin.py --out ../out/autojoin-gpu006-rearm-001", result = "Actual production autojoin/state and Format2 configuration checks passed;hardware remains pending."}, {kind = "source", reference = "package/NezhaWcn7860/upstream.json", result = "Pinned source provenance and licenses retained;old objects excluded."}]
 
 [[area]]
 id = "audio"
