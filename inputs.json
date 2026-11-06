@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "02bf332f39d0466049eaf6846bc605448574970d",
+  "device_revision": "195fd3d21dad5ca795d40040d17dbcaecdfb3743",
   "soc_revision": "5a71f9eb5724ff58eddf49f7f5baecc9f4233a7c",
   "xcode": "26.6",
   "files": {
@@ -129,7 +129,7 @@
     "source/device/package/boot-progress/upstream.json": "bbcd4cc639b104c9d4619076c8350cfb90483a92347dcd5e39443ba0f8fd8a13",
     "source/device/package/gpu/NezhaAdreno840.cpp": "b9fe3b4abd57c7d9a55666407b5aa0030111fb76443359f7c155b887a6a33e39",
     "source/device/package/gpu/NezhaGpu.c": "5a5ddea192751ab38475d844ebac50574f49c9f56fc8d864fb5193ae77bce1a8",
-    "source/device/package/gpu/NezhaGpuCoherence.h": "976674f43dc99a1a8904e0173d95229228fc49d2c7ccdc4d954e71637d96a8e2",
+    "source/device/package/gpu/NezhaGpuCoherence.h": "39726c0cfbdd1fd5ffb4e358d4caf58e117ee935455b83d5099e5cc2bb547bd6",
     "source/device/package/gpu/NezhaGpuFirmware.cpp": "6318b3d5cbd478f185dd0669a597440f2a3878d2991fd611fe6741a5d58b3909",
     "source/device/package/gpu/NezhaGpuFirmware.h": "fd75af351256dcbb72d0cf83ceeda4cee524475324edaf086b50ae34093d580e",
     "source/device/package/gpu/NezhaGpuFirmwareSlot.S": "294d44bf227df3db03fe8c9343c7179c8c03962d52a999a564ac99f7d7356d82",
@@ -169,7 +169,7 @@
     "source/device/patches/xnu-12377/zzzzzz-nezha-input-chain-trace.patch": "c4d05419e7ec3af0de619754bdb6c2deb69b74d714c2219e509360ebfe1b947e",
     "source/device/patches/xnu-12377/zzzzzz-nezha-kernel-class-lock-order.patch": "cd90c61d6838f4e6a7248da81b6180f14db03d00f2f7a64f4bbe4034c0aa8dcb",
     "source/device/patches/xnu-12377/zzzzzz-nezha-sigp-startup-order.patch": "18275910b909d187e459c68f5d937cc09bc01923180141dc155aa7f4ff14aaf9",
-    "source/device/porting.toml": "6bc3c367acf062becd9fa301002c4423be10efb37c8268ab26f92f5a8489c8ec",
+    "source/device/porting.toml": "4b2dd5efec7f5f9f0e37681ee3fd7d4fbdd789dca99eebcf175e650725a39fc3",
     "source/device/scripts/backlight-iphone-24A446.json": "446eb5fe6440335bfe9fca75b32f7d815ddcafbb8a3c2d7f697c1e5c3f40f6cb",
     "source/device/scripts/build-adreno840.py": "957903adf4b76127be0a9a75eccdd2103a0776018dfa76a4e115371d9f48b94e",
     "source/device/scripts/build-boot-progress.py": "a210eb1f0443574eb1506932aa9e8181d5c73aecf99397d8cc731568bd3210ba",
