@@ -6,6 +6,13 @@ extern "C" {
 #include <QcomUsbDiagnostic.h>
 }
 #include <stdarg.h>
+extern "C" {
+extern volatile uint32_t native_gpu_coherence[8],native_adreno_io_coherent,native_adreno_coherent_skips[4];
+extern volatile uint32_t native_adreno840_coherence_attempts,native_adreno840_coherence_retained;
+extern volatile unsigned nezha_vsync_hz __attribute__((weak_import));
+extern volatile uint64_t nezha_vsync_sent __attribute__((weak_import));
+extern volatile uint32_t nezha_vsync_ev[6] __attribute__((weak_import));
+}
 struct NezhaPerfWriter {
     char *out;size_t cap,used=0;bool failed=false;
     void add(const char *format,...) {
@@ -35,7 +42,18 @@ static int nezhaPerfSnapshot(void *,char *out,size_t cap,size_t *bytes,unsigned 
     uint64_t cache_ns=0,reassert_ns=0;absolutetime_to_nanoseconds(s.cache[0],&cache_ns);absolutetime_to_nanoseconds(s.reassert_ticks,&reassert_ns);
     w.add(",\"cache_ns\":%llu,\"reassert_ns\":%llu,\"cpu_us\":%llu,\"cpu_mask\":%u,\"cpu\":[",cache_ns,reassert_ns,s.cpu_us,s.cpu_valid);
     for(unsigned n=0;n<8;++n)w.add("%s[%u,%u,%u,%u]",n?",":"",s.cpu[n][0],s.cpu[n][1],s.cpu[n][2],s.cpu[n][3]);
-    w.add("],\"clock_readback\":false,\"gpu_timestamp_hz\":19200000}");return w.finish(bytes,trunc);
+    uint64_t coherence[15]={},display[8]={};
+    for(unsigned i=0;i<8;++i)coherence[i]=native_gpu_coherence[i];
+    coherence[8]=native_adreno_io_coherent;coherence[9]=native_adreno840_coherence_attempts;
+    coherence[10]=native_adreno840_coherence_retained;
+    for(unsigned i=0;i<4;++i)coherence[11+i]=native_adreno_coherent_skips[i];
+    if(&nezha_vsync_hz && &nezha_vsync_sent && &nezha_vsync_ev) {
+        display[0]=nezha_vsync_hz;display[1]=nezha_vsync_sent;
+        for(unsigned i=0;i<6;++i)display[2+i]=nezha_vsync_ev[i];
+    }
+    w.add("],\"coherence\":");w.array(coherence,15);
+    w.add(",\"display_pacing\":");w.array(display,8);
+    w.add(",\"physical_vblank\":false,\"clock_readback\":false,\"gpu_timestamp_hz\":19200000}");return w.finish(bytes,trunc);
 }
 static int nezhaPerfRequest(void *,const qud_diag_request *r,char *out,size_t cap,size_t *bytes,unsigned *trunc)
 {

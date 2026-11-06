@@ -110,13 +110,13 @@ id = "gpu"
 status = "implemented"
 components = ["Adreno840", "ArmSmmu4K", "AdrenoPM4"]
 paths = ["package/gpu/**", "scripts/build-adreno840.py", "scripts/check-adreno840-*.py", "scripts/audit-adreno840-iphone-abi.py"]
-inputs = ["persist005 source: device cf8add9613e2df749e24783b4bd811b0d1526ca1; Adreno740 0f1b869612cecdf5a5c0965c784389e9dff3d047; iPhone14,4/24A446; retained Metal-full013."]
-configuration = ["A840 single ring and CPU page-table switching, published GPU UI, persistent independent generation1 Data; existing Home and normal-shutdown fixes retained."]
+inputs = ["persist008 source: device 4e6bfc1623c90d6329731fee14dd1ee96f674711; Adreno740 30d45abeeb1d1cf5ca46f252434d9c041a72aa24; iPhone14,4/24A446; retained Metal-full013.", "UniXNU-sheng ce0c600 package/GpuPowerProbe.cpp bidirectional data-coherence proof and existing shared VM skip policy."]
+configuration = ["A840 single ring and CPU page-table switching, published GPU UI, persistent independent generation1 Data; existing Home and normal-shutdown fixes retained.", "persist009 requests fixed120Hz compositor pacing and proves data coherence before Metal publication; failed evidence retains cache maintenance, uncertain DMA retains owned memory and stops publication. Table-walk and owned-BO coherence remain unchanged."]
 procedure = ["Build the accepted078 source COPY with selective GPU additions; new strict prelink and actual native checks; test only that fixed candidate on the exclusively assigned local device."]
 findings = ["persist006 still hung on a backboardd job before Settings. Actual retained IB reads now work. Before the hang,160 completed present copies in8.681s gave18.43/s; sampled copy latency p50=37ms,p95=75ms. Shared backend startup ACKed160MHz and omitted legacy DCVS. persist007 reconnects existing HFI/BW/busy-counter logic with idle222/active578MHz and a578MHz cap, plus bounded leases and CPU/GPU/trace USB provider7."]
 completion = ["Retain the078 desktop and physical touch, verify GMU/HFI/CP readback/fences, then real shader/Metal pixels and presentation, with complete Android protection postflight."]
 limits = ["The initial GPU hang is unresolved. No pure shader-time, actual physical frequency readback, thermal-governor integration or sustained panel-FPS qualification is claimed. The new CP interval is distinct from completion and presentation latency."]
-next_action = ["Compile the combined policy and telemetry candidate; test the same boot with bounded160/578MHz comparisons,CPU load/cache/lock/GPU-busy sampling, application/Home/Control Center/lock-unlock and normal shutdown."]
+next_action = ["Compile009 and verify actual linked proof, built-in pacing arguments and USB counters; on hardware require both snoop directions, increasing skip counters, lower cache/submit cost and correct pixels. Keep578MHz policy for the first comparison. Software120Hz pacing is not physical panel-FPS evidence."]
 evidence = [{kind = "source", reference = "docs/GPU27.md", result = "Fixed078 copy plus selective GPU integration; all actual hardware results remain separately gated."}]
 
 [[area]]
