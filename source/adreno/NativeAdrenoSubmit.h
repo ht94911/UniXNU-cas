@@ -19,6 +19,29 @@ extern "C" volatile uint32_t native_adreno_coherence[8];
 /* The write-combine audit (int-100), see NativeAdrenoSubmit.cpp, and the submission (1-based) that ended the trust; 0 = never. */
 extern "C" volatile uint32_t native_adreno_wc_audit[6];
 extern "C" volatile uint32_t native_adreno_wc_distrusted;
+
+// NATIVE_ADRENO_CACHED_STALL_TYPE_BEGIN
+/* Copied from noteStall's existing CP/SMMU/IB sample. No live device access.
+ * job: sample us, pending us, submit us, queue, job TTBR, selected TTBR,
+ * next mapping handle at submit, pid, context, ring, BO count, outstanding
+ * jobs, table mode, fault-read status, observed fence, issued fence,
+ * IB packet word count, attempted unstick stage, priority+1, chip generation.
+ * state/memory keep the documented native_adreno_stall/_mem layouts.
+ * ibs contains at most the first eight already-retained CP_INDIRECT_BUFFER
+ * packets; job[16] records the complete word count.
+ */
+struct NativeAdrenoStallSample {
+    uint32_t serial;
+    uint32_t state[24];
+    uint32_t memory[59];
+    uint64_t job[20];
+    uint32_t ibs[32];
+};
+// NATIVE_ADRENO_CACHED_STALL_TYPE_END
+/* One bounded copy attempt. False before a sample or during publication.
+ * The caller must discard a failed copy; no GPU lock or MMIO is taken. */
+extern "C" bool native_adreno_copy_stall(NativeAdrenoStallSample *);
+
 /* A GPU restart after a hang (NativeAdrenoSubmit::recover): the board resets the GPU and brings the CP up again on the same ring (a6xx_recover
  * and hw_init), calling NativeAdrenoRing::restart(completed) between the reset and its CP init. Nonzero: the GPU could not be restarted. */
 typedef IOReturn (*NativeAdrenoRestart)(void *cookie,NativeAdrenoRing *ring,uint32_t completed);

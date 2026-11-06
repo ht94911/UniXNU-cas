@@ -20,12 +20,17 @@
 #include <IOKit/IOUserClient.h>
 #include <string.h>
 #include <kern/thread.h>
+#include <kern/processor.h>
+#include <kern/host.h>
+#include <mach/processor_info.h>
+#include "NativeAdrenoPerf.h"
 #include "NativeAdrenoUserClient.h"
 #include "NativeAdrenoGpuContext.h"
 #include "NativeGpuTrace.inc"
 #include "NativeGpuTextStream.h"
 #include "NativeAdrenoPollLog.h"
 
+static uint64_t perfCalls[18][4];
 static NativeGpuTextStream gpuTextStream;
 static IOLock *gpuTextLock;
 static NativeAdrenoPollLog gpuPollLog;
@@ -716,6 +721,10 @@ IOReturn AGXDeviceUserClient::run(uint32_t method,const void *input,size_t input
     uint64_t lockClock[LockClockWords]={};
     const uint64_t entered=mach_absolute_time();
     const IOReturn status=runTimed(method,input,input_size,output,output_size,lockClock);
+    if(method<18) {
+        const uint64_t values[4]={1,microseconds(entered,mach_absolute_time()),microseconds(0,lockClock[LockWaited]),microseconds(0,lockClock[LockHeld])};
+        for(unsigned k=0;k<4;++k)__atomic_fetch_add(&perfCalls[method][k],values[k],__ATOMIC_RELAXED);
+    }
     if(NativeAdrenoCallRec *ring=native_adreno_call_ring) {
         const uint32_t held=microseconds(0,lockClock[LockHeld])/16;
         const uint32_t n=__atomic_fetch_add(&native_adreno_call_count,1,__ATOMIC_RELAXED);
@@ -1200,12 +1209,91 @@ extern "C" bool native_adreno_fences(uint32_t *submitted,uint32_t *retired)
  * software counters/rows, not an atomic hardware snapshot. It performs no MMIO,
  * reset, recovery or allocation; a hung GPU call still leaves its inflight ID.
  */
+
+static void logStallWords(const char *kind,uint32_t serial,const uint32_t *words,unsigned count)
+{
+    for(unsigned first=0;first<count;first+=8) {
+        char row[8*9+1]={};
+        size_t used=0;
+        for(unsigned i=first;i<count && i<first+8;++i) {
+            const int n=snprintf(row+used,sizeof(row)-used,"%08x ",words[i]);
+            if(n<=0 || size_t(n)>=sizeof(row)-used)break;
+            used+=size_t(n);
+        }
+        IOLog("NEZHA GPU STALL WORDS: sample=%u kind=%s first=%u %s\n",serial,kind,first,row);
+    }
+}
+static void logCachedStall(const NativeAdrenoStallSample &s)
+{
+    const uint64_t *j=s.job;
+    IOLog("NEZHA GPU STALL: cached v=1 sample=%u chip=%llu time_us=%llu pending_us=%llu fence=%u polls=%u observed=%llu issued=%llu pid=%llu queue=%#llx context=%llu ring=%llu jobs=%llu table_mode=%llu action_stage=%llu fault_read=%#llx\n",
+        s.serial,j[19],j[0],j[1],s.state[0],s.state[1],j[14],j[15],j[7],j[3],j[8],j[9],j[11],j[12],j[17],j[13]);
+    IOLog("NEZHA GPU STALL VM: sample=%u job_ttbr=%#llx selected_ttbr=%#llx submit_us=%llu next_handle=%llu bos=%llu ib_words=%llu priority=%llu\n",
+        s.serial,j[4],j[5],j[2],j[6],j[10],j[16],j[18]);
+    logStallWords("cp",s.serial,s.state+2,22);
+    logStallWords("memory",s.serial,s.memory,59);
+    logStallWords("ibs",s.serial,s.ibs,32);
+    // These counters are separately sampled; they are not part of the cached
+    // hardware observation above. In particular, hangs are not distinct jobs.
+    IOLog("NEZHA GPU RECOVERY: sampled hook=%u hangs=%u restarts=%u failed=%u fault=%#x coherence=%u/%u wc_distrusted=%u\n",
+        __atomic_load_n(&g.restart,__ATOMIC_RELAXED)?1u:0u,
+        native_adreno_recovery[0],native_adreno_recovery[1],native_adreno_recovery[2],
+        native_adreno_recovery_fault[1],native_adreno_coherence[4],native_adreno_coherence[0],native_adreno_wc_distrusted);
+}
+
+
+extern "C" kern_return_t processor_info(processor_t,processor_flavor_t,host_t *,processor_info_t,mach_msg_type_number_t *);
+extern "C" processor_t cpu_to_processor(int);
+static uint32_t perfCpuSequence,perfCpuValid,perfCpuTicks[8][4];
+static uint64_t perfCpuUs;
+extern "C" volatile uint64_t native_adreno_cache_stats[5],native_adreno_reassert_ticks;
+static void samplePerfCpu()
+{
+    uint32_t ticks[8][4]={},valid=0;
+    for(unsigned n=0;n<8 && n<MAX_CPUS;++n) {
+        processor_t processor=cpu_to_processor(static_cast<int>(n));if(!processor)continue;
+        processor_cpu_load_info_data_t info{};mach_msg_type_number_t count=PROCESSOR_CPU_LOAD_INFO_COUNT;host_t host=nullptr;
+        if(processor_info(processor,PROCESSOR_CPU_LOAD_INFO,&host,reinterpret_cast<processor_info_t>(&info),&count)!=KERN_SUCCESS || count!=PROCESSOR_CPU_LOAD_INFO_COUNT)continue;
+        for(unsigned k=0;k<4;++k)ticks[n][k]=info.cpu_ticks[k];valid|=1u<<n;
+    }
+    uint64_t ns=0;absolutetime_to_nanoseconds(mach_absolute_time(),&ns);
+    __atomic_add_fetch(&perfCpuSequence,1u,__ATOMIC_ACQ_REL);
+    for(unsigned n=0;n<8;++n)for(unsigned k=0;k<4;++k)__atomic_store_n(&perfCpuTicks[n][k],ticks[n][k],__ATOMIC_RELAXED);
+    __atomic_store_n(&perfCpuValid,valid,__ATOMIC_RELAXED);__atomic_store_n(&perfCpuUs,ns/1000,__ATOMIC_RELAXED);
+    __atomic_add_fetch(&perfCpuSequence,1u,__ATOMIC_RELEASE);
+}
+extern "C" bool native_adreno_perf_sample(NativeAdrenoPerfSample *out)
+{
+    if(!out)return false;*out={};
+    for(unsigned i=0;i<14;++i)out->jobs[i]=__atomic_load_n(&native_adreno_perf_jobs[i],__ATOMIC_RELAXED);
+    for(unsigned i=0;i<5;++i)out->cache[i]=__atomic_load_n(&native_adreno_cache_stats[i],__ATOMIC_RELAXED);
+    out->reassert_ticks=__atomic_load_n(&native_adreno_reassert_ticks,__ATOMIC_RELAXED);
+    const uint32_t first=__atomic_load_n(&perfCpuSequence,__ATOMIC_ACQUIRE);
+    if(!first || (first&1))return true; // totals available, CPU sample not yet available
+    for(unsigned n=0;n<8;++n)for(unsigned k=0;k<4;++k)out->cpu[n][k]=__atomic_load_n(&perfCpuTicks[n][k],__ATOMIC_RELAXED);
+    out->cpu_us=__atomic_load_n(&perfCpuUs,__ATOMIC_RELAXED);out->cpu_valid=__atomic_load_n(&perfCpuValid,__ATOMIC_RELAXED);
+    __atomic_thread_fence(__ATOMIC_ACQUIRE);
+    if(first!=__atomic_load_n(&perfCpuSequence,__ATOMIC_RELAXED))out->cpu_valid=0;
+    return true;
+}
+extern "C" void native_adreno_perf_calls(uint64_t out[18][4])
+{
+    if(!out)return;
+    for(unsigned n=0;n<18;++n)for(unsigned k=0;k<4;++k)out[n][k]=__atomic_load_n(&perfCalls[n][k],__ATOMIC_RELAXED);
+}
+
 static void nativeAdrenoDiagnosticObserver(void *,wait_result_t)
 {
     uint32_t hashes[48]={};
     uint64_t lastPolls[2]={};
+    uint32_t lastStall=0;
     for(;;) {
         IOSleep(2000);
+        samplePerfCpu();
+        NativeAdrenoStallSample stall{};
+        if(native_adreno_copy_stall(&stall) && stall.serial!=lastStall) {
+            logCachedStall(stall);lastStall=stall.serial;
+        }
         auto &d=native_adreno_metal_diag;
         IOLog("NEZHA GPU SNAP: sampled opens %u closes %u busy %u bad %u name_reads %u calls %u method %u status %#x inflight %u since %u marks %u table_status %#x\n",
             d.opens,d.closes,d.busy,d.bad,d.name_reads,d.calls,d.last_selector,d.last_status,

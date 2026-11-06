@@ -36,7 +36,9 @@ static PeachWmiScanChannel net_channels[PEACH_WMI_SCAN_CHANNELS];
 static unsigned net_channel_count, net_join_pending, net_scan_pending, net_leave_pending;
 static PeachNetRequest net_request;
 static unsigned net_join_layout, net_power_requested = 1;
+static unsigned net_power_pending, net_power_active, net_scan_during_power;
 static uint64_t net_next_request, net_join_request, net_active_join;
+static uint64_t net_scan_request, net_active_scan;
 static mbuf_t net_queue[TX_QUEUE], net_pending;
 static unsigned net_head, net_count, net_online, net_data_blocked;
 static unsigned net_trace[2], net_seen[2];
@@ -68,6 +70,23 @@ int peach_net_request(const PeachNetRequest *request)
             if (request->passphrase[i] < 32 || request->passphrase[i] > 126) return EINVAL;
     }
     lck_mtx_lock(&net_lock);
+    /* A successful radio-on always performs a real passive scan before its
+     * completion. Keep one scan request against that in-flight operation;
+     * EBUSY here makes the original client abandon the request and retry much
+     * later. Never overwrite the power command or admit scans while off. */
+    if (opt == PeachControlScan && net_snapshot.state == PeachNetRecovering &&
+        net_power_pending && net_power_requested) {
+        int err = net_scan_pending ? EBUSY : 0;
+        uint64_t id = 0;
+        if (!err) {
+            net_scan_pending = net_scan_during_power = 1;
+            id = net_scan_request = ++net_next_request;
+        }
+        lck_mtx_unlock(&net_lock);
+        if (!err) printf("NEZHA WIFI: scan request %llu retained for real radio-on scan\n",
+            (unsigned long long)id);
+        return err;
+    }
     unsigned finishing_leave = opt == PeachControlJoin && net_leave_pending;
     unsigned cancelling_join = (opt == PeachControlLeave ||
         (opt == PeachControlPower && !request->radio_power)) && net_join_pending;
@@ -92,7 +111,11 @@ int peach_net_request(const PeachNetRequest *request)
         net_request = *request;
         net_request.request_id = ++net_next_request;
         if (opt != PeachControlScan) net_data_blocked = 1;
-        if (opt == PeachControlPower) net_power_requested = request->radio_power;
+        if (opt == PeachControlPower) {
+            net_power_requested = request->radio_power;
+            net_power_pending = 1;
+            net_snapshot.count = 0;
+        }
         if (cancelling_join) { net_join_pending = 0; net_info_data.result = 2; cancelled = 1; }
         if (opt == PeachControlLeave) net_leave_pending = 1;
         if (opt == PeachControlJoin) {
@@ -100,7 +123,10 @@ int peach_net_request(const PeachNetRequest *request)
             net_join_layout = request->apple_layout; net_join_request = net_request.request_id;
         }
         unsigned associated_scan = opt == PeachControlScan && net_snapshot.state == PeachNetOnline;
-        if (opt == PeachControlScan) net_scan_pending = 1;
+        if (opt == PeachControlScan) {
+            net_scan_pending = 1; net_scan_during_power = 0;
+            net_scan_request = net_request.request_id;
+        }
         net_snapshot.state = opt == PeachControlJoin ? PeachNetAssociating :
             opt == PeachControlScan ? (associated_scan ? PeachNetOnline : PeachNetScanning) : PeachNetRecovering;
         net_snapshot.error = 0;
@@ -152,7 +178,11 @@ int peach_net_power(unsigned enabled)
 }
 void peach_net_power_complete(unsigned enabled, int error)
 {
-    lck_mtx_lock(&net_lock); net_info_data.powered = !error && enabled; lck_mtx_unlock(&net_lock);
+    lck_mtx_lock(&net_lock);
+    net_info_data.powered = !error && enabled;
+    net_power_pending = net_power_active = 0;
+    if (error || !enabled) net_snapshot.count = 0;
+    lck_mtx_unlock(&net_lock);
     peach_net_status(NULL, error ? PeachNetFailed : enabled ? PeachNetReady : PeachNetOff, error);
     peach_apple80211_event(PeachApplePowerChanged);
 }
@@ -174,6 +204,8 @@ int peach_net_take_request(PeachNetRequest *out)
     if (action) {
         *out = net_request;
         if (action == PeachControlJoin) net_active_join = net_request.request_id;
+        else if (action == PeachControlScan) net_active_scan = net_request.request_id;
+        else if (action == PeachControlPower) net_power_active = net_request.radio_power;
         volatile unsigned char *v = (void *)&net_request;
         for (size_t i = 0; i < sizeof(net_request); i++) v[i] = 0;
     }
@@ -191,17 +223,28 @@ void peach_net_status(const PeachWmi *w, unsigned state, int error)
     if (state == PeachNetReady || state == PeachNetOnline) {
         if (net_request.action == PeachControlJoin) state = PeachNetAssociating;
         else if (net_request.action == PeachControlLeave || net_request.action == PeachControlPower) state = PeachNetRecovering;
+        else if (net_request.action == PeachControlScan && state == PeachNetReady) state = PeachNetScanning;
     }
     if (state == PeachNetReady || state == PeachNetAssociating ||
         state == PeachNetOnline || state == PeachNetFailed ||
         (state == PeachNetRecovering && error && net_request.action != PeachControlLeave))
         net_leave_pending = 0;
-    unsigned scan_done = (net_scan_pending &&
-        (state == PeachNetReady || state == PeachNetOnline || state == PeachNetAssociating ||
-         state == PeachNetFailed || state == PeachNetOff || state == PeachNetRecovering)) ||
-        (net_snapshot.state == PeachNetRecovering && w && w->scan_finished && !w->scan_active &&
-         (state == PeachNetReady || state == PeachNetOnline || state == PeachNetAssociating));
-    if (scan_done) net_scan_pending = 0;
+    /* A Ready/Online status can arrive after a request was queued but before
+     * its worker executes. It is not that request's scan completion. Bind
+     * normal scans to the taken request ID, and deferred scans to an active
+     * radio-on with actual finished firmware results. Terminal states still
+     * complete cancellation so clients cannot wait forever. */
+    unsigned scan_cancelled = state == PeachNetFailed || state == PeachNetOff ||
+        (state == PeachNetRecovering && !(net_scan_during_power && net_power_requested));
+    unsigned scan_results_ready = w && w->scan_finished && !w->scan_active &&
+        (state == PeachNetReady || state == PeachNetOnline || state == PeachNetAssociating);
+    unsigned scan_done = net_scan_pending && (scan_cancelled ||
+        (scan_results_ready && (net_scan_during_power ? net_power_active :
+            net_active_scan == net_scan_request)));
+    if (scan_done) {
+        net_scan_pending = net_scan_during_power = 0;
+        net_active_scan = 0;
+    }
     unsigned join_done = net_join_pending && (net_active_join == net_join_request || state == PeachNetFailed) &&
         (state == PeachNetOnline || state == PeachNetReady || state == PeachNetFailed || state == PeachNetOff || state == PeachNetRecovering);
     net_snapshot.state = state; net_snapshot.error = error;

@@ -36,6 +36,9 @@ extern "C" {
 int native_gpu_trace_enabled(void) NATIVE_GPU_TRACE_LINK;
 void native_gpu_trace_record(uint32_t event,uint32_t pid,const uint64_t *values,uint32_t count) NATIVE_GPU_TRACE_LINK;
 uint32_t native_gpu_trace_snapshot(void *out,uint32_t bytes);
+/* Read existing ring records at/after cursor, never wait. Missing/overwritten
+ * slots are counted explicitly; max16 records and at most16 attempted slots. */
+uint32_t native_gpu_trace_page(uint64_t cursor,struct NativeGpuTraceRecord *out,uint32_t capacity,uint64_t *next,uint64_t *latest,uint64_t *missed);
 #ifdef __cplusplus
 }
 template<typename... T> static inline void gpuTraceEvent(uint32_t event,uint32_t pid,T... args) {

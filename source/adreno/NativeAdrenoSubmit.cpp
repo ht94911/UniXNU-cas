@@ -2,6 +2,12 @@
 #include "NativeGpuTrace.h"
 /* SPDX-License-Identifier: MIT */
 #include "NativeAdrenoSubmit.h"
+#include "NativeAdrenoPerf.h"
+extern "C" {uint64_t native_adreno_perf_jobs[14];}
+static void perfMaximum(unsigned slot,uint64_t value) {
+    uint64_t old=__atomic_load_n(&native_adreno_perf_jobs[slot],__ATOMIC_RELAXED);
+    while(value>old && !__atomic_compare_exchange_n(&native_adreno_perf_jobs[slot],&old,value,true,__ATOMIC_RELAXED,__ATOMIC_RELAXED)){}
+}
 #include "AdrenoPM4.h"
 #include <IOKit/IOLib.h>
 
@@ -31,6 +37,58 @@ extern "C" {volatile uint32_t native_adreno_fence_wait[8];}
  * The last 4: the map handle that was next when the stalled job was submitted, then the handles of the mappings under the BR IB1, the BV IB1
  * and the BV IB2 (0: unmapped). A handle at or above the first was mapped after the submission: its memory was freed and reused under the GPU. */
 extern "C" {volatile uint32_t native_adreno_stall[2+NativeAdrenoRingStallWords];volatile uint32_t native_adreno_stall_mem[4+3*17+4];}
+
+// NATIVE_ADRENO_CACHED_STALL_COPY_BEGIN
+static NativeAdrenoStallSample cachedStall;
+static uint32_t cachedStallSequence;
+/* noteStall has one writer under the existing submit lock. Scalar atomics
+ * keep the independent observer's copy race-free. An odd sequence means
+ * "unavailable", never a reason to spin or wait for the GPU caller. */
+static void publishCachedStall(const NativeAdrenoStallSample &sample)
+{
+    __atomic_add_fetch(&cachedStallSequence,1u,__ATOMIC_ACQ_REL);
+    for(unsigned i=0;i<24;++i)__atomic_store_n(&cachedStall.state[i],sample.state[i],__ATOMIC_RELAXED);
+    for(unsigned i=0;i<59;++i)__atomic_store_n(&cachedStall.memory[i],sample.memory[i],__ATOMIC_RELAXED);
+    for(unsigned i=0;i<20;++i)__atomic_store_n(&cachedStall.job[i],sample.job[i],__ATOMIC_RELAXED);
+    for(unsigned i=0;i<32;++i)__atomic_store_n(&cachedStall.ibs[i],sample.ibs[i],__ATOMIC_RELAXED);
+    __atomic_add_fetch(&cachedStallSequence,1u,__ATOMIC_RELEASE);
+}
+extern "C" bool native_adreno_copy_stall(NativeAdrenoStallSample *sample)
+{
+    if(!sample)return false;
+    const uint32_t version=__atomic_load_n(&cachedStallSequence,__ATOMIC_ACQUIRE);
+    if(!version || (version&1u))return false;
+    for(unsigned i=0;i<24;++i)sample->state[i]=__atomic_load_n(&cachedStall.state[i],__ATOMIC_RELAXED);
+    for(unsigned i=0;i<59;++i)sample->memory[i]=__atomic_load_n(&cachedStall.memory[i],__ATOMIC_RELAXED);
+    for(unsigned i=0;i<20;++i)sample->job[i]=__atomic_load_n(&cachedStall.job[i],__ATOMIC_RELAXED);
+    for(unsigned i=0;i<32;++i)sample->ibs[i]=__atomic_load_n(&cachedStall.ibs[i],__ATOMIC_RELAXED);
+    __atomic_thread_fence(__ATOMIC_ACQUIRE);
+    if(__atomic_load_n(&cachedStallSequence,__ATOMIC_RELAXED)!=version)return false;
+    sample->serial=version>>1;
+    return true;
+}
+// NATIVE_ADRENO_CACHED_STALL_COPY_END
+
+
+/* The job owns these generated IB descriptors. Match the active hardware
+ * address before falling back to the ring's prefetched descriptor. BV's
+ * snapshot has only the low address: accept it only when the match is unique. */
+static bool activeJobIb(const uint32_t *words,size_t count,uint64_t hardware,
+    bool low_only,uint32_t remaining,uint64_t *base,uint32_t *size)
+{
+    if(!words || !base || !size || !remaining || (count&3))return false;
+    bool found=false;
+    for(size_t i=0;i<count;i+=4) {
+        if(words[i]!=0x70bf8003u)continue; // CP_INDIRECT_BUFFER, three words.
+        const uint64_t address=(uint64_t(words[i+2])<<32)|words[i+1];
+        if((low_only?uint32_t(address)!=uint32_t(hardware):address!=hardware) ||
+            remaining>words[i+3])continue;
+        if(found && (*base!=address || *size!=words[i+3]))return false;
+        *base=address;*size=words[i+3];found=true;
+    }
+    return found;
+}
+
 /* 16 words of the IB at start, from 12 dwords before the dword the thread has reached (size minus what remains). */
 static void peekIb(const NativeAdrenoVm *vm,uint64_t start,uint32_t size,uint32_t remaining,volatile uint32_t *slot)
 {
@@ -130,6 +188,13 @@ IOReturn NativeAdrenoSubmit::useVm(NativeAdrenoVm *vm,const NativeAdrenoRingCloc
     if(!clock)return kIOReturnBadArgument;
     IOReturn status=waitAll(clock,2000000);
     if(status)return status;
+    /* A840's CPU write is outside the CP command stream. A timestamp can
+     * already be visible while the trailing THREAD_CONTROL/SET_MARKER still
+     * run. Keep the old table installed until both RPTR and RBBM are idle. */
+    if(ring(0)->chip()->generation==8) {
+        status=ring(0)->idle(clock,2000000);
+        if(status)return status; // No TTBR write or new job on uncertainty.
+    }
     status=write_table_(table_cookie_,vm->ttbr0());
     if(status)return poison();
     native_adreno_table_switches[1]=native_adreno_table_switches[1]+1;
@@ -144,7 +209,13 @@ IOReturn NativeAdrenoSubmit::forgetVm(NativeAdrenoVm *vm,const NativeAdrenoRingC
     bool used=table_vm_==vm;
     for(unsigned i=0;i<ring_count_;++i)used=used || ring(i)->table()==vm->ttbr0();
     if(!used)return kIOReturnSuccess;
-    /* The GPU is idle and every queued switch has run: the CPU puts the default table back. */
+    /* Teardown has the same CPU/CP handoff as a process switch. A completed
+     * job alone cannot authorize replacing (then destroying) its page table. */
+    if(ring(0)->chip()->generation==8) {
+        status=ring(0)->idle(clock,timeout_us);
+        if(status)return status;
+    }
+    /* Every queued switch and trailing packet has run: restore the default. */
     status=write_table_?write_table_(table_cookie_,vm_->ttbr0()):kIOReturnNotReady;
     if(status)return poison();
     native_adreno_table_switches[1]=native_adreno_table_switches[1]+1;
@@ -329,7 +400,20 @@ IOReturn NativeAdrenoSubmit::release(Job &job)
     {
         uint64_t start=0,end=0;
         NativeAdrenoRing *r=ringOfFence(job.fence);
-        const uint32_t stamped=r?r->timeline(job.fence,&start,&end):0;
+        uint32_t stamped=r?r->timeline(job.fence,&start,&end):0;
+        if(r && uint32_t(r->lastSubmitted()-job.fence)>=64)stamped|=32u; // circular timestamp slot may belong to a newer job
+        const uint64_t retired_us=clock_now_?clock_now_(clock_cookie_):0;
+        __atomic_fetch_add(&native_adreno_perf_jobs[1],1ull,__ATOMIC_RELAXED);
+        __atomic_store_n(&native_adreno_perf_jobs[3],retired_us,__ATOMIC_RELAXED);
+        __atomic_store_n(&native_adreno_perf_jobs[12],job.fence,__ATOMIC_RELAXED);
+        if((stamped&16) && !(stamped&32) && end>=start && start) {
+            __atomic_fetch_add(&native_adreno_perf_jobs[4],end-start,__ATOMIC_RELAXED);
+            __atomic_fetch_add(&native_adreno_perf_jobs[5],1ull,__ATOMIC_RELAXED);perfMaximum(6,end-start);
+        }
+        if(job.submit_us && retired_us>=job.submit_us) {
+            __atomic_fetch_add(&native_adreno_perf_jobs[9],retired_us-job.submit_us,__ATOMIC_RELAXED);
+            perfMaximum(10,retired_us-job.submit_us);
+        }
         gpuTraceEvent(GpuTraceRetire,job.owner,job.fence,job.queue,job.ring,job.submit_us,start,end,stamped,job.replays);
         if(native_adreno_tl_cap) {
             const uint32_t n=native_adreno_tl_count;volatile uint64_t *slot=native_adreno_tl[n&(native_adreno_tl_cap-1)];
@@ -372,6 +456,7 @@ IOReturn NativeAdrenoSubmit::submit(NativeAdrenoVm *vm,const NativeAdrenoSubmitB
     uint64_t queue,uint32_t *fence,const NativeAdrenoRingClock *clock)
 {
     if(!fence)return kIOReturnBadArgument;*fence=0;
+    const uint64_t entered_us=clock && clock->now_us?clock->now_us(clock->cookie):0;
     if(!vm)vm=vm_;
     NativeAdrenoVm *const vm_=vm;   /* this submission's VM: every vm_ below is the job's own */
     if(!attached_ || poisoned_)return kIOReturnNotReady;
@@ -538,6 +623,13 @@ IOReturn NativeAdrenoSubmit::submit(NativeAdrenoVm *vm,const NativeAdrenoSubmitB
     if(clock && clock->now_us) {clock_now_=clock->now_us;clock_cookie_=clock->cookie;}
     job->level=&native_gpu_dcvs?native_gpu_dcvs[1]:0;
     job->owner=next_owner_;next_owner_=0;
+    __atomic_fetch_add(&native_adreno_perf_jobs[0],1ull,__ATOMIC_RELAXED);
+    __atomic_store_n(&native_adreno_perf_jobs[2],job->submit_us,__ATOMIC_RELAXED);
+    __atomic_store_n(&native_adreno_perf_jobs[11],value,__ATOMIC_RELAXED);
+    if(entered_us && job->submit_us>=entered_us) {
+        const uint64_t elapsed=job->submit_us-entered_us;
+        __atomic_fetch_add(&native_adreno_perf_jobs[7],elapsed,__ATOMIC_RELAXED);perfMaximum(8,elapsed);
+    }
     gpuTraceEvent(GpuTraceSubmit,job->owner,value,queue,index,job->priority,job->role,job->loaded,job->flight,job->context,job->submit_us,handle_count);
     for(size_t i=0;i<word_count;++i)job->words[i]=words[i];
     ++stats_.submissions;
@@ -633,29 +725,48 @@ void NativeAdrenoSubmit::noteStall(uint32_t observed,const NativeAdrenoRingClock
     uint32_t words[NativeAdrenoRingStallWords]={},fault[4]={};
     if(stalled->stallState(words))return;
     log(next,4,pending,words[8]&0xffff,words[9]&0xffff);
-    (void)vm_->faultState(fault);
+    const IOReturn faultStatus=vm_->faultState(fault);
     for(uint32_t i=0;i<4;++i)native_adreno_stall_mem[i]=fault[i];
     uint64_t ib=0;uint32_t size=0;
     /* The IBs are the stalled job's: read them through its address space (the kernel's maps none of a client's BOs). */
     const Job *job=find(next);
     const NativeAdrenoVm *space=job && job->vm?job->vm:vm_;
-    if(!stalled->ibBefore(words[8],&ib,&size))peekIb(space,ib,size,words[12],&native_adreno_stall_mem[4]);
-    else peekFetch(space,(uint64_t)words[11]<<32|words[10],&native_adreno_stall_mem[4]);
-    if(!stalled->ibBefore(words[16],&ib,&size))peekIb(space,ib,size,words[18],&native_adreno_stall_mem[4+17]);
-    else peekFetch(space,(uint64_t)words[11]<<32|words[17],&native_adreno_stall_mem[4+17]);   /* BV IB1 base: the low word only */
+    uint64_t activeBr=(uint64_t)words[11]<<32|words[10],activeBv=(uint64_t)words[11]<<32|words[17];
+    if((job && activeJobIb(job->words,job->word_count,activeBr,false,words[12],&ib,&size)) ||
+        !stalled->ibBefore(words[8],&ib,&size)) {
+        activeBr=ib;peekIb(space,ib,size,words[12],&native_adreno_stall_mem[4]);
+    } else peekFetch(space,activeBr,&native_adreno_stall_mem[4]);
+    if((job && activeJobIb(job->words,job->word_count,words[17],true,words[18],&ib,&size)) ||
+        !stalled->ibBefore(words[16],&ib,&size)) {
+        activeBv=ib;peekIb(space,ib,size,words[18],&native_adreno_stall_mem[4+17]);
+    } else peekFetch(space,activeBv,&native_adreno_stall_mem[4+17]);
     peekFetch(space,(uint64_t)words[21]<<32|words[20],&native_adreno_stall_mem[4+34]);
     {
-        uint64_t brIb=(uint64_t)words[11]<<32|words[10],bvIb=(uint64_t)words[11]<<32|words[17];
-        if(!stalled->ibBefore(words[8],&ib,&size))brIb=ib;
-        if(!stalled->ibBefore(words[16],&ib,&size))bvIb=ib;
         native_adreno_stall_mem[55]=job?(uint32_t)job->vm_next:0;
-        native_adreno_stall_mem[56]=(uint32_t)space->handleAt(brIb);
-        native_adreno_stall_mem[57]=(uint32_t)space->handleAt(bvIb);
+        native_adreno_stall_mem[56]=(uint32_t)space->handleAt(activeBr);
+        native_adreno_stall_mem[57]=(uint32_t)space->handleAt(activeBv);
         native_adreno_stall_mem[58]=(uint32_t)space->handleAt((uint64_t)words[21]<<32|words[20]);
     }
     for(uint32_t i=0;i<NativeAdrenoRingStallWords;++i)native_adreno_stall[2+i]=words[i];
     native_adreno_stall[1]=stall_timeouts;
     native_adreno_stall[0]=next;
+
+    // Publish only values this path has already read or owns under its lock.
+    // Do not read a new register or dereference a buffer from the observer.
+    NativeAdrenoStallSample sample{};
+    for(unsigned i=0;i<24;++i)sample.state[i]=native_adreno_stall[i];
+    for(unsigned i=0;i<59;++i)sample.memory[i]=native_adreno_stall_mem[i];
+    const uint64_t metadata[20]={
+        now,pending,job?job->submit_us:0,job?job->queue:0,
+        space->ttbr0(),table_vm_?table_vm_->ttbr0():0,job?job->vm_next:0,
+        job?uint32_t(job->owner):0,job?job->context:0,job?job->ring:0u,
+        job?job->count:0,outstanding(),table_mode_,uint32_t(faultStatus),
+        observed,stalled->lastSubmitted(),job?job->word_count:0,stall_stage,
+        job?uint32_t(job->priority+1):0,stalled->chip()->generation
+    };
+    for(unsigned i=0;i<20;++i)sample.job[i]=metadata[i];
+    if(job)for(unsigned i=0;i<32 && i<job->word_count;++i)sample.ibs[i]=job->words[i];
+    publishCachedStall(sample);
 }
 IOReturn NativeAdrenoSubmit::wait(uint32_t fence,const NativeAdrenoRingClock *clock,
     uint32_t timeout_us)

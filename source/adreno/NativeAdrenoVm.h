@@ -29,6 +29,11 @@ struct NativeAdrenoVmResult {
  * validation/protection, genuine IRQ fences and reset are implemented. */
 /* Board hook for sampleWord(): reads one aligned word of physical memory through a fresh uncached mapping; 0 on success. */
 extern "C" int (*native_adreno_dram_read32)(uint64_t physical,uint32_t *value);
+/* Stall-only bulk reader. At most 64 aligned dwords within one owned DRAM
+ * page; the board maps, reads and unmaps that page without cache maintenance.
+ * peekWordsUncached resolves the live BO spans before invoking it. This hook
+ * is not used by the per-submission coherence audit or ordinary IB log. */
+extern "C" int (*native_adreno_stall_read_words)(uint64_t physical,uint32_t *out,size_t count);
 /* The board's reader through the kernel's cacheable physical aperture (null on the host: the BO's own mapping is read). */
 extern "C" int (*native_adreno_cached_read32)(uint64_t physical,uint32_t *value);
 /* Board hook for auditRange(): [physical, physical+bytes), whole 64-byte lines inside one page, as the cacheable physical aperture and

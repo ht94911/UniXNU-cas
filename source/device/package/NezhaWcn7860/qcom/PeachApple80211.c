@@ -382,25 +382,35 @@ int peach_apple80211_ioctl(u_long command, void *data)
         }
         return err;
     }
+    uint64_t began = mach_absolute_time();
     int err = get(r);
-    if (err && r->type != 11) {
-        /* A manual join can fail in a preceding capability/status query.
-         * Report each observed type/error/state once, within a fixed budget.
-         * Preserve the real error; never claim an unsupported query worked. */
-        static struct { int32_t type, error; unsigned state; } seen[32];
-        static unsigned count;
+    if (r->type != 11) {
+        /* The password dialog can wait before issuing an association. Keep
+         * bounded scalar query results after each cache enumeration, rather
+         * than exhausting all observations during the initial power cycle.
+         * Never log user buffers, credentials, names, or query contents. */
+        static struct { int32_t type, error; unsigned state; } seen[24];
+        static unsigned count, seen_generation, reports;
         PeachNetInfo info; peach_net_info(&info);
-        unsigned report = 0;
+        uint64_t elapsed_ns = 0;
+        absolutetime_to_nanoseconds(mach_absolute_time() - began, &elapsed_ns);
+        unsigned report = 0, generation;
         lck_mtx_lock(&apple_lock);
+        generation = result_generation;
+        if (generation != seen_generation) { count = 0; seen_generation = generation; }
         unsigned i = 0;
         while (i < count && !(seen[i].type == r->type && seen[i].error == err && seen[i].state == info.state)) i++;
-        if (i == count && count < 32) {
-            seen[count].type = r->type; seen[count].error = err; seen[count].state = info.state;
-            count++; report = 1;
+        if (reports < 192 && ((i == count && count < 24) || elapsed_ns >= 20000000)) {
+            if (i == count && count < 24) {
+                seen[count].type = r->type; seen[count].error = err; seen[count].state = info.state;
+                count++;
+            }
+            reports++; report = 1;
         }
         lck_mtx_unlock(&apple_lock);
-        if (report) printf("NEZHA WIFI: Apple get rejected pid %d type %d bytes %u result %d state %u powered %u\n",
-            proc_pid(current_proc()), r->type, r->length, err, info.state, info.powered);
+        if (report) printf("NEZHA WIFI: Apple query pid %d type %d bytes %u result %d state %u powered %u epoch %u elapsed-us %llu\n",
+            proc_pid(current_proc()), r->type, r->length, err, info.state, info.powered,
+            generation, (unsigned long long)(elapsed_ns / 1000));
     }
     return err;
 }

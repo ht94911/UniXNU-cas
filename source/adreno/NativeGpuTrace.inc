@@ -88,3 +88,18 @@ extern "C" uint32_t native_gpu_trace_snapshot(void *out,uint32_t bytes)
         if(gpuTrace.read(n,records+header->count))++header->count;
     return sizeof(*header)+header->count*sizeof(*records);
 }
+
+extern "C" uint32_t native_gpu_trace_page(uint64_t cursor,NativeGpuTraceRecord *out,uint32_t capacity,uint64_t *next,uint64_t *latest,uint64_t *missed)
+{
+    if(!out || !next || !latest || !missed || !capacity || capacity>16 || !native_gpu_trace_enabled())return 0;
+    *latest=__atomic_load_n(&gpuTrace.issued,__ATOMIC_ACQUIRE);*missed=0;
+    const uint64_t first=*latest>gpuTrace.capacity?*latest-gpuTrace.capacity+1:1;
+    uint64_t at=cursor?cursor:first;
+    if(at<first){*missed=first-at;at=first;}
+    uint32_t count=0,attempted=0;
+    while(at<=*latest && attempted<capacity) {
+        if(gpuTrace.read(at,out+count))++count;else ++*missed;
+        ++at;++attempted;
+    }
+    *next=at;return count;
+}
