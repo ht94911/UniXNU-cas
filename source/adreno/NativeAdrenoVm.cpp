@@ -3,6 +3,7 @@
 #include "NativeAdrenoVmAlias.h"
 extern "C" volatile uint32_t native_adreno_trace_stage;
 extern "C" {int (*native_adreno_dram_read32)(uint64_t,uint32_t *);int (*native_adreno_cached_read32)(uint64_t,uint32_t *);
+    int (*native_adreno_stall_read_words)(uint64_t,uint32_t *,size_t);
     int (*native_adreno_line_audit)(uint64_t,size_t,uint32_t *,uint32_t *);}
 #include <string.h>
 #include <IOKit/IOLib.h>
@@ -560,7 +561,26 @@ IOReturn NativeAdrenoVm::peekWordsUncached(uint64_t iova,uint32_t *out,size_t co
     for(size_t i=0;i<high_;++i) {
         const Mapping &m=mappings_[i];
         if(!m.memory || iova<m.iova || iova-m.iova>=m.memory->bytes())continue;
-        if(!m.memory->mapping())return peekWords(iova,out,count);   /* read from DRAM already */
+        if(!m.memory->mapping() && native_adreno_stall_read_words) {
+            const size_t offset=size_t(iova-m.iova);
+            if((iova&3) || count>64 || count>(m.memory->bytes()-offset)/4)return kIOReturnBadArgument;
+            size_t done=0;
+            for(size_t j=0;j<m.memory->spanCount() && done<count;++j) {
+                const auto &span=m.memory->spans()[j];
+                size_t at=offset+done*4;
+                if(at<span.offset || at-span.offset>=span.bytes)continue;
+                while(done<count && at-span.offset<span.bytes) {
+                    const uint64_t physical=span.physical+(at-span.offset);
+                    size_t words=(4096-size_t(physical&4095))/4;
+                    if(words>(span.bytes-(at-span.offset))/4)words=(span.bytes-(at-span.offset))/4;
+                    if(words>count-done)words=count-done;
+                    if(!words || native_adreno_stall_read_words(physical,out+done,words))return kIOReturnIOError;
+                    done+=words;at+=words*4;
+                }
+            }
+            return done==count?kIOReturnSuccess:kIOReturnBadArgument;
+        }
+        if(!m.memory->mapping())return peekWords(iova,out,count);   /* legacy board DRAM reader */
         const size_t offset=(size_t)(iova-m.iova),first=offset&~(size_t)4095;
         const size_t end=offset+4*count<m.memory->bytes()?offset+4*count:m.memory->bytes();
         const size_t bytes=((end+4095)&~(size_t)4095)-first;

@@ -45,6 +45,28 @@ extern "C" bool native_adreno_gpu_rendering_active(void)
 {
     return __atomic_load_n(&native_adreno840_metal,__ATOMIC_ACQUIRE)!=0;
 }
+
+// Reuse sheng's fresh uncached DRAM mapping, restricted to an already-owned
+// IB range and one page per call. The caller holds the existing GPU gate;
+// no mapping survives the read and no CPU cache line is cleaned or discarded.
+extern "C" vm_offset_t ml_io_map_unmappable(vm_offset_t,vm_size_t,unsigned int);
+extern "C" void ml_io_unmap(vm_offset_t,vm_size_t);
+extern "C" uint64_t gPhysBase,gPhysSize;
+static int readStallWords(uint64_t physical,uint32_t *out,size_t count)
+{
+    if(!out || !count || count>64 || (physical&3) ||
+        count>(4096-size_t(physical&4095))/4 || physical<gPhysBase ||
+        physical-gPhysBase>=gPhysSize || count>(gPhysSize-(physical-gPhysBase))/4)return 1;
+    const vm_offset_t mapped=ml_io_map_unmappable(vm_offset_t(physical&~uint64_t(4095)),4096,0x7 /* VM_WIMG_IO */);
+    if(!mapped)return 1;
+    const volatile uint32_t *words=reinterpret_cast<const volatile uint32_t *>(mapped+(physical&4095));
+    __asm__ volatile("dsb sy":::"memory");
+    for(size_t i=0;i<count;++i)out[i]=words[i];
+    __asm__ volatile("dmb oshld":::"memory");
+    ml_io_unmap(mapped,4096);
+    return 0;
+}
+
 namespace {
 // NEZHA_GPU_DIAGNOSTIC_PUBLICATION_BEGIN
 NezhaGpuPublicationMode publicationMode = NezhaGpuPublicationMode::Off;
@@ -252,6 +274,7 @@ IOReturn bringUp()
     info.va_size=(1ull<<context->inputBits())-GpuClientVaStart;
     info.highest_bank_bit=16;info.ubwc_swizzle=6;info.macrotile_mode=1;info.ubwc_version=6;
     info.flags=NativeAdrenoDeviceClientIova;
+    native_adreno_stall_read_words=readStallWords;
     status=native_adreno_publish(vm,&submit,&ring,&clock,&timer,&info,context->inputBits(),report.output_bits);
     if(checkpoint(13,status,"NativeAdreno user client"))return status;
     int metal=0;PE_parse_boot_argn("nezha-gpu-metal",&metal,sizeof metal);

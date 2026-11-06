@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "cf8add9613e2df749e24783b4bd811b0d1526ca1",
+  "device_revision": "dd6518befe77b76e8d854a35b6bf79036c228a02",
   "soc_revision": "5a71f9eb5724ff58eddf49f7f5baecc9f4233a7c",
   "xcode": "26.6",
   "files": {
@@ -60,14 +60,14 @@
     "source/adreno/NativeAdrenoSmmuMemory.h": "ca2d91e3b4d8a4ff1f7da16419761b6588d34f044fdb16bb535276b811de8713",
     "source/adreno/NativeAdrenoSmmuService.h": "6e5a666a4c6b28c9dc3ae6c59ce4c55ccb1ef63ac49901cf56759f0dd5a905df",
     "source/adreno/NativeAdrenoStatus.h": "7305cce3eefbf63176fd08f3d6eb92aa4b874fffb37bda94666fea53d62a2a34",
-    "source/adreno/NativeAdrenoSubmit.cpp": "dae07309462e2a83be99937b09133094b5aa38ff6764938e51dab84a1e18b75a",
+    "source/adreno/NativeAdrenoSubmit.cpp": "3ff1ab3e47d943623717c70dbfef3c58a2f2f1c5e684fffa2c7e826a9d8d0299",
     "source/adreno/NativeAdrenoSubmit.h": "1f54bc502e63eeb49488535ef6051d9b06677932961a7484ddc02ff5fe7d40b9",
     "source/adreno/NativeAdrenoTimer.cpp": "8f4f2e3c1f774b464e6b284af5ba03679daf797942187550341cf1a513bf229a",
     "source/adreno/NativeAdrenoTimer.h": "7f338cf3c60495f5912a6ad8c83e81bad7883e34a0f6743b11c326b8fea1e364",
     "source/adreno/NativeAdrenoUserClient.cpp": "f30f4c6e92c185d810b3fef03c5ab78e87dc80a30869466475b79b522d019fca",
     "source/adreno/NativeAdrenoUserClient.h": "a01ea3b9622f12d87f52ce248e20c2d6c8c61b6d580e298c475b84da2bfddae3",
-    "source/adreno/NativeAdrenoVm.cpp": "bd37a1bf356d59c7232583f1094f61b41ead988efdef6487e5d7975c7a4dfc0e",
-    "source/adreno/NativeAdrenoVm.h": "fe1db135e2384e86890d0b81e99b3b5e388c565e85a784559a4486b34926af0f",
+    "source/adreno/NativeAdrenoVm.cpp": "da874bcd76734c46720bf4d00d4189cfb57ca73fe1c8ac3957ccc052665acdf7",
+    "source/adreno/NativeAdrenoVm.h": "4318dda8ba2a09497a89c848ef7d3e66947f2b09c8ec271afbc38457d0f8d895",
     "source/adreno/NativeAdrenoVmAlias.h": "35fe908bd80389a18e395eb3bfdd5a40cb2c133fe6634dbead8d68cf2822eeea",
     "source/adreno/NativeGpuLatency.h": "91b1e93c11344aea43a8f04d4a42141e316f3774a4f0f95d61c3c84540424736",
     "source/adreno/NativeGpuPerfCounters.h": "388abc2f0423606c770fa2f71c1942c5155abc22308ed0871fb482d7cb6b738a",
@@ -126,7 +126,7 @@
     "source/device/package/boot-progress/UmiUserspaceProbe.c": "ec20306bfc7359cf21c5a20102b459cf7f6a264a60dcb7ee2b00f2a9158d0f60",
     "source/device/package/boot-progress/UmiWaitTrace.h": "b8183c4e9defd5ec9c3ed231451cf89c204629d7285cb125de7e366f9b13858b",
     "source/device/package/boot-progress/upstream.json": "bbcd4cc639b104c9d4619076c8350cfb90483a92347dcd5e39443ba0f8fd8a13",
-    "source/device/package/gpu/NezhaAdreno840.cpp": "6bf2e75523a40eeaec56b30e6eea4d433522da91f1de3ad5f6a5016d64e38761",
+    "source/device/package/gpu/NezhaAdreno840.cpp": "e06a161fa4216785097cf704aadc6268259b81d59bbe8497d8112b3df29fd90e",
     "source/device/package/gpu/NezhaGpu.c": "b4aab894f8ec52822e838fa2354a206bf7fa844e2c4a98e03dc14ccbd1855793",
     "source/device/package/gpu/NezhaGpuFirmware.cpp": "6318b3d5cbd478f185dd0669a597440f2a3878d2991fd611fe6741a5d58b3909",
     "source/device/package/gpu/NezhaGpuFirmware.h": "fd75af351256dcbb72d0cf83ceeda4cee524475324edaf086b50ae34093d580e",
@@ -165,7 +165,7 @@
     "source/device/patches/xnu-12377/zzzzzz-nezha-input-chain-trace.patch": "c4d05419e7ec3af0de619754bdb6c2deb69b74d714c2219e509360ebfe1b947e",
     "source/device/patches/xnu-12377/zzzzzz-nezha-kernel-class-lock-order.patch": "cd90c61d6838f4e6a7248da81b6180f14db03d00f2f7a64f4bbe4034c0aa8dcb",
     "source/device/patches/xnu-12377/zzzzzz-nezha-sigp-startup-order.patch": "18275910b909d187e459c68f5d937cc09bc01923180141dc155aa7f4ff14aaf9",
-    "source/device/porting.toml": "8aab4cba358beb2bf0893ecdb85abe27e87a1283cf7f2e0601bd08af4380cb04",
+    "source/device/porting.toml": "339c69d0bb7468a59b21fd4872b8b30e1c2cd00d1800aeef7281a79768ddb230",
     "source/device/scripts/backlight-iphone-24A446.json": "446eb5fe6440335bfe9fca75b32f7d815ddcafbb8a3c2d7f697c1e5c3f40f6cb",
     "source/device/scripts/build-adreno840.py": "09da7c944e865bccf642e2668526cbcdef72de44e28d891ab40feb35c2573644",
     "source/device/scripts/build-boot-progress.py": "a210eb1f0443574eb1506932aa9e8181d5c73aecf99397d8cc731568bd3210ba",
@@ -247,7 +247,7 @@
     "main_package_modified": false
   },
   "gpu": {
-    "common_revision": "0f1b869612cecdf5a5c0965c784389e9dff3d047",
+    "common_revision": "f43109ceaf7023486cbd2af3bc8aa69294d7e3a1",
     "common_upstream": "6fa7bae2a5b3b523e790eb3e0348af4d98969e4d",
     "metal_revision": "816022307852de7e1741ac05ae9111982318763f",
     "firmware_uploaded": false,
