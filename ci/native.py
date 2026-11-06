@@ -111,7 +111,7 @@ def prepare(framework, work):
     (work / 'build.toml').write_text(text)
     run([sys.executable, work / 'device/scripts/check-adreno840-integration.py',
          '--framework', framework, '--device', work / 'device',
-         '--out', work / 'integration-source-qualified.json'])
+         '--wifi-ram-test', '--out', work / 'integration-source-qualified.json'])
     (work / 'source-report.json').write_text(json.dumps({
         'source_inputs': manifest, 'actual_framework_base': run(['git', 'rev-parse', 'HEAD'], cwd=framework),
         'actual_framework_tree': tree, 'source_tree_verified': True, 'jobs': jobs,
@@ -225,6 +225,9 @@ def collect(framework, work, sealed):
         for path in sorted((tree / 'build/nezha27-usb-control').glob('*')):
             if path.is_file() and path.suffix in ('.json','.log','.o','.c'):
                 add(path, 'archives/nezha27-usb-control/' + path.name)
+        for path in sorted((tree / 'build/nezha27-wifi').rglob('*')):
+            if path.is_file() and path.suffix in ('.json', '.log', '.o', '.txt', '.d'):
+                add(path, 'archives/nezha27-wifi/' + str(path.relative_to(tree / 'build/nezha27-wifi')))
         for path in sorted((tree / 'build/nezha27-input').glob('*')):
             if path.is_file() and path.suffix in ('.json','.log','.o','.S','.h','.cpp','.c'):
                 add(path, 'archives/nezha27-input/' + path.name)
@@ -241,6 +244,10 @@ def collect(framework, work, sealed):
                 if path.suffix in ('.log', '.json', '.o'):
                     add(path, 'usb-attempts/' + attempt.parent.name + '/' + path.name)
         objects = tree / 'build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837'
+        for pattern in ('IOPlatformExpert.cpo*', 'uipc_mbuf.o*'):
+            for path in sorted(objects.glob('**/' + pattern)):
+                if path.suffix in ('.o', '.cpo', '.json'):
+                    add(path, 'objects/' + str(path.relative_to(objects)))
         for name in ('link.filelist', 'all-alias.exp'):
             add(objects / name, 'objects/' + name)
         add(tree / 'build/xnu/owner-data-volume.h', 'build/owner-data-volume.h')
@@ -264,7 +271,7 @@ def collect(framework, work, sealed):
             for name in ('inputs.json', 'source-sha256.json', 'lto-command.json', 'lto-build.log'):
                 add(selected / name, 'reference/' + name)
         for stem in ('start', 'pe_kprintf', 'debug', 'printf', 'serial_console', 'serial_general',
-                     'bsd_init', 'subr_prf', 'arm_init', 'startup', 'machine_routines', 'IOUserServer'):
+                     'bsd_init', 'subr_prf', 'arm_init', 'startup', 'machine_routines', 'machine_routines_asm', 'sleh', 'kern_event', 'IOUserServer'):
             for path in sorted(objects.glob('**/' + stem + '.o*')):
                 if path.suffix in ('.o', '.json'):
                     add(path, 'objects/' + str(path.relative_to(objects)))
