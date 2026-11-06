@@ -1079,6 +1079,7 @@ static const struct { uint32_t hz, level; } gpu_opps[] = {
 #define NGMU (1 + sizeof(gmu_opps) / sizeof(gmu_opps[0]))
 
 static uint32_t hfi_seq;
+static uint32_t shared_boot_perf=1,shared_boot_bw=1;
 
 /* cmd-db aux data of a .lvl resource: u16 levels. */
 static unsigned
@@ -1419,6 +1420,7 @@ gpu_level8(void)
 	vote[2] = perf;         /* perf index */
 	vote[3] = bwi;          /* bw index */
 	bool voted = hfi_send(HFI_H2F_MSG_GX_BW_PERF_VOTE, vote, 4);
+	if (voted) { shared_boot_perf=perf; shared_boot_bw=bwi; }
 	printf("PANDORA GPU: HFI GX vote %u MHz, %u KBps %s; pwr_clk_status %08x intr info %08x\n",
 	    gpu_opps[perf - 1].hz / 1000000, gpu_ddr_kbps[bwi], voted ? "ACKED" : "NOT ACKED",
 	    gmu_rd(GMU_PWR_CLK_STATUS), gmu_rd(GMU_GMU2HOST_INTR_INFO));
@@ -3926,4 +3928,90 @@ nezha_gpu_platform_render_state(void)
     gpu_level15();
     return gr(0xf08) == (64u << 20) && gr(0xf09) == 0 && gr(0x8b6) == 0x7f007f ? 0 : EIO;
 }
+
+/* Shared backend performance owner. Only this normal thread sends runtime
+ * HFI votes. USB callbacks merely copy cached words or set a bounded lease. */
+#include "NezhaGpuPerfPolicy.h"
+extern uint64_t native_adreno_perf_jobs[14];
+extern uint32_t system_inshutdown;
+static uint32_t shared_perf_seq,shared_perf_started,shared_perf_mode;
+static uint64_t shared_perf_until,shared_perf_words[16];
+static const uint8_t shared_opp_bw[] = {1,1,1,2,2,2,3,3,3,3,5,5,7,7,9,9,11,11};
+static uint64_t perf_now_us(void) {uint64_t ns=0;absolutetime_to_nanoseconds(mach_absolute_time(),&ns);return ns/1000;}
+static bool shared_busy_read(uint64_t *out)
+{
+    for(unsigned attempt=0;attempt<3;++attempt) {
+        const uint32_t hi=gmu_rd(0x1fca1u),lo=gmu_rd(0x1fca0u),again=gmu_rd(0x1fca1u);
+        if(hi==again){*out=((uint64_t)hi<<32)|lo;return true;}
+    }
+    return false;
+}
+int nezha_gpu_platform_perf_copy(uint64_t out[16])
+{
+    if(!out)return EINVAL;
+    const uint32_t seq=__atomic_load_n(&shared_perf_seq,__ATOMIC_ACQUIRE);
+    if(!seq || (seq&1))return EAGAIN;
+    for(unsigned i=0;i<16;++i)out[i]=__atomic_load_n(&shared_perf_words[i],__ATOMIC_RELAXED);
+    __atomic_thread_fence(__ATOMIC_ACQUIRE);
+    return seq==__atomic_load_n(&shared_perf_seq,__ATOMIC_RELAXED)?0:EAGAIN;
+}
+int nezha_gpu_platform_perf_control(uint32_t mode,uint32_t ms)
+{
+    if(!shared_perf_started || mode>2 || (mode && (!ms || ms>10000)))return EINVAL;
+    __atomic_store_n(&shared_perf_until,mode?perf_now_us()+(uint64_t)ms*1000:0,__ATOMIC_RELAXED);
+    __atomic_store_n(&shared_perf_mode,mode,__ATOMIC_RELEASE);
+    return 0;
+}
+static void shared_perf_thread(void *arg,wait_result_t result)
+{
+    (void)arg;(void)result;
+    uint32_t cur=shared_boot_perf,bw=shared_boot_bw,changes=0,failures=0;uint64_t last=perf_now_us(),prev=0;
+    gmu_wr(0x23b0eu,0xff000000u);
+    gmu_wr(0x1fc40u,(gmu_rd(0x1fc40u)&~0xffu)|(1u<<5));
+    gmu_wr(0x1fc10u,1);
+    bool prev_valid=shared_busy_read(&prev);
+    printf("NEZHA GPU PERF: shared DCVS on; idle222 active578 cap578 MHz; bounded HFI owner and 19.2MHz busy counter\n");
+    for(;;) {
+        gpu_sleep(16);
+        if(__atomic_load_n(&system_inshutdown,__ATOMIC_ACQUIRE))break;
+        const uint64_t now=perf_now_us(),dt=now-last;uint64_t busy=0;
+        const bool sampled=shared_busy_read(&busy);
+        const uint64_t delta=busy-prev;
+        const bool valid=sampled && prev_valid && dt && dt<=1000000 && delta<=(dt*192/10)+64;
+        const uint64_t busy_us=valid?delta*10/192:0;
+        const uint32_t permille=valid?(uint32_t)MIN(1000ull,busy_us*1000/dt):0;
+        const uint64_t submitted=__atomic_load_n(&native_adreno_perf_jobs[0],__ATOMIC_RELAXED);
+        const uint64_t retired=__atomic_load_n(&native_adreno_perf_jobs[1],__ATOMIC_RELAXED);
+        const uint64_t last_submit=__atomic_load_n(&native_adreno_perf_jobs[2],__ATOMIC_RELAXED);
+        const uint64_t last_retire=__atomic_load_n(&native_adreno_perf_jobs[3],__ATOMIC_RELAXED);
+        const bool pending=submitted>retired;
+        const uint64_t progress=last_retire?last_retire:last_submit;
+        const bool stalled=pending && last_submit && now>=progress && now-progress>1000000;
+        const uint64_t since_submit=last_submit?(now>=last_submit?now-last_submit:0):UINT64_MAX;
+        uint32_t mode=__atomic_load_n(&shared_perf_mode,__ATOMIC_ACQUIRE);
+        const uint64_t until=__atomic_load_n(&shared_perf_until,__ATOMIC_RELAXED);
+        if(mode && now>=until)mode=0;
+        const uint32_t wanted=nezha_gpu_perf_level(mode,permille,since_submit,pending,stalled);
+        if(wanted!=cur && !failures) {
+            uint32_t vote[4]={0,1,wanted,shared_opp_bw[wanted-1]};
+            if(hfi_send(HFI_H2F_MSG_GX_BW_PERF_VOTE,vote,4)){cur=wanted;bw=shared_opp_bw[wanted-1];++changes;}
+            else ++failures; // retain last ACKed level; do not hammer the mailbox
+        }
+        const uint64_t words[16]={1,now,cur,gpu_opps[cur-1].hz/1000000,gpu_ddr_kbps[bw],
+            busy,dt,busy_us,permille,changes,failures,valid,mode,until,stalled,pending};
+        __atomic_add_fetch(&shared_perf_seq,1u,__ATOMIC_ACQ_REL);
+        for(unsigned i=0;i<16;++i)__atomic_store_n(&shared_perf_words[i],words[i],__ATOMIC_RELAXED);
+        __atomic_add_fetch(&shared_perf_seq,1u,__ATOMIC_RELEASE);
+        last=now;prev=busy;prev_valid=sampled;
+    }
+    thread_terminate(current_thread());thread_block(THREAD_CONTINUE_NULL);
+}
+int nezha_gpu_platform_perf_start(void)
+{
+    if(!shared_prepared || !shared_cp_programmed || shared_perf_started)return EBUSY;
+    thread_t thread;
+    if(kernel_thread_start(shared_perf_thread,NULL,&thread)!=KERN_SUCCESS)return EIO;
+    thread_deallocate(thread);shared_perf_started=1;return 0;
+}
+
 #endif

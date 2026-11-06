@@ -2,6 +2,12 @@
 #include "NativeGpuTrace.h"
 /* SPDX-License-Identifier: MIT */
 #include "NativeAdrenoSubmit.h"
+#include "NativeAdrenoPerf.h"
+extern "C" {uint64_t native_adreno_perf_jobs[14];}
+static void perfMaximum(unsigned slot,uint64_t value) {
+    uint64_t old=__atomic_load_n(&native_adreno_perf_jobs[slot],__ATOMIC_RELAXED);
+    while(value>old && !__atomic_compare_exchange_n(&native_adreno_perf_jobs[slot],&old,value,true,__ATOMIC_RELAXED,__ATOMIC_RELAXED)){}
+}
 #include "AdrenoPM4.h"
 #include <IOKit/IOLib.h>
 
@@ -394,7 +400,20 @@ IOReturn NativeAdrenoSubmit::release(Job &job)
     {
         uint64_t start=0,end=0;
         NativeAdrenoRing *r=ringOfFence(job.fence);
-        const uint32_t stamped=r?r->timeline(job.fence,&start,&end):0;
+        uint32_t stamped=r?r->timeline(job.fence,&start,&end):0;
+        if(r && uint32_t(r->lastSubmitted()-job.fence)>=64)stamped|=32u; // circular timestamp slot may belong to a newer job
+        const uint64_t retired_us=clock_now_?clock_now_(clock_cookie_):0;
+        __atomic_fetch_add(&native_adreno_perf_jobs[1],1ull,__ATOMIC_RELAXED);
+        __atomic_store_n(&native_adreno_perf_jobs[3],retired_us,__ATOMIC_RELAXED);
+        __atomic_store_n(&native_adreno_perf_jobs[12],job.fence,__ATOMIC_RELAXED);
+        if((stamped&16) && !(stamped&32) && end>=start && start) {
+            __atomic_fetch_add(&native_adreno_perf_jobs[4],end-start,__ATOMIC_RELAXED);
+            __atomic_fetch_add(&native_adreno_perf_jobs[5],1ull,__ATOMIC_RELAXED);perfMaximum(6,end-start);
+        }
+        if(job.submit_us && retired_us>=job.submit_us) {
+            __atomic_fetch_add(&native_adreno_perf_jobs[9],retired_us-job.submit_us,__ATOMIC_RELAXED);
+            perfMaximum(10,retired_us-job.submit_us);
+        }
         gpuTraceEvent(GpuTraceRetire,job.owner,job.fence,job.queue,job.ring,job.submit_us,start,end,stamped,job.replays);
         if(native_adreno_tl_cap) {
             const uint32_t n=native_adreno_tl_count;volatile uint64_t *slot=native_adreno_tl[n&(native_adreno_tl_cap-1)];
@@ -437,6 +456,7 @@ IOReturn NativeAdrenoSubmit::submit(NativeAdrenoVm *vm,const NativeAdrenoSubmitB
     uint64_t queue,uint32_t *fence,const NativeAdrenoRingClock *clock)
 {
     if(!fence)return kIOReturnBadArgument;*fence=0;
+    const uint64_t entered_us=clock && clock->now_us?clock->now_us(clock->cookie):0;
     if(!vm)vm=vm_;
     NativeAdrenoVm *const vm_=vm;   /* this submission's VM: every vm_ below is the job's own */
     if(!attached_ || poisoned_)return kIOReturnNotReady;
@@ -603,6 +623,13 @@ IOReturn NativeAdrenoSubmit::submit(NativeAdrenoVm *vm,const NativeAdrenoSubmitB
     if(clock && clock->now_us) {clock_now_=clock->now_us;clock_cookie_=clock->cookie;}
     job->level=&native_gpu_dcvs?native_gpu_dcvs[1]:0;
     job->owner=next_owner_;next_owner_=0;
+    __atomic_fetch_add(&native_adreno_perf_jobs[0],1ull,__ATOMIC_RELAXED);
+    __atomic_store_n(&native_adreno_perf_jobs[2],job->submit_us,__ATOMIC_RELAXED);
+    __atomic_store_n(&native_adreno_perf_jobs[11],value,__ATOMIC_RELAXED);
+    if(entered_us && job->submit_us>=entered_us) {
+        const uint64_t elapsed=job->submit_us-entered_us;
+        __atomic_fetch_add(&native_adreno_perf_jobs[7],elapsed,__ATOMIC_RELAXED);perfMaximum(8,elapsed);
+    }
     gpuTraceEvent(GpuTraceSubmit,job->owner,value,queue,index,job->priority,job->role,job->loaded,job->flight,job->context,job->submit_us,handle_count);
     for(size_t i=0;i<word_count;++i)job->words[i]=words[i];
     ++stats_.submissions;

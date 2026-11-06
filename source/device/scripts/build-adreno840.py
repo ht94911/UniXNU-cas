@@ -129,7 +129,7 @@ def main():
     require(body.count(old) == 1, 'accelerator include changed; review upstream')
     accelerator.write_text(body.replace(old, '#include "OriginalAcceleratorABI.h"'))
     includes = [BOARD, COMMON, METAL, ROOT / 'kits/ArmSmmu4K', ROOT / 'kits/AdrenoPM4',
-                ROOT / '.cache/xnu-work/osfmk']
+                ROOT / '.cache/xnu-work/osfmk', ROOT / 'drivers/QcomXnuUsbDebug/include']
     sources = [BOARD / 'NezhaGpu.c', BOARD / 'NezhaScm.c', BOARD / 'NezhaGpuFirmware.cpp',
                BOARD / 'NezhaAdreno840.cpp', accelerator]
     sources += [COMMON / ('NativeAdreno' + name + '.cpp') for name in CORE]
