@@ -281,8 +281,7 @@ IOReturn bringUp()
     ring.setTimeline(true); // existing A8xx CP_ALWAYS_ON timestamps around each real job
     if(nezha_gpu_platform_perf_start())return checkpoint(13,kIOReturnIOError,"GPU performance owner");
     const int perf_registered=qcom_usb_diag_register(&nezhaPerfProvider);
-    IOLog("NEZHA GPU PERF: USB provider7 registration=%d; real job timestamps enabled; CPU load sampled every2s
-",perf_registered);
+    IOLog("NEZHA GPU PERF: USB provider7 registration=%d; real job timestamps enabled; CPU load sampled every2s\n",perf_registered);
     if(perf_registered)return checkpoint(13,kIOReturnIOError,"GPU performance provider");
     int metal=0;PE_parse_boot_argn("nezha-gpu-metal",&metal,sizeof metal);
     // NEZHA_GPU_DIAGNOSTIC_PUBLICATION_BEGIN

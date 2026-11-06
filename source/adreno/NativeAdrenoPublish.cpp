@@ -1243,6 +1243,7 @@ static void logCachedStall(const NativeAdrenoStallSample &s)
 
 
 extern "C" kern_return_t processor_info(processor_t,processor_flavor_t,host_t *,processor_info_t,mach_msg_type_number_t *);
+extern "C" processor_t cpu_to_processor(int);
 static uint32_t perfCpuSequence,perfCpuValid,perfCpuTicks[8][4];
 static uint64_t perfCpuUs;
 extern "C" volatile uint64_t native_adreno_cache_stats[5],native_adreno_reassert_ticks;
@@ -1250,7 +1251,7 @@ static void samplePerfCpu()
 {
     uint32_t ticks[8][4]={},valid=0;
     for(unsigned n=0;n<8 && n<MAX_CPUS;++n) {
-        processor_t processor=processor_array[n];if(!processor)continue;
+        processor_t processor=cpu_to_processor(static_cast<int>(n));if(!processor)continue;
         processor_cpu_load_info_data_t info{};mach_msg_type_number_t count=PROCESSOR_CPU_LOAD_INFO_COUNT;host_t host=nullptr;
         if(processor_info(processor,PROCESSOR_CPU_LOAD_INFO,&host,reinterpret_cast<processor_info_t>(&info),&count)!=KERN_SUCCESS || count!=PROCESSOR_CPU_LOAD_INFO_COUNT)continue;
         for(unsigned k=0;k<4;++k)ticks[n][k]=info.cpu_ticks[k];valid|=1u<<n;
