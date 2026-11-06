@@ -1200,12 +1200,49 @@ extern "C" bool native_adreno_fences(uint32_t *submitted,uint32_t *retired)
  * software counters/rows, not an atomic hardware snapshot. It performs no MMIO,
  * reset, recovery or allocation; a hung GPU call still leaves its inflight ID.
  */
+
+static void logStallWords(const char *kind,uint32_t serial,const uint32_t *words,unsigned count)
+{
+    for(unsigned first=0;first<count;first+=8) {
+        char row[8*9+1]={};
+        size_t used=0;
+        for(unsigned i=first;i<count && i<first+8;++i) {
+            const int n=snprintf(row+used,sizeof(row)-used,"%08x ",words[i]);
+            if(n<=0 || size_t(n)>=sizeof(row)-used)break;
+            used+=size_t(n);
+        }
+        IOLog("NEZHA GPU STALL WORDS: sample=%u kind=%s first=%u %s\n",serial,kind,first,row);
+    }
+}
+static void logCachedStall(const NativeAdrenoStallSample &s)
+{
+    const uint64_t *j=s.job;
+    IOLog("NEZHA GPU STALL: cached v=1 sample=%u chip=%llu time_us=%llu pending_us=%llu fence=%u polls=%u observed=%llu issued=%llu pid=%llu queue=%#llx context=%llu ring=%llu jobs=%llu table_mode=%llu action_stage=%llu fault_read=%#llx\n",
+        s.serial,j[19],j[0],j[1],s.state[0],s.state[1],j[14],j[15],j[7],j[3],j[8],j[9],j[11],j[12],j[17],j[13]);
+    IOLog("NEZHA GPU STALL VM: sample=%u job_ttbr=%#llx selected_ttbr=%#llx submit_us=%llu next_handle=%llu bos=%llu ib_words=%llu priority=%llu\n",
+        s.serial,j[4],j[5],j[2],j[6],j[10],j[16],j[18]);
+    logStallWords("cp",s.serial,s.state+2,22);
+    logStallWords("memory",s.serial,s.memory,59);
+    logStallWords("ibs",s.serial,s.ibs,32);
+    // These counters are separately sampled; they are not part of the cached
+    // hardware observation above. In particular, hangs are not distinct jobs.
+    IOLog("NEZHA GPU RECOVERY: sampled hook=%u hangs=%u restarts=%u failed=%u fault=%#x coherence=%u/%u wc_distrusted=%u\n",
+        __atomic_load_n(&g.restart,__ATOMIC_RELAXED)?1u:0u,
+        native_adreno_recovery[0],native_adreno_recovery[1],native_adreno_recovery[2],
+        native_adreno_recovery_fault[1],native_adreno_coherence[4],native_adreno_coherence[0],native_adreno_wc_distrusted);
+}
+
 static void nativeAdrenoDiagnosticObserver(void *,wait_result_t)
 {
     uint32_t hashes[48]={};
     uint64_t lastPolls[2]={};
+    uint32_t lastStall=0;
     for(;;) {
         IOSleep(2000);
+        NativeAdrenoStallSample stall{};
+        if(native_adreno_copy_stall(&stall) && stall.serial!=lastStall) {
+            logCachedStall(stall);lastStall=stall.serial;
+        }
         auto &d=native_adreno_metal_diag;
         IOLog("NEZHA GPU SNAP: sampled opens %u closes %u busy %u bad %u name_reads %u calls %u method %u status %#x inflight %u since %u marks %u table_status %#x\n",
             d.opens,d.closes,d.busy,d.bad,d.name_reads,d.calls,d.last_selector,d.last_status,
