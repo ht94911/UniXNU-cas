@@ -157,6 +157,8 @@ def main():
     import xnu_symbols
     compiled = [Path(r['object']) for r in results]
     defined = xnu_symbols.kernel_names(ROOT) | xnu_symbols.defined_names(providers + compiled, True)
+    require('_native_legacy_vsync_snapshot' in defined,
+            'selected27 display provider lacks the real refresh snapshot accessor')
     weak = set()
     for obj in compiled:
         nm = subprocess.check_output(['xcrun', 'nm', '-m', str(obj)], text=True)

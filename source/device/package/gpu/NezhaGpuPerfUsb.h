@@ -9,9 +9,7 @@ extern "C" {
 extern "C" {
 extern volatile uint32_t native_gpu_coherence[8],native_adreno_io_coherent,native_adreno_coherent_skips[4];
 extern volatile uint32_t native_adreno840_coherence_attempts,native_adreno840_coherence_retained;
-extern volatile unsigned nezha_vsync_hz __attribute__((weak_import));
-extern volatile uint64_t nezha_vsync_sent __attribute__((weak_import));
-extern volatile uint32_t nezha_vsync_ev[6] __attribute__((weak_import));
+void native_legacy_vsync_snapshot(uint64_t out[8]);
 }
 struct NezhaPerfWriter {
     char *out;size_t cap,used=0;bool failed=false;
@@ -47,10 +45,7 @@ static int nezhaPerfSnapshot(void *,char *out,size_t cap,size_t *bytes,unsigned 
     coherence[8]=native_adreno_io_coherent;coherence[9]=native_adreno840_coherence_attempts;
     coherence[10]=native_adreno840_coherence_retained;
     for(unsigned i=0;i<4;++i)coherence[11+i]=native_adreno_coherent_skips[i];
-    if(&nezha_vsync_hz && &nezha_vsync_sent && &nezha_vsync_ev) {
-        display[0]=nezha_vsync_hz;display[1]=nezha_vsync_sent;
-        for(unsigned i=0;i<6;++i)display[2+i]=nezha_vsync_ev[i];
-    }
+    native_legacy_vsync_snapshot(display);
     w.add("],\"coherence\":");w.array(coherence,15);
     w.add(",\"display_pacing\":");w.array(display,8);
     w.add(",\"physical_vblank\":false,\"clock_readback\":false,\"gpu_timestamp_hz\":19200000}");return w.finish(bytes,trunc);

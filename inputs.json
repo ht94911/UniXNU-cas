@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "35cc78fa3d4067482e9342c855700c3b839c3045",
+  "device_revision": "6670012bdd544ab0bf602ce6ce645e21dafb8e60",
   "soc_revision": "5a71f9eb5724ff58eddf49f7f5baecc9f4233a7c",
   "xcode": "26.6",
   "files": {
@@ -92,7 +92,7 @@
     "source/device/package/BootUiTraceProbe.c": "22a3e64f66a6386e0129dc0673d673c628aa6f52bce72fa7145962312d123dad",
     "source/device/package/BootWatchdogPolicy.c": "c5334a1622eef2a9988b0a36aef99c55c4bb1b648cebcaf101609df64547535b",
     "source/device/package/KeyStoreProbe.cpp": "068ef978260969e3d67d743459802d72e5fad9e4a20c7c27828587a2dd9779d9",
-    "source/device/package/LegacyDisplayProbe.cpp": "3f8a96513f97ad835606b1832bb0c6a9459c3e4bf644ea7725b23fd54bebadfd",
+    "source/device/package/LegacyDisplayProbe.cpp": "3784f582190c259099a921f0c3add561f80bfa5cfdb33f5f6ea30c1151a13643",
     "source/device/package/Nezha27UsbControl.c": "e0465c9996b74bf7116853be87bc5223d803926df373ea25e4523ff2f9a441c8",
     "source/device/package/NezhaIOS27Pmgr.cpp": "b4952c31eeeed66050359bb0923ca966373cd0d86d0c02678df598a8b7a06a50",
     "source/device/package/ShengAudioAbi.h": "9ef369877cfae3d2255129f7fdf332448b71300a0fc840d6522ec83e09754b52",
@@ -134,7 +134,7 @@
     "source/device/package/gpu/NezhaGpuFirmware.h": "fd75af351256dcbb72d0cf83ceeda4cee524475324edaf086b50ae34093d580e",
     "source/device/package/gpu/NezhaGpuFirmwareSlot.S": "294d44bf227df3db03fe8c9343c7179c8c03962d52a999a564ac99f7d7356d82",
     "source/device/package/gpu/NezhaGpuPerfPolicy.h": "71c735f6840685b0611516d2add0dc1ccdac4dd3c0284a5a7c340f6095e9b933",
-    "source/device/package/gpu/NezhaGpuPerfUsb.h": "a0e28f48652bd4efed8e3c20ef279e7c012fd9807a2906dbdfaea4468988455b",
+    "source/device/package/gpu/NezhaGpuPerfUsb.h": "b153c3f4cafa6f38fab0321c2c89179cfbf2fcf14a27263c09c81cccb103ba13",
     "source/device/package/gpu/NezhaGpuPlatform.h": "d2a92c5a740640a3e7746ade5306e899a15e408c8aa1bd985d4b55330f7848eb",
     "source/device/package/gpu/NezhaGpuPublicationMode.h": "84b2641f1fa01f14d2a0c2c526525571a31472e532df9e0d401a4baa6bb2a676",
     "source/device/package/gpu/NezhaScm.c": "d5eff9fb85bd9215411e9c9ef56f40b5bc28334b9e1dd246d4f61b4f6aae4ab3",
@@ -171,7 +171,7 @@
     "source/device/patches/xnu-12377/zzzzzz-nezha-sigp-startup-order.patch": "18275910b909d187e459c68f5d937cc09bc01923180141dc155aa7f4ff14aaf9",
     "source/device/porting.toml": "6bc3c367acf062becd9fa301002c4423be10efb37c8268ab26f92f5a8489c8ec",
     "source/device/scripts/backlight-iphone-24A446.json": "446eb5fe6440335bfe9fca75b32f7d815ddcafbb8a3c2d7f697c1e5c3f40f6cb",
-    "source/device/scripts/build-adreno840.py": "1089aadbb25bed2ce38da8e565ce1b461f0ed65a21b15e4fbc8ca909bd09d4a8",
+    "source/device/scripts/build-adreno840.py": "957903adf4b76127be0a9a75eccdd2103a0776018dfa76a4e115371d9f48b94e",
     "source/device/scripts/build-boot-progress.py": "a210eb1f0443574eb1506932aa9e8181d5c73aecf99397d8cc731568bd3210ba",
     "source/device/scripts/build-gop-legacy-display-27.py": "f6f0e2cb69003dff292441f92b3e0431e5bd2519c24fbdef49e9365d519c07ea",
     "source/device/scripts/build-ios27-pmgr.py": "f88a0596937cbf0504922751a3194e3a33bba609f683a415262887d2b64241e4",
