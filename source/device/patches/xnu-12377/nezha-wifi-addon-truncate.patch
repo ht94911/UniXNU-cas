@@ -1,0 +1,14 @@
+--- a/bsd/kern/kern_exec.c
++++ b/bsd/kern/kern_exec.c
+@@ -8133,6 +8133,11 @@
+ 		struct vnode_attr va;
+ 		VATTR_INIT(&va);
+ 		VATTR_SET(&va, va_mode, mode);
++		/* vnode_open does not perform open(2)'s final O_TRUNC processing.
++		 * As in WCN7860 0452, remove any old tail when a RAM addon file
++		 * is replaced by a shorter one. This remains the existing addon
++		 * installer; it does not add a filesystem or raw-disk writer. */
++		VATTR_SET(&va, va_data_size, size);
+ 		error = vnode_setattr(vp, &va, ctx);
+ 	}
+ 	if (!error) {

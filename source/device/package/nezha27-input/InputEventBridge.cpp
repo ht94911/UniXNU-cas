@@ -2,15 +2,23 @@
 // Copy/authenticate procedure from ShengHidInput71a40e7. Installed on one
 // owned touchscreen event service only after the075 event contract is verified.
 #include "InputChainABI.h"
+#include "NezhaInput.h"
+#include "NezhaTouchEdge.h"
 #include <IOKit/IOLib.h>
+#include <IOKit/IOLocks.h>
 #include <libkern/c++/OSMetaClass.h>
+#include <libkern/c++/OSArray.h>
 #include <libkern/libkern.h>
 
 namespace {
 constexpr unsigned dispatchSlot=198;
 using Dispatch=void (*)(IOService *,OSObject *,IOOptionBits);
+static_assert(sizeof(OSObject)==16,"24A446 event data begins after the16-byte OSObject");
 static Dispatch originalDispatch;
 static unsigned calls,corrected;
+static IOLock *edgeLock;
+static nezha_touch_edge_state edgeState={};
+static unsigned edgeBegins,edgeFromBorder,edgePatched,edgeRefused;
 static constexpr uint16_t kSlotDiversity[]={
     0x3771,0x56b7,0xbaa2,0x3607,0x2e4a,0x3a87,0x89a9,0xfffc,0xfc74,0x5635,0xbe60,0x32e5,
     0x9209,0x4a6a,0xedc5,0x5c68,0x6a10,0x7a2a,0xaf75,0x137e,0x0655,0x43aa,0x12e9,0x4578,
@@ -33,6 +41,57 @@ static constexpr uint16_t kSlotDiversity[]={
     0x69fc,0xaaca,0x6518,0x7547,
 };
 
+static uint32_t markEdge(OSObject *event) {
+    if (!event || !event->metaCast("IOHIDEvent") || chainType(event)!=11)
+        return 0;
+    const int32_t index=chainInteger(event,0xb0005);
+    const uint32_t before=(uint32_t)chainInteger(event,0xb0007);
+    if (index<0 || (unsigned)index>=NZ_EDGE_CONTACTS || !edgeLock) {
+        __atomic_fetch_add(&edgeRefused,1,__ATOMIC_RELAXED);
+        return before&NZ_EDGE_TYPES;
+    }
+    const bool touching=chainInteger(event,0xb0009)!=0;
+    const int32_t x=chainFixed(event,0xb0000),y=chainFixed(event,0xb0001);
+    // No virtual calls, allocation or original dispatch while holding the lock.
+    IOLockLock(edgeLock);
+    const uint32_t after=nezha_touch_edge_mask(&edgeState,(unsigned)index,before,
+        touching,x,y,NEZHA_PANEL_W,NEZHA_PANEL_H);
+    if (touching && (before&NZ_EDGE_TOUCH_CHANGED)) {
+        __atomic_fetch_add(&edgeBegins,1,__ATOMIC_RELAXED);
+        if (after&NZ_EDGE_TYPES)__atomic_fetch_add(&edgeFromBorder,1,__ATOMIC_RELAXED);
+    }
+    if (after!=before)__atomic_fetch_add(&edgePatched,1,__ATOMIC_RELAXED);
+    IOLockUnlock(edgeLock);
+    if (after!=before)
+        chainCall<void,uint32_t,int32_t,IOOptionBits>(event,24,0x130e,
+            0xb0007,(int32_t)after,0);
+    return after&NZ_EDGE_TYPES;
+}
+
+static void markCollectionEdges(OSObject *event) {
+    // Exact24A446 IOHIDEvent::appendChild, slot15/diversity0x2c9e:
+    // ldr x0,[x0,#0x18] and str x0,[x19,#0x18]. The original getType
+    // also proves _data at0x10. This is an audited data member read, not
+    // the old17 unsigned-vptr replacement. Children and their original PAC
+    // method entries remain owned by IOHIDFamily.
+    OSArray *children=*reinterpret_cast<OSArray **>(
+        reinterpret_cast<uint8_t *>(event)+0x18);
+    uint32_t edges=0;
+    if (!children) {
+        edges=markEdge(event);
+    } else if (OSDynamicCast(OSArray,children) && children->getCount()<=32) {
+        for (unsigned i=0;i<children->getCount();++i)
+            edges|=markEdge(children->getObject(i));
+    } else {
+        __atomic_fetch_add(&edgeRefused,1,__ATOMIC_RELAXED);
+    }
+    if (edges) {
+        const uint32_t mask=(uint32_t)chainInteger(event,0xb0007);
+        chainCall<void,uint32_t,int32_t,IOOptionBits>(event,24,0x130e,
+            0xb0007,(int32_t)(mask|edges),0);
+    }
+}
+
 static void dispatch(IOService *service,OSObject *event,IOOptionBits options) {
     if (event && event->metaCast("IOHIDEvent") && chainType(event)==11) {
         int before=chainInteger(event,0xb0019);
@@ -41,9 +100,15 @@ static void dispatch(IOService *service,OSObject *event,IOOptionBits options) {
             chainCall<void,uint32_t,int32_t,IOOptionBits>(event,24,0x130e,0xb0019,1,0);
             ++corrected;
         }
+        markCollectionEdges(event);
         if (calls<=8 || (calls%128)==0) {
             printf("NEZHA INPUT INTEGRATION: calls=%u corrected=%u before=%d after=%d\n",
                 calls,corrected,before,chainInteger(event,0xb0019));
+            printf("NEZHA INPUT EDGE: began=%u from_edge=%u patched=%u refused=%u\n",
+                __atomic_load_n(&edgeBegins,__ATOMIC_RELAXED),
+                __atomic_load_n(&edgeFromBorder,__ATOMIC_RELAXED),
+                __atomic_load_n(&edgePatched,__ATOMIC_RELAXED),
+                __atomic_load_n(&edgeRefused,__ATOMIC_RELAXED));
         }
     }
     originalDispatch(service,event,options);
@@ -82,6 +147,13 @@ extern "C" void nezha_input_integration_install(IORegistryEntry *driver) {
         copy[index]=ptrauth_sign_unauthenticated(function,ptrauth_key_function_pointer,
             ptrauth_blend_discriminator(&copy[index],kSlotDiversity[index]));
     }
+    IOLock *lock=IOLockAlloc();
+    if (!lock) {
+        printf("NEZHA INPUT INTEGRATION INSTALL: edge lock allocation failed\n");
+        IOFree(copy,slots*sizeof(void *));
+        return;
+    }
+    edgeLock=lock;
     originalDispatch=saved;
     __asm__ volatile("dmb ish":::"memory");
     *reinterpret_cast<void **>(driver)=ptrauth_sign_unauthenticated(
