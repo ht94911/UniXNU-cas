@@ -22,3 +22,8 @@ zzzzzz-nezha-adreno840-start.patch
 
 # Kernel-owned late class registration follows OSKext -> stalled-class lock order.
 zzzzzz-nezha-kernel-class-lock-order.patch
+
+# WCN7860 on the current GPU base; retain existing late-class lock correction.
+nezha-wifi-mmio-recovery.patch
+nezha-wifi-kernel-events.patch
+nezha-wifi-addon-truncate.patch

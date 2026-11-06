@@ -1,7 +1,7 @@
-name: nezha iPhone27 plane view and controlled USB drain - native015
+name: nezha iPhone27 fixed GPU and WCN7860 registry/manual diagnostics - native014
 on:
   push:
-    branches: [codex/ios27-main-persist-016c-20261105]
+    branches: [codex/ios27-wifi27-gpu009-native014-20261106]
   workflow_dispatch:
 permissions:
   contents: read
