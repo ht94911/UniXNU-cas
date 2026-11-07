@@ -20,7 +20,11 @@ int na_adsp_init(NaAdsp *a,volatile void *smem,uint32_t bytes,NaPasLoad *main_im
         !rx || !ops || !ops->smem_lock || !ops->smem_unlock || !ops->doorbell || !ops->proxy || !ops->dma_setup) return NA_ARGUMENT;
     memset(a,0,sizeof *a);a->smem=(QcomSmem){smem,bytes};a->main_image=main_image;a->dtb_image=dtb_image;a->rx=rx;a->ops=*ops;
     if (qcom_smem_partition(&a->smem,QCOM_SMEM_HOST_APPS,2,&a->partition)) return NA_MISSING;
-    a->stage=NaAdspStopMain;return NA_OK;
+    /* SM8850's reference sequence establishes LP0/load_state/LCX/LMX
+     * before the initial PAS shutdown. Audio009 tried PAS1 with no proxy
+     * vote and was rejected. Keep both successful shutdowns as the DMA
+     * prerequisite; an error is never interpreted as "already stopped". */
+    a->stage=NaAdspPower;return NA_OK;
 }
 void na_adsp_smp2p_event(NaAdsp *a) {if (a) __atomic_fetch_add(&a->doorbells,1,__ATOMIC_RELEASE);}
 static int failed(NaAdsp *a,int r) {
@@ -78,10 +82,11 @@ int na_adsp_poll(NaAdsp *a,uint64_t now) {
         r=a->ops.dma_setup(a->ops.context);
         if (!r) {a->dma_ready=1;a->stage=NaAdspSetup;}break;
     case NaAdspSetup:
-        r=setup(a);if (!r) a->stage=NaAdspPower;break;
+        r=setup(a);
+        if (!r) {a->stage=NaAdspDtb;a->dtb_image->deadline=now+30000;}break;
     case NaAdspPower:
         a->proxy_possible=1;r=a->ops.proxy(a->ops.context,1);
-        if (!r) {a->stage=NaAdspDtb;a->dtb_image->deadline=now+30000;}break;
+        if (!r) a->stage=NaAdspStopMain;break;
     case NaAdspDtb:
         if (!a->masters_stopped || !a->dma_ready) return failed(a,NA_OWNERSHIP);
         r=na_pas_poll(a->dtb_image,now);

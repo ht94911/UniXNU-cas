@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Compile actual DSP/PAS/GLINK and reset-muted TAS identity entry behind explicit na=2. Board default remains na=1. Zero private input slot only; no firmware/calibration/phone data or phone operations. No APM graph, PCM producer, HAL or capture activation.",
+  "purpose": "Audio009 real PAS1 shutdown failure follow-up: prepare existing SM8850 proxy before PAS stop; retain raw SCM results. Both PAS stops still required before DMA. GPU015/SoC/USB unchanged. No private input bytes or phone operations.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "75e0d0cd4cc5b50723ac90411201c85898a87acf",
+  "device_revision": "f9e87ea4ecef20ba81562ed48863aaa8a53187fe",
   "soc_revision": "1352932d0253820223956b4c273d431aaa6a8d08",
   "xcode": "26.6",
   "files": {
@@ -139,7 +139,7 @@
     "source/device/package/gpu/NezhaGpuPerfUsb.h": "00b9a3dc5ca46320ec2db2325533836ba13e1ea9498f99e35d1f9c158b853938",
     "source/device/package/gpu/NezhaGpuPlatform.h": "d2a92c5a740640a3e7746ade5306e899a15e408c8aa1bd985d4b55330f7848eb",
     "source/device/package/gpu/NezhaGpuPublicationMode.h": "84b2641f1fa01f14d2a0c2c526525571a31472e532df9e0d401a4baa6bb2a676",
-    "source/device/package/gpu/NezhaScm.c": "4c47680366cc5fe0ffac5282ca87488226e8ee854ef2f3556967a2c284f92a15",
+    "source/device/package/gpu/NezhaScm.c": "802597948ef67f89ea495636c0bd19a9d40a5d558f2c4ea27b27e74057614e72",
     "source/device/package/ios27-root-owner-public.pem": "0afc03662d11ce57d705807de90f1c5491555280e56f300bb6e560af4513c1ad",
     "source/device/package/nezha27-input/HidInputProbe.cpp": "c3e6c59ffb2d8db299a6876599e6117b5d9f529272c6d8a8e2bbbf22326212dc",
     "source/device/package/nezha27-input/InputChainABI.h": "ac72a994d29b1b6097ec7ca440a2bcd7f41b7b4b9b7662393a38c683cbe40006",
@@ -219,7 +219,7 @@
     "source/device/package/audio27/platform/AudioSmmu.h": "41401f1b97e3481c7e5cc3e02c47f926e91eec9fa34f4a48981a3fc3b723cddd",
     "source/device/package/audio27/upstream/ShengGpr.c": "c4f498f07e2cb601b593e64a8d32474a21d6a87375618e1a67b99d52c5d3160e",
     "source/device/package/audio27/platform/SoundWire.h": "348979ac1e552e1c3a0027e09f8500927e8bf7ccbb496276d2c9d3ef19322224",
-    ".github/workflows/nezha-ios27-native.yml": "64a86376daf574eda40c3783ba8684da33a58b0478f0bb348b8b334facf4eded",
+    ".github/workflows/nezha-ios27-native.yml": "81b4f3fc71af0c885cdf5b81c9f75581e2749e49dcfa7fc547aecfc2e1cc7e72",
     "source/device/package/audio27/upstream/ShengGpr.h": "a274dded1f4d1e2709b9f966759bcb1f57d12747ee0f57743dea1fa97d95d23e",
     "source/device/package/audio27/os/NezhaAudioNative.h": "69525b76e08af98947a5e3ae8e55389059053b24e4aaff9cfb158aa50c35ad7c",
     "source/device/package/audio27/upstream/ShengAudioReach.h": "b135177a5feb3e24e0d8a6aabb301600e2c37078b970a09ada6e8eb7bb6a5b98",
@@ -263,7 +263,7 @@
     "source/device/package/audio27/upstream/QcomQmp.h": "dd6722ade248435930c5f242ef78728f58f7e3bc6a9765fe229b32c87f342503",
     "source/device/package/audio27/core/AudioTopology.c": "dfb9d999b9a56dbfd7c285bfdb2361433a31fe7de211493b650e78fd86c83ebe",
     "source/device/package/audio27/upstream/QcomQmp.c": "6d5dd2e0ebf1f425f7fc929555edb275b8d499cfaa1f9c887bfcb68f09785249",
-    "source/device/package/audio27/platform/AdspLink.c": "9ca7b3eba48b609835a26197f77350f62d75c1b9055fb353afb807815cd0b302",
+    "source/device/package/audio27/platform/AdspLink.c": "9bd8dd34ae0c7ed4a2cdc4e369708565be2037652fe8c1b10b38d28b1ec00925",
     "source/device/package/audio27/core/AudioProtocol.h": "cdd0adfdf372cb6efc5a69f3066f7976f47bf3287884c42d5f7f9709856c17ba",
     "source/device/package/audio27/platform/Tas25xxProgram.c": "f50be194ca696b36bc3df7767a12ad3ec392f531eba0c0df216dbae292f53968",
     "source/device/package/audio27/platform/Wcd9395Capture.h": "b6263e90a8dd5c3b27f94c30bc0092d2afeceeb4fd394cba7669f4f61e37845e",
@@ -372,7 +372,7 @@
   "audio": {
     "base": "GPU015",
     "base_device_revision": "154f8a08e6800734408c99f909c28ceeb94caa3c",
-    "source_revision": "75e0d0cd4cc5b50723ac90411201c85898a87acf",
+    "source_revision": "f9e87ea4ecef20ba81562ed48863aaa8a53187fe",
     "source_only_revision": "abde8b4b694afb0f4eb20e838ebe4f316e49da12",
     "hardware_enabled": false,
     "resource_census_enabled": true,

@@ -166,6 +166,10 @@ nezha_audio_pas_call(unsigned command, unsigned pas, uint64_t arg1, uint64_t arg
     }
     struct scm_res r = {0, 0, 0, 0};
     scm_smc(SCM_FN(2, command), info, pas, arg1, arg2, 0, &r);
+    /* Preserve the secure firmware's answer before normalizing it to EIO.
+     * This path runs once per lifecycle step; no periodic tracing or retry. */
+    printf("NEZHA AUDIO27 PAS: command %u pas %u -> a0 %#llx a1 %#llx a2 %#llx a3 %#llx\n",
+        command, pas, r.a0, r.a1, r.a2, r.a3);
     return (r.a0 || r.a1) ? EIO : 0;
 }
 
