@@ -40,10 +40,10 @@ mesa=root/'.cache/mesa-work'
 subprocess.run(['xcrun','clang','-O1','-g','-fsanitize=address,undefined','-I',str(mesa/'src/util'),
                 '-c',str(mesa/'src/util/rb_tree.c'),'-o',str(out/'rb_tree.o')],check=True,timeout=120)
 results={}
-for name in ['old','new','guards','va-old','va-new','swap']:
+for name in ['old','new','guards','va-old','va-new','swap','bo-trim-old','bo-trim-new']:
     binary=out/name
     command=['xcrun','clang++','-std=c++17','-O1','-g','-Wall','-Wextra','-Werror',
-             '-Wno-unused-function','-Wno-unused-parameter','-Wno-missing-field-initializers',
+             '-Wno-unused-function','-Wno-unused-parameter','-Wno-missing-field-initializers','-Wno-misleading-indentation',
              '-fsanitize=address,undefined','-pthread','-I',str(root/'drivers/Adreno740'),
              '-I',str(mesa/'src/util'),'-I',str(mesa/'include'),
              *(['-DTEST_OLD='+('1' if name=='va-old' else '0')] if name.startswith('va-') else []),
@@ -66,5 +66,6 @@ report=dict(actual_prepared_sources_match=True,ASan_UBSan=True,old_lifetime_erro
             actual_function_bindings_checked=len(snippets),real_Mesa_RB_used=True,
             old_VA_UAF_reproduced=True,fragmented_VA_and_OOM_passed=True,
             actual_swap_API_and_lifetime_guards_passed=True,
+            actual_BO_age_cleanup_bound_and_pressure_cases_passed=True,
             explicit_port_and_allocation_balance_checked=True,leak_sanitizer='Linux preflight additionally checked;not supported in all Apple ASan runtimes')
 (a.logs/'device-context-qualified.json').write_text(json.dumps(report,indent=2)+'\n')

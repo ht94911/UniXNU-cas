@@ -1,3 +1,76 @@
+diff --git a/patches/mesa/turnip-darwin-cache-trim.patch b/patches/mesa/turnip-darwin-cache-trim.patch
+new file mode 100644
+index 0000000..6da536c
+--- /dev/null
++++ b/patches/mesa/turnip-darwin-cache-trim.patch
+@@ -0,0 +1,67 @@
++diff --git a/src/freedreno/vulkan/tu_knl_darwin.cc b/src/freedreno/vulkan/tu_knl_darwin.cc
++--- a/src/freedreno/vulkan/tu_knl_darwin.cc
+++++ b/src/freedreno/vulkan/tu_knl_darwin.cc
++@@ -112,6 +112,7 @@
++    uint64_t enqueued, reaped, pressure_waits;
++    struct darwin_cached_bo *cache;
++    unsigned cache_count, cache_capacity;
+++   unsigned cache_trim_cursor, cache_trim_left;
++    uint64_t cache_bytes, cache_stamp, cache_cleaned_s;
++    uint32_t pressure_seen;
++    struct darwin_bo_cache_stats cache_stats;
++@@ -743,10 +744,11 @@
++    return any;
++ }
++ 
++-/* Called under retire->lock: once per memory-pressure notification the whole cache goes back, and otherwise every BO not reused
++- * within a second of entering it, as freedreno's own BO cache keeps a freed BO (freedreno_bo_cache.c, fd_bo_cache_cleanup: "keep things
++- * in cache for at least 1 second", at most once a second). Without the second rule the cache held every BO the render server ever freed
++- * once the kernel stopped refusing allocations (untagged-7c2c611f: backboardd held 3099 MiB, the system's memory ran out). */
+++/* Called under retire->lock. Memory pressure still returns all releasable
+++ * cache entries immediately. Ordinary age-based cleanup is spread across
+++ * existing collection calls: inspect at most64 entries and attempt at most
+++ * one native release. A render allocation or fence completion must not pay
+++ * for an entire second's expired BOs before it can proceed. */
++ static void
++ darwin_cache_trim(struct tu_device *dev, struct darwin_retire_state *retire)
++ {
++@@ -754,15 +756,33 @@
++    if (pressure != retire->pressure_seen) {
++       retire->pressure_seen = pressure;
++       darwin_cache_flush(dev, retire);
+++      retire->cache_trim_cursor = retire->cache_trim_left = 0;
++       return;
++    }
++    const uint64_t now = (uint64_t)(os_time_get_nano() / 1000000000);
++-   if (now == retire->cache_cleaned_s)
++-      return;
++-   retire->cache_cleaned_s = now;
++-   for (unsigned i = retire->cache_count; i-- > 0;)
++-      if (now - retire->cache[i].freed_s > 1)
++-         darwin_cache_evict(dev, retire, i);
+++   if (!retire->cache_trim_left) {
+++      if (now == retire->cache_cleaned_s)
+++         return;
+++      retire->cache_cleaned_s = now;
+++      retire->cache_trim_left = retire->cache_count;
+++   }
+++   for (unsigned scanned = 0; scanned < 64 && retire->cache_trim_left && retire->cache_count; ++scanned) {
+++      if (retire->cache_trim_cursor >= retire->cache_count)
+++         retire->cache_trim_cursor = 0;
+++      const unsigned at = retire->cache_trim_cursor;
+++      --retire->cache_trim_left;
+++      const uint64_t freed = retire->cache[at].freed_s;
+++      if (now >= freed && now - freed > 1) {
+++         /* Successful eviction swaps the last entry into at. Examine that
+++          * entry on a later call; a busy entry retains its native identity. */
+++         if (darwin_cache_evict(dev, retire, at) != VK_SUCCESS)
+++            ++retire->cache_trim_cursor;
+++         return;
+++      }
+++      ++retire->cache_trim_cursor;
+++   }
+++   if (!retire->cache_count)
+++      retire->cache_trim_cursor = retire->cache_trim_left = 0;
++ }
++ 
++ /* The process's memory-pressure source, made once: libdispatch delivers the kernel's memorystatus levels to it. */
 diff --git a/patches/mesa/turnip-darwin-va-teardown.patch b/patches/mesa/turnip-darwin-va-teardown.patch
 new file mode 100644
 index 0000000..31605c1
@@ -404,10 +477,10 @@ index 0468a4b..5959047 100644
 +    device->has_sparse_prr = false;
 +    device->has_raytracing = false;
 diff --git a/scripts/data/adreno-compiler-inputs.json b/scripts/data/adreno-compiler-inputs.json
-index f2f7697..c6d672b 100644
+index f2f7697..8742b34 100644
 --- a/scripts/data/adreno-compiler-inputs.json
 +++ b/scripts/data/adreno-compiler-inputs.json
-@@ -59,7 +59,12 @@
+@@ -59,7 +59,13 @@
      "patches/mesa/turnip-current-queue-priorities.patch",
      "patches/mesa/turnip-frame-diagnostics.patch",
      "patches/mesa/turnip-transient-attachments-in-gmem.patch",
@@ -417,7 +490,8 @@ index f2f7697..c6d672b 100644
 +    "patches/mesa/turnip-gmem-memory-side-swap.patch",
 +    "patches/mesa/turnip-render-mode-cache-once.patch",
 +    "patches/mesa/turnip-darwin-device-contexts.patch",
-+    "patches/mesa/turnip-darwin-va-teardown.patch"
++    "patches/mesa/turnip-darwin-va-teardown.patch",
++    "patches/mesa/turnip-darwin-cache-trim.patch"
    ],
    "integer_fma_reference": {
      "repository": "https://github.com/ucb-bar/berkeley-softfloat-3",

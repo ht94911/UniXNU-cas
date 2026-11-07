@@ -257,5 +257,26 @@
     "marker": "static VkResult submitAndDrain(",
     "kind": "marker",
     "sha256": "057515468fd917b6e2203a15076a0196f214b0dff3d77e82657dcbbc90be13ca"
+  },
+  {
+    "marker": "darwin_cache_evict",
+    "kind": "function",
+    "sha256": "38bee45aaa862ab072ca92052eb7fd1d69fdb98a57f1d5bbb012cac79f7cbbb1",
+    "fixture": "bo-trim-new.cpp",
+    "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc"
+  },
+  {
+    "marker": "darwin_cache_flush",
+    "kind": "function",
+    "sha256": "eb93fa87d043e5cdd14216ace5092ae0ec7d3b20cc5d5697dfb1b1cac8525203",
+    "fixture": "bo-trim-new.cpp",
+    "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc"
+  },
+  {
+    "marker": "darwin_cache_trim",
+    "kind": "function",
+    "sha256": "69773931ad2a6e4e1556c026b8e7c577c78f70eb693eaeeb9ba64cbb27a97392",
+    "fixture": "bo-trim-new.cpp",
+    "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc"
   }
 ]
