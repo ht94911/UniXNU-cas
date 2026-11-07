@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "290c66570b928f06f75156eb5bce27c6dae0b07b",
+  "device_revision": "d9f5e30c4f011e11e95245bbcf3c8487c6ebc907",
   "soc_revision": "5a71f9eb5724ff58eddf49f7f5baecc9f4233a7c",
   "xcode": "26.6",
   "files": {
@@ -219,7 +219,7 @@
     "source/device/package/audio27/platform/AudioSmmu.h": "ced53126b921c082fc9d16ca20c29ace57d9d6b431dae167e713f212d114b052",
     "source/device/package/audio27/upstream/ShengGpr.c": "c4f498f07e2cb601b593e64a8d32474a21d6a87375618e1a67b99d52c5d3160e",
     "source/device/package/audio27/platform/SoundWire.h": "348979ac1e552e1c3a0027e09f8500927e8bf7ccbb496276d2c9d3ef19322224",
-    ".github/workflows/nezha-ios27-native.yml": "604914f40ecd51bf4b46ccf4bc30827602f30c9b9a6d67725e2010b100480d4e",
+    ".github/workflows/nezha-ios27-native.yml": "3176adf02ee493c8dc6f7e3c58cb9b8e4715685db0033be378b42a2ce4e7f87b",
     "source/device/package/audio27/upstream/ShengGpr.h": "a274dded1f4d1e2709b9f966759bcb1f57d12747ee0f57743dea1fa97d95d23e",
     "source/device/package/audio27/os/NezhaAudioNative.h": "69525b76e08af98947a5e3ae8e55389059053b24e4aaff9cfb158aa50c35ad7c",
     "source/device/package/audio27/upstream/ShengAudioReach.h": "b135177a5feb3e24e0d8a6aabb301600e2c37078b970a09ada6e8eb7bb6a5b98",
@@ -232,7 +232,7 @@
     "source/device/package/audio27/core/AudioDriver.h": "b2c04b2d6a842e529ce68ef794fe51c79a67a57e863da42af1b198e56e881e63",
     "source/device/package/audio27/platform/SoundWire.c": "e7e30b40cc4a78286f9dcf200b21690fa39d36da5b3e4a96c67d30313e2d1a2a",
     "source/device/package/audio27/platform/NezhaGeniBoard.c": "1a2324e9b3fe4a6da6dc93b1fc27ccde652ea8b073cc3c69341d03fedab4af5f",
-    "source/device/package/audio27/hal/AudioClock.c": "cdcff07a8c2ee1b9bc424b59778f10c6908bdc8543a3a1ff86ac8a3900ef02a4",
+    "source/device/package/audio27/hal/AudioClock.c": "e5f6cbbfc44f5e666a7e9b4ef8c7d284517fae36840b22c0277d80876b3f55e4",
     "source/device/package/audio27/platform/NezhaMicBoard.c": "61ffd0a836fe558308d414581703b854bd3756b0bdd4b61513065330e5ba59a0",
     "source/device/package/audio27/platform/AdspFirmware.c": "cc6d68638c34daf6d92e0c01342d4a61d95e5a19b5bc060cee1ca7351db8120b",
     "source/device/package/audio27/upstream/QcomSmem.h": "f2a25e807bfa0556f2ec19258d8b2f47782acdc5fe1d9bdab23ecbb9f948ae37",
@@ -354,7 +354,7 @@
   "audio": {
     "base": "GPU015",
     "base_device_revision": "154f8a08e6800734408c99f909c28ceeb94caa3c",
-    "source_revision": "290c66570b928f06f75156eb5bce27c6dae0b07b",
+    "source_revision": "d9f5e30c4f011e11e95245bbcf3c8487c6ebc907",
     "source_only_revision": "abde8b4b694afb0f4eb20e838ebe4f316e49da12",
     "hardware_enabled": false,
     "resource_census_enabled": true,
