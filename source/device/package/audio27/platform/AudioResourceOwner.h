@@ -5,6 +5,9 @@
 #include "AudioSmmu.h"
 #include "AdspPower.h"
 #include "AdspLink.h"
+#ifdef __cplusplus
+extern "C" {
+#endif
 /* IDs in the common SoC ledger. Touch retains TCS0; firmware/USB retain
  * banks0..6 and slots0..8. GPU has a separate SMMU. No dynamic allocation. */
 enum {NaResourceSmmu=4,NaResourceQmp=5,NaResourceAdspTcs=6,NaResourceMicTcs=7};
@@ -30,4 +33,7 @@ void na_resource_owner_doorbell(void *,uint32_t signal);
  * RX FIFO; no second reader in the audio driver. */
 int na_resource_owner_ipcc(NaResourceOwner *,NaAdsp *);
 int na_resource_owner_dispatch(NaResourceOwner *);
+#ifdef __cplusplus
+}
+#endif
 #endif

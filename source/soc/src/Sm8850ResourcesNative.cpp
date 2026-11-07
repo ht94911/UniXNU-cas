@@ -2,6 +2,9 @@
 #include <IOKit/IOLib.h>
 #include <machine/machine_routines.h>
 #include "Sm8850ResourcesNative.h"
+// Same selected XNU declaration used by the existing native resource probe;
+// this KPI is hidden by the public IOKit compile recipe's feature guards.
+extern "C" vm_offset_t ml_io_map(vm_offset_t,vm_size_t);
 namespace {
 IOLock *gate;
 Sm8850Resources resources;

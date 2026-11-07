@@ -33,7 +33,7 @@ commit = "282606b528b2595bc4274ea7490b62b323f35a5f"
 name = "sm8850"
 kind = "soc"
 git = "https://github.com/ht94911/UniXNU-sm8850-common.git"
-commit = "c1189ac93cdf8e107b858fc15e1e1f3be57779fc"
+commit = "e2a715466cee5d8110e338fcfdb06635c1b017fd"
 [[source]]
 name = "ArmCpu"
 kind = "driver"
@@ -46,7 +46,7 @@ name = "QcomXnuUsbDebug"
 kind = "driver"
 git = "https://github.com/xiaoleGun/QcomXnuUsbDebug.git"
 # Same078 runtime/patch bytes; only the prequalified A840 IOBSD consumer hash differs.
-commit = "c70e38dac32170c611d86b159d79e789811aa051"
+commit = "a3142775e447553017ed38474fe9267f8a64f4fc"
 
 [[source]]
 name = "GopFramebuffer"
