@@ -1,0 +1,2906 @@
+diff --git a/NativeAdrenoABI.h b/NativeAdrenoABI.h
+index 48d7280..02b778e 100644
+--- a/NativeAdrenoABI.h
++++ b/NativeAdrenoABI.h
+@@ -12,7 +12,8 @@
+  * rather than ignored. */
+ enum {
+     NativeAdrenoAbiVersion = 2,
+-    NativeAdrenoAbiMaxBuffers = 128,   /* a frame's IBs in one submission (Turnip splits a larger one) */
++    NativeAdrenoAbiMaxBuffers = 128,   /* entries per fixed-size transport record */
++    NativeAdrenoAbiMaxBatchBuffers = 1024, /* one indivisible GPU submission */
+     NativeAdrenoMethodQuery = 1,
+     NativeAdrenoMethodBoAlloc = 2,
+     NativeAdrenoMethodBoMap = 3,
+@@ -31,6 +32,7 @@ enum {
+     NativeAdrenoMethodBoImport = 16,
+     NativeAdrenoMethodSetPriority = 17,
+     NativeAdrenoMethodNote = 18,
++    NativeAdrenoMethodSubmitBatch = 19,
+     NativeAdrenoAbiMetadataBytes = 64
+ };
+ struct NativeAdrenoAbiParams {
+@@ -43,7 +45,8 @@ struct NativeAdrenoAbiParams {
+ enum {
+     NativeAdrenoParamsHostImport = 1,  /* BoImport pins the caller's own pages (an IOSurface's) as a BO */
+     NativeAdrenoParamsOwnedCoherent = 2, /* BOs are cacheable for the CPU and mapped write-back inner-shareable for the GPU (IO coherence): map them with the default cache mode, not write-combined */
+-    NativeAdrenoParamsMemoryPressure = 4   /* now: the system could not give the last user BO its memory; give cached BOs back */
++    NativeAdrenoParamsMemoryPressure = 4,  /* now: the system could not give the last user BO its memory; give cached BOs back */
++    NativeAdrenoParamsSubmitBatch = 8      /* SubmitBatch stages IBs before one framed ring job */
+ };
+ struct NativeAdrenoAbiBoAlloc {
+     uint64_t bytes;               /* 4KiB multiple, <= max_bo_bytes */
+@@ -96,6 +99,34 @@ struct NativeAdrenoAbiMetadata {
+ struct NativeAdrenoAbiSubmitReply {
+     uint64_t fence;               /* nonzero CP timestamp value */
+ };
++/* Method19 extends ABI2 without changing method5's wire layout. BEGIN reserves
++ * one client-local batch and returns its nonzero token. APPEND copies exactly
++ * the next entries; neither operation touches the ring or acquires GPU refs.
++ * COMMIT revalidates every handle/range and emits the complete list once, with
++ * one prologue/fence. Only a COMMIT explicitly refused with Busy may be retried.
++ * A successful COMMIT consumes the token. ABORT drops unsubmitted staging only.
++ * total_buffers/queue must match every request; offset must match the received
++ * prefix. BEGIN, COMMIT and ABORT have buffer_count=0. APPEND uses1..128.
++ * No request exceeds the already-qualified 3104-byte transport record. */
++enum {
++    NativeAdrenoBatchBegin = 1,
++    NativeAdrenoBatchAppend = 2,
++    NativeAdrenoBatchCommit = 3,
++    NativeAdrenoBatchAbort = 4
++};
++struct NativeAdrenoAbiSubmitBatch {
++    uint64_t batch;
++    uint64_t queue;
++    uint32_t total_buffers;
++    uint32_t offset;
++    uint32_t buffer_count;
++    uint32_t action;
++    NativeAdrenoAbiSubmitBuffer buffers[NativeAdrenoAbiMaxBuffers];
++};
++struct NativeAdrenoAbiSubmitBatchReply {
++    uint64_t batch;
++    uint64_t fence;               /* zero for staging; nonzero only after COMMIT */
++};
+ struct NativeAdrenoAbiWaitFence {
+     uint64_t fence;
+     uint64_t timeout_ns;          /* 0 polls once */
+@@ -170,6 +201,8 @@ static_assert(sizeof(NativeAdrenoAbiBoMap) == 32, "ABI map layout");
+ static_assert(sizeof(NativeAdrenoAbiBoImport) == 16, "ABI import layout");
+ static_assert(sizeof(NativeAdrenoAbiSubmitBuffer) == 24, "ABI buffer layout");
+ static_assert(sizeof(NativeAdrenoAbiSubmit) == 32 + 24 * NativeAdrenoAbiMaxBuffers, "ABI submit layout");
++static_assert(sizeof(NativeAdrenoAbiSubmitBatch) == sizeof(NativeAdrenoAbiSubmit), "batch stays within the existing transport envelope");
++static_assert(sizeof(NativeAdrenoAbiSubmitBatchReply) == 16, "ABI batch reply layout");
+ static_assert(sizeof(NativeAdrenoAbiBoCpuMap) == 8, "ABI cpu map layout");
+ static_assert(sizeof(NativeAdrenoAbiBoCpuMapReply) == 16, "ABI cpu map reply layout");
+ static_assert(sizeof(NativeAdrenoAbiBoCpuUnmap) == 16, "ABI cpu unmap layout");
+diff --git a/NativeAdrenoChip.h b/NativeAdrenoChip.h
+new file mode 100644
+index 0000000..5d4e721
+--- /dev/null
++++ b/NativeAdrenoChip.h
+@@ -0,0 +1,67 @@
++/* SPDX-License-Identifier: MIT */
++#ifndef NATIVE_ADRENO_CHIP_H
++#define NATIVE_ADRENO_CHIP_H
++#include <stdint.h>
++
++/* The register facts that differ between the GPU generations the generic components drive: dword offsets in the GPU
++ * register space, from the pinned registers/adreno/a6xx.xml (each the entry whose variants cover the generation) and,
++ * for A8XX, checked against Qualcomm's gen8_reg.h. Ring base/control/rptr-address/rptr/wptr, the RBBM interrupt bits and
++ * every PM4 opcode and event the ring sends are the same on both and stay in the components. A7XX is the default of
++ * every component, so a caller that never names a chip gets exactly the A740 behaviour. The tables are header-only
++ * (inline variables), so no build that lists NativeAdreno's sources by name needs a new file. */
++struct NativeAdrenoChipRegs {
++    uint32_t generation;              /* 7 or 8 */
++    uint32_t cp_sqe_instr_base;       /* 64-bit CP_SQE_INSTR_BASE */
++    uint32_t cp_scratch2;             /* the fence scratch: CP_SCRATCH(2), CP_SCRATCH_GLOBAL(2) on A8XX */
++    uint32_t perfctr_sram_init_cmd;   /* RBBM_PERFCTR_SRAM_INIT_CMD */
++    uint32_t perfctr_sram_init_status;/* RBBM_PERFCTR_SRAM_INIT_STATUS */
++    uint32_t slice_perfctr_sram_init_cmd;   /* RBBM_SLICE_PERFCTR_SRAM_INIT_CMD (A8XX), 0 where absent */
++    uint32_t rbbm_int_status;         /* RBBM_INT_0_STATUS */
++    uint32_t rbbm_int_clear;          /* RBBM_INT_CLEAR_CMD */
++    uint32_t rbbm_int_mask;           /* RBBM_INT_0_MASK */
++    uint32_t cp_int_status;           /* CP_INTERRUPT_STATUS, CP_INTERRUPT_STATUS_GLOBAL on A8XX */
++    uint32_t cp_error_bits;           /* the error bits of cp_int_status */
++    uint32_t cp_protect_status;       /* CP_PROTECT_STATUS, CP_PROTECT_STATUS_PIPE (current aperture) on A8XX */
++    uint32_t cp_always_on_counter;    /* 64-bit CP_ALWAYS_ON_COUNTER */
++    uint32_t gmu_always_on_counter;   /* byte offset relative to this chip's GMU window */
++};
++
++/* A7XX (A740): the offsets the components always used. CP_INTERRUPT_STATUS error bits are the A6XX_CP_INT opcode, ucode,
++ * HW fault, protection, AHB, VSD parity and illegal-instruction bits with their A7XX LPAC and BV replicas (0x3fff7). */
++inline constexpr NativeAdrenoChipRegs NativeAdrenoChipA7xx = {
++    7,
++    0x0830,     /* CP_SQE_INSTR_BASE */
++    0x0885,     /* CP_SCRATCH(2) */
++    0x050e,     /* RBBM_PERFCTR_SRAM_INIT_CMD */
++    0x050f,     /* RBBM_PERFCTR_SRAM_INIT_STATUS */
++    0,
++    0x0201,     /* RBBM_INT_0_STATUS */
++    0x0037,     /* RBBM_INT_CLEAR_CMD */
++    0x0038,     /* RBBM_INT_0_MASK */
++    0x0823,     /* CP_INTERRUPT_STATUS */
++    0x3fff7,
++    0x0824,     /* CP_PROTECT_STATUS */
++    0x0980,     /* CP_ALWAYS_ON_COUNTER */
++    0x14220,    /* 0x1f888 * 4 - (0x03d6a000 - 0x03d00000), SM8550 */
++};
++
++/* A8XX (A840, gen8): the variants="A8XX-" entries. CP_INTERRUPT_STATUS_GLOBAL is the A8XX_CP_GLOBAL_INT_MASK bitset: a
++ * hardware and a software fault bit per pipe (BR, BV, LPAC, AQE0, AQE1, DDE BR, DDE BV), all errors (0x007f007f, the
++ * value a8xx_gpu.c hw_init enables). */
++inline constexpr NativeAdrenoChipRegs NativeAdrenoChipA8xx = {
++    8,
++    0x0816,     /* CP_SQE_INSTR_BASE */
++    0x082c,     /* CP_SCRATCH_GLOBAL(2) */
++    0x0449,     /* RBBM_PERFCTR_SRAM_INIT_CMD */
++    0x019f,     /* RBBM_PERFCTR_SRAM_INIT_STATUS */
++    0x05e8,     /* RBBM_SLICE_PERFCTR_SRAM_INIT_CMD */
++    0x006a,     /* RBBM_INT_0_STATUS */
++    0x0061,     /* RBBM_INT_CLEAR_CMD */
++    0x0062,     /* RBBM_INT_0_MASK */
++    0x08b5,     /* CP_INTERRUPT_STATUS_GLOBAL */
++    0x007f007f,
++    0x084f,     /* CP_PROTECT_STATUS_PIPE */
++    0x08e7,     /* CP_ALWAYS_ON_COUNTER */
++    0x47220,    /* 0x1f888 * 4 - (0x03d37000 - 0x03d00000), SM8850 */
++};
++#endif
+diff --git a/NativeAdrenoClient.cpp b/NativeAdrenoClient.cpp
+index db32a75..939951a 100644
+--- a/NativeAdrenoClient.cpp
++++ b/NativeAdrenoClient.cpp
+@@ -13,7 +13,7 @@ IOReturn NativeAdrenoClient::open(const NativeAdrenoTransport *transport)
+     if(status) {transport_={};return status;}
+     if(reply.abi_version!=NativeAdrenoAbiVersion || reply.input_bits<32 ||
+         reply.input_bits>48 || reply.output_bits<32 || reply.output_bits>48 ||
+-        !reply.max_bo_bytes || (reply.flags&~uint32_t(NativeAdrenoParamsHostImport|NativeAdrenoParamsOwnedCoherent|NativeAdrenoParamsMemoryPressure))) {transport_={};return kIOReturnUnsupported;}
++        !reply.max_bo_bytes || (reply.flags&~uint32_t(NativeAdrenoParamsHostImport|NativeAdrenoParamsOwnedCoherent|NativeAdrenoParamsMemoryPressure|NativeAdrenoParamsSubmitBatch))) {transport_={};return kIOReturnUnsupported;}
+     params_=reply;open_=true;
+     return kIOReturnSuccess;
+ }
+diff --git a/NativeAdrenoCpInit.cpp b/NativeAdrenoCpInit.cpp
+index 64c2bd2..45f2948 100644
+--- a/NativeAdrenoCpInit.cpp
++++ b/NativeAdrenoCpInit.cpp
+@@ -4,14 +4,13 @@
+ #include <IOKit/IOLib.h>
+ 
+ /* Pinned definitions: CP_SQE_INSTR_BASE is the 64-bit register at dword offset
+- * 0x0830 for A6XX..A7XX (a6xx.xml). CP_THREAD_CONTROL is opcode 0x17 with
++ * 0x0830 for A6XX..A7XX and 0x0816 for A8XX (a6xx.xml; the chip table's). CP_THREAD_CONTROL is opcode 0x17 with
+  * CONCURRENT_BIN_DISABLE at bit 27, and CP_ME_INIT is opcode 0x48 with seven
+  * payload words (adreno_pm4.xml). The payload values are a7xx_cp_init in
+  * a6xx_gpu.c: mask BIT(0)|BIT(1)|BIT(3)|BIT(6)|BIT(8), three hardware
+  * contexts, 0x20000000 error detection, 0x00000002 operation mode, the
+  * power-up register list address and BIT(31) to read it. */
+ enum : uint32_t {
+-    CpSqeInstrBase = 0x0830,
+     CpThreadControlOpcode = 0x17,
+     CpMeInitOpcode = 0x48,
+     CpConcurrentBinDisable = 1u << 27,
+@@ -22,6 +21,12 @@ IOReturn NativeAdrenoCpInit::poison()
+ {
+     poisoned_=true;return kIOReturnIOError;
+ }
++IOReturn NativeAdrenoCpInit::useChip(const NativeAdrenoChipRegs *chip)
++{
++    if(done_ || poisoned_)return kIOReturnBusy;
++    if(!chip || (chip->generation!=7 && chip->generation!=8))return kIOReturnBadArgument;
++    chip_=chip;return kIOReturnSuccess;
++}
+ uint32_t NativeAdrenoCpInit::meInitMask()
+ {
+     return (1u<<0)|(1u<<1)|(1u<<3)|(1u<<6)|(1u<<8);
+@@ -38,10 +43,10 @@ IOReturn NativeAdrenoCpInit::run(const NativeAdrenoRingIo *io,NativeAdrenoRing *
+         return kIOReturnBadArgument;
+     if(config->sqe_base_programmed) {
+         uint32_t lo=0,hi=0;
+-        if(!io->read32 || io->read32(io->cookie,CpSqeInstrBase,&lo) || io->read32(io->cookie,CpSqeInstrBase+1,&hi) ||
++        if(!io->read32 || io->read32(io->cookie,chip_->cp_sqe_instr_base,&lo) || io->read32(io->cookie,chip_->cp_sqe_instr_base+1,&hi) ||
+             (((uint64_t)hi<<32)|lo)!=config->sqe_iova)return poison();
+-    } else if(io->write32(io->cookie,CpSqeInstrBase,(uint32_t)config->sqe_iova) ||
+-        io->write32(io->cookie,CpSqeInstrBase+1,(uint32_t)(config->sqe_iova>>32)))
++    } else if(io->write32(io->cookie,chip_->cp_sqe_instr_base,(uint32_t)config->sqe_iova) ||
++        io->write32(io->cookie,chip_->cp_sqe_instr_base+1,(uint32_t)(config->sqe_iova>>32)))
+         return poison();
+     uint32_t words[CpInitWords]={0};
+     if(AdrenoPM4Type7(CpThreadControlOpcode,1,&words[0])!=AdrenoPM4Success ||
+diff --git a/NativeAdrenoCpInit.h b/NativeAdrenoCpInit.h
+index 502aefd..3102794 100644
+--- a/NativeAdrenoCpInit.h
++++ b/NativeAdrenoCpInit.h
+@@ -21,6 +21,7 @@ struct NativeAdrenoCpInitConfig {
+  * cannot re-initialize the same object. */
+ class NativeAdrenoCpInit final {
+     bool done_=false,poisoned_=false;
++    const NativeAdrenoChipRegs *chip_=&NativeAdrenoChipA7xx;
+     IOReturn poison();
+ public:
+     NativeAdrenoCpInit()=default;
+@@ -29,6 +30,9 @@ public:
+     NativeAdrenoCpInit &operator=(const NativeAdrenoCpInit &)=delete;
+     /* fenced false: the words go without a timestamp fence (*fence 0) and the caller waits with NativeAdrenoRing::idle, as a7xx_cp_init
+      * does with a6xx_idle; the restart after a hang uses it so the replayed submissions keep their fence numbers. */
++    /* Before run: the generation whose CP_SQE_INSTR_BASE is programmed (A7XX unless named); a8xx_cp_init sends the same
++     * CP_THREAD_CONTROL and CP_ME_INIT payload as a7xx_cp_init. */
++    IOReturn useChip(const NativeAdrenoChipRegs *);
+     IOReturn run(const NativeAdrenoRingIo *,NativeAdrenoRing *,
+         const NativeAdrenoCpInitConfig *,uint32_t *fence,bool fenced=true);
+     bool completed() const {return done_;}
+diff --git a/NativeAdrenoGpuContext.cpp b/NativeAdrenoGpuContext.cpp
+index 742598c..87202f1 100644
+--- a/NativeAdrenoGpuContext.cpp
++++ b/NativeAdrenoGpuContext.cpp
+@@ -11,13 +11,16 @@ static const uint64_t kIovas[GpuBufferCount]={GpuSqeIova,GpuRingIova,GpuMemptrsI
+ static const size_t kBytes[GpuBufferCount]={GpuSqeBytes,GpuRingBytes,GpuPageBytes,GpuPageBytes,GpuPageBytes,
+     GpuPreemptRecordBytes,GpuPreemptRecordBytes,GpuPageBytes,GpuPageBytes,GpuRingBytes,GpuPageBytes};
+ IOReturn NativeAdrenoGpuContext::bringUp(const ArmSmmu4KIo *io,unsigned bank,unsigned asid,const unsigned slots[2],
+-    const uint16_t sids[2],void (*progress)(uint32_t),NativeAdrenoGmuContextReport *report)
++    const uint16_t sids[2],void (*progress)(uint32_t),NativeAdrenoGmuContextReport *report,
++    const NativeAdrenoGpuContextPlan *plan)
+ {
+     if(!report)return kIOReturnBadArgument;
+     *report={};
+     if(used_)return kIOReturnBusy;
+-    if(!io || !slots || !sids || bank>63 || !asid || asid>0xffff || slots[0]>127 || slots[1]>127 ||
+-        slots[0]==slots[1])return kIOReturnBadArgument;
++    const NativeAdrenoGpuContextPlan selected=plan?*plan:NativeAdrenoGpuContextPlan{};
++    if(!io || !io->read32 || !slots || !sids || !selected.valid() || bank>63 || !asid || asid>0xffff || slots[0]>127 ||
++        (selected.stream_count==2 && (slots[1]>127 || slots[0]==slots[1] || sids[0]==sids[1])))return kIOReturnBadArgument;
++    plan_=selected;
+     used_=true;kernel_asid_=asid;
+     IOReturn status=kIOReturnSuccess;
+     auto step=[&](Step s) {report->step=s;if(progress)progress(s);};
+@@ -32,12 +35,15 @@ IOReturn NativeAdrenoGpuContext::bringUp(const ArmSmmu4KIo *io,unsigned bank,uns
+         /* Stage-1 input size: smmu->va_size from ID2.UBS (arm_smmu_init_domain_context: ias = smmu->va_size for AArch64 stage 1). */
+         input_bits_=NativeAdrenoSmmuInputBits(report->id2);
+     }
+-    for(unsigned i=0;!status && i<GpuBufferCount;++i)
+-        status=buffers_[i].allocate(kBytes[i],report->output_bits,true,kBytes[i]);
++    for(unsigned i=0;!status && i<plan_.buffer_count;++i) {
++        const size_t bytes=i?kBytes[i]:plan_.sqe_bytes;
++        status=buffers_[i].allocate(bytes,report->output_bits,true,bytes);
++    }
+     if(!status) {
+         step(Prepare);
+         const uint64_t aperture=UINT64_C(1)<<input_bits_;
+         status=smmu_.prepare(&tables_,0,0,aperture,size_t(aperture/4096),bank,asid,1000,report->output_bits,input_bits_);
++        if(!status)smmu_.configHandle()->coherent_walk=plan_.coherent_walk?1:0;
+     }
+     if(!status) {
+         step(Program);
+@@ -51,7 +57,7 @@ IOReturn NativeAdrenoGpuContext::bringUp(const ArmSmmu4KIo *io,unsigned bank,uns
+     if(!status) {
+         step(Attach);
+         const ArmSmmu4KStream routes[2]={{slots[0],sids[0]},{slots[1],sids[1]}};
+-        status=smmu_.attach(routes,2);
++        status=smmu_.attach(routes,plan_.stream_count);
+         const ArmSmmu4KStreamResult *s=smmu_.streamResult();
+         report->route_status=smmu_.attachStatus();
+         report->route_phase=s->phase;report->route_writes=s->writes;report->routes_verified=s->streams_verified;
+@@ -66,7 +72,7 @@ IOReturn NativeAdrenoGpuContext::bringUp(const ArmSmmu4KIo *io,unsigned bank,uns
+     if(!status) {
+         step(Map);
+         /* adreno_fw_create_bo maps the SQE MSM_BO_GPU_READONLY without NOEXEC; every other kernel BO read/write. */
+-        for(unsigned i=0;!status && i<GpuBufferCount;++i)
++        for(unsigned i=0;!status && i<plan_.buffer_count;++i)
+             status=vm_.map(&buffers_[i],0,kIovas[i],i?3u:5u,0,2,&handles_[i]);
+         report->spans=uint32_t(vm_.spanCount());
+     }
+@@ -118,7 +124,7 @@ IOReturn NativeAdrenoGpuContext::createVm(NativeAdrenoProcessVm **out)
+         if(status)native_adreno_table_switches[7]=0x30|uint32_t(p->vm_.lastResult().operation)<<8;
+         if(!status)p->attached_=true;
+     }
+-    for(unsigned i=0;!status && i<GpuBufferCount;++i) {
++    for(unsigned i=0;!status && i<plan_.buffer_count;++i) {
+         native_adreno_table_switches[7]=4+i;
+         status=p->vm_.map(&buffers_[i],0,kIovas[i],i?3u:5u,0,2,&p->handles_[i]);
+     }
+@@ -229,24 +235,30 @@ static NativeAdrenoGpuContext *board_gpu_context;
+ extern "C" IOReturn NativeAdrenoGpuContextBringup(volatile uint8_t *smmu,size_t bytes,unsigned bank,unsigned asid,
+     unsigned slot0,unsigned sid0,unsigned slot1,unsigned sid1,void (*progress)(uint32_t),
+     NativeAdrenoGmuContextReport *report)
++{
++    return NativeAdrenoGpuContextBringupWithPlan(smmu,bytes,bank,asid,slot0,sid0,slot1,sid1,progress,report,nullptr);
++}
++extern "C" IOReturn NativeAdrenoGpuContextBringupWithPlan(volatile uint8_t *smmu,size_t bytes,unsigned bank,unsigned asid,
++    unsigned slot0,unsigned sid0,unsigned slot1,unsigned sid1,void (*progress)(uint32_t),
++    NativeAdrenoGmuContextReport *report,const NativeAdrenoGpuContextPlan *plan)
+ {
+     static ArmSmmu4KMmio mmio;
+     static ArmSmmu4KIo io;
+-    if(!report || board_gpu_context || !smmu || !bytes || sid0>0xffff || sid1>0xffff)return kIOReturnBadArgument;
++    if(!report || board_gpu_context || !smmu || !bytes || sid0>0xffff || sid1>0xffff || (plan && !plan->valid()))return kIOReturnBadArgument;
+     mmio={reinterpret_cast<volatile unsigned char *>(smmu),bytes};
+     if(ArmSmmu4KBindMmio(&mmio,&io)!=ArmSmmu4KSuccess)return kIOReturnBadArgument;
+     board_gpu_context=new NativeAdrenoGpuContext;
+     if(!board_gpu_context)return kIOReturnNoMemory;
+     const unsigned slots[2]={slot0,slot1};
+     const uint16_t sids[2]={uint16_t(sid0),uint16_t(sid1)};
+-    return board_gpu_context->bringUp(&io,bank,asid,slots,sids,progress,report);
++    return board_gpu_context->bringUp(&io,bank,asid,slots,sids,progress,report,plan);
+ }
+ extern "C" IOReturn NativeAdrenoGpuContextBuffers(NativeAdrenoGpuBuffer out[GpuBufferCount])
+ {
+     if(!out)return kIOReturnBadArgument;
+     for(unsigned i=0;i<GpuBufferCount;++i)out[i]={};
+     if(!board_gpu_context || !board_gpu_context->ready())return kIOReturnNotReady;
+-    for(unsigned i=0;i<GpuBufferCount;++i) {
++    for(unsigned i=0;i<board_gpu_context->bufferCount();++i) {
+         const NativeAdrenoMemory &m=board_gpu_context->buffer(i);
+         if(m.spanCount()!=1 || m.spans()[0].bytes!=m.bytes())return kIOReturnUnsupported;
+         out[i]={m.spans()[0].physical,m.bytes(),kIovas[i]};
+diff --git a/NativeAdrenoGpuContext.h b/NativeAdrenoGpuContext.h
+index 6270cae..7f82df7 100644
+--- a/NativeAdrenoGpuContext.h
++++ b/NativeAdrenoGpuContext.h
+@@ -34,6 +34,19 @@ enum : size_t {
+     GpuBufferCount=11
+ };
+ struct NativeAdrenoGpuBuffer {uint64_t physical,bytes,iova;};
++/* Board-owned resource selection. Defaults preserve A740. A840 selects a
++ * 128-KiB SQE, the five single-ring buffers and one verified graphics stream.
++ * No preemption record of another generation is allocated or published. */
++struct NativeAdrenoGpuContextPlan {
++    size_t sqe_bytes=GpuSqeBytes;
++    unsigned buffer_count=GpuBufferCount;
++    unsigned stream_count=2;
++    bool coherent_walk=true;
++    bool valid() const {
++        return sqe_bytes && !(sqe_bytes&4095) && sqe_bytes<=GpuRingIova-GpuSqeIova &&
++            (buffer_count==5 || buffer_count==GpuBufferCount) && stream_count && stream_count<=2;
++    }
++};
+ /* One GPU process's own address space: a table of the kernel table's shape (the same 0..2^ias aperture and attributes) under its
+  * own ASID, switched into the bank's TTBR0 while the GPU runs that process's work (NativeAdrenoSubmit table switching). The kernel
+  * buffers are mapped at the same GPU addresses as in the kernel table, so the CP finds its ring, SQE and memptrs whatever table runs. */
+@@ -55,6 +68,7 @@ public:
+     NativeAdrenoVm *vm() {return attached_?&vm_:nullptr;}
+ };
+ class NativeAdrenoGpuContext final {
++    NativeAdrenoGpuContextPlan plan_{};
+     NativeAdrenoTablePages tables_;
+     NativeAdrenoMemory buffers_[GpuBufferCount];
+     uint64_t handles_[GpuBufferCount]{};
+@@ -69,10 +83,12 @@ public:
+     NativeAdrenoGpuContext &operator=(const NativeAdrenoGpuContext &)=delete;
+     /* The report is the GMU context's: route counts cover both streams. */
+     IOReturn bringUp(const ArmSmmu4KIo *io,unsigned bank,unsigned asid,const unsigned slots[2],
+-        const uint16_t sids[2],void (*progress)(uint32_t step),NativeAdrenoGmuContextReport *report);
++        const uint16_t sids[2],void (*progress)(uint32_t step),NativeAdrenoGmuContextReport *report,
++        const NativeAdrenoGpuContextPlan *plan=nullptr);
+     bool ready() const {return ready_;}
+     /* The GPU address size of every table of this bank (ias). */
+     unsigned inputBits() const {return input_bits_;}
++    unsigned bufferCount() const {return plan_.buffer_count;}
+     const NativeAdrenoMemory &buffer(unsigned index) const {return buffers_[index];}
+     NativeAdrenoVm *vm() {return ready_?&vm_:nullptr;}
+     /* From now on the bank's TTBR0 may hold a process table: the kernel table's updates stop comparing the bank's TTBR0 with it. */
+@@ -106,6 +122,9 @@ private:
+ extern "C" IOReturn NativeAdrenoGpuContextBringup(volatile uint8_t *smmu,size_t bytes,unsigned bank,unsigned asid,
+     unsigned slot0,unsigned sid0,unsigned slot1,unsigned sid1,void (*progress)(uint32_t),
+     NativeAdrenoGmuContextReport *report);
++extern "C" IOReturn NativeAdrenoGpuContextBringupWithPlan(volatile uint8_t *smmu,size_t bytes,unsigned bank,unsigned asid,
++    unsigned slot0,unsigned sid0,unsigned slot1,unsigned sid1,void (*progress)(uint32_t),
++    NativeAdrenoGmuContextReport *report,const NativeAdrenoGpuContextPlan *plan);
+ /* sqe, ring, memptrs, pwrup, scratch: physical base, size and GPU address, only after Ready. */
+ extern "C" IOReturn NativeAdrenoGpuContextBuffers(NativeAdrenoGpuBuffer out[GpuBufferCount]);
+ /* The GPU address size (ias) of the ready GPU context, 0 before Ready. */
+diff --git a/NativeAdrenoIrq.cpp b/NativeAdrenoIrq.cpp
+index 96af912..c5325b2 100644
+--- a/NativeAdrenoIrq.cpp
++++ b/NativeAdrenoIrq.cpp
+@@ -2,17 +2,11 @@
+ #include "NativeAdrenoIrq.h"
+ #include <IOKit/IOLib.h>
+ 
+-/* Register offsets and bit positions are the pinned Linux definitions in
+- * registers/adreno/a6xx.xml: RBBM_INT_0_STATUS 0x0201, RBBM_INT_CLEAR_CMD
+- * 0x0037, RBBM_INT_0_MASK 0x0038, CP_INTERRUPT_STATUS 0x0823 and
+- * CP_PROTECT_STATUS 0x0824, plus the A7XX_INT_MASK enable set from
+- * a6xx_gpu.c. No bit is inferred beyond those sources. */
++/* Bit positions are the pinned Linux definitions in registers/adreno/a6xx.xml (A6XX_RBBM_INT_0_MASK), plus the
++ * A7XX_INT_MASK enable set from a6xx_gpu.c (A8XX_INT_MASK in a8xx_gpu.c is the same set). The register offsets come
++ * from the chip table: RBBM_INT_0_STATUS 0x0201, RBBM_INT_CLEAR_CMD 0x0037, RBBM_INT_0_MASK 0x0038,
++ * CP_INTERRUPT_STATUS 0x0823 and CP_PROTECT_STATUS 0x0824 on A7XX. No bit is inferred beyond those sources. */
+ enum : uint32_t {
+-    IrqRbbmStatus = 0x0201,
+-    IrqRbbmClear = 0x0037,
+-    IrqRbbmMask = 0x0038,
+-    IrqCpStatus = 0x0823,
+-    IrqCpProtect = 0x0824,
+     IrqBitIdle = 1u << 0,
+     IrqBitAhb = 1u << 1,
+     IrqBitAtbAsync = 1u << 6,
+@@ -50,8 +44,6 @@ static constexpr uint32_t kKnown = IrqBitIdle | IrqBitAhb | IrqBitAtbAsync | Irq
+ static constexpr uint32_t kEnable = IrqBitAhb | IrqBitAtbAsync | IrqBitGpc | IrqBitCpSw |
+     IrqBitCpHw | IrqBitCpPm4 | IrqBitCpRbDone | IrqBitCpFence | IrqBitAtbBus |
+     IrqBitHang | IrqBitUcheOob | IrqBitUcheTrap | IrqBitTsbWrite | IrqBitFuse;
+-/* CP_INTERRUPT_STATUS error bits, including the A7XX LPAC/BV replicas. */
+-static constexpr uint32_t kCpErrors = 0x3fff7u;
+ IOReturn NativeAdrenoIrq::poison()
+ {
+     poisoned_=true;return kIOReturnIOError;
+@@ -62,7 +54,13 @@ uint32_t NativeAdrenoIrq::mask()
+ }
+ uint32_t NativeAdrenoIrq::cpErrorMask()
+ {
+-    return kCpErrors;
++    return NativeAdrenoChipA7xx.cp_error_bits;
++}
++IOReturn NativeAdrenoIrq::useChip(const NativeAdrenoChipRegs *chip)
++{
++    if(attached_ || poisoned_)return kIOReturnBusy;
++    if(!chip || (chip->generation!=7 && chip->generation!=8))return kIOReturnBadArgument;
++    chip_=chip;return kIOReturnSuccess;
+ }
+ IOReturn NativeAdrenoIrq::attach(const NativeAdrenoRingIo *io)
+ {
+@@ -81,8 +79,8 @@ IOReturn NativeAdrenoIrq::programMask(uint32_t *programmed)
+     if(!attached_ || poisoned_)return kIOReturnNotReady;
+     if(programmed)*programmed=0;
+     uint32_t readback=0;
+-    if(io_.write32(io_.cookie,IrqRbbmMask,kEnable))return poison();
+-    if(io_.read32(io_.cookie,IrqRbbmMask,&readback))return poison();
++    if(io_.write32(io_.cookie,chip_->rbbm_int_mask,kEnable))return poison();
++    if(io_.read32(io_.cookie,chip_->rbbm_int_mask,&readback))return poison();
+     if(readback!=kEnable)return poison();
+     enabled_=readback;
+     if(programmed)*programmed=readback;
+@@ -94,9 +92,9 @@ IOReturn NativeAdrenoIrq::handle(NativeAdrenoIrqResult *result)
+     *result={};
+     if(!attached_ || poisoned_)return kIOReturnNotReady;
+     uint32_t status=0;
+-    if(io_.read32(io_.cookie,IrqRbbmStatus,&status))return poison();
++    if(io_.read32(io_.cookie,chip_->rbbm_int_status,&status))return poison();
+     /* Linux acknowledges the whole read status before decoding it. */
+-    if(io_.write32(io_.cookie,IrqRbbmClear,status))return poison();
++    if(io_.write32(io_.cookie,chip_->rbbm_int_clear,status))return poison();
+     if(io_.barrier(io_.cookie))return poison();
+     uint32_t flags=0,cp_status=0,protect=0;
+     if(status&IrqBitCpFence)flags|=NativeAdrenoIrqFence;
+@@ -107,9 +105,9 @@ IOReturn NativeAdrenoIrq::handle(NativeAdrenoIrqResult *result)
+     if(status&(IrqBitAhb|IrqBitGpc|IrqBitAtbAsync|IrqBitAtbBus))flags|=NativeAdrenoIrqBusError;
+     if(status&(IrqBitTsbWrite|IrqBitFuse))flags|=NativeAdrenoIrqSecurity;
+     if(status&IrqBitCpHw) {
+-        if(io_.read32(io_.cookie,IrqCpStatus,&cp_status))return poison();
+-        if(cp_status&kCpErrors) {
+-            if(io_.read32(io_.cookie,IrqCpProtect,&protect))return poison();
++        if(io_.read32(io_.cookie,chip_->cp_int_status,&cp_status))return poison();
++        if(cp_status&chip_->cp_error_bits) {
++            if(io_.read32(io_.cookie,chip_->cp_protect_status,&protect))return poison();
+             flags|=NativeAdrenoIrqCpError;
+         }
+     }
+diff --git a/NativeAdrenoIrq.h b/NativeAdrenoIrq.h
+index 3640610..619e8f9 100644
+--- a/NativeAdrenoIrq.h
++++ b/NativeAdrenoIrq.h
+@@ -2,6 +2,7 @@
+ #ifndef NATIVE_ADRENO_IRQ_H
+ #define NATIVE_ADRENO_IRQ_H
+ #include "NativeAdrenoRing.h"
++#include "NativeAdrenoChip.h"
+ #include <stdint.h>
+ 
+ enum NativeAdrenoIrqFlag {
+@@ -19,7 +20,7 @@ enum NativeAdrenoIrqFlag {
+ struct NativeAdrenoIrqResult {
+     uint32_t flags, status, unknown, cp_status, protect_status;
+ };
+-/* A7XX RBBM/CP interrupt decode and acknowledgement, not an XNU interrupt
++/* A7XX/A8XX RBBM/CP interrupt decode and acknowledgement, not an XNU interrupt
+  * source. IO read/write take dword register indices. The hardware interrupt
+  * must already be masked at the controller by the caller, and the caller must
+  * serialize handle() against every other MMIO user. Mask programming happens
+@@ -30,12 +31,16 @@ class NativeAdrenoIrq final {
+     NativeAdrenoRingIo io_{};
+     uint32_t enabled_=0;
+     bool attached_=false,poisoned_=false;
++    const NativeAdrenoChipRegs *chip_=&NativeAdrenoChipA7xx;
+     IOReturn poison();
+ public:
+     NativeAdrenoIrq()=default;
+     ~NativeAdrenoIrq()=default;
+     NativeAdrenoIrq(const NativeAdrenoIrq &)=delete;
+     NativeAdrenoIrq &operator=(const NativeAdrenoIrq &)=delete;
++    /* Before attach: the generation whose RBBM/CP status registers are decoded (A7XX unless named). The RBBM bits are the
++     * same A6XX_RBBM_INT_0_MASK bitset on both, and A8XX_INT_MASK equals A7XX_INT_MASK. */
++    IOReturn useChip(const NativeAdrenoChipRegs *);
+     IOReturn attach(const NativeAdrenoRingIo *);
+     IOReturn detach();
+     /* The exact A7XX enable set: AHB, ATB async, GPC, CP_SW, CP_HW, PM4,
+@@ -45,7 +50,8 @@ public:
+      * an error reported here cannot be hidden by a later clear failure. */
+     IOReturn handle(NativeAdrenoIrqResult *);
+     static uint32_t mask();
+-    static uint32_t cpErrorMask();
++    static uint32_t cpErrorMask();             /* A7XX's */
++    uint32_t cpErrors() const {return chip_->cp_error_bits;}
+     bool poisoned() const {return poisoned_;}
+     uint32_t enabled() const {return enabled_;}
+ };
+diff --git a/NativeAdrenoPerf.h b/NativeAdrenoPerf.h
+new file mode 100644
+index 0000000..7046b5b
+--- /dev/null
++++ b/NativeAdrenoPerf.h
+@@ -0,0 +1,19 @@
++/* SPDX-License-Identifier: MIT */
++#pragma once
++#include <stdint.h>
++/* CPU-only cumulative metrics, individually atomic. Differences over a
++ * measured interval are meaningful; this is not one hardware-atomic sample.
++ * jobs: submit,retire,last submit us,last retire us,GPU ticks,total valid
++ * stamps,max GPU ticks,total submit wall us,max submit wall us,total lifetime
++ * us,max lifetime us,last issued fence,last retired fence,reserved.
++ * GPU timestamps count CP_ALWAYS_ON ticks at 19.2 MHz, not CPU ticks.
++ */
++struct NativeAdrenoPerfSample {
++    uint64_t jobs[14],cache[5],reassert_ticks,cpu_us;
++    uint32_t cpu_valid,cpu[8][4];
++};
++extern "C" {
++extern uint64_t native_adreno_perf_jobs[14];
++bool native_adreno_perf_sample(NativeAdrenoPerfSample *);
++void native_adreno_perf_calls(uint64_t out[18][4]);
++}
+diff --git a/NativeAdrenoPollLog.h b/NativeAdrenoPollLog.h
+new file mode 100644
+index 0000000..62daa85
+--- /dev/null
++++ b/NativeAdrenoPollLog.h
+@@ -0,0 +1,20 @@
++/* SPDX-License-Identifier: MIT */
++#pragma once
++#include <stdint.h>
++
++/* A timeout is also the normal answer to a pending fence/frame poll. Keep
++ * every occurrence in an atomic counter, and print the first four and powers
++ * of two. The independent observer reports changing totals every two seconds.
++ * This only decides whether to repeat a log line; it cannot alter an RPC.
++ */
++struct NativeAdrenoPollLog {
++    uint64_t counts[2]{};
++    bool keep(unsigned kind) {
++        if(kind>=2)return true;
++        const uint64_t n=__atomic_add_fetch(&counts[kind],uint64_t(1),__ATOMIC_RELAXED);
++        return n<=4 || (n && !(n&(n-1)));
++    }
++    uint64_t count(unsigned kind) const {
++        return kind<2?__atomic_load_n(&counts[kind],__ATOMIC_RELAXED):0;
++    }
++};
+diff --git a/NativeAdrenoPreempt.cpp b/NativeAdrenoPreempt.cpp
+index e8169ed..a442d05 100644
+--- a/NativeAdrenoPreempt.cpp
++++ b/NativeAdrenoPreempt.cpp
+@@ -112,7 +112,13 @@ IOReturn NativeAdrenoPreempt::detach()
+ /* Both rings' records as the CPU sees them: read pointer, write pointer, errno, info. */
+ void NativeAdrenoPreempt::snapshot(volatile uint32_t *row,unsigned first) const
+ {
++#if defined(__aarch64__) || defined(__arm64__)
+     __asm__ volatile("dsb sy":::"memory");
++#elif defined(NATIVE_ADRENO_HOST_TEST)
++    __atomic_thread_fence(__ATOMIC_SEQ_CST);
++#else
++#error "GPU driver requires ARM64; use NATIVE_ADRENO_HOST_TEST only for register peers"
++#endif
+     for(unsigned r=0;r<NativeAdrenoPreemptRingCount;++r) {
+         const uint8_t *rec=rings_.record_cpu[r];
+         row[first+r*4+0]=recordWord(rec,20);row[first+r*4+1]=recordWord(rec,24);
+diff --git a/NativeAdrenoPublish.cpp b/NativeAdrenoPublish.cpp
+index 1bc9b7e..836514c 100644
+--- a/NativeAdrenoPublish.cpp
++++ b/NativeAdrenoPublish.cpp
+@@ -20,9 +20,28 @@
+ #include <IOKit/IOUserClient.h>
+ #include <string.h>
+ #include <kern/thread.h>
++#include <kern/processor.h>
++#include <kern/host.h>
++#include <mach/processor_info.h>
++#include "NativeAdrenoPerf.h"
+ #include "NativeAdrenoUserClient.h"
+ #include "NativeAdrenoGpuContext.h"
+ #include "NativeGpuTrace.inc"
++#include "NativeGpuTextStream.h"
++#include "NativeAdrenoPollLog.h"
++
++static uint64_t perfCalls[18][4];
++static NativeGpuTextStream gpuTextStream;
++static IOLock *gpuTextLock;
++static NativeAdrenoPollLog gpuPollLog;
++static bool reportRpcResult(uint32_t method,IOReturn result) {
++    if(result!=kIOReturnTimeout)return true;
++    if(method==NativeAdrenoMethodWaitFence)return gpuPollLog.keep(0);
++    // 0x7000 + NGP_METHOD_WAIT_SWAP: the existing display hand-off wait.
++    if(method==0x7002)return gpuPollLog.keep(1);
++    return true;
++}
++extern "C" int proc_selfpid(void);
+ 
+ extern "C" void proc_selfname(char *, int);
+ extern "C" volatile uint32_t native_adreno_table_switches[8];
+@@ -702,6 +721,10 @@ IOReturn AGXDeviceUserClient::run(uint32_t method,const void *input,size_t input
+     uint64_t lockClock[LockClockWords]={};
+     const uint64_t entered=mach_absolute_time();
+     const IOReturn status=runTimed(method,input,input_size,output,output_size,lockClock);
++    if(method<18) {
++        const uint64_t values[4]={1,microseconds(entered,mach_absolute_time()),microseconds(0,lockClock[LockWaited]),microseconds(0,lockClock[LockHeld])};
++        for(unsigned k=0;k<4;++k)__atomic_fetch_add(&perfCalls[method][k],values[k],__ATOMIC_RELAXED);
++    }
+     if(NativeAdrenoCallRec *ring=native_adreno_call_ring) {
+         const uint32_t held=microseconds(0,lockClock[LockHeld])/16;
+         const uint32_t n=__atomic_fetch_add(&native_adreno_call_count,1,__ATOMIC_RELAXED);
+@@ -737,7 +760,8 @@ IOReturn AGXDeviceUserClient::runTimed(uint32_t method,const void *input,size_t
+     if(method==NativeGpuTraceMethod) {
+         if(!input || input_size!=sizeof(NativeGpuTraceRecord) || output_size)return kIOReturnBadArgument;
+         const auto *record=static_cast<const NativeGpuTraceRecord *>(input);
+-        if(record->event!=GpuTraceThread && record->event!=GpuTraceProblem)return kIOReturnBadArgument;
++        if(record->event!=GpuTraceThread && record->event!=GpuTraceProblem && record->event!=GpuTraceTurnipPass &&
++           record->event!=GpuTraceTurnipGmemSide && record->event!=GpuTraceTurnipAttachment)return kIOReturnBadArgument;
+         native_gpu_trace_record(record->event,proc_selfpid(),record->value,12);
+         return kIOReturnSuccess;
+     }
+@@ -856,7 +880,8 @@ IOReturn AGXDeviceUserClient::externalMethod(uint32_t selector,IOExternalMethodA
+         {&action,0,0,0,sizeof(NativeAdrenoAbiDeviceInfo)},
+         {&action,0,sizeof(NativeAdrenoAbiBoImport),0,sizeof(NativeAdrenoAbiBoAllocReply)},
+         {&action,0,sizeof(NativeAdrenoAbiPriority),0,0},
+-        {&action,0,sizeof(NativeAdrenoAbiNote),0,0}};
++        {&action,0,sizeof(NativeAdrenoAbiNote),0,0},
++        {&action,0,sizeof(NativeAdrenoAbiSubmitBatch),0,sizeof(NativeAdrenoAbiSubmitBatchReply)}};
+     native_adreno_metal_diag.ext_entries=native_adreno_metal_diag.ext_entries+1;
+     if(selector<256)native_adreno_metal_diag.sel_bits[selector>>5]|=1u<<(selector&31);
+     /* Tunnel. The sandbox resolves a filter policy for this class at open time and then admits only the selectors its profile lists,
+@@ -874,6 +899,9 @@ IOReturn AGXDeviceUserClient::externalMethod(uint32_t selector,IOExternalMethodA
+         const IOReturn tunneled=run(header[1],reinterpret_cast<const uint8_t *>(arguments->structureInput)+8,
+             arguments->structureInputSize-8,arguments->structureOutput,arguments->structureOutputSize);
+         native_adreno_metal_diag.ext_status=uint32_t(tunneled);
++        if(native_gpu_trace_enabled() && tunneled && header[1]!=NativeAdrenoMethodSetMetadata && reportRpcResult(header[1],tunneled))
++            IOLog("NEZHA GPU RPC: pid %d method %u status %#x input %u output %u\n",proc_selfpid(),header[1],
++                unsigned(tunneled),unsigned(arguments->structureInputSize-8),unsigned(arguments->structureOutputSize));
+         return tunneled;
+     }
+     native_adreno_metal_diag.ext_selector=selector;
+@@ -886,6 +914,8 @@ IOReturn AGXDeviceUserClient::externalMethod(uint32_t selector,IOExternalMethodA
+     const IOReturn result=IOUserClient::externalMethod(selector,arguments,const_cast<IOExternalMethodDispatch *>(&table[selector-1]),
+         target?target:this,reference);
+     native_adreno_metal_diag.ext_status=uint32_t(result);
++    if(native_gpu_trace_enabled() && result && selector!=NativeAdrenoMethodSetMetadata && reportRpcResult(selector,result))
++        IOLog("NEZHA GPU RPC: pid %d direct %u status %#x\n",proc_selfpid(),unsigned(selector),unsigned(result));
+     return result;
+ }
+ /* limit > 0 caps the connections ever granted: a plugin that crashes its host process on every launch (the process respawns and
+@@ -899,6 +929,17 @@ extern "C" IOReturn native_adreno_new_user_client(IOService *provider,task_t own
+      * that a sandbox that admits neither selectors nor mapping, or a crash, still leaves a trace of how far it got. */
+     if((type>>16)==NativeAdrenoPluginOpenType && (type&0xffff)) {
+         const uint32_t value=type&0xffff,slot=native_adreno_metal_diag.marks_total&15;
++        if(native_gpu_trace_enabled() && value<0x7000)
++            IOLog("NEZHA GPU MARK: pid %d phase %#x\n",proc_selfpid(),value);
++        if(native_gpu_trace_enabled() && value>=0x7000 && value<0x8000 && gpuTextLock) {
++            NativeGpuTextStream::Message message;
++            IOLockLock(gpuTextLock);
++            const bool complete=gpuTextStream.accept(uint32_t(proc_selfpid()),value,message);
++            const uint32_t lost=gpuTextStream.dropped;
++            IOLockUnlock(gpuTextLock);
++            if(complete)IOLog("NEZHA GPU NOTE: pid %u channel %u truncated %u legacy %u dropped %u %s\n",
++                message.pid,message.channel,message.truncated,message.legacy,lost,message.text);
++        }
+         /* Text stream into report2, one character per marker: 0x7fff starts a line, 0x70cc appends character cc. It needs no connection,
+          * so the plugin's Turnip watchdog can report while Turnip itself holds its connection slot. Not counted as markers. */
+         if(value>=0x8000) {
+@@ -1165,6 +1206,125 @@ extern "C" bool native_adreno_fences(uint32_t *submitted,uint32_t *retired)
+ {
+     return native_adreno_fences_detail(submitted,retired,nullptr);
+ }
++/* Ordinary CPU observer, independent of the GPU queue lock. These are sampled
++ * software counters/rows, not an atomic hardware snapshot. It performs no MMIO,
++ * reset, recovery or allocation; a hung GPU call still leaves its inflight ID.
++ */
++
++static void logStallWords(const char *kind,uint32_t serial,const uint32_t *words,unsigned count)
++{
++    for(unsigned first=0;first<count;first+=8) {
++        char row[8*9+1]={};
++        size_t used=0;
++        for(unsigned i=first;i<count && i<first+8;++i) {
++            const int n=snprintf(row+used,sizeof(row)-used,"%08x ",words[i]);
++            if(n<=0 || size_t(n)>=sizeof(row)-used)break;
++            used+=size_t(n);
++        }
++        IOLog("NEZHA GPU STALL WORDS: sample=%u kind=%s first=%u %s\n",serial,kind,first,row);
++    }
++}
++static void logCachedStall(const NativeAdrenoStallSample &s)
++{
++    const uint64_t *j=s.job;
++    IOLog("NEZHA GPU STALL: cached v=1 sample=%u chip=%llu time_us=%llu pending_us=%llu fence=%u polls=%u observed=%llu issued=%llu pid=%llu queue=%#llx context=%llu ring=%llu jobs=%llu table_mode=%llu action_stage=%llu fault_read=%#llx\n",
++        s.serial,j[19],j[0],j[1],s.state[0],s.state[1],j[14],j[15],j[7],j[3],j[8],j[9],j[11],j[12],j[17],j[13]);
++    IOLog("NEZHA GPU STALL VM: sample=%u job_ttbr=%#llx selected_ttbr=%#llx submit_us=%llu next_handle=%llu bos=%llu ib_words=%llu priority=%llu\n",
++        s.serial,j[4],j[5],j[2],j[6],j[10],j[16],j[18]);
++    logStallWords("cp",s.serial,s.state+2,22);
++    logStallWords("memory",s.serial,s.memory,59);
++    logStallWords("ibs",s.serial,s.ibs,32);
++    // These counters are separately sampled; they are not part of the cached
++    // hardware observation above. In particular, hangs are not distinct jobs.
++    IOLog("NEZHA GPU RECOVERY: sampled hook=%u hangs=%u restarts=%u failed=%u fault=%#x coherence=%u/%u wc_distrusted=%u\n",
++        __atomic_load_n(&g.restart,__ATOMIC_RELAXED)?1u:0u,
++        native_adreno_recovery[0],native_adreno_recovery[1],native_adreno_recovery[2],
++        native_adreno_recovery_fault[1],native_adreno_coherence[4],native_adreno_coherence[0],native_adreno_wc_distrusted);
++}
++
++
++extern "C" kern_return_t processor_info(processor_t,processor_flavor_t,host_t *,processor_info_t,mach_msg_type_number_t *);
++extern "C" processor_t cpu_to_processor(int);
++static uint32_t perfCpuSequence,perfCpuValid,perfCpuTicks[8][4];
++static uint64_t perfCpuUs;
++extern "C" volatile uint64_t native_adreno_cache_stats[5],native_adreno_reassert_ticks;
++static void samplePerfCpu()
++{
++    uint32_t ticks[8][4]={},valid=0;
++    for(unsigned n=0;n<8 && n<MAX_CPUS;++n) {
++        processor_t processor=cpu_to_processor(static_cast<int>(n));if(!processor)continue;
++        processor_cpu_load_info_data_t info{};mach_msg_type_number_t count=PROCESSOR_CPU_LOAD_INFO_COUNT;host_t host=nullptr;
++        if(processor_info(processor,PROCESSOR_CPU_LOAD_INFO,&host,reinterpret_cast<processor_info_t>(&info),&count)!=KERN_SUCCESS || count!=PROCESSOR_CPU_LOAD_INFO_COUNT)continue;
++        for(unsigned k=0;k<4;++k)ticks[n][k]=info.cpu_ticks[k];valid|=1u<<n;
++    }
++    uint64_t ns=0;absolutetime_to_nanoseconds(mach_absolute_time(),&ns);
++    __atomic_add_fetch(&perfCpuSequence,1u,__ATOMIC_ACQ_REL);
++    for(unsigned n=0;n<8;++n)for(unsigned k=0;k<4;++k)__atomic_store_n(&perfCpuTicks[n][k],ticks[n][k],__ATOMIC_RELAXED);
++    __atomic_store_n(&perfCpuValid,valid,__ATOMIC_RELAXED);__atomic_store_n(&perfCpuUs,ns/1000,__ATOMIC_RELAXED);
++    __atomic_add_fetch(&perfCpuSequence,1u,__ATOMIC_RELEASE);
++}
++extern "C" bool native_adreno_perf_sample(NativeAdrenoPerfSample *out)
++{
++    if(!out)return false;*out={};
++    for(unsigned i=0;i<14;++i)out->jobs[i]=__atomic_load_n(&native_adreno_perf_jobs[i],__ATOMIC_RELAXED);
++    for(unsigned i=0;i<5;++i)out->cache[i]=__atomic_load_n(&native_adreno_cache_stats[i],__ATOMIC_RELAXED);
++    out->reassert_ticks=__atomic_load_n(&native_adreno_reassert_ticks,__ATOMIC_RELAXED);
++    const uint32_t first=__atomic_load_n(&perfCpuSequence,__ATOMIC_ACQUIRE);
++    if(!first || (first&1))return true; // totals available, CPU sample not yet available
++    for(unsigned n=0;n<8;++n)for(unsigned k=0;k<4;++k)out->cpu[n][k]=__atomic_load_n(&perfCpuTicks[n][k],__ATOMIC_RELAXED);
++    out->cpu_us=__atomic_load_n(&perfCpuUs,__ATOMIC_RELAXED);out->cpu_valid=__atomic_load_n(&perfCpuValid,__ATOMIC_RELAXED);
++    __atomic_thread_fence(__ATOMIC_ACQUIRE);
++    if(first!=__atomic_load_n(&perfCpuSequence,__ATOMIC_RELAXED))out->cpu_valid=0;
++    return true;
++}
++extern "C" void native_adreno_perf_calls(uint64_t out[18][4])
++{
++    if(!out)return;
++    for(unsigned n=0;n<18;++n)for(unsigned k=0;k<4;++k)out[n][k]=__atomic_load_n(&perfCalls[n][k],__ATOMIC_RELAXED);
++}
++
++static void nativeAdrenoDiagnosticObserver(void *,wait_result_t)
++{
++    uint32_t hashes[48]={};
++    uint64_t lastPolls[2]={};
++    uint32_t lastStall=0;
++    for(;;) {
++        IOSleep(2000);
++        samplePerfCpu();
++        NativeAdrenoStallSample stall{};
++        if(native_adreno_copy_stall(&stall) && stall.serial!=lastStall) {
++            logCachedStall(stall);lastStall=stall.serial;
++        }
++        auto &d=native_adreno_metal_diag;
++        IOLog("NEZHA GPU SNAP: sampled opens %u closes %u busy %u bad %u name_reads %u calls %u method %u status %#x inflight %u since %u marks %u table_status %#x\n",
++            d.opens,d.closes,d.busy,d.bad,d.name_reads,d.calls,d.last_selector,d.last_status,
++            d.inflight,d.inflight_since_calls,d.marks_total,native_adreno_table_switches[6]);
++        const uint64_t fencePolls=gpuPollLog.count(0),framePolls=gpuPollLog.count(1);
++        if(fencePolls!=lastPolls[0] || framePolls!=lastPolls[1]) {
++            IOLog("NEZHA GPU POLL: sampled fence_timeouts=%llu frame_timeouts=%llu; repeated lines counted\n",fencePolls,framePolls);
++            lastPolls[0]=fencePolls;lastPolls[1]=framePolls;
++        }
++        // Problem/notification text is already retained as event 65 by the
++        // upstream ABI. Copy at most eight unseen metadata entries, release
++        // the metadata latch, then log; never print while holding that latch.
++        NativeGpuTraceRecord problems[8];
++        const unsigned problemCount=gpuTraceCopyNewProblems(problems,8);
++        for(unsigned i=0;i<problemCount;++i) {
++            char text[89];memcpy(text,&problems[i].value[1],88);text[88]=0;
++            for(unsigned j=0;j<88 && text[j];++j)
++                if(uint8_t(text[j])<32 || uint8_t(text[j])==127)text[j]=' ';
++            IOLog("NEZHA GPU PROBLEM: pid %u part %llu seq %llu %s\n",problems[i].pid,
++                problems[i].value[0],problems[i].sequence,text);
++        }
++        for(unsigned i=0;i<48;++i) {
++            char row[96];memcpy(row,native_adreno_metal_rows[i],sizeof(row));row[95]=0;
++            uint32_t hash=2166136261u;
++            for(unsigned j=0;j<95 && row[j];++j)hash=(hash^uint8_t(row[j]))*16777619u;
++            if(row[0] && hash!=hashes[i])IOLog("NEZHA GPU ROW: sampled %u %s\n",i,row);
++            hashes[i]=hash;
++        }
++    }
++}
+ /* Publishes the service once. Everything passed in must outlive the system (the board probe keeps them in statics) and
+  * the VM, submit object and ring must already be attached to the live GPU context. The core must not be open. */
+ extern "C" IOReturn native_adreno_publish(NativeAdrenoVm *vm,NativeAdrenoSubmit *submit,NativeAdrenoRing *ring,
+@@ -1173,6 +1333,7 @@ extern "C" IOReturn native_adreno_publish(NativeAdrenoVm *vm,NativeAdrenoSubmit
+ {
+     if(g.published || !vm || !submit || !ring || !clock || !clock->now_us)return kIOReturnBadArgument;
+     gpuTraceInit();
++    if(native_gpu_trace_enabled())gpuTextLock=IOLockAlloc();
+     g.lock=IOLockAlloc();
+     NativeAdrenoGpuPublished *service=new NativeAdrenoGpuPublished;
+     if(!g.lock || !service || !service->init() || !service->attach(IOService::getPlatform())) {
+@@ -1183,7 +1344,9 @@ extern "C" IOReturn native_adreno_publish(NativeAdrenoVm *vm,NativeAdrenoSubmit
+     /* Per-process address spaces: without table switching every user connection would be refused (createVm needs it). */
+     g.context=NativeAdrenoGpuContextObject();
+     IOReturn switching=g.context?g.context->enableSwitching():kIOReturnNotReady;
+-    if(!switching)switching=submit->setTableSwitching(tableMode(),
++    /* A840's single-ring first stage switches tables only after real idle.
++     * Its CP table-switch and A740 preemption records are not interchangeable. */
++    if(!switching)switching=submit->setTableSwitching(ring->chip()->generation==8?1:tableMode(),
+         [](void *cookie,uint64_t ttbr0)->IOReturn {return static_cast<NativeAdrenoGpuContext *>(cookie)->writeTtbr0(ttbr0);},g.context);
+     native_adreno_table_switches[6]=uint32_t(switching);
+     if(switching)g.context=nullptr;
+@@ -1206,6 +1369,12 @@ extern "C" IOReturn native_adreno_publish(NativeAdrenoVm *vm,NativeAdrenoSubmit
+         thread_t thread=nullptr;
+         if(kernel_thread_start(nativeAdrenoHangcheck,nullptr,&thread)==KERN_SUCCESS)thread_deallocate(thread);
+     }
++    if(native_gpu_trace_enabled()) {
++        thread_t thread=nullptr;
++        const kern_return_t result=kernel_thread_start(nativeAdrenoDiagnosticObserver,nullptr,&thread);
++        if(result==KERN_SUCCESS)thread_deallocate(thread);
++        IOLog("NEZHA GPU DIAG: existing USB/console sink; text_lock %u observer %#x\n",gpuTextLock!=nullptr,unsigned(result));
++    }
+     service->setName("NativeAdrenoGpu");
+     service->registerService();
+     return kIOReturnSuccess;
+diff --git a/NativeAdrenoRing.cpp b/NativeAdrenoRing.cpp
+index 0eb439e..f49ccea 100644
+--- a/NativeAdrenoRing.cpp
++++ b/NativeAdrenoRing.cpp
+@@ -16,7 +16,6 @@ enum : uint32_t {
+     RingRptrAddress = 0x0804, /* 64-bit CP_RB_RPTR_ADDR */
+     RingRptr = 0x0806,
+     RingWptr = 0x0807,
+-    RingScratch = 0x0885,     /* CP_SCRATCH(2) for A6XX..A7XX */
+     RingFenceOpcode = 0x46,   /* CP_EVENT_WRITE7 on A7XX */
+     RingFenceEvent = 0x31,    /* CACHE_CLEAN */
+     RingFenceEnable = 1u << 27,
+@@ -52,11 +51,10 @@ enum : uint32_t {
+     RingResetAll = 0xf,
+     RingLrzFlushInvalidate = 0x26,
+     RingCacheInvalidate = 0x31,
+-    RingPerfctrSramInit = 0x050e,
+-    RingPerfctrSramInitStatus = 0x050f,
+     RingWaitRegMem = 0x3c,
+     RingWaitWriteEq = 3,
+     RingResetWords = 26,
++    RingSliceSramWords = 2, /* A840 also initializes its slice counter SRAM. */
+     /* a6xx_set_pagetable()'s table switch inside the context entry, after the SRAM init write: CP_SMMU_TABLE_UPDATE (0x53; TTBR0 low,
+      * TTBR0 high with the ASID in bits 16..31, CONTEXTIDR 0, CONTEXTBANK 0: the GPU's bank is 0, as arm-smmu-qcom assigns it so the CP can
+      * switch tables), then CP_THREAD_CONTROL SYNC_THREADS|BR so BV cannot run ahead while BR switches. The CACHE_INVALIDATE that follows
+@@ -71,7 +69,6 @@ enum : uint32_t {
+     RingSetAmble = 0x55,
+     RingRegRmw = 0x21,
+     RingRegToMem = 0x3e,      /* CP_REG_TO_MEM */
+-    RingAlwaysOnCounter = 0x0980,   /* CP_ALWAYS_ON_COUNTER, 64 bit */
+     RingStampWords = 4,
+     RingStampOffset = 512,    /* the timeline slots in the fence page: 64 of 16 bytes */
+     RingFenceWords = 7,       /* kernel bring-up submissions: TYPE4 scratch + TYPE7 event */
+@@ -106,6 +103,38 @@ IOReturn NativeAdrenoRing::poison()
+ {
+     poisoned_=true;return kIOReturnIOError;
+ }
++IOReturn NativeAdrenoRing::useChip(const NativeAdrenoChipRegs *chip)
++{
++    if(attached_ || poisoned_ || ring_ || fence_)return kIOReturnBusy;
++    if(!chip)return kIOReturnBadArgument;
++    // Apple kernel linking can keep identical inline constants at different
++    // addresses across objects. Verify every register fact, then keep this
++    // component's immutable canonical table (never caller-owned storage).
++    const auto matches=[chip](const NativeAdrenoChipRegs &known) {
++        return chip->generation==known.generation &&
++            chip->cp_sqe_instr_base==known.cp_sqe_instr_base &&
++            chip->cp_scratch2==known.cp_scratch2 &&
++            chip->perfctr_sram_init_cmd==known.perfctr_sram_init_cmd &&
++            chip->perfctr_sram_init_status==known.perfctr_sram_init_status &&
++            chip->slice_perfctr_sram_init_cmd==known.slice_perfctr_sram_init_cmd &&
++            chip->rbbm_int_status==known.rbbm_int_status &&
++            chip->rbbm_int_clear==known.rbbm_int_clear &&
++            chip->rbbm_int_mask==known.rbbm_int_mask &&
++            chip->cp_int_status==known.cp_int_status &&
++            chip->cp_error_bits==known.cp_error_bits &&
++            chip->cp_protect_status==known.cp_protect_status &&
++            chip->cp_always_on_counter==known.cp_always_on_counter &&
++            chip->gmu_always_on_counter==known.gmu_always_on_counter;
++    };
++    const auto *known=matches(NativeAdrenoChipA7xx)?&NativeAdrenoChipA7xx:
++        matches(NativeAdrenoChipA8xx)?&NativeAdrenoChipA8xx:nullptr;
++    if(!known)return kIOReturnBadArgument;
++    chip_=known;return kIOReturnSuccess;
++}
++uint32_t NativeAdrenoRing::resetWords() const
++{
++    return RingResetWords+(chip_->slice_perfctr_sram_init_cmd?RingSliceSramWords:0);
++}
+ /* WPTR as a fenced register write: the GMU drops a write to CP_RB_WPTR that arrives while the GPU domain is not ready and flags it in
+  * its AHB fence status; the write is then given again, at most 200 times. i491: a fence stalled on almost every submission until the
+  * stall handler wrote WPTR again (5361 of 5397). [0] writes, [1] writes that were dropped at least once, [2] repeated writes, [3] writes
+@@ -126,6 +155,7 @@ IOReturn NativeAdrenoRing::writeWptr(uint32_t value)
+         if(tries==200) {
+             native_adreno_wptr_fence[3]=native_adreno_wptr_fence[3]+1;
+             (void)io_.fence_status(io_.fence_cookie,1,&status);
++            if(chip_->generation==8)return poison(); /* no qualified A840 restart/re-kick owner yet */
+             return kIOReturnSuccess;   /* the stall handler gives WPTR again later */
+         }
+         native_adreno_wptr_fence[2]=native_adreno_wptr_fence[2]+1;
+@@ -157,6 +187,26 @@ IOReturn NativeAdrenoRing::ibBefore(uint32_t rptr,uint64_t *iova,uint32_t *dword
+ }
+ IOReturn NativeAdrenoRing::stallState(uint32_t *out)
+ {
++    if(!out)return kIOReturnBadArgument;
++    if(chip_->generation==8) {
++        /* gen8_reg.h: STATUS/STATUS1 only. Missing STATUS2/3 stay explicitly
++         * unavailable; the pipe slots are read with the host aperture restored. */
++        for(unsigned i=0;i<NativeAdrenoRingStallWords;++i)out[i]=UINT32_MAX;
++        const uint32_t regs[]={0x12,0x13,0x6a,RingRptr,RingWptr,0x80a};
++        const unsigned slots[]={0,1,4,8,9,16};
++        for(unsigned i=0;i<6;++i)if(io_.read32(io_.cookie,regs[i],&out[slots[i]]))return poison();
++        const uint32_t br[]={0x8b3,0x8bb,0x84f,0x900,0x901,0x902,0x904,0x905,0x906};
++        uint32_t values[9]{};
++        IOReturn status=readA8xxPipe(1,br,values,9);
++        if(status)return status;
++        const unsigned to[]={5,6,7,10,11,12,13,14,15};
++        for(unsigned i=0;i<9;++i)out[to[i]]=values[i];
++        const uint32_t bv[]={0x900,0x902,0x906,0x904,0x905};
++        status=readA8xxPipe(2,bv,values,5);
++        if(status)return status;
++        for(unsigned i=0;i<5;++i)out[17+i]=values[i];
++        return kIOReturnSuccess;
++    }
+     static const uint32_t regs[NativeAdrenoRingStallWords]={
+         0x0210,0x0211,0x0212,0x0213,0x0201,0x0821,0x0825,0x0824,RingRptr,RingWptr,
+         0x0928,0x0929,0x092a,0x092b,0x092c,0x092d,0x0a66,0x0a6d,0x0a70,0x0a74,0x0a71,0x0a72};
+@@ -165,6 +215,17 @@ IOReturn NativeAdrenoRing::stallState(uint32_t *out)
+         if(io_.read32(io_.cookie,regs[i],&out[i]))return poison();
+     return kIOReturnSuccess;
+ }
++IOReturn NativeAdrenoRing::readA8xxPipe(uint32_t pipe,const uint32_t *regs,uint32_t *out,size_t count)
++{
++    if(!attached_ || pipe<1 || pipe>2 || !regs || !out || count>9)return kIOReturnBadArgument;
++    uint32_t previous=0;
++    if(io_.read32(io_.cookie,0x81c,&previous))return poison();
++    bool failed=io_.write32(io_.cookie,0x81c,(previous&~0xf000u)|(pipe<<12))!=0;
++    for(size_t i=0;!failed && i<count;++i)failed=io_.read32(io_.cookie,regs[i],&out[i])!=0;
++    /* Restore even after a failed access. A failed restore leaves state unknown. */
++    if(io_.write32(io_.cookie,0x81c,previous) || io_.barrier(io_.cookie))failed=true;
++    return failed?poison():kIOReturnSuccess;
++}
+ IOReturn NativeAdrenoRing::kick()
+ {
+     if(!attached_ || poisoned_)return kIOReturnNotReady;
+@@ -193,10 +254,10 @@ static size_t packet(uint32_t *words,size_t at,uint32_t opcode,const uint32_t *p
+     return at+1+count;
+ }
+ /* CP_REG_TO_MEM of the always-on counter into the timeline slot of this fence (second: the end half). */
+-static size_t stamp(uint32_t *words,size_t at,uint64_t fence_iova,uint32_t seqno,bool end)
++static size_t stamp(uint32_t *words,size_t at,uint64_t fence_iova,uint32_t seqno,bool end,uint32_t counter)
+ {
+     const uint64_t to=fence_iova+RingStampOffset+(uint64_t)(seqno&63)*16+(end?8:0);
+-    const uint32_t payload[3]={RingAlwaysOnCounter|(2u<<18)|(1u<<30),(uint32_t)to,(uint32_t)(to>>32)};
++    const uint32_t payload[3]={counter|(2u<<18)|(1u<<30),(uint32_t)to,(uint32_t)(to>>32)};
+     return packet(words,at,RingRegToMem,payload,3);
+ }
+ /* Thread selection and IFPC disable before the user buffers, as a7xx_submit() does; the first submission after
+@@ -206,10 +267,10 @@ static size_t stamp(uint32_t *words,size_t at,uint64_t fence_iova,uint32_t seqno
+ IOReturn NativeAdrenoRing::emitPrologue(uint32_t at,bool reset,bool table,uint32_t *end,uint32_t number)
+ {
+     const uint32_t mask=(uint32_t)(ring_bytes_/4-1);
+-    uint32_t words[RingPrologueWords+RingResetWords+RingTableWords+RingTableSnapshotWords+RingStampWords+RingPseudoWords]={0};
++    uint32_t words[RingPrologueWords+RingResetWords+RingSliceSramWords+RingTableWords+RingTableSnapshotWords+RingStampWords+RingPseudoWords]={0};
+     const uint32_t br=RingSyncThreads|RingThreadBr,syncBoth=RingSyncThreads|RingThreadBoth,both=RingThreadBoth,marker=0x101;
+     if(table && !reset)return poison();
+-    const uint32_t count=RingPrologueWords+(reset?RingResetWords:0)+(table?RingTableWords+(preempt_?RingTableSnapshotWords:0):0)+(stamps_?RingStampWords:0)+(preempt_?RingPseudoWords:0);
++    const uint32_t count=RingPrologueWords+(reset?resetWords():0)+(table?RingTableWords+(preempt_?RingTableSnapshotWords:0):0)+(stamps_?RingStampWords:0)+(preempt_?RingPseudoWords:0);
+     size_t n=packet(words,0,RingThreadControl,&br,1);
+     if(reset) {
+         const uint64_t at4=fence_iova_+4;
+@@ -221,7 +282,10 @@ IOReturn NativeAdrenoRing::emitPrologue(uint32_t at,bool reset,bool table,uint32
+         if(n)n=packet(words,n,RingThreadControl,&syncBoth,1);
+         if(n)n=packet(words,n,RingFenceOpcode,&lrz,1);
+         if(n)n=packet(words,n,RingThreadControl,&br,1);
+-        if(n && AdrenoPM4Type4(RingPerfctrSramInit,1,&words[n])==AdrenoPM4Success) {words[n+1]=1;n+=2;} else n=0;
++        if(n && AdrenoPM4Type4(chip_->perfctr_sram_init_cmd,1,&words[n])==AdrenoPM4Success) {words[n+1]=1;n+=2;} else n=0;
++        if(n && chip_->slice_perfctr_sram_init_cmd) {
++            if(AdrenoPM4Type4(chip_->slice_perfctr_sram_init_cmd,1,&words[n])==AdrenoPM4Success) {words[n+1]=1;n+=2;} else n=0;
++        }
+         if(table) {
+             const uint32_t update[4]={(uint32_t)table_,(uint32_t)(table_>>32),0,0};
+             if(n)n=packet(words,n,RingSmmuTableUpdate,update,4);
+@@ -233,14 +297,14 @@ IOReturn NativeAdrenoRing::emitPrologue(uint32_t at,bool reset,bool table,uint32
+             if(n)n=packet(words,n,RingThreadControl,&br,1);
+         }
+         if(n)n=packet(words,n,RingFenceOpcode,&invalidate,1);
+-        const uint32_t sram[6]={RingWaitWriteEq,RingPerfctrSramInitStatus,0,1,1,0};
++        const uint32_t sram[6]={RingWaitWriteEq,chip_->perfctr_sram_init_status,0,1,1,0};
+         if(n)n=packet(words,n,RingWaitRegMem,sram,6);
+     }
+     const uint32_t flush=RingCacheFlush7,invalidate7=RingCacheInvalidate7;
+     if(n)n=packet(words,n,RingFenceOpcode,&flush,1);
+     if(n)n=packet(words,n,RingFenceOpcode,&invalidate7,1);
+     if(n)n=packet(words,n,RingWaitForIdle,nullptr,0);
+-    if(n && stamps_)n=stamp(words,n,fence_iova_,number,false);
++    if(n && stamps_)n=stamp(words,n,fence_iova_,number,false,chip_->cp_always_on_counter);
+     if(n && preempt_) {
+         const uint32_t pseudo[12]={RingPseudoSmmuInfo,0,0,RingPseudoNonSecureSave,(uint32_t)record_iova_,(uint32_t)(record_iova_>>32),
+             RingPseudoNonPrivSave,0,0,RingPseudoCounter,0,0};
+@@ -260,7 +324,7 @@ IOReturn NativeAdrenoRing::emitFence(uint32_t at,uint32_t seqno,uint32_t *end)
+ {
+     const uint32_t mask=(uint32_t)(ring_bytes_/4-1);
+     uint32_t words[RingFenceWords]={0};
+-    if(AdrenoPM4Type4(RingScratch,1,&words[0])!=AdrenoPM4Success ||
++    if(AdrenoPM4Type4(chip_->cp_scratch2,1,&words[0])!=AdrenoPM4Success ||
+         AdrenoPM4Type7(RingFenceOpcode,4,&words[2])!=AdrenoPM4Success)return poison();
+     words[1]=seqno;
+     words[3]=RingFenceEvent|RingFenceEnable|RingFenceIrq;
+@@ -281,7 +345,7 @@ IOReturn NativeAdrenoRing::emitFramedFence(uint32_t at,uint32_t seqno,uint32_t *
+     const uint32_t mask=(uint32_t)(ring_bytes_/4-1);
+     uint32_t words[RingFramedFenceWords+RingStampWords+RingYieldWords]={0};
+     const uint32_t total=RingFramedFenceWords+(stamps_?RingStampWords:0)+(yield?RingYieldWords:0);
+-    if(AdrenoPM4Type4(RingScratch,1,&words[0])!=AdrenoPM4Success)return poison();
++    if(AdrenoPM4Type4(chip_->cp_scratch2,1,&words[0])!=AdrenoPM4Success)return poison();
+     words[1]=seqno;
+     /* The timestamp goes to +4 (msm_rbmemptrs.fence), where wait() reads it; +0 is the CP's RPTR shadow. */
+     const uint64_t at4=fence_iova_+4,bv=fence_iova_+RingBvFenceOffset;
+@@ -291,7 +355,7 @@ IOReturn NativeAdrenoRing::emitFramedFence(uint32_t at,uint32_t seqno,uint32_t *
+     const uint32_t bvWait[4]={0,(uint32_t)bv,(uint32_t)(bv>>32),seqno};
+     const uint32_t fence[4]={RingFenceEvent|RingFenceEnable|RingFenceIrq,(uint32_t)at4,(uint32_t)(at4>>32),seqno};
+     size_t n=packet(words,2,RingThreadControl,&br,1);
+-    if(n && stamps_)n=stamp(words,n,fence_iova_,seqno,true);
++    if(n && stamps_)n=stamp(words,n,fence_iova_,seqno,true,chip_->cp_always_on_counter);
+     if(n)n=packet(words,n,RingFenceOpcode,&depth,1);
+     if(n)n=packet(words,n,RingFenceOpcode,&color,1);
+     if(n)n=packet(words,n,RingThreadControl,&bvThread,1);
+@@ -335,6 +399,7 @@ IOReturn NativeAdrenoRing::attach(const NativeAdrenoRingIo *io,const NativeAdren
+ IOReturn NativeAdrenoRing::attachSecondary(const NativeAdrenoRingIo *io,const NativeAdrenoRingCache *cache,
+     void *ring,size_t ring_bytes,uint64_t ring_iova,void *fence,size_t fence_bytes,uint64_t fence_iova)
+ {
++    if(chip_->generation!=7)return kIOReturnUnsupported;
+     if(attached_ || poisoned_ || ring_ || fence_)return kIOReturnBusy;
+     if(!io || !io->write32 || !io->read32 || !io->barrier || !cache || !cache->publish || !cache->acquire || !ring || !fence || ring_bytes<8192 || ring_bytes>(1u<<20) || (ring_bytes&(ring_bytes-1)) ||
+         ((ring_iova|ring_bytes)&(ring_bytes-1)) || (ring_iova&4095) ||
+@@ -351,6 +416,7 @@ IOReturn NativeAdrenoRing::attachSecondary(const NativeAdrenoRingIo *io,const Na
+ }
+ IOReturn NativeAdrenoRing::setPreempt(uint64_t record,uint64_t smmu_info,uint64_t bv_rptr_addr)
+ {
++    if(chip_->generation!=7)return kIOReturnUnsupported;
+     if(!attached_ || poisoned_)return kIOReturnNotReady;
+     if(!record || !smmu_info || fence_bytes_<RingTableSnapshotOffset+12)return kIOReturnBadArgument;
+     record_iova_=record;smmu_iova_=smmu_info;bv_rptr_iova_=bv_rptr_addr;
+@@ -364,8 +430,8 @@ IOReturn NativeAdrenoRing::setPreempt(uint64_t record,uint64_t smmu_info,uint64_
+ void NativeAdrenoRing::initPreemptPage()
+ {
+     uint32_t words[RingPostambleWords]={};
+-    const uint32_t init[3]={RingPerfctrSramInit,0,1};
+-    const uint32_t wait[6]={RingWaitWriteEq,RingPerfctrSramInitStatus,0,1,1,0};
++    const uint32_t init[3]={chip_->perfctr_sram_init_cmd,0,1};
++    const uint32_t wait[6]={RingWaitWriteEq,chip_->perfctr_sram_init_status,0,1,1,0};
+     size_t n=packet(words,0,RingRegRmw,init,3);
+     n=packet(words,n,RingWaitRegMem,wait,6);
+     for(size_t i=0;i<n;++i)fence_[RingPostambleOffset/4+i]=words[i];
+@@ -414,7 +480,7 @@ IOReturn NativeAdrenoRing::program()
+     const uint32_t base_lo=(uint32_t)ring_iova_,base_hi=(uint32_t)(ring_iova_>>32);
+     const uint32_t rptr_lo=(uint32_t)fence_iova_,rptr_hi=(uint32_t)(fence_iova_>>32);
+     const uint32_t writes[]={RingBase,base_lo,RingBase+1,base_hi,RingControl,control,
+-        RingRptrAddress,rptr_lo,RingRptrAddress+1,rptr_hi,RingWptr,0,RingScratch,0};
++        RingRptrAddress,rptr_lo,RingRptrAddress+1,rptr_hi,RingWptr,0,chip_->cp_scratch2,0};
+     for(size_t i=0;i<sizeof(writes)/sizeof(writes[0]);i+=2)
+         if(io_.write32(io_.cookie,writes[i],writes[i+1]))return poison();
+     uint32_t rptr=0;IOReturn status=readRptr(&rptr);
+@@ -500,8 +566,8 @@ IOReturn NativeAdrenoRing::idle(const NativeAdrenoRingClock *clock,uint32_t time
+         IOReturn read=readRptr(&rptr);
+         if(read)return read;
+         if(rptr==next_) {
+-            if(io_.read32(io_.cookie,RbbmStatus,&status))return poison();
+-            if(!(status&GpuBusyIgnAhb))return kIOReturnSuccess;
++            if(io_.read32(io_.cookie,chip_->generation==8?0x12:RbbmStatus,&status))return poison();
++            if(!(status&(chip_->generation==8?~1u:GpuBusyIgnAhb)))return kIOReturnSuccess;
+         }
+         if(clock->now_us(clock->cookie)-start>=timeout_us)return kIOReturnTimeout;
+         IODelay(10);
+@@ -512,6 +578,15 @@ IOReturn NativeAdrenoRing::progressState(uint32_t out[6])
+     enum : uint32_t {Ib1Base=0x0928,Ib1Rem=0x092a,Ib2Base=0x092b,Ib2Rem=0x092d,RoqAvailIb1=0x0949,RoqAvailIb2=0x094a};
+     if(!out)return kIOReturnBadArgument;
+     if(!attached_)return kIOReturnNotReady;
++    if(chip_->generation==8) {
++        const uint32_t regs[]={0x900,0x901,0x904,0x905,0x902,0x906,0x919,0x91a};
++        uint32_t values[8]{};
++        IOReturn status=readA8xxPipe(1,regs,values,8);
++        if(status)return status;
++        for(unsigned i=0;i<6;++i)out[i]=values[i];
++        out[4]+=values[6]>>16;out[5]+=values[7]>>16;
++        return kIOReturnSuccess;
++    }
+     uint32_t roq1=0,roq2=0;
+     if(io_.read32(io_.cookie,Ib1Base,&out[0]) || io_.read32(io_.cookie,Ib1Base+1,&out[1]) ||
+         io_.read32(io_.cookie,Ib2Base,&out[2]) || io_.read32(io_.cookie,Ib2Base+1,&out[3]) ||
+@@ -526,8 +601,8 @@ IOReturn NativeAdrenoRing::busHalt(bool gx_off,unsigned spins)
+     if(!attached_)return kIOReturnNotReady;
+     uint32_t ack=0;unsigned i=0;
+     if(gx_off) {
+-        if(io_.write32(io_.cookie,RbbmGbifHalt,1))return kIOReturnIOError;
+-        for(i=0;i<spins;++i) {if(io_.read32(io_.cookie,RbbmGbifHaltAck,&ack))return kIOReturnIOError;if(ack&1)break;}
++        if(io_.write32(io_.cookie,chip_->generation==8?0xa:RbbmGbifHalt,1))return kIOReturnIOError;
++        for(i=0;i<spins;++i) {if(io_.read32(io_.cookie,chip_->generation==8?0xb:RbbmGbifHaltAck,&ack))return kIOReturnIOError;if(ack&1)break;}
+         if(i==spins)return kIOReturnTimeout;
+     }
+     if(io_.write32(io_.cookie,GbifHalt,ClientHalt))return kIOReturnIOError;
+@@ -570,10 +645,13 @@ IOReturn NativeAdrenoRing::submitWords(const uint32_t *words,size_t word_count,u
+     if(!words || !word_count || word_count>SIZE_MAX/sizeof(uint32_t))return kIOReturnBadArgument;
+     const uint32_t size_words=(uint32_t)(ring_bytes_/4),mask=size_words-1;
+     const bool reset=framed && reset_pending_,table=reset && table_pending_;
++    if(table && chip_->generation!=7)return kIOReturnUnsupported;
+     /* A plain (kernel) submission cannot carry the switch: a pending table waits for the next framed one. */
+-    const uint32_t extra=framed?RingPrologueWords+(reset?RingResetWords:0)+(table?RingTableWords+(preempt_?RingTableSnapshotWords:0):0)+RingFramedFenceWords+
++    const uint32_t extra=framed?RingPrologueWords+(reset?resetWords():0)+(table?RingTableWords+(preempt_?RingTableSnapshotWords:0):0)+RingFramedFenceWords+
+         (stamps_?2*RingStampWords:0)+(preempt_?RingPseudoWords+RingYieldWords:0):RingFenceWords;
+-    if(word_count>size_words-extra-8)return kIOReturnNoResources;
++    /* This list cannot ever fit, even in an empty ring. Do not report the
++     * temporary no-space status that the submitter retries after a fence. */
++    if(word_count>size_words-extra-8)return kIOReturnBadArgument;
+     uint32_t rptr=0;IOReturn status=readRptr(&rptr);
+     if(status)return status;
+     const uint32_t used=(next_-rptr)&mask;
+diff --git a/NativeAdrenoRing.h b/NativeAdrenoRing.h
+index bf67901..9e4103b 100644
+--- a/NativeAdrenoRing.h
++++ b/NativeAdrenoRing.h
+@@ -4,6 +4,7 @@
+ #include <IOKit/IOTypes.h>
+ #include <stddef.h>
+ #include <stdint.h>
++#include "NativeAdrenoChip.h"
+ 
+ /* A7XX command processor ring and timestamp fence, not a scheduler.
+  * Register indices are dword offsets; the platform adds the MMIO base and
+@@ -49,6 +50,7 @@ enum NativeAdrenoRingFence {
+ };
+ enum : uint32_t {NativeAdrenoRingStallWords = 22};   /* NativeAdrenoRing::stallState */
+ class NativeAdrenoRing final {
++    const NativeAdrenoChipRegs *chip_=&NativeAdrenoChipA7xx;
+     NativeAdrenoRingIo io_{};
+     NativeAdrenoRingCache cache_{};
+     volatile uint32_t *ring_=nullptr,*fence_=nullptr;
+@@ -77,6 +79,8 @@ class NativeAdrenoRing final {
+     void initPreemptPage();
+     uint32_t control_=0;
+     IOReturn poison();
++    uint32_t resetWords() const;
++    IOReturn readA8xxPipe(uint32_t pipe,const uint32_t *regs,uint32_t *out,size_t count);
+     IOReturn writeWptr(uint32_t value);
+     IOReturn readRptr(uint32_t *);
+     IOReturn emitPrologue(uint32_t at,bool reset,bool table,uint32_t *end,uint32_t number);
+@@ -91,6 +95,10 @@ public:
+     ~NativeAdrenoRing()=default;
+     NativeAdrenoRing(const NativeAdrenoRing &)=delete;
+     NativeAdrenoRing &operator=(const NativeAdrenoRing &)=delete;
++    /* Select a static generation descriptor before attach. A8xx supports one ring;
++     * its preemption and CP page-table switch contracts are not enabled here. */
++    IOReturn useChip(const NativeAdrenoChipRegs *);
++    const NativeAdrenoChipRegs *chip() const {return chip_;}
+     /* ring_bytes is a power of two in [8KiB,1MiB]; ring_iova must be aligned
+      * to ring_bytes. fence_bytes >=64 and fence_iova 8-aligned. The fence page
+      * layout is: +0 CP read-pointer shadow, +4 completed timestamp, +8 spare.
+diff --git a/NativeAdrenoService.cpp b/NativeAdrenoService.cpp
+index 18bb8c2..ba4e2aa 100644
+--- a/NativeAdrenoService.cpp
++++ b/NativeAdrenoService.cpp
+@@ -611,6 +611,11 @@ IOReturn NativeAdrenoGpuClient::externalMethod(uint32_t selector,
+     IOExternalMethodArguments *arguments,IOExternalMethodDispatch *dispatch,
+     OSObject *target,void *reference)
+ {
++    if(selector==NativeAdrenoMethodSubmitBatch) {
++        static const IOExternalMethodDispatch batch={&action,0,sizeof(NativeAdrenoAbiSubmitBatch),0,sizeof(NativeAdrenoAbiSubmitBatchReply)};
++        return IOUserClient::externalMethod(selector,arguments,const_cast<IOExternalMethodDispatch *>(&batch),
++            target?target:this,reference);
++    }
+     /* One entry per ABI method; sizes are the exact wire records. */
+     static const IOExternalMethodDispatch table[]={
+         {&action,0,0,0,sizeof(NativeAdrenoAbiParams)},                    /* Query */
+diff --git a/NativeAdrenoSmmuMemory.cpp b/NativeAdrenoSmmuMemory.cpp
+index ed8fbaa..98e007e 100644
+--- a/NativeAdrenoSmmuMemory.cpp
++++ b/NativeAdrenoSmmuMemory.cpp
+@@ -102,7 +102,13 @@ IOReturn NativeAdrenoTablePages::release()
+ static int publishTable(void *cookie,volatile uint64_t *page,size_t bytes)
+ {
+     if(native_adreno_walk_coherent[0]) {
++        #if defined(__aarch64__) || defined(__arm64__)
+         __asm__ volatile("dsb st":::"memory");
++#elif defined(NATIVE_ADRENO_HOST_TEST)
++        __atomic_thread_fence(__ATOMIC_SEQ_CST);
++#else
++#error "GPU driver requires ARM64; use NATIVE_ADRENO_HOST_TEST only for register peers"
++#endif
+         native_adreno_walk_coherent[1]=native_adreno_walk_coherent[1]+1;
+         return 0;
+     }
+diff --git a/NativeAdrenoSubmit.cpp b/NativeAdrenoSubmit.cpp
+index cb9ebe7..dc223c2 100644
+--- a/NativeAdrenoSubmit.cpp
++++ b/NativeAdrenoSubmit.cpp
+@@ -2,6 +2,12 @@
+ #include "NativeGpuTrace.h"
+ /* SPDX-License-Identifier: MIT */
+ #include "NativeAdrenoSubmit.h"
++#include "NativeAdrenoPerf.h"
++extern "C" {uint64_t native_adreno_perf_jobs[14];}
++static void perfMaximum(unsigned slot,uint64_t value) {
++    uint64_t old=__atomic_load_n(&native_adreno_perf_jobs[slot],__ATOMIC_RELAXED);
++    while(value>old && !__atomic_compare_exchange_n(&native_adreno_perf_jobs[slot],&old,value,true,__ATOMIC_RELAXED,__ATOMIC_RELAXED)){}
++}
+ #include "AdrenoPM4.h"
+ #include <IOKit/IOLib.h>
+ 
+@@ -31,6 +37,58 @@ extern "C" {volatile uint32_t native_adreno_fence_wait[8];}
+  * The last 4: the map handle that was next when the stalled job was submitted, then the handles of the mappings under the BR IB1, the BV IB1
+  * and the BV IB2 (0: unmapped). A handle at or above the first was mapped after the submission: its memory was freed and reused under the GPU. */
+ extern "C" {volatile uint32_t native_adreno_stall[2+NativeAdrenoRingStallWords];volatile uint32_t native_adreno_stall_mem[4+3*17+4];}
++
++// NATIVE_ADRENO_CACHED_STALL_COPY_BEGIN
++static NativeAdrenoStallSample cachedStall;
++static uint32_t cachedStallSequence;
++/* noteStall has one writer under the existing submit lock. Scalar atomics
++ * keep the independent observer's copy race-free. An odd sequence means
++ * "unavailable", never a reason to spin or wait for the GPU caller. */
++static void publishCachedStall(const NativeAdrenoStallSample &sample)
++{
++    __atomic_add_fetch(&cachedStallSequence,1u,__ATOMIC_ACQ_REL);
++    for(unsigned i=0;i<24;++i)__atomic_store_n(&cachedStall.state[i],sample.state[i],__ATOMIC_RELAXED);
++    for(unsigned i=0;i<59;++i)__atomic_store_n(&cachedStall.memory[i],sample.memory[i],__ATOMIC_RELAXED);
++    for(unsigned i=0;i<20;++i)__atomic_store_n(&cachedStall.job[i],sample.job[i],__ATOMIC_RELAXED);
++    for(unsigned i=0;i<32;++i)__atomic_store_n(&cachedStall.ibs[i],sample.ibs[i],__ATOMIC_RELAXED);
++    __atomic_add_fetch(&cachedStallSequence,1u,__ATOMIC_RELEASE);
++}
++extern "C" bool native_adreno_copy_stall(NativeAdrenoStallSample *sample)
++{
++    if(!sample)return false;
++    const uint32_t version=__atomic_load_n(&cachedStallSequence,__ATOMIC_ACQUIRE);
++    if(!version || (version&1u))return false;
++    for(unsigned i=0;i<24;++i)sample->state[i]=__atomic_load_n(&cachedStall.state[i],__ATOMIC_RELAXED);
++    for(unsigned i=0;i<59;++i)sample->memory[i]=__atomic_load_n(&cachedStall.memory[i],__ATOMIC_RELAXED);
++    for(unsigned i=0;i<20;++i)sample->job[i]=__atomic_load_n(&cachedStall.job[i],__ATOMIC_RELAXED);
++    for(unsigned i=0;i<32;++i)sample->ibs[i]=__atomic_load_n(&cachedStall.ibs[i],__ATOMIC_RELAXED);
++    __atomic_thread_fence(__ATOMIC_ACQUIRE);
++    if(__atomic_load_n(&cachedStallSequence,__ATOMIC_RELAXED)!=version)return false;
++    sample->serial=version>>1;
++    return true;
++}
++// NATIVE_ADRENO_CACHED_STALL_COPY_END
++
++
++/* The job owns these generated IB descriptors. Match the active hardware
++ * address before falling back to the ring's prefetched descriptor. BV's
++ * snapshot has only the low address: accept it only when the match is unique. */
++static bool activeJobIb(const uint32_t *words,size_t count,uint64_t hardware,
++    bool low_only,uint32_t remaining,uint64_t *base,uint32_t *size)
++{
++    if(!words || !base || !size || !remaining || (count&3))return false;
++    bool found=false;
++    for(size_t i=0;i<count;i+=4) {
++        if(words[i]!=0x70bf8003u)continue; // CP_INDIRECT_BUFFER, three words.
++        const uint64_t address=(uint64_t(words[i+2])<<32)|words[i+1];
++        if((low_only?uint32_t(address)!=uint32_t(hardware):address!=hardware) ||
++            remaining>words[i+3])continue;
++        if(found && (*base!=address || *size!=words[i+3]))return false;
++        *base=address;*size=words[i+3];found=true;
++    }
++    return found;
++}
++
+ /* 16 words of the IB at start, from 12 dwords before the dword the thread has reached (size minus what remains). */
+ static void peekIb(const NativeAdrenoVm *vm,uint64_t start,uint32_t size,uint32_t remaining,volatile uint32_t *slot)
+ {
+@@ -130,6 +188,13 @@ IOReturn NativeAdrenoSubmit::useVm(NativeAdrenoVm *vm,const NativeAdrenoRingCloc
+     if(!clock)return kIOReturnBadArgument;
+     IOReturn status=waitAll(clock,2000000);
+     if(status)return status;
++    /* A840's CPU write is outside the CP command stream. A timestamp can
++     * already be visible while the trailing THREAD_CONTROL/SET_MARKER still
++     * run. Keep the old table installed until both RPTR and RBBM are idle. */
++    if(ring(0)->chip()->generation==8) {
++        status=ring(0)->idle(clock,2000000);
++        if(status)return status; // No TTBR write or new job on uncertainty.
++    }
+     status=write_table_(table_cookie_,vm->ttbr0());
+     if(status)return poison();
+     native_adreno_table_switches[1]=native_adreno_table_switches[1]+1;
+@@ -144,7 +209,13 @@ IOReturn NativeAdrenoSubmit::forgetVm(NativeAdrenoVm *vm,const NativeAdrenoRingC
+     bool used=table_vm_==vm;
+     for(unsigned i=0;i<ring_count_;++i)used=used || ring(i)->table()==vm->ttbr0();
+     if(!used)return kIOReturnSuccess;
+-    /* The GPU is idle and every queued switch has run: the CPU puts the default table back. */
++    /* Teardown has the same CPU/CP handoff as a process switch. A completed
++     * job alone cannot authorize replacing (then destroying) its page table. */
++    if(ring(0)->chip()->generation==8) {
++        status=ring(0)->idle(clock,timeout_us);
++        if(status)return status;
++    }
++    /* Every queued switch and trailing packet has run: restore the default. */
+     status=write_table_?write_table_(table_cookie_,vm_->ttbr0()):kIOReturnNotReady;
+     if(status)return poison();
+     native_adreno_table_switches[1]=native_adreno_table_switches[1]+1;
+@@ -329,7 +400,20 @@ IOReturn NativeAdrenoSubmit::release(Job &job)
+     {
+         uint64_t start=0,end=0;
+         NativeAdrenoRing *r=ringOfFence(job.fence);
+-        const uint32_t stamped=r?r->timeline(job.fence,&start,&end):0;
++        uint32_t stamped=r?r->timeline(job.fence,&start,&end):0;
++        if(r && uint32_t(r->lastSubmitted()-job.fence)>=64)stamped|=32u; // circular timestamp slot may belong to a newer job
++        const uint64_t retired_us=clock_now_?clock_now_(clock_cookie_):0;
++        __atomic_fetch_add(&native_adreno_perf_jobs[1],1ull,__ATOMIC_RELAXED);
++        __atomic_store_n(&native_adreno_perf_jobs[3],retired_us,__ATOMIC_RELAXED);
++        __atomic_store_n(&native_adreno_perf_jobs[12],job.fence,__ATOMIC_RELAXED);
++        if((stamped&16) && !(stamped&32) && end>=start && start) {
++            __atomic_fetch_add(&native_adreno_perf_jobs[4],end-start,__ATOMIC_RELAXED);
++            __atomic_fetch_add(&native_adreno_perf_jobs[5],1ull,__ATOMIC_RELAXED);perfMaximum(6,end-start);
++        }
++        if(job.submit_us && retired_us>=job.submit_us) {
++            __atomic_fetch_add(&native_adreno_perf_jobs[9],retired_us-job.submit_us,__ATOMIC_RELAXED);
++            perfMaximum(10,retired_us-job.submit_us);
++        }
+         gpuTraceEvent(GpuTraceRetire,job.owner,job.fence,job.queue,job.ring,job.submit_us,start,end,stamped,job.replays);
+         if(native_adreno_tl_cap) {
+             const uint32_t n=native_adreno_tl_count;volatile uint64_t *slot=native_adreno_tl[n&(native_adreno_tl_cap-1)];
+@@ -372,6 +456,7 @@ IOReturn NativeAdrenoSubmit::submit(NativeAdrenoVm *vm,const NativeAdrenoSubmitB
+     uint64_t queue,uint32_t *fence,const NativeAdrenoRingClock *clock)
+ {
+     if(!fence)return kIOReturnBadArgument;*fence=0;
++    const uint64_t entered_us=clock && clock->now_us?clock->now_us(clock->cookie):0;
+     if(!vm)vm=vm_;
+     NativeAdrenoVm *const vm_=vm;   /* this submission's VM: every vm_ below is the job's own */
+     if(!attached_ || poisoned_)return kIOReturnNotReady;
+@@ -422,7 +507,13 @@ IOReturn NativeAdrenoSubmit::submit(NativeAdrenoVm *vm,const NativeAdrenoSubmitB
+      * caches over every mapped BO are cleaned and invalidated. The board shows the last submission's record on a stall. */
+     uint32_t cached=~0u,before=~0u,ignored=0,after=~0u;
+     /* Write-combined stores this CPU made before the call (the client's command words) complete before anything below. */
+-    __asm__ volatile("dsb sy":::"memory");
++    #if defined(__aarch64__) || defined(__arm64__)
++        __asm__ volatile("dsb sy":::"memory");
++#elif defined(NATIVE_ADRENO_HOST_TEST)
++        __atomic_thread_fence(__ATOMIC_SEQ_CST);
++#else
++#error "GPU driver requires ARM64; use NATIVE_ADRENO_HOST_TEST only for register peers"
++#endif
+     /* int-098/099: with write-combined user BOs and no maintenance the CP stopped at the end of the first IB, as in int-065..069 when an
+      * IB sat in a CPU cache. While write-combined BOs are trusted, every line of this submission's IBs is compared as a CPU cache and
+      * DRAM hold it (bounded). A dirty line means a client view still caches its BOs: maintain every BO from now on, this submission
+@@ -532,6 +623,13 @@ IOReturn NativeAdrenoSubmit::submit(NativeAdrenoVm *vm,const NativeAdrenoSubmitB
+     if(clock && clock->now_us) {clock_now_=clock->now_us;clock_cookie_=clock->cookie;}
+     job->level=&native_gpu_dcvs?native_gpu_dcvs[1]:0;
+     job->owner=next_owner_;next_owner_=0;
++    __atomic_fetch_add(&native_adreno_perf_jobs[0],1ull,__ATOMIC_RELAXED);
++    __atomic_store_n(&native_adreno_perf_jobs[2],job->submit_us,__ATOMIC_RELAXED);
++    __atomic_store_n(&native_adreno_perf_jobs[11],value,__ATOMIC_RELAXED);
++    if(entered_us && job->submit_us>=entered_us) {
++        const uint64_t elapsed=job->submit_us-entered_us;
++        __atomic_fetch_add(&native_adreno_perf_jobs[7],elapsed,__ATOMIC_RELAXED);perfMaximum(8,elapsed);
++    }
+     gpuTraceEvent(GpuTraceSubmit,job->owner,value,queue,index,job->priority,job->role,job->loaded,job->flight,job->context,job->submit_us,handle_count);
+     for(size_t i=0;i<word_count;++i)job->words[i]=words[i];
+     ++stats_.submissions;
+@@ -627,29 +725,48 @@ void NativeAdrenoSubmit::noteStall(uint32_t observed,const NativeAdrenoRingClock
+     uint32_t words[NativeAdrenoRingStallWords]={},fault[4]={};
+     if(stalled->stallState(words))return;
+     log(next,4,pending,words[8]&0xffff,words[9]&0xffff);
+-    (void)vm_->faultState(fault);
++    const IOReturn faultStatus=vm_->faultState(fault);
+     for(uint32_t i=0;i<4;++i)native_adreno_stall_mem[i]=fault[i];
+     uint64_t ib=0;uint32_t size=0;
+     /* The IBs are the stalled job's: read them through its address space (the kernel's maps none of a client's BOs). */
+     const Job *job=find(next);
+     const NativeAdrenoVm *space=job && job->vm?job->vm:vm_;
+-    if(!stalled->ibBefore(words[8],&ib,&size))peekIb(space,ib,size,words[12],&native_adreno_stall_mem[4]);
+-    else peekFetch(space,(uint64_t)words[11]<<32|words[10],&native_adreno_stall_mem[4]);
+-    if(!stalled->ibBefore(words[16],&ib,&size))peekIb(space,ib,size,words[18],&native_adreno_stall_mem[4+17]);
+-    else peekFetch(space,(uint64_t)words[11]<<32|words[17],&native_adreno_stall_mem[4+17]);   /* BV IB1 base: the low word only */
++    uint64_t activeBr=(uint64_t)words[11]<<32|words[10],activeBv=(uint64_t)words[11]<<32|words[17];
++    if((job && activeJobIb(job->words,job->word_count,activeBr,false,words[12],&ib,&size)) ||
++        !stalled->ibBefore(words[8],&ib,&size)) {
++        activeBr=ib;peekIb(space,ib,size,words[12],&native_adreno_stall_mem[4]);
++    } else peekFetch(space,activeBr,&native_adreno_stall_mem[4]);
++    if((job && activeJobIb(job->words,job->word_count,words[17],true,words[18],&ib,&size)) ||
++        !stalled->ibBefore(words[16],&ib,&size)) {
++        activeBv=ib;peekIb(space,ib,size,words[18],&native_adreno_stall_mem[4+17]);
++    } else peekFetch(space,activeBv,&native_adreno_stall_mem[4+17]);
+     peekFetch(space,(uint64_t)words[21]<<32|words[20],&native_adreno_stall_mem[4+34]);
+     {
+-        uint64_t brIb=(uint64_t)words[11]<<32|words[10],bvIb=(uint64_t)words[11]<<32|words[17];
+-        if(!stalled->ibBefore(words[8],&ib,&size))brIb=ib;
+-        if(!stalled->ibBefore(words[16],&ib,&size))bvIb=ib;
+         native_adreno_stall_mem[55]=job?(uint32_t)job->vm_next:0;
+-        native_adreno_stall_mem[56]=(uint32_t)space->handleAt(brIb);
+-        native_adreno_stall_mem[57]=(uint32_t)space->handleAt(bvIb);
++        native_adreno_stall_mem[56]=(uint32_t)space->handleAt(activeBr);
++        native_adreno_stall_mem[57]=(uint32_t)space->handleAt(activeBv);
+         native_adreno_stall_mem[58]=(uint32_t)space->handleAt((uint64_t)words[21]<<32|words[20]);
+     }
+     for(uint32_t i=0;i<NativeAdrenoRingStallWords;++i)native_adreno_stall[2+i]=words[i];
+     native_adreno_stall[1]=stall_timeouts;
+     native_adreno_stall[0]=next;
++
++    // Publish only values this path has already read or owns under its lock.
++    // Do not read a new register or dereference a buffer from the observer.
++    NativeAdrenoStallSample sample{};
++    for(unsigned i=0;i<24;++i)sample.state[i]=native_adreno_stall[i];
++    for(unsigned i=0;i<59;++i)sample.memory[i]=native_adreno_stall_mem[i];
++    const uint64_t metadata[20]={
++        now,pending,job?job->submit_us:0,job?job->queue:0,
++        space->ttbr0(),table_vm_?table_vm_->ttbr0():0,job?job->vm_next:0,
++        job?uint32_t(job->owner):0,job?job->context:0,job?job->ring:0u,
++        job?job->count:0,outstanding(),table_mode_,uint32_t(faultStatus),
++        observed,stalled->lastSubmitted(),job?job->word_count:0,stall_stage,
++        job?uint32_t(job->priority+1):0,stalled->chip()->generation
++    };
++    for(unsigned i=0;i<20;++i)sample.job[i]=metadata[i];
++    if(job)for(unsigned i=0;i<32 && i<job->word_count;++i)sample.ibs[i]=job->words[i];
++    publishCachedStall(sample);
+ }
+ IOReturn NativeAdrenoSubmit::wait(uint32_t fence,const NativeAdrenoRingClock *clock,
+     uint32_t timeout_us)
+diff --git a/NativeAdrenoSubmit.h b/NativeAdrenoSubmit.h
+index e60a945..35533dd 100644
+--- a/NativeAdrenoSubmit.h
++++ b/NativeAdrenoSubmit.h
+@@ -1,12 +1,13 @@
+ /* SPDX-License-Identifier: MIT */
+ #ifndef NATIVE_ADRENO_SUBMIT_H
+ #define NATIVE_ADRENO_SUBMIT_H
++#include "NativeAdrenoABI.h"
+ #include "NativeAdrenoPreempt.h"
+ #include "NativeAdrenoRing.h"
+ #include "NativeAdrenoVm.h"
+ 
+ /* IBs of one submission: a whole frame, so the ring prologue (cache flush, idle wait, thread switch) runs once per frame. */
+-enum : size_t {NativeAdrenoSubmitMaxBuffers=128};
++enum : size_t {NativeAdrenoSubmitMaxBuffers=NativeAdrenoAbiMaxBatchBuffers};
+ struct NativeAdrenoSubmitBuffer {
+     uint64_t handle;
+     uint64_t iova;
+@@ -19,6 +20,29 @@ extern "C" volatile uint32_t native_adreno_coherence[8];
+ /* The write-combine audit (int-100), see NativeAdrenoSubmit.cpp, and the submission (1-based) that ended the trust; 0 = never. */
+ extern "C" volatile uint32_t native_adreno_wc_audit[6];
+ extern "C" volatile uint32_t native_adreno_wc_distrusted;
++
++// NATIVE_ADRENO_CACHED_STALL_TYPE_BEGIN
++/* Copied from noteStall's existing CP/SMMU/IB sample. No live device access.
++ * job: sample us, pending us, submit us, queue, job TTBR, selected TTBR,
++ * next mapping handle at submit, pid, context, ring, BO count, outstanding
++ * jobs, table mode, fault-read status, observed fence, issued fence,
++ * IB packet word count, attempted unstick stage, priority+1, chip generation.
++ * state/memory keep the documented native_adreno_stall/_mem layouts.
++ * ibs contains at most the first eight already-retained CP_INDIRECT_BUFFER
++ * packets; job[16] records the complete word count.
++ */
++struct NativeAdrenoStallSample {
++    uint32_t serial;
++    uint32_t state[24];
++    uint32_t memory[59];
++    uint64_t job[20];
++    uint32_t ibs[32];
++};
++// NATIVE_ADRENO_CACHED_STALL_TYPE_END
++/* One bounded copy attempt. False before a sample or during publication.
++ * The caller must discard a failed copy; no GPU lock or MMIO is taken. */
++extern "C" bool native_adreno_copy_stall(NativeAdrenoStallSample *);
++
+ /* A GPU restart after a hang (NativeAdrenoSubmit::recover): the board resets the GPU and brings the CP up again on the same ring (a6xx_recover
+  * and hw_init), calling NativeAdrenoRing::restart(completed) between the reset and its CP init. Nonzero: the GPU could not be restarted. */
+ typedef IOReturn (*NativeAdrenoRestart)(void *cookie,NativeAdrenoRing *ring,uint32_t completed);
+diff --git a/NativeAdrenoTimer.cpp b/NativeAdrenoTimer.cpp
+index 0222415..b1279a5 100644
+--- a/NativeAdrenoTimer.cpp
++++ b/NativeAdrenoTimer.cpp
+@@ -8,19 +8,23 @@
+  *   pinned sm8550.dtsi   gpu@3d00000, gmu@3d6a000
+  *   byte offset = (offset << 2) - (gmu_base - gpu_base)
+  *               = (0x1f888 << 2) - 0x6a000 = 0x14220
+- *   pinned a6xx.xml      CP_ALWAYS_ON_COUNTER 0x0980 (64-bit, A6XX-A7XX)
+- *     read as low at 0x0980 and high at 0x0981, as Linux gpu_read64 does. */
++ *   pinned a6xx.xml      CP_ALWAYS_ON_COUNTER 0x0980 (64-bit, A6XX-A7XX), 0x08e7 (A8XX)
++ *     read as low at the offset and high one above it, as Linux gpu_read64 does. */
+ enum : uint32_t {
+     TimerGmuLow = 0x14220,
+     TimerGmuHigh = 0x14224,
+-    TimerCpLow = 0x0980,
+-    TimerCpHigh = 0x0981,
+     TimerRetries = 8
+ };
+ uint32_t NativeAdrenoTimer::gmuLowOffset(){return TimerGmuLow;}
+ uint32_t NativeAdrenoTimer::gmuHighOffset(){return TimerGmuHigh;}
+-uint32_t NativeAdrenoTimer::cpLowRegister(){return TimerCpLow;}
+-uint32_t NativeAdrenoTimer::cpHighRegister(){return TimerCpHigh;}
++uint32_t NativeAdrenoTimer::cpLowRegister(){return NativeAdrenoChipA7xx.cp_always_on_counter;}
++uint32_t NativeAdrenoTimer::cpHighRegister(){return NativeAdrenoChipA7xx.cp_always_on_counter+1;}
++IOReturn NativeAdrenoTimer::useChip(const NativeAdrenoChipRegs *chip)
++{
++    if(attached_)return kIOReturnBusy;
++    if(!chip || (chip->generation!=7 && chip->generation!=8))return kIOReturnBadArgument;
++    chip_=chip;return kIOReturnSuccess;
++}
+ IOReturn NativeAdrenoTimer::attach(const NativeAdrenoTimeIo *io,uint32_t source)
+ {
+     if(attached_)return kIOReturnBusy;
+@@ -39,8 +43,8 @@ IOReturn NativeAdrenoTimer::read(uint64_t *ticks) const
+ {
+     if(!ticks)return kIOReturnBadArgument;*ticks=0;
+     if(!attached_)return kIOReturnNotReady;
+-    const uint32_t low=source_==NativeAdrenoTimeGmu?TimerGmuLow:TimerCpLow;
+-    const uint32_t high=source_==NativeAdrenoTimeGmu?TimerGmuHigh:TimerCpHigh;
++    const uint32_t low=source_==NativeAdrenoTimeGmu?chip_->gmu_always_on_counter:chip_->cp_always_on_counter;
++    const uint32_t high=source_==NativeAdrenoTimeGmu?chip_->gmu_always_on_counter+4:chip_->cp_always_on_counter+1;
+     for(unsigned attempt=0;attempt<TimerRetries;++attempt) {
+         uint32_t first=0,low_word=0,second=0;
+         if(io_.read32(io_.cookie,high,&first) ||
+diff --git a/NativeAdrenoTimer.h b/NativeAdrenoTimer.h
+index 4366105..e59d7d2 100644
+--- a/NativeAdrenoTimer.h
++++ b/NativeAdrenoTimer.h
+@@ -3,6 +3,7 @@
+ #define NATIVE_ADRENO_TIMER_H
+ #include <IOKit/IOTypes.h>
+ #include <stdint.h>
++#include "NativeAdrenoChip.h"
+ 
+ /* GPU always-on counter reader for the user-visible timestamp. Two sources are
+  * distinguished because their address spaces differ:
+@@ -11,7 +12,9 @@
+  *    the SM8550 DT layout: (0x1f888 << 2) - (gmu 0x03d6a000 - gpu 0x03d00000)
+  *    = 0x14220 for the low word and 0x14224 for the high word.
+  *  - CP window: dword register indices in the GPU register window, from
+- *    a6xx.xml CP_ALWAYS_ON_COUNTER at 0x0980 for A6XX..A7XX.
++ *    a6xx.xml CP_ALWAYS_ON_COUNTER at 0x0980 for A6XX..A7XX and 0x08e7 for
++ *    A8XX. The GMU source also follows the chip table: SM8850's GMU window
++ *    starts at 0x03d37000, so the same counter has byte offset 0x47220.
+  * The caller binds exactly one already powered window; this object performs no
+  * power, reset or window discovery. Reads retry while the high word changes,
+  * so a counter rollover cannot return a torn value; exceeding the retry bound
+@@ -25,11 +28,14 @@ class NativeAdrenoTimer final {
+     NativeAdrenoTimeIo io_{};
+     uint32_t source_=NativeAdrenoTimeGmu;
+     bool attached_=false;
++    const NativeAdrenoChipRegs *chip_=&NativeAdrenoChipA7xx;
+ public:
+     NativeAdrenoTimer()=default;
+     ~NativeAdrenoTimer()=default;
+     NativeAdrenoTimer(const NativeAdrenoTimer &)=delete;
+     NativeAdrenoTimer &operator=(const NativeAdrenoTimer &)=delete;
++    /* Before attach: the generation whose CP_ALWAYS_ON_COUNTER the CP source reads (A7XX unless named). */
++    IOReturn useChip(const NativeAdrenoChipRegs *);
+     /* Source is a numeric ABI boundary value and is range-checked. */
+     IOReturn attach(const NativeAdrenoTimeIo *,uint32_t source);
+     IOReturn detach();
+diff --git a/NativeAdrenoUserClient.cpp b/NativeAdrenoUserClient.cpp
+index 28d4af2..20f16e5 100644
+--- a/NativeAdrenoUserClient.cpp
++++ b/NativeAdrenoUserClient.cpp
+@@ -162,6 +162,7 @@ IOReturn NativeAdrenoUserClient::close()
+     if(!open_)return kIOReturnNotReady;
+     if(liveObjects() || ownRangeOutstanding())return kIOReturnBusy;
+     for(uint32_t i=1;i<queue_capacity_;++i)if(queues_[i].active)return kIOReturnBusy;
++    clearBatch();
+     releaseEntries();index_.release();
+     if(queues_)IODeleteData(queues_,Queue,queue_capacity_);
+     queues_=nullptr;queue_capacity_=0;
+@@ -173,6 +174,7 @@ IOReturn NativeAdrenoUserClient::releaseAll(const NativeAdrenoRingClock *clock,u
+ {
+     if(!open_)return kIOReturnNotReady;
+     if(!clock)return kIOReturnBadArgument;
++    clearBatch(); /* staging owns no GPU references and was never submitted */
+     IOReturn status=(scoped_ || used_)?submit_->waitRange(queue_base_,NativeAdrenoQueueRange,clock,timeout_us):kIOReturnSuccess;
+     if(status)return status;
+     for(size_t index=0;index<entry_count_;++index) {
+@@ -205,7 +207,7 @@ IOReturn NativeAdrenoUserClient::query(NativeAdrenoAbiParams *params)
+     if(!open_)return kIOReturnNotReady;
+     params->abi_version=NativeAdrenoAbiVersion;
+     params->input_bits=input_bits_;params->output_bits=output_bits_;
+-    params->flags=NativeAdrenoParamsHostImport|(ownedCoherent()?NativeAdrenoParamsOwnedCoherent:0u)|
++    params->flags=NativeAdrenoParamsHostImport|NativeAdrenoParamsSubmitBatch|(ownedCoherent()?NativeAdrenoParamsOwnedCoherent:0u)|
+         (NativeAdrenoMemory::memoryPressure()?NativeAdrenoParamsMemoryPressure:0u);params->max_bo_bytes=maxBoBytes();
+     return kIOReturnSuccess;
+ }
+@@ -414,6 +416,7 @@ IOReturn NativeAdrenoUserClient::submit(const NativeAdrenoAbiSubmit *request,
+     if(!open_)return kIOReturnNotReady;
+     if(!request->buffer_count || request->buffer_count>NativeAdrenoAbiMaxBuffers ||
+         request->reserved)return kIOReturnBadArgument;
++    if(batch_id_)return kIOReturnBusy;
+     if(request->queue>=queue_capacity_ || !queues_[request->queue].active)
+         return kIOReturnBadArgument;
+     if(request->wait_fence) {
+@@ -424,9 +427,16 @@ IOReturn NativeAdrenoUserClient::submit(const NativeAdrenoAbiSubmit *request,
+         const IOReturn waited=submit_->observeFence((uint32_t)request->wait_fence,clock,wait_us);
+         if(waited)return waited;
+     }
++    return submitList(request->buffers,request->buffer_count,request->queue,reply,clock);
++}
++IOReturn NativeAdrenoUserClient::submitList(const NativeAdrenoAbiSubmitBuffer *wire_buffers,
++    size_t count,uint64_t queue,NativeAdrenoAbiSubmitReply *reply,const NativeAdrenoRingClock *clock)
++{
++    if(!wire_buffers || !count || count>NativeAdrenoAbiMaxBatchBuffers)return kIOReturnBadArgument;
++    if(queue>=queue_capacity_ || !queues_[queue].active)return kIOReturnBadArgument;
+     NativeAdrenoSubmitBuffer *buffers=submit_buffers_;
+-    for(uint32_t i=0;i<request->buffer_count;++i) {
+-        const NativeAdrenoAbiSubmitBuffer &wire=request->buffers[i];
++    for(size_t i=0;i<count;++i) {
++        const NativeAdrenoAbiSubmitBuffer &wire=wire_buffers[i];
+         if(!wire.bytes || (wire.bytes&3))return kIOReturnBadArgument;
+         Entry *entry=find(wire.handle);
+         if(!entry || !entry->mapped_state)return kIOReturnBadArgument;
+@@ -438,12 +448,59 @@ IOReturn NativeAdrenoUserClient::submit(const NativeAdrenoAbiSubmit *request,
+     submit_->nextOwner(proc_selfpid());
+     submit_->nextPriority(submitPriority());
+     submit_->nextRole(task_get_gpu_role(current_task()));
+-    const IOReturn status=submit_->submit(vm_,buffers,request->buffer_count,
+-        queue_base_+request->queue,&fence,clock);
++    const IOReturn status=submit_->submit(vm_,buffers,count,
++        queue_base_+queue,&fence,clock);
+     if(status)return status;
+     reply->fence=fence;
+     return kIOReturnSuccess;
+ }
++IOReturn NativeAdrenoUserClient::submitBatch(const NativeAdrenoAbiSubmitBatch *request,
++    NativeAdrenoAbiSubmitBatchReply *reply,const NativeAdrenoRingClock *clock)
++{
++    if(!request || !reply)return kIOReturnBadArgument;
++    *reply={};
++    if(!open_)return kIOReturnNotReady;
++    if(!request->total_buffers || request->total_buffers>NativeAdrenoAbiMaxBatchBuffers ||
++        request->queue>=queue_capacity_ || !queues_[request->queue].active ||
++        request->buffer_count>NativeAdrenoAbiMaxBuffers)return kIOReturnBadArgument;
++    if(request->action==NativeAdrenoBatchBegin) {
++        if(request->batch || request->offset || request->buffer_count)return kIOReturnBadArgument;
++        if(batch_id_)return kIOReturnBusy;
++        if(!batch_next_)return kIOReturnNoResources; /* never reuse a consumed token */
++        batch_id_=batch_next_++;batch_queue_=request->queue;
++        batch_total_=request->total_buffers;batch_received_=0;
++        reply->batch=batch_id_;
++        return kIOReturnSuccess;
++    }
++    if(!batch_id_ || request->batch!=batch_id_ || request->queue!=batch_queue_ ||
++        request->total_buffers!=batch_total_ || request->offset!=batch_received_)
++        return kIOReturnBadArgument;
++    reply->batch=batch_id_;
++    if(request->action==NativeAdrenoBatchAppend) {
++        if(!request->buffer_count || request->buffer_count>batch_total_-batch_received_)
++            return kIOReturnBadArgument;
++        for(uint32_t i=0;i<request->buffer_count;++i) {
++            const auto &entry=request->buffers[i];
++            if(!entry.handle || !entry.bytes || (entry.bytes&3) || (entry.iova&3) ||
++                entry.bytes>UINT64_C(0xfffff)*4)return kIOReturnBadArgument;
++        }
++        memcpy(batch_buffers_+batch_received_,request->buffers,
++            request->buffer_count*sizeof(batch_buffers_[0]));
++        batch_received_+=request->buffer_count;
++        return kIOReturnSuccess;
++    }
++    if(request->buffer_count)return kIOReturnBadArgument;
++    if(request->action==NativeAdrenoBatchAbort) {clearBatch();return kIOReturnSuccess;}
++    if(request->action!=NativeAdrenoBatchCommit || batch_received_!=batch_total_)
++        return kIOReturnBadArgument;
++    NativeAdrenoAbiSubmitReply submitted{};
++    const IOReturn status=submitList(batch_buffers_,batch_total_,batch_queue_,&submitted,clock);
++    /* Busy is a proved pre-publication refusal. Other results consume staging;
++     * a poisoned ring keeps its own job references under the existing contract. */
++    if(status!=kIOReturnBusy)clearBatch();
++    if(!status)reply->fence=submitted.fence;
++    return status;
++}
+ IOReturn NativeAdrenoUserClient::attachTimer(const NativeAdrenoTimer *timer)
+ {
+     if(!open_)return kIOReturnNotReady;
+@@ -503,6 +560,7 @@ size_t NativeAdrenoUserClient::inputSize(uint32_t method)
+     case NativeAdrenoMethodBoImport:return sizeof(NativeAdrenoAbiBoImport);
+     case NativeAdrenoMethodBoFree:return sizeof(NativeAdrenoAbiBoFree);
+     case NativeAdrenoMethodSubmit:return sizeof(NativeAdrenoAbiSubmit);
++    case NativeAdrenoMethodSubmitBatch:return sizeof(NativeAdrenoAbiSubmitBatch);
+     case NativeAdrenoMethodSetMetadata:
+     case NativeAdrenoMethodGetMetadata:return sizeof(NativeAdrenoAbiMetadata);
+     case NativeAdrenoMethodCreateQueue:
+@@ -521,6 +579,7 @@ size_t NativeAdrenoUserClient::outputSize(uint32_t method)
+     case NativeAdrenoMethodBoMap:return sizeof(NativeAdrenoAbiBoMapReply);
+     case NativeAdrenoMethodBoFree:return 0;
+     case NativeAdrenoMethodSubmit:return sizeof(NativeAdrenoAbiSubmitReply);
++    case NativeAdrenoMethodSubmitBatch:return sizeof(NativeAdrenoAbiSubmitBatchReply);
+     case NativeAdrenoMethodWaitFence:return 0;
+     case NativeAdrenoMethodGetTimestamp:return sizeof(NativeAdrenoAbiTimestamp);
+     case NativeAdrenoMethodGetStatus:return sizeof(NativeAdrenoAbiStatus);
+@@ -609,6 +668,13 @@ IOReturn NativeAdrenoUserClient::dispatch(uint32_t method,const void *input,
+         if(!status)memcpy(output,&reply,sizeof(reply));
+         break;
+     }
++    case NativeAdrenoMethodSubmitBatch: {
++        memcpy(&batch_request_,input,sizeof(batch_request_));
++        NativeAdrenoAbiSubmitBatchReply reply{};
++        status=submitBatch(&batch_request_,&reply,clock);
++        if(!status)memcpy(output,&reply,sizeof(reply));
++        break;
++    }
+     case NativeAdrenoMethodWaitFence: {
+         NativeAdrenoAbiWaitFence request{};
+         memcpy(&request,input,sizeof(request));
+@@ -724,6 +790,7 @@ IOReturn NativeAdrenoUserClient::closeQueue(const NativeAdrenoAbiQueue *request)
+     if(!request->queue || request->queue>=queue_capacity_)return kIOReturnBadArgument;
+     Queue &queue=queues_[request->queue];
+     if(!queue.active)return kIOReturnBadArgument;
++    if(batch_id_ && batch_queue_==request->queue)return kIOReturnBusy;
+     /* A queue must be drained by the caller before it disappears. */
+     if(submit_->queueOutstanding(queue_base_+request->queue))
+         return kIOReturnBusy;
+diff --git a/NativeAdrenoUserClient.h b/NativeAdrenoUserClient.h
+index 83aa32a..6d129b0 100644
+--- a/NativeAdrenoUserClient.h
++++ b/NativeAdrenoUserClient.h
+@@ -71,8 +71,15 @@ class NativeAdrenoUserClient final {
+      * takes: the foreground value while the process renders visible UI and the background one otherwise (the process's GPU role). */
+     int32_t priority_foreground_=-1,priority_background_=-1;
+     uint32_t priority_told_=0;
+-    NativeAdrenoSubmitBuffer submit_buffers_[NativeAdrenoAbiMaxBuffers]{};   /* submit()'s list: too large for the kernel stack */
++    NativeAdrenoSubmitBuffer submit_buffers_[NativeAdrenoAbiMaxBatchBuffers]{};   /* never on the kernel stack */
+     NativeAdrenoAbiSubmit submit_request_{};   /* the submit request as copied in, for the same reason */
++    NativeAdrenoAbiSubmitBatch batch_request_{};
++    NativeAdrenoAbiSubmitBuffer batch_buffers_[NativeAdrenoAbiMaxBatchBuffers]{};
++    uint64_t batch_id_=0,batch_next_=1,batch_queue_=0;
++    uint32_t batch_total_=0,batch_received_=0;
++    void clearBatch() {batch_id_=batch_queue_=0;batch_total_=batch_received_=0;}
++    IOReturn submitList(const NativeAdrenoAbiSubmitBuffer *,size_t,uint64_t,
++        NativeAdrenoAbiSubmitReply *,const NativeAdrenoRingClock *);
+     uint64_t window_start_=0,window_bytes_=0,window_peak_=0;
+     uint64_t next_handle_=1;
+     bool open_=false;
+@@ -134,6 +141,8 @@ public:
+     IOReturn freeBo(const NativeAdrenoAbiBoFree *);
+     IOReturn submit(const NativeAdrenoAbiSubmit *,NativeAdrenoAbiSubmitReply *,
+         const NativeAdrenoRingClock *);
++    IOReturn submitBatch(const NativeAdrenoAbiSubmitBatch *,NativeAdrenoAbiSubmitBatchReply *,
++        const NativeAdrenoRingClock *);
+     IOReturn cpuMap(const NativeAdrenoAbiBoCpuMap *,NativeAdrenoAbiBoCpuMapReply *);
+     IOReturn cpuUnmap(const NativeAdrenoAbiBoCpuUnmap *);
+     IOReturn createQueue(NativeAdrenoAbiQueueReply *);
+diff --git a/NativeAdrenoVm.cpp b/NativeAdrenoVm.cpp
+index 85d3ab3..d75e77c 100644
+--- a/NativeAdrenoVm.cpp
++++ b/NativeAdrenoVm.cpp
+@@ -3,6 +3,7 @@
+ #include "NativeAdrenoVmAlias.h"
+ extern "C" volatile uint32_t native_adreno_trace_stage;
+ extern "C" {int (*native_adreno_dram_read32)(uint64_t,uint32_t *);int (*native_adreno_cached_read32)(uint64_t,uint32_t *);
++    int (*native_adreno_stall_read_words)(uint64_t,uint32_t *,size_t);
+     int (*native_adreno_line_audit)(uint64_t,size_t,uint32_t *,uint32_t *);}
+ #include <string.h>
+ #include <IOKit/IOLib.h>
+@@ -137,6 +138,7 @@ void NativeAdrenoVm::freeTables()
+     if(order_)IODeleteData(order_,uint32_t,mapping_capacity_);
+     index_.release();
+     changes_=nullptr;alias_scratch_=nullptr;mappings_=nullptr;order_=nullptr;capacity_=mapping_capacity_=0;
++    publish_head_=UINT32_MAX;publish_count_=0;writable_import_count_=0;
+ }
+ bool NativeAdrenoVm::growScratch(size_t needed)
+ {
+@@ -282,6 +284,14 @@ void NativeAdrenoVm::insert(Mapping *record)
+     order_[at]=(uint32_t)(record-mappings_);++order_count_[record->upper];
+     class_spans_[aliasClass(record->permissions,record->writeback,record->shareability)&15]+=record->spans;
+     if(record->upper)upper_count_+=record->spans;else lower_count_+=record->spans;
++    if(record->memory->imported()) {
++        if(record->permissions&ArmSmmu4KWrite)++writable_import_count_;
++    } else if(!record->writeback) {
++        const uint32_t slot=uint32_t(record-mappings_);
++        record->publish_prev=UINT32_MAX;record->publish_next=publish_head_;
++        if(publish_head_!=UINT32_MAX)mappings_[publish_head_].publish_prev=slot;
++        publish_head_=slot;++publish_count_;
++    }
+ }
+ bool NativeAdrenoVm::erase(Mapping *record)
+ {
+@@ -291,6 +301,14 @@ bool NativeAdrenoVm::erase(Mapping *record)
+     --order_count_[record->upper];
+     class_spans_[aliasClass(record->permissions,record->writeback,record->shareability)&15]-=record->spans;
+     if(record->upper)upper_count_-=record->spans;else lower_count_-=record->spans;
++    if(record->memory->imported()) {
++        if(record->permissions&ArmSmmu4KWrite)--writable_import_count_;
++    } else if(!record->writeback) {
++        const uint32_t prev=record->publish_prev,next=record->publish_next;
++        if(prev==UINT32_MAX)publish_head_=next;else mappings_[prev].publish_next=next;
++        if(next!=UINT32_MAX)mappings_[next].publish_prev=prev;
++        --publish_count_;
++    }
+     return true;
+ }
+ IOReturn NativeAdrenoVm::map(NativeAdrenoMemory *memory,unsigned upper,uint64_t iova,
+@@ -439,6 +457,23 @@ IOReturn NativeAdrenoVm::invalidateTlb()
+ IOReturn NativeAdrenoVm::publishMapped()
+ {
+     if(!attached_ || poisoned_)return kIOReturnNotReady;
++    if(native_adreno_io_coherent) {
++        /* No per-submit walk through imported surfaces or coherent owned BOs.
++         * Retain every existing owned/non-WB maintenance operation, including
++         * the write-combine distrust policy and failure quarantine. */
++        uint32_t slot=publish_head_;size_t remaining=publish_count_;
++        if(remaining>objects_)return fail(ArmSmmu4KStateMismatch);
++        while(slot!=UINT32_MAX && remaining) {
++            if(slot>=high_)return fail(ArmSmmu4KStateMismatch);
++            const Mapping &m=mappings_[slot];
++            if(!m.memory || m.memory->imported() || m.writeback)return fail(ArmSmmu4KStateMismatch);
++            if(m.memory->publishForDevice(0,m.memory->bytes(),true,distrust_write_combined_,NativeAdrenoPhaseSubmit))return fail(ArmSmmu4KIoError);
++            slot=m.publish_next;--remaining;
++        }
++        if(slot!=UINT32_MAX || remaining)return fail(ArmSmmu4KStateMismatch);
++        native_adreno_coherent_skips[2]=native_adreno_coherent_skips[2]+uint32_t(objects_-publish_count_);
++        return kIOReturnSuccess;
++    }
+     for(size_t i=0;i<high_;++i) {
+         const Mapping &m=mappings_[i];
+         if(!m.memory)continue;
+@@ -450,6 +485,12 @@ IOReturn NativeAdrenoVm::publishMapped()
+ IOReturn NativeAdrenoVm::acquireImported()
+ {
+     if(!attached_ || poisoned_)return kIOReturnNotReady;
++    if(native_adreno_io_coherent) {
++        /* importedUntouched would skip every matching object. Count only
++         * successfully inserted writable imports, without revisiting them. */
++        native_adreno_coherent_skips[3]=native_adreno_coherent_skips[3]+uint32_t(writable_import_count_);
++        return kIOReturnSuccess;
++    }
+     for(size_t i=0;i<high_;++i) {
+         const Mapping &m=mappings_[i];
+         if(!m.memory || !m.memory->imported() || !(m.permissions&ArmSmmu4KWrite))continue;
+@@ -560,7 +601,26 @@ IOReturn NativeAdrenoVm::peekWordsUncached(uint64_t iova,uint32_t *out,size_t co
+     for(size_t i=0;i<high_;++i) {
+         const Mapping &m=mappings_[i];
+         if(!m.memory || iova<m.iova || iova-m.iova>=m.memory->bytes())continue;
+-        if(!m.memory->mapping())return peekWords(iova,out,count);   /* read from DRAM already */
++        if(!m.memory->mapping() && native_adreno_stall_read_words) {
++            const size_t offset=size_t(iova-m.iova);
++            if((iova&3) || count>64 || count>(m.memory->bytes()-offset)/4)return kIOReturnBadArgument;
++            size_t done=0;
++            for(size_t j=0;j<m.memory->spanCount() && done<count;++j) {
++                const auto &span=m.memory->spans()[j];
++                size_t at=offset+done*4;
++                if(at<span.offset || at-span.offset>=span.bytes)continue;
++                while(done<count && at-span.offset<span.bytes) {
++                    const uint64_t physical=span.physical+(at-span.offset);
++                    size_t words=(4096-size_t(physical&4095))/4;
++                    if(words>(span.bytes-(at-span.offset))/4)words=(span.bytes-(at-span.offset))/4;
++                    if(words>count-done)words=count-done;
++                    if(!words || native_adreno_stall_read_words(physical,out+done,words))return kIOReturnIOError;
++                    done+=words;at+=words*4;
++                }
++            }
++            return done==count?kIOReturnSuccess:kIOReturnBadArgument;
++        }
++        if(!m.memory->mapping())return peekWords(iova,out,count);   /* legacy board DRAM reader */
+         const size_t offset=(size_t)(iova-m.iova),first=offset&~(size_t)4095;
+         const size_t end=offset+4*count<m.memory->bytes()?offset+4*count:m.memory->bytes();
+         const size_t bytes=((end+4095)&~(size_t)4095)-first;
+diff --git a/NativeAdrenoVm.h b/NativeAdrenoVm.h
+index 19d8095..f830e6d 100644
+--- a/NativeAdrenoVm.h
++++ b/NativeAdrenoVm.h
+@@ -29,6 +29,11 @@ struct NativeAdrenoVmResult {
+  * validation/protection, genuine IRQ fences and reset are implemented. */
+ /* Board hook for sampleWord(): reads one aligned word of physical memory through a fresh uncached mapping; 0 on success. */
+ extern "C" int (*native_adreno_dram_read32)(uint64_t physical,uint32_t *value);
++/* Stall-only bulk reader. At most 64 aligned dwords within one owned DRAM
++ * page; the board maps, reads and unmaps that page without cache maintenance.
++ * peekWordsUncached resolves the live BO spans before invoking it. This hook
++ * is not used by the per-submission coherence audit or ordinary IB log. */
++extern "C" int (*native_adreno_stall_read_words)(uint64_t physical,uint32_t *out,size_t count);
+ /* The board's reader through the kernel's cacheable physical aperture (null on the host: the BO's own mapping is read). */
+ extern "C" int (*native_adreno_cached_read32)(uint64_t physical,uint32_t *value);
+ /* Board hook for auditRange(): [physical, physical+bytes), whole 64-byte lines inside one page, as the cacheable physical aperture and
+@@ -41,11 +46,18 @@ class NativeAdrenoVm final {
+         uint64_t handle=0,iova=0;
+         size_t spans=0,mapped_spans=0;
+         unsigned permissions=0,writeback=0,shareability=0,jobs=0,upper=0;
++        uint32_t publish_prev=UINT32_MAX,publish_next=UINT32_MAX;
+     };
+     Mapping *mappings_=nullptr;
+     NativeAdrenoHandleIndex index_;   /* live handle -> its mappings_ slot */
+     size_t free_hint_=0;   /* no free mappings_ slot below it */
+     size_t high_=0;   /* no live mappings_ slot at or above it: the walks over every mapping stop there */
++    /* With the board's coherent contract enabled, only owned non-WB objects
++     * need publication. Slot links survive mappings_ growth and slot reuse;
++     * imported writable mappings can be acquired by accounting alone. The
++     * ordinary full walk remains the fallback if that contract is off. */
++    uint32_t publish_head_=UINT32_MAX;
++    size_t publish_count_=0,writable_import_count_=0;
+     size_t class_spans_[16]{};   /* mapped spans per alias class, so a map counts the other classes without a walk */
+     size_t import_spans_[16]{};   /* the imported mappings' ranges per alias class */
+     NativeAdrenoVmRegion regions_[2]{};
+diff --git a/NativeGpuLatency.h b/NativeGpuLatency.h
+index 2fe58f2..e736a52 100644
+--- a/NativeGpuLatency.h
++++ b/NativeGpuLatency.h
+@@ -9,11 +9,13 @@ static inline bool native_gpu_latency_stage(uint32_t stage) {
+     return (stage >= 1 && stage <= 16) || (stage >= 40 && stage <= 57);
+ }
+ /* The kernel ring keeps GPU submission and retirement, display arrival, fence
+- * and latch, build identity, the render threads the CPU sampler follows and
+- * each process's Metal refusals (event 65, the text of what failed). */
++ * and latch, build identity, the render threads the CPU sampler follows,
++ * each process's Metal refusals (event 65, the text of what failed) and the
++ * render server's GMEM swap trace (Turnip passes 36, transfers 37, attachments
++ * 44; Turnip sends them only with SHENG_GPU_TRACE). */
+ static inline bool native_gpu_latency_event(uint32_t event,const uint64_t *,uint32_t) {
+     switch(event) {
+-    case 1:case 3:case 10:case 11:case 20:case 21:case 22:case 23:case 63:case 65:return true;
++    case 1:case 3:case 10:case 11:case 20:case 21:case 22:case 23:case 36:case 37:case 44:case 63:case 65:return true;
+     default:return false;
+     }
+ }
+diff --git a/NativeGpuTextStream.h b/NativeGpuTextStream.h
+new file mode 100644
+index 0000000..7561af8
+--- /dev/null
++++ b/NativeGpuTextStream.h
+@@ -0,0 +1,48 @@
++/* SPDX-License-Identifier: MIT */
++#pragma once
++#include <stdint.h>
++#include <string.h>
++
++/* Existing 0x7fff/0x7ffe + 0x70cc wire, with optional 0x7100 end marker.
++ * The owner holds a short CPU lock. No allocation, GPU access or logging here.
++ * Keying by PID prevents independent processes from mixing diagnostic lines.
++ */
++struct NativeGpuTextStream {
++    struct Message { uint32_t pid=0,channel=0,truncated=0,legacy=0; char text[64]{}; };
++    struct Slot { uint32_t pid=0,channel=0,length=0; bool active=false,truncated=false; char text[64]{}; };
++    Slot slots[32]{};
++    uint32_t dropped=0;
++
++    static void finish(const Slot &s,Message &out,bool legacy) {
++        out.pid=s.pid;out.channel=s.channel;out.truncated=s.truncated;out.legacy=legacy;
++        memcpy(out.text,s.text,sizeof(out.text));out.text[63]=0;
++    }
++    bool accept(uint32_t pid,uint32_t value,Message &out) {
++        out={};
++        if(!pid)return false;
++        Slot *s=nullptr,*free=nullptr;
++        for(auto &item:slots) {
++            if(item.pid==pid)s=&item;
++            if(!item.active && !free)free=&item;
++        }
++        if(value==0x7fff || value==0x7ffe) {
++            if(!s)s=free;
++            if(!s){++dropped;return false;}
++            const bool previous=s->active && s->length;
++            if(previous)finish(*s,out,true);
++            *s={};s->pid=pid;s->channel=value==0x7ffe?7:8;s->active=true;
++            return previous;
++        }
++        if(!s || !s->active)return false;
++        if(value==0x7100) {
++            finish(*s,out,false);s->active=false;return true;
++        }
++        if(value>=0x7000 && value<0x7100) {
++            if(s->length<63) {
++                unsigned c=value&255;s->text[s->length++]=char(c>=32 && c<127?c:'?');
++                s->text[s->length]=0;
++            } else s->truncated=true;
++        }
++        return false;
++    }
++};
+diff --git a/NativeGpuTrace.h b/NativeGpuTrace.h
+index 4bfb51f..54f3676 100644
+--- a/NativeGpuTrace.h
++++ b/NativeGpuTrace.h
+@@ -12,7 +12,8 @@ enum {
+     GpuTraceConfig=1, GpuTraceBuild=3,
+     GpuTraceSubmit=10, GpuTraceRetire=11,
+     GpuTraceDisplay=20, GpuTraceDisplaySurface=21, GpuTraceDisplayFence=22,
+-    GpuTraceDisplayLatch=23, GpuTraceThread=63, GpuTraceProblem=65
++    GpuTraceDisplayLatch=23, GpuTraceTurnipPass=36, GpuTraceTurnipGmemSide=37, GpuTraceTurnipAttachment=44,
++    GpuTraceThread=63, GpuTraceProblem=65
+ };
+ struct NativeGpuTraceRecord {
+     uint64_t sequence,us;
+@@ -35,6 +36,9 @@ extern "C" {
+ int native_gpu_trace_enabled(void) NATIVE_GPU_TRACE_LINK;
+ void native_gpu_trace_record(uint32_t event,uint32_t pid,const uint64_t *values,uint32_t count) NATIVE_GPU_TRACE_LINK;
+ uint32_t native_gpu_trace_snapshot(void *out,uint32_t bytes);
++/* Read existing ring records at/after cursor, never wait. Missing/overwritten
++ * slots are counted explicitly; max16 records and at most16 attempted slots. */
++uint32_t native_gpu_trace_page(uint64_t cursor,struct NativeGpuTraceRecord *out,uint32_t capacity,uint64_t *next,uint64_t *latest,uint64_t *missed);
+ #ifdef __cplusplus
+ }
+ template<typename... T> static inline void gpuTraceEvent(uint32_t event,uint32_t pid,T... args) {
+diff --git a/NativeGpuTrace.inc b/NativeGpuTrace.inc
+index 7fdcc37..2a03d6e 100644
+--- a/NativeGpuTrace.inc
++++ b/NativeGpuTrace.inc
+@@ -10,6 +10,25 @@ static NativeGpuTraceStore gpuTrace;
+ static uint32_t gpuTraceOn;
+ static NativeGpuTraceRecord *gpuMetadata;
+ static uint32_t gpuMetadataBusy;
++static uint8_t gpuProblemReported[NativeGpuTraceMetadata];
++/* Metadata slots are assigned to one (PID,event,text) tuple for this boot.
++ * Copy new problem text in bounded batches; the observer prints after release.
++ * Trace producers never wait on this latch and the full ring stays unchanged.
++ */
++static uint32_t gpuTraceCopyNewProblems(NativeGpuTraceRecord *out,uint32_t capacity)
++{
++    if(!gpuMetadata || !out || !capacity || capacity>8)return 0;
++    uint32_t free=0;
++    if(!__atomic_compare_exchange_n(&gpuMetadataBusy,&free,1,false,__ATOMIC_ACQUIRE,__ATOMIC_RELAXED))return 0;
++    uint32_t copied=0;
++    for(unsigned i=0;i<NativeGpuTraceMetadata && copied<capacity;++i) {
++        if(gpuMetadata[i].event!=GpuTraceProblem || gpuProblemReported[i])continue;
++        out[copied++]=gpuMetadata[i];
++        gpuProblemReported[i]=1;
++    }
++    __atomic_store_n(&gpuMetadataBusy,0,__ATOMIC_RELEASE);
++    return copied;
++}
+ static void gpuTraceInit()
+ {
+     unsigned enabled=0;
+@@ -69,3 +88,18 @@ extern "C" uint32_t native_gpu_trace_snapshot(void *out,uint32_t bytes)
+         if(gpuTrace.read(n,records+header->count))++header->count;
+     return sizeof(*header)+header->count*sizeof(*records);
+ }
++
++extern "C" uint32_t native_gpu_trace_page(uint64_t cursor,NativeGpuTraceRecord *out,uint32_t capacity,uint64_t *next,uint64_t *latest,uint64_t *missed)
++{
++    if(!out || !next || !latest || !missed || !capacity || capacity>16 || !native_gpu_trace_enabled())return 0;
++    *latest=__atomic_load_n(&gpuTrace.issued,__ATOMIC_ACQUIRE);*missed=0;
++    const uint64_t first=*latest>gpuTrace.capacity?*latest-gpuTrace.capacity+1:1;
++    uint64_t at=cursor?cursor:first;
++    if(at<first){*missed=first-at;at=first;}
++    uint32_t count=0,attempted=0;
++    while(at<=*latest && attempted<capacity) {
++        if(gpuTrace.read(at,out+count))++count;else ++*missed;
++        ++at;++attempted;
++    }
++    *next=at;return count;
++}
+diff --git a/NativeGpuTraceTest.cpp b/NativeGpuTraceTest.cpp
+index 9958e09..2440912 100644
+--- a/NativeGpuTraceTest.cpp
++++ b/NativeGpuTraceTest.cpp
+@@ -8,7 +8,10 @@
+ #include <vector>
+ #include "NativeGpuTrace.h"
+ static void PE_parse_boot_argn(const char *,unsigned *out,size_t){*out=1;}
+-static void *IOMallocZero(size_t n){return calloc(1,n);}
++// The kernel's trace allocations live until shutdown. This host test initializes
++// twice; track both generations and release them before LeakSanitizer runs.
++static std::vector<void *> hostTraceAllocations;
++static void *IOMallocZero(size_t n){void *p=calloc(1,n);hostTraceAllocations.push_back(p);return p;}
+ static uint64_t mach_absolute_time(){return std::chrono::steady_clock::now().time_since_epoch().count();}
+ static void absolutetime_to_nanoseconds(uint64_t t,uint64_t *out){*out=t;}
+ #include "NativeGpuTrace.inc"
+@@ -37,9 +40,12 @@ int main() {
+     assert(build);
+     auto issued=gpuTrace.issued;
+     uint64_t noise[3]={123,53,0};
+-    for(uint32_t event:{12u,13u,14u,15u,37u,39u,61u,62u,64u,68u})native_gpu_trace_record(event,61,noise,3);
++    for(uint32_t event:{12u,13u,14u,15u,38u,39u,43u,61u,62u,64u,68u})native_gpu_trace_record(event,61,noise,3);
+     assert(gpuTrace.issued==issued);
+     native_gpu_trace_record(GpuTraceRetire,61,noise,3);assert(gpuTrace.issued==issued+1);
++    /* The render server's GMEM swap trace: Turnip passes, transfers and attachments. */
++    for(uint32_t event:{36u,37u,44u})native_gpu_trace_record(event,61,noise,3);
++    assert(gpuTrace.issued==issued+4);
+     NativeGpuLatencyWaits waits;uint64_t omitted=0;
+     assert(waits.keep(1,0,55,3,99,omitted));
+     for(unsigned i=2;i<100001;++i)assert(!waits.keep(i,0,55,3,99,omitted));
+@@ -47,5 +53,6 @@ int main() {
+     assert(waits.keep(100003,0,55,4,99,omitted));
+     assert(waits.keep(100004,0,55,1,99,omitted));
+     assert(waits.keep(100005,0,55,3,100,omitted));
++    for(void *p:hostTraceAllocations)free(p);
+     return 0;
+ }
+diff --git a/README.md b/README.md
+index df93a97..42e8de0 100644
+--- a/README.md
++++ b/README.md
+@@ -2,6 +2,19 @@
+ 
+ A740 kernel GPU driver.
+ 
++The shared ring, CP initializer, IRQ decoder and timer also accept the explicit
++`NativeAdrenoChipA8xx` register profile, adapted from myron's `4056854`.
++The A840 board backend supplies its own power, firmware and context resources.
++A8xx currently uses one ring and CPU page-table switching; A740 preemption
++records and CP table-switch packets are rejected for that profile. Host checks
++are separate from A840 hardware qualification.
++
++Ring profile selection validates every register field and retains its own
++canonical table. Apple kernel links may retain two equal inline constants at
++different addresses; pointer identity is not a hardware identity check. The
++ring regression includes equivalent copies, caller lifetime and every changed
++field, while unknown profiles and selection after attachment remain refused.
++
+ The implementation covers A740 on SM8550. GPU commands and scanout copy have been verified on sheng. Platform inputs provide firmware, power policy, and memory resources.
+ 
+ Two priority rings preserve queue FIFO and per-ring page tables. Context switching uses the executed-table snapshot, GMEM save/restore and a preemption postamble. The host scheduling check covers packet sequencing, priority changes and fence-history rollover; board policy selects the mode.
+@@ -10,6 +23,74 @@ Build and interface details: [documentation](https://unixnu.com/drivers/adreno74
+ 
+ ## Frame diagnostics
+ 
++With GPU tracing enabled, plugin phase markers and completed PID-scoped text
++lines also reach the existing kernel console/USB sink. The optional0x7100
++terminator preserves complete lines across interleaved processes; older senders
++flush on their next line. Truncation/capacity loss is explicit. A separate CPU
++observer samples the existing software counters and changed telemetry rows;
++it never waits on the GPU queue lock, accesses MMIO or performs recovery.
++These diagnostic additions are not a GPU performance or hardware qualification.
++
++Repeated fence and frame-wait timeout lines retain every occurrence in atomic
++counters, print their first four and powers of two, and report changing totals
++from the observer. Other RPC errors remain immediate. This leaves all RPC
++results and waits unchanged and prevents ordinary polling from flooding the
++console drain. The observer also copies at most eight previously unseen
++event-65 metadata texts per pass and prints them after releasing the metadata
++latch; the 120-byte trace ABI and complete trace ring remain unchanged.
++
++The compatible upstream GMEM trace selection also retains events36,37 and44
++(pass, tile-memory transfer and attachment) when the sender enables tracing.
++The120-byte record ABI is unchanged; this does not enable A740 preemption on A840.
++
+ `sheng-gpu-trace=1` enables the kernel GPU ring: submission, retirement, display arrival, display fence and latch, build identity, and the render server's render, encode and completion thread identities, 65536 records. Repeated pending display queries are coalesced. See [GPU frame diagnostics](https://unixnu.com/porting/gpu-diagnostics) for fields and decoding.
+ 
+ `NativeGpuPerfCounters.h` defines the opt-in 19-counter A7XX BR plan used by sheng diagnostics. Capture records selector readback, unstable 64-bit reads, reset masks and preemption epochs. The host check verifies the register plan against pinned Mesa XML.
++
++
++The CPU console observer also exports a bounded, coherent copy of the existing
++stall sample: CP and SMMU state, nearby IB words, mapping-handle lifetime clues,
++the owning job/process, selected page table and recovery counters. It performs
++no register access and never waits for the GPU lock. Its sequence check rejects
++an in-progress copy. The sample records any preceding unstick stage explicitly;
++it is not represented as a pre-intervention hardware snapshot. Timeout and
++recovery counts remain poll/check counts, not counts of distinct failed jobs.
++
++A840 CPU page-table changes and VM teardown now wait for the existing ring
++idle check (RPTR drained and RBBM quiet) after the job timestamps complete.
++Timeouts leave the old table installed; no fence is fabricated or GPU reset
++added. This closes a source-level handoff gap; the Control Center hang still
++requires hardware retesting. A bounded stall-only board reader makes system
++BO command words available without adding mappings to normal submissions.
++Active IB addresses are matched against the retained job before using a
++prefetched ring descriptor as a fallback.
++
++The optional performance snapshot exposes cumulative job, submission, cache
++and lock times plus XNU CPU-load counters sampled by the existing observer.
++The existing CP_ALWAYS_ON stamps measure the command-stream interval around
++user IBs; asynchronous tail/cache draining is separate, so this is not labeled
++shader-only or end-to-end frame time. Stamps whose circular slot could have
++been reused carry bit32 and are omitted from cumulative GPU timing. USB
++integration stays in the board; six-record trace pages reuse the existing
++nonblocking store and report missed/overwritten slots.
++
++## Complete submissions
++
++ABI2 method19 stages up to1024 IB descriptors in the existing3104-byte
++transport envelope, then commits them as one GPU job. BEGIN/APPEND never
++publish ring commands. COMMIT validates every live handle and range, emits
++one complete framing sequence and consumes its token; only an explicit Busy
++refusal permits retry. Abort and connection teardown discard unsubmitted
++staging, while the existing fence rules keep submitted BOs alive. Method5's
++128-entry wire layout is unchanged. The new capability flag requires a
++matching updated client; callers must not fall back to arbitrary IB splits.
++
++This addresses a submission-contract gap found in nezha calculator stalls:
++140 and150 IBs were split at128, the first job completed and the second
++stalled. Other split submissions completed, so the count alone is not a
++proven hardware cause. Host tests execute the production dispatch, VM,
++execbuf and ring over software peers, including the two observed sizes,
++the1024-entry limit, stale/repeated tokens, partial uploads, Busy retry and
++resource lifetime. Lists that cannot fit an empty ring return a permanent
++argument error rather than a retryable full-ring result. Hardware retesting
++is still required; no barrier, fence or recovery rule was removed.
+diff --git a/tests/test_cpinit.cpp b/tests/test_cpinit.cpp
+index f7391c5..b881e1a 100644
+--- a/tests/test_cpinit.cpp
++++ b/tests/test_cpinit.cpp
+@@ -59,6 +59,25 @@ int main()
+         CHECK(ring.wait(1,&clock_,1000,nullptr)==NativeAdrenoRingFenceComplete);
+         CHECK(ring.detach()==kIOReturnSuccess);
+     }
++    /* A8XX: CP_SQE_INSTR_BASE at 0x0816 and the fence scratch at CP_SCRATCH_GLOBAL(2); the CP_ME_INIT words are a7xx_cp_init's. */
++    {
++        reset();NativeAdrenoRing ring;CHECK(ring.useChip(&NativeAdrenoChipA8xx)==kIOReturnSuccess);
++        CHECK(ring.attach(&io,&cache,ringmem,sizeof(ringmem),0x100000,fencemem,sizeof(fencemem),0x108000)==kIOReturnSuccess);
++        NativeAdrenoCpInit init;
++        CHECK(init.useChip(nullptr)==kIOReturnBadArgument && init.useChip(&NativeAdrenoChipA8xx)==kIOReturnSuccess);
++        NativeAdrenoCpInitConfig config{0x400000,0x301000,0};
++        uint32_t fence=0;
++        CHECK(init.run(&io,&ring,&config,&fence)==kIOReturnSuccess && fence==1);
++        bool paired=false;
++        for(size_t i=0;i+1<peer.writes.size();++i)
++            if(peer.writes[i]==0x0816 && peer.writes[i+1]==0x0817)paired=true;
++        CHECK(paired && peer.regs[0x0816]==0x400000 && peer.regs[0x0817]==0 && peer.regs[0x0830]==0);
++        CHECK(ringmem[3]==0x14b && ringmem[7]==0x301000 && ringmem[9]==(1u<<31));
++        CHECK((ringmem[10]>>8&0x3ffffu)==0x082c && ringmem[11]==1);
++        CHECK(init.useChip(&NativeAdrenoChipA7xx)==kIOReturnBusy);
++        fencemem[1]=1;
++        CHECK(ring.wait(1,&clock_,1000,nullptr)==NativeAdrenoRingFenceComplete);
++    }
+     /* Refusals precede MMIO and ring writes. */
+     {
+         reset();NativeAdrenoRing ring;CHECK(ring.attach(&io,&cache,ringmem,sizeof(ringmem),0x100000,fencemem,sizeof(fencemem),0x108000)==kIOReturnSuccess);
+@@ -90,5 +109,5 @@ int main()
+         CHECK(init.run(&io,&ring,&config,&fence)==kIOReturnIOError && init.poisoned());
+         CHECK(ring.poisoned() && ring.detach()==kIOReturnBusy);
+     }
+-    std::printf("PASS: 1 exact CP_ME_INIT sequence with SQE base, 8 pre-MMIO refusals, 1 SQE write failure and 1 ring commit failure over a software CP register peer\n");
++    std::printf("PASS: 1 exact CP_ME_INIT sequence with SQE base, 1 A8XX sequence, 8 pre-MMIO refusals, 1 SQE write failure and 1 ring commit failure over a software CP register peer\n");
+ }
+diff --git a/tests/test_gpucontext_plan.cpp b/tests/test_gpucontext_plan.cpp
+new file mode 100644
+index 0000000..ff13628
+--- /dev/null
++++ b/tests/test_gpucontext_plan.cpp
+@@ -0,0 +1,56 @@
++/* SPDX-License-Identifier: MIT */
++/* Reuse the existing software SMMU peer and physical-memory hooks. The original
++ * VM suite's main is not run by this executable. No direct-MMIO binding exists. */
++#define main upstream_vm_cases_not_run
++#include "test_vm.cpp"
++#undef main
++#include "NativeAdrenoGpuContext.h"
++#include "ArmSmmu4KMmio.h"
++extern "C" ArmSmmu4KStatus ArmSmmu4KBindMmio(ArmSmmu4KMmio *,ArmSmmu4KIo *)
++{std::abort();} /* Test calls bringUp with io; touching actual MMIO is a test failure. */
++extern "C" {volatile uint32_t native_adreno_table_switches[8];}
++static NativeAdrenoGpuContext *volatile owned_context;
++static int contextWrite(void *cookie,size_t at,uint32_t value)
++{
++    const uint32_t before=memory[at/4];
++    int result=write32(cookie,at,value);
++    // The full program path clears FSR before enabling M. The original VM
++    // fixture skips programming, so add the register's actual W1C behavior.
++    if(!result && (at==0x48 || (at>=0x20000 && (at&0xfff)==0x58)))memory[at/4]=before&~value;
++    return result;
++}
++int main()
++{
++    mmioReset();
++    io.write32=contextWrite;
++    owned_context=new NativeAdrenoGpuContext;
++    const unsigned slots[2]={2,0};const uint16_t sids[2]={0,0};
++    NativeAdrenoGmuContextReport report{};
++    NativeAdrenoGpuContextPlan plan;plan.sqe_bytes=0x20000;plan.buffer_count=5;plan.stream_count=1;plan.coherent_walk=false;
++    for(unsigned kind=0;kind<5;++kind) {
++        auto bad=plan;
++        if(kind==0)bad.sqe_bytes=0;
++        if(kind==1)bad.sqe_bytes=0x20001;
++        if(kind==2)bad.sqe_bytes=SIZE_MAX&~size_t(4095);
++        if(kind==3)bad.buffer_count=6;
++        if(kind==4)bad.stream_count=3;
++        CHECK(owned_context->bringUp(&io,0,2,slots,sids,nullptr,&report,&bad)==kIOReturnBadArgument);
++        CHECK(f.calls==0 && fixture.created==0 && !owned_context->ready());
++    }
++    IOReturn actual=owned_context->bringUp(&io,0,2,slots,sids,nullptr,&report,&plan);
++    if(actual)std::fprintf(stderr,"context status %d step %u program %u phase %u route %u phase %u writes %u\n",
++        actual,report.step,report.program_status,report.program_phase,report.route_status,report.route_phase,report.program_writes);
++    CHECK(actual==kIOReturnSuccess);
++    CHECK(owned_context->ready() && report.routes_verified==1 && report.step==NativeAdrenoGpuContext::Ready);
++    CHECK(owned_context->bufferCount()==5 && owned_context->buffer(0).bytes()==0x20000);
++    CHECK(fixture.created>=5 && owned_context->vm()->objectCount()==5);
++    for(unsigned i=5;i<GpuBufferCount;++i)CHECK(!owned_context->buffer(i).backed());
++    CHECK(owned_context->bringUp(&io,0,2,slots,sids,nullptr,&report,&plan)==kIOReturnBusy);
++    CHECK(owned_context->enableSwitching()==kIOReturnSuccess);
++    NativeAdrenoProcessVm *process=nullptr;
++    CHECK(owned_context->createVm(&process)==kIOReturnSuccess && process);
++    CHECK(process->vm()->objectCount()==5 && owned_context->liveVms()==1);
++    CHECK(owned_context->destroyVm(process)==kIOReturnSuccess && owned_context->liveVms()==0);
++    // Kernel context remains owned for the boot, just as the board's static owner.
++    std::printf("PASS: actual A840 128-KiB SQE / five-buffer / one-stream context; five pre-allocation refusals; process table lifetime\n");
++}
+diff --git a/tests/test_irq.cpp b/tests/test_irq.cpp
+index e6ed0fc..7077eb7 100644
+--- a/tests/test_irq.cpp
++++ b/tests/test_irq.cpp
+@@ -15,7 +15,7 @@ static int write32(void *c,uint32_t reg,uint32_t v)
+     CHECK(c==&peer && reg<0x10000);++peer.writes;
+     if(peer.writes==peer.fail_write)return 1;
+     peer.regs[reg]=v;peer.last_write_reg=reg;
+-    if(reg==0x0037)peer.cleared=v;
++    if(reg==0x0037 || reg==0x0061)peer.cleared=v;   /* RBBM_INT_CLEAR_CMD, A7XX and A8XX */
+     return 0;
+ }
+ static int read32(void *c,uint32_t reg,uint32_t *v)
+@@ -83,6 +83,31 @@ int main()
+         CHECK(irq.handle(&result)==kIOReturnSuccess && !result.flags && peer.cleared==0);
+         CHECK(irq.detach()==kIOReturnSuccess);
+     }
++    /* A8XX: the same RBBM bits at the A8XX offsets, and CP_INTERRUPT_STATUS_GLOBAL's per-pipe fault bits as the CP errors. */
++    {
++        reset();NativeAdrenoIrq irq;
++        CHECK(irq.useChip(nullptr)==kIOReturnBadArgument && irq.cpErrors()==NativeAdrenoIrq::cpErrorMask());
++        CHECK(irq.useChip(&NativeAdrenoChipA8xx)==kIOReturnSuccess && irq.cpErrors()==0x007f007fu);
++        CHECK(irq.attach(&io)==kIOReturnSuccess && irq.useChip(&NativeAdrenoChipA7xx)==kIOReturnBusy);
++        uint32_t programmed=0;
++        CHECK(irq.programMask(&programmed)==kIOReturnSuccess && programmed==NativeAdrenoIrq::mask());
++        CHECK(peer.regs[0x0062]==programmed && peer.regs[0x0038]==0);
++        NativeAdrenoIrqResult result;
++        peer.regs[0x006a]=1u<<20;
++        CHECK(irq.handle(&result)==kIOReturnSuccess && result.flags==NativeAdrenoIrqFence);
++        CHECK(peer.cleared==(1u<<20) && peer.last_write_reg==0x0061);
++        /* Every per-pipe hardware or software fault bit is a CP error (HWFAULTAQE0 bit 3, SWFAULTBR bit 16); bit 8 lies outside
++         * A8XX_CP_GLOBAL_INT_MASK. */
++        peer.regs[0x006a]=1u<<9;peer.regs[0x08b5]=0x8;
++        peer.regs[0x084f]=0x00100005;
++        CHECK(irq.handle(&result)==kIOReturnSuccess && result.flags==(NativeAdrenoIrqCpError|NativeAdrenoIrqFatal));
++        CHECK(result.cp_status==0x8 && result.protect_status==0x00100005);
++        peer.regs[0x006a]=1u<<9;peer.regs[0x08b5]=1u<<16;
++        CHECK(irq.handle(&result)==kIOReturnSuccess && result.flags==(NativeAdrenoIrqCpError|NativeAdrenoIrqFatal));
++        peer.regs[0x006a]=1u<<9;peer.regs[0x08b5]=1u<<8;   /* outside A8XX_CP_GLOBAL_INT_MASK */
++        CHECK(irq.handle(&result)==kIOReturnSuccess && !result.flags && result.cp_status==(1u<<8));
++        CHECK(irq.detach()==kIOReturnSuccess);
++    }
+     /* Failures poison because the source may still be armed. */
+     {
+         reset();NativeAdrenoIrq irq;CHECK(irq.attach(&io)==kIOReturnSuccess);
+@@ -105,5 +130,5 @@ int main()
+         CHECK(fifth.detach()==kIOReturnNotReady);
+         CHECK(irq.detach()==kIOReturnNotReady && second.detach()==kIOReturnNotReady);
+     }
+-    std::printf("PASS: 1 exact A7XX mask programming, 10 decoded interrupt/status cases, 5 poison-on-unacknowledged cases over a software register peer\n");
++    std::printf("PASS: 1 exact A7XX mask programming, 10 decoded interrupt/status cases, 4 A8XX cases, 5 poison-on-unacknowledged cases over a software register peer\n");
+ }
+diff --git a/tests/test_ring.cpp b/tests/test_ring.cpp
+index e472027..10bc974 100644
+--- a/tests/test_ring.cpp
++++ b/tests/test_ring.cpp
+@@ -187,6 +187,98 @@ int main()
+         CHECK(after-before==4 && fence_clears==3 && fence_reads==4);   /* the first write and three repeats */
+         dropped=0;CHECK(r.kick()==kIOReturnSuccess);
+     }
++    /* Apple kernel objects can retain separate inline-constant copies in two
++     * translation units. A byte-equivalent profile is valid; retain an owned
++     * canonical table rather than the caller's temporary storage. */
++    {
++        reset();NativeAdrenoRing r;NativeAdrenoChipRegs copy=NativeAdrenoChipA8xx;
++        CHECK(&copy!=&NativeAdrenoChipA8xx);
++        CHECK(r.useChip(&copy)==kIOReturnSuccess);
++        CHECK(r.chip()==&NativeAdrenoChipA8xx && r.chip()!=&copy);
++        copy.generation=0;CHECK(r.chip()->generation==8);
++        uint32_t NativeAdrenoChipRegs::*fields[]={
++            &NativeAdrenoChipRegs::generation,&NativeAdrenoChipRegs::cp_sqe_instr_base,
++            &NativeAdrenoChipRegs::cp_scratch2,&NativeAdrenoChipRegs::perfctr_sram_init_cmd,
++            &NativeAdrenoChipRegs::perfctr_sram_init_status,&NativeAdrenoChipRegs::slice_perfctr_sram_init_cmd,
++            &NativeAdrenoChipRegs::rbbm_int_status,&NativeAdrenoChipRegs::rbbm_int_clear,
++            &NativeAdrenoChipRegs::rbbm_int_mask,&NativeAdrenoChipRegs::cp_int_status,
++            &NativeAdrenoChipRegs::cp_error_bits,&NativeAdrenoChipRegs::cp_protect_status,
++            &NativeAdrenoChipRegs::cp_always_on_counter,&NativeAdrenoChipRegs::gmu_always_on_counter};
++        for(const auto *known:{&NativeAdrenoChipA7xx,&NativeAdrenoChipA8xx}) {
++            for(auto field:fields) {
++                NativeAdrenoChipRegs bad=*known;bad.*field^=1;
++                NativeAdrenoRing fresh;CHECK(fresh.useChip(&bad)==kIOReturnBadArgument);
++                CHECK(fresh.chip()==&NativeAdrenoChipA7xx);
++            }
++            NativeAdrenoRing fresh;NativeAdrenoChipRegs good=*known;
++            CHECK(fresh.useChip(&good)==kIOReturnSuccess && fresh.chip()==known);
++        }
++    }
++    /* A8XX: CP_SCRATCH_GLOBAL(2) is the fence scratch, and the context entry also clears the sliced perfcounter SRAM and polls the
++     * A8XX status register; the chip can only be named before attach. */
++    {
++        reset();NativeAdrenoRing r;
++        CHECK(r.useChip(nullptr)==kIOReturnBadArgument && r.chip()==&NativeAdrenoChipA7xx);
++        CHECK(r.useChip(&NativeAdrenoChipA8xx)==kIOReturnSuccess && r.chip()==&NativeAdrenoChipA8xx);
++        CHECK(attach(r)==kIOReturnSuccess);
++        CHECK(r.useChip(&NativeAdrenoChipA7xx)==kIOReturnBusy && r.chip()==&NativeAdrenoChipA8xx);
++        CHECK(peer.writes.size()==7 && peer.writes[6].first==0x082c && peer.writes[6].second==0);
++        const uint32_t words[1]={0x11111111};
++        uint32_t end=0;
++        r.requestContextReset();
++        CHECK(r.submitFramed(words,1,&end)==kIOReturnSuccess && end==1);
++        CHECK(peer.writes.back().first==0x0807 && peer.writes.back().second==11+28+1+31);
++        auto op=[](uint32_t header) {return (header>>28)==7u?(header>>16)&0x7fu:0xffu;};
++        CHECK(op(ring[15])==0x17 && ring[16]==0x80000001u && (ring[17]>>8&0x3ffffu)==0x449 && ring[18]==1);
++        CHECK((ring[19]>>28)==4u && (ring[19]>>8&0x3ffffu)==0x5e8 && (ring[19]&0x7fu)==1 && ring[20]==1);
++        CHECK(op(ring[21])==0x46 && ring[22]==0x31);
++        CHECK(op(ring[23])==0x3c && ring[24]==3 && ring[25]==0x19f && ring[26]==0 && ring[27]==1 && ring[28]==1 && ring[29]==0);
++        CHECK(op(ring[30])==0x46 && ring[31]==0x32 && op(ring[32])==0x46 && ring[33]==0x33 && op(ring[34])==0x26);
++        CHECK(op(ring[35])==0x17 && ring[36]==3 && op(ring[37])==0x65 && ring[38]==0x101 && ring[39]==words[0]);
++        CHECK((ring[40]>>8&0x3ffffu)==0x82c && ring[41]==1);   /* the framed fence's scratch write */
++        fence[1]=1;
++        const uint32_t at=11+28+1+31;
++        CHECK(r.submit(words,1,&end)==kIOReturnSuccess && end==2);   /* a plain kernel submission: scratch, then CP_EVENT_WRITE7 */
++        CHECK(ring[at]==words[0] && (ring[at+1]>>8&0x3ffffu)==0x82c && ring[at+2]==2 && op(ring[at+3])==0x46);
++        CHECK(peer.writes.back().first==0x0807 && peer.writes.back().second==at+1+7);
++    }
++    /* Newer paths must also use A840 registers, retain uncertain fences and
++     * refuse A740-only context switching before committing any words. */
++    {
++        reset();NativeAdrenoRing r;CHECK(r.useChip(&NativeAdrenoChipA8xx)==kIOReturnSuccess);
++        CHECK(attach(r)==kIOReturnSuccess);
++        CHECK(r.setPreempt(0x200000,0x300000,0x108008)==kIOReturnUnsupported && !r.preemption());
++        r.setTimeline(true);r.useContext(1);
++        const uint32_t one[]={0x70100000};uint32_t issued=0;
++        CHECK(r.submitFramed(one,1,&issued)==kIOReturnSuccess && issued==1);
++        unsigned stamps=0;
++        for(unsigned i=0;i<r.writePointer();++i)if((ring[i]>>28)==7 && ((ring[i]>>16)&0x7f)==0x3e) {
++            CHECK(ring[i+1]==(0x8e7u|(2u<<18)|(1u<<30)));++stamps;
++        }
++        CHECK(stamps==2);
++        peer.regs[0x81c]=0x25000;peer.regs[0x900]=0x111000;peer.regs[0x902]=7;
++        peer.regs[0x904]=0x222000;peer.regs[0x906]=9;peer.regs[0x919]=2u<<16;peer.regs[0x91a]=3u<<16;
++        uint32_t progress[6]{};CHECK(r.progressState(progress)==kIOReturnSuccess);
++        CHECK(progress[0]==0x111000 && progress[2]==0x222000 && progress[4]==9 && progress[5]==12);
++        CHECK(peer.regs[0x81c]==0x25000);
++        uint32_t snapshot[NativeAdrenoRingStallWords]{};
++        CHECK(r.stallState(snapshot)==kIOReturnSuccess && snapshot[2]==UINT32_MAX && snapshot[3]==UINT32_MAX);
++        CHECK(peer.regs[0x81c]==0x25000);
++        const size_t writes=peer.writes.size();const uint32_t wptr=r.writePointer();
++        r.useTable(0x100002000ull);
++        CHECK(r.submitFramed(one,1,&issued)==kIOReturnUnsupported && issued==0);
++        CHECK(peer.writes.size()==writes && r.writePointer()==wptr);
++    }
++    {
++        reset();NativeAdrenoRing r;CHECK(r.useChip(&NativeAdrenoChipA8xx)==kIOReturnSuccess);
++        NativeAdrenoRingIo checked=io;checked.fence_cookie=&peer;checked.fence_status=fence_status;
++        CHECK(r.attach(&checked,&cache,ring,sizeof ring,0x100000,fence,sizeof fence,0x108000)==kIOReturnSuccess);
++        dropped=1000;flagged=false;fence_reads=fence_clears=0;
++        const uint32_t one[]={0x70100000};uint32_t issued=123;
++        CHECK(r.submit(one,1,&issued)==kIOReturnIOError && r.poisoned() && issued==0);
++        CHECK(fence_reads==201 && r.detach()==kIOReturnBusy);
++        dropped=0;flagged=false;
++    }
+     /* Wrap-around emission keeps packets contiguous modulo the ring. */
+     {
+         reset();NativeAdrenoRing r;CHECK(attach(r)==kIOReturnSuccess);
+@@ -234,7 +326,7 @@ int main()
+         const uint32_t one=1;
+         CHECK(r.submit(nullptr,1,&end)==kIOReturnBadArgument);
+         CHECK(r.submit(&one,0,&end)==kIOReturnBadArgument);
+-        uint32_t huge[sizeof(ring)/4];CHECK(r.submit(huge,sizeof(huge)/sizeof(huge[0]),&end)==kIOReturnNoResources);
++        uint32_t huge[sizeof(ring)/4];CHECK(r.submit(huge,sizeof(huge)/sizeof(huge[0]),&end)==kIOReturnBadArgument);
+         CHECK(r.submit(&one,1,&end)==kIOReturnSuccess && end==1);
+         CHECK(r.detach()==kIOReturnBusy);
+         fence[1]=1;uint32_t observed=0;
+diff --git a/tests/test_submit.cpp b/tests/test_submit.cpp
+index 40d1832..725bf7c 100644
+--- a/tests/test_submit.cpp
++++ b/tests/test_submit.cpp
+@@ -41,6 +41,7 @@ struct CpPeer {
+     std::vector<uint32_t> regs;
+     std::vector<uint32_t> writes;
+     unsigned publish=0,acquire=0,barriers=0,fail_publish=0,fail_acquire=0,fail_barrier=0;
++    uint32_t fail_read_reg=~0u;
+     CpPeer():regs(0x10000,0){}
+ };
+ static CpPeer cp;
+@@ -48,7 +49,7 @@ static uint64_t clock_us=0;
+ static int cwrite(void *c,uint32_t reg,uint32_t v)
+ {CHECK(c==&cp && reg<cp.regs.size());cp.regs[reg]=v;cp.writes.push_back(reg);return 0;}
+ static int cread(void *c,uint32_t reg,uint32_t *v)
+-{CHECK(c==&cp && v && reg<cp.regs.size());*v=cp.regs[reg];return 0;}
++{CHECK(c==&cp && v && reg<cp.regs.size());if(reg==cp.fail_read_reg)return 1;*v=cp.regs[reg];return 0;}
+ static int cbarrier(void *c){CHECK(c==&cp);++cp.barriers;return cp.barriers==cp.fail_barrier;}
+ static int cpublish(void *c,const volatile uint32_t *w,size_t bytes)
+ {CHECK(c==&cp && w && (bytes==32768 || bytes==4096));++cp.publish;return cp.publish==cp.fail_publish;}
+@@ -81,7 +82,7 @@ static void smmuReset(void)
+     for(unsigned i=0;i<8;++i)mmio[(0xc00+4*i)/4]=0x20000;
+     mmio[0x800/4]=1u<<31|9;mmio[0xc00/4]=3;
+ }
+-static int exposed(Path &p,bool write_combined=false)
++static int exposed(Path &p,bool write_combined=false,const NativeAdrenoChipRegs *chip=nullptr)
+ {
+     smmuReset();cp=CpPeer{};clock_us=0;
+     std::memset(ringmem,0xef,sizeof(ringmem));std::memset(fencemem,0,sizeof(fencemem));
+@@ -103,13 +104,46 @@ static int exposed(Path &p,bool write_combined=false)
+     if(p.object.allocate(8192,40,false,8192))return kIOReturnNoMemory;
+     if(write_combined && p.object.makeWriteCombined())return kIOReturnNoMemory;
+     if(p.vm.map(&p.object,0,0x800000,3,0,2,&p.handle))return kIOReturnBadArgument;
++    if(chip && p.ring.useChip(chip))return kIOReturnBadArgument;
+     if(p.ring.attach(&ringio,&ringcache,ringmem,sizeof(ringmem),0x100000,fencemem,sizeof(fencemem),0x108000))
+         return kIOReturnBadArgument;
+     return p.submit.attach(&p.vm,&p.ring);
+ }
++
++// A second real NativeAdrenoVm over a separate software page-table arena.
++static void processVm(Path &p,ArmSmmu4KContextConfig &config)
++{
++    context.ttbr0_switched=1;
++    CHECK(NativeAdrenoPrepareSmmuMemory(&p.tables,32,40,0x800000,65536,0,16,&p.arena,&p.state,&p.visibility)==0);
++    config=context;config.lower=&p.arena.config;config.lower_tables=&p.state.tables;config.asid=2;
++    p.state.detached=1;p.state.context_offset=CB;
++    NativeAdrenoVmRegion lower{&p.tables,&p.arena,&p.state};
++    CHECK(p.vm.attach(&smmuio,&config,&streams,&lower,nullptr,32,1000)==0);
++    CHECK(p.object.allocate(8192,40,false,8192)==0);
++    CHECK(p.vm.map(&p.object,0,0x800000,3,0,2,&p.handle)==0);
++}
++struct TablePeer {
++    uint64_t now=0,drain_at=0,idle_at=0,ttbr=0;
++    unsigned writes=0;bool early=false;
++};
++static uint64_t tableNow(void *cookie)
++{
++    auto &p=*static_cast<TablePeer *>(cookie);p.now+=1000;
++    if(p.drain_at && p.now>=p.drain_at)cp.regs[0x806]=cp.regs[0x807];
++    if(p.idle_at && p.now>=p.idle_at)cp.regs[0x12]=1; // only CX master access
++    return p.now;
++}
++static IOReturn tableWrite(void *cookie,uint64_t ttbr)
++{
++    auto &p=*static_cast<TablePeer *>(cookie);++p.writes;p.ttbr=ttbr;
++    p.early=cp.regs[0x806]!=cp.regs[0x807] || (cp.regs[0x12]&~1u);
++    return kIOReturnSuccess;
++}
++
+ void NativeAdrenoNotePhase(unsigned,size_t) {}
+ int main()
+ {
++
+     /* One validated indirect-buffer submission with exact ring bytes. */
+     {
+         Path p;CHECK(exposed(p)==kIOReturnSuccess);
+@@ -338,6 +372,67 @@ int main()
+         fencemem[1]=second;CHECK(p.submit.retireCompleted()==0);
+         std::puts("PASS two-ring priorities, per-ring table/context, queue FIFO, fence-history rollover and CPU-table fallback");
+     }
++    // A real fence precedes the final ring packets. CPU TTBR must not overtake
++    // those packets or a still-busy GPU, including during process teardown.
++    {
++        Path p,q;CHECK(exposed(p,false,&NativeAdrenoChipA8xx)==0);
++        ArmSmmu4KContextConfig config{};processVm(q,config);
++        TablePeer t;NativeAdrenoRingClock clock{&t,tableNow,nullptr};
++        CHECK(p.submit.setTableSwitching(1,tableWrite,&t)==0);
++        NativeAdrenoSubmitBuffer first{p.handle,0x800000,4096},second{q.handle,0x800000,4096};
++        uint32_t fence=0;CHECK(p.submit.submit(&p.vm,&first,1,1,&fence,&clock)==0);
++        fencemem[1]=fence;cp.regs[0x12]=0xec0405;cp.regs[0x806]=0;
++        t.drain_at=t.now+3000;t.idle_at=t.now+6000;
++        CHECK(p.submit.submit(&q.vm,&second,1,2,&fence,&clock)==0);
++        CHECK(t.writes==1 && !t.early && t.ttbr==q.vm.ttbr0());
++        // Same-VM submission keeps normal asynchronous behavior.
++        t.drain_at=t.idle_at=0;cp.regs[0x12]=0xec0405;
++        CHECK(p.submit.submit(&q.vm,&second,1,2,&fence,&clock)==0 && t.writes==1);
++        fencemem[1]=fence;
++        const auto before=p.ring.writePointer();
++        CHECK(p.submit.forgetVm(&q.vm,&clock,2000)==kIOReturnTimeout);
++        CHECK(t.writes==1 && t.ttbr==q.vm.ttbr0() && p.ring.writePointer()==before && !p.ring.poisoned());
++        t.drain_at=t.now+3000;t.idle_at=t.now+6000;
++        CHECK(p.submit.forgetVm(&q.vm,&clock,12000)==0);
++        CHECK(t.writes==2 && !t.early && t.ttbr==p.vm.ttbr0());
++        // A failed idle read must not write TTBR or issue the requested job.
++        cp.fail_read_reg=0x806;const unsigned writes=t.writes;fence=99;
++        CHECK(p.submit.submit(&q.vm,&second,1,3,&fence,&clock)==kIOReturnIOError);
++        CHECK(fence==0 && t.writes==writes && p.ring.poisoned());
++        CHECK(q.object.deviceReferences()==1); // the unissued job's reference returned
++        std::puts("PASS A840: fence-before-tail, busy-after-drain, same-VM async, teardown timeout/retry, read failure without TTBR write");
++    }
++    {
++        Path p;CHECK(exposed(p)==0);
++        NativeAdrenoMemory system;fixture.mode=Scattered;
++        CHECK(system.allocateSystem(8192,40,8192,false)==0 && !system.mapping());
++        uint64_t handle=0;CHECK(p.vm.map(&system,0,0x802000,3,0,2,&handle)==0);
++        static std::vector<uint64_t> reads;static bool fail;reads.clear();fail=false;
++        native_adreno_stall_read_words=[](uint64_t pa,uint32_t *out,size_t count) {
++            CHECK(count && count<=64 && !(pa&3) && count<=(4096-(pa&4095))/4);
++            reads.push_back(pa);reads.push_back(count);
++            if(fail)return 1;
++            for(size_t i=0;i<count;++i)out[i]=uint32_t((pa+4*i)^0xa8400000u);
++            return 0;
++        };
++        uint32_t words[65]={};
++        CHECK(p.vm.peekWords(0x802000,words,8)==kIOReturnUnsupported && reads.empty());
++        CHECK(p.vm.peekWordsUncached(0x802ff0,words,8)==0 && reads.size()==4);
++        CHECK(reads[0]==system.spans()[0].physical+4080 && reads[1]==4);
++        CHECK(reads[2]==system.spans()[1].physical && reads[3]==4);
++        CHECK(words[0]==uint32_t(reads[0]^0xa8400000u) && words[4]==uint32_t(reads[2]^0xa8400000u));
++        reads.clear();
++        CHECK(p.vm.peekWordsUncached(0x803ff0,words,8)==kIOReturnBadArgument && reads.empty());
++        CHECK(p.vm.peekWordsUncached(0x802001,words,8)==kIOReturnBadArgument && reads.empty());
++        CHECK(p.vm.peekWordsUncached(0x802000,words,65)==kIOReturnBadArgument && reads.empty());
++        fail=true;const auto references=system.deviceReferences();
++        CHECK(p.vm.peekWordsUncached(0x802000,words,8)==kIOReturnIOError);
++        CHECK(!p.vm.poisoned() && system.deviceReferences()==references);
++        native_adreno_stall_read_words=nullptr;fixture.mode=Contiguous;
++        std::puts("PASS stall reader: no hot-path reads; scattered-page split, complete bounds, failure retains live memory");
++    }
++
++
+     std::printf("PASS: 1 execbuf submission with exact IB packet and fence, 8 pre-reference refusals, 1 duplicate-buffer reference case and 1 poisoned-commit retention case over software SMMU/CP peers; 2 write-combine audit cases (trusted, dirty and failed); 1 hangcheck and 1 recovery with replay, 1 usable VM after recovery and 1 failed restart\n");
+ }
+ /* Physical-page maintenance (imported BOs): record it; no host page is touched. */
+diff --git a/tests/test_timer.cpp b/tests/test_timer.cpp
+index 7f6c8e9..e14c42a 100644
+--- a/tests/test_timer.cpp
++++ b/tests/test_timer.cpp
+@@ -14,10 +14,12 @@ static int read32(void *cookie,uint32_t address,uint32_t *value)
+ {
+     CHECK(cookie==&peer && value);++peer.reads;
+     if(peer.reads==peer.fail_read)return 1;
+-    if(address==NativeAdrenoTimer::gmuLowOffset() || address==NativeAdrenoTimer::cpLowRegister()) {
++    if(address==NativeAdrenoTimer::gmuLowOffset() || address==NativeAdrenoTimer::cpLowRegister() ||
++        address==NativeAdrenoChipA8xx.cp_always_on_counter || address==0x47220) {
+         peer.last_low_address=address;*value=peer.low;return 0;
+     }
+-    if(address==NativeAdrenoTimer::gmuHighOffset() || address==NativeAdrenoTimer::cpHighRegister()) {
++    if(address==NativeAdrenoTimer::gmuHighOffset() || address==NativeAdrenoTimer::cpHighRegister() ||
++        address==NativeAdrenoChipA8xx.cp_always_on_counter+1 || address==0x47224) {
+         peer.last_high_address=address;
+         /* Emulate a high-word change between the bracketing reads. */
+         *value=peer.high;
+@@ -56,6 +58,20 @@ int main()
+         CHECK(cp.read(&ticks)==kIOReturnSuccess && ticks==UINT64_C(0x0123456789abcdef));
+         CHECK(peer.last_low_address==0x0980 && peer.last_high_address==0x0981);
+     }
++    /* A8XX: the CP source reads CP_ALWAYS_ON_COUNTER at 0x08e7; the chip can only be named before attach. */
++    {
++        peer=Peer{};peer.low=0x89abcdefu;peer.high=0x01234567u;
++        NativeAdrenoTimer cp;
++        CHECK(cp.useChip(nullptr)==kIOReturnBadArgument);
++        CHECK(cp.useChip(&NativeAdrenoChipA8xx)==kIOReturnSuccess);
++        CHECK(cp.attach(&io,NativeAdrenoTimeCp)==kIOReturnSuccess && cp.useChip(&NativeAdrenoChipA7xx)==kIOReturnBusy);
++        uint64_t ticks=0;
++        CHECK(cp.read(&ticks)==kIOReturnSuccess && ticks==UINT64_C(0x0123456789abcdef));
++        CHECK(peer.last_low_address==0x08e7 && peer.last_high_address==0x08e8);
++        CHECK(cp.detach()==kIOReturnSuccess && cp.attach(&io,NativeAdrenoTimeGmu)==kIOReturnSuccess);
++        CHECK(cp.read(&ticks)==kIOReturnSuccess && ticks==UINT64_C(0x0123456789abcdef));
++        CHECK(peer.last_low_address==0x47220 && peer.last_high_address==0x47224);
++    }
+     /* A high-word change is retried, then read consistently. */
+     {
+         peer=Peer{};peer.low=0xfffffff0u;peer.high=7;peer.unstable=1;
+@@ -94,5 +110,5 @@ int main()
+         CHECK(timer.read(&ticks)==kIOReturnTimeout && !ticks);
+         CHECK(unsettled_reads==3*8);
+     }
+-    std::printf("PASS: 1 derived-offset check, 2 stable reads, 1 rollover retry, 1 I/O failure and 1 bounded torn-loop timeout over a software counter peer\n");
++    std::printf("PASS: 1 derived-offset check, 2 stable reads, 1 A8XX read, 1 rollover retry, 1 I/O failure and 1 bounded torn-loop timeout over a software counter peer\n");
+ }
+diff --git a/tests/test_userclient.cpp b/tests/test_userclient.cpp
+index 7d83973..4c28107 100644
+--- a/tests/test_userclient.cpp
++++ b/tests/test_userclient.cpp
+@@ -50,7 +50,7 @@ static int cread(void *c,uint32_t reg,uint32_t *v)
+ {CHECK(c==&cp && v && reg<cp.regs.size());*v=cp.regs[reg];return 0;}
+ static int cbarrier(void *c){CHECK(c==&cp);++cp.barriers;return 0;}
+ static int cpublish(void *c,const volatile uint32_t *w,size_t bytes)
+-{CHECK(c==&cp && w && bytes==32768);++cp.publish;return cp.publish==cp.fail_publish;}
++{CHECK(c==&cp && w && (bytes==32768 || bytes==8192));++cp.publish;return cp.publish==cp.fail_publish;}
+ static int cacquire(void *c,volatile uint32_t *w,size_t bytes)
+ {CHECK(c==&cp && w && bytes==4096);++cp.acquire;return 0;}
+ static uint64_t cnow(void *c){CHECK(c==&cp);return clock_us;}
+@@ -81,7 +81,7 @@ static void smmuReset(void)
+     for(unsigned i=0;i<8;++i)mmio[(0xc00+4*i)/4]=0x20000;
+     mmio[0x800/4]=1u<<31|9;mmio[0xc00/4]=3;
+ }
+-static int exposed(Path &p)
++static int exposed(Path &p,size_t ring_bytes=sizeof(ringmem))
+ {
+     smmuReset();cp=CpPeer{};clock_us=0;
+     std::memset(ringmem,0xef,sizeof(ringmem));std::memset(fencemem,0,sizeof(fencemem));
+@@ -100,11 +100,108 @@ static int exposed(Path &p)
+     if(ArmSmmu4KAttachStreams(&smmuio,&streams,routes,2,2,&context,&route_result))return kIOReturnBadArgument;
+     NativeAdrenoVmRegion lower={&p.tables,&p.arena,&p.state};
+     if(p.vm.attach(&smmuio,&context,&streams,&lower,nullptr,32,1000))return kIOReturnBadArgument;
+-    if(p.ring.attach(&ringio,&ringcache,ringmem,sizeof(ringmem),0x100000,fencemem,sizeof(fencemem),0x108000))
++    if(p.ring.attach(&ringio,&ringcache,ringmem,ring_bytes,0x100000,fencemem,sizeof(fencemem),0x108000))
+         return kIOReturnBadArgument;
+     if(p.execbuf.attach(&p.vm,&p.ring))return kIOReturnBadArgument;
+     return p.client.open(NativeAdrenoAbiVersion,&p.vm,&p.execbuf,&p.ring,32,40);
+ }
++static void atomicBatchTests()
++{
++    /* Actual dispatch -> client -> VM -> execbuf -> ring, with software MMIO. */
++    const struct {uint32_t count,ring_bytes;} cases[]={{129,32768},{140,32768},{150,32768},{167,32768},{1024,32768},{1024,8192}};
++    for(auto sample:cases) {
++        const uint32_t total=sample.count;
++        Path p;CHECK(p.ring.useChip(&NativeAdrenoChipA8xx)==kIOReturnSuccess);
++        CHECK(exposed(p,sample.ring_bytes)==kIOReturnSuccess);
++        NativeAdrenoAbiParams params{};
++        CHECK(p.client.query(&params)==kIOReturnSuccess && (params.flags&NativeAdrenoParamsSubmitBatch));
++        NativeAdrenoAbiBoAlloc alloc{8192,12,1};NativeAdrenoAbiBoAllocReply allocated{};
++        CHECK(p.client.allocBo(&alloc,&allocated)==kIOReturnSuccess);
++        NativeAdrenoAbiBoMap map{allocated.handle,0x800000,3,0,2,0};NativeAdrenoAbiBoMapReply mapped{};
++        CHECK(p.client.mapBo(&map,&mapped)==kIOReturnSuccess);
++        const auto writes=cp.writes.size();const auto published=cp.publish;
++        NativeAdrenoAbiSubmitBatch request{};NativeAdrenoAbiSubmitBatchReply reply{};
++        request.total_buffers=total;request.action=NativeAdrenoBatchBegin;
++        auto call=[&](){return p.client.dispatch(NativeAdrenoMethodSubmitBatch,&request,sizeof(request),&reply,sizeof(reply),&ringclock);};
++        CHECK(call()==kIOReturnSuccess && reply.batch && !reply.fence);
++        request.batch=reply.batch;request.action=NativeAdrenoBatchAppend;
++        for(uint32_t offset=0;offset<total;) {
++            request.offset=offset;request.buffer_count=total-offset>128?128:total-offset;
++            for(uint32_t i=0;i<request.buffer_count;++i)
++                request.buffers[i]={allocated.handle,0x800000+(offset+i)*4u,4};
++            CHECK(call()==kIOReturnSuccess && reply.batch==request.batch && !reply.fence);
++            offset+=request.buffer_count;
++            CHECK(cp.writes.size()==writes && cp.publish==published && !p.execbuf.outstanding());
++        }
++        request.offset=total;request.buffer_count=0;request.action=NativeAdrenoBatchCommit;
++        if(sample.ring_bytes==8192) {
++            CHECK(call()==kIOReturnBadArgument); /* permanent capacity, never Busy */
++            CHECK(cp.writes.size()==writes && cp.publish==published && !p.execbuf.outstanding());
++            NativeAdrenoAbiBoFree release{allocated.handle};
++            CHECK(p.client.freeBo(&release)==kIOReturnSuccess && p.client.close()==kIOReturnSuccess);
++            continue;
++        }
++        if(total==150) {
++            cp.regs[0x806]=1;reply={0xaaaa,0xbbbb};
++            CHECK(call()==kIOReturnBusy && reply.batch==0xaaaa && reply.fence==0xbbbb);
++            CHECK(cp.writes.size()==writes && cp.publish==published && !p.execbuf.outstanding());
++            cp.regs[0x806]=0;
++        }
++        CHECK(call()==kIOReturnSuccess && reply.batch==request.batch && reply.fence==1);
++        CHECK(p.execbuf.outstanding()==1 && p.execbuf.stats().submissions==1 && cp.publish==published+1);
++        unsigned seen=0;
++        for(size_t i=0;i+3<8192;++i) {
++            if((ringmem[i]>>28)!=7 || ((ringmem[i]>>16)&127)!=0x3f || (ringmem[i]&0x3fff)!=3)continue;
++            CHECK(ringmem[i+1]==0x800000+seen*4u && ringmem[i+2]==0 && ringmem[i+3]==1);
++            ++seen;i+=3;
++        }
++        CHECK(seen==total && call()==kIOReturnBadArgument); /* COMMIT consumed the token */
++        CHECK(p.execbuf.stats().submissions==1 && cp.publish==published+1);
++        NativeAdrenoAbiBoFree release{allocated.handle};
++        CHECK(p.client.freeBo(&release)==kIOReturnBusy);
++        fencemem[1]=1;NativeAdrenoAbiWaitFence wait{1,0};
++        CHECK(p.client.waitFence(&wait,&ringclock)==kIOReturnSuccess);
++        CHECK(p.client.freeBo(&release)==kIOReturnSuccess && p.client.close()==kIOReturnSuccess);
++    }
++    {
++        Path p;CHECK(exposed(p)==kIOReturnSuccess);
++        NativeAdrenoAbiBoAlloc alloc{4096,12,1};NativeAdrenoAbiBoAllocReply allocated{};
++        CHECK(p.client.allocBo(&alloc,&allocated)==kIOReturnSuccess);
++        NativeAdrenoAbiBoMap map{allocated.handle,0x800000,3,0,2,0};NativeAdrenoAbiBoMapReply mapped{};
++        CHECK(p.client.mapBo(&map,&mapped)==kIOReturnSuccess);
++        const auto writes=cp.writes.size();const auto published=cp.publish;
++        NativeAdrenoAbiSubmitBatch request{};NativeAdrenoAbiSubmitBatchReply reply{};
++        request.total_buffers=1025;request.action=NativeAdrenoBatchBegin;
++        auto call=[&](){return p.client.dispatch(NativeAdrenoMethodSubmitBatch,&request,sizeof(request),&reply,sizeof(reply),&ringclock);};
++        CHECK(call()==kIOReturnBadArgument);
++        request.total_buffers=150;CHECK(call()==kIOReturnSuccess);const auto first=reply.batch;
++        CHECK(call()==kIOReturnBusy);
++        request.batch=first;request.action=NativeAdrenoBatchCommit;CHECK(call()==kIOReturnBadArgument);
++        request.action=NativeAdrenoBatchAppend;request.buffer_count=128;
++        for(auto &entry:request.buffers)entry={allocated.handle,0x800000,4};
++        request.offset=1;CHECK(call()==kIOReturnBadArgument);request.offset=0;
++        request.batch=first+1;CHECK(call()==kIOReturnBadArgument);request.batch=first;
++        request.total_buffers=151;CHECK(call()==kIOReturnBadArgument);request.total_buffers=150;
++        CHECK(call()==kIOReturnSuccess && call()==kIOReturnBadArgument); /* repeated APPEND */
++        request.offset=128;request.buffer_count=23;CHECK(call()==kIOReturnBadArgument);
++        request.buffer_count=22;request.buffers[21].handle=0;CHECK(call()==kIOReturnBadArgument);
++        request.buffers[21].handle=allocated.handle;CHECK(call()==kIOReturnSuccess);
++        NativeAdrenoAbiSubmit legacy{};legacy.buffer_count=1;legacy.buffers[0]={allocated.handle,0x800000,4};
++        NativeAdrenoAbiSubmitReply legacy_reply{};
++        CHECK(p.client.submit(&legacy,&legacy_reply,&ringclock)==kIOReturnBusy);
++        /* Staging takes no GPU holds; COMMIT must resolve handles afresh. */
++        NativeAdrenoAbiBoFree release{allocated.handle};CHECK(p.client.freeBo(&release)==kIOReturnSuccess);
++        request.offset=150;request.buffer_count=0;request.action=NativeAdrenoBatchCommit;
++        CHECK(call()==kIOReturnBadArgument);
++        CHECK(cp.writes.size()==writes && cp.publish==published && !p.execbuf.outstanding());
++        request={};request.total_buffers=150;request.action=NativeAdrenoBatchBegin;
++        CHECK(call()==kIOReturnSuccess && reply.batch>first);
++        request.batch=reply.batch;request.action=NativeAdrenoBatchAbort;
++        CHECK(call()==kIOReturnSuccess && !reply.fence && call()==kIOReturnBadArgument);
++        CHECK(p.client.close()==kIOReturnSuccess);
++    }
++    std::puts("PASS atomic batch:129/140/150/167/1024 IBs publish one ordered A840 ring job; no staging MMIO; Busy retry, consumed/stale token, size/order/handle rejection, abort and fence-held BO lifetime");
++}
+ int main()
+ {
+     /* Full client transaction: query, allocate, map, submit, wait, free, close. */
+@@ -663,6 +760,7 @@ int main()
+         NativeAdrenoAbiQueueReply after{};
+         CHECK(p.client.createQueue(&after)==kIOReturnNotReady);
+     }
++    atomicBatchTests();
+     std::printf("PASS: 1 complete user-client transaction with pre-submit wait, 1 CPU mapping lease block, 1 queue lifecycle block, 3 metadata refusals, 1 dispatched transaction, 6 dispatch size/argument refusals, 6 allocation refusals, 7 map refusals and 1 poisoned-commit retention case, 1 two-client shared-ring block with 8 scope/window refusals, 1 late-client first-scope block over software SMMU/CP peers\n");
+ }
+ /* Physical-page maintenance (imported BOs): record it; no host page is touched. */
+diff --git a/tests/test_vm.cpp b/tests/test_vm.cpp
+index eb1be69..a484e8e 100644
+--- a/tests/test_vm.cpp
++++ b/tests/test_vm.cpp
+@@ -6,6 +6,7 @@
+ #include <chrono>
+ #include <cstdio>
+ #define CHECK(x) do {if(!(x)){std::fprintf(stderr,"line %d: %s\n",__LINE__,#x);std::exit(1);}}while(0)
++extern "C" {extern volatile uint32_t native_adreno_io_coherent;extern volatile uint32_t native_adreno_coherent_skips[4];}
+ #define BYTES 0x40000
+ #define CB 0x22000
+ IOReturn NativeAdrenoQueryCpu4K(NativeAdrenoCpuState *out)
+@@ -88,6 +89,56 @@ static IOReturn object(Fixture &s,size_t pages)
+ {return s.object.allocate(pages*4096,40,false,pages*4096);}
+ int main()
+ {
++    /* Mixed imported/owned mappings exercise the real maintenance policy,
++     * including slot growth, holes, reuse and a later loss of coherence. */
++    {
++        Fixture s;CHECK(!exposed(s,32,512));
++        NativeAdrenoMemory objects[160];uint64_t handles[160]{};
++        unsigned owned_nc=0,owned_wb=0,import_ro=0,import_rw=0;
++        for(unsigned i=0;i<160;++i) {
++            const unsigned kind=i%4;
++            if(kind<2)CHECK(!objects[i].allocate(4096,40,false,4096));
++            else CHECK(!objects[i].importTask(current_task(),0x100000+uint64_t(i)*8192,4096,40,4096));
++            CHECK(!s.vm.map(&objects[i],0,0x800000+uint64_t(i)*4096,kind==2?1:3,kind==1?1:0,kind==1?3:2,&handles[i]));
++            if(kind==0)++owned_nc;else if(kind==1)++owned_wb;else if(kind==2)++import_ro;else ++import_rw;
++        }
++        auto verify=[&](bool coherent) {
++            native_adreno_io_coherent=coherent;
++            const unsigned cache=fixture.cache_calls,physical=fixture.physical_calls;
++            const uint32_t submit=native_adreno_coherent_skips[2],complete=native_adreno_coherent_skips[3];
++            CHECK(!s.vm.publishMapped());
++            CHECK(fixture.cache_calls-cache==(coherent?owned_nc:owned_nc+owned_wb));
++            CHECK(fixture.physical_calls-physical==(coherent?0:import_ro+import_rw));
++            CHECK(uint32_t(native_adreno_coherent_skips[2]-submit)==(coherent?owned_wb+import_ro+import_rw:0));
++            const unsigned before=fixture.physical_calls;
++            CHECK(!s.vm.acquireImported());
++            CHECK(fixture.physical_calls-before==(coherent?0:import_rw));
++            CHECK(uint32_t(native_adreno_coherent_skips[3]-complete)==(coherent?import_rw:0));
++        };
++        verify(true);verify(false);verify(true);
++        CHECK(!s.vm.holdJob(handles[3]));
++        CHECK(s.vm.unmap(handles[3])==kIOReturnBusy);verify(true);
++        CHECK(!s.vm.retireJobAfterCompletion(handles[3]));
++        for(unsigned i=0;i<160;i+=3) {
++            CHECK(!s.vm.unmap(handles[i]));handles[i]=0;
++            if(i%4==0)--owned_nc;else if(i%4==1)--owned_wb;else if(i%4==2)--import_ro;else --import_rw;
++        }
++        verify(true);verify(false);
++        /* The same freed slots change publication class on reinsertion. */
++        for(unsigned i=0;i<160;i+=3) {
++            const bool imported=objects[i].imported();
++            const unsigned wb=!imported && i%4==0;
++            CHECK(!s.vm.map(&objects[i],0,0x800000+uint64_t(i)*4096,3,wb,wb?3:2,&handles[i]));
++            if(imported)++import_rw;else if(wb)++owned_wb;else ++owned_nc;
++        }
++        verify(true);verify(false);verify(true);
++        for(unsigned i=160;i--;)CHECK(!s.vm.unmap(handles[i]) && !objects[i].release());
++        owned_nc=owned_wb=import_ro=import_rw=0;verify(true);verify(false);
++        CHECK(!s.vm.detach() && !s.tables.release());
++        CHECK(fixture.live.empty() && fixture.metadata.empty() && !fixture.imports_live);
++        native_adreno_io_coherent=0;
++        std::printf("PASS: coherent maintenance policy across 160 mixed maps, slot growth/reuse, busy unmap and policy disable\n");
++    }
+     /* A real map/hold/unmap transaction across the actual code paths. */
+     {
+         Fixture s;
+@@ -274,6 +325,7 @@ int main()
+         CHECK(!fixture.live.empty());
+     }
+     std::printf("PASS: 1 native map/hold/unmap transaction, 13 pre-ownership refusals, 1 scattered-span ordering and growth case and 1 post-hold poison/retention case over a software SMMU register peer\n");
++    return 0;
+ }
+ /* Physical-page maintenance (imported BOs): record it; no host page is touched. */
+ /* Host double: the page attribute change of user BOs has no host equivalent (no host page is touched). */
+diff --git a/tests/text_stream.cpp b/tests/text_stream.cpp
+new file mode 100644
+index 0000000..c6c7eb0
+--- /dev/null
++++ b/tests/text_stream.cpp
+@@ -0,0 +1,30 @@
++#include "NativeGpuTextStream.h"
++#include <cassert>
++#include <cstdio>
++#include <cstring>
++
++int main() {
++    NativeGpuTextStream state;NativeGpuTextStream::Message out;
++    assert(!state.accept(1,0x7001,out));
++    for(unsigned p=1;p<=32;++p)assert(!state.accept(p,p&1?0x7fff:0x7ffe,out));
++    assert(!state.accept(33,0x7fff,out) && state.dropped==1);
++    for(unsigned i=0;i<10;++i)
++        for(unsigned p=1;p<=32;++p)assert(!state.accept(p,0x7000 | uint32_t('A'+p%26),out));
++    for(unsigned p=1;p<=32;++p) {
++        assert(state.accept(p,0x7100,out));assert(out.pid==p && out.channel==(p&1?8u:7u));
++        assert(strlen(out.text)==10 && !out.truncated && !out.legacy);
++        for(unsigned i=0;i<10;++i)assert(out.text[i]=='A'+p%26);
++        assert(!state.accept(p,0x7100,out));
++    }
++    assert(!state.accept(33,0x7ffe,out));
++    for(unsigned i=0;i<70;++i)assert(!state.accept(33,0x7041,out));
++    assert(state.accept(33,0x7100,out) && out.truncated && strlen(out.text)==63);
++    assert(!state.accept(44,0x7fff,out));assert(!state.accept(44,0x7042,out));
++    assert(state.accept(44,0x7ffe,out) && out.legacy && !strcmp(out.text,"B"));
++    assert(!state.accept(44,0x700a,out));assert(state.accept(44,0x7100,out) && !strcmp(out.text,"?"));
++    for(unsigned p=100;p<10100;++p) {
++        assert(!state.accept(p,0x7fff,out));assert(!state.accept(p,0x7058,out));
++        assert(state.accept(p,0x7100,out) && out.pid==p && !strcmp(out.text,"X"));
++    }
++    puts("PASS: interleaved32 processes,capacity loss,explicit completion,legacy flush,truncation,control escaping and10000 PID reuse");
++}

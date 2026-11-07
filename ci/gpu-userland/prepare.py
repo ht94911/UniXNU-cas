@@ -164,6 +164,25 @@ def main():
     must(['git', '-C', root, 'apply', '--check', upstream_recipe])
     must(['git', '-C', root, 'apply', upstream_recipe])
     record['reviewed_upstream_GPU_recipe_patch'] = sha(upstream_recipe)
+    for repository, name in [(root, 'atomic-submit-recipes.patch'),
+                             (root / 'drivers/Adreno740', 'atomic-submit-driver.patch')]:
+        selected = HERE / 'patches' / name
+        must(['git', '-C', repository, 'apply', '--check', selected])
+        must(['git', '-C', repository, 'apply', selected])
+        record.setdefault('atomic_submit_patches', {})[name] = sha(selected)
+    assert sha(abi) == '24b6d71df96a4849137ad6869c0bceea7e87602066df37b12c57f0cfa17c87a7', 'Atomic submission wire header differs'
+    driver = root / 'drivers/Adreno740'
+    with tempfile.TemporaryDirectory(prefix='atomic-driver-') as temporary:
+        env = dict(os.environ, GIT_INDEX_FILE=str(Path(temporary) / 'index'))
+        def index(*words):
+            return subprocess.check_output(['git', '-C', str(driver), *words], env=env, text=True).strip()
+        index('read-tree', 'HEAD')
+        index('add', '-A')
+        assert index('write-tree') == '0e46e88101d3c24bd91abcc479a3eb8eee775af8', 'Atomic driver tree differs'
+    record['abi']['upstream_sha256'] = record['abi']['sha256']
+    record['abi']['sha256'] = sha(abi)
+    record['atomic_submit'] = dict(driver_revision='e0e559acdaaaf97d46903ea80904c6ea6eb541d8', driver_tree='0e46e88101d3c24bd91abcc479a3eb8eee775af8',
+        max_buffers=1024, wire_bytes=3104, actual_KMD_sha256='04591f5a3711d4ea68568ea3f7e993f2f57f2070de14e40d63d223c8c570a65e', hardware_verified=False)
     pins = json.loads((root / 'scripts/data/adreno-compiler-inputs.json').read_text())
     mesa = root / '.cache/mesa-work'
     url = fetch_commit(mesa, MESA_MIRRORS, pins['mesa']['commit'], pins['mesa']['sparse_directories'])
@@ -175,6 +194,7 @@ def main():
     sys.path.insert(0, str(root / 'scripts'))
     from mesa_patch_identity import validate_recorded_patches
     validate_recorded_patches(root, mesa, pins)
+    assert sha(mesa / 'src/freedreno/vulkan/tu_knl_darwin.cc') == '04591f5a3711d4ea68568ea3f7e993f2f57f2070de14e40d63d223c8c570a65e', 'Compiled KMD source differs'
     record['mesa'] = dict(url=url, commit=pins['mesa']['commit'], tree=tree,
                           patches={p: sha(root / p) for p in pins['patches']})
 

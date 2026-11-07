@@ -1,0 +1,128 @@
+diff --git a/patches/mesa/turnip-darwin-atomic-submit.patch b/patches/mesa/turnip-darwin-atomic-submit.patch
+new file mode 100644
+index 0000000..44dc9f6
+--- /dev/null
++++ b/patches/mesa/turnip-darwin-atomic-submit.patch
+@@ -0,0 +1,108 @@
++diff --git a/src/freedreno/vulkan/tu_knl_darwin.cc b/src/freedreno/vulkan/tu_knl_darwin.cc
++--- a/src/freedreno/vulkan/tu_knl_darwin.cc
+++++ b/src/freedreno/vulkan/tu_knl_darwin.cc
++@@ -1538,6 +1538,76 @@
++ }
++ 
++ static VkResult
+++darwin_submit_whole(struct tu_queue *queue, const NativeAdrenoAbiSubmitBuffer *entries,
+++                    unsigned count, uint32_t *fence, struct tu_darwin_submit_rec *rec)
+++{
+++   struct tu_device *dev = queue->device;
+++   struct dw_connection &dw = dw_device(dev);
+++   *fence = 0;
+++   if (!entries || !count || count > NativeAdrenoAbiMaxBatchBuffers)
+++      return vk_device_set_lost(&dev->vk, "complete submit exceeds atomic IB limit: %u", count);
+++   if (count <= NativeAdrenoAbiMaxBuffers)
+++      return darwin_submit_chunk(queue, entries, count, fence, rec);
+++   if (!(dw.params.flags & NativeAdrenoParamsSubmitBatch))
+++      return vk_device_set_lost(&dev->vk, "kernel cannot preserve complete %u-IB submit", count);
+++
+++   /* IB allocation boundaries are not render/BR-BV synchronization boundaries.
+++    * Stage transport-sized pieces; only COMMIT may publish the whole GPU job.
+++    * The device's submit_mutex serializes this sequence with all Vulkan queues.
+++    * Do not retry a failed/ambiguous upload or fall back to framed chunks. */
+++   NativeAdrenoAbiSubmitBatch req = {};
+++   NativeAdrenoAbiSubmitBatchReply reply = {};
+++   req.total_buffers = count;
+++   req.action = NativeAdrenoBatchBegin;
+++   auto call = [&]() {
+++      reply = {};
+++      const uint64_t began = tu_trace_clock_ns();
+++      kern_return_t kr = dw_call(dw, NativeAdrenoMethodSubmitBatch, &req, sizeof(req), &reply, sizeof(reply));
+++      rec->call_us += (uint32_t)MIN2((tu_trace_clock_ns() - began) / 1000, 0xffffffffull - rec->call_us);
+++      if (kr == KERN_SUCCESS && (!reply.batch || (req.batch && reply.batch != req.batch) ||
+++          (req.action == NativeAdrenoBatchCommit ? (!reply.fence || reply.fence > UINT32_MAX) : reply.fence != 0)))
+++         return (kern_return_t)kIOReturnError;
+++      return kr;
+++   };
+++   kern_return_t kr = call();
+++   if (kr != KERN_SUCCESS)
+++      return vk_device_set_lost(&dev->vk, "atomic submit begin failed: 0x%x", kr);
+++   req.batch = reply.batch;
+++   req.action = NativeAdrenoBatchAppend;
+++   for (unsigned at = 0; at < count;) {
+++      req.offset = at;
+++      req.buffer_count = MIN2(count - at, (unsigned)NativeAdrenoAbiMaxBuffers);
+++      memcpy(req.buffers, entries + at, req.buffer_count * sizeof(req.buffers[0]));
+++      kr = call();
+++      if (kr != KERN_SUCCESS)
+++         return vk_device_set_lost(&dev->vk, "atomic submit append at %u failed: 0x%x", at, kr);
+++      at += req.buffer_count;
+++   }
+++   req.offset = count;
+++   req.buffer_count = 0;
+++   req.action = NativeAdrenoBatchCommit;
+++   for (;;) {
+++      kr = call();
+++      if (kr == KERN_SUCCESS) {
+++         *fence = (uint32_t)reply.fence;
+++         return VK_SUCCESS;
+++      }
+++      if (kr != kIOReturnBusy)
+++         return vk_device_set_lost(&dev->vk, "atomic submit commit failed: 0x%x", kr);
+++      rec->busy++;
+++      pthread_mutex_lock(&dw.lock);
+++      uint32_t oldest = dw.inflight_count ? dw.inflight[0] : 0;
+++      pthread_mutex_unlock(&dw.lock);
+++      const uint64_t waited = tu_trace_clock_ns();
+++      if (!oldest)
+++         sched_yield();
+++      else if (dw_wait_fence_locked_free(dev, oldest, UINT64_MAX) != VK_SUCCESS)
+++         return vk_device_set_lost(&dev->vk, "atomic submit: waiting for ring space failed");
+++      rec->space_wait_us += (uint32_t)((tu_trace_clock_ns() - waited) / 1000);
+++   }
+++}
+++
+++static VkResult
++ darwin_queue_submit(struct tu_queue *queue, void *_submit,
++                     struct vk_sync_wait *waits, uint32_t wait_count,
++                     struct vk_sync_signal *signals, uint32_t signal_count,
++@@ -1567,19 +1637,14 @@
++    if (total) {
++       const NativeAdrenoAbiSubmitBuffer *all =
++          util_dynarray_element(&submit->commands, NativeAdrenoAbiSubmitBuffer, 0);
++-      for (unsigned at = 0; at < total; at += NativeAdrenoAbiMaxBuffers) {
++-         unsigned count = MIN2(total - at, (unsigned)NativeAdrenoAbiMaxBuffers);
++-         uint32_t chunk_fence = 0;
++-         VkResult result = darwin_submit_chunk(queue, all + at, count, &chunk_fence, &rec);
++-         if (result != VK_SUCCESS)
++-            return result;
++-         rec.chunks++;
++-         pthread_mutex_lock(&dw.lock);
++-         darwin_note_fence(dw, chunk_fence);
++-         pthread_mutex_unlock(&dw.lock);
++-         fence = chunk_fence;
++-         tu_frame_event(38,(uintptr_t)submit,chunk_fence,at,count,rec.busy,rec.space_wait_us,wait_count,signal_count);
++-      }
+++      VkResult result = darwin_submit_whole(queue, all, total, &fence, &rec);
+++      if (result != VK_SUCCESS)
+++         return result;
+++      rec.chunks = 1; /* GPU jobs, not transport messages */
+++      pthread_mutex_lock(&dw.lock);
+++      darwin_note_fence(dw, fence);
+++      pthread_mutex_unlock(&dw.lock);
+++      tu_frame_event(38,(uintptr_t)submit,fence,0,total,rec.busy,rec.space_wait_us,wait_count,signal_count);
++       p_atomic_set(&queue->fence, fence);
++       rec.buffers = MIN2(total, 255u);
++    } else {
+diff --git a/scripts/data/adreno-compiler-inputs.json b/scripts/data/adreno-compiler-inputs.json
+index 8742b34..0604211 100644
+--- a/scripts/data/adreno-compiler-inputs.json
++++ b/scripts/data/adreno-compiler-inputs.json
+@@ -65,7 +65,8 @@
+     "patches/mesa/turnip-render-mode-cache-once.patch",
+     "patches/mesa/turnip-darwin-device-contexts.patch",
+     "patches/mesa/turnip-darwin-va-teardown.patch",
+-    "patches/mesa/turnip-darwin-cache-trim.patch"
++    "patches/mesa/turnip-darwin-cache-trim.patch",
++    "patches/mesa/turnip-darwin-atomic-submit.patch"
+   ],
+   "integer_fma_reference": {
+     "repository": "https://github.com/ucb-bar/berkeley-softfloat-3",

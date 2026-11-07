@@ -1,7 +1,7 @@
-name: nezha iPhone27 bounded buffer reserves 016
+name: nezha iPhone27 complete GPU submissions 017
 on:
   push:
-    branches: [codex/ios27-gpu27-metal-full-016-20261107]
+    branches: [codex/ios27-gpu27-metal-full-017-20261107]
   workflow_dispatch:
 permissions:
   contents: read
