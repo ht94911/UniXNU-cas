@@ -6,7 +6,7 @@
 // this KPI is hidden by the public IOKit compile recipe's feature guards.
 extern "C" vm_offset_t ml_io_map(vm_offset_t,vm_size_t);
 namespace {
-IOLock *gate;
+IOLock *appsConfigMutex;
 Sm8850Resources resources;
 vm_offset_t window[5];
 unsigned usbReady,attempted;
@@ -33,16 +33,16 @@ int write32(void *,unsigned d,uint32_t o,uint32_t v) {
 }
 extern "C" int sm8850_apps_config_lock(void) {
     if (!ml_get_interrupts_enabled()) return -1;
-    IOLock *value=__atomic_load_n(&gate,__ATOMIC_ACQUIRE);
+    IOLock *value=__atomic_load_n(&appsConfigMutex,__ATOMIC_ACQUIRE);
     if (!value) {
         IOLock *fresh=IOLockAlloc();if (!fresh) return -1;
         IOLock *empty=nullptr;
-        if (!__atomic_compare_exchange_n(&gate,&empty,fresh,false,__ATOMIC_ACQ_REL,__ATOMIC_ACQUIRE)) IOLockFree(fresh);
-        value=__atomic_load_n(&gate,__ATOMIC_ACQUIRE);
+        if (!__atomic_compare_exchange_n(&appsConfigMutex,&empty,fresh,false,__ATOMIC_ACQ_REL,__ATOMIC_ACQUIRE)) IOLockFree(fresh);
+        value=__atomic_load_n(&appsConfigMutex,__ATOMIC_ACQUIRE);
     }
     IOLockLock(value);return 0;
 }
-extern "C" void sm8850_apps_config_unlock(void) {IOLockUnlock(__atomic_load_n(&gate,__ATOMIC_ACQUIRE));}
+extern "C" void sm8850_apps_config_unlock(void) {IOLockUnlock(__atomic_load_n(&appsConfigMutex,__ATOMIC_ACQUIRE));}
 extern "C" void sm8850_usb_domain_publish(unsigned ready) {__atomic_store_n(&usbReady,!!ready,__ATOMIC_RELEASE);}
 extern "C" unsigned sm8850_usb_domain_ready(void) {return __atomic_load_n(&usbReady,__ATOMIC_ACQUIRE);}
 extern "C" Sm8850Resources *sm8850_native_resources(void) {

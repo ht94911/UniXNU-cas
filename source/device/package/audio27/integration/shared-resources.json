@@ -1,11 +1,11 @@
 {
-  "soc_revision": "e2a715466cee5d8110e338fcfdb06635c1b017fd",
+  "soc_revision": "1352932d0253820223956b4c273d431aaa6a8d08",
   "USB_revision": "a3142775e447553017ed38474fe9267f8a64f4fc",
   "files": {
     "include/Sm8850Resources.h": "eea89837bb03d8db38da23402b2c372d5c2f6a64dbb28a3e69cf8e99bd774578",
     "include/Sm8850ResourcesNative.h": "96a542ad251ca57765dbd299e71267eca66632356f6922007c8952b85917fc63",
     "src/Sm8850Resources.c": "5dc1812c2962c2c6aa981eba6b4c607e9ddb8bff0abe2198f1439948f3381e8a",
-    "src/Sm8850ResourcesNative.cpp": "894a89fa1e6d21f683d6ba119b1c6c8b301455204d8164ab8b6b9ef38587e429"
+    "src/Sm8850ResourcesNative.cpp": "0f3b7453cf11c59d50ab2cec923699af791f1510d0f6fe95b0f7413e4201b36a"
   },
   "actual_resource_census": "audio27-gpu015-004-local001",
   "phone_tested": false
