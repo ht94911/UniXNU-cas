@@ -1,0 +1,418 @@
+diff --git a/README.md b/README.md
+index 18b60e1..5b980a0 100644
+--- a/README.md
++++ b/README.md
+@@ -10,7 +10,7 @@ Build and interface details: [documentation](https://unixnu.com/drivers/adreno-m
+ 
+ ## Memory reuse
+ 
+-Unused owned image backing can serve later pooled or dedicated images. Extra image spares share a 256 MiB device budget and expire after ten seconds. Plain unused backing of at least 256 KiB can be released by the existing room worker, with at most 128 MiB queued. Allocation failure reclaims queued backing before retrying. Imported memory and owner callbacks retain their release ordering.
++Unused owned image backing can serve later pooled or dedicated images. Image spares expire after ten seconds and are reclaimed on allocation failure or memory pressure; they have no byte limit. Unused buffer reservations share a separate 64 MiB device budget across memory types. The room worker rechecks demand and reuses a spare of the same pool and memory type before allocating. If foreground completions restore room during allocation, the new owned buffer stays spare with its address object intact. Plain unused backing of at least 256 KiB can be released by the existing room worker, with at most 128 MiB queued. Allocation failure reclaims queued backing before retrying. Imported memory and owner callbacks retain their release ordering.
+ 
+ ## Frame diagnostics
+ 
+diff --git a/bridge/patches/0031-bounded-buffer-reserves.patch b/bridge/patches/0031-bounded-buffer-reserves.patch
+new file mode 100644
+index 0000000..e344fd0
+--- /dev/null
++++ b/bridge/patches/0031-bounded-buffer-reserves.patch
+@@ -0,0 +1,399 @@
++diff --git a/crates/metal2vulkan-runtime/src/creation.rs b/crates/metal2vulkan-runtime/src/creation.rs
++index a995df3..c19eecf 100644
++--- a/crates/metal2vulkan-runtime/src/creation.rs
+++++ b/crates/metal2vulkan-runtime/src/creation.rs
++@@ -20,8 +20,8 @@
++ //! `vkAllocateMemory`. A count is deterministic, so a test can hold a call to it where a time
++ //! cannot.
++ 
++-use crate::churn_counts::{vk_made, VkMaking};
++-use crate::error::{vulkan, Error};
+++use crate::churn_counts::{VkMaking, vk_made};
+++use crate::error::{Error, vulkan};
++ use ash::prelude::VkResult;
++ use ash::vk;
++ use std::panic::Location;
++@@ -139,10 +139,14 @@ fn note_allocation_site(bytes: u64) {
++     if bytes < SITE_BYTES || !crate::stage_trace::diagnostics() {
++         return;
++     }
+++    #[cfg(target_vendor = "apple")]
++     let mut raw = [std::ptr::null_mut::<libc::c_void>(); SITE_FRAMES + 2];
+++    #[cfg(not(target_vendor = "apple"))]
+++    let raw = [std::ptr::null_mut::<libc::c_void>(); SITE_FRAMES + 2];
++     // SAFETY: `raw` holds the count passed.
++     #[cfg(target_vendor = "apple")]
++-    let depth = unsafe { libc::backtrace(raw.as_mut_ptr(), raw.len() as libc::c_int) }.max(0) as usize;
+++    let depth =
+++        unsafe { libc::backtrace(raw.as_mut_ptr(), raw.len() as libc::c_int) }.max(0) as usize;
++     #[cfg(not(target_vendor = "apple"))]
++     let depth = 0usize;
++     let mut frames = [0usize; SITE_FRAMES];
++@@ -154,7 +158,10 @@ fn note_allocation_site(bytes: u64) {
++     let at = match sites.iter().position(|site| site.frames == frames) {
++         Some(at) => at,
++         None if sites.len() < SITE_COUNT => {
++-            sites.push(AllocationSite { frames, ..Default::default() });
+++            sites.push(AllocationSite {
+++                frames,
+++                ..Default::default()
+++            });
++             sites.len() - 1
++         }
++         None => sites.len() - 1,
++diff --git a/crates/metal2vulkan-runtime/src/memory.rs b/crates/metal2vulkan-runtime/src/memory.rs
++index bcc2c68..d91ba9a 100644
++--- a/crates/metal2vulkan-runtime/src/memory.rs
+++++ b/crates/metal2vulkan-runtime/src/memory.rs
++@@ -48,7 +48,7 @@ use super::buffer::usage;
++ use super::device::lock;
++ #[cfg(unix)]
++ use super::dma_buf::DmaBufPages;
++-use super::error::{internal, vulkan, Error, MemoryKind};
+++use super::error::{Error, MemoryKind, internal, vulkan};
++ use super::freed_memory::{Parked, Parking};
++ use super::fresh_pages::OwnPages;
++ use super::memory_log::{self, MemoryLog};
++@@ -66,6 +66,10 @@ use std::time::{Duration, Instant};
++ /// The size of a pooled block, at most the device's `maxMemoryAllocationSize`.
++ pub(super) const BLOCK_BYTES: u64 = 64 << 20;
++ 
+++/// Unused buffer reserves share at most one largest pooled block per device.
+++/// Image spares retain their separate existing age and pressure policy.
+++const BUFFER_SPARE_BYTES: u64 = BLOCK_BYTES;
+++
++ /// The most empty pooled blocks a pool keeps for its next placements ([`Pool::release`]), at
++ /// most 128 MiB of empty memory a pool. In a pool the encodings place in, one of them is mostly
++ /// the block [`keep_room`] made for room: with one kept, every other block that emptied was freed,
++@@ -1126,8 +1130,8 @@ pub(super) struct Memory {
++     /// ([`binds_wait`]), so an image bound while such work may be queued takes a block of its own
++     /// ([`allocate_image_while_queued`]).
++     binds_wait: bool,
++-    /// The dedicated blocks of images kept for the next dedicated image of their pool
++-    /// ([`SPARE_FOR`]).
+++    /// Unused image backing and bounded buffer reserves, retained for their own pool
+++    /// until [`SPARE_FOR`] or memory pressure.
++     spare: Vec<Spare>,
++     /// Owned, unused backing released by the room worker, with no program-owned holds.
++     retired: std::collections::VecDeque<(usize, Block, FreeCause)>,
++@@ -1593,14 +1597,41 @@ impl Memory {
++         count
++     }
++ 
++-    /// Keep unused owned image backing spare ([`SPARE_FOR`]). No byte limit: spares go when they
++-    /// age, when a block of their type cannot be made and on memory pressure. A limit freed spares
++-    /// the render server made again within seconds, each a new allocation wired page by page while
++-    /// the compressor freed pages for it (untagged-102cb4a069: 13-14 us a page).
+++    /// Keep unused owned backing spare ([`SPARE_FOR`]). Image spares retain their age and
+++    /// pressure policy; speculative buffer reserves share [`BUFFER_SPARE_BYTES`].
++     fn keep_spare(&mut self, device: &ash::Device, pool: (Holds, u32), block: Block, now: Instant) {
+++        if pool.0 == Holds::Buffers {
+++            if block.size > BUFFER_SPARE_BYTES {
+++                // SAFETY: a reserve has no placement or pending GPU reader.
+++                drop(unsafe { self.let_go(device, block, FreeCause::KeptForRoom, None) });
+++                return;
+++            }
+++            while self
+++                .spare
+++                .iter()
+++                .filter(|s| s.pool.0 == Holds::Buffers)
+++                .map(|s| s.block.size)
+++                .sum::<u64>()
+++                + block.size
+++                > BUFFER_SPARE_BYTES
+++            {
+++                let oldest = self
+++                    .spare
+++                    .iter()
+++                    .enumerate()
+++                    .filter(|(_, s)| s.pool.0 == Holds::Buffers)
+++                    .min_by_key(|(_, s)| s.since)
+++                    .map(|(index, _)| index);
+++                let Some(index) = oldest else {
+++                    break;
+++                };
+++                let old = self.spare.remove(index);
+++                // SAFETY: buffer reserves are unused owned backing.
+++                drop(unsafe { self.let_go(device, old.block, FreeCause::KeptForRoom, None) });
+++            }
+++        }
++         let id = trace_memory(pool, block.size, 0, 3);
++         trace_handle(id, block.memory);
++-        let _ = device;
++         self.spare.push(Spare {
++             pool,
++             block,
++@@ -2491,22 +2522,30 @@ pub(super) fn keep_room(memory: &Mutex<Memory>, device: &ash::Device, counts: &C
++         (lacking, memory.maker())
++     };
++     for (pool, bytes) in lacking {
++-        let available = lock(memory).pool(pool.0, pool.1).room();
++-        let trace = trace_memory(pool, bytes, available, 2);
++-        // A spare image block gives the room without a new allocation.
++-        if pool.0 == Holds::Images {
+++        let (available, spare) = {
++             let mut memory = lock(memory);
++             memory.age_spare(device, Instant::now());
++-            if let Some(block) = memory.take_spare_for_room(pool, bytes / 2) {
++-                trace_handle(trace, block.memory);
++-                if trace != 0 {
++-                    crate::stage_trace::mark(trace, crate::stage_trace::Stage::MemoryReused, 3);
++-                }
++-                memory.say_block("took a spare block of images for room", &block);
++-                let size = block.size;
++-                memory.pool(pool.0, pool.1).add(size, false, block, 0);
+++            // Foreground completions can restore room while another pool is being filled.
+++            if memory.pool(pool.0, pool.1).has_room(bytes / 2) {
++                 continue;
++             }
+++            (
+++                memory.pool(pool.0, pool.1).room(),
+++                memory.take_spare_for_room(pool, bytes / 2),
+++            )
+++        };
+++        let trace = trace_memory(pool, bytes, available, 2);
+++        // Keep each reserve in its original memory type and buffer/image pool.
+++        if let Some(block) = spare {
+++            trace_handle(trace, block.memory);
+++            if trace != 0 {
+++                crate::stage_trace::mark(trace, crate::stage_trace::Stage::MemoryReused, 3);
+++            }
+++            let mut memory = lock(memory);
+++            memory.say_block("took a spare block for room", &block);
+++            let size = block.size;
+++            memory.pool(pool.0, pool.1).add(size, false, block, 0);
+++            continue;
++         }
++         let addressed = (pool.0 == Holds::Buffers).then_some(counts);
++         let Ok(block) = maker.make(device, pool.1, bytes, addressed) else {
++@@ -2518,9 +2557,9 @@ pub(super) fn keep_room(memory: &Mutex<Memory>, device: &ash::Device, counts: &C
++         }
++         let mut memory = lock(memory);
++         if memory.pool(pool.0, pool.1).has_room(bytes / 2) {
++-            let what = "made a pooled block and freed it at once, its pool having room";
+++            let what = "made a pooled block after its pool regained room";
++             memory.say_block(what, &block);
++-            if pool.0 == Holds::Images && block.plain() {
+++            if block.plain() {
++                 memory.keep_spare(device, pool, block, Instant::now());
++             } else {
++                 // SAFETY: nothing is placed in the block, which no command reads.
++@@ -2541,6 +2580,34 @@ mod latency_tests {
++     static SERIAL: Mutex<()> = Mutex::new(());
++     static FREED: AtomicU64 = AtomicU64::new(0);
++     static WORKER_FREED: AtomicU64 = AtomicU64::new(0);
+++    static ALLOCATED: AtomicU64 = AtomicU64::new(0);
+++    static DESTROYED_BUFFERS: AtomicU64 = AtomicU64::new(0);
+++    static ALLOC_HOOKS: Mutex<std::collections::VecDeque<Box<dyn FnOnce() + Send>>> =
+++        Mutex::new(std::collections::VecDeque::new());
+++
+++    unsafe extern "system" fn allocate_memory(
+++        _: vk::Device,
+++        _: *const vk::MemoryAllocateInfo<'_>,
+++        _: *const vk::AllocationCallbacks<'_>,
+++        out: *mut vk::DeviceMemory,
+++    ) -> vk::Result {
+++        let number = ALLOCATED.fetch_add(1, Ordering::Relaxed) + 1000;
+++        // SAFETY: BlockMaker supplies one writable memory handle.
+++        unsafe { out.write(vk::DeviceMemory::from_raw(number)) };
+++        let hook = lock(&ALLOC_HOOKS).pop_front();
+++        if let Some(hook) = hook {
+++            hook();
+++        }
+++        vk::Result::SUCCESS
+++    }
+++
+++    unsafe extern "system" fn destroy_buffer(
+++        _: vk::Device,
+++        _: vk::Buffer,
+++        _: *const vk::AllocationCallbacks<'_>,
+++    ) {
+++        DESTROYED_BUFFERS.fetch_add(1, Ordering::Relaxed);
+++    }
++ 
++     unsafe extern "system" fn free_memory(
++         _: vk::Device,
++@@ -2559,6 +2626,10 @@ mod latency_tests {
++                 |name| {
++                     if name.to_bytes() == b"vkFreeMemory" {
++                         free_memory as *const () as *const std::ffi::c_void
+++                    } else if name.to_bytes() == b"vkAllocateMemory" {
+++                        allocate_memory as *const () as *const std::ffi::c_void
+++                    } else if name.to_bytes() == b"vkDestroyBuffer" {
+++                        destroy_buffer as *const () as *const std::ffi::c_void
++                     } else {
++                         std::ptr::null()
++                     }
++@@ -2598,12 +2669,16 @@ mod latency_tests {
++         let driver = driver();
++         let mut memory = allocator();
++         unsafe {
++-            assert!(memory
++-                .let_go(&driver, block(1, 64 << 20), FreeCause::Dedicated, None)
++-                .is_none());
++-            assert!(memory
++-                .let_go(&driver, block(2, 64 << 20), FreeCause::Dedicated, None)
++-                .is_none());
+++            assert!(
+++                memory
+++                    .let_go(&driver, block(1, 64 << 20), FreeCause::Dedicated, None)
+++                    .is_none()
+++            );
+++            assert!(
+++                memory
+++                    .let_go(&driver, block(2, 64 << 20), FreeCause::Dedicated, None)
+++                    .is_none()
+++            );
++         }
++         assert_eq!(FREED.load(Ordering::Relaxed), 0);
++         assert_eq!(memory.census().empty_bytes, RETIRED_BYTES);
++@@ -2683,13 +2758,147 @@ mod latency_tests {
++         }
++         assert_eq!(memory.spare.len(), 5);
++         assert_eq!(FREED.load(Ordering::Relaxed), 0);
++-        let room = memory.take_spare_for_room((Holds::Images, 0), 32 << 20).expect("spare");
+++        let room = memory
+++            .take_spare_for_room((Holds::Images, 0), 32 << 20)
+++            .expect("spare");
++         assert_eq!(room.size, 64 << 20);
++         assert!(memory.take_spare_for_room((Holds::Images, 1), 1).is_none());
++-        assert!(memory.take_spare_for_room((Holds::Images, 0), 128 << 20).is_none());
+++        assert!(
+++            memory
+++                .take_spare_for_room((Holds::Images, 0), 128 << 20)
+++                .is_none()
+++        );
++         memory.keep_spare(&driver, (Holds::Images, 0), room, now);
++         memory.age_spare(&driver, now + SPARE_FOR);
++         assert!(memory.spare.is_empty());
++         drop(memory.destroy(&driver));
++     }
+++
+++    #[test]
+++    fn unused_buffer_reserve_keeps_its_address_object_and_gives_room() {
+++        let _serial = lock(&SERIAL);
+++        ALLOCATED.store(0, Ordering::Relaxed);
+++        FREED.store(0, Ordering::Relaxed);
+++        DESTROYED_BUFFERS.store(0, Ordering::Relaxed);
+++        let driver = driver();
+++        let mut memory = allocator();
+++        memory.kept = Some(vec![(Holds::Buffers, 0)]);
+++        let mut reserve = block(91, BLOCK_BYTES);
+++        reserve.addresses = Some(BlockAddresses {
+++            raw: vk::Buffer::from_raw(19),
+++            address: 0x12340000,
+++        });
+++        memory.keep_spare(&driver, (Holds::Buffers, 0), reserve, Instant::now());
+++        assert!(memory.take_spare_for_room((Holds::Images, 0), 1).is_none());
+++        assert!(memory.take_spare_for_room((Holds::Buffers, 1), 1).is_none());
+++        let memory = Mutex::new(memory);
+++        keep_room(&memory, &driver, &Counters::default());
+++        let mut memory = lock(&memory);
+++        assert!(memory.spare.is_empty());
+++        assert_eq!(memory.pool(Holds::Buffers, 0).room(), BLOCK_BYTES);
+++        let (index, offset) = memory.pool(Holds::Buffers, 0).place(4096, 4096).unwrap();
+++        let placed = memory.placement((Holds::Buffers, 0), index, offset, 4096, true);
+++        assert_eq!(placed.address, Some(0x12340000 + offset));
+++        assert_eq!(ALLOCATED.load(Ordering::Relaxed), 0);
+++        assert_eq!(FREED.load(Ordering::Relaxed), 0);
+++        assert_eq!(DESTROYED_BUFFERS.load(Ordering::Relaxed), 0);
+++        drop(memory.destroy(&driver));
+++        assert_eq!(FREED.load(Ordering::Relaxed), 1);
+++        assert_eq!(DESTROYED_BUFFERS.load(Ordering::Relaxed), 1);
+++    }
+++
+++    #[test]
+++    fn superseded_buffer_refill_is_cached_and_next_refill_does_not_allocate() {
+++        let _serial = lock(&SERIAL);
+++        ALLOCATED.store(0, Ordering::Relaxed);
+++        FREED.store(0, Ordering::Relaxed);
+++        let driver = driver();
+++        let mut state = allocator();
+++        state.kept = Some(vec![(Holds::Buffers, 0)]);
+++        state
+++            .pool(Holds::Buffers, 0)
+++            .add(BLOCK_BYTES, false, block(1, BLOCK_BYTES), BLOCK_BYTES);
+++        let memory = Arc::new(Mutex::new(state));
+++        let foreground = Arc::clone(&memory);
+++        let entered = Arc::new(std::sync::atomic::AtomicBool::new(false));
+++        let signalled = Arc::clone(&entered);
+++        lock(&ALLOC_HOOKS).push_back(Box::new(move || {
+++            // A completion restores room while the Vulkan allocation is running.
+++            if let Ok(mut state) = foreground.try_lock() {
+++                state
+++                    .pool(Holds::Buffers, 0)
+++                    .add(BLOCK_BYTES, false, block(2, BLOCK_BYTES), 0);
+++                signalled.store(true, Ordering::Relaxed);
+++            }
+++        }));
+++        keep_room(&memory, &driver, &Counters::default());
+++        assert!(
+++            entered.load(Ordering::Relaxed),
+++            "allocation must run outside the allocator mutex"
+++        );
+++        {
+++            let mut state = lock(&memory);
+++            assert_eq!(
+++                state.spare.len(),
+++                1,
+++                "the superseded buffer reserve stays reusable"
+++            );
+++            assert_eq!(state.spare[0].block.size, BLOCK_BYTES);
+++            assert!(
+++                state
+++                    .pool(Holds::Buffers, 0)
+++                    .place(BLOCK_BYTES, 4096)
+++                    .is_some()
+++            );
+++        }
+++        keep_room(&memory, &driver, &Counters::default());
+++        let mut state = lock(&memory);
+++        assert!(state.spare.is_empty());
+++        assert_eq!(state.pool(Holds::Buffers, 0).room(), BLOCK_BYTES);
+++        assert_eq!(ALLOCATED.load(Ordering::Relaxed), 1);
+++        assert_eq!(FREED.load(Ordering::Relaxed), 0);
+++        drop(state.destroy(&driver));
+++        assert_eq!(FREED.load(Ordering::Relaxed), 3);
+++    }
+++
+++    #[test]
+++    fn buffer_reserve_budget_does_not_evict_images_and_pressure_releases_everything() {
+++        let _serial = lock(&SERIAL);
+++        FREED.store(0, Ordering::Relaxed);
+++        let driver = driver();
+++        let mut memory = allocator();
+++        let now = Instant::now();
+++        for raw in 1..=5 {
+++            memory.keep_spare(&driver, (Holds::Images, 0), block(raw, BLOCK_BYTES), now);
+++        }
+++        for raw in 6..=8 {
+++            memory.keep_spare(
+++                &driver,
+++                (Holds::Buffers, 0),
+++                block(raw, BLOCK_BYTES / 2),
+++                now,
+++            );
+++        }
+++        assert_eq!(
+++            memory
+++                .spare
+++                .iter()
+++                .filter(|s| s.pool.0 == Holds::Images)
+++                .count(),
+++            5
+++        );
+++        assert_eq!(
+++            memory
+++                .spare
+++                .iter()
+++                .filter(|s| s.pool.0 == Holds::Buffers)
+++                .map(|s| s.block.size)
+++                .sum::<u64>(),
+++            BUFFER_SPARE_BYTES
+++        );
+++        memory.release_spare(&driver);
+++        assert!(memory.spare.is_empty());
+++        drop(memory.destroy(&driver));
+++        assert_eq!(FREED.load(Ordering::Relaxed), 8);
+++    }
++ }

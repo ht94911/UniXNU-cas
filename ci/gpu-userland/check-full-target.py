@@ -74,7 +74,7 @@ ii=next(i for i,(_,op) in enumerate(init) if '<'+names[3]+'>' in op)
 owner=re.match(r'mov x0, (x\d+)',init[ii-1][1]);assert owner
 owner=owner[1]
 assert any(op=='mov '+owner+', x0' for _,op in init[:ii])
-assert any(re.fullmatch(r'mov w1, #(?:0x1f0|496)',op) for _,op in init[:ii])
+assert any(re.fullmatch(r'mov w1, #(?:0x1f8|504)',op) for _,op in init[:ii])
 assert any(re.match(r'str '+owner+r', \[x\d+, #(?:0x1b00|6912)\]',op) for _,op in init[ii:])
 state=[re.match(r'ldr (x\d+), \[x0, #(?:0x1b00|6912)\]',op) for _,op in finish[:25]]
 state=[m[1] for m in state if m];assert len(state)==1;state=state[0]

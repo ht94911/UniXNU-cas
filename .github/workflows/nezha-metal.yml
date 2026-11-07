@@ -1,7 +1,7 @@
-name: nezha iPhone27 bounded BO cache cleanup 014
+name: nezha iPhone27 bounded buffer reserves 016
 on:
   push:
-    branches: [codex/ios27-gpu27-metal-full-014-20261107]
+    branches: [codex/ios27-gpu27-metal-full-016-20261107]
   workflow_dispatch:
 permissions:
   contents: read
@@ -81,6 +81,9 @@ jobs:
         id: plugin
         working-directory: unixnu
         run: ../device/ci/gpu-userland/logrun plugin python3 scripts/build-adreno-metal-plugin.py --target ios27 --iphone-24a446 --no-replay
+      - name: Test the actual patched allocator and bind its complete source
+        id: buffer_reserve
+        run: device/ci/gpu-userland/logrun buffer-reserve python3 device/ci/gpu-userland/check-buffer-reserve.py --unixnu unixnu --logs "$LOGS"
       - name: Verify the actual signed target and full-chain code selection
         id: full_target
         run: device/ci/gpu-userland/logrun full-target python3 device/ci/gpu-userland/check-full-target.py --unixnu unixnu --logs "$LOGS"
@@ -91,6 +94,7 @@ jobs:
           OUTCOME_TURNIP_IOS27: ${{ steps.turnip_ios27.outcome }}
           OUTCOME_PLUGIN: ${{ steps.plugin.outcome }}
           OUTCOME_FULL_TARGET: ${{ steps.full_target.outcome }}
+          OUTCOME_BUFFER_RESERVE: ${{ steps.buffer_reserve.outcome }}
           OUTCOME_DEVICE_CONTEXTS: ${{ steps.device_contexts.outcome }}
         run: |
           set -euo pipefail
@@ -123,6 +127,7 @@ jobs:
           TURNIP: ${{ steps.turnip_ios27.outcome }}
           PLUGIN: ${{ steps.plugin.outcome }}
           FULL_TARGET: ${{ steps.full_target.outcome }}
+          BUFFER_RESERVE: ${{ steps.buffer_reserve.outcome }}
           DEVICE_CONTEXTS: ${{ steps.device_contexts.outcome }}
         run: |
           set -euo pipefail
@@ -131,3 +136,4 @@ jobs:
           test "$PLUGIN" = success
           test "$FULL_TARGET" = success
           test "$DEVICE_CONTEXTS" = success
+          test "$BUFFER_RESERVE" = success

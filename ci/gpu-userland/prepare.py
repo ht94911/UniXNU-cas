@@ -240,6 +240,17 @@ def main():
     must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', '--check', selected])
     must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', selected])
     record['reviewed_upstream_GPU_plugin_patch'] = sha(selected)
+    for repository, name in [(root, 'buffer-reserve-recipes.patch'),
+                             (root / 'drivers/AdrenoMetal', 'buffer-reserve-plugin.patch')]:
+        selected = HERE / 'patches' / name
+        must(['git', '-C', repository, 'apply', '--check', selected])
+        must(['git', '-C', repository, 'apply', selected])
+        record.setdefault('buffer_reserve_patches', {})[name] = sha(selected)
+    # The final bridge recipe applies these at plugin-build time. Record the
+    # complete patch set after all frontend patches have been installed.
+    bridge_patches = sorted((root / 'drivers/AdrenoMetal/bridge/patches').glob('*.patch'))
+    record['metal2vulkan']['bridge_patches'] = {p.name: sha(p) for p in bridge_patches}
+    record['buffer_reserve_policy'] = 'Reuse same-pool/type unused buffers; separate 64 MiB device budget; preserve address objects, pressure and teardown'
     record['iphone_private_layout_policy'] = 'Explicit --iphone-24a446 excludes all iPad raw QuartzCore layout access; public policy only'
     record['integrated_fulltest'] = 'One optional backboardd worker runs existing raw/Turnip/Metal checks alongside normal publication,without duplicate scanout'
     record['device_context_policy'] = 'Each VkDevice has its own connection,VA/cache/fence state;enumeration does not touch live ports;CS startup failures return before writes'

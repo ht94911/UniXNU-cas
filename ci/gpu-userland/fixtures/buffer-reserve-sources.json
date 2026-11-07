@@ -1,0 +1,42 @@
+{
+  "original_pin": "624bab3918de5b978e1101517abca2b4fa426565",
+  "patched_tree": "fd32692e423952cc88811243d8fbaa8ad25bc3ed",
+  "source_hashes": {
+    "crates/metal2vulkan-runtime/src/memory.rs": "e82be6e1bd9e33cce52042dcee06869f42dcb9ec1cd359e15bce11636aca95c6",
+    "crates/metal2vulkan-runtime/src/creation.rs": "d35f304e66902a97dcf6a5920133bb6e7abdbe4f6801865a7f7aa472465f1710"
+  },
+  "patch_hashes": {
+    "0001-optional-constant-output-members.patch": "af8eadbab4c9bc2576b14abea5308abfbc95aafb33a3c53b72117d3b1e535919",
+    "0002-resource-wait-storage-dependencies.patch": "bd36d4f0b8bf21a7b409bd65e5d6f1a24397fc1fb24113bbf215c68a9a71a29f",
+    "0003-cache-device-entry-point-priming.patch": "f865084d147f3111d406a91d2d400fc29f75b9b7381250489efe04b1098f8839",
+    "0004-fold-constant-global-field-loads.patch": "0783ad2223da6b7c5902c3a128b0cb489e2440cb6eec1ed1a196c2a304b3c4a3",
+    "0005-skip-draws-without-a-pipeline.patch": "d99f4ef5fe5893b16c4d6aa3548ec8bacf8429a49b3395eee4e2b0f4ec6b290b",
+    "0006-batch-barriers-and-key-hash-neutral-maps.patch": "bba26d2ef307234c4858b9906f5894e167e640d4bb48d68280e505407b3ac211",
+    "0007-optional-shader-cache-directory.patch": "cd169276534ec265c10a2dd557ce986ab1d31989aa2624f4787e9a3f2082dcf3",
+    "0008-llvm-bitreverse.patch": "62fe7871d3695277e46bc2020dd5e2dbd3c1f5ec4e631d2ca69f772b19a4d9dc",
+    "0009-patch-with-no-control-points.patch": "f5d2a9a864064803a0dac4e9f3ada4235b08433edfe0587ebe023aed9f02e82f",
+    "0010-core-image-kernel-libraries.patch": "8ca93e8f6e31ddfb502df5497ea68480dbcb2fdbafd7b0ea5c6f546e60dbe6e2",
+    "0011-two-plane-shadow-as-memory-lies.patch": "2b7c8449367ab3a78268101d88640a4328be27ae9b96235c9a1dc1d3cdf20e4a",
+    "0012-srgb-extended-range-blend-rounded-model.patch": "72ceaa0fff8f3e5d5ac62165eb92048ee6e99004d46f9a3fb067545267009e2d",
+    "0013-growing-memory-blocks.patch": "f1e4b65499f1a65f135a18d23b3dd5ee61453f599f824c0913e5c6f35b2468c1",
+    "0014-in-place-written-textures.patch": "22c5374e7672fe0eca9554611c9f0e7f6fa4097f4815d29bc9d75b622ba75673",
+    "0015-in-place-written-host-page-textures.patch": "10aff3b6d9c31d14cc8486622afc7da53de29f359bc4b3edf0b5efcf9be47369",
+    "0016-refuse-rebinds.patch": "13caa51b08f68622286de41b6e4232ad364114cf8c93b60336d6158706b36709",
+    "0017-heap-texture-size-a-multiple-of-its-alignment.patch": "30233bfbd397aef5538a1b797ff1521c26c9d32c32c0f607fa35f53eb92058b0",
+    "0018-memory-census-bytes.patch": "2fca303f0f9564e8debf7476e35733775ef4be542f107fd580813a68fd772612",
+    "0019-allocation-sites.patch": "88b59f2bbfca27fbec78f846b3e3725acc616f596d5228633751e686adc25cb3",
+    "0020-written-host-page-textures-in-place-at-any-size.patch": "fd01025c0f40fba6f8670c75f78b10047c08a442edb696130fa30d86f74faa55",
+    "0021-spare-image-blocks-and-room-keeper.patch": "cbafb85f2f43fc2302d06bfe2c972283802fa50aa257db09e4dfcc3bf6b36b03",
+    "0022-command-buffer-stage-trace.patch": "38dd5825a5665eada2a33d40d89881405cb88405feaa250a37a9e1c67ea62406",
+    "0023-quality-of-service-on-ios.patch": "b134e9d5143ceed52a5c89ad4cc40b0f807b16442ea9ac03d95f2079f6ff17d9",
+    "0024-diagnostics-switch-and-submit-steps.patch": "d04cd3a19ecd2697dfeccd70d4df998489caf7554acb441d030c34b61844672e",
+    "0025-specialized-links-shared-constants-and-allocation-size.patch": "f0687027086f72849b3f611c1a5f6158d58c46b7cb8992e2bd2efb5a19778a6e",
+    "0026-frame-diagnostic-links.patch": "8e39f530daa48045e461253acc77cfbc397d8105b46887e6cbed2f05a81ac6a9",
+    "0027-bounded-image-reuse-and-retired-release.patch": "7b6c6a4adfb911804ff94e9b721ccd34c8eb0173a9a88ed4d508f52347aac75e",
+    "0028-guard-memory-release-test-worker.patch": "f601a847e7d392ff08f0476e9594bb56bdb9023c5457ca84bf93a4f2a8e9dcb2",
+    "0029-latency-stage-selection.patch": "ccd35ebd58ef453af715cf8dd80e07020cab23cef2e48f9caa94f076e3ca1f4d",
+    "0030-spare-image-blocks-give-room.patch": "9e7a23a20a4d157e133f51c079511600b8a291a58a86d82e1a7f89f5910ade5f",
+    "0031-bounded-buffer-reserves.patch": "fc93889d00d44da4e5f9bcf2c1644967e707b1b7fb455d55ea2773d2c0898bde"
+  },
+  "builder_sha256": "351dab920688d05a9e615daeed0d245cf2faf9062473459c9f760f438afcd2d7"
+}

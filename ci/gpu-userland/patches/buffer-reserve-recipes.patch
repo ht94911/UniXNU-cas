@@ -1,0 +1,41 @@
+diff --git a/docs/drivers/adreno-metal.md b/docs/drivers/adreno-metal.md
+index e2411e2..0a8b54e 100644
+--- a/docs/drivers/adreno-metal.md
++++ b/docs/drivers/adreno-metal.md
+@@ -19,7 +19,7 @@ AdrenoMetal publishes a Metal device through `MTLAddDevice`. It translates AIR t
+ A render pass that fails encoding returns an encoder and reports a command-buffer error. This supports callers that cache encoder methods.
+ 
+ 
+-Unused owned image backing is reused by pooled and dedicated images. Extra spares share a 256 MiB budget per device and expire after ten seconds. Plain backing of at least 256 KiB is retired on the existing room worker, with a 128 MiB queue limit. An allocation failure releases queued backing before retrying. Imported memory and owner callbacks keep their release ordering. First-use allocations can still prepare new pages.
++Unused owned image backing can serve later pooled or dedicated images. Image spares expire after ten seconds and are reclaimed on allocation failure or memory pressure; they have no byte limit. Unused buffer reservations share a separate 64 MiB device budget across memory types. The room worker rechecks demand and reuses a spare of the same pool and memory type before allocating. If foreground completions restore room during allocation, the new owned buffer stays spare with its address object intact. Plain backing of at least 256 KiB is retired on the existing room worker, with a 128 MiB queue limit. An allocation failure releases queued backing before retrying. Imported memory and owner callbacks keep their release ordering. First-use allocations can still prepare new pages.
+ 
+ ## Cache and priority
+ 
+diff --git a/docs/zh/drivers/adreno-metal.md b/docs/zh/drivers/adreno-metal.md
+index fc07839..f0e33c9 100644
+--- a/docs/zh/drivers/adreno-metal.md
++++ b/docs/zh/drivers/adreno-metal.md
+@@ -25,7 +25,7 @@ AdrenoMetal 通过 `MTLAddDevice` 发布 Metal 设备。metal2vulkan 将 AIR 翻
+ 同一进程的 Metal 逻辑队列共用一个 Vulkan 队列和内核队列。前端汇总存活队列的当前请求，采用其中最高的优先级；队列降级或销毁后撤回提升。getter 返回各队列自身的请求，setter 返回后端是否接受。内核根据任务的 GPU role 选择前台或后台优先级，策略不使用进程名。
+ 
+ 
+-已空闲的自有图像内存可供池化和独立图像复用。额外缓存按设备合计上限为 256 MiB，十秒后过期。至少 256 KiB 的普通自有内存可交给现有后台线程释放，待回收队列上限为 128 MiB；分配失败时先释放排队内存，再重试。导入内存和外部所有者回调保留原有释放顺序。首次使用仍可能需要准备新内存页。
++已空闲的自有图像内存可供池化和独立图像复用，十秒后过期，也在分配失败或内存压力下回收；图像备用内存没有字节上限。未使用的缓冲区预留按设备共享独立的 64 MiB 上限，覆盖所有内存类型。后台线程先重新检查需求，并优先复用同一池和内存类型的备用块。分配期间若前台完成使池恢复空间，新分配的自有缓冲区保留为备用块，同时保留其地址对象。至少 256 KiB 的普通自有内存可交给现有后台线程释放，待回收队列上限为 128 MiB；分配失败时先释放排队内存，再重试。导入内存和外部所有者回调保留原有释放顺序。首次使用仍可能需要准备新内存页。
+ 
+ ## 构建和检查
+ 
+diff --git a/scripts/build-adreno-metal-bridge.py b/scripts/build-adreno-metal-bridge.py
+index e6af833..913c323 100644
+--- a/scripts/build-adreno-metal-bridge.py
++++ b/scripts/build-adreno-metal-bridge.py
+@@ -76,7 +76,9 @@ PATCHES = [ROOT / 'drivers/AdrenoMetal/bridge/patches' / name for name in [
+     '0029-latency-stage-selection.patch',
+     # Spare image blocks have no byte limit (they age, go when a block cannot be made and on memory pressure), and the room keeper takes
+     # a spare block before it makes a new one: the limit freed spares the render server made again within seconds, each a fresh wiring.
+-    '0030-spare-image-blocks-give-room.patch']]
++    '0030-spare-image-blocks-give-room.patch',
++    # Reuse superseded buffer reservations within a separate 64 MiB device budget.
++    '0031-bounded-buffer-reserves.patch']]
+ 
+ 
+ def git_tree(*steps):
