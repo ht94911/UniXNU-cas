@@ -5,7 +5,9 @@
 #include <kern/clock.h>
 #include <kern/thread.h>
 #include <kern/sched_prim.h>
+extern "C" {
 #include <QcomUsbDiagnostic.h>
+}
 #include "NezhaAudioAdspInputs.h"
 #include "NezhaAudioSmmu.h"
 #include "NezhaAudioTasBoard.h"
@@ -26,29 +28,41 @@ struct AudioDspProbe {
     int error,tasError,tasCleanup;
 };
 AudioDspProbe nativeAudioProbe;
-uint32_t audioProbeSequence,audioProbeValues[16];
+uint32_t audioProbeSequence,audioProbeValues[24];
 void publish(AudioDspProbe *d) {
+    uint32_t fault=0,syndrome=0;uint64_t address=0;
+    // IRQ publishes these once through fault_pending; never race its initial
+    // non-atomic payload stores when a fault arrives during this snapshot.
+    if (__atomic_load_n(&d->domain.fault_pending,__ATOMIC_ACQUIRE)) {
+        fault=d->domain.fault_status;syndrome=d->domain.fault_syndrome;address=d->domain.fault_address;
+    }
     const uint32_t values[]={d->phase,(uint32_t)d->error,d->adsp.stage,d->adsp.slave,
-        d->adsp.handed,d->adsp.transport.online,d->smmu.started,d->domain.fault_status,
+        d->adsp.handed,d->adsp.transport.online,d->smmu.started,fault,
         d->tasPhase,(uint32_t)d->tasError,(uint32_t)d->tasCleanup,d->revision[0],d->revision[1],
-        d->input.resources.error ? 1u:0u,d->power.held,d->power.possible};
+        d->input.resources.error ? 1u:0u,d->power.held,d->power.possible,d->power.stage,d->power.active_resource,
+        d->power.last_irq,d->power.last_status,d->power.last_command_status,
+        (uint32_t)address,(uint32_t)(address>>32),syndrome};
     __atomic_add_fetch(&audioProbeSequence,1,__ATOMIC_ACQ_REL);
-    for (unsigned i=0;i<16;++i) __atomic_store_n(&audioProbeValues[i],values[i],__ATOMIC_RELAXED);
+    for (unsigned i=0;i<24;++i) __atomic_store_n(&audioProbeValues[i],values[i],__ATOMIC_RELAXED);
     __atomic_add_fetch(&audioProbeSequence,1,__ATOMIC_RELEASE);
 }
 int snapshot(void *,char *out,size_t capacity,size_t *bytes,unsigned *truncated) {
-    uint32_t v[16];bool valid=false;
+    uint32_t v[24];bool valid=false;
     for (unsigned attempt=0;attempt<4;++attempt) {
         uint32_t seq=__atomic_load_n(&audioProbeSequence,__ATOMIC_ACQUIRE);if (seq&1) continue;
-        for (unsigned i=0;i<16;++i) v[i]=__atomic_load_n(&audioProbeValues[i],__ATOMIC_RELAXED);
-        if (seq==__atomic_load_n(&audioProbeSequence,__ATOMIC_ACQUIRE)) {valid=true;break;}
+        for (unsigned i=0;i<24;++i) v[i]=__atomic_load_n(&audioProbeValues[i],__ATOMIC_RELAXED);
+        __atomic_thread_fence(__ATOMIC_ACQUIRE);
+        if (seq==__atomic_load_n(&audioProbeSequence,__ATOMIC_RELAXED)) {valid=true;break;}
     }
     *bytes=0;*truncated=0;if (!valid) return QUD_BUSY;
     int n=snprintf(out,capacity,"{\"v\":2,\"mode\":\"dsp-tas-identity\",\"phase\":%u,\"error\":%d,"
         "\"adsp_stage\":%u,\"slave\":%u,\"handover\":%u,\"gpr_online\":%u,\"smmu\":%u,"
         "\"fault\":%u,\"tas_phase\":%u,\"tas_error\":%d,\"tas_cleanup\":%d,\"revision\":[%u,%u],"
-        "\"owner_error\":%u,\"proxy_held\":%u,\"proxy_possible\":%u,\"PCM\":false,\"HAL\":false}",
-        v[0],(int32_t)v[1],v[2],v[3],v[4],v[5],v[6],v[7],v[8],(int32_t)v[9],(int32_t)v[10],v[11],v[12],v[13],v[14],v[15]);
+        "\"owner_error\":%u,\"proxy_held\":%u,\"proxy_possible\":%u,\"proxy_stage\":%u,\"proxy_resource\":%u,"
+        "\"tcs_irq\":%u,\"tcs_status\":%u,\"tcs_command\":%u,\"fault_address\":\"0x%llx\","
+        "\"fault_syndrome\":%u,\"PCM\":false,\"HAL\":false}",
+        v[0],(int32_t)v[1],v[2],v[3],v[4],v[5],v[6],v[7],v[8],(int32_t)v[9],(int32_t)v[10],v[11],v[12],v[13],v[14],v[15],v[16],v[17],v[18],v[19],v[20],
+        (unsigned long long)(((uint64_t)v[22]<<32)|v[21]),v[23]);
     if (n<0 || (size_t)n>=capacity) {*truncated=1;return QUD_FAILED;}
     *bytes=(size_t)n;return QUD_OK;
 }
@@ -142,6 +156,20 @@ int identify_tas(AudioDspProbe *d) {
     }
     return d->tasPhase==3 ? NA_OK:NA_OWNERSHIP;
 }
+void crash_reason(AudioDspProbe *d) {
+    if (d->adsp.error!=NA_REMOTE || !(d->adsp.slave&1) ||
+        __atomic_load_n(&d->adsp.doorbells,__ATOMIC_ACQUIRE)==d->adsp.auth_doorbells) return;
+    QcomSmemPartition global;uint32_t at=0,bytes=0;
+    int r=qcom_smem_partition(&d->adsp.smem,QCOM_SMEM_HOST_GLOBAL,QCOM_SMEM_HOST_GLOBAL,&global);
+    if (!r) r=qcom_smem_find(&d->adsp.smem,&global,423,&at,&bytes);
+    if (r || !bytes || at>d->adsp.smem.size || bytes>d->adsp.smem.size-at) {
+        printf("NEZHA AUDIO27 DSP: post-auth fatal, bounded SMEM crash reason unavailable\n");return;
+    }
+    char message[161];unsigned n=0,limit=bytes<160 ? bytes:160;
+    while (n<limit) {uint8_t c=d->adsp.smem.base[at+n];if (!c) break;message[n++]=c>=32 && c<=126 ? (char)c:'.';}
+    message[n]=0;
+    printf("NEZHA AUDIO27 DSP: SMEM423 after fresh post-auth fatal (bounded snapshot): %s\n",message);
+}
 void run_probe(void *v,wait_result_t) {
     auto *d=static_cast<AudioDspProbe *>(v);d->deadline=na_native_now_us(nullptr)/1000+120000;
     unsigned last=UINT32_MAX,lastPhase=UINT32_MAX;int lastError=0;
@@ -160,7 +188,7 @@ void run_probe(void *v,wait_result_t) {
                 else if (!tas) d->phase=4;
             }
         }
-        if (r<0 || (d->phase<4 && d->now>=d->deadline)) {d->error=r<0 ? r:NA_TIMEOUT;d->phase=5;tas_cleanup(d);}
+        if (r<0 || (d->phase<4 && d->now>=d->deadline)) {d->error=r<0 ? r:NA_TIMEOUT;d->phase=5;tas_cleanup(d);crash_reason(d);}
         publish(d);
         if (last!=d->adsp.stage || lastPhase!=d->phase || lastError!=d->error) {
             printf("NEZHA AUDIO27 DSP: phase=%u error=%d ADSP=%u slave=%x handover=%u GPR=%u TAS=%u/%u error=%d\n",

@@ -52,9 +52,15 @@ static int vote(NaProxyPower *p,unsigned resource,int on,uint64_t now) {
     }
     if (p->active_resource!=resource) return fail(p,NA_OWNERSHIP);
     uint32_t b=p->tcs*p->layout.tcs_stride;
-    /* Check the response for our command and idle status, not a stale global
-     * interrupt bit. No shared IRQ mask is overwritten by this polling owner. */
-    if ((read_tcs(p,b+p->layout.cmd_data+4)&0x10100u)!=0x10100u || !read_tcs(p,b+p->layout.status)) return NA_PENDING;
+    /* The exclusive owner cleared this TCS's completion before triggering.
+     * Require the new completion bit as well as its command ACK and idle:
+     * stale CMD_STATUS from the previous vote is not a new completion.
+     * Touch's real polling path observes IRQ_STATUS even with delivery masked.
+     * This owner never overwrites the common interrupt-enable word. */
+    p->last_irq=read_tcs(p,p->layout.irq_status);
+    p->last_command_status=read_tcs(p,b+p->layout.cmd_data+4);
+    p->last_status=read_tcs(p,b+p->layout.status);
+    if (!(p->last_irq&(1u<<p->tcs)) || (p->last_command_status&0x10100u)!=0x10100u || !p->last_status) return NA_PENDING;
     QcomRpmhWrite w[4];unsigned n=qcom_rpmh_finish(&p->layout,p->tcs,w,4);
     for (unsigned i=0;i<n;++i) write_tcs(p,w[i].offset,w[i].value);
     write_tcs(p,b+p->layout.wait_for_cmpl,0);
