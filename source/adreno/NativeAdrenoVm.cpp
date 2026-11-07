@@ -138,6 +138,7 @@ void NativeAdrenoVm::freeTables()
     if(order_)IODeleteData(order_,uint32_t,mapping_capacity_);
     index_.release();
     changes_=nullptr;alias_scratch_=nullptr;mappings_=nullptr;order_=nullptr;capacity_=mapping_capacity_=0;
+    publish_head_=UINT32_MAX;publish_count_=0;writable_import_count_=0;
 }
 bool NativeAdrenoVm::growScratch(size_t needed)
 {
@@ -283,6 +284,14 @@ void NativeAdrenoVm::insert(Mapping *record)
     order_[at]=(uint32_t)(record-mappings_);++order_count_[record->upper];
     class_spans_[aliasClass(record->permissions,record->writeback,record->shareability)&15]+=record->spans;
     if(record->upper)upper_count_+=record->spans;else lower_count_+=record->spans;
+    if(record->memory->imported()) {
+        if(record->permissions&ArmSmmu4KWrite)++writable_import_count_;
+    } else if(!record->writeback) {
+        const uint32_t slot=uint32_t(record-mappings_);
+        record->publish_prev=UINT32_MAX;record->publish_next=publish_head_;
+        if(publish_head_!=UINT32_MAX)mappings_[publish_head_].publish_prev=slot;
+        publish_head_=slot;++publish_count_;
+    }
 }
 bool NativeAdrenoVm::erase(Mapping *record)
 {
@@ -292,6 +301,14 @@ bool NativeAdrenoVm::erase(Mapping *record)
     --order_count_[record->upper];
     class_spans_[aliasClass(record->permissions,record->writeback,record->shareability)&15]-=record->spans;
     if(record->upper)upper_count_-=record->spans;else lower_count_-=record->spans;
+    if(record->memory->imported()) {
+        if(record->permissions&ArmSmmu4KWrite)--writable_import_count_;
+    } else if(!record->writeback) {
+        const uint32_t prev=record->publish_prev,next=record->publish_next;
+        if(prev==UINT32_MAX)publish_head_=next;else mappings_[prev].publish_next=next;
+        if(next!=UINT32_MAX)mappings_[next].publish_prev=prev;
+        --publish_count_;
+    }
     return true;
 }
 IOReturn NativeAdrenoVm::map(NativeAdrenoMemory *memory,unsigned upper,uint64_t iova,
@@ -440,6 +457,23 @@ IOReturn NativeAdrenoVm::invalidateTlb()
 IOReturn NativeAdrenoVm::publishMapped()
 {
     if(!attached_ || poisoned_)return kIOReturnNotReady;
+    if(native_adreno_io_coherent) {
+        /* No per-submit walk through imported surfaces or coherent owned BOs.
+         * Retain every existing owned/non-WB maintenance operation, including
+         * the write-combine distrust policy and failure quarantine. */
+        uint32_t slot=publish_head_;size_t remaining=publish_count_;
+        if(remaining>objects_)return fail(ArmSmmu4KStateMismatch);
+        while(slot!=UINT32_MAX && remaining) {
+            if(slot>=high_)return fail(ArmSmmu4KStateMismatch);
+            const Mapping &m=mappings_[slot];
+            if(!m.memory || m.memory->imported() || m.writeback)return fail(ArmSmmu4KStateMismatch);
+            if(m.memory->publishForDevice(0,m.memory->bytes(),true,distrust_write_combined_,NativeAdrenoPhaseSubmit))return fail(ArmSmmu4KIoError);
+            slot=m.publish_next;--remaining;
+        }
+        if(slot!=UINT32_MAX || remaining)return fail(ArmSmmu4KStateMismatch);
+        native_adreno_coherent_skips[2]=native_adreno_coherent_skips[2]+uint32_t(objects_-publish_count_);
+        return kIOReturnSuccess;
+    }
     for(size_t i=0;i<high_;++i) {
         const Mapping &m=mappings_[i];
         if(!m.memory)continue;
@@ -451,6 +485,12 @@ IOReturn NativeAdrenoVm::publishMapped()
 IOReturn NativeAdrenoVm::acquireImported()
 {
     if(!attached_ || poisoned_)return kIOReturnNotReady;
+    if(native_adreno_io_coherent) {
+        /* importedUntouched would skip every matching object. Count only
+         * successfully inserted writable imports, without revisiting them. */
+        native_adreno_coherent_skips[3]=native_adreno_coherent_skips[3]+uint32_t(writable_import_count_);
+        return kIOReturnSuccess;
+    }
     for(size_t i=0;i<high_;++i) {
         const Mapping &m=mappings_[i];
         if(!m.memory || !m.memory->imported() || !(m.permissions&ArmSmmu4KWrite))continue;

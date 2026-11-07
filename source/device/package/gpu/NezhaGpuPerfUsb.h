@@ -10,6 +10,7 @@ extern "C" {
 extern volatile uint32_t native_gpu_coherence[8],native_adreno_io_coherent,native_adreno_coherent_skips[4];
 extern volatile uint32_t native_adreno840_coherence_attempts,native_adreno840_coherence_retained;
 void native_legacy_vsync_snapshot(uint64_t out[8]);
+bool nezha_cpu27_snapshot(int32_t out[20]);
 }
 struct NezhaPerfWriter {
     char *out;size_t cap,used=0;bool failed=false;
@@ -61,6 +62,12 @@ static int nezhaPerfRequest(void *,const qud_diag_request *r,char *out,size_t ca
     if(r->arg0==1) {
         uint64_t calls[18][4];native_adreno_perf_calls(calls);w.add("{\"v\":1,\"calls\":[");
         for(unsigned i=0;i<18;++i){if(i)w.add(",");w.array(calls[i],4);}w.add("]}");return w.finish(bytes,trunc);
+    }
+    if(r->arg0==2) {
+        int32_t cpu[20];if(!nezha_cpu27_snapshot(cpu))return QUD_BUSY;
+        w.add("{\"v\":1,\"cpu_policy\":[");
+        for(unsigned i=0;i<20;++i)w.add("%s%d",i?",":"",cpu[i]);
+        w.add("],\"physical_clock_readback\":false}");return w.finish(bytes,trunc);
     }
     if(r->arg0)return QUD_INVALID;
     NativeGpuTraceRecord records[6];uint64_t next=0,latest=0,missed=0;

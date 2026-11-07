@@ -46,11 +46,18 @@ class NativeAdrenoVm final {
         uint64_t handle=0,iova=0;
         size_t spans=0,mapped_spans=0;
         unsigned permissions=0,writeback=0,shareability=0,jobs=0,upper=0;
+        uint32_t publish_prev=UINT32_MAX,publish_next=UINT32_MAX;
     };
     Mapping *mappings_=nullptr;
     NativeAdrenoHandleIndex index_;   /* live handle -> its mappings_ slot */
     size_t free_hint_=0;   /* no free mappings_ slot below it */
     size_t high_=0;   /* no live mappings_ slot at or above it: the walks over every mapping stop there */
+    /* With the board's coherent contract enabled, only owned non-WB objects
+     * need publication. Slot links survive mappings_ growth and slot reuse;
+     * imported writable mappings can be acquired by accounting alone. The
+     * ordinary full walk remains the fallback if that contract is off. */
+    uint32_t publish_head_=UINT32_MAX;
+    size_t publish_count_=0,writable_import_count_=0;
     size_t class_spans_[16]{};   /* mapped spans per alias class, so a map counts the other classes without a walk */
     size_t import_spans_[16]{};   /* the imported mappings' ranges per alias class */
     NativeAdrenoVmRegion regions_[2]{};

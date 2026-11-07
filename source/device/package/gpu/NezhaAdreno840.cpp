@@ -2,6 +2,8 @@
 /* A840 board backend over the maintained NativeAdreno software core. Hardware
  * setup comes from f5b0fdd; lifecycle/publication follows current sheng.
  * One attempt, one ring, CPU table switching, no implicit reset or scanout. */
+extern "C" void nezha_cpu_start(void);
+
 #include "NezhaGpuPlatform.h"
 #include "NezhaGpuFirmware.h"
 // NEZHA_GPU_DIAGNOSTIC_PUBLICATION_BEGIN
@@ -288,6 +290,7 @@ IOReturn bringUp()
     if(checkpoint(13,status,"NativeAdreno user client"))return status;
     ring.setTimeline(true); // existing A8xx CP_ALWAYS_ON timestamps around each real job
     if(nezha_gpu_platform_perf_start())return checkpoint(13,kIOReturnIOError,"GPU performance owner");
+    nezha_cpu_start(); // SCMI/thermal owner using the27 processor API
     const int perf_registered=qcom_usb_diag_register(&nezhaPerfProvider);
     IOLog("NEZHA GPU PERF: USB provider7 registration=%d; real job timestamps enabled; CPU load sampled every2s\n",perf_registered);
     // Registration returns a boolean success, unlike QUD callback result codes.

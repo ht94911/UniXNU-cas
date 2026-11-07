@@ -60,7 +60,8 @@ def validate(framework, device, board, builtin):
               'nezha-reboot-after': '0', 'nezha-panic-reset': '0',
               'sheng-data-persist': '2', 'ram-data-volatile-4g': '0',
               'sheng-data-reset': '0', 'nezha-usb-reboot': '1',
-              'boot-diag-overlay': '0', 'input-test': '0'}
+              'boot-diag-overlay': '0', 'input-test': '0',
+              'nezha-cpufreq': '3', 'nezha-thermal': '1'}
     require(all(effective.get(key) == value for key, value in wanted.items()),
             'effective CPU/GPU/diagnostic/protection policy changed')
     require(explicit.get('cpus') == '8', 'loader must explicitly select eight CPUs')
@@ -86,7 +87,8 @@ def main():
     for name in ('late-hid-provider', 'unqualified-armcpu', 'oversized-line',
                  'single-cpu-regression', 'fixed-reset-enabled', 'missing-smp-default',
                  'diagnostic-not-rendering', 'missing-addon', 'missing-gpu-default',
-                 'volatile-data', 'destructive-reset', 'direct-persistent-reset', 'overlay-enabled', 'automatic-settings'):
+                 'volatile-data', 'destructive-reset', 'direct-persistent-reset', 'overlay-enabled', 'automatic-settings',
+                 'cpu-governor-disabled', 'thermal-disabled'):
         candidate, defaults = copy.deepcopy(board), builtin
         archive = candidate['kernel']['archives']
         mutations={'volatile-data':('sheng-data-persist=2','sheng-data-persist=0'),
@@ -94,7 +96,9 @@ def main():
                    'direct-persistent-reset':('nezha-usb-reboot=1','nezha-usb-reboot=2'),
                    'overlay-enabled':('boot-diag-overlay=0','boot-diag-overlay=1'),
                    'automatic-settings':('input-test=0','input-test=1')}
-        if name in mutations:
+        if name in ('cpu-governor-disabled','thermal-disabled'):
+            defaults=defaults.replace('nezha-cpufreq=3','nezha-cpufreq=0') if name=='cpu-governor-disabled' else defaults.replace('nezha-thermal=1','nezha-thermal=0')
+        elif name in mutations:
             old,new=mutations[name]
             candidate['payload']['kernel_args']=[x.replace(old,new) for x in candidate['payload']['kernel_args']]
         elif name == 'late-hid-provider':
