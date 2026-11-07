@@ -649,7 +649,9 @@ IOReturn NativeAdrenoRing::submitWords(const uint32_t *words,size_t word_count,u
     /* A plain (kernel) submission cannot carry the switch: a pending table waits for the next framed one. */
     const uint32_t extra=framed?RingPrologueWords+(reset?resetWords():0)+(table?RingTableWords+(preempt_?RingTableSnapshotWords:0):0)+RingFramedFenceWords+
         (stamps_?2*RingStampWords:0)+(preempt_?RingPseudoWords+RingYieldWords:0):RingFenceWords;
-    if(word_count>size_words-extra-8)return kIOReturnNoResources;
+    /* This list cannot ever fit, even in an empty ring. Do not report the
+     * temporary no-space status that the submitter retries after a fence. */
+    if(word_count>size_words-extra-8)return kIOReturnBadArgument;
     uint32_t rptr=0;IOReturn status=readRptr(&rptr);
     if(status)return status;
     const uint32_t used=(next_-rptr)&mask;

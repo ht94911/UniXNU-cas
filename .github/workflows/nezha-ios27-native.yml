@@ -1,7 +1,7 @@
-name: nezha iPhone27 GPU bandwidth admission - native033
+name: nezha iPhone27 GPU complete submissions - native034
 on:
   push:
-    branches: [codex/ios27-gpu-persist015-033-20261107]
+    branches: [codex/ios27-gpu-persist017-034-20261107]
   workflow_dispatch:
 permissions:
   contents: read

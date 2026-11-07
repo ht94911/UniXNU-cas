@@ -880,7 +880,8 @@ IOReturn AGXDeviceUserClient::externalMethod(uint32_t selector,IOExternalMethodA
         {&action,0,0,0,sizeof(NativeAdrenoAbiDeviceInfo)},
         {&action,0,sizeof(NativeAdrenoAbiBoImport),0,sizeof(NativeAdrenoAbiBoAllocReply)},
         {&action,0,sizeof(NativeAdrenoAbiPriority),0,0},
-        {&action,0,sizeof(NativeAdrenoAbiNote),0,0}};
+        {&action,0,sizeof(NativeAdrenoAbiNote),0,0},
+        {&action,0,sizeof(NativeAdrenoAbiSubmitBatch),0,sizeof(NativeAdrenoAbiSubmitBatchReply)}};
     native_adreno_metal_diag.ext_entries=native_adreno_metal_diag.ext_entries+1;
     if(selector<256)native_adreno_metal_diag.sel_bits[selector>>5]|=1u<<(selector&31);
     /* Tunnel. The sandbox resolves a filter policy for this class at open time and then admits only the selectors its profile lists,

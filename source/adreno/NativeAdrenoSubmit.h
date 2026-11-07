@@ -1,12 +1,13 @@
 /* SPDX-License-Identifier: MIT */
 #ifndef NATIVE_ADRENO_SUBMIT_H
 #define NATIVE_ADRENO_SUBMIT_H
+#include "NativeAdrenoABI.h"
 #include "NativeAdrenoPreempt.h"
 #include "NativeAdrenoRing.h"
 #include "NativeAdrenoVm.h"
 
 /* IBs of one submission: a whole frame, so the ring prologue (cache flush, idle wait, thread switch) runs once per frame. */
-enum : size_t {NativeAdrenoSubmitMaxBuffers=128};
+enum : size_t {NativeAdrenoSubmitMaxBuffers=NativeAdrenoAbiMaxBatchBuffers};
 struct NativeAdrenoSubmitBuffer {
     uint64_t handle;
     uint64_t iova;

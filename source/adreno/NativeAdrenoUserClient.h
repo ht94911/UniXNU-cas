@@ -71,8 +71,15 @@ class NativeAdrenoUserClient final {
      * takes: the foreground value while the process renders visible UI and the background one otherwise (the process's GPU role). */
     int32_t priority_foreground_=-1,priority_background_=-1;
     uint32_t priority_told_=0;
-    NativeAdrenoSubmitBuffer submit_buffers_[NativeAdrenoAbiMaxBuffers]{};   /* submit()'s list: too large for the kernel stack */
+    NativeAdrenoSubmitBuffer submit_buffers_[NativeAdrenoAbiMaxBatchBuffers]{};   /* never on the kernel stack */
     NativeAdrenoAbiSubmit submit_request_{};   /* the submit request as copied in, for the same reason */
+    NativeAdrenoAbiSubmitBatch batch_request_{};
+    NativeAdrenoAbiSubmitBuffer batch_buffers_[NativeAdrenoAbiMaxBatchBuffers]{};
+    uint64_t batch_id_=0,batch_next_=1,batch_queue_=0;
+    uint32_t batch_total_=0,batch_received_=0;
+    void clearBatch() {batch_id_=batch_queue_=0;batch_total_=batch_received_=0;}
+    IOReturn submitList(const NativeAdrenoAbiSubmitBuffer *,size_t,uint64_t,
+        NativeAdrenoAbiSubmitReply *,const NativeAdrenoRingClock *);
     uint64_t window_start_=0,window_bytes_=0,window_peak_=0;
     uint64_t next_handle_=1;
     bool open_=false;
@@ -133,6 +140,8 @@ public:
      * either step keeps the entry live and unmapped where possible. */
     IOReturn freeBo(const NativeAdrenoAbiBoFree *);
     IOReturn submit(const NativeAdrenoAbiSubmit *,NativeAdrenoAbiSubmitReply *,
+        const NativeAdrenoRingClock *);
+    IOReturn submitBatch(const NativeAdrenoAbiSubmitBatch *,NativeAdrenoAbiSubmitBatchReply *,
         const NativeAdrenoRingClock *);
     IOReturn cpuMap(const NativeAdrenoAbiBoCpuMap *,NativeAdrenoAbiBoCpuMapReply *);
     IOReturn cpuUnmap(const NativeAdrenoAbiBoCpuUnmap *);

@@ -12,7 +12,8 @@
  * rather than ignored. */
 enum {
     NativeAdrenoAbiVersion = 2,
-    NativeAdrenoAbiMaxBuffers = 128,   /* a frame's IBs in one submission (Turnip splits a larger one) */
+    NativeAdrenoAbiMaxBuffers = 128,   /* entries per fixed-size transport record */
+    NativeAdrenoAbiMaxBatchBuffers = 1024, /* one indivisible GPU submission */
     NativeAdrenoMethodQuery = 1,
     NativeAdrenoMethodBoAlloc = 2,
     NativeAdrenoMethodBoMap = 3,
@@ -31,6 +32,7 @@ enum {
     NativeAdrenoMethodBoImport = 16,
     NativeAdrenoMethodSetPriority = 17,
     NativeAdrenoMethodNote = 18,
+    NativeAdrenoMethodSubmitBatch = 19,
     NativeAdrenoAbiMetadataBytes = 64
 };
 struct NativeAdrenoAbiParams {
@@ -43,7 +45,8 @@ struct NativeAdrenoAbiParams {
 enum {
     NativeAdrenoParamsHostImport = 1,  /* BoImport pins the caller's own pages (an IOSurface's) as a BO */
     NativeAdrenoParamsOwnedCoherent = 2, /* BOs are cacheable for the CPU and mapped write-back inner-shareable for the GPU (IO coherence): map them with the default cache mode, not write-combined */
-    NativeAdrenoParamsMemoryPressure = 4   /* now: the system could not give the last user BO its memory; give cached BOs back */
+    NativeAdrenoParamsMemoryPressure = 4,  /* now: the system could not give the last user BO its memory; give cached BOs back */
+    NativeAdrenoParamsSubmitBatch = 8      /* SubmitBatch stages IBs before one framed ring job */
 };
 struct NativeAdrenoAbiBoAlloc {
     uint64_t bytes;               /* 4KiB multiple, <= max_bo_bytes */
@@ -95,6 +98,34 @@ struct NativeAdrenoAbiMetadata {
 };
 struct NativeAdrenoAbiSubmitReply {
     uint64_t fence;               /* nonzero CP timestamp value */
+};
+/* Method19 extends ABI2 without changing method5's wire layout. BEGIN reserves
+ * one client-local batch and returns its nonzero token. APPEND copies exactly
+ * the next entries; neither operation touches the ring or acquires GPU refs.
+ * COMMIT revalidates every handle/range and emits the complete list once, with
+ * one prologue/fence. Only a COMMIT explicitly refused with Busy may be retried.
+ * A successful COMMIT consumes the token. ABORT drops unsubmitted staging only.
+ * total_buffers/queue must match every request; offset must match the received
+ * prefix. BEGIN, COMMIT and ABORT have buffer_count=0. APPEND uses1..128.
+ * No request exceeds the already-qualified 3104-byte transport record. */
+enum {
+    NativeAdrenoBatchBegin = 1,
+    NativeAdrenoBatchAppend = 2,
+    NativeAdrenoBatchCommit = 3,
+    NativeAdrenoBatchAbort = 4
+};
+struct NativeAdrenoAbiSubmitBatch {
+    uint64_t batch;
+    uint64_t queue;
+    uint32_t total_buffers;
+    uint32_t offset;
+    uint32_t buffer_count;
+    uint32_t action;
+    NativeAdrenoAbiSubmitBuffer buffers[NativeAdrenoAbiMaxBuffers];
+};
+struct NativeAdrenoAbiSubmitBatchReply {
+    uint64_t batch;
+    uint64_t fence;               /* zero for staging; nonzero only after COMMIT */
 };
 struct NativeAdrenoAbiWaitFence {
     uint64_t fence;
@@ -170,6 +201,8 @@ static_assert(sizeof(NativeAdrenoAbiBoMap) == 32, "ABI map layout");
 static_assert(sizeof(NativeAdrenoAbiBoImport) == 16, "ABI import layout");
 static_assert(sizeof(NativeAdrenoAbiSubmitBuffer) == 24, "ABI buffer layout");
 static_assert(sizeof(NativeAdrenoAbiSubmit) == 32 + 24 * NativeAdrenoAbiMaxBuffers, "ABI submit layout");
+static_assert(sizeof(NativeAdrenoAbiSubmitBatch) == sizeof(NativeAdrenoAbiSubmit), "batch stays within the existing transport envelope");
+static_assert(sizeof(NativeAdrenoAbiSubmitBatchReply) == 16, "ABI batch reply layout");
 static_assert(sizeof(NativeAdrenoAbiBoCpuMap) == 8, "ABI cpu map layout");
 static_assert(sizeof(NativeAdrenoAbiBoCpuMapReply) == 16, "ABI cpu map reply layout");
 static_assert(sizeof(NativeAdrenoAbiBoCpuUnmap) == 16, "ABI cpu unmap layout");
