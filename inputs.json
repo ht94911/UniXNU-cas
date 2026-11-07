@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "dfd53f2b8661016d7546e5335e05b440f8c9bac9",
+  "device_revision": "154f8a08e6800734408c99f909c28ceeb94caa3c",
   "soc_revision": "5a71f9eb5724ff58eddf49f7f5baecc9f4233a7c",
   "xcode": "26.6",
   "files": {
@@ -136,7 +136,7 @@
     "source/device/package/gpu/NezhaGpuFirmware.h": "fd75af351256dcbb72d0cf83ceeda4cee524475324edaf086b50ae34093d580e",
     "source/device/package/gpu/NezhaGpuFirmwareSlot.S": "294d44bf227df3db03fe8c9343c7179c8c03962d52a999a564ac99f7d7356d82",
     "source/device/package/gpu/NezhaGpuPerfPolicy.h": "2522bf44e42a6953fb26f42d099b7be3bb9c26611852d686ec72a8b62df16cbe",
-    "source/device/package/gpu/NezhaGpuPerfUsb.h": "5328b35480a222ef6e0a19e3310d5928385d4c75bdb3d9cb704c00aec923a6f5",
+    "source/device/package/gpu/NezhaGpuPerfUsb.h": "00b9a3dc5ca46320ec2db2325533836ba13e1ea9498f99e35d1f9c158b853938",
     "source/device/package/gpu/NezhaGpuPlatform.h": "d2a92c5a740640a3e7746ade5306e899a15e408c8aa1bd985d4b55330f7848eb",
     "source/device/package/gpu/NezhaGpuPublicationMode.h": "84b2641f1fa01f14d2a0c2c526525571a31472e532df9e0d401a4baa6bb2a676",
     "source/device/package/gpu/NezhaScm.c": "d5eff9fb85bd9215411e9c9ef56f40b5bc28334b9e1dd246d4f61b4f6aae4ab3",
