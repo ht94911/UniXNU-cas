@@ -22,16 +22,22 @@ for name,digest in shared['files'].items():
  if sha(smmu/name)!=digest:raise SystemExit('selected GPU015 ArmSmmu4K identity differs: '+name)
 base=ROOT/'build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837'
 records={False:json.loads((base/'iokit/DEVELOPMENT/IOPlatformExpert.cpo.json').read_text().strip().rstrip(',')),True:json.loads((base/'bsd/DEVELOPMENT/bsd_init.o.json').read_text().strip().rstrip(','))}
+# The task accessor requires the actual osfmk compilation environment, including
+# its generated features, private declarations and libsa header precedence.
+# Adding MACH_KERNEL_PRIVATE to a BSD record does not reproduce that contract.
+task_record=json.loads((base/'osfmk/DEVELOPMENT/startup.o.json').read_text().strip().rstrip(','))
+if 'MACH_KERNEL_PRIVATE' not in task_record['arguments']:
+ raise SystemExit('selected osfmk record does not expose the real task layout')
 sources=[p for folder in ['core','platform','upstream','os'] for p in sorted((SRC/folder).glob('*')) if p.suffix in ['.c','.cpp']]+[SRC/'hal/AudioClock.c']
 objects=[];rows=[];errors=[]
 for source in sources:
  name=str(source.relative_to(SRC)).replace('/','_');obj=OUT/(name+'.o');rc=records[source.suffix=='.c']
  extra=['-I',str(ROOT/'.cache/xnu-work/osfmk'),'-I',str(SRC),'-I',str(smmu),'-I',str(ROOT/'drivers/QcomXnuUsbDebug/include'),'-Wno-unknown-warning-option']
- if source.name=='NezhaAudioTask.c':extra+=['-DMACH_KERNEL_PRIVATE=1']
+ if source.name=='NezhaAudioTask.c':rc=task_record
  command=helper.compile_command(rc,source,obj,[],extra)
  (OUT/(name+'-command.json')).write_text(json.dumps(command,indent=2)+'\n')
  cp=subprocess.run(command,cwd=rc['directory'],capture_output=True,text=True);(OUT/(name+'.log')).write_text(cp.stdout+cp.stderr)
- row={'source':str(source.relative_to(SRC)),'source_sha256':sha(source),'returncode':cp.returncode}
+ row={'source':str(source.relative_to(SRC)),'source_sha256':sha(source),'returncode':cp.returncode,'kernel_recipe_source':rc['file']}
  if cp.returncode:errors.append(name)
  else:
   check_object(obj.read_bytes(),name);row['object_sha256']=sha(obj);deps={}

@@ -7,6 +7,7 @@
 #include <kern/clock.h>
 #include <kern/thread.h>
 #include <kern/sched_prim.h>
+#include <mach/clock_types.h>
 #include <machine/machine_routines.h>
 #include <pexpert/pexpert.h>
 #include <stdarg.h>
@@ -71,11 +72,11 @@ static int history(void *cookie,const struct qud_diag_request *r,char *out,size_
     /* Failed snapshots may be partial: do not label their zeroed rows as real
      * hardware data. The status still preserves the exact failed read. */
     if (phase!=3) return QUD_FAILED;
-    unsigned total=r->arg0 ? snapshot.bank_count:snapshot.stream_count;
-    if (r->cursor>total || (r->arg0 && r->cursor<snapshot.stage2_banks)) return QUD_INVALID;
-    unsigned at=(unsigned)r->cursor,end=at+8;if (end>total) end=total;
+    unsigned row_count=r->arg0 ? snapshot.bank_count:snapshot.stream_count;
+    if (r->cursor>row_count || (r->arg0 && r->cursor<snapshot.stage2_banks)) return QUD_INVALID;
+    unsigned at=(unsigned)r->cursor,end=at+8;if (end>row_count) end=row_count;
     struct writer w={out,cap,0,0};
-    add(&w,"{\"v\":1,\"kind\":%u,\"first\":%u,\"next\":%u,\"total\":%u,\"rows\":[",r->arg0,at,end,total);
+    add(&w,"{\"v\":1,\"kind\":%u,\"first\":%u,\"next\":%u,\"total\":%u,\"rows\":[",r->arg0,at,end,row_count);
     for (unsigned i=at;i<end;++i) {
         if (r->arg0) {
             const NaProbeBank *b=&snapshot.bank[i];
@@ -94,7 +95,7 @@ static void probe_thread(void *arg,wait_result_t result) {
      * Later touch recovery resets its endpoint only. UFS remains active. */
     while (__atomic_load_n(&nezha_touch_stage,__ATOMIC_ACQUIRE)!=7) {
         if (milliseconds()>=deadline) {native_error=NA_TIMEOUT;goto finished;}
-        assert_wait_timeout((event_t)&snapshot,THREAD_UNINT,100,kMillisecondScale);
+        assert_wait_timeout((event_t)&snapshot,THREAD_UNINT,100,NSEC_PER_MSEC);
         thread_block(THREAD_CONTINUE_NULL);
     }
     __atomic_store_n(&state,2,__ATOMIC_RELEASE);
