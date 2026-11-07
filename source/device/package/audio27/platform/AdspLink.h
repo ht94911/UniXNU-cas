@@ -20,6 +20,9 @@ typedef struct {
      * the pre-worker initializer. Pending retains the same setup operation;
      * an error is terminal and cannot cause PAS or SMMU replay. */
     int (*dma_setup)(void *);
+    /* Existing common IPCC owner and deferred I/O errors, serviced by the
+     * worker before advancing PAS/SMEM/GLINK. No second FIFO consumer. */
+    int (*poll_shared)(void *);
 } NaAdspOps;
 enum {NaAdspCold,NaAdspStopMain,NaAdspStopDtb,NaAdspDma,NaAdspSetup,NaAdspPower,
       NaAdspDtb,NaAdspMain,NaAdspWaitReady,NaAdspOnline,NaAdspFailed};

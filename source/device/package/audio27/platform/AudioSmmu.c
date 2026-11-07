@@ -2,9 +2,9 @@
 #include "AudioSmmu.h"
 #include <string.h>
 static int failure(NaSmmu *s,int r) {s->error=r;s->quarantine=1;return r;}
-int na_smmu_start(NaSmmu *s,const NaSmmuOwner *o,const NaRange *physical,const uint32_t *iova,uint32_t count,
+static int start_locked(NaSmmu *s,const NaSmmuOwner *o,const NaRange *physical,const uint32_t *iova,uint32_t count,
                   void *tables,uint64_t table_pa,uint32_t pages,const NaRange *reserved,uint32_t nreserved) {
-    if (!s || !o || !o->lease || !o->powered || !o->fault_handler_installed || !o->global_lease_held || !o->clean ||
+    if (!s || !o || !o->lease || !o->powered || !o->fault_handler_installed || !o->clean ||
         !physical || !iova || !tables || ((uintptr_t)tables&4095) || !pages || pages>64 || !count || count>3 ||
         nreserved>128 || (nreserved && !reserved)) return NA_ARGUMENT;
     memset(s,0,sizeof *s);s->owner=*o;
@@ -38,15 +38,25 @@ int na_smmu_start(NaSmmu *s,const NaSmmuOwner *o,const NaRange *physical,const u
     if (ArmSmmu4KAttachStreams(&o->io,&s->streams,stream,4,o->bank,&s->context,&s->stream_result)) return failure(s,NA_IO);
     s->started=1;return NA_OK;
 }
+int na_smmu_start(NaSmmu *s,const NaSmmuOwner *o,const NaRange *physical,const uint32_t *iova,uint32_t count,
+                  void *tables,uint64_t table_pa,uint32_t pages,const NaRange *reserved,uint32_t nreserved) {
+    if (!s || !o || !o->enter || !o->leave || !o->lease || s->started || s->quarantine) return NA_OWNERSHIP;
+    int r=o->enter(o->config_context,o->lease);if (r) return r;
+    r=start_locked(s,o,physical,iova,count,tables,table_pa,pages,reserved,nreserved);
+    o->leave(o->config_context);return r;
+}
 int na_smmu_observe(NaSmmu *s,int full) {
-    if (!s || !s->started || s->quarantine || !s->owner.global_lease_held) return NA_OWNERSHIP;
+    if (!s || !s->started || s->quarantine) return NA_OWNERSHIP;
+    int e=s->owner.enter(s->owner.config_context,s->owner.lease);if (e) return e;
     ArmSmmu4KStatus r=full ? ArmSmmu4KObserveStreams(&s->owner.io,&s->streams,&s->context,&s->stream_result):
         ArmSmmu4KObserveOwnedStreams(&s->owner.io,&s->streams,&s->context,&s->stream_result);
-    return r ? failure(s,NA_IO):NA_OK;
+    s->owner.leave(s->owner.config_context);return r ? failure(s,NA_IO):NA_OK;
 }
 int na_smmu_stop(NaSmmu *s,int quiet) {
-    if (!s || !quiet || !s->owner.global_lease_held || !s->started || s->quarantine) return NA_OWNERSHIP;
-    if (ArmSmmu4KFaultStreams(&s->owner.io,&s->streams,&s->stream_result) ||
-        ArmSmmu4KDisableOwnedContext(&s->owner.io,s->owner.bank,&s->context,10000,&s->program_result)) return failure(s,NA_IO);
+    if (!s || !quiet || !s->started || s->quarantine) return NA_OWNERSHIP;
+    int e=s->owner.enter(s->owner.config_context,s->owner.lease);if (e) return e;
+    int failed=ArmSmmu4KFaultStreams(&s->owner.io,&s->streams,&s->stream_result) ||
+        ArmSmmu4KDisableOwnedContext(&s->owner.io,s->owner.bank,&s->context,10000,&s->program_result);
+    s->owner.leave(s->owner.config_context);if (failed) return failure(s,NA_IO);
     s->started=0;return NA_OK; /* Caller still owns pool/lease; no implicit free. */
 }

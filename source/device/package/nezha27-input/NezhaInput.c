@@ -404,8 +404,10 @@ pt_gpi_cmd(uint32_t reg, uint32_t v, uint32_t ctx, uint32_t want)
 /* Reuse the proven17 GPI/QUP transport, but verify the firmware bank before
  * copying its routes. Geometry follows QcomUsbDmaDomain (ID1 pages/stride).
  * Never alter a context bank, UFS route, global translation or USB lease. */
+extern int sm8850_apps_config_lock(void);
+extern void sm8850_apps_config_unlock(void);
 static int
-pt_smmu_setup(void)
+pt_smmu_setup_locked(void)
 {
  static const uint16_t sid[] = {0x536, 0x523};
  uint32_t id1=pt_rd(pt_smmu,0x24),nsmr=pt_rd(pt_smmu,0x20)&255;
@@ -456,6 +458,14 @@ pt_smmu_setup(void)
  }
  printf("NEZHA TOUCH: verified firmware bank %u SCTLR %#x;GPI/QUP routes %u/%u only;USB bank untouched\n",bank,sctlr,slot[0],slot[1]);
  return 0;
+}
+
+static int
+pt_smmu_setup(void)
+{
+ if(sm8850_apps_config_lock())return EBUSY;
+ int r=pt_smmu_setup_locked();
+ sm8850_apps_config_unlock();return r;
 }
 
 static int

@@ -22,6 +22,7 @@ typedef struct {
     void (*doorbell)(void *,uint32_t signal);
     int (*sync)(void *,const NaOwnedBuffer *,uint32_t offset,uint32_t bytes,int for_device);
     uint64_t (*host_time)(void *);
+    int (*poll_shared)(void *);
 } NaAssemblyOps;
 typedef struct {
     /* Immutable, kernel-private plan from the selected package's existing

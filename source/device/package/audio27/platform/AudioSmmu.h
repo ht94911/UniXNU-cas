@@ -10,7 +10,9 @@ extern "C" {
 #endif
 typedef struct {
     ArmSmmu4KIo io;uint64_t lease;unsigned bank,asid,stream_slot[4];
-    uint32_t powered,fault_handler_installed,global_lease_held,output_bits;
+    uint32_t powered,fault_handler_installed,output_bits;
+    void *config_context;
+    int (*enter)(void *,uint64_t lease);void (*leave)(void *);
     void *sync_context;int (*clean)(void *,const void *cpu,uint64_t pa,uint64_t bytes);
 } NaSmmuOwner;
 typedef struct {
@@ -21,7 +23,8 @@ typedef struct {
 } NaSmmu;
 int na_smmu_start(NaSmmu *,const NaSmmuOwner *,const NaRange *physical,const uint32_t *iova,uint32_t count,
                   void *tables,uint64_t table_pa,uint32_t table_pages,const NaRange *reserved,uint32_t reserved_count);
-/* Owner holds its common configuration lease during every observation/change. */
+/* These operations acquire the actual shared configuration lock through the
+ * owner's callbacks. A stored boolean cannot prove a lock is held. */
 int na_smmu_observe(NaSmmu *,int full_scan);
 /* Requires actual PAS stop (or all masters otherwise proved quiescent), then
  * faults routes and disables only this context. A link loss is insufficient. */

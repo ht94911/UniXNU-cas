@@ -6,7 +6,7 @@ Uses existing compile_command, kernel_target and sheng HAL SDK/signing paths.
 No phone/firmware/ACDB input, no hardware start, no private-slot fallback ABI.
 """
 from pathlib import Path
-import hashlib,importlib.util,json,os,shlex,shutil,subprocess,sys,tempfile
+import hashlib,importlib.util,json,os,shlex,shutil,subprocess,sys,tempfile,tomllib
 from kernel_target import ARCH,IOS_VERSION,TRIPLE,check_object
 ROOT=Path(__file__).resolve().parents[1];SRC=ROOT/'kits/nezha/audio27';OUT=ROOT/'build/nezha27-audio'
 OUT.mkdir(parents=True,exist_ok=True)
@@ -28,16 +28,24 @@ records={False:json.loads((base/'iokit/DEVELOPMENT/IOPlatformExpert.cpo.json').r
 task_record=json.loads((base/'osfmk/DEVELOPMENT/startup.o.json').read_text().strip().rstrip(','))
 if 'MACH_KERNEL_PRIVATE' not in task_record['arguments']:
  raise SystemExit('selected osfmk record does not expose the real task layout')
-sources=[p for folder in ['core','platform','upstream','os'] for p in sorted((SRC/folder).glob('*')) if p.suffix in ['.c','.cpp']]+[SRC/'hal/AudioClock.c']
+physical_device=Path(os.environ['UNIXNU_DEVICE']).resolve()
+local_sources=tomllib.loads((physical_device/'local.toml').read_text())['source']
+soc_source=next(x for x in local_sources if x['name']=='sm8850' and x['kind']=='soc')
+soc=(physical_device/soc_source['local']).resolve()
+soc_lock=json.loads((SRC/'integration/shared-resources.json').read_text())
+for name,digest in soc_lock['files'].items():
+ if sha(soc/name)!=digest:raise SystemExit('selected SM8850 common owner changed: '+name)
+sources=[p for folder in ['core','platform','upstream','os'] for p in sorted((SRC/folder).glob('*')) if p.suffix in ['.c','.cpp']]+[SRC/'hal/AudioClock.c',soc/'src/Sm8850Resources.c',soc/'src/Sm8850ResourcesNative.cpp']
 objects=[];rows=[];errors=[]
 for source in sources:
- name=str(source.relative_to(SRC)).replace('/','_');obj=OUT/(name+'.o');rc=records[source.suffix=='.c']
- extra=['-I',str(ROOT/'.cache/xnu-work/osfmk'),'-I',str(SRC),'-I',str(smmu),'-I',str(ROOT/'drivers/QcomXnuUsbDebug/include'),'-Wno-unknown-warning-option']
+ relative=str(source.relative_to(SRC)) if source.is_relative_to(SRC) else 'soc/'+str(source.relative_to(soc))
+ name=relative.replace('/','_');obj=OUT/(name+'.o');rc=records[source.suffix=='.c']
+ extra=['-I',str(ROOT/'.cache/xnu-work/osfmk'),'-I',str(SRC),'-I',str(smmu),'-I',str(soc/'include'),'-I',str(ROOT/'drivers/QcomXnuUsbDebug/include'),'-Wno-unknown-warning-option']
  if source.name=='NezhaAudioTask.c':rc=task_record
  command=helper.compile_command(rc,source,obj,[],extra)
  (OUT/(name+'-command.json')).write_text(json.dumps(command,indent=2)+'\n')
  cp=subprocess.run(command,cwd=rc['directory'],capture_output=True,text=True);(OUT/(name+'.log')).write_text(cp.stdout+cp.stderr)
- row={'source':str(source.relative_to(SRC)),'source_sha256':sha(source),'returncode':cp.returncode,'kernel_recipe_source':rc['file']}
+ row={'source':relative,'source_sha256':sha(source),'returncode':cp.returncode,'kernel_recipe_source':rc['file']}
  if cp.returncode:errors.append(name)
  else:
   check_object(obj.read_bytes(),name);row['object_sha256']=sha(obj);deps={}

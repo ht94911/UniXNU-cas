@@ -9,6 +9,7 @@ static int failed(NaAssembly *a,int r) {a->error=r<0 ? r:NA_IO;return a->error;}
 static int smem_lock(void *v) {NaAssembly *a=v;return a->plan.ops.smem_lock(a->plan.ops.context);}
 static void smem_unlock(void *v) {NaAssembly *a=v;a->plan.ops.smem_unlock(a->plan.ops.context);}
 static void doorbell(void *v,uint32_t signal) {NaAssembly *a=v;a->plan.ops.doorbell(a->plan.ops.context,signal);}
+static int poll_shared(void *v) {NaAssembly *a=v;return a->plan.ops.poll_shared(a->plan.ops.context);}
 static int proxy(void *v,int on) {
     NaAssembly *a=v;int r=na_proxy_request(&a->proxy,on);
     return r ? r:na_proxy_poll(&a->proxy,a->driver.now_ms);
@@ -22,6 +23,7 @@ static int dma_setup(void *v) {
     int r=na_smmu_start(&a->smmu,&a->plan.smmu,a->dma_range,a->iova,a->dma_count,
         a->plan.tables.cpu,a->plan.tables.physical.base,(uint32_t)(a->plan.tables.physical.bytes/4096),
         a->reserved,a->reserved_count);
+    if (r==NA_BUSY && !a->smmu.quarantine) {a->dma_attempted=0;return r;}
     return r ? failed(a,r):NA_OK;
 }
 static int sync_dma(void *v,unsigned direction,uint32_t offset,uint32_t bytes,int for_device) {
@@ -44,7 +46,7 @@ void na_assembly_smp2p(NaAssembly *a) {
 }
 int na_assembly_init(NaAssembly *a,const NaAssemblyPlan *p,uint64_t now) {
     if (!a || !p || a->initialized || a->error || !p->adsp_lease || !p->smem ||
-        !p->ops.smem_lock || !p->ops.smem_unlock || !p->ops.doorbell || !p->ops.sync || !p->ops.host_time ||
+        !p->ops.smem_lock || !p->ops.smem_unlock || !p->ops.doorbell || !p->ops.sync || !p->ops.host_time || !p->ops.poll_shared ||
         !p->tuning || !p->calibration.valid || !p->ti_instance || !p->smmu.lease ||
         !owned(p->tables) || p->tables.physical.bytes>64*4096 ||
         p->reserved_count>126 || (p->reserved_count && !p->reserved)) return NA_ARGUMENT;
@@ -80,7 +82,7 @@ int na_assembly_init(NaAssembly *a,const NaAssemblyPlan *p,uint64_t now) {
     r=na_geni_board_init(&a->speaker_board,&p->board,&tas);if (r) return failed(a,r);
     r=na_tas_endpoint_init(&a->speaker,p->tuning,&p->tas,&tas);if (r) return failed(a,r);
     if (p->stream[1].graph) {r=na_mic_board_init(&a->mic_board,&p->board,1,0);if (r) return failed(a,r);}
-    NaAdspOps adsp={a,smem_lock,smem_unlock,doorbell,proxy,dma_setup};
+    NaAdspOps adsp={a,smem_lock,smem_unlock,doorbell,proxy,dma_setup,poll_shared};
     r=na_adsp_init(&a->adsp,p->smem,0x200000,&a->loader[0],&a->loader[1],&a->rx,&adsp);if (r) return failed(a,r);
     NaDriverStream stream[3]={0};
     for (unsigned i=0;i<3;++i) if (p->stream[i].graph) {

@@ -61,6 +61,11 @@ int na_adsp_poll(NaAdsp *a,uint64_t now) {
     if (a->stage==NaAdspFailed) return a->error;
     if (!a->deadline) a->deadline=now+30000;
     if (a->stage!=NaAdspOnline && now>=a->deadline) return failed(a,NA_TIMEOUT);
+    if (a->ops.poll_shared) {
+        int shared=a->ops.poll_shared(a->ops.context);
+        if (shared==NA_BUSY || shared==NA_PENDING) return NA_PENDING;
+        if (shared) return failed(a,shared);
+    }
     int r=0;
     switch (a->stage) {
     case NaAdspStopMain:
