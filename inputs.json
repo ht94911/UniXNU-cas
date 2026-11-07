@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "4f1998aac79dc2d6279be51453a76fb9c311295b",
+  "device_revision": "dfd53f2b8661016d7546e5335e05b440f8c9bac9",
   "soc_revision": "5a71f9eb5724ff58eddf49f7f5baecc9f4233a7c",
   "xcode": "26.6",
   "files": {
@@ -127,8 +127,8 @@
     "source/device/package/boot-progress/UmiUserspaceProbe.c": "ec20306bfc7359cf21c5a20102b459cf7f6a264a60dcb7ee2b00f2a9158d0f60",
     "source/device/package/boot-progress/UmiWaitTrace.h": "b8183c4e9defd5ec9c3ed231451cf89c204629d7285cb125de7e366f9b13858b",
     "source/device/package/boot-progress/upstream.json": "bbcd4cc639b104c9d4619076c8350cfb90483a92347dcd5e39443ba0f8fd8a13",
-    "source/device/package/cpu/NezhaCpu.c": "fffa9900a8eb76fdc7025c73f1fa30d804edba562bf98825bf9be40d9a027a84",
-    "source/device/package/cpu/NezhaCpu27Policy.h": "067e867583ab3c7a3be63f35ffc351f4984f7cd91f70928e0d5cc1419ba09b88",
+    "source/device/package/cpu/NezhaCpu.c": "2c43ba8e14c17a466b9c4dd5ce0c0d40ba81b31109281ddb6488349817838ecc",
+    "source/device/package/cpu/NezhaCpu27Policy.h": "14869e171aabc71ea536d26bc79877db1889a29a13c09115557a45b1b8629dc7",
     "source/device/package/gpu/NezhaAdreno840.cpp": "ad7e3949356b44bb13e975b250f2e1441f67a7f859861c0fe98ed472fff73852",
     "source/device/package/gpu/NezhaGpu.c": "bed87ac42af1d4492a27485bdd78c9042074dfbb8eea6c4e78d9fa33235577a6",
     "source/device/package/gpu/NezhaGpuCoherence.h": "74198253f4a72d6a4aaeece23b783737db31e38c12dd829577bda6119485556e",

@@ -50,6 +50,7 @@
 #include "NezhaCpu27Policy.h"
 extern kern_return_t processor_info(processor_t, processor_flavor_t, host_t *,
     processor_info_t, mach_msg_type_number_t *);
+extern kern_return_t thread_terminate(thread_t);
 extern int system_inshutdown;
 static uint32_t nz27_cpu_valid;
 #endif
@@ -259,15 +260,15 @@ cpu_scmi_probe(void)
 		printf("NEZHA CPU: SCMI perf version: error %d (%u words, status %d)\n", r, n, n ? (int)out[0] : 0);
 		return false;
 	}
-	const uint32_t version = out[1];
-	printf("NEZHA CPU: SCMI perf version 0x%x (status %d)\n", version, (int)out[0]);
+	const uint32_t perf_version = out[1];
+	printf("NEZHA CPU: SCMI perf version 0x%x (status %d)\n", perf_version, (int)out[0]);
 	r = scmi_call(SCMI_PROTO_PERF, 0x1, NULL, 0, out, 32, &n);
 	const uint32_t domains = (!r && n >= 2 && out[0] == 0) ? (out[1] & 0xffff) : 0;
 	printf("NEZHA CPU: SCMI perf attributes: error %d attributes 0x%x -> %u domains\n", r, n >= 2 ? out[1] : 0, domains);
 	for (uint32_t d = 0; d < domains && d < 4; d++) {
 		char name[17] = "";
 		uint32_t khz[NZ_LEVELS_MAX], got_levels = 0;
-		bool khz_ok = (version >> 16) >= 4, levels_complete=false;
+		bool khz_ok = (perf_version >> 16) >= 4, levels_complete=false;
 		in[0] = d;
 		r = scmi_call(SCMI_PROTO_PERF, 0x3, in, 1, out, 32, &n);
 		if (!r && n >= 9 && out[0] == 0) {
@@ -282,7 +283,7 @@ cpu_scmi_probe(void)
 #endif
 		printf("NEZHA CPU: domain %u '%s': error %d flags 0x%x rate limit %u us sustained %u kHz level %u\n",
 		    d, name, r, n > 1 ? out[1] : 0, n > 2 ? out[2] : 0, n > 3 ? out[3] : 0, n > 4 ? out[4] : 0);
-		const uint32_t entry = (version >> 16) >= 4 ? 5 : 3;
+		const uint32_t entry = (perf_version >> 16) >= 4 ? 5 : 3;
 		uint32_t index = 0;
 		for (int guard = 0; guard < 64; guard++) {
 			in[0] = d;
@@ -629,13 +630,13 @@ cpu_t_log(void)
 	char b[320];
 	int n = 0;
 	static const char *const tag[] = { "L", "B", "G", "D" };
-	n += snprintf(b + n, sizeof(b) - n, "NEZHA TSENS: now/peak");
+	n += snprintf(b + n, sizeof(b) - (size_t)n, "NEZHA TSENS: now/peak");
 	for (uint32_t i = 0; i < T_NSENS && n < (int)sizeof(b) - 16; i++) {
 		if (i == 0 || i == 12 || i == 16 || i == 27) {
-			n += snprintf(b + n, sizeof(b) - n, " %s", tag[i == 0 ? 0 : i == 12 ? 1 : i == 16 ? 2 : 3]);
+			n += snprintf(b + n, sizeof(b) - (size_t)n, " %s", tag[i == 0 ? 0 : i == 12 ? 1 : i == 16 ? 2 : 3]);
 		}
 		const int32_t t = cpu_tsens_raw(i);
-		n += snprintf(b + n, sizeof(b) - n, " %d/%d", t == INT32_MIN ? -1 : t / 10, cpu_t_peak_set ? cpu_t_peak[i] / 10 : -1);
+		n += snprintf(b + n, sizeof(b) - (size_t)n, " %d/%d", t == INT32_MIN ? -1 : t / 10, cpu_t_peak_set ? cpu_t_peak[i] / 10 : -1);
 	}
 	printf("%s\n", b);
 	cpu_t_peak_set = false;

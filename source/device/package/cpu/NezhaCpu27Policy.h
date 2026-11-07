@@ -8,10 +8,10 @@
 static inline bool nz27_cpu_load_delta(const uint32_t now[4],const uint32_t old[4],unsigned idle,uint32_t *busy)
 {
     if(!now || !old || !busy || idle>=4)return false;
-    uint64_t total=0;uint32_t delta[4];
-    for(unsigned i=0;i<4;++i){delta[i]=now[i]-old[i];total+=delta[i];}
-    if(!total)return false;
-    *busy=(uint32_t)((total-delta[idle])*1000/total);return true;
+    uint64_t ticks_total=0;uint32_t delta[4];
+    for(unsigned i=0;i<4;++i){delta[i]=now[i]-old[i];ticks_total+=delta[i];}
+    if(!ticks_total)return false;
+    *busy=(uint32_t)((ticks_total-delta[idle])*1000/ticks_total);return true;
 }
 static inline uint32_t nz27_cpu_ceiling(const uint32_t *khz,uint32_t count,uint32_t ceiling)
 {

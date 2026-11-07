@@ -1,7 +1,7 @@
-name: nezha iPhone27 CPU and GPU pipeline - native031
+name: nezha iPhone27 CPU and GPU pipeline - native032
 on:
   push:
-    branches: [codex/ios27-gpu-persist014-031-20261107]
+    branches: [codex/ios27-gpu-persist014-032-20261107]
   workflow_dispatch:
 permissions:
   contents: read
