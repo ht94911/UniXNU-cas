@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "0e58756af652fe8e7a71b91088a177eac2c5b71c",
+  "device_revision": "fd8f9c0e71dcbd2b36eb5e60a5ae2051983ad1e0",
   "soc_revision": "5a71f9eb5724ff58eddf49f7f5baecc9f4233a7c",
   "xcode": "26.6",
   "files": {
@@ -129,7 +129,7 @@
     "source/device/package/boot-progress/upstream.json": "bbcd4cc639b104c9d4619076c8350cfb90483a92347dcd5e39443ba0f8fd8a13",
     "source/device/package/cpu/NezhaCpu.c": "2c43ba8e14c17a466b9c4dd5ce0c0d40ba81b31109281ddb6488349817838ecc",
     "source/device/package/cpu/NezhaCpu27Policy.h": "14869e171aabc71ea536d26bc79877db1889a29a13c09115557a45b1b8629dc7",
-    "source/device/package/gpu/NezhaAdreno840.cpp": "ad7e3949356b44bb13e975b250f2e1441f67a7f859861c0fe98ed472fff73852",
+    "source/device/package/gpu/NezhaAdreno840.cpp": "7a70a2e8c8118fbf1de6519ab74f93745b299cd47a426666995f9841f6036908",
     "source/device/package/gpu/NezhaGpu.c": "bed87ac42af1d4492a27485bdd78c9042074dfbb8eea6c4e78d9fa33235577a6",
     "source/device/package/gpu/NezhaGpuCoherence.h": "74198253f4a72d6a4aaeece23b783737db31e38c12dd829577bda6119485556e",
     "source/device/package/gpu/NezhaGpuFirmware.cpp": "6318b3d5cbd478f185dd0669a597440f2a3878d2991fd611fe6741a5d58b3909",
@@ -167,7 +167,7 @@
     "source/device/patches/xnu-12377/zzzzz-nezha-owner-cache-console.patch": "afe3b8c68dc65400c8ffcf7b33eac9c5982322ae32c61a6a5ebb2a2a96e2c87f",
     "source/device/patches/xnu-12377/zzzzz-nezha-owner-data-console.patch": "cb29cedb0b5f7d388fcdff028140c6973628d65ea108d7796e23dcb956542828",
     "source/device/patches/xnu-12377/zzzzz-nezha-owner-data-ready.patch": "306414945401c128472d3b0acddd03c88bec57ec47d6988660173d0b432c3e4b",
-    "source/device/patches/xnu-12377/zzzzzz-nezha-adreno840-start.patch": "2a0c415f5b7da1a0cfa65c9307bee509482f94f244a691c839fade077b3c83b9",
+    "source/device/patches/xnu-12377/zzzzzz-nezha-adreno840-start.patch": "d32bb0d5e678e5773786dcce90467e0258d844550b418b438e1548fb32392f79",
     "source/device/patches/xnu-12377/zzzzzz-nezha-input-chain-trace.patch": "c4d05419e7ec3af0de619754bdb6c2deb69b74d714c2219e509360ebfe1b947e",
     "source/device/patches/xnu-12377/zzzzzz-nezha-kernel-class-lock-order.patch": "cd90c61d6838f4e6a7248da81b6180f14db03d00f2f7a64f4bbe4034c0aa8dcb",
     "source/device/patches/xnu-12377/zzzzzz-nezha-sigp-startup-order.patch": "18275910b909d187e459c68f5d937cc09bc01923180141dc155aa7f4ff14aaf9",
@@ -219,7 +219,7 @@
     "source/device/package/audio27/platform/AudioSmmu.h": "ced53126b921c082fc9d16ca20c29ace57d9d6b431dae167e713f212d114b052",
     "source/device/package/audio27/upstream/ShengGpr.c": "c4f498f07e2cb601b593e64a8d32474a21d6a87375618e1a67b99d52c5d3160e",
     "source/device/package/audio27/platform/SoundWire.h": "348979ac1e552e1c3a0027e09f8500927e8bf7ccbb496276d2c9d3ef19322224",
-    ".github/workflows/nezha-ios27-native.yml": "d188d9dba762af9730a5d8856c2bee198d26003243338123755a08bb6f6fe6fd",
+    ".github/workflows/nezha-ios27-native.yml": "1e65201765fd3ceb2a33e429d19e862a6a2f683e1c407cedd0df608d232dcf71",
     "source/device/package/audio27/upstream/ShengGpr.h": "a274dded1f4d1e2709b9f966759bcb1f57d12747ee0f57743dea1fa97d95d23e",
     "source/device/package/audio27/os/NezhaAudioNative.h": "69525b76e08af98947a5e3ae8e55389059053b24e4aaff9cfb158aa50c35ad7c",
     "source/device/package/audio27/upstream/ShengAudioReach.h": "b135177a5feb3e24e0d8a6aabb301600e2c37078b970a09ada6e8eb7bb6a5b98",
@@ -245,7 +245,7 @@
     "source/device/package/audio27/upstream/ShengAudioReach.c": "9b198e58272d325bad48e68633f59c8cc5bdc97033d2a485abb6691a402b6a8d",
     "source/device/package/audio27/platform/Tas25xxTables.h": "194b22f95f786a746e284868d4fcd292da52cfd52d8e3987f2726082f4712b02",
     "source/device/package/audio27/platform/GeniTasBus.h": "a2cba9aa9fbfec01112142b4108b795a5593417602b9d297003b3dc7e64cd374",
-    "source/device/package/audio27/os/NezhaAudioNative.cpp": "d0c1832dd8af602bb86f5605a6cf995c1e0f0f07ea6828ca9df50859a27348ca",
+    "source/device/package/audio27/os/NezhaAudioNative.cpp": "2d3bbcbae5a5f1dfd5f2bd76df3155ab2bc49cae5185e7516178f941c8a421a1",
     "source/device/package/audio27/upstream/LICENSE.PandoraAcdb": "f984c0a808afdeb2e050ceb47bc24d764156daa29b5dfde10fb9afec2f83f351",
     "source/device/package/audio27/upstream/QcomSmem.c": "4e9eb0ee22458dad30e1fcb7edb74a9d762222aff0623a6d5b85fb4a6e08bd03",
     "source/device/package/audio27/platform/Tas25xxEndpoint.c": "294b685728b8eaba8310dd6c778ff979b69f20c6b6ea5c4a320042273a93046f",
@@ -354,7 +354,7 @@
   "audio": {
     "base": "GPU015",
     "base_device_revision": "154f8a08e6800734408c99f909c28ceeb94caa3c",
-    "source_revision": "0e58756af652fe8e7a71b91088a177eac2c5b71c",
+    "source_revision": "fd8f9c0e71dcbd2b36eb5e60a5ae2051983ad1e0",
     "source_only_revision": "abde8b4b694afb0f4eb20e838ebe4f316e49da12",
     "hardware_enabled": false,
     "resource_census_enabled": true,

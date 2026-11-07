@@ -94,9 +94,11 @@ extern "C" int na_native_unmap(NaNativeWindow *w,int quiet) {
 }
 extern "C" int na_native_allocate(NaNativeMemory *m,uint32_t bytes) {
     if (!m || m->descriptor || !bytes || bytes>0x1000000 || (bytes&4095)) return NA_ARGUMENT;
-    auto *b=IOBufferMemoryDescriptor::inTaskWithOptions(kernel_task,IOOptionBits(kIOMemoryPhysicallyContiguous)|IOOptionBits(kIODirectionInOut),bytes,4096);
+    // These bytes feed our explicitly owned SMMU tables/PAS, never a second
+    // system mapper. Request and retrieve the actual physical allocation.
+    auto *b=IOBufferMemoryDescriptor::inTaskWithOptions(kernel_task,IOOptionBits(kIOMemoryPhysicallyContiguous)|IOOptionBits(kIODirectionInOut)|IOOptionBits(kIOMemoryMapperNone),bytes,4096);
     if (!b) return NA_IO;
-    IOByteCount length=0;uint64_t pa=b->getPhysicalSegment(0,&length);
+    IOByteCount length=0;uint64_t pa=b->getPhysicalSegment(0,&length,kIOMemoryMapperNone);
     auto *va=static_cast<uint8_t *>(b->getBytesNoCopy());
     if (!pa || (pa&4095) || length<bytes || !va || (reinterpret_cast<uintptr_t>(va)&4095)) {b->release();return NA_IO;}
     bzero(va,bytes);m->descriptor=b;m->va=va;m->physical=pa;m->bytes=bytes;return NA_OK;
