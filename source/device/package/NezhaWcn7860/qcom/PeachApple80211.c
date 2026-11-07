@@ -91,6 +91,59 @@ static LCK_GRP_DECLARE(apple_group, "nezha-apple80211");
 static LCK_MTX_DECLARE(apple_lock, &apple_group);
 /* Iterator epoch changes on a new scan or a completed enumeration. */
 static unsigned result_next, result_generation;
+static PeachAppleObservation apple_observation;
+/* FNV-1a tags let a local reader compare broadcast network identities without
+ * exporting names, BSSIDs, caller buffers, keys or passphrases. */
+static uint64_t identity_tag(const uint8_t *p, size_t bytes)
+{
+    uint64_t value = UINT64_C(14695981039346656037);
+    while (bytes--) { value ^= *p++; value *= UINT64_C(1099511628211); }
+    return value;
+}
+static int observe_reply(const AppleRequest *r, const PeachNetInfo *info, int result)
+{
+    unsigned index;
+    if (r->type == 1) index = 0;
+    else if (r->type == 9) index = 1;
+    else if (r->type == 103) index = 2;
+    else return result;
+    PeachAppleQueryObservation q = { .ticks = mach_absolute_time(), .type = r->type,
+        .pid = proc_pid(current_proc()), .result = result, .bytes = r->length, .state = info->state };
+    if (!result && info->state == PeachNetOnline && info->current.ssid_bytes <= 32) {
+        q.ssid_bytes = info->current.ssid_bytes;
+        q.ssid_tag = identity_tag(info->current.ssid, q.ssid_bytes);
+        q.bssid_tag = identity_tag(info->current.bssid, sizeof(info->current.bssid));
+    }
+    lck_mtx_lock(&apple_lock);
+    q.sequence = ++apple_observation.query_sequence;
+    apple_observation.query[index] = q;
+    lck_mtx_unlock(&apple_lock);
+    return result;
+}
+static void observe_unsupported_set(const AppleRequest *r)
+{
+    uint64_t ticks = mach_absolute_time();
+    int pid = proc_pid(current_proc());
+    lck_mtx_lock(&apple_lock);
+    unsigned index = 0;
+    while (index < 4 && apple_observation.unsupported[index].calls &&
+           apple_observation.unsupported[index].type != r->type) index++;
+    if (index == 4) {
+        index = 0;
+        for (unsigned i = 1; i < 4; i++)
+            if (apple_observation.unsupported[i].sequence < apple_observation.unsupported[index].sequence) index = i;
+        apple_observation.unsupported_evictions++;
+    }
+    PeachAppleUnsupportedObservation *u = &apple_observation.unsupported[index];
+    if (!u->calls || u->type != r->type) memset(u, 0, sizeof(*u));
+    u->sequence = ++apple_observation.set_sequence; u->calls++;
+    u->type = r->type; u->pid = pid; u->bytes = r->length; u->ticks = ticks;
+    lck_mtx_unlock(&apple_lock);
+}
+void peach_apple80211_observation(PeachAppleObservation *out)
+{
+    lck_mtx_lock(&apple_lock); *out = apple_observation; lck_mtx_unlock(&apple_lock);
+}
 static int trace_slot(unsigned *count, unsigned limit)
 {
     unsigned n = __atomic_load_n(count, __ATOMIC_RELAXED);
@@ -239,14 +292,14 @@ static int get(AppleRequest *r)
     }
     default: break;
     }
-    if (info.state != PeachNetOnline) return ENXIO;
+    if (info.state != PeachNetOnline) return observe_reply(r, &info, ENXIO);
     switch (r->type) {
     case 1: {
         int err = give(r, info.current.ssid, info.current.ssid_bytes);
         if (!err) r->length = info.current.ssid_bytes;
-        return err;
+        return observe_reply(r, &info, err);
     }
-    case 9: return give(r, info.current.bssid, 6);
+    case 9: return observe_reply(r, &info, give(r, info.current.bssid, 6));
     case 4: {
         struct { uint32_t version; AppleChannel channel; } a = {1, bss_channel(info.current.frequency)};
         return give(r, &a, sizeof(a));
@@ -261,7 +314,7 @@ static int get(AppleRequest *r)
         uint32_t auth[4] = {1, 1, info.security == PeachStationWpa2Psk ? 0x10u : 0, 0};
         return give(r, auth, r->length == 12 ? 12 : sizeof(auth));
     }
-    case 103: return network(r, &info.current);
+    case 103: return observe_reply(r, &info, network(r, &info.current));
     default: return EOPNOTSUPP;
     }
 }
@@ -369,6 +422,7 @@ int peach_apple80211_ioctl(u_long command, void *data)
             }
         }
         if (err == EOPNOTSUPP) {
+            observe_unsupported_set(r);
             static int32_t seen[16];
             static unsigned count;
             unsigned report = 0;

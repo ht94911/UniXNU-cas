@@ -373,3 +373,18 @@ limits = ["Server-side no-reply cause remains unresolved", "Cross-device sharing
 completion = ["Original unavailable-service error completes promptly on hardware", "Password prompt opens promptly and manual Wi-Fi authentication/system IP still work"]
 next_action = ["Compile Native021 and retain016 as the unchanged hardware reference;wait for the applicable phone handoff"]
 evidence = [{kind = "source", reference = "README.md", result = "Actual wait stack and original client failure semantics identified;candidate hardware pending"}]
+
+
+[[area]]
+id = "ios27-wifi-current-network018"
+status = "implemented"
+components = ["QcomXnuUsbDebug"]
+paths = ["package/NezhaWcn7860/qcom/PeachApple80211.c", "package/NezhaWcn7860/qcom/PeachApple80211.h", "package/NezhaWcn7860/NezhaWifiDiagnostic.c", "tools/test-wifi27-ioctl.py", "tools/test-wifi27-diagnostic.py"]
+inputs = ["017 actual screenshot: canceled unjoined network is checked while the joined network is listed as other", "Original24A446 cancel callback requests currentNetwork refresh; currentScanResult uses the original query57 and ioctl103", "Original32-byte SSID,6-byte BSSID and2280-byte current-BSS consumer formats checked"]
+configuration = ["Preserve017 Sharing isolation,complete GPU015 dependencies,997-byte arguments and4GiB RAM Data", "Append only passive software observations to existing provider6;no new control verb", "Three exact GET source snapshots and four recent unsupported SET types;explicit sequences and eviction counts"]
+procedure = ["Exercise real endpoint replies and concurrent copyout state changes without new association", "Check worst-width provider JSON under2048 bytes and failed-output bounds", "Build a new native candidate,then compare before/select/cancel query identities and actual connection"]
+findings = ["017 password prompts were twice confirmed within5 seconds and manual association/system IP succeeded", "Cancellation display bug reproduced,with no additional supported join/leave in the observed interval", "Unsupported SET console history was exhausted;missing lines cannot exclude a call", "Existing current-network query code uses a copy of net state;new observations bind to that exact reply copy"]
+limits = ["The cancellation cause and fix remain unproved;this increment closes a specific observation gap", "Tags are correlation identifiers,not a cryptographic identity guarantee", "Evicted or absent observations do not exclude earlier calls;no raw credentials or caller payload exported"]
+completion = ["Actual queried current identity matches the real associated network", "Canceling an unsubmitted password page restores the correct checkmark without stale loading", "Manual association/IP and short protected return remain valid"]
+next_action = ["Compile the distinct018 observer and resolve the measured reply-versus-cache split;do not mark the bug solved by telemetry alone"]
+evidence = [{kind = "source", reference = "tools/test-wifi27-ioctl.py", result = "Actual producer reply-copy and late-query observations tested;hardware effect pending"}]

@@ -3,6 +3,7 @@
  * MMIO commands or restart verb. Frozen RDDM is retained until XNU exits. */
 #include "NezhaWifiPlatform.h"
 #include "NezhaWifiRegistry.h"
+#include "qcom/PeachApple80211.h"
 #include <sys/systm.h>
 #include <sys/errno.h>
 #include <kern/kalloc.h>
@@ -106,7 +107,38 @@ static int snapshot(void *cookie, char *out, size_t capacity, size_t *bytes, uns
         s.registry_name.attempts, s.registry_name.successes, s.registry_name.pid, s.registry_name.result,
         (unsigned long long)s.registry_name.ticks, __atomic_load_n(&registry_dropped, __ATOMIC_RELAXED));
     if (n < 0 || (size_t)n >= capacity) { *bytes = 0; *truncated = 1; return QUD_FAILED; }
-    *bytes = (size_t)n; *truncated = 0; return QUD_OK;
+    /* Keep the original provider and operations. Append a bounded software
+     * view of actual ioctl replies; no phone-side control or memory reader. */
+    PeachAppleObservation a;
+    peach_apple80211_observation(&a);
+    size_t used = (size_t)n - 1; /* replace only the root closing brace */
+#define APPEND(...) do { \
+    int wrote = snprintf(out + used, capacity - used, __VA_ARGS__); \
+    if (wrote < 0 || (size_t)wrote >= capacity - used) { *bytes = 0; *truncated = 1; return QUD_FAILED; } \
+    used += (size_t)wrote; \
+} while (0)
+    APPEND(",\"apple_io\":{\"v\":1,\"qseq\":%llu,\"useq\":%llu,\"evicted\":%u,\"queries\":[",
+        (unsigned long long)a.query_sequence, (unsigned long long)a.set_sequence, a.unsupported_evictions);
+    /* [type,seq,ticks,pid,result,state,bytes,SSID-length,SSID-tag,BSSID-tag] */
+    for (unsigned i = 0; i < 3; i++) {
+        const PeachAppleQueryObservation *q = &a.query[i];
+        APPEND("%s[%d,%llu,%llu,%d,%d,%u,%u,%u,\"%016llx\",\"%016llx\"]", i ? "," : "",
+            q->type, (unsigned long long)q->sequence, (unsigned long long)q->ticks,
+            q->pid, q->result, q->state, q->bytes, q->ssid_bytes,
+            (unsigned long long)q->ssid_tag, (unsigned long long)q->bssid_tag);
+    }
+    APPEND("],\"unsupported\":[");
+    /* Four most-recent distinct types: [type,seq,ticks,pid,bytes,calls].
+     * Evictions are explicit; an absent row never excludes an earlier call. */
+    for (unsigned i = 0; i < 4; i++) {
+        const PeachAppleUnsupportedObservation *u = &a.unsupported[i];
+        APPEND("%s[%d,%llu,%llu,%d,%u,%llu]", i ? "," : "", u->type,
+            (unsigned long long)u->sequence, (unsigned long long)u->ticks,
+            u->pid, u->bytes, (unsigned long long)u->calls);
+    }
+    APPEND("]}}");
+#undef APPEND
+    *bytes = used; *truncated = 0; return QUD_OK;
 }
 static int read_dump(void *cookie, const struct qud_diag_request *r, char *out,
                      size_t capacity, size_t *bytes, unsigned *truncated)
