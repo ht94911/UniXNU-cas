@@ -1,12 +1,14 @@
 --- a/bsd/kern/bsd_init.c
 +++ b/bsd/kern/bsd_init.c
-@@ -1480,6 +1480,9 @@
+@@ -1480,6 +1480,11 @@
  	}
  
  	kern_return_t result = IOKitBSDInit();
 +	/* A840 is optional at runtime and starts only after the real IOBSD resource. */
 +	extern void nezha_adreno840_start(void);
 +	if (result == KERN_SUCCESS) nezha_adreno840_start();
++	extern void nezha_audio27_start(void);
++	if (result == KERN_SUCCESS) nezha_audio27_start();
  #if (DEVELOPMENT || DEBUG) && defined(XNU_NATIVE_LEGACY_DISPLAY) && XNU_NATIVE_LEGACY_DISPLAY
  	/* The original IOSurface personality requires the genuine IOBSD resource.
  	 * The default-off framebuffer instrument may start only after publication.

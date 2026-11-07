@@ -4,7 +4,7 @@
 #include "NezhaAudioPlatform.h"
 /* Shared mature component already present in the reference device package.
  * Link its existing objects once. Do not compile a second private copy. */
-#include "../../gpu/adreno/ArmSmmu4KStreams.h"
+#include <ArmSmmu4KStreams.h>
 #ifdef __cplusplus
 extern "C" {
 #endif

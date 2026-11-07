@@ -11,6 +11,7 @@
 #include "../hal/AudioClock.h"
 extern "C" vm_offset_t phystokv(uint64_t pa);
 extern "C" uint64_t pmap_find_pa(pmap_t pmap,uint64_t va);
+extern "C" int nezha_audio_current_slide(uint32_t *);
 namespace {
 constexpr uint64_t imageBase=0x229758000ULL;
 constexpr uint64_t symbolAddress=0x229caef04ULL;
@@ -29,13 +30,13 @@ struct Pin {
 };
 }
 extern "C" IOReturn nezha_audio_fix_host_clock(task_t task) {
-    if (!task || task!=current_task() || !task->shared_region) return kIOReturnNotPermitted;
+    uint32_t slide=0,confirmed=0;
+    if (!task || task!=current_task() || !nezha_audio_current_slide(&slide)) return kIOReturnNotPermitted;
     mach_timebase_info_data_t tb;clock_timebase_info(&tb);
     if (!tb.numer || !tb.denom) return kIOReturnUnsupported;
     uint64_t hz=1000000000ULL*tb.denom/tb.numer;
     if (hz!=19200000 && hz!=24000000) return kIOReturnUnsupported;
     uint64_t expectedBits=hz==24000000 ? appleClock:0x41724f8000000000ULL;
-    uint32_t slide=__atomic_load_n(&task->task_shared_region_slide,__ATOMIC_ACQUIRE);
     uint64_t base=imageBase+slide,symbol=symbolAddress+slide,literal=literalAddress+slide;
     if ((slide&4095) || (literal&7)) return kIOReturnUnsupported;
     Pin headerPin,codePin,literalPin;
@@ -58,7 +59,7 @@ extern "C" IOReturn nezha_audio_fix_host_clock(task_t task) {
         }
         at+=command.cmdsize;
     }
-    if (!found || at!=sizeof header+header.sizeofcmds || slide!=__atomic_load_n(&task->task_shared_region_slide,__ATOMIC_ACQUIRE)) return kIOReturnUnsupported;
+    if (!found || at!=sizeof header+header.sizeofcmds || !nezha_audio_current_slide(&confirmed) || slide!=confirmed) return kIOReturnUnsupported;
     uint64_t seen=0;
     if (copyin(literal,&seen,8)) return kIOReturnNotReadable;
     if (seen==expectedBits) return kIOReturnSuccess; /* already fixed; never scale twice */

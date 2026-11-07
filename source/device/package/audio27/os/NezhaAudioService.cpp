@@ -2,6 +2,7 @@
 // Derived from sheng's registered service/user-client structure. ABI2 keeps all
 // DMA, PRM and endpoint state private and enforces one mapped-ring owner.
 #include <IOKit/IOService.h>
+#include <IOKit/IOPlatformExpert.h>
 #include <IOKit/IOUserClient.h>
 #include <IOKit/IOBufferMemoryDescriptor.h>
 #include <IOKit/IOLib.h>
@@ -22,7 +23,7 @@ IOLock *ownerGate;
 int allocateMaps(IOBufferMemoryDescriptor **target,bool capture) {
     const vm_size_t sizes[3]={4096,NA_AUDIO_RING_BYTES,NA_AUDIO_RING_BYTES};
     for (unsigned i=0;i<(capture ? 3u:2u);++i) {
-        target[i]=IOBufferMemoryDescriptor::inTaskWithOptions(kernel_task,kIOMemoryKernelUserShared|kIODirectionInOut,sizes[i],4096);
+        target[i]=IOBufferMemoryDescriptor::inTaskWithOptions(kernel_task,IOOptionBits(kIOMemoryKernelUserShared)|IOOptionBits(kIODirectionInOut),sizes[i],4096);
         if (!target[i] || !target[i]->getBytesNoCopy()) {
             for (unsigned j=0;j<3;++j) if (target[j]) {target[j]->release();target[j]=nullptr;}
             return NA_IO;

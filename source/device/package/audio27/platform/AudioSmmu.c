@@ -32,7 +32,7 @@ int na_smmu_start(NaSmmu *s,const NaSmmuOwner *o,const NaRange *physical,const u
     if (ArmSmmu4KBuild(&s->tables_config,range,count,tables,pages,&s->tables_result)) return failure(s,NA_WIRE);
     if (o->clean(o->sync_context,tables,table_pa,s->tables_result.table_pages*4096)) return failure(s,NA_IO);
     s->context=(ArmSmmu4KContextConfig){.lower=&s->tables_config,.lower_tables=&s->tables_result,
-        .asid=o->asid,.coherent_walk=1,.stall_on_fault=0,.continue_after_fault=0};
+        .asid=o->asid,.coherent_walk=1,.stall_on_fault=0,.continue_after_fault=0,.ttbr0_switched=0};
     if (ArmSmmu4KProgramDisabledContext(&o->io,o->bank,&s->context,10000,&s->program_result)) return failure(s,NA_IO);
     s->context.id0=s->program_result.id0;s->context.id2=s->program_result.id2;
     if (ArmSmmu4KAttachStreams(&o->io,&s->streams,stream,4,o->bank,&s->context,&s->stream_result)) return failure(s,NA_IO);

@@ -16,13 +16,19 @@ def load(path):
  s=importlib.util.spec_from_file_location('audio_compile_helper',path);m=importlib.util.module_from_spec(s);s.loader.exec_module(m);return m
 if ARCH!='arm64e' or IOS_VERSION.split('.')[0]!='27':raise SystemExit('audio27 requires the selected arm64e/iOS27 native build')
 helper=load(ROOT/'scripts/build-sheng-source-drivers.py')
+smmu=ROOT/'kits/ArmSmmu4K'
+shared=json.loads((SRC/'integration/shared-component.json').read_text())
+for name,digest in shared['files'].items():
+ if sha(smmu/name)!=digest:raise SystemExit('selected GPU015 ArmSmmu4K identity differs: '+name)
 base=ROOT/'build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837'
 records={False:json.loads((base/'iokit/DEVELOPMENT/IOPlatformExpert.cpo.json').read_text().strip().rstrip(',')),True:json.loads((base/'bsd/DEVELOPMENT/bsd_init.o.json').read_text().strip().rstrip(','))}
 sources=[p for folder in ['core','platform','upstream','os'] for p in sorted((SRC/folder).glob('*')) if p.suffix in ['.c','.cpp']]+[SRC/'hal/AudioClock.c']
 objects=[];rows=[];errors=[]
 for source in sources:
  name=str(source.relative_to(SRC)).replace('/','_');obj=OUT/(name+'.o');rc=records[source.suffix=='.c']
- command=helper.compile_command(rc,source,obj,[],['-I',str(ROOT/'.cache/xnu-work/osfmk'),'-I',str(SRC),'-Wno-unknown-warning-option'])
+ extra=['-I',str(ROOT/'.cache/xnu-work/osfmk'),'-I',str(SRC),'-I',str(smmu),'-I',str(ROOT/'drivers/QcomXnuUsbDebug/include'),'-Wno-unknown-warning-option']
+ if source.name=='NezhaAudioTask.c':extra+=['-DMACH_KERNEL_PRIVATE=1']
+ command=helper.compile_command(rc,source,obj,[],extra)
  (OUT/(name+'-command.json')).write_text(json.dumps(command,indent=2)+'\n')
  cp=subprocess.run(command,cwd=rc['directory'],capture_output=True,text=True);(OUT/(name+'.log')).write_text(cp.stdout+cp.stderr)
  row={'source':str(source.relative_to(SRC)),'source_sha256':sha(source),'returncode':cp.returncode}
@@ -52,7 +58,7 @@ try:
    cp=subprocess.run(['codesign','--display','--verbose=4',bundle],capture_output=True,text=True,check=True);(OUT/'HAL-signature.txt').write_text(cp.stderr)
    hal.update(status='compiled-signed',sha256=sha(exe))
 except Exception as e:hal={'error':str(e)};errors.append('HAL-exception')
-report={'objects':rows,'HAL':hal,'errors':errors,'native_sources':len(sources),'native_framework_abi_only':True,'hardware_started':False,'private_firmware_uploaded':False}
+report={'objects':rows,'HAL':hal,'errors':errors,'native_sources':len(sources),'native_framework_abi_only':True,'hardware_started':False,'private_firmware_uploaded':False,'shared_component':shared}
 (OUT/'build-report.json').write_text(json.dumps(report,indent=2)+'\n')
 if errors:raise SystemExit('audio source/API qualification failed: '+','.join(errors))
 llvm=Path(run(['brew','--prefix','llvm'],text=True).strip())/'bin'

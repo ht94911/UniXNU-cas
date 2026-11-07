@@ -1,0 +1,24 @@
+{
+  "name": "ArmSmmu4K",
+  "revision": "1811b6d1a398ce0cab4e6143b610610f6ea59067",
+  "framework_tree": "87bb1c5c70a736b7e2ac2b1bdada1cf8a80c3beb",
+  "runtime_library": "GPU015 Adreno840 archive; link once",
+  "files": {
+    "ArmSmmu4K.c": "0adb19b483e56e723014ed6cfe2c29f9d9735ae2770f62cf0057b22937dbd157",
+    "ArmSmmu4K.h": "e25063b9134afc7eb79e7c030bc2858608cf0ade5da714d5dfd600fee5007e8e",
+    "ArmSmmu4KAudit.c": "594739cebc43926b1cb0a0e965867bcf1edfb90fab9c51465b65fa47be3755c1",
+    "ArmSmmu4KAudit.h": "1f313acd46db3dfecc115b8c885c5c43f7d23f73690a6157f900dfc77b2c9f6a",
+    "ArmSmmu4KContext.c": "fb993f53ef899b9969a71311b61b5dbe9446c515d7a6e6ad7d4840796eb1b6a3",
+    "ArmSmmu4KContext.h": "34070b4739dd6c5b59159b9c2ed66e966ff659994db66b8677655273a1f02647",
+    "ArmSmmu4KLive.c": "de3d7a55c92f825dfa7fe512f84fc146facabcee26af5eb4fdd85898ea1daafa",
+    "ArmSmmu4KLive.h": "15d4d11c1bf603499de3de5ff9b429d8bc76445364c58157f217fa1ec72d399f",
+    "ArmSmmu4KMmio.c": "439e6b50a3431c607611aa3b9af1f4f548e53b2fa1c452645a458c0606f7df38",
+    "ArmSmmu4KMmio.h": "face552cf67de969e8e741c0195496949f2c62b418d973e4d71a02f18ab83109",
+    "ArmSmmu4KProgram.c": "93df000cefafd06cc46a24f0079a08dda312a74c7f35f901f255efc74e6919ee",
+    "ArmSmmu4KProgram.h": "76b3b06f4ee63f24e7ac39d1f046c0edb9a1739584aece9108a31ae9f618f46d",
+    "ArmSmmu4KStreams.c": "359610de6974c1885b4b7bbf72e6b321a013e1cc44200e1a8f566d09722c009a",
+    "ArmSmmu4KStreams.h": "1cfca0b4e3acba420cc829098b52d61c4905ec64d2aa57883dedae9dfb212969",
+    "ArmSmmu4KTableMemory.c": "b39d3d4fc292b921672c089e930986345637aa029b422821867c72e7203feb92",
+    "ArmSmmu4KTableMemory.h": "316b85ee835686744feb7777b4216917578833e3ff510aeecc4bbe8325568f86"
+  }
+}

@@ -94,7 +94,7 @@ extern "C" int na_native_unmap(NaNativeWindow *w,int quiet) {
 }
 extern "C" int na_native_allocate(NaNativeMemory *m,uint32_t bytes) {
     if (!m || m->descriptor || !bytes || bytes>0x1000000 || (bytes&4095)) return NA_ARGUMENT;
-    auto *b=IOBufferMemoryDescriptor::inTaskWithOptions(kernel_task,kIOMemoryPhysicallyContiguous|kIODirectionInOut,bytes,4096);
+    auto *b=IOBufferMemoryDescriptor::inTaskWithOptions(kernel_task,IOOptionBits(kIOMemoryPhysicallyContiguous)|IOOptionBits(kIODirectionInOut),bytes,4096);
     if (!b) return NA_IO;
     IOByteCount length=0;uint64_t pa=b->getPhysicalSegment(0,&length);
     auto *va=static_cast<uint8_t *>(b->getBytesNoCopy());
