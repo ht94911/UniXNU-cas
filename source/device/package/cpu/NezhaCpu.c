@@ -593,6 +593,9 @@ static uint64_t cpu_t_out;
 static int32_t cpu_t_test;
 static uint32_t cpu_t_logged;
 static int32_t nz_t_hot[3] = { INT32_MIN, INT32_MIN, INT32_MIN };
+#ifdef NEZHA_CPU_IOS27
+static uint64_t cpu27_temperature_us;
+#endif
 
 /* Per-sensor peak (tenths) since the last raw log, sampled every thermal round: groups little 12, big 4, gpu 11 + ddr 1. */
 #define T_NSENS 28
@@ -814,6 +817,12 @@ cpu_thermal(void)
 	}
 	nz_t_hot[2] = g;
 #ifdef NEZHA_CPU_IOS27
+    /* Timestamp an actual temperature round, not repeated status publication. */
+    uint64_t sampled_ns=0;
+    absolutetime_to_nanoseconds(mach_absolute_time(),&sampled_ns);
+    cpu27_temperature_us=sampled_ns/1000;
+#endif
+#ifdef NEZHA_CPU_IOS27
     if(g==INT32_MIN && &pandora_gpu_thermal_top)
         __atomic_store_n(&pandora_gpu_thermal_top,1u,__ATOMIC_RELAXED);
 #endif
@@ -882,6 +891,7 @@ static uint32_t cpu27_busy(unsigned cpu)
 }
 static uint32_t cpu27_sequence;
 static int32_t cpu27_sample[20];
+static uint64_t cpu27_published_temperature_us;
 static void cpu27_publish(void)
 {
     const int32_t v[20]={1,nz_mode,(int32_t)native_cpufreq_stage,(int32_t)nz27_cpu_valid,
@@ -893,17 +903,26 @@ static void cpu27_publish(void)
         (int32_t)nezha_cpufreq_boost[0],(int32_t)nezha_cpufreq_boost[1]};
     __atomic_add_fetch(&cpu27_sequence,1u,__ATOMIC_ACQ_REL);
     for(unsigned i=0;i<20;++i)__atomic_store_n(&cpu27_sample[i],v[i],__ATOMIC_RELAXED);
+    __atomic_store_n(&cpu27_published_temperature_us,cpu27_temperature_us,__ATOMIC_RELAXED);
     __atomic_add_fetch(&cpu27_sequence,1u,__ATOMIC_RELEASE);
 }
-bool nezha_cpu27_snapshot(int32_t out[20]);
-bool nezha_cpu27_snapshot(int32_t out[20])
+bool nezha_cpu27_snapshot_at(int32_t out[20],uint64_t *temperature_us);
+bool nezha_cpu27_snapshot_at(int32_t out[20],uint64_t *temperature_us)
 {
     if(!out)return false;
     uint32_t before=__atomic_load_n(&cpu27_sequence,__ATOMIC_ACQUIRE);
     if(!before || (before&1))return false;
     for(unsigned i=0;i<20;++i)out[i]=__atomic_load_n(&cpu27_sample[i],__ATOMIC_RELAXED);
+    const uint64_t sampled=__atomic_load_n(&cpu27_published_temperature_us,__ATOMIC_RELAXED);
     __atomic_thread_fence(__ATOMIC_ACQUIRE);
-    return before==__atomic_load_n(&cpu27_sequence,__ATOMIC_RELAXED);
+    if(before!=__atomic_load_n(&cpu27_sequence,__ATOMIC_RELAXED))return false;
+    if(temperature_us)*temperature_us=sampled;
+    return true;
+}
+bool nezha_cpu27_snapshot(int32_t out[20]);
+bool nezha_cpu27_snapshot(int32_t out[20])
+{
+    return nezha_cpu27_snapshot_at(out,0);
 }
 #endif
 
