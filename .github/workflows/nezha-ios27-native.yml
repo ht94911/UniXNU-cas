@@ -1,7 +1,7 @@
-name: nezha iPhone27 GPU complete submissions - native034
+name: nezha iPhone27 GPU bounded stack - native035
 on:
   push:
-    branches: [codex/ios27-gpu-persist017-034-20261107]
+    branches: [codex/ios27-gpu-persist017-035-20261108]
   workflow_dispatch:
 permissions:
   contents: read

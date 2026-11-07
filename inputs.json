@@ -61,7 +61,7 @@
     "source/adreno/NativeAdrenoSmmuMemory.h": "ca2d91e3b4d8a4ff1f7da16419761b6588d34f044fdb16bb535276b811de8713",
     "source/adreno/NativeAdrenoSmmuService.h": "6e5a666a4c6b28c9dc3ae6c59ce4c55ccb1ef63ac49901cf56759f0dd5a905df",
     "source/adreno/NativeAdrenoStatus.h": "7305cce3eefbf63176fd08f3d6eb92aa4b874fffb37bda94666fea53d62a2a34",
-    "source/adreno/NativeAdrenoSubmit.cpp": "49bed0f0b1099399dff3806459c6e950ccacb73b04c75b87320280c5ae5f7732",
+    "source/adreno/NativeAdrenoSubmit.cpp": "87d602c122b8c201e0b38d623529fd93e54248d385961a8868abbcaa7b05cbfc",
     "source/adreno/NativeAdrenoSubmit.h": "456ddcb1c4e9ddffb534ffe63add14ec23ce450542dd9979da62b1ee781f4e71",
     "source/adreno/NativeAdrenoTimer.cpp": "8f4f2e3c1f774b464e6b284af5ba03679daf797942187550341cf1a513bf229a",
     "source/adreno/NativeAdrenoTimer.h": "7f338cf3c60495f5912a6ad8c83e81bad7883e34a0f6743b11c326b8fea1e364",
@@ -254,7 +254,7 @@
     "main_package_modified": false
   },
   "gpu": {
-    "common_revision": "e0e559acdaaaf97d46903ea80904c6ea6eb541d8",
+    "common_revision": "35513573860c4332ae57dd91212adc7abbd46753",
     "common_upstream": "6fa7bae2a5b3b523e790eb3e0348af4d98969e4d",
     "metal_revision": "816022307852de7e1741ac05ae9111982318763f",
     "firmware_uploaded": false,
