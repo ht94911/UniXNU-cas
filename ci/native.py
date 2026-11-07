@@ -207,6 +207,9 @@ def collect(framework, work, sealed):
         tree = target / 'tree'
         for path in sorted((tree / 'build').glob('*/lib*.a')):
             add(path, 'archives/' + path.parent.name + '/' + path.name)
+        for path in sorted((tree / 'build/nezha27-audio').rglob('*')):
+            if path.is_file() and not path.is_symlink():
+                add(path, 'archives/nezha27-audio/' + str(path.relative_to(tree / 'build/nezha27-audio')))
         for path in sorted((tree / 'build/armcpu').glob('*')):
             if path.is_file() and path.suffix in ('.json', '.log', '.o', '.asm'):
                 add(path, 'archives/armcpu/' + path.name)

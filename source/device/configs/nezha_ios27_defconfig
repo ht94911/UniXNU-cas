@@ -26,7 +26,7 @@ CONFIG_XNU_SHENG_PMGR=y
 # Mac compilation receives only this public anchor, never images or keys.
 CONFIG_XNU_SOURCE_STORAGE_OWNER_PUBLIC_KEY="{tree}/kits/nezha/ios27-root-owner-public.pem"
 CONFIG_XNU_SOURCE_STORAGE_TABLES="userdata"
-CONFIG_XNU_EXTRA_LD_ARCHIVES="-Wl,-force_load,{tree}/build/sheng-source-storage/libShengSourceStorage.a -Wl,-force_load,{tree}/build/nezha27-usb-control/libNezha27UsbControl.a -Wl,-force_load,{tree}/build/nezha27-input/libNezha27Input.a -Wl,-force_load,{tree}/build/adreno840/libAdreno840.a"
+CONFIG_XNU_EXTRA_LD_ARCHIVES="-Wl,-force_load,{tree}/build/sheng-source-storage/libShengSourceStorage.a -Wl,-force_load,{tree}/build/nezha27-usb-control/libNezha27UsbControl.a -Wl,-force_load,{tree}/build/nezha27-input/libNezha27Input.a -Wl,-force_load,{tree}/build/adreno840/libAdreno840.a -Wl,-force_load,{tree}/build/nezha27-audio/libNezha27Audio.a"
 
 # No sheng SPMI cell or hypervisor-watchdog reset code in this27 archive.
 CONFIG_XNU_SOURCE_STORAGE_BOARD_RESET=n

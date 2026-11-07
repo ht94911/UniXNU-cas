@@ -1,7 +1,7 @@
-name: nezha iPhone27 GPU bandwidth admission - native033
+name: nezha iPhone27 audio on GPU015 - native001
 on:
   push:
-    branches: [codex/ios27-gpu-persist015-033-20261107]
+    branches: [codex/ios27-audio-gpu015-native001-20261107]
   workflow_dispatch:
 permissions:
   contents: read

@@ -139,6 +139,36 @@ pandora_scm_call(uint64_t fn, uint64_t arginfo, uint64_t x2, uint64_t x3, uint64
 	*a1 = r.a1;
 }
 
+/* Audio PAS operations use the same global SCM/WAITQ serialization as GPU.
+ * Only the ADSP/ADSP-DTB PAS identifiers and required PIL commands are exposed.
+ * No independent SMC implementation or second lock is introduced. */
+int nezha_audio_pas_call(unsigned command, unsigned pas, uint64_t arg1, uint64_t arg2);
+int
+nezha_audio_pas_call(unsigned command, unsigned pas, uint64_t arg1, uint64_t arg2)
+{
+    if (pas != 1 && pas != 36) return EINVAL;
+    uint64_t info;
+    switch (command) {
+    case 1:
+        if (!arg1 || (arg1 & 4095) || arg2) return EINVAL;
+        info = SCM_ARGS(2) | (SCM_RW << 6);
+        break;
+    case 2:
+        if (!arg1 || !arg2 || ((arg1 | arg2) & 4095)) return EINVAL;
+        info = SCM_ARGS(3);
+        break;
+    case 5:
+    case 6:
+        if (arg1 || arg2) return EINVAL;
+        info = SCM_ARGS(1);
+        break;
+    default: return EINVAL;
+    }
+    struct scm_res r = {0, 0, 0, 0};
+    scm_smc(SCM_FN(2, command), info, pas, arg1, arg2, 0, &r);
+    return (r.a0 || r.a1) ? EIO : 0;
+}
+
 /* ---- the pack ------------------------------------------------------------------- */
 
 struct fw_ent {
