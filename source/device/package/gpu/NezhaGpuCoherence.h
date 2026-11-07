@@ -1,10 +1,13 @@
 /* SPDX-License-Identifier: MIT */
 #pragma once
-/* A840 data-coherence qualification, derived from sheng ce0c600.
- * An uncached CPU alias is not an independent DRAM witness on010: its actual
- * Device mapping still read every new CPU value. Compare GPU NC/outer-shareable
- * and WB/inner-shareable mappings instead, with identical CPU preparation.
- * Both controls and both positive directions must pass in two fresh pairs.
+/* A840 coherent-DMA qualification, derived from sheng ce0c600.
+ * The downstream gen8-2-1 entry declares ADRENO_IOCOHERENT and this board's GPU
+ * SMMU declares dma-coherent. On this exact chip the NC/outer-shareable mapping
+ * also sees both directions coherently; it is not a non-snooping DRAM witness.
+ * Keep that observation, but do not require documented coherent DMA to fail.
+ * Require the exact board contract plus two fresh WB trials in both directions,
+ * with observed old CPU source/target values before each transfer. These are
+ * finite functional checks, not a measurement of physical DRAM/cache residency.
  * Table walks and owned BO policy remain unchanged. All pages are private.
  */
 static NativeAdrenoMemory coherenceMemory;
@@ -16,6 +19,7 @@ static constexpr uint64_t kCoherenceIova=0x18000000;
 static constexpr size_t kCoherenceBytes=4*4096;
 struct CoherenceObservation {
     unsigned readNew,readOld,readOther,cachedNew,cachedOld,cachedOther,freshNew,freshOld,freshOther;
+    unsigned sourceOld,targetOld;
 };
 static CoherenceObservation coherenceControl[2],coherenceCached[2];
 
@@ -96,7 +100,7 @@ static IOReturn coherenceTrial(NativeAdrenoVm *vm,bool wb,unsigned trial,Coheren
     status=NativeAdrenoMaintainOwnedPages(coherenceBuffer,kCoherenceBytes,NativeAdrenoCleanInvalidate);
     if(status)return coherenceRetain(status,"initial CPU publication");
     disable_preemption();
-    for(unsigned i=0;i<1024;++i){const uint32_t old=S[i];S[i]=old^(oldS^newS);}
+    for(unsigned i=0;i<1024;++i){const uint32_t old=S[i];if(old==(oldS|i))++out.sourceOld;S[i]=old^(oldS^newS);}
     __asm__ volatile("dsb sy":::"memory");
     enable_preemption();
     status=coherenceCopyPage(kCoherenceIova,kCoherenceIova+4096);
@@ -107,11 +111,11 @@ static IOReturn coherenceTrial(NativeAdrenoVm *vm,bool wb,unsigned trial,Coheren
     if(status)return coherenceRetain(status,"read result invalidate");
     for(unsigned i=0;i<1024;++i){const uint32_t value=D[i];
         if(value==(newS|i))++out.readNew;else if(value==(oldS|i))++out.readOld;else ++out.readOther;}
-    // A negative write control must leave these clean resident CPU lines old,
-    // while a fresh load after invalidate must see the actual GPU write.
+    // Observe the old CPU target immediately before the GPU write. The normal
+    // WB trial must see the new data without any intervening CPU maintenance.
     status=NativeAdrenoMaintainOwnedPages(const_cast<uint32_t *>(T),4096,NativeAdrenoClean);
     if(status)return coherenceRetain(status,"target clean");
-    uint32_t touch=0;for(unsigned i=0;i<1024;++i)touch+=T[i];(void)touch;
+    for(unsigned i=0;i<1024;++i)if(T[i]==(oldT|i))++out.targetOld;
     __asm__ volatile("dsb sy":::"memory");
     status=coherenceCopyPage(kCoherenceIova+8192,kCoherenceIova+12288);
     if(status)return coherenceRetain(status,"write-direction GPU copy");
@@ -126,17 +130,21 @@ static IOReturn coherenceTrial(NativeAdrenoVm *vm,bool wb,unsigned trial,Coheren
     status=vm->unmap(coherenceHandle);
     if(status)return coherenceRetain(status,"trial unmap");
     coherenceHandle=0;
-    IOLog("NEZHA A840 COHERENCE CONTROL: trial%u wb%u read=%u/%u/%u cached=%u/%u/%u fresh=%u/%u/%u\n",
+    IOLog("NEZHA A840 COHERENCE CONTROL: trial%u wb%u read=%u/%u/%u cached=%u/%u/%u fresh=%u/%u/%u warm=%u/%u\n",
         trial,wb?1u:0u,out.readNew,out.readOld,out.readOther,out.cachedNew,out.cachedOld,out.cachedOther,
-        out.freshNew,out.freshOld,out.freshOther);
+        out.freshNew,out.freshOld,out.freshOther,out.sourceOld,out.targetOld);
     return kIOReturnSuccess;
 }
 static IOReturn coherenceProbe(NativeAdrenoVm *vm,unsigned output_bits)
 {
     unsigned wanted=1;PE_parse_boot_argn("sheng-gpu-coherent",&wanted,sizeof wanted);
     native_adreno_io_coherent=0;
-    if(!wanted || !vm){
-        snprintf(native_gpu_coherence_row,sizeof native_gpu_coherence_row,"H2 skip arg%u vm%d -> off",wanted,vm!=nullptr);
+    // The platform's public ID includes the enabled slice count in bits4..7:
+    // raw gen8-2-1 ID0x44050a01 plus three slices is0x44050a31 on this board.
+    // A different chip keeps the maintained path until it has its own evidence.
+    const bool declaredCoherent=platform.chip_id==0x44050a31u;
+    if(!wanted || !vm || !declaredCoherent){
+        snprintf(native_gpu_coherence_row,sizeof native_gpu_coherence_row,"H3 skip arg%u vm%d contract%d -> off",wanted,vm!=nullptr,declaredCoherent);
         IOLog("NEZHA A840 COHERENCE: %s\n",native_gpu_coherence_row);return kIOReturnSuccess;
     }
     IOReturn status=ring.idle(&clock,100000);
@@ -169,16 +177,21 @@ static IOReturn coherenceProbe(NativeAdrenoVm *vm,unsigned output_bits)
     if(!(coherenceSctlr&4) || !coherenceTranslationMatches(coherenceCpuPar,coherencePhysical[0]) ||
         coherenceUncachedTranslation(coherenceCpuPar) || !coherenceTranslationMatches(coherenceTargetPar,coherencePhysical[3]) ||
         coherenceUncachedTranslation(coherenceTargetPar)){coherenceSetupReason=1;status=kIOReturnUnsupported;}
-    bool controls=true,positives=true;unsigned pairsDone=0;
+    bool controls=true,positives=true;unsigned pairsDone=0,ncSnooping=0;
     for(unsigned pair=0;pair<2 && !status;++pair){
         status=coherenceTrial(vm,false,pair*2,coherenceControl[pair]);if(status)return status;
         status=coherenceTrial(vm,true,pair*2+1,coherenceCached[pair]);if(status)return status;
         const auto &n=coherenceControl[pair];const auto &w=coherenceCached[pair];
-        controls=controls && n.readOld==1024 && !n.readNew && !n.readOther && n.cachedOld==1024 &&
-            !n.cachedNew && !n.cachedOther && n.freshNew==1024 && !n.freshOld && !n.freshOther;
-        positives=positives && w.readNew==1024 && !w.readOld && !w.readOther && w.cachedNew==1024 &&
+        // NC is diagnostic: either old or new values are legitimate here. A
+        // corrupt transfer, invalid initial values, or absent GPU write fails.
+        controls=controls && n.sourceOld==1024 && n.targetOld==1024 &&
+            n.readNew+n.readOld==1024 && !n.readOther && n.cachedNew+n.cachedOld==1024 && !n.cachedOther &&
+            n.freshNew==1024 && !n.freshOld && !n.freshOther;
+        if(n.readNew==1024 && n.cachedNew==1024)++ncSnooping;
+        positives=positives && w.sourceOld==1024 && w.targetOld==1024 &&
+            w.readNew==1024 && !w.readOld && !w.readOther && w.cachedNew==1024 &&
             !w.cachedOld && !w.cachedOther && w.freshNew==1024 && !w.freshOld && !w.freshOther;
-        native_gpu_coherence[1]=controls?64:0; // old lines witnessed by the GPU NC control, not a CPU alias
+        native_gpu_coherence[1]=0; // no independent physical-DRAM/dirty-line witness is claimed
         native_gpu_coherence[2]=w.readNew;native_gpu_coherence[3]=w.readOld;
         native_gpu_coherence[4]=w.cachedNew;native_gpu_coherence[5]=w.freshNew;
         native_gpu_coherence[0]=6;
@@ -193,8 +206,8 @@ static IOReturn coherenceProbe(NativeAdrenoVm *vm,unsigned output_bits)
     cleanup=coherenceMemory.release();if(cleanup)return coherenceRetain(cleanup,"descriptor release");
     IOFreeAligned(coherenceBuffer,kCoherenceBytes);coherenceBuffer=nullptr;native_adreno840_coherence_retained=0;
     native_gpu_coherence[7]=pass?1:0;native_adreno_io_coherent=pass?1:0;
-    snprintf(native_gpu_coherence_row,sizeof native_gpu_coherence_row,"H2 ctrl%u wb%u n%u r%u/%u w%u/%u s%x -> %s",
-        controls?1:0,positives?1:0,native_adreno840_coherence_attempts,native_gpu_coherence[2],native_gpu_coherence[3],
+    snprintf(native_gpu_coherence_row,sizeof native_gpu_coherence_row,"H3 contract1 ctrl%u wb%u nc%u n%u r%u/%u w%u/%u s%x -> %s",
+        controls?1:0,positives?1:0,ncSnooping,native_adreno840_coherence_attempts,native_gpu_coherence[2],native_gpu_coherence[3],
         native_gpu_coherence[4],native_gpu_coherence[5],uint32_t(status),pass?"on":"off");
     IOLog("NEZHA A840 COHERENCE: %s; GPU NC/WB controls; table/owned-BO policy unchanged\n",native_gpu_coherence_row);
     IOLog("NEZHA A840 COHERENCE SETUP: reason%u cpu-par=%llx target-par=%llx ctr=%llx sctlr=%llx; no CPU DRAM alias\n",
