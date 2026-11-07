@@ -1,16 +1,3 @@
-diff --git a/README.md b/README.md
-index 18b60e1..5b980a0 100644
---- a/README.md
-+++ b/README.md
-@@ -10,7 +10,7 @@ Build and interface details: [documentation](https://unixnu.com/drivers/adreno-m
- 
- ## Memory reuse
- 
--Unused owned image backing can serve later pooled or dedicated images. Extra image spares share a 256 MiB device budget and expire after ten seconds. Plain unused backing of at least 256 KiB can be released by the existing room worker, with at most 128 MiB queued. Allocation failure reclaims queued backing before retrying. Imported memory and owner callbacks retain their release ordering.
-+Unused owned image backing can serve later pooled or dedicated images. Image spares expire after ten seconds and are reclaimed on allocation failure or memory pressure; they have no byte limit. Unused buffer reservations share a separate 64 MiB device budget across memory types. The room worker rechecks demand and reuses a spare of the same pool and memory type before allocating. If foreground completions restore room during allocation, the new owned buffer stays spare with its address object intact. Plain unused backing of at least 256 KiB can be released by the existing room worker, with at most 128 MiB queued. Allocation failure reclaims queued backing before retrying. Imported memory and owner callbacks retain their release ordering.
- 
- ## Frame diagnostics
- 
 diff --git a/bridge/patches/0031-bounded-buffer-reserves.patch b/bridge/patches/0031-bounded-buffer-reserves.patch
 new file mode 100644
 index 0000000..e344fd0
