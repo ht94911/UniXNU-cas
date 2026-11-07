@@ -82,6 +82,9 @@ public:
     };
 private:
     struct Job {
+        Job()=default;
+        Job(const Job &)=delete;
+        Job &operator=(const Job &)=delete; // whole-job temporaries exceed a kernel stack
         uint32_t fence=0;
         size_t count=0;
         uint64_t handles[NativeAdrenoSubmitMaxBuffers]{};
@@ -159,11 +162,12 @@ private:
     void noteStall(uint32_t observed,const NativeAdrenoRingClock *clock);   /* the CP's state for a fence that stopped advancing (native_adreno_stall) */
     bool attached_=false,poisoned_=false;
     uint32_t audit_tick_=0;   /* submissions since attach; every eighth one audits its IB lines */
-    /* submit()'s distinct buffers and ring words: too large for the kernel stack at 128 IBs (callers serialize every method) */
+    /* submit()'s distinct buffers and ring words: too large for the kernel stack at the supported IB limit (callers serialize every method) */
     uint64_t scratch_handles_[NativeAdrenoSubmitMaxBuffers]{};
     uint32_t scratch_words_[NativeAdrenoSubmitMaxBuffers*4]{};
     Job *find(uint32_t fence);
     Job *free();
+    static void resetJob(Job &);
     IOReturn release(Job &);
     IOReturn poison();
     int32_t next_owner_=0;

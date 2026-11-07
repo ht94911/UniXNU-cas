@@ -387,6 +387,14 @@ IOReturn NativeAdrenoSubmit::setPreemption(NativeAdrenoRing *high,NativeAdrenoRi
     preempt_on_=true;
     return kIOReturnSuccess;
 }
+void NativeAdrenoSubmit::resetJob(Job &job)
+{
+    /* Jobs contain only scalars, pointers and arrays. Reset the owned storage
+     * directly: aggregate assignment materialized a24KiB temporary on arm64e
+     * in both retirement and poisoned-submit paths. Priority is the only
+     * nonzero default. Job assignment is deleted to keep all resets here. */
+    memset(&job,0,sizeof(job));job.priority=-1;
+}
 IOReturn NativeAdrenoSubmit::release(Job &job)
 {
     IOReturn status=kIOReturnSuccess;
@@ -426,7 +434,7 @@ IOReturn NativeAdrenoSubmit::release(Job &job)
             native_adreno_tl_count=n+1;
         }
     }
-    job={};return kIOReturnSuccess;
+    resetJob(job);return kIOReturnSuccess;
 }
 IOReturn NativeAdrenoSubmit::detach()
 {
@@ -604,11 +612,7 @@ IOReturn NativeAdrenoSubmit::submit(NativeAdrenoVm *vm,const NativeAdrenoSubmitB
         /* A poisoned ring may already have consumed the WPTR write, so the
          * referenced buffers cannot be retired here. */
         if(target->poisoned()) {
-            /* Job contains only scalar fields, raw pointers and arrays. Clear
-             * in place: arm64e emitted a24KiB kernel-stack temporary for Job{}
-             * after the atomic-IB capacity increased. Keep its sole nonzero
-             * default (unspecified priority) before retaining poisoned refs. */
-            memset(job,0,sizeof(*job));job->priority=-1;++stats_.poisoned_jobs;
+            resetJob(*job);++stats_.poisoned_jobs;
             for(size_t i=0;i<handle_count;++i)job->handles[i]=handles[i];
             job->count=handle_count;job->queue=queue;job->active=true;job->vm_next=vm_->nextHandle();job->vm=vm;
             return poison();

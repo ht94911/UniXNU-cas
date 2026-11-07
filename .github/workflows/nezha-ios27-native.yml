@@ -1,7 +1,7 @@
-name: nezha iPhone27 GPU bounded stack - native035
+name: nezha iPhone27 GPU retirement stack - native036
 on:
   push:
-    branches: [codex/ios27-gpu-persist017-035-20261108]
+    branches: [codex/ios27-gpu-persist018-036-20261108]
   workflow_dispatch:
 permissions:
   contents: read
