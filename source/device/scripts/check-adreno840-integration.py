@@ -74,8 +74,8 @@ def validate(framework, device, board, builtin, wifi_ram_test=False):
         require(board['adt']['chosen']['u32'].get('nezha-wifi-autojoin-rearm') == 1,
                 'explicit test-network rearm property absent')
         require(effective.get('sheng-disable-jobs') ==
-                'com.apple.cameracaptured,com.apple.CommCenter',
-                'qualified camera/CommCenter RAM policy changed')
+                'com.apple.cameracaptured,com.apple.CommCenter,com.apple.sharingd',
+                'qualified camera/CommCenter/Sharing RAM policy changed')
     require(all(effective.get(key) == value for key, value in wanted.items()),
             'effective CPU/GPU/diagnostic/protection policy changed')
     require(explicit.get('cpus') == '8', 'loader must explicitly select eight CPUs')
@@ -152,7 +152,7 @@ def main():
         else:
             raise ValueError('negative case was accepted: ' + name)
     if args.wifi_ram_test:
-        for name in ('missing-wifi', 'late-wifi-provider', 'missing-rearm', 'missing-CommCenter-policy',
+        for name in ('missing-wifi', 'late-wifi-provider', 'missing-rearm', 'missing-CommCenter-policy', 'missing-Sharing-policy',
                      'missing-startup-observer', 'missing-settings-observer', 'not-persistent-main'):
             candidate, defaults = copy.deepcopy(board), builtin
             if name == 'missing-wifi':
@@ -165,6 +165,8 @@ def main():
                 candidate['adt']['chosen']['u32']['nezha-wifi-autojoin-rearm'] = 0
             elif name == 'missing-CommCenter-policy':
                 defaults = defaults.replace(',com.apple.CommCenter', '')
+            elif name == 'missing-Sharing-policy':
+                defaults = defaults.replace(',com.apple.sharingd', '')
             elif name == 'missing-startup-observer':
                 defaults = defaults.replace(' boot-ui-focus3=SpringBoard', '')
             elif name == 'missing-settings-observer':

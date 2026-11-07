@@ -358,3 +358,18 @@ limits = ["No new hardware result or demonstrated password-dialog fix", "Missing
 completion = ["Desktop and Settings work on the integrated candidate", "HT password prompt and manual association/system IP accepted with protected Android return"]
 next_action = ["Build Wi-Fi016 from the fixed complete inputs,then test within the applicable phone window"]
 evidence = [{kind = "source", reference = "scripts/check-adreno840-integration.py", result = "997-byte actual archive/policy closure and23 rejection controls passed;no hardware claim"}]
+
+
+[[area]]
+id = "ios27-wifi-sharing-wait017"
+status = "implemented"
+components = ["RamBlock"]
+paths = ["package/BootWatchdogPolicy.c", "scripts/check-adreno840-integration.py"]
+inputs = ["Actual016 Preferences main-thread snapshots spanning30 seconds in Sharing passwordSharingAvailability", "Original24A446 SFClient request,proxy error block and sharingd launchd label"]
+configuration = ["Append only com.apple.sharingd to the existing camera/CommCenter temporary job policy", "Keep independent4GiB RAM Data and the complete selected GPU015 dependencies", "Original framework timeout,credential validation and keychain are unchanged"]
+procedure = ["Check exact policy and reject missing Sharing isolation", "Build a distinct native image and verify compiled builtin bytes", "Compare actual password-dialog latency and manual association when the phone window is returned"]
+findings = ["The user corrected the earlier5-second report;016 still waits over30 seconds before the password prompt", "Original SFClient sends to com.apple.SharingServices,owned by com.apple.sharingd", "The original error handler returns the same value1 as timeout and signals the waiting semaphore", "016 manual656-byte auth8 association and real system IP succeeded"]
+limits = ["Server-side no-reply cause remains unresolved", "Cross-device sharing including AirDrop is disabled in this diagnostic candidate", "No hardware latency improvement claimed;not a full-system or main-package promotion"]
+completion = ["Original unavailable-service error completes promptly on hardware", "Password prompt opens promptly and manual Wi-Fi authentication/system IP still work"]
+next_action = ["Compile Native021 and retain016 as the unchanged hardware reference;wait for the applicable phone handoff"]
+evidence = [{kind = "source", reference = "README.md", result = "Actual wait stack and original client failure semantics identified;candidate hardware pending"}]

@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Integrate the user-selected GPU015 CPU, thermal, GPU, USB, root-reference and shutdown source dependencies with unchanged Wi-Fi/AES and independent4GiB RAM Data. Preserve SpringBoard startup and Preferences wait-chain snapshots;export existing cached stacks at bounded10-second intervals. No claimed password fix or hardware acceptance. No firmware, credentials, donor, phone identity, logs or persistent Data uploaded.",
+  "purpose": "Wi-Fi017 tests the original Sharing client failure path after real Settings main-thread samples found repeated10-second availability waits. Add only com.apple.sharingd to the existing temporary RAM policy;cross-device sharing is disabled in this diagnostic. Original keychain,authentication,capability values and framework timeouts are unchanged. Preserve complete GPU015,Wi-Fi/AES and RAM inputs. No firmware,credentials,donor,phone identity,logs or persistent Data uploaded.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "63e3cabba2d1d88847134b0140d974d4348be13a",
+  "device_revision": "8549103790b862e321e2530e2b79280b7d8b3dad",
   "soc_revision": "3435fa55c3e835a4aaebf7d833473fd5d20073fd",
   "xcode": "26.6",
   "files": {
@@ -89,7 +89,7 @@
     "source/device/package/BootUiTraceCore.h": "9404d7be6386f936904e6af34c870d86ec809b4d97161fd892d904d8334f2753",
     "source/device/package/BootUiTraceDetails.h": "b9c0d9afbc80359a08f2aabb87cf6ee94c5227e64212dffb05ea8d9e08a8473e",
     "source/device/package/BootUiTraceProbe.c": "22a3e64f66a6386e0129dc0673d673c628aa6f52bce72fa7145962312d123dad",
-    "source/device/package/BootWatchdogPolicy.c": "7f5ba71274f845b19b8e118acecefbabd3c845038c29cf7ff113b343a7768fe3",
+    "source/device/package/BootWatchdogPolicy.c": "c6f981ba62c0744561c596df8d14171b536a6b5c40aa00d89e45c64fc0f0a2c3",
     "source/device/package/KeyStoreProbe.cpp": "068ef978260969e3d67d743459802d72e5fad9e4a20c7c27828587a2dd9779d9",
     "source/device/package/LegacyDisplayProbe.cpp": "3784f582190c259099a921f0c3add561f80bfa5cfdb33f5f6ea30c1151a13643",
     "source/device/package/Nezha27UsbControl.c": "e0465c9996b74bf7116853be87bc5223d803926df373ea25e4523ff2f9a441c8",
@@ -161,7 +161,7 @@
     "source/device/patches/xnu-12377/zzzzzz-nezha-input-chain-trace.patch": "c4d05419e7ec3af0de619754bdb6c2deb69b74d714c2219e509360ebfe1b947e",
     "source/device/patches/xnu-12377/zzzzzz-nezha-kernel-class-lock-order.patch": "cd90c61d6838f4e6a7248da81b6180f14db03d00f2f7a64f4bbe4034c0aa8dcb",
     "source/device/patches/xnu-12377/zzzzzz-nezha-sigp-startup-order.patch": "18275910b909d187e459c68f5d937cc09bc01923180141dc155aa7f4ff14aaf9",
-    "source/device/porting.toml": "09781c1fd49eb668b9d9c4f0a9111eaae55fbb8e2c0d25ed56c642d29a521d74",
+    "source/device/porting.toml": "30d42ad4ed54a2da2e2bbc2bfe39087118ae996894bc305da6a769cbe1eceffc",
     "source/device/scripts/backlight-iphone-24A446.json": "446eb5fe6440335bfe9fca75b32f7d815ddcafbb8a3c2d7f697c1e5c3f40f6cb",
     "source/device/scripts/build-adreno840.py": "269f32fe2c97d7baf846a148fed7c111a53869486626a87ec8daab7fdfc3ab91",
     "source/device/scripts/build-boot-progress.py": "a210eb1f0443574eb1506932aa9e8181d5c73aecf99397d8cc731568bd3210ba",
@@ -169,7 +169,7 @@
     "source/device/scripts/build-ios27-pmgr.py": "f88a0596937cbf0504922751a3194e3a33bba609f683a415262887d2b64241e4",
     "source/device/scripts/build-nezha27-input.py": "cd559fad30207962411546b32ffb5547ae29379e7fa992d16eaab09a39b6cd28",
     "source/device/scripts/build-nezha27-usb-control.py": "a2cd48a8e07a1cc43cc54488d7492c45f63aaa21121ea85667e34752b83d4971",
-    "source/device/scripts/check-adreno840-integration.py": "fea0c8408474b79eb1a56667bac3f3bb41656856379d15093efb32431b8d7b55",
+    "source/device/scripts/check-adreno840-integration.py": "879666d066d7c84d1ea02c6293c169803b8694fdda661ece72b0572135c129be",
     "source/device/scripts/check-iosurface-plane-27.py": "092f98e807491b17df3e10835d23f1c44ae25c8820cc43c6343c56fa75c3c4c8",
     "source/device/scripts/check-persistent-data.py": "74e982271e917b6826399801d446aadac4d5a2cf06f47a1da0726602d4704ae6",
     "source/device/scripts/check-persistent-marker.py": "b44ed26f16e66aa29410e55d94682c616cc30c1c58df4371365e0863d8647bbe",
@@ -323,7 +323,7 @@
   },
   "integration_base": {
     "GPU_main_source": "154f8a08e6800734408c99f909c28ceeb94caa3c",
-    "WiFi_source": "63e3cabba2d1d88847134b0140d974d4348be13a",
+    "WiFi_source": "8549103790b862e321e2530e2b79280b7d8b3dad",
     "main_package_modified": false,
     "test_storage": "RAM-only",
     "Home_input_source": "430c75e55c1d2cbe368f4c13f3a9a8ec84526bca",
@@ -338,7 +338,7 @@
     "firmware_slot_bytes": 262144,
     "snapshot_scope": "listed headers and native implementation units only"
   },
-  "qualification_iteration": "native020: Wi-Fi016 complete GPU015 integration and dual UI observation",
+  "qualification_iteration": "native021: original Sharing error-path diagnostic; unchanged complete Wi-Fi016 runtime except job policy",
   "software_aes": {
     "source_revision": "c9ce79e16e6a4e74cbbb7f4315ad2ec342933c89",
     "upstream_revision": "4a45326da5c2cd6fe6813d79ee43db20805628af",
