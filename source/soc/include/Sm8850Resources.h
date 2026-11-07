@@ -42,9 +42,12 @@ void sm8850_resource_leave(Sm8850Resources *);
  * banks, masked SID overlap and ASID collisions. Never chooses a free bank.
  * Includes disabled banks' ASIDs to coexist with QcomUsbDmaDomain checks. */
 int sm8850_smmu_check_assignment(Sm8850Resources *,const Sm8850SmmuAssignment *);
-/* Caller already entered the resource. Exact TCS only, no global IRQ mask. */
+/* Caller already entered the resource. Exact TCS writes only. */
 int sm8850_tcs_idle(Sm8850Resources *,unsigned tcs);
 int sm8850_tcs_write(Sm8850Resources *,unsigned tcs,uint32_t offset,uint32_t value);
+/* Change only this TCS's IRQ-enable bit under the common configuration lock;
+ * return its previous value so a completed lease can restore it. */
+int sm8850_tcs_irq_update(Sm8850Resources *,unsigned tcs,unsigned enabled,unsigned *previous);
 /* Read/modify/write only the supplied owned bits, under the common lock. */
 int sm8850_gcc_update(Sm8850Resources *,uint32_t offset,uint32_t allowed,uint32_t mask,uint32_t value);
 /* TCSR mutex 3: local gate prevents two APPS threads both observing owner1.

@@ -45,7 +45,14 @@ static int acquire(void *v,uint32_t kind,uint64_t *lease) {
     *lease=*owned;
     if (kind==NaPowerTcs) {
         r=sm8850_resource_enter(o->common,slot,AUDIO_OWNER,*owned);
-        if (!r) {r=sm8850_tcs_idle(o->common,1);sm8850_resource_leave(o->common);}
+        if (!r) {
+            r=sm8850_tcs_idle(o->common,1);
+            if (!r) {
+                r=sm8850_tcs_irq_update(o->common,1,1,&o->tcs_irq_previous);
+                if (!r) o->tcs_irq_saved=1;
+            }
+            sm8850_resource_leave(o->common);
+        }
         if (r) {sm8850_resource_quarantine(o->common,slot,AUDIO_OWNER,*owned);return fail(o,r);}
     }
     return NA_OK;
@@ -58,7 +65,13 @@ static int release(void *v,uint32_t kind,uint64_t lease) {
     if (!lease || *owned!=lease) return NA_OWNERSHIP;
     if (kind==NaPowerTcs) {
         int r=sm8850_resource_enter(o->common,slot,AUDIO_OWNER,lease);if (r) return error(r);
-        r=sm8850_tcs_idle(o->common,1);sm8850_resource_leave(o->common);
+        r=sm8850_tcs_idle(o->common,1);
+        if (!r) {
+            unsigned previous;
+            r=o->tcs_irq_saved ? sm8850_tcs_irq_update(o->common,1,o->tcs_irq_previous,&previous):Sm8850Conflict;
+            if (!r) o->tcs_irq_saved=0;
+        }
+        sm8850_resource_leave(o->common);
         if (r) {sm8850_resource_quarantine(o->common,slot,AUDIO_OWNER,lease);return fail(o,r);}
     }
     /* QMP release follows the existing parser's real remote acknowledgement. */

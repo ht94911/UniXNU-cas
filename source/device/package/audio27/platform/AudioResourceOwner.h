@@ -15,7 +15,7 @@ typedef struct {
     Sm8850Resources *common;
     Sm8850SmmuAssignment assignment;
     uint64_t smmu_lease,qmp_lease,tcs_lease;
-    uint32_t smmu_attempted,registered;
+    uint32_t smmu_attempted,registered,tcs_irq_saved,tcs_irq_previous;
     int error;
     NaAdsp *adsp;
 } NaResourceOwner;

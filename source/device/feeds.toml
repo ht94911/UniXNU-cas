@@ -33,7 +33,7 @@ commit = "282606b528b2595bc4274ea7490b62b323f35a5f"
 name = "sm8850"
 kind = "soc"
 git = "https://github.com/ht94911/UniXNU-sm8850-common.git"
-commit = "1352932d0253820223956b4c273d431aaa6a8d08"
+commit = "703d7b4bb00904b4a6e5d96f9e9bf72eec170f6b"
 [[source]]
 name = "ArmCpu"
 kind = "driver"

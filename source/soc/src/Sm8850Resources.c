@@ -94,6 +94,15 @@ int sm8850_tcs_write(Sm8850Resources *r,unsigned tcs,uint32_t offset,uint32_t va
     if (!local && !(offset==0xd08 && value==(1u<<tcs))) return Sm8850Conflict;
     return wr(r,1,offset,value) || fence(r) ? Sm8850Io:Sm8850Okay;
 }
+int sm8850_tcs_irq_update(Sm8850Resources *r,unsigned tcs,unsigned enabled,unsigned *previous) {
+    if (!r || tcs>=3 || enabled>1 || !previous) return Sm8850Invalid;
+    uint32_t old,got,bit=1u<<tcs;
+    if (rd(r,1,0xd00,&old)) return Sm8850Io;
+    *previous=!!(old&bit);
+    uint32_t value=(old&~bit)|(enabled ? bit:0);
+    if (wr(r,1,0xd00,value) || fence(r) || rd(r,1,0xd00,&got)) return Sm8850Io;
+    return got==value ? Sm8850Okay:Sm8850Conflict;
+}
 int sm8850_gcc_update(Sm8850Resources *r,uint32_t offset,uint32_t allowed,uint32_t mask,uint32_t value) {
     if (!r || (offset&3) || !mask || (mask&~allowed) || (value&~mask)) return Sm8850Invalid;
     uint32_t old,got;

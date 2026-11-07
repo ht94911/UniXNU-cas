@@ -28,7 +28,7 @@ struct AudioDspProbe {
     int error,tasError,tasCleanup;
 };
 AudioDspProbe nativeAudioProbe;
-uint32_t audioProbeSequence,audioProbeValues[24];
+uint32_t audioProbeSequence,audioProbeValues[25];
 void publish(AudioDspProbe *d) {
     uint32_t fault=0,syndrome=0;uint64_t address=0;
     // IRQ publishes these once through fault_pending; never race its initial
@@ -41,16 +41,16 @@ void publish(AudioDspProbe *d) {
         d->tasPhase,(uint32_t)d->tasError,(uint32_t)d->tasCleanup,d->revision[0],d->revision[1],
         d->input.resources.error ? 1u:0u,d->power.held,d->power.possible,d->power.stage,d->power.active_resource,
         d->power.last_irq,d->power.last_status,d->power.last_command_status,
-        (uint32_t)address,(uint32_t)(address>>32),syndrome};
+        (uint32_t)address,(uint32_t)(address>>32),syndrome,d->power.last_irq_enable};
     __atomic_add_fetch(&audioProbeSequence,1,__ATOMIC_ACQ_REL);
-    for (unsigned i=0;i<24;++i) __atomic_store_n(&audioProbeValues[i],values[i],__ATOMIC_RELAXED);
+    for (unsigned i=0;i<25;++i) __atomic_store_n(&audioProbeValues[i],values[i],__ATOMIC_RELAXED);
     __atomic_add_fetch(&audioProbeSequence,1,__ATOMIC_RELEASE);
 }
 int snapshot(void *,char *out,size_t capacity,size_t *bytes,unsigned *truncated) {
-    uint32_t v[24];bool valid=false;
+    uint32_t v[25];bool valid=false;
     for (unsigned attempt=0;attempt<4;++attempt) {
         uint32_t seq=__atomic_load_n(&audioProbeSequence,__ATOMIC_ACQUIRE);if (seq&1) continue;
-        for (unsigned i=0;i<24;++i) v[i]=__atomic_load_n(&audioProbeValues[i],__ATOMIC_RELAXED);
+        for (unsigned i=0;i<25;++i) v[i]=__atomic_load_n(&audioProbeValues[i],__ATOMIC_RELAXED);
         __atomic_thread_fence(__ATOMIC_ACQUIRE);
         if (seq==__atomic_load_n(&audioProbeSequence,__ATOMIC_RELAXED)) {valid=true;break;}
     }
@@ -60,9 +60,9 @@ int snapshot(void *,char *out,size_t capacity,size_t *bytes,unsigned *truncated)
         "\"fault\":%u,\"tas_phase\":%u,\"tas_error\":%d,\"tas_cleanup\":%d,\"revision\":[%u,%u],"
         "\"owner_error\":%u,\"proxy_held\":%u,\"proxy_possible\":%u,\"proxy_stage\":%u,\"proxy_resource\":%u,"
         "\"tcs_irq\":%u,\"tcs_status\":%u,\"tcs_command\":%u,\"fault_address\":\"0x%llx\","
-        "\"fault_syndrome\":%u,\"PCM\":false,\"HAL\":false}",
+        "\"fault_syndrome\":%u,\"tcs_irq_enable\":%u,\"PCM\":false,\"HAL\":false}",
         v[0],(int32_t)v[1],v[2],v[3],v[4],v[5],v[6],v[7],v[8],(int32_t)v[9],(int32_t)v[10],v[11],v[12],v[13],v[14],v[15],v[16],v[17],v[18],v[19],v[20],
-        (unsigned long long)(((uint64_t)v[22]<<32)|v[21]),v[23]);
+        (unsigned long long)(((uint64_t)v[22]<<32)|v[21]),v[23],v[24]);
     if (n<0 || (size_t)n>=capacity) {*truncated=1;return QUD_FAILED;}
     *bytes=(size_t)n;return QUD_OK;
 }

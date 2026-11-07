@@ -24,7 +24,7 @@ typedef struct {
     QcomRpmhResource resource[3];uint32_t values[3];
     uint64_t lease,deadline;
     uint32_t tcs,stage,want,held,possible,busy,active_resource,load_state_on;
-    uint32_t last_irq,last_status,last_command_status;
+    uint32_t last_irq,last_status,last_command_status,last_irq_enable;
     int error;
 } NaProxyPower;
 /* Mappings: stock SM8850 QMP0x0c300000, RSC0x18920000/DRV2/TCS+0xd00,

@@ -55,8 +55,10 @@ static int vote(NaProxyPower *p,unsigned resource,int on,uint64_t now) {
     /* The exclusive owner cleared this TCS's completion before triggering.
      * Require the new completion bit as well as its command ACK and idle:
      * stale CMD_STATUS from the previous vote is not a new completion.
-     * Touch's real polling path observes IRQ_STATUS even with delivery masked.
-     * This owner never overwrites the common interrupt-enable word. */
+     * Unlike touch's ACK-only polling, this mode needs the assigned TCS's
+     * completion enabled. The common owner changes/restores only that bit;
+     * Linux likewise enables the active TCS interrupt before requests. */
+    p->last_irq_enable=read_tcs(p,0);
     p->last_irq=read_tcs(p,p->layout.irq_status);
     p->last_command_status=read_tcs(p,b+p->layout.cmd_data+4);
     p->last_status=read_tcs(p,b+p->layout.status);
