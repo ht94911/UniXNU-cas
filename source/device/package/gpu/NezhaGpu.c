@@ -3934,6 +3934,20 @@ nezha_gpu_platform_render_state(void)
 #include "NezhaGpuPerfPolicy.h"
 extern uint64_t native_adreno_perf_jobs[14];
 extern uint32_t system_inshutdown;
+/* Shared equivalent of the existing18A thermal interface. The old
+ * definitions are inside the excluded legacy backend, so CPU caps otherwise
+ * have no consumer on27. No new hardware-register interface is introduced. */
+uint32_t pandora_gpu_thermal_top;
+const uint32_t pandora_gpu_level_count=NGPU-1;
+volatile uint32_t nezha_gpu_dcvs_mhz;
+uint32_t pandora_gpu_level_at_most(uint32_t mhz);
+uint32_t pandora_gpu_level_at_most(uint32_t mhz)
+{
+    uint32_t level=1;
+    while(level+1<NGPU && gpu_opps[level].hz<=(uint64_t)mhz*1000000ull)++level;
+    return level;
+}
+extern bool nezha_cpu27_snapshot(int32_t out[20]);
 static uint32_t shared_perf_seq,shared_perf_started,shared_perf_mode;
 static uint64_t shared_perf_until,shared_perf_words[16];
 static const uint8_t shared_opp_bw[] = {1,1,1,2,2,2,3,3,3,3,5,5,7,7,9,9,11,11};
@@ -3957,7 +3971,7 @@ int nezha_gpu_platform_perf_copy(uint64_t out[16])
 }
 int nezha_gpu_platform_perf_control(uint32_t mode,uint32_t ms)
 {
-    if(!shared_perf_started || mode>2 || (mode && (!ms || ms>10000)))return EINVAL;
+    if(!shared_perf_started || mode>3 || (mode && (!ms || ms>10000)))return EINVAL;
     __atomic_store_n(&shared_perf_until,mode?perf_now_us()+(uint64_t)ms*1000:0,__ATOMIC_RELAXED);
     __atomic_store_n(&shared_perf_mode,mode,__ATOMIC_RELEASE);
     return 0;
@@ -3966,11 +3980,13 @@ static void shared_perf_thread(void *arg,wait_result_t result)
 {
     (void)arg;(void)result;
     uint32_t cur=shared_boot_perf,bw=shared_boot_bw,changes=0,failures=0;uint64_t last=perf_now_us(),prev=0;
+    uint64_t bandwidth_hold=0;
+    nezha_gpu_dcvs_mhz=gpu_opps[cur-1].hz/1000000;
     gmu_wr(0x23b0eu,0xff000000u);
     gmu_wr(0x1fc40u,(gmu_rd(0x1fc40u)&~0xffu)|(1u<<5));
     gmu_wr(0x1fc10u,1);
     bool prev_valid=shared_busy_read(&prev);
-    printf("NEZHA GPU PERF: shared DCVS on; idle222 active578 cap578 MHz; bounded HFI owner and 19.2MHz busy counter\n");
+    printf("NEZHA GPU PERF: shared DCVS on; idle222 active578 cap578 MHz; bounded HFI owner and 19.2MHz busy counter; thermal cap consumed; cool load BW5, lease3 BW7\n");
     for(;;) {
         gpu_sleep(16);
         if(__atomic_load_n(&system_inshutdown,__ATOMIC_ACQUIRE))break;
@@ -3991,11 +4007,20 @@ static void shared_perf_thread(void *arg,wait_result_t result)
         uint32_t mode=__atomic_load_n(&shared_perf_mode,__ATOMIC_ACQUIRE);
         const uint64_t until=__atomic_load_n(&shared_perf_until,__ATOMIC_RELAXED);
         if(mode && now>=until)mode=0;
-        const uint32_t wanted=nezha_gpu_perf_level(mode,permille,since_submit,pending,stalled);
-        if(wanted!=cur && !failures) {
-            uint32_t vote[4]={0,1,wanted,shared_opp_bw[wanted-1]};
-            if(hfi_send(HFI_H2F_MSG_GX_BW_PERF_VOTE,vote,4)){cur=wanted;bw=shared_opp_bw[wanted-1];++changes;}
-            else ++failures; // retain last ACKed level; do not hammer the mailbox
+        const uint32_t thermal=__atomic_load_n(&pandora_gpu_thermal_top,__ATOMIC_RELAXED);
+        const uint32_t wanted=nezha_gpu_perf_thermal_cap(
+            nezha_gpu_perf_level(mode,permille,since_submit,pending,stalled),thermal);
+        int32_t cpu[20];
+        const bool cool=nezha_cpu27_snapshot(cpu) && cpu[2]>=2 &&
+            cpu[8]>=0 && cpu[8]<700 && cpu[9]>=0 && cpu[9]<700 && cpu[10]>=0 && cpu[10]<700;
+        if(valid && permille>600 && cool && pending && !stalled)bandwidth_hold=now+80000;
+        const uint32_t wanted_bw=nezha_gpu_perf_bandwidth(wanted,shared_opp_bw[wanted-1],mode,
+            cool,now<bandwidth_hold && since_submit<80000,thermal);
+        if((wanted!=cur || wanted_bw!=bw) && !failures) {
+            uint32_t vote[4]={0,1,wanted,wanted_bw};
+            if(hfi_send(HFI_H2F_MSG_GX_BW_PERF_VOTE,vote,4)) {
+                cur=wanted;bw=wanted_bw;++changes;nezha_gpu_dcvs_mhz=gpu_opps[cur-1].hz/1000000;
+            } else ++failures; // retain last ACKed level; do not hammer the mailbox
         }
         const uint64_t words[16]={1,now,cur,gpu_opps[cur-1].hz/1000000,gpu_ddr_kbps[bw],
             busy,dt,busy_us,permille,changes,failures,valid,mode,until,stalled,pending};

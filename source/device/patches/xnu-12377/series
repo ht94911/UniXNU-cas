@@ -30,3 +30,8 @@ nezha-wifi-addon-truncate.patch
 
 # Real software AES provider; defer its original-parent metaclass until IOBSD.
 zzz-wifi-aes-late-personality.patch
+
+# Fixed GPU015 normal SystemOS shutdown and root-reference ownership.
+zzzz-native-systemos-shutdown.patch
+zzzz-native-root-cwd-ownership.patch
+zzzz-native-shutdown-unmount-observe.patch

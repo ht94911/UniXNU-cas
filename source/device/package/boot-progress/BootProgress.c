@@ -986,6 +986,24 @@ static void touch_monitor(void *arg, wait_result_t result) {
   }
 }
 #include "UmiRuntimeTrace.h"
+// Export the existing worker's snapshots independently of the 30-second
+// summary. The old 60-second cadence could miss the whole password-dialog wait.
+// No extra task walk or resampling occurs here; a busy/missing trace stays so.
+static void export_stack_snapshots(unsigned now) {
+  static unsigned stacks_at;
+  if(console_diag!=2 || now<120 || now>1200 || now-stacks_at<10)return;
+  static char stacks[64][120];stacks_at=now;
+  printf("NEZHA STACK WINDOW: t=%u pass=%u attempt=%u busy=%u\n",now,
+    BP_OPTIONAL(boot_process_passes),BP_OPTIONAL(boot_process_attempts),BP_OPTIONAL(boot_process_busy));
+  if(boot_ui_trace_role_rows)for(unsigned role=0;role<4;++role) {
+    unsigned count=boot_ui_trace_role_rows(role,stacks,64,2);
+    for(unsigned i=0;i<count && i<64;++i)printf("NEZHA STACK SNAP: %.119s\n",stacks[i]);
+  }
+  if(boot_ui_trace_hot_rows) {
+    unsigned count=boot_ui_trace_hot_rows(stacks,32);
+    for(unsigned i=0;i<count && i<32;++i)printf("NEZHA HOT SNAP: %.119s\n",stacks[i]);
+  }
+}
 static void monitor(void *arg, wait_result_t result) {
   (void)arg;(void)result;
   unsigned capture_at=0,capture_attempt=~0U,named=0;
@@ -1015,21 +1033,8 @@ static void monitor(void *arg, wait_result_t result) {
       if(native_legacy_state_words && native_legacy_state_words(row,sizeof(row)))printf("NEZHA STATE SNAP: %s\n",row);
       if(boot_process_rows)for(unsigned i=0;i<10;++i)printf("NEZHA PROC SNAP: %.119s\n",boot_process_rows[i]);
       if(boot_ui_trace_rows)for(unsigned i=0;i<14;++i)printf("NEZHA UI SNAP: %.119s\n",boot_ui_trace_rows[i]);
-      // The rotating banner can alias a fixed console interval. Export the
-      // existing full snapshots, including workers, without resampling tasks.
-      static unsigned stacks_at;
-      if(console_diag==2 && now>=120 && now<=600 && now-stacks_at>=60) {
-        static char stacks[64][120];stacks_at=now;
-        if(boot_ui_trace_role_rows)for(unsigned role=0;role<4;++role) {
-          unsigned count=boot_ui_trace_role_rows(role,stacks,64,2);
-          for(unsigned i=0;i<count && i<64;++i)printf("NEZHA STACK SNAP: %.119s\n",stacks[i]);
-        }
-        if(boot_ui_trace_hot_rows) {
-          unsigned count=boot_ui_trace_hot_rows(stacks,32);
-          for(unsigned i=0;i<count && i<32;++i)printf("NEZHA HOT SNAP: %.119s\n",stacks[i]);
-        }
-      }
     }
+    export_stack_snapshots(now);
 
     if(&boot_process_attempts && &boot_process_busy) {
       unsigned attempt=__atomic_load_n(&boot_process_attempts,__ATOMIC_RELAXED);

@@ -92,6 +92,8 @@ def compile_one(source, recipe, includes):
             '-Wno-unused-variable', '-Wno-c99-designator', '-Wno-reorder-init-list',
             '-Wno-deprecated-enum-enum-conversion', '-Wno-unnecessary-virtual-specifier',
             '-Wno-overloaded-virtual', '-Wno-incompatible-sysroot']
+    if source.name == 'NezhaCpu.c':
+        cmd += ['-DNEZHA_CPU_IOS27=1']
     if TRACE_ID:
         cmd += ['-DNATIVE_GPU_BUILD_ID=0x' + TRACE_ID + 'ULL']
     for inc in includes:
@@ -132,11 +134,14 @@ def main():
                 ROOT / '.cache/xnu-work/osfmk', ROOT / 'drivers/QcomXnuUsbDebug/include']
     sources = [BOARD / 'NezhaGpu.c', BOARD / 'NezhaScm.c', BOARD / 'NezhaGpuFirmware.cpp',
                BOARD / 'NezhaAdreno840.cpp', accelerator]
+    cpu = ROOT / 'kits/nezha/cpu'
+    sources += [cpu / 'NezhaCpu.c']
+    includes += [cpu]
     sources += [COMMON / ('NativeAdreno' + name + '.cpp') for name in CORE]
     sources += sorted((ROOT / 'kits/ArmSmmu4K').glob('ArmSmmu4K*.c'))
     sources += [ROOT / 'kits/AdrenoPM4/AdrenoPM4.c']
     digest = hashlib.sha256()
-    for path in sorted(set(sources) | set(COMMON.glob('Native*.h')) | set(BOARD.glob('*.h'))):
+    for path in sorted(set(sources) | set(COMMON.glob('Native*.h')) | set(BOARD.glob('*.h')) | set(cpu.glob('*.h'))):
         digest.update(path.name.encode()); digest.update(path.read_bytes())
     TRACE_ID = digest.hexdigest()[:16]
     results = []
@@ -157,6 +162,8 @@ def main():
     import xnu_symbols
     compiled = [Path(r['object']) for r in results]
     defined = xnu_symbols.kernel_names(ROOT) | xnu_symbols.defined_names(providers + compiled, True)
+    require('_native_legacy_vsync_snapshot' in defined,
+            'selected27 display provider lacks the real refresh snapshot accessor')
     weak = set()
     for obj in compiled:
         nm = subprocess.check_output(['xcrun', 'nm', '-m', str(obj)], text=True)

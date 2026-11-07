@@ -2,6 +2,8 @@
 /* A840 board backend over the maintained NativeAdreno software core. Hardware
  * setup comes from f5b0fdd; lifecycle/publication follows current sheng.
  * One attempt, one ring, CPU table switching, no implicit reset or scanout. */
+extern "C" void nezha_cpu_start(void);
+
 #include "NezhaGpuPlatform.h"
 #include "NezhaGpuFirmware.h"
 // NEZHA_GPU_DIAGNOSTIC_PUBLICATION_BEGIN
@@ -17,6 +19,7 @@
 #include <IOKit/IOService.h>
 #include <IOKit/IOPlatformExpert.h>
 #include <kern/clock.h>
+#include <kern/cpu_data.h>
 #include <kern/thread.h>
 #include <kern/sched_prim.h>
 #include <pexpert/pexpert.h>
@@ -38,7 +41,11 @@ extern "C" {
 volatile uint32_t native_adreno840_stage,native_adreno840_status,native_adreno840_pixels;
 volatile uint32_t native_adreno840_fence,native_adreno840_completed,native_adreno840_metal;
 volatile uint32_t native_adreno840_board_error,native_adreno840_wptr_retries;
+volatile uint32_t native_gpu_coherence[8];
+volatile uint32_t native_adreno840_coherence_attempts,native_adreno840_coherence_retained;
+char native_gpu_coherence_row[120];
 }
+extern "C" volatile uint32_t native_adreno_io_coherent;
 // A display may use its CPU path before any Metal renderer is discoverable.
 // Once publication starts this is monotonic: a GPU failure never converts an
 // unknown fence into a CPU-complete frame.
@@ -189,6 +196,8 @@ IOReturn knownPixels(NativeAdrenoVm *vm,unsigned input_bits,unsigned output_bits
     return kIOReturnSuccess;
 }
 
+#include "NezhaGpuCoherence.h"
+
 IOReturn publishMetal()
 {
     IOReturn status=OSKextLoadKextWithIdentifier("com.apple.iokit.IOGPUFamily");
@@ -268,6 +277,7 @@ IOReturn bringUp()
     NativeAdrenoVm *vm=context->vm();
     if((status=submit.attach(vm,&ring)))return checkpoint(11,status,"dispatcher attach");
     if((status=checkpoint(12,knownPixels(vm,context->inputBits(),report.output_bits),"CP pixel/readback/retirement")))return status;
+    if((status=checkpoint(12,coherenceProbe(vm,report.output_bits),"A840 cache-coherence proof; retain maintenance unless proved")))return status;
     NativeAdrenoTimeIo time{nullptr,read32};
     if((status=timer.useChip(&NativeAdrenoChipA8xx)) || (status=timer.attach(&time,NativeAdrenoTimeCp)))return status;
     info.chip_id=platform.chip_id;info.gmem_bytes=18u<<20;info.gmem_base=64u<<20;
@@ -280,6 +290,7 @@ IOReturn bringUp()
     if(checkpoint(13,status,"NativeAdreno user client"))return status;
     ring.setTimeline(true); // existing A8xx CP_ALWAYS_ON timestamps around each real job
     if(nezha_gpu_platform_perf_start())return checkpoint(13,kIOReturnIOError,"GPU performance owner");
+    nezha_cpu_start(); // SCMI/thermal owner using the27 processor API
     const int perf_registered=qcom_usb_diag_register(&nezhaPerfProvider);
     IOLog("NEZHA GPU PERF: USB provider7 registration=%d; real job timestamps enabled; CPU load sampled every2s\n",perf_registered);
     // Registration returns a boolean success, unlike QUD callback result codes.

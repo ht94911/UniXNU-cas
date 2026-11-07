@@ -60,10 +60,14 @@ def validate(framework, device, board, builtin, wifi_ram_test=False):
               'nezha-reboot-after': '0', 'nezha-panic-reset': '0',
               'sheng-data-persist': '2', 'ram-data-volatile-4g': '0',
               'sheng-data-reset': '0', 'nezha-usb-reboot': '1',
-              'boot-diag-overlay': '0', 'input-test': '0'}
+              'boot-diag-overlay': '0', 'input-test': '0',
+              'nezha-cpufreq': '3', 'nezha-thermal': '1',
+              'sheng-vsync': '120', 'sheng-vsync-fixed': '1'}
     if wifi_ram_test:
         wanted.update({'sheng-data-persist': '0', 'ram-data-volatile-4g': '1',
-                       'nezha-usb-reboot': '2', 'nezha_wifi': '1'})
+                       'nezha-usb-reboot': '2', 'nezha_wifi': '1',
+                       'boot-ui-focus2': 'Preferences',
+                       'boot-ui-focus3': 'SpringBoard', 'boot-ui-follow': '1'})
         require('build-nezha27-wifi.py' in ordered, 'Wi-Fi archive absent')
         require(ordered.index('build-nezha27-wifi.py') < gpu,
                 'Wi-Fi final-link provider must precede A840 qualification')
@@ -100,7 +104,8 @@ def main():
     for name in ('late-hid-provider', 'unqualified-armcpu', 'oversized-line',
                  'single-cpu-regression', 'fixed-reset-enabled', 'missing-smp-default',
                  'diagnostic-not-rendering', 'missing-addon', 'missing-gpu-default',
-                 'volatile-data', 'destructive-reset', 'direct-persistent-reset', 'overlay-enabled', 'automatic-settings'):
+                 'volatile-data', 'destructive-reset', 'direct-persistent-reset', 'overlay-enabled', 'automatic-settings',
+                 'cpu-governor-disabled', 'thermal-disabled'):
         candidate, defaults = copy.deepcopy(board), builtin
         archive = candidate['kernel']['archives']
         mutations={'volatile-data':('sheng-data-persist=2','sheng-data-persist=0'),
@@ -111,7 +116,9 @@ def main():
         if args.wifi_ram_test:
             mutations.update({'volatile-data': ('sheng-data-persist=0', 'sheng-data-persist=2'),
                               'direct-persistent-reset': ('nezha-usb-reboot=2', 'nezha-usb-reboot=1')})
-        if name in mutations:
+        if name in ('cpu-governor-disabled', 'thermal-disabled'):
+            defaults = defaults.replace('nezha-cpufreq=3', 'nezha-cpufreq=0') if name == 'cpu-governor-disabled' else defaults.replace('nezha-thermal=1', 'nezha-thermal=0')
+        elif name in mutations:
             old,new=mutations[name]
             candidate['payload']['kernel_args']=[x.replace(old,new) for x in candidate['payload']['kernel_args']]
         elif name == 'late-hid-provider':
@@ -145,7 +152,8 @@ def main():
         else:
             raise ValueError('negative case was accepted: ' + name)
     if args.wifi_ram_test:
-        for name in ('missing-wifi', 'late-wifi-provider', 'missing-rearm', 'missing-CommCenter-policy', 'not-persistent-main'):
+        for name in ('missing-wifi', 'late-wifi-provider', 'missing-rearm', 'missing-CommCenter-policy',
+                     'missing-startup-observer', 'missing-settings-observer', 'not-persistent-main'):
             candidate, defaults = copy.deepcopy(board), builtin
             if name == 'missing-wifi':
                 candidate['payload']['kernel_args'] = [x.replace('nezha_wifi=1', 'nezha_wifi=0')
@@ -157,6 +165,11 @@ def main():
                 candidate['adt']['chosen']['u32']['nezha-wifi-autojoin-rearm'] = 0
             elif name == 'missing-CommCenter-policy':
                 defaults = defaults.replace(',com.apple.CommCenter', '')
+            elif name == 'missing-startup-observer':
+                defaults = defaults.replace(' boot-ui-focus3=SpringBoard', '')
+            elif name == 'missing-settings-observer':
+                candidate['payload']['kernel_args'] = [x for x in candidate['payload']['kernel_args']
+                                                      if not x.startswith('boot-ui-focus2=')]
             try:
                 validate(framework, device, candidate, defaults, name != 'not-persistent-main')
             except ValueError as error:

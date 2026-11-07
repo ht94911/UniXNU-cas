@@ -40,7 +40,12 @@ static const char lite_jobs[]=
 // panicked the board (untagged-203fd45bf).
 // Fixed078 boot policy moved here only to preserve the bounded loader line.
 // PE_parse_boot_argn keeps explicit command-line override precedence.
-char PE_builtin_boot_args[]="owner-staged-apps=1 owner-dataprotect=1 sheng-disable-jobs=com.apple.cameracaptured,com.apple.CommCenter sched_preemption_disable_debug_mode=1 interrupt-masked-debug-mode=1 sheng-smp=1 armcpu-self-ipi=1 armcpu-spi-ipi=0 armcpu-edge=1 -enable_kprintf_spam nezha-gpu=1";
+// With no baseband backend, the original phone UI can wait indefinitely in
+// CTServerConnectionGetEmergencyCallBackMode while completing startup. Reuse
+// sheng's existing per-job isolation so that lookup fails through the original
+// error path. This does not implement telephony or modify CoreTelephony code.
+// The ordinary policy writer is reversible on the next boot and does not reset Data.
+char PE_builtin_boot_args[]="owner-staged-apps=1 owner-dataprotect=1 sheng-disable-jobs=com.apple.cameracaptured,com.apple.CommCenter sched_preemption_disable_debug_mode=1 interrupt-masked-debug-mode=1 sheng-smp=1 armcpu-self-ipi=1 armcpu-spi-ipi=0 armcpu-edge=1 -enable_kprintf_spam nezha-gpu=1 sheng-vsync=120 sheng-vsync-fixed=1 nezha-cpufreq=3 nezha-thermal=1 boot-ui-focus3=SpringBoard";
 static char policy[2048],jobs[200];
 volatile int sheng_watchdog_policy_status=-1;
 

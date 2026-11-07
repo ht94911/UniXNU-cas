@@ -1,7 +1,7 @@
-name: nezha iPhone27 scan lifecycle with tested GPU008 - native019
+name: nezha Wi-Fi016 on fixed GPU015 - native020
 on:
   push:
-    branches: [codex/ios27-wifi27-gpu014-native019-20261107]
+    branches: [codex/ios27-wifi27-gpu016-native020-20261107]
   workflow_dispatch:
 permissions:
   contents: read

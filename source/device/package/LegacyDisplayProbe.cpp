@@ -231,6 +231,12 @@ void native_legacy_vsync_observed(unsigned event,unsigned hz) {
     if(event<6)vsyncEvents[event]=vsyncEvents[event]+1;
     vsyncHz=hz;
 }
+// Read the existing27 software refresh counters; this does not observe panel vblank.
+extern "C" void native_legacy_vsync_snapshot(uint64_t out[8]) {
+    if(!out)return;
+    out[0]=vsyncHz;out[1]=vsyncEvents[1];
+    for(unsigned i=0;i<6;++i)out[2+i]=vsyncEvents[i];
+}
 extern "C" unsigned native_legacy_prepare_report(char *out,unsigned cap) {
     return snprintf(out,cap,"prepare calls=%u failures=%u retried=%u max_attempts=%u waited_ms=%llu vsync hz=%u sent=%llu arms=%llu idle=%llu late=%llu start=%llu refresh=%llu",
         native_legacy_prepare_calls,native_legacy_prepare_failures,native_legacy_prepare_retried,native_legacy_prepare_max_attempts,

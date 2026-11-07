@@ -26,6 +26,7 @@ extern void boot_ui_trace_task(task_t,unsigned,int,const char *,unsigned) __attr
 extern void boot_ui_trace_publish(void) __attribute__((weak_import));
 extern int boot_ui_trace_role_peer(unsigned) __attribute__((weak_import));
 
+extern uint32_t system_inshutdown;
 volatile unsigned boot_process_passes,boot_process_seen;
 volatile unsigned boot_process_attempts,boot_process_busy;
 static char capture_rows[10][120],published_rows[10][120];
@@ -69,13 +70,14 @@ static int capture(proc_t p,void *arg) {
  uint64_t wait=0,continuation=0,userPC=0;
  thread_t thread;
  queue_iterate(&task->threads,thread,thread_t,task_threads){
-  if(count++>=128)break;
+  if(count++>=(index==9 && system_inshutdown?1024u:128u))break;
   bool irq=ml_set_interrupts_enabled(false);
   if(!simple_lock_try(&thread->sched_lock,&thread_lck_grp)){++busy;ml_set_interrupts_enabled(irq);continue;}
   unsigned flags=(unsigned)thread->state;
   running+=(flags&TH_RUN)!=0;waiting+=(flags&TH_WAIT)!=0;
   bool take=count==1;
-  if(index==9){char tn[64]={};thread_get_thread_name(thread,tn);take=!strcmp(tn,"VM_pageout_scan");}
+  if(index==9){char tn[64]={};thread_get_thread_name(thread,tn);
+   take=!strcmp(tn,system_inshutdown?"nezha27-usb-reboot":"VM_pageout_scan");}
   if(take){
    sampled=1;state=flags;priority=thread->sched_pri;wait=thread->wait_event;
    continuation=(uint64_t)thread->continuation;
@@ -84,6 +86,14 @@ static int capture(proc_t p,void *arg) {
   thread_unlock(thread);ml_set_interrupts_enabled(irq);
  }
  unsigned total=(unsigned)task->thread_count,slide=task->task_shared_region_slide;task_unlock(task);
+ if(index==9 && system_inshutdown) {
+  // Scalar scheduler state only, copied under a successful try-lock above.
+  // Never inspect a running kernel stack or retain an unowned thread pointer.
+  static unsigned shutdown_pass;
+  if(++shutdown_pass<=4 || !(shutdown_pass%5))
+   printf("NEZHA27 SHUTDOWN THREAD: sampled=%u scanned=%u total=%u state=%#x priority=%d wait=%#llx continuation=%#llx busy=%u\n",
+    sampled,count,total,state,priority,wait,continuation,busy);
+ }
  snprintf(capture_rows[index],120,"%.15s p%d n%u r%u w%u b%u t%u s%x/%d W%llx C%llx U%llx +%x",
   name,proc_pid(p),total,running,waiting,busy,sampled,state,priority,wait,continuation,userPC,slide);
  if(trace_slot[index] && boot_ui_trace_task)boot_ui_trace_task(task,index,proc_pid(p),name,slide);
