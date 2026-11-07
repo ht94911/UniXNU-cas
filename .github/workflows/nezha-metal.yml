@@ -1,7 +1,7 @@
-name: nezha iPhone27 complete GPU submissions 017
+name: nezha iPhone27 bounded GPU operation diagnostics 018
 on:
   push:
-    branches: [codex/ios27-gpu27-metal-full-017b-20261107]
+    branches: [codex/ios27-gpu27-metal-full-018-20261108]
   workflow_dispatch:
 permissions:
   contents: read
@@ -84,6 +84,9 @@ jobs:
       - name: Test the actual patched allocator and bind its complete source
         id: buffer_reserve
         run: device/ci/gpu-userland/logrun buffer-reserve python3 device/ci/gpu-userland/check-buffer-reserve.py --unixnu unixnu --logs "$LOGS"
+      - name: Check actual Vulkan recorder arguments and diagnostic links
+        id: vulkan_operations
+        run: device/ci/gpu-userland/logrun vulkan-operations python3 device/ci/gpu-userland/check-vulkan-operations.py --unixnu unixnu --logs "$LOGS"
       - name: Verify the actual signed target and full-chain code selection
         id: full_target
         run: device/ci/gpu-userland/logrun full-target python3 device/ci/gpu-userland/check-full-target.py --unixnu unixnu --logs "$LOGS"
@@ -94,6 +97,7 @@ jobs:
           OUTCOME_TURNIP_IOS27: ${{ steps.turnip_ios27.outcome }}
           OUTCOME_PLUGIN: ${{ steps.plugin.outcome }}
           OUTCOME_FULL_TARGET: ${{ steps.full_target.outcome }}
+          OUTCOME_VULKAN_OPERATIONS: ${{ steps.vulkan_operations.outcome }}
           OUTCOME_BUFFER_RESERVE: ${{ steps.buffer_reserve.outcome }}
           OUTCOME_DEVICE_CONTEXTS: ${{ steps.device_contexts.outcome }}
         run: |
@@ -127,6 +131,7 @@ jobs:
           TURNIP: ${{ steps.turnip_ios27.outcome }}
           PLUGIN: ${{ steps.plugin.outcome }}
           FULL_TARGET: ${{ steps.full_target.outcome }}
+          VULKAN_OPERATIONS: ${{ steps.vulkan_operations.outcome }}
           BUFFER_RESERVE: ${{ steps.buffer_reserve.outcome }}
           DEVICE_CONTEXTS: ${{ steps.device_contexts.outcome }}
         run: |
@@ -137,3 +142,4 @@ jobs:
           test "$FULL_TARGET" = success
           test "$DEVICE_CONTEXTS" = success
           test "$BUFFER_RESERVE" = success
+          test "$VULKAN_OPERATIONS" = success

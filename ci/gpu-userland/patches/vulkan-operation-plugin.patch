@@ -1,0 +1,294 @@
+diff --git a/NativeBridgeMetalFrontend.mm b/NativeBridgeMetalFrontend.mm
+index 859bba7..7f90111 100644
+--- a/NativeBridgeMetalFrontend.mm
++++ b/NativeBridgeMetalFrontend.mm
+@@ -62,7 +62,13 @@ static std::atomic<uint64_t> gFrameNumber{0};
+ // CPU sampler follows. Everything else of this process goes to the frame trace file.
+ static bool gpuTraceOn(){static const bool on=getenv("SHENG_GPU_TRACE")!=nullptr;return on;}
+ static void traceRuntimeWide(uint64_t,uint32_t,uint32_t);
+-static void frameRuntime(uint32_t event,uint64_t id,uint64_t a,uint64_t b){if(event==39 && a>=40 && native_gpu_latency_stage((uint32_t)a))traceRuntimeWide(id,(uint32_t)a,(uint32_t)b);}
++static void traceRuntimeLink(uint64_t,uint64_t,uint64_t);
++static void traceVulkanOperation(uint64_t,uint64_t,uint64_t);
++static void frameRuntime(uint32_t event,uint64_t id,uint64_t a,uint64_t b) {
++ if(event==45)traceRuntimeLink(id,a,b);
++ else if(event==46)traceVulkanOperation(id,a,b);
++ else if(event==39 && a>=40 && native_gpu_latency_stage((uint32_t)a))traceRuntimeWide(id,(uint32_t)a,(uint32_t)b);
++}
+ 
+ // DEBUG (the guest's memory corruption, 2026-10-26): with NATIVE_METAL_ABORT_PROBE=1 in its environment, a process that aborts
+ // (a __stack_chk_fail among them) or faults (SIGSEGV, SIGBUS) first writes to its standard error whether the stack guard changed
+@@ -225,6 +231,7 @@ static CommitRecord gCommitRing[32];
+ // it began, t1 its sequence, a the kernel fence, b microseconds waiting for an unsubmitted sync, c microseconds in the kernel calls, d of those waiting for ring space,
+ // cpu0 busy answers | chunks << 16 | indirect buffers << 24}; type 12 a runtime command buffer stage (nmb_stage_ring_read, bridge patch 0022) {t0 when (us of the
+ // uptime clock), t1 the command buffer's id (its shared state's address; 0 the scheduler thread), a stage, b arg, c sequence}. Times are nowUs().
++// type23 runtime/Vulkan association {t0 CPU uptime us, t1 runtime shared-state id, t2 VkCommandBuffer handle, t3 batch index}.
+ struct TraceRec {uint32_t type,idx;uint64_t t0,t1,t2,t3;uint32_t a,b,c,d,tid,cpu0,cpu1,tid2;};
+ static_assert(sizeof(TraceRec)==72,"trace record");
+ static TraceRec gTrace[16384];
+@@ -258,6 +265,24 @@ static void tracePush(const TraceRec &rec) {
+ static void traceRuntimeWide(uint64_t id,uint32_t stage,uint32_t argument) {
+  TraceRec rec{};rec.type=22;rec.t0=nowUs();rec.t1=id;rec.a=stage;rec.b=argument;tracePush(rec);
+ }
++// Runtime event45 already identifies each Vulkan command in a submitted batch.
++// Type23 retains all64 bits of that association; CPU time is not GPU duration.
++static void traceRuntimeLink(uint64_t runtime,uint64_t command,uint64_t batch) {
++ TraceRec rec{};rec.type=23;rec.t0=nowUs();rec.t1=runtime;rec.t2=command;rec.t3=batch;tracePush(rec);
++}
++// Type24: a routed Vulkan call after CPU recording returns. Metadata packs a
++// stable opcode and argument0; detail retains group dimensions or pipeline id.
++static constexpr uint64_t kVulkanTraceBudget=1048576; // at most72MiB of extra operation records
++static std::atomic<uint64_t> gVulkanTraceSeen{0};
++static void traceVulkanOperation(uint64_t command,uint64_t metadata,uint64_t detail) {
++ if(!traceWanted())return;
++ const uint64_t seen=gVulkanTraceSeen.fetch_add(1,std::memory_order_relaxed);
++ if(seen>kVulkanTraceBudget)return;
++ TraceRec rec{};rec.type=24;rec.t0=nowUs();
++ if(seen==kVulkanTraceBudget){rec.t3=kVulkanTraceBudget;} // opcode0: explicit capture truncation
++ else {rec.t1=command;rec.t2=metadata;rec.t3=detail;}
++ tracePush(rec);
++}
+ static thread_local uint64_t tEncodeBatchId;
+ static void traceThread(uint32_t role) {
+  if(!diagOn() || !gpuTraceOn() || !gFrameTransport)return;
+diff --git a/bridge/patches/0032-vulkan-operation-diagnostics.patch b/bridge/patches/0032-vulkan-operation-diagnostics.patch
+new file mode 100644
+index 0000000..80ce200
+--- /dev/null
++++ b/bridge/patches/0032-vulkan-operation-diagnostics.patch
+@@ -0,0 +1,236 @@
++diff --git a/crates/metal2vulkan-runtime/src/recorder/mod.rs b/crates/metal2vulkan-runtime/src/recorder/mod.rs
++--- a/crates/metal2vulkan-runtime/src/recorder/mod.rs
+++++ b/crates/metal2vulkan-runtime/src/recorder/mod.rs
++@@ -18,7 +18,7 @@
++ mod thunks;
++ 
++ use ash::vk;
++-use std::ffi::{c_void, CStr};
+++use std::ffi::{CStr, c_void};
++ use std::sync::atomic::{AtomicBool, Ordering};
++ 
++ pub(crate) use thunks::Command;
++@@ -258,3 +258,100 @@
++         }
++     }
++ }
+++
+++#[cfg(test)]
+++mod diagnostic_operation_tests {
+++    use super::*;
+++    use ash::vk::Handle;
+++    use std::sync::Mutex;
+++    static EVENTS: Mutex<Vec<(u32, u64, u64, u64)>> = Mutex::new(Vec::new());
+++    static CALLS: Mutex<Vec<(u64, u32, u64, u64)>> = Mutex::new(Vec::new());
+++    extern "C" fn hook(event: u32, id: u64, a: u64, b: u64) {
+++        EVENTS.lock().unwrap().push((event, id, a, b));
+++    }
+++    unsafe extern "system" fn dispatch(cb: vk::CommandBuffer, x: u32, y: u32, z: u32) {
+++        CALLS
+++            .lock()
+++            .unwrap()
+++            .push((cb.as_raw(), x, y as u64, z as u64));
+++    }
+++    unsafe extern "system" fn bind(
+++        cb: vk::CommandBuffer,
+++        point: vk::PipelineBindPoint,
+++        pipeline: vk::Pipeline,
+++    ) {
+++        CALLS
+++            .lock()
+++            .unwrap()
+++            .push((cb.as_raw(), point.as_raw() as u32, pipeline.as_raw(), 0));
+++    }
+++    unsafe extern "system" fn draw(cb: vk::CommandBuffer, a: u32, b: u32, c: u32, d: u32) {
+++        CALLS
+++            .lock()
+++            .unwrap()
+++            .push((cb.as_raw(), a, ((b as u64) << 32) | c as u64, d as u64));
+++    }
+++    unsafe extern "system" fn begin(
+++        cb: vk::CommandBuffer,
+++        _info: *const vk::CommandBufferBeginInfo<'_>,
+++    ) -> vk::Result {
+++        CALLS.lock().unwrap().push((cb.as_raw(), 0, 0, 0));
+++        vk::Result::ERROR_DEVICE_LOST
+++    }
+++    #[test]
+++    fn routed_commands_preserve_arguments_results_and_trace_identity() {
+++        assert!(!TAKEN[7].swap(true, Ordering::AcqRel));
+++        let _slot = Slot { index: 7 };
+++        thunks::clear_counts(7);
+++        thunks::store(7, Command::CmdDispatch, dispatch as *const c_void);
+++        thunks::store(7, Command::CmdBindPipeline, bind as *const c_void);
+++        thunks::store(7, Command::CmdDraw, draw as *const c_void);
+++        thunks::store(7, Command::BeginCommandBuffer, begin as *const c_void);
+++        let dispatch: vk::PFN_vkCmdDispatch =
+++            unsafe { std::mem::transmute(thunks::thunk::<7>(Command::CmdDispatch)) };
+++        let bind: vk::PFN_vkCmdBindPipeline =
+++            unsafe { std::mem::transmute(thunks::thunk::<7>(Command::CmdBindPipeline)) };
+++        let draw: vk::PFN_vkCmdDraw =
+++            unsafe { std::mem::transmute(thunks::thunk::<7>(Command::CmdDraw)) };
+++        let begin: vk::PFN_vkBeginCommandBuffer =
+++            unsafe { std::mem::transmute(thunks::thunk::<7>(Command::BeginCommandBuffer)) };
+++        let cb = vk::CommandBuffer::from_raw(0x12345678abcdef01);
+++        crate::stage_trace::diagnostic_vulkan(0, 0, 0, 0); // no hook: no trace
+++        unsafe { dispatch(cb, 1, 2, 3) };
+++        assert!(EVENTS.lock().unwrap().is_empty());
+++        crate::stage_trace::set_diagnostic_hook(hook);
+++        unsafe {
+++            dispatch(cb, 0xffffffff, 0x12345678, 0xabcdef01);
+++            bind(
+++                cb,
+++                vk::PipelineBindPoint::COMPUTE,
+++                vk::Pipeline::from_raw(0xfedcba9876543210),
+++            );
+++            draw(cb, 4, 5, 6, 7);
+++            assert_eq!(begin(cb, std::ptr::null()), vk::Result::ERROR_DEVICE_LOST);
+++        }
+++        let calls = CALLS.lock().unwrap();
+++        assert_eq!(calls.len(), 5);
+++        assert_eq!(calls[1], (cb.as_raw(), 0xffffffff, 0x12345678, 0xabcdef01));
+++        assert_eq!(calls[2], (cb.as_raw(), 1, 0xfedcba9876543210, 0));
+++        let events = EVENTS.lock().unwrap();
+++        assert_eq!(
+++            &*events,
+++            &[
+++                (
+++                    46,
+++                    cb.as_raw(),
+++                    (7u64 << 32) | 0xffffffff,
+++                    0x12345678abcdef01
+++                ),
+++                (46, cb.as_raw(), (19u64 << 32) | 1, 0xfedcba9876543210),
+++                (46, cb.as_raw(), (1u64 << 32) | ((-4i32) as u32 as u64), 0),
+++            ]
+++        );
+++        let counts = thunks::counts(7);
+++        assert_eq!(counts.cmd_dispatch, 2);
+++        assert_eq!(counts.cmd_bind_pipeline, 1);
+++        assert_eq!(counts.cmd_draw, 1);
+++        assert_eq!(counts.begin_command_buffer, 1);
+++    }
+++}
++diff --git a/crates/metal2vulkan-runtime/src/recorder/thunks.rs b/crates/metal2vulkan-runtime/src/recorder/thunks.rs
++--- a/crates/metal2vulkan-runtime/src/recorder/thunks.rs
+++++ b/crates/metal2vulkan-runtime/src/recorder/thunks.rs
++@@ -5,7 +5,8 @@
++ use super::SLOTS;
++ use crate::generated_commands::GeneratedCommandsInfo;
++ use ash::vk;
++-use std::ffi::{c_void, CStr};
+++use ash::vk::Handle;
+++use std::ffi::{CStr, c_void};
++ use std::sync::atomic::{AtomicPtr, AtomicU64, Ordering};
++ 
++ /// Each slot's commands recorded so far, one count per command at its index.
++@@ -30,6 +31,49 @@
++ #[cold]
++ fn missing(name: &CStr) -> ! {
++     panic!("the routed command {name:?} has no driver's entry point");
+++}
+++
+++// Keep the existing recorder as the single interception point. Draw/state
+++// traffic is omitted; selected boundaries, compute, copies and barriers remain.
+++macro_rules! diagnostic_operation {
+++    (CmdDispatch, $cb:expr, $result:expr; $x:expr, $y:expr, $z:expr) => {
+++        crate::stage_trace::diagnostic_vulkan($cb.as_raw(), 7, $x, (($y as u64) << 32) | $z as u64);
+++    };
+++    (CmdBindPipeline, $cb:expr, $result:expr; $point:expr, $pipeline:expr) => {
+++        crate::stage_trace::diagnostic_vulkan(
+++            $cb.as_raw(),
+++            19,
+++            $point.as_raw() as u32,
+++            $pipeline.as_raw(),
+++        );
+++    };
+++    (BeginCommandBuffer, $cb:expr, $result:expr; $info:expr) => {
+++        crate::stage_trace::diagnostic_vulkan($cb.as_raw(), 1, $result.as_raw() as u32, 0);
+++    };
+++    (EndCommandBuffer, $cb:expr, $result:expr;) => {
+++        crate::stage_trace::diagnostic_vulkan($cb.as_raw(), 2, $result.as_raw() as u32, 0);
+++    };
+++    ($v:ident, $cb:expr, $result:expr; $($arg:expr),*) => {
+++        let kind = match Command::$v {
+++            Command::CmdBeginRenderPass => 3,
+++            Command::CmdEndRenderPass => 4,
+++            Command::CmdDispatchIndirect => 8,
+++            Command::CmdCopyBuffer => 9,
+++            Command::CmdCopyBufferToImage => 10,
+++            Command::CmdCopyImageToBuffer => 11,
+++            Command::CmdCopyImage => 12,
+++            Command::CmdBlitImage => 13,
+++            Command::CmdFillBuffer => 15,
+++            Command::CmdClearColorImage => 16,
+++            Command::CmdPipelineBarrier => 17,
+++            Command::CmdClearDepthStencilImage => 20,
+++            Command::CmdClearAttachments => 21,
+++            _ => 0,
+++        };
+++        if kind != 0 {
+++            crate::stage_trace::diagnostic_vulkan($cb.as_raw(), kind, 0, 0);
+++        }
+++    };
++ }
++ 
++ /// Declare the routed commands: those of `ash`'s 1.0 table (`v1_0`), of its 1.3 table (`v1_3`),
++@@ -174,13 +218,15 @@
++                 }
++                 // SAFETY: the slot's device's driver gave this command (`store`), of this
++                 // signature; the caller's arguments are as the command takes them.
++-                unsafe {
+++                let result = unsafe {
++                     let real = std::mem::transmute::<
++                         *mut c_void,
++                         unsafe extern "system" fn(vk::CommandBuffer, $($t,)*) $(-> $r)?,
++                     >(real);
++                     real(command_buffer, $($a,)*)
++-                }
+++                };
+++                diagnostic_operation!($v, command_buffer, result; $($a),*);
+++                result
++             }
++         )*
++     };
++diff --git a/crates/metal2vulkan-runtime/src/stage_trace.rs b/crates/metal2vulkan-runtime/src/stage_trace.rs
++--- a/crates/metal2vulkan-runtime/src/stage_trace.rs
+++++ b/crates/metal2vulkan-runtime/src/stage_trace.rs
++@@ -15,7 +15,7 @@
++ //!   its completion: records of one id between a commit stage and its completion are one command
++ //!   buffer's.
++ 
++-use std::sync::atomic::{AtomicU64, AtomicU8, Ordering};
+++use std::sync::atomic::{AtomicU8, AtomicU64, Ordering};
++ 
++ /// The records the ring keeps.
++ const RING: usize = 1 << 16;
++@@ -165,8 +165,14 @@
++ pub(crate) fn mark(id: usize, stage: Stage, arg: u32) {
++     // Per-command handoff and completion stages retain scheduler latency.
++     // Idle scheduler turns have no command identity and add no causal link.
++-    if matches!(stage, Stage::SchedulerSleep | Stage::SchedulerWake
++-        | Stage::SchedulerResumed | Stage::PassBegin | Stage::PassEnd) {
+++    if matches!(
+++        stage,
+++        Stage::SchedulerSleep
+++            | Stage::SchedulerWake
+++            | Stage::SchedulerResumed
+++            | Stage::PassBegin
+++            | Stage::PassEnd
+++    ) {
++         return;
++     }
++     if !diagnostics() {
++@@ -244,3 +250,12 @@
++         hook(45, id, command, batch);
++     }
++ }
+++
+++/// An actual routed Vulkan command after the driver's recording function returns.
+++/// The opcode and compact arguments describe work; this is not GPU duration.
+++#[inline]
+++pub(crate) fn diagnostic_vulkan(command: u64, kind: u32, detail0: u32, detail1: u64) {
+++    if let Some(hook) = DIAGNOSTIC_HOOK.get() {
+++        hook(46, command, ((kind as u64) << 32) | detail0 as u64, detail1);
+++    }
+++}

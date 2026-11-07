@@ -266,6 +266,12 @@ def main():
         must(['git', '-C', repository, 'apply', '--check', selected])
         must(['git', '-C', repository, 'apply', selected])
         record.setdefault('buffer_reserve_patches', {})[name] = sha(selected)
+    for repository, name in [(root, 'vulkan-operation-recipes.patch'),
+                             (root / 'drivers/AdrenoMetal', 'vulkan-operation-plugin.patch')]:
+        selected = HERE / 'patches' / name
+        must(['git', '-C', repository, 'apply', '--check', selected])
+        must(['git', '-C', repository, 'apply', selected])
+        record.setdefault('vulkan_operation_patches', {})[name] = sha(selected)
     # The final bridge recipe applies these at plugin-build time. Record the
     # complete patch set after all frontend patches have been installed.
     bridge_patches = sorted((root / 'drivers/AdrenoMetal/bridge/patches').glob('*.patch'))

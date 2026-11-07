@@ -1,9 +1,12 @@
 {
   "original_pin": "624bab3918de5b978e1101517abca2b4fa426565",
-  "patched_tree": "fd32692e423952cc88811243d8fbaa8ad25bc3ed",
+  "patched_tree": "5d33c235cc2b629eac4d41ec8351ecca0e9ca5ed",
   "source_hashes": {
     "crates/metal2vulkan-runtime/src/memory.rs": "e82be6e1bd9e33cce52042dcee06869f42dcb9ec1cd359e15bce11636aca95c6",
-    "crates/metal2vulkan-runtime/src/creation.rs": "d35f304e66902a97dcf6a5920133bb6e7abdbe4f6801865a7f7aa472465f1710"
+    "crates/metal2vulkan-runtime/src/creation.rs": "d35f304e66902a97dcf6a5920133bb6e7abdbe4f6801865a7f7aa472465f1710",
+    "crates/metal2vulkan-runtime/src/stage_trace.rs": "f1b3a23590e3d55a422d4fcfada5666cc9de67a6d1d3b92ff0b54832f26a954a",
+    "crates/metal2vulkan-runtime/src/recorder/mod.rs": "9296805767f2af4bd71d2ca5454dd4763c80ada28f1c1bbe9109f3a34991e15f",
+    "crates/metal2vulkan-runtime/src/recorder/thunks.rs": "65b80251b5ed78512bbbb710b35781860d9206e460bf643036da354fb5c60f79"
   },
   "patch_hashes": {
     "0001-optional-constant-output-members.patch": "af8eadbab4c9bc2576b14abea5308abfbc95aafb33a3c53b72117d3b1e535919",
@@ -36,7 +39,8 @@
     "0028-guard-memory-release-test-worker.patch": "f601a847e7d392ff08f0476e9594bb56bdb9023c5457ca84bf93a4f2a8e9dcb2",
     "0029-latency-stage-selection.patch": "ccd35ebd58ef453af715cf8dd80e07020cab23cef2e48f9caa94f076e3ca1f4d",
     "0030-spare-image-blocks-give-room.patch": "9e7a23a20a4d157e133f51c079511600b8a291a58a86d82e1a7f89f5910ade5f",
-    "0031-bounded-buffer-reserves.patch": "fc93889d00d44da4e5f9bcf2c1644967e707b1b7fb455d55ea2773d2c0898bde"
+    "0031-bounded-buffer-reserves.patch": "fc93889d00d44da4e5f9bcf2c1644967e707b1b7fb455d55ea2773d2c0898bde",
+    "0032-vulkan-operation-diagnostics.patch": "4320e2c9bbcc229bb70d4adab745506db9d4ad18598205a87d7587be888176ec"
   },
-  "builder_sha256": "351dab920688d05a9e615daeed0d245cf2faf9062473459c9f760f438afcd2d7"
+  "builder_sha256": "bfc0aff5df3d12eac4e4dea15665589a2e6a057b4e85134b6ef72dd854e515a3"
 }
