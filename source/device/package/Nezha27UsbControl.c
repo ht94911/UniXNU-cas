@@ -106,7 +106,9 @@ static void reboot_worker(void *arg,wait_result_t wr) {
  thread_bind(cpu);thread_block(THREAD_CONTINUE_NULL);
  if(cpu_number()!=boot_cpu_id){result=-2;goto out;}
  if(!storage_ready()){result=-11;goto out;}
- if(mode==1){result=nezha_bluetooth_stop_and_wait(30000);if(result)goto out;}
+ // Retire our UART DMA and shared lease before either existing USB exit mode.
+ int bt_stop=nezha_bluetooth_stop_and_wait(30000);
+ if(bt_stop){printf("NEZHA27 USB REBOOT: Bluetooth cleanup failed %d; exit refused\n",bt_stop);result=-14;goto out;}
  if(persistent_selected() && (native_ufs_store_gpt_check()!=0 || !native_ufs_store_sync())){result=-12;goto out;}
  nezha27_usb_reset_phase=1;
  printf("NEZHA27 USB REBOOT: mode=%u;ACK/log drain then %s\n",mode,mode==2?"RAM-only direct PSCI":"normal XNU shutdown");

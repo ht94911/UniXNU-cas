@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "bda642f574c368c8ae424f80c2e3a424de7280aa",
+  "device_revision": "1c9f88bc7562d611f32fd976e23b69ef0ca8a89a",
   "soc_revision": "3435fa55c3e835a4aaebf7d833473fd5d20073fd",
   "xcode": "26.6",
   "files": {
@@ -123,12 +123,12 @@
     "source/device/components/QcaBluetooth/src/qbt_geni.c": "71d82cba025b767175c4bb35930dcf73d2754c7b8bd5d9ac5a27a4dd74ed168b",
     "source/device/components/QcaBluetooth/src/qbt_geni_regs.h": "8d13c97a1152b403d9ee6e51486f305a25c976f33af158f50ce94e7680181f0b",
     "source/device/components/QcaBluetooth/src/qbt_internal.h": "20d8bffa914ced8e15f75c3db434c366043a6f3a488c5ff11fac9ee307f054ec",
-    "source/device/components/QcaBluetooth/src/qbt_linux.c": "f8a63ebd163c8fde00d805f59064a0bc74e4bd6d62a09a2ba1464cd5bc9c61e8",
+    "source/device/components/QcaBluetooth/src/qbt_linux.c": "9064d68ec4cff638eb89597d482d5da999d9a850167569764e2ccaad57d1dade",
     "source/device/components/QcaBluetooth/src/qbt_transport.c": "2c3093938867ea3f166f4cf21e6aeab37e1acc243751dd421e79230fc771d521",
     "source/device/components/QcaBluetooth/src/qbt_transport.c.license": "02df0ed6ad99b05d41cd19a9c769c1ec867f52770b50d3da9e19268587a25539",
     "source/device/components/QcaBluetooth/tests/geni.c": "54cc6049b0ca7db888b415a0d0d890dd498a43a6244fa5a83f6136d89a6595f2",
     "source/device/components/QcaBluetooth/tests/native_type0.c": "446f5764828bca70eec735a27014c8840b898f5a0ef1eb2d61fc4e096d15c25e",
-    "source/device/components/QcaBluetooth/tests/runtime.c": "ac9209603161c4b706e1e7f1b2c5b36a93adec5e8398dce8219596ea541857e9",
+    "source/device/components/QcaBluetooth/tests/runtime.c": "ff24a0b590d0a730c9a681cb235510c4d3297ad78636b72e1490daca0000f965",
     "source/device/components/QcaBluetooth/tools/build-bluetool.py": "23a7dbe3888f09dc7c5739c15b8f1ad011a0d326862a2ba3b6e7682b3333260c",
     "source/device/components/QcaBluetooth/tools/build-type0.py": "0d102b078b7c8946df3a46d98a341c616747fd5d4fe15abe743379419d56780f",
     "source/device/components/QcaBluetooth/tools/build-userland.py": "60b678dc7d814b40b23823026a16e0ffee2f4c21586e435c0bfb679051b13a8c",
@@ -165,7 +165,7 @@
     "source/device/package/BootWatchdogPolicy.c": "2456c6d5c3c1692fd8dc3c6715af554b82799655a3460bb7dc53cbf0b0162a61",
     "source/device/package/KeyStoreProbe.cpp": "068ef978260969e3d67d743459802d72e5fad9e4a20c7c27828587a2dd9779d9",
     "source/device/package/LegacyDisplayProbe.cpp": "3784f582190c259099a921f0c3add561f80bfa5cfdb33f5f6ea30c1151a13643",
-    "source/device/package/Nezha27UsbControl.c": "cfb7c355d3fc852b5d0b1b8871ba4cdcdba0c8f2b8b63776dac906908d2443c2",
+    "source/device/package/Nezha27UsbControl.c": "779d441ea12863cbfd06653b7a93a1816eb253f02cfe326ca80c96011f41cbb3",
     "source/device/package/NezhaIOS27Pmgr.cpp": "3541fecae1305a917fdd9f82d38e057b655df8c8dd31370a8b7971c35d21ee4d",
     "source/device/package/NezhaWcn7860/NezhaWifiAuto.c": "d5ec6235c735dc426fec13ce6372c96535618a082dc0e6a6f4cdcc88745c50c7",
     "source/device/package/NezhaWcn7860/NezhaWifiAuto.h": "f77123c6a444c736ee75bc2d86c8b64e0d6e4c320c9bc724805b2501cccb8a7f",
@@ -238,15 +238,15 @@
     "source/device/package/backlight/NezhaBrightnessRequest.h": "876811b23045660b71c82c5f6ff33780a6f7bfaaa4311c116c71d179b348a59c",
     "source/device/package/backlight/NezhaDsi0.h": "28a964006beffe03238af70bc9eed4c479ca1aeaef574d4583f18f96fd1690e1",
     "source/device/package/backlight/OriginalAppleARMBacklightABI.h": "dab34c394c2123ae4cbfd6648980d5e7b024539773abe5852f7d2622f9bf7b8b",
-    "source/device/package/bluetooth27/NezhaBluetoothBoard.c": "a0f4ec8542bd66d1de0cefda9562e2ce89cc276af199c6c5bf00f1550bd1ae24",
+    "source/device/package/bluetooth27/NezhaBluetoothBoard.c": "9ef50d93a4f88bcb2306657a31f3cf9993172af172bc9cbcf6b048cd1edbca07",
     "source/device/package/bluetooth27/NezhaBluetoothBoard.h": "0522147398e5a248dde72ec32e61094def8ad672f4812eb527faea84b1d0478b",
     "source/device/package/bluetooth27/NezhaBluetoothDiagnostic.c": "75cd036f517241b338fd2c432d7b999631694dcd7bb7e6a277ab0a956fb24f5c",
     "source/device/package/bluetooth27/NezhaBluetoothDiagnostic.h": "b26151fe8e74bc8f4329d64cea4cd2785fcb3ff6c81ed7471783be7a0f3535db",
-    "source/device/package/bluetooth27/NezhaBluetoothFirmware.c": "01a1fbcb4b9ac63ac4b4b5b80843c155d0562d4db3d6eeba25115b036f5d4826",
+    "source/device/package/bluetooth27/NezhaBluetoothFirmware.c": "8d761eb86cc5aa3a49eb67a9d2c0b1660fe1747ea1e876bd3729ad5fc01e401b",
     "source/device/package/bluetooth27/NezhaBluetoothFirmware.h": "0e018ef91b99c254736791c906b5dfc309c2b1bd64a8381b0d1f6eadb62bf6e7",
     "source/device/package/bluetooth27/NezhaBluetoothPlatform.cpp": "b8aec337dc2c6916fd501f6ed6c310ff05231be5af9626022276012fd48c4d85",
     "source/device/package/bluetooth27/NezhaBluetoothPlatform.h": "5106edd46eac1ec6a4546d96553ec3d077505bd81256b33e8d4f451663367783",
-    "source/device/package/bluetooth27/NezhaBluetoothProbe.cpp": "4513f42d7117787e9d1d3af5b5d6752384c5e3395950a4795bf43dfe70f5fb0a",
+    "source/device/package/bluetooth27/NezhaBluetoothProbe.cpp": "40048b49534b94913b837e766749f945433993a75349e720a60d64d5dd6c5985",
     "source/device/package/bluetooth27/NezhaWcnPower.h": "257724ef51dc5206a43ff46561271bcf340560679c4aa349d7a08b6672c6b219",
     "source/device/package/bluetooth27/Sm8850Bt.h": "784d3b2dfa402e129f3dad00d63dbe239ad134c4ed7b0699d2cabbe062ff63be",
     "source/device/package/bluetooth27/Sm8850BtClock.c": "2022cb260ddeba09a34ddc5c3863b0face37aa62a355a278fb73c0be300163d5",
@@ -338,7 +338,7 @@
     "source/device/scripts/build-software-aes-iphone.py": "ad408438aca47fcb9e7daae4c53b77fa81c00bd0c9ff34cffca244cb324a08e0",
     "source/device/scripts/check-adreno840-integration.py": "822dd823f63242362649baee166a56a5d0accd22f906dff1d9d5902f66d7e02b",
     "source/device/scripts/check-iosurface-plane-27.py": "092f98e807491b17df3e10835d23f1c44ae25c8820cc43c6343c56fa75c3c4c8",
-    "source/device/scripts/check-persistent-data.py": "74e982271e917b6826399801d446aadac4d5a2cf06f47a1da0726602d4704ae6",
+    "source/device/scripts/check-persistent-data.py": "c2a2c50534d564033e967cb34df230ec9d196c341eb1472f7ad10c06c13f72c3",
     "source/device/scripts/check-persistent-marker.py": "b44ed26f16e66aa29410e55d94682c616cc30c1c58df4371365e0863d8647bbe",
     "source/device/scripts/check-root-cwd-ownership.py": "704f9231bfeff097c50578c35772b18ceb9f870752e528532b4c5b9edbf71835",
     "source/device/scripts/check-stable-kernel-stack.py": "18ba63991ba388395d0bd02befcef792dce0fbd1ede8749b22fa3e392f73f394",
@@ -406,7 +406,7 @@
     "firmware_slot_bytes": 262144,
     "snapshot_scope": "listed headers and native implementation units only"
   },
-  "qualification_iteration": "Bluetooth authoritative owner001; iPhone27 XNU/BlueTool/Type0 build; Wi-Fi023/AES/GPU015 base retained",
+  "qualification_iteration": "Bluetooth authoritative owner002; original target compile failures fixed; Ganges 20ms settle; 54 production USB host cases including normal RAM shutdown",
   "software_aes": {
     "source_revision": "c9ce79e16e6a4e74cbbb7f4315ad2ec342933c89",
     "upstream_revision": "4a45326da5c2cd6fe6813d79ee43db20805628af",
@@ -421,6 +421,7 @@
     "firmware_uploaded": false,
     "Apple_images_uploaded": false,
     "normal_XNU_shutdown": true,
-    "provider": 10
+    "provider": 10,
+    "Ganges_pre_rate_settle_ms": 20
   }
 }

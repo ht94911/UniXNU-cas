@@ -88,7 +88,10 @@ static int set_speed(struct qbt *q,uint32_t speed,uint8_t baud,bool require_repl
     q->speed_reply=false;
     e=qbt_send_command(q,0xfc48,&baud,1);
     if(!e)e=qbt_drain(q,q->ops.now_ns(q->ops.context)+QBT_COMMAND_TIMEOUT);
-    if(!e){qbt_delay(q,1);e=q->info.error;if(!e)e=q->ops.uart_speed(q->ops.context,speed);}
+    /* Ganges SetBaudRateReq waits 20 ms after FC48 before changing the host
+     * rate (stock HAL dc360/dc364, usleep via GOT 1ac790). Keep the original
+     * WCN7850 timing; the Ganges completion is read at the new rate. */
+    if(!e){qbt_delay(q,require_reply?20:1);e=q->info.error;if(!e)e=q->ops.uart_speed(q->ops.context,speed);}
     int flow=q->ops.uart_flow(q->ops.context,true);if(!e)e=flow;
     /* The first TLV segment holds the download mode and is lost if it precedes the switch. */
     for(unsigned ms=0;!e && !q->speed_reply && ms<QBT_SPEED_REPLY_MS;ms++)qbt_delay(q,1);
@@ -108,8 +111,9 @@ static int set_speed(struct qbt *q,uint32_t speed,uint8_t baud,bool require_repl
 static int firmware_basename(const char *name) {
     if (!name || !*name || strlen(name)>=60 || name[0]=='.') return 0;
     for (const char *p=name;*p;p++)
-        if (!((*p>='a' && *p<='z') || (*p>='0' && *p<='9') || *p=='.' || *p=='_' || *p=='-')) return 0;
-    return !strstr(name,"..");
+        if ((*p=='.' && p[1]=='.') ||
+            !((*p>='a' && *p<='z') || (*p>='0' && *p<='9') || *p=='.' || *p=='_' || *p=='-')) return 0;
+    return 1;
 }
 int qbt_boot_controller(struct qbt *q,const struct qbt_boot_options *options,const uint8_t address[6]) {
     if (!q || !options) return -EINVAL;

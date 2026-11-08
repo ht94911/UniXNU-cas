@@ -94,7 +94,11 @@ static size_t write_uart(void *c,const uint8_t *p,size_t n){
     struct fixture *f=c;if(!drained(c))return 0;if(n>f->write_limit)n=f->write_limit;
     f->tx_done=f->now+100000;for(size_t i=0;i<n;i++)tx_byte(f,p[i]);return n;
 }
-static int speed(void *c,uint32_t n){struct fixture *f=c;assert(drained(c));f->speed=n;return 0;}
+static int speed(void *c,uint32_t n){
+    struct fixture *f=c;assert(drained(c));
+    if(f->ganges && n!=115200)assert(f->now>=f->speed_command_at+20000000);
+    f->speed=n;return 0;
+}
 static int flow(void *c,bool on){struct fixture *f=c;if(on)f->flow_on++;else f->flow_off++;return 0;}
 static int clock_vote(void *c,bool on){struct fixture *f=c;if(on){if(f->clock_fault)return -ENXIO;f->clock_on++;}else{if(!f->wake_armed)return -EBUSY;assert(drained(c));f->clock_off++;}return 0;}
 static size_t receive(void *c,const uint8_t *p,size_t n){

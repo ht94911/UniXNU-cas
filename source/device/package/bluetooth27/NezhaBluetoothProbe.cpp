@@ -221,12 +221,18 @@ extern "C" void nezha_bluetooth_probe(void) {
     if (!PE_parse_boot_argn("nezha-bluetooth", &enabled, sizeof(enabled)) || enabled != 1) return;
     uint32_t expected = 0;
     if (!__atomic_compare_exchange_n(&runtime.started, &expected, 1u, false, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE)) return;
-    native_bluetooth_stats[0] = 1; native_bluetooth_stats[8] = native_bluetooth_stats[9] = UINT32_MAX;
+    native_bluetooth_stats[0] = 1;
+    native_bluetooth_stats[8] = UINT32_MAX;
+    native_bluetooth_stats[9] = UINT32_MAX;
     int e = nezha_bt_inputs_read(&runtime.inputs); if (!e) e = publish();
     thread_t thread = nullptr;
     if (!e && kernel_thread_start(worker, nullptr, &thread) == KERN_SUCCESS) { thread_deallocate(thread); return; }
     if (!e) e = -ENOMEM;
-    (void)unpublish(); runtime.stopError = e;
+    /* No UART worker or hardware lease exists on this failure path. Keep
+     * the initialization error in stats; only failed service cleanup may
+     * block the later normal USB shutdown. */
+    runtime.stopError = unpublish();
+    printf("[nezha bluetooth] start failed initialization=%d cleanup=%d\n", e, runtime.stopError);
     native_bluetooth_stats[0] = 3; native_bluetooth_stats[1] = (uint64_t)(int64_t)e;
     __atomic_store_n(&runtime.stopped, 1u, __ATOMIC_RELEASE);
 }

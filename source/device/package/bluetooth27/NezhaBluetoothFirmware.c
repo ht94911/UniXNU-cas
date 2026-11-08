@@ -25,9 +25,10 @@ static int filename(DTEntry chosen, const char *key, char out[60]) {
     if (SecureDTGetProperty(chosen, key, &data, &bytes) != kSuccess || bytes < 2 || bytes > 60) return -ENOENT;
     const char *p = data;
     if (p[bytes - 1] || p[0] == '.' || memchr(p, 0, bytes - 1)) return -EINVAL;
-    for (unsigned i = 0; i + 1 < bytes; i++) if (!((p[i] >= 'a' && p[i] <= 'z') ||
+    for (unsigned i = 0; i + 1 < bytes; i++) if ((p[i] == '.' && p[i + 1] == '.') ||
+        !((p[i] >= 'a' && p[i] <= 'z') ||
         (p[i] >= '0' && p[i] <= '9') || p[i] == '.' || p[i] == '-' || p[i] == '_')) return -EINVAL;
-    memcpy(out, p, bytes); return strstr(out, "..") ? -EINVAL : 0;
+    memcpy(out, p, bytes); return 0;
 }
 int nezha_bt_inputs_read(struct nezha_bt_inputs *in) {
     if (!in) return -EINVAL;

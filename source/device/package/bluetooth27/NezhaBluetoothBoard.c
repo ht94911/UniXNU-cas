@@ -96,8 +96,9 @@ static int firmware(void *p,const char *name,const uint8_t **data,size_t *size) 
 static void firmware_put(void *p,const uint8_t *data,size_t n) {struct nezha_bt_board *b=p;b->ops.firmware_put(b->ops.context,data,n);}
 static void interrupt(void *p) {struct nezha_bt_board *b=p;qbt_geni_irq(&b->geni);}
 static int name(char out[64],const char *in) {
-    if(!in || !*in || strlen(in)>=64 || in[0]=='.' || strstr(in,".."))return -EINVAL;
-    for(const char *p=in;*p;p++)if(!((*p>='a' && *p<='z') || (*p>='0' && *p<='9') || *p=='.' || *p=='_' || *p=='-'))return -EINVAL;
+    if(!in || !*in || strlen(in)>=64 || in[0]=='.')return -EINVAL;
+    for(const char *p=in;*p;p++)if((*p=='.' && p[1]=='.') ||
+        !((*p>='a' && *p<='z') || (*p>='0' && *p<='9') || *p=='.' || *p=='_' || *p=='-'))return -EINVAL;
     memcpy(out,in,strlen(in)+1);return 0;
 }
 int nezha_bt_board_init(struct nezha_bt_board *b,const struct nezha_bt_board_ops *o,
