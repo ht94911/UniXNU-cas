@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Native audio019: six confirmed stock locator domains, explicit diagnostic local adsp_apps OPEN and read-only owned SMMU observation on same worker; unchanged PAS/fresh-ready/normal release/GPU015/USB; no PCM/HAL/capture or private inputs/phone operation.",
+  "purpose": "Native audio020: explicitly empty control-only buffer plan without external audio DMA/SMMU domain setup; retain019 stock locator domains/local adsp_apps OPEN/PAS/fresh-ready/normal handover/GPU015/USB. No PCM/HAL/capture, private inputs or phone operations.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "56c154728eba676f54ce2e7b2628fb6f7d9031b3",
+  "device_revision": "e5fcbef9fd4af2e142d5a7aa531093434888847f",
   "soc_revision": "703d7b4bb00904b4a6e5d96f9e9bf72eec170f6b",
   "xcode": "26.6",
   "files": {
@@ -219,7 +219,7 @@
     "source/device/package/audio27/platform/AudioSmmu.h": "41401f1b97e3481c7e5cc3e02c47f926e91eec9fa34f4a48981a3fc3b723cddd",
     "source/device/package/audio27/upstream/ShengGpr.c": "c4f498f07e2cb601b593e64a8d32474a21d6a87375618e1a67b99d52c5d3160e",
     "source/device/package/audio27/platform/SoundWire.h": "348979ac1e552e1c3a0027e09f8500927e8bf7ccbb496276d2c9d3ef19322224",
-    ".github/workflows/nezha-ios27-native.yml": "fde973e02c7cde205ae9b29fbbfa8830be07df433bb2e50c72bbcabdcff260f5",
+    ".github/workflows/nezha-ios27-native.yml": "d0cf3c6ad859a3700d24eddfb3ee2ec3bc3c9eccb3306c52e843eb45922b36f9",
     "source/device/package/audio27/upstream/ShengGpr.h": "a274dded1f4d1e2709b9f966759bcb1f57d12747ee0f57743dea1fa97d95d23e",
     "source/device/package/audio27/os/NezhaAudioNative.h": "7fd04a164de72e423cd16488d805c1a4f8c2f458b2356978b0bdecc2b64d55a7",
     "source/device/package/audio27/upstream/ShengAudioReach.h": "b135177a5feb3e24e0d8a6aabb301600e2c37078b970a09ada6e8eb7bb6a5b98",
@@ -279,7 +279,7 @@
     "source/device/package/audio27/upstream/QcomGlink.c": "d93de74fc679952d3fa327f902d69e4013b3eb95ae6431c77d8b2aa1348999ef",
     "source/device/package/audio27/platform/AudioSmmu.c": "9a0b40fb61392d11c7e61ab8015d1cbfa16d49e4892fc49f20be5e40c0aa274b",
     "source/device/package/audio27/core/AudioGraph.c": "8cc3f022e9fd6a20a18c89ae2f516d9c2ebdec0d139ada3221389d2de020234c",
-    "source/device/package/audio27/platform/AdspLink.h": "c49e3c7855a731698bc7e398ce03109353e48202db1d327fb93390cd60dd445d",
+    "source/device/package/audio27/platform/AdspLink.h": "a54c8c9b3e9320a52d759ad15b6ac1e5a6e699e8a22d1d6848b8aac67d45fe87",
     "source/device/package/audio27/platform/Wcd9395Capture.c": "c84ba26610e8d5570c17ed59e4ce42290da659c7369fdc5ae2d93621fa392c7f",
     "source/device/package/audio27/upstream/GeniI2c.h": "2ade734ab7cdbd41fcea68c7f7ff4392b779b2d04666118407a1533e22258e7c",
     "source/device/package/audio27/os/NezhaAudioService.cpp": "edf9bf14078b835a02f9cf50165521a4614b7af532e03c1938eb83216a9a7804",
@@ -318,7 +318,7 @@
     "source/device/package/audio27/platform/AudioInputPack.c": "9991a396c50bd0e427570d1a04fbe4755202412759fe0e945cd63c53619dea0c",
     "source/device/package/audio27/os/NezhaAudioInputs.c": "46617afe5985f02f108644611b93a19463322be09984968e5e900e10fcfe12aa",
     "source/device/package/audio27/os/NezhaAudioSmmu.cpp": "833371d1e1f4068cadf60002da3867f7a346ece265a8a4d5773174649898fff5",
-    "source/device/package/audio27/os/NezhaAudioDspProbe.cpp": "6a2cd4d4d41c32f5bee7fddb2989f48b4cd9daf2760edcb6331bcd8470954153",
+    "source/device/package/audio27/os/NezhaAudioDspProbe.cpp": "5cf89d6ba4d2430679f261808b7aeaabf971362e51af1ffe7d649ebb69ea6b66",
     "source/device/package/audio27/os/NezhaAudioSmmu.h": "e9391db75422a2ec69a3451d0b50b279fa81741640840cc09e24be5cc3cc3889",
     "source/device/package/audio27/os/NezhaAudioTasBoard.h": "793e2b87da53b7f4aad0093310452fa378137b25e9375fe04edf269e3dad7f8b",
     "source/device/package/audio27/os/NezhaAudioTasBoard.cpp": "b87e914dfae3e3a77626dd1dd18e1c2a31ef01bacd631fb9830ec79a1fc9a890",
@@ -382,7 +382,7 @@
   "audio": {
     "base": "GPU015",
     "base_device_revision": "154f8a08e6800734408c99f909c28ceeb94caa3c",
-    "source_revision": "56c154728eba676f54ce2e7b2628fb6f7d9031b3",
+    "source_revision": "e5fcbef9fd4af2e142d5a7aa531093434888847f",
     "source_only_revision": "abde8b4b694afb0f4eb20e838ebe4f316e49da12",
     "hardware_enabled": false,
     "resource_census_enabled": true,

@@ -16,10 +16,11 @@ typedef struct {
     /* Acquire LP0 bandwidth, load_state, LCX/LMX in the SM8850 sequence.
      * off after real handover removes only OUR votes; errors are not success. */
     int (*proxy)(void *,int on);
-    /* Called only after BOTH PAS shutdowns succeeded, before any firmware
-     * authentication. Install the assigned DMA translations here, never in
-     * the pre-worker initializer. Pending retains the same setup operation;
-     * an error is terminal and cannot cause PAS or SMMU replay. */
+    /* Called only after BOTH PAS shutdowns succeeded, before authentication.
+     * Prepare the caller's host-buffer plan: an explicitly empty control-only
+     * plan needs no PCM domain. Every advertised stream DMA buffer requires
+     * its assigned translations here, never in the pre-worker initializer.
+     * Pending retains the operation; failures never replay PAS or SMMU. */
     int (*dma_setup)(void *);
     /* Existing common IPCC owner and deferred I/O errors, serviced by the
      * worker before advancing PAS/SMEM/GLINK. No second FIFO consumer. */

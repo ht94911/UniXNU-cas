@@ -112,6 +112,7 @@ int snapshot(void *,char *out,size_t capacity,size_t *bytes,unsigned *truncated)
         "\"qrtr_rx\":%u,\"qrtr_tx_queued\":%u,\"qrtr_tx_sent\":%u,\"qrtr_bad\":%u,"
         "\"qrtr_refused\":%u,\"qrtr_remote_services\":%u,\"locator_requests\":%u,\"locator_answers\":%u,"
         "\"locator_txn\":%u,\"qrtr_error\":%d,\"gpr_initiator\":%u,\"owned_fsr\":%u,\"owned_smmu_error\":%d,"
+        "\"control_only\":true,\"external_dma\":false,\"owned_smmu_observed\":false,"
         "\"PCM\":false,\"HAL\":false}",
         v[0],(int32_t)v[1],v[2],v[3],v[4],v[5],v[6],v[7],v[8],(int32_t)v[9],(int32_t)v[10],v[11],v[12],v[13],v[14],v[15],v[16],v[17],v[18],v[19],v[20],
         (unsigned long long)(((uint64_t)v[22]<<32)|v[21]),v[23],v[24],v[25],v[26],(int32_t)v[27],(int32_t)v[28],v[29],v[30],v[31],
@@ -130,32 +131,23 @@ int proxy(void *v,int on) {
     auto *d=static_cast<AudioDspProbe *>(v);int r=na_proxy_request(&d->power,on);
     return r ? r:na_proxy_poll(&d->power,d->now);
 }
-int dma_setup(void *v) {
+int control_buffers_ready(void *v) {
     auto *d=static_cast<AudioDspProbe *>(v);
-    if (!d->adsp.masters_stopped) return NA_OWNERSHIP;
-    if (d->smmu.started) return NA_OK;
-    if (d->dmaAttempted) return NA_OWNERSHIP;
-    d->dmaAttempted=1;
-    const NaRange physical={d->dma.physical,d->dma.bytes};const uint32_t iova=0x40000000;
-    const NaRange reserved[]={{d->input.metadata[0].physical,d->input.metadata[0].bytes},
-                              {d->input.metadata[1].physical,d->input.metadata[1].bytes}};
-    int r=na_smmu_start(&d->smmu,&d->plan.smmu,&physical,&iova,1,d->tables.va,d->tables.physical,
-        (uint32_t)(d->tables.bytes/4096),reserved,2);
-    if (r==NA_BUSY && !d->smmu.quarantine) d->dmaAttempted=0;
-    return r;
+    // This diagnostic sends GLINK/QRTR control packets and reads reset-muted
+    // TAS identity. It never publishes a PCM/topology address to the DSP.
+    // The same-SoC pandora control-only path adds the audio DMA domain only
+    // when its speaker plan is enabled. Leave inherited
+    // mappings/IRQs untouched here instead of installing an unused domain.
+    if (!d->adsp.masters_stopped || !d->plan.adsp_lease || d->plan.smmu.lease ||
+        d->dma.descriptor || d->tables.descriptor || d->plan.tables.cpu ||
+        d->plan.tables.physical.bytes) return NA_OWNERSHIP;
+    for (const auto &stream:d->plan.stream)
+        if (stream.graph || stream.dma.cpu || stream.dma.physical.bytes || stream.iova || stream.port)
+            return NA_OWNERSHIP;
+    return NA_OK;
 }
 int poll_shared(void *v) {
-    auto *d=static_cast<AudioDspProbe *>(v);int r=na_native_smmu_faulted(&d->domain);if (r) return r;
-    // Same read-only owned-stream/context check used by the playback driver.
-    // It acquires the existing owner gate, never clears faults or changes a
-    // route. A pending common lock waits; failed observations retain DMA.
-    if (d->smmu.started) {
-        r=na_smmu_observe(&d->smmu,0);
-        if (r && r!=NA_BUSY)
-            printf("NEZHA AUDIO27 SMMU: owned observation result=%d fsr=%x phase=%u quarantine=%u\n",
-                r,d->smmu.stream_result.context.fault_status,d->smmu.stream_result.phase,d->smmu.quarantine);
-        if (r) return r;
-    }
+    auto *d=static_cast<AudioDspProbe *>(v);
     return na_resource_owner_dispatch(&d->input.resources);
 }
 int prepare(AudioDspProbe *d) {
@@ -165,9 +157,6 @@ int prepare(AudioDspProbe *d) {
     r=na_native_map(&d->smem,{0x81d00000,0x200000},lease);if (r) return r;
     r=na_native_map(&d->qmp,{0xc300000,0x1000},lease);if (r) return r;
     r=na_native_map(&d->cmdDb,{0x81c60000,0x20000},lease);if (r) return r;
-    r=na_native_allocate(&d->dma,65536);if (r) return r;
-    r=na_native_allocate(&d->tables,64*4096);if (r) return r;
-    r=na_native_smmu_bind(&d->domain,&d->input.resources,&d->plan.smmu);if (r) return r;
     const NaRange region[]={na_nezha_facts.firmware,na_nezha_facts.dtb};
     for (unsigned i=0;i<2;++i) {
         auto &m=d->input.metadata[i];
@@ -177,7 +166,7 @@ int prepare(AudioDspProbe *d) {
     NaProxyOps power=na_resource_owner_proxy(&d->input.resources);
     r=na_proxy_init(&d->power,reinterpret_cast<volatile uint32_t *>(d->qmp.va),0x400,
         const_cast<const uint8_t *>(d->cmdDb.va),0x20000,1,&power);if (r) return r;
-    NaAdspOps ops={d,smem_lock,smem_unlock,doorbell,proxy,dma_setup,poll_shared,post_ready};
+    NaAdspOps ops={d,smem_lock,smem_unlock,doorbell,proxy,control_buffers_ready,poll_shared,post_ready};
     r=na_adsp_init(&d->adsp,d->smem.va,0x200000,&d->loader[0],&d->loader[1],&d->rx,&ops);if (r) return r;
     // Android GLINK's create_local and pandora_adsp_gpr=2 both initiate OPEN
     // when no remote adsp_apps OPEN exists. Audio018 never observed that name;
@@ -310,7 +299,7 @@ void run_probe(void *v,wait_result_t) {
         if (d->phase==5) break;
         assert_wait_timeout((event_t)d,THREAD_UNINT,1,kMillisecondScale);thread_block(THREAD_CONTINUE_NULL);
     }
-    // Static state, firmware mappings, DMA and leases remain retained. The
+    // Static state, firmware mappings and PAS/control leases remain retained. The
     // existing USB path continues; no automatic reset or PAS replay follows.
     thread_terminate(current_thread());thread_block(THREAD_CONTINUE_NULL);
 }
