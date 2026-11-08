@@ -32,7 +32,7 @@
   "ci/gpu-userland/patches/device-context-recipes.patch": "af1096778a72e2ff9025a75db2bfcf6f7ca3b81786803118e8a4359e24be2022",
   "ci/gpu-userland/patches/full-iphone-plugin.patch": "9db0e7f5bd1b32ea953a36dae1c0e034d464fb0cc9f04a04aab2df835cc9dd4d",
   "ci/gpu-userland/patches/full-iphone-recipes.patch": "63ecdba6cf8cc83396e6329827f00c397853514f9343acf1e6d870cbdd4d8ab8",
-  "ci/gpu-userland/patches/heap-copy-plugin.patch": "89a2a9a7a9499eeb85b69b39b46eeb15a32abafb91599a54fe289c23aed57e76",
+  "ci/gpu-userland/patches/heap-copy-plugin.patch": "d4556117bd17585f623c34c9151810e4f7e9077c6273a4aaea15381e6c310ea6",
   "ci/gpu-userland/patches/heap-copy-recipes.patch": "b28164a7338bbae2d9186300adb012ab268818260c85a4fd90a0942796b44eb9",
   "ci/gpu-userland/patches/intel-host-bridge.patch": "4ca8907888b08bb9218abe7d95a5c0bf8b11443f1d2fb6cbaad067a1c6862c78",
   "ci/gpu-userland/patches/intel-signal-context.patch": "605c60d9d800809539ce359a79706c63531cd70641b036255f4eee385c034335",
