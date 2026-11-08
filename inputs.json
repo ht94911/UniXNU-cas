@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Audio015 twice reset after ADSP ready. Diagnostic016 retains existing startup proxy votes only in na=2, observes real handover separately from release and bounded post-ready/decoded GLINK headers. Default release and parser errors preserved. No new PCM/HAL/capture or reset. Private firmware/calibration remain local; source-only Mac build and CMS outputs.",
+  "purpose": "Audio015 twice reset after ADSP ready. Diagnostic016 retains existing startup proxy votes only in na=2, observes real handover separately from release and bounded post-ready/decoded GLINK headers. Default release and parser errors preserved. No new PCM/HAL/capture or reset. Private firmware/calibration remain local; source-only Mac build and CMS outputs. Correct the explicitly null optional observer initializer rejected by strict compilation in Native016; no runtime-policy change.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "c9f54e42c456518abb8e6d4e7581043742d799d4",
+  "device_revision": "ff513aac474ab5f292b48f402d1989c693ca1ce6",
   "soc_revision": "703d7b4bb00904b4a6e5d96f9e9bf72eec170f6b",
   "xcode": "26.6",
   "files": {
@@ -219,7 +219,7 @@
     "source/device/package/audio27/platform/AudioSmmu.h": "41401f1b97e3481c7e5cc3e02c47f926e91eec9fa34f4a48981a3fc3b723cddd",
     "source/device/package/audio27/upstream/ShengGpr.c": "c4f498f07e2cb601b593e64a8d32474a21d6a87375618e1a67b99d52c5d3160e",
     "source/device/package/audio27/platform/SoundWire.h": "348979ac1e552e1c3a0027e09f8500927e8bf7ccbb496276d2c9d3ef19322224",
-    ".github/workflows/nezha-ios27-native.yml": "13052e71214530270d4ab3c922cc1e6f2fbbc5b267751ef41adb5fcf956fa443",
+    ".github/workflows/nezha-ios27-native.yml": "6a4f33603be256f6769628890cae088a525ae6b35eeb76d87c79738c62ab4cc4",
     "source/device/package/audio27/upstream/ShengGpr.h": "a274dded1f4d1e2709b9f966759bcb1f57d12747ee0f57743dea1fa97d95d23e",
     "source/device/package/audio27/os/NezhaAudioNative.h": "7fd04a164de72e423cd16488d805c1a4f8c2f458b2356978b0bdecc2b64d55a7",
     "source/device/package/audio27/upstream/ShengAudioReach.h": "b135177a5feb3e24e0d8a6aabb301600e2c37078b970a09ada6e8eb7bb6a5b98",
@@ -252,7 +252,7 @@
     "source/device/package/audio27/hal/NezhaAudioProperties.inc": "addc950d7a9d9bee5a7ac154b80eb199b10f72fe80948bc98b142c973a18c92e",
     "source/device/scripts/build-nezha27-audio.py": "874be0f6b88c14caeb0824e5554a84ebca7a6149f667484f01baaba870ef583f",
     "source/device/package/audio27/core/AudioGraph.h": "6f6d6113e81261e686857285229628c0394c302a62ff5010edc343a15d3d9b42",
-    "source/device/package/audio27/platform/AudioAssembly.c": "cfa6a5fa56627586ac4f0ca226ab79bfa910e75e9b97f617377e4dc7d38689a6",
+    "source/device/package/audio27/platform/AudioAssembly.c": "9fe04f97b145e8f44f2c8b472a65e7c33a66ec8e484759ffc8f69516a4dcf24b",
     "source/device/package/audio27/core/AudioStream.c": "223f438cbf630d9cb3286258a1397904d04d3f28c6c6c2ddd04abda800416e4e",
     "source/device/package/audio27/platform/NezhaAudioBoard.h": "01ca2224c56af9108ab585f7b5d281baf5021582d4601cf77fb71ca54777e8aa",
     "source/device/package/audio27/core/AudioRuntime.c": "3320d34220a61375c54678e68e9e11483ea0db897536c701d799594cd7e3aa5d",
@@ -377,7 +377,7 @@
   "audio": {
     "base": "GPU015",
     "base_device_revision": "154f8a08e6800734408c99f909c28ceeb94caa3c",
-    "source_revision": "c9f54e42c456518abb8e6d4e7581043742d799d4",
+    "source_revision": "ff513aac474ab5f292b48f402d1989c693ca1ce6",
     "source_only_revision": "abde8b4b694afb0f4eb20e838ebe4f316e49da12",
     "hardware_enabled": false,
     "resource_census_enabled": true,
