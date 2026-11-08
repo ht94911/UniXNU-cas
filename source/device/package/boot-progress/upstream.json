@@ -1,0 +1,58 @@
+{
+  "repository": "https://github.com/UniXNU/UniXNU-sheng",
+  "commit": "a599a1a8a92093b5077543e071b72130769eb325",
+  "files": {
+    "BootProgress.c": {
+      "source": "sources/UniXNU-sheng/package/BootProgress.c",
+      "sha256": "efa2bbecd1942e4241a6c48d590fbb7029a883eaa85babb7c1f1703e8f610e95"
+    },
+    "BootProgressCore.h": {
+      "source": "sources/UniXNU-sheng/package/BootProgressCore.h",
+      "sha256": "b336397b7aa1e903705ecc78f668f67dd31d7136e8a47acfc801322ada30ee04"
+    },
+    "BootProgressDisplay.h": {
+      "source": "sources/UniXNU-sheng/package/BootProgressDisplay.h",
+      "sha256": "231f580758e4e98592fd7f41203be00ca5670b912508a520bf83fb82d3af10d9"
+    },
+    "BootProgressPulse.h": {
+      "source": "sources/UniXNU-sheng/package/BootProgressPulse.h",
+      "sha256": "25700a256b60329dc297c85f36f2397d21062536342affa42568e4cfef1adcd4"
+    },
+    "BootProgressLifecycle.h": {
+      "source": "sources/UniXNU-sheng/package/BootProgressLifecycle.h",
+      "sha256": "eaf777e5b71db7b5affaa9a64d0a2806277730b538d9aa96a457f425ccbada6a"
+    },
+    "BootProgressTests.c": {
+      "source": "sources/UniXNU-sheng/package/BootProgressTests.c",
+      "sha256": "f220024b2849072149454abc7158eac7dc6db04e93cb30c5ed27d420abecf415"
+    },
+    "BootFaultProbe.c": {
+      "source": "sources/UniXNU-sheng/package/BootFaultProbe.c",
+      "sha256": "64ab996a458265def45c81d53d7a209b60a01b3983f4a02ec35050fab6ee1b8a"
+    },
+    "BootWatchdogPolicy.c": {
+      "source": "sources/UniXNU-sheng/package/BootWatchdogPolicy.c",
+      "sha256": "4b3a3b8ff2ab0177f547ff318bc9f3b60b7a87561f85a82d4b52aa23e8721224"
+    },
+    "BootProcessProbe.c": {
+      "source": "sources/UniXNU-sheng/package/BootProcessProbe.c",
+      "sha256": "f32a68c701c5bc56848a31760431429ab3d5097406832410ec5f8ff707f102af"
+    },
+    "BootUiTraceProbe.c": {
+      "source": "sources/UniXNU-sheng/package/BootUiTraceProbe.c",
+      "sha256": "71b021624c98e519054d9e150f941bf2f21cfc632dfb548a2c4b5b1bf7b43026"
+    },
+    "BootUiTraceCore.h": {
+      "source": "sources/UniXNU-sheng/package/BootUiTraceCore.h",
+      "sha256": "5b9bfc83e3d97beb35587e59ea06d6c0c35cfb7acbd008d459d76ab2cfb0082c"
+    },
+    "BootUiTraceDetails.h": {
+      "source": "sources/UniXNU-sheng/package/BootUiTraceDetails.h",
+      "sha256": "b9c0d9afbc80359a08f2aabb87cf6ee94c5227e64212dffb05ea8d9e08a8473e"
+    },
+    "Font.h": {
+      "source": "sources/uefi-umi/Silicon/Silicium/SiliciumPkg/Library/FrameBufferSerialPortLib/Font.h",
+      "sha256": "d2a3687db67b069f4e34a961e17fd28b0242986e3fa8dd8a7545cab70834fa8e"
+    }
+  }
+}
