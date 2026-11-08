@@ -33,6 +33,7 @@ int na_adsp_init(NaAdsp *a,volatile void *smem,uint32_t bytes,NaPasLoad *main_im
     a->stage=NaAdspPower;return NA_OK;
 }
 void na_adsp_smp2p_event(NaAdsp *a) {if (a) __atomic_fetch_add(&a->doorbells,1,__ATOMIC_RELEASE);}
+void na_adsp_watchdog_event(NaAdsp *a) {if (a) __atomic_fetch_add(&a->watchdogs,1,__ATOMIC_RELEASE);}
 static int failed(NaAdsp *a,int r) {
     r=r<0 ? r:NA_IO;a->stage=NaAdspFailed;a->error=r;
     if (a->transport.channel) na_transport_lost(&a->transport);
@@ -78,8 +79,12 @@ static int smp2p(NaAdsp *a) {
     return NA_OK;
 }
 int na_adsp_poll(NaAdsp *a,uint64_t now) {
-    if (!a || a->stage==NaAdspCold || now>UINT64_MAX-30000 || a->glink_delay_ms>10000) return NA_ARGUMENT;
+    if (!a || a->stage==NaAdspCold || now>UINT64_MAX-30000 || a->glink_delay_ms>20000) return NA_ARGUMENT;
     if (a->stage==NaAdspFailed) return a->error;
+    if ((a->stage==NaAdspWaitReady || a->stage==NaAdspOnline) &&
+        __atomic_load_n(&a->watchdogs,__ATOMIC_ACQUIRE)!=a->auth_watchdogs) {
+        a->watchdog_fault=1;return failed(a,NA_REMOTE);
+    }
     if (!a->deadline) a->deadline=now+30000;
     if (a->stage!=NaAdspOnline && now>=a->deadline) return failed(a,NA_TIMEOUT);
     if (a->ops.poll_shared) {
@@ -116,7 +121,10 @@ int na_adsp_poll(NaAdsp *a,uint64_t now) {
     case NaAdspMain:
         /* Establish the event baseline immediately BEFORE auth_and_reset.
          * A stale SMEM ready bit alone must not accept the previous firmware. */
-        if (a->main_image->stage==NaPasAuthenticate) a->auth_doorbells=__atomic_load_n(&a->doorbells,__ATOMIC_ACQUIRE);
+        if (a->main_image->stage==NaPasAuthenticate) {
+            a->auth_doorbells=__atomic_load_n(&a->doorbells,__ATOMIC_ACQUIRE);
+            a->auth_watchdogs=__atomic_load_n(&a->watchdogs,__ATOMIC_ACQUIRE);
+        }
         if (a->main_image->stage==NaPasAuthenticate) a->masters_stopped=0;
         r=na_pas_poll(a->main_image,now);
         if (!r) {a->stage=NaAdspWaitReady;a->deadline=now+5000;}break;

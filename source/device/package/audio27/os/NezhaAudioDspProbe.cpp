@@ -13,6 +13,7 @@ extern "C" {
 #include "NezhaAudioTasBoard.h"
 extern "C" volatile int nezha_touch_stage;
 extern "C" kern_return_t thread_terminate(thread_t);
+extern "C" IOReturn armcpu_spi_attach(uint32_t,bool,void (*)(void *),void *,uint32_t *,uint64_t *);
 extern "C" void nezha_audio27_dsp_probe_start(void);
 namespace {
 struct AudioDspProbe {
@@ -27,10 +28,16 @@ struct AudioDspProbe {
     unsigned tasClaimed,tasPowerAttempted,tasCleanupAttempted;
     unsigned postPoint;int postResult,headerResult;
     unsigned loadPas,loadPoint,loadSegment;uint64_t loadOffset,loadBytes,loadPhysical;
+    uint32_t watchdogIrq,watchdogStops,watchdogStopAttempted;
+    uint64_t watchdogRouter;
+    int watchdogMain,watchdogDtb;
+    char crashBaseline[161],crashLast[161];
+    uint32_t crashBaselinePresent,crashLastPresent,crashLogs;
+    uint64_t crashNext;
     int error,tasError,tasCleanup;
 };
 AudioDspProbe nativeAudioProbe;
-uint32_t audioProbeSequence,audioProbeValues[71];
+uint32_t audioProbeSequence,audioProbeValues[77];
 void publish(AudioDspProbe *d) {
     uint32_t fault=0,syndrome=0;uint64_t address=0;
     // IRQ publishes these once through fault_pending; never race its initial
@@ -59,13 +66,16 @@ void publish(AudioDspProbe *d) {
         d->adsp.mapper.requests,d->adsp.mapper.answers,d->adsp.mapper.last_transaction,
         (uint32_t)d->adsp.mapper.error,d->adsp.gpr_initiator,
         d->smmu.stream_result.context.fault_status,(uint32_t)d->smmu.error,
-        d->adsp.glink_delay_ms,(uint32_t)(d->now<d->adsp.glink_after ? d->adsp.glink_after-d->now:0)};
+        d->adsp.glink_delay_ms,(uint32_t)(d->now<d->adsp.glink_after ? d->adsp.glink_after-d->now:0),
+        __atomic_load_n(&d->adsp.watchdogs,__ATOMIC_ACQUIRE),d->adsp.auth_watchdogs,
+        d->watchdogIrq,d->watchdogStops,(uint32_t)d->watchdogMain,(uint32_t)d->watchdogDtb};
     static_assert(sizeof values==sizeof audioProbeValues,"Diagnostic word layout mismatch");
     __atomic_add_fetch(&audioProbeSequence,1,__ATOMIC_ACQ_REL);
-    for (unsigned i=0;i<71;++i) __atomic_store_n(&audioProbeValues[i],values[i],__ATOMIC_RELAXED);
+    for (unsigned i=0;i<77;++i) __atomic_store_n(&audioProbeValues[i],values[i],__ATOMIC_RELAXED);
     __atomic_add_fetch(&audioProbeSequence,1,__ATOMIC_RELEASE);
 }
 void glink_header(void *,uint32_t,uint16_t,uint16_t,uint32_t,int);
+void capture_crash_baseline(AudioDspProbe *);
 void post_ready(void *v,uint32_t point,int result) {
     auto *d=static_cast<AudioDspProbe *>(v);d->postPoint=point;d->postResult=result;publish(d);
     if (point==NaAdspGlinkSetupReturn && !result) {
@@ -90,10 +100,10 @@ void loader_progress(void *v,uint32_t pas,uint32_t point,uint32_t segment,uint64
             pas,point,segment,(unsigned long long)offset,(unsigned long long)bytes,(unsigned long long)pa);
 }
 int snapshot(void *,char *out,size_t capacity,size_t *bytes,unsigned *truncated) {
-    uint32_t v[71];bool valid=false;
+    uint32_t v[77];bool valid=false;
     for (unsigned attempt=0;attempt<4;++attempt) {
         uint32_t seq=__atomic_load_n(&audioProbeSequence,__ATOMIC_ACQUIRE);if (seq&1) continue;
-        for (unsigned i=0;i<71;++i) v[i]=__atomic_load_n(&audioProbeValues[i],__ATOMIC_RELAXED);
+        for (unsigned i=0;i<77;++i) v[i]=__atomic_load_n(&audioProbeValues[i],__ATOMIC_RELAXED);
         __atomic_thread_fence(__ATOMIC_ACQUIRE);
         if (seq==__atomic_load_n(&audioProbeSequence,__ATOMIC_RELAXED)) {valid=true;break;}
     }
@@ -114,6 +124,7 @@ int snapshot(void *,char *out,size_t capacity,size_t *bytes,unsigned *truncated)
         "\"qrtr_refused\":%u,\"qrtr_remote_services\":%u,\"locator_requests\":%u,\"locator_answers\":%u,"
         "\"locator_txn\":%u,\"qrtr_error\":%d,\"gpr_initiator\":%u,\"owned_fsr\":%u,\"owned_smmu_error\":%d,"
         "\"glink_delay_ms\":%u,\"glink_delay_left_ms\":%u,"
+        "\"wdog\":%u,\"wdog_base\":%u,\"wdog_irq\":%u,\"wdog_stops\":%u,\"wdog_main\":%d,\"wdog_dtb\":%d,"
         "\"control_only\":true,\"external_dma\":false,\"owned_smmu_observed\":false,"
         "\"PCM\":false,\"HAL\":false}",
         v[0],(int32_t)v[1],v[2],v[3],v[4],v[5],v[6],v[7],v[8],(int32_t)v[9],(int32_t)v[10],v[11],v[12],v[13],v[14],v[15],v[16],v[17],v[18],v[19],v[20],
@@ -121,7 +132,8 @@ int snapshot(void *,char *out,size_t capacity,size_t *bytes,unsigned *truncated)
         (unsigned long long)(((uint64_t)v[33]<<32)|v[32]),(unsigned long long)(((uint64_t)v[35]<<32)|v[34]),
         (unsigned long long)(((uint64_t)v[37]<<32)|v[36]),
         v[38],v[39],v[40],v[41],(int32_t)v[42],v[43],v[44],v[45],v[46],(int32_t)v[47],v[48],v[49],v[50],v[51],v[52],v[53],
-        v[54],v[55],v[56],v[57],v[58],v[59],v[60],v[61],v[62],v[63],v[64],(int32_t)v[65],v[66],v[67],(int32_t)v[68],v[69],v[70]);
+        v[54],v[55],v[56],v[57],v[58],v[59],v[60],v[61],v[62],v[63],v[64],(int32_t)v[65],v[66],v[67],(int32_t)v[68],v[69],v[70],
+        v[71],v[72],v[73],v[74],(int32_t)v[75],(int32_t)v[76]);
     if (n<0 || (size_t)n>=capacity) {*truncated=1;return QUD_FAILED;}
     *bytes=(size_t)n;return QUD_OK;
 }
@@ -133,6 +145,7 @@ int proxy(void *v,int on) {
     auto *d=static_cast<AudioDspProbe *>(v);int r=na_proxy_request(&d->power,on);
     return r ? r:na_proxy_poll(&d->power,d->now);
 }
+void watchdog_irq(void *v) {na_adsp_watchdog_event(static_cast<NaAdsp *>(v));}
 int control_buffers_ready(void *v) {
     auto *d=static_cast<AudioDspProbe *>(v);
     // This diagnostic sends GLINK/QRTR control packets and reads reset-muted
@@ -146,6 +159,14 @@ int control_buffers_ready(void *v) {
     for (const auto &stream:d->plan.stream)
         if (stream.graph || stream.dma.cpu || stream.dma.physical.bytes || stream.iova || stream.port)
             return NA_OWNERSHIP;
+    capture_crash_baseline(d);
+    // Saved live stock DTS: ADSP wdog -> PDC pin6, range <0,745,38> ->
+    // SPI751/INTID783. ArmCpu refuses occupied IRQs; no PDC register, other
+    // device IRQ or vector table is modified. Readback covers GIC only.
+    IOReturn irq=armcpu_spi_attach(783,true,watchdog_irq,&d->adsp,&d->watchdogIrq,&d->watchdogRouter);
+    printf("NEZHA AUDIO27 WDOG IRQ: intid=783 result=%d GIC=%#x route=%#llx\n",
+        irq,d->watchdogIrq,(unsigned long long)d->watchdogRouter);
+    if (irq!=kIOReturnSuccess || (d->watchdogIrq&7)!=7) return NA_IO;
     return NA_OK;
 }
 int poll_shared(void *v) {
@@ -176,7 +197,7 @@ int prepare(AudioDspProbe *d) {
     d->adsp.gpr_initiator=1;
     // Separate authenticated firmware/SMP2P/handover from our first GLINK
     // FIFO writes and replies. Full playback retains the zero-delay default.
-    d->adsp.glink_delay_ms=10000;
+    d->adsp.glink_delay_ms=20000;
     // Audio016 still reset with all startup votes held. Restore the ordinary
     // handover/release policy; its original diagnostic image stays frozen.
     return na_resource_owner_ipcc(&d->input.resources,&d->adsp);
@@ -223,19 +244,60 @@ int identify_tas(AudioDspProbe *d) {
     }
     return d->tasPhase==3 ? NA_OK:NA_OWNERSHIP;
 }
-void crash_reason(AudioDspProbe *d) {
-    if (d->adsp.error!=NA_REMOTE || !(d->adsp.slave&1) ||
-        __atomic_load_n(&d->adsp.doorbells,__ATOMIC_ACQUIRE)==d->adsp.auth_doorbells) return;
+bool read_crash_message(AudioDspProbe *d,char *message) {
+    memset(message,0,161);
     QcomSmemPartition global;uint32_t at=0,bytes=0;
     int r=qcom_smem_partition(&d->adsp.smem,QCOM_SMEM_HOST_GLOBAL,QCOM_SMEM_HOST_GLOBAL,&global);
     if (!r) r=qcom_smem_find(&d->adsp.smem,&global,423,&at,&bytes);
-    if (r || !bytes || at>d->adsp.smem.size || bytes>d->adsp.smem.size-at) {
-        printf("NEZHA AUDIO27 DSP: post-auth fatal, bounded SMEM crash reason unavailable\n");return;
-    }
-    char message[161];unsigned n=0,limit=bytes<160 ? bytes:160;
+    if (r || !bytes || at>d->adsp.smem.size || bytes>d->adsp.smem.size-at) return false;
+    unsigned n=0,limit=bytes<160 ? bytes:160;
     while (n<limit) {uint8_t c=d->adsp.smem.base[at+n];if (!c) break;message[n++]=c>=32 && c<=126 ? (char)c:'.';}
-    message[n]=0;
-    printf("NEZHA AUDIO27 DSP: SMEM423 after fresh post-auth fatal (bounded snapshot): %s\n",message);
+    return true;
+}
+void capture_crash_baseline(AudioDspProbe *d) {
+    d->crashBaselinePresent=read_crash_message(d,d->crashBaseline);
+    memcpy(d->crashLast,d->crashBaseline,sizeof d->crashLast);
+    d->crashLastPresent=d->crashBaselinePresent;d->crashNext=d->now+20;
+    printf("NEZHA AUDIO27 SMEM423 BASELINE: present=%u before authentication\n",d->crashBaselinePresent);
+}
+void observe_crash_message(AudioDspProbe *d) {
+    if (d->loader[0].stage!=NaPasReady || d->now<d->crashNext) return;
+    d->crashNext=d->now+20;char message[161];bool present=read_crash_message(d,message);
+    if (present && message[0] && (!d->crashLastPresent || strcmp(message,d->crashLast))) {
+        if (d->crashLogs<4)
+            printf("NEZHA AUDIO27 SMEM423 UPDATE: after-auth same-baseline=%u (bounded): %s\n",
+                d->crashBaselinePresent && !strcmp(message,d->crashBaseline),message);
+        ++d->crashLogs;
+    }
+    memcpy(d->crashLast,message,sizeof d->crashLast);d->crashLastPresent=present;
+    // Text changes are evidence only. They never synthesize a watchdog, stop
+    // the DSP, clear firmware memory or introduce another GLINK consumer.
+}
+void crash_reason(AudioDspProbe *d) {
+    const bool fatal=(d->adsp.slave&1) &&
+        __atomic_load_n(&d->adsp.doorbells,__ATOMIC_ACQUIRE)!=d->adsp.auth_doorbells;
+    if (d->adsp.error!=NA_REMOTE || (!fatal && !d->adsp.watchdog_fault)) return;
+    char message[161];
+    if (!read_crash_message(d,message)) {
+        printf("NEZHA AUDIO27 DSP: post-auth %s, bounded SMEM crash reason unavailable\n",
+            d->adsp.watchdog_fault ? "watchdog":"fatal");return;
+    }
+    printf("NEZHA AUDIO27 DSP: SMEM423 after fresh post-auth %s (bounded snapshot): %s\n",
+        d->adsp.watchdog_fault ? "watchdog":"fatal",message);
+}
+void stop_faulted_adsp(AudioDspProbe *d) {
+    if (d->watchdogStopAttempted) return;
+    d->watchdogStopAttempted=1;publish(d);
+    d->watchdogMain=d->loader[0].ops.pas(d->loader[0].ops.context,6,1,0,0);
+    d->watchdogStops|=1;publish(d);
+    d->watchdogDtb=d->loader[1].ops.pas(d->loader[1].ops.context,6,36,0,0);
+    d->watchdogStops|=2;
+    if (!d->watchdogMain && !d->watchdogDtb) d->adsp.masters_stopped=1;
+    publish(d);
+    printf("NEZHA AUDIO27 WDOG STOP: returned=%u main=%d dtb=%d\n",
+        d->watchdogStops,d->watchdogMain,d->watchdogDtb);
+    // These fixed PAS calls contain this fresh watchdog once. Every lease,
+    // buffer and mapping stays retained; no retry or system reset follows.
 }
 void run_probe(void *v,wait_result_t) {
     auto *d=static_cast<AudioDspProbe *>(v);d->deadline=na_native_now_us(nullptr)/1000+120000;
@@ -273,7 +335,12 @@ void run_probe(void *v,wait_result_t) {
                 else if (!tas) d->phase=4;
             }
         }
-        if (r<0 || (d->phase<4 && d->now>=d->deadline)) {d->error=r<0 ? r:NA_TIMEOUT;d->phase=5;tas_cleanup(d);crash_reason(d);}
+        if (d->phase>=2 && d->phase<=4) observe_crash_message(d);
+        if (r<0 || (d->phase<4 && d->now>=d->deadline)) {
+            d->error=r<0 ? r:NA_TIMEOUT;d->phase=5;
+            if (d->adsp.watchdog_fault) {crash_reason(d);stop_faulted_adsp(d);}
+            tas_cleanup(d);if (!d->adsp.watchdog_fault) crash_reason(d);
+        }
         publish(d);
         if (last!=d->adsp.stage || lastPhase!=d->phase || lastError!=d->error || lastSlave!=d->adsp.slave || lastGpr!=d->adsp.transport.online || lastHeld!=d->power.held) {
             printf("NEZHA AUDIO27 DSP: phase=%u error=%d ADSP=%u slave=%x handover=%u GPR=%u TAS=%u/%u error=%d seen=%u retain=%u held=%x GLINK=%u/%u unknown=\"%s\" IPCC=%u/%x\n",

@@ -38,6 +38,7 @@ typedef struct {
     QcomGlink glink;NaTransport transport;NaPdMapper mapper;NaRxQueue *rx;
     NaPasLoad *main_image,*dtb_image;
     uint32_t stage,doorbells,auth_doorbells,slave,handed,proxy_possible,glink_initialized;
+    uint32_t watchdogs,auth_watchdogs,watchdog_fault;
     uint32_t masters_stopped,dma_ready;
     uint32_t initial_stop_mask;int initial_stop[2]; /* bit0/main,bit1/DTB actually called */
     /* Diagnostic retention never means the real handover or release occurred.
@@ -59,6 +60,9 @@ int na_adsp_init(NaAdsp *,volatile void *smem,uint32_t bytes,NaPasLoad *main_ima
 /* Original shared IPCC interrupt dispatcher forwards only LPASS signal2 here.
  * It must not introduce a second reader clearing the global RECV_ID FIFO. */
 void na_adsp_smp2p_event(NaAdsp *);
+/* The board's dedicated watchdog IRQ is distinct from SMP2P fatal. The ISR
+ * only publishes an event; the existing worker handles a fresh post-auth fault. */
+void na_adsp_watchdog_event(NaAdsp *);
 /* Sole ADSP worker. A timer also polls: no unbounded wait, no lost-wake dependency. */
 int na_adsp_poll(NaAdsp *,uint64_t now_ms);
 #ifdef __cplusplus
