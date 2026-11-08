@@ -1,7 +1,7 @@
 diff --git a/bsd/kern/kern_exit.c b/bsd/kern/kern_exit.c
 --- a/bsd/kern/kern_exit.c
 +++ b/bsd/kern/kern_exit.c
-@@ -1650,6 +1650,18 @@ exit_with_reason(proc_t p, int rv, int *retval, boolean_t thread_can_terminate, boolean_t perf_notify,
+@@ -1648,6 +1648,19 @@
  	int error = 0;
  	bool proc_exiting = false;
  
@@ -17,6 +17,7 @@ diff --git a/bsd/kern/kern_exit.c b/bsd/kern/kern_exit.c
 +			}
 +		}
 +	}
- 	if (__improbable(sheng_user_exit_hook != NULL) && (rv & 127)) {
- 		sheng_user_exit_hook(proc_getpid(p), rv, exit_reason ? exit_reason->osr_namespace : 0,
- 		    exit_reason ? exit_reason->osr_code : 0, p->p_name,
++
+ #if DEVELOPMENT || DEBUG
+ 	/*
+ 	 * Debug boot-arg: panic here if matching process is exiting with non-zero code.

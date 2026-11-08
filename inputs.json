@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "1c9f88bc7562d611f32fd976e23b69ef0ca8a89a",
+  "device_revision": "be44423270982d1a830bc819bf61fe45c108e78f",
   "soc_revision": "3435fa55c3e835a4aaebf7d833473fd5d20073fd",
   "xcode": "26.6",
   "files": {
@@ -90,7 +90,7 @@
     "source/soc/soc.toml": "9cebcadf2d5a271ceb44ee5fc378ed739cff0e7e5a940007164a9917042fd92f",
     "source/ufs.bundle": "3a7c1c6ac7e5a39e6cb4adcc6143fa1e4c6c24ae862aa501102f9fb70c21a534",
     "source/usb.bundle": "fc77b40791b6994f0da015b13b68a13cee5e8bc84e510cee4e518866165efeb2",
-    "ci/native.py": "9b5ef08299dc7ba7d6ce9efa99bdbc45168ac8730380b40ad71807dd5f999fea",
+    "ci/native.py": "04674168bdcd7d0b2cc8d27207556e6ced8e2080280cd58584921804a24b19d9",
     "source/soc/Sm8850Rpmh.c": "9307dc367f8d50d70a809391abb5b9fe3f09f48e9c0558ece1f0c21dfabebe38",
     "source/soc/include/Sm8850Rpmh.h": "4e3903210dacf1c53f87e77c7422d817cbdc39a59ac1c2b3aa5f3417f1bc10af",
     "source/software-aes/NativeAES.cpp": "15cd9a1b721bd498685d49773de8734daa4303e1e298ccd31157148fa2d54a1e",
@@ -302,11 +302,11 @@
     "source/device/package/nezha27-input/NezhaTouchSelfTest.h": "9262f7035de652a7336f8dd9b0a65bb6c1213cec0a0f8c4ce41d0b00037b1fd7",
     "source/device/package/nezha27-input/ResourceProbe.c": "c92b2ba262f2885d90499ba4bfa97c5bc2904c42e4ba3b48618bdac98bd49524",
     "source/device/package/software-aes/NativeAESBootstrap.cpp": "98ed3f7df7df676d475bdf096409bf588e0d6d4773263878f368f953452d9bbd",
-    "source/device/patches/xnu-12377/nezha-bluetooth-exit-diagnostic.patch": "33aa1266d157291bead8541c61fcc33c4612b7b7a92681c8142c4966e736bdec",
+    "source/device/patches/xnu-12377/nezha-bluetooth-exit-diagnostic.patch": "193654ad33bb3de0edd9e62a7bd7cab4f31dbf5a8c1ca996c8b8d2fb48b793e9",
     "source/device/patches/xnu-12377/nezha-wifi-addon-truncate.patch": "c3b980c547fbc138ac7aedfd735d350cfef85d2a32ff78ec7bef894c4068ce63",
     "source/device/patches/xnu-12377/nezha-wifi-kernel-events.patch": "967cf792a5202711d0063463fe08bda58c554621b690b87f66904c18f81d057f",
     "source/device/patches/xnu-12377/nezha-wifi-mmio-recovery.patch": "89642756f4fe3179d44f076fbfd4786d21d0089ec7786943cb717b3eb78ecbe1",
-    "source/device/patches/xnu-12377/series": "55800a1741f0c73ce915c4083dc64992b301fedc7988e08dbe77c4330432386e",
+    "source/device/patches/xnu-12377/series": "19b0015466de583abbc7557a0adbaac3894329cd76c850baf0d4ac60b2a08580",
     "source/device/patches/xnu-12377/source-storage-runtime.patch": "25c377c60db417b15fcc137acf380f0319cbff9d5ba012af1907f3485602b584",
     "source/device/patches/xnu-12377/zzyd-sheng-audio-addon-mount.patch": "b51ed480b34c92452ea984fe056e5fce310bd929992d418f383a7e9268313c51",
     "source/device/patches/xnu-12377/zzye-sheng-cpu-idle.patch": "95f57fb9994796c3de2429fe82b6a521620b9f13b83e29eba12185f5ada4da86",
@@ -355,7 +355,11 @@
     "source/device/tests/input-selftest.c": "df31503c40fbbdc7c8d20757a715987c4133eabdbc32a43cbd1f4e0546f7fd72",
     "source/device/tests/input-telemetry.c": "2af3696ccd9dcfccd4f8864a5f3ffb2144d7acac43b5fc98f34dcb280cf7bd75",
     "source/device/tests/touch-edge.c": "655348775d0389381a10b1f2bbc85b47586b3742a0dcd544a33e92a22e51b496",
-    "source/device/unixnu.lock": "20bddaafe9eabe0874d433fd101156d0db2b3e5786681062de46afe971639daf"
+    "source/device/unixnu.lock": "20bddaafe9eabe0874d433fd101156d0db2b3e5786681062de46afe971639daf",
+    "source/device/patches/xnu-12377/nezha-bluetooth-runtime.patch": "4d4fd6049250eaf399e6a0d5ff4e34232c148081820148532cf8c0c7119fd57b",
+    "source/device/scripts/sign-detached-cache.py": "cbede242ed225353445f80e51f6c2c451007e89ccc61677d7b0672a037635cd0",
+    "ci/cache-signature-template.py": "3596fbb421e2d223c9d01b6280af68ca7e83595c99d3d96e481450f187201d72",
+    ".github/workflows/nezha-ios27-native.yml": "6ee2867d2ae1e356a9bc828000e375a3294817290761dbca993b35d0c64a6485"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
@@ -406,7 +410,7 @@
     "firmware_slot_bytes": 262144,
     "snapshot_scope": "listed headers and native implementation units only"
   },
-  "qualification_iteration": "Bluetooth authoritative owner002; original target compile failures fixed; Ganges 20ms settle; 54 production USB host cases including normal RAM shutdown",
+  "qualification_iteration": "Bluetooth owner003: actual 100-patch XNU chain, sheng runtime system-path unions, public detached-signature template; private Apple runtime remains local",
   "software_aes": {
     "source_revision": "c9ce79e16e6a4e74cbbb7f4315ad2ec342933c89",
     "upstream_revision": "4a45326da5c2cd6fe6813d79ee43db20805628af",
@@ -422,6 +426,8 @@
     "Apple_images_uploaded": false,
     "normal_XNU_shutdown": true,
     "provider": 10,
-    "Ganges_pre_rate_settle_ms": 20
+    "Ganges_pre_rate_settle_ms": 20,
+    "cache_template_file_bytes": 1320266,
+    "private_cache_uploaded": false
   }
 }

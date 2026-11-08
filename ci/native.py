@@ -153,6 +153,11 @@ def build(framework, work):
         code = run([sys.executable, component / 'tools' / script, '--output', userland],
                    log=logs / (script + '.log'))
         if code: return code
+    cache_size = json.loads((ROOT / 'inputs.json').read_text())['bluetooth']['cache_template_file_bytes']
+    code = run([sys.executable, ROOT / 'ci/cache-signature-template.py', '--bytes', cache_size,
+                '--tool', work / 'device/scripts/sign-detached-cache.py', '--out', userland],
+               log=logs / 'cache-template.log')
+    if code: return code
     config = work / 'build.toml'
     commands = [
         ['python3', framework / 'unixnu', 'defconfig', 'nezha_ios27_defconfig', '--config', config],
