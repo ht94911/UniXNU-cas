@@ -7,9 +7,11 @@
 #import "Signing.h"
 
 #ifdef AS_HOST_TEST
+#define AS_BOOL_ENCODING @encode(BOOL)
 #define AS_VERIFIER "ASFixtureVerifier"
 #define AS_TRUST "ASFixtureSignatureService"
 #else
+#define AS_BOOL_ENCODING "B"
 #define AS_VERIFIER "MICodeSigningVerifier"
 #define AS_TRUST "FBSSignatureValidationService"
 #endif
@@ -100,11 +102,11 @@ __attribute__((constructor)) static void start(void) {
             const char *arguments[] = {"^@"};
             const char *getters[] = {"allowAdhocSigning", "verifyTrustCachePresence", "performOnlineAuthorization", "skipProfileIDValidation"};
             const char *setters[] = {"setAllowAdhocSigning:", "setVerifyTrustCachePresence:", "setPerformOnlineAuthorization:", "setSkipProfileIDValidation:"};
-            BOOL valid = signature(method, "B", 1, arguments) &&
+            BOOL valid = signature(method, AS_BOOL_ENCODING, 1, arguments) &&
                 signature(class_getInstanceMethod(cls, @selector(bundle)), "@", 0, NULL);
-            const char *boolean[] = {"B"};
+            const char *boolean[] = {AS_BOOL_ENCODING};
             for (unsigned i = 0; i < 4; ++i)
-                valid &= signature(class_getInstanceMethod(cls, sel_registerName(getters[i])), "B", 0, NULL) &&
+                valid &= signature(class_getInstanceMethod(cls, sel_registerName(getters[i])), AS_BOOL_ENCODING, 0, NULL) &&
                     signature(class_getInstanceMethod(cls, sel_registerName(setters[i])), "v", 1, boolean);
             if (!valid) { NSLog(@"[UniXNU AppSync] installation ABI mismatch; inactive"); return; }
             originalValidation = (void *)method_setImplementation(method, (IMP)validate);

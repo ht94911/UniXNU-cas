@@ -219,7 +219,7 @@
     "source/device/patches/xnu-12377/appsync-arm64-user-jop.patch": "09904a9e97a5f5885bb65a7adcb087aea133d1308f5f10da386c729973fef8e2",
     "source/device/patches/xnu-12377/appsync-runtime.patch": "150c69c4a3d151d519629d83118b47e76499ff13897ef8b5215e01790dce50ca",
     "source/device/patches/xnu-12377/appsync-user-trust.patch": "4b2a0c882d5216d22027f9470b5bd9ebdd770ed739f886e54600c9b89323b40f",
-    "source/appsync/AppSync.m": "44a23a95d6c9dbb98ccd1e612f26e4ed4adbc8ed49738e35d65003cdd2847287",
+    "source/appsync/AppSync.m": "6b52e1f91be326b0739a9ccfa88acfe8c96a85f03e9ba42b581c1a7feffab8af",
     "source/appsync/LICENSE": "442f8326b62909b29d05c8fa840f6993ee44501ccf0decf5143a86bad4b26dc6",
     "source/appsync/README.md": "6699666502497776989bfaffa21b04676884ac9ba1afd49a70621d0d5ff0cbb8",
     "source/appsync/Signing.h": "29c9da391a8fbe7736405d0405deb2749856e57500fb403ca9292bc20832e2fb",
