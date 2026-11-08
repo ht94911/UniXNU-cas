@@ -2,6 +2,7 @@
 #ifndef NEZHA_ADSP_LINK_H
 #define NEZHA_ADSP_LINK_H
 #include "AdspFirmware.h"
+#include "AudioPdMapper.h"
 #include "../core/AudioTransport.h"
 #include "../upstream/QcomSmem.h"
 #include "../upstream/QcomSmp2p.h"
@@ -33,7 +34,7 @@ enum {NaAdspCold,NaAdspStopMain,NaAdspStopDtb,NaAdspDma,NaAdspSetup,NaAdspPower,
       NaAdspDtb,NaAdspMain,NaAdspWaitReady,NaAdspOnline,NaAdspFailed};
 typedef struct {
     NaAdspOps ops;QcomSmem smem;QcomSmemPartition partition;QcomSmp2p p2p;
-    QcomGlink glink;NaTransport transport;NaRxQueue *rx;
+    QcomGlink glink;NaTransport transport;NaPdMapper mapper;NaRxQueue *rx;
     NaPasLoad *main_image,*dtb_image;
     uint32_t stage,doorbells,auth_doorbells,slave,handed,proxy_possible,glink_initialized;
     uint32_t masters_stopped,dma_ready;

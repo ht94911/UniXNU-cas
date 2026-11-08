@@ -180,6 +180,20 @@
       "sha256": "eb732665cd493969887d8cf53eebec540d8efbedc2cff7d22757adab822262be",
       "local_sha256": "70cc8e545c78f190b73ff1a6e03c4c857343b66344bd099f71aa1047c992ba78",
       "modified": true
+    },
+    {
+      "source": "package/QcomQrtr.c",
+      "local": "upstream/QcomQrtr.c",
+      "sha256": "d22ff8572b93424f1f03138204a44e10b444d0cb62b6be4f1c57b7d3b2ddbc74",
+      "local_sha256": "d22ff8572b93424f1f03138204a44e10b444d0cb62b6be4f1c57b7d3b2ddbc74",
+      "modified": false
+    },
+    {
+      "source": "package/QcomQrtr.h",
+      "local": "upstream/QcomQrtr.h",
+      "sha256": "3ead40f5f996497224ebef92e2e67820aa8372bab0a21646c15df954baba84f1",
+      "local_sha256": "3ead40f5f996497224ebef92e2e67820aa8372bab0a21646c15df954baba84f1",
+      "modified": false
     }
   ]
 }

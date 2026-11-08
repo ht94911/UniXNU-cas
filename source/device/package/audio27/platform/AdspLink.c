@@ -62,6 +62,7 @@ static int setup_glink(NaAdsp *a) {
     QcomGlinkFifo tf={&d[1],&d[0],tx,txbytes},rf={&d[3],&d[2],0,0};
     qcom_glink_init(&a->glink,tf,rf,kick,a);
     r=na_transport_init(&a->transport,&a->glink,a->rx);
+    if (!r) r=na_pd_mapper_init(&a->mapper,&a->glink);
     if (!r) a->glink_initialized=1;
     return r;
 }
@@ -151,8 +152,12 @@ int na_adsp_poll(NaAdsp *a,uint64_t now) {
                 }
             }
             observe(a,NaAdspGlinkBegin,0);
+            /* The router and GPR share this one GLINK poll. Drain queued
+             * locator/flow-control replies before and after its callbacks. */
+            int qr=na_pd_mapper_poll(&a->mapper);if (qr<0) return failed(a,qr);
             int tr=na_transport_poll(&a->transport);
             observe(a,NaAdspGlinkReturn,tr);if (tr<0) return failed(a,tr);
+            qr=na_pd_mapper_poll(&a->mapper);if (qr<0) return failed(a,qr);
         }
         break;
     default:return failed(a,NA_OWNERSHIP);
