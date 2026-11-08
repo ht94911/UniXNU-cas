@@ -15,6 +15,11 @@ typedef struct {
  * pandora fallback IID. No writes on parse failure. Destination is CPU-owned. */
 int na_topology_load(const void *,uint32_t bytes,void *dma,uint32_t dma_bytes,
                       const NaMediaEndpoints *,NaTopology *);
+/* Resolve speaker/mic/VI roles (capture=0/1/2) from this graph's tags and OPEN.
+ * No guessed instances; protection is the actual TI SP/VI IID (zero for mic).
+ * Reads immutable input only. Outputs remain unchanged on failure. */
+int na_topology_resolve(const void *,uint32_t bytes,unsigned capture,
+                         NaMediaEndpoints *,uint32_t *protection);
 int na_spf_validate(const void *,uint32_t bytes);
 int na_topology_find_module(const void *open,uint32_t bytes,uint32_t module_type,uint32_t *instance);
 #ifdef __cplusplus

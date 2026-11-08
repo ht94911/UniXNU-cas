@@ -89,11 +89,14 @@ static uint32_t formats(uint8_t *out,const NaMediaEndpoints *e,int shared_only) 
      * PCM stage attenuate; don't overwrite unidentified device volume modules. */
     return n;
 }
-int na_topology_load(const void *data,uint32_t bytes,void *dma,uint32_t capacity,const NaMediaEndpoints *e,NaTopology *out) {
-    if (!data || !dma || !e || !out || bytes<12 || bytes>0x100000 || capacity<65536 || capacity>0x1000000 ||
-        e->capture>2 || e->channels!=(e->capture==1 ? 1u:2u) || e->hardware_bits!=(e->capture==1 ? 16u:32u) ||
-        !e->hardware || (e->capture!=2 && (!e->shared || !e->pcm[0] || !e->pcm[1])) || (!e->capture && !e->mfc)) return NA_ARGUMENT;
-    const uint8_t *b=data,*section[6]={0};uint32_t length[6]={0};
+typedef struct {
+    const uint8_t *section[6];uint32_t length[6],channels,count;
+    NaTopology topology;
+} GraphInput;
+static int graph_input(const void *data,uint32_t bytes,GraphInput *g) {
+    if (!data || bytes<12 || bytes>0x100000) return NA_ARGUMENT;
+    memset(g,0,sizeof *g);
+    const uint8_t *b=data,**section=g->section;uint32_t *length=g->length;
     if (memcmp(b,"PSPKGR01",8) || rd(b+8)!=5) return NA_WIRE;
     uint32_t pos=12;
     for (unsigned i=0;i<5;++i) {
@@ -112,14 +115,66 @@ int na_topology_load(const void *data,uint32_t bytes,void *dma,uint32_t capacity
         for (unsigned j=0;j<i;++j) if (t.subgraphs[j]==t.subgraphs[i]) return NA_WIRE;
     }
     uint32_t count=rd(section[5]+4);
-    if (rd(section[5])!=e->channels || count>32 || length[5]!=8+8*count) return NA_WIRE;
-    uint32_t expected[7]={e->shared,e->pcm[0],e->pcm[1],e->mfc,e->hardware,e->spr,e->volume};
-    for (unsigned i=0;i<7;++i) if (expected[i]) {
-        unsigned found=0;
-        for (unsigned j=0;j<count;++j) if (rd(section[5]+12+8*j)==expected[i]) ++found;
+    uint32_t channels=rd(section[5]);
+    if (!channels || channels>2 || !count || count>32 || length[5]!=8+8*count) return NA_WIRE;
+    for (unsigned i=0;i<count;++i) {
+        uint32_t tag=rd(section[5]+8+8*i),iid=rd(section[5]+12+8*i);
+        if (!tag || !iid) return NA_WIRE;
+        for (unsigned j=0;j<i;++j) if (tag==rd(section[5]+8+8*j) || iid==rd(section[5]+12+8*j)) return NA_WIRE;
         uint32_t actual=0;
-        if (found!=1 || find_module(section[1],length[1],0,expected[i],&actual) || actual!=expected[i]) return NA_MISSING;
+        if (find_module(section[1],length[1],0,iid,&actual) || actual!=iid) return NA_MISSING;
     }
+    g->channels=channels;g->count=count;g->topology=t;return NA_OK;
+}
+static int tagged(const GraphInput *g,uint32_t tag,uint32_t *iid) {
+    for (unsigned i=0;i<g->count;++i) if (rd(g->section[5]+8+8*i)==tag) {
+        *iid=rd(g->section[5]+12+8*i);return NA_OK;
+    }
+    return NA_MISSING;
+}
+static int resolve(const GraphInput *g,unsigned capture,NaMediaEndpoints *out,uint32_t *protection) {
+    if (capture>2 || g->channels!=(capture==1 ? 1u:2u)) return NA_ARGUMENT;
+    NaMediaEndpoints e={.capture=capture,.channels=g->channels,.hardware_bits=capture==1 ? 16u:32u};
+    /* Reviewed stock route tags; all instance numbers come from this input. */
+    if (tagged(g,capture ? 0xc0000005:0xc0000004,&e.hardware)) return NA_MISSING;
+    if (capture!=2 && (tagged(g,0xc0000001,&e.shared) ||
+        tagged(g,capture ? 0xc000000f:0xc000000e,&e.pcm[0]) ||
+        tagged(g,0xc0000010,&e.pcm[1]))) return NA_MISSING;
+    if (!capture && (tagged(g,0xc0000019,&e.mfc) || tagged(g,0xc0000013,&e.spr) ||
+        tagged(g,0xc000000d,&e.volume))) return NA_MISSING;
+    uint32_t ti=0,vi=0;
+    if (capture!=1 && na_topology_find_module(g->section[1],g->length[1],capture ? 0x870010a9:0x870010a8,&ti)) return NA_MISSING;
+    if (capture==2 && (tagged(g,0xc0000028,&vi) || vi!=ti)) return NA_MISSING;
+    if (capture!=1) {
+        // Stock RM selects primary TDM for both speaker and VI. Never retain
+        // another ACDB route's secondary interface or incompatible slot plan.
+        const uint8_t *b=g->section[3];uint32_t found=0;
+        for (uint32_t at=0;at<g->length[3];) {
+            uint32_t size=rd(b+at+8);
+            if (rd(b+at)==e.hardware && rd(b+at+4)==0x0800101b) {
+                if (++found!=1 || size!=28 || rd(b+at+16)!=0 || rd(b+at+20)!=0 ||
+                    rd(b+at+28)!=3 || rd(b+at+32)!=0x00200002) return NA_MISSING;
+            }
+            at+=16+((size+7)&~7u);
+        }
+        if (found!=1) return NA_MISSING;
+    }
+    *out=e;*protection=ti;return NA_OK;
+}
+int na_topology_resolve(const void *data,uint32_t bytes,unsigned capture,NaMediaEndpoints *out,uint32_t *protection) {
+    if (!out || !protection || capture>2) return NA_ARGUMENT;
+    GraphInput g;int r=graph_input(data,bytes,&g);
+    return r ? r:resolve(&g,capture,out,protection);
+}
+int na_topology_load(const void *data,uint32_t bytes,void *dma,uint32_t capacity,const NaMediaEndpoints *e,NaTopology *out) {
+    if (!dma || !e || !out || capacity<65536 || capacity>0x1000000) return NA_ARGUMENT;
+    GraphInput g;int r=graph_input(data,bytes,&g);if (r) return r;
+    NaMediaEndpoints actual;uint32_t protection=0;
+    r=resolve(&g,e->capture,&actual,&protection);if (r) return r;
+    if (e->shared!=actual.shared || e->pcm[0]!=actual.pcm[0] || e->pcm[1]!=actual.pcm[1] ||
+        e->mfc!=actual.mfc || e->hardware!=actual.hardware || e->spr!=actual.spr || e->volume!=actual.volume ||
+        e->channels!=actual.channels || e->hardware_bits!=actual.hardware_bits) return NA_MISSING;
+    const uint8_t **section=g.section;uint32_t *length=g.length;NaTopology t=g.topology;
     uint8_t format[512],shared[64];uint32_t fn=formats(format,e,0),sn=e->capture ? 0:formats(shared,e,1);
     if (fn>sizeof format || sn>sizeof shared || na_spf_validate(format,fn) || (sn && na_spf_validate(shared,sn))) return NA_WIRE;
     uint32_t total=32768+length[1]+length[2]+length[3]+fn+sn;
