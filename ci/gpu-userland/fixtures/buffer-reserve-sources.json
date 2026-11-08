@@ -1,22 +1,25 @@
 {
   "original_pin": "624bab3918de5b978e1101517abca2b4fa426565",
-  "patched_tree": "7902028dc65176f43f768effa29c349a71c0d6c3",
+  "patched_tree": "8d17285e2e963960d04c78562b3263335fdcf3df",
   "source_hashes": {
     "crates/metal2vulkan-runtime/src/memory.rs": "e82be6e1bd9e33cce52042dcee06869f42dcb9ec1cd359e15bce11636aca95c6",
     "crates/metal2vulkan-runtime/src/creation.rs": "d35f304e66902a97dcf6a5920133bb6e7abdbe4f6801865a7f7aa472465f1710",
     "crates/metal2vulkan-runtime/src/stage_trace.rs": "ced0fcc6e32c238dbe2dc83bfc9656cb63682a5fe92b35372fcf9bc55e4939c3",
-    "crates/metal2vulkan-runtime/src/recorder/mod.rs": "9296805767f2af4bd71d2ca5454dd4763c80ada28f1c1bbe9109f3a34991e15f",
-    "crates/metal2vulkan-runtime/src/recorder/thunks.rs": "65b80251b5ed78512bbbb710b35781860d9206e460bf643036da354fb5c60f79",
-    "crates/metal2vulkan-runtime/src/tests/heap_tiled.rs": "95b62c852117f664a2d1d2432a205c3b01529d22e988640071a5facab78434ab",
+    "crates/metal2vulkan-runtime/src/recorder/mod.rs": "e21d29049dfd21f8db283defb5fea7bd2bbd555c9b6f50c50882354a5b391e57",
+    "crates/metal2vulkan-runtime/src/recorder/thunks.rs": "7eb1831188fa5970f3ac9329dac6c61e68ae12993dec7b16a1cfbea98997152c",
+    "crates/metal2vulkan-runtime/src/tests/heap_tiled.rs": "d82e67f63b1019b3cb77426595eea5fb9a905783bd98712b9be97a41d758e7e0",
     "crates/metal2vulkan-runtime/src/tests/mod.rs": "7b808408a24eb4226e4d10a9e57c5805f662631ca6ca0f500ecfea7f6249f023",
-    "crates/metal2vulkan-runtime/src/tests/tiled_device_words.rs": "f58bc260558a7942406eb617275f4a65f21b026b4cf0fcc6805ecc83d0bdd9c5",
-    "crates/metal2vulkan-runtime/src/texture/heap_tiled.rs": "cc0e1e4ad1d64aefbfc38c14132ed068ff9263d69cd5392da255763d20afb670",
-    "crates/metal2vulkan/src/bind/tiled_texels.rs": "4ae095e44181d1fbb05813ea7f04559861081498d8f9f230b09aaecf34afaff1",
-    "crates/metal2vulkan/src/bind/tiled_texels/tests.rs": "127aa6b53c444a41f7d5c0e2baeb8bbcda966abdf6bfbae652adbfde83331106",
-    "crates/metal2vulkan/tests/api_signatures.tsv": "b0fb7581b7b157fb365c518a25feb63537616d2ccabcf4093bf98de761cb823c",
-    "crates/metal2vulkan-runtime/src/texture/heap.rs": "ec20e797528932dc2fc691bd0d2a6a4f937eda3ff96197bd4ef17ed142aee2db",
+    "crates/metal2vulkan-runtime/src/tests/tiled_device_words.rs": "0fb49063877e3165ea862f947f676434f50332b016a8365b841da0e3a00047b7",
+    "crates/metal2vulkan-runtime/src/texture/heap_tiled.rs": "dad7d834cd5d9ae239ab588b747868c9b00a48e37772990c21e6fced07b3fa00",
+    "crates/metal2vulkan/src/bind/tiled_texels.rs": "db1bc375b002fe70279823a228ca73ae079fecd61a1a7018f55efcd2103bc0d2",
+    "crates/metal2vulkan/src/bind/tiled_texels/tests.rs": "121b0542d3a59dcfc75e0a173d5aaa6e5997c71aaeca9ae9e3b724d91e43aa30",
+    "crates/metal2vulkan/tests/api_signatures.tsv": "11537660d4109d68c524aeb0c38c0efb5bca9cb01efd6714063022b8e2d4306d",
+    "crates/metal2vulkan-runtime/src/texture/heap.rs": "ff015999828cadbe0d3e254d1eb3029bc8cdf0edc9b5d88b585823b3f93fdd1e",
     "crates/metal2vulkan-runtime/src/texture/surface_depth.rs": "c848dd7a146e4659bcaf3850e2865dfeadb13e55e917a0b0c777f6a1b684e8d7",
-    "crates/metal2vulkan-runtime/src/shadow.rs": "799a3a95e72a4e7b1070ab9068120921372e69d57b08b49a9ece3d66938aad11"
+    "crates/metal2vulkan-runtime/src/shadow.rs": "799a3a95e72a4e7b1070ab9068120921372e69d57b08b49a9ece3d66938aad11",
+    "crates/metal2vulkan-runtime/src/texture.rs": "36e76beaa34ead8ec0e37eb8dd3f0977b5b058eb0584920f760b5f1c760f4e26",
+    "crates/metal2vulkan-runtime/src/device/mod.rs": "f7d08c99394703d677b3182e626f2490f0feb98de35b067436b60214c5dc1814",
+    "crates/metal2vulkan-runtime/src/tests/texture.rs": "7cd01999c58cdb641d723d9789db804aba51c8c5acabac1dc05c582b12702f99"
   },
   "patch_hashes": {
     "0001-optional-constant-output-members.patch": "af8eadbab4c9bc2576b14abea5308abfbc95aafb33a3c53b72117d3b1e535919",
@@ -52,7 +55,8 @@
     "0031-bounded-buffer-reserves.patch": "fc93889d00d44da4e5f9bcf2c1644967e707b1b7fb455d55ea2773d2c0898bde",
     "0032-vulkan-operation-diagnostics.patch": "4320e2c9bbcc229bb70d4adab745506db9d4ad18598205a87d7587be888176ec",
     "0033-direct-tiled-word-copies.patch": "c4e5a8deaba5f54edcfd4cbeefb60ad617a8a81dac42999550d9975514cc3f40",
-    "0034-fixed-heap-copy-path.patch": "5d4baa0c53bb5431c5779c3bc2b7cbf062d0ea151dbd57ea934936ccd0b68b11"
+    "0034-fixed-heap-copy-path.patch": "5d4baa0c53bb5431c5779c3bc2b7cbf062d0ea151dbd57ea934936ccd0b68b11",
+    "0035-aligned-heap-transfer-rows.patch": "27d08ecadf2f61125d538ea171835ade086bc3072aa876e9aa574c66d2abfb03"
   },
-  "builder_sha256": "a553dc099677216ce0d7a632c9138d591689734fb1eb19f525af259aca16d29e"
+  "builder_sha256": "2d01d76342444b37663881fa1511605b08bd8d8ca0ffdd0da855a17d065e2dc5"
 }

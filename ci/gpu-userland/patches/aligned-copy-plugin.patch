@@ -1,0 +1,1219 @@
+diff --git a/NativeBridgeMetalFrontend.mm b/NativeBridgeMetalFrontend.mm
+index 7f90111..306f956 100644
+--- a/NativeBridgeMetalFrontend.mm
++++ b/NativeBridgeMetalFrontend.mm
+@@ -279,6 +279,10 @@ static void traceVulkanOperation(uint64_t command,uint64_t metadata,uint64_t det
+  const uint64_t seen=gVulkanTraceSeen.fetch_add(1,std::memory_order_relaxed);
+  if(seen>kVulkanTraceBudget)return;
+  TraceRec rec{};rec.type=24;rec.t0=nowUs();
++ static thread_local const uint32_t operationTid=[] {
++  uint64_t tid=0;pthread_threadid_np(nullptr,&tid);return (uint32_t)tid;
++ }();
++ rec.tid=operationTid;
+  if(seen==kVulkanTraceBudget){rec.t3=kVulkanTraceBudget;} // opcode0: explicit capture truncation
+  else {rec.t1=command;rec.t2=metadata;rec.t3=detail;}
+  tracePush(rec);
+diff --git a/README.md b/README.md
+index b939ddb..229168b 100644
+--- a/README.md
++++ b/README.md
+@@ -24,6 +24,16 @@ The original barriers and alias rules remain in force. CPU Vulkan checks cover
+ production ShadowCopy dispatch, access stages, padding and independent writes;
+ A840 frame performance requires a hardware capture.
+ 
++Internal transfer buffers use Vulkan's preferred copy offset and row alignment.
++The conversion kernel carries the actual transfer pitch, while Metal-visible
++heap offsets, padding and alias contents retain their layout. This lets Turnip
++record a two-dimensional image copy instead of splitting unaligned rows into
++individual blits. Vulkan operation records retain the recording thread identity
++for correlation with encoder timings. Image-to-buffer records also carry the
++region count; a single-region record includes its buffer row length and the
++low 32 bits of its buffer offset, so row and offset alignment can be checked.
++These timestamps are CPU recording boundaries, not GPU copy durations.
++
+ ## Frame diagnostics
+ 
+ The iPhone24A446 build profile excludes iPad-specific image-relative QuartzCore
+diff --git a/bridge/patches/0035-aligned-heap-transfer-rows.patch b/bridge/patches/0035-aligned-heap-transfer-rows.patch
+new file mode 100644
+index 0000000..4b8c324
+--- /dev/null
++++ b/bridge/patches/0035-aligned-heap-transfer-rows.patch
+@@ -0,0 +1,1177 @@
++diff --git a/crates/metal2vulkan-runtime/src/device/mod.rs b/crates/metal2vulkan-runtime/src/device/mod.rs
++index 96352266b..6eaee5bd7 100644
++--- a/crates/metal2vulkan-runtime/src/device/mod.rs
+++++ b/crates/metal2vulkan-runtime/src/device/mod.rs
++@@ -1615,11 +1615,7 @@ impl Device {
++         ]
++         .into_iter()
++         .fold(1, u64::max);
++-        let textures = TextureState::new(
++-            &properties.description,
++-            limits.buffer_image_granularity,
++-            linear_color_attachment,
++-        );
+++        let textures = TextureState::new(&properties.description, &limits, linear_color_attachment);
++         // SAFETY: as above; the device is live, made with `enabled` enabled, and `loader_word`
++         // is its loader word.
++         let host_import = unsafe {
++diff --git a/crates/metal2vulkan-runtime/src/recorder/mod.rs b/crates/metal2vulkan-runtime/src/recorder/mod.rs
++index d27b3f629..d62395439 100644
++--- a/crates/metal2vulkan-runtime/src/recorder/mod.rs
+++++ b/crates/metal2vulkan-runtime/src/recorder/mod.rs
++@@ -18,7 +18,7 @@
++ mod thunks;
++ 
++ use ash::vk;
++-use std::ffi::{CStr, c_void};
+++use std::ffi::{c_void, CStr};
++ use std::sync::atomic::{AtomicBool, Ordering};
++ 
++ pub(crate) use thunks::Command;
++@@ -298,6 +298,33 @@ mod diagnostic_operation_tests {
++         CALLS.lock().unwrap().push((cb.as_raw(), 0, 0, 0));
++         vk::Result::ERROR_DEVICE_LOST
++     }
+++    unsafe extern "system" fn copy_image_to_buffer(
+++        cb: vk::CommandBuffer,
+++        src: vk::Image,
+++        layout: vk::ImageLayout,
+++        dst: vk::Buffer,
+++        count: u32,
+++        regions: *const vk::BufferImageCopy,
+++    ) {
+++        assert_eq!(src.as_raw(), 0xfedcba9876543210);
+++        assert_eq!(dst.as_raw(), 0x123456789abcdef0);
+++        assert_eq!(
+++            layout.as_raw(),
+++            vk::ImageLayout::TRANSFER_SRC_OPTIMAL.as_raw()
+++        );
+++        let first = if count > 0 {
+++            // SAFETY: this test supplies `count` live regions.
+++            unsafe { *regions }
+++        } else {
+++            vk::BufferImageCopy::default()
+++        };
+++        CALLS.lock().unwrap().push((
+++            cb.as_raw(),
+++            count,
+++            first.buffer_offset,
+++            first.buffer_row_length as u64,
+++        ));
+++    }
++     #[test]
++     fn routed_commands_preserve_arguments_results_and_trace_identity() {
++         assert!(!TAKEN[7].swap(true, Ordering::AcqRel));
++@@ -307,6 +334,11 @@ mod diagnostic_operation_tests {
++         thunks::store(7, Command::CmdBindPipeline, bind as *const c_void);
++         thunks::store(7, Command::CmdDraw, draw as *const c_void);
++         thunks::store(7, Command::BeginCommandBuffer, begin as *const c_void);
+++        thunks::store(
+++            7,
+++            Command::CmdCopyImageToBuffer,
+++            copy_image_to_buffer as *const c_void,
+++        );
++         let dispatch: vk::PFN_vkCmdDispatch =
++             unsafe { std::mem::transmute(thunks::thunk::<7>(Command::CmdDispatch)) };
++         let bind: vk::PFN_vkCmdBindPipeline =
++@@ -316,6 +348,8 @@ mod diagnostic_operation_tests {
++         let begin: vk::PFN_vkBeginCommandBuffer =
++             unsafe { std::mem::transmute(thunks::thunk::<7>(Command::BeginCommandBuffer)) };
++         let cb = vk::CommandBuffer::from_raw(0x12345678abcdef01);
+++        let copy: vk::PFN_vkCmdCopyImageToBuffer =
+++            unsafe { std::mem::transmute(thunks::thunk::<7>(Command::CmdCopyImageToBuffer)) };
++         crate::stage_trace::diagnostic_vulkan(0, 0, 0, 0); // no hook: no trace
++         unsafe { dispatch(cb, 1, 2, 3) };
++         assert!(EVENTS.lock().unwrap().is_empty());
++@@ -329,11 +363,52 @@ mod diagnostic_operation_tests {
++             );
++             draw(cb, 4, 5, 6, 7);
++             assert_eq!(begin(cb, std::ptr::null()), vk::Result::ERROR_DEVICE_LOST);
+++            let regions = [
+++                vk::BufferImageCopy {
+++                    buffer_offset: 0x100000100,
+++                    buffer_row_length: 1208,
+++                    ..vk::BufferImageCopy::default()
+++                },
+++                vk::BufferImageCopy {
+++                    buffer_offset: 0x100000120,
+++                    buffer_row_length: 1204,
+++                    ..vk::BufferImageCopy::default()
+++                },
+++            ];
+++            let src = vk::Image::from_raw(0xfedcba9876543210);
+++            let dst = vk::Buffer::from_raw(0x123456789abcdef0);
+++            copy(
+++                cb,
+++                src,
+++                vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+++                dst,
+++                1,
+++                regions.as_ptr(),
+++            );
+++            copy(
+++                cb,
+++                src,
+++                vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+++                dst,
+++                1,
+++                regions[1..].as_ptr(),
+++            );
+++            copy(
+++                cb,
+++                src,
+++                vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+++                dst,
+++                2,
+++                regions.as_ptr(),
+++            );
++         }
++         let calls = CALLS.lock().unwrap();
++-        assert_eq!(calls.len(), 5);
+++        assert_eq!(calls.len(), 8);
++         assert_eq!(calls[1], (cb.as_raw(), 0xffffffff, 0x12345678, 0xabcdef01));
++         assert_eq!(calls[2], (cb.as_raw(), 1, 0xfedcba9876543210, 0));
+++        assert_eq!(calls[5], (cb.as_raw(), 1, 0x100000100, 1208));
+++        assert_eq!(calls[6], (cb.as_raw(), 1, 0x100000120, 1204));
+++        assert_eq!(calls[7], (cb.as_raw(), 2, 0x100000100, 1208));
++         let events = EVENTS.lock().unwrap();
++         assert_eq!(
++             &*events,
++@@ -346,6 +421,9 @@ mod diagnostic_operation_tests {
++                 ),
++                 (46, cb.as_raw(), (19u64 << 32) | 1, 0xfedcba9876543210),
++                 (46, cb.as_raw(), (1u64 << 32) | ((-4i32) as u32 as u64), 0),
+++                (46, cb.as_raw(), (11u64 << 32) | 1, (1208u64 << 32) | 0x100),
+++                (46, cb.as_raw(), (11u64 << 32) | 1, (1204u64 << 32) | 0x120),
+++                (46, cb.as_raw(), (11u64 << 32) | 2, 0),
++             ]
++         );
++         let counts = thunks::counts(7);
++@@ -353,5 +431,6 @@ mod diagnostic_operation_tests {
++         assert_eq!(counts.cmd_bind_pipeline, 1);
++         assert_eq!(counts.cmd_draw, 1);
++         assert_eq!(counts.begin_command_buffer, 1);
+++        assert_eq!(counts.cmd_copy_image_to_buffer, 3);
++     }
++ }
++diff --git a/crates/metal2vulkan-runtime/src/recorder/thunks.rs b/crates/metal2vulkan-runtime/src/recorder/thunks.rs
++index aece2711d..97e626bf3 100644
++--- a/crates/metal2vulkan-runtime/src/recorder/thunks.rs
+++++ b/crates/metal2vulkan-runtime/src/recorder/thunks.rs
++@@ -6,7 +6,7 @@ use super::SLOTS;
++ use crate::generated_commands::GeneratedCommandsInfo;
++ use ash::vk;
++ use ash::vk::Handle;
++-use std::ffi::{CStr, c_void};
+++use std::ffi::{c_void, CStr};
++ use std::sync::atomic::{AtomicPtr, AtomicU64, Ordering};
++ 
++ /// Each slot's commands recorded so far, one count per command at its index.
++@@ -36,6 +36,19 @@ fn missing(name: &CStr) -> ! {
++ // Keep the existing recorder as the single interception point. Draw/state
++ // traffic is omitted; selected boundaries, compute, copies and barriers remain.
++ macro_rules! diagnostic_operation {
+++    (CmdCopyImageToBuffer, $cb:expr, $result:expr; $src:expr, $layout:expr, $dst:expr, $count:expr, $regions:expr) => {
+++        // One-plane copies expose the real row length and the offset's low word,
+++        // sufficient to identify Turnip's alignment path without extra records.
+++        // A multi-region copy records its count only, not a representative plane.
+++        let detail = if $count == 1 {
+++            // SAFETY: the routed Vulkan call's caller supplied this live region.
+++            let region = unsafe { &*$regions };
+++            ((region.buffer_row_length as u64) << 32) | region.buffer_offset as u32 as u64
+++        } else {
+++            0
+++        };
+++        crate::stage_trace::diagnostic_vulkan($cb.as_raw(), 11, $count, detail);
+++    };
++     (CmdDispatch, $cb:expr, $result:expr; $x:expr, $y:expr, $z:expr) => {
++         crate::stage_trace::diagnostic_vulkan($cb.as_raw(), 7, $x, (($y as u64) << 32) | $z as u64);
++     };
++diff --git a/crates/metal2vulkan-runtime/src/tests/heap_tiled.rs b/crates/metal2vulkan-runtime/src/tests/heap_tiled.rs
++index c116855fe..778bebc59 100644
++--- a/crates/metal2vulkan-runtime/src/tests/heap_tiled.rs
+++++ b/crates/metal2vulkan-runtime/src/tests/heap_tiled.rs
++@@ -7,9 +7,9 @@
++ 
++ use crate::copy_plan::block_bytes;
++ use crate::texture::heap_tiled::{
++-    BlockPlacement, Elements, FreshDepth, FreshPattern, HeapLayout, TiledLayout, Untiled,
++     fresh_pattern, level_bytes, lossless_answer, metal_compresses, metal_heap_layout,
++-    own_heap_layout, pattern_levels, sample_grid, shadow_tiles,
+++    own_heap_layout, pattern_levels, sample_grid, shadow_tiles, BlockPlacement, Elements,
+++    FreshDepth, FreshPattern, HeapLayout, TiledLayout, Untiled,
++ };
++ use crate::texture_descriptor::TextureLayout;
++ use metal2vulkan::metal::format::byte_format;
++@@ -1638,3 +1638,44 @@ fn edge_preservation_uses_actual_screen_tiles_and_bounds_its_work() {
++         keep.len()
++     );
++ }
+++#[test]
+++fn transfer_alignment_does_not_change_metal_planes_or_copy_extents() {
+++    use crate::texture::heap::{aligned_copy_planes, copy_plane_regions, heap_plane_layout};
+++    use metal2vulkan::metal::PixelFormat;
+++    use metal2vulkan::vk::Format;
+++    for (format, pf) in [
+++        (Format::R8_UNORM, PixelFormat::R8Unorm),
+++        (Format::R8G8_UNORM, PixelFormat::RG8Unorm),
+++        (Format::R8G8B8A8_UNORM, PixelFormat::RGBA8Unorm),
+++        (Format::R16G16B16A16_SFLOAT, PixelFormat::RGBA16Float),
+++    ] {
+++        for (extent, layers) in [([13, 7, 1], 2), ([13, 7, 3], 1)] {
+++            let (metal, _) = heap_plane_layout(format, pf, extent, 3, layers);
+++            for alignment in [[1, 1], [64, 64], [256, 128]] {
+++                let (planes, length) = aligned_copy_planes(metal.clone(), alignment);
+++                let regions = copy_plane_regions(&planes, layers);
+++                let mut end = 0;
+++                for ((original, plane), region) in metal.iter().zip(&planes).zip(&regions) {
+++                    assert_eq!(original.pitch, original.blocks[0] * original.unit);
+++                    assert_eq!(plane.extent, original.extent);
+++                    assert_eq!(plane.blocks, original.blocks);
+++                    assert!(plane.offset >= end);
+++                    assert!(plane.offset.is_multiple_of(alignment[0]));
+++                    assert!(plane.pitch.is_multiple_of(alignment[1]));
+++                    assert_eq!(region.image_extent.width, original.extent[0]);
+++                    assert_eq!(region.image_extent.height, original.extent[1]);
+++                    assert_eq!(region.image_subresource.layer_count, layers);
+++                    let row_texels = if region.buffer_row_length == 0 {
+++                        region.image_extent.width
+++                    } else {
+++                        region.buffer_row_length
+++                    };
+++                    assert_eq!(u64::from(row_texels) * plane.unit, plane.pitch);
+++                    end = plane.offset + plane.image_pitch * plane.images;
+++                    assert!(end <= length);
+++                }
+++                assert_eq!(end, length);
+++            }
+++        }
+++    }
+++}
++diff --git a/crates/metal2vulkan-runtime/src/tests/texture.rs b/crates/metal2vulkan-runtime/src/tests/texture.rs
++index 72930159b..0ca49a735 100644
++--- a/crates/metal2vulkan-runtime/src/tests/texture.rs
+++++ b/crates/metal2vulkan-runtime/src/tests/texture.rs
++@@ -85,9 +85,16 @@ fn cpu_copies_read_a_tightly_packed_buffer() {
++ #[test]
++ fn the_granularity_is_a_whole_power_of_two() {
++     let (_, desc, _) = committed().into_iter().next().unwrap();
++-    assert_eq!(TextureState::new(&desc, 0, false).granularity(), 1);
++-    assert_eq!(TextureState::new(&desc, 1024, false).granularity(), 1024);
++-    assert_eq!(TextureState::new(&desc, 1000, false).granularity(), 1024);
+++    for (granularity, expected) in [(0, 1), (1024, 1024), (1000, 1024)] {
+++        let limits = ash::vk::PhysicalDeviceLimits {
+++            buffer_image_granularity: granularity,
+++            ..Default::default()
+++        };
+++        assert_eq!(
+++            TextureState::new(&desc, &limits, false).granularity(),
+++            expected
+++        );
+++    }
++ }
++ 
++ #[test]
++diff --git a/crates/metal2vulkan-runtime/src/tests/tiled_device_words.rs b/crates/metal2vulkan-runtime/src/tests/tiled_device_words.rs
++index a112eb68c..b62792198 100644
++--- a/crates/metal2vulkan-runtime/src/tests/tiled_device_words.rs
+++++ b/crates/metal2vulkan-runtime/src/tests/tiled_device_words.rs
++@@ -1,7 +1,7 @@
++ //! Execute the real owned tiled kernel through the runtime's existing Vulkan
++ //! device and internal submission path, against an independent byte oracle.
++ 
++-use super::blit_holds::{Scratch, device};
+++use super::blit_holds::{device, Scratch};
++ use crate::owned_kernel::{OwnedModule, OwnedSets};
++ use crate::{Buffer, Device, ResourceOptions};
++ use ash::vk;
++@@ -34,8 +34,8 @@ fn expected(level: &TiledLevelMove, into: bool, tight: &[u8], tiled: &[u8]) -> (
++                 let a = (level.tiled_first + image * level.chain_stride + element * level.unit)
++                     as usize;
++                 let b = (level.tight_first
++-                    + ((image * level.extent[1] + y) * level.extent[0] + x) * level.unit)
++-                    as usize;
+++                    + (image * level.extent[1] + y) * level.tight_row_pitch
+++                    + x * level.unit) as usize;
++                 let n = level.unit as usize;
++                 if into {
++                     t[b..b + n].copy_from_slice(&p[a..a + n]);
++@@ -57,6 +57,44 @@ fn assert_bytes(label: &str, buffer: &Buffer, want: &[u8]) {
++     assert_eq!(mismatch, None, "{label}: first unequal byte");
++ }
++ 
+++#[test]
+++fn aligned_transfer_rows_execute_on_vulkan() {
+++    let scratch = Scratch::new("aligned-tiled-rows");
+++    let device = device(&scratch.0);
+++    for unit in [1, 2, 4, 8, 16] {
+++        let mut level = TiledLevelMove::new(unit, [13, 7], 2, [16, 8], 1, 128, 4096, 64, 2048);
+++        level.tight_row_pitch = (13 * unit).next_multiple_of(64);
+++        let tight_len = (64 + level.tight_row_pitch * 7 * 2 + 32) as usize;
+++        let tight: Vec<u8> = (0..tight_len).map(|i| (i * 7 + 3) as u8).collect();
+++        let tiled: Vec<u8> = (0..(128 + 4096 + 2048 + 32))
+++            .map(|i| (i * 13 + 5) as u8)
+++            .collect();
+++        for into in [true, false] {
+++            let want = expected(&level, into, &tight, &tiled);
+++            let shape = TiledTexelsModule::shape(&[level], into, 64).unwrap();
+++            let grid = [1, level.invocations(into).div_ceil(64), 1];
+++            run_plan(
+++                &device,
+++                &shape,
+++                grid,
+++                (&tight, &tiled),
+++                (&want.0, &want.1),
+++                "padded generic copy",
+++            );
+++            if let Some((shape, grid)) = TiledTexelsModule::tiled_dispatch(&level, into) {
+++                run_plan(
+++                    &device,
+++                    &shape,
+++                    grid,
+++                    (&tight, &tiled),
+++                    (&want.0, &want.1),
+++                    "padded tile copy",
+++                );
+++            }
+++        }
+++    }
+++}
+++
++ fn run_plan(
++     device: &Device,
++     shape: &[u8],
++@@ -191,17 +229,16 @@ fn tiled_device_words_match_the_byte_oracle_and_keep_padding() {
++                 ("linear", legacy_shape, [x, y, 1]),
++                 ("tiles", tile_shape, tile_grid),
++             ] {
++-                assert!(
++-                    grid.iter()
++-                        .zip(
++-                            device
++-                                .properties()
++-                                .description
++-                                .limits
++-                                .max_compute_work_group_count
++-                        )
++-                        .all(|(&used, allowed)| used <= allowed)
++-                );
+++                assert!(grid
+++                    .iter()
+++                    .zip(
+++                        device
+++                            .properties()
+++                            .description
+++                            .limits
+++                            .max_compute_work_group_count
+++                    )
+++                    .all(|(&used, allowed)| used <= allowed));
++                 run_plan(
++                     &device,
++                     &shape,
++@@ -222,7 +259,7 @@ fn tiled_device_words_match_the_byte_oracle_and_keep_padding() {
++ /// compare full preservation and the real planner's ranges including copy-back.
++ #[test]
++ fn edge_preservation_runs_real_vulkan_copies() {
++-    use crate::texture::heap_tiled::{Elements, TiledLayout, tiled_preserved_ranges};
+++    use crate::texture::heap_tiled::{tiled_preserved_ranges, Elements, TiledLayout};
++     use metal2vulkan::metal::TextureType;
++     let scratch = Scratch::new("edge-preservation");
++     let device = device(&scratch.0);
++@@ -610,13 +647,13 @@ fn fixed_heap_runtime_copies_preserve_pixels_padding_and_fallbacks() {
++         Backing, ShadowBuffer, ShadowCopies, ShadowCopy, ShadowSource, ShadowTarget, Step,
++     };
++     use crate::shadow_merge::{ScratchSpares, ShadowMerge};
++-    use crate::texture::heap::{heap_plane_layout, heap_planes};
+++    use crate::texture::heap::{aligned_copy_planes, copy_plane_regions, heap_plane_layout};
++     use crate::texture::heap_tiled::{Elements, HeapTiledCopies, TiledLayout, TiledTexture};
++     use crate::texture::kept_image::KeptImages;
++     use crate::tracker::{Access, UseRange};
++     use crate::{CpuCacheMode, HazardTrackingMode, StorageMode, TextureDescriptor};
++     use metal2vulkan::metal::{PixelFormat, TextureType, TextureUsage};
++-    use std::sync::{Arc, atomic::AtomicU64};
+++    use std::sync::{atomic::AtomicU64, Arc};
++     let scratch = Scratch::new("fixed-heap-runtime");
++     let device = device(&scratch.0);
++     let mut direct_count = 0;
++@@ -652,7 +689,7 @@ fn fixed_heap_runtime_copies_preserve_pixels_padding_and_fallbacks() {
++             );
++             let layout = &tiled.parts[0].layout;
++             let level = &layout.levels[0];
++-            let movement = TiledLevelMove::new(
+++            let mut movement = TiledLevelMove::new(
++                 unit as u32,
++                 [width as u32, height as u32],
++                 1,
++@@ -663,9 +700,14 @@ fn fixed_heap_runtime_copies_preserve_pixels_padding_and_fallbacks() {
++                 0,
++                 level.bytes as u32,
++             );
++-            let (planes, tight_bytes) =
++-                heap_plane_layout(format, pf, [width as u32, height as u32, 1], 1, 1);
++-            let (regions, _) = heap_planes(format, pf, [width as u32, height as u32, 1], 1, 1);
+++            let copy_alignment = device.shared().textures.copy_alignment;
+++            let (planes, tight_bytes) = aligned_copy_planes(
+++                heap_plane_layout(format, pf, [width as u32, height as u32, 1], 1, 1).0,
+++                copy_alignment,
+++            );
+++            movement.tight_row_pitch = planes[0].pitch as u32;
+++            let regions = copy_plane_regions(&planes, 1);
+++            assert!(planes[0].pitch.is_multiple_of(copy_alignment[1]));
++             let align = device
++                 .properties()
++                 .description
++@@ -741,6 +783,9 @@ fn fixed_heap_runtime_copies_preserve_pixels_padding_and_fallbacks() {
++                     whole_heap.then_some(&heap),
++                 )
++                 .unwrap();
+++                assert!(copies.regions()[0]
+++                    .buffer_offset
+++                    .is_multiple_of(copy_alignment[0]));
++                 let actual_direct = copies.direct_for(heap_raw, false);
++                 let expected_direct = want_direct && (heap_at + prefix).is_multiple_of(align);
++                 assert_eq!(actual_direct, expected_direct, "{label}");
++@@ -856,6 +901,7 @@ fn fixed_heap_runtime_copies_preserve_pixels_padding_and_fallbacks() {
++                 let zero = vec![0; tight_bytes as usize];
++                 let wanted_linear = expected(&movement, true, &zero, original_tiles).0;
++                 let changed = expected(&movement, false, &replacement, original_tiles).1;
+++                let changed_linear = expected(&movement, true, &zero, &changed).0;
++                 let mut wanted_heap = initial.clone();
++                 wanted_heap[prefix as usize..(prefix + tiled.size) as usize]
++                     .copy_from_slice(&changed);
++@@ -963,7 +1009,7 @@ fn fixed_heap_runtime_copies_preserve_pixels_padding_and_fallbacks() {
++                         if round == 0 {
++                             &wanted_linear
++                         } else {
++-                            &replacement
+++                            &changed_linear
++                         },
++                     );
++                     assert_bytes(
++diff --git a/crates/metal2vulkan-runtime/src/texture.rs b/crates/metal2vulkan-runtime/src/texture.rs
++index a6a0e92b9..7e5baa960 100644
++--- a/crates/metal2vulkan-runtime/src/texture.rs
+++++ b/crates/metal2vulkan-runtime/src/texture.rs
++@@ -204,6 +204,8 @@ pub(super) struct TextureState {
++     linear_attachments: bool,
++     /// How the runtime places an image in a memory block of its own.
++     placement: ImagePlacement,
+++    /// Preferred Vulkan buffer-image copy offset and row-pitch alignment, in bytes.
+++    pub(crate) copy_alignment: [u64; 2],
++     /// The neutral images and samplers bindings take where nothing is bound (`neutral.rs`).
++     pub(super) neutrals: Mutex<Neutrals>,
++     /// Parked images, and the makings of the live recyclable ones (`recycle.rs`).
++@@ -249,11 +251,11 @@ pub(super) struct TextureState {
++ }
++ 
++ impl TextureState {
++-    /// The texture state of a device enabling `description`, whose `bufferImageGranularity` is
++-    /// `buffer_image_granularity`, and `linearColorAttachment` where `linear_attachments`.
+++    /// The texture state of a device enabling `description`, with Vulkan `limits`,
+++    /// and `linearColorAttachment` where `linear_attachments`.
++     pub(super) fn new(
++         description: &DeviceDescription,
++-        buffer_image_granularity: u64,
+++        limits: &vk::PhysicalDeviceLimits,
++         linear_attachments: bool,
++     ) -> TextureState {
++         TextureState {
++@@ -262,9 +264,13 @@ impl TextureState {
++             storage_multisample: description.has(VkFeature::ShaderStorageImageMultisample),
++             depth_images: DepthImageFacts::of(&description.driver_facts()),
++             placement: ImagePlacement::new(
++-                buffer_image_granularity,
+++                limits.buffer_image_granularity,
++                 &crate::driver_defects::of(description),
++             ),
+++            copy_alignment: [
+++                limits.optimal_buffer_copy_offset_alignment.max(1),
+++                limits.optimal_buffer_copy_row_pitch_alignment.max(1),
+++            ],
++             neutrals: Mutex::new(Neutrals::default()),
++             recycled: Mutex::new(Recycler::new(recycle::IMAGES)),
++             storage_placeholders: Mutex::new(Placeholders::default()),
++@@ -2622,7 +2628,7 @@ impl Device {
++                     "the buffer is over the caller's VkBuffer, whose memory backs no \
++                                image of the runtime's"
++                         .to_owned(),
++-                ))
+++                ));
++             }
++         }
++         if let Err(why) = holds {
++@@ -4648,7 +4654,7 @@ impl Texture {
++             Storage::Image(image) | Storage::Shadow { image, .. } => image,
++             // An aliasing image's uses are uses of the buffer's bytes it lies in.
++             Storage::Texels(texels) | Storage::Alias { texels, .. } => {
++-                return texels.bound_use(read, write)
+++                return texels.bound_use(read, write);
++             }
++         };
++         let identity = image.identity;
++@@ -5454,7 +5460,7 @@ impl Texture {
++             Storage::Texels(texels)
++             | Storage::Alias { texels, .. }
++             | Storage::Shadow { texels, .. } => {
++-                return texels.write(CALL, &image_region, &host, bytes.slice())
+++                return texels.write(CALL, &image_region, &host, bytes.slice());
++             }
++         };
++         // A heap shadow's texels are the heap's bytes (but a two-plane texture's later levels').
++@@ -5764,7 +5770,7 @@ impl Texture {
++             Storage::Texels(texels)
++             | Storage::Alias { texels, .. }
++             | Storage::Shadow { texels, .. } => {
++-                return texels.read(call, image_region, host, bytes)
+++                return texels.read(call, image_region, host, bytes);
++             }
++         };
++         // A heap shadow's texels are the heap's bytes (but a two-plane texture's later levels').
++diff --git a/crates/metal2vulkan-runtime/src/texture/heap.rs b/crates/metal2vulkan-runtime/src/texture/heap.rs
++index c5510e13e..bd7487411 100644
++--- a/crates/metal2vulkan-runtime/src/texture/heap.rs
+++++ b/crates/metal2vulkan-runtime/src/texture/heap.rs
++@@ -197,45 +197,45 @@
++ 
++ use super::first_move::FirstMove;
++ use super::heap_tiled::{
++-    HeapLayout, HeapTiledCopies, TiledTexture, Untiled, footprint_size, metal_compresses_layout,
++-    metal_heap_layout, modelled_size, own_heap_layout, shadow_tiles,
+++    footprint_size, metal_compresses_layout, metal_heap_layout, modelled_size, own_heap_layout,
+++    shadow_tiles, HeapLayout, HeapTiledCopies, TiledTexture, Untiled,
++ };
++ use super::heap_two_planes::{HeapPlaneCopies, TwoPlaneHeapLayout};
++ use super::stand_in::StandIn;
++ use super::{
++-    DetachedImage, IdUse, Image, ImageObjects, ImagePlacement, ImageSwap, KeptResolves, Owner, Raw,
++-    Remade, Storage, Texture, TextureDescriptor, ViewRecord, copy_units, image_aspects,
++-    image_error, pages_hold,
+++    copy_units, image_aspects, image_error, pages_hold, DetachedImage, IdUse, Image, ImageObjects,
+++    ImagePlacement, ImageSwap, KeptResolves, Owner, Raw, Remade, Storage, Texture,
+++    TextureDescriptor, ViewRecord,
++ };
++-use crate::Device;
++ use crate::address::ObjectsToken;
++ use crate::buffer::{
++-    Buffer, CallerMemory, HostPages, MemoryHold, Modes, buffer_class, usage as buffer_usage,
+++    buffer_class, usage as buffer_usage, Buffer, CallerMemory, HostPages, MemoryHold, Modes,
++ };
++-use crate::buffer_texture::{TexelsHome, texture_buffer_bytes, texture_buffer_over};
+++use crate::buffer_texture::{texture_buffer_bytes, texture_buffer_over, TexelsHome};
++ use crate::chroma_pairs;
++ use crate::copy_plan::{CopyProblem, HostLayout, ImageRegion};
++ use crate::degradation::Degradation;
++ use crate::device::lock;
++-use crate::error::{Error, MemoryKind, Nil, Problem, RuntimeGap, internal, invalid, nil, vulkan};
+++use crate::error::{internal, invalid, nil, vulkan, Error, MemoryKind, Nil, Problem, RuntimeGap};
++ use crate::heap::{Heap, HeapProblem, HeapType, SizeAndAlign, WeakHeap};
++-use crate::image_plan::{ImagePlan, check_image_limits, plan_image};
+++use crate::image_plan::{check_image_limits, plan_image, ImagePlan};
++ use crate::key_hash::KeyMap;
++-use crate::linear_plan::{LINEAR_ALIGNMENT, LinearLack, check_linear_limits, linear_lack};
+++use crate::linear_plan::{check_linear_limits, linear_lack, LinearLack, LINEAR_ALIGNMENT};
++ use crate::memory::{Memory, MemoryClass, Placement};
++ use crate::metal_release::NO_TEXTURE_STACK_ALIGNMENT;
++ use crate::release;
++ use crate::resource::{Identity, ResourceKey};
++ use crate::shadow::{Backing, ShadowBuffer, ShadowCopies, ShadowSource, ShadowTarget};
++ use crate::shadow_merge::ScratchSpares;
++-use crate::texture_descriptor::{Creator, TextureLayout, TextureProblem, effective_usage};
+++use crate::texture_descriptor::{effective_usage, Creator, TextureLayout, TextureProblem};
++ use crate::tracker::UseRange;
++ use crate::two_planes;
++ use crate::values::{ResourceOptions, StorageMode};
+++use crate::Device;
++ use ash::vk;
++ use metal2vulkan::device::{DriverFact, HeapCompressionPolicy};
++ use metal2vulkan::error::{Feature, LinearNeed, Unsupported};
++-use metal2vulkan::metal::format::{Footprint, footprint, is_depth_stencil, ycbcr_format};
+++use metal2vulkan::metal::format::{footprint, is_depth_stencil, ycbcr_format, Footprint};
++ use metal2vulkan::metal::{PixelFormat, TextureType, TextureUsage};
++ use metal2vulkan::vk::{
++     Format, FormatFeatureFlags2, ImageAspectFlags, ImageUsageFlags, SampleCountFlags,
++@@ -851,20 +851,50 @@ pub(crate) fn sample_plane_layout(
++     (planes, end * n)
++ }
++ 
++-/// The planes of the tight buffer of a tiled heap texture's image of `plan`
++-/// (`texture/heap_tiled.rs`): a multisample image's samples ([`sample_plane_layout`]), else
++-/// [`heap_plane_layout`]'s.
++-fn tight_planes(plan: &ImagePlan) -> (Vec<HeapPlane>, u64) {
+++/// Internal transfer planes, aligned for Vulkan's buffer-image copies. Metal's
+++/// heap layout stays unchanged; only scratch rows and plane starts gain padding.
+++pub(crate) fn aligned_copy_planes(
+++    mut planes: Vec<HeapPlane>,
+++    [offset_alignment, row_alignment]: [u64; 2],
+++) -> (Vec<HeapPlane>, u64) {
+++    let mut end = 0u64;
+++    for plane in &mut planes {
+++        let unit = plane.unit.max(1);
+++        let row_alignment = row_alignment.max(1);
+++        let row_alignment = row_alignment * unit / gcd(row_alignment, unit);
+++        let block_alignment = 4 * unit / gcd(4, unit);
+++        let offset_alignment = offset_alignment.max(1);
+++        let offset_alignment =
+++            offset_alignment * block_alignment / gcd(offset_alignment, block_alignment);
+++        plane.offset = end.next_multiple_of(offset_alignment);
+++        plane.pitch = plane.pitch.next_multiple_of(row_alignment);
+++        plane.image_pitch = plane.pitch * plane.blocks[1];
+++        // The conversion kernel may visit padding in the final row too.
+++        end = plane.offset + plane.image_pitch * plane.images;
+++    }
+++    (planes, end)
+++}
+++
+++/// The internal transfer buffer of a tiled heap texture: aligned copy planes
+++/// for single-sample images, original interleaved planes for multisample moves.
+++fn tight_planes(plan: &ImagePlan, alignment: [u64; 2]) -> (Vec<HeapPlane>, u64) {
++     let (format, pf, extent) = (plan.format, plan.pixel_format, plan.extent);
++     match plan.samples.as_raw() {
++-        1 => heap_plane_layout(format, pf, extent, plan.levels, plan.layers),
+++        1 => aligned_copy_planes(
+++            heap_plane_layout(format, pf, extent, plan.levels, plan.layers).0,
+++            alignment,
+++        ),
++         samples => sample_plane_layout(format, pf, extent, plan.layers, samples),
++     }
++ }
++ 
++ /// The greatest common divisor of `a` and `b`.
++ fn gcd(a: u64, b: u64) -> u64 {
++-    if b == 0 { a } else { gcd(b, a % b) }
+++    if b == 0 {
+++        a
+++    } else {
+++        gcd(b, a % b)
+++    }
++ }
++ 
++ /// The copies between a heap shadow's truth and its image ([`heap_plane_layout`]): one region per
++@@ -877,7 +907,12 @@ pub(crate) fn heap_planes(
++     layers: u32,
++ ) -> (Vec<vk::BufferImageCopy>, u64) {
++     let (planes, end) = heap_plane_layout(format, pf, extent, levels, layers);
++-    let regions = planes
+++    (copy_plane_regions(&planes, layers), end)
+++}
+++
+++/// Vulkan copies using the actual transfer planes, including their padded rows.
+++pub(crate) fn copy_plane_regions(planes: &[HeapPlane], layers: u32) -> Vec<vk::BufferImageCopy> {
+++    planes
++         .iter()
++         .map(|plane| {
++             let [width, height, depth] = plane.extent;
++@@ -905,8 +940,7 @@ pub(crate) fn heap_planes(
++                 },
++             }
++         })
++-        .collect();
++-    (regions, end)
+++        .collect()
++ }
++ 
++ /// Whether `regions` copy every aspect of an image of `format`: every aspect but an
++@@ -2779,7 +2813,7 @@ impl Device {
++     /// device moves to and from a buffer ([`sample_moves_run`](Self::sample_moves_run)).
++     fn tiles_serve(&self, plan: &ImagePlan, tiled: &TiledTexture, size: u64) -> bool {
++         let copies = ImageUsageFlags::TRANSFER_SRC | ImageUsageFlags::TRANSFER_DST;
++-        let (planes, tight_len) = tight_planes(plan);
+++        let (planes, tight_len) = tight_planes(plan, self.shared().textures.copy_alignment);
++         plan.usage.contains(copies)
++             && tiled.size <= size
++             && HeapTiledCopies::fit(self, tiled, &planes, tight_len)
++@@ -2830,7 +2864,7 @@ impl Device {
++             ..TextureDescriptor::default()
++         };
++         let texture = Device::new_planned_texture(self, &descriptor, one.clone())?;
++-        let (planes, _) = tight_planes(&one);
+++        let (planes, _) = tight_planes(&one, self.shared().textures.copy_alignment);
++         HeapTiledCopies::samples_run(self, &texture, &planes)
++     }
++ 
++@@ -3529,14 +3563,19 @@ impl Device {
++     ) -> Result<Image, Error> {
++         let plan = image.plan;
++         let samples = plan.samples.as_raw();
++-        let (planes, tight_len) = tight_planes(&plan);
++-        let (regions, _) = heap_planes(
++-            plan.format,
++-            plan.pixel_format,
++-            plan.extent,
++-            plan.levels,
++-            plan.layers,
++-        );
+++        let (planes, tight_len) = tight_planes(&plan, self.shared().textures.copy_alignment);
+++        let regions = if samples == 1 {
+++            copy_plane_regions(&planes, plan.layers)
+++        } else {
+++            heap_planes(
+++                plan.format,
+++                plan.pixel_format,
+++                plan.extent,
+++                plan.levels,
+++                plan.layers,
+++            )
+++            .0
+++        };
++         let every = copies_every_aspect(&regions, plan.format);
++         if tiled.size > place.size {
++             return Err(internal("a tiled heap texture's elements past its range"));
++diff --git a/crates/metal2vulkan-runtime/src/texture/heap_tiled.rs b/crates/metal2vulkan-runtime/src/texture/heap_tiled.rs
++index 6066f40d7..d5318c666 100644
++--- a/crates/metal2vulkan-runtime/src/texture/heap_tiled.rs
+++++ b/crates/metal2vulkan-runtime/src/texture/heap_tiled.rs
++@@ -157,13 +157,12 @@
++ //! otherwise than the heap is written back: every byte a command wrote, and the values the copy
++ //! in changed.
++ 
++-use super::super::Device;
++ use super::super::blit_plan::BufferLayout;
++ use super::super::buffer::Buffer;
++-use super::super::copy_plan::{TextureRegion, block_bytes, block_extent, depth_bytes};
+++use super::super::copy_plan::{block_bytes, block_extent, depth_bytes, TextureRegion};
++ use super::super::degradation::Degradation;
++ use super::super::depth_copy;
++-use super::super::error::{Error, internal};
+++use super::super::error::{internal, Error};
++ use super::super::heap::SizeAndAlign;
++ use super::super::image_plan::block_family;
++ use super::super::metal_release::heap_blocks;
++@@ -174,9 +173,10 @@ use super::super::shadow::{self, ShadowStaging};
++ use super::super::texture_descriptor::TextureLayout;
++ use super::super::tracker::Barrier;
++ use super::super::values::{CpuCacheMode, HazardTrackingMode, ResourceOptions, StorageMode};
+++use super::super::Device;
++ use super::copy_images::{Reused, UseMaker};
++ use super::heap::HeapPlane;
++-use super::{Texture, TextureShared, copy_units};
+++use super::{copy_units, Texture, TextureShared};
++ use crate::device::functions::Vk;
++ use ash::vk;
++ use metal2vulkan::bind::{TiledLevelMove, TiledTexelsModule};
++@@ -1128,10 +1128,9 @@ fn image_element(pf: PixelFormat, format: Format) -> Option<(u64, [u64; 2])> {
++             .map(|&(_, bytes, block)| (bytes, block)),
++         // A stencil view's image holds a depth aspect it does not name (`heap_plane_layout`).
++         PixelFormat::X32Stencil8 => match units[..] {
++-            [
++-                (ImageAspectFlags::DEPTH, _, _),
++-                (ImageAspectFlags::STENCIL, bytes, block),
++-            ] => Some((bytes, block)),
+++            [(ImageAspectFlags::DEPTH, _, _), (ImageAspectFlags::STENCIL, bytes, block)] => {
+++                Some((bytes, block))
+++            }
++             _ => None,
++         },
++         PixelFormat::Depth16Unorm | PixelFormat::Depth32Float => match units[..] {
++@@ -1680,7 +1679,7 @@ impl HeapTiledCopies {
++                 if plane.blocks != level.extent || plane.unit != layout.unit {
++                     return None;
++                 }
++-                moves.push(TiledLevelMove::new(
+++                let mut moving = TiledLevelMove::new(
++                     narrow(layout.unit)?,
++                     [narrow(level.extent[0])?, narrow(level.extent[1])?],
++                     narrow(plane.images)?,
++@@ -1690,7 +1689,9 @@ impl HeapTiledCopies {
++                     narrow(layout.stride)?,
++                     narrow(plane.offset)?,
++                     narrow(level.bytes)?,
++-                ));
+++                );
+++                moving.tight_row_pitch = narrow(plane.pitch)?;
+++                moves.push(moving);
++             }
++         }
++         // Every plane is a part's.
++@@ -1818,9 +1819,19 @@ impl HeapTiledCopies {
++         let options =
++             ResourceOptions::new(StorageMode::Private, CpuCacheMode::DefaultCache, hazard);
++         let tight_bytes = tight_len.next_multiple_of(4);
++-        let tight = device.own_buffer(tight_bytes, options)?;
+++        let alignment = device.shared().textures.copy_alignment[0]
+++            .max(
+++                device
+++                    .properties()
+++                    .description
+++                    .limits
+++                    .min_storage_buffer_offset_alignment,
+++            )
+++            .max(16);
+++        let tight = device.own_buffer(tight_bytes + alignment - 1, options)?;
++         let shapes = device.own_buffer(2 * SHAPE_SLOT, options)?;
++         let (tight_raw, tight_at) = tight.at(0);
+++        let tight_at = tight_at.next_multiple_of(alignment);
++         let (shapes_raw, shapes_at) = shapes.at(0);
++         let (staging_raw, staging_at) = (staging.raw(), staging.into.dst_offset);
++         let local = TiledTexelsModule::LOCAL_SIZE;
++diff --git a/crates/metal2vulkan/src/bind/tiled_texels.rs b/crates/metal2vulkan/src/bind/tiled_texels.rs
++index 038ea91b5..46a6adaca 100644
++--- a/crates/metal2vulkan/src/bind/tiled_texels.rs
+++++ b/crates/metal2vulkan/src/bind/tiled_texels.rs
++@@ -7,7 +7,8 @@
++ //! side's extra bits on top. Each slice of the texture (each depth slice of a 3D texture) holds
++ //! its own chain of levels, the chains a stride apart. A consumer keeps the texture's image a
++ //! shadow of those bytes: it copies the texture's bytes into a buffer (the tiled buffer), one
++-//! dispatch of [`tiled_texels_module`] moves them into a tight buffer of the image's elements,
+++//! dispatch of [`tiled_texels_module`] moves them into an internal transfer buffer of the image's elements,
+++//! called the tight buffer below; its rows may be padded for buffer-image copies,
++ //! which it copies into the image; and back: the heap's bytes into the tiled buffer again (so
++ //! the bytes between the elements are the heap's), the image into the tight buffer, a dispatch
++ //! into the tiled buffer, and each level's bytes on into the heap.
++@@ -49,8 +50,8 @@
++ use std::sync::Arc;
++ 
++ use crate::budget::{Budget, Meter};
++-use crate::device::Device;
++ use crate::device::requirements::Requirements;
+++use crate::device::Device;
++ use crate::error::{Error, InternalError, InternalKind};
++ use crate::pipeline::sym::{ResourceKind, ResourceSlot, Stage, Symbol};
++ use crate::spirv::builder::constructs::{ArmEnd, ArmFn};
++@@ -58,8 +59,8 @@ use crate::spirv::builder::{FunctionBuilder, ModuleBuilder};
++ use crate::spirv::error::BResult;
++ use crate::spirv::ids::{GlobalId, TypeId, Value};
++ use crate::spirv::ir::{
++-    BinOp, ExecMode, ExecModel, IoDir, LayoutRule, MemAccess, StorageClass, Type, TypedModule,
++-    natural_layout,
+++    natural_layout, BinOp, ExecMode, ExecModel, IoDir, LayoutRule, MemAccess, StorageClass, Type,
+++    TypedModule,
++ };
++ 
++ /// The crate-owned tiled texel module of one device, validated like any output.
++@@ -73,7 +74,7 @@ pub struct TiledTexelsModule {
++ }
++ 
++ /// One level of a move between the tight and the tiled buffer ([`TiledTexelsModule::shape`]).
++-/// Every byte offset and length is a multiple of 4.
+++/// The buffer offsets, tiled chain stride and tiled region length are multiples of 4.
++ #[non_exhaustive]
++ #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
++ pub struct TiledLevelMove {
++@@ -94,6 +95,9 @@ pub struct TiledLevelMove {
++     /// Its first byte in the tight buffer, where its images lie one after another, each its rows
++     /// of elements.
++     pub tight_first: u32,
+++    /// Bytes between rows in the image's transfer buffer. At least `extent[0] * unit`
+++    /// and a multiple of `unit`; padding is internal and is never copied into the image.
+++    pub tight_row_pitch: u32,
++     /// The bytes of its region in one chain of the tiled buffer, which the move back writes.
++     pub region_bytes: u32,
++ }
++@@ -123,6 +127,7 @@ impl TiledLevelMove {
++             tiled_first,
++             chain_stride,
++             tight_first,
+++            tight_row_pitch: extent[0].saturating_mul(unit),
++             region_bytes,
++         }
++     }
++@@ -131,7 +136,7 @@ impl TiledLevelMove {
++     /// a word of its tiled regions each, back.
++     pub const fn invocations(&self, into_tight: bool) -> u32 {
++         if into_tight {
++-            let bytes = self.extent[0] * self.extent[1] * self.images * self.unit;
+++            let bytes = self.tight_row_pitch * self.extent[1] * self.images;
++             bytes.div_ceil(4)
++         } else {
++             self.images * (self.region_bytes / 4)
++@@ -153,7 +158,7 @@ impl TiledTexelsModule {
++     /// The most levels one move takes.
++     pub const MAX_LEVELS: u32 = 16;
++     /// The words of a level's record in the shape.
++-    const LEVEL_WORDS: u32 = 13;
+++    const LEVEL_WORDS: u32 = 14;
++     /// The words of the shape's header, before the levels' records.
++     const HEADER_WORDS: u32 = 4;
++     /// The words of the shape.
++@@ -193,6 +198,8 @@ impl TiledTexelsModule {
++             .any(|v| v % 4 != 0)
++             || level.region_bytes == 0
++             || level.chain_stride < level.region_bytes
+++            || u64::from(level.tight_row_pitch) < u64::from(level.extent[0]) * u64::from(level.unit)
+++            || !level.tight_row_pitch.is_multiple_of(level.unit)
++         {
++             return None;
++         }
++@@ -201,10 +208,9 @@ impl TiledTexelsModule {
++         let rows = u64::from(level.extent[1]).div_ceil(th);
++         let row_words = u64::from(level.across).checked_mul(tile_words)?;
++         let region_words = row_words.checked_mul(rows)?;
++-        let tight_bytes = u64::from(level.extent[0])
+++        let tight_bytes = u64::from(level.tight_row_pitch)
++             .checked_mul(u64::from(level.extent[1]))?
++-            .checked_mul(u64::from(level.images))?
++-            .checked_mul(u64::from(level.unit))?;
+++            .checked_mul(u64::from(level.images))?;
++         let last_chain = u64::from(level.images - 1).checked_mul(u64::from(level.chain_stride))?;
++         let tiled_end = last_chain
++             .checked_add(u64::from(level.tiled_first))?
++@@ -233,7 +239,7 @@ impl TiledTexelsModule {
++ 
++     /// The shape's bytes of a move of `levels` into the image (the tight buffer) where
++     /// `into_tight`, else back, in a grid whose rows are `grid_width` invocations wide; `None`
++-    /// past [`MAX_LEVELS`](Self::MAX_LEVELS) levels.
+++    /// past [`MAX_LEVELS`](Self::MAX_LEVELS) levels or for an invalid transfer row pitch.
++     pub fn shape(levels: &[TiledLevelMove], into_tight: bool, grid_width: u32) -> Option<Vec<u8>> {
++         if levels.len() > Self::MAX_LEVELS as usize {
++             return None;
++@@ -244,6 +250,13 @@ impl TiledTexelsModule {
++         words[2] = levels.len() as u32;
++         let mut start = 0u32;
++         for (k, level) in levels.iter().enumerate() {
+++            if level.unit == 0
+++                || u64::from(level.tight_row_pitch)
+++                    < u64::from(level.extent[0]) * u64::from(level.unit)
+++                || !level.tight_row_pitch.is_multiple_of(level.unit)
+++            {
+++                return None;
+++            }
++             let at = (Self::HEADER_WORDS + Self::LEVEL_WORDS * k as u32) as usize;
++             let count = level.invocations(into_tight);
++             let record = [
++@@ -260,6 +273,7 @@ impl TiledTexelsModule {
++                 level.tight_first,
++                 level.region_bytes / 4,
++                 level.images,
+++                level.tight_row_pitch,
++             ];
++             words[at..at + record.len()].copy_from_slice(&record);
++             start += count;
++@@ -319,6 +333,7 @@ struct Level {
++     tight_first: Value,
++     region_words: Value,
++     images: Value,
+++    tight_row_pitch: Value,
++ }
++ 
++ /// `v`'s low 16 bits spread to the even bits.
++@@ -441,11 +456,12 @@ fn tiled_byte(
++ /// The image, x and y of tight element `e` of the level (counted row after row, image after
++ /// image).
++ fn tight_place(f: &mut FunctionBuilder<'_>, l: Level, e: Value) -> BResult<[Value; 3]> {
++-    let plane = f.binary(BinOp::IMul, l.width, l.height)?;
+++    let across = f.binary(BinOp::ShiftRightLogical, l.tight_row_pitch, l.unit_log2)?;
+++    let plane = f.binary(BinOp::IMul, across, l.height)?;
++     let image = f.binary(BinOp::UDiv, e, plane)?;
++     let r = f.binary(BinOp::UMod, e, plane)?;
++-    let y = f.binary(BinOp::UDiv, r, l.width)?;
++-    let x = f.binary(BinOp::UMod, r, l.width)?;
+++    let y = f.binary(BinOp::UDiv, r, across)?;
+++    let x = f.binary(BinOp::UMod, r, across)?;
++     Ok([image, x, y])
++ }
++ 
++@@ -478,12 +494,12 @@ fn tight_byte(
++     x: Value,
++     y: Value,
++ ) -> BResult<Value> {
++-    let plane = f.binary(BinOp::IMul, l.width, l.height)?;
+++    let plane = f.binary(BinOp::IMul, l.tight_row_pitch, l.height)?;
++     let at = f.binary(BinOp::IMul, image, plane)?;
++-    let row = f.binary(BinOp::IMul, y, l.width)?;
+++    let row = f.binary(BinOp::IMul, y, l.tight_row_pitch)?;
++     let at = f.binary(BinOp::IAdd, at, row)?;
+++    let x = f.binary(BinOp::ShiftLeftLogical, x, l.unit_log2)?;
++     let at = f.binary(BinOp::IAdd, at, x)?;
++-    let at = f.binary(BinOp::ShiftLeftLogical, at, l.unit_log2)?;
++     f.binary(BinOp::IAdd, l.tight_first, at)
++ }
++ 
++@@ -557,6 +573,7 @@ fn linear_dispatch(
++         tight_first: at(f, 10)?,
++         region_words: at(f, 11)?,
++         images: at(f, 12)?,
+++        tight_row_pitch: at(f, 13)?,
++     };
++     let has_levels = f.binary(BinOp::ULessThan, zero, levels)?;
++     let past_start = f.binary(BinOp::UGreaterThanEqual, i, start)?;
++@@ -580,36 +597,47 @@ fn linear_dispatch(
++                 let unit_mask = low_mask(f, l.unit_log2)?;
++                 let b = f.binary(BinOp::BitwiseAnd, byte0, unit_mask)?;
++                 let [image, x, y] = tight_place(f, l, e)?;
+++                let inside = f.binary(BinOp::ULessThan, x, l.width)?;
+++                let x = f.select(inside, x, zero)?;
++                 let from = tiled_byte(f, l, image, x, y)?;
++                 let from = f.binary(BinOp::IAdd, from, b)?;
++                 let two = u32_value(f, 2)?;
++                 let from = f.binary(BinOp::ShiftRightLogical, from, two)?;
++                 let p = f.access_chain(tiled, &[zero, from])?;
++                 let v = f.load(p, MemAccess::default())?;
+++                let kept = f.load(at_to, MemAccess::default())?;
+++                let v = f.select(inside, v, kept)?;
++                 f.store(at_to, v, MemAccess::default())?;
++                 Ok(ArmEnd::FallThrough(Vec::new()))
++             });
++             // Narrower elements: byte by byte, 0 past the level's elements.
++             let bytes: ArmFn<'_, ()> = Box::new(move |f, _| {
++-                let plane = f.binary(BinOp::IMul, l.width, l.height)?;
+++                let plane = f.binary(BinOp::IMul, l.tight_row_pitch, l.height)?;
++                 let all = f.binary(BinOp::IMul, plane, l.images)?;
++-                let all = f.binary(BinOp::ShiftLeftLogical, all, l.unit_log2)?;
++                 let unit_mask = low_mask(f, l.unit_log2)?;
+++                let was = f.load(at_to, MemAccess::default())?;
+++                let byte_mask = u32_value(f, 0xff)?;
++                 let mut assembled = u32_value(f, 0)?;
++                 for k in 0..4u32 {
++                     let kv = u32_value(f, k)?;
++                     let t = f.binary(BinOp::IAdd, byte0, kv)?;
++-                    let inside = f.binary(BinOp::ULessThan, t, all)?;
+++                    let in_buffer = f.binary(BinOp::ULessThan, t, all)?;
++                     let zero = u32_value(f, 0)?;
++-                    let t = f.select(inside, t, zero)?;
+++                    let t = f.select(in_buffer, t, zero)?;
++                     let e = f.binary(BinOp::ShiftRightLogical, t, l.unit_log2)?;
++                     let b = f.binary(BinOp::BitwiseAnd, t, unit_mask)?;
++                     let [image, x, y] = tight_place(f, l, e)?;
+++                    let in_x = f.binary(BinOp::ULessThan, x, l.width)?;
+++                    let inside = f.binary(BinOp::LogicalAnd, in_buffer, in_x)?;
+++                    let x = f.select(inside, x, zero)?;
++                     let from = tiled_byte(f, l, image, x, y)?;
++                     let from = f.binary(BinOp::IAdd, from, b)?;
++                     let v = byte_at(f, tiled, from)?;
++-                    let v = f.select(inside, v, zero)?;
++                     let place = u32_value(f, 8 * k)?;
+++                    let kept = f.binary(BinOp::ShiftRightLogical, was, place)?;
+++                    let kept = f.binary(BinOp::BitwiseAnd, kept, byte_mask)?;
+++                    let kept = f.select(in_buffer, kept, zero)?;
+++                    let v = f.select(inside, v, kept)?;
++                     let v = f.binary(BinOp::ShiftLeftLogical, v, place)?;
++                     assembled = f.binary(BinOp::BitwiseOr, assembled, v)?;
++                 }
++@@ -714,6 +742,7 @@ fn tile_dispatch(
++         tight_first: field(f, 14)?,
++         region_words: field(f, 15)?,
++         images: field(f, 16)?,
+++        tight_row_pitch: field(f, 17)?,
++     };
++     let into = field(f, 1)?;
++     let into = f.binary(BinOp::INotEqual, into, zero)?;
++diff --git a/crates/metal2vulkan/src/bind/tiled_texels/tests.rs b/crates/metal2vulkan/src/bind/tiled_texels/tests.rs
++index 3ce500aa7..11951d66d 100644
++--- a/crates/metal2vulkan/src/bind/tiled_texels/tests.rs
+++++ b/crates/metal2vulkan/src/bind/tiled_texels/tests.rs
++@@ -1,5 +1,5 @@
++-use super::{SHAPE, TIGHT, TILED, TiledLevelMove, TiledTexelsModule, typed_module};
++-use crate::spirv::interp::{Buffer, Config, Order, Resources, run};
+++use super::{typed_module, TiledLevelMove, TiledTexelsModule, SHAPE, TIGHT, TILED};
+++use crate::spirv::interp::{run, Buffer, Config, Order, Resources};
++ use crate::spirv::testing::{assert_valid, committed_profiles};
++ 
++ #[test]
++@@ -37,8 +37,8 @@ fn tiled_at(level: &TiledLevelMove, image: u32, x: u32, y: u32) -> usize {
++ 
++ /// The tight buffer's byte at which element `(x, y)` of image `image` of `level` starts.
++ fn tight_at(level: &TiledLevelMove, image: u32, x: u32, y: u32) -> usize {
++-    let [w, h] = level.extent;
++-    (level.tight_first + ((image * h + y) * w + x) * level.unit) as usize
+++    let h = level.extent[1];
+++    (level.tight_first + (image * h + y) * level.tight_row_pitch + x * level.unit) as usize
++ }
++ 
++ /// Every element of every image of `levels`: the level, image, x and y.
++@@ -126,7 +126,7 @@ fn moves_match_the_layout(levels: &[TiledLevelMove], tight_len: usize, tiled_len
++     assert_eq!(p, tiled, "the tiled bytes are only read");
++     let mut want = tight.clone();
++     for level in levels {
++-        let bytes = (level.extent[0] * level.extent[1] * level.images * level.unit) as usize;
+++        let bytes = (level.tight_row_pitch * level.extent[1] * level.images) as usize;
++         let end = level.tight_first as usize + bytes;
++         for byte in want.iter_mut().take(end.next_multiple_of(4)).skip(end) {
++             *byte = 0;
++@@ -257,6 +257,23 @@ fn tile_dispatch_keeps_offsets_padding_and_array_chains() {
++     }
++ }
++ 
+++#[test]
+++fn padded_transfer_rows_keep_texels_padding_and_array_chains() {
+++    for unit in [1, 2, 4, 8, 16] {
+++        for alignment in [64, 128] {
+++            let mut level = TiledLevelMove::new(unit, [13, 7], 2, [16, 8], 1, 128, 4096, 64, 2048);
+++            level.tight_row_pitch = (13 * unit).next_multiple_of(alignment);
+++            let tight_len = (64 + level.tight_row_pitch * 7 * 2 + 32) as usize;
+++            moves_match_the_layout(&[level], tight_len, 128 + 4096 + 2048 + 32);
+++        }
+++    }
+++    let mut a = TiledLevelMove::new(2, [13, 7], 2, [16, 8], 1, 0, 512, 64, 256);
+++    let mut b = TiledLevelMove::new(2, [6, 3], 2, [8, 4], 1, 256, 512, 1024, 64);
+++    a.tight_row_pitch = 64;
+++    b.tight_row_pitch = 64;
+++    moves_match_the_layout(&[a, b], 1440, 1024);
+++}
+++
++ #[test]
++ fn tile_dispatch_accepts_screen_geometry_and_refuses_ineligible_inputs() {
++     // Synthetic RGBA16-sized geometry, independent of an app or shader identity.
++diff --git a/crates/metal2vulkan/tests/api_signatures.tsv b/crates/metal2vulkan/tests/api_signatures.tsv
++index c299b38dd..c4f556d9b 100644
++--- a/crates/metal2vulkan/tests/api_signatures.tsv
+++++ b/crates/metal2vulkan/tests/api_signatures.tsv
++@@ -3488,6 +3488,7 @@ field	metal2vulkan::bind::TiledLevelMove.extent	pub extent: [u32; 2]
++ field	metal2vulkan::bind::TiledLevelMove.images	pub images: u32
++ field	metal2vulkan::bind::TiledLevelMove.region_bytes	pub region_bytes: u32
++ field	metal2vulkan::bind::TiledLevelMove.tight_first	pub tight_first: u32
+++field	metal2vulkan::bind::TiledLevelMove.tight_row_pitch	pub tight_row_pitch: u32
++ field	metal2vulkan::bind::TiledLevelMove.tile	pub tile: [u32; 2]
++ field	metal2vulkan::bind::TiledLevelMove.tiled_first	pub tiled_first: u32
++ field	metal2vulkan::bind::TiledLevelMove.unit	pub unit: u32
++@@ -4512,6 +4513,7 @@ fn	metal2vulkan-runtime::process_exiting	pub fn process_exiting() -> bool
++ fn	metal2vulkan-runtime::sampler_border_color	pub fn sampler_border_color(raw: u64) -> SamplerBorderColor
++ fn	metal2vulkan-runtime::stage_trace::now_nanos	pub fn now_nanos() -> u64
++ fn	metal2vulkan-runtime::stage_trace::read	pub fn read(from: u64, out: &mut [StageRecord]) -> (usize, u64)
+++fn	metal2vulkan-runtime::stage_trace::set_diagnostic_hook	pub fn set_diagnostic_hook(hook: DiagnosticHook)
++ fn	metal2vulkan::ash_interop::sampler_create_info	pub fn sampler_create_info<'a>(desc: &vk::SamplerDesc, reduction: &'a mut ash::vk::SamplerReductionModeCreateInfo<'static>, border: &'a mut ash::vk::SamplerBorderColorComponentMappingCreateInfoEXT<'static>) -> ash::vk::SamplerCreateInfo<'a>
++ fn	metal2vulkan::bind::astc_decode_module	pub fn astc_decode_module(device: &Device, decode: AstcDecode, texels: AstcTexels) -> Result<BlockDecodeModule, Error>
++ fn	metal2vulkan::bind::chroma_decode_module	pub fn chroma_decode_module(device: &Device, decode: ChromaDecode) -> Result<BlockDecodeModule, Error>
++@@ -7027,7 +7029,7 @@ macro-template	metal2vulkan-air::metal_flags!	( $(#[$meta:meta])* $name:ident =
++ macro-template	metal2vulkan-air::vk_bit!	( $(#[$meta:meta])* $name:ident($raw:ty) = $vk:literal in $flags:ident { $($konst:ident = $value:literal, $vkname:literal;)* } aliases { $($alias:literal => $target:ident;)* } ) => { $(#[$meta])* #[repr(transparent)] #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)] #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))] #[cfg_attr(feature = "serde", serde(try_from = "u32", into = "u32"))] pub struct $name($raw); impl $name { $( #[doc = concat!("`", $vkname, "`.")] pub const $konst: $name = $name($value); )* pub const VK_NAME: &'static str = $vk; pub const KNOWN: &'static [$name] = &[$($name::$konst),*]; const NAMES: &'static [($name, &'static str)] = &[$(($name::$konst, $vkname)),*]; const ALIASES: &'static [(&'static str, $name)] = &[$(($alias, $name::$target)),*]; pub const fn from_raw(raw: $raw) -> Option<$name> { let mut i = 0; while i < Self::KNOWN.len() { if Self::KNOWN[i].0 == raw { return Some(Self::KNOWN[i]); } i += 1; } None } pub const fn from_flags(flags: $flags) -> Option<$name> { Self::from_raw(flags.as_raw()) } pub const fn as_raw(self) -> $raw { self.0 } pub const fn flags(self) -> $flags { $flags::from_raw(self.0) } pub fn name(self) -> &'static str { Self::NAMES .iter() .find(|(v, _)| *v == self) .map(|(_, n)| *n) .expect("a single-bit value is always a named bit") } pub fn from_name(name: &str) -> Option<$name> { Self::NAMES .iter() .find(|(_, n)| *n == name) .map(|(v, _)| *v) .or_else(|| Self::ALIASES.iter().find(|(n, _)| *n == name).map(|(_, v)| *v)) } } impl ::std::convert::TryFrom<$raw> for $name { type Error = $raw; fn try_from(raw: $raw) -> Result<$name, $raw> { $name::from_raw(raw).ok_or(raw) } } impl From<$name> for $raw { fn from(bit: $name) -> $raw { bit.0 } } impl From<$name> for $flags { fn from(bit: $name) -> $flags { bit.flags() } } impl ::std::fmt::Debug for $name { fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result { f.write_str(self.name()) } } };
++ macro-template	metal2vulkan-air::vk_enum!	( $(#[$meta:meta])* $name:ident($raw:ty) = $vk:literal { $($konst:ident = $value:literal, $vkname:literal;)* } aliases { $($alias:literal => $target:ident;)* } ) => { $(#[$meta])* #[repr(transparent)] #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)] #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))] #[cfg_attr(feature = "serde", serde(transparent))] pub struct $name($raw); impl $name { $( #[doc = concat!("`", $vkname, "`.")] pub const $konst: $name = $name($value); )* pub const VK_NAME: &'static str = $vk; pub const KNOWN: &'static [$name] = &[$($name::$konst),*]; const NAMES: &'static [($name, &'static str)] = &[$(($name::$konst, $vkname)),*]; const ALIASES: &'static [(&'static str, $name)] = &[$(($alias, $name::$target)),*]; pub const fn from_raw(raw: $raw) -> $name { $name(raw) } pub const fn as_raw(self) -> $raw { self.0 } pub fn name(self) -> Option<&'static str> { Self::NAMES.iter().find(|(v, _)| *v == self).map(|(_, n)| *n) } pub fn is_known(self) -> bool { self.name().is_some() } pub fn from_name(name: &str) -> Option<$name> { Self::NAMES .iter() .find(|(_, n)| *n == name) .map(|(v, _)| *v) .or_else(|| Self::ALIASES.iter().find(|(n, _)| *n == name).map(|(_, v)| *v)) } } impl ::std::fmt::Debug for $name { fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result { match self.name() { Some(name) => f.write_str(name), None => write!(f, "{}({})", $vk, self.0), } } } };
++ macro-template	metal2vulkan-air::vk_flags!	( $(#[$meta:meta])* $name:ident($raw:ty) = $vk:literal { $($konst:ident = $value:literal, $vkname:literal;)* } aliases { $($alias:literal => $target:ident;)* } ) => { $(#[$meta])* #[repr(transparent)] #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)] #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))] #[cfg_attr(feature = "serde", serde(transparent))] pub struct $name($raw); impl $name { $( #[doc = concat!("`", $vkname, "`.")] pub const $konst: $name = $name($value); )* pub const VK_NAME: &'static str = $vk; pub const KNOWN: &'static [($name, &'static str)] = &[$(($name::$konst, $vkname)),*]; const ALIASES: &'static [(&'static str, $name)] = &[$(($alias, $name::$target)),*]; pub const fn empty() -> $name { $name(0) } pub const fn from_raw(raw: $raw) -> $name { $name(raw) } pub const fn as_raw(self) -> $raw { self.0 } pub const fn is_empty(self) -> bool { self.0 == 0 } pub const fn contains(self, other: $name) -> bool { self.0 & other.0 == other.0 } pub const fn intersects(self, other: $name) -> bool { self.0 & other.0 != 0 } pub const fn union(self, other: $name) -> $name { $name(self.0 | other.0) } pub const fn intersection(self, other: $name) -> $name { $name(self.0 & other.0) } pub const fn difference(self, other: $name) -> $name { $name(self.0 & !other.0) } pub const fn known_bits() -> $name { let mut bits: $raw = 0; let mut i = 0; while i < Self::KNOWN.len() { let v = Self::KNOWN[i].0 .0; if v.count_ones() == 1 { bits |= v; } i += 1; } $name(bits) } pub fn name(self) -> Option<&'static str> { Self::KNOWN.iter().find(|(v, _)| *v == self).map(|(_, n)| *n) } pub fn from_name(name: &str) -> Option<$name> { Self::KNOWN .iter() .find(|(_, n)| *n == name) .map(|(v, _)| *v) .or_else(|| Self::ALIASES.iter().find(|(n, _)| *n == name).map(|(_, v)| *v)) } } impl ::std::ops::BitOr for $name { type Output = $name; fn bitor(self, rhs: $name) -> $name { self.union(rhs) } } impl ::std::ops::BitOrAssign for $name { fn bitor_assign(&mut self, rhs: $name) { *self = self.union(rhs); } } impl ::std::ops::BitAnd for $name { type Output = $name; fn bitand(self, rhs: $name) -> $name { self.intersection(rhs) } } impl ::std::ops::BitAndAssign for $name { fn bitand_assign(&mut self, rhs: $name) { *self = self.intersection(rhs); } } impl ::std::fmt::Debug for $name { fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result { if let Some(name) = self.name() { return f.write_str(name); } let mut rest = self.0; let mut first = true; for (v, n) in Self::KNOWN { if v.0.count_ones() == 1 && rest & v.0 != 0 { if !first { f.write_str(" | ")?; } f.write_str(n)?; rest &= !v.0; first = false; } } if rest != 0 || first { if !first { f.write_str(" | ")?; } write!(f, "{:#x}", rest)?; } Ok(()) } } };
++-macro-template	metal2vulkan-runtime::commands!	( v1_0 { $($v0:ident $f0:ident $n0:literal ($($a0:ident: $t0:ty),*) $(-> $r0:ty)?;)* } v1_3 { $($v3:ident $f3:ident $n3:literal ($($a3:ident: $t3:ty),*) $(-> $r3:ty)?;)* } extension { $($ve:ident $fe:ident $ne:literal ($($ae:ident: $te:ty),*) $(-> $re:ty)?;)* } ) => { #[derive(Clone, Copy, PartialEq, Eq, Debug)] pub(crate) enum Command { $($v0,)* $($v3,)* $($ve,)* } impl Command { pub(crate) const ALL: &'static [Command] = &[ $(Command::$v0,)* $(Command::$v3,)* $(Command::$ve,)* ]; pub(crate) const COUNT: usize = Command::ALL.len(); pub(crate) fn name(self) -> &'static CStr { match self { $(Command::$v0 => $n0,)* $(Command::$v3 => $n3,)* $(Command::$ve => $ne,)* } } } #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)] pub struct CommandsReplayed { $( #[doc = concat!("The calls of `", stringify!($v0), "`.")] pub $f0: u64, )* $( #[doc = concat!("The calls of `", stringify!($v3), "`.")] pub $f3: u64, )* $( #[doc = concat!("The calls of `", stringify!($ve), "`.")] pub $fe: u64, )* } impl CommandsReplayed { fn read(counts: &[AtomicU64; Command::COUNT]) -> CommandsReplayed { CommandsReplayed { $($f0: counts[Command::$v0 as usize].load(Ordering::Relaxed),)* $($f3: counts[Command::$v3 as usize].load(Ordering::Relaxed),)* $($fe: counts[Command::$ve as usize].load(Ordering::Relaxed),)* } } } struct Real { $($f0: [AtomicPtr<c_void>; SLOTS],)* $($f3: [AtomicPtr<c_void>; SLOTS],)* $($fe: [AtomicPtr<c_void>; SLOTS],)* } static REAL: Real = Real { $($f0: [const { AtomicPtr::new(std::ptr::null_mut()) }; SLOTS],)* $($f3: [const { AtomicPtr::new(std::ptr::null_mut()) }; SLOTS],)* $($fe: [const { AtomicPtr::new(std::ptr::null_mut()) }; SLOTS],)* }; commands!(@thunks $($v0 $f0 $n0 ($($a0: $t0),*) $(-> $r0)?;)*); commands!(@thunks $($v3 $f3 $n3 ($($a3: $t3),*) $(-> $r3)?;)*); commands!(@thunks $($ve $fe $ne ($($ae: $te),*) $(-> $re)?;)*); pub(super) fn thunk<const S: usize>(command: Command) -> *const c_void { match command { $(Command::$v0 => $f0::<S> as *const c_void,)* $(Command::$v3 => $f3::<S> as *const c_void,)* $(Command::$ve => $fe::<S> as *const c_void,)* } } pub(super) fn store(index: usize, command: Command, real: *const c_void) { let real = real.cast_mut(); match command { $(Command::$v0 => REAL.$f0[index].store(real, Ordering::Release),)* $(Command::$v3 => REAL.$f3[index].store(real, Ordering::Release),)* $(Command::$ve => REAL.$fe[index].store(real, Ordering::Release),)* } } pub(super) fn clear(index: usize) { $(REAL.$f0[index].store(std::ptr::null_mut(), Ordering::Release);)* $(REAL.$f3[index].store(std::ptr::null_mut(), Ordering::Release);)* $(REAL.$fe[index].store(std::ptr::null_mut(), Ordering::Release);)* } pub(super) fn route_tables<const S: usize>( v1_0: &mut ash::DeviceFnV1_0, v1_3: &mut ash::DeviceFnV1_3, ) { $( store(S, Command::$v0, v1_0.$f0 as *const c_void); v1_0.$f0 = $f0::<S>; )* $( store(S, Command::$v3, v1_3.$f3 as *const c_void); v1_3.$f3 = $f3::<S>; )* } }; (@thunks $($v:ident $f:ident $n:literal ($($a:ident: $t:ty),*) $(-> $r:ty)?;)*) => { $( unsafe extern "system" fn $f<const S: usize>( command_buffer: vk::CommandBuffer, $($a: $t,)* ) $(-> $r)? { COUNTS[S][Command::$v as usize].fetch_add(1, Ordering::Relaxed); let real = REAL.$f[S].load(Ordering::Acquire); if real.is_null() { missing($n); } unsafe { let real = std::mem::transmute::< *mut c_void, unsafe extern "system" fn(vk::CommandBuffer, $($t,)*) $(-> $r)?, >(real); real(command_buffer, $($a,)*) } } )* };
+++macro-template	metal2vulkan-runtime::commands!	( v1_0 { $($v0:ident $f0:ident $n0:literal ($($a0:ident: $t0:ty),*) $(-> $r0:ty)?;)* } v1_3 { $($v3:ident $f3:ident $n3:literal ($($a3:ident: $t3:ty),*) $(-> $r3:ty)?;)* } extension { $($ve:ident $fe:ident $ne:literal ($($ae:ident: $te:ty),*) $(-> $re:ty)?;)* } ) => { #[derive(Clone, Copy, PartialEq, Eq, Debug)] pub(crate) enum Command { $($v0,)* $($v3,)* $($ve,)* } impl Command { pub(crate) const ALL: &'static [Command] = &[ $(Command::$v0,)* $(Command::$v3,)* $(Command::$ve,)* ]; pub(crate) const COUNT: usize = Command::ALL.len(); pub(crate) fn name(self) -> &'static CStr { match self { $(Command::$v0 => $n0,)* $(Command::$v3 => $n3,)* $(Command::$ve => $ne,)* } } } #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)] pub struct CommandsReplayed { $( #[doc = concat!("The calls of `", stringify!($v0), "`.")] pub $f0: u64, )* $( #[doc = concat!("The calls of `", stringify!($v3), "`.")] pub $f3: u64, )* $( #[doc = concat!("The calls of `", stringify!($ve), "`.")] pub $fe: u64, )* } impl CommandsReplayed { fn read(counts: &[AtomicU64; Command::COUNT]) -> CommandsReplayed { CommandsReplayed { $($f0: counts[Command::$v0 as usize].load(Ordering::Relaxed),)* $($f3: counts[Command::$v3 as usize].load(Ordering::Relaxed),)* $($fe: counts[Command::$ve as usize].load(Ordering::Relaxed),)* } } } struct Real { $($f0: [AtomicPtr<c_void>; SLOTS],)* $($f3: [AtomicPtr<c_void>; SLOTS],)* $($fe: [AtomicPtr<c_void>; SLOTS],)* } static REAL: Real = Real { $($f0: [const { AtomicPtr::new(std::ptr::null_mut()) }; SLOTS],)* $($f3: [const { AtomicPtr::new(std::ptr::null_mut()) }; SLOTS],)* $($fe: [const { AtomicPtr::new(std::ptr::null_mut()) }; SLOTS],)* }; commands!(@thunks $($v0 $f0 $n0 ($($a0: $t0),*) $(-> $r0)?;)*); commands!(@thunks $($v3 $f3 $n3 ($($a3: $t3),*) $(-> $r3)?;)*); commands!(@thunks $($ve $fe $ne ($($ae: $te),*) $(-> $re)?;)*); pub(super) fn thunk<const S: usize>(command: Command) -> *const c_void { match command { $(Command::$v0 => $f0::<S> as *const c_void,)* $(Command::$v3 => $f3::<S> as *const c_void,)* $(Command::$ve => $fe::<S> as *const c_void,)* } } pub(super) fn store(index: usize, command: Command, real: *const c_void) { let real = real.cast_mut(); match command { $(Command::$v0 => REAL.$f0[index].store(real, Ordering::Release),)* $(Command::$v3 => REAL.$f3[index].store(real, Ordering::Release),)* $(Command::$ve => REAL.$fe[index].store(real, Ordering::Release),)* } } pub(super) fn clear(index: usize) { $(REAL.$f0[index].store(std::ptr::null_mut(), Ordering::Release);)* $(REAL.$f3[index].store(std::ptr::null_mut(), Ordering::Release);)* $(REAL.$fe[index].store(std::ptr::null_mut(), Ordering::Release);)* } pub(super) fn route_tables<const S: usize>( v1_0: &mut ash::DeviceFnV1_0, v1_3: &mut ash::DeviceFnV1_3, ) { $( store(S, Command::$v0, v1_0.$f0 as *const c_void); v1_0.$f0 = $f0::<S>; )* $( store(S, Command::$v3, v1_3.$f3 as *const c_void); v1_3.$f3 = $f3::<S>; )* } }; (@thunks $($v:ident $f:ident $n:literal ($($a:ident: $t:ty),*) $(-> $r:ty)?;)*) => { $( unsafe extern "system" fn $f<const S: usize>( command_buffer: vk::CommandBuffer, $($a: $t,)* ) $(-> $r)? { COUNTS[S][Command::$v as usize].fetch_add(1, Ordering::Relaxed); let real = REAL.$f[S].load(Ordering::Acquire); if real.is_null() { missing($n); } let result = unsafe { let real = std::mem::transmute::< *mut c_void, unsafe extern "system" fn(vk::CommandBuffer, $($t,)*) $(-> $r)?, >(real); real(command_buffer, $($a,)*) }; diagnostic_operation!($v, command_buffer, result; $($a),*); result } )* };
++ macro-template	metal2vulkan-runtime::degradations!	( runtime { $( $(#[doc = $doc:literal])* $kind:ident = $code:literal, $category:ident, $cost:literal; )* } notes { $( $(#[doc = $note_doc:literal])* $note:ident = $note_code:literal; )* } ) => { #[non_exhaustive] #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)] pub enum Degradation { $($(#[doc = $doc])* $kind,)* $( #[doc = concat!( "A pipeline stage records [`PrecisionNote::", stringify!($note), "`](metal2vulkan::pipeline::PrecisionNote::", stringify!($note), ")." )] $(#[doc = $note_doc])* $note, )* } impl Degradation { pub const ALL: &'static [Degradation] = &[$(Degradation::$kind,)* $(Degradation::$note,)*]; pub const fn code(self) -> &'static str { match self { $(Degradation::$kind => concat!("metal2vulkan-degrade-", $code),)* $(Degradation::$note => concat!("metal2vulkan-degrade-", $note_code),)* } } pub const fn category(self) -> DegradationCategory { match self { $(Degradation::$kind => DegradationCategory::$category,)* $(Degradation::$note => DegradationCategory::Precision,)* } } pub const fn cost(self) -> &'static str { match self { $(Degradation::$kind => $cost,)* $(Degradation::$note => NOTE_COST,)* } } pub const fn precision_note(self) -> Option<PrecisionNote> { match self { $(Degradation::$kind => None,)* $(Degradation::$note => Some(PrecisionNote::$note),)* } } pub const fn from_precision_note(note: PrecisionNote) -> Degradation { match note { $(PrecisionNote::$note => Degradation::$note,)* } } } };
++ macro-template	metal2vulkan-runtime::exposures!	($($exposure:expr => [$($feature:ident),* $(,)?];)*) => { impl VkFeature { pub const ALL: &'static [VkFeature] = &[$($(VkFeature::$feature),*),*]; pub fn exposure(self) -> Exposure { match self { $($(VkFeature::$feature)|* => $exposure,)* } } } };
++ macro-template	metal2vulkan-runtime::flag_set!	( $(#[$doc:meta])* $name:ident { $($(#[$fdoc:meta])* $flag:ident = $bit:expr),* $(,)? } $(#[$all:meta])* ALL ) => { $(#[$doc])* #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)] pub struct $name(u8); impl $name { pub const NONE: $name = $name(0); $($(#[$fdoc])* pub const $flag: $name = $name($bit);)* $(#[$all])* pub const ALL: &'static [($name, &'static str)] = &[$(($name::$flag, stringify!($flag))),*]; pub const fn union(self, other: $name) -> $name { $name(self.0 | other.0) } pub const fn contains(self, other: $name) -> bool { self.0 & other.0 == other.0 } #[cfg(test)] pub const fn bits(self) -> u8 { self.0 } } };
++@@ -7507,6 +7509,7 @@ method	metal2vulkan-runtime::CommandBuffer::compute_command_encoder	pub fn compu
++ method	metal2vulkan-runtime::CommandBuffer::compute_command_encoder_with_dispatch_type	pub fn compute_command_encoder_with_dispatch_type(&self, dispatch_type: DispatchType) -> Result<ComputeCommandEncoder, Error>
++ method	metal2vulkan-runtime::CommandBuffer::compute_command_encoder_with_raw_dispatch_type	pub fn compute_command_encoder_with_raw_dispatch_type(&self, raw: u64) -> Result<ComputeCommandEncoder, Error>
++ method	metal2vulkan-runtime::CommandBuffer::device	pub fn device(&self) -> &Device
+++method	metal2vulkan-runtime::CommandBuffer::diagnostic_id	pub fn diagnostic_id(&self) -> u64
++ method	metal2vulkan-runtime::CommandBuffer::dropped_draw	pub fn dropped_draw(&self) -> Option<FailedPipeline>
++ method	metal2vulkan-runtime::CommandBuffer::encode_signal_event	pub fn encode_signal_event(&self, event: EventRef<'_>, value: u64) -> Result<(), Error>
++ method	metal2vulkan-runtime::CommandBuffer::encode_signal_event_scheduled	pub fn encode_signal_event_scheduled(&self, event: &SharedEvent, value: u64) -> Result<(), Error>
++@@ -9945,6 +9948,7 @@ type	metal2vulkan-runtime::KeepAlive	pub type KeepAlive = Box<dyn Send + 'static
++ type	metal2vulkan-runtime::RangeToken	pub type RangeToken = Box<dyn std::any::Any + Send + Sync>
++ type	metal2vulkan-runtime::SharedEventNotification	pub type SharedEventNotification = Box<dyn FnOnce(&SharedEvent, u64) + Send + 'static>
++ type	metal2vulkan-runtime::SubmissionCheck	pub type SubmissionCheck = Arc<dyn Fn(&Submission<'_>) -> Option<NonZeroU64> + Send + Sync>
+++type	metal2vulkan-runtime::stage_trace::DiagnosticHook	pub type DiagnosticHook = extern "C" fn(u32, u64, u64, u64)
++ type	metal2vulkan::cache::Hash256	pub type Hash256 = [u8; 32]
++ variant	metal2vulkan-air::abi::AbiHandle::AccelerationStructure	AccelerationStructure(AccelerationStructureKind)
++ variant	metal2vulkan-air::abi::AbiHandle::CommandBuffer	CommandBuffer
++@@ -11916,9 +11920,27 @@ variant	metal2vulkan-runtime::WrappedImageProblem::Usage	Usage { missing: ImageU
++ variant	metal2vulkan-runtime::stage_trace::Stage::CommitCall	CommitCall = 1
++ variant	metal2vulkan-runtime::stage_trace::Stage::CommitQueued	CommitQueued = 2
++ variant	metal2vulkan-runtime::stage_trace::Stage::CommitRun	CommitRun = 3
+++variant	metal2vulkan-runtime::stage_trace::Stage::CompleteBegin	CompleteBegin = 53
+++variant	metal2vulkan-runtime::stage_trace::Stage::CompleteEnd	CompleteEnd = 57
+++variant	metal2vulkan-runtime::stage_trace::Stage::CompleteHandlers	CompleteHandlers = 55
+++variant	metal2vulkan-runtime::stage_trace::Stage::CompleteRetained	CompleteRetained = 56
+++variant	metal2vulkan-runtime::stage_trace::Stage::CompleteState	CompleteState = 54
++ variant	metal2vulkan-runtime::stage_trace::Stage::Finished	Finished = 15
++ variant	metal2vulkan-runtime::stage_trace::Stage::Handed	Handed = 5
++ variant	metal2vulkan-runtime::stage_trace::Stage::Held	Held = 7
+++variant	metal2vulkan-runtime::stage_trace::Stage::MemoryAllocated	MemoryAllocated = 44
+++variant	metal2vulkan-runtime::stage_trace::Stage::MemoryAvailable	MemoryAvailable = 43
+++variant	metal2vulkan-runtime::stage_trace::Stage::MemoryBegin	MemoryBegin = 40
+++variant	metal2vulkan-runtime::stage_trace::Stage::MemoryBytes	MemoryBytes = 42
+++variant	metal2vulkan-runtime::stage_trace::Stage::MemoryCached	MemoryCached = 48
+++variant	metal2vulkan-runtime::stage_trace::Stage::MemoryDeferred	MemoryDeferred = 49
+++variant	metal2vulkan-runtime::stage_trace::Stage::MemoryFreeBegin	MemoryFreeBegin = 50
+++variant	metal2vulkan-runtime::stage_trace::Stage::MemoryFreeEnd	MemoryFreeEnd = 51
+++variant	metal2vulkan-runtime::stage_trace::Stage::MemoryHandleHigh	MemoryHandleHigh = 47
+++variant	metal2vulkan-runtime::stage_trace::Stage::MemoryHandleLow	MemoryHandleLow = 46
+++variant	metal2vulkan-runtime::stage_trace::Stage::MemoryPool	MemoryPool = 41
+++variant	metal2vulkan-runtime::stage_trace::Stage::MemoryQueueFull	MemoryQueueFull = 52
+++variant	metal2vulkan-runtime::stage_trace::Stage::MemoryReused	MemoryReused = 45
++ variant	metal2vulkan-runtime::stage_trace::Stage::PassBegin	PassBegin = 23
++ variant	metal2vulkan-runtime::stage_trace::Stage::PassEnd	PassEnd = 24
++ variant	metal2vulkan-runtime::stage_trace::Stage::PollArmed	PollArmed = 12

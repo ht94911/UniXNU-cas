@@ -22,7 +22,7 @@ assert git('rev-parse', 'HEAD').decode().strip() == expected['original_pin']
 builder = r / 'scripts/build-adreno-metal-bridge.py'
 assert sha(builder) == expected['builder_sha256']
 patches = re.findall(r"'([0-9]{4}[^']+\.patch)'", builder.read_text())
-assert patches == list(expected['patch_hashes']) and len(patches) == 34
+assert patches == list(expected['patch_hashes']) and len(patches) == 35
 for name, digest in expected['patch_hashes'].items():
     assert sha(r / 'drivers/AdrenoMetal/bridge/patches' / name) == digest, name
 for name, digest in expected['source_hashes'].items():
@@ -38,8 +38,9 @@ env = dict(os.environ, CARGO_INCREMENTAL='0', CARGO_BUILD_JOBS='3',
            CARGO_TARGET_DIR=str(r / 'build/buffer-reserve-host'), RUSTFLAGS='-Dwarnings')
 results = []
 for package, selection, wanted in [
-    ('metal2vulkan', 'bind::tiled_texels::tests', '8 passed; 0 failed'),
-    ('metal2vulkan-runtime', 'linear_word_grids_do_not_dispatch_a_nearly_empty_extra_row', '1 passed; 0 failed')]:
+    ('metal2vulkan', 'bind::tiled_texels::tests', '9 passed; 0 failed'),
+    ('metal2vulkan-runtime', 'linear_word_grids_do_not_dispatch_a_nearly_empty_extra_row', '1 passed; 0 failed'),
+    ('metal2vulkan-runtime', 'transfer_alignment_does_not_change_metal_planes_or_copy_extents', '1 passed; 0 failed')]:
     command = ['cargo', '+1.98.0', 'test', '--release', '--manifest-path', str(t / 'Cargo.toml'),
         '-p', package, '--all-features', '--lib', selection, '--', '--nocapture']
     output = a.logs / ('tiled-words-' + package + '.log')
