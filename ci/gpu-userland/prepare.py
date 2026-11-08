@@ -290,6 +290,12 @@ def main():
         must(['git', '-C', repository, 'apply', '--check', selected])
         must(['git', '-C', repository, 'apply', selected])
         record.setdefault('aligned_copy_patches', {})[name] = sha(selected)
+    for repository, name in [(root, 'linear-heap-recipes.patch'),
+                             (root / 'drivers/AdrenoMetal', 'linear-heap-plugin.patch')]:
+        selected = HERE / 'patches' / name
+        must(['git', '-C', repository, 'apply', '--check', selected])
+        must(['git', '-C', repository, 'apply', selected])
+        record.setdefault('linear_heap_patches', {})[name] = sha(selected)
     # The final bridge recipe applies these at plugin-build time. Record the
     # complete patch set after all frontend patches have been installed.
     bridge_patches = sorted((root / 'drivers/AdrenoMetal/bridge/patches').glob('*.patch'))

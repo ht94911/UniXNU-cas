@@ -1,7 +1,7 @@
-name: nezha iPhone27 aligned heap transfers 021b
+name: nezha iPhone27 linear heap word copies 022
 on:
   push:
-    branches: [codex/ios27-gpu27-metal-full-021b-20261108]
+    branches: [codex/ios27-gpu27-metal-full-022-20261109]
   workflow_dispatch:
 permissions:
   contents: read

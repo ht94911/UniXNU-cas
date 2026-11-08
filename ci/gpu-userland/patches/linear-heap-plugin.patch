@@ -1,0 +1,783 @@
+diff --git a/NativeBridgeMetalFrontend.mm b/NativeBridgeMetalFrontend.mm
+index 9e5e07a..a432e32 100644
+--- a/NativeBridgeMetalFrontend.mm
++++ b/NativeBridgeMetalFrontend.mm
+@@ -272,7 +272,7 @@ static void traceRuntimeLink(uint64_t runtime,uint64_t command,uint64_t batch) {
+ }
+ // Type24: a routed Vulkan call after CPU recording returns. Metadata packs a
+ // stable opcode and argument0; detail retains group dimensions or pipeline id.
+-static constexpr uint64_t kVulkanTraceBudget=1048576; // at most72MiB of extra operation records
++static constexpr uint64_t kVulkanTraceBudget=2097152; // at most144MiB of operations plus one exhaustion marker
+ static std::atomic<uint64_t> gVulkanTraceSeen{0};
+ static void traceVulkanOperation(uint64_t command,uint64_t metadata,uint64_t detail) {
+  if(!traceWanted())return;
+diff --git a/README.md b/README.md
+index 55618da..f76b461 100644
+--- a/README.md
++++ b/README.md
+@@ -36,6 +36,20 @@ These timestamps are CPU recording boundaries, not GPU copy durations.
+ The existing type 11 copy-row counters are retained when they change, sampled
+ by the frame writer every 250 ms, to report actual per-row blits separately.
+ 
++Linear heap shadows on Turnip keep their Metal-visible tight rows. For single-sample,
++single-level, single-layer 2D color images with 4, 8 or 16 bytes per texel and a
++row pitch that misses 64-byte alignment, the existing unsigned-integer view and
++compute copy write the original bits back in place. Unsupported views or dispatch
++ranges retain the copy path. Region bounds, independent-writer merges and image
++view ownership follow the existing shadow implementation. CPU Vulkan tests cover
++the remaining 1202 by 2610 BGRA shape, sRGB, wider words and copy fallbacks;
++performance on A840 awaits the candidate's hardware capture.
++
++The diagnostic operation budget is 2,097,152 records (144 MiB plus one exhaustion
++record), covering a longer sequence of glass and application animation tests.
++After exhaustion, frame, CPU-stage and copy-row summaries continue. The operation
++hook and its bound remain disabled when diagnostics are disabled.
++
+ ## Frame diagnostics
+ 
+ The iPhone24A446 build profile excludes iPad-specific image-relative QuartzCore
+diff --git a/bridge/patches/0036-linear-heap-word-copy.patch b/bridge/patches/0036-linear-heap-word-copy.patch
+new file mode 100644
+index 0000000..285cf9c
+--- /dev/null
++++ b/bridge/patches/0036-linear-heap-word-copy.patch
+@@ -0,0 +1,739 @@
++diff --git a/crates/metal2vulkan-runtime/src/shadow_copy_back.rs b/crates/metal2vulkan-runtime/src/shadow_copy_back.rs
++index df3a2b2d6..3fc9b0cc7 100644
++--- a/crates/metal2vulkan-runtime/src/shadow_copy_back.rs
+++++ b/crates/metal2vulkan-runtime/src/shadow_copy_back.rs
++@@ -1,9 +1,10 @@
++ //! A shadowed texture's copy back as a compute dispatch, where the device runs one faster than
++-//! its copy (`DriverFact::ShadowCopyBackDispatchFaster`).
+++//! its copy (`DriverFact::ShadowCopyBackDispatchFaster`), or where a linear heap's tight rows
+++//! would make Turnip emit one copy per row (`texture::heap`).
++ //!
++ //! A texture over a buffer whose rows no image lays as Metal does renders through a shadow image,
++-//! copied back into the buffer's rows after the commands that write it (`shadow.rs`). The copy is
++-//! `vkCmdCopyImageToBuffer` on every device. On a device measured to run that copy slower than a
+++//! copied back into the buffer's rows after the commands that write it (`shadow.rs`). The copy
+++//! defaults to `vkCmdCopyImageToBuffer`. On a device measured to run that copy slower than a
++ //! dispatch that stores the same words, the shadow of a one-level, one-slice 2D texture whose
++ //! texel is 4, 8 or 16 bytes, copied in place, is made `MUTABLE_FORMAT` with the unsigned-integer
++ //! format of its texel's width listed (`R32_UINT`, `R32G32_UINT` or `R32G32B32A32_UINT`), and
++@@ -44,7 +45,13 @@
++ //! host (`tracker::Barrier::to_host`, `ALL_COMMANDS`/`MEMORY_WRITE` to `HOST`/`HOST_READ`, or
++ //! `Barrier::to_all`, which adds every later command of its `VkQueue`: `batch_order.rs`).
++ //!
++-//! **Where the copy stays.** A device without the fact, a texel of another width, a texture of
+++//! A linear heap shadow on Turnip also uses this exact dispatch when its tight color rows miss
+++//! the driver's 64-byte copy alignment. Padding those Metal-visible rows would change aliasing;
+++//! this selection avoids the per-row copy expansion without changing their layout. It is
+++//! limited to single-sample, single-level, single-layer 2D images, with the same view and range
+++//! fallbacks below. It does not assert the device-wide performance fact.
+++//!
+++//! **Where the copy stays.** A device without either selection, a texel of another width, a texture of
++ //! more levels or slices, bytes copied through a staging buffer, a region past the device's
++ //! storage buffer range or workgroup counts, a buffer whose `VkBuffer` went, or a set the device
++ //! does not make: each copies back as before, the exact form every device takes.
++diff --git a/crates/metal2vulkan-runtime/src/tests/heap_linear_words.rs b/crates/metal2vulkan-runtime/src/tests/heap_linear_words.rs
++new file mode 100644
++index 000000000..1433020aa
++--- /dev/null
+++++ b/crates/metal2vulkan-runtime/src/tests/heap_linear_words.rs
++@@ -0,0 +1,480 @@
+++//! Execute linear heap shadow construction, copies and merges on a real Vulkan
+++//! device. Select the Turnip plan explicitly; the device keeps its real identity.
+++
+++use super::*;
+++use crate::device::functions::Vk;
+++use crate::shadow::{ShadowCopy, Step};
+++use crate::shadow_merge::ShadowMerge;
+++use crate::texture::kept_image::KeptImages;
+++use crate::{DeviceKind, DeviceOptions, HazardTrackingMode, HeapDescriptor, ShaderCacheOptions};
+++use std::path::PathBuf;
+++
+++struct Scratch(PathBuf);
+++
+++impl Drop for Scratch {
+++    fn drop(&mut self) {
+++        std::fs::remove_dir_all(&self.0).unwrap();
+++    }
+++}
+++
+++fn copy(
+++    copies: &Arc<ShadowCopies>,
+++    step: Step<Arc<ShadowMerge>>,
+++    area: Option<[u32; 4]>,
+++) -> ShadowCopy {
+++    ShadowCopy {
+++        copies: Arc::clone(copies),
+++        step,
+++        kept: false,
+++        area,
+++        cause: None,
+++        moves: None,
+++    }
+++}
+++
+++fn assert_bytes(buffer: &Buffer, expected: &[u8], label: &str) {
+++    // SAFETY: the shared buffer has this length; submission completed and made
+++    // its writes available to HOST_READ before this comparison.
+++    let actual =
+++        unsafe { std::slice::from_raw_parts(buffer.contents().unwrap().as_ptr(), expected.len()) };
+++    assert_eq!(
+++        actual.iter().zip(expected).position(|(a, b)| a != b),
+++        None,
+++        "{label}"
+++    );
+++}
+++
+++unsafe fn barrier(raw: &Vk, cb: vk::CommandBuffer) {
+++    let all = vk::MemoryBarrier::default()
+++        .src_access_mask(vk::AccessFlags::MEMORY_READ | vk::AccessFlags::MEMORY_WRITE)
+++        .dst_access_mask(vk::AccessFlags::MEMORY_READ | vk::AccessFlags::MEMORY_WRITE);
+++    // SAFETY: the caller owns a live command buffer recording outside a pass.
+++    unsafe {
+++        raw.cmd_pipeline_barrier(
+++            cb,
+++            vk::PipelineStageFlags::ALL_COMMANDS,
+++            vk::PipelineStageFlags::ALL_COMMANDS,
+++            vk::DependencyFlags::empty(),
+++            &[all],
+++            &[],
+++            &[],
+++        );
+++    }
+++}
+++
+++unsafe fn host_read(raw: &Vk, cb: vk::CommandBuffer) {
+++    let host = vk::MemoryBarrier::default()
+++        .src_access_mask(vk::AccessFlags::MEMORY_WRITE)
+++        .dst_access_mask(vk::AccessFlags::HOST_READ);
+++    // SAFETY: as barrier; every writer in the submission precedes this call.
+++    unsafe {
+++        raw.cmd_pipeline_barrier(
+++            cb,
+++            vk::PipelineStageFlags::ALL_COMMANDS,
+++            vk::PipelineStageFlags::HOST,
+++            vk::DependencyFlags::empty(),
+++            &[host],
+++            &[],
+++            &[],
+++        );
+++    }
+++}
+++
+++#[test]
+++fn linear_heap_words_execute_copies_regions_merges_and_fallbacks() {
+++    let scratch =
+++        Scratch(std::env::temp_dir().join(format!("m2v-linear-heap-{}", std::process::id())));
+++    std::fs::create_dir(&scratch.0).unwrap();
+++    let device = Device::system_default_with(&DeviceOptions {
+++        kinds: if cfg!(m2v_cpu_icd) {
+++            vec![DeviceKind::Cpu]
+++        } else {
+++            vec![
+++                DeviceKind::Discrete,
+++                DeviceKind::Integrated,
+++                DeviceKind::Virtual,
+++            ]
+++        },
+++        shader_cache: ShaderCacheOptions::in_directory(&scratch.0),
+++        ..DeviceOptions::default()
+++    })
+++    .unwrap();
+++    let mut dispatches = 0;
+++    let mut fallbacks = 0;
+++    for (pf, unit) in [
+++        (PixelFormat::BGRA8Unorm, 4u64),
+++        (PixelFormat::BGRA8UnormSRGB, 4),
+++        (PixelFormat::RGBA16Uint, 8),
+++        (PixelFormat::RGBA32Uint, 16),
+++    ] {
+++        // The large case is the actual remaining split-row shape. Aligned,
+++        // single-row and layered shapes execute the unchanged transfer path.
+++        for (width, height, layers, want_words) in [
+++            (13, 7, 1, true),
+++            (1202, 2610, 1, true),
+++            (64, 7, 1, false),
+++            (13, 1, 1, false),
+++            (13, 7, 2, false),
+++        ] {
+++            let options =
+++                ResourceOptions::private().with_hazard_tracking_mode(HazardTrackingMode::Untracked);
+++            let mut desc = TextureDescriptor::texture_2d(pf, width, height, false);
+++            desc.resource_options = options;
+++            desc.usage = TextureUsage::SHADER_READ | TextureUsage::RENDER_TARGET;
+++            if layers > 1 {
+++                desc.texture_type = TextureType::Type2DArray;
+++                desc.array_length = layers;
+++            }
+++            let layout = device
+++                .heap_layout("linear-heap-test", &desc, Creator::Device)
+++                .unwrap();
+++            let planned = device.heap_plan("linear-heap-test", &desc, layout).unwrap();
+++            let plan = planned.image.plan;
+++            assert_eq!(
+++                split_heap_rows(Some(DriverId::MESA_TURNIP), &plan),
+++                want_words
+++            );
+++            assert!(!split_heap_rows(None, &plan));
+++            assert!(!split_heap_rows(Some(DriverId::MESA_LLVMPIPE), &plan));
+++            if want_words {
+++                let mut other = plan.clone();
+++                other.samples = SampleCountFlags::COUNT_4;
+++                assert!(!split_heap_rows(Some(DriverId::MESA_TURNIP), &other));
+++                other = plan.clone();
+++                other.levels = 2;
+++                assert!(!split_heap_rows(Some(DriverId::MESA_TURNIP), &other));
+++                other = plan.clone();
+++                other.image_type = ImageType::TYPE_3D;
+++                assert!(!split_heap_rows(Some(DriverId::MESA_TURNIP), &other));
+++                other = plan.clone();
+++                other.format = Format::D32_SFLOAT;
+++                assert!(!split_heap_rows(Some(DriverId::MESA_TURNIP), &other));
+++                other.format = Format::R16_UINT;
+++                assert!(!split_heap_rows(Some(DriverId::MESA_TURNIP), &other));
+++            }
+++            let (plan, word) = if want_words {
+++                let facts = device
+++                    .shared()
+++                    .textures
+++                    .facts(device.compile_device().profile());
+++                with_word_view(plan, &facts, false)
+++            } else {
+++                (plan, None)
+++            };
+++            assert_eq!(word.is_some(), want_words);
+++            let (regions, length) =
+++                heap_planes(plan.format, pf, plan.extent, plan.levels, plan.layers);
+++            let reserve = length.next_multiple_of(256);
+++            let prefix = 256;
+++            let whole = prefix + reserve + 256;
+++            let heap = device
+++                .new_heap(&HeapDescriptor::new(HeapType::Automatic, whole, options))
+++                .unwrap();
+++            assert_eq!(heap.allocate(prefix, 256), Some(0));
+++            assert_eq!(heap.allocate(reserve, 256), Some(prefix));
+++            let bytes = heap.bytes().unwrap();
+++            let image = device
+++                .heap_shadow_image_planned(
+++                    bytes,
+++                    (plan, word),
+++                    &planned.layout,
+++                    HeapPlace::new(&heap, prefix, reserve, false),
+++                    options,
+++                    &desc,
+++                )
+++                .unwrap();
+++            let Owner::HeapShadow(owner) = &image.owner else {
+++                panic!("wrong image owner");
+++            };
+++            let copies = Arc::clone(&owner.copies);
+++            let ShadowTarget::Image { words, texel, .. } = copies.target().unwrap() else {
+++                panic!("wrong shadow target");
+++            };
+++            assert_eq!(words.is_some(), want_words);
+++            assert_eq!(*texel, want_words.then_some(unit));
+++            assert!(image.own_memory());
+++            assert_eq!(lock(&image.own_views).len(), usize::from(want_words));
+++            let into = copy(&copies, Step::Into, None);
+++            let back = copy(&copies, Step::Back, None);
+++            let dispatched = back.dispatched(&device);
+++            assert_eq!(dispatched.is_some(), want_words);
+++            if want_words {
+++                dispatches += 1;
+++            } else {
+++                fallbacks += 1;
+++            }
+++            let initial: Vec<u8> = (0..whole as usize)
+++                .map(|i| (i * 13 + i / 251 + 5) as u8)
+++                .collect();
+++            let replacement: Vec<u8> = (0..length as usize)
+++                .map(|i| (i * 7 + i / 257 + 17) as u8)
+++                .collect();
+++            let initial_buffer = device
+++                .new_buffer_with_bytes(&initial, ResourceOptions::shared())
+++                .unwrap();
+++            let input = device
+++                .new_buffer_with_bytes(&replacement, ResourceOptions::shared())
+++                .unwrap();
+++            let output = device.new_buffer(whole, ResourceOptions::shared()).unwrap();
+++            let linear = device
+++                .new_buffer(length, ResourceOptions::shared())
+++                .unwrap();
+++            let (heap_raw, heap_at) = bytes.at(0);
+++            let (initial_raw, initial_at) = initial_buffer.at(0);
+++            let (input_raw, input_at) = input.at(0);
+++            let (output_raw, output_at) = output.at(0);
+++            let (linear_raw, linear_at) = linear.at(0);
+++            let image_raw = image.raw.get();
+++            let shifted = |at| {
+++                regions
+++                    .iter()
+++                    .map(|r| vk::BufferImageCopy {
+++                        buffer_offset: at + r.buffer_offset,
+++                        ..*r
+++                    })
+++                    .collect::<Vec<_>>()
+++            };
+++            let input_regions = shifted(input_at);
+++            let linear_regions = shifted(linear_at);
+++            let readback = vk::BufferCopy {
+++                src_offset: heap_at,
+++                dst_offset: output_at,
+++                size: whole,
+++            };
+++            let mut expected = initial.clone();
+++            for region in &regions {
+++                let start = (prefix + region.buffer_offset) as usize;
+++                let count = u64::from(region.image_extent.width)
+++                    * u64::from(region.image_extent.height)
+++                    * unit;
+++                for layer in 0..region.image_subresource.layer_count {
+++                    let at = start + (u64::from(layer) * count) as usize;
+++                    let from = at - prefix as usize;
+++                    expected[at..at + count as usize]
+++                        .copy_from_slice(&replacement[from..from + count as usize]);
+++                }
+++            }
+++            for round in 0..2 {
+++                device
+++                    .submit_internal(|raw, cb| {
+++                        // SAFETY: every range lies in its live buffer. The image,
+++                        // owned integer view and dispatch binds survive submission.
+++                        unsafe {
+++                            if round == 0 {
+++                                let from_host = vk::MemoryBarrier::default()
+++                                    .src_access_mask(vk::AccessFlags::HOST_WRITE)
+++                                    .dst_access_mask(vk::AccessFlags::TRANSFER_READ);
+++                                raw.cmd_pipeline_barrier(
+++                                    cb,
+++                                    vk::PipelineStageFlags::HOST,
+++                                    vk::PipelineStageFlags::TRANSFER,
+++                                    vk::DependencyFlags::empty(),
+++                                    &[from_host],
+++                                    &[],
+++                                    &[],
+++                                );
+++                                raw.cmd_copy_buffer(
+++                                    cb,
+++                                    initial_raw,
+++                                    heap_raw,
+++                                    &[vk::BufferCopy {
+++                                        src_offset: initial_at,
+++                                        dst_offset: heap_at,
+++                                        size: whole,
+++                                    }],
+++                                );
+++                                let transition = vk::ImageMemoryBarrier::default()
+++                                    .old_layout(vk::ImageLayout::UNDEFINED)
+++                                    .new_layout(vk::ImageLayout::GENERAL)
+++                                    .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+++                                    .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+++                                    .image(image_raw)
+++                                    .dst_access_mask(
+++                                        vk::AccessFlags::TRANSFER_READ
+++                                            | vk::AccessFlags::TRANSFER_WRITE,
+++                                    )
+++                                    .subresource_range(vk::ImageSubresourceRange {
+++                                        aspect_mask: vk::ImageAspectFlags::COLOR,
+++                                        base_mip_level: 0,
+++                                        level_count: 1,
+++                                        base_array_layer: 0,
+++                                        layer_count: layers as u32,
+++                                    });
+++                                raw.cmd_pipeline_barrier(
+++                                    cb,
+++                                    vk::PipelineStageFlags::TOP_OF_PIPE,
+++                                    vk::PipelineStageFlags::ALL_COMMANDS,
+++                                    vk::DependencyFlags::empty(),
+++                                    &[],
+++                                    &[],
+++                                    &[transition],
+++                                );
+++                            }
+++                            barrier(raw, cb);
+++                            into.record(raw, cb, None);
+++                            barrier(raw, cb);
+++                            raw.cmd_copy_image_to_buffer(
+++                                cb,
+++                                image_raw,
+++                                vk::ImageLayout::GENERAL,
+++                                linear_raw,
+++                                &linear_regions,
+++                            );
+++                            barrier(raw, cb);
+++                            raw.cmd_copy_buffer_to_image(
+++                                cb,
+++                                input_raw,
+++                                image_raw,
+++                                vk::ImageLayout::GENERAL,
+++                                &input_regions,
+++                            );
+++                            barrier(raw, cb);
+++                            if let Some(dispatch) = &dispatched {
+++                                dispatch.record(raw, cb);
+++                            } else {
+++                                back.record(raw, cb, None);
+++                            }
+++                            barrier(raw, cb);
+++                            raw.cmd_copy_buffer(cb, heap_raw, output_raw, &[readback]);
+++                            host_read(raw, cb);
+++                        }
+++                    })
+++                    .unwrap();
+++                // For the one-level layouts here, planes contain tight pixels.
+++                assert_bytes(
+++                    &linear,
+++                    if round == 0 {
+++                        &initial[prefix as usize..(prefix + length) as usize]
+++                    } else {
+++                        &replacement
+++                    },
+++                    "input image preserves source pixels",
+++                );
+++                assert_bytes(
+++                    &output,
+++                    &expected,
+++                    "whole copy: pixels, padding and both neighbors",
+++                );
+++            }
+++            if want_words {
+++                // A rectangle must preserve every byte outside it, including
+++                // neighboring texels in each row; reset the truth, keep the image.
+++                let area = [1, 1, width as u32 - 1, height as u32 - 1];
+++                let part = copy(&copies, Step::Back, Some(area));
+++                let part_dispatch = part.dispatched(&device).unwrap();
+++                let mut partial_expected = initial.clone();
+++                for y in area[1]..area[3] {
+++                    let at = (u64::from(y) * width + u64::from(area[0])) * unit;
+++                    let count = u64::from(area[2] - area[0]) * unit;
+++                    partial_expected[(prefix + at) as usize..(prefix + at + count) as usize]
+++                        .copy_from_slice(&replacement[at as usize..(at + count) as usize]);
+++                }
+++                device
+++                    .submit_internal(|raw, cb| unsafe {
+++                        // SAFETY: the rectangle is inside the live image; all held
+++                        // buffers include its rows and prefix and survive completion.
+++                        raw.cmd_copy_buffer(
+++                            cb,
+++                            initial_raw,
+++                            heap_raw,
+++                            &[vk::BufferCopy {
+++                                src_offset: initial_at,
+++                                dst_offset: heap_at,
+++                                size: whole,
+++                            }],
+++                        );
+++                        barrier(raw, cb);
+++                        part_dispatch.record(raw, cb);
+++                        barrier(raw, cb);
+++                        raw.cmd_copy_buffer(cb, heap_raw, output_raw, &[readback]);
+++                        host_read(raw, cb);
+++                    })
+++                    .unwrap();
+++                assert_bytes(
+++                    &output,
+++                    &partial_expected,
+++                    "rectangle keeps all outside bytes",
+++                );
+++
+++                assert!(copies.merges_back());
+++                let kept_images = KeptImages::default();
+++                let (merge, lease) =
+++                    ShadowMerge::new(&device, &copies, (false, false, None), &kept_images).unwrap();
+++                let merge = Arc::new(merge);
+++                let keep = copy(&copies, Step::Keep(Arc::clone(&merge)), None);
+++                let merge_back = copy(&copies, Step::Merge(merge), None);
+++                let independent = [0xa9, 0x31, 0xe7, 0x62];
+++                let mut changed = initial[prefix as usize..(prefix + length) as usize].to_vec();
+++                for b in &mut changed[..4] {
+++                    *b ^= 0x55;
+++                }
+++                let changed_input = device
+++                    .new_buffer_with_bytes(&changed, ResourceOptions::shared())
+++                    .unwrap();
+++                let (changed_raw, changed_at) = changed_input.at(0);
+++                let changed_regions = shifted(changed_at);
+++                let mut merged_expected = initial.clone();
+++                merged_expected[prefix as usize..prefix as usize + 4]
+++                    .copy_from_slice(&changed[..4]);
+++                let external_at = prefix + unit;
+++                merged_expected[external_at as usize..external_at as usize + 4]
+++                    .copy_from_slice(&independent);
+++                device
+++                    .submit_internal(|raw, cb| unsafe {
+++                        // SAFETY: the keep/merge hold their real image and buffers;
+++                        // the independent four-byte write is aligned and ordered.
+++                        raw.cmd_copy_buffer(
+++                            cb,
+++                            initial_raw,
+++                            heap_raw,
+++                            &[vk::BufferCopy {
+++                                src_offset: initial_at,
+++                                dst_offset: heap_at,
+++                                size: whole,
+++                            }],
+++                        );
+++                        barrier(raw, cb);
+++                        into.record(raw, cb, None);
+++                        barrier(raw, cb);
+++                        keep.record(raw, cb, None);
+++                        barrier(raw, cb);
+++                        raw.cmd_update_buffer(cb, heap_raw, heap_at + external_at, &independent);
+++                        raw.cmd_copy_buffer_to_image(
+++                            cb,
+++                            changed_raw,
+++                            image_raw,
+++                            vk::ImageLayout::GENERAL,
+++                            &changed_regions,
+++                        );
+++                        barrier(raw, cb);
+++                        merge_back.record(raw, cb, None);
+++                        barrier(raw, cb);
+++                        raw.cmd_copy_buffer(cb, heap_raw, output_raw, &[readback]);
+++                        host_read(raw, cb);
+++                    })
+++                    .unwrap();
+++                assert_bytes(
+++                    &output,
+++                    &merged_expected,
+++                    "merge preserves independent writer and changed image word",
+++                );
+++                drop(lease);
+++            }
+++            assert_bytes(&input, &replacement, "source buffer unchanged");
+++            drop(dispatched);
+++            drop(back);
+++            drop(into);
+++            drop(copies);
+++            drop(image);
+++            assert_eq!(
+++                heap.allocate(reserve, 256),
+++                Some(prefix),
+++                "released image returns its exact heap range"
+++            );
+++            eprintln!("LINEAR-HEAP {pf:?} {width}x{height} layers{layers} words{want_words}: full copy and release verified; region/merge executed={want_words}");
+++        }
+++    }
+++    assert_eq!(dispatches, 8);
+++    assert_eq!(fallbacks, 12);
+++    eprintln!("LINEAR-HEAP executed {dispatches} word paths and {fallbacks} copy fallbacks; no physical Turnip timing claim");
+++}
++diff --git a/crates/metal2vulkan-runtime/src/texture/heap.rs b/crates/metal2vulkan-runtime/src/texture/heap.rs
++index bd7487411..bcab940cc 100644
++--- a/crates/metal2vulkan-runtime/src/texture/heap.rs
+++++ b/crates/metal2vulkan-runtime/src/texture/heap.rs
++@@ -208,6 +208,7 @@ use super::{
++     TextureDescriptor, ViewRecord,
++ };
++ use crate::address::ObjectsToken;
+++use crate::binding_view::VkView;
++ use crate::buffer::{
++     buffer_class, usage as buffer_usage, Buffer, CallerMemory, HostPages, MemoryHold, Modes,
++ };
++@@ -226,6 +227,7 @@ use crate::metal_release::NO_TEXTURE_STACK_ALIGNMENT;
++ use crate::release;
++ use crate::resource::{Identity, ResourceKey};
++ use crate::shadow::{Backing, ShadowBuffer, ShadowCopies, ShadowSource, ShadowTarget};
+++use crate::shadow_copy_back::{with_word_view, WordView};
++ use crate::shadow_merge::ScratchSpares;
++ use crate::texture_descriptor::{effective_usage, Creator, TextureLayout, TextureProblem};
++ use crate::tracker::UseRange;
++@@ -233,12 +235,14 @@ use crate::two_planes;
++ use crate::values::{ResourceOptions, StorageMode};
++ use crate::Device;
++ use ash::vk;
+++use metal2vulkan::bind::ShadowTexelView;
++ use metal2vulkan::device::{DriverFact, HeapCompressionPolicy};
++ use metal2vulkan::error::{Feature, LinearNeed, Unsupported};
++ use metal2vulkan::metal::format::{footprint, is_depth_stencil, ycbcr_format, Footprint};
++ use metal2vulkan::metal::{PixelFormat, TextureType, TextureUsage};
++ use metal2vulkan::vk::{
++-    Format, FormatFeatureFlags2, ImageAspectFlags, ImageUsageFlags, SampleCountFlags,
+++    ComponentMapping, DriverId, Format, FormatFeatureFlags2, ImageAspectFlags, ImageType,
+++    ImageUsageFlags, ImageViewType, SampleCountFlags,
++ };
++ use std::ptr::NonNull;
++ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
++@@ -3342,6 +3346,35 @@ impl Device {
++     }
++ }
++ 
+++/// Turnip's image-to-buffer path emits a separate blit for every row when
+++/// the destination pitch misses 64-byte alignment (`tu_copy_image_to_buffer`).
+++/// A one-plane heap shadow has Metal-visible tight rows, so padding those rows
+++/// would change its aliasing contract. Use the existing exact word-copy shader
+++/// for that case; image-view/range support can still leave the original copy.
+++fn split_heap_rows(driver: Option<DriverId>, plan: &ImagePlan) -> bool {
+++    if driver != Some(DriverId::MESA_TURNIP)
+++        || plan.samples != SampleCountFlags::COUNT_1
+++        || plan.image_type != ImageType::TYPE_2D
+++        || plan.levels != 1
+++        || plan.layers != 1
+++        || plan.extent[2] != 1
+++        || plan.extent[1] <= 1
+++        || image_aspects(plan.format) != ImageAspectFlags::COLOR
+++    {
+++        return false;
+++    }
+++    let Some(block) = plan.format.block() else {
+++        return false;
+++    };
+++    block.texels == 1
+++        && matches!(block.size, 4 | 8 | 16)
+++        && !(u64::from(plan.extent[0]) * u64::from(block.size)).is_multiple_of(64)
+++}
+++
+++#[cfg(all(test, any(m2v_gpu, m2v_cpu_icd)))]
+++#[path = "../tests/heap_linear_words.rs"]
+++mod linear_words;
+++
++ impl Device {
++     /// The image of a heap's shadow of `plan` (`heap_shadow_image`, `heap_tiled_image`), of
++     /// `identity`, its owner made by `owner`. Where its copies in write every aspect (`every`,
++@@ -3380,6 +3413,31 @@ impl Device {
++         descriptor: &TextureDescriptor,
++     ) -> Result<Image, Error> {
++         let plan = image.plan;
+++        let use_words = split_heap_rows(self.properties().description.driver_id, &plan);
+++        let (plan, word) = if use_words {
+++            let facts = self
+++                .shared()
+++                .textures
+++                .facts(self.compile_device().profile());
+++            with_word_view(plan, &facts, false)
+++        } else {
+++            (plan, None)
+++        };
+++        self.heap_shadow_image_planned(bytes, (plan, word), layout, place, options, descriptor)
+++    }
+++
+++    /// Build the linear heap shadow from its selected image/copy plan. Keeping
+++    /// selection separate lets device tests execute the real image and copy
+++    /// construction on a CPU Vulkan driver without claiming it is Turnip.
+++    fn heap_shadow_image_planned(
+++        &self,
+++        bytes: &Buffer,
+++        (plan, word): (ImagePlan, Option<(Format, ShadowTexelView, bool)>),
+++        layout: &TextureLayout,
+++        place: HeapPlace,
+++        options: ResourceOptions,
+++        descriptor: &TextureDescriptor,
+++    ) -> Result<Image, Error> {
++         let (planes, length) = heap_planes(
++             plan.format,
++             plan.pixel_format,
++@@ -3411,41 +3469,81 @@ impl Device {
++         };
++         let mut own = *descriptor;
++         own.resource_options = options;
++-        self.new_heap_shadow(plan, layout, &own, identity, every, |placement, image| {
++-            let copies = ShadowCopies {
++-                source: ShadowSource::Bytes {
++-                    buffer,
++-                    key: heap_bytes.key,
++-                    bytes: tracked,
++-                    target: ShadowTarget::Image {
++-                        image,
++-                        // A heap's depth or stencil texture holds no byte twice: its copies back
++-                        // are its copies in.
++-                        back: regions.clone(),
++-                        regions,
++-                        staging: None,
++-                        texel: None,
++-                        words: None,
++-                        unorm: None,
+++        let mut made =
+++            self.new_heap_shadow(plan, layout, &own, identity, every, |placement, image| {
+++                let copies = ShadowCopies {
+++                    source: ShadowSource::Bytes {
+++                        buffer,
+++                        key: heap_bytes.key,
+++                        bytes: tracked,
+++                        target: ShadowTarget::Image {
+++                            image,
+++                            // A heap's depth or stencil texture holds no byte twice: its copies back
+++                            // are its copies in.
+++                            back: regions.clone(),
+++                            regions,
+++                            staging: None,
+++                            texel: None,
+++                            words: None,
+++                            unorm: None,
+++                        },
+++                        // A heap's bytes join no other memory (`host_aliases.rs`).
+++                        alias: None,
++                     },
++-                    // A heap's bytes join no other memory (`host_aliases.rs`).
++-                    alias: None,
++-                },
++-                shadow_key: identity.key,
++-                shadow_range,
++-                tracked: identity.tracked,
++-                drops_writes: false,
++-                backing: Backing::of(bytes, false),
++-                merge_scratch: ScratchSpares::default(),
++-                touched: AtomicU64::new(0),
++-                stood: AtomicU64::new(0),
++-            };
++-            Owner::HeapShadow(Box::new(HeapShadow {
++-                placement,
++-                place,
++-                copies: Arc::new(copies),
++-            }))
++-        })
+++                    shadow_key: identity.key,
+++                    shadow_range,
+++                    tracked: identity.tracked,
+++                    drops_writes: false,
+++                    backing: Backing::of(bytes, false),
+++                    merge_scratch: ScratchSpares::default(),
+++                    touched: AtomicU64::new(0),
+++                    stood: AtomicU64::new(0),
+++                };
+++                Owner::HeapShadow(Box::new(HeapShadow {
+++                    placement,
+++                    place,
+++                    copies: Arc::new(copies),
+++                }))
+++            })?;
+++        // The image owns the view, including through detach/remake. Its copies
+++        // have not been published yet, so this is their one mutable owner.
+++        if let Some((format, texel, stores)) = word {
+++            let view = made.own_view(&VkView {
+++                view_type: ImageViewType::TYPE_2D,
+++                format,
+++                components: ComponentMapping::IDENTITY,
+++                aspect: ImageAspectFlags::COLOR,
+++                base_level: 0,
+++                level_count: 1,
+++                base_layer: 0,
+++                layer_count: 1,
+++                usage: ImageUsageFlags::SAMPLED,
+++            });
+++            if let Ok(view) = view {
+++                let Owner::HeapShadow(owner) = &mut made.owner else {
+++                    unreachable!("new_heap_shadow used the HeapShadow owner");
+++                };
+++                let copies = Arc::get_mut(&mut owner.copies)
+++                    .ok_or_else(|| internal("a new heap shadow's copies were already shared"))?;
+++                let ShadowSource::Bytes {
+++                    target:
+++                        ShadowTarget::Image {
+++                            words, texel: unit, ..
+++                        },
+++                    ..
+++                } = &mut copies.source
+++                else {
+++                    unreachable!("linear heap shadow has an image over bytes");
+++                };
+++                *unit = Some(4 * u64::from(texel.words()));
+++                *words = Some(WordView {
+++                    view,
+++                    texel,
+++                    stores,
+++                });
+++            }
+++        }
+++        Ok(made)
++     }
++ 
++     /// Metal's layout of the planes of a heap's two-plane texture of `layout` whose image is of

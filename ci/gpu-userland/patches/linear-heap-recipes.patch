@@ -1,0 +1,14 @@
+diff --git a/scripts/build-adreno-metal-bridge.py b/scripts/build-adreno-metal-bridge.py
+index 7e3c6d7..b28e073 100644
+--- a/scripts/build-adreno-metal-bridge.py
++++ b/scripts/build-adreno-metal-bridge.py
+@@ -82,7 +82,8 @@ PATCHES = [ROOT / 'drivers/AdrenoMetal/bridge/patches' / name for name in [
+     '0032-vulkan-operation-diagnostics.patch',
+     '0033-direct-tiled-word-copies.patch',
+     '0034-fixed-heap-copy-path.patch',
+-    '0035-aligned-heap-transfer-rows.patch']]
++    '0035-aligned-heap-transfer-rows.patch',
++    '0036-linear-heap-word-copy.patch']]
+ 
+ 
+ def git_tree(*steps):
