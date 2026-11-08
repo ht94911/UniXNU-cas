@@ -20,7 +20,7 @@ typedef struct {
 } NaPdMapper;
 /* Registers the stock IPCRTR service locator in the same GLINK lifetime as
  * adsp_apps. All callbacks/queue operations run on the sole ADSP worker.
- * The four domain descriptions match already captured stock nezha JSNs;
+ * The six domain descriptions match already captured stock nezha JSNs;
  * listing a domain neither starts it nor accesses another processor.
  * Caller supplies fresh zeroed storage retained for that entire lifetime. */
 int na_pd_mapper_init(NaPdMapper *,QcomGlink *);

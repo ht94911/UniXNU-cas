@@ -42,6 +42,9 @@ typedef struct {
     /* Diagnostic retention never means the real handover or release occurred.
      * Default zero preserves normal proxy release; only na=2 sets retention. */
     uint32_t retain_proxy,handover_seen,observe_mask;
+    /* Diagnostic selection of the protocol's local OPEN path. Full playback
+     * keeps zero until this mode has its own real hardware acceptance. */
+    uint32_t gpr_initiator;
     uint64_t deadline;int error,cleanup_error;
 } NaAdsp;
 /* Common platform must own ADSP PAS1/36, SMEM apps-2, LPASS doorbell signals

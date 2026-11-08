@@ -16,7 +16,7 @@ typedef struct {
 /* Call once on the ADSP worker AFTER the platform established ready/crash,
  * SMEM and its exclusive GLINK ownership. Storage lives until worker teardown;
  * the caller must join the worker before freeing it. No new ADSP instance. */
-int na_transport_init(NaTransport *,QcomGlink *,NaRxQueue *);
+int na_transport_init(NaTransport *,QcomGlink *,NaRxQueue *,unsigned initiate);
 /* Sole producer: audio worker. 0 means queued; all errors mean not queued. */
 int na_transport_send(NaTransport *,uint32_t generation,const uint8_t *,uint32_t);
 /* Sole consumer and GLINK owner: ADSP worker. Bounded; no sleep or busy loop. */

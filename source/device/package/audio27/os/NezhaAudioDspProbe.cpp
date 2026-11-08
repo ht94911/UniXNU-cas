@@ -30,7 +30,7 @@ struct AudioDspProbe {
     int error,tasError,tasCleanup;
 };
 AudioDspProbe nativeAudioProbe;
-uint32_t audioProbeSequence,audioProbeValues[66];
+uint32_t audioProbeSequence,audioProbeValues[69];
 void publish(AudioDspProbe *d) {
     uint32_t fault=0,syndrome=0;uint64_t address=0;
     // IRQ publishes these once through fault_pending; never race its initial
@@ -57,10 +57,11 @@ void publish(AudioDspProbe *d) {
         d->adsp.mapper.qrtr.tx_packets,d->adsp.mapper.tx_sent,d->adsp.mapper.qrtr.rx_bad,
         d->adsp.mapper.qrtr.tx_refused,d->adsp.mapper.qrtr.remote_count,
         d->adsp.mapper.requests,d->adsp.mapper.answers,d->adsp.mapper.last_transaction,
-        (uint32_t)d->adsp.mapper.error};
+        (uint32_t)d->adsp.mapper.error,d->adsp.gpr_initiator,
+        d->smmu.stream_result.context.fault_status,(uint32_t)d->smmu.error};
     static_assert(sizeof values==sizeof audioProbeValues,"Diagnostic word layout mismatch");
     __atomic_add_fetch(&audioProbeSequence,1,__ATOMIC_ACQ_REL);
-    for (unsigned i=0;i<66;++i) __atomic_store_n(&audioProbeValues[i],values[i],__ATOMIC_RELAXED);
+    for (unsigned i=0;i<69;++i) __atomic_store_n(&audioProbeValues[i],values[i],__ATOMIC_RELAXED);
     __atomic_add_fetch(&audioProbeSequence,1,__ATOMIC_RELEASE);
 }
 void glink_header(void *,uint32_t,uint16_t,uint16_t,uint32_t,int);
@@ -88,10 +89,10 @@ void loader_progress(void *v,uint32_t pas,uint32_t point,uint32_t segment,uint64
             pas,point,segment,(unsigned long long)offset,(unsigned long long)bytes,(unsigned long long)pa);
 }
 int snapshot(void *,char *out,size_t capacity,size_t *bytes,unsigned *truncated) {
-    uint32_t v[66];bool valid=false;
+    uint32_t v[69];bool valid=false;
     for (unsigned attempt=0;attempt<4;++attempt) {
         uint32_t seq=__atomic_load_n(&audioProbeSequence,__ATOMIC_ACQUIRE);if (seq&1) continue;
-        for (unsigned i=0;i<66;++i) v[i]=__atomic_load_n(&audioProbeValues[i],__ATOMIC_RELAXED);
+        for (unsigned i=0;i<69;++i) v[i]=__atomic_load_n(&audioProbeValues[i],__ATOMIC_RELAXED);
         __atomic_thread_fence(__ATOMIC_ACQUIRE);
         if (seq==__atomic_load_n(&audioProbeSequence,__ATOMIC_RELAXED)) {valid=true;break;}
     }
@@ -110,13 +111,14 @@ int snapshot(void *,char *out,size_t capacity,size_t *bytes,unsigned *truncated)
         "\"ipcc_unknown\":%u,\"ipcc_unknown_id\":%u,\"qrtr_up\":%u,\"qrtr_hello\":%u,"
         "\"qrtr_rx\":%u,\"qrtr_tx_queued\":%u,\"qrtr_tx_sent\":%u,\"qrtr_bad\":%u,"
         "\"qrtr_refused\":%u,\"qrtr_remote_services\":%u,\"locator_requests\":%u,\"locator_answers\":%u,"
-        "\"locator_txn\":%u,\"qrtr_error\":%d,\"PCM\":false,\"HAL\":false}",
+        "\"locator_txn\":%u,\"qrtr_error\":%d,\"gpr_initiator\":%u,\"owned_fsr\":%u,\"owned_smmu_error\":%d,"
+        "\"PCM\":false,\"HAL\":false}",
         v[0],(int32_t)v[1],v[2],v[3],v[4],v[5],v[6],v[7],v[8],(int32_t)v[9],(int32_t)v[10],v[11],v[12],v[13],v[14],v[15],v[16],v[17],v[18],v[19],v[20],
         (unsigned long long)(((uint64_t)v[22]<<32)|v[21]),v[23],v[24],v[25],v[26],(int32_t)v[27],(int32_t)v[28],v[29],v[30],v[31],
         (unsigned long long)(((uint64_t)v[33]<<32)|v[32]),(unsigned long long)(((uint64_t)v[35]<<32)|v[34]),
         (unsigned long long)(((uint64_t)v[37]<<32)|v[36]),
         v[38],v[39],v[40],v[41],(int32_t)v[42],v[43],v[44],v[45],v[46],(int32_t)v[47],v[48],v[49],v[50],v[51],v[52],v[53],
-        v[54],v[55],v[56],v[57],v[58],v[59],v[60],v[61],v[62],v[63],v[64],(int32_t)v[65]);
+        v[54],v[55],v[56],v[57],v[58],v[59],v[60],v[61],v[62],v[63],v[64],(int32_t)v[65],v[66],v[67],(int32_t)v[68]);
     if (n<0 || (size_t)n>=capacity) {*truncated=1;return QUD_FAILED;}
     *bytes=(size_t)n;return QUD_OK;
 }
@@ -144,6 +146,16 @@ int dma_setup(void *v) {
 }
 int poll_shared(void *v) {
     auto *d=static_cast<AudioDspProbe *>(v);int r=na_native_smmu_faulted(&d->domain);if (r) return r;
+    // Same read-only owned-stream/context check used by the playback driver.
+    // It acquires the existing owner gate, never clears faults or changes a
+    // route. A pending common lock waits; failed observations retain DMA.
+    if (d->smmu.started) {
+        r=na_smmu_observe(&d->smmu,0);
+        if (r && r!=NA_BUSY)
+            printf("NEZHA AUDIO27 SMMU: owned observation result=%d fsr=%x phase=%u quarantine=%u\n",
+                r,d->smmu.stream_result.context.fault_status,d->smmu.stream_result.phase,d->smmu.quarantine);
+        if (r) return r;
+    }
     return na_resource_owner_dispatch(&d->input.resources);
 }
 int prepare(AudioDspProbe *d) {
@@ -167,6 +179,10 @@ int prepare(AudioDspProbe *d) {
         const_cast<const uint8_t *>(d->cmdDb.va),0x20000,1,&power);if (r) return r;
     NaAdspOps ops={d,smem_lock,smem_unlock,doorbell,proxy,dma_setup,poll_shared,post_ready};
     r=na_adsp_init(&d->adsp,d->smem.va,0x200000,&d->loader[0],&d->loader[1],&d->rx,&ops);if (r) return r;
+    // Android GLINK's create_local and pandora_adsp_gpr=2 both initiate OPEN
+    // when no remote adsp_apps OPEN exists. Audio018 never observed that name;
+    // this candidate exercises that supported path, not an assumed DSP fix.
+    d->adsp.gpr_initiator=1;
     // Audio016 still reset with all startup votes held. Restore the ordinary
     // handover/release policy; its original diagnostic image stays frozen.
     return na_resource_owner_ipcc(&d->input.resources,&d->adsp);
@@ -232,6 +248,7 @@ void run_probe(void *v,wait_result_t) {
     unsigned last=UINT32_MAX,lastPhase=UINT32_MAX,lastSlave=UINT32_MAX,lastGpr=UINT32_MAX,lastHeld=UINT32_MAX;int lastError=0;
     uint32_t lastQrtrUp=UINT32_MAX,lastQrtrHello=UINT32_MAX,lastQrtrRx=UINT32_MAX,lastQrtrTx=UINT32_MAX;
     int lastQrtrError=0;
+    uint32_t lastServices=UINT32_MAX;
     for (;;) {
         d->now=na_native_now_us(nullptr)/1000;int r=NA_PENDING;
         if (d->phase==1 && __atomic_load_n(&nezha_touch_stage,__ATOMIC_ACQUIRE)==7) {
@@ -281,6 +298,14 @@ void run_probe(void *v,wait_result_t) {
                 router.requests,router.answers,router.last_transaction,router.last_service,router.error);
             lastQrtrUp=router.online;lastQrtrHello=router.qrtr.hello_received;lastQrtrRx=router.qrtr.rx_packets;
             lastQrtrTx=router.tx_sent;lastQrtrError=router.error;
+        }
+        if (lastServices!=router.qrtr.remote_count) {
+            for (unsigned i=0;i<router.qrtr.remote_count;++i) {
+                const auto &service=router.qrtr.remote[i];
+                printf("NEZHA AUDIO27 QRTR SERVICE: id=%x instance=%x node=%u port=%u\n",
+                    service.service,service.instance,service.node,service.port);
+            }
+            lastServices=router.qrtr.remote_count;
         }
         if (d->phase==5) break;
         assert_wait_timeout((event_t)d,THREAD_UNINT,1,kMillisecondScale);thread_block(THREAD_CONTINUE_NULL);

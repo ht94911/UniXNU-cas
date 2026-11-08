@@ -3,11 +3,15 @@
 #include "AudioPdMapper.h"
 #include <string.h>
 static const char *const audio_services[]={"avs/audio",0};
+static const char *const modem_services[]={"gps/gps_service",0};
+static const char *const oem_services[]={"oempd/srv1",0};
 static const QcomPdDomain domains[]={
     {"msm/adsp/audio_pd",74,audio_services},
     {"msm/adsp/root_pd",74,0},
     {"msm/adsp/sensor_pd",74,0},
     {"msm/cdsp/root_pd",76,audio_services},
+    {"msm/modem/root_pd",180,modem_services},
+    {"msm/modem/oem_pd",180,oem_services},
 };
 static int queue_packet(void *v,const uint8_t *packet,uint32_t bytes) {
     NaPdMapper *p=v;

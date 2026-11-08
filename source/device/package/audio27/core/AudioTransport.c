@@ -16,11 +16,11 @@ static void receive(void *v,QcomGlinkChannel *channel,const uint8_t *data,uint32
     if (!__atomic_load_n(&t->online,__ATOMIC_ACQUIRE) || na_rx_push(t->rx,t->epoch,data,bytes))
         __atomic_store_n(&t->fault,1,__ATOMIC_RELEASE);
 }
-int na_transport_init(NaTransport *t,QcomGlink *g,NaRxQueue *rx) {
-    if (!t || !g || !rx) return NA_ARGUMENT;
+int na_transport_init(NaTransport *t,QcomGlink *g,NaRxQueue *rx,unsigned initiate) {
+    if (!t || !g || !rx || initiate>1) return NA_ARGUMENT;
     memset(t,0,sizeof *t);t->glink=g;t->rx=rx;t->epoch=1;
     const QcomGlinkClient client={state,receive};
-    t->channel=qcom_glink_channel(g,"adsp_apps",GPR_MAX_PACKET,8,t->intents,&client,t,0);
+    t->channel=qcom_glink_channel(g,"adsp_apps",GPR_MAX_PACKET,8,t->intents,&client,t,(int)initiate);
     return t->channel ? NA_OK : NA_BUSY;
 }
 int na_transport_send(NaTransport *t,uint32_t generation,const uint8_t *data,uint32_t bytes) {

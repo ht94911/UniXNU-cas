@@ -61,7 +61,7 @@ static int setup_glink(NaAdsp *a) {
     volatile uint32_t *d=(volatile uint32_t *)desc;
     QcomGlinkFifo tf={&d[1],&d[0],tx,txbytes},rf={&d[3],&d[2],0,0};
     qcom_glink_init(&a->glink,tf,rf,kick,a);
-    r=na_transport_init(&a->transport,&a->glink,a->rx);
+    r=na_transport_init(&a->transport,&a->glink,a->rx,a->gpr_initiator);
     if (!r) r=na_pd_mapper_init(&a->mapper,&a->glink);
     if (!r) a->glink_initialized=1;
     return r;
