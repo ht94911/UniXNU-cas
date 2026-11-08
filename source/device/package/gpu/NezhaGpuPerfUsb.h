@@ -79,4 +79,4 @@ static int nezhaPerfRequest(void *,const qud_diag_request *r,char *out,size_t ca
 }
 /* CONFIG mode 3 is the bounded bandwidth lease. HISTORY still validates its
  * smaller selector set in nezhaPerfRequest after the shared dispatch bounds. */
-static const qud_diag_provider nezhaPerfProvider={7,1,(1u<<QUD_SNAPSHOT)|(1u<<QUD_HISTORY)|(1u<<QUD_CONFIG),3,10000,"nezhagpu",nullptr,nezhaPerfSnapshot,nezhaPerfRequest};
+static const qud_diag_provider nezhaPerfProvider={7,1,(1u<<QUD_SNAPSHOT)|(1u<<QUD_HISTORY)|(1u<<QUD_CONFIG),5,10000,"nezhagpu",nullptr,nezhaPerfSnapshot,nezhaPerfRequest};

@@ -162,6 +162,7 @@ IOReturn NativeAdrenoUserClient::close()
     if(!open_)return kIOReturnNotReady;
     if(liveObjects() || ownRangeOutstanding())return kIOReturnBusy;
     for(uint32_t i=1;i<queue_capacity_;++i)if(queues_[i].active)return kIOReturnBusy;
+    clearBatch();
     releaseEntries();index_.release();
     if(queues_)IODeleteData(queues_,Queue,queue_capacity_);
     queues_=nullptr;queue_capacity_=0;
@@ -173,6 +174,7 @@ IOReturn NativeAdrenoUserClient::releaseAll(const NativeAdrenoRingClock *clock,u
 {
     if(!open_)return kIOReturnNotReady;
     if(!clock)return kIOReturnBadArgument;
+    clearBatch(); /* staging owns no GPU references and was never submitted */
     IOReturn status=(scoped_ || used_)?submit_->waitRange(queue_base_,NativeAdrenoQueueRange,clock,timeout_us):kIOReturnSuccess;
     if(status)return status;
     for(size_t index=0;index<entry_count_;++index) {
@@ -205,7 +207,7 @@ IOReturn NativeAdrenoUserClient::query(NativeAdrenoAbiParams *params)
     if(!open_)return kIOReturnNotReady;
     params->abi_version=NativeAdrenoAbiVersion;
     params->input_bits=input_bits_;params->output_bits=output_bits_;
-    params->flags=NativeAdrenoParamsHostImport|(ownedCoherent()?NativeAdrenoParamsOwnedCoherent:0u)|
+    params->flags=NativeAdrenoParamsHostImport|NativeAdrenoParamsSubmitBatch|(ownedCoherent()?NativeAdrenoParamsOwnedCoherent:0u)|
         (NativeAdrenoMemory::memoryPressure()?NativeAdrenoParamsMemoryPressure:0u);params->max_bo_bytes=maxBoBytes();
     return kIOReturnSuccess;
 }
@@ -414,6 +416,7 @@ IOReturn NativeAdrenoUserClient::submit(const NativeAdrenoAbiSubmit *request,
     if(!open_)return kIOReturnNotReady;
     if(!request->buffer_count || request->buffer_count>NativeAdrenoAbiMaxBuffers ||
         request->reserved)return kIOReturnBadArgument;
+    if(batch_id_)return kIOReturnBusy;
     if(request->queue>=queue_capacity_ || !queues_[request->queue].active)
         return kIOReturnBadArgument;
     if(request->wait_fence) {
@@ -424,9 +427,16 @@ IOReturn NativeAdrenoUserClient::submit(const NativeAdrenoAbiSubmit *request,
         const IOReturn waited=submit_->observeFence((uint32_t)request->wait_fence,clock,wait_us);
         if(waited)return waited;
     }
+    return submitList(request->buffers,request->buffer_count,request->queue,reply,clock);
+}
+IOReturn NativeAdrenoUserClient::submitList(const NativeAdrenoAbiSubmitBuffer *wire_buffers,
+    size_t count,uint64_t queue,NativeAdrenoAbiSubmitReply *reply,const NativeAdrenoRingClock *clock)
+{
+    if(!wire_buffers || !count || count>NativeAdrenoAbiMaxBatchBuffers)return kIOReturnBadArgument;
+    if(queue>=queue_capacity_ || !queues_[queue].active)return kIOReturnBadArgument;
     NativeAdrenoSubmitBuffer *buffers=submit_buffers_;
-    for(uint32_t i=0;i<request->buffer_count;++i) {
-        const NativeAdrenoAbiSubmitBuffer &wire=request->buffers[i];
+    for(size_t i=0;i<count;++i) {
+        const NativeAdrenoAbiSubmitBuffer &wire=wire_buffers[i];
         if(!wire.bytes || (wire.bytes&3))return kIOReturnBadArgument;
         Entry *entry=find(wire.handle);
         if(!entry || !entry->mapped_state)return kIOReturnBadArgument;
@@ -438,11 +448,58 @@ IOReturn NativeAdrenoUserClient::submit(const NativeAdrenoAbiSubmit *request,
     submit_->nextOwner(proc_selfpid());
     submit_->nextPriority(submitPriority());
     submit_->nextRole(task_get_gpu_role(current_task()));
-    const IOReturn status=submit_->submit(vm_,buffers,request->buffer_count,
-        queue_base_+request->queue,&fence,clock);
+    const IOReturn status=submit_->submit(vm_,buffers,count,
+        queue_base_+queue,&fence,clock);
     if(status)return status;
     reply->fence=fence;
     return kIOReturnSuccess;
+}
+IOReturn NativeAdrenoUserClient::submitBatch(const NativeAdrenoAbiSubmitBatch *request,
+    NativeAdrenoAbiSubmitBatchReply *reply,const NativeAdrenoRingClock *clock)
+{
+    if(!request || !reply)return kIOReturnBadArgument;
+    *reply={};
+    if(!open_)return kIOReturnNotReady;
+    if(!request->total_buffers || request->total_buffers>NativeAdrenoAbiMaxBatchBuffers ||
+        request->queue>=queue_capacity_ || !queues_[request->queue].active ||
+        request->buffer_count>NativeAdrenoAbiMaxBuffers)return kIOReturnBadArgument;
+    if(request->action==NativeAdrenoBatchBegin) {
+        if(request->batch || request->offset || request->buffer_count)return kIOReturnBadArgument;
+        if(batch_id_)return kIOReturnBusy;
+        if(!batch_next_)return kIOReturnNoResources; /* never reuse a consumed token */
+        batch_id_=batch_next_++;batch_queue_=request->queue;
+        batch_total_=request->total_buffers;batch_received_=0;
+        reply->batch=batch_id_;
+        return kIOReturnSuccess;
+    }
+    if(!batch_id_ || request->batch!=batch_id_ || request->queue!=batch_queue_ ||
+        request->total_buffers!=batch_total_ || request->offset!=batch_received_)
+        return kIOReturnBadArgument;
+    reply->batch=batch_id_;
+    if(request->action==NativeAdrenoBatchAppend) {
+        if(!request->buffer_count || request->buffer_count>batch_total_-batch_received_)
+            return kIOReturnBadArgument;
+        for(uint32_t i=0;i<request->buffer_count;++i) {
+            const auto &entry=request->buffers[i];
+            if(!entry.handle || !entry.bytes || (entry.bytes&3) || (entry.iova&3) ||
+                entry.bytes>UINT64_C(0xfffff)*4)return kIOReturnBadArgument;
+        }
+        memcpy(batch_buffers_+batch_received_,request->buffers,
+            request->buffer_count*sizeof(batch_buffers_[0]));
+        batch_received_+=request->buffer_count;
+        return kIOReturnSuccess;
+    }
+    if(request->buffer_count)return kIOReturnBadArgument;
+    if(request->action==NativeAdrenoBatchAbort) {clearBatch();return kIOReturnSuccess;}
+    if(request->action!=NativeAdrenoBatchCommit || batch_received_!=batch_total_)
+        return kIOReturnBadArgument;
+    NativeAdrenoAbiSubmitReply submitted{};
+    const IOReturn status=submitList(batch_buffers_,batch_total_,batch_queue_,&submitted,clock);
+    /* Busy is a proved pre-publication refusal. Other results consume staging;
+     * a poisoned ring keeps its own job references under the existing contract. */
+    if(status!=kIOReturnBusy)clearBatch();
+    if(!status)reply->fence=submitted.fence;
+    return status;
 }
 IOReturn NativeAdrenoUserClient::attachTimer(const NativeAdrenoTimer *timer)
 {
@@ -503,6 +560,7 @@ size_t NativeAdrenoUserClient::inputSize(uint32_t method)
     case NativeAdrenoMethodBoImport:return sizeof(NativeAdrenoAbiBoImport);
     case NativeAdrenoMethodBoFree:return sizeof(NativeAdrenoAbiBoFree);
     case NativeAdrenoMethodSubmit:return sizeof(NativeAdrenoAbiSubmit);
+    case NativeAdrenoMethodSubmitBatch:return sizeof(NativeAdrenoAbiSubmitBatch);
     case NativeAdrenoMethodSetMetadata:
     case NativeAdrenoMethodGetMetadata:return sizeof(NativeAdrenoAbiMetadata);
     case NativeAdrenoMethodCreateQueue:
@@ -521,6 +579,7 @@ size_t NativeAdrenoUserClient::outputSize(uint32_t method)
     case NativeAdrenoMethodBoMap:return sizeof(NativeAdrenoAbiBoMapReply);
     case NativeAdrenoMethodBoFree:return 0;
     case NativeAdrenoMethodSubmit:return sizeof(NativeAdrenoAbiSubmitReply);
+    case NativeAdrenoMethodSubmitBatch:return sizeof(NativeAdrenoAbiSubmitBatchReply);
     case NativeAdrenoMethodWaitFence:return 0;
     case NativeAdrenoMethodGetTimestamp:return sizeof(NativeAdrenoAbiTimestamp);
     case NativeAdrenoMethodGetStatus:return sizeof(NativeAdrenoAbiStatus);
@@ -606,6 +665,13 @@ IOReturn NativeAdrenoUserClient::dispatch(uint32_t method,const void *input,
         memcpy(&request,input,sizeof(request));
         NativeAdrenoAbiSubmitReply reply{};
         status=submit(&request,&reply,clock);
+        if(!status)memcpy(output,&reply,sizeof(reply));
+        break;
+    }
+    case NativeAdrenoMethodSubmitBatch: {
+        memcpy(&batch_request_,input,sizeof(batch_request_));
+        NativeAdrenoAbiSubmitBatchReply reply{};
+        status=submitBatch(&batch_request_,&reply,clock);
         if(!status)memcpy(output,&reply,sizeof(reply));
         break;
     }
@@ -724,6 +790,7 @@ IOReturn NativeAdrenoUserClient::closeQueue(const NativeAdrenoAbiQueue *request)
     if(!request->queue || request->queue>=queue_capacity_)return kIOReturnBadArgument;
     Queue &queue=queues_[request->queue];
     if(!queue.active)return kIOReturnBadArgument;
+    if(batch_id_ && batch_queue_==request->queue)return kIOReturnBusy;
     /* A queue must be drained by the caller before it disappears. */
     if(submit_->queueOutstanding(queue_base_+request->queue))
         return kIOReturnBusy;
