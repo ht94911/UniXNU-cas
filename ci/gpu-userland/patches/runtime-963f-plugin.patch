@@ -82,7 +82,7 @@ index a432e32..b3d4e13 100644
    {
     std::lock_guard<std::mutex> lock(gUnalignedLock);
 diff --git a/README.md b/README.md
-index f76b461..a139da0 100644
+index f76b461..4385b08 100644
 --- a/README.md
 +++ b/README.md
 @@ -10,7 +10,9 @@ Build and interface details: [documentation](https://unixnu.com/drivers/adreno-m
@@ -96,7 +96,7 @@ index f76b461..a139da0 100644
  
  ## Heap texture copies
  
-@@ -88,6 +90,8 @@ With `sheng-gpu-trace=1` the render server writes its frame trace (command phase
+@@ -88,6 +90,24 @@ With `sheng-gpu-trace=1` the render server writes its frame trace (command phase
  
  `sheng-wallpaper-freeze=1` enables wallpaper isolation. A Poster renderer freezes GPU submission after a successful command draws into and stores an IOSurface of at least two million pixels. The completed output stays retained. Later commands remain committed and unscheduled, with their resources and queue leases retained. Already submitted work completes normally. PosterBoard and other processes keep submitting. The switch defaults to off; `NATIVE_METAL_FREEZE_WALLPAPER=1` selects the same mode directly in a renderer process.
  
@@ -105,6 +105,22 @@ index f76b461..a139da0 100644
  Slow encoding operations retain source lines and enqueue times. Completion handlers and resource destructors carry individual timing and identities. Kernel sampling of the render, encode and completion threads and blocked-thread waits provide the cross-thread wait record.
  
  `python3 scripts/check-wallpaper-freeze-host.py` in the resolved tree checks real pixels, callbacks, concurrent parked submissions and process selection.
++
++
++The local fixed-private-heap path can copy a single-level, single-layer 2D image
++back through an image-owned unsigned view directly into Metal's tiled bytes.
++It reuses the existing Morton coordinate kernel and writes consecutive words;
++the original tight transfer buffer is still used for copy-in and keep/merge
++output. The sampled image read and fixed heap write are tracked as compute uses.
++Unsupported views, shapes, mapped/imported heaps and changed buffer identities
++retain the existing transfer. This adds no driver performance fact.
++
++GPU026's local qualification executes40 raw-view/padding cases,18 private heap
++fused copies,27 fallback cases,18 independent-writer merges and12 actual image
++owner/range-reuse cases, within117 affected runtime tests. Four generated image
++copy modules pass SPIR-V validation; the original nine tiled translator tests,
++Clippy and Rustdoc pass. A840 timing, mutable-view mode and rendering time still
++require hardware comparison; these CPU-device results are not a frame-rate claim.
 diff --git a/bridge/NativeMetalObjects.h b/bridge/NativeMetalObjects.h
 index a5ad387..b93b96b 100644
 --- a/bridge/NativeMetalObjects.h
@@ -6155,6 +6171,1332 @@ index 0000000..0dda76c
 +                 .unwrap()
 +                 .join()
 +                 .unwrap();
+diff --git a/bridge/patches/0038-fused-tiled-image-copy.patch b/bridge/patches/0038-fused-tiled-image-copy.patch
+new file mode 100644
+index 0000000..a0fa393
+--- /dev/null
++++ b/bridge/patches/0038-fused-tiled-image-copy.patch
+@@ -0,0 +1,1320 @@
++diff --git a/crates/metal2vulkan-runtime/src/owned_kernel.rs b/crates/metal2vulkan-runtime/src/owned_kernel.rs
++index 844ad4385..880a25f3f 100644
++--- a/crates/metal2vulkan-runtime/src/owned_kernel.rs
+++++ b/crates/metal2vulkan-runtime/src/owned_kernel.rs
++@@ -175,6 +175,8 @@ pub(super) enum OwnedModule {
++     /// `bind::tiled_texels_module`: a heap texture's elements moved between its image's tight
++     /// copy and Metal's tiles in the heap's bytes (`texture/heap_tiled.rs`).
++     TiledTexels,
+++    /// A raw integer image view copied into Metal's tile layout with one dispatch.
+++    TiledImageCopy(ShadowTexelView),
++     /// `bind::extended_shadow_module` of one form: an extended-range attachment's `half` shadow
++     /// set from its codes before the instance whose draws first hold it
++     /// (`render/extended_shadow.rs`). Two storage images: the codes, then the shadow.
++@@ -200,7 +202,9 @@ impl OwnedModule {
++     fn images(self) -> u32 {
++         match self {
++             OwnedModule::MipmapFilter(kernel) => u32::from(kernel.fetches()),
++-            OwnedModule::ShadowCopyBack(_) | OwnedModule::ShadowMergeImage(..) => 1,
+++            OwnedModule::ShadowCopyBack(_)
+++            | OwnedModule::ShadowMergeImage(..)
+++            | OwnedModule::TiledImageCopy(_) => 1,
++             OwnedModule::ShadowMergeKeptImage(..) => 2,
++             // The combined image sampler of the planes' (or pairs') image.
++             OwnedModule::YCbCrSample(..) | OwnedModule::ChromaSample(_) => 1,
++@@ -464,6 +468,12 @@ impl OwnedModule {
++                     .map_err(Error::Compile)?;
++                 Ok((module.spirv.to_vec(), 2, 0))
++             }
+++            OwnedModule::TiledImageCopy(view) => {
+++                let module =
+++                    metal2vulkan::bind::tiled_image_copy_module(device.compile_device(), view)
+++                        .map_err(Error::Compile)?;
+++                Ok((module.spirv.to_vec(), 2, 0))
+++            }
++             OwnedModule::TiledTexels => {
++                 let module = metal2vulkan::bind::tiled_texels_module(device.compile_device())
++                     .map_err(Error::Compile)?;
++@@ -585,6 +595,7 @@ pub(super) struct OwnedKernels {
++     plane_bytes_copy: Option<OwnedKernel>,
++     ycbcr_write: Option<OwnedKernel>,
++     tiled_texels: Option<OwnedKernel>,
+++    tiled_image_copies: HashMap<ShadowTexelView, OwnedKernel>,
++     extended_shadow_loads: HashMap<ExtendedRange, OwnedKernel>,
++     predication_step: Option<OwnedKernel>,
++     twin_decodes: HashMap<TwinDecode, OwnedKernel>,
++@@ -631,6 +642,7 @@ impl OwnedKernels {
++         .into_iter()
++         .flatten()
++         .chain(self.shadow_copy_backs.values().copied())
+++        .chain(self.tiled_image_copies.values().copied())
++         .chain(self.shadow_merge_images.values().copied())
++         .chain(self.shadow_merge_kept_images.values().copied())
++         .chain(self.shadow_copy_ins.values().copied())
++@@ -674,6 +686,7 @@ impl OwnedKernels {
++     fn get(&mut self, which: OwnedModule) -> Option<OwnedKernel> {
++         match which {
++             OwnedModule::ShadowCopyBack(view) => self.shadow_copy_backs.get(&view).copied(),
+++            OwnedModule::TiledImageCopy(view) => self.tiled_image_copies.get(&view).copied(),
++             OwnedModule::ShadowMergeImage(read, stores) => {
++                 self.shadow_merge_images.get(&(read, stores)).copied()
++             }
++@@ -706,6 +719,9 @@ impl OwnedKernels {
++             OwnedModule::ShadowCopyBack(view) => {
++                 self.shadow_copy_backs.insert(view, kernel);
++             }
+++            OwnedModule::TiledImageCopy(view) => {
+++                self.tiled_image_copies.insert(view, kernel);
+++            }
++             OwnedModule::ShadowMergeImage(read, stores) => {
++                 self.shadow_merge_images.insert((read, stores), kernel);
++             }
++@@ -775,6 +791,7 @@ impl OwnedKernels {
++             OwnedModule::ShadowMerge(ShadowMergeStores::Words) => &mut self.shadow_merge,
++             OwnedModule::ShadowMerge(ShadowMergeStores::Blocks) => &mut self.shadow_merge_blocks,
++             OwnedModule::ShadowCopyBack(_)
+++            | OwnedModule::TiledImageCopy(_)
++             | OwnedModule::ShadowMergeImage(..)
++             | OwnedModule::ShadowMergeKeptImage(..)
++             | OwnedModule::ShadowCopyIn(_)
++diff --git a/crates/metal2vulkan-runtime/src/shadow.rs b/crates/metal2vulkan-runtime/src/shadow.rs
++index c5f35728d..46dbb9900 100644
++--- a/crates/metal2vulkan-runtime/src/shadow.rs
+++++ b/crates/metal2vulkan-runtime/src/shadow.rs
++@@ -1733,6 +1733,17 @@ impl ShadowCopy {
++                     if tiles.direct_for(buffer.raw(), into)
++             )
++         };
+++        let image_read = match &c.source {
+++            ShadowSource::Bytes {
+++                buffer,
+++                target: ShadowTarget::Tiled { image, tiles, .. },
+++                ..
+++            } if tiles.image_direct_for(*image, buffer.raw()) => Access::new(
+++                vk::PipelineStageFlags2::COMPUTE_SHADER,
+++                vk::AccessFlags2::SHADER_SAMPLED_READ,
+++            ),
+++            _ => read,
+++        };
++         let truth_read = if direct(true) {
++             Access::new(
++                 vk::PipelineStageFlags2::COMPUTE_SHADER,
++@@ -1755,7 +1766,7 @@ impl ShadowCopy {
++                 Use::writes(c.shadow_key, c.tracked, c.shadow_range.clone(), write),
++             ],
++             Step::Back => vec![
++-                Use::reads(c.shadow_key, c.tracked, c.shadow_range.clone(), read),
+++                Use::reads(c.shadow_key, c.tracked, c.shadow_range.clone(), image_read),
++                 Use::writes(truth, c.tracked, range, truth_write),
++             ],
++             Step::Keep(merge) => merge.keep_uses(c),
++diff --git a/crates/metal2vulkan-runtime/src/tests/heap_linear_words.rs b/crates/metal2vulkan-runtime/src/tests/heap_linear_words.rs
++index dfa48c06f..85d9d4e97 100644
++--- a/crates/metal2vulkan-runtime/src/tests/heap_linear_words.rs
+++++ b/crates/metal2vulkan-runtime/src/tests/heap_linear_words.rs
++@@ -486,3 +486,133 @@ fn linear_heap_words_execute_copies_regions_merges_and_fallbacks() {
++     assert_eq!(fallbacks, 12);
++     eprintln!("LINEAR-HEAP executed {dispatches} word paths and {fallbacks} copy fallbacks; no physical Turnip timing claim");
++ }
+++
+++#[test]
+++fn tiled_heap_constructor_owns_fused_views_and_releases_its_range() {
+++    use crate::texture::heap_tiled::{Elements, TiledLayout, TiledTexture};
+++    let scratch =
+++        Scratch(std::env::temp_dir().join(format!("m2v-fused-owner-{}", std::process::id())));
+++    std::fs::create_dir(&scratch.0).unwrap();
+++    let device = Device::system_default_with(&DeviceOptions {
+++        kinds: if cfg!(m2v_cpu_icd) {
+++            vec![DeviceKind::Cpu]
+++        } else {
+++            vec![
+++                DeviceKind::Discrete,
+++                DeviceKind::Integrated,
+++                DeviceKind::Virtual,
+++            ]
+++        },
+++        shader_cache: ShaderCacheOptions::in_directory(&scratch.0),
+++        ..DeviceOptions::default()
+++    })
+++    .unwrap();
+++    let mut cases = 0;
+++    for (pixel, unit) in [
+++        (PixelFormat::BGRA8UnormSRGB, 4),
+++        (PixelFormat::RGBA16Float, 8),
+++        (PixelFormat::RGBA32Float, 16),
+++    ] {
+++        for [width, height] in [[13, 7], [1204, 2328]] {
+++            for use_words in [false, true] {
+++                let options = ResourceOptions::private()
+++                    .with_hazard_tracking_mode(HazardTrackingMode::Untracked);
+++                let mut descriptor = TextureDescriptor::texture_2d(pixel, width, height, false);
+++                descriptor.resource_options = options;
+++                descriptor.usage = TextureUsage::SHADER_READ | TextureUsage::RENDER_TARGET;
+++                let layout = device
+++                    .heap_layout("fused-owner", &descriptor, Creator::Device)
+++                    .unwrap();
+++                let planned = device
+++                    .heap_plan("fused-owner", &descriptor, layout)
+++                    .unwrap();
+++                let (plan, word) = if use_words {
+++                    let facts = device
+++                        .shared()
+++                        .textures
+++                        .facts(device.compile_device().profile());
+++                    with_word_view(planned.image.plan, &facts, false)
+++                } else {
+++                    (planned.image.plan, None)
+++                };
+++                assert_eq!(word.is_some(), use_words);
+++                if let Some((format, _, _)) = word {
+++                    assert!(plan
+++                        .flags
+++                        .contains(metal2vulkan::vk::ImageCreateFlags::MUTABLE_FORMAT));
+++                    assert!(plan.view_formats.is_empty() || plan.view_formats.contains(&format));
+++                    assert!(plan.usage.contains(ImageUsageFlags::SAMPLED));
+++                }
+++                let tiled = TiledTexture::one(
+++                    TiledLayout::of(
+++                        unit,
+++                        Elements::Texels,
+++                        TextureType::Type2D,
+++                        [width, height, 1],
+++                        1,
+++                        1,
+++                    )
+++                    .unwrap(),
+++                );
+++                let align = 16384;
+++                let reserve = tiled.size.next_multiple_of(align);
+++                let prefix = align;
+++                let heap = device
+++                    .new_heap(&HeapDescriptor::new(
+++                        HeapType::Automatic,
+++                        prefix + reserve + align,
+++                        options,
+++                    ))
+++                    .unwrap();
+++                assert_eq!(heap.allocate(prefix, align), Some(0));
+++                assert_eq!(heap.allocate(reserve, align), Some(prefix));
+++                let bytes = heap.bytes().unwrap();
+++                let image = device
+++                    .heap_tiled_image_planned(
+++                        bytes,
+++                        (plan, word),
+++                        &planned.layout,
+++                        tiled,
+++                        (
+++                            HeapPlace::new(&heap, prefix, reserve, false),
+++                            options,
+++                            &descriptor,
+++                        ),
+++                    )
+++                    .unwrap();
+++                assert!(image.own_memory());
+++                assert_eq!(lock(&image.own_views).len(), usize::from(use_words));
+++                let Owner::HeapShadow(owner) = &image.owner else {
+++                    panic!("wrong fused image owner")
+++                };
+++                let copies = Arc::clone(&owner.copies);
+++                let ShadowTarget::Tiled {
+++                    image: raw, tiles, ..
+++                } = copies.target().unwrap()
+++                else {
+++                    panic!("wrong fused target")
+++                };
+++                assert_eq!(tiles.image_direct_for(*raw, bytes.at(0).0), use_words);
+++                let back = copy(&copies, Step::Back, None);
+++                let expected_read = if use_words {
+++                    crate::tracker::Access::new(
+++                        vk::PipelineStageFlags2::COMPUTE_SHADER,
+++                        vk::AccessFlags2::SHADER_SAMPLED_READ,
+++                    )
+++                } else {
+++                    crate::tracker::Access::new(
+++                        vk::PipelineStageFlags2::COPY,
+++                        vk::AccessFlags2::TRANSFER_READ,
+++                    )
+++                };
+++                assert_eq!(back.uses()[0].read, expected_read);
+++                drop(back);
+++                drop(copies);
+++                drop(image);
+++                assert_eq!(heap.allocate(reserve, align), Some(prefix));
+++                cases += 1;
+++            }
+++        }
+++    }
+++    assert_eq!(cases, 12);
+++}
++diff --git a/crates/metal2vulkan-runtime/src/tests/tiled_device_words.rs b/crates/metal2vulkan-runtime/src/tests/tiled_device_words.rs
++index 12dff36b7..8179b814d 100644
++--- a/crates/metal2vulkan-runtime/src/tests/tiled_device_words.rs
+++++ b/crates/metal2vulkan-runtime/src/tests/tiled_device_words.rs
++@@ -642,10 +642,12 @@ fn direct_tiled_output_runs_real_vulkan() {
++ /// copy-back, rather than a second implementation of their command sequence.
++ #[test]
++ fn fixed_heap_runtime_copies_preserve_pixels_padding_and_fallbacks() {
+++    use crate::binding_view::VkView;
++     use crate::resource::ResourceKey;
++     use crate::shadow::{
++         Backing, ShadowBuffer, ShadowCopies, ShadowCopy, ShadowSource, ShadowTarget, Step,
++     };
+++    use crate::shadow_copy_back::{word_format, WordView};
++     use crate::shadow_merge::{ScratchSpares, ShadowMerge};
++     use crate::texture::heap::{aligned_copy_planes, copy_plane_regions, heap_plane_layout};
++     use crate::texture::heap_tiled::{Elements, HeapTiledCopies, TiledLayout, TiledTexture};
++@@ -653,6 +655,7 @@ fn fixed_heap_runtime_copies_preserve_pixels_padding_and_fallbacks() {
++     use crate::tracker::{Access, UseRange};
++     use crate::{CpuCacheMode, HazardTrackingMode, StorageMode, TextureDescriptor};
++     use metal2vulkan::metal::{PixelFormat, TextureType, TextureUsage};
+++    use metal2vulkan::vk::{ComponentMapping, ImageAspectFlags, ImageUsageFlags, ImageViewType};
++     use std::sync::{atomic::AtomicU64, Arc};
++     let scratch = Scratch::new("fixed-heap-runtime");
++     let device = device(&scratch.0);
++@@ -773,7 +776,7 @@ fn fixed_heap_runtime_copies_preserve_pixels_padding_and_fallbacks() {
++                 let (heap_raw, heap_at) = heap.at(0);
++                 let staging =
++                     HeapTiledCopies::staging(&device, &tiled, heap_at + prefix, hazard).unwrap();
++-                let copies = HeapTiledCopies::new(
+++                let mut copies = HeapTiledCopies::new(
++                     &device,
++                     &staging,
++                     tiled.clone(),
++@@ -800,10 +803,39 @@ fn fixed_heap_runtime_copies_preserve_pixels_padding_and_fallbacks() {
++                     fallback_count += 1;
++                 }
++                 let mut desc = TextureDescriptor::texture_2d(pf, width, height, false);
++-                desc.usage = TextureUsage::SHADER_READ | TextureUsage::SHADER_WRITE;
+++                desc.usage = TextureUsage::SHADER_READ
+++                    | TextureUsage::SHADER_WRITE
+++                    | TextureUsage::PIXEL_FORMAT_VIEW;
++                 desc.resource_options = ResourceOptions::private();
++                 let image = device.new_texture(&desc).unwrap();
++                 let image_raw = image.raw_image().unwrap();
+++                let (word_format, texel) = word_format(unit as u32, false).unwrap();
+++                let view = image
+++                    .image_view(&VkView {
+++                        view_type: ImageViewType::TYPE_2D,
+++                        format: word_format,
+++                        components: ComponentMapping::IDENTITY,
+++                        aspect: ImageAspectFlags::COLOR,
+++                        base_level: 0,
+++                        level_count: 1,
+++                        base_layer: 0,
+++                        layer_count: 1,
+++                        usage: ImageUsageFlags::SAMPLED,
+++                    })
+++                    .unwrap();
+++                copies.install_image_out(
+++                    &device,
+++                    image_raw,
+++                    WordView {
+++                        view,
+++                        texel,
+++                        stores: false,
+++                    },
+++                    &staging,
+++                );
+++                assert_eq!(copies.image_direct_for(image_raw, heap_raw), actual_direct);
+++                assert!(!copies.image_direct_for(vk::Image::null(), heap_raw));
+++                assert!(!copies.image_direct_for(image_raw, vk::Buffer::null()));
++                 let direct_read = copies.direct_for(heap_raw, true);
++                 let (identity, tracked_bytes) = heap.tracked(prefix..prefix + tiled.size);
++                 let shadows = Arc::new(ShadowCopies {
++@@ -871,6 +903,20 @@ fn fixed_heap_runtime_copies_preserve_pixels_padding_and_fallbacks() {
++                 };
++                 assert_eq!(into_copy.uses()[0].read, expected_read);
++                 assert_eq!(back_copy.uses()[1].write, expected_write);
+++                assert_eq!(
+++                    back_copy.uses()[0].read,
+++                    if actual_direct {
+++                        Access::new(
+++                            vk::PipelineStageFlags2::COMPUTE_SHADER,
+++                            vk::AccessFlags2::SHADER_SAMPLED_READ,
+++                        )
+++                    } else {
+++                        Access::new(
+++                            vk::PipelineStageFlags2::COPY,
+++                            vk::AccessFlags2::TRANSFER_READ,
+++                        )
+++                    }
+++                );
++ 
++                 let input = device
++                     .new_buffer_with_bytes(&replacement, ResourceOptions::shared())
++@@ -1152,3 +1198,287 @@ fn fixed_heap_runtime_copies_preserve_pixels_padding_and_fallbacks() {
++         "FIXED-HEAP-PIPELINE direct={direct_count} fallback={fallback_count}; physical GPU performance not measured"
++     );
++ }
+++
+++/// Execute real sampled integer views of normalized, sRGB and floating images.
+++/// The oracle writes bytes by independent Morton indexing, including a prefix,
+++/// edge-tile padding and suffix. This test does not select a runtime heap path.
+++#[test]
+++fn fused_image_tiles_keep_raw_bits_and_padding() {
+++    use crate::binding_view::VkView;
+++    use crate::owned_kernel::OwnedSet;
+++    use crate::texture::heap_tiled::{Elements, TiledLayout};
+++    use crate::TextureDescriptor;
+++    use metal2vulkan::bind::{ShadowTexelView, TiledImageCopyModule};
+++    use metal2vulkan::metal::{PixelFormat, TextureType, TextureUsage};
+++    use metal2vulkan::vk::{
+++        ComponentMapping, Format, ImageAspectFlags, ImageUsageFlags, ImageViewType,
+++    };
+++    let scratch = Scratch::new("fused-image-tiles");
+++    let device = device(&scratch.0);
+++    let mut cases = 0;
+++    for (pixel, format, view) in [
+++        (
+++            PixelFormat::BGRA8Unorm,
+++            Format::R32_UINT,
+++            ShadowTexelView::R32Uint,
+++        ),
+++        (
+++            PixelFormat::BGRA8UnormSRGB,
+++            Format::R8G8B8A8_UINT,
+++            ShadowTexelView::R8G8B8A8Uint,
+++        ),
+++        (
+++            PixelFormat::RGBA16Float,
+++            Format::R32G32_UINT,
+++            ShadowTexelView::R32G32Uint,
+++        ),
+++        (
+++            PixelFormat::RGBA32Float,
+++            Format::R32G32B32A32_UINT,
+++            ShadowTexelView::R32G32B32A32Uint,
+++        ),
+++    ] {
+++        let module =
+++            metal2vulkan::bind::tiled_image_copy_module(device.compile_device(), view).unwrap();
+++        let module_path = scratch.0.join(format!("fused-{view:?}.spv"));
+++        let module_bytes: Vec<u8> = module
+++            .spirv
+++            .iter()
+++            .flat_map(|word| word.to_le_bytes())
+++            .collect();
+++        std::fs::write(&module_path, module_bytes).unwrap();
+++        let checked = std::process::Command::new("spirv-val")
+++            .args(["--target-env", "vulkan1.2"])
+++            .arg(&module_path)
+++            .output()
+++            .unwrap();
+++        assert!(
+++            checked.status.success(),
+++            "{}",
+++            String::from_utf8_lossy(&checked.stderr)
+++        );
+++        let kernel = device
+++            .owned_kernel(OwnedModule::TiledImageCopy(view))
+++            .unwrap();
+++        for [width, height] in [[1, 1], [13, 7], [129, 97], [1200, 2328], [1204, 2328]] {
+++            let unit = 4 * view.words();
+++            let layout = TiledLayout::of(
+++                u64::from(unit),
+++                Elements::Texels,
+++                TextureType::Type2D,
+++                [u64::from(width), u64::from(height), 1],
+++                1,
+++                1,
+++            )
+++            .unwrap();
+++            let own = &layout.levels[0];
+++            let prefix = 256u32;
+++            let level = TiledLevelMove::new(
+++                unit,
+++                [width, height],
+++                1,
+++                own.tile.map(|v| v as u32),
+++                own.across as u32,
+++                prefix + own.base as u32,
+++                layout.stride as u32,
+++                0,
+++                own.bytes as u32,
+++            );
+++            let (shape, grid) = TiledImageCopyModule::tiled_dispatch(&level, view).unwrap();
+++            let initial: Vec<u8> = (0..(u64::from(prefix) + layout.size + 128))
+++                .map(|i| (i * 13 + i / 251 + 5) as u8)
+++                .collect();
+++            let destination = device
+++                .new_buffer_with_bytes(&initial, ResourceOptions::shared())
+++                .unwrap();
+++            let shape_buffer = device
+++                .new_buffer_with_bytes(&shape, ResourceOptions::shared())
+++                .unwrap();
+++            let binding = |buffer: &Buffer, bytes: usize| {
+++                let (raw, offset) = buffer.at(0);
+++                (raw, offset, bytes as u64)
+++            };
+++            let mut descriptor =
+++                TextureDescriptor::texture_2d(pixel, u64::from(width), u64::from(height), false);
+++            descriptor.resource_options = ResourceOptions::private();
+++            descriptor.usage = TextureUsage::SHADER_READ | TextureUsage::PIXEL_FORMAT_VIEW;
+++            let image = device.new_texture(&descriptor).unwrap();
+++            let raw_image = image.raw_image().unwrap();
+++            let image_plan = image.image_plan_for_test().unwrap();
+++            assert!(
+++                image_plan.format == format
+++                    || image_plan
+++                        .flags
+++                        .contains(metal2vulkan::vk::ImageCreateFlags::MUTABLE_FORMAT)
+++            );
+++            assert!(
+++                image_plan.view_formats.is_empty() || image_plan.view_formats.contains(&format)
+++            );
+++            assert!(image_plan.usage.contains(ImageUsageFlags::SAMPLED));
+++            let raw_view = image
+++                .image_view(&VkView {
+++                    view_type: ImageViewType::TYPE_2D,
+++                    format,
+++                    components: ComponentMapping::IDENTITY,
+++                    aspect: ImageAspectFlags::COLOR,
+++                    base_level: 0,
+++                    level_count: 1,
+++                    base_layer: 0,
+++                    layer_count: 1,
+++                    usage: ImageUsageFlags::SAMPLED,
+++                })
+++                .unwrap();
+++            let sets = OwnedSets::write_each(
+++                &device,
+++                &[kernel],
+++                &[OwnedSet {
+++                    images: vec![raw_view],
+++                    storage_images: Vec::new(),
+++                    buffers: vec![
+++                        binding(&destination, initial.len()),
+++                        binding(&shape_buffer, shape.len()),
+++                    ],
+++                }],
+++            )
+++            .unwrap();
+++            for round in 0..2 {
+++                let source: Vec<u8> = (0..(width * height * unit))
+++                    .map(|i| (i * 7 + i / 257 + 3 + round * 109) as u8)
+++                    .collect();
+++                let expected = expected(&level, false, &source, &initial).1;
+++                let upload = device
+++                    .new_buffer_with_bytes(&source, ResourceOptions::shared())
+++                    .unwrap();
+++                let (upload_raw, upload_offset) = upload.at(0);
+++                let region = vk::BufferImageCopy::default()
+++                    .buffer_offset(upload_offset)
+++                    .image_subresource(vk::ImageSubresourceLayers {
+++                        aspect_mask: vk::ImageAspectFlags::COLOR,
+++                        mip_level: 0,
+++                        base_array_layer: 0,
+++                        layer_count: 1,
+++                    })
+++                    .image_extent(vk::Extent3D {
+++                        width,
+++                        height,
+++                        depth: 1,
+++                    });
+++                device
+++                    .submit_internal(|raw, cb| {
+++                        // SAFETY: all views and exact descriptor ranges stay live until this
+++                        // synchronous submission ends. The first transition initializes the
+++                        // fresh private image; later rounds overwrite it in GENERAL.
+++                        unsafe {
+++                            if round == 0 {
+++                                let transition = vk::ImageMemoryBarrier::default()
+++                                    .old_layout(vk::ImageLayout::UNDEFINED)
+++                                    .new_layout(vk::ImageLayout::GENERAL)
+++                                    .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+++                                    .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+++                                    .dst_access_mask(vk::AccessFlags::TRANSFER_WRITE)
+++                                    .image(raw_image)
+++                                    .subresource_range(vk::ImageSubresourceRange {
+++                                        aspect_mask: vk::ImageAspectFlags::COLOR,
+++                                        base_mip_level: 0,
+++                                        level_count: 1,
+++                                        base_array_layer: 0,
+++                                        layer_count: 1,
+++                                    });
+++                                raw.cmd_pipeline_barrier(
+++                                    cb,
+++                                    vk::PipelineStageFlags::TOP_OF_PIPE,
+++                                    vk::PipelineStageFlags::TRANSFER,
+++                                    vk::DependencyFlags::empty(),
+++                                    &[],
+++                                    &[],
+++                                    &[transition],
+++                                );
+++                            }
+++                            let before = vk::MemoryBarrier::default()
+++                                .src_access_mask(
+++                                    vk::AccessFlags::HOST_WRITE
+++                                        | vk::AccessFlags::SHADER_READ
+++                                        | vk::AccessFlags::SHADER_WRITE,
+++                                )
+++                                .dst_access_mask(
+++                                    vk::AccessFlags::TRANSFER_WRITE
+++                                        | vk::AccessFlags::TRANSFER_READ
+++                                        | vk::AccessFlags::SHADER_READ
+++                                        | vk::AccessFlags::SHADER_WRITE,
+++                                );
+++                            raw.cmd_pipeline_barrier(
+++                                cb,
+++                                vk::PipelineStageFlags::HOST
+++                                    | vk::PipelineStageFlags::COMPUTE_SHADER,
+++                                vk::PipelineStageFlags::TRANSFER
+++                                    | vk::PipelineStageFlags::COMPUTE_SHADER,
+++                                vk::DependencyFlags::empty(),
+++                                &[before],
+++                                &[],
+++                                &[],
+++                            );
+++                            raw.cmd_copy_buffer_to_image(
+++                                cb,
+++                                upload_raw,
+++                                raw_image,
+++                                vk::ImageLayout::GENERAL,
+++                                &[region],
+++                            );
+++                            let sampled = vk::MemoryBarrier::default()
+++                                .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
+++                                .dst_access_mask(vk::AccessFlags::SHADER_READ);
+++                            raw.cmd_pipeline_barrier(
+++                                cb,
+++                                vk::PipelineStageFlags::TRANSFER,
+++                                vk::PipelineStageFlags::COMPUTE_SHADER,
+++                                vk::DependencyFlags::empty(),
+++                                &[sampled],
+++                                &[],
+++                                &[],
+++                            );
+++                            raw.cmd_bind_pipeline(
+++                                cb,
+++                                vk::PipelineBindPoint::COMPUTE,
+++                                kernel.pipeline,
+++                            );
+++                            raw.cmd_bind_descriptor_sets(
+++                                cb,
+++                                vk::PipelineBindPoint::COMPUTE,
+++                                kernel.layout,
+++                                0,
+++                                &[sets.sets[0]],
+++                                &[],
+++                            );
+++                            raw.cmd_dispatch(cb, grid[0], grid[1], grid[2]);
+++                            let visible = vk::MemoryBarrier::default()
+++                                .src_access_mask(vk::AccessFlags::SHADER_WRITE)
+++                                .dst_access_mask(vk::AccessFlags::HOST_READ);
+++                            raw.cmd_pipeline_barrier(
+++                                cb,
+++                                vk::PipelineStageFlags::COMPUTE_SHADER,
+++                                vk::PipelineStageFlags::HOST,
+++                                vk::DependencyFlags::empty(),
+++                                &[visible],
+++                                &[],
+++                                &[],
+++                            );
+++                        }
+++                    })
+++                    .unwrap();
+++                assert_bytes(
+++                    "fused raw texels and untouched prefix/edges/suffix",
+++                    &destination,
+++                    &expected,
+++                );
+++                assert_bytes("fused source unchanged", &upload, &source);
+++                assert_bytes("fused shape unchanged", &shape_buffer, &shape);
+++                cases += 1;
+++            }
+++            eprintln!("FUSED-IMAGE {pixel:?} via {view:?} {width}x{height}: raw bits and all padding exact");
+++        }
+++    }
+++    assert_eq!(cases, 40);
+++    eprintln!(
+++        "FUSED-IMAGE cases={cases}; four real SPIR-V modules validated; no runtime path selected"
+++    );
+++}
++diff --git a/crates/metal2vulkan-runtime/src/texture.rs b/crates/metal2vulkan-runtime/src/texture.rs
++index e8b91487d..10f43bf43 100644
++--- a/crates/metal2vulkan-runtime/src/texture.rs
+++++ b/crates/metal2vulkan-runtime/src/texture.rs
++@@ -4537,6 +4537,12 @@ impl Texture {
++         Ok(self.image()?.raw.get())
++     }
++ 
+++    /// Let device tests check the exact plan before constructing a raw view.
+++    #[cfg(test)]
+++    pub(super) fn image_plan_for_test(&self) -> Result<&ImagePlan, Error> {
+++        Ok(self.image()?.plan())
+++    }
+++
++     /// Announce what `call`'s upload into `aspect` of the texture's image may store otherwise than
++     /// Metal's, in the depth of a 32-bit float depth image: on a device without
++     /// `VK_EXT_depth_range_unrestricted` enabled whose driver is not measured to keep a value
++diff --git a/crates/metal2vulkan-runtime/src/texture/heap.rs b/crates/metal2vulkan-runtime/src/texture/heap.rs
++index 4adbe2bc1..5d615a1a6 100644
++--- a/crates/metal2vulkan-runtime/src/texture/heap.rs
+++++ b/crates/metal2vulkan-runtime/src/texture/heap.rs
++@@ -3702,6 +3702,44 @@ impl Device {
++         (place, options, descriptor): (HeapPlace, ResourceOptions, &TextureDescriptor),
++     ) -> Result<Image, Error> {
++         let plan = image.plan;
+++        let fixed = bytes.caller_memory().is_none()
+++            && matches!(
+++                bytes.resource_options().storage_mode(),
+++                Ok(StorageMode::Private)
+++            );
+++        let eligible = self.properties().description.driver_id == Some(DriverId::MESA_TURNIP)
+++            && fixed
+++            && layout.texture_type == TextureType::Type2D
+++            && plan.samples == SampleCountFlags::COUNT_1
+++            && image_aspects(plan.format) == ImageAspectFlags::COLOR;
+++        let (plan, word) = if eligible {
+++            let facts = self
+++                .shared()
+++                .textures
+++                .facts(self.compile_device().profile());
+++            with_word_view(plan, &facts, false)
+++        } else {
+++            (plan, None)
+++        };
+++        self.heap_tiled_image_planned(
+++            bytes,
+++            (plan, word),
+++            layout,
+++            tiled,
+++            (place, options, descriptor),
+++        )
+++    }
+++
+++    /// Construct the selected plan so device tests can exercise it on the real
+++    /// CPU Vulkan driver without changing its driver identity or performance facts.
+++    fn heap_tiled_image_planned(
+++        &self,
+++        bytes: &Buffer,
+++        (plan, word): (ImagePlan, Option<(Format, ShadowTexelView, bool)>),
+++        layout: &TextureLayout,
+++        tiled: TiledTexture,
+++        (place, options, descriptor): (HeapPlace, ResourceOptions, &TextureDescriptor),
+++    ) -> Result<Image, Error> {
++         let samples = plan.samples.as_raw();
++         let (planes, tight_len) = tight_planes(&plan, self.shared().textures.copy_alignment);
++         let regions = if samples == 1 {
++@@ -3740,35 +3778,80 @@ impl Device {
++         };
++         let mut own = *descriptor;
++         own.resource_options = options;
++-        self.new_heap_shadow(plan, layout, &own, identity, every, |placement, image| {
++-            let copies = ShadowCopies {
++-                source: ShadowSource::Bytes {
++-                    buffer,
++-                    key: heap_bytes.key,
++-                    bytes: tracked,
++-                    target: ShadowTarget::Tiled {
++-                        image,
++-                        staging,
++-                        tiles,
+++        let mut made =
+++            self.new_heap_shadow(plan, layout, &own, identity, every, |placement, image| {
+++                let copies = ShadowCopies {
+++                    source: ShadowSource::Bytes {
+++                        buffer,
+++                        key: heap_bytes.key,
+++                        bytes: tracked,
+++                        target: ShadowTarget::Tiled {
+++                            image,
+++                            staging,
+++                            tiles,
+++                        },
+++                        // A heap's bytes join no other memory (`host_aliases.rs`).
+++                        alias: None,
++                     },
++-                    // A heap's bytes join no other memory (`host_aliases.rs`).
++-                    alias: None,
++-                },
++-                shadow_key: identity.key,
++-                shadow_range,
++-                tracked: identity.tracked,
++-                drops_writes: false,
++-                backing: Backing::of(bytes, false),
++-                merge_scratch: ScratchSpares::default(),
++-                stood: AtomicU64::new(0),
++-                standing: Default::default(),
++-            };
++-            Owner::HeapShadow(Box::new(HeapShadow {
++-                placement,
++-                place,
++-                copies: Arc::new(copies),
++-            }))
++-        })
+++                    shadow_key: identity.key,
+++                    shadow_range,
+++                    tracked: identity.tracked,
+++                    drops_writes: false,
+++                    backing: Backing::of(bytes, false),
+++                    merge_scratch: ScratchSpares::default(),
+++                    stood: AtomicU64::new(0),
+++                    standing: Default::default(),
+++                };
+++                Owner::HeapShadow(Box::new(HeapShadow {
+++                    placement,
+++                    place,
+++                    copies: Arc::new(copies),
+++                }))
+++            })?;
+++        if let Some((format, texel, stores)) = word {
+++            let view = made.own_view(&VkView {
+++                view_type: ImageViewType::TYPE_2D,
+++                format,
+++                components: ComponentMapping::IDENTITY,
+++                aspect: ImageAspectFlags::COLOR,
+++                base_level: 0,
+++                level_count: 1,
+++                base_layer: 0,
+++                layer_count: 1,
+++                usage: ImageUsageFlags::SAMPLED,
+++            });
+++            if let Ok(view) = view {
+++                let Owner::HeapShadow(owner) = &mut made.owner else {
+++                    unreachable!("new_heap_shadow used the HeapShadow owner");
+++                };
+++                let copies = Arc::get_mut(&mut owner.copies).ok_or_else(|| {
+++                    internal("a new tiled heap shadow's copies were already shared")
+++                })?;
+++                let ShadowSource::Bytes {
+++                    target:
+++                        ShadowTarget::Tiled {
+++                            image,
+++                            staging,
+++                            tiles,
+++                        },
+++                    ..
+++                } = &mut copies.source
+++                else {
+++                    unreachable!("tiled heap shadow has a tiled image over bytes");
+++                };
+++                tiles.install_image_out(
+++                    self,
+++                    *image,
+++                    WordView {
+++                        view,
+++                        texel,
+++                        stores,
+++                    },
+++                    staging,
+++                );
+++            }
+++        }
+++        Ok(made)
++     }
++ 
++     /// Announces, once per device, the alias route a heap texture of `layout` took where it is
++diff --git a/crates/metal2vulkan-runtime/src/texture/heap_tiled.rs b/crates/metal2vulkan-runtime/src/texture/heap_tiled.rs
++index 299bfacf5..f3e405a07 100644
++--- a/crates/metal2vulkan-runtime/src/texture/heap_tiled.rs
+++++ b/crates/metal2vulkan-runtime/src/texture/heap_tiled.rs
++@@ -166,7 +166,7 @@ use super::super::error::{internal, Error};
++ use super::super::heap::SizeAndAlign;
++ use super::super::image_plan::block_family;
++ use super::super::metal_release::heap_blocks;
++-use super::super::owned_kernel::{OwnedKernel, OwnedModule, OwnedSets};
+++use super::super::owned_kernel::{OwnedKernel, OwnedModule, OwnedSet, OwnedSets};
++ use super::super::row_copies::RowCopies;
++ use super::super::sample_interleave::InterleaveCopy;
++ use super::super::shadow::{self, ShadowStaging};
++@@ -178,8 +178,9 @@ use super::copy_images::{Reused, UseMaker};
++ use super::heap::HeapPlane;
++ use super::{copy_units, Texture, TextureShared};
++ use crate::device::functions::Vk;
+++use crate::shadow_copy_back::WordView;
++ use ash::vk;
++-use metal2vulkan::bind::{TiledLevelMove, TiledTexelsModule};
+++use metal2vulkan::bind::{TiledImageCopyModule, TiledLevelMove, TiledTexelsModule};
++ use metal2vulkan::metal::format::{byte_format, is_depth_stencil, srgb_raw_twin};
++ use metal2vulkan::metal::{PixelFormat, TextureType, TextureUsage};
++ use metal2vulkan::vk::{Format, ImageAspectFlags};
++@@ -1634,6 +1635,50 @@ pub(crate) struct HeapTiledCopies {
++     /// record_out and its unchanged scratch algorithm. The existing texture
++     /// owner holds the heap allocation until every command completes.
++     direct: Option<(vk::Buffer, OwnedSets, bool)>,
+++    /// A sampled view owned by this texture's image; plain copies back only.
+++    fused_image: Option<FusedTiledCopy>,
+++}
+++
+++/// One fixed image/heap pair, with descriptors and shape held for the image's life.
+++/// Its image owns the integer view; every command holds the texture and its heap.
+++struct FusedTiledCopy {
+++    image: vk::Image,
+++    bytes: vk::Buffer,
+++    kernel: OwnedKernel,
+++    sets: OwnedSets,
+++    step: Move,
+++}
+++
+++impl FusedTiledCopy {
+++    /// As HeapTiledCopies::record: live resources, GENERAL, outside a pass.
+++    unsafe fn record(&self, device: &Vk, command: vk::CommandBuffer, shapes: vk::Buffer) {
+++        // SAFETY: the caller retains the image, its view, fixed heap and descriptors;
+++        // the checked shape writes only words of texels, leaving padding untouched.
+++        unsafe {
+++            device.cmd_update_buffer(command, shapes, self.step.at, &self.step.shape);
+++            Barrier::everything().record(device, command);
+++            device.cmd_bind_pipeline(
+++                command,
+++                vk::PipelineBindPoint::COMPUTE,
+++                self.kernel.pipeline,
+++            );
+++            device.cmd_bind_descriptor_sets(
+++                command,
+++                vk::PipelineBindPoint::COMPUTE,
+++                self.kernel.layout,
+++                0,
+++                &[self.sets.sets[0]],
+++                &[],
+++            );
+++            device.cmd_dispatch(
+++                command,
+++                self.step.groups[0],
+++                self.step.groups[1],
+++                self.step.groups[2],
+++            );
+++            Barrier::everything().record(device, command);
+++        }
+++    }
++ }
++ 
++ /// A multisample heap texture's moves between its image and the tight buffer, one way, which
++@@ -1949,9 +1994,71 @@ impl HeapTiledCopies {
++             sets,
++             preserve,
++             direct,
+++            fused_image: None,
++         })
++     }
++ 
+++    /// Attach the new image's owned integer view before its copies are published.
+++    /// A missing direct heap, unsupported grid or allocation failure retains the
+++    /// existing exact transfer. Keep/merge output always uses record_out unchanged.
+++    pub(crate) fn install_image_out(
+++        &mut self,
+++        device: &Device,
+++        image: vk::Image,
+++        words: WordView,
+++        staging: &ShadowStaging,
+++    ) {
+++        let Some((bytes, _, _)) = &self.direct else {
+++            return;
+++        };
+++        let levels = Self::levels(&self.tiles, &self.planes);
+++        let Some([level]) = levels.as_deref() else {
+++            return;
+++        };
+++        let limits = device
+++            .properties()
+++            .description
+++            .limits
+++            .max_compute_work_group_count;
+++        let Some((shape, groups)) = TiledImageCopyModule::tiled_dispatch(level, words.texel)
+++            .filter(|(_, groups)| groups.iter().zip(limits).all(|(&n, limit)| n <= limit))
+++        else {
+++            return;
+++        };
+++        let Ok(kernel) = device.owned_kernel(OwnedModule::TiledImageCopy(words.texel)) else {
+++            return;
+++        };
+++        let at = self.moves[1].at;
+++        let Ok(sets) = OwnedSets::write_each(
+++            device,
+++            &[kernel],
+++            &[OwnedSet {
+++                images: vec![words.view],
+++                storage_images: Vec::new(),
+++                buffers: vec![
+++                    (*bytes, staging.into.src_offset, self.tiles.size),
+++                    (self.shapes_raw, at, shape.len() as u64),
+++                ],
+++            }],
+++        ) else {
+++            return;
+++        };
+++        self.fused_image = Some(FusedTiledCopy {
+++            image,
+++            bytes: *bytes,
+++            kernel,
+++            sets,
+++            step: Move { shape, at, groups },
+++        });
+++    }
+++
+++    /// The exact image and fixed heap whose plain copy back samples the image.
+++    pub(crate) fn image_direct_for(&self, image: vk::Image, bytes: vk::Buffer) -> bool {
+++        self.fused_image
+++            .as_ref()
+++            .is_some_and(|copy| copy.image == image && copy.bytes == bytes)
+++    }
+++
++     /// Record the dispatch of the move `into` the image, or back, after writing its shape.
++     ///
++     /// # Safety
++@@ -2194,6 +2301,14 @@ impl HeapTiledCopies {
++         // when the texture was made).
++         unsafe {
++             Barrier::everything().record(device, command_buffer);
+++            if let Some(copy) = self
+++                .fused_image
+++                .as_ref()
+++                .filter(|copy| !into && copy.image == image && copy.bytes == bytes)
+++            {
+++                copy.record(device, command_buffer, self.shapes_raw);
+++                return;
+++            }
++             if let Some((fixed, sets, reads)) = &self.direct {
++                 if *fixed == bytes && (!into || *reads) {
++                     if !into {
++diff --git a/crates/metal2vulkan/src/bind/mod.rs b/crates/metal2vulkan/src/bind/mod.rs
++index 1cb001933..5d0a96320 100644
++--- a/crates/metal2vulkan/src/bind/mod.rs
+++++ b/crates/metal2vulkan/src/bind/mod.rs
++@@ -328,7 +328,10 @@ pub use tessellation_scan::{
++     tessellation_scan_module, TessellationScanKernel, TessellationScanModule,
++ };
++ pub use tile_map::{SparseTileMap, TileMapError, TileMapping};
++-pub use tiled_texels::{tiled_texels_module, TiledLevelMove, TiledTexelsModule};
+++pub use tiled_texels::{
+++    tiled_image_copy_module, tiled_texels_module, TiledImageCopyModule, TiledLevelMove,
+++    TiledTexelsModule,
+++};
++ pub use two_plane_texels::{two_plane_texels_module, PlaneLayout, TwoPlaneTexelsModule};
++ pub use visibility_combine::{
++     visibility_combine_module, ContinuedResult, VisibilityCombine, VisibilityCombineModule,
++diff --git a/crates/metal2vulkan/src/bind/tiled_texels.rs b/crates/metal2vulkan/src/bind/tiled_texels.rs
++index 46a6adaca..558f21050 100644
++--- a/crates/metal2vulkan/src/bind/tiled_texels.rs
+++++ b/crates/metal2vulkan/src/bind/tiled_texels.rs
++@@ -49,6 +49,8 @@
++ 
++ use std::sync::Arc;
++ 
+++use super::shadow_copy_back::{fetched_words, ShadowTexelView};
+++
++ use crate::budget::{Budget, Meter};
++ use crate::device::requirements::Requirements;
++ use crate::device::Device;
++@@ -59,8 +61,8 @@ use crate::spirv::builder::{FunctionBuilder, ModuleBuilder};
++ use crate::spirv::error::BResult;
++ use crate::spirv::ids::{GlobalId, TypeId, Value};
++ use crate::spirv::ir::{
++-    natural_layout, BinOp, ExecMode, ExecModel, IoDir, LayoutRule, MemAccess, StorageClass, Type,
++-    TypedModule,
+++    natural_layout, BinOp, Dim, ExecMode, ExecModel, ImageOperands, ImageType, ImageUsage, IoDir,
+++    LayoutRule, MemAccess, StorageClass, Type, TypedModule,
++ };
++ 
++ /// The crate-owned tiled texel module of one device, validated like any output.
++@@ -283,6 +285,12 @@ impl TiledTexelsModule {
++ }
++ 
++ /// The binding symbol of the tight buffer in the typed module.
+++const IMAGE: ResourceSlot = ResourceSlot {
+++    stage: Stage::Kernel,
+++    kind: ResourceKind::Texture,
+++    index: 0,
+++};
+++
++ const TIGHT: ResourceSlot = ResourceSlot {
++     stage: Stage::Kernel,
++     kind: ResourceKind::Buffer,
++@@ -717,13 +725,21 @@ fn linear_dispatch(
++ 
++ /// A single level's aligned words, addressed from tile coordinates. Every output
++ /// word belongs to one invocation; partial edge tiles never write their padding.
++-fn tile_dispatch(
+++#[derive(Clone, Copy)]
+++struct TileWord {
+++    level: Level,
+++    texel: [Value; 2],
+++    byte: Value,
+++    word: Value,
+++    inside: Value,
+++}
+++
+++/// One aligned destination word and its texel, using the existing Morton layout.
+++fn tile_word(
++     f: &mut FunctionBuilder<'_>,
++-    tight: Value,
++-    tiled: Value,
++     shape: Value,
++     [gx, gy, image]: [Value; 3],
++-) -> BResult<()> {
+++) -> BResult<TileWord> {
++     let zero = u32_value(f, 0)?;
++     let two = u32_value(f, 2)?;
++     let field = |f: &mut FunctionBuilder<'_>, index: u32| -> BResult<Value> {
++@@ -744,8 +760,6 @@ fn tile_dispatch(
++         images: field(f, 16)?,
++         tight_row_pitch: field(f, 17)?,
++     };
++-    let into = field(f, 1)?;
++-    let into = f.binary(BinOp::INotEqual, into, zero)?;
++     let word_bits = f.binary(BinOp::IAdd, l.tile_log2[0], l.tile_log2[1])?;
++     let word_bits = f.binary(BinOp::IAdd, word_bits, l.unit_log2)?;
++     let word_bits = f.binary(BinOp::ISub, word_bits, two)?;
++@@ -773,6 +787,34 @@ fn tile_dispatch(
++         let inside = f.binary(BinOp::ULessThan, value, bound)?;
++         has = f.binary(BinOp::LogicalAnd, has, inside)?;
++     }
+++    Ok(TileWord {
+++        level: l,
+++        texel: [x, y],
+++        byte,
+++        word,
+++        inside: has,
+++    })
+++}
+++
+++fn tile_dispatch(
+++    f: &mut FunctionBuilder<'_>,
+++    tight: Value,
+++    tiled: Value,
+++    shape: Value,
+++    [gx, gy, image]: [Value; 3],
+++) -> BResult<()> {
+++    let TileWord {
+++        level: l,
+++        texel: [x, y],
+++        byte,
+++        word,
+++        inside: has,
+++    } = tile_word(f, shape, [gx, gy, image])?;
+++    let zero = u32_value(f, 0)?;
+++    let one = u32_value(f, 1)?;
+++    let into = f.access_chain(shape, &[zero, one])?;
+++    let into = f.load(into, MemAccess::default())?;
+++    let into = f.binary(BinOp::INotEqual, into, zero)?;
++     let body: ArmFn<'_, ()> = Box::new(move |f, _| {
++         let two = u32_value(f, 2)?;
++         let unit_mask = low_mask(f, l.unit_log2)?;
++@@ -859,6 +901,7 @@ fn typed_module() -> BResult<TypedModule> {
++ fn binding_of(sym: &Symbol) -> Option<u32> {
++     match sym {
++         Symbol::DescriptorSet(_) => Some(TiledTexelsModule::SET),
+++        Symbol::Binding(s) if *s == IMAGE => Some(TiledImageCopyModule::IMAGE_BINDING),
++         Symbol::Binding(s) if *s == TIGHT => Some(TiledTexelsModule::TIGHT_BINDING),
++         Symbol::Binding(s) if *s == TILED => Some(TiledTexelsModule::TILED_BINDING),
++         Symbol::Binding(s) if *s == SHAPE => Some(TiledTexelsModule::SHAPE_BINDING),
++@@ -888,5 +931,147 @@ pub fn tiled_texels_module(device: &Device) -> Result<TiledTexelsModule, Error>
++     })
++ }
++ 
+++/// A single-sample 2D image's raw texel bits stored directly in Metal's tiled bytes.
+++///
+++/// Set 0 binds an unsigned sampled image in GENERAL at 0, the destination storage
+++/// buffer at 1, and the existing tiled shape at 2. Consecutive invocations store
+++/// consecutive words; each fetch takes the chosen word through an integer view.
+++/// No intermediate image-to-buffer copy is needed. Padding is never written.
+++#[non_exhaustive]
+++#[derive(Clone, Debug, PartialEq, Eq)]
+++pub struct TiledImageCopyModule {
+++    /// SPIR-V 1.5, entry main, local size 64 by 1 by 1.
+++    pub spirv: Arc<[u32]>,
+++    /// The module's checked device requirements.
+++    pub requirements: Requirements,
+++}
+++
+++impl TiledImageCopyModule {
+++    /// Descriptor set of every binding.
+++    pub const SET: u32 = 0;
+++    /// The raw unsigned-integer sampled image.
+++    pub const IMAGE_BINDING: u32 = 0;
+++    /// The destination buffer, in aligned words.
+++    pub const TILED_BINDING: u32 = 1;
+++    /// The same shape buffer as TiledTexelsModule uses.
+++    pub const SHAPE_BINDING: u32 = 2;
+++
+++    /// Shape and grid for one image layer and level with the view's texel width.
+++    /// Other shapes keep using the existing buffer conversion.
+++    pub fn tiled_dispatch(
+++        level: &TiledLevelMove,
+++        view: ShadowTexelView,
+++    ) -> Option<(Vec<u8>, [u32; 3])> {
+++        if level.images != 1 || level.unit != 4 * view.words() {
+++            return None;
+++        }
+++        TiledTexelsModule::tiled_dispatch(level, false)
+++    }
+++}
+++
+++fn typed_image_module(view: ShadowTexelView) -> BResult<TypedModule> {
+++    let mut b = ModuleBuilder::new();
+++    let u32_ = b.ty(Type::Int {
+++        width: 32,
+++        signed: false,
+++    })?;
+++    let uvec2 = b.ty(Type::Vector { elem: u32_, len: 2 })?;
+++    let uvec3 = b.ty(Type::Vector { elem: u32_, len: 3 })?;
+++    let image_type = b.ty(Type::Image(ImageType {
+++        sampled_type: u32_,
+++        dim: Dim::D2,
+++        depth: false,
+++        arrayed: false,
+++        multisampled: false,
+++        usage: ImageUsage::Sampled,
+++        format: crate::spv::ImageFormat::Unknown,
+++    }))?;
+++    let image = b.resource(IMAGE, StorageClass::UniformConstant, image_type)?;
+++    let tiled = words_buffer(&mut b, TILED, u32_)?;
+++    let shape = words_buffer(&mut b, SHAPE, u32_)?;
+++    let invocation = b.builtin(crate::spv::BuiltIn::GlobalInvocationId, IoDir::Input, uvec3)?;
+++    let void = b.ty(Type::Void)?;
+++    let mut f = b.function(void)?;
+++    let zero = u32_value(&mut f, 0)?;
+++    let two = u32_value(&mut f, 2)?;
+++    let invocation = f.module().global_value(invocation)?;
+++    let invocation = f.load(invocation, MemAccess::default())?;
+++    let gx = f.composite_extract(invocation, &[0])?;
+++    let gy = f.composite_extract(invocation, &[1])?;
+++    let gz = f.composite_extract(invocation, &[2])?;
+++    let image = f.module().global_value(image)?;
+++    let tiled = f.module().global_value(tiled)?;
+++    let shape = f.module().global_value(shape)?;
+++    let TileWord {
+++        level,
+++        texel: [x, y],
+++        byte,
+++        word,
+++        inside,
+++    } = tile_word(&mut f, shape, [gx, gy, gz])?;
+++    let copy: ArmFn<'_, ()> = Box::new(move |f, _| {
+++        let coordinates = f.composite_construct(uvec2, &[x, y])?;
+++        let image = f.load(image, MemAccess::default())?;
+++        let operands = ImageOperands {
+++            lod: Some(zero),
+++            ..ImageOperands::default()
+++        };
+++        let texel = f.fetch(image, coordinates, &operands)?;
+++        let words = fetched_words(f, texel, view)?;
+++        let lane_mask = u32_value(f, view.words() - 1)?;
+++        let lane = f.binary(BinOp::ShiftRightLogical, byte, two)?;
+++        let lane = f.binary(BinOp::BitwiseAnd, lane, lane_mask)?;
+++        let mut value = words[0];
+++        for (index, &next) in words.iter().enumerate().skip(1) {
+++            let index = u32_value(f, index as u32)?;
+++            let is_lane = f.binary(BinOp::IEqual, lane, index)?;
+++            value = f.select(is_lane, next, value)?;
+++        }
+++        let first = f.binary(BinOp::ShiftRightLogical, level.tiled_first, two)?;
+++        let at = f.binary(BinOp::IAdd, first, word)?;
+++        let destination = f.access_chain(tiled, &[zero, at])?;
+++        f.store(destination, value, MemAccess::default())?;
+++        Ok(ArmEnd::FallThrough(Vec::new()))
+++    });
+++    f.if_(&mut (), inside, copy, None)?;
+++    f.ret(None)?;
+++    let id = f.finish()?;
+++    b.entry(
+++        ExecModel::GLCompute,
+++        id,
+++        vec![ExecMode::LocalSize {
+++            x: TiledTexelsModule::LOCAL_SIZE,
+++            y: 1,
+++            z: 1,
+++        }],
+++    )?;
+++    b.finalize()
+++}
+++
+++/// Build and verify the raw image-to-tiled-buffer kernel for one integer view.
+++/// The caller orders sampled reads and storage writes, retains both resources,
+++/// and uses the shape/grid returned by TiledImageCopyModule::tiled_dispatch.
+++pub fn tiled_image_copy_module(
+++    device: &Device,
+++    view: ShadowTexelView,
+++) -> Result<TiledImageCopyModule, Error> {
+++    let profile = device.profile();
+++    let module = typed_image_module(view)?;
+++    let mut meter = Meter::new(&Budget::default());
+++    crate::spirv::verify::verify(&module, profile, &mut meter)?;
+++    let result = crate::spirv::serialize::serialize(module)?;
+++    profile.check(&result.requirements).map_err(|cause| {
+++        Error::Internal(InternalError::new(
+++            InternalKind::RequirementsExceedProfile,
+++            format!("the tiled image copy module needs {cause:?}"),
+++        ))
+++    })?;
+++    let words = crate::spirv::serialize::relocate(&result, &binding_of)?;
+++    Ok(TiledImageCopyModule {
+++        spirv: words.into(),
+++        requirements: result.requirements,
+++    })
+++}
+++
++ #[cfg(test)]
++ mod tests;
++diff --git a/crates/metal2vulkan/tests/api_signatures.tsv b/crates/metal2vulkan/tests/api_signatures.tsv
++index c3f61f727..ccdb27c09 100644
++--- a/crates/metal2vulkan/tests/api_signatures.tsv
+++++ b/crates/metal2vulkan/tests/api_signatures.tsv
++@@ -355,6 +355,10 @@ assoc-const	metal2vulkan::bind::TessellationScanModule::RECORDS_BINDING	pub cons
++ assoc-const	metal2vulkan::bind::TessellationScanModule::SET	pub const SET: u32
++ assoc-const	metal2vulkan::bind::TessellationScanModule::STATUS_BINDING	pub const STATUS_BINDING: u32
++ assoc-const	metal2vulkan::bind::TessellationScanModule::WORK_BINDING	pub const WORK_BINDING: u32
+++assoc-const	metal2vulkan::bind::TiledImageCopyModule::IMAGE_BINDING	pub const IMAGE_BINDING: u32
+++assoc-const	metal2vulkan::bind::TiledImageCopyModule::SET	pub const SET: u32
+++assoc-const	metal2vulkan::bind::TiledImageCopyModule::SHAPE_BINDING	pub const SHAPE_BINDING: u32
+++assoc-const	metal2vulkan::bind::TiledImageCopyModule::TILED_BINDING	pub const TILED_BINDING: u32
++ assoc-const	metal2vulkan::bind::TiledTexelsModule::LOCAL_SIZE	pub const LOCAL_SIZE: u32
++ assoc-const	metal2vulkan::bind::TiledTexelsModule::MAX_LEVELS	pub const MAX_LEVELS: u32
++ assoc-const	metal2vulkan::bind::TiledTexelsModule::SET	pub const SET: u32
++@@ -830,6 +834,10 @@ assoc-const-value	metal2vulkan::bind::TessellationScanModule::RECORDS_BINDING	1
++ assoc-const-value	metal2vulkan::bind::TessellationScanModule::SET	0
++ assoc-const-value	metal2vulkan::bind::TessellationScanModule::STATUS_BINDING	2
++ assoc-const-value	metal2vulkan::bind::TessellationScanModule::WORK_BINDING	0
+++assoc-const-value	metal2vulkan::bind::TiledImageCopyModule::IMAGE_BINDING	0
+++assoc-const-value	metal2vulkan::bind::TiledImageCopyModule::SET	0
+++assoc-const-value	metal2vulkan::bind::TiledImageCopyModule::SHAPE_BINDING	2
+++assoc-const-value	metal2vulkan::bind::TiledImageCopyModule::TILED_BINDING	1
++ assoc-const-value	metal2vulkan::bind::TiledTexelsModule::LOCAL_SIZE	64
++ assoc-const-value	metal2vulkan::bind::TiledTexelsModule::MAX_LEVELS	16
++ assoc-const-value	metal2vulkan::bind::TiledTexelsModule::SET	0
++@@ -3690,6 +3698,8 @@ field	metal2vulkan::bind::TileThreadgroupArgument.length	pub length: u32
++ field	metal2vulkan::bind::TileThreadgroupArgument.offset	pub offset: u32
++ field	metal2vulkan::bind::TileThreadgroupMemory.arguments	pub arguments: BTreeMap<u32, TileThreadgroupArgument>
++ field	metal2vulkan::bind::TileThreadgroupMemory.length	pub length: u32
+++field	metal2vulkan::bind::TiledImageCopyModule.requirements	pub requirements: Requirements
+++field	metal2vulkan::bind::TiledImageCopyModule.spirv	pub spirv: Arc<[u32]>
++ field	metal2vulkan::bind::TiledLevelMove.across	pub across: u32
++ field	metal2vulkan::bind::TiledLevelMove.chain_stride	pub chain_stride: u32
++ field	metal2vulkan::bind::TiledLevelMove.extent	pub extent: [u32; 2]
++@@ -4821,6 +4831,7 @@ fn	metal2vulkan::bind::shadow_merge_kept_image_module	pub fn shadow_merge_kept_i
++ fn	metal2vulkan::bind::shadow_merge_module	pub fn shadow_merge_module(device: &Device, stores: ShadowMergeStores) -> Result<ShadowMergeModule, Error>
++ fn	metal2vulkan::bind::stencil_split_module	pub fn stencil_split_module(device: &Device, feature: Feature) -> Result<StencilSplitModule, Error>
++ fn	metal2vulkan::bind::tessellation_scan_module	pub fn tessellation_scan_module(device: &Device, kernel: &TessellationScanKernel) -> Result<TessellationScanModule, Error>
+++fn	metal2vulkan::bind::tiled_image_copy_module	pub fn tiled_image_copy_module(device: &Device, view: ShadowTexelView) -> Result<TiledImageCopyModule, Error>
++ fn	metal2vulkan::bind::tiled_texels_module	pub fn tiled_texels_module(device: &Device) -> Result<TiledTexelsModule, Error>
++ fn	metal2vulkan::bind::two_plane_texels_module	pub fn two_plane_texels_module(device: &Device) -> Result<TwoPlaneTexelsModule, Error>
++ fn	metal2vulkan::bind::visibility_combine_module	pub fn visibility_combine_module(device: &Device) -> Result<VisibilityCombineModule, Error>
++@@ -8882,6 +8893,7 @@ method	metal2vulkan::bind::TextureFacts::offset_base_axes	pub fn offset_base_axe
++ method	metal2vulkan::bind::TextureFacts::shape	pub fn shape(&self) -> TextureShape
++ method	metal2vulkan::bind::TileThreadgroupArgument::new	pub fn new(length: u32, offset: u32) -> TileThreadgroupArgument
++ method	metal2vulkan::bind::TileThreadgroupMemory::new	pub fn new(length: u32) -> TileThreadgroupMemory
+++method	metal2vulkan::bind::TiledImageCopyModule::tiled_dispatch	pub fn tiled_dispatch(level: &TiledLevelMove, view: ShadowTexelView) -> Option<(Vec<u8>, [u32; 3])>
++ method	metal2vulkan::bind::TiledLevelMove::invocations	pub const fn invocations(&self, into_tight: bool) -> u32
++ method	metal2vulkan::bind::TiledLevelMove::new	pub const fn new(unit: u32, extent: [u32; 2], images: u32, tile: [u32; 2], across: u32, tiled_first: u32, chain_stride: u32, tight_first: u32, region_bytes: u32) -> TiledLevelMove
++ method	metal2vulkan::bind::TiledTexelsModule::invocations	pub fn invocations(levels: &[TiledLevelMove], into_tight: bool) -> u32
++@@ -9842,6 +9854,7 @@ struct	metal2vulkan::bind::TessellationScanModule	#[derive(Clone, Debug, Partial
++ struct	metal2vulkan::bind::TextureFacts	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))] #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)] #[non_exhaustive] pub struct TextureFacts
++ struct	metal2vulkan::bind::TileThreadgroupArgument	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))] #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)] #[non_exhaustive] pub struct TileThreadgroupArgument
++ struct	metal2vulkan::bind::TileThreadgroupMemory	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))] #[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)] #[non_exhaustive] pub struct TileThreadgroupMemory
+++struct	metal2vulkan::bind::TiledImageCopyModule	#[derive(Clone, Debug, PartialEq, Eq)] #[non_exhaustive] pub struct TiledImageCopyModule
++ struct	metal2vulkan::bind::TiledLevelMove	#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)] #[non_exhaustive] pub struct TiledLevelMove
++ struct	metal2vulkan::bind::TiledTexelsModule	#[derive(Clone, Debug, PartialEq, Eq)] #[non_exhaustive] pub struct TiledTexelsModule
++ struct	metal2vulkan::bind::TwoPlaneTexelsModule	#[derive(Clone, Debug, PartialEq, Eq)] #[non_exhaustive] pub struct TwoPlaneTexelsModule
++diff --git a/crates/metal2vulkan/tests/api_surface.rs b/crates/metal2vulkan/tests/api_surface.rs
++index f7b73d9f5..e2a1cae2a 100644
++--- a/crates/metal2vulkan/tests/api_surface.rs
+++++ b/crates/metal2vulkan/tests/api_surface.rs
++@@ -711,6 +711,8 @@ surface! {
++         fn two_plane_texels_module;
++         struct TwoPlaneTexelsModule N;
++         struct PlaneLayout N;
+++        fn tiled_image_copy_module;
+++        struct TiledImageCopyModule N;
++         fn tiled_texels_module;
++         struct TiledTexelsModule N;
++         struct TiledLevelMove N;
 diff --git a/bridge/present_host.mm b/bridge/present_host.mm
 index aa2cc06..9436401 100644
 --- a/bridge/present_host.mm
