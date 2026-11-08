@@ -1,0 +1,23 @@
+{
+  "kernelcache_sha256": "d99b7719ad4b367db264a7682806aecaf6e0621c6761d07325a58337319d4238",
+  "product": "iPhone14,4",
+  "build": "24A446",
+  "collection_slide": "0x0",
+  "metaclass": "0xfffffff00af02018",
+  "instance_bytes": 136,
+  "virtual_entries": 168,
+  "operational_overrides": [],
+  "metadata_overrides": [
+    0,
+    1,
+    7
+  ],
+  "protected_compatible_constructor_aliases": [
+    "0xfffffff009950cf0",
+    "0xfffffff009950d28"
+  ],
+  "nondeleting_destructor": "0xfffffff009950d60",
+  "get_meta_class": "0xfffffff009950dd0",
+  "original_vtable_address_point": "0xfffffff007fe9e10",
+  "native_class_and_link_qualification_required": true
+}
