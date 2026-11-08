@@ -78,7 +78,7 @@ static int smp2p(NaAdsp *a) {
     return NA_OK;
 }
 int na_adsp_poll(NaAdsp *a,uint64_t now) {
-    if (!a || a->stage==NaAdspCold || now>UINT64_MAX-30000) return NA_ARGUMENT;
+    if (!a || a->stage==NaAdspCold || now>UINT64_MAX-30000 || a->glink_delay_ms>10000) return NA_ARGUMENT;
     if (a->stage==NaAdspFailed) return a->error;
     if (!a->deadline) a->deadline=now+30000;
     if (a->stage!=NaAdspOnline && now>=a->deadline) return failed(a,NA_TIMEOUT);
@@ -126,18 +126,22 @@ int na_adsp_poll(NaAdsp *a,uint64_t now) {
         if (r<0) break;
         if (__atomic_load_n(&a->doorbells,__ATOMIC_ACQUIRE)!=a->auth_doorbells) {
             if (a->slave&1) return failed(a,NA_REMOTE);
-            if (a->slave&2) a->stage=NaAdspOnline;
+            if ((a->slave&2) && a->stage!=NaAdspOnline) {
+                a->stage=NaAdspOnline;a->glink_after=now+a->glink_delay_ms;
+            }
             if (a->stage==NaAdspOnline && (a->slave&4)) a->handover_seen=1;
         }
         if (a->stage==NaAdspOnline) {
-            if (!a->glink_initialized) {
+            const int deferred=now<a->glink_after;
+            if (deferred) observe(a,NaAdspGlinkDeferred,0);
+            if (!a->glink_initialized && !deferred) {
                 observe(a,NaAdspGlinkSetupBegin,0);
                 r=setup_glink(a);
                 if (r==NA_BUSY || r==NA_PENDING) return NA_PENDING;
                 observe(a,NaAdspGlinkSetupReturn,r);
                 if (r) return failed(a,r);
             }
-            if (!a->glink.rx.data) {
+            if (a->glink_initialized && !a->glink.rx.data) {
                 observe(a,NaAdspRxLookup,0);
                 uint32_t bytes=0;volatile uint8_t *rx=item(a,480,64,&bytes);
                 if (rx) {if (bytes>0x100000 || (bytes&7)) return failed(a,NA_WIRE);qcom_glink_set_rx(&a->glink,rx,bytes);observe(a,NaAdspRxBound,0);}
@@ -151,6 +155,7 @@ int na_adsp_poll(NaAdsp *a,uint64_t now) {
                     else if (r<0) {observe(a,NaAdspProxyOffReturn,r);a->cleanup_error=r;return failed(a,r);}
                 }
             }
+            if (a->glink_initialized) {
             observe(a,NaAdspGlinkBegin,0);
             /* The router and GPR share this one GLINK poll. Drain queued
              * locator/flow-control replies before and after its callbacks. */
@@ -158,6 +163,7 @@ int na_adsp_poll(NaAdsp *a,uint64_t now) {
             int tr=na_transport_poll(&a->transport);
             observe(a,NaAdspGlinkReturn,tr);if (tr<0) return failed(a,tr);
             qr=na_pd_mapper_poll(&a->mapper);if (qr<0) return failed(a,qr);
+            }
         }
         break;
     default:return failed(a,NA_OWNERSHIP);
