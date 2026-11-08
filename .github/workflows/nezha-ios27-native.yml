@@ -1,7 +1,7 @@
-name: nezha Wi-Fi018 current network reply observations - native022
+name: nezha Bluetooth001 on Wi-Fi023 - native001
 on:
   push:
-    branches: [codex/ios27-wifi27-gpu018-native022-20261108]
+    branches: [codex/ios27-bluetooth-wifi023-native001-20261109]
   workflow_dispatch:
 permissions:
   contents: read

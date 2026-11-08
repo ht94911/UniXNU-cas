@@ -8,12 +8,12 @@ os_profile = "ios-27.0.1-24A446-iphone14-4"
 kit = "nezha"
 description = "Xiaomi 17 Ultra: isolated iPhone iOS27 integration, pinned-file policy required"
 [components]
-include = ["ArmDTPlatform", "ArmCpu", "XnuPrelink", "QcomXnuUsbDebug", "ShengUfs", "RamBlock", "GopFramebuffer", "AppleKeyStoreState", "Adreno840", "SoftwareAES"]
+include = ["ArmDTPlatform", "ArmCpu", "XnuPrelink", "QcomXnuUsbDebug", "ShengUfs", "RamBlock", "GopFramebuffer", "AppleKeyStoreState", "Adreno840", "SoftwareAES", "QcaBluetooth"]
 [kernel]
 defconfig = "nezha_ios27_defconfig"
 config_fragments = ["arch:configs/common.config", "soc:configs/sm8850.config", "os:configs/ipados.config"]
 patch_series = ["arch:patches/xnu/series", "soc:patches/xnu-12377/series", "os:patches/xnu/series", "device:patches/xnu-12377/series", "component:QcomXnuUsbDebug/patches/darwin25-xnu12377-unixnu/series"]
-archives = ["build-corecrypto-14.py", "build-corecrypto-14.py --namespace", "component:ArmDTPlatform", "nezha-armcpu-asm-fix.py", "component:ArmCpu", "qualify-armcpu-instructions.py", "build-libpthread-kernel.py", "component:QcomXnuUsbDebug", "build-nezha27-usb-control.py", "build-ios27-pmgr.py", "component:ShengUfs", "component:RamBlock", "component:AppleKeyStoreState", "build-gop-legacy-display-27.py", "build-nezha27-input.py", "build-nezha27-wifi.py", "component:SoftwareAES", "build-software-aes-iphone.py", "component:Adreno840"]
+archives = ["build-corecrypto-14.py", "build-corecrypto-14.py --namespace", "component:ArmDTPlatform", "nezha-armcpu-asm-fix.py", "component:ArmCpu", "qualify-armcpu-instructions.py", "build-libpthread-kernel.py", "component:QcomXnuUsbDebug", "build-nezha27-usb-control.py", "build-ios27-pmgr.py", "component:ShengUfs", "component:RamBlock", "component:AppleKeyStoreState", "build-gop-legacy-display-27.py", "build-nezha27-input.py", "build-nezha27-wifi.py", "build-nezha27-bluetooth.py", "component:SoftwareAES", "build-software-aes-iphone.py", "component:Adreno840"]
 # G3 read-only root closure. Explicit IOStorageFamily retains its generic
 # IOBlockStorageDriver/IOMediaBSDClient matching; dependency-only strips it.
 [kernel.prelink]
@@ -40,6 +40,7 @@ kernel_args = ["-v", "keepsyms=1", "debug=0x14e", "cpus=8", "boot-progress=2", "
 "kernel-ctrr-to-be-enabled" = 0
 # Explicit test-only off/on rearm; no password or persistent profile stored.
 "nezha-wifi-autojoin-rearm" = 1
+"nezha-bt-enable" = 1
 
 # First root mount: use the real independently verified iPhone OS identity.
 [root]

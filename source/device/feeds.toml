@@ -65,3 +65,9 @@ name = "RamBlock"
 kind = "driver"
 git = "https://github.com/UniXNU/RamBlock.git"
 commit = "1c861fce7b246f3728a6a28d0cabe6448821de85"
+
+# Fixed public QcaBluetooth source plus WCN7860 adapter, supplied by this device feed.
+[[source]]
+name = "QcaBluetooth"
+kind = "driver"
+local = "components/QcaBluetooth"

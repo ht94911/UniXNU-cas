@@ -20,7 +20,7 @@
 #include "NezhaWifiPlatform.h"
 #include "NezhaWifiAuto.h"
 #include "NezhaWifiDma.h"
-#include "Sm8850Rpmh.h"
+#include "../bluetooth27/NezhaWcnPower.h"
 #include "qcom/PeachMhiFirmware.h"
 #include "qcom/PeachMhiHost.h"
 #include "qcom/PeachWlfw.h"
@@ -165,11 +165,19 @@ static int wifi_wr(unsigned w, size_t o, uint32_t v)
     uint64_t value = v;
     return wifi_access(w, o, &value, 1, 0);
 }
-static int wifi_modify(unsigned w, size_t o, uint32_t clear, uint32_t set)
+static int wifi_modify_unlocked(unsigned w, size_t o, uint32_t clear, uint32_t set)
 {
     uint32_t value;
     WIFI_TRY(wifi_rd(w, o, &value));
     return wifi_wr(w, o, (value & ~clear) | set);
+}
+static int wifi_modify(unsigned w, size_t o, uint32_t clear, uint32_t set)
+{
+    bool shared = w == W_GCC || w == W_SW;
+    if (shared) nezha_wifi_domain_lock();
+    int error = wifi_modify_unlocked(w, o, clear, set);
+    if (shared) nezha_wifi_domain_unlock();
+    return error;
 }
 static int wifi_poll(unsigned w, size_t o, uint32_t mask, uint32_t want, unsigned ms)
 {
@@ -184,18 +192,10 @@ static int wifi_poll(unsigned w, size_t o, uint32_t mask, uint32_t want, unsigne
     return ETIMEDOUT;
 }
 
-/* RSC transactions run only on this worker after USB/touch have initialized.
- * The SoC parser validates the command database rather than guessing addresses. */
-static int wifi_rsc_read(void *c, unsigned w, uint32_t o, uint32_t *v)
-{ (void)c; return wifi_rd(w == Sm8850RpmhRsc ? W_RSC : W_DB, o, v); }
-static int wifi_rsc_write(void *c, unsigned w, uint32_t o, uint32_t v)
-{ (void)c; return w == Sm8850RpmhRsc ? wifi_wr(W_RSC, o, v) : EINVAL; }
-static Sm8850Rpmh wifi_rpmh = {.context = NULL, .read = wifi_rsc_read, .write = wifi_rsc_write,
-    .now_us = wifi_now, .sleep_us = wifi_sleep, .db_bytes = 0x20000, .rsc_bytes = 0x10000};
-static int wifi_rpmh_resource(const char *name, uint32_t offset, uint32_t value)
-{ return Sm8850RpmhResource(&wifi_rpmh, name, offset, value); }
+/* Both radios use the same scheduler and the existing apps-domain lock. */
 static int wifi_rpmh_arc(const char *name, uint32_t level)
-{ return Sm8850RpmhArc(&wifi_rpmh, name, level); }
+{ int e=nezha_wcn_rpmh_arc(name,level);return e<0?-e:e; }
+static uint64_t wifi_wcn_lease;
 
 /* All pin settings below are from the captured pinctrl states. The pinctrl-
  * canoe source gives mux selector 1 for gpio18/19/103's requested functions. */
@@ -210,24 +210,12 @@ static int wifi_pin(unsigned w, size_t off, unsigned mux, unsigned pull,
 static int
 wifi_power(void)
 {
-    /* CNSS vreg list order with this board's DT voltage/load overrides.
-     * Mode is sent only when the provider defines it; 5 is PMIC7 LDO OPM.
-     * wcal-pbs is a calibration trigger, not a rail in cnss_vreg_list. */
-    static const struct { const char *name; uint16_t mv; uint8_t mode; } rails[] = {
-        {"L3G_E0", 1200, 5}, {"L3K_E1", 1200, 7}, {"L2G_E0", 1800, 5},
-        {"S2J_E1", 892, 0}, {"S8F_E0", 1876, 0}, {"S7F_E0", 1328, 7},
-        {"S1J_E1", 892, 0},
-    };
     wifi_step = "board power";
     WIFI_TRY(wifi_pin(W_PERST, 0, 0, 1, 0, 0));
     WIFI_TRY(wifi_pin(W_EN, 0, 0, 1, 0, 0));
     wifi_sleep(NULL, 5000);
-    for (unsigned i = 0; i < sizeof(rails) / sizeof(rails[0]); i++) {
-        WIFI_TRY(wifi_rpmh_resource(rails[i].name, 0, rails[i].mv));
-        if (rails[i].mode) WIFI_TRY(wifi_rpmh_resource(rails[i].name, 8, rails[i].mode));
-        WIFI_TRY(wifi_rpmh_resource(rails[i].name, 4, 1));
-    }
-    WIFI_TRY(wifi_rpmh_resource("C1A_E0", 4, 1));
+    int power=nezha_wcn_power_get(NEZHA_WCN_WLAN,&wifi_wcn_lease);
+    if(power)return power<0?-power:power;
     WIFI_TRY(wifi_modify(W_SW, 0, 0x3c, 1u << 2));
     WIFI_TRY(wifi_modify(W_SW, 0x1000, 0x3c, 1u << 2));
     WIFI_TRY(wifi_pin(W_SOL, 0, 0, 1, 1, 0));

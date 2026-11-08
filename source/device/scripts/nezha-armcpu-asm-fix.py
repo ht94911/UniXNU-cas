@@ -26,6 +26,12 @@ if OUTPUT.exists():
 shutil.copytree(source, OUTPUT, ignore=shutil.ignore_patterns('.git', 'build', '__pycache__'))
 for flags in (['--check'], []):
     subprocess.run(['git', 'apply', *flags, str(PATCH)], cwd=OUTPUT, check=True)
+# The fixed Wi-Fi023 ArmCpu lacks the mature mask API. Apply the narrow
+# old-array adapter only when that API is absent; preserve CPU/IPI/dispatch.
+spi_patch=ROOT/'kits/nezha/armcpu/bluetooth-spi-owner.patch'
+if 'armcpu_spi_mask' not in (OUTPUT/'ArmCpu.cpp').read_text():
+    for flags in (['--check'],[]):
+        subprocess.run(['git','apply',*flags,str(spi_patch)],cwd=OUTPUT,check=True)
 LINK.unlink()
 LINK.symlink_to(OUTPUT, target_is_directory=True)
 print('nezha ArmCpu: Darwin assembler separator fix staged from', source)

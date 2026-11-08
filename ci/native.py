@@ -156,6 +156,13 @@ def build(framework, work):
         code = run(command, cwd=framework, log=logs / ('step-' + str(index) + '.log'))
         if code:
             return code
+    qca = work / 'device/components/QcaBluetooth'
+    for name in ('build-bluetool.py', 'build-type0.py'):
+        code = run(['python3', qca / 'tools' / name, '--sdk', sdk,
+                    '--output', work / 'bluetooth-userland'],
+                   log=logs / (name.removesuffix('.py') + '.log'))
+        if code:
+            return code
     return 0
 
 
@@ -198,6 +205,8 @@ def collect(framework, work, sealed):
         add(path, 'logs/' + path.name)
     for path in sorted((work.parent / 'setup-logs').glob('*.log')):
         add(path, 'setup/' + path.name)
+    for path in sorted((work / 'bluetooth-userland').glob('*')):
+        add(path, 'bluetooth-userland/' + path.name)
     builds = list((work / 'out/nezha/ios-27.0.1-24A446-iphone14-4').glob('*'))
     for target in builds:
         if not target.is_dir():
@@ -230,6 +239,9 @@ def collect(framework, work, sealed):
         for path in sorted((tree / 'build/nezha27-wifi').rglob('*')):
             if path.is_file() and path.suffix in ('.json', '.log', '.o', '.txt', '.d'):
                 add(path, 'archives/nezha27-wifi/' + str(path.relative_to(tree / 'build/nezha27-wifi')))
+        for path in sorted((tree / 'build/nezha27-bluetooth').glob('*')):
+            if path.is_file() and path.suffix in ('.json', '.log', '.o', '.d'):
+                add(path, 'archives/nezha27-bluetooth/' + path.name)
         for path in sorted((tree / 'build/software-aes').glob('*')):
             if path.is_file() and path.suffix in ('.a', '.o', '.json', '.log', '.d', '.S'):
                 add(path, 'archives/software-aes/' + path.name)

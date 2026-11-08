@@ -1,5 +1,5 @@
 diff --git a/components.toml b/components.toml
-index f3fa049..a33b898 100644
+index f3fa049a2070fd5b6b8aaa184c09f1164d3f8fb6..9b5bd82632460650805f4136b1829ab09b50da72 100644
 --- a/components.toml
 +++ b/components.toml
 @@ -1,5 +1,24 @@
@@ -62,8 +62,32 @@ index f3fa049..a33b898 100644
  path = "kits/XnuPrelink"
  hardware = []
  os_abi = []
+@@ -510,3 +548,23 @@ runtime_identifiers = ["ShengPreflight"]
+ build_stage = "firmware"
+ build = []
+ outputs = []
++
++[[component]]
++id = "QcaBluetooth"
++repository_id = 1447347374
++kind = "driver"
++function = "Qualcomm Bluetooth over GENI UART for Apple's native stack"
++scope = "controller"
++repository = "https://github.com/UniXNU/QcaBluetooth.git"
++revision = "22ff97f93416452335bb61badb14c762da653487"
++path = "drivers/QcaBluetooth"
++hardware = ["Qualcomm WCN7850 UART controller", "Qualcomm GENI UART"]
++os_abi = ["ipados-27.0.1-24A446"]
++board_dependencies = ["WCN power, clocks, pins and IRQs", "mapped DMA addresses", "firmware files"]
++verified_devices = ["sheng"]
++dependencies = []
++source_files = ["include/qbt.h", "include/qbt_geni.h", "include/qbt_transport.h"]
++runtime_identifiers = ["qbt_transport", "com.apple.uart.sk.bluetooth", "kern.qbt_boot", "kern.qbt_power_on", "kern.qbt_firmware"]
++build_stage = "embedded"
++build = []
++outputs = []
 diff --git a/docs/reference/boot-configuration.md b/docs/reference/boot-configuration.md
-index 947d9f0..8ac7b7c 100644
+index 947d9f06231ff4968121081f5282e7de9b5d6026..8ac7b7c012ee79a0cdf9d66983d4bbf994aa035b 100644
 --- a/docs/reference/boot-configuration.md
 +++ b/docs/reference/boot-configuration.md
 @@ -2,6 +2,13 @@
@@ -81,14 +105,14 @@ index 947d9f0..8ac7b7c 100644
  
  ## Procedure {#procedure}
 diff --git a/drivers/GopFramebuffer b/drivers/GopFramebuffer
-index 4975bc8..19ef3a7 160000
+index 4975bc84eb87e16d629125dcffb30cc30dfd2d86..19ef3a75ad2c53da85b8d923553d922716fce377 160000
 --- a/drivers/GopFramebuffer
 +++ b/drivers/GopFramebuffer
 @@ -1 +1 @@
 -Subproject commit 4975bc84eb87e16d629125dcffb30cc30dfd2d86
 +Subproject commit 19ef3a75ad2c53da85b8d923553d922716fce377
 diff --git a/kits/XnuPrelink b/kits/XnuPrelink
-index 76452c6..2b39ff7 160000
+index 76452c6e6b6014747c5500b1e57c544fbc1c3249..2b39ff73dc4d49ad64e349c711ca4aa8d1dd64ea 160000
 --- a/kits/XnuPrelink
 +++ b/kits/XnuPrelink
 @@ -1 +1 @@
@@ -96,7 +120,7 @@ index 76452c6..2b39ff7 160000
 +Subproject commit 2b39ff73dc4d49ad64e349c711ca4aa8d1dd64ea
 diff --git a/package/UniXNUPkg/Include/Protocol/UniXNUSelectedVolume.h b/package/UniXNUPkg/Include/Protocol/UniXNUSelectedVolume.h
 new file mode 100644
-index 0000000..70d6b35
+index 0000000000000000000000000000000000000000..70d6b35428495516df507f64a357e62edd6ec7a1
 --- /dev/null
 +++ b/package/UniXNUPkg/Include/Protocol/UniXNUSelectedVolume.h
 @@ -0,0 +1,7 @@
@@ -108,7 +132,7 @@ index 0000000..70d6b35
 +#define UNIXNU_SELECTED_VOLUME_OPTIONS L"unixnu:selected-payload"
 +#endif
 diff --git a/package/UniXNUPkg/Library/UniXNULib/Main.c b/package/UniXNUPkg/Library/UniXNULib/Main.c
-index 482f4d6..ab03be0 100644
+index 482f4d6d15e8932efb4ec11910fa32b52179fe31..ab03be0a328fc0bb8c881e7396143d2c3aad3837 100644
 --- a/package/UniXNUPkg/Library/UniXNULib/Main.c
 +++ b/package/UniXNUPkg/Library/UniXNULib/Main.c
 @@ -8,6 +8,7 @@
@@ -149,7 +173,7 @@ index 482f4d6..ab03be0 100644
      (UINT32)Config.EntryCount,
 diff --git a/patches/xnu-12377/image4-v2-no-monitor.patch b/patches/xnu-12377/image4-v2-no-monitor.patch
 new file mode 100644
-index 0000000..0edffc0
+index 0000000000000000000000000000000000000000..0edffc0057e7c6171a7b24fb2f8121897dd37691
 --- /dev/null
 +++ b/patches/xnu-12377/image4-v2-no-monitor.patch
 @@ -0,0 +1,63 @@
@@ -218,7 +242,7 @@ index 0000000..0edffc0
 ++#endif /* XNU_IOS27_IMAGE4_V2_NOMONITOR */
 diff --git a/patches/xnu-12377/iokit-platform-function-client.patch b/patches/xnu-12377/iokit-platform-function-client.patch
 new file mode 100644
-index 0000000..726cf67
+index 0000000000000000000000000000000000000000..726cf675ae51729c748e8a3364e7cb38c09d2651
 --- /dev/null
 +++ b/patches/xnu-12377/iokit-platform-function-client.patch
 @@ -0,0 +1,170 @@
@@ -394,7 +418,7 @@ index 0000000..726cf67
 ++#endif
 diff --git a/patches/xnu-12377/native-topology-v3-compat.patch b/patches/xnu-12377/native-topology-v3-compat.patch
 new file mode 100644
-index 0000000..f6a7c9c
+index 0000000000000000000000000000000000000000..f6a7c9c4336223483762c9265107231cc4003039
 --- /dev/null
 +++ b/patches/xnu-12377/native-topology-v3-compat.patch
 @@ -0,0 +1,199 @@
@@ -599,7 +623,7 @@ index 0000000..f6a7c9c
 ++#endif
 diff --git a/profiles/os/ios-27.0.1-24A446-iphone14-4/configs/ipados.config b/profiles/os/ios-27.0.1-24A446-iphone14-4/configs/ipados.config
 new file mode 100644
-index 0000000..ca8fb6a
+index 0000000000000000000000000000000000000000..ca8fb6a1c2bdec7a9c2cac3890eb03e184c47b44
 --- /dev/null
 +++ b/profiles/os/ios-27.0.1-24A446-iphone14-4/configs/ipados.config
 @@ -0,0 +1,5 @@
@@ -610,7 +634,7 @@ index 0000000..ca8fb6a
 +CONFIG_XNU_IOS27_IMAGE4_V2_NOMONITOR=y
 diff --git a/profiles/os/ios-27.0.1-24A446-iphone14-4/patches/xnu/series b/profiles/os/ios-27.0.1-24A446-iphone14-4/patches/xnu/series
 new file mode 100644
-index 0000000..fbfb0b3
+index 0000000000000000000000000000000000000000..fbfb0b3b72ac94b2d98ad2aaa22592973c7f3ba3
 --- /dev/null
 +++ b/profiles/os/ios-27.0.1-24A446-iphone14-4/patches/xnu/series
 @@ -0,0 +1,9 @@
@@ -625,7 +649,7 @@ index 0000000..fbfb0b3
 +arch:../../../patches/xnu-12377/image4-v2-no-monitor.patch
 diff --git a/profiles/os/ios-27.0.1-24A446-iphone14-4/profile.toml b/profiles/os/ios-27.0.1-24A446-iphone14-4/profile.toml
 new file mode 100644
-index 0000000..288271e
+index 0000000000000000000000000000000000000000..288271e356b99d47014b380c87298866116068ee
 --- /dev/null
 +++ b/profiles/os/ios-27.0.1-24A446-iphone14-4/profile.toml
 @@ -0,0 +1,121 @@
@@ -751,7 +775,7 @@ index 0000000..288271e
 +# Disk images of this OS, in window order; the device sets the partition geometry.
 +windows = [{ name = "OS", component = "OS" }, { name = "SystemOS", component = "Cryptex1,SystemOS", optional = true }]
 diff --git a/scripts/build-fileset-release-reference.py b/scripts/build-fileset-release-reference.py
-index 247541c..1e55416 100644
+index 247541cc5fd345bae2030a7a846cf6a81122ff77..1e55416bb6ebe80ccc20dac0c67a4494cdebdfeb 100644
 --- a/scripts/build-fileset-release-reference.py
 +++ b/scripts/build-fileset-release-reference.py
 @@ -2,59 +2,234 @@
@@ -1040,7 +1064,7 @@ index 247541c..1e55416 100644
 +if __name__ == '__main__':
 +    main()
 diff --git a/scripts/build-libpthread-kernel.py b/scripts/build-libpthread-kernel.py
-index 08d9f68..4a18d23 100644
+index 08d9f68acae6c3d842b5f35048530174a592b9b6..4a18d233419ce6905e64cc6b19bb2a718e272bb7 100644
 --- a/scripts/build-libpthread-kernel.py
 +++ b/scripts/build-libpthread-kernel.py
 @@ -106,4 +106,4 @@ archive = OUT / 'libpthread_kernel.a'
@@ -1051,7 +1075,7 @@ index 08d9f68..4a18d23 100644
 +print(f'Matching libpthread: 3 real C sources + bootstrap, {TRIPLE} audit, no unavailable kernel names')
 diff --git a/scripts/build-qcom-usb-debug.py b/scripts/build-qcom-usb-debug.py
 new file mode 100644
-index 0000000..d4de690
+index 0000000000000000000000000000000000000000..d4de690b2da8bbbba5a7b750de7010ecfaf93a03
 --- /dev/null
 +++ b/scripts/build-qcom-usb-debug.py
 @@ -0,0 +1,64 @@
@@ -1120,7 +1144,7 @@ index 0000000..d4de690
 +if __name__ == '__main__':
 +    main()
 diff --git a/scripts/build-sheng-source-storage.py b/scripts/build-sheng-source-storage.py
-index 86e03f6..484ed9f 100644
+index 86e03f60b26d8b8c2bd5a5a40c3cd86cd47f2213..484ed9fcd403cef1e43aa1537edbe36006443f27 100644
 --- a/scripts/build-sheng-source-storage.py
 +++ b/scripts/build-sheng-source-storage.py
 @@ -61,16 +61,28 @@ def weak_defaults(source):
@@ -1293,7 +1317,7 @@ index 86e03f6..484ed9f 100644
      (out / 'report.json').write_text(json.dumps(report, indent=2) + '\n')
      print(archive)
 diff --git a/scripts/build-xnu-4k-baseline.sh b/scripts/build-xnu-4k-baseline.sh
-index 1ade502..7f79c85 100755
+index 1ade50208044ed51ce2224bb318a2623558ded0e..7f79c85633ddd968eade0c84554b51ae0b0e4549 100755
 --- a/scripts/build-xnu-4k-baseline.sh
 +++ b/scripts/build-xnu-4k-baseline.sh
 @@ -81,9 +81,9 @@ if [ "$BOOT_PROGRESS" != 0 ] && [ "$BOOT_PROGRESS" != 1 ]; then
@@ -1398,7 +1422,7 @@ index 1ade502..7f79c85 100755
    if [ "$BOOT_PROGRESS" = 1 ]; then
      KERNEL_EXTRA_ARCHIVES="$KERNEL_EXTRA_ARCHIVES -Wl,-force_load,$ROOT/build/boot-progress/libBootProgress.a"
 diff --git a/scripts/patch-xnu-entry-probe.py b/scripts/patch-xnu-entry-probe.py
-index 9e3e598..bbf6567 100644
+index 9e3e598aa1f5d66405d8da7149f86671e9be70e5..bbf6567dd753c74f97b379df3bedb14b4de631a7 100644
 --- a/scripts/patch-xnu-entry-probe.py
 +++ b/scripts/patch-xnu-entry-probe.py
 @@ -17,7 +17,9 @@ channels. The stage code lives in the zero padding after the kernel entry
@@ -1727,7 +1751,7 @@ index 9e3e598..bbf6567 100644
              raise SystemExit('panic() or the panic screen padding is not as expected')
          with tempfile.TemporaryDirectory() as tmp:
 diff --git a/scripts/probe-stock-entry.py b/scripts/probe-stock-entry.py
-index 1e27c00..ec21e91 100755
+index 1e27c004bdfff86d4e3b6261899e8fb20d2bdffe..ec21e9131bb4f00a324b123322e6025389709150 100755
 --- a/scripts/probe-stock-entry.py
 +++ b/scripts/probe-stock-entry.py
 @@ -12,6 +12,7 @@ import re
@@ -1800,7 +1824,7 @@ index 1e27c00..ec21e91 100755
      objcopy = shutil.which('llvm-objcopy')
 diff --git a/scripts/qemu-entry/darwinboot_parser.py b/scripts/qemu-entry/darwinboot_parser.py
 new file mode 100644
-index 0000000..162cdd5
+index 0000000000000000000000000000000000000000..162cdd52296b06300b31d52e9cc7b53fc3d564cd
 --- /dev/null
 +++ b/scripts/qemu-entry/darwinboot_parser.py
 @@ -0,0 +1,72 @@
@@ -1877,7 +1901,7 @@ index 0000000..162cdd5
 +    return {'base': values[0], 'end': values[1], 'entry': values[2], 'segments': segments,
 +            'parser_source': str(source), 'parser_source_sha256': hashlib.sha256(source.read_bytes()).hexdigest()}
 diff --git a/scripts/qemu-entry/gdb-stop.py b/scripts/qemu-entry/gdb-stop.py
-index 8e0efdb..9f7b19d 100755
+index 8e0efdb1951f0bf000f81efcb0ebf9a86fecfaf1..9f7b19dbddb5248d125e1eff5c78158385930bdc 100755
 --- a/scripts/qemu-entry/gdb-stop.py
 +++ b/scripts/qemu-entry/gdb-stop.py
 @@ -1454,7 +1454,11 @@ with (fixture / 'gdb-stderr.log').open('w') as errors:
@@ -1895,7 +1919,7 @@ index 8e0efdb..9f7b19d 100755
                      for index in range(4):
 diff --git a/scripts/test-fileset-reference.py b/scripts/test-fileset-reference.py
 new file mode 100644
-index 0000000..c2fa63a
+index 0000000000000000000000000000000000000000..c2fa63a0531a17b81a08a4885c65b1d9dc7abbb3
 --- /dev/null
 +++ b/scripts/test-fileset-reference.py
 @@ -0,0 +1,177 @@
@@ -2078,7 +2102,7 @@ index 0000000..c2fa63a
 +    unittest.main()
 diff --git a/scripts/test-image4-v2-no-monitor.py b/scripts/test-image4-v2-no-monitor.py
 new file mode 100644
-index 0000000..0aa78e2
+index 0000000000000000000000000000000000000000..0aa78e2eb9b440a0f5bd193bed1650b3672d7b47
 --- /dev/null
 +++ b/scripts/test-image4-v2-no-monitor.py
 @@ -0,0 +1,39 @@
@@ -2123,7 +2147,7 @@ index 0000000..0aa78e2
 +(args.out/'golden-parity.json').write_text(json.dumps(result_record,indent=2));print(json.dumps(result_record,indent=2))
 diff --git a/scripts/test-owner-reference.py b/scripts/test-owner-reference.py
 new file mode 100644
-index 0000000..3eae55e
+index 0000000000000000000000000000000000000000..3eae55e35f5c41bb3627df92bb5e50a9f80994d3
 --- /dev/null
 +++ b/scripts/test-owner-reference.py
 @@ -0,0 +1,26 @@
@@ -2155,7 +2179,7 @@ index 0000000..3eae55e
 +if __name__=='__main__':unittest.main()
 diff --git a/scripts/test-platform-function-client.py b/scripts/test-platform-function-client.py
 new file mode 100644
-index 0000000..5590663
+index 0000000000000000000000000000000000000000..55906631d5882bc6186c177cbe4c1fef77a68f93
 --- /dev/null
 +++ b/scripts/test-platform-function-client.py
 @@ -0,0 +1,119 @@
@@ -2280,7 +2304,7 @@ index 0000000..5590663
 +(O/'client-host-check.json').write_text(json.dumps(result,indent=2));assert len(result)==2 and all(x['returncode']==0 for x in result)
 diff --git a/scripts/test-source-storage-owner.py b/scripts/test-source-storage-owner.py
 new file mode 100644
-index 0000000..7004817
+index 0000000000000000000000000000000000000000..70048176b12abea22064023311f505c26eb3150a
 --- /dev/null
 +++ b/scripts/test-source-storage-owner.py
 @@ -0,0 +1,28 @@
@@ -2314,7 +2338,7 @@ index 0000000..7004817
 +if __name__=='__main__':unittest.main()
 diff --git a/scripts/test-topology-v3.py b/scripts/test-topology-v3.py
 new file mode 100644
-index 0000000..3e8689c
+index 0000000000000000000000000000000000000000..3e8689c366e0430e2c3f787fbf3702ee8574e210
 --- /dev/null
 +++ b/scripts/test-topology-v3.py
 @@ -0,0 +1,112 @@
@@ -2431,7 +2455,7 @@ index 0000000..3e8689c
 +(O/'topology-v3-check.json').write_text(json.dumps(results,indent=2))
 +assert all(r['returncode']==0 for r in results)
 diff --git a/scripts/unixnu/devicetree.py b/scripts/unixnu/devicetree.py
-index bbb1fe6..037dab1 100644
+index bbb1fe64409847d0fdbfc90cc518e23260a2fa28..037dab1b5e3bd5a9c45dfab7dc551b1994b81b90 100644
 --- a/scripts/unixnu/devicetree.py
 +++ b/scripts/unixnu/devicetree.py
 @@ -203,7 +203,7 @@ def arm_io_window(hardware):
@@ -2507,7 +2531,7 @@ index bbb1fe6..037dab1 100644
      if cpus is None:
          raise Error('Hardware DTS requires /cpus')
 diff --git a/scripts/unixnu/firmware.py b/scripts/unixnu/firmware.py
-index 5388f78..1af250c 100644
+index 5388f7849358fedbd7da0e44c48b5f7f641bd0e0..1af250ce58c94848023da6e705a3ff1b4b37cf5a 100644
 --- a/scripts/unixnu/firmware.py
 +++ b/scripts/unixnu/firmware.py
 @@ -1,5 +1,6 @@
@@ -2532,7 +2556,7 @@ index 5388f78..1af250c 100644
      defines.update({key: str(value) for key, value in fw.get('defines', {}).items()})
      fields = {'uefi': str(uefi), 'edk2': str(edk2), 'tree': str(ctx.tree)}
 diff --git a/scripts/unixnu/kernel.py b/scripts/unixnu/kernel.py
-index 49aea5a..8129da0 100644
+index 49aea5a56be914e934f82f75b45bbb047df693a8..8129da0cd268f2182c6d32c4a4cd6c309c99f5d0 100644
 --- a/scripts/unixnu/kernel.py
 +++ b/scripts/unixnu/kernel.py
 @@ -3,6 +3,7 @@ import os
@@ -2612,7 +2636,7 @@ index 49aea5a..8129da0 100644
      # Revalidate the selected source and regenerate headers on every archive build.
      # A pre-existing directory can belong to a different OS profile/revision.
 diff --git a/scripts/unixnu/payload.py b/scripts/unixnu/payload.py
-index d7a9867..932eed2 100644
+index d7a98670ef4b807ed8da4be800e8c2d912fa25fc..932eed20d15b647ab329c7983f06ffacab3be86c 100644
 --- a/scripts/unixnu/payload.py
 +++ b/scripts/unixnu/payload.py
 @@ -62,9 +62,13 @@ def write_volume(stage, image, label, size_mib):
@@ -2648,7 +2672,7 @@ index d7a9867..932eed2 100644
              # Stage 4 in place of stage 3: reset after the Nth call to SYMBOL in FUNCTION.
              probe += ['--reset-after', spec['entry_probe_reset_after'], '--in', spec.get('entry_probe_reset_in', '_arm_init'),
 diff --git a/scripts/unixnu/test_kernel.py b/scripts/unixnu/test_kernel.py
-index ee7e7c9..5936176 100644
+index ee7e7c9fb498c5d1f467f37c7ef0f0a95206634b..59361769789b3041f2ef65ae9f075039a560fa2b 100644
 --- a/scripts/unixnu/test_kernel.py
 +++ b/scripts/unixnu/test_kernel.py
 @@ -16,6 +16,76 @@ from unixnu.util import Error
@@ -2729,7 +2753,7 @@ index ee7e7c9..5936176 100644
          self.check_prelink_publication(fail=True)
  
 diff --git a/scripts/unixnu/tree.py b/scripts/unixnu/tree.py
-index 6241409..8b7d016 100644
+index 6241409819d0c84907aec4e024420c5348e4eed1..8b7d0167274b4b4086ca2499b0c77e7281ea3152 100644
 --- a/scripts/unixnu/tree.py
 +++ b/scripts/unixnu/tree.py
 @@ -35,7 +35,9 @@ def _copy_scripts(source, destination):
@@ -2744,7 +2768,7 @@ index 6241409..8b7d016 100644
          target.parent.mkdir(parents=True, exist_ok=True)
          shutil.copy2(path, target)
 diff --git a/scripts/xnu-panic-screen.c b/scripts/xnu-panic-screen.c
-index 188a2c8..525a4a9 100644
+index 188a2c8a679a1a55bbcd43efd774fa77e7e9bb5e..525a4a9343911c5364cb2f1e49f023bebc3c62c0 100644
 --- a/scripts/xnu-panic-screen.c
 +++ b/scripts/xnu-panic-screen.c
 @@ -38,7 +38,7 @@ struct ctx {

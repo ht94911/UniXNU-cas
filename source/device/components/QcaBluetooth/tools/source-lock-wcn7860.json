@@ -1,0 +1,9 @@
+{
+  "repository": "yzddmr6/linux-sm8750-piano",
+  "commit": "9321086f2e2234bfdf073ac3326bd88cb5053e4f",
+  "files": {
+    "drivers/bluetooth/btqca.c": "9b756a89d436d6dd9c85268bb58360cd4adda348baf5e04f8a4e26754e9a5242",
+    "drivers/bluetooth/btqca.h": "0d795bcd1106b2c69a75e94813f1adca15078b433d90e041e34aabb0d2179187"
+  },
+  "scope": "WCN7860 implementation before the withdrawn PR4 FC48/pacing changes; byte-identical source, no claim of nezha hardware validation."
+}
