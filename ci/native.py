@@ -147,6 +147,12 @@ def build(framework, work):
     (work / 'compiler-report.json').write_text(json.dumps(report, indent=2) + '\n')
     if probe:
         return probe
+    userland = work / 'bluetooth-userland'
+    component = work / 'device/components/QcaBluetooth'
+    for script in ('build-bluetool.py', 'build-type0.py'):
+        code = run([sys.executable, component / 'tools' / script, '--output', userland],
+                   log=logs / (script + '.log'))
+        if code: return code
     config = work / 'build.toml'
     commands = [
         ['python3', framework / 'unixnu', 'defconfig', 'nezha_ios27_defconfig', '--config', config],
@@ -198,6 +204,8 @@ def collect(framework, work, sealed):
         add(path, 'logs/' + path.name)
     for path in sorted((work.parent / 'setup-logs').glob('*.log')):
         add(path, 'setup/' + path.name)
+    for path in sorted((work / 'bluetooth-userland').glob('*')):
+        if path.is_file(): add(path, 'bluetooth-userland/' + path.name)
     builds = list((work / 'out/nezha/ios-27.0.1-24A446-iphone14-4').glob('*'))
     for target in builds:
         if not target.is_dir():
@@ -227,6 +235,9 @@ def collect(framework, work, sealed):
         for path in sorted((tree / 'build/nezha27-usb-control').glob('*')):
             if path.is_file() and path.suffix in ('.json','.log','.o','.c'):
                 add(path, 'archives/nezha27-usb-control/' + path.name)
+        for path in sorted((tree / 'build/nezha27-bluetooth').rglob('*')):
+            if path.is_file() and path.suffix in ('.json', '.log', '.o', '.d'):
+                add(path, 'archives/nezha27-bluetooth/' + str(path.relative_to(tree / 'build/nezha27-bluetooth')))
         for path in sorted((tree / 'build/nezha27-wifi').rglob('*')):
             if path.is_file() and path.suffix in ('.json', '.log', '.o', '.txt', '.d'):
                 add(path, 'archives/nezha27-wifi/' + str(path.relative_to(tree / 'build/nezha27-wifi')))

@@ -23,7 +23,7 @@ static const char policy_tail[]="</dict></plist>\n";
 // all of which start at the first boot of a fresh Data and compete with SpringBoard for the CPU and for memory. The first four are the
 // cycle of synchronous XPC waits the isolation work found. Labels are the ones in the target's own LaunchDaemons.
 static const char lite_jobs[]=
- "com.apple.identityservicesd,com.apple.locationd,com.apple.CommCenter,com.apple.bluetoothd,"
+ "com.apple.identityservicesd,com.apple.locationd,com.apple.CommCenter,"
  "com.apple.photoanalysisd,com.apple.mediaanalysisd,com.apple.mediastream.mstreamd,com.apple.icloud.searchpartyd,"
  "com.apple.findmy.findmybeaconingd,com.apple.familycircled,com.apple.financed,com.apple.softwareupdateservicesd,"
  "com.apple.ndoagent,com.apple.biomesyncd,com.apple.email.maild,com.apple.amsengagementd,com.apple.adid,com.apple.eyereliefd,"
@@ -51,7 +51,7 @@ static const char lite_jobs[]=
 // Isolate sharingd through the existing launchd policy to test that error path.
 // This temporarily disables cross-device sharing; it does not change keychain,
 // authentication, capability values, or the original framework's timeout.
-char PE_builtin_boot_args[]="owner-staged-apps=1 owner-dataprotect=1 sheng-disable-jobs=com.apple.cameracaptured,com.apple.CommCenter,com.apple.sharingd sched_preemption_disable_debug_mode=1 interrupt-masked-debug-mode=1 sheng-smp=1 armcpu-self-ipi=1 armcpu-spi-ipi=0 armcpu-edge=1 -enable_kprintf_spam nezha-gpu=1 sheng-vsync=120 sheng-vsync-fixed=1 nezha-cpufreq=3 nezha-thermal=1 boot-ui-focus3=SpringBoard";
+char PE_builtin_boot_args[]="owner-staged-apps=1 owner-dataprotect=1 sheng-disable-jobs=com.apple.cameracaptured,com.apple.CommCenter,com.apple.sharingd sched_preemption_disable_debug_mode=1 interrupt-masked-debug-mode=1 sheng-smp=1 armcpu-self-ipi=1 armcpu-spi-ipi=0 armcpu-edge=1 -enable_kprintf_spam nezha-gpu=1 sheng-vsync=120 sheng-vsync-fixed=1 nezha-cpufreq=3 nezha-thermal=1 boot-ui-focus3=SpringBoard nezha-bluetooth=1 log-bluetooth=2";
 static char policy[2048],jobs[200];
 volatile int sheng_watchdog_policy_status=-1;
 

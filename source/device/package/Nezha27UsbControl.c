@@ -21,6 +21,7 @@ extern int native_ufs_store_ready(void);
 extern int native_ufs_store_sync(void);
 extern unsigned native_ufs_store_gpt_check(void);
 extern uint32_t system_inshutdown,final_shutdown_stage;
+extern int nezha_bluetooth_stop_and_wait(uint32_t);
 static unsigned normal_shutdown_started;
 static thread_t normal_shutdown_thread;
 struct nz27_video {unsigned height,width,depth,stride;uintptr_t frame;};
@@ -105,6 +106,7 @@ static void reboot_worker(void *arg,wait_result_t wr) {
  thread_bind(cpu);thread_block(THREAD_CONTINUE_NULL);
  if(cpu_number()!=boot_cpu_id){result=-2;goto out;}
  if(!storage_ready()){result=-11;goto out;}
+ if(mode==1){result=nezha_bluetooth_stop_and_wait(30000);if(result)goto out;}
  if(persistent_selected() && (native_ufs_store_gpt_check()!=0 || !native_ufs_store_sync())){result=-12;goto out;}
  nezha27_usb_reset_phase=1;
  printf("NEZHA27 USB REBOOT: mode=%u;ACK/log drain then %s\n",mode,mode==2?"RAM-only direct PSCI":"normal XNU shutdown");

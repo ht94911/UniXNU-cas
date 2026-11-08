@@ -18,6 +18,7 @@
 
 extern "C" void sheng_pmgr_run(void);
 extern "C" void nezha_wifi_register(void);
+extern "C" void nezha_bluetooth_register(void);
 
 // Bounded bring-up state: 0 disabled, 1 class absent, 2 allocation/init failed,
 // 3 published and discovered, 4 discovery mismatch.
@@ -40,6 +41,7 @@ extern "C" void sheng_pmgr_run(void)
 {
   // Use XNU net_init_add through the board adapter, after BSD networking is ready.
   nezha_wifi_register();
+  nezha_bluetooth_register();
   unsigned mode = 0;
   if (!PE_parse_boot_argn("sheng-pmgr", &mode, sizeof(mode)) || (mode == 0)) {
     return;

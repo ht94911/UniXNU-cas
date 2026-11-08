@@ -35,3 +35,6 @@ zzz-wifi-aes-late-personality.patch
 zzzz-native-systemos-shutdown.patch
 zzzz-native-root-cwd-ownership.patch
 zzzz-native-shutdown-unmount-observe.patch
+
+# Existing bounded exit reason/backtrace for the native Bluetooth services.
+nezha-bluetooth-exit-diagnostic.patch

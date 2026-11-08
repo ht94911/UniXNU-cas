@@ -65,7 +65,7 @@ def validate(framework, device, board, builtin, wifi_ram_test=False):
               'sheng-vsync': '120', 'sheng-vsync-fixed': '1'}
     if wifi_ram_test:
         wanted.update({'sheng-data-persist': '0', 'ram-data-volatile-4g': '1',
-                       'nezha-usb-reboot': '2', 'nezha_wifi': '1',
+                       'nezha-usb-reboot': '1' if effective.get('nezha-bluetooth') == '1' else '2', 'nezha_wifi': '1',
                        'boot-ui-focus2': 'Preferences',
                        'boot-ui-focus3': 'SpringBoard', 'boot-ui-follow': '1'})
         require('build-nezha27-wifi.py' in ordered, 'Wi-Fi archive absent')
@@ -115,7 +115,7 @@ def main():
                    'automatic-settings':('input-test=0','input-test=1')}
         if args.wifi_ram_test:
             mutations.update({'volatile-data': ('sheng-data-persist=0', 'sheng-data-persist=2'),
-                              'direct-persistent-reset': ('nezha-usb-reboot=2', 'nezha-usb-reboot=1')})
+                              'direct-persistent-reset': (('nezha-usb-reboot=1', 'nezha-usb-reboot=2') if arguments(builtin).get('nezha-bluetooth') == '1' else ('nezha-usb-reboot=2', 'nezha-usb-reboot=1'))})
         if name in ('cpu-governor-disabled', 'thermal-disabled'):
             defaults = defaults.replace('nezha-cpufreq=3', 'nezha-cpufreq=0') if name == 'cpu-governor-disabled' else defaults.replace('nezha-thermal=1', 'nezha-thermal=0')
         elif name in mutations:
