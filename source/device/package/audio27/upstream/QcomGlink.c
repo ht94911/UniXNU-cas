@@ -365,7 +365,10 @@ static int receive_one(QcomGlink *g)
             rx_peek(&g->rx, 8 + 8 * i, pair, 8);
             if (!c) continue;
             unsigned slot = QCOM_GLINK_MAX_REMOTE_INTENTS;
-            if (!le32(pair) || !le32(pair + 4)) return QcomGlinkCorrupt;
+            /* Remote intent IDs are opaque, including zero. Our own IDs start
+             * at one, but that is not a restriction on the remote allocator.
+             * The explicit valid bit, not the ID, represents an occupied slot. */
+            if (!le32(pair)) return QcomGlinkCorrupt;
             for (unsigned k = 0; k < QCOM_GLINK_MAX_REMOTE_INTENTS; ++k)
                 if (c->remote[k].valid && c->remote[k].id == le32(pair + 4)) {
                     if (c->remote[k].busy) return QcomGlinkCorrupt;

@@ -42,18 +42,28 @@ static int failed(NaAdsp *a,int r) {
 }
 static int setup(NaAdsp *a) {
     int r=alloc_item(a,429,QCOM_SMP2P_ITEM_BYTES);if (r) return r;
-    r=alloc_item(a,478,32);if (r) return r;
-    r=alloc_item(a,479,0x4000);if (r) return r;
-    volatile uint8_t *out=item(a,429,QCOM_SMP2P_ITEM_BYTES,0),*desc=item(a,478,32,0);
-    uint32_t txbytes=0;volatile uint8_t *tx=item(a,479,0x4000,&txbytes);
-    if (!out || !desc || !tx || txbytes!=0x4000) return NA_WIRE;
+    volatile uint8_t *out=item(a,429,QCOM_SMP2P_ITEM_BYTES,0);
+    if (!out) return NA_WIRE;
     qcom_smp2p_init_out(&a->p2p,(volatile uint32_t *)out,0,2);
     if (qcom_smp2p_add_entry(&a->p2p,"master-kernel")<0) return NA_WIRE;
     a->ops.doorbell(a->ops.context,2);
+    return NA_OK;
+}
+static int setup_glink(NaAdsp *a) {
+    /* sheng start()/startGlink() and SM8850 pandora adsp_ready(): publish
+     * SMP2P before PAS, but allocate/reset GLINK only after a fresh ready.
+     * Never establish FIFO indices in the previous firmware's lifetime. */
+    int r=alloc_item(a,478,32);if (r) return r;
+    r=alloc_item(a,479,0x4000);if (r) return r;
+    volatile uint8_t *desc=item(a,478,32,0);
+    uint32_t txbytes=0;volatile uint8_t *tx=item(a,479,0x4000,&txbytes);
+    if (!desc || !tx || txbytes!=0x4000) return NA_WIRE;
     volatile uint32_t *d=(volatile uint32_t *)desc;
     QcomGlinkFifo tf={&d[1],&d[0],tx,txbytes},rf={&d[3],&d[2],0,0};
-    qcom_glink_init(&a->glink,tf,rf,kick,a);a->glink_initialized=1;
-    return na_transport_init(&a->transport,&a->glink,a->rx);
+    qcom_glink_init(&a->glink,tf,rf,kick,a);
+    r=na_transport_init(&a->transport,&a->glink,a->rx);
+    if (!r) a->glink_initialized=1;
+    return r;
 }
 static int smp2p(NaAdsp *a) {
     if (!a->p2p.out) return NA_OK;
@@ -119,6 +129,13 @@ int na_adsp_poll(NaAdsp *a,uint64_t now) {
             if (a->stage==NaAdspOnline && (a->slave&4)) a->handover_seen=1;
         }
         if (a->stage==NaAdspOnline) {
+            if (!a->glink_initialized) {
+                observe(a,NaAdspGlinkSetupBegin,0);
+                r=setup_glink(a);
+                if (r==NA_BUSY || r==NA_PENDING) return NA_PENDING;
+                observe(a,NaAdspGlinkSetupReturn,r);
+                if (r) return failed(a,r);
+            }
             if (!a->glink.rx.data) {
                 observe(a,NaAdspRxLookup,0);
                 uint32_t bytes=0;volatile uint8_t *rx=item(a,480,64,&bytes);

@@ -1,0 +1,185 @@
+{
+  "repository": "https://github.com/UniXNU/UniXNU-sheng",
+  "commit": "460179565a018c741b93e0b1efa07c55d4de497a",
+  "license": "BSD-2-Clause-Patent",
+  "files": [
+    {
+      "source": "package/ShengGpr.h",
+      "local": "upstream/ShengGpr.h",
+      "sha256": "a274dded1f4d1e2709b9f966759bcb1f57d12747ee0f57743dea1fa97d95d23e",
+      "local_sha256": "a274dded1f4d1e2709b9f966759bcb1f57d12747ee0f57743dea1fa97d95d23e",
+      "modified": false
+    },
+    {
+      "source": "package/ShengGpr.c",
+      "local": "upstream/ShengGpr.c",
+      "sha256": "c4f498f07e2cb601b593e64a8d32474a21d6a87375618e1a67b99d52c5d3160e",
+      "local_sha256": "c4f498f07e2cb601b593e64a8d32474a21d6a87375618e1a67b99d52c5d3160e",
+      "modified": false
+    },
+    {
+      "source": "package/ShengAudioReach.h",
+      "local": "upstream/ShengAudioReach.h",
+      "sha256": "b135177a5feb3e24e0d8a6aabb301600e2c37078b970a09ada6e8eb7bb6a5b98",
+      "local_sha256": "b135177a5feb3e24e0d8a6aabb301600e2c37078b970a09ada6e8eb7bb6a5b98",
+      "modified": false
+    },
+    {
+      "source": "package/ShengAudioReach.c",
+      "local": "upstream/ShengAudioReach.c",
+      "sha256": "9b198e58272d325bad48e68633f59c8cc5bdc97033d2a485abb6691a402b6a8d",
+      "local_sha256": "9b198e58272d325bad48e68633f59c8cc5bdc97033d2a485abb6691a402b6a8d",
+      "modified": false
+    },
+    {
+      "source": "package/QcomGlink.h",
+      "local": "upstream/QcomGlink.h",
+      "sha256": "7e617c764e11ba7ca08e9976e39c35710515a16613ea66f3e845da538ad2df07",
+      "local_sha256": "bbf25e52b9bc6f32df7d9faa423c3369f83a919fc89cfd66b05cce30276afddc",
+      "modified": true,
+      "changes": "See SOURCE.md; local lifecycle/bounds changes, or test include/alignment adaptation."
+    },
+    {
+      "source": "package/QcomGlink.c",
+      "local": "upstream/QcomGlink.c",
+      "sha256": "3d7e18c2cae2c6136b1b7bf43f8d69e49c99ed8e60d3ee7cd98c37891df9b1ba",
+      "local_sha256": "d93de74fc679952d3fa327f902d69e4013b3eb95ae6431c77d8b2aa1348999ef",
+      "modified": true,
+      "changes": "See SOURCE.md; local lifecycle/bounds changes, or test include/alignment adaptation."
+    },
+    {
+      "source": "package/QcomSmem.h",
+      "local": "upstream/QcomSmem.h",
+      "sha256": "f2a25e807bfa0556f2ec19258d8b2f47782acdc5fe1d9bdab23ecbb9f948ae37",
+      "local_sha256": "f2a25e807bfa0556f2ec19258d8b2f47782acdc5fe1d9bdab23ecbb9f948ae37",
+      "modified": false
+    },
+    {
+      "source": "package/QcomSmem.c",
+      "local": "upstream/QcomSmem.c",
+      "sha256": "4e9eb0ee22458dad30e1fcb7edb74a9d762222aff0623a6d5b85fb4a6e08bd03",
+      "local_sha256": "4e9eb0ee22458dad30e1fcb7edb74a9d762222aff0623a6d5b85fb4a6e08bd03",
+      "modified": false
+    },
+    {
+      "source": "package/QcomSmp2p.h",
+      "local": "upstream/QcomSmp2p.h",
+      "sha256": "894f36fd14be184252ce64c4c8c908d161d31433185b190041f4bd18d47d68c6",
+      "local_sha256": "894f36fd14be184252ce64c4c8c908d161d31433185b190041f4bd18d47d68c6",
+      "modified": false
+    },
+    {
+      "source": "package/QcomSmp2p.c",
+      "local": "upstream/QcomSmp2p.c",
+      "sha256": "f91c38e60fe86c5a55cbf9e822e0486997f7104d564ea90d6afe6ab40ac9d60b",
+      "local_sha256": "f91c38e60fe86c5a55cbf9e822e0486997f7104d564ea90d6afe6ab40ac9d60b",
+      "modified": false
+    },
+    {
+      "source": "package/QcomMdt.h",
+      "local": "upstream/QcomMdt.h",
+      "sha256": "22d8e567b285e254becf1af41f8ba0c9c1cfcc5295f6246b4b9d09e5fef88477",
+      "local_sha256": "22d8e567b285e254becf1af41f8ba0c9c1cfcc5295f6246b4b9d09e5fef88477",
+      "modified": false
+    },
+    {
+      "source": "package/QcomMdt.c",
+      "local": "upstream/QcomMdt.c",
+      "sha256": "706f4a86624d119282683287bf408ae679275368f9bcc28d6f4ba652d3ad377a",
+      "local_sha256": "706f4a86624d119282683287bf408ae679275368f9bcc28d6f4ba652d3ad377a",
+      "modified": false
+    },
+    {
+      "source": "package/QcomQmp.h",
+      "local": "upstream/QcomQmp.h",
+      "sha256": "dd6722ade248435930c5f242ef78728f58f7e3bc6a9765fe229b32c87f342503",
+      "local_sha256": "dd6722ade248435930c5f242ef78728f58f7e3bc6a9765fe229b32c87f342503",
+      "modified": false
+    },
+    {
+      "source": "package/QcomQmp.c",
+      "local": "upstream/QcomQmp.c",
+      "sha256": "6d5dd2e0ebf1f425f7fc929555edb275b8d499cfaa1f9c887bfcb68f09785249",
+      "local_sha256": "6d5dd2e0ebf1f425f7fc929555edb275b8d499cfaa1f9c887bfcb68f09785249",
+      "modified": false
+    },
+    {
+      "source": "package/QcomRpmh.h",
+      "local": "upstream/QcomRpmh.h",
+      "sha256": "47e299744ff83989449d262f74f5dfd2ba1cdbf921b2886643735f2febb6ee21",
+      "local_sha256": "47e299744ff83989449d262f74f5dfd2ba1cdbf921b2886643735f2febb6ee21",
+      "modified": false
+    },
+    {
+      "source": "package/QcomRpmh.c",
+      "local": "upstream/QcomRpmh.c",
+      "sha256": "679a55467e6ed4c7e75a8191f1d6da48637377088ef5e27879b1c99bc4a62314",
+      "local_sha256": "679a55467e6ed4c7e75a8191f1d6da48637377088ef5e27879b1c99bc4a62314",
+      "modified": false
+    },
+    {
+      "source": "package/GeniI2c.h",
+      "local": "upstream/GeniI2c.h",
+      "sha256": "2ade734ab7cdbd41fcea68c7f7ff4392b779b2d04666118407a1533e22258e7c",
+      "local_sha256": "2ade734ab7cdbd41fcea68c7f7ff4392b779b2d04666118407a1533e22258e7c",
+      "modified": false
+    },
+    {
+      "source": "package/GeniI2c.c",
+      "local": "upstream/GeniI2c.c",
+      "sha256": "34eb6effebb1750a538cf092ce68ceddd4855b7d44678a71305a02e454bf8b7b",
+      "local_sha256": "34eb6effebb1750a538cf092ce68ceddd4855b7d44678a71305a02e454bf8b7b",
+      "modified": false
+    },
+    {
+      "source": "package/QcomScm.h",
+      "local": "upstream/QcomScm.h",
+      "sha256": "ab03ab1291f043cb281f4d64b82b0d497d0e4f61a5b888512f0ec852ae1a3244",
+      "local_sha256": "ab03ab1291f043cb281f4d64b82b0d497d0e4f61a5b888512f0ec852ae1a3244",
+      "modified": false
+    },
+    {
+      "source": "package/tests/qcom_adsp_host.c",
+      "local": "tests/sheng_adsp_test.c",
+      "sha256": "04996c84de1e211220987f1ebff359fc347f9b20af17addf95910cb0023f81b8",
+      "local_sha256": "a212e273ad14f78e8706cc365a911ca14223088e2ac6148c0d12da67ca12cdf4",
+      "modified": true,
+      "changes": "See SOURCE.md; local lifecycle/bounds changes, or test include/alignment adaptation."
+    },
+    {
+      "source": "hal/ShengAudioPlugIn.c",
+      "local": "hal/NezhaAudioPlugIn.c",
+      "sha256": "ca1b9284976b020383adc54d7c6530b77d1bbba08adf61450ab1f2abd9588ffc",
+      "local_sha256": "9f139a414213e8e4ae5c5519feee17b6f2d9f6d30ae5dcfdbac3cecec1873146",
+      "modified": true
+    },
+    {
+      "source": "hal/ShengAudioPlugIn.c",
+      "local": "hal/NezhaAudioProperties.inc",
+      "sha256": "ca1b9284976b020383adc54d7c6530b77d1bbba08adf61450ab1f2abd9588ffc",
+      "local_sha256": "addc950d7a9d9bee5a7ac154b80eb199b10f72fe80948bc98b142c973a18c92e",
+      "modified": true
+    },
+    {
+      "source": "hal/Info.plist",
+      "local": "hal/Info.plist",
+      "sha256": "da8a31bf33069059977c73f2f92d3cfca1e9161ee420049eba08b89377f4bbd8",
+      "local_sha256": "a118cd65480a2396e51c0f71569a663b78a5be6446bbada469442670e94d76b3",
+      "modified": true
+    },
+    {
+      "source": "package/ShengAudioService.cpp",
+      "local": "os/NezhaAudioService.cpp",
+      "sha256": "eb732665cd493969887d8cf53eebec540d8efbedc2cff7d22757adab822262be",
+      "local_sha256": "edf9bf14078b835a02f9cf50165521a4614b7af532e03c1938eb83216a9a7804",
+      "modified": true
+    },
+    {
+      "source": "package/ShengAudioService.cpp",
+      "local": "os/NezhaAudioClock.cpp",
+      "sha256": "eb732665cd493969887d8cf53eebec540d8efbedc2cff7d22757adab822262be",
+      "local_sha256": "70cc8e545c78f190b73ff1a6e03c4c857343b66344bd099f71aa1047c992ba78",
+      "modified": true
+    }
+  ]
+}

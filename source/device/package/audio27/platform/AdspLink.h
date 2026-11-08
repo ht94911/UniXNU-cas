@@ -27,7 +27,8 @@ typedef struct {
     void (*observe)(void *,uint32_t point,int result);
 } NaAdspOps;
 enum {NaAdspRxLookup=1,NaAdspRxBound,NaAdspGlinkBegin,NaAdspGlinkReturn,
-      NaAdspProxyOffBegin,NaAdspProxyOffReturn,NaAdspProxyRetained};
+      NaAdspProxyOffBegin,NaAdspProxyOffReturn,NaAdspProxyRetained,
+      NaAdspGlinkSetupBegin,NaAdspGlinkSetupReturn};
 enum {NaAdspCold,NaAdspStopMain,NaAdspStopDtb,NaAdspDma,NaAdspSetup,NaAdspPower,
       NaAdspDtb,NaAdspMain,NaAdspWaitReady,NaAdspOnline,NaAdspFailed};
 typedef struct {
