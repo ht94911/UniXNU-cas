@@ -14,7 +14,7 @@ static uint32_t test_icl=500,test_fcc=500;
 void IOSleep(unsigned n){test_ms+=n;}
 extern "C" IOService *np_battery_service_create(void){static IOService s;return &s;}
 extern "C" int np_power_log_start(void){return 0;}
-extern "C" int np_power_log_push(const char *p,size_t n){assert(n<512&&n>3&&!memcmp(p,"P1 ",3));++log_lines;return 0;}
+extern "C" int np_power_log_push(const char *p,size_t n){assert(n<512&&n>6&&(!memcmp(p,"P1 ",3)||!memcmp(p,"CPREG ",6)));++log_lines;return 0;}
 extern "C" void np_power_log_stop(void){}
 extern "C" int np_power_log_status(NpPowerLogStatus *s){if(test_mode==7&&++log_status_calls%5==0)return 0;memset(s,0,sizeof(*s));s->phase=test_mode==3?3:2;return 1;}
 extern "C" void np_power_diagnostic_start(void){}

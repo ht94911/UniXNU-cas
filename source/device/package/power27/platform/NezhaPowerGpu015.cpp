@@ -117,7 +117,8 @@ int pumpWake(void *,uint64_t id,int on) {
         uint32_t next=(cfg&~0x3ffu)|0x200u;
         if(next&(1u<<11))next|=1u<<12;
         binding.pumpOwnedCfg=next;binding.pumpPinOwned=true;
-        wr(binding.tlmm,4,2);wr(binding.tlmm,0,next);delay(1000);
+        wr(binding.tlmm,4,2);wr(binding.tlmm,0,next);
+        IOSleep(400); /* exact stock sc8581_init_gpio NLPM startup wait */
         if(rd(binding.tlmm,0)!=next||(rd(binding.tlmm,4)&3)!=3)return EIO;
         IOLog("NEZHA POWER CP: own GPIO114 NLPM high cfg=%x; no other GPIO writes\n",next);
     } else if(binding.pumpPinOwned) {

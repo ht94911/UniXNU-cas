@@ -33,10 +33,14 @@ int main(void){NpPump p;NpGaugeBus b=setup();
  assert(!np_pump_bus_read(&b,&p)&&writes==2);
  assert(!np_pump_bus_restore(&b)&&!b.pump_adc_owned&&regfile[0x15]==1&&regfile[0x16]==0xff);
  b=setup();regfile[0x0b]=0x80;regfile[0x0a]=2;
+ assert(!np_pump_bus_read(&b,&p)&&p.initial_enable&&!p.enable&&!p.switching&&writes==3);
+ b=setup();b.pump_initialized=1;regfile[0x0b]=0x80;regfile[0x0a]=2;
  assert(!np_pump_bus_read(&b,&p)&&p.enable&&p.switching&&!writes&&!b.pump_adc_owned);
  assert(!np_pump_bus_disable(&b)&&!regfile[0x0b]&&!(regfile[0x0a]&2));
  b=setup();regfile[0x6e]=0x41;assert(np_pump_bus_read(&b,&p)==ENODEV&&!writes);
  b=setup();denied=1;assert(np_pump_bus_read(&b,&p)==EACCES&&!writes);
  b=setup();fail_readback=1;assert(np_pump_bus_read(&b,&p)==EIO&&b.pump_adc_owned);
  b=setup();regfile[0x0b]=0x80;regfile[0x0a]=2;stuck=1;assert(np_pump_bus_disable(&b)==ETIMEDOUT&&waited==50000);
+ b=setup();regfile[0x0b]=0x80;regfile[0x0a]=2;stuck=1;assert(np_pump_bus_read(&b,&p)==ETIMEDOUT&&b.pump_init_failed);
+ unsigned old_writes=writes;assert(np_pump_bus_read(&b,&p)==EIO&&writes==old_writes);
  puts("PASS exact SC8585 reads/ADC ownership/restore/disabled confirmation; reserved channels avoided; errors retained");return 0;}

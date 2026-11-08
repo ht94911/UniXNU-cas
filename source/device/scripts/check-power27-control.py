@@ -31,7 +31,12 @@ try:
  run('runtime',['tests/runtime_control.cpp'],['-I'+str(stubs/'runtime'),*map(str,objects)],cpp=True,modes=[(str(i),) for i in range(8)])
  run('log',['tests/log_cases.c'],['-I'+str(stubs/'log')],modes=[(str(i),str(out/('log-model-'+str(i)+'.txt'))) for i in range(7)])
  for mode in [0,6]:
-  data=(out/('log-model-'+str(mode)+'.txt')).read_bytes();prefix,end=data.rsplit(b'END_NEZHA_POWER_LOG_V1 ',1);assert zlib.crc32(prefix)==int(re.search(rb'crc32=([0-9a-f]+)',end)[1],16)
+  data=(out/('log-model-'+str(mode)+'.txt')).read_bytes();prefix,end=data.rsplit(b'END_NEZHA_POWER_LOG_V1 ',1)
+  footer=re.fullmatch(rb'records=(\d+) dropped=(\d+) crc32=([0-9a-f]{8})\n',end);assert footer
+  assert zlib.crc32(prefix)==int(footer[3],16)
+  records=prefix.splitlines()[1:];assert len(records)==int(footer[1])
+  assert len([r for r in records if r.startswith(b'CPREG ')])==1
+  assert len([r for r in records if r.startswith(b'P1 ')])==(31 if mode==6 else 1)
  report['log']['independent_zlib_crc_passed']=True
  run('diagnostic',['tests/diagnostic_cases.cpp'],['-I'+str(stubs/'runtime')],cpp=True,modes=[(str(out/'diagnostic.json'),)])
  j=json.loads((out/'diagnostic.json').read_text());assert len(j['meta'])==13 and len(j['pdos'])==7

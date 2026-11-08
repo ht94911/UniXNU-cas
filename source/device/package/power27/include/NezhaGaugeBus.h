@@ -17,6 +17,7 @@ typedef struct {
     uint32_t gpii;
     uint8_t pump_registers_owned; /* exclusive SC8585 event/register lease; default0 */
     uint8_t pump_adc_owned,saved_adc15,saved_adc16;
+    uint8_t pump_initialized,pump_init_failed,pump_initial_enable;
     void (*pause_us)(void *,uint32_t);
 } NpGaugeBus;
 int np_gauge_bus_read(void *, uint8_t out[NP_GAUGE_WORDS][2], uint32_t *valid);

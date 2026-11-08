@@ -12,6 +12,7 @@ typedef struct {
     uint8_t chip, switching, switching_valid, enable, mode, adc_enabled;
     uint8_t control[22]; /* registers01..16; includes owned fault latches */
     uint8_t controls_valid;
+    uint8_t initial_enable;
 } NpPump;
 /* Selected control bytes within0a..16, ADC17..28 and ID6e. control_valid marks
  * which bytes were actually read. Byte0a mixes status and an event flag; a

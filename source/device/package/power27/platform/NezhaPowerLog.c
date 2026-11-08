@@ -69,7 +69,7 @@ static void log_worker(void *unused,wait_result_t result)
   IOLockUnlock(log_state.lock);
  }
  if(!error) {
-  char end[128];int length=snprintf(end,sizeof(end),"END_NEZHA_POWER_LOG_V1 rows=%u dropped=%u crc32=%08x\n",
+  char end[128];int length=snprintf(end,sizeof(end),"END_NEZHA_POWER_LOG_V1 records=%u dropped=%u crc32=%08x\n",
     log_state.status.written,log_state.status.dropped,~crc);
   error=length>0&&(size_t)length<sizeof(end)?append(end,(unsigned)length,0):EIO;
   IOLockLock(log_state.lock);log_state.status.phase=error?3:4;log_state.status.error=(uint32_t)error;

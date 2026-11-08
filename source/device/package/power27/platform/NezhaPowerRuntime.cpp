@@ -33,6 +33,7 @@ NpPump pumpSample;
 uint64_t pumpAt,historyNext=1;
 int pumpError=-1,persistentLog,manualDisable;
 bool auxiliaryActive,draining;
+bool pumpRegistersReported;
 NpPowerHistoryRecord history[128];
 
 void control_publish(uint64_t now) {
@@ -130,6 +131,13 @@ void begin(uint64_t now) {
         IOLog("NEZHA POWER CP SAMPLE: error=%d chip=%x enabled=%u switching=%u/%u mode=%u valid=%x vbus=%d ibus=%d vbat=%d die=%d\n",
           pumpError,pumpSample.chip,pumpSample.enable,pumpSample.switching,pumpSample.switching_valid,pumpSample.mode,
           pumpSample.valid,pumpSample.bus_mv,pumpSample.bus_ma,pumpSample.battery_mv,pumpSample.die_centi_c);
+        if(!pumpError&&pumpSample.controls_valid&&!pumpRegistersReported) {
+            char line[256];int at=snprintf(line,sizeof(line),"CPREG initial_enable=%u sampled_before_update=",pumpSample.initial_enable);
+            for(unsigned i=0;i<sizeof(pumpSample.control)&&at>0&&(size_t)at+3<sizeof(line);++i)
+                at+=snprintf(line+at,sizeof(line)-(size_t)at,"%02x",pumpSample.control[i]);
+            if(at>0&&(size_t)at+2<sizeof(line)) {line[at++]='\n';line[at]=0;IOLog("NEZHA POWER %s",line);
+                if(!persistentLog||!np_power_log_push(line,(size_t)at))pumpRegistersReported=true;}
+        }
     }
     // Retain the actual gauge words and successful-transfer mask alongside
     // decoded values, so a device run can verify units and invalid reads.

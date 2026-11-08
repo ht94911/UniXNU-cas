@@ -41,11 +41,13 @@ int np_gauge_bus_read(void *context, uint8_t out[NP_GAUGE_WORDS][2], uint32_t *v
     }
     return close_bus(b, r);
 }
+static int pump_update(NpGaugeBus *,uint8_t,uint8_t,uint8_t);
 int np_pump_bus_read(NpGaugeBus *b, NpPump *out)
 {
     if (!out) return EINVAL;
     memset(out, 0, sizeof(*out));
     if (!b || !b->pump_registers_owned) return EACCES;
+    if(b->pump_init_failed)return EIO;
     int r = open_bus(b);
     if (r) return r;
     uint8_t reg = 0x6e, chip = 0, c[13] = {0}, a[18] = {0},controls[22]={0};
@@ -63,6 +65,24 @@ int np_pump_bus_read(NpGaugeBus *b, NpPump *out)
     }
     if(!r) {
         reg=0x01;r=np_gpi_i2c(&b->gpi,&b->clock,0x6e,&reg,1,controls,sizeof(controls));
+    }
+    /* Stock probe resets the CP after waking NLPM. This driver only clears
+     * CHG_EN and verifies switching stopped; it never resets protections or
+     * enables a pump using an inherited, unqualified configuration. */
+    if(!r&&!b->pump_initialized) {
+        b->pump_initial_enable=!!(c[1]&0x80);
+        b->pump_init_failed=1; /* no replay after an uncertain handoff write */
+        if((c[1]&0x80)||(c[0]&2)) {
+            r=pump_update(b,0x0b,0x80,0);
+            for(unsigned i=0;!r&&i<50;++i) {
+                reg=0x0a;r=np_gpi_i2c(&b->gpi,&b->clock,0x6e,&reg,1,c,2);
+                if(r||!(c[0]&2))break;
+                if(!b->pause_us){r=EACCES;break;}
+                b->pause_us(b->context,1000);
+            }
+            if(!r&&((c[0]&2)||(c[1]&0x80)))r=ETIMEDOUT;
+        }
+        if(!r){b->pump_initialized=1;b->pump_init_failed=0;}
     }
     /* Only the selected sole SC8585 owner may enable measurement. Never
      * change scan controls underneath an inherited running pump. */
@@ -86,8 +106,8 @@ int np_pump_bus_read(NpGaugeBus *b, NpPump *out)
     }
     if (!r) {
         r = np_sc8585_decode(out, chip, c, control_valid, a) ? EIO : 0;
-        controls[20]=c[11];controls[21]=c[12];
         memcpy(out->control,controls,sizeof(controls));out->controls_valid=1;
+        out->initial_enable=b->pump_initial_enable;
     }
     return close_bus(b, r);
 }

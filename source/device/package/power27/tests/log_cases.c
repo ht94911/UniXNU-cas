@@ -15,10 +15,14 @@ int vnode_close(vnode_t v,int flags,vfs_context_t ctx){(void)flags;(void)ctx;ass
 int vn_rdwr(int direction,vnode_t v,caddr_t bytes,int n,off_t offset,int space,int flags,void *cred,int *residual,void *proc){(void)offset;(void)space;(void)cred;(void)proc;
  assert(direction==UIO_WRITE&&v==&node&&(flags&IO_APPEND)&&(flags&IO_SYNC));assert(n>=0&&node.size+(unsigned)n<=sizeof(node.data));
  unsigned got=mode==3?(unsigned)n-1:(unsigned)n;memcpy(node.data+node.size,bytes,got);node.size+=got;++node.writes;*residual=n-(int)got;return 0;}
-void IOSleep(unsigned ms){(void)ms;if(!produced){produced=1;for(unsigned i=0;i<(mode==6?40u:1u);++i)np_power_log_push("P1 test=1\n",10);np_power_log_stop();}}
+void IOSleep(unsigned ms){(void)ms;if(!produced){produced=1;
+ const char config[]="CPREG initial_enable=0 sampled_before_update=0000\n";
+ assert(!np_power_log_push(config,sizeof(config)-1));
+ for(unsigned i=0;i<(mode==6?40u:1u);++i)np_power_log_push("P1 test=1\n",10);
+ np_power_log_stop();}}
 int main(int argc,char **argv){if(argc>1)mode=(unsigned)atoi(argv[1]);if(mode==4){node.created=1;memcpy(node.data,"USER",4);node.size=4;}
  assert(!np_power_log_start());log_worker(0,0);NpPowerLogStatus s;assert(np_power_log_status(&s));assert(node.opens==node.closes);
- if(!mode||mode==6){assert(s.phase==4&&s.written==(mode==6?32u:1u)&&s.dropped==(mode==6?8u:0u));
+ if(!mode||mode==6){assert(s.phase==4&&s.written==(mode==6?32u:2u)&&s.dropped==(mode==6?9u:0u));
   assert(argc>2);FILE *f=fopen(argv[2],"wb");assert(f);assert(fwrite(node.data,1,node.size,f)==node.size);fclose(f);
  }else{assert(s.phase==3&&s.error);if(mode!=3)assert(!node.writes);if(mode==4)assert(node.size==4&&!memcmp(node.data,"USER",4));}
  printf("PASS log case %u: bounded, exclusive no-follow file, close/error semantics\n",mode);return 0;}
