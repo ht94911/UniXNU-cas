@@ -1,7 +1,7 @@
-name: nezha iPhone27 GPU bounded stock clocks - native037
+name: nezha iPhone27 AppSync on GPU024 - native001
 on:
   push:
-    branches: [codex/ios27-gpu-persist019-037-20261108]
+    branches: [codex/ios27-appsync-gpu024-001-20261109]
   workflow_dispatch:
 permissions:
   contents: read
@@ -44,6 +44,7 @@ jobs:
           test -x "$(brew --prefix llvm)/bin/llvm-objdump"
           printf 'UNIXNU_LLVM_OBJDUMP=%s/bin/llvm-objdump\n' "$(brew --prefix llvm)" >> "$GITHUB_ENV"
       - name: Reconstruct and verify the exact integration source tree
+        id: source
         run: python3 task/ci/native.py prepare --framework unixnu --work "$RUNNER_TEMP/ios27/work"
       - name: Exercise actual iPhone27 reboot and plane mapping methods
         run: |
@@ -53,7 +54,15 @@ jobs:
           python3 "$RUNNER_TEMP/ios27/work/gop/Test/check-plane-view.py" --output "$RUNNER_TEMP/ios27/gop-view-check"
       - name: Check the actual guarded waiting-stack sampler
         run: python3 task/source/device/scripts/check-stable-kernel-stack.py
+      - name: Build and verify the AppSync sources
+        run: |
+          set -euo pipefail
+          work="$RUNNER_TEMP/ios27/work"
+          mkdir -p "$work/logs"
+          python3 task/source/appsync/build.py --runtime-only --output "$work/appsync-runtime" > "$work/logs/appsync-build.log" 2>&1
+          python3 task/source/appsync/test.py --device "$work/device" --signing > "$work/logs/appsync-tests.log" 2>&1
       - name: Qualify compiler and run the standard native build
+        if: ${{ !cancelled() && steps.source.outcome == 'success' }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: python3 task/ci/native.py build --framework unixnu --work "$RUNNER_TEMP/ios27/work"

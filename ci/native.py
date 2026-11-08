@@ -189,6 +189,9 @@ def collect(framework, work, sealed):
         names.append(name)
 
     add(ROOT / 'inputs.json', 'inputs.json')
+    runtime = work / 'appsync-runtime'
+    for path in sorted(runtime.rglob('*')):
+        add(path, 'appsync/' + path.relative_to(runtime).as_posix())
     for name in ('source-report.json', 'integration-source-qualified.json', 'compiler-report.json', 'authenticated-null.c',
                  'authenticated-null.o', 'authenticated-null.s'):
         add(work / name, name)
