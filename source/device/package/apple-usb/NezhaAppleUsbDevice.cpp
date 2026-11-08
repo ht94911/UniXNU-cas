@@ -4,6 +4,7 @@
 #include "OriginalUsbXdciABI.h"
 #include <IOKit/IODeviceMemory.h>
 #include <IOKit/IOLib.h>
+#include <IOKit/IOPlatformExpert.h>
 #include <libkern/c++/OSMetaClass.h>
 #include <libkern/OSKextLib.h>
 #include <kern/thread.h>
@@ -161,7 +162,8 @@ bool publishDevice()
         nub->setDeviceMemory(ranges);
         nub->setName("usb-drd0");
         nub->setProperty("bus-number", bus);
-        nub->setProperty("configuration-string", static_cast<const void *>("standardMuxOnly"), 16);
+        char configuration[] = "standardMuxOnly";
+        nub->setProperty("configuration-string", configuration, sizeof(configuration));
         nub->setProperty("u1-init-disable", true);
         nub->setProperty("u2-init-disable", true);
     }

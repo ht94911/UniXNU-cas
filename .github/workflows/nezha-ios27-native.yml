@@ -1,7 +1,7 @@
-name: nezha iPhone27 AppSync Apple USB - native003
+name: nezha iPhone27 AppSync Apple USB - native004
 on:
   push:
-    branches: [codex/ios27-appsync-apple-usb-003-20261109]
+    branches: [codex/ios27-appsync-apple-usb-004-20261109]
   workflow_dispatch:
 permissions:
   contents: read
@@ -50,7 +50,13 @@ jobs:
         if: ${{ !cancelled() && steps.source.outcome == 'success' }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: python3 task/ci/native.py build --framework unixnu --work "$RUNNER_TEMP/ios27/work"
+        run: |
+          work="$RUNNER_TEMP/ios27/work"
+          python3 task/ci/native.py build --framework unixnu --work "$work" || {
+            status=$?
+            tail -n 90 "$work/logs/step-1.log" || true
+            exit "$status"
+          }
       - name: Seal outputs and diagnostics using the existing owner envelope
         if: always()
         run: |
