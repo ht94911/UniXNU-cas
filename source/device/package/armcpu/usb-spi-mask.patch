@@ -1,0 +1,25 @@
+diff --git a/ArmCpu.cpp b/ArmCpu.cpp
+--- a/ArmCpu.cpp
++++ b/ArmCpu.cpp
+@@ -865,6 +865,21 @@
+   return kIOReturnSuccess;
+ }
+ 
++// Registered exclusive lines only. ArmCpu ca5f763 register semantics,
++// applied to the existing single-route dispatch table used by GPU024.
++extern "C" IOReturn armcpu_spi_mask (uint32_t intid, bool masked)
++{
++  if (!gDist || !armcpu_gic_ready || intid < 32 || intid >= 1020) { return kIOReturnNotReady; }
++  const uint32_t used = __atomic_load_n (&gSpiUsed, __ATOMIC_ACQUIRE);
++  for (uint32_t slot = 0; slot < used; slot++) {
++    if (gSpi[slot].id != intid) { continue; }
++    write32 (gDist, (masked ? 0x180U : 0x100U) + (intid / 32) * 4, 1U << (intid % 32));
++    __asm__ volatile ("dsb sy" ::: "memory");
++    return kIOReturnSuccess;
++  }
++  return kIOReturnNotFound;
++}
++
+ extern "C" uint64_t armcpu_spi_count (uint32_t intid)
+ {
+   const uint32_t used = __atomic_load_n (&gSpiUsed, __ATOMIC_ACQUIRE);

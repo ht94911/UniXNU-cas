@@ -17,7 +17,7 @@ archives = ["build-corecrypto-14.py", "build-corecrypto-14.py --namespace", "com
 # G3 read-only root closure. Explicit IOStorageFamily retains its generic
 # IOBlockStorageDriver/IOMediaBSDClient matching; dependency-only strips it.
 [kernel.prelink]
-roots = ["com.apple.security.AppleImage4", "com.apple.driver.AppleMobileFileIntegrity", "com.apple.filesystems.apfs", "com.apple.iokit.IOStorageFamily", "com.apple.AppleFSCompression.AppleFSCompressionTypeZlib", "com.apple.security.sandbox", "com.apple.iokit.IOMobileGraphicsFamily", "com.apple.iokit.IOSurface", "com.apple.iokit.IOHIDFamily", "com.apple.iokit.IOGPUFamily"]
+roots = ["com.apple.security.AppleImage4", "com.apple.driver.AppleMobileFileIntegrity", "com.apple.filesystems.apfs", "com.apple.iokit.IOStorageFamily", "com.apple.AppleFSCompression.AppleFSCompressionTypeZlib", "com.apple.security.sandbox", "com.apple.iokit.IOMobileGraphicsFamily", "com.apple.iokit.IOSurface", "com.apple.iokit.IOHIDFamily", "com.apple.iokit.IOGPUFamily", "com.apple.iokit.IOUSBDeviceFamily", "com.apple.driver.AppleUSBXDCI", "com.apple.driver.AppleUSBDeviceMux"]
 [device_tree]
 source = "device:dts/nezha.dts"
 include_dirs = ["soc:dts"]

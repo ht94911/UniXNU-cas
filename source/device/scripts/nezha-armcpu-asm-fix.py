@@ -25,7 +25,7 @@ if OUTPUT.exists():
     shutil.rmtree(OUTPUT)
 shutil.copytree(source, OUTPUT, ignore=shutil.ignore_patterns('.git', 'build', '__pycache__'))
 for flags in (['--check'], []):
-    subprocess.run(['git', 'apply', *flags, str(PATCH)], cwd=OUTPUT, check=True)
+    subprocess.run(['git', 'apply', *flags, str(PATCH), str(PATCH.with_name('usb-spi-mask.patch'))], cwd=OUTPUT, check=True)
 LINK.unlink()
 LINK.symlink_to(OUTPUT, target_is_directory=True)
 print('nezha ArmCpu: Darwin assembler separator fix staged from', source)

@@ -392,10 +392,109 @@ gop = ROOT / 'build/native-gop-presenter'
 gop_late = gop / 'NativeGOPPresenter.late.o'
 run([llvm / 'llvm-objcopy', '--remove-section=__DATA,__mod_init_func', '--globalize-symbol=__GLOBAL__sub_I_NativeGOPPresenter.cpp',
      gop / 'NativeGOPPresenter.o', gop_late])
+def build_apple_usb_device():
+    """Bind the device-only sheng transport to the original iPhone XDCI ABI."""
+    usb = json.loads((ROOT / 'scripts/usb-xdci-iphone-24A446.json').read_text())
+    require(usb['kernelcache_sha256'] == abi['kernelcache_sha256'], 'USB and GPU donors must match')
+    usb_slots = [(int(target, 16), int(div, 16)) for target, div in usb['slots']]
+    methods = {int(k): v for k, v in usb['methods'].items()}
+    pure_usb = set(usb['pure_slots'])
+    slot_names = {179: 'KEEP_CONFIGURATIONS', 267: 'TRANSPORT_ACTIVE', 268: 'POWER_ON',
+                  269: 'POWER_OFF', 270: 'PARAMETERS', 275: 'CONTROLLER_RESET',
+                  277: 'PERIODIC_USAGE', 278: 'PERIODIC_SET'}
+    header = '#pragma once\n#include <IOKit/IOService.h>\n'
+    header += ''.join(f'#define XDCI_{name} {methods[i]["name"]}\n' for i, name in slot_names.items())
+    header += f"""class AppleUSBXDCI : public IOService {{
+ OSDeclareAbstractStructors(AppleUSBXDCI)
+ unsigned char originalPrivate[{usb['instance_size']}-sizeof(IOService)];
+public:
+ void free() override;
+ bool init(OSDictionary *properties=nullptr) override;
+ IOReturn setProperties(OSObject *) override;
+ bool start(IOService *) override;
+ void stop(IOService *) override;
+ bool terminate(IOOptionBits options=0) override;
+ IOWorkLoop *getWorkLoop() const override;
+ IOReturn callPlatformFunction(const OSSymbol *,bool,void *,void *,void *,void *) override;
+ IOReturn setPowerState(unsigned long,IOService *) override;
+ unsigned long maxCapabilityForDomainState(IOPMPowerFlags) override;
+ unsigned long initialPowerStateForDomainState(IOPMPowerFlags) override;
+ IOReturn powerStateWillChangeTo(IOPMPowerFlags,unsigned long,IOService *) override;
+ IOReturn powerStateDidChangeTo(IOPMPowerFlags,unsigned long,IOService *) override;
+"""
+    for i in range(168, len(usb_slots)):
+        method = methods[i]
+        suffix = '=0' if i in pure_usb else ''
+        header += f' virtual {method["returns"]} {method["name"]}({method["parameters"]}){suffix};\n'
+    header += f'}};\nstatic_assert(sizeof(AppleUSBXDCI)=={usb["instance_size"]},"Original controller instance size");\n'
+    (OUT / 'OriginalUsbXdciABI.h').write_text(header)
+    src = ROOT / 'kits/nezha/apple-usb/NezhaAppleUsbDevice.cpp'
+    obj = OUT / 'NezhaAppleUsbDevice.o'
+    compile_cpp(src, obj, ('-I', str(OUT)))
+    raw = obj.read_bytes()
+    im = macho(raw)
+    symtab = next(at for cmd, at, _ in im['commands'] if cmd == 2)
+    sy, count, strings, _ = struct.unpack_from('<4I', raw, symtab + 8)
+    found = []
+    for i in range(count):
+        ix, kind, _, _, va = struct.unpack_from('<IBBHQ', raw, sy + i * 16)
+        found.append((raw[strings + ix:raw.index(b'\0', strings + ix)].decode(), va, kind))
+    vt = next(va for name, va, _ in found if name == '__ZTV17NezhaAppleUsbXdci')
+    sec = next(sec for segment in im['segments'] for sec in segment['sections']
+               if sec['va'] <= vt < sec['va'] + sec['size'])
+    rel, count = struct.unpack_from('<2I', raw, sec['command_offset'] + 56)
+    pointers = {}
+    for i in range(count):
+        offset, bits = struct.unpack_from('<2I', raw, rel + 8 * i)
+        if bits >> 27 & 1 and bits >> 25 & 3 == 3 and bits >> 28 == 11:
+            word, = struct.unpack_from('<Q', raw, sec['fileoff'] + offset)
+            pointers[sec['va'] + offset] = (found[bits & 0xffffff][0], word)
+    selected = [pointers.get(vt + 16 + 8 * i) for i in range(len(usb_slots))]
+    require(all(selected), 'exact 280-slot AppleUSBXDCI subclass table')
+    binds = {k: int(v, 16) for k, v in usb['bindings'].items()}
+    inherited_overrides = set(usb['inherited_override_slots'])
+    own = set()
+    for i, (name, word) in enumerate(selected):
+        target, diversity = usb_slots[i]
+        require(word >> 63 and word >> 48 & 1 and word >> 49 & 3 == 0 and (word >> 32) & 0xffff == diversity,
+                f'AppleUSBXDCI slot {i} keeps its authenticated discriminator')
+        if '12AppleUSBXDCI' in name:
+            require(i not in pure_usb and binds.setdefault(name, target) == target, f'AppleUSBXDCI binding at slot {i}')
+        elif '17NezhaAppleUsbXdci' in name:
+            own.add(i)
+        else:
+            require(i < 168 and i not in inherited_overrides, f'AppleUSBXDCI slot {i} cannot use an unqualified IOService override')
+    require(pure_usb <= own, 'all original abstract methods have an implementation')
+    by_discriminator = {d: i for i, (_, d) in enumerate(usb_slots)}
+    for name in sorted({n for n, _, k in found if k == 1 and '12AppleUSBXDCI' in n} - set(binds)):
+        slot = by_discriminator.get(discriminator(name[1:]))
+        require(slot is not None and slot not in pure_usb, f'{name} has a reviewed AppleUSBXDCI slot')
+        binds[name] = usb_slots[slot][0]
+    data_names = {'__ZN12AppleUSBXDCI10gMetaClassE', '__ZTV12AppleUSBXDCI'}
+    text, addresses = '.text\n.p2align 2\n', ''
+    for name, va in sorted(binds.items()):
+        if name in data_names:
+            addresses += f'.globl {name}\n.set {name}, {va:#x}\n'
+        else:
+            addresses += f'.globl {name}.original\n.set {name}.original, {va:#x}\n'
+            text += f'.globl {name}\n{name}:\n bti c\n b {name}.original\n'
+    for stem, asm in (('usb-bindings', text), ('usb-addresses', addresses)):
+        (OUT / (stem + '.S')).write_text(asm)
+        run(['xcrun', 'clang', '-target', TRIPLE, '-isysroot', sdk, '-c', OUT / (stem + '.S'), '-o', OUT / (stem + '.o')])
+    late = OUT / 'NezhaAppleUsbDevice.late.o'
+    run([llvm / 'llvm-objcopy', '--remove-section=__DATA,__mod_init_func',
+         '--globalize-symbol=__GLOBAL__sub_I_NezhaAppleUsbDevice.cpp', obj, late])
+    (OUT / 'apple-usb-build.json').write_text(json.dumps(dict(
+        donor=usb['kernelcache_sha256'], slots=len(usb_slots), owned=sorted(own),
+        bindings={k: hex(v) for k, v in binds.items()}, source_sha256=sha(src), object_sha256=sha(late)
+    ), indent=2) + '\n')
+    return [late, OUT / 'usb-bindings.o', OUT / 'usb-addresses.o']
+
+
 archive = OUT / 'libNativeLegacyDisplay.late.a'
 archive.unlink(missing_ok=True)
 run(['xcrun', 'ar', 'rcs', archive, late, OUT / 'original-bindings.o', OUT / 'original-addresses.o', OUT / 'LegacyDisplayProbe.o', OUT / 'LegacyDisplaySupport27.o', gop_late,
-     OUT / 'KeyStoreProbe.o', keyevents_late])
+     OUT / 'KeyStoreProbe.o', keyevents_late, *build_apple_usb_device()])
 sources = [ROOT / 'drivers/GopFramebuffer/NativeLegacyDisplay.cpp', ROOT / 'drivers/GopFramebuffer/NativeLegacyRequest.h',
            ROOT / 'drivers/GopFramebuffer/NativeGOPPresenter.cpp', ROOT / 'drivers/GopFramebuffer/NativeGOPWire.h',
            ROOT / 'drivers/GopFramebuffer/NativeHalfCodes.h', source,

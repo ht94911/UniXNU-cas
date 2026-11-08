@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Source-only AppSync candidate on GPU024; builds native XNU and the iOS tools. Apple OS copies and prelink stay local.",
+  "purpose": "GPU024 AppSync and Apple USB device stack source build. Stock iPhone kernelcache and Apple USB bindings validated locally.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "c86f75fe0fcd0efc81b5e96ce471d4e13305fb27",
+  "device_revision": "974279ecc961c818c34f995f8de4f81fc27b6dac",
   "soc_revision": "5a71f9eb5724ff58eddf49f7f5baecc9f4233a7c",
   "xcode": "26.6",
   "files": {
@@ -77,7 +77,7 @@
     "source/adreno/NativeGpuTrace.h": "d06f67c151c03ef9be786ffd582b74e5d91d955e513d00217c6fe177332323fa",
     "source/adreno/NativeGpuTrace.inc": "24460c37660233ba80a6a3c22bda1415e353d5dba6a6f04adb3dff415c3ee23b",
     "source/adreno/NativeGpuTraceStore.h": "4a2984192bc2c68383146f558212d1000c920a8d9cbe54ccec8badd935844823",
-    "source/device/board.toml": "dccfde7cae4e0b1eb6ab8b6af78136c0014a8d8d861449cd7694eb8867527c57",
+    "source/device/board.toml": "c6dc29329c93d509f3c93b7d3b97ccff788f8a6dc215763023c9a951db6c9002",
     "source/device/configs/nezha_ios27_defconfig": "6f771ac6d84d2a094a9b4b4088ba1fe5cb172444cc76ae5584e68b94f090d121",
     "source/device/feeds.toml": "89cd3214bf98295e76dacf3606cfce03f4a903c27e865d6558e45bacd3e154b0",
     "source/device/package/.gitkeep": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
@@ -155,7 +155,7 @@
     "source/device/package/nezha27-input/NezhaTouchEdge.h": "d132e77508b3b01d4ac01a13ec8617881ebe816fdd608461de1d7dd34c4b31dd",
     "source/device/package/nezha27-input/NezhaTouchSelfTest.h": "9262f7035de652a7336f8dd9b0a65bb6c1213cec0a0f8c4ce41d0b00037b1fd7",
     "source/device/package/nezha27-input/ResourceProbe.c": "c92b2ba262f2885d90499ba4bfa97c5bc2904c42e4ba3b48618bdac98bd49524",
-    "source/device/patches/xnu-12377/series": "dbc71e83a4dd9099863ca4f015f64711f43536d4b9d4ba95a4514d3308fcd30a",
+    "source/device/patches/xnu-12377/series": "21796acd3823477125366de8acf7f7d47a5475defa747536a9887598c774b1a2",
     "source/device/patches/xnu-12377/source-storage-runtime.patch": "25c377c60db417b15fcc137acf380f0319cbff9d5ba012af1907f3485602b584",
     "source/device/patches/xnu-12377/zzyd-sheng-audio-addon-mount.patch": "b51ed480b34c92452ea984fe056e5fce310bd929992d418f383a7e9268313c51",
     "source/device/patches/xnu-12377/zzye-sheng-cpu-idle.patch": "95f57fb9994796c3de2429fe82b6a521620b9f13b83e29eba12185f5ada4da86",
@@ -176,7 +176,7 @@
     "source/device/scripts/backlight-iphone-24A446.json": "446eb5fe6440335bfe9fca75b32f7d815ddcafbb8a3c2d7f697c1e5c3f40f6cb",
     "source/device/scripts/build-adreno840.py": "269f32fe2c97d7baf846a148fed7c111a53869486626a87ec8daab7fdfc3ab91",
     "source/device/scripts/build-boot-progress.py": "a210eb1f0443574eb1506932aa9e8181d5c73aecf99397d8cc731568bd3210ba",
-    "source/device/scripts/build-gop-legacy-display-27.py": "f6f0e2cb69003dff292441f92b3e0431e5bd2519c24fbdef49e9365d519c07ea",
+    "source/device/scripts/build-gop-legacy-display-27.py": "d9d42fc7495227d920fb0e679ff0c9a4efc847e68eb720134238147c638f7a0f",
     "source/device/scripts/build-ios27-pmgr.py": "f88a0596937cbf0504922751a3194e3a33bba609f683a415262887d2b64241e4",
     "source/device/scripts/build-nezha27-input.py": "cd559fad30207962411546b32ffb5547ae29379e7fa992d16eaab09a39b6cd28",
     "source/device/scripts/build-nezha27-usb-control.py": "a2cd48a8e07a1cc43cc54488d7492c45f63aaa21121ea85667e34752b83d4971",
@@ -192,7 +192,7 @@
     "source/device/scripts/data/iosurface-plane-iphone-24A446.json": "156d6a3631f95ea34be5c4af5b39208c8665a909961145d639b65cc8479d2e21",
     "source/device/scripts/hid-device-iphone-24A446.json": "af4668764ba1d2a4649b9c45d1ddbbabcb69e27659e7c35fbf9899f8f6bdbc7d",
     "source/device/scripts/legacy-display-iphone-24A446.json": "6f08ddf9377cc5c92a4a60ff75c3b452eb1a536720ebdf8fda9361846d8c8fea",
-    "source/device/scripts/nezha-armcpu-asm-fix.py": "3d37c0c0e3613453c901a9622bc45a077c9acbd35ffe449046fa575b3b57af3a",
+    "source/device/scripts/nezha-armcpu-asm-fix.py": "15413fb1a451f05420eb35e0eaa1674bbf3ed110a8f60992c4718f36ba8b3da3",
     "source/device/scripts/qualify-armcpu-instructions.py": "dae7cb3b9faecaac7b268212bbd324ae172d3dffa0e94b06afc4581c9f4abe9b",
     "source/device/tests/cpu27-policy.c": "e1682fcec436a58085ef34ebdf82a536523f933e99a873ea1aacd7d3cd45b61c",
     "source/device/tests/input-chain-trace.c": "9170cb8675b3ce94e9e1cfd5af0aaa4f322655fb1ef177789aef888a13348669",
@@ -213,7 +213,7 @@
     "source/soc/patches/xnu-12377/sheng-platform-power.patch": "6e68dbcdac670624f2a9806a61fef42110bfe6586029b3f1a0acb068c3a23ec2",
     "source/soc/soc.toml": "9cebcadf2d5a271ceb44ee5fc378ed739cff0e7e5a940007164a9917042fd92f",
     "source/ufs.bundle": "3a7c1c6ac7e5a39e6cb4adcc6143fa1e4c6c24ae862aa501102f9fb70c21a534",
-    "source/usb.bundle": "fc77b40791b6994f0da015b13b68a13cee5e8bc84e510cee4e518866165efeb2",
+    "source/usb.bundle": "31bf920112f237231cde123f5cf140fa1a81a59a285197955ac74ca5510c1b18",
     "ci/native.py": "bba7caa2eb287c417c360316e701ae0ce24fc153545752fe422c3b850913e238",
     "source/device/patches/xnu-12377/appsync-arm64-default-jop.patch": "18ad02bb13da54677b2a1382eb83f12fd192baefd2c9b257e9a473844b4b654c",
     "source/device/patches/xnu-12377/appsync-arm64-user-jop.patch": "09904a9e97a5f5885bb65a7adcb087aea133d1308f5f10da386c729973fef8e2",
@@ -234,7 +234,13 @@
     "source/appsync/test-runtime.m": "3412a7a6e2e48a62fa72f66205eba0583a249d6109052f093dcd33f525c7f373",
     "source/appsync/test-signing.m": "ab62b5935df9aa17faae216ccf2a7d61f68c7e690a84030b20f3382e200d29ab",
     "source/appsync/test-trust.c": "cb6508956b8e1da76cd3a440009ed658817039050c41e8dba41a0a826706d1bf",
-    "source/appsync/test.py": "1114ac3c419394c7afa8b1f2d36f05ab274386235f536dbd55a59d16b4476f0c"
+    "source/appsync/test.py": "1114ac3c419394c7afa8b1f2d36f05ab274386235f536dbd55a59d16b4476f0c",
+    "source/device/patches/xnu-12377/appsync-apple-usb-start.patch": "049c32e1bc03a40518b70a3d80bd3e5bfa5359743f7f02cffcdb2f80523f1046",
+    "source/device/package/apple-usb/NezhaAppleUsbDevice.cpp": "b8340aafe06b63d7e5e87a568bfdb6e88b08a4c7a50774254276a5dbfe8b5cd1",
+    "source/device/package/apple-usb/LICENSE": "5b1d3d911103cb0f41641ec0964c5ac1f7e229f57aa072b6ac38bae913a1307b",
+    "source/device/package/armcpu/usb-spi-mask.patch": "f79a3775d61388f195def8f75cc7dcbbaa6667d2628a8cf593adadfe587305a9",
+    "source/device/scripts/usb-xdci-iphone-24A446.json": "3b59ae5ad6e782790e6ccf88fb2622ad2e506ed52032c09daedddd31f68ca3ce",
+    "source/device/scripts/data/fileset-24A446-iphone14-4-apple-usb-symbols.json": "ff173170dedd602773592a5ad0a8daf34ba0e71c5206e13bab3fe6d471b0e2df"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
@@ -242,9 +248,9 @@
   "device_executed": false,
   "usb_enabled": true,
   "usb": {
-    "source_revision": "9bfbf258d8356efcc0fbf03603d1518874829798",
-    "source_tree": "0b1327323a45484cbe96f2419e7a8d34ccdf63f9",
-    "history": "One source-only tree: validate one shutdown ticket while USB is live, resume shutdown logs; no phone data",
+    "source_revision": "31071777511dba5ceca34dea3ddca07789a1a091",
+    "source_tree": "10d8eef05a1ca3e5c387870b24fd433f588f5766",
+    "history": "One audited source tree with mutually exclusive native Apple device mode; no firmware or handset data",
     "repository": "https://github.com/xiaoleGun/QcomXnuUsbDebug.git"
   },
   "comparison_reference": false,

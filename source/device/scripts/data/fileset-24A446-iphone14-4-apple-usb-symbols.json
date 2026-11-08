@@ -1,0 +1,39 @@
+{
+  "inputs": {
+    "kernelcache_sha256": "d99b7719ad4b367db264a7682806aecaf6e0621c6761d07325a58337319d4238",
+    "entry": "com.apple.kernel"
+  },
+  "functions": [
+    {
+      "original": "0xfffffff00a73ab54",
+      "original_sha256": "93e2981462c2821d47fbfaff18e8793719c582e5b2f73601bf22ba9476eddf88",
+      "native_symbol": "_mbuf_data",
+      "evidence": "AppleUSBDeviceMux 0x7f42138 KPI fixup; returns the current mbuf data pointer. Native bsd/kern/kpi_mbuf.c mbuf_data uses m_mtod_current."
+    },
+    {
+      "original": "0xfffffff00a73abf4",
+      "original_sha256": "5487a428059967eb73ab77fef42a7d891f13c33f388e803d39e313fe761c2ecb",
+      "native_symbol": "_mbuf_datastart",
+      "evidence": "AppleUSBDeviceMux 0x7f42140 KPI fixup; returns inline storage or the external mbuf data start. Native bsd/kern/kpi_mbuf.c mbuf_datastart selects native mbuf storage."
+    },
+    {
+      "original": "0xfffffff00a73ac24",
+      "original_sha256": "285c9b9309942b3c4735e49887e8763b8621a032c6359ba78ac586e4dcb03b86",
+      "native_symbol": "_mbuf_setdata",
+      "evidence": "AppleUSBDeviceMux 0x7f421a0 KPI fixup; checks the data/length against the allocation, returns EINVAL or stores data pointer and length. Native bsd/kern/kpi_mbuf.c mbuf_setdata."
+    },
+    {
+      "original": "0xfffffff00a211424",
+      "original_sha256": "1eb98ec0e377fb9ca5a0e566cecd65a83b20e3b9fd154b349a5cdbb4bf6d5644",
+      "native_symbol": "_nezha_usb_store_le32",
+      "evidence": "AppleUSBXDCI 0x807d168 fixup; complete leaf BTI C; STR W1,[X0]; RET. A two-argument native little-endian store of exactly 32 bits."
+    },
+    {
+      "original": "0xfffffff00a211430",
+      "original_sha256": "098eaedc005e3035dc4889826d8ab47dce01fc29661fd810127429e385054925",
+      "native_symbol": "_nezha_usb_store_le64",
+      "evidence": "AppleUSBXDCI 0x807d170 fixup; complete leaf BTI C; STR X1,[X0]; RET. A two-argument native little-endian store of exactly 64 bits."
+    }
+  ],
+  "data": []
+}
