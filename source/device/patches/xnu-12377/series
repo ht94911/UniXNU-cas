@@ -31,3 +31,6 @@ zzzz-native-root-cwd-ownership.patch
 
 # Name normal shutdown waits without changing unmount semantics.
 zzzz-native-shutdown-unmount-observe.patch
+
+# Adapt audio after the original iOS27 bring-up patch has consumed its context.
+zzzzzz-nezha-audio-hal-mount.patch

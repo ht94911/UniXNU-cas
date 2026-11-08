@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Compile/link new private playback input resolver, explicit stock primary-TDM configuration, native Assembly resource adapter and na=3-gated HAL mount. No new boot mode or playback enabled; original011 remains pending device test. Existing Mac-only source/CMS flow; no private input, calibration, Data, donor, phone or COM operations.",
+  "purpose": "Native012 failed before compilation because modified early audio mount context preceded iOS27 bring-up. Preserve original early patch and apply exact audio adaptation at the end of board series. Same new playback input/native binding sources; unchanged GPU015/SoC/USB and zero private input. New native compile/link only; no boot mode enabled or phone operations.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "4a8781f0f55ad7c5c2ff0ee81c75d2e3795fa874",
+  "device_revision": "44a3d8d33974d68d8c1f9b65685dd9639c6e7342",
   "soc_revision": "703d7b4bb00904b4a6e5d96f9e9bf72eec170f6b",
   "xcode": "26.6",
   "files": {
@@ -154,9 +154,9 @@
     "source/device/package/nezha27-input/NezhaTouchEdge.h": "d132e77508b3b01d4ac01a13ec8617881ebe816fdd608461de1d7dd34c4b31dd",
     "source/device/package/nezha27-input/NezhaTouchSelfTest.h": "9262f7035de652a7336f8dd9b0a65bb6c1213cec0a0f8c4ce41d0b00037b1fd7",
     "source/device/package/nezha27-input/ResourceProbe.c": "c92b2ba262f2885d90499ba4bfa97c5bc2904c42e4ba3b48618bdac98bd49524",
-    "source/device/patches/xnu-12377/series": "7cfdc046c955034dd7ee5e1ae747d918605717819bbc97b0f22d64b48f90ff56",
+    "source/device/patches/xnu-12377/series": "52e1319ff4935b8051206848237043d572f06a237c9e481bb1a45f013f8ba581",
     "source/device/patches/xnu-12377/source-storage-runtime.patch": "25c377c60db417b15fcc137acf380f0319cbff9d5ba012af1907f3485602b584",
-    "source/device/patches/xnu-12377/zzyd-sheng-audio-addon-mount.patch": "f956150aa8b01973f9e1c5e9b6590680ff434b1a2a21955889728c53896c73da",
+    "source/device/patches/xnu-12377/zzyd-sheng-audio-addon-mount.patch": "b51ed480b34c92452ea984fe056e5fce310bd929992d418f383a7e9268313c51",
     "source/device/patches/xnu-12377/zzye-sheng-cpu-idle.patch": "95f57fb9994796c3de2429fe82b6a521620b9f13b83e29eba12185f5ada4da86",
     "source/device/patches/xnu-12377/zzyf-sheng-amp.patch": "07abb7ce25c626ddc37069ecc9e168b85a1da8e02b42b19649a10f667aa5a56b",
     "source/device/patches/xnu-12377/zzzz-native-root-cwd-ownership.patch": "d3e37aaaff05993250c853eff0dcbbdc5e36e26b0a406742412e580f7e997d36",
@@ -219,7 +219,7 @@
     "source/device/package/audio27/platform/AudioSmmu.h": "41401f1b97e3481c7e5cc3e02c47f926e91eec9fa34f4a48981a3fc3b723cddd",
     "source/device/package/audio27/upstream/ShengGpr.c": "c4f498f07e2cb601b593e64a8d32474a21d6a87375618e1a67b99d52c5d3160e",
     "source/device/package/audio27/platform/SoundWire.h": "348979ac1e552e1c3a0027e09f8500927e8bf7ccbb496276d2c9d3ef19322224",
-    ".github/workflows/nezha-ios27-native.yml": "526591993b5d84f9312f49bf0778cb4b0105f4f72c42d391e4a9f6a4b94166ca",
+    ".github/workflows/nezha-ios27-native.yml": "a90fafcf5b6c6065164e2bbb1ee0a48077ba519d490efae6f5ebc3db5f96b34f",
     "source/device/package/audio27/upstream/ShengGpr.h": "a274dded1f4d1e2709b9f966759bcb1f57d12747ee0f57743dea1fa97d95d23e",
     "source/device/package/audio27/os/NezhaAudioNative.h": "69525b76e08af98947a5e3ae8e55389059053b24e4aaff9cfb158aa50c35ad7c",
     "source/device/package/audio27/upstream/ShengAudioReach.h": "b135177a5feb3e24e0d8a6aabb301600e2c37078b970a09ada6e8eb7bb6a5b98",
@@ -325,7 +325,8 @@
     "source/device/package/audio27/os/NezhaAudioPlayback.cpp": "12666248b133972583db79137f5596955db3ca5e1a7332afe14ae4636ef93ac7",
     "source/device/package/audio27/os/NezhaAudioPlayback.h": "b2c2a7d23519a2a4c72805aa96e5ca506de1fd19fe864ea296a3f2c76697a662",
     "source/device/package/audio27/platform/AudioPlaybackInputs.c": "ea9ed5c2df4203dafcb9ec270c9f79f9506bc9ef90bbf4c307c7f642135fd057",
-    "source/device/package/audio27/platform/AudioPlaybackInputs.h": "788ac81fc5e9b42a95e2d9d42aff998bba81c279771f1399666ae72b3ca2f92a"
+    "source/device/package/audio27/platform/AudioPlaybackInputs.h": "788ac81fc5e9b42a95e2d9d42aff998bba81c279771f1399666ae72b3ca2f92a",
+    "source/device/patches/xnu-12377/zzzzzz-nezha-audio-hal-mount.patch": "c6fe1833480aff52dbfe4f44c75d7c5fd995efe1d524f3bc7671fd6559719bef"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
@@ -376,7 +377,7 @@
   "audio": {
     "base": "GPU015",
     "base_device_revision": "154f8a08e6800734408c99f909c28ceeb94caa3c",
-    "source_revision": "4a8781f0f55ad7c5c2ff0ee81c75d2e3795fa874",
+    "source_revision": "44a3d8d33974d68d8c1f9b65685dd9639c6e7342",
     "source_only_revision": "abde8b4b694afb0f4eb20e838ebe4f316e49da12",
     "hardware_enabled": false,
     "resource_census_enabled": true,
