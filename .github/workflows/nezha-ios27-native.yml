@@ -1,7 +1,7 @@
-name: nezha iPhone27 AppSync host suite - tests002
+name: nezha iPhone27 AppSync iPhone test IPAs
 on:
   push:
-    branches: [codex/ios27-appsync-tests-002-20261109]
+    branches: [codex/ios27-appsync-fixtures-20261109]
   workflow_dispatch:
 permissions:
   contents: read
@@ -29,13 +29,8 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: '3.13'
-      - name: Run production hooks and signing regressions
-        run: |
-          set -euo pipefail
-          work="$RUNNER_TEMP/ios27/work"
-          mkdir -p "$work/logs" "$RUNNER_TEMP/ios27/setup-logs"
-          brew install openssl@3 > "$RUNNER_TEMP/ios27/setup-logs/brew.log" 2>&1
-          python3 task/source/appsync/test.py --device task/source/device --signing 2>&1 | tee "$work/logs/appsync-tests.log"
+      - name: Build arm64 AppSync installation fixtures
+        run: python3 task/source/appsync/build-fixtures.py "$RUNNER_TEMP/ios27/work/appsync-runtime"
       - name: Seal outputs and diagnostics using the existing owner envelope
         if: always()
         run: |
