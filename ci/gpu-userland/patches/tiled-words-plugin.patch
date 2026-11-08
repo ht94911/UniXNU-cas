@@ -1,0 +1,955 @@
+diff --git a/bridge/patches/0033-direct-tiled-word-copies.patch b/bridge/patches/0033-direct-tiled-word-copies.patch
+new file mode 100644
+index 0000000..ba2e392
+--- /dev/null
++++ b/bridge/patches/0033-direct-tiled-word-copies.patch
+@@ -0,0 +1,949 @@
++diff --git a/crates/metal2vulkan-runtime/src/tests/heap_tiled.rs b/crates/metal2vulkan-runtime/src/tests/heap_tiled.rs
++index cfc6f401d..d0625af16 100644
++--- a/crates/metal2vulkan-runtime/src/tests/heap_tiled.rs
+++++ b/crates/metal2vulkan-runtime/src/tests/heap_tiled.rs
++@@ -7,9 +7,9 @@
++ 
++ use crate::copy_plan::block_bytes;
++ use crate::texture::heap_tiled::{
+++    BlockPlacement, Elements, FreshDepth, FreshPattern, HeapLayout, TiledLayout, Untiled,
++     fresh_pattern, level_bytes, lossless_answer, metal_compresses, metal_heap_layout,
++-    own_heap_layout, pattern_levels, sample_grid, shadow_tiles, BlockPlacement, Elements,
++-    FreshDepth, FreshPattern, HeapLayout, TiledLayout, Untiled,
+++    own_heap_layout, pattern_levels, sample_grid, shadow_tiles,
++ };
++ use crate::texture_descriptor::TextureLayout;
++ use metal2vulkan::metal::format::byte_format;
++@@ -1473,3 +1473,43 @@ fn a_multisample_heap_texture_apart_from_metal_s_tiles_is_announced_untiled() {
++         assert_eq!(own_heap_layout(&HeapLayout::Measured, 4, apart), None);
++     }
++ }
+++
+++/// Test both sides of device limits, including the real Vulkan minimum x limit.
+++/// Every word is covered without a nearly empty extra row above that boundary.
+++#[test]
+++fn linear_word_grids_do_not_dispatch_a_nearly_empty_extra_row() {
+++    use crate::texture::heap_tiled::tiled_word_grid;
+++    for limits in [[1, 1], [3, 7], [64, 9], [65535, 65535]] {
+++        let capacity = u64::from(limits[0]) * u64::from(limits[1]);
+++        for groups in [
+++            1,
+++            2,
+++            u64::from(limits[0]),
+++            u64::from(limits[0]) + 1,
+++            u64::from(limits[0]) * 2 - 1,
+++            capacity,
+++            capacity + 1,
+++        ] {
+++            for words in [groups * 64, groups * 64 - 63] {
+++                let grid = tiled_word_grid(words, limits);
+++                if groups > capacity {
+++                    assert!(grid.is_none());
+++                    continue;
+++                }
+++                let [x, y] = grid.expect("fits");
+++                assert!(x > 0 && x <= limits[0] && y > 0 && y <= limits[1]);
+++                let sent = u64::from(x) * u64::from(y);
+++                assert!(sent >= groups);
+++                assert!(sent - groups < u64::from(y), "{groups} groups in {grid:?}");
+++            }
+++        }
+++    }
+++    assert_eq!(
+++        tiled_word_grid(65536 * 64, [65535, 65535]),
+++        Some([32768, 2])
+++    );
+++    assert_eq!(tiled_word_grid(0, [65535, 65535]), Some([1, 1]));
+++    assert_eq!(tiled_word_grid(1, [0, 65535]), None);
+++    assert_eq!(tiled_word_grid(1, [65535, 0]), None);
+++    assert_eq!(tiled_word_grid(u64::MAX, [65535, 65535]), None);
+++}
++diff --git a/crates/metal2vulkan-runtime/src/tests/mod.rs b/crates/metal2vulkan-runtime/src/tests/mod.rs
++index cbeec393c..8d9c3bdda 100644
++--- a/crates/metal2vulkan-runtime/src/tests/mod.rs
+++++ b/crates/metal2vulkan-runtime/src/tests/mod.rs
++@@ -312,3 +312,6 @@ mod ycbcr_device;
++ mod ycbcr_in_place_loop;
++ #[cfg(any(m2v_gpu, m2v_cpu_icd))]
++ mod ycbcr_refresh;
+++
+++#[cfg(any(m2v_gpu, m2v_cpu_icd))]
+++mod tiled_device_words;
++diff --git a/crates/metal2vulkan-runtime/src/tests/tiled_device_words.rs b/crates/metal2vulkan-runtime/src/tests/tiled_device_words.rs
++new file mode 100644
++index 000000000..13f4c92c2
++--- /dev/null
+++++ b/crates/metal2vulkan-runtime/src/tests/tiled_device_words.rs
++@@ -0,0 +1,219 @@
+++//! Execute the real owned tiled kernel through the runtime's existing Vulkan
+++//! device and internal submission path, against an independent byte oracle.
+++
+++use super::blit_holds::{Scratch, device};
+++use crate::owned_kernel::{OwnedModule, OwnedSets};
+++use crate::{Buffer, Device, ResourceOptions};
+++use ash::vk;
+++use metal2vulkan::bind::{TiledLevelMove, TiledTexelsModule};
+++use std::time::Instant;
+++
+++fn morton(x: u32, y: u32, tw: u32, th: u32) -> u32 {
+++    let (mut word, mut at) = (0, 0);
+++    for bit in 0..tw.trailing_zeros().max(th.trailing_zeros()) {
+++        if bit < tw.trailing_zeros() {
+++            word |= ((x >> bit) & 1) << at;
+++            at += 1;
+++        }
+++        if bit < th.trailing_zeros() {
+++            word |= ((y >> bit) & 1) << at;
+++            at += 1;
+++        }
+++    }
+++    word
+++}
+++
+++fn expected(level: &TiledLevelMove, into: bool, tight: &[u8], tiled: &[u8]) -> (Vec<u8>, Vec<u8>) {
+++    let (mut t, mut p) = (tight.to_vec(), tiled.to_vec());
+++    let [tw, th] = level.tile;
+++    for image in 0..level.images {
+++        for y in 0..level.extent[1] {
+++            for x in 0..level.extent[0] {
+++                let tile = y / th * level.across + x / tw;
+++                let element = tile * tw * th + morton(x % tw, y % th, tw, th);
+++                let a = (level.tiled_first + image * level.chain_stride + element * level.unit)
+++                    as usize;
+++                let b = (level.tight_first
+++                    + ((image * level.extent[1] + y) * level.extent[0] + x) * level.unit)
+++                    as usize;
+++                let n = level.unit as usize;
+++                if into {
+++                    t[b..b + n].copy_from_slice(&p[a..a + n]);
+++                } else {
+++                    p[a..a + n].copy_from_slice(&t[b..b + n]);
+++                }
+++            }
+++        }
+++    }
+++    (t, p)
+++}
+++
+++fn assert_bytes(label: &str, buffer: &Buffer, want: &[u8]) {
+++    // SAFETY: Shared storage of the given length; the internal submission has
+++    // completed and its compute writes were made visible to HOST_READ.
+++    let got =
+++        unsafe { std::slice::from_raw_parts(buffer.contents().unwrap().as_ptr(), want.len()) };
+++    let mismatch = got.iter().zip(want).position(|(a, b)| a != b);
+++    assert_eq!(mismatch, None, "{label}: first unequal byte");
+++}
+++
+++fn run_plan(
+++    device: &Device,
+++    shape: &[u8],
+++    grid: [u32; 3],
+++    inputs: (&[u8], &[u8]),
+++    want: (&[u8], &[u8]),
+++    label: &str,
+++) {
+++    let (tight, tiled) = inputs;
+++    let a = device
+++        .new_buffer_with_bytes(tight, ResourceOptions::shared())
+++        .unwrap();
+++    let b = device
+++        .new_buffer_with_bytes(tiled, ResourceOptions::shared())
+++        .unwrap();
+++    let s = device
+++        .new_buffer_with_bytes(shape, ResourceOptions::shared())
+++        .unwrap();
+++    let kernel = device.owned_kernel(OwnedModule::TiledTexels).unwrap();
+++    let binding = |buffer: &Buffer, len: usize| {
+++        let (raw, at) = buffer.at(0);
+++        (raw, at, len as u64)
+++    };
+++    let sets = OwnedSets::write(
+++        device,
+++        &kernel,
+++        &[vec![
+++            binding(&a, tight.len()),
+++            binding(&b, tiled.len()),
+++            binding(&s, shape.len()),
+++        ]],
+++    )
+++    .unwrap();
+++    let mut elapsed = Vec::new();
+++    for _ in 0..3 {
+++        let start = Instant::now();
+++        device
+++            .submit_internal(|raw, cb| {
+++                let before = vk::MemoryBarrier::default()
+++                    .src_access_mask(vk::AccessFlags::HOST_WRITE)
+++                    .dst_access_mask(vk::AccessFlags::SHADER_READ | vk::AccessFlags::SHADER_WRITE);
+++                let after = vk::MemoryBarrier::default()
+++                    .src_access_mask(vk::AccessFlags::SHADER_WRITE)
+++                    .dst_access_mask(vk::AccessFlags::HOST_READ);
+++                // SAFETY: the existing runtime records and waits for this command;
+++                // every bound range is live, aligned by the buffer allocator and fits.
+++                unsafe {
+++                    raw.cmd_pipeline_barrier(
+++                        cb,
+++                        vk::PipelineStageFlags::HOST,
+++                        vk::PipelineStageFlags::COMPUTE_SHADER,
+++                        vk::DependencyFlags::empty(),
+++                        &[before],
+++                        &[],
+++                        &[],
+++                    );
+++                    raw.cmd_bind_pipeline(cb, vk::PipelineBindPoint::COMPUTE, kernel.pipeline);
+++                    raw.cmd_bind_descriptor_sets(
+++                        cb,
+++                        vk::PipelineBindPoint::COMPUTE,
+++                        kernel.layout,
+++                        0,
+++                        &[sets.sets[0]],
+++                        &[],
+++                    );
+++                    raw.cmd_dispatch(cb, grid[0], grid[1], grid[2]);
+++                    raw.cmd_pipeline_barrier(
+++                        cb,
+++                        vk::PipelineStageFlags::COMPUTE_SHADER,
+++                        vk::PipelineStageFlags::HOST,
+++                        vk::DependencyFlags::empty(),
+++                        &[after],
+++                        &[],
+++                        &[],
+++                    );
+++                }
+++            })
+++            .unwrap();
+++        elapsed.push(start.elapsed().as_secs_f64() * 1000.0);
+++        assert_bytes("tight", &a, want.0);
+++        assert_bytes("tiled and padding", &b, want.1);
+++        assert_bytes("shape is read only", &s, shape);
+++    }
+++    eprintln!(
+++        "TILED-DEVICE {label}: {} grid {grid:?} submitted-and-waited-ms {elapsed:?}",
+++        device.name()
+++    );
+++}
+++
+++#[test]
+++fn tiled_device_words_match_the_byte_oracle_and_keep_padding() {
+++    let scratch = Scratch::new("tiled-device-words");
+++    let device = device(&scratch.0);
+++    for level in [
+++        TiledLevelMove::new(4, [17, 5], 2, [16, 4], 2, 128, 1280, 64, 1024),
+++        TiledLevelMove::new(8, [9, 6], 3, [16, 8], 1, 128, 1280, 64, 1024),
+++        TiledLevelMove::new(16, [3, 3], 2, [4, 4], 1, 64, 384, 32, 256),
+++        TiledLevelMove::new(4, [1, 1], 3, [1, 1], 1, 4, 128, 12, 128),
+++        TiledLevelMove::new(4, [3, 19], 2, [4, 16], 2, 128, 1280, 32, 1024),
+++        TiledLevelMove::new(
+++            8,
+++            [1204, 2328],
+++            1,
+++            [128, 16],
+++            10,
+++            0,
+++            24_576_000,
+++            0,
+++            23_920_640,
+++        ),
+++    ] {
+++        let tight_len = (level.tight_first
+++            + level.extent[0] * level.extent[1] * level.images * level.unit
+++            + 32) as usize;
+++        let tiled_len =
+++            (level.tiled_first + (level.images - 1) * level.chain_stride + level.region_bytes + 32)
+++                as usize;
+++        let tight: Vec<u8> = (0..tight_len)
+++            .map(|i| (i.wrapping_mul(7) + i / 257 + 3) as u8)
+++            .collect();
+++        let tiled: Vec<u8> = (0..tiled_len)
+++            .map(|i| (i.wrapping_mul(13) + i / 251 + 5) as u8)
+++            .collect();
+++        for into in [false, true] {
+++            let (want_t, want_p) = expected(&level, into, &tight, &tiled);
+++            let groups = u64::from(level.invocations(into)).div_ceil(64).max(1);
+++            let x = groups.min(65535) as u32;
+++            let y = groups.div_ceil(u64::from(x)) as u32;
+++            let legacy_shape = TiledTexelsModule::shape(&[level], into, x * 64).unwrap();
+++            let (tile_shape, tile_grid) = TiledTexelsModule::tiled_dispatch(&level, into).unwrap();
+++            for (label, shape, grid) in [
+++                ("linear", legacy_shape, [x, y, 1]),
+++                ("tiles", tile_shape, tile_grid),
+++            ] {
+++                assert!(
+++                    grid.iter()
+++                        .zip(
+++                            device
+++                                .properties()
+++                                .description
+++                                .limits
+++                                .max_compute_work_group_count
+++                        )
+++                        .all(|(&used, allowed)| used <= allowed)
+++                );
+++                run_plan(
+++                    &device,
+++                    &shape,
+++                    grid,
+++                    (&tight, &tiled),
+++                    (&want_t, &want_p),
+++                    &format!(
+++                        "{label} {}x{} unit{} images{} into{into}",
+++                        level.extent[0], level.extent[1], level.unit, level.images
+++                    ),
+++                );
+++            }
+++        }
+++    }
+++}
++diff --git a/crates/metal2vulkan-runtime/src/texture/heap_tiled.rs b/crates/metal2vulkan-runtime/src/texture/heap_tiled.rs
++index 55eba6bd1..01d4a4de9 100644
++--- a/crates/metal2vulkan-runtime/src/texture/heap_tiled.rs
+++++ b/crates/metal2vulkan-runtime/src/texture/heap_tiled.rs
++@@ -157,12 +157,13 @@
++ //! otherwise than the heap is written back: every byte a command wrote, and the values the copy
++ //! in changed.
++ 
+++use super::super::Device;
++ use super::super::blit_plan::BufferLayout;
++ use super::super::buffer::Buffer;
++-use super::super::copy_plan::{block_bytes, block_extent, depth_bytes, TextureRegion};
+++use super::super::copy_plan::{TextureRegion, block_bytes, block_extent, depth_bytes};
++ use super::super::degradation::Degradation;
++ use super::super::depth_copy;
++-use super::super::error::{internal, Error};
+++use super::super::error::{Error, internal};
++ use super::super::heap::SizeAndAlign;
++ use super::super::image_plan::block_family;
++ use super::super::metal_release::heap_blocks;
++@@ -173,10 +174,9 @@ use super::super::shadow::{self, ShadowStaging};
++ use super::super::texture_descriptor::TextureLayout;
++ use super::super::tracker::Barrier;
++ use super::super::values::{CpuCacheMode, HazardTrackingMode, ResourceOptions, StorageMode};
++-use super::super::Device;
++ use super::copy_images::{Reused, UseMaker};
++ use super::heap::HeapPlane;
++-use super::{copy_units, Texture, TextureShared};
+++use super::{Texture, TextureShared, copy_units};
++ use crate::device::functions::Vk;
++ use ash::vk;
++ use metal2vulkan::bind::{TiledLevelMove, TiledTexelsModule};
++@@ -1128,9 +1128,10 @@ fn image_element(pf: PixelFormat, format: Format) -> Option<(u64, [u64; 2])> {
++             .map(|&(_, bytes, block)| (bytes, block)),
++         // A stencil view's image holds a depth aspect it does not name (`heap_plane_layout`).
++         PixelFormat::X32Stencil8 => match units[..] {
++-            [(ImageAspectFlags::DEPTH, _, _), (ImageAspectFlags::STENCIL, bytes, block)] => {
++-                Some((bytes, block))
++-            }
+++            [
+++                (ImageAspectFlags::DEPTH, _, _),
+++                (ImageAspectFlags::STENCIL, bytes, block),
+++            ] => Some((bytes, block)),
++             _ => None,
++         },
++         PixelFormat::Depth16Unorm | PixelFormat::Depth32Float => match units[..] {
++@@ -1490,12 +1491,30 @@ fn multisample_tiles(
++     Some(tiles)
++ }
++ 
+++/// Cover a linear word stream with the fewest rows, balancing the last row.
+++/// At most rows-1 groups are unused, including immediately above an x limit.
+++pub(crate) fn tiled_word_grid(invocations: u64, limits: [u32; 2]) -> Option<[u32; 2]> {
+++    let [max_x, max_y] = limits.map(u64::from);
+++    if max_x == 0 || max_y == 0 {
+++        return None;
+++    }
+++    let groups = invocations
+++        .div_ceil(u64::from(TiledTexelsModule::LOCAL_SIZE))
+++        .max(1);
+++    let down = groups.div_ceil(max_x);
+++    if down > max_y {
+++        return None;
+++    }
+++    let across = groups.div_ceil(down);
+++    Some([across as u32, down as u32])
+++}
+++
++ /// One direction of the kernel's moves: its shape, where it lies in the shape buffer, and the
++ /// dispatch's workgroups.
++ struct Move {
++     shape: Vec<u8>,
++     at: u64,
++-    groups: [u32; 2],
+++    groups: [u32; 3],
++ }
++ 
++ /// A heap texture's moves between its image and its elements tiled in the heap's bytes (the
++@@ -1596,12 +1615,13 @@ impl HeapTiledCopies {
++     /// The workgroups of a dispatch of `invocations` within `device`'s counts, or `None`.
++     fn grid(device: &Device, invocations: u64) -> Option<[u32; 2]> {
++         let limits = &device.properties().description.limits;
++-        let local = u64::from(TiledTexelsModule::LOCAL_SIZE);
++-        let groups = invocations.div_ceil(local).max(1);
++-        let across = groups.min(u64::from(limits.max_compute_work_group_count[0]));
++-        let down = groups.div_ceil(across.max(1));
++-        let fits = down <= u64::from(limits.max_compute_work_group_count[1]);
++-        fits.then_some([across as u32, down as u32])
+++        tiled_word_grid(
+++            invocations,
+++            [
+++                limits.max_compute_work_group_count[0],
+++                limits.max_compute_work_group_count[1],
+++            ],
+++        )
++     }
++ 
++     /// Whether the moves of a texture of `tiles`, its tight buffer laid out as `planes` and
++@@ -1707,10 +1727,33 @@ impl HeapTiledCopies {
++         let mut moves = Vec::new();
++         for into in [true, false] {
++             let invocations = u64::from(TiledTexelsModule::invocations(&levels, into));
++-            let groups = Self::grid(device, invocations)
++-                .ok_or_else(|| internal("a tiled heap texture's moves past the device's grid"))?;
++-            let shape = TiledTexelsModule::shape(&levels, into, groups[0] * local)
++-                .ok_or_else(|| internal("a tiled heap texture of more levels than a shape"))?;
+++            let direct = match levels.as_slice() {
+++                [level] => TiledTexelsModule::tiled_dispatch(level, into).filter(|(_, grid)| {
+++                    grid.iter()
+++                        .zip(
+++                            device
+++                                .properties()
+++                                .description
+++                                .limits
+++                                .max_compute_work_group_count,
+++                        )
+++                        .all(|(&used, allowed)| used <= allowed)
+++                }),
+++                _ => None,
+++            };
+++            let (shape, groups) = match direct {
+++                Some(plan) => plan,
+++                None => {
+++                    let [x, y] = Self::grid(device, invocations).ok_or_else(|| {
+++                        internal("a tiled heap texture's moves past the device's grid")
+++                    })?;
+++                    let shape =
+++                        TiledTexelsModule::shape(&levels, into, x * local).ok_or_else(|| {
+++                            internal("a tiled heap texture of more levels than a shape")
+++                        })?;
+++                    (shape, [x, y, 1])
+++                }
+++            };
++             let at = shapes_at + if into { 0 } else { SHAPE_SLOT };
++             moves.push(Move { shape, at, groups });
++         }
++@@ -1785,7 +1828,12 @@ impl HeapTiledCopies {
++                 &[set],
++                 &[],
++             );
++-            device.cmd_dispatch(command_buffer, step.groups[0], step.groups[1], 1);
+++            device.cmd_dispatch(
+++                command_buffer,
+++                step.groups[0],
+++                step.groups[1],
+++                step.groups[2],
+++            );
++             Barrier::everything().record(device, command_buffer);
++         }
++     }
++diff --git a/crates/metal2vulkan/src/bind/tiled_texels.rs b/crates/metal2vulkan/src/bind/tiled_texels.rs
++index ee513067e..038ea91b5 100644
++--- a/crates/metal2vulkan/src/bind/tiled_texels.rs
+++++ b/crates/metal2vulkan/src/bind/tiled_texels.rs
++@@ -34,6 +34,10 @@
++ //!   `region_bytes` long, from `tiled_first` past the chain's first byte): each byte an element's
++ //!   lies in, that element's byte from the tight buffer; every other byte as it was.
++ //!
+++//! [`TiledTexelsModule::tiled_dispatch`] sets header word 3 and uses a three-dimensional
+++//! tile grid for one level of word-wide elements. It preserves the same bytes while
+++//! avoiding the linear grid's level search and integer divisions.
+++//!
++ //! One past every level moves nothing. The consumer keeps every byte the shape names inside the
++ //! bindings, each binding within `maxStorageBufferRange`, and the grid within
++ //! `maxComputeWorkGroupCount`.
++@@ -45,8 +49,8 @@
++ use std::sync::Arc;
++ 
++ use crate::budget::{Budget, Meter};
++-use crate::device::requirements::Requirements;
++ use crate::device::Device;
+++use crate::device::requirements::Requirements;
++ use crate::error::{Error, InternalError, InternalKind};
++ use crate::pipeline::sym::{ResourceKind, ResourceSlot, Stage, Symbol};
++ use crate::spirv::builder::constructs::{ArmEnd, ArmFn};
++@@ -54,8 +58,8 @@ use crate::spirv::builder::{FunctionBuilder, ModuleBuilder};
++ use crate::spirv::error::BResult;
++ use crate::spirv::ids::{GlobalId, TypeId, Value};
++ use crate::spirv::ir::{
++-    natural_layout, BinOp, ExecMode, ExecModel, IoDir, LayoutRule, MemAccess, StorageClass, Type,
++-    TypedModule,
+++    BinOp, ExecMode, ExecModel, IoDir, LayoutRule, MemAccess, StorageClass, Type, TypedModule,
+++    natural_layout,
++ };
++ 
++ /// The crate-owned tiled texel module of one device, validated like any output.
++@@ -163,6 +167,70 @@ impl TiledTexelsModule {
++             .sum()
++     }
++ 
+++    /// A word-wide, single-level move indexed by tile column, tile row and image.
+++    ///
+++    /// The returned shape and workgroup counts are a pair for this module. Each
+++    /// invocation moves one aligned word of an element, in either direction; tile
+++    /// padding and bytes outside the level remain untouched. No division is needed
+++    /// in the shader's address calculation. The caller still checks the device's
+++    /// workgroup limits and the bindings' bounds, as for [`Self::shape`].
+++    ///
+++    /// `None` for elements smaller than a word, invalid or unrepresentable geometry.
+++    /// Those moves keep using [`Self::shape`]'s linear invocation order.
+++    pub fn tiled_dispatch(level: &TiledLevelMove, into_tight: bool) -> Option<(Vec<u8>, [u32; 3])> {
+++        if !matches!(level.unit, 4 | 8 | 16)
+++            || level.extent.contains(&0)
+++            || level.images == 0
+++            || level.tile.iter().any(|side| !side.is_power_of_two())
+++            || level.across < level.extent[0].div_ceil(level.tile[0])
+++            || [
+++                level.tiled_first,
+++                level.tight_first,
+++                level.chain_stride,
+++                level.region_bytes,
+++            ]
+++            .iter()
+++            .any(|v| v % 4 != 0)
+++            || level.region_bytes == 0
+++            || level.chain_stride < level.region_bytes
+++        {
+++            return None;
+++        }
+++        let [tw, th] = level.tile.map(u64::from);
+++        let tile_words = tw.checked_mul(th)?.checked_mul(u64::from(level.unit))? / 4;
+++        let rows = u64::from(level.extent[1]).div_ceil(th);
+++        let row_words = u64::from(level.across).checked_mul(tile_words)?;
+++        let region_words = row_words.checked_mul(rows)?;
+++        let tight_bytes = u64::from(level.extent[0])
+++            .checked_mul(u64::from(level.extent[1]))?
+++            .checked_mul(u64::from(level.images))?
+++            .checked_mul(u64::from(level.unit))?;
+++        let last_chain = u64::from(level.images - 1).checked_mul(u64::from(level.chain_stride))?;
+++        let tiled_end = last_chain
+++            .checked_add(u64::from(level.tiled_first))?
+++            .checked_add(u64::from(level.region_bytes))?;
+++        let tight_end = u64::from(level.tight_first).checked_add(tight_bytes)?;
+++        let counts = u64::from(level.images).checked_mul(u64::from(level.region_bytes / 4))?;
+++        for value in [
+++            tile_words.checked_mul(4)?,
+++            row_words.checked_mul(4)?,
+++            region_words.checked_mul(4)?,
+++            tight_bytes,
+++            tiled_end,
+++            tight_end,
+++            counts,
+++        ] {
+++            u32::try_from(value).ok()?;
+++        }
+++        let across = u32::try_from(row_words.div_ceil(u64::from(Self::LOCAL_SIZE))).ok()?;
+++        let grid_width = across.checked_mul(Self::LOCAL_SIZE)?;
+++        let grid = [across, u32::try_from(rows).ok()?, level.images];
+++        let mut shape = Self::shape(std::slice::from_ref(level), into_tight, grid_width)?;
+++        // Header word3 selects tile coordinates; the legacy shape leaves it zero.
+++        shape[12..16].copy_from_slice(&1u32.to_le_bytes());
+++        Some((shape, grid))
+++    }
+++
++     /// The shape's bytes of a move of `levels` into the image (the tight buffer) where
++     /// `into_tight`, else back, in a grid whose rows are `grid_width` invocations wide; `None`
++     /// past [`MAX_LEVELS`](Self::MAX_LEVELS) levels.
++@@ -434,30 +502,15 @@ fn byte_at(f: &mut FunctionBuilder<'_>, words: Value, at: Value) -> BResult<Valu
++     f.binary(BinOp::BitwiseAnd, v, mask)
++ }
++ 
++-/// The module as a typed module, before serialization: the module [`tiled_texels_module`]
++-/// serializes, which the CPU interpreter runs. Its bindings are the symbols `TIGHT`, `TILED` and
++-/// `SHAPE` (the module docs).
++-fn typed_module() -> BResult<TypedModule> {
++-    let mut b = ModuleBuilder::new();
++-    let u32_ = b.ty(Type::Int {
++-        width: 32,
++-        signed: false,
++-    })?;
++-    let uvec3 = b.ty(Type::Vector { elem: u32_, len: 3 })?;
++-    let tight = words_buffer(&mut b, TIGHT, u32_)?;
++-    let tiled = words_buffer(&mut b, TILED, u32_)?;
++-    let shape = words_buffer(&mut b, SHAPE, u32_)?;
++-    let invocation = b.builtin(crate::spv::BuiltIn::GlobalInvocationId, IoDir::Input, uvec3)?;
++-    let void = b.ty(Type::Void)?;
++-    let mut f = b.function(void)?;
++-    let zero = u32_value(&mut f, 0)?;
++-    let invocation = f.module().global_value(invocation)?;
++-    let invocation = f.load(invocation, MemAccess::default())?;
++-    let gx = f.composite_extract(invocation, &[0])?;
++-    let gy = f.composite_extract(invocation, &[1])?;
++-    let tight = f.module().global_value(tight)?;
++-    let tiled = f.module().global_value(tiled)?;
++-    let shape = f.module().global_value(shape)?;
+++/// The general linear invocation order, including narrow elements and mip chains.
+++fn linear_dispatch(
+++    f: &mut FunctionBuilder<'_>,
+++    tight: Value,
+++    tiled: Value,
+++    shape: Value,
+++    [gx, gy]: [Value; 2],
+++) -> BResult<()> {
+++    let zero = u32_value(f, 0)?;
++     let word = |f: &mut FunctionBuilder<'_>, index: Value| -> BResult<Value> {
++         let p = f.access_chain(shape, &[zero, index])?;
++         f.load(p, MemAccess::default())
++@@ -466,24 +519,24 @@ fn typed_module() -> BResult<TypedModule> {
++         let index = u32_value(f, index)?;
++         word(f, index)
++     };
++-    let grid_width = field(&mut f, 0)?;
++-    let into = field(&mut f, 1)?;
+++    let grid_width = field(f, 0)?;
+++    let into = field(f, 1)?;
++     let into = f.binary(BinOp::INotEqual, into, zero)?;
++-    let levels = field(&mut f, 2)?;
+++    let levels = field(f, 2)?;
++     let grid_row = f.binary(BinOp::IMul, gy, grid_width)?;
++     let i = f.binary(BinOp::IAdd, grid_row, gx)?;
++     // The record of the last level whose first invocation is at most `i`.
++     let header = TiledTexelsModule::HEADER_WORDS;
++     let record_words = TiledTexelsModule::LEVEL_WORDS;
++-    let mut record = u32_value(&mut f, header)?;
+++    let mut record = u32_value(f, header)?;
++     for k in 1..TiledTexelsModule::MAX_LEVELS {
++         let at = header + record_words * k;
++-        let start = field(&mut f, at)?;
++-        let kth = u32_value(&mut f, k)?;
+++        let start = field(f, at)?;
+++        let kth = u32_value(f, k)?;
++         let listed = f.binary(BinOp::ULessThan, kth, levels)?;
++         let reached = f.binary(BinOp::UGreaterThanEqual, i, start)?;
++         let taken = f.binary(BinOp::LogicalAnd, listed, reached)?;
++-        let this = u32_value(&mut f, at)?;
+++        let this = u32_value(f, at)?;
++         record = f.select(taken, this, record)?;
++     }
++     let at = |f: &mut FunctionBuilder<'_>, offset: u32| -> BResult<Value> {
++@@ -491,19 +544,19 @@ fn typed_module() -> BResult<TypedModule> {
++         let index = f.binary(BinOp::IAdd, record, offset)?;
++         word(f, index)
++     };
++-    let start = at(&mut f, 0)?;
++-    let count = at(&mut f, 1)?;
+++    let start = at(f, 0)?;
+++    let count = at(f, 1)?;
++     let l = Level {
++-        unit_log2: at(&mut f, 2)?,
++-        width: at(&mut f, 3)?,
++-        height: at(&mut f, 4)?,
++-        tile_log2: [at(&mut f, 5)?, at(&mut f, 6)?],
++-        across: at(&mut f, 7)?,
++-        tiled_first: at(&mut f, 8)?,
++-        chain_stride: at(&mut f, 9)?,
++-        tight_first: at(&mut f, 10)?,
++-        region_words: at(&mut f, 11)?,
++-        images: at(&mut f, 12)?,
+++        unit_log2: at(f, 2)?,
+++        width: at(f, 3)?,
+++        height: at(f, 4)?,
+++        tile_log2: [at(f, 5)?, at(f, 6)?],
+++        across: at(f, 7)?,
+++        tiled_first: at(f, 8)?,
+++        chain_stride: at(f, 9)?,
+++        tight_first: at(f, 10)?,
+++        region_words: at(f, 11)?,
+++        images: at(f, 12)?,
++     };
++     let has_levels = f.binary(BinOp::ULessThan, zero, levels)?;
++     let past_start = f.binary(BinOp::UGreaterThanEqual, i, start)?;
++@@ -511,7 +564,7 @@ fn typed_module() -> BResult<TypedModule> {
++     let in_count = f.binary(BinOp::ULessThan, j, count)?;
++     let moves = f.binary(BinOp::LogicalAnd, past_start, in_count)?;
++     let moves = f.binary(BinOp::LogicalAnd, has_levels, moves)?;
++-    let two = u32_value(&mut f, 2)?;
+++    let two = u32_value(f, 2)?;
++     let wide = f.binary(BinOp::UGreaterThanEqual, l.unit_log2, two)?;
++     let body: ArmFn<'_, ()> = Box::new(move |f, _| {
++         // Into the image: word `j` of the level's tight elements.
++@@ -631,6 +684,134 @@ fn typed_module() -> BResult<TypedModule> {
++         Ok(ArmEnd::FallThrough(Vec::new()))
++     });
++     f.if_(&mut (), moves, body, None)?;
+++    Ok(())
+++}
+++
+++/// A single level's aligned words, addressed from tile coordinates. Every output
+++/// word belongs to one invocation; partial edge tiles never write their padding.
+++fn tile_dispatch(
+++    f: &mut FunctionBuilder<'_>,
+++    tight: Value,
+++    tiled: Value,
+++    shape: Value,
+++    [gx, gy, image]: [Value; 3],
+++) -> BResult<()> {
+++    let zero = u32_value(f, 0)?;
+++    let two = u32_value(f, 2)?;
+++    let field = |f: &mut FunctionBuilder<'_>, index: u32| -> BResult<Value> {
+++        let index = u32_value(f, index)?;
+++        let p = f.access_chain(shape, &[zero, index])?;
+++        f.load(p, MemAccess::default())
+++    };
+++    let l = Level {
+++        unit_log2: field(f, 6)?,
+++        width: field(f, 7)?,
+++        height: field(f, 8)?,
+++        tile_log2: [field(f, 9)?, field(f, 10)?],
+++        across: field(f, 11)?,
+++        tiled_first: field(f, 12)?,
+++        chain_stride: field(f, 13)?,
+++        tight_first: field(f, 14)?,
+++        region_words: field(f, 15)?,
+++        images: field(f, 16)?,
+++    };
+++    let into = field(f, 1)?;
+++    let into = f.binary(BinOp::INotEqual, into, zero)?;
+++    let word_bits = f.binary(BinOp::IAdd, l.tile_log2[0], l.tile_log2[1])?;
+++    let word_bits = f.binary(BinOp::IAdd, word_bits, l.unit_log2)?;
+++    let word_bits = f.binary(BinOp::ISub, word_bits, two)?;
+++    let column = f.binary(BinOp::ShiftRightLogical, gx, word_bits)?;
+++    let mask = low_mask(f, word_bits)?;
+++    let in_tile = f.binary(BinOp::BitwiseAnd, gx, mask)?;
+++    let byte = f.binary(BinOp::ShiftLeftLogical, in_tile, two)?;
+++    let element = f.binary(BinOp::ShiftRightLogical, byte, l.unit_log2)?;
+++    let (xi, yi) = demorton(f, l, element)?;
+++    let x = f.binary(BinOp::ShiftLeftLogical, column, l.tile_log2[0])?;
+++    let x = f.binary(BinOp::BitwiseOr, x, xi)?;
+++    let y = f.binary(BinOp::ShiftLeftLogical, gy, l.tile_log2[1])?;
+++    let y = f.binary(BinOp::BitwiseOr, y, yi)?;
+++    let row = f.binary(BinOp::IMul, gy, l.across)?;
+++    let tile = f.binary(BinOp::IAdd, row, column)?;
+++    let first_word = f.binary(BinOp::ShiftLeftLogical, tile, word_bits)?;
+++    let word = f.binary(BinOp::IAdd, first_word, in_tile)?;
+++    let mut has = f.binary(BinOp::ULessThan, column, l.across)?;
+++    for (value, bound) in [
+++        (x, l.width),
+++        (y, l.height),
+++        (image, l.images),
+++        (word, l.region_words),
+++    ] {
+++        let inside = f.binary(BinOp::ULessThan, value, bound)?;
+++        has = f.binary(BinOp::LogicalAnd, has, inside)?;
+++    }
+++    let body: ArmFn<'_, ()> = Box::new(move |f, _| {
+++        let two = u32_value(f, 2)?;
+++        let unit_mask = low_mask(f, l.unit_log2)?;
+++        let offset = f.binary(BinOp::BitwiseAnd, byte, unit_mask)?;
+++        let tight_at = tight_byte(f, l, image, x, y)?;
+++        let tight_at = f.binary(BinOp::IAdd, tight_at, offset)?;
+++        let tight_word = f.binary(BinOp::ShiftRightLogical, tight_at, two)?;
+++        let chain = f.binary(BinOp::IMul, image, l.chain_stride)?;
+++        let first = f.binary(BinOp::IAdd, chain, l.tiled_first)?;
+++        let first = f.binary(BinOp::ShiftRightLogical, first, two)?;
+++        let tiled_word = f.binary(BinOp::IAdd, first, word)?;
+++        let at_tight = f.access_chain(tight, &[zero, tight_word])?;
+++        let at_tiled = f.access_chain(tiled, &[zero, tiled_word])?;
+++        let inward: ArmFn<'_, ()> = Box::new(move |f, _| {
+++            let v = f.load(at_tiled, MemAccess::default())?;
+++            f.store(at_tight, v, MemAccess::default())?;
+++            Ok(ArmEnd::FallThrough(Vec::new()))
+++        });
+++        let outward: ArmFn<'_, ()> = Box::new(move |f, _| {
+++            let v = f.load(at_tight, MemAccess::default())?;
+++            f.store(at_tiled, v, MemAccess::default())?;
+++            Ok(ArmEnd::FallThrough(Vec::new()))
+++        });
+++        f.if_(&mut (), into, inward, Some(outward))?;
+++        Ok(ArmEnd::FallThrough(Vec::new()))
+++    });
+++    f.if_(&mut (), has, body, None)?;
+++    Ok(())
+++}
+++
+++/// The module as a typed module, before serialization: the module [`tiled_texels_module`]
+++/// serializes, which the CPU interpreter runs. Its bindings are the symbols `TIGHT`, `TILED` and
+++/// `SHAPE` (the module docs).
+++fn typed_module() -> BResult<TypedModule> {
+++    let mut b = ModuleBuilder::new();
+++    let u32_ = b.ty(Type::Int {
+++        width: 32,
+++        signed: false,
+++    })?;
+++    let uvec3 = b.ty(Type::Vector { elem: u32_, len: 3 })?;
+++    let tight = words_buffer(&mut b, TIGHT, u32_)?;
+++    let tiled = words_buffer(&mut b, TILED, u32_)?;
+++    let shape = words_buffer(&mut b, SHAPE, u32_)?;
+++    let invocation = b.builtin(crate::spv::BuiltIn::GlobalInvocationId, IoDir::Input, uvec3)?;
+++    let void = b.ty(Type::Void)?;
+++    let mut f = b.function(void)?;
+++    let zero = u32_value(&mut f, 0)?;
+++    let invocation = f.module().global_value(invocation)?;
+++    let invocation = f.load(invocation, MemAccess::default())?;
+++    let gx = f.composite_extract(invocation, &[0])?;
+++    let gy = f.composite_extract(invocation, &[1])?;
+++    let tight = f.module().global_value(tight)?;
+++    let tiled = f.module().global_value(tiled)?;
+++    let shape = f.module().global_value(shape)?;
+++    let gz = f.composite_extract(invocation, &[2])?;
+++    let flag = u32_value(&mut f, 3)?;
+++    let p = f.access_chain(shape, &[zero, flag])?;
+++    let flag = f.load(p, MemAccess::default())?;
+++    let is_tiled = f.binary(BinOp::INotEqual, flag, zero)?;
+++    let direct: ArmFn<'_, ()> = Box::new(move |f, _| {
+++        tile_dispatch(f, tight, tiled, shape, [gx, gy, gz])?;
+++        Ok(ArmEnd::FallThrough(Vec::new()))
+++    });
+++    let linear: ArmFn<'_, ()> = Box::new(move |f, _| {
+++        linear_dispatch(f, tight, tiled, shape, [gx, gy])?;
+++        Ok(ArmEnd::FallThrough(Vec::new()))
+++    });
+++    f.if_(&mut (), is_tiled, direct, Some(linear))?;
++     f.ret(None)?;
++     let id = f.finish()?;
++     b.entry(
++diff --git a/crates/metal2vulkan/src/bind/tiled_texels/tests.rs b/crates/metal2vulkan/src/bind/tiled_texels/tests.rs
++index f13633d78..3ce500aa7 100644
++--- a/crates/metal2vulkan/src/bind/tiled_texels/tests.rs
+++++ b/crates/metal2vulkan/src/bind/tiled_texels/tests.rs
++@@ -1,5 +1,5 @@
++-use super::{typed_module, TiledLevelMove, TiledTexelsModule, SHAPE, TIGHT, TILED};
++-use crate::spirv::interp::{run, Buffer, Config, Order, Resources};
+++use super::{SHAPE, TIGHT, TILED, TiledLevelMove, TiledTexelsModule, typed_module};
+++use crate::spirv::interp::{Buffer, Config, Order, Resources, run};
++ use crate::spirv::testing::{assert_valid, committed_profiles};
++ 
++ #[test]
++@@ -64,13 +64,27 @@ fn moved(
++     tight: &[u8],
++     tiled: &[u8],
++ ) -> (Vec<u8>, Vec<u8>) {
++-    let m = typed_module().expect("module");
++     let across = 2;
++-    let grid = across * TiledTexelsModule::LOCAL_SIZE;
+++    let width = across * TiledTexelsModule::LOCAL_SIZE;
++     let rows = TiledTexelsModule::invocations(levels, into_tight)
++-        .div_ceil(grid)
+++        .div_ceil(width)
++         .max(1);
++-    let shape = TiledTexelsModule::shape(levels, into_tight, grid).expect("a shape");
+++    let shape = TiledTexelsModule::shape(levels, into_tight, width).expect("linear shape");
+++    let linear = moved_grid(shape, [across, rows, 1], tight, tiled);
+++    if let [level] = levels {
+++        if let Some((shape, grid)) = TiledTexelsModule::tiled_dispatch(level, into_tight) {
+++            let direct = moved_grid(shape, grid, tight, tiled);
+++            assert_eq!(
+++                direct, linear,
+++                "tile coordinates preserve every source, padding and output byte"
+++            );
+++        }
+++    }
+++    linear
+++}
+++
+++fn moved_grid(shape: Vec<u8>, grid: [u32; 3], tight: &[u8], tiled: &[u8]) -> (Vec<u8>, Vec<u8>) {
+++    let m = typed_module().expect("module");
++     let mut out = Vec::new();
++     for order in [Order::Forward, Order::Reverse] {
++         let part = |slot, bytes: Vec<u8>| Buffer {
++@@ -89,7 +103,7 @@ fn moved(
++         };
++         let cfg = Config {
++             order,
++-            workgroups: [across, rows, 1],
+++            workgroups: grid,
++             ..Config::default()
++         };
++         let buffers = run(&m, &cfg, res).expect("run").buffers;
++@@ -218,3 +232,82 @@ fn a_shape_takes_at_most_sixteen_levels() {
++     assert!(TiledTexelsModule::shape(&vec![level; limit], true, 64).is_some());
++     assert!(TiledTexelsModule::shape(&vec![level; limit + 1], true, 64).is_none());
++ }
+++
+++/// The same independent per-element oracle exercises both kernels, including
+++/// partial tiles, extra heap bytes, nonzero offsets, word lanes and array chains.
+++#[test]
+++fn tile_dispatch_keeps_offsets_padding_and_array_chains() {
+++    for level in [
+++        TiledLevelMove::new(4, [17, 5], 2, [16, 4], 2, 128, 1280, 64, 1024),
+++        TiledLevelMove::new(8, [9, 6], 3, [16, 8], 1, 128, 1280, 64, 1024),
+++        TiledLevelMove::new(16, [3, 3], 2, [4, 4], 1, 64, 384, 32, 256),
+++        TiledLevelMove::new(4, [1, 1], 3, [1, 1], 1, 4, 128, 12, 128),
+++        TiledLevelMove::new(4, [3, 19], 2, [4, 16], 2, 128, 1280, 32, 1024),
+++        TiledLevelMove::new(8, [19, 3], 2, [16, 4], 2, 128, 1280, 32, 1024),
+++    ] {
+++        let tight_len = (level.tight_first
+++            + level.extent[0] * level.extent[1] * level.images * level.unit
+++            + 32) as usize;
+++        let tiled_len =
+++            (level.tiled_first + (level.images - 1) * level.chain_stride + level.region_bytes + 32)
+++                as usize;
+++        assert!(TiledTexelsModule::tiled_dispatch(&level, true).is_some());
+++        assert!(TiledTexelsModule::tiled_dispatch(&level, false).is_some());
+++        moves_match_the_layout(&[level], tight_len, tiled_len);
+++    }
+++}
+++
+++#[test]
+++fn tile_dispatch_accepts_screen_geometry_and_refuses_ineligible_inputs() {
+++    // Synthetic RGBA16-sized geometry, independent of an app or shader identity.
+++    let level = TiledLevelMove::new(
+++        8,
+++        [1204, 2328],
+++        1,
+++        [128, 16],
+++        10,
+++        0,
+++        24_576_000,
+++        0,
+++        23_920_640,
+++    );
+++    let (shape, grid) = TiledTexelsModule::tiled_dispatch(&level, false).expect("screen geometry");
+++    assert_eq!(grid, [640, 146, 1]);
+++    assert_eq!(u32::from_le_bytes(shape[12..16].try_into().unwrap()), 1);
+++    assert_eq!(u32::from_le_bytes(shape[8..12].try_into().unwrap()), 1);
+++    for bad in [
+++        TiledLevelMove { unit: 1, ..level },
+++        TiledLevelMove { unit: 2, ..level },
+++        TiledLevelMove { unit: 12, ..level },
+++        TiledLevelMove {
+++            tile: [3, 16],
+++            ..level
+++        },
+++        TiledLevelMove {
+++            tile: [0, 16],
+++            ..level
+++        },
+++        TiledLevelMove {
+++            extent: [0, 2328],
+++            ..level
+++        },
+++        TiledLevelMove { across: 1, ..level },
+++        TiledLevelMove {
+++            tiled_first: 1,
+++            ..level
+++        },
+++        TiledLevelMove {
+++            images: u32::MAX,
+++            ..level
+++        },
+++        TiledLevelMove {
+++            tile: [1 << 30, 16],
+++            ..level
+++        },
+++    ] {
+++        assert!(
+++            TiledTexelsModule::tiled_dispatch(&bad, true).is_none(),
+++            "{bad:?}"
+++        );
+++    }
+++}
++diff --git a/crates/metal2vulkan/tests/api_signatures.tsv b/crates/metal2vulkan/tests/api_signatures.tsv
++index 145fa90ce..c299b38dd 100644
++--- a/crates/metal2vulkan/tests/api_signatures.tsv
+++++ b/crates/metal2vulkan/tests/api_signatures.tsv
++@@ -8573,6 +8573,7 @@ method	metal2vulkan::bind::TiledLevelMove::invocations	pub const fn invocations(
++ method	metal2vulkan::bind::TiledLevelMove::new	pub const fn new(unit: u32, extent: [u32; 2], images: u32, tile: [u32; 2], across: u32, tiled_first: u32, chain_stride: u32, tight_first: u32, region_bytes: u32) -> TiledLevelMove
++ method	metal2vulkan::bind::TiledTexelsModule::invocations	pub fn invocations(levels: &[TiledLevelMove], into_tight: bool) -> u32
++ method	metal2vulkan::bind::TiledTexelsModule::shape	pub fn shape(levels: &[TiledLevelMove], into_tight: bool, grid_width: u32) -> Option<Vec<u8>>
+++method	metal2vulkan::bind::TiledTexelsModule::tiled_dispatch	pub fn tiled_dispatch(level: &TiledLevelMove, into_tight: bool) -> Option<(Vec<u8>, [u32; 3])>
++ method	metal2vulkan::bind::TwoPlaneTexelsModule::alpha_words	pub const fn alpha_words([width, height]: [u32; 2], slices: u32) -> u32
++ method	metal2vulkan::bind::TwoPlaneTexelsModule::shape	pub fn shape([width, height]: [u32; 2], slices: u32, color: PlaneLayout, alpha: PlaneLayout, into_texels: bool, grid_width: u32) -> [u8; 52]
++ method	metal2vulkan::bind::UsedResource::new	pub fn new(class: ResourceClass, token: u32) -> UsedResource

@@ -1,0 +1,14 @@
+diff --git a/scripts/build-adreno-metal-bridge.py b/scripts/build-adreno-metal-bridge.py
+index a57eb90..e26e21b 100644
+--- a/scripts/build-adreno-metal-bridge.py
++++ b/scripts/build-adreno-metal-bridge.py
+@@ -79,7 +79,8 @@ PATCHES = [ROOT / 'drivers/AdrenoMetal/bridge/patches' / name for name in [
+     '0030-spare-image-blocks-give-room.patch',
+     # Reuse superseded buffer reservations within a separate 64 MiB device budget.
+     '0031-bounded-buffer-reserves.patch',
+-    '0032-vulkan-operation-diagnostics.patch']]
++    '0032-vulkan-operation-diagnostics.patch',
++    '0033-direct-tiled-word-copies.patch']]
+ 
+ 
+ def git_tree(*steps):
