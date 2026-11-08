@@ -1,7 +1,16 @@
 diff --git a/NativeBridgeMetalFrontend.mm b/NativeBridgeMetalFrontend.mm
-index 7f90111..306f956 100644
+index 7f90111..9e5e07a 100644
 --- a/NativeBridgeMetalFrontend.mm
 +++ b/NativeBridgeMetalFrontend.mm
+@@ -255,7 +255,7 @@ static bool traceWanted() {static const bool on=diagOn() && !strcmp(getprogname(
+ static void tracePush(const TraceRec &rec) {
+  if(!traceWanted())return;
+  if(rec.type==12 && (rec.a>=40 || !native_gpu_latency_stage(rec.a)))return;
+- if(rec.type==9 || rec.type==10 || rec.type==11)return;
++ if(rec.type==9 || rec.type==10)return;
+  const uint32_t at=gTraceHead.fetch_add(1);
+  gTrace[at%16384]=rec;
+  gTrace[at%16384].idx=rec.type==1?rec.idx:at;
 @@ -279,6 +279,10 @@ static void traceVulkanOperation(uint64_t command,uint64_t metadata,uint64_t det
   const uint64_t seen=gVulkanTraceSeen.fetch_add(1,std::memory_order_relaxed);
   if(seen>kVulkanTraceBudget)return;
@@ -14,10 +23,10 @@ index 7f90111..306f956 100644
   else {rec.t1=command;rec.t2=metadata;rec.t3=detail;}
   tracePush(rec);
 diff --git a/README.md b/README.md
-index b939ddb..229168b 100644
+index b939ddb..55618da 100644
 --- a/README.md
 +++ b/README.md
-@@ -24,6 +24,16 @@ The original barriers and alias rules remain in force. CPU Vulkan checks cover
+@@ -24,6 +24,18 @@ The original barriers and alias rules remain in force. CPU Vulkan checks cover
  production ShadowCopy dispatch, access stages, padding and independent writes;
  A840 frame performance requires a hardware capture.
  
@@ -30,6 +39,8 @@ index b939ddb..229168b 100644
 +region count; a single-region record includes its buffer row length and the
 +low 32 bits of its buffer offset, so row and offset alignment can be checked.
 +These timestamps are CPU recording boundaries, not GPU copy durations.
++The existing type 11 copy-row counters are retained when they change, sampled
++by the frame writer every 250 ms, to report actual per-row blits separately.
 +
  ## Frame diagnostics
  
