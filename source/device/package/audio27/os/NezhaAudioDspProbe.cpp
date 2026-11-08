@@ -25,11 +25,12 @@ struct AudioDspProbe {
     uint64_t now,deadline,tasDeadline,tasWait,tasLease;
     unsigned phase,tasPhase,dmaAttempted,started,revision[2],pasQueries;
     unsigned tasClaimed,tasPowerAttempted,tasCleanupAttempted;
+    unsigned postPoint;int postResult,headerResult;
     unsigned loadPas,loadPoint,loadSegment;uint64_t loadOffset,loadBytes,loadPhysical;
     int error,tasError,tasCleanup;
 };
 AudioDspProbe nativeAudioProbe;
-uint32_t audioProbeSequence,audioProbeValues[38];
+uint32_t audioProbeSequence,audioProbeValues[52];
 void publish(AudioDspProbe *d) {
     uint32_t fault=0,syndrome=0;uint64_t address=0;
     // IRQ publishes these once through fault_pending; never race its initial
@@ -45,10 +46,23 @@ void publish(AudioDspProbe *d) {
         (uint32_t)address,(uint32_t)(address>>32),syndrome,d->power.last_irq_enable,
         d->pasQueries,d->adsp.initial_stop_mask,(uint32_t)d->adsp.initial_stop[0],(uint32_t)d->adsp.initial_stop[1],
         d->loadPas,d->loadPoint,d->loadSegment,(uint32_t)d->loadOffset,(uint32_t)(d->loadOffset>>32),
-        (uint32_t)d->loadBytes,(uint32_t)(d->loadBytes>>32),(uint32_t)d->loadPhysical,(uint32_t)(d->loadPhysical>>32)};
+        (uint32_t)d->loadBytes,(uint32_t)(d->loadBytes>>32),(uint32_t)d->loadPhysical,(uint32_t)(d->loadPhysical>>32),
+        d->adsp.retain_proxy,d->adsp.handover_seen,d->adsp.proxy_possible,d->postPoint,(uint32_t)d->postResult,
+        d->adsp.glink.header_attempts,d->adsp.glink.last_cmd,d->adsp.glink.last_param1,d->adsp.glink.last_param2,
+        (uint32_t)d->headerResult,d->adsp.glink.rx_messages,d->adsp.glink.tx_messages,
+        d->adsp.glink.version_agreed,d->adsp.glink.rx.data ? 1u:0u};
     __atomic_add_fetch(&audioProbeSequence,1,__ATOMIC_ACQ_REL);
-    for (unsigned i=0;i<38;++i) __atomic_store_n(&audioProbeValues[i],values[i],__ATOMIC_RELAXED);
+    for (unsigned i=0;i<52;++i) __atomic_store_n(&audioProbeValues[i],values[i],__ATOMIC_RELAXED);
     __atomic_add_fetch(&audioProbeSequence,1,__ATOMIC_RELEASE);
+}
+void post_ready(void *v,uint32_t point,int result) {
+    auto *d=static_cast<AudioDspProbe *>(v);d->postPoint=point;d->postResult=result;publish(d);
+    printf("NEZHA AUDIO27 POST: point=%u result=%d slave=%x seen=%u released=%u retain=%u held=%x rx=%u\n",
+        point,result,d->adsp.slave,d->adsp.handover_seen,d->adsp.handed,d->adsp.retain_proxy,d->power.held,d->adsp.glink.rx.length);
+}
+void glink_header(void *v,uint32_t attempt,uint16_t command,uint16_t param1,uint32_t param2,int result) {
+    auto *d=static_cast<AudioDspProbe *>(v);d->headerResult=result;publish(d);
+    printf("NEZHA AUDIO27 GLINK: attempt=%u cmd=%u p1=%u p2=%#x result=%d\n",attempt,command,param1,param2,result);
 }
 void loader_progress(void *v,uint32_t pas,uint32_t point,uint32_t segment,uint64_t offset,uint64_t bytes,uint64_t pa) {
     auto *d=static_cast<AudioDspProbe *>(v);
@@ -61,10 +75,10 @@ void loader_progress(void *v,uint32_t pas,uint32_t point,uint32_t segment,uint64
             pas,point,segment,(unsigned long long)offset,(unsigned long long)bytes,(unsigned long long)pa);
 }
 int snapshot(void *,char *out,size_t capacity,size_t *bytes,unsigned *truncated) {
-    uint32_t v[38];bool valid=false;
+    uint32_t v[52];bool valid=false;
     for (unsigned attempt=0;attempt<4;++attempt) {
         uint32_t seq=__atomic_load_n(&audioProbeSequence,__ATOMIC_ACQUIRE);if (seq&1) continue;
-        for (unsigned i=0;i<38;++i) v[i]=__atomic_load_n(&audioProbeValues[i],__ATOMIC_RELAXED);
+        for (unsigned i=0;i<52;++i) v[i]=__atomic_load_n(&audioProbeValues[i],__ATOMIC_RELAXED);
         __atomic_thread_fence(__ATOMIC_ACQUIRE);
         if (seq==__atomic_load_n(&audioProbeSequence,__ATOMIC_RELAXED)) {valid=true;break;}
     }
@@ -76,11 +90,15 @@ int snapshot(void *,char *out,size_t capacity,size_t *bytes,unsigned *truncated)
         "\"tcs_irq\":%u,\"tcs_status\":%u,\"tcs_command\":%u,\"fault_address\":\"0x%llx\","
         "\"fault_syndrome\":%u,\"tcs_irq_enable\":%u,\"pas_queries\":%u,\"stop_mask\":%u,"
         "\"stop_main\":%d,\"stop_dtb\":%d,\"load_pas\":%u,\"load_point\":%u,\"load_segment\":%u,"
-        "\"load_offset\":%llu,\"load_bytes\":%llu,\"load_pa\":\"0x%llx\",\"PCM\":false,\"HAL\":false}",
+        "\"load_offset\":%llu,\"load_bytes\":%llu,\"load_pa\":\"0x%llx\","
+        "\"retain_proxy\":%u,\"handover_seen\":%u,\"adsp_proxy_possible\":%u,\"post_point\":%u,\"post_result\":%d,"
+        "\"glink_attempts\":%u,\"glink_cmd\":%u,\"glink_p1\":%u,\"glink_p2\":%u,\"glink_result\":%d,"
+        "\"glink_rx\":%u,\"glink_tx\":%u,\"glink_version\":%u,\"glink_rx_bound\":%u,\"PCM\":false,\"HAL\":false}",
         v[0],(int32_t)v[1],v[2],v[3],v[4],v[5],v[6],v[7],v[8],(int32_t)v[9],(int32_t)v[10],v[11],v[12],v[13],v[14],v[15],v[16],v[17],v[18],v[19],v[20],
         (unsigned long long)(((uint64_t)v[22]<<32)|v[21]),v[23],v[24],v[25],v[26],(int32_t)v[27],(int32_t)v[28],v[29],v[30],v[31],
         (unsigned long long)(((uint64_t)v[33]<<32)|v[32]),(unsigned long long)(((uint64_t)v[35]<<32)|v[34]),
-        (unsigned long long)(((uint64_t)v[37]<<32)|v[36]));
+        (unsigned long long)(((uint64_t)v[37]<<32)|v[36]),
+        v[38],v[39],v[40],v[41],(int32_t)v[42],v[43],v[44],v[45],v[46],(int32_t)v[47],v[48],v[49],v[50],v[51]);
     if (n<0 || (size_t)n>=capacity) {*truncated=1;return QUD_FAILED;}
     *bytes=(size_t)n;return QUD_OK;
 }
@@ -129,8 +147,11 @@ int prepare(AudioDspProbe *d) {
     NaProxyOps power=na_resource_owner_proxy(&d->input.resources);
     r=na_proxy_init(&d->power,reinterpret_cast<volatile uint32_t *>(d->qmp.va),0x400,
         const_cast<const uint8_t *>(d->cmdDb.va),0x20000,1,&power);if (r) return r;
-    NaAdspOps ops={d,smem_lock,smem_unlock,doorbell,proxy,dma_setup,poll_shared};
+    NaAdspOps ops={d,smem_lock,smem_unlock,doorbell,proxy,dma_setup,poll_shared,post_ready};
     r=na_adsp_init(&d->adsp,d->smem.va,0x200000,&d->loader[0],&d->loader[1],&d->rx,&ops);if (r) return r;
+    // Audio016 diagnostic: keep the already-requested startup votes. This is
+    // not a power-management fix and never claims that the votes were released.
+    d->adsp.retain_proxy=1;
     return na_resource_owner_ipcc(&d->input.resources,&d->adsp);
 }
 void tas_cleanup(AudioDspProbe *d) {
@@ -191,7 +212,7 @@ void crash_reason(AudioDspProbe *d) {
 }
 void run_probe(void *v,wait_result_t) {
     auto *d=static_cast<AudioDspProbe *>(v);d->deadline=na_native_now_us(nullptr)/1000+120000;
-    unsigned last=UINT32_MAX,lastPhase=UINT32_MAX;int lastError=0;
+    unsigned last=UINT32_MAX,lastPhase=UINT32_MAX,lastSlave=UINT32_MAX,lastGpr=UINT32_MAX,lastHeld=UINT32_MAX;int lastError=0;
     for (;;) {
         d->now=na_native_now_us(nullptr)/1000;int r=NA_PENDING;
         if (d->phase==1 && __atomic_load_n(&nezha_touch_stage,__ATOMIC_ACQUIRE)==7) {
@@ -199,6 +220,9 @@ void run_probe(void *v,wait_result_t) {
             if (r==NA_BUSY && !d->input.attempted) r=NA_PENDING;
             else if (!r) {d->phase=2;d->deadline=d->now+45000;}
         } else if (d->phase>=2 && d->phase<=4) {
+            if (d->adsp.glink_initialized && !d->adsp.glink.observe_header) {
+                d->adsp.glink.observe_context=d;d->adsp.glink.observe_header=glink_header;
+            }
             r=na_adsp_poll(&d->adsp,d->now);
             if (d->adsp.stage==NaAdspStopMain && !d->pasQueries) {
                 // Same boot after validated proxy power; four bounded read-only
@@ -211,7 +235,8 @@ void run_probe(void *v,wait_result_t) {
                     d->pasQueries|=1u<<(2*i+j);
                 }
             }
-            if (!r && d->adsp.handed && d->adsp.transport.online && d->phase==2) d->phase=3;
+            if (!r && (d->adsp.handed || (d->adsp.retain_proxy && d->adsp.handover_seen)) &&
+                d->adsp.transport.online && d->phase==2) d->phase=3;
             if (r>=0 && d->phase==3) {
                 int tas=identify_tas(d);
                 if (tas<0) {d->tasError=tas;tas_cleanup(d);d->phase=4;}
@@ -220,10 +245,10 @@ void run_probe(void *v,wait_result_t) {
         }
         if (r<0 || (d->phase<4 && d->now>=d->deadline)) {d->error=r<0 ? r:NA_TIMEOUT;d->phase=5;tas_cleanup(d);crash_reason(d);}
         publish(d);
-        if (last!=d->adsp.stage || lastPhase!=d->phase || lastError!=d->error) {
-            printf("NEZHA AUDIO27 DSP: phase=%u error=%d ADSP=%u slave=%x handover=%u GPR=%u TAS=%u/%u error=%d\n",
-                d->phase,d->error,d->adsp.stage,d->adsp.slave,d->adsp.handed,d->adsp.transport.online,d->revision[0],d->revision[1],d->tasError);
-            last=d->adsp.stage;lastPhase=d->phase;lastError=d->error;
+        if (last!=d->adsp.stage || lastPhase!=d->phase || lastError!=d->error || lastSlave!=d->adsp.slave || lastGpr!=d->adsp.transport.online || lastHeld!=d->power.held) {
+            printf("NEZHA AUDIO27 DSP: phase=%u error=%d ADSP=%u slave=%x handover=%u GPR=%u TAS=%u/%u error=%d seen=%u retain=%u held=%x\n",
+                d->phase,d->error,d->adsp.stage,d->adsp.slave,d->adsp.handed,d->adsp.transport.online,d->revision[0],d->revision[1],d->tasError,d->adsp.handover_seen,d->adsp.retain_proxy,d->power.held);
+            last=d->adsp.stage;lastPhase=d->phase;lastError=d->error;lastSlave=d->adsp.slave;lastGpr=d->adsp.transport.online;lastHeld=d->power.held;
         }
         if (d->phase==5) break;
         assert_wait_timeout((event_t)d,THREAD_UNINT,1,kMillisecondScale);thread_block(THREAD_CONTINUE_NULL);

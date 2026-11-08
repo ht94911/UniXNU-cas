@@ -14,6 +14,12 @@ static int alloc_item(NaAdsp *a,uint16_t id,uint32_t bytes) {
     return r==0 || r==QcomSmemExists ? NA_OK:NA_IO;
 }
 static void kick(void *v) {NaAdsp *a=v;a->ops.doorbell(a->ops.context,0);}
+static void observe(NaAdsp *a,uint32_t point,int result) {
+    uint32_t bit=1u<<point;
+    if (a->observe_mask&bit) return;
+    a->observe_mask|=bit;
+    if (a->ops.observe) a->ops.observe(a->ops.context,point,result);
+}
 int na_adsp_init(NaAdsp *a,volatile void *smem,uint32_t bytes,NaPasLoad *main_image,NaPasLoad *dtb_image,NaRxQueue *rx,const NaAdspOps *ops) {
     if (!a || !smem || ((uintptr_t)smem&3) || bytes!=0x200000 || !main_image || !dtb_image ||
         main_image->pas!=1 || dtb_image->pas!=36 || main_image->stage!=NaPasInit || dtb_image->stage!=NaPasInit ||
@@ -110,18 +116,26 @@ int na_adsp_poll(NaAdsp *a,uint64_t now) {
         if (__atomic_load_n(&a->doorbells,__ATOMIC_ACQUIRE)!=a->auth_doorbells) {
             if (a->slave&1) return failed(a,NA_REMOTE);
             if (a->slave&2) a->stage=NaAdspOnline;
+            if (a->stage==NaAdspOnline && (a->slave&4)) a->handover_seen=1;
         }
         if (a->stage==NaAdspOnline) {
             if (!a->glink.rx.data) {
+                observe(a,NaAdspRxLookup,0);
                 uint32_t bytes=0;volatile uint8_t *rx=item(a,480,64,&bytes);
-                if (rx) {if (bytes>0x100000 || (bytes&7)) return failed(a,NA_WIRE);qcom_glink_set_rx(&a->glink,rx,bytes);}
+                if (rx) {if (bytes>0x100000 || (bytes&7)) return failed(a,NA_WIRE);qcom_glink_set_rx(&a->glink,rx,bytes);observe(a,NaAdspRxBound,0);}
             }
-            if ((a->slave&4) && !a->handed) {
-                r=a->ops.proxy(a->ops.context,0);
-                if (!r) {a->handed=1;a->proxy_possible=0;}
-                else if (r<0) {a->cleanup_error=r;return failed(a,r);}
+            if (a->handover_seen && !a->handed) {
+                if (a->retain_proxy) observe(a,NaAdspProxyRetained,0);
+                else {
+                    observe(a,NaAdspProxyOffBegin,0);
+                    r=a->ops.proxy(a->ops.context,0);
+                    if (!r) {a->handed=1;a->proxy_possible=0;observe(a,NaAdspProxyOffReturn,r);}
+                    else if (r<0) {observe(a,NaAdspProxyOffReturn,r);a->cleanup_error=r;return failed(a,r);}
+                }
             }
-            int tr=na_transport_poll(&a->transport);if (tr<0) return failed(a,tr);
+            observe(a,NaAdspGlinkBegin,0);
+            int tr=na_transport_poll(&a->transport);
+            observe(a,NaAdspGlinkReturn,tr);if (tr<0) return failed(a,tr);
         }
         break;
     default:return failed(a,NA_OWNERSHIP);

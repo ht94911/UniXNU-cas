@@ -290,6 +290,10 @@ static int receive_one(QcomGlink *g)
     rx_peek(&g->rx, 0, m, 8);
     const uint16_t cmd = (uint16_t)(m[0] | m[1] << 8), param1 = (uint16_t)(m[2] | m[3] << 8);
     const uint32_t param2 = le32(m + 4);
+    g->last_cmd=cmd;g->last_param1=param1;g->last_param2=param2;
+    if (g->header_attempts!=UINT32_MAX) ++g->header_attempts;
+    if (g->observe_header && g->header_attempts<=16)
+        g->observe_header(g->observe_context,g->header_attempts,cmd,param1,param2,0);
     QcomGlinkChannel *c;
     switch (cmd) {
     case QCOM_GLINK_VERSION:
@@ -446,7 +450,12 @@ int qcom_glink_poll(QcomGlink *g)
     /* Bounded: at most one FIFO's worth of minimal messages per call. */
     for (uint32_t budget = g->rx.length / 8 + 1; g->rx.data && budget; --budget) {
         const int rc = receive_one(g);
-        if (rc < 0) {g->broken = 1; handled = rc; break;}
+        if (rc < 0) {
+            g->broken = 1; handled = rc;
+            if (g->observe_header) g->observe_header(g->observe_context,g->header_attempts,
+                g->last_cmd,g->last_param1,g->last_param2,rc);
+            break;
+        }
         if (!rc) break;
         ++handled;
     }

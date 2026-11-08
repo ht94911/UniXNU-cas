@@ -76,6 +76,14 @@ typedef struct {
     uint32_t rx_messages, tx_messages, rx_data, unknown_opens, dropped;
     char last_unknown[QCOM_GLINK_NAME];
     char unknown_names[96];  /* the distinct names of those opens, space separated, as many as fit */
+    /* Optional diagnostic: first 16 decoded header attempts, plus one terminal
+     * parser error even after that budget. No payload or extra FIFO reads.
+     * result=0 is BEFORE parsing; a negative result is its terminal error.
+     * Callback must not reenter/mutate the link or perform hardware I/O. */
+    void (*observe_header)(void *,uint32_t attempt,uint16_t cmd,uint16_t param1,uint32_t param2,int result);
+    void *observe_context;
+    uint32_t header_attempts,last_param2;
+    uint16_t last_cmd,last_param1;
 } QcomGlink;
 
 /* Sets up the link on its FIFOs (rx may have no data yet: the remote makes its FIFO later) and resets the indices we own. */
