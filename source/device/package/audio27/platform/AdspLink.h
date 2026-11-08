@@ -32,6 +32,7 @@ typedef struct {
     NaPasLoad *main_image,*dtb_image;
     uint32_t stage,doorbells,auth_doorbells,slave,handed,proxy_possible,glink_initialized;
     uint32_t masters_stopped,dma_ready;
+    uint32_t initial_stop_mask;int initial_stop[2]; /* bit0/main,bit1/DTB actually called */
     uint64_t deadline;int error,cleanup_error;
 } NaAdsp;
 /* Common platform must own ADSP PAS1/36, SMEM apps-2, LPASS doorbell signals

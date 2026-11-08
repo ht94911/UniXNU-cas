@@ -173,6 +173,21 @@ nezha_audio_pas_call(unsigned command, unsigned pas, uint64_t arg1, uint64_t arg
     return (r.a0 || r.a1) ? EIO : 0;
 }
 
+/* Documented read-only PIL queries. Result registers include data, so a1
+ * must not be normalized as a setter's error status. Kernel callers only. */
+int nezha_audio_pas_query(unsigned command, unsigned pas, uint64_t result[4]);
+int
+nezha_audio_pas_query(unsigned command, unsigned pas, uint64_t result[4])
+{
+    if (!result || (pas != 1 && pas != 36) || (command != 7 && command != 9)) return EINVAL;
+    struct scm_res r = {0, 0, 0, 0};
+    scm_smc(SCM_FN(2, command), SCM_ARGS(1), pas, 0, 0, 0, &r);
+    result[0] = r.a0; result[1] = r.a1; result[2] = r.a2; result[3] = r.a3;
+    printf("NEZHA AUDIO27 PASQUERY: command %u pas %u -> a0 %#llx a1 %#llx a2 %#llx a3 %#llx\n",
+        command, pas, r.a0, r.a1, r.a2, r.a3);
+    return r.a0 ? EIO : 0;
+}
+
 /* ---- the pack ------------------------------------------------------------------- */
 
 struct fw_ent {

@@ -74,10 +74,15 @@ int na_adsp_poll(NaAdsp *a,uint64_t now) {
     switch (a->stage) {
     case NaAdspStopMain:
         r=a->main_image->ops.pas(a->main_image->ops.context,6,1,0,0);
-        if (r) return failed(a,r);a->stage=NaAdspStopDtb;break;
+        a->initial_stop[0]=r;a->initial_stop_mask|=1;
+        /* Collect the independent DTB stop result once as well. A failure in
+         * either call still forbids ALL DMA/SMEM/firmware activation below. */
+        a->stage=NaAdspStopDtb;r=0;break;
     case NaAdspStopDtb:
         r=a->dtb_image->ops.pas(a->dtb_image->ops.context,6,36,0,0);
-        if (r) return failed(a,r);a->masters_stopped=1;a->stage=NaAdspDma;break;
+        a->initial_stop[1]=r;a->initial_stop_mask|=2;
+        if (a->initial_stop[0] || r) return failed(a,a->initial_stop[0] ? a->initial_stop[0]:r);
+        a->masters_stopped=1;a->stage=NaAdspDma;break;
     case NaAdspDma:
         r=a->ops.dma_setup(a->ops.context);
         if (!r) {a->dma_ready=1;a->stage=NaAdspSetup;}break;

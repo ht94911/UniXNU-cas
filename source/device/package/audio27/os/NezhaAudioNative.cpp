@@ -17,6 +17,7 @@ extern kmod_info_t g_kernel_kmod_info;
 // and its native ctor is invoked under the explicit metaclass load bracket.
 extern "C" void nezha_audio_service_static_init(void) __asm__("__GLOBAL__sub_I_NezhaAudioService.cpp");
 extern "C" int nezha_audio_pas_call(unsigned,unsigned,uint64_t,uint64_t);
+extern "C" int nezha_audio_pas_query(unsigned,unsigned,uint64_t [4]);
 extern "C" {volatile uint64_t nezha_audio27_stats[16];}
 namespace {
 NaDriver *worker;
@@ -127,6 +128,9 @@ extern "C" uint64_t na_native_now_us(void *) {uint64_t ns;absolutetime_to_nanose
 extern "C" void na_native_pause_us(void *,uint32_t us) {if (us<=1000) IODelay(us);}
 extern "C" int na_native_pas(void *,uint32_t command,uint32_t pas,uint64_t a,uint64_t b) {
     return nezha_audio_pas_call(command,pas,a,b) ? NA_IO:NA_OK;
+}
+extern "C" int na_native_pas_query(uint32_t command,uint32_t pas,uint64_t result[4]) {
+    return nezha_audio_pas_query(command,pas,result) ? NA_IO:NA_OK;
 }
 extern "C" int nezha_audio_worker_start(NaDriver *d) {
     if (!d || !d->adsp || !d->runtime.shared || !d->feedback_attached) return NA_ARGUMENT;

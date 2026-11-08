@@ -23,12 +23,12 @@ struct AudioDspProbe {
     NaPasLoad loader[2];NaProxyPower power;NaAdsp adsp;NaRxQueue rx;
     NaNativeTasBoard tasNative;NaGeniBoard tasBoard;NaTasPowerOps tasOps;
     uint64_t now,deadline,tasDeadline,tasWait,tasLease;
-    unsigned phase,tasPhase,dmaAttempted,started,revision[2];
+    unsigned phase,tasPhase,dmaAttempted,started,revision[2],pasQueries;
     unsigned tasClaimed,tasPowerAttempted,tasCleanupAttempted;
     int error,tasError,tasCleanup;
 };
 AudioDspProbe nativeAudioProbe;
-uint32_t audioProbeSequence,audioProbeValues[25];
+uint32_t audioProbeSequence,audioProbeValues[29];
 void publish(AudioDspProbe *d) {
     uint32_t fault=0,syndrome=0;uint64_t address=0;
     // IRQ publishes these once through fault_pending; never race its initial
@@ -41,16 +41,17 @@ void publish(AudioDspProbe *d) {
         d->tasPhase,(uint32_t)d->tasError,(uint32_t)d->tasCleanup,d->revision[0],d->revision[1],
         d->input.resources.error ? 1u:0u,d->power.held,d->power.possible,d->power.stage,d->power.active_resource,
         d->power.last_irq,d->power.last_status,d->power.last_command_status,
-        (uint32_t)address,(uint32_t)(address>>32),syndrome,d->power.last_irq_enable};
+        (uint32_t)address,(uint32_t)(address>>32),syndrome,d->power.last_irq_enable,
+        d->pasQueries,d->adsp.initial_stop_mask,(uint32_t)d->adsp.initial_stop[0],(uint32_t)d->adsp.initial_stop[1]};
     __atomic_add_fetch(&audioProbeSequence,1,__ATOMIC_ACQ_REL);
-    for (unsigned i=0;i<25;++i) __atomic_store_n(&audioProbeValues[i],values[i],__ATOMIC_RELAXED);
+    for (unsigned i=0;i<29;++i) __atomic_store_n(&audioProbeValues[i],values[i],__ATOMIC_RELAXED);
     __atomic_add_fetch(&audioProbeSequence,1,__ATOMIC_RELEASE);
 }
 int snapshot(void *,char *out,size_t capacity,size_t *bytes,unsigned *truncated) {
-    uint32_t v[25];bool valid=false;
+    uint32_t v[29];bool valid=false;
     for (unsigned attempt=0;attempt<4;++attempt) {
         uint32_t seq=__atomic_load_n(&audioProbeSequence,__ATOMIC_ACQUIRE);if (seq&1) continue;
-        for (unsigned i=0;i<25;++i) v[i]=__atomic_load_n(&audioProbeValues[i],__ATOMIC_RELAXED);
+        for (unsigned i=0;i<29;++i) v[i]=__atomic_load_n(&audioProbeValues[i],__ATOMIC_RELAXED);
         __atomic_thread_fence(__ATOMIC_ACQUIRE);
         if (seq==__atomic_load_n(&audioProbeSequence,__ATOMIC_RELAXED)) {valid=true;break;}
     }
@@ -60,9 +61,10 @@ int snapshot(void *,char *out,size_t capacity,size_t *bytes,unsigned *truncated)
         "\"fault\":%u,\"tas_phase\":%u,\"tas_error\":%d,\"tas_cleanup\":%d,\"revision\":[%u,%u],"
         "\"owner_error\":%u,\"proxy_held\":%u,\"proxy_possible\":%u,\"proxy_stage\":%u,\"proxy_resource\":%u,"
         "\"tcs_irq\":%u,\"tcs_status\":%u,\"tcs_command\":%u,\"fault_address\":\"0x%llx\","
-        "\"fault_syndrome\":%u,\"tcs_irq_enable\":%u,\"PCM\":false,\"HAL\":false}",
+        "\"fault_syndrome\":%u,\"tcs_irq_enable\":%u,\"pas_queries\":%u,\"stop_mask\":%u,"
+        "\"stop_main\":%d,\"stop_dtb\":%d,\"PCM\":false,\"HAL\":false}",
         v[0],(int32_t)v[1],v[2],v[3],v[4],v[5],v[6],v[7],v[8],(int32_t)v[9],(int32_t)v[10],v[11],v[12],v[13],v[14],v[15],v[16],v[17],v[18],v[19],v[20],
-        (unsigned long long)(((uint64_t)v[22]<<32)|v[21]),v[23],v[24]);
+        (unsigned long long)(((uint64_t)v[22]<<32)|v[21]),v[23],v[24],v[25],v[26],(int32_t)v[27],(int32_t)v[28]);
     if (n<0 || (size_t)n>=capacity) {*truncated=1;return QUD_FAILED;}
     *bytes=(size_t)n;return QUD_OK;
 }
@@ -181,6 +183,17 @@ void run_probe(void *v,wait_result_t) {
             else if (!r) {d->phase=2;d->deadline=d->now+45000;}
         } else if (d->phase>=2 && d->phase<=4) {
             r=na_adsp_poll(&d->adsp,d->now);
+            if (d->adsp.stage==NaAdspStopMain && !d->pasQueries) {
+                // Same boot after validated proxy power; four bounded read-only
+                // calls, no arbitrary SMC selector exposed over USB. Neither
+                // query success nor unsupported queries replace PAS stop proof.
+                const unsigned ids[]={1,36},commands[]={7,9};
+                for (unsigned i=0;i<2;++i) for (unsigned j=0;j<2;++j) {
+                    uint64_t raw[4]={};
+                    (void)na_native_pas_query(commands[j],ids[i],raw);
+                    d->pasQueries|=1u<<(2*i+j);
+                }
+            }
             if (!r && d->adsp.handed && d->adsp.transport.online && d->phase==2) d->phase=3;
             if (r>=0 && d->phase==3) {
                 int tas=identify_tas(d);

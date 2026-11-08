@@ -19,6 +19,9 @@ uint64_t na_native_host_time(void *);
 uint64_t na_native_now_us(void *);
 void na_native_pause_us(void *,uint32_t);
 int na_native_pas(void *,uint32_t command,uint32_t pas,uint64_t arg1,uint64_t arg2);
+/* Read-only PIL7 support / PIL9 allowed-memory queries; raw registers only.
+ * A supported image or range never proves that a DMA master has stopped. */
+int na_native_pas_query(uint32_t command,uint32_t pas,uint64_t result[4]);
 /* Start only after constructing the source-only driver's immutable plan and
  * acquiring the actual shared hardware leases. No implicit boot-arg defaults. */
 int nezha_audio_worker_start(NaDriver *);
