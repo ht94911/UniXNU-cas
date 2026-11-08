@@ -5526,10 +5526,10 @@ index 285cf9c..84637bf 100644
  +                    placement,
 diff --git a/bridge/patches/0037-runtime-963f-contracts.patch b/bridge/patches/0037-runtime-963f-contracts.patch
 new file mode 100644
-index 0000000..e9c3cba
+index 0000000..0dda76c
 --- /dev/null
 +++ b/bridge/patches/0037-runtime-963f-contracts.patch
-@@ -0,0 +1,613 @@
+@@ -0,0 +1,625 @@
 +diff --git a/crates/metal2vulkan-runtime/src/argument_table.rs b/crates/metal2vulkan-runtime/src/argument_table.rs
 +--- a/crates/metal2vulkan-runtime/src/argument_table.rs
 ++++ b/crates/metal2vulkan-runtime/src/argument_table.rs
@@ -6142,7 +6142,19 @@ index 0000000..e9c3cba
 ++                .is_some_and(|bytes| self.references_buffer(bytes))
 +     }
 + }
-+ 
++
++diff --git a/crates/metal2vulkan-runtime/src/tests/exit_guard.rs b/crates/metal2vulkan-runtime/src/tests/exit_guard.rs
++--- a/crates/metal2vulkan-runtime/src/tests/exit_guard.rs
+++++ b/crates/metal2vulkan-runtime/src/tests/exit_guard.rs
++@@ -1135,7 +1135,7 @@
++             reaper.start().unwrap().reap(Box::new(Reaped(dropped)));
++             let reaped = drops.recv_timeout(WAIT).unwrap();
++             reaper.stop();
++-            let plain = exit_guard::spawn(std::thread::Builder::new(), qos_class_self)
+++            let plain = exit_guard::spawn(std::thread::Builder::new(), || qos_class_self())
++                 .unwrap()
++                 .join()
++                 .unwrap();
 diff --git a/bridge/present_host.mm b/bridge/present_host.mm
 index aa2cc06..9436401 100644
 --- a/bridge/present_host.mm

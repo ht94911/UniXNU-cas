@@ -1,7 +1,7 @@
-name: nezha iPhone27 upstream runtime integration 023
+name: nezha iPhone27 upstream runtime integration 024 (Mac test callable fixed)
 on:
   push:
-    branches: [codex/ios27-gpu27-metal-full-023-20261109]
+    branches: [codex/ios27-gpu27-metal-full-024-20261109]
   workflow_dispatch:
 permissions:
   contents: read

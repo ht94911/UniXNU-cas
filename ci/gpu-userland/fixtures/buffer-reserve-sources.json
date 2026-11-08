@@ -1,6 +1,6 @@
 {
   "original_pin": "963f0e64f103d2e682cd0cc454a8fe50f52c8cbb",
-  "patched_tree": "4fbee6c21e0c9a6dd32b14007cfeeafd9e875049",
+  "patched_tree": "4b24cbba193f36374c017400d24f4599bafa6e67",
   "builder_sha256": "372803188b187b2a9a8726672e6609b7b1b334f8dfad028855bb432332c891a3",
   "patch_hashes": {
     "0002-resource-wait-storage-dependencies.patch": "4536f03ac5a829d0a23d839491837c62af00c1aa884dc75cdae0f195c7953c0c",
@@ -34,7 +34,7 @@
     "0034-fixed-heap-copy-path.patch": "f2b2af291c20e9d7927905b10bdfeb3afc11674a4fc55fffcf5bb60225758234",
     "0035-aligned-heap-transfer-rows.patch": "ba5635d0586ced93cafb32e08656fad72eb29187646ae48111d3cbf0c4138e03",
     "0036-linear-heap-word-copy.patch": "f14d80d1ff47546fa5311d6008c8a93e37b7a1261cbcb23b4015fc9e8bde5352",
-    "0037-runtime-963f-contracts.patch": "a3f46490fc7925cca8f84b2a4f491905a14b7db32dba2d90c27042bcf356416e"
+    "0037-runtime-963f-contracts.patch": "bcec51c15fb694d957c5712d7ef8219580b435c38afa18ab881fb0bb505004ce"
   },
   "source_hashes": {
     "crates/metal2vulkan-runtime/src/written_commands.rs": "5c1a9ac622de2d0cfc199de4115a087c6ee9550f4b94059513da4339a4207ac2",
@@ -651,7 +651,7 @@
     "crates/metal2vulkan-runtime/src/tests/host_ram_copy_bench.rs": "ad5533ec83dd0ebfa775d0366b24c314bde9b074d9dfb5dfbadece28b9e9a7dd",
     "crates/metal2vulkan-runtime/src/tests/exactness.rs": "8d760e732564eb684b8fc57884ad318921dd9652c2a99f3168bcfa55bcb32ad3",
     "crates/metal2vulkan-runtime/src/tests/heap_footprint_formats.rs": "7903e12311785498df1e89667d539be7c996b6059419853737f866e278fb4b82",
-    "crates/metal2vulkan-runtime/src/tests/exit_guard.rs": "8d9ef46c873864b6817a5d23c7eaedf62dbf8e416e464ef452e19d93d0f22912",
+    "crates/metal2vulkan-runtime/src/tests/exit_guard.rs": "d578573deccff2eea452aca510c7e3b4b27e64285a362d23da411eba3ecf800b",
     "crates/metal2vulkan-runtime/src/tests/twin_reads.rs": "fb92eb63549aa390a8effbdd138b395d2024cc5e72b9d6ba2d08216609dd3585",
     "crates/metal2vulkan-runtime/src/tests/view_plan.rs": "b99f3acbd5477ada40cf71a8ace9f9f87e5555c1b8f793912f147220d75dafff",
     "crates/metal2vulkan-runtime/src/tests/blit_cover.rs": "99bd65431e114711976d2dd64dabedec47aa0a6d8526a1768ad9a00d32df6006",
@@ -1496,6 +1496,7 @@
     "crates/metal2vulkan-runtime/src/shadow.rs",
     "crates/metal2vulkan-runtime/src/shadow_copy_back.rs",
     "crates/metal2vulkan-runtime/src/stage_trace.rs",
+    "crates/metal2vulkan-runtime/src/tests/exit_guard.rs",
     "crates/metal2vulkan-runtime/src/tests/heap_linear_words.rs",
     "crates/metal2vulkan-runtime/src/tests/heap_tiled.rs",
     "crates/metal2vulkan-runtime/src/tests/mod.rs",
