@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Audio023: fresh post-auth dedicated ADSP watchdog IRQ783 via existing ArmCpu; read-only SMEM423 pre-auth baseline and bounded changes; owned PAS1/36 shutdown once on a real new watchdog, retain every mapping on error. Defer GLINK 20000ms to separate the unobserved first setup from failure. Same Audio022/GPU023/Native037/Metal021b and empty external DMA plan; full playback zero delay, no PCM/HAL/capture/private inputs/phone operations.",
+  "purpose": "Audio024: retain Audio023/GPU023/Native037/Metal021b and 20s control; 100ms between the first existing GLINK setup/RX/poll observations using the sole worker normal timer. Every poll still handles fresh watchdog, SMP2P and handover; no blocking in callback/shared lock or extra FIFO reader. Keep watchdog783/SMEM423/PAS contain-once, zero default full playback, no PCM/HAL/capture/private inputs/phone operations. Diagnostic timing does not prove a stable fix.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "6cb8114ab26805fdf36ae83f97c1b0b5ddd2e81a",
+  "device_revision": "0ccddd934ea2623eb5c9fd49efa5d577e9c92992",
   "soc_revision": "703d7b4bb00904b4a6e5d96f9e9bf72eec170f6b",
   "xcode": "26.6",
   "files": {
@@ -219,7 +219,7 @@
     "source/device/package/audio27/platform/AudioSmmu.h": "41401f1b97e3481c7e5cc3e02c47f926e91eec9fa34f4a48981a3fc3b723cddd",
     "source/device/package/audio27/upstream/ShengGpr.c": "c4f498f07e2cb601b593e64a8d32474a21d6a87375618e1a67b99d52c5d3160e",
     "source/device/package/audio27/platform/SoundWire.h": "348979ac1e552e1c3a0027e09f8500927e8bf7ccbb496276d2c9d3ef19322224",
-    ".github/workflows/nezha-ios27-native.yml": "75b91cbbf1cfd65a9d06581e70731784ecdb0b087dd7e532a4378788fd3c0695",
+    ".github/workflows/nezha-ios27-native.yml": "38bd26869ec2fa6b1cffe2c430d756adb05c7914a4f196ba5e2eacfb9387be77",
     "source/device/package/audio27/upstream/ShengGpr.h": "a274dded1f4d1e2709b9f966759bcb1f57d12747ee0f57743dea1fa97d95d23e",
     "source/device/package/audio27/os/NezhaAudioNative.h": "7fd04a164de72e423cd16488d805c1a4f8c2f458b2356978b0bdecc2b64d55a7",
     "source/device/package/audio27/upstream/ShengAudioReach.h": "b135177a5feb3e24e0d8a6aabb301600e2c37078b970a09ada6e8eb7bb6a5b98",
@@ -263,7 +263,7 @@
     "source/device/package/audio27/upstream/QcomQmp.h": "dd6722ade248435930c5f242ef78728f58f7e3bc6a9765fe229b32c87f342503",
     "source/device/package/audio27/core/AudioTopology.c": "6ef3effd855b91fe896f1432ebea79a6fffad743bdf28ae3f32dc5ef9e617001",
     "source/device/package/audio27/upstream/QcomQmp.c": "6d5dd2e0ebf1f425f7fc929555edb275b8d499cfaa1f9c887bfcb68f09785249",
-    "source/device/package/audio27/platform/AdspLink.c": "535c6f0e675eb70dcddcd99c81eac1acf10c287ed29e50d27d41eee72c2b960f",
+    "source/device/package/audio27/platform/AdspLink.c": "b5777c894df2f13da8b41d560b274944ce403906162c07bdc0c5e72ef783f2cf",
     "source/device/package/audio27/core/AudioProtocol.h": "cdd0adfdf372cb6efc5a69f3066f7976f47bf3287884c42d5f7f9709856c17ba",
     "source/device/package/audio27/platform/Tas25xxProgram.c": "f50be194ca696b36bc3df7767a12ad3ec392f531eba0c0df216dbae292f53968",
     "source/device/package/audio27/platform/Wcd9395Capture.h": "b6263e90a8dd5c3b27f94c30bc0092d2afeceeb4fd394cba7669f4f61e37845e",
@@ -279,7 +279,7 @@
     "source/device/package/audio27/upstream/QcomGlink.c": "d93de74fc679952d3fa327f902d69e4013b3eb95ae6431c77d8b2aa1348999ef",
     "source/device/package/audio27/platform/AudioSmmu.c": "9a0b40fb61392d11c7e61ab8015d1cbfa16d49e4892fc49f20be5e40c0aa274b",
     "source/device/package/audio27/core/AudioGraph.c": "8cc3f022e9fd6a20a18c89ae2f516d9c2ebdec0d139ada3221389d2de020234c",
-    "source/device/package/audio27/platform/AdspLink.h": "cfac696357053ad1ccba2a844868f2e2f645fa8f2b59461df21ab5a7f9a18a58",
+    "source/device/package/audio27/platform/AdspLink.h": "5bdff5719de9f6c3298a4fbb21daef157dee728b4f233e6a22cdf619cf626aa1",
     "source/device/package/audio27/platform/Wcd9395Capture.c": "c84ba26610e8d5570c17ed59e4ce42290da659c7369fdc5ae2d93621fa392c7f",
     "source/device/package/audio27/upstream/GeniI2c.h": "2ade734ab7cdbd41fcea68c7f7ff4392b779b2d04666118407a1533e22258e7c",
     "source/device/package/audio27/os/NezhaAudioService.cpp": "edf9bf14078b835a02f9cf50165521a4614b7af532e03c1938eb83216a9a7804",
@@ -318,7 +318,7 @@
     "source/device/package/audio27/platform/AudioInputPack.c": "9991a396c50bd0e427570d1a04fbe4755202412759fe0e945cd63c53619dea0c",
     "source/device/package/audio27/os/NezhaAudioInputs.c": "46617afe5985f02f108644611b93a19463322be09984968e5e900e10fcfe12aa",
     "source/device/package/audio27/os/NezhaAudioSmmu.cpp": "833371d1e1f4068cadf60002da3867f7a346ece265a8a4d5773174649898fff5",
-    "source/device/package/audio27/os/NezhaAudioDspProbe.cpp": "87f37d2b040a53654533fca65f77abd0bbaa9c5ccf9d092170109d06fe10d94c",
+    "source/device/package/audio27/os/NezhaAudioDspProbe.cpp": "e3203128ab5583046365d531d2632b345bedbbd8e28bfd309ed026472b305cfc",
     "source/device/package/audio27/os/NezhaAudioSmmu.h": "e9391db75422a2ec69a3451d0b50b279fa81741640840cc09e24be5cc3cc3889",
     "source/device/package/audio27/os/NezhaAudioTasBoard.h": "793e2b87da53b7f4aad0093310452fa378137b25e9375fe04edf269e3dad7f8b",
     "source/device/package/audio27/os/NezhaAudioTasBoard.cpp": "b87e914dfae3e3a77626dd1dd18e1c2a31ef01bacd631fb9830ec79a1fc9a890",
@@ -383,7 +383,7 @@
   "audio": {
     "base": "GPU023",
     "base_device_revision": "673cde869b7378658b470c4e6b2b9a1766b99411",
-    "source_revision": "6cb8114ab26805fdf36ae83f97c1b0b5ddd2e81a",
+    "source_revision": "0ccddd934ea2623eb5c9fd49efa5d577e9c92992",
     "source_only_revision": "abde8b4b694afb0f4eb20e838ebe4f316e49da12",
     "hardware_enabled": false,
     "resource_census_enabled": true,
@@ -391,9 +391,10 @@
     "HAL_target": "arm64e-apple-ios27.0",
     "shared_resource_owner": "703d7b4bb00904b4a6e5d96f9e9bf72eec170f6b",
     "private_input_slot_bytes": 35651584,
-    "previous_audio_behavior_source": "615c27b8dc8121d220a78b2fea1a2c0f19445aef",
+    "previous_audio_behavior_source": "6cb8114ab26805fdf36ae83f97c1b0b5ddd2e81a",
     "base_native_run": 42401029411,
     "base_Metal_revision": "eb59f022a326d03330d398b3c1dbcb6f0aeb633f",
-    "diagnostic_glink_delay_ms": 20000
+    "diagnostic_glink_delay_ms": 20000,
+    "diagnostic_glink_observe_ms": 100
   }
 }

@@ -37,7 +37,7 @@ struct AudioDspProbe {
     int error,tasError,tasCleanup;
 };
 AudioDspProbe nativeAudioProbe;
-uint32_t audioProbeSequence,audioProbeValues[77];
+uint32_t audioProbeSequence,audioProbeValues[79];
 void publish(AudioDspProbe *d) {
     uint32_t fault=0,syndrome=0;uint64_t address=0;
     // IRQ publishes these once through fault_pending; never race its initial
@@ -68,10 +68,11 @@ void publish(AudioDspProbe *d) {
         d->smmu.stream_result.context.fault_status,(uint32_t)d->smmu.error,
         d->adsp.glink_delay_ms,(uint32_t)(d->now<d->adsp.glink_after ? d->adsp.glink_after-d->now:0),
         __atomic_load_n(&d->adsp.watchdogs,__ATOMIC_ACQUIRE),d->adsp.auth_watchdogs,
-        d->watchdogIrq,d->watchdogStops,(uint32_t)d->watchdogMain,(uint32_t)d->watchdogDtb};
+        d->watchdogIrq,d->watchdogStops,(uint32_t)d->watchdogMain,(uint32_t)d->watchdogDtb,
+        d->adsp.glink_observe_ms,(uint32_t)(d->now<d->adsp.glink_observe_until ? d->adsp.glink_observe_until-d->now:0)};
     static_assert(sizeof values==sizeof audioProbeValues,"Diagnostic word layout mismatch");
     __atomic_add_fetch(&audioProbeSequence,1,__ATOMIC_ACQ_REL);
-    for (unsigned i=0;i<77;++i) __atomic_store_n(&audioProbeValues[i],values[i],__ATOMIC_RELAXED);
+    for (unsigned i=0;i<79;++i) __atomic_store_n(&audioProbeValues[i],values[i],__ATOMIC_RELAXED);
     __atomic_add_fetch(&audioProbeSequence,1,__ATOMIC_RELEASE);
 }
 void glink_header(void *,uint32_t,uint16_t,uint16_t,uint32_t,int);
@@ -100,10 +101,10 @@ void loader_progress(void *v,uint32_t pas,uint32_t point,uint32_t segment,uint64
             pas,point,segment,(unsigned long long)offset,(unsigned long long)bytes,(unsigned long long)pa);
 }
 int snapshot(void *,char *out,size_t capacity,size_t *bytes,unsigned *truncated) {
-    uint32_t v[77];bool valid=false;
+    uint32_t v[79];bool valid=false;
     for (unsigned attempt=0;attempt<4;++attempt) {
         uint32_t seq=__atomic_load_n(&audioProbeSequence,__ATOMIC_ACQUIRE);if (seq&1) continue;
-        for (unsigned i=0;i<77;++i) v[i]=__atomic_load_n(&audioProbeValues[i],__ATOMIC_RELAXED);
+        for (unsigned i=0;i<79;++i) v[i]=__atomic_load_n(&audioProbeValues[i],__ATOMIC_RELAXED);
         __atomic_thread_fence(__ATOMIC_ACQUIRE);
         if (seq==__atomic_load_n(&audioProbeSequence,__ATOMIC_RELAXED)) {valid=true;break;}
     }
@@ -125,6 +126,7 @@ int snapshot(void *,char *out,size_t capacity,size_t *bytes,unsigned *truncated)
         "\"locator_txn\":%u,\"qrtr_error\":%d,\"gpr_initiator\":%u,\"owned_fsr\":%u,\"owned_smmu_error\":%d,"
         "\"glink_delay_ms\":%u,\"glink_delay_left_ms\":%u,"
         "\"wdog\":%u,\"wdog_base\":%u,\"wdog_irq\":%u,\"wdog_stops\":%u,\"wdog_main\":%d,\"wdog_dtb\":%d,"
+        "\"glink_observe_ms\":%u,\"glink_observe_left_ms\":%u,"
         "\"control_only\":true,\"external_dma\":false,\"owned_smmu_observed\":false,"
         "\"PCM\":false,\"HAL\":false}",
         v[0],(int32_t)v[1],v[2],v[3],v[4],v[5],v[6],v[7],v[8],(int32_t)v[9],(int32_t)v[10],v[11],v[12],v[13],v[14],v[15],v[16],v[17],v[18],v[19],v[20],
@@ -133,7 +135,7 @@ int snapshot(void *,char *out,size_t capacity,size_t *bytes,unsigned *truncated)
         (unsigned long long)(((uint64_t)v[37]<<32)|v[36]),
         v[38],v[39],v[40],v[41],(int32_t)v[42],v[43],v[44],v[45],v[46],(int32_t)v[47],v[48],v[49],v[50],v[51],v[52],v[53],
         v[54],v[55],v[56],v[57],v[58],v[59],v[60],v[61],v[62],v[63],v[64],(int32_t)v[65],v[66],v[67],(int32_t)v[68],v[69],v[70],
-        v[71],v[72],v[73],v[74],(int32_t)v[75],(int32_t)v[76]);
+        v[71],v[72],v[73],v[74],(int32_t)v[75],(int32_t)v[76],v[77],v[78]);
     if (n<0 || (size_t)n>=capacity) {*truncated=1;return QUD_FAILED;}
     *bytes=(size_t)n;return QUD_OK;
 }
@@ -198,6 +200,11 @@ int prepare(AudioDspProbe *d) {
     // Separate authenticated firmware/SMP2P/handover from our first GLINK
     // FIFO writes and replies. Full playback retains the zero-delay default.
     d->adsp.glink_delay_ms=20000;
+    // Audio022/023 lost USB immediately after the 10s/20s window without
+    // preserving the first setup marker. Only this diagnostic yields 100ms
+    // between existing setup/RX/poll observations. Each poll still checks
+    // watchdog/SMP2P and completes handover; ordinary playback leaves zero.
+    d->adsp.glink_observe_ms=100;
     // Audio016 still reset with all startup votes held. Restore the ordinary
     // handover/release policy; its original diagnostic image stays frozen.
     return na_resource_owner_ipcc(&d->input.resources,&d->adsp);

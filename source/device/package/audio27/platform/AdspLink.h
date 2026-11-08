@@ -50,7 +50,10 @@ typedef struct {
     /* Bounded diagnostic separation of fresh ready from GLINK setup. Zero
      * keeps the ordinary lifecycle; proxy handover and SMP2P still progress. */
     uint32_t glink_delay_ms;
-    uint64_t glink_after;
+    /* na=2 only: yield between the first existing GLINK observations so USB
+     * can preserve their state. Zero keeps normal playback's original flow. */
+    uint32_t glink_observe_ms;
+    uint64_t glink_after,glink_observe_until;
     uint64_t deadline;int error,cleanup_error;
 } NaAdsp;
 /* Common platform must own ADSP PAS1/36, SMEM apps-2, LPASS doorbell signals
