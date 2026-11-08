@@ -1,7 +1,7 @@
 diff --git a/bsd/kern/kern_exec.c b/bsd/kern/kern_exec.c
 --- a/bsd/kern/kern_exec.c
 +++ b/bsd/kern/kern_exec.c
-@@ -8690,6 +8690,42 @@ native_gpu_addon_prepare(proc_t p, user_addr_t scratch)
+@@ -8690,6 +8690,44 @@ native_gpu_addon_prepare(proc_t p, user_addr_t scratch)
  	native_gpu_addon_mount(p, scratch, 0xa00, audio_source, sizeof(audio_source), audio_point, sizeof(audio_point),
  	    "/System/Library/Audio/Plug-Ins/HAL/BuiltinAudioPlugin.driver", "/System/Library/Audio/Plug-Ins/HAL/ShengAudio.driver/Info.plist",
  	    &native_gpu_addon4_stage, &native_gpu_addon4_status);
@@ -40,6 +40,8 @@ diff --git a/bsd/kern/kern_exec.c b/bsd/kern/kern_exec.c
 +			    as_exec_stage, as_exec_status, as_helper_stage, as_helper_status, as_sb_stage, as_sb_status);
 +		}
 +		printf("[appsync-runtime] library=%d/%d\n", as_lib_stage, as_lib_status);
++		extern void nezha_apple_usb_start(void);
++		nezha_apple_usb_start();
 +	}
  	native_cryptex_os_view(p, scratch);
  	native_gestalt_cache_drop(p, scratch);

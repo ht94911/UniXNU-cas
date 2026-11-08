@@ -37,4 +37,3 @@ appsync-arm64-default-jop.patch
 appsync-arm64-user-jop.patch
 appsync-runtime.patch
 appsync-user-trust.patch
-appsync-apple-usb-start.patch

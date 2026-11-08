@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "c24bf0eeef575f641ecbaf3e8d87118a90e2051f",
+  "device_revision": "b930f29a55fa8bec9d8ee1db1ee97b1b761f1c13",
   "soc_revision": "5a71f9eb5724ff58eddf49f7f5baecc9f4233a7c",
   "xcode": "26.6",
   "files": {
@@ -155,7 +155,7 @@
     "source/device/package/nezha27-input/NezhaTouchEdge.h": "d132e77508b3b01d4ac01a13ec8617881ebe816fdd608461de1d7dd34c4b31dd",
     "source/device/package/nezha27-input/NezhaTouchSelfTest.h": "9262f7035de652a7336f8dd9b0a65bb6c1213cec0a0f8c4ce41d0b00037b1fd7",
     "source/device/package/nezha27-input/ResourceProbe.c": "c92b2ba262f2885d90499ba4bfa97c5bc2904c42e4ba3b48618bdac98bd49524",
-    "source/device/patches/xnu-12377/series": "21796acd3823477125366de8acf7f7d47a5475defa747536a9887598c774b1a2",
+    "source/device/patches/xnu-12377/series": "dbc71e83a4dd9099863ca4f015f64711f43536d4b9d4ba95a4514d3308fcd30a",
     "source/device/patches/xnu-12377/source-storage-runtime.patch": "25c377c60db417b15fcc137acf380f0319cbff9d5ba012af1907f3485602b584",
     "source/device/patches/xnu-12377/zzyd-sheng-audio-addon-mount.patch": "b51ed480b34c92452ea984fe056e5fce310bd929992d418f383a7e9268313c51",
     "source/device/patches/xnu-12377/zzye-sheng-cpu-idle.patch": "95f57fb9994796c3de2429fe82b6a521620b9f13b83e29eba12185f5ada4da86",
@@ -217,7 +217,7 @@
     "ci/native.py": "bba7caa2eb287c417c360316e701ae0ce24fc153545752fe422c3b850913e238",
     "source/device/patches/xnu-12377/appsync-arm64-default-jop.patch": "18ad02bb13da54677b2a1382eb83f12fd192baefd2c9b257e9a473844b4b654c",
     "source/device/patches/xnu-12377/appsync-arm64-user-jop.patch": "09904a9e97a5f5885bb65a7adcb087aea133d1308f5f10da386c729973fef8e2",
-    "source/device/patches/xnu-12377/appsync-runtime.patch": "150c69c4a3d151d519629d83118b47e76499ff13897ef8b5215e01790dce50ca",
+    "source/device/patches/xnu-12377/appsync-runtime.patch": "a4411ef7aed2df5e673e0f98aa33eaadb72928aab6aa75f1bfea37002120ce06",
     "source/device/patches/xnu-12377/appsync-user-trust.patch": "4b2a0c882d5216d22027f9470b5bd9ebdd770ed739f886e54600c9b89323b40f",
     "source/appsync/AppSync.m": "44a23a95d6c9dbb98ccd1e612f26e4ed4adbc8ed49738e35d65003cdd2847287",
     "source/appsync/LICENSE": "442f8326b62909b29d05c8fa840f6993ee44501ccf0decf5143a86bad4b26dc6",
@@ -235,7 +235,6 @@
     "source/appsync/test-signing.m": "ab62b5935df9aa17faae216ccf2a7d61f68c7e690a84030b20f3382e200d29ab",
     "source/appsync/test-trust.c": "cb6508956b8e1da76cd3a440009ed658817039050c41e8dba41a0a826706d1bf",
     "source/appsync/test.py": "1114ac3c419394c7afa8b1f2d36f05ab274386235f536dbd55a59d16b4476f0c",
-    "source/device/patches/xnu-12377/appsync-apple-usb-start.patch": "049c32e1bc03a40518b70a3d80bd3e5bfa5359743f7f02cffcdb2f80523f1046",
     "source/device/package/apple-usb/NezhaAppleUsbDevice.cpp": "5e960b9645f4caa734d03fe1bb5ac1b89642db0784366c848d4fc769ac422c79",
     "source/device/package/apple-usb/LICENSE": "5b1d3d911103cb0f41641ec0964c5ac1f7e229f57aa072b6ac38bae913a1307b",
     "source/device/package/armcpu/usb-spi-mask.patch": "f79a3775d61388f195def8f75cc7dcbbaa6667d2628a8cf593adadfe587305a9",
