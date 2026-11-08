@@ -41,7 +41,7 @@
   "ci/gpu-userland/patches/linear-heap-plugin.patch": "c9edd080c2d5188f925373c6380008fee584fd4998947a6c3044ed8540c310c9",
   "ci/gpu-userland/patches/linear-heap-recipes.patch": "e692d393e9118ad69924ad97407276c1d3a2fa3c76512487a8594f7cceb2a5dd",
   "ci/gpu-userland/patches/mesa-new-file-mode.patch": "e032d6f8d2bd8d03a21f24f2bf2237fc0f3fce12a7354fd0be85cd59cc710744",
-  "ci/gpu-userland/patches/runtime-963f-plugin.patch": "2be047fc1b896d359bb2383b1d492f318a972e1ca0c69cd806ee9bb513a63660",
+  "ci/gpu-userland/patches/runtime-963f-plugin.patch": "d768e8aac0aa89fde27c7dd536c5fc995936c8bac0dd8a89e9ba8f1f9b602762",
   "ci/gpu-userland/patches/runtime-963f-recipes.patch": "a8270094654aa75680f101c0a420d1da3ee694d70c0c77a64347bdfc2bd81602",
   "ci/gpu-userland/patches/tiled-words-plugin.patch": "6aa041fa4a6e06cb1fef6cc87d667d8685828f44d7e5c22f3346dc8bdb513db6",
   "ci/gpu-userland/patches/tiled-words-recipes.patch": "af8b2f3675b4675b6d04549d7a3a7fb7713e552a5ed251bf9a5bf355fa2e6e46",
