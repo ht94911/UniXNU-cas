@@ -118,7 +118,7 @@ assert contexts['actual_prepared_sources_match'] and contexts['new_ownership_and
 assert contexts['real_Mesa_RB_used'] and contexts['old_VA_UAF_reproduced'] and contexts['actual_swap_API_and_lifetime_guards_passed']
 report=dict(actual_target_checked=True,plugin_sha256=hashlib.sha256(data).hexdigest(),
             profile=profile,required_markers_present=True,iPad_raw_reader_markers_absent=True,
-            bundle_signature_verified=True,host_pixel_result='reuse unchanged-runtime host010 failure evidence;not passed',
+            bundle_signature_verified=True,host_pixel_result='legacy host010 failure retained;host GUI path not run by this build;A840 acceptance remains separate',
             actual_device_registry_compiled=True,old_singleton_symbol_absent=True,
             actual_initial_command_reserve_compiled=True,fulltest_runtime_cache_handoff_compiled=True,
             actual_VA_tree_unlink_before_free_compiled=True,

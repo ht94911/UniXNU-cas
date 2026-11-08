@@ -1,0 +1,114 @@
+diff --git a/docs/drivers/adreno-metal.md b/docs/drivers/adreno-metal.md
+index 0a8b54e..e40675d 100644
+--- a/docs/drivers/adreno-metal.md
++++ b/docs/drivers/adreno-metal.md
+@@ -19,7 +19,9 @@ AdrenoMetal publishes a Metal device through `MTLAddDevice`. It translates AIR t
+ A render pass that fails encoding returns an encoder and reports a command-buffer error. This supports callers that cache encoder methods.
+ 
+ 
+-Unused owned image backing can serve later pooled or dedicated images. Image spares expire after ten seconds and are reclaimed on allocation failure or memory pressure; they have no byte limit. Unused buffer reservations share a separate 64 MiB device budget across memory types. The room worker rechecks demand and reuses a spare of the same pool and memory type before allocating. If foreground completions restore room during allocation, the new owned buffer stays spare with its address object intact. Plain backing of at least 256 KiB is retired on the existing room worker, with a 128 MiB queue limit. An allocation failure releases queued backing before retrying. Imported memory and owner callbacks keep their release ordering. First-use allocations can still prepare new pages.
++Unused owned image backing can serve later pooled or dedicated images. Image spares expire after ten seconds and are reclaimed on allocation failure or memory pressure; they have no byte limit. Unused buffer reservations share a separate 64 MiB device budget across memory types. The room worker rechecks demand and reuses a spare of the same pool and memory type before allocating. If foreground completions restore room during allocation, the new owned buffer stays spare with its address object intact. Owned blocks are released by the runtime's free thread; its 64-item queue falls back to the releasing caller when full. An allocation failure releases spares and waits for posted frees before retrying. Imported memory and owner callbacks keep their release ordering. First-use allocations can still prepare new pages.
++
++The runtime keeps command counts in each open encoder and reuses unchanged resource-residency facts. Merge scratch can be lent to later encoders of the same command buffer, with its original barriers and leases. A shadow may remain current across command buffers only for tracked private memory owned by the runtime; heaps and external memory retain their required copies. `sheng-metal-flow=1` separately enables lowering, direct commit submission and pipeline warming for experiments; it defaults to off, and pipeline waits remain exact.
+ 
+ ## Cache and priority
+ 
+diff --git a/docs/zh/drivers/adreno-metal.md b/docs/zh/drivers/adreno-metal.md
+index f0e33c9..96bd98b 100644
+--- a/docs/zh/drivers/adreno-metal.md
++++ b/docs/zh/drivers/adreno-metal.md
+@@ -25,7 +25,9 @@ AdrenoMetal 通过 `MTLAddDevice` 发布 Metal 设备。metal2vulkan 将 AIR 翻
+ 同一进程的 Metal 逻辑队列共用一个 Vulkan 队列和内核队列。前端汇总存活队列的当前请求，采用其中最高的优先级；队列降级或销毁后撤回提升。getter 返回各队列自身的请求，setter 返回后端是否接受。内核根据任务的 GPU role 选择前台或后台优先级，策略不使用进程名。
+ 
+ 
+-已空闲的自有图像内存可供池化和独立图像复用，十秒后过期，也在分配失败或内存压力下回收；图像备用内存没有字节上限。未使用的缓冲区预留按设备共享独立的 64 MiB 上限，覆盖所有内存类型。后台线程先重新检查需求，并优先复用同一池和内存类型的备用块。分配期间若前台完成使池恢复空间，新分配的自有缓冲区保留为备用块，同时保留其地址对象。至少 256 KiB 的普通自有内存可交给现有后台线程释放，待回收队列上限为 128 MiB；分配失败时先释放排队内存，再重试。导入内存和外部所有者回调保留原有释放顺序。首次使用仍可能需要准备新内存页。
++已空闲的自有图像内存可供池化和独立图像复用，十秒后过期，也在分配失败或内存压力下回收；图像备用内存没有字节上限。未使用的缓冲区预留按设备共享独立的 64 MiB 上限，覆盖所有内存类型。后台线程先重新检查需求，并优先复用同一池和内存类型的备用块。分配期间若前台完成使池恢复空间，新分配的自有缓冲区保留为备用块，同时保留其地址对象。自有内存交给 runtime 已有的释放线程，队列上限为 64 项，队满时由释放调用方处理；分配失败时归还备用内存并等待已排队释放完成，再重试。导入内存和外部所有者回调保留原有释放顺序。首次使用仍可能需要准备新内存页。
++
++编码计数由各个打开的 encoder 持有，资源驻留集合未改变时复用已有结果。同一 command buffer 的后续 encoder 可以借用前一 encoder 归还的合并临时缓冲区，原屏障与借用寿命保持。跨 command buffer 保留 shadow 只覆盖 runtime 自有的 tracked private 内存，heap 和外部内存仍保留必要复制。`sheng-metal-flow=1` 可单独开启后台编码、直接提交和管线预热实验；默认关闭，管线等待仍为 Exact。
+ 
+ ## 构建和检查
+ 
+diff --git a/scripts/build-adreno-metal-bridge.py b/scripts/build-adreno-metal-bridge.py
+index b28e073..e356bec 100644
+--- a/scripts/build-adreno-metal-bridge.py
++++ b/scripts/build-adreno-metal-bridge.py
+@@ -26,20 +26,18 @@ if subprocess.check_output(['git', '-C', str(SOURCE), 'rev-parse', 'HEAD'], text
+     raise SystemExit('Translator revision differs from the qualified source pin')
+ PATCHES = [ROOT / 'drivers/AdrenoMetal/bridge/patches' / name for name in [
+     # Each stacks on the source the ones before it leave.
+-    '0001-optional-constant-output-members.patch', '0002-resource-wait-storage-dependencies.patch',
++    '0002-resource-wait-storage-dependencies.patch',
+     '0003-cache-device-entry-point-priming.patch', '0004-fold-constant-global-field-loads.patch',
+     # A draw whose pipeline the driver refused binds nothing (int-170: tu_CmdBindPipeline in the render server).
+     '0005-skip-draws-without-a-pipeline.patch',
+     # A batch's barrier globals on the stack, and the neutral resources' maps by the runtime's key hash.
+     '0006-batch-barriers-and-key-hash-neutral-maps.patch',
+-    # From the DroidVM board's translator patches: a cache directory a sandboxed process may not write, llvm.bitreverse, a patch
+-    # function with no control points, and Core Image kernel libraries (file_type 1) loaded as Metal loads them.
+-    '0007-optional-shader-cache-directory.patch', '0008-llvm-bitreverse.patch', '0009-patch-with-no-control-points.patch',
+-    '0010-core-image-kernel-libraries.patch',
+-    # A two-plane surface's shadow starts as its memory lies; the Astronomy wallpaper's extended-range sRGB blends take the rounded
+-    # model; pooled blocks start at 4 MiB and grow (the render server alone held 1 GiB of wired memory).
+-    '0011-two-plane-shadow-as-memory-lies.patch', '0012-srgb-extended-range-blend-rounded-model.patch',
+-    '0013-growing-memory-blocks.patch',
++    # From the DroidVM board's translator patches: a cache directory a sandboxed process may not write, and a patch function with no
++    # control points.
++    '0007-optional-shader-cache-directory.patch', '0009-patch-with-no-control-points.patch',
++    # A two-plane surface's shadow starts as its memory lies; pooled blocks start at 4 MiB and grow (the render server alone held 1 GiB
++    # of wired memory).
++    '0011-two-plane-shadow-as-memory-lies.patch', '0013-growing-memory-blocks.patch',
+     # HostPageTexturePolicy::InPlaceWrites: textures over surfaces and padded buffers are images over their bytes, rendered and written
+     # too, where their tile stores stay within their rows, instead of shadows copied in and out every pass.
+     '0014-in-place-written-textures.patch', '0015-in-place-written-host-page-textures.patch',
+@@ -68,22 +66,25 @@ PATCHES = [ROOT / 'drivers/AdrenoMetal/bridge/patches' / name for name in [
+     # The host's diagnostics switch (SHENG_DIAG, from the boot argument sheng-diag=1): without it the stage ring and the allocation sites
+     # keep nothing. The stage ring also marks the steps inside a batch's submission (SubmitStep: placed, gathered, vkQueueSubmit, changes).
+     '0024-diagnostics-switch-and-submit-steps.patch',
+-    # Preserve specialized link names and source definitions; share large indexed constants and expose Vulkan allocation sizes.
++    # Share large indexed constants, read constant GEP offsets, expose Vulkan allocation sizes and name a made function.
+     '0025-specialized-links-shared-constants-and-allocation-size.patch',
+     '0026-frame-diagnostic-links.patch',
+-    '0027-bounded-image-reuse-and-retired-release.patch',
+-    '0028-guard-memory-release-test-worker.patch',
++    # Pooled and room-keeper image blocks become spares and serve later placements; the room worker ages them. Frees are upstream's
++    # free thread.
++    '0027-bounded-image-reuse.patch',
+     '0029-latency-stage-selection.patch',
+     # Spare image blocks have no byte limit (they age, go when a block cannot be made and on memory pressure), and the room keeper takes
+     # a spare block before it makes a new one: the limit freed spares the render server made again within seconds, each a fresh wiring.
+     '0030-spare-image-blocks-give-room.patch',
+-    # Reuse superseded buffer reservations within a separate 64 MiB device budget.
++    # Preserve the qualified A840 heap paths and diagnostics on the new runtime.
+     '0031-bounded-buffer-reserves.patch',
+     '0032-vulkan-operation-diagnostics.patch',
+     '0033-direct-tiled-word-copies.patch',
+     '0034-fixed-heap-copy-path.patch',
+     '0035-aligned-heap-transfer-rows.patch',
+-    '0036-linear-heap-word-copy.patch']]
++    '0036-linear-heap-word-copy.patch',
++    '0037-runtime-963f-contracts.patch',
++]]
+ 
+ 
+ def git_tree(*steps):
+diff --git a/scripts/data/gpu-metal-vulkan-inputs.json b/scripts/data/gpu-metal-vulkan-inputs.json
+index 895ca16..96696c0 100644
+--- a/scripts/data/gpu-metal-vulkan-inputs.json
++++ b/scripts/data/gpu-metal-vulkan-inputs.json
+@@ -11,13 +11,13 @@
+   },
+   "translator": {
+     "repository": "https://github.com/steelbrain/metal2vulkan",
+-    "commit": "624bab3918de5b978e1101517abca2b4fa426565",
++    "commit": "963f0e64f103d2e682cd0cc454a8fe50f52c8cbb",
+     "branch": "development",
+     "clone": "depth 1, blob filter, checked out source",
+     "files": {
+       "README.md": "0df40b723fd5ea51ca91b9e59fa5dac774015dde128a31b6834c3c8efb69a316",
+-      "Cargo.toml": "e2fc374386d6ee10854f9c2996a8c3858cbb4f86f549f15c93dacf20cc4db439",
+-      "crates/metal2vulkan/src/device/policy.rs": "1e07afdb2952046d13f593922fae6a27b6f26939912b6abf542645c60653a5e6"
++      "Cargo.toml": "878c6ad5ce7efba58955114fe0c7a61a7372c9304b3ea244bc370cf158e5ad13",
++      "crates/metal2vulkan/src/device/policy.rs": "31ccfac6bf7d907131a8c7f81a930cf79beb287e4825a4881a2eb5e1e2a5d92f"
+     }
+   },
+   "mesa": {

@@ -198,17 +198,6 @@ def main():
     record['mesa'] = dict(url=url, commit=pins['mesa']['commit'], tree=tree,
                           patches={p: sha(root / p) for p in pins['patches']})
 
-    # 3. metal2vulkan at the pin.
-    translator = json.loads((root / 'scripts/data/gpu-metal-vulkan-inputs.json').read_text())['translator']
-    source = root / '.cache/gpu-reference/metal2vulkan'
-    fetch_commit(source, [translator['repository']], translator['commit'])
-    for name, digest in translator['files'].items():
-        if sha(source / name) != digest:
-            sys.exit(f'metal2vulkan {name} differs from its pinned hash')
-    bridge_patches = sorted((root / 'drivers/AdrenoMetal/bridge/patches').glob('*.patch'))
-    record['metal2vulkan'] = dict(repository=translator['repository'], commit=translator['commit'],
-                                  bridge_patches={p.name: sha(p) for p in bridge_patches})
-
     # 4. bison and the Python environment of build-turnip-darwin.py.
     bison = pins['bison']
     tools = root / '.cache/mesa-tools'
@@ -296,10 +285,29 @@ def main():
         must(['git', '-C', repository, 'apply', '--check', selected])
         must(['git', '-C', repository, 'apply', selected])
         record.setdefault('linear_heap_patches', {})[name] = sha(selected)
+    for repository, name in [(root, 'runtime-963f-recipes.patch'),
+                             (root / 'drivers/AdrenoMetal', 'runtime-963f-plugin.patch')]:
+        selected = HERE / 'patches' / name
+        must(['git', '-C', repository, 'apply', '--check', selected])
+        must(['git', '-C', repository, 'apply', selected])
+        record.setdefault('runtime_963f_patches', {})[name] = sha(selected)
+    # Select the runtime only after its final recipe pin has been applied.
+    # 3. metal2vulkan at the pin.
+    translator = json.loads((root / 'scripts/data/gpu-metal-vulkan-inputs.json').read_text())['translator']
+    source = root / '.cache/gpu-reference/metal2vulkan'
+    fetch_commit(source, [translator['repository']], translator['commit'])
+    for name, digest in translator['files'].items():
+        if sha(source / name) != digest:
+            sys.exit(f'metal2vulkan {name} differs from its pinned hash')
+    bridge_patches = sorted((root / 'drivers/AdrenoMetal/bridge/patches').glob('*.patch'))
+    record['metal2vulkan'] = dict(repository=translator['repository'], commit=translator['commit'],
+                                  bridge_patches={p.name: sha(p) for p in bridge_patches})
+
     # The final bridge recipe applies these at plugin-build time. Record the
     # complete patch set after all frontend patches have been installed.
     bridge_patches = sorted((root / 'drivers/AdrenoMetal/bridge/patches').glob('*.patch'))
     record['metal2vulkan']['bridge_patches'] = {p.name: sha(p) for p in bridge_patches}
+    record['runtime_policy'] = '963f0e64; retained A840 heap paths; upstream free thread; flow default off; exact pipeline waits'
     record['buffer_reserve_policy'] = 'Reuse same-pool/type unused buffers; separate 64 MiB device budget; preserve address objects, pressure and teardown'
     record['iphone_private_layout_policy'] = 'Explicit --iphone-24a446 excludes all iPad raw QuartzCore layout access; public policy only'
     record['integrated_fulltest'] = 'One optional backboardd worker runs existing raw/Turnip/Metal checks alongside normal publication,without duplicate scanout'

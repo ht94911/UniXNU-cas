@@ -22,7 +22,7 @@ assert git('rev-parse', 'HEAD').decode().strip() == expected['original_pin']
 builder = r / 'scripts/build-adreno-metal-bridge.py'
 assert sha(builder) == expected['builder_sha256']
 patches = re.findall(r"'([0-9]{4}[^']+\.patch)'", builder.read_text())
-assert patches == list(expected['patch_hashes']) and len(patches) == 36
+assert patches == list(expected['patch_hashes']) and len(patches) == 32
 for name, digest in expected['patch_hashes'].items():
     assert sha(r / 'drivers/AdrenoMetal/bridge/patches' / name) == digest, name
 for name, digest in expected['source_hashes'].items():
