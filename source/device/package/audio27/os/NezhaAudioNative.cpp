@@ -32,8 +32,8 @@ bool ownedWindow(NaRange r) {
         {0x01980000,0x4000},{0x019c0000,0x2000},{0x100000,0x100000},
         {0x0f000000,0x1b8000},{0x07760000,0x17000},
         {0x06ae0000,0x1000},{0x07660000,0x1000},{0x07630000,0x10000},
-        {0x0b220000,0x2000}, // PDC DRV2: audio only configures its stock watchdog pin 6.
-        {0x17960000,0x1000}, // PDC SPI type: only 1796014c bit15 belongs to this watchdog.
+        {0x0b220000,0x2000}, // PDC v5 identity/CFG observation only; no PDC writes.
+        {0x17960000,0x1000}, // Only SPI751 type at1796014c/bit15 is configured.
         {0x15000000,0x100000},{0xa1400000,0x5580000},{0xa1380000,0x80000}
     };
     if (!na_range_valid(r) || ((r.base|r.bytes)&4095)) return false;
