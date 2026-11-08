@@ -25,10 +25,11 @@ struct AudioDspProbe {
     uint64_t now,deadline,tasDeadline,tasWait,tasLease;
     unsigned phase,tasPhase,dmaAttempted,started,revision[2],pasQueries;
     unsigned tasClaimed,tasPowerAttempted,tasCleanupAttempted;
+    unsigned loadPas,loadPoint,loadSegment;uint64_t loadOffset,loadBytes,loadPhysical;
     int error,tasError,tasCleanup;
 };
 AudioDspProbe nativeAudioProbe;
-uint32_t audioProbeSequence,audioProbeValues[29];
+uint32_t audioProbeSequence,audioProbeValues[38];
 void publish(AudioDspProbe *d) {
     uint32_t fault=0,syndrome=0;uint64_t address=0;
     // IRQ publishes these once through fault_pending; never race its initial
@@ -42,16 +43,28 @@ void publish(AudioDspProbe *d) {
         d->input.resources.error ? 1u:0u,d->power.held,d->power.possible,d->power.stage,d->power.active_resource,
         d->power.last_irq,d->power.last_status,d->power.last_command_status,
         (uint32_t)address,(uint32_t)(address>>32),syndrome,d->power.last_irq_enable,
-        d->pasQueries,d->adsp.initial_stop_mask,(uint32_t)d->adsp.initial_stop[0],(uint32_t)d->adsp.initial_stop[1]};
+        d->pasQueries,d->adsp.initial_stop_mask,(uint32_t)d->adsp.initial_stop[0],(uint32_t)d->adsp.initial_stop[1],
+        d->loadPas,d->loadPoint,d->loadSegment,(uint32_t)d->loadOffset,(uint32_t)(d->loadOffset>>32),
+        (uint32_t)d->loadBytes,(uint32_t)(d->loadBytes>>32),(uint32_t)d->loadPhysical,(uint32_t)(d->loadPhysical>>32)};
     __atomic_add_fetch(&audioProbeSequence,1,__ATOMIC_ACQ_REL);
-    for (unsigned i=0;i<29;++i) __atomic_store_n(&audioProbeValues[i],values[i],__ATOMIC_RELAXED);
+    for (unsigned i=0;i<38;++i) __atomic_store_n(&audioProbeValues[i],values[i],__ATOMIC_RELAXED);
     __atomic_add_fetch(&audioProbeSequence,1,__ATOMIC_RELEASE);
 }
+void loader_progress(void *v,uint32_t pas,uint32_t point,uint32_t segment,uint64_t offset,uint64_t bytes,uint64_t pa) {
+    auto *d=static_cast<AudioDspProbe *>(v);
+    d->loadPas=pas;d->loadPoint=point;d->loadSegment=segment;d->loadOffset=offset;d->loadBytes=bytes;d->loadPhysical=pa;
+    // Publish BEFORE a potentially blocking copy/sync/auth call, using the
+    // existing snapshot seqlock. No second trace buffer or hardware reader.
+    publish(d);
+    if (!offset || point==NaPasAuthBegin || point==NaPasAuthReturn)
+        printf("NEZHA AUDIO27 LOAD: pas=%u point=%u segment=%u offset=%llu bytes=%llu pa=%#llx\n",
+            pas,point,segment,(unsigned long long)offset,(unsigned long long)bytes,(unsigned long long)pa);
+}
 int snapshot(void *,char *out,size_t capacity,size_t *bytes,unsigned *truncated) {
-    uint32_t v[29];bool valid=false;
+    uint32_t v[38];bool valid=false;
     for (unsigned attempt=0;attempt<4;++attempt) {
         uint32_t seq=__atomic_load_n(&audioProbeSequence,__ATOMIC_ACQUIRE);if (seq&1) continue;
-        for (unsigned i=0;i<29;++i) v[i]=__atomic_load_n(&audioProbeValues[i],__ATOMIC_RELAXED);
+        for (unsigned i=0;i<38;++i) v[i]=__atomic_load_n(&audioProbeValues[i],__ATOMIC_RELAXED);
         __atomic_thread_fence(__ATOMIC_ACQUIRE);
         if (seq==__atomic_load_n(&audioProbeSequence,__ATOMIC_RELAXED)) {valid=true;break;}
     }
@@ -62,9 +75,12 @@ int snapshot(void *,char *out,size_t capacity,size_t *bytes,unsigned *truncated)
         "\"owner_error\":%u,\"proxy_held\":%u,\"proxy_possible\":%u,\"proxy_stage\":%u,\"proxy_resource\":%u,"
         "\"tcs_irq\":%u,\"tcs_status\":%u,\"tcs_command\":%u,\"fault_address\":\"0x%llx\","
         "\"fault_syndrome\":%u,\"tcs_irq_enable\":%u,\"pas_queries\":%u,\"stop_mask\":%u,"
-        "\"stop_main\":%d,\"stop_dtb\":%d,\"PCM\":false,\"HAL\":false}",
+        "\"stop_main\":%d,\"stop_dtb\":%d,\"load_pas\":%u,\"load_point\":%u,\"load_segment\":%u,"
+        "\"load_offset\":%llu,\"load_bytes\":%llu,\"load_pa\":\"0x%llx\",\"PCM\":false,\"HAL\":false}",
         v[0],(int32_t)v[1],v[2],v[3],v[4],v[5],v[6],v[7],v[8],(int32_t)v[9],(int32_t)v[10],v[11],v[12],v[13],v[14],v[15],v[16],v[17],v[18],v[19],v[20],
-        (unsigned long long)(((uint64_t)v[22]<<32)|v[21]),v[23],v[24],v[25],v[26],(int32_t)v[27],(int32_t)v[28]);
+        (unsigned long long)(((uint64_t)v[22]<<32)|v[21]),v[23],v[24],v[25],v[26],(int32_t)v[27],(int32_t)v[28],v[29],v[30],v[31],
+        (unsigned long long)(((uint64_t)v[33]<<32)|v[32]),(unsigned long long)(((uint64_t)v[35]<<32)|v[34]),
+        (unsigned long long)(((uint64_t)v[37]<<32)|v[36]));
     if (n<0 || (size_t)n>=capacity) {*truncated=1;return QUD_FAILED;}
     *bytes=(size_t)n;return QUD_OK;
 }
@@ -96,6 +112,7 @@ int poll_shared(void *v) {
 }
 int prepare(AudioDspProbe *d) {
     int r=na_native_prepare_adsp_inputs(&d->input,&d->plan);if (r) return r;
+    d->input.progress_context=d;d->input.progress=loader_progress;
     uint64_t lease=d->plan.adsp_lease;
     r=na_native_map(&d->smem,{0x81d00000,0x200000},lease);if (r) return r;
     r=na_native_map(&d->qmp,{0xc300000,0x1000},lease);if (r) return r;

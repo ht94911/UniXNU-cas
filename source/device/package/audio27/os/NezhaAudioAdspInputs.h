@@ -15,6 +15,7 @@ typedef struct {
     NaSplitFirmware firmware[2];
     NaNativeWindow region[2];NaNativeMemory metadata[2];
     uint32_t count[2],attempted;uint64_t lease;int error;
+    void *progress_context;NaPasProgressFn progress;
 } NaNativeAdspInputs;
 /* Fill the firmware/PAS portion of an otherwise caller-owned assembly plan.
  * Read-only blob parsing, real CPU allocations and mappings only: no PAS,
@@ -22,6 +23,9 @@ typedef struct {
  * Remaining shared-memory/board/DMA/graph fields must still be bound before
  * na_assembly_init; an incomplete plan continues to be rejected there. */
 int na_native_prepare_adsp_inputs(NaNativeAdspInputs *,NaAssemblyPlan *);
+/* Distinguish owned WB metadata from exact leased WC firmware aliases. Never
+ * pass an arbitrary peripheral PA to XNU's RAM physmap cache operation. */
+int na_native_pas_sync(void *,void *cpu,uint64_t physical,uint64_t bytes);
 #ifdef __cplusplus
 }
 #endif

@@ -5,7 +5,32 @@
 extern "C" volatile int nezha_touch_stage;
 namespace {
 int failed(NaNativeAdspInputs *s,int r) {s->error=r;return r;}
-int sync(void *c,void *cpu,uint64_t pa,uint64_t bytes) {return na_native_clean(c,cpu,pa,bytes);}
+void progress(void *v,uint32_t pas,uint32_t point,uint32_t segment,uint64_t offset,uint64_t bytes,uint64_t pa) {
+    auto *s=static_cast<NaNativeAdspInputs *>(v);
+    if (s->progress) s->progress(s->progress_context,pas,point,segment,offset,bytes,pa);
+}
+}
+extern "C" int na_native_pas_sync(void *v,void *cpu,uint64_t pa,uint64_t bytes) {
+    auto *s=static_cast<NaNativeAdspInputs *>(v);
+    if (!s || !cpu || !s->lease || !bytes || bytes>0x1000000 || pa>UINT64_MAX-bytes) return NA_ARGUMENT;
+    for (auto &m:s->metadata) {
+        if (!m.descriptor || !m.va || pa<m.physical || pa-m.physical>=m.bytes || bytes>m.bytes-(pa-m.physical)) continue;
+        if (cpu!=m.va+(pa-m.physical)) return NA_OWNERSHIP;
+        return na_native_clean(nullptr,cpu,pa,bytes); // owned cached RAM, unchanged
+    }
+    const NaRange expected[]={na_nezha_facts.firmware,na_nezha_facts.dtb};
+    for (unsigned i=0;i<2;++i) {
+        const auto &w=s->region[i];const auto &r=w.physical;
+        if (!w.mapping || !w.descriptor || !w.va || w.lease!=s->lease || r.base!=expected[i].base || r.bytes!=expected[i].bytes ||
+            pa<r.base || pa-r.base>=r.bytes || bytes>r.bytes-(pa-r.base)) continue;
+        if (cpu!=const_cast<uint8_t *>(w.va)+(pa-r.base)) return NA_OWNERSHIP;
+        // na_native_map uses kIOMapWriteCombineCache for these exact two
+        // windows. Like the existing GPU/Pandora PAS loader, publish the WC
+        // stores with DSB; flush_dcache64(...,TRUE) wrongly walks the RAM
+        // physmap for a separately mapped reserved firmware region.
+        na_native_publish_writes();return NA_OK;
+    }
+    return NA_OWNERSHIP;
 }
 extern "C" int na_native_prepare_adsp_inputs(NaNativeAdspInputs *s,NaAssemblyPlan *p) {
     if (!s || !p || s->attempted || p->adsp_lease) return NA_ARGUMENT;
@@ -36,7 +61,7 @@ extern "C" int na_native_prepare_adsp_inputs(NaNativeAdspInputs *s,NaAssemblyPla
         if (r || memcmp(s->metadata[i].va,s->mdt[i].data,(size_t)s->mdt[i].bytes)) return failed(s,NA_WIRE);
         r=na_native_map(&s->region[i],range[i],s->lease);if (r) return failed(s,r);
     }
-    p->adsp_lease=s->lease;p->pas={nullptr,na_native_pas,sync};
+    p->adsp_lease=s->lease;p->pas={s,na_native_pas,na_native_pas_sync,progress};
     for (unsigned i=0;i<2;++i) {
         p->firmware[i]=s->pieces[i];p->firmware_count[i]=s->count[i];
         p->firmware_map[i]=const_cast<uint8_t *>(s->region[i].va);

@@ -14,6 +14,8 @@ int na_native_unmap(NaNativeWindow *,int quiescent);
 int na_native_allocate(NaNativeMemory *,uint32_t bytes);
 int na_native_free(NaNativeMemory *,int quiescent);
 int na_native_clean(void *,const void *cpu,uint64_t physical,uint64_t bytes);
+/* Publish writes through a caller-validated uncached/WC firmware mapping. */
+void na_native_publish_writes(void);
 int na_native_sync(NaNativeMemory *,uint32_t offset,uint32_t bytes,int for_device);
 uint64_t na_native_host_time(void *);
 uint64_t na_native_now_us(void *);

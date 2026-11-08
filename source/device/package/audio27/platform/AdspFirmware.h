@@ -15,6 +15,11 @@ typedef struct {
  * raw partition fallback. Verify file SHA in the selected build's input lock. */
 int na_split_firmware(NaSplitFirmware *,const NaFirmwarePiece *,uint32_t count);
 int na_split_read(void *,uint64_t offset,void *to,size_t bytes);
+enum {NaPasCopyBegin=1,NaPasDataCopied,NaPasBssZeroed,NaPasSyncBegin,NaPasSyncReturn,NaPasAuthBegin,NaPasAuthReturn};
+/* Optional observation through the existing owner snapshot. It cannot change
+ * the operation, supply addresses, or turn an error into success. */
+typedef void (*NaPasProgressFn)(void *,uint32_t pas,uint32_t point,uint32_t segment,
+                                uint64_t offset,uint64_t bytes,uint64_t physical);
 typedef struct {
     void *context;
     /* Shared NezhaScm PAS wrapper: same lock + WAITQ owner as GPU/Wi-Fi.
@@ -22,6 +27,7 @@ typedef struct {
      * Failure may have changed secure state: never automatically replay. */
     int (*pas)(void *,uint32_t command,uint32_t pas,uint64_t arg1,uint64_t arg2);
     int (*sync)(void *,void *cpu,uint64_t physical,uint64_t bytes);
+    NaPasProgressFn progress;
 } NaPasOps;
 enum {NaPasIdle,NaPasInit,NaPasMemory,NaPasCopy,NaPasAuthenticate,NaPasReady,NaPasFault};
 typedef struct {

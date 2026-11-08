@@ -113,6 +113,7 @@ extern "C" int na_native_clean(void *,const void *cpu,uint64_t pa,uint64_t bytes
     if (!cpu || !pa || !bytes || bytes>0x1000000 || pa>UINT64_MAX-bytes) return NA_ARGUMENT;
     flush_dcache64(pa,(unsigned)bytes,TRUE);__asm__ volatile("dsb sy" :::"memory");return NA_OK;
 }
+extern "C" void na_native_publish_writes(void) {__asm__ volatile("dsb sy" :::"memory");}
 extern "C" int na_native_sync(NaNativeMemory *m,uint32_t offset,uint32_t bytes,int for_device) {
     if (!m || !m->descriptor || !bytes || offset>m->bytes || bytes>m->bytes-offset) return NA_ARGUMENT;
     if (for_device) return na_native_clean(nullptr,m->va+offset,m->physical+offset,bytes);

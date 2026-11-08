@@ -43,6 +43,9 @@ int na_pas_begin(NaPasLoad *l,NaSplitFirmware *f,uint32_t pas,NaRange range,void
     return NA_OK;
 }
 static int failed(NaPasLoad *l,int r) {l->stage=NaPasFault;l->error=r<0 ? r:NA_IO;return l->error;}
+static void progress(NaPasLoad *l,uint32_t point,uint64_t bytes,uint64_t pa) {
+    if (l->ops.progress) l->ops.progress(l->ops.context,l->pas,point,l->segment,l->offset,bytes,pa);
+}
 int na_pas_poll(NaPasLoad *l,uint64_t now) {
     if (!l || l->stage==NaPasIdle) return NA_ARGUMENT;
     if (l->stage==NaPasFault) return l->error;
@@ -61,13 +64,23 @@ int na_pas_poll(NaPasLoad *l,uint64_t now) {
         if (qcom_mdt_place(image,l->segment,l->region.base,l->region.bytes,&at)) return failed(l,NA_WIRE);
         uint64_t bytes=p->memory_size-l->offset;if (bytes>65536) bytes=65536;
         uint64_t file=l->offset<p->file_size ? p->file_size-l->offset:0;if (file>bytes) file=bytes;
+        progress(l,NaPasCopyBegin,bytes,l->region.base+at+l->offset);
         if (file) r=na_split_read(l->firmware,p->file_offset+l->offset,l->mapped+at+l->offset,(size_t)file);
+        if (!r) progress(l,NaPasDataCopied,bytes,l->region.base+at+l->offset);
         if (!r && bytes>file) memset(l->mapped+at+l->offset+file,0,(size_t)(bytes-file));
-        if (!r) r=l->ops.sync(l->ops.context,l->mapped+at+l->offset,l->region.base+at+l->offset,bytes);
+        if (!r) {
+            progress(l,NaPasBssZeroed,bytes,l->region.base+at+l->offset);
+            progress(l,NaPasSyncBegin,bytes,l->region.base+at+l->offset);
+            r=l->ops.sync(l->ops.context,l->mapped+at+l->offset,l->region.base+at+l->offset,bytes);
+            progress(l,NaPasSyncReturn,bytes,l->region.base+at+l->offset);
+        }
         if (!r) {l->offset+=bytes;if (l->offset==p->memory_size) {++l->segment;l->offset=0;}}
     } else if (l->stage==NaPasAuthenticate) {
         /* SM8850 hypervisor creates PIL metadata bridge; don't duplicate it. */
-        r=l->ops.pas(l->ops.context,5,l->pas,0,0);if (!r) l->stage=NaPasReady;
+        progress(l,NaPasAuthBegin,l->span,l->region.base);
+        r=l->ops.pas(l->ops.context,5,l->pas,0,0);
+        progress(l,NaPasAuthReturn,l->span,l->region.base);
+        if (!r) l->stage=NaPasReady;
     } else return failed(l,NA_OWNERSHIP);
     return r ? failed(l,r):l->stage==NaPasReady ? NA_OK:NA_PENDING;
 }
