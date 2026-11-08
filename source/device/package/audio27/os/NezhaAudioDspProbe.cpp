@@ -20,7 +20,7 @@ struct AudioDspProbe {
     NaNativeAdspInputs input;NaAssemblyPlan plan;
     NaNativeSmmu domain;NaSmmu smmu;
     NaNativeMemory dma,tables;
-    NaNativeWindow smem,qmp,cmdDb;
+    NaNativeWindow smem,qmp,cmdDb,pdc;
     NaPasLoad loader[2];NaProxyPower power;NaAdsp adsp;NaRxQueue rx;
     NaNativeTasBoard tasNative;NaGeniBoard tasBoard;NaTasPowerOps tasOps;
     uint64_t now,deadline,tasDeadline,tasWait,tasLease;
@@ -29,6 +29,7 @@ struct AudioDspProbe {
     unsigned postPoint;int postResult,headerResult;
     unsigned loadPas,loadPoint,loadSegment;uint64_t loadOffset,loadBytes,loadPhysical;
     uint32_t watchdogIrq,watchdogStops,watchdogStopAttempted;
+    uint32_t pdcVersion,pdcParameters,pdcBefore,pdcAfter;
     uint64_t watchdogRouter;
     int watchdogMain,watchdogDtb;
     char crashBaseline[161],crashLast[161];
@@ -148,6 +149,36 @@ int proxy(void *v,int on) {
     return r ? r:na_proxy_poll(&d->power,d->now);
 }
 void watchdog_irq(void *v) {na_adsp_watchdog_event(static_cast<NaAdsp *>(v));}
+int arm_watchdog(AudioDspProbe *d) {
+    // Live nezha DTS: PDC DRV2 at b220000, pin 6, rising edge; the first
+    // <0,745,38> range forwards it to SPI751/INTID783. The register layout
+    // is the one sheng ButtonProbe and Linux qcom-pdc use at version >=3.2.
+    // Pin 6 is a direct SPI: only its type and enable bits are changed.
+    int r=na_native_map(&d->pdc,{0x0b220000,0x2000},d->plan.adsp_lease);
+    if (r) return r;
+    auto *pdc=reinterpret_cast<volatile uint32_t *>(d->pdc.va);
+    d->pdcVersion=pdc[0x1000/4];d->pdcParameters=pdc[0x100c/4];
+    d->pdcBefore=pdc[(0x110+4*6)/4];d->pdcAfter=d->pdcBefore;
+    printf("NEZHA AUDIO27 WDOG PDC: version=%#x parameters=%#x pin=6 before=%#x\n",
+        d->pdcVersion,d->pdcParameters,d->pdcBefore);
+    if (d->pdcVersion<0x30200 || (d->pdcVersion&0xff000000u) ||
+        (d->pdcParameters&0xffu)<=6) return NA_MISSING;
+    IOReturn irq=armcpu_spi_attach(783,true,watchdog_irq,&d->adsp,&d->watchdogIrq,&d->watchdogRouter);
+    printf("NEZHA AUDIO27 WDOG IRQ: intid=783 result=%d GIC=%#x route=%#llx\n",
+        irq,d->watchdogIrq,(unsigned long long)d->watchdogRouter);
+    if (irq!=kIOReturnSuccess || (d->watchdogIrq&7)!=7) return NA_IO;
+    // The GIC slot was claimed successfully before touching PDC. Firmware
+    // is still stopped; any setup edge precedes the fresh auth baseline.
+    const uint32_t configured=(d->pdcBefore&~0xfu)|0xeu;
+    if (configured!=d->pdcBefore) {
+        pdc[(0x110+4*6)/4]=configured;
+        na_native_publish_writes();
+    }
+    d->pdcAfter=pdc[(0x110+4*6)/4];
+    printf("NEZHA AUDIO27 WDOG PDC: pin=6 after=%#x rising=%u enabled=%u\n",
+        d->pdcAfter,(d->pdcAfter&7u)==6u,(d->pdcAfter&8u)!=0);
+    return (d->pdcAfter&0xfu)==0xeu ? NA_OK:NA_IO;
+}
 int control_buffers_ready(void *v) {
     auto *d=static_cast<AudioDspProbe *>(v);
     // This diagnostic sends GLINK/QRTR control packets and reads reset-muted
@@ -162,14 +193,7 @@ int control_buffers_ready(void *v) {
         if (stream.graph || stream.dma.cpu || stream.dma.physical.bytes || stream.iova || stream.port)
             return NA_OWNERSHIP;
     capture_crash_baseline(d);
-    // Saved live stock DTS: ADSP wdog -> PDC pin6, range <0,745,38> ->
-    // SPI751/INTID783. ArmCpu refuses occupied IRQs; no PDC register, other
-    // device IRQ or vector table is modified. Readback covers GIC only.
-    IOReturn irq=armcpu_spi_attach(783,true,watchdog_irq,&d->adsp,&d->watchdogIrq,&d->watchdogRouter);
-    printf("NEZHA AUDIO27 WDOG IRQ: intid=783 result=%d GIC=%#x route=%#llx\n",
-        irq,d->watchdogIrq,(unsigned long long)d->watchdogRouter);
-    if (irq!=kIOReturnSuccess || (d->watchdogIrq&7)!=7) return NA_IO;
-    return NA_OK;
+    return arm_watchdog(d);
 }
 int poll_shared(void *v) {
     auto *d=static_cast<AudioDspProbe *>(v);

@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Audio024: retain Audio023/GPU023/Native037/Metal021b and 20s control; 100ms between the first existing GLINK setup/RX/poll observations using the sole worker normal timer. Every poll still handles fresh watchdog, SMP2P and handover; no blocking in callback/shared lock or extra FIFO reader. Keep watchdog783/SMEM423/PAS contain-once, zero default full playback, no PCM/HAL/capture/private inputs/phone operations. Diagnostic timing does not prove a stable fix.",
+  "purpose": "Audio025: keep GPU023/Native037/Metal021b and Audio024 GLINK20s/first observations100ms; complete stock ADSP watchdog PDC DRV2 pin6 to IRQ783 using actual3.2 version/direct-SPI check, exclusive GIC claim then only pin6 type/rising6+enable8 and readback. No other PDC pin or old bank, new FIFO consumer, trace, external DMA, PCM/HAL/capture/private inputs or phone operation. Cause/hardware route not yet proven.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "0ccddd934ea2623eb5c9fd49efa5d577e9c92992",
+  "device_revision": "d102fc7e2768569fc83387426614765b81ad90b4",
   "soc_revision": "703d7b4bb00904b4a6e5d96f9e9bf72eec170f6b",
   "xcode": "26.6",
   "files": {
@@ -219,7 +219,7 @@
     "source/device/package/audio27/platform/AudioSmmu.h": "41401f1b97e3481c7e5cc3e02c47f926e91eec9fa34f4a48981a3fc3b723cddd",
     "source/device/package/audio27/upstream/ShengGpr.c": "c4f498f07e2cb601b593e64a8d32474a21d6a87375618e1a67b99d52c5d3160e",
     "source/device/package/audio27/platform/SoundWire.h": "348979ac1e552e1c3a0027e09f8500927e8bf7ccbb496276d2c9d3ef19322224",
-    ".github/workflows/nezha-ios27-native.yml": "38bd26869ec2fa6b1cffe2c430d756adb05c7914a4f196ba5e2eacfb9387be77",
+    ".github/workflows/nezha-ios27-native.yml": "d64f684f307732deaff1d95a213f2e5d61ce2ce186cddeeb453a5cc7bdb590ff",
     "source/device/package/audio27/upstream/ShengGpr.h": "a274dded1f4d1e2709b9f966759bcb1f57d12747ee0f57743dea1fa97d95d23e",
     "source/device/package/audio27/os/NezhaAudioNative.h": "7fd04a164de72e423cd16488d805c1a4f8c2f458b2356978b0bdecc2b64d55a7",
     "source/device/package/audio27/upstream/ShengAudioReach.h": "b135177a5feb3e24e0d8a6aabb301600e2c37078b970a09ada6e8eb7bb6a5b98",
@@ -245,7 +245,7 @@
     "source/device/package/audio27/upstream/ShengAudioReach.c": "9b198e58272d325bad48e68633f59c8cc5bdc97033d2a485abb6691a402b6a8d",
     "source/device/package/audio27/platform/Tas25xxTables.h": "194b22f95f786a746e284868d4fcd292da52cfd52d8e3987f2726082f4712b02",
     "source/device/package/audio27/platform/GeniTasBus.h": "a2cba9aa9fbfec01112142b4108b795a5593417602b9d297003b3dc7e64cd374",
-    "source/device/package/audio27/os/NezhaAudioNative.cpp": "fa236ccb8202efe2dcec8e954e3ed57f3704814fe0d2c41bd53f1975977a4ec5",
+    "source/device/package/audio27/os/NezhaAudioNative.cpp": "b2816c0485f2f844362b51006b4e0775af73b4e1de3637e5cf3afeacd55f9315",
     "source/device/package/audio27/upstream/LICENSE.PandoraAcdb": "f984c0a808afdeb2e050ceb47bc24d764156daa29b5dfde10fb9afec2f83f351",
     "source/device/package/audio27/upstream/QcomSmem.c": "4e9eb0ee22458dad30e1fcb7edb74a9d762222aff0623a6d5b85fb4a6e08bd03",
     "source/device/package/audio27/platform/Tas25xxEndpoint.c": "294b685728b8eaba8310dd6c778ff979b69f20c6b6ea5c4a320042273a93046f",
@@ -318,7 +318,7 @@
     "source/device/package/audio27/platform/AudioInputPack.c": "9991a396c50bd0e427570d1a04fbe4755202412759fe0e945cd63c53619dea0c",
     "source/device/package/audio27/os/NezhaAudioInputs.c": "46617afe5985f02f108644611b93a19463322be09984968e5e900e10fcfe12aa",
     "source/device/package/audio27/os/NezhaAudioSmmu.cpp": "833371d1e1f4068cadf60002da3867f7a346ece265a8a4d5773174649898fff5",
-    "source/device/package/audio27/os/NezhaAudioDspProbe.cpp": "e3203128ab5583046365d531d2632b345bedbbd8e28bfd309ed026472b305cfc",
+    "source/device/package/audio27/os/NezhaAudioDspProbe.cpp": "ab4b2ce301c0d363968e557e72760b025cdcbc3313c9f6d41ad95c387d20648c",
     "source/device/package/audio27/os/NezhaAudioSmmu.h": "e9391db75422a2ec69a3451d0b50b279fa81741640840cc09e24be5cc3cc3889",
     "source/device/package/audio27/os/NezhaAudioTasBoard.h": "793e2b87da53b7f4aad0093310452fa378137b25e9375fe04edf269e3dad7f8b",
     "source/device/package/audio27/os/NezhaAudioTasBoard.cpp": "b87e914dfae3e3a77626dd1dd18e1c2a31ef01bacd631fb9830ec79a1fc9a890",
