@@ -1,0 +1,1587 @@
+diff --git a/README.md b/README.md
+index 5b980a0..b939ddb 100644
+--- a/README.md
++++ b/README.md
+@@ -12,6 +12,18 @@ Build and interface details: [documentation](https://unixnu.com/drivers/adreno-m
+ 
+ Unused owned image backing can serve later pooled or dedicated images. Image spares expire after ten seconds and are reclaimed on allocation failure or memory pressure; they have no byte limit. Unused buffer reservations share a separate 64 MiB device budget across memory types. The room worker rechecks demand and reuses a spare of the same pool and memory type before allocating. If foreground completions restore room during allocation, the new owned buffer stays spare with its address object intact. Plain unused backing of at least 256 KiB can be released by the existing room worker, with at most 128 MiB queued. Allocation failure reclaims queued backing before retrying. Imported memory and owner callbacks retain their release ordering.
+ 
++## Heap texture copies
++
++Fixed runtime-owned Private heap textures can write complete texel words directly
++to their heap buffer when the descriptor range is aligned. Tracked heaps can also
++read it directly. Untracked heaps retain their input snapshot and staging keep;
++their concurrent-writer merges use the original scratch path. Shared or imported
++memory, special surfaces and ineligible layouts retain staging. Staged output
++preserves only untouched edge ranges when that saves at least half a full copy.
++The original barriers and alias rules remain in force. CPU Vulkan checks cover
++production ShadowCopy dispatch, access stages, padding and independent writes;
++A840 frame performance requires a hardware capture.
++
+ ## Frame diagnostics
+ 
+ The iPhone24A446 build profile excludes iPad-specific image-relative QuartzCore
+diff --git a/bridge/patches/0034-fixed-heap-copy-path.patch b/bridge/patches/0034-fixed-heap-copy-path.patch
+new file mode 100644
+index 0000000..e0e069b
+--- /dev/null
++++ b/bridge/patches/0034-fixed-heap-copy-path.patch
+@@ -0,0 +1,1558 @@
++diff --git a/crates/metal2vulkan-runtime/src/shadow.rs b/crates/metal2vulkan-runtime/src/shadow.rs
++index e6d852a3f..98e817e8d 100644
++--- a/crates/metal2vulkan-runtime/src/shadow.rs
+++++ b/crates/metal2vulkan-runtime/src/shadow.rs
++@@ -184,6 +184,7 @@
++ //!   a buffer's texture does, the shadow's elements copied out tiled, each other byte as the last
++ //!   copy in left it.
++ 
+++use super::Device;
++ use super::buffer::{Buffer, CallerMemory, WeakBuffer};
++ use super::dirty_pages::{CopyInGate, ShadowLog};
++ use super::error::{Error, RuntimeGap};
++@@ -192,22 +193,21 @@ use super::rotated::{RotatedCopies, Turn};
++ use super::row_copies::RowCopies;
++ use super::shadow_copy_back::{CopyBack, WordView};
++ use super::shadow_merge::{ScratchSpares, ShadowMerge, UnormView};
+++use super::texture::Texture;
++ use super::texture::copy_images::UseMaker;
++ use super::texture::heap_tiled::{HeapTiledCopies, SampleMoves};
++ use super::texture::heap_two_planes::{HeapPlaneCopies, TwoPlaneHeapLayout};
++-use super::texture::Texture;
++ use super::tracker::{Access, Barrier, Use, UseRange};
++ use super::values::StorageMode;
++ use super::view_plan::reinterpretation_refused;
++ use super::ycbcr::{YCbCrConversion, YCbCrWriteBack};
++-use super::Device;
++ use crate::device::functions::Vk;
++ use ash::vk;
++ use metal2vulkan::error::{Feature, Unsupported};
++ use metal2vulkan::metal::PixelFormat;
++ use std::ops::Range;
++-use std::sync::atomic::{AtomicU64, Ordering};
++ use std::sync::Arc;
+++use std::sync::atomic::{AtomicU64, Ordering};
++ 
++ /// What a shadowed texture's copies need: its truth, its shadow, and the copies between them.
++ pub(super) struct ShadowCopies {
++@@ -879,9 +879,10 @@ impl ShadowCopies {
++         matches!(
++             &self.source,
++             ShadowSource::Bytes {
+++                buffer,
++                 target: ShadowTarget::Tiled { tiles, .. },
++                 ..
++-            } if tiles.moves_bits()
+++            } if tiles.moves_bits() && !tiles.direct_for(buffer.raw(), true)
++         )
++     }
++ 
++@@ -1394,6 +1395,10 @@ impl ShadowCopy {
++         else {
++             return None;
++         };
+++        if matches!(target, ShadowTarget::Tiled { tiles, .. } if tiles.direct_for(buffer.raw(), false))
+++        {
+++            return None;
+++        }
++         let staging = match target {
++             ShadowTarget::Image {
++                 staging: Some(staging),
++@@ -1548,14 +1553,37 @@ impl ShadowCopy {
++                 Step::Keep(_) | Step::Merge(_) => Vec::new(),
++             };
++         }
+++        let direct = |into| {
+++            matches!(
+++                &c.source,
+++                ShadowSource::Bytes { buffer, target: ShadowTarget::Tiled { tiles, .. }, .. }
+++                    if tiles.direct_for(buffer.raw(), into)
+++            )
+++        };
+++        let truth_read = if direct(true) {
+++            Access::new(
+++                vk::PipelineStageFlags2::COMPUTE_SHADER,
+++                vk::AccessFlags2::SHADER_STORAGE_READ,
+++            )
+++        } else {
+++            read
+++        };
+++        let truth_write = if direct(false) {
+++            Access::new(
+++                vk::PipelineStageFlags2::COMPUTE_SHADER,
+++                vk::AccessFlags2::SHADER_STORAGE_WRITE,
+++            )
+++        } else {
+++            write
+++        };
++         match &self.step {
++             Step::Into => vec![
++-                Use::reads(truth, c.tracked, range, read),
+++                Use::reads(truth, c.tracked, range, truth_read),
++                 Use::writes(c.shadow_key, c.tracked, c.shadow_range.clone(), write),
++             ],
++             Step::Back => vec![
++                 Use::reads(c.shadow_key, c.tracked, c.shadow_range.clone(), read),
++-                Use::writes(truth, c.tracked, range, write),
+++                Use::writes(truth, c.tracked, range, truth_write),
++             ],
++             Step::Keep(merge) => merge.keep_uses(c),
++             Step::Merge(merge) => merge.merge_uses(c),
++@@ -1634,11 +1662,11 @@ impl ShadowCopy {
++             Step::Back => false,
++             // SAFETY: the caller's contract, which the merge's records take.
++             Step::Keep(merge) => {
++-                return unsafe { merge.record_keep(device, command_buffer, (c, moves)) }
+++                return unsafe { merge.record_keep(device, command_buffer, (c, moves)) };
++             }
++             // SAFETY: as above.
++             Step::Merge(merge) => {
++-                return unsafe { merge.record_merge(device, command_buffer, (c, moves)) }
+++                return unsafe { merge.record_merge(device, command_buffer, (c, moves)) };
++             }
++         };
++         let (buffer, target) = match &c.source {
++@@ -2797,7 +2825,7 @@ impl<M: Clone + KeptArea> ShadowSync<M> {
++                 let same = |scratch: &M| scratch.for_overwrite() == shadow.overwrites;
++                 let area = match scratch {
++                     Some(scratch) if holds(scratch.kept_area(), writes) && same(scratch) => {
++-                        continue
+++                        continue;
++                     }
++                     Some(scratch) => bounding(scratch.kept_area(), writes),
++                     None => writes,
++diff --git a/crates/metal2vulkan-runtime/src/stage_trace.rs b/crates/metal2vulkan-runtime/src/stage_trace.rs
++index ccb66cd40..e4482e65e 100644
++--- a/crates/metal2vulkan-runtime/src/stage_trace.rs
+++++ b/crates/metal2vulkan-runtime/src/stage_trace.rs
++@@ -5,11 +5,11 @@
++ //! The scheduler's and the waiters' own sleeps and wakes are recorded under id 0 and the queue.
++ //!
++ //! - **Cheap.** A record is one atomic add and three stores; nothing allocates or locks. The ring
++-//!   keeps the newest [`RING`] records; a reader that falls behind loses the oldest.
+++//!   keeps the newest `RING` records; a reader that falls behind loses the oldest.
++ //! - **One clock.** The host's uptime clock in nanoseconds (`CLOCK_UPTIME_RAW` on Apple
++ //!   platforms), the one the frontend's trace and the driver's rings use.
++ //! - **Off unless asked for.** Records are kept only where the host's environment has
++-//!   `SHENG_DIAG` ([`diagnostics`]), read once; the same switch keeps the allocation sites
+++//!   `SHENG_DIAG` (`diagnostics`), read once; the same switch keeps the allocation sites
++ //!   (`creation.rs`). Without it a record costs one relaxed load.
++ //! - **Ids.** A command buffer's id is the address of its shared state, alive from its commit to
++ //!   its completion: records of one id between a commit stage and its completion are one command
++diff --git a/crates/metal2vulkan-runtime/src/tests/heap_tiled.rs b/crates/metal2vulkan-runtime/src/tests/heap_tiled.rs
++index d0625af16..c116855fe 100644
++--- a/crates/metal2vulkan-runtime/src/tests/heap_tiled.rs
+++++ b/crates/metal2vulkan-runtime/src/tests/heap_tiled.rs
++@@ -1513,3 +1513,128 @@ fn linear_word_grids_do_not_dispatch_a_nearly_empty_extra_row() {
++     assert_eq!(tiled_word_grid(1, [65535, 0]), None);
++     assert_eq!(tiled_word_grid(u64::MAX, [65535, 65535]), None);
++ }
+++
+++fn level_moves(layout: &TiledLayout, at: u32) -> Vec<metal2vulkan::bind::TiledLevelMove> {
+++    layout
+++        .levels
+++        .iter()
+++        .map(|level| {
+++            metal2vulkan::bind::TiledLevelMove::new(
+++                layout.unit as u32,
+++                level.extent.map(|v| v as u32),
+++                if layout.volume {
+++                    level.depth
+++                } else {
+++                    layout.chains
+++                } as u32,
+++                level.tile.map(|v| v as u32),
+++                level.across as u32,
+++                at + level.base as u32,
+++                layout.stride as u32,
+++                0,
+++                level.bytes as u32,
+++            )
+++        })
+++        .collect()
+++}
+++
+++#[test]
+++fn edge_preservation_keeps_every_byte_the_kernel_does_not_overwrite() {
+++    use crate::texture::heap_tiled::tiled_preserved_ranges;
+++    let mut optimized = 0;
+++    let mut layouts = 0;
+++    for unit in [4, 8, 16, 32, 64] {
+++        for extent in [
+++            [1, 1, 1],
+++            [33, 17, 1],
+++            [64, 64, 1],
+++            [65, 67, 1],
+++            [129, 97, 3],
+++            [191, 132, 2],
+++        ] {
+++            for kind in [T::Type2D, T::Type2DArray, T::Type3D] {
+++                for levels in [1, 3] {
+++                    let depth = if kind == T::Type3D { extent[2] } else { 1 };
+++                    let largest: u64 = extent[0].max(extent[1]).max(depth);
+++                    if levels > 64 - largest.leading_zeros() {
+++                        continue;
+++                    }
+++                    let layout =
+++                        TiledLayout::of(unit, Elements::Texels, kind, extent, levels, 2).unwrap();
+++                    let offset = 128;
+++                    let size = offset + layout.size + 64;
+++                    let moves = level_moves(&layout, offset as u32);
+++                    let ranges = tiled_preserved_ranges(&moves, size);
+++                    let keep = match ranges {
+++                        Some(ranges) => {
+++                            optimized += 1;
+++                            ranges
+++                        }
+++                        None => std::iter::once(0..size).collect(),
+++                    };
+++                    let heap: Vec<u8> = (0..size).map(|i| (i * 13 + i / 251 + 5) as u8).collect();
+++                    let mut original = heap.clone();
+++                    let mut reduced = vec![0x6d; size as usize];
+++                    for span in keep {
+++                        assert!(span.start % 4 == 0 && span.end % 4 == 0 && span.end <= size);
+++                        reduced[span.start as usize..span.end as usize]
+++                            .copy_from_slice(&heap[span.start as usize..span.end as usize]);
+++                    }
+++                    // Independent address oracle: the existing tested Metal
+++                    // layout walks every element, not the planner's tile spans.
+++                    for (index, level) in layout.levels.iter().enumerate() {
+++                        let images = if layout.volume {
+++                            level.depth
+++                        } else {
+++                            layout.chains
+++                        };
+++                        for image in 0..images {
+++                            for y in 0..level.extent[1] {
+++                                for x in 0..level.extent[0] {
+++                                    let at = offset + layout.element(image, index, x, y);
+++                                    for b in 0..unit {
+++                                        let value =
+++                                            (x * 37 + y * 11 + image * 3 + b + index as u64) as u8;
+++                                        original[(at + b) as usize] = value;
+++                                        reduced[(at + b) as usize] = value;
+++                                    }
+++                                }
+++                            }
+++                        }
+++                    }
+++                    assert_eq!(
+++                        original.iter().zip(&reduced).position(|(a, b)| a != b),
+++                        None,
+++                        "unit{unit} {extent:?} {kind:?} levels{levels}"
+++                    );
+++                    layouts += 1;
+++                }
+++            }
+++        }
+++    }
+++    assert_eq!(layouts, 165);
+++    assert!(optimized > 50, "the optimized plan must actually run");
+++    eprintln!("EDGE-PRESERVE {optimized}/{layouts} layouts exercised reduced copies");
+++}
+++
+++#[test]
+++fn edge_preservation_uses_actual_screen_tiles_and_bounds_its_work() {
+++    use crate::texture::heap_tiled::tiled_preserved_ranges;
+++    let layout = TiledLayout::of(8, Elements::Texels, T::Type2D, [1204, 2328, 1], 1, 1).unwrap();
+++    assert_eq!(layout.levels[0].tile, [64, 32]);
+++    let moves = level_moves(&layout, 0);
+++    let keep = tiled_preserved_ranges(&moves, layout.size).unwrap();
+++    let bytes: u64 = keep.iter().map(|r| r.end - r.start).sum();
+++    assert_eq!(layout.size, 22_724_608);
+++    assert_eq!(keep.len(), 72); // the last partial column joins the final row
+++    assert_eq!(bytes, 1_490_944);
+++    let mut excessive = moves;
+++    excessive[0].images = u32::MAX;
+++    assert!(tiled_preserved_ranges(&excessive, u64::MAX - 3).is_none());
+++    assert!(tiled_preserved_ranges(&excessive, 0).is_none());
+++    eprintln!(
+++        "EDGE-PRESERVE screen: {bytes}/{} bytes in {} ranges",
+++        layout.size,
+++        keep.len()
+++    );
+++}
++diff --git a/crates/metal2vulkan-runtime/src/tests/tiled_device_words.rs b/crates/metal2vulkan-runtime/src/tests/tiled_device_words.rs
++index 13f4c92c2..a112eb68c 100644
++--- a/crates/metal2vulkan-runtime/src/tests/tiled_device_words.rs
+++++ b/crates/metal2vulkan-runtime/src/tests/tiled_device_words.rs
++@@ -217,3 +217,884 @@ fn tiled_device_words_match_the_byte_oracle_and_keep_padding() {
++         }
++     }
++ }
+++
+++/// Use the same kernel/allocator/submission helpers as the existing device test;
+++/// compare full preservation and the real planner's ranges including copy-back.
+++#[test]
+++fn edge_preservation_runs_real_vulkan_copies() {
+++    use crate::texture::heap_tiled::{Elements, TiledLayout, tiled_preserved_ranges};
+++    use metal2vulkan::metal::TextureType;
+++    let scratch = Scratch::new("edge-preservation");
+++    let device = device(&scratch.0);
+++    let mut reduced_cases = 0;
+++    let mut fallback_cases = 0;
+++    for (extent, count, kind, slices) in [
+++        ([64, 64, 1], 1, TextureType::Type2D, 1),
+++        ([129, 97, 2], 3, TextureType::Type3D, 1),
+++        ([191, 132, 1], 3, TextureType::Type2DArray, 2),
+++        ([1204, 2328, 1], 1, TextureType::Type2D, 1),
+++    ] {
+++        let layout = TiledLayout::of(8, Elements::Texels, kind, extent, count, slices).unwrap();
+++        let mut tight_len = 0_u32;
+++        let levels: Vec<_> = layout
+++            .levels
+++            .iter()
+++            .map(|l| {
+++                let images = if layout.volume {
+++                    l.depth
+++                } else {
+++                    layout.chains
+++                } as u32;
+++                let next = TiledLevelMove::new(
+++                    8,
+++                    l.extent.map(|v| v as u32),
+++                    images,
+++                    l.tile.map(|v| v as u32),
+++                    l.across as u32,
+++                    l.base as u32,
+++                    layout.stride as u32,
+++                    tight_len,
+++                    l.bytes as u32,
+++                );
+++                tight_len += l.extent[0] as u32 * l.extent[1] as u32 * images * 8;
+++                next
+++            })
+++            .collect();
+++        let heap: Vec<u8> = (0..layout.size)
+++            .map(|i| (i * 13 + i / 251 + 5) as u8)
+++            .collect();
+++        let tight: Vec<u8> = (0..tight_len)
+++            .map(|i| (i * 7 + i / 257 + 3) as u8)
+++            .collect();
+++        let mut wanted = heap.clone();
+++        for level in &levels {
+++            wanted = expected(level, false, &tight, &wanted).1;
+++        }
+++        let (candidate_label, partial) = match tiled_preserved_ranges(&levels, layout.size) {
+++            Some(ranges) => {
+++                reduced_cases += 1;
+++                ("edges", ranges)
+++            }
+++            None => {
+++                fallback_cases += 1;
+++                (
+++                    "fallback-full",
+++                    std::iter::once(0..layout.size).collect::<Vec<_>>(),
+++                )
+++            }
+++        };
+++        // Aligned and screen geometries must exercise the optimization. Other
+++        // layouts may intentionally retain full preservation at its cost bound.
+++        if extent == [64, 64, 1] || extent == [1204, 2328, 1] {
+++            assert_eq!(candidate_label, "edges");
+++        }
+++        let (shape, grid) = match levels.as_slice() {
+++            [level] => TiledTexelsModule::tiled_dispatch(level, false).unwrap(),
+++            _ => {
+++                let n = TiledTexelsModule::invocations(&levels, false).div_ceil(64);
+++                let x = n.min(65535);
+++                (
+++                    TiledTexelsModule::shape(&levels, false, x * 64).unwrap(),
+++                    [x, n.div_ceil(x), 1],
+++                )
+++            }
+++        };
+++        for (label, preserve) in [
+++            ("full", std::iter::once(0..layout.size).collect::<Vec<_>>()),
+++            (candidate_label, partial),
+++        ] {
+++            let heap_buffer = device
+++                .new_buffer_with_bytes(&heap, ResourceOptions::shared())
+++                .unwrap();
+++            let staging = device
+++                .new_buffer_with_bytes(&vec![0x6d; heap.len()], ResourceOptions::shared())
+++                .unwrap();
+++            let input = device
+++                .new_buffer_with_bytes(&tight, ResourceOptions::shared())
+++                .unwrap();
+++            let shape_buffer = device
+++                .new_buffer_with_bytes(&shape, ResourceOptions::shared())
+++                .unwrap();
+++            let kernel = device.owned_kernel(OwnedModule::TiledTexels).unwrap();
+++            let binding = |b: &Buffer, len: usize| {
+++                let (raw, at) = b.at(0);
+++                (raw, at, len as u64)
+++            };
+++            let sets = OwnedSets::write(
+++                &device,
+++                &kernel,
+++                &[vec![
+++                    binding(&input, tight.len()),
+++                    binding(&staging, heap.len()),
+++                    binding(&shape_buffer, shape.len()),
+++                ]],
+++            )
+++            .unwrap();
+++            let (source, source_at) = heap_buffer.at(0);
+++            let (temporary, temporary_at) = staging.at(0);
+++            let regions: Vec<_> = preserve
+++                .iter()
+++                .map(|r| vk::BufferCopy {
+++                    src_offset: source_at + r.start,
+++                    dst_offset: temporary_at + r.start,
+++                    size: r.end - r.start,
+++                })
+++                .collect();
+++            let copied: u64 = regions.iter().map(|r| r.size).sum();
+++            let back = [vk::BufferCopy {
+++                src_offset: temporary_at,
+++                dst_offset: source_at,
+++                size: layout.size,
+++            }];
+++            let mut times = Vec::new();
+++            for _ in 0..4 {
+++                let begin = Instant::now();
+++                device
+++                    .submit_internal(|raw, cb| {
+++                        let host = vk::MemoryBarrier::default()
+++                            .src_access_mask(vk::AccessFlags::HOST_WRITE)
+++                            .dst_access_mask(
+++                                vk::AccessFlags::TRANSFER_READ | vk::AccessFlags::SHADER_READ,
+++                            );
+++                        let before = vk::MemoryBarrier::default()
+++                            .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
+++                            .dst_access_mask(
+++                                vk::AccessFlags::SHADER_READ | vk::AccessFlags::SHADER_WRITE,
+++                            );
+++                        let after = vk::MemoryBarrier::default()
+++                            .src_access_mask(vk::AccessFlags::SHADER_WRITE)
+++                            .dst_access_mask(vk::AccessFlags::TRANSFER_READ);
+++                        let returned = vk::MemoryBarrier::default()
+++                            .src_access_mask(
+++                                vk::AccessFlags::TRANSFER_WRITE | vk::AccessFlags::SHADER_WRITE,
+++                            )
+++                            .dst_access_mask(vk::AccessFlags::HOST_READ);
+++                        // SAFETY: all source/destination ranges are validated planner
+++                        // outputs in live buffers; the runtime waits for completion.
+++                        unsafe {
+++                            raw.cmd_pipeline_barrier(
+++                                cb,
+++                                vk::PipelineStageFlags::HOST,
+++                                vk::PipelineStageFlags::TRANSFER
+++                                    | vk::PipelineStageFlags::COMPUTE_SHADER,
+++                                vk::DependencyFlags::empty(),
+++                                &[host],
+++                                &[],
+++                                &[],
+++                            );
+++                            if !regions.is_empty() {
+++                                raw.cmd_copy_buffer(cb, source, temporary, &regions);
+++                            }
+++                            raw.cmd_pipeline_barrier(
+++                                cb,
+++                                vk::PipelineStageFlags::TRANSFER,
+++                                vk::PipelineStageFlags::COMPUTE_SHADER,
+++                                vk::DependencyFlags::empty(),
+++                                &[before],
+++                                &[],
+++                                &[],
+++                            );
+++                            raw.cmd_bind_pipeline(
+++                                cb,
+++                                vk::PipelineBindPoint::COMPUTE,
+++                                kernel.pipeline,
+++                            );
+++                            raw.cmd_bind_descriptor_sets(
+++                                cb,
+++                                vk::PipelineBindPoint::COMPUTE,
+++                                kernel.layout,
+++                                0,
+++                                &[sets.sets[0]],
+++                                &[],
+++                            );
+++                            raw.cmd_dispatch(cb, grid[0], grid[1], grid[2]);
+++                            raw.cmd_pipeline_barrier(
+++                                cb,
+++                                vk::PipelineStageFlags::COMPUTE_SHADER,
+++                                vk::PipelineStageFlags::TRANSFER,
+++                                vk::DependencyFlags::empty(),
+++                                &[after],
+++                                &[],
+++                                &[],
+++                            );
+++                            raw.cmd_copy_buffer(cb, temporary, source, &back);
+++                            raw.cmd_pipeline_barrier(
+++                                cb,
+++                                vk::PipelineStageFlags::TRANSFER
+++                                    | vk::PipelineStageFlags::COMPUTE_SHADER,
+++                                vk::PipelineStageFlags::HOST,
+++                                vk::DependencyFlags::empty(),
+++                                &[returned],
+++                                &[],
+++                                &[],
+++                            );
+++                        }
+++                    })
+++                    .unwrap();
+++                times.push(begin.elapsed().as_secs_f64() * 1000.0);
+++                assert_bytes("heap copy-back", &heap_buffer, &wanted);
+++                assert_bytes(
+++                    "full staging, including padding for later merges",
+++                    &staging,
+++                    &wanted,
+++                );
+++                assert_bytes("input unchanged", &input, &tight);
+++            }
+++            eprintln!(
+++                "EDGE-VULKAN {label} {extent:?} levels{count} {kind:?}: copied {copied}/{} bytes in {} ranges; submit-wait-ms {times:?}",
+++                layout.size,
+++                regions.len()
+++            );
+++        }
+++    }
+++    assert!(
+++        reduced_cases >= 2,
+++        "two actual reduced Vulkan copy paths required"
+++    );
+++    assert!(
+++        fallback_cases >= 1,
+++        "the full-copy fallback must also execute"
+++    );
+++    eprintln!("EDGE-VULKAN reduced={reduced_cases} fallback={fallback_cases}");
+++}
+++
+++/// Feasibility only: fixed, separately owned buffers, with no pending merge or
+++/// rebound host pages. This does not change how an encoder records a shadow.
+++#[test]
+++fn direct_tiled_output_runs_real_vulkan() {
+++    use crate::texture::heap_tiled::{Elements, TiledLayout};
+++    use metal2vulkan::metal::TextureType;
+++    let scratch = Scratch::new("direct-tiled-output");
+++    let device = device(&scratch.0);
+++    for (extent, count, kind, slices) in [
+++        ([64, 64, 1], 1, TextureType::Type2D, 1),
+++        ([129, 97, 2], 3, TextureType::Type3D, 1),
+++        ([191, 132, 1], 3, TextureType::Type2DArray, 2),
+++        ([1204, 2328, 1], 1, TextureType::Type2D, 1),
+++    ] {
+++        let layout = TiledLayout::of(8, Elements::Texels, kind, extent, count, slices).unwrap();
+++        let mut tight_len = 0_u32;
+++        let levels: Vec<_> = layout
+++            .levels
+++            .iter()
+++            .map(|level| {
+++                let images = if layout.volume {
+++                    level.depth
+++                } else {
+++                    layout.chains
+++                } as u32;
+++                let item = TiledLevelMove::new(
+++                    8,
+++                    level.extent.map(|v| v as u32),
+++                    images,
+++                    level.tile.map(|v| v as u32),
+++                    level.across as u32,
+++                    level.base as u32,
+++                    layout.stride as u32,
+++                    tight_len,
+++                    level.bytes as u32,
+++                );
+++                tight_len += level.extent[0] as u32 * level.extent[1] as u32 * images * 8;
+++                item
+++            })
+++            .collect();
+++        let heap: Vec<u8> = (0..layout.size)
+++            .map(|i| (i * 13 + i / 251 + 5) as u8)
+++            .collect();
+++        let tight: Vec<u8> = (0..tight_len)
+++            .map(|i| (i * 7 + i / 257 + 3) as u8)
+++            .collect();
+++        let mut wanted = heap.clone();
+++        for level in &levels {
+++            wanted = expected(level, false, &tight, &wanted).1;
+++        }
+++        let (shape, grid) = match levels.as_slice() {
+++            [level] => TiledTexelsModule::tiled_dispatch(level, false).unwrap(),
+++            _ => {
+++                let groups = TiledTexelsModule::invocations(&levels, false).div_ceil(64);
+++                let y = groups.div_ceil(65535);
+++                let x = groups.div_ceil(y);
+++                (
+++                    TiledTexelsModule::shape(&levels, false, x * 64).unwrap(),
+++                    [x, y, 1],
+++                )
+++            }
+++        };
+++        let output = device
+++            .new_buffer_with_bytes(&heap, ResourceOptions::shared())
+++            .unwrap();
+++        let input = device
+++            .new_buffer_with_bytes(&tight, ResourceOptions::shared())
+++            .unwrap();
+++        let shape_buffer = device
+++            .new_buffer_with_bytes(&shape, ResourceOptions::shared())
+++            .unwrap();
+++        let kernel = device.owned_kernel(OwnedModule::TiledTexels).unwrap();
+++        let binding = |b: &Buffer, len: usize| {
+++            let (raw, offset) = b.at(0);
+++            (raw, offset, len as u64)
+++        };
+++        let sets = OwnedSets::write(
+++            &device,
+++            &kernel,
+++            &[vec![
+++                binding(&input, tight.len()),
+++                binding(&output, heap.len()),
+++                binding(&shape_buffer, shape.len()),
+++            ]],
+++        )
+++        .unwrap();
+++        let mut times = Vec::new();
+++        for _ in 0..4 {
+++            let begin = Instant::now();
+++            device
+++                .submit_internal(|raw, cb| {
+++                    let before = vk::MemoryBarrier::default()
+++                        .src_access_mask(vk::AccessFlags::HOST_WRITE)
+++                        .dst_access_mask(
+++                            vk::AccessFlags::SHADER_READ | vk::AccessFlags::SHADER_WRITE,
+++                        );
+++                    let after = vk::MemoryBarrier::default()
+++                        .src_access_mask(vk::AccessFlags::SHADER_WRITE)
+++                        .dst_access_mask(vk::AccessFlags::HOST_READ);
+++                    // SAFETY: every descriptor names live, separately owned buffers;
+++                    // the shape limits every write, and submit_internal waits.
+++                    unsafe {
+++                        raw.cmd_pipeline_barrier(
+++                            cb,
+++                            vk::PipelineStageFlags::HOST,
+++                            vk::PipelineStageFlags::COMPUTE_SHADER,
+++                            vk::DependencyFlags::empty(),
+++                            &[before],
+++                            &[],
+++                            &[],
+++                        );
+++                        raw.cmd_bind_pipeline(cb, vk::PipelineBindPoint::COMPUTE, kernel.pipeline);
+++                        raw.cmd_bind_descriptor_sets(
+++                            cb,
+++                            vk::PipelineBindPoint::COMPUTE,
+++                            kernel.layout,
+++                            0,
+++                            &[sets.sets[0]],
+++                            &[],
+++                        );
+++                        raw.cmd_dispatch(cb, grid[0], grid[1], grid[2]);
+++                        raw.cmd_pipeline_barrier(
+++                            cb,
+++                            vk::PipelineStageFlags::COMPUTE_SHADER,
+++                            vk::PipelineStageFlags::HOST,
+++                            vk::DependencyFlags::empty(),
+++                            &[after],
+++                            &[],
+++                            &[],
+++                        );
+++                    }
+++                })
+++                .unwrap();
+++            times.push(begin.elapsed().as_secs_f64() * 1000.0);
+++            assert_bytes("direct heap, including untouched padding", &output, &wanted);
+++            assert_bytes("direct input unchanged", &input, &tight);
+++        }
+++        eprintln!(
+++            "DIRECT-VULKAN {extent:?} levels{count} {kind:?}: zero buffer copies; submit-wait-ms {times:?}"
+++        );
+++    }
+++}
+++
+++/// Exercise the production constructor, image transfers, dispatches and
+++/// copy-back, rather than a second implementation of their command sequence.
+++#[test]
+++fn fixed_heap_runtime_copies_preserve_pixels_padding_and_fallbacks() {
+++    use crate::resource::ResourceKey;
+++    use crate::shadow::{
+++        Backing, ShadowBuffer, ShadowCopies, ShadowCopy, ShadowSource, ShadowTarget, Step,
+++    };
+++    use crate::shadow_merge::{ScratchSpares, ShadowMerge};
+++    use crate::texture::heap::{heap_plane_layout, heap_planes};
+++    use crate::texture::heap_tiled::{Elements, HeapTiledCopies, TiledLayout, TiledTexture};
+++    use crate::texture::kept_image::KeptImages;
+++    use crate::tracker::{Access, UseRange};
+++    use crate::{CpuCacheMode, HazardTrackingMode, StorageMode, TextureDescriptor};
+++    use metal2vulkan::metal::{PixelFormat, TextureType, TextureUsage};
+++    use std::sync::{Arc, atomic::AtomicU64};
+++    let scratch = Scratch::new("fixed-heap-runtime");
+++    let device = device(&scratch.0);
+++    let mut direct_count = 0;
+++    let mut fallback_count = 0;
+++    for (unit, pf, format) in [
+++        (
+++            4,
+++            PixelFormat::RGBA8Uint,
+++            metal2vulkan::vk::Format::R8G8B8A8_UINT,
+++        ),
+++        (
+++            8,
+++            PixelFormat::RGBA16Uint,
+++            metal2vulkan::vk::Format::R16G16B16A16_UINT,
+++        ),
+++        (
+++            16,
+++            PixelFormat::RGBA32Uint,
+++            metal2vulkan::vk::Format::R32G32B32A32_UINT,
+++        ),
+++    ] {
+++        for [width, height] in [[64, 64], [129, 97], [1204, 2328]] {
+++            let tiled = TiledTexture::one(
+++                TiledLayout::of(
+++                    unit,
+++                    Elements::Texels,
+++                    TextureType::Type2D,
+++                    [width, height, 1],
+++                    1,
+++                    1,
+++                )
+++                .unwrap(),
+++            );
+++            let layout = &tiled.parts[0].layout;
+++            let level = &layout.levels[0];
+++            let movement = TiledLevelMove::new(
+++                unit as u32,
+++                [width as u32, height as u32],
+++                1,
+++                level.tile.map(|x| x as u32),
+++                level.across as u32,
+++                level.base as u32,
+++                layout.stride as u32,
+++                0,
+++                level.bytes as u32,
+++            );
+++            let (planes, tight_bytes) =
+++                heap_plane_layout(format, pf, [width as u32, height as u32, 1], 1, 1);
+++            let (regions, _) = heap_planes(format, pf, [width as u32, height as u32, 1], 1, 1);
+++            let align = device
+++                .properties()
+++                .description
+++                .limits
+++                .min_storage_buffer_offset_alignment
+++                .max(16);
+++            for (label, storage, hazard, whole_heap, misalign, want_direct) in [
+++                (
+++                    "fixed-private",
+++                    StorageMode::Private,
+++                    HazardTrackingMode::Tracked,
+++                    true,
+++                    false,
+++                    true,
+++                ),
+++                (
+++                    "mapped",
+++                    StorageMode::Shared,
+++                    HazardTrackingMode::Tracked,
+++                    true,
+++                    false,
+++                    false,
+++                ),
+++                (
+++                    "untracked",
+++                    StorageMode::Private,
+++                    HazardTrackingMode::Untracked,
+++                    true,
+++                    false,
+++                    true,
+++                ),
+++                (
+++                    "custom-layout",
+++                    StorageMode::Private,
+++                    HazardTrackingMode::Tracked,
+++                    false,
+++                    false,
+++                    false,
+++                ),
+++                (
+++                    "misaligned",
+++                    StorageMode::Private,
+++                    HazardTrackingMode::Tracked,
+++                    true,
+++                    true,
+++                    false,
+++                ),
+++            ] {
+++                let prefix = align + if misalign { 4 } else { 0 };
+++                let whole_len = prefix + tiled.size + align;
+++                let initial: Vec<u8> = (0..whole_len as usize)
+++                    .map(|i| (i.wrapping_mul(13) + i / 251 + 5) as u8)
+++                    .collect();
+++                let replacement: Vec<u8> = (0..tight_bytes as usize)
+++                    .map(|i| (i.wrapping_mul(7) + i / 257 + 17) as u8)
+++                    .collect();
+++                let heap = device
+++                    .new_buffer_with_bytes(
+++                        &initial,
+++                        ResourceOptions::new(storage, CpuCacheMode::DefaultCache, hazard),
+++                    )
+++                    .unwrap();
+++                let (heap_raw, heap_at) = heap.at(0);
+++                let staging =
+++                    HeapTiledCopies::staging(&device, &tiled, heap_at + prefix, hazard).unwrap();
+++                let copies = HeapTiledCopies::new(
+++                    &device,
+++                    &staging,
+++                    tiled.clone(),
+++                    (&planes, tight_bytes, 1),
+++                    &regions,
+++                    hazard,
+++                    whole_heap.then_some(&heap),
+++                )
+++                .unwrap();
+++                let actual_direct = copies.direct_for(heap_raw, false);
+++                let expected_direct = want_direct && (heap_at + prefix).is_multiple_of(align);
+++                assert_eq!(actual_direct, expected_direct, "{label}");
+++                assert!(!copies.direct_for(vk::Buffer::null(), false));
+++                assert_eq!(
+++                    copies.direct_for(heap_raw, true),
+++                    expected_direct && hazard == HazardTrackingMode::Tracked
+++                );
+++                if actual_direct {
+++                    direct_count += 1;
+++                } else {
+++                    fallback_count += 1;
+++                }
+++                let mut desc = TextureDescriptor::texture_2d(pf, width, height, false);
+++                desc.usage = TextureUsage::SHADER_READ | TextureUsage::SHADER_WRITE;
+++                desc.resource_options = ResourceOptions::private();
+++                let image = device.new_texture(&desc).unwrap();
+++                let image_raw = image.raw_image().unwrap();
+++                let direct_read = copies.direct_for(heap_raw, true);
+++                let (identity, tracked_bytes) = heap.tracked(prefix..prefix + tiled.size);
+++                let shadows = Arc::new(ShadowCopies {
+++                    source: ShadowSource::Bytes {
+++                        buffer: ShadowBuffer::of(&heap, heap_raw),
+++                        key: identity.key,
+++                        bytes: tracked_bytes,
+++                        target: ShadowTarget::Tiled {
+++                            image: image_raw,
+++                            staging,
+++                            tiles: Box::new(copies),
+++                        },
+++                        alias: None,
+++                    },
+++                    shadow_key: ResourceKey::new(),
+++                    shadow_range: UseRange::Image {
+++                        aspects: vk::ImageAspectFlags::COLOR,
+++                        levels: 0..1,
+++                        layers: 0..1,
+++                    },
+++                    tracked: identity.tracked,
+++                    drops_writes: false,
+++                    backing: Backing::of(&heap, false),
+++                    merge_scratch: ScratchSpares::default(),
+++                    touched: AtomicU64::new(0),
+++                    stood: AtomicU64::new(0),
+++                });
+++                let make_copy = |step| -> ShadowCopy {
+++                    ShadowCopy {
+++                        copies: Arc::clone(&shadows),
+++                        step,
+++                        kept: false,
+++                        area: None,
+++                        cause: None,
+++                        moves: None,
+++                    }
+++                };
+++                let into_copy = make_copy(Step::Into);
+++                let back_copy = make_copy(Step::Back);
+++                let staged_back = back_copy.staged_back(&device);
+++                assert_eq!(staged_back.is_none(), actual_direct);
+++                assert_eq!(shadows.keeps_from_staging(), !direct_read);
+++                let expected_read = if direct_read {
+++                    Access::new(
+++                        vk::PipelineStageFlags2::COMPUTE_SHADER,
+++                        vk::AccessFlags2::SHADER_STORAGE_READ,
+++                    )
+++                } else {
+++                    Access::new(
+++                        vk::PipelineStageFlags2::COPY,
+++                        vk::AccessFlags2::TRANSFER_READ,
+++                    )
+++                };
+++                let expected_write = if actual_direct {
+++                    Access::new(
+++                        vk::PipelineStageFlags2::COMPUTE_SHADER,
+++                        vk::AccessFlags2::SHADER_STORAGE_WRITE,
+++                    )
+++                } else {
+++                    Access::new(
+++                        vk::PipelineStageFlags2::COPY,
+++                        vk::AccessFlags2::TRANSFER_WRITE,
+++                    )
+++                };
+++                assert_eq!(into_copy.uses()[0].read, expected_read);
+++                assert_eq!(back_copy.uses()[1].write, expected_write);
+++
+++                let input = device
+++                    .new_buffer_with_bytes(&replacement, ResourceOptions::shared())
+++                    .unwrap();
+++                let linear = device
+++                    .new_buffer(tight_bytes, ResourceOptions::shared())
+++                    .unwrap();
+++                let readback = device
+++                    .new_buffer(whole_len, ResourceOptions::shared())
+++                    .unwrap();
+++                let (input_raw, input_at) = input.at(0);
+++                let (linear_raw, linear_at) = linear.at(0);
+++                let (readback_raw, readback_at) = readback.at(0);
+++                let linear_regions: Vec<_> = regions
+++                    .iter()
+++                    .map(|region| vk::BufferImageCopy {
+++                        buffer_offset: linear_at + region.buffer_offset,
+++                        ..*region
+++                    })
+++                    .collect();
+++                let input_regions: Vec<_> = regions
+++                    .iter()
+++                    .map(|region| vk::BufferImageCopy {
+++                        buffer_offset: input_at + region.buffer_offset,
+++                        ..*region
+++                    })
+++                    .collect();
+++                let original_tiles = &initial[prefix as usize..(prefix + tiled.size) as usize];
+++                let zero = vec![0; tight_bytes as usize];
+++                let wanted_linear = expected(&movement, true, &zero, original_tiles).0;
+++                let changed = expected(&movement, false, &replacement, original_tiles).1;
+++                let mut wanted_heap = initial.clone();
+++                wanted_heap[prefix as usize..(prefix + tiled.size) as usize]
+++                    .copy_from_slice(&changed);
+++                for round in 0..2 {
+++                    device
+++                        .submit_internal(|raw, cb| {
+++                            let all = vk::MemoryBarrier::default()
+++                                .src_access_mask(
+++                                    vk::AccessFlags::MEMORY_READ | vk::AccessFlags::MEMORY_WRITE,
+++                                )
+++                                .dst_access_mask(
+++                                    vk::AccessFlags::MEMORY_READ | vk::AccessFlags::MEMORY_WRITE,
+++                                );
+++                            let barrier = || unsafe {
+++                                raw.cmd_pipeline_barrier(
+++                                    cb,
+++                                    vk::PipelineStageFlags::ALL_COMMANDS,
+++                                    vk::PipelineStageFlags::ALL_COMMANDS,
+++                                    vk::DependencyFlags::empty(),
+++                                    &[all],
+++                                    &[],
+++                                    &[],
+++                                );
+++                            };
+++                            // SAFETY: all resources stay owned until submit_internal returns;
+++                            // every byte range comes from the real layout planner. The image is
+++                            // GENERAL after the first transition; the next round reuses it.
+++                            unsafe {
+++                                if round == 0 {
+++                                    let transition = vk::ImageMemoryBarrier::default()
+++                                        .old_layout(vk::ImageLayout::UNDEFINED)
+++                                        .new_layout(vk::ImageLayout::GENERAL)
+++                                        .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+++                                        .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+++                                        .dst_access_mask(
+++                                            vk::AccessFlags::TRANSFER_READ
+++                                                | vk::AccessFlags::TRANSFER_WRITE,
+++                                        )
+++                                        .image(image_raw)
+++                                        .subresource_range(vk::ImageSubresourceRange {
+++                                            aspect_mask: vk::ImageAspectFlags::COLOR,
+++                                            base_mip_level: 0,
+++                                            level_count: 1,
+++                                            base_array_layer: 0,
+++                                            layer_count: 1,
+++                                        });
+++                                    raw.cmd_pipeline_barrier(
+++                                        cb,
+++                                        vk::PipelineStageFlags::TOP_OF_PIPE,
+++                                        vk::PipelineStageFlags::ALL_COMMANDS,
+++                                        vk::DependencyFlags::empty(),
+++                                        &[],
+++                                        &[],
+++                                        &[transition],
+++                                    );
+++                                }
+++                                into_copy.record(raw, cb, None);
+++                                barrier();
+++                                raw.cmd_copy_image_to_buffer(
+++                                    cb,
+++                                    image_raw,
+++                                    vk::ImageLayout::GENERAL,
+++                                    linear_raw,
+++                                    &linear_regions,
+++                                );
+++                                barrier();
+++                                raw.cmd_copy_buffer_to_image(
+++                                    cb,
+++                                    input_raw,
+++                                    image_raw,
+++                                    vk::ImageLayout::GENERAL,
+++                                    &input_regions,
+++                                );
+++                                barrier();
+++                                back_copy.record(raw, cb, staged_back.as_ref());
+++                                barrier();
+++                                raw.cmd_copy_buffer(
+++                                    cb,
+++                                    heap_raw,
+++                                    readback_raw,
+++                                    &[vk::BufferCopy {
+++                                        src_offset: heap_at,
+++                                        dst_offset: readback_at,
+++                                        size: whole_len,
+++                                    }],
+++                                );
+++                                let host = vk::MemoryBarrier::default()
+++                                    .src_access_mask(vk::AccessFlags::MEMORY_WRITE)
+++                                    .dst_access_mask(vk::AccessFlags::HOST_READ);
+++                                raw.cmd_pipeline_barrier(
+++                                    cb,
+++                                    vk::PipelineStageFlags::ALL_COMMANDS,
+++                                    vk::PipelineStageFlags::HOST,
+++                                    vk::DependencyFlags::empty(),
+++                                    &[host],
+++                                    &[],
+++                                    &[],
+++                                );
+++                            }
+++                        })
+++                        .unwrap();
+++                    assert_bytes(
+++                        "production input image pixels",
+++                        &linear,
+++                        if round == 0 {
+++                            &wanted_linear
+++                        } else {
+++                            &replacement
+++                        },
+++                    );
+++                    assert_bytes(
+++                        "production heap pixels, padding, prefix and suffix",
+++                        &readback,
+++                        &wanted_heap,
+++                    );
+++                    assert_bytes("source input stays unchanged", &input, &replacement);
+++                }
+++                if shadows.merges_back() && whole_heap {
+++                    // A word another ordered writer changes in the heap while the
+++                    // shadow is held must survive a merge when the image did not
+++                    // change that word. This is not a parallel-queue stress test.
+++                    let images = KeptImages::default();
+++                    let (merge, lease) =
+++                        ShadowMerge::new(&device, &shadows, (false, false, None), &images).unwrap();
+++                    let merge = Arc::new(merge);
+++                    let keep_copy = make_copy(Step::Keep(Arc::clone(&merge)));
+++                    let merge_copy = make_copy(Step::Merge(merge));
+++                    let mut modified = replacement.clone();
+++                    for byte in &mut modified[..4] {
+++                        *byte ^= 0x55;
+++                    }
+++                    let changed_input = device
+++                        .new_buffer_with_bytes(&modified, ResourceOptions::shared())
+++                        .unwrap();
+++                    let (changed_raw, changed_at) = changed_input.at(0);
+++                    let changed_regions: Vec<_> = regions
+++                        .iter()
+++                        .map(|region| vk::BufferImageCopy {
+++                            buffer_offset: changed_at + region.buffer_offset,
+++                            ..*region
+++                        })
+++                        .collect();
+++                    let independent = [0xa9, 0x31, 0xe7, 0x62];
+++                    let external_at = prefix + unit;
+++                    let mut merged_expected = wanted_heap.clone();
+++                    merged_expected[prefix as usize..prefix as usize + 4]
+++                        .copy_from_slice(&modified[..4]);
+++                    merged_expected[external_at as usize..external_at as usize + 4]
+++                        .copy_from_slice(&independent);
+++                    device
+++                        .submit_internal(|raw, cb| {
+++                            let all = vk::MemoryBarrier::default()
+++                                .src_access_mask(
+++                                    vk::AccessFlags::MEMORY_READ | vk::AccessFlags::MEMORY_WRITE,
+++                                )
+++                                .dst_access_mask(
+++                                    vk::AccessFlags::MEMORY_READ | vk::AccessFlags::MEMORY_WRITE,
+++                                );
+++                            let barrier = || unsafe {
+++                                raw.cmd_pipeline_barrier(
+++                                    cb,
+++                                    vk::PipelineStageFlags::ALL_COMMANDS,
+++                                    vk::PipelineStageFlags::ALL_COMMANDS,
+++                                    vk::DependencyFlags::empty(),
+++                                    &[all],
+++                                    &[],
+++                                    &[],
+++                                );
+++                            };
+++                            // SAFETY: image, heap, merge scratch and both source buffers
+++                            // remain held through this synchronous internal submission.
+++                            unsafe {
+++                                into_copy.record(raw, cb, None);
+++                                barrier();
+++                                if keep_copy.keeps_from_staging() {
+++                                    keep_copy.record_keep_from_staging(raw, cb);
+++                                } else {
+++                                    keep_copy.record(raw, cb, None);
+++                                }
+++                                barrier();
+++                                raw.cmd_update_buffer(
+++                                    cb,
+++                                    heap_raw,
+++                                    heap_at + external_at,
+++                                    &independent,
+++                                );
+++                                raw.cmd_copy_buffer_to_image(
+++                                    cb,
+++                                    changed_raw,
+++                                    image_raw,
+++                                    vk::ImageLayout::GENERAL,
+++                                    &changed_regions,
+++                                );
+++                                barrier();
+++                                merge_copy.record(raw, cb, None);
+++                                barrier();
+++                                raw.cmd_copy_buffer(
+++                                    cb,
+++                                    heap_raw,
+++                                    readback_raw,
+++                                    &[vk::BufferCopy {
+++                                        src_offset: heap_at,
+++                                        dst_offset: readback_at,
+++                                        size: whole_len,
+++                                    }],
+++                                );
+++                                let host = vk::MemoryBarrier::default()
+++                                    .src_access_mask(vk::AccessFlags::MEMORY_WRITE)
+++                                    .dst_access_mask(vk::AccessFlags::HOST_READ);
+++                                raw.cmd_pipeline_barrier(
+++                                    cb,
+++                                    vk::PipelineStageFlags::ALL_COMMANDS,
+++                                    vk::PipelineStageFlags::HOST,
+++                                    vk::DependencyFlags::empty(),
+++                                    &[host],
+++                                    &[],
+++                                    &[],
+++                                );
+++                            }
+++                        })
+++                        .unwrap();
+++                    assert_bytes(
+++                        "merge retains independent heap writer and image change",
+++                        &readback,
+++                        &merged_expected,
+++                    );
+++                    drop(lease);
+++                    eprintln!(
+++                        "FIXED-HEAP-MERGE {width}x{height} unit{unit} {label}: kept independent word, changed image word and all padding"
+++                    );
+++                }
+++                eprintln!(
+++                    "FIXED-HEAP-PIPELINE {width}x{height} unit{unit} {label} direct{actual_direct}: two production round trips and all bytes passed"
+++                );
+++            }
+++        }
+++    }
+++    assert!(direct_count > 0 && fallback_count > 0);
+++    eprintln!(
+++        "FIXED-HEAP-PIPELINE direct={direct_count} fallback={fallback_count}; physical GPU performance not measured"
+++    );
+++}
++diff --git a/crates/metal2vulkan-runtime/src/texture/heap.rs b/crates/metal2vulkan-runtime/src/texture/heap.rs
++index f33c13af6..c5510e13e 100644
++--- a/crates/metal2vulkan-runtime/src/texture/heap.rs
+++++ b/crates/metal2vulkan-runtime/src/texture/heap.rs
++@@ -197,45 +197,45 @@
++ 
++ use super::first_move::FirstMove;
++ use super::heap_tiled::{
++-    footprint_size, metal_compresses_layout, metal_heap_layout, modelled_size, own_heap_layout,
++-    shadow_tiles, HeapLayout, HeapTiledCopies, TiledTexture, Untiled,
+++    HeapLayout, HeapTiledCopies, TiledTexture, Untiled, footprint_size, metal_compresses_layout,
+++    metal_heap_layout, modelled_size, own_heap_layout, shadow_tiles,
++ };
++ use super::heap_two_planes::{HeapPlaneCopies, TwoPlaneHeapLayout};
++ use super::stand_in::StandIn;
++ use super::{
++-    copy_units, image_aspects, image_error, pages_hold, DetachedImage, IdUse, Image, ImageObjects,
++-    ImagePlacement, ImageSwap, KeptResolves, Owner, Raw, Remade, Storage, Texture,
++-    TextureDescriptor, ViewRecord,
+++    DetachedImage, IdUse, Image, ImageObjects, ImagePlacement, ImageSwap, KeptResolves, Owner, Raw,
+++    Remade, Storage, Texture, TextureDescriptor, ViewRecord, copy_units, image_aspects,
+++    image_error, pages_hold,
++ };
+++use crate::Device;
++ use crate::address::ObjectsToken;
++ use crate::buffer::{
++-    buffer_class, usage as buffer_usage, Buffer, CallerMemory, HostPages, MemoryHold, Modes,
+++    Buffer, CallerMemory, HostPages, MemoryHold, Modes, buffer_class, usage as buffer_usage,
++ };
++-use crate::buffer_texture::{texture_buffer_bytes, texture_buffer_over, TexelsHome};
+++use crate::buffer_texture::{TexelsHome, texture_buffer_bytes, texture_buffer_over};
++ use crate::chroma_pairs;
++ use crate::copy_plan::{CopyProblem, HostLayout, ImageRegion};
++ use crate::degradation::Degradation;
++ use crate::device::lock;
++-use crate::error::{internal, invalid, nil, vulkan, Error, MemoryKind, Nil, Problem, RuntimeGap};
+++use crate::error::{Error, MemoryKind, Nil, Problem, RuntimeGap, internal, invalid, nil, vulkan};
++ use crate::heap::{Heap, HeapProblem, HeapType, SizeAndAlign, WeakHeap};
++-use crate::image_plan::{check_image_limits, plan_image, ImagePlan};
+++use crate::image_plan::{ImagePlan, check_image_limits, plan_image};
++ use crate::key_hash::KeyMap;
++-use crate::linear_plan::{check_linear_limits, linear_lack, LinearLack, LINEAR_ALIGNMENT};
+++use crate::linear_plan::{LINEAR_ALIGNMENT, LinearLack, check_linear_limits, linear_lack};
++ use crate::memory::{Memory, MemoryClass, Placement};
++ use crate::metal_release::NO_TEXTURE_STACK_ALIGNMENT;
++ use crate::release;
++ use crate::resource::{Identity, ResourceKey};
++ use crate::shadow::{Backing, ShadowBuffer, ShadowCopies, ShadowSource, ShadowTarget};
++ use crate::shadow_merge::ScratchSpares;
++-use crate::texture_descriptor::{effective_usage, Creator, TextureLayout, TextureProblem};
+++use crate::texture_descriptor::{Creator, TextureLayout, TextureProblem, effective_usage};
++ use crate::tracker::UseRange;
++ use crate::two_planes;
++ use crate::values::{ResourceOptions, StorageMode};
++-use crate::Device;
++ use ash::vk;
++ use metal2vulkan::device::{DriverFact, HeapCompressionPolicy};
++ use metal2vulkan::error::{Feature, LinearNeed, Unsupported};
++-use metal2vulkan::metal::format::{footprint, is_depth_stencil, ycbcr_format, Footprint};
+++use metal2vulkan::metal::format::{Footprint, footprint, is_depth_stencil, ycbcr_format};
++ use metal2vulkan::metal::{PixelFormat, TextureType, TextureUsage};
++ use metal2vulkan::vk::{
++     Format, FormatFeatureFlags2, ImageAspectFlags, ImageUsageFlags, SampleCountFlags,
++@@ -864,11 +864,7 @@ fn tight_planes(plan: &ImagePlan) -> (Vec<HeapPlane>, u64) {
++ 
++ /// The greatest common divisor of `a` and `b`.
++ fn gcd(a: u64, b: u64) -> u64 {
++-    if b == 0 {
++-        a
++-    } else {
++-        gcd(b, a % b)
++-    }
+++    if b == 0 { a } else { gcd(b, a % b) }
++ }
++ 
++ /// The copies between a heap shadow's truth and its image ([`heap_plane_layout`]): one region per
++@@ -1818,7 +1814,7 @@ impl Device {
++                     size_and_align = metal;
++                 }
++                 HeldToMetal::Nothing if measured_route => {
++-                    return Err(Error::NotImplemented(RuntimeGap::HeapTextureMemory))
+++                    return Err(Error::NotImplemented(RuntimeGap::HeapTextureMemory));
++                 }
++                 HeldToMetal::Nothing => {
++                     past_metal = Some(metal);
++@@ -1869,7 +1865,9 @@ impl Device {
++         // last one finds no room (iPadOS 27's iconservicesagent: `heap texture: OutOfMemory(Heap)`).
++         // A shadow in Metal's tiles takes Metal's answer.
++         if (metal_answer.is_none() || past_metal.is_some()) && image.route != AliasRoute::Tiled {
++-            size_and_align.size = size_and_align.size.next_multiple_of(size_and_align.align.max(1));
+++            size_and_align.size = size_and_align
+++                .size
+++                .next_multiple_of(size_and_align.align.max(1));
++         }
++         // Only a texture an image of binds into the heap's own memory is held to the heap's base,
++         // and the routes decide that (`holds_heap_base`).
++@@ -3549,7 +3547,8 @@ impl Device {
++         let hazard = options.hazard_tracking_mode()?;
++         let staging = HeapTiledCopies::staging(self, &tiled, start, hazard)?;
++         let shape = (&planes[..], tight_len, samples);
++-        let tiles = HeapTiledCopies::new(self, &staging, tiled, shape, &regions, hazard)?;
+++        let tiles =
+++            HeapTiledCopies::new(self, &staging, tiled, shape, &regions, hazard, Some(bytes))?;
++         let tiles = Box::new(tiles);
++         let shadow_range = UseRange::Image {
++             aspects: image_aspects(plan.format).into(),
++diff --git a/crates/metal2vulkan-runtime/src/texture/heap_tiled.rs b/crates/metal2vulkan-runtime/src/texture/heap_tiled.rs
++index 01d4a4de9..6066f40d7 100644
++--- a/crates/metal2vulkan-runtime/src/texture/heap_tiled.rs
+++++ b/crates/metal2vulkan-runtime/src/texture/heap_tiled.rs
++@@ -1509,6 +1509,83 @@ pub(crate) fn tiled_word_grid(invocations: u64, limits: [u32; 2]) -> Option<[u32
++     Some([across as u32, down as u32])
++ }
++ 
+++/// The bytes that still need the heap's old contents before a move back. Only
+++/// complete tiles of word-wide elements are omitted: the kernel overwrites every
+++/// byte there. All edge tiles, gaps, mip/array padding and unknown bytes remain.
+++/// Work and output are bounded; None retains the original single full copy.
+++pub(crate) fn tiled_preserved_ranges(
+++    levels: &[TiledLevelMove],
+++    size: u64,
+++) -> Option<Vec<std::ops::Range<u64>>> {
+++    const LIMIT: usize = 256;
+++    let mut overwritten = Vec::new();
+++    if size == 0 || !size.is_multiple_of(4) {
+++        return None;
+++    }
+++    for level in levels {
+++        let [tw, th] = level.tile.map(u64::from);
+++        if !matches!(level.unit, 4 | 8 | 16 | 32 | 64)
+++            || !tw.is_power_of_two()
+++            || !th.is_power_of_two()
+++            || [level.tiled_first, level.chain_stride, level.region_bytes]
+++                .iter()
+++                .any(|v| v % 4 != 0)
+++        {
+++            return None;
+++        }
+++        let columns = u64::from(level.extent[0]) / tw;
+++        let rows = u64::from(level.extent[1]) / th;
+++        if columns == 0 || rows == 0 {
+++            continue;
+++        }
+++        if u64::from(level.extent[0]).div_ceil(tw) > u64::from(level.across) {
+++            return None;
+++        }
+++        let tile_bytes = tw.checked_mul(th)?.checked_mul(u64::from(level.unit))?;
+++        let stride = u64::from(level.across).checked_mul(tile_bytes)?;
+++        let bytes = columns.checked_mul(tile_bytes)?;
+++        // A fully occupied tile row joins the next; plan it without a row loop.
+++        let (n, width) = if columns == u64::from(level.across) {
+++            (1, rows.checked_mul(bytes)?)
+++        } else {
+++            (rows, bytes)
+++        };
+++        if n.checked_mul(u64::from(level.images))? > (LIMIT - overwritten.len()) as u64 {
+++            return None;
+++        }
+++        for image in 0..level.images {
+++            let base = u64::from(level.tiled_first)
+++                .checked_add(u64::from(image).checked_mul(u64::from(level.chain_stride))?)?;
+++            let end = base.checked_add(u64::from(level.region_bytes))?;
+++            if end > size {
+++                return None;
+++            }
+++            for row in 0..n {
+++                let first = base.checked_add(row.checked_mul(stride)?)?;
+++                let last = first.checked_add(width)?;
+++                if last > end {
+++                    return None;
+++                }
+++                overwritten.push(first..last);
+++            }
+++        }
+++    }
+++    overwritten.sort_unstable_by_key(|span| span.start);
+++    let mut keep = Vec::new();
+++    let mut cursor = 0;
+++    for span in overwritten {
+++        if span.start > cursor {
+++            keep.push(cursor..span.start);
+++        }
+++        cursor = cursor.max(span.end);
+++    }
+++    if cursor < size {
+++        keep.push(cursor..size);
+++    }
+++    let copied = keep.iter().map(|span| span.end - span.start).sum::<u64>();
+++    (keep.len() <= LIMIT && copied <= size / 2).then_some(keep)
+++}
+++
++ /// One direction of the kernel's moves: its shape, where it lies in the shape buffer, and the
++ /// dispatch's workgroups.
++ struct Move {
++@@ -1545,6 +1622,14 @@ pub(crate) struct HeapTiledCopies {
++     moves: [Move; 2],
++     kernel: OwnedKernel,
++     sets: OwnedSets,
+++    preserve: Option<Vec<vk::BufferCopy>>,
+++    /// Runtime-owned Private heap bytes, never rebound. The boolean enables
+++    /// direct reads only when tracked: untracked heaps retain the original
+++    /// input snapshot and staging keep for concurrent-writer merges. Plain
+++    /// output copies can write texel words directly; merge output still uses
+++    /// record_out and its unchanged scratch algorithm. The existing texture
+++    /// owner holds the heap allocation until every command completes.
+++    direct: Option<(vk::Buffer, OwnedSets, bool)>,
++ }
++ 
++ /// A multisample heap texture's moves between its image and the tight buffer, one way, which
++@@ -1712,9 +1797,24 @@ impl HeapTiledCopies {
++         (planes, tight_len, samples): (&[HeapPlane], u64, u32),
++         regions: &[vk::BufferImageCopy],
++         hazard: HazardTrackingMode,
+++        heap: Option<&Buffer>,
++     ) -> Result<HeapTiledCopies, Error> {
++         let levels = Self::levels(&tiles, planes)
++             .ok_or_else(|| internal("a tiled heap texture's moves past u32"))?;
+++        let preserve = heap
+++            .is_some()
+++            .then(|| tiled_preserved_ranges(&levels, staging.into.size))
+++            .flatten()
+++            .map(|ranges| {
+++                ranges
+++                    .into_iter()
+++                    .map(|span| vk::BufferCopy {
+++                        src_offset: staging.into.src_offset + span.start,
+++                        dst_offset: staging.into.dst_offset + span.start,
+++                        size: span.end - span.start,
+++                    })
+++                    .collect()
+++            });
++         let options =
++             ResourceOptions::new(StorageMode::Private, CpuCacheMode::DefaultCache, hazard);
++         let tight_bytes = tight_len.next_multiple_of(4);
++@@ -1776,6 +1876,41 @@ impl HeapTiledCopies {
++                 })
++                 .collect::<Vec<_>>(),
++         )?;
+++        let direct = match heap.filter(|buffer| {
+++            let options = buffer.resource_options();
+++            let limits = &device.properties().description.limits;
+++            let start = staging.into.src_offset;
+++            buffer.caller_memory().is_none()
+++                && matches!(options.storage_mode(), Ok(StorageMode::Private))
+++                && samples == 1
+++                && levels.len() == 1
+++                && matches!(levels[0].unit, 4 | 8 | 16)
+++                && start.is_multiple_of(limits.min_storage_buffer_offset_alignment.max(1))
+++                && start >= buffer.start()
+++                && start
+++                    .checked_add(tiles.size)
+++                    .is_some_and(|end| end <= buffer.start().saturating_add(buffer.length()))
+++        }) {
+++            Some(buffer) => {
+++                let (raw, _) = buffer.at(0);
+++                let bindings = [&into, &back]
+++                    .iter()
+++                    .map(|step| {
+++                        vec![
+++                            (tight_raw, tight_at, tight_bytes),
+++                            (raw, staging.into.src_offset, tiles.size),
+++                            (shapes_raw, step.at, shape_bytes),
+++                        ]
+++                    })
+++                    .collect::<Vec<_>>();
+++                let reads = matches!(
+++                    buffer.resource_options().hazard_tracking_mode(),
+++                    Ok(HazardTrackingMode::Tracked)
+++                );
+++                Some((raw, OwnedSets::write(device, &kernel, &bindings)?, reads))
+++            }
+++            None => None,
+++        };
++         let regions = regions
++             .iter()
++             .map(|region| vk::BufferImageCopy {
++@@ -1796,6 +1931,8 @@ impl HeapTiledCopies {
++             moves: [into, back],
++             kernel,
++             sets,
+++            preserve,
+++            direct,
++         })
++     }
++ 
++@@ -1806,9 +1943,29 @@ impl HeapTiledCopies {
++     /// `command_buffer` is recording, outside a render pass, with every write the dispatch
++     /// reads made visible to it; the buffers and the sets are live until it completes.
++     unsafe fn dispatch(&self, device: &Vk, command_buffer: vk::CommandBuffer, into: bool) {
+++        // SAFETY: this method's caller supplies the dispatch contract below.
+++        unsafe { self.dispatch_with(device, command_buffer, into, &self.sets) }
+++    }
+++
+++    /// Whether the recorded copy can address these same fixed heap bytes.
+++    pub(crate) fn direct_for(&self, bytes: vk::Buffer, into: bool) -> bool {
+++        self.direct
+++            .as_ref()
+++            .is_some_and(|(raw, _, reads)| *raw == bytes && (!into || *reads))
+++    }
+++
+++    /// As `dispatch`, with either the retained staging descriptors or fixed
+++    /// heap descriptors. The same shape, pipeline and full barriers are used.
+++    unsafe fn dispatch_with(
+++        &self,
+++        device: &Vk,
+++        command_buffer: vk::CommandBuffer,
+++        into: bool,
+++        sets: &OwnedSets,
+++    ) {
++         let (step, set) = match into {
++-            true => (&self.moves[0], self.sets.sets[0]),
++-            false => (&self.moves[1], self.sets.sets[1]),
+++            true => (&self.moves[0], sets.sets[0]),
+++            false => (&self.moves[1], sets.sets[1]),
++         };
++         // SAFETY: the caller's contract; the shape fits its slot, and the sets bind the
++         // texture's own buffers.
++@@ -2021,9 +2178,27 @@ impl HeapTiledCopies {
++         // when the texture was made).
++         unsafe {
++             Barrier::everything().record(device, command_buffer);
++-            // Both ways the staging buffer starts as the heap's bytes: back, so the bytes
++-            // between the elements are the heap's when they are copied back.
++-            device.cmd_copy_buffer(command_buffer, bytes, staging.raw(), &[staging.into]);
+++            if let Some((fixed, sets, reads)) = &self.direct {
+++                if *fixed == bytes && (!into || *reads) {
+++                    if !into {
+++                        self.image_out(device, command_buffer, image, moves);
+++                    }
+++                    self.dispatch_with(device, command_buffer, into, sets);
+++                    if into {
+++                        self.image_in(device, command_buffer, image, moves);
+++                    }
+++                    return;
+++                }
+++            }
+++            // Inward, every source element is needed. Backward, complete tiles
+++            // are overwritten word for word; copy every other byte as before.
+++            match (&self.preserve, into) {
+++                (Some(regions), false) if regions.is_empty() => {}
+++                (Some(regions), false) => {
+++                    device.cmd_copy_buffer(command_buffer, bytes, staging.raw(), regions)
+++                }
+++                _ => device.cmd_copy_buffer(command_buffer, bytes, staging.raw(), &[staging.into]),
+++            }
++             if !into {
++                 self.image_out(device, command_buffer, image, moves);
++             }
++diff --git a/crates/metal2vulkan-runtime/src/texture/surface_depth.rs b/crates/metal2vulkan-runtime/src/texture/surface_depth.rs
++index 8617e0c5a..161074408 100644
++--- a/crates/metal2vulkan-runtime/src/texture/surface_depth.rs
+++++ b/crates/metal2vulkan-runtime/src/texture/surface_depth.rs
++@@ -25,25 +25,25 @@
++ //! `NotImplemented(TexelsPastBufferLength)`.
++ 
++ use super::super::buffer_texture::Texels;
++-use super::super::copy_plan::{surface_depth_unit, CopyUnit};
++-use super::super::error::{internal, Error, RuntimeGap};
++-use super::super::image_plan::{plan_image, ImagePlan};
+++use super::super::copy_plan::{CopyUnit, surface_depth_unit};
+++use super::super::error::{Error, RuntimeGap, internal};
+++use super::super::image_plan::{ImagePlan, plan_image};
++ use super::super::shadow::{ShadowBuffer, ShadowCopies, ShadowSource, ShadowTarget};
++ use super::super::shadow_merge::ScratchSpares;
++-use super::super::texture_descriptor::{texture_usage, TextureDescriptor, TextureLayout};
+++use super::super::texture_descriptor::{TextureDescriptor, TextureLayout, texture_usage};
++ use super::super::tracker::UseRange;
++ use super::super::values::ResourceOptions;
++ use super::super::view_plan::ViewRecord;
++ use super::heap::{heap_plane_layout, heap_planes};
++ use super::heap_tiled::{Elements, HeapTiledCopies, TiledLayout, TiledTexture};
++-use super::{image_error, IdUse, Image, Storage, Texture};
+++use super::{IdUse, Image, Storage, Texture, image_error};
++ use ash::vk;
++-use metal2vulkan::metal::format::aspects;
++ use metal2vulkan::metal::TextureType;
+++use metal2vulkan::metal::format::aspects;
++ use metal2vulkan::vk::{ImageAspectFlags, ImageUsageFlags};
++ use std::ops::Range;
++-use std::sync::atomic::AtomicU64;
++ use std::sync::Arc;
+++use std::sync::atomic::AtomicU64;
++ 
++ /// Metal's passes store the tiles from the plane's offset rounded down to this.
++ const TILED_ALIGNMENT: u64 = 128;
++@@ -145,7 +145,8 @@ impl Texture {
++                 })
++                 .collect();
++             let shape = (&planes[..], tight_len, 1);
++-            let tiles = HeapTiledCopies::new(device, &staging, tiled, shape, &regions, hazard)?;
+++            let tiles =
+++                HeapTiledCopies::new(device, &staging, tiled, shape, &regions, hazard, None)?;
++             let (truth, tracked) = texels.buffer.tracked(base..end);
++             let copies = ShadowCopies {
++                 source: ShadowSource::Bytes {

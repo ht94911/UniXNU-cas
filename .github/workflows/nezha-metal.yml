@@ -1,7 +1,7 @@
-name: nezha iPhone27 exact tiled heap word optimization 019
+name: nezha iPhone27 fixed heap copies 020
 on:
   push:
-    branches: [codex/ios27-gpu27-metal-full-019-20261108]
+    branches: [codex/ios27-gpu27-metal-full-020-20261108]
   workflow_dispatch:
 permissions:
   contents: read
@@ -90,6 +90,9 @@ jobs:
       - name: Check exact tiled bytes, edge padding and dispatch limits
         id: tiled_words
         run: device/ci/gpu-userland/logrun tiled-words python3 device/ci/gpu-userland/check-tiled-words.py --unixnu unixnu --logs "$LOGS"
+      - name: Check the retained edge preservation planner and byte oracle
+        id: heap_copies
+        run: device/ci/gpu-userland/logrun heap-copies python3 device/ci/gpu-userland/check-heap-copies.py --unixnu unixnu --logs "$LOGS"
       - name: Verify the actual signed target and full-chain code selection
         id: full_target
         run: device/ci/gpu-userland/logrun full-target python3 device/ci/gpu-userland/check-full-target.py --unixnu unixnu --logs "$LOGS"
@@ -100,6 +103,7 @@ jobs:
           OUTCOME_TURNIP_IOS27: ${{ steps.turnip_ios27.outcome }}
           OUTCOME_PLUGIN: ${{ steps.plugin.outcome }}
           OUTCOME_FULL_TARGET: ${{ steps.full_target.outcome }}
+          OUTCOME_HEAP_COPIES: ${{ steps.heap_copies.outcome }}
           OUTCOME_TILED_WORDS: ${{ steps.tiled_words.outcome }}
           OUTCOME_VULKAN_OPERATIONS: ${{ steps.vulkan_operations.outcome }}
           OUTCOME_BUFFER_RESERVE: ${{ steps.buffer_reserve.outcome }}
@@ -135,6 +139,7 @@ jobs:
           TURNIP: ${{ steps.turnip_ios27.outcome }}
           PLUGIN: ${{ steps.plugin.outcome }}
           FULL_TARGET: ${{ steps.full_target.outcome }}
+          HEAP_COPIES: ${{ steps.heap_copies.outcome }}
           TILED_WORDS: ${{ steps.tiled_words.outcome }}
           VULKAN_OPERATIONS: ${{ steps.vulkan_operations.outcome }}
           BUFFER_RESERVE: ${{ steps.buffer_reserve.outcome }}
@@ -149,3 +154,4 @@ jobs:
           test "$BUFFER_RESERVE" = success
           test "$VULKAN_OPERATIONS" = success
           test "$TILED_WORDS" = success
+          test "$HEAP_COPIES" = success
