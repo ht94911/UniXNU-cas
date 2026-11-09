@@ -17,6 +17,7 @@ int qcom_usb_apple_device_prepare(uint64_t, uint64_t);
 int qcom_usb_apple_device_vbus(int);
 void qcom_usb_apple_device_abort(void);
 extern unsigned long gPhysBase, gPhysSize;
+extern kmod_info_t g_kernel_kmod_info;
 void initializeAppleUsbClasses() __asm__("__GLOBAL__sub_I_NezhaAppleUsbDevice.cpp");
 
 // ABI leaves used through authenticated original AppleUSBXDCI fixups.
@@ -194,7 +195,7 @@ void appleUsbWorker(void *, wait_result_t)
 {
     const auto load = OSKextLoadKextWithIdentifier("com.apple.driver.AppleUSBXDCI");
     if (load == kOSReturnSuccess || load == kOSKextReturnStartStopError) {
-        auto context = OSMetaClass::preModLoad("org.unixnu.nezha.apple-usb");
+        auto context = OSMetaClass::preModLoad(g_kernel_kmod_info.name);
         if (context) {
             initializeAppleUsbClasses();
             if (OSMetaClass::postModLoad(context) == kOSReturnSuccess &&
