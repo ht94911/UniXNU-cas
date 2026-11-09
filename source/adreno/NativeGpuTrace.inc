@@ -7,6 +7,7 @@ extern "C" uint64_t native_gpu_role_thread(uint32_t pid,uint32_t role) {return g
 /* Included by the IOKit publisher; no allocation or GPU lock in a trace write. */
 #include "NativeGpuTraceStore.h"
 static NativeGpuTraceStore gpuTrace;
+static NativeGpuTraceStore gpuCpuMapTrace;
 static uint32_t gpuTraceOn;
 static NativeGpuTraceRecord *gpuMetadata;
 static uint32_t gpuMetadataBusy;
@@ -37,6 +38,8 @@ static void gpuTraceInit()
     gpuTrace.slots=static_cast<NativeGpuTraceSlot *>(IOMallocZero(sizeof(NativeGpuTraceSlot)*NativeGpuTraceCapacity));
     if(!gpuTrace.slots)return;
     gpuTrace.capacity=NativeGpuTraceCapacity;
+    gpuCpuMapTrace.slots=static_cast<NativeGpuTraceSlot *>(IOMallocZero(sizeof(NativeGpuTraceSlot)*NativeGpuCpuMapCapacity));
+    if(gpuCpuMapTrace.slots)gpuCpuMapTrace.capacity=NativeGpuCpuMapCapacity;
     gpuMetadata=static_cast<NativeGpuTraceRecord *>(IOMallocZero(sizeof(NativeGpuTraceRecord)*NativeGpuTraceMetadata));
     __atomic_store_n(&gpuTraceOn,1,__ATOMIC_RELEASE);
 }
@@ -49,6 +52,7 @@ extern "C" void native_gpu_trace_record(uint32_t event,uint32_t pid,const uint64
     record.us=ns/1000;record.event=event;record.pid=pid;
     for(uint32_t i=0;i<count;++i)record.value[i]=values[i];
     if(event==22 && count>=9 && !gpuLatencyWaits.keep(record.us,pid,record.value[0],(uint32_t)record.value[1],record.value[2],record.value[9]))return;
+    if(event==GpuTraceCpuMap)gpuCpuMapTrace.push(record);
     record.sequence=gpuTrace.push(record);
     if(event==GpuTraceThread && count>=2)gpuThreadTargets.record(pid,(uint32_t)record.value[1],record.value[0]);
     const bool meta=event<=3 || event==GpuTraceThread || event==GpuTraceProblem;
@@ -89,17 +93,24 @@ extern "C" uint32_t native_gpu_trace_snapshot(void *out,uint32_t bytes)
     return sizeof(*header)+header->count*sizeof(*records);
 }
 
-extern "C" uint32_t native_gpu_trace_page(uint64_t cursor,NativeGpuTraceRecord *out,uint32_t capacity,uint64_t *next,uint64_t *latest,uint64_t *missed)
+static uint32_t gpuTracePage(NativeGpuTraceStore &store,uint64_t cursor,NativeGpuTraceRecord *out,uint32_t capacity,uint64_t *next,uint64_t *latest,uint64_t *missed)
 {
     if(!out || !next || !latest || !missed || !capacity || capacity>16 || !native_gpu_trace_enabled())return 0;
-    *latest=__atomic_load_n(&gpuTrace.issued,__ATOMIC_ACQUIRE);*missed=0;
-    const uint64_t first=*latest>gpuTrace.capacity?*latest-gpuTrace.capacity+1:1;
+    *latest=__atomic_load_n(&store.issued,__ATOMIC_ACQUIRE);*missed=0;
+    const uint64_t first=*latest>store.capacity?*latest-store.capacity+1:1;
     uint64_t at=cursor?cursor:first;
     if(at<first){*missed=first-at;at=first;}
     uint32_t count=0,attempted=0;
     while(at<=*latest && attempted<capacity) {
-        if(gpuTrace.read(at,out+count))++count;else ++*missed;
+        if(store.read(at,out+count))++count;else ++*missed;
         ++at;++attempted;
     }
     *next=at;return count;
 }
+
+extern "C" uint32_t native_gpu_trace_page(uint64_t cursor,NativeGpuTraceRecord *out,uint32_t capacity,uint64_t *next,uint64_t *latest,uint64_t *missed)
+{return gpuTracePage(gpuTrace,cursor,out,capacity,next,latest,missed);}
+extern "C" int native_gpu_cpu_map_available(void)
+{return native_gpu_trace_enabled() && gpuCpuMapTrace.slots && gpuCpuMapTrace.capacity;}
+extern "C" uint32_t native_gpu_cpu_map_page(uint64_t cursor,NativeGpuTraceRecord *out,uint32_t capacity,uint64_t *next,uint64_t *latest,uint64_t *missed)
+{return native_gpu_cpu_map_available()?gpuTracePage(gpuCpuMapTrace,cursor,out,capacity,next,latest,missed):0;}

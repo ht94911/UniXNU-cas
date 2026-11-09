@@ -25,6 +25,7 @@
 #include <mach/processor_info.h>
 #include "NativeAdrenoPerf.h"
 #include "NativeAdrenoUserClient.h"
+#include "NativeAdrenoCpuMapProfile.h"
 #include "NativeAdrenoGpuContext.h"
 #include "NativeGpuTrace.inc"
 #include "NativeGpuTextStream.h"
@@ -285,6 +286,7 @@ class AGXDeviceUserClient : public IOUserClient {
     View *viewSlot(uint32_t token) {return views_ && token && token<=view_capacity_?&views_[token-1]:nullptr;}
     View *views_=nullptr;   /* on the heap, grown to the highest token (growViews) */
     size_t view_capacity_=0;
+    NativeAdrenoCpuMapProfile cpu_map_profile_{};   /* guarded by g.lock */
     bool growViews(uint32_t token);
     void dropViews(uint32_t token);
     static IOReturn action(OSObject *target,void *reference,IOExternalMethodArguments *arguments);
@@ -298,6 +300,7 @@ public:
     IOReturn clientClose() APPLE_KEXT_OVERRIDE;
     void free() APPLE_KEXT_OVERRIDE;
     IOReturn clientMemoryForType(UInt32 type,IOOptionBits *options,IOMemoryDescriptor **memory) APPLE_KEXT_OVERRIDE;
+    IOMemoryMap *mapClientMemory64(IOOptionBits type,task_t task,IOOptionBits flags,mach_vm_address_t address) APPLE_KEXT_OVERRIDE;
     IOReturn externalMethod(uint32_t selector,IOExternalMethodArguments *arguments,
         IOExternalMethodDispatch *dispatch,OSObject *target,void *reference) APPLE_KEXT_OVERRIDE;
 };
@@ -479,6 +482,24 @@ void AGXDeviceUserClient::free()
     if(core_ && !live_) {delete core_;core_=nullptr;}
     IOUserClient::free();
 }
+/* Keep the superclass mapping/security/cache behavior. Only its timestamps
+ * and the descriptor callback's existing lock stages are observed. */
+IOMemoryMap *AGXDeviceUserClient::mapClientMemory64(IOOptionBits type,task_t task,
+                                                IOOptionBits flags,mach_vm_address_t address)
+{
+    if(!native_gpu_trace_enabled() || !g.clock.now_us ||
+       type==NativeAdrenoScanoutType || type==NativeAdrenoMailboxType)
+        return IOUserClient::mapClientMemory64(type,task,flags,address);
+    const uint64_t thread=thread_tid(current_thread());
+    const uint64_t began=g.clock.now_us(g.clock.cookie);
+    IOMemoryMap *result=IOUserClient::mapClientMemory64(type,task,flags,address);
+    const uint64_t ended=g.clock.now_us(g.clock.cookie);
+    IOLockLock(g.lock);
+    const auto sample=cpu_map_profile_.finish(uint32_t(type),thread,began,ended,uint32_t(flags),result!=nullptr);
+    IOLockUnlock(g.lock);
+    if(sample.emit)native_gpu_trace_record(GpuTraceCpuMap,proc_selfpid(),sample.value,12);
+    return result;
+}
 IOReturn AGXDeviceUserClient::clientMemoryForType(UInt32 type,IOOptionBits *options,IOMemoryDescriptor **memory)
 {
     if(memory)*memory=nullptr;
@@ -502,15 +523,24 @@ IOReturn AGXDeviceUserClient::clientMemoryForType(UInt32 type,IOOptionBits *opti
         }
         return kIOReturnNotReady;
     }
+    const bool profile=native_gpu_trace_enabled() && g.clock.now_us;
+    const uint64_t entered=profile?g.clock.now_us(g.clock.cookie):0;
+    const uint64_t thread=profile?thread_tid(current_thread()):0;
     native_adreno_view_diag[0]=native_adreno_view_diag[0]+1;
     /* [5]: threads inside this function right now (a thread stuck here, on the gate or in a mapping, shows as a non-zero count that stays). */
     struct Inside {Inside() {__atomic_fetch_add(&native_adreno_view_diag[5],1,__ATOMIC_RELAXED);} ~Inside() {__atomic_fetch_sub(&native_adreno_view_diag[5],1,__ATOMIC_RELAXED);}} inside;
     IOLockLock(g.lock);
-    if(!growViews(type)) {IOLockUnlock(g.lock);return kIOReturnNoMemory;}
+    const uint64_t locked=profile?g.clock.now_us(g.clock.cookie):0;
+    const auto note=[&](IOReturn value,uint32_t kind) {
+        if(profile)cpu_map_profile_.descriptor(type,thread,entered,locked,
+            g.clock.now_us(g.clock.cookie),uint32_t(*options),uint32_t(value),kind);
+    };
+    if(!growViews(type)) {note(kIOReturnNoMemory,0);IOLockUnlock(g.lock);return kIOReturnNoMemory;}
     View *v=viewSlot(type);
     if(v && v->descriptor && v->token==type) {
         v->descriptor->retain();*memory=v->descriptor;*options=kIOMapAnywhere|kIOMapInhibitCache;
         native_adreno_view_diag[2]=native_adreno_view_diag[2]+1;
+        note(kIOReturnSuccess,2);
         IOLockUnlock(g.lock);
         return kIOReturnSuccess;
     }
@@ -561,6 +591,7 @@ IOReturn AGXDeviceUserClient::clientMemoryForType(UInt32 type,IOOptionBits *opti
             }
         }
     }
+    note(status,backing?(backing->system()?1u:3u):0u);
     IOLockUnlock(g.lock);
     if(status){native_adreno_view_diag[3]=native_adreno_view_diag[3]+1;native_adreno_view_diag[4]=(uint32_t)status;}
     return status;
@@ -692,6 +723,12 @@ static IOReturn runCore(AGXDeviceUserClient *connection,uint32_t method,const vo
                 if(connection->core_->windowPeak()>>20>record->peak_mib)record->peak_mib=uint32_t(connection->core_->windowPeak()>>20);
         spans=native_adreno_bo_memory[1]-spans;
         dispatched=mach_absolute_time();
+        if(method==NativeAdrenoMethodBoCpuMap && !status && output &&
+           output_size==sizeof(NativeAdrenoAbiBoCpuMapReply) && native_gpu_trace_enabled() && g.clock.now_us) {
+            const auto *mapped=static_cast<const NativeAdrenoAbiBoCpuMapReply *>(output);
+            connection->cpu_map_profile_.requested(mapped->token,thread_tid(current_thread()),
+                g.clock.now_us(g.clock.cookie),mapped->bytes);
+        }
         unlockTimed(lockWait);
         const bool taken=offered && !pages.descriptor;
         NativeAdrenoMemory::discardSystem(&pages);

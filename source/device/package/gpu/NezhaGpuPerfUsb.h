@@ -69,6 +69,14 @@ static int nezhaPerfRequest(void *,const qud_diag_request *r,char *out,size_t ca
         for(unsigned i=0;i<20;++i)w.add("%s%d",i?",":"",cpu[i]);
         w.add("],\"physical_clock_readback\":false}");return w.finish(bytes,trunc);
     }
+    if(r->arg0==3) {
+        if(!native_gpu_cpu_map_available())return QUD_UNSUPPORTED;
+        NativeGpuTraceRecord records[6];uint64_t next=0,latest=0,missed=0;
+        const unsigned count=native_gpu_cpu_map_page(r->cursor,records,6,&next,&latest,&missed);
+        w.add("{\"v\":1,\"stream\":\"cpu-map\",\"record_bytes\":120,\"count\":%u,\"next\":%llu,\"latest\":%llu,\"missed\":%llu,\"hex\":\"",count,next,latest,missed);
+        w.hex(reinterpret_cast<const uint8_t *>(records),count*sizeof(records[0]));
+        w.add("\"}");return w.finish(bytes,trunc);
+    }
     if(r->arg0)return QUD_INVALID;
     NativeGpuTraceRecord records[6];uint64_t next=0,latest=0,missed=0;
     const unsigned count=native_gpu_trace_page(r->cursor,records,6,&next,&latest,&missed);

@@ -7,13 +7,13 @@
 /* Diagnostic ABI, independent of rendering policy. All times are uptime us.
  * Event fields and joins are documented by scripts/decode-gpu-trace.py. */
 enum { NativeGpuTraceVersion=1, NativeGpuTraceNote=3, NativeGpuTraceMethod=0x7102,
-       NativeGpuTraceCapacity=65536, NativeGpuTraceMetadata=4096 };
+       NativeGpuTraceCapacity=65536, NativeGpuTraceMetadata=4096, NativeGpuCpuMapCapacity=512 };
 enum {
     GpuTraceConfig=1, GpuTraceBuild=3,
     GpuTraceSubmit=10, GpuTraceRetire=11,
     GpuTraceDisplay=20, GpuTraceDisplaySurface=21, GpuTraceDisplayFence=22,
     GpuTraceDisplayLatch=23, GpuTraceTurnipPass=36, GpuTraceTurnipGmemSide=37, GpuTraceTurnipAttachment=44,
-    GpuTraceThread=63, GpuTraceProblem=65
+    GpuTraceThread=63, GpuTraceProblem=65, GpuTraceCpuMap=80
 };
 struct NativeGpuTraceRecord {
     uint64_t sequence,us;
@@ -36,6 +36,9 @@ extern "C" {
 int native_gpu_trace_enabled(void) NATIVE_GPU_TRACE_LINK;
 void native_gpu_trace_record(uint32_t event,uint32_t pid,const uint64_t *values,uint32_t count) NATIVE_GPU_TRACE_LINK;
 uint32_t native_gpu_trace_snapshot(void *out,uint32_t bytes);
+/* Dense, bounded slow-map history; the regular GPU ring remains unchanged. */
+int native_gpu_cpu_map_available(void);
+uint32_t native_gpu_cpu_map_page(uint64_t cursor,struct NativeGpuTraceRecord *out,uint32_t capacity,uint64_t *next,uint64_t *latest,uint64_t *missed);
 /* Read existing ring records at/after cursor, never wait. Missing/overwritten
  * slots are counted explicitly; max16 records and at most16 attempted slots. */
 uint32_t native_gpu_trace_page(uint64_t cursor,struct NativeGpuTraceRecord *out,uint32_t capacity,uint64_t *next,uint64_t *latest,uint64_t *missed);
