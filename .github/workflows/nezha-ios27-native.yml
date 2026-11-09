@@ -1,7 +1,7 @@
-name: nezha iPhone27 AppSync cached one-shot probe
+name: nezha iPhone27 AppSync one-shot direct CLI probe
 on:
   push:
-    branches: [codex/ios27-appsync-probe-entry013-20261109]
+    branches: [codex/ios27-appsync-cli-probe021-20261109]
   workflow_dispatch:
 permissions:
   contents: read
@@ -35,11 +35,15 @@ jobs:
           out="$RUNNER_TEMP/ios27/work/appsync-runtime"
           mkdir -p "$out"
           sdk="$(xcrun --sdk iphoneos --show-sdk-path)"
-          xcrun clang -target arm64e-apple-ios27.0 -isysroot "$sdk" -fobjc-arc -Wall -Wextra -Werror \
-            -framework Foundation task/source/appsync/ProbeRunner.m -o "$out/appsync-probe"
+          flags=(-target arm64e-apple-ios27.0 -isysroot "$sdk" -fobjc-arc -Wall -Wextra -Werror)
+          xcrun clang "${flags[@]}" -Dmain=unixnu_appinst_entry -c task/source/appsync/appinst.m -o "$RUNNER_TEMP/appinst.o"
+          xcrun clang "${flags[@]}" -framework Foundation task/source/appsync/ProbeRunner.m "$RUNNER_TEMP/appinst.o" -o "$out/appsync-probe"
           codesign --force --sign - --pagesize 4096 --digest-algorithm sha256 \
-            --identifier org.unixnu.nezha.appsync.runner "$out/appsync-probe"
+            --identifier org.unixnu.appinst --entitlements task/ci/appsync-probe-entitlements.plist "$out/appsync-probe"
           codesign --verify --strict "$out/appsync-probe"
+          xcrun nm "$out/appsync-probe" > "$RUNNER_TEMP/appsync-probe.symbols"
+          grep -q ' _unixnu_appinst_entry$' "$RUNNER_TEMP/appsync-probe.symbols"
+          ! grep -Eq ' _(posix_spawn|alarm)$' "$RUNNER_TEMP/appsync-probe.symbols"
       - name: Seal outputs and diagnostics using the existing owner envelope
         if: always()
         run: |

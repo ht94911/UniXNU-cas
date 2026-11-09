@@ -237,7 +237,9 @@
     "source/appsync/test.py": "1114ac3c419394c7afa8b1f2d36f05ab274386235f536dbd55a59d16b4476f0c",
     "source/appsync/FixtureApp.m": "dc874b6dc3e6ff6bf91a6ef70fd78029a2b36f7acae11ae3bc71b9a72d4f2502",
     "source/appsync/build-fixtures.py": "7592c162246e93b2644ea12c1a96536bd3da71fbafd6eace3eb3cd905157d262",
-    "source/appsync/ProbeRunner.m": "efad777d4cc39dbd8ce8c662d392bbea9ac83455090c7f416ffe671dd05c1d49"
+    "source/appsync/ProbeRunner.m": "e3619098acb106d0b9cbfbd32560cba389c5952b1aec3fa765762984d46a2b7b",
+    "source/appsync/QcomUserLogWire.h": "965d7aeaa4043bcceb151cd6331ce50faefe21f57ce7c91cf781a52b4917397b",
+    "ci/appsync-probe-entitlements.plist": "10a07e7aab5ed615b24aa369e0ad6ad68d0dfc4819584364de4d4b810570053b"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
@@ -290,5 +292,6 @@
     "sheng": "a68ee4ee67cc71792fbf519de7e3e28072c717b5",
     "base_candidate": "n27-main-persist024",
     "base_native_run": 42401029411
-  }
+  },
+  "appsync_cli_probe": "Disposable RAM Data fixture calls the unchanged production installer in-process to avoid the observed Protobox posix_spawn denial."
 }
