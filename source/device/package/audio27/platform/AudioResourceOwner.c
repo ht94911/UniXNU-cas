@@ -92,9 +92,16 @@ static void write_rsc(void *v,uint32_t offset,uint32_t value) {
     if (!r) {r=sm8850_tcs_write(o->common,1,offset,value);sm8850_resource_leave(o->common);}
     if (r) fail(o,r);
 }
+static int notify(NaResourceOwner *o,uint32_t id) {
+    /* Publish QMP/SMEM bytes and producer indices before their interrupt.
+     * The MMIO provider fences after its write; it cannot supply this edge. */
+    if (o->common->io.barrier(o->common->io.context)) return fail(o,Sm8850Io);
+    int r=sm8850_ipcc_send(o->common,id);return r ? fail(o,r):NA_OK;
+}
 static void kick_aop(void *v) {
-    NaResourceOwner *o=v;if (o->error || !o->qmp_lease) {o->error=NA_OWNERSHIP;return;}
-    int r=sm8850_ipcc_send(o->common,0);if (r) fail(o,r);
+    NaResourceOwner *o=v;if (o->error) return;
+    if (!o->qmp_lease) {o->error=NA_OWNERSHIP;return;}
+    (void)notify(o,0);
 }
 NaProxyOps na_resource_owner_proxy(NaResourceOwner *o) {
     return (NaProxyOps){o,acquire,release,read_rsc,write_rsc,kick_aop};
@@ -109,7 +116,7 @@ void na_resource_owner_smem_unlock(void *v) {
 void na_resource_owner_doorbell(void *v,uint32_t signal) {
     NaResourceOwner *o=v;if (o->error) return;
     if (signal!=0 && signal!=2) {o->error=NA_ARGUMENT;return;}
-    int r=sm8850_ipcc_send(o->common,0x30000|signal);if (r) fail(o,r);
+    (void)notify(o,0x30000|signal);
 }
 static void event(void *v,uint32_t id) {
     NaResourceOwner *o=v;

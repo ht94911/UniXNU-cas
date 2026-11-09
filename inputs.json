@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Audio036 consumes real GENI completion or phase progress at the timeout boundary before cancel/abort. Its TAS consumer accepts the completed result and preserves error/timeout/ownership handling with bounded waits. 11 production-path ASan/UBSan cases reproduce and fix the035 race. Retain 035 Canoe GPIO mapping, na4 identity scope, trace and all non-audio implementations. No firmware, calibration, phone logs, Data or private inputs.",
+  "purpose": "Audio037 carries the exact audited030 publication-before-IPCC adapter over the036 GPIO/GENI fixes. Existing host ordering and failure tests pass against this actual adapter and unchanged common SoC implementation. Hardware DSP/GPR/reset behavior remains unverified. Firmware is filled locally later; no phone logs, calibration, Data or private inputs.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "cdab4a221f3dc766aab5a12609ad956370597f64",
+  "device_revision": "2a3b5ca25c2de576d3d54c22cb777e277ebc1199",
   "soc_revision": "703d7b4bb00904b4a6e5d96f9e9bf72eec170f6b",
   "xcode": "26.6",
   "files": {
@@ -219,7 +219,7 @@
     "source/device/package/audio27/platform/AudioSmmu.h": "41401f1b97e3481c7e5cc3e02c47f926e91eec9fa34f4a48981a3fc3b723cddd",
     "source/device/package/audio27/upstream/ShengGpr.c": "c4f498f07e2cb601b593e64a8d32474a21d6a87375618e1a67b99d52c5d3160e",
     "source/device/package/audio27/platform/SoundWire.h": "348979ac1e552e1c3a0027e09f8500927e8bf7ccbb496276d2c9d3ef19322224",
-    ".github/workflows/nezha-ios27-native.yml": "ebb1e15579befcc39c1a30449d4accc931ef98e131fddc642efd7623dcd9cb29",
+    ".github/workflows/nezha-ios27-native.yml": "4aa560907cbe59fd4e8cf90be5eb059d8c744413743e8afdc973fddd6811c431",
     "source/device/package/audio27/upstream/ShengGpr.h": "a274dded1f4d1e2709b9f966759bcb1f57d12747ee0f57743dea1fa97d95d23e",
     "source/device/package/audio27/os/NezhaAudioNative.h": "7fd04a164de72e423cd16488d805c1a4f8c2f458b2356978b0bdecc2b64d55a7",
     "source/device/package/audio27/upstream/ShengAudioReach.h": "b135177a5feb3e24e0d8a6aabb301600e2c37078b970a09ada6e8eb7bb6a5b98",
@@ -309,7 +309,7 @@
     "source/soc/src/Sm8850Resources.c": "944379b776f769dd0718492749abb46b52bb74bef6b903dca4f674469d7bae26",
     "source/soc/include/Sm8850ResourcesNative.h": "96a542ad251ca57765dbd299e71267eca66632356f6922007c8952b85917fc63",
     "source/soc/include/Sm8850Resources.h": "e75bd077715897e28bf518770f3e0de4c74d52d34aa525b3a8531cae5460b1f3",
-    "source/device/package/audio27/platform/AudioResourceOwner.c": "66ca9646be4ce83edd3ad245834a0787418e5a6de8c976ddd785fcf3fc87aa33",
+    "source/device/package/audio27/platform/AudioResourceOwner.c": "b278241705e5dfcfa5303305387faba89f13b418658f14c3e4e67fa68f8e3410",
     "source/device/package/audio27/integration/shared-resources.json": "a312b993a3cab2bf1d6723c0435fdcacb4d5235b8f64a10542b72cb2024c1bec",
     "source/device/package/audio27/os/NezhaAudioAdspInputs.h": "45209f9d23f81af0ff5c606ff44f3b43750c3464114f37ccd86c8d0c6eeb25b1",
     "source/device/package/audio27/os/NezhaAudioAdspInputs.cpp": "7d7bac89f33fa2d539ac8f3f4799f248a30cc030db98e6982c16cfef21516cec",
@@ -386,15 +386,15 @@
   "audio": {
     "base": "GPU023",
     "base_device_revision": "673cde869b7378658b470c4e6b2b9a1766b99411",
-    "source_revision": "cdab4a221f3dc766aab5a12609ad956370597f64",
-    "source_only_revision": "cdab4a221f3dc766aab5a12609ad956370597f64",
+    "source_revision": "2a3b5ca25c2de576d3d54c22cb777e277ebc1199",
+    "source_only_revision": "2a3b5ca25c2de576d3d54c22cb777e277ebc1199",
     "hardware_enabled": false,
     "resource_census_enabled": true,
     "private_inputs": false,
     "HAL_target": "arm64e-apple-ios27.0",
     "shared_resource_owner": "703d7b4bb00904b4a6e5d96f9e9bf72eec170f6b",
     "private_input_slot_bytes": 35651584,
-    "previous_audio_behavior_source": "7910dc8ddef621c4b42b9a483c9ae6216a7a9175",
+    "previous_audio_behavior_source": "cdab4a221f3dc766aab5a12609ad956370597f64",
     "base_native_run": 42401029411,
     "base_Metal_revision": "eb59f022a326d03330d398b3c1dbcb6f0aeb633f",
     "diagnostic_glink_delay_ms": 20000,
@@ -450,6 +450,9 @@
     "GPIO_hardware_verified": false,
     "GENI_completion_before_cancel": true,
     "GENI_host_cases": 11,
-    "GPIO_hardware_access_verified_in035": true
+    "GPIO_hardware_access_verified_in035": true,
+    "notification_publication_barrier": true,
+    "exact_audited030_adapter": true,
+    "inherited036_GENI_completion_before_cancel": true
   }
 }
