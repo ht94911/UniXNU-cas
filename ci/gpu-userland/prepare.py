@@ -12,12 +12,14 @@ import json
 import os
 from pathlib import Path, PurePosixPath
 import shutil
+import signal
 import subprocess
 import sys
 import tarfile
 import tempfile
 import time
 import urllib.request
+import urllib.parse
 
 HERE = Path(__file__).resolve().parent
 EXPECT = {
@@ -26,23 +28,61 @@ EXPECT = {
     'abi_sha256': os.environ.get('ABI_SHA256', 'd1c8a27d6e61787073c2c56a779ff4d5c43d86f2d23ac0c0fba0368af8dcdeae'),
 }
 SUBMODULES = ['drivers/Adreno740', 'drivers/AdrenoMetal', 'drivers/GopFramebuffer', 'kits/AdrenoPM4', 'kits/ArmSmmu4K']
-MESA_MIRRORS = ['https://gitlab.freedesktop.org/mesa/mesa.git',
-                'https://chromium.googlesource.com/external/gitlab.freedesktop.org/mesa/mesa']
+MESA_MIRRORS = ['https://chromium.googlesource.com/external/gitlab.freedesktop.org/mesa/mesa',
+                'https://gitlab.freedesktop.org/mesa/mesa.git']
 BISON_MIRRORS = ['https://ftpmirror.gnu.org/gnu/bison/', 'https://mirrors.kernel.org/gnu/bison/']
 
 
-def run(cmd, cwd=None, retries=1, quiet=False):
+def progress(label):
+    # The wrapper exposes only these source-operation labels. Full output stays
+    # in the encrypted build log, including command diagnostics on failure.
+    if os.environ.get('UNIXNU_PREPARE_PROGRESS_FD') == '3':
+        os.write(3, ('[prepare] ' + label + '\n').encode())
+
+
+def stop_group(process):
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        pass
+    try:
+        process.wait(timeout=3)
+    except subprocess.TimeoutExpired:
+        os.killpg(process.pid, signal.SIGKILL)
+        process.wait(timeout=3)
+
+
+def run(cmd, cwd=None, retries=1, quiet=False, timeout=None, label=None):
     for attempt in range(retries):
-        result = subprocess.run([str(c) for c in cmd], cwd=cwd, stdout=subprocess.DEVNULL if quiet else None)
-        if result.returncode == 0:
+        if label:
+            progress(label + ' attempt ' + str(attempt + 1))
+        words = [str(c) for c in cmd]
+        if timeout is None:
+            result = subprocess.run(words, cwd=cwd, stdout=subprocess.DEVNULL if quiet else None)
+            code = result.returncode
+        else:
+            process = subprocess.Popen(words, cwd=cwd, stdout=subprocess.DEVNULL if quiet else None,
+                                       start_new_session=True)
+            try:
+                code = process.wait(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                stop_group(process)
+                progress((label or Path(words[0]).name) + ' timed out after ' + str(timeout) + ' seconds')
+                code = 124
+            except BaseException:
+                stop_group(process)
+                raise
+        if code == 0:
+            if label:
+                progress(label + ' complete')
             return True
         if attempt + 1 < retries:
             time.sleep(15 * (attempt + 1))
     return False
 
 
-def must(cmd, cwd=None, retries=1, quiet=False):
-    if not run(cmd, cwd, retries, quiet):
+def must(cmd, cwd=None, retries=1, quiet=False, timeout=None, label=None):
+    if not run(cmd, cwd, retries, quiet, timeout, label):
         sys.exit('failed: ' + ' '.join(str(c) for c in cmd))
 
 
@@ -90,8 +130,16 @@ def fetch_commit(dest, urls, commit, sparse=None):
     for url in urls:
         run(['git', '-C', dest, 'remote', 'remove', 'origin'], quiet=True)
         must(['git', '-C', dest, 'remote', 'add', 'origin', url])
-        if run(['git', '-C', dest, 'fetch', '-q', '--depth', '1', *(['--filter=blob:none'] if sparse else []), 'origin', commit], retries=3):
-            must(['git', '-C', dest, 'checkout', '-q', 'FETCH_HEAD'])
+        fetch = ['git', '-c', 'http.lowSpeedLimit=1024', '-c', 'http.lowSpeedTime=45',
+                 '-C', dest, 'fetch', '-q', '--depth', '1',
+                 *(['--filter=blob:none'] if sparse else []), 'origin', commit]
+        label = dest.name + ' from ' + urllib.parse.urlparse(url).hostname
+        if run(fetch, timeout=300, label='fetch ' + label):
+            # A partial clone may fetch blobs during checkout as well.
+            if not run(['git', '-c', 'http.lowSpeedLimit=1024', '-c', 'http.lowSpeedTime=45',
+                        '-C', dest, 'checkout', '-q', 'FETCH_HEAD'],
+                       timeout=300, label='checkout ' + label):
+                continue
             if out(['git', '-C', dest, 'rev-parse', 'HEAD']) != commit:
                 sys.exit(f'{dest}: HEAD is not {commit}')
             return url
@@ -120,7 +168,7 @@ def main():
     head = out(['git', '-C', root, 'rev-parse', 'HEAD'])
     if head != EXPECT['unixnu']:
         sys.exit(f'UniXNU checkout is {head}, expected {EXPECT["unixnu"]}')
-    must(['git', '-C', root, 'submodule', 'update', '--init', '--depth', '1', *SUBMODULES], retries=3)
+    must(['git', '-c', 'http.lowSpeedLimit=1024', '-c', 'http.lowSpeedTime=45', '-C', root, 'submodule', 'update', '--init', '--depth', '1', *SUBMODULES], retries=2, timeout=300, label='framework submodules')
     modules = {}
     for path in SUBMODULES:
         pinned = out(['git', '-C', root, 'ls-tree', 'HEAD', path]).split()[2]
@@ -199,6 +247,7 @@ def main():
                           patches={p: sha(root / p) for p in pins['patches']})
 
     # 4. bison and the Python environment of build-turnip-darwin.py.
+    progress('bison and Python build tools')
     bison = pins['bison']
     tools = root / '.cache/mesa-tools'
     with tempfile.TemporaryDirectory(prefix='bison-') as temporary:
@@ -330,10 +379,14 @@ def main():
     record['replay'] = 'disabled by the current upstream --no-replay option'
     record['target'] = 'arm64e-apple-ios27.0'
 
+    progress('all pinned sources and patches verified')
     args.record.parent.mkdir(parents=True, exist_ok=True)
     args.record.write_text(json.dumps(record, indent=2) + '\n')
     print(json.dumps(record, indent=2))
 
 
 if __name__ == '__main__':
+    def interrupted(signum, frame):
+        raise KeyboardInterrupt('source preparation interrupted')
+    signal.signal(signal.SIGTERM, interrupted)
     main()

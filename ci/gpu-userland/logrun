@@ -6,11 +6,14 @@ shift
 logs=${LOGS:-${RUNNER_TEMP:-/tmp}/logs}
 mkdir -p "$logs"
 start=$(date +%s)
-if "$@" > "$logs/$name.log" 2>&1; then
+if [ "$name" = prepare ]; then
+  if UNIXNU_PREPARE_PROGRESS_FD=3 "$@" 3>&1 > "$logs/$name.log" 2>&1; then rc=0; else rc=$?; fi
+else
+  if "$@" > "$logs/$name.log" 2>&1; then rc=0; else rc=$?; fi
+fi
+if [ "$rc" -eq 0 ]; then
   echo "== $name: ok in $(( $(date +%s) - start )) s"
   exit 0
-else
-  rc=$?
 fi
 echo "::error::$name failed with exit status $rc after $(( $(date +%s) - start )) s"
 tail -n 150 "$logs/$name.log"
