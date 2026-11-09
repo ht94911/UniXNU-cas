@@ -1,6 +1,6 @@
 {
   "soc_revision": "703d7b4bb00904b4a6e5d96f9e9bf72eec170f6b",
-  "USB_revision": "a3142775e447553017ed38474fe9267f8a64f4fc",
+  "USB_revision": "8fe56a1bd4e67127c2fa913cb9cef9aa44490a74",
   "files": {
     "include/Sm8850Resources.h": "e75bd077715897e28bf518770f3e0de4c74d52d34aa525b3a8531cae5460b1f3",
     "include/Sm8850ResourcesNative.h": "96a542ad251ca57765dbd299e71267eca66632356f6922007c8952b85917fc63",
@@ -9,5 +9,7 @@
   },
   "actual_resource_census": "audio27-gpu015-004-local001",
   "phone_tested": false,
-  "TCS_IRQ_policy": "Common configuration lock; lease owner changes only TCS1 enable bit and restores its previous value after fresh completion; other bits preserved."
+  "TCS_IRQ_policy": "Common configuration lock; lease owner changes only TCS1 enable bit and restores its previous value after fresh completion; other bits preserved.",
+  "USB_implementation_revision": "a3142775e447553017ed38474fe9267f8a64f4fc",
+  "USB_consumer_scope": "Only exact XNUdebug.c SHA for system panic evidence; originalUSB implementation/patches retained"
 }

@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Audio032: fixed Native029/GPU023 TAS-only behavior, capture original XNU panic va_list and bounded backtrace/register sample before debugger cross-CPU synchronization; retain master-owned USB hardware drain and passive100ms secondary queue wait. Record normal reboot pid/flags and PE callback types without changing the existing reset checks or SMC. Original panic funnel continues. No ADSP/PAS/GLINK/firmware/DMA/audio behavior change, private inputs, filesystem writes, reset timer, new reset mechanism or phone operation.",
+  "purpose": "Audio032b corrects the existing USB consumer identity after the original032 correctly rejected the new debug.c SHA. Replay of actual96 patches restores the old debug hash when reversing only the device delta; all other8 units remain identical. Consumer metadata only, no check/USB/audio/PHY/DMA/reset implementation changes. Original032 panic text/register/stack and reboot caller code compiled; original029 TAS-only behavior remains.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "cdf92100865d9c351c229b8e45d5a3a7560f3b3f",
+  "device_revision": "2a05af3177777d3a049ad9bc879cec2b98efe9ee",
   "soc_revision": "703d7b4bb00904b4a6e5d96f9e9bf72eec170f6b",
   "xcode": "26.6",
   "files": {
@@ -212,14 +212,14 @@
     "source/soc/patches/xnu-12377/sheng-platform-power.patch": "6e68dbcdac670624f2a9806a61fef42110bfe6586029b3f1a0acb068c3a23ec2",
     "source/soc/soc.toml": "9cebcadf2d5a271ceb44ee5fc378ed739cff0e7e5a940007164a9917042fd92f",
     "source/ufs.bundle": "3a7c1c6ac7e5a39e6cb4adcc6143fa1e4c6c24ae862aa501102f9fb70c21a534",
-    "source/usb.bundle": "5111ae4931100ac01f1bc0b49a0d81a8ead26acc67ae395bc50017febfa1c2ce",
+    "source/usb.bundle": "e9b4245d2e52c6b73f352fbf894be2d87a572bf915cd7c583fd55d33170a9196",
     "ci/native.py": "c5038d38dabeb4276a3bbcbab9b76508b24d8c70a85f70e77c12457a3fa9d269",
     "source/device/package/audio27/os/NezhaAudioClock.cpp": "70cc8e545c78f190b73ff1a6e03c4c857343b66344bd099f71aa1047c992ba78",
     "source/device/package/audio27/platform/AdspFirmware.h": "4096f93fd761bee7d0afe1557c7af77e3eef3040650da32153e582c6a5330756",
     "source/device/package/audio27/platform/AudioSmmu.h": "41401f1b97e3481c7e5cc3e02c47f926e91eec9fa34f4a48981a3fc3b723cddd",
     "source/device/package/audio27/upstream/ShengGpr.c": "c4f498f07e2cb601b593e64a8d32474a21d6a87375618e1a67b99d52c5d3160e",
     "source/device/package/audio27/platform/SoundWire.h": "348979ac1e552e1c3a0027e09f8500927e8bf7ccbb496276d2c9d3ef19322224",
-    ".github/workflows/nezha-ios27-native.yml": "e41b7176754d641e55e5107354e06ca2bc88f522e89170582fa3be1d7f5c22cc",
+    ".github/workflows/nezha-ios27-native.yml": "34926da1c0ec4446dc03311c70c011996e5004c9fe0151a1b10cdf4c8ceaec82",
     "source/device/package/audio27/upstream/ShengGpr.h": "a274dded1f4d1e2709b9f966759bcb1f57d12747ee0f57743dea1fa97d95d23e",
     "source/device/package/audio27/os/NezhaAudioNative.h": "7fd04a164de72e423cd16488d805c1a4f8c2f458b2356978b0bdecc2b64d55a7",
     "source/device/package/audio27/upstream/ShengAudioReach.h": "b135177a5feb3e24e0d8a6aabb301600e2c37078b970a09ada6e8eb7bb6a5b98",
@@ -310,7 +310,7 @@
     "source/soc/include/Sm8850ResourcesNative.h": "96a542ad251ca57765dbd299e71267eca66632356f6922007c8952b85917fc63",
     "source/soc/include/Sm8850Resources.h": "e75bd077715897e28bf518770f3e0de4c74d52d34aa525b3a8531cae5460b1f3",
     "source/device/package/audio27/platform/AudioResourceOwner.c": "66ca9646be4ce83edd3ad245834a0787418e5a6de8c976ddd785fcf3fc87aa33",
-    "source/device/package/audio27/integration/shared-resources.json": "fe6e45f287944c158106c45e48daeeae2db58dcca55187841532fac20d0241b6",
+    "source/device/package/audio27/integration/shared-resources.json": "a312b993a3cab2bf1d6723c0435fdcacb4d5235b8f64a10542b72cb2024c1bec",
     "source/device/package/audio27/os/NezhaAudioAdspInputs.h": "45209f9d23f81af0ff5c606ff44f3b43750c3464114f37ccd86c8d0c6eeb25b1",
     "source/device/package/audio27/os/NezhaAudioAdspInputs.cpp": "7d7bac89f33fa2d539ac8f3f4799f248a30cc030db98e6982c16cfef21516cec",
     "source/device/package/audio27/platform/AudioInputPack.h": "e18ba7bf47aacba3347dd872d9584964b6f143109991707f96271a218de1fd68",
@@ -341,10 +341,11 @@
   "device_executed": false,
   "usb_enabled": true,
   "usb": {
-    "source_revision": "a3142775e447553017ed38474fe9267f8a64f4fc",
-    "source_tree": "c55a7d586a4f8fd08fd985202b79a56d944e552b",
-    "history": "Single source-only tree: common SM8850 mutex plus exactly three mandatory declared imports; all other import rejection retained.",
-    "repository": "https://github.com/xiaoleGun/QcomXnuUsbDebug.git"
+    "source_revision": "8fe56a1bd4e67127c2fa913cb9cef9aa44490a74",
+    "source_tree": "6386dd959e6e622ed4c4c90e5286afc1f685ae0e",
+    "history": "Single source-only tree. Onlyconsumer.json changes for the exact new debug.c; all a314 source/header/patch/tool/hardware code remains byte-identical.",
+    "repository": "https://github.com/xiaoleGun/QcomXnuUsbDebug.git",
+    "implementation_revision": "a3142775e447553017ed38474fe9267f8a64f4fc"
   },
   "comparison_reference": false,
   "phone_operations": false,
@@ -384,8 +385,8 @@
   "audio": {
     "base": "GPU023",
     "base_device_revision": "673cde869b7378658b470c4e6b2b9a1766b99411",
-    "source_revision": "cdf92100865d9c351c229b8e45d5a3a7560f3b3f",
-    "source_only_revision": "cdf92100865d9c351c229b8e45d5a3a7560f3b3f",
+    "source_revision": "2a05af3177777d3a049ad9bc879cec2b98efe9ee",
+    "source_only_revision": "2a05af3177777d3a049ad9bc879cec2b98efe9ee",
     "hardware_enabled": false,
     "resource_census_enabled": true,
     "private_inputs": false,
@@ -429,6 +430,7 @@
       "native_hardware_verified": false
     },
     "system_reset_evidence_only": true,
-    "native_panic_funnel_preserved": true
+    "native_panic_funnel_preserved": true,
+    "consumer_identity_repaired": true
   }
 }
