@@ -1,0 +1,115 @@
+--- a/osfmk/kern/debug.c
++++ b/osfmk/kern/debug.c
+@@ -77,6 +77,10 @@
+ #include <kern/kern_cdata.h>
+ #include <kern/zalloc_internal.h>
+ #include <kern/iotrace.h>
++#if XNU_QCOM_USB_DEBUG
++#include <kern/backtrace.h>
++#include <QcomXnuUsbDebug.h>
++#endif
+ #include <pexpert/device_tree.h>
+ #include <vm/vm_kern_xnu.h>
+ #include <vm/vm_map.h>
+@@ -1257,6 +1261,72 @@
+ 	read_lbr();
+ #endif
+ 
++#if XNU_QCOM_USB_DEBUG
++	/* Capture the original va_list before debugger cross-CPU synchronization.
++	 * Only the first entry formats; a nested fault keeps the original panic
++	 * path and cannot recursively format an invalid string. No storage I/O.
++	 */
++	static unsigned int qcom_system_panic_recorded;
++	if (!__atomic_exchange_n(&qcom_system_panic_recorded, 1u, __ATOMIC_ACQ_REL)) {
++		char text[1536];
++		uint64_t mpidr, esr, far, elr;
++		__asm__ volatile("mrs %0, mpidr_el1" : "=r" (mpidr));
++		__asm__ volatile("mrs %0, esr_el1" : "=r" (esr));
++		__asm__ volatile("mrs %0, far_el1" : "=r" (far));
++		__asm__ volatile("mrs %0, elr_el1" : "=r" (elr));
++		int n = snprintf(text, sizeof(text),
++		    "\nNEZHA SYSTEM PANIC ENTRY: mpidr=%#llx caller=%#lx reason=%u context=%#llx options=%#llx esr_sample=%#llx far_sample=%#llx elr_sample=%#llx\n",
++		    (unsigned long long)mpidr, panic_caller, reason,
++		    (unsigned long long)(uintptr_t)ctx, (unsigned long long)panic_options_mask,
++		    (unsigned long long)esr, (unsigned long long)far, (unsigned long long)elr);
++		if (n > 0 && (size_t)n < sizeof(text)) {
++			va_list copy;
++			va_copy(copy, *panic_args);
++			(void)vsnprintf(text + n, sizeof(text) - (size_t)n,
++			    panic_format_str, copy);
++			va_end(copy);
++			(void)qcom_usb_debug_write(text, strnlen(text, sizeof(text)));
++		}
++		(void)qcom_usb_debug_write("\n", 1);
++		if (PE_kputc != NULL) {
++			uintptr_t frames[16];
++			backtrace_info_t info = BTI_NONE;
++			unsigned int count = backtrace(frames, 16, NULL, &info);
++			n = snprintf(text, sizeof(text), "NEZHA SYSTEM PANIC STACK: frames=%u info=%#x", count, (unsigned)info);
++			for (unsigned int i = 0; i < count && n > 0 && (size_t)n < sizeof(text); ++i) {
++				int added = snprintf(text + n, sizeof(text) - (size_t)n,
++				    " %#llx", (unsigned long long)frames[i]);
++				if (added < 0 || (size_t)added >= sizeof(text) - (size_t)n) break;
++				n += added;
++			}
++			(void)qcom_usb_debug_write(text, strnlen(text, sizeof(text)));
++			(void)qcom_usb_debug_write("\n", 1);
++		}
++		/* The qualified hardware drain remains restricted to the master CPU.
++		 * On another CPU, allow the still-running owner worker up to 100 ms
++		 * to send the CPU queue before the unchanged debugger stops peers.
++		 * Sampling status takes no MMIO ownership and never steals a lock.
++		 */
++		if (!qcom_usb_debug_wait_drained(100)) {
++			uint64_t start, now, frequency;
++			__asm__ volatile("mrs %0, cntfrq_el0" : "=r" (frequency));
++			__asm__ volatile("isb; mrs %0, cntvct_el0" : "=r" (start));
++			if (frequency >= 1000 && frequency <= 1000000000ULL) {
++				for (unsigned int i = 0; i < 100000u; ++i) {
++					struct qcom_usb_debug_status status;
++					qcom_usb_debug_get_status(&status);
++					if (status.phase != QCOM_USB_DEBUG_ACTIVE ||
++					    (status.error != QCOM_USB_DEBUG_STATUS_BUSY &&
++					    !status.buffer_pending && !status.transport_pending)) break;
++					__asm__ volatile("isb; mrs %0, cntvct_el0" : "=r" (now));
++					if (now - start >= frequency / 10u) break;
++					__asm__ volatile("yield" ::: "memory");
++				}
++			}
++		}
++	}
++#endif
++
+ 	/* For very early panics before XNU serial initialization. */
+ 	if (PE_kputc == NULL) {
+ 		char buf[EARLY_PANIC_BUFLEN];
+--- a/bsd/kern/kern_shutdown.c
++++ b/bsd/kern/kern_shutdown.c
+@@ -70,6 +70,9 @@
+ #include <IOKit/IOMessage.h>
+ 
+ #include <sys/kdebug.h>
++#if XNU_QCOM_USB_DEBUG
++#include <QcomXnuUsbDebug.h>
++#endif
+ 
+ uint32_t system_inshutdown = 0;
+ uint32_t final_shutdown_stage = 0;
+@@ -187,6 +190,16 @@
+ {
+ 	int hostboot_option = 0;
+ 	uint64_t startTime;
++
++#if XNU_QCOM_USB_DEBUG
++	/* Record the kernel caller before process shutdown can discard its logs. */
++	char qcom_reboot_name[MAXCOMLEN + 1] = {0};
++	proc_selfname(qcom_reboot_name, sizeof(qcom_reboot_name));
++	printf("NEZHA SYSTEM REBOOT ENTRY: pid=%d name=%s howto=%#x caller=%#llx already_shutdown=%u\n",
++	    proc_selfpid(), qcom_reboot_name, (unsigned)howto,
++	    (unsigned long long)(uintptr_t)__builtin_return_address(0),
++	    __atomic_load_n(&system_inshutdown, __ATOMIC_RELAXED));
++#endif
+ 
+ 	if ((howto & (RB_PANIC | RB_QUICK)) == (RB_PANIC | RB_QUICK)) {
+ 		panic_kernel(howto, message);

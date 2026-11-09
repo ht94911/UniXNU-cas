@@ -50,6 +50,18 @@ __attribute__((noreturn)) static void psci_reset(void) {
  for(;;)__asm__ volatile("wfe" :::"memory");
 }
 static int restart_owner(unsigned type) {
+ // CPU queue only: the final platform callback cannot take a USB runtime
+ // lock or require a live controller. The original reset checks follow.
+ char record[240];
+ uint64_t mpidr;
+ __asm__ volatile("mrs %0,mpidr_el1":"=r"(mpidr));
+ int bytes=snprintf(record,sizeof(record),
+  "\nNEZHA SYSTEM PE RESTART: type=%u mpidr=%#llx caller=%#llx mode=%u normal_started=%u shutdown=%u final=%u\n",
+  type,(unsigned long long)mpidr,(unsigned long long)(uintptr_t)__builtin_return_address(0),mode,
+  __atomic_load_n(&normal_shutdown_started,__ATOMIC_ACQUIRE),
+  __atomic_load_n(&system_inshutdown,__ATOMIC_ACQUIRE),
+  __atomic_load_n(&final_shutdown_stage,__ATOMIC_ACQUIRE));
+ if(bytes>0 && (size_t)bytes<sizeof(record))(void)qcom_usb_debug_try_record(record,(size_t)bytes);
  if(type!=1 || (mode!=1 && mode!=2) ||
     __atomic_load_n(&PE_halt_restart,__ATOMIC_ACQUIRE)!=restart_owner)return -10;
  if(mode==1) {

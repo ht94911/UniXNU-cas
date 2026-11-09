@@ -34,3 +34,6 @@ zzzz-native-shutdown-unmount-observe.patch
 
 # Adapt audio after the original iOS27 bring-up patch has consumed its context.
 zzzzzz-nezha-audio-hal-mount.patch
+
+# Preserve original panic/caller evidence before debugger and shutdown.
+zzzzzz-nezha-system-reset-evidence.patch

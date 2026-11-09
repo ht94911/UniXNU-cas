@@ -244,6 +244,13 @@ def collect(framework, work, sealed):
                 if path.suffix in ('.log', '.json', '.o'):
                     add(path, 'usb-attempts/' + attempt.parent.name + '/' + path.name)
         objects = tree / 'build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837'
+        # Preserve the exact changed kernel sources and compiled units locally
+        # inside the existing encrypted output, including a failed compile.
+        for relative in ('osfmk/DEVELOPMENT/debug.o', 'bsd/DEVELOPMENT/kern_shutdown.o'):
+            for suffix in ('', '.json'):
+                add(objects / (relative + suffix), 'system-reset-objects/' + relative + suffix)
+        for relative in ('osfmk/kern/debug.c', 'bsd/kern/kern_shutdown.c'):
+            add(tree / '.cache/xnu-work' / relative, 'system-reset-sources/' + relative)
         for name in ('link.filelist', 'all-alias.exp'):
             add(objects / name, 'objects/' + name)
         add(tree / 'build/xnu/owner-data-volume.h', 'build/owner-data-volume.h')
