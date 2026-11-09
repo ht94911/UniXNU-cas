@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "cd442b50600d65e7782173b08ac1176b508a0b08",
+  "device_revision": "1516ac5fc80714a660acf9657fcb7d78989aa3b8",
   "soc_revision": "3435fa55c3e835a4aaebf7d833473fd5d20073fd",
   "xcode": "26.6",
   "files": {
@@ -106,11 +106,11 @@
     "source/device/components/QcaBluetooth/LICENSES/BSD-2-Clause-Patent.txt": "5b1d3d911103cb0f41641ec0964c5ac1f7e229f57aa072b6ac38bae913a1307b",
     "source/device/components/QcaBluetooth/LICENSES/BSD-3-Clause.txt": "99df79df77047d9b0c9e31c03fbc5b3e1c29a248ca04062710dd7d563eecdbf0",
     "source/device/components/QcaBluetooth/NOTICE.md": "03d2e632af924867cf7f3756784c8e764a3b0d238a3bc8028fcb86d7b34cf818",
-    "source/device/components/QcaBluetooth/README.md": "e91831f6e34d11bba311c00e379cd8c8ab4c0aa47f02ae47b8d0e56fb4184c95",
+    "source/device/components/QcaBluetooth/README.md": "f0c0210bf9b7f2a73cbb32c5c4b00d3bf834e3e8d539e2bd7705fbce8275a86c",
     "source/device/components/QcaBluetooth/include/qbt.h": "eb53e6f25f4ef215f691b2c92731a61269aae3d9e9bd468d690cfe8b31097f04",
     "source/device/components/QcaBluetooth/include/qbt_firmware.h": "9cf8df4528cd3f4ba087a87e88278dffa027b566445beabd031454ef6d76c825",
     "source/device/components/QcaBluetooth/include/qbt_geni.h": "3b0e2a53129f428b1f6e250186abf8290638720f328c3fd542096bb7ba6bcaad",
-    "source/device/components/QcaBluetooth/include/qbt_transport.h": "0711dbc1cb4e0effe2238a9f18084ca2a7a9006e1f3c4a5a2268d98b4bde3472",
+    "source/device/components/QcaBluetooth/include/qbt_transport.h": "a0ed3496ace3d0d4ebc5f2624b0b7380312a5ccb429b7cb9d3be66eeeba714e6",
     "source/device/components/QcaBluetooth/native-ios27.md": "a645b5f63b7ce5539a7c33be61bf1b4f623e1fa86cd0860840182bda3ea5b4f5",
     "source/device/components/QcaBluetooth/shim/linux/firmware.h": "814a14eefe762f81bfa411848777f13692d8e0f35768b0841ed6a7ac3b623c02",
     "source/device/components/QcaBluetooth/shim/linux/module.h": "814a14eefe762f81bfa411848777f13692d8e0f35768b0841ed6a7ac3b623c02",
@@ -123,12 +123,12 @@
     "source/device/components/QcaBluetooth/src/qbt_geni.c": "e57145078ef3bdbf1bdbc074686b1e99840128c47f39ef767b2382164334392e",
     "source/device/components/QcaBluetooth/src/qbt_geni_regs.h": "b1328736a5153451fa62bbdcd26c6ca9345070ec0d7ef73085d3d7acf0ba7f08",
     "source/device/components/QcaBluetooth/src/qbt_internal.h": "08d54b75627134492f4e00b6bdf22c95d08acfadc52b2813ed17ec1fa7b6a685",
-    "source/device/components/QcaBluetooth/src/qbt_linux.c": "597cdc2681070494619e9079f88b94000516181b7ee6fdf52f8bfba840235f44",
-    "source/device/components/QcaBluetooth/src/qbt_transport.c": "827024e7b4c02287498661043bd246fc6a429dca6647cbd5f14a427b88db53a5",
+    "source/device/components/QcaBluetooth/src/qbt_linux.c": "b626496a0c53c9fd9812da42f71ba0504e33edeefcd2322401ae97c680f9cd4f",
+    "source/device/components/QcaBluetooth/src/qbt_transport.c": "aab0989355dfee80195864cc35e234d41a2a9e0eeb0d0b0841308a46925c075a",
     "source/device/components/QcaBluetooth/src/qbt_transport.c.license": "02df0ed6ad99b05d41cd19a9c769c1ec867f52770b50d3da9e19268587a25539",
     "source/device/components/QcaBluetooth/tests/geni.c": "4411b2ff8b7c22612932d147f44dfa8bcb7a37af53eef84ed727bb474331f14c",
     "source/device/components/QcaBluetooth/tests/native_type0.c": "446f5764828bca70eec735a27014c8840b898f5a0ef1eb2d61fc4e096d15c25e",
-    "source/device/components/QcaBluetooth/tests/runtime.c": "e82d668461967367f8b6d3b6880110fbf49e6f3d09ed02d1a120bb812c695614",
+    "source/device/components/QcaBluetooth/tests/runtime.c": "7f66a1c1b2f01166b5e3322802523cc632f76db17ae75aedbd8a87ca62c3e4af",
     "source/device/components/QcaBluetooth/tools/build-bluetool.py": "23a7dbe3888f09dc7c5739c15b8f1ad011a0d326862a2ba3b6e7682b3333260c",
     "source/device/components/QcaBluetooth/tools/build-type0.py": "f6671aef03bbec3999b5059bfd28997c3781cfacb1fc93114a6a805b1c4e8bb7",
     "source/device/components/QcaBluetooth/tools/build-userland.py": "60b678dc7d814b40b23823026a16e0ffee2f4c21586e435c0bfb679051b13a8c",
@@ -238,15 +238,15 @@
     "source/device/package/backlight/NezhaBrightnessRequest.h": "876811b23045660b71c82c5f6ff33780a6f7bfaaa4311c116c71d179b348a59c",
     "source/device/package/backlight/NezhaDsi0.h": "28a964006beffe03238af70bc9eed4c479ca1aeaef574d4583f18f96fd1690e1",
     "source/device/package/backlight/OriginalAppleARMBacklightABI.h": "dab34c394c2123ae4cbfd6648980d5e7b024539773abe5852f7d2622f9bf7b8b",
-    "source/device/package/bluetooth27/NezhaBluetoothBoard.c": "86fe9fbc1f4b98663229378296242e417e0dcb1d44a55a7ecf982a09623a857e",
-    "source/device/package/bluetooth27/NezhaBluetoothBoard.h": "f22aaa9f041bc7189f09f78ee7c5fcba7b563c8de6fa92f71f79a671dffa9375",
+    "source/device/package/bluetooth27/NezhaBluetoothBoard.c": "83a34e71db7d61f5642d11a694800777c54b01dc69f896873b479007acc84d2f",
+    "source/device/package/bluetooth27/NezhaBluetoothBoard.h": "6b9f6971a1945c590a649d7f66b4176800af3d6af84a9c17e4e453ad51a9f5a9",
     "source/device/package/bluetooth27/NezhaBluetoothDiagnostic.c": "75cd036f517241b338fd2c432d7b999631694dcd7bb7e6a277ab0a956fb24f5c",
     "source/device/package/bluetooth27/NezhaBluetoothDiagnostic.h": "b26151fe8e74bc8f4329d64cea4cd2785fcb3ff6c81ed7471783be7a0f3535db",
     "source/device/package/bluetooth27/NezhaBluetoothFirmware.c": "8d761eb86cc5aa3a49eb67a9d2c0b1660fe1747ea1e876bd3729ad5fc01e401b",
     "source/device/package/bluetooth27/NezhaBluetoothFirmware.h": "0e018ef91b99c254736791c906b5dfc309c2b1bd64a8381b0d1f6eadb62bf6e7",
     "source/device/package/bluetooth27/NezhaBluetoothPlatform.cpp": "8a3d5059b1422a15f9e832627fdfd49bf443187109c7688b74af7d03e34cc775",
     "source/device/package/bluetooth27/NezhaBluetoothPlatform.h": "5106edd46eac1ec6a4546d96553ec3d077505bd81256b33e8d4f451663367783",
-    "source/device/package/bluetooth27/NezhaBluetoothProbe.cpp": "40048b49534b94913b837e766749f945433993a75349e720a60d64d5dd6c5985",
+    "source/device/package/bluetooth27/NezhaBluetoothProbe.cpp": "686ded8da0a3e029c3afe7b073807d6a723cfc39bfe83222b397b72981c1c54c",
     "source/device/package/bluetooth27/NezhaWcnPower.h": "257724ef51dc5206a43ff46561271bcf340560679c4aa349d7a08b6672c6b219",
     "source/device/package/bluetooth27/Sm8850Bt.h": "36c0f5688b3c15bce9d281f5e7f78fca266df26203eb5ab7715fd831633c5a8d",
     "source/device/package/bluetooth27/Sm8850BtClock.c": "bf8e7be0f0db6193b1872ec660068e277224d2a19625037a7473d3aacb536502",
@@ -359,7 +359,7 @@
     "source/device/patches/xnu-12377/nezha-bluetooth-runtime.patch": "4d4fd6049250eaf399e6a0d5ff4e34232c148081820148532cf8c0c7119fd57b",
     "source/device/scripts/sign-detached-cache.py": "cbede242ed225353445f80e51f6c2c451007e89ccc61677d7b0672a037635cd0",
     "ci/cache-signature-template.py": "3596fbb421e2d223c9d01b6280af68ca7e83595c99d3d96e481450f187201d72",
-    ".github/workflows/nezha-ios27-native.yml": "7b15c5e0846408f00e5998ee111efbc3a6f795555de197208642123c5b21e56f"
+    ".github/workflows/nezha-ios27-native.yml": "7a5543421e970cbfd8b8d0da218beb6efab41a5da19e7b255b7a0d589cb0f52c"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
@@ -410,7 +410,7 @@
     "firmware_slot_bytes": 262144,
     "snapshot_scope": "listed headers and native implementation units only"
   },
-  "qualification_iteration": "Bluetooth owner005: Ganges RTS-only and write/20ms/drain, UART18 ordinary RCG force-root/bit20 contract, bounded pre-cleanup UART/RCG evidence; no hardware completion claim",
+  "qualification_iteration": "Actual Ganges tuple rejects wrong FC48 high-rate route; standalone current115200 diagnostic, full ELF/NVM/HCI,60s controller budget and65s request budget; PERI/TME not yet integrated",
   "software_aes": {
     "source_revision": "c9ce79e16e6a4e74cbbb7f4315ad2ec342933c89",
     "upstream_revision": "4a45326da5c2cd6fe6813d79ee43db20805628af",
@@ -440,6 +440,12 @@
     "UART18_hw_clk_ctrl": false,
     "pre_cleanup_observation": true,
     "observed003_DFS_enabled": false,
-    "hardware_repair_verified": false
+    "hardware_repair_verified": false,
+    "actual_Ganges_tuple_requires_PERI_before_high_baud": true,
+    "current_baud_diagnostic": 115200,
+    "diagnostic_board_budget_seconds": 60,
+    "diagnostic_sysctl_budget_seconds": 65,
+    "PERI_TME_integrated": false,
+    "high_rate_verified": false
   }
 }

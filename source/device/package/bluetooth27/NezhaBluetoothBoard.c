@@ -187,6 +187,11 @@ static int settle(struct nezha_bt_board *b,unsigned ms) {
     }
     return 0;
 }
+uint64_t nezha_bt_board_boot_budget_ns(const struct qbt_boot_options *boot) {
+    if(boot && boot->controller==QBT_WCN7860 && boot->baud_method==QBT_BAUD_CURRENT &&
+       boot->initial_baud==115200 && boot->operating_baud==115200)return 60000000000ULL;
+    return 25000000000ULL;
+}
 int nezha_bt_board_power_on(struct nezha_bt_board *b) {
     if(!b || !b->core)return -EINVAL;
     if(__atomic_load_n(&b->closing,__ATOMIC_ACQUIRE))return -ESHUTDOWN;
@@ -221,7 +226,7 @@ int nezha_bt_board_power_on(struct nezha_bt_board *b) {
     b->pins_set=true;e=b->ops.pins_active(b->ops.context,true);if(e)goto fail;
     e=qbt_geni_start(&b->geni);if(e)goto fail;
     b->phase=NEZHA_BT_FIRMWARE;
-    b->boot_deadline=now(b)+25000000000ULL;
+    b->boot_deadline=now(b)+nezha_bt_board_boot_budget_ns(&b->boot);
     e=qbt_boot_controller(b->core,&b->boot,b->address);if(e)goto fail;
     b->boot_deadline=0;b->powered=true;b->phase=NEZHA_BT_READY;return 0;
 fail:

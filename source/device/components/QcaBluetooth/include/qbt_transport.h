@@ -11,6 +11,8 @@ struct qbt_transport_ops {
     void (*wake)(void *);
     /* Queue power transition on the UART worker; never call back inline. */
     int (*power)(void *, bool);
+    /* Zero retains the30s default; board initialization can supply its budget. */
+    uint32_t boot_wait_seconds;
 };
 extern volatile uint32_t qbt_transport_activity[4];
 struct qbt_transport_stats {

@@ -84,6 +84,8 @@ struct nezha_bt_board {
  * core, IRQ callback, DMA allocation or power lease is rejected. */
 int nezha_bt_board_init(struct nezha_bt_board *,const struct nezha_bt_board_ops *,
     const struct qbt_boot_options *,const uint8_t address[6]);
+/* Fixed-rate Ganges diagnostic: ~31s of wire data plus the25s control budget. */
+uint64_t nezha_bt_board_boot_budget_ns(const struct qbt_boot_options *);
 int nezha_bt_board_power_on(struct nezha_bt_board *);
 int nezha_bt_board_power_off(struct nezha_bt_board *);
 int nezha_bt_board_destroy(struct nezha_bt_board *);

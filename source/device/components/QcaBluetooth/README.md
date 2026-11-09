@@ -12,9 +12,12 @@ Bluetooth27 adaptation has separately reached a real UART controller-version
 reply on 2026-11-09, followed by a baud-change timeout in002 and003. Nezha pairing and audio
 are still unverified; see the device's Bluetooth27 handoff. Its board selects
 the actual SM8850 DFS clock bank when enabled and uses a bounded Ganges reply
-observation. The003 hardware had DFS disabled. The next source aligns Ganges
-RTS-only flow and write/20ms/drain ordering with the actual Android HAL, and
-aligns the ordinary RCG control bits with Linux; target validation is pending.
+observation. The003/004 hardware had DFS disabled. The004 trial verified
+RTS-only and ordinary RCG bit20 programming but still received no data after
+FC48. The actual N0 HAL bypasses FC48 for the observed Ganges tuple after a
+PERI/TME bootstrap. This source rejects that incorrect high-rate path and
+prepares a distinct current115200 diagnostic, with60s initialization and65s
+caller budgets. Full PERI/TME and high-rate hardware support remain pending.
 
 | State | Features |
 | --- | --- |

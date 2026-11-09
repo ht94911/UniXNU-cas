@@ -409,7 +409,7 @@ static int bt_sk_boot_sysctl SYSCTL_HANDLER_ARGS
     int error=0,value;
     bt_sk_count(1);
     lck_mtx_lock(&bt_sk_lock);
-    struct timespec timeout={30,0};
+    struct timespec timeout={bt_ops.boot_wait_seconds?bt_ops.boot_wait_seconds:30,0};
     while(bt_sk.boot<0 && !error) error=msleep(&bt_sk.boot,&bt_sk_lock,PZERO|PCATCH,"btboot",&timeout);
     /* A real failed controller made bluetoothd poll this read thousands of
      * times a second on nezha. Keep the actual error, but sleep on the same
@@ -442,7 +442,7 @@ static int bt_sk_power_request(struct sysctl_req *req,bool enabled)
     error=bt_ops.power(bt_ops.context,enabled);
     lck_mtx_lock(&bt_sk_lock);
     if(error){bt_sk.power_pending=false;bt_sk.power_result=error;}
-    struct timespec timeout={30,0};
+    struct timespec timeout={enabled && bt_ops.boot_wait_seconds?bt_ops.boot_wait_seconds:30,0};
     while(bt_sk.power_pending && !error)error=msleep(&bt_sk.power_pending,&bt_sk_lock,PZERO|PCATCH,"btpower",&timeout);
     result=bt_sk.power_result;lck_mtx_unlock(&bt_sk_lock);
     return error?error:SYSCTL_OUT(req,&result,sizeof(result));

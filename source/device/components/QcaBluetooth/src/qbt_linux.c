@@ -131,6 +131,14 @@ static int firmware_basename(const char *name) {
             !((*p>='a' && *p<='z') || (*p>='0' && *p<='9') || *p=='.' || *p=='_' || *p=='-')) return 0;
     return 1;
 }
+/* Actual N0 HAL SocInit bypasses FC48 for these Ganges revisions. PERI must
+ * establish high baud before normal BT startup; same-rate115200 is a distinct
+ * diagnostic. Do not report3.2Mbps by skipping a required PERI transition. */
+static bool ganges_same_rate_tuple(const struct qbt_info *info) {
+    if(info->product!=0x1e && info->product!=0x21)return false;
+    return (info->soc==0x40210100 && info->rom==0x0100) ||
+           (info->soc==0x40210200 && info->rom==0x0200);
+}
 int qbt_boot_controller(struct qbt *q,const struct qbt_boot_options *options,const uint8_t address[6]) {
     if (!q || !options) return -EINVAL;
     uint32_t speed=options->operating_baud;
@@ -164,6 +172,11 @@ int qbt_boot_controller(struct qbt *q,const struct qbt_boot_options *options,con
             (options->expected_soc && options->expected_soc!=q->info.soc) ||
             (options->expected_rom && options->expected_rom!=q->info.rom)) e=-ENODEV;
         if (!e && options->controller==QBT_WCN7860 && q->info.product!=0x1e && q->info.product!=0x21) e=-ENODEV;
+        if(!e && options->controller==QBT_WCN7860 && ganges_same_rate_tuple(&q->info) &&
+           options->baud_method==QBT_BAUD_FC48 && speed!=options->initial_baud) {
+            qbt_linux_log(q,4,"Ganges tuple requires PERI high-rate bootstrap; FC48 is not its SocInit path");
+            e=-EOPNOTSUPP;
+        }
         if(!e && options->baud_method==QBT_BAUD_FC48 && speed!=115200)
             e=set_speed(q,speed,baud,options->controller==QBT_WCN7860);
     }

@@ -13,8 +13,8 @@ struct fixture {
     bool progress_acks, progress_loss, speed_reply; unsigned progress_sent; uint64_t progress_delay, speed_settle, speed_command_at, speed_reply_delay, hardware_fault_at;
     unsigned download_mode, failed_opcode; bool missing_replies, missing_wake, board_specific;
     bool nvm_edited, address_written, wake_armed, hardware_fault, clock_fault;
-    uint8_t speed_status, address[6]; bool stale_address, short_address, legacy_speed_reply;
-    bool ganges, malformed_board;
+    uint8_t speed_status, nvm_baud, address[6]; bool stale_address, short_address, legacy_speed_reply;
+    bool ganges, malformed_board;uint32_t soc;
 };
 static void put16(uint8_t *p,unsigned v){p[0]=v;p[1]=v>>8;}
 static void put32(uint8_t *p,unsigned v){put16(p,v);put16(p+2,v>>16);}
@@ -44,7 +44,7 @@ static void controller(struct fixture *f,const uint8_t *p,unsigned n){
     }
     if(op==0xfc00){
         response[1]=param[0];length=2;
-        if(param[0]==0x19){length=15;response[2]=0;put32(response+3,f->ganges?0x1e:0x21);put16(response+7,0x1234);put16(response+9,0x0200);put32(response+11,0x400c0200);}
+        if(param[0]==0x19){length=15;response[2]=0;put32(response+3,f->ganges?0x1e:0x21);put16(response+7,0x1234);put16(response+9,0x0200);put32(response+11,f->soc?f->soc:0x400c0200);}
         else if(param[0]==0x23){length=f->malformed_board?4:5;if(f->board_specific){response[3]=0x12;response[4]=0x34;}}
         else if(param[0]==0x20){const char *label="WCN7850-fixture";length=strlen(label)+3;response[2]=strlen(label);memcpy(response+3,label,strlen(label));}
         else if(param[0]==0x1e){
@@ -57,7 +57,7 @@ static void controller(struct fixture *f,const uint8_t *p,unsigned n){
             assert(f->downloaded_length+bytes<=sizeof(f->downloaded));memcpy(f->downloaded+f->downloaded_length,param+2,bytes);f->downloaded_length+=bytes;
             if(f->downloaded_length==f->download_size){
                 if(f->downloaded[0]==2){
-                    const uint8_t *tag=f->downloaded+4;assert(le16(tag)==17);assert((tag[12]&0x80)&&tag[13]==17);
+                    const uint8_t *tag=f->downloaded+4;assert(le16(tag)==17);assert((tag[12]&0x80)&&tag[13]==f->nvm_baud);
                     tag+=15;assert(le16(tag)==27&&(tag[12]&1));f->nvm_edited=true;
                 }f->downloaded_length=0;
             } else if(f->download_mode==1||f->download_mode==3){
@@ -147,7 +147,7 @@ static int firmware(void *c,const char *name,const uint8_t **p,size_t *n){
 static void firmware_put(void *c,const uint8_t *p,size_t n){(void)c;(void)p;(void)n;}
 static void make(struct fixture *f,unsigned mode){
     memset(f,0,sizeof(*f));f->now=1000000000;f->write_limit=31;f->receive_room=sizeof(f->received);f->wake_armed=true;
-    f->speed_reply=true;f->speed_status=1;memset(f->address,0x42,6);
+    f->speed_reply=true;f->speed_status=1;f->nvm_baud=17;memset(f->address,0x42,6);
     put32(f->patch,((sizeof(f->patch)-4)<<8)|1);f->patch[14]=mode;
     put32(f->nvm,((sizeof(f->nvm)-4)<<8)|2);uint8_t *tag=f->nvm+4;
     put16(tag,17);put16(tag+2,3);tag+=15;put16(tag,27);put16(tag+2,1);tag+=13;
@@ -291,6 +291,25 @@ static void ganges_startup(void){
         else {assert(e<0 && !f->address_written);}
         destroy(f);
     }
+    /* Actual Ganges tuple: the explicit same-rate diagnostic never sends
+     * FC48, but still requires full ELF/NVM, board and HCI address replies. */
+    make(f,3);f->ganges=f->board_specific=true;f->soc=0x40210200;f->nvm_baud=0;f->speed=115200;
+    memcpy(f->patch,"\177ELF\1\1\1",7);
+    o.baud_method=QBT_BAUD_CURRENT;o.initial_baud=o.operating_baud=115200;
+    o.expected_rom=0x200;o.expected_soc=0x40210200;
+    assert(!qbt_boot_controller(f->q,&o,address));
+    assert(!f->speed_command_at && !f->flow_off && !f->flow_on && f->speed==115200);
+    assert(f->q->info.state==2 && f->q->info.baud==115200 && f->q->info.board_valid &&
+           f->firmware_gets==2 && f->nvm_edited && f->address_written);
+    destroy(f);
+    make(f,3);f->ganges=f->board_specific=true;f->soc=0x40210200;
+    o.baud_method=QBT_BAUD_FC48;o.operating_baud=3200000;
+    assert(qbt_boot_controller(f->q,&o,address)==-EOPNOTSUPP &&
+           !f->speed_command_at && !f->firmware_gets && !f->flow_off);
+    destroy(f);
+    make(f,3);o.baud_method=QBT_BAUD_CURRENT;o.operating_baud=3200000;
+    assert(qbt_boot_controller(f->q,&o,address)==-EOPNOTSUPP && !f->commands && !f->firmware_gets);
+    destroy(f);
     free(f);puts("PASS: modeled WCN7860 ELF startup, exact ROM/board selection, refused generic NVM, real one-second baud deadline, delayed unified/vendor completions, prompt UART failure and malformed board reply");
 #endif
 }

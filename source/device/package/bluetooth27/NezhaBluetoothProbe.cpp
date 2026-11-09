@@ -126,7 +126,8 @@ static void worker(void *, wait_result_t) {
     int e = nezha_bt_platform_init(&ops, &runtime.inputs, &runtime, wake, waitUntil, receive);
     if (!e) e = nezha_bt_board_init(&runtime.board, &ops, &runtime.inputs.boot, runtime.inputs.address);
     if (!e) __atomic_store_n(&runtime.boardReady, 1u, __ATOMIC_RELEASE);
-    qbt_transport_ops transport = {&runtime, wake, request};
+    qbt_transport_ops transport = {&runtime, wake, request,
+        (uint32_t)(nezha_bt_board_boot_budget_ns(&runtime.inputs.boot)/1000000000ULL)+5u};
     if (!e) e = qbt_transport_init(&transport); /* XNU interface uses positive errno */
     if (e) goto done;
     {
