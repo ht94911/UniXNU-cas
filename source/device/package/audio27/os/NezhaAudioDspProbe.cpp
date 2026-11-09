@@ -11,6 +11,7 @@ extern "C" {
 #include "NezhaAudioAdspInputs.h"
 #include "NezhaAudioSmmu.h"
 #include "NezhaAudioTasBoard.h"
+#include "NezhaAudioXpuTrace.h"
 #include <Sm8850ResourcesNative.h>
 extern "C" volatile int nezha_touch_stage;
 extern "C" kern_return_t thread_terminate(thread_t);
@@ -318,7 +319,10 @@ int poll_tas_only(AudioDspProbe *d) {
         // without parsing firmware, acquiring PAS/DMA or touching GLINK.
         if (__atomic_load_n(&nezha_touch_stage,__ATOMIC_ACQUIRE)!=7 ||
             !sm8850_usb_domain_ready()) return NA_PENDING;
+        if (!na_xpu_trace_before("common-resources",0,0)) return NA_IO;
         d->input.resources.common=sm8850_native_resources();
+        na_xpu_trace_after("common-resources",0,d->input.resources.common ? NA_OK:NA_IO,
+                           0,(uintptr_t)d->input.resources.common);
         if (!d->input.resources.common) return NA_IO;
         d->phase=3;d->deadline=d->now+5000;
     }

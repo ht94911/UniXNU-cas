@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: BSD-2-Clause-Patent
 #include "NezhaAudioTasBoard.h"
+#include "NezhaAudioXpuTrace.h"
 namespace {
 constexpr unsigned resource=9,owner=0x4e41;
 constexpr uint64_t gcc=0x100000,tlmm=0xf000000,geni=0x1980000;
@@ -29,7 +30,9 @@ int enter(NaNativeTasBoard *b,uint64_t lease) {
 int claim(void *v,uint32_t kind,uint64_t *lease) {
     auto *b=static_cast<NaNativeTasBoard *>(v);
     if (kind!=NaBoardTas || !lease || b->lease || b->error) return NA_OWNERSHIP;
+    if (!na_xpu_trace_before("tas-acquire",0,0)) return NA_IO;
     int r=sm8850_resource_acquire(b->common,resource,owner,&b->lease);if (r) return error(r);
+    na_xpu_trace_after("tas-acquire",0,0,0,b->lease);
     *lease=b->lease;
     if (!b->geni.mapping) r=na_native_map(&b->geni,{geni,0x4000},b->lease);
     if (!r && !b->tlmm.mapping) r=na_native_map(&b->tlmm,{tlmm,0x100000},b->lease);
@@ -44,6 +47,7 @@ int release(void *v,uint32_t kind,uint64_t lease) {
 }
 int read(void *v,uint64_t lease,uint64_t pa,uint32_t *value) {
     auto *b=static_cast<NaNativeTasBoard *>(v);if (!value) return NA_ARGUMENT;
+    if (!na_xpu_trace_before("tas-read",pa,4)) {b->error=NA_IO;return NA_IO;}
     int r=enter(b,lease);if (r) return r;
     if (gcc_read(pa)) r=b->common->io.read32(b->common->io.context,Sm8850Gcc,(uint32_t)(pa-gcc),value) ? NA_IO:NA_OK;
     else {
@@ -51,11 +55,13 @@ int read(void *v,uint64_t lease,uint64_t pa,uint32_t *value) {
         if (!p) r=NA_OWNERSHIP;
         else {__asm__ volatile("dsb sy" ::: "memory");*value=*p;__asm__ volatile("dsb sy" ::: "memory");}
     }
-    sm8850_resource_leave(b->common);return r;
+    sm8850_resource_leave(b->common);
+    na_xpu_trace_after("tas-read",pa,r,r ? 0:*value);return r;
 }
 int update(void *v,uint64_t lease,uint64_t pa,uint32_t mask,uint32_t value) {
     auto *b=static_cast<NaNativeTasBoard *>(v);
     if (!mask || (value&~mask)) return NA_ARGUMENT;
+    if (!na_xpu_trace_before("tas-update",pa,4,mask,value)) {b->error=NA_IO;return NA_IO;}
     int r=enter(b,lease);if (r) return r;
     if (pa==gcc+0x52018) r=error(sm8850_gcc_update(b->common,0x52018,vote_mask,mask,value));
     else {
@@ -68,7 +74,8 @@ int update(void *v,uint64_t lease,uint64_t pa,uint32_t mask,uint32_t value) {
             *p=(old&~mask)|value;__asm__ volatile("dsb sy" ::: "memory");
         }
     }
-    sm8850_resource_leave(b->common);return r;
+    sm8850_resource_leave(b->common);
+    na_xpu_trace_after("tas-update",pa,r,value);return r;
 }
 }
 extern "C" int na_native_tas_board(NaNativeTasBoard *b,Sm8850Resources *common,NaBoardIo *out) {

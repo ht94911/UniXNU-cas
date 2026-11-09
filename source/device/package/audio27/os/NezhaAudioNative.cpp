@@ -9,6 +9,7 @@
 #include <arm/caches_internal.h>
 #include "NezhaAudioNative.h"
 #include "NezhaAudioService.h"
+#include "NezhaAudioXpuTrace.h"
 #ifdef IOKIT_ENABLE_SHARED_PTR
 #error Requalify native OSPtr ABI before changing these build flags.
 #endif
@@ -81,10 +82,14 @@ void run(void *v,wait_result_t) {
 }
 extern "C" int na_native_map(NaNativeWindow *w,NaRange range,uint64_t lease) {
     if (!w || w->mapping || !lease || !ownedWindow(range)) return NA_ARGUMENT;
+    if (!na_xpu_trace_before("descriptor-new",range.base,range.bytes)) return NA_IO;
     auto *memory=IODeviceMemory::withRange(range.base,range.bytes);
+    na_xpu_trace_after("descriptor-new",range.base,memory ? NA_OK:NA_IO,0,(uintptr_t)memory);
     if (!memory) return NA_IO;
     IOOptionBits cache=(range.base==na_nezha_facts.firmware.base || range.base==na_nezha_facts.dtb.base) ? kIOMapWriteCombineCache:kIOMapInhibitCache;
+    if (!na_xpu_trace_before("descriptor-map",range.base,range.bytes)) {memory->release();return NA_IO;}
     auto *map=memory->map(kIOMapAnywhere|cache);
+    na_xpu_trace_after("descriptor-map",range.base,map ? NA_OK:NA_IO,0,(uintptr_t)map);
     if (!map) {memory->release();return NA_IO;}
     w->descriptor=memory;w->mapping=map;w->va=reinterpret_cast<volatile uint8_t *>(map->getVirtualAddress());w->physical=range;w->lease=lease;
     return w->va ? NA_OK:NA_IO;
