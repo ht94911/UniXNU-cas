@@ -236,7 +236,7 @@
     "source/appsync/test-signing.m": "ab62b5935df9aa17faae216ccf2a7d61f68c7e690a84030b20f3382e200d29ab",
     "source/appsync/test-trust.c": "cb6508956b8e1da76cd3a440009ed658817039050c41e8dba41a0a826706d1bf",
     "source/appsync/test.py": "1114ac3c419394c7afa8b1f2d36f05ab274386235f536dbd55a59d16b4476f0c",
-    "source/device/package/apple-usb/NezhaAppleUsbDevice.cpp": "53f695046097d1e387fc53b16a76140631fdc75f0ee2b983f504bc78458a8fd2",
+    "source/device/package/apple-usb/NezhaAppleUsbDevice.cpp": "1d72c2c2f514034d376a85270a66865b678f60982c34458bf9df336223eda8f7",
     "source/device/package/apple-usb/LICENSE": "5b1d3d911103cb0f41641ec0964c5ac1f7e229f57aa072b6ac38bae913a1307b",
     "source/device/package/armcpu/usb-spi-mask.patch": "f79a3775d61388f195def8f75cc7dcbbaa6667d2628a8cf593adadfe587305a9",
     "source/device/scripts/usb-xdci-iphone-24A446.json": "3b59ae5ad6e782790e6ccf88fb2622ad2e506ed52032c09daedddd31f68ca3ce",
@@ -304,5 +304,6 @@
   "appsync_cache_probe_overlay": "Resource diagnostic mode2 captures original loader log, visible/backing cache fingerprints and test runner stderr. Ordinary resource mode1 preserved.",
   "appsync_apple_return_overlay": "RAM Data Apple USB orderly reboot callback. The device series explicitly lists the XNU final-stage call-site patch.",
   "appsync_apple_worker_overlay": "Run Apple USB hardware preparation on the boot CPU required by the existing Qualcomm backend.",
-  "appsync_apple_stage_overlay": "Use the selected BootProgress stage recorder to show Apple USB startup progress and one read-only post-start register snapshot."
+  "appsync_apple_stage_overlay": "Use the selected BootProgress stage recorder to show Apple USB startup progress and one read-only post-start register snapshot.",
+  "appsync_apple_cdc_preflight": "Mode 2 keeps CDC and checks Apple kext and metaclass initialization without touching the USB controller or DMA lease."
 }

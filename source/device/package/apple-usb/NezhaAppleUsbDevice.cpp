@@ -229,8 +229,9 @@ bool publishDevice()
     return true;
 }
 
-void appleUsbWorker(void *, wait_result_t)
+void appleUsbWorker(void *argument, wait_result_t)
 {
+    const bool probeOnly = argument != nullptr;
     appleUsbStage("worker-enter", 0);
     // The shared Qualcomm backend permits register and DMA setup only on the
     // master CPU. Match the normal CDC worker's migration before using it.
@@ -255,12 +256,19 @@ void appleUsbWorker(void *, wait_result_t)
                         snprintf(message, sizeof(message), "ASUSB RAM base=%lx size=%lx", gPhysBase, gPhysSize);
                         boot_progress_stage(message);
                         IOLog("%s\n", message);
-                        appleUsbStage("hardware-enter", 0);
-                        const bool prepared = qcom_usb_apple_device_prepare(gPhysBase, gPhysSize);
-                        appleUsbStage("hardware-return", prepared ? 0 : 1);
-                        if (prepared) {
-                            started = publishDevice();
-                            if (!started) qcom_usb_apple_device_abort();
+                        if (probeOnly) {
+                            // CDC retains the controller, DMA lease and normal
+                            // return. This run only checks class initialization.
+                            appleUsbStage("cdc-preflight-complete", 0);
+                            started = true;
+                        } else {
+                            appleUsbStage("hardware-enter", 0);
+                            const bool prepared = qcom_usb_apple_device_prepare(gPhysBase, gPhysSize);
+                            appleUsbStage("hardware-return", prepared ? 0 : 1);
+                            if (prepared) {
+                                started = publishDevice();
+                                if (!started) qcom_usb_apple_device_abort();
+                            }
                         }
                     }
                 }
@@ -282,10 +290,13 @@ extern "C" void nezha_apple_usb_start(void)
 {
     int appsync = 0, apple = 0, debug = 0;
     if (!PE_parse_boot_argn("appsync", &appsync, sizeof(appsync)) || appsync != 1 ||
-        !PE_parse_boot_argn("appsync-usb", &apple, sizeof(apple)) || apple != 1 ||
-        (PE_parse_boot_argn("qcom-usb-debug", &debug, sizeof(debug)) && debug == 1))
+        !PE_parse_boot_argn("appsync-usb", &apple, sizeof(apple)) || (apple != 1 && apple != 2))
         return;
+    (void)PE_parse_boot_argn("qcom-usb-debug", &debug, sizeof(debug));
+    const bool probeOnly = apple == 2;
+    if (probeOnly != (debug == 1)) return;
+    void *context = reinterpret_cast<void *>(static_cast<uintptr_t>(probeOnly));
     thread_t worker = THREAD_NULL;
-    if (kernel_thread_start(appleUsbWorker, nullptr, &worker) == KERN_SUCCESS)
+    if (kernel_thread_start(appleUsbWorker, context, &worker) == KERN_SUCCESS)
         thread_deallocate(worker);
 }

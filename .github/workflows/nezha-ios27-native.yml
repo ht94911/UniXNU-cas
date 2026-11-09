@@ -1,7 +1,7 @@
-name: nezha iPhone27 AppSync Apple USB - native023 visible Apple USB stages
+name: nezha iPhone27 AppSync Apple USB - native024 Apple USB CDC preflight
 on:
   push:
-    branches: [codex/ios27-appsync-apple-stages023-20261109]
+    branches: [codex/ios27-appsync-cdc-preflight024-20261110]
   workflow_dispatch:
 permissions:
   contents: read
