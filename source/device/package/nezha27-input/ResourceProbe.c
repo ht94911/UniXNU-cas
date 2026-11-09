@@ -7,6 +7,7 @@
 #include <sys/uio.h>
 #include <sys/dirent.h>
 #include <sys/fcntl.h>
+#include <sys/errno.h>
 #include <IOKit/IOLib.h>
 #include <kern/thread.h>
 #include <pexpert/pexpert.h>
@@ -16,16 +17,15 @@
 #include <string.h>
 extern void IOSleep(unsigned int);
 // Same native open/read/close path as upstream BootDiagExport, fixed original
-// system files only. Check metadata and all bytes up to 64 KiB; export a digest
-// and format header, never file contents. No write direction or open flags.
-static void read_one(const char *path,vfs_context_t ctx) {
+// selected resources. The caller supplies the size bound for each fingerprint.
+static void read_one(const char *path,vfs_context_t ctx,uint64_t maximum_size) {
     vnode_t file=NULLVP;int error=vnode_open(path,FREAD,0,0,&file,ctx);
     if(error){printf("NEZHA RESOURCE OPEN: error=%d path=%s\n",error,path);return;}
     struct vnode_attr va;memset(&va,0,sizeof(va));VATTR_INIT(&va);VATTR_WANTED(&va,va_data_size);
     error=vnode_getattr(file,&va,ctx);
     printf("NEZHA RESOURCE ATTR: error=%d supported=%d size=%llu path=%s\n",error,
         VATTR_IS_SUPPORTED(&va,va_data_size)!=0,(unsigned long long)va.va_data_size,path);
-    if(error || !VATTR_IS_SUPPORTED(&va,va_data_size) || va.va_data_size>65536)goto close;
+    if(error || !VATTR_IS_SUPPORTED(&va,va_data_size) || va.va_data_size>maximum_size)goto close;
     unsigned char bytes[512],header[8]={0};uint64_t at=0,hash=UINT64_C(14695981039346656037);
     while(at<va.va_data_size) {
         int want=(int)((va.va_data_size-at)<sizeof(bytes)?(va.va_data_size-at):sizeof(bytes));
@@ -78,10 +78,72 @@ static void list_one(const char *path,vfs_context_t ctx) {
 done:
     IOFreeData(buffer,8192);vnode_put(dir);
 }
+/* Same VFS read path as sheng's boot_cache_loader_log_capture. Each fixed log
+ * contributes its final 8 KiB to the existing USB console. */
+static void read_appsync_log(const char *path,vfs_context_t ctx) {
+    enum {capacity = 8192, chunk = 160};
+    vnode_t file = NULLVP;
+    char *buffer = NULL;
+    int error = vnode_open(path,FREAD,0,0,&file,ctx);
+    if(error) {
+        printf("APPSYNC LOG OPEN: error=%d path=%s\n",error,path);
+        return;
+    }
+    struct vnode_attr va;
+    VATTR_INIT(&va);
+    VATTR_WANTED(&va,va_data_size);
+    error = vnode_getattr(file,&va,ctx);
+    if(error)goto close;
+    if(!VATTR_IS_SUPPORTED(&va,va_data_size)) {
+        error = EIO;
+        goto close;
+    }
+    buffer = IOMallocData(capacity);
+    if(!buffer) {
+        error = ENOMEM;
+        goto close;
+    }
+    uint64_t offset = va.va_data_size > capacity ? va.va_data_size - capacity : 0;
+    int length = (int)(va.va_data_size-offset), residual = length;
+    error = vn_rdwr(UIO_READ,file,buffer,length,(off_t)offset,UIO_SYSSPACE,0,
+        vfs_context_ucred(ctx),&residual,vfs_context_proc(ctx));
+    if(!error && (residual<0 || residual>length))error=EIO;
+    if(!error) {
+        length -= residual;
+        printf("APPSYNC LOG BEGIN: bytes=%d offset=%llu path=%s\n",length,
+            (unsigned long long)offset,path);
+        for(int at=0;at<length;at+=chunk) {
+            int count = length-at < chunk ? length-at : chunk;
+            printf("APPSYNC LOG DATA: offset=%llu %.*s\n",
+                (unsigned long long)offset+(unsigned)at,count,buffer+at);
+        }
+        printf("APPSYNC LOG END: path=%s\n",path);
+    }
+close:
+    if(buffer)IOFreeData(buffer,capacity);
+    int close_error = vnode_close(file,FREAD,ctx);
+    if(error || close_error)
+        printf("APPSYNC LOG STATUS: read=%d close=%d path=%s\n",error,close_error,path);
+}
+
 static void resource_thread(void *argument,wait_result_t result) {
-    (void)argument;(void)result;
+    (void)result;
     IOSleep(120000);
     vfs_context_t ctx=vfs_context_current();
+    if((uintptr_t)argument==2) {
+        read_one("/System/Library/xpc/launchd.plist",ctx,4*1024*1024);
+        read_one("/private/var/ngpu/appsync/cache/launchd.plist",ctx,4*1024*1024);
+        lookup_one("/System/Library/LaunchDaemons/org.unixnu.nezha.appsync.probe.plist",ctx);
+        lookup_one("/usr/libexec/unixnu-appsync-probe",ctx);
+        for(unsigned pass=0;pass<3;++pass) {
+            if(pass)IOSleep(30000);
+            read_appsync_log("/private/var/log/com.apple.xpc.launchd/launchd_cache_loader.log",ctx);
+            read_appsync_log("/private/var/ngpu/appsync/probe/runner-stderr.txt",ctx);
+        }
+        printf("APPSYNC CACHE PROBE: complete\n");
+        thread_terminate(current_thread());
+        return;
+    }
     const char *dirs[]={
         "/System/Library/DuetActivityScheduler/Scheduler/DuetActivitySchedulerDaemon.bundle",
         "/System/Library/DuetActivityScheduler/Scheduler/DuetActivitySchedulerDaemon.bundle/DuetActivityScheduler.momd",
@@ -96,14 +158,14 @@ static void resource_thread(void *argument,wait_result_t result) {
         "/System/Library/DuetActivityScheduler/Scheduler/DuetActivitySchedulerDaemon.bundle/DuetActivityScheduler.momd/DuetActivityScheduler-v3.mom",
         "/System/Library/PrivateFrameworks/SafariShared.framework/SitesAllowedToAutoplay.plist"
     };
-    for(unsigned i=0;i<sizeof(files)/sizeof(files[0]);++i)read_one(files[i],ctx);
+    for(unsigned i=0;i<sizeof(files)/sizeof(files[0]);++i)read_one(files[i],ctx,65536);
     printf("NEZHA RESOURCE PROBE: complete;read-only original system paths,no export or persistence\n");
     thread_terminate(current_thread());
 }
 void nezha_resource_probe_start(void) {
-    unsigned option=0;PE_parse_boot_argn("resource-diag",&option,sizeof(option));if(option!=1)return;
+    unsigned option=0;PE_parse_boot_argn("resource-diag",&option,sizeof(option));if(option!=1 && option!=2)return;
     static bool started;if(started)return;started=true;
-    thread_t thread;int result=kernel_thread_start(resource_thread,NULL,&thread);
+    thread_t thread;int result=kernel_thread_start(resource_thread,(void *)(uintptr_t)option,&thread);
     if(result==KERN_SUCCESS)thread_deallocate(thread);
     printf("NEZHA RESOURCE PROBE: thread=%d deferred system-resource reads\n",result);
 }

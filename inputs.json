@@ -155,7 +155,7 @@
     "source/device/package/nezha27-input/NezhaInputTelemetry.h": "5483fb9b489a0f7517e26102f20cdfa050b7f61214f2a3495b95820e122e0022",
     "source/device/package/nezha27-input/NezhaTouchEdge.h": "d132e77508b3b01d4ac01a13ec8617881ebe816fdd608461de1d7dd34c4b31dd",
     "source/device/package/nezha27-input/NezhaTouchSelfTest.h": "9262f7035de652a7336f8dd9b0a65bb6c1213cec0a0f8c4ce41d0b00037b1fd7",
-    "source/device/package/nezha27-input/ResourceProbe.c": "c92b2ba262f2885d90499ba4bfa97c5bc2904c42e4ba3b48618bdac98bd49524",
+    "source/device/package/nezha27-input/ResourceProbe.c": "21a81dee52ecd45e2c53d9cb4817b0d2de9fb4caf379f2a04e73477a64348abb",
     "source/device/patches/xnu-12377/series": "dbc71e83a4dd9099863ca4f015f64711f43536d4b9d4ba95a4514d3308fcd30a",
     "source/device/patches/xnu-12377/source-storage-runtime.patch": "25c377c60db417b15fcc137acf380f0319cbff9d5ba012af1907f3485602b584",
     "source/device/patches/xnu-12377/zzyd-sheng-audio-addon-mount.patch": "b51ed480b34c92452ea984fe056e5fce310bd929992d418f383a7e9268313c51",
@@ -244,7 +244,8 @@
     "source/appsync/ProbeRunner.m": "ae95b7e227e4da99885c5c15c7bd698699709c70540f13f58f7320be45fe8523",
     "source/appsync/QcomUserLogWire.h": "965d7aeaa4043bcceb151cd6331ce50faefe21f57ce7c91cf781a52b4917397b",
     "source/device/scripts/sign-detached-cache.py": "cbede242ed225353445f80e51f6c2c451007e89ccc61677d7b0672a037635cd0",
-    "ci/cache-signature-template.py": "3596fbb421e2d223c9d01b6280af68ca7e83595c99d3d96e481450f187201d72"
+    "ci/cache-signature-template.py": "3596fbb421e2d223c9d01b6280af68ca7e83595c99d3d96e481450f187201d72",
+    "ci/check-cache-log-reader.py": "3e1976179ca4d9c24176cc596f5976668f1ffe550183e0a96cbbfe8c94a31d33"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
@@ -298,5 +299,6 @@
     "base_candidate": "n27-main-persist024",
     "base_native_run": 42401029411
   },
-  "qualification_iteration": "AppSync014: signed donor cache overlay plus own test job; donor data stays on local disk."
+  "qualification_iteration": "AppSync014: signed donor cache overlay plus own test job; donor data stays on local disk.",
+  "appsync_cache_probe_overlay": "Resource diagnostic mode2 captures original loader log, visible/backing cache fingerprints and test runner stderr. Ordinary resource mode1 preserved."
 }
