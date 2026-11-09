@@ -130,14 +130,14 @@
     "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc",
     "marker": "darwin_device_init",
     "kind": "function",
-    "sha256": "3b4b6a3aa1a6d38c3d5cd9dd98bcf336b10022b7d232f17cf5c9139ed7377a26"
+    "sha256": "95787027fd99e32b40d7ef525c5e78d3b46b2193365dc3138df94c92c566420f"
   },
   {
     "fixture": "new.cpp",
     "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc",
     "marker": "darwin_device_finish",
     "kind": "function",
-    "sha256": "aa7666705bf268bf399ed9a04dffcd4332bb07e6b347ed4fc384785d4d28f670"
+    "sha256": "7c7a8e331dea0162546f88d14e765a943edccf4f6b603c45ff50dd3040a630a0"
   },
   {
     "fixture": "new.cpp",
@@ -278,5 +278,19 @@
     "sha256": "be4a049831490ee6ff2399642777fc03989932d9e0dab20a8f88c7f156f065ba",
     "fixture": "bo-trim-new.cpp",
     "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc"
+  },
+  {
+    "fixture": "new.cpp",
+    "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc",
+    "marker": "struct darwin_retire_state {",
+    "kind": "marker",
+    "sha256": "1437fef689636e295305ff232d75ec1d26ab822d7bb21c37800807573a3372fb"
+  },
+  {
+    "fixture": "new.cpp",
+    "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc",
+    "marker": "dw_wait_device",
+    "kind": "function",
+    "sha256": "12bd7c0c577e2149edfee254604b75bcfe287ad8dfe3a789b9e74d38f2d1eb63"
   }
 ]

@@ -69,5 +69,6 @@ report=dict(actual_prepared_sources_match=True,ASan_UBSan=True,old_lifetime_erro
             old_VA_UAF_reproduced=True,fragmented_VA_and_OOM_passed=True,
             actual_swap_API_and_lifetime_guards_passed=True,
             actual_BO_age_cleanup_bound_and_pressure_cases_passed=True,
-            explicit_port_and_allocation_balance_checked=True,leak_sanitizer='Linux preflight additionally checked;not supported in all Apple ASan runtimes')
+            explicit_port_and_allocation_balance_checked=True,independent_wait_client=True,
+            initialization_failure_cases=16,per_device_connections=2,mutex_balance_checked=True,leak_sanitizer='Linux preflight additionally checked;not supported in all Apple ASan runtimes')
 (a.logs/'device-context-qualified.json').write_text(json.dumps(report,indent=2)+'\n')

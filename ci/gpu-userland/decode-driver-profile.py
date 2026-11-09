@@ -7,7 +7,7 @@ import json
 import struct
 
 RECORD = struct.Struct('<II4Q8I')
-API = {1:'BeginRenderPass',2:'EndRenderPass',3:'Draw',4:'DrawIndexed',5:'BindPipeline',6:'UpdateBuffer'}
+API = {1:'BeginRenderPass',2:'EndRenderPass',3:'Draw',4:'DrawIndexed',5:'BindPipeline',6:'UpdateBuffer',7:'MapBuffer'}
 PHASE = ['summary','attachment allocation','GMEM layout','subpass barrier','LRZ',
     'subpass emission','patchpoint allocation','end subpass','render dispatch','render trace',
     'render GMEM','render system memory','draw state','draw packet emission','CS reserve',
