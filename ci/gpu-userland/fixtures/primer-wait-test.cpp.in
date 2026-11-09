@@ -1,0 +1,57 @@
+
+#include <cassert>
+#include <cstdint>
+#include <cstdio>
+static uint64_t fake_now;
+static unsigned script;
+static volatile uint32_t native_prime_rate, native_prime_compiling;
+static uint64_t nowMs() { return fake_now; }
+static unsigned native_bridge_metal_recent_commits(uint64_t window) {
+    assert(window == 250000);
+    if (script == 1) return fake_now < 18000 ? 60 : 0;
+    if (script == 2) return (fake_now < 2000 || (fake_now >= 3000 && fake_now < 4000)) ? 24 : 0;
+    if (script == 3) return fake_now < 500 ? 9 : 0;
+    if (script == 4) return fake_now < 100100 ? 24 : 0;
+    return 0;
+}
+static int usleep(unsigned usec) {
+    assert(usec == 100000);
+    fake_now += 100;
+    assert(fake_now <= 120000);
+    return 0;
+}
+static uint64_t legacyWait() {
+    const uint64_t began = nowMs();
+    uint64_t quietSince = 0;
+    bool busy = false;
+    native_prime_rate = 0;
+    for (;;) {
+        const uint64_t now = nowMs();
+        const unsigned commits = native_bridge_metal_recent_commits(250000);
+        if (commits > native_prime_rate) native_prime_rate = commits;
+        if (now - began >= 10000) return now - began;
+        if (commits > 8) {busy = true; quietSince = 0; native_prime_compiling = 2;}
+        else if (!busy) return 0;
+        else if (!quietSince) quietSince = now;
+        // After animation, two seconds without it before the next compile, so a pause between two swipes does not let one in.
+        else if (now - quietSince >= 2000) return now - began;
+        usleep(100000);
+    }
+}
+@SELECTED_WAIT_FUNCTION@
+
+static uint64_t run(unsigned which, bool fixed) {
+    fake_now = 0; script = which; native_prime_compiling = 0;
+    return fixed ? fixedWait() : legacyWait();
+}
+int main() {
+    assert(run(1, false) == 10000);
+    assert(native_bridge_metal_recent_commits(250000) > 8);
+    assert(run(1, true) == 20000);
+    assert(native_bridge_metal_recent_commits(250000) <= 8);
+    assert(run(2, true) == 6000);
+    assert(run(3, true) == 2500);
+    assert(run(4, true) == 102100);
+    assert(run(0, true) == 0);
+    std::puts("6 actual-function checks passed; legacy busy deadline reproduced; fixed policy waits for quiet without a forced compile");
+}
