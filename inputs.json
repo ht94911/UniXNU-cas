@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Audio038 reuses the existing explicit playback startup after verified control/TAS bring-up, carries037 GPR timing/watchdog/SPI and36 GPIO/GENI, and exposes playback through the existing snapshot protocol. Only reviewed production source and the workflow are exported; firmware, graphs, calibration, device logs, Data and private inputs remain local. Physical PCM/HAL/capture remain unverified.",
+  "purpose": "Audio039 restores the already verified037 four read-only PIL queries in the038 playback worker after proxy completion and before the first PAS stop. Original038 playback/VI/calibration/DMA/HAL and original GPU023 companions remain. No phone logs, firmware, calibration, Data or private inputs in this source export.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "934ba49acfbe9c3b828c0060c88bb97d0673f71b",
+  "device_revision": "b3f722ad5d9a36af353b6c631073bbaeee73915e",
   "soc_revision": "703d7b4bb00904b4a6e5d96f9e9bf72eec170f6b",
   "xcode": "26.6",
   "files": {
@@ -171,7 +171,7 @@
     "source/device/patches/xnu-12377/zzzzzz-nezha-input-chain-trace.patch": "c4d05419e7ec3af0de619754bdb6c2deb69b74d714c2219e509360ebfe1b947e",
     "source/device/patches/xnu-12377/zzzzzz-nezha-kernel-class-lock-order.patch": "cd90c61d6838f4e6a7248da81b6180f14db03d00f2f7a64f4bbe4034c0aa8dcb",
     "source/device/patches/xnu-12377/zzzzzz-nezha-sigp-startup-order.patch": "18275910b909d187e459c68f5d937cc09bc01923180141dc155aa7f4ff14aaf9",
-    "source/device/porting.toml": "575e95cf8771d7b93f45efab90dcf434bac917c707898f8663792e653e068bd7",
+    "source/device/porting.toml": "2f249baaf71db42ec22c3fa01ae58932ea994cc0da0f681828cbedfb1dd44fa0",
     "source/device/scripts/backlight-iphone-24A446.json": "446eb5fe6440335bfe9fca75b32f7d815ddcafbb8a3c2d7f697c1e5c3f40f6cb",
     "source/device/scripts/build-adreno840.py": "269f32fe2c97d7baf846a148fed7c111a53869486626a87ec8daab7fdfc3ab91",
     "source/device/scripts/build-boot-progress.py": "a210eb1f0443574eb1506932aa9e8181d5c73aecf99397d8cc731568bd3210ba",
@@ -219,9 +219,9 @@
     "source/device/package/audio27/platform/AudioSmmu.h": "41401f1b97e3481c7e5cc3e02c47f926e91eec9fa34f4a48981a3fc3b723cddd",
     "source/device/package/audio27/upstream/ShengGpr.c": "c4f498f07e2cb601b593e64a8d32474a21d6a87375618e1a67b99d52c5d3160e",
     "source/device/package/audio27/platform/SoundWire.h": "348979ac1e552e1c3a0027e09f8500927e8bf7ccbb496276d2c9d3ef19322224",
-    ".github/workflows/nezha-ios27-native.yml": "950efd8057dd7e7e1914b4761b897ed4917e007191543e31a75ffaa14a738690",
+    ".github/workflows/nezha-ios27-native.yml": "88cb9c9b092f6260f43b97624b75164ba350c5d78035f9d622249fd0f7a3ead4",
     "source/device/package/audio27/upstream/ShengGpr.h": "a274dded1f4d1e2709b9f966759bcb1f57d12747ee0f57743dea1fa97d95d23e",
-    "source/device/package/audio27/os/NezhaAudioNative.h": "4ae57f2194a9d1f3e05c4405c04de8fd2a6a373defb4fac9f6238b901c5a80c5",
+    "source/device/package/audio27/os/NezhaAudioNative.h": "53bd5bebce199f81892222bdd3a69b30494c0da3a4bc9a4d9a25a4093c22c243",
     "source/device/package/audio27/upstream/ShengAudioReach.h": "b135177a5feb3e24e0d8a6aabb301600e2c37078b970a09ada6e8eb7bb6a5b98",
     "source/device/package/audio27/upstream/QcomScm.h": "ab03ab1291f043cb281f4d64b82b0d497d0e4f61a5b888512f0ec852ae1a3244",
     "source/device/package/audio27/platform/NezhaAudioPlatform.h": "e1f7bccb47b1cf815ce0fe449ba0d61d684b99003157ad9ecf2f39e020bcf599",
@@ -245,7 +245,7 @@
     "source/device/package/audio27/upstream/ShengAudioReach.c": "9b198e58272d325bad48e68633f59c8cc5bdc97033d2a485abb6691a402b6a8d",
     "source/device/package/audio27/platform/Tas25xxTables.h": "194b22f95f786a746e284868d4fcd292da52cfd52d8e3987f2726082f4712b02",
     "source/device/package/audio27/platform/GeniTasBus.h": "a2cba9aa9fbfec01112142b4108b795a5593417602b9d297003b3dc7e64cd374",
-    "source/device/package/audio27/os/NezhaAudioNative.cpp": "d0b3f23e7ba398e508596d1cbbc93f5988e149d27fce6028b8b84921dc2bf103",
+    "source/device/package/audio27/os/NezhaAudioNative.cpp": "840882aa0f96d632dd3255e20edf1ccf9d400ce7c0e2d324b4b692fc5a1adca5",
     "source/device/package/audio27/upstream/LICENSE.PandoraAcdb": "f984c0a808afdeb2e050ceb47bc24d764156daa29b5dfde10fb9afec2f83f351",
     "source/device/package/audio27/upstream/QcomSmem.c": "4e9eb0ee22458dad30e1fcb7edb74a9d762222aff0623a6d5b85fb4a6e08bd03",
     "source/device/package/audio27/platform/Tas25xxEndpoint.c": "4936c48d261fef7627d9b261e926818a3d2be3aee6e19e55b65199c0b53b7fd1",
@@ -387,15 +387,15 @@
   "audio": {
     "base": "GPU023",
     "base_device_revision": "673cde869b7378658b470c4e6b2b9a1766b99411",
-    "source_revision": "934ba49acfbe9c3b828c0060c88bb97d0673f71b",
-    "source_only_revision": "934ba49acfbe9c3b828c0060c88bb97d0673f71b",
+    "source_revision": "b3f722ad5d9a36af353b6c631073bbaeee73915e",
+    "source_only_revision": "b3f722ad5d9a36af353b6c631073bbaeee73915e",
     "hardware_enabled": false,
     "resource_census_enabled": true,
     "private_inputs": false,
     "HAL_target": "arm64e-apple-ios27.0",
     "shared_resource_owner": "703d7b4bb00904b4a6e5d96f9e9bf72eec170f6b",
     "private_input_slot_bytes": 35651584,
-    "previous_audio_behavior_source": "2a3b5ca25c2de576d3d54c22cb777e277ebc1199",
+    "previous_audio_behavior_source": "934ba49acfbe9c3b828c0060c88bb97d0673f71b",
     "base_native_run": 42401029411,
     "base_Metal_revision": "eb59f022a326d03330d398b3c1dbcb6f0aeb633f",
     "diagnostic_glink_delay_ms": 20000,
@@ -473,6 +473,27 @@
     "ADSP_GLINK_GPR_control_verified": true,
     "functional_audio_accepted": false,
     "main_package_promoted": false,
-    "native_sources_expected": 55
+    "native_sources_expected": 55,
+    "PIL_preflight_queries": [
+      {
+        "command": 7,
+        "pas": 1
+      },
+      {
+        "command": 9,
+        "pas": 1
+      },
+      {
+        "command": 7,
+        "pas": 36
+      },
+      {
+        "command": 9,
+        "pas": 36
+      }
+    ],
+    "PIL_preflight_once_after_proxy": true,
+    "PIL_queries_never_replace_successful_stops": true,
+    "PIL_omission_is_hardware_hypothesis": true
   }
 }

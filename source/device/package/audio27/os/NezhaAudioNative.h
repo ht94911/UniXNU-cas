@@ -24,6 +24,18 @@ int na_native_pas(void *,uint32_t command,uint32_t pas,uint64_t arg1,uint64_t ar
 /* Read-only PIL7 support / PIL9 allowed-memory queries; raw registers only.
  * A supported image or range never proves that a DMA master has stopped. */
 int na_native_pas_query(uint32_t command,uint32_t pas,uint64_t result[4]);
+/* Preserve the already verified control probe's four read-only PIL queries
+ * after proxy completion, immediately before the first PAS stop. Their
+ * answers never stand in for successful shutdown or DMA quiescence. */
+static inline void na_native_pil_preflight(NaAdsp *adsp,uint32_t *completed) {
+    if (adsp->stage!=NaAdspStopMain || *completed) return;
+    const uint32_t ids[2]={1,36},commands[2]={7,9};
+    for (unsigned i=0;i<2;++i) for (unsigned j=0;j<2;++j) {
+        uint64_t raw[4]={0};
+        (void)na_native_pas_query(commands[j],ids[i],raw);
+        *completed|=1u<<(2*i+j);
+    }
+}
 /* Start only after constructing the source-only driver's immutable plan and
  * acquiring the actual shared hardware leases. No implicit boot-arg defaults. */
 int nezha_audio_worker_start(NaDriver *);
