@@ -13,7 +13,8 @@ PHASE = ['summary','attachment allocation','GMEM layout','subpass barrier','LRZ'
     'render GMEM','render system memory','draw state','draw packet emission','CS reserve',
     'BO init','retire mutex wait','retire reap','cache trim','cache mutex wait','cache lookup',
     'VMA mutex wait','VMA allocate','IOKit BO allocate','IOKit BO map','IOKit BO free',
-    'IOKit fence wait','IOKit other','frame diagnostics','pipeline state','host memory work']
+    'IOKit fence wait','IOKit other','frame diagnostics','pipeline state','host memory work',
+    'IOKit CPU map','IOKit CPU unmap']
 
 def decode(path):
     groups = defaultdict(list)

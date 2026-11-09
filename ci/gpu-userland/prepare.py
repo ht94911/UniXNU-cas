@@ -298,7 +298,7 @@ def main():
     must(['git', '-C', mesa, 'apply', profile_patch])
     final_pins = json.loads((root / 'scripts/data/adreno-compiler-inputs.json').read_text())
     validate_recorded_patches(root, mesa, final_pins)
-    assert sha(mesa / 'src/freedreno/vulkan/tu_knl_darwin.cc') == 'd3091aaf0aac6a4680a45f0ab7aaaed62f6342e321d5d22e626dba616faa6c4a'
+    assert sha(mesa / 'src/freedreno/vulkan/tu_knl_darwin.cc') == 'f89e397d24de0794fa9859ac06d3cfcb394b6c2733a6f61b1b928ee9b3d04f95'
     record['mesa']['patches'] = {p: sha(root / p) for p in final_pins['patches']}
     record['driver_cpu_profile'] = dict(original_KMD='04591f5a3711d4ea68568ea3f7e993f2f57f2070de14e40d63d223c8c570a65e',
         actual_KMD=sha(mesa / 'src/freedreno/vulkan/tu_knl_darwin.cc'), patch_sha256=sha(profile_patch))

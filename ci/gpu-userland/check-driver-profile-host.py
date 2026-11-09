@@ -36,6 +36,15 @@ tail='''
       {0x8877665544332211ull,0xfedcba9876543210ull,1122334455667788ull,12000000000ull,5000000000ull,1000000000ull,0,1,177,1,1,1},
       {0x8877665544332211ull,0xfedcba9876543210ull,1122334455667788ull,11000000000ull,0,11000000000ull,1,1,177,1,0,1}};
    traceDriverCpuProfile(sentinel,2,sizeof(sentinel[0]));
+   DriverCpuRec maximum[33]{};
+   maximum[0]={0x44332211ull,77,1000000000ull,32000000ull,0,0,0,1,178,32,1,1};
+   for(uint32_t i=1;i<33;i++)
+      maximum[i]={0x44332211ull,77,1000000000ull,1000000ull,0,1000000ull,i,1,178,1,0,1};
+   traceDriverCpuProfile(maximum,33,sizeof(maximum[0]));
+   const size_t before_rejected=wire.size();
+   traceDriverCpuProfile(maximum,34,sizeof(maximum[0]));
+   assert(wire.size()==before_rejected);
+
    assert(argc==2);FILE *f=fopen(argv[1],"wb");assert(f);
    assert(fwrite(wire.data(),sizeof(TraceRec),wire.size(),f)==wire.size());fclose(f);
 '''
@@ -54,7 +63,10 @@ with (out/'test.log').open('w') as log:
 spec=importlib.util.spec_from_file_location('driver_profile_decoder',here/'decode-driver-profile.py')
 decoder=importlib.util.module_from_spec(spec);spec.loader.exec_module(decoder)
 result=decoder.decode(frames)
-assert result['quality']['complete_groups']==6
+assert result['quality']['complete_groups']==7
+maximum=next(c for c in result['calls'] if c['group']==0x44332211)
+assert len(maximum['phases'])==32
+assert {p['name'] for p in maximum['phases']} >= {'IOKit CPU map','IOKit CPU unmap'}
 wide=next(c for c in result['calls'] if c['group']==0x8877665544332211)
 assert wide['command']==0xfedcba9876543210
 assert (wide['wall_ms'],wide['thread_cpu_ms'],wide['non_running_wall_ms'],wide['unattributed_ms'])==(12000,5000,7000,1000)
@@ -63,8 +75,28 @@ assert decoder.decode(broken)['quality']['incomplete_or_duplicate_phase_group']=
 paths=[front_path,mesa/'src/freedreno/vulkan/tu_cpu_profile.h',mesa/'src/freedreno/vulkan/tu_cpu_profile.cc']
 report=dict(passed=True,actual_profiler_to_actual_frontend=True,actual_decoder=True,
     ASan_UBSan=True,wide_fields_preserved=True,incomplete_groups_rejected=True,
-    budget_final_marker_and_limit_checked=True,complete_groups=6,
+    budget_final_marker_and_limit_checked=True,complete_groups=7,
     bindings={str(p.relative_to(root)):hashlib.sha256(p.read_bytes()).hexdigest() for p in paths},
     command=command,phone_operations=False,hardware_verified=False)
 (args.logs/'driver-profile-host.json').write_text(json.dumps(report,indent=2)+'\n')
 print(json.dumps(report,indent=2))
+
+# This is the real KMD wait function within a deterministic transport/clock
+# fixture. Verify its source binding before compiling it on the Apple host.
+kmd = (mesa/'src/freedreno/vulkan/tu_knl_darwin.cc').read_text()
+start = kmd.index('static VkResult\ndw_wait_fence_raw(')
+end = kmd.index('\nstatic VkResult darwin_collect_retired',start)
+function = kmd[start:end]
+fixture = here/'fixtures/fence-wait-test.cpp'
+assert function in fixture.read_text()
+wait_binary = out/'fence-wait-test'
+wait_command = [args.compiler,'-std=c++20','-O2','-g','-Wall','-Wextra','-Werror',
+                '-fsanitize=address,undefined',str(fixture),'-o',str(wait_binary)]
+with (out/'wait-build.log').open('w') as log:
+    subprocess.run(wait_command,check=True,stdout=log,stderr=subprocess.STDOUT,timeout=120)
+with (out/'wait-test.log').open('w') as log:
+    subprocess.run([str(wait_binary)],check=True,stdout=log,stderr=subprocess.STDOUT,timeout=15)
+report.update(actual_wait_function_sha256=hashlib.sha256(function.encode()).hexdigest(),
+              bounded_wait_deadline_cases_passed=True,single_call_request_max_ns=1000000,
+              CPU_map_unmap_phases_checked=True,maximum_phase_group_records=33)
+(args.logs/'driver-profile-host.json').write_text(json.dumps(report,indent=2)+'\n')

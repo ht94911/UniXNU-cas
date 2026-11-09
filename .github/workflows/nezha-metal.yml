@@ -1,7 +1,7 @@
-name: nezha iPhone27 driver recording phase and CPU clocks 028b
+name: nezha iPhone27 bounded fence wait and CPU map clocks 029b
 on:
   push:
-    branches: [codex/ios27-gpu27-metal-full-028b-20261109]
+    branches: [codex/ios27-gpu27-metal-full-029-20261110]
   workflow_dispatch:
 permissions:
   contents: read
