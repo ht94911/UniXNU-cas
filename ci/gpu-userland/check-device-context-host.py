@@ -47,7 +47,9 @@ for name in ['old','new','guards','va-old','va-new','swap','bo-trim-old','bo-tri
              '-fsanitize=address,undefined','-pthread','-I',str(root/'drivers/Adreno740'),
              '-I',str(mesa/'src/util'),'-I',str(mesa/'include'),
              *(['-DTEST_OLD='+('1' if name=='va-old' else '0')] if name.startswith('va-') else []),
+             '-I',str(mesa/'src/freedreno/vulkan'),
              str(fixtures/(name+'.cpp')),
+             str(mesa/'src/freedreno/vulkan/tu_cpu_profile.cc'),
              *([str(out/'rb_tree.o')] if name=='new' or name.startswith('va-') else []),'-o',str(binary)]
     subprocess.run(command,check=True,timeout=120)
     run=subprocess.run([str(binary)],capture_output=True,text=True,timeout=90,

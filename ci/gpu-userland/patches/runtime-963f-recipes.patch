@@ -1,3 +1,631 @@
+diff --git a/patches/mesa/turnip-driver-cpu-profile.patch b/patches/mesa/turnip-driver-cpu-profile.patch
+new file mode 100644
+index 0000000..0b15e91
+--- /dev/null
++++ b/patches/mesa/turnip-driver-cpu-profile.patch
+@@ -0,0 +1,622 @@
++diff --git a/src/freedreno/vulkan/meson.build b/src/freedreno/vulkan/meson.build
++index b544a9f..bf1503f 100644
++--- a/src/freedreno/vulkan/meson.build
+++++ b/src/freedreno/vulkan/meson.build
++@@ -39,6 +39,7 @@ libtu_files = files(
++   'tu_buffer_view.cc',
++   'tu_clear_blit.cc',
++   'tu_cmd_buffer.cc',
+++  'tu_cpu_profile.cc',
++   'tu_cs_breadcrumbs.cc',
++   'tu_cs.cc',
++   'tu_device.cc',
++diff --git a/src/freedreno/vulkan/tu_clear_blit.cc b/src/freedreno/vulkan/tu_clear_blit.cc
++index 472e9bd..4496094 100644
++--- a/src/freedreno/vulkan/tu_clear_blit.cc
+++++ b/src/freedreno/vulkan/tu_clear_blit.cc
++@@ -1,3 +1,4 @@
+++#include "tu_cpu_profile.h"
++ #include "tu_frame_diagnostic.h"
++ /*
++  * Copyright 2019-2020 Valve Corporation
++@@ -3950,6 +3951,7 @@ tu_CmdUpdateBuffer(VkCommandBuffer commandBuffer,
++                    VkDeviceSize dataSize,
++                    const void *pData)
++ {
+++   TuCpuCall cpu_call(TU_CPU_UPDATE_BUFFER, reinterpret_cast<uintptr_t>(commandBuffer));
++    VK_FROM_HANDLE(tu_cmd_buffer, cmd, commandBuffer);
++    VK_FROM_HANDLE(tu_buffer, buffer, dstBuffer);
++ 
++diff --git a/src/freedreno/vulkan/tu_cmd_buffer.cc b/src/freedreno/vulkan/tu_cmd_buffer.cc
++index 70f5c3d..789044d 100644
++--- a/src/freedreno/vulkan/tu_cmd_buffer.cc
+++++ b/src/freedreno/vulkan/tu_cmd_buffer.cc
++@@ -1,3 +1,4 @@
+++#include "tu_cpu_profile.h"
++ #include "tu_frame_diagnostic.h"
++ /*
++  * Copyright © 2016 Red Hat.
++@@ -4322,16 +4323,24 @@ tu_cmd_render(struct tu_cmd_buffer *cmd_buffer,
++ 
++    tu_autotune::rp_ctx_t rp_ctx = NULL;
++    const bool sysmem = use_sysmem_rendering(cmd_buffer, &rp_ctx, rp_key);
++-   const uint32_t seq = tu_pass_trace_on() ? tu_note_render_mode(cmd_buffer, sysmem) : 0;
++-   const uint64_t stamps = seq ? tu_pass_ts_slot(cmd_buffer, seq) : 0;
++-   if (stamps)
++-      tu_pass_stamp<CHIP>(&cmd_buffer->cs, stamps);
++-   if (sysmem)
+++   uint32_t seq;
+++   uint64_t stamps;
+++   { TU_CPU_PHASE(TU_CPU_RENDER_TRACE);
+++     seq = tu_pass_trace_on() ? tu_note_render_mode(cmd_buffer, sysmem) : 0;
+++     stamps = seq ? tu_pass_ts_slot(cmd_buffer, seq) : 0;
+++     if (stamps) tu_pass_stamp<CHIP>(&cmd_buffer->cs, stamps);
+++   }
+++   if (sysmem) {
+++      TU_CPU_PHASE(TU_CPU_RENDER_SYSMEM);
++       tu_cmd_render_sysmem<CHIP>(cmd_buffer, rp_ctx);
++-   else
+++   } else {
+++      TU_CPU_PHASE(TU_CPU_RENDER_GMEM);
++       tu_cmd_render_tiles<CHIP>(cmd_buffer, rp_ctx, fdm_offsets);
++-   if (stamps)
+++   }
+++   if (stamps) {
+++      TU_CPU_PHASE(TU_CPU_RENDER_TRACE);
++       tu_pass_stamp<CHIP>(&cmd_buffer->cs, stamps + 8);
+++   }
++ }
++ 
++ static void tu_reset_render_pass(struct tu_cmd_buffer *cmd_buffer)
++@@ -5747,6 +5756,8 @@ tu_CmdBindPipeline(VkCommandBuffer commandBuffer,
++                    VkPipelineBindPoint pipelineBindPoint,
++                    VkPipeline _pipeline)
++ {
+++   TuCpuCall cpu_call(TU_CPU_BIND_PIPELINE, reinterpret_cast<uintptr_t>(commandBuffer));
+++   TU_CPU_PHASE(TU_CPU_PIPELINE_STATE);
++    VK_FROM_HANDLE(tu_cmd_buffer, cmd, commandBuffer);
++    VK_FROM_HANDLE(tu_pipeline, pipeline, _pipeline);
++ 
++@@ -7222,6 +7233,7 @@ tu_CmdBeginRenderPass2(VkCommandBuffer commandBuffer,
++                        const VkRenderPassBeginInfo *pRenderPassBegin,
++                        const VkSubpassBeginInfo *pSubpassBeginInfo)
++ {
+++   TuCpuCall cpu_call(TU_CPU_BEGIN_PASS, reinterpret_cast<uintptr_t>(commandBuffer));
++    VK_FROM_HANDLE(tu_cmd_buffer, cmd, commandBuffer);
++ 
++    if (TU_DEBUG(DYNAMIC)) {
++@@ -7244,6 +7256,7 @@ tu_CmdBeginRenderPass2(VkCommandBuffer commandBuffer,
++                       pRenderPassBegin->pNext);
++    cmd->state.fdm_per_layer = pass->has_layered_fdm;
++ 
+++   { TU_CPU_PHASE(TU_CPU_ATTACHMENTS);
++    if (pass->attachment_count > 0) {
++       VK_MULTIALLOC(ma);
++       vk_multialloc_add(&ma, &cmd->state.attachments,
++@@ -7256,6 +7269,7 @@ tu_CmdBeginRenderPass2(VkCommandBuffer commandBuffer,
++          return;
++       }
++    }
+++   }
++ 
++    if (cmd->device->dbg_renderpass_stomp_cs) {
++       tu_cs_emit_call(&cmd->cs, cmd->device->dbg_renderpass_stomp_cs);
++@@ -7292,13 +7306,17 @@ tu_CmdBeginRenderPass2(VkCommandBuffer commandBuffer,
++       }
++    }
++ 
+++   { TU_CPU_PHASE(TU_CPU_GMEM_LAYOUT);
++    tu_choose_gmem_layout(cmd);
+++   }
++ 
++    /* Note: because this is external, any flushes will happen before draw_cs
++     * gets called. However deferred flushes could have to happen later as part
++     * of the subpass.
++     */
+++   { TU_CPU_PHASE(TU_CPU_SUBPASS_BARRIER);
++    tu_subpass_barrier<CHIP>(cmd, &pass->subpasses[0].start_barrier, true);
+++   }
++    cmd->state.renderpass_cache.pending_flush_bits =
++       cmd->state.cache.pending_flush_bits;
++    cmd->state.renderpass_cache.flush_bits = 0;
++@@ -7309,15 +7327,21 @@ tu_CmdBeginRenderPass2(VkCommandBuffer commandBuffer,
++          TU_CMD_FLAG_WAIT_FOR_IDLE;
++    }
++ 
+++   { TU_CPU_PHASE(TU_CPU_LRZ);
++    tu_lrz_begin_renderpass<CHIP>(cmd);
+++   }
++ 
++    tu_fill_render_pass_state(&cmd->state.vk_rp,
++                              &cmd->state.vk_mv,
++                              pass, cmd->state.subpass);
++    tu_renderpass_begin(cmd);
+++   { TU_CPU_PHASE(TU_CPU_SUBPASS_EMIT);
++    tu_emit_subpass_begin<CHIP>(cmd);
+++   }
++ 
+++   { TU_CPU_PHASE(TU_CPU_PATCHPOINT_ALLOC);
++    cmd->patchpoints_ctx = ralloc_context(NULL);
+++   }
++ }
++ TU_GENX(tu_CmdBeginRenderPass2);
++ 
++@@ -9083,19 +9107,24 @@ tu_CmdDraw(VkCommandBuffer commandBuffer,
++            uint32_t firstVertex,
++            uint32_t firstInstance)
++ {
+++   TuCpuCall cpu_call(TU_CPU_DRAW, reinterpret_cast<uintptr_t>(commandBuffer));
++    VK_FROM_HANDLE(tu_cmd_buffer, cmd, commandBuffer);
++    struct tu_cs *cs = &cmd->draw_cs;
++ 
++    tu6_emit_vs_params(cmd, 0, firstVertex, firstInstance);
++ 
+++   { TU_CPU_PHASE(TU_CPU_DRAW_STATE);
++    tu6_draw_common<CHIP>(cmd, cs, false, vertexCount);
+++   }
++ 
+++   { TU_CPU_PHASE(TU_CPU_DRAW_EMIT);
++    tu_cs_emit_pkt7(cs, CP_DRAW_INDX_OFFSET, 3);
++    tu_cs_emit(cs, tu_draw_initiator(cmd, DI_SRC_SEL_AUTO_INDEX));
++    tu_cs_emit(cs, instanceCount);
++    tu_cs_emit(cs, vertexCount);
++ 
++    trace_end_draw(&cmd->rp_trace, cs);
+++   }
++ }
++ TU_GENX(tu_CmdDraw);
++ 
++@@ -9157,13 +9186,17 @@ tu_CmdDrawIndexed(VkCommandBuffer commandBuffer,
++                   int32_t vertexOffset,
++                   uint32_t firstInstance)
++ {
+++   TuCpuCall cpu_call(TU_CPU_DRAW_INDEXED, reinterpret_cast<uintptr_t>(commandBuffer));
++    VK_FROM_HANDLE(tu_cmd_buffer, cmd, commandBuffer);
++    struct tu_cs *cs = &cmd->draw_cs;
++ 
++    tu6_emit_vs_params(cmd, 0, vertexOffset, firstInstance);
++ 
+++   { TU_CPU_PHASE(TU_CPU_DRAW_STATE);
++    tu6_draw_common<CHIP>(cmd, cs, true, indexCount);
+++   }
++ 
+++   { TU_CPU_PHASE(TU_CPU_DRAW_EMIT);
++    tu_cs_emit_pkt7(cs, CP_DRAW_INDX_OFFSET, 7);
++    tu_cs_emit(cs, tu_draw_initiator(cmd, DI_SRC_SEL_DMA));
++    tu_cs_emit(cs, instanceCount);
++@@ -9173,6 +9206,7 @@ tu_CmdDrawIndexed(VkCommandBuffer commandBuffer,
++    tu_cs_emit(cs, cmd->state.max_index_count);
++ 
++    trace_end_draw(&cmd->rp_trace, cs);
+++   }
++ }
++ TU_GENX(tu_CmdDrawIndexed);
++ 
++@@ -10015,6 +10049,7 @@ VKAPI_ATTR void VKAPI_CALL
++ tu_CmdEndRenderPass2(VkCommandBuffer commandBuffer,
++                      const VkSubpassEndInfo *pSubpassEndInfo)
++ {
+++   TuCpuCall cpu_call(TU_CPU_END_PASS, reinterpret_cast<uintptr_t>(commandBuffer));
++    VK_FROM_HANDLE(tu_cmd_buffer, cmd_buffer, commandBuffer);
++ 
++    if (TU_DEBUG(DYNAMIC)) {
++@@ -10037,17 +10072,25 @@ tu_CmdEndRenderPass2(VkCommandBuffer commandBuffer,
++       fdm_offsets = test_offsets;
++    }
++ 
+++   { TU_CPU_PHASE(TU_CPU_END_SUBPASS);
++    TU_CALLX(cmd_buffer->device, tu_emit_custom_resolve_end)(cmd_buffer);
+++   }
++ 
++    tu_cs_end(&cmd_buffer->draw_cs);
++    tu_cs_end(&cmd_buffer->draw_epilogue_cs);
+++   { TU_CPU_PHASE(TU_CPU_RENDER);
++    TU_CALLX(cmd_buffer->device, tu_cmd_render)(cmd_buffer, fdm_offsets);
+++   }
++ 
++    cmd_buffer->state.cache.pending_flush_bits |=
++       cmd_buffer->state.renderpass_cache.pending_flush_bits;
+++   { TU_CPU_PHASE(TU_CPU_SUBPASS_BARRIER);
++    TU_CALLX(cmd_buffer->device, tu_subpass_barrier)(cmd_buffer, &cmd_buffer->state.pass->end_barrier, true);
+++   }
++ 
+++   { TU_CPU_PHASE(TU_CPU_HOST_ALLOC);
++    vk_free(&cmd_buffer->vk.pool->alloc, cmd_buffer->state.attachments);
+++   }
++ 
++    tu_reset_render_pass(cmd_buffer);
++ 
++diff --git a/src/freedreno/vulkan/tu_cpu_profile.cc b/src/freedreno/vulkan/tu_cpu_profile.cc
++new file mode 100644
++index 0000000..d9784a6
++--- /dev/null
+++++ b/src/freedreno/vulkan/tu_cpu_profile.cc
++@@ -0,0 +1,136 @@
+++/* SPDX-License-Identifier: MIT */
+++#include "tu_cpu_profile.h"
+++#include <atomic>
+++#include <pthread.h>
+++#include <time.h>
+++#ifdef __APPLE__
+++#include <mach/mach.h>
+++#else
+++#include <sys/syscall.h>
+++#include <unistd.h>
+++#endif
+++
+++static std::atomic<TuCpuProfileHook> profile_hook{nullptr};
+++static std::atomic<uint64_t> profile_group{0};
+++static std::atomic<uint32_t> profile_written{0};
+++static thread_local TuCpuProfileState *profile_current;
+++static thread_local TuCpuProfileState profile_storage;
+++static constexpr uint64_t slow_ns = 8000000; /* one120Hz frame budget */
+++static constexpr uint32_t max_groups = 4096;
+++
+++static uint64_t wall_ns() noexcept {
+++#ifdef __APPLE__
+++   return clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
+++#else
+++   timespec value{};
+++   if (clock_gettime(CLOCK_MONOTONIC, &value)) return 0;
+++   return uint64_t(value.tv_sec) * 1000000000 + uint64_t(value.tv_nsec);
+++#endif
+++}
+++
+++static bool cpu_ns(uint64_t &value) noexcept {
+++#ifdef __APPLE__
+++   /* Same public Mach time query as the existing frontend CPU measurements. */
+++   const mach_port_t thread = mach_thread_self();
+++   thread_basic_info_data_t info{};
+++   mach_msg_type_number_t count = THREAD_BASIC_INFO_COUNT;
+++   const kern_return_t result = thread_info(thread, THREAD_BASIC_INFO,
+++                                            reinterpret_cast<thread_info_t>(&info), &count);
+++   mach_port_deallocate(mach_task_self(), thread);
+++   if (result != KERN_SUCCESS)
+++      return false;
+++   value = (uint64_t(info.user_time.seconds) + uint64_t(info.system_time.seconds)) * 1000000000 +
+++           (uint64_t(info.user_time.microseconds) + uint64_t(info.system_time.microseconds)) * 1000;
+++#else
+++   timespec info{};
+++   if (clock_gettime(CLOCK_THREAD_CPUTIME_ID, &info)) return false;
+++   value = uint64_t(info.tv_sec) * 1000000000 + uint64_t(info.tv_nsec);
+++#endif
+++   return true;
+++}
+++
+++static uint32_t thread_id() noexcept {
+++#ifdef __APPLE__
+++   uint64_t value = 0;
+++   pthread_threadid_np(nullptr, &value);
+++   return uint32_t(value);
+++#else
+++   return uint32_t(syscall(SYS_gettid));
+++#endif
+++}
+++
+++extern "C" void tu_cpu_profile_set_hook(TuCpuProfileHook hook) {
+++   profile_hook.store(hook, std::memory_order_release);
+++}
+++
+++TuCpuCall::TuCpuCall(TuCpuApi api, uintptr_t command) noexcept {
+++   hook_ = profile_hook.load(std::memory_order_acquire);
+++   if (!hook_ || profile_current || profile_written.load(std::memory_order_relaxed) >= max_groups)
+++      return;
+++   state_ = &profile_storage;
+++   *state_ = {};
+++   state_->began = wall_ns();
+++   state_->cpu_valid = cpu_ns(state_->cpu_began);
+++   state_->group = profile_group.fetch_add(1, std::memory_order_relaxed) + 1;
+++   state_->command = command;
+++   state_->api = api;
+++   state_->thread = thread_id();
+++   profile_current = state_;
+++   owns_ = true;
+++}
+++
+++TuCpuCall::~TuCpuCall() noexcept {
+++   if (!owns_) return;
+++   uint64_t cpu_ended = 0;
+++   const bool cpu_ok = cpu_ns(cpu_ended);
+++   const uint64_t ended = wall_ns();
+++   profile_current = nullptr;
+++   if (!state_->began || ended < state_->began || ended - state_->began < slow_ns)
+++      return;
+++   const uint32_t ordinal = profile_written.fetch_add(1, std::memory_order_relaxed);
+++   if (ordinal >= max_groups) return;
+++   TuCpuProfileRecord records[TU_CPU_PHASE_COUNT]{};
+++   uint32_t count = 1;
+++   uint64_t measured_self = 0;
+++   for (uint32_t phase = 1; phase < TU_CPU_PHASE_COUNT; ++phase) {
+++      const auto &bucket = state_->buckets[phase];
+++      if (!bucket.count) continue;
+++      auto &record = records[count++];
+++      record = {state_->group, state_->command, state_->began, bucket.inclusive_ns,
+++                0, bucket.self_ns, phase, state_->api, state_->thread, bucket.count, 0, 1};
+++      measured_self += bucket.self_ns;
+++   }
+++   const uint64_t elapsed = ended - state_->began;
+++   const bool valid_cpu = state_->cpu_valid && cpu_ok && cpu_ended >= state_->cpu_began;
+++   const uint64_t consumed = valid_cpu ? cpu_ended - state_->cpu_began : 0;
+++   const uint32_t flags = (valid_cpu ? 1u : 0u) | (consumed > elapsed ? 2u : 0u) |
+++                          (measured_self > elapsed ? 4u : 0u) | (ordinal + 1 == max_groups ? 8u : 0u);
+++   records[0] = {state_->group, state_->command, state_->began, elapsed, consumed,
+++                 measured_self <= elapsed ? elapsed - measured_self : 0,
+++                 TU_CPU_SUMMARY, state_->api, state_->thread, count - 1, flags, 1};
+++   hook_(records, count, sizeof(records[0]));
+++}
+++
+++TuCpuPhase::TuCpuPhase(TuCpuPhaseId id) noexcept : id_(id) {
+++   state_ = profile_current;
+++   if (!state_ || id == TU_CPU_SUMMARY || id >= TU_CPU_PHASE_COUNT) {
+++      state_ = nullptr;
+++      return;
+++   }
+++   parent_ = state_->phase;
+++   state_->phase = this;
+++   began_ = wall_ns();
+++}
+++
+++TuCpuPhase::~TuCpuPhase() noexcept {
+++   if (!state_) return;
+++   const uint64_t ended = wall_ns();
+++   state_->phase = parent_;
+++   if (!began_ || ended < began_) return;
+++   const uint64_t elapsed = ended - began_;
+++   auto &bucket = state_->buckets[id_];
+++   bucket.inclusive_ns += elapsed;
+++   bucket.self_ns += elapsed >= children_ ? elapsed - children_ : 0;
+++   ++bucket.count;
+++   if (parent_) parent_->children_ += elapsed;
+++}
++diff --git a/src/freedreno/vulkan/tu_cpu_profile.h b/src/freedreno/vulkan/tu_cpu_profile.h
++new file mode 100644
++index 0000000..8e65a8d
++--- /dev/null
+++++ b/src/freedreno/vulkan/tu_cpu_profile.h
++@@ -0,0 +1,74 @@
+++/* SPDX-License-Identifier: MIT */
+++#pragma once
+++#include <stdint.h>
+++
+++enum TuCpuApi : uint32_t {
+++   TU_CPU_BEGIN_PASS = 1, TU_CPU_END_PASS, TU_CPU_DRAW, TU_CPU_DRAW_INDEXED,
+++   TU_CPU_BIND_PIPELINE, TU_CPU_UPDATE_BUFFER,
+++};
+++
+++enum TuCpuPhaseId : uint32_t {
+++   TU_CPU_SUMMARY = 0,
+++   TU_CPU_ATTACHMENTS, TU_CPU_GMEM_LAYOUT, TU_CPU_SUBPASS_BARRIER,
+++   TU_CPU_LRZ, TU_CPU_SUBPASS_EMIT, TU_CPU_PATCHPOINT_ALLOC,
+++   TU_CPU_END_SUBPASS, TU_CPU_RENDER, TU_CPU_RENDER_TRACE,
+++   TU_CPU_RENDER_GMEM, TU_CPU_RENDER_SYSMEM, TU_CPU_DRAW_STATE,
+++   TU_CPU_DRAW_EMIT, TU_CPU_CS_RESERVE, TU_CPU_BO_INIT,
+++   TU_CPU_RETIRE_LOCK, TU_CPU_RETIRE_REAP, TU_CPU_CACHE_TRIM,
+++   TU_CPU_CACHE_LOCK, TU_CPU_CACHE_GET, TU_CPU_VMA_LOCK,
+++   TU_CPU_VMA_ALLOC, TU_CPU_IO_ALLOC, TU_CPU_IO_MAP, TU_CPU_IO_FREE,
+++   TU_CPU_IO_WAIT, TU_CPU_IO_OTHER, TU_CPU_FRAME_DIAGNOSTIC,
+++   TU_CPU_PIPELINE_STATE, TU_CPU_HOST_ALLOC, TU_CPU_PHASE_COUNT,
+++};
+++
+++/* The hook is process-local and writes into the existing frontend trace ring.
+++ * All times are nanoseconds. Phase wall time is inclusive; self_ns excludes
+++ * measured children. Only the summary has per-thread CPU time. */
+++struct TuCpuProfileRecord {
+++   uint64_t group, command, start_ns, wall_ns, cpu_ns, self_ns;
+++   uint32_t phase, api, thread, count, flags, version;
+++};
+++static_assert(sizeof(TuCpuProfileRecord) == 72, "CPU profile callback record");
+++using TuCpuProfileHook = void (*)(const void *, uint32_t, uint32_t);
+++extern "C" __attribute__((visibility("default")))
+++void tu_cpu_profile_set_hook(TuCpuProfileHook hook);
+++
+++struct TuCpuBucket { uint64_t inclusive_ns = 0, self_ns = 0; uint32_t count = 0; };
+++struct TuCpuProfileState;
+++
+++class TuCpuPhase {
+++public:
+++   explicit TuCpuPhase(TuCpuPhaseId id) noexcept;
+++   ~TuCpuPhase() noexcept;
+++   TuCpuPhase(const TuCpuPhase &) = delete;
+++   TuCpuPhase &operator=(const TuCpuPhase &) = delete;
+++private:
+++   TuCpuProfileState *state_ = nullptr;
+++   TuCpuPhase *parent_ = nullptr;
+++   uint64_t began_ = 0, children_ = 0;
+++   TuCpuPhaseId id_;
+++};
+++
+++struct TuCpuProfileState {
+++   TuCpuBucket buckets[TU_CPU_PHASE_COUNT];
+++   TuCpuPhase *phase = nullptr;
+++   uint64_t group = 0, command = 0, began = 0, cpu_began = 0;
+++   uint32_t api = 0, thread = 0;
+++   bool cpu_valid = false;
+++};
+++
+++class TuCpuCall {
+++public:
+++   TuCpuCall(TuCpuApi api, uintptr_t command) noexcept;
+++   ~TuCpuCall() noexcept;
+++   TuCpuCall(const TuCpuCall &) = delete;
+++   TuCpuCall &operator=(const TuCpuCall &) = delete;
+++private:
+++   TuCpuProfileState *state_ = nullptr;
+++   TuCpuProfileHook hook_ = nullptr;
+++   bool owns_ = false;
+++};
+++
+++#define TU_CPU_JOIN2(a,b) a##b
+++#define TU_CPU_JOIN(a,b) TU_CPU_JOIN2(a,b)
+++#define TU_CPU_PHASE(id) TuCpuPhase TU_CPU_JOIN(tu_cpu_phase_,__LINE__)(id)
++diff --git a/src/freedreno/vulkan/tu_cs.cc b/src/freedreno/vulkan/tu_cs.cc
++index 47e1939..505cac4 100644
++--- a/src/freedreno/vulkan/tu_cs.cc
+++++ b/src/freedreno/vulkan/tu_cs.cc
++@@ -1,3 +1,4 @@
+++#include "tu_cpu_profile.h"
++ /*
++  * Copyright © 2019 Google LLC
++  * SPDX-License-Identifier: MIT
++@@ -436,6 +437,7 @@ tu_cs_end_sub_stream(struct tu_cs *cs, struct tu_cs *sub_cs)
++ VkResult
++ tu_cs_reserve_space(struct tu_cs *cs, uint32_t reserved_size)
++ {
+++   TU_CPU_PHASE(TU_CPU_CS_RESERVE);
++    if (tu_cs_get_space(cs) < reserved_size) {
++       if (cs->mode == TU_CS_MODE_EXTERNAL) {
++          UNREACHABLE("cannot grow external buffer");
++diff --git a/src/freedreno/vulkan/tu_frame_diagnostic.h b/src/freedreno/vulkan/tu_frame_diagnostic.h
++index d2fb38d..81c5f0a 100644
++--- a/src/freedreno/vulkan/tu_frame_diagnostic.h
+++++ b/src/freedreno/vulkan/tu_frame_diagnostic.h
++@@ -1,3 +1,4 @@
+++#include "tu_cpu_profile.h"
++ /* SPDX-License-Identifier: MIT */
++ #pragma once
++ #include <stdint.h>
++@@ -13,6 +14,7 @@ static inline bool tu_swap_trace_on() {
++ }
++ static inline void tu_frame_event(uint32_t event,uint64_t a=0,uint64_t b=0,uint64_t c=0,uint64_t d=0,uint64_t e=0,uint64_t f=0,uint64_t g=0,uint64_t h=0,uint64_t i=0,uint64_t j=0,uint64_t k=0,uint64_t l=0) {
++    if(!tu_swap_trace_on() || (event!=36 && event!=37 && event!=44))return;
+++   TU_CPU_PHASE(TU_CPU_FRAME_DIAGNOSTIC);
++    /* Other pass and submission records stay in this process's rings (frames.trace). */
++    struct {uint64_t seq,us;uint32_t event,pid;uint64_t v[12];} rec={0,0,event,0,{a,b,c,d,e,f,g,h,i,j,k,l}};
++    (void)tu_darwin_frame_diagnostic(0x7102,&rec,sizeof(rec));
++diff --git a/src/freedreno/vulkan/tu_knl_darwin.cc b/src/freedreno/vulkan/tu_knl_darwin.cc
++index 9cf5c14..f0dfcdb 100644
++--- a/src/freedreno/vulkan/tu_knl_darwin.cc
+++++ b/src/freedreno/vulkan/tu_knl_darwin.cc
++@@ -1,3 +1,4 @@
+++#include "tu_cpu_profile.h"
++ #include "tu_frame_diagnostic.h"
++ /*
++  * Native Darwin kernel backend for Turnip: talks to the NativeAdreno IOKit user client (NativeAdrenoABI.h, version 1).
++@@ -137,7 +138,7 @@ tu_darwin_bo_cache_stats(uint64_t out[8])
++    memset(out, 0, 8 * sizeof(uint64_t));
++    pthread_mutex_lock(&dw_registry_lock);
++    for (struct darwin_retire_state *retire = darwin_states; retire; retire = retire->next) {
++-      pthread_mutex_lock(&retire->lock);
+++      { TU_CPU_PHASE(TU_CPU_RETIRE_LOCK); pthread_mutex_lock(&retire->lock); }
++       out[0] += retire->cache_stats.lookups;
++       out[1] += retire->cache_stats.hits;
++       out[2] += retire->cache_stats.inserts;
++@@ -159,6 +160,11 @@ static kern_return_t
++ dw_call(struct dw_connection &dw, uint32_t method, const void *in, size_t in_size, void *out,
++         size_t out_size)
++ {
+++   TuCpuPhase cpu_io(method == NativeAdrenoMethodBoAlloc ? TU_CPU_IO_ALLOC :
+++                     method == NativeAdrenoMethodBoMap ? TU_CPU_IO_MAP :
+++                     method == NativeAdrenoMethodBoFree ? TU_CPU_IO_FREE :
+++                     method == NativeAdrenoMethodWaitFence ? TU_CPU_IO_WAIT : TU_CPU_IO_OTHER);
+++
++    size_t out_bytes = out_size;
++    if (!dw.tunnel)
++       return IOConnectCallStructMethod(dw.conn, method, in, in_size, out_size ? out : NULL,
++@@ -580,10 +586,11 @@ static VkResult
++ darwin_allocate_iova(struct tu_device *dev, uint64_t size, uint64_t client_iova,
++                      enum tu_bo_alloc_flags flags, uint64_t *iova)
++ {
+++   TU_CPU_PHASE(TU_CPU_VMA_ALLOC);
++    struct darwin_retire_state *retire = (struct darwin_retire_state *)dev->darwin_retire;
++    struct darwin_va *va = &retire->va;
++    *iova = 0;
++-   mtx_lock(&dev->vma_mutex);
+++   { TU_CPU_PHASE(TU_CPU_VMA_LOCK); mtx_lock(&dev->vma_mutex); }
++    if (!va->seeded) {
++       /* Nothing else allocates from the heap the device made: the whole range is free. */
++       va->seeded = true;
++@@ -614,7 +621,7 @@ darwin_free_iova(struct tu_device *dev, uint64_t iova, uint64_t size)
++ {
++    struct darwin_retire_state *retire = (struct darwin_retire_state *)dev->darwin_retire;
++    struct darwin_va *va = &retire->va;
++-   mtx_lock(&dev->vma_mutex);
+++   { TU_CPU_PHASE(TU_CPU_VMA_LOCK); mtx_lock(&dev->vma_mutex); }
++    darwin_va_free(va, iova, size);
++    __atomic_store_n(&retire->va_holes_sample, va->holes, __ATOMIC_RELAXED);
++    mtx_unlock(&dev->vma_mutex);
++@@ -711,6 +718,7 @@ darwin_cache_put(struct tu_device *dev, struct darwin_retire_state *retire, cons
++ static bool
++ darwin_cache_get(struct darwin_retire_state *retire, uint64_t size, bool read_only, bool need_mapping, struct darwin_cached_bo *out)
++ {
+++   TU_CPU_PHASE(TU_CPU_CACHE_GET);
++    ++retire->cache_stats.lookups;
++    int best = -1;
++    for (unsigned i = 0; i < retire->cache_count; ++i) {
++@@ -752,6 +760,7 @@ darwin_cache_flush(struct tu_device *dev, struct darwin_retire_state *retire)
++ static void
++ darwin_cache_trim(struct tu_device *dev, struct darwin_retire_state *retire)
++ {
+++   TU_CPU_PHASE(TU_CPU_CACHE_TRIM);
++    const uint32_t pressure = p_atomic_read(&darwin_memory_pressure);
++    if (pressure != retire->pressure_seen) {
++       retire->pressure_seen = pressure;
++@@ -806,6 +815,7 @@ darwin_watch_memory_pressure(void)
++ static VkResult
++ darwin_reap_locked(struct tu_device *dev, struct darwin_retire_state *retire)
++ {
+++   TU_CPU_PHASE(TU_CPU_RETIRE_REAP);
++    if (retire->failure != VK_SUCCESS)
++       return retire->failure;
++    /* Cache only within this sweep. Persisting a bare 32-bit fence across sweeps
++@@ -860,7 +870,7 @@ static VkResult
++ darwin_collect_retired(struct tu_device *dev)
++ {
++    struct darwin_retire_state *retire = (struct darwin_retire_state *)dev->darwin_retire;
++-   pthread_mutex_lock(&retire->lock);
+++   { TU_CPU_PHASE(TU_CPU_RETIRE_LOCK); pthread_mutex_lock(&retire->lock); }
++    VkResult result = darwin_reap_locked(dev, retire);
++    if (result == VK_SUCCESS)
++       darwin_cache_trim(dev, retire);
++@@ -883,7 +893,7 @@ darwin_map_failure(struct tu_device *dev, uint64_t handle, uint64_t iova,
++    /* A failed map may have modified tables. Unknown cleanup never authorizes
++     * reusing its IOVA, even though no tu_bo could be published to the caller. */
++    struct darwin_retire_state *retire = (struct darwin_retire_state *)dev->darwin_retire;
++-   pthread_mutex_lock(&retire->lock);
+++   { TU_CPU_PHASE(TU_CPU_RETIRE_LOCK); pthread_mutex_lock(&retire->lock); }
++    retire->failure = vk_device_set_lost(&dev->vk, "BoMap cleanup failed: 0x%x; retaining native allocation and IOVA", cleanup);
++    VkResult result = retire->failure;
++    pthread_mutex_unlock(&retire->lock);
++@@ -899,6 +909,7 @@ darwin_bo_init(struct tu_device *dev, struct vk_object_base *base,
++                enum tu_bo_alloc_flags flags, struct tu_sparse_vma *lazy_vma,
++                const char *name)
++ {
+++   TU_CPU_PHASE(TU_CPU_BO_INIT);
++    struct dw_connection &dw = dw_device(dev);
++    MESA_TRACE_FUNC();
++    VkResult collected = darwin_collect_retired(dev);
++@@ -919,7 +930,7 @@ darwin_bo_init(struct tu_device *dev, struct vk_object_base *base,
++    bool reused = false;
++    if (cacheable) {
++       struct darwin_cached_bo hit;
++-      pthread_mutex_lock(&retire->lock);
+++      { TU_CPU_PHASE(TU_CPU_RETIRE_LOCK); pthread_mutex_lock(&retire->lock); }
++       reused = darwin_cache_get(retire, alloc_size, read_only, !!(flags & TU_BO_ALLOC_INTERNAL_RESOURCE), &hit);
++       pthread_mutex_unlock(&retire->lock);
++       if (reused) {
++@@ -942,7 +953,7 @@ darwin_bo_init(struct tu_device *dev, struct vk_object_base *base,
++          result = darwin_allocate_iova(dev, alloc_size, client_iova, flags, &iova);
++       if (result == VK_ERROR_OUT_OF_DEVICE_MEMORY && !flushed) {
++          flushed = true;
++-         pthread_mutex_lock(&retire->lock);
+++         { TU_CPU_PHASE(TU_CPU_RETIRE_LOCK); pthread_mutex_lock(&retire->lock); }
++          bool any = darwin_cache_flush(dev, retire);
++          pthread_mutex_unlock(&retire->lock);
++          if (any)
++@@ -959,7 +970,7 @@ darwin_bo_init(struct tu_device *dev, struct vk_object_base *base,
++             darwin_free_iova(dev, iova, alloc_size);
++          if (!flushed) {   /* memory may be held by cached BOs */
++             flushed = true;
++-            pthread_mutex_lock(&retire->lock);
+++            { TU_CPU_PHASE(TU_CPU_RETIRE_LOCK); pthread_mutex_lock(&retire->lock); }
++             bool any = darwin_cache_flush(dev, retire);
++             pthread_mutex_unlock(&retire->lock);
++             if (any)
++@@ -1189,7 +1200,7 @@ darwin_bo_finish(struct tu_device *dev, struct tu_bo *bo)
++    TU_RMV(bo_destroy, dev, bo);
++ 
++    struct darwin_retire_state *retire = (struct darwin_retire_state *)dev->darwin_retire;
++-   pthread_mutex_lock(&retire->lock);
+++   { TU_CPU_PHASE(TU_CPU_RETIRE_LOCK); pthread_mutex_lock(&retire->lock); }
++    darwin_reap_locked(dev, retire);
++    if (retire->count == retire->capacity && retire->failure == VK_SUCCESS) {
++       /* The ring grows, its records in order from the head. */
 diff --git a/scripts/build-adreno-metal-bridge.py b/scripts/build-adreno-metal-bridge.py
 index b28e073..27f888a 100644
 --- a/scripts/build-adreno-metal-bridge.py
@@ -74,6 +702,20 @@ index b28e073..27f888a 100644
  if result.returncode:
      raise SystemExit(log.read_text()[-6000:])
  library = target_dir / triple / 'release/libadreno_metal_bridge.a'
+diff --git a/scripts/data/adreno-compiler-inputs.json b/scripts/data/adreno-compiler-inputs.json
+index 0604211..2483ed2 100644
+--- a/scripts/data/adreno-compiler-inputs.json
++++ b/scripts/data/adreno-compiler-inputs.json
+@@ -66,7 +66,8 @@
+     "patches/mesa/turnip-darwin-device-contexts.patch",
+     "patches/mesa/turnip-darwin-va-teardown.patch",
+     "patches/mesa/turnip-darwin-cache-trim.patch",
+-    "patches/mesa/turnip-darwin-atomic-submit.patch"
++    "patches/mesa/turnip-darwin-atomic-submit.patch",
++    "patches/mesa/turnip-driver-cpu-profile.patch"
+   ],
+   "integer_fma_reference": {
+     "repository": "https://github.com/ucb-bar/berkeley-softfloat-3",
 diff --git a/scripts/data/gpu-metal-vulkan-inputs.json b/scripts/data/gpu-metal-vulkan-inputs.json
 index 895ca16..96696c0 100644
 --- a/scripts/data/gpu-metal-vulkan-inputs.json

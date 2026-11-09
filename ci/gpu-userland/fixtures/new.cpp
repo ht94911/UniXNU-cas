@@ -1,3 +1,4 @@
+#include "tu_cpu_profile.h"
 
 #include <cassert>
 #include <cstdint>
@@ -313,6 +314,11 @@ static kern_return_t
 dw_call(struct dw_connection &dw, uint32_t method, const void *in, size_t in_size, void *out,
         size_t out_size)
 {
+   TuCpuPhase cpu_io(method == NativeAdrenoMethodBoAlloc ? TU_CPU_IO_ALLOC :
+                     method == NativeAdrenoMethodBoMap ? TU_CPU_IO_MAP :
+                     method == NativeAdrenoMethodBoFree ? TU_CPU_IO_FREE :
+                     method == NativeAdrenoMethodWaitFence ? TU_CPU_IO_WAIT : TU_CPU_IO_OTHER);
+
    size_t out_bytes = out_size;
    if (!dw.tunnel)
       return IOConnectCallStructMethod(dw.conn, method, in, in_size, out_size ? out : NULL,

@@ -1,3 +1,4 @@
+#include "tu_cpu_profile.h"
 
 #include <cassert>
 #include <cstdint>
@@ -56,6 +57,7 @@ darwin_cache_flush(struct tu_device *dev, struct darwin_retire_state *retire)
 static void
 darwin_cache_trim(struct tu_device *dev, struct darwin_retire_state *retire)
 {
+   TU_CPU_PHASE(TU_CPU_CACHE_TRIM);
    const uint32_t pressure = p_atomic_read(&darwin_memory_pressure);
    if (pressure != retire->pressure_seen) {
       retire->pressure_seen = pressure;

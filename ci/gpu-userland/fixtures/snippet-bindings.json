@@ -81,7 +81,7 @@
     "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc",
     "marker": "dw_call",
     "kind": "function",
-    "sha256": "ed402853bbc403359ceaedfef8700abd9c84bb78cafa79b24a7c73c6f688e8db"
+    "sha256": "cf79b98ebadbaf62c537fe4d2936c1aaa29f323fa331cf8c0948b7c535de3dea"
   },
   {
     "fixture": "new.cpp",
@@ -275,7 +275,7 @@
   {
     "marker": "darwin_cache_trim",
     "kind": "function",
-    "sha256": "69773931ad2a6e4e1556c026b8e7c577c78f70eb693eaeeb9ba64cbb27a97392",
+    "sha256": "be4a049831490ee6ff2399642777fc03989932d9e0dab20a8f88c7f156f065ba",
     "fixture": "bo-trim-new.cpp",
     "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc"
   }

@@ -1,7 +1,7 @@
-name: nezha iPhone27 foreground-aware shader priming 027
+name: nezha iPhone27 driver recording phase and CPU clocks 028
 on:
   push:
-    branches: [codex/ios27-gpu27-metal-full-027-20261109]
+    branches: [codex/ios27-gpu27-metal-full-028-20261109]
   workflow_dispatch:
 permissions:
   contents: read
@@ -76,6 +76,9 @@ jobs:
       - name: Check the actual shader primer wait policy
         id: primer_policy
         run: device/ci/gpu-userland/logrun primer-policy python3 device/ci/gpu-userland/check-primer-wait-host.py --unixnu unixnu --logs "$LOGS"
+      - name: Verify actual driver phase clocks and frontend record packing
+        id: driver_profile
+        run: device/ci/gpu-userland/logrun driver-profile python3 device/ci/gpu-userland/check-driver-profile-host.py --unixnu unixnu --logs "$LOGS"
       - name: Build Turnip for the actual A840 arm64e iOS27 target
         id: turnip_ios27
         working-directory: unixnu
@@ -112,6 +115,7 @@ jobs:
           OUTCOME_BUFFER_RESERVE: ${{ steps.buffer_reserve.outcome }}
           OUTCOME_DEVICE_CONTEXTS: ${{ steps.device_contexts.outcome }}
           OUTCOME_PRIMER_POLICY: ${{ steps.primer_policy.outcome }}
+          OUTCOME_DRIVER_PROFILE: ${{ steps.driver_profile.outcome }}
         run: |
           set -euo pipefail
           export PATH="$(brew --prefix openssl@3)/bin:$PATH"
