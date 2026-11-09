@@ -1,7 +1,7 @@
-name: nezha iPhone27 driver recording phase and CPU clocks 028
+name: nezha iPhone27 driver recording phase and CPU clocks 028b
 on:
   push:
-    branches: [codex/ios27-gpu27-metal-full-028-20261109]
+    branches: [codex/ios27-gpu27-metal-full-028b-20261109]
   workflow_dispatch:
 permissions:
   contents: read

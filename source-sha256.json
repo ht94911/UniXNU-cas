@@ -1,5 +1,5 @@
 {
-  ".github/workflows/nezha-metal.yml": "f141f8218f4494c6fbd9d4ff17af9e76815752760f38d520586f867b85c8678b",
+  ".github/workflows/nezha-metal.yml": "ccd1b56f3dc154469d67444159d5414ec42109d150a15f8f7fbb5ea929520312",
   ".gitignore": "862263fa1f46c20f0d1e4dac5ffcc75abd55c08211b2c3864c5f8764b9d87793",
   "ci/gpu-userland/check-buffer-reserve.py": "56bef54d15cb6192d25bfd99516369d45d3ddeffbd44805f9f052739d2fdf57a",
   "ci/gpu-userland/check-device-context-host.py": "e8addbc2b822f42014f854c195a3f9e6d804cf4cc6efb4adeca0814c0fb5725f",
@@ -54,7 +54,7 @@
   "ci/gpu-userland/patches/upstream-gpu-recipes.patch": "aaf2ee0653456c4b218e95407a5a7eb2823f6e4f1481a5f6aaaa6ab581148d38",
   "ci/gpu-userland/patches/vulkan-operation-plugin.patch": "13dd58514c04ed08c62ce521e4171c15fd0922f84dee308667be1c2cb430c728",
   "ci/gpu-userland/patches/vulkan-operation-recipes.patch": "4b1dc95d6d811c690f4f1143ad030bb3a8d83237f0aa0cbc69b781221779a2a6",
-  "ci/gpu-userland/prepare.py": "cf0991c19f770519ab5b2bacd0d092db984145881e710853c329d68f8b680694",
+  "ci/gpu-userland/prepare.py": "620e2c9dd30ecf79aa39f95662cfc615aa1008623728656d82c6c0c9403d2fa5",
   "ci/gpu-userland/test-source-manifest.py": "45facca72e7b39766333d7499b1b3a4abd936d2b60c662a80923707534a38759",
   "ci/provenance.json": "1adf7e5b853602c83779db3da03236bed87ead24d79c4ea8c452a946c4828db2",
   "ci/xnu/artifact-recipient.pem": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
