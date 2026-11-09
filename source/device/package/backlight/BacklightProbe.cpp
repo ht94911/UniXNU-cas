@@ -38,8 +38,18 @@ class NativeNezhaBacklight : public AppleARMBacklight {
     uint32_t fadeFrom=0,fadeTo=0,latestRequest=0,activeRequest=0,traceCount=0;
     unsigned traceEnabled=0;
     bool published=false,unavailable=false,startedBackend=false,attachedBackend=false;
-    void trace(const char *phase,uint32_t request,uint64_t generation,uint32_t value,int result) {
-        if(!traceEnabled || __atomic_fetch_add(&traceCount,1,__ATOMIC_RELAXED)>=1024)return;
+    uint32_t unsupportedTraceCount=0;
+    void trace(const char *phase,uint32_t request,uint64_t generation,uint32_t value,int result,bool unsupported=false) {
+        if(!traceEnabled)return;
+        uint32_t *counter=unsupported?&unsupportedTraceCount:&traceCount;
+        const uint32_t limit=unsupported?8:8192;
+        uint32_t before=__atomic_load_n(counter,__ATOMIC_RELAXED);
+        // Saturate rather than advancing after exhaustion: a long-running
+        // service cannot wrap the counter and start logging again.
+        for(;;) {
+            if(before>=limit)return;
+            if(__atomic_compare_exchange_n(counter,&before,before+1,0,__ATOMIC_RELAXED,__ATOMIC_RELAXED))break;
+        }
         printf("NEZHA BACKLIGHT TRACE: us=%llu phase=%s req=%u gen=%llu value=%u rc=%d\n",
             (unsigned long long)nowUs(),phase,request,(unsigned long long)generation,value,result);
     }
@@ -221,7 +231,7 @@ public:
             // 27 ramps nits in user space; FadePeriod belongs to level input.
         } else {
             auto brightness=OSDynamicCast(OSNumber,dictionary->getObject("brightness"));
-            if(!brightness){trace("unsupported",0,0,0,kIOReturnUnsupported);return kIOReturnUnsupported;}
+            if(!brightness){trace("unsupported",0,0,0,kIOReturnUnsupported,true);return kIOReturnUnsupported;}
             if(brightness->unsigned64BitValue()>UINT32_MAX)return kIOReturnBadArgument;
             OSObject *periodObject=dictionary->getObject("FadePeriod");
             auto period=OSDynamicCast(OSNumber,periodObject);
