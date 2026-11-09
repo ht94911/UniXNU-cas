@@ -1,7 +1,7 @@
 diff --git a/bsd/kern/kern_exec.c b/bsd/kern/kern_exec.c
 --- a/bsd/kern/kern_exec.c
 +++ b/bsd/kern/kern_exec.c
-@@ -8690,6 +8690,44 @@ native_gpu_addon_prepare(proc_t p, user_addr_t scratch)
+@@ -8690,6 +8690,56 @@ native_gpu_addon_prepare(proc_t p, user_addr_t scratch)
  	native_gpu_addon_mount(p, scratch, 0xa00, audio_source, sizeof(audio_source), audio_point, sizeof(audio_point),
  	    "/System/Library/Audio/Plug-Ins/HAL/BuiltinAudioPlugin.driver", "/System/Library/Audio/Plug-Ins/HAL/ShengAudio.driver/Info.plist",
  	    &native_gpu_addon4_stage, &native_gpu_addon4_status);
@@ -40,6 +40,18 @@ diff --git a/bsd/kern/kern_exec.c b/bsd/kern/kern_exec.c
 +			    as_exec_stage, as_exec_status, as_helper_stage, as_helper_status, as_sb_stage, as_sb_status);
 +		}
 +		printf("[appsync-runtime] library=%d/%d\n", as_lib_stage, as_lib_status);
++		uint32_t appsync_probe = 0;
++		PE_parse_boot_argn("appsync-probe", &appsync_probe, sizeof(appsync_probe));
++		if (appsync_probe == 1) {
++			/* Preserve the original cache entries while adding one signed diagnostic job. */
++			static const char cache_source[] = "/private/var/ngpu/appsync/cache";
++			static const char cache_point[] = "/System/Library/xpc";
++			static volatile int cache_stage, cache_status;
++			native_gpu_addon_mount(p, scratch, 0x600, cache_source, sizeof(cache_source),
++			    cache_point, sizeof(cache_point), "/System/Library/xpc/foreground_user_endpoints.plist",
++			    "/System/Library/xpc/UniXNUAppSync.probe", &cache_stage, &cache_status);
++			printf("[appsync-probe] launchd cache mount=%d/%d\n", cache_stage, cache_status);
++		}
 +		extern void nezha_apple_usb_start(void);
 +		nezha_apple_usb_start();
 +	}

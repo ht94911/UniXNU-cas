@@ -5,14 +5,15 @@
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
     "source_revision": "4a157b58d1a18300a6570792236abc4796aa27a2",
-    "source_tree": "87bb1c5c70a736b7e2ac2b1bdada1cf8a80c3beb",
+    "source_tree": "75d1d1e4faf9210da46748cc7f45cc0a4144d31d",
     "review_tree": "db68cbd1cdd19e4b3365b67fa82b73fef3de439f",
     "ci_gitlink_override": {
       "path": "kits/XnuPrelink",
       "review_commit": "1437041119a6fd38802efb9f18961f1c0443d6c6",
       "ci_commit": "2b39ff73dc4d49ad64e349c711ca4aa8d1dd64ea",
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
-    }
+    },
+    "probe_overlay": "Source-only reuse of the existing QUD userlog compile option."
   },
   "device_revision": "31921f93bcf666486df14b2a5fc3d6e59d06cd75",
   "soc_revision": "5a71f9eb5724ff58eddf49f7f5baecc9f4233a7c",
@@ -200,7 +201,7 @@
     "source/device/tests/input-telemetry.c": "2af3696ccd9dcfccd4f8864a5f3ffb2144d7acac43b5fc98f34dcb280cf7bd75",
     "source/device/tests/touch-edge.c": "655348775d0389381a10b1f2bbc85b47586b3742a0dcd544a33e92a22e51b496",
     "source/device/unixnu.lock": "20bddaafe9eabe0874d433fd101156d0db2b3e5786681062de46afe971639daf",
-    "source/framework.patch": "f512d59876db84a36cfdbddc639a8c12f1e8337d4cb9e2abc2c5a1dceac05c8d",
+    "source/framework.patch": "fb2cbf9d23a19bc6882d0f41d0e9e22704dad814b2e1e292f3675b2e76056bcd",
     "source/gop.bundle": "f34490ac928abedadcb704558e1fbc59a793ba6ecb6c79f477218b4c82aecb2a",
     "source/metal/LICENSE": "c51a32dfc2140d3d56f796a3a7010e574f2e3649b97c42e010303ad57f848265",
     "source/metal/OriginalAcceleratorABI.h": "211e922f9b760ddec2e3453db6584bac57597b3d39e4bf0d013c1b2debd53365",
@@ -217,7 +218,7 @@
     "ci/native.py": "bba7caa2eb287c417c360316e701ae0ce24fc153545752fe422c3b850913e238",
     "source/device/patches/xnu-12377/appsync-arm64-default-jop.patch": "18ad02bb13da54677b2a1382eb83f12fd192baefd2c9b257e9a473844b4b654c",
     "source/device/patches/xnu-12377/appsync-arm64-user-jop.patch": "09904a9e97a5f5885bb65a7adcb087aea133d1308f5f10da386c729973fef8e2",
-    "source/device/patches/xnu-12377/appsync-runtime.patch": "a4411ef7aed2df5e673e0f98aa33eaadb72928aab6aa75f1bfea37002120ce06",
+    "source/device/patches/xnu-12377/appsync-runtime.patch": "4354106a34b0d8691376ca62fec474ab4b7225076bb6f5db17a8b92368ed05d8",
     "source/device/patches/xnu-12377/appsync-user-trust.patch": "4b2a0c882d5216d22027f9470b5bd9ebdd770ed739f886e54600c9b89323b40f",
     "source/appsync/AppSync.m": "44a23a95d6c9dbb98ccd1e612f26e4ed4adbc8ed49738e35d65003cdd2847287",
     "source/appsync/LICENSE": "442f8326b62909b29d05c8fa840f6993ee44501ccf0decf5143a86bad4b26dc6",
@@ -239,7 +240,11 @@
     "source/device/package/apple-usb/LICENSE": "5b1d3d911103cb0f41641ec0964c5ac1f7e229f57aa072b6ac38bae913a1307b",
     "source/device/package/armcpu/usb-spi-mask.patch": "f79a3775d61388f195def8f75cc7dcbbaa6667d2628a8cf593adadfe587305a9",
     "source/device/scripts/usb-xdci-iphone-24A446.json": "3b59ae5ad6e782790e6ccf88fb2622ad2e506ed52032c09daedddd31f68ca3ce",
-    "source/device/scripts/data/fileset-24A446-iphone14-4-apple-usb-symbols.json": "ff173170dedd602773592a5ad0a8daf34ba0e71c5206e13bab3fe6d471b0e2df"
+    "source/device/scripts/data/fileset-24A446-iphone14-4-apple-usb-symbols.json": "ff173170dedd602773592a5ad0a8daf34ba0e71c5206e13bab3fe6d471b0e2df",
+    "source/appsync/ProbeRunner.m": "ae95b7e227e4da99885c5c15c7bd698699709c70540f13f58f7320be45fe8523",
+    "source/appsync/QcomUserLogWire.h": "965d7aeaa4043bcceb151cd6331ce50faefe21f57ce7c91cf781a52b4917397b",
+    "source/device/scripts/sign-detached-cache.py": "cbede242ed225353445f80e51f6c2c451007e89ccc61677d7b0672a037635cd0",
+    "ci/cache-signature-template.py": "3596fbb421e2d223c9d01b6280af68ca7e83595c99d3d96e481450f187201d72"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
@@ -292,5 +297,6 @@
     "sheng": "a68ee4ee67cc71792fbf519de7e3e28072c717b5",
     "base_candidate": "n27-main-persist024",
     "base_native_run": 42401029411
-  }
+  },
+  "qualification_iteration": "AppSync014: signed donor cache overlay plus own test job; donor data stays on local disk."
 }
