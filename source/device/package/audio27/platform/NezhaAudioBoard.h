@@ -4,6 +4,12 @@
 #include "GeniTasBus.h"
 #include "Tas25xxEndpoint.h"
 #include "Wcd9395Capture.h"
+/* Stock Canoe DT starts at0x0f000000, but each GPIO's register block is at
+ * DT+0x100000+pin*0x1000. Keep callers and native maps on this GPIO bank,
+ * as the already working nezha touch/key driver does. The final0x2000 of
+ * the stock0x202000 DT window is outside this one-megabyte GPIO bank. */
+#define NA_TLMM_GPIO_BASE 0x0f100000ULL
+#define NA_TLMM_GPIO_BYTES 0x100000u
 #ifdef __cplusplus
 extern "C" {
 #endif

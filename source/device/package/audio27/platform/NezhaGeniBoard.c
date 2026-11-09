@@ -1,10 +1,10 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 /* SM8850 GENI13 clock/pin adapter. Register encodings verified against pinned
- * Linux gcc/pinctrl-kaanapali and i2c-qcom-geni; tuning stays private. */
+ * Linux gcc/i2c-qcom-geni and stock Canoe GPIO groups; tuning stays private. */
 #include "NezhaAudioBoard.h"
 #include <string.h>
 #define GCC 0x00100000ULL
-#define TLMM 0x0f000000ULL
+#define TLMM NA_TLMM_GPIO_BASE
 #define SE 0x01980000ULL
 static const uint32_t pins[9]={54,56,64,65,174,122,123,124,125};
 static int read_reg(NaGeniBoard *b,uint64_t address,uint32_t *v) {

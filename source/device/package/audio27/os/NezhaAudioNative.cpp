@@ -8,6 +8,7 @@
 #include <mach/kmod.h>
 #include <arm/caches_internal.h>
 #include "NezhaAudioNative.h"
+#include "../platform/NezhaAudioBoard.h"
 #include "NezhaAudioService.h"
 #include "NezhaAudioXpuTrace.h"
 #ifdef IOKIT_ENABLE_SHARED_PTR
@@ -31,7 +32,7 @@ bool ownedWindow(NaRange r) {
         {0x81d00000,0x200000},{0x1f43000,0x1000},{0x1106000,0x1000},
         {0x0c300000,0x1000},{0x18920000,0x10000},{0x81c60000,0x20000},
         {0x01980000,0x4000},{0x019c0000,0x2000},{0x100000,0x100000},
-        {0x0f000000,0x1b8000},{0x07760000,0x17000},
+        {NA_TLMM_GPIO_BASE,NA_TLMM_GPIO_BYTES},{0x07760000,0x17000},
         {0x06ae0000,0x1000},{0x07660000,0x1000},{0x07630000,0x10000},
         {0x0b220000,0x2000}, // PDC v5 identity/CFG observation only; no PDC writes.
         {0x17960000,0x1000}, // Only SPI751 type at1796014c/bit15 is configured.

@@ -4,7 +4,7 @@
 #include "NezhaAudioBoard.h"
 #include <string.h>
 #include <limits.h>
-#define RESET (0x0f000000ULL+161*4096)
+#define RESET (NA_TLMM_GPIO_BASE+161*4096)
 #define LPI 0x07760000ULL
 #define TX 0x06ae0000ULL
 #define VA 0x07660000ULL

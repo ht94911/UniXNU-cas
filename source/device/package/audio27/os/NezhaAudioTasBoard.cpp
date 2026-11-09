@@ -3,7 +3,7 @@
 #include "NezhaAudioXpuTrace.h"
 namespace {
 constexpr unsigned resource=9,owner=0x4e41;
-constexpr uint64_t gcc=0x100000,tlmm=0xf000000,geni=0x1980000;
+constexpr uint64_t gcc=0x100000,tlmm=NA_TLMM_GPIO_BASE,geni=0x1980000;
 constexpr uint32_t vote_mask=(1u<<12)|(1u<<8)|(1u<<9);
 int error(int r) {return r==Sm8850Okay ? NA_OK:r==Sm8850Busy ? NA_BUSY:r==Sm8850Io ? NA_IO:NA_OWNERSHIP;}
 bool pin(unsigned p) {const unsigned pins[]={54,56,64,65,174,122,123,124,125};for (unsigned v:pins) if (v==p) return true;return false;}
@@ -15,7 +15,7 @@ bool gcc_read(uint64_t pa) {
 volatile uint32_t *reg(NaNativeTasBoard *b,uint64_t pa,uint32_t *allowed) {
     if (pa&3) return nullptr;
     if (pa>=geni && pa<geni+0x4000 && b->geni.va) {*allowed=UINT32_MAX;return reinterpret_cast<volatile uint32_t *>(b->geni.va+pa-geni);}
-    if (pa>=tlmm && pa<tlmm+0x100000 && b->tlmm.va) {
+    if (pa>=tlmm && pa<tlmm+NA_TLMM_GPIO_BYTES && b->tlmm.va) {
         unsigned p=(unsigned)((pa-tlmm)/4096),at=(unsigned)((pa-tlmm)&4095);
         if (pin(p) && (at==0 || (at==4 && (p==54 || p==56 || p==174)))) {
             *allowed=at ? 2:0x3ff;return reinterpret_cast<volatile uint32_t *>(b->tlmm.va+pa-tlmm);
@@ -35,7 +35,7 @@ int claim(void *v,uint32_t kind,uint64_t *lease) {
     na_xpu_trace_after("tas-acquire",0,0,0,b->lease);
     *lease=b->lease;
     if (!b->geni.mapping) r=na_native_map(&b->geni,{geni,0x4000},b->lease);
-    if (!r && !b->tlmm.mapping) r=na_native_map(&b->tlmm,{tlmm,0x100000},b->lease);
+    if (!r && !b->tlmm.mapping) r=na_native_map(&b->tlmm,{tlmm,NA_TLMM_GPIO_BYTES},b->lease);
     if (r) {b->error=NA_IO;return b->error;}
     b->geni.lease=b->tlmm.lease=b->lease;return NA_OK;
 }
