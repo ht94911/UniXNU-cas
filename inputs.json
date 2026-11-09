@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "b930f29a55fa8bec9d8ee1db1ee97b1b761f1c13",
+  "device_revision": "1d0413eaadb9669d76b651ba186587630bca3d66",
   "soc_revision": "5a71f9eb5724ff58eddf49f7f5baecc9f4233a7c",
   "xcode": "26.6",
   "files": {
@@ -235,7 +235,7 @@
     "source/appsync/test-signing.m": "ab62b5935df9aa17faae216ccf2a7d61f68c7e690a84030b20f3382e200d29ab",
     "source/appsync/test-trust.c": "cb6508956b8e1da76cd3a440009ed658817039050c41e8dba41a0a826706d1bf",
     "source/appsync/test.py": "1114ac3c419394c7afa8b1f2d36f05ab274386235f536dbd55a59d16b4476f0c",
-    "source/device/package/apple-usb/NezhaAppleUsbDevice.cpp": "5e960b9645f4caa734d03fe1bb5ac1b89642db0784366c848d4fc769ac422c79",
+    "source/device/package/apple-usb/NezhaAppleUsbDevice.cpp": "52b714e286f9f3e3085c45109f98ab6b495a307025a01254647de15a27f2d0cd",
     "source/device/package/apple-usb/LICENSE": "5b1d3d911103cb0f41641ec0964c5ac1f7e229f57aa072b6ac38bae913a1307b",
     "source/device/package/armcpu/usb-spi-mask.patch": "f79a3775d61388f195def8f75cc7dcbbaa6667d2628a8cf593adadfe587305a9",
     "source/device/scripts/usb-xdci-iphone-24A446.json": "3b59ae5ad6e782790e6ccf88fb2622ad2e506ed52032c09daedddd31f68ca3ce",

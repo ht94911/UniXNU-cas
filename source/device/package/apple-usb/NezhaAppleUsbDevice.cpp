@@ -199,13 +199,16 @@ void appleUsbWorker(void *, wait_result_t)
             initializeAppleUsbClasses();
             if (OSMetaClass::postModLoad(context) == kOSReturnSuccess &&
                 qcom_usb_apple_device_prepare(gPhysBase, gPhysSize)) {
-                if (publishDevice()) thread_terminate_self();
+                if (publishDevice()) {
+                    thread_terminate(current_thread());
+                    return;
+                }
                 qcom_usb_apple_device_abort();
             }
         }
     }
     IOLog("nezha-apple-usb: device startup failed, AppleUSBXDCI load=%#x\n", static_cast<unsigned>(load));
-    thread_terminate_self();
+    thread_terminate(current_thread());
 }
 } // namespace
 

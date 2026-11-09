@@ -1,7 +1,7 @@
-name: nezha iPhone27 AppSync Apple USB - native005
+name: nezha iPhone27 AppSync Apple USB - native007
 on:
   push:
-    branches: [codex/ios27-appsync-apple-usb-005-20261109]
+    branches: [codex/ios27-appsync-apple-usb-007-20261109]
   workflow_dispatch:
 permissions:
   contents: read
