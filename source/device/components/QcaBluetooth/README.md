@@ -19,6 +19,14 @@ PERI/TME bootstrap. This source rejects that incorrect high-rate path and
 prepares a distinct current115200 diagnostic, with60s initialization and65s
 caller budgets. Full PERI/TME and high-rate hardware support remain pending.
 
+The005 current115200 trial completed the entire ELF transfer and received its
+final ACK, then stopped at board-selected NVM with board_valid=false. It returned
+normally and passed the phone protection audit. The next shim correction follows
+the pinned Linux BID layout: skip edl metadata, take the two observed board-ID
+bytes, and retain the real HCI status and complete response checks. Metadata is
+not another status. Existing controller models cover metadata0/2 and short replies;
+target compilation and a new hardware BID/NVM/HCI check remain required.
+
 | State | Features |
 | --- | --- |
 | Working | Pairing, reconnection after reboot, power toggle, A2DP playback, AirPods noise control and battery, use alongside Wi-Fi |

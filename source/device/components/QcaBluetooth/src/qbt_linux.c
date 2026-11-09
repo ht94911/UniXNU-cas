@@ -53,8 +53,14 @@ struct sk_buff *__hci_cmd_sync_ev(struct hci_dev *h,u16 op,unsigned n,const void
     if (!e && (event == 0 || event == HCI_EV_CMD_COMPLETE) && (!length || s->data[0])) e = -EIO;
     if(e){kfree_skb(s);return ERR_PTR(e);}s->len=length;
     if (op==0xfc00 && n==1 && p && ((const u8 *)p)[0]==0x23) {
-        h->q->info.board_valid=length==5 && s->data[0]==0 && s->data[1]==0x23 && s->data[2]==0;
+        /* qca_read_fw_board_id skips edl->data[0] and consumes data[1..2].
+         * Preserve that layout: the skipped metadata is not a second HCI
+         * status. The complete return length, opcode/subcommand and actual
+         * status are checked; only the observed ID can select board NVM. */
+        h->q->info.board_valid=length==5 && s->data[0]==0 && s->data[1]==0x23;
         if(h->q->info.board_valid)h->q->info.board=(uint16_t)s->data[3]<<8|s->data[4];
+        qbt_linux_log(h->q,6,"BID reply bytes=%zu metadata=%u board=%04x valid=%u",length,
+            length>2?s->data[2]:255,h->q->info.board_valid?h->q->info.board:UINT16_MAX,h->q->info.board_valid);
     }
     return s;
 }

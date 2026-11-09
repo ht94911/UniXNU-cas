@@ -14,7 +14,7 @@ struct fixture {
     unsigned download_mode, failed_opcode; bool missing_replies, missing_wake, board_specific;
     bool nvm_edited, address_written, wake_armed, hardware_fault, clock_fault;
     uint8_t speed_status, nvm_baud, address[6]; bool stale_address, short_address, legacy_speed_reply;
-    bool ganges, malformed_board;uint32_t soc;
+    bool ganges, malformed_board, zero_board_metadata;uint32_t soc;
 };
 static void put16(uint8_t *p,unsigned v){p[0]=v;p[1]=v>>8;}
 static void put32(uint8_t *p,unsigned v){put16(p,v);put16(p+2,v>>16);}
@@ -45,7 +45,7 @@ static void controller(struct fixture *f,const uint8_t *p,unsigned n){
     if(op==0xfc00){
         response[1]=param[0];length=2;
         if(param[0]==0x19){length=15;response[2]=0;put32(response+3,f->ganges?0x1e:0x21);put16(response+7,0x1234);put16(response+9,0x0200);put32(response+11,f->soc?f->soc:0x400c0200);}
-        else if(param[0]==0x23){length=f->malformed_board?4:5;if(f->board_specific){response[3]=0x12;response[4]=0x34;}}
+        else if(param[0]==0x23){length=f->malformed_board?4:5;response[2]=f->zero_board_metadata?0:2;if(f->board_specific){response[3]=0x12;response[4]=0x34;}}
         else if(param[0]==0x20){const char *label="WCN7850-fixture";length=strlen(label)+3;response[2]=strlen(label);memcpy(response+3,label,strlen(label));}
         else if(param[0]==0x1e){
             unsigned bytes=param[1];assert(bytes==n-6&&bytes<=243);
@@ -270,18 +270,19 @@ static void ganges_startup(void){
     struct qbt_boot_options o={.controller=QBT_WCN7860,.baud_method=QBT_BAUD_FC48,
         .initial_baud=115200,.operating_baud=3200000,.rampatch="gngbtfw20.mbn",.nvm="gngbtnv20",
         .expected_product=0x1e,.expected_rom=0x200,.nvm_by_board=true};
-    for(unsigned test=0;test<8;test++){
+    for(unsigned test=0;test<9;test++){
         make(f,3);f->ganges=f->board_specific=true;
         memcpy(f->patch,"\177ELF\1\1\1",7);
         if(test==1)f->speed_reply=false;
         if(test==2)f->board_specific=false;
         if(test==3)f->malformed_board=true;
+        if(test==8)f->zero_board_metadata=true;
         o.expected_rom=test==4?0x201:0x200;
         if(test==5)f->speed_reply_delay=150000000;
         if(test==6){f->speed_reply_delay=200000000;f->legacy_speed_reply=true;}
         if(test==7){f->speed_reply=false;f->hardware_fault_at=f->now+50000000;}
         int e=qbt_boot_controller(f->q,&o,address);
-        if(test==0 || test==5 || test==6){
+        if(test==0 || test==5 || test==6 || test==8){
             assert(!e && f->address_written && f->firmware_gets==2 && f->q->info.board_valid && f->q->info.board==0x1234);
             if(test)assert(f->now>=f->speed_command_at+f->speed_reply_delay);
         }
