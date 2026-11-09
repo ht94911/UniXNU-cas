@@ -1,6 +1,6 @@
-# iPadOS 27 native adapter
+# iOS 27 native adapter
 
-The adapter targets the original arm64e `bluetoothd` from 24A446:
+The adapter targets the original iPhone OS 27.0.1 arm64e `bluetoothd` from 24A446:
 
 - SHA-256: `cfd94854d0a2efd3ca4a2de6e55349f43fd0d274a4b8bfa9937f29d9f7208cb1`
 - UUID: `8E49197B-E6BC-3F3B-A8D3-DF4BEDD37F01`
@@ -26,8 +26,37 @@ unsupported controllers advance through the native initialization chain. Host
 flow control and erroneous data reporting may be rejected. H4 pre-stop skips its
 empty extension and retains normal transport close.
 
-If the keychain does not answer, root keys stay in memory for the daemon's
-lifetime instead of restarting it.
+The consuming nezha Wi-Fi023 RAM-only profile permits `-34019` to enter the
+original root read result, length and generation checks. Six main root reads
+and two non-connectable identity reads follow this policy. Valid stored
+material is retained. The ten guarded stores continue only on status zero or
+`-34019`; other errors, including CF allocation failure `4`, keep their original
+error continuation. Guards preserve the returned status, frame, LR and
+callee-saved registers and use only volatile `w8` and NZCV.
+
+Apple defines `-34019` as `errSecUpgradePending`: the Keychain database needs a
+schema migration while the device is locked, and a client should wait for an
+unlock notification and retry. See the fixed
+[Security declaration](https://github.com/apple-oss-distributions/Security/blob/066b1b2826fde61a7da2622197735545a6715c44/base/SecBasePriv.h#L88).
+The RAM-only profile's permission to continue is separate from that status
+definition; it does not establish the device's actual lock or migration state.
+
+Cloud keypair generation and native IRK/DHK/NC derivation failures keep their
+nonzero result. The common failure exit retains `0x82`; NC load preserves its
+result, including the original `0x67` regeneration path and `0x82` failure path.
+`arc4random_buf` supplies the native random material and has no return status.
+
+The existing RAM candidate still suppresses the separate conflict handler for
+new root material while old paired-device records contain nonempty fields.
+Persistent bonds, restart restoration and root-generation consistency are
+pending. Native type 8 and type 18 stores already lack result checks, so this
+policy does not establish complete persistence. It also does not identify the
+cause of the observed keyboard or numeric-comparison pairing failures.
+
+nezha Wi-Fi023 的独立 RAM 策略仅允许 `-34019` 进入原读取/长度/生成判断，保存
+只有 `0` 或该状态可继续，其余错误保留原失败路径。原 Cloud/IRK/DHK/NC 材料
+检查及 NC 的 `0x67` 再生成、`0x82` 失败结果保留。root 更新与旧配对缓存冲突
+的原处理仍按既有 RAM 候选抑制；持久 bond、重启恢复和材料代际一致性尚未验。
 
 ## Scanning and addresses
 
@@ -92,8 +121,18 @@ python3 tools/build-userland.py out/runtime --bluetoothd "$BLUETOOTHD"
 python3 tools/patch-ios27.py "$BLUETOOTHD" --output out/ios27/bluetoothd.native
 ```
 
-The 165 instruction cases execute native routing, feature capture, authenticated
-call boundaries, getters, lower setters and H4 pre-stop at two ASLR slides.
+The instruction cases execute native routing, feature capture, authenticated
+call boundaries, getters, lower setters, H4 pre-stop and root-material result
+paths at two ASLR slides. Root cases use the original and patched AArch64 with
+synthetic Keychain replies and material helpers to test valid reads, bad lengths,
+the guarded store status policy, NC regeneration and real failure continuations.
+Their case count is recorded in `out/native-test/report.json`. These models do
+not verify target Keychain availability, cryptographic output or pairing.
+The ten store guards occupy 240 bytes. The current locked adapter uses 764 of
+the original 1120-byte executable tail, ending at `0x100b9be9c` with 356 bytes
+remaining. Conditional guard branches stay local; ordinary `B` instructions
+return to the original continuations. Material/cache helper code, PAC landing
+pads and existing fixup authentication metadata remain unchanged.
 PAC operations are modeled without device keys. The production C publisher
 passes 58 HCI and policy cases under ASan/UBSan, including command and feature
 absence, capacity limits, failed replies, submit errors and reopen mode changes.

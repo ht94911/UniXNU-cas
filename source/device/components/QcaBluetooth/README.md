@@ -1,20 +1,23 @@
 # QcaBluetooth
 
-Qualcomm WCN7850 Bluetooth driver for XNU. It runs the Linux `btqca.c` startup
-sequence over a GENI UART and connects the controller to Apple's `bluetoothd`.
+Qualcomm WCN7850/WCN7860 Bluetooth transport for XNU. It runs the locked Linux
+`btqca.c` startup over GENI UART; the board supplies Ganges PERI/TME startup
+where required. The controller connects to Apple's original `bluetoothd`.
 
 ## Status
 
 Device: Xiaomi Pad 6S Pro (sheng), iPadOS 27.0.1 (24A446).
 
-The table below is the upstream author's sheng record. The consuming nezha
-Bluetooth27 adaptation passed PERI/TME startup,3.2Mbps negotiation, independent
-board0 NVM queries and controller-ready gates in Bluetooth007/Native009. The
-original24A446 bluetoothd connected to UART.SK; counters grew over366 seconds
-without transport errors. Normal XNU shutdown, Android/root protection and
-collector exit passed. The human opened Bluetooth Settings, where Devices kept
-spinning with no entries. Nezha discovery, pairing and audio remain unverified;
-see the device's Bluetooth27 handoff.
+The table below is the upstream author's sheng record. Nezha Bluetooth008/
+Native010 passed PERI/TME startup,3.2Mbps,independent board0 NVM and the
+controller-ready gates. Bluetooth Settings displayed peripherals and the
+original24A446 stack published a BluetoothLowEnergy Logi POP Mouse through
+AppleUserHIDEventDriver. The human confirmed actual mouse use. Keyboard pairing
+failed; another Android phone displayed numeric comparison and then pairing
+failure. Audio,persistent bonds and the remaining profile tests are pending.
+One normal XNU return,Android/root protection and collector6044 exit passed on
+2026-11-10; the shared-file window was released to GPU031. See the device handoff
+for the fixed package and the limits of008's discovery-only error history.
 
 The earlier003/004 FC48 trials and005/006 current115200 diagnostics remain
 historical evidence. The actual N0 HAL uses PERI/TME before ordinary BT startup.
@@ -44,6 +47,40 @@ requires Native010 target qualification and actual device observations.
 公告摘要；preview不产生记录，透传、流控、线程和等待行为保持原样。24条缓存
 经既有provider10只读分页，2KiB上限不变。公告含重复，不能当唯一设备数量；
 新摘要的宿主检查与Native010目标/真机资格分别记录。
+
+## Connection and security observations
+
+`qbt_stats.link` has a separate32-record ring. It observes connection,
+authentication,SSP/PIN,LE LTK,encryption and disconnection events, plus selected
+security commands and nonzero CC/CS replies. TX records commit only with bytes
+consumed by the UART backend; they do not prove reception by the controller.
+Successful Command Status means acceptance, while authentication,encryption and
+pairing complete only on their own result events. A successful negative-reply
+command is still a rejection. SMP failure reasons and HCI status codes use
+different namespaces.
+
+The existing ACL parser streams Basic L2CAP SMP on CIDs6/7 for TX and RX. Four
+bounded partial observers per direction retain only the L2CAP header,opcode,
+and whitelisted IO/OOB/authentication/key-size flags or failure/keypress reason.
+Addresses,PINs,displayed numbers,keys,randoms,confirms and public-key bodies are
+skipped. Interleaved handles and ACL fragments remain unchanged. A new PDU,
+disconnect,reset or service close retires the corresponding partial state.
+Observation gaps or a full observation pool do not drop or change traffic.
+
+The consuming provider10/version3 keeps the original snapshot and HCI history
+wire schema. Read-only `HISTORY arg0=1` selects the link ring,12 records/page
+and at most three pages. Its worst-case1522-byte page fits the existing2KiB
+USB limit. Advertisements cannot overwrite this ring. The producer/consumer
+host checks and independent source review pass; the new source still requires
+target compilation and real peripheral failure evidence.
+
+连接/认证摘要使用独立32条缓存，广播不再覆盖PIN/SSP、LE加密和断连结果。既有
+provider10升级version3，原snapshot/HCI正文保持；只读HISTORY的arg0=1每页12条，
+最多三页，最坏1522字节。SMP只保存协商标志/阶段/失败原因和临时连接句柄，
+不保存地址、配对码、密钥、随机数、确认值或公钥。UART提交和成功CS分别只是
+传输消费/命令接受，不代替最终认证；HCI状态和SMP失败码分别解释。四个有界
+观察槽支持不同句柄交错和ACL分片，缺失或池满不改正常透传。相关宿主及源码
+审查已通过，新源码的目标编译与真实失败链仍待验。
 
 | State | Features |
 | --- | --- |

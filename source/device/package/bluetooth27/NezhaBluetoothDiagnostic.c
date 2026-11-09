@@ -63,6 +63,43 @@ static void records(struct json_output *j,const struct qbt_hci_stats *h,unsigned
     }
     text(j,"]");
 }
+static const struct qbt_link_recent *link_recent(const struct qbt_link_stats *l,unsigned index) {
+    unsigned first=(l->recent_next+QBT_LINK_RECENT_CAPACITY-l->recent_count)%QBT_LINK_RECENT_CAPACITY;
+    return &l->recent[(first+index)%QBT_LINK_RECENT_CAPACITY];
+}
+static void link_records(struct json_output *j,const struct qbt_link_stats *l,unsigned first,unsigned count) {
+    text(j,"[");
+    for(unsigned i=0;i<count;i++){
+        const struct qbt_link_recent *r=link_recent(l,first+i);
+        if(i)text(j,",");text(j,"[");number(j,r->sequence);text(j,",");number(j,r->ns);
+        text(j,",");number(j,r->kind);text(j,",");number(j,r->opcode);text(j,",");number(j,r->code);
+        text(j,",");number(j,r->status);text(j,",");number(j,r->value);text(j,",");number(j,r->handle);text(j,"]");
+    }
+    text(j,"]");
+}
+static int link_history(struct json_output *j,const struct cached_state *s,
+        const struct qud_diag_request *request,size_t *bytes,unsigned *truncated) {
+    const struct qbt_link_stats *l=&s->stats.link;
+    if(l->recent_count>QBT_LINK_RECENT_CAPACITY || l->recent_next>=QBT_LINK_RECENT_CAPACITY)return QUD_FAILED;
+    uint64_t first=l->recent_count?link_recent(l,0)->sequence:0;
+    uint64_t last=l->recent_count?link_recent(l,l->recent_count-1)->sequence:0;
+    unsigned begin=0;
+    while(begin<l->recent_count && request->cursor && link_recent(l,begin)->sequence<request->cursor)begin++;
+    unsigned count=l->recent_count-begin;if(count>12)count=12;
+    uint64_t next=begin+count<l->recent_count?link_recent(l,begin+count)->sequence:0;
+    field(j,"{\"v\":2,\"stream\":\"link\",\"cached\":true,\"ns\":",s->ns);field(j,",\"total\":",l->recent_total);
+    field(j,",\"overwritten\":",l->recent_total>l->recent_count?l->recent_total-l->recent_count:0);
+    text(j,",\"cursor_overwritten\":");text(j,request->cursor && first && request->cursor<first?"true":"false");
+    field(j,",\"first\":",first);field(j,",\"last\":",last);field(j,",\"next\":",next);text(j,",\"counts\":[");
+    /* Fixed qbt_link_stats header order; no addresses or security payloads. */
+    const uint64_t counts[]={l->command_errors,l->classic_connections,l->classic_connection_errors,
+        l->le_connections,l->le_connection_errors,l->authentication_complete,l->authentication_errors,
+        l->pairing_complete,l->pairing_errors,l->encryption_change,l->encryption_errors,l->disconnects,
+        l->smp_packets,l->smp_failures,l->acl_observation_dropped,l->recent_total};
+    for(unsigned i=0;i<sizeof(counts)/sizeof(counts[0]);i++){if(i)text(j,",");number(j,counts[i]);}
+    text(j,"],\"records\":");link_records(j,l,begin,count);text(j,"}");
+    return output_done(j,bytes,truncated);
+}
 static int snapshot(void *cookie,char *out,size_t capacity,size_t *bytes,unsigned *truncated) {
     (void)cookie;
     struct json_output j;int error=output_init(&j,out,capacity,bytes,truncated);if(error)return error;
@@ -93,8 +130,9 @@ static int history(void *cookie,const struct qud_diag_request *request,char *out
     struct json_output j;int error=output_init(&j,out,capacity,bytes,truncated);if(error)return error;
     if(!request)return QUD_INVALID;
     if(request->op!=QUD_HISTORY)return QUD_UNSUPPORTED;
-    if(request->provider!=10 || request->arg0 || request->arg1)return QUD_INVALID;
+    if(request->provider!=10 || request->arg0>1 || request->arg1)return QUD_INVALID;
     struct cached_state s;error=copy_cache(&s);if(error)return error;
+    if(request->arg0==1)return link_history(&j,&s,request,bytes,truncated);
     const struct qbt_hci_stats *h=&s.stats.hci;
     uint64_t first=h->recent_count?recent(h,0)->sequence:0;
     uint64_t last=h->recent_count?recent(h,h->recent_count-1)->sequence:0;
@@ -109,8 +147,8 @@ static int history(void *cookie,const struct qud_diag_request *request,char *out
     records(&j,h,begin,count);text(&j,",\"announcements_are_unique_devices\":false}");
     return output_done(&j,bytes,truncated);
 }
-static const struct qud_diag_provider provider={.id=10,.version=2,.operations=(1u<<QUD_SNAPSHOT)|(1u<<QUD_HISTORY),
-    .max_arg0=0,.max_arg1=0,.name="nezha-bluetooth",.cookie=NULL,.snapshot=snapshot,.submit=history};
+static const struct qud_diag_provider provider={.id=10,.version=3,.operations=(1u<<QUD_SNAPSHOT)|(1u<<QUD_HISTORY),
+    .max_arg0=1,.max_arg1=0,.name="nezha-bluetooth",.cookie=NULL,.snapshot=snapshot,.submit=history};
 int nezha_bt_diagnostic_init(void) {
     if(registered)return 1;
     registered=qcom_usb_diag_register(&provider);return registered;

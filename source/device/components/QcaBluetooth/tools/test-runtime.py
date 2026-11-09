@@ -20,5 +20,6 @@ result=subprocess.run([out/'runtime'],text=True,capture_output=True)
 if result.returncode:raise SystemExit((result.stdout+result.stderr)[-5000:])
 print(result.stdout,end='')
 (out/'report.json').write_text(json.dumps(dict(passed=True,radio_simulated=True,hardware_verified=False,wcn7860_source=args.wcn7860,
-    runtime_hci_metadata=True,metadata_capacity=24,payload_capture=False,command=command,
+    runtime_hci_metadata=True,metadata_capacity=24,link_security_metadata=True,
+    link_metadata_capacity=32,streamed_SMP_metadata=True,payload_capture=False,command=command,
     inputs={s:hashlib.sha256((root/s).read_bytes()).hexdigest() for s in inputs},output=result.stdout),indent=2)+'\n')

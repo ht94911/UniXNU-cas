@@ -447,6 +447,209 @@ static void runtime_metadata(void){
     runtime_metadata_tx();runtime_metadata_rx();runtime_metadata_rollover();runtime_metadata_gates();
     puts("PASS: runtime HCI metadata through the production TX/RX framer, consumed-byte commits without preview effects, split/coalesced frames, exact passthrough, no private payload metadata, missing-status replies and24-record history");
 }
+static const struct qbt_link_recent *link_at(const struct qbt_link_stats *s,unsigned index){
+    assert(index<s->recent_count);
+    return &s->recent[(s->recent_next+QBT_LINK_RECENT_CAPACITY-s->recent_count+index)%QBT_LINK_RECENT_CAPACITY];
+}
+static size_t acl_packet(uint8_t *out,unsigned handle,unsigned pb,const uint8_t *body,size_t length){
+    out[0]=2;put16(out+1,handle|(pb<<12));put16(out+3,(unsigned)length);
+    memcpy(out+5,body,length);return length+5;
+}
+static size_t smp_packet(uint8_t *out,unsigned handle,unsigned cid,const uint8_t *body,size_t length){
+    uint8_t l2cap[100];assert(length+4<=sizeof(l2cap));
+    put16(l2cap,(unsigned)length);put16(l2cap+2,cid);memcpy(l2cap+4,body,length);
+    return acl_packet(out,handle,2,l2cap,length+4);
+}
+static void no_secret_metadata(struct fixture *f){
+    const uint8_t *regions[]={(const uint8_t *)&f->q->stats.link,
+        (const uint8_t *)&f->q->rx_acl,(const uint8_t *)&f->q->tx_acl};
+    const size_t lengths[]={sizeof(f->q->stats.link),sizeof(f->q->rx_acl),sizeof(f->q->tx_acl)};
+    for(unsigned r=0;r<3;r++)for(size_t at=0;at+6<=lengths[r];at++){
+        unsigned count=0;while(count<6 && regions[r][at+count]==0xd7)count++;
+        assert(count!=6); /* synthetic address/PIN/key marker never enters metadata */
+    }
+}
+static void runtime_link_events(void){
+    struct fixture *f=calloc(1,sizeof(*f));make_metadata(f);
+    uint8_t expected[10000];size_t length=0;
+    uint8_t connection[14];event_bytes(connection,sizeof(connection),3,0);
+    put16(connection+4,0x42);connection[12]=1;connection[13]=0;
+    const uint8_t auth[]={4,6,3,5,0x42,0},encryption[]={4,8,4,0,0x42,0,1};
+    const uint8_t encryption2[]={4,0x59,5,0,0x42,0,1,16};
+    const uint8_t refresh[]={4,0x30,3,0,0x42,0},disconnect[]={4,5,4,0,0x42,0,0x13};
+    uint8_t request[9],capability[12],confirm[13],passkey[13],key[26],pair[10];
+    event_bytes(request,sizeof(request),0x16,0xd7);event_bytes(capability,sizeof(capability),0x32,0xd7);
+    capability[9]=2;capability[10]=0;capability[11]=5;
+    event_bytes(confirm,sizeof(confirm),0x33,0xd7);event_bytes(passkey,sizeof(passkey),0x3b,0xd7);
+    event_bytes(key,sizeof(key),0x18,0xd7);key[25]=8;
+    event_bytes(pair,sizeof(pair),0x36,0x05);
+    uint8_t le[34],ltk[16];event_bytes(le,sizeof(le),0x3e,0x0a);
+    le[4]=0;put16(le+5,3);le[7]=0;
+    event_bytes(ltk,sizeof(ltk),0x3e,5);put16(ltk+4,3);
+    const uint8_t failed_command[]={4,0x0f,4,0x0c,1,5,4};
+    const uint8_t accepted_command[]={4,0x0f,4,0,1,0x11,4};
+    const uint8_t short_auth[]={4,6,2,0,0x42};
+#define LINK_RX(packet) metadata_feed(f,packet,sizeof(packet),1,expected,&length)
+    LINK_RX(connection);LINK_RX(auth);LINK_RX(encryption);LINK_RX(encryption2);LINK_RX(refresh);
+    LINK_RX(request);LINK_RX(capability);LINK_RX(confirm);LINK_RX(passkey);LINK_RX(key);
+    LINK_RX(pair);LINK_RX(le);LINK_RX(ltk);LINK_RX(failed_command);LINK_RX(accepted_command);
+    LINK_RX(disconnect);LINK_RX(short_auth);
+#undef LINK_RX
+    struct qbt_link_stats *s=&f->q->stats.link;
+    assert(s->classic_connections==1 && !s->classic_connection_errors && s->le_connections==1 && !s->le_connection_errors);
+    assert(s->authentication_complete==1 && s->authentication_errors==1);
+    assert(s->pairing_complete==1 && s->pairing_errors==1 && s->encryption_change==3 && !s->encryption_errors);
+    assert(s->command_errors==1 && s->disconnects==1 && s->recent_count==16);
+    assert(link_at(s,0)->code==3 && link_at(s,0)->handle==0x42 && link_at(s,0)->value==1);
+    assert(link_at(s,1)->status==5 && link_at(s,1)->handle==0x42);
+    assert(link_at(s,3)->value==0x1001);
+    assert(link_at(s,6)->value==0x00050002 && link_at(s,6)->handle==UINT16_MAX);
+    assert(link_at(s,7)->code==0x33 && link_at(s,7)->value==UINT32_MAX);
+    assert(link_at(s,8)->code==0x3b && link_at(s,8)->value==UINT32_MAX);
+    assert(link_at(s,9)->code==0x18 && link_at(s,9)->value==8);
+    assert(link_at(s,11)->kind==QBT_LINK_LE_EVENT && link_at(s,11)->handle==3 && link_at(s,11)->code==0x0a);
+    assert(link_at(s,12)->code==5 && link_at(s,12)->status==0xff && link_at(s,12)->value==UINT32_MAX);
+    assert(link_at(s,13)->kind==QBT_LINK_CS && link_at(s,13)->opcode==0x0405 && link_at(s,13)->status==0x0c);
+    assert(link_at(s,14)->status==0); /* command acceptance did not increment authentication_complete */
+    assert(link_at(s,15)->code==5 && link_at(s,15)->value==0x13);
+    const struct qbt_link_stats saved=*s;
+    uint8_t advertisement[33];event_bytes(advertisement,sizeof(advertisement),0x3e,0x0d);advertisement[4]=1;
+    for(unsigned i=0;i<100;i++)metadata_feed(f,advertisement,sizeof(advertisement),3,expected,&length);
+    assert(!memcmp(&saved,s,sizeof(saved)) && f->q->stats.hci.recent_count==24);
+    assert(f->received_length==length && !memcmp(f->received,expected,length));
+    assert(f->q->info.state==2 && !f->q->stats.malformed);no_secret_metadata(f);destroy(f);free(f);
+}
+static void runtime_link_commands(void){
+    struct fixture *f=calloc(1,sizeof(*f));make_metadata(f);f->write_limit=1;
+    uint8_t pin[27]={1,0x0d,4,23},link_key[26]={1,0x0b,4,22};
+    uint8_t capability[13]={1,0x2b,4,9},passkey[14]={1,0x2e,4,10},ltk[22]={1,0x1a,0x20,18};
+    memset(pin+4,0xd7,23);pin[10]=6;memset(link_key+4,0xd7,22);
+    memset(capability+4,0xd7,9);capability[10]=2;capability[11]=0;capability[12]=5;
+    memset(passkey+4,0xd7,10);memset(ltk+4,0xd7,18);put16(ltk+4,3);
+    const uint8_t encrypt[]={1,0x13,4,3,0x42,0,1},negative[]={1,0x1b,0x20,2,3,0};
+    uint8_t expected[256];size_t length=0;
+#define LINK_TX(packet) append_bytes(expected,&length,packet,sizeof(packet));metadata_send(f,packet,sizeof(packet))
+    LINK_TX(pin);LINK_TX(link_key);LINK_TX(capability);LINK_TX(passkey);LINK_TX(ltk);LINK_TX(encrypt);LINK_TX(negative);
+#undef LINK_TX
+    const struct qbt_link_stats *s=&f->q->stats.link;
+    assert(s->recent_count==7 && !s->authentication_complete && !s->pairing_complete && !s->encryption_change);
+    assert(link_at(s,0)->opcode==0x040d && link_at(s,0)->value==6 && link_at(s,0)->handle==UINT16_MAX);
+    assert(link_at(s,1)->value==UINT32_MAX && link_at(s,1)->handle==UINT16_MAX);
+    assert(link_at(s,2)->value==0x00050002 && link_at(s,2)->handle==UINT16_MAX);
+    assert(link_at(s,3)->opcode==0x042e && link_at(s,3)->value==UINT32_MAX);
+    assert(link_at(s,4)->handle==3 && link_at(s,4)->value==UINT32_MAX);
+    assert(link_at(s,5)->handle==0x42 && link_at(s,5)->value==1);
+    assert(link_at(s,6)->opcode==0x201b && link_at(s,6)->handle==3);
+    assert(f->transmitted_length==length && !memcmp(f->transmitted,expected,length));
+    no_secret_metadata(f);destroy(f);free(f);
+}
+static void runtime_smp_metadata(void){
+    struct fixture *f=calloc(1,sizeof(*f));make_metadata(f);
+    uint8_t expected[10000],packet[100],body[65];size_t length=0,n;
+    const uint8_t pairing[]={1,2,0,0x0d,16,3,3},failure[]={5,3},security[]={11,9};
+    n=smp_packet(packet,3,6,pairing,sizeof(pairing));
+    append_bytes(expected,&length,packet,n);f->receive_room=2;
+    size_t used=qbt_receive(f->q,packet,n);assert(used==5 && !f->q->stats.link.smp_packets);
+    f->receive_room=sizeof(f->received)-f->received_length;
+    assert(qbt_receive(f->q,packet+used,n-used)==n-used);qbt_step(f->q);
+    assert(f->q->stats.link.smp_packets==1);qbt_step(f->q);assert(f->q->stats.link.smp_packets==1);
+    n=smp_packet(packet,3,6,failure,sizeof(failure));metadata_feed(f,packet,n,1,expected,&length);
+    memset(body,0xd7,sizeof(body));body[0]=12; /* public-key payload is skipped, never copied */
+    uint8_t l2cap[69];put16(l2cap,65);put16(l2cap+2,6);memcpy(l2cap+4,body,65);
+    n=acl_packet(packet,4,2,l2cap,9);metadata_feed(f,packet,n,1,expected,&length);
+    assert(f->q->stats.link.smp_packets==2);no_secret_metadata(f);
+    n=acl_packet(packet,4,1,l2cap+9,60);metadata_feed(f,packet,n,2,expected,&length);
+    /* L2CAP header itself and pairing parameters can span HCI ACL fragments. */
+    uint8_t request[11];put16(request,7);put16(request+2,7);memcpy(request+4,pairing,7);
+    n=acl_packet(packet,5,0,request,2);metadata_feed(f,packet,n,1,expected,&length);
+    n=acl_packet(packet,6,2,request,5);metadata_feed(f,packet,n,1,expected,&length);
+    n=acl_packet(packet,5,1,request+2,3);metadata_feed(f,packet,n,1,expected,&length);
+    n=acl_packet(packet,6,1,request+5,6);metadata_feed(f,packet,n,1,expected,&length);
+    n=acl_packet(packet,5,1,request+5,6);metadata_feed(f,packet,n,1,expected,&length);
+    /* PB3 complete PDU is observed with an exact declared length. */
+    n=acl_packet(packet,7,3,request,sizeof(request));metadata_feed(f,packet,n,1,expected,&length);
+    const struct qbt_link_stats *s=&f->q->stats.link;
+    assert(s->smp_packets==6 && s->smp_failures==1 && !s->acl_observation_dropped);
+    assert(link_at(s,0)->value==0x100d0002 && link_at(s,0)->opcode==6 && link_at(s,0)->handle==3);
+    assert(link_at(s,1)->kind==QBT_LINK_SMP_RX && link_at(s,1)->status==3);
+    assert(link_at(s,2)->code==12 && link_at(s,2)->value==UINT32_MAX && link_at(s,2)->handle==4);
+    assert(link_at(s,3)->opcode==7 && link_at(s,3)->handle==6);
+    assert(link_at(s,4)->handle==5 && link_at(s,5)->handle==7);
+    assert(f->received_length==length && !memcmp(f->received,expected,length));no_secret_metadata(f);
+    /* Zero UART consumption cannot commit the TX preview or SMP metadata. */
+    n=smp_packet(packet,3,6,security,sizeof(security));f->write_limit=0;
+    assert(!qbt_transmit(f->q,packet,n));for(unsigned i=0;i<3;i++)qbt_step(f->q);
+    assert(s->smp_packets==6 && !f->q->tx_acl.slots[0].active);
+    f->write_limit=1;drive(f,400);
+    assert(!f->q->tx_length && s->smp_packets==7 && link_at(s,6)->kind==QBT_LINK_SMP_TX && link_at(s,6)->value==9);
+    n=smp_packet(packet,3,6,failure,sizeof(failure));metadata_send(f,packet,n);
+    assert(s->smp_packets==8 && s->smp_failures==2 && link_at(s,7)->status==3);
+    no_secret_metadata(f);destroy(f);free(f);
+}
+static void runtime_smp_observation_gaps(void){
+    struct fixture *f=calloc(1,sizeof(*f));make_metadata(f);
+    uint8_t expected[5000],packet[100],body[]={7,0,6,0,1,2,0,0x0d,16,3,3};size_t length=0,n;
+    /* A non-SMP channel containing SMP-shaped bytes is never decoded. */
+    body[2]=4;n=acl_packet(packet,1,2,body,sizeof(body));metadata_feed(f,packet,n,1,expected,&length);body[2]=6;
+    /* Invalid command length, oversize continuation and a truncated PB3 PDU
+     * are diagnostic gaps, not transport errors or synthesized SMP failures. */
+    body[0]=8;n=acl_packet(packet,1,2,body,sizeof(body));metadata_feed(f,packet,n,1,expected,&length);
+    const uint8_t extra[]={0xd7};n=acl_packet(packet,1,1,extra,1);metadata_feed(f,packet,n,1,expected,&length);body[0]=7;
+    n=acl_packet(packet,2,2,body,5);metadata_feed(f,packet,n,1,expected,&length);
+    n=acl_packet(packet,2,1,body,7);metadata_feed(f,packet,n,1,expected,&length);
+    n=acl_packet(packet,3,3,body,5);metadata_feed(f,packet,n,1,expected,&length);
+    /* A full observation pool never delays or drops the forwarded packet. */
+    for(unsigned handle=4;handle<=8;handle++){
+        n=acl_packet(packet,handle,2,body,5);metadata_feed(f,packet,n,1,expected,&length);
+    }
+    assert(f->q->stats.link.acl_observation_dropped==4 && !f->q->stats.link.smp_packets);
+    /* A completed disconnect retires pending metadata before handle reuse. */
+    const uint8_t disconnect[]={4,5,4,0,4,0,0x13};metadata_feed(f,disconnect,sizeof(disconnect),1,expected,&length);
+    n=acl_packet(packet,4,1,body+5,6);metadata_feed(f,packet,n,1,expected,&length);
+    assert(!f->q->stats.link.smp_packets);
+    const uint8_t reset[]={4,0x0e,4,1,3,0x0c,0};metadata_feed(f,reset,sizeof(reset),1,expected,&length);
+    for(unsigned i=0;i<QBT_ACL_OBSERVER_SLOTS;i++)assert(!f->q->rx_acl.slots[i].active);
+    n=acl_packet(packet,5,1,body+5,6);metadata_feed(f,packet,n,1,expected,&length);
+    assert(!f->q->stats.link.smp_packets && !f->q->stats.malformed && f->q->info.state==2);
+    assert(f->received_length==length && !memcmp(f->received,expected,length));no_secret_metadata(f);
+    qbt_set_service(f->q,false);
+    for(unsigned i=0;i<QBT_ACL_OBSERVER_SLOTS;i++)assert(!f->q->rx_acl.slots[i].active);
+    destroy(f);free(f);
+}
+static void runtime_link_rollover_and_gates(void){
+    struct fixture *f=calloc(1,sizeof(*f));make_metadata(f);
+    uint8_t expected[10000];size_t length=0;
+    const uint8_t failure[]={4,0x0f,4,0x0c,1,1,0xfc};
+    for(unsigned i=0;i<40;i++){f->now++;metadata_feed(f,failure,sizeof(failure),1,expected,&length);}
+    struct qbt_link_stats copied=f->q->stats.link;
+    assert(copied.command_errors==40 && copied.recent_count==32 && copied.recent_total==40);
+    assert(link_at(&copied,0)->sequence==9 && link_at(&copied,31)->sequence==40);
+    qbt_set_service(f->q,false);assert(qbt_receive(f->q,failure,sizeof(failure))==sizeof(failure));
+    qbt_set_service(f->q,true);f->q->info.state=1;
+    assert(qbt_receive(f->q,failure,sizeof(failure))==sizeof(failure));
+    assert(!memcmp(&copied,&f->q->stats.link,sizeof(copied)));destroy(f);free(f);
+}
+static void runtime_smp_new_boundary(void){
+    struct fixture *f=calloc(1,sizeof(*f));make_metadata(f);
+    uint8_t expected[1000],packet[100];size_t length=0,n;
+    const uint8_t partial[]={2,0,6,0,5},reason[]={3},short_body[]={0xd7};
+    const unsigned pb[]={3,3,0,2},sizes[]={0,1,0,0};
+    for(unsigned i=0;i<4;i++){
+        n=acl_packet(packet,4,2,partial,sizeof(partial));metadata_feed(f,packet,n,1,expected,&length);
+        assert(f->q->rx_acl.slots[0].active && !f->q->stats.link.smp_failures);
+        n=acl_packet(packet,4,pb[i],short_body,sizes[i]);metadata_feed(f,packet,n,1,expected,&length);
+        assert(!f->q->rx_acl.slots[0].active);
+        n=acl_packet(packet,4,1,reason,sizeof(reason));metadata_feed(f,packet,n,1,expected,&length);
+        assert(!f->q->stats.link.smp_packets && !f->q->stats.link.smp_failures);
+    }
+    assert(f->q->info.state==2 && !f->q->stats.malformed);
+    assert(f->received_length==length && !memcmp(f->received,expected,length));no_secret_metadata(f);destroy(f);free(f);
+}
+static void runtime_link_metadata(void){
+    runtime_link_events();runtime_link_commands();runtime_smp_metadata();
+    runtime_smp_observation_gaps();runtime_smp_new_boundary();runtime_link_rollover_and_gates();
+    puts("PASS: separate32-record link/security metadata, BR/EDR/LE authentication and encryption events, redacted PIN/passkey/key commands, streamed SMP and interleaved ACL fragments, preview isolation, diagnostic gap/pool handling, handle retirement and exact passthrough under pressure");
+}
 static void ganges_startup(void){
 #ifdef QBT_WCN7860_SOURCE
     struct fixture *f=calloc(1,sizeof(*f));
@@ -498,4 +701,4 @@ static void ganges_startup(void){
     free(f);puts("PASS: modeled WCN7860 ELF startup, exact ROM/board selection, refused generic NVM, real one-second baud deadline, delayed unified/vendor completions, prompt UART failure and malformed board reply");
 #endif
 }
-int main(void){initialization();failures();speed_and_identity_failures();progress_reports();speed_settle();receive_pressure();sleep_and_wake();lost_wake();clock_failure();tx_ibs_boundaries();runtime_metadata();ganges_startup();puts("PASS: original Linux WCN7850 setup, firmware/BID fallback, NVM edits, Qualcomm baud status/timeout and BD_ADDR readback, H4 fragmentation/backpressure, status failure, true timeout, partial DMA TX, IBS packet boundaries, clock/wake recovery and terminal clock faults");}
+int main(void){initialization();failures();speed_and_identity_failures();progress_reports();speed_settle();receive_pressure();sleep_and_wake();lost_wake();clock_failure();tx_ibs_boundaries();runtime_metadata();runtime_link_metadata();ganges_startup();puts("PASS: original Linux WCN7850 setup, firmware/BID fallback, NVM edits, Qualcomm baud status/timeout and BD_ADDR readback, H4 fragmentation/backpressure, status failure, true timeout, partial DMA TX, IBS packet boundaries, clock/wake recovery and terminal clock faults");}

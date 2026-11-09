@@ -20,13 +20,34 @@
 #define QBT_SPEED_SETTLE_MS 5u
 #define QBT_TX_IDLE 2000000000ULL
 enum { QBT_ASLEEP, QBT_WAKING, QBT_AWAKE };
-struct qbt_tx_frame { uint8_t type, header[4], have, need, value; unsigned body; };
+struct qbt_tx_frame {
+    uint8_t type, header[4], have, need, value;
+    unsigned body;
+    uint16_t link_handle;
+    uint32_t link_value;
+};
+#define QBT_ACL_OBSERVER_SLOTS 4u
+/* Bounded observation of Basic L2CAP SMP, not a protocol implementation.
+ * Only the four-byte L2CAP header and four non-secret pairing parameters
+ * are retained. Other SMP bodies are skipped even across ACL fragments. */
+struct qbt_acl_observer {
+    uint16_t handle, length, remaining, cid;
+    uint8_t header[4], header_have, code, parameters[4];
+    unsigned position;
+    bool active;
+};
+struct qbt_acl_direction {
+    struct qbt_acl_observer slots[QBT_ACL_OBSERVER_SLOTS];
+    unsigned current, packet_remaining;
+    bool complete;
+};
 struct qbt {
     struct qbt_platform ops;
     struct qbt_info info;
     struct qbt_stats stats;
     uint8_t tx[QBT_TX_CAPACITY];
     struct qbt_tx_frame tx_frame;
+    struct qbt_acl_direction tx_acl, rx_acl;
     unsigned tx_head, tx_length;
     bool service, ibs, rx_awake, clock_on;
     unsigned tx_state, wake_attempts;

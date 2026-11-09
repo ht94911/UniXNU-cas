@@ -59,6 +59,34 @@ struct qbt_hci_stats {
     uint32_t recent_next, recent_count; /* next overwrite index, valid entries */
     struct qbt_hci_recent recent[QBT_HCI_RECENT_CAPACITY];
 };
+#define QBT_LINK_RECENT_CAPACITY 32u
+enum qbt_link_kind {
+    QBT_LINK_TX = 1, QBT_LINK_CC = 2, QBT_LINK_CS = 3,
+    QBT_LINK_EVENT = 4, QBT_LINK_LE_EVENT = 5,
+    QBT_LINK_SMP_TX = 6, QBT_LINK_SMP_RX = 7
+};
+/* Connection/security metadata has its own ring so advertisements cannot
+ * evict a pairing result. A handle is a temporary controller handle, or ffff
+ * when the event has no handle. value contains only whitelisted protocol
+ * flags/reasons (SMP request/response: IO|OOB<<8|AuthReq<<16|key-size<<24).
+ * PINs, passkeys, addresses, names, randoms and key material are never copied.
+ * Successful command status is acceptance, not connection/authentication. */
+struct qbt_link_recent {
+    uint64_t sequence, ns;
+    uint32_t value;
+    uint16_t opcode, handle;
+    uint8_t kind, code, status;
+};
+struct qbt_link_stats {
+    uint64_t command_errors, classic_connections, classic_connection_errors;
+    uint64_t le_connections, le_connection_errors;
+    uint64_t authentication_complete, authentication_errors;
+    uint64_t pairing_complete, pairing_errors;
+    uint64_t encryption_change, encryption_errors, disconnects;
+    uint64_t smp_packets, smp_failures, acl_observation_dropped, recent_total;
+    uint32_t recent_next, recent_count;
+    struct qbt_link_recent recent[QBT_LINK_RECENT_CAPACITY];
+};
 struct qbt_stats {
     uint64_t tx_bytes, rx_bytes, host_bytes, delivered_bytes;
     uint64_t commands, timeouts, malformed, unmatched_events;
@@ -67,6 +95,7 @@ struct qbt_stats {
     uint64_t tlv_sent, tlv_acks, tlv_final_status, hardware_errors, last_hardware_error;
     uint64_t command_credit_events, command_credits, completed_packets;
     struct qbt_hci_stats hci;
+    struct qbt_link_stats link;
 };
 struct qbt_info {
     unsigned state; /* 0 off, 1 initializing, 2 ready, 3 failed */

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: BSD-2-Clause-Patent
-"""Execute the native routing and capability patches against an external original bluetoothd."""
+"""Execute native routing, capabilities and root-key paths against the locked bluetoothd."""
 import argparse
 import hashlib
 import json
@@ -9,6 +9,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from unicorn import Uc, UC_ARCH_ARM64, UC_MODE_ARM, UC_HOOK_CODE
+from unicorn import arm64_const as arm64
 from unicorn.arm64_const import (UC_ARM64_REG_X0, UC_ARM64_REG_X1, UC_ARM64_REG_X8,
     UC_ARM64_REG_X9, UC_ARM64_REG_X19, UC_ARM64_REG_X20, UC_ARM64_REG_X29,
     UC_ARM64_REG_X30, UC_ARM64_REG_PC, UC_ARM64_REG_SP)
@@ -18,6 +19,51 @@ STACK = 0x20000000
 STACK_BYTES = 0x10000
 STOP = STACK + STACK_BYTES
 CONTEXT = 0x1234567812345678
+REG_X = tuple(getattr(arm64, 'UC_ARM64_REG_X' + str(index)) for index in range(31))
+ROOT_ENTRY = 0x10085e5d4
+NC_LOAD = 0x10085dcb8
+NC_GENERATE = 0x10085de40
+ROOT_OBJECT = STACK + 0x1000
+ROOT_MODEL = STACK + 0x3000
+ROOT_VTABLE = STACK + 0x3100
+ROOT_MODEL_KIND = STACK + 0x8400
+ROOT_LOG = 0x100cae470
+ROOT_READ = 0x1004a07f4
+ROOT_STORE = 0x1004a0968
+ROOT_RANDOM = 0x10090a100
+ROOT_DERIVE = 0x10031b470
+ROOT_CLOUD_GENERATE = 0x10031bc4c
+ROOT_PUBLISH = 0x1001893b8
+RAM_ONLY = -34019
+MISSING = -65004  # ROOT_READ maps absent/invalid CFData to this wrapper status
+CLOUD_ERROR = 0x41b  # original Cloud generation helper's RNG/export failure
+
+# Fixed donor branches and continuations, independently read from 24A446.
+# Each read row is: site, type, length, normal check, valid edge, invalid edge.
+ROOT_READ_PATHS = (
+    (0x10085e6bc, 2, 16, 0x10085e6e0, 0x10085e758, 0x10085e6f4),
+    (0x10085e778, 1, 16, 0x10085e79c, 0x10085e814, 0x10085e7ac),
+    (0x10085e830, 5, 96, 0x10085e854, 0x10085e864, 0x10085e8a4),
+    (0x10085e880, 6, 64, 0x10085e8e0, 0x10085e8f0, 0x10085e9a0),
+    (0x10085e90c, 7, 16, 0x10085e9e8, 0x10085ea90, 0x10085e9f8),
+    (0x10085ec00, 16, 6, 0x10085ec24, 0x10085ecc4, 0x10085ec34),
+    (0x10085dd04, 19, 6, 0x10085dd38, 0x10085dd8c, 0x10085dd28),
+    (0x10085dda8, 17, 16, 0x10085ddd4, 0x10085ddec, 0x10085dd28),
+)
+# Store rows include the missing read that reaches each distinct generation path.
+ROOT_STORE_PATHS = (
+    (0x10085e724, 0x340001a0, 0x10085e758, 2),
+    (0x10085e7dc, 0x340001a0, 0x10085e810, 1),
+    (0x10085e94c, 0x34000880, 0x10085ea5c, 5),
+    (0x10085ea28, 0x34000340, 0x10085ea90, 7),
+    (0x10085ea6c, 0x34fff420, 0x10085e8f0, 5),
+    (0x10085eb14, 0x340003c0, 0x10085eb8c, 6),
+    (0x10085eb9c, 0x34ffeaa0, 0x10085e8f0, 6),
+    (0x10085ec70, 0x340002a0, 0x10085ecc4, 16),
+    (0x10085dedc, 0x340001a0, 0x10085df10, 19),
+    (0x10085dfa4, 0x340001a0, 0x10085dfd8, 19),
+)
+ROOT_LENGTHS = {kind: length for _, kind, length, *_ in ROOT_READ_PATHS}
 
 
 class Machine:
@@ -36,6 +82,7 @@ class Machine:
         self.pac = 0
         self.visited = []
         self.stop_at = set()
+        self.callbacks = {}
         self.bzero_calls = []
         self.next_calls = []
         self.indirect_calls = []
@@ -51,6 +98,10 @@ class Machine:
             uc.emu_stop()
             return
         self.visited.append(address - self.slide)
+        callback = self.callbacks.get(address)
+        if callback is not None:
+            callback()
+            return
         if address == self.mock_publish:
             self.publish_calls.append(struct.unpack('<IIQ', self.read(n.NATIVE_STATE + 64, 16)))
             uc.reg_write(UC_ARM64_REG_PC, uc.reg_read(UC_ARM64_REG_X30))
@@ -85,6 +136,12 @@ class Machine:
                 assert self.pac > 0
                 self.pac -= 1
                 uc.reg_write(UC_ARM64_REG_PC, address + 4)
+            elif word == 0xdac11a30:  # autda x16, x17: fixture vtable pointer
+                uc.reg_write(UC_ARM64_REG_PC, address + 4)
+            elif word == 0xd73f0910:  # blraa x8, x16: native model getter
+                target = uc.reg_read(REG_X[8])
+                uc.reg_write(UC_ARM64_REG_X30, address + 4)
+                uc.reg_write(UC_ARM64_REG_PC, target)
             elif word == 0xd63f0a1f:  # blraaz x16, native-to-library ABI
                 from unicorn.arm64_const import UC_ARM64_REG_X16
                 target = uc.reg_read(UC_ARM64_REG_X16)
@@ -111,6 +168,264 @@ class Machine:
 
     def read(self, address, size):
         return bytes(self.uc.mem_read(address + self.slide, size))
+
+
+def seed_callee_saved(machine):
+    saved = {}
+    for index in range(19, 30):
+        value = 0x1234000000000000 + index * 0x10101
+        machine.uc.reg_write(REG_X[index], value)
+        saved[index] = value
+    return saved
+
+
+def check_frame(machine, saved):
+    assert machine.uc.reg_read(UC_ARM64_REG_SP) == machine.initial_sp
+    assert machine.uc.reg_read(UC_ARM64_REG_X30) == STOP
+    assert machine.pac == 0
+    assert all(machine.uc.reg_read(REG_X[index]) == value for index, value in saved.items())
+
+
+class RootHelpers:
+    """Synthetic imported helpers; all root/NC control flow stays in donor code.
+
+    Material is an in-memory pattern only. No original keychain, crypto result
+    or device is consulted, and neither material nor pointers enter the report.
+    """
+    def __init__(self, machine, reads=None, stores=None, derivations=None,
+                 cloud_status=0, diagnostics=0, diagnostic_status=0):
+        self.m = machine
+        self.reads = reads or {}
+        self.stores = stores or {}
+        self.derivations = derivations or {}
+        self.cloud_status = cloud_status
+        self.read_calls = []
+        self.store_calls = []
+        self.derive_calls = []
+        self.cloud_calls = []
+        self.random_calls = []
+        self.publish_calls = []
+        self.saved = seed_callee_saved(machine)
+        machine.uc.reg_write(UC_ARM64_REG_X0, ROOT_OBJECT)
+        machine.write(ROOT_LOG, struct.pack('<Q', STACK + 0x3200))
+        machine.uc.mem_write(ROOT_MODEL, struct.pack('<Q', ROOT_VTABLE))
+        machine.uc.mem_write(ROOT_VTABLE + 0x1e8, struct.pack('<Q', ROOT_MODEL_KIND))
+        callbacks = {
+            ROOT_READ: self.read, ROOT_STORE: self.store, ROOT_RANDOM: self.random,
+            ROOT_DERIVE: self.derive, ROOT_CLOUD_GENERATE: self.cloud,
+            ROOT_PUBLISH: self.publish,
+            0x1000071b8: lambda: self.done(ROOT_MODEL),
+            0x100006ef8: lambda: self.done(0),  # scoped lock constructor
+            0x100006ec0: lambda: self.done(0),  # scoped lock destructor
+            0x10090b650: lambda: self.done(0),  # logging disabled
+            0x100299ed4: lambda: self.done(0),  # address notification
+            0x1003af800: lambda: self.done(0),  # native address callback
+            0x10085e0e4: lambda: self.done(diagnostic_status),
+        }
+        machine.callbacks.update({address + machine.slide: callback for address, callback in callbacks.items()})
+        machine.callbacks[ROOT_MODEL_KIND] = lambda: self.done(diagnostics)
+
+    def caller(self):
+        return self.m.uc.reg_read(UC_ARM64_REG_X30) - self.m.slide
+
+    def done(self, result=None):
+        # Clobber Darwin's volatile argument/IP registers. In particular, a
+        # void RNG call has no synthetic success/error return contract.
+        for index in range(18):
+            self.m.uc.reg_write(REG_X[index], 0xdead0000 + index)
+        if result is not None:
+            self.m.uc.reg_write(UC_ARM64_REG_X0, result & 0xffffffffffffffff)
+        self.m.uc.reg_write(UC_ARM64_REG_PC, self.m.uc.reg_read(UC_ARM64_REG_X30))
+
+    def read(self):
+        uc = self.m.uc
+        kind, buffer, size, actual = (uc.reg_read(REG_X[index]) for index in range(4))
+        assert ROOT_LENGTHS[kind] == size
+        status, length = self.reads.get(kind, (0, size))
+        if status == 0:
+            uc.mem_write(buffer, bytes([0x30 + kind]) * size)
+        uc.mem_write(actual, struct.pack('<I', length))
+        self.read_calls.append((kind, size, status, length))
+        self.done(status & 0xffffffff)
+
+    def store(self):
+        uc = self.m.uc
+        kind, buffer, size = (uc.reg_read(REG_X[index]) for index in range(3))
+        assert size == ROOT_LENGTHS.get(kind, 16) and any(uc.mem_read(buffer, size))
+        caller = self.caller()
+        status = self.stores.get(caller, self.stores.get('default', 0))
+        self.store_calls.append((caller, kind, size, status))
+        self.done(status & 0xffffffff)
+
+    def random(self):
+        uc = self.m.uc
+        buffer, size = (uc.reg_read(REG_X[index]) for index in range(2))
+        assert size in (6, 16)
+        self.random_calls.append(size)
+        uc.mem_write(buffer, bytes([0x80 + len(self.random_calls)]) * size)
+        self.done()  # _arc4random_buf returns void
+
+    def derive(self):
+        uc = self.m.uc
+        assert uc.reg_read(REG_X[1]) in (1, 3) and uc.reg_read(REG_X[2]) == 0
+        caller = self.caller()
+        status = self.derivations.get(caller, 0)
+        if status == 0:
+            uc.mem_write(uc.reg_read(REG_X[3]), b'\xa6' * 16)
+        self.derive_calls.append((caller, status))
+        self.done(status & 0xffffffff)
+
+    def cloud(self):
+        uc = self.m.uc
+        public, private, length = (uc.reg_read(REG_X[index]) for index in range(3))
+        assert bytes(uc.mem_read(length, 1)) == b'\x60'
+        if self.cloud_status == 0:
+            uc.mem_write(public, b'\xa7' * 64)
+            uc.mem_write(private, b'\xa8' * 96)
+        self.cloud_calls.append(self.caller())
+        self.done(self.cloud_status & 0xffffffff)
+
+    def publish(self):
+        self.publish_calls.append(bytes(self.m.uc.mem_read(ROOT_OBJECT + 0xebe, 1)))
+        self.done(0)
+
+    def check_return(self, status, ready):
+        assert self.m.uc.reg_read(UC_ARM64_REG_X0) == status
+        assert bytes(self.m.uc.mem_read(ROOT_OBJECT + 0xebe, 1)) == bytes([ready])
+        assert self.publish_calls == ([b'\x01'] if ready else [])
+        check_frame(self.m, self.saved)
+        assert ROOT_ENTRY in self.m.visited
+
+
+def check_root_keys(donor, image):
+    counts = dict(store_guards=0, read_branches=0, root_flows=0, metadata=0)
+    assert tuple(row[0] for row in ROOT_READ_PATHS) == n.ROOT_KEY_READS + n.NC_ROOT_KEY_READS
+    assert tuple(row[0] for row in ROOT_STORE_PATHS) == n.ROOT_KEY_WRITES + n.NC_ROOT_KEY_WRITES
+    assert donor.stubs['_arc4random_buf'] == ROOT_RANDOM
+    assert image.word(n.ROOT_KEY_FAILURE) == donor.word(n.ROOT_KEY_FAILURE) == 0x52801058
+    assert image.word(n.ROOT_KEY_LOAD_RESULT) == donor.word(n.ROOT_KEY_LOAD_RESULT) == 0xaa0003f8
+    assert image.word(n.ROOT_KEY_STORE_CHECK) == 0xd503201f
+    for entry in (ROOT_ENTRY, NC_LOAD, NC_GENERATE):
+        assert image.word(entry) == donor.word(entry) == n.PACIBSP
+    for exit_ in (0x10085ecc0, 0x10085dd34, 0x10085e01c):
+        assert image.word(exit_) == donor.word(exit_) == 0xd65f0fff
+
+    allowed = {row[0] for row in ROOT_READ_PATHS + ROOT_STORE_PATHS} | {n.ROOT_KEY_STORE_CHECK}
+    for start, end in ((NC_LOAD, ROOT_ENTRY), (ROOT_ENTRY, 0x10085eefc)):
+        assert all(image.word(address) == donor.word(address)
+                   for address in range(start, end, 4) if address not in allowed)
+    changed_fixups = image.chained_fixups()
+    assert changed_fixups.keys() == donor.fixups.keys()
+    capability_slots = {n.MODEL_VTABLE + offset for offset in n.MODEL_CAPABILITIES.values()}
+    for address, original in donor.fixups.items():
+        current = changed_fixups[address]
+        if address in capability_slots:
+            assert current >> 32 == original >> 32
+        else:
+            assert current == original
+    counts['metadata'] += 1
+
+    for slide in (0, 0x5a000000):
+        for site, word, success, _ in ROOT_STORE_PATHS:
+            assert donor.word(site) == word
+            guard = int(image.entries[f'root_key_store_{site:x}'], 16)
+            assert n.CAVE <= guard and guard + 24 <= n.CAVE_END
+            assert image.word(site) == n.branch(site, guard)
+            for subject, patched in ((donor, False), (image, True)):
+                for status in (0, RAM_ONLY, 4, 1, -1, -25300, -34018, -34020):
+                    m = Machine(subject, slide)
+                    saved = seed_callee_saved(m)
+                    m.uc.reg_write(UC_ARM64_REG_X0, status & 0xffffffff)
+                    m.run(site, (success, site + 4))
+                    accepted = status == 0 or patched and status == RAM_ONLY
+                    assert m.uc.reg_read(UC_ARM64_REG_PC) == (success if accepted else site + 4) + slide
+                    assert m.uc.reg_read(UC_ARM64_REG_X0) == status & 0xffffffff
+                    check_frame(m, saved)
+                    if patched:
+                        offsets = (0, 4, 8, 16) if status == RAM_ONLY else (0, 4, 8, 12, 16 if accepted else 20)
+                        assert m.visited == [site] + [guard + offset for offset in offsets]
+                    counts['store_guards'] += 1
+
+        for site, kind, size, normal, valid, invalid in ROOT_READ_PATHS:
+            for subject, patched in ((donor, False), (image, True)):
+                for status, length in ((0, size), (0, size - 1), (MISSING, 0), (RAM_ONLY, 0), (RAM_ONLY, size)):
+                    m = Machine(subject, slide)
+                    frame = STACK + 0x5000
+                    m.uc.reg_write(UC_ARM64_REG_X29, frame)
+                    m.uc.reg_write(UC_ARM64_REG_X19, ROOT_OBJECT)
+                    m.uc.reg_write(UC_ARM64_REG_X0, status & 0xffffffff)
+                    length_address = frame - 0x54 if kind not in (17, 19) else m.initial_sp + 0xc
+                    m.uc.mem_write(length_address, struct.pack('<I', length))
+                    m.uc.mem_write(m.initial_sp + 0x5, b'\x01' + b'\x3c' * 6)
+                    m.run(site - 8, (valid, invalid, site + 4))
+                    expected = site + 4 if not patched and status == RAM_ONLY else valid if status == 0 and length == size else invalid
+                    assert m.uc.reg_read(UC_ARM64_REG_PC) == expected + slide
+                    assert (normal in m.visited) == (patched or status != RAM_ONLY)
+                    assert m.uc.reg_read(UC_ARM64_REG_SP) == m.initial_sp and m.pac == 0
+                    counts['read_branches'] += 1
+
+        def flow(subject, expected, options=None, ready=None):
+            m = Machine(subject, slide)
+            helpers = RootHelpers(m, **(options or {}))
+            m.run(ROOT_ENTRY)
+            helpers.check_return(expected, int(expected == 0) if ready is None else ready)
+            counts['root_flows'] += 1
+            return m, helpers
+
+        for subject, patched in ((donor, False), (image, True)):
+            m, helpers = flow(subject, 0)
+            assert not helpers.random_calls and not helpers.cloud_calls and NC_GENERATE not in m.visited
+            for kind, offset in ((2, 0x88), (1, 0xa8), (17, 0x98)):
+                assert bytes(m.uc.mem_read(ROOT_OBJECT + offset, 16)) == bytes([0x30 + kind]) * 16
+
+            # Actual NC load produces 0x67 and the main function must invoke the
+            # original NC generator, not merely publish startup success.
+            for kind, result in ((19, (MISSING, 0)), (17, (0, 15)),
+                                 (19, (RAM_ONLY, 0)), (17, (RAM_ONLY, 0))):
+                expected = 0x82 if not patched and result[0] == RAM_ONLY else 0
+                m, helpers = flow(subject, expected, dict(reads={kind: result}))
+                assert (NC_GENERATE in m.visited) == (expected == 0)
+                if expected == 0:
+                    assert helpers.random_calls == [6, 16]
+                    assert 0x10085ed30 in m.visited and 0x10085ed38 in m.visited
+
+            m, helpers = flow(subject, 0 if patched else 0x82, dict(
+                reads={kind: (RAM_ONLY, 0) for kind in ROOT_LENGTHS}, stores={'default': RAM_ONLY}))
+            if patched:
+                assert helpers.random_calls == [16, 16, 16, 6, 6, 16]
+                assert len(helpers.cloud_calls) == 1 and NC_GENERATE in m.visited
+
+            # Both Cloud generation edges and every checked 16-byte derivation
+            # return a real error; none may reach ready/publication.
+            for kind, caller in ((5, 0x10085e8bc), (6, 0x10085e9b8)):
+                m, helpers = flow(subject, 0x82, dict(reads={kind: (MISSING, 0)}, cloud_status=CLOUD_ERROR))
+                assert helpers.cloud_calls == [caller] and n.ROOT_KEY_FAILURE in m.visited
+            for caller in (0x10085eaa8, 0x10085eb60, 0x10085de00, 0x10085dfec):
+                reads = {19: (MISSING, 0)} if caller == 0x10085dfec else {}
+                m, helpers = flow(subject, 0x82, dict(reads=reads, derivations={caller: 4}))
+                assert (caller, 4) in helpers.derive_calls
+                assert (NC_GENERATE in m.visited) == (caller == 0x10085dfec)
+
+            for site, _, _, missing_kind in ROOT_STORE_PATHS:
+                for status in (4, RAM_ONLY):
+                    expected = 0 if patched and status == RAM_ONLY else 0x82
+                    m, helpers = flow(subject, expected, dict(
+                        reads={missing_kind: (MISSING, 0)}, stores={site: status}))
+                    assert any(caller == site and result == status for caller, _, _, result in helpers.store_calls)
+                    if status == 4 and site in n.ROOT_KEY_WRITES:
+                        assert n.ROOT_KEY_FAILURE in m.visited
+
+            # These two stores are unchecked in the donor. Preserve that fact;
+            # their success path is not evidence of persistent root/bond state.
+            for site, reads in ((0x10085eb48, {}), (0x10085e030, {19: (MISSING, 0)})):
+                _, helpers = flow(subject, 0, dict(reads=reads, stores={site: 4}))
+                assert any(caller == site and result == 4 for caller, _, _, result in helpers.store_calls)
+
+            # Diagnostics returns its real result directly, bypassing the
+            # shared failure constant; no root/NC reads or ready are published.
+            m, helpers = flow(subject, 0x82, dict(diagnostics=1, diagnostic_status=0x82))
+            assert n.ROOT_KEY_FAILURE not in m.visited and not helpers.read_calls
+    return counts
 
 
 def check(image):
@@ -290,8 +605,8 @@ def check(image):
     cases += 1
     assert image.word(n.VIRTUAL_MACHINE_CHECK) == n.mov_w(0, 0) and image.word(n.VIRTUAL_MACHINE_CHECK + 4) == n.RET
     cases += 1
-    # Keychain results no longer reach the daemon's fatal return; targets are unchanged.
-    for site in n.ROOT_KEY_READS + n.ROOT_KEY_WRITES:
+    # Runtime tests below distinguish permitted RAM fallback from real failure.
+    for site in n.ROOT_KEY_READS + n.NC_ROOT_KEY_READS + n.ROOT_KEY_WRITES + n.NC_ROOT_KEY_WRITES:
         assert image.word(site) >> 26 == 0b000101
         cases += 1
     return cases
@@ -304,6 +619,8 @@ def main():
     args = parser.parse_args()
     image = n.NativeImage(args.image).vendor_routing().volatile_root_keys().h4_shutdown().capability_adapter()
     cases = check(image)
+    root_cases = check_root_keys(n.NativeImage(args.image), image)
+    cases += sum(root_cases.values())
     with TemporaryDirectory() as directory:
         wrong = Path(directory) / 'bluetoothd'
         bad = bytearray(image.original)
@@ -318,9 +635,11 @@ def main():
     args.output.mkdir(parents=True, exist_ok=True)
     report = dict(passed=True, cases=cases, input_sha256=hashlib.sha256(image.original).hexdigest(),
                   simulated='actual original and patched AArch64 instructions at two ASLR slides',
-                  pointer_authentication='PAC operations modeled without target keys', hardware_verified=False)
+                  pointer_authentication='PAC operations modeled without target keys', hardware_verified=False,
+                  root_keys=root_cases,
+                  synthetic_helpers='Keychain read/store, void RNG, crypto results, model getter, locking/logging and publication')
     (args.output / 'report.json').write_text(json.dumps(report, indent=2) + '\n')
-    print(f'Native routing, capability ABI and H4 shutdown: {cases} instruction cases passed at two ASLR slides')
+    print(f'Native routing, capability ABI, H4 shutdown and root keys: {cases} instruction cases passed at two ASLR slides')
 
 
 if __name__ == '__main__':

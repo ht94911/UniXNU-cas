@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: BSD-2-Clause-Patent
-"""Version-locked native iPadOS 27 Bluetooth routing and image metadata."""
+"""Version-locked native iOS 27 Bluetooth routing and image metadata."""
 import hashlib
 import importlib.util
 import struct
@@ -61,6 +61,8 @@ ROOT_KEY_LOAD_RESULT = 0x10085ed1c
 ROOT_KEY_READS = (0x10085e6bc, 0x10085e778, 0x10085e830, 0x10085e880, 0x10085e90c, 0x10085ec00)
 ROOT_KEY_WRITES = (0x10085e724, 0x10085e7dc, 0x10085e94c, 0x10085ea28, 0x10085ea6c, 0x10085eb14,
                    0x10085eb9c, 0x10085ec70)
+NC_ROOT_KEY_READS = (0x10085dd04, 0x10085dda8)
+NC_ROOT_KEY_WRITES = (0x10085dedc, 0x10085dfa4)
 TRANSPORT = 0x100c1cdf8
 H4_TABLE = 0x100c1cd50
 NATIVE_STATE = 0x100caff80
@@ -136,7 +138,7 @@ class NativeImage(_inspect.Image):
     def __init__(self, path):
         super().__init__(path)
         if hashlib.sha256(self.data).hexdigest() != ORIGINAL_SHA256:
-            raise ValueError('bluetoothd must match the locked iPadOS 27 original SHA-256')
+            raise ValueError('bluetoothd must match the locked 24A446 original SHA-256')
         if self.uuid != ORIGINAL_UUID or self.subtype != 0x80000002:
             raise ValueError('bluetoothd UUID or arm64e subtype differs')
         self.original = self.data
@@ -353,25 +355,42 @@ class NativeImage(_inspect.Image):
         return self
 
     def volatile_root_keys(self):
-        # readRootKeys restarts the daemon when the keychain is unavailable. Continue with
-        # generated keys instead; stored keys are used whenever the keychain answers.
-        for site in ROOT_KEY_READS:
+        # The consumer's RAM-only profile permits errSecUpgradePending (-34019)
+        # to enter the original status/length/generation path, including NC
+        # identity. Valid stored material and all generation checks stay native.
+        for site in ROOT_KEY_READS + NC_ROOT_KEY_READS:
             word = self.word(site)
             if word & 0xff00001f != 0x54000001:
                 raise ValueError('root key read branch differs')
             target = site + ((word >> 5 & 0x7ffff) << 2)
             self.put(site, [branch(site, target)], [word])
-        for site in ROOT_KEY_WRITES:
+        for site in ROOT_KEY_WRITES + NC_ROOT_KEY_WRITES:
             word = self.word(site)
             if word & 0xff00001f != 0x34000000:
                 raise ValueError('root key write branch differs')
             offset = word >> 5 & 0x7ffff
             offset = offset - (1 << 19) if offset >> 18 else offset
-            self.put(site, [branch(site, site + (offset << 2))], [word])
-        # Remaining key stores and loads cannot fail startup: no restart, and success returned.
+            target = site + (offset << 2)
+            start = self.cursor
+            # Material has already passed its native generation path. Only a
+            # successful store or the selected RAM-only status may continue.
+            # The continuations overwrite w8/NZCV before using either; keep w0,
+            # the original frame, LR and every callee-saved register intact.
+            guard = self.emit(f'root_key_store_{site:x}', [
+                0x12909c48,  # mov w8, #-34019 (errSecUpgradePending)
+                0x6b08001f,  # cmp w0, w8
+                lambda pc, t=start + 16: 0x54000000 | relative(pc, t, 19) << 5,
+                lambda pc, t=start + 20: cbnz(pc, 0, t),
+                lambda pc, t=target: branch(pc, t),
+                lambda pc, t=site + 4: branch(pc, t)])
+            self.put(site, [branch(site, guard)], [word])
+        # Preserve material failure and NC load's 0x67 repair/0x82 error flow.
+        if self.word(ROOT_KEY_FAILURE) != mov_w(24, 0x82) or self.word(ROOT_KEY_LOAD_RESULT) != 0xaa0003f8:
+            raise ValueError('root key failure propagation differs')
+        # Existing RAM policy suppresses root-change/old-pair cache conflict
+        # handling. This is separate from generation and store result handling;
+        # persistence and the old records' root generation remain unverified.
         self.put(ROOT_KEY_STORE_CHECK, [0xd503201f], [0x350016c0])
-        self.put(ROOT_KEY_FAILURE, [mov_w(24, 0)], [mov_w(24, 0x82)])
-        self.put(ROOT_KEY_LOAD_RESULT, [0xaa1f03f8], [0xaa0003f8])
         return self
 
     def h4_shutdown(self):
