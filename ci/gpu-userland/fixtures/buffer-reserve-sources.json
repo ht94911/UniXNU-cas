@@ -1,7 +1,7 @@
 {
   "original_pin": "963f0e64f103d2e682cd0cc454a8fe50f52c8cbb",
-  "patched_tree": "751021538375f3ed9d82e4adea07445e2f3c87a5",
-  "builder_sha256": "48e36e39fe3c4a6f7d8a1751b64c12a568f9ed1713fdce58141a0ddcb70afcf0",
+  "patched_tree": "139445c01681140b6ccfb13c7ab160fd0e0f8553",
+  "builder_sha256": "d2e6697f0475592987349fc93f83f62132b7ff81beb9cdfdb56e6ee5b9817287",
   "patch_hashes": {
     "0002-resource-wait-storage-dependencies.patch": "4536f03ac5a829d0a23d839491837c62af00c1aa884dc75cdae0f195c7953c0c",
     "0003-cache-device-entry-point-priming.patch": "ca1c0e3733bc048d9771fc3a5d061fc4224eee3341dc41d4b64a71e6e9d06408",
@@ -35,7 +35,8 @@
     "0035-aligned-heap-transfer-rows.patch": "ba5635d0586ced93cafb32e08656fad72eb29187646ae48111d3cbf0c4138e03",
     "0036-linear-heap-word-copy.patch": "f14d80d1ff47546fa5311d6008c8a93e37b7a1261cbcb23b4015fc9e8bde5352",
     "0037-runtime-963f-contracts.patch": "bcec51c15fb694d957c5712d7ef8219580b435c38afa18ab881fb0bb505004ce",
-    "0038-fused-tiled-image-copy.patch": "2085e83c3f985b6657fe34aad903321aa96f2e1fb0a1550facf0be78599393fa"
+    "0038-fused-tiled-image-copy.patch": "2085e83c3f985b6657fe34aad903321aa96f2e1fb0a1550facf0be78599393fa",
+    "0039-render-pass-driver-clocks.patch": "9d9bf7e50fd5fd6eb6cae2ad8d10e2c099218d84aa1614d1518aaaddca7211f1"
   },
   "source_hashes": {
     "crates/metal2vulkan-runtime/src/written_commands.rs": "5c1a9ac622de2d0cfc199de4115a087c6ee9550f4b94059513da4339a4207ac2",
@@ -52,7 +53,7 @@
     "crates/metal2vulkan-runtime/src/color_resolve.rs": "1b979748dc15f9ad40bccf44fbfcd9539c1124528915dc50fa94261915c606cb",
     "crates/metal2vulkan-runtime/src/driver_facts.rs": "a0f37a4fa2948be062af5adbf47d7e23899131ef409cb9322bbafa3e37331dd9",
     "crates/metal2vulkan-runtime/src/used_resources.rs": "469263c841528d8b2a9dc679bff8f3baec7b71b7468c3a4fcf48a8f714fb86f2",
-    "crates/metal2vulkan-runtime/src/stage_trace.rs": "6419ffe419c28848a9b5e74672c6ccd321261fffe37ab5aa879b950a1eb18179",
+    "crates/metal2vulkan-runtime/src/stage_trace.rs": "92188e0f607f382ddd32ed38a75b8e0a486a2da9737ec66dc8bdbfb9dfae7a0f",
     "crates/metal2vulkan-runtime/src/function_table.rs": "8cc1dbc55c290fb74e7012995758d3a10bd66371456b95710de7be92d2899b7c",
     "crates/metal2vulkan-runtime/src/clear_value.rs": "257d00d4642953e274fe14abf28c0cdc755dace35129a9b1dae8731918bd1759",
     "crates/metal2vulkan-runtime/src/shadow_merge.rs": "b00fd0db1c12eb79b0a782f073ce98d5724538176155aa3352e7319651859123",
@@ -245,8 +246,8 @@
     "crates/metal2vulkan-runtime/src/families/features.rs": "c0c789c1bf6aa354f08acbb1c5e5835f7d0ff6037e1919357556b6e53e8e87e8",
     "crates/metal2vulkan-runtime/src/families/mod.rs": "6d6356587251b332f4042b6b6f8740f02256793d6b396d7f41e46b81204d7ae8",
     "crates/metal2vulkan-runtime/src/families/formats.rs": "c6a1427dba52cd6dc830f6772d570a68f0d974d32450c5d9e32421895f848ad2",
-    "crates/metal2vulkan-runtime/src/recorder/thunks.rs": "128344e904e96ca77085c6324870f34987450806eb53310c5c5e9765cdefdc0b",
-    "crates/metal2vulkan-runtime/src/recorder/mod.rs": "a4f180718a826ed3b2d9d924215b359a6fb2206e75f5507d29c79749d12fdeb3",
+    "crates/metal2vulkan-runtime/src/recorder/thunks.rs": "4e2ccac6c8dc9b848baeecca24868fc0c58b55905f1bba84bde640b1afe6e5dc",
+    "crates/metal2vulkan-runtime/src/recorder/mod.rs": "9ee3613f7c67ca44d4357f08e20af9fcefa78c7902b061b30c52dc995a5222db",
     "crates/metal2vulkan-runtime/src/texture/attached_reads.rs": "537efbdc889bb52bf076912ae65d91a1cffd2effa845193685565c9e836fc421",
     "crates/metal2vulkan-runtime/src/texture/first_move_lifetimes.rs": "f31651a582bd7e3798aac7f4564262da6e008041191f8816dbe9bc6912c8a285",
     "crates/metal2vulkan-runtime/src/texture/heap.rs": "51c9f25ae7c47338772c2899fd21f256e2d260aa03bef0f323e4716e0c258d36",
