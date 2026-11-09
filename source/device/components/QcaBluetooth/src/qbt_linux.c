@@ -90,11 +90,16 @@ static int set_speed(struct qbt *q,uint32_t speed,uint8_t baud,bool require_repl
     int e=q->ops.uart_flow(q->ops.context,false);if(e)return e;
     q->speed_reply=false;q->speed_status=0xff;stage=2;
     e=qbt_send_command(q,0xfc48,&baud,1);
-    if(!e){stage=3;e=qbt_drain(q,q->ops.now_ns(q->ops.context)+QBT_COMMAND_TIMEOUT);}
-    /* Ganges SetBaudRateReq waits 20 ms after FC48 before changing the host
-     * rate (stock HAL dc360/dc364, usleep via GOT 1ac790). Keep the original
-     * WCN7850 timing; the Ganges completion is read at the new rate. */
-    if(!e){stage=4;qbt_delay(q,require_reply?20:1);e=q->info.error;if(!e){stage=5;e=q->ops.uart_speed(q->ops.context,speed);}}
+    /* Actual Ganges HAL: write at dc354, 20ms at dc360/dc364, tcdrain at
+     * dc36c, then host rate at dc384. WCN7850 keeps its Linux drain/1ms path. */
+    if(require_reply) {
+        if(!e){stage=3;qbt_delay(q,20);e=q->info.error;}
+        if(!e){stage=4;e=qbt_drain(q,q->ops.now_ns(q->ops.context)+QBT_COMMAND_TIMEOUT);}
+    } else {
+        if(!e){stage=3;e=qbt_drain(q,q->ops.now_ns(q->ops.context)+QBT_COMMAND_TIMEOUT);}
+        if(!e){stage=4;qbt_delay(q,1);e=q->info.error;}
+    }
+    if(!e){stage=5;e=q->ops.uart_speed(q->ops.context,speed);}
     int flow=q->ops.uart_flow(q->ops.context,true);if(!e){stage=6;e=flow;}
     /* The first TLV segment holds the download mode and is lost if it precedes the switch. */
     uint64_t deadline=q->ops.now_ns(q->ops.context)+(uint64_t)(require_reply?QBT_GANGES_SPEED_REPLY_MS:QBT_SPEED_REPLY_MS)*1000000ULL;

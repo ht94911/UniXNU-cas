@@ -16,12 +16,32 @@
 #define DFS_CFG(level) (0x1cu + 4u * (level))
 #define DFS_M(level) (0x5cu + 4u * (level))
 #define DFS_N(level) (0x9cu + 4u * (level))
+#define CMD_UPDATE 1u
+#define CMD_ROOT_EN 2u
+#define CMD_ROOT_OFF (1u << 31)
+#define CFG_MASK (0x371fu | (1u << 20))
 static uint32_t rd(const struct sm8850_bt_io *io, uint32_t r) { return io->read(io->context, SM8850_BT_GCC, r); }
 static void wr(const struct sm8850_bt_io *io, uint32_t r, uint32_t v) { io->write(io->context, SM8850_BT_GCC, r, v); }
+/* clk_rcg2_set_force_enable waits for the root before programming M/N/CFG.
+ * UART18 does not use hw_clk_ctrl. Only remove a force vote added by this
+ * operation; a force vote inherited from the platform remains in place. */
+static int force_root(const struct sm8850_bt_io *io, uint32_t command) {
+    wr(io, RCG, command | CMD_ROOT_EN);
+    for (unsigned n = 0; n < 500; n++) {
+        if (!(rd(io, RCG) & CMD_ROOT_OFF)) return 0;
+        io->delay_us(io->context, 1);
+    }
+    return -ETIMEDOUT;
+}
+static int release_force(const struct sm8850_bt_io *io, uint32_t command) {
+    if (command & CMD_ROOT_EN) return 0;
+    wr(io, RCG, rd(io, RCG) & ~CMD_ROOT_EN);
+    return (rd(io, RCG) & CMD_ROOT_EN) ? -EIO : 0;
+}
 static int update(const struct sm8850_bt_io *io, uint32_t cmd) {
-    wr(io, RCG, cmd | 1u);
+    wr(io, RCG, cmd | CMD_UPDATE);
     for (unsigned n = 0; n < 1000; n++) {
-        if (!(rd(io, RCG) & 1u)) return 0;
+        if (!(rd(io, RCG) & CMD_UPDATE)) return 0;
         io->delay_us(io->context, 1);
     }
     return -ETIMEDOUT;
@@ -107,21 +127,23 @@ int sm8850_bt_clock_source(const struct sm8850_bt_io *io, struct sm8850_bt_clock
     }
     if (!c->source_saved) {
         for (unsigned i = 0; i < 5; i++) c->rcg[i] = rd(io, RCG + i * 4);
-        if (c->rcg[0] & 1u) return -EBUSY;
+        if (c->rcg[0] & CMD_UPDATE) return -EBUSY;
         c->source_saved = true;
     }
     uint32_t command = rd(io, RCG);
-    if (command & 1u) return -EBUSY;
-    wr(io, RCG, command | 2u); /* force root while programming this idle SE */
+    if (command & CMD_UPDATE) return -EBUSY;
+    int e = force_root(io, command);
+    if (e) { c->failed = true; return e; }
     wr(io, RCG + 8, m);
     wr(io, RCG + 12, ~(n - m) & 0xffffu);
     wr(io, RCG + 16, ~n & 0xffffu);
     uint32_t cfg = rd(io, RCG + 4);
-    wr(io, RCG + 4, (cfg & ~0x371fu) | (6u << 8) | (2u << 12) | 1u);
-    int e = update(io, command | 2u);
-    if (!e && ((rd(io, RCG + 4) & 0x371fu) != ((6u << 8) | (2u << 12) | 1u) ||
+    wr(io, RCG + 4, (cfg & ~CFG_MASK) | (6u << 8) | (2u << 12) | 1u);
+    e = update(io, command | CMD_ROOT_EN);
+    if (!e && ((rd(io, RCG + 4) & CFG_MASK) != ((6u << 8) | (2u << 12) | 1u) ||
         (rd(io, RCG + 8) & 0xffffu) != m || (rd(io, RCG + 12) & 0xffffu) != (~(n - m) & 0xffffu) ||
         (rd(io, RCG + 16) & 0xffffu) != (~n & 0xffffu))) e = -EIO;
+    if (!e) e = release_force(io, command);
     if (e) { c->failed = true; return e; }
     *hz = frequency; c->selector = 0; return 0;
 }
@@ -131,12 +153,13 @@ int sm8850_bt_clock_put(const struct sm8850_bt_io *io, struct sm8850_bt_clock *c
     if (c->failed) return -EIO; /* unacknowledged RCG/clock operation remains owned */
     if (c->source_saved) {
         uint32_t command = rd(io, RCG);
-        if (command & 1u) return -EBUSY;
-        wr(io, RCG, command | 2u);
-        for (unsigned i = 1; i < 5; i++) wr(io, RCG + i * 4, c->rcg[i]);
-        int e = update(io, (c->rcg[0] & ~1u) | 2u);
+        if (command & CMD_UPDATE) return -EBUSY;
+        int e = force_root(io, command);
         if (e) { c->failed = true; return e; }
-        wr(io, RCG, c->rcg[0] & ~1u);
+        for (unsigned i = 1; i < 5; i++) wr(io, RCG + i * 4, c->rcg[i]);
+        e = update(io, command | CMD_ROOT_EN);
+        if (!e) e = release_force(io, command);
+        if (e) { c->failed = true; return e; }
     }
     uint32_t votes = rd(io, VOTES), remove = c->added_votes;
     if (votes & PEERS) remove &= ~SHARED;

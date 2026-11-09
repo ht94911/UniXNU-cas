@@ -60,6 +60,8 @@ bool qbt_geni_service(struct qbt_geni *);
 size_t qbt_geni_write(struct qbt_geni *, const uint8_t *, size_t);
 bool qbt_geni_drained(struct qbt_geni *);
 void qbt_geni_set_flow(struct qbt_geni *, bool);
+/* QTI modem-flow ioctl changes RTS without changing the TX CTS policy. */
+void qbt_geni_set_rts(struct qbt_geni *, bool);
 /* Cancel RX only after TX drains, then finish from IRQ or timed service turns.
  * Clock gating is allowed only at STOPPED with an external RX wake armed. */
 int qbt_geni_quiesce(struct qbt_geni *);

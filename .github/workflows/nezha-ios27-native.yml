@@ -1,7 +1,7 @@
-name: nezha Bluetooth27 on accepted Wi-Fi023 - owner004
+name: nezha Bluetooth27 on accepted Wi-Fi023 - owner005
 on:
   push:
-    branches: [codex/ios27-bt27-wifi023-owner004-20261109]
+    branches: [codex/ios27-bt27-wifi023-owner005-20261109]
   workflow_dispatch:
 permissions:
   contents: read

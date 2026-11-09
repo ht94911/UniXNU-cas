@@ -39,12 +39,29 @@ static void rate_trace(struct nezha_bt_board *b,const char *stage,int error) {
         b->geni.rx_busy,b->geni.rx_ready,read_reg(b,G_RX_LEN_IN),(unsigned long long)b->geni.stats.rx_dma);
     b->ops.log(b->ops.context,6,line);
 }
+static void failure_trace(struct nezha_bt_board *b,int error) {
+    if(!b->ops.log || b->boot_attempts>3 || !b->clocked || b->geni.state==QBT_GENI_OFF)return;
+    rate_trace(b,"init-error",error);
+    char line[256];
+    snprintf(line,sizeof(line),"UART failure error=%d ios=%x dma=%x fifo=%x irq=%x/%x/%x/%x rx_len=%u busy=%u/%u",
+        error,read_reg(b,G_IOS),read_reg(b,G_DMA_DEBUG),read_reg(b,G_RX_FIFO_STATUS),
+        read_reg(b,G_M_IRQ),read_reg(b,G_S_IRQ),read_reg(b,G_TX_IRQ),read_reg(b,G_RX_IRQ),
+        read_reg(b,G_RX_LEN_IN),b->geni.tx_busy,b->geni.rx_busy);
+    b->ops.log(b->ops.context,6,line);
+    snprintf(line,sizeof(line),"UART failure counters tx=%llu rx=%llu tx_dma=%llu rx_dma=%llu fault=%x/%x/%x/%x",
+        (unsigned long long)b->geni.stats.tx_bytes,(unsigned long long)b->geni.stats.rx_bytes,
+        (unsigned long long)b->geni.stats.tx_dma,(unsigned long long)b->geni.stats.rx_dma,
+        b->geni.fault_irq[0],b->geni.fault_irq[1],b->geni.fault_irq[2],b->geni.fault_irq[3]);
+    b->ops.log(b->ops.context,6,line);
+    if(b->ops.serial_snapshot)b->ops.serial_snapshot(b->ops.context);
+}
 static size_t from_uart(void *p,const uint8_t *data,size_t n) {struct nezha_bt_board *b=p;return qbt_receive(b->core,data,n);}
 static size_t to_stack(void *p,const uint8_t *data,size_t n) {struct nezha_bt_board *b=p;return b->ops.receive(b->ops.context,data,n);}
 static size_t to_uart(void *p,const uint8_t *data,size_t n) {struct nezha_bt_board *b=p;return qbt_geni_write(&b->geni,data,n);}
 static bool drained(void *p) {struct nezha_bt_board *b=p;return qbt_geni_drained(&b->geni);}
 static int flow(void *p,bool enable) {
-    struct nezha_bt_board *b=p;qbt_geni_set_flow(&b->geni,enable);
+    /* Actual Ganges USERIAL_OP_FLOW_OFF/ON only changes TIOCM_RTS. */
+    struct nezha_bt_board *b=p;qbt_geni_set_rts(&b->geni,enable);
     rate_trace(b,enable?"flow-on":"flow-off",0);return 0;
 }
 static void pump(void *p) {
@@ -208,6 +225,7 @@ int nezha_bt_board_power_on(struct nezha_bt_board *b) {
     e=qbt_boot_controller(b->core,&b->boot,b->address);if(e)goto fail;
     b->boot_deadline=0;b->powered=true;b->phase=NEZHA_BT_READY;return 0;
 fail:
+    failure_trace(b,e);
     b->error=e;b->cleanup_error=nezha_bt_board_power_off(b);
     if(b->phase!=NEZHA_BT_QUARANTINED)b->phase=NEZHA_BT_FAILED;
     return e;

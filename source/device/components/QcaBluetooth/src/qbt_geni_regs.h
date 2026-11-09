@@ -7,6 +7,7 @@
 #define G_OUTPUT 0x24u
 #define G_CGC 0x28u
 #define G_STATUS 0x40u
+#define G_IOS 0x44u
 #define G_M_CLK 0x48u
 #define G_S_CLK 0x4cu
 #define G_FW_REV 0x68u
@@ -39,6 +40,7 @@
 #define G_S_IRQ_EN 0x644u
 #define G_S_CLEAR 0x648u
 #define G_TX_FIFO_STATUS 0x800u
+#define G_RX_FIFO_STATUS 0x804u
 #define G_RX_WM 0x810u
 #define G_RX_RFR_WM 0x814u
 #define G_TX_PTR_L 0xc30u
@@ -65,6 +67,7 @@
 #define G_IRQ_EN 0xe1cu
 #define G_HW_PARAM1 0xe28u
 #define G_DMA_CFG 0xe30u
+#define G_DMA_DEBUG 0xe40u
 #define G_DMA_IF_EN 0x2004u
 #define G_M_ACTIVE 1u
 #define G_S_ACTIVE (1u<<12)

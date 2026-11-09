@@ -57,6 +57,8 @@ struct nezha_bt_board_ops {
     void (*firmware_put)(void *,const uint8_t *,size_t);
     size_t (*receive)(void *,const uint8_t *,size_t);
     void (*log)(void *,int,const char *);
+    /* Optional bounded read-only clock observation before failed cleanup. */
+    void (*serial_snapshot)(void *);
 };
 enum nezha_bt_phase { NEZHA_BT_OFF, NEZHA_BT_RESOURCES, NEZHA_BT_POWER,
     NEZHA_BT_UART, NEZHA_BT_FIRMWARE, NEZHA_BT_READY, NEZHA_BT_FAILED,

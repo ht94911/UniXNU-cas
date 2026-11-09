@@ -198,11 +198,18 @@ static int serialSource(void *, uint32_t baud, uint32_t *hz, uint32_t *selector)
     if ((uartRead(nullptr, G_STATUS) & (G_M_ACTIVE | G_S_ACTIVE)) || (uartRead(nullptr, 0xe40) & 3) ||
         uartRead(nullptr, G_TX_FIFO_STATUS)) return -EBUSY;
     platform.retired = true;
-    int e=sm8850_bt_clock_source(&io, &platform.clock, baud, hz, selector);
     static unsigned traces;
-    if(traces++<6) {
+    bool trace=traces++<6;
+    uint32_t oldCommand=trace?readShared(nullptr,SM8850_BT_GCC,0xa8640):0;
+    uint32_t oldConfig=trace?readShared(nullptr,SM8850_BT_GCC,0xa8644):0;
+    int e=sm8850_bt_clock_source(&io, &platform.clock, baud, hz, selector);
+    if(trace) {
         printf("[nezha bluetooth] clock baud=%u error=%d dfs=%x select=%u source=%u\n",
             baud,e,platform.clock.dfsr,*selector,*hz);
+        printf("[nezha bluetooth] clock RCG before=%x/%x after=%x/%x m=%x n=%x d=%x\n",
+            oldCommand,oldConfig,readShared(nullptr,SM8850_BT_GCC,0xa8640),
+            readShared(nullptr,SM8850_BT_GCC,0xa8644),readShared(nullptr,SM8850_BT_GCC,0xa8648),
+            readShared(nullptr,SM8850_BT_GCC,0xa864c),readShared(nullptr,SM8850_BT_GCC,0xa8650));
         if(platform.clock.dfsr&1u) {
             for(unsigned level=0;level<8;level++)
                 printf("[nezha bluetooth] clock bank=%u cfg=%x m=%x n=%x\n",level,
@@ -212,6 +219,14 @@ static int serialSource(void *, uint32_t baud, uint32_t *hz, uint32_t *selector)
         }
     }
     return e;
+}
+static void serialSnapshot(void *) {
+    Guard guard; if(guard.error || !platform.clock.acquired)return;
+    printf("[nezha bluetooth] clock failure cmd=%x cfg=%x m=%x n=%x d=%x votes=%x pll=%x dfs=%x\n",
+        readShared(nullptr,SM8850_BT_GCC,0xa8640),readShared(nullptr,SM8850_BT_GCC,0xa8644),
+        readShared(nullptr,SM8850_BT_GCC,0xa8648),readShared(nullptr,SM8850_BT_GCC,0xa864c),
+        readShared(nullptr,SM8850_BT_GCC,0xa8650),readShared(nullptr,SM8850_BT_GCC,0x52018),
+        readShared(nullptr,SM8850_BT_GCC,0x52020),readShared(nullptr,SM8850_BT_GCC,0xa8654));
 }
 static int serialRetire(void *) {
     if (!platform.uart.va || !platform.clock.acquired) return -ENXIO;
@@ -368,5 +383,5 @@ extern "C" int nezha_bt_platform_init(nezha_bt_board_ops *o, const nezha_bt_inpu
     o->power_acquire = powerGet; o->power_release = powerPut; o->reset_enable = enable;
     o->pins_default = defaultPins; o->pins_active = pins; o->serial_clock = serialClock; o->serial_retire = serialRetire; o->serial_source = serialSource;
     o->irq_attach = attachIrq; o->irq_detach = detachIrq; o->firmware_get = firmware; o->firmware_put = firmwarePut;
-    o->receive = receive; o->log = log; platform.initialized = true; return 0;
+    o->receive = receive; o->log = log; o->serial_snapshot = serialSnapshot; platform.initialized = true; return 0;
 }

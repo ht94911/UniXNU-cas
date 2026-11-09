@@ -9,9 +9,12 @@ Device: Xiaomi Pad 6S Pro (sheng), iPadOS 27.0.1 (24A446).
 
 The table below is the upstream author's sheng record. The consuming nezha
 Bluetooth27 adaptation has separately reached a real UART controller-version
-reply on2026-11-09, followed by a baud-change timeout. Nezha pairing and audio
+reply on 2026-11-09, followed by a baud-change timeout in002 and003. Nezha pairing and audio
 are still unverified; see the device's Bluetooth27 handoff. Its board selects
-the actual SM8850 DFS clock bank and uses the stock Ganges reply deadline.
+the actual SM8850 DFS clock bank when enabled and uses a bounded Ganges reply
+observation. The003 hardware had DFS disabled. The next source aligns Ganges
+RTS-only flow and write/20ms/drain ordering with the actual Android HAL, and
+aligns the ordinary RCG control bits with Linux; target validation is pending.
 
 | State | Features |
 | --- | --- |

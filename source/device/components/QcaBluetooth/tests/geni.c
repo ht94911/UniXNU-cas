@@ -113,6 +113,23 @@ static void test_rx(void) {
     assert(!qbt_geni_set_rate(&f.g,3200000,51200000,16));assert(f.regs[G_M_CLK/4]==0x11);
     assert(!qbt_geni_resume(&f.g));assert(!f.masked && f.g.rx_busy);
 }
+static void test_rts_preserves_cts(void) {
+    for(unsigned disabled=0;disabled<2;disabled++) {
+        struct fixture f;prepare(&f);
+        uint32_t txcfg=0x20u|(disabled?2u:0);
+        f.regs[G_TX_CFG/4]=txcfg;
+        qbt_geni_set_rts(&f.g,false);
+        assert(f.regs[G_TX_CFG/4]==txcfg && f.regs[G_MANUAL_RFR/4]==G_RFR_OFF);
+        /* A new RX DMA slot must preserve the caller's deasserted RTS. */
+        const uint8_t byte=0x42;inject(&f,&byte,1);qbt_geni_service(&f.g);
+        assert(f.g.rx_busy && f.length==1 && f.regs[G_MANUAL_RFR/4]==G_RFR_OFF);
+        qbt_geni_set_rts(&f.g,true);
+        assert(f.regs[G_TX_CFG/4]==txcfg && !f.regs[G_MANUAL_RFR/4]);
+        assert(qbt_geni_quiesce(&f.g)==-EINPROGRESS);
+        qbt_geni_set_rts(&f.g,true);
+        assert(f.regs[G_TX_CFG/4]==txcfg && f.regs[G_MANUAL_RFR/4]==G_RFR_OFF);
+    }
+}
 static void test_faults(void) {
     struct fixture f;prepare(&f);
     assert(qbt_geni_quiesce(&f.g)==-EINPROGRESS);
@@ -151,7 +168,7 @@ static void test_clock_bank(void) {
     assert(!qbt_geni_resume(&f.g) && f.g.rx_busy && !f.masked);
 }
 int main(void) {
-    test_tx();test_rx();test_faults();test_clock_bank();
+    test_tx();test_rx();test_rts_preserves_cts();test_faults();test_clock_bank();
     puts("PASS: GENI DMA ownership, 64-bit addresses, wire drain, bounded IRQ, RX backpressure, real DFS selection/readback, clock-rate validation, quiesce/resume and DMA faults");
     return 0;
 }

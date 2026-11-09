@@ -181,8 +181,12 @@ size_t qbt_geni_write(struct qbt_geni *g,const uint8_t *bytes,size_t n) {
     wr(g,G_TX_ATTR,1);barrier(g);wr(g,G_TX_DMA_LEN,(uint32_t)n);barrier(g);return n;
 }
 void qbt_geni_set_flow(struct qbt_geni *g,bool enabled) {
-    g->flow=enabled;uint32_t cfg=rd(g,G_TX_CFG);
+    uint32_t cfg=rd(g,G_TX_CFG);
     wr(g,G_TX_CFG,enabled?(cfg&~2u):(cfg|2u));
+    qbt_geni_set_rts(g,enabled);
+}
+void qbt_geni_set_rts(struct qbt_geni *g,bool enabled) {
+    g->flow=enabled;
     rfr(g,g->rx_busy && g->state==QBT_GENI_RUN);barrier(g);
 }
 int qbt_geni_quiesce(struct qbt_geni *g) {
