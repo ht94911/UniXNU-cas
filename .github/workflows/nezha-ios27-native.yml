@@ -1,7 +1,7 @@
-name: nezha iPhone27 AppSync cached one-shot probe
+name: nezha iPhone27 AppSync native plist template
 on:
   push:
-    branches: [codex/ios27-appsync-probe-entry013-20261109]
+    branches: [codex/ios27-appsync-native-plist018-20261109]
   workflow_dispatch:
 permissions:
   contents: read
@@ -29,17 +29,12 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: '3.13'
-      - name: Compile the disposable RAM Data test job
+      - name: Create a detached signature template for a public file
         run: |
           set -euo pipefail
           out="$RUNNER_TEMP/ios27/work/appsync-runtime"
           mkdir -p "$out"
-          sdk="$(xcrun --sdk iphoneos --show-sdk-path)"
-          xcrun clang -target arm64e-apple-ios27.0 -isysroot "$sdk" -fobjc-arc -Wall -Wextra -Werror \
-            -framework Foundation task/source/appsync/ProbeRunner.m -o "$out/appsync-probe"
-          codesign --force --sign - --pagesize 4096 --digest-algorithm sha256 \
-            --identifier org.unixnu.nezha.appsync.runner "$out/appsync-probe"
-          codesign --verify --strict "$out/appsync-probe"
+          python3 task/ci/cache-signature-template.py --bytes 2476176 --tool task/source/device/scripts/sign-detached-cache.py --out "$out"
       - name: Seal outputs and diagnostics using the existing owner envelope
         if: always()
         run: |
