@@ -405,11 +405,20 @@ static errno_t bt_sk_getopt(kern_ctl_ref ref __unused,u_int32_t unit __unused,vo
 static int bt_sk_boot_sysctl SYSCTL_HANDLER_ARGS
 {
 #pragma unused(oidp,arg1,arg2)
+    if(req->newptr)return EPERM;
     int error=0,value;
     bt_sk_count(1);
     lck_mtx_lock(&bt_sk_lock);
     struct timespec timeout={30,0};
     while(bt_sk.boot<0 && !error) error=msleep(&bt_sk.boot,&bt_sk_lock,PZERO|PCATCH,"btboot",&timeout);
+    /* A real failed controller made bluetoothd poll this read thousands of
+     * times a second on nezha. Keep the actual error, but sleep on the same
+     * state event for at most 100 ms. A new startup/stop result wakes it early. */
+    if(!error && req->oldptr && bt_sk.boot>0 && bt_sk.boot!=ENETDOWN) {
+        struct timespec failure_pause={0,100000000};
+        error=msleep(&bt_sk.boot,&bt_sk_lock,PZERO|PCATCH,"btfailed",&failure_pause);
+        if(error==EWOULDBLOCK)error=0;
+    }
     value=bt_sk.boot;
     lck_mtx_unlock(&bt_sk_lock);
     return error?error:SYSCTL_OUT(req,&value,sizeof(value));

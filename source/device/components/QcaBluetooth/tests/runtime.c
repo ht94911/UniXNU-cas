@@ -10,7 +10,7 @@ struct fixture {
     size_t write_limit, receive_room, received_length;
     uint8_t received[70000], tx_frame[70000]; unsigned tx_count, tx_need;
     uint8_t patch[1001], nvm[603], downloaded[2048]; size_t downloaded_length, download_size;
-    bool progress_acks, progress_loss, speed_reply; unsigned progress_sent; uint64_t progress_delay, speed_settle, speed_command_at;
+    bool progress_acks, progress_loss, speed_reply; unsigned progress_sent; uint64_t progress_delay, speed_settle, speed_command_at, speed_reply_delay, hardware_fault_at;
     unsigned download_mode, failed_opcode; bool missing_replies, missing_wake, board_specific;
     bool nvm_edited, address_written, wake_armed, hardware_fault, clock_fault;
     uint8_t speed_status, address[6]; bool stale_address, short_address, legacy_speed_reply;
@@ -36,8 +36,9 @@ static void controller(struct fixture *f,const uint8_t *p,unsigned n){
     if(op==0xfc48){ /* no synchronous completion; a late report may follow the switch */
         f->speed_command_at=f->now;
         if(f->speed_reply){
-            if(f->legacy_speed_reply){const uint8_t e[]={4,0xff,2,0x92,f->speed_status};queue(f,e,sizeof(e),f->speed_settle/2);}
-            else {const uint8_t e[]={4,0x0e,4,1,0x48,0xfc,f->speed_status};queue(f,e,sizeof(e),f->speed_settle/2);}
+            uint64_t delay=f->speed_reply_delay?f->speed_reply_delay:f->speed_settle/2;
+            if(f->legacy_speed_reply){const uint8_t e[]={4,0xff,2,0x92,f->speed_status};queue(f,e,sizeof(e),delay);}
+            else {const uint8_t e[]={4,0x0e,4,1,0x48,0xfc,f->speed_status};queue(f,e,sizeof(e),delay);}
         }
         return;
     }
@@ -107,7 +108,7 @@ static size_t receive(void *c,const uint8_t *p,size_t n){
 }
 static void pump(void *c){
     struct fixture *f=c;
-    if(f->hardware_fault){qbt_fail(f->q,-EIO);return;}
+    if(f->hardware_fault || (f->hardware_fault_at && f->now>=f->hardware_fault_at)){qbt_fail(f->q,-EIO);return;}
     /* The wire is ordered: finish the earliest due event before starting another. */
     for(;;){
         struct event *e=NULL;
@@ -269,21 +270,28 @@ static void ganges_startup(void){
     struct qbt_boot_options o={.controller=QBT_WCN7860,.baud_method=QBT_BAUD_FC48,
         .initial_baud=115200,.operating_baud=3200000,.rampatch="gngbtfw20.mbn",.nvm="gngbtnv20",
         .expected_product=0x1e,.expected_rom=0x200,.nvm_by_board=true};
-    for(unsigned test=0;test<5;test++){
+    for(unsigned test=0;test<8;test++){
         make(f,3);f->ganges=f->board_specific=true;
         memcpy(f->patch,"\177ELF\1\1\1",7);
         if(test==1)f->speed_reply=false;
         if(test==2)f->board_specific=false;
         if(test==3)f->malformed_board=true;
-        if(test==4)o.expected_rom=0x201;
+        o.expected_rom=test==4?0x201:0x200;
+        if(test==5)f->speed_reply_delay=150000000;
+        if(test==6){f->speed_reply_delay=200000000;f->legacy_speed_reply=true;}
+        if(test==7){f->speed_reply=false;f->hardware_fault_at=f->now+50000000;}
         int e=qbt_boot_controller(f->q,&o,address);
-        if(test==0){assert(!e && f->address_written && f->firmware_gets==2 && f->q->info.board_valid && f->q->info.board==0x1234);}
-        else if(test==1){assert(e==-ETIMEDOUT && !f->firmware_gets);}
+        if(test==0 || test==5 || test==6){
+            assert(!e && f->address_written && f->firmware_gets==2 && f->q->info.board_valid && f->q->info.board==0x1234);
+            if(test)assert(f->now>=f->speed_command_at+f->speed_reply_delay);
+        }
+        else if(test==1){assert(e==-ETIMEDOUT && !f->firmware_gets && f->q->stats.timeouts==1 && f->now>=f->speed_command_at+1000000000);}
         else if(test==4){assert(e==-ENODEV && !f->firmware_gets);}
+        else if(test==7){assert(e==-EIO && !f->firmware_gets && f->now-f->speed_command_at<100000000 && f->waits<1000);}
         else {assert(e<0 && !f->address_written);}
         destroy(f);
     }
-    free(f);puts("PASS: modeled WCN7860 ELF startup, exact ROM/board selection, refused generic NVM, missing vendor baud reply and malformed board reply");
+    free(f);puts("PASS: modeled WCN7860 ELF startup, exact ROM/board selection, refused generic NVM, real one-second baud deadline, delayed unified/vendor completions, prompt UART failure and malformed board reply");
 #endif
 }
 int main(void){initialization();failures();speed_and_identity_failures();progress_reports();speed_settle();receive_pressure();sleep_and_wake();lost_wake();clock_failure();tx_ibs_boundaries();ganges_startup();puts("PASS: original Linux WCN7850 setup, firmware/BID fallback, NVM edits, Qualcomm baud status/timeout and BD_ADDR readback, H4 fragmentation/backpressure, status failure, true timeout, partial DMA TX, IBS packet boundaries, clock/wake recovery and terminal clock faults");}

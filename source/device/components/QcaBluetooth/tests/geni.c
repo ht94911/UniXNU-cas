@@ -11,7 +11,7 @@ struct fixture {
     _Alignas(64) uint8_t tx[QBT_GENI_TX_SIZE],rx[QBT_GENI_RX_COUNT][QBT_GENI_RX_SIZE];
     uint8_t received[65536],sent[QBT_GENI_TX_SIZE];
     unsigned length, sent_length, reads, writes, barriers, wakes, syncs;
-    bool masked, blocked, device_rx[QBT_GENI_RX_COUNT], device_tx;
+    bool masked, blocked, device_rx[QBT_GENI_RX_COUNT], device_tx, deny_clock_select;
     size_t max_receive;
     uint64_t time;
 };
@@ -20,6 +20,7 @@ static uint32_t read_reg(void *p,uint32_t r) {
 }
 static void write_reg(void *p,uint32_t r,uint32_t v) {
     struct fixture *f=p;f->writes++;assert(r<sizeof(f->regs));
+    if(r==G_CLK_SEL && f->deny_clock_select)return;
     if(r==G_M_CLEAR)f->regs[G_M_IRQ/4]&=~v;
     else if(r==G_S_CLEAR)f->regs[G_S_IRQ/4]&=~v;
     else if(r==G_TX_CLEAR)f->regs[G_TX_IRQ/4]&=~v;
@@ -131,8 +132,26 @@ static void test_faults(void) {
     prepare(&f);f.regs[G_RX_IRQ/4]=G_DONE;f.regs[G_RX_LEN_IN/4]=QBT_GENI_RX_SIZE+1;
     irq(&f);qbt_geni_service(&f.g);assert(f.g.error==-EOVERFLOW);
 }
+static void test_clock_bank(void) {
+    struct fixture f;prepare(&f);
+    unsigned writes=f.writes;
+    assert(qbt_geni_set_rate_index(&f.g,3200000,51200000,16,5)==-EINVAL && f.writes==writes);
+    assert(qbt_geni_quiesce(&f.g)==-EINPROGRESS);
+    f.regs[G_STATUS/4]&=~G_S_ACTIVE;f.regs[G_RX_IRQ/4]=G_EOT;f.regs[G_RX_LEN_IN/4]=0;
+    qbt_geni_service(&f.g);assert(f.g.state==QBT_GENI_STOPPED);
+    writes=f.writes;
+    assert(qbt_geni_set_rate_index(&f.g,3200000,51200000,16,8)==-EINVAL && f.writes==writes);
+    assert(!qbt_geni_set_rate_index(&f.g,3200000,51200000,16,5));
+    assert(f.regs[G_CLK_SEL/4]==5 && f.regs[G_M_CLK/4]==0x11 && f.regs[G_S_CLK/4]==0x11);
+    assert(f.g.clock_selector==5);
+    f.deny_clock_select=true;
+    assert(qbt_geni_set_rate_index(&f.g,115200,7372800,16,2)==-EIO);
+    f.deny_clock_select=false;
+    assert(!qbt_geni_set_rate_index(&f.g,3200000,51200000,16,5));
+    assert(!qbt_geni_resume(&f.g) && f.g.rx_busy && !f.masked);
+}
 int main(void) {
-    test_tx();test_rx();test_faults();
-    puts("PASS: GENI DMA ownership, 64-bit addresses, wire drain, bounded IRQ, RX backpressure, clock-rate validation, quiesce/resume and DMA faults");
+    test_tx();test_rx();test_faults();test_clock_bank();
+    puts("PASS: GENI DMA ownership, 64-bit addresses, wire drain, bounded IRQ, RX backpressure, real DFS selection/readback, clock-rate validation, quiesce/resume and DMA faults");
     return 0;
 }

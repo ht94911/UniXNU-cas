@@ -26,12 +26,12 @@ enum { SM8850_BT_GCC, SM8850_BT_SMMU, SM8850_BT_PMIC_CORE,
 #define SM8850_BT_PMIC_OBSERVER_BASE UINT64_C(0x0c4c0000)
 #define SM8850_BT_PMIC_WRITE_BASE UINT64_C(0x0c900000)
 struct sm8850_bt_clock {
-    uint32_t added_votes, rcg[5];
+    uint32_t added_votes, rcg[5], dfsr, selector;
     bool acquired, source_saved, failed;
 };
 int sm8850_bt_clock_get(const struct sm8850_bt_io *, struct sm8850_bt_clock *);
 int sm8850_bt_clock_source(const struct sm8850_bt_io *, struct sm8850_bt_clock *,
-                          uint32_t baud, uint32_t *source_hz);
+                          uint32_t baud, uint32_t *source_hz, uint32_t *selector);
 int sm8850_bt_clock_put(const struct sm8850_bt_io *, struct sm8850_bt_clock *);
 struct sm8850_bt_pmic {
     uint16_t apid, base_apid;

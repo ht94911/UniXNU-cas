@@ -39,7 +39,7 @@ struct qbt_geni {
     unsigned rx_head, rx_ready, rx_active;
     unsigned rx_length[QBT_GENI_RX_COUNT], rx_offset;
     unsigned tx_length;
-    uint32_t baud, source_hz, oversampling;
+    uint32_t baud, source_hz, oversampling, clock_selector;
     uint32_t fault_irq[4]; /* M, S, TX DMA and RX DMA status from a failed service turn. */
     uint64_t stop_deadline;
     int error;
@@ -50,6 +50,9 @@ int qbt_geni_prepare(struct qbt_geni *, const struct qbt_geni_ops *,
     const struct qbt_dma_buffer *, const struct qbt_dma_buffer [QBT_GENI_RX_COUNT]);
 /* Source clock is already selected by the board; reject baud error above 1%. */
 int qbt_geni_set_rate(struct qbt_geni *, uint32_t baud, uint32_t source_hz, unsigned oversampling);
+/* Firmware DFS banks are selected by the board from the actual GCC table. */
+int qbt_geni_set_rate_index(struct qbt_geni *, uint32_t baud, uint32_t source_hz,
+                           unsigned oversampling, unsigned clock_selector);
 int qbt_geni_start(struct qbt_geni *);
 void qbt_geni_irq(struct qbt_geni *);
 /* One bounded worker turn; true requests another turn without sleeping. */

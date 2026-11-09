@@ -84,17 +84,25 @@ void hci_set_fw_info(struct hci_dev *h,const char *fmt,...) {
 void hci_set_quirk(struct hci_dev *h,unsigned value) {(void)h;(void)value;}
 void hci_set_msft_opcode(struct hci_dev *h,unsigned value) {(void)h;(void)value;}
 static int set_speed(struct qbt *q,uint32_t speed,uint8_t baud,bool require_reply) {
+    uint64_t start=q->ops.now_ns(q->ops.context),rx=q->stats.rx_bytes;
+    unsigned stage=1;
+    qbt_linux_log(q,6,"FC48 start rate=%u code=%u require_reply=%u",speed,baud,require_reply);
     int e=q->ops.uart_flow(q->ops.context,false);if(e)return e;
-    q->speed_reply=false;
+    q->speed_reply=false;q->speed_status=0xff;stage=2;
     e=qbt_send_command(q,0xfc48,&baud,1);
-    if(!e)e=qbt_drain(q,q->ops.now_ns(q->ops.context)+QBT_COMMAND_TIMEOUT);
+    if(!e){stage=3;e=qbt_drain(q,q->ops.now_ns(q->ops.context)+QBT_COMMAND_TIMEOUT);}
     /* Ganges SetBaudRateReq waits 20 ms after FC48 before changing the host
      * rate (stock HAL dc360/dc364, usleep via GOT 1ac790). Keep the original
      * WCN7850 timing; the Ganges completion is read at the new rate. */
-    if(!e){qbt_delay(q,require_reply?20:1);e=q->info.error;if(!e)e=q->ops.uart_speed(q->ops.context,speed);}
-    int flow=q->ops.uart_flow(q->ops.context,true);if(!e)e=flow;
+    if(!e){stage=4;qbt_delay(q,require_reply?20:1);e=q->info.error;if(!e){stage=5;e=q->ops.uart_speed(q->ops.context,speed);}}
+    int flow=q->ops.uart_flow(q->ops.context,true);if(!e){stage=6;e=flow;}
     /* The first TLV segment holds the download mode and is lost if it precedes the switch. */
-    for(unsigned ms=0;!e && !q->speed_reply && ms<QBT_SPEED_REPLY_MS;ms++)qbt_delay(q,1);
+    uint64_t deadline=q->ops.now_ns(q->ops.context)+(uint64_t)(require_reply?QBT_GANGES_SPEED_REPLY_MS:QBT_SPEED_REPLY_MS)*1000000ULL;
+    if(!e)stage=7;
+    while(!e && !q->speed_reply && q->ops.now_ns(q->ops.context)<deadline) {
+        qbt_delay(q,1);if(q->info.error)e=q->info.error;
+    }
+    if(!e)q->ops.pump(q->ops.context); /* also collect an event arriving at the deadline */
     if(!e && q->info.error)e=q->info.error;
     /* Qualcomm EDL_SET_BAUDRATE is not a normal HCI status response:
      * QTI PatchDLManager::HandleVsHciEvent defines BAUDRATE_CHANGE_SUCCESS=1
@@ -102,10 +110,13 @@ static int set_speed(struct qbt *q,uint32_t speed,uint8_t baud,bool require_repl
     if(!e && q->speed_reply && q->speed_status!=1)e=-EIO;
     /* Preserve the original WCN7850/Linux no-report path. The Ganges
      * Android handshake requires its vendor completion at the new rate. */
-    if(!e && require_reply && !q->speed_reply)e=-ETIMEDOUT;
+    if(!e && require_reply && !q->speed_reply){e=-ETIMEDOUT;q->stats.timeouts++;}
     if(!e)qbt_delay(q,QBT_SPEED_SETTLE_MS);
     if(!e)e=q->info.error;
     if(!e)q->info.baud=speed;
+    qbt_linux_log(q,6,"FC48 end error=%d stage=%u reply=%u status=%u new_rx=%llu elapsed_us=%llu",e,stage,
+        q->speed_reply,q->speed_status,(unsigned long long)(q->stats.rx_bytes-rx),
+        (unsigned long long)((q->ops.now_ns(q->ops.context)-start)/1000ULL));
     return e;
 }
 static int firmware_basename(const char *name) {

@@ -7,6 +7,12 @@ sequence over a GENI UART and connects the controller to Apple's `bluetoothd`.
 
 Device: Xiaomi Pad 6S Pro (sheng), iPadOS 27.0.1 (24A446).
 
+The table below is the upstream author's sheng record. The consuming nezha
+Bluetooth27 adaptation has separately reached a real UART controller-version
+reply on2026-11-09, followed by a baud-change timeout. Nezha pairing and audio
+are still unverified; see the device's Bluetooth27 handoff. Its board selects
+the actual SM8850 DFS clock bank and uses the stock Ganges reply deadline.
+
 | State | Features |
 | --- | --- |
 | Working | Pairing, reconnection after reboot, power toggle, A2DP playback, AirPods noise control and battery, use alongside Wi-Fi |

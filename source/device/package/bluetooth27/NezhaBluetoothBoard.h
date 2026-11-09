@@ -50,7 +50,7 @@ struct nezha_bt_board_ops {
     int (*pins_active)(void *,bool);
     int (*serial_clock)(void *,bool);
     int (*serial_retire)(void *); /* masks source, stops both engines, verifies DMA idle */
-    int (*serial_source)(void *,uint32_t baud,uint32_t *source_hz);
+    int (*serial_source)(void *,uint32_t baud,uint32_t *source_hz,uint32_t *clock_selector);
     int (*irq_attach)(void *,uint32_t,void (*)(void *),void *);
     int (*irq_detach)(void *,uint32_t,void *);
     int (*firmware_get)(void *,const char *,const uint8_t **,size_t *);
@@ -75,7 +75,7 @@ struct nezha_bt_board {
     uint64_t power_lease,boot_deadline;
     enum nezha_bt_phase phase;
     int error,cleanup_error;
-    uint32_t cancelled,closing;
+    uint32_t cancelled,closing,boot_attempts;
     bool clocked,irq_attached,pins_set,reset_set,powered;
 };
 /* The caller supplies a zero-initialized object. Reinitialization with a live

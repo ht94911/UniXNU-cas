@@ -192,13 +192,26 @@ static int serialClock(void *, bool on) {
     Guard guard; if (guard.error) return guard.error;
     return on ? sm8850_bt_clock_get(&io, &platform.clock) : sm8850_bt_clock_put(&io, &platform.clock);
 }
-static int serialSource(void *, uint32_t baud, uint32_t *hz) {
+static int serialSource(void *, uint32_t baud, uint32_t *hz, uint32_t *selector) {
     Guard guard; if (guard.error) return guard.error;
     if (!platform.uart.va || !platform.clock.acquired || platform.clock.failed) return -ENXIO;
     if ((uartRead(nullptr, G_STATUS) & (G_M_ACTIVE | G_S_ACTIVE)) || (uartRead(nullptr, 0xe40) & 3) ||
         uartRead(nullptr, G_TX_FIFO_STATUS)) return -EBUSY;
     platform.retired = true;
-    return sm8850_bt_clock_source(&io, &platform.clock, baud, hz);
+    int e=sm8850_bt_clock_source(&io, &platform.clock, baud, hz, selector);
+    static unsigned traces;
+    if(traces++<6) {
+        printf("[nezha bluetooth] clock baud=%u error=%d dfs=%x select=%u source=%u\n",
+            baud,e,platform.clock.dfsr,*selector,*hz);
+        if(platform.clock.dfsr&1u) {
+            for(unsigned level=0;level<8;level++)
+                printf("[nezha bluetooth] clock bank=%u cfg=%x m=%x n=%x\n",level,
+                    readShared(nullptr,SM8850_BT_GCC,0xa8640+0x1c+4*level),
+                    readShared(nullptr,SM8850_BT_GCC,0xa8640+0x5c+4*level),
+                    readShared(nullptr,SM8850_BT_GCC,0xa8640+0x9c+4*level));
+        }
+    }
+    return e;
 }
 static int serialRetire(void *) {
     if (!platform.uart.va || !platform.clock.acquired) return -ENXIO;

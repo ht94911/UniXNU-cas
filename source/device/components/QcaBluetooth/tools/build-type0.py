@@ -21,7 +21,8 @@ sdk = str(args.sdk or subprocess.check_output(['xcrun','--sdk','iphoneos','--sho
 binary = out/'QcaBTType0.dylib'
 source = root/'userland/Type0.c'
 command = ['xcrun','--sdk','iphoneos','clang','-target','arm64e-apple-ios27.0','-isysroot',sdk,
-           '-dynamiclib','-install_name','/usr/lib/QcaBTType0.dylib','-O2','-Wall','-Wextra','-Werror',
+           '-dynamiclib','-install_name','/usr/lib/QcaBTType0.dylib',
+           '-current_version','1.0.0','-compatibility_version','1.0.0','-O2','-Wall','-Wextra','-Werror',
            '-fvisibility=hidden','-fstack-protector-strong','-I',str(out),str(source),'-o',str(binary)]
 subprocess.run(command, check=True)
 subprocess.run(['codesign','--force','--sign','-','--pagesize','4096','--identifier',

@@ -4,6 +4,7 @@
  * remains with the chosen SM8850 platform provider. See SOURCE.md. */
 #include "NezhaBluetoothBoard.h"
 #include "qbt_firmware.h"
+#include "qbt_geni_regs.h"
 #ifdef KERNEL
 #include <sys/errno.h>
 #include <sys/systm.h>
@@ -25,12 +26,27 @@ static uint64_t now_cb(void *p) {return now(p);}
 static void wait_cb(void *p,uint64_t deadline) {struct nezha_bt_board *b=p;b->ops.wait_until(b->ops.context,deadline);}
 static void *allocate(void *p,size_t n) {struct nezha_bt_board *b=p;return b->ops.allocate(b->ops.context,n);}
 static void release(void *p,void *v,size_t n) {struct nezha_bt_board *b=p;b->ops.release(b->ops.context,v,n);}
-static void log_line(void *p,int level,const char *line) {struct nezha_bt_board *b=p;if(b->ops.log)b->ops.log(b->ops.context,level,line);}
+static void log_line(void *p,int level,const char *line) {
+    struct nezha_bt_board *b=p;
+    if(b->ops.log && (b->boot_attempts<=3 || level<=4))b->ops.log(b->ops.context,level,line);
+}
+static void rate_trace(struct nezha_bt_board *b,const char *stage,int error) {
+    if(!b->ops.log || b->boot_attempts>3)return;
+    char line[256];
+    snprintf(line,sizeof(line),"baud %s error=%d rate=%u source=%u sample=%u select=%u state=%u status=%x rfr=%x txcfg=%x clocks=%x/%x rx_busy=%u rx_ready=%u rx_len=%u rx_dma=%llu",
+        stage,error,b->geni.baud,b->geni.source_hz,b->geni.oversampling,b->geni.clock_selector,b->geni.state,
+        read_reg(b,G_STATUS),read_reg(b,G_MANUAL_RFR),read_reg(b,G_TX_CFG),read_reg(b,G_M_CLK),read_reg(b,G_S_CLK),
+        b->geni.rx_busy,b->geni.rx_ready,read_reg(b,G_RX_LEN_IN),(unsigned long long)b->geni.stats.rx_dma);
+    b->ops.log(b->ops.context,6,line);
+}
 static size_t from_uart(void *p,const uint8_t *data,size_t n) {struct nezha_bt_board *b=p;return qbt_receive(b->core,data,n);}
 static size_t to_stack(void *p,const uint8_t *data,size_t n) {struct nezha_bt_board *b=p;return b->ops.receive(b->ops.context,data,n);}
 static size_t to_uart(void *p,const uint8_t *data,size_t n) {struct nezha_bt_board *b=p;return qbt_geni_write(&b->geni,data,n);}
 static bool drained(void *p) {struct nezha_bt_board *b=p;return qbt_geni_drained(&b->geni);}
-static int flow(void *p,bool enable) {struct nezha_bt_board *b=p;qbt_geni_set_flow(&b->geni,enable);return 0;}
+static int flow(void *p,bool enable) {
+    struct nezha_bt_board *b=p;qbt_geni_set_flow(&b->geni,enable);
+    rate_trace(b,enable?"flow-on":"flow-off",0);return 0;
+}
 static void pump(void *p) {
     struct nezha_bt_board *b=p;
     struct qbt_info info;qbt_get_info(b->core,&info);
@@ -66,10 +82,13 @@ static int quiesce(struct nezha_bt_board *b) {
 }
 static int rate(void *p,uint32_t baud) {
     struct nezha_bt_board *b=p;
-    int e=quiesce(b);uint32_t hz=0;
-    if(!e)e=b->ops.serial_source(b->ops.context,baud,&hz);
-    if(!e)e=qbt_geni_set_rate(&b->geni,baud,hz,16);
+    int e=quiesce(b);uint32_t hz=0,selector=0;
+    rate_trace(b,"quiesce",e);
+    if(!e)e=b->ops.serial_source(b->ops.context,baud,&hz,&selector);
+    if(!e)e=qbt_geni_set_rate_index(&b->geni,baud,hz,16,selector);
+    rate_trace(b,"retime",e);
     if(!e)e=qbt_geni_resume(&b->geni);
+    rate_trace(b,"resume",e);
     return e;
 }
 static int firmware(void *p,const char *name,const uint8_t **data,size_t *size) {
@@ -157,6 +176,7 @@ int nezha_bt_board_power_on(struct nezha_bt_board *b) {
     if(b->phase==NEZHA_BT_QUARANTINED)return b->cleanup_error?b->cleanup_error:-EIO;
     if(b->powered)return 0;
     __atomic_store_n(&b->cancelled,0,__ATOMIC_RELEASE);b->error=b->cleanup_error=0;
+    if(b->boot_attempts!=UINT32_MAX)b->boot_attempts++;
     b->phase=NEZHA_BT_RESOURCES;
     int e=b->ops.resource_acquire(b->ops.context,&b->dma);
     if(!e && !dma_valid(&b->dma))e=-EINVAL;
@@ -175,8 +195,8 @@ int nezha_bt_board_power_on(struct nezha_bt_board *b) {
     struct qbt_geni_ops io={b,read_reg,write_reg,barrier,sync_dma,now_cb,mask_irq,wake_worker,from_uart};
     e=qbt_geni_prepare(&b->geni,&io,&b->dma.tx,b->dma.rx);if(e)goto fail;
     e=b->ops.resource_dma_map(b->ops.context,&b->dma);if(e)goto fail;
-    uint32_t hz=0;e=b->ops.serial_source(b->ops.context,b->boot.initial_baud,&hz);if(e)goto fail;
-    e=qbt_geni_set_rate(&b->geni,b->boot.initial_baud,hz,16);if(e)goto fail;
+    uint32_t hz=0,selector=0;e=b->ops.serial_source(b->ops.context,b->boot.initial_baud,&hz,&selector);if(e)goto fail;
+    e=qbt_geni_set_rate_index(&b->geni,b->boot.initial_baud,hz,16,selector);if(e)goto fail;
     b->irq_attached=true;e=b->ops.irq_attach(b->ops.context,b->dma.intid,interrupt,b);if(e)goto fail;
     mask_irq(b,true);
     e=b->ops.reset_enable(b->ops.context,b->power_lease,true);if(e)goto fail;

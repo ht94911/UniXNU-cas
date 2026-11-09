@@ -62,14 +62,20 @@ int qbt_geni_prepare(struct qbt_geni *g, const struct qbt_geni_ops *ops,
     wr(g,G_LOOPBACK,0);wr(g,G_RX_STALE,160);wr(g,G_RX_WM,2);wr(g,G_RX_RFR_WM,depth-2);
     rfr(g,false);barrier(g);g->state=QBT_GENI_STOPPED;return 0;
 }
-int qbt_geni_set_rate(struct qbt_geni *g,uint32_t baud,uint32_t hz,unsigned sample) {
-    if (g->state!=QBT_GENI_STOPPED || !baud || !hz || (sample!=16 && sample!=32)) return -EINVAL;
+int qbt_geni_set_rate_index(struct qbt_geni *g,uint32_t baud,uint32_t hz,unsigned sample,unsigned selector) {
+    if (g->state!=QBT_GENI_STOPPED || !baud || !hz || (sample!=16 && sample!=32) || selector>7) return -EINVAL;
     uint64_t target=(uint64_t)baud*sample,div=((uint64_t)hz+target/2)/target;
     if (!div || div>4095) return -ERANGE;
     uint64_t actual=(uint64_t)hz/div,diff=actual>target?actual-target:target-actual;
     if (diff*100>target) return -ERANGE;
-    wr(g,G_M_CLK,((uint32_t)div<<4)|1);wr(g,G_S_CLK,((uint32_t)div<<4)|1);wr(g,G_CLK_SEL,0);
-    barrier(g);g->baud=baud;g->source_hz=hz;g->oversampling=sample;return 0;
+    uint32_t cfg=((uint32_t)div<<4)|1;
+    wr(g,G_M_CLK,cfg);wr(g,G_S_CLK,cfg);wr(g,G_CLK_SEL,selector);
+    barrier(g);
+    if ((rd(g,G_M_CLK)&0xfff1u)!=cfg || (rd(g,G_S_CLK)&0xfff1u)!=cfg || (rd(g,G_CLK_SEL)&7u)!=selector) return -EIO;
+    g->baud=baud;g->source_hz=hz;g->oversampling=sample;g->clock_selector=selector;return 0;
+}
+int qbt_geni_set_rate(struct qbt_geni *g,uint32_t baud,uint32_t hz,unsigned sample) {
+    return qbt_geni_set_rate_index(g,baud,hz,sample,0);
 }
 int qbt_geni_start(struct qbt_geni *g) {
     if (g->state!=QBT_GENI_STOPPED || !g->baud || g->rx_ready) return -EINVAL;
