@@ -31,3 +31,6 @@ zzzz-native-root-cwd-ownership.patch
 
 # Name normal shutdown waits without changing unmount semantics.
 zzzz-native-shutdown-unmount-observe.patch
+
+# Existing GPU trace observes the real IOKit map path; no mapping policy change.
+zzzzzz-nezha-gpu-cpu-map-observe.patch

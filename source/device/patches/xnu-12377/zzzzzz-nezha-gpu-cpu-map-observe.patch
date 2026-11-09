@@ -1,0 +1,37 @@
+diff --git a/iokit/Kernel/IOUserClient.cpp b/iokit/Kernel/IOUserClient.cpp
+--- a/iokit/Kernel/IOUserClient.cpp
++++ b/iokit/Kernel/IOUserClient.cpp
+@@ -4842,6 +4842,10 @@
+ 
+ 	return err;
+ }
++/* Optional GPU observer: no mapping, permissions, locks or results are changed. */
++extern "C" uint64_t native_adreno_cpu_map_clock(void *, uint32_t) __attribute__((weak_import));
++extern "C" void native_adreno_cpu_map_done(void *, uint32_t, uint32_t, uint64_t, uint64_t, uint32_t) __attribute__((weak_import));
++
+ /* Routine io_connect_map_memory_into_task */
+ kern_return_t
+ is_io_connect_map_memory_into_task
+@@ -4865,7 +4869,11 @@
+ 
+ 	IOStatisticsClientCall();
+ 
++	const uint64_t gpuMapEntered = native_adreno_cpu_map_clock
++	    ? native_adreno_cpu_map_clock(client, memory_type) : 0;
+ 	client->ipcEnter(client->defaultLocking ? kIPCLockWrite : kIPCLockNone);
++	const uint64_t gpuMapLocked = gpuMapEntered
++	    ? native_adreno_cpu_map_clock(client, memory_type) : 0;
+ 	map = client->mapClientMemory64( memory_type, into_task, flags, *address );
+ 
+ 	if (map) {
+@@ -4899,6 +4907,10 @@
+ 		err = kIOReturnBadArgument;
+ 	}
+ 
++	if (gpuMapEntered && native_adreno_cpu_map_done) {
++		native_adreno_cpu_map_done(client, memory_type, flags,
++		    gpuMapEntered, gpuMapLocked, err == kIOReturnSuccess);
++	}
+ 	client->ipcExit(client->defaultLocking ? kIPCLockWrite : kIPCLockNone);
+ 
+ 	return err;

@@ -300,7 +300,7 @@ public:
     IOReturn clientClose() APPLE_KEXT_OVERRIDE;
     void free() APPLE_KEXT_OVERRIDE;
     IOReturn clientMemoryForType(UInt32 type,IOOptionBits *options,IOMemoryDescriptor **memory) APPLE_KEXT_OVERRIDE;
-    IOMemoryMap *mapClientMemory64(IOOptionBits type,task_t task,IOOptionBits flags,mach_vm_address_t address) APPLE_KEXT_OVERRIDE;
+    void profileCpuMapFinished(uint32_t type,uint32_t flags,uint64_t began,uint64_t ipcLocked,bool mapped);
     IOReturn externalMethod(uint32_t selector,IOExternalMethodArguments *arguments,
         IOExternalMethodDispatch *dispatch,OSObject *target,void *reference) APPLE_KEXT_OVERRIDE;
 };
@@ -482,23 +482,32 @@ void AGXDeviceUserClient::free()
     if(core_ && !live_) {delete core_;core_=nullptr;}
     IOUserClient::free();
 }
-/* Keep the superclass mapping/security/cache behavior. Only its timestamps
- * and the descriptor callback's existing lock stages are observed. */
-IOMemoryMap *AGXDeviceUserClient::mapClientMemory64(IOOptionBits type,task_t task,
-                                                IOOptionBits flags,mach_vm_address_t address)
+/* XNU's mapClientMemory64 is nonvirtual. The selected MIG-route observer
+ * calls these hooks around the real IPC gate and original mapping operation.
+ * The finish copy never waits for g.lock just to collect diagnostics. */
+extern "C" uint64_t native_adreno_cpu_map_clock(void *object,uint32_t type)
 {
-    if(!native_gpu_trace_enabled() || !g.clock.now_us ||
-       type==NativeAdrenoScanoutType || type==NativeAdrenoMailboxType)
-        return IOUserClient::mapClientMemory64(type,task,flags,address);
-    const uint64_t thread=thread_tid(current_thread());
-    const uint64_t began=g.clock.now_us(g.clock.cookie);
-    IOMemoryMap *result=IOUserClient::mapClientMemory64(type,task,flags,address);
+    if(!native_gpu_trace_enabled() || !g.clock.now_us || !g.lock ||
+       type==NativeAdrenoScanoutType || type==NativeAdrenoMailboxType ||
+       !OSDynamicCast(AGXDeviceUserClient,static_cast<OSObject *>(object)))return 0;
+    return g.clock.now_us(g.clock.cookie);
+}
+void AGXDeviceUserClient::profileCpuMapFinished(uint32_t type,uint32_t flags,
+                                             uint64_t began,uint64_t ipcLocked,bool mapped)
+{
     const uint64_t ended=g.clock.now_us(g.clock.cookie);
-    IOLockLock(g.lock);
-    const auto sample=cpu_map_profile_.finish(uint32_t(type),thread,began,ended,uint32_t(flags),result!=nullptr);
-    IOLockUnlock(g.lock);
-    if(sample.emit)native_gpu_trace_record(GpuTraceCpuMap,proc_selfpid(),sample.value,12);
-    return result;
+    const uint64_t thread=thread_tid(current_thread());
+    const bool paired=IOLockTryLock(g.lock);
+    const auto sample=cpu_map_profile_.finish(type,thread,began,ended,flags,mapped,ipcLocked,paired);
+    if(paired)IOLockUnlock(g.lock);
+    if(sample.emit)native_gpu_trace_record(GpuTraceCpuMap,uint32_t(proc_selfpid()),sample.value,12);
+}
+extern "C" void native_adreno_cpu_map_done(void *object,uint32_t type,uint32_t flags,
+                                         uint64_t began,uint64_t ipcLocked,uint32_t mapped)
+{
+    auto *client=OSDynamicCast(AGXDeviceUserClient,static_cast<OSObject *>(object));
+    if(client && began && g.clock.now_us && g.lock)
+        client->profileCpuMapFinished(type,flags,began,ipcLocked,mapped!=0);
 }
 IOReturn AGXDeviceUserClient::clientMemoryForType(UInt32 type,IOOptionBits *options,IOMemoryDescriptor **memory)
 {

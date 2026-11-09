@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "0a4f34be7ac6cfae9a08ef0f9e2ed6d388b51aea",
+  "device_revision": "93a891aae3d823018b9b2509ecac02df0a33ee41",
   "soc_revision": "5a71f9eb5724ff58eddf49f7f5baecc9f4233a7c",
   "xcode": "26.6",
   "files": {
@@ -29,7 +29,7 @@
     "source/adreno/NativeAdrenoCpInit.cpp": "68ec790fab527ecc70ca7a71f91b9b982c07da1c5ee3f18d0bd49d11a73b4e47",
     "source/adreno/NativeAdrenoCpInit.h": "8cfd16f218f1608853262f27509fe8150facdabda17d195f46787424fc6a49ad",
     "source/adreno/NativeAdrenoCpu.cpp": "b6bb0dc6643a9e580fb0ab8d45d3239827a86f7b576ebadb1fe5fa65b80ee965",
-    "source/adreno/NativeAdrenoCpuMapProfile.h": "e8cd1133b54adbacd24ee64bd8609966bb37307266c9bafe8c805cbec4fd2d1a",
+    "source/adreno/NativeAdrenoCpuMapProfile.h": "bd9a37740880b3cabcdf072e2e39cf1ff66b0bd74de4c3a2cba6fffbc1b7ea16",
     "source/adreno/NativeAdrenoFirmware.h": "78d42a674a06aed96a5b206b927964772222eda33f93ae6d6509b6a5e9aba75b",
     "source/adreno/NativeAdrenoGmuConfig.h": "e07d205c1fa429c1e1d4966e50a7de9bfe7d591027c54d15e11562421a421a1c",
     "source/adreno/NativeAdrenoGmuContext.h": "51ee80df7fabd0fdb1927c70ec02ff9d4d3bb7dec60462eab09637e1ac7a3b07",
@@ -49,7 +49,7 @@
     "source/adreno/NativeAdrenoPollLog.h": "8b6519cec2aeade0870f91db08087462f03ffc2a0eabf6e0d6183216e6c35645",
     "source/adreno/NativeAdrenoPreempt.cpp": "59336613d70291a3d16abd0c3a10025fc8dae5ba2796f76ce8e7c60234f328bb",
     "source/adreno/NativeAdrenoPreempt.h": "33b1804ba28d36d5a8aa3c67ec6476f737803e1864c049804bb6fcd3512d91b6",
-    "source/adreno/NativeAdrenoPublish.cpp": "a6494ffd148d11fb96bd4e9176c91fb4b1b4687ec09c7b549bab2a3373dc483a",
+    "source/adreno/NativeAdrenoPublish.cpp": "90dd3d9284310b1601059ad27b9b65921bb40e6e5c3e83953a63e17b8090cc4f",
     "source/adreno/NativeAdrenoPwrup.h": "708830fae4f6a5cea765992d44135126d7a034a239adece94f094d862819e889",
     "source/adreno/NativeAdrenoPwrupRegs.h": "8067d9625e922173912eea09e6a504d9c1b31234d4656f8dd4148855882918e1",
     "source/adreno/NativeAdrenoRing.cpp": "c32eefeac0d32960e585f8046be86408c6c6bda6d28b569261f4eb940922ae66",
@@ -156,7 +156,7 @@
     "source/device/package/nezha27-input/NezhaTouchEdge.h": "d132e77508b3b01d4ac01a13ec8617881ebe816fdd608461de1d7dd34c4b31dd",
     "source/device/package/nezha27-input/NezhaTouchSelfTest.h": "9262f7035de652a7336f8dd9b0a65bb6c1213cec0a0f8c4ce41d0b00037b1fd7",
     "source/device/package/nezha27-input/ResourceProbe.c": "c92b2ba262f2885d90499ba4bfa97c5bc2904c42e4ba3b48618bdac98bd49524",
-    "source/device/patches/xnu-12377/series": "7cfdc046c955034dd7ee5e1ae747d918605717819bbc97b0f22d64b48f90ff56",
+    "source/device/patches/xnu-12377/series": "3f4004e3f4b043a5b70c1384a58efdfe98a43c051c2bc2942c1f98d7863763ba",
     "source/device/patches/xnu-12377/source-storage-runtime.patch": "25c377c60db417b15fcc137acf380f0319cbff9d5ba012af1907f3485602b584",
     "source/device/patches/xnu-12377/zzyd-sheng-audio-addon-mount.patch": "b51ed480b34c92452ea984fe056e5fce310bd929992d418f383a7e9268313c51",
     "source/device/patches/xnu-12377/zzye-sheng-cpu-idle.patch": "95f57fb9994796c3de2429fe82b6a521620b9f13b83e29eba12185f5ada4da86",
@@ -170,6 +170,7 @@
     "source/device/patches/xnu-12377/zzzzz-nezha-owner-data-console.patch": "cb29cedb0b5f7d388fcdff028140c6973628d65ea108d7796e23dcb956542828",
     "source/device/patches/xnu-12377/zzzzz-nezha-owner-data-ready.patch": "306414945401c128472d3b0acddd03c88bec57ec47d6988660173d0b432c3e4b",
     "source/device/patches/xnu-12377/zzzzzz-nezha-adreno840-start.patch": "d32bb0d5e678e5773786dcce90467e0258d844550b418b438e1548fb32392f79",
+    "source/device/patches/xnu-12377/zzzzzz-nezha-gpu-cpu-map-observe.patch": "08bc4c3ac6c2783d00447e699cdee7ebb9d4d905c61c34ca7f53d439cc42c02a",
     "source/device/patches/xnu-12377/zzzzzz-nezha-input-chain-trace.patch": "c4d05419e7ec3af0de619754bdb6c2deb69b74d714c2219e509360ebfe1b947e",
     "source/device/patches/xnu-12377/zzzzzz-nezha-kernel-class-lock-order.patch": "cd90c61d6838f4e6a7248da81b6180f14db03d00f2f7a64f4bbe4034c0aa8dcb",
     "source/device/patches/xnu-12377/zzzzzz-nezha-sigp-startup-order.patch": "18275910b909d187e459c68f5d937cc09bc01923180141dc155aa7f4ff14aaf9",
@@ -256,7 +257,7 @@
     "main_package_modified": false
   },
   "gpu": {
-    "common_revision": "f0a59b0ca5ce130a06168d6450ae915e3e5154a9",
+    "common_revision": "dd542fb0703353475e848b596d6d3f7e205cc3e0",
     "common_upstream": "6fa7bae2a5b3b523e790eb3e0348af4d98969e4d",
     "metal_revision": "816022307852de7e1741ac05ae9111982318763f",
     "firmware_uploaded": false,

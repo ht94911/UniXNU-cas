@@ -4,8 +4,8 @@
 #include <stdint.h>
 
 /* All access is under the existing driver lock. No allocation, extra IPC or
- * page ownership is involved. Token requests let a fast mapping wrapper retain
- * evidence of a long wait before its entry, including the IOKit IPC gate.
+ * page ownership is involved. Token requests and the actual MIG entry retain
+ * evidence before/inside the IPC gate and inside the descriptor/VM mapping.
  * A missing/overwritten request or descriptor remains explicitly unpaired. */
 struct NativeAdrenoCpuMapProfile {
     enum { Slots=16, SlowUs=8000 };
@@ -27,14 +27,16 @@ struct NativeAdrenoCpuMapProfile {
         descriptors[next_descriptor++%Slots]={thread,entered,locked,finished,token,options,status,kind};
     }
     Sample finish(uint32_t token,uint64_t thread,uint64_t began,uint64_t ended,
-                  uint32_t options,bool mapped) {
+                  uint32_t options,bool mapped,uint64_t ipcLocked=0,bool pair=true) {
         Sample out{};
-        out.value[0]=thread;out.value[1]=token;out.value[3]=began;
-        out.value[7]=ended;out.value[10]=options;
+        out.value[0]=thread;out.value[1]=(uint64_t(options)<<32)|token;out.value[3]=began;
+        out.value[7]=ended;out.value[10]=ipcLocked;
         uint64_t flags=mapped?1u:0u;
         if(began && ended>=began)flags|=8u;
+        if(ipcLocked>=began && ipcLocked<=ended && ipcLocked)flags|=32u;
+        if(!pair)flags|=64u; /* diagnostic lock busy: do not read shared slots */
         Request *request=nullptr;
-        for(auto &row:requests)
+        if(pair)for(auto &row:requests)
             if(row.token==token && row.thread==thread && row.when && row.when<=began &&
                (!request || row.when>request->when))request=&row;
         if(request) {
@@ -42,7 +44,7 @@ struct NativeAdrenoCpuMapProfile {
             *request={};
         }
         Descriptor *callback=nullptr;unsigned matches=0;
-        for(auto &row:descriptors)
+        if(pair)for(auto &row:descriptors)
             if(row.token==token && row.thread==thread && row.entered>=began &&
                row.locked>=row.entered && row.finished>=row.locked && row.finished<=ended) {
                 callback=&row;++matches;

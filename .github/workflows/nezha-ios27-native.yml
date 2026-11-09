@@ -1,7 +1,7 @@
-name: nezha iPhone27 GPU CPU mapping clocks - native038
+name: nezha iPhone27 GPU real mapping IPC clocks - native038b
 on:
   push:
-    branches: [codex/ios27-gpu-persist032-038-20261110]
+    branches: [codex/ios27-gpu-persist032-038b-20261110]
   workflow_dispatch:
 permissions:
   contents: read
