@@ -8,6 +8,7 @@
 #ifdef KERNEL
 #include <sys/errno.h>
 #include <sys/systm.h>
+#include <kern/cpu_data.h>
 #include <kern/thread.h>
 #include <kern/sched_prim.h>
 #else

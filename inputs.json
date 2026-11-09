@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Fixed Native008 Ganges PERI/TME source on the accepted Wi-Fi023 profile; target and hardware qualification remain separate",
+  "purpose": "Fixed Native009: actual XNU preemption declaration import; unchanged reviewed Ganges PERI/TME and accepted Wi-Fi023 profile",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "a20257bc5c982e5dffc8ebea3ddec9362410a053",
+  "device_revision": "a85df09d696360a2bed198759270192022882861",
   "soc_revision": "3435fa55c3e835a4aaebf7d833473fd5d20073fd",
   "xcode": "26.6",
   "files": {
@@ -238,7 +238,7 @@
     "source/device/package/backlight/NezhaBrightnessRequest.h": "876811b23045660b71c82c5f6ff33780a6f7bfaaa4311c116c71d179b348a59c",
     "source/device/package/backlight/NezhaDsi0.h": "28a964006beffe03238af70bc9eed4c479ca1aeaef574d4583f18f96fd1690e1",
     "source/device/package/backlight/OriginalAppleARMBacklightABI.h": "dab34c394c2123ae4cbfd6648980d5e7b024539773abe5852f7d2622f9bf7b8b",
-    "source/device/package/bluetooth27/NezhaBluetoothBoard.c": "40d7fd496e2f3f55058c5aa6905767c9cca65d34bea2a71913d18f7e9df1f9d0",
+    "source/device/package/bluetooth27/NezhaBluetoothBoard.c": "eb0a04080c9337a9a5528e08c0f93847efde839b0f8e7d4e39c9c300ed6dac69",
     "source/device/package/bluetooth27/NezhaBluetoothBoard.h": "e38dcdeb4ecce4f89872fcad392772477a104c43340c3aad81f8cbdcadada917",
     "source/device/package/bluetooth27/NezhaBluetoothDiagnostic.c": "75cd036f517241b338fd2c432d7b999631694dcd7bb7e6a277ab0a956fb24f5c",
     "source/device/package/bluetooth27/NezhaBluetoothDiagnostic.h": "b26151fe8e74bc8f4329d64cea4cd2785fcb3ff6c81ed7471783be7a0f3535db",
@@ -416,7 +416,7 @@
     "firmware_slot_bytes": 262144,
     "snapshot_scope": "listed headers and native implementation units only"
   },
-  "qualification_iteration": 8,
+  "qualification_iteration": 9,
   "software_aes": {
     "source_revision": "c9ce79e16e6a4e74cbbb7f4315ad2ec342933c89",
     "upstream_revision": "4a45326da5c2cd6fe6813d79ee43db20805628af",
