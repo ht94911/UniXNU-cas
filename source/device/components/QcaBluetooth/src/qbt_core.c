@@ -29,28 +29,94 @@ static void control(struct qbt *q, uint8_t b) {
     if (q->control_length < sizeof(q->control)) q->control[q->control_length++] = b;
     else q->stats.malformed++;
 }
+static void hci_recent(struct qbt *q,uint16_t opcode,uint8_t kind,uint8_t code,uint8_t status,uint8_t value) {
+    struct qbt_hci_stats *s=&q->stats.hci;
+    struct qbt_hci_recent *r=&s->recent[s->recent_next];
+    memset(r,0,sizeof(*r));
+    r->sequence=++s->recent_total;r->ns=now(q);r->opcode=opcode;
+    r->kind=kind;r->code=code;r->status=status;r->value=value;
+    s->recent_next=(s->recent_next+1)%QBT_HCI_RECENT_CAPACITY;
+    if(s->recent_count<QBT_HCI_RECENT_CAPACITY)s->recent_count++;
+}
+static bool hci_scan_opcode(uint16_t opcode) {
+    return opcode==0x200b || opcode==0x200c || opcode==0x2041 || opcode==0x2042;
+}
+static void hci_tx(struct qbt *q,const struct qbt_tx_frame *f) {
+    if(!q->service || q->info.state!=2)return;
+    uint16_t opcode=(uint16_t)(f->header[0]|(unsigned)f->header[1]<<8);
+    struct qbt_hci_stats *s=&q->stats.hci;
+    s->commands_tx++;
+    if(opcode==0x0401)s->inquiry_tx++;
+    else if(opcode==0x0402)s->inquiry_cancel_tx++;
+    else if(opcode==0x200b || opcode==0x2041)s->le_scan_parameters_tx++;
+    else if(opcode==0x200c || opcode==0x2042) {
+        if(f->value==1)s->le_scan_enable_tx++;
+        else if(f->value==0)s->le_scan_disable_tx++;
+    }
+    hci_recent(q,opcode,QBT_HCI_TX,1,0xff,f->value);
+}
+static void hci_rx(struct qbt *q,const uint8_t *e,unsigned n) {
+    if(!q->service || q->info.state!=2)return;
+    struct qbt_hci_stats *s=&q->stats.hci;
+    if((e[0]==0x0e && n>=5) || (e[0]==0x0f && n>=6)) {
+        bool cc=e[0]==0x0e,has_status=!cc || n>=6;
+        uint16_t opcode=(uint16_t)(e[cc?3:4]|(unsigned)e[cc?4:5]<<8);
+        uint8_t status=has_status?e[cc?5:2]:0xff,value=e[cc?2:3];
+        if(cc)s->command_complete++;else s->command_status++;
+        if(has_status && status)s->command_errors++;
+        if(hci_scan_opcode(opcode)) {
+            s->scan_responses++;
+            if(has_status && status)s->scan_errors++;
+        }
+        hci_recent(q,opcode,cc?QBT_HCI_CC:QBT_HCI_CS,e[0],status,value);
+        return;
+    }
+    if(e[0]==0x01 || e[0]==0x02 || e[0]==0x22 || e[0]==0x2f || e[0]==0x07) {
+        uint8_t status=0xff,value=0xff;
+        if(e[0]==0x01) {s->inquiry_complete++;if(n>=3)status=e[2];}
+        else if(e[0]==0x07) {
+            s->remote_name_completions++;
+            if(n>=3) {status=e[2];if(status)s->remote_name_errors++;}
+        } else {
+            s->inquiry_result_events++;
+            if(n>=3) {value=e[2];s->announced_devices+=value;}
+        }
+        hci_recent(q,0,QBT_HCI_EVENT,e[0],status,value);
+    } else if(e[0]==0x3e && n>=3 && (e[2]==0x02 || e[2]==0x0d)) {
+        uint8_t value=0xff;
+        if(e[2]==0x02)s->legacy_report_events++;else s->extended_report_events++;
+        if(n>=4) {value=e[3];s->announced_advertisements+=value;}
+        hci_recent(q,0,QBT_HCI_LE_REPORT,e[2],0xff,value);
+    }
+}
 /* Stop each DMA chunk at a packet boundary. IBS bytes may never be inserted
  * into the middle of a command, ACL, SCO or ISO frame spanning several slots. */
-static size_t tx_advance(struct qbt_tx_frame *f,const uint8_t *p,size_t n) {
+static size_t tx_advance(struct qbt_tx_frame *f,const uint8_t *p,size_t n,struct qbt *observe) {
     size_t i=0;
     while(i<n) {
         if(!f->type) {
             uint8_t t=p[i++];if(t!=1 && t!=2 && t!=3 && t!=5)return 0;
-            f->type=t;f->have=0;f->need=t==1||t==3?3:4;
+            f->type=t;f->have=0;f->need=t==1||t==3?3:4;f->value=0xff;
         } else if(f->need) {
             f->header[f->have++]=p[i++];if(--f->need)continue;
             f->body=f->type==1||f->type==3?f->header[2]:
                 (f->header[2]|(unsigned)f->header[3]<<8)&(f->type==5?0x3fff:0xffff);
-            if(!f->body){f->type=0;return i;}
+            if(!f->body){if(f->type==1 && observe)hci_tx(observe,f);f->type=0;return i;}
         } else {
+            if(f->type==1 && f->body==f->header[2]) {
+                uint16_t opcode=(uint16_t)(f->header[0]|(unsigned)f->header[1]<<8);
+                if(opcode==0x2042 || opcode==0x200c || opcode==0x0c1a)f->value=p[i];
+            }
             size_t take=n-i;if(take>f->body)take=f->body;
-            i+=take;f->body-=(unsigned)take;if(!f->body){f->type=0;return i;}
+            i+=take;f->body-=(unsigned)take;
+            if(!f->body){if(f->type==1 && observe)hci_tx(observe,f);f->type=0;return i;}
         }
     }
     return i;
 }
 static void event(struct qbt *q) {
     const uint8_t *e = q->event; unsigned n = q->event_length;
+    hci_rx(q,e,n);
     /* Observe credits; the native stack still owns runtime HCI flow control. */
     if (e[0] == 0x0e && n >= 5) { q->stats.command_credit_events++; q->stats.command_credits = e[2]; }
     else if (e[0] == 0x0f && n >= 6) { q->stats.command_credit_events++; q->stats.command_credits = e[3]; }
@@ -200,10 +266,12 @@ void qbt_step(struct qbt *q) {
         if (n) {
             if (n > QBT_CHUNK) n = QBT_CHUNK;
             struct qbt_tx_frame preview=q->tx_frame;
-            n=tx_advance(&preview,p,n);
+            n=tx_advance(&preview,p,n,NULL);
             if(!n){q->info.error=-EPROTO;q->info.state=3;q->service=false;return;}
             size_t used = q->ops.uart_write(q->ops.context, p, n); if (used > n) used = n;
-            if(used)(void)tx_advance(&q->tx_frame,p,used);
+            /* Only the actually consumed bytes commit observations. The
+             * packet-boundary preview above has no metadata side effects. */
+            if(used)(void)tx_advance(&q->tx_frame,p,used,q);
             q->stats.tx_bytes += used;
             if (cmd) { q->command_offset += (unsigned)used; if (q->command_offset == q->command_length) q->command_offset = q->command_length = 0; }
             else { q->tx_head = (q->tx_head + (unsigned)used) % QBT_TX_CAPACITY; q->tx_length -= (unsigned)used; }

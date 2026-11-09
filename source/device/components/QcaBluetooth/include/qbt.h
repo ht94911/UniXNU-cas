@@ -29,6 +29,36 @@ struct qbt_platform {
     void (*firmware_put)(void *, const uint8_t *, size_t);
     void (*log)(void *, int, const char *);
 };
+#define QBT_HCI_RECENT_CAPACITY 24u
+enum qbt_hci_kind {
+    QBT_HCI_TX = 1, QBT_HCI_CC = 2, QBT_HCI_CS = 3,
+    QBT_HCI_EVENT = 4, QBT_HCI_LE_REPORT = 5
+};
+/* Metadata only, observed on the existing executor while service/state2 are
+ * active. opcode is 0 for unbound events. code is H4 type1 for TX, the event
+ * code for CC/CS/EVENT, or the LE subevent for LE_REPORT. Missing status/value
+ * is ff. TX value is the first parameter only for 2042/200c/0c1a; RX value
+ * contains only command credits or the announced response/report count.
+ * No address, name, key, or other command/event payload is retained here. */
+struct qbt_hci_recent {
+    uint64_t sequence, ns;
+    uint16_t opcode;
+    uint8_t kind, code, status, value;
+};
+struct qbt_hci_stats {
+    uint64_t commands_tx, command_complete, command_status, command_errors;
+    uint64_t inquiry_tx, inquiry_cancel_tx, inquiry_complete;
+    uint64_t inquiry_result_events, announced_devices;
+    uint64_t remote_name_completions, remote_name_errors;
+    uint64_t le_scan_parameters_tx, le_scan_enable_tx, le_scan_disable_tx;
+    /* Scan responses/errors cover LE 200b/200c/2041/2042 only. Announcement
+     * counts include repeats and are not distinct-device/address counts. */
+    uint64_t scan_responses, scan_errors;
+    uint64_t legacy_report_events, extended_report_events, announced_advertisements;
+    uint64_t recent_total;
+    uint32_t recent_next, recent_count; /* next overwrite index, valid entries */
+    struct qbt_hci_recent recent[QBT_HCI_RECENT_CAPACITY];
+};
 struct qbt_stats {
     uint64_t tx_bytes, rx_bytes, host_bytes, delivered_bytes;
     uint64_t commands, timeouts, malformed, unmatched_events;
@@ -36,6 +66,7 @@ struct qbt_stats {
     uint64_t backpressure, tx_rejected, resets;
     uint64_t tlv_sent, tlv_acks, tlv_final_status, hardware_errors, last_hardware_error;
     uint64_t command_credit_events, command_credits, completed_packets;
+    struct qbt_hci_stats hci;
 };
 struct qbt_info {
     unsigned state; /* 0 off, 1 initializing, 2 ready, 3 failed */

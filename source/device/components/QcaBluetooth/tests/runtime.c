@@ -8,7 +8,8 @@ struct fixture {
     struct event events[128]; unsigned allocations, frees, waits;
     unsigned speed, flow_off, flow_on, clock_off, clock_on, commands, firmware_gets, tx_acks;
     size_t write_limit, receive_room, received_length;
-    uint8_t received[70000], tx_frame[70000]; unsigned tx_count, tx_need;
+    uint8_t received[70000], tx_frame[70000], transmitted[70000]; unsigned tx_count, tx_need;
+    size_t transmitted_length;
     uint8_t patch[1001], nvm[603], downloaded[2048]; size_t downloaded_length, download_size;
     bool progress_acks, progress_loss, speed_reply; unsigned progress_sent; uint64_t progress_delay, speed_settle, speed_command_at, speed_reply_delay, hardware_fault_at;
     unsigned download_mode, failed_opcode; bool missing_replies, missing_wake, board_specific;
@@ -81,10 +82,11 @@ static void tx_byte(struct fixture *f,uint8_t b){
         if(b==0xfd){if(!f->missing_wake){uint8_t ack=0xfc;queue(f,&ack,1,200000);}return;}
         if(b==0xfc){f->tx_acks++;return;}
         if(b==0xfe)return;
-        assert(b==1||b==2);f->tx_need=b==1?4:5;
+        assert(b==1||b==2||b==3||b==5);f->tx_need=b==1||b==3?4:5;
     }
     assert(f->tx_count<sizeof(f->tx_frame));f->tx_frame[f->tx_count++]=b;
-    if(f->tx_count==(f->tx_frame[0]==1?4u:5u))f->tx_need+=f->tx_frame[0]==1?f->tx_frame[3]:le16(f->tx_frame+3);
+    unsigned type=f->tx_frame[0],header=type==1||type==3?4u:5u;
+    if(f->tx_count==header)f->tx_need+=type==1||type==3?f->tx_frame[3]:le16(f->tx_frame+3)&(type==5?0x3fff:0xffff);
     if(f->tx_count==f->tx_need){if(f->tx_frame[0]==1)controller(f,f->tx_frame,f->tx_count);f->tx_count=0;}
 }
 static void *allocate(void *c,size_t n){struct fixture *f=c;f->allocations++;return calloc(1,n);}
@@ -93,6 +95,8 @@ static uint64_t now(void *c){return ((struct fixture *)c)->now;}
 static bool drained(void *c){struct fixture *f=c;return f->now>=f->tx_done;}
 static size_t write_uart(void *c,const uint8_t *p,size_t n){
     struct fixture *f=c;if(!drained(c))return 0;if(n>f->write_limit)n=f->write_limit;
+    assert(n<=sizeof(f->transmitted)-f->transmitted_length);
+    memcpy(f->transmitted+f->transmitted_length,p,n);f->transmitted_length+=n;
     f->tx_done=f->now+100000;for(size_t i=0;i<n;i++)tx_byte(f,p[i]);return n;
 }
 static int speed(void *c,uint32_t n){
@@ -163,6 +167,7 @@ static void initialization(void){
     for(unsigned mode=0;mode<=3;mode+=3){struct fixture *f=calloc(1,sizeof(*f));make(f,mode);f->board_specific=true;
         assert(!boot(f));struct qbt_info info;qbt_get_info(f->q,&info);assert(info.state==2&&info.baud==3200000&&info.rom==0x0200&&!strcmp(info.firmware,"WCN7850-fixture"));
         assert(f->firmware_gets==3&&f->nvm_edited&&f->address_written&&f->speed==3200000&&f->flow_off==1&&f->flow_on==1);
+        assert(!f->q->stats.hci.recent_total); /* bootstrap commands are not runtime traffic */
         assert(!qbt_shutdown(f->q));destroy(f);free(f);
     }
 }
@@ -263,6 +268,185 @@ static void tx_ibs_boundaries(void){
     assert(f->q->info.state==3 && f->q->info.error==-ECANCELED);
     destroy(f);free(f);
 }
+static void make_metadata(struct fixture *f){
+    make(f,0);f->q->info.state=2;qbt_set_service(f->q,true);f->missing_replies=true;
+}
+static const struct qbt_hci_recent *recent_at(const struct qbt_hci_stats *s,unsigned index){
+    assert(index<s->recent_count);
+    return &s->recent[(s->recent_next+QBT_HCI_RECENT_CAPACITY-s->recent_count+index)%QBT_HCI_RECENT_CAPACITY];
+}
+static void metadata_send(struct fixture *f,const uint8_t *p,size_t n){
+    assert(!qbt_transmit(f->q,p,n));drive(f,400);
+    assert(!f->q->tx_length && !f->q->tx_frame.type && !f->tx_count);
+}
+static void append_bytes(uint8_t *out,size_t *used,const uint8_t *p,size_t n){memcpy(out+*used,p,n);*used+=n;}
+static void runtime_metadata_tx(void){
+    struct fixture *f=calloc(1,sizeof(*f));make_metadata(f);f->write_limit=1;
+    const uint8_t enable[]={1,0x42,0x20,6,1,0,0,0,0,0};
+    assert(!qbt_transmit(f->q,enable,1));drive(f,20);
+    assert(!f->q->stats.hci.recent_total && f->q->tx_frame.type==1);
+    assert(!qbt_transmit(f->q,enable+1,2));drive(f,20);
+    assert(!f->q->stats.hci.recent_total && f->q->tx_frame.have==2);
+    assert(!qbt_transmit(f->q,enable+3,1));drive(f,20);
+    assert(!f->q->stats.hci.recent_total && f->q->tx_frame.body==6);
+    assert(!qbt_transmit(f->q,enable+4,1));drive(f,20);
+    assert(!f->q->stats.hci.recent_total && f->q->tx_frame.body==5);
+    assert(!qbt_transmit(f->q,enable+5,5));f->write_limit=0;
+    for(unsigned i=0;i<3;i++){
+        f->now=f->tx_done;qbt_step(f->q);
+        /* Each preview reaches the command end, but UART takes no bytes. */
+        assert(!f->q->stats.hci.commands_tx && !f->q->stats.hci.recent_total);
+        assert(f->transmitted_length==5 && f->q->tx_frame.body==5);
+    }
+    f->write_limit=2;
+    for(unsigned i=0;i<2;i++){
+        f->now=f->tx_done;qbt_step(f->q);assert(!f->q->stats.hci.recent_total);
+    }
+    f->now=f->tx_done;qbt_step(f->q);
+    struct qbt_hci_stats *s=&f->q->stats.hci;
+    assert(s->commands_tx==1 && s->le_scan_enable_tx==1 && s->recent_total==1);
+    const struct qbt_hci_recent *r=recent_at(s,0);
+    assert(r->sequence==1 && r->ns==f->now && r->opcode==0x2042 && r->kind==QBT_HCI_TX);
+    assert(r->code==1 && r->status==0xff && r->value==1);
+    assert(f->transmitted_length==sizeof(enable) && !memcmp(f->transmitted,enable,sizeof(enable)));
+    const uint8_t inquiry[]={1,1,4,5,0xd7,0xe7,0xfd,0xfc,0xfe},cancel[]={1,2,4,0};
+    const uint8_t parameters[]={1,0x0b,0x20,7,0xd7,0xd7,0xd7,0xd7,0xd7,0xd7,0xd7};
+    const uint8_t on[]={1,0x0c,0x20,2,1,0},off[]={1,0x0c,0x20,2,0,1};
+    const uint8_t ext_parameters[]={1,0x41,0x20,8,0xe7,0xe7,0xe7,0xe7,0xe7,0xe7,0xe7,0xe7};
+    const uint8_t ext_off[]={1,0x42,0x20,6,0,0,0,0,0,0};
+    const uint8_t page_scan[]={1,0x1a,0x0c,1,3},address[]={1,5,0x20,6,0xd7,0xd7,0xd7,0xd7,0xd7,0xd7};
+    uint8_t sco[14]={3,1,0,10},acl[15]={2,1,0,10,0},iso[15]={5,1,0,10,0x40};
+    memcpy(sco+4,enable,10);memcpy(acl+5,enable,10);memcpy(iso+5,enable,10);
+    uint8_t merged[256];size_t merged_length=0;
+#define ADD_TX(packet) append_bytes(merged,&merged_length,packet,sizeof(packet))
+    ADD_TX(inquiry);ADD_TX(sco);ADD_TX(cancel);ADD_TX(acl);ADD_TX(parameters);ADD_TX(on);ADD_TX(off);
+    ADD_TX(iso);ADD_TX(ext_parameters);ADD_TX(ext_off);ADD_TX(page_scan);ADD_TX(address);
+#undef ADD_TX
+    f->write_limit=1;metadata_send(f,merged,merged_length);
+    assert(s->commands_tx==10 && s->inquiry_tx==1 && s->inquiry_cancel_tx==1);
+    assert(s->le_scan_parameters_tx==2 && s->le_scan_enable_tx==2 && s->le_scan_disable_tx==2);
+    assert(s->recent_total==10 && !s->command_complete && !s->command_status && !s->command_errors);
+    assert(!f->q->stats.commands && f->commands==10); /* original internal-command count stays separate */
+    assert(f->transmitted_length==sizeof(enable)+merged_length);
+    assert(!memcmp(f->transmitted+sizeof(enable),merged,merged_length));
+    for(unsigned i=0;i<s->recent_count;i++){
+        r=recent_at(s,i);assert(r->kind==QBT_HCI_TX && r->status==0xff && r->code==1);
+        if(r->opcode==0x2042 || r->opcode==0x200c)assert(r->value==0 || r->value==1);
+        else if(r->opcode==0x0c1a)assert(r->value==3);
+        else assert(r->value==0xff); /* Inquiry/address/private bodies are not copied */
+    }
+    destroy(f);free(f);
+}
+static void metadata_feed(struct fixture *f,const uint8_t *p,size_t n,unsigned chunk,uint8_t *expected,size_t *length){
+    append_bytes(expected,length,p,n);
+    for(size_t at=0;at<n;){size_t take=n-at;if(take>chunk)take=chunk;assert(qbt_receive(f->q,p+at,take)==take);at+=take;}
+}
+static void event_bytes(uint8_t *p,size_t n,uint8_t code,uint8_t first){
+    memset(p,0xd7,n);p[0]=4;p[1]=code;p[2]=(uint8_t)(n-3);p[3]=first;
+}
+static void runtime_metadata_rx(void){
+    struct fixture *f=calloc(1,sizeof(*f));make_metadata(f);
+    uint8_t expected[4000];size_t length=0;
+    const uint8_t cc[]={4,0x0e,4,1,0x41,0x20,0};
+    append_bytes(expected,&length,cc,sizeof(cc));f->receive_room=2;
+    assert(qbt_receive(f->q,cc,sizeof(cc))==sizeof(cc));
+    assert(f->q->stats.hci.command_complete==1 && f->q->stats.hci.recent_total==1 && f->received_length==2);
+    qbt_step(f->q);assert(f->q->stats.hci.recent_total==1);
+    f->receive_room=sizeof(f->received)-f->received_length;qbt_step(f->q);
+    assert(f->q->stats.hci.recent_total==1 && f->received_length==sizeof(cc));
+    const uint8_t error[]={4,0x0e,4,1,0x42,0x20,0x0c},no_status[]={4,0x0e,3,1,0x0b,0x20};
+    const uint8_t inquiry_status[]={4,0x0f,4,0,1,1,4},scan_status[]={4,0x0f,4,0x12,1,0x0c,0x20};
+    const uint8_t optional_status[]={4,0x0f,4,1,1,0x5b,0x0c},inquiry_complete[]={4,1,1,0};
+    metadata_feed(f,error,sizeof(error),1,expected,&length);
+    metadata_feed(f,no_status,sizeof(no_status),1,expected,&length);
+    metadata_feed(f,inquiry_status,sizeof(inquiry_status),1,expected,&length);
+    metadata_feed(f,scan_status,sizeof(scan_status),2,expected,&length);
+    metadata_feed(f,optional_status,sizeof(optional_status),3,expected,&length);
+    metadata_feed(f,inquiry_complete,sizeof(inquiry_complete),1,expected,&length);
+    uint8_t inquiry_result[32],inquiry_rssi[18],inquiry_extended[258],remote_name[258];
+    event_bytes(inquiry_result,sizeof(inquiry_result),2,2);
+    event_bytes(inquiry_rssi,sizeof(inquiry_rssi),0x22,1);
+    event_bytes(inquiry_extended,sizeof(inquiry_extended),0x2f,1);
+    event_bytes(remote_name,sizeof(remote_name),7,0x0c);
+    metadata_feed(f,inquiry_result,sizeof(inquiry_result),1,expected,&length);
+    metadata_feed(f,inquiry_rssi,sizeof(inquiry_rssi),3,expected,&length);
+    metadata_feed(f,inquiry_extended,sizeof(inquiry_extended),2,expected,&length);
+    metadata_feed(f,remote_name,sizeof(remote_name),1,expected,&length);
+    remote_name[3]=0;metadata_feed(f,remote_name,sizeof(remote_name),3,expected,&length);
+    uint8_t legacy[28],extended[33];event_bytes(legacy,sizeof(legacy),0x3e,2);
+    legacy[4]=2;legacy[13]=3;legacy[26]=0; /* two standard reports, data lengths3 and0 */
+    event_bytes(extended,sizeof(extended),0x3e,0x0d);extended[4]=1;extended[28]=4;
+    metadata_feed(f,legacy,sizeof(legacy),1,expected,&length);
+    metadata_feed(f,extended,sizeof(extended),3,expected,&length);
+    const uint8_t timeout[]={4,0x3e,1,0x11},vendor[]={4,0xff,3,0xd7,0xfc,0xfe};
+    metadata_feed(f,timeout,sizeof(timeout),1,expected,&length);metadata_feed(f,vendor,sizeof(vendor),1,expected,&length);
+    uint8_t sco[11]={3,1,0,7},acl[12]={2,1,0,7,0},iso[12]={5,1,0,7,0x40};
+    memcpy(sco+4,error,7);memcpy(acl+5,error,7);memcpy(iso+5,error,7);
+    metadata_feed(f,sco,sizeof(sco),1,expected,&length);metadata_feed(f,acl,sizeof(acl),2,expected,&length);
+    metadata_feed(f,iso,sizeof(iso),1,expected,&length);
+    struct qbt_hci_stats *s=&f->q->stats.hci;
+    assert(!s->commands_tx && s->command_complete==3 && s->command_status==3 && s->command_errors==3);
+    assert(s->scan_responses==4 && s->scan_errors==2);
+    assert(s->inquiry_complete==1 && s->inquiry_result_events==3 && s->announced_devices==4);
+    assert(s->remote_name_completions==2 && s->remote_name_errors==1);
+    assert(s->legacy_report_events==1 && s->extended_report_events==1 && s->announced_advertisements==3);
+    assert(s->recent_total==14 && s->recent_count==14);
+    const struct qbt_hci_recent *r=recent_at(s,2);
+    assert(r->kind==QBT_HCI_CC && r->opcode==0x200b && r->status==0xff && r->value==1);
+    for(unsigned i=0;i<s->recent_count;i++){
+        r=recent_at(s,i);assert(r->sequence==i+1u && r->ns==f->now);
+        if(r->kind==QBT_HCI_CC || r->kind==QBT_HCI_CS)assert(r->value==1);
+        else {
+            assert(!r->opcode);
+            if(r->code==7 || (r->kind==QBT_HCI_EVENT && r->code==1))assert(r->value==0xff);
+            else assert(r->status==0xff && (r->value==1 || r->value==2));
+        }
+    }
+    assert(f->q->info.state==2 && !f->q->info.error);
+    assert(f->received_length==length && !memcmp(f->received,expected,length));
+    destroy(f);free(f);
+}
+static void runtime_metadata_rollover(void){
+    struct fixture *f=calloc(1,sizeof(*f));make_metadata(f);
+    uint8_t commands[35*5];
+    for(unsigned i=0;i<35;i++){
+        uint8_t *p=commands+5*i;p[0]=1;put16(p+1,0xfc80+i);p[3]=1;p[4]=(uint8_t)(0xd7+i);
+    }
+    metadata_send(f,commands,sizeof(commands));
+    struct qbt_stats copied;qbt_get_stats(f->q,&copied);const struct qbt_hci_stats *s=&copied.hci;
+    assert(s->commands_tx==35 && s->recent_total==35 && s->recent_count==24 && s->recent_next==11);
+    uint64_t last=0;
+    for(unsigned i=0;i<24;i++){
+        const struct qbt_hci_recent *r=recent_at(s,i);
+        assert(r->sequence==12u+i && r->opcode==0xfc80u+r->sequence-1);
+        assert(r->ns>=last && r->kind==QBT_HCI_TX && r->code==1 && r->status==0xff && r->value==0xff);last=r->ns;
+    }
+    assert(f->transmitted_length==sizeof(commands) && !memcmp(f->transmitted,commands,sizeof(commands)));
+    destroy(f);free(f);
+}
+static void runtime_metadata_gates(void){
+    struct fixture *f=calloc(1,sizeof(*f));make(f,0);f->missing_replies=true;
+    const uint8_t private_bytes[]={0xd7,0xe7,0xfc},reply[]={4,0x0e,4,1,0x41,0x20,0};
+    assert(!qbt_send_command(f->q,0xfce1,private_bytes,sizeof(private_bytes)));
+    assert(qbt_receive(f->q,reply,sizeof(reply))==sizeof(reply));assert(!f->q->stats.hci.recent_total);
+    f->q->info.state=1;f->q->service=true;
+    assert(!qbt_send_command(f->q,0xfce2,private_bytes,sizeof(private_bytes)));
+    assert(qbt_receive(f->q,reply,sizeof(reply))==sizeof(reply));assert(!f->q->stats.hci.recent_total);
+    f->q->info.state=2;qbt_set_service(f->q,false);
+    assert(!qbt_send_command(f->q,0xfce3,private_bytes,sizeof(private_bytes)));
+    assert(qbt_receive(f->q,reply,sizeof(reply))==sizeof(reply));assert(!f->q->stats.hci.recent_total);
+    qbt_set_service(f->q,true);
+    assert(!qbt_send_command(f->q,0xfce4,private_bytes,sizeof(private_bytes)));
+    assert(qbt_receive(f->q,reply,sizeof(reply))==sizeof(reply));assert(f->q->stats.hci.recent_total==2);
+    const struct qbt_hci_stats before=f->q->stats.hci;
+    qbt_set_service(f->q,false);assert(qbt_receive(f->q,reply,sizeof(reply))==sizeof(reply));
+    qbt_set_service(f->q,true);f->q->info.state=1;assert(qbt_receive(f->q,reply,sizeof(reply))==sizeof(reply));
+    assert(!memcmp(&before,&f->q->stats.hci,sizeof(before)));destroy(f);free(f);
+}
+static void runtime_metadata(void){
+    runtime_metadata_tx();runtime_metadata_rx();runtime_metadata_rollover();runtime_metadata_gates();
+    puts("PASS: runtime HCI metadata through the production TX/RX framer, consumed-byte commits without preview effects, split/coalesced frames, exact passthrough, no private payload metadata, missing-status replies and24-record history");
+}
 static void ganges_startup(void){
 #ifdef QBT_WCN7860_SOURCE
     struct fixture *f=calloc(1,sizeof(*f));
@@ -314,4 +498,4 @@ static void ganges_startup(void){
     free(f);puts("PASS: modeled WCN7860 ELF startup, exact ROM/board selection, refused generic NVM, real one-second baud deadline, delayed unified/vendor completions, prompt UART failure and malformed board reply");
 #endif
 }
-int main(void){initialization();failures();speed_and_identity_failures();progress_reports();speed_settle();receive_pressure();sleep_and_wake();lost_wake();clock_failure();tx_ibs_boundaries();ganges_startup();puts("PASS: original Linux WCN7850 setup, firmware/BID fallback, NVM edits, Qualcomm baud status/timeout and BD_ADDR readback, H4 fragmentation/backpressure, status failure, true timeout, partial DMA TX, IBS packet boundaries, clock/wake recovery and terminal clock faults");}
+int main(void){initialization();failures();speed_and_identity_failures();progress_reports();speed_settle();receive_pressure();sleep_and_wake();lost_wake();clock_failure();tx_ibs_boundaries();runtime_metadata();ganges_startup();puts("PASS: original Linux WCN7850 setup, firmware/BID fallback, NVM edits, Qualcomm baud status/timeout and BD_ADDR readback, H4 fragmentation/backpressure, status failure, true timeout, partial DMA TX, IBS packet boundaries, clock/wake recovery and terminal clock faults");}

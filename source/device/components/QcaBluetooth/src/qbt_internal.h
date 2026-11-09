@@ -20,7 +20,7 @@
 #define QBT_SPEED_SETTLE_MS 5u
 #define QBT_TX_IDLE 2000000000ULL
 enum { QBT_ASLEEP, QBT_WAKING, QBT_AWAKE };
-struct qbt_tx_frame { uint8_t type, header[4], have, need; unsigned body; };
+struct qbt_tx_frame { uint8_t type, header[4], have, need, value; unsigned body; };
 struct qbt {
     struct qbt_platform ops;
     struct qbt_info info;

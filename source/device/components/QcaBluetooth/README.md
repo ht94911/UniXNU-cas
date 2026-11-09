@@ -8,24 +8,42 @@ sequence over a GENI UART and connects the controller to Apple's `bluetoothd`.
 Device: Xiaomi Pad 6S Pro (sheng), iPadOS 27.0.1 (24A446).
 
 The table below is the upstream author's sheng record. The consuming nezha
-Bluetooth27 adaptation has separately reached a real UART controller-version
-reply on 2026-11-09, followed by a baud-change timeout in002 and003. Nezha pairing and audio
-are still unverified; see the device's Bluetooth27 handoff. Its board selects
-the actual SM8850 DFS clock bank when enabled and uses a bounded Ganges reply
-observation. The003/004 hardware had DFS disabled. The004 trial verified
-RTS-only and ordinary RCG bit20 programming but still received no data after
-FC48. The actual N0 HAL bypasses FC48 for the observed Ganges tuple after a
-PERI/TME bootstrap. This source rejects that incorrect high-rate path and
-prepares a distinct current115200 diagnostic, with60s initialization and65s
-caller budgets. Full PERI/TME and high-rate hardware support remain pending.
+Bluetooth27 adaptation passed PERI/TME startup,3.2Mbps negotiation, independent
+board0 NVM queries and controller-ready gates in Bluetooth007/Native009. The
+original24A446 bluetoothd connected to UART.SK; counters grew over366 seconds
+without transport errors. Normal XNU shutdown, Android/root protection and
+collector exit passed. The human opened Bluetooth Settings, where Devices kept
+spinning with no entries. Nezha discovery, pairing and audio remain unverified;
+see the device's Bluetooth27 handoff.
 
-The005 current115200 trial completed the entire ELF transfer and received its
-final ACK, then stopped at board-selected NVM with board_valid=false. It returned
-normally and passed the phone protection audit. The next shim correction follows
-the pinned Linux BID layout: skip edl metadata, take the two observed board-ID
-bytes, and retain the real HCI status and complete response checks. Metadata is
-not another status. Existing controller models cover metadata0/2 and short replies;
-target compilation and a new hardware BID/NVM/HCI check remain required.
+The earlier003/004 FC48 trials and005/006 current115200 diagnostics remain
+historical evidence. The actual N0 HAL uses PERI/TME before ordinary BT startup.
+The source retains the genuine BID layout, exact hash-locked zero-board NVM,
+successful HCI Reset and strict address readback requirements. Full profile,
+sleep/wake and Wi-Fi coexistence acceptance still require device evidence.
+
+## Runtime discovery observations
+
+The existing H4 TX boundary parser records metadata only after UART consumption
+completes a command; its preview has no side effects. The existing RX event path
+observes CC/CS, Inquiry, Remote Name and LE reports while service/state2 are
+active. `qbt_stats.hci` stores counts and24 bounded records. Records contain only
+sequence, monotonic time, opcode, event kind/code, status and whitelisted flags
+or announcement counts. Addresses, names, keys and other payload are excluded.
+Missing status is `ff` and does not increment errors. Announcement totals
+include repeated reports and are not unique-device counts.
+
+The consuming device's cached provider10/v2 uses the existing2KiB USB limit:
+snapshot retains its original state32 schema and adds20 compact counters plus
+the last8 records; read-only QUD_HISTORY pages at most16 records from the same
+cache. Core ASan/UBSan cases cover short writes, split/merged frames, RX pressure,
+preview isolation, privacy and exact passthrough. The new metadata source still
+requires Native010 target qualification and actual device observations.
+
+运行期发现诊断复用原H4边界解析和事件入口，只记录实际发完的命令、回执和发现
+公告摘要；preview不产生记录，透传、流控、线程和等待行为保持原样。24条缓存
+经既有provider10只读分页，2KiB上限不变。公告含重复，不能当唯一设备数量；
+新摘要的宿主检查与Native010目标/真机资格分别记录。
 
 | State | Features |
 | --- | --- |

@@ -4,7 +4,6 @@
 #ifdef KERNEL
 #include <sys/systm.h>
 #else
-#include <stdio.h>
 #include <string.h>
 #endif
 struct cached_state { uint64_t state[32], ns; struct qbt_stats stats; uint32_t pending, stopping, stopped; };
@@ -20,31 +19,98 @@ void nezha_bt_diagnostic_update(const uint64_t state[32],const struct qbt_stats 
     latest.pending=pending;latest.stopping=stopping;latest.stopped=stopped;
     __atomic_store_n(&ready,1,__ATOMIC_RELEASE);release();
 }
+struct json_output { char *data; size_t capacity, used; bool failed; };
+static void append(struct json_output *j,const char *text,size_t length) {
+    if(j->failed)return;
+    if(length>=j->capacity-j->used){j->failed=true;return;}
+    memcpy(j->data+j->used,text,length);j->used+=length;j->data[j->used]=0;
+}
+static void text(struct json_output *j,const char *value) { append(j,value,strlen(value)); }
+static void number(struct json_output *j,uint64_t value) {
+    char digits[20];size_t first=sizeof(digits);
+    do {digits[--first]=(char)('0'+value%10);value/=10;}while(value);
+    append(j,digits+first,sizeof(digits)-first);
+}
+static void field(struct json_output *j,const char *name,uint64_t value) {text(j,name);number(j,value);}
+static int output_init(struct json_output *j,char *out,size_t capacity,size_t *bytes,unsigned *truncated) {
+    if(bytes)*bytes=0;if(truncated)*truncated=0;
+    if(!out || !capacity || !bytes || !truncated)return QUD_INVALID;
+    out[0]=0;*j=(struct json_output){out,capacity<QUD_DIAG_BYTES?capacity:QUD_DIAG_BYTES,0,false};
+    return QUD_OK;
+}
+static int output_done(struct json_output *j,size_t *bytes,unsigned *truncated) {
+    if(j->failed){j->data[0]=0;*truncated=1;return QUD_FAILED;}
+    *bytes=j->used;return QUD_OK;
+}
+static int copy_cache(struct cached_state *s) {
+    if(!__atomic_load_n(&ready,__ATOMIC_ACQUIRE) || !take())return QUD_BUSY;
+    *s=latest;release();
+    if(s->stats.hci.recent_count>QBT_HCI_RECENT_CAPACITY ||
+       s->stats.hci.recent_next>=QBT_HCI_RECENT_CAPACITY)return QUD_FAILED;
+    return QUD_OK;
+}
+static const struct qbt_hci_recent *recent(const struct qbt_hci_stats *h,unsigned index) {
+    unsigned first=(h->recent_next+QBT_HCI_RECENT_CAPACITY-h->recent_count)%QBT_HCI_RECENT_CAPACITY;
+    return &h->recent[(first+index)%QBT_HCI_RECENT_CAPACITY];
+}
+static void records(struct json_output *j,const struct qbt_hci_stats *h,unsigned first,unsigned count) {
+    text(j,"[");
+    for(unsigned i=0;i<count;i++){
+        const struct qbt_hci_recent *r=recent(h,first+i);
+        if(i)text(j,",");text(j,"[");number(j,r->sequence);text(j,",");number(j,r->ns);
+        text(j,",");number(j,r->kind);text(j,",");number(j,r->opcode);text(j,",");number(j,r->code);
+        text(j,",");number(j,r->status);text(j,",");number(j,r->value);text(j,"]");
+    }
+    text(j,"]");
+}
 static int snapshot(void *cookie,char *out,size_t capacity,size_t *bytes,unsigned *truncated) {
     (void)cookie;
-    if(!out || !capacity || !bytes || !truncated)return QUD_INVALID;
-    *bytes=0;*truncated=0;
-    if(!__atomic_load_n(&ready,__ATOMIC_ACQUIRE) || !take())return QUD_BUSY;
-    struct cached_state s=latest;release();
-    int n=snprintf(out,capacity,"{\"version\":1,\"cached\":true,\"ns\":%llu,\"pending\":%u,"
-        "\"stopping\":%u,\"stopped\":%u,\"skipped\":%u,\"state\":[",
-        (unsigned long long)s.ns,s.pending,s.stopping,s.stopped,__atomic_load_n(&skipped,__ATOMIC_RELAXED));
-    if(n<0 || (size_t)n>=capacity){*truncated=1;return QUD_FAILED;}
-    size_t used=(size_t)n;
-    for(unsigned i=0;i<32;i++){
-        n=snprintf(out+used,capacity-used,"%s%llu",i?",":"",(unsigned long long)s.state[i]);
-        if(n<0 || (size_t)n>=capacity-used){*truncated=1;return QUD_FAILED;}used+=(size_t)n;
-    }
-    n=snprintf(out+used,capacity-used,"],\"credits\":%llu,\"credit_events\":%llu,"
-        "\"completed_packets\":%llu,\"hardware_errors\":%llu,\"backpressure\":%llu}",
-        (unsigned long long)s.stats.command_credits,(unsigned long long)s.stats.command_credit_events,
-        (unsigned long long)s.stats.completed_packets,(unsigned long long)s.stats.hardware_errors,
-        (unsigned long long)s.stats.backpressure);
-    if(n<0 || (size_t)n>=capacity-used){*truncated=1;return QUD_FAILED;}
-    *bytes=used+(size_t)n;return QUD_OK;
+    struct json_output j;int error=output_init(&j,out,capacity,bytes,truncated);if(error)return error;
+    struct cached_state s;error=copy_cache(&s);if(error)return error;
+    field(&j,"{\"version\":1,\"cached\":true,\"ns\":",s.ns);
+    field(&j,",\"pending\":",s.pending);field(&j,",\"stopping\":",s.stopping);field(&j,",\"stopped\":",s.stopped);
+    field(&j,",\"skipped\":",__atomic_load_n(&skipped,__ATOMIC_RELAXED));text(&j,",\"state\":[");
+    for(unsigned i=0;i<32;i++){if(i)text(&j,",");number(&j,s.state[i]);}
+    field(&j,"],\"credits\":",s.stats.command_credits);field(&j,",\"credit_events\":",s.stats.command_credit_events);
+    field(&j,",\"completed_packets\":",s.stats.completed_packets);field(&j,",\"hardware_errors\":",s.stats.hardware_errors);
+    field(&j,",\"backpressure\":",s.stats.backpressure);text(&j,",\"hci\":{\"v\":1,\"counts\":[");
+    /* Fixed qbt_hci_stats header order; keep this wire schema independent of padding. */
+    const struct qbt_hci_stats *h=&s.stats.hci;
+    const uint64_t counts[]={h->commands_tx,h->command_complete,h->command_status,h->command_errors,
+        h->inquiry_tx,h->inquiry_cancel_tx,h->inquiry_complete,h->inquiry_result_events,h->announced_devices,
+        h->remote_name_completions,h->remote_name_errors,h->le_scan_parameters_tx,h->le_scan_enable_tx,
+        h->le_scan_disable_tx,h->scan_responses,h->scan_errors,h->legacy_report_events,h->extended_report_events,
+        h->announced_advertisements,h->recent_total};
+    for(unsigned i=0;i<sizeof(counts)/sizeof(counts[0]);i++){if(i)text(&j,",");number(&j,counts[i]);}
+    text(&j,"],\"recent\":");unsigned count=h->recent_count<8?h->recent_count:8;
+    records(&j,h,h->recent_count-count,count);text(&j,"}}");
+    return output_done(&j,bytes,truncated);
 }
-static const struct qud_diag_provider provider={.id=10,.version=1,.operations=1u<<QUD_SNAPSHOT,
-    .max_arg0=0,.max_arg1=0,.name="nezha-bluetooth",.cookie=NULL,.snapshot=snapshot,.submit=NULL};
+/* QUD_HISTORY uses the existing submit callback slot, but only reads our cache. */
+static int history(void *cookie,const struct qud_diag_request *request,char *out,size_t capacity,
+                   size_t *bytes,unsigned *truncated) {
+    (void)cookie;
+    struct json_output j;int error=output_init(&j,out,capacity,bytes,truncated);if(error)return error;
+    if(!request)return QUD_INVALID;
+    if(request->op!=QUD_HISTORY)return QUD_UNSUPPORTED;
+    if(request->provider!=10 || request->arg0 || request->arg1)return QUD_INVALID;
+    struct cached_state s;error=copy_cache(&s);if(error)return error;
+    const struct qbt_hci_stats *h=&s.stats.hci;
+    uint64_t first=h->recent_count?recent(h,0)->sequence:0;
+    uint64_t last=h->recent_count?recent(h,h->recent_count-1)->sequence:0;
+    unsigned begin=0;
+    while(begin<h->recent_count && request->cursor && recent(h,begin)->sequence<request->cursor)begin++;
+    unsigned count=h->recent_count-begin;if(count>16)count=16;
+    uint64_t next=begin+count<h->recent_count?recent(h,begin+count)->sequence:0;
+    field(&j,"{\"v\":1,\"cached\":true,\"ns\":",s.ns);field(&j,",\"total\":",h->recent_total);
+    field(&j,",\"overwritten\":",h->recent_total>h->recent_count?h->recent_total-h->recent_count:0);
+    text(&j,",\"cursor_overwritten\":");text(&j,request->cursor && first && request->cursor<first?"true":"false");
+    field(&j,",\"first\":",first);field(&j,",\"last\":",last);field(&j,",\"next\":",next);text(&j,",\"records\":");
+    records(&j,h,begin,count);text(&j,",\"announcements_are_unique_devices\":false}");
+    return output_done(&j,bytes,truncated);
+}
+static const struct qud_diag_provider provider={.id=10,.version=2,.operations=(1u<<QUD_SNAPSHOT)|(1u<<QUD_HISTORY),
+    .max_arg0=0,.max_arg1=0,.name="nezha-bluetooth",.cookie=NULL,.snapshot=snapshot,.submit=history};
 int nezha_bt_diagnostic_init(void) {
     if(registered)return 1;
     registered=qcom_usb_diag_register(&provider);return registered;
