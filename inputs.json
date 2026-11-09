@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Audio035 corrects the proven missing Canoe GPIO-bank offset in the native mapper and GENI/microphone callers. Stock pinctrl tables and FDT put GPIO54 at0x0f136000;034 last recorded a read at0x0f036000 before an OEM XPU event. Retain034 fixed USB progress records, original masks/clock/cleanup, na4 reset-muted TAS identity scope and all USB/SoC/GPU/storage implementations. 31 computer cases pass; hardware identity and the reset repair remain unverified. No firmware, calibration, phone logs, Data or private inputs.",
+  "purpose": "Audio036 consumes real GENI completion or phase progress at the timeout boundary before cancel/abort. Its TAS consumer accepts the completed result and preserves error/timeout/ownership handling with bounded waits. 11 production-path ASan/UBSan cases reproduce and fix the035 race. Retain 035 Canoe GPIO mapping, na4 identity scope, trace and all non-audio implementations. No firmware, calibration, phone logs, Data or private inputs.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "7910dc8ddef621c4b42b9a483c9ae6216a7a9175",
+  "device_revision": "cdab4a221f3dc766aab5a12609ad956370597f64",
   "soc_revision": "703d7b4bb00904b4a6e5d96f9e9bf72eec170f6b",
   "xcode": "26.6",
   "files": {
@@ -219,7 +219,7 @@
     "source/device/package/audio27/platform/AudioSmmu.h": "41401f1b97e3481c7e5cc3e02c47f926e91eec9fa34f4a48981a3fc3b723cddd",
     "source/device/package/audio27/upstream/ShengGpr.c": "c4f498f07e2cb601b593e64a8d32474a21d6a87375618e1a67b99d52c5d3160e",
     "source/device/package/audio27/platform/SoundWire.h": "348979ac1e552e1c3a0027e09f8500927e8bf7ccbb496276d2c9d3ef19322224",
-    ".github/workflows/nezha-ios27-native.yml": "7905bc692f0e0accc17721aa2b012e3401f68dad63c2382d7aa218a7267914e8",
+    ".github/workflows/nezha-ios27-native.yml": "185000c08dfbd63c3512dc3da66aee5ad17047a3a9f4011ec0b6fedccd3d522c",
     "source/device/package/audio27/upstream/ShengGpr.h": "a274dded1f4d1e2709b9f966759bcb1f57d12747ee0f57743dea1fa97d95d23e",
     "source/device/package/audio27/os/NezhaAudioNative.h": "7fd04a164de72e423cd16488d805c1a4f8c2f458b2356978b0bdecc2b64d55a7",
     "source/device/package/audio27/upstream/ShengAudioReach.h": "b135177a5feb3e24e0d8a6aabb301600e2c37078b970a09ada6e8eb7bb6a5b98",
@@ -281,7 +281,7 @@
     "source/device/package/audio27/core/AudioGraph.c": "8cc3f022e9fd6a20a18c89ae2f516d9c2ebdec0d139ada3221389d2de020234c",
     "source/device/package/audio27/platform/AdspLink.h": "076bdf2dc70f8efe6d420cde2ff706c271054daf014492ef57c45d5e6fb7247a",
     "source/device/package/audio27/platform/Wcd9395Capture.c": "c84ba26610e8d5570c17ed59e4ce42290da659c7369fdc5ae2d93621fa392c7f",
-    "source/device/package/audio27/upstream/GeniI2c.h": "2ade734ab7cdbd41fcea68c7f7ff4392b779b2d04666118407a1533e22258e7c",
+    "source/device/package/audio27/upstream/GeniI2c.h": "8028a263a7c7dd24f41ed1e58613442ff4fc9b25812a6e12ff48d2640d8b24a5",
     "source/device/package/audio27/os/NezhaAudioService.cpp": "edf9bf14078b835a02f9cf50165521a4614b7af532e03c1938eb83216a9a7804",
     "source/device/package/audio27/platform/AdspPower.h": "82dab228d396b3053aeac43b5d5ba7cbb28c19aa41cef88438392acfbbcb251b",
     "source/device/package/audio27/platform/AudioAssembly.h": "e67bfcab664bf107ce700ad34943c427e68b7b40f0c8bc04064aaf6dde1ec784",
@@ -290,9 +290,9 @@
     "source/device/package/audio27/platform/TiCalibration.c": "28c9acb00b7727c38ab371371d490ec6cce8f8452c61537cdce5484ca11259a1",
     "source/device/package/audio27/upstream/QcomSmp2p.c": "f91c38e60fe86c5a55cbf9e822e0486997f7104d564ea90d6afe6ab40ac9d60b",
     "source/device/package/audio27/core/AudioStream.h": "fcc3474cb52a115599919cb32dc58017b0cb28687d801f4fb7aa24dba26ca472",
-    "source/device/package/audio27/platform/GeniTasBus.c": "9a08d12890bbdbc390623eff252039e3cd651bca5b8cb3577a15718e36de58bd",
+    "source/device/package/audio27/platform/GeniTasBus.c": "9142864303ec8b5cccc358ba72e29a0b9953b686ad90a2817a8fe4cd38a9ba37",
     "source/device/package/audio27/platform/Tas25xxTables.c": "096c0b32b73ae1ceb8f28ecf3dbb60bc677dfcd659a23e2d3e4b3840f9df8ea3",
-    "source/device/package/audio27/upstream/GeniI2c.c": "34eb6effebb1750a538cf092ce68ceddd4855b7d44678a71305a02e454bf8b7b",
+    "source/device/package/audio27/upstream/GeniI2c.c": "d9ff302e5dc5b14fc3fc3ec760652c0116d861b06748ce5a908dfa1a0a377ef7",
     "source/device/package/audio27/hal/AudioClock.h": "4c60fefab16eccb005f140652c0535eb967bcf5d74a24b65f9b327c18db1e906",
     "source/device/package/audio27/hal/NezhaAudioPlugIn.c": "9f139a414213e8e4ae5c5519feee17b6f2d9f6d30ae5dcfdbac3cecec1873146",
     "source/device/package/audio27/os/NezhaAudioAbi.h": "5e3129d7cdb654f39c1d81a3224860e8c6108feb08e72eeb05a16d08ca7687ad",
@@ -327,7 +327,7 @@
     "source/device/package/audio27/platform/AudioPlaybackInputs.c": "ea9ed5c2df4203dafcb9ec270c9f79f9506bc9ef90bbf4c307c7f642135fd057",
     "source/device/package/audio27/platform/AudioPlaybackInputs.h": "788ac81fc5e9b42a95e2d9d42aff998bba81c279771f1399666ae72b3ca2f92a",
     "source/device/patches/xnu-12377/zzzzzz-nezha-audio-hal-mount.patch": "c6fe1833480aff52dbfe4f44c75d7c5fd995efe1d524f3bc7671fd6559719bef",
-    "source/device/package/audio27/upstream/provenance.json": "5477c1cf8d295d22c70aaa1ebd1d8d6810225c6539686dbfbb40182ac7187d4b",
+    "source/device/package/audio27/upstream/provenance.json": "e61392a383771bd8d63ba0f7a0da3532c12ea0804b075115f1dd82d0a82a4cd7",
     "source/device/package/audio27/platform/AudioPdMapper.c": "08f230558a9afae2a86673d88ef0f2431991c0326d7fc831c031f5885a51d558",
     "source/device/package/audio27/platform/AudioPdMapper.h": "69fca38330abf9ac12f162046cbb1f200339713ebf1db1a7220ea7b85d0ea1d5",
     "source/device/package/audio27/upstream/QcomQrtr.c": "d22ff8572b93424f1f03138204a44e10b444d0cb62b6be4f1c57b7d3b2ddbc74",
@@ -386,15 +386,15 @@
   "audio": {
     "base": "GPU023",
     "base_device_revision": "673cde869b7378658b470c4e6b2b9a1766b99411",
-    "source_revision": "7910dc8ddef621c4b42b9a483c9ae6216a7a9175",
-    "source_only_revision": "7910dc8ddef621c4b42b9a483c9ae6216a7a9175",
+    "source_revision": "cdab4a221f3dc766aab5a12609ad956370597f64",
+    "source_only_revision": "cdab4a221f3dc766aab5a12609ad956370597f64",
     "hardware_enabled": false,
     "resource_census_enabled": true,
     "private_inputs": false,
     "HAL_target": "arm64e-apple-ios27.0",
     "shared_resource_owner": "703d7b4bb00904b4a6e5d96f9e9bf72eec170f6b",
     "private_input_slot_bytes": 35651584,
-    "previous_audio_behavior_source": "15cac413a667dc70ac4e1d54940363c0258bb708",
+    "previous_audio_behavior_source": "7910dc8ddef621c4b42b9a483c9ae6216a7a9175",
     "base_native_run": 42401029411,
     "base_Metal_revision": "eb59f022a326d03330d398b3c1dbcb6f0aeb633f",
     "diagnostic_glink_delay_ms": 20000,
@@ -447,6 +447,9 @@
     "GPIO_bank_bytes": 1048576,
     "GPIO54_pa": "0x0f136000",
     "GPIO_host_cases": 31,
-    "GPIO_hardware_verified": false
+    "GPIO_hardware_verified": false,
+    "GENI_completion_before_cancel": true,
+    "GENI_host_cases": 11,
+    "GPIO_hardware_access_verified_in035": true
   }
 }

@@ -90,8 +90,9 @@ int geni_i2c_start_read_bytes(GeniI2c *g, const uint8_t *bytes, uint32_t length,
 int geni_i2c_event(GeniI2c *g, uint32_t status);
 /* Reads and clears the status itself, then as geni_i2c_event (for a timer poll; the interrupt handler does the same in its context). */
 int geni_i2c_poll(GeniI2c *g);
-/* The owner's deadline for the current step passed: a pending transfer is cancelled, a cancel that is not acknowledged is aborted and an
- * abort that is not acknowledged ends the transfer anyway. Returns as geni_i2c_event. */
+/* The owner's deadline for the current step passed: consume a completion that arrived after its last poll before cancelling. A newly
+ * advanced active phase returns Pending for another bounded wait. Otherwise cancel, abort an unacknowledged cancel, then fail an
+ * unacknowledged abort. A completion after cancellation never turns the transaction into success. Returns as geni_i2c_event. */
 int geni_i2c_timeout(GeniI2c *g);
 static inline int geni_i2c_busy(const GeniI2c *g) {return g->phase != GeniIdle;}
 

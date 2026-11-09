@@ -11,14 +11,24 @@ static int finish_transfer(NaGeniTasBus *b) {
     for (unsigned i=0;i<1000;++i) {
         int result=geni_i2c_poll(&b->engine);
         if (result==GeniDone) return b->failed ? NA_TIMEOUT : NA_OK;
-        if (result==GeniFailed) {b->failed=1;return NA_IO;}
+        if (result==GeniFailed) {b->failed=1;return b->engine.error==GeniErrTimeout ? NA_TIMEOUT:NA_IO;}
         now=b->now_us(b->clock_context);
         if (now>=deadline || i>=400+100*cancels) {
-            b->failed=1; /* Even an acknowledged cancel never permits replay. */
-            result=geni_i2c_timeout(&b->engine);++cancels;
-            if (result!=GeniPending || cancels>=3) return NA_TIMEOUT;
-            if (now>UINT64_MAX-5000) return NA_OVERFLOW;
-            deadline=now+5000;
+            result=geni_i2c_timeout(&b->engine);
+            if (result==GeniDone) return b->failed ? NA_TIMEOUT:NA_OK;
+            if (result==GeniFailed) {b->failed=1;return b->engine.error==GeniErrTimeout ? NA_TIMEOUT:NA_IO;}
+            const int recovering=b->engine.phase==GeniCancelling || b->engine.phase==GeniAborting;
+            if (recovering) {
+                b->failed=1; /* Only an issued cancel/abort poisons the transaction; never replay it. */
+                if (++cancels>=3) return NA_TIMEOUT;
+            }
+            /* A completion may advance the write/read phase instead of
+             * issuing cancellation. Keep its ordinary20ms bound; recovery
+             * retains5ms and the existing total iteration bound. */
+            now=b->now_us(b->clock_context);
+            uint32_t wait=recovering ? 5000:20000;
+            if (now>UINT64_MAX-wait) {b->failed=1;return NA_OVERFLOW;}
+            deadline=now+wait;
         }
         b->pause_us(b->clock_context,50);
     }

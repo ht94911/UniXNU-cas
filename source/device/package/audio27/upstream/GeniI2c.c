@@ -134,6 +134,15 @@ int geni_i2c_poll(GeniI2c *g)
 
 int geni_i2c_timeout(GeniI2c *g)
 {
+    if (g->phase == GeniIdle) return GeniPending;
+    /* The command can complete after the owner's last poll. Consume that
+     * status before cancelling it. A register-read's completed write may
+     * also start its read command here; give that new phase its own wait. */
+    const uint8_t phase = g->phase;
+    const uint32_t status = rd(g, GENI_M_IRQ_STATUS);
+    if (status) wr(g, GENI_M_IRQ_CLEAR, status);
+    const int result = geni_i2c_event(g, status);
+    if (result != GeniPending || g->phase != phase) return result;
     switch (g->phase) {
     case GeniIdle:
         return GeniPending;
@@ -145,7 +154,7 @@ int geni_i2c_timeout(GeniI2c *g)
         return finish(g, GeniErrTimeout, g->error_status);
     default:
         g->timeouts++;
-        g->error_status = rd(g, GENI_M_IRQ_STATUS);
+        g->error_status = status;
         wr(g, GENI_TX_WATERMARK, 0);
         wr(g, GENI_M_CMD_CTRL, GENI_CMD_CTRL_CANCEL);
         g->phase = GeniCancelling;

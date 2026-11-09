@@ -121,15 +121,17 @@
       "source": "package/GeniI2c.h",
       "local": "upstream/GeniI2c.h",
       "sha256": "2ade734ab7cdbd41fcea68c7f7ff4392b779b2d04666118407a1533e22258e7c",
-      "local_sha256": "2ade734ab7cdbd41fcea68c7f7ff4392b779b2d04666118407a1533e22258e7c",
-      "modified": false
+      "local_sha256": "8028a263a7c7dd24f41ed1e58613442ff4fc9b25812a6e12ff48d2640d8b24a5",
+      "modified": true,
+      "changes": "Audio036 consumes real completion or phase progress at the timeout boundary before cancel/abort; public layout and register encodings unchanged. See SOURCE.md and tests/geni_completion_test.c."
     },
     {
       "source": "package/GeniI2c.c",
       "local": "upstream/GeniI2c.c",
       "sha256": "34eb6effebb1750a538cf092ce68ceddd4855b7d44678a71305a02e454bf8b7b",
-      "local_sha256": "34eb6effebb1750a538cf092ce68ceddd4855b7d44678a71305a02e454bf8b7b",
-      "modified": false
+      "local_sha256": "d9ff302e5dc5b14fc3fc3ec760652c0116d861b06748ce5a908dfa1a0a377ef7",
+      "modified": true,
+      "changes": "Audio036 consumes real completion or phase progress at the timeout boundary before cancel/abort; public layout and register encodings unchanged. See SOURCE.md and tests/geni_completion_test.c."
     },
     {
       "source": "package/QcomScm.h",
