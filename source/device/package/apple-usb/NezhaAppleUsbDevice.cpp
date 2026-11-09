@@ -22,6 +22,7 @@ void qcom_usb_apple_device_abort(void);
 processor_t thread_bind(processor_t);
 extern unsigned long gPhysBase, gPhysSize;
 extern kmod_info_t g_kernel_kmod_info;
+void boot_progress_stage(const char *);
 void initializeAppleUsbClasses() __asm__("__GLOBAL__sub_I_NezhaAppleUsbDevice.cpp");
 
 // ABI leaves used through authenticated original AppleUSBXDCI fixups.
@@ -34,6 +35,14 @@ __attribute__((used, noinline)) void nezha_usb_store_le64(volatile uint64_t *whe
 constexpr uint64_t kWindow = 0x0a60c000;
 constexpr uint32_t kInterrupt = 0x85 + 32;
 constexpr unsigned kMap = 0x448, kRegisters = 0x450, kPeriodic = 0x58c, kParameters = 0x2628;
+
+static void appleUsbStage(const char *name, uint32_t result)
+{
+    char message[100];
+    snprintf(message, sizeof(message), "ASUSB %s r=%08x cpu=%d", name, result, cpu_number());
+    boot_progress_stage(message);
+    IOLog("%s\n", message);
+}
 
 class NezhaAppleUsbNub : public IOService {
     OSDeclareDefaultStructors(NezhaAppleUsbNub)
@@ -109,6 +118,7 @@ public:
     bool start(IOService *provider) override
     {
         auto map = provider->mapDeviceMemoryWithIndex(0, kIOMapInhibitCache);
+        appleUsbStage("register-map", map ? 0 : 1);
         if (!map) return false;
         field<IOMemoryMap *>(kMap) = map;
         field<uint64_t>(kRegisters) = map->getVirtualAddress();
@@ -118,11 +128,15 @@ public:
     bool XDCI_TRANSPORT_ACTIVE() override { return true; }
     IOReturn XDCI_POWER_ON() override
     {
-        return qcom_usb_apple_device_vbus(1) ? kIOReturnSuccess : kIOReturnIOError;
+        const auto result = qcom_usb_apple_device_vbus(1) ? kIOReturnSuccess : kIOReturnIOError;
+        appleUsbStage("power-on", result);
+        return result;
     }
     IOReturn XDCI_POWER_OFF() override
     {
-        return qcom_usb_apple_device_vbus(0) ? kIOReturnSuccess : kIOReturnIOError;
+        const auto result = qcom_usb_apple_device_vbus(0) ? kIOReturnSuccess : kIOReturnIOError;
+        appleUsbStage("power-off", result);
+        return result;
     }
     void XDCI_PARAMETERS() override
     {
@@ -131,7 +145,9 @@ public:
     }
     IOReturn XDCI_CONTROLLER_RESET() override
     {
+        appleUsbStage("reset-enter", 0);
         const auto result = AppleUSBXDCI::XDCI_CONTROLLER_RESET();
+        appleUsbStage("reset-return", result);
         if (result != kIOReturnSuccess) return result;
         auto p = &field<uint32_t>(kParameters);
         const auto gctl = reg(0x110);
@@ -150,12 +166,21 @@ public:
     uint32_t XDCI_PERIODIC_USAGE() override { return field<uint32_t>(kPeriodic) != 0; }
     void XDCI_PERIODIC_SET(uint32_t) override {}
     IOReturn activateCable() { return changePowerStateTo(4); }
+    void reportLink()
+    {
+        char message[100];
+        snprintf(message, sizeof(message), "ASUSB link c=%08x s=%08x e=%08x",
+                 reg(0x704), reg(0x70c), reg(0x720));
+        boot_progress_stage(message);
+        IOLog("%s\n", message);
+    }
 };
 OSDefineMetaClassAndStructors(NezhaAppleUsbXdci, AppleUSBXDCI)
 
 namespace {
 bool publishDevice()
 {
+    appleUsbStage("provider-enter", 0);
     auto platform = IOService::getPlatform();
     auto nub = OSTypeAlloc(NezhaAppleUsbNub);
     auto range = IODeviceMemory::withRange(kWindow, 0x1000);
@@ -176,27 +201,37 @@ bool publishDevice()
     OSSafeReleaseNULL(ranges);
     OSSafeReleaseNULL(range);
     if (!haveNub || !nub->attach(platform)) {
+        appleUsbStage("provider-failed", 1);
         OSSafeReleaseNULL(nub);
         return false;
     }
     nub->registerService();
+    appleUsbStage("controller-enter", 0);
     auto controller = OSTypeAlloc(NezhaAppleUsbXdci);
     if (!controller || !controller->init() || !controller->attach(nub)) {
+        appleUsbStage("controller-failed", 1);
         OSSafeReleaseNULL(controller);
         return false;
     }
-    if (!controller->start(nub)) {
+    appleUsbStage("start-enter", 0);
+    const bool started = controller->start(nub);
+    appleUsbStage("start-return", started ? 0 : 1);
+    if (!started) {
         nub->disableInterrupt(0);
         return false;
     }
     IOService::getResourceService()->setProperty("AppleUSBCableType", "USBHost");
     const auto power = controller->activateCable();
+    appleUsbStage("cable-return", power);
     IOLog("nezha-apple-usb: AppleUSBXDCI start succeeded, cable power result=%#x\n", static_cast<unsigned>(power));
+    IOSleep(5000);
+    controller->reportLink();
     return true;
 }
 
 void appleUsbWorker(void *, wait_result_t)
 {
+    appleUsbStage("worker-enter", 0);
     // The shared Qualcomm backend permits register and DMA setup only on the
     // master CPU. Match the normal CDC worker's migration before using it.
     const auto processor = cpu_to_processor(boot_cpu_id);
@@ -204,16 +239,29 @@ void appleUsbWorker(void *, wait_result_t)
         thread_bind(processor);
         thread_block(THREAD_CONTINUE_NULL);
         if (cpu_number() == boot_cpu_id) {
+            appleUsbStage("boot-cpu", 0);
             const auto load = OSKextLoadKextWithIdentifier("com.apple.driver.AppleUSBXDCI");
+            appleUsbStage("load-return", static_cast<uint32_t>(load));
             bool started = false;
             if (load == kOSReturnSuccess || load == kOSKextReturnStartStopError) {
                 auto context = OSMetaClass::preModLoad(g_kernel_kmod_info.name);
+                appleUsbStage("class-context", context ? 0 : 1);
                 if (context) {
                     initializeAppleUsbClasses();
-                    if (OSMetaClass::postModLoad(context) == kOSReturnSuccess &&
-                        qcom_usb_apple_device_prepare(gPhysBase, gPhysSize)) {
-                        started = publishDevice();
-                        if (!started) qcom_usb_apple_device_abort();
+                    const auto registered = OSMetaClass::postModLoad(context);
+                    appleUsbStage("classes-return", static_cast<uint32_t>(registered));
+                    if (registered == kOSReturnSuccess) {
+                        char message[100];
+                        snprintf(message, sizeof(message), "ASUSB RAM base=%lx size=%lx", gPhysBase, gPhysSize);
+                        boot_progress_stage(message);
+                        IOLog("%s\n", message);
+                        appleUsbStage("hardware-enter", 0);
+                        const bool prepared = qcom_usb_apple_device_prepare(gPhysBase, gPhysSize);
+                        appleUsbStage("hardware-return", prepared ? 0 : 1);
+                        if (prepared) {
+                            started = publishDevice();
+                            if (!started) qcom_usb_apple_device_abort();
+                        }
                     }
                 }
             }

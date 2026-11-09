@@ -1,7 +1,7 @@
-name: nezha iPhone27 AppSync Apple USB - native022 Apple USB boot CPU
+name: nezha iPhone27 AppSync Apple USB - native023 visible Apple USB stages
 on:
   push:
-    branches: [codex/ios27-appsync-apple-worker022-20261109]
+    branches: [codex/ios27-appsync-apple-stages023-20261109]
   workflow_dispatch:
 permissions:
   contents: read
