@@ -94,7 +94,7 @@
     "source/device/package/BootWatchdogPolicy.c": "67ebfeb8ced02c3b18bd31a4cc1872f80066ba5101a36d93b92329a0c8f25c4c",
     "source/device/package/KeyStoreProbe.cpp": "068ef978260969e3d67d743459802d72e5fad9e4a20c7c27828587a2dd9779d9",
     "source/device/package/LegacyDisplayProbe.cpp": "3784f582190c259099a921f0c3add561f80bfa5cfdb33f5f6ea30c1151a13643",
-    "source/device/package/Nezha27UsbControl.c": "e0465c9996b74bf7116853be87bc5223d803926df373ea25e4523ff2f9a441c8",
+    "source/device/package/Nezha27UsbControl.c": "784a0c583bdeac8bd5e0ba15064470c140bca3caf2be31440b6e623996a8330f",
     "source/device/package/NezhaIOS27Pmgr.cpp": "b4952c31eeeed66050359bb0923ca966373cd0d86d0c02678df598a8b7a06a50",
     "source/device/package/ShengAudioAbi.h": "9ef369877cfae3d2255129f7fdf332448b71300a0fc840d6522ec83e09754b52",
     "source/device/package/SourceRootBinding.cpp": "f395a15d37b89a10bc9e965d9093dc29d0ff54d5eb61ded87ef623300cdf0f20",
@@ -245,7 +245,8 @@
     "source/appsync/QcomUserLogWire.h": "965d7aeaa4043bcceb151cd6331ce50faefe21f57ce7c91cf781a52b4917397b",
     "source/device/scripts/sign-detached-cache.py": "cbede242ed225353445f80e51f6c2c451007e89ccc61677d7b0672a037635cd0",
     "ci/cache-signature-template.py": "3596fbb421e2d223c9d01b6280af68ca7e83595c99d3d96e481450f187201d72",
-    "ci/check-cache-log-reader.py": "3e1976179ca4d9c24176cc596f5976668f1ffe550183e0a96cbbfe8c94a31d33"
+    "ci/check-cache-log-reader.py": "3e1976179ca4d9c24176cc596f5976668f1ffe550183e0a96cbbfe8c94a31d33",
+    "source/device/patches/xnu-12377/appsync-apple-restart.patch": "533bddd7a1e0f729a560e64f2583a5485378db7688f2c03087b15c66c2d9fdc4"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
@@ -300,5 +301,6 @@
     "base_native_run": 42401029411
   },
   "qualification_iteration": "AppSync014: signed donor cache overlay plus own test job; donor data stays on local disk.",
-  "appsync_cache_probe_overlay": "Resource diagnostic mode2 captures original loader log, visible/backing cache fingerprints and test runner stderr. Ordinary resource mode1 preserved."
+  "appsync_cache_probe_overlay": "Resource diagnostic mode2 captures original loader log, visible/backing cache fingerprints and test runner stderr. Ordinary resource mode1 preserved.",
+  "appsync_apple_return_overlay": "RAM Data Apple USB orderly reboot callback installed at the final standard XNU restart point."
 }

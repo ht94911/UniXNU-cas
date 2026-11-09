@@ -1,0 +1,21 @@
+diff --git a/bsd/kern/kern_shutdown.c b/bsd/kern/kern_shutdown.c
+--- a/bsd/kern/kern_shutdown.c
++++ b/bsd/kern/kern_shutdown.c
+@@ -181,6 +181,7 @@
+ extern int vm_swapfile_create_thread_running;
+ extern int vm_swapfile_gc_thread_running;
+ extern uint32_t cl_sparse_push_error;
++extern void nezha27_apple_prepare_final_restart(void);
+ 
+ int
+ reboot_kernel(int howto, char *message)
+@@ -352,6 +353,9 @@
+ 		hostboot_option = HOST_REBOOT_UPSDELAY;
+ 	}
+ 
++	if (howto == 0) {
++		nezha27_apple_prepare_final_restart();
++	}
+ 	host_reboot(host_priv_self(), hostboot_option);
+ 	/*
+ 	 * should not be reached

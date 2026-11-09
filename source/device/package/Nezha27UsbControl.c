@@ -23,6 +23,7 @@ extern unsigned native_ufs_store_gpt_check(void);
 extern uint32_t system_inshutdown,final_shutdown_stage;
 static unsigned normal_shutdown_started;
 static thread_t normal_shutdown_thread;
+static thread_t apple_shutdown_thread;
 struct nz27_video {unsigned height,width,depth,stride;uintptr_t frame;};
 extern struct nz27_video boot_progress_panic_vinfo;
 static unsigned mode,prepared,reboot_state;
@@ -49,6 +50,28 @@ __attribute__((noreturn)) static void psci_reset(void) {
   :::"x0","x1","x2","x3","x4","x5","x6","x7","x8","x9","x10","x11","x12","x13","x14","x15","x16","x17","memory");
  for(;;)__asm__ volatile("wfe" :::"memory");
 }
+
+static int apple_normal_restart(unsigned type) {
+ if(type!=1 || current_thread()!=apple_shutdown_thread ||
+    __atomic_load_n(&system_inshutdown,__ATOMIC_ACQUIRE)!=1 ||
+    __atomic_load_n(&final_shutdown_stage,__ATOMIC_ACQUIRE)!=1)return -10;
+ psci_reset();
+}
+
+/* Called by reboot_kernel after ordinary XNU shutdown has finished. This
+ * board fallback is needed when the Apple device stack owns USB instead of CDC. */
+void nezha27_apple_prepare_final_restart(void) {
+ unsigned appsync=0, apple=0, debug=0;
+ if(!PE_parse_boot_argn("appsync",&appsync,sizeof(appsync)) || appsync!=1 ||
+    !PE_parse_boot_argn("appsync-usb",&apple,sizeof(apple)) || apple!=1 ||
+    (PE_parse_boot_argn("qcom-usb-debug",&debug,sizeof(debug)) && debug==1) ||
+    !ram_only() || native_data_persist_errors!=0)return;
+ apple_shutdown_thread=current_thread();
+ int (*empty)(unsigned int)=NULL;
+ (void)__atomic_compare_exchange_n(&PE_halt_restart,&empty,apple_normal_restart,0,
+     __ATOMIC_RELEASE,__ATOMIC_RELAXED);
+}
+
 static int restart_owner(unsigned type) {
  if(type!=1 || (mode!=1 && mode!=2) ||
     __atomic_load_n(&PE_halt_restart,__ATOMIC_ACQUIRE)!=restart_owner)return -10;
