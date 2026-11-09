@@ -21,8 +21,9 @@ static int claim(void *v,uint64_t *lease) {
     NaGeniBoard *b=v;if (b->lease) return NA_OWNERSHIP;
     int r=b->io.claim(b->io.context,NaBoardTas,&b->lease);
     *lease=b->lease;if (r || !b->lease) return r ? r:NA_OWNERSHIP;
-    for (unsigned i=0;i<9;++i) if ((r=read_reg(b,TLMM+4096*pins[i],&b->saved_pins[i]))) return r;
-    if ((r=read_reg(b,TLMM+4096*174+4,&b->saved_receiver_output))) return r;
+    const unsigned count=b->identity_only ? 4:9;
+    for (unsigned i=0;i<count;++i) if ((r=read_reg(b,TLMM+4096*pins[i],&b->saved_pins[i]))) return r;
+    if (!b->identity_only && (r=read_reg(b,TLMM+4096*174+4,&b->saved_receiver_output))) return r;
     return read_reg(b,GCC+0x52018,&b->saved_vote);
 }
 static int reset(void *v,uint64_t lease,int asserted) {
@@ -54,8 +55,10 @@ static int power(void *v,uint64_t lease,int on) {
     if (b->powered) return b->error ? NA_IO:NA_OK;
     b->error=0;
     for (unsigned i=2;i<4;++i) if ((r=update(b,TLMM+4096*pins[i],0x3ff,7))) return r; /*mux1,2mA,pullup*/
-    for (unsigned i=5;i<9;++i) if ((r=update(b,TLMM+4096*pins[i],0x3ff,0xc4))) return r; /*TDM0,8mA,mux1*/
-    if ((r=update(b,TLMM+4096*174+4,2,2)) || (r=update(b,TLMM+4096*174,0x3ff,0x203))) return r;
+    if (!b->identity_only) {
+        for (unsigned i=5;i<9;++i) if ((r=update(b,TLMM+4096*pins[i],0x3ff,0xc4))) return r; /*TDM0,8mA,mux1*/
+        if ((r=update(b,TLMM+4096*174+4,2,2)) || (r=update(b,TLMM+4096*174,0x3ff,0x203))) return r;
+    }
     if ((r=update(b,GCC+0x52018,votes,votes))) return r;
     uint64_t start=now_us(b);uint32_t a=0,c=0,d=0;
     for (unsigned i=0;i<200;++i) {
@@ -95,10 +98,13 @@ static int power(void *v,uint64_t lease,int on) {
 }
 static int release(void *v,uint64_t lease) {
     NaGeniBoard *b=v;if (!lease || lease!=b->lease || b->powered) return NA_OWNERSHIP;
-    for (unsigned i=2;i<9;++i) {
+    const unsigned count=b->identity_only ? 4:9;
+    for (unsigned i=2;i<count;++i) {
         int r=update(b,TLMM+4096*pins[i],0x3ff,b->saved_pins[i]&0x3ff);if (r) return r;
     }
-    int restored=update(b,TLMM+4096*174+4,2,b->saved_receiver_output&2);if (restored) return restored;
+    if (!b->identity_only) {
+        int restored=update(b,TLMM+4096*174+4,2,b->saved_receiver_output&2);if (restored) return restored;
+    }
     /* Keep amplifier reset asserted on release. Restoring an old high output
      * would power the speakers with no stream/clock owner. */
     int r=b->io.release(b->io.context,NaBoardTas,lease);if (!r) b->lease=0;return r;
@@ -113,4 +119,9 @@ int na_geni_board_init(NaGeniBoard *b,const NaBoardIo *io,NaTasPowerOps *ops) {
     if (!b || !io || !ops || !io->claim || !io->release || !io->read || !io->update || !io->now_us || !io->pause_us) return NA_ARGUMENT;
     memset(b,0,sizeof *b);b->io=*io;
     *ops=(NaTasPowerOps){b,claim,power,reset,release,{b,read_amp,write_amp}};return NA_OK;
+}
+int na_geni_board_init_identity(NaGeniBoard *b,const NaBoardIo *io,NaTasPowerOps *ops) {
+    int r=na_geni_board_init(b,io,ops);
+    if (!r) b->identity_only=1;
+    return r;
 }

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: BSD-2-Clause-Patent
-// Explicit na=2 diagnostic: real ADSP/PAS/GLINK and reset-muted TAS identity.
+// na=2 diagnoses ADSP/PAS/GLINK; na=4 reads reset-muted TAS identity alone.
 // No APM graph, PCM producer, HAL publication or microphone activation.
 #include <IOKit/IOLib.h>
 #include <kern/clock.h>
@@ -11,10 +11,12 @@ extern "C" {
 #include "NezhaAudioAdspInputs.h"
 #include "NezhaAudioSmmu.h"
 #include "NezhaAudioTasBoard.h"
+#include <Sm8850ResourcesNative.h>
 extern "C" volatile int nezha_touch_stage;
 extern "C" kern_return_t thread_terminate(thread_t);
 extern "C" IOReturn armcpu_spi_attach(uint32_t,bool,void (*)(void *),void *,uint32_t *,uint64_t *);
 extern "C" void nezha_audio27_dsp_probe_start(void);
+extern "C" void nezha_audio27_tas_probe_start(void);
 namespace {
 struct AudioDspProbe {
     NaNativeAdspInputs input;NaAssemblyPlan plan;
@@ -24,7 +26,7 @@ struct AudioDspProbe {
     NaPasLoad loader[2];NaProxyPower power;NaAdsp adsp;NaRxQueue rx;
     NaNativeTasBoard tasNative;NaGeniBoard tasBoard;NaTasPowerOps tasOps;
     uint64_t now,deadline,tasDeadline,tasWait,tasLease;
-    unsigned phase,tasPhase,dmaAttempted,started,revision[2],pasQueries;
+    unsigned phase,tasPhase,dmaAttempted,started,revision[2],pasQueries,mode;
     unsigned tasClaimed,tasPowerAttempted,tasCleanupAttempted;
     unsigned postPoint;int postResult,headerResult;
     unsigned loadPas,loadPoint,loadSegment;uint64_t loadOffset,loadBytes,loadPhysical;
@@ -136,7 +138,7 @@ int snapshot(void *,char *out,size_t capacity,size_t *bytes,unsigned *truncated)
         if (seq==__atomic_load_n(&audioProbeSequence,__ATOMIC_RELAXED)) {valid=true;break;}
     }
     *bytes=0;*truncated=0;if (!valid) return QUD_BUSY;
-    int n=snprintf(out,capacity,"{\"v\":2,\"mode\":\"dsp-tas-identity\",\"phase\":%u,\"error\":%d,"
+    int n=snprintf(out,capacity,"{\"v\":2,\"mode\":\"%s\",\"phase\":%u,\"error\":%d,"
         "\"adsp_stage\":%u,\"slave\":%u,\"handover\":%u,\"gpr_online\":%u,\"smmu\":%u,"
         "\"fault\":%u,\"tas_phase\":%u,\"tas_error\":%d,\"tas_cleanup\":%d,\"revision\":[%u,%u],"
         "\"owner_error\":%u,\"proxy_held\":%u,\"proxy_possible\":%u,\"proxy_stage\":%u,\"proxy_resource\":%u,"
@@ -156,6 +158,7 @@ int snapshot(void *,char *out,size_t capacity,size_t *bytes,unsigned *truncated)
         "\"glink_observe_ms\":%u,\"glink_observe_left_ms\":%u,"
         "\"control_only\":true,\"external_dma\":false,\"owned_smmu_observed\":false,"
         "\"PCM\":false,\"HAL\":false}",
+        nativeAudioProbe.mode==4 ? "tas-identity":"dsp-tas-identity",
         v[0],(int32_t)v[1],v[2],v[3],v[4],v[5],v[6],v[7],v[8],(int32_t)v[9],(int32_t)v[10],v[11],v[12],v[13],v[14],v[15],v[16],v[17],v[18],v[19],v[20],
         (unsigned long long)(((uint64_t)v[22]<<32)|v[21]),v[23],v[24],v[25],v[26],(int32_t)v[27],(int32_t)v[28],v[29],v[30],v[31],
         (unsigned long long)(((uint64_t)v[33]<<32)|v[32]),(unsigned long long)(((uint64_t)v[35]<<32)|v[34]),
@@ -284,7 +287,7 @@ int identify_tas(AudioDspProbe *d) {
     if (d->tasPhase==0) {
         NaBoardIo board;
         r=na_native_tas_board(&d->tasNative,d->input.resources.common,&board);if (r) return r;
-        r=na_geni_board_init(&d->tasBoard,&board,&d->tasOps);if (r) return r;
+        r=na_geni_board_init_identity(&d->tasBoard,&board,&d->tasOps);if (r) return r;
         r=d->tasOps.claim(d->tasOps.context,&d->tasLease);if (r) return r;
         d->tasClaimed=1;
         r=d->tasOps.reset(d->tasOps.context,d->tasLease,1);if (r) return r;
@@ -308,6 +311,24 @@ int identify_tas(AudioDspProbe *d) {
         d->tasPhase=3;return NA_OK;
     }
     return d->tasPhase==3 ? NA_OK:NA_OWNERSHIP;
+}
+int poll_tas_only(AudioDspProbe *d) {
+    if (d->phase==1) {
+        // Reuse the same late common-resource boundary as ADSP preparation,
+        // without parsing firmware, acquiring PAS/DMA or touching GLINK.
+        if (__atomic_load_n(&nezha_touch_stage,__ATOMIC_ACQUIRE)!=7 ||
+            !sm8850_usb_domain_ready()) return NA_PENDING;
+        d->input.resources.common=sm8850_native_resources();
+        if (!d->input.resources.common) return NA_IO;
+        d->phase=3;d->deadline=d->now+5000;
+    }
+    if (d->phase==3) {
+        int r=identify_tas(d);
+        if (r<0) d->tasError=r;
+        else if (!r) d->phase=4;
+        return r;
+    }
+    return d->phase==4 ? NA_OK:NA_OWNERSHIP;
 }
 bool read_crash_message(AudioDspProbe *d,char *message) {
     memset(message,0,161);
@@ -372,7 +393,8 @@ void run_probe(void *v,wait_result_t) {
     uint32_t lastServices=UINT32_MAX;
     for (;;) {
         d->now=na_native_now_us(nullptr)/1000;int r=NA_PENDING;
-        if (d->phase==1 && __atomic_load_n(&nezha_touch_stage,__ATOMIC_ACQUIRE)==7) {
+        if (d->mode==4) r=poll_tas_only(d);
+        else if (d->phase==1 && __atomic_load_n(&nezha_touch_stage,__ATOMIC_ACQUIRE)==7) {
             r=prepare(d);
             if (r==NA_BUSY && !d->input.attempted) r=NA_PENDING;
             else if (!r) {d->phase=2;d->deadline=d->now+45000;}
@@ -400,15 +422,18 @@ void run_probe(void *v,wait_result_t) {
                 else if (!tas) d->phase=4;
             }
         }
-        if (d->phase>=2 && d->phase<=4) observe_crash_message(d);
+        if (d->mode!=4 && d->phase>=2 && d->phase<=4) observe_crash_message(d);
         if (r<0 || (d->phase<4 && d->now>=d->deadline)) {
             d->error=r<0 ? r:NA_TIMEOUT;d->phase=5;
-            if (d->adsp.watchdog_fault) {crash_reason(d);stop_faulted_adsp(d);}
-            tas_cleanup(d);if (!d->adsp.watchdog_fault) crash_reason(d);
+            if (d->mode!=4 && d->adsp.watchdog_fault) {crash_reason(d);stop_faulted_adsp(d);}
+            tas_cleanup(d);if (d->mode!=4 && !d->adsp.watchdog_fault) crash_reason(d);
         }
         publish(d);
         if (last!=d->adsp.stage || lastPhase!=d->phase || lastError!=d->error || lastSlave!=d->adsp.slave || lastGpr!=d->adsp.transport.online || lastHeld!=d->power.held) {
-            printf("NEZHA AUDIO27 DSP: phase=%u error=%d ADSP=%u slave=%x handover=%u GPR=%u TAS=%u/%u error=%d seen=%u retain=%u held=%x GLINK=%u/%u unknown=\"%s\" IPCC=%u/%x\n",
+            if (d->mode==4)
+                printf("NEZHA AUDIO27 TAS IDENTITY ONLY: phase=%u error=%d TAS=%#x/%#x tas-error=%d cleanup=%d; no ADSP/PAS/GLINK/PCM\n",
+                    d->phase,d->error,d->revision[0],d->revision[1],d->tasError,d->tasCleanup);
+            else printf("NEZHA AUDIO27 DSP: phase=%u error=%d ADSP=%u slave=%x handover=%u GPR=%u TAS=%u/%u error=%d seen=%u retain=%u held=%x GLINK=%u/%u unknown=\"%s\" IPCC=%u/%x\n",
                 d->phase,d->error,d->adsp.stage,d->adsp.slave,d->adsp.handed,d->adsp.transport.online,d->revision[0],d->revision[1],d->tasError,d->adsp.handover_seen,d->adsp.retain_proxy,d->power.held,
                 d->adsp.glink.rx_messages,d->adsp.glink.tx_messages,d->adsp.glink.unknown_names,
                 d->input.resources.common ? d->input.resources.common->ipcc_unknown_count:0u,
@@ -416,8 +441,9 @@ void run_probe(void *v,wait_result_t) {
             last=d->adsp.stage;lastPhase=d->phase;lastError=d->error;lastSlave=d->adsp.slave;lastGpr=d->adsp.transport.online;lastHeld=d->power.held;
         }
         const auto &router=d->adsp.mapper;
-        if (lastQrtrUp!=router.online || lastQrtrHello!=router.qrtr.hello_received ||
-            lastQrtrRx!=router.qrtr.rx_packets || lastQrtrTx!=router.tx_sent || lastQrtrError!=router.error) {
+        if (d->mode!=4 && (lastQrtrUp!=router.online || lastQrtrHello!=router.qrtr.hello_received ||
+            lastQrtrRx!=router.qrtr.rx_packets || lastQrtrTx!=router.tx_sent || lastQrtrError!=router.error)) {
+            // Only the DSP diagnostic owns this transport.
             printf("NEZHA AUDIO27 QRTR: up=%u hello=%u rx=%u tx=%u/%u bad=%u refused=%u services=%u locator=%u/%u txn=%u name=\"%s\" error=%d\n",
                 router.online,router.qrtr.hello_received,router.qrtr.rx_packets,router.tx_sent,router.qrtr.tx_packets,
                 router.qrtr.rx_bad,router.qrtr.tx_refused,router.qrtr.remote_count,
@@ -425,7 +451,7 @@ void run_probe(void *v,wait_result_t) {
             lastQrtrUp=router.online;lastQrtrHello=router.qrtr.hello_received;lastQrtrRx=router.qrtr.rx_packets;
             lastQrtrTx=router.tx_sent;lastQrtrError=router.error;
         }
-        if (lastServices!=router.qrtr.remote_count) {
+        if (d->mode!=4 && lastServices!=router.qrtr.remote_count) {
             for (unsigned i=0;i<router.qrtr.remote_count;++i) {
                 const auto &service=router.qrtr.remote[i];
                 printf("NEZHA AUDIO27 QRTR SERVICE: id=%x instance=%x node=%u port=%u\n",
@@ -433,7 +459,7 @@ void run_probe(void *v,wait_result_t) {
             }
             lastServices=router.qrtr.remote_count;
         }
-        if (d->phase==5) break;
+        if (d->phase==5 || (d->mode==4 && d->phase==4)) break;
         assert_wait_timeout((event_t)d,THREAD_UNINT,1,kMillisecondScale);thread_block(THREAD_CONTINUE_NULL);
     }
     // Static state, firmware mappings and PAS/control leases remain retained. The
@@ -441,12 +467,15 @@ void run_probe(void *v,wait_result_t) {
     thread_terminate(current_thread());thread_block(THREAD_CONTINUE_NULL);
 }
 }
-extern "C" void nezha_audio27_dsp_probe_start(void) {
+static void start_probe(unsigned mode) {
     auto *d=&nativeAudioProbe;
     if (__atomic_exchange_n(&d->started,1,__ATOMIC_ACQ_REL)) return;
+    d->mode=mode;
     d->phase=1;publish(d);
     if (!qcom_usb_diag_register(&dspProvider)) {d->phase=5;d->error=NA_BUSY;publish(d);return;}
     thread_t thread=THREAD_NULL;
     if (kernel_thread_start(run_probe,d,&thread)!=KERN_SUCCESS) {d->phase=5;d->error=NA_IO;publish(d);return;}
     thread_deallocate(thread);
 }
+extern "C" void nezha_audio27_dsp_probe_start(void) {start_probe(2);}
+extern "C" void nezha_audio27_tas_probe_start(void) {start_probe(4);}

@@ -2,7 +2,7 @@
 /* GPU015 integration: one read-only resource census after touch initialization.
  * No ADSP/PAS/GLINK/LPASS/TAS access, audio publication or shared register writes.
  * na=1 enables only this census; na=2 selects the separate explicit DSP/TAS
- * diagnostic. Other values leave audio hardware untouched. */
+ * diagnostic; na=4 reads TAS identity without starting ADSP. */
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <kern/clock.h>
@@ -19,6 +19,7 @@ extern kern_return_t thread_terminate(thread_t);
 extern volatile int nezha_touch_stage;
 void nezha_audio27_start(void);
 extern void nezha_audio27_dsp_probe_start(void);
+extern void nezha_audio27_tas_probe_start(void);
 static unsigned started,state; /* 1 waiting,2 reading,3 complete,4 failed */
 static int native_error;
 static NaResourceSnapshot snapshot;
@@ -119,6 +120,7 @@ void nezha_audio27_start(void) {
     unsigned option=0;
     if (!PE_parse_boot_argn("na",&option,sizeof option)) return;
     if (option==2) {nezha_audio27_dsp_probe_start();return;}
+    if (option==4) {nezha_audio27_tas_probe_start();return;}
     if (option!=1) return;
     if (__atomic_exchange_n(&started,1,__ATOMIC_ACQ_REL)) return;
     __atomic_store_n(&state,1,__ATOMIC_RELEASE);

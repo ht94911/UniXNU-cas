@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Audio028 on fixed GPU023: observe existing GLINK notification and SMEM descriptor without changing wire, queues, firmware or power",
+  "purpose": "Audio029 on fixed GPU023: independent reset-muted TAS identity via existing GENI/I2C/owner, no ADSP/PAS/firmware/GLINK in explicit na4; full playback board default preserved",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "c85af6ce603a5bc0155f2c909bdd43a8d7e15b0c",
+  "device_revision": "f5ee4b84a7f1f37bfb81327ca69fb6e5498807ae",
   "soc_revision": "703d7b4bb00904b4a6e5d96f9e9bf72eec170f6b",
   "xcode": "26.6",
   "files": {
@@ -219,7 +219,7 @@
     "source/device/package/audio27/platform/AudioSmmu.h": "41401f1b97e3481c7e5cc3e02c47f926e91eec9fa34f4a48981a3fc3b723cddd",
     "source/device/package/audio27/upstream/ShengGpr.c": "c4f498f07e2cb601b593e64a8d32474a21d6a87375618e1a67b99d52c5d3160e",
     "source/device/package/audio27/platform/SoundWire.h": "348979ac1e552e1c3a0027e09f8500927e8bf7ccbb496276d2c9d3ef19322224",
-    ".github/workflows/nezha-ios27-native.yml": "f39ce1d2a021065ed7fb1d7c91c4b92a76ad82cf05c7a10de150e05105f0ef4d",
+    ".github/workflows/nezha-ios27-native.yml": "c9410a1b53097d3b5ef0869fd7cc2d909f321df6aa947b84c73d9ece47d64278",
     "source/device/package/audio27/upstream/ShengGpr.h": "a274dded1f4d1e2709b9f966759bcb1f57d12747ee0f57743dea1fa97d95d23e",
     "source/device/package/audio27/os/NezhaAudioNative.h": "7fd04a164de72e423cd16488d805c1a4f8c2f458b2356978b0bdecc2b64d55a7",
     "source/device/package/audio27/upstream/ShengAudioReach.h": "b135177a5feb3e24e0d8a6aabb301600e2c37078b970a09ada6e8eb7bb6a5b98",
@@ -231,7 +231,7 @@
     "source/device/package/audio27/upstream/LICENSE.GPL-2.0": "8177f97513213526df2cf6184d8ff986c675afb514d4e68a404010521b880643",
     "source/device/package/audio27/core/AudioDriver.h": "b2c04b2d6a842e529ce68ef794fe51c79a67a57e863da42af1b198e56e881e63",
     "source/device/package/audio27/platform/SoundWire.c": "e7e30b40cc4a78286f9dcf200b21690fa39d36da5b3e4a96c67d30313e2d1a2a",
-    "source/device/package/audio27/platform/NezhaGeniBoard.c": "1a2324e9b3fe4a6da6dc93b1fc27ccde652ea8b073cc3c69341d03fedab4af5f",
+    "source/device/package/audio27/platform/NezhaGeniBoard.c": "481066452f5cf12e0ff5348860fb5d0740d68cf9b7ea3ca056262c67d1291a3c",
     "source/device/package/audio27/hal/AudioClock.c": "e5f6cbbfc44f5e666a7e9b4ef8c7d284517fae36840b22c0277d80876b3f55e4",
     "source/device/package/audio27/platform/NezhaMicBoard.c": "61ffd0a836fe558308d414581703b854bd3756b0bdd4b61513065330e5ba59a0",
     "source/device/package/audio27/platform/AdspFirmware.c": "9ea4c9700080a92cf33b55958ffd21a1395c17513a1f26ee60a2e79080480117",
@@ -254,7 +254,7 @@
     "source/device/package/audio27/core/AudioGraph.h": "6f6d6113e81261e686857285229628c0394c302a62ff5010edc343a15d3d9b42",
     "source/device/package/audio27/platform/AudioAssembly.c": "9fe04f97b145e8f44f2c8b472a65e7c33a66ec8e484759ffc8f69516a4dcf24b",
     "source/device/package/audio27/core/AudioStream.c": "223f438cbf630d9cb3286258a1397904d04d3f28c6c6c2ddd04abda800416e4e",
-    "source/device/package/audio27/platform/NezhaAudioBoard.h": "01ca2224c56af9108ab585f7b5d281baf5021582d4601cf77fb71ca54777e8aa",
+    "source/device/package/audio27/platform/NezhaAudioBoard.h": "ef1ebfe97b695932cbdba80d1d29c493972ab18a2e25938175f81eccbebdbd79",
     "source/device/package/audio27/core/AudioRuntime.c": "3320d34220a61375c54678e68e9e11483ea0db897536c701d799594cd7e3aa5d",
     "source/device/package/audio27/core/AudioRuntime.h": "faf59590fa67fd09951105625b7bc01dd93d0157c214985f0f67455f6d76a83a",
     "source/device/package/audio27/platform/Tas25xxProgram.h": "d5d057e5380eca5f533bb906af50dab6f591a1ee222b9bc1e3c3b8b8ab601cd8",
@@ -300,7 +300,7 @@
     "source/device/package/audio27/core/AudioTransport.h": "31e7dde7e49059328d3ba29e5b5642927a80a0f1a4cb96202dd77428862c1f2a",
     "source/device/package/audio27/core/AudioDriver.c": "d57274b889fd84a7fbe70bf56504bd9f0bd5ee738a7a8cc379dadf81578757e9",
     "source/device/package/audio27/os/NezhaAudioTask.c": "f7e36a41e1a79427c10411970808f7c9328d2fc9e4137f5c65a977b88aeb1e2a",
-    "source/device/package/audio27/os/NezhaAudioResourceProbe.c": "fa192d4fb673835be5071eed0c8e46b1aaa17c070466d5e65c1965d6457caa53",
+    "source/device/package/audio27/os/NezhaAudioResourceProbe.c": "641e1db182872e39ae477296d919471aa5c47277cf6439ac1e9c911414a39741",
     "source/device/package/audio27/platform/AudioResourceProbe.h": "dfbbea451791c28f4ec3dcbfa80bfbb336fc404246c059410b5d2b44a3cb63f3",
     "source/device/package/audio27/integration/shared-component.json": "b86b81166dc15d1dc8460f48cbd45d486b0063f988a35b511494d641920cf9c8",
     "source/device/package/audio27/platform/AudioResourceProbe.c": "0f75748e62e77fcefdba443cd8399450c23eda6f4f0bee9adc27f7f7de09cd49",
@@ -318,7 +318,7 @@
     "source/device/package/audio27/platform/AudioInputPack.c": "9991a396c50bd0e427570d1a04fbe4755202412759fe0e945cd63c53619dea0c",
     "source/device/package/audio27/os/NezhaAudioInputs.c": "46617afe5985f02f108644611b93a19463322be09984968e5e900e10fcfe12aa",
     "source/device/package/audio27/os/NezhaAudioSmmu.cpp": "833371d1e1f4068cadf60002da3867f7a346ece265a8a4d5773174649898fff5",
-    "source/device/package/audio27/os/NezhaAudioDspProbe.cpp": "7653b046983296a2ff2949bc70de99d9368b5be01f43d8f99a8eba8075739459",
+    "source/device/package/audio27/os/NezhaAudioDspProbe.cpp": "41402777bb34bb0ed74db4df35699b4de793d4b2c27533c11b341fcdc9e3a49e",
     "source/device/package/audio27/os/NezhaAudioSmmu.h": "e9391db75422a2ec69a3451d0b50b279fa81741640840cc09e24be5cc3cc3889",
     "source/device/package/audio27/os/NezhaAudioTasBoard.h": "793e2b87da53b7f4aad0093310452fa378137b25e9375fe04edf269e3dad7f8b",
     "source/device/package/audio27/os/NezhaAudioTasBoard.cpp": "b87e914dfae3e3a77626dd1dd18e1c2a31ef01bacd631fb9830ec79a1fc9a890",
@@ -383,8 +383,8 @@
   "audio": {
     "base": "GPU023",
     "base_device_revision": "673cde869b7378658b470c4e6b2b9a1766b99411",
-    "source_revision": "c85af6ce603a5bc0155f2c909bdd43a8d7e15b0c",
-    "source_only_revision": "c85af6ce603a5bc0155f2c909bdd43a8d7e15b0c",
+    "source_revision": "f5ee4b84a7f1f37bfb81327ca69fb6e5498807ae",
+    "source_only_revision": "f5ee4b84a7f1f37bfb81327ca69fb6e5498807ae",
     "hardware_enabled": false,
     "resource_census_enabled": true,
     "private_inputs": false,
@@ -415,6 +415,17 @@
       "new_consumer": false,
       "new_protocol": false,
       "hardware_verified": false
+    },
+    "tas_identity_only": {
+      "boot_arg": "na=4",
+      "existing_provider": 8,
+      "provider_version": 2,
+      "reset_I2C_only": true,
+      "TDM_receiver_untouched": true,
+      "ADSP_PAS_GLINK_firmware_external_DMA_started": false,
+      "normal_shutdown_only": true,
+      "host_cases": 11,
+      "native_hardware_verified": false
     }
   }
 }

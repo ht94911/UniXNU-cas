@@ -23,9 +23,11 @@ typedef struct {
 } NaBoardIo;
 typedef struct {
     NaBoardIo io;NaGeniTasBus bus;uint64_t lease;
-    uint32_t error,powered,saved_pins[9],saved_vote,clock_index,saved_clock_index,saved_config,saved_scl,clocks_on,configured,saved_receiver_output;
+    uint32_t error,powered,saved_pins[9],saved_vote,clock_index,saved_clock_index,saved_config,saved_scl,clocks_on,configured,saved_receiver_output,identity_only;
 } NaGeniBoard;
 int na_geni_board_init(NaGeniBoard *,const NaBoardIo *,NaTasPowerOps *);
+/* Identification needs reset and I2C only; leave TDM and receiver untouched. */
+int na_geni_board_init_identity(NaGeniBoard *,const NaBoardIo *,NaTasPowerOps *);
 typedef struct {
     NaBoardIo io;NaSwr swr;uint64_t lease,deadline,wait_until;
     uint32_t stage,error,saved_lpi[4],saved_reset,rails,macro_on,snapshot_valid;
