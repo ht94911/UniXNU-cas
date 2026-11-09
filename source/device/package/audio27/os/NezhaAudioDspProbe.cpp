@@ -23,7 +23,7 @@ struct AudioDspProbe {
     NaNativeAdspInputs input;NaAssemblyPlan plan;
     NaNativeSmmu domain;NaSmmu smmu;
     NaNativeMemory dma,tables;
-    NaNativeWindow smem,qmp,cmdDb,pdc,spi;
+    NaNativeWindow smem,qmp,cmdDb;NaNativeAdspWatchdog watchdog;
     NaPasLoad loader[2];NaProxyPower power;NaAdsp adsp;NaRxQueue rx;
     NaNativeTasBoard tasNative;NaGeniBoard tasBoard;NaTasPowerOps tasOps;
     uint64_t now,deadline,tasDeadline,tasWait,tasLease;
@@ -31,9 +31,7 @@ struct AudioDspProbe {
     unsigned tasClaimed,tasPowerAttempted,tasCleanupAttempted;
     unsigned postPoint;int postResult,headerResult;
     unsigned loadPas,loadPoint,loadSegment;uint64_t loadOffset,loadBytes,loadPhysical;
-    uint32_t watchdogIrq,watchdogStops,watchdogStopAttempted;
-    uint32_t pdcVersion,pdcParameters,pdcBefore,spiBefore,spiAfter;
-    uint64_t watchdogRouter;
+    uint32_t watchdogStops,watchdogStopAttempted;
     int watchdogMain,watchdogDtb;
     char crashBaseline[161],crashLast[161];
     uint32_t crashBaselinePresent,crashLastPresent,crashLogs;
@@ -72,7 +70,7 @@ void publish(AudioDspProbe *d) {
         d->smmu.stream_result.context.fault_status,(uint32_t)d->smmu.error,
         d->adsp.glink_delay_ms,(uint32_t)(d->now<d->adsp.glink_after ? d->adsp.glink_after-d->now:0),
         __atomic_load_n(&d->adsp.watchdogs,__ATOMIC_ACQUIRE),d->adsp.auth_watchdogs,
-        d->watchdogIrq,d->watchdogStops,(uint32_t)d->watchdogMain,(uint32_t)d->watchdogDtb,
+        d->watchdog.irq,d->watchdogStops,(uint32_t)d->watchdogMain,(uint32_t)d->watchdogDtb,
         d->adsp.glink_observe_ms,(uint32_t)(d->now<d->adsp.glink_observe_until ? d->adsp.glink_observe_until-d->now:0)};
     static_assert(sizeof values==sizeof audioProbeValues,"Diagnostic word layout mismatch");
     __atomic_add_fetch(&audioProbeSequence,1,__ATOMIC_ACQ_REL);
@@ -106,10 +104,10 @@ void post_ready(void *v,uint32_t point,int result) {
         // Register the existing header observer before the first GLINK poll.
         d->adsp.glink.observe_context=d;d->adsp.glink.observe_header=glink_header;
     }
-    if (point==NaAdspGlinkDeferred && d->pdc.va) {
+    if (point==NaAdspGlinkDeferred && d->watchdog.pdc.va) {
         // Same existing observer, one read after fresh authentication. The
         // direct watchdog pin's CFG remains diagnostic, never programmed.
-        auto *pdc=reinterpret_cast<volatile uint32_t *>(d->pdc.va);
+        auto *pdc=reinterpret_cast<volatile uint32_t *>(d->watchdog.pdc.va);
         printf("NEZHA AUDIO27 WDOG PDC READONLY: after-auth pin=6 cfg=%#x\n",
             pdc[(0x110+4*6)/4]);
     }
@@ -179,6 +177,47 @@ int proxy(void *v,int on) {
     return r ? r:na_proxy_poll(&d->power,d->now);
 }
 void watchdog_irq(void *v) {na_adsp_watchdog_event(static_cast<NaAdsp *>(v));}
+int configure_watchdog(NaNativeAdspWatchdog *w,NaResourceOwner *owner,NaAdsp *adsp,uint64_t lease) {
+    // Restore Audio024's control-only lifecycle. Audio025/026 never loaded
+    // firmware because pin6 CFG writes read back zero, including a separate
+    // masked type write with 200us observation. Do not repeat that behavior
+    // or claim the direct pin's CFG register proves interrupt delivery.
+    auto *common=owner->common;
+    if (!common || !common->initialized || !common->io.lock || !common->io.unlock)
+        return NA_OWNERSHIP;
+    IOReturn irq=armcpu_spi_attach(783,true,watchdog_irq,adsp,&w->irq,&w->router);
+    printf("NEZHA AUDIO27 WDOG IRQ: intid=783 result=%d GIC=%#x route=%#llx\n",
+        irq,w->irq,(unsigned long long)w->router);
+    if (irq!=kIOReturnSuccess || (w->irq&7)!=7) return NA_IO;
+    int r=na_native_map(&w->pdc,{0x0b220000,0x2000},lease);
+    if (r) return r;
+    r=na_native_map(&w->spi,{0x17960000,0x1000},lease);
+    if (r) return r;
+    auto *pdc=reinterpret_cast<volatile uint32_t *>(w->pdc.va);
+    w->pdcVersion=pdc[0x1000/4];w->pdcParameters=pdc[0x100c/4];
+    w->pdcBefore=pdc[(0x110+4*6)/4];
+    printf("NEZHA AUDIO27 WDOG PDC READONLY: version=%#x parameters=%#x pin=6 cfg=%#x\n",
+        w->pdcVersion,w->pdcParameters,w->pdcBefore);
+    // Only the actual nezha v5 controller observed in025/026 is targeted.
+    // Parameters are raw diagnostics; no unestablished count-field decode.
+    if (w->pdcVersion!=0x50000) return NA_MISSING;
+    // Current stock DTS and matching qcom-pdc.ko additionally configure
+    // SPI751 in region179600f0/f4: bank23,bit15 selects edge when clear.
+    // Audio026 actually read fffffff8 (level). Only this owned bit changes.
+    // No qcom,scm-spi-cfg in stock DT; do not guess a secure-I/O call.
+    auto *spi=reinterpret_cast<volatile uint32_t *>(w->spi.va)+(0xf0+4*23)/4;
+    auto &io=common->io;
+    if (io.lock(io.context)) return NA_OWNERSHIP;
+    w->spiBefore=*spi;const uint32_t edge=w->spiBefore&~0x8000u;
+    if (edge!=w->spiBefore) {*spi=edge;na_native_publish_writes();}
+    w->spiAfter=*spi;
+    io.unlock(io.context);
+    printf("NEZHA AUDIO27 WDOG SPI: address=0x1796014c before=%#x edge=%u\n",
+        w->spiBefore,(w->spiBefore&0x8000u)==0);
+    printf("NEZHA AUDIO27 WDOG SPI: after=%#x edge=%u other-bits-preserved=%u\n",
+        w->spiAfter,(w->spiAfter&0x8000u)==0,w->spiAfter==edge);
+    return w->spiAfter==edge ? NA_OK:NA_IO;
+}
 int control_buffers_ready(void *v) {
     auto *d=static_cast<AudioDspProbe *>(v);
     // This diagnostic sends GLINK/QRTR control packets and reads reset-muted
@@ -193,45 +232,7 @@ int control_buffers_ready(void *v) {
         if (stream.graph || stream.dma.cpu || stream.dma.physical.bytes || stream.iova || stream.port)
             return NA_OWNERSHIP;
     capture_crash_baseline(d);
-    // Restore Audio024's control-only lifecycle. Audio025/026 never loaded
-    // firmware because pin6 CFG writes read back zero, including a separate
-    // masked type write with 200us observation. Do not repeat that behavior
-    // or claim the direct pin's CFG register proves interrupt delivery.
-    auto *common=d->input.resources.common;
-    if (!common || !common->initialized || !common->io.lock || !common->io.unlock)
-        return NA_OWNERSHIP;
-    IOReturn irq=armcpu_spi_attach(783,true,watchdog_irq,&d->adsp,&d->watchdogIrq,&d->watchdogRouter);
-    printf("NEZHA AUDIO27 WDOG IRQ: intid=783 result=%d GIC=%#x route=%#llx\n",
-        irq,d->watchdogIrq,(unsigned long long)d->watchdogRouter);
-    if (irq!=kIOReturnSuccess || (d->watchdogIrq&7)!=7) return NA_IO;
-    int r=na_native_map(&d->pdc,{0x0b220000,0x2000},d->plan.adsp_lease);
-    if (r) return r;
-    r=na_native_map(&d->spi,{0x17960000,0x1000},d->plan.adsp_lease);
-    if (r) return r;
-    auto *pdc=reinterpret_cast<volatile uint32_t *>(d->pdc.va);
-    d->pdcVersion=pdc[0x1000/4];d->pdcParameters=pdc[0x100c/4];
-    d->pdcBefore=pdc[(0x110+4*6)/4];
-    printf("NEZHA AUDIO27 WDOG PDC READONLY: version=%#x parameters=%#x pin=6 cfg=%#x\n",
-        d->pdcVersion,d->pdcParameters,d->pdcBefore);
-    // Only the actual nezha v5 controller observed in025/026 is targeted.
-    // Parameters are raw diagnostics; no unestablished count-field decode.
-    if (d->pdcVersion!=0x50000) return NA_MISSING;
-    // Current stock DTS and matching qcom-pdc.ko additionally configure
-    // SPI751 in region179600f0/f4: bank23,bit15 selects edge when clear.
-    // Audio026 actually read fffffff8 (level). Only this owned bit changes.
-    // No qcom,scm-spi-cfg in stock DT; do not guess a secure-I/O call.
-    auto *spi=reinterpret_cast<volatile uint32_t *>(d->spi.va)+(0xf0+4*23)/4;
-    auto &io=common->io;
-    if (io.lock(io.context)) return NA_OWNERSHIP;
-    d->spiBefore=*spi;const uint32_t edge=d->spiBefore&~0x8000u;
-    if (edge!=d->spiBefore) {*spi=edge;na_native_publish_writes();}
-    d->spiAfter=*spi;
-    io.unlock(io.context);
-    printf("NEZHA AUDIO27 WDOG SPI: address=0x1796014c before=%#x edge=%u\n",
-        d->spiBefore,(d->spiBefore&0x8000u)==0);
-    printf("NEZHA AUDIO27 WDOG SPI: after=%#x edge=%u other-bits-preserved=%u\n",
-        d->spiAfter,(d->spiAfter&0x8000u)==0,d->spiAfter==edge);
-    return d->spiAfter==edge ? NA_OK:NA_IO;
+    return na_native_adsp_watchdog_prepare(&d->watchdog,&d->input.resources,&d->adsp,d->plan.adsp_lease);
 }
 int poll_shared(void *v) {
     auto *d=static_cast<AudioDspProbe *>(v);
@@ -470,6 +471,12 @@ void run_probe(void *v,wait_result_t) {
     // existing USB path continues; no automatic reset or PAS replay follows.
     thread_terminate(current_thread());thread_block(THREAD_CONTINUE_NULL);
 }
+}
+extern "C" int na_native_adsp_watchdog_prepare(NaNativeAdspWatchdog *w,NaResourceOwner *owner,NaAdsp *adsp,uint64_t lease) {
+    if (!w || !owner || !adsp || !lease || !adsp->masters_stopped || adsp->stage!=NaAdspDma) return NA_OWNERSHIP;
+    if (w->attempted) return w->error;
+    w->attempted=1;w->error=configure_watchdog(w,owner,adsp,lease);
+    return w->error;
 }
 static void start_probe(unsigned mode) {
     auto *d=&nativeAudioProbe;

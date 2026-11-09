@@ -17,6 +17,7 @@ typedef struct {
 typedef struct {
     NaNativeAdspInputs inputs;NaPlaybackInputs playback;
     NaNativeSmmu domain;NaNativeTasBoard board;
+    NaNativeAdspWatchdog watchdog;
     NaNativeMemory dma[2],tables;
     NaNativeWindow smem,qmp,cmd_db;
     NaAssembly assembly;NaAssemblyPlan plan;
@@ -32,6 +33,20 @@ int na_native_playback_prepare(NaNativePlayback *,const NaNativePlaybackConfig *
  * revisions and the actual XNU timebase; no fabricated revision default. */
 int na_native_speaker_config(NaNativePlaybackConfig *,const uint8_t revisions[2],
                               uint32_t timebase_numer,uint32_t timebase_denom);
+/* Explicit na=3 startup: discover both revisions while reset-muted, restore
+ * the identity-only board lease, then initialize the existing playback
+ * Assembly and start its sole native worker. No output is requested here. */
+typedef struct {
+    NaNativePlayback playback;
+    NaNativeTasBoard identity_native;NaGeniBoard identity_board;NaTasIdentity identity;
+    NaNativePlaybackConfig config;
+    uint64_t deadline;
+    uint32_t phase;
+    int error;
+} NaNativePlaybackStart;
+int na_native_playback_start_step(NaNativePlaybackStart *,uint64_t now_ms,
+                                  uint32_t timebase_numer,uint32_t timebase_denom);
+void nezha_audio27_playback_start(void);
 #ifdef __cplusplus
 }
 #endif

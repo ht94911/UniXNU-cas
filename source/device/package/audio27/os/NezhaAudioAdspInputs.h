@@ -26,6 +26,16 @@ int na_native_prepare_adsp_inputs(NaNativeAdspInputs *,NaAssemblyPlan *);
 /* Distinguish owned WB metadata from exact leased WC firmware aliases. Never
  * pass an arbitrary peripheral PA to XNU's RAM physmap cache operation. */
 int na_native_pas_sync(void *,void *cpu,uint64_t physical,uint64_t bytes);
+/* The verified board watchdog route, shared by control and playback modes.
+ * Configure only after both PAS masters stopped; retain mappings on failure.
+ * PDC remains read-only. Only owned SPI751/bit15 may be changed. */
+typedef struct {
+    NaNativeWindow pdc,spi;
+    uint32_t irq,pdcVersion,pdcParameters,pdcBefore,spiBefore,spiAfter,attempted;
+    uint64_t router;
+    int error;
+} NaNativeAdspWatchdog;
+int na_native_adsp_watchdog_prepare(NaNativeAdspWatchdog *,NaResourceOwner *,NaAdsp *,uint64_t lease);
 #ifdef __cplusplus
 }
 #endif

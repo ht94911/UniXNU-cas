@@ -27,6 +27,9 @@ int na_native_pas_query(uint32_t command,uint32_t pas,uint64_t result[4]);
 /* Start only after constructing the source-only driver's immutable plan and
  * acquiring the actual shared hardware leases. No implicit boot-arg defaults. */
 int nezha_audio_worker_start(NaDriver *);
+/* Bounded read of the existing worker statistics for USB provider8/v3.
+ * Does not acquire the audio owner lock or touch hardware. */
+int nezha_audio27_copy_stats(uint64_t out[24]);
 #ifdef __cplusplus
 }
 #endif

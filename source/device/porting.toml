@@ -135,17 +135,17 @@ evidence = []
 
 [[area]]
 id = "audio"
-status = "planned"
-components = []
-paths = ["patches/xnu-12377/zzyd-sheng-audio-addon-mount.patch"]
-inputs = ["Unchanged sheng conditional addon mount patch."]
-configuration = ["board.toml and configs/nezha_ios27_defconfig select the current source-only step."]
-procedure = ["Use ./unixnu with isolated local inputs/out, jobs=32; preserve existing Android/ios17 and active Wi-Fi workspace."]
-findings = ["Patch reuse does not qualify an iPhone audio addon or codec driver; no audio archive enabled."]
-completion = ["Real iPhone iOS27 desktop/settings operable with protection verification; validate this area separately before promotion."]
-limits = ["No iOS27 device execution, donor ABI qualification or phone allocation is claimed."]
-next_action = ["Retain source chain and defer actual audio resources until after desktop."]
-evidence = []
+status = "implemented"
+components = ["ArmSmmu4K", "QcomXnuUsbDebug"]
+paths = ["package/audio27/**", "scripts/build-nezha27-audio.py", "scripts/finalize-audio27-inputs.py", "scripts/prepare-nezha27-audio-addon.py", "package/gpu/NezhaScm.c", "patches/xnu-12377/zzyd-sheng-audio-addon-mount.patch", "patches/xnu-12377/zzzzzz-nezha-audio-hal-mount.patch"]
+inputs = ["User-selected GPU023; local stock ADSP1/DTB36 firmware, TAS tuning/calibration and candidate graphs. Private inputs are filled locally after native compilation.", "SM8850 common resource leases and configuration mutex; bank7/ASIDfe00/slots9-12, TCS1, shared IPCC dispatcher; existing global SCM/WAITQ serialization."]
+configuration = ["na=1/2/4 retain census and identity diagnostics; explicit na=3 reuses the existing playback startup with a current narrow-board identity read. Full temporary boot retains GPU023 and original generation1 Data. Append only the signed audio HAL/trust; no phone payload write or automatic PCM/reset."]
+procedure = ["Prepare LP0/load_state/LCX/LMX, require both initial PAS shutdowns, install owned DMA mappings, initialize SMEM/GLINK, load/authenticate firmware and await fresh ready/handover/GPR before reset-muted TAS identity reads.", "Use existing native/CMS/prelink/package tools and USB provider8/version2 for control, version3 for playback; minimal authorized phone pre/postflight and normal XNU return."]
+findings = ["004 obtained a complete real shared-resource census.009 entered the desktop and returned a complete provider8 snapshot but initial PAS1 shutdown failed before SMMU/proxy/TAS activation; raw secure results were normalized to EIO.", "010 source moves the existing proxy preparation before shutdown to match the same-SoC pandora sequence and records raw SCM a0-a3. The order is a testable explanation, not an established cause; failures never imply that DMA masters have stopped.", "OEM crash-history records classify actual027/028/029/031/032/034 return windows as tz_xpu_violation.034's fixed USB progress trace reaches the first GPIO54 read at0x0f036000 after successful resource acquisition/maps, then has no AFTER or blocked record. Actual Canoe ELF group tables in both slots and stock FDT prove a missing0x100000 GPIO-bank offset: GPIO54 is0x0f136000.035 corrects native mapping and GENI/microphone GPIO callers through one board constant; original masks, clock/cleanup and USB/SoC/GPU behavior remain.035 actual trial completed corrected GPIO reads/writes and cleanup without a new XPU event; normal XNU return/protection/collector exit passed. TAS phase2 failed because the timeout entry saw CMD_DONE but still cancelled;036 consumes real completion/phase progress before cancellation and preserves bounded cancel/abort.11 production path ASan/UBSan cases pass, including the reproduced035 regression. 036 read both real TAS revisions as0x30 and passed GENI completion/cleanup.037 passed PAS1/36 authentication, fresh-ready/handover/GLINK/GPR and the same TAS identity, followed by normal XNU return/protection/collector exit. Complete physical audio and stable reset behavior remain unverified."]
+completion = ["Real DSP ready/handover/GPR; exact TAS identity and VI/calibration acceptance before controlled PCM; separately prove microphone PCM and application HAL playback/capture before functional promotion."]
+limits = ["014 passed support/range queries, both PAS stops, SMMU and DTB init/mem setup; then remained at DTB load. No authentication/GPR/TAS/PCM proof. The cause of changed stop results is unisolated;015 fixes mismatched firmware sync and adds bounded copy progress."]
+next_action = ["Qualify038 existing playback startup and current identity/VI/calibration path in the target kernel, preserve037 control timing/watchdog route and36 GENI/GPIO fixes, append only the matching signed HAL to original GPU023 companions, then use the actual selected shared-file window. APM/PCM/HAL/capture and stable reset behavior still require real acceptance."]
+evidence = [{kind = "source", reference = "package/audio27/SOURCE.md", result = "Source f9e87ea4ecef20ba81562ed48863aaa8a53187fe records the009 device limitation,010 change and focused lifecycle test; private raw evidence remains local."}]
 
 [[area]]
 id = "power"

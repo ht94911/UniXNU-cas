@@ -20,7 +20,8 @@ extern kmod_info_t g_kernel_kmod_info;
 extern "C" void nezha_audio_service_static_init(void) __asm__("__GLOBAL__sub_I_NezhaAudioService.cpp");
 extern "C" int nezha_audio_pas_call(unsigned,unsigned,uint64_t,uint64_t);
 extern "C" int nezha_audio_pas_query(unsigned,unsigned,uint64_t [4]);
-extern "C" {volatile uint64_t nezha_audio27_stats[16];}
+extern "C" {volatile uint64_t nezha_audio27_stats[24];}
+static uint32_t audioStatsSequence;
 namespace {
 NaDriver *worker;
 uint32_t started;
@@ -44,23 +45,41 @@ bool ownedWindow(NaRange r) {
 }
 void run(void *v,wait_result_t) {
     auto *d=static_cast<NaDriver *>(v);thread_set_thread_name(current_thread(),"nezha-audio27");
-    uint32_t lastStage=~0u;int lastError=0;bool service=false,publicationFailed=false;
+    uint32_t lastStage=~0u;uint64_t lastOutput=0,lastInput=0,nextPeriods=0;
+    int lastError=0;bool service=false,publicationFailed=false;
     for (;;) {
         uint64_t now=na_native_now_us(nullptr)/1000;
         nezha_audio_owner_lock();
         int r=na_driver_poll(d,now);
+        const uint64_t outputPeriods=d->runtime.status.output_periods,inputPeriods=d->runtime.status.input_periods;
+        const uint32_t underruns=d->runtime.status.underruns,overruns=d->runtime.status.overruns;
+        const uint32_t topFaults=d->speaker->reported_faults[0],bottomFaults=d->speaker->reported_faults[1];
+        __atomic_fetch_add(&audioStatsSequence,1,__ATOMIC_ACQ_REL);
+        __atomic_store_n(&nezha_audio27_stats[0],(uint64_t)(d->stage),__ATOMIC_RELAXED);__atomic_store_n(&nezha_audio27_stats[1],(uint64_t)((uint64_t)(int64_t)r),__ATOMIC_RELAXED);
+        __atomic_store_n(&nezha_audio27_stats[2],(uint64_t)(d->adsp->stage),__ATOMIC_RELAXED);__atomic_store_n(&nezha_audio27_stats[3],(uint64_t)(d->adsp->slave),__ATOMIC_RELAXED);
+        __atomic_store_n(&nezha_audio27_stats[4],(uint64_t)(d->prm.held),__ATOMIC_RELAXED);__atomic_store_n(&nezha_audio27_stats[5],(uint64_t)(d->prm.possible),__ATOMIC_RELAXED);
+        __atomic_store_n(&nezha_audio27_stats[6],(uint64_t)(d->graph[0].stage),__ATOMIC_RELAXED);__atomic_store_n(&nezha_audio27_stats[7],(uint64_t)(d->graph[1].stage),__ATOMIC_RELAXED);
+        __atomic_store_n(&nezha_audio27_stats[8],(uint64_t)(d->runtime.status.output_periods),__ATOMIC_RELAXED);__atomic_store_n(&nezha_audio27_stats[9],(uint64_t)(d->runtime.status.input_periods),__ATOMIC_RELAXED);
+        __atomic_store_n(&nezha_audio27_stats[10],(uint64_t)(d->runtime.status.underruns),__ATOMIC_RELAXED);__atomic_store_n(&nezha_audio27_stats[11],(uint64_t)(d->runtime.status.overruns),__ATOMIC_RELAXED);
+        __atomic_store_n(&nezha_audio27_stats[12],(uint64_t)(d->speaker->reported_faults[0]),__ATOMIC_RELAXED);__atomic_store_n(&nezha_audio27_stats[13],(uint64_t)(d->speaker->reported_faults[1]),__ATOMIC_RELAXED);
+        __atomic_store_n(&nezha_audio27_stats[14],(uint64_t)(d->session.generation),__ATOMIC_RELAXED);__atomic_store_n(&nezha_audio27_stats[15],(uint64_t)(d->runtime.status.state),__ATOMIC_RELAXED);
+        __atomic_store_n(&nezha_audio27_stats[16],(uint64_t)(d->adsp->transport.online),__ATOMIC_RELAXED);__atomic_store_n(&nezha_audio27_stats[17],(uint64_t)(d->graph[2].stage),__ATOMIC_RELAXED);
+        __atomic_store_n(&nezha_audio27_stats[18],(uint64_t)((uint64_t)(int64_t)d->graph[0].error),__ATOMIC_RELAXED);
+        __atomic_store_n(&nezha_audio27_stats[19],(uint64_t)((uint64_t)(int64_t)d->graph[2].error),__ATOMIC_RELAXED);
+        __atomic_store_n(&nezha_audio27_stats[20],(uint64_t)((uint64_t)(int64_t)d->prm.error),__ATOMIC_RELAXED);__atomic_store_n(&nezha_audio27_stats[21],(uint64_t)(service),__ATOMIC_RELAXED);
+        __atomic_store_n(&nezha_audio27_stats[22],(uint64_t)(__atomic_load_n(&d->runtime.request,__ATOMIC_ACQUIRE)),__ATOMIC_RELAXED);
+        __atomic_store_n(&nezha_audio27_stats[23],(uint64_t)(d->input_enabled),__ATOMIC_RELAXED);
+        __atomic_fetch_add(&audioStatsSequence,1,__ATOMIC_RELEASE);
         nezha_audio_owner_unlock();
-        nezha_audio27_stats[0]=d->stage;nezha_audio27_stats[1]=(uint64_t)(int64_t)r;
-        nezha_audio27_stats[2]=d->adsp->stage;nezha_audio27_stats[3]=d->adsp->slave;
-        nezha_audio27_stats[4]=d->prm.held;nezha_audio27_stats[5]=d->prm.possible;
-        nezha_audio27_stats[6]=d->graph[0].stage;nezha_audio27_stats[7]=d->graph[1].stage;
-        nezha_audio27_stats[8]=d->runtime.status.output_periods;nezha_audio27_stats[9]=d->runtime.status.input_periods;
-        nezha_audio27_stats[10]=d->runtime.status.underruns;nezha_audio27_stats[11]=d->runtime.status.overruns;
-        nezha_audio27_stats[12]=d->speaker->reported_faults[0];nezha_audio27_stats[13]=d->speaker->reported_faults[1];
-        nezha_audio27_stats[14]=d->session.generation;nezha_audio27_stats[15]=d->runtime.status.state;
         if (lastStage!=d->stage || lastError!=r) {
             printf("NEZHA AUDIO27: stage=%u error=%d adsp=%u graph=%u/%u prm=%x/%x\n",d->stage,r,d->adsp->stage,d->graph[0].stage,d->graph[1].stage,d->prm.held,d->prm.possible);
             lastStage=d->stage;lastError=r;
+        }
+        if (now>=nextPeriods && (lastOutput!=outputPeriods || lastInput!=inputPeriods)) {
+            printf("NEZHA AUDIO27 PCM: output=%llu input=%llu underruns=%u overruns=%u faults=%x/%x\n",
+                (unsigned long long)outputPeriods,(unsigned long long)inputPeriods,
+                underruns,overruns,topFaults,bottomFaults);
+            lastOutput=outputPeriods;lastInput=inputPeriods;nextPeriods=now+1000;
         }
         if (!service && !publicationFailed && na_driver_ready(d)) {
             if (!classesReady) {
@@ -80,6 +99,16 @@ void run(void *v,wait_result_t) {
     // Publication failed before HAL could request data. Metadata/leases remain
     // retained for diagnosis; they must not be freed under a running DSP.
 }
+}
+extern "C" int nezha_audio27_copy_stats(uint64_t out[24]) {
+    if (!out) return NA_ARGUMENT;
+    for (unsigned attempt=0;attempt<4;++attempt) {
+        uint32_t seq=__atomic_load_n(&audioStatsSequence,__ATOMIC_ACQUIRE);if (seq&1) continue;
+        for (unsigned i=0;i<24;++i) out[i]=__atomic_load_n(&nezha_audio27_stats[i],__ATOMIC_RELAXED);
+        __atomic_thread_fence(__ATOMIC_ACQUIRE);
+        if (seq==__atomic_load_n(&audioStatsSequence,__ATOMIC_RELAXED)) return NA_OK;
+    }
+    return NA_BUSY;
 }
 extern "C" int na_native_map(NaNativeWindow *w,NaRange range,uint64_t lease) {
     if (!w || w->mapping || !lease || !ownedWindow(range)) return NA_ARGUMENT;

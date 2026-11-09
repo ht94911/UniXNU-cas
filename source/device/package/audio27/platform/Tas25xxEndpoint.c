@@ -2,6 +2,70 @@
 #include "Tas25xxEndpoint.h"
 #include <string.h>
 #include <limits.h>
+int na_tas_identity_init(NaTasIdentity *d,const NaTasPowerOps *ops) {
+    if (!d || !ops || d->initialized || !ops->claim || !ops->power ||
+        !ops->reset || !ops->release || !ops->io.read) return NA_ARGUMENT;
+    memset(d,0,sizeof *d);d->ops=*ops;d->initialized=1;return NA_OK;
+}
+int na_tas_identity_stop(NaTasIdentity *d) {
+    if (!d) return NA_ARGUMENT;
+    if (!d->initialized || d->cleanup_attempted) return d->cleanup_error;
+    d->cleanup_attempted=1;
+    if (d->phase!=3) d->phase=4;
+    if (d->claim_failed) {
+        /* A partial claim has no complete GPIO/clock snapshot to restore. */
+        if (d->lease) d->cleanup_error=NA_OWNERSHIP;
+        return d->cleanup_error;
+    }
+    if (!d->claimed) return NA_OK;
+    int r=d->ops.reset(d->ops.context,d->lease,1);
+    if (r && !d->cleanup_error) d->cleanup_error=r;
+    if (d->power_attempted) {
+        r=d->ops.power(d->ops.context,d->lease,0);
+        if (r && !d->cleanup_error) d->cleanup_error=r;
+    }
+    if (!d->cleanup_error) {
+        r=d->ops.release(d->ops.context,d->lease);
+        if (r) d->cleanup_error=r;
+        else {d->lease=0;d->claimed=0;}
+    }
+    return d->cleanup_error;
+}
+static int identity_failed(NaTasIdentity *d,int error) {
+    d->error=error<0 ? error:NA_IO;d->phase=4;
+    (void)na_tas_identity_stop(d);return d->error;
+}
+int na_tas_identity_poll(NaTasIdentity *d,uint64_t now) {
+    if (!d || !d->initialized || now>UINT64_MAX-5000) return NA_ARGUMENT;
+    if (d->error) return d->error;
+    if (d->phase==3) return NA_OK;
+    if (d->phase==4 || d->cleanup_attempted) return NA_OWNERSHIP;
+    if (!d->deadline) d->deadline=now+5000;
+    if (now>=d->deadline) return identity_failed(d,NA_TIMEOUT);
+    int r;
+    if (!d->phase) {
+        r=d->ops.claim(d->ops.context,&d->lease);
+        if (r==NA_BUSY && !d->lease) return NA_PENDING;
+        if (r || !d->lease) {d->claim_failed=1;return identity_failed(d,r ? r:NA_OWNERSHIP);}
+        d->claimed=1;
+        r=d->ops.reset(d->ops.context,d->lease,1);if (r) return identity_failed(d,r);
+        d->power_attempted=1;
+        r=d->ops.power(d->ops.context,d->lease,1);if (r) return identity_failed(d,r);
+        d->wait_until=now+20;d->phase=1;return NA_PENDING;
+    }
+    if (now<d->wait_until) return NA_PENDING;
+    if (d->phase==1) {
+        r=d->ops.reset(d->ops.context,d->lease,0);if (r) return identity_failed(d,r);
+        d->wait_until=now+20;d->phase=2;return NA_PENDING;
+    }
+    for (unsigned i=0;i<2;++i) {
+        r=d->ops.io.read(d->ops.io.context,d->lease,
+            (uint8_t)na_nezha_facts.amp_address[i],0x78,&d->revision[i]);
+        if (r) return identity_failed(d,r);
+    }
+    r=na_tas_identity_stop(d);if (r) return identity_failed(d,r);
+    d->phase=3;return NA_OK;
+}
 static int append(NaTasEndpoint *e,unsigned phase,unsigned ch,NaTasBytes b,int check) {
     NaTasProgramInfo info;
     if (phase>2 || ch>1 || e->count[phase]>=NA_TAS_STEPS || na_tas_validate(b,&info)) return NA_WIRE;

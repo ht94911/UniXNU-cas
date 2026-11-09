@@ -45,14 +45,14 @@ typedef struct {
     /* Diagnostic retention never means the real handover or release occurred.
      * Default zero preserves normal proxy release; only na=2 sets retention. */
     uint32_t retain_proxy,handover_seen,observe_mask;
-    /* Diagnostic selection of the protocol's local OPEN path. Full playback
-     * keeps zero until this mode has its own real hardware acceptance. */
+    /* Explicit selection of the protocol's local OPEN path. First playback
+     * carries the control-opening path verified by audio037. */
     uint32_t gpr_initiator;
     /* Bounded diagnostic separation of fresh ready from GLINK setup. Zero
      * keeps the ordinary lifecycle; proxy handover and SMP2P still progress. */
     uint32_t glink_delay_ms;
-    /* na=2 only: yield between the first existing GLINK observations so USB
-     * can preserve their state. Zero keeps normal playback's original flow. */
+    /* Yield between the first existing GLINK observations so USB can preserve
+     * their state. Audio038 retains037's timing; zero selects the normal flow. */
     uint32_t glink_observe_ms;
     uint64_t glink_after,glink_observe_until;
     uint64_t deadline;int error,cleanup_error;

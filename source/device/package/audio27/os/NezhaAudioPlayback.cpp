@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: BSD-2-Clause-Patent
 #include "NezhaAudioPlayback.h"
 #include "NezhaAudioService.h"
+#include <Sm8850ResourcesNative.h>
 #include <string.h>
+extern "C" volatile int nezha_touch_stage;
 namespace {
 int failed(NaNativePlayback *s,int r) {s->error=r;return r;}
 NaOwnedBuffer owned(const NaNativeMemory &m) {return {m.va,{m.physical,m.bytes}};}
@@ -10,6 +12,8 @@ void smem_unlock(void *v) {na_resource_owner_smem_unlock(&static_cast<NaNativePl
 void doorbell(void *v,uint32_t signal) {na_resource_owner_doorbell(&static_cast<NaNativePlayback *>(v)->inputs.resources,signal);}
 int dispatch(void *v) {
     auto *s=static_cast<NaNativePlayback *>(v);int r=na_native_smmu_faulted(&s->domain);
+    if (!r && s->assembly.adsp.stage==NaAdspDma)
+        r=na_native_adsp_watchdog_prepare(&s->watchdog,&s->inputs.resources,&s->assembly.adsp,s->plan.adsp_lease);
     return r ? r:na_resource_owner_dispatch(&s->inputs.resources);
 }
 int sync(void *v,const NaOwnedBuffer *buffer,uint32_t offset,uint32_t bytes,int device) {
@@ -86,6 +90,56 @@ extern "C" int na_native_playback_prepare(NaNativePlayback *s,const NaNativePlay
     p.timebase_numer=c->timebase_numer;p.timebase_denom=c->timebase_denom;
     p.ops={s,smem_lock,smem_unlock,doorbell,sync,na_native_host_time,dispatch};
     r=na_assembly_init(&s->assembly,&p,na_native_now_us(nullptr)/1000);if (r) return failed(s,r);
+    // Carry the actual037 channel-opening path and diagnostic timing into
+    // this first playback candidate; do not silently change DSP bring-up.
+    s->assembly.adsp.gpr_initiator=1;
+    s->assembly.adsp.glink_delay_ms=20000;
+    s->assembly.adsp.glink_observe_ms=100;
     r=na_resource_owner_ipcc(&s->inputs.resources,&s->assembly.adsp);if (r) return failed(s,r);
     s->ready=1;return NA_OK;
+}
+extern "C" int na_native_playback_start_step(NaNativePlaybackStart *s,uint64_t now,uint32_t numer,uint32_t denom) {
+    if (!s || !numer || !denom || now>UINT64_MAX-120000) return NA_ARGUMENT;
+    if (s->error) return s->error;
+    if (s->phase==4) return NA_OK;
+    if (!s->deadline) s->deadline=now+120000;
+    int r=now>=s->deadline ? NA_TIMEOUT:NA_OK;
+    if (!r && !s->phase) {
+        if (__atomic_load_n(&nezha_touch_stage,__ATOMIC_ACQUIRE)!=7 || !sm8850_usb_domain_ready()) return NA_PENDING;
+        NaInputPack pack;
+        r=na_native_audio_inputs(&pack);
+        if (!r) {
+            Sm8850Resources *common=sm8850_native_resources();NaBoardIo board;NaTasPowerOps ops;
+            r=common ? na_native_tas_board(&s->identity_native,common,&board):NA_IO;
+            if (!r) r=na_geni_board_init_identity(&s->identity_board,&board,&ops);
+            if (!r) r=na_tas_identity_init(&s->identity,&ops);
+            if (!r) s->phase=1;
+        }
+    } else if (!r && s->phase==1) {
+        r=na_tas_identity_poll(&s->identity,now);
+        if (r==NA_PENDING) return r;
+        if (!r) {
+            /* Identity completion proved the bus quiet and released its
+             * GPIO/clock lease; drop those CPU aliases before playback maps. */
+            r=na_native_unmap(&s->identity_native.geni,1);
+            if (!r) r=na_native_unmap(&s->identity_native.tlmm,1);
+            if (!r) r=na_native_speaker_config(&s->config,s->identity.revision,numer,denom);
+            if (!r) s->phase=2;
+        }
+    } else if (!r && s->phase==2) {
+        r=na_native_playback_prepare(&s->playback,&s->config);
+        if (r==NA_BUSY && !s->playback.attempted && !s->playback.inputs.attempted) return NA_PENDING;
+        if (!r) s->phase=3;
+    } else if (!r && s->phase==3) {
+        r=nezha_audio_worker_start(&s->playback.assembly.driver);
+        if (!r) {s->phase=4;return NA_OK;}
+    } else if (!r) r=NA_OWNERSHIP;
+    if (r) {
+        s->error=r<0 ? r:NA_IO;s->phase=5;
+        (void)na_tas_identity_stop(&s->identity);
+        /* Keep partial Assembly/PAS/DMA ownership for diagnosis. Never
+         * restart a failed initialization or request automatic playback. */
+        return s->error;
+    }
+    return NA_PENDING;
 }
