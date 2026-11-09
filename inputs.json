@@ -18,7 +18,7 @@
   "soc_revision": "3435fa55c3e835a4aaebf7d833473fd5d20073fd",
   "xcode": "26.6",
   "files": {
-    ".github/workflows/nezha-ios27-native.yml": "7a5543421e970cbfd8b8d0da218beb6efab41a5da19e7b255b7a0d589cb0f52c",
+    ".github/workflows/nezha-ios27-native.yml": "8365c3ddcd3a71b15761adc2fa66c66beafa02884298be2d51e07cb3f7247b26",
     "ci/cache-signature-template.py": "3596fbb421e2d223c9d01b6280af68ca7e83595c99d3d96e481450f187201d72",
     "ci/native.py": "04674168bdcd7d0b2cc8d27207556e6ced8e2080280cd58584921804a24b19d9",
     "source/adreno/LICENSE": "16fbc0170994a48f60938d9f0d992d3bad113383cf90882f75c206e079c2a2dc",
