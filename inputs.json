@@ -237,7 +237,7 @@
     "source/appsync/test.py": "1114ac3c419394c7afa8b1f2d36f05ab274386235f536dbd55a59d16b4476f0c",
     "source/appsync/FixtureApp.m": "dc874b6dc3e6ff6bf91a6ef70fd78029a2b36f7acae11ae3bc71b9a72d4f2502",
     "source/appsync/build-fixtures.py": "7592c162246e93b2644ea12c1a96536bd3da71fbafd6eace3eb3cd905157d262",
-    "source/appsync/ProbeRunner.m": "ada0f48bbfb559a8afb145e6ef056b8fdf699516c49a1f71a9f066a7d0f6b9df"
+    "source/appsync/ProbeRunner.m": "efad777d4cc39dbd8ce8c662d392bbea9ac83455090c7f416ffe671dd05c1d49"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",

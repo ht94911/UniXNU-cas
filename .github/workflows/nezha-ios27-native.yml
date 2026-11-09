@@ -1,7 +1,7 @@
-name: nezha iPhone27 AppSync RAM Data probe
+name: nezha iPhone27 AppSync cached one-shot probe
 on:
   push:
-    branches: [codex/ios27-appsync-ram-probe-20261109]
+    branches: [codex/ios27-appsync-probe-entry013-20261109]
   workflow_dispatch:
 permissions:
   contents: read

@@ -62,10 +62,13 @@ static NSInteger launchesFor(id proxy, NSString *identifier)
 int main(void)
 {
     @autoreleasepool {
+        // The RAM Data test runs from an existing cached one-shot root job.
+        // Make its bounded result visible on the already captured kernel console.
+        if (!freopen("/dev/console", "w", stderr)) return 5;
         setvbuf(stderr, NULL, _IONBF, 0);
         signal(SIGALRM, installAlarm);
         alarm(230);
-        fprintf(stderr, "APPSYNC_PROBE start ram-data\n");
+        fprintf(stderr, "APPSYNC_PROBE start ram-data uid=%u\n", (unsigned)getuid());
         sleep(60);
         dlopen("/System/Library/Frameworks/CoreServices.framework/CoreServices", RTLD_NOW);
         Class proxyClass = objc_getClass("LSApplicationProxy");
