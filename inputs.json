@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Audio025: keep GPU023/Native037/Metal021b and Audio024 GLINK20s/first observations100ms; complete stock ADSP watchdog PDC DRV2 pin6 to IRQ783 using actual3.2 version/direct-SPI check, exclusive GIC claim then only pin6 type/rising6+enable8 and readback. No other PDC pin or old bank, new FIFO consumer, trace, external DMA, PCM/HAL/capture/private inputs or phone operation. Cause/hardware route not yet proven.",
+  "purpose": "Audio030 on fixed GPU023/actualAudio027: publish QMP/SMEM producer writes through existing common barrier before IPCC notification; retain original027 logging and all firmware/power/IRQ contracts",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "de12a82a178b2016162e842ebf7758eab4985bd3",
+  "device_revision": "4c8bf4eddc56517a9bd80d3c9ecfecce52fb7630",
   "soc_revision": "703d7b4bb00904b4a6e5d96f9e9bf72eec170f6b",
   "xcode": "26.6",
   "files": {
@@ -219,7 +219,7 @@
     "source/device/package/audio27/platform/AudioSmmu.h": "41401f1b97e3481c7e5cc3e02c47f926e91eec9fa34f4a48981a3fc3b723cddd",
     "source/device/package/audio27/upstream/ShengGpr.c": "c4f498f07e2cb601b593e64a8d32474a21d6a87375618e1a67b99d52c5d3160e",
     "source/device/package/audio27/platform/SoundWire.h": "348979ac1e552e1c3a0027e09f8500927e8bf7ccbb496276d2c9d3ef19322224",
-    ".github/workflows/nezha-ios27-native.yml": "9b7a4d095159d42d924ea17517ffa15ef5206bc3d88182590f6d5cb1bf540f8d",
+    ".github/workflows/nezha-ios27-native.yml": "7f1aa78651ca209b28bc39b3c3e3f80e8049ba4a3eb73a2120632f278e9c0d14",
     "source/device/package/audio27/upstream/ShengGpr.h": "a274dded1f4d1e2709b9f966759bcb1f57d12747ee0f57743dea1fa97d95d23e",
     "source/device/package/audio27/os/NezhaAudioNative.h": "7fd04a164de72e423cd16488d805c1a4f8c2f458b2356978b0bdecc2b64d55a7",
     "source/device/package/audio27/upstream/ShengAudioReach.h": "b135177a5feb3e24e0d8a6aabb301600e2c37078b970a09ada6e8eb7bb6a5b98",
@@ -309,7 +309,7 @@
     "source/soc/src/Sm8850Resources.c": "944379b776f769dd0718492749abb46b52bb74bef6b903dca4f674469d7bae26",
     "source/soc/include/Sm8850ResourcesNative.h": "96a542ad251ca57765dbd299e71267eca66632356f6922007c8952b85917fc63",
     "source/soc/include/Sm8850Resources.h": "e75bd077715897e28bf518770f3e0de4c74d52d34aa525b3a8531cae5460b1f3",
-    "source/device/package/audio27/platform/AudioResourceOwner.c": "66ca9646be4ce83edd3ad245834a0787418e5a6de8c976ddd785fcf3fc87aa33",
+    "source/device/package/audio27/platform/AudioResourceOwner.c": "b278241705e5dfcfa5303305387faba89f13b418658f14c3e4e67fa68f8e3410",
     "source/device/package/audio27/integration/shared-resources.json": "fe6e45f287944c158106c45e48daeeae2db58dcca55187841532fac20d0241b6",
     "source/device/package/audio27/os/NezhaAudioAdspInputs.h": "45209f9d23f81af0ff5c606ff44f3b43750c3464114f37ccd86c8d0c6eeb25b1",
     "source/device/package/audio27/os/NezhaAudioAdspInputs.cpp": "7d7bac89f33fa2d539ac8f3f4799f248a30cc030db98e6982c16cfef21516cec",
@@ -383,8 +383,8 @@
   "audio": {
     "base": "GPU023",
     "base_device_revision": "673cde869b7378658b470c4e6b2b9a1766b99411",
-    "source_revision": "de12a82a178b2016162e842ebf7758eab4985bd3",
-    "source_only_revision": "abde8b4b694afb0f4eb20e838ebe4f316e49da12",
+    "source_revision": "4c8bf4eddc56517a9bd80d3c9ecfecce52fb7630",
+    "source_only_revision": "4c8bf4eddc56517a9bd80d3c9ecfecce52fb7630",
     "hardware_enabled": false,
     "resource_census_enabled": true,
     "private_inputs": false,
@@ -397,6 +397,18 @@
     "diagnostic_glink_delay_ms": 20000,
     "diagnostic_glink_observe_ms": 100,
     "watchdog_configuration": "Restore024; PDC read-only identity/CFG, strict owned SPI751 bit15 edge/readback under existing common lock; no PDC_CFG write",
-    "last_trial_source": "5513660b952966e11733e5366d207d30dc7bd73a"
+    "last_trial_source": "5513660b952966e11733e5366d207d30dc7bd73a",
+    "notification_publication": {
+      "base_actual_source": "de12a82a178b2016162e842ebf7758eab4985bd3",
+      "existing_common_barrier_before_send": true,
+      "paths": [
+        "GLINK",
+        "SMP2P",
+        "QMP"
+      ],
+      "first_error_preserved_no_replay": true,
+      "shared_SoC_GPU_USB_changed": false,
+      "hardware_reset_cause_proven": false
+    }
   }
 }
