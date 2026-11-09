@@ -40,7 +40,7 @@ mesa=root/'.cache/mesa-work'
 subprocess.run(['xcrun','clang','-O1','-g','-fsanitize=address,undefined','-I',str(mesa/'src/util'),
                 '-c',str(mesa/'src/util/rb_tree.c'),'-o',str(out/'rb_tree.o')],check=True,timeout=120)
 results={}
-for name in ['old','new','guards','va-old','va-new','swap','bo-trim-old','bo-trim-new']:
+for name in ['old','new','guards','va-old','va-new','swap','cache-release']:
     binary=out/name
     command=['xcrun','clang++','-std=c++17','-O1','-g','-Wall','-Wextra','-Werror',
              '-Wno-unused-function','-Wno-unused-parameter','-Wno-missing-field-initializers','-Wno-misleading-indentation',
@@ -69,6 +69,8 @@ report=dict(actual_prepared_sources_match=True,ASan_UBSan=True,old_lifetime_erro
             old_VA_UAF_reproduced=True,fragmented_VA_and_OOM_passed=True,
             actual_swap_API_and_lifetime_guards_passed=True,
             actual_BO_age_cleanup_bound_and_pressure_cases_passed=True,
-            explicit_port_and_allocation_balance_checked=True,independent_wait_client=True,
-            initialization_failure_cases=16,per_device_connections=2,mutex_balance_checked=True,leak_sanitizer='Linux preflight additionally checked;not supported in all Apple ASan runtimes')
+            allocation_skips_age_cleanup=True,age_release_outside_retirement_mutex=True,
+            claimed_cache_concurrent_growth_pressure_and_partial_unmap_checked=True,
+            cache_concurrent_collections=1024,per_device_connections=1,
+            explicit_port_and_allocation_balance_checked=True,leak_sanitizer='Linux preflight additionally checked;not supported in all Apple ASan runtimes')
 (a.logs/'device-context-qualified.json').write_text(json.dumps(report,indent=2)+'\n')

@@ -90,15 +90,12 @@ report=dict(passed=True,actual_profiler_to_actual_frontend=True,actual_decoder=T
 (args.logs/'driver-profile-host.json').write_text(json.dumps(report,indent=2)+'\n')
 print(json.dumps(report,indent=2))
 
-# Bind both the wait implementation and its accessor to the actual built KMD.
+# Bind the unchanged030 single-client wait to the actual built KMD.
 start=kmd.index('static VkResult\ndw_wait_fence_raw(')
 end=kmd.index('\nstatic VkResult darwin_collect_retired',start)
 function=kmd[start:end].strip()
-start=kmd.index('static struct dw_connection &\ndw_wait_device(')
-end=kmd.index('\nextern "C"',start)
-accessor=kmd[start:end].strip()
 fixture=here/'fixtures/fence-wait-test.cpp'
-assert function in fixture.read_text() and accessor in fixture.read_text()
+assert function in fixture.read_text()
 wait_binary=out/'fence-wait-test'
 wait_command=[args.compiler,'-std=c++20','-O2','-g','-Wall','-Wextra','-Werror',
               '-fsanitize=address,undefined',str(fixture),'-o',str(wait_binary)]
@@ -108,7 +105,7 @@ with (out/'wait-test.log').open('w') as log:
     subprocess.run([str(wait_binary)],check=True,stdout=log,stderr=subprocess.STDOUT,timeout=15)
 report.update(actual_wait_function_sha256=hashlib.sha256(function.encode()).hexdigest(),
               actual_map_function_sha256=hashlib.sha256(actual_map.encode()).hexdigest(),
-              bounded_wait_deadline_cases_passed=True,single_call_request_max_ns=100000000,
-              independent_wait_connection=True,standalone_and_parented_CPU_map_checked=True,
+              bounded_wait_deadline_cases_passed=True,single_call_request_max_ns=1000000,
+              independent_wait_connection=False,standalone_and_parented_CPU_map_checked=True,
               CPU_map_unmap_phases_checked=True,maximum_phase_group_records=33)
 (args.logs/'driver-profile-host.json').write_text(json.dumps(report,indent=2)+'\n')

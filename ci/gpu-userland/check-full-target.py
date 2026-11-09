@@ -74,17 +74,16 @@ ii=next(i for i,(_,op) in enumerate(init) if '<'+names[3]+'>' in op)
 owner=re.match(r'mov x0, (x\d+)',init[ii-1][1]);assert owner
 owner=owner[1]
 assert any(op=='mov '+owner+', x0' for _,op in init[:ii])
-assert any(re.fullmatch(r'mov w1, #(?:0x2c8|712)',op) for _,op in init[:ii])
+assert any(re.fullmatch(r'mov w1, #(?:0x1f8|504)',op) for _,op in init[:ii])
 assert any(re.match(r'str '+owner+r', \[x\d+, #(?:0x1b00|6912)\]',op) for _,op in init[ii:])
 state=[re.match(r'ldr (x\d+), \[x0, #(?:0x1b00|6912)\]',op) for _,op in finish[:25]]
 state=[m[1] for m in state if m];assert len(state)==1;state=state[0]
-closes=sites(finish,'_IOServiceClose');assert len(closes)==2
-assert re.fullmatch(r'ldr w0, \['+state+r', #(?:0xd0|208)\]',finish[closes[0]-1][1])
-assert finish[closes[1]-1][1]=='ldr w0, ['+state+']'
+closes=sites(finish,'_IOServiceClose');assert len(closes)==1
+assert finish[closes[0]-1][1]=='ldr w0, ['+state+']'
 lock=sites(finish,'_pthread_mutex_lock')[0];unlock=sites(finish,'_pthread_mutex_unlock')[0]
 assert lock<unlock<closes[0]
 next_registers=[m[1] for _,op in finish[lock:unlock]
-                if (m:=re.match(r'ldr (x\d+), \['+state+r', #(?:0x1a0|416)\]',op))]
+                if (m:=re.match(r'ldr (x\d+), \['+state+r', #(?:0xd0|208)\]',op))]
 assert any(re.fullmatch(r'str '+reg+r', \[x\d+\]',op) for reg in next_registers for _,op in finish[lock:unlock])
 assert any(re.match(r'str xzr, \[x\d+, #(?:0x1b00|6912)\]',op) for _,op in finish)
 def mutex_address(block):
@@ -121,7 +120,6 @@ report=dict(actual_target_checked=True,plugin_sha256=hashlib.sha256(data).hexdig
             profile=profile,required_markers_present=True,iPad_raw_reader_markers_absent=True,
             bundle_signature_verified=True,host_pixel_result='legacy host010 failure retained;host GUI path not run by this build;A840 acceptance remains separate',
             actual_device_registry_compiled=True,old_singleton_symbol_absent=True,
-            dual_client_state_bytes=712,wait_client_close_before_recording=True,
             actual_initial_command_reserve_compiled=True,fulltest_runtime_cache_handoff_compiled=True,
             actual_VA_tree_unlink_before_free_compiled=True,
             actual_registry_mutex_address=hex(registry[0]),static_local_data_names_not_required=True,

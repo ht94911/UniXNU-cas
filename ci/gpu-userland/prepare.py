@@ -347,7 +347,7 @@ def main():
     must(['git', '-C', mesa, 'apply', profile_patch])
     final_pins = json.loads((root / 'scripts/data/adreno-compiler-inputs.json').read_text())
     validate_recorded_patches(root, mesa, final_pins)
-    assert sha(mesa / 'src/freedreno/vulkan/tu_knl_darwin.cc') == '69b54efa00c5ff519b67523e5685afeff5ac4e6a1f698194ded50870f0fe2fbf'
+    assert sha(mesa / 'src/freedreno/vulkan/tu_knl_darwin.cc') == '6f8b09b7ee19eadf3e06df4128f7b3ee016c0528a16506a2b8d637ade9af7242'
     record['mesa']['patches'] = {p: sha(root / p) for p in final_pins['patches']}
     record['driver_cpu_profile'] = dict(original_KMD='04591f5a3711d4ea68568ea3f7e993f2f57f2070de14e40d63d223c8c570a65e',
         actual_KMD=sha(mesa / 'src/freedreno/vulkan/tu_knl_darwin.cc'), patch_sha256=sha(profile_patch))
@@ -371,7 +371,7 @@ def main():
     record['buffer_reserve_policy'] = 'Reuse same-pool/type unused buffers; separate 64 MiB device budget; preserve address objects, pressure and teardown'
     record['iphone_private_layout_policy'] = 'Explicit --iphone-24a446 excludes all iPad raw QuartzCore layout access; public policy only'
     record['integrated_fulltest'] = 'One optional backboardd worker runs existing raw/Turnip/Metal checks alongside normal publication,without duplicate scanout'
-    record['device_context_policy'] = 'Each VkDevice has recording and independent fence-wait connections,VA/cache/fence state;enumeration does not touch live ports;CS startup failures return before writes'
+    record['device_context_policy'] = 'Each VkDevice has one connection,VA/cache/fence state;ordinary cache release outside retirement lock;enumeration does not touch live ports;CS startup failures return before writes'
     record['fulltest_cache_policy'] = 'Reuse the writable published runtime directory and release the test frontend device owner reference'
     record['GMEM_policy'] = 'Reviewed upstream memory-side colour/lazy-transient fixes;thread-local colour checks and race-free cached boot mode;device and imported host pixels verified only on hardware'
     record['VA_teardown_policy'] = 'Remove both actual Mesa RB indices before freeing;actual-source real-RB and fake-Vulkan regression fixtures are mandatory'

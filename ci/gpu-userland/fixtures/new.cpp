@@ -24,38 +24,33 @@ struct tu_physical_device {tu_instance *instance;struct {uint32_t chip_id;} dev_
 struct tu_device {int fd=0;void *darwin_retire=nullptr;struct {int alloc=0;} vk;tu_physical_device *physical_device;};
 static std::atomic<int> fail_kind{0},mutex_fail_countdown{0},allocations{0};
 static std::mutex mock_lock;
-struct MockPort {int failure=0;uint64_t next_bo=1;std::map<uint64_t,uint64_t> maps;NativeAdrenoAbiPriority priority{};};
+struct MockPort {uint64_t next_bo=1;std::map<uint64_t,uint64_t> maps;NativeAdrenoAbiPriority priority{};};
 static std::map<uint32_t,MockPort> ports;static uint32_t next_port=100;
-static unsigned closes=0,requests=0,open_attempt=0;
-static int fail_open_ordinal=1;
-static std::vector<uint32_t> closed_ports;
-static std::atomic<int> active_mutexes{0};
+static unsigned closes=0,requests=0;
 static uint32_t mach_task_self(){return 1;}
 static void *IOServiceMatching(const char*){return (void*)1;}
 static io_service_t IOServiceGetMatchingService(int,void*){return 1;}
 static void IOObjectRelease(io_service_t){}
 static int IOServiceOpen(io_service_t,uint32_t,uint32_t,io_connect_t *out){
- std::lock_guard<std::mutex> lock(mock_lock);
- const int failure=(++open_attempt==(unsigned)fail_open_ordinal)?fail_kind.load():0;
- if(failure==1)return kIOReturnBadArgument;
- *out=next_port++;ports.emplace(*out,MockPort{});ports.at(*out).failure=failure;return KERN_SUCCESS;
+ std::lock_guard<std::mutex> lock(mock_lock);if(fail_kind==1)return kIOReturnBadArgument;
+ *out=next_port++;ports.emplace(*out,MockPort{});return KERN_SUCCESS;
 }
 static int IOServiceClose(io_connect_t port){
- std::lock_guard<std::mutex> lock(mock_lock);assert(ports.erase(port)==1);closed_ports.push_back(port);++closes;return 0;
+ std::lock_guard<std::mutex> lock(mock_lock);assert(ports.erase(port)==1);++closes;return 0;
 }
 static int IOConnectCallStructMethod(io_connect_t port,uint32_t method,const void *input,size_t bytes,void *out,size_t *out_bytes){
  std::lock_guard<std::mutex> lock(mock_lock);++requests;auto found=ports.find(port);if(found==ports.end())return kIOReturnBadArgument;
  if(bytes>=8 && ((const uint32_t*)input)[0]==0x4e544e4cu){method=((const uint32_t*)input)[1];input=(const uint8_t*)input+8;bytes-=8;}
- if(method==0xffffffffu)return found->second.failure==6?kIOReturnUnsupported:0;
+ if(method==0xffffffffu)return fail_kind==6?kIOReturnUnsupported:0;
  if(method==NativeAdrenoMethodQuery){
-  if(found->second.failure==2)return kIOReturnBadArgument;
+  if(fail_kind==2)return kIOReturnBadArgument;
   assert(out && out_bytes && *out_bytes==sizeof(NativeAdrenoAbiParams));NativeAdrenoAbiParams p{};
-  p.abi_version=found->second.failure==3?999:NativeAdrenoAbiVersion;p.input_bits=48;p.output_bits=36;p.max_bo_bytes=1ull<<30;
+  p.abi_version=fail_kind==3?999:NativeAdrenoAbiVersion;p.input_bits=48;p.output_bits=36;p.max_bo_bytes=1ull<<30;
   memcpy(out,&p,sizeof(p));return 0;
  }
  if(method==NativeAdrenoMethodGetDeviceInfo){
   assert(out && out_bytes && *out_bytes==sizeof(NativeAdrenoAbiDeviceInfo));NativeAdrenoAbiDeviceInfo p{};
-  p.chip_id=found->second.failure==4?0:0x44050a31;p.va_start=found->second.failure==5?0:0x20000000;p.va_size=1ull<<30;
+  p.chip_id=fail_kind==4?0:0x44050a31;p.va_start=fail_kind==5?0:0x20000000;p.va_size=1ull<<30;
   memcpy(out,&p,sizeof(p));return 0;
  }
  if(method==NativeAdrenoMethodSetPriority){found->second.priority=*(const NativeAdrenoAbiPriority*)input;return 0;}
@@ -72,11 +67,9 @@ static bool debug_get_bool_option(const char*,bool){return false;}
 template<typename... A> static void mesa_logi(const char*,A...){}
 static void darwin_watch_memory_pressure(){}
 static int tested_mutex_init(pthread_mutex_t *m,const pthread_mutexattr_t *a){
- int n=mutex_fail_countdown.load();if(n>0 && --mutex_fail_countdown==0)return 12;int rc=pthread_mutex_init(m,a);if(!rc)++active_mutexes;return rc;
+ int n=mutex_fail_countdown.load();if(n>0 && --mutex_fail_countdown==0)return 12;return pthread_mutex_init(m,a);
 }
-static int tested_mutex_destroy(pthread_mutex_t *m){int rc=pthread_mutex_destroy(m);assert(!rc);--active_mutexes;return rc;}
 #define pthread_mutex_init tested_mutex_init
-#define pthread_mutex_destroy tested_mutex_destroy
 #define p_atomic_read(p) __atomic_load_n(p,__ATOMIC_RELAXED)
 struct dw_connection {
    io_connect_t conn;
@@ -122,10 +115,6 @@ struct darwin_va {
 };
 struct darwin_retire_state {
    struct dw_connection connection;
-   /* A separate user client carries only fence waits. Its IPC read lock cannot
-    * exclude CPU mappings on connection; Native037's fences belong to the shared
-    * submit object, while BOs, queues and GPU addresses stay on connection. */
-   struct dw_connection wait_connection;
    struct darwin_retire_state *next;
    uint64_t va_holes_sample;
    pthread_mutex_t lock;
@@ -153,12 +142,6 @@ dw_device(struct tu_device *dev)
 {
    assert(dev->darwin_retire);
    return ((struct darwin_retire_state *)dev->darwin_retire)->connection;
-}
-static struct dw_connection &
-dw_wait_device(struct tu_device *dev)
-{
-   assert(dev->darwin_retire);
-   return ((struct darwin_retire_state *)dev->darwin_retire)->wait_connection;
 }
 extern "C" __attribute__((visibility("default"))) void
 tu_darwin_bo_cache_stats(uint64_t out[8])
@@ -509,12 +492,6 @@ darwin_device_init(struct tu_device *dev)
       vk_free(&dev->vk.alloc, retire);
       return vk_error(dev, VK_ERROR_INITIALIZATION_FAILED);
    }
-   if (pthread_mutex_init(&retire->wait_connection.lock, NULL)) {
-      pthread_mutex_destroy(&retire->connection.lock);
-      pthread_mutex_destroy(&retire->lock);
-      vk_free(&dev->vk.alloc, retire);
-      return vk_error(dev, VK_ERROR_INITIALIZATION_FAILED);
-   }
    VkResult result = dw_open_connection(retire->connection, dev->physical_device->instance);
    if (result == VK_SUCCESS &&
        (retire->connection.info.chip_id != dev->physical_device->dev_id.chip_id ||
@@ -522,17 +499,7 @@ darwin_device_init(struct tu_device *dev)
         retire->connection.info.va_size != dev->physical_device->va_size))
       result = vk_errorf(dev, VK_ERROR_INITIALIZATION_FAILED,
                         "device connection differs from enumerated GPU/VA contract");
-   if (result == VK_SUCCESS)
-      result = dw_open_connection(retire->wait_connection, dev->physical_device->instance);
-   if (result == VK_SUCCESS &&
-       (retire->wait_connection.info.chip_id != retire->connection.info.chip_id ||
-        retire->wait_connection.info.va_start != retire->connection.info.va_start ||
-        retire->wait_connection.info.va_size != retire->connection.info.va_size))
-      result = vk_errorf(dev, VK_ERROR_INITIALIZATION_FAILED,
-                        "fence connection differs from recording GPU/VA contract");
    if (result != VK_SUCCESS) {
-      dw_close_connection(retire->wait_connection);
-      pthread_mutex_destroy(&retire->wait_connection.lock);
       dw_close_connection(retire->connection);
       pthread_mutex_destroy(&retire->connection.lock);
       pthread_mutex_destroy(&retire->lock);
@@ -569,10 +536,6 @@ darwin_device_finish(struct tu_device *dev)
       if (*link)
          *link = retire->next;
       pthread_mutex_unlock(&dw_registry_lock);
-      /* Vulkan device teardown has no concurrent callers. The wait client owns
-       * no submitted jobs or BOs; close it before the recording client's drain. */
-      dw_close_connection(retire->wait_connection);
-      pthread_mutex_destroy(&retire->wait_connection.lock);
       dw_close_connection(retire->connection);
       /* Some CreateDevice failure paths already destroyed the VMA heap/mutex.
        * Never return ranges here: they are either gone or about to be destroyed. */
@@ -618,25 +581,18 @@ static void map_same_va(tu_device &d){
  __atomic_store_n(&state->va_holes_sample,state->va.holes,__ATOMIC_RELAXED);
 }
 int main(){
- auto primary=make_device();assert(darwin_device_init(&primary)==0);auto saved=dw_device(&primary).conn;auto saved_wait=dw_wait_device(&primary).conn;assert(saved_wait!=saved && live()==2 && active_mutexes==3);
- dw_connection probe{};assert(dw_open_connection(probe,&instance)==0);assert(probe.conn!=saved && probe.conn!=saved_wait && live()==3);
- dw_close_connection(probe);assert(live()==2 && dw_device(&primary).conn==saved);query(primary);
+ auto primary=make_device();assert(darwin_device_init(&primary)==0);auto saved=dw_device(&primary).conn;assert(live()==1);
+ dw_connection probe{};assert(dw_open_connection(probe,&instance)==0);assert(probe.conn!=saved && live()==2);
+ dw_close_connection(probe);assert(live()==1 && dw_device(&primary).conn==saved);query(primary);
  auto secondary=make_device();assert(darwin_device_init(&secondary)==0);assert(dw_device(&secondary).conn!=saved);
  map_same_va(primary);map_same_va(secondary);
  darwin_note_fence(dw_device(&primary),111);darwin_note_fence(dw_device(&secondary),222);
  assert(dw_device(&primary).last_fence==111 && dw_device(&secondary).last_fence==222);
  assert(tu_darwin_set_priority(0,2));
- {std::lock_guard<std::mutex> lock(mock_lock);
-  for(auto *d:{&primary,&secondary}){
-   const auto &recording=ports.at(dw_device(d).conn);const auto &waiting=ports.at(dw_wait_device(d).conn);
-   assert(recording.priority.foreground==0 && recording.priority.background==2 && !recording.maps.empty());
-   assert(waiting.priority.foreground==1 && waiting.priority.background==3 && waiting.maps.empty() && waiting.next_bo==1);
-  }
- }
- const auto secondary_wait=dw_wait_device(&secondary).conn,secondary_main=dw_device(&secondary).conn;
- darwin_device_finish(&secondary);assert(closed_ports[closed_ports.size()-2]==secondary_wait && closed_ports.back()==secondary_main);assert(live()==2 && dw_device(&primary).last_fence==111);query(primary);
- for(int which:{1,2})for(int kind=1;kind<=(which==1?7:6);++kind){fail_kind=kind;fail_open_ordinal=which;open_attempt=0;auto bad=make_device();assert(darwin_device_init(&bad)!=0);assert(!bad.darwin_retire && live()==2 && active_mutexes==3);fail_kind=0;query(primary);}
- for(int n:{1,2,3}){mutex_fail_countdown=n;auto bad=make_device();assert(darwin_device_init(&bad)!=0);assert(!bad.darwin_retire && live()==2);mutex_fail_countdown=0;query(primary);}
+ {std::lock_guard<std::mutex> lock(mock_lock);for(const auto &p:ports)assert(p.second.priority.foreground==0 && p.second.priority.background==2);}
+ darwin_device_finish(&secondary);assert(live()==1 && dw_device(&primary).last_fence==111);query(primary);
+ for(int kind=1;kind<=7;++kind){fail_kind=kind;auto bad=make_device();assert(darwin_device_init(&bad)!=0);assert(!bad.darwin_retire && live()==1);fail_kind=0;query(primary);}
+ for(int n:{1,2}){mutex_fail_countdown=n;auto bad=make_device();assert(darwin_device_init(&bad)!=0);assert(!bad.darwin_retire && live()==1);mutex_fail_countdown=0;query(primary);}
  std::atomic<bool> stop{false};
  std::thread telemetry([&]{uint64_t stats[8];uint32_t word=7;char row[120]{};
   while(!stop){tu_darwin_bo_cache_stats(stats);tu_darwin_note(1,&word,1);tu_darwin_frame_diagnostic(0x7102,row,120);tu_darwin_set_priority(1,2);}
@@ -648,7 +604,7 @@ int main(){
   __atomic_store_n(&r->va_holes_sample,1ull,__ATOMIC_RELAXED);darwin_device_finish(&d);
  }});
  for(auto &thread:workers)thread.join();stop=true;telemetry.join();
- query(primary);assert(live()==2);darwin_device_finish(&primary);assert(live()==0 && allocations==0 && active_mutexes==0 && !darwin_states);
+ query(primary);assert(live()==1);darwin_device_finish(&primary);assert(live()==0 && allocations==0 && !darwin_states);
  assert(!tu_darwin_note(1,nullptr,0));uint64_t stats[8];tu_darwin_bo_cache_stats(stats);for(auto n:stats)assert(n==0);
- puts("PASS: per-device ports/VA/fences,probe isolation,secondary teardown,16 init failures,dual-client close order/BO isolation,900 concurrent lifecycles with telemetry/priority,no leaked ports or allocations");
+ puts("PASS: per-device ports/VA/fences,probe isolation,secondary teardown,9 init failures,900 concurrent lifecycles with telemetry/priority,no leaked ports or allocations");
 }

@@ -130,14 +130,14 @@
     "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc",
     "marker": "darwin_device_init",
     "kind": "function",
-    "sha256": "95787027fd99e32b40d7ef525c5e78d3b46b2193365dc3138df94c92c566420f"
+    "sha256": "3b4b6a3aa1a6d38c3d5cd9dd98bcf336b10022b7d232f17cf5c9139ed7377a26"
   },
   {
     "fixture": "new.cpp",
     "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc",
     "marker": "darwin_device_finish",
     "kind": "function",
-    "sha256": "7c7a8e331dea0162546f88d14e765a943edccf4f6b603c45ff50dd3040a630a0"
+    "sha256": "aa7666705bf268bf399ed9a04dffcd4332bb07e6b347ed4fc384785d4d28f670"
   },
   {
     "fixture": "new.cpp",
@@ -259,38 +259,136 @@
     "sha256": "057515468fd917b6e2203a15076a0196f214b0dff3d77e82657dcbbc90be13ca"
   },
   {
+    "fixture": "new.cpp",
+    "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc",
+    "marker": "struct darwin_retire_state {",
+    "kind": "marker",
+    "sha256": "abb8b907e7cee8a9d74b3c4367e7d9ce0c09b209036e30a29a1570ea964265bb"
+  },
+  {
+    "marker": "struct darwin_retired_bo {",
+    "kind": "marker",
+    "sha256": "c28bfd5fdf0ed19562fdb939306121e60ec739ba546b706bd9656a9673589982",
+    "fixture": "cache-release.cpp",
+    "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc"
+  },
+  {
+    "marker": "struct darwin_cached_bo {",
+    "kind": "marker",
+    "sha256": "165ee7511a5709de62296353804c7f2f099fbcc1c7dc80851277617a62b7b826",
+    "fixture": "cache-release.cpp",
+    "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc"
+  },
+  {
+    "marker": "struct darwin_bo_cache_stats {",
+    "kind": "marker",
+    "sha256": "1ca867009ba52ba3990645aa7417dd34dc3a1795d5246cda0c2dc1a9d54ddc1e",
+    "fixture": "cache-release.cpp",
+    "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc"
+  },
+  {
+    "marker": "struct darwin_retire_state {",
+    "kind": "marker",
+    "sha256": "abb8b907e7cee8a9d74b3c4367e7d9ce0c09b209036e30a29a1570ea964265bb",
+    "fixture": "cache-release.cpp",
+    "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc"
+  },
+  {
+    "marker": "dw_device",
+    "kind": "function",
+    "sha256": "b834b3db4961820711eac8b6123c0ef070a6b88abf833684a21c7c024dc3fbe9",
+    "fixture": "cache-release.cpp",
+    "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc"
+  },
+  {
+    "marker": "dw_status_to_vk",
+    "kind": "function",
+    "sha256": "432a89cafc7c07c8cc8e9e09952a3c4646428347c45fccbd30db54ba964bea27",
+    "fixture": "cache-release.cpp",
+    "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc"
+  },
+  {
+    "marker": "dw_wait_fence_raw",
+    "kind": "function",
+    "sha256": "70a8df79fa82c4ad63624d65e3ea05a55d85fd54a48d3d17a5126ffd3b9bd8f4",
+    "fixture": "cache-release.cpp",
+    "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc"
+  },
+  {
+    "marker": "darwin_release_native_unlocked",
+    "kind": "function",
+    "sha256": "2338ca6d89f913bf3fd160c61276428bfb7bec7b87a8f3e13b0af7a1fad5e9ee",
+    "fixture": "cache-release.cpp",
+    "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc"
+  },
+  {
+    "marker": "darwin_release_native",
+    "kind": "function",
+    "sha256": "5155503e894a9105caba9148bd61ebc300172a007acd552a9dbe188d9655f1fa",
+    "fixture": "cache-release.cpp",
+    "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc"
+  },
+  {
     "marker": "darwin_cache_evict",
     "kind": "function",
-    "sha256": "38bee45aaa862ab072ca92052eb7fd1d69fdb98a57f1d5bbb012cac79f7cbbb1",
-    "fixture": "bo-trim-new.cpp",
+    "sha256": "533040e98f0576170d8a5182dbd900d7486f0cf0f65ad84c59e98c171efdd32f",
+    "fixture": "cache-release.cpp",
+    "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc"
+  },
+  {
+    "marker": "darwin_cache_put",
+    "kind": "function",
+    "sha256": "03b0500304aa6d243b8d23016ddfc158b64f19b85bf719735b5176e5128fcbe8",
+    "fixture": "cache-release.cpp",
+    "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc"
+  },
+  {
+    "marker": "darwin_cache_get",
+    "kind": "function",
+    "sha256": "8d4e669ec81fc38d1c1c95a15e75e6d2c31c0bf52724cbdae4e99993db222c74",
+    "fixture": "cache-release.cpp",
     "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc"
   },
   {
     "marker": "darwin_cache_flush",
     "kind": "function",
     "sha256": "eb93fa87d043e5cdd14216ace5092ae0ec7d3b20cc5d5697dfb1b1cac8525203",
-    "fixture": "bo-trim-new.cpp",
+    "fixture": "cache-release.cpp",
     "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc"
   },
   {
     "marker": "darwin_cache_trim",
     "kind": "function",
-    "sha256": "be4a049831490ee6ff2399642777fc03989932d9e0dab20a8f88c7f156f065ba",
-    "fixture": "bo-trim-new.cpp",
+    "sha256": "5e00f281c1451c2f37ef37d2d91a773f45ea96ef64c50c97dac5ba1b0449a212",
+    "fixture": "cache-release.cpp",
     "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc"
   },
   {
-    "fixture": "new.cpp",
-    "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc",
-    "marker": "struct darwin_retire_state {",
-    "kind": "marker",
-    "sha256": "1437fef689636e295305ff232d75ec1d26ab822d7bb21c37800807573a3372fb"
+    "marker": "darwin_cache_release_complete",
+    "kind": "function",
+    "sha256": "f0fb7803a157ccaa07f8e862b9044902d655db516e6289063bb1ef3c49c63646",
+    "fixture": "cache-release.cpp",
+    "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc"
   },
   {
-    "fixture": "new.cpp",
-    "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc",
-    "marker": "dw_wait_device",
+    "marker": "darwin_reap_locked",
     "kind": "function",
-    "sha256": "12bd7c0c577e2149edfee254604b75bcfe287ad8dfe3a789b9e74d38f2d1eb63"
+    "sha256": "0dd2d8d4c2bfc8cf8f5b607e58c3d1a694c518f88b5d041388018a3308369889",
+    "fixture": "cache-release.cpp",
+    "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc"
+  },
+  {
+    "marker": "darwin_collect_retired",
+    "kind": "function",
+    "sha256": "847a107dd74f7eecf788f5ab9f4f142848e98ba16e74156a8b55625c64934350",
+    "fixture": "cache-release.cpp",
+    "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc"
+  },
+  {
+    "marker": "dw_wait_fence_locked_free",
+    "kind": "function",
+    "sha256": "42cda7a84c798c0abfdcb85cfd8c5c02795f97ce19ae34ab2bf5fd81f0c00fd8",
+    "fixture": "cache-release.cpp",
+    "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc"
   }
 ]

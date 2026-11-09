@@ -67,9 +67,7 @@ template<typename... A>static int vk_errorf(tu_device *,int code,const char *,A.
 static VkResult
 darwin_bo_map(struct tu_device *dev, struct tu_bo *bo, void *placed_addr)
 {
-   /* Descriptor updates and other unprofiled entry points can also grow a BO.
-    * A surrounding profiled draw/pass keeps ownership of its existing group.
-    * Zero means no Vulkan command identity at this lower-level entry point. */
+   /* Preserve an enclosing pass/draw group; zero is no Vulkan command identity. */
    TuCpuCall cpu_map_call(TU_CPU_MAP_BUFFER, 0);
    struct dw_connection &dw = dw_device(dev);
    NativeAdrenoAbiBoCpuMap req = {.handle = bo->darwin_handle};
