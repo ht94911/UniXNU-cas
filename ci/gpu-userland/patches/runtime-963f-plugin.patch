@@ -6173,7 +6173,7 @@ index 0000000..0dda76c
 +                 .unwrap();
 diff --git a/bridge/patches/0038-fused-tiled-image-copy.patch b/bridge/patches/0038-fused-tiled-image-copy.patch
 new file mode 100644
-index 0000000..a0fa393
+index 0000000..3eadd46
 --- /dev/null
 +++ b/bridge/patches/0038-fused-tiled-image-copy.patch
 @@ -0,0 +1,1320 @@
@@ -6818,7 +6818,7 @@ index 0000000..a0fa393
 +     }
 + 
 ++    /// Let device tests check the exact plan before constructing a raw view.
-++    #[cfg(test)]
+++    #[cfg(all(test, any(m2v_gpu, m2v_cpu_icd)))]
 ++    pub(super) fn image_plan_for_test(&self) -> Result<&ImagePlan, Error> {
 ++        Ok(self.image()?.plan())
 ++    }

@@ -1,7 +1,7 @@
-name: nezha iPhone27 fused private heap image copies 025
+name: nezha iPhone27 fused private heap image copies 025b (test cfg fixed)
 on:
   push:
-    branches: [codex/ios27-gpu27-metal-full-025-20261109]
+    branches: [codex/ios27-gpu27-metal-full-025b-20261109]
   workflow_dispatch:
 permissions:
   contents: read

@@ -1,6 +1,6 @@
 {
   "original_pin": "963f0e64f103d2e682cd0cc454a8fe50f52c8cbb",
-  "patched_tree": "479c5bbd926a154c6db58569e7100368cf897600",
+  "patched_tree": "751021538375f3ed9d82e4adea07445e2f3c87a5",
   "builder_sha256": "48e36e39fe3c4a6f7d8a1751b64c12a568f9ed1713fdce58141a0ddcb70afcf0",
   "patch_hashes": {
     "0002-resource-wait-storage-dependencies.patch": "4536f03ac5a829d0a23d839491837c62af00c1aa884dc75cdae0f195c7953c0c",
@@ -35,7 +35,7 @@
     "0035-aligned-heap-transfer-rows.patch": "ba5635d0586ced93cafb32e08656fad72eb29187646ae48111d3cbf0c4138e03",
     "0036-linear-heap-word-copy.patch": "f14d80d1ff47546fa5311d6008c8a93e37b7a1261cbcb23b4015fc9e8bde5352",
     "0037-runtime-963f-contracts.patch": "bcec51c15fb694d957c5712d7ef8219580b435c38afa18ab881fb0bb505004ce",
-    "0038-fused-tiled-image-copy.patch": "2474987960579f462a8fb97581fae0672499acc6d82a539bda098b290c7b4d08"
+    "0038-fused-tiled-image-copy.patch": "2085e83c3f985b6657fe34aad903321aa96f2e1fb0a1550facf0be78599393fa"
   },
   "source_hashes": {
     "crates/metal2vulkan-runtime/src/written_commands.rs": "5c1a9ac622de2d0cfc199de4115a087c6ee9550f4b94059513da4339a4207ac2",
@@ -207,7 +207,7 @@
     "crates/metal2vulkan-runtime/src/pending_dispatch.rs": "08fc9e40a9d4d3679c5905af37b4ffdde4b20dc842b4ba5be3b22e4cc3de4bd6",
     "crates/metal2vulkan-runtime/src/generated_execute.rs": "80b03824921feae09b85628647b26529e9b8450ffa1e526170296b193a7caf03",
     "crates/metal2vulkan-runtime/src/attachment_stand_in.rs": "3364e9ac3051f641d0b1a3da2686f55cb5404a0038faf7164a10066c200fa9ea",
-    "crates/metal2vulkan-runtime/src/texture.rs": "159803098819f84d8c0162b1a764ce1e507088fe206e067f8f51421e703daf4b",
+    "crates/metal2vulkan-runtime/src/texture.rs": "660cc27f6067aa010dea16bd17d38e95e12ee84ca0c63b3d303e60ea3381755a",
     "crates/metal2vulkan-runtime/src/gpu_pools.rs": "8dde880ec192150befdc7b6a9a446da05235a777ef91f7bf3cfea10d7ddebb3a",
     "crates/metal2vulkan-runtime/src/shadow.rs": "f86796af9a7405fff5c37d712fb87207e61eaf42b4178d62a335ee5dbce4e98a",
     "crates/metal2vulkan-runtime/src/misplaced_notices.rs": "b356b101d0c28b22e73e0e9cc1b6e59a66a66aa29cbf8cea0d57e80670c2802b",
