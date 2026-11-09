@@ -236,7 +236,7 @@
     "source/appsync/test-signing.m": "ab62b5935df9aa17faae216ccf2a7d61f68c7e690a84030b20f3382e200d29ab",
     "source/appsync/test-trust.c": "cb6508956b8e1da76cd3a440009ed658817039050c41e8dba41a0a826706d1bf",
     "source/appsync/test.py": "1114ac3c419394c7afa8b1f2d36f05ab274386235f536dbd55a59d16b4476f0c",
-    "source/device/package/apple-usb/NezhaAppleUsbDevice.cpp": "ef7b1f3c4c8e512fd713c1484be582e90f7ee229cd647ae9242f2991fa203620",
+    "source/device/package/apple-usb/NezhaAppleUsbDevice.cpp": "4290437700c153fc68d1cc1767f0d50e7be379e2e63be8a2eeafeb61e3f5a9b4",
     "source/device/package/apple-usb/LICENSE": "5b1d3d911103cb0f41641ec0964c5ac1f7e229f57aa072b6ac38bae913a1307b",
     "source/device/package/armcpu/usb-spi-mask.patch": "f79a3775d61388f195def8f75cc7dcbbaa6667d2628a8cf593adadfe587305a9",
     "source/device/scripts/usb-xdci-iphone-24A446.json": "3b59ae5ad6e782790e6ccf88fb2622ad2e506ed52032c09daedddd31f68ca3ce",
@@ -302,5 +302,6 @@
   },
   "qualification_iteration": "AppSync014: signed donor cache overlay plus own test job; donor data stays on local disk.",
   "appsync_cache_probe_overlay": "Resource diagnostic mode2 captures original loader log, visible/backing cache fingerprints and test runner stderr. Ordinary resource mode1 preserved.",
-  "appsync_apple_return_overlay": "RAM Data Apple USB orderly reboot callback. The device series explicitly lists the XNU final-stage call-site patch."
+  "appsync_apple_return_overlay": "RAM Data Apple USB orderly reboot callback. The device series explicitly lists the XNU final-stage call-site patch.",
+  "appsync_apple_worker_overlay": "Run Apple USB hardware preparation on the boot CPU required by the existing Qualcomm backend."
 }

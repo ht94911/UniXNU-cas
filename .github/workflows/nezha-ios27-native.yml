@@ -1,7 +1,7 @@
-name: nezha iPhone27 AppSync Apple USB - native020 normal Apple USB return
+name: nezha iPhone27 AppSync Apple USB - native022 Apple USB boot CPU
 on:
   push:
-    branches: [codex/ios27-appsync-apple-return020-20261109]
+    branches: [codex/ios27-appsync-apple-worker022-20261109]
   workflow_dispatch:
 permissions:
   contents: read

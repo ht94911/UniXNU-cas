@@ -7,6 +7,9 @@
 #include <IOKit/IOPlatformExpert.h>
 #include <libkern/c++/OSMetaClass.h>
 #include <libkern/OSKextLib.h>
+#include <kern/cpu_number.h>
+#include <kern/processor.h>
+#include <kern/sched_prim.h>
 #include <kern/thread.h>
 #include <pexpert/pexpert.h>
 
@@ -16,6 +19,7 @@ int armcpu_spi_mask(uint32_t, bool);
 int qcom_usb_apple_device_prepare(uint64_t, uint64_t);
 int qcom_usb_apple_device_vbus(int);
 void qcom_usb_apple_device_abort(void);
+processor_t thread_bind(processor_t);
 extern unsigned long gPhysBase, gPhysSize;
 extern kmod_info_t g_kernel_kmod_info;
 void initializeAppleUsbClasses() __asm__("__GLOBAL__sub_I_NezhaAppleUsbDevice.cpp");
@@ -193,22 +197,35 @@ bool publishDevice()
 
 void appleUsbWorker(void *, wait_result_t)
 {
-    const auto load = OSKextLoadKextWithIdentifier("com.apple.driver.AppleUSBXDCI");
-    if (load == kOSReturnSuccess || load == kOSKextReturnStartStopError) {
-        auto context = OSMetaClass::preModLoad(g_kernel_kmod_info.name);
-        if (context) {
-            initializeAppleUsbClasses();
-            if (OSMetaClass::postModLoad(context) == kOSReturnSuccess &&
-                qcom_usb_apple_device_prepare(gPhysBase, gPhysSize)) {
-                if (publishDevice()) {
-                    thread_terminate(current_thread());
-                    return;
+    // The shared Qualcomm backend permits register and DMA setup only on the
+    // master CPU. Match the normal CDC worker's migration before using it.
+    const auto processor = cpu_to_processor(boot_cpu_id);
+    if (processor != PROCESSOR_NULL) {
+        thread_bind(processor);
+        thread_block(THREAD_CONTINUE_NULL);
+        if (cpu_number() == boot_cpu_id) {
+            const auto load = OSKextLoadKextWithIdentifier("com.apple.driver.AppleUSBXDCI");
+            bool started = false;
+            if (load == kOSReturnSuccess || load == kOSKextReturnStartStopError) {
+                auto context = OSMetaClass::preModLoad(g_kernel_kmod_info.name);
+                if (context) {
+                    initializeAppleUsbClasses();
+                    if (OSMetaClass::postModLoad(context) == kOSReturnSuccess &&
+                        qcom_usb_apple_device_prepare(gPhysBase, gPhysSize)) {
+                        started = publishDevice();
+                        if (!started) qcom_usb_apple_device_abort();
+                    }
                 }
-                qcom_usb_apple_device_abort();
             }
+            if (!started)
+                IOLog("nezha-apple-usb: device startup failed, AppleUSBXDCI load=%#x\n", static_cast<unsigned>(load));
+        } else {
+            IOLog("nezha-apple-usb: could not enter the boot CPU context\n");
         }
+        thread_bind(PROCESSOR_NULL);
+    } else {
+        IOLog("nezha-apple-usb: boot CPU processor is unavailable\n");
     }
-    IOLog("nezha-apple-usb: device startup failed, AppleUSBXDCI load=%#x\n", static_cast<unsigned>(load));
     thread_terminate(current_thread());
 }
 } // namespace
