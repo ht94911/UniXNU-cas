@@ -1,5 +1,5 @@
 {
-  ".github/workflows/nezha-metal.yml": "e948206a9d95b1157d8f6dae7002474a977380be248d77693191e810d70ddcd1",
+  ".github/workflows/nezha-metal.yml": "785e99162d8ed92c8a3c9a9a13dacc2242843a35c6673b7921825f6e3305a2ab",
   ".gitignore": "862263fa1f46c20f0d1e4dac5ffcc75abd55c08211b2c3864c5f8764b9d87793",
   "ci/gpu-userland/check-buffer-reserve.py": "56bef54d15cb6192d25bfd99516369d45d3ddeffbd44805f9f052739d2fdf57a",
   "ci/gpu-userland/check-device-context-host.py": "a567618bfccf3d447eb892840c2571034be031692b63939dfc3f4aeccecc3e29",
@@ -19,7 +19,7 @@
   "ci/gpu-userland/fixtures/bo-trim-new.cpp": "13ac09299601a8370635f035ba358ff3a11fbc2016fa520b097d599304bc9990",
   "ci/gpu-userland/fixtures/bo-trim-old.cpp": "14faa7c262df240935a28101ab6fc58f78491890ace0c2166a16f6aa0371158c",
   "ci/gpu-userland/fixtures/buffer-reserve-sources.json": "f73b0ce1e1c34125e729b8a4249b8f98fd7dae2c48e63c23d2470b2a9f0f4aa7",
-  "ci/gpu-userland/fixtures/driver-profile-test.cpp": "1bb8215e314de9976e3433723f88208b11b27a3aa29d2f7a6067431391477779",
+  "ci/gpu-userland/fixtures/driver-profile-test.cpp": "677e76675ec1a7687c32b98b2b42657fe499c572f47381c7ab863629c8e969cb",
   "ci/gpu-userland/fixtures/fence-wait-test.cpp": "4d261fb19d974240b4a3d50ba44ea911ca5a44d231307d2d34855e7e3996a826",
   "ci/gpu-userland/fixtures/guards.cpp": "0183e7853d4ebbb9b90cb29b81dbc837f61039b1afb23d71df3a24eac5ee949d",
   "ci/gpu-userland/fixtures/new.cpp": "01b42f044862eb1c208f8242217e30979b0a319699de8709cc740b289bfc6566",

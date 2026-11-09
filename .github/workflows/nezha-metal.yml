@@ -1,7 +1,7 @@
-name: nezha iPhone27 independent fence connection and bounded source preparation 030b
+name: nezha iPhone27 independent fence connection and bounded source preparation and Mach fixture 030c
 on:
   push:
-    branches: [codex/ios27-gpu27-metal-full-030b-20261110]
+    branches: [codex/ios27-gpu27-metal-full-030c-20261110]
   workflow_dispatch:
 permissions:
   contents: read

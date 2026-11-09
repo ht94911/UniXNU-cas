@@ -35,7 +35,10 @@ static const TuCpuProfileRecord &phase(const std::vector<TuCpuProfileRecord> &ro
 }
 
 using VkResult=int;using kern_return_t=int;using mach_vm_address_t=uint64_t;using mach_vm_size_t=uint64_t;
-constexpr int KERN_SUCCESS=0,VK_SUCCESS=0,VK_ERROR_MEMORY_MAP_FAILED=-5;
+#ifndef KERN_SUCCESS
+constexpr int KERN_SUCCESS=0;
+#endif
+constexpr int VK_SUCCESS=0,VK_ERROR_MEMORY_MAP_FAILED=-5;
 constexpr unsigned NativeAdrenoMethodBoCpuMap=10,NativeAdrenoMethodBoCpuUnmap=11;
 constexpr unsigned kIOMapAnywhere=1,kIOMapCopybackCache=2,kIOMapWriteCombineCache=4,NativeAdrenoParamsOwnedCoherent=1;
 struct dw_connection {unsigned conn;struct {unsigned flags;} params;};
@@ -45,7 +48,9 @@ struct NativeAdrenoAbiBoCpuMap {uint64_t handle;};struct NativeAdrenoAbiBoCpuMap
 struct NativeAdrenoAbiBoCpuUnmap {uint64_t handle;uint32_t token;};
 static unsigned map_calls=0,undo_calls=0;static int map_failure=0;
 static dw_connection &dw_device(tu_device *d){return d->recording;}
+#ifndef mach_task_self
 static unsigned mach_task_self(){return 1;}
+#endif
 static int dw_call(dw_connection &d,unsigned method,const void *input,size_t,void *out,size_t){
  assert(d.conn==41);
  if(method==NativeAdrenoMethodBoCpuMap){assert(((const NativeAdrenoAbiBoCpuMap*)input)->handle==17);((NativeAdrenoAbiBoCpuMapReply*)out)->token=71;return 0;}
