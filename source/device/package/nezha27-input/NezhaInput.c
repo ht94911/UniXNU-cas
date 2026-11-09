@@ -1362,6 +1362,153 @@ static void nz_trace_thread(void *arg,wait_result_t result) {
 }
 
 
+// NEZHA_BRIGHTNESS_UI_BEGIN
+#include "NezhaBrightnessUiTest.h"
+#include <QcomUsbDiagnostic.h>
+extern volatile uint32_t nezha_keys_state;
+static struct nzui_state nz_ui;
+static unsigned nz_ui_lock,nz_ui_enabled,nz_ui_type,nz_ui_cancel,nz_ui_key_mask;
+// One outstanding report. The consumer publishes its result independently of
+// the provider's try-lock, so a concurrent snapshot cannot lose the receipt.
+static uint32_t nz_ui_expected,nz_ui_ack_sequence,nz_ui_ack_mask;
+static int32_t nz_ui_ack_result,nz_ui_fault;
+static unsigned nz_ui_key_fault;
+static bool nz_ui_enter(void) {
+    unsigned empty=0;
+    return __atomic_compare_exchange_n(&nz_ui_lock,&empty,1,0,__ATOMIC_ACQUIRE,__ATOMIC_RELAXED);
+}
+static void nz_ui_leave(void) {__atomic_store_n(&nz_ui_lock,0,__ATOMIC_RELEASE);}
+static void nz_ui_receipt(struct nzui_state *state) {
+    uint32_t sequence=__atomic_load_n(&nz_ui_ack_sequence,__ATOMIC_ACQUIRE);
+    if(sequence && sequence==state->pending)
+        nzui_ack(state,sequence,__atomic_load_n(&nz_ui_ack_mask,__ATOMIC_RELAXED),
+                  __atomic_load_n(&nz_ui_ack_result,__ATOMIC_RELAXED));
+    if(__atomic_load_n(&nz_ui_cancel,__ATOMIC_ACQUIRE))state->cancelled=true;
+    int32_t fault=__atomic_load_n(&nz_ui_fault,__ATOMIC_ACQUIRE);
+    if(fault){state->phase=NZUI_FAULT;state->result=fault;state->release_confirmed=false;}
+}
+void nezha_brightness_ui_report(uint32_t sequence,uint32_t mask,int32_t result) {
+    if(!sequence || sequence!=__atomic_load_n(&nz_ui_expected,__ATOMIC_ACQUIRE))return;
+    __atomic_store_n(&nz_ui_ack_mask,mask,__ATOMIC_RELAXED);
+    __atomic_store_n(&nz_ui_ack_result,result,__ATOMIC_RELAXED);
+    if(result) {
+        __atomic_store_n(&nz_ui_fault,result,__ATOMIC_RELEASE);
+        if(__atomic_load_n(&nz_ui_type,__ATOMIC_ACQUIRE)==NZUI_KEY)
+            __atomic_store_n(&nz_ui_key_fault,1,__ATOMIC_RELEASE);
+    }
+    __atomic_store_n(&nz_ui_ack_sequence,sequence,__ATOMIC_RELEASE);
+}
+bool nezha_brightness_ui_key_faulted(void) {
+    return __atomic_load_n(&nz_ui_key_fault,__ATOMIC_ACQUIRE)!=0;
+}
+void nezha_brightness_ui_key_error(int32_t result) {
+    if(!result || !__atomic_load_n(&nz_ui_enabled,__ATOMIC_ACQUIRE))return;
+    // A physical key may change a report while a synthetic key is held. This
+    // failure has no new action sequence, but must still stop replay of it.
+    __atomic_store_n(&nz_ui_fault,result,__ATOMIC_RELEASE);
+    __atomic_store_n(&nz_ui_key_fault,1,__ATOMIC_RELEASE);
+}
+static int nz_ui_view(const struct nzui_state *state,char *out,size_t cap,size_t *bytes,unsigned *trunc) {
+    if(!out || !bytes || !trunc || !cap)return QUD_INVALID;
+    int count=snprintf(out,cap,
+        "{\"v\":1,\"synthetic\":true,\"token\":%llu,\"kind\":%u,\"phase\":%u,\"pending\":%u,"
+        "\"emitted\":%u,\"hid_acked\":%u,\"hid_ok\":%u,\"result\":%d,\"cancelled\":%s,"
+        "\"release_confirmed\":%s,\"wire_mask\":%u,\"panel\":[%u,%u]}",
+        (unsigned long long)state->action.token,state->action.kind,state->phase,state->pending,
+        state->emitted,state->acked,state->succeeded,state->result,state->cancelled?"true":"false",
+        state->release_confirmed?"true":"false",state->last_wire_mask,(unsigned)state->x,(unsigned)state->y);
+    if(count<0)return QUD_FAILED;
+    *trunc=(size_t)count>=cap;*bytes=*trunc?cap-1:(size_t)count;return QUD_OK;
+}
+static int nz_ui_snapshot(void *cookie,char *out,size_t cap,size_t *bytes,unsigned *trunc) {
+    (void)cookie;if(!nz_ui_enter())return QUD_BUSY;
+    struct nzui_state view=nz_ui;nz_ui_receipt(&view);nz_ui_leave();
+    return nz_ui_view(&view,out,cap,bytes,trunc);
+}
+static int nz_ui_submit(void *cookie,const struct qud_diag_request *request,
+                        char *out,size_t cap,size_t *bytes,unsigned *trunc) {
+    (void)cookie;
+    if(!request || !__atomic_load_n(&nz_ui_enabled,__ATOMIC_ACQUIRE))return QUD_UNSUPPORTED;
+    struct nzui_action action;
+    if(request->op==QUD_SUBMIT &&
+       !nzui_decode(request->arg0,request->arg1,request->cursor,request->experiment,&action))return QUD_INVALID;
+    if(request->op!=QUD_SUBMIT && request->op!=QUD_CANCEL)return QUD_UNSUPPORTED;
+    if(!nz_ui_enter())return QUD_BUSY;
+    struct nzui_state view=nz_ui;nz_ui_receipt(&view);int result=QUD_OK;
+    if(request->op==QUD_CANCEL) {
+        if(!request->experiment || request->experiment!=view.action.token ||
+           request->arg0 || request->arg1 || request->cursor)result=QUD_INVALID;
+        else if(nzui_busy(&view)) {
+            __atomic_store_n(&nz_ui_cancel,1,__ATOMIC_RELEASE);view.cancelled=true;
+            // A queued action has emitted nothing; cancellation can remove
+            // that mailbox even when the HID driver has not attached yet.
+            if(view.phase==NZUI_QUEUED && !view.emitted) {
+                view.phase=NZUI_CANCELLED;view.release_confirmed=true;nz_ui=view;
+                __atomic_store_n(&nz_ui_type,0,__ATOMIC_RELEASE);
+            }
+        }
+    } else if(__atomic_load_n(&nz_ui_fault,__ATOMIC_ACQUIRE))result=QUD_FAILED;
+    else if(nzui_busy(&view))result=QUD_BUSY;
+    else if(action.token<=view.action.token)result=QUD_INVALID;
+    else {
+        uint64_t hold;
+        nanoseconds_to_absolutetime((uint64_t)action.duration_ms*NSEC_PER_MSEC,&hold);
+        if(!hold)result=QUD_INVALID;
+        else {
+            nz_ui=view;nzui_begin(&nz_ui,&action,mach_absolute_time(),hold);view=nz_ui;
+            __atomic_store_n(&nz_ui_expected,0,__ATOMIC_RELEASE);
+            __atomic_store_n(&nz_ui_ack_sequence,0,__ATOMIC_RELEASE);
+            __atomic_store_n(&nz_ui_cancel,0,__ATOMIC_RELEASE);
+            __atomic_store_n(&nz_ui_key_mask,0,__ATOMIC_RELEASE);
+            __atomic_store_n(&nz_ui_type,action.kind,__ATOMIC_RELEASE);
+        }
+    }
+    nz_ui_leave();if(result!=QUD_OK)return result;
+    return nz_ui_view(&view,out,cap,bytes,trunc);
+}
+static const struct qud_diag_provider nz_ui_provider={8,1,
+    (1u<<QUD_SNAPSHOT)|(1u<<QUD_SUBMIT)|(1u<<QUD_CANCEL),3,UINT32_MAX,
+    "nezhaui",NULL,nz_ui_snapshot,nz_ui_submit};
+static void nz_ui_prepare(void) {
+    unsigned mode=0;PE_parse_boot_argn("input-test",&mode,sizeof(mode));
+    if(mode!=2)return;
+    unsigned registered=qcom_usb_diag_register(&nz_ui_provider);
+    __atomic_store_n(&nz_ui_enabled,registered,__ATOMIC_RELEASE);
+    printf("NEZHA INPUT UI: provider8 registration=%u;finite synthetic brightness actions,normal HID only\n",registered);
+}
+enum nzui_read nezha_brightness_ui_touch(struct nezha_touch_frame *out,bool physical,bool ready) {
+    unsigned kind=__atomic_load_n(&nz_ui_type,__ATOMIC_ACQUIRE);
+    if(!__atomic_load_n(&nz_ui_enabled,__ATOMIC_ACQUIRE) || !kind)return NZUI_PASS;
+    if(physical)__atomic_store_n(&nz_ui_cancel,1,__ATOMIC_RELEASE);
+    if(kind==NZUI_KEY)return NZUI_PASS;
+    if(!nz_ui_enter())return NZUI_WAIT;
+    nz_ui_receipt(&nz_ui);
+    // No existing HID contact may be displaced when the action first starts.
+    if(nz_ui.phase==NZUI_QUEUED && nzi_get(&nezha_hid_input_diag,H_ACK_MASK))ready=false;
+    enum nzui_read read=nzui_touch(&nz_ui,mach_absolute_time(),physical,ready,out);
+    if(read==NZUI_FRAME)__atomic_store_n(&nz_ui_expected,out->sequence,__ATOMIC_RELEASE);
+    if(!nzui_busy(&nz_ui))__atomic_store_n(&nz_ui_type,0,__ATOMIC_RELEASE);
+    nz_ui_leave();return read;
+}
+bool nezha_brightness_ui_keys(uint32_t physical,uint32_t sent,uint32_t *mask,uint32_t *sequence) {
+    if(!mask || !sequence)return false;
+    *mask=0;*sequence=0;unsigned kind=__atomic_load_n(&nz_ui_type,__ATOMIC_ACQUIRE);
+    if(!__atomic_load_n(&nz_ui_enabled,__ATOMIC_ACQUIRE) || !kind)return false;
+    uint32_t raw[NZI_WORDS];bool have_raw=nzi_copy(&nezha_raw_input_diag,raw);
+    bool occupied=physical || !have_raw || raw[R_MASK]!=0 ||
+        __atomic_load_n(&nz_consumer,__ATOMIC_ACQUIRE)!=__atomic_load_n(&nz_producer,__ATOMIC_ACQUIRE);
+    if(occupied)__atomic_store_n(&nz_ui_cancel,1,__ATOMIC_RELEASE);
+    if(kind!=NZUI_KEY)return false;
+    if(!nz_ui_enter()) {*mask=__atomic_load_n(&nz_ui_key_mask,__ATOMIC_ACQUIRE);return true;}
+    nz_ui_receipt(&nz_ui);
+    bool ready=have_raw && (nz_ui.phase!=NZUI_QUEUED || !sent);
+    bool active=nzui_key(&nz_ui,mach_absolute_time(),occupied,ready,mask,sequence);
+    __atomic_store_n(&nz_ui_key_mask,*mask,__ATOMIC_RELEASE);
+    if(*sequence)__atomic_store_n(&nz_ui_expected,*sequence,__ATOMIC_RELEASE);
+    if(!nzui_busy(&nz_ui))__atomic_store_n(&nz_ui_type,0,__ATOMIC_RELEASE);
+    nz_ui_leave();return active;
+}
+// NEZHA_BRIGHTNESS_UI_END
 #include "NezhaTouchSelfTest.h"
 extern bool nezha_touch_selftest_due(void);
 static struct nezha_touch_test nz_settings_test;
@@ -1371,6 +1518,20 @@ nezha_touch_next(struct nezha_touch_frame *frame)
 {
 	unsigned c = __atomic_load_n(&nz_consumer, __ATOMIC_RELAXED);
 	unsigned p = __atomic_load_n(&nz_producer, __ATOMIC_ACQUIRE);
+    // NEZHA_BRIGHTNESS_UI_BEGIN
+    if(__atomic_load_n(&nz_ui_enabled,__ATOMIC_ACQUIRE)) {
+        uint32_t ui_raw[NZI_WORDS],ui_hid[NZI_WORDS];
+        bool ui_have_raw=nzi_copy(&nezha_raw_input_diag,ui_raw);
+        bool ui_have_hid=nzi_copy(&nezha_hid_input_diag,ui_hid);
+        bool ui_physical=!ui_have_raw || ui_raw[R_MASK]!=0 || c!=p ||
+            __atomic_load_n(&nezha_keys_state,__ATOMIC_ACQUIRE)!=0;
+        bool ui_ready=ui_have_raw && ui_have_hid && ui_hid[H_READY]==1 &&
+            ui_hid[H_STOP]==0 && ui_hid[H_IN_CALL]==0;
+        enum nzui_read ui_read=nezha_brightness_ui_touch(frame,ui_physical,ui_ready);
+        if(ui_read==NZUI_FRAME)return true;
+        if(ui_read==NZUI_WAIT)return false;
+    }
+    // NEZHA_BRIGHTNESS_UI_END
     if(nz_settings_test.phase!=2 && nezha_touch_selftest_due()) {
         uint32_t raw[NZI_WORDS], hid[NZI_WORDS];
         bool have_raw=nzi_copy(&nezha_raw_input_diag,raw);
@@ -2123,6 +2284,9 @@ nezha_input_start(void)
 	if (!enabled) {
 		return;
 	}
+    // NEZHA_BRIGHTNESS_UI_BEGIN
+    nz_ui_prepare();
+    // NEZHA_BRIGHTNESS_UI_END
 	static bool trace_started;
 	if(!trace_started){thread_t observer;if(kernel_thread_start(nz_trace_thread,NULL,&observer)==KERN_SUCCESS){trace_started=true;thread_deallocate(observer);}}
 	native_touch_stage_req = 1;

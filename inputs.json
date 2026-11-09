@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Source-only brightness001 test on fixed G030 Native037; retained GPU/USB/HID/storage; no phone inputs or operations.",
+  "purpose": "Finite opt-in brightness UI diagnostics on fixed G030; original brightness repair/DSI/GPU/storage/USB remain; no phone inputs or operations.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "09e5ef3fd893cddcccbfe9781ad1deb5cb3226b7",
+  "device_revision": "8919d6645f152a39e705ed13069e47bd06239a63",
   "soc_revision": "5a71f9eb5724ff58eddf49f7f5baecc9f4233a7c",
   "xcode": "26.6",
   "files": {
@@ -147,9 +147,9 @@
     "source/device/package/nezha27-input/InputChainProbe.cpp": "7653046c23d9b3e11c2a89dff7312942b4e9fbee9a678da9026300d02903bdc3",
     "source/device/package/nezha27-input/InputChainTrace.h": "00a1e23a591f64d7bb8ce99d4787d9371f8b980e0e6c6e3ef364d67a092c31ef",
     "source/device/package/nezha27-input/InputEventBridge.cpp": "52ed3de36616fa7d260d529abdd1003320b8cc1dc3212f0b0fdf956a70ed53b2",
-    "source/device/package/nezha27-input/NativeHidInput.cpp": "67bdd0f7992bfb224b634a71e040e93f0968129777966b04683c7fa43571dc02",
+    "source/device/package/nezha27-input/NativeHidInput.cpp": "1905ca6d56b800cc53865a8466e2408e6c19986dbe3ade095ede75e4a5962621",
     "source/device/package/nezha27-input/NezhaHidPacing.h": "2be615567252073a62587b41fa7f646f6d9bda4dbae2523cceef14caa300a5a9",
-    "source/device/package/nezha27-input/NezhaInput.c": "33e91fc8a99d2e60fdf16de40501cc56edc233592027953d5eeaf14cfe77a6db",
+    "source/device/package/nezha27-input/NezhaInput.c": "f0140cd55e283e887ae058d0b2c4c79b8c5255f492da7433babd5d653b75504c",
     "source/device/package/nezha27-input/NezhaInput.h": "b1e34b185e3159f2d8eb565cb9e66edbb1e58c0ba087c28e4da55dbf0c8b74f3",
     "source/device/package/nezha27-input/NezhaInputTelemetry.h": "5483fb9b489a0f7517e26102f20cdfa050b7f61214f2a3495b95820e122e0022",
     "source/device/package/nezha27-input/NezhaTouchEdge.h": "d132e77508b3b01d4ac01a13ec8617881ebe816fdd608461de1d7dd34c4b31dd",
@@ -214,7 +214,8 @@
     "source/soc/soc.toml": "9cebcadf2d5a271ceb44ee5fc378ed739cff0e7e5a940007164a9917042fd92f",
     "source/ufs.bundle": "3a7c1c6ac7e5a39e6cb4adcc6143fa1e4c6c24ae862aa501102f9fb70c21a534",
     "source/usb.bundle": "fc77b40791b6994f0da015b13b68a13cee5e8bc84e510cee4e518866165efeb2",
-    "ci/native.py": "13d56b5e612e91af7d7b71f0f2c612c685120d3a1bb16eedcfbcb0bc7e3879fb"
+    "ci/native.py": "13d56b5e612e91af7d7b71f0f2c612c685120d3a1bb16eedcfbcb0bc7e3879fb",
+    "source/device/package/nezha27-input/NezhaBrightnessUiTest.h": "d84404322a5d8923565b5f15f2b4aafade57cee9bfe51c9ab034324601bead86"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
@@ -261,5 +262,16 @@
     "firmware_uploaded": false,
     "firmware_slot_bytes": 262144,
     "snapshot_scope": "listed headers and native implementation units only"
+  },
+  "brightness_ui": {
+    "mode": 2,
+    "provider": 8,
+    "source_revision": "8919d6645f152a39e705ed13069e47bd06239a63",
+    "production_files": [
+      "source/device/package/nezha27-input/NezhaBrightnessUiTest.h",
+      "source/device/package/nezha27-input/NezhaInput.c",
+      "source/device/package/nezha27-input/NativeHidInput.cpp"
+    ],
+    "host_qualification_sha256": "4cb13d7660ecb67ded25c07b2d630409bdbe7ea2f4b3a95e23a096738ec1b638"
   }
 }

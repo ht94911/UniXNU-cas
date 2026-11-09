@@ -9,6 +9,9 @@ static_assert(sizeof(IOHIDDevice)==208,"selected27 IOHIDDevice base layout");
 #include "NezhaInput.h"
 #include "NezhaHidPacing.h"
 #include "NezhaInputTelemetry.h"
+// NEZHA_BRIGHTNESS_UI_BEGIN
+#include "NezhaBrightnessUiTest.h"
+// NEZHA_BRIGHTNESS_UI_END
 #include <IOKit/IOBufferMemoryDescriptor.h>
 #include <IOKit/IOLib.h>
 #include <IOKit/IOWorkLoop.h>
@@ -100,6 +103,9 @@ class NativeHidInput : public IOHIDDevice {
         if(self->touchBuffer->writeBytes(0,report,sizeof(report))==sizeof(report))
             result=self->handleReport(self->touchBuffer,kIOHIDReportTypeInput,0);
         native_hid_input_observed(6,result);native_touch_hid_reports=native_touch_hid_reports+1;
+        // NEZHA_BRIGHTNESS_UI_BEGIN
+        nezha_brightness_ui_report(self->touchState.pending.sequence,mask,result);
+        // NEZHA_BRIGHTNESS_UI_END
         stamp=nzi_begin(d);nzi_put(d,H_RETURN,nzi_get(d,H_RETURN)+1);nzi_put(d,H_IN_CALL,0);nzi_put(d,H_RESULT,(uint32_t)result);
         if(result==kIOReturnSuccess){uint32_t before=nzi_get(d,H_ACK_MASK);nzi_put(d,H_OK,nzi_get(d,H_OK)+1);
             nzi_put(d,H_DOWN,nzi_get(d,H_DOWN)+(unsigned)__builtin_popcount(mask&~before));nzi_put(d,H_UP,nzi_get(d,H_UP)+(unsigned)__builtin_popcount(before&~mask));nzi_put(d,H_ACK_MASK,mask);}
@@ -160,6 +166,9 @@ class NativeHidInput : public IOHIDDevice {
     static void tick(OSObject *owner,IOTimerEventSource *source) {
         NativeHidInput *self=OSDynamicCast(NativeHidInput,owner);if(!self)return;
         if(self->touchOnly){native_hid_live_checkpoint(self);source->setTimeoutMS(1000);return;}
+        // NEZHA_BRIGHTNESS_UI_BEGIN
+        if(nezha_brightness_ui_key_faulted()){source->cancelTimeout();return;}
+        // NEZHA_BRIGHTNESS_UI_END
         if(!self->hasEventDriverCached()) {
             native_hid_input_observed(3,0);native_hid_live_checkpoint(self);
             source->setTimeoutMS(500);return;
@@ -170,12 +179,25 @@ class NativeHidInput : public IOHIDDevice {
         if(self->homeHold)--self->homeHold;
         else if(native_hid_input_requested())self->homeHold=10;  // mailbox or offline-hid-auto-home: Home for 100 ms
         uint32_t want=self->keyMask|(self->homeHold?NEZHA_KEY_HOME:0);
-        if(want!=self->sent) {
+        // NEZHA_BRIGHTNESS_UI_BEGIN
+        uint32_t uiMask=0,uiSequence=0;
+        bool uiActive=nezha_brightness_ui_keys(want,self->sent,&uiMask,&uiSequence);
+        want|=uiMask;
+        // NEZHA_BRIGHTNESS_UI_END
+        if(want!=self->sent || uiSequence) {
             unsigned char report[]={2,static_cast<unsigned char>(want&0xf)};
             IOBufferMemoryDescriptor *buffer=IOBufferMemoryDescriptor::withBytes(report,sizeof(report),kIODirectionNone);
             IOReturn result=buffer?self->handleReport(buffer,kIOHIDReportTypeInput,0):kIOReturnNoMemory;
             OSSafeReleaseNULL(buffer);
             native_hid_input_observed(want?4:5,result);
+            // NEZHA_BRIGHTNESS_UI_BEGIN
+            if(uiSequence)nezha_brightness_ui_report(uiSequence,want,result);
+            if(uiActive && result!=kIOReturnSuccess) {
+                nezha_brightness_ui_key_error(result);
+                printf("NEZHA INPUT UI: consumer key failed result=%x;timer stopped,no automatic replay\n",result);
+                source->cancelTimeout();return;
+            }
+            // NEZHA_BRIGHTNESS_UI_END
             if(result==kIOReturnSuccess)self->sent=want;
         }
         native_hid_input_observed(3,1);
