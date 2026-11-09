@@ -34,7 +34,7 @@ static bool valid_buffer(const struct qbt_dma_buffer *b, size_t n) {
 int qbt_geni_prepare(struct qbt_geni *g, const struct qbt_geni_ops *ops,
     const struct qbt_dma_buffer *tx, const struct qbt_dma_buffer rx[QBT_GENI_RX_COUNT]) {
     if (!g || !ops || !ops->read || !ops->write || !ops->barrier || !ops->sync ||
-        !ops->now_ns || !ops->irq_mask || !ops->wake_worker || !ops->receive ||
+        !ops->now_ns || !ops->irq_mask || !ops->wake_worker || (!ops->receive && !ops->receive_at) ||
         !tx || !rx || !valid_buffer(tx,QBT_GENI_TX_SIZE)) return -EINVAL;
     for (unsigned i=0;i<QBT_GENI_RX_COUNT;i++) {
         if (!valid_buffer(&rx[i],QBT_GENI_RX_SIZE)) return -EINVAL;
@@ -47,6 +47,7 @@ int qbt_geni_prepare(struct qbt_geni *g, const struct qbt_geni_ops *ops,
     if (((rd(g,G_FW_REV)>>8)&255u)!=2) return -ENXIO;
     if (rd(g,G_STATUS)&(G_M_ACTIVE|G_S_ACTIVE)) return -EBUSY;
     unsigned depth=(rd(g,G_HW_PARAM1)>>16)&255u;if(depth<4)return -ENXIO;
+    g->rx_fifo_depth=depth;
     wr(g,G_IRQ_EN,0);wr(g,G_GSI_EVENT,0);
     wr(g,G_M_IRQ_EN,0);wr(g,G_S_IRQ_EN,0);wr(g,G_TX_IRQ_UNSET,UINT32_MAX);wr(g,G_RX_IRQ_UNSET,UINT32_MAX);
     wr(g,G_M_CLEAR,UINT32_MAX);wr(g,G_S_CLEAR,UINT32_MAX);
@@ -99,7 +100,9 @@ static bool deliver(struct qbt_geni *g) {
     unsigned budget=QBT_GENI_RX_COUNT;
     while(g->rx_ready && budget--) {
         unsigned i=g->rx_head,remaining=g->rx_length[i]-g->rx_offset;
-        size_t n=g->ops.receive(g->ops.context,g->rx[i].bytes+g->rx_offset,remaining);
+        size_t n=g->ops.receive_at?
+            g->ops.receive_at(g->ops.context,g->rx[i].bytes+g->rx_offset,remaining,g->rx_position[i]+g->rx_offset):
+            g->ops.receive(g->ops.context,g->rx[i].bytes+g->rx_offset,remaining);
         if(n>remaining)n=remaining;
         g->rx_offset+=(unsigned)n;
         if(g->rx_offset!=g->rx_length[i]) {g->stats.rx_backpressure++;return n!=0;}
@@ -132,6 +135,8 @@ bool qbt_geni_service(struct qbt_geni *g) {
         unsigned n=rd(g,G_RX_LEN_IN),i=g->rx_active;
         g->rx_busy=false;
         if(n>QBT_GENI_RX_SIZE){g->stats.dma_errors++;fail(g,-EOVERFLOW);return false;}
+        if(g->rx_produced>UINT64_MAX-n){g->stats.dma_errors++;fail(g,-EOVERFLOW);return false;}
+        g->rx_position[i]=g->rx_produced;g->rx_produced+=n;
         g->ops.sync(g->ops.context,&g->rx[i],n,false,false);
         if(ri&(1u<<5))n=0; /* Parity failure: drop this completion. */
         g->stats.rx_dma++;g->stats.rx_bytes+=n;
@@ -170,15 +175,51 @@ bool qbt_geni_drained(struct qbt_geni *g) {
     /* M_GP_LENGTH keeps the finished command's byte count; it is not a pending count. */
     return !(rd(g,G_STATUS)&G_M_ACTIVE) && !rd(g,G_TX_FIFO_STATUS);
 }
-size_t qbt_geni_write(struct qbt_geni *g,const uint8_t *bytes,size_t n) {
-    if(g->state!=QBT_GENI_RUN || !bytes || !n || !qbt_geni_drained(g))return 0;
+int qbt_geni_rx_produced(struct qbt_geni *g,uint64_t *count) {
+    if(!g || !count)return -EINVAL;
+    if(g->state!=QBT_GENI_RUN && g->state!=QBT_GENI_STOPPED)return -EIO;
+    /* FIFO packing is the configured four8-bit words. Linux's last-valid
+     * field0 means a full final word. Bracket FIFO with the live DMA input
+     * count so FIFO->DMA movement cannot be counted twice in this snapshot. */
+    for(unsigned attempt=0;attempt<8;attempt++) {
+        unsigned before=g->rx_busy?rd(g,G_RX_LEN_IN):0;
+        uint32_t fifo=rd(g,G_RX_FIFO_STATUS);
+        unsigned after=g->rx_busy?rd(g,G_RX_LEN_IN):0;
+        if(before!=after)continue;
+        unsigned words=fifo&G_RX_FIFO_WC_MASK;
+        if(after>QBT_GENI_RX_SIZE || words>g->rx_fifo_depth)return -EOVERFLOW;
+        unsigned pending=words*4;
+        if(words && (fifo&G_RX_FIFO_LAST)) {
+            unsigned valid=(fifo&G_RX_FIFO_LAST_BYTES_MASK)>>G_RX_FIFO_LAST_BYTES_SHIFT;
+            if(valid>4)return -EILSEQ;
+            if(valid)pending-=4-valid;
+        }
+        if(g->rx_produced>UINT64_MAX-after-pending)return -EOVERFLOW;
+        *count=g->rx_produced+after+pending;return 0;
+    }
+    return -EAGAIN;
+}
+static int write_tx(struct qbt_geni *g,const uint8_t *bytes,size_t n,size_t *consumed,uint64_t *mark) {
+    *consumed=0;
+    if(!g || g->state!=QBT_GENI_RUN || !bytes || !n)return -EINVAL;
+    if(!qbt_geni_drained(g))return 0;
     if(n>QBT_GENI_TX_SIZE)n=QBT_GENI_TX_SIZE;
     memcpy(g->tx.bytes,bytes,n);g->ops.sync(g->ops.context,&g->tx,n,true,true);
+    if(mark) {int error=qbt_geni_rx_produced(g,mark);if(error)return error;}
+    /* This is the owning executor's TX admission. A real reply may arrive
+     * before this function returns; preserve this mark, not a later sample. */
     g->tx_busy=true;g->tx_length=(unsigned)n;
     wr(g,G_TX_LEN,(uint32_t)n);wr(g,G_M_CMD,1u<<27);
     wr(g,G_TX_IRQ_SET,G_DONE|G_EOT|G_DMA_ERROR);
     wr(g,G_TX_PTR_L,(uint32_t)g->tx.address);wr(g,G_TX_PTR_H,(uint32_t)(g->tx.address>>32));
-    wr(g,G_TX_ATTR,1);barrier(g);wr(g,G_TX_DMA_LEN,(uint32_t)n);barrier(g);return n;
+    wr(g,G_TX_ATTR,1);barrier(g);wr(g,G_TX_DMA_LEN,(uint32_t)n);barrier(g);*consumed=n;return 0;
+}
+size_t qbt_geni_write(struct qbt_geni *g,const uint8_t *bytes,size_t n) {
+    size_t consumed=0;(void)write_tx(g,bytes,n,&consumed,NULL);return consumed;
+}
+int qbt_geni_write_fenced(struct qbt_geni *g,const uint8_t *bytes,size_t n,size_t *consumed,uint64_t *mark) {
+    if(!consumed || !mark)return -EINVAL;
+    return write_tx(g,bytes,n,consumed,mark);
 }
 void qbt_geni_set_flow(struct qbt_geni *g,bool enabled) {
     uint32_t cfg=rd(g,G_TX_CFG);

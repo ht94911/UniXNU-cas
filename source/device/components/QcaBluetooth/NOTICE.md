@@ -19,3 +19,17 @@ queue copies and nonfatal packet allocation handling.
 The sheng board references are
 [sm8550-mainline](https://github.com/ianchb/sm8550-mainline) and
 [debian-sheng](https://github.com/ianchb/debian-sheng).
+
+The separately locked WCN7860 initializer is byte-identical to
+`yzddmr6/linux-sm8750-piano` commit `9321086f2e2234bfdf073ac3326bd88cb5053e4f`.
+Its GPL notices remain in `vendor/linux-wcn7860`; the closed PR4 FC48 changes
+are not treated as merged or hardware-verified code.
+
+`src/qbt_peri.c` is an independent implementation of the N0 QTI HAL wire
+protocol, verified against the local HAL SHA256
+`d6d6c883ecb3f904fa3907d85f67b47396ee7e9d25231e7016754742d4519844`.
+The command/event, PERI/TME and activation call chains are documented in
+the consuming device's `SOURCE.md`. No HAL code or firmware bytes are copied
+into this component. `qbt_firmware_prepare_peri_nvm()` reuses this component's
+original TLV validator and the actual HAL tag17 baud contract. The existing
+executor, H4/IBS and GENI implementation retain their original licenses.

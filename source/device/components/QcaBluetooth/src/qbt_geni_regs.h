@@ -41,6 +41,10 @@
 #define G_S_CLEAR 0x648u
 #define G_TX_FIFO_STATUS 0x800u
 #define G_RX_FIFO_STATUS 0x804u
+#define G_RX_FIFO_WC_MASK 0x01ffffffu
+#define G_RX_FIFO_LAST (1u<<31)
+#define G_RX_FIFO_LAST_BYTES_SHIFT 28u
+#define G_RX_FIFO_LAST_BYTES_MASK (7u<<G_RX_FIFO_LAST_BYTES_SHIFT)
 #define G_RX_WM 0x810u
 #define G_RX_RFR_WM 0x814u
 #define G_TX_PTR_L 0xc30u

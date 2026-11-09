@@ -49,7 +49,7 @@ def main():
     extra=['-I',str(ROOT/'.cache/xnu-work/osfmk'),'-I',str(board),'-I',str(soc/'include'),
         '-I',str(usb/'include'),'-DQBT_WCN7860_SOURCE=1','-Wno-sign-compare','-Wno-unknown-warning-option']
     for d in ['include','src','shim','out/linux-wcn7860']:extra+=['-I',str(component/d)]
-    selected=[component/'src'/n for n in ['qbt_core.c','qbt_linux.c','qbt_geni.c','qbt_transport.c','qbt_firmware.c']]
+    selected=[component/'src'/n for n in ['qbt_core.c','qbt_linux.c','qbt_geni.c','qbt_transport.c','qbt_firmware.c','qbt_peri.c']]
     selected+=[component/'out/linux-wcn7860/btqca.c',*sorted(board.glob('*.c')),*sorted(board.glob('*.cpp'))]
     objects=[];details=[]
     for source in selected:

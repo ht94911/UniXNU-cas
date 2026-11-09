@@ -377,11 +377,12 @@ extern "C" int nezha_bt_platform_init(nezha_bt_board_ops *o, const nezha_bt_inpu
     if (platform.initialized) return -EALREADY;
     platform.inputs = inputs; platform.executor = executor; platform.wake = wakeFn; platform.wait = waitFn; platform.receive = rx;
     *o = {};
-    o->geni = {nullptr, uartRead, uartWrite, dmaBarrier, dmaSync, time, irqMask, wake, nullptr};
+    o->geni = {nullptr, uartRead, uartWrite, dmaBarrier, dmaSync, time, irqMask, wake, nullptr, nullptr};
     o->allocate = allocate; o->release = release; o->now_ns = time; o->wait_until = wait; o->wake = wake;
     o->resource_acquire = resources; o->resource_dma_map = mapDma; o->resource_release = releaseResources;
     o->power_acquire = powerGet; o->power_release = powerPut; o->reset_enable = enable;
     o->pins_default = defaultPins; o->pins_active = pins; o->serial_clock = serialClock; o->serial_retire = serialRetire; o->serial_source = serialSource;
     o->irq_attach = attachIrq; o->irq_detach = detachIrq; o->firmware_get = firmware; o->firmware_put = firmwarePut;
+    o->ganges = &inputs->ganges;
     o->receive = receive; o->log = log; o->serial_snapshot = serialSnapshot; platform.initialized = true; return 0;
 }

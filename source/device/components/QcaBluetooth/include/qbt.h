@@ -47,10 +47,12 @@ struct qbt_info {
     char firmware[64];
 };
 enum qbt_controller { QBT_WCN7850, QBT_WCN7860 };
-enum qbt_baud_method { QBT_BAUD_FC48, QBT_BAUD_CURRENT };
+enum qbt_baud_method { QBT_BAUD_FC48, QBT_BAUD_CURRENT, QBT_BAUD_PERI };
 /* Board-owned, immutable input. CURRENT means the version request and the
  * entire download use the same already-established operating rate. It does
- * not implement the separate QTI PERI baud negotiation. */
+ * not implement the separate QTI PERI baud negotiation. PERI is consumed by
+ * the board before this HCI core; the board passes CURRENT only after the
+ * real PERI/TME sequence establishes baud and a fresh BT version reply. */
 struct qbt_boot_options {
     enum qbt_controller controller;
     enum qbt_baud_method baud_method;

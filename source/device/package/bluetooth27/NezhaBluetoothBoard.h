@@ -3,6 +3,7 @@
 #define NEZHA_BLUETOOTH_BOARD_H
 #include "qbt.h"
 #include "qbt_geni.h"
+#include "qbt_peri.h"
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -20,6 +21,15 @@ struct nezha_bt_dma {
     uint32_t intid, sid;
     struct qbt_dma_buffer tx, rx[QBT_GENI_RX_COUNT];
 };
+/* Names and ELF policy come from this candidate's immutable, hash-locked
+ * manifest. Board-specific PERI NVM is selected after a real PERI board ID.
+ * This board supports the actual Ganges2.0 map, not a generic image retry. */
+struct nezha_bt_ganges_config {
+    bool enabled;
+    char patch[60], nvm[60], tme[60];
+    enum qbt_peri_elf_config elf_config;
+    uint32_t elf_value;
+};
 /* Binding to the selected package's existing resource owner. All operations
  * return negative errno. The owner checks the live allocation and common
  * SMMU/GCC/RPMh lock; it must not introduce a second raw register owner.
@@ -30,8 +40,10 @@ struct nezha_bt_dma {
  * Failed release keeps that cookie/lease valid and all DMA memory allocated.
  * irq_detach drains callbacks before resource_release can free any buffer.
  * reset exclusively owns PMH0104 GPIO5 (shared BT/UWB), never WLAN GPIO16.
- * firmware_get returns bytes verified against this package's private manifest;
- * no generic or other-board NVM fallback is allowed. */
+ * firmware_get returns bytes verified against this package's private manifest.
+ * Successful BT board0 selects its exact .bin; successful PERI board0 can use
+ * its exact .bin only after the absent .b00. Missing nonzero/unknown board or
+ * validation errors must not substitute another board's NVM. */
 struct nezha_bt_board_ops {
     void *context;
     struct qbt_geni_ops geni;
@@ -59,6 +71,7 @@ struct nezha_bt_board_ops {
     void (*log)(void *,int,const char *);
     /* Optional bounded read-only clock observation before failed cleanup. */
     void (*serial_snapshot)(void *);
+    const struct nezha_bt_ganges_config *ganges;
 };
 enum nezha_bt_phase { NEZHA_BT_OFF, NEZHA_BT_RESOURCES, NEZHA_BT_POWER,
     NEZHA_BT_UART, NEZHA_BT_FIRMWARE, NEZHA_BT_READY, NEZHA_BT_FAILED,
@@ -71,6 +84,10 @@ struct nezha_bt_board {
     struct nezha_bt_dma dma;
     struct qbt_geni geni;
     struct qbt *core;
+    struct qbt_peri *peri;
+    struct nezha_bt_ganges_config ganges;
+    struct qbt_peri_info peri_info;
+    struct qbt_peri_version peri_version, tme_version;
     struct qbt_boot_options boot;
     char patch_name[64],nvm_name[64];
     uint8_t address[6];
@@ -79,6 +96,9 @@ struct nezha_bt_board {
     int error,cleanup_error;
     uint32_t cancelled,closing,boot_attempts;
     bool clocked,irq_attached,pins_set,reset_set,powered;
+    bool peri_rx,peri_access,peri_hci,tme_skipped;
+    uint8_t peri_arbitration,tme_arbitration;
+    uint16_t peri_board;
 };
 /* The caller supplies a zero-initialized object. Reinitialization with a live
  * core, IRQ callback, DMA allocation or power lease is rejected. */

@@ -2,6 +2,7 @@
 #ifndef NEZHA_BLUETOOTH_FIRMWARE_H
 #define NEZHA_BLUETOOTH_FIRMWARE_H
 #include "qbt.h"
+#include "NezhaBluetoothBoard.h"
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -15,6 +16,10 @@ struct nezha_bt_inputs {
     uint8_t patch_digest[32], address[6];
     uint32_t nvm_count;
     struct nezha_bt_nvm_entry nvm_entries[NEZHA_BT_NVM_RECORDS];
+    struct nezha_bt_ganges_config ganges;
+    uint8_t peri_patch_digest[32], tme_patch_digest[32];
+    uint32_t peri_nvm_count;
+    struct nezha_bt_nvm_entry peri_nvm_entries[NEZHA_BT_NVM_RECORDS];
 };
 /* Immutable chosen data, generated from the approved package's private
  * firmware manifest. No generic filename or synthesized address fallback. */

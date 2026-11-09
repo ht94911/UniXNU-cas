@@ -11,12 +11,14 @@ struct fixture {
     _Alignas(64) uint8_t tx[QBT_GENI_TX_SIZE],rx[QBT_GENI_RX_COUNT][QBT_GENI_RX_SIZE];
     uint8_t received[65536],sent[QBT_GENI_TX_SIZE];
     unsigned length, sent_length, reads, writes, barriers, wakes, syncs;
-    bool masked, blocked, device_rx[QBT_GENI_RX_COUNT], device_tx, deny_clock_select;
+    bool masked, blocked, device_rx[QBT_GENI_RX_COUNT], device_tx, deny_clock_select, unstable_input, fast_reply;
     size_t max_receive;
     uint64_t time;
 };
 static uint32_t read_reg(void *p,uint32_t r) {
-    struct fixture *f=p;f->reads++;assert(r<sizeof(f->regs));return f->regs[r/4];
+    struct fixture *f=p;f->reads++;assert(r<sizeof(f->regs));
+    if(r==G_RX_LEN_IN && f->unstable_input)f->regs[r/4]++;
+    return f->regs[r/4];
 }
 static void write_reg(void *p,uint32_t r,uint32_t v) {
     struct fixture *f=p;f->writes++;assert(r<sizeof(f->regs));
@@ -28,8 +30,16 @@ static void write_reg(void *p,uint32_t r,uint32_t v) {
     else f->regs[r/4]=v;
     if(r==G_S_CMD)f->regs[G_STATUS/4]|=G_S_ACTIVE;
     if(r==G_M_CMD)f->regs[G_STATUS/4]|=G_M_ACTIVE;
-    if(r==G_TX_DMA_LEN){assert(f->device_tx);f->sent_length=v;memcpy(f->sent,f->tx,v);f->regs[0x910/4]=v;}
-    if(r==G_RX_DMA_LEN)assert(f->device_rx[f->g.rx_active]);
+    if(r==G_TX_DMA_LEN){
+        assert(f->device_tx);f->sent_length=v;memcpy(f->sent,f->tx,v);f->regs[0x910/4]=v;
+        if(f->fast_reply) {
+            const uint8_t reply[]={4,14,1,0};unsigned i=f->g.rx_active;
+            assert(f->g.rx_busy && f->device_rx[i]);memcpy(f->rx[i],reply,sizeof(reply));
+            f->regs[G_RX_LEN_IN/4]=sizeof(reply);f->regs[G_RX_IRQ/4]|=G_EOT;
+            qbt_geni_irq(&f->g); /* real RX producer advances before write returns */
+        }
+    }
+    if(r==G_RX_DMA_LEN){assert(f->device_rx[f->g.rx_active]);f->regs[G_RX_LEN_IN/4]=0;}
 }
 static void barrier(void *p) { ((struct fixture *)p)->barriers++; }
 static void sync_dma(void *p,const struct qbt_dma_buffer *b,size_t n,bool device,bool tx) {
@@ -45,6 +55,71 @@ static size_t receive(void *p,const uint8_t *b,size_t n) {
     struct fixture *f=p;if(f->blocked)return 0;
     if(f->max_receive && n>f->max_receive)n=f->max_receive;
     assert(f->length+n<=sizeof(f->received));memcpy(f->received+f->length,b,n);f->length+=(unsigned)n;return n;
+}
+static size_t receive_at(void *p,const uint8_t *b,size_t n,uint64_t position) {
+    struct fixture *f=p;assert(position==f->length);return receive(p,b,n);
+}
+static void prepare(struct fixture *);
+static void inject(struct fixture *,const uint8_t *,unsigned);
+static void producer_positions(void) {
+    struct fixture f;prepare(&f);
+    const uint8_t first[]={4,14,5,1,0,252,0,30},second[]={0xfc,4,14,1};
+    f.g.ops.receive_at=receive_at;f.blocked=true;
+    inject(&f,first,sizeof(first));
+    uint64_t mark=UINT64_MAX;
+    unsigned writes=f.writes,syncs=f.syncs;
+    assert(!qbt_geni_rx_produced(&f.g,&mark) && mark==sizeof(first));
+    assert(f.writes==writes && f.syncs==syncs && !f.length && !f.g.rx_ready);
+    qbt_geni_service(&f.g);
+    assert(f.g.rx_produced==sizeof(first) && f.g.rx_ready==1 && !f.length);
+    assert(!qbt_geni_rx_produced(&f.g,&mark) && mark==sizeof(first));
+    inject(&f,second,sizeof(second));
+    assert(!qbt_geni_rx_produced(&f.g,&mark) && mark==sizeof(first)+sizeof(second));
+    qbt_geni_service(&f.g);
+    f.blocked=false;f.max_receive=2;
+    while(qbt_geni_service(&f.g)) {}
+    assert(f.length==sizeof(first)+sizeof(second) && !memcmp(f.received,first,sizeof(first)) &&
+        !memcmp(f.received+sizeof(first),second,sizeof(second)));
+    assert(f.g.rx_produced==f.length && !qbt_geni_rx_produced(&f.g,&mark) && mark==f.length);
+    /* In-flight DMA and FIFO input must be included, without consuming it. */
+    f.regs[G_RX_LEN_IN/4]=3;f.regs[G_RX_FIFO_STATUS/4]=1|G_RX_FIFO_LAST|(2u<<G_RX_FIFO_LAST_BYTES_SHIFT);
+    writes=f.writes;syncs=f.syncs;
+    assert(!qbt_geni_rx_produced(&f.g,&mark) && mark==f.length+5);
+    assert(writes==f.writes && syncs==f.syncs);
+    f.regs[G_RX_FIFO_STATUS/4]=1|G_RX_FIFO_LAST;
+    assert(!qbt_geni_rx_produced(&f.g,&mark) && mark==f.length+7);
+    f.regs[G_RX_FIFO_STATUS/4]=17;
+    assert(qbt_geni_rx_produced(&f.g,&mark)==-EOVERFLOW);
+    f.regs[G_RX_FIFO_STATUS/4]=1|G_RX_FIFO_LAST|(5u<<G_RX_FIFO_LAST_BYTES_SHIFT);
+    assert(qbt_geni_rx_produced(&f.g,&mark)==-EILSEQ);
+    f.regs[G_RX_FIFO_STATUS/4]=0;f.unstable_input=true;
+    assert(qbt_geni_rx_produced(&f.g,&mark)==-EAGAIN);
+    puts("PASS: producer positions survive queued and partial RX; read-only ingress includes pending DMA/FIFO and rejects unstable/invalid snapshots");
+}
+static void tx_admission(void) {
+    struct fixture f;prepare(&f);f.g.ops.receive_at=receive_at;f.fast_reply=true;
+    const uint8_t command[]={1,0,252,1,25},old[]={4,255,3,0,2,0};
+    size_t consumed=0;uint64_t admission=UINT64_MAX,after=UINT64_MAX;
+    assert(!qbt_geni_write_fenced(&f.g,command,sizeof(command),&consumed,&admission));
+    assert(consumed==sizeof(command) && admission==0);
+    assert(!qbt_geni_rx_produced(&f.g,&after) && after==4 && after>admission);
+    qbt_geni_service(&f.g);assert(f.length==4);
+    /* Old queued bytes count at admission even before parser delivery; the
+     * new fast reply starts at that mark and must not be excluded by a later
+     * snapshot of the same hardware producer. */
+    prepare(&f);f.g.ops.receive_at=receive_at;f.blocked=true;
+    inject(&f,old,sizeof(old));qbt_geni_service(&f.g);assert(!f.length);
+    f.fast_reply=true;
+    assert(!qbt_geni_write_fenced(&f.g,command,sizeof(command),&consumed,&admission));
+    assert(consumed==sizeof(command) && admission==sizeof(old));
+    assert(!qbt_geni_rx_produced(&f.g,&after) && after==sizeof(old)+4);
+    f.blocked=false;while(qbt_geni_service(&f.g)) {}
+    assert(f.length==sizeof(old)+4);
+    prepare(&f);f.regs[G_RX_FIFO_STATUS/4]=17;
+    unsigned writes=f.writes;
+    assert(qbt_geni_write_fenced(&f.g,command,sizeof(command),&consumed,&admission)==-EOVERFLOW);
+    assert(!consumed && !f.g.tx_busy && writes==f.writes);
+    puts("PASS: TX admission RX fence accepts replies produced before write returns, retains old queued-byte floor and emits no TX on snapshot failure");
 }
 static void prepare(struct fixture *f) {
     memset(f,0,sizeof(*f));f->regs[G_FW_REV/4]=0x200;f->regs[G_HW_PARAM1/4]=16u<<16;
@@ -168,6 +243,7 @@ static void test_clock_bank(void) {
     assert(!qbt_geni_resume(&f.g) && f.g.rx_busy && !f.masked);
 }
 int main(void) {
+    producer_positions();tx_admission();
     test_tx();test_rx();test_rts_preserves_cts();test_faults();test_clock_bank();
     puts("PASS: GENI DMA ownership, 64-bit addresses, wire drain, bounded IRQ, RX backpressure, real DFS selection/readback, clock-rate validation, quiesce/resume and DMA faults");
     return 0;

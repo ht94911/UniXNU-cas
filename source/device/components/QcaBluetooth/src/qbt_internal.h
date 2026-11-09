@@ -16,7 +16,7 @@
 #define QBT_WAKE_RETRY 100000000ULL
 #define QBT_TX_POLL 1000000ULL
 #define QBT_SPEED_REPLY_MS 100u
-#define QBT_GANGES_SPEED_REPLY_MS 1000u /* stock ReadNewHciEventWithTimer: one second */
+#define QBT_GANGES_SPEED_REPLY_MS 1000u /* public QTI timer; observation bound, not a verified live-HAL timer */
 #define QBT_SPEED_SETTLE_MS 5u
 #define QBT_TX_IDLE 2000000000ULL
 enum { QBT_ASLEEP, QBT_WAKING, QBT_AWAKE };

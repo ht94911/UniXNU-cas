@@ -24,6 +24,8 @@ struct qbt_geni_ops {
     void (*irq_mask)(void *, bool);
     void (*wake_worker)(void *);
     size_t (*receive)(void *, const uint8_t *, size_t);
+    /* Optional producer position, preserved through RX backpressure. */
+    size_t (*receive_at)(void *, const uint8_t *, size_t, uint64_t position);
 };
 enum qbt_geni_state { QBT_GENI_OFF, QBT_GENI_RUN, QBT_GENI_CANCEL,
     QBT_GENI_ABORT, QBT_GENI_RESET, QBT_GENI_STOPPED, QBT_GENI_FAILED };
@@ -38,6 +40,8 @@ struct qbt_geni {
     enum qbt_geni_state state;
     unsigned rx_head, rx_ready, rx_active;
     unsigned rx_length[QBT_GENI_RX_COUNT], rx_offset;
+    uint64_t rx_position[QBT_GENI_RX_COUNT], rx_produced;
+    unsigned rx_fifo_depth;
     unsigned tx_length;
     uint32_t baud, source_hz, oversampling, clock_selector;
     uint32_t fault_irq[4]; /* M, S, TX DMA and RX DMA status from a failed service turn. */
@@ -58,7 +62,14 @@ void qbt_geni_irq(struct qbt_geni *);
 /* One bounded worker turn; true requests another turn without sleeping. */
 bool qbt_geni_service(struct qbt_geni *);
 size_t qbt_geni_write(struct qbt_geni *, const uint8_t *, size_t);
+/* Complete RX mark captured at TX admission, before DMA is published. An
+ * error emits no TX; consumed0 with success is ordinary UART backpressure. */
+int qbt_geni_write_fenced(struct qbt_geni *, const uint8_t *, size_t,
+                          size_t *consumed, uint64_t *rx_before_admission);
 bool qbt_geni_drained(struct qbt_geni *);
+/* Executor-only, read-only snapshot of completed/unread buffers plus live
+ * DMA/FIFO input. No delivery, clock change, cancellation or counter reset. */
+int qbt_geni_rx_produced(struct qbt_geni *, uint64_t *byte_count);
 void qbt_geni_set_flow(struct qbt_geni *, bool);
 /* QTI modem-flow ioctl changes RTS without changing the TX CTS policy. */
 void qbt_geni_set_rts(struct qbt_geni *, bool);

@@ -39,6 +39,8 @@ target compilation and a new hardware BID/NVM/HCI check remain required.
 | --- | --- |
 | `include/qbt.h`, `src/qbt_core.c` | Linux initialization, H4 framing and IBS on one executor |
 | `include/qbt_geni.h`, `src/qbt_geni.c` | GENI SE DMA: four 2048-byte RX buffers, one 4096-byte TX buffer |
+| `include/qbt_peri.h`, `src/qbt_peri.c` | N0 Ganges PERI/TME commands, mixed H4/IBS receive and activation proof |
+| `include/qbt_firmware.h`, `src/qbt_firmware.c` | Full ELF/NVM validation and caller-owned PERI NVM baud preparation |
 | `include/qbt_transport.h`, `src/qbt_transport.c` | UART.SK kernel pipe, backpressure, channel lifetime and worker power requests |
 | `src/qbt_linux.c`, `shim/` | Boundary to the locked Linux sources |
 | `userland/BlueTool.c` | `com.apple.BlueTool` XPC bootstrap service |
@@ -64,6 +66,8 @@ firmware. Pairing, key storage, BLE and audio profiles run in `bluetoothd`.
 ```sh
 python3 tools/test-runtime.py
 python3 tools/test-geni.py
+python3 tools/test-peri.py
+python3 tools/test-firmware.py
 python3 tools/build-bluetool.py
 python3 tools/build-type0.py
 python3 tools/check-kernel.py /path/to/tree --record <kernel source compile record> \
@@ -82,3 +86,17 @@ BlueTool use BSD-2-Clause-Patent. Each file identifies its license;
 
 Vendor firmware and Apple binaries are external inputs and stay out of this
 repository.
+
+The nezha PERI helper follows the actual Ganges2.0 HAL command/reply layouts.
+The board retains the existing UART executor and shared power owner, supplies
+an RX producer mark at TX admission, and performs a genuine H4 version query
+after the activation completion/notice. Pending/unread DMA input is included
+in the mark; a reply queued before the write callback returns remains valid.
+PERI notifications continue to be demultiplexed during normal HCI operation.
+The source tests use synthetic controllers; live DMA/FIFO semantics and the
+complete PERI/TME3.2Mbps chain still require the fixed nezha candidate.
+
+For PERI NVM, `qbt_firmware_prepare_peri_nvm()` modifies only tag17 payload
+byte1 in an already SHA-verified, caller-owned temporary copy. The selected
+3.2Mbps value is0x11. Complete type2/type4 validation precedes mutation;
+the original file/digest, other tags and non-type2 sets are retained.
