@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Audio025: keep GPU023/Native037/Metal021b and Audio024 GLINK20s/first observations100ms; complete stock ADSP watchdog PDC DRV2 pin6 to IRQ783 using actual3.2 version/direct-SPI check, exclusive GIC claim then only pin6 type/rising6+enable8 and readback. No other PDC pin or old bank, new FIFO consumer, trace, external DMA, PCM/HAL/capture/private inputs or phone operation. Cause/hardware route not yet proven.",
+  "purpose": "Audio028 on fixed GPU023: observe existing GLINK notification and SMEM descriptor without changing wire, queues, firmware or power",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "de12a82a178b2016162e842ebf7758eab4985bd3",
+  "device_revision": "c85af6ce603a5bc0155f2c909bdd43a8d7e15b0c",
   "soc_revision": "703d7b4bb00904b4a6e5d96f9e9bf72eec170f6b",
   "xcode": "26.6",
   "files": {
@@ -219,7 +219,7 @@
     "source/device/package/audio27/platform/AudioSmmu.h": "41401f1b97e3481c7e5cc3e02c47f926e91eec9fa34f4a48981a3fc3b723cddd",
     "source/device/package/audio27/upstream/ShengGpr.c": "c4f498f07e2cb601b593e64a8d32474a21d6a87375618e1a67b99d52c5d3160e",
     "source/device/package/audio27/platform/SoundWire.h": "348979ac1e552e1c3a0027e09f8500927e8bf7ccbb496276d2c9d3ef19322224",
-    ".github/workflows/nezha-ios27-native.yml": "9b7a4d095159d42d924ea17517ffa15ef5206bc3d88182590f6d5cb1bf540f8d",
+    ".github/workflows/nezha-ios27-native.yml": "f39ce1d2a021065ed7fb1d7c91c4b92a76ad82cf05c7a10de150e05105f0ef4d",
     "source/device/package/audio27/upstream/ShengGpr.h": "a274dded1f4d1e2709b9f966759bcb1f57d12747ee0f57743dea1fa97d95d23e",
     "source/device/package/audio27/os/NezhaAudioNative.h": "7fd04a164de72e423cd16488d805c1a4f8c2f458b2356978b0bdecc2b64d55a7",
     "source/device/package/audio27/upstream/ShengAudioReach.h": "b135177a5feb3e24e0d8a6aabb301600e2c37078b970a09ada6e8eb7bb6a5b98",
@@ -263,7 +263,7 @@
     "source/device/package/audio27/upstream/QcomQmp.h": "dd6722ade248435930c5f242ef78728f58f7e3bc6a9765fe229b32c87f342503",
     "source/device/package/audio27/core/AudioTopology.c": "6ef3effd855b91fe896f1432ebea79a6fffad743bdf28ae3f32dc5ef9e617001",
     "source/device/package/audio27/upstream/QcomQmp.c": "6d5dd2e0ebf1f425f7fc929555edb275b8d499cfaa1f9c887bfcb68f09785249",
-    "source/device/package/audio27/platform/AdspLink.c": "b5777c894df2f13da8b41d560b274944ce403906162c07bdc0c5e72ef783f2cf",
+    "source/device/package/audio27/platform/AdspLink.c": "6e23859c11a57d9d72019683bd2824ca1ae7b4690ae3411c8bf20a93375bb5ef",
     "source/device/package/audio27/core/AudioProtocol.h": "cdd0adfdf372cb6efc5a69f3066f7976f47bf3287884c42d5f7f9709856c17ba",
     "source/device/package/audio27/platform/Tas25xxProgram.c": "f50be194ca696b36bc3df7767a12ad3ec392f531eba0c0df216dbae292f53968",
     "source/device/package/audio27/platform/Wcd9395Capture.h": "b6263e90a8dd5c3b27f94c30bc0092d2afeceeb4fd394cba7669f4f61e37845e",
@@ -279,7 +279,7 @@
     "source/device/package/audio27/upstream/QcomGlink.c": "d93de74fc679952d3fa327f902d69e4013b3eb95ae6431c77d8b2aa1348999ef",
     "source/device/package/audio27/platform/AudioSmmu.c": "9a0b40fb61392d11c7e61ab8015d1cbfa16d49e4892fc49f20be5e40c0aa274b",
     "source/device/package/audio27/core/AudioGraph.c": "8cc3f022e9fd6a20a18c89ae2f516d9c2ebdec0d139ada3221389d2de020234c",
-    "source/device/package/audio27/platform/AdspLink.h": "5bdff5719de9f6c3298a4fbb21daef157dee728b4f233e6a22cdf619cf626aa1",
+    "source/device/package/audio27/platform/AdspLink.h": "076bdf2dc70f8efe6d420cde2ff706c271054daf014492ef57c45d5e6fb7247a",
     "source/device/package/audio27/platform/Wcd9395Capture.c": "c84ba26610e8d5570c17ed59e4ce42290da659c7369fdc5ae2d93621fa392c7f",
     "source/device/package/audio27/upstream/GeniI2c.h": "2ade734ab7cdbd41fcea68c7f7ff4392b779b2d04666118407a1533e22258e7c",
     "source/device/package/audio27/os/NezhaAudioService.cpp": "edf9bf14078b835a02f9cf50165521a4614b7af532e03c1938eb83216a9a7804",
@@ -318,7 +318,7 @@
     "source/device/package/audio27/platform/AudioInputPack.c": "9991a396c50bd0e427570d1a04fbe4755202412759fe0e945cd63c53619dea0c",
     "source/device/package/audio27/os/NezhaAudioInputs.c": "46617afe5985f02f108644611b93a19463322be09984968e5e900e10fcfe12aa",
     "source/device/package/audio27/os/NezhaAudioSmmu.cpp": "833371d1e1f4068cadf60002da3867f7a346ece265a8a4d5773174649898fff5",
-    "source/device/package/audio27/os/NezhaAudioDspProbe.cpp": "9f4a6c86d07f0cc57769fd96c3462a68a07d9496c7d7c49bb3247aff4bc3466e",
+    "source/device/package/audio27/os/NezhaAudioDspProbe.cpp": "7653b046983296a2ff2949bc70de99d9368b5be01f43d8f99a8eba8075739459",
     "source/device/package/audio27/os/NezhaAudioSmmu.h": "e9391db75422a2ec69a3451d0b50b279fa81741640840cc09e24be5cc3cc3889",
     "source/device/package/audio27/os/NezhaAudioTasBoard.h": "793e2b87da53b7f4aad0093310452fa378137b25e9375fe04edf269e3dad7f8b",
     "source/device/package/audio27/os/NezhaAudioTasBoard.cpp": "b87e914dfae3e3a77626dd1dd18e1c2a31ef01bacd631fb9830ec79a1fc9a890",
@@ -383,8 +383,8 @@
   "audio": {
     "base": "GPU023",
     "base_device_revision": "673cde869b7378658b470c4e6b2b9a1766b99411",
-    "source_revision": "de12a82a178b2016162e842ebf7758eab4985bd3",
-    "source_only_revision": "abde8b4b694afb0f4eb20e838ebe4f316e49da12",
+    "source_revision": "c85af6ce603a5bc0155f2c909bdd43a8d7e15b0c",
+    "source_only_revision": "c85af6ce603a5bc0155f2c909bdd43a8d7e15b0c",
     "hardware_enabled": false,
     "resource_census_enabled": true,
     "private_inputs": false,
@@ -397,6 +397,24 @@
     "diagnostic_glink_delay_ms": 20000,
     "diagnostic_glink_observe_ms": 100,
     "watchdog_configuration": "Restore024; PDC read-only identity/CFG, strict owned SPI751 bit15 edge/readback under existing common lock; no PDC_CFG write",
-    "last_trial_source": "5513660b952966e11733e5366d207d30dc7bd73a"
+    "last_trial_source": "de12a82a178b2016162e842ebf7758eab4985bd3",
+    "fifo_observation": {
+      "item": 478,
+      "words": 4,
+      "read_only": true,
+      "points": [
+        10,
+        8,
+        9,
+        3,
+        4,
+        11,
+        12
+      ],
+      "kick_message_limit": 16,
+      "new_consumer": false,
+      "new_protocol": false,
+      "hardware_verified": false
+    }
   }
 }

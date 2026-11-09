@@ -30,7 +30,8 @@ typedef struct {
 } NaAdspOps;
 enum {NaAdspRxLookup=1,NaAdspRxBound,NaAdspGlinkBegin,NaAdspGlinkReturn,
       NaAdspProxyOffBegin,NaAdspProxyOffReturn,NaAdspProxyRetained,
-      NaAdspGlinkSetupBegin,NaAdspGlinkSetupReturn,NaAdspGlinkDeferred};
+      NaAdspGlinkSetupBegin,NaAdspGlinkSetupReturn,NaAdspGlinkDeferred,
+      NaAdspGlinkKickBegin,NaAdspGlinkKickReturn};
 enum {NaAdspCold,NaAdspStopMain,NaAdspStopDtb,NaAdspDma,NaAdspSetup,NaAdspPower,
       NaAdspDtb,NaAdspMain,NaAdspWaitReady,NaAdspOnline,NaAdspFailed};
 typedef struct {

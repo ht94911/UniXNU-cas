@@ -13,7 +13,16 @@ static int alloc_item(NaAdsp *a,uint16_t id,uint32_t bytes) {
     r=qcom_smem_alloc(&a->smem,&a->partition,id,bytes);a->ops.smem_unlock(a->ops.context);
     return r==0 || r==QcomSmemExists ? NA_OK:NA_IO;
 }
-static void kick(void *v) {NaAdsp *a=v;a->ops.doorbell(a->ops.context,0);}
+static void kick(void *v) {
+    NaAdsp *a=v;
+    // The existing GLINK coalesces messages into one notification. Observe
+    // its actual owner callback, rather than equating a parsed VERSION with
+    // successful TX or receipt by the DSP. No additional FIFO consumer.
+    const int record=a->ops.observe && a->glink.tx_messages<=16;
+    if (record) a->ops.observe(a->ops.context,NaAdspGlinkKickBegin,NA_OK);
+    a->ops.doorbell(a->ops.context,0);
+    if (record) a->ops.observe(a->ops.context,NaAdspGlinkKickReturn,NA_OK);
+}
 static void observe(NaAdsp *a,uint32_t point,int result) {
     uint32_t bit=1u<<point;
     if (a->observe_mask&bit) return;

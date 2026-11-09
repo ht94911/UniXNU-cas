@@ -78,8 +78,27 @@ void publish(AudioDspProbe *d) {
 }
 void glink_header(void *,uint32_t,uint16_t,uint16_t,uint32_t,int);
 void capture_crash_baseline(AudioDspProbe *);
+void glink_fifo_state(AudioDspProbe *d,uint32_t point) {
+    uint32_t at=0,bytes=0;
+    int r=qcom_smem_find(&d->adsp.smem,&d->adsp.partition,478,&at,&bytes);
+    if (r || bytes<16 || (at&3) || at>d->adsp.smem.size || bytes>d->adsp.smem.size-at) {
+        printf("NEZHA AUDIO27 GLINK FIFO: point=%u present=0 lookup=%d\n",point,r);
+        return;
+    }
+    // Read only the existing descriptor, before/after this worker's normal
+    // setup/poll/notification. DSP-owned indices can legitimately change
+    // between the four loads; this is a bounded observation, not a lock or
+    // a claim that the peer has accepted any packet.
+    auto *desc=reinterpret_cast<volatile uint32_t *>(d->adsp.smem.base+at);
+    const uint32_t txTail=desc[0],txHead=desc[1],rxTail=desc[2],rxHead=desc[3];
+    printf("NEZHA AUDIO27 GLINK FIFO: point=%u present=1 tx-tail=%u tx-head=%u rx-tail=%u rx-head=%u tx=%u rx=%u version=%u\n",
+        point,txTail,txHead,rxTail,rxHead,d->adsp.glink.tx_messages,d->adsp.glink.rx_messages,d->adsp.glink.version_agreed);
+}
 void post_ready(void *v,uint32_t point,int result) {
     auto *d=static_cast<AudioDspProbe *>(v);d->postPoint=point;d->postResult=result;publish(d);
+    if (point==NaAdspGlinkDeferred || point==NaAdspGlinkSetupBegin || point==NaAdspGlinkSetupReturn ||
+        point==NaAdspGlinkBegin || point==NaAdspGlinkReturn ||
+        point==NaAdspGlinkKickBegin || point==NaAdspGlinkKickReturn) glink_fifo_state(d,point);
     if (point==NaAdspGlinkSetupReturn && !result) {
         // Register the existing header observer before the first GLINK poll.
         d->adsp.glink.observe_context=d;d->adsp.glink.observe_header=glink_header;
