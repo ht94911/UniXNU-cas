@@ -1,7 +1,7 @@
 {
   "original_pin": "963f0e64f103d2e682cd0cc454a8fe50f52c8cbb",
   "patched_tree": "139445c01681140b6ccfb13c7ab160fd0e0f8553",
-  "builder_sha256": "d2e6697f0475592987349fc93f83f62132b7ff81beb9cdfdb56e6ee5b9817287",
+  "builder_sha256": "d4a6b6bda5606a6ae9a3900993d7b3e6701d99ab6813fa70f0259a15e74b5442",
   "patch_hashes": {
     "0002-resource-wait-storage-dependencies.patch": "4536f03ac5a829d0a23d839491837c62af00c1aa884dc75cdae0f195c7953c0c",
     "0003-cache-device-entry-point-priming.patch": "ca1c0e3733bc048d9771fc3a5d061fc4224eee3341dc41d4b64a71e6e9d06408",

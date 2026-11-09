@@ -1,7 +1,7 @@
-name: nezha iPhone27 render pass driver clocks 026
+name: nezha iPhone27 render pass driver clocks 026b (bounded build time)
 on:
   push:
-    branches: [codex/ios27-gpu27-metal-full-026-20261109]
+    branches: [codex/ios27-gpu27-metal-full-026b-20261109]
   workflow_dispatch:
 permissions:
   contents: read

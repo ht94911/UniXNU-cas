@@ -116,7 +116,7 @@ for source in sorted(args.logs.resolve().glob('*')):
         shutil.copyfile(source, OUT / 'logs' / source.name)
     elif source.is_dir():
         shutil.copytree(source, OUT / 'logs' / source.name)
-for pattern in ['.cache/mesa-tu-*.log', 'build/adreno-metal-bridge/build-*.log', 'build/turnip-darwin-host/*.log',
+for pattern in ['.cache/mesa-tu-*.log', 'build/adreno-metal-bridge/build-*.log', 'build/m2v-target/cargo-timings/*.html', 'build/turnip-darwin-host/*.log',
                 'build/turnip-darwin-host/*.json', 'build/adreno-metal-frontend-host/*.log', 'build/priming-cache/*.json', 'build/adreno-metal-plugin27/*.json']:
     for source in sorted(ROOT.glob(pattern)):
         target = OUT / 'logs' / source.parent.name.lstrip('.') / source.name

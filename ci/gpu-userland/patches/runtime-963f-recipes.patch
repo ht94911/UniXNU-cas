@@ -1,5 +1,5 @@
 diff --git a/scripts/build-adreno-metal-bridge.py b/scripts/build-adreno-metal-bridge.py
-index b28e073..d3b5758 100644
+index b28e073..27f888a 100644
 --- a/scripts/build-adreno-metal-bridge.py
 +++ b/scripts/build-adreno-metal-bridge.py
 @@ -26,20 +26,18 @@ if subprocess.check_output(['git', '-C', str(SOURCE), 'rev-parse', 'HEAD'], text
@@ -63,6 +63,17 @@ index b28e073..d3b5758 100644
  
  
  def git_tree(*steps):
+@@ -165,8 +168,8 @@ if args.target == 'ios27':
+ target_dir = ROOT / 'build/m2v-target'
+ log = out / ('build-%s.log' % args.target)
+ with log.open('w') as stream:
+-    result = subprocess.run(cargo + ['build', '--release', '--manifest-path', manifest, '--target', triple,
+-                             '--target-dir', target_dir], env=env, stdout=stream, stderr=subprocess.STDOUT, timeout=1800)
++    result = subprocess.run(cargo + ['build', '--release', '--timings', '--manifest-path', manifest, '--target', triple,
++                             '--target-dir', target_dir], env=env, stdout=stream, stderr=subprocess.STDOUT, timeout=5400)
+ if result.returncode:
+     raise SystemExit(log.read_text()[-6000:])
+ library = target_dir / triple / 'release/libadreno_metal_bridge.a'
 diff --git a/scripts/data/gpu-metal-vulkan-inputs.json b/scripts/data/gpu-metal-vulkan-inputs.json
 index 895ca16..96696c0 100644
 --- a/scripts/data/gpu-metal-vulkan-inputs.json
