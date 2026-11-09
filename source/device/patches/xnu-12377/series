@@ -36,4 +36,5 @@ zzzz-native-shutdown-unmount-observe.patch
 appsync-arm64-default-jop.patch
 appsync-arm64-user-jop.patch
 appsync-runtime.patch
+appsync-apple-restart.patch
 appsync-user-trust.patch
