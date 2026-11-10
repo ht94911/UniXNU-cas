@@ -49,6 +49,7 @@ if platform.system()=='Darwin':
 #include <dlfcn.h>
 #include <errno.h>
 #include <sys/sysctl.h>
+#include <mach/mach_time.h>
 '''
     helpers=r'''
 static std::mutex recordLock;static std::vector<TraceRec> records;

@@ -904,14 +904,15 @@ index 0000000..d568255
 +}
 diff --git a/NativeFrameObservers.inc b/NativeFrameObservers.inc
 new file mode 100644
-index 0000000..d55d551
+index 0000000..973e152
 --- /dev/null
 +++ b/NativeFrameObservers.inc
-@@ -0,0 +1,125 @@
+@@ -0,0 +1,126 @@
 +/* SPDX-License-Identifier: MIT */
 +// Included after the existing wait-sample serializer. All writes below are
 +// diagnostic records in this process's own trace; target memory is read only.
 +#include "NativeDisplayWaitState.h"
++#include <mach/mach_time.h>
 +#include <errno.h>
 +
 +static bool clientWaitOn() {
