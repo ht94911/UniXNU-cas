@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Pinned AppleKeyStore software wrap/unwrap, bag UUID, generation and cache-flow interfaces with existing board identity callback; retained Root source-status observer on fixed Wi-Fi023 hardware resources. Only public source and certificate are exported; firmware, OS inputs and identity remain local.",
+  "purpose": "Native013 fixed public AppleKeyStoreState source selection for the existing normal/late archive chain, retained Native011 Bluetooth/runtime observer and fixed Wi-Fi023 resources. Only necessary public source and certificate are exported; firmware, OS inputs and identity remain local. Keyboard pairing is unresolved.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,13 +14,13 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "10a8577a17f81b4cd60cf397dd8ec58e7d875798",
+  "device_revision": "3a0ec808cf9d0375d392225012e018ff48f9d823",
   "soc_revision": "3435fa55c3e835a4aaebf7d833473fd5d20073fd",
   "xcode": "26.6",
   "files": {
-    ".github/workflows/nezha-ios27-native.yml": "adab07872cb6d160344fb72b89e6be8ea23c7c365a3b809922d10355e071ef53",
+    ".github/workflows/nezha-ios27-native.yml": "6731cf04e409ec6726c0bc4d53de0b7b59661a0cba60ceb4e7ff6a30d76f8500",
     "ci/cache-signature-template.py": "3596fbb421e2d223c9d01b6280af68ca7e83595c99d3d96e481450f187201d72",
-    "ci/native.py": "04674168bdcd7d0b2cc8d27207556e6ced8e2080280cd58584921804a24b19d9",
+    "ci/native.py": "cb1eeafea7f7d5e8ec341765d71d04ec1e030b486a879cb1b12799036c505278",
     "source/adreno/LICENSE": "16fbc0170994a48f60938d9f0d992d3bad113383cf90882f75c206e079c2a2dc",
     "source/adreno/NativeAdrenoA740HwInit.h": "4b6a7f357b9bb8b99a2b5f4f503696c1f7f2e8ce1c55cd0b6d0d74c6f126ba19",
     "source/adreno/NativeAdrenoABI.h": "d1c8a27d6e61787073c2c56a779ff4d5c43d86f2d23ac0c0fba0368af8dcdeae",
@@ -81,6 +81,11 @@
     "source/adreno/NativeGpuTrace.inc": "24460c37660233ba80a6a3c22bda1415e353d5dba6a6f04adb3dff415c3ee23b",
     "source/adreno/NativeGpuTraceStore.h": "4a2984192bc2c68383146f558212d1000c920a8d9cbe54ccec8badd935844823",
     "source/device/board.toml": "43474f64ed1cdddcec276ea1e256a0d9e794e516c30f567fe216873f63dca90f",
+    "source/device/components/AppleKeyStoreState/AGENTS.md": "31cf5883eab836cd09fdcc5dfbbdd0668b0ea21ee9512191f78583b9e960c47d",
+    "source/device/components/AppleKeyStoreState/LICENSE": "0a99193bda702c77e5b6a1b10029b68b6d4691cc2a4bf1010efb7dd8e5043e1b",
+    "source/device/components/AppleKeyStoreState/NativeKeyStoreEvents.cpp": "dc1c3f8a25b2e993b133e198eaf696084ccb5f911e55c074cdf5be4ffe571ba1",
+    "source/device/components/AppleKeyStoreState/README.md": "10a7d0feb1b61bfc4dc22589ac5a550490c01afa236509bbd6236162e1cd2712",
+    "source/device/components/AppleKeyStoreState/test_closed_boundary.py": "78324d08626482ee8e6d3f6d31d20c7e831aae685a83b1cf70068f99a6ab75b5",
     "source/device/components/QcaBluetooth/.gitignore": "ccae53882b7042c8229be0bc1ed943f5c520986e8f8338c8c24b80d346df0adc",
     "source/device/components/QcaBluetooth/AGENTS.md": "46b7ae4a345d65960f1cb3f37fc49b7051dcc9e08e7f47302e4b0e77808f1191",
     "source/device/components/QcaBluetooth/LICENSE": "8780e78a1a737e127f25a65f6d95269bffd36158dc261114de7859b490bfc5aa",
@@ -139,7 +144,7 @@
     "source/device/components/QcaBluetooth/vendor/linux-wcn7860/btqca.h": "0d795bcd1106b2c69a75e94813f1adca15078b433d90e041e34aabb0d2179187",
     "source/device/configs/nezha_ios27_defconfig": "78a0c420c42ddadf16d83b3605abbc0bc980aa179781404e91bfe275c7d558a5",
     "source/device/dts/nezha.dts": "4270dbca3644ee2856e27b5d9ceabc0bf8f73c548c2db9a1e4cb5f64dd62961b",
-    "source/device/feeds.toml": "ffff558d301ea881e1f908cc01c8e54069894f4d92bca3ab0be721e08b48769e",
+    "source/device/feeds.toml": "585bd9199ce67c3003e697861e4465d3414786e9250d3a9d954616490e11fba3",
     "source/device/package/.gitkeep": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
     "source/device/package/BootDiagExport.c": "88f65a92490b54444ca68ecf99e887ba1c7f6ee3d5145b8e6eed13bf90c7a92d",
     "source/device/package/BootLog.c": "b8a76a03be5b1595c09ab8181acadf6332f88196022c086eb4628addac25acb3",
@@ -276,6 +281,7 @@
     "source/device/package/gpu/NezhaGpuPublicationMode.h": "84b2641f1fa01f14d2a0c2c526525571a31472e532df9e0d401a4baa6bb2a676",
     "source/device/package/gpu/NezhaScm.c": "d5eff9fb85bd9215411e9c9ef56f40b5bc28334b9e1dd246d4f61b4f6aae4ab3",
     "source/device/package/ios27-root-owner-public.pem": "0afc03662d11ce57d705807de90f1c5491555280e56f300bb6e560af4513c1ad",
+    "source/device/package/keystore013-source-lock.json": "038cbc4a515643176e2e975277bb4e3d0b3cb2c1170ae1daad86568d26e459d0",
     "source/device/package/nezha27-input/HidInputProbe.cpp": "c3e6c59ffb2d8db299a6876599e6117b5d9f529272c6d8a8e2bbbf22326212dc",
     "source/device/package/nezha27-input/InputChainABI.h": "ac72a994d29b1b6097ec7ca440a2bcd7f41b7b4b9b7662393a38c683cbe40006",
     "source/device/package/nezha27-input/InputChainProbe.cpp": "7653046c23d9b3e11c2a89dff7312942b4e9fbee9a678da9026300d02903bdc3",
@@ -313,12 +319,12 @@
     "source/device/patches/xnu-12377/zzzzzz-nezha-input-chain-trace.patch": "c4d05419e7ec3af0de619754bdb6c2deb69b74d714c2219e509360ebfe1b947e",
     "source/device/patches/xnu-12377/zzzzzz-nezha-kernel-class-lock-order.patch": "cd90c61d6838f4e6a7248da81b6180f14db03d00f2f7a64f4bbe4034c0aa8dcb",
     "source/device/patches/xnu-12377/zzzzzz-nezha-sigp-startup-order.patch": "18275910b909d187e459c68f5d937cc09bc01923180141dc155aa7f4ff14aaf9",
-    "source/device/porting.toml": "62180f7604175ee6b457c8dafa6e989611c4ffb585a86de82b3cacfe3d0933c9",
+    "source/device/porting.toml": "d718af2b583cf439d815f5c72b2697e7f3a0edf8e4762dfd4512dfc905455329",
     "source/device/scripts/aes-iphone-24A446.json": "d55ed6d1d65fdff5de46dd602552eaf3309d1f7370fcd3f15eddb391225ffe8a",
     "source/device/scripts/backlight-iphone-24A446.json": "446eb5fe6440335bfe9fca75b32f7d815ddcafbb8a3c2d7f697c1e5c3f40f6cb",
     "source/device/scripts/build-adreno840.py": "269f32fe2c97d7baf846a148fed7c111a53869486626a87ec8daab7fdfc3ab91",
     "source/device/scripts/build-boot-progress.py": "a210eb1f0443574eb1506932aa9e8181d5c73aecf99397d8cc731568bd3210ba",
-    "source/device/scripts/build-gop-legacy-display-27.py": "f6f0e2cb69003dff292441f92b3e0431e5bd2519c24fbdef49e9365d519c07ea",
+    "source/device/scripts/build-gop-legacy-display-27.py": "baa801735246720d9cd98c71355f6c06ef9ab9c549386e7129b9eef70efe1abe",
     "source/device/scripts/build-ios27-pmgr.py": "f88a0596937cbf0504922751a3194e3a33bba609f683a415262887d2b64241e4",
     "source/device/scripts/build-nezha27-bluetooth.py": "91d540e33f87ecdb1aa9684b09d5a2ccc1c7bbc438f34e7539176cd4ac89dc0e",
     "source/device/scripts/build-nezha27-input.py": "cd559fad30207962411546b32ffb5547ae29379e7fa992d16eaab09a39b6cd28",
@@ -327,6 +333,7 @@
     "source/device/scripts/build-software-aes-iphone.py": "ad408438aca47fcb9e7daae4c53b77fa81c00bd0c9ff34cffca244cb324a08e0",
     "source/device/scripts/check-adreno840-integration.py": "822dd823f63242362649baee166a56a5d0accd22f906dff1d9d5902f66d7e02b",
     "source/device/scripts/check-iosurface-plane-27.py": "092f98e807491b17df3e10835d23f1c44ae25c8820cc43c6343c56fa75c3c4c8",
+    "source/device/scripts/check-keystore-source.py": "26930faa302a238c7847dcdec7f35eeeefd578e803a4082c8991f0be3ce9b344",
     "source/device/scripts/check-persistent-data.py": "c2a2c50534d564033e967cb34df230ec9d196c341eb1472f7ad10c06c13f72c3",
     "source/device/scripts/check-persistent-marker.py": "b44ed26f16e66aa29410e55d94682c616cc30c1c58df4371365e0863d8647bbe",
     "source/device/scripts/check-root-cwd-ownership.py": "704f9231bfeff097c50578c35772b18ceb9f870752e528532b4c5b9edbf71835",
@@ -416,7 +423,7 @@
     "firmware_slot_bytes": 262144,
     "snapshot_scope": "listed headers and native implementation units only"
   },
-  "qualification_iteration": "Native012: AppleKeyStoreState6ff plus existing chosen8-byte identity getter; actual24A446 ABI checked, target and keyboard pairing pending",
+  "qualification_iteration": "Native013: explicit five-file389c360 snapshot derived from6ff; existing getter and normal/late source/member/ABI checks. Native012 old42ff outputs rejected; actual target build and keyboard pairing pending.",
   "software_aes": {
     "source_revision": "c9ce79e16e6a4e74cbbb7f4315ad2ec342933c89",
     "upstream_revision": "4a45326da5c2cd6fe6813d79ee43db20805628af",
@@ -475,9 +482,9 @@
     "diagnostic_scope": "retained bounded HCI/link metadata and existing Root source int32 status observer; no peer identity or key material logging"
   },
   "keystore": {
-    "source_revision": "6ff4f11d8fdf853351f8d98e1bbe1373fb8da2e6",
-    "source_tree": "6767ccb546576e60074d60c5b3659c886131b14b",
-    "source_sha256": "6d564b710c5e2143c2ce99ee456b4d93f588b87b7de5599b79199e82fb497213",
+    "source_revision": "389c36062a29b910f746f31b9a63fe6af004fad7",
+    "source_tree": "9dc1c84777cf329b5af90aca14e1b04ece5e6279",
+    "source_sha256": "dc1c3f8a25b2e993b133e198eaf696084ccb5f911e55c074cdf5be4ffe571ba1",
     "functional_commit": "5454637729e39feaa361e6b658b6eec25c870f7e",
     "previous_source_revision": "42ff83e08b2265fe741d4adaf084bebe003452ba",
     "device_callback": "native_aks_device_id",
@@ -485,6 +492,23 @@
     "identity_value_exported": false,
     "software_keys_only": true,
     "target_compilation_pending": true,
-    "hardware_verified": false
+    "hardware_verified": false,
+    "origin_repository": "https://github.com/UniXNU/AppleKeyStoreState",
+    "origin_revision": "6ff4f11d8fdf853351f8d98e1bbe1373fb8da2e6",
+    "origin_tree": "6767ccb546576e60074d60c5b3659c886131b14b",
+    "source_files": {
+      "AGENTS.md": "31cf5883eab836cd09fdcc5dfbbdd0668b0ea21ee9512191f78583b9e960c47d",
+      "LICENSE": "0a99193bda702c77e5b6a1b10029b68b6d4691cc2a4bf1010efb7dd8e5043e1b",
+      "README.md": "10a7d0feb1b61bfc4dc22589ac5a550490c01afa236509bbd6236162e1cd2712",
+      "NativeKeyStoreEvents.cpp": "dc1c3f8a25b2e993b133e198eaf696084ccb5f911e55c074cdf5be4ffe571ba1",
+      "test_closed_boundary.py": "78324d08626482ee8e6d3f6d31d20c7e831aae685a83b1cf70068f99a6ab75b5"
+    },
+    "source_lock_sha256": "038cbc4a515643176e2e975277bb4e3d0b3cb2c1170ae1daad86568d26e459d0",
+    "source_snapshot": "source/device/components/AppleKeyStoreState",
+    "adaptation_patch_sha256": "0ee8d4284f2f631f5492ced58e5d72b9bbad892e4746ce59b7166b27ce8e6d3d",
+    "device_callback_source_sha256": "35ff8e97c56fd438158b1fe929c53e52dd027bc18f1b4e0eac8a2fdf662fd933",
+    "explicit_module_override_required": true,
+    "normal_late_actual_source_checks": true,
+    "keyboard_pairing_fixed": false
   }
 }

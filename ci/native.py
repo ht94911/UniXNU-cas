@@ -26,6 +26,42 @@ def run(argv, *, cwd=None, env=None, log=None):
     return subprocess.check_output([str(a) for a in argv], cwd=cwd, env=env, text=True).strip()
 
 
+def check_keystore_source(framework, work):
+    """Bind the existing explicit module override before any target compilation."""
+    manifest = json.loads((ROOT / 'inputs.json').read_text())
+    selected = (work / 'device/components/AppleKeyStoreState').resolve()
+    sys.path.insert(0, str(framework / 'scripts'))
+    from unixnu.cli import parser
+    from unixnu.config import Context
+    from unixnu.feeds import resolve
+    override = 'driver:AppleKeyStoreState=' + str(selected)
+    args = parser().parse_args(['status', '--config', str(work / 'build.toml'),
+                               '--device', str(work / 'device'), '--out', str(work / 'out'),
+                               '--local-module', override])
+    module = resolve(Context(args))[('driver', 'AppleKeyStoreState')]
+    if module.path.resolve() != selected or module.origin != 'local (--local-module)':
+        raise ValueError('The effective AppleKeyStoreState source is not the explicit snapshot')
+    actual = {name: sha(selected / name) for name in manifest['keystore']['source_files']}
+    if actual != manifest['keystore']['source_files']:
+        raise ValueError('Effective AppleKeyStoreState source SHA differs')
+    lock = work / 'device/package/keystore013-source-lock.json'
+    if sha(lock) != manifest['keystore']['source_lock_sha256']:
+        raise ValueError('Effective AppleKeyStoreState source lock differs')
+    source_lock = json.loads(lock.read_text())
+    if (source_lock['source_revision'] != manifest['keystore']['source_revision'] or
+            source_lock['tree'] != manifest['keystore']['source_tree'] or
+            actual != {name: item['sha256'] for name, item in source_lock['source_files'].items()} or
+            sha(work / 'device/package/KeyStoreProbe.cpp') != source_lock['device_callback_source_sha256']):
+        raise ValueError('Effective KeyStore component/getter provenance differs')
+    result = dict(passed=True, module='AppleKeyStoreState', origin=module.origin,
+                  source=str(selected), source_files=actual,
+                  device_revision=manifest['device_revision'], override=override,
+                  source_lock_sha256=sha(lock), callback_source_sha256=source_lock['device_callback_source_sha256'],
+                  phone_operations=False, target_compiled=False)
+    (work / 'keystore-source-selection.json').write_text(json.dumps(result, indent=2) + '\n')
+    return override
+
+
 def prepare(framework, work):
     manifest = json.loads((ROOT / 'inputs.json').read_text())
     for name, digest in manifest['files'].items():
@@ -119,6 +155,7 @@ def prepare(framework, work):
         'actual_framework_tree': tree, 'source_tree_verified': True, 'jobs': jobs,
         'device_executed': False, 'proprietary_inputs_uploaded': False,
     }, indent=2) + '\n')
+    check_keystore_source(framework, work)
 
 
 def build(framework, work):
@@ -159,15 +196,33 @@ def build(framework, work):
                log=logs / 'cache-template.log')
     if code: return code
     config = work / 'build.toml'
+    keystore_override = check_keystore_source(framework, work)
     commands = [
-        ['python3', framework / 'unixnu', 'defconfig', 'nezha_ios27_defconfig', '--config', config],
-        ['python3', framework / 'unixnu', 'kernel', '--skip-prelink', '--config', config],
+        ['python3', framework / 'unixnu', 'defconfig', 'nezha_ios27_defconfig', '--config', config,
+         '--local-module', keystore_override],
+        ['python3', framework / 'unixnu', 'kernel', '--skip-prelink', '--config', config,
+         '--local-module', keystore_override],
     ]
     for index, command in enumerate(commands):
         code = run(command, cwd=framework, log=logs / ('step-' + str(index) + '.log'))
         if code:
             return code
-    return 0
+    # Inspect the actual assembled tree, objects and native link, after the
+    # unchanged bootstrap/archive/final-link sequence has finished.
+    kernels = {path.resolve() for path in
+        (work / 'out/nezha/ios-27.0.1-24A446-iphone14-4').glob('*/kernel/kernel.macho')}
+    if len(kernels) != 1:
+        raise ValueError('Select exactly one actual Native013 kernel for KeyStore checks')
+    kernel = next(iter(kernels))
+    tree = kernel.parent.parent / 'tree'
+    llvm = Path(run(['brew', '--prefix', 'llvm'])) / 'bin'
+    return run([sys.executable, tree / 'scripts/check-keystore-source.py',
+                '--source', tree / 'drivers/AppleKeyStoreState',
+                '--probe', tree / 'kits/nezha/KeyStoreProbe.cpp',
+                '--lock', tree / 'kits/nezha/keystore013-source-lock.json',
+                '--tree', tree, '--llvm', llvm, '--kernel', kernel,
+                '--out', work / 'keystore-target-qualification.json'],
+               log=logs / 'keystore-target-qualification.log')
 
 
 def reference(framework, work):
@@ -203,7 +258,8 @@ def collect(framework, work, sealed):
 
     add(ROOT / 'inputs.json', 'inputs.json')
     for name in ('source-report.json', 'integration-source-qualified.json', 'compiler-report.json', 'authenticated-null.c',
-                 'authenticated-null.o', 'authenticated-null.s'):
+                 'authenticated-null.o', 'authenticated-null.s', 'keystore-source-selection.json',
+                 'keystore-target-qualification.json'):
         add(work / name, name)
     for path in sorted((work / 'logs').glob('*.log')):
         add(path, 'logs/' + path.name)
@@ -234,6 +290,13 @@ def collect(framework, work, sealed):
         for path in sorted((tree / 'build/native-legacy-display').glob('*')):
             if path.is_file() and path.suffix in ('.json','.log','.o','.S','.h','.cpp'):
                 add(path, 'archives/native-legacy-display/' + path.name)
+        for name in json.loads((ROOT / 'inputs.json').read_text())['keystore']['source_files']:
+            add(tree / 'drivers/AppleKeyStoreState' / name, 'keystore-source/' + name)
+        add(tree / 'kits/nezha/KeyStoreProbe.cpp', 'keystore-source/KeyStoreProbe.cpp')
+        add(tree / 'kits/nezha/keystore013-source-lock.json', 'keystore-source/source-lock.json')
+        for path in sorted((tree / 'build/apple-key-store-state').glob('*')):
+            if path.is_file() and path.suffix in ('.json', '.log', '.o'):
+                add(path, 'archives/apple-key-store-state/' + path.name)
         for path in sorted((tree / 'build/ram-block').glob('*')):
             if path.is_file() and path.suffix in ('.json','.log','.o','.cpp','.h'):
                 add(path, 'archives/ram-block/' + path.name)

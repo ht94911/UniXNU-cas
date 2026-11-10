@@ -391,15 +391,15 @@ evidence = [{kind = "source", reference = "tools/test-wifi27-ioctl.py", result =
 
 
 [[area]]
-id = "ios27-bluetooth-keystore012"
+id = "ios27-bluetooth-keystore013"
 status = "implemented"
 components = ["QcaBluetooth", "AppleKeyStoreState"]
-paths = ["feeds.toml", "package/KeyStoreProbe.cpp", "components/QcaBluetooth/tools/native_ios27.py", "components/QcaBluetooth/tools/test-native.py"]
-inputs = ["Fixed Wi-Fi023 and Native011 source c0660693; existing 24A446 AppleKeyStore wrapper ABI", "AppleKeyStoreState 6ff4f11d8fdf853351f8d98e1bbe1373fb8da2e6; functional increment 5454637"]
-configuration = ["Retain sheng-aks board callback gate and original explicit late initialization", "Reuse existing chosen unique-chip-id: exactly8 nonzero raw bytes, existing private platform seed", "Preserve original root-key error returns and existing source-status observer"]
-procedure = ["Build the pinned canonical AppleKeyStoreState component with the original target command", "Verify normal and late object source identity, one native_aks_device_id definition and strict38 closure", "Use an independent RAM Data Bluetooth candidate and shared-file phone handoff"]
-findings = ["Original KeyStore42ff returns unsupported for wrap/unwrap, UUID, generation and cache-flow interfaces", "Pinned upstream6ff retains545 functional code;24A446 selectors10/11/23/40/160 wire shapes match", "The board callback copies the existing registry property without generating or logging an identity"]
+paths = ["feeds.toml", "components/AppleKeyStoreState", "package/KeyStoreProbe.cpp", "package/keystore013-source-lock.json", "scripts/check-keystore-source.py", "scripts/build-gop-legacy-display-27.py", "components/QcaBluetooth/tools/native_ios27.py", "components/QcaBluetooth/tools/test-native.py"]
+inputs = ["Fixed Wi-Fi023 and Native011 source c0660693; existing 24A446 AppleKeyStore wrapper ABI", "Public AppleKeyStoreState6ff plus local389c36062a29b910f746f31b9a63fe6af004fad7; five-file SHA lock"]
+configuration = ["Retain sheng-aks board callback gate and original explicit late initialization", "Reuse existing chosen unique-chip-id: exactly8 nonzero raw bytes, existing private platform seed", "Preserve original root-key error returns and existing source-status observer", "Local feed and explicit driver:AppleKeyStoreState override select the same fixed source for normal/late builds"]
+procedure = ["Reuse build-arm-driver.py AppleKeyStoreState after the existing kernel bootstrap", "Verify selected five files, original getter, compile command, identical normal rebuild, normal/late code and exact archive members", "Verify arm64e target, one strong C ABI getter, explicit initializer and strict38 closure before making a new candidate"]
+findings = ["Native012 CI42832254369 succeeded but its actual Legacy source remained42ff; local qualification rejected it before prelink or packaging", "Framework submodule resolution precedes git feeds; a6ff git pin alone did not select that source", "Selected dc1c3f8a source retains the reviewed6ff API/blob with local key derivation and complete descriptor-output checks", "The unchanged board callback copies the existing registry property without generating or logging an identity"]
 limits = ["Target compile and actual KeyStore operations pending", "Software wrapping does not provide hardware data protection or SEP blob compatibility", "008 mouse input is the actual functional reference; keyboard pairing and persistent bonds remain unresolved"]
 completion = ["Actual daemon starts with its original errors preserved", "Actual keyboard pairing and input succeed", "Bond persistence, sleep, coexistence and audio profiles are separately qualified"]
-next_action = ["Collect011-compatible daemon process evidence and compile the independent Native012 dependency candidate"]
-evidence = [{kind = "source", reference = "https://github.com/UniXNU/AppleKeyStoreState/commit/6ff4f11d8fdf853351f8d98e1bbe1373fb8da2e6", result = "Five-file source read and existing actual24A446 ABI checked; hardware pending"}]
+next_action = ["Build the fixed independent Native013 inputs once, then qualify actual objects and strict closure; keyboard click/event evidence remains a separate pending task"]
+evidence = [{kind = "source", reference = "package/keystore013-source-lock.json", result = "Reviewed five-file snapshot and preserved getter fixed; actual arm64e build and hardware pending"}]

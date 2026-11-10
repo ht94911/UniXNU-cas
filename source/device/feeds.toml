@@ -57,8 +57,9 @@ commit = "589e02907fb0431c7ce246a3fd8a0ada1afdfeb4"
 [[source]]
 name = "AppleKeyStoreState"
 kind = "driver"
-git = "https://github.com/UniXNU/AppleKeyStoreState.git"
-commit = "6ff4f11d8fdf853351f8d98e1bbe1373fb8da2e6"
+# Public 6ff source plus the reviewed local 389c360 contract fixes.
+# A local feed beats the framework's 42ff submodule; a git pin alone does not.
+local = "components/AppleKeyStoreState"
 
 [[source]]
 name = "RamBlock"
