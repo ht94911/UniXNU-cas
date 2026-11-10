@@ -2,6 +2,20 @@
 schema_version = 1
 
 [[area]]
+id = "ios27-account-input004"
+status = "implemented"
+components = ["QcomXnuUsbDebug", "ArmCpu"]
+paths = ["package/nezha27-input/NezhaAA27Input.h", "package/nezha27-input/NezhaAA27InputUsb.h", "package/nezha27-input/NativeHidInput.cpp", "scripts/build-nezha27-input.py", "tests/account-input.c", "tests/account-input-usb.cpp"]
+inputs = ["Fixed account003 app and Applications view; unchanged tested002 Wi-Fi contract", "Existing r008 diagnostic provider contract and original paced HID parser/handleReport", "Human requested unattended operation without input prompts"]
+configuration = ["Diagnostic-only aa27-input=1 registers provider27 for snapshot and submit", "Submit carries one tap or swipe and a monotonically increasing action ID; no addresses, files, text, reset or arbitrary command", "Real physical frames drain before a gesture starts; existing16ms owner handles one synthetic frame per tick"]
+procedure = ["Test production gesture core with the original coalescer and actual USB callbacks", "Qualify arm64e object, original207 HID slots and strict prelink", "Use screenshots and action completion to operate only the independent AA27 test app after a protected temporary boot"]
+findings = ["Existing fixed USB providers do not expose UI input", "Local tests retain down/up boundaries, diagonal/reverse swipe positions, output capacity and known failure without replay", "Queued receipt is distinct from HID dispatch and from actual app behavior"]
+completion = ["Actual screenshot and App output confirm input reaches the intended view", "Original SecItem operations and a later normal-boot canary read pass"]
+limits = ["Computer tests do not prove actual UI or SecItem success", "Unchanged Wi-Fi/K1/App behavior, Android and both Data contracts; no main promotion"]
+next_action = ["Finish all build, package and host input preparation before queuing the unattended candidate"]
+evidence = [{kind = "source", reference = "tests/account-input.c", result = "Production core plus original pacer pass C11, ASan and UBSan."}, {kind = "source", reference = "tests/account-input-usb.cpp", result = "Actual USB callbacks with local clock/registration substitutions; no phone commands."}]
+
+[[area]]
 id = "ios27-account-app003"
 status = "implemented"
 components = ["AppleKeyStoreState", "RamBlock", "QcomXnuUsbDebug"]

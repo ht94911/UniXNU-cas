@@ -1,7 +1,7 @@
-name: nezha AA27 ordinary test app view - native003
+name: nezha AA27 bounded unattended input - native004b
 on:
   push:
-    branches: [codex/ios27-account-native003-20261111]
+    branches: [codex/ios27-account-native004b-20261111]
   workflow_dispatch:
 permissions:
   contents: read

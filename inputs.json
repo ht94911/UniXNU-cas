@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "AA27 native003: same Wi-Fi/K1 inputs as native001; standalone app uses the existing read-only Applications view.",
+  "purpose": "AA27 native004: existing app, Wi-Fi and K1; bounded unattended tap/swipe through the original HID owner.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "56d5a254da7b5e1444d8cad6589771349b739779",
+  "device_revision": "143b795453dc4cc24e3670d301ccb73091754b55",
   "soc_revision": "3b50026405e2a42b7314a0b8703333cf2418d956",
   "xcode": "26.6",
   "files": {
@@ -90,7 +90,7 @@
     "source/device/package/BootUiTraceCore.h": "9404d7be6386f936904e6af34c870d86ec809b4d97161fd892d904d8334f2753",
     "source/device/package/BootUiTraceDetails.h": "b9c0d9afbc80359a08f2aabb87cf6ee94c5227e64212dffb05ea8d9e08a8473e",
     "source/device/package/BootUiTraceProbe.c": "22a3e64f66a6386e0129dc0673d673c628aa6f52bce72fa7145962312d123dad",
-    "source/device/package/BootWatchdogPolicy.c": "69ee21c22267f3037c8043dc1461083dd22caf60c46e07beae25f6ac544cc2f3",
+    "source/device/package/BootWatchdogPolicy.c": "b492c029781432c84f92f9953af0cd962a0a2b34583c46a20bbd6cedbf51957b",
     "source/device/package/KeyStoreProbe.cpp": "25d74bbcbd4c8979d6872efb1182da4eecac9f83529dac7d3a34879c75071abf",
     "source/device/package/LegacyDisplayProbe.cpp": "3784f582190c259099a921f0c3add561f80bfa5cfdb33f5f6ea30c1151a13643",
     "source/device/package/Nezha27UsbControl.c": "e0465c9996b74bf7116853be87bc5223d803926df373ea25e4523ff2f9a441c8",
@@ -207,7 +207,7 @@
     "source/device/package/nezha27-input/InputChainProbe.cpp": "7653046c23d9b3e11c2a89dff7312942b4e9fbee9a678da9026300d02903bdc3",
     "source/device/package/nezha27-input/InputChainTrace.h": "00a1e23a591f64d7bb8ce99d4787d9371f8b980e0e6c6e3ef364d67a092c31ef",
     "source/device/package/nezha27-input/InputEventBridge.cpp": "52ed3de36616fa7d260d529abdd1003320b8cc1dc3212f0b0fdf956a70ed53b2",
-    "source/device/package/nezha27-input/NativeHidInput.cpp": "67bdd0f7992bfb224b634a71e040e93f0968129777966b04683c7fa43571dc02",
+    "source/device/package/nezha27-input/NativeHidInput.cpp": "392641f18d04b5693ebd63873f551de180005b72fef0c1aeaec137995402e339",
     "source/device/package/nezha27-input/NezhaHidPacing.h": "2be615567252073a62587b41fa7f646f6d9bda4dbae2523cceef14caa300a5a9",
     "source/device/package/nezha27-input/NezhaInput.c": "33e91fc8a99d2e60fdf16de40501cc56edc233592027953d5eeaf14cfe77a6db",
     "source/device/package/nezha27-input/NezhaInput.h": "b1e34b185e3159f2d8eb565cb9e66edbb1e58c0ba087c28e4da55dbf0c8b74f3",
@@ -237,14 +237,14 @@
     "source/device/patches/xnu-12377/zzzzzz-nezha-input-chain-trace.patch": "c4d05419e7ec3af0de619754bdb6c2deb69b74d714c2219e509360ebfe1b947e",
     "source/device/patches/xnu-12377/zzzzzz-nezha-kernel-class-lock-order.patch": "cd90c61d6838f4e6a7248da81b6180f14db03d00f2f7a64f4bbe4034c0aa8dcb",
     "source/device/patches/xnu-12377/zzzzzz-nezha-sigp-startup-order.patch": "18275910b909d187e459c68f5d937cc09bc01923180141dc155aa7f4ff14aaf9",
-    "source/device/porting.toml": "4139c4a97c44e7f5a14c12e534915e84546e0520f70c1860f796d48b0ff8066b",
+    "source/device/porting.toml": "3e3c71f827250a0de9f5d93ae32f49eddea65e138271795cad3bbed2b22e6259",
     "source/device/scripts/aes-iphone-24A446.json": "d55ed6d1d65fdff5de46dd602552eaf3309d1f7370fcd3f15eddb391225ffe8a",
     "source/device/scripts/backlight-iphone-24A446.json": "446eb5fe6440335bfe9fca75b32f7d815ddcafbb8a3c2d7f697c1e5c3f40f6cb",
     "source/device/scripts/build-adreno840.py": "269f32fe2c97d7baf846a148fed7c111a53869486626a87ec8daab7fdfc3ab91",
     "source/device/scripts/build-boot-progress.py": "a210eb1f0443574eb1506932aa9e8181d5c73aecf99397d8cc731568bd3210ba",
     "source/device/scripts/build-gop-legacy-display-27.py": "f6f0e2cb69003dff292441f92b3e0431e5bd2519c24fbdef49e9365d519c07ea",
     "source/device/scripts/build-ios27-pmgr.py": "f88a0596937cbf0504922751a3194e3a33bba609f683a415262887d2b64241e4",
-    "source/device/scripts/build-nezha27-input.py": "cd559fad30207962411546b32ffb5547ae29379e7fa992d16eaab09a39b6cd28",
+    "source/device/scripts/build-nezha27-input.py": "382a86e7f8ac390ddb4bb8e2d9f21fc73d980a56750106e5ec0f1f7464b1021b",
     "source/device/scripts/build-nezha27-usb-control.py": "a2cd48a8e07a1cc43cc54488d7492c45f63aaa21121ea85667e34752b83d4971",
     "source/device/scripts/build-nezha27-wifi.py": "e301b5f4f0acaeff47c4449968ce76901409a29253da2392cc34ed24e1a2d250",
     "source/device/scripts/build-software-aes-iphone.py": "ad408438aca47fcb9e7daae4c53b77fa81c00bd0c9ff34cffca244cb324a08e0",
@@ -298,7 +298,11 @@
     "source/ufs.bundle": "3a7c1c6ac7e5a39e6cb4adcc6143fa1e4c6c24ae862aa501102f9fb70c21a534",
     "source/usb.bundle": "fc77b40791b6994f0da015b13b68a13cee5e8bc84e510cee4e518866165efeb2",
     "ci/native.py": "fd3b57db44a25b11e0cbc78107ca97a8be81704e5ff4723268068b5ca170ddbb",
-    "source/device/patches/xnu-12377/zzzz-aa27-test-app-view.patch": "4fd897055265b5b58d67fea877eb286b9ff7e482062c6c666268e4e93ffd6b2f"
+    "source/device/patches/xnu-12377/zzzz-aa27-test-app-view.patch": "4fd897055265b5b58d67fea877eb286b9ff7e482062c6c666268e4e93ffd6b2f",
+    "source/device/package/nezha27-input/NezhaAA27Input.h": "d112cd0663fc3fb84dc6be506fe4efac4ede748d541b48f2cc9c3a25852829a2",
+    "source/device/package/nezha27-input/NezhaAA27InputUsb.h": "518bef1aed0bff912d8c97ca036b6c9357a1c49164b074ce8d35fa1861542aa7",
+    "source/device/tests/account-input.c": "45ab6284186bcfdb18c6134a3f1273630bca82666d4da7ab8051815dc420d30b",
+    "source/device/tests/account-input-usb.cpp": "e783353465e36370e5d2b449f5629750e8b47b3d2a21e7ad36cd99cc7b0297d7"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
@@ -374,6 +378,20 @@
       "app_source_head": "063253a84ce7e715a696153c0e0c3d3c46135b22",
       "builtin_flag": "aa27-probe=1",
       "hardware_app_registration_verified": false,
+      "native_SecItem_execution_verified": false,
+      "K1_format_unchanged": true
+    },
+    "input_probe": {
+      "prior_account_native_run": 42889955573,
+      "app_build_run": 42886916994,
+      "builtin_flag": "aa27-input=1",
+      "provider_id": 27,
+      "operations": [
+        "snapshot",
+        "submit-tap",
+        "submit-swipe"
+      ],
+      "phone_input_verified": false,
       "native_SecItem_execution_verified": false,
       "K1_format_unchanged": true
     }

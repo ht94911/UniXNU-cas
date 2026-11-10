@@ -15,6 +15,7 @@ static_assert(sizeof(IOHIDDevice)==208,"selected27 IOHIDDevice base layout");
 #include <IOKit/IOTimerEventSource.h>
 #include <libkern/c++/OSString.h>
 #include <libkern/c++/OSIterator.h>
+#include "NezhaAA27InputUsb.h"
 extern "C" void native_hid_input_observed(unsigned,int);
 extern "C" void native_hid_live_checkpoint(IOService *);
 extern "C" bool native_hid_input_requested(void);
@@ -70,23 +71,60 @@ class NativeHidInput : public IOHIDDevice {
     uint32_t keyMask=0;            // report 2 bits of the physical keys currently down
     uint32_t sent=0;               // report 2 bits last accepted by handleReport
     unsigned homeHold=0;           // ticks left for a synthetic Home press
+    bool aaOwner=false,aaReplay=false,aaRead=false,aaAckPending=false,aaDispatched=false;
+    uint32_t aaResult=0;
+    struct nezha_touch_frame aaFrame={};
     static bool readTouch(void *,struct nezha_touch_frame *out) {return nezha_touch_next(out);}
+    static bool readAA27(void *context,struct nezha_touch_frame *out) {
+        NativeHidInput *self=static_cast<NativeHidInput *>(context);
+        if(self->aaRead)return false;
+        self->aaRead=true;*out=self->aaFrame;return true;
+    }
+    bool finishAA27Ack() {
+        if(!aaAckPending)return true;
+        if(!aa27InputOwnerAck(aaFrame.sequence,aaResult,aaDispatched))return false;
+        aaAckPending=false;return true;
+    }
+    void acknowledgeAA27(uint32_t result,bool dispatched) {
+        if(!aaReplay)return;
+        aaResult=result;aaDispatched=dispatched;aaAckPending=true;
+        finishAA27Ack();
+    }
+    bool pickTouch() {
+        aaReplay=false;
+        if(!aaOwner)return nezha_hid_pick(&touchState,readTouch,nullptr);
+        aa27_input_state replay={};
+        if(!aa27InputOwnerState(true,false,&replay))return false;
+        if(replay.phase!=AA27_ACTIVE) {
+            // Drain the real producer first. A queued gesture starts only at
+            // a delivered all-up boundary, without discarding physical frames.
+            if(nezha_hid_pick(&touchState,readTouch,nullptr))return true;
+            if(!aa27InputOwnerState(true,!touchState.delivered.active &&
+                !touchState.ready && !touchState.has_lookahead,&replay))return false;
+        }
+        if(!aa27_input_frame(&replay,&aaFrame))return false;
+        aaReplay=true;aaRead=false;
+        return nezha_hid_pick(&touchState,readAA27,this);
+    }
     static void touchTick(OSObject *owner,IOTimerEventSource *source) {
         NativeHidInput *self=OSDynamicCast(NativeHidInput,owner);if(!self)return;
         volatile struct nzi_frame *d=&nezha_hid_input_diag;uint32_t stamp=nzi_begin(d);
         nzi_put(d,H_VERSION,1);nzi_put(d,H_TICKS,nzi_get(d,H_TICKS)+1);nzi_put(d,H_STOP,self->touchFailed);
         nzi_time(d,H_TICKLO,mach_absolute_time());nzi_end(d,stamp);
+        // A busy snapshot may delay only the completion bookkeeping; never
+        // dispatch the same report a second time while its result is known.
+        if(!self->finishAA27Ack()){source->setTimeoutMS(16);return;}
         if(self->touchFailed)return;
         source->setTimeoutMS(16);
         bool ready=self->hasEventDriverCached();stamp=nzi_begin(d);nzi_put(d,H_READY,ready);nzi_end(d,stamp);
         if(!ready || !self->touchBuffer)return;
-        if(!nezha_hid_pick(&self->touchState,readTouch,nullptr))return;
+        if(!self->pickTouch())return;
         stamp=nzi_begin(d);nzi_put(d,H_SEEN,self->touchState.pending.sequence);nzi_time(d,H_COALLO,self->touchState.coalesced);nzi_end(d,stamp);
         if(nezha_hid_same_contacts(&self->touchState.delivered,&self->touchState.pending)) {
-            nezha_hid_commit(&self->touchState);return;
+            self->acknowledgeAA27(0,false);nezha_hid_commit(&self->touchState);return;
         }
         unsigned char report[62];unsigned count=touchReport(&self->touchState.delivered,&self->touchState.pending,report);
-        if(!count){nezha_hid_commit(&self->touchState);return;}
+        if(!count){self->acknowledgeAA27(0,false);nezha_hid_commit(&self->touchState);return;}
         uint32_t mask=self->touchState.pending.active;
         unsigned id=(unsigned)__builtin_ctz(mask?mask:self->touchState.delivered.active);
         stamp=nzi_begin(d);nzi_put(d,H_ATTEMPT,nzi_get(d,H_ATTEMPT)+1);nzi_put(d,H_IN_CALL,1);
@@ -97,8 +135,10 @@ class NativeHidInput : public IOHIDDevice {
         nzi_put(d,H_WIRE_Y,(uint32_t)report[5+id*6]|((uint32_t)report[6+id*6]<<8));
         nzi_put(d,H_CONTACTS,count);nzi_time(d,H_STARTLO,mach_absolute_time());nzi_end(d,stamp);
         IOReturn result=kIOReturnNoMemory;
-        if(self->touchBuffer->writeBytes(0,report,sizeof(report))==sizeof(report))
+        bool dispatched=self->touchBuffer->writeBytes(0,report,sizeof(report))==sizeof(report);
+        if(dispatched)
             result=self->handleReport(self->touchBuffer,kIOHIDReportTypeInput,0);
+        self->acknowledgeAA27((uint32_t)result,dispatched);
         native_hid_input_observed(6,result);native_touch_hid_reports=native_touch_hid_reports+1;
         stamp=nzi_begin(d);nzi_put(d,H_RETURN,nzi_get(d,H_RETURN)+1);nzi_put(d,H_IN_CALL,0);nzi_put(d,H_RESULT,(uint32_t)result);
         if(result==kIOReturnSuccess){uint32_t before=nzi_get(d,H_ACK_MASK);nzi_put(d,H_OK,nzi_get(d,H_OK)+1);
@@ -112,6 +152,7 @@ class NativeHidInput : public IOHIDDevice {
         }
         if(result!=kIOReturnSuccess) {
             self->touchFailed=true;stamp=nzi_begin(d);nzi_put(d,H_STOP,1);nzi_end(d,stamp);source->cancelTimeout();
+            if(self->aaAckPending)source->setTimeoutMS(16);
             printf("NEZHA HID: touch report stopped after error;pending preserved,no automatic replay\n");return;
         }
         nezha_hid_commit(&self->touchState);
@@ -226,6 +267,7 @@ public:
             else OSSafeReleaseNULL(touchTimer);
         }
         setProperty("OfflineInputProbe",true);
+        if(touchTimer)aaOwner=aa27InputRegister();
         native_hid_input_observed(2,0);
         timer->setTimeoutMS(1000);return true;
     }
