@@ -85,6 +85,7 @@ class NativeNezhaBacklight : public AppleARMBacklight {
         OSSafeReleaseNULL(productMax);OSSafeReleaseNULL(productMid);OSSafeReleaseNULL(productMin);return valid;
     }
     void fault(int result) {
+        const uint64_t faultGeneration=activeGeneration;
         __atomic_store_n(&unavailable,true,__ATOMIC_RELEASE);
         trace("fault",activeRequest,activeGeneration,commands.sending,result);
         nezha_backlight_transport_result=result;nezha_backlight_stage=20;
@@ -92,6 +93,20 @@ class NativeNezhaBacklight : public AppleARMBacklight {
         activeGeneration=0;commands.blocked=true;
         if(tick)tick->cancelTimeout();
         printf("NEZHA BACKLIGHT: stopped result=%d last-confirmed=%u;no retry or forced controller reset\n",result,commands.acknowledged);
+        struct nezha_dsi_observation observation;
+        if(nezha_dsi_observation_fault(&dsi,faultGeneration,result,&observation)) {
+            printf("NEZHA BACKLIGHT FAULT POLL: owner=%llx req=%u gen=%llu lease=%llu began-us=%llu now-us=%llu elapsed-us=%llu polls=%u maxgap-us=%llu sending=%u ack=%u result=%d active=%u poisoned=%u prepared=%u\n",
+                (unsigned long long)(uintptr_t)observation.owner,observation.request,
+                (unsigned long long)observation.generation,(unsigned long long)observation.lease_epoch,
+                (unsigned long long)observation.began_us,(unsigned long long)observation.last_poll_us,
+                (unsigned long long)(observation.last_poll_us-observation.began_us),observation.polls,
+                (unsigned long long)observation.max_gap_us,observation.sending,observation.acknowledged,
+                observation.result,(unsigned)observation.active,(unsigned)observation.poisoned,(unsigned)observation.prepared);
+            printf("NEZHA BACKLIGHT FAULT READS: first-us=%llu valid=%u ints=%08x status=%08x last-us=%llu valid=%u ints=%08x status=%08x\n",
+                (unsigned long long)observation.first_poll_us,observation.first_valid,
+                observation.first_ints,observation.first_status,(unsigned long long)observation.last_poll_us,
+                observation.last_valid,observation.last_ints,observation.last_status);
+        }
     }
     bool publishLevel(uint32_t value) {
         OSDictionary *brightness=OSDictionary::withCapacity(3),*milliNits=OSDictionary::withCapacity(3);
@@ -127,7 +142,9 @@ class NativeNezhaBacklight : public AppleARMBacklight {
             if(!nezha_brightness_offer(&commands,0x394)){fault(-39);return;}
         }
         if(activeGeneration) {
+            nezha_dsi_observation_poll_begin(&dsi,activeGeneration,now,commands.acknowledged);
             int result=sm_dsi_poll(&dsi.transfer,dsi.proof.lease_epoch,now);
+            nezha_dsi_observation_poll_end(&dsi,activeGeneration,result,&dsi.transfer);
             nezha_backlight_transport_result=result;
             if(result<0){fault(result);return;}
             if(result==SM_DSI_COMPLETE) {
@@ -183,6 +200,7 @@ class NativeNezhaBacklight : public AppleARMBacklight {
                 tick->setTimeoutMS(1);return;
             }
             if(result!=SM_DSI_SENT){fault(result);return;}
+            nezha_dsi_observation_begin(&dsi,activeGeneration,activeRequest,sending,commands.acknowledged,&dsi.transfer);
             trace("sent",activeRequest,activeGeneration,sending,result);
             refusalSince=0;nezha_backlight_transport_result=result;
             nezha_backlight_stage=published?12:11;
