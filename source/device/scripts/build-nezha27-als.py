@@ -143,9 +143,44 @@ llvm = Path(run(['brew', '--prefix', 'llvm'], text=True).strip())/'bin'
 late = OUT/'NezhaAlsFrontend.late.o'
 run([llvm/'llvm-objcopy', '--remove-section=__DATA,__mod_init_func',
      '--globalize-symbol=__GLOBAL__sub_I_NezhaAlsFrontend.cpp', object_path, late])
+# Compile the transport-neutral C pieces using the actual kernel C recipe.
+# The established owner builds exactly one QRTR object with this same header;
+# this archive does not add a second router or select a hardware edge.
+qrtr_include = Path(os.environ['UNIXNU_ALS_QRTR_DIR']).resolve()
+require(sha(qrtr_include/'QcomQrtr.h') ==
+        '665853eacbd6bf293ed16f02bce71f90a656da4feb02c5fe1da1d6eb032b2f5f',
+        'reviewed unadvertised-client QRTR header')
+c_record_path = ROOT/'build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837/osfmk/DEVELOPMENT/startup.o.json'
+c_record = json.loads(c_record_path.read_text().strip().rstrip(','))
+check_object((Path(c_record['directory'])/'startup.o').read_bytes(), 'actual kernel C recipe')
+c_objects, c_reports = [], {}
+for stem in ('Tcs3760Sns', 'NezhaAlsSscClient', 'NezhaAlsQrtrBackend'):
+    c_source = D/'package/als'/(stem+'.c')
+    c_object = OUT/(stem+'.o')
+    c_command = compiler.compile_command(c_record, c_source, c_object,
+        ['-I', str(c_source.parent), '-I', str(qrtr_include)],
+        ['-Wno-unknown-warning-option'])
+    (OUT/(stem+'-command.json')).write_text(json.dumps(c_command, indent=2)+'\n')
+    c_process = subprocess.run(c_command, cwd=c_record['directory'], capture_output=True, text=True)
+    (OUT/(stem+'.log')).write_text(c_process.stdout+c_process.stderr)
+    require(c_process.returncode == 0, c_process.stdout+c_process.stderr)
+    check_object(c_object.read_bytes(), str(c_source))
+    c_headers = {}
+    for name in shlex.split(c_object.with_suffix('.d').read_text().replace('\\\n', '').split(':', 1)[1]):
+        path = Path(name)
+        path = path if path.is_absolute() else Path(c_record['directory'])/path
+        c_headers[str(path.resolve())] = sha(path)
+    if stem == 'NezhaAlsQrtrBackend':
+        used_qrtr = [path for path in c_headers if Path(path).name == 'QcomQrtr.h']
+        require(used_qrtr == [str((qrtr_include/'QcomQrtr.h').resolve())],
+                'backend uses exactly the owner QRTR header')
+    (OUT/(stem+'-headers.json')).write_text(json.dumps(c_headers, indent=2)+'\n')
+    c_reports[stem] = dict(source_sha256=sha(c_source), object_sha256=sha(c_object),
+        compile_record_sha256=sha(c_record_path), headers=c_headers)
+    c_objects.append(c_object)
 archive = OUT/'libNezha27Als.a'
 archive.unlink(missing_ok=True)
-run(['xcrun', 'ar', 'rcs', archive, late, OUT/'als-bindings.o', OUT/'als-addresses.o'])
+run(['xcrun', 'ar', 'rcs', archive, late, OUT/'als-bindings.o', OUT/'als-addresses.o', *c_objects])
 report = dict(source_recipe='retained nezha27-input binding helpers; dedicated ALS archive',
     source_sha256=sha(source), object_sha256=sha(object_path), archive_sha256=sha(archive),
     fixture_sha256=sha(fixture_path), public_HID_commit=abi['IOHIDFamily_revision'],
@@ -157,6 +192,8 @@ report = dict(source_recipe='retained nezha27-input binding helpers; dedicated A
     opaque_original_event_constructor=True,
     event_reference_base='original single OSObject base; OSMetaClassBase virtual release',
     late_no_mod_init=True, backend_readiness_required=True, actual_hardware=False,
-    automatic_brightness_hardware_qualified=False, TrueTone_capability_added=False)
+    automatic_brightness_hardware_qualified=False, TrueTone_capability_added=False,
+    backend_C_objects=c_reports, owner_QRTR_header_sha256=sha(qrtr_include/'QcomQrtr.h'),
+    hardware_edge_selected=False, native_owner_caller_selected=False)
 (OUT/'build-report.json').write_text(json.dumps(report, indent=2)+'\n')
 print('ALS native archive compiled;219 original PAC slots bound;hardware/backend acceptance pending')

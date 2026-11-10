@@ -157,25 +157,33 @@ def build(framework, work):
     return 0
 
 
-def als_abi(framework, work):
-    """Compile the frozen ALS class separately against the completed kernel ABI."""
+def als_native(framework, work):
+    """Compile the frozen owner and ALS archives against one completed kernel ABI."""
     manifest = json.loads((ROOT / 'inputs.json').read_text())
     targets = list((work / 'out/nezha/ios-27.0.1-24A446-iphone14-4').glob('*'))
     targets = [p / 'tree' for p in targets
                if (p / 'tree/build/nezha27-input/build-report.json').is_file()]
     if len(targets) != 1:
-        raise ValueError('ALS ABI compile requires one completed native input target')
+        raise ValueError('ALS native compile requires one completed native input target')
     tree = targets[0]
-    for name in manifest['als_abi']['source_files']:
+    for name in manifest['als_abi']['source_files'] + manifest['als_owner']['source_files']:
         source = ROOT / 'source/device' / name
         if sha(source) != manifest['files']['source/device/' + name]:
             raise ValueError('ALS source input changed before native compilation: ' + name)
-    for name in ('build-nezha27-als.py', 'als-event-service-iphone-24A446.json'):
+    owner = tree / 'kits/nezha/audio27'
+    shutil.copytree(work / 'device/package/als-owner', owner)
+    for name in ('build-nezha27-als.py', 'als-event-service-iphone-24A446.json',
+                 'build-nezha27-als-owner.py', 'nezha27-als-owner-inputs.json'):
         shutil.copyfile(work / 'device/scripts' / name, tree / 'scripts' / name)
     env = dict(os.environ, UNIXNU_DEVICE=str(work / 'device'),
-               UNIXNU_XNU_ARCH='arm64e', UNIXNU_IOS_VERSION='27.0')
-    return run([sys.executable, tree / 'scripts/build-nezha27-als.py'],
-               cwd=tree, env=env, log=work / 'logs/als-abi.log')
+               UNIXNU_XNU_ARCH='arm64e', UNIXNU_IOS_VERSION='27.0',
+               UNIXNU_ALS_QRTR_DIR=str(owner / 'upstream'))
+    codes = []
+    for name, log in [('build-nezha27-als-owner.py', 'als-owner-native.log'),
+                      ('build-nezha27-als.py', 'als-native.log')]:
+        codes.append(run([sys.executable, tree / 'scripts' / name],
+                         cwd=tree, env=env, log=work / 'logs' / log))
+    return next((code for code in codes if code), 0)
 
 
 def reference(framework, work):
@@ -252,6 +260,14 @@ def collect(framework, work, sealed):
         for path in sorted((tree / 'build/nezha27-als').glob('*')):
             if path.is_file() and path.suffix in ('.json','.log','.o','.S','.a','.d'):
                 add(path, 'archives/nezha27-als/' + path.name)
+        for path in sorted((tree / 'build/nezha27-als-owner').glob('*')):
+            if path.is_file() and path.suffix in ('.json','.log','.o','.a','.d','.txt'):
+                add(path, 'archives/nezha27-als-owner/' + path.name)
+        native_records = tree / 'build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837'
+        for name in ('iokit/DEVELOPMENT/IOPlatformExpert.cpo.json',
+                     'bsd/DEVELOPMENT/bsd_init.o.json',
+                     'osfmk/DEVELOPMENT/startup.o.json'):
+            add(native_records / name, 'archives/als-native-records/' + name)
         for path in sorted((tree / 'build/adreno840').glob('*')):
             if path.is_file() and path.suffix in ('.json','.log','.o','.S','.h','.cpp'):
                 add(path, 'archives/adreno840/' + path.name)
@@ -300,7 +316,7 @@ def collect(framework, work, sealed):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=('prepare', 'build', 'als-abi', 'reference', 'collect'))
+    parser.add_argument('action', choices=('prepare', 'build', 'als-native', 'reference', 'collect'))
     parser.add_argument('--framework', type=Path, required=True)
     parser.add_argument('--work', type=Path, required=True)
     parser.add_argument('--sealed', type=Path)
@@ -310,8 +326,8 @@ def main():
         prepare(framework, work)
     elif args.action == 'build':
         return build(framework, work)
-    elif args.action == 'als-abi':
-        return als_abi(framework, work)
+    elif args.action == 'als-native':
+        return als_native(framework, work)
     elif args.action == 'reference':
         return reference(framework, work)
     elif args.action == 'collect':
