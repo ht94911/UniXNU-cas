@@ -64,8 +64,13 @@ int na_wcd_capture_prepare(NaWcdCapture *c,uint64_t now) {
     if (!c || now>UINT64_MAX-5000) return NA_ARGUMENT;
     if (c->error) return c->error;
     if (c->prepared) return NA_OK;
-    if (!c->deadline) c->deadline=now+5000;
-    if (now>=c->deadline) return failed(c,NA_TIMEOUT);
+    uint64_t trace=c->trace_wait_us ? *c->trace_wait_us:0;
+    if (!c->deadline) {c->deadline=now+5000;c->trace_base_us=trace;}
+    if (trace<c->trace_base_us) return failed(c,NA_IO);
+    /* Same owned-counter accounting as TAS. Actual settles and the bounded
+     * SoundWire FIFO waits still use real time. Never estimate from USB logs. */
+    uint64_t paused_ms=(trace-c->trace_base_us)/1000;
+    if (now>=c->deadline && now-c->deadline>=paused_ms) return failed(c,NA_TIMEOUT);
     if (now<c->wait_until) return NA_PENDING;
     int r=0;
     if (c->stage==0) {

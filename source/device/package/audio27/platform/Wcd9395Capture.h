@@ -12,6 +12,8 @@ typedef struct {
 typedef struct {
     NaSwr *bus;NaTxIo tx;uint32_t stage,index,muted,prepared,active;
     uint64_t wait_until,deadline;uint8_t micbias,adc_gain,version;
+    const uint64_t *trace_wait_us;
+    uint64_t trace_base_us;
     int error;
 } NaWcdCapture;
 /* ADC2 <- AMIC1, slave DP1 channel2 -> master DP2 channel3 -> SWR_MIC2 ->

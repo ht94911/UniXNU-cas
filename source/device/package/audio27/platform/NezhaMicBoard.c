@@ -46,8 +46,11 @@ int na_mic_board_init(NaMicBoard *m,const NaBoardIo *io,uint8_t bias,uint8_t gai
 int na_mic_board_prepare(void *v,NaWcdCapture *capture) {
     NaMicBoard *m=v;if (!m || !capture || m->error) return NA_OWNERSHIP;
     uint64_t now=now_us(m);if (now>UINT64_MAX-5000000) return NA_OVERFLOW;
-    if (!m->deadline) m->deadline=now+5000000;
-    if (now>=m->deadline) return failed(m,NA_TIMEOUT);
+    uint64_t trace=m->io.trace_wait_us ? *m->io.trace_wait_us:0;
+    if (!m->deadline) {m->deadline=now+5000000;m->trace_base_us=trace;}
+    if (trace<m->trace_base_us) return failed(m,NA_IO);
+    uint64_t paused=trace-m->trace_base_us;
+    if (now>=m->deadline && now-m->deadline>=paused) return failed(m,NA_TIMEOUT);
     if (now<m->wait_until) return NA_PENDING;
     int r=0;uint32_t value=0;
     switch (m->stage) {
@@ -110,6 +113,7 @@ int na_mic_board_prepare(void *v,NaWcdCapture *capture) {
             NaTxIo tx={m,tx_read,tx_write,io_error};
             r=na_wcd_capture_init(capture,&m->swr,&tx,m->micbias,m->adc_gain);
             if (r || m->error) return failed(m,r ? r:NA_IO);
+            capture->trace_wait_us=m->io.trace_wait_us;
         }
         m->stage=5;return NA_OK;
     case 5:return NA_OK;

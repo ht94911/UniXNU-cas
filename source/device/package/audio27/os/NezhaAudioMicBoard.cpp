@@ -3,6 +3,20 @@
 #include "NezhaAudioXpuTrace.h"
 #include "../platform/AudioResourceOwner.h"
 namespace {
+int trace_before(NaNativeMicBoard *b,const char *op,uint64_t pa,uint64_t span,
+                 uint32_t mask=0,uint32_t value=0) {
+    const bool enabled=na_xpu_trace_enabled();
+    const uint64_t start=enabled ? na_native_now_us(nullptr):0;
+    const int confirmed=na_xpu_trace_before(op,pa,span,mask,value);
+    if (enabled) {
+        const uint64_t end=na_native_now_us(nullptr);
+        if (end<start || end-start>UINT64_MAX-b->trace_wait_us) {
+            b->error=NA_OVERFLOW;return 0;
+        }
+        b->trace_wait_us+=end-start;
+    }
+    return confirmed;
+}
 constexpr unsigned resource=10,owner=0x4e41,tcs=2;
 constexpr NaRange ranges[6]={{NA_TLMM_GPIO_BASE+161*4096,4096},{0x7760000,0x17000},
     {0x6ae0000,4096},{0x7660000,4096},{0x7630000,0x10000},{0x81c60000,0x20000}};
@@ -99,7 +113,7 @@ volatile uint32_t *reg(NaNativeMicBoard *b,uint64_t pa,uint32_t *allowed) {
 }
 int read(void *v,uint64_t lease,uint64_t pa,uint32_t *value) {
     auto *b=static_cast<NaNativeMicBoard *>(v);if (!value) return NA_ARGUMENT;
-    if (!na_xpu_trace_before("mic-read",pa,4)) return NA_IO;
+    if (!trace_before(b,"mic-read",pa,4)) {b->error=NA_IO;return NA_IO;}
     int r=enter(b,lease);if (r) return r;
     uint32_t allowed=0;auto *p=reg(b,pa,&allowed);
     if (!p) r=NA_OWNERSHIP;
@@ -114,7 +128,7 @@ int read(void *v,uint64_t lease,uint64_t pa,uint32_t *value) {
 int update(void *v,uint64_t lease,uint64_t pa,uint32_t mask,uint32_t value) {
     auto *b=static_cast<NaNativeMicBoard *>(v);
     if (!mask || (value&~mask)) return NA_ARGUMENT;
-    if (!na_xpu_trace_before("mic-update",pa,4,mask,value)) return NA_IO;
+    if (!trace_before(b,"mic-update",pa,4,mask,value)) {b->error=NA_IO;return NA_IO;}
     int r=enter(b,lease);if (r) return r;
     uint32_t allowed=0;auto *p=reg(b,pa,&allowed);
     if (!p || (mask&~allowed)) r=NA_OWNERSHIP;
@@ -142,5 +156,5 @@ int rails(void *v,uint64_t lease,int on) {
 }
 extern "C" int na_native_mic_board(NaNativeMicBoard *b,Sm8850Resources *common,NaBoardIo *out) {
     if (!b || !common || !common->initialized || !out || b->common) return NA_ARGUMENT;
-    b->common=common;*out={b,claim,release,read,update,rails,na_native_now_us,na_native_pause_us,nullptr};return NA_OK;
+    b->common=common;*out={b,claim,release,read,update,rails,na_native_now_us,na_native_pause_us,&b->trace_wait_us};return NA_OK;
 }

@@ -108,6 +108,8 @@ int na_assembly_init(NaAssembly *a,const NaAssemblyPlan *p,uint64_t now) {
         p->resources,p->resource_count,p->output_votes,p->input_votes,p->status,p->output_ring,p->input_ring,
         p->timebase_numer,p->timebase_denom,p->capture_proven,&driver);
     if (r) return failed(a,r);
+    if (p->stream[1].graph)
+        a->driver.graph[1].endpoint_trace_wait_us=p->capture_board.trace_wait_us;
     r=na_driver_attach_feedback(&a->driver,&stream[2],&p->calibration,p->ti_instance);if (r) return failed(a,r);
     a->driver.runtime.capture_probe_allowed=!!p->capture_probe_allowed;
     __atomic_store_n(&a->initialized,1,__ATOMIC_RELEASE);return NA_OK;

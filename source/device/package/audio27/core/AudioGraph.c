@@ -23,16 +23,29 @@ int na_graph_init(NaGraph *g,NaSession *session,NaStream *stream,
 }
 int na_graph_request(NaGraph *g,int start) {
     if (!g) return NA_ARGUMENT;
-    if (start && (g->error || g->stage==NaGraphFault || g->stream->quarantine)) return NA_OWNERSHIP;
+    /* A repeated Start cannot restart a failed endpoint. Return its retained
+     * first error rather than masking it with a new ownership error. */
+    if (start && g->error) return g->error;
+    if (start && (g->stage==NaGraphFault || g->stream->quarantine)) return NA_OWNERSHIP;
     if (start && g->stage>=NaGraphMuting) return NA_BUSY;
     g->want=!!start;
     if (!start && g->stage!=NaGraphOff) na_stream_stop(g->stream);
     return NA_OK;
 }
+static void endpoint_deadline(NaGraph *g,uint64_t now) {
+    g->endpoint_deadline=now+5000;
+    g->endpoint_trace_base_us=g->endpoint_trace_wait_us ? *g->endpoint_trace_wait_us:0;
+}
+static int endpoint_timeout(const NaGraph *g,uint64_t now) {
+    uint64_t trace=g->endpoint_trace_wait_us ? *g->endpoint_trace_wait_us:0;
+    if (trace<g->endpoint_trace_base_us) return NA_IO;
+    uint64_t paused_ms=(trace-g->endpoint_trace_base_us)/1000;
+    return now>=g->endpoint_deadline && now-g->endpoint_deadline>=paused_ms ? NA_TIMEOUT:NA_OK;
+}
 static int finish(NaGraph *g,uint64_t now) {
-    if (g->stage!=NaGraphRelease) g->endpoint_deadline=now+5000;
+    if (g->stage!=NaGraphRelease) endpoint_deadline(g,now);
     g->stage=NaGraphRelease;
-    int r=now>=g->endpoint_deadline ? NA_TIMEOUT:g->ops.release(g->ops.context);
+    int r=endpoint_timeout(g,now);if (!r) r=g->ops.release(g->ops.context);
     if (r==NA_PENDING) return r;
     if (r) {g->cleanup_error=r;g->stage=NaGraphFault;return r;}
     g->endpoint_owned=0;g->stage=NaGraphOff;
@@ -47,8 +60,8 @@ static int cleanup(NaGraph *g) {
     return NA_PENDING;
 }
 static int muted(NaGraph *g,uint64_t now) {
-    if (!g->endpoint_deadline) g->endpoint_deadline=now+5000;
-    int r=now>=g->endpoint_deadline ? NA_TIMEOUT:g->endpoint_owned ? g->ops.mute(g->ops.context) : 0;
+    if (!g->endpoint_deadline) endpoint_deadline(g,now);
+    int r=endpoint_timeout(g,now);if (!r && g->endpoint_owned) r=g->ops.mute(g->ops.context);
     if (r==NA_PENDING) return r;
     if (r) g->cleanup_error=r;
     if (g->map_possible && (!g->stream->handle || !g->session->online ||
@@ -111,12 +124,12 @@ int na_graph_poll(NaGraph *g,uint64_t now) {
     if (g->stage==NaGraphOff) {
         if (!g->want) return g->error;
         if (!g->session->online) return NA_OFFLINE;
-        g->endpoint_owned=1;g->stage=NaGraphEndpoint;g->endpoint_deadline=now+5000;g->config_index=0;
+        g->endpoint_owned=1;g->stage=NaGraphEndpoint;endpoint_deadline(g,now);g->config_index=0;
         g->close_ack=g->unmap_ack=0;s->retiring=0;
     }
     if (g->stage==NaGraphEndpoint) {
         if (!g->want || !g->session->online) return cleanup(g);
-        int r=now>=g->endpoint_deadline ? NA_TIMEOUT:g->ops.prepare(g->ops.context);
+        int r=endpoint_timeout(g,now);if (!r) r=g->ops.prepare(g->ops.context);
         if (r==NA_PENDING) return r;
         if (r) {g->error=r;return cleanup(g);}
         g->stage=NaGraphMap;

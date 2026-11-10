@@ -46,6 +46,8 @@ bool ownedWindow(NaRange r) {
 void run(void *v,wait_result_t) {
     auto *d=static_cast<NaDriver *>(v);thread_set_thread_name(current_thread(),"nezha-audio27");
     uint32_t lastStage=~0u,lastTasPhase=~0u,lastTasIndex=~0u,pilQueries=0;uint64_t lastOutput=0,lastInput=0,nextPeriods=0;
+    uint32_t lastMicGraph=~0u,lastMicStage=~0u,lastMicIndex=~0u;
+    int lastMicError=0,lastMicCleanup=0;
     int lastError=0;bool service=false,publicationFailed=false;
     int captureFrames=0;PE_parse_boot_argn("na-capture-probe",&captureFrames,sizeof captureFrames);
     bool probeSubmitted=false;uint32_t lastProbe=~0u;
@@ -92,6 +94,18 @@ void run(void *v,wait_result_t) {
         // control probe, run after the proxy poll reaches StopMain and before
         // the next poll issues PAS6. No audio gate is held across the SMCs.
         na_native_pil_preflight(d->adsp,&pilQueries);
+        if (d->input_enabled && (lastMicGraph!=d->graph[1].stage ||
+            lastMicStage!=d->microphone.stage || lastMicIndex!=d->microphone.index ||
+            lastMicError!=d->graph[1].error || lastMicCleanup!=d->graph[1].cleanup_error)) {
+            const uint64_t trace=d->graph[1].endpoint_trace_wait_us ? *d->graph[1].endpoint_trace_wait_us:0;
+            printf("NEZHA AUDIO27 MIC: graph=%u original=%d cleanup=%d codec=%u:%u codec_error=%d prepared=%u trace_us=%llu trace_base_us=%llu deadline_ms=%llu\n",
+                d->graph[1].stage,d->graph[1].error,d->graph[1].cleanup_error,
+                d->microphone.stage,d->microphone.index,d->microphone.error,d->microphone.prepared,
+                (unsigned long long)trace,(unsigned long long)d->graph[1].endpoint_trace_base_us,
+                (unsigned long long)d->graph[1].endpoint_deadline);
+            lastMicGraph=d->graph[1].stage;lastMicStage=d->microphone.stage;lastMicIndex=d->microphone.index;
+            lastMicError=d->graph[1].error;lastMicCleanup=d->graph[1].cleanup_error;
+        }
         if (lastStage!=d->stage || lastError!=r || lastTasPhase!=d->speaker->phase || lastTasIndex!=d->speaker->index) {
             const uint64_t trace=d->speaker->ops.trace_wait_us ? *d->speaker->ops.trace_wait_us:0;
             printf("NEZHA AUDIO27: stage=%u error=%d adsp=%u graph=%u/%u prm=%x/%x tas=%u:%u/%u trace_us=%llu deadline_ms=%llu\n",d->stage,r,d->adsp->stage,d->graph[0].stage,d->graph[1].stage,d->prm.held,d->prm.possible,

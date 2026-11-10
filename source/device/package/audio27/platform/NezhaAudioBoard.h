@@ -38,7 +38,7 @@ int na_geni_board_init(NaGeniBoard *,const NaBoardIo *,NaTasPowerOps *);
 /* Identification needs reset and I2C only; leave TDM and receiver untouched. */
 int na_geni_board_init_identity(NaGeniBoard *,const NaBoardIo *,NaTasPowerOps *);
 typedef struct {
-    NaBoardIo io;NaSwr swr;uint64_t lease,deadline,wait_until;
+    NaBoardIo io;NaSwr swr;uint64_t lease,deadline,wait_until,trace_base_us;
     uint32_t stage,error,saved_lpi[4],saved_reset,rails,macro_on,snapshot_valid;
     uint8_t micbias,adc_gain;
 } NaMicBoard;

@@ -12,7 +12,7 @@ typedef struct {
     Sm8850Resources *common;
     NaNativeWindow window[6];
     NaMicPower power;
-    uint64_t lease,tcs_lease;
+    uint64_t lease,tcs_lease,trace_wait_us;
     uint32_t irq_previous,irq_saved,quarantined;
     int error;
 } NaNativeMicBoard;

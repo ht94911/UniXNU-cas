@@ -35,6 +35,11 @@ typedef struct {
     uint32_t stage,token,config_index,want,endpoint_owned;
     uint32_t map_possible,open_possible,start_possible,close_ack,unmap_ack;
     uint64_t enqueue_deadline,endpoint_deadline;
+    /* Optional worker-owned diagnostic time. The five-second endpoint budget
+     * still counts hardware and scheduler time; DSP command deadlines do not
+     * use this counter. Its owner must outlive the graph. */
+    const uint64_t *endpoint_trace_wait_us;
+    uint64_t endpoint_trace_base_us;
     int error,cleanup_error;
 } NaGraph;
 int na_graph_init(NaGraph *g,NaSession *session,NaStream *stream,
