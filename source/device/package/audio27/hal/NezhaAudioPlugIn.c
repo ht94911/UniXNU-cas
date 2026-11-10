@@ -42,12 +42,72 @@ static Float32 gVolume=1; /* Upstream default; kernel and amplifier limits still
 static uint64_t gZeroOrigin,gZeroSeed;
 static uint32_t gEpoch;
 static struct {UInt32 id,count;} gUsers[32];
-static uint32_t gReportedDeviceList=UINT32_MAX,gPropertyErrorCount;
-static NaHalObservation gPropertyErrors[NA_HAL_HISTORY_CAPACITY];
+static uint32_t gReportedDeviceList=UINT32_MAX,gObservationCount;
+static NaHalObservation gObservations[NA_HAL_HISTORY_CAPACITY];
 static void report_hal(uint32_t kind,uint32_t object,uint32_t selector,uint32_t scope,uint32_t element,int32_t result,uint32_t value) {
     if (!gConnect) return;
     NaHalObservation event={NA_HAL_OBSERVATION_VERSION,kind,object,selector,scope,element,result,value};
     (void)IOConnectCallStructMethod(gConnect,NaAudioObserveHAL,&event,sizeof event,NULL,NULL);
+}
+/* Callback observations are retained once per numeric event, before the
+ * realtime IO path. A full history never changes a property or IO decision. */
+static void observe_once(uint32_t kind,uint32_t object,uint32_t selector,uint32_t scope,uint32_t element,int32_t result,uint32_t value) {
+    if (!gConnect || gObservationCount==NA_HAL_HISTORY_CAPACITY) return;
+    NaHalObservation event={NA_HAL_OBSERVATION_VERSION,kind,object,selector,scope,element,result,value};
+    for (uint32_t i=0;i<gObservationCount;++i)
+        if (!memcmp(&gObservations[i],&event,sizeof event)) return;
+    gObservations[gObservationCount++]=event;
+    report_hal(kind,object,selector,scope,element,result,value);
+}
+static int observed_property(AudioObjectID object,AudioObjectPropertySelector selector) {
+    switch (selector) {
+    case kAudioObjectPropertyClass:
+    case kAudioObjectPropertyOwnedObjects:
+        return 1;
+    case kAudioDevicePropertyTransportType:
+    case kAudioDevicePropertyDeviceIsAlive:
+    case kAudioDevicePropertyDeviceCanBeDefaultDevice:
+    case kAudioDevicePropertyDeviceCanBeDefaultSystemDevice:
+    case kAudioDevicePropertyStreams:
+    case kAudioObjectPropertyControlList:
+    case kAudioDevicePropertyNominalSampleRate:
+        return object==kDevice;
+    case kAudioStreamPropertyIsActive:
+    case kAudioStreamPropertyDirection:
+    case kAudioStreamPropertyTerminalType:
+    case kAudioStreamPropertyVirtualFormat:
+    case kAudioStreamPropertyPhysicalFormat:
+        return object==kOutStream || object==kInStream;
+    case kAudioControlPropertyScope:
+    case kAudioControlPropertyElement:
+    case kAudioLevelControlPropertyScalarValue:
+        return object==kVolume;
+    default:return 0;
+    }
+}
+static uint32_t property_observation_value(AudioObjectID object,const AudioObjectPropertyAddress *address,uint32_t bytes,const void *data) {
+    uint32_t value=bytes;
+    switch (address->mSelector) {
+    case kAudioObjectPropertyOwnedObjects:
+    case kAudioDevicePropertyStreams:
+    case kAudioObjectPropertyControlList:
+        return bytes/(uint32_t)sizeof(AudioObjectID);
+    case kAudioDevicePropertyNominalSampleRate:
+        if (bytes==sizeof(Float64) && data) {
+            Float64 rate;memcpy(&rate,data,sizeof rate);
+            if (isfinite(rate) && rate>=0 && rate<=UINT32_MAX) return (uint32_t)rate;
+        }
+        return bytes;
+    case kAudioStreamPropertyVirtualFormat:
+    case kAudioStreamPropertyPhysicalFormat:
+        if (bytes==sizeof(AudioStreamBasicDescription) && data)
+            return ((const AudioStreamBasicDescription *)data)->mChannelsPerFrame;
+        return bytes;
+    default:
+        /* Scalar volume retains its Float32 bit pattern, not an address. */
+        if (bytes==sizeof value && data) memcpy(&value,data,sizeof value);
+        (void)object;return value;
+    }
 }
 static kern_return_t call(uint32_t selector) {
     return gConnect ? IOConnectCallScalarMethod(gConnect,selector,NULL,0,NULL,NULL):KERN_FAILURE;
@@ -128,7 +188,10 @@ static void check_service(void) {
         AudioObjectPropertyAddress changed[2]={
             {kAudioPlugInPropertyDeviceList,kAudioObjectPropertyScopeGlobal,kAudioObjectPropertyElementMain},
             {kAudioObjectPropertyOwnedObjects,kAudioObjectPropertyScopeGlobal,kAudioObjectPropertyElementMain}};
-        host->PropertiesChanged(host,kPlugIn,2,changed);
+        OSStatus notification=host->PropertiesChanged(host,kPlugIn,2,changed);
+        pthread_mutex_lock(&gLock);
+        observe_once(NaHalPublication,kPlugIn,kAudioPlugInPropertyDeviceList,kAudioObjectPropertyScopeGlobal,kAudioObjectPropertyElementMain,notification,2);
+        pthread_mutex_unlock(&gLock);
         if (previous) {
             AudioObjectPropertyAddress alive={kAudioDevicePropertyDeviceIsAlive,kAudioObjectPropertyScopeGlobal,kAudioObjectPropertyElementMain};
             host->PropertiesChanged(host,kDevice,1,&alive);
@@ -208,13 +271,20 @@ static OSStatus Initialize(AudioServerPlugInDriverRef d,AudioServerPlugInHostRef
 }
 static OSStatus CreateDevice(AudioServerPlugInDriverRef d,CFDictionaryRef p,const AudioServerPlugInClientInfo *c,AudioObjectID *o) {(void)d;(void)p;(void)c;(void)o;return kAudioHardwareUnsupportedOperationError;}
 static OSStatus DestroyDevice(AudioServerPlugInDriverRef d,AudioObjectID o) {(void)d;(void)o;return kAudioHardwareUnsupportedOperationError;}
-static OSStatus AddDeviceClient(AudioServerPlugInDriverRef d,AudioObjectID o,const AudioServerPlugInClientInfo *c) {(void)d;return o==kDevice && c ? 0:kAudioHardwareBadObjectError;}
+static OSStatus AddDeviceClient(AudioServerPlugInDriverRef d,AudioObjectID o,const AudioServerPlugInClientInfo *c) {
+    (void)d;OSStatus result=o==kDevice && c ? 0:kAudioHardwareBadObjectError;
+    if (o==kDevice && c) {
+        pthread_mutex_lock(&gLock);observe_once(NaHalDeviceClient,o,0,0,0,result,c->mClientID);pthread_mutex_unlock(&gLock);
+    }
+    return result;
+}
 static OSStatus StopIO(AudioServerPlugInDriverRef,AudioObjectID,UInt32);
 static OSStatus RemoveDeviceClient(AudioServerPlugInDriverRef d,AudioObjectID o,const AudioServerPlugInClientInfo *c) {
     (void)d;if (o!=kDevice || !c) return kAudioHardwareBadObjectError;
     pthread_mutex_lock(&gLock);
     for (unsigned i=0;i<32;++i) if (gUsers[i].count && gUsers[i].id==c->mClientID) {gIoUsers-=gUsers[i].count;gUsers[i].count=0;break;}
     if (!gIoUsers) {call(NaAudioStopOutput);call(NaAudioStopInput);}
+    observe_once(NaHalDeviceClient,o,1,0,0,0,c->mClientID);
     pthread_mutex_unlock(&gLock);return 0;
 }
 static OSStatus PerformDeviceConfigurationChange(AudioServerPlugInDriverRef d,AudioObjectID o,UInt64 action,void *info) {(void)d;(void)o;(void)action;(void)info;return kAudioHardwareUnsupportedOperationError;}
@@ -229,15 +299,12 @@ static OSStatus GetPropertyData(AudioServerPlugInDriverRef d,AudioObjectID o,pid
         if (gConnect && count!=gReportedDeviceList) {
             report_hal(NaHalDeviceList,o,a->mSelector,a->mScope,a->mElement,0,count);gReportedDeviceList=count;
         }
-    } else if (r && gConnect && gPropertyErrorCount<NA_HAL_HISTORY_CAPACITY) {
-        NaHalObservation event={NA_HAL_OBSERVATION_VERSION,NaHalPropertyError,o,a->mSelector,a->mScope,a->mElement,r,0};
-        uint32_t i=0;
-        for (;i<gPropertyErrorCount;++i) if (!memcmp(&gPropertyErrors[i],&event,sizeof event)) break;
-        if (i==gPropertyErrorCount) {
-            gPropertyErrors[gPropertyErrorCount++]=event;
-            report_hal(event.kind,event.object,event.selector,event.scope,event.element,event.result,event.value);
-        }
+    } else if (r) {
+        observe_once(NaHalPropertyError,o,a->mSelector,a->mScope,a->mElement,r,0);
     }
+    if (!r && observed_property(o,a->mSelector))
+        observe_once(NaHalPropertyRead,o,a->mSelector,a->mScope,a->mElement,0,
+                     property_observation_value(o,a,*written,out));
     pthread_mutex_unlock(&gLock);return r;
 }
 static OSStatus GetPropertyDataSize(AudioServerPlugInDriverRef d,AudioObjectID o,pid_t pid,const AudioObjectPropertyAddress *a,UInt32 qs,const void *q,UInt32 *size) {
@@ -273,6 +340,9 @@ static OSStatus SetPropertyData(AudioServerPlugInDriverRef d,AudioObjectID o,pid
         result=size==sizeof expected && !memcmp(data,&expected,sizeof expected) ? 0:kAudioDeviceUnsupportedFormatError;
     } else if (o==kDevice && a->mSelector==kAudioDevicePropertyNominalSampleRate)
         result=size==sizeof(Float64) && *(const Float64 *)data==kRate ? 0:kAudioDeviceUnsupportedFormatError;
+    if (observed_property(o,a->mSelector))
+        observe_once(NaHalPropertyWrite,o,a->mSelector,a->mScope,a->mElement,result,
+                     property_observation_value(o,a,size,data));
     pthread_mutex_unlock(&gLock);
     if (volume_changed && gHost) {
         AudioObjectPropertyAddress changed[2]={{kAudioLevelControlPropertyScalarValue,kAudioObjectPropertyScopeGlobal,kAudioObjectPropertyElementMain},{kAudioLevelControlPropertyDecibelValue,kAudioObjectPropertyScopeGlobal,kAudioObjectPropertyElementMain}};
