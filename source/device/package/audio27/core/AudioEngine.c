@@ -82,6 +82,7 @@ static int periods(NaEngine *e,unsigned direction,uint64_t now) {
             if (r==NA_BUSY) break;
             return fault(g,r);
         }
+        ++e->periods_submitted[direction];
         e->staged[direction]=0;
     }
     if (!e->active[direction] && s->in_flight>=2) {
@@ -91,6 +92,7 @@ static int periods(NaEngine *e,unsigned direction,uint64_t now) {
         if (r==NA_PENDING) return NA_OK;
         if (r) return fault(g,r);
         e->active[direction]=1;
+        ++e->activation_completed[direction];
     }
     return NA_OK;
 }

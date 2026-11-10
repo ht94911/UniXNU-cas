@@ -24,6 +24,8 @@ typedef struct {
     uint32_t active[2],stale_packets,rx_faults;
     uint32_t staged[2];
     uint64_t staged_sequence[2],activation_deadline[2];
+    uint64_t periods_submitted[2];
+    uint32_t activation_completed[2];
 } NaEngine;
 int na_engine_init(NaEngine *,NaSession *,NaRxQueue *,NaGraph *output,
                    NaGraph *input,const NaEngineOps *);

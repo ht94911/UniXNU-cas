@@ -17,8 +17,8 @@ typedef struct {
     uint64_t dsp_base;        /* Upper word is the verified DSP SID encoding. */
     uint32_t bytes, stride, period_bytes, frame_bytes, handle, generation;
     uint32_t port, endpoint, capture, running, retiring, quarantine, in_flight;
-    uint64_t next, returned, frames;
-    uint32_t bad_done, remote_errors, underruns, overruns;
+    uint64_t next, returned, frames, completions;
+    uint32_t bad_done, remote_errors, underruns, overruns, last_remote_status;
     NaBuffer slot[NA_DMA_SLOTS];
 } NaStream;
 /* No physical allocation here. Platform supplies an exclusively owned, mapped,

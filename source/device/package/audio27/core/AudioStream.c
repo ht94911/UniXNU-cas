@@ -59,15 +59,27 @@ int na_stream_done(NaStream *s,const uint8_t *data,uint32_t length) {
     if (!s) return NA_ARGUMENT;
     GprPacket p;
     if (na_packet(data,length,&p)) return NA_WIRE;
-    if (p.dst_port!=s->port || p.src_port!=s->endpoint ||
-        p.opcode!=(s->capture ? AR_OP_READ_DONE : AR_OP_WRITE_DONE)) return NA_IGNORED;
+    if (p.dst_port!=s->port || p.src_port!=s->endpoint) return NA_IGNORED;
+    int basic=p.opcode==GPR_OP_BASIC_RESULT;
+    if (!basic && p.opcode!=(s->capture ? AR_OP_READ_DONE : AR_OP_WRITE_DONE)) return NA_IGNORED;
     NaBuffer *b=0;unsigned i;
     for (i=0;i<NA_DMA_SLOTS;++i)
         if (s->slot[i].token==p.token && p.token) {b=&s->slot[i];break;}
     if (!b || b->state!=NaBufferDsp || b->generation!=s->generation) {
+        if (basic) return NA_IGNORED; /* belongs to another control transaction */
         ++s->bad_done;return NA_IGNORED; /* duplicate or retired generation */
     }
     const uint8_t *d=p.payload;
+    if (basic) {
+        if (p.payload_bytes!=8) goto malformed;
+        if (rd(d)!=(s->capture ? AR_OP_READ:AR_OP_WRITE)) return NA_IGNORED;
+        uint32_t status=rd(d+4);
+        /* A successful command receipt is not a DMA completion. Error
+         * receipts retain their actual DSP status and require CLOSE/UNMAP. */
+        if (!status) return NA_IGNORED;
+        if (!s->remote_errors) s->last_remote_status=status;
+        ++s->remote_errors;s->quarantine=1;s->running=0;return NA_REMOTE;
+    }
     if (p.payload_bytes!=(s->capture ? 60u : 32u)) goto malformed;
     uint32_t status=rd(d+(s->capture ? 0:12));
     const uint8_t *a=d+(s->capture ? 4:0);
@@ -81,8 +93,11 @@ int na_stream_done(NaStream *s,const uint8_t *data,uint32_t length) {
             offset%s->frame_bytes || bytes%s->frame_bytes) goto malformed;
         b->length=bytes;b->offset=offset;
     } else if (rd(d+16) || rd(d+20) || rd(d+24) || rd(d+28)) goto malformed;
-    if (status) { ++s->remote_errors;s->quarantine=1;s->running=0;return NA_REMOTE; }
-    b->state=NaBufferReturned;--s->in_flight;return NA_OK;
+    if (status) {
+        if (!s->remote_errors) s->last_remote_status=status;
+        ++s->remote_errors;s->quarantine=1;s->running=0;return NA_REMOTE;
+    }
+    ++s->completions;b->state=NaBufferReturned;--s->in_flight;return NA_OK;
 malformed:
     ++s->bad_done;s->quarantine=1;s->running=0;return NA_WIRE;
 }

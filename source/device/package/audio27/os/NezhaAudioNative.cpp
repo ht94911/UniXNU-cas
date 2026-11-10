@@ -20,7 +20,7 @@ extern kmod_info_t g_kernel_kmod_info;
 extern "C" void nezha_audio_service_static_init(void) __asm__("__GLOBAL__sub_I_NezhaAudioService.cpp");
 extern "C" int nezha_audio_pas_call(unsigned,unsigned,uint64_t,uint64_t);
 extern "C" int nezha_audio_pas_query(unsigned,unsigned,uint64_t [4]);
-extern "C" {volatile uint64_t nezha_audio27_stats[32];}
+extern "C" {volatile uint64_t nezha_audio27_stats[40];}
 static uint32_t audioStatsSequence;
 namespace {
 NaDriver *worker;
@@ -88,6 +88,16 @@ void run(void *v,wait_result_t) {
         __atomic_store_n(&nezha_audio27_stats[29],(uint64_t)(d->runtime.probe.squares),__ATOMIC_RELAXED);
         __atomic_store_n(&nezha_audio27_stats[30],(uint64_t)((int64_t)d->runtime.probe.error),__ATOMIC_RELAXED);
         __atomic_store_n(&nezha_audio27_stats[31],(uint64_t)(d->runtime.probe.pcm_frames),__ATOMIC_RELAXED);
+        // Retain period and error totals through the existing graph cleanup;
+        // the same sequence brackets these CPU-only diagnostic values.
+        __atomic_store_n(&nezha_audio27_stats[32],d->runtime.engine.periods_submitted[1],__ATOMIC_RELAXED);
+        __atomic_store_n(&nezha_audio27_stats[33],d->stream[1].completions,__ATOMIC_RELAXED);
+        __atomic_store_n(&nezha_audio27_stats[34],(uint64_t)d->stream[1].in_flight,__ATOMIC_RELAXED);
+        __atomic_store_n(&nezha_audio27_stats[35],(uint64_t)d->stream[1].bad_done,__ATOMIC_RELAXED);
+        __atomic_store_n(&nezha_audio27_stats[36],(uint64_t)d->stream[1].remote_errors,__ATOMIC_RELAXED);
+        __atomic_store_n(&nezha_audio27_stats[37],(uint64_t)d->stream[1].last_remote_status,__ATOMIC_RELAXED);
+        __atomic_store_n(&nezha_audio27_stats[38],(uint64_t)d->runtime.engine.activation_completed[1],__ATOMIC_RELAXED);
+        __atomic_store_n(&nezha_audio27_stats[39],(uint64_t)(int64_t)d->graph[1].error,__ATOMIC_RELAXED);
         __atomic_fetch_add(&audioStatsSequence,1,__ATOMIC_RELEASE);
         nezha_audio_owner_unlock();
         // Exact037 PIL preflight, omitted by038's playback worker. Like the
@@ -145,11 +155,11 @@ void run(void *v,wait_result_t) {
     // retained for diagnosis; they must not be freed under a running DSP.
 }
 }
-extern "C" int nezha_audio27_copy_stats(uint64_t out[32]) {
+extern "C" int nezha_audio27_copy_stats(uint64_t out[40]) {
     if (!out) return NA_ARGUMENT;
     for (unsigned attempt=0;attempt<4;++attempt) {
         uint32_t seq=__atomic_load_n(&audioStatsSequence,__ATOMIC_ACQUIRE);if (seq&1) continue;
-        for (unsigned i=0;i<32;++i) out[i]=__atomic_load_n(&nezha_audio27_stats[i],__ATOMIC_RELAXED);
+        for (unsigned i=0;i<40;++i) out[i]=__atomic_load_n(&nezha_audio27_stats[i],__ATOMIC_RELAXED);
         __atomic_thread_fence(__ATOMIC_ACQUIRE);
         if (seq==__atomic_load_n(&audioStatsSequence,__ATOMIC_RELAXED)) return NA_OK;
     }

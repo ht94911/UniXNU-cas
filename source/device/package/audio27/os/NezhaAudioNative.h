@@ -39,9 +39,9 @@ static inline void na_native_pil_preflight(NaAdsp *adsp,uint32_t *completed) {
 /* Start only after constructing the source-only driver's immutable plan and
  * acquiring the actual shared hardware leases. No implicit boot-arg defaults. */
 int nezha_audio_worker_start(NaDriver *);
-/* Bounded read of the existing worker statistics for USB provider8/v3.
+/* Bounded read of the existing worker statistics for USB provider8/v6.
  * Does not acquire the audio owner lock or touch hardware. */
-int nezha_audio27_copy_stats(uint64_t out[32]);
+int nezha_audio27_copy_stats(uint64_t out[40]);
 /* Read only the retained, completed first PCM period under the existing short
  * owner try-lock. The caller supplies an index/count, never an address. */
 int nezha_audio27_capture_pcm(uint32_t offset,uint32_t count,int16_t *,uint32_t *copied);
