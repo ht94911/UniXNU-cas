@@ -5,6 +5,7 @@ import hashlib
 import importlib.util
 import json
 import platform
+import struct
 import subprocess
 
 p=argparse.ArgumentParser();p.add_argument('--source',type=Path,required=True);p.add_argument('--decoder',type=Path,required=True)
@@ -80,7 +81,20 @@ int main(int argc,char **argv){assert(argc==2);startClientWaitSampler();
     assert all(s['thread']==info['main_tid'] and s['basic_kr']==0 and s['state_kr']==0 for s in actual)
     valid=[s for s in actual if s['state']=='waiting' and not s['observation_rejection_reasons'] and s['depth']>0 and s['read_kr']==0]
     assert valid,'No actual main-thread waiting stack'
+    fragments={}
+    for row in struct.iter_unpack('<II4Q8I',(a.out/'client-main.trace').read_bytes()):
+        if row[0]==30:
+            assert row[2]==2 and row[7]==96 and row[6] not in fragments
+            fragments[row[6]]=struct.pack('<3Q6I',row[3],row[4],row[5],*row[8:])
+    assert sorted(fragments)==[0,1]
+    identity_bytes=fragments[0]+fragments[1]
+    numerator,denominator,timebase_status,_=struct.unpack_from('<IIiI',identity_bytes,80)
+    boot_status,boot_bytes=struct.unpack_from('<iI',identity_bytes,32)
+    boot_uuid=identity_bytes[40:80].split(b'\0',1)[0].decode()
+    assert timebase_status==0 and numerator>0 and denominator>0
+    assert boot_status==0 and boot_bytes>=37 and len(boot_uuid)==36
     report['real_Mac_main_thread']=dict(executed=True,passed=True,main_tid=info['main_tid'],pid=info['pid'],
-        samples=len(actual),valid_waiting_samples=len(valid),maximum_capture_us=max(s['capture_wall_us'] for s in actual),command=command)
+        samples=len(actual),valid_waiting_samples=len(valid),maximum_capture_us=max(s['capture_wall_us'] for s in actual),command=command,
+        timebase_numerator=numerator,timebase_denominator=denominator,boot_uuid_read=True)
 report['passed']=True
 (a.out/'report.json').write_text(json.dumps(report,indent=2)+'\n');print(json.dumps(report,indent=2))

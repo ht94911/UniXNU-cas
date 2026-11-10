@@ -822,10 +822,10 @@ index a432e32..cb2be78 100644
     std::lock_guard<std::mutex> lock(gUnalignedLock);
 diff --git a/NativeDisplayWaitState.h b/NativeDisplayWaitState.h
 new file mode 100644
-index 0000000..6306966
+index 0000000..d568255
 --- /dev/null
 +++ b/NativeDisplayWaitState.h
-@@ -0,0 +1,75 @@
+@@ -0,0 +1,76 @@
 +/* SPDX-License-Identifier: MIT */
 +#pragma once
 +#include <cstdint>
@@ -862,7 +862,8 @@ index 0000000..6306966
 + uint64_t recordedUs=0,mainThread=0;
 + int32_t bootUUIDError=-1;uint32_t bootUUIDBytes=0;
 + char bootUUID[40]{};
-+ uint64_t reserved[2]{};
++ uint32_t timebaseNumer=0,timebaseDenom=0;
++ int32_t timebaseKR=-1;uint32_t reserved=0;
 +};
 +static_assert(sizeof(Identity)==96,"observer boot identity wire size");
 +inline uint64_t stripped(uint64_t p){return p&0x0000ffffffffffffULL;}
@@ -903,10 +904,10 @@ index 0000000..6306966
 +}
 diff --git a/NativeFrameObservers.inc b/NativeFrameObservers.inc
 new file mode 100644
-index 0000000..2ac6a92
+index 0000000..d55d551
 --- /dev/null
 +++ b/NativeFrameObservers.inc
-@@ -0,0 +1,123 @@
+@@ -0,0 +1,125 @@
 +/* SPDX-License-Identifier: MIT */
 +// Included after the existing wait-sample serializer. All writes below are
 +// diagnostic records in this process's own trace; target memory is read only.
@@ -924,6 +925,8 @@ index 0000000..2ac6a92
 + const int result=sysctlbyname("kern.bootsessionuuid",identity.bootUUID,&bytes,nullptr,0);
 + identity.bootUUIDError=result?errno:0;identity.bootUUIDBytes=(uint32_t)bytes;
 + identity.bootUUID[sizeof(identity.bootUUID)-1]=0;
++ mach_timebase_info_data_t timebase{};identity.timebaseKR=mach_timebase_info(&timebase);
++ identity.timebaseNumer=timebase.numer;identity.timebaseDenom=timebase.denom;
 + traceWaitBytes(30,identity.role,&identity,sizeof(identity),client);
 +}
 +static int readObserverMemory(uint64_t address,void *out,unsigned bytes) {
@@ -1238,7 +1241,7 @@ index 7b35a3d..b1f4b2b 100644
      const std::string build = buildId();
      appendLine(logPath, note + " build=" + build);
 diff --git a/README.md b/README.md
-index f76b461..7434b3e 100644
+index f76b461..e1004b2 100644
 --- a/README.md
 +++ b/README.md
 @@ -10,7 +10,9 @@ Build and interface details: [documentation](https://unixnu.com/drivers/adreno-m
@@ -1362,7 +1365,7 @@ index f76b461..7434b3e 100644
 +atomicity. The encoding worker joins the registered render-thread observations,
 +bounded to6144 samples. SpringBoard's actual main thread uses the same Mach/stack
 +reader at20ms for at most ten minutes in its own springboard-waits.trace. Both
-+files record kern.bootsessionuuid and their own image UUID/base/slide; cross-
++files record kern.bootsessionuuid, mach_timebase_info and image UUID/base/slide; cross-
 +process attribution requires the same boot and a common uptime clock.
 +
 +Per-Vulkan-call Mach CPU profiling is now opt-in with

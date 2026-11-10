@@ -125,7 +125,7 @@ if a.decoder:
     assert links[outer['operation']]['thread_cpu_ns']==9000000000
     assert links[child['operation']]['thread_cpu_ns'] is None
     decoded=True
-query=s[s.index('static bool detailCpuNow('):s.index('struct DetailSpan {')]
+query=s[s.index('static bool detailCpuNow(uint64_t &ns) {'):s.index('struct DetailSpan {')]
 assert 'thread_info(' in query and 'THREAD_BASIC_INFO' in query and 'clock_gettime' not in query
 real_mach=dict(executed=False,host=platform.system(),device_sandbox_verified=False)
 if platform.system()=='Darwin':

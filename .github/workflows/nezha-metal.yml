@@ -1,7 +1,7 @@
-name: nezha iPhone27 display source and batch CPU observers 037
+name: nezha iPhone27 display source and batch CPU observers 037b
 on:
   push:
-    branches: [codex/ios27-gpu27-metal-full-037-20261111]
+    branches: [codex/ios27-gpu27-metal-full-037b-20261111]
   workflow_dispatch:
 permissions:
   contents: read

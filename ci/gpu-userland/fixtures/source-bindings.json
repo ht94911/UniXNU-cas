@@ -16,6 +16,6 @@
   "drivers/GopFramebuffer/NativeGOPWire.h": "70ed58ac9a2406f6ebd7a1e69261fb62f5075a13440e1bf05f075cbf92d0450c",
   "drivers/GopFramebuffer/NativeGOPTiming.h": "c30ee39fc384ad0a7bb95a098deb614601642764801e6da08e1dc5b9a6a603fc",
   "drivers/AdrenoMetal/NativeRenderWaitSample.h": "bbc7688e97ff38df8e745018fe869d05ea3c1386e7f6199c0d1e6a7a988a9e87",
-  "drivers/AdrenoMetal/NativeDisplayWaitState.h": "690bd0e0b258337069fc85cbf6008962737dc57231a2874f2cf1542e97c722d4",
-  "drivers/AdrenoMetal/NativeFrameObservers.inc": "153d4eada2c3b6281e6b386baab5c500bc45943620894d5a5ae44887c27ca9e5"
+  "drivers/AdrenoMetal/NativeDisplayWaitState.h": "ad81a50e7fada185dfb516c85662275aa7a72d64570271694958f7c9a3f18ad5",
+  "drivers/AdrenoMetal/NativeFrameObservers.inc": "e7845adc0acf9fa26e054857a6189aab71b052597018a481bd09a8315dd1d81a"
 }
