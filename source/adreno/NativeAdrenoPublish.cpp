@@ -482,6 +482,50 @@ void AGXDeviceUserClient::free()
     if(core_ && !live_) {delete core_;core_=nullptr;}
     IOUserClient::free();
 }
+
+// NATIVE_ADRENO_EXTERNAL_IPC_POLICY_BEGIN
+static uint64_t gpuExternalUnlockedCalls[3];
+/* Only these methods are independent of the mapping IPC gate. Allocation
+ * publishes a new BO under g.lock; free refuses live CPU leases and GPU refs;
+ * wait accesses the core under g.lock and sleeps without it. __ipc and the MIG
+ * reference still retain the client. CPU lease changes, mappings and close keep
+ * their original IOKit locking. The tunnel's real opcode, not its selector,
+ * determines eligibility. Invalid or descriptor-backed calls keep the default.
+ */
+extern "C" uint32_t native_adreno_external_unlocked_method(void *object,
+    uint32_t selector,void *rawArguments)
+{
+    if(!OSDynamicCast(AGXDeviceUserClient,static_cast<OSObject *>(object)))return 0;
+    const auto *args=static_cast<const IOExternalMethodArguments *>(rawArguments);
+    if(!args || args->selector!=selector || !args->structureInput ||
+       args->structureInputDescriptor || args->structureOutputDescriptor ||
+       args->structureVariableOutputData || args->scalarInputCount || args->scalarOutputCount)return 0;
+    uint32_t method=selector;
+    size_t bytes=args->structureInputSize;
+    if(bytes>=8) {
+        uint32_t header[2];memcpy(header,args->structureInput,sizeof(header));
+        if(header[0]==NativeAdrenoTunnelMagic){method=header[1];bytes-=8;}
+    }
+    size_t input=0,output=0;unsigned counter=0;
+    switch(method) {
+    case NativeAdrenoMethodBoAlloc:
+        input=sizeof(NativeAdrenoAbiBoAlloc);output=sizeof(NativeAdrenoAbiBoAllocReply);counter=0;break;
+    case NativeAdrenoMethodBoFree:
+        input=sizeof(NativeAdrenoAbiBoFree);counter=1;break;
+    case NativeAdrenoMethodWaitFence:
+        input=sizeof(NativeAdrenoAbiWaitFence);counter=2;break;
+    default:return 0;
+    }
+    if(bytes!=input || args->structureOutputSize!=output || (output && !args->structureOutput))return 0;
+    __atomic_fetch_add(&gpuExternalUnlockedCalls[counter],UINT64_C(1),__ATOMIC_RELAXED);
+    return method;
+}
+extern "C" void native_adreno_external_unlocked_counts(uint64_t out[3])
+{
+    if(out)for(unsigned i=0;i<3;++i)out[i]=__atomic_load_n(&gpuExternalUnlockedCalls[i],__ATOMIC_RELAXED);
+}
+// NATIVE_ADRENO_EXTERNAL_IPC_POLICY_END
+
 /* XNU's mapClientMemory64 is nonvirtual. The selected MIG-route observer
  * calls these hooks around the real IPC gate and original mapping operation.
  * The finish copy never waits for g.lock just to collect diagnostics. */
@@ -656,7 +700,7 @@ static IOReturn runCore(AGXDeviceUserClient *connection,uint32_t method,const vo
     native_adreno_metal_diag.inflight=method+1;
     native_adreno_metal_diag.inflight_since_calls=native_adreno_metal_diag.calls;
     IOReturn status;
-    if(method==NativeAdrenoMethodWaitFence && connection->live_ && input && input_size==sizeof(NativeAdrenoAbiWaitFence) && g.clock.now_us) {
+    if(method==NativeAdrenoMethodWaitFence && input && input_size==sizeof(NativeAdrenoAbiWaitFence) && g.clock.now_us) {
         /* int-147: a fence wait pauses outside the lock. int-146 slept inside the lock (up to the caller's 1 ms slice per call), so every
          * other thread's submit, map or allocation waited for the GPU to finish unrelated work. i55eb173a6: the polls still took the lock
          * every 100 us or less, and with several processes waiting (the render server, the poster extension) a poll waited up to 46 ms for

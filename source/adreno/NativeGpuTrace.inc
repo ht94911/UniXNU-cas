@@ -52,7 +52,7 @@ extern "C" void native_gpu_trace_record(uint32_t event,uint32_t pid,const uint64
     record.us=ns/1000;record.event=event;record.pid=pid;
     for(uint32_t i=0;i<count;++i)record.value[i]=values[i];
     if(event==22 && count>=9 && !gpuLatencyWaits.keep(record.us,pid,record.value[0],(uint32_t)record.value[1],record.value[2],record.value[9]))return;
-    if(event==GpuTraceCpuMap)gpuCpuMapTrace.push(record);
+    if(event==GpuTraceCpuMap || event==GpuTraceVmFailure)gpuCpuMapTrace.push(record);
     record.sequence=gpuTrace.push(record);
     if(event==GpuTraceThread && count>=2)gpuThreadTargets.record(pid,(uint32_t)record.value[1],record.value[0]);
     const bool meta=event<=3 || event==GpuTraceThread || event==GpuTraceProblem;

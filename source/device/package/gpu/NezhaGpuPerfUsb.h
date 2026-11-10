@@ -11,6 +11,7 @@ extern volatile uint32_t native_gpu_coherence[8],native_adreno_io_coherent,nativ
 extern volatile uint32_t native_adreno840_coherence_attempts,native_adreno840_coherence_retained;
 void native_legacy_vsync_snapshot(uint64_t out[8]);
 bool nezha_cpu27_snapshot(int32_t out[20]);
+void native_adreno_external_unlocked_counts(uint64_t out[3]);
 }
 struct NezhaPerfWriter {
     char *out;size_t cap,used=0;bool failed=false;
@@ -49,6 +50,8 @@ static int nezhaPerfSnapshot(void *,char *out,size_t cap,size_t *bytes,unsigned 
     native_legacy_vsync_snapshot(display);
     w.add("],\"coherence\":");w.array(coherence,15);
     w.add(",\"display_pacing\":");w.array(display,8);
+    uint64_t ipc[3]={};native_adreno_external_unlocked_counts(ipc);
+    w.add(",\"ipc_unlocked_alloc_free_wait\":");w.array(ipc,3);
     w.add(",\"physical_vblank\":false,\"clock_readback\":false,\"gpu_timestamp_hz\":19200000}");return w.finish(bytes,trunc);
 }
 static int nezhaPerfRequest(void *,const qud_diag_request *r,char *out,size_t cap,size_t *bytes,unsigned *trunc)

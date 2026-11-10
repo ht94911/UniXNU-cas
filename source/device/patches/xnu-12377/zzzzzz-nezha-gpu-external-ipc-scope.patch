@@ -1,0 +1,34 @@
+--- a/iokit/Kernel/IOUserClient.cpp
++++ b/iokit/Kernel/IOUserClient.cpp
+@@ -6579,18 +6579,28 @@
+ }
+ } /* extern "C" */
+ 
++/* The native GPU may opt only allocation/free/fence waits out of the reader
++ * gate. Mapping/unmapping/close and every other client retain their defaults.
++ * ipcEnter/Exit still account __ipc, including the finalization protocol. */
++extern "C" uint32_t native_adreno_external_unlocked_method(void *, uint32_t, void *) __attribute__((weak_import));
++
+ IOReturn
+ IOUserClient::callExternalMethod(uint32_t selector, IOExternalMethodArguments * args)
+ {
+ 	IOReturn ret;
+-
+-	ipcEnter(defaultLocking ? (defaultLockingSingleThreadExternalMethod ? kIPCLockWrite : kIPCLockRead) : kIPCLockNone);
++	int locking = defaultLocking ? (defaultLockingSingleThreadExternalMethod ? kIPCLockWrite : kIPCLockRead) : kIPCLockNone;
++	if (locking == kIPCLockRead && native_adreno_external_unlocked_method &&
++	    native_adreno_external_unlocked_method(this, selector, args)) {
++		locking = kIPCLockNone;
++	}
++
++	ipcEnter(locking);
+ 	if (uc2022) {
+ 		ret = ((IOUserClient2022 *) this)->externalMethod(selector, (IOExternalMethodArgumentsOpaque *) args);
+ 	} else {
+ 		ret = externalMethod(selector, args);
+ 	}
+-	ipcExit(defaultLocking ? (defaultLockingSingleThreadExternalMethod ? kIPCLockWrite : kIPCLockRead) : kIPCLockNone);
++	ipcExit(locking);
+ 
+ 	return ret;
+ }

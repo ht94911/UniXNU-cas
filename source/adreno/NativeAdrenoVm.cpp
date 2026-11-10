@@ -1,6 +1,9 @@
 /* SPDX-License-Identifier: MIT */
 #include "NativeAdrenoVm.h"
 #include "NativeAdrenoVmAlias.h"
+#define NATIVE_GPU_TRACE_OPTIONAL
+#include "NativeGpuTrace.h"
+extern "C" int proc_selfpid(void);
 extern "C" volatile uint32_t native_adreno_trace_stage;
 extern "C" {int (*native_adreno_dram_read32)(uint64_t,uint32_t *);int (*native_adreno_cached_read32)(uint64_t,uint32_t *);
     int (*native_adreno_stall_read_words)(uint64_t,uint32_t *,size_t);
@@ -83,8 +86,14 @@ ArmSmmu4KStatus NativeAdrenoVm::observeCheap()
     }
     return ArmSmmu4KSuccess;
 }
-IOReturn NativeAdrenoVm::fail(ArmSmmu4KStatus status)
+IOReturn NativeAdrenoVm::fail(ArmSmmu4KStatus status,uint32_t phase,uint64_t iova,uint64_t bytes)
 {
+    /* GPU032 failed in BoMap before any long fence timeout, so noteStall did
+     * not run. Read the existing four fault registers once before quarantine;
+     * retain the original failure/ownership behavior and never retry a write. */
+    const bool trace=&native_gpu_trace_enabled && native_gpu_trace_enabled();
+    uint32_t fault[4]={};
+    const IOReturn faultRead=trace?faultState(fault):kIOReturnNotReady;
     poisoned_=true;result_.operation=status;result_.complete=false;
     for(size_t i=0;mappings_ && i<high_;++i)if(mappings_[i].memory)mappings_[i].memory->quarantine();
     for(auto &r:regions_)if(r.arena) {r.tables->quarantine();r.state->poisoned=1;}
@@ -92,6 +101,9 @@ IOReturn NativeAdrenoVm::fail(ArmSmmu4KStatus status)
         ArmSmmu4KStreamResult routes;
         result_.quarantine=ArmSmmu4KFaultStreams(&io_,streams_,&routes);
     }
+    if(trace)gpuTraceEvent(GpuTraceVmFailure,uint32_t(proc_selfpid()),
+        phase,uint32_t(status),uint32_t(result_.quarantine),uint32_t(faultRead),
+        fault[0],(uint64_t(fault[2])<<32)|fault[1],fault[3],ttbr0(),iova,bytes,objects_,next_handle_);
     return kIOReturnIOError;
 }
 IOReturn NativeAdrenoVm::attach(const ArmSmmu4KIo *io,ArmSmmu4KContextConfig *context,
@@ -324,7 +336,7 @@ IOReturn NativeAdrenoVm::map(NativeAdrenoMemory *memory,unsigned upper,uint64_t 
     IOReturn checked=preflight(memory,upper,iova,permissions,writeback,shareability,exclusive);if(checked)return checked;
     if(next_handle_==UINT64_MAX)return kIOReturnNoResources;
     clock.lap(0,5); /* Previously omitted preflight; map slot 5 was unused. */
-    ArmSmmu4KStatus status=observeCheap();if(status)return fail(status);
+    ArmSmmu4KStatus status=observeCheap();if(status)return fail(status,1,iova,memory->bytes());
     clock.lap(0,1);
     if(!index_.reserve(objects_+1))return kIOReturnNoMemory;   /* the handle's index cell is had before anything changes */
     checked=memory->holdForDevice();if(checked)return checked;
@@ -335,12 +347,12 @@ IOReturn NativeAdrenoVm::map(NativeAdrenoMemory *memory,unsigned upper,uint64_t 
         }
         if(record || !growMappings())break;
     }
-    if(!record) {memory->quarantine();return fail(ArmSmmu4KStateMismatch);}
+    if(!record) {memory->quarantine();return fail(ArmSmmu4KStateMismatch,2,iova,memory->bytes());}
     *record={memory,0,iova,memory->spanCount(),0,permissions,writeback,shareability,0,upper};++objects_;
     if(coherentMapping(writeback))native_adreno_coherent_skips[0]=native_adreno_coherent_skips[0]+1;
     else {
         checked=memory->publishForDevice(0,memory->bytes(),permissions&ArmSmmu4KWrite,distrust_write_combined_);
-        if(checked)return fail(ArmSmmu4KIoError);
+        if(checked)return fail(ArmSmmu4KIoError,3,iova,memory->bytes());
     }
     clock.lap(0,2);
     /* Every span in one table transaction (the scratch was grown to them). */
@@ -361,11 +373,11 @@ IOReturn NativeAdrenoVm::map(NativeAdrenoMemory *memory,unsigned upper,uint64_t 
         /* No table page could be had: the kit linked only empty tables and wrote no leaf, so the map is undone and the VM stays usable,
          * as a failed io-pgtable map returns -ENOMEM. */
         const size_t slot=size_t(record-mappings_);*record={};--objects_;if(slot<free_hint_)free_hint_=slot;
-        if(memory->retireAfterQuiescence()!=kIOReturnSuccess)return fail(ArmSmmu4KStateMismatch);
+        if(memory->retireAfterQuiescence()!=kIOReturnSuccess)return fail(ArmSmmu4KStateMismatch,5,iova,memory->bytes());
         result_.operation=status;
         return kIOReturnNoMemory;
     }
-    if(status)return fail(status);
+    if(status)return fail(status,4,iova,memory->bytes());
     clock.lap(0,3);
     insert(record);record->mapped_spans=spans;result_.completed_spans=spans;
     if(memory->imported())import_spans_[cls]+=spans;
@@ -388,19 +400,19 @@ IOReturn NativeAdrenoVm::unmap(uint64_t handle)
     PhaseClock clock;
     ArmSmmu4KStatus status=observeCheap();
     native_adreno_trace_stage=11;
-    if(status)return fail(status);
+    if(status)return fail(status,11,record->iova,record->memory->bytes());
     clock.lap(1,1);
     const unsigned upper=record->upper;
     if(coherentMapping(record->writeback))native_adreno_coherent_skips[1]=native_adreno_coherent_skips[1]+1;
     else if(record->permissions&ArmSmmu4KWrite) {
         if(record->memory->acquireDeviceWrites(0,record->memory->bytes())!=kIOReturnSuccess)
-            return fail(ArmSmmu4KIoError);
+            return fail(ArmSmmu4KIoError,12,record->iova,record->memory->bytes());
     }
     clock.lap(1,2);
     /* The mapping's spans, as it mapped them, in one transaction; they are also the existing ranges the kit checks each leaf against
      * (the descriptor it must hold before it is cleared, which the kit then reads from the table). */
     const size_t spans=record->spans;
-    if(spans!=record->mapped_spans || spans>capacity_ || record->memory->spanCount()!=spans)return fail(ArmSmmu4KStateMismatch);
+    if(spans!=record->mapped_spans || spans>capacity_ || record->memory->spanCount()!=spans)return fail(ArmSmmu4KStateMismatch,13,record->iova,record->memory->bytes());
     for(size_t i=0;i<spans;++i) {
         const auto &span=record->memory->spans()[i];
         changes_[i]={record->iova+span.offset,span.physical,span.bytes,record->permissions,record->writeback,record->shareability};
@@ -411,13 +423,13 @@ IOReturn NativeAdrenoVm::unmap(uint64_t handle)
     status=ArmSmmu4KLiveUpdateContextBatch(&io_,streams_->bank,context_,lower.arena?&lower:nullptr,
         high.arena?&high:nullptr,upper,&visibility_[upper],changes_,spans,0,budget_,&update);
     native_adreno_trace_stage=13;
-    if(status)return fail(status);
+    if(status)return fail(status,14,record->iova,record->memory->bytes());
     clock.lap(1,3);
-    if(!erase(record))return fail(ArmSmmu4KStateMismatch);
+    if(!erase(record))return fail(ArmSmmu4KStateMismatch,15,record->iova,record->memory->bytes());
     record->mapped_spans=0;result_.completed_spans=spans;
     native_adreno_trace_stage=14;
     clock.lap(1,4);
-    if(record->memory->retireAfterQuiescence()!=kIOReturnSuccess)return fail(ArmSmmu4KStateMismatch);
+    if(record->memory->retireAfterQuiescence()!=kIOReturnSuccess)return fail(ArmSmmu4KStateMismatch,16,record->iova,record->memory->bytes());
     clock.lap(1,5);clock.done(1,record->memory->bytes());
     if(record->memory->imported())import_spans_[aliasClass(record->permissions,record->writeback,record->shareability)&15]-=spans;
     {

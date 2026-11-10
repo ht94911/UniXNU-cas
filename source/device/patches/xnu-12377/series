@@ -34,3 +34,4 @@ zzzz-native-shutdown-unmount-observe.patch
 
 # Existing GPU trace observes the real IOKit map path; no mapping policy change.
 zzzzzz-nezha-gpu-cpu-map-observe.patch
+zzzzzz-nezha-gpu-external-ipc-scope.patch
