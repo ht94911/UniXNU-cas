@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "8359ab2d17f004ed21cbd7b2a0d830e7296efdc2",
+  "device_revision": "56d5a254da7b5e1444d8cad6589771349b739779",
   "soc_revision": "3b50026405e2a42b7314a0b8703333cf2418d956",
   "xcode": "26.6",
   "files": {
@@ -298,7 +298,7 @@
     "source/ufs.bundle": "3a7c1c6ac7e5a39e6cb4adcc6143fa1e4c6c24ae862aa501102f9fb70c21a534",
     "source/usb.bundle": "fc77b40791b6994f0da015b13b68a13cee5e8bc84e510cee4e518866165efeb2",
     "ci/native.py": "fd3b57db44a25b11e0cbc78107ca97a8be81704e5ff4723268068b5ca170ddbb",
-    "source/device/patches/xnu-12377/zzzz-aa27-test-app-view.patch": "9e84a48654fba851545b810ae6f3e7fa1b38b6643fbabdea5b58cda709d26e1b"
+    "source/device/patches/xnu-12377/zzzz-aa27-test-app-view.patch": "4fd897055265b5b58d67fea877eb286b9ff7e482062c6c666268e4e93ffd6b2f"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",

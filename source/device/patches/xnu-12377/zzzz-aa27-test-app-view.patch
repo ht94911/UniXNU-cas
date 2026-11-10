@@ -1,7 +1,9 @@
 diff --git a/bsd/kern/kern_exec.c b/bsd/kern/kern_exec.c
 --- a/bsd/kern/kern_exec.c
 +++ b/bsd/kern/kern_exec.c
-@@ -1,3 +1,17 @@
+@@ -8681,6 +8681,20 @@
+ 		return;
+ 	}
  	native_gpu_addon_install(p, scratch);
 +	/* The standalone AA27 app uses the existing read-only application view.
 +	 * Its own files arrive through the normal addon, after Data is ready.
@@ -19,3 +21,4 @@ diff --git a/bsd/kern/kern_exec.c b/bsd/kern/kern_exec.c
 +
  	static const char extensions_source[] = "/private/var/ngpu/addons", extensions_point[] = "/System/Library/Extensions";
  	static const char daemons_source[] = "/private/var/ngpu/daemons", daemons_point[] = "/System/Library/LaunchDaemons";
+ 	native_gpu_addon_mount(p, scratch, 0x400, extensions_source, sizeof(extensions_source), extensions_point,
