@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Audio041 separately accounts measured record-confirmation time within the original TAS phase policy. Full BEFORE completion, GENI timeouts and original040 PIL/playback/USB/SoC/GPU remain; private files stay local.",
+  "purpose": "Audio042 waits for atomic zero admission within the original1024 polls before fixed complete-record delivery.041 TAS time accounting, PIL, playback, GPU/SoC/USB retained; private inputs stay local.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "3ffa1a055f9fe1c3f6cca9ca8e79de28348024d3",
+  "device_revision": "580f43dc4993e64203dbb5ae4a28257aae14971e",
   "soc_revision": "703d7b4bb00904b4a6e5d96f9e9bf72eec170f6b",
   "xcode": "26.6",
   "files": {
@@ -171,7 +171,7 @@
     "source/device/patches/xnu-12377/zzzzzz-nezha-input-chain-trace.patch": "c4d05419e7ec3af0de619754bdb6c2deb69b74d714c2219e509360ebfe1b947e",
     "source/device/patches/xnu-12377/zzzzzz-nezha-kernel-class-lock-order.patch": "cd90c61d6838f4e6a7248da81b6180f14db03d00f2f7a64f4bbe4034c0aa8dcb",
     "source/device/patches/xnu-12377/zzzzzz-nezha-sigp-startup-order.patch": "18275910b909d187e459c68f5d937cc09bc01923180141dc155aa7f4ff14aaf9",
-    "source/device/porting.toml": "50a948cd4fa383638e39077543c6dea1558c6d3875da69be20f94c113c8797d0",
+    "source/device/porting.toml": "048f2a4063241be0d650ae4c961d714841b53f52a5d2c2640c61b99e0a7fe635",
     "source/device/scripts/backlight-iphone-24A446.json": "446eb5fe6440335bfe9fca75b32f7d815ddcafbb8a3c2d7f697c1e5c3f40f6cb",
     "source/device/scripts/build-adreno840.py": "269f32fe2c97d7baf846a148fed7c111a53869486626a87ec8daab7fdfc3ab91",
     "source/device/scripts/build-boot-progress.py": "a210eb1f0443574eb1506932aa9e8181d5c73aecf99397d8cc731568bd3210ba",
@@ -219,7 +219,7 @@
     "source/device/package/audio27/platform/AudioSmmu.h": "41401f1b97e3481c7e5cc3e02c47f926e91eec9fa34f4a48981a3fc3b723cddd",
     "source/device/package/audio27/upstream/ShengGpr.c": "c4f498f07e2cb601b593e64a8d32474a21d6a87375618e1a67b99d52c5d3160e",
     "source/device/package/audio27/platform/SoundWire.h": "348979ac1e552e1c3a0027e09f8500927e8bf7ccbb496276d2c9d3ef19322224",
-    ".github/workflows/nezha-ios27-native.yml": "077023e7609880dd8fd716ad7b39eedc217b2d21148ec0db2a1ca5379bcacc26",
+    ".github/workflows/nezha-ios27-native.yml": "9efd6d50755902987f6af96da60f186f1372592451a133b66b359b4b7a1b0373",
     "source/device/package/audio27/upstream/ShengGpr.h": "a274dded1f4d1e2709b9f966759bcb1f57d12747ee0f57743dea1fa97d95d23e",
     "source/device/package/audio27/os/NezhaAudioNative.h": "53bd5bebce199f81892222bdd3a69b30494c0da3a4bc9a4d9a25a4093c22c243",
     "source/device/package/audio27/upstream/ShengAudioReach.h": "b135177a5feb3e24e0d8a6aabb301600e2c37078b970a09ada6e8eb7bb6a5b98",
@@ -334,7 +334,7 @@
     "source/device/package/audio27/upstream/QcomQrtr.h": "3ead40f5f996497224ebef92e2e67820aa8372bab0a21646c15df954baba84f1",
     "source/device/package/gpu/NezhaGpuPerfVotePolicy.h": "da1885ef10b2f12f6e5cc28aec8ea48823465ceb1ceaf2a840659d61dc5f87dd",
     "source/device/patches/xnu-12377/zzzzzz-nezha-system-reset-evidence.patch": "3235e4492f5a58190df2d7662e3c5849d80041c584462c1a42ac2364db69aa16",
-    "source/device/package/audio27/os/NezhaAudioXpuTrace.h": "e5da1523a9a0499c7004a39bd067eb7143b77cf7ebb904b1ffbe1e5eaae00ac1",
+    "source/device/package/audio27/os/NezhaAudioXpuTrace.h": "878099997a306aebd7471a9195b9800d43ec3d2b78c2e5b65c8489a244ea9da9",
     "source/device/package/audio27/os/NezhaAudioPlaybackBoot.cpp": "c5b81bd30729357c04f869ae8f070c01327be2b4a5d760b39f9860b7f7d72cae"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
@@ -387,15 +387,15 @@
   "audio": {
     "base": "GPU023",
     "base_device_revision": "673cde869b7378658b470c4e6b2b9a1766b99411",
-    "source_revision": "3ffa1a055f9fe1c3f6cca9ca8e79de28348024d3",
-    "source_only_revision": "3ffa1a055f9fe1c3f6cca9ca8e79de28348024d3",
+    "source_revision": "580f43dc4993e64203dbb5ae4a28257aae14971e",
+    "source_only_revision": "580f43dc4993e64203dbb5ae4a28257aae14971e",
     "hardware_enabled": false,
     "resource_census_enabled": true,
     "private_inputs": false,
     "HAL_target": "arm64e-apple-ios27.0",
     "shared_resource_owner": "703d7b4bb00904b4a6e5d96f9e9bf72eec170f6b",
     "private_input_slot_bytes": 35651584,
-    "previous_audio_behavior_source": "b8ffaa08e96f226a484d11db5c47e60b43c75bc3",
+    "previous_audio_behavior_source": "3ffa1a055f9fe1c3f6cca9ca8e79de28348024d3",
     "base_native_run": 42401029411,
     "base_Metal_revision": "eb59f022a326d03330d398b3c1dbcb6f0aeb633f",
     "diagnostic_glink_delay_ms": 20000,
@@ -502,6 +502,11 @@
     "TAS_hardware_scheduler_deadline_ms": 5000,
     "native_measured_trace_wait_accounted": true,
     "original_record_before_access_required": true,
-    "diagnostic_timing_only": true
+    "diagnostic_timing_only": true,
+    "XPU_zero_admission_wait": true,
+    "XPU_partial_admission_terminal": true,
+    "observed041_boot_sha256": "4f5ab9838f1caa76ab30925243a880224eda0a3ac41019ae8907868f591d2bd4",
+    "observed041_TAS_steps_completed": 8,
+    "observed041_record_admission_blocked": true
   }
 }

@@ -61,7 +61,7 @@ static inline int na_xpu_trace_before(const char *op,uint64_t pa,uint64_t span,
     if (bytes<=0 || (size_t)bytes>=sizeof(record))
         return na_xpu_trace_blocked(op,pa,"record-size",status,0,0,0,0,0);
     size_t enqueued=qcom_usb_debug_try_record(record,(size_t)bytes);
-    if (enqueued!=(size_t)bytes)
+    if (enqueued && enqueued!=(size_t)bytes)
         return na_xpu_trace_blocked(op,pa,"record-admission",status,enqueued,0,0,0,0);
     uint64_t accepted_target=0,transport_target=0;
     bool have_accepted=false,have_transport=false;
@@ -79,6 +79,18 @@ static inline int na_xpu_trace_before(const char *op,uint64_t pa,uint64_t span,
             return na_xpu_trace_blocked(op,pa,"status-snapshot",status,enqueued,
                                          attempt+1,busy,accepted_target,transport_target);
         } else {
+            if (!enqueued) {
+                /* A zero return from the atomic record API accepted nothing.
+                 * Allow transient FIFO/producer contention within the same
+                 * confirmation budget. A partial return remains terminal. */
+                enqueued=qcom_usb_debug_try_record(record,(size_t)bytes);
+                if (enqueued && enqueued!=(size_t)bytes)
+                    return na_xpu_trace_blocked(op,pa,"record-admission",status,enqueued,
+                                                 attempt+1,busy,accepted_target,transport_target);
+                /* Status was sampled before this admission. Refresh it next
+                 * iteration so its accepted watermark includes this record. */
+                IOSleep(1);continue;
+            }
             if (!have_accepted && status.buffer_accepted>=(uint64_t)bytes) {
                 accepted_target=status.buffer_accepted;have_accepted=true;
             }
@@ -89,7 +101,7 @@ static inline int na_xpu_trace_before(const char *op,uint64_t pa,uint64_t span,
         }
         IOSleep(1);
     }
-    return na_xpu_trace_blocked(op,pa,!have_accepted ? "status-busy":
+    return na_xpu_trace_blocked(op,pa,!enqueued ? "record-admission":!have_accepted ? "status-busy":
                                   !have_transport ? "cpu-queue":"transport",
                                   status,enqueued,1024,busy,accepted_target,transport_target);
 }
