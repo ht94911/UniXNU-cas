@@ -131,7 +131,14 @@ for path in (root/'drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm',root/'drive
              Path(__file__).resolve().parent/'fixtures/display/NezhaDpuTiming.h',Path(__file__).resolve().parent/'decode-display-timing.py'):
     assert tested_display_sources[str(path.resolve())]==hashlib.sha256(path.read_bytes()).hexdigest()
 assert b'ndt=1' in data and b'NATIVE_METAL_DISPLAY_TIMING' in data
-report=dict(actual_display_profile=display_profile,actual_sync_profile=sync_profile,initial_tile_store_error_propagation_source_bound=True,actual_target_checked=True,plugin_sha256=hashlib.sha256(data).hexdigest(),
+wait_profile=json.loads((a.logs/'render-wait/report.json').read_text())
+assert wait_profile['passed'] and wait_profile['actual_capture_and_fragment_code']
+assert wait_profile['real_Mach_wait']['executed'] and wait_profile['real_Mach_wait']['passed']
+assert wait_profile['source_sha256']==hashlib.sha256((a.unixnu/'drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm').read_bytes()).hexdigest()
+assert wait_profile['header_sha256']==hashlib.sha256((a.unixnu/'drivers/AdrenoMetal/NativeRenderWaitSample.h').read_bytes()).hexdigest()
+for marker in (b'_thread_get_state',b'_mach_vm_read_overwrite',b'_mach_thread_self',b'render-wait-sample'):
+    assert marker in data,marker
+report=dict(actual_render_wait_profile=wait_profile,actual_display_profile=display_profile,actual_sync_profile=sync_profile,initial_tile_store_error_propagation_source_bound=True,actual_target_checked=True,plugin_sha256=hashlib.sha256(data).hexdigest(),
             profile=profile,required_markers_present=True,iPad_raw_reader_markers_absent=True,
             bundle_signature_verified=True,host_pixel_result='legacy host010 failure retained;host GUI path not run by this build;A840 acceptance remains separate',
             actual_device_registry_compiled=True,old_singleton_symbol_absent=True,

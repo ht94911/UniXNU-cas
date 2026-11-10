@@ -109,8 +109,12 @@ def unchanged_scanout_intervals(rows,copies):
             if any(a[k]!=b[k] for k in configuration):reasons.append('display_configuration_changed')
             if a['underruns']!=b['underruns']:reasons.append('display_underruns_changed')
             mdp=(b['mdp_frame_count']-a['mdp_frame_count'])&0xffffffff
-            panel=(b['read_frame_count']-a['read_frame_count'])&0xffff
-            if not mdp or not panel or b['panel_timestamp']<=a['panel_timestamp']:
+            tear_frame_field=(b['read_frame_count']-a['read_frame_count'])&0xffff
+            # The stock get_frame_count selects INTF_MDP_FRAME_COUNT for
+            # autorefresh on this DPU. The auxiliary TE read-pointer high word
+            # remains0 with the retained boot configuration (heightfffffff0);
+            # it is not an independent required panel-refresh counter.
+            if not mdp or b['panel_timestamp']<=a['panel_timestamp']:
                 reasons.append('hardware_refresh_did_not_demonstrably_advance')
             low=max(left['cpu_before_us']-left['counter_before']/19.2,
                     right['cpu_before_us']-right['counter_before']/19.2)
@@ -120,10 +124,13 @@ def unchanged_scanout_intervals(rows,copies):
             event=[b['panel_timestamp']/19.2+low,b['panel_timestamp']/19.2+high]
             if not (left['cpu_after_us']<=event[0]<=event[1]<=right['cpu_before_us']):
                 reasons.append('latest_hardware_event_not_bounded_inside_unchanged_interval')
-            info=dict(interface=active[0],mdp_cycles=mdp,panel_cycles=panel,
+            info=dict(interface=active[0],mdp_cycles=mdp,tear_read_frame_field_delta=tear_frame_field,
+                      frame_counter_source='INTF_MDP_FRAME_COUNT selected by enabled autorefresh and DPU13 capability',
+                      panel_timestamp_delta_ticks=b['panel_timestamp']-a['panel_timestamp'],
                       interior_MDP_cycles_lower_bound=max(0,mdp-1),
                       latest_panel_event_CPU_bounds_us=event,
                       write_frame_delta=(b['write_frame_count']-a['write_frame_count'])&0xffff,
+                      underrun_count_available=a['underruns']!=0xffffffff and b['underruns']!=0xffffffff,
                       MISR_control_words=[a['misr_control'],b['misr_control']],
                       MISR_signature_unchanged=a['misr_signature']==b['misr_signature'])
         result.append(dict(sequence=number-1,next_sequence=number,

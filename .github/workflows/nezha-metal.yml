@@ -1,7 +1,7 @@
-name: nezha iPhone27 Mach CPU query and physical display timing 035
+name: nezha iPhone27 render-thread wait observations 036
 on:
   push:
-    branches: [codex/ios27-gpu27-metal-full-035-20261110]
+    branches: [codex/ios27-gpu27-metal-full-036-20261111]
   workflow_dispatch:
 permissions:
   contents: read
@@ -88,6 +88,9 @@ jobs:
       - name: Check actual display reader, frame producer and complete decoder
         id: display_profile
         run: device/ci/gpu-userland/logrun display-profile python3 device/ci/gpu-userland/check-display-timing.py --source unixnu/drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm --gop unixnu/drivers/GopFramebuffer --core device/ci/gpu-userland/fixtures/display --reader-test device/ci/gpu-userland/fixtures/display/check-dpu-timing.c --decoder device/ci/gpu-userland/decode-display-timing.py --out "$LOGS/display-profile"
+      - name: Observe actual Mac waiting threads and bounded stacks
+        id: render_wait
+        run: device/ci/gpu-userland/logrun render-wait python3 device/ci/gpu-userland/check-render-wait.py --source unixnu/drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm --header unixnu/drivers/AdrenoMetal/NativeRenderWaitSample.h --decoder device/ci/gpu-userland/decode-render-wait.py --out "$LOGS/render-wait"
       - name: Build Turnip for the actual A840 arm64e iOS27 target
         id: turnip_ios27
         working-directory: unixnu
