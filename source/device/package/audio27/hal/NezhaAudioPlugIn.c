@@ -2,6 +2,7 @@
 // sheng AudioServerPlugIn architecture, with ABI2 ownership and independent
 // input lifecycle. arm64e source only; original-donor load validation pending.
 #include <CoreAudio/AudioServerPlugIn.h>
+#include <CoreAudio/AudioHardware.h>
 #include <CoreFoundation/CoreFoundation.h>
 #include <IOKit/IOKitLib.h>
 #include <mach/mach_time.h>
