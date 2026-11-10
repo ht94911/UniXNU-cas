@@ -81,7 +81,7 @@ int na_assembly_init(NaAssembly *a,const NaAssemblyPlan *p,uint64_t now) {
     NaTasPowerOps tas;
     r=na_geni_board_init(&a->speaker_board,&p->board,&tas);if (r) return failed(a,r);
     r=na_tas_endpoint_init(&a->speaker,p->tuning,&p->tas,&tas);if (r) return failed(a,r);
-    if (p->stream[1].graph) {r=na_mic_board_init(&a->mic_board,&p->board,1,0);if (r) return failed(a,r);}
+    if (p->stream[1].graph) {r=na_mic_board_init(&a->mic_board,&p->capture_board,1,0);if (r) return failed(a,r);}
     NaAdspOps adsp={a,smem_lock,smem_unlock,doorbell,proxy,dma_setup,poll_shared,0};
     r=na_adsp_init(&a->adsp,p->smem,0x200000,&a->loader[0],&a->loader[1],&a->rx,&adsp);if (r) return failed(a,r);
     NaDriverStream stream[3]={0};

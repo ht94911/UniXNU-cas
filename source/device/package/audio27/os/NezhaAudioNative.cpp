@@ -20,7 +20,7 @@ extern kmod_info_t g_kernel_kmod_info;
 extern "C" void nezha_audio_service_static_init(void) __asm__("__GLOBAL__sub_I_NezhaAudioService.cpp");
 extern "C" int nezha_audio_pas_call(unsigned,unsigned,uint64_t,uint64_t);
 extern "C" int nezha_audio_pas_query(unsigned,unsigned,uint64_t [4]);
-extern "C" {volatile uint64_t nezha_audio27_stats[24];}
+extern "C" {volatile uint64_t nezha_audio27_stats[32];}
 static uint32_t audioStatsSequence;
 namespace {
 NaDriver *worker;
@@ -47,10 +47,19 @@ void run(void *v,wait_result_t) {
     auto *d=static_cast<NaDriver *>(v);thread_set_thread_name(current_thread(),"nezha-audio27");
     uint32_t lastStage=~0u,lastTasPhase=~0u,lastTasIndex=~0u,pilQueries=0;uint64_t lastOutput=0,lastInput=0,nextPeriods=0;
     int lastError=0;bool service=false,publicationFailed=false;
+    int captureFrames=0;PE_parse_boot_argn("na-capture-probe",&captureFrames,sizeof captureFrames);
+    bool probeSubmitted=false;uint32_t lastProbe=~0u;
     for (;;) {
         uint64_t now=na_native_now_us(nullptr)/1000;
         nezha_audio_owner_lock();
         int r=na_driver_poll(d,now);
+        if (captureFrames>0 && !probeSubmitted && na_driver_ready(d)) {
+            int requested=na_runtime_probe_capture(&d->runtime,(uint32_t)captureFrames,now);
+            if (requested!=NA_BUSY) {
+                probeSubmitted=true;
+                if (requested) {d->runtime.probe.error=requested;__atomic_store_n(&d->runtime.probe.state,NaProbeFailed,__ATOMIC_RELEASE);}
+            }
+        }
         const uint64_t outputPeriods=d->runtime.status.output_periods,inputPeriods=d->runtime.status.input_periods;
         const uint32_t underruns=d->runtime.status.underruns,overruns=d->runtime.status.overruns;
         const uint32_t topFaults=d->speaker->reported_faults[0],bottomFaults=d->speaker->reported_faults[1];
@@ -69,6 +78,14 @@ void run(void *v,wait_result_t) {
         __atomic_store_n(&nezha_audio27_stats[20],(uint64_t)((uint64_t)(int64_t)d->prm.error),__ATOMIC_RELAXED);__atomic_store_n(&nezha_audio27_stats[21],(uint64_t)(service),__ATOMIC_RELAXED);
         __atomic_store_n(&nezha_audio27_stats[22],(uint64_t)(__atomic_load_n(&d->runtime.request,__ATOMIC_ACQUIRE)),__ATOMIC_RELAXED);
         __atomic_store_n(&nezha_audio27_stats[23],(uint64_t)(d->input_enabled),__ATOMIC_RELAXED);
+        __atomic_store_n(&nezha_audio27_stats[24],(uint64_t)(d->runtime.probe.state),__ATOMIC_RELAXED);
+        __atomic_store_n(&nezha_audio27_stats[25],(uint64_t)(d->runtime.probe.frames),__ATOMIC_RELAXED);
+        __atomic_store_n(&nezha_audio27_stats[26],(uint64_t)(d->runtime.probe.periods),__ATOMIC_RELAXED);
+        __atomic_store_n(&nezha_audio27_stats[27],(uint64_t)(d->runtime.probe.nonzero),__ATOMIC_RELAXED);
+        __atomic_store_n(&nezha_audio27_stats[28],(uint64_t)(d->runtime.probe.peak),__ATOMIC_RELAXED);
+        __atomic_store_n(&nezha_audio27_stats[29],(uint64_t)(d->runtime.probe.squares),__ATOMIC_RELAXED);
+        __atomic_store_n(&nezha_audio27_stats[30],(uint64_t)((int64_t)d->runtime.probe.error),__ATOMIC_RELAXED);
+        __atomic_store_n(&nezha_audio27_stats[31],(uint64_t)(d->runtime.probe.pcm_frames),__ATOMIC_RELAXED);
         __atomic_fetch_add(&audioStatsSequence,1,__ATOMIC_RELEASE);
         nezha_audio_owner_unlock();
         // Exact037 PIL preflight, omitted by038's playback worker. Like the
@@ -89,7 +106,13 @@ void run(void *v,wait_result_t) {
                 underruns,overruns,topFaults,bottomFaults);
             lastOutput=outputPeriods;lastInput=inputPeriods;nextPeriods=now+1000;
         }
-        if (!service && !publicationFailed && na_driver_ready(d)) {
+        if (lastProbe!=d->runtime.probe.state) {
+            printf("NEZHA AUDIO27 CAPTURE PROBE: state=%u frames=%u periods=%u nonzero=%u peak=%u pcm_frames=%u error=%d\n",
+                d->runtime.probe.state,d->runtime.probe.frames,d->runtime.probe.periods,d->runtime.probe.nonzero,d->runtime.probe.peak,d->runtime.probe.pcm_frames,d->runtime.probe.error);
+            lastProbe=d->runtime.probe.state;
+        }
+        if (!service && !publicationFailed && na_driver_ready(d) &&
+            (!captureFrames || d->runtime.probe.state==NaProbeComplete)) {
             if (!classesReady) {
                 void *handle=OSMetaClass::preModLoad(g_kernel_kmod_info.name);
                 if (handle) {nezha_audio_service_static_init();classesReady=OSMetaClass::postModLoad(handle)==0;}
@@ -108,15 +131,30 @@ void run(void *v,wait_result_t) {
     // retained for diagnosis; they must not be freed under a running DSP.
 }
 }
-extern "C" int nezha_audio27_copy_stats(uint64_t out[24]) {
+extern "C" int nezha_audio27_copy_stats(uint64_t out[32]) {
     if (!out) return NA_ARGUMENT;
     for (unsigned attempt=0;attempt<4;++attempt) {
         uint32_t seq=__atomic_load_n(&audioStatsSequence,__ATOMIC_ACQUIRE);if (seq&1) continue;
-        for (unsigned i=0;i<24;++i) out[i]=__atomic_load_n(&nezha_audio27_stats[i],__ATOMIC_RELAXED);
+        for (unsigned i=0;i<32;++i) out[i]=__atomic_load_n(&nezha_audio27_stats[i],__ATOMIC_RELAXED);
         __atomic_thread_fence(__ATOMIC_ACQUIRE);
         if (seq==__atomic_load_n(&audioStatsSequence,__ATOMIC_RELAXED)) return NA_OK;
     }
     return NA_BUSY;
+}
+extern "C" int nezha_audio27_capture_pcm(uint32_t offset,uint32_t count,int16_t *out,uint32_t *copied) {
+    if (!out || !copied || !count || count>64 || offset>=NA_CAPTURE_PROBE_PCM_FRAMES) return NA_ARGUMENT;
+    *copied=0;
+    if (!nezha_audio_owner_try_lock()) return NA_BUSY;
+    NaDriver *d=__atomic_load_n(&worker,__ATOMIC_ACQUIRE);int result=NA_BUSY;
+    if (d && (d->runtime.probe.state==NaProbeComplete || d->runtime.probe.state==NaProbeFailed)) {
+        const NaCaptureProbe *p=&d->runtime.probe;
+        if (offset>=p->pcm_frames) result=NA_ARGUMENT;
+        else {
+            uint32_t available=p->pcm_frames-offset;if (count>available) count=available;
+            memcpy(out,p->pcm+offset,count*sizeof *out);*copied=count;result=NA_OK;
+        }
+    }
+    nezha_audio_owner_unlock();return result;
 }
 extern "C" int na_native_map(NaNativeWindow *w,NaRange range,uint64_t lease) {
     if (!w || w->mapping || !lease || !ownedWindow(range)) return NA_ARGUMENT;
@@ -182,8 +220,8 @@ extern "C" int nezha_audio_worker_start(NaDriver *d) {
     if (!d || !d->adsp || !d->runtime.shared || !d->feedback_attached) return NA_ARGUMENT;
     uint32_t expected=0;
     if (!__atomic_compare_exchange_n(&started,&expected,1,false,__ATOMIC_ACQ_REL,__ATOMIC_ACQUIRE)) return NA_BUSY;
-    worker=d;thread_t thread=THREAD_NULL;
+    __atomic_store_n(&worker,d,__ATOMIC_RELEASE);thread_t thread=THREAD_NULL;
     kern_return_t r=kernel_thread_start(run,d,&thread);
-    if (r!=KERN_SUCCESS) {worker=nullptr;__atomic_store_n(&started,0,__ATOMIC_RELEASE);return NA_IO;}
+    if (r!=KERN_SUCCESS) {__atomic_store_n(&worker,(NaDriver *)nullptr,__ATOMIC_RELEASE);__atomic_store_n(&started,0,__ATOMIC_RELEASE);return NA_IO;}
     thread_deallocate(thread);return NA_OK;
 }

@@ -43,16 +43,33 @@ extern "C" int na_native_speaker_config(NaNativePlaybackConfig *c,const uint8_t 
     plan.resource_count=1;plan.output_votes=1;
     plan.timebase_numer=numer;plan.timebase_denom=denom;*c=plan;return NA_OK;
 }
+extern "C" int na_native_capture_config(NaNativePlaybackConfig *c) {
+    if (!c || c->capture_probe || c->input_votes || c->port[2] || c->iova[2] ||
+        c->resource_count!=1 || c->output_votes!=1 || !c->timebase_numer || !c->timebase_denom ||
+        c->resources[0].kind!=NaPrmClock || c->resources[0].id!=0x200 ||
+        c->resources[0].hz!=3072000 || c->resources[0].attribute!=4) return NA_ARGUMENT;
+    // Exact stock audio-ext-clk-up/DTS core and root requests. The codec's
+    // 4.8MHz division does not change these19.2MHz PRM requests.
+    c->resources[1]={NaPrmCore,1,0,0};c->resources[2]={NaPrmCore,2,0,0};
+    c->resources[3]={NaPrmClock,0x30c,19200000,1};
+    c->resources[4]={NaPrmClock,0x307,19200000,1};
+    c->resource_count=5;c->input_votes=0x1e;
+    c->iova[2]=0x40020000;c->port[2]=0x7001;c->capture_probe=1;return NA_OK;
+}
 extern "C" int na_native_playback_prepare(NaNativePlayback *s,const NaNativePlaybackConfig *c) {
     if (!s || !c || s->attempted || s->ready || s->error ||
-        !c->port[0] || !c->port[1] || c->port[0]==c->port[1] ||
-        !c->iova[0] || !c->iova[1] || ((c->iova[0]|c->iova[1])&4095) ||
-        (uint64_t)c->iova[0]+65536>UINT64_C(0x100000000) ||
-        (uint64_t)c->iova[1]+65536>UINT64_C(0x100000000) ||
-        na_ranges_overlap({c->iova[0],65536},{c->iova[1],65536}) ||
+        c->capture_probe>1 || (c->capture_probe ? !c->input_votes:
+            (c->input_votes || c->iova[2] || c->port[2])) ||
         !c->resource_count || c->resource_count>NA_PRM_RESOURCES || !c->output_votes ||
-        (c->output_votes>>c->resource_count) || !c->timebase_numer || !c->timebase_denom ||
+        ((c->output_votes|c->input_votes)>>c->resource_count) || !c->timebase_numer || !c->timebase_denom ||
         c->speaker.revision_mask[0]!=0xff || c->speaker.revision_mask[1]!=0xff) return NA_ARGUMENT;
+    const unsigned streams=c->capture_probe ? 3:2;
+    for (unsigned i=0;i<streams;++i) {
+        if (!c->port[i] || !c->iova[i] || (c->iova[i]&4095) ||
+            (uint64_t)c->iova[i]+65536>UINT64_C(0x100000000)) return NA_ARGUMENT;
+        for (unsigned j=0;j<i;++j) if (c->port[i]==c->port[j] ||
+            na_ranges_overlap({c->iova[i],65536},{c->iova[j],65536})) return NA_ARGUMENT;
+    }
     for (unsigned i=0;i<c->resource_count;++i) {
         const auto &r=c->resources[i];
         if (r.kind>NaPrmClock || !r.id || (r.kind==NaPrmClock && !r.hz)) return NA_ARGUMENT;
@@ -62,31 +79,36 @@ extern "C" int na_native_playback_prepare(NaNativePlayback *s,const NaNativePlay
     // shared hardware resource. This never treats a zero-filled CI slot as input.
     NaInputPack pack;int r=na_native_audio_inputs(&pack);if (r) return r;
     r=na_playback_inputs(&s->playback,&pack,&c->speaker);if (r) return r;
+    if (c->capture_probe) {r=na_capture_inputs(&s->capture,&pack);if (r) return r;}
     r=na_native_prepare_adsp_inputs(&s->inputs,&s->plan);
     if (r==NA_BUSY && !s->inputs.attempted) {
         // Dependency wait has acquired no resources. The retained input view
         // is safe to discard, allowing the same caller to wait for touch/USB.
-        s->playback={};return r;
+        s->playback={};s->capture={};return r;
     }
     s->attempted=1;if (r) return failed(s,r);
     auto &p=s->plan;uint64_t lease=p.adsp_lease;
     r=na_playback_plan(&p,&s->playback);if (r) return failed(s,r);
+    if (c->capture_probe) {r=na_capture_plan(&p,&s->capture);if (r) return failed(s,r);}
     r=na_native_map(&s->smem,{0x81d00000,0x200000},lease);if (r) return failed(s,r);
     r=na_native_map(&s->qmp,{0x0c300000,0x1000},lease);if (r) return failed(s,r);
     r=na_native_map(&s->cmd_db,{0x81c60000,0x20000},lease);if (r) return failed(s,r);
     p.smem=s->smem.va;p.qmp=reinterpret_cast<volatile uint32_t *>(s->qmp.va);
     p.cmd_db=const_cast<const uint8_t *>(s->cmd_db.va);p.tcs=1;
     p.proxy=na_resource_owner_proxy(&s->inputs.resources);
-    for (unsigned i=0;i<2;++i) {
+    for (unsigned i=0;i<streams;++i) {
         r=na_native_allocate(&s->dma[i],65536);if (r) return failed(s,r);
-        auto &stream=p.stream[i ? 2:0];stream.dma=owned(s->dma[i]);stream.iova=c->iova[i];stream.port=c->port[i];
+        auto &stream=p.stream[i==2 ? 1:i ? 2:0];stream.dma=owned(s->dma[i]);stream.iova=c->iova[i];stream.port=c->port[i];
     }
     r=na_native_allocate(&s->tables,64*4096);if (r) return failed(s,r);p.tables=owned(s->tables);
     r=na_native_smmu_bind(&s->domain,&s->inputs.resources,&p.smmu);if (r) return failed(s,r);
     r=na_native_tas_board(&s->board,s->inputs.resources.common,&p.board);if (r) return failed(s,r);
-    r=nezha_audio_allocate_maps(&p.status,&p.output_ring,&p.input_ring,0);if (r) return failed(s,r);
+    if (c->capture_probe) {
+        r=na_native_mic_board(&s->microphone,s->inputs.resources.common,&p.capture_board);if (r) return failed(s,r);
+    }
+    r=nezha_audio_allocate_maps(&p.status,&p.output_ring,&p.input_ring,c->capture_probe);if (r) return failed(s,r);
     memcpy(p.resources,c->resources,c->resource_count*sizeof *c->resources);
-    p.resource_count=c->resource_count;p.output_votes=c->output_votes;
+    p.resource_count=c->resource_count;p.output_votes=c->output_votes;p.input_votes=c->input_votes;
     p.timebase_numer=c->timebase_numer;p.timebase_denom=c->timebase_denom;
     p.ops={s,smem_lock,smem_unlock,doorbell,sync,na_native_host_time,dispatch};
     r=na_assembly_init(&s->assembly,&p,na_native_now_us(nullptr)/1000);if (r) return failed(s,r);
@@ -99,7 +121,7 @@ extern "C" int na_native_playback_prepare(NaNativePlayback *s,const NaNativePlay
     s->ready=1;return NA_OK;
 }
 extern "C" int na_native_playback_start_step(NaNativePlaybackStart *s,uint64_t now,uint32_t numer,uint32_t denom) {
-    if (!s || !numer || !denom || now>UINT64_MAX-120000) return NA_ARGUMENT;
+    if (!s || !numer || !denom || now>UINT64_MAX-120000 || s->capture_frames>2*NA_AUDIO_RATE) return NA_ARGUMENT;
     if (s->error) return s->error;
     if (s->phase==4) return NA_OK;
     if (!s->deadline) s->deadline=now+120000;
@@ -124,6 +146,7 @@ extern "C" int na_native_playback_start_step(NaNativePlaybackStart *s,uint64_t n
             r=na_native_unmap(&s->identity_native.geni,1);
             if (!r) r=na_native_unmap(&s->identity_native.tlmm,1);
             if (!r) r=na_native_speaker_config(&s->config,s->identity.revision,numer,denom);
+            if (!r && s->capture_frames) r=na_native_capture_config(&s->config);
             if (!r) s->phase=2;
         }
     } else if (!r && s->phase==2) {

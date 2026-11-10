@@ -14,6 +14,7 @@ int nezha_audio_publish(NaRuntime *);
 /* Only poll and client-map replacement share this sleepable owner gate.
  * Never held in IRQ handlers or while registering an IOKit service. */
 void nezha_audio_owner_lock(void);
+int nezha_audio_owner_try_lock(void);
 void nezha_audio_owner_unlock(void);
 #ifdef __cplusplus
 }

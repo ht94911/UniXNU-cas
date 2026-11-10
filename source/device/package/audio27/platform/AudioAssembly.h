@@ -40,7 +40,7 @@ typedef struct {
     NaAssemblyStream stream[3]; /*output, optional mic, mandatory VI*/
     const NaTasImage *tuning;NaTasSelection tas;
     NaTiCalibration calibration;uint32_t ti_instance;
-    NaBoardIo board;
+    NaBoardIo board,capture_board; /* independent speaker and microphone owners */
     NaPrmResource resources[NA_PRM_RESOURCES];uint32_t resource_count,output_votes,input_votes;
     NaAudioStatus *status;uint64_t *output_ring,*input_ring;
     uint32_t timebase_numer,timebase_denom,capture_proven,capture_probe_allowed;

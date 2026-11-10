@@ -135,6 +135,7 @@ extern "C" int nezha_audio_allocate_maps(NaAudioStatus **status,uint64_t **outpu
     *input=maps[2] ? (uint64_t *)maps[2]->getBytesNoCopy():nullptr;return NA_OK;
 }
 extern "C" void nezha_audio_owner_lock(void) {IOLockLock(ownerGate);}
+extern "C" int nezha_audio_owner_try_lock(void) {return ownerGate && IOLockTryLock(ownerGate);}
 extern "C" void nezha_audio_owner_unlock(void) {IOLockUnlock(ownerGate);}
 extern "C" int nezha_audio_publish(NaRuntime *r) {
     if (!r || !maps[0] || r->shared!=maps[0]->getBytesNoCopy() || r->output!=maps[1]->getBytesNoCopy() ||

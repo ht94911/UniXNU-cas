@@ -17,10 +17,12 @@ typedef struct {
     int (*health)(void *);
 } NaRuntimeOps;
 enum {NaProbeIdle,NaProbeStarting,NaProbeCollecting,NaProbeDraining,NaProbeComplete,NaProbeFailed};
+#define NA_CAPTURE_PROBE_PCM_FRAMES NA_AUDIO_PERIOD_FRAMES
 typedef struct {
-    uint32_t state,limit_frames,frames,periods,nonzero,peak;
+    uint32_t state,limit_frames,frames,periods,nonzero,peak,pcm_frames;
     uint64_t squares,deadline;
     int error;
+    int16_t pcm[NA_CAPTURE_PROBE_PCM_FRAMES]; /* first returned mono period only */
 } NaCaptureProbe;
 typedef struct {
     NaEngine engine;NaPrm *prm;NaTransport *transport;
@@ -50,7 +52,7 @@ int na_runtime_quiescent(const NaRuntime *);
  * zeroed; old mappings are never recycled into a new client connection. */
 int na_runtime_rebind(NaRuntime *,NaAudioStatus *,uint64_t *output,uint64_t *input);
 /* Explicit diagnostic call from the existing authenticated USB provider,
- * under the OS owner gate. Default disabled, max2s, aggregate statistics only.
+ * under the OS owner gate. Default disabled, max2s, statistics and first PCM period.
  * It does not publish HAL input or mark the physical microphone as proven. */
 int na_runtime_probe_capture(NaRuntime *,uint32_t frames,uint64_t now_ms);
 #ifdef __cplusplus

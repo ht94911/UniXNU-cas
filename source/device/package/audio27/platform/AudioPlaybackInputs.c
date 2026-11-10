@@ -55,3 +55,21 @@ int na_playback_plan(NaAssemblyPlan *p,const NaPlaybackInputs *in) {
     }
     return NA_OK;
 }
+int na_capture_inputs(NaCaptureInputs *out,const NaInputPack *pack) {
+    if (!out || out->valid || !pack) return NA_ARGUMENT;
+    NaInputPack checked;int r=na_input_pack(&checked,pack->data,pack->bytes);if (r) return r;
+    NaCaptureInputs in={0};uint32_t protection=0;
+    r=na_input_find(&checked,"capture.graph",&in.graph);if (r) return r;
+    if (in.graph.bytes>0x100000) return NA_WIRE;
+    r=na_topology_resolve(in.graph.data,(uint32_t)in.graph.bytes,1,&in.media,&protection);
+    if (r) return r;
+    if (protection || in.media.capture!=1 || in.media.channels!=1) return NA_MISSING;
+    in.valid=1;*out=in;return NA_OK;
+}
+int na_capture_plan(NaAssemblyPlan *p,const NaCaptureInputs *in) {
+    if (!p || !in || !in->valid || p->stream[1].graph ||
+        p->capture_proven || p->capture_probe_allowed || !p->stream[0].graph ||
+        !p->stream[2].graph) return NA_ARGUMENT;
+    p->stream[1].graph=in->graph.data;p->stream[1].graph_bytes=(uint32_t)in->graph.bytes;
+    p->stream[1].media=in->media;p->capture_probe_allowed=1;return NA_OK;
+}

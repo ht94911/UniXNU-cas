@@ -41,7 +41,10 @@ static inline void na_native_pil_preflight(NaAdsp *adsp,uint32_t *completed) {
 int nezha_audio_worker_start(NaDriver *);
 /* Bounded read of the existing worker statistics for USB provider8/v3.
  * Does not acquire the audio owner lock or touch hardware. */
-int nezha_audio27_copy_stats(uint64_t out[24]);
+int nezha_audio27_copy_stats(uint64_t out[32]);
+/* Read only the retained, completed first PCM period under the existing short
+ * owner try-lock. The caller supplies an index/count, never an address. */
+int nezha_audio27_capture_pcm(uint32_t offset,uint32_t count,int16_t *,uint32_t *copied);
 #ifdef __cplusplus
 }
 #endif

@@ -37,6 +37,8 @@ static int capture(void *v,uint64_t relative,const void *pcm,uint32_t bytes) {
         const int16_t *samples=pcm;
         for (unsigned i=0;i<bytes/2 && r->probe.frames<r->probe.limit_frames;++i) {
             int32_t value=samples[i];uint32_t absolute=(uint32_t)(value<0 ? -value:value);
+            if (r->probe.pcm_frames<NA_CAPTURE_PROBE_PCM_FRAMES)
+                r->probe.pcm[r->probe.pcm_frames++]=samples[i];
             ++r->probe.frames;if (value) ++r->probe.nonzero;
             if (absolute>r->probe.peak) r->probe.peak=absolute;
             r->probe.squares+=(uint64_t)(value*value);
@@ -128,6 +130,7 @@ int na_runtime_probe_capture(NaRuntime *r,uint32_t frames,uint64_t now) {
         (state>=NaProbeStarting && state<=NaProbeDraining)) return NA_BUSY;
     r->probe.limit_frames=frames;r->probe.frames=r->probe.periods=r->probe.nonzero=r->probe.peak=0;
     r->probe.squares=0;r->probe.deadline=now+30000;r->probe.error=0;
+    r->probe.pcm_frames=0;memset(r->probe.pcm,0,sizeof r->probe.pcm);
     __atomic_store_n(&r->probe.state,NaProbeStarting,__ATOMIC_RELEASE);return NA_OK;
 }
 int na_runtime_poll(NaRuntime *r,uint64_t now) {

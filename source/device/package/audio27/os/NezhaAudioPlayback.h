@@ -4,21 +4,23 @@
 #include "NezhaAudioAdspInputs.h"
 #include "NezhaAudioSmmu.h"
 #include "NezhaAudioTasBoard.h"
+#include "NezhaAudioMicBoard.h"
 #include "../platform/AudioPlaybackInputs.h"
 #ifdef __cplusplus
 extern "C" {
 #endif
 typedef struct {
     NaTasSelection speaker;
-    uint32_t iova[2],port[2]; /* explicit output/VI plan, never physical addresses */
+    uint32_t iova[3],port[3]; /* output/VI/optional microphone; not physical addresses */
     NaPrmResource resources[NA_PRM_RESOURCES];
-    uint32_t resource_count,output_votes,timebase_numer,timebase_denom;
+    uint32_t resource_count,output_votes,input_votes,timebase_numer,timebase_denom,capture_probe;
 } NaNativePlaybackConfig;
 typedef struct {
-    NaNativeAdspInputs inputs;NaPlaybackInputs playback;
+    NaNativeAdspInputs inputs;NaPlaybackInputs playback;NaCaptureInputs capture;
     NaNativeSmmu domain;NaNativeTasBoard board;
+    NaNativeMicBoard microphone;
     NaNativeAdspWatchdog watchdog;
-    NaNativeMemory dma[2],tables;
+    NaNativeMemory dma[3],tables;
     NaNativeWindow smem,qmp,cmd_db;
     NaAssembly assembly;NaAssemblyPlan plan;
     uint32_t attempted,ready;int error;
@@ -33,6 +35,10 @@ int na_native_playback_prepare(NaNativePlayback *,const NaNativePlaybackConfig *
  * revisions and the actual XNU timebase; no fabricated revision default. */
 int na_native_speaker_config(NaNativePlaybackConfig *,const uint8_t revisions[2],
                               uint32_t timebase_numer,uint32_t timebase_denom);
+/* Explicitly extend that speaker plan with the stock TX/VA clock/core votes
+ * and a third, software-owned DMA address for the bounded capture probe.
+ * The default speaker recipe and HAL input publication remain unchanged. */
+int na_native_capture_config(NaNativePlaybackConfig *);
 /* Explicit na=3 startup: discover both revisions while reset-muted, restore
  * the identity-only board lease, then initialize the existing playback
  * Assembly and start its sole native worker. No output is requested here. */
@@ -41,7 +47,7 @@ typedef struct {
     NaNativeTasBoard identity_native;NaGeniBoard identity_board;NaTasIdentity identity;
     NaNativePlaybackConfig config;
     uint64_t deadline;
-    uint32_t phase;
+    uint32_t phase,capture_frames;
     int error;
 } NaNativePlaybackStart;
 int na_native_playback_start_step(NaNativePlaybackStart *,uint64_t now_ms,
