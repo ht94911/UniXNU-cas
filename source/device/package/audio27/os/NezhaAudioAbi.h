@@ -13,7 +13,18 @@
 #define NA_AUDIO_MAX_FRAME 0x7ffffffeULL
 enum {NaAudioControlMemory=0,NaAudioOutputMemory=1,NaAudioInputMemory=2};
 enum {NaAudioStartOutput=0,NaAudioStopOutput=1,NaAudioStartInput=2,NaAudioStopInput=3,
-      NaAudioFixHostClock=4};
+      NaAudioFixHostClock=4,NaAudioObserveHAL=5};
+/* Bounded HAL observations use the existing owned user client. They carry
+ * numeric callback results only and cannot request resources or memory writes. */
+#define NA_HAL_OBSERVATION_VERSION 1u
+#define NA_HAL_HISTORY_CAPACITY 64u
+enum {NaHalConnected=1,NaHalDeviceList=2,NaHalPropertyError=3,
+      NaHalStartIO=4,NaHalClockResult=5};
+typedef struct {
+    uint32_t version,kind,object,selector,scope,element;
+    int32_t result;
+    uint32_t value;
+} NaHalObservation;
 /* StartInput is a500ms capture lease. HAL renews every100ms only while the
  * audio server actually requests ReadInput. Playing output alone never turns
  * the microphone on; a disappearing input client stops without a stuck ADC. */

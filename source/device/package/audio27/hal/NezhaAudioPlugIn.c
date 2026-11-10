@@ -6,6 +6,7 @@
 #include <IOKit/IOKitLib.h>
 #include <mach/mach_time.h>
 #include <dlfcn.h>
+#include <dispatch/dispatch.h>
 #include <pthread.h>
 #include <stdatomic.h>
 #include <math.h>
@@ -27,17 +28,27 @@ static atomic_uint gRefs=1;
 static AudioServerPlugInHostRef gHost;
 static IONotificationPortRef gNotifications;
 static io_iterator_t gMatches;
-static CFRunLoopTimerRef gRetry;
+static dispatch_queue_t gDiscoveryQueue;
+static dispatch_source_t gRetry;
+static uint8_t gDiscoveryQueueKey;
+static atomic_uint gDiscoveryActive;
 static io_connect_t gConnect;
 static mach_vm_address_t gMapAddress[3];
 static const NaAudioStatus *gControl;
 static uint64_t *gOutput;static const uint64_t *gInput;
 static UInt32 gIoUsers;static int gInputAvailable,gOutputSelected=1,gInputSelected=1,gCaptureIssued;
 static uint64_t gCaptureTouch;
-static Float32 gVolume=0;
+static Float32 gVolume=1; /* Upstream default; kernel and amplifier limits still apply. */
 static uint64_t gZeroOrigin,gZeroSeed;
 static uint32_t gEpoch;
 static struct {UInt32 id,count;} gUsers[32];
+static uint32_t gReportedDeviceList=UINT32_MAX,gPropertyErrorCount;
+static NaHalObservation gPropertyErrors[NA_HAL_HISTORY_CAPACITY];
+static void report_hal(uint32_t kind,uint32_t object,uint32_t selector,uint32_t scope,uint32_t element,int32_t result,uint32_t value) {
+    if (!gConnect) return;
+    NaHalObservation event={NA_HAL_OBSERVATION_VERSION,kind,object,selector,scope,element,result,value};
+    (void)IOConnectCallStructMethod(gConnect,NaAudioObserveHAL,&event,sizeof event,NULL,NULL);
+}
 static kern_return_t call(uint32_t selector) {
     return gConnect ? IOConnectCallScalarMethod(gConnect,selector,NULL,0,NULL,NULL):KERN_FAILURE;
 }
@@ -61,19 +72,25 @@ static int clock_ready(const NaAudioStatus *s) {
     /* dlsym's signed function pointer is called directly on arm64e; no
      * instruction reads through a PAC pointer and no legacy rebinding hook. */
     Float64 (*frequency)(void)=(Float64 (*)(void))dlsym(RTLD_DEFAULT,"AudioGetHostClockFrequency");
-    if (!frequency) return -1;
+    if (!frequency) {report_hal(NaHalClockResult,kPlugIn,0,0,0,-1,0);return -1;}
     Float64 observed=frequency();
-    if (!isfinite(observed) || observed<1 || observed>UINT32_MAX || floor(observed)!=observed) return -1;
+    if (!isfinite(observed) || observed<1 || observed>UINT32_MAX || floor(observed)!=observed) {
+        report_hal(NaHalClockResult,kPlugIn,0,0,0,-2,0);return -1;
+    }
     if ((uint32_t)observed!=s->host_hz) {
         /* No caller-supplied address: kernel checks its exact donor UUID/code
          * and computes the one shared-cache literal from the task's slide. */
-        if (call(NaAudioFixHostClock)!=KERN_SUCCESS) return -1;
+        kern_return_t fixed=call(NaAudioFixHostClock);
+        if (fixed!=KERN_SUCCESS) {report_hal(NaHalClockResult,kPlugIn,0,0,0,fixed,(uint32_t)observed);return -1;}
         observed=frequency();
     }
     mach_timebase_info_data_t tb;
-    if (mach_timebase_info(&tb)!=KERN_SUCCESS || !isfinite(observed) || observed!=s->host_hz) return -1;
+    if (mach_timebase_info(&tb)!=KERN_SUCCESS || !isfinite(observed) || observed!=s->host_hz) {
+        report_hal(NaHalClockResult,kPlugIn,0,0,0,-3,s->host_hz);return -1;
+    }
     uint64_t q=0;
-    return na_clock_contract(tb.numer,tb.denom,(uint32_t)observed,&q) || q!=s->ticks_per_frame_q32 ? -1:0;
+    int result=na_clock_contract(tb.numer,tb.denom,(uint32_t)observed,&q) || q!=s->ticks_per_frame_q32 ? -1:0;
+    report_hal(NaHalClockResult,kPlugIn,0,0,0,result ? -4:0,(uint32_t)observed);return result;
 }
 static int connect_service(void) {
     if (gControl) return 0;
@@ -90,7 +107,8 @@ static int connect_service(void) {
         if (map_type(NaAudioInputMemory,NA_AUDIO_RING_BYTES)) goto bad;
         gInput=(const uint64_t *)(uintptr_t)gMapAddress[2];
     }
-    gEpoch=s.epoch;return 0;
+    gEpoch=s.epoch;gReportedDeviceList=UINT32_MAX;
+    report_hal(NaHalConnected,kPlugIn,0,0,0,0,1);return 0;
 bad:disconnect();return -1;
 }
 static int available(void) {
@@ -100,6 +118,7 @@ static int available(void) {
 }
 static void check_service(void) {
     pthread_mutex_lock(&gLock);
+    if (!atomic_load(&gDiscoveryActive)) {pthread_mutex_unlock(&gLock);return;}
     int previous=gControl!=NULL;
     if (gControl && !available()) disconnect();
     int now=connect_service()==0;
@@ -118,10 +137,11 @@ static void check_service(void) {
 }
 static void service_matched(void *context,io_iterator_t matches) {
     (void)context;io_object_t object;
+    if (!atomic_load(&gDiscoveryActive)) return;
     while ((object=IOIteratorNext(matches))) IOObjectRelease(object);
     check_service();
 }
-static void retry_service(CFRunLoopTimerRef timer,void *context) {(void)timer;(void)context;check_service();}
+static void retry_service(void *context) {(void)context;check_service();}
 static UInt32 latencyFrames(void) {return NA_AUDIO_LEAD_FRAMES;}
 static Float32 toDb(Float32 value) {if (!isfinite(value)) return kMinDb;Float32 r=1.0f-fminf(1,fmaxf(0,value));return kMinDb*r*r;}
 static Float32 toScalar(Float32 db) {if (!isfinite(db) || db<=kMinDb) return 0;return db>=0 ? 1:1-sqrtf(db/kMinDb);}
@@ -136,23 +156,38 @@ static AudioStreamBasicDescription format(UInt32 channels) {
 #include "NezhaAudioProperties.inc"
 static HRESULT QueryInterface(void *,REFIID,LPVOID *);
 static ULONG AddRef(void *self) {(void)self;unsigned n=atomic_load(&gRefs);while (n!=UINT32_MAX && !atomic_compare_exchange_weak(&gRefs,&n,n+1)) {}return n==UINT32_MAX ? n:n+1;}
+static void finish_discovery(void *context) {
+    (void)context;
+    if (gRetry) {dispatch_release(gRetry);gRetry=NULL;}
+    if (gNotifications) {IONotificationPortDestroy(gNotifications);gNotifications=NULL;}
+    if (gMatches) {IOObjectRelease(gMatches);gMatches=0;}
+    pthread_mutex_lock(&gLock);gHost=NULL;disconnect();pthread_mutex_unlock(&gLock);
+}
 static ULONG Release(void *self) {
     (void)self;unsigned n=atomic_load(&gRefs);while (n && !atomic_compare_exchange_weak(&gRefs,&n,n-1)) {}
     if (n==1) {
-        if (gRetry) {CFRunLoopTimerInvalidate(gRetry);CFRelease(gRetry);gRetry=NULL;}
-        if (gNotifications) {IONotificationPortDestroy(gNotifications);gNotifications=NULL;}
-        if (gMatches) {IOObjectRelease(gMatches);gMatches=0;}
-        pthread_mutex_lock(&gLock);gHost=NULL;disconnect();pthread_mutex_unlock(&gLock);
+        atomic_store(&gDiscoveryActive,0);
+        if (gRetry) dispatch_source_cancel(gRetry);
+        if (gDiscoveryQueue && !dispatch_get_specific(&gDiscoveryQueueKey)) dispatch_sync_f(gDiscoveryQueue,NULL,finish_discovery);
+        else finish_discovery(NULL);
+        if (gDiscoveryQueue) {dispatch_release(gDiscoveryQueue);gDiscoveryQueue=NULL;}
     }return n ? n-1:0;
 }
 static OSStatus Initialize(AudioServerPlugInDriverRef d,AudioServerPlugInHostRef host) {
     (void)d;if (!host) return kAudioHardwareIllegalOperationError;gHost=host;
+    atomic_store(&gDiscoveryActive,1);
     pthread_mutex_lock(&gLock);int r=connect_service();pthread_mutex_unlock(&gLock);
+    /* Initialize can run on an audio-server worker with no running CFRunLoop.
+     * IOKit notifications and retries must still deliver a late service. */
+    if (!gDiscoveryQueue) {
+        gDiscoveryQueue=dispatch_queue_create("org.unixnu.nezha.audio27.discovery",DISPATCH_QUEUE_SERIAL);
+        if (!gDiscoveryQueue) return kAudioHardwareUnspecifiedError;
+        dispatch_queue_set_specific(gDiscoveryQueue,&gDiscoveryQueueKey,(void *)1,NULL);
+    }
     if (!gNotifications) {
         gNotifications=IONotificationPortCreate(kIOMainPortDefault);
         if (gNotifications) {
-            CFRunLoopSourceRef source=IONotificationPortGetRunLoopSource(gNotifications);
-            if (source) CFRunLoopAddSource(CFRunLoopGetCurrent(),source,kCFRunLoopCommonModes);
+            IONotificationPortSetDispatchQueue(gNotifications,gDiscoveryQueue);
             kern_return_t kr=IOServiceAddMatchingNotification(gNotifications,kIOFirstMatchNotification,
                 IOServiceMatching(NA_AUDIO_CLASS),service_matched,NULL,&gMatches);
             if (kr==KERN_SUCCESS) service_matched(NULL,gMatches); /* drain to arm */
@@ -161,11 +196,13 @@ static OSStatus Initialize(AudioServerPlugInDriverRef d,AudioServerPlugInHostRef
     }
     /* A close may still be draining DSP ownership when the next client opens.
      * First-match notifications do not repeat for that case. Retry outside
-     * all realtime callbacks, on the existing service-discovery run loop. */
+     * all realtime callbacks, on the same serial discovery queue. */
     if (!gRetry) {
-        CFRunLoopTimerContext context={0};
-        gRetry=CFRunLoopTimerCreate(kCFAllocatorDefault,CFAbsoluteTimeGetCurrent()+1,1,0,0,retry_service,&context);
-        if (gRetry) CFRunLoopAddTimer(CFRunLoopGetCurrent(),gRetry,kCFRunLoopCommonModes);
+        gRetry=dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER,0,0,gDiscoveryQueue);
+        if (!gRetry) return kAudioHardwareUnspecifiedError;
+        dispatch_source_set_event_handler_f(gRetry,retry_service);
+        dispatch_source_set_timer(gRetry,dispatch_time(DISPATCH_TIME_NOW,NSEC_PER_SEC),NSEC_PER_SEC,10*NSEC_PER_MSEC);
+        dispatch_resume(gRetry);
     }
     os_log_info(OS_LOG_DEFAULT,"NezhaAudio27: service %{public}s",r ? "unavailable":"connected");return 0;
 }
@@ -186,7 +223,22 @@ static OSStatus GetPropertyData(AudioServerPlugInDriverRef d,AudioObjectID o,pid
     (void)d;(void)pid;if (!a || !written || (!out && size)) return kAudioHardwareIllegalOperationError;
     pthread_mutex_lock(&gLock);
     if (o==kPlugIn && !gControl) connect_service();
-    OSStatus r=propertyData(o,a,qs,q,size,written,out);pthread_mutex_unlock(&gLock);return r;
+    OSStatus r=propertyData(o,a,qs,q,size,written,out);
+    if (!r && o==kPlugIn && a->mSelector==kAudioPlugInPropertyDeviceList) {
+        uint32_t count=*written/sizeof(AudioObjectID);
+        if (gConnect && count!=gReportedDeviceList) {
+            report_hal(NaHalDeviceList,o,a->mSelector,a->mScope,a->mElement,0,count);gReportedDeviceList=count;
+        }
+    } else if (r && gConnect && gPropertyErrorCount<NA_HAL_HISTORY_CAPACITY) {
+        NaHalObservation event={NA_HAL_OBSERVATION_VERSION,NaHalPropertyError,o,a->mSelector,a->mScope,a->mElement,r,0};
+        uint32_t i=0;
+        for (;i<gPropertyErrorCount;++i) if (!memcmp(&gPropertyErrors[i],&event,sizeof event)) break;
+        if (i==gPropertyErrorCount) {
+            gPropertyErrors[gPropertyErrorCount++]=event;
+            report_hal(event.kind,event.object,event.selector,event.scope,event.element,event.result,event.value);
+        }
+    }
+    pthread_mutex_unlock(&gLock);return r;
 }
 static OSStatus GetPropertyDataSize(AudioServerPlugInDriverRef d,AudioObjectID o,pid_t pid,const AudioObjectPropertyAddress *a,UInt32 qs,const void *q,UInt32 *size) {
     if (!size) return kAudioHardwareIllegalOperationError;
@@ -245,7 +297,7 @@ static OSStatus StartIO(AudioServerPlugInDriverRef d,AudioObjectID o,UInt32 clie
         ++gZeroSeed;
     }
     gUsers[slot].id=client;++gUsers[slot].count;++gIoUsers;r=0;
-out:pthread_mutex_unlock(&gLock);return r;
+out:report_hal(NaHalStartIO,kDevice,0,0,0,r,gIoUsers);pthread_mutex_unlock(&gLock);return r;
 }
 static OSStatus StopIO(AudioServerPlugInDriverRef d,AudioObjectID o,UInt32 client) {
     (void)d;if (o!=kDevice) return kAudioHardwareBadObjectError;

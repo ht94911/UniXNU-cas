@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BSD-2-Clause-Patent
 // Explicit service-mode startup using the existing playback/native worker.
 #include "NezhaAudioPlayback.h"
+#include "NezhaAudioService.h"
 #include <IOKit/IOLib.h>
 #include <kern/clock.h>
 #include <kern/thread.h>
@@ -21,7 +22,7 @@ void publish_start(const NaNativePlaybackStart *s) {
     __atomic_fetch_add(&startupSequence,1,__ATOMIC_RELEASE);
 }
 int snapshot(void *,char *out,size_t capacity,size_t *bytes,unsigned *truncated) {
-    uint32_t s[7];uint64_t v[32];bool valid=false;
+    uint32_t s[7],h[16];uint64_t v[32];bool valid=false;
     *bytes=0;*truncated=0;
     for (unsigned attempt=0;attempt<4;++attempt) {
         uint32_t seq=__atomic_load_n(&startupSequence,__ATOMIC_ACQUIRE);if (seq&1) continue;
@@ -30,9 +31,10 @@ int snapshot(void *,char *out,size_t capacity,size_t *bytes,unsigned *truncated)
         if (seq==__atomic_load_n(&startupSequence,__ATOMIC_RELAXED)) {valid=true;break;}
     }
     if (!valid || nezha_audio27_copy_stats(v)) return QUD_BUSY;
+    nezha_audio_hal_stats(h);
     // Startup and worker are independently sampled; neither reader takes a
     // lock that a GENI/trace callback could be waiting for USB to service.
-    int n=snprintf(out,capacity,"{\"v\":4,\"mode\":\"playback\",\"startup_phase\":%u,\"startup_error\":%d,"
+    int n=snprintf(out,capacity,"{\"v\":5,\"mode\":\"playback\",\"startup_phase\":%u,\"startup_error\":%d,"
         "\"identity_phase\":%u,\"identity_cleanup\":%d,\"revision\":[%u,%u],"
         "\"driver_stage\":%u,\"driver_result\":%d,\"adsp_stage\":%u,\"slave\":%u,\"gpr_online\":%u,"
         "\"prm_held\":%u,\"prm_possible\":%u,\"prm_error\":%d,"
@@ -40,24 +42,47 @@ int snapshot(void *,char *out,size_t capacity,size_t *bytes,unsigned *truncated)
         "\"graph_output_error\":%d,\"graph_vi_error\":%d,"
         "\"output_periods\":%llu,\"input_periods\":%llu,\"underruns\":%u,\"overruns\":%u,"
         "\"faults\":[%u,%u],\"generation\":%u,\"runtime_state\":%u,\"runtime_request\":%u,"
-        "\"service_published\":%s,\"capture_enabled\":%s,\"HAL_load_verified\":false,\"automatic_pcm\":false,"
+        "\"service_published\":%s,\"capture_enabled\":%s,\"HAL_load_verified\":%s,\"automatic_pcm\":false,"
         "\"probe_requested_frames\":%u,\"probe_state\":%u,\"probe_frames\":%u,\"probe_periods\":%u,"
         "\"probe_nonzero\":%u,\"probe_peak\":%u,\"probe_squares\":%llu,\"probe_error\":%d,"
-        "\"probe_pcm_frames\":%u,\"HAL_input_published\":false}",
+        "\"probe_pcm_frames\":%u,\"HAL_input_published\":false,"
+        "\"HAL\":{\"open\":[%u,%u,%u],\"maps\":[%u,%u,%u],\"clock\":[%u,%d],"
+        "\"start_output\":[%u,%d],\"start_input\":[%u,%d],\"connected\":%u,\"device_lists\":%u,\"property_errors\":%u,\"records\":%u}}",
         s[0],(int32_t)s[1],s[2],(int32_t)s[3],s[4],s[5],
         (unsigned)v[0],(int)(int64_t)v[1],(unsigned)v[2],(unsigned)v[3],(unsigned)v[16],
         (unsigned)v[4],(unsigned)v[5],(int)(int64_t)v[20],(unsigned)v[6],(unsigned)v[7],(unsigned)v[17],
         (int)(int64_t)v[18],(int)(int64_t)v[19],(unsigned long long)v[8],(unsigned long long)v[9],
         (unsigned)v[10],(unsigned)v[11],(unsigned)v[12],(unsigned)v[13],(unsigned)v[14],(unsigned)v[15],
-        (unsigned)v[22],v[21] ? "true":"false",v[23] ? "true":"false",s[6],
+        (unsigned)v[22],v[21] ? "true":"false",v[23] ? "true":"false",h[12] ? "true":"false",s[6],
         (unsigned)v[24],(unsigned)v[25],(unsigned)v[26],(unsigned)v[27],(unsigned)v[28],
-        (unsigned long long)v[29],(int)(int64_t)v[30],(unsigned)v[31]);
+        (unsigned long long)v[29],(int)(int64_t)v[30],(unsigned)v[31],
+        h[0],h[1],h[2],h[3],h[4],h[5],h[6],(int32_t)h[7],h[8],(int32_t)h[9],h[10],(int32_t)h[11],h[12],h[13],h[14],h[15]);
     if (n<0 || (size_t)n>=capacity) {*truncated=1;return QUD_FAILED;}
     *bytes=(size_t)n;return QUD_OK;
 }
 int submit(void *,const qud_diag_request *request,char *out,size_t capacity,size_t *bytes,unsigned *truncated) {
     *bytes=0;*truncated=0;
-    if (!request || request->op!=QUD_HISTORY || request->arg0>64 || request->arg1 ||
+    if (!request || request->op!=QUD_HISTORY) return QUD_INVALID;
+    if (request->arg1==1) {
+        if (request->arg0>8 || request->cursor>=NA_HAL_HISTORY_CAPACITY) return QUD_INVALID;
+        NaHalObservation events[8];uint32_t copied=0;
+        int r=nezha_audio_hal_history((uint32_t)request->cursor,request->arg0 ? request->arg0:8,events,&copied);
+        if (r==NA_BUSY) return QUD_BUSY;
+        if (r) return QUD_INVALID;
+        int n=snprintf(out,capacity,"{\"kind\":\"hal_events\",\"version\":1,\"offset\":%u,\"count\":%u,\"records\":[",(unsigned)request->cursor,copied);
+        if (n<0 || (size_t)n>=capacity) {*truncated=1;return QUD_FAILED;}
+        size_t used=(size_t)n;
+        for (uint32_t i=0;i<copied;++i) {
+            const NaHalObservation *event=&events[i];
+            n=snprintf(out+used,capacity-used,"%s[%u,%u,%u,%u,%u,%d,%u]",i ? ",":"",event->kind,event->object,event->selector,event->scope,event->element,event->result,event->value);
+            if (n<0 || (size_t)n>=capacity-used) {*truncated=1;return QUD_FAILED;}
+            used+=(size_t)n;
+        }
+        n=snprintf(out+used,capacity-used,"]}");
+        if (n<0 || (size_t)n>=capacity-used) {*truncated=1;return QUD_FAILED;}
+        *bytes=used+(size_t)n;return QUD_OK;
+    }
+    if (request->arg0>64 || request->arg1 ||
         request->cursor>=NA_CAPTURE_PROBE_PCM_FRAMES) return QUD_INVALID;
     int16_t pcm[64];uint32_t copied=0;
     int r=nezha_audio27_capture_pcm((uint32_t)request->cursor,request->arg0 ? request->arg0:64,pcm,&copied);
@@ -76,7 +101,7 @@ int submit(void *,const qud_diag_request *request,char *out,size_t capacity,size
     if (n<0 || (size_t)n>=capacity-used) {*truncated=1;return QUD_FAILED;}
     *bytes=used+(size_t)n;return QUD_OK;
 }
-const qud_diag_provider provider={8,4,(1u<<QUD_SNAPSHOT)|(1u<<QUD_HISTORY),64,0,"nezhaaudio",nullptr,snapshot,submit};
+const qud_diag_provider provider={8,5,(1u<<QUD_SNAPSHOT)|(1u<<QUD_HISTORY),64,0,"nezhaaudio",nullptr,snapshot,submit};
 void run_start(void *v,wait_result_t) {
     auto *s=static_cast<NaNativePlaybackStart *>(v);
     thread_set_thread_name(current_thread(),"nezha-audio27-start");

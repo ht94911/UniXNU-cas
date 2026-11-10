@@ -16,6 +16,10 @@ int nezha_audio_publish(NaRuntime *);
 void nezha_audio_owner_lock(void);
 int nezha_audio_owner_try_lock(void);
 void nezha_audio_owner_unlock(void);
+/* Independently sampled service counters; history uses a separate short gate
+ * and a try-lock reader, never the DSP/GENI owner gate. */
+void nezha_audio_hal_stats(uint32_t out[16]);
+int nezha_audio_hal_history(uint32_t offset,uint32_t count,NaHalObservation *,uint32_t *copied);
 #ifdef __cplusplus
 }
 #endif

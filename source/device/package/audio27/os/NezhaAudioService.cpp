@@ -10,6 +10,7 @@
 #include <kern/thread.h>
 #include <sys/proc.h>
 #include "NezhaAudioService.h"
+#include "../core/AudioHalDiagnostics.h"
 #ifdef IOKIT_ENABLE_SHARED_PTR
 #error This source requires the selected native build's raw OSPtr convention; audit before changing flags.
 #endif
@@ -20,6 +21,27 @@ NaRuntime *runtime;
 void *connection;
 bool published;
 IOLock *ownerGate;
+IOLock *diagnosticGate;
+NaHalHistory halHistory;
+uint32_t halStats[16];
+enum {OpenAttempts,OpenRejected,OpenConnected,ControlMaps,OutputMaps,InputMaps,
+      ClockCalls,ClockResult,OutputStarts,OutputResult,InputStarts,InputResult,
+      HalConnections,HalDeviceLists,HalPropertyErrors,HalRecords};
+IOReturn result(int);
+void increment(unsigned field) {__atomic_fetch_add(&halStats[field],1,__ATOMIC_RELAXED);}
+void store(unsigned field,uint32_t value) {__atomic_store_n(&halStats[field],value,__ATOMIC_RELEASE);}
+bool rejectOpen() {increment(OpenRejected);return false;}
+IOReturn observe(const NaHalObservation *event) {
+    IOLockLock(diagnosticGate);
+    int r=na_hal_history_add(&halHistory,event);
+    if (!r) {
+        store(HalRecords,halHistory.count);
+        if (event->kind==NaHalConnected && !event->result) increment(HalConnections);
+        if (event->kind==NaHalDeviceList) increment(HalDeviceLists);
+        if (event->kind==NaHalPropertyError) increment(HalPropertyErrors);
+    }
+    IOLockUnlock(diagnosticGate);return result(r);
+}
 int allocateMaps(IOBufferMemoryDescriptor **target,bool capture) {
     const vm_size_t sizes[3]={4096,NA_AUDIO_RING_BYTES,NA_AUDIO_RING_BYTES};
     for (unsigned i=0;i<(capture ? 3u:2u);++i) {
@@ -78,14 +100,15 @@ class NezhaAudio27UserClient : public IOUserClient {
     }
 public:
     bool initWithTask(task_t task,void *security,UInt32 type,OSDictionary *properties) override {
-        if (type || task!=current_task() || !allowedCaller() || !IOUserClient::initWithTask(task,security,type,properties)) return false;
-        gate=IOLockAlloc();if (!gate) return false;owner=task;return true;
+        increment(OpenAttempts);
+        if (type || task!=current_task() || !allowedCaller() || !IOUserClient::initWithTask(task,security,type,properties)) return rejectOpen();
+        gate=IOLockAlloc();if (!gate) return rejectOpen();owner=task;return true;
     }
     bool start(IOService *provider) override {
-        if (!runtime || !OSDynamicCast(NezhaAudio27,provider) || !IOUserClient::start(provider)) return false;
+        if (!runtime || !OSDynamicCast(NezhaAudio27,provider) || !IOUserClient::start(provider)) return rejectOpen();
         void *expected=nullptr;
         claimed=__atomic_compare_exchange_n(&connection,&expected,this,false,__ATOMIC_ACQ_REL,__ATOMIC_ACQUIRE);
-        if (!claimed) {IOUserClient::stop(provider);return false;}
+        if (!claimed) {IOUserClient::stop(provider);return rejectOpen();}
         nezha_audio_owner_lock();
         IOBufferMemoryDescriptor *fresh[3]={};
         int r=na_runtime_quiescent(runtime) ? allocateMaps(fresh,runtime->input!=nullptr):NA_BUSY;
@@ -100,7 +123,8 @@ public:
         }
         for (auto *memory:fresh) if (memory) memory->release();
         nezha_audio_owner_unlock();
-        if (r) {closeAudio();IOUserClient::stop(provider);return false;}
+        if (r) {closeAudio();IOUserClient::stop(provider);return rejectOpen();}
+        increment(OpenConnected);
         return true;
     }
     IOReturn clientClose() override {closeAudio();terminate();return kIOReturnSuccess;}
@@ -114,15 +138,24 @@ public:
         if (closed || !claimed || !maps[type] ||
             (type==NaAudioInputMemory && !runtime->capture_proven)) {IOLockUnlock(gate);return kIOReturnNotReady;}
         *options=type==NaAudioOutputMemory ? 0:kIOMapReadOnly;
-        maps[type]->retain();*memory=maps[type];IOLockUnlock(gate);return kIOReturnSuccess;
+        maps[type]->retain();*memory=maps[type];increment(ControlMaps+type);IOLockUnlock(gate);return kIOReturnSuccess;
     }
     IOReturn externalMethod(uint32_t selector,IOExternalMethodArguments *args,IOExternalMethodDispatch *,OSObject *,void *) override {
-        if (!args || args->scalarInputCount || args->structureInputSize || args->structureInputDescriptor ||
+        const bool observation=selector==NaAudioObserveHAL;
+        if (!args || args->scalarInputCount || args->structureInputDescriptor ||
             args->scalarOutputCount || args->structureOutputSize || args->structureOutputDescriptor ||
-            args->asyncWakePort || selector>NaAudioFixHostClock) return kIOReturnBadArgument;
+            args->asyncWakePort || selector>NaAudioObserveHAL ||
+            (observation ? args->structureInputSize!=sizeof(NaHalObservation) || !args->structureInput:args->structureInputSize!=0)) return kIOReturnBadArgument;
         IOLockLock(gate);
         if (closed || !claimed || owner!=current_task()) {IOLockUnlock(gate);return kIOReturnNotOpen;}
-        IOReturn r=selector==NaAudioFixHostClock ? nezha_audio_fix_host_clock(owner):result(na_runtime_request(runtime,selector));
+        IOReturn r;
+        if (observation) r=observe(static_cast<const NaHalObservation *>(args->structureInput));
+        else if (selector==NaAudioFixHostClock) {increment(ClockCalls);r=nezha_audio_fix_host_clock(owner);store(ClockResult,r);}
+        else {
+            r=result(na_runtime_request(runtime,selector));
+            if (selector==NaAudioStartOutput) {increment(OutputStarts);store(OutputResult,r);}
+            if (selector==NaAudioStartInput) {increment(InputStarts);store(InputResult,r);}
+        }
         IOLockUnlock(gate);return r;
     }
 };
@@ -130,6 +163,7 @@ OSDefineMetaClassAndStructors(NezhaAudio27UserClient,IOUserClient);
 extern "C" int nezha_audio_allocate_maps(NaAudioStatus **status,uint64_t **output,uint64_t **input,int capture) {
     if (!status || !output || !input || maps[0] || runtime || published) return NA_ARGUMENT;
     if (!ownerGate) ownerGate=IOLockAlloc();if (!ownerGate) return NA_IO;
+    if (!diagnosticGate) diagnosticGate=IOLockAlloc();if (!diagnosticGate) return NA_IO;
     int r=allocateMaps(maps,capture!=0);if (r) return r;
     *status=(NaAudioStatus *)maps[0]->getBytesNoCopy();*output=(uint64_t *)maps[1]->getBytesNoCopy();
     *input=maps[2] ? (uint64_t *)maps[2]->getBytesNoCopy():nullptr;return NA_OK;
@@ -137,6 +171,17 @@ extern "C" int nezha_audio_allocate_maps(NaAudioStatus **status,uint64_t **outpu
 extern "C" void nezha_audio_owner_lock(void) {IOLockLock(ownerGate);}
 extern "C" int nezha_audio_owner_try_lock(void) {return ownerGate && IOLockTryLock(ownerGate);}
 extern "C" void nezha_audio_owner_unlock(void) {IOLockUnlock(ownerGate);}
+extern "C" void nezha_audio_hal_stats(uint32_t out[16]) {
+    for (unsigned i=0;i<16;++i) out[i]=__atomic_load_n(&halStats[i],__ATOMIC_ACQUIRE);
+}
+extern "C" int nezha_audio_hal_history(uint32_t offset,uint32_t count,NaHalObservation *out,uint32_t *copied) {
+    if (!out || !copied || !count || count>8 || offset>=NA_HAL_HISTORY_CAPACITY) return NA_ARGUMENT;
+    *copied=0;
+    if (!diagnosticGate) return NA_OK;
+    if (!IOLockTryLock(diagnosticGate)) return NA_BUSY;
+    *copied=na_hal_history_copy(&halHistory,offset,count,out);
+    IOLockUnlock(diagnosticGate);return NA_OK;
+}
 extern "C" int nezha_audio_publish(NaRuntime *r) {
     if (!r || !maps[0] || r->shared!=maps[0]->getBytesNoCopy() || r->output!=maps[1]->getBytesNoCopy() ||
         !__atomic_load_n(&r->service_ready,__ATOMIC_ACQUIRE)) return NA_MISSING;
