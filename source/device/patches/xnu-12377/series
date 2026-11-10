@@ -31,3 +31,9 @@ zzzz-native-root-cwd-ownership.patch
 
 # Name normal shutdown waits without changing unmount semantics.
 zzzz-native-shutdown-unmount-observe.patch
+
+# Fixed Wi-Fi023 and the original AES late-registration adapter.
+nezha-wifi-mmio-recovery.patch
+nezha-wifi-kernel-events.patch
+nezha-wifi-addon-truncate.patch
+zzz-wifi-aes-late-personality.patch

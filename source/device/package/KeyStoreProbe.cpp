@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: BSD-2-Clause-Patent
-// Mutually exclusive offline probes: unchanged target keystore loading, or
-// ephemeral notification-only service. Neither supplies keys or unlock state.
+// Mutually exclusive original-provider probe or the selected owned K1 service.
+// Its software format is distinct from hardware-backed storage.
 #include <IOKit/IOService.h>
 #include <IOKit/IODeviceTreeSupport.h>
 #include <libkern/c++/OSKext.h>
@@ -22,8 +22,27 @@ void native_keyevents_open_refused(void) {
 // page's extension rows (slots 0-1): opens/calls, then selector:count per selector seen ('e' = the last answer was an error).
 extern char boot_progress_ext[8][48];
 volatile uint32_t native_aks_opens, native_aks_calls;
-static volatile uint32_t aks_count[96];
-static volatile int32_t aks_rc[96];
+static volatile uint32_t aks_count[192];
+static volatile int32_t aks_rc[192];
+static uint8_t aks_device_id[8];
+static uint32_t aks_device_id_ready;
+static uint32_t aks_error_reports;
+size_t native_aks_device_id(uint8_t *out, size_t capacity) {
+    if (!out || capacity < sizeof aks_device_id ||
+        !__atomic_load_n(&aks_device_id_ready, __ATOMIC_ACQUIRE)) return 0;
+    memcpy(out, aks_device_id, sizeof aks_device_id);
+    return sizeof aks_device_id;
+}
+static void native_aks_prepare_device_id(IORegistryEntry *chosen) {
+    if (!chosen || __atomic_load_n(&aks_device_id_ready, __ATOMIC_ACQUIRE)) return;
+    OSData *data = OSDynamicCast(OSData, chosen->getProperty("unique-chip-id"));
+    if (!data || data->getLength() != sizeof aks_device_id) return;
+    uint64_t value = 0;
+    memcpy(&value, data->getBytesNoCopy(), sizeof value);
+    if (!value || value == UINT64_MAX) return;
+    memcpy(aks_device_id, &value, sizeof value);
+    __atomic_store_n(&aks_device_id_ready, 1, __ATOMIC_RELEASE);
+}
 bool native_aks_state_enabled(void) {
     static int cached = -1;
     if (cached < 0) {
@@ -47,7 +66,7 @@ static void aks_publish(void) {
     char row[48];
     unsigned used = 0;
     row[0] = 0;
-    for (unsigned sel = 0; sel < 96; ++sel) {
+    for (unsigned sel = 0; sel < 192; ++sel) {
         if (!aks_count[sel]) continue;
         char token[16];
         int n = snprintf(token, sizeof token, "%u:%u%s ", sel, aks_count[sel], aks_rc[sel] ? "e" : "");
@@ -56,7 +75,8 @@ static void aks_publish(void) {
         used += (unsigned)n;
     }
     char head[48];
-    snprintf(head, sizeof head, "AKS opens=%u calls=%u", native_aks_opens, native_aks_calls);
+    snprintf(head, sizeof head, "AKS id=%u opens=%u calls=%u",
+             __atomic_load_n(&aks_device_id_ready, __ATOMIC_ACQUIRE), native_aks_opens, native_aks_calls);
     for (unsigned i = 0; i < 47; ++i) boot_progress_ext[0][i] = head[i] ? head[i] : ' ';
     boot_progress_ext[0][47] = 0;
     unsigned i = 0;
@@ -70,7 +90,11 @@ void native_aks_opened(void) {
 }
 void native_aks_call(uint32_t selector, int32_t result) {
     native_aks_calls = native_aks_calls + 1;
-    if (selector < 96) { aks_count[selector] = aks_count[selector] + 1; aks_rc[selector] = result; }
+    if (selector < 192) { aks_count[selector] = aks_count[selector] + 1; aks_rc[selector] = result; }
+    if ((result || selector >= 192) &&
+        __atomic_fetch_add(&aks_error_reports, 1, __ATOMIC_RELAXED) < 16) {
+        IOLog("AA27 K1: selector %u result 0x%x\n", selector, (unsigned)result);
+    }
     aks_publish();
 }
 static void native_keyevents_probe(void) {
@@ -83,6 +107,7 @@ static void native_keyevents_probe(void) {
     // An explicit plane requires a path without a second plane prefix.
     IORegistryEntry *chosen = IORegistryEntry::fromPath("/chosen", gIODTPlane);
     if (!chosen) { native_keyevents_status = kIOReturnNoDevice; return; }
+    native_aks_prepare_device_id(chosen);
     OSData *data = chosen ? OSDynamicCast(OSData, chosen->getProperty("ephemeral-storage")) : nullptr;
     uint32_t ephemeral = 0;
     if (data && data->getLength() == sizeof(ephemeral))

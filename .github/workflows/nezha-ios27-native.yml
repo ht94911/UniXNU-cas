@@ -1,7 +1,7 @@
-name: nezha iPhone27 GPU bounded stock clocks - native037
+name: nezha iPhone27 AA27 B1 K1 - native001
 on:
   push:
-    branches: [codex/ios27-gpu-persist019-037-20261108]
+    branches: [codex/ios27-account001-20261110]
   workflow_dispatch:
 permissions:
   contents: read
@@ -53,6 +53,10 @@ jobs:
           python3 "$RUNNER_TEMP/ios27/work/gop/Test/check-plane-view.py" --output "$RUNNER_TEMP/ios27/gop-view-check"
       - name: Check the actual guarded waiting-stack sampler
         run: python3 task/source/device/scripts/check-stable-kernel-stack.py
+      - name: Exercise the actual K1 service and ID publication
+        run: |
+          python3 "$RUNNER_TEMP/ios27/work/keystore/test_closed_boundary.py"
+          python3 "$RUNNER_TEMP/ios27/work/device/scripts/check-account27-key-id.py" --out "$RUNNER_TEMP/ios27/k1-id-check"
       - name: Qualify compiler and run the standard native build
         env:
           GITHUB_TOKEN: ${{ github.token }}
