@@ -1,7 +1,7 @@
-name: nezha iPhone27 brightness005 bounded single transfer on GPU030
+name: nezha iPhone27 ALS006 standalone original service ABI on Native005
 on:
   push:
-    branches: [codex/ios27-brightness-gpu030-005-20261110]
+    branches: [codex/ios27-brightness-als006-abi-20261111]
   workflow_dispatch:
 permissions:
   contents: read
@@ -57,6 +57,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: python3 task/ci/native.py build --framework unixnu --work "$RUNNER_TEMP/ios27/work"
+      - name: Compile only the frozen ALS event service against the native ABI
+        run: python3 task/ci/native.py als-abi --framework unixnu --work "$RUNNER_TEMP/ios27/work"
       - name: Seal outputs and diagnostics using the existing owner envelope
         if: always()
         run: |

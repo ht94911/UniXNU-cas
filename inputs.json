@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Production single DSI0 repair: explicit bounded1200ms budget from successful-trigger timestamp and OEM DMA_DONE completion; retained004 observer,preflight/error/lease/cleanup/W1C and no retry/reset.",
+  "purpose": "Native ABI-only qualification of frozen ALS006 IOHIDEventService over fixed Native005/G030 inputs. Separate archive compilation after existing kernel build; no ALS backend selection, link caller or phone package.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -214,7 +214,7 @@
     "source/soc/soc.toml": "9cebcadf2d5a271ceb44ee5fc378ed739cff0e7e5a940007164a9917042fd92f",
     "source/ufs.bundle": "3a7c1c6ac7e5a39e6cb4adcc6143fa1e4c6c24ae862aa501102f9fb70c21a534",
     "source/usb.bundle": "fc77b40791b6994f0da015b13b68a13cee5e8bc84e510cee4e518866165efeb2",
-    "ci/native.py": "13d56b5e612e91af7d7b71f0f2c612c685120d3a1bb16eedcfbcb0bc7e3879fb",
+    "ci/native.py": "34ca7fb46578ca98441edb17d9cfef190b9f95481be1863b740e70099650a32c",
     "source/device/package/nezha27-input/NezhaBrightnessUiTest.h": "d84404322a5d8923565b5f15f2b4aafade57cee9bfe51c9ab034324601bead86",
     "source/device/package/backlight/NezhaDsiObservation.h": "bdb70abfda62f0085e163f474e071e6fe8f612eda081e036c921660260519f0e",
     "source/device/tests/brightness-poll-observation.cpp": "411bbcafa1d880c88608aadeecf573c0c40f31cfe938552f72639a3c50d17c1b",
@@ -222,7 +222,12 @@
     "source/device/tests/brightness-trace-budget.py": "4a2b23d79a00543d7d7644f821b9d0bb0d6493fbce14fad2e3b4a4d148914ffe",
     "source/soc/tests/dsi-fifo.c": "49cf3da0e78952e96e3b72b585535296b6626442da757f29adcee068ffd1d85d",
     "source/soc/tests/dsi-fifo-budget.c": "174b21bf7ef8e78d7c832ea41940da8284c3cdad2ab29353afabc91b544f72ff",
-    "source/soc/tests/dsi-fifo-budget.py": "a5c5b322345f797c62d556c9876318091b57c9ad217f36d27e5e0e9f3b6e05d4"
+    "source/soc/tests/dsi-fifo-budget.py": "a5c5b322345f797c62d556c9876318091b57c9ad217f36d27e5e0e9f3b6e05d4",
+    "source/device/package/als/NezhaAlsFrontend.cpp": "a7fe29a35635bf6f856a8c89419c7e2bc3cdeee542935575e083148df3b6ef96",
+    "source/device/package/als/NezhaAlsBackend.h": "9199f5da849cda5728b6a48fe8deb018263a8eef1538d47dfeea2dfd8ffb3fd7",
+    "source/device/package/als/NezhaAlsState.h": "2876ff7d3dc8fe4521bc535b28b47c5944382c26ee037fa345c0ea79180e57cf",
+    "source/device/scripts/build-nezha27-als.py": "8b680e90a434e25d6c2e5ee82fc2f429ca7d3109c544738e654d1b67eeb7cc45",
+    "source/device/scripts/als-event-service-iphone-24A446.json": "34c27f1a58bab3c518570a57c006a23fce315b90a584e691629d61c0850bd4d8"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
@@ -323,5 +328,22 @@
     "layout_members_added": false,
     "preflight_error_lease_cleanup_W1C_retained": true,
     "hardware": false
+  },
+  "als_abi": {
+    "source_revision": "ba030d400bf0e2bcbce5f7e93d99ad6046abb96c",
+    "source_files": [
+      "package/als/NezhaAlsFrontend.cpp",
+      "package/als/NezhaAlsBackend.h",
+      "package/als/NezhaAlsState.h",
+      "scripts/build-nezha27-als.py",
+      "scripts/als-event-service-iphone-24A446.json"
+    ],
+    "expected_original_instance_bytes": 200,
+    "expected_original_slots": 219,
+    "board_components_or_archives_changed": false,
+    "backend_owner_connected": false,
+    "strict_prelink_or_packaged_ALS_qualified": false,
+    "phone_operations": false,
+    "private_binary_inputs_uploaded": false
   }
 }
