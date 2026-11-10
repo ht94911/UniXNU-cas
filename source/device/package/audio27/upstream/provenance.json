@@ -152,7 +152,7 @@
       "source": "hal/ShengAudioPlugIn.c",
       "local": "hal/NezhaAudioPlugIn.c",
       "sha256": "ca1b9284976b020383adc54d7c6530b77d1bbba08adf61450ab1f2abd9588ffc",
-      "local_sha256": "1008e34c13bf648e3bab3efe2e0210bebb03bc365fa4eaacc1422ed904c9406b",
+      "local_sha256": "a55189505b4a246535f62ae0d4473d3a044eceb955b7564dd4ea64e71b511db7",
       "modified": true,
       "adaptation": "ABI2 owned rings, late dispatch discovery, exact27 clock, and047 bounded property/client/publication observations; original replies and realtime IO retained"
     },

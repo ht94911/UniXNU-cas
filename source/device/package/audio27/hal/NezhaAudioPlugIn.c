@@ -217,7 +217,8 @@ static void sample_system_route(void) {
     if (!atomic_load(&gDiscoveryActive) || !available() || gSystemRouteSamples>=8) {
         pthread_mutex_unlock(&gLock);return;
     }
-    UInt32 epoch=gEpoch;io_connect_t connection=gConnect;++gSystemRouteSamples;
+    UInt32 epoch=gEpoch;io_connect_t connection=gConnect;
+    UInt32 sample=++gSystemRouteSamples;
     pthread_mutex_unlock(&gLock);
     const AudioObjectPropertySelector selectors[4]={kAudioHardwarePropertyTranslateUIDToDevice,
         kAudioHardwarePropertyDefaultOutputDevice,kAudioHardwarePropertyDefaultSystemOutputDevice,
@@ -253,7 +254,13 @@ static void sample_system_route(void) {
         pthread_mutex_unlock(&gLock);
         if (!current) break;
         AudioObjectPropertyAddress address={selectors[i],kAudioObjectPropertyScopeGlobal,kAudioObjectPropertyElementMain};
-        OSStatus r=AudioObjectSetPropertyData(kAudioObjectSystemObject,&address,0,NULL,sizeof target,&target);
+        /* The matched24A446 setter accepts a UInt32 qualifier:1 records the
+         * explicit device choice;0 uses ordinary default-device preference
+         * selection. The UID and each current connection still determine
+         * the target. CoreAudio owns the resulting preference storage. */
+        UInt32 explicitChoice=1;
+        OSStatus r=AudioObjectSetPropertyData(kAudioObjectSystemObject,&address,
+            sizeof explicitChoice,&explicitChoice,sizeof target,&target);
         events[event_count++]=(NaHalObservation){NA_HAL_OBSERVATION_VERSION,NaHalPropertyWrite,
             kAudioObjectSystemObject,address.mSelector,address.mScope,address.mElement,r,target};
         UInt32 bytes=sizeof(AudioObjectID);AudioObjectID value=kAudioObjectUnknown;
@@ -264,8 +271,14 @@ static void sample_system_route(void) {
     }
     pthread_mutex_lock(&gLock);
     if (atomic_load(&gDiscoveryActive) && gConnect==connection && gEpoch==epoch && available()) {
-        for (unsigned i=0;i<event_count;++i) observe_once(events[i].kind,events[i].object,events[i].selector,
-            events[i].scope,events[i].element,events[i].result,events[i].value);
+        for (unsigned i=0;i<event_count;++i) {
+            /* The last sample must survive duplicate suppression: an earlier
+             *36 or0 does not describe the default after selection settles. */
+            if (sample==8 && i<4) report_hal(events[i].kind,events[i].object,events[i].selector,
+                events[i].scope,events[i].element,events[i].result,events[i].value);
+            else observe_once(events[i].kind,events[i].object,events[i].selector,
+                events[i].scope,events[i].element,events[i].result,events[i].value);
+        }
     }
     pthread_mutex_unlock(&gLock);
 }

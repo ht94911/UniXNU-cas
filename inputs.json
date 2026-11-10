@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Audio052 uses standard CoreAudio defaults after current UID registration, retains errors/readback and all original callbacks/PCM/clock/VI/calibration/GPU023. Build only the changed HAL with the existing SDK/signing/CMS recipe; locally reuse the exact050 kernel and strict closure. No private input upload, phone operations or functional promotion.",
+  "purpose": "Audio053 uses the matched27 explicit default-device qualifier and retains final ordered route samples through the existing HAL and kernel consumer. Full native/HAL build with existing SDK/CMS recipe; private inputs are finalized locally, no phone operation or promotion.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "ee342e3050369bcebeb9c7ee9c8e09ff04e35a06",
+  "device_revision": "52766c90ddb499192dc996b3087f6565d5b9b25a",
   "soc_revision": "703d7b4bb00904b4a6e5d96f9e9bf72eec170f6b",
   "xcode": "26.6",
   "files": {
@@ -219,7 +219,7 @@
     "source/device/package/audio27/platform/AudioSmmu.h": "41401f1b97e3481c7e5cc3e02c47f926e91eec9fa34f4a48981a3fc3b723cddd",
     "source/device/package/audio27/upstream/ShengGpr.c": "c4f498f07e2cb601b593e64a8d32474a21d6a87375618e1a67b99d52c5d3160e",
     "source/device/package/audio27/platform/SoundWire.h": "348979ac1e552e1c3a0027e09f8500927e8bf7ccbb496276d2c9d3ef19322224",
-    ".github/workflows/nezha-ios27-native.yml": "75f645bcfe93e192b80bf15a9b18e776e398ee3962e05ea2676da024e0bc3d1f",
+    ".github/workflows/nezha-ios27-native.yml": "13d1ccd21f6f684bc76840377c0c30d2b45fe41294bd95933630b00b0917bd29",
     "source/device/package/audio27/upstream/ShengGpr.h": "a274dded1f4d1e2709b9f966759bcb1f57d12747ee0f57743dea1fa97d95d23e",
     "source/device/package/audio27/os/NezhaAudioNative.h": "26b0203a49895eb907ea8155443e7a2aa5431bb89393a32b3debf01371d1c353",
     "source/device/package/audio27/upstream/ShengAudioReach.h": "b135177a5feb3e24e0d8a6aabb301600e2c37078b970a09ada6e8eb7bb6a5b98",
@@ -294,7 +294,7 @@
     "source/device/package/audio27/platform/Tas25xxTables.c": "096c0b32b73ae1ceb8f28ecf3dbb60bc677dfcd659a23e2d3e4b3840f9df8ea3",
     "source/device/package/audio27/upstream/GeniI2c.c": "d9ff302e5dc5b14fc3fc3ec760652c0116d861b06748ce5a908dfa1a0a377ef7",
     "source/device/package/audio27/hal/AudioClock.h": "4c60fefab16eccb005f140652c0535eb967bcf5d74a24b65f9b327c18db1e906",
-    "source/device/package/audio27/hal/NezhaAudioPlugIn.c": "1008e34c13bf648e3bab3efe2e0210bebb03bc365fa4eaacc1422ed904c9406b",
+    "source/device/package/audio27/hal/NezhaAudioPlugIn.c": "a55189505b4a246535f62ae0d4473d3a044eceb955b7564dd4ea64e71b511db7",
     "source/device/package/audio27/os/NezhaAudioAbi.h": "db4c4f244d6075829fc94b9afdc3c58af070be2fd7d0988a4e74f3c6cb05a621",
     "source/device/package/audio27/os/NezhaAudioService.h": "fdce508eed165f4507fb8583e278ed09df2824c12ef85f2c8de52d3595a3a368",
     "source/device/package/audio27/core/AudioTransport.h": "31e7dde7e49059328d3ba29e5b5642927a80a0f1a4cb96202dd77428862c1f2a",
@@ -327,7 +327,7 @@
     "source/device/package/audio27/platform/AudioPlaybackInputs.c": "cc08c15f4fefc1f6ab168f1540d798932ecc6026fa8ecbf2cf0760aa4b0d3d8e",
     "source/device/package/audio27/platform/AudioPlaybackInputs.h": "719b9e095cea2b3349bf0b4bcec7a7816b243c405d72501c521ac0442703d1a4",
     "source/device/patches/xnu-12377/zzzzzz-nezha-audio-hal-mount.patch": "c6fe1833480aff52dbfe4f44c75d7c5fd995efe1d524f3bc7671fd6559719bef",
-    "source/device/package/audio27/upstream/provenance.json": "a0890485aba48a66d546cc6814f0fdf8cdb714f84b855193c7e212933eaafa82",
+    "source/device/package/audio27/upstream/provenance.json": "f1e19a34233e68fe5490e3769a4da925e279afebfa075991016741fe0357c123",
     "source/device/package/audio27/platform/AudioPdMapper.c": "08f230558a9afae2a86673d88ef0f2431991c0326d7fc831c031f5885a51d558",
     "source/device/package/audio27/platform/AudioPdMapper.h": "69fca38330abf9ac12f162046cbb1f200339713ebf1db1a7220ea7b85d0ea1d5",
     "source/device/package/audio27/upstream/QcomQrtr.c": "d22ff8572b93424f1f03138204a44e10b444d0cb62b6be4f1c57b7d3b2ddbc74",
@@ -340,7 +340,7 @@
     "source/device/package/audio27/os/NezhaAudioMicBoard.h": "0178b76deba0d7ccc716d553a56908f249d6d7d36008cfc82425cca6569b303d",
     "source/device/package/audio27/platform/NezhaMicPower.c": "c0586bbbef8b0c135b299518882efa7983fb07d58bce585d7399b62b500e868f",
     "source/device/package/audio27/platform/NezhaMicPower.h": "d97b5f6370bbdf52cadca10c2848f7e2db07aa4e43793d672317ab3b8f7e9d2f",
-    "source/device/package/audio27/core/AudioHalDiagnostics.c": "5741cccb41609db12fafdf7338bf48cbf9d84207e85281d2a3fd847061b7d1a4",
+    "source/device/package/audio27/core/AudioHalDiagnostics.c": "6cab23333f800435aa87b00acec63a8d3be0d97a52b8a12f2a5526fb3a6e650b",
     "source/device/package/audio27/core/AudioHalDiagnostics.h": "c1bc3943933d64ef926ebe2ec1d378f54e3c753fb2be2de0e098f340602e2ace"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
@@ -393,7 +393,7 @@
   "audio": {
     "base": "GPU023",
     "base_device_revision": "673cde869b7378658b470c4e6b2b9a1766b99411",
-    "source_revision": "ee342e3050369bcebeb9c7ee9c8e09ff04e35a06",
+    "source_revision": "52766c90ddb499192dc996b3087f6565d5b9b25a",
     "source_only_revision": "ee342e3050369bcebeb9c7ee9c8e09ff04e35a06",
     "hardware_enabled": false,
     "resource_census_enabled": true,
@@ -539,9 +539,9 @@
     "HAL_AudioHardware_header_explicit": true,
     "HAL_AudioHardwareDeprecated_dependency": true,
     "HAL_current_CoreAudio_framework_link": true,
-    "HAL_only": true,
-    "native_kernel_rebuilt": false,
-    "kernel_native_sources_reused": 58,
+    "HAL_only": false,
+    "native_kernel_rebuilt": true,
+    "kernel_native_sources_reused": 0,
     "reused_native_run": 42865735799,
     "reused_native_source_revision": "030dceb109a9e395e4b579ca042d62dcefa21ded",
     "standard_default_output_selection": true,
@@ -551,6 +551,13 @@
       "sOut"
     ],
     "original_private_property_replies_retained": true,
-    "CoreAudio_preference_persistence_not_established": true
+    "CoreAudio_preference_persistence_not_established": true,
+    "kernel_source_files_unchanged": 57,
+    "native_sources_to_compile": 58,
+    "explicit_default_choice_qualifier": 1,
+    "final_route_samples_retained": true,
+    "kernel_history_dedup_preserved_except_system_route": true,
+    "private_property_replies_changed": false,
+    "realtime_IO_changed": false
   }
 }
