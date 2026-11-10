@@ -14,6 +14,9 @@
  * that log prefix is replayed. Later logs/control frames cannot move either
  * target. Status and record admission are CPU-only; the master services DWC3.
  * This bounded diagnostic wait is separate from normal shutdown admission.
+ * Audio039's boot-time bulk-IN progress still had262 bytes pending after
+ *128 one-millisecond sleeps. Allow up to1024 polls for this diagnostic
+ * confirmation; access still requires the entire fixed prefix completed.
  */
 static inline bool na_xpu_trace_enabled(void) {
     int enabled=0;
@@ -63,7 +66,7 @@ static inline int na_xpu_trace_before(const char *op,uint64_t pa,uint64_t span,
     uint64_t accepted_target=0,transport_target=0;
     bool have_accepted=false,have_transport=false;
     unsigned busy=0;
-    for (unsigned attempt=0;attempt<128;++attempt) {
+    for (unsigned attempt=0;attempt<1024;++attempt) {
         qcom_usb_debug_get_status(&status);
         if (status.phase!=QCOM_USB_DEBUG_ACTIVE)
             return na_xpu_trace_blocked(op,pa,"controller-inactive",status,enqueued,
@@ -88,7 +91,7 @@ static inline int na_xpu_trace_before(const char *op,uint64_t pa,uint64_t span,
     }
     return na_xpu_trace_blocked(op,pa,!have_accepted ? "status-busy":
                                   !have_transport ? "cpu-queue":"transport",
-                                  status,enqueued,128,busy,accepted_target,transport_target);
+                                  status,enqueued,1024,busy,accepted_target,transport_target);
 }
 static inline void na_xpu_trace_after(const char *op,uint64_t pa,int result,
                                      uint32_t value=0,uint64_t auxiliary=0) {
