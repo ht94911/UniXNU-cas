@@ -18,10 +18,13 @@ static int wait_fifo(NaSwr *s,int reading) {
     }
     return fail(s,NA_TIMEOUT);
 }
+int na_swr_version_supported(uint32_t version) {
+    return version==0x02000000u || version==0x02020000u;
+}
 int na_swr_bind(NaSwr *s,const NaSwrIo *io,uint64_t lease) {
     if (!s || !io || !lease || !io->read || !io->write || !io->now_us || !io->pause_us || !io->error) return NA_ARGUMENT;
     memset(s,0,sizeof *s);s->io=*io;s->lease=lease;
-    if (io->read(io->context,0)!=0x02000000u || !(io->read(io->context,0x5064)&1)) return NA_MISSING;
+    if (!na_swr_version_supported(io->read(io->context,0)) || !(io->read(io->context,0x5064)&1)) return NA_MISSING;
     uint32_t status=io->read(io->context,0x1090);unsigned found=0;
     for (unsigned dev=1;dev<=11;++dev) if (((status>>(2*dev))&3)==1) {
         uint32_t lo=io->read(io->context,0x530+8*dev),hi=io->read(io->context,0x534+8*dev);

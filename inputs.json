@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Audio045 corrected provider capabilities: max_arg1=1 admits bounded HAL observation history; actual QUD dispatcher and original-zero-limit negative control passed. Retain all earlier045 source, dispatch APIs, PCM and GPU023 contracts.",
+  "purpose": "Audio046: use the stock2.0 SoundWire layout for measured2.2 in both board preparation and actual bus binding. Preserve045 late HAL discovery/owned observations,44 DVC40 and all capture/trace/PIL/GPU023 contracts. No private inputs or phone operations.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "d8ae6258a6e5a24673928f7b81ccb3a44aae2b98",
+  "device_revision": "04ffed660520be12a9ac5d5417b42ee28d4833a4",
   "soc_revision": "703d7b4bb00904b4a6e5d96f9e9bf72eec170f6b",
   "xcode": "26.6",
   "files": {
@@ -171,7 +171,7 @@
     "source/device/patches/xnu-12377/zzzzzz-nezha-input-chain-trace.patch": "c4d05419e7ec3af0de619754bdb6c2deb69b74d714c2219e509360ebfe1b947e",
     "source/device/patches/xnu-12377/zzzzzz-nezha-kernel-class-lock-order.patch": "cd90c61d6838f4e6a7248da81b6180f14db03d00f2f7a64f4bbe4034c0aa8dcb",
     "source/device/patches/xnu-12377/zzzzzz-nezha-sigp-startup-order.patch": "18275910b909d187e459c68f5d937cc09bc01923180141dc155aa7f4ff14aaf9",
-    "source/device/porting.toml": "ad77ef6725c58182f86f67c9df4c19597a073e4b7fad2bae8cc0c65dc1aed549",
+    "source/device/porting.toml": "01b5819313d139e12635ec64c11dfc28c9cf5c5e6ea13c424870660a7f674a9c",
     "source/device/scripts/backlight-iphone-24A446.json": "446eb5fe6440335bfe9fca75b32f7d815ddcafbb8a3c2d7f697c1e5c3f40f6cb",
     "source/device/scripts/build-adreno840.py": "269f32fe2c97d7baf846a148fed7c111a53869486626a87ec8daab7fdfc3ab91",
     "source/device/scripts/build-boot-progress.py": "a210eb1f0443574eb1506932aa9e8181d5c73aecf99397d8cc731568bd3210ba",
@@ -218,8 +218,8 @@
     "source/device/package/audio27/platform/AdspFirmware.h": "4096f93fd761bee7d0afe1557c7af77e3eef3040650da32153e582c6a5330756",
     "source/device/package/audio27/platform/AudioSmmu.h": "41401f1b97e3481c7e5cc3e02c47f926e91eec9fa34f4a48981a3fc3b723cddd",
     "source/device/package/audio27/upstream/ShengGpr.c": "c4f498f07e2cb601b593e64a8d32474a21d6a87375618e1a67b99d52c5d3160e",
-    "source/device/package/audio27/platform/SoundWire.h": "348979ac1e552e1c3a0027e09f8500927e8bf7ccbb496276d2c9d3ef19322224",
-    ".github/workflows/nezha-ios27-native.yml": "17e61040d4726bba1b9e0e80119a2f0d655ae21340d6b086ccbbe40d0c855085",
+    "source/device/package/audio27/platform/SoundWire.h": "334e51c447b865e66ed7d67eb448510dfaa0b5a8c66598a3d722f84ce69f565c",
+    ".github/workflows/nezha-ios27-native.yml": "802d8dd8637ae07fbcdac10d79711b13b888fcba2e9faa0d47c93b4687e007eb",
     "source/device/package/audio27/upstream/ShengGpr.h": "a274dded1f4d1e2709b9f966759bcb1f57d12747ee0f57743dea1fa97d95d23e",
     "source/device/package/audio27/os/NezhaAudioNative.h": "26b0203a49895eb907ea8155443e7a2aa5431bb89393a32b3debf01371d1c353",
     "source/device/package/audio27/upstream/ShengAudioReach.h": "b135177a5feb3e24e0d8a6aabb301600e2c37078b970a09ada6e8eb7bb6a5b98",
@@ -230,10 +230,10 @@
     "source/device/package/audio27/core/AudioEngine.h": "ab50290851d1c6c5b097c971cbc95b587455feaf4199d3e842e686daf39ba915",
     "source/device/package/audio27/upstream/LICENSE.GPL-2.0": "8177f97513213526df2cf6184d8ff986c675afb514d4e68a404010521b880643",
     "source/device/package/audio27/core/AudioDriver.h": "b2c04b2d6a842e529ce68ef794fe51c79a67a57e863da42af1b198e56e881e63",
-    "source/device/package/audio27/platform/SoundWire.c": "e7e30b40cc4a78286f9dcf200b21690fa39d36da5b3e4a96c67d30313e2d1a2a",
+    "source/device/package/audio27/platform/SoundWire.c": "59f966095e117520771f777d797fc2e33ed1550862fcf00eaab59a97ba26f3a8",
     "source/device/package/audio27/platform/NezhaGeniBoard.c": "3642f9c06612dbc613e3d37bf87241fc7e48059854d8a55af37ceb498d2418a0",
     "source/device/package/audio27/hal/AudioClock.c": "e5f6cbbfc44f5e666a7e9b4ef8c7d284517fae36840b22c0277d80876b3f55e4",
-    "source/device/package/audio27/platform/NezhaMicBoard.c": "cfbb29d3d99df94ed6578eddf9581f4706ed240f30685c809e23e8760098ebf1",
+    "source/device/package/audio27/platform/NezhaMicBoard.c": "5a0796be5c4a6f7539758adf2c6495493b905beed637fb0bc86ed805bf12125f",
     "source/device/package/audio27/platform/AdspFirmware.c": "9ea4c9700080a92cf33b55958ffd21a1395c17513a1f26ee60a2e79080480117",
     "source/device/package/audio27/upstream/QcomSmem.h": "f2a25e807bfa0556f2ec19258d8b2f47782acdc5fe1d9bdab23ecbb9f948ae37",
     "source/device/package/audio27/core/AudioEngine.c": "1163936403f0ff94091669c527a20e90a56323741334fd0190b226c962bb7639",
@@ -393,15 +393,15 @@
   "audio": {
     "base": "GPU023",
     "base_device_revision": "673cde869b7378658b470c4e6b2b9a1766b99411",
-    "source_revision": "d8ae6258a6e5a24673928f7b81ccb3a44aae2b98",
-    "source_only_revision": "d8ae6258a6e5a24673928f7b81ccb3a44aae2b98",
+    "source_revision": "04ffed660520be12a9ac5d5417b42ee28d4833a4",
+    "source_only_revision": "04ffed660520be12a9ac5d5417b42ee28d4833a4",
     "hardware_enabled": false,
     "resource_census_enabled": true,
     "private_inputs": false,
     "HAL_target": "arm64e-apple-ios27.0",
     "shared_resource_owner": "703d7b4bb00904b4a6e5d96f9e9bf72eec170f6b",
     "private_input_slot_bytes": 35651584,
-    "previous_audio_behavior_source": "2d6fcffa9120e203b8e6859b3c58f8a16266fdb6",
+    "previous_audio_behavior_source": "d8ae6258a6e5a24673928f7b81ccb3a44aae2b98",
     "base_native_run": 42401029411,
     "base_Metal_revision": "eb59f022a326d03330d398b3c1dbcb6f0aeb633f",
     "diagnostic_glink_delay_ms": 20000,
@@ -531,6 +531,13 @@
     "HAL_default_volume": 1,
     "physical_sound_accepted": false,
     "HAL_history_max_arg1": 1,
-    "actual_QUD_dispatcher_host_qualified": true
+    "actual_QUD_dispatcher_host_qualified": true,
+    "SWR_known_hardware_versions": [
+      33554432,
+      33685504
+    ],
+    "SWR_layout": "stock DT CONFIG_SWRM_VER_2P0; physical revision mismatch is logged, not rejected",
+    "SWR_board_and_binding_shared_check": true,
+    "physical_capture_accepted": false
   }
 }

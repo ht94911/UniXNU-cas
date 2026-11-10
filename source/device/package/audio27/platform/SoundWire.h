@@ -18,6 +18,8 @@ typedef struct {
 } NaSwr;
 /* Requires the exclusive, clocked TX v2 master at0x07630000 and actual slave
  * identity, not 'first enumerated device'. The caller performs master startup. */
+/* Stock DT2.0 layout with the upstream2.0 or actual nezha2.2 hardware ID. */
+int na_swr_version_supported(uint32_t hardware_version);
 int na_swr_bind(NaSwr *,const NaSwrIo *,uint64_t lease);
 int na_swr_read(NaSwr *,uint16_t reg,uint8_t *);
 int na_swr_write(NaSwr *,uint16_t reg,uint8_t value);

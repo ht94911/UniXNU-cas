@@ -82,7 +82,11 @@ int na_mic_board_prepare(void *v,NaWcdCapture *capture) {
             (r=update(m,VA+0x80,2,2)) || (r=update(m,VA+8,2,2)) || (r=update(m,VA+8,1,1)) ||
             (r=update(m,VA+8,2,0)) || (r=update(m,TX,1,1)) || (r=update(m,TX+4,1,1))) return failed(m,r);
         m->macro_on=1;
-        if ((r=read_reg(m,SWR,&value)) || value!=0x02000000u) return failed(m,r ? r:NA_MISSING);
+        if ((r=read_reg(m,SWR,&value))) return failed(m,r);
+        /* Stock nezha DT selects the2.0 register layout; its driver logs a
+         * differing hardware revision and continues.043 read2.2 at this base.
+         * Keep the existing layout for these two identified revisions. */
+        if (!na_swr_version_supported(value)) return failed(m,NA_MISSING);
         if ((r=update(m,SWR+8,~0u,1))) return failed(m,r);
         m->stage=3;m->wait_until=now+1000;return NA_PENDING;
     case 3: {
