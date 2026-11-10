@@ -388,3 +388,18 @@ limits = ["The cancellation cause and fix remain unproved;this increment closes 
 completion = ["Actual queried current identity matches the real associated network", "Canceling an unsubmitted password page restores the correct checkmark without stale loading", "Manual association/IP and short protected return remain valid"]
 next_action = ["Compile the distinct018 observer and resolve the measured reply-versus-cache split;do not mark the bug solved by telemetry alone"]
 evidence = [{kind = "source", reference = "tools/test-wifi27-ioctl.py", result = "Actual producer reply-copy and late-query observations tested;hardware effect pending"}]
+
+
+[[area]]
+id = "ios27-bluetooth-keystore012"
+status = "implemented"
+components = ["QcaBluetooth", "AppleKeyStoreState"]
+paths = ["feeds.toml", "package/KeyStoreProbe.cpp", "components/QcaBluetooth/tools/native_ios27.py", "components/QcaBluetooth/tools/test-native.py"]
+inputs = ["Fixed Wi-Fi023 and Native011 source c0660693; existing 24A446 AppleKeyStore wrapper ABI", "AppleKeyStoreState 6ff4f11d8fdf853351f8d98e1bbe1373fb8da2e6; functional increment 5454637"]
+configuration = ["Retain sheng-aks board callback gate and original explicit late initialization", "Reuse existing chosen unique-chip-id: exactly8 nonzero raw bytes, existing private platform seed", "Preserve original root-key error returns and existing source-status observer"]
+procedure = ["Build the pinned canonical AppleKeyStoreState component with the original target command", "Verify normal and late object source identity, one native_aks_device_id definition and strict38 closure", "Use an independent RAM Data Bluetooth candidate and shared-file phone handoff"]
+findings = ["Original KeyStore42ff returns unsupported for wrap/unwrap, UUID, generation and cache-flow interfaces", "Pinned upstream6ff retains545 functional code;24A446 selectors10/11/23/40/160 wire shapes match", "The board callback copies the existing registry property without generating or logging an identity"]
+limits = ["Target compile and actual KeyStore operations pending", "Software wrapping does not provide hardware data protection or SEP blob compatibility", "008 mouse input is the actual functional reference; keyboard pairing and persistent bonds remain unresolved"]
+completion = ["Actual daemon starts with its original errors preserved", "Actual keyboard pairing and input succeed", "Bond persistence, sleep, coexistence and audio profiles are separately qualified"]
+next_action = ["Collect011-compatible daemon process evidence and compile the independent Native012 dependency candidate"]
+evidence = [{kind = "source", reference = "https://github.com/UniXNU/AppleKeyStoreState/commit/6ff4f11d8fdf853351f8d98e1bbe1373fb8da2e6", result = "Five-file source read and existing actual24A446 ABI checked; hardware pending"}]
