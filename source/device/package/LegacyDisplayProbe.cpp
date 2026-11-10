@@ -23,7 +23,7 @@ extern "C" void nezha_backlight_late_probe(void) __attribute__((weak_import));
 static IOService *activeGOPPresenter,*activeGOPNub;
 // GPU hand-off presenter (sheng-fb-gpu=1, phase 4): lives beside the display driver, which offers it frames instead of copying them.
 static IOService *gpuHandoffPresenter;
-extern "C" bool native_gop_gpu_offer(IOService *,void *display,IOMemoryDescriptor *,uint64_t stride,uint32_t width,uint32_t height,uint32_t format,uint64_t offset,uint64_t bytes);
+extern "C" bool native_gop_gpu_offer(IOService *,void *display,IOMemoryDescriptor *,uint64_t stride,uint32_t width,uint32_t height,uint32_t format,uint64_t offset,uint64_t bytes,uint64_t surfaceCookie,uint32_t surfaceHandle);
 extern "C" void native_gop_presenter_set_source(IOService *presenter,IOService *nub);
 volatile uint32_t native_legacy_gpu_fallbacks,native_legacy_gpu_last_status;
 static IOService *activeLegacyDisplay;
@@ -280,8 +280,8 @@ void native_legacy_surface_view_observed(uint32_t format,uint32_t planes,uint64_
     printf("NEZHA SWAP VIEW: fmt=%08x planes=%u global_stride=%llu plane=%llux%llu row=%llu offset=%llu base=%llu bytes=%llu descriptor=%llu\n",
         format,planes,globalStride,width,height,stride,offset,base,bytes,descriptor);
 }
-bool native_legacy_gpu_offer(void *display,IOMemoryDescriptor *memory,uint64_t stride,uint32_t width,uint32_t height,uint32_t format,uint64_t offset,uint64_t bytes) {
-    return gpuHandoffPresenter && native_gop_gpu_offer(gpuHandoffPresenter,display,memory,stride,width,height,format,offset,bytes);
+bool native_legacy_gpu_offer(void *display,IOMemoryDescriptor *memory,uint64_t stride,uint32_t width,uint32_t height,uint32_t format,uint64_t offset,uint64_t bytes,uint64_t surfaceCookie,uint32_t surfaceHandle) {
+    return gpuHandoffPresenter && native_gop_gpu_offer(gpuHandoffPresenter,display,memory,stride,width,height,format,offset,bytes,surfaceCookie,surfaceHandle);
 }
 void native_legacy_gpu_fallback_observed(int status) {
     native_legacy_gpu_last_status=(uint32_t)status;native_legacy_gpu_fallbacks=native_legacy_gpu_fallbacks+1;
@@ -623,3 +623,5 @@ void native_legacy_display_late_probe(void) {
     native_legacy_display_checkpoint();
 }
 }
+
+#include "gpu/NezhaDpuTimingAdapter.h"

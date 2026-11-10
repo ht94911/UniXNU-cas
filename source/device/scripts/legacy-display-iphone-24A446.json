@@ -1564,7 +1564,8 @@
     "_native_legacy_surface_allocate": "0xfffffff009bfebd4",
     "_native_legacy_vsync_notify": "0xfffffff009a95e54",
     "_native_legacy_set_refresh_properties": "0xfffffff009a9a028",
-    "_native_legacy_surface_create": "0xfffffff009c141d8"
+    "_native_legacy_surface_create": "0xfffffff009c141d8",
+    "_native_legacy_surface_handle": "0xfffffff009c0290c"
   },
   "checks": [
     [

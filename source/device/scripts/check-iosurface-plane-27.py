@@ -34,4 +34,4 @@ out={'passed':True,'hardware_verified':False,'kernel':str(a.kernel),'kernel_sha2
      'compiled_binding_report_checked':bool(compiled),'metadata_only_no_original_code_exported':True}
 a.output.parent.mkdir(parents=True,exist_ok=True)
 a.output.write_text(json.dumps(out,indent=2)+'\n')
-print('PASS six original IOSurface plane getters; exact ABI and code hashes; no phone access')
+print(f'PASS {len(checks)} original IOSurface plane/handle routines; exact ABI and code hashes; no phone access')
