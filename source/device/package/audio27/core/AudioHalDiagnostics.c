@@ -5,7 +5,7 @@
 _Static_assert(sizeof(NaHalObservation)==32,"HAL observation ABI");
 int na_hal_history_add(NaHalHistory *history,const NaHalObservation *event) {
     if (!history || !event || event->version!=NA_HAL_OBSERVATION_VERSION ||
-        event->kind<NaHalConnected || event->kind>NaHalPublication || event->object>5 ||
+        event->kind<NaHalConnected || event->kind>NaHalSystemRoute || event->object>5 ||
         history->count>NA_HAL_HISTORY_CAPACITY) return NA_ARGUMENT;
     for (uint32_t i=0;i<history->count;++i)
         if (!memcmp(&history->records[i],event,sizeof *event)) return NA_OK;

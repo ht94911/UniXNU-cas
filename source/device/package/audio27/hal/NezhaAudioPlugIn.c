@@ -43,6 +43,7 @@ static uint64_t gZeroOrigin,gZeroSeed;
 static uint32_t gEpoch;
 static struct {UInt32 id,count;} gUsers[32];
 static uint32_t gReportedDeviceList=UINT32_MAX,gObservationCount;
+static UInt32 gSystemRouteSamples;
 static NaHalObservation gObservations[NA_HAL_HISTORY_CAPACITY];
 static void report_hal(uint32_t kind,uint32_t object,uint32_t selector,uint32_t scope,uint32_t element,int32_t result,uint32_t value) {
     if (!gConnect) return;
@@ -167,7 +168,7 @@ static int connect_service(void) {
         if (map_type(NaAudioInputMemory,NA_AUDIO_RING_BYTES)) goto bad;
         gInput=(const uint64_t *)(uintptr_t)gMapAddress[2];
     }
-    gEpoch=s.epoch;gReportedDeviceList=UINT32_MAX;
+    gEpoch=s.epoch;gReportedDeviceList=UINT32_MAX;gSystemRouteSamples=0;
     report_hal(NaHalConnected,kPlugIn,0,0,0,0,1);return 0;
 bad:disconnect();return -1;
 }
@@ -204,7 +205,44 @@ static void service_matched(void *context,io_iterator_t matches) {
     while ((object=IOIteratorNext(matches))) IOObjectRelease(object);
     check_service();
 }
-static void retry_service(void *context) {(void)context;check_service();}
+/* Read the global CoreAudio objects after late publication, on the existing
+ * discovery queue. These calls can enter this plug-in's property callbacks,
+ * so never hold gLock across them. No default-device or property writes. */
+static void sample_system_route(void) {
+    pthread_mutex_lock(&gLock);
+    if (!atomic_load(&gDiscoveryActive) || !available() || gSystemRouteSamples>=8 ||
+        gObservationCount==NA_HAL_HISTORY_CAPACITY) {
+        pthread_mutex_unlock(&gLock);return;
+    }
+    UInt32 epoch=gEpoch;io_connect_t connection=gConnect;++gSystemRouteSamples;
+    pthread_mutex_unlock(&gLock);
+    const AudioObjectPropertySelector selectors[4]={kAudioHardwarePropertyTranslateUIDToDevice,
+        kAudioHardwarePropertyDefaultOutputDevice,kAudioHardwarePropertyDefaultSystemOutputDevice,
+        kAudioHardwarePropertyDevices};
+    NaHalObservation events[4];CFStringRef uid=CFSTR(kDeviceUID);
+    for (unsigned i=0;i<4;++i) {
+        AudioObjectPropertyAddress address={selectors[i],kAudioObjectPropertyScopeGlobal,kAudioObjectPropertyElementMain};
+        UInt32 bytes=sizeof(AudioObjectID);AudioObjectID value=kAudioObjectUnknown;OSStatus r;
+        if (i==3) {
+            bytes=0;r=AudioObjectGetPropertyDataSize(kAudioObjectSystemObject,&address,0,NULL,&bytes);
+            if (!r && bytes%sizeof(AudioObjectID)) r=kAudioHardwareBadPropertySizeError;
+            if (!r) value=bytes/(UInt32)sizeof(AudioObjectID);
+        } else {
+            r=AudioObjectGetPropertyData(kAudioObjectSystemObject,&address,
+                i==0 ? (UInt32)sizeof(uid):0,i==0 ? &uid:NULL,&bytes,&value);
+            if (!r && bytes!=sizeof(AudioObjectID)) r=kAudioHardwareBadPropertySizeError;
+        }
+        events[i]=(NaHalObservation){NA_HAL_OBSERVATION_VERSION,NaHalSystemRoute,
+            kAudioObjectSystemObject,address.mSelector,address.mScope,address.mElement,r,r ? 0:value};
+    }
+    pthread_mutex_lock(&gLock);
+    if (atomic_load(&gDiscoveryActive) && gConnect==connection && gEpoch==epoch && available()) {
+        for (unsigned i=0;i<4;++i) observe_once(events[i].kind,events[i].object,events[i].selector,
+            events[i].scope,events[i].element,events[i].result,events[i].value);
+    }
+    pthread_mutex_unlock(&gLock);
+}
+static void retry_service(void *context) {(void)context;check_service();sample_system_route();}
 static UInt32 latencyFrames(void) {return NA_AUDIO_LEAD_FRAMES;}
 static Float32 toDb(Float32 value) {if (!isfinite(value)) return kMinDb;Float32 r=1.0f-fminf(1,fmaxf(0,value));return kMinDb*r*r;}
 static Float32 toScalar(Float32 db) {if (!isfinite(db) || db<=kMinDb) return 0;return db>=0 ? 1:1-sqrtf(db/kMinDb);}
