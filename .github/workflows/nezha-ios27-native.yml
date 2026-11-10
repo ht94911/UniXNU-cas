@@ -1,7 +1,7 @@
-name: nezha iPhone27 AA27 B1 K1 - native001
+name: nezha AA27 ordinary test app view - native003
 on:
   push:
-    branches: [codex/ios27-account001-20261110]
+    branches: [codex/ios27-account-native003-20261111]
   workflow_dispatch:
 permissions:
   contents: read

@@ -37,3 +37,6 @@ nezha-wifi-mmio-recovery.patch
 nezha-wifi-kernel-events.patch
 nezha-wifi-addon-truncate.patch
 zzz-wifi-aes-late-personality.patch
+
+# Standalone AA27 test application, using the existing read-only app view.
+zzzz-aa27-test-app-view.patch

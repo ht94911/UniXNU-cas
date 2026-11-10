@@ -1,6 +1,20 @@
 # Local machine-checkable integration contract; no published porting record or hardware claim.
 schema_version = 1
 
+[[area]]
+id = "ios27-account-app003"
+status = "implemented"
+components = ["AppleKeyStoreState", "RamBlock", "QcomXnuUsbDebug"]
+paths = ["patches/xnu-12377/zzzz-aa27-test-app-view.patch", "package/BootWatchdogPolicy.c"]
+inputs = ["Fixed AA27 account002 Wi-Fi integration; same K1 format and ordinary test access group", "Separately built arm64e AA27Probe.app with original SecItem calls"]
+configuration = ["aa27-probe=1 is confined to this diagnostic source's built-in arguments", "The existing addon installs account/apps; the existing read-only union mount exposes AA27Probe.app alongside the original Applications view"]
+procedure = ["Qualify the original app signature, dependencies and ordinary application container", "Rebuild native, strict prelink and fixed embedded boot using the existing pipeline", "Complete all computer preparation before joining the shared phone queue"]
+findings = ["Adding a cached launchd job did not establish execution on the existing platform", "The diagnostic app preserves all Security operation bodies and changes only its UI entry and normal cache directory", "The mount records actual lower and own file visibility; this does not prove application registration"]
+completion = ["The independent app registers and runs as mobile with its own access group", "Original SecItem add, copy, update and delete succeed; after a normal restart the same public canary is read"]
+limits = ["App registration, execution and cross-boot SecItem results remain unverified", "No account-service result, hardware-protection claim or main-package promotion"]
+next_action = ["Complete native and package qualification, then verify the app and original SecItem behavior in a protected temporary boot"]
+evidence = [{kind = "source", reference = "patches/xnu-12377/zzzz-aa27-test-app-view.patch", result = "Existing addon and read-only union mount reused; no new storage or device transport."}]
+
 [device]
 name = "nezha"
 soc = "SM8850"
@@ -121,17 +135,17 @@ evidence = [{kind = "source", reference = "docs/GPU27.md", result = "Fixed078 co
 
 [[area]]
 id = "network"
-status = "planned"
-components = []
-paths = ["scripts/dev/**"]
-inputs = ["Separate active Wi-Fi work owns the phone; no Wi-Fi code imported into this branch."]
-configuration = ["board.toml and configs/nezha_ios27_defconfig select the current source-only step."]
-procedure = ["Use ./unixnu with isolated local inputs/out, jobs=32; preserve existing Android/ios17 and active Wi-Fi workspace."]
-findings = ["Association/IP is not a prerequisite for this desktop milestone."]
-completion = ["Real iPhone iOS27 desktop/settings operable with protection verification; validate this area separately before promotion."]
-limits = ["No iOS27 device execution, donor ABI qualification or phone allocation is claimed."]
-next_action = ["Keep this work computer-only until a coordinated authorized phone window exists."]
-evidence = []
+status = "implemented"
+components = ["SoftwareAES"]
+paths = ["package/NezhaWcn7860/**", "package/software-aes/**", "patches/xnu-12377/nezha-wifi-*.patch", "patches/xnu-12377/zzz-wifi-aes-late-personality.patch"]
+inputs = ["Fixed Wi-Fi023 source and SoftwareAES with the existing persistent-Data readiness adapter", "All four production Wi-Fi ADT properties and the corresponding addon inputs; private values remain local"]
+configuration = ["nezha_wifi=1; persist=2 uses the existing restored-Data and resource-ownership checks"]
+procedure = ["Preserve the exact Wi-Fi source, four ADT inputs, firmware and configuration bindings when packaging the app candidate", "Keep Wi-Fi and app execution results separate"]
+findings = ["AA27 account002 corrected two omitted ADT inputs without changing the Wi-Fi driver", "The original network reader obtains the system IPv4 from the BSD interface address list"]
+completion = ["Association, valid system IP and actual browser operation pass on the joint candidate with Android protection postflight"]
+limits = ["Private hardware records remain local; this source record does not publish their data", "App003 has not been hardware-qualified"]
+next_action = ["Carry the complete account002 Wi-Fi inputs into the app candidate without further driver edits"]
+evidence = [{kind = "source", reference = "package/NezhaWcn7860/NezhaWifiDiagnostic.c", result = "Existing resumed-Data gate retains USB, touch and UFS resource checks."}]
 
 [[area]]
 id = "audio"

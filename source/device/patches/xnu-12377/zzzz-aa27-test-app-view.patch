@@ -1,0 +1,21 @@
+diff --git a/bsd/kern/kern_exec.c b/bsd/kern/kern_exec.c
+--- a/bsd/kern/kern_exec.c
++++ b/bsd/kern/kern_exec.c
+@@ -1,3 +1,17 @@
+ 	native_gpu_addon_install(p, scratch);
++	/* The standalone AA27 app uses the existing read-only application view.
++	 * Its own files arrive through the normal addon, after Data is ready.
++	 * Existing system apps remain visible below this separate view. */
++	uint32_t aa27_probe = 0;
++	if (PE_parse_boot_argn("aa27-probe", &aa27_probe, sizeof(aa27_probe)) && aa27_probe == 1) {
++		static const char aa27_source[] = "/private/var/ngpu/account/apps";
++		static const char aa27_point[] = "/Applications";
++		static volatile int aa27_stage, aa27_status;
++		native_gpu_addon_mount(p, scratch, 0xc00, aa27_source, sizeof(aa27_source),
++		    aa27_point, sizeof(aa27_point), "/Applications/Preferences.app/Info.plist",
++		    "/Applications/AA27Probe.app/Info.plist", &aa27_stage, &aa27_status);
++		printf("AA27 app view: stage=%d status=%d\n", aa27_stage, aa27_status);
++	}
++
+ 	static const char extensions_source[] = "/private/var/ngpu/addons", extensions_point[] = "/System/Library/Extensions";
+ 	static const char daemons_source[] = "/private/var/ngpu/daemons", daemons_point[] = "/System/Library/LaunchDaemons";

@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "AA27 source-only native build: fixed GPU023/Native037 plus verified Wi-Fi023, resumed persistent Data and software K1. No phone files, account inputs, or hardware-result claim.",
+  "purpose": "AA27 native003: same Wi-Fi/K1 inputs as native001; standalone app uses the existing read-only Applications view.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "361a9cb9c06e101ccb07a433dd3fe03df5473d2f",
+  "device_revision": "8359ab2d17f004ed21cbd7b2a0d830e7296efdc2",
   "soc_revision": "3b50026405e2a42b7314a0b8703333cf2418d956",
   "xcode": "26.6",
   "files": {
@@ -90,7 +90,7 @@
     "source/device/package/BootUiTraceCore.h": "9404d7be6386f936904e6af34c870d86ec809b4d97161fd892d904d8334f2753",
     "source/device/package/BootUiTraceDetails.h": "b9c0d9afbc80359a08f2aabb87cf6ee94c5227e64212dffb05ea8d9e08a8473e",
     "source/device/package/BootUiTraceProbe.c": "22a3e64f66a6386e0129dc0673d673c628aa6f52bce72fa7145962312d123dad",
-    "source/device/package/BootWatchdogPolicy.c": "677eb7b8914e6d7106854768c6d56bdc735e2b9f71fb9182ad40f8d474c0b8f8",
+    "source/device/package/BootWatchdogPolicy.c": "69ee21c22267f3037c8043dc1461083dd22caf60c46e07beae25f6ac544cc2f3",
     "source/device/package/KeyStoreProbe.cpp": "25d74bbcbd4c8979d6872efb1182da4eecac9f83529dac7d3a34879c75071abf",
     "source/device/package/LegacyDisplayProbe.cpp": "3784f582190c259099a921f0c3add561f80bfa5cfdb33f5f6ea30c1151a13643",
     "source/device/package/Nezha27UsbControl.c": "e0465c9996b74bf7116853be87bc5223d803926df373ea25e4523ff2f9a441c8",
@@ -219,7 +219,7 @@
     "source/device/patches/xnu-12377/nezha-wifi-addon-truncate.patch": "c3b980c547fbc138ac7aedfd735d350cfef85d2a32ff78ec7bef894c4068ce63",
     "source/device/patches/xnu-12377/nezha-wifi-kernel-events.patch": "967cf792a5202711d0063463fe08bda58c554621b690b87f66904c18f81d057f",
     "source/device/patches/xnu-12377/nezha-wifi-mmio-recovery.patch": "89642756f4fe3179d44f076fbfd4786d21d0089ec7786943cb717b3eb78ecbe1",
-    "source/device/patches/xnu-12377/series": "ddf583a7211b58baa89301e92b6abea7c601d2868cd708fd556cf5c7d1946186",
+    "source/device/patches/xnu-12377/series": "0ddb2012cfa56e33e2e97ab21e975dfb731e56b97867715d10a28492fc24047e",
     "source/device/patches/xnu-12377/source-storage-runtime.patch": "25c377c60db417b15fcc137acf380f0319cbff9d5ba012af1907f3485602b584",
     "source/device/patches/xnu-12377/zzyd-sheng-audio-addon-mount.patch": "b51ed480b34c92452ea984fe056e5fce310bd929992d418f383a7e9268313c51",
     "source/device/patches/xnu-12377/zzye-sheng-cpu-idle.patch": "95f57fb9994796c3de2429fe82b6a521620b9f13b83e29eba12185f5ada4da86",
@@ -237,7 +237,7 @@
     "source/device/patches/xnu-12377/zzzzzz-nezha-input-chain-trace.patch": "c4d05419e7ec3af0de619754bdb6c2deb69b74d714c2219e509360ebfe1b947e",
     "source/device/patches/xnu-12377/zzzzzz-nezha-kernel-class-lock-order.patch": "cd90c61d6838f4e6a7248da81b6180f14db03d00f2f7a64f4bbe4034c0aa8dcb",
     "source/device/patches/xnu-12377/zzzzzz-nezha-sigp-startup-order.patch": "18275910b909d187e459c68f5d937cc09bc01923180141dc155aa7f4ff14aaf9",
-    "source/device/porting.toml": "971cdea85e82df0c3017655d927c0adea159a78bbc7c4c73e4d3444cc91c45ba",
+    "source/device/porting.toml": "4139c4a97c44e7f5a14c12e534915e84546e0520f70c1860f796d48b0ff8066b",
     "source/device/scripts/aes-iphone-24A446.json": "d55ed6d1d65fdff5de46dd602552eaf3309d1f7370fcd3f15eddb391225ffe8a",
     "source/device/scripts/backlight-iphone-24A446.json": "446eb5fe6440335bfe9fca75b32f7d815ddcafbb8a3c2d7f697c1e5c3f40f6cb",
     "source/device/scripts/build-adreno840.py": "269f32fe2c97d7baf846a148fed7c111a53869486626a87ec8daab7fdfc3ab91",
@@ -297,7 +297,8 @@
     "source/software-aes/README.md": "fb6af9b196316b4a39aa504e3ff92ebbaa7b6a0bb005c35f27bc360490dd52a4",
     "source/ufs.bundle": "3a7c1c6ac7e5a39e6cb4adcc6143fa1e4c6c24ae862aa501102f9fb70c21a534",
     "source/usb.bundle": "fc77b40791b6994f0da015b13b68a13cee5e8bc84e510cee4e518866165efeb2",
-    "ci/native.py": "fd3b57db44a25b11e0cbc78107ca97a8be81704e5ff4723268068b5ca170ddbb"
+    "ci/native.py": "fd3b57db44a25b11e0cbc78107ca97a8be81704e5ff4723268068b5ca170ddbb",
+    "source/device/patches/xnu-12377/zzzz-aa27-test-app-view.patch": "9e84a48654fba851545b810ae6f3e7fa1b38b6643fbabdea5b58cda709d26e1b"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
@@ -366,6 +367,15 @@
     "fixed_timed_reset": 0,
     "Data_reset": 0,
     "normal_return_mode": 1,
-    "server_verified": false
+    "server_verified": false,
+    "app_probe": {
+      "prior_account_native_run": 42839553364,
+      "app_build_run": 42886916994,
+      "app_source_head": "063253a84ce7e715a696153c0e0c3d3c46135b22",
+      "builtin_flag": "aa27-probe=1",
+      "hardware_app_registration_verified": false,
+      "native_SecItem_execution_verified": false,
+      "K1_format_unchanged": true
+    }
   }
 }
