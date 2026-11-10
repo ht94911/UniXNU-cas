@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Audio053 uses the matched27 explicit default-device qualifier and retains final ordered route samples through the existing HAL and kernel consumer. Full native/HAL build with existing SDK/CMS recipe; private inputs are finalized locally, no phone operation or promotion.",
+  "purpose": "Audio055 retains all053 audio sources and explicit default-device selection, and borrows the fixed account004 bounded HID provider for unattended ringtone/volume checks. Input descriptors,16ms owner pacing, real-contact drain, action identity and failure behavior are retained. The original C11/strict C++ provider evidence matches borrowed file hashes. No private input upload, phone operations, system-account changes or main promotion.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "52766c90ddb499192dc996b3087f6565d5b9b25a",
+  "device_revision": "ceaee86cb1d636ed115cc2bd9fa24be61d4642ab",
   "soc_revision": "703d7b4bb00904b4a6e5d96f9e9bf72eec170f6b",
   "xcode": "26.6",
   "files": {
@@ -146,7 +146,7 @@
     "source/device/package/nezha27-input/InputChainProbe.cpp": "7653046c23d9b3e11c2a89dff7312942b4e9fbee9a678da9026300d02903bdc3",
     "source/device/package/nezha27-input/InputChainTrace.h": "00a1e23a591f64d7bb8ce99d4787d9371f8b980e0e6c6e3ef364d67a092c31ef",
     "source/device/package/nezha27-input/InputEventBridge.cpp": "52ed3de36616fa7d260d529abdd1003320b8cc1dc3212f0b0fdf956a70ed53b2",
-    "source/device/package/nezha27-input/NativeHidInput.cpp": "67bdd0f7992bfb224b634a71e040e93f0968129777966b04683c7fa43571dc02",
+    "source/device/package/nezha27-input/NativeHidInput.cpp": "392641f18d04b5693ebd63873f551de180005b72fef0c1aeaec137995402e339",
     "source/device/package/nezha27-input/NezhaHidPacing.h": "2be615567252073a62587b41fa7f646f6d9bda4dbae2523cceef14caa300a5a9",
     "source/device/package/nezha27-input/NezhaInput.c": "a29cc1fe28008be257bde03d0850c4f66278a34948ff0b5ca0d83cff90365e07",
     "source/device/package/nezha27-input/NezhaInput.h": "b1e34b185e3159f2d8eb565cb9e66edbb1e58c0ba087c28e4da55dbf0c8b74f3",
@@ -177,7 +177,7 @@
     "source/device/scripts/build-boot-progress.py": "a210eb1f0443574eb1506932aa9e8181d5c73aecf99397d8cc731568bd3210ba",
     "source/device/scripts/build-gop-legacy-display-27.py": "f6f0e2cb69003dff292441f92b3e0431e5bd2519c24fbdef49e9365d519c07ea",
     "source/device/scripts/build-ios27-pmgr.py": "f88a0596937cbf0504922751a3194e3a33bba609f683a415262887d2b64241e4",
-    "source/device/scripts/build-nezha27-input.py": "cd559fad30207962411546b32ffb5547ae29379e7fa992d16eaab09a39b6cd28",
+    "source/device/scripts/build-nezha27-input.py": "382a86e7f8ac390ddb4bb8e2d9f21fc73d980a56750106e5ec0f1f7464b1021b",
     "source/device/scripts/build-nezha27-usb-control.py": "a2cd48a8e07a1cc43cc54488d7492c45f63aaa21121ea85667e34752b83d4971",
     "source/device/scripts/check-adreno840-integration.py": "225243ee2a6f45137b62c998743393889c9d9a306015542cb75134f556dcca64",
     "source/device/scripts/check-iosurface-plane-27.py": "092f98e807491b17df3e10835d23f1c44ae25c8820cc43c6343c56fa75c3c4c8",
@@ -219,7 +219,7 @@
     "source/device/package/audio27/platform/AudioSmmu.h": "41401f1b97e3481c7e5cc3e02c47f926e91eec9fa34f4a48981a3fc3b723cddd",
     "source/device/package/audio27/upstream/ShengGpr.c": "c4f498f07e2cb601b593e64a8d32474a21d6a87375618e1a67b99d52c5d3160e",
     "source/device/package/audio27/platform/SoundWire.h": "348979ac1e552e1c3a0027e09f8500927e8bf7ccbb496276d2c9d3ef19322224",
-    ".github/workflows/nezha-ios27-native.yml": "13d1ccd21f6f684bc76840377c0c30d2b45fe41294bd95933630b00b0917bd29",
+    ".github/workflows/nezha-ios27-native.yml": "c21699129f3fe8ae5c78b42167b9bf3bab5bb92eb2b61ddf446425403bf502d9",
     "source/device/package/audio27/upstream/ShengGpr.h": "a274dded1f4d1e2709b9f966759bcb1f57d12747ee0f57743dea1fa97d95d23e",
     "source/device/package/audio27/os/NezhaAudioNative.h": "26b0203a49895eb907ea8155443e7a2aa5431bb89393a32b3debf01371d1c353",
     "source/device/package/audio27/upstream/ShengAudioReach.h": "b135177a5feb3e24e0d8a6aabb301600e2c37078b970a09ada6e8eb7bb6a5b98",
@@ -341,7 +341,9 @@
     "source/device/package/audio27/platform/NezhaMicPower.c": "c0586bbbef8b0c135b299518882efa7983fb07d58bce585d7399b62b500e868f",
     "source/device/package/audio27/platform/NezhaMicPower.h": "d97b5f6370bbdf52cadca10c2848f7e2db07aa4e43793d672317ab3b8f7e9d2f",
     "source/device/package/audio27/core/AudioHalDiagnostics.c": "6cab23333f800435aa87b00acec63a8d3be0d97a52b8a12f2a5526fb3a6e650b",
-    "source/device/package/audio27/core/AudioHalDiagnostics.h": "c1bc3943933d64ef926ebe2ec1d378f54e3c753fb2be2de0e098f340602e2ace"
+    "source/device/package/audio27/core/AudioHalDiagnostics.h": "c1bc3943933d64ef926ebe2ec1d378f54e3c753fb2be2de0e098f340602e2ace",
+    "source/device/package/nezha27-input/NezhaAA27Input.h": "d112cd0663fc3fb84dc6be506fe4efac4ede748d541b48f2cc9c3a25852829a2",
+    "source/device/package/nezha27-input/NezhaAA27InputUsb.h": "518bef1aed0bff912d8c97ca036b6c9357a1c49164b074ce8d35fa1861542aa7"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
@@ -393,15 +395,15 @@
   "audio": {
     "base": "GPU023",
     "base_device_revision": "673cde869b7378658b470c4e6b2b9a1766b99411",
-    "source_revision": "52766c90ddb499192dc996b3087f6565d5b9b25a",
-    "source_only_revision": "ee342e3050369bcebeb9c7ee9c8e09ff04e35a06",
+    "source_revision": "ceaee86cb1d636ed115cc2bd9fa24be61d4642ab",
+    "source_only_revision": "ceaee86cb1d636ed115cc2bd9fa24be61d4642ab",
     "hardware_enabled": false,
     "resource_census_enabled": true,
     "private_inputs": false,
     "HAL_target": "arm64e-apple-ios27.0",
     "shared_resource_owner": "703d7b4bb00904b4a6e5d96f9e9bf72eec170f6b",
     "private_input_slot_bytes": 35651584,
-    "previous_audio_behavior_source": "030dceb109a9e395e4b579ca042d62dcefa21ded",
+    "previous_audio_behavior_source": "52766c90ddb499192dc996b3087f6565d5b9b25a",
     "base_native_run": 42401029411,
     "base_Metal_revision": "eb59f022a326d03330d398b3c1dbcb6f0aeb633f",
     "diagnostic_glink_delay_ms": 20000,
@@ -558,6 +560,17 @@
     "final_route_samples_retained": true,
     "kernel_history_dedup_preserved_except_system_route": true,
     "private_property_replies_changed": false,
-    "realtime_IO_changed": false
+    "realtime_IO_changed": false,
+    "unattended_UI_input_provider": 27,
+    "unattended_UI_input_version": 1,
+    "reused_input_revision": "143b795453dc4cc24e3670d301ccb73091754b55",
+    "reused_input_files": {
+      "package/nezha27-input/NativeHidInput.cpp": "392641f18d04b5693ebd63873f551de180005b72fef0c1aeaec137995402e339",
+      "package/nezha27-input/NezhaAA27Input.h": "d112cd0663fc3fb84dc6be506fe4efac4ede748d541b48f2cc9c3a25852829a2",
+      "package/nezha27-input/NezhaAA27InputUsb.h": "518bef1aed0bff912d8c97ca036b6c9357a1c49164b074ce8d35fa1861542aa7",
+      "scripts/build-nezha27-input.py": "382a86e7f8ac390ddb4bb8e2d9f21fc73d980a56750106e5ec0f1f7464b1021b"
+    },
+    "explicit_UI_input_option": "aa27-input=1",
+    "original_audio_sources_and_callbacks_unchanged": true
   }
 }

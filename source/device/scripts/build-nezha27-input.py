@@ -28,6 +28,9 @@ sdk=Path(headers['sdk']);includes=['-I',str(include),'-idirafter',str(sdk/'Syste
 # Controller protocol is supplied by the resolved,independent SoC source.
 physical_device=Path(os.environ['UNIXNU_DEVICE']).resolve()
 local_sources=tomllib.loads((physical_device/'local.toml').read_text())['source']
+usb_source=next(item for item in local_sources if item['name']=='QcomXnuUsbDebug')
+usb_source=(physical_device/usb_source['local']).resolve()
+includes+=['-I',str(usb_source/'include')]
 soc_source=next(item for item in local_sources if item['name']=='sm8850' and item['kind']=='soc')
 soc_header=(physical_device/soc_source['local']).resolve()/'include/Sm8850DsiFifo.h'
 require(sha(soc_header)=='5f9a2ce924585f327c088bcdaf03e6f30fe4b1573b65b3df10eb02b71bc3442f','qualified SM8850 FIFO protocol identity')
