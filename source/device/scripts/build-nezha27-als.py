@@ -146,7 +146,7 @@ run([llvm/'llvm-objcopy', '--remove-section=__DATA,__mod_init_func',
 # Compile the transport-neutral C pieces using the actual kernel C recipe.
 # The established owner builds exactly one QRTR object with this same header;
 # this archive does not add a second router or select a hardware edge.
-qrtr_include = Path(os.environ['UNIXNU_ALS_QRTR_DIR']).resolve()
+qrtr_include = (ROOT/'kits/nezha/als-owner/upstream').resolve()
 require(sha(qrtr_include/'QcomQrtr.h') ==
         '665853eacbd6bf293ed16f02bce71f90a656da4feb02c5fe1da1d6eb032b2f5f',
         'reviewed unadvertised-client QRTR header')

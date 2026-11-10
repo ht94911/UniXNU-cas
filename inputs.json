@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "ALS006 integrated native004: compile the fresh IPCRTR control owner, original 200-byte/219-slot event frontend and three backend C units with one completed Native005/G030 target; retain the standard native kernel build and qualify separate archives before image/package closure.",
+  "purpose": "ALS006 first formal native kernel integration over accepted manual005/G030 test inputs: existing fresh ADSP owner, original frontend and shared USB install/restore publication. No private inputs.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,11 +14,11 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "60b455e1583272a170abc2776f33c94ecf05aec4",
+  "device_revision": "7784afbda5be8f626f43797bb76ddccafe76017a",
   "soc_revision": "e565439bf1a13d0224f0a9adcfc1eef8df7ad142",
   "xcode": "26.6",
   "files": {
-    "ci/native.py": "af0a7de971f97b78e85657cd1f618717756401a063c1ff793ef81ea0ba4f88e8",
+    "ci/native.py": "770572d6d80991ed5c71744f35f81ad48c7cb7e555bcd9b1c4b852897813f3fe",
     "source/adreno/LICENSE": "16fbc0170994a48f60938d9f0d992d3bad113383cf90882f75c206e079c2a2dc",
     "source/adreno/NativeAdrenoA740HwInit.h": "4b6a7f357b9bb8b99a2b5f4f503696c1f7f2e8ce1c55cd0b6d0d74c6f126ba19",
     "source/adreno/NativeAdrenoABI.h": "24b6d71df96a4849137ad6869c0bceea7e87602066df37b12c57f0cfa17c87a7",
@@ -78,9 +78,9 @@
     "source/adreno/NativeGpuTrace.h": "d06f67c151c03ef9be786ffd582b74e5d91d955e513d00217c6fe177332323fa",
     "source/adreno/NativeGpuTrace.inc": "24460c37660233ba80a6a3c22bda1415e353d5dba6a6f04adb3dff415c3ee23b",
     "source/adreno/NativeGpuTraceStore.h": "4a2984192bc2c68383146f558212d1000c920a8d9cbe54ccec8badd935844823",
-    "source/device/board.toml": "dccfde7cae4e0b1eb6ab8b6af78136c0014a8d8d861449cd7694eb8867527c57",
-    "source/device/configs/nezha_ios27_defconfig": "6f771ac6d84d2a094a9b4b4088ba1fe5cb172444cc76ae5584e68b94f090d121",
-    "source/device/feeds.toml": "cc41267cc266987a820c9e804c8b8f8433d9c0679ad59467d5eebe263977eecb",
+    "source/device/board.toml": "3809ffcfc97e7de2225508eb57896e64c8217323f2b81f2e07f3f26ea89beffd",
+    "source/device/configs/nezha_ios27_defconfig": "d091e29335f9fd9968b7c63e5737d4a0404be4d33fee38d89ba2825021415603",
+    "source/device/feeds.toml": "6b20e924d0e5bdfc9d229126d8d9e50c7f012c946a6148fd4e2f64d2a686a50c",
     "source/device/package/.gitkeep": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
     "source/device/package/BootDiagExport.c": "88f65a92490b54444ca68ecf99e887ba1c7f6ee3d5145b8e6eed13bf90c7a92d",
     "source/device/package/BootLog.c": "b8a76a03be5b1595c09ab8181acadf6332f88196022c086eb4628addac25acb3",
@@ -214,7 +214,7 @@
     "source/device/package/boot-progress/upstream.json": "bbcd4cc639b104c9d4619076c8350cfb90483a92347dcd5e39443ba0f8fd8a13",
     "source/device/package/cpu/NezhaCpu.c": "16084adaa01e1e2052f77af807448173793f71c3a5373fcb816012d46a7f6052",
     "source/device/package/cpu/NezhaCpu27Policy.h": "14869e171aabc71ea536d26bc79877db1889a29a13c09115557a45b1b8629dc7",
-    "source/device/package/gpu/NezhaAdreno840.cpp": "ad7e3949356b44bb13e975b250f2e1441f67a7f859861c0fe98ed472fff73852",
+    "source/device/package/gpu/NezhaAdreno840.cpp": "7a70a2e8c8118fbf1de6519ab74f93745b299cd47a426666995f9841f6036908",
     "source/device/package/gpu/NezhaGpu.c": "f72aaa33dc9af922647798fcac6f740bfca893f4c05cc8196b88fe72e17799ff",
     "source/device/package/gpu/NezhaGpuCoherence.h": "74198253f4a72d6a4aaeece23b783737db31e38c12dd829577bda6119485556e",
     "source/device/package/gpu/NezhaGpuFirmware.cpp": "6318b3d5cbd478f185dd0669a597440f2a3878d2991fd611fe6741a5d58b3909",
@@ -265,8 +265,8 @@
     "source/device/scripts/build-boot-progress.py": "a210eb1f0443574eb1506932aa9e8181d5c73aecf99397d8cc731568bd3210ba",
     "source/device/scripts/build-gop-legacy-display-27.py": "f6f0e2cb69003dff292441f92b3e0431e5bd2519c24fbdef49e9365d519c07ea",
     "source/device/scripts/build-ios27-pmgr.py": "f88a0596937cbf0504922751a3194e3a33bba609f683a415262887d2b64241e4",
-    "source/device/scripts/build-nezha27-als-owner.py": "4a8658b75e2d61a215f24eba64ce2406aae737b0a4d62a1d8fc6af3e765c8770",
-    "source/device/scripts/build-nezha27-als.py": "147f48787766f060dfaababdd15fcd4371b30d82fc1e018c5aad2aa6887560b2",
+    "source/device/scripts/build-nezha27-als-owner.py": "536fe824a2b7eb1cb67e139953739565c4436f0c9b96f6cb5d63a3fa55b2b1c8",
+    "source/device/scripts/build-nezha27-als.py": "1f6b777019220dca8c86839b5d55757dd7638b10add047e6dd4678be2eeaf541",
     "source/device/scripts/build-nezha27-input.py": "0730e4f7bf2cea3deaa9924cd3c044f7d4444a4a200ea08de3f6469fb4b2cb51",
     "source/device/scripts/build-nezha27-usb-control.py": "a2cd48a8e07a1cc43cc54488d7492c45f63aaa21121ea85667e34752b83d4971",
     "source/device/scripts/check-adreno840-integration.py": "225243ee2a6f45137b62c998743393889c9d9a306015542cb75134f556dcca64",
@@ -313,7 +313,7 @@
     "source/soc/tests/dsi-fifo-budget.py": "a5c5b322345f797c62d556c9876318091b57c9ad217f36d27e5e0e9f3b6e05d4",
     "source/soc/tests/dsi-fifo.c": "49cf3da0e78952e96e3b72b585535296b6626442da757f29adcee068ffd1d85d",
     "source/ufs.bundle": "3a7c1c6ac7e5a39e6cb4adcc6143fa1e4c6c24ae862aa501102f9fb70c21a534",
-    "source/usb.bundle": "fc77b40791b6994f0da015b13b68a13cee5e8bc84e510cee4e518866165efeb2"
+    "source/usb.bundle": "da47a07228c73099d1496299d439acc5ba9020aec86af143c625dd85e9a45971"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
@@ -321,8 +321,8 @@
   "device_executed": false,
   "usb_enabled": true,
   "usb": {
-    "source_revision": "9bfbf258d8356efcc0fbf03603d1518874829798",
-    "source_tree": "0b1327323a45484cbe96f2419e7a8d34ccdf63f9",
+    "source_revision": "aecd56d7ebdd5f16500c65a2a7b2554c880c28d0",
+    "source_tree": "0fad9b31484f7aec1a3723db20ade4d0fe003c56",
     "history": "One source-only tree: validate one shutdown ticket while USB is live, resume shutdown logs; no phone data",
     "repository": "https://github.com/xiaoleGun/QcomXnuUsbDebug.git"
   },
@@ -416,7 +416,7 @@
     "hardware": false
   },
   "als_abi": {
-    "source_revision": "60b455e1583272a170abc2776f33c94ecf05aec4",
+    "source_revision": "7784afbda5be8f626f43797bb76ddccafe76017a",
     "source_files": [
       "package/als/NezhaAlsBackend.h",
       "package/als/NezhaAlsFrontend.cpp",
@@ -449,11 +449,13 @@
     "integrated_source_only": true,
     "native_owner_linked_in_kernel": false,
     "backend_C_translation_units": 3,
-    "prior_successful_native_ABI_run": 42877123476
+    "prior_successful_native_ABI_run": 42877123476,
+    "first_formal_link_selected": true,
+    "normal_F2_recipe": true
   },
   "device_evidence_revision": "bce088d96f97359caf4367f6f2515fb47f53d84f",
   "als_owner": {
-    "source_revision": "60b455e1583272a170abc2776f33c94ecf05aec4",
+    "source_revision": "7784afbda5be8f626f43797bb76ddccafe76017a",
     "source_files": [
       "package/als-owner/NezhaAlsNativeCaller.cpp",
       "package/als-owner/NezhaAlsNativeCaller.h",
@@ -558,7 +560,11 @@
     "native_owner_linked_in_kernel": false,
     "strict_prelink_or_packaged_owner_qualified": false,
     "phone_operations": false,
-    "private_binary_inputs_uploaded": false
+    "private_binary_inputs_uploaded": false,
+    "native_framework_abi_only": false,
+    "first_formal_link_selected": true,
+    "late_startup": "retained bsdInit success -> A840 board fanout -> existing na=2 worker",
+    "standalone_after_kernel_compilation": false
   },
   "native004_base": {
     "CI_commit": "aa1d145a567b0cc464adb0a6e53142832ec4278a",

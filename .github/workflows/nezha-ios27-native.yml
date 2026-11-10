@@ -1,7 +1,7 @@
-name: nezha iPhone27 ALS006 integrated native004 on Native005
+name: nezha iPhone27 ALS006 linked native005 on Native005
 on:
   push:
-    branches: [codex/ios27-brightness-als006-native004-20261111]
+    branches: [codex/ios27-brightness-als006-native005-20261111]
   workflow_dispatch:
 permissions:
   contents: read
@@ -57,8 +57,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: python3 task/ci/native.py build --framework unixnu --work "$RUNNER_TEMP/ios27/work"
-      - name: Compile the frozen ALS owner and frontend with the completed native records
-        run: python3 task/ci/native.py als-native --framework unixnu --work "$RUNNER_TEMP/ios27/work"
       - name: Seal outputs and diagnostics using the existing owner envelope
         if: always()
         run: |

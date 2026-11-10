@@ -4,14 +4,14 @@
 
 Install beside kernel_target.py and build-sheng-source-drivers.py in a new
 fixed source snapshot. The ALS frontend/backend archive uses its own recipe;
-UNIXNU_ALS_QRTR_DIR must point to this same source tree's upstream directory.
+Both recipes resolve this same board kit's als-owner/upstream directory.
 """
 from pathlib import Path
 import hashlib, importlib.util, json, os, shlex, subprocess, tomllib
 from kernel_target import ARCH, IOS_VERSION, check_object
 
 ROOT = Path(__file__).resolve().parents[1]
-SRC = ROOT/'kits/nezha/audio27'
+SRC = ROOT/'kits/nezha/als-owner'
 OUT = ROOT/'build/nezha27-als-owner'
 OUT.mkdir(parents=True, exist_ok=True)
 LOCK = json.loads(Path(__file__).with_name('nezha27-als-owner-inputs.json').read_text())
@@ -36,7 +36,7 @@ require(ARCH == 'arm64e' and IOS_VERSION.split('.')[0] == '27',
         'ALS owner requires the selected arm64e/iOS27 native build')
 helper = load(ROOT/'scripts/build-sheng-source-drivers.py')
 device = Path(os.environ['UNIXNU_DEVICE']).resolve()
-qrtr = Path(os.environ['UNIXNU_ALS_QRTR_DIR']).resolve()
+qrtr = (SRC/'upstream').resolve()
 require(qrtr == (SRC/'upstream').resolve(), 'ALS archive must use this sole owner QRTR header')
 als = device/'package/als'
 smmu = ROOT/'kits/ArmSmmu4K'

@@ -151,39 +151,36 @@ def build(framework, work):
         ['python3', framework / 'unixnu', 'kernel', '--skip-prelink', '--config', config],
     ]
     for index, command in enumerate(commands):
-        code = run(command, cwd=framework, log=logs / ('step-' + str(index) + '.log'))
+        env = dict(os.environ)
+        if index == 1:
+            # XNU's command-line Make verbosity prints the actual linker
+            # invocation into kernel.log, without changing build options.
+            env['MAKEFLAGS'] = (env.get('MAKEFLAGS', '') + ' VERBOSE=YES').strip()
+        code = run(command, cwd=framework, env=env,
+                   log=logs / ('step-' + str(index) + '.log'))
         if code:
             return code
-    return 0
-
-
-def als_native(framework, work):
-    """Compile the frozen owner and ALS archives against one completed kernel ABI."""
-    manifest = json.loads((ROOT / 'inputs.json').read_text())
-    targets = list((work / 'out/nezha/ios-27.0.1-24A446-iphone14-4').glob('*'))
-    targets = [p / 'tree' for p in targets
-               if (p / 'tree/build/nezha27-input/build-report.json').is_file()]
+    targets = [p for p in (work / 'out/nezha/ios-27.0.1-24A446-iphone14-4').glob('*')
+               if (p / 'kernel/kernel.macho').is_file()]
     if len(targets) != 1:
-        raise ValueError('ALS native compile requires one completed native input target')
-    tree = targets[0]
-    for name in manifest['als_abi']['source_files'] + manifest['als_owner']['source_files']:
-        source = ROOT / 'source/device' / name
-        if sha(source) != manifest['files']['source/device/' + name]:
-            raise ValueError('ALS source input changed before native compilation: ' + name)
-    owner = tree / 'kits/nezha/audio27'
-    shutil.copytree(work / 'device/package/als-owner', owner)
-    for name in ('build-nezha27-als.py', 'als-event-service-iphone-24A446.json',
-                 'build-nezha27-als-owner.py', 'nezha27-als-owner-inputs.json'):
-        shutil.copyfile(work / 'device/scripts' / name, tree / 'scripts' / name)
-    env = dict(os.environ, UNIXNU_DEVICE=str(work / 'device'),
-               UNIXNU_XNU_ARCH='arm64e', UNIXNU_IOS_VERSION='27.0',
-               UNIXNU_ALS_QRTR_DIR=str(owner / 'upstream'))
-    codes = []
-    for name, log in [('build-nezha27-als-owner.py', 'als-owner-native.log'),
-                      ('build-nezha27-als.py', 'als-native.log')]:
-        codes.append(run([sys.executable, tree / 'scripts' / name],
-                         cwd=tree, env=env, log=work / 'logs' / log))
-    return next((code for code in codes if code), 0)
+        raise ValueError('formal native link requires one completed target')
+    target = targets[0]
+    tree = target / 'tree'
+    link_log = target / 'logs/kernel.log'
+    lines = [line.rstrip() for line in link_log.read_text().splitlines()
+             if '-force_load' in line and 'libNezha27AlsOwner.a' in line
+             and 'libNezha27Als.a' in line]
+    (work / 'als-native-link-commands.json').write_text(json.dumps({
+        'source_log': str(link_log), 'source_log_sha256': sha(link_log),
+        'verbose_link_command_lines': lines,
+        'actual_command_capture_present': bool(lines),
+        'kernel_sha256': sha(target / 'kernel/kernel.macho'),
+        'archives_sha256': {name: sha(tree / name) for name in (
+            'build/nezha27-als-owner/libNezha27AlsOwner.a',
+            'build/nezha27-als/libNezha27Als.a')},
+        'formal_build_returncode': 0, 'strict_or_package_qualified': False,
+    }, indent=2) + '\n')
+    return 0
 
 
 def reference(framework, work):
@@ -218,7 +215,8 @@ def collect(framework, work, sealed):
         names.append(name)
 
     add(ROOT / 'inputs.json', 'inputs.json')
-    for name in ('source-report.json', 'integration-source-qualified.json', 'compiler-report.json', 'authenticated-null.c',
+    for name in ('source-report.json', 'integration-source-qualified.json', 'compiler-report.json',
+                 'als-native-link-commands.json', 'authenticated-null.c',
                  'authenticated-null.o', 'authenticated-null.s'):
         add(work / name, name)
     for path in sorted((work / 'logs').glob('*.log')):
@@ -283,6 +281,12 @@ def collect(framework, work, sealed):
         objects = tree / 'build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837'
         for name in ('link.filelist', 'all-alias.exp'):
             add(objects / name, 'objects/' + name)
+        add(objects / 'iokit/DEVELOPMENT/IOPlatformExpert.cpo',
+            'objects/iokit/DEVELOPMENT/IOPlatformExpert.cpo')
+        for path in sorted(objects.glob('*.map')):
+            add(path, 'objects/' + path.name)
+        for path in sorted(objects.glob('*.linkmap')):
+            add(path, 'objects/' + path.name)
         add(tree / 'build/xnu/owner-data-volume.h', 'build/owner-data-volume.h')
         reference = tree / 'build/xnu/fileset-reference'
         for path in sorted(reference.glob('*.json')):
@@ -316,7 +320,7 @@ def collect(framework, work, sealed):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=('prepare', 'build', 'als-native', 'reference', 'collect'))
+    parser.add_argument('action', choices=('prepare', 'build', 'reference', 'collect'))
     parser.add_argument('--framework', type=Path, required=True)
     parser.add_argument('--work', type=Path, required=True)
     parser.add_argument('--sealed', type=Path)
@@ -326,8 +330,6 @@ def main():
         prepare(framework, work)
     elif args.action == 'build':
         return build(framework, work)
-    elif args.action == 'als-native':
-        return als_native(framework, work)
     elif args.action == 'reference':
         return reference(framework, work)
     elif args.action == 'collect':
