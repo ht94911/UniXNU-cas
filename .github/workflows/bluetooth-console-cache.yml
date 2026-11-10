@@ -1,0 +1,48 @@
+name: Bluetooth010 public console-cache Mac fixture
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: bluetooth-console-cache-${{ github.ref }}
+  cancel-in-progress: false
+defaults:
+  run:
+    shell: bash
+env:
+  HOMEBREW_NO_AUTO_UPDATE: 1
+  HOMEBREW_NO_INSTALL_CLEANUP: 1
+  HOMEBREW_NO_ENV_HINTS: 1
+jobs:
+  fixture:
+    runs-on: macos-26-intel
+    timeout-minutes: 20
+    steps:
+      - name: Check out the public tools
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          path: task
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.13'
+      - name: Run real codesign and XPC public fixtures
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/bluetooth-console"
+          python3 task/ci/console-cache-fixture.py --fixture-script task/ci/cache-signature-template.py --tool task/ci/sign-detached-cache.py --bytes 1320291 --out "$RUNNER_TEMP/bluetooth-console/public" > "$RUNNER_TEMP/bluetooth-console/fixture.log" 2>&1
+      - name: Seal the public template and evidence using the existing owner envelope
+        run: |
+          set -euo pipefail
+          brew install openssl@3 > "$RUNNER_TEMP/bluetooth-console/openssl.log" 2>&1
+          export PATH="$(brew --prefix openssl@3)/bin:$PATH"
+          python3 task/ci/artifacts.py seal --root "$RUNNER_TEMP/bluetooth-console" --file public/cache-template.sig --file public/cache-template-report.json --file fixture.log --file openssl.log --recipient task/ci/artifact-recipient.pem --out "$RUNNER_TEMP/bluetooth-console/sealed"
+      - name: Upload the encrypted fixture outputs
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: bluetooth-console-public-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/bluetooth-console/sealed/bundle.cms
+            ${{ runner.temp }}/bluetooth-console/sealed/envelope.json
+          if-no-files-found: error
+          retention-days: 90
