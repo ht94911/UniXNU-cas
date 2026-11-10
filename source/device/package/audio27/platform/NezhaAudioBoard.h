@@ -26,6 +26,9 @@ typedef struct {
      * VRM owner keeps other consumers' votes and returns real completion. */
     int (*mic_rails)(void *,uint64_t lease,int on);
     uint64_t (*now_us)(void *);void (*pause_us)(void *,uint32_t);
+    /* Optional cumulative CPU time spent confirming diagnostic records.
+     * Its native owner and counter live as long as this board descriptor. */
+    const uint64_t *trace_wait_us;
 } NaBoardIo;
 typedef struct {
     NaBoardIo io;NaGeniTasBus bus;uint64_t lease;

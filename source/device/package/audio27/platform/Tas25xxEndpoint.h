@@ -26,6 +26,7 @@ typedef struct {
     int (*reset)(void *,uint64_t lease,int asserted);
     int (*release)(void *,uint64_t lease);
     NaTasIo io;
+    const uint64_t *trace_wait_us;
 } NaTasPowerOps;
 /* Reset-muted identity read used by the DSP diagnostic and playback startup.
  * It never executes tuning or starts a stream. All GPIO/clock restoration
@@ -45,7 +46,7 @@ typedef struct {
     NaTasStep steps[3][NA_TAS_STEPS];uint32_t count[3];
     uint8_t integers[2][17];NaTasFaultTable faults[2];
     NaTasRun run;
-    uint64_t lease,deadline,wait_until,next_health;
+    uint64_t lease,deadline,wait_until,next_health,trace_base_us;
     uint32_t state,target,phase,index,changing,powered,asserted,identified,claim_failed;
     uint8_t observed_revision[2];uint32_t reported_faults[2];
     int error,cleanup_error;

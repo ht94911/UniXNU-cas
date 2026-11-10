@@ -45,7 +45,7 @@ bool ownedWindow(NaRange r) {
 }
 void run(void *v,wait_result_t) {
     auto *d=static_cast<NaDriver *>(v);thread_set_thread_name(current_thread(),"nezha-audio27");
-    uint32_t lastStage=~0u,pilQueries=0;uint64_t lastOutput=0,lastInput=0,nextPeriods=0;
+    uint32_t lastStage=~0u,lastTasPhase=~0u,lastTasIndex=~0u,pilQueries=0;uint64_t lastOutput=0,lastInput=0,nextPeriods=0;
     int lastError=0;bool service=false,publicationFailed=false;
     for (;;) {
         uint64_t now=na_native_now_us(nullptr)/1000;
@@ -75,9 +75,13 @@ void run(void *v,wait_result_t) {
         // control probe, run after the proxy poll reaches StopMain and before
         // the next poll issues PAS6. No audio gate is held across the SMCs.
         na_native_pil_preflight(d->adsp,&pilQueries);
-        if (lastStage!=d->stage || lastError!=r) {
-            printf("NEZHA AUDIO27: stage=%u error=%d adsp=%u graph=%u/%u prm=%x/%x\n",d->stage,r,d->adsp->stage,d->graph[0].stage,d->graph[1].stage,d->prm.held,d->prm.possible);
-            lastStage=d->stage;lastError=r;
+        if (lastStage!=d->stage || lastError!=r || lastTasPhase!=d->speaker->phase || lastTasIndex!=d->speaker->index) {
+            const uint64_t trace=d->speaker->ops.trace_wait_us ? *d->speaker->ops.trace_wait_us:0;
+            printf("NEZHA AUDIO27: stage=%u error=%d adsp=%u graph=%u/%u prm=%x/%x tas=%u:%u/%u trace_us=%llu deadline_ms=%llu\n",d->stage,r,d->adsp->stage,d->graph[0].stage,d->graph[1].stage,d->prm.held,d->prm.possible,
+                d->speaker->phase,d->speaker->index,d->speaker->count[d->speaker->phase],
+                (unsigned long long)(trace>=d->speaker->trace_base_us ? trace-d->speaker->trace_base_us:0),
+                (unsigned long long)d->speaker->deadline);
+            lastStage=d->stage;lastError=r;lastTasPhase=d->speaker->phase;lastTasIndex=d->speaker->index;
         }
         if (now>=nextPeriods && (lastOutput!=outputPeriods || lastInput!=inputPeriods)) {
             printf("NEZHA AUDIO27 PCM: output=%llu input=%llu underruns=%u overruns=%u faults=%x/%x\n",

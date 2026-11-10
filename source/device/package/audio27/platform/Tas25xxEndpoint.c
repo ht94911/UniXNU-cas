@@ -143,6 +143,7 @@ int na_tas_endpoint_request(NaTasEndpoint *e,uint32_t target) {
 int na_tas_endpoint_poll(NaTasEndpoint *e,uint64_t now) {
     if (!e || now>UINT64_MAX-5000) return NA_ARGUMENT;
     if (e->error) return emergency(e,e->error);
+    uint64_t trace_wait=e->ops.trace_wait_us ? *e->ops.trace_wait_us:0;
     if (!e->changing && e->state==e->target) {
         if (e->state==NaTasActive && now>=e->next_health) {
             for (unsigned ch=0;ch<2;++ch) {
@@ -157,7 +158,7 @@ int na_tas_endpoint_poll(NaTasEndpoint *e,uint64_t now) {
     if (!e->changing) {
         if (e->state==NaTasOff && e->target==NaTasActive) return NA_OWNERSHIP;
         e->phase=e->target==NaTasOff || (e->state==NaTasActive && e->target==NaTasPrepared) ? 2:e->target==NaTasActive ? 1:0;
-        e->changing=1;e->index=0;e->deadline=now+5000;memset(&e->run,0,sizeof e->run);
+        e->changing=1;e->index=0;e->deadline=now+5000;e->trace_base_us=trace_wait;memset(&e->run,0,sizeof e->run);
         if (!e->lease) {
             int r=e->ops.claim(e->ops.context,&e->lease);
             if (r || !e->lease) {e->claim_failed=1;return emergency(e,r ? r:NA_OWNERSHIP);}
@@ -169,7 +170,13 @@ int na_tas_endpoint_poll(NaTasEndpoint *e,uint64_t now) {
             e->wait_until=now+20;return NA_PENDING;
         }
     }
-    if (now>=e->deadline) return emergency(e,NA_TIMEOUT);
+    if (trace_wait<e->trace_base_us) return emergency(e,NA_IO);
+    /* Keep the original five-second hardware/scheduler budget. Each fixed
+     * BEFORE record already has its own bounded confirmation wait. Counting
+     * that CPU-only wait again prematurely aborts a progressing TAS program.
+     * Reset settles and GENI transaction timeouts continue to use real time. */
+    uint64_t paused_ms=(trace_wait-e->trace_base_us)/1000;
+    if (now>=e->deadline && now-e->deadline>=paused_ms) return emergency(e,NA_TIMEOUT);
     if (now<e->wait_until) return NA_PENDING;
     if (e->asserted && e->target!=NaTasOff) {
         int r=e->ops.reset(e->ops.context,e->lease,0);if (r) return emergency(e,r);

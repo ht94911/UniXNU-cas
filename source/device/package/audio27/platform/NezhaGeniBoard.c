@@ -118,7 +118,7 @@ static int write_amp(void *v,uint64_t lease,uint8_t address,uint32_t reg,const u
 int na_geni_board_init(NaGeniBoard *b,const NaBoardIo *io,NaTasPowerOps *ops) {
     if (!b || !io || !ops || !io->claim || !io->release || !io->read || !io->update || !io->now_us || !io->pause_us) return NA_ARGUMENT;
     memset(b,0,sizeof *b);b->io=*io;
-    *ops=(NaTasPowerOps){b,claim,power,reset,release,{b,read_amp,write_amp}};return NA_OK;
+    *ops=(NaTasPowerOps){b,claim,power,reset,release,{b,read_amp,write_amp},io->trace_wait_us};return NA_OK;
 }
 int na_geni_board_init_identity(NaGeniBoard *b,const NaBoardIo *io,NaTasPowerOps *ops) {
     int r=na_geni_board_init(b,io,ops);

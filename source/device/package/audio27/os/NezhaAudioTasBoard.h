@@ -8,7 +8,7 @@
 extern "C" {
 #endif
 typedef struct {
-    Sm8850Resources *common;NaNativeWindow geni,tlmm;uint64_t lease;int error;
+    Sm8850Resources *common;NaNativeWindow geni,tlmm;uint64_t lease,trace_wait_us;int error;
 } NaNativeTasBoard;
 /* Speaker GENI/GPIO owner only. Capture remains unavailable until its common
  * VRM owner is bound; this provider never touches codec/USBSS GPIO161/162. */
