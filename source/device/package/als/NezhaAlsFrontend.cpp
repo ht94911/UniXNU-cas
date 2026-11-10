@@ -4,7 +4,6 @@
 #include "als-host-shim.h"
 #else
 #include <IOKit/hid/IOHIDEventService.h>
-#include <IOKit/hid/IOHIDEvent.h>
 #include <IOKit/hid/IOHIDKeys.h>
 #include <IOKit/hid/IOHIDPrivateKeys.h>
 #include <IOKit/IOCommandGate.h>
@@ -14,6 +13,33 @@
 #include <mach/kmod.h>
 #endif
 #include "NezhaAlsState.h"
+
+// The selected public EventService header supplies an opaque IOHIDEvent and
+// uint32_t event type. Its full generated event headers are not public 2238
+// inputs. Bind only the proven original integer constructor; event storage
+// stays owned by original IOHIDFamily.
+static constexpr IOHIDEventType nezhaAlsEventType = 12;
+#ifndef NEZHA_ALS_HOST_MODEL
+extern "C" IOHIDEvent *nezha_als_original_ambient_event(
+    uint64_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t)
+    __asm__("__ZN10IOHIDEvent23ambientLightSensorEventEyjjjjjj");
+#endif
+static IOHIDEvent *makeAmbientEvent(uint64_t timestamp, uint32_t lux) {
+#ifdef NEZHA_ALS_HOST_MODEL
+    return IOHIDEvent::ambientLightSensorEvent(timestamp, lux);
+#else
+    return nezha_als_original_ambient_event(timestamp, lux, 0, 0, 0, 0, 0);
+#endif
+}
+static void releaseAmbientEvent(IOHIDEvent *event) {
+#ifdef NEZHA_ALS_HOST_MODEL
+    event->release();
+#else
+    // Original IOHIDEvent has one public OSObject base at offset 0. Its release
+    // uses OSMetaClassBase PAC: vptr 0xcda1, slot 5 with diversity 0x3a87.
+    reinterpret_cast<OSObject *>(event)->release();
+#endif
+}
 
 extern "C" {
 volatile uint32_t nezha_als_stage, nezha_als_base_bytes, nezha_als_owned_bytes;
@@ -125,8 +151,7 @@ class NativeNezhaAls : public IOHIDEventService {
         state.pending = false;
         IOLockUnlock(stateLock);
         if (!valid) return;
-        IOHIDEvent *event = IOHIDEvent::ambientLightSensorEvent(sample.timestamp,
-                                                              sample.integer_lux);
+        IOHIDEvent *event = makeAmbientEvent(sample.timestamp, sample.integer_lux);
         if (!event) return;
         // Backend mutations and timer delivery share the workloop gate. The
         // sample is cached before publication so the original client's initial
@@ -144,7 +169,7 @@ class NativeNezhaAls : public IOHIDEventService {
                 (unsigned long long)sample.timestamp, sample.integer_lux);
         }
         dispatchEvent(event);
-        event->release();
+        releaseAmbientEvent(event);
         IOLockLock(stateLock);
         dispatched++;
         IOLockUnlock(stateLock);
@@ -210,20 +235,19 @@ public:
         IOLockUnlock(stateLock);
     }
     IOHIDEvent *copyEvent(IOHIDEventType type, IOHIDEvent *, IOOptionBits) override {
-        if (type != kIOHIDEventTypeAmbientLightSensor) return nullptr;
+        if (type != nezhaAlsEventType) return nullptr;
         IOLockLock(stateLock);
         struct nezha_als_sample sample = state.latest;
         bool valid = published && !stopped && !paused && state.ready && sample.valid;
         IOLockUnlock(stateLock);
         if (!valid) return nullptr;
-        IOHIDEvent *event = IOHIDEvent::ambientLightSensorEvent(sample.timestamp,
-                                                              sample.integer_lux);
+        IOHIDEvent *event = makeAmbientEvent(sample.timestamp, sample.integer_lux);
         if (!event) return nullptr;
         IOLockLock(stateLock);
         valid = !stopped && !paused && state.ready && state.latest.valid &&
             state.latest.epoch == sample.epoch && state.latest.sequence == sample.sequence;
         IOLockUnlock(stateLock);
-        if (!valid) { event->release(); return nullptr; }
+        if (!valid) { releaseAmbientEvent(event); return nullptr; }
         return event;
     }
     IOReturn setProperties(OSObject *properties) override {

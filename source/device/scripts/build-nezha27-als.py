@@ -48,6 +48,21 @@ require(input_report['public_HID_commit'] == abi['IOHIDFamily_revision'], 'same 
 include = input_out/'headers/include'
 require((include/'IOKit/hid/IOHIDEventService.h').is_file(), 'run the input archive header preparation first')
 
+# Keep the exact public class and fallback event typedefs, using its opaque
+# IOHIDEvent declaration. Only this archive's include overlay omits Event.h:
+# its generated Types/StructDefs/FieldDefs are absent from the pinned release.
+service_header = include/'IOKit/hid/IOHIDEventService.h'
+require(sha(service_header) == '9f9e51072c66a315f68438872303fa8cf851fedb96988db0216324008390f620',
+        'exact public2238 IOHIDEventService header')
+service_source = service_header.read_text()
+event_include = '#if KERNEL_PRIVATE\n#include <IOKit/hid/IOHIDEvent.h>\n#endif\n'
+require(service_source.count(event_include) == 1, 'one original private Event.h include')
+service_opaque = service_source.replace(event_include, '', 1)
+opaque_include = OUT/'headers/include'
+opaque_header = opaque_include/'IOKit/hid/IOHIDEventService.h'
+opaque_header.parent.mkdir(parents=True, exist_ok=True)
+opaque_header.write_text(service_opaque)
+
 # Reuse only the existing, completed binding algorithm helpers. Importing the
 # old executable recipe would compile unrelated input sources a second time.
 recipe = ROOT/'scripts/build-nezha27-input.py'
@@ -64,7 +79,9 @@ record = ROOT/'build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837/iokit/DEVELOPMENT/IOP
 compile_record = json.loads(record.read_text().strip().rstrip(','))
 source = D/'package/als/NezhaAlsFrontend.cpp'
 object_path = OUT/'NezhaAlsFrontend.o'
-includes = ['-I', str(include), '-idirafter', str(sdk/'System/Library/Frameworks/Kernel.framework/Versions/A/Headers')]
+includes = ['-I', str(opaque_include), '-I', str(include),
+            '-iquote', str(include/'IOKit/hid'),
+            '-idirafter', str(sdk/'System/Library/Frameworks/Kernel.framework/Versions/A/Headers')]
 command = compiler.compile_command(compile_record, source, object_path, includes,
     ['-I', str(ROOT/'.cache/xnu-work/osfmk'), '-I', str(source.parent),
      '-Wno-unknown-warning-option', '-Wno-unused-variable'])
@@ -135,6 +152,10 @@ report = dict(source_recipe='retained nezha27-input binding helpers; dedicated A
     kernelcache_sha256=abi['kernelcache_sha256'], original_base_bytes=200,
     compiled_original_PAC_slots=219, owned_class=vtables[0],
     bindings={name: hex(value) for name, value in bindings.items()},
+    event_service_header_source_sha256=sha(service_header),
+    event_service_opaque_header_sha256=sha(opaque_header),
+    opaque_original_event_constructor=True,
+    event_reference_base='original single OSObject base; OSMetaClassBase virtual release',
     late_no_mod_init=True, backend_readiness_required=True, actual_hardware=False,
     automatic_brightness_hardware_qualified=False, TrueTone_capability_added=False)
 (OUT/'build-report.json').write_text(json.dumps(report, indent=2)+'\n')

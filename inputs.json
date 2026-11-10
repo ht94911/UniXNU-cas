@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Native ABI-only qualification of frozen ALS006 IOHIDEventService over fixed Native005/G030 inputs. Separate archive compilation after existing kernel build; no ALS backend selection, link caller or phone package.",
+  "purpose": "Native ABI-only qualification of ALS006 opaque original event constructor over retained Native005/G030 inputs; separate archive only. Repairs missing public generated event headers without an Event class/layout replacement.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -223,10 +223,10 @@
     "source/soc/tests/dsi-fifo.c": "49cf3da0e78952e96e3b72b585535296b6626442da757f29adcee068ffd1d85d",
     "source/soc/tests/dsi-fifo-budget.c": "174b21bf7ef8e78d7c832ea41940da8284c3cdad2ab29353afabc91b544f72ff",
     "source/soc/tests/dsi-fifo-budget.py": "a5c5b322345f797c62d556c9876318091b57c9ad217f36d27e5e0e9f3b6e05d4",
-    "source/device/package/als/NezhaAlsFrontend.cpp": "a7fe29a35635bf6f856a8c89419c7e2bc3cdeee542935575e083148df3b6ef96",
+    "source/device/package/als/NezhaAlsFrontend.cpp": "96de70be626e434120e2229cb9cc4276a7177eadefcef34ebe4f7441f5b9ff95",
     "source/device/package/als/NezhaAlsBackend.h": "9199f5da849cda5728b6a48fe8deb018263a8eef1538d47dfeea2dfd8ffb3fd7",
     "source/device/package/als/NezhaAlsState.h": "2876ff7d3dc8fe4521bc535b28b47c5944382c26ee037fa345c0ea79180e57cf",
-    "source/device/scripts/build-nezha27-als.py": "8b680e90a434e25d6c2e5ee82fc2f429ca7d3109c544738e654d1b67eeb7cc45",
+    "source/device/scripts/build-nezha27-als.py": "dea9fc5f3adc9507c690c6bed25c61ad683a021eea3cca59c86aa35ab54cfae5",
     "source/device/scripts/als-event-service-iphone-24A446.json": "34c27f1a58bab3c518570a57c006a23fce315b90a584e691629d61c0850bd4d8"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
@@ -330,7 +330,7 @@
     "hardware": false
   },
   "als_abi": {
-    "source_revision": "ba030d400bf0e2bcbce5f7e93d99ad6046abb96c",
+    "source_revision": "268fd0c1374b1c95c89e7c70cdf656b1e942816d",
     "source_files": [
       "package/als/NezhaAlsFrontend.cpp",
       "package/als/NezhaAlsBackend.h",
@@ -344,6 +344,13 @@
     "backend_owner_connected": false,
     "strict_prelink_or_packaged_ALS_qualified": false,
     "phone_operations": false,
-    "private_binary_inputs_uploaded": false
+    "private_binary_inputs_uploaded": false,
+    "prior_failed_run": 42859432247,
+    "opaque_original_event_constructor": true,
+    "runtime_state_machine_changed": false,
+    "required_native_call_codegen": [
+      "timestamp x0 and six uint32 arguments to original ambient constructor",
+      "OSObject-base release: vptr diversity0xcda1, slot5/40bytes, diversity0x3a87"
+    ]
   }
 }
