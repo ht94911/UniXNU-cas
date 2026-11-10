@@ -1,0 +1,8 @@
+{
+  "source_component": "QcomXnuUsbDebug",
+  "source_revision": "9bfbf258d8356efcc0fbf03603d1518874829798",
+  "source_path": "include/QcomUsbDiagnostic.h",
+  "sha256": "f2d71382fed5f6b763ac89912c4245344ad7bac0f0e88721cd08d02d28d28c1f",
+  "license": "MIT",
+  "scope": "Unchanged public provider ABI of the selected GPU015 USB component"
+}
