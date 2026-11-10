@@ -122,7 +122,14 @@ assert tile_errors['source_sha256']==hashlib.sha256((mesa/'src/freedreno/vulkan/
 sync_profile=json.loads((a.logs/'sync-profile/report.json').read_text())
 assert sync_profile['passed'] and sync_profile['actual_producer_to_decoder_checked']
 assert sync_profile['actual_source_sha256']==hashlib.sha256((a.unixnu/'drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm').read_bytes()).hexdigest()
-report=dict(actual_sync_profile=sync_profile,initial_tile_store_error_propagation_source_bound=True,actual_target_checked=True,plugin_sha256=hashlib.sha256(data).hexdigest(),
+display_profile=json.loads((a.logs/'display-profile/report.json').read_text())
+assert display_profile['passed'] and display_profile['actual_reader'] and display_profile['actual_frame_producer'] and display_profile['actual_decoder']
+tested_display_sources={str(Path(path).resolve()):digest for path,digest in display_profile['source_sha256'].items()}
+for path in (root/'drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm',root/'drivers/GopFramebuffer/NativeGOPTiming.h',
+             Path(__file__).resolve().parent/'fixtures/display/NezhaDpuTiming.h',Path(__file__).resolve().parent/'decode-display-timing.py'):
+    assert tested_display_sources[str(path.resolve())]==hashlib.sha256(path.read_bytes()).hexdigest()
+assert b'ndt=1' in data and b'NATIVE_METAL_DISPLAY_TIMING' in data
+report=dict(actual_display_profile=display_profile,actual_sync_profile=sync_profile,initial_tile_store_error_propagation_source_bound=True,actual_target_checked=True,plugin_sha256=hashlib.sha256(data).hexdigest(),
             profile=profile,required_markers_present=True,iPad_raw_reader_markers_absent=True,
             bundle_signature_verified=True,host_pixel_result='legacy host010 failure retained;host GUI path not run by this build;A840 acceptance remains separate',
             actual_device_registry_compiled=True,old_singleton_symbol_absent=True,

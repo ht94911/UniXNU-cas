@@ -192,6 +192,11 @@ def main():
     alias = root / 'drivers/NativeMobileDisplay'
     if not alias.exists():
         alias.symlink_to('GopFramebuffer', target_is_directory=True)
+    timing_wire_patch = HERE / 'patches/display-timing-wire.patch'
+    must(['git', '-C', root / 'drivers/GopFramebuffer', 'apply', '--check', timing_wire_patch])
+    must(['git', '-C', root / 'drivers/GopFramebuffer', 'apply', timing_wire_patch])
+    record['display_timing_wire'] = dict(patch_sha256=sha(timing_wire_patch),
+        header_sha256=sha(root / 'drivers/GopFramebuffer/NativeGOPTiming.h'), hardware_verified=False)
     wire = root / 'drivers/GopFramebuffer/NativeGOPWire.h'
     record['display_wire'] = dict(path='drivers/GopFramebuffer/NativeGOPWire.h', sha256=sha(wire),
                                   gop_framebuffer_commit=modules['drivers/GopFramebuffer'], alias='drivers/NativeMobileDisplay')

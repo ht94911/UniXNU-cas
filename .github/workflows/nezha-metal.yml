@@ -1,7 +1,7 @@
-name: nezha iPhone27 synchronous Metal latency 033
+name: nezha iPhone27 display timing and Metal latency 034
 on:
   push:
-    branches: [codex/ios27-gpu27-metal-full-033-20261110]
+    branches: [codex/ios27-gpu27-metal-full-034-20261110]
   workflow_dispatch:
 permissions:
   contents: read
@@ -85,6 +85,9 @@ jobs:
       - name: Check actual synchronous frontend spans and CPU records
         id: sync_profile
         run: device/ci/gpu-userland/logrun sync-profile python3 device/ci/gpu-userland/check-metal-sync-profile.py --source unixnu/drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm --out "$LOGS/sync-profile" --decoder device/ci/gpu-userland/decode-sync-frames.py
+      - name: Check actual display reader, frame producer and complete decoder
+        id: display_profile
+        run: device/ci/gpu-userland/logrun display-profile python3 device/ci/gpu-userland/check-display-timing.py --source unixnu/drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm --gop unixnu/drivers/GopFramebuffer --core device/ci/gpu-userland/fixtures/display --reader-test device/ci/gpu-userland/fixtures/display/check-dpu-timing.c --decoder device/ci/gpu-userland/decode-display-timing.py --out "$LOGS/display-profile"
       - name: Build Turnip for the actual A840 arm64e iOS27 target
         id: turnip_ios27
         working-directory: unixnu
@@ -132,6 +135,7 @@ jobs:
           OUTCOME_DRIVER_PROFILE: ${{ steps.driver_profile.outcome }}
           OUTCOME_TILE_STORE_ERRORS: ${{ steps.tile_store_errors.outcome }}
           OUTCOME_SYNC_PROFILE: ${{ steps.sync_profile.outcome }}
+          OUTCOME_DISPLAY_PROFILE: ${{ steps.display_profile.outcome }}
         run: |
           set -euo pipefail
           export PATH="$(brew --prefix openssl@3)/bin:$PATH"
@@ -170,6 +174,7 @@ jobs:
           DEVICE_CONTEXTS: ${{ steps.device_contexts.outcome }}
           RUNTIME_SOURCE: ${{ steps.runtime_source.outcome }}
           SYNC_PROFILE: ${{ steps.sync_profile.outcome }}
+          DISPLAY_PROFILE: ${{ steps.display_profile.outcome }}
         run: |
           set -euo pipefail
           test "$TARGETS" = success
@@ -179,6 +184,7 @@ jobs:
           test "$DEVICE_CONTEXTS" = success
           test "$RUNTIME_SOURCE" = success
           test "$SYNC_PROFILE" = success
+          test "$DISPLAY_PROFILE" = success
           test "$BUFFER_RESERVE" = skipped
           test "$VULKAN_OPERATIONS" = skipped
           test "$TILED_WORDS" = skipped

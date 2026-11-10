@@ -1,0 +1,54 @@
+diff --git a/NativeGOPTiming.h b/NativeGOPTiming.h
+new file mode 100644
+index 0000000..6837664
+--- /dev/null
++++ b/NativeGOPTiming.h
+@@ -0,0 +1,27 @@
++// SPDX-License-Identifier: BSD-2-Clause-Patent
++#pragma once
++#include <stdint.h>
++
++enum {NGP_TIMING_VERSION=1, NGP_TIMING_INTERFACES=2, NGP_TIMING_WORDS=26};
++enum {NGP_TIMING_BEFORE_COPY=1, NGP_TIMING_AFTER_COPY=2};
++enum {NGP_TIMING_OK=0, NGP_TIMING_ARGUMENT=1, NGP_TIMING_UNAVAILABLE=2,
++      NGP_TIMING_IO=3, NGP_TIMING_CLOCK=4, NGP_TIMING_UNSTABLE=5};
++enum {NGP_TIMING_READ_COMPLETE=1, NGP_TIMING_INTF0_STABLE=2, NGP_TIMING_INTF1_STABLE=4};
++enum {NGP_TIMING_DIAGNOSTIC_WRITER_POSSIBLE=8};
++
++// Raw display observations, not synthetic vsync events or presentation fences.
++// The platform supplies the register definitions and their actual source profile.
++struct NGPTimingRequest {uint64_t sequence;uint32_t phase,reserved;};
++struct NGPTimingReply {
++    uint32_t version,flags,hardware_version,attempts;
++    uint64_t sequence,source_cookie;
++    uint64_t cpu_before_us,cpu_after_us,counter_before,counter_after;
++    uint32_t surface_handle,mapping,phase,status;
++    uint32_t cpu_frames,gpu_fallbacks;
++    uint32_t interfaces[NGP_TIMING_INTERFACES][NGP_TIMING_WORDS];
++};
++#if defined(__cplusplus)
++static_assert(sizeof(NGPTimingRequest)==16 && sizeof(NGPTimingReply)==296,"GOP timing ABI");
++#else
++_Static_assert(sizeof(struct NGPTimingRequest)==16 && sizeof(struct NGPTimingReply)==296,"GOP timing ABI");
++#endif
+diff --git a/NativeGOPWire.h b/NativeGOPWire.h
+index 0ce3c04..c827335 100644
+--- a/NativeGOPWire.h
++++ b/NativeGOPWire.h
+@@ -2,6 +2,7 @@
+ // Actual firmware scanout transfer, not a compositor or hardware vblank ABI.
+ #pragma once
+ #include <stdint.h>
++#include "NativeGOPTiming.h"
+ // Scanout format (NGPMode) and frame formats (NGPSwap.format). A half-float frame is RGBA 16F rows, converted to the scanout's BGRX by the
+ // client on the GPU: LINEAR holds linear light (encoded to sRGB on the way), ENCODED holds values already sRGB-encoded.
+ enum { NGP_BGRX8888=1,NGP_RGBA16F_LINEAR=2,NGP_RGBA16F_ENCODED=3,NGP_VERSION=1 };
+@@ -11,7 +12,7 @@ struct NGPTransfer {uint64_t sequence,bytes;};
+ // GPU hand-off (boot-arg sheng-fb-gpu=1): the display driver offers a finished frame instead of copying it. A privileged client waits for it
+ // (selector 2: the frame's pages are mapped read/write into the caller, at address), lets the GPU copy it into the scanout mapping (client
+ // memory type 1, writable) and then completes it (selector 3), which retires the swap. Nothing here copies pixels.
+-enum { NGP_METHOD_MODE=0,NGP_METHOD_PRESENT=1,NGP_METHOD_WAIT_SWAP=2,NGP_METHOD_COMPLETE_SWAP=3,NGP_MEMORY_SCANOUT_RW=1 };
++enum { NGP_METHOD_MODE=0,NGP_METHOD_PRESENT=1,NGP_METHOD_WAIT_SWAP=2,NGP_METHOD_COMPLETE_SWAP=3,NGP_METHOD_TIMING=4,NGP_MEMORY_SCANOUT_RW=1 };
+ struct NGPWait {uint64_t timeout_ms;};
+ struct NGPSwap {uint64_t sequence,address,bytes,stride;uint32_t width,height,format,reserved;};
+ struct NGPComplete {uint64_t sequence;uint32_t status,reserved;};
