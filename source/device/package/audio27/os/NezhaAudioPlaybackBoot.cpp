@@ -101,7 +101,7 @@ int submit(void *,const qud_diag_request *request,char *out,size_t capacity,size
     if (n<0 || (size_t)n>=capacity-used) {*truncated=1;return QUD_FAILED;}
     *bytes=used+(size_t)n;return QUD_OK;
 }
-const qud_diag_provider provider={8,5,(1u<<QUD_SNAPSHOT)|(1u<<QUD_HISTORY),64,0,"nezhaaudio",nullptr,snapshot,submit};
+const qud_diag_provider provider={8,5,(1u<<QUD_SNAPSHOT)|(1u<<QUD_HISTORY),64,1,"nezhaaudio",nullptr,snapshot,submit};
 void run_start(void *v,wait_result_t) {
     auto *s=static_cast<NaNativePlaybackStart *>(v);
     thread_set_thread_name(current_thread(),"nezha-audio27-start");

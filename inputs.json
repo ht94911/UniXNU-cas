@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Audio045: deliver late HAL service discovery on one IOKit dispatch queue; retain one-second retry and report actual owned connection, clock, device list and property results through provider8. Preserve044 DVC40/calibration/VI,043 capture,042 trace/PIL and original GPU023; no phone operations.",
+  "purpose": "Audio045 corrected provider capabilities: max_arg1=1 admits bounded HAL observation history; actual QUD dispatcher and original-zero-limit negative control passed. Retain all earlier045 source, dispatch APIs, PCM and GPU023 contracts.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "2d6fcffa9120e203b8e6859b3c58f8a16266fdb6",
+  "device_revision": "d8ae6258a6e5a24673928f7b81ccb3a44aae2b98",
   "soc_revision": "703d7b4bb00904b4a6e5d96f9e9bf72eec170f6b",
   "xcode": "26.6",
   "files": {
@@ -219,7 +219,7 @@
     "source/device/package/audio27/platform/AudioSmmu.h": "41401f1b97e3481c7e5cc3e02c47f926e91eec9fa34f4a48981a3fc3b723cddd",
     "source/device/package/audio27/upstream/ShengGpr.c": "c4f498f07e2cb601b593e64a8d32474a21d6a87375618e1a67b99d52c5d3160e",
     "source/device/package/audio27/platform/SoundWire.h": "348979ac1e552e1c3a0027e09f8500927e8bf7ccbb496276d2c9d3ef19322224",
-    ".github/workflows/nezha-ios27-native.yml": "1dea5d0eb80440195ab8b31401d7cb409e83957e75fb33b733e78b1e1cdedf32",
+    ".github/workflows/nezha-ios27-native.yml": "17e61040d4726bba1b9e0e80119a2f0d655ae21340d6b086ccbbe40d0c855085",
     "source/device/package/audio27/upstream/ShengGpr.h": "a274dded1f4d1e2709b9f966759bcb1f57d12747ee0f57743dea1fa97d95d23e",
     "source/device/package/audio27/os/NezhaAudioNative.h": "26b0203a49895eb907ea8155443e7a2aa5431bb89393a32b3debf01371d1c353",
     "source/device/package/audio27/upstream/ShengAudioReach.h": "b135177a5feb3e24e0d8a6aabb301600e2c37078b970a09ada6e8eb7bb6a5b98",
@@ -335,7 +335,7 @@
     "source/device/package/gpu/NezhaGpuPerfVotePolicy.h": "da1885ef10b2f12f6e5cc28aec8ea48823465ceb1ceaf2a840659d61dc5f87dd",
     "source/device/patches/xnu-12377/zzzzzz-nezha-system-reset-evidence.patch": "3235e4492f5a58190df2d7662e3c5849d80041c584462c1a42ac2364db69aa16",
     "source/device/package/audio27/os/NezhaAudioXpuTrace.h": "878099997a306aebd7471a9195b9800d43ec3d2b78c2e5b65c8489a244ea9da9",
-    "source/device/package/audio27/os/NezhaAudioPlaybackBoot.cpp": "b5543a192dca791dd97333fb0c68b90548e33fc03af7d79e61c091d2683683b9",
+    "source/device/package/audio27/os/NezhaAudioPlaybackBoot.cpp": "4290e4d8b9220b81b348d1ba211f9614596cfeff041b14bdc2487705a478b903",
     "source/device/package/audio27/os/NezhaAudioMicBoard.cpp": "62d97aab02de53ec8279d3c758c050bd100ddb9875f6bf52bef37dd471cf43ef",
     "source/device/package/audio27/os/NezhaAudioMicBoard.h": "0178b76deba0d7ccc716d553a56908f249d6d7d36008cfc82425cca6569b303d",
     "source/device/package/audio27/platform/NezhaMicPower.c": "c0586bbbef8b0c135b299518882efa7983fb07d58bce585d7399b62b500e868f",
@@ -393,15 +393,15 @@
   "audio": {
     "base": "GPU023",
     "base_device_revision": "673cde869b7378658b470c4e6b2b9a1766b99411",
-    "source_revision": "2d6fcffa9120e203b8e6859b3c58f8a16266fdb6",
-    "source_only_revision": "2d6fcffa9120e203b8e6859b3c58f8a16266fdb6",
+    "source_revision": "d8ae6258a6e5a24673928f7b81ccb3a44aae2b98",
+    "source_only_revision": "d8ae6258a6e5a24673928f7b81ccb3a44aae2b98",
     "hardware_enabled": false,
     "resource_census_enabled": true,
     "private_inputs": false,
     "HAL_target": "arm64e-apple-ios27.0",
     "shared_resource_owner": "703d7b4bb00904b4a6e5d96f9e9bf72eec170f6b",
     "private_input_slot_bytes": 35651584,
-    "previous_audio_behavior_source": "077a09447ecece8e688a6c77f204f480100a0960",
+    "previous_audio_behavior_source": "2d6fcffa9120e203b8e6859b3c58f8a16266fdb6",
     "base_native_run": 42401029411,
     "base_Metal_revision": "eb59f022a326d03330d398b3c1dbcb6f0aeb633f",
     "diagnostic_glink_delay_ms": 20000,
@@ -529,6 +529,8 @@
     "HAL_history_max_records": 64,
     "HAL_history_page_records": 8,
     "HAL_default_volume": 1,
-    "physical_sound_accepted": false
+    "physical_sound_accepted": false,
+    "HAL_history_max_arg1": 1,
+    "actual_QUD_dispatcher_host_qualified": true
   }
 }
