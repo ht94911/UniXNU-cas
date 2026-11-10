@@ -138,7 +138,17 @@ assert wait_profile['source_sha256']==hashlib.sha256((a.unixnu/'drivers/AdrenoMe
 assert wait_profile['header_sha256']==hashlib.sha256((a.unixnu/'drivers/AdrenoMetal/NativeRenderWaitSample.h').read_bytes()).hexdigest()
 for marker in (b'_thread_get_state',b'_mach_vm_read_overwrite',b'_mach_thread_self',b'render-wait-sample'):
     assert marker in data,marker
-report=dict(actual_render_wait_profile=wait_profile,actual_display_profile=display_profile,actual_sync_profile=sync_profile,initial_tile_store_error_propagation_source_bound=True,actual_target_checked=True,plugin_sha256=hashlib.sha256(data).hexdigest(),
+observer_profile=json.loads((a.logs/'frame-observers/report.json').read_text())
+client_profile=json.loads((a.logs/'ui-main/report.json').read_text())
+assert observer_profile['passed'] and observer_profile['actual_source_reader_serializer_batch']
+assert client_profile['passed'] and client_profile['real_Mac_main_thread']['executed'] and client_profile['real_Mac_main_thread']['passed']
+for report in (observer_profile,client_profile):
+    assert report['source_sha256']==hashlib.sha256((a.unixnu/'drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm').read_bytes()).hexdigest()
+    assert report['display_state_header_sha256']==hashlib.sha256((a.unixnu/'drivers/AdrenoMetal/NativeDisplayWaitState.h').read_bytes()).hexdigest()
+    assert report['observer_include_sha256']==hashlib.sha256((a.unixnu/'drivers/AdrenoMetal/NativeFrameObservers.inc').read_bytes()).hexdigest()
+for marker in (b'pthread_main_thread_np',b'ui-main-wait-sample',b'springboard-waits.trace',b'NATIVE_METAL_DRIVER_CPU_PROFILE',b'kern.bootsessionuuid'):
+    assert marker in data,marker
+report=dict(actual_frame_observers=observer_profile,actual_UI_main_thread=client_profile,actual_render_wait_profile=wait_profile,actual_display_profile=display_profile,actual_sync_profile=sync_profile,initial_tile_store_error_propagation_source_bound=True,actual_target_checked=True,plugin_sha256=hashlib.sha256(data).hexdigest(),
             profile=profile,required_markers_present=True,iPad_raw_reader_markers_absent=True,
             bundle_signature_verified=True,host_pixel_result='legacy host010 failure retained;host GUI path not run by this build;A840 acceptance remains separate',
             actual_device_registry_compiled=True,old_singleton_symbol_absent=True,

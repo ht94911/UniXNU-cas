@@ -1,7 +1,7 @@
-name: nezha iPhone27 render-thread wait observations 036b
+name: nezha iPhone27 display source and batch CPU observers 037
 on:
   push:
-    branches: [codex/ios27-gpu27-metal-full-036b-20261111]
+    branches: [codex/ios27-gpu27-metal-full-037-20261111]
   workflow_dispatch:
 permissions:
   contents: read
@@ -91,6 +91,12 @@ jobs:
       - name: Observe actual Mac waiting threads and bounded stacks
         id: render_wait
         run: device/ci/gpu-userland/logrun render-wait python3 device/ci/gpu-userland/check-render-wait.py --source unixnu/drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm --header unixnu/drivers/AdrenoMetal/NativeRenderWaitSample.h --decoder device/ci/gpu-userland/decode-render-wait.py --out "$LOGS/render-wait"
+      - name: Check exact read-only display observer and CPU brackets
+        id: frame_observers
+        run: device/ci/gpu-userland/logrun frame-observers python3 device/ci/gpu-userland/check-frame-observers.py --source unixnu/drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm --out "$LOGS/frame-observers"
+      - name: Observe the actual Mac main thread using the client sampler
+        id: ui_main
+        run: device/ci/gpu-userland/logrun ui-main python3 device/ci/gpu-userland/check-client-wait.py --source unixnu/drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm --decoder device/ci/gpu-userland/decode-render-wait.py --out "$LOGS/ui-main"
       - name: Build Turnip for the actual A840 arm64e iOS27 target
         id: turnip_ios27
         working-directory: unixnu
@@ -140,6 +146,8 @@ jobs:
           OUTCOME_SYNC_PROFILE: ${{ steps.sync_profile.outcome }}
           OUTCOME_DISPLAY_PROFILE: ${{ steps.display_profile.outcome }}
           OUTCOME_RENDER_WAIT: ${{ steps.render_wait.outcome }}
+          OUTCOME_FRAME_OBSERVERS: ${{ steps.frame_observers.outcome }}
+          OUTCOME_UI_MAIN: ${{ steps.ui_main.outcome }}
         run: |
           set -euo pipefail
           export PATH="$(brew --prefix openssl@3)/bin:$PATH"
@@ -180,6 +188,8 @@ jobs:
           SYNC_PROFILE: ${{ steps.sync_profile.outcome }}
           DISPLAY_PROFILE: ${{ steps.display_profile.outcome }}
           RENDER_WAIT: ${{ steps.render_wait.outcome }}
+          FRAME_OBSERVERS: ${{ steps.frame_observers.outcome }}
+          UI_MAIN: ${{ steps.ui_main.outcome }}
         run: |
           set -euo pipefail
           test "$TARGETS" = success
@@ -191,6 +201,8 @@ jobs:
           test "$SYNC_PROFILE" = success
           test "$DISPLAY_PROFILE" = success
           test "$RENDER_WAIT" = success
+          test "$FRAME_OBSERVERS" = success
+          test "$UI_MAIN" = success
           test "$BUFFER_RESERVE" = skipped
           test "$VULKAN_OPERATIONS" = skipped
           test "$TILED_WORDS" = skipped

@@ -56,13 +56,14 @@ static int mach_vm_read_overwrite(unsigned task,uint64_t address,uint64_t bytes,
 '''
 sink='''static std::vector<TraceRec> records;
 static void tracePush(const TraceRec &row){records.push_back(row);}
+static void traceSamplePush(const TraceRec &row){tracePush(row);}
 '''
 cases=r'''
 static void reset(){clockUs=1000;infoCalls=stateCalls=readCalls=0;infoError=stateError=readError=0;
  shortRead=changeState=loopFrame=invalidSp=shortCount=false;frameStart=0x1100;records.clear();}
 static nbwait::Sample take(){nbwait::Sample s{};s.id=1;s.tid=999;s.stackLow=0x1000;s.stackHigh=0x2000;
  nbwait::capture(55,s,now);return s;}
-int main(int argc,char **argv){assert(argc==2);assert(nbwait::kSampleBudget==4096);unsigned cases=0;
+int main(int argc,char **argv){assert(argc==2);assert(nbwait::kSampleBudget==6144);unsigned cases=0;
  reset();auto s=take();assert(s.depth==8 && readCalls==8 && stateCalls==2 && infoCalls==1);
  assert(s.cpuUs==11000077 && s.flags==31 && s.stop==nbwait::FrameLimit && s.stateKr==0);
  assert(s.beganUs<=s.infoEndedUs && s.infoEndedUs<=s.stateEndedUs && s.stateEndedUs<s.endedUs);
@@ -108,7 +109,7 @@ for name,value,reason in [('missing',raw[72:],'missing_fragments'),('duplicate',
     assert not bad['samples'] and bad['quality'].get(reason),bad
 real=dict(executed=False,platform=platform.system(),device_sandbox_verified=False)
 if platform.system()=='Darwin':
-    registry=s[s.index('struct RenderWaitTarget {'):s.index('static void traceRenderWaitImages()')]
+    registry=s[s.index('struct RenderWaitTarget {'):s.index('static void traceRenderWaitImages(')]
     real_prefix=r'''
 #include <algorithm>
 #include <atomic>
@@ -125,6 +126,7 @@ if platform.system()=='Darwin':
     real_helpers=r'''
 static std::vector<TraceRec> records;static std::mutex recordLock;
 static void tracePush(const TraceRec &r){std::lock_guard<std::mutex> lock(recordLock);records.push_back(r);}
+static void traceSamplePush(const TraceRec &r){tracePush(r);}
 static bool traceWanted(){return true;}static bool NBTraceSwapTimingOn(){return true;}
 static uint64_t nowUs(){return clock_gettime_nsec_np(CLOCK_UPTIME_RAW)/1000;}
 '''
@@ -135,7 +137,7 @@ static std::atomic<unsigned> ready{0};static bool released=false;
 __attribute__((noinline)) static void park(){pthread_mutex_lock(&lock);++ready;
  while(!released)pthread_cond_wait(&condition,&lock);pthread_mutex_unlock(&lock);}
 __attribute__((noinline)) static void *worker(void *arg){registerRenderWaitThread((uintptr_t)arg);park();return nullptr;}
-int main(int argc,char **argv){assert(argc==2);assert(nbwait::kSampleBudget==4096 && gRenderWaitCopyUs.load()==0);pthread_t threads[2];
+int main(int argc,char **argv){assert(argc==2);assert(nbwait::kSampleBudget==6144 && gRenderWaitCopyUs.load()==0);pthread_t threads[2];
  for(unsigned i=0;i<2;++i)assert(!pthread_create(&threads[i],nullptr,worker,(void *)(uintptr_t)(i+123)));
  const uint64_t deadline=nowUs()+5000000;while(ready.load()!=2 && nowUs()<deadline)usleep(1000);assert(ready.load()==2);
  unsigned count=0;uint64_t previousTid=0,maxUs=0;
