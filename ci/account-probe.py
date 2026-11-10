@@ -51,6 +51,7 @@ try:
     run('compile', ['xcrun', '--sdk', 'iphoneos', 'clang', '-target', 'arm64e-apple-ios27.0',
                    '-isysroot', sdk, '-fobjc-arc', '-Wall', '-Wextra', '-Werror', '-O2',
                    '-framework', 'Foundation', '-framework', 'Security', '-framework', 'CoreFoundation',
+                   '-framework', 'LocalAuthentication',
                    source, '-o', binary])
     run('sign', ['codesign', '--force', '--sign', '-', '--identifier', expected['application-identifier'],
                  '--entitlements', entitlements, '--generate-entitlement-der', '--pagesize', '4096',

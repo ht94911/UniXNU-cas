@@ -2,6 +2,7 @@
 // Only this executable's explicit test access group and two item names are used.
 #import <Foundation/Foundation.h>
 #import <Security/Security.h>
+#import <LocalAuthentication/LocalAuthentication.h>
 #include <sys/sysctl.h>
 #include <signal.h>
 #include <stdint.h>
@@ -57,7 +58,9 @@ static OSStatus copy(NSString *account, unsigned revision)
     NSMutableDictionary *q = query(account);
     q[(__bridge id)kSecMatchLimit] = (__bridge id)kSecMatchLimitOne;
     q[(__bridge id)kSecReturnData] = @YES;
-    q[(__bridge id)kSecUseAuthenticationUI] = (__bridge id)kSecUseAuthenticationUIFail;
+    LAContext *context = [LAContext new];
+    context.interactionNotAllowed = YES;
+    q[(__bridge id)kSecUseAuthenticationContext] = context;
     CFTypeRef found = NULL;
     OSStatus rc = SecItemCopyMatching((__bridge CFDictionaryRef)q, &found);
     if (rc == errSecSuccess && (!found || CFGetTypeID(found) != CFDataGetTypeID() ||

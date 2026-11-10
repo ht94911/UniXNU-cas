@@ -1,7 +1,7 @@
-name: nezha AA27 ordinary SecItem helper001
+name: nezha AA27 ordinary SecItem helper002
 on:
   push:
-    branches: [codex/ios27-account-probe001-20261111]
+    branches: [codex/ios27-account-probe002-20261111]
   workflow_dispatch:
 permissions:
   contents: read
