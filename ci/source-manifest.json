@@ -6,7 +6,7 @@
     "ci/sign-detached-cache.py": "cbede242ed225353445f80e51f6c2c451007e89ccc61677d7b0672a037635cd0",
     "ci/artifacts.py": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
     "ci/cache-signature-template.py": "3596fbb421e2d223c9d01b6280af68ca7e83595c99d3d96e481450f187201d72",
-    ".github/workflows/bluetooth-console-cache.yml": "cb7c0e29b2cf7ce5811806ef80a37a743509d2d9442564c9e7b4b4d9570f2bd8"
+    ".github/workflows/nezha-ios27-native.yml": "cb7c0e29b2cf7ce5811806ef80a37a743509d2d9442564c9e7b4b4d9570f2bd8"
   },
   "bytes": 1320291,
   "kernel_build": false,
