@@ -12,7 +12,7 @@ from unicorn import Uc, UC_ARCH_ARM64, UC_MODE_ARM, UC_HOOK_CODE
 from unicorn import arm64_const as arm64
 from unicorn.arm64_const import (UC_ARM64_REG_X0, UC_ARM64_REG_X1, UC_ARM64_REG_X8,
     UC_ARM64_REG_X9, UC_ARM64_REG_X19, UC_ARM64_REG_X20, UC_ARM64_REG_X29,
-    UC_ARM64_REG_X30, UC_ARM64_REG_PC, UC_ARM64_REG_SP)
+    UC_ARM64_REG_X30, UC_ARM64_REG_PC, UC_ARM64_REG_SP, UC_ARM64_REG_NZCV)
 import native_ios27 as n
 
 STACK = 0x20000000
@@ -20,6 +20,7 @@ STACK_BYTES = 0x10000
 STOP = STACK + STACK_BYTES
 CONTEXT = 0x1234567812345678
 REG_X = tuple(getattr(arm64, 'UC_ARM64_REG_X' + str(index)) for index in range(31))
+REG_Q = tuple(getattr(arm64, 'UC_ARM64_REG_Q' + str(index)) for index in range(32))
 ROOT_ENTRY = 0x10085e5d4
 NC_LOAD = 0x10085dcb8
 NC_GENERATE = 0x10085de40
@@ -138,6 +139,9 @@ class Machine:
                 uc.reg_write(UC_ARM64_REG_PC, address + 4)
             elif word == 0xdac11a30:  # autda x16, x17: fixture vtable pointer
                 uc.reg_write(UC_ARM64_REG_PC, address + 4)
+            elif word == 0xdac143e9:  # xpaci x9: model stripping, no target PAC keys
+                uc.reg_write(UC_ARM64_REG_X9, uc.reg_read(UC_ARM64_REG_X9) & 0x0000ffffffffffff)
+                uc.reg_write(UC_ARM64_REG_PC, address + 4)
             elif word == 0xd73f0910:  # blraa x8, x16: native model getter
                 target = uc.reg_read(REG_X[8])
                 uc.reg_write(UC_ARM64_REG_X30, address + 4)
@@ -156,9 +160,9 @@ class Machine:
                 self.pac -= 1
                 uc.reg_write(UC_ARM64_REG_PC, uc.reg_read(UC_ARM64_REG_X30))
 
-    def run(self, entry, stops=()):
+    def run(self, entry, stops=(), max_instructions=4096):
         self.stop_at = {a + self.slide for a in stops}
-        self.uc.emu_start(entry + self.slide, STOP + 4, count=4096)
+        self.uc.emu_start(entry + self.slide, STOP + 4, count=max_instructions)
         pc = self.uc.reg_read(UC_ARM64_REG_PC)
         assert pc == STOP or pc in self.stop_at or self.next_calls, hex(pc)
         return self
@@ -612,12 +616,110 @@ def check(image):
     return cases
 
 
+def check_root_observation(image):
+    """Execute observed words with synthetic console effects at two slides."""
+    production_sha = hashlib.sha256(image.data).hexdigest()
+    assert production_sha == '2c2e13a7badcef9b7786c456eee91d29d59afce755a4e60b2f29178defa92226'
+    image.observe_root_status(True)
+    rows=[]
+    for slide in (0,0x1e44000):
+     for site,kind,word in n.ROOT_OBSERVER_POINTS:
+      for value in (0,-34019,130):
+       m=Machine(image,slide)
+       for index,reg in enumerate(REG_X):m.uc.reg_write(reg,0x1122000000000000+index*0x101)
+       for index,reg in enumerate(REG_Q):m.uc.reg_write(reg,(0xfedc000000000000+index)<<64 | (0x1234000000000000+index))
+       sp=m.initial_sp
+       fp=sp+0x70
+       m.uc.reg_write(REG_X[29],fp)
+       m.uc.reg_write(REG_X[30],site+slide)
+       ra=n.BASE+0x18ec78+slide
+       m.uc.mem_write(fp+8,struct.pack('<Q',ra | 0x1000000000000000))
+       status=value & 0xffffffff
+       m.uc.reg_write(REG_X[0],status)
+       m.uc.reg_write(REG_X[21],status)
+       m.uc.reg_write(REG_X[24],status)
+       m.uc.reg_write(REG_X[20],sp+0x80)
+       m.uc.mem_write(sp+0x80,struct.pack('<I',96))
+       m.uc.mem_write(sp+n.ROOT_READ_TYPE_SLOT,struct.pack('<I',5))
+       if kind==9:
+        m.uc.mem_write(sp+12,struct.pack('<I',status))
+        m.uc.reg_write(REG_X[0],STACK+0x4000)  # saved dictionary pointer, not the printed status
+        m.uc.reg_write(REG_X[21],0x2b2b2b2b)
+       m.uc.reg_write(REG_X[22],6)
+       m.uc.reg_write(REG_X[23],64)
+       if kind in (3,4):
+        offset=0x20 if kind==3 else 0x30
+        m.uc.mem_write(sp+offset,struct.pack('<QQ',fp,site+slide))
+       m.uc.reg_write(UC_ARM64_REG_NZCV,0xa0000000)
+       before_gpr=[m.uc.reg_read(reg) for reg in REG_X]
+       before_simd=[m.uc.reg_read(reg) for reg in REG_Q]
+       captures=[]
+       def dprintf():
+        call_sp=m.uc.reg_read(UC_ARM64_REG_SP)
+        args=[struct.unpack('<i',m.uc.mem_read(call_sp+slot,4))[0] for slot in (0,8,16,24,32)]
+        captures.append({'fd':m.uc.reg_read(REG_X[0]),'args':args,'sp_alignment':call_sp%16,'format_ok':bytes(m.uc.mem_read(m.uc.reg_read(REG_X[1]),len(n.ROOT_OBSERVER_FORMAT)))==n.ROOT_OBSERVER_FORMAT})
+        lr=m.uc.reg_read(REG_X[30])
+        for index in range(19):m.uc.reg_write(REG_X[index],0xdddd0000+index)
+        for index in range(32):
+         m.uc.reg_write(REG_Q[index], ((m.uc.reg_read(REG_Q[index]) & ((1<<64)-1)) | ((0xabcdef+index)<<64)) if 8<=index<16 else 0xabcdef+index)
+        m.uc.reg_write(UC_ARM64_REG_NZCV,0xf0000000)
+        m.uc.reg_write(UC_ARM64_REG_PC,lr)
+       m.callbacks[n.DPRINTF+slide]=dprintf
+       branch=n.branch_target(site,word)
+       stops=[site+4]
+       if branch is not None:stops.append(branch)
+       m.run(site,stops,max_instructions=2048)
+       after_gpr=[m.uc.reg_read(reg) for reg in REG_X]
+       expected_gpr=before_gpr[:]
+       if word in (0xaa1503e0,0xaa1803e0):expected_gpr[0]=before_gpr[21 if word==0xaa1503e0 else 24]
+       elif word==0xaa0003f4:expected_gpr[20]=before_gpr[0]
+       elif word==0xaa0003f7:expected_gpr[23]=before_gpr[0]
+       elif word==0xaa0003f8:expected_gpr[24]=before_gpr[0]
+       elif word==0xb9400ff5:expected_gpr[21]=status
+       expected_status=0 if kind==8 else value
+       expected_ra=site-n.BASE if kind>=5 else 0x18ec78
+       expected_args=[kind,expected_ra,5 if kind==0 else 6 if kind==1 else 0,expected_status,96 if kind==0 else 64 if kind==1 else 0]
+       rows.append({'site':hex(site),'kind':kind,'slide':hex(slide),'synthetic_status':value,'darwin_args_expected':expected_args,'darwin_args_observed':captures[0]['args'],'darwin_args_ok':captures[0]['args']==expected_args,'format_ok':captures[0]['format_ok'],'original_branch_semantics_ok':m.uc.reg_read(UC_ARM64_REG_PC)-slide==(branch if branch is not None and status==0 else site+4),'fd2':captures[0]['fd']==2,'stack_alignment_ok':captures[0]['sp_alignment']==0,'gpr_displaced_semantics_ok':after_gpr==expected_gpr,'simd_ok':all(m.uc.reg_read(reg)==before_simd[index] for index,reg in enumerate(REG_Q)),'sp_ok':m.uc.reg_read(UC_ARM64_REG_SP)==sp,'nzcv_ok':m.uc.reg_read(UC_ARM64_REG_NZCV)==0xa0000000,'pac_balanced':m.pac==0,'original_branch_selected':hex(m.uc.reg_read(UC_ARM64_REG_PC)-slide),'branch_ok':m.uc.reg_read(UC_ARM64_REG_PC)-slide==(branch if branch is not None and status==0 else site+4)})
+    for row in rows:
+        assert all(row[key] for key in ('fd2', 'stack_alignment_ok',
+            'gpr_displaced_semantics_ok', 'simd_ok', 'sp_ok', 'nzcv_ok',
+            'pac_balanced', 'darwin_args_ok', 'branch_ok')), row
+    for slide in (0, 0x1e44000):
+        m = Machine(image, slide)
+        for kind in (1, 5, 19):
+            m.uc.reg_write(REG_X[0], kind)
+            m.uc.mem_write(m.initial_sp + n.ROOT_READ_TYPE_SLOT, bytes(8))
+            m.run(n.ROOT_READ_TYPE_CAPTURE, (n.ROOT_READ_TYPE_CAPTURE + 4,))
+            assert struct.unpack('<I', m.uc.mem_read(m.initial_sp + n.ROOT_READ_TYPE_SLOT, 4))[0] == kind
+            assert m.uc.reg_read(REG_X[0]) == kind
+            assert m.uc.reg_read(UC_ARM64_REG_SP) == m.initial_sp and m.pac == 0
+    return dict(cases=len(rows) + 6, point_cases=len(rows), type_capture_cases=6,
+        production_sha256=production_sha,
+        observer_sha256=hashlib.sha256(image.data).hexdigest(),
+        observer=image.root_observation, original_error_paths_unchanged=True,
+        darwin_int_stack_offsets=[0, 8, 16, 24, 32],
+        simulated='dprintf reads Darwin stack arguments and changes caller state; target PAC keys absent',
+        hardware_verified=False)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('image', type=Path)
     parser.add_argument('--output', type=Path, default=Path(__file__).resolve().parents[1] / 'out/native-test')
+    parser.add_argument('--root-observation-only', action='store_true',
+                        help='run only the new explicit Root/NC console instruction checks')
     args = parser.parse_args()
     image = n.NativeImage(args.image).vendor_routing().volatile_root_keys().h4_shutdown().capability_adapter()
+    if args.root_observation_only:
+        observer = check_root_observation(image)
+        args.output.mkdir(parents=True, exist_ok=True)
+        report = dict(passed=True, cases=observer['cases'],
+            input_sha256=hashlib.sha256(image.original).hexdigest(),
+            scope='new Root/NC console observation only; Native011 checks retained separately',
+            root_observation=observer, hardware_verified=False)
+        (args.output / 'report.json').write_text(json.dumps(report, indent=2) + '\n')
+        print(f"Root/NC console observer: {observer['cases']} instruction cases passed")
+        return
     cases = check(image)
     root_cases = check_root_keys(n.NativeImage(args.image), image)
     cases += sum(root_cases.values())

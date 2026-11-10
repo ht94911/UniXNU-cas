@@ -91,6 +91,34 @@ NATIVE_BINDINGS = dict(STATE=NATIVE_STATE, STATE_BYTES=NATIVE_STATE_BYTES,
 BZERO = 0x10090a160
 PACIBSP = 0xd503237f
 RET = 0xd65f03c0
+DPRINTF = 0x10090a740
+ROOT_OBSERVER_FORMAT = b'[qbt-root] p=%d ra=%x t=%d s=%d n=%d\n\0'
+ROOT_OBSERVER_FRAME = 0x2e0
+# p: global read/store, Root/NC, mode, Cloud, derive, canary and source read status.
+# All probes run before the displaced word. Return probes keep their callee FP;
+# mode/crypto probes keep the completed helper's original LR.
+ROOT_OBSERVER_POINTS = (
+    (0x10085e608, 8, 0xb81ac3bf),
+    (0x1004a084c, 9, 0xb9400ff5),
+    (0x1004a093c, 0, 0xaa1503e0),
+    (0x1004a0b64, 1, 0xaa1503e0),
+    (0x10085eca4, 2, 0xaa1803e0),
+    (0x10085dd28, 3, 0xa9427bfd),
+    (0x10085e00c, 4, 0xa9437bfd),
+    (0x10085e634, 5, 0xaa0003f4),
+    (0x10085e140, 5, 0xaa0003f4),
+    (0x10085e8bc, 6, 0x34000400),
+    (0x10085e9b8, 6, 0x34000a60),
+    (0x10085eaa8, 7, 0xaa0003f7),
+    (0x10085eb60, 7, 0xaa0003f8),
+    (0x10085de00, 7, 0x34fff940),
+    (0x10085dfec, 7, 0x340001a0),
+    (0x10085e1d0, 7, 0xaa0003f7),
+    (0x10085e258, 7, 0xaa0003f8),
+    (0x10085e418, 7, 0xaa0003f8),
+)
+ROOT_READ_TYPE_CAPTURE = 0x1004a0818
+ROOT_READ_TYPE_SLOT = 8  # unused word below the read wrapper's status at sp+12
 
 
 def relative(pc, target, bits):
@@ -134,6 +162,38 @@ def mov_w(reg, value):
     return 0x52800000 | value << 5 | reg
 
 
+def pair(op, first, second, base, offset, scale):
+    if offset % scale or not -64 <= offset // scale < 64:
+        raise ValueError('pair offset outside range')
+    return op | ((offset // scale) & 127) << 15 | second << 10 | base << 5 | first
+
+
+def branch_target(pc, word):
+    if word & 0x7c000000 == 0x14000000:
+        bits, shift = 26, 0
+    elif word & 0xff000010 == 0x54000000 or word & 0x7e000000 == 0x34000000:
+        bits, shift = 19, 5
+    elif word & 0x7e000000 == 0x36000000:
+        bits, shift = 14, 5
+    else:
+        return None
+    value = word >> shift & ((1 << bits) - 1)
+    if value & (1 << (bits - 1)):
+        value -= 1 << bits
+    return pc + value * 4
+
+
+def displaced_words(original_pc, word):
+    target = branch_target(original_pc, word)
+    if target is None:
+        return [word]
+    if word & 0x7e000000 == 0x34000000:
+        inverted = word ^ 0x01000000  # CBZ/CBNZ skips the far B on the opposite edge
+        return [lambda pc: (inverted & ~(0x7ffff << 5)) | relative(pc, pc + 8, 19) << 5,
+                lambda pc: branch(pc, target)]
+    raise ValueError('unsupported displaced observation branch')
+
+
 class NativeImage(_inspect.Image):
     def __init__(self, path):
         super().__init__(path)
@@ -146,6 +206,7 @@ class NativeImage(_inspect.Image):
         self.cursor = CAVE
         self.patches = []
         self.entries = {}
+        self.root_observation = None
         self.fixups = self.chained_fixups()
         start, end = self.offset(CAVE), self.offset(CAVE_END - 1) + 1
         if any(self.data[start:end]):
@@ -483,6 +544,234 @@ class NativeImage(_inspect.Image):
         self.entries['library'] = NATIVE_DYLIB.decode()
         return self
 
+    def observer_function_references(self, ranges):
+        """Find incoming code/data references before reusing replaced functions.
+
+        Runtime USERLAND24 rebases, all direct branches and address formation,
+        defined external symbols and relative metadata are checked. Unwind and
+        exception tables describe existing functions; they are not call entries.
+        Conservative matches reject a candidate rather than freeing live code.
+        """
+        result = {start: [] for start, _ in ranges}
+
+        def record(target, source, kind):
+            for start, end in ranges:
+                if start <= target < end and not start <= source < end:
+                    result[start].append(dict(source=hex(source), target=hex(target), kind=kind))
+
+        for source, raw in self.chained_fixups().items():
+            if raw & (1 << 62):
+                continue  # imported bind, not a local rebase
+            targets = [BASE + (raw & 0xffffffff)] if raw >> 63 else [
+                raw & ((1 << 43) - 1), BASE + (raw & ((1 << 43) - 1))]
+            for target in targets:
+                record(target, source, 'USERLAND24 rebase')
+        pages = {page for start, end in ranges
+                 for page in range(start & ~4095, (end + 4095) & ~4095, 4096)}
+        for section in self.sections:
+            if section['name'] != '__text':
+                continue
+            start, end = section['address'], section['address'] + section['size']
+            for pc in range(start, end, 4):
+                word = self.word(pc)
+                target = branch_target(pc, word)
+                if target is not None:
+                    record(target, pc, 'direct branch')
+                if word & 0x9f000000 not in (0x10000000, 0x90000000):
+                    continue
+                immediate = ((word >> 29) & 3) | (((word >> 5) & 0x7ffff) << 2)
+                if immediate & (1 << 20):
+                    immediate -= 1 << 21
+                if word & 0x9f000000 == 0x10000000:
+                    record(pc + immediate, pc, 'ADR address')
+                    continue
+                page = (pc & ~4095) + (immediate << 12)
+                if page not in pages:
+                    continue
+                function = self.function(pc)
+                limit = int(function[1], 16) if function and function[1] else end
+                register = word & 31
+                # Looking through the entire containing function deliberately
+                # keeps ambiguous register reuse conservative.
+                for at in range(pc + 4, min(limit, end), 4):
+                    nxt = self.word(at)
+                    if nxt & 0xff000000 == 0x91000000 and (nxt >> 5) & 31 == register:
+                        target = page + (((nxt >> 10) & 4095) << (12 if nxt & (1 << 22) else 0))
+                        record(target, at, 'ADRP+ADD address')
+        for section in self.sections:
+            name = section['name']
+            if name == '__init_offsets':
+                for pc in range(section['address'], section['address'] + section['size'], 4):
+                    record(BASE + self.word(pc), pc, 'initializer offset')
+            if name == '__objc_methlist' or name.startswith('__swift') or name == '__const':
+                for pc in range(section['address'], section['address'] + section['size'] - 3, 4):
+                    word = self.word(pc)
+                    for value in (word, word & ~3):
+                        signed = value - (1 << 32) if value & (1 << 31) else value
+                        record(pc + signed, pc, 'relative metadata')
+        at = 32
+        for _ in range(struct.unpack_from('<I', self.data, 16)[0]):
+            command, size = struct.unpack_from('<II', self.data, at)
+            if command == 2:
+                offset, count = struct.unpack_from('<II', self.data, at + 8)
+                for index in range(count):
+                    _, kind, _, _, target = struct.unpack_from('<IBBHQ', self.data, offset + index * 16)
+                    if kind & 0xe0 == 0 and kind & 1 and kind & 0x0e == 0x0e:
+                        record(target, BASE + offset + index * 16, 'defined external symbol')
+            if command == 0x80000028:
+                offset = struct.unpack_from('<Q', self.data, at + 8)[0]
+                record(BASE + offset, BASE + at, 'LC_MAIN entry')
+            at += size
+        return result
+
+    def observe_root_status(self, enabled=False):
+        """Opt in to int32 Root diagnostics through the existing dprintf import."""
+        if not enabled:
+            return self
+        if self.root_observation is not None:
+            raise ValueError('root observation already installed')
+        if 'library' not in self.entries or self.stubs.get('_dprintf') != DPRINTF:
+            raise ValueError('root observation requires the native adapter and locked dprintf')
+        for site, _, expected in ROOT_OBSERVER_POINTS:
+            if self.word(site) != expected:
+                raise ValueError(f'root observation point differs at {site:#x}')
+        if self.word(ROOT_READ_TYPE_CAPTURE) != 0xb9000fff:
+            raise ValueError('root read stack capture differs')
+        # The replaced adv_sets getter is one continuous, already-unused body;
+        # leave the other old getters and the disabled VMM function untouched.
+        original = self.capability_slots()['adv_sets']
+        start = int(original['target'], 16)
+        function = self.function(start)
+        current = self.chained_fixups()
+        replacement = int(self.entries['get_adv_sets'], 16)
+        if BASE + (current[int(original['address'], 16)] & 0xffffffff) != replacement:
+            raise ValueError('the original adv_sets getter is still installed')
+        if not function or int(function[0], 16) != start or not function[1]:
+            raise ValueError('original adv_sets function boundary differs')
+        end = int(function[1], 16)
+        references = self.observer_function_references([(start, end)])
+        if references[start]:
+            raise ValueError('the old adv_sets getter has an incoming reference')
+        begin_offset, end_offset = self.offset(start), self.offset(end - 1) + 1
+        if self.data[begin_offset:end_offset] != self.original[begin_offset:end_offset]:
+            raise ValueError('old adv_sets function body has already changed')
+        body_start, body_end = start, end
+        pools = [[start, end, 'adv_sets']]
+        fmt = ROOT_OBSERVER_FORMAT.ljust((len(ROOT_OBSERVER_FORMAT) + 3) & ~3, b'\0')
+        def probe_words(site, kind, original, logger):
+            if kind in (8, 9):
+                # Save x0 while logging the constant canary or the read helper's
+                # out-status. Two pushes put its original sp+12 at current+44.
+                before = [pair(0xa9800000, 0, 8, 31, -16, 8),
+                    pair(0xa9800000, 9, 30, 31, -16, 8), mov_w(8, kind),
+                    mov_w(0, 0) if kind == 8 else memory(0xb9400000, 0, 31, 44, 4),
+                    lambda pc: branch(pc, logger, True),
+                    pair(0xa8c00000, 9, 30, 31, 16, 8),
+                    pair(0xa8c00000, 0, 8, 31, 16, 8)]
+            else:
+                before = [pair(0xa9800000, 8, 30, 31, -16, 8), mov_w(8, kind),
+                    lambda pc: branch(pc, logger, True), pair(0xa8c00000, 8, 30, 31, 16, 8)]
+            return before + displaced_words(site, original) + [lambda pc: branch(pc, site + 4)]
+
+        # Conditional points add a local inverse branch and a range-safe B.
+        required = sum(len(probe_words(site, kind, word, 0)) * 4
+                       for site, kind, word in ROOT_OBSERVER_POINTS) + 12 + len(fmt)
+        if end - start < required:
+            raise ValueError('old adv_sets body is insufficient for root observation')
+
+        def reserve(name, words):
+            length = len(words) * 4
+            for pool in pools:
+                if pool[0] + length <= pool[1]:
+                    start = pool[0]
+                    original = [self.word(start + i * 4) for i in range(len(words))]
+                    self.put(start, [word(start + i * 4) if callable(word) else word
+                                     for i, word in enumerate(words)], original)
+                    pool[0] += length
+                    self.entries[name] = hex(start)
+                    return start
+            raise ValueError('root observation getter fragments exhausted')
+
+        fmt_address = reserve('root_status_format',
+            list(struct.unpack('<' + 'I' * (len(fmt) // 4), fmt)))
+        frame = ROOT_OBSERVER_FRAME
+        # Original x8/LR are already saved by the per-point entry. Save every
+        # other GPR and all SIMD lanes before preparing Darwin stack varargs.
+        words = [PACIBSP, 0xd10003ff | frame << 10]
+        for first in range(0, 18, 2):
+            words.append(pair(0xa9000000, first, first + 1, 31, 0x30 + first * 8, 8))
+        words.append(pair(0xa9000000, 18, 30, 31, 0xc0, 8))
+        for first in range(0, 32, 2):
+            words.append(pair(0xad000000, first, first + 1, 31, 0xd0 + first * 16, 16))
+        words += [0xd53b4209, memory(0xf9000000, 9, 31, 0x2d0, 8),
+                  memory(0xb9000000, 8, 31, 0, 4), mov_w(11, 0), mov_w(12, 0),
+                  0x7100091f, 0x1a80030a]  # cmp w8,2; csel w10,w24,w0,eq
+        common_branch = len(words)
+        words.append(None)  # p>=2 already selects w24 for Root or w0 otherwise
+        words.append(0x2a1503ea)  # global wrapper's status is w21
+        store_branch = len(words)
+        words.append(None)
+        words += [memory(0xb9400000, 11, 31, frame + 16 + ROOT_READ_TYPE_SLOT, 4),
+                  0x1280000c]  # absent optional length pointer: n=-1
+        null_branch = len(words)
+        words.append(None)
+        words.append(memory(0xb9400000, 12, 20, 0, 4))
+        read_done = len(words)
+        words.append(None)
+        store = len(words)
+        words += [0x2a1603eb, 0x2a1703ec]  # type=w22, requested length=w23
+        common = len(words)
+        # Darwin AArch64 variadic arguments use eight-byte stack slots even
+        # for int. Keep p/ra/type/status/length at 0/8/16/24/32; GPRs start at48.
+        words += [pair(0xa9000000, 11, 10, 31, 16, 8),
+                  memory(0xb9000000, 12, 31, 32, 4),
+                  memory(0xf9400000, 9, 31, frame + 8, 8), 0x7100151f]
+        ra_branch = len(words)
+        words.append(None)
+        words.append(memory(0xf9400000, 9, 29, 8, 8))
+        normalize = len(words)
+        words += [0xdac143e9, lambda pc: adrp(pc, 10, BASE), 0xcb0a0129,
+                  memory(0xb9000000, 9, 31, 8, 4), mov_w(0, 2)]
+        words += self.address_words(1, fmt_address)
+        words.append(lambda pc: branch(pc, DPRINTF, True))
+        words += [memory(0xf9400000, 9, 31, 0x2d0, 8), 0xd51b4209]
+        for first in range(0, 32, 2):
+            words.append(pair(0xad400000, first, first + 1, 31, 0xd0 + first * 16, 16))
+        for first in range(0, 18, 2):
+            words.append(pair(0xa9400000, first, first + 1, 31, 0x30 + first * 8, 8))
+        words += [pair(0xa9400000, 18, 30, 31, 0xc0, 8), add(31, 31, frame), 0xd65f0fff]
+        start = self.cursor
+        words[common_branch] = lambda pc: 0x54000002 | relative(pc, start + common * 4, 19) << 5
+        words[store_branch] = lambda pc: cbnz(pc, 8, start + store * 4)
+        words[null_branch] = lambda pc: 0xb4000014 | relative(pc, start + common * 4, 19) << 5
+        words[read_done] = lambda pc: branch(pc, start + common * 4)
+        words[ra_branch] = lambda pc: 0x54000002 | relative(pc, start + normalize * 4, 19) << 5
+        if start + len(words) * 4 > CAVE_END:
+            raise ValueError('shared Root logger does not fit the original tail')
+        logger = self.emit('root_status_logger', words)
+        capture = reserve('root_read_type_capture', [
+            memory(0xb9000000, 0, 31, ROOT_READ_TYPE_SLOT, 4), 0xb9000fff,
+            lambda pc: branch(pc, ROOT_READ_TYPE_CAPTURE + 4)])
+        self.put(ROOT_READ_TYPE_CAPTURE, [branch(ROOT_READ_TYPE_CAPTURE, capture)], [0xb9000fff])
+        for site, kind, original in ROOT_OBSERVER_POINTS:
+            entry = reserve(f'root_status_{site:x}', probe_words(site, kind, original, logger))
+            self.put(site, [branch(site, entry)], [original])
+        self.root_observation = dict(enabled=True, import_address=hex(DPRINTF),
+            sink='dprintf(fd=2); launchd /dev/console; existing kernel console to USB',
+            format=ROOT_OBSERVER_FORMAT[:-1].decode(), format_address=hex(fmt_address),
+            shared_logger_bytes=len(words) * 4, frame_bytes=frame,
+            points=[dict(address=hex(site), kind=kind) for site, kind, _ in ROOT_OBSERVER_POINTS],
+            reclaimed_body=dict(name='adv_sets', start=hex(body_start), end=hex(body_end),
+                original_sha256=hashlib.sha256(self.original[begin_offset:end_offset]).hexdigest(),
+                used_bytes=required, references=references[body_start]),
+            statuses='int32 stack varargs; no material or peer/credential fields',
+            variadic_int_stack_offsets=[0, 8, 16, 24, 32],
+            canary='p=8, s=0 is a constant Root-entry sink record; original x0 is restored',
+            source_read_status='p=9 records the read helper out-status before the wrapper maps missing/invalid data',
+            return_addresses='component-relative return offset; callsite=ra-4',
+            hardware_verified=False)
+        return self
+
     def report(self):
         return dict(input_sha256=ORIGINAL_SHA256, input_uuid=self.uuid,
                     output_sha256=hashlib.sha256(self.data).hexdigest(),
@@ -490,6 +779,7 @@ class NativeImage(_inspect.Image):
                     adapter_ready='library' in self.entries, hardware_verified=False,
                     cave_start=hex(CAVE), cave_end=hex(self.cursor),
                     entries=self.entries, patches=self.patches,
+                    root_observation=self.root_observation,
                     capability_slots=self.capability_slots(),
                     pending=([] if 'library' in self.entries else ['native capability publication']) +
                             ['payload installation and device verification'])

@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Bluetooth009 bounded connection/security/SMP metadata and narrow RAM root-key result handling on the accepted Wi-Fi023 inputs; retain the original controller/transport and runtime identities except the reviewed daemon error propagation. Only public source and certificate are exported; firmware,OS inputs,addresses and keys remain local.",
+  "purpose": "Pinned AppleKeyStore software wrap/unwrap, bag UUID, generation and cache-flow interfaces with existing board identity callback; retained Root source-status observer on fixed Wi-Fi023 hardware resources. Only public source and certificate are exported; firmware, OS inputs and identity remain local.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,11 +14,11 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "c0660693e9362a0e78d439837ee9547cad191818",
+  "device_revision": "905faaaaf0cd7864a3445d410cd18e84511a234e",
   "soc_revision": "3435fa55c3e835a4aaebf7d833473fd5d20073fd",
   "xcode": "26.6",
   "files": {
-    ".github/workflows/nezha-ios27-native.yml": "4fbc75c30afe4324a31b2292ea77d8c0a54f35a7d009cac8d87561f169569b2a",
+    ".github/workflows/nezha-ios27-native.yml": "adab07872cb6d160344fb72b89e6be8ea23c7c365a3b809922d10355e071ef53",
     "ci/cache-signature-template.py": "3596fbb421e2d223c9d01b6280af68ca7e83595c99d3d96e481450f187201d72",
     "ci/native.py": "04674168bdcd7d0b2cc8d27207556e6ced8e2080280cd58584921804a24b19d9",
     "source/adreno/LICENSE": "16fbc0170994a48f60938d9f0d992d3bad113383cf90882f75c206e079c2a2dc",
@@ -120,7 +120,7 @@
     "source/device/components/QcaBluetooth/tools/build-userland.py": "60b678dc7d814b40b23823026a16e0ffee2f4c21586e435c0bfb679051b13a8c",
     "source/device/components/QcaBluetooth/tools/check-kernel.py": "eddf983b395e01959c9da3386e69c3ce2a26baf7eabca6ee98e49f4a217c0a07",
     "source/device/components/QcaBluetooth/tools/inspect-ios.py": "c517320415c2cb96fa90a5cf89e7f162a1c23f4a4d18cba172453d89e688f177",
-    "source/device/components/QcaBluetooth/tools/native_ios27.py": "c3dc679764c36c1b8bc30eaf3e562d3fcd0a1e181ef65153cacb0ece8c6af3f7",
+    "source/device/components/QcaBluetooth/tools/native_ios27.py": "d9af1a5207ed7840af183ccb6c92c0285a3fa0afcd8c19ef17dc4d6cb253135d",
     "source/device/components/QcaBluetooth/tools/patch-ios27.py": "3dd6d754c7d932dba91bf58639022fae4f7b33d4e1f5d214d37ce686b1da5b0d",
     "source/device/components/QcaBluetooth/tools/prepare-linux-wcn7860.py": "40589253564fa2c85a97c372ec4e5fe24d9dc90871238ed24b36a8e2976d4bd6",
     "source/device/components/QcaBluetooth/tools/prepare-linux.py": "76bb962f717677c52937d31ff7850fc34c8c10dadb922c93773fc6254ff7e86e",
@@ -129,7 +129,7 @@
     "source/device/components/QcaBluetooth/tools/source-lock.json": "bf486d87369dc2be74d8ed65b07fc88aa7fbeaf8a777852dfa6b8584702f1f8f",
     "source/device/components/QcaBluetooth/tools/test-firmware.py": "c050a2968dbd523d8570879b5de3022363049805f97242fcb5613fb46faabdd1",
     "source/device/components/QcaBluetooth/tools/test-geni.py": "8380554921f70acb3bd45d11d22b3b0cdbaace493bb69a0a433240a39ef9de47",
-    "source/device/components/QcaBluetooth/tools/test-native.py": "c79b3e5d200e0e5bfcf7fbc917a01fb06313fc12cc691839255b44791c6b0b59",
+    "source/device/components/QcaBluetooth/tools/test-native.py": "da3bd283d96a8f97abc15da026e82a83d4d6c4d61d67125af589456300177e2a",
     "source/device/components/QcaBluetooth/tools/test-peri.py": "95930ab691aa86ad8a5db0bd1485232f7256c83d760e50477e6f47303848840f",
     "source/device/components/QcaBluetooth/tools/test-runtime.py": "18f4c7a38338958245fa1463fdd19a008db9ea356ae1c3316058cf021db91aa7",
     "source/device/components/QcaBluetooth/tools/test-type0.py": "96e6bd6afe0acc3baa2531462c96dbabd062b5af3bfb36bcf16bf6218f4505cb",
@@ -139,7 +139,7 @@
     "source/device/components/QcaBluetooth/vendor/linux-wcn7860/btqca.h": "0d795bcd1106b2c69a75e94813f1adca15078b433d90e041e34aabb0d2179187",
     "source/device/configs/nezha_ios27_defconfig": "78a0c420c42ddadf16d83b3605abbc0bc980aa179781404e91bfe275c7d558a5",
     "source/device/dts/nezha.dts": "4270dbca3644ee2856e27b5d9ceabc0bf8f73c548c2db9a1e4cb5f64dd62961b",
-    "source/device/feeds.toml": "3ed606077393645503d5f4cbb6dd073e9ebcfeb49ba29edbf4621c0d1d0499f7",
+    "source/device/feeds.toml": "ffff558d301ea881e1f908cc01c8e54069894f4d92bca3ab0be721e08b48769e",
     "source/device/package/.gitkeep": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
     "source/device/package/BootDiagExport.c": "88f65a92490b54444ca68ecf99e887ba1c7f6ee3d5145b8e6eed13bf90c7a92d",
     "source/device/package/BootLog.c": "b8a76a03be5b1595c09ab8181acadf6332f88196022c086eb4628addac25acb3",
@@ -151,7 +151,7 @@
     "source/device/package/BootUiTraceDetails.h": "b9c0d9afbc80359a08f2aabb87cf6ee94c5227e64212dffb05ea8d9e08a8473e",
     "source/device/package/BootUiTraceProbe.c": "22a3e64f66a6386e0129dc0673d673c628aa6f52bce72fa7145962312d123dad",
     "source/device/package/BootWatchdogPolicy.c": "2456c6d5c3c1692fd8dc3c6715af554b82799655a3460bb7dc53cbf0b0162a61",
-    "source/device/package/KeyStoreProbe.cpp": "068ef978260969e3d67d743459802d72e5fad9e4a20c7c27828587a2dd9779d9",
+    "source/device/package/KeyStoreProbe.cpp": "35ff8e97c56fd438158b1fe929c53e52dd027bc18f1b4e0eac8a2fdf662fd933",
     "source/device/package/LegacyDisplayProbe.cpp": "3784f582190c259099a921f0c3add561f80bfa5cfdb33f5f6ea30c1151a13643",
     "source/device/package/Nezha27UsbControl.c": "779d441ea12863cbfd06653b7a93a1816eb253f02cfe326ca80c96011f41cbb3",
     "source/device/package/NezhaIOS27Pmgr.cpp": "3541fecae1305a917fdd9f82d38e057b655df8c8dd31370a8b7971c35d21ee4d",
@@ -416,7 +416,7 @@
     "firmware_slot_bytes": 262144,
     "snapshot_scope": "listed headers and native implementation units only"
   },
-  "qualification_iteration": "Native011: separate link/SMP cached provider and preserved native root-key errors; keyboard/phone pairing failure stage still needs device evidence",
+  "qualification_iteration": "Native012: AppleKeyStoreState6ff plus existing chosen8-byte identity getter; actual24A446 ABI checked, target and keyboard pairing pending",
   "software_aes": {
     "source_revision": "c9ce79e16e6a4e74cbbb7f4315ad2ec342933c89",
     "upstream_revision": "4a45326da5c2cd6fe6813d79ee43db20805628af",
@@ -471,7 +471,20 @@
     "mixed_H4_IBS_PERI_receive": true,
     "source_only": true,
     "hardware_verified": false,
-    "controller_initialization_reference": "Bluetooth007/Native009; new metadata source needs target and hardware qualification",
-    "diagnostic_scope": "bounded HCI connection/authentication/encryption/SMP metadata through cached provider10/v3; no address,PIN,passkey,key or private payload capture"
+    "controller_initialization_reference": "Bluetooth008/Native010 actual controller and mouse; Native011 controller ready",
+    "diagnostic_scope": "retained bounded HCI/link metadata and existing Root source int32 status observer; no peer identity or key material logging"
+  },
+  "keystore": {
+    "source_revision": "6ff4f11d8fdf853351f8d98e1bbe1373fb8da2e6",
+    "source_tree": "6767ccb546576e60074d60c5b3659c886131b14b",
+    "source_sha256": "6d564b710c5e2143c2ce99ee456b4d93f588b87b7de5599b79199e82fb497213",
+    "functional_commit": "5454637729e39feaa361e6b658b6eec25c870f7e",
+    "previous_source_revision": "42ff83e08b2265fe741d4adaf084bebe003452ba",
+    "device_callback": "native_aks_device_id",
+    "identity_bytes": 8,
+    "identity_value_exported": false,
+    "software_keys_only": true,
+    "target_compilation_pending": true,
+    "hardware_verified": false
   }
 }
