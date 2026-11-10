@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "731d87a97d1ab2bd75a8a1fafc0702e919198d53",
+  "device_revision": "73aa693b5eeaece5d54f18bc383550a5ca4da09e",
   "soc_revision": "5a71f9eb5724ff58eddf49f7f5baecc9f4233a7c",
   "xcode": "26.6",
   "files": {
@@ -90,7 +90,7 @@
     "source/device/package/BootUiTraceCore.h": "9404d7be6386f936904e6af34c870d86ec809b4d97161fd892d904d8334f2753",
     "source/device/package/BootUiTraceDetails.h": "b9c0d9afbc80359a08f2aabb87cf6ee94c5227e64212dffb05ea8d9e08a8473e",
     "source/device/package/BootUiTraceProbe.c": "22a3e64f66a6386e0129dc0673d673c628aa6f52bce72fa7145962312d123dad",
-    "source/device/package/BootWatchdogPolicy.c": "c3ed7e84ef8ef21248bb5c51e92304f5e8d30920d728c2cf6b9fc9986b701766",
+    "source/device/package/BootWatchdogPolicy.c": "660b28002ad6bef62fd90144438169cec6b3b10fc7b24bf3bb71cfc6b453aaff",
     "source/device/package/KeyStoreProbe.cpp": "068ef978260969e3d67d743459802d72e5fad9e4a20c7c27828587a2dd9779d9",
     "source/device/package/LegacyDisplayProbe.cpp": "ce49896721198f2e81c5282f49e4c4d00f6a4b6e6cf9589f2c3f9e59d0fb4181",
     "source/device/package/Nezha27UsbControl.c": "e0465c9996b74bf7116853be87bc5223d803926df373ea25e4523ff2f9a441c8",
