@@ -122,6 +122,11 @@ def prepare(framework, work):
 def build(framework, work):
     logs = work / 'logs'
     logs.mkdir(exist_ok=True)
+    manifest = json.loads((ROOT / 'inputs.json').read_text())
+    if manifest.get('audio', {}).get('HAL_only') is True:
+        return run([sys.executable, work / 'device/scripts/build-nezha27-audio.py',
+                    '--hal-only', '--source', work / 'device/package/audio27',
+                    '--out', work / 'hal'], log=logs / 'HAL-only.log')
     sdk = run(['xcrun', '--sdk', 'iphoneos', '--show-sdk-path'])
     source = work / 'authenticated-null.c'
     source.write_text('#include <ptrauth.h>\n'
@@ -196,6 +201,9 @@ def collect(framework, work, sealed):
         add(path, 'logs/' + path.name)
     for path in sorted((work.parent / 'setup-logs').glob('*.log')):
         add(path, 'setup/' + path.name)
+    for path in sorted((work / 'hal').rglob('*')):
+        if path.is_file() and not path.is_symlink():
+            add(path, 'archives/nezha27-audio/' + str(path.relative_to(work / 'hal')))
     builds = list((work / 'out/nezha/ios-27.0.1-24A446-iphone14-4').glob('*'))
     for target in builds:
         if not target.is_dir():

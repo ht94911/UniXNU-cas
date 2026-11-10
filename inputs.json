@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Audio050 supplies the exact AudioHardware declarations, transitive SDK header and CoreAudio framework missing from the failed049 HAL compile. It retains049 read-only global device/default-route observations, all playback/clock/property/PCM behavior and the fixed GPU023 companions. Private slots remain zero; no phone operations or main promotion.",
+  "purpose": "Audio052 uses standard CoreAudio defaults after current UID registration, retains errors/readback and all original callbacks/PCM/clock/VI/calibration/GPU023. Build only the changed HAL with the existing SDK/signing/CMS recipe; locally reuse the exact050 kernel and strict closure. No private input upload, phone operations or functional promotion.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "030dceb109a9e395e4b579ca042d62dcefa21ded",
+  "device_revision": "ee342e3050369bcebeb9c7ee9c8e09ff04e35a06",
   "soc_revision": "703d7b4bb00904b4a6e5d96f9e9bf72eec170f6b",
   "xcode": "26.6",
   "files": {
@@ -171,7 +171,7 @@
     "source/device/patches/xnu-12377/zzzzzz-nezha-input-chain-trace.patch": "c4d05419e7ec3af0de619754bdb6c2deb69b74d714c2219e509360ebfe1b947e",
     "source/device/patches/xnu-12377/zzzzzz-nezha-kernel-class-lock-order.patch": "cd90c61d6838f4e6a7248da81b6180f14db03d00f2f7a64f4bbe4034c0aa8dcb",
     "source/device/patches/xnu-12377/zzzzzz-nezha-sigp-startup-order.patch": "18275910b909d187e459c68f5d937cc09bc01923180141dc155aa7f4ff14aaf9",
-    "source/device/porting.toml": "ffab22432af778e3c3bb16802ee011fd0ff48281a441da41504e0a0b7d09a01f",
+    "source/device/porting.toml": "a61247db4d4e24fef1430ad5a855ea456323aa2c0b0c587a756e1024057fb26a",
     "source/device/scripts/backlight-iphone-24A446.json": "446eb5fe6440335bfe9fca75b32f7d815ddcafbb8a3c2d7f697c1e5c3f40f6cb",
     "source/device/scripts/build-adreno840.py": "269f32fe2c97d7baf846a148fed7c111a53869486626a87ec8daab7fdfc3ab91",
     "source/device/scripts/build-boot-progress.py": "a210eb1f0443574eb1506932aa9e8181d5c73aecf99397d8cc731568bd3210ba",
@@ -213,13 +213,13 @@
     "source/soc/soc.toml": "9cebcadf2d5a271ceb44ee5fc378ed739cff0e7e5a940007164a9917042fd92f",
     "source/ufs.bundle": "3a7c1c6ac7e5a39e6cb4adcc6143fa1e4c6c24ae862aa501102f9fb70c21a534",
     "source/usb.bundle": "e9b4245d2e52c6b73f352fbf894be2d87a572bf915cd7c583fd55d33170a9196",
-    "ci/native.py": "c5038d38dabeb4276a3bbcbab9b76508b24d8c70a85f70e77c12457a3fa9d269",
+    "ci/native.py": "8782a9eff7633db88ec9690697693f90725cce7d460e30227e8fd0f6c50113f5",
     "source/device/package/audio27/os/NezhaAudioClock.cpp": "70cc8e545c78f190b73ff1a6e03c4c857343b66344bd099f71aa1047c992ba78",
     "source/device/package/audio27/platform/AdspFirmware.h": "4096f93fd761bee7d0afe1557c7af77e3eef3040650da32153e582c6a5330756",
     "source/device/package/audio27/platform/AudioSmmu.h": "41401f1b97e3481c7e5cc3e02c47f926e91eec9fa34f4a48981a3fc3b723cddd",
     "source/device/package/audio27/upstream/ShengGpr.c": "c4f498f07e2cb601b593e64a8d32474a21d6a87375618e1a67b99d52c5d3160e",
     "source/device/package/audio27/platform/SoundWire.h": "348979ac1e552e1c3a0027e09f8500927e8bf7ccbb496276d2c9d3ef19322224",
-    ".github/workflows/nezha-ios27-native.yml": "5728e1c59b74bc49f0f938980cd61acf9587a0ef7f8cf64082c616ec3c84183a",
+    ".github/workflows/nezha-ios27-native.yml": "75f645bcfe93e192b80bf15a9b18e776e398ee3962e05ea2676da024e0bc3d1f",
     "source/device/package/audio27/upstream/ShengGpr.h": "a274dded1f4d1e2709b9f966759bcb1f57d12747ee0f57743dea1fa97d95d23e",
     "source/device/package/audio27/os/NezhaAudioNative.h": "26b0203a49895eb907ea8155443e7a2aa5431bb89393a32b3debf01371d1c353",
     "source/device/package/audio27/upstream/ShengAudioReach.h": "b135177a5feb3e24e0d8a6aabb301600e2c37078b970a09ada6e8eb7bb6a5b98",
@@ -250,7 +250,7 @@
     "source/device/package/audio27/upstream/QcomSmem.c": "4e9eb0ee22458dad30e1fcb7edb74a9d762222aff0623a6d5b85fb4a6e08bd03",
     "source/device/package/audio27/platform/Tas25xxEndpoint.c": "a108ad9b9e46b5a0ac1d772699e2ef70985fb4abba855d3ff517c3adc3e03549",
     "source/device/package/audio27/hal/NezhaAudioProperties.inc": "addc950d7a9d9bee5a7ac154b80eb199b10f72fe80948bc98b142c973a18c92e",
-    "source/device/scripts/build-nezha27-audio.py": "6b23839779b83857796401ffd550a09b9c0db2aa6cb7f7fa02ddd38b72a9aa22",
+    "source/device/scripts/build-nezha27-audio.py": "0504917e8cfbd587225fb0a7e497c5e11a677f72b4ab62676ee12ef78b0e8f5c",
     "source/device/package/audio27/core/AudioGraph.h": "6f6d6113e81261e686857285229628c0394c302a62ff5010edc343a15d3d9b42",
     "source/device/package/audio27/platform/AudioAssembly.c": "b8b326797448991912f1ba9feb94b620bd446762623f204779d65a3287ce7c05",
     "source/device/package/audio27/core/AudioStream.c": "223f438cbf630d9cb3286258a1397904d04d3f28c6c6c2ddd04abda800416e4e",
@@ -294,7 +294,7 @@
     "source/device/package/audio27/platform/Tas25xxTables.c": "096c0b32b73ae1ceb8f28ecf3dbb60bc677dfcd659a23e2d3e4b3840f9df8ea3",
     "source/device/package/audio27/upstream/GeniI2c.c": "d9ff302e5dc5b14fc3fc3ec760652c0116d861b06748ce5a908dfa1a0a377ef7",
     "source/device/package/audio27/hal/AudioClock.h": "4c60fefab16eccb005f140652c0535eb967bcf5d74a24b65f9b327c18db1e906",
-    "source/device/package/audio27/hal/NezhaAudioPlugIn.c": "e5c426b14acd81ee31b96dd59740fa3b92cb8753ea75f7a20a9483e080869e54",
+    "source/device/package/audio27/hal/NezhaAudioPlugIn.c": "1008e34c13bf648e3bab3efe2e0210bebb03bc365fa4eaacc1422ed904c9406b",
     "source/device/package/audio27/os/NezhaAudioAbi.h": "db4c4f244d6075829fc94b9afdc3c58af070be2fd7d0988a4e74f3c6cb05a621",
     "source/device/package/audio27/os/NezhaAudioService.h": "fdce508eed165f4507fb8583e278ed09df2824c12ef85f2c8de52d3595a3a368",
     "source/device/package/audio27/core/AudioTransport.h": "31e7dde7e49059328d3ba29e5b5642927a80a0f1a4cb96202dd77428862c1f2a",
@@ -327,7 +327,7 @@
     "source/device/package/audio27/platform/AudioPlaybackInputs.c": "cc08c15f4fefc1f6ab168f1540d798932ecc6026fa8ecbf2cf0760aa4b0d3d8e",
     "source/device/package/audio27/platform/AudioPlaybackInputs.h": "719b9e095cea2b3349bf0b4bcec7a7816b243c405d72501c521ac0442703d1a4",
     "source/device/patches/xnu-12377/zzzzzz-nezha-audio-hal-mount.patch": "c6fe1833480aff52dbfe4f44c75d7c5fd995efe1d524f3bc7671fd6559719bef",
-    "source/device/package/audio27/upstream/provenance.json": "d09fa1ec36b94a48045ccc442ac4992a665baf6759a959181f5fddc971893b95",
+    "source/device/package/audio27/upstream/provenance.json": "a0890485aba48a66d546cc6814f0fdf8cdb714f84b855193c7e212933eaafa82",
     "source/device/package/audio27/platform/AudioPdMapper.c": "08f230558a9afae2a86673d88ef0f2431991c0326d7fc831c031f5885a51d558",
     "source/device/package/audio27/platform/AudioPdMapper.h": "69fca38330abf9ac12f162046cbb1f200339713ebf1db1a7220ea7b85d0ea1d5",
     "source/device/package/audio27/upstream/QcomQrtr.c": "d22ff8572b93424f1f03138204a44e10b444d0cb62b6be4f1c57b7d3b2ddbc74",
@@ -393,15 +393,15 @@
   "audio": {
     "base": "GPU023",
     "base_device_revision": "673cde869b7378658b470c4e6b2b9a1766b99411",
-    "source_revision": "030dceb109a9e395e4b579ca042d62dcefa21ded",
-    "source_only_revision": "030dceb109a9e395e4b579ca042d62dcefa21ded",
+    "source_revision": "ee342e3050369bcebeb9c7ee9c8e09ff04e35a06",
+    "source_only_revision": "ee342e3050369bcebeb9c7ee9c8e09ff04e35a06",
     "hardware_enabled": false,
     "resource_census_enabled": true,
     "private_inputs": false,
     "HAL_target": "arm64e-apple-ios27.0",
     "shared_resource_owner": "703d7b4bb00904b4a6e5d96f9e9bf72eec170f6b",
     "private_input_slot_bytes": 35651584,
-    "previous_audio_behavior_source": "9412e2d8dd680602f05a53ea25e65f832bf7cff1",
+    "previous_audio_behavior_source": "030dceb109a9e395e4b579ca042d62dcefa21ded",
     "base_native_run": 42401029411,
     "base_Metal_revision": "eb59f022a326d03330d398b3c1dbcb6f0aeb633f",
     "diagnostic_glink_delay_ms": 20000,
@@ -479,7 +479,7 @@
     "ADSP_GLINK_GPR_control_verified": true,
     "functional_audio_accepted": false,
     "main_package_promoted": false,
-    "native_sources_expected": 58,
+    "native_sources_expected": 0,
     "PIL_preflight_queries": [
       {
         "command": 7,
@@ -538,6 +538,19 @@
     "global_route_samples": 8,
     "HAL_AudioHardware_header_explicit": true,
     "HAL_AudioHardwareDeprecated_dependency": true,
-    "HAL_current_CoreAudio_framework_link": true
+    "HAL_current_CoreAudio_framework_link": true,
+    "HAL_only": true,
+    "native_kernel_rebuilt": false,
+    "kernel_native_sources_reused": 58,
+    "reused_native_run": 42865735799,
+    "reused_native_source_revision": "030dceb109a9e395e4b579ca042d62dcefa21ded",
+    "standard_default_output_selection": true,
+    "one_default_selection_attempt_per_connection": true,
+    "global_route_property_writes": [
+      "dOut",
+      "sOut"
+    ],
+    "original_private_property_replies_retained": true,
+    "CoreAudio_preference_persistence_not_established": true
   }
 }

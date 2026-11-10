@@ -1,7 +1,7 @@
-name: nezha iPhone27 audio on GPU023 - native050
+name: nezha iPhone27 audio HAL on GPU023 - native052
 on:
   push:
-    branches: [codex/ios27-audio-gpu023-native050-20261111]
+    branches: [codex/ios27-audio-gpu023-native052-20261111]
   workflow_dispatch:
 permissions:
   contents: read
