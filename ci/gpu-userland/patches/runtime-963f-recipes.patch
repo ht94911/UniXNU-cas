@@ -1,9 +1,9 @@
 diff --git a/patches/mesa/turnip-driver-cpu-profile.patch b/patches/mesa/turnip-driver-cpu-profile.patch
 new file mode 100644
-index 0000000..854ad69
+index 0000000..2947ba4
 --- /dev/null
 +++ b/patches/mesa/turnip-driver-cpu-profile.patch
-@@ -0,0 +1,882 @@
+@@ -0,0 +1,953 @@
 +diff --git a/src/freedreno/vulkan/meson.build b/src/freedreno/vulkan/meson.build
 +index b544a9f..bf1503f 100644
 +--- a/src/freedreno/vulkan/meson.build
@@ -34,7 +34,7 @@ index 0000000..854ad69
 +    VK_FROM_HANDLE(tu_buffer, buffer, dstBuffer);
 + 
 +diff --git a/src/freedreno/vulkan/tu_cmd_buffer.cc b/src/freedreno/vulkan/tu_cmd_buffer.cc
-+index 70f5c3d..789044d 100644
++index 70f5c3d..245570e 100644
 +--- a/src/freedreno/vulkan/tu_cmd_buffer.cc
 ++++ b/src/freedreno/vulkan/tu_cmd_buffer.cc
 +@@ -1,3 +1,4 @@
@@ -42,7 +42,66 @@ index 0000000..854ad69
 + #include "tu_frame_diagnostic.h"
 + /*
 +  * Copyright © 2016 Red Hat.
-+@@ -4322,16 +4323,24 @@ tu_cmd_render(struct tu_cmd_buffer *cmd_buffer,
++@@ -2119,7 +2120,7 @@ tu6_emit_gmem_stores(struct tu_cmd_buffer *cmd,
++ }
++ 
++ template <chip CHIP>
++-static void
+++static VkResult
++ tu6_emit_tile_store_cs(struct tu_cmd_buffer *cmd, struct tu_cs *cs)
++ {
++    const struct tu_render_pass *pass = cmd->state.pass;
++@@ -2129,6 +2130,18 @@ tu6_emit_tile_store_cs(struct tu_cmd_buffer *cmd, struct tu_cs *cs)
++    if (pass->has_fdm)
++       tu_cs_set_writeable(cs, true);
++ 
+++   /* The first marker may allocate this stream's first BO. GPU032 observed
+++    * BoMap fail here; tu_cs_reserve's release build discarded that error and
+++    * the marker wrote through a null cur. Preserve the Vulkan error before
+++    * entering the unchecked packet emitters. The successful packets are the
+++    * same; no failed or partial stream may proceed to a tile or submission. */
+++   VkResult result = tu_cs_reserve_space(cs, 2);
+++   if (result != VK_SUCCESS) {
+++      if (pass->has_fdm)
+++         tu_cs_set_writeable(cs, false);
+++      return result;
+++   }
+++
++    /* We believe setting the marker affects what state HW blocks save/restore
++     * during preemption.  So we only emit it before the stores at the end of the
++     * last subpass, not other resolves.
++@@ -2144,6 +2157,7 @@ tu6_emit_tile_store_cs(struct tu_cmd_buffer *cmd, struct tu_cs *cs)
++    if (pass->has_fdm)
++       tu_cs_set_writeable(cs, false);
++ 
+++   return VK_SUCCESS;
++ }
++ 
++ void
++@@ -3955,7 +3969,12 @@ tu_cmd_render_tiles(struct tu_cmd_buffer *cmd,
++     * called from tu6_render_tile().
++     */
++    tu_cs_begin(&cmd->tile_store_cs);
++-   tu6_emit_tile_store_cs<CHIP>(cmd, &cmd->tile_store_cs);
+++   result = tu6_emit_tile_store_cs<CHIP>(cmd, &cmd->tile_store_cs);
+++   if (result != VK_SUCCESS) {
+++      vk_command_buffer_set_error(&cmd->vk, result);
+++      free(tiles);
+++      return;
+++   }
++    tu_cs_end(&cmd->tile_store_cs);
++ 
++    tu6_tile_render_begin<CHIP>(cmd, &cmd->cs, rp_ctx, fdm_offsets);
++@@ -4315,6 +4334,8 @@ void
++ tu_cmd_render(struct tu_cmd_buffer *cmd_buffer,
++               const VkOffset2D *fdm_offsets)
++ {
+++   if (cmd_buffer->vk.record_result != VK_SUCCESS)
+++      return;
++    if (cmd_buffer->state.rp.has_tess)
++       tu6_lazy_emit_tessfactor_addr<CHIP>(cmd_buffer);
++ 
++@@ -4322,16 +4343,24 @@ tu_cmd_render(struct tu_cmd_buffer *cmd_buffer,
 + 
 +    tu_autotune::rp_ctx_t rp_ctx = NULL;
 +    const bool sysmem = use_sysmem_rendering(cmd_buffer, &rp_ctx, rp_key);
@@ -67,14 +126,24 @@ index 0000000..854ad69
 +       tu_cmd_render_tiles<CHIP>(cmd_buffer, rp_ctx, fdm_offsets);
 +-   if (stamps)
 ++   }
-++   if (stamps) {
+++   if (stamps && cmd_buffer->vk.record_result == VK_SUCCESS) {
 ++      TU_CPU_PHASE(TU_CPU_RENDER_TRACE);
 +       tu_pass_stamp<CHIP>(&cmd_buffer->cs, stamps + 8);
 ++   }
 + }
 + 
 + static void tu_reset_render_pass(struct tu_cmd_buffer *cmd_buffer)
-+@@ -5747,6 +5756,8 @@ tu_CmdBindPipeline(VkCommandBuffer commandBuffer,
++@@ -5592,6 +5621,9 @@ tu_EndCommandBuffer(VkCommandBuffer commandBuffer)
++ {
++    VK_FROM_HANDLE(tu_cmd_buffer, cmd_buffer, commandBuffer);
++ 
+++   if (cmd_buffer->vk.record_result != VK_SUCCESS)
+++      return vk_command_buffer_end(&cmd_buffer->vk);
+++
++    /* We currently flush CCU at the end of the command buffer, like
++     * what the blob does. There's implicit synchronization around every
++     * vkQueueSubmit, but the kernel only flushes the UCHE, and we don't
++@@ -5747,6 +5779,8 @@ tu_CmdBindPipeline(VkCommandBuffer commandBuffer,
 +                    VkPipelineBindPoint pipelineBindPoint,
 +                    VkPipeline _pipeline)
 + {
@@ -83,7 +152,7 @@ index 0000000..854ad69
 +    VK_FROM_HANDLE(tu_cmd_buffer, cmd, commandBuffer);
 +    VK_FROM_HANDLE(tu_pipeline, pipeline, _pipeline);
 + 
-+@@ -7222,6 +7233,7 @@ tu_CmdBeginRenderPass2(VkCommandBuffer commandBuffer,
++@@ -7222,6 +7256,7 @@ tu_CmdBeginRenderPass2(VkCommandBuffer commandBuffer,
 +                        const VkRenderPassBeginInfo *pRenderPassBegin,
 +                        const VkSubpassBeginInfo *pSubpassBeginInfo)
 + {
@@ -91,7 +160,7 @@ index 0000000..854ad69
 +    VK_FROM_HANDLE(tu_cmd_buffer, cmd, commandBuffer);
 + 
 +    if (TU_DEBUG(DYNAMIC)) {
-+@@ -7244,6 +7256,7 @@ tu_CmdBeginRenderPass2(VkCommandBuffer commandBuffer,
++@@ -7244,6 +7279,7 @@ tu_CmdBeginRenderPass2(VkCommandBuffer commandBuffer,
 +                       pRenderPassBegin->pNext);
 +    cmd->state.fdm_per_layer = pass->has_layered_fdm;
 + 
@@ -99,7 +168,7 @@ index 0000000..854ad69
 +    if (pass->attachment_count > 0) {
 +       VK_MULTIALLOC(ma);
 +       vk_multialloc_add(&ma, &cmd->state.attachments,
-+@@ -7256,6 +7269,7 @@ tu_CmdBeginRenderPass2(VkCommandBuffer commandBuffer,
++@@ -7256,6 +7292,7 @@ tu_CmdBeginRenderPass2(VkCommandBuffer commandBuffer,
 +          return;
 +       }
 +    }
@@ -107,7 +176,7 @@ index 0000000..854ad69
 + 
 +    if (cmd->device->dbg_renderpass_stomp_cs) {
 +       tu_cs_emit_call(&cmd->cs, cmd->device->dbg_renderpass_stomp_cs);
-+@@ -7292,13 +7306,17 @@ tu_CmdBeginRenderPass2(VkCommandBuffer commandBuffer,
++@@ -7292,13 +7329,17 @@ tu_CmdBeginRenderPass2(VkCommandBuffer commandBuffer,
 +       }
 +    }
 + 
@@ -125,7 +194,7 @@ index 0000000..854ad69
 +    cmd->state.renderpass_cache.pending_flush_bits =
 +       cmd->state.cache.pending_flush_bits;
 +    cmd->state.renderpass_cache.flush_bits = 0;
-+@@ -7309,15 +7327,21 @@ tu_CmdBeginRenderPass2(VkCommandBuffer commandBuffer,
++@@ -7309,15 +7350,21 @@ tu_CmdBeginRenderPass2(VkCommandBuffer commandBuffer,
 +          TU_CMD_FLAG_WAIT_FOR_IDLE;
 +    }
 + 
@@ -147,7 +216,7 @@ index 0000000..854ad69
 + }
 + TU_GENX(tu_CmdBeginRenderPass2);
 + 
-+@@ -9083,19 +9107,24 @@ tu_CmdDraw(VkCommandBuffer commandBuffer,
++@@ -9083,19 +9130,24 @@ tu_CmdDraw(VkCommandBuffer commandBuffer,
 +            uint32_t firstVertex,
 +            uint32_t firstInstance)
 + {
@@ -172,7 +241,7 @@ index 0000000..854ad69
 + }
 + TU_GENX(tu_CmdDraw);
 + 
-+@@ -9157,13 +9186,17 @@ tu_CmdDrawIndexed(VkCommandBuffer commandBuffer,
++@@ -9157,13 +9209,17 @@ tu_CmdDrawIndexed(VkCommandBuffer commandBuffer,
 +                   int32_t vertexOffset,
 +                   uint32_t firstInstance)
 + {
@@ -190,7 +259,7 @@ index 0000000..854ad69
 +    tu_cs_emit_pkt7(cs, CP_DRAW_INDX_OFFSET, 7);
 +    tu_cs_emit(cs, tu_draw_initiator(cmd, DI_SRC_SEL_DMA));
 +    tu_cs_emit(cs, instanceCount);
-+@@ -9173,6 +9206,7 @@ tu_CmdDrawIndexed(VkCommandBuffer commandBuffer,
++@@ -9173,6 +9229,7 @@ tu_CmdDrawIndexed(VkCommandBuffer commandBuffer,
 +    tu_cs_emit(cs, cmd->state.max_index_count);
 + 
 +    trace_end_draw(&cmd->rp_trace, cs);
@@ -198,7 +267,7 @@ index 0000000..854ad69
 + }
 + TU_GENX(tu_CmdDrawIndexed);
 + 
-+@@ -10015,6 +10049,7 @@ VKAPI_ATTR void VKAPI_CALL
++@@ -10015,6 +10072,7 @@ VKAPI_ATTR void VKAPI_CALL
 + tu_CmdEndRenderPass2(VkCommandBuffer commandBuffer,
 +                      const VkSubpassEndInfo *pSubpassEndInfo)
 + {
@@ -206,7 +275,7 @@ index 0000000..854ad69
 +    VK_FROM_HANDLE(tu_cmd_buffer, cmd_buffer, commandBuffer);
 + 
 +    if (TU_DEBUG(DYNAMIC)) {
-+@@ -10037,17 +10072,25 @@ tu_CmdEndRenderPass2(VkCommandBuffer commandBuffer,
++@@ -10037,17 +10095,26 @@ tu_CmdEndRenderPass2(VkCommandBuffer commandBuffer,
 +       fdm_offsets = test_offsets;
 +    }
 + 
@@ -222,8 +291,10 @@ index 0000000..854ad69
 + 
 +    cmd_buffer->state.cache.pending_flush_bits |=
 +       cmd_buffer->state.renderpass_cache.pending_flush_bits;
++-   TU_CALLX(cmd_buffer->device, tu_subpass_barrier)(cmd_buffer, &cmd_buffer->state.pass->end_barrier, true);
 ++   { TU_CPU_PHASE(TU_CPU_SUBPASS_BARRIER);
-+    TU_CALLX(cmd_buffer->device, tu_subpass_barrier)(cmd_buffer, &cmd_buffer->state.pass->end_barrier, true);
+++   if (cmd_buffer->vk.record_result == VK_SUCCESS)
+++      TU_CALLX(cmd_buffer->device, tu_subpass_barrier)(cmd_buffer, &cmd_buffer->state.pass->end_barrier, true);
 ++   }
 + 
 ++   { TU_CPU_PHASE(TU_CPU_HOST_ALLOC);

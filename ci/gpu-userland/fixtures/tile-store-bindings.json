@@ -1,0 +1,25 @@
+{
+  "source_sha256": "396ba8ed8eb3f376d23b31839457e33780173668beb375bc3c508e9a728da978",
+  "functions": [
+    {
+      "function": "tu6_emit_tile_store_cs",
+      "sha256": "5ac2df510cedd08771cead382b2b0afba44ca77e0a58f75158e82c949fedd4bc"
+    },
+    {
+      "function": "tu_cmd_render_tiles",
+      "sha256": "f5da8cac4adccd1e04d67385b935ca2d049684f5b719f107fa35228dd334d6be"
+    },
+    {
+      "function": "tu_cmd_render",
+      "sha256": "9a540c910a94fc416710c2604f2235d91312cdaa6bc8d516bf012cf4b95c802b"
+    },
+    {
+      "function": "tu_EndCommandBuffer",
+      "sha256": "4dbd7993a407cadc1852cb24bf6f5b03259a1d15d1eaad0987d7affffb29739b"
+    },
+    {
+      "function": "tu_CmdEndRenderPass2",
+      "sha256": "52ff7fa3d3c3161f5ca39058cf77343562df470d8c37ac60dfec788545cb0585"
+    }
+  ]
+}

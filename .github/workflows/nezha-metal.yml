@@ -1,7 +1,7 @@
-name: nezha iPhone27 independent fence connection and bounded completion-owned cache release 031
+name: nezha iPhone27 tile-store error propagation 032
 on:
   push:
-    branches: [codex/ios27-gpu27-metal-full-031-20261110]
+    branches: [codex/ios27-gpu27-metal-full-032-20261110]
   workflow_dispatch:
 permissions:
   contents: read
@@ -79,6 +79,9 @@ jobs:
       - name: Verify actual driver phase clocks and frontend record packing
         id: driver_profile
         run: device/ci/gpu-userland/logrun driver-profile python3 device/ci/gpu-userland/check-driver-profile-host.py --unixnu unixnu --logs "$LOGS"
+      - name: Check actual tile-store allocation failure and command completion
+        id: tile_store_errors
+        run: device/ci/gpu-userland/logrun tile-store-errors python3 device/ci/gpu-userland/check-tile-store-error-host.py --unixnu unixnu --logs "$LOGS"
       - name: Build Turnip for the actual A840 arm64e iOS27 target
         id: turnip_ios27
         working-directory: unixnu
@@ -124,6 +127,7 @@ jobs:
           OUTCOME_PRIMER_POLICY: ${{ steps.primer_policy.outcome }}
           OUTCOME_RUNTIME_SOURCE: ${{ steps.runtime_source.outcome }}
           OUTCOME_DRIVER_PROFILE: ${{ steps.driver_profile.outcome }}
+          OUTCOME_TILE_STORE_ERRORS: ${{ steps.tile_store_errors.outcome }}
         run: |
           set -euo pipefail
           export PATH="$(brew --prefix openssl@3)/bin:$PATH"

@@ -116,7 +116,10 @@ assert any(op=='retab' and pc<success for pc,op in begin[reserve+2:])
 contexts=json.loads((a.logs/'device-context-qualified.json').read_text())
 assert contexts['actual_prepared_sources_match'] and contexts['new_ownership_and_guard_cases_passed']
 assert contexts['real_Mesa_RB_used'] and contexts['old_VA_UAF_reproduced'] and contexts['actual_swap_API_and_lifetime_guards_passed']
-report=dict(actual_target_checked=True,plugin_sha256=hashlib.sha256(data).hexdigest(),
+tile_errors=json.loads((a.logs/'tile-store-error-host.json').read_text())
+assert tile_errors['passed'] and tile_errors['actual_prepared_sources_match']
+assert tile_errors['source_sha256']==hashlib.sha256((mesa/'src/freedreno/vulkan/tu_cmd_buffer.cc').read_bytes()).hexdigest()
+report=dict(initial_tile_store_error_propagation_source_bound=True,actual_target_checked=True,plugin_sha256=hashlib.sha256(data).hexdigest(),
             profile=profile,required_markers_present=True,iPad_raw_reader_markers_absent=True,
             bundle_signature_verified=True,host_pixel_result='legacy host010 failure retained;host GUI path not run by this build;A840 acceptance remains separate',
             actual_device_registry_compiled=True,old_singleton_symbol_absent=True,
