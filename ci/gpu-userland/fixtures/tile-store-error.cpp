@@ -733,11 +733,11 @@ static std::vector<uint32_t> exercise(bool modified,bool fdm,int failure,bool sy
 int main() {
     for(bool fdm:{false,true}) {
         auto original=exercise(false,fdm,0);auto fixed=exercise(true,fdm,0);assert(original==fixed);
-        for(int failure:{-1,-2,-4})exercise(true,fdm,failure);
+        for(int failure:{VK_ERROR_OUT_OF_HOST_MEMORY,VK_ERROR_OUT_OF_DEVICE_MEMORY,VK_ERROR_DEVICE_LOST})exercise(true,fdm,failure);
     }
     assert(exercise(false,false,0,true)==exercise(true,false,0,true));
-    counts={};tu_cmd_buffer failed{};failed.vk.record_result=-4;
-    candidate::tu_cmd_render<A8XX>(&failed,nullptr);assert(candidate::tu_EndCommandBuffer<A8XX>(&failed)==-4);
+    counts={};tu_cmd_buffer failed{};failed.vk.record_result=VK_ERROR_DEVICE_LOST;
+    candidate::tu_cmd_render<A8XX>(&failed,nullptr);assert(candidate::tu_EndCommandBuffer<A8XX>(&failed)==VK_ERROR_DEVICE_LOST);
     assert(!counts.stamps && !counts.flushes && !counts.reserves && counts.end==1);++cases;
     std::printf("PASS %u cases: unchanged successful emitter inputs/words; initial tile-store reserve failures propagate through real EndRenderPass/EndCommandBuffer functions; FDM cleanup and no post-failure emit\n",cases);
 }

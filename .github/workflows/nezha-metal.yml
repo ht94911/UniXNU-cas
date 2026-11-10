@@ -1,7 +1,7 @@
-name: nezha iPhone27 tile-store error propagation 032
+name: nezha iPhone27 tile-store error propagation 032b
 on:
   push:
-    branches: [codex/ios27-gpu27-metal-full-032-20261110]
+    branches: [codex/ios27-gpu27-metal-full-032b-20261110]
   workflow_dispatch:
 permissions:
   contents: read
