@@ -3,7 +3,7 @@
   "attempt": 1,
   "head": "c384a9b6f0bbb76a38811166cd49e497fb1da88d",
   "runtime_tree": "139445c01681140b6ccfb13c7ab160fd0e0f8553",
-  "frontend_sha256": "3d94ca9d79bf4b4f0d2edf5c999a2745cd8d3373cb15845a549512396449bdca",
+  "frontend_sha256": "11ebecdcc95df46cf3bc058cebed16732d3c8dccbd118d5e41c957ccd40a213c",
   "runtime_sources_sha256": "f73b0ce1e1c34125e729b8a4249b8f98fd7dae2c48e63c23d2470b2a9f0f4aa7",
   "reports": {
     "buffer_reserve": {
@@ -23,6 +23,6 @@
       "sha256": "cebca8f576f2a1b50f7f2425158d3640cf95c5d0ccd29150fd6e998abd6c19c5"
     }
   },
-  "previous_frontend_sha256": "7fdef0940901a68680d5b01ac6494ee2ec83e323cf836342d97faa81851e0068",
-  "frontend_changes_checked_separately": "sync-profile/report.json and display-profile/report.json; runtime sources remain exact"
+  "previous_frontend_sha256": "3d94ca9d79bf4b4f0d2edf5c999a2745cd8d3373cb15845a549512396449bdca",
+  "frontend_changes_checked_separately": "sync-profile/report.json: actual Mach thread_info helper and compact producer; display/runtime/render unchanged"
 }

@@ -121,6 +121,8 @@ assert tile_errors['passed'] and tile_errors['actual_prepared_sources_match']
 assert tile_errors['source_sha256']==hashlib.sha256((mesa/'src/freedreno/vulkan/tu_cmd_buffer.cc').read_bytes()).hexdigest()
 sync_profile=json.loads((a.logs/'sync-profile/report.json').read_text())
 assert sync_profile['passed'] and sync_profile['actual_producer_to_decoder_checked']
+assert sync_profile['real_Mach_query']['executed'] and sync_profile['real_Mach_query']['passed']
+assert sync_profile['CPU_query']=='thread_info/THREAD_BASIC_INFO' and sync_profile['CPU_wire_precision_ns']==1000
 assert sync_profile['actual_source_sha256']==hashlib.sha256((a.unixnu/'drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm').read_bytes()).hexdigest()
 display_profile=json.loads((a.logs/'display-profile/report.json').read_text())
 assert display_profile['passed'] and display_profile['actual_reader'] and display_profile['actual_frame_producer'] and display_profile['actual_decoder']

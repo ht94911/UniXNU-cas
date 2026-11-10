@@ -1,7 +1,7 @@
-name: nezha iPhone27 display timing and Metal latency 034
+name: nezha iPhone27 Mach CPU query and physical display timing 035
 on:
   push:
-    branches: [codex/ios27-gpu27-metal-full-034-20261110]
+    branches: [codex/ios27-gpu27-metal-full-035-20261110]
   workflow_dispatch:
 permissions:
   contents: read
