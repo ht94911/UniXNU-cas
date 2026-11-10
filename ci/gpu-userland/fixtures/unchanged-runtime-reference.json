@@ -3,7 +3,7 @@
   "attempt": 1,
   "head": "c384a9b6f0bbb76a38811166cd49e497fb1da88d",
   "runtime_tree": "139445c01681140b6ccfb13c7ab160fd0e0f8553",
-  "frontend_sha256": "ded1b3b564d10ce5e2f869907afa2a45c3d97e18a9969367c57796b7d6db4746",
+  "frontend_sha256": "7fdef0940901a68680d5b01ac6494ee2ec83e323cf836342d97faa81851e0068",
   "runtime_sources_sha256": "f73b0ce1e1c34125e729b8a4249b8f98fd7dae2c48e63c23d2470b2a9f0f4aa7",
   "reports": {
     "buffer_reserve": {
@@ -22,5 +22,7 @@
       "filename": "heap-copies-host.json",
       "sha256": "cebca8f576f2a1b50f7f2425158d3640cf95c5d0ccd29150fd6e998abd6c19c5"
     }
-  }
+  },
+  "previous_frontend_sha256": "ded1b3b564d10ce5e2f869907afa2a45c3d97e18a9969367c57796b7d6db4746",
+  "frontend_changes_checked_separately": "sync-profile/report.json; runtime sources remain exact"
 }

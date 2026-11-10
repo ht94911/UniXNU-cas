@@ -1,7 +1,7 @@
-name: nezha iPhone27 tile-store error propagation 032b
+name: nezha iPhone27 synchronous Metal latency 033
 on:
   push:
-    branches: [codex/ios27-gpu27-metal-full-032b-20261110]
+    branches: [codex/ios27-gpu27-metal-full-033-20261110]
   workflow_dispatch:
 permissions:
   contents: read
@@ -82,6 +82,9 @@ jobs:
       - name: Check actual tile-store allocation failure and command completion
         id: tile_store_errors
         run: device/ci/gpu-userland/logrun tile-store-errors python3 device/ci/gpu-userland/check-tile-store-error-host.py --unixnu unixnu --logs "$LOGS"
+      - name: Check actual synchronous frontend spans and CPU records
+        id: sync_profile
+        run: device/ci/gpu-userland/logrun sync-profile python3 device/ci/gpu-userland/check-metal-sync-profile.py --source unixnu/drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm --out "$LOGS/sync-profile" --decoder device/ci/gpu-userland/decode-sync-frames.py
       - name: Build Turnip for the actual A840 arm64e iOS27 target
         id: turnip_ios27
         working-directory: unixnu
@@ -128,6 +131,7 @@ jobs:
           OUTCOME_RUNTIME_SOURCE: ${{ steps.runtime_source.outcome }}
           OUTCOME_DRIVER_PROFILE: ${{ steps.driver_profile.outcome }}
           OUTCOME_TILE_STORE_ERRORS: ${{ steps.tile_store_errors.outcome }}
+          OUTCOME_SYNC_PROFILE: ${{ steps.sync_profile.outcome }}
         run: |
           set -euo pipefail
           export PATH="$(brew --prefix openssl@3)/bin:$PATH"
@@ -165,6 +169,7 @@ jobs:
           BUFFER_RESERVE: ${{ steps.buffer_reserve.outcome }}
           DEVICE_CONTEXTS: ${{ steps.device_contexts.outcome }}
           RUNTIME_SOURCE: ${{ steps.runtime_source.outcome }}
+          SYNC_PROFILE: ${{ steps.sync_profile.outcome }}
         run: |
           set -euo pipefail
           test "$TARGETS" = success
@@ -173,6 +178,7 @@ jobs:
           test "$FULL_TARGET" = success
           test "$DEVICE_CONTEXTS" = success
           test "$RUNTIME_SOURCE" = success
+          test "$SYNC_PROFILE" = success
           test "$BUFFER_RESERVE" = skipped
           test "$VULKAN_OPERATIONS" = skipped
           test "$TILED_WORDS" = skipped

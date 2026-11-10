@@ -119,7 +119,10 @@ assert contexts['real_Mesa_RB_used'] and contexts['old_VA_UAF_reproduced'] and c
 tile_errors=json.loads((a.logs/'tile-store-error-host.json').read_text())
 assert tile_errors['passed'] and tile_errors['actual_prepared_sources_match']
 assert tile_errors['source_sha256']==hashlib.sha256((mesa/'src/freedreno/vulkan/tu_cmd_buffer.cc').read_bytes()).hexdigest()
-report=dict(initial_tile_store_error_propagation_source_bound=True,actual_target_checked=True,plugin_sha256=hashlib.sha256(data).hexdigest(),
+sync_profile=json.loads((a.logs/'sync-profile/report.json').read_text())
+assert sync_profile['passed'] and sync_profile['actual_producer_to_decoder_checked']
+assert sync_profile['actual_source_sha256']==hashlib.sha256((a.unixnu/'drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm').read_bytes()).hexdigest()
+report=dict(actual_sync_profile=sync_profile,initial_tile_store_error_propagation_source_bound=True,actual_target_checked=True,plugin_sha256=hashlib.sha256(data).hexdigest(),
             profile=profile,required_markers_present=True,iPad_raw_reader_markers_absent=True,
             bundle_signature_verified=True,host_pixel_result='legacy host010 failure retained;host GUI path not run by this build;A840 acceptance remains separate',
             actual_device_registry_compiled=True,old_singleton_symbol_absent=True,
