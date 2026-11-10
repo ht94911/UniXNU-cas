@@ -105,10 +105,11 @@ static inline int sm_dsi_begin(struct sm_dsi_transfer *t,
     int r=sm_dsi_preflight(t,p,packet,now_us);if(r<0)return r;
     r=sm_dsi_program(t,packet,0);return r<0?r:sm_dsi_trigger(t);
 }
-// Workloop/timer polling. Caller supplies a monotonic microsecond timestamp.
+// Workloop/timer polling. Caller supplies the monotonic timestamp, budget and
+// began_us origin; the transport never samples a clock or extends a deadline.
 // Timeout/error/lease loss never becomes completion or an automatic retry.
-static inline int sm_dsi_observe(struct sm_dsi_transfer *t,uint64_t lease_epoch,
-                              uint64_t now_us) {
+static inline int sm_dsi_observe_budget(struct sm_dsi_transfer *t,uint64_t lease_epoch,
+                              uint64_t now_us,uint64_t budget_us) {
     if(!t || t->poisoned || !t->active)return SM_DSI_REFUSED;
     if(!lease_epoch || lease_epoch!=t->lease_epoch)
         return sm_dsi_uncertain(t,SM_DSI_UNCERTAIN);
@@ -116,9 +117,15 @@ static inline int sm_dsi_observe(struct sm_dsi_transfer *t,uint64_t lease_epoch,
     if(!sm_dsi_read(t,SM_DSI_INT,&ints) || !sm_dsi_read(t,SM_DSI_STATUS,&status) ||
        (ints&UINT32_C(0x01000000)) || (status&UINT32_C(0x80000000)))
         return sm_dsi_uncertain(t,SM_DSI_UNCERTAIN);
-    if((ints&1) && !(status&2))return SM_DSI_COMPLETE;
-    if(now_us-t->began_us>=5000)return sm_dsi_uncertain(t,SM_DSI_TIMEOUT);
+    // Exact OEM IRQ and atomic polling paths complete on DMA_DONE alone.
+    // STATUS is still read for errors; DMA_BUSY is a preflight condition.
+    if(ints&1)return SM_DSI_COMPLETE;
+    if(now_us-t->began_us>=budget_us)return sm_dsi_uncertain(t,SM_DSI_TIMEOUT);
     return SM_DSI_WAIT;
+}
+static inline int sm_dsi_observe(struct sm_dsi_transfer *t,uint64_t lease_epoch,
+                              uint64_t now_us) {
+    return sm_dsi_observe_budget(t,lease_epoch,now_us,UINT64_C(5000));
 }
 // Caller must have observed actual completion immediately before cleanup.
 static inline int sm_dsi_cleanup(struct sm_dsi_transfer *t) {
@@ -146,9 +153,13 @@ static inline int sm_dsi_cleanup(struct sm_dsi_transfer *t) {
            (ints&UINT32_C(0x01000000)))return sm_dsi_uncertain(t,SM_DSI_UNCERTAIN);
         t->active=false;return SM_DSI_COMPLETE;
 }
+static inline int sm_dsi_poll_budget(struct sm_dsi_transfer *t,uint64_t lease_epoch,
+                              uint64_t now_us,uint64_t budget_us) {
+    int r=sm_dsi_observe_budget(t,lease_epoch,now_us,budget_us);return r==SM_DSI_COMPLETE?sm_dsi_cleanup(t):r;
+}
 static inline int sm_dsi_poll(struct sm_dsi_transfer *t,uint64_t lease_epoch,
                               uint64_t now_us) {
-    int r=sm_dsi_observe(t,lease_epoch,now_us);return r==SM_DSI_COMPLETE?sm_dsi_cleanup(t):r;
+    return sm_dsi_poll_budget(t,lease_epoch,now_us,UINT64_C(5000));
 }
 static inline int sm_dsi_pair_fail(struct sm_dsi_transfer *master,
                                    struct sm_dsi_transfer *slave,int r) {

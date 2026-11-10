@@ -1,7 +1,7 @@
-name: nezha iPhone27 brightness004 poll observation on GPU030
+name: nezha iPhone27 brightness005 bounded single transfer on GPU030
 on:
   push:
-    branches: [codex/ios27-brightness-gpu030-004-20261110]
+    branches: [codex/ios27-brightness-gpu030-005-20261110]
   workflow_dispatch:
 permissions:
   contents: read

@@ -6,12 +6,13 @@ The IOService/DSI model is not Apple ABI or physical brightness evidence.
 import ast
 import hashlib
 import json
+import re
 from pathlib import Path
 import subprocess
 
 D=Path(__file__).resolve().parents[1]
 O=D/'build/brightness-trace-host';O.mkdir(parents=True,exist_ok=True)
-reference=Path('/home/hua/nezha-work/ios27/brightness27-codex/test-service004.py')
+reference=Path('/home/hua/nezha-work/ios27/brightness27-codex/test-service005.py')
 nodes=ast.parse(reference.read_text()).body
 parts={n.targets[0].id:ast.literal_eval(n.value) for n in nodes
        if isinstance(n,ast.Assign) and isinstance(n.targets[0],ast.Name)
@@ -25,6 +26,8 @@ old_body=old_body.replace('NativeNezhaBacklight','TraceBaselineBacklight')
 head=parts['head'].replace('#include <cstring>','#include <cstring>\n#include <cstdarg>\n#include <thread>')
 head=head.replace('#define OSDeclareDefaultStructors(T) public:T()=default;private:',
                   '#define OSDeclareDefaultStructors(T) public:T()=default;public:')
+constant=re.search(r'^static constexpr uint64_t NEZHA_DSI0_COMMAND_BUDGET_US=.*;$',source,re.M).group(0)
+head+='\n'+constant+'\n'
 head+=r'''
 static unsigned traceLines,unsupportedLines;
 static int tracePrintf(const char*format,...) {
@@ -84,7 +87,7 @@ tail=tail.replace(' std::printf("PASS %u actual service-source model scenarios;'
 model=O/'actual-service.cpp';model.write_text(head+old_body+body+'\n#undef printf\n'+tail)
 command=['g++','-std=c++20','-O1','-g','-Wall','-Wextra','-Werror','-pthread',
          '-fsanitize=address,undefined','-fno-omit-frame-pointer',
-         '-I'+str(D/'package/backlight'),'-I/home/hua/nezha-work/ios27/soc-dsi067/include',
+         '-I'+str(D/'package/backlight'),'-I/home/hua/.codex/worktrees/brightness27-dsi005/soc-dsi067/include',
          str(model),'-o',str(O/'model')]
 subprocess.run(command,check=True)
 result=subprocess.run([str(O/'model')],capture_output=True,text=True)
@@ -98,6 +101,11 @@ report=dict(passed=True,actual_class_body_extracted=True,ASan_UBSan=True,
             successful_control_after_unsupported_noise=True,per_instance_quota=True,
             surrogate_layout_delta_bytes=0,expected_original_Apple_base_bytes=880,
             expected_native_derived_bytes=2200,native_allocation_and_PAC_pending=True,
-            hardware=False,phone_operations=0)
+            hardware=False,phone_operations=0,behavior_revision="005",new_behavior_scenarios=6,selected_SoC_header_SHA256=hashlib.sha256(Path('/home/hua/.codex/worktrees/brightness27-dsi005/soc-dsi067/include/Sm8850DsiFifo.h').read_bytes()).hexdigest())
+report.update(actual_header_SHA256=hashlib.sha256((D/'package/backlight/NezhaDsi0.h').read_bytes()).hexdigest(),
+              actual_helper_SHA256=hashlib.sha256((D/'package/backlight/NezhaDsiObservation.h').read_bytes()).hexdigest(),
+              actual_test_SHA256=hashlib.sha256(model.read_bytes()).hexdigest(),
+              generator_SHA256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+              reference_generator_SHA256=hashlib.sha256(reference.read_bytes()).hexdigest())
 (O/'qualified.json').write_text(json.dumps(report,indent=2)+'\n')
 print(json.dumps(report,indent=2))

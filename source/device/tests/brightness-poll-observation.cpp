@@ -54,7 +54,7 @@ struct Trial {
     uint32_t regs[256]={};
     bool active,poisoned,prepared;
 };
-static Trial run(const std::vector<Poll>&polls,bool observed) {
+static Trial run(const std::vector<Poll>&polls,bool observed,uint64_t budget=0) {
     FakeIo io;io.observed=observed;
     io.regs[SM_DSI_HW/4]=UINT32_C(0x200a0000);io.regs[SM_DSI_CTRL/4]=UINT32_C(0x1f5);
     io.regs[SM_DSI_DMA_CTRL/4]=UINT32_C(0x14000000);io.regs[SM_DSI_INT/4]=UINT32_C(0xa000);
@@ -73,7 +73,7 @@ static Trial run(const std::vector<Poll>&polls,bool observed) {
     for(const auto&poll:polls) {
         io.regs[SM_DSI_INT/4]=poll.ints;io.regs[SM_DSI_STATUS/4]=poll.status;io.fail_read=poll.fail;
         if(observed)nezha_dsi_observation_poll_begin(&io,95,poll.now,1895);
-        const int result=sm_dsi_poll(&transfer,poll.lease,poll.now);
+        const int result=budget?sm_dsi_poll_budget(&transfer,poll.lease,poll.now,budget):sm_dsi_poll(&transfer,poll.lease,poll.now);
         if(observed)nezha_dsi_observation_poll_end(&io,95,result,&transfer);
         trial.results.push_back(result);
         if(result<0 || result==SM_DSI_COMPLETE)break;
@@ -101,8 +101,8 @@ static Trial run(const std::vector<Poll>&polls,bool observed) {
     trial.active=transfer.active;trial.poisoned=transfer.poisoned;trial.prepared=transfer.prepared;
     return trial;
 }
-static Trial compare(const std::vector<Poll>&polls) {
-    Trial observed=run(polls,true),baseline=run(polls,false);
+static Trial compare(const std::vector<Poll>&polls,uint64_t budget=0) {
+    Trial observed=run(polls,true,budget),baseline=run(polls,false,budget);
     assert(observed.operations==baseline.operations&&observed.results==baseline.results);
     assert(!memcmp(observed.regs,baseline.regs,sizeof(observed.regs)));
     assert(observed.active==baseline.active&&observed.poisoned==baseline.poisoned&&observed.prepared==baseline.prepared);
@@ -143,6 +143,17 @@ int main() {
     ++scenarios;
     auto lease_lost=compare({{1100,0xa000,2,UINT32_MAX,2}});
     assert(lease_lost.results.back()==SM_DSI_UNCERTAIN&&lease_lost.record.last_valid==0);
+    ++scenarios;
+    //005 explicit single budget: a late DONE with DMA_BUSY still performs
+    //real cleanup,while missing DONE remains bounded at1200ms.
+    auto late_busy=compare({{5999,0xa000,2},{10001,0xa001,0x8007}},1200000);
+    assert((late_busy.results==std::vector<int>{SM_DSI_WAIT,SM_DSI_COMPLETE}));
+    assert(late_busy.record.last_status==0x8007&&late_busy.regs[SM_DSI_STATUS/4]==0x8007);
+    assert(late_busy.record.last_ints==0xa001&&late_busy.regs[SM_DSI_INT/4]==0xa000);
+    ++scenarios;
+    auto single_bound=compare({{1200999,0xa000,2},{1201000,0xa000,2}},1200000);
+    assert((single_bound.results==std::vector<int>{SM_DSI_WAIT,SM_DSI_TIMEOUT}));
+    assert(single_bound.record.last_poll_us-single_bound.record.began_us==1200000);
     ++scenarios;
     // Independently vary owner/generation and out-of-poll accesses.
     FakeIo owner,other;struct sm_dsi_transfer transfer={};transfer.lease_epoch=1;transfer.began_us=1000;

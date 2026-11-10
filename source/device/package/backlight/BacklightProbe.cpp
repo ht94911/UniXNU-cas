@@ -26,6 +26,7 @@ volatile uint32_t nezha_backlight_requests,nezha_backlight_confirmed,nezha_backl
 volatile int32_t nezha_backlight_transport_result;
 __attribute__((noinline)) void nezha_backlight_checkpoint(void) {__asm__ volatile("" ::: "memory");}
 }
+static constexpr uint64_t NEZHA_DSI0_COMMAND_BUDGET_US=UINT64_C(1200000);
 static uint64_t nowUs() {uint64_t ns=0;absolutetime_to_nanoseconds(mach_absolute_time(),&ns);return ns/1000;}
 class NativeNezhaBacklight : public AppleARMBacklight {
     OSDeclareDefaultStructors(NativeNezhaBacklight)
@@ -39,7 +40,7 @@ class NativeNezhaBacklight : public AppleARMBacklight {
     unsigned traceEnabled=0;
     bool published=false,unavailable=false,startedBackend=false,attachedBackend=false;
     uint32_t unsupportedTraceCount=0;
-    void trace(const char *phase,uint32_t request,uint64_t generation,uint32_t value,int result,bool unsupported=false) {
+    void trace(const char *phase,uint32_t request,uint64_t generation,uint32_t value,int result,bool unsupported=false,uint64_t timestamp=0) {
         if(!traceEnabled)return;
         uint32_t *counter=unsupported?&unsupportedTraceCount:&traceCount;
         const uint32_t limit=unsupported?8:8192;
@@ -51,7 +52,7 @@ class NativeNezhaBacklight : public AppleARMBacklight {
             if(__atomic_compare_exchange_n(counter,&before,before+1,0,__ATOMIC_RELAXED,__ATOMIC_RELAXED))break;
         }
         printf("NEZHA BACKLIGHT TRACE: us=%llu phase=%s req=%u gen=%llu value=%u rc=%d\n",
-            (unsigned long long)nowUs(),phase,request,(unsigned long long)generation,value,result);
+            (unsigned long long)(timestamp?timestamp:nowUs()),phase,request,(unsigned long long)generation,value,result);
     }
     bool loadProfile() {
         IORegistryEntry *chosen=IORegistryEntry::fromPath("/chosen",gIODTPlane);
@@ -143,7 +144,7 @@ class NativeNezhaBacklight : public AppleARMBacklight {
         }
         if(activeGeneration) {
             nezha_dsi_observation_poll_begin(&dsi,activeGeneration,now,commands.acknowledged);
-            int result=sm_dsi_poll(&dsi.transfer,dsi.proof.lease_epoch,now);
+            int result=sm_dsi_poll_budget(&dsi.transfer,dsi.proof.lease_epoch,now,NEZHA_DSI0_COMMAND_BUDGET_US);
             nezha_dsi_observation_poll_end(&dsi,activeGeneration,result,&dsi.transfer);
             nezha_backlight_transport_result=result;
             if(result<0){fault(result);return;}
@@ -200,8 +201,12 @@ class NativeNezhaBacklight : public AppleARMBacklight {
                 tick->setTimeoutMS(1);return;
             }
             if(result!=SM_DSI_SENT){fault(result);return;}
+            // The original normal single-controller write wait begins after
+            // successful trigger. Use that real timestamp, also for sent trace.
+            const uint64_t sentUs=nowUs();
+            dsi.transfer.began_us=sentUs;
             nezha_dsi_observation_begin(&dsi,activeGeneration,activeRequest,sending,commands.acknowledged,&dsi.transfer);
-            trace("sent",activeRequest,activeGeneration,sending,result);
+            trace("sent",activeRequest,activeGeneration,sending,result,false,sentUs);
             refusalSince=0;nezha_backlight_transport_result=result;
             nezha_backlight_stage=published?12:11;
         }

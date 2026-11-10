@@ -30,7 +30,7 @@ physical_device=Path(os.environ['UNIXNU_DEVICE']).resolve()
 local_sources=tomllib.loads((physical_device/'local.toml').read_text())['source']
 soc_source=next(item for item in local_sources if item['name']=='sm8850' and item['kind']=='soc')
 soc_header=(physical_device/soc_source['local']).resolve()/'include/Sm8850DsiFifo.h'
-require(sha(soc_header)=='5f9a2ce924585f327c088bcdaf03e6f30fe4b1573b65b3df10eb02b71bc3442f','qualified SM8850 FIFO protocol identity')
+require(sha(soc_header)=='d98354f8ebd13b492292fa9c480985b4ec0eeed6a26c4e4397fe4e3be5c68def','qualified SM8850 FIFO protocol identity')
 shutil.copyfile(soc_header,include/'Sm8850DsiFifo.h')
 base=ROOT/'build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837';sources=ROOT/'kits/nezha/nezha27-input';records={False:json.loads((base/'iokit/DEVELOPMENT/IOPlatformExpert.cpo.json').read_text().strip().rstrip(',')),True:json.loads((base/'bsd/DEVELOPMENT/bsd_init.o.json').read_text().strip().rstrip(','))};details={}
 for name in ['NativeHidInput.cpp','HidInputProbe.cpp','NezhaInput.c','ResourceProbe.c','InputChainProbe.cpp','InputEventBridge.cpp','BacklightProbe.cpp']:

@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Board-only existing DSI poll values and timing on timeout over fixed G030; no extra MMIO, clock sample, deadline/packet/cleanup/reset or class-layout change.",
+  "purpose": "Production single DSI0 repair: explicit bounded1200ms budget from successful-trigger timestamp and OEM DMA_DONE completion; retained004 observer,preflight/error/lease/cleanup/W1C and no retry/reset.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,8 +14,8 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "3355544ad2a7bbe51f26d2637935164d4a4b0b7c",
-  "soc_revision": "5a71f9eb5724ff58eddf49f7f5baecc9f4233a7c",
+  "device_revision": "7409f1989d7ba407ba938b2809652fe57329031f",
+  "soc_revision": "93289d118bb53452871be52def702d40f8f5ca0f",
   "xcode": "26.6",
   "files": {
     "source/adreno/LICENSE": "16fbc0170994a48f60938d9f0d992d3bad113383cf90882f75c206e079c2a2dc",
@@ -79,7 +79,7 @@
     "source/adreno/NativeGpuTraceStore.h": "4a2984192bc2c68383146f558212d1000c920a8d9cbe54ccec8badd935844823",
     "source/device/board.toml": "dccfde7cae4e0b1eb6ab8b6af78136c0014a8d8d861449cd7694eb8867527c57",
     "source/device/configs/nezha_ios27_defconfig": "6f771ac6d84d2a094a9b4b4088ba1fe5cb172444cc76ae5584e68b94f090d121",
-    "source/device/feeds.toml": "89cd3214bf98295e76dacf3606cfce03f4a903c27e865d6558e45bacd3e154b0",
+    "source/device/feeds.toml": "d3e5da400586ef8b398a170bc190cd923d64107282f49c1acf65ad62ffab7c3a",
     "source/device/package/.gitkeep": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
     "source/device/package/BootDiagExport.c": "88f65a92490b54444ca68ecf99e887ba1c7f6ee3d5145b8e6eed13bf90c7a92d",
     "source/device/package/BootLog.c": "b8a76a03be5b1595c09ab8181acadf6332f88196022c086eb4628addac25acb3",
@@ -100,7 +100,7 @@
     "source/device/package/SourceRootPolicies.cpp": "714af8d95b5a8db89058be9f14a7e71a5fc2e97ded4d067c39e04299f0db27d5",
     "source/device/package/SourceStorage.cpp": "d0b8e0433ef71a1761e5d3dd055d8c4a6b709a5b8dabb2da36ab558291c9d2f3",
     "source/device/package/armcpu/darwin-asm-separators.patch": "15893fd689f266184c3273135761d7eff0d71aa0c42e29d1d71666a0abd60e8f",
-    "source/device/package/backlight/BacklightProbe.cpp": "5b04d3eb780a6ba268d1253fec81dbdcd80e3b9e189683a78ecff3d28d745911",
+    "source/device/package/backlight/BacklightProbe.cpp": "2957453001baf80fab7da4562bc32df9b3271992a162f4e55e8b1d27371c161d",
     "source/device/package/backlight/NezhaBrightnessProfile.h": "e48b8db0b79f6debfb8720e5e018f4b46f25496925d6e1c4c6b9b2262f51d44a",
     "source/device/package/backlight/NezhaBrightnessRequest.h": "876811b23045660b71c82c5f6ff33780a6f7bfaaa4311c116c71d179b348a59c",
     "source/device/package/backlight/NezhaDsi0.h": "b8663a1fa337d4aaf5062182d45c7fe2dfb28714dd8f04d885e3e511d5577a13",
@@ -178,7 +178,7 @@
     "source/device/scripts/build-boot-progress.py": "a210eb1f0443574eb1506932aa9e8181d5c73aecf99397d8cc731568bd3210ba",
     "source/device/scripts/build-gop-legacy-display-27.py": "f6f0e2cb69003dff292441f92b3e0431e5bd2519c24fbdef49e9365d519c07ea",
     "source/device/scripts/build-ios27-pmgr.py": "f88a0596937cbf0504922751a3194e3a33bba609f683a415262887d2b64241e4",
-    "source/device/scripts/build-nezha27-input.py": "cd559fad30207962411546b32ffb5547ae29379e7fa992d16eaab09a39b6cd28",
+    "source/device/scripts/build-nezha27-input.py": "0730e4f7bf2cea3deaa9924cd3c044f7d4444a4a200ea08de3f6469fb4b2cb51",
     "source/device/scripts/build-nezha27-usb-control.py": "a2cd48a8e07a1cc43cc54488d7492c45f63aaa21121ea85667e34752b83d4971",
     "source/device/scripts/check-adreno840-integration.py": "225243ee2a6f45137b62c998743393889c9d9a306015542cb75134f556dcca64",
     "source/device/scripts/check-iosurface-plane-27.py": "092f98e807491b17df3e10835d23f1c44ae25c8820cc43c6343c56fa75c3c4c8",
@@ -206,7 +206,7 @@
     "source/metal/OriginalAcceleratorABI.h": "211e922f9b760ddec2e3453db6584bac57597b3d39e4bf0d013c1b2debd53365",
     "source/ramblock.bundle": "28d547819358f3f45ccd5b572685848ff2327c97b378719285c50552f10114fd",
     "source/soc/configs/sm8850.config": "5510debad6dc3326908a4d23082f715e62d32a1a5e6587197da3dbf18977e5bc",
-    "source/soc/include/Sm8850DsiFifo.h": "5f9a2ce924585f327c088bcdaf03e6f30fe4b1573b65b3df10eb02b71bc3442f",
+    "source/soc/include/Sm8850DsiFifo.h": "d98354f8ebd13b492292fa9c480985b4ec0eeed6a26c4e4397fe4e3be5c68def",
     "source/soc/patches/xnu-12377/native-smp-secondary.patch": "9d9164921da548a9f13ccbd6093c799583f54e590ef3d562288dcea9ba5a2774",
     "source/soc/patches/xnu-12377/native-smp-wide-affinity.patch": "792c8a08e4c8eb2101c70705fbf83e9b514129c36ee176b3133d1db5d4e84125",
     "source/soc/patches/xnu-12377/series": "bb95255800677aae6c7ba2742e892e0d40b4c34eb40816b58214c1393759bc1d",
@@ -217,9 +217,12 @@
     "ci/native.py": "13d56b5e612e91af7d7b71f0f2c612c685120d3a1bb16eedcfbcb0bc7e3879fb",
     "source/device/package/nezha27-input/NezhaBrightnessUiTest.h": "d84404322a5d8923565b5f15f2b4aafade57cee9bfe51c9ab034324601bead86",
     "source/device/package/backlight/NezhaDsiObservation.h": "bdb70abfda62f0085e163f474e071e6fe8f612eda081e036c921660260519f0e",
-    "source/device/tests/brightness-poll-observation.cpp": "49d9b7459ec61a7872efc68a4662e4569ba35288b997a17c38cfe495f3af0c51",
-    "source/device/tests/brightness-poll-observation.py": "c91a339dcb9031af5139a6495e75f384410f9511497a3f7f46fcb2036a3b5247",
-    "source/device/tests/brightness-trace-budget.py": "a000776919419102e186a3cbfec7d39af235833fa31be2f8bc8f87a1efc20cf4"
+    "source/device/tests/brightness-poll-observation.cpp": "411bbcafa1d880c88608aadeecf573c0c40f31cfe938552f72639a3c50d17c1b",
+    "source/device/tests/brightness-poll-observation.py": "1aeff817ab68609d46f47c98539971a6a772003981ff3e978cca7eedbca58111",
+    "source/device/tests/brightness-trace-budget.py": "4a2b23d79a00543d7d7644f821b9d0bb0d6493fbce14fad2e3b4a4d148914ffe",
+    "source/soc/tests/dsi-fifo.c": "49cf3da0e78952e96e3b72b585535296b6626442da757f29adcee068ffd1d85d",
+    "source/soc/tests/dsi-fifo-budget.c": "174b21bf7ef8e78d7c832ea41940da8284c3cdad2ab29353afabc91b544f72ff",
+    "source/soc/tests/dsi-fifo-budget.py": "a5c5b322345f797c62d556c9876318091b57c9ad217f36d27e5e0e9f3b6e05d4"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
@@ -279,31 +282,46 @@
     "host_qualification_sha256": "4cb13d7660ecb67ded25c07b2d630409bdbe7ea2f4b3a95e23a096738ec1b638"
   },
   "brightness_trace": {
-    "source_revision": "3355544ad2a7bbe51f26d2637935164d4a4b0b7c",
+    "source_revision": "7409f1989d7ba407ba938b2809652fe57329031f",
     "production_files": [
       "source/device/package/backlight/BacklightProbe.cpp"
     ],
-    "host_qualification_sha256": "6f34ac1fb89eacac812b698cf26ca75425d291b4017316ed3c85e0d0b4a647f7",
+    "host_qualification_sha256": "6cc42eb067a863e8268af1224c6d1016412aaca8dc1851810b607378dc5168e1",
     "control_budget": 8192,
     "unsupported_budget": 8,
-    "control_source_unchanged": true,
-    "observation_only_delta": true
+    "control_source_unchanged": false,
+    "observation_only_delta": false,
+    "production_transport_changed": true
   },
   "brightness_poll": {
-    "source_revision": "3355544ad2a7bbe51f26d2637935164d4a4b0b7c",
+    "source_revision": "7409f1989d7ba407ba938b2809652fe57329031f",
     "production_files": [
       "source/device/package/backlight/BacklightProbe.cpp",
       "source/device/package/backlight/NezhaDsi0.h",
       "source/device/package/backlight/NezhaDsiObservation.h"
     ],
-    "host_qualification_sha256": "85131f8b60760eb8c6869987660bac3d569953c3ef0e348256bad445bd8615b7",
-    "source_after_observation_removal_SHA256": "1626d8d430f68398bf9e110d099c73ddbd588369f492db0b6c3600336aac8170",
-    "header_after_observation_removal_SHA256": "28a964006beffe03238af70bc9eed4c479ca1aeaef574d4583f18f96fd1690e1",
+    "host_qualification_sha256": "ebb32ee65ded952919da8ad4f26b12b922891e6b8946e0ea5439338909120e69",
     "actual_extra_MMIO_reads": 0,
     "actual_extra_clock_samples": 0,
     "deadline_us": 5000,
     "expected_base_bytes": 880,
     "expected_derived_bytes": 2200,
-    "native_layout_pending": true
+    "native_layout_pending": true,
+    "observer_helper_unchanged": true,
+    "production_behavior_changed": true
+  },
+  "brightness_transport": {
+    "source_revision": "7409f1989d7ba407ba938b2809652fe57329031f",
+    "SoC_revision": "93289d118bb53452871be52def702d40f8f5ca0f",
+    "SoC_header_sha256": "d98354f8ebd13b492292fa9c480985b4ec0eeed6a26c4e4397fe4e3be5c68def",
+    "SoC_host_qualification_sha256": "2927832c198e7620b28773c26f744acb768e2329550fb0b4b2c27c41aceeb774",
+    "service_host_qualification_sha256": "1b96c348bc9b6efd2db83e1e2b50967a040172cbcdf57f88f0a47e00f5b6a1f0",
+    "single_budget_us": 1200000,
+    "old_wrapper_pair_budget_us": 5000,
+    "clock_origin": "successful trigger return",
+    "completion": "DMA_DONE-only",
+    "layout_members_added": false,
+    "preflight_error_lease_cleanup_W1C_retained": true,
+    "hardware": false
   }
 }
