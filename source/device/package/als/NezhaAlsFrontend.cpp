@@ -10,6 +10,7 @@
 #include <IOKit/IOTimerEventSource.h>
 #include <IOKit/IOWorkLoop.h>
 #include <IOKit/IOLocks.h>
+#include <libkern/c++/OSSymbol.h>
 #include <mach/kmod.h>
 #endif
 #include "NezhaAlsState.h"
@@ -19,6 +20,9 @@
 // inputs. Bind only the proven original integer constructor; event storage
 // stays owned by original IOHIDFamily.
 static constexpr IOHIDEventType nezhaAlsEventType = 12;
+// Actual 24A446 start reads this key and skips its initial asynchronous
+// registration only when the value is kOSBooleanFalse.
+static constexpr const char *nezhaAlsRegisterServiceKey = "RegisterService";
 #ifndef NEZHA_ALS_HOST_MODEL
 extern "C" IOHIDEvent *nezha_als_original_ambient_event(
     uint64_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t)
@@ -200,7 +204,7 @@ public:
         timer = IOTimerEventSource::timerEventSource(this, &NativeNezhaAls::fired);
         return gate && timer && loop->addEventSource(gate) == kIOReturnSuccess &&
             loop->addEventSource(timer) == kIOReturnSuccess &&
-            setProperty(kIOHIDRegisterServiceKey, kOSBooleanFalse);
+            setProperty(nezhaAlsRegisterServiceKey, kOSBooleanFalse);
     }
     bool configure(const struct nezha_als_backend_ops *ops, uint64_t epoch) {
         backend = *ops;
@@ -285,7 +289,10 @@ static bool preparationAttempted;
 extern "C" bool nezha_als_frontend_prepare(void *provider,
                     const struct nezha_als_backend_ops *ops, uint64_t epoch) {
     if (!provider || !ops || !ops->initial_interval_us || !epoch || frontend || preparationAttempted) return false;
-    const OSMetaClass *base = OSMetaClass::getMetaClassWithName("IOHIDEventService");
+    const OSSymbol *name = OSSymbol::withCStringNoCopy("IOHIDEventService");
+    if (!name) return false;
+    const OSMetaClass *base = OSMetaClass::getMetaClassWithName(name);
+    name->release();
     if (!base || base->getClassSize() != 0xc8) return false;
     preparationAttempted = true;
     nezha_als_base_bytes = base->getClassSize();

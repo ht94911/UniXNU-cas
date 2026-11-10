@@ -1,7 +1,7 @@
-name: nezha iPhone27 ALS006 opaque event ABI002 on Native005
+name: nezha iPhone27 ALS006 opaque event ABI003 on Native005
 on:
   push:
-    branches: [codex/ios27-brightness-als006-abi002-20261111]
+    branches: [codex/ios27-brightness-als006-abi003-20261111]
   workflow_dispatch:
 permissions:
   contents: read
