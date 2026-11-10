@@ -1,7 +1,7 @@
-name: nezha iPhone27 GPU physical display timing - native040
+name: nezha iPhone27 GPU bounded App input - native041
 on:
   push:
-    branches: [codex/ios27-gpu-persist035-040-20261110]
+    branches: [codex/ios27-gpu-autoapp-041-20261111]
   workflow_dispatch:
 permissions:
   contents: read
@@ -57,6 +57,14 @@ jobs:
           mkdir -p "$RUNNER_TEMP/ios27/dpu-timing-host"
           clang -std=c11 -O2 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-sanitize-recover=all -I "$RUNNER_TEMP/ios27/work/device/package/gpu" -I "$RUNNER_TEMP/ios27/work/gop" "$RUNNER_TEMP/ios27/work/device/tests/display-dpu-timing.c" -o "$RUNNER_TEMP/ios27/dpu-timing-host/reader"
           "$RUNNER_TEMP/ios27/dpu-timing-host/reader"
+      - name: Exercise the reused bounded HID input and original pacer
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/ios27/input-host" "$RUNNER_TEMP/ios27/work/logs"
+          clang -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined -fno-sanitize-recover=all -I "$RUNNER_TEMP/ios27/work/device/package/nezha27-input" "$RUNNER_TEMP/ios27/work/device/tests/account-input.c" -o "$RUNNER_TEMP/ios27/input-host/core" > "$RUNNER_TEMP/ios27/work/logs/auto-input-core-build.log" 2>&1
+          "$RUNNER_TEMP/ios27/input-host/core" > "$RUNNER_TEMP/ios27/work/logs/auto-input-core-run.log" 2>&1
+          clang++ -std=c++17 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined -fno-sanitize-recover=all -I "$RUNNER_TEMP/ios27/work/device/package/nezha27-input" -I "$RUNNER_TEMP/ios27/work/usb/include" "$RUNNER_TEMP/ios27/work/device/tests/account-input-usb.cpp" -o "$RUNNER_TEMP/ios27/input-host/callbacks" > "$RUNNER_TEMP/ios27/work/logs/auto-input-callbacks-build.log" 2>&1
+          "$RUNNER_TEMP/ios27/input-host/callbacks" > "$RUNNER_TEMP/ios27/work/logs/auto-input-callbacks-run.log" 2>&1
       - name: Check the actual guarded waiting-stack sampler
         run: python3 task/source/device/scripts/check-stable-kernel-stack.py
       - name: Qualify compiler and run the standard native build
