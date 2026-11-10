@@ -8,6 +8,13 @@ extern "C" {
 #define NA_DMA_SLOTS 8u
 #define NA_DMA_FLIGHT 4u
 enum { NaBufferFree, NaBufferCpu, NaBufferDsp, NaBufferReturned };
+enum {NaDoneNoToken=1,NaDoneState,NaDoneGeneration,NaDoneSize,NaDoneAddress,
+      NaDoneMetadata,NaDoneBounds};
+#define NA_DONE_REJECTION_WORDS 23u
+typedef struct {
+    uint32_t reason,opcode,token,expected_token,state,generation,payload_bytes,slot;
+    uint32_t payload[15]; /* READ_DONE_V2 metadata only; never PCM. */
+} NaDoneRejection;
 typedef struct {
     uint32_t token, generation, state, offset, length;
     uint64_t sequence, deadline_ms;
@@ -19,6 +26,7 @@ typedef struct {
     uint32_t port, endpoint, capture, running, retiring, quarantine, in_flight;
     uint64_t next, returned, frames, completions;
     uint32_t bad_done, remote_errors, underruns, overruns, last_remote_status;
+    NaDoneRejection first_bad_done;
     NaBuffer slot[NA_DMA_SLOTS];
 } NaStream;
 /* No physical allocation here. Platform supplies an exclusively owned, mapped,
@@ -34,6 +42,7 @@ int na_stream_prepare(NaStream *s,NaSession *session,uint64_t now,uint32_t timeo
 int na_stream_commit(NaStream *s,unsigned slot);
 int na_stream_unsent(NaStream *s,unsigned slot);
 int na_stream_done(NaStream *s,const uint8_t *data,uint32_t length);
+void na_stream_rejection_words(const NaStream *s,uint32_t out[NA_DONE_REJECTION_WORDS]);
 /* Returned slots are consumed in submission order, even if replies reordered.
  * Capture copies precisely length bytes from offset, never modulo a bad offset. */
 int na_stream_take(NaStream *s,void *capture,uint32_t capacity,uint32_t *bytes);

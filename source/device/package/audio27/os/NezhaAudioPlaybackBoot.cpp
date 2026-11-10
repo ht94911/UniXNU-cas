@@ -22,7 +22,7 @@ void publish_start(const NaNativePlaybackStart *s) {
     __atomic_fetch_add(&startupSequence,1,__ATOMIC_RELEASE);
 }
 int snapshot(void *,char *out,size_t capacity,size_t *bytes,unsigned *truncated) {
-    uint32_t s[7],h[16];uint64_t v[40];bool valid=false;
+    uint32_t s[7],h[16];uint64_t v[64];bool valid=false;
     *bytes=0;*truncated=0;
     for (unsigned attempt=0;attempt<4;++attempt) {
         uint32_t seq=__atomic_load_n(&startupSequence,__ATOMIC_ACQUIRE);if (seq&1) continue;
@@ -34,7 +34,7 @@ int snapshot(void *,char *out,size_t capacity,size_t *bytes,unsigned *truncated)
     nezha_audio_hal_stats(h);
     // Startup and worker are independently sampled; neither reader takes a
     // lock that a GENI/trace callback could be waiting for USB to service.
-    int n=snprintf(out,capacity,"{\"v\":6,\"mode\":\"playback\",\"startup_phase\":%u,\"startup_error\":%d,"
+    int n=snprintf(out,capacity,"{\"v\":7,\"mode\":\"playback\",\"startup_phase\":%u,\"startup_error\":%d,"
         "\"identity_phase\":%u,\"identity_cleanup\":%d,\"revision\":[%u,%u],"
         "\"driver_stage\":%u,\"driver_result\":%d,\"adsp_stage\":%u,\"slave\":%u,\"gpr_online\":%u,"
         "\"prm_held\":%u,\"prm_possible\":%u,\"prm_error\":%d,"
@@ -47,6 +47,7 @@ int snapshot(void *,char *out,size_t capacity,size_t *bytes,unsigned *truncated)
         "\"probe_nonzero\":%u,\"probe_peak\":%u,\"probe_squares\":%llu,\"probe_error\":%d,"
         "\"probe_pcm_frames\":%u,\"HAL_input_published\":false,"
         "\"input_flow\":[%llu,%llu,%u,%u,%u,%u,%u,%d],"
+        "\"rejected_done\":[%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u],"
         "\"HAL\":{\"open\":[%u,%u,%u],\"maps\":[%u,%u,%u],\"clock\":[%u,%d],"
         "\"start_output\":[%u,%d],\"start_input\":[%u,%d],\"connected\":%u,\"device_lists\":%u,\"property_errors\":%u,\"records\":%u}}",
         s[0],(int32_t)s[1],s[2],(int32_t)s[3],s[4],s[5],
@@ -59,6 +60,7 @@ int snapshot(void *,char *out,size_t capacity,size_t *bytes,unsigned *truncated)
         (unsigned long long)v[29],(int)(int64_t)v[30],(unsigned)v[31],
         (unsigned long long)v[32],(unsigned long long)v[33],(unsigned)v[34],(unsigned)v[35],
         (unsigned)v[36],(unsigned)v[37],(unsigned)v[38],(int)(int64_t)v[39],
+        (unsigned)v[40],(unsigned)v[41],(unsigned)v[42],(unsigned)v[43],(unsigned)v[44],(unsigned)v[45],(unsigned)v[46],(unsigned)v[47],(unsigned)v[48],(unsigned)v[49],(unsigned)v[50],(unsigned)v[51],(unsigned)v[52],(unsigned)v[53],(unsigned)v[54],(unsigned)v[55],(unsigned)v[56],(unsigned)v[57],(unsigned)v[58],(unsigned)v[59],(unsigned)v[60],(unsigned)v[61],(unsigned)v[62],
         h[0],h[1],h[2],h[3],h[4],h[5],h[6],(int32_t)h[7],h[8],(int32_t)h[9],h[10],(int32_t)h[11],h[12],h[13],h[14],h[15]);
     if (n<0 || (size_t)n>=capacity) {*truncated=1;return QUD_FAILED;}
     *bytes=(size_t)n;return QUD_OK;
@@ -104,7 +106,7 @@ int submit(void *,const qud_diag_request *request,char *out,size_t capacity,size
     if (n<0 || (size_t)n>=capacity-used) {*truncated=1;return QUD_FAILED;}
     *bytes=used+(size_t)n;return QUD_OK;
 }
-const qud_diag_provider provider={8,6,(1u<<QUD_SNAPSHOT)|(1u<<QUD_HISTORY),64,1,"nezhaaudio",nullptr,snapshot,submit};
+const qud_diag_provider provider={8,7,(1u<<QUD_SNAPSHOT)|(1u<<QUD_HISTORY),64,1,"nezhaaudio",nullptr,snapshot,submit};
 void run_start(void *v,wait_result_t) {
     auto *s=static_cast<NaNativePlaybackStart *>(v);
     thread_set_thread_name(current_thread(),"nezha-audio27-start");

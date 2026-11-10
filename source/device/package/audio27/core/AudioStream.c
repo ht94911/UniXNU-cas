@@ -6,6 +6,29 @@
 static uint32_t rd(const uint8_t *p) {
     return (uint32_t)p[0]|(uint32_t)p[1]<<8|(uint32_t)p[2]<<16|(uint32_t)p[3]<<24;
 }
+static void rejected_done(NaStream *s,const GprPacket *p,uint32_t reason) {
+    if (s->first_bad_done.reason) return;
+    NaDoneRejection r={0};r.reason=reason;r.opcode=p->opcode;r.token=p->token;
+    r.generation=s->generation;r.payload_bytes=p->payload_bytes;r.slot=NA_DMA_SLOTS;
+    for (unsigned i=0;i<15 && (i+1)*4<=p->payload_bytes;++i) r.payload[i]=rd(p->payload+i*4);
+    if (p->payload_bytes==(s->capture ? 60u:32u)) {
+        const uint8_t *a=p->payload+(s->capture ? 4:0);
+        uint64_t address=rd(a)|((uint64_t)rd(a+4)<<32);
+        if (s->stride && address>=s->dsp_base && (address-s->dsp_base)%s->stride==0 &&
+            (address-s->dsp_base)/s->stride<NA_DMA_SLOTS) {
+            r.slot=(uint32_t)((address-s->dsp_base)/s->stride);
+            r.expected_token=s->slot[r.slot].token;r.state=s->slot[r.slot].state;
+        }
+    }
+    s->first_bad_done=r;
+}
+void na_stream_rejection_words(const NaStream *s,uint32_t out[NA_DONE_REJECTION_WORDS]) {
+    if (!s || !out) return;
+    const NaDoneRejection *r=&s->first_bad_done;
+    out[0]=r->reason;out[1]=r->opcode;out[2]=r->token;out[3]=r->expected_token;
+    out[4]=r->state;out[5]=r->generation;out[6]=r->payload_bytes;out[7]=r->slot;
+    memcpy(out+8,r->payload,sizeof r->payload);
+}
 int na_stream_init(NaStream *s,void *mem,uint64_t address,uint32_t bytes,
                    uint32_t period,uint32_t frame,uint32_t port,uint32_t endpoint,int capture) {
     if (!s || !mem || ((uintptr_t)mem&63) || (address&4095) || !period || period>4096 ||
@@ -61,12 +84,14 @@ int na_stream_done(NaStream *s,const uint8_t *data,uint32_t length) {
     if (na_packet(data,length,&p)) return NA_WIRE;
     if (p.dst_port!=s->port || p.src_port!=s->endpoint) return NA_IGNORED;
     int basic=p.opcode==GPR_OP_BASIC_RESULT;
+    uint32_t reason=NaDoneSize;
     if (!basic && p.opcode!=(s->capture ? AR_OP_READ_DONE : AR_OP_WRITE_DONE)) return NA_IGNORED;
     NaBuffer *b=0;unsigned i;
     for (i=0;i<NA_DMA_SLOTS;++i)
         if (s->slot[i].token==p.token && p.token) {b=&s->slot[i];break;}
     if (!b || b->state!=NaBufferDsp || b->generation!=s->generation) {
         if (basic) return NA_IGNORED; /* belongs to another control transaction */
+        rejected_done(s,&p,!b ? NaDoneNoToken:b->state!=NaBufferDsp ? NaDoneState:NaDoneGeneration);
         ++s->bad_done;return NA_IGNORED; /* duplicate or retired generation */
     }
     const uint8_t *d=p.payload;
@@ -84,21 +109,28 @@ int na_stream_done(NaStream *s,const uint8_t *data,uint32_t length) {
     uint32_t status=rd(d+(s->capture ? 0:12));
     const uint8_t *a=d+(s->capture ? 4:0);
     uint64_t address=rd(a)|((uint64_t)rd(a+4)<<32);
+    reason=NaDoneAddress;
     if (address!=s->dsp_base+(uint64_t)i*s->stride || rd(a+8)!=s->handle) goto malformed;
     /* No metadata buffer was supplied. Never accept an unsolicited DMA target. */
     if (s->capture) {
+        reason=NaDoneMetadata;
         if (rd(d+40) || rd(d+44) || rd(d+48) || rd(d+52) || rd(d+56)) goto malformed;
         uint32_t bytes=rd(d+16),offset=rd(d+20);
+        reason=NaDoneBounds;
         if (offset>s->period_bytes || bytes>s->period_bytes-offset ||
             offset%s->frame_bytes || bytes%s->frame_bytes) goto malformed;
         b->length=bytes;b->offset=offset;
-    } else if (rd(d+16) || rd(d+20) || rd(d+24) || rd(d+28)) goto malformed;
+    } else {
+        reason=NaDoneMetadata;
+        if (rd(d+16) || rd(d+20) || rd(d+24) || rd(d+28)) goto malformed;
+    }
     if (status) {
         if (!s->remote_errors) s->last_remote_status=status;
         ++s->remote_errors;s->quarantine=1;s->running=0;return NA_REMOTE;
     }
     ++s->completions;b->state=NaBufferReturned;--s->in_flight;return NA_OK;
 malformed:
+    if (!basic) rejected_done(s,&p,reason);
     ++s->bad_done;s->quarantine=1;s->running=0;return NA_WIRE;
 }
 int na_stream_take(NaStream *s,void *capture,uint32_t capacity,uint32_t *bytes) {
