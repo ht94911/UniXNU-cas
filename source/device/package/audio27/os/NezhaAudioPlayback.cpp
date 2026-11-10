@@ -33,7 +33,10 @@ extern "C" int na_native_speaker_config(NaNativePlaybackConfig *c,const uint8_t 
     // was selected for BOTH amps, so do not use its near-match fallback.
     plan.speaker.profile="music_18dB_stereo";
     plan.speaker.rx_format="32BIT";plan.speaker.tx_format="24_I2S_02_12_1";
-    plan.speaker.dvc_index[0]=plan.speaker.dvc_index[1]=0; // below stock55; not a raw register value
+    // The actual tuning table encodes index40 as0x0b618800 on both channels,
+    // 15dB below the stock index55/0x40000000. HAL retains software volume;
+    // the existing endpoint still requires calibration and running VI.
+    plan.speaker.dvc_index[0]=plan.speaker.dvc_index[1]=40;
     // Software-owned GPR ports and IOVAs; these are not borrowed physical RAM.
     plan.port[0]=0x7000;plan.port[1]=0x7002;
     plan.iova[0]=0x40000000;plan.iova[1]=0x40010000;

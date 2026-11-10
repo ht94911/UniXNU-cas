@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Audio043: existing bounded mono capture/third owned DMA, stock clock votes, separate microphone owner and retained first480 PCM snapshot/HISTORY over042 trace handling. Native source-only build; private slots zero; no hardware, phone or main promotion.",
+  "purpose": "Audio044: exact factory DVC40 at15dB below default55, retaining bounded capture/third DMA, separate microphone owner and retained first480 PCM snapshot/HISTORY over042 trace handling. Native source-only build; private slots zero; no hardware, phone or main promotion.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "863a9705227b53307bb7c369158d56b03b4a1062",
+  "device_revision": "077a09447ecece8e688a6c77f204f480100a0960",
   "soc_revision": "703d7b4bb00904b4a6e5d96f9e9bf72eec170f6b",
   "xcode": "26.6",
   "files": {
@@ -171,7 +171,7 @@
     "source/device/patches/xnu-12377/zzzzzz-nezha-input-chain-trace.patch": "c4d05419e7ec3af0de619754bdb6c2deb69b74d714c2219e509360ebfe1b947e",
     "source/device/patches/xnu-12377/zzzzzz-nezha-kernel-class-lock-order.patch": "cd90c61d6838f4e6a7248da81b6180f14db03d00f2f7a64f4bbe4034c0aa8dcb",
     "source/device/patches/xnu-12377/zzzzzz-nezha-sigp-startup-order.patch": "18275910b909d187e459c68f5d937cc09bc01923180141dc155aa7f4ff14aaf9",
-    "source/device/porting.toml": "0b16a2f5dcbd178b6bc2b98ed763b314485843affe0f6de33c613f3e7dfaba4c",
+    "source/device/porting.toml": "70d1021a2fde0253daaf3a649ecf5ba918a4903d09c2b1b16f4ca9112c32c43a",
     "source/device/scripts/backlight-iphone-24A446.json": "446eb5fe6440335bfe9fca75b32f7d815ddcafbb8a3c2d7f697c1e5c3f40f6cb",
     "source/device/scripts/build-adreno840.py": "269f32fe2c97d7baf846a148fed7c111a53869486626a87ec8daab7fdfc3ab91",
     "source/device/scripts/build-boot-progress.py": "a210eb1f0443574eb1506932aa9e8181d5c73aecf99397d8cc731568bd3210ba",
@@ -219,7 +219,7 @@
     "source/device/package/audio27/platform/AudioSmmu.h": "41401f1b97e3481c7e5cc3e02c47f926e91eec9fa34f4a48981a3fc3b723cddd",
     "source/device/package/audio27/upstream/ShengGpr.c": "c4f498f07e2cb601b593e64a8d32474a21d6a87375618e1a67b99d52c5d3160e",
     "source/device/package/audio27/platform/SoundWire.h": "348979ac1e552e1c3a0027e09f8500927e8bf7ccbb496276d2c9d3ef19322224",
-    ".github/workflows/nezha-ios27-native.yml": "a8b0877148b168051aa276ca0c7f6990e2ebf43c1400294ec748dd548d88a130",
+    ".github/workflows/nezha-ios27-native.yml": "6d615472c0eebccc13a428366df669fb623b97ec8994e9bc3c2414e6a6cd65dd",
     "source/device/package/audio27/upstream/ShengGpr.h": "a274dded1f4d1e2709b9f966759bcb1f57d12747ee0f57743dea1fa97d95d23e",
     "source/device/package/audio27/os/NezhaAudioNative.h": "26b0203a49895eb907ea8155443e7a2aa5431bb89393a32b3debf01371d1c353",
     "source/device/package/audio27/upstream/ShengAudioReach.h": "b135177a5feb3e24e0d8a6aabb301600e2c37078b970a09ada6e8eb7bb6a5b98",
@@ -322,7 +322,7 @@
     "source/device/package/audio27/os/NezhaAudioSmmu.h": "e9391db75422a2ec69a3451d0b50b279fa81741640840cc09e24be5cc3cc3889",
     "source/device/package/audio27/os/NezhaAudioTasBoard.h": "5027ff06599c6dcac49536036f69349e4467d68aac6d707b3874f89680a05f82",
     "source/device/package/audio27/os/NezhaAudioTasBoard.cpp": "8852f51f8df648298b12621fd89403ae18397c00a73dfb9f02202574e9a426fe",
-    "source/device/package/audio27/os/NezhaAudioPlayback.cpp": "beceede091c33137d5c2dc153db314a0b971640931dca3332679ab2b0d5cb0c0",
+    "source/device/package/audio27/os/NezhaAudioPlayback.cpp": "c03af4b8646cfa4a68456407b3a7eff28764d3bffb500c6a94e2b1a4e12d654d",
     "source/device/package/audio27/os/NezhaAudioPlayback.h": "ed0df3f449dcaf44566ebac1ddd505bf31620a89ca6525d49ba973bd70243ece",
     "source/device/package/audio27/platform/AudioPlaybackInputs.c": "cc08c15f4fefc1f6ab168f1540d798932ecc6026fa8ecbf2cf0760aa4b0d3d8e",
     "source/device/package/audio27/platform/AudioPlaybackInputs.h": "719b9e095cea2b3349bf0b4bcec7a7816b243c405d72501c521ac0442703d1a4",
@@ -391,15 +391,15 @@
   "audio": {
     "base": "GPU023",
     "base_device_revision": "673cde869b7378658b470c4e6b2b9a1766b99411",
-    "source_revision": "863a9705227b53307bb7c369158d56b03b4a1062",
-    "source_only_revision": "863a9705227b53307bb7c369158d56b03b4a1062",
+    "source_revision": "077a09447ecece8e688a6c77f204f480100a0960",
+    "source_only_revision": "077a09447ecece8e688a6c77f204f480100a0960",
     "hardware_enabled": false,
     "resource_census_enabled": true,
     "private_inputs": false,
     "HAL_target": "arm64e-apple-ios27.0",
     "shared_resource_owner": "703d7b4bb00904b4a6e5d96f9e9bf72eec170f6b",
     "private_input_slot_bytes": 35651584,
-    "previous_audio_behavior_source": "580f43dc4993e64203dbb5ae4a28257aae14971e",
+    "previous_audio_behavior_source": "863a9705227b53307bb7c369158d56b03b4a1062",
     "base_native_run": 42401029411,
     "base_Metal_revision": "eb59f022a326d03330d398b3c1dbcb6f0aeb633f",
     "diagnostic_glink_delay_ms": 20000,
@@ -518,6 +518,9 @@
     "retained_PCM_frames": 480,
     "audio_provider_version": 4,
     "capture_hardware_verified": false,
-    "HAL_input_published": false
+    "HAL_input_published": false,
+    "speaker_dvc_index": 40,
+    "speaker_dvc_coefficient": "0x0b618800",
+    "speaker_gain_below_stock_dB": 15
   }
 }
