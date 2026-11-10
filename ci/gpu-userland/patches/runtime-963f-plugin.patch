@@ -735,10 +735,10 @@ index a432e32..b39ca7c 100644
     std::lock_guard<std::mutex> lock(gUnalignedLock);
 diff --git a/NativeRenderWaitSample.h b/NativeRenderWaitSample.h
 new file mode 100644
-index 0000000..19bd2b2
+index 0000000..a8a1736
 --- /dev/null
 +++ b/NativeRenderWaitSample.h
-@@ -0,0 +1,134 @@
+@@ -0,0 +1,137 @@
 +/* SPDX-License-Identifier: MIT */
 +#ifndef NATIVE_RENDER_WAIT_SAMPLE_H
 +#define NATIVE_RENDER_WAIT_SAMPLE_H
@@ -747,9 +747,12 @@ index 0000000..19bd2b2
 +#include <cstring>
 +#if defined(__APPLE__)
 +#include <mach/mach.h>
-+#include <mach/mach_vm.h>
 +#include <mach/thread_status.h>
 +#include <pthread.h>
++// The iOS SDK hides mach_vm.h; use the same explicit Mach declaration pattern
++// as the frontend's existing mach_vm_region reader. Signature: mach_vm.defs.
++extern "C" kern_return_t mach_vm_read_overwrite(vm_map_read_t,mach_vm_address_t,
++                                               mach_vm_size_t,mach_vm_address_t,mach_vm_size_t *);
 +#if defined(__arm64e__)
 +#include <ptrauth.h>
 +#endif

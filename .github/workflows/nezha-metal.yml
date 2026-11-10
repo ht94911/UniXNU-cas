@@ -1,7 +1,7 @@
-name: nezha iPhone27 render-thread wait observations 036
+name: nezha iPhone27 render-thread wait observations 036b
 on:
   push:
-    branches: [codex/ios27-gpu27-metal-full-036-20261111]
+    branches: [codex/ios27-gpu27-metal-full-036b-20261111]
   workflow_dispatch:
 permissions:
   contents: read
@@ -139,6 +139,7 @@ jobs:
           OUTCOME_TILE_STORE_ERRORS: ${{ steps.tile_store_errors.outcome }}
           OUTCOME_SYNC_PROFILE: ${{ steps.sync_profile.outcome }}
           OUTCOME_DISPLAY_PROFILE: ${{ steps.display_profile.outcome }}
+          OUTCOME_RENDER_WAIT: ${{ steps.render_wait.outcome }}
         run: |
           set -euo pipefail
           export PATH="$(brew --prefix openssl@3)/bin:$PATH"
@@ -178,6 +179,7 @@ jobs:
           RUNTIME_SOURCE: ${{ steps.runtime_source.outcome }}
           SYNC_PROFILE: ${{ steps.sync_profile.outcome }}
           DISPLAY_PROFILE: ${{ steps.display_profile.outcome }}
+          RENDER_WAIT: ${{ steps.render_wait.outcome }}
         run: |
           set -euo pipefail
           test "$TARGETS" = success
@@ -188,6 +190,7 @@ jobs:
           test "$RUNTIME_SOURCE" = success
           test "$SYNC_PROFILE" = success
           test "$DISPLAY_PROFILE" = success
+          test "$RENDER_WAIT" = success
           test "$BUFFER_RESERVE" = skipped
           test "$VULKAN_OPERATIONS" = skipped
           test "$TILED_WORDS" = skipped
