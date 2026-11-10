@@ -1,0 +1,312 @@
+// SPDX-License-Identifier: BSD-2-Clause-Patent
+// Real runtime/MCA/auth callers against a synthetic peer; no phone or bus I/O.
+#include <cassert>
+#include <cstdio>
+#include <cstring>
+#include <cstdlib>
+#include <string>
+#include <vector>
+#include <algorithm>
+#include <openssl/hmac.h>
+#ifdef NP_AUTH_RUNTIME_SOURCE
+#include NP_AUTH_RUNTIME_SOURCE
+#else
+#include "../platform/NezhaPowerRuntime.cpp"
+#endif
+static uint64_t ms=1000,ready_at;
+static uint8_t wire[NP_MCA_REQUEST],response[16];
+static bool queued,linked,stopped,source_note;
+static bool logger_busy_once,logger_busy_used;
+static bool wrong_report_opcode_seen;
+static unsigned quiet_calls;
+static unsigned scenario,random_count,battery_calls,nonce_writes,process_flag,verified_flag,host_report_flag,vdm_state,seed_index,type=10,svid_reads,data_role=1,role_writes,online=1;
+static uint64_t role_attachment;
+static unsigned policy_icl=3000,policy_fv=4400,policy_iterm=100,policy_en=1,policy_fcc=500,policy_writes;
+static unsigned remaining=5400,capacity=6000,full_flag,log_phase=2,log_error,log_capped;
+static NpAuthMaterial material;
+static std::vector<std::string> rows;
+extern "C" {uint32_t system_inshutdown;}
+void IOSleep(unsigned n){ms+=n;}
+extern "C" IOService *np_battery_service_create(void){static IOService s;return &s;}
+extern "C" void np_power_diagnostic_start(void){}
+extern "C" int np_power_log_start(void){return 0;}
+extern "C" void np_power_log_stop(void){stopped=true;}
+extern "C" int np_power_log_status(NpPowerLogStatus *s){if(logger_busy_once){logger_busy_once=false;return 0;}memset(s,0,sizeof(*s));s->phase=stopped?3:log_phase;s->error=log_error;s->capped=log_capped;return 1;}
+extern "C" int np_power_log_push(const char *p,size_t n){if(log_phase!=2)return -1;rows.emplace_back(p,n);return 0;}
+extern "C" void qcom_usb_debug_get_status(qcom_usb_debug_status *s){memset(s,0,sizeof(*s));s->phase=3;}
+static uint64_t now(void *){return ms;}
+static int hmac(void *,const uint8_t *key,size_t nk,const uint8_t *data,size_t nd,uint8_t out[32]){
+ unsigned n=0;assert(HMAC(EVP_sha256(),key,(int)nk,data,nd,out,&n)&&n==32);return 0;
+}
+static int random_bytes(void *,uint8_t *out,size_t n){for(size_t i=0;i<n;++i)out[i]=(uint8_t)++random_count;return 0;}
+static int digest(void *,const uint8_t nonce[32],uint8_t out[32]){++battery_calls;ms+=400;return hmac(nullptr,material.battery_key,32,nonce,32,out);}
+static void reverse(uint8_t out[16],const uint8_t in[16]){for(unsigned i=0;i<16;i+=4)for(unsigned j=0;j<4;++j)out[i+j]=in[i+3-j];}
+static unsigned command(uint32_t p){switch(p){case 0x21003:return 1;case 0x21004:return 2;case 0x21005:return 3;case 0x21006:return 4;case 0x21007:return 5;case 0x21009:return 7;case 0x21008:return 6;default:return 0;}}
+static int send(void *,const uint8_t *p,uint32_t bytes){
+ assert(bytes==sizeof(wire)&&!queued);
+ if(np_le32(p+8)==NP_MCA_WRITE){
+  if(scenario==4&&!logger_busy_used&&np_le32(p+12)==0x21007) {
+   logger_busy_once=true;
+   assert(np_power27_write_allowed(p,bytes)==-1);
+   logger_busy_used=true;return -1; // Nothing sent; the same request can be submitted when the logger is available.
+  }
+  assert(np_power27_write_allowed(p,bytes));
+  uint8_t altered[NP_MCA_REQUEST];memcpy(altered,p,sizeof(altered));altered[20]^=1;
+  assert(!np_power27_write_allowed(altered,bytes));
+  unsigned prop=np_le32(p+12),value=np_le32(p+20);
+  if(scenario>=17&&(prop==0x2008||prop==0x2007||prop==0x2006||prop==0x2003||prop==0x2005)){
+   ++policy_writes;
+   if(prop==0x2008)policy_icl=value;
+   if(prop==0x2007){if(scenario!=18)policy_fv=value;}
+   if(prop==0x2006)policy_iterm=value;
+   if(prop==0x2003){assert(value<=1);for(unsigned i=21;i<bytes;++i)assert(!p[i]);policy_en=value;}
+   if(prop==0x2005){assert(value>=100&&value<=1500);policy_fcc=value;}
+  }else if(prop==0x21002){
+   process_flag=value;
+   if(scenario==12&&!value)return 0; // Clear accepted; no ACK and no replay.
+  }
+  else if(prop==0x21013){
+   // Native OS4 host cache and firmware VDM diagnostic are separate. Actual
+   // 023 completed authentication, then cleared the report with diagnostic1.
+   // Incomplete final6 (scenario11) still needs actual firmware zero.
+   const bool held=!value&&verified_flag&&((scenario==10&&process_flag)||scenario==11||scenario>=13);
+   host_report_flag=value;
+   if(!held&&scenario<16)verified_flag=value;
+   if(scenario==13&&held)return 0; // Accepted clear report; ACK lost, no replay.
+  }
+  else if(prop==0x2100b){
+   // OS4 WRITEb is VDM254, not the WRITE13 verification report. Accept an
+   // old malformed request but leave the status unchanged, as actual021 did.
+   if(authCommand.write_bytes!=2)wrong_report_opcode_seen=true;
+   else assert(p[20]==0xe0&&p[21]==0xc5);
+   vdm_state=254;
+  }
+  else if(prop==0x2100d){assert(value==2&&process_flag==1&&role_attachment!=authCommand.attachment);
+   role_attachment=authCommand.attachment;data_role=value;++role_writes;}
+  else{
+   vdm_state=command(prop);assert(vdm_state);
+   if(vdm_state==6&&(scenario==10||scenario==11||scenario>=16)){
+    // Actual022: accepted final6, firmware status1 and USB_TYPE notification
+    // before its VDM poll. OS4 notification0 carries online/type as TWO u32.
+    if(scenario<16)verified_flag=1;
+    type=scenario==11?1:11;source_note=true;
+   }
+   if(vdm_state==4){
+    uint8_t natural[16];reverse(natural,p+20);seed_index=10;
+    for(unsigned i=0;i<10;++i)if(!memcmp(natural,material.seeds[i],16))seed_index=i;
+    assert(seed_index<10);
+   }
+   if(vdm_state==5){
+    ++nonce_writes;uint8_t input[20],mac[32];reverse(input,p+20);
+    input[16]=0xa1;input[17]=0xb2;input[18]=0xc3;input[19]=0xd4;
+    hmac(nullptr,material.adapter_keys[seed_index],32,input,20,mac);reverse(response,mac);
+    if(scenario==1)return 0; // Accepted nonce; no ACK, and no replay.
+    if(scenario==2||scenario==12)source_note=true;
+   }
+  }
+ }
+ memcpy(wire,p,bytes);queued=true;ready_at=ms+5;return 0;
+}
+static int poll(void *){
+ if(!linked){linked=true;np_power27_link(1,1);}
+ if(source_note){
+  source_note=false;if(scenario!=5&&scenario!=10&&scenario!=15&&scenario<16)type=1;uint8_t note[NP_MCA_NOTIFICATION]={0};np_put32(note,NP_MCA_OWNER);np_put32(note+4,2);
+  np_put32(note+16,online);np_put32(note+20,type);
+  np_power27_receive(1,note,sizeof(note));
+ }
+ if(queued&&ms>=ready_at){
+  uint8_t answer[NP_MCA_RESPONSE]={0};np_put32(answer,NP_MCA_OWNER);np_put32(answer+4,1);
+  np_put32(answer+8,np_le32(wire+8));np_put32(answer+12,np_le32(wire+12));np_put32(answer+20,np_le32(wire+16));
+  if(np_le32(wire+8)==NP_MCA_READ){
+   uint32_t prop=np_le32(wire+12),value=0;
+   switch(prop){
+   case 0x21012:
+    ++svid_reads;assert(battery_calls==1&&process_flag==1&&data_role==2);
+    value=scenario==6?0:scenario==7?0x1234:scenario==5&&svid_reads<3?0:0x2717;break;
+   case 0x2100f:value=0xa1b2c3d4;break;
+   case 0x21002:value=process_flag;break;case 0x2100b:value=verified_flag;break;
+   case 0x21015:value=vdm_state;break;
+   case 0x21007:memcpy(answer+24,response,16);break;
+   case 0x21014:
+    np_put32(answer+24,5000);np_put32(answer+28,5000);np_put32(answer+32,3000);
+    np_put32(answer+40,9000);np_put32(answer+44,9000);np_put32(answer+48,3000);break;
+   case 0x2100e:value=type==10||type==11?2:1;break;
+   case 0x2100d:value=data_role;break;
+   case 0x20001:value=online;break;
+   case 0x2001:value=scenario>=17?(policy_en?1:6):1;break;
+   case 0x2003:value=scenario>=17?policy_en:1;break;
+   case 0x20002:value=5000000;break;case 0x20004:value=500000;break;
+   case 0x2008:value=scenario>=17?policy_icl:3000;break;
+   case 0x2007:value=scenario>=17?policy_fv:4400;break;
+   case 0x2006:value=policy_iterm;break;
+   case 0x2000c:value=type;break;
+   }
+   if(prop!=0x21007&&prop!=0x21014)np_put32(answer+24,value);
+  }
+  queued=false;np_power27_receive(1,answer,sizeof(answer));
+ }
+ return 0;
+}
+static int gauge_read(void *,uint8_t out[NP_GAUGE_WORDS][2],uint32_t *valid){
+ uint16_t words[10]={4250,100,3032,79,4500,5729,6800,327,90,0};
+ if(scenario>=17){words[0]=4300;words[1]=(uint16_t)(policy_en?(int)policy_fcc:-50);
+  words[2]=3030;words[3]=99;words[4]=(uint16_t)remaining;words[5]=(uint16_t)capacity;words[9]=full_flag?32:0;}
+ for(unsigned i=0;i<10;++i){out[i][0]=(uint8_t)words[i];out[i][1]=(uint8_t)(words[i]>>8);}*valid=0x3ff;ms+=4;return 0;
+}
+static int pump_read(void *,NpPump *p){memset(p,0,sizeof(*p));p->chip=0x85;p->controls_valid=p->switching_valid=1;p->valid=18;p->bus_mv=5000;p->die_centi_c=3000;return 0;}
+static int ovp(void *,uint8_t,uint8_t,uint8_t *,uint8_t *){assert(!"Auth must not change OVP");return -1;}
+static int quiet(void *){++quiet_calls;return 0;}
+static int identity(void *,NpGaugeIdentity *id){memset(id,0,sizeof(*id));id->valid=3;id->cell_code='F';memcpy(id->device_name,"BM6N",5);return 0;}
+static void stock_until(unsigned state,unsigned enabled){
+ for(unsigned i=0;i<5000;++i){step();ms+=20;if(control.buck.state==state&&policy_en==enabled)return;}
+ fprintf(stderr,"actual Runtime stock state=%u expected=%u owned=%u blocked=%u enabled=%u fcc=%u votes=%u/%u valid=%x\n",
+  control.buck.state,state,control.buck.owned,control.buck.blocked,policy_en,policy_fcc,
+  control.jeita.vote.valid,control.jeita.vote.full_valid,control.sample.valid);
+ assert(!"Actual stock Runtime did not reach expected state");
+}
+static void stock_case(){
+ assert(auth.verified&&battery_calls==1);manualDisable=0;
+ if(scenario==20){for(unsigned i=0;i<1500;++i){step();ms+=20;}assert(!policy_writes&&!control.jeita.vote.valid);return;}
+ if(scenario==18){stock_until(NP_BUCK_UNCERTAIN,1);assert(control.buck.owned&&policy_fcc==500);return;}
+ stock_until(NP_BUCK_POLICY_MONITOR,1);
+ assert(policy_icl==1500&&policy_fv==4480&&policy_iterm==358&&policy_fcc==1500);
+ assert(control.sample.gauge.soc==99&&!control.jeita.vote.full);
+ full_flag=1;remaining=5940;stock_until(NP_BUCK_POLICY_MONITOR,0);
+ assert(control.jeita.vote.full&&control.jeita.vote.raw_soc==9900);
+ remaining=5820;stock_until(NP_BUCK_POLICY_MONITOR,1);
+ assert(control.jeita.vote.recharging&&control.jeita.vote.raw_soc==9700);
+ full_flag=0;for(unsigned i=0;i<250;++i){step();ms+=20;}
+ log_phase=4;log_capped=1;
+ assert(np_power_control_request(0)==1);stock_until(NP_BUCK_FINISHED,0);assert(!control.buck.owned);
+ assert(np_power_control_request(1)==1);stock_until(NP_BUCK_POLICY_MONITOR,1);
+ log_phase=3;log_error=EIO;
+ assert(np_power_control_request(1)==-1);stock_until(NP_BUCK_FINISHED,0);assert(!control.buck.owned);
+ log_phase=2;log_error=0;assert(!drain_control());
+ printf("PASS actual stock Runtime: real HMAC first, SOC99 does not force full, BQ full/<=9700 recharge, typed1B enable, readback, intentional cap versus real VFS failure and complete handoff\n");
+}
+static unsigned p1_count(){return (unsigned)std::count_if(rows.begin(),rows.end(),[](const std::string &s){return s.rfind("P1 ",0)==0;});}
+static void pc_log_case(){
+ uint8_t raw[NP_GAUGE_WORDS][2];uint32_t mask;
+ assert(!gauge_read(nullptr,raw,&mask));assert(!np_decode_gauge(&gauge,raw,mask,ms,ms,1));
+ memset(&charger,0,sizeof(charger));charger.valid=NP_BIT(NP_EXTERNAL)|NP_BIT(NP_CHARGING)|NP_BIT(NP_CHARGE_DONE)|NP_BIT(NP_USB_VOLTAGE)|NP_BIT(NP_USB_CURRENT);
+ charger.external=charger.charging=1;charger.usb_uv=5000000;charger.usb_ua=500000;
+ assert(!pump_read(nullptr,&pumpSample));pumpError=0;
+ control.meta[NP_META_TYPE].value=1;np_control_link(&control,1,1);
+ control.meta[NP_META_TYPE].value=1;rows.clear();
+ for(unsigned i=0;i<600;++i){ms+=2000;gauge.end_ms=charger.end_ms=ms;control_publish(ms);}
+ const unsigned pc=p1_count();assert(pc>0&&pc<=121);
+ np_control_source_event(&control);control.meta[NP_META_TYPE].value=10;
+ for(unsigned i=0;i<20;++i){ms+=2000;gauge.end_ms=charger.end_ms=ms;control_publish(ms);}
+ assert(p1_count()==pc+20);
+ control.meta[NP_META_TYPE].value=1;ms+=1;gauge.end_ms=charger.end_ms=ms;control_publish(ms);
+ const unsigned baseline=p1_count();
+ pumpError=EIO;ms+=1;control_publish(ms);assert(p1_count()==baseline+1);
+ pumpError=0;ms+=1;control_publish(ms);assert(p1_count()==baseline+2);
+ invalidate(NP_FAULT_STALE);np_control_link(&control,1,1);
+ assert(!np_decode_gauge(&gauge,raw,mask,ms,ms,2));
+ charger.valid=NP_BIT(NP_EXTERNAL)|NP_BIT(NP_CHARGING)|NP_BIT(NP_CHARGE_DONE)|NP_BIT(NP_USB_VOLTAGE)|NP_BIT(NP_USB_CURRENT);
+ assert(!pump_read(nullptr,&pumpSample));control.meta[NP_META_TYPE].value=1;
+ ms+=1;gauge.end_ms=charger.end_ms=ms;control_publish(ms);assert(p1_count()==baseline+3);
+ printf("PASS real runtime persistent logger:600 PC samples ->%u records,20 charger samples ->20 records, source/fault/first-restored preserved\n",pc);
+}
+int main(int argc,char **argv){
+ if(argc>1)scenario=(unsigned)strtoul(argv[1],nullptr,10);
+ assert(scenario<=20);if(scenario==5||scenario==9)type=1;
+ if(scenario==8||scenario==14)verified_flag=1;
+ memcpy(material.magic,"NP18AUTH",8);np_put32(material.version,1);np_put32(material.fg_selector,2);
+ for(unsigned i=0;i<10;++i){for(unsigned j=0;j<16;++j)material.seeds[i][j]=(uint8_t)(i*19+j);for(unsigned j=0;j<32;++j)material.adapter_keys[i][j]=(uint8_t)(i*17+j);}
+ for(unsigned j=0;j<32;++j)material.battery_key[j]=(uint8_t)(j+31);
+ if(scenario==19)material.magic[0]^=1;
+ NpPowerOps ops={};ops.now_ms=now;ops.poll_link=poll;ops.send_mca=send;ops.read_gauge=gauge_read;
+ ops.quiesce=quiet;ops.resume=quiet;ops.read_pump=pump_read;ops.set_pump_usb_ovp=ovp;
+ ops.schema_verified=1;ops.mca_reply_timeout_ms=1000;ops.property_online=0x20001;ops.property_status=0x2001;
+ ops.property_input_uv=0x20002;ops.property_input_ua=0x20004;ops.status_valid_mask=0x1ff;ops.status_charging_mask=0x11f;ops.status_done=5;
+ ops.control_mode=4;ops.auth_enabled=1;ops.auth_material=&material;ops.auth={nullptr,random_bytes,hmac,digest};
+ if(scenario>=17){ops.control_mode=5;ops.country_cn=scenario==20?0:1;ops.read_identity=identity;}
+ assert(!np_power27_bind(&ops));persistentLog=1;manualDisable=1;
+ if(scenario==9){pc_log_case();return 0;}
+ if(scenario==19){manualDisable=0;for(unsigned i=0;i<1500;++i){step();ms+=20;}assert(!auth.enabled&&!policy_writes);puts("PASS stock Runtime: unavailable authentication cannot authorize control; telemetry retained");return 0;}
+ bool drained=false;
+ for(unsigned i=0;i<2500;++i){
+  step();ms+=20;
+  if(scenario==5&&type==1&&battery_calls){assert(!nonce_writes&&!svid_reads&&auth.battery_ok);type=10;source_note=true;}
+  if(scenario==3&&nonce_writes&&!drained){assert(!drain_control());drained=true;break;}
+  if((scenario==11||scenario==12)&&auth.state==NP_AUTH_FAILED&&auth.error==NP_AUTH_CLEANUP_ERROR)break;
+  if(auth.state==NP_AUTH_DONE||(auth.state==NP_AUTH_FAILED&&!auth.owned))break;
+ }
+ if(scenario>=17){stock_case();return 0;}
+ if(scenario==11||scenario==12){
+  assert(!auth.verified&&auth.owned&&auth.error==NP_AUTH_CLEANUP_ERROR);
+  const uint64_t began=ms;system_inshutdown=1;worker(nullptr,0);
+#ifdef NP_AUTH_BEFORE
+  printf("FAIL actual terminal shutdown:state=%u owned=%u lifecycle=%d worker_exited=%u quiesce_calls=%u drain_ms=%llu\n",
+    auth.state,auth.owned,lifecycle,workerExited,quiet_calls,(unsigned long long)(ms-began));
+  return 2;
+#else
+  assert(!np_auth_busy(&auth)&&np_auth_resume(&auth)==-1);
+  assert(nezha_power27_lifecycle()==-1&&nezha_power27_worker_exited());
+  assert(quiet_calls==1&&ms-began<3000&&nonce_writes==1);
+  printf("PASS actual terminal shutdown scenario%u: unconfirmed auth ownership retained, resume refused, one board quiesce, worker completion in%llu ms\n",
+    scenario,(unsigned long long)(ms-began));return 0;
+#endif
+ }
+ if((scenario==8||scenario==10||scenario>=13)&&!auth.verified){
+  printf("FAIL independent OS4 opcode peer:state=%u error=%u owned=%u process=%u wrong_write_b=%u\n",auth.state,auth.error,auth.owned,process_flag,(unsigned)wrong_report_opcode_seen);
+  return 2;
+ }
+ if(scenario==13){
+  assert(host_report_flag==1&&verified_flag==1&&nonce_writes==1);
+  assert(drain_control()==EIO);
+  assert(auth.state==NP_AUTH_FAILED&&auth.error==NP_AUTH_CLEANUP_ERROR&&auth.owned==NP_AUTH_OWNS_VERIFIED);
+  assert(!host_report_flag&&verified_flag==1&&!np_auth_busy(&auth)&&np_auth_resume(&auth)==-1);
+  system_inshutdown=1;worker(nullptr,0);
+  assert(nezha_power27_lifecycle()==-1&&nezha_power27_worker_exited()&&quiet_calls==1);
+  printf("PASS actual runtime report ACK loss: host denied, uncertainty retained, no report replay, worker exits\n");return 0;
+ }
+ if(scenario==15||scenario==16){
+  const unsigned expected_diagnostic=scenario==16?0:1;
+  assert(auth.verified&&host_report_flag==1&&nonce_writes==1);
+  online=0;type=0;source_note=true;
+  for(unsigned i=0;i<500&&(auth.verified||auth.owned||np_auth_busy(&auth));++i){step();ms+=20;}
+  if(auth.owned||np_auth_busy(&auth)){
+   printf("FAIL actual023 detach:state=%u error=%u owned=%u report=%u diagnostic=%u\n",
+     auth.state,auth.error,auth.owned,host_report_flag,verified_flag);return 2;
+  }
+  assert(!auth.verified&&!host_report_flag&&verified_flag==expected_diagnostic);
+  online=1;type=1;data_role=1;source_note=true;
+  for(unsigned i=0;i<150;++i){step();ms+=20;}
+  assert(!auth.verified&&!auth.owned&&nonce_writes==1&&battery_calls==1);
+  type=10;source_note=true;
+  for(unsigned i=0;i<2500;++i){step();ms+=20;if(auth.state==NP_AUTH_DONE&&auth.attempts==2)break;}
+  if(!(auth.verified&&host_report_flag==1&&verified_flag==expected_diagnostic&&auth.attempts==2&&nonce_writes==2))
+   fprintf(stderr,"second attach:state=%u error=%u owned=%u attempts=%u nonce=%u type=%u online=%u role=%u\n",
+     auth.state,auth.error,auth.owned,auth.attempts,nonce_writes,type,online,data_role);
+  assert(auth.verified&&host_report_flag==1&&verified_flag==expected_diagnostic&&auth.attempts==2&&nonce_writes==2);
+  assert(role_writes==2&&battery_calls==1&&!process_flag&&!np_auth_busy(&auth));
+  assert(!drain_control()&&!host_report_flag&&verified_flag==expected_diagnostic&&!auth.owned);
+  system_inshutdown=1;worker(nullptr,0);
+  assert(nezha_power27_lifecycle()==5&&nezha_power27_worker_exited()&&quiet_calls==1);
+  printf("PASS actual runtime OS4 detach/reconnect: firmware diagnostic%u preserved, two fresh HMACs/DFP requests, one primary check, normal worker exit\n",expected_diagnostic);return 0;
+ }
+ if(scenario==0||scenario==4||scenario==5||scenario==8||scenario==10||scenario==14){
+  if(!auth.verified)fprintf(stderr,"runtime auth state=%u error=%u owned=%u stage=%u\n",auth.state,auth.error,auth.owned,auth.index);
+  assert(auth.verified&&verified_flag==1&&!process_flag&&nonce_writes==1&&!np_auth_busy(&auth));
+  NpAuthStatus status={};assert(np_power_auth_copy(&status)&&status.adapter_verified&&status.primary_gauge_verified);
+  assert(!drain_control());
+  if(scenario==14)assert(!host_report_flag&&verified_flag==1&&!auth.owned);
+  assert(scenario!=4||logger_busy_used);
+  assert(scenario!=8||!wrong_report_opcode_seen);
+ }else if(scenario>=6){
+  assert(!auth.verified&&!verified_flag&&!process_flag&&!auth.owned&&!nonce_writes&&auth.battery_ok);
+  assert(auth.error==(scenario==6?NP_AUTH_TIMEOUT:NP_AUTH_PROTOCOL));
+  assert(auth.svid==(scenario==6?0u:0x1234u));
+ }else assert(!auth.verified&&!verified_flag&&!process_flag&&!auth.owned&&nonce_writes==1);
+ assert(!np_auth_busy(&auth)&&battery_calls==1);
+ unsigned count=0;
+ for(const auto &row:rows)if(row.rfind("A2 ",0)==0){++count;assert(row.find("raw=")==std::string::npos&&row.find("challenge=")==std::string::npos&&row.find("digest=")==std::string::npos);}
+ assert(count>(scenario==7?1u:5u));
+ assert(auth.battery_checks==1);
+ assert(std::any_of(rows.begin(),rows.end(),[](const std::string &s){return s.find("stage=primary checks=1 verified=1 error=0")!=std::string::npos;}));
+ printf("PASS actual runtime auth scenario%u: one nonce, epoch/attachment checks, redacted A2 and normal drain\n",scenario);
+ return 0;
+}
