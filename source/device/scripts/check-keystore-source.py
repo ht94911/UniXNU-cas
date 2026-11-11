@@ -60,13 +60,62 @@ def sections(data):
 
 
 def symbols(llvm, path, mode):
-    text = subprocess.check_output([str(Path(llvm) / 'llvm-nm'), '--no-demangle', '-g', mode, str(path)], text=True)
+    require(mode in ('--defined-only', '--undefined-only'), 'Unknown KeyStore symbol filter')
+    # Darwin --undefined-only prints names alone. Keep the full typed BSD
+    # table so an unresolved C import remains visible to the existing checks.
+    text = subprocess.check_output([str(Path(llvm) / 'llvm-nm'), '--no-demangle', '-g',
+                                    '--format=bsd', str(path)], text=True)
     result = []
     for line in text.splitlines():
         parts = line.split()
-        if len(parts) >= 2 and len(parts[-2]) == 1:
+        if (len(parts) >= 2 and len(parts[-2]) == 1 and
+                (parts[-2] == 'U') == (mode == '--undefined-only')):
             result.append((parts[-2], parts[-1]))
     return result
+
+
+def archive_member(llvm, archive, path):
+    expected = Path(path).read_bytes()
+    actual = subprocess.check_output([str(Path(llvm) / 'llvm-ar'), 'p', str(archive), Path(path).name])
+    if actual == expected:
+        return dict(member=Path(path).name, alignment_padding_bytes=0)
+    # Darwin ar stores an extended-name Mach-O member on an eight-byte
+    # boundary, including newline fill in the member's recorded payload size.
+    # Verify that exact container fill; do not strip arbitrary object suffixes.
+    data = Path(archive).read_bytes()
+    require(data[:8] == b'!<arch>\n', 'KeyStore archive magic differs')
+    offset, matches = 8, []
+    while offset < len(data):
+        header = data[offset:offset + 60]
+        require(len(header) == 60 and header[58:] == b'`\n', 'KeyStore archive header differs')
+        size = int(header[48:58].strip())
+        begin, end = offset + 60, offset + 60 + size
+        require(end <= len(data), 'KeyStore archive member is truncated')
+        name = header[:16].rstrip(b' ')
+        if name.startswith(b'#1/'):
+            length = int(name[3:])
+            require(length <= size, 'KeyStore BSD member name is truncated')
+            if data[begin:begin + length].rstrip(b'\0') == Path(path).name.encode():
+                matches.append((begin + length, end, data[begin + length:end]))
+        offset = end + (size & 1)
+    require(offset == len(data) and len(matches) == 1, 'KeyStore BSD member count differs')
+    begin, end, stored = matches[0]
+    require(stored == actual and begin % 8 == 0 and end % 8 == 0,
+            'KeyStore BSD member payload or alignment differs')
+    # The original relocatable object's string table must end at its exact
+    # EOF, so bytes beyond it can only be the verified archive alignment fill.
+    offset, string_ends = 32, []
+    for _ in range(struct.unpack_from('<I', expected, 16)[0]):
+        command, size = struct.unpack_from('<II', expected, offset)
+        require(size >= 8 and offset + size <= len(expected), 'KeyStore Mach-O command is truncated')
+        if command == 2:
+            _, _, _, _, strings, length = struct.unpack_from('<6I', expected, offset)
+            string_ends.append(strings + length)
+        offset += size
+    padding = (-len(expected)) % 8
+    require(string_ends == [len(expected)] and padding > 0 and actual == expected + b'\n' * padding,
+            'KeyStore archive member differs: ' + Path(path).name)
+    return dict(member=Path(path).name, alignment_padding_bytes=padding)
 
 
 def check_objects(tree, llvm, inputs, kernel=None):
@@ -95,17 +144,18 @@ def check_objects(tree, llvm, inputs, kernel=None):
     require(init in {name for _, name in symbols(llvm, probe, '--undefined-only')},
             'KeyStoreProbe explicit initializer reference missing')
     normal_archive, late_archive = normal_dir / 'libAppleKeyStoreState.a', legacy / 'libNativeLegacyDisplay.late.a'
+    member_checks = []
     for archive, path in ((normal_archive, normal_path), (late_archive, late_path), (late_archive, probe)):
         members = subprocess.check_output([str(llvm / 'llvm-ar'), 't', str(archive)], text=True).splitlines()
         require(members.count(path.name) == 1, 'KeyStore archive member count differs: ' + path.name)
-        actual = subprocess.check_output([str(llvm / 'llvm-ar'), 'p', str(archive), path.name])
-        require(actual == path.read_bytes(), 'KeyStore archive member differs: ' + path.name)
+        member_checks.append(archive_member(llvm, archive, path))
     result = dict(inputs, compile_command_sha256=check_command(tree),
                   normal_archive_sha256=sha(normal_archive), late_archive_sha256=sha(late_archive),
                   normal_object_sha256=sha(normal_path), late_object_sha256=sha(late_path),
                   getter_object_sha256=sha(probe), normal_late_code_and_data_identical=True,
                   late_initializer_explicit=True, identity_getter_defined_once_in_probe=True,
-                  actual_archive_members_verified=True, target_objects=3, hardware_verified=False)
+                  actual_archive_members_verified=True, archive_member_checks=member_checks,
+                  target_objects=3, hardware_verified=False)
     if kernel:
         definitions = [kind for kind, name in symbols(llvm, kernel, '--defined-only') if name == getter]
         require(len(definitions) == 1 and definitions[0].isupper() and definitions[0] not in ('W', 'V'),

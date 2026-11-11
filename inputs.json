@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Native013 fixed public AppleKeyStoreState source selection for the existing normal/late archive chain, retained Native011 Bluetooth/runtime observer and fixed Wi-Fi023 resources. Only necessary public source and certificate are exported; firmware, OS inputs and identity remain local. Keyboard pairing is unresolved.",
+  "purpose": "Native014 corrects the typed BSD symbol reader and verifies Darwin ar member alignment using the unchanged selected public AppleKeyStoreState snapshot and existing normal/late archive chain. Fixed Native011 Bluetooth observer, Wi-Fi023 resources and runtime remain unchanged; keyboard pairing is unresolved.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,11 +14,11 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "3a0ec808cf9d0375d392225012e018ff48f9d823",
+  "device_revision": "3863e6a442a79adc297b2470e3ea530da84e3542",
   "soc_revision": "3435fa55c3e835a4aaebf7d833473fd5d20073fd",
   "xcode": "26.6",
   "files": {
-    ".github/workflows/nezha-ios27-native.yml": "6731cf04e409ec6726c0bc4d53de0b7b59661a0cba60ceb4e7ff6a30d76f8500",
+    ".github/workflows/nezha-ios27-native.yml": "832c515e2037a4245b65077f5599ef02a679ddc5ac92ae7ab06f4c48a8fddd54",
     "ci/cache-signature-template.py": "3596fbb421e2d223c9d01b6280af68ca7e83595c99d3d96e481450f187201d72",
     "ci/native.py": "cb1eeafea7f7d5e8ec341765d71d04ec1e030b486a879cb1b12799036c505278",
     "source/adreno/LICENSE": "16fbc0170994a48f60938d9f0d992d3bad113383cf90882f75c206e079c2a2dc",
@@ -333,7 +333,7 @@
     "source/device/scripts/build-software-aes-iphone.py": "ad408438aca47fcb9e7daae4c53b77fa81c00bd0c9ff34cffca244cb324a08e0",
     "source/device/scripts/check-adreno840-integration.py": "822dd823f63242362649baee166a56a5d0accd22f906dff1d9d5902f66d7e02b",
     "source/device/scripts/check-iosurface-plane-27.py": "092f98e807491b17df3e10835d23f1c44ae25c8820cc43c6343c56fa75c3c4c8",
-    "source/device/scripts/check-keystore-source.py": "26930faa302a238c7847dcdec7f35eeeefd578e803a4082c8991f0be3ce9b344",
+    "source/device/scripts/check-keystore-source.py": "3ca47a3009f5f62c255723ee2d215e0078d15fbb98a0adb27844d25bc7103e7a",
     "source/device/scripts/check-persistent-data.py": "c2a2c50534d564033e967cb34df230ec9d196c341eb1472f7ad10c06c13f72c3",
     "source/device/scripts/check-persistent-marker.py": "b44ed26f16e66aa29410e55d94682c616cc30c1c58df4371365e0863d8647bbe",
     "source/device/scripts/check-root-cwd-ownership.py": "704f9231bfeff097c50578c35772b18ceb9f870752e528532b4c5b9edbf71835",
@@ -423,7 +423,7 @@
     "firmware_slot_bytes": 262144,
     "snapshot_scope": "listed headers and native implementation units only"
   },
-  "qualification_iteration": "Native013: explicit five-file389c360 snapshot derived from6ff; existing getter and normal/late source/member/ABI checks. Native012 old42ff outputs rejected; actual target build and keyboard pairing pending.",
+  "qualification_iteration": "Native014: retain exact389c360 source/getter/lock, correct actual Native013 typed-nm and two-byte BSD archive fill checks; full target build and keyboard pairing remain pending.",
   "software_aes": {
     "source_revision": "c9ce79e16e6a4e74cbbb7f4315ad2ec342933c89",
     "upstream_revision": "4a45326da5c2cd6fe6813d79ee43db20805628af",
