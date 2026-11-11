@@ -48,6 +48,11 @@ try:
     sdk = run('sdk', ['xcrun', '--sdk', 'iphoneos', '--show-sdk-path']).decode().strip()
     sdk_version = run('sdk-version', ['xcrun', '--sdk', 'iphoneos', '--show-sdk-version']).decode().strip()
     compiler = run('compiler', ['xcrun', '--sdk', 'iphoneos', 'clang', '--version']).decode().strip()
+    host_test = a.output / 'test-probe-progress'
+    run('compile-progress-test', ['xcrun', '--sdk', 'macosx', 'clang', '-fobjc-arc', '-fblocks',
+        '-Wall', '-Wextra', '-Werror', '-O1', '-framework', 'Foundation', '-framework', 'Security',
+        '-framework', 'LocalAuthentication', root / 'ci/test-probe-progress.m', '-o', host_test])
+    run('progress-test', [host_test])
     bundle = a.output / 'AA27Probe.app'
     bundle.mkdir()
     shutil.copyfile(root / 'source/Info.plist', bundle / 'Info.plist')
@@ -88,6 +93,7 @@ try:
                   source_sha256=sha(source), source_files={p.name: sha(p) for p in sorted((root / 'source').iterdir())}, entitlements_sha256=sha(entitlements), binary_sha256=sha(binary),
                   binary_bytes=len(data), declared_entitlements=expected, required_imports=required,
                   dependencies=dependencies, platform_report=build, device_executed=False, app_registration_verified=False, normal_application_container=True,
+                  progress_host_test_passed=True, host_SecItem_simulated=True,
                   SecItem_runtime_verified=False, cross_boot_verified=False, server_verified=False)
     (a.output / 'qualification.json').write_text(json.dumps(report, indent=2) + '\n')
     ok = True

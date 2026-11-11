@@ -3,6 +3,7 @@
 #import <Foundation/Foundation.h>
 #import <Security/Security.h>
 #import <LocalAuthentication/LocalAuthentication.h>
+#import "AccountKeyItemProbe.h"
 #include <sys/sysctl.h>
 #include <stdint.h>
 #include <string.h>
@@ -13,11 +14,44 @@ static NSString *const service = @"org.unixnu.nezha.account27.SecItem.v1";
 static NSString *directory;
 static NSMutableDictionary *result;
 static NSMutableArray *steps;
+static AA27ProbeProgress observer;
+static BOOL directoryReady;
+static BOOL saveJSON(NSDictionary *value, NSString *path);
 
-static BOOL status(NSString *name, OSStatus code)
+static NSDictionary *snapshot(void)
 {
+    NSMutableDictionary *value = [result mutableCopy];
+    value[@"steps"] = [steps copy];
+    return [value copy];
+}
+
+// Same result file as the final report; no keys, query values or account data.
+// A before-call checkpoint is an observation boundary, not proof of entry.
+static void checkpoint(void)
+{
+    if (directoryReady) {
+        result[@"result_file_written"] = @(saveJSON(snapshot(),
+            [directory stringByAppendingPathComponent:@"result.json"]));
+    }
+    if (observer) observer(snapshot());
+}
+
+static void activity(NSString *name)
+{
+    result[@"activity"] = name;
+    checkpoint();
+}
+
+static OSStatus execute(NSString *name, OSStatus (^call)(void))
+{
+    result[@"current_step"] = name;
+    result[@"call_state"] = @"before";
+    activity(@"prepare_call");
+    OSStatus code = call();
     [steps addObject:@{@"step": name, @"status": @(code)}];
-    return code == errSecSuccess;
+    result[@"call_state"] = @"returned";
+    activity(@"call_returned");
+    return code;
 }
 
 static NSMutableDictionary *query(NSString *account)
@@ -41,6 +75,7 @@ static OSStatus add(NSString *account, unsigned revision)
     NSMutableDictionary *q = query(account);
     q[(__bridge id)kSecAttrAccessible] = (__bridge id)kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly;
     q[(__bridge id)kSecValueData] = canary(revision);
+    activity(@"SecItemAdd");
     return SecItemAdd((__bridge CFDictionaryRef)q, NULL);
 }
 
@@ -49,10 +84,12 @@ static OSStatus copy(NSString *account, unsigned revision)
     NSMutableDictionary *q = query(account);
     q[(__bridge id)kSecMatchLimit] = (__bridge id)kSecMatchLimitOne;
     q[(__bridge id)kSecReturnData] = @YES;
+    activity(@"create_authentication_context");
     LAContext *context = [LAContext new];
     context.interactionNotAllowed = YES;
     q[(__bridge id)kSecUseAuthenticationContext] = context;
     CFTypeRef found = NULL;
+    activity(@"SecItemCopyMatching");
     OSStatus rc = SecItemCopyMatching((__bridge CFDictionaryRef)q, &found);
     if (rc == errSecSuccess && (!found || CFGetTypeID(found) != CFDataGetTypeID() ||
                                ![(__bridge NSData *)found isEqualToData:canary(revision)])) rc = errSecDecode;
@@ -63,11 +100,13 @@ static OSStatus copy(NSString *account, unsigned revision)
 static OSStatus update(unsigned revision)
 {
     NSDictionary *attributes = @{(__bridge id)kSecValueData: canary(revision)};
+    activity(@"SecItemUpdate");
     return SecItemUpdate((__bridge CFDictionaryRef)query(@"canary"), (__bridge CFDictionaryRef)attributes);
 }
 
 static OSStatus removeItem(NSString *account)
 {
+    activity(@"SecItemDelete");
     return SecItemDelete((__bridge CFDictionaryRef)query(account));
 }
 
@@ -95,11 +134,14 @@ static int operate(NSString *operation)
         return 1;
     }
     NSFileManager *fm = NSFileManager.defaultManager;
+    activity(@"create_result_directory");
     if (![fm createDirectoryAtPath:directory withIntermediateDirectories:YES
                        attributes:@{NSFilePosixPermissions: @0700} error:NULL]) {
         result[@"reason"] = @"test_directory_unavailable";
         return 1;
     }
+    directoryReady = YES;
+    activity(@"read_boot_session");
     NSString *boot = bootSession();
     if (!boot) {
         result[@"reason"] = @"native_boot_session_not_available";
@@ -109,10 +151,10 @@ static int operate(NSString *operation)
     NSString *statePath = [directory stringByAppendingPathComponent:@"state.json"];
     if ([operation isEqualToString:@"cleanup"]) {
         for (NSString *name in @[@"canary", @"scratch"]) {
-            OSStatus rc = removeItem(name);
-            [steps addObject:@{@"step": [@"cleanup_" stringByAppendingString:name], @"status": @(rc)}];
+            OSStatus rc = execute([@"cleanup_" stringByAppendingString:name], ^{ return removeItem(name); });
             if (rc != errSecSuccess && rc != errSecItemNotFound) return 1;
         }
+        activity(@"remove_test_state");
         if ([fm fileExistsAtPath:statePath] && ![fm removeItemAtPath:statePath error:NULL]) return 1;
         result[@"cleanup_complete"] = @YES;
         return 0;
@@ -121,6 +163,7 @@ static int operate(NSString *operation)
         result[@"reason"] = @"unknown_operation";
         return 2;
     }
+    activity(@"read_test_state");
     if ([fm fileExistsAtPath:statePath]) {
         NSData *encoded = [NSData dataWithContentsOfFile:statePath];
         id state = encoded ? [NSJSONSerialization JSONObjectWithData:encoded options:0 error:NULL] : nil;
@@ -131,7 +174,7 @@ static int operate(NSString *operation)
             result[@"reason"] = @"test_state_invalid_preserved";
             return 1;
         }
-        if (!status(@"copy_persisted", copy(@"canary", 2))) return 1;
+        if (execute(@"copy_persisted", ^{ return copy(@"canary", 2); }) != errSecSuccess) return 1;
         result[@"read_matches_public_canary"] = @YES;
         result[@"cross_boot_read"] = @(![boot isEqualToString:state[@"boot_session"]]);
         result[@"phase"] = [result[@"cross_boot_read"] boolValue] ? @"cross_boot_verified" : @"same_boot_only";
@@ -139,15 +182,15 @@ static int operate(NSString *operation)
     }
     // No broad query or cleanup is performed before creation. A duplicate or
     // partial earlier attempt remains visible as an actual SecItem result.
-    if (!status(@"add_canary", add(@"canary", 1)) ||
-        !status(@"copy_initial", copy(@"canary", 1)) ||
-        !status(@"update_canary", update(2)) ||
-        !status(@"copy_updated", copy(@"canary", 2)) ||
-        !status(@"add_scratch", add(@"scratch", 1)) ||
-        !status(@"delete_scratch", removeItem(@"scratch"))) return 1;
-    OSStatus absent = copy(@"scratch", 1);
-    [steps addObject:@{@"step": @"copy_deleted", @"status": @(absent)}];
+    if (execute(@"add_canary", ^{ return add(@"canary", 1); }) != errSecSuccess ||
+        execute(@"copy_initial", ^{ return copy(@"canary", 1); }) != errSecSuccess ||
+        execute(@"update_canary", ^{ return update(2); }) != errSecSuccess ||
+        execute(@"copy_updated", ^{ return copy(@"canary", 2); }) != errSecSuccess ||
+        execute(@"add_scratch", ^{ return add(@"scratch", 1); }) != errSecSuccess ||
+        execute(@"delete_scratch", ^{ return removeItem(@"scratch"); }) != errSecSuccess) return 1;
+    OSStatus absent = execute(@"copy_deleted", ^{ return copy(@"scratch", 1); });
     if (absent != errSecItemNotFound) return 1;
+    activity(@"save_test_state");
     if (!saveJSON(@{@"schema": @1, @"phase": @"prepared", @"boot_session": boot}, statePath)) {
         result[@"reason"] = @"test_state_write_failed";
         return 1;
@@ -159,23 +202,29 @@ static int operate(NSString *operation)
 
 // Called only on the app's serial worker. All Security queries and public
 // canary values above are the previously built probe002 implementation.
-NSDictionary *AA27PerformProbe(NSString *operation)
+NSDictionary *AA27PerformProbe(NSString *operation, AA27ProbeProgress progress)
 {
     @autoreleasepool {
         NSString *cache = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES).firstObject;
         if (!cache) return @{ @"exit_code": @1, @"reason": @"application_cache_unavailable" };
         directory = [cache stringByAppendingPathComponent:@"org.unixnu.nezha.account27.test"];
+        observer = [progress copy];
+        directoryReady = NO;
         steps = [NSMutableArray array];
         result = [@{@"schema": @1, @"operation": operation, @"uid": @(getuid()), @"pid": @(getpid()),
                     @"steps": steps, @"ordinary_operations": @NO, @"cross_boot_read": @NO,
-                    @"remote_account_tested": @NO, @"private_values_logged": @NO} mutableCopy];
+                    @"remote_account_tested": @NO, @"private_values_logged": @NO,
+                    @"run_state": @"in_progress"} mutableCopy];
         int rc = operate(operation);
         result[@"exit_code"] = @(rc);
+        result[@"run_state"] = @"completed";
         if (getuid() == 501) {
             BOOL written = saveJSON(result, [directory stringByAppendingPathComponent:@"result.json"]);
             result[@"result_file_written"] = @(written);
             if (!written) result[@"exit_code"] = @(rc ? rc : 1);
         }
-        return [result copy];
+        NSDictionary *final = snapshot();
+        observer = nil;
+        return final;
     }
 }

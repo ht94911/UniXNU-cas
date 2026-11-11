@@ -61,7 +61,15 @@
     self.clearButton.enabled = NO;
     self.output.text = @"Running the original SecItem calls…";
     dispatch_async(self.worker, ^{
-        NSDictionary *result = AA27PerformProbe(operation);
+        NSDictionary *result = AA27PerformProbe(operation, ^(NSDictionary *snapshot) {
+            NSData *encoded = [NSJSONSerialization dataWithJSONObject:snapshot
+                options:NSJSONWritingPrettyPrinted | NSJSONWritingSortedKeys error:NULL];
+            NSString *progress = encoded ? [[NSString alloc] initWithData:encoded encoding:NSUTF8StringEncoding]
+                                         : @"Step result could not be encoded.";
+            dispatch_async(dispatch_get_main_queue(), ^{
+                self.output.text = progress;
+            });
+        });
         NSData *data = [NSJSONSerialization dataWithJSONObject:result
             options:NSJSONWritingPrettyPrinted | NSJSONWritingSortedKeys error:NULL];
         NSString *text = data ? [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding]
