@@ -9,6 +9,10 @@
 #include <string.h>
 #include <unistd.h>
 
+// Present in the selected 24A446 Security export table. Keep only public
+// diagnostic metadata; descriptions and error user-info are not written out.
+extern CFErrorRef SecCopyLastError(OSStatus status) CF_RETURNS_RETAINED;
+
 static NSString *const group = @"org.unixnu.nezha.account27.test";
 static NSString *const service = @"org.unixnu.nezha.account27.SecItem.v1";
 static NSString *directory;
@@ -48,7 +52,24 @@ static OSStatus execute(NSString *name, OSStatus (^call)(void))
     result[@"call_state"] = @"before";
     activity(@"prepare_call");
     OSStatus code = call();
-    [steps addObject:@{@"step": name, @"status": @(code)}];
+    NSMutableDictionary *step = [@{@"step": name, @"status": @(code)} mutableCopy];
+    if (code != errSecSuccess) {
+        CFErrorRef error = SecCopyLastError(code);
+        if (error) {
+            CFStringRef domain = CFErrorGetDomain(error);
+            if (domain) step[@"error_domain"] = (__bridge NSString *)domain;
+            step[@"error_code"] = @(CFErrorGetCode(error));
+            CFDictionaryRef info = CFErrorCopyUserInfo(error);
+            CFTypeRef description = info ? CFDictionaryGetValue(info, kCFErrorDescriptionKey) : NULL;
+            if (description && CFEqual(description,
+                    CFSTR("Unable to get externalizedContext from LAContext"))) {
+                step[@"error_phase"] = @"client_context_export";
+            }
+            if (info) CFRelease(info);
+            CFRelease(error);
+        }
+    }
+    [steps addObject:[step copy]];
     result[@"call_state"] = @"returned";
     activity(@"call_returned");
     return code;
@@ -84,10 +105,14 @@ static OSStatus copy(NSString *account, unsigned revision)
     NSMutableDictionary *q = query(account);
     q[(__bridge id)kSecMatchLimit] = (__bridge id)kSecMatchLimitOne;
     q[(__bridge id)kSecReturnData] = @YES;
-    activity(@"create_authentication_context");
-    LAContext *context = [LAContext new];
-    context.interactionNotAllowed = YES;
-    q[(__bridge id)kSecUseAuthenticationContext] = context;
+    activity(@"prepare_noninteractive_query");
+    // This ordinary item has no authentication access-control requirement.
+    // The original 24A446 API accepts this flag without first exporting an
+    // LAContext. Authentication-required items still return the real error.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    q[(__bridge id)kSecUseAuthenticationUI] = (__bridge id)kSecUseAuthenticationUIFail;
+#pragma clang diagnostic pop
     CFTypeRef found = NULL;
     activity(@"SecItemCopyMatching");
     OSStatus rc = SecItemCopyMatching((__bridge CFDictionaryRef)q, &found);

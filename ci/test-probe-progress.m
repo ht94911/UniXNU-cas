@@ -12,6 +12,7 @@ static NSString *testBoot;
 static NSMutableDictionary *items;
 static NSMutableArray *observations;
 static BOOL rejectAdd;
+static BOOL rejectCopy;
 static unsigned calls;
 static uid_t testGetuid(void) { return 501; }
 static int testSysctl(const char *name, void *old, size_t *size, void *newValue, size_t newSize)
@@ -32,6 +33,7 @@ static OSStatus testAdd(CFDictionaryRef, CFTypeRef *);
 static OSStatus testCopy(CFDictionaryRef, CFTypeRef *);
 static OSStatus testUpdate(CFDictionaryRef, CFDictionaryRef);
 static OSStatus testDelete(CFDictionaryRef);
+CFErrorRef testLastError(OSStatus) CF_RETURNS_RETAINED;
 #define getuid testGetuid
 #define sysctlbyname testSysctl
 #define NSSearchPathForDirectoriesInDomains testDirectories
@@ -39,6 +41,7 @@ static OSStatus testDelete(CFDictionaryRef);
 #define SecItemCopyMatching testCopy
 #define SecItemUpdate testUpdate
 #define SecItemDelete testDelete
+#define SecCopyLastError testLastError
 #include "../source/AccountKeyItemProbe.m"
 #undef getuid
 #undef sysctlbyname
@@ -47,6 +50,7 @@ static OSStatus testDelete(CFDictionaryRef);
 #undef SecItemCopyMatching
 #undef SecItemUpdate
 #undef SecItemDelete
+#undef SecCopyLastError
 
 static NSString *resultPath(void)
 {
@@ -87,8 +91,26 @@ static OSStatus testAdd(CFDictionaryRef q, CFTypeRef *out)
 static OSStatus testCopy(CFDictionaryRef q, CFTypeRef *out)
 {
     NSString *name = beforeCall(q, @"SecItemCopyMatching");
+    NSDictionary *query = (__bridge NSDictionary *)q;
+    assert(!query[(__bridge id)kSecUseAuthenticationContext]);
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    assert([query[(__bridge id)kSecUseAuthenticationUI] isEqual:(__bridge id)kSecUseAuthenticationUIFail]);
+#pragma clang diagnostic pop
+    if (rejectCopy) return errSecAuthFailed;
     if (!items[name]) return errSecItemNotFound;
     *out = CFBridgingRetain(items[name]); return errSecSuccess;
+}
+CFErrorRef testLastError(OSStatus status)
+{
+    if (!rejectCopy || status != errSecAuthFailed) return NULL;
+    const void *keys[] = { kCFErrorDescriptionKey };
+    const void *values[] = { CFSTR("Unable to get externalizedContext from LAContext") };
+    CFDictionaryRef info = CFDictionaryCreate(NULL, keys, values, 1,
+        &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+    CFErrorRef error = CFErrorCreate(NULL, kCFErrorDomainOSStatus, status, info);
+    CFRelease(info);
+    return error;
 }
 static OSStatus testUpdate(CFDictionaryRef q, CFDictionaryRef a)
 {
@@ -131,8 +153,19 @@ int main(void)
         assert([v[@"exit_code"] isEqual:@1] && calls == 1 && [v[@"steps"] count] == 1);
         assert([v[@"steps"][0][@"status"] intValue] == errSecInteractionNotAllowed);
         assert(![v[@"ordinary_operations"] boolValue]);
+        rejectAdd = NO;
+        rejectCopy = YES;
+        v = perform(@"auto");
+        assert([v[@"exit_code"] isEqual:@1] && calls == 2 && [v[@"steps"] count] == 2);
+        NSDictionary *failed = v[@"steps"][1];
+        assert([failed[@"step"] isEqual:@"copy_initial"] && [failed[@"status"] intValue] == errSecAuthFailed);
+        assert([failed[@"error_domain"] isEqual:(__bridge NSString *)kCFErrorDomainOSStatus]);
+        assert([failed[@"error_code"] intValue] == errSecAuthFailed);
+        assert([failed[@"error_phase"] isEqual:@"client_context_export"]);
+        assert(!failed[@"description"] && !failed[@"user_info"]);
+        assert(![v[@"ordinary_operations"] boolValue] && items.count == 1);
         assert([NSFileManager.defaultManager removeItemAtPath:testCache error:NULL]);
-        puts("PASS: production checkpoint before calls, immutable UI snapshots, prepare/same/cross-boot, cleanup, failure stops sequence; simulated K1 only");
+        puts("PASS: production checkpoints, immutable UI snapshots, prepare/same/cross-boot, cleanup, noninteractive query and original error metadata, failure preserves partial item; simulated K1 only");
     }
     return 0;
 }

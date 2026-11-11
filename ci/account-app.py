@@ -70,7 +70,9 @@ try:
     actual_entitlements = run('entitlements', ['codesign', '-d', '--entitlements', ':-', binary])
     assert plistlib.loads(actual_entitlements) == expected
     imports = run('imports', ['xcrun', 'nm', '-u', binary]).decode()
-    required = ['_SecItemAdd', '_SecItemCopyMatching', '_SecItemUpdate', '_SecItemDelete', '_sysctlbyname', '_UIApplicationMain']
+    required = ['_SecItemAdd', '_SecItemCopyMatching', '_SecItemUpdate', '_SecItemDelete',
+                '_SecCopyLastError', '_CFErrorGetDomain', '_CFErrorGetCode', '_CFErrorCopyUserInfo',
+                '_sysctlbyname', '_UIApplicationMain']
     assert all(name in imports.split() for name in required)
     dependencies = run('dependencies', ['xcrun', 'otool', '-L', binary]).decode()
     build = run('build-platform', ['xcrun', 'vtool', '-show-build', binary]).decode()
