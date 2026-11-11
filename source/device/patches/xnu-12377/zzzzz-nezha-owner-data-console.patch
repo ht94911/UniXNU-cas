@@ -1,0 +1,21 @@
+--- a/bsd/kern/kern_exec.c
++++ b/bsd/kern/kern_exec.c
+@@ -9099,8 +9099,18 @@
+ 	if (!error) native_staged_apps_prepare(p, scratch, data_mount);
+ done:
+ 	if (data_root) vnode_put(data_root);
+ 	native_owner_data_status = error;
++	int verbose = 0;
++	if (PE_parse_boot_argn("boot-progress", &verbose, sizeof(verbose)) && verbose == 2) {
++		extern volatile uint32_t native_data_persist_state;
++		extern volatile uint64_t native_ram_block_writes;
++		printf("nezha-owner-startup: Data stage=%d status=%d ro=%d selected=%x mounted=%x seed_bytes=%llu persist_state=%u ram_writes=%llu\n",
++		    native_owner_data_stage, error, native_owner_data_readonly,
++		    (unsigned)device, (unsigned)native_owner_data_device,
++		    (unsigned long long)native_owner_data_seed_size, native_data_persist_state,
++		    (unsigned long long)native_ram_block_writes);
++	}
+ 	return error;
+ }
+ #endif
+ 
