@@ -251,6 +251,9 @@ def collect(framework, work, sealed):
                 add(objects / (relative + suffix), 'system-reset-objects/' + relative + suffix)
         for relative in ('osfmk/kern/debug.c', 'bsd/kern/kern_shutdown.c'):
             add(tree / '.cache/xnu-work' / relative, 'system-reset-sources/' + relative)
+        add(tree / '.cache/xnu-work/osfmk/vm/vm_dyld_pager.c', 'dyld-pager-source/vm_dyld_pager.c')
+        for suffix in ('', '.json'):
+            add(objects / ('osfmk/DEVELOPMENT/vm_dyld_pager.o' + suffix), 'dyld-pager-object/vm_dyld_pager.o' + suffix)
         for name in ('link.filelist', 'all-alias.exp'):
             add(objects / name, 'objects/' + name)
         add(tree / 'build/xnu/owner-data-volume.h', 'build/owner-data-volume.h')

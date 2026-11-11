@@ -37,3 +37,6 @@ zzzzzz-nezha-audio-hal-mount.patch
 
 # Preserve original panic/caller evidence before debugger and shutdown.
 zzzzzz-nezha-system-reset-evidence.patch
+
+# Release the held source before assembling the other 16 KiB dyld fixup parts.
+vmwait-dyld-pager-source-release.patch
