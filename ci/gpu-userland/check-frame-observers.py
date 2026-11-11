@@ -81,6 +81,19 @@ int main(int argc,char **argv){assert(argc==2);unsigned cases=0;
  batchStage(7,3,1000,64,3);assert(cpuQueries==2 && output.back().t3==902000 && output.back().a==3);++cases;
  cpuSuccess=false;batchStage(8,2,1000,3,0);assert(cpuQueries==3 && output.back().tid2==0);cpuSuccess=true;
  enabled=false;batchStage(9,2,1000,3,0);assert(cpuQueries==3);++cases;
+ nbdisplaywait::Discovery discovery;
+ assert(discovery.status==nbdisplaywait::NotTried && discovery.due(0,false,false));
+ for(unsigned i=0;i<12;++i){uint64_t now=1000000ull*i;assert(discovery.due(now,false,false));
+  discovery.attempted(now);discovery.status=nbdisplaywait::WaitingServer;
+  assert(!discovery.due(now+999999,false,false));}
+ assert(discovery.attempts==12 && discovery.due(12000000,false,false));++cases;
+ assert(!discovery.due(12000000,true,false) && !discovery.due(12000000,false,true));++cases;
+ init();s=take();s.reads[9]=nbdisplaywait::CandidateLayoutRejected;
+ output.clear();traceWaitBytes(29,77,&s,sizeof(s));
+ std::vector<uint8_t> roundtrip;
+ for(const auto &r:output){const auto *first=(const uint8_t *)&r.t1;roundtrip.insert(roundtrip.end(),first,first+24);
+  const auto *second=(const uint8_t *)&r.c;roundtrip.insert(roundtrip.end(),second,second+24);}
+ assert(roundtrip.size()==816 && !memcmp(roundtrip.data(),&s,sizeof(s)) && s.flags==31);++cases;
  std::cout<<"cases="<<cases<<" actual_observer_reader_and_batch_fields_passed\n";
 }
 '''
@@ -91,8 +104,8 @@ run=subprocess.run(command,capture_output=True,text=True);(a.out/'build.log').wr
 assert run.returncode==0,run.stderr
 run=subprocess.run([str(binary),str(a.out/'observer.trace')],capture_output=True,text=True,timeout=30)
 (a.out/'test.log').write_text(run.stdout+run.stderr);assert run.returncode==0,run.stdout+run.stderr
-assert 'cases=14 actual_observer_reader_and_batch_fields_passed' in run.stdout
-report=dict(passed=True,actual_source_reader_serializer_batch=True,ASan_UBSan=True,cases=14,
+assert 'cases=17 actual_observer_reader_and_batch_fields_passed' in run.stdout
+report=dict(passed=True,actual_source_reader_serializer_batch=True,ASan_UBSan=True,cases=17,
     source_sha256=hashlib.sha256(a.source.read_bytes()).hexdigest(),
     display_state_header_sha256=hashlib.sha256((folder/'NativeDisplayWaitState.h').read_bytes()).hexdigest(),
     observer_include_sha256=hashlib.sha256((folder/'NativeFrameObservers.inc').read_bytes()).hexdigest(),

@@ -1,7 +1,7 @@
-name: nezha iPhone27 display source and batch CPU observers 037c
+name: nezha iPhone27 display discovery and UI coverage 038
 on:
   push:
-    branches: [codex/ios27-gpu27-metal-full-037c-20261111]
+    branches: [codex/ios27-gpu27-metal-full-038-20261111]
   workflow_dispatch:
 permissions:
   contents: read
@@ -97,6 +97,9 @@ jobs:
       - name: Observe the actual Mac main thread using the client sampler
         id: ui_main
         run: device/ci/gpu-userland/logrun ui-main python3 device/ci/gpu-userland/check-client-wait.py --source unixnu/drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm --decoder device/ci/gpu-userland/decode-render-wait.py --out "$LOGS/ui-main"
+      - name: Exercise delayed display discovery with actual Objective-C and Mach reads
+        id: display_discovery
+        run: device/ci/gpu-userland/logrun display-discovery python3 device/ci/gpu-userland/check-display-discovery.py --source unixnu/drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm --out "$LOGS/display-discovery"
       - name: Build Turnip for the actual A840 arm64e iOS27 target
         id: turnip_ios27
         working-directory: unixnu

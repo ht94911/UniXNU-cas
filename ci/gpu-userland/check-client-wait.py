@@ -17,9 +17,9 @@ fragment=front[front.index('static void traceWaitBytes('):front.index('static vo
 record=front[front.index('struct TraceRec {'):front.index('static TraceRec gTrace[')]
 identity=inc[inc.index('static bool clientWaitOn()'):inc.index('static int readObserverMemory(')]
 client=inc[inc.index('static void startClientWaitSampler()'):]
-assert client.count('maximumSamples=30000,maximumDurationUs=600000000')==1
+assert client.count('maximumSamples=90000,maximumDurationUs=1800000000')==1
 assert client.count(' }).detach();')==1
-client=client.replace('maximumSamples=30000,maximumDurationUs=600000000','maximumSamples=8,maximumDurationUs=1000000')
+client=client.replace('maximumSamples=90000,maximumDurationUs=1800000000','maximumSamples=8,maximumDurationUs=1000000')
 client=client.replace(' }).detach();',' }).join();')
 assert 'pthread_main_thread_np' in client and 'mach_port_mod_refs' in client and 'mach_port_deallocate' in client
 report=dict(source_sha256=hashlib.sha256(a.source.read_bytes()).hexdigest(),
@@ -28,7 +28,7 @@ report=dict(source_sha256=hashlib.sha256(a.source.read_bytes()).hexdigest(),
     display_state_header_sha256=hashlib.sha256((folder/'NativeDisplayWaitState.h').read_bytes()).hexdigest(),
     phone_operations=False,real_Mac_main_thread=dict(executed=False,platform=platform.system()),
     controlled_host_changes=['getprogname selects SpringBoard in the test process','sample limit8/duration1second','join instead of detach for fixture ownership'],
-    separate_client_filename='springboard-waits.trace',images_emission_stubbed_in_this_Mach_test=True)
+    separate_client_filename='springboard-waits.trace',images_emission_stubbed_in_this_Mach_test=True,production_maximum_samples=90000,production_duration_seconds=1800,required_read_bound_bytes=67108864)
 assert front.count('/m2v/springboard-waits.trace')==2
 assert 'const char *const *paths=render?renderPaths:clientPaths;' in front
 assert 'if(!diagOn() || (!render && !client))return;' in front
@@ -53,6 +53,9 @@ if platform.system()=='Darwin':
 '''
     helpers=r'''
 static std::mutex recordLock;static std::vector<TraceRec> records;
+static unsigned clientNotes=0;
+extern "C" void native_bridge_metal_note(const char *s){assert(!strncmp(s,"ui-wait ",8));++clientNotes;}
+
 static void tracePush(const TraceRec &r){std::lock_guard<std::mutex> l(recordLock);records.push_back(r);}
 static void traceSamplePush(const TraceRec &r){tracePush(r);}
 static bool diagOn(){return true;}static bool NBTraceSwapTimingOn(){return true;}
@@ -62,7 +65,7 @@ static uint64_t nowUs(){return clock_gettime_nsec_np(CLOCK_UPTIME_RAW)/1000;}
 static void traceRenderWaitImages(bool client){assert(client);}
 '''
     main=r'''
-int main(int argc,char **argv){assert(argc==2);startClientWaitSampler();
+int main(int argc,char **argv){assert(argc==2);startClientWaitSampler();assert(clientNotes==2);
  FILE *f=fopen(argv[1],"wb");assert(f);assert(fwrite(records.data(),72,records.size(),f)==records.size());fclose(f);
  uint64_t tid=0;assert(!pthread_threadid_np(nullptr,&tid));
  printf("{\"main_tid\":%llu,\"pid\":%d,\"records\":%zu}\n",(unsigned long long)tid,getpid(),records.size());
