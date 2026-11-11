@@ -1,7 +1,7 @@
-name: nezha iPhone27 GPU015 FCC control - power039
+name: nezha iPhone27 GPU015 FCC control - power039b
 on:
   push:
-    branches: [codex/ios27-power-gpu015-039-20261111]
+    branches: [codex/ios27-power-gpu015-039b-20261111]
   workflow_dispatch:
 permissions:
   contents: read

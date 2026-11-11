@@ -242,7 +242,7 @@
     "source/soc/soc.toml": "9cebcadf2d5a271ceb44ee5fc378ed739cff0e7e5a940007164a9917042fd92f",
     "source/ufs.bundle": "3a7c1c6ac7e5a39e6cb4adcc6143fa1e4c6c24ae862aa501102f9fb70c21a534",
     "source/usb.bundle": "198812463a65b274dbc1aaac5973cfa03883cc6019bb3cc5e34d9d1a4c4157e5",
-    "ci/native.py": "7b494d63a5f508530af7674bc7a6538b1bb76db2a37493ed8ccbfcf4ead6c129",
+    "ci/native.py": "caac16be6fdac8ee485db07ba39f2afd873b7e825d00f45d2dd562879ec79f78",
     "source/device/scripts/check-power27-integration.py": "73da86a3c4a7d9d5e7388b55706aaa853377f4fcab6267b82242e815ea76fd81",
     "source/device/package/power27/include/NezhaPowerDma.h": "cac0ec74dd23d60601a94d0e5b97bd179adc41a804b130ee620670a2f0e523ac",
     "source/device/package/power27/tests/dma-route.c": "3fd706ad759783a5e18aca3f460bc0b87b84ff6cf11105e78a0ddc7ce50e10a2",

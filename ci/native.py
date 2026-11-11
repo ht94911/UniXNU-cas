@@ -21,8 +21,18 @@ def sha(path):
 def run(argv, *, cwd=None, env=None, log=None):
     if log:
         with Path(log).open('wb') as stream:
-            return subprocess.run([str(a) for a in argv], cwd=cwd, env=env,
+            code = subprocess.run([str(a) for a in argv], cwd=cwd, env=env,
                                   stdout=stream, stderr=subprocess.STDOUT).returncode
+        if code:
+            # Preserve the detailed artifact log and also expose the failure
+            # when an artifact transport error prevents its retrieval.
+            with Path(log).open('rb') as stream:
+                stream.seek(0, os.SEEK_END)
+                stream.seek(max(0, stream.tell() - 98304))
+                tail = stream.read().decode('utf-8', errors='replace')
+            print('Native command failed (exit %d); log: %s' % (code, log), flush=True)
+            print('\n'.join(tail.splitlines()[-160:]), flush=True)
+        return code
     return subprocess.check_output([str(a) for a in argv], cwd=cwd, env=env, text=True).strip()
 
 
