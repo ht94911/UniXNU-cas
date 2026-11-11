@@ -1,0 +1,31 @@
+{
+  "device_revision": "79e468d1059f89f44e8886d2d66ec589c5ad1c0f",
+  "purpose": "HAL062 built-in Speaker with a real accepted-PCM reference tap; reuse the61 kernel and hardware artifacts locally. Compile/sign only the changed HAL and execute its production SDK host contract.",
+  "audio": {
+    "source_revision": "79e468d1059f89f44e8886d2d66ec589c5ad1c0f",
+    "HAL_only": true,
+    "hardware_enabled": false,
+    "private_inputs": false
+  },
+  "files": {
+    "ci/hal.py": "7bdc2c8f7b80e1f3302ce95259d390d43119f5e01d72970d59be96020d9c4933",
+    "source/device/package/audio27/upstream/ShengAudioReach.h": "b135177a5feb3e24e0d8a6aabb301600e2c37078b970a09ada6e8eb7bb6a5b98",
+    "source/device/package/audio27/upstream/ShengGpr.h": "a274dded1f4d1e2709b9f966759bcb1f57d12747ee0f57743dea1fa97d95d23e",
+    "source/device/package/audio27/hal/AudioClock.h": "4c60fefab16eccb005f140652c0535eb967bcf5d74a24b65f9b327c18db1e906",
+    "source/device/package/audio27/hal/NezhaAudioProperties.inc": "74033ca8107274bdb970cd4a36c50589a11bbb41c5e3e4411bbf0c905284a33d",
+    "source/device/package/audio27/hal/AudioReference.h": "86350d6b8a8e226cf2f2c4d3cacc2cbcb2022abc8c29420c6e3fe60a32b8d325",
+    "source/device/package/audio27/hal/AudioClock.c": "e5f6cbbfc44f5e666a7e9b4ef8c7d284517fae36840b22c0277d80876b3f55e4",
+    "source/device/package/audio27/hal/NezhaAudioPlugIn.c": "05eaee36b6bed8dceaad1bd620f7688e58c7d581bd2c5102c28b86d4f790cc1e",
+    "source/device/package/audio27/hal/Info.plist": "a118cd65480a2396e51c0f71569a663b78a5be6446bbada469442670e94d76b3",
+    "source/device/package/audio27/tests/speaker_properties_test.c": "c548aefc5b7fe8827ea9183ca18b11025be2ffaa60555cd084386de8b529a1e3",
+    "source/device/package/audio27/os/NezhaAudioAbi.h": "db4c4f244d6075829fc94b9afdc3c58af070be2fd7d0988a4e74f3c6cb05a621",
+    "source/device/package/audio27/core/AudioRing.h": "c32c7dd4fc083e4d48b3fdb6596ca1bbda477310de003dfacc542bb29433d67d",
+    "source/device/package/audio27/core/AudioProtocol.h": "cdd0adfdf372cb6efc5a69f3066f7976f47bf3287884c42d5f7f9709856c17ba",
+    "source/device/package/audio27/core/AudioRing.c": "42057662697f254eaf34641864b847ba535bd94a0ed068f2417c856cfe4572eb",
+    ".github/workflows/nezha-ios27-native.yml": "325c81555bf38c2e5b7ac2f0116f61e00069632a364291abcab7881a318c8c8e"
+  },
+  "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
+  "certificate_sha256": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
+  "private_inputs_uploaded": false,
+  "phone_operations": false
+}
