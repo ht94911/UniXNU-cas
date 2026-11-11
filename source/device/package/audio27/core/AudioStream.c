@@ -11,7 +11,7 @@ static void rejected_done(NaStream *s,const GprPacket *p,uint32_t reason) {
     NaDoneRejection r={0};r.reason=reason;r.opcode=p->opcode;r.token=p->token;
     r.generation=s->generation;r.payload_bytes=p->payload_bytes;r.slot=NA_DMA_SLOTS;
     for (unsigned i=0;i<15 && (i+1)*4<=p->payload_bytes;++i) r.payload[i]=rd(p->payload+i*4);
-    if (p->payload_bytes==(s->capture ? 60u:32u)) {
+    if (s->capture ? (p->payload_bytes==56u || p->payload_bytes==60u) : p->payload_bytes==32u) {
         const uint8_t *a=p->payload+(s->capture ? 4:0);
         uint64_t address=rd(a)|((uint64_t)rd(a+4)<<32);
         if (s->stride && address>=s->dsp_base && (address-s->dsp_base)%s->stride==0 &&
@@ -105,7 +105,10 @@ int na_stream_done(NaStream *s,const uint8_t *data,uint32_t length) {
         if (!s->remote_errors) s->last_remote_status=status;
         ++s->remote_errors;s->quarantine=1;s->running=0;return NA_REMOTE;
     }
-    if (p.payload_bytes!=(s->capture ? 60u : 32u)) goto malformed;
+    /* AudioReach's published V2 reply is56 bytes, without an offset; the
+     * existing cached Linux layout is60 bytes. Both mirror the same submitted
+     * data address/handle. Only these complete, metadata-free headers apply. */
+    if (s->capture ? (p.payload_bytes!=56u && p.payload_bytes!=60u) : p.payload_bytes!=32u) goto malformed;
     uint32_t status=rd(d+(s->capture ? 0:12));
     const uint8_t *a=d+(s->capture ? 4:0);
     uint64_t address=rd(a)|((uint64_t)rd(a+4)<<32);
@@ -114,8 +117,10 @@ int na_stream_done(NaStream *s,const uint8_t *data,uint32_t length) {
     /* No metadata buffer was supplied. Never accept an unsolicited DMA target. */
     if (s->capture) {
         reason=NaDoneMetadata;
-        if (rd(d+40) || rd(d+44) || rd(d+48) || rd(d+52) || rd(d+56)) goto malformed;
-        uint32_t bytes=rd(d+16),offset=rd(d+20);
+        uint32_t metadata=p.payload_bytes==56u ? 36u:40u;
+        for (unsigned word=0;word<5;++word)
+            if (rd(d+metadata+word*4)) goto malformed;
+        uint32_t bytes=rd(d+16),offset=p.payload_bytes==60u ? rd(d+20):0;
         reason=NaDoneBounds;
         if (offset>s->period_bytes || bytes>s->period_bytes-offset ||
             offset%s->frame_bytes || bytes%s->frame_bytes) goto malformed;

@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Audio054 retains the first rejected READ_DONE metadata and expected slot identity after051 observed four submissions and four rejected completions. The existing provider8/v7 snapshot adds23 numeric metadata words and stays within2048 bytes. Existing packet validation, DMA ownership, timeout, cleanup, HAL, GPIO, SoundWire, PRM, calibration and GPU023 behavior are retained. Private input slots remain zero in CI; no phone operations, raw PCM upload or main promotion.",
+  "purpose": "Audio057 consumes the published56-byte READ_DONE_V2 header alongside the existing60-byte cached layout, retaining endpoint/token/state/generation/address/handle, metadata-target absence and period/frame bounds. Original054 numeric history, hardware startup, clocks, HAL, VI/calibration and GPU023 are reused. Public source only; private slots remain zero in CI; current054 reply and actual PCM still require hardware evidence.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "75ee9c5e4fac6fa9490c17cc7e34274b4abe9351",
+  "device_revision": "e292292f87ebaa7a0bf01191806b5caa1b0bac20",
   "soc_revision": "703d7b4bb00904b4a6e5d96f9e9bf72eec170f6b",
   "xcode": "26.6",
   "files": {
@@ -219,7 +219,7 @@
     "source/device/package/audio27/platform/AudioSmmu.h": "41401f1b97e3481c7e5cc3e02c47f926e91eec9fa34f4a48981a3fc3b723cddd",
     "source/device/package/audio27/upstream/ShengGpr.c": "c4f498f07e2cb601b593e64a8d32474a21d6a87375618e1a67b99d52c5d3160e",
     "source/device/package/audio27/platform/SoundWire.h": "334e51c447b865e66ed7d67eb448510dfaa0b5a8c66598a3d722f84ce69f565c",
-    ".github/workflows/nezha-ios27-native.yml": "9e8672fc42f69d313344cc33e3760929ad3f0e26117a5b484330135a3b9247c1",
+    ".github/workflows/nezha-ios27-native.yml": "bf80e4d2d5eeb52db408db1d97eb77f561e7ff1119dc3999421a6edc00cbab27",
     "source/device/package/audio27/upstream/ShengGpr.h": "a274dded1f4d1e2709b9f966759bcb1f57d12747ee0f57743dea1fa97d95d23e",
     "source/device/package/audio27/os/NezhaAudioNative.h": "12517b0d7145fc498ae371fbd3ba47cd9415468d655989c08090010de79cc2ba",
     "source/device/package/audio27/upstream/ShengAudioReach.h": "b135177a5feb3e24e0d8a6aabb301600e2c37078b970a09ada6e8eb7bb6a5b98",
@@ -253,7 +253,7 @@
     "source/device/scripts/build-nezha27-audio.py": "874be0f6b88c14caeb0824e5554a84ebca7a6149f667484f01baaba870ef583f",
     "source/device/package/audio27/core/AudioGraph.h": "5d98a8814e9ce276b95fa7287e179c913391d7128ef69db5394a9fe248282e5e",
     "source/device/package/audio27/platform/AudioAssembly.c": "ea03ef279c124f73b95d847a0367581db94d8e4ef41b54446f8904d38f17fd08",
-    "source/device/package/audio27/core/AudioStream.c": "e624d4307a3c145d48b54f192432984faadf34154fe3a85b65b1574d5990d80f",
+    "source/device/package/audio27/core/AudioStream.c": "d49c41ba521c4108808de386035d3567b3d4111ef9ede1faa0a49b359d8491b4",
     "source/device/package/audio27/platform/NezhaAudioBoard.h": "5a7af2d5790e871cadf0375a4a60252bed3fe1ac140d5260efc0f2515f4b0b35",
     "source/device/package/audio27/core/AudioRuntime.c": "3f71dec8f97bcd3f817d9f708ee7a51da010dbbbfe87b4666d7202c80e9bab1b",
     "source/device/package/audio27/core/AudioRuntime.h": "427057626089238b91ec840d0b5fc0046166fd43c4794c7a01bee04ac2a89641",
@@ -393,15 +393,15 @@
   "audio": {
     "base": "GPU023",
     "base_device_revision": "673cde869b7378658b470c4e6b2b9a1766b99411",
-    "source_revision": "75ee9c5e4fac6fa9490c17cc7e34274b4abe9351",
-    "source_only_revision": "75ee9c5e4fac6fa9490c17cc7e34274b4abe9351",
+    "source_revision": "e292292f87ebaa7a0bf01191806b5caa1b0bac20",
+    "source_only_revision": "e292292f87ebaa7a0bf01191806b5caa1b0bac20",
     "hardware_enabled": false,
     "resource_census_enabled": true,
     "private_inputs": false,
     "HAL_target": "arm64e-apple-ios27.0",
     "shared_resource_owner": "703d7b4bb00904b4a6e5d96f9e9bf72eec170f6b",
     "private_input_slot_bytes": 35651584,
-    "previous_audio_behavior_source": "a41343489d5c6d70e80b71c1946a33ea43ce913e",
+    "previous_audio_behavior_source": "75ee9c5e4fac6fa9490c17cc7e34274b4abe9351",
     "base_native_run": 42401029411,
     "base_Metal_revision": "eb59f022a326d03330d398b3c1dbcb6f0aeb633f",
     "diagnostic_glink_delay_ms": 20000,
@@ -548,6 +548,12 @@
     "retained_first_DONE_rejection_words": 23,
     "retained_first_DONE_rejection_cases": 9,
     "existing_DONE_validation_retained": true,
-    "existing_DMA_ownership_and_cleanup_retained": true
+    "existing_DMA_ownership_and_cleanup_retained": true,
+    "read_DONE_payload_header_bytes": [
+      56,
+      60
+    ],
+    "published_READ_DONE_zero_offset": true,
+    "metadata_target_absence_retained": true
   }
 }
