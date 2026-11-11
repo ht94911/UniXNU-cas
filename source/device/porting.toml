@@ -2,6 +2,20 @@
 schema_version = 1
 
 [[area]]
+id = "ios27-account-pager007"
+status = "implemented"
+components = ["XnuPrelink"]
+paths = ["patches/xnu-12377/vmwait-dyld-pager-source-release.patch", "tests/dyld-pager-source-release.c", "tests/check-dyld-pager-source-release.py"]
+inputs = ["UniXNU-sheng0215f34 source-release patch copied byte for byte", "Existing source-built xnu12377 with four4KiB parts per16KiB chained fixup page"]
+configuration = ["Apply after zzzz-sheng-ipados27-bringup.patch; no new boot argument or observation facility"]
+procedure = ["Compare source-extracted old and new assembly/cleanup blocks using the verification-UPL wait stand-in", "Compile the actual native source and strict prelink with the existing AA27 components", "Verify ordinary SecItem behavior on the device after normal protected handoff"]
+findings = ["AA27-006 App waited for securityd while several server threads faulted on one16KiB constant-data block", "44 source-extracted cases per version reproduce the old busy-source wait and verify the upstream early release with shadow/no-shadow, all parts and failure paths"]
+completion = ["Native package qualified and actual SecItem creation returns successfully", "Cross-boot read and Android protection verified separately"]
+limits = ["VM/APFS host stand-ins do not prove a hardware cause or cure; actual native and phone checks pending", "K1 representation, firmware, GPU, networking and identity inputs unchanged"]
+next_action = ["Build the one-patch native candidate, qualify and queue only after all host preparation"]
+evidence = [{kind = "source", reference = "tests/check-dyld-pager-source-release.py", result = "Actual source blocks pass ASan/UBSan with simulated verification-UPL waits; no phone operations."}]
+
+[[area]]
 id = "ios27-account-input004"
 status = "implemented"
 components = ["QcomXnuUsbDebug", "ArmCpu"]
