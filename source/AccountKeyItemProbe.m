@@ -94,18 +94,18 @@ static int operate(NSString *operation)
         result[@"reason"] = @"requires_mobile_user_context";
         return 1;
     }
-    NSString *boot = bootSession();
-    if (!boot) {
-        result[@"reason"] = @"native_boot_session_not_available";
-        return 1;
-    }
-    result[@"boot_session"] = boot;
     NSFileManager *fm = NSFileManager.defaultManager;
     if (![fm createDirectoryAtPath:directory withIntermediateDirectories:YES
                        attributes:@{NSFilePosixPermissions: @0700} error:NULL]) {
         result[@"reason"] = @"test_directory_unavailable";
         return 1;
     }
+    NSString *boot = bootSession();
+    if (!boot) {
+        result[@"reason"] = @"native_boot_session_not_available";
+        return 1;
+    }
+    result[@"boot_session"] = boot;
     NSString *statePath = [directory stringByAppendingPathComponent:@"state.json"];
     if ([operation isEqualToString:@"cleanup"]) {
         for (NSString *name in @[@"canary", @"scratch"]) {

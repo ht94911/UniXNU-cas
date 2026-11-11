@@ -42,7 +42,8 @@ ok = False
 try:
     source, entitlements = root / 'source/AccountKeyItemProbe.m', root / 'source/entitlements.plist'
     expected = {'application-identifier': 'org.unixnu.nezha.account27.test',
-                'keychain-access-groups': ['org.unixnu.nezha.account27.test']}
+                'keychain-access-groups': ['org.unixnu.nezha.account27.test'],
+                'com.apple.security.exception.sysctl.read-only': ['kern.bootsessionuuid']}
     assert plistlib.loads(entitlements.read_bytes()) == expected
     sdk = run('sdk', ['xcrun', '--sdk', 'iphoneos', '--show-sdk-path']).decode().strip()
     sdk_version = run('sdk-version', ['xcrun', '--sdk', 'iphoneos', '--show-sdk-version']).decode().strip()

@@ -1,6 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><dict>
-  <key>application-identifier</key><string>org.unixnu.nezha.account27.test</string>
-  <key>keychain-access-groups</key><array><string>org.unixnu.nezha.account27.test</string></array>
-</dict></plist>
+<plist version="1.0">
+<dict>
+	<key>application-identifier</key>
+	<string>org.unixnu.nezha.account27.test</string>
+	<key>keychain-access-groups</key>
+	<array>
+		<string>org.unixnu.nezha.account27.test</string>
+	</array>
+	<key>com.apple.security.exception.sysctl.read-only</key>
+	<array>
+		<string>kern.bootsessionuuid</string>
+	</array>
+</dict>
+</plist>
