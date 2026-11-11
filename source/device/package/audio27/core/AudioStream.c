@@ -133,6 +133,11 @@ int na_stream_done(NaStream *s,const uint8_t *data,uint32_t length) {
         if (!s->remote_errors) s->last_remote_status=status;
         ++s->remote_errors;s->quarantine=1;s->running=0;return NA_REMOTE;
     }
+    if (s->capture && !s->first_read_done) {
+        s->first_read_done=((uint64_t)p.token<<32)|((uint64_t)!!s->quarantine<<26)|
+            ((uint64_t)!!s->retiring<<25)|((uint64_t)!!s->running<<24)|
+            ((uint64_t)b->length<<8)|p.payload_bytes;
+    }
     ++s->completions;b->state=NaBufferReturned;--s->in_flight;return NA_OK;
 malformed:
     if (!basic) rejected_done(s,&p,reason);

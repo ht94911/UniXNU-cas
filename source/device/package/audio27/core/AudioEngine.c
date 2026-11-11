@@ -115,7 +115,12 @@ int na_engine_poll(NaEngine *e,uint64_t now) {
         if (r==NA_WIRE) {na_engine_link(e,0);result=r;break;}
         for (unsigned i=0;i<3;++i) if (e->graph[i]) {
             NaGraph *g=e->graph[i];
+            uint64_t first=g->stream->first_read_done;
             r=na_stream_done(g->stream,packet.data,packet.length);
+            /* Same dispatch, before graph cleanup or PCM consumption changes
+             * its stage. Existing first receipts stay fixed across replies. */
+            if (!first && g->stream->first_read_done)
+                g->stream->first_read_done|=(uint64_t)(g->stage&31u)<<27;
             if (r<0) result=fault(g,r);
         }
     }
