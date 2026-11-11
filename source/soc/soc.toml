@@ -1,0 +1,11 @@
+schema_version = 2
+[soc]
+name = "SM8850"
+arch = "arm64"
+description = "Qualcomm SM8850 (Kaanapali) architectural resources; board wiring and memory stay in the device"
+[components]
+include = ["ArmCpu"]
+
+[kernel]
+config_fragments = ["arch:configs/common.config", "soc:configs/sm8850.config", "os:configs/ipados.config"]
+patch_series = ["arch:patches/xnu/series", "soc:patches/xnu/series", "os:patches/xnu/series", "device:patches/xnu/series"]
