@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Audio058 keeps the mobile VirtualAudio mixer as system default instead of forcing its hogged physical target into HALS ordinary defaults. Reuse056 bounded callback/eligibility observations with their matching32-byte receiver, and retain057 published56/60 READ_DONE ownership validation. The playback trial will use the existing na-capture-probe=0 path;057 remains the independent input trial. Public source only, private resource slots zero, no phone operations.",
+  "purpose": "Audio058 keeps the mobile VirtualAudio mixer as system default instead of forcing its hogged physical target into HALS ordinary defaults. Reuse056 bounded callback/eligibility observations with their matching32-byte receiver, and retain057 published56/60 READ_DONE ownership validation. The playback trial will use the existing na-capture-probe=0 path;057 remains the independent input trial. Public source only, private resource slots zero, no phone operations. Corrected full-build SDK header closure and CoreAudio framework link match the already successful056 HAL command; audio production behavior remains the original058 change.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "761e92bfef56f3924bfb1c0fd342faee93452938",
+  "device_revision": "d6d138fc6137145f1eb0469bdd7293d263c82947",
   "soc_revision": "703d7b4bb00904b4a6e5d96f9e9bf72eec170f6b",
   "xcode": "26.6",
   "files": {
@@ -250,7 +250,7 @@
     "source/device/package/audio27/upstream/QcomSmem.c": "4e9eb0ee22458dad30e1fcb7edb74a9d762222aff0623a6d5b85fb4a6e08bd03",
     "source/device/package/audio27/platform/Tas25xxEndpoint.c": "a108ad9b9e46b5a0ac1d772699e2ef70985fb4abba855d3ff517c3adc3e03549",
     "source/device/package/audio27/hal/NezhaAudioProperties.inc": "addc950d7a9d9bee5a7ac154b80eb199b10f72fe80948bc98b142c973a18c92e",
-    "source/device/scripts/build-nezha27-audio.py": "874be0f6b88c14caeb0824e5554a84ebca7a6149f667484f01baaba870ef583f",
+    "source/device/scripts/build-nezha27-audio.py": "6b23839779b83857796401ffd550a09b9c0db2aa6cb7f7fa02ddd38b72a9aa22",
     "source/device/package/audio27/core/AudioGraph.h": "5d98a8814e9ce276b95fa7287e179c913391d7128ef69db5394a9fe248282e5e",
     "source/device/package/audio27/platform/AudioAssembly.c": "ea03ef279c124f73b95d847a0367581db94d8e4ef41b54446f8904d38f17fd08",
     "source/device/package/audio27/core/AudioStream.c": "d49c41ba521c4108808de386035d3567b3d4111ef9ede1faa0a49b359d8491b4",
@@ -393,8 +393,8 @@
   "audio": {
     "base": "GPU023",
     "base_device_revision": "673cde869b7378658b470c4e6b2b9a1766b99411",
-    "source_revision": "761e92bfef56f3924bfb1c0fd342faee93452938",
-    "source_only_revision": "761e92bfef56f3924bfb1c0fd342faee93452938",
+    "source_revision": "d6d138fc6137145f1eb0469bdd7293d263c82947",
+    "source_only_revision": "d6d138fc6137145f1eb0469bdd7293d263c82947",
     "hardware_enabled": false,
     "resource_census_enabled": true,
     "private_inputs": false,
@@ -564,6 +564,8 @@
     "HAL_history_capacity": 64,
     "planned_capture_probe_frames": 0,
     "original057_read_consumer_retained": true,
-    "hardware_capture_verified": false
+    "hardware_capture_verified": false,
+    "HAL_header_dependencies_from_successful056": true,
+    "HAL_CoreAudio_framework_link": true
   }
 }

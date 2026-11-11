@@ -61,8 +61,8 @@ try:
  bundle=OUT/'NezhaAudio27.driver';bundle.mkdir(exist_ok=True);exe=bundle/'NezhaAudio27'
  with tempfile.TemporaryDirectory() as tmp:
   headers=Path(tmp)/'CoreAudio';headers.mkdir()
-  for name in ['AudioServerPlugIn.h','AudioHardwareBase.h','AudioHardware.h']:(headers/name).symlink_to(Path(mac)/'System/Library/Frameworks/CoreAudio.framework/Headers'/name)
-  cmd=['xcrun','clang','-target','arm64e-apple-ios27.0','-isysroot',ios,'-I',tmp,'-O2','-g0','-Wall','-Wextra','-Werror','-bundle','-fvisibility=hidden','-framework','CoreFoundation','-framework','IOKit',str(SRC/'hal/NezhaAudioPlugIn.c'),str(SRC/'hal/AudioClock.c'),str(SRC/'core/AudioRing.c'),'-o',str(exe)]
+  for name in ['AudioServerPlugIn.h','AudioHardwareBase.h','AudioHardware.h','AudioHardwareDeprecated.h']:(headers/name).symlink_to(Path(mac)/'System/Library/Frameworks/CoreAudio.framework/Headers'/name)
+  cmd=['xcrun','clang','-target','arm64e-apple-ios27.0','-isysroot',ios,'-I',tmp,'-O2','-g0','-Wall','-Wextra','-Werror','-bundle','-fvisibility=hidden','-framework','CoreFoundation','-framework','IOKit','-framework','CoreAudio',str(SRC/'hal/NezhaAudioPlugIn.c'),str(SRC/'hal/AudioClock.c'),str(SRC/'core/AudioRing.c'),'-o',str(exe)]
   (OUT/'HAL-command.json').write_text(json.dumps(cmd,indent=2)+'\n');cp=subprocess.run(cmd,capture_output=True,text=True);(OUT/'HAL-build.log').write_text(cp.stdout+cp.stderr)
   hal={'returncode':cp.returncode,'sdk':ios,'header_sdk':mac}
   if cp.returncode:errors.append('HAL')
