@@ -1,4 +1,4 @@
-name: nezha Bluetooth CDHash-bound UserLog sysctl on Wi-Fi023 - native015
+name: nezha Bluetooth consumed UserLog record on Wi-Fi023 - native016
 on:
   push:
     branches: [codex/ios27-bt27-wifi023-owner006-20261109]

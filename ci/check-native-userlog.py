@@ -151,6 +151,66 @@ def initialization(obj, kernel):
                 runtime_registration_verified=False)
 
 
+def userlog_records(tree, component, manifest, report, builder, artifacts=None):
+    """Bind the consumed raw snapshot and the one witnessed final-record change."""
+    final_record = artifacts / 'objects/bsd/DEVELOPMENT/subr_prf.o.json' if artifacts else tree / manifest['compile_record']
+    original_record = Path(report['userlog_compile_record'])
+    original_tree = original_record.parents[len(Path(manifest['compile_record']).parts) - 1]
+    require(original_record == original_tree / manifest['compile_record'], 'Original target BSD record path differs')
+    require(artifacts is not None or original_tree == tree, 'UserLog compile record belongs to another target tree')
+    original_directory = Path(report['evidence_directory'])
+    require(original_directory.name == 'module' and original_directory.parent.name.startswith('archive-'),
+            'Original USB standalone evidence directory differs')
+    original_snapshot = original_directory / 'userlog-compile-record.json'
+    require(Path(report['userlog_compile_record_snapshot']) == original_snapshot,
+            'UserLog snapshot does not belong to its actual archive attempt')
+    snapshot = artifacts / 'usb-attempts' / original_directory.parent.name / original_snapshot.name if artifacts else original_snapshot
+    snapshot_bytes, final_bytes = snapshot.read_bytes(), final_record.read_bytes()
+    digest = hashlib.sha256(snapshot_bytes).hexdigest()
+    require(digest == report['userlog_compile_record_sha256'] == report['userlog_compile_record_snapshot_sha256'],
+            'UserLog consumed BSD snapshot SHA differs')
+    transition = 'unchanged'
+    if final_bytes != snapshot_bytes:
+        disabled, enabled = b'"XNU_BOOT_PROGRESS=0"', b'"XNU_BOOT_PROGRESS=1"'
+        require(snapshot_bytes.count(disabled) == 1 and snapshot_bytes.count(enabled) == 0 and
+                final_bytes.count(enabled) == 1 and final_bytes.count(disabled) == 0 and
+                snapshot_bytes.replace(disabled, enabled, 1) == final_bytes,
+                'Final BSD record differs beyond the witnessed XNU_BOOT_PROGRESS=0->1 transition')
+        transition = 'XNU_BOOT_PROGRESS=0->1'
+    record_data = json.loads(snapshot_bytes.decode().rstrip().rstrip(','))
+    require(Path(record_data['file']) == original_tree / '.cache/xnu-work/bsd/kern/subr_prf.c' and
+            Path(record_data['directory']) == original_record.parent and record_data['output'] == 'subr_prf.o',
+            'UserLog snapshot is not this native BSD translation unit')
+    original_component = Path(report['component_source_directory'])
+    require(artifacts is not None or original_component == component, 'UserLog compiled source directory differs')
+    commands = [command for command in report['commands'] if str(original_component / 'kernel/QcomUsbUserLog.c') in command]
+    require(len(commands) == 1, 'UserLog must have one actual standalone compile command')
+    command = commands[0]
+    original_obj = original_directory / 'QcomUsbUserLog.o'
+    require(command.count('-o') == 1 and Path(command[command.index('-o') + 1]) == original_obj,
+            'UserLog compile command/object differs')
+    flags, _ = builder.compile_flags(record_data, check_paths=artifacts is None)
+    require(command[:len(flags)] == flags, 'UserLog command did not preserve actual consumed BSD compile flags')
+    compatibility = ['master_cpu=boot_cpu_id', 'QUD_XNU_IO_MAP_UNMAPPABLE=1']
+    require(report['component_revision'] == manifest['usb_base_revision'] and
+            report['xnu_profile'] == 'darwin25-xnu12377-unixnu' and report['soc'] == 'soc/Sm8850.h' and
+            report['compat_defines'] == compatibility, 'UserLog standalone recipe identity differs')
+    defines = ['-DQUD_BUILD_ID="' + manifest['usb_base_revision'] + '"',
+               '-UXNU_SOCRATES_USB_LOG', '-UXNU_SOCRATES_FB_CAPTURE',
+               '-I' + str(original_component), '-I' + str(original_component / 'kernel'),
+               '-I' + str(original_component / 'include'), '-DQUD_SOC_HEADER="soc/Sm8850.h"',
+               '-Wno-reserved-identifier', '-Wno-pre-c11-compat',
+               *['-D' + value for value in compatibility]]
+    require(command == flags + defines + ['-Wno-switch-default', '-c',
+            str(original_component / 'kernel/QcomUsbUserLog.c'), '-o', str(original_obj)],
+            'UserLog command differs from the complete selected standalone recipe')
+    obj = artifacts / 'usb-attempts' / original_directory.parent.name / original_obj.name if artifacts else original_obj
+    return dict(snapshot=snapshot, snapshot_sha256=digest, final_record=final_record,
+                final_sha256=hashlib.sha256(final_bytes).hexdigest(), transition=transition,
+                original_record=original_record, original_directory=original_directory,
+                original_snapshot=original_snapshot, object=obj, command=command)
+
+
 def qualify(tree, component, llvm, kernel, artifacts=None):
     inputs = json.loads((ROOT / 'inputs.json').read_text())
     manifest = inputs['userlog_target']
@@ -168,39 +228,17 @@ def qualify(tree, component, llvm, kernel, artifacts=None):
     from kernel_target import check_object
     directory = artifacts / 'archives/qcom-usb-debug' if artifacts else tree / 'build/qcom-usb-debug'
     report = json.loads((directory / 'build-report.json').read_text())
-    require(report['userlog_enabled'] is True, 'Native015 omitted the existing UserLog handler')
-    record = artifacts / 'objects/bsd/DEVELOPMENT/subr_prf.o.json' if artifacts else tree / manifest['compile_record']
-    original_record = Path(report['userlog_compile_record'])
-    original_tree = original_record.parents[len(Path(manifest['compile_record']).parts) - 1]
-    require(original_record == original_tree / manifest['compile_record'], 'Original target BSD record path differs')
-    require(artifacts is not None or original_tree == tree, 'UserLog compile record belongs to another target tree')
-    require(report['userlog_compile_record_sha256'] == sha(record),
-            'UserLog did not use this target BSD compile record')
+    require(report['userlog_enabled'] is True, 'Native016 omitted the existing UserLog handler')
     require(report['component_source_tree'] == manifest['usb_tree'] and
             report['component_base_tree'] == manifest['usb_base_tree'], 'Compiled USB overlay/base tree differs')
     require(all(report['source_sha256'][name] == digest for name, digest in sources.items()
                 if Path(name).suffix in ('.c', '.h')), 'Compiled UserLog C/header source differs')
-    original_component = Path(report['component_source_directory'])
-    require(artifacts is not None or original_component == component, 'UserLog compiled source directory differs')
-    commands = [command for command in report['commands'] if str(original_component / 'kernel/QcomUsbUserLog.c') in command]
-    require(len(commands) == 1, 'UserLog must have one actual standalone compile command')
-    original_directory = Path(report['evidence_directory'])
-    original_obj = original_directory / 'QcomUsbUserLog.o'
-    require(original_directory.name == 'module' and original_directory.parent.name.startswith('archive-'),
-            'Original USB standalone evidence directory differs')
-    obj = (artifacts / 'usb-attempts' / original_directory.parent.name / original_obj.name) if artifacts else original_obj
-    command = commands[0]
-    require(command.count('-o') == 1 and Path(command[command.index('-o') + 1]) == original_obj,
-            'UserLog compile command/object differs')
     build_spec = importlib.util.spec_from_file_location('existing_usb_build', component / 'scripts/build.py')
     builder = importlib.util.module_from_spec(build_spec)
     build_spec.loader.exec_module(builder)
-    record_data = json.loads(record.read_text().rstrip().rstrip(','))
-    require(Path(record_data['file']) == original_tree / '.cache/xnu-work/bsd/kern/subr_prf.c' and
-            Path(record_data['directory']) == original_record.parent, 'UserLog record is not this native BSD translation unit')
-    flags, _ = builder.compile_flags(record_data, check_paths=artifacts is None)
-    require(command[:len(flags)] == flags, 'UserLog command did not preserve actual BSD compile flags')
-    check_object(obj.read_bytes(), 'Native015 QcomUsbUserLog overlay')
+    records = userlog_records(tree, component, manifest, report, builder, artifacts)
+    obj, command = records['object'], records['command']
+    check_object(obj.read_bytes(), 'Native016 QcomUsbUserLog overlay')
     archive = directory / 'libQcomXnuUsbDebug.a'
     require(sha(archive) == report['archive_sha256'], 'Actual USB archive differs from its report')
     membership = existing.archive_member(llvm, archive, obj)
@@ -214,13 +252,18 @@ def qualify(tree, component, llvm, kernel, artifacts=None):
     for name in dependencies:
         definition(kernel_image, name)
     startup = initialization(object_image, kernel_image)
-    require(not existing.symbols(llvm, kernel, '--undefined-only'), 'Native015 kernel has unresolved imports')
+    require(not existing.symbols(llvm, kernel, '--undefined-only'), 'Native016 kernel has unresolved imports')
     return dict(passed=True, target_compiled=True, hardware_verified=False, user_to_USB_verified=False,
-                phone_operations=False, source_files=sources, BSD_compile_record_sha256=sha(record),
+                phone_operations=False, source_files=sources, BSD_compile_record_sha256=records['snapshot_sha256'],
+                BSD_compile_record_snapshot=str(records['snapshot']),
+                BSD_compile_record_snapshot_sha256=records['snapshot_sha256'],
+                final_BSD_compile_record_sha256=records['final_sha256'], record_lifecycle=records['transition'],
                 standalone_compile_command=command, object_sha256=sha(obj), archive_sha256=sha(archive),
                 archive_member=membership, additional_exports=[SUBMIT, OID], object_imports=imports,
                 native_cdhash_api='_cs_get_cdhash', native_cdhash_definition_strong=True,
-                original_evidence_directory=str(original_directory), original_compile_record=str(original_record),
+                original_evidence_directory=str(records['original_directory']),
+                original_compile_record=str(records['original_record']),
+                original_compile_record_snapshot=str(records['original_snapshot']),
                 actual_object_path=str(obj), artifact_mode=artifacts is not None,
                 source_overlay_sha256=sha(ROOT / manifest['source_overlay']),
                 kernel_sha256=sha(kernel), checker_sha256=sha(__file__), **startup)

@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Native015 adds the existing BSD UserLog object to the original USB archive through an explicit framework/USB overlay. The temporary non-root scalar producer requires the exact boot-selected native CDHash and fixed bounded qbt-ui schema. Native014 KeyStore selection and all other fixed board/component inputs are preserved; target compilation, runtime registration and keyboard pairing remain pending.",
+  "purpose": "Native016 fixes only the UserLog consumed BSD record lifecycle: capture actual bytes once for hash/flags, retain the raw snapshot and compare final bytes only for the witnessed bootstrap0-to-final1 transition. Native015 handler, wire/FIFO, signed diagnostic actor and all original driver/runtime/boot inputs are preserved. Original Native015 CI remains failure; Native016 target/runtime qualification is pending.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,15 +14,16 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "b795d8af1aef429bef5be84e49e2efda39643931",
+  "device_revision": "b692f72b24a125aa5b3575e38b295e79cb484b9a",
   "soc_revision": "3435fa55c3e835a4aaebf7d833473fd5d20073fd",
   "xcode": "26.6",
   "files": {
-    ".github/workflows/nezha-ios27-native.yml": "4e590f93bff6b5f98d7a4f14dda3bfc5559e33b57fe003e73b9c6f558c7b3fb2",
+    ".github/workflows/nezha-ios27-native.yml": "a85d09233cbce2d514cf0fb4ad4d65a03524df877689dff6d47e9dc1551bfacf",
     "ci/cache-signature-template.py": "3596fbb421e2d223c9d01b6280af68ca7e83595c99d3d96e481450f187201d72",
-    "ci/check-native-userlog.py": "d75c3741c1842e29f84ecb1836ea3f4136d8b7587b739767bfca04a89700f819",
-    "ci/native.py": "31a3634fb2fd05965b186f6df9b233ec85a46e5356d2354d2075f92f27f6f53f",
+    "ci/check-native-userlog.py": "74e7abe9164a853b10d4406a46f55f67670ade42795f066068e84f14b2ebc006",
+    "ci/native.py": "3d0ff3820b16b6b3b388a710844a4c0dc669cada261e1e41781f1c300e28a43c",
     "ci/test-native-userlog-producer.py": "a2cdfcfe864f2c2d7ef709f43df5f81803dd193bb1197b0b4e1c8d46a930342c",
+    "ci/test-native-userlog-record.py": "26bd1269caa7be579917e9ad140f8a10295ff169d57d3533a3ddc1ce7e4e0123",
     "ci/test-native-userlog.py": "f64f5aff7c83cbbff7ce9bd15ab276dd7022f5e42d227999157b796afe414f9e",
     "source/adreno/LICENSE": "16fbc0170994a48f60938d9f0d992d3bad113383cf90882f75c206e079c2a2dc",
     "source/adreno/NativeAdrenoA740HwInit.h": "4b6a7f357b9bb8b99a2b5f4f503696c1f7f2e8ce1c55cd0b6d0d74c6f126ba19",
@@ -83,7 +84,7 @@
     "source/adreno/NativeGpuTrace.h": "d06f67c151c03ef9be786ffd582b74e5d91d955e513d00217c6fe177332323fa",
     "source/adreno/NativeGpuTrace.inc": "24460c37660233ba80a6a3c22bda1415e353d5dba6a6f04adb3dff415c3ee23b",
     "source/adreno/NativeGpuTraceStore.h": "4a2984192bc2c68383146f558212d1000c920a8d9cbe54ccec8badd935844823",
-    "source/device/README.md": "8e7dda5015dcbe490352a095e083e673ff6c1c03c5a4acaea8fea43226e86ab5",
+    "source/device/README.md": "33caecc7f512b8a58c9d989833639aa1fe65273c56eb5465a2a2876729b37006",
     "source/device/board.toml": "43474f64ed1cdddcec276ea1e256a0d9e794e516c30f567fe216873f63dca90f",
     "source/device/components/AppleKeyStoreState/AGENTS.md": "31cf5883eab836cd09fdcc5dfbbdd0668b0ea21ee9512191f78583b9e960c47d",
     "source/device/components/AppleKeyStoreState/LICENSE": "0a99193bda702c77e5b6a1b10029b68b6d4691cc2a4bf1010efb7dd8e5043e1b",
@@ -323,7 +324,7 @@
     "source/device/patches/xnu-12377/zzzzzz-nezha-input-chain-trace.patch": "c4d05419e7ec3af0de619754bdb6c2deb69b74d714c2219e509360ebfe1b947e",
     "source/device/patches/xnu-12377/zzzzzz-nezha-kernel-class-lock-order.patch": "cd90c61d6838f4e6a7248da81b6180f14db03d00f2f7a64f4bbe4034c0aa8dcb",
     "source/device/patches/xnu-12377/zzzzzz-nezha-sigp-startup-order.patch": "18275910b909d187e459c68f5d937cc09bc01923180141dc155aa7f4ff14aaf9",
-    "source/device/porting.toml": "885898148f15ff7e7970b6269ce19d3bbd59edc659c55dd779ea89d33449a010",
+    "source/device/porting.toml": "6d69d4270e97a64584b53ba661d0bd429cec6b410d6a1369e7d6fd990839d729",
     "source/device/scripts/aes-iphone-24A446.json": "d55ed6d1d65fdff5de46dd602552eaf3309d1f7370fcd3f15eddb391225ffe8a",
     "source/device/scripts/backlight-iphone-24A446.json": "446eb5fe6440335bfe9fca75b32f7d815ddcafbb8a3c2d7f697c1e5c3f40f6cb",
     "source/device/scripts/build-adreno840.py": "269f32fe2c97d7baf846a148fed7c111a53869486626a87ec8daab7fdfc3ab91",
@@ -363,6 +364,8 @@
     "source/metal/OriginalAcceleratorABI.h": "211e922f9b760ddec2e3453db6584bac57597b3d39e4bf0d013c1b2debd53365",
     "source/native015-userlog.md": "195102561368ca8926460015beef014a05bc0d77bcf31eb096a6f61416e60870",
     "source/native015-userlog.patch": "75d2fb276c60cf03d96ebf54b6b348d6d457c4f9a179af8a4befc3838e271bce",
+    "source/native016-userlog.md": "5cd9fda0548c102d566e5356ab4f67d555cee2d35c417faf46a576e4a239b01d",
+    "source/native016-userlog.patch": "5a2d8f4a42f3ebe278ab4cfa75ef6f8b709eb76159f7f47fc406cb995019dabd",
     "source/ramblock.bundle": "28d547819358f3f45ccd5b572685848ff2327c97b378719285c50552f10114fd",
     "source/soc/Sm8850Rpmh.c": "9307dc367f8d50d70a809391abb5b9fe3f09f48e9c0558ece1f0c21dfabebe38",
     "source/soc/configs/sm8850.config": "5510debad6dc3326908a4d23082f715e62d32a1a5e6587197da3dbf18977e5bc",
@@ -429,7 +432,7 @@
     "firmware_slot_bytes": 262144,
     "snapshot_scope": "listed headers and native implementation units only"
   },
-  "qualification_iteration": "Native015: exact UserLog adapter/handler/build audit overlay, native cs_get_cdhash identity gate and SYSCTL/SECOND function/argument qualification; retain the fixed Native014 KeyStore source and checker. This preparation has no target or device execution.",
+  "qualification_iteration": "Native016: durable consumed BSD record snapshot and complete original compile recipe qualification; preserve the exact Native015 handler and record the original failed015 CI identity. No target/phone execution by this preparation.",
   "software_aes": {
     "source_revision": "c9ce79e16e6a4e74cbbb7f4315ad2ec342933c89",
     "upstream_revision": "4a45326da5c2cd6fe6813d79ee43db20805628af",
@@ -518,8 +521,8 @@
     "keyboard_pairing_fixed": false
   },
   "userlog_target": {
-    "source_overlay": "source/native015-userlog.patch",
-    "source_overlay_sha256": "75d2fb276c60cf03d96ebf54b6b348d6d457c4f9a179af8a4befc3838e271bce",
+    "source_overlay": "source/native016-userlog.patch",
+    "source_overlay_sha256": "5a2d8f4a42f3ebe278ab4cfa75ef6f8b709eb76159f7f47fc406cb995019dabd",
     "framework_overlay_files": [
       "scripts/build-qcom-usb-debug.py"
     ],
@@ -531,7 +534,7 @@
     "framework_tree": "091abd45bf6d85f19b49a3aea6619b653bd1850a",
     "usb_base_revision": "9bfbf258d8356efcc0fbf03603d1518874829798",
     "usb_base_tree": "0b1327323a45484cbe96f2419e7a8d34ccdf63f9",
-    "usb_tree": "0438ff7caa058794bd78ffec405d52ebb827ff15",
+    "usb_tree": "949e36cf0c83652e0149a6cd10bac64855b6d929",
     "base_framework_source_files": {
       "scripts/build-qcom-usb-debug.py": "aff8a4c8821d5cfb20d57ec507363d2cfecbd3586f52b3be808a08dafb45e395"
     },
@@ -549,7 +552,7 @@
     },
     "source_files": {
       "kernel/QcomUsbUserLog.c": "4cade6842439ef27afe914d7135c6bc9b99b42afbdeb4f035fcebc17d7a60815",
-      "scripts/build.py": "d108fe13d46fbdc61c86b083e011d18fbce65343c397e9beccbda5c4fce1d7f5",
+      "scripts/build.py": "7da9eec0c9d3b7bfc8a2bebc3d99d45eab8bec62904b5de0edeeacf103c4d44e",
       "include/QcomUserLogWire.h": "965d7aeaa4043bcceb151cd6331ce50faefe21f57ce7c91cf781a52b4917397b",
       "kernel/QcomUsbBuffer.h": "a1a2c75faf01a0dc2e0ba1904b110059802c526c9dcec5f7d8bcc1e281435554",
       "kernel/QcomXnuUsbDebug.c": "0c2387ab4ac969fd07bca8f6bf2230cac5008beeac81267c220b10a0fedde23b",
@@ -694,11 +697,54 @@
       "archive": "archives/qcom-usb-debug/libQcomXnuUsbDebug.a",
       "record": "objects/bsd/DEVELOPMENT/subr_prf.o.json",
       "object": "usb-attempts/<original evidence_directory.parent.name>/QcomUsbUserLog.o",
-      "kernel": "build/kernel/kernel.macho"
+      "kernel": "build/kernel/kernel.macho",
+      "overlay": "userlog-source/native016-userlog.patch",
+      "snapshot": "usb-attempts/<original evidence_directory.parent.name>/userlog-compile-record.json"
     },
     "target_compiled": false,
     "hardware_verified": false,
     "user_to_USB_verified": false,
-    "phone_operations": false
+    "phone_operations": false,
+    "record_lifecycle": {
+      "snapshot_file": "userlog-compile-record.json",
+      "snapshot_report_path": "userlog_compile_record_snapshot",
+      "snapshot_report_sha256": "userlog_compile_record_snapshot_sha256",
+      "original_path_field": "userlog_compile_record",
+      "consumed_sha256_field": "userlog_compile_record_sha256",
+      "one_read_for_snapshot_hash_and_flags": true,
+      "raw_snapshot_preserved": true,
+      "final_record_preserved": true,
+      "accepted_final_change": "byte-identical or one exact quoted XNU_BOOT_PROGRESS=0 to1 replacement; every other raw byte unchanged",
+      "complete_command_including_original_recipe_required": true,
+      "artifact_snapshot": "usb-attempts/<original evidence_directory.parent.name>/userlog-compile-record.json"
+    },
+    "standalone_recipe": {
+      "component_revision": "9bfbf258d8356efcc0fbf03603d1518874829798",
+      "xnu_profile": "darwin25-xnu12377-unixnu",
+      "soc": "soc/Sm8850.h",
+      "compat_defines": [
+        "master_cpu=boot_cpu_id",
+        "QUD_XNU_IO_MAP_UNMAPPABLE=1"
+      ],
+      "defines_and_final_source_output_operands": "original exact recipe; no added overriding arguments"
+    },
+    "previous_failed_CI": {
+      "commit": "4f927337d80d6d66dd92f5977b3b89a53e9a13a6",
+      "device_revision": "b795d8af1aef429bef5be84e49e2efda39643931",
+      "run_id": "43038356255",
+      "run_attempt": "1",
+      "artifact_id": "13864503678",
+      "conclusion": "failure",
+      "failure": "consumed bootstrap BSD SHA compared against same pathname after final overwrite",
+      "consumed_record_sha256": "e30bf2326b3ca410c643b0cc39e7a265c5ecdff8a45f337474c350966c678389",
+      "final_record_sha256": "fdb77412a36228398c5dac625e019ecbd2bccdc9cdea423be83afbfb13df2784",
+      "original_overlay": "source/native015-userlog.patch",
+      "original_overlay_sha256": "75d2fb276c60cf03d96ebf54b6b348d6d457c4f9a179af8a4befc3838e271bce",
+      "original_usb_tree": "0438ff7caa058794bd78ffec405d52ebb827ff15",
+      "original_builder_sha256": "d108fe13d46fbdc61c86b083e011d18fbce65343c397e9beccbda5c4fce1d7f5",
+      "original_kernel_sha256": "1cf45bf638272e8c0061f85a82bd15ca2ee3c4ecf1e1fafd755c26ecbc9c155f",
+      "original_failure_record_retained": true
+    },
+    "host_record_lifecycle_checker": "ci/test-native-userlog-record.py"
   }
 }

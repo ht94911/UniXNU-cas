@@ -1,3 +1,22 @@
+# Bluetooth Native016: retain the consumed BSD compile record
+
+Native016 changes only UserLog build metadata and qualification. The builder
+reads the actual BSD record once, uses those same bytes for SHA and flags, and
+keeps `userlog-compile-record.json` beside its object/archive evidence. The
+final kernel pass may replace `subr_prf.o.json`; qualification retains that
+record and accepts only unchanged bytes or the observed single
+`XNU_BOOT_PROGRESS=0` to `1` transition. Source paths, compiler/architecture,
+include/ABI flags, full command, member and native startup checks remain.
+
+Actual Native015 run43038356255 ended in failure because its consumed-record
+SHA was compared with that final replacement. Its original failure and hashes
+remain recorded. Actual015 object/archive/strong/SYSCTL pointer checks passed
+in a separate directed review; Native016 target and runtime results are pending.
+The handler SHA `4cade6842439ef27afe914d7135c6bc9b99b42afbdeb4f035fcebc17d7a60815`,
+wire/FIFO, daemon UID/permissions and original boot/archive order are retained.
+The temporary diagnostic actor is the same signed015 daemon CDHash
+`42b75d95d901fa02cb3160dd5a5c6cc3d37809f3`.
+
 # Bluetooth Native015: existing USB UserLog input
 
 Native015 retains the Native014 device implementation, configuration and typed
