@@ -52,7 +52,10 @@ void lost(Caller *c,int error) {
 }
 uint32_t freePort(const QcomQrtr *q) {
     if (q->local_count>=QCOM_QRTR_MAX_LOCAL) return 0;
-    for (uint32_t port=2;port<=QCOM_QRTR_MAX_LOCAL+1;port++) {
+    // Stock Android QRTR assigns unnamed clients in 0x4000..0x7fff. Use
+    // that ordinary client range and retain the locator's explicit port1.
+    const uint32_t firstPort=0x4000;
+    for (uint32_t port=firstPort;port<firstPort+QCOM_QRTR_MAX_LOCAL;port++) {
         bool used=false;
         for (uint32_t i=0;i<q->local_count;i++) if (q->local[i].port==port) used=true;
         if (!used) return port;
@@ -123,8 +126,23 @@ extern "C" void nezha_als_native_after_receive(NaAdsp *a) {
         printf("NEZHA ALS OWNER: same-edge service=400 instance=%u node=%u port=%u epoch=%llu\n",
                endpoint.instance,endpoint.node,endpoint.port,(unsigned long long)caller.epoch);
     }
+    const unsigned phase=caller.client.phase,tx=caller.client.tx_state;
     int r=nezha_als_qrtr_poll(&caller.backend);
-    if (r<0) lost(&caller,r);
+    if (!r && tx==NezhaAlsTxQueued && caller.client.tx_state==NezhaAlsTxAwaiting) {
+        const auto &client=caller.client;
+        const unsigned qmiId=client.tx[3] | (unsigned)client.tx[4]<<8;
+        printf("NEZHA ALS OWNER: queued request phase=%u txn=%u local=%u dst=%u/%u qmi=%u bytes=%u router-tx=%u fifo-sent=%u\n",
+               client.phase,(unsigned)client.transaction,caller.backend.local_port,
+               client.endpoint.node,client.endpoint.port,qmiId,(unsigned)client.tx_bytes,
+               a->mapper.qrtr.tx_packets,a->mapper.tx_sent);
+    }
+    if (r<0) {
+        printf("NEZHA ALS OWNER: query failed rc=%d phase=%u tx=%u txn=%u replies=%u reports=%u stale=%u rx-data=%u unrouted=%u pending=%u fifo-sent=%u\n",
+               r,phase,tx,(unsigned)caller.client.transaction,caller.client.responses,
+               caller.client.reports,caller.client.stale,q->rx_data,q->rx_unrouted,
+               a->mapper.head-a->mapper.tail,a->mapper.tx_sent);
+        lost(&caller,r);
+    }
 }
 extern "C" void nezha_als_native_lost(NaAdsp *a,int error) {
     if (a==caller.owner && caller.owner) lost(&caller,error);

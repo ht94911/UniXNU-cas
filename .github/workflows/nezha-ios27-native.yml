@@ -1,7 +1,7 @@
-name: nezha iPhone27 ALS006 linked native005 on Native005
+name: nezha iPhone27 ALS006 Native006 client port on Native005
 on:
   push:
-    branches: [codex/ios27-brightness-als006-native005-20261111]
+    branches: [codex/ios27-brightness-als006-native006-20261112]
   workflow_dispatch:
 permissions:
   contents: read

@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "ALS006 first formal native kernel integration over accepted manual005/G030 test inputs: existing fresh ADSP owner, original frontend and shared USB install/restore publication. No private inputs.",
+  "purpose": "ALS006 Native006 ordinary QRTR client port and existing owner request diagnostics over fixed G030/manual005",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "7784afbda5be8f626f43797bb76ddccafe76017a",
+  "device_revision": "21180ffada73b7f94b16f2e65f8ef1d7c7cc99ec",
   "soc_revision": "e565439bf1a13d0224f0a9adcfc1eef8df7ad142",
   "xcode": "26.6",
   "files": {
@@ -100,7 +100,7 @@
     "source/device/package/SourceRootBinding.cpp": "f395a15d37b89a10bc9e965d9093dc29d0ff54d5eb61ded87ef623300cdf0f20",
     "source/device/package/SourceRootPolicies.cpp": "714af8d95b5a8db89058be9f14a7e71a5fc2e97ded4d067c39e04299f0db27d5",
     "source/device/package/SourceStorage.cpp": "d0b8e0433ef71a1761e5d3dd055d8c4a6b709a5b8dabb2da36ab558291c9d2f3",
-    "source/device/package/als-owner/NezhaAlsNativeCaller.cpp": "7eff66e42ae9a6fabe1babbe6ffd487306d061258a8190f77d19e361df2c4693",
+    "source/device/package/als-owner/NezhaAlsNativeCaller.cpp": "e6bef95a7cb298d7d979cbd0a7e352af99a57be9bf3f280473d2294781720e17",
     "source/device/package/als-owner/NezhaAlsNativeCaller.h": "e50fa9efc4ec7f7fd34c2d63c1bba50e4f9b827a4350cbb9648c953feddefccc",
     "source/device/package/als-owner/core/AudioDriver.h": "b2c04b2d6a842e529ce68ef794fe51c79a67a57e863da42af1b198e56e881e63",
     "source/device/package/als-owner/core/AudioEngine.h": "ab50290851d1c6c5b097c971cbc95b587455feaf4199d3e842e686daf39ba915",
@@ -258,7 +258,6 @@
     "source/device/patches/xnu-12377/zzzzzz-nezha-input-chain-trace.patch": "c4d05419e7ec3af0de619754bdb6c2deb69b74d714c2219e509360ebfe1b947e",
     "source/device/patches/xnu-12377/zzzzzz-nezha-kernel-class-lock-order.patch": "cd90c61d6838f4e6a7248da81b6180f14db03d00f2f7a64f4bbe4034c0aa8dcb",
     "source/device/patches/xnu-12377/zzzzzz-nezha-sigp-startup-order.patch": "18275910b909d187e459c68f5d937cc09bc01923180141dc155aa7f4ff14aaf9",
-    "source/device/porting.toml": "971cdea85e82df0c3017655d927c0adea159a78bbc7c4c73e4d3444cc91c45ba",
     "source/device/scripts/als-event-service-iphone-24A446.json": "34c27f1a58bab3c518570a57c006a23fce315b90a584e691629d61c0850bd4d8",
     "source/device/scripts/backlight-iphone-24A446.json": "446eb5fe6440335bfe9fca75b32f7d815ddcafbb8a3c2d7f697c1e5c3f40f6cb",
     "source/device/scripts/build-adreno840.py": "269f32fe2c97d7baf846a148fed7c111a53869486626a87ec8daab7fdfc3ab91",
@@ -416,7 +415,7 @@
     "hardware": false
   },
   "als_abi": {
-    "source_revision": "7784afbda5be8f626f43797bb76ddccafe76017a",
+    "source_revision": "21180ffada73b7f94b16f2e65f8ef1d7c7cc99ec",
     "source_files": [
       "package/als/NezhaAlsBackend.h",
       "package/als/NezhaAlsFrontend.cpp",
@@ -453,9 +452,9 @@
     "first_formal_link_selected": true,
     "normal_F2_recipe": true
   },
-  "device_evidence_revision": "bce088d96f97359caf4367f6f2515fb47f53d84f",
+  "device_evidence_revision": "21180ffada73b7f94b16f2e65f8ef1d7c7cc99ec",
   "als_owner": {
-    "source_revision": "7784afbda5be8f626f43797bb76ddccafe76017a",
+    "source_revision": "21180ffada73b7f94b16f2e65f8ef1d7c7cc99ec",
     "source_files": [
       "package/als-owner/NezhaAlsNativeCaller.cpp",
       "package/als-owner/NezhaAlsNativeCaller.h",
@@ -572,5 +571,12 @@
     "source_snapshot": "ALS006 ABI003 on Native005/G030",
     "workflow_branch": "codex/ios27-brightness-als006-native004-20261111",
     "source_scope": "retained source inputs plus ALS owner/backend, existing SCM PAS wrappers and four common-resource files"
+  },
+  "native005_base": {
+    "native_run": 42910865357,
+    "CI_head": "458cb33a04548460d872f3fccef4bc79d82111a8",
+    "same_framework_tree": true,
+    "same_USB_SoC_firmware_sources": true,
+    "same_frontend_protocol_sources": true
   }
 }
