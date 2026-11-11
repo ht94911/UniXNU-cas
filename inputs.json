@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Native014 corrects the typed BSD symbol reader and verifies Darwin ar member alignment using the unchanged selected public AppleKeyStoreState snapshot and existing normal/late archive chain. Fixed Native011 Bluetooth observer, Wi-Fi023 resources and runtime remain unchanged; keyboard pairing is unresolved.",
+  "purpose": "Native015 adds the existing BSD UserLog object to the original USB archive through an explicit framework/USB overlay. The temporary non-root scalar producer requires the exact boot-selected native CDHash and fixed bounded qbt-ui schema. Native014 KeyStore selection and all other fixed board/component inputs are preserved; target compilation, runtime registration and keyboard pairing remain pending.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,13 +14,16 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "3863e6a442a79adc297b2470e3ea530da84e3542",
+  "device_revision": "b795d8af1aef429bef5be84e49e2efda39643931",
   "soc_revision": "3435fa55c3e835a4aaebf7d833473fd5d20073fd",
   "xcode": "26.6",
   "files": {
-    ".github/workflows/nezha-ios27-native.yml": "832c515e2037a4245b65077f5599ef02a679ddc5ac92ae7ab06f4c48a8fddd54",
+    ".github/workflows/nezha-ios27-native.yml": "4e590f93bff6b5f98d7a4f14dda3bfc5559e33b57fe003e73b9c6f558c7b3fb2",
     "ci/cache-signature-template.py": "3596fbb421e2d223c9d01b6280af68ca7e83595c99d3d96e481450f187201d72",
-    "ci/native.py": "cb1eeafea7f7d5e8ec341765d71d04ec1e030b486a879cb1b12799036c505278",
+    "ci/check-native-userlog.py": "d75c3741c1842e29f84ecb1836ea3f4136d8b7587b739767bfca04a89700f819",
+    "ci/native.py": "31a3634fb2fd05965b186f6df9b233ec85a46e5356d2354d2075f92f27f6f53f",
+    "ci/test-native-userlog-producer.py": "a2cdfcfe864f2c2d7ef709f43df5f81803dd193bb1197b0b4e1c8d46a930342c",
+    "ci/test-native-userlog.py": "f64f5aff7c83cbbff7ce9bd15ab276dd7022f5e42d227999157b796afe414f9e",
     "source/adreno/LICENSE": "16fbc0170994a48f60938d9f0d992d3bad113383cf90882f75c206e079c2a2dc",
     "source/adreno/NativeAdrenoA740HwInit.h": "4b6a7f357b9bb8b99a2b5f4f503696c1f7f2e8ce1c55cd0b6d0d74c6f126ba19",
     "source/adreno/NativeAdrenoABI.h": "d1c8a27d6e61787073c2c56a779ff4d5c43d86f2d23ac0c0fba0368af8dcdeae",
@@ -80,6 +83,7 @@
     "source/adreno/NativeGpuTrace.h": "d06f67c151c03ef9be786ffd582b74e5d91d955e513d00217c6fe177332323fa",
     "source/adreno/NativeGpuTrace.inc": "24460c37660233ba80a6a3c22bda1415e353d5dba6a6f04adb3dff415c3ee23b",
     "source/adreno/NativeGpuTraceStore.h": "4a2984192bc2c68383146f558212d1000c920a8d9cbe54ccec8badd935844823",
+    "source/device/README.md": "8e7dda5015dcbe490352a095e083e673ff6c1c03c5a4acaea8fea43226e86ab5",
     "source/device/board.toml": "43474f64ed1cdddcec276ea1e256a0d9e794e516c30f567fe216873f63dca90f",
     "source/device/components/AppleKeyStoreState/AGENTS.md": "31cf5883eab836cd09fdcc5dfbbdd0668b0ea21ee9512191f78583b9e960c47d",
     "source/device/components/AppleKeyStoreState/LICENSE": "0a99193bda702c77e5b6a1b10029b68b6d4691cc2a4bf1010efb7dd8e5043e1b",
@@ -319,7 +323,7 @@
     "source/device/patches/xnu-12377/zzzzzz-nezha-input-chain-trace.patch": "c4d05419e7ec3af0de619754bdb6c2deb69b74d714c2219e509360ebfe1b947e",
     "source/device/patches/xnu-12377/zzzzzz-nezha-kernel-class-lock-order.patch": "cd90c61d6838f4e6a7248da81b6180f14db03d00f2f7a64f4bbe4034c0aa8dcb",
     "source/device/patches/xnu-12377/zzzzzz-nezha-sigp-startup-order.patch": "18275910b909d187e459c68f5d937cc09bc01923180141dc155aa7f4ff14aaf9",
-    "source/device/porting.toml": "d718af2b583cf439d815f5c72b2697e7f3a0edf8e4762dfd4512dfc905455329",
+    "source/device/porting.toml": "885898148f15ff7e7970b6269ce19d3bbd59edc659c55dd779ea89d33449a010",
     "source/device/scripts/aes-iphone-24A446.json": "d55ed6d1d65fdff5de46dd602552eaf3309d1f7370fcd3f15eddb391225ffe8a",
     "source/device/scripts/backlight-iphone-24A446.json": "446eb5fe6440335bfe9fca75b32f7d815ddcafbb8a3c2d7f697c1e5c3f40f6cb",
     "source/device/scripts/build-adreno840.py": "269f32fe2c97d7baf846a148fed7c111a53869486626a87ec8daab7fdfc3ab91",
@@ -357,6 +361,8 @@
     "source/gop.bundle": "f34490ac928abedadcb704558e1fbc59a793ba6ecb6c79f477218b4c82aecb2a",
     "source/metal/LICENSE": "c51a32dfc2140d3d56f796a3a7010e574f2e3649b97c42e010303ad57f848265",
     "source/metal/OriginalAcceleratorABI.h": "211e922f9b760ddec2e3453db6584bac57597b3d39e4bf0d013c1b2debd53365",
+    "source/native015-userlog.md": "195102561368ca8926460015beef014a05bc0d77bcf31eb096a6f61416e60870",
+    "source/native015-userlog.patch": "75d2fb276c60cf03d96ebf54b6b348d6d457c4f9a179af8a4befc3838e271bce",
     "source/ramblock.bundle": "28d547819358f3f45ccd5b572685848ff2327c97b378719285c50552f10114fd",
     "source/soc/Sm8850Rpmh.c": "9307dc367f8d50d70a809391abb5b9fe3f09f48e9c0558ece1f0c21dfabebe38",
     "source/soc/configs/sm8850.config": "5510debad6dc3326908a4d23082f715e62d32a1a5e6587197da3dbf18977e5bc",
@@ -423,7 +429,7 @@
     "firmware_slot_bytes": 262144,
     "snapshot_scope": "listed headers and native implementation units only"
   },
-  "qualification_iteration": "Native014: retain exact389c360 source/getter/lock, correct actual Native013 typed-nm and two-byte BSD archive fill checks; full target build and keyboard pairing remain pending.",
+  "qualification_iteration": "Native015: exact UserLog adapter/handler/build audit overlay, native cs_get_cdhash identity gate and SYSCTL/SECOND function/argument qualification; retain the fixed Native014 KeyStore source and checker. This preparation has no target or device execution.",
   "software_aes": {
     "source_revision": "c9ce79e16e6a4e74cbbb7f4315ad2ec342933c89",
     "upstream_revision": "4a45326da5c2cd6fe6813d79ee43db20805628af",
@@ -510,5 +516,189 @@
     "explicit_module_override_required": true,
     "normal_late_actual_source_checks": true,
     "keyboard_pairing_fixed": false
+  },
+  "userlog_target": {
+    "source_overlay": "source/native015-userlog.patch",
+    "source_overlay_sha256": "75d2fb276c60cf03d96ebf54b6b348d6d457c4f9a179af8a4befc3838e271bce",
+    "framework_overlay_files": [
+      "scripts/build-qcom-usb-debug.py"
+    ],
+    "usb_overlay_files": [
+      "kernel/QcomUsbUserLog.c",
+      "scripts/build.py"
+    ],
+    "framework_base_tree": "87bb1c5c70a736b7e2ac2b1bdada1cf8a80c3beb",
+    "framework_tree": "091abd45bf6d85f19b49a3aea6619b653bd1850a",
+    "usb_base_revision": "9bfbf258d8356efcc0fbf03603d1518874829798",
+    "usb_base_tree": "0b1327323a45484cbe96f2419e7a8d34ccdf63f9",
+    "usb_tree": "0438ff7caa058794bd78ffec405d52ebb827ff15",
+    "base_framework_source_files": {
+      "scripts/build-qcom-usb-debug.py": "aff8a4c8821d5cfb20d57ec507363d2cfecbd3586f52b3be808a08dafb45e395"
+    },
+    "framework_source_files": {
+      "scripts/build-qcom-usb-debug.py": "e76d1d304bc069152c57e7b4cb95ac787a6d59c6f1ca4f76539449dffa6fdc86"
+    },
+    "base_source_files": {
+      "kernel/QcomUsbUserLog.c": "67616b97ad430a97784e82b7fbeb353539fc661901c0eeb2298df74a3fcad020",
+      "scripts/build.py": "dd2c87c60802a90c57975d5c55ea60591cd0514dcfa7c06cba8ffc319084898a",
+      "include/QcomUserLogWire.h": "965d7aeaa4043bcceb151cd6331ce50faefe21f57ce7c91cf781a52b4917397b",
+      "kernel/QcomUsbBuffer.h": "a1a2c75faf01a0dc2e0ba1904b110059802c526c9dcec5f7d8bcc1e281435554",
+      "kernel/QcomXnuUsbDebug.c": "0c2387ab4ac969fd07bca8f6bf2230cac5008beeac81267c220b10a0fedde23b",
+      "kernel/QcomUsbDiagnostic.c": "6f63b6f9c0c934f0ac77d7c568b831b17f081b47990cc726cbd3e3b28f0dfd89",
+      "userland/QcomUserLogTransport.h": "6981a8a4863c80f0109de4e821c4ef2d72f75f143eb39f4a65a2abb2a4df4531"
+    },
+    "source_files": {
+      "kernel/QcomUsbUserLog.c": "4cade6842439ef27afe914d7135c6bc9b99b42afbdeb4f035fcebc17d7a60815",
+      "scripts/build.py": "d108fe13d46fbdc61c86b083e011d18fbce65343c397e9beccbda5c4fce1d7f5",
+      "include/QcomUserLogWire.h": "965d7aeaa4043bcceb151cd6331ce50faefe21f57ce7c91cf781a52b4917397b",
+      "kernel/QcomUsbBuffer.h": "a1a2c75faf01a0dc2e0ba1904b110059802c526c9dcec5f7d8bcc1e281435554",
+      "kernel/QcomXnuUsbDebug.c": "0c2387ab4ac969fd07bca8f6bf2230cac5008beeac81267c220b10a0fedde23b",
+      "kernel/QcomUsbDiagnostic.c": "6f63b6f9c0c934f0ac77d7c568b831b17f081b47990cc726cbd3e3b28f0dfd89",
+      "userland/QcomUserLogTransport.h": "6981a8a4863c80f0109de4e821c4ef2d72f75f143eb39f4a65a2abb2a4df4531"
+    },
+    "compile_record": "build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837/bsd/DEVELOPMENT/subr_prf.o.json",
+    "compile_record_translation_unit": ".cache/xnu-work/bsd/kern/subr_prf.c",
+    "compile_record_selection": "Generated by this target bootstrap before the original USB archive builder; preserve every actual BSD compile flag",
+    "compile_record_reference": {
+      "candidate": "Native014",
+      "source_revision": "ac9718fb1af618d5ce8678d0dc6e8a58f252216f",
+      "sha256": "fdb77412a36228398c5dac625e019ecbd2bccdc9cdea423be83afbfb13df2784",
+      "target": "arm64e-apple-ios27.0.0",
+      "compiler": "Xcode26.6",
+      "reference_only": true
+    },
+    "wrapper": "scripts/build-qcom-usb-debug.py",
+    "build_entrypoint": "ci/native.py build",
+    "selected_standalone_options": [
+      "--userlog-compile-record",
+      "build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837/bsd/DEVELOPMENT/subr_prf.o.json"
+    ],
+    "additional_exports": [
+      "_qcom_usb_userlog_submit",
+      "_sysctl__debug_qcom_usb_userlog"
+    ],
+    "required_native_dependencies": [
+      "_current_proc",
+      "_proc_suser",
+      "_cs_get_cdhash",
+      "_PE_parse_boot_arg_str",
+      "_proc_pid",
+      "_sysctl_register_oid_early",
+      "_sysctl__debug_children",
+      "_qcom_usb_debug_try_record"
+    ],
+    "startup": {
+      "record": "__STARTUP_ARG(sysctl__debug, _qcom_usb_userlog, SYSCTL, STARTUP_RANK_SECOND, sysctl_register_oid_early, &sysctl__debug_qcom_usb_userlog)",
+      "symbol": "___startup_SYSCTL_entry_sysctl__debug__qcom_usb_userlog",
+      "record_bytes": 24,
+      "subsystem": 16,
+      "rank": 1,
+      "function": "_sysctl_register_oid_early",
+      "argument": "_sysctl__debug_qcom_usb_userlog",
+      "chained_pointer_format": 7,
+      "OID_kind": "0x50e00005",
+      "runtime_registration_verified": false
+    },
+    "producer": {
+      "temporary_test_package_only": true,
+      "default_root_only": true,
+      "boot_argument": "btlog",
+      "code_hash_hex_characters": 40,
+      "code_hash_bytes": 20,
+      "native_getter": "cs_get_cdhash",
+      "requested_csproc_getcdhash_present": false,
+      "API_declaration": "bsd/sys/codesign.h:105",
+      "API_definition": "bsd/kern/kern_cs.c:1950",
+      "source_revision": "ac9718fb1af618d5ce8678d0dc6e8a58f252216f",
+      "text_schema": "[qbt-ui] p=%u pid=%u a=%u b=0\n",
+      "stage_values": {
+        "1": [
+          1
+        ],
+        "2": [
+          0,
+          1
+        ],
+        "3": [
+          0,
+          1
+        ],
+        "4": [
+          1
+        ],
+        "5": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          7
+        ],
+        "6": [
+          0,
+          1
+        ],
+        "7": [
+          0,
+          1
+        ],
+        "8": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "9": [
+          0,
+          1
+        ],
+        "10": [
+          0,
+          1
+        ]
+      },
+      "max_payload_bytes": 128,
+      "flags": 1,
+      "sequence": 0,
+      "offset": 0,
+      "total_equals_bytes": true,
+      "sessionHi": "0x51425455",
+      "sessionLo": "proc_pid(current_proc())",
+      "payload_pid_bound_to_current_proc": true,
+      "missing_invalid_NULL_or_mismatched_hash": "EPERM",
+      "daemon_UID_changed": false,
+      "original_security_permissions_changed": false,
+      "sysctl_calls_per_event": 1,
+      "retries": 0,
+      "sleeps": 0,
+      "signed_daemon_CDHash_pending": false,
+      "signed_daemon_CDHash": "42b75d95d901fa02cb3160dd5a5c6cc3d37809f3",
+      "signed_daemon_sha256": "0106bfcf690245ee30d7d6c3efd5aa85161e8f4416f110ecbcab863c54ce2710",
+      "signed_daemon_origin": "Root-signed private/daemon-ui015/bluetoothd; binary not included in this public CI source",
+      "kernel_embeds_daemon_CDHash": false
+    },
+    "wire": {
+      "header_bytes": 48,
+      "u32_fields": 12,
+      "max_root_payload_bytes": 1024,
+      "unchanged": true,
+      "existing_FIFO_bytes": 4194304,
+      "user_oslog": "unchanged unsupported"
+    },
+    "qualification_checker": "ci/check-native-userlog.py",
+    "host_record_checker": "ci/test-native-userlog.py",
+    "host_producer_checker": "ci/test-native-userlog-producer.py",
+    "artifact_paths": {
+      "report": "archives/qcom-usb-debug/build-report.json",
+      "archive": "archives/qcom-usb-debug/libQcomXnuUsbDebug.a",
+      "record": "objects/bsd/DEVELOPMENT/subr_prf.o.json",
+      "object": "usb-attempts/<original evidence_directory.parent.name>/QcomUsbUserLog.o",
+      "kernel": "build/kernel/kernel.macho"
+    },
+    "target_compiled": false,
+    "hardware_verified": false,
+    "user_to_USB_verified": false,
+    "phone_operations": false
   }
 }

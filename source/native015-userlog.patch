@@ -1,0 +1,226 @@
+diff --git a/scripts/build-qcom-usb-debug.py b/scripts/build-qcom-usb-debug.py
+index d4de690..efd6419 100644
+--- a/scripts/build-qcom-usb-debug.py
++++ b/scripts/build-qcom-usb-debug.py
+@@ -7,6 +7,7 @@ real PE record; never reuse an archive from another kernel or candidate.
+ import argparse
+ import hashlib
+ import json
++import os
+ from pathlib import Path
+ import shutil
+ import subprocess
+@@ -24,7 +25,16 @@ def main():
+     parser.add_argument('--profile', required=True)
+     args = parser.parse_args()
+     component = args.component.resolve()
+-    if subprocess.check_output(['git', '-C', component, 'status', '--porcelain']):
++    userlog_enabled = os.environ.get('UNIXNU_QCOM_USB_USERLOG') == '1'
++    actual_tree = None
++    if userlog_enabled:
++        actual_tree = subprocess.check_output(['git', '-C', component, 'write-tree'], text=True).strip()
++        if actual_tree != os.environ.get('UNIXNU_QCOM_USB_USERLOG_TREE'):
++            raise SystemExit('USB component differs from the exact reviewed Native015 overlay tree')
++        if (subprocess.check_output(['git', '-C', component, 'diff', '--name-only']) or
++                subprocess.check_output(['git', '-C', component, 'ls-files', '--others', '--exclude-standard'])):
++            raise SystemExit('USB component has unstaged or untracked input outside its reviewed overlay')
++    elif subprocess.check_output(['git', '-C', component, 'status', '--porcelain']):
+         raise SystemExit('USB component must be a clean pinned source checkout')
+     record = ROOT / 'build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837/pexpert/DEVELOPMENT/pe_kprintf.o.json'
+     if not record.is_file():
+@@ -39,18 +49,33 @@ def main():
+     # Standalone build.py deliberately rejects reused output directories.
+     # Keep failed evidence; every attempt recompiles with this target's headers.
+     attempt = Path(tempfile.mkdtemp(prefix='archive-', dir=cache)) / 'module'
+-    subprocess.run(['python3', component / 'scripts/build.py', '--compile-record', record,
+-                    '--soc', args.soc, '--xnu-profile', args.profile, '--output', attempt], check=True)
++    command = ['python3', component / 'scripts/build.py', '--compile-record', record,
++               '--soc', args.soc, '--xnu-profile', args.profile, '--output', attempt]
++    userlog_record = None
++    if userlog_enabled:
++        userlog_record = ROOT / 'build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837/bsd/DEVELOPMENT/subr_prf.o.json'
++        if not userlog_record.is_file():
++            raise SystemExit('Generate this target BSD compile record before building UserLog')
++        command += ['--userlog-compile-record', userlog_record]
++    subprocess.run(command, check=True)
+     for obj in sorted(attempt.glob('*.o')):
+         check_object(obj.read_bytes(), str(obj))
+     archive = attempt / 'libQcomXnuUsbDebug.a'
+     report = json.loads((attempt / 'build-report.json').read_text())
++    if userlog_record is not None and (report.get('userlog_enabled') is not True or
++            report.get('userlog_compile_record_sha256') != hashlib.sha256(userlog_record.read_bytes()).hexdigest()):
++        raise SystemExit('Standalone UserLog did not consume the actual target BSD compile record')
+     if hashlib.sha256(archive.read_bytes()).hexdigest() != report['archive_sha256']:
+         raise SystemExit('Standalone USB archive report/hash mismatch')
+     report.update(component_revision=subprocess.check_output(
+         ['git', '-C', component, 'rev-parse', 'HEAD'], text=True).strip(),
+         target_objects_validated=True, evidence_directory=str(attempt))
+     report['consumer_patch_state'] = patch_state
++    if userlog_enabled:
++        report.update(component_base_tree=subprocess.check_output(
++            ['git', '-C', component, 'rev-parse', 'HEAD^{tree}'], text=True).strip(),
++            component_source_tree=actual_tree, component_source_directory=str(component),
++            userlog_compile_record=str(userlog_record))
+     output = ROOT / 'build/qcom-usb-debug'
+     output.mkdir(parents=True, exist_ok=True)
+     temporary = output / 'libQcomXnuUsbDebug.a.new'
+diff --git a/kernel/QcomUsbUserLog.c b/kernel/QcomUsbUserLog.c
+index 6173e55..97d09c9 100644
+--- a/kernel/QcomUsbUserLog.c
++++ b/kernel/QcomUsbUserLog.c
+@@ -4,18 +4,106 @@
+ #include <sys/systm.h>
+ #include <sys/sysctl.h>
+ #include <sys/proc.h>
++#include <sys/codesign.h>
++#include <pexpert/pexpert.h>
+ #include <sys/errno.h>
+ #include "QcomUserLogWire.h"
+ #include "QcomXnuUsbDebug.h"
+ 
++/* Native015 temporary producer: an exact boot-selected code identity only. */
++static int
++qcom_usb_userlog_hex(char c)
++{
++    if (c >= '0' && c <= '9') return c - '0';
++    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
++    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
++    return -1;
++}
++
++static int
++qcom_usb_userlog_producer(proc_t process)
++{
++    /* Force string parsing: an all-decimal 40-hex hash is still a hash.
++     * One extra byte prevents a longer argument from truncating to 40 hex. */
++    char argument[42] = {0};
++    uint8_t wanted[20];
++    _Static_assert(CS_CDHASH_LEN == sizeof wanted, "Native CDHash must be 20 bytes");
++    if (!PE_parse_boot_arg_str("btlog", argument, sizeof argument) || argument[40]) return 0;
++    for (size_t i = 0; i < sizeof wanted; ++i) {
++        int high = qcom_usb_userlog_hex(argument[2 * i]);
++        int low = qcom_usb_userlog_hex(argument[2 * i + 1]);
++        if (high < 0 || low < 0) return 0;
++        wanted[i] = (uint8_t)((high << 4) | low);
++    }
++    const uint8_t *actual = cs_get_cdhash(process);
++    if (!actual) return 0;
++    uint8_t difference = 0;
++    for (size_t i = 0; i < sizeof wanted; ++i) difference |= wanted[i] ^ actual[i];
++    return difference == 0;
++}
++
++static int
++qcom_usb_userlog_literal(const struct QcomUserLogWire *w, size_t *at, const char *text)
++{
++    for (; *text; ++text, ++*at) {
++        if (*at >= w->bytes || w->data[*at] != (uint8_t)*text) return 0;
++    }
++    return 1;
++}
++
++static int
++qcom_usb_userlog_u32(const struct QcomUserLogWire *w, size_t *at, uint32_t *result)
++{
++    if (*at >= w->bytes || w->data[*at] < '0' || w->data[*at] > '9') return 0;
++    size_t first = *at;
++    uint32_t value = 0;
++    while (*at < w->bytes && w->data[*at] >= '0' && w->data[*at] <= '9') {
++        uint32_t digit = w->data[*at] - '0';
++        if ((*at > first && w->data[first] == '0') || value > (0xffffffffu - digit) / 10u) return 0;
++        value = value * 10u + digit;
++        ++*at;
++    }
++    *result = value;
++    return 1;
++}
++
++static int
++qcom_usb_userlog_scalar(const struct QcomUserLogWire *w, proc_t process)
++{
++    uint32_t stage, pid, value;
++    size_t at = 0;
++    pid_t actual_pid = proc_pid(process);
++    if (actual_pid <= 0 || w->flags != SOC_ULOG_STATUS || w->bytes > 128u ||
++        w->sequence || w->offset || w->total != w->bytes ||
++        w->sessionHi != 0x51425455u || w->sessionLo != (uint32_t)actual_pid) return 0;
++    if (!qcom_usb_userlog_literal(w, &at, "[qbt-ui] p=") ||
++        !qcom_usb_userlog_u32(w, &at, &stage) ||
++        !qcom_usb_userlog_literal(w, &at, " pid=") ||
++        !qcom_usb_userlog_u32(w, &at, &pid) ||
++        !qcom_usb_userlog_literal(w, &at, " a=") ||
++        !qcom_usb_userlog_u32(w, &at, &value) ||
++        !qcom_usb_userlog_literal(w, &at, " b=0\n") || at != w->bytes ||
++        pid != (uint32_t)actual_pid) return 0;
++    switch (stage) {
++    case 1: case 4: return value == 1u;
++    case 2: case 3: case 6: case 7: case 9: case 10: return value <= 1u;
++    case 5: return value <= 5u || value == 7u;
++    case 8: return value <= 3u;
++    default: return 0;
++    }
++}
++
+ int
+ qcom_usb_userlog_submit(const void *input, size_t size)
+ {
+-    if (proc_suser(current_proc()) != 0) return EPERM;
++    proc_t process = current_proc();
++    int root = proc_suser(process) == 0;
++    if (!root && !qcom_usb_userlog_producer(process)) return EPERM;
+     if (!input || size < offsetof(struct QcomUserLogWire, data) || size > sizeof(struct QcomUserLogWire))
+         return EINVAL;
+     const struct QcomUserLogWire *w = input;
+     if (!qcom_ulog_valid(w, size)) return EINVAL;
++    if (!root && !qcom_usb_userlog_scalar(w, process)) return EPERM;
+     char record[2400];
+     int n = snprintf(record, sizeof record,
+         "\nQCOM_ULOG v=1 sid=%08x%08x stream=%u seq=%u total=%u off=%u bytes=%u crc=%08x flags=%u data=",
+@@ -34,7 +122,8 @@ static int
+ qcom_usb_userlog_sysctl SYSCTL_HANDLER_ARGS
+ {
+     (void)oidp; (void)arg1; (void)arg2;
+-    if (proc_suser(current_proc()) != 0) return EPERM;
++    proc_t process = current_proc();
++    if (proc_suser(process) != 0 && !qcom_usb_userlog_producer(process)) return EPERM;
+     if (req->oldptr || !req->newptr || req->newlen < offsetof(struct QcomUserLogWire, data) ||
+         req->newlen > sizeof(struct QcomUserLogWire)) return EINVAL;
+     struct QcomUserLogWire record = {0};
+@@ -42,5 +131,5 @@ qcom_usb_userlog_sysctl SYSCTL_HANDLER_ARGS
+     return error ? error : qcom_usb_userlog_submit(&record, req->newlen);
+ }
+ SYSCTL_PROC(_debug, OID_AUTO, qcom_usb_userlog,
+-    CTLTYPE_OPAQUE | CTLFLAG_WR | CTLFLAG_LOCKED,
+-    0, 0, qcom_usb_userlog_sysctl, "S", "Root-only framed USB diagnostic log input");
++    CTLTYPE_OPAQUE | CTLFLAG_WR | CTLFLAG_LOCKED | CTLFLAG_ANYBODY,
++    0, 0, qcom_usb_userlog_sysctl, "S", "Root or exact btlog CDHash scalar USB diagnostic input");
+diff --git a/scripts/build.py b/scripts/build.py
+index 31ed893..35fd6f3 100644
+--- a/scripts/build.py
++++ b/scripts/build.py
+@@ -16,14 +16,14 @@ UNITS = ('kernel/QcomXnuUsbDebug.c', 'kernel/QcomUsbScreenshot.c', 'kernel/QcomU
+          'soc/QcomUsbDmaDomain.c')
+ 
+ 
+-def compile_flags(record):
++def compile_flags(record, *, check_paths=True):
+     args = record['arguments']
+     if not isinstance(args, list) or not args or not all(isinstance(a, str) for a in args):
+         raise ValueError('record must contain an arguments array')
+     cwd = Path(record['directory']).resolve()
+     source = Path(record['file'])
+     source = (source if source.is_absolute() else cwd / source).resolve()
+-    if not cwd.is_dir() or not source.is_file():
++    if check_paths and (not cwd.is_dir() or not source.is_file()):
+         raise ValueError('reference directory/source unavailable')
+     # Strip source, dependency and output operands; never execute a shell.
+     consumes = {'-o', '-MF', '-MT', '-MQ', '-MJ', '-dependency-file',
+@@ -126,6 +126,8 @@ def main():
+                    io_map_import, '_ml_io_unmap', '_ml_get_interrupts_enabled', '_ml_at_interrupt_context', '_ml_static_vtop', '___stack_chk_guard', '___stack_chk_fail',
+                    '_bzero', '_memcpy', '_memset', '_proc_suser', '_current_proc', '_snprintf',
+                    '_sysctl_register_oid_early', '_sysctl__debug_children'}
++        if a.userlog_compile_record:
++            allowed |= {'_cs_get_cdhash', '_PE_parse_boot_arg_str', '_proc_pid'}
+         if external - allowed:
+             raise RuntimeError('unexpected XNU imports: ' + str(sorted(external - allowed)))
+         if io_map_import not in external:

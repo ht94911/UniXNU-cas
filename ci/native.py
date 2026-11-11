@@ -80,6 +80,15 @@ def prepare(framework, work):
     tree = run(['git', 'write-tree'], cwd=framework)
     if tree != manifest['framework']['source_tree']:
         raise ValueError('reconstructed framework tree differs from integration tree')
+    base_tree = tree
+    userlog = manifest['userlog_target']
+    overlay = ROOT / userlog['source_overlay']
+    framework_files = ['--include=' + name for name in userlog['framework_overlay_files']]
+    run(['git', 'apply', '--check', '--index', *framework_files, overlay], cwd=framework)
+    run(['git', 'apply', '--index', *framework_files, overlay], cwd=framework)
+    tree = run(['git', 'write-tree'], cwd=framework)
+    if tree != userlog['framework_tree']:
+        raise ValueError('Native015 UserLog adapter tree differs from its explicit overlay')
     work.mkdir(parents=True, exist_ok=False)
     for name in ('device', 'soc'):
         shutil.copytree(ROOT / 'source' / name, work / name)
@@ -96,6 +105,25 @@ def prepare(framework, work):
         raise ValueError('USB source tree mismatch')
     if run(['git', '-C', usb, 'status', '--porcelain']):
         raise ValueError('USB source is not clean')
+    base_userlog_sources = {name: sha(usb / name) for name in userlog['base_source_files']}
+    if base_userlog_sources != userlog['base_source_files']:
+        raise ValueError('Base USB UserLog inputs differ from their original source')
+    usb_files = ['--include=' + name for name in userlog['usb_overlay_files']]
+    run(['git', 'apply', '--check', '--index', *usb_files, overlay], cwd=usb)
+    run(['git', 'apply', '--index', *usb_files, overlay], cwd=usb)
+    usb_tree = run(['git', 'write-tree'], cwd=usb)
+    if usb_tree != userlog['usb_tree']:
+        raise ValueError('Native015 USB source differs from its explicit overlay tree')
+    userlog_sources = {name: sha(usb / name) for name in userlog['source_files']}
+    if userlog_sources != userlog['source_files']:
+        raise ValueError('Pinned UserLog source or wire differs')
+    (work / 'userlog-source-selection.json').write_text(json.dumps(dict(
+        passed=True, base_source_revision=manifest['usb']['source_revision'],
+        base_source_files=base_userlog_sources, source_files=userlog_sources,
+        base_framework_tree=base_tree, actual_framework_tree=tree,
+        base_usb_tree=manifest['usb']['source_tree'], actual_usb_tree=usb_tree,
+        source_overlay=str(userlog['source_overlay']), overlay_sha256=sha(overlay),
+        target_compiled=False, user_to_USB_verified=False, phone_operations=False), indent=2) + '\n')
     run(['git', '-C', usb, 'remote', 'add', 'origin', manifest['usb']['repository']])
     run(['git', '-C', usb, 'remote', 'set-url', '--push', 'origin', 'DISABLED-no-push'])
     ufs = work / 'ufs'
@@ -153,6 +181,8 @@ def prepare(framework, work):
     (work / 'source-report.json').write_text(json.dumps({
         'source_inputs': manifest, 'actual_framework_base': run(['git', 'rev-parse', 'HEAD'], cwd=framework),
         'actual_framework_tree': tree, 'source_tree_verified': True, 'jobs': jobs,
+        'base_framework_tree': base_tree, 'base_usb_tree': manifest['usb']['source_tree'],
+        'actual_usb_tree': usb_tree, 'userlog_overlay': userlog,
         'device_executed': False, 'proprietary_inputs_uploaded': False,
     }, indent=2) + '\n')
     check_keystore_source(framework, work)
@@ -175,7 +205,10 @@ def build(framework, work):
               'null_codegen_review_required': True, 'target_code_executed': False}
     if not probe:
         sys.path.insert(0, str(framework / 'scripts'))
-        os.environ.update(UNIXNU_XNU_ARCH='arm64e', UNIXNU_IOS_VERSION='27.0')
+        userlog = json.loads((ROOT / 'inputs.json').read_text())['userlog_target']
+        os.environ.update(UNIXNU_XNU_ARCH='arm64e', UNIXNU_IOS_VERSION='27.0',
+                          UNIXNU_QCOM_USB_USERLOG='1',
+                          UNIXNU_QCOM_USB_USERLOG_TREE=userlog['usb_tree'])
         from kernel_target import check_object
         check_object((work / 'authenticated-null.o').read_bytes(), 'authenticated-null probe')
         report['object_target_validated'] = True
@@ -212,17 +245,23 @@ def build(framework, work):
     kernels = {path.resolve() for path in
         (work / 'out/nezha/ios-27.0.1-24A446-iphone14-4').glob('*/kernel/kernel.macho')}
     if len(kernels) != 1:
-        raise ValueError('Select exactly one actual Native013 kernel for KeyStore checks')
+        raise ValueError('Select exactly one actual Native015 kernel for target checks')
     kernel = next(iter(kernels))
     tree = kernel.parent.parent / 'tree'
     llvm = Path(run(['brew', '--prefix', 'llvm'])) / 'bin'
-    return run([sys.executable, tree / 'scripts/check-keystore-source.py',
+    code = run([sys.executable, tree / 'scripts/check-keystore-source.py',
                 '--source', tree / 'drivers/AppleKeyStoreState',
                 '--probe', tree / 'kits/nezha/KeyStoreProbe.cpp',
                 '--lock', tree / 'kits/nezha/keystore013-source-lock.json',
                 '--tree', tree, '--llvm', llvm, '--kernel', kernel,
                 '--out', work / 'keystore-target-qualification.json'],
                log=logs / 'keystore-target-qualification.log')
+    if code:
+        return code
+    return run([sys.executable, HERE / 'check-native-userlog.py',
+                '--tree', tree, '--component', work / 'usb', '--llvm', llvm,
+                '--kernel', kernel, '--out', work / 'userlog-target-qualification.json'],
+               log=logs / 'userlog-target-qualification.log')
 
 
 def reference(framework, work):
@@ -257,9 +296,19 @@ def collect(framework, work, sealed):
         names.append(name)
 
     add(ROOT / 'inputs.json', 'inputs.json')
+    userlog = json.loads((ROOT / 'inputs.json').read_text())['userlog_target']
+    add(ROOT / userlog['source_overlay'], 'userlog-source/native015-userlog.patch')
+    add(framework / 'scripts/build-qcom-usb-debug.py', 'userlog-source/build-qcom-usb-debug.py')
+    add(HERE / 'check-native-userlog.py', 'userlog-source/check-native-userlog.py')
+    for name in userlog['source_files']:
+        add(work / 'usb' / name, 'userlog-source/' + name)
+    for path in sorted((work / 'userlog-producer-host').glob('*')):
+        if path.is_file() and path.suffix in ('.json', '.log', '.c'):
+            add(path, 'userlog-producer-host/' + path.name)
     for name in ('source-report.json', 'integration-source-qualified.json', 'compiler-report.json', 'authenticated-null.c',
                  'authenticated-null.o', 'authenticated-null.s', 'keystore-source-selection.json',
-                 'keystore-target-qualification.json'):
+                 'keystore-target-qualification.json', 'userlog-source-selection.json',
+                 'userlog-target-qualification.json'):
         add(work / name, name)
     for path in sorted((work / 'logs').glob('*.log')):
         add(path, 'logs/' + path.name)
