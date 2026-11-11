@@ -212,6 +212,59 @@ static void service_matched(void *context,io_iterator_t matches) {
  * the plug-in-local kDevice and a previous boot's ID are not global IDs.
  * Each connection makes one selection attempt and retains the ordinary
  * CoreAudio errors and readback. CoreAudio owns any normal preference storage. */
+/* Read the actual global device/stream values used by24A446's default-device
+ * policy. These are observations; a full history cannot affect the policy. */
+static void sample_default_eligibility(UInt32 epoch,io_connect_t connection,AudioObjectID target) {
+    pthread_mutex_lock(&gLock);
+    int current=atomic_load(&gDiscoveryActive) && gConnect==connection && gEpoch==epoch && available();
+    pthread_mutex_unlock(&gLock);
+    if (!current || target==kAudioObjectUnknown) return;
+    NaHalObservation events[7];unsigned count=0;
+    const AudioObjectPropertySelector scalar[3]={kAudioDevicePropertyDeviceIsAlive,
+        kAudioDevicePropertyIsHidden,kAudioDevicePropertyHogMode};
+    for (unsigned i=0;i<3;++i) {
+        AudioObjectPropertyAddress a={scalar[i],kAudioObjectPropertyScopeGlobal,kAudioObjectPropertyElementMain};
+        UInt32 bytes=sizeof(UInt32),value=0;
+        OSStatus r=AudioObjectGetPropertyData(target,&a,0,NULL,&bytes,&value);
+        if (!r && bytes!=sizeof value) r=kAudioHardwareBadPropertySizeError;
+        events[count++]=(NaHalObservation){NA_HAL_OBSERVATION_VERSION,NaHalSystemRoute,
+            kDevice,a.mSelector,a.mScope,a.mElement,r,r ? 0:value};
+    }
+    AudioObjectPropertyAddress a={kAudioDevicePropertyStreams,kAudioObjectPropertyScopeOutput,kAudioObjectPropertyElementMain};
+    UInt32 bytes=0;AudioObjectID streams[16]={0};
+    OSStatus r=AudioObjectGetPropertyDataSize(target,&a,0,NULL,&bytes);
+    if (!r && (bytes%sizeof(AudioObjectID) || bytes>sizeof streams)) r=kAudioHardwareBadPropertySizeError;
+    if (!r && bytes) {
+        UInt32 expected=bytes;r=AudioObjectGetPropertyData(target,&a,0,NULL,&bytes,streams);
+        if (!r && bytes!=expected) r=kAudioHardwareBadPropertySizeError;
+    }
+    UInt32 stream_count=r ? 0:bytes/(UInt32)sizeof(AudioObjectID);
+    events[count++]=(NaHalObservation){NA_HAL_OBSERVATION_VERSION,NaHalSystemRoute,
+        kDevice,a.mSelector,a.mScope,a.mElement,r,stream_count};
+    if (!r && stream_count && streams[0]!=kAudioObjectUnknown) {
+        AudioStreamBasicDescription f={0};bytes=sizeof f;
+        a=(AudioObjectPropertyAddress){kAudioStreamPropertyVirtualFormat,kAudioObjectPropertyScopeGlobal,kAudioObjectPropertyElementMain};
+        r=AudioObjectGetPropertyData(streams[0],&a,0,NULL,&bytes,&f);
+        if (!r && bytes!=sizeof f) r=kAudioHardwareBadPropertySizeError;
+        events[count++]=(NaHalObservation){NA_HAL_OBSERVATION_VERSION,NaHalSystemRoute,
+            kOutStream,a.mSelector,a.mScope,a.mElement,r,r ? 0:f.mFormatFlags};
+        /* sfid is the format-ID companion to the same observed sfmt reply;
+         * it is a diagnostic label, never a queried or answered property. */
+        events[count++]=(NaHalObservation){NA_HAL_OBSERVATION_VERSION,NaHalSystemRoute,
+            kOutStream,'sfid',a.mScope,a.mElement,r,r ? 0:f.mFormatID};
+        a=(AudioObjectPropertyAddress){kAudioStreamPropertyTerminalType,kAudioObjectPropertyScopeGlobal,kAudioObjectPropertyElementMain};
+        UInt32 value=0;bytes=sizeof value;
+        r=AudioObjectGetPropertyData(streams[0],&a,0,NULL,&bytes,&value);
+        if (!r && bytes!=sizeof value) r=kAudioHardwareBadPropertySizeError;
+        events[count++]=(NaHalObservation){NA_HAL_OBSERVATION_VERSION,NaHalSystemRoute,
+            kOutStream,a.mSelector,a.mScope,a.mElement,r,r ? 0:value};
+    }
+    pthread_mutex_lock(&gLock);
+    if (atomic_load(&gDiscoveryActive) && gConnect==connection && gEpoch==epoch && available())
+        for (unsigned i=0;i<count;++i) report_hal(events[i].kind,events[i].object,events[i].selector,
+            events[i].scope,events[i].element,events[i].result,events[i].value);
+    pthread_mutex_unlock(&gLock);
+}
 static void sample_system_route(void) {
     pthread_mutex_lock(&gLock);
     if (!atomic_load(&gDiscoveryActive) || !available() || gSystemRouteSamples>=8) {
@@ -281,6 +334,7 @@ static void sample_system_route(void) {
         }
     }
     pthread_mutex_unlock(&gLock);
+    if (sample==8 && !events[0].result) sample_default_eligibility(epoch,connection,target);
 }
 static void retry_service(void *context) {(void)context;check_service();sample_system_route();}
 static UInt32 latencyFrames(void) {return NA_AUDIO_LEAD_FRAMES;}
