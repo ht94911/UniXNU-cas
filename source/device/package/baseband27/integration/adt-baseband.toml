@@ -1,0 +1,24 @@
+# B package ADT additions merged into the independent GPU024 copy.
+# Values from the original 24A446 DeviceTree.d16ap (/baseband, /product). GPIO functions, interrupts, coredump and PMU
+# properties name Apple controllers and stay out, as Coachz's baseband_tree does. The root compatible is already D16AP, a
+# cellular hardware model in libTelephonyUtil's table, so it does not change.
+
+[adt.chosen.u32]
+"nezha-baseband" = 1          # the start switch (integration/NbBasebandStart.c, BootWatchdogPolicy patch)
+
+[adt.baseband.string]
+compatible = "baseband,n41"
+device_type = "baseband"
+
+[adt.baseband.u32]
+class = 3
+
+[adt.product.string]
+"baseband-chipset" = "mav21"
+
+# Supplied locally from the independently verified image and actual extent table:
+#   /chosen/nezha-baseband-extents (bytes), /chosen/nezha-baseband-blocks (u64), /chosen/nezha-baseband-sha256 (32 bytes)
+
+# Extent bytes use ShengUfs LE u64 triples: file block, partition block, count.
+# The existing protected-map list contains the preexisting files; the B map must be disjoint.
+# The standard ADT exporter consumes the top-level node after format2-baseband-node.patch.

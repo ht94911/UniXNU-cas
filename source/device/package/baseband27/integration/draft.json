@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "enabled": true,
+  "selected_package": "GPU024/source673cde8",
+  "reason": "Computer source and host checks complete; native build and device validation remain separate.",
+  "branch": "codex/baseband27-gpu024",
+  "switch": {
+    "adt": "/chosen/nezha-baseband",
+    "value": 1,
+    "boot_args_added": 0,
+    "boot_line_bytes": 994,
+    "boot_line_limit": 1000
+  },
+  "files": {
+    "launchd_policy_patch": "integration/BootWatchdogPolicy-baseband.patch",
+    "adt_fragment": "integration/adt-baseband.toml",
+    "plan": "integration/PLAN.md",
+    "start_caller": "integration/NbBasebandStart.c",
+    "board_binding": "platform/NbBoard.cpp",
+    "owner_inputs": "integration/owners.json",
+    "package_patch_series": "integration/series",
+    "image_reader": "integration/NbUfsReadOnly.inc"
+  },
+  "pending_human_decisions": [],
+  "phase": "host-verified-source",
+  "native_build": false,
+  "phone_operations": false
+}

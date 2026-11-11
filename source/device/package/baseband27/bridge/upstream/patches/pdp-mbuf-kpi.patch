@@ -1,0 +1,13 @@
+diff --git a/baseband/coachz_bb_pdp.cpp b/baseband/coachz_bb_pdp.cpp
+index c646404..6f1bb97 100644
+--- a/baseband/coachz_bb_pdp.cpp
++++ b/baseband/coachz_bb_pdp.cpp
+@@ -3,7 +3,7 @@
+ // CommCenter owns WDS and address configuration; this layer never dials or invents addresses.
+ #include <sys/socket.h>
+ #include <sys/sockio.h>
+-#include <sys/mbuf.h>
++#include <sys/kpi_mbuf.h>
+ #include <net/if.h>
+ #include <net/if_types.h>
+ #include <net/kpi_interface.h>

@@ -313,3 +313,18 @@ completion = ["Native artifact and PAC/strict closure checks pass", "Real shader
 limits = ["Source/host evidence only;not a new hardware result", "Original078 and17 masters unchanged;no main promotion"]
 next_action = ["Complete integrated009 qualification and use the113 GPU window"]
 evidence = [{kind = "source", reference = "scripts/check-stable-kernel-stack.py", result = "Actual function extraction;ASan/UBSan pass256 state variants,short/null/out-of-range saved state,overflow/misaligned/cyclic frames and preserved normal three-frame output;arm64e PAC checked separately on the native artifact."}]
+
+
+[[area]]
+id = "ios27-mss-board"
+status = "host-verified"
+components = ["QcomBaseband", "ShengUfs", "ArmSmmu4K", "QcomXnuUsbDebug"]
+paths = ["package/baseband27/**", "scripts/*baseband*.py", "scripts/build-nezha27-shared.py", "tests/baseband27/**", "tools/baseband27/**"]
+inputs = ["Independent GPU024 source673cde8; fixed owner inputs in integration/owners.json", "Local indexed image; contents remain outside Git"]
+configuration = ["Single chosen/nezha-baseband switch; original boot arguments and prelink roots retained", "Separate shared transport archive, existing GPU ArmSmmu4K, staged component patches"]
+procedure = ["Run sh tests/baseband27/check.sh ../research/upstream/QcomBaseband", "Validate the local image using tools/baseband27/check-image.py"]
+findings = ["Production board binding, read-only ShengUfs consumer, RAM services and late start pass host fixtures", "One shared transport copy; actual Format2 export and off-switch behavior checked"]
+completion = ["Board source and host checks completed for this handoff", "Native ABI/link and device behavior require separate qualification"]
+limits = ["Host fixtures use explicit IOKit/MMIO substitutes; no native build or phone operation", "Further system bridge adaptation remains outside this board-source handoff"]
+next_action = ["Continue the bridge work and native qualification in the designated session"]
+evidence = [{kind = "host", reference = "tests/baseband27/host-check-20261110.txt", command = "sh tests/baseband27/check.sh ../research/upstream/QcomBaseband", revision = "699982a2a0e68ade0deb7a8aab14fe002781b3af", result = "Exit0; all original and added host checks pass with ASan/UBSan; original package inputs unchanged."}]

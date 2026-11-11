@@ -33,7 +33,7 @@ commit = "282606b528b2595bc4274ea7490b62b323f35a5f"
 name = "sm8850"
 kind = "soc"
 git = "https://github.com/ht94911/UniXNU-sm8850-common.git"
-commit = "5a71f9eb5724ff58eddf49f7f5baecc9f4233a7c"
+commit = "703d7b4bb00904b4a6e5d96f9e9bf72eec170f6b"
 [[source]]
 name = "ArmCpu"
 kind = "driver"
@@ -46,7 +46,7 @@ name = "QcomXnuUsbDebug"
 kind = "driver"
 git = "https://github.com/xiaoleGun/QcomXnuUsbDebug.git"
 # Same078 runtime/patch bytes; only the prequalified A840 IOBSD consumer hash differs.
-commit = "a173dedceb3e6cbaa98ea259afaea7d142869dac"
+commit = "a3142775e447553017ed38474fe9267f8a64f4fc"
 
 [[source]]
 name = "GopFramebuffer"
@@ -65,3 +65,10 @@ name = "RamBlock"
 kind = "driver"
 git = "https://github.com/UniXNU/RamBlock.git"
 commit = "1c861fce7b246f3728a6a28d0cabe6448821de85"
+
+# Fixed GPU024 storage owner; B source staging adds only its read-only consumer.
+[[source]]
+name = "ShengUfs"
+kind = "driver"
+git = "https://github.com/UniXNU/ShengUfs.git"
+commit = "988b3e1eb9274af2ab9d9602e2e237bd263f25fb"

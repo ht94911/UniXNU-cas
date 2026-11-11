@@ -1,0 +1,24 @@
+UniXNU-sheng 460179565a018c741b93e0b1efa07c55d4de497a (BSD-2-Clause-Patent, package/Qcom*), as the audio27 session copied them
+(audio27-codex abde8b4, upstream/provenance.json: QcomGlink with its local lifecycle/bounds changes).
+Local changes after that copy:
+  QcomSmp2p.c/.h: replaced by power27-codex 26254a8 (SMP2P v1/v2 negotiation, verified on the SM8850 SOCCP edge).
+  QcomGlink.c: remote intent ID 0 accepted (as power27 e8d31f7 and Linux); zero size stays malformed.
+  QcomMdt.c: reject rounded-span and metadata-size overflow.
+  QcomRpmh.c/.h: retain bounded auxiliary bytes for the existing resource tables.
+  QcomQmp.c: explicit fall-through annotation; runtime behavior unchanged.
+A combined test package must carry ONE copy of these sources for audio, power and baseband (same symbols).
+
+5b1d3d911103cb0f41641ec0964c5ac1f7e229f57aa072b6ac38bae913a1307b  LICENSE
+816b8b94d047c611aa2a6c8188fbb632c16a362c155c68b10fefb0a7b34e493b  QcomGlink.c
+f5435b5f327d308189406ae1e9d91c4ed496e156b982dee9dd9f1bba8cf841f7  QcomGlink.h
+064776d20165b2f36a6614d6b67f94e7066ce641d2050cad764d013677fc6462  QcomMdt.c
+22d8e567b285e254becf1af41f8ba0c9c1cfcc5295f6246b4b9d09e5fef88477  QcomMdt.h
+84f52fe4573515f52d5ede65d5fbf484c9ac13dadf2157c56a1f77c8801a1999  QcomQmp.c
+dd6722ade248435930c5f242ef78728f58f7e3bc6a9765fe229b32c87f342503  QcomQmp.h
+ab03ab1291f043cb281f4d64b82b0d497d0e4f61a5b888512f0ec852ae1a3244  QcomScm.h
+4e9eb0ee22458dad30e1fcb7edb74a9d762222aff0623a6d5b85fb4a6e08bd03  QcomSmem.c
+f2a25e807bfa0556f2ec19258d8b2f47782acdc5fe1d9bdab23ecbb9f948ae37  QcomSmem.h
+7b3f9e647be33d858ef949cb082374f7ab3cd8af58be86aa36c59bb2c4661def  QcomSmp2p.c
+38233b5f432c3ea5eb9d3fd89ad56b944fba851cb0aefa7dcb15202e797dd427  QcomSmp2p.h
+9cc1438645964ab020e152a0e96c0ab428a2c76df8233bfce6117665b7e8d4de  QcomRpmh.c
+aa4307cd209c25a6b2e6b80d075f1e76deda0059eca7a333895ae73a3c724d38  QcomRpmh.h

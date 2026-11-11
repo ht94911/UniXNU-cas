@@ -1,0 +1,11 @@
+--- a/scripts/unixnu/devicetree.py
++++ b/scripts/unixnu/devicetree.py
+@@ -410,7 +410,7 @@
+     children.append(node('arm-io', [('device_type', b'arm-io\0'), ('#address-cells', struct.pack('<I', 2)),
+                          ('#size-cells', struct.pack('<I', 2)), ('ranges', struct.pack('<QQQ', 0, base, size))],
+                          [node(name, hardware_properties(entry, handles, base)) for name, entry in zip(names, hardware)]))
+-    for name in ('defaults', 'options', 'product', 'buttons'):
++    for name in ('defaults', 'options', 'product', 'buttons', 'baseband'):
+         if name in platform or name in ('defaults', 'options', 'product'):
+             children.append(platform_node(name, platform.get(name, {})))
+     # A configured root 'compatible' goes before the hardware DTS's own entries: an OS identity's board name comes first (the OS

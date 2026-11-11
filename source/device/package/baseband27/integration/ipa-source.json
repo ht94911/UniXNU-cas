@@ -1,0 +1,6 @@
+{
+  "revision": "fb2c3f44a7e14627b9dca8e6b568e6cdc234b40b",
+  "generated": "package/baseband27/ipa/nb_ipa_v55.h",
+  "generator": "tools/baseband27/gen-nb-ipa-v55.py",
+  "register_table_bytes_unchanged": true
+}

@@ -1,0 +1,45 @@
+{
+  "base_source": "673cde869b7378658b470c4e6b2b9a1766b99411",
+  "soc_revision": "703d7b4bb00904b4a6e5d96f9e9bf72eec170f6b",
+  "ufs_revision": "988b3e1eb9274af2ab9d9602e2e237bd263f25fb",
+  "usb_revision": "a3142775e447553017ed38474fe9267f8a64f4fc",
+  "smmu_revision": "83969cd874503e65997ff7639f7dcf3d0a92cd17",
+  "soc": {
+    "include/Sm8850Resources.h": "e75bd077715897e28bf518770f3e0de4c74d52d34aa525b3a8531cae5460b1f3",
+    "include/Sm8850ResourcesNative.h": "96a542ad251ca57765dbd299e71267eca66632356f6922007c8952b85917fc63",
+    "src/Sm8850Resources.c": "944379b776f769dd0718492749abb46b52bb74bef6b903dca4f674469d7bae26",
+    "src/Sm8850ResourcesNative.cpp": "0f3b7453cf11c59d50ab2cec923699af791f1510d0f6fe95b0f7413e4201b36a"
+  },
+  "ufs": {
+    "NativeUfs.cpp": "f9cb5e677d6d4d7b1feefee693bdbaa82cb4985cd3ff7f6e2601bd4e1f88d391",
+    "RootExtents.h": "f67fcf497bdb7f81cceee9cbbb053b6bb0f9a8cb6ae0716a987322eff0e09c32",
+    "RootCommands.h": "ccccd47703802800482175373415b244697103cbd907b57009b91c52ed8b1d16",
+    "PinnedDataWindow.h": "d7b222af24ec33efa8df96d24258c47c1059a21354cbffbd4bc5a526f41ed557"
+  },
+  "smmu": {
+    "ArmSmmu4K.c": "0adb19b483e56e723014ed6cfe2c29f9d9735ae2770f62cf0057b22937dbd157",
+    "ArmSmmu4K.h": "e25063b9134afc7eb79e7c030bc2858608cf0ade5da714d5dfd600fee5007e8e",
+    "ArmSmmu4KAudit.c": "594739cebc43926b1cb0a0e965867bcf1edfb90fab9c51465b65fa47be3755c1",
+    "ArmSmmu4KAudit.h": "1f313acd46db3dfecc115b8c885c5c43f7d23f73690a6157f900dfc77b2c9f6a",
+    "ArmSmmu4KContext.c": "fb993f53ef899b9969a71311b61b5dbe9446c515d7a6e6ad7d4840796eb1b6a3",
+    "ArmSmmu4KContext.h": "34070b4739dd6c5b59159b9c2ed66e966ff659994db66b8677655273a1f02647",
+    "ArmSmmu4KLive.c": "de3d7a55c92f825dfa7fe512f84fc146facabcee26af5eb4fdd85898ea1daafa",
+    "ArmSmmu4KLive.h": "15d4d11c1bf603499de3de5ff9b429d8bc76445364c58157f217fa1ec72d399f",
+    "ArmSmmu4KMmio.c": "439e6b50a3431c607611aa3b9af1f4f548e53b2fa1c452645a458c0606f7df38",
+    "ArmSmmu4KMmio.h": "face552cf67de969e8e741c0195496949f2c62b418d973e4d71a02f18ab83109",
+    "ArmSmmu4KProgram.c": "93df000cefafd06cc46a24f0079a08dda312a74c7f35f901f255efc74e6919ee",
+    "ArmSmmu4KProgram.h": "76b3b06f4ee63f24e7ac39d1f046c0edb9a1739584aece9108a31ae9f618f46d",
+    "ArmSmmu4KStreams.c": "359610de6974c1885b4b7bbf72e6b321a013e1cc44200e1a8f566d09722c009a",
+    "ArmSmmu4KStreams.h": "1cfca0b4e3acba420cc829098b52d61c4905ec64d2aa57883dedae9dfb212969",
+    "ArmSmmu4KTableMemory.c": "b39d3d4fc292b921672c089e930986345637aa029b422821867c72e7203feb92",
+    "ArmSmmu4KTableMemory.h": "316b85ee835686744feb7777b4216917578833e3ff510aeecc4bbe8325568f86"
+  },
+  "board": {
+    "package/gpu/NezhaScm.c": "d5eff9fb85bd9215411e9c9ef56f40b5bc28334b9e1dd246d4f61b4f6aae4ab3",
+    "package/SourceStorage.cpp": "d0b8e0433ef71a1761e5d3dd055d8c4a6b709a5b8dabb2da36ab558291c9d2f3",
+    "package/BootWatchdogPolicy.c": "67ebfeb8ced02c3b18bd31a4cc1872f80066ba5101a36d93b92329a0c8f25c4c"
+  },
+  "framework": {
+    "scripts/unixnu/devicetree.py": "3e618ef28ca8736ac8a866849cf88204216a94ef5145fdcaa4807f420beb53ea"
+  }
+}

@@ -1,0 +1,43 @@
+--- a/include/Sm8850Resources.h
++++ b/include/Sm8850Resources.h
+@@ -26,7 +26,7 @@
+     uint32_t initialized,smem_owner,ipcc_busy,ipcc_sealed,ipcc_count,ipcc_unknown_count,ipcc_last_unknown;
+     Sm8850IpccRoute ipcc[Sm8850IpccRoutes];
+ } Sm8850Resources;
+-typedef struct {uint32_t bank,asid,slot[4],sid[4];} Sm8850SmmuAssignment;
++typedef struct {uint32_t bank,asid,slot[4],sid[4],count; /* count 0 preserves legacy four-stream callers */} Sm8850SmmuAssignment;
+ /* No probing or writes here. Board supplies explicit resource numbers and
+  * assignments. Registering this object is not permission for a second owner
+  * to access an already-owned controller outside the same lock. */
+--- a/src/Sm8850Resources.c
++++ b/src/Sm8850Resources.c
+@@ -39,6 +39,8 @@
+ }
+ int sm8850_smmu_check_assignment(Sm8850Resources *r,const Sm8850SmmuAssignment *a) {
+     uint32_t id0,id1,id2,cr,fsr;
++    unsigned count=a && a->count ? a->count:4;
++    if(count>4)return Sm8850Invalid;
+     if (!r || !a || !a->asid || a->asid>65535) return Sm8850Invalid;
+     if (rd(r,0,0x20,&id0) || rd(r,0,0x24,&id1) || rd(r,0,0x28,&id2) ||
+         rd(r,0,0,&cr) || rd(r,0,0x48,&fsr)) return Sm8850Io;
+@@ -49,17 +51,17 @@
+         !slots || slots>128 || !banks || banks>128 || banks>pages ||
+         a->bank<stage2 || a->bank>=banks || shift!=12 || pages>128 ||
+         !(id2&(1u<<12)) || (cr&0x40f)!=0x406 || fsr) return Sm8850Conflict;
+-    for (unsigned j=0;j<4;++j) {
++    for (unsigned j=0;j<count;++j) {
+         if (a->slot[j]>=slots || a->sid[j]>0x7fff) return Sm8850Invalid;
+         for (unsigned k=0;k<j;++k) if (a->slot[j]==a->slot[k] || a->sid[j]==a->sid[k]) return Sm8850Invalid;
+     }
+     for (unsigned i=0;i<slots;++i) {
+         uint32_t smr,s2cr;
+         if (rd(r,0,0x800+4*i,&smr) || rd(r,0,0xc00+4*i,&s2cr)) return Sm8850Io;
+-        for (unsigned j=0;j<4;++j) if (i==a->slot[j] && ((smr&0x80000000u) || s2cr!=0x20000)) return Sm8850Conflict;
++        for (unsigned j=0;j<count;++j) if (i==a->slot[j] && ((smr&0x80000000u) || s2cr!=0x20000)) return Sm8850Conflict;
+         if (!(smr&0x80000000u)) continue;
+         if (((s2cr>>16)&3)==0 && (s2cr&255)==a->bank) return Sm8850Conflict;
+-        for (unsigned j=0;j<4;++j) if (!((a->sid[j]^smr)&~(smr>>16)&0x7fff)) return Sm8850Conflict;
++        for (unsigned j=0;j<count;++j) if (!((a->sid[j]^smr)&~(smr>>16)&0x7fff)) return Sm8850Conflict;
+     }
+     for (unsigned i=0;i<banks;++i) {
+         uint32_t cbar,sctlr;uint64_t tt0,tt1;

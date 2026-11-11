@@ -13,7 +13,7 @@ include = ["ArmDTPlatform", "ArmCpu", "XnuPrelink", "QcomXnuUsbDebug", "ShengUfs
 defconfig = "nezha_ios27_defconfig"
 config_fragments = ["arch:configs/common.config", "soc:configs/sm8850.config", "os:configs/ipados.config"]
 patch_series = ["arch:patches/xnu/series", "soc:patches/xnu-12377/series", "os:patches/xnu/series", "device:patches/xnu-12377/series", "component:QcomXnuUsbDebug/patches/darwin25-xnu12377-unixnu/series"]
-archives = ["build-corecrypto-14.py", "build-corecrypto-14.py --namespace", "component:ArmDTPlatform", "nezha-armcpu-asm-fix.py", "component:ArmCpu", "qualify-armcpu-instructions.py", "build-libpthread-kernel.py", "component:QcomXnuUsbDebug", "build-nezha27-usb-control.py", "build-ios27-pmgr.py", "component:ShengUfs", "component:RamBlock", "component:AppleKeyStoreState", "build-gop-legacy-display-27.py", "build-nezha27-input.py", "component:Adreno840"]
+archives = ["build-corecrypto-14.py", "build-corecrypto-14.py --namespace", "component:ArmDTPlatform", "nezha-armcpu-asm-fix.py", "component:ArmCpu", "qualify-armcpu-instructions.py", "build-libpthread-kernel.py", "component:QcomXnuUsbDebug", "build-nezha27-usb-control.py", "build-ios27-pmgr.py", "prepare-nezha27-baseband.py --tree .", "component:ShengUfs", "component:RamBlock", "component:AppleKeyStoreState", "build-gop-legacy-display-27.py", "build-nezha27-input.py", "build-nezha27-shared.py --tree .", "build-nezha27-baseband.py --tree .", "component:Adreno840"]
 # G3 read-only root closure. Explicit IOStorageFamily retains its generic
 # IOBlockStorageDriver/IOMediaBSDClient matching; dependency-only strips it.
 [kernel.prelink]
@@ -37,6 +37,7 @@ kernel_args = ["-v", "keepsyms=1", "debug=0x14e", "cpus=8", "boot-progress=2", "
 
 # Format2 exports chosen metadata from the typed ADT table.
 [adt.chosen.u32]
+"nezha-baseband" = 1
 "kernel-ctrr-to-be-enabled" = 0
 
 # First root mount: use the real independently verified iPhone OS identity.
@@ -64,3 +65,13 @@ device_type = "buttons"
 button-names = ["hold", "voldown", "volup"]
 [adt.buttons.u32]
 home-button-type = 2
+
+# B package ADT metadata, consumed by the standard typed-node generator.
+[adt.baseband.string]
+compatible = "baseband,n41"
+device_type = "baseband"
+[adt.baseband.u32]
+class = 3
+[adt.product.string]
+"baseband-chipset" = "mav21"
+# Image extents/blocks/SHA are supplied locally after their independent verification.

@@ -1,0 +1,15 @@
+QcomBaseband dd0199cf3300764ed52b23f4a47761f91fab21a2 (BSD-2-Clause, HoshinoYumeka): baseband/* and patches/, unmodified.
+Derived nezha files are produced by tools/baseband27/derive-bridge27.py.
+
+14af460c3b62a4498efe9ac781e3745049edc4c9a2184942ccbe68b7925d7b5c  ./LICENSE
+578d5a904314ff8f3351191f53b5c9c8b184b77c156b702bb22b0d2d664efd55  ./QcomBaseband.h
+f49e81794bbf46ae126cfbf3f5d4cf4992334bbcc61857c483f8d5553ab47486  ./coachz_baseband.cpp
+bcaf8013c4cc2724f9ff024f00aad2cb14187576d4ac90cdfcab4a50d47a8e7b  ./coachz_bb_channels.h
+b7876d86a9bc875aca213039833103d1433889fe9b1fbc275a3d19a24076d206  ./coachz_bb_control.h
+1ddcb9b92450311392ff59dbd15beb7135825757099a6fedd6ab7ddc120cb2d7  ./coachz_bb_data.h
+ab47cedfee356fc630d3914258226fd378df8f57876949170cef9bc5b5c7baf1  ./coachz_bb_esim.h
+e9cc3fd1fb1f75b5f6f1901c4ccc45dc163e865d551ad3640ac06f2c41d00b49  ./coachz_bb_pdp.cpp
+1dd76eb9a03488075c0ee7e428291ff4ecb4af835718df2a18ddda239f736dab  ./coachz_bb_pdp.h
+ca786da9402bbf11eacfafa47c749aa9e2c13aebfec4a83d7b346947a05da7eb  ./coachz_bb_qmux.h
+f333455861e96c1b158a38f0d5e65b671b39d84a860c48b061ee2c9abb828f89  ./coachz_bb_sahara.h
+fcd2f0dde5ba44fa7f2773f0a199f2ab3b4aa6058e5a23fdd84e116741cf3160  ./patches/pdp-mbuf-kpi.patch

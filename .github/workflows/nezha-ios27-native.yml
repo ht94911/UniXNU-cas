@@ -1,7 +1,7 @@
-name: nezha iPhone27 GPU bounded stock clocks - native037
+name: nezha iPhone27 B package on GPU024 - native001
 on:
   push:
-    branches: [codex/ios27-gpu-persist019-037-20261108]
+    branches: [codex/ios27-bb-gpu024-native001-20261111]
   workflow_dispatch:
 permissions:
   contents: read
