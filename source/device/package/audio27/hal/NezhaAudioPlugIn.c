@@ -2,6 +2,7 @@
 // sheng AudioServerPlugIn architecture, with ABI2 ownership and independent
 // input lifecycle. arm64e source only; original-donor load validation pending.
 #include <CoreAudio/AudioServerPlugIn.h>
+#include <CoreAudio/AudioHardware.h>
 #include <CoreFoundation/CoreFoundation.h>
 #include <IOKit/IOKitLib.h>
 #include <mach/mach_time.h>
@@ -42,12 +43,73 @@ static Float32 gVolume=1; /* Upstream default; kernel and amplifier limits still
 static uint64_t gZeroOrigin,gZeroSeed;
 static uint32_t gEpoch;
 static struct {UInt32 id,count;} gUsers[32];
-static uint32_t gReportedDeviceList=UINT32_MAX,gPropertyErrorCount;
-static NaHalObservation gPropertyErrors[NA_HAL_HISTORY_CAPACITY];
+static uint32_t gReportedDeviceList=UINT32_MAX,gObservationCount;
+static UInt32 gSystemRouteSamples;
+static NaHalObservation gObservations[NA_HAL_HISTORY_CAPACITY];
 static void report_hal(uint32_t kind,uint32_t object,uint32_t selector,uint32_t scope,uint32_t element,int32_t result,uint32_t value) {
     if (!gConnect) return;
     NaHalObservation event={NA_HAL_OBSERVATION_VERSION,kind,object,selector,scope,element,result,value};
     (void)IOConnectCallStructMethod(gConnect,NaAudioObserveHAL,&event,sizeof event,NULL,NULL);
+}
+/* Callback observations are retained once per numeric event, before the
+ * realtime IO path. A full history never changes a property or IO decision. */
+static void observe_once(uint32_t kind,uint32_t object,uint32_t selector,uint32_t scope,uint32_t element,int32_t result,uint32_t value) {
+    if (!gConnect || gObservationCount==NA_HAL_HISTORY_CAPACITY) return;
+    NaHalObservation event={NA_HAL_OBSERVATION_VERSION,kind,object,selector,scope,element,result,value};
+    for (uint32_t i=0;i<gObservationCount;++i)
+        if (!memcmp(&gObservations[i],&event,sizeof event)) return;
+    gObservations[gObservationCount++]=event;
+    report_hal(kind,object,selector,scope,element,result,value);
+}
+static int observed_property(AudioObjectID object,AudioObjectPropertySelector selector) {
+    switch (selector) {
+    case kAudioObjectPropertyClass:
+    case kAudioObjectPropertyOwnedObjects:
+        return 1;
+    case kAudioDevicePropertyTransportType:
+    case kAudioDevicePropertyDeviceIsAlive:
+    case kAudioDevicePropertyDeviceCanBeDefaultDevice:
+    case kAudioDevicePropertyDeviceCanBeDefaultSystemDevice:
+    case kAudioDevicePropertyStreams:
+    case kAudioObjectPropertyControlList:
+    case kAudioDevicePropertyNominalSampleRate:
+        return object==kDevice;
+    case kAudioStreamPropertyIsActive:
+    case kAudioStreamPropertyDirection:
+    case kAudioStreamPropertyTerminalType:
+    case kAudioStreamPropertyVirtualFormat:
+    case kAudioStreamPropertyPhysicalFormat:
+        return object==kOutStream || object==kInStream;
+    case kAudioControlPropertyScope:
+    case kAudioControlPropertyElement:
+    case kAudioLevelControlPropertyScalarValue:
+        return object==kVolume;
+    default:return 0;
+    }
+}
+static uint32_t property_observation_value(AudioObjectID object,const AudioObjectPropertyAddress *address,uint32_t bytes,const void *data) {
+    uint32_t value=bytes;
+    switch (address->mSelector) {
+    case kAudioObjectPropertyOwnedObjects:
+    case kAudioDevicePropertyStreams:
+    case kAudioObjectPropertyControlList:
+        return bytes/(uint32_t)sizeof(AudioObjectID);
+    case kAudioDevicePropertyNominalSampleRate:
+        if (bytes==sizeof(Float64) && data) {
+            Float64 rate;memcpy(&rate,data,sizeof rate);
+            if (isfinite(rate) && rate>=0 && rate<=UINT32_MAX) return (uint32_t)rate;
+        }
+        return bytes;
+    case kAudioStreamPropertyVirtualFormat:
+    case kAudioStreamPropertyPhysicalFormat:
+        if (bytes==sizeof(AudioStreamBasicDescription) && data)
+            return ((const AudioStreamBasicDescription *)data)->mChannelsPerFrame;
+        return bytes;
+    default:
+        /* Scalar volume retains its Float32 bit pattern, not an address. */
+        if (bytes==sizeof value && data) memcpy(&value,data,sizeof value);
+        (void)object;return value;
+    }
 }
 static kern_return_t call(uint32_t selector) {
     return gConnect ? IOConnectCallScalarMethod(gConnect,selector,NULL,0,NULL,NULL):KERN_FAILURE;
@@ -107,7 +169,7 @@ static int connect_service(void) {
         if (map_type(NaAudioInputMemory,NA_AUDIO_RING_BYTES)) goto bad;
         gInput=(const uint64_t *)(uintptr_t)gMapAddress[2];
     }
-    gEpoch=s.epoch;gReportedDeviceList=UINT32_MAX;
+    gEpoch=s.epoch;gReportedDeviceList=UINT32_MAX;gSystemRouteSamples=0;
     report_hal(NaHalConnected,kPlugIn,0,0,0,0,1);return 0;
 bad:disconnect();return -1;
 }
@@ -128,7 +190,10 @@ static void check_service(void) {
         AudioObjectPropertyAddress changed[2]={
             {kAudioPlugInPropertyDeviceList,kAudioObjectPropertyScopeGlobal,kAudioObjectPropertyElementMain},
             {kAudioObjectPropertyOwnedObjects,kAudioObjectPropertyScopeGlobal,kAudioObjectPropertyElementMain}};
-        host->PropertiesChanged(host,kPlugIn,2,changed);
+        OSStatus notification=host->PropertiesChanged(host,kPlugIn,2,changed);
+        pthread_mutex_lock(&gLock);
+        observe_once(NaHalPublication,kPlugIn,kAudioPlugInPropertyDeviceList,kAudioObjectPropertyScopeGlobal,kAudioObjectPropertyElementMain,notification,2);
+        pthread_mutex_unlock(&gLock);
         if (previous) {
             AudioObjectPropertyAddress alive={kAudioDevicePropertyDeviceIsAlive,kAudioObjectPropertyScopeGlobal,kAudioObjectPropertyElementMain};
             host->PropertiesChanged(host,kDevice,1,&alive);
@@ -141,7 +206,109 @@ static void service_matched(void *context,io_iterator_t matches) {
     while ((object=IOIteratorNext(matches))) IOObjectRelease(object);
     check_service();
 }
-static void retry_service(void *context) {(void)context;check_service();}
+/* Observe the registered physical device and the system defaults on the
+ * existing discovery queue. The mobile VirtualAudio layer normally takes
+ * the physical device's hog mode and routes its own virtual device to it.
+ * HALS excludes hogged physical devices from its ordinary default catalog;
+ * forcing our physical UID into that catalog made both defaults become 0
+ * in056. Leave the system's mobile mixer selection in place. Global getters
+ * can re-enter this plug-in's callbacks, so hold no gLock across them. */
+/* Read the actual global device/stream values used by24A446's default-device
+ * policy. These are observations; a full history cannot affect the policy. */
+static void sample_default_eligibility(UInt32 epoch,io_connect_t connection,AudioObjectID target) {
+    pthread_mutex_lock(&gLock);
+    int current=atomic_load(&gDiscoveryActive) && gConnect==connection && gEpoch==epoch && available();
+    pthread_mutex_unlock(&gLock);
+    if (!current || target==kAudioObjectUnknown) return;
+    NaHalObservation events[7];unsigned count=0;
+    const AudioObjectPropertySelector scalar[3]={kAudioDevicePropertyDeviceIsAlive,
+        kAudioDevicePropertyIsHidden,kAudioDevicePropertyHogMode};
+    for (unsigned i=0;i<3;++i) {
+        AudioObjectPropertyAddress a={scalar[i],kAudioObjectPropertyScopeGlobal,kAudioObjectPropertyElementMain};
+        UInt32 bytes=sizeof(UInt32),value=0;
+        OSStatus r=AudioObjectGetPropertyData(target,&a,0,NULL,&bytes,&value);
+        if (!r && bytes!=sizeof value) r=kAudioHardwareBadPropertySizeError;
+        events[count++]=(NaHalObservation){NA_HAL_OBSERVATION_VERSION,NaHalSystemRoute,
+            kDevice,a.mSelector,a.mScope,a.mElement,r,r ? 0:value};
+    }
+    AudioObjectPropertyAddress a={kAudioDevicePropertyStreams,kAudioObjectPropertyScopeOutput,kAudioObjectPropertyElementMain};
+    UInt32 bytes=0;AudioObjectID streams[16]={0};
+    OSStatus r=AudioObjectGetPropertyDataSize(target,&a,0,NULL,&bytes);
+    if (!r && (bytes%sizeof(AudioObjectID) || bytes>sizeof streams)) r=kAudioHardwareBadPropertySizeError;
+    if (!r && bytes) {
+        UInt32 expected=bytes;r=AudioObjectGetPropertyData(target,&a,0,NULL,&bytes,streams);
+        if (!r && bytes!=expected) r=kAudioHardwareBadPropertySizeError;
+    }
+    UInt32 stream_count=r ? 0:bytes/(UInt32)sizeof(AudioObjectID);
+    events[count++]=(NaHalObservation){NA_HAL_OBSERVATION_VERSION,NaHalSystemRoute,
+        kDevice,a.mSelector,a.mScope,a.mElement,r,stream_count};
+    if (!r && stream_count && streams[0]!=kAudioObjectUnknown) {
+        AudioStreamBasicDescription f={0};bytes=sizeof f;
+        a=(AudioObjectPropertyAddress){kAudioStreamPropertyVirtualFormat,kAudioObjectPropertyScopeGlobal,kAudioObjectPropertyElementMain};
+        r=AudioObjectGetPropertyData(streams[0],&a,0,NULL,&bytes,&f);
+        if (!r && bytes!=sizeof f) r=kAudioHardwareBadPropertySizeError;
+        events[count++]=(NaHalObservation){NA_HAL_OBSERVATION_VERSION,NaHalSystemRoute,
+            kOutStream,a.mSelector,a.mScope,a.mElement,r,r ? 0:f.mFormatFlags};
+        /* sfid is the format-ID companion to the same observed sfmt reply;
+         * it is a diagnostic label, never a queried or answered property. */
+        events[count++]=(NaHalObservation){NA_HAL_OBSERVATION_VERSION,NaHalSystemRoute,
+            kOutStream,'sfid',a.mScope,a.mElement,r,r ? 0:f.mFormatID};
+        a=(AudioObjectPropertyAddress){kAudioStreamPropertyTerminalType,kAudioObjectPropertyScopeGlobal,kAudioObjectPropertyElementMain};
+        UInt32 value=0;bytes=sizeof value;
+        r=AudioObjectGetPropertyData(streams[0],&a,0,NULL,&bytes,&value);
+        if (!r && bytes!=sizeof value) r=kAudioHardwareBadPropertySizeError;
+        events[count++]=(NaHalObservation){NA_HAL_OBSERVATION_VERSION,NaHalSystemRoute,
+            kOutStream,a.mSelector,a.mScope,a.mElement,r,r ? 0:value};
+    }
+    pthread_mutex_lock(&gLock);
+    if (atomic_load(&gDiscoveryActive) && gConnect==connection && gEpoch==epoch && available())
+        for (unsigned i=0;i<count;++i) report_hal(events[i].kind,events[i].object,events[i].selector,
+            events[i].scope,events[i].element,events[i].result,events[i].value);
+    pthread_mutex_unlock(&gLock);
+}
+static void sample_system_route(void) {
+    pthread_mutex_lock(&gLock);
+    if (!atomic_load(&gDiscoveryActive) || !available() || gSystemRouteSamples>=8) {
+        pthread_mutex_unlock(&gLock);return;
+    }
+    UInt32 epoch=gEpoch;io_connect_t connection=gConnect;
+    UInt32 sample=++gSystemRouteSamples;
+    pthread_mutex_unlock(&gLock);
+    const AudioObjectPropertySelector selectors[4]={kAudioHardwarePropertyTranslateUIDToDevice,
+        kAudioHardwarePropertyDefaultOutputDevice,kAudioHardwarePropertyDefaultSystemOutputDevice,
+        kAudioHardwarePropertyDevices};
+    NaHalObservation events[4];CFStringRef uid=CFSTR(kDeviceUID);
+    for (unsigned i=0;i<4;++i) {
+        AudioObjectPropertyAddress address={selectors[i],kAudioObjectPropertyScopeGlobal,kAudioObjectPropertyElementMain};
+        UInt32 bytes=sizeof(AudioObjectID);AudioObjectID value=kAudioObjectUnknown;OSStatus r;
+        if (i==3) {
+            bytes=0;r=AudioObjectGetPropertyDataSize(kAudioObjectSystemObject,&address,0,NULL,&bytes);
+            if (!r && bytes%sizeof(AudioObjectID)) r=kAudioHardwareBadPropertySizeError;
+            if (!r) value=bytes/(UInt32)sizeof(AudioObjectID);
+        } else {
+            r=AudioObjectGetPropertyData(kAudioObjectSystemObject,&address,
+                i==0 ? (UInt32)sizeof(uid):0,i==0 ? &uid:NULL,&bytes,&value);
+            if (!r && bytes!=sizeof(AudioObjectID)) r=kAudioHardwareBadPropertySizeError;
+        }
+        events[i]=(NaHalObservation){NA_HAL_OBSERVATION_VERSION,NaHalSystemRoute,
+            kAudioObjectSystemObject,address.mSelector,address.mScope,address.mElement,r,r ? 0:value};
+    }
+    AudioObjectID target=events[0].value;
+    pthread_mutex_lock(&gLock);
+    if (atomic_load(&gDiscoveryActive) && gConnect==connection && gEpoch==epoch && available()) {
+        for (unsigned i=0;i<4;++i) {
+            /* The last sample must survive duplicate suppression: an earlier
+             *36 or0 does not describe the final system default. */
+            if (sample==8 && i<4) report_hal(events[i].kind,events[i].object,events[i].selector,
+                events[i].scope,events[i].element,events[i].result,events[i].value);
+            else observe_once(events[i].kind,events[i].object,events[i].selector,
+                events[i].scope,events[i].element,events[i].result,events[i].value);
+        }
+    }
+    pthread_mutex_unlock(&gLock);
+    if (sample==8 && !events[0].result) sample_default_eligibility(epoch,connection,target);
+}
+static void retry_service(void *context) {(void)context;check_service();sample_system_route();}
 static UInt32 latencyFrames(void) {return NA_AUDIO_LEAD_FRAMES;}
 static Float32 toDb(Float32 value) {if (!isfinite(value)) return kMinDb;Float32 r=1.0f-fminf(1,fmaxf(0,value));return kMinDb*r*r;}
 static Float32 toScalar(Float32 db) {if (!isfinite(db) || db<=kMinDb) return 0;return db>=0 ? 1:1-sqrtf(db/kMinDb);}
@@ -208,13 +375,20 @@ static OSStatus Initialize(AudioServerPlugInDriverRef d,AudioServerPlugInHostRef
 }
 static OSStatus CreateDevice(AudioServerPlugInDriverRef d,CFDictionaryRef p,const AudioServerPlugInClientInfo *c,AudioObjectID *o) {(void)d;(void)p;(void)c;(void)o;return kAudioHardwareUnsupportedOperationError;}
 static OSStatus DestroyDevice(AudioServerPlugInDriverRef d,AudioObjectID o) {(void)d;(void)o;return kAudioHardwareUnsupportedOperationError;}
-static OSStatus AddDeviceClient(AudioServerPlugInDriverRef d,AudioObjectID o,const AudioServerPlugInClientInfo *c) {(void)d;return o==kDevice && c ? 0:kAudioHardwareBadObjectError;}
+static OSStatus AddDeviceClient(AudioServerPlugInDriverRef d,AudioObjectID o,const AudioServerPlugInClientInfo *c) {
+    (void)d;OSStatus result=o==kDevice && c ? 0:kAudioHardwareBadObjectError;
+    if (o==kDevice && c) {
+        pthread_mutex_lock(&gLock);observe_once(NaHalDeviceClient,o,0,0,0,result,c->mClientID);pthread_mutex_unlock(&gLock);
+    }
+    return result;
+}
 static OSStatus StopIO(AudioServerPlugInDriverRef,AudioObjectID,UInt32);
 static OSStatus RemoveDeviceClient(AudioServerPlugInDriverRef d,AudioObjectID o,const AudioServerPlugInClientInfo *c) {
     (void)d;if (o!=kDevice || !c) return kAudioHardwareBadObjectError;
     pthread_mutex_lock(&gLock);
     for (unsigned i=0;i<32;++i) if (gUsers[i].count && gUsers[i].id==c->mClientID) {gIoUsers-=gUsers[i].count;gUsers[i].count=0;break;}
     if (!gIoUsers) {call(NaAudioStopOutput);call(NaAudioStopInput);}
+    observe_once(NaHalDeviceClient,o,1,0,0,0,c->mClientID);
     pthread_mutex_unlock(&gLock);return 0;
 }
 static OSStatus PerformDeviceConfigurationChange(AudioServerPlugInDriverRef d,AudioObjectID o,UInt64 action,void *info) {(void)d;(void)o;(void)action;(void)info;return kAudioHardwareUnsupportedOperationError;}
@@ -229,15 +403,12 @@ static OSStatus GetPropertyData(AudioServerPlugInDriverRef d,AudioObjectID o,pid
         if (gConnect && count!=gReportedDeviceList) {
             report_hal(NaHalDeviceList,o,a->mSelector,a->mScope,a->mElement,0,count);gReportedDeviceList=count;
         }
-    } else if (r && gConnect && gPropertyErrorCount<NA_HAL_HISTORY_CAPACITY) {
-        NaHalObservation event={NA_HAL_OBSERVATION_VERSION,NaHalPropertyError,o,a->mSelector,a->mScope,a->mElement,r,0};
-        uint32_t i=0;
-        for (;i<gPropertyErrorCount;++i) if (!memcmp(&gPropertyErrors[i],&event,sizeof event)) break;
-        if (i==gPropertyErrorCount) {
-            gPropertyErrors[gPropertyErrorCount++]=event;
-            report_hal(event.kind,event.object,event.selector,event.scope,event.element,event.result,event.value);
-        }
+    } else if (r) {
+        observe_once(NaHalPropertyError,o,a->mSelector,a->mScope,a->mElement,r,0);
     }
+    if (!r && observed_property(o,a->mSelector))
+        observe_once(NaHalPropertyRead,o,a->mSelector,a->mScope,a->mElement,0,
+                     property_observation_value(o,a,*written,out));
     pthread_mutex_unlock(&gLock);return r;
 }
 static OSStatus GetPropertyDataSize(AudioServerPlugInDriverRef d,AudioObjectID o,pid_t pid,const AudioObjectPropertyAddress *a,UInt32 qs,const void *q,UInt32 *size) {
@@ -273,6 +444,9 @@ static OSStatus SetPropertyData(AudioServerPlugInDriverRef d,AudioObjectID o,pid
         result=size==sizeof expected && !memcmp(data,&expected,sizeof expected) ? 0:kAudioDeviceUnsupportedFormatError;
     } else if (o==kDevice && a->mSelector==kAudioDevicePropertyNominalSampleRate)
         result=size==sizeof(Float64) && *(const Float64 *)data==kRate ? 0:kAudioDeviceUnsupportedFormatError;
+    if (observed_property(o,a->mSelector))
+        observe_once(NaHalPropertyWrite,o,a->mSelector,a->mScope,a->mElement,result,
+                     property_observation_value(o,a,size,data));
     pthread_mutex_unlock(&gLock);
     if (volume_changed && gHost) {
         AudioObjectPropertyAddress changed[2]={{kAudioLevelControlPropertyScalarValue,kAudioObjectPropertyScopeGlobal,kAudioObjectPropertyElementMain},{kAudioLevelControlPropertyDecibelValue,kAudioObjectPropertyScopeGlobal,kAudioObjectPropertyElementMain}};

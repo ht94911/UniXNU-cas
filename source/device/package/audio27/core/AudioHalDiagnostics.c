@@ -5,10 +5,14 @@
 _Static_assert(sizeof(NaHalObservation)==32,"HAL observation ABI");
 int na_hal_history_add(NaHalHistory *history,const NaHalObservation *event) {
     if (!history || !event || event->version!=NA_HAL_OBSERVATION_VERSION ||
-        event->kind<NaHalConnected || event->kind>NaHalClockResult || event->object>5 ||
+        event->kind<NaHalConnected || event->kind>NaHalSystemRoute || event->object>5 ||
         history->count>NA_HAL_HISTORY_CAPACITY) return NA_ARGUMENT;
-    for (uint32_t i=0;i<history->count;++i)
-        if (!memcmp(&history->records[i],event,sizeof *event)) return NA_OK;
+    /* Route samples are ordered observations: a repeated default after a
+     * setter is different evidence from the same value before the setter.
+     * The HAL bounds these samples; all other callback events stay deduped. */
+    if (event->kind!=NaHalSystemRoute)
+        for (uint32_t i=0;i<history->count;++i)
+            if (!memcmp(&history->records[i],event,sizeof *event)) return NA_OK;
     if (history->count==NA_HAL_HISTORY_CAPACITY) return NA_BUSY;
     history->records[history->count++]=*event;
     return NA_OK;

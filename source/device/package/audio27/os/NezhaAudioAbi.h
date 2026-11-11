@@ -19,7 +19,8 @@ enum {NaAudioStartOutput=0,NaAudioStopOutput=1,NaAudioStartInput=2,NaAudioStopIn
 #define NA_HAL_OBSERVATION_VERSION 1u
 #define NA_HAL_HISTORY_CAPACITY 64u
 enum {NaHalConnected=1,NaHalDeviceList=2,NaHalPropertyError=3,
-      NaHalStartIO=4,NaHalClockResult=5};
+      NaHalStartIO=4,NaHalClockResult=5,NaHalPropertyRead=6,
+      NaHalPropertyWrite=7,NaHalDeviceClient=8,NaHalPublication=9,NaHalSystemRoute=10};
 typedef struct {
     uint32_t version,kind,object,selector,scope,element;
     int32_t result;
