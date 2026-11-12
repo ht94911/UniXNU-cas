@@ -16,6 +16,15 @@ static UInt32 objects(AudioObjectID o, AudioObjectPropertyScope scope, AudioObje
 static OSStatus propertyData(AudioObjectID o, const AudioObjectPropertyAddress *a, UInt32 qs, const void *q, UInt32 inDataSize,
                              UInt32 *outDataSize, void *outData) {
     const AudioObjectPropertySelector s = a->mSelector;
+    /* Device_USB_Aspen reads lcID as a CFNumber before constructing ports.
+     * This software device has no physical USB location. */
+    if (o == kDevice && s == kAudioObjectPropertyCustomPropertyInfoList) {
+        AudioServerPlugInCustomPropertyInfo info = {
+            'lcID', kAudioServerPlugInCustomPropertyDataTypeCFPropertyList,
+            kAudioServerPlugInCustomPropertyDataTypeNone
+        };
+        REPLY(AudioServerPlugInCustomPropertyInfo, info);
+    }
     // Lists every object answers, empty here: custom properties ('cust'), and on the plug-in its boxes and clock devices. The audio
     // server's device manager reads them for each new device and drops a device whose answer is an unknown-property error (i525).
     if (o == kReferenceStream && s == 'taps' && a->mScope == kAudioObjectPropertyScopeGlobal && a->mElement == kAudioObjectPropertyElementMain)
@@ -46,6 +55,17 @@ static OSStatus propertyData(AudioObjectID o, const AudioObjectPropertyAddress *
         }
     case kDevice:
         switch (s) {
+        case 'lcID':
+            if (a->mScope != kAudioObjectPropertyScopeGlobal || a->mElement != kAudioObjectPropertyElementMain)
+                return kAudioHardwareUnknownPropertyError;
+            if (inDataSize < sizeof(CFNumberRef)) return kAudioHardwareBadPropertySizeError;
+            if (!gLogicalLocation) {
+                SInt32 location = 0;
+                gLogicalLocation = CFNumberCreate(kCFAllocatorDefault, kCFNumberSInt32Type, &location);
+                if (!gLogicalLocation) return kAudioHardwareUnspecifiedError;
+            }
+            CFRetain(gLogicalLocation);
+            REPLY(CFNumberRef, gLogicalLocation);
         case kAudioObjectPropertyBaseClass: REPLY(AudioClassID, kAudioObjectClassID);
         case kAudioObjectPropertyClass: REPLY(AudioClassID, kAudioDeviceClassID);
         case kAudioObjectPropertyOwner: REPLY(AudioObjectID, kPlugIn);

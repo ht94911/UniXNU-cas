@@ -43,6 +43,7 @@ static UInt32 gIoUsers;static int gInputAvailable,gOutputSelected=1,gInputSelect
 static int gReferenceSelected=1;
 static uint64_t gCaptureTouch;
 static Float32 gVolume=1; /* Upstream default; kernel and amplifier limits still apply. */
+static CFNumberRef gLogicalLocation;
 static uint64_t gZeroOrigin,gZeroSeed;
 static uint32_t gEpoch;
 static struct {UInt32 id,count;} gUsers[32];
@@ -73,6 +74,7 @@ static int observed_property(AudioObjectID object,AudioObjectPropertySelector se
     case kAudioObjectPropertyOwnedObjects:
         return 1;
     case kAudioDevicePropertyTransportType:
+    case 'lcID':
     case kAudioDevicePropertyDeviceIsAlive:
     case kAudioDevicePropertyDeviceCanBeDefaultDevice:
     case kAudioDevicePropertyDeviceCanBeDefaultSystemDevice:
@@ -336,7 +338,9 @@ static void finish_discovery(void *context) {
     if (gRetry) {dispatch_release(gRetry);gRetry=NULL;}
     if (gNotifications) {IONotificationPortDestroy(gNotifications);gNotifications=NULL;}
     if (gMatches) {IOObjectRelease(gMatches);gMatches=0;}
-    pthread_mutex_lock(&gLock);gHost=NULL;disconnect();pthread_mutex_unlock(&gLock);
+    pthread_mutex_lock(&gLock);gHost=NULL;disconnect();
+    if (gLogicalLocation) {CFRelease(gLogicalLocation);gLogicalLocation=NULL;}
+    pthread_mutex_unlock(&gLock);
 }
 static ULONG Release(void *self) {
     (void)self;unsigned n=atomic_load(&gRefs);while (n && !atomic_compare_exchange_weak(&gRefs,&n,n-1)) {}
@@ -421,6 +425,13 @@ static OSStatus GetPropertyData(AudioServerPlugInDriverRef d,AudioObjectID o,pid
 }
 static OSStatus GetPropertyDataSize(AudioServerPlugInDriverRef d,AudioObjectID o,pid_t pid,const AudioObjectPropertyAddress *a,UInt32 qs,const void *q,UInt32 *size) {
     if (!size) return kAudioHardwareIllegalOperationError;
+    /* HasProperty calls this function. A size probe must not allocate or
+     * retain the custom CFNumber that a real data read transfers. */
+    if (o==kDevice && a && a->mSelector=='lcID') {
+        if (a->mScope!=kAudioObjectPropertyScopeGlobal || a->mElement!=kAudioObjectPropertyElementMain)
+            return kAudioHardwareUnknownPropertyError;
+        *size=sizeof(CFNumberRef);return 0;
+    }
     _Alignas(16) uint8_t scratch[1024]={0};return GetPropertyData(d,o,pid,a,qs,q,sizeof scratch,size,scratch);
 }
 static Boolean HasProperty(AudioServerPlugInDriverRef d,AudioObjectID o,pid_t pid,const AudioObjectPropertyAddress *a) {UInt32 size=0;return GetPropertyDataSize(d,o,pid,a,0,NULL,&size)==0;}
