@@ -68,6 +68,8 @@ static bool discover(uint64_t now){
  gDisplayDiscovery.attempted(now);bool result=prepareDisplayObserver();reportDisplayDiscovery();return result;
 }
 int main(){@autoreleasepool {
+ static_assert(sizeof(nbdisplaywait::State{}.serverTail)==nbdisplaywait::kServerTailBytes);
+ static_assert(sizeof(nbdisplaywait::State{}.timerTail)==nbdisplaywait::kTimerTailBytes);
  fixtureImage.header.magic=MH_MAGIC_64;fixtureImage.header.ncmds=1;fixtureImage.header.sizeofcmds=sizeof(uuid_command);
  fixtureImage.uuid.cmd=LC_UUID;fixtureImage.uuid.cmdsize=sizeof(uuid_command);
  memcpy(fixtureImage.uuid.uuid,nbdisplaywait::kQuartzUUID,16);

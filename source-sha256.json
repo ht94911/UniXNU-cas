@@ -1,10 +1,10 @@
 {
-  ".github/workflows/nezha-metal.yml": "260b2b40df2161a857c8922341739024ace76fecf3060dd7c8f7bb7aefe14553",
+  ".github/workflows/nezha-metal.yml": "61ffd12bea1bcf0a163c6330c7241b7c12feef914aff61372ec20e082d8a3f54",
   ".gitignore": "862263fa1f46c20f0d1e4dac5ffcc75abd55c08211b2c3864c5f8764b9d87793",
   "ci/gpu-userland/check-buffer-reserve.py": "56bef54d15cb6192d25bfd99516369d45d3ddeffbd44805f9f052739d2fdf57a",
   "ci/gpu-userland/check-client-wait.py": "8b4c607fb752786e30f309ab4e9404bc7eb51330b05b1436edb97688e26cd865",
   "ci/gpu-userland/check-device-context-host.py": "dda22122342621cfdd8c9a8f640825772256d0fc9632ad105afe452e987aaee9",
-  "ci/gpu-userland/check-display-discovery.py": "6aaf0758bde323eb3a17ed5ed828a722d187cac9f5bfc828a242d64c86d60373",
+  "ci/gpu-userland/check-display-discovery.py": "efd35e4dad04f3a24fd225f5d3c47c5b67740d8b5b038eddf3cb595196d5b91d",
   "ci/gpu-userland/check-display-timing.py": "b06a75d2508b8ff8707b0af01c7a52bb7fbd3e4c14f4a85ecaf691e5de72ed4c",
   "ci/gpu-userland/check-driver-profile-host.py": "a7905b53fcfffca758a60d5062c61e4e206914ffc5f377cd7fe88a9848146838",
   "ci/gpu-userland/check-frame-observers.py": "2622f959b5c9fc83380d7176eb32d7c925fd4c3a9824e4dd8a846cf138a86e5a",

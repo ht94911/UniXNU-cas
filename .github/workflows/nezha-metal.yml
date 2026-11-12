@@ -1,7 +1,7 @@
-name: nezha iPhone27 display discovery and UI coverage 038b
+name: nezha iPhone27 display discovery and UI coverage 038c
 on:
   push:
-    branches: [codex/ios27-gpu27-metal-full-038b-20261112]
+    branches: [codex/ios27-gpu27-metal-full-038c-20261112]
   workflow_dispatch:
 permissions:
   contents: read
@@ -151,6 +151,7 @@ jobs:
           OUTCOME_RENDER_WAIT: ${{ steps.render_wait.outcome }}
           OUTCOME_FRAME_OBSERVERS: ${{ steps.frame_observers.outcome }}
           OUTCOME_UI_MAIN: ${{ steps.ui_main.outcome }}
+          OUTCOME_DISPLAY_DISCOVERY: ${{ steps.display_discovery.outcome }}
         run: |
           set -euo pipefail
           export PATH="$(brew --prefix openssl@3)/bin:$PATH"
@@ -193,6 +194,7 @@ jobs:
           RENDER_WAIT: ${{ steps.render_wait.outcome }}
           FRAME_OBSERVERS: ${{ steps.frame_observers.outcome }}
           UI_MAIN: ${{ steps.ui_main.outcome }}
+          DISPLAY_DISCOVERY: ${{ steps.display_discovery.outcome }}
         run: |
           set -euo pipefail
           test "$TARGETS" = success
@@ -206,6 +208,7 @@ jobs:
           test "$RENDER_WAIT" = success
           test "$FRAME_OBSERVERS" = success
           test "$UI_MAIN" = success
+          test "$DISPLAY_DISCOVERY" = success
           test "$BUFFER_RESERVE" = skipped
           test "$VULKAN_OPERATIONS" = skipped
           test "$TILED_WORDS" = skipped
