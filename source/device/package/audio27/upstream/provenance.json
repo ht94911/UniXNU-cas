@@ -152,7 +152,7 @@
       "source": "hal/ShengAudioPlugIn.c",
       "local": "hal/NezhaAudioPlugIn.c",
       "sha256": "ca1b9284976b020383adc54d7c6530b77d1bbba08adf61450ab1f2abd9588ffc",
-      "local_sha256": "2172d37fd3c7695bdd483ed887fbf1b72d4a116926db40d20ebb491f6ead166a",
+      "local_sha256": "cc2454459935e257a0d0b796eafd510a14c9085a5cecbe32a2bd8ee393b68410",
       "modified": true
     },
     {
@@ -180,7 +180,7 @@
       "source": "package/ShengAudioService.cpp",
       "local": "os/NezhaAudioClock.cpp",
       "sha256": "eb732665cd493969887d8cf53eebec540d8efbedc2cff7d22757adab822262be",
-      "local_sha256": "70cc8e545c78f190b73ff1a6e03c4c857343b66344bd099f71aa1047c992ba78",
+      "local_sha256": "db923429ebf83d1bb51b487e542ca7dfcd2d9b913fcb8e46b7b280c770c2dd43",
       "modified": true
     },
     {
