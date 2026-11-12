@@ -152,14 +152,14 @@
       "source": "hal/ShengAudioPlugIn.c",
       "local": "hal/NezhaAudioPlugIn.c",
       "sha256": "ca1b9284976b020383adc54d7c6530b77d1bbba08adf61450ab1f2abd9588ffc",
-      "local_sha256": "7b8cfcfe8aa3b494d8898525406bdedd32ec86454c753cc3eaa2e31aa04005c1",
+      "local_sha256": "05eaee36b6bed8dceaad1bd620f7688e58c7d581bd2c5102c28b86d4f790cc1e",
       "modified": true
     },
     {
       "source": "hal/ShengAudioPlugIn.c",
       "local": "hal/NezhaAudioProperties.inc",
       "sha256": "ca1b9284976b020383adc54d7c6530b77d1bbba08adf61450ab1f2abd9588ffc",
-      "local_sha256": "addc950d7a9d9bee5a7ac154b80eb199b10f72fe80948bc98b142c973a18c92e",
+      "local_sha256": "74033ca8107274bdb970cd4a36c50589a11bbb41c5e3e4411bbf0c905284a33d",
       "modified": true
     },
     {

@@ -88,6 +88,8 @@ int na_driver_init(NaDriver *d,NaAdsp *adsp,NaTasEndpoint *speaker,const NaDrive
         if (r) return r;
         NaGraphOps go={&d->direction[i],graph_send,sync_dma,prepare_endpoint,mute_endpoint,release_endpoint};
         r=na_graph_init(&d->graph[i],&d->session,&d->stream[i],&s->topology,&go);if (r) return r;
+        /* Use the TAS endpoint's existing diagnostic wait accounting. */
+        if (!i) d->graph[i].endpoint_trace_wait_us=speaker->ops.trace_wait_us;
     }
     int r=na_prm_init(&d->prm,&d->session,resources,count,send_packet,d);if (r) return r;
     NaRuntimeOps ro={d,host_time,activate,health};
@@ -116,6 +118,7 @@ int na_driver_attach_feedback(NaDriver *d,const NaDriverStream *s,const NaTiCali
     r=na_stream_init(&d->stream[2],s->memory,s->dsp_address,s->bytes,1920,4,s->port,s->endpoint,0);if (r) return r;
     NaGraphOps go={&d->direction[2],graph_send,sync_dma,prepare_endpoint,mute_endpoint,release_endpoint};
     r=na_graph_init(&d->graph[2],&d->session,&d->stream[2],&s->topology,&go);if (r) return r;
+    d->graph[2].endpoint_trace_wait_us=d->speaker->ops.trace_wait_us;
     r=na_engine_attach_control(&d->runtime.engine,&d->graph[2]);if (r) return r;
     memcpy(d->stream[0].memory+end,payload,n);t->config_peer[t->configs]=AR_APM_IID;t->config[t->configs++]=(NaBlob){end,n};
     d->protection_instance=ti_instance;d->feedback_attached=1;return NA_OK;

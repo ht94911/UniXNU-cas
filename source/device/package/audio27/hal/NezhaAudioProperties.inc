@@ -6,6 +6,8 @@ static UInt32 objects(AudioObjectID o, AudioObjectPropertyScope scope, AudioObje
     else if (o == kDevice) {
         if (scope != kAudioObjectPropertyScopeInput) list[n++] = kOutStream;
         if (scope != kAudioObjectPropertyScopeOutput && gInputAvailable) list[n++] = kInStream;
+        /* Original24A446 finds the tap at the last input-stream index. */
+        if (scope != kAudioObjectPropertyScopeOutput) list[n++] = kReferenceStream;
         if (scope != kAudioObjectPropertyScopeInput) list[n++] = kVolume;
     }
     return n;
@@ -16,7 +18,9 @@ static OSStatus propertyData(AudioObjectID o, const AudioObjectPropertyAddress *
     const AudioObjectPropertySelector s = a->mSelector;
     // Lists every object answers, empty here: custom properties ('cust'), and on the plug-in its boxes and clock devices. The audio
     // server's device manager reads them for each new device and drops a device whose answer is an unknown-property error (i525).
-    if (o <= kVolume && (s == kAudioObjectPropertyCustomPropertyInfoList || ((s == kAudioPlugInPropertyBoxList ||
+    if (o == kReferenceStream && s == 'taps' && a->mScope == kAudioObjectPropertyScopeGlobal && a->mElement == kAudioObjectPropertyElementMain)
+        REPLY(UInt32, 1);
+    if (o <= kReferenceStream && (s == kAudioObjectPropertyCustomPropertyInfoList || ((s == kAudioPlugInPropertyBoxList ||
         s == kAudioPlugInPropertyClockDeviceList) && o == kPlugIn) || ((s == 'taps') && (o == kOutStream || o == kInStream)))) {
         *outDataSize = 0;
         return 0;
@@ -58,10 +62,9 @@ static OSStatus propertyData(AudioObjectID o, const AudioObjectPropertyAddress *
         case 'auto': REPLY(UInt32, 0);
         case kAudioObjectPropertyElementName: REPLY_STR("");
         case kAudioDevicePropertyConfigurationApplication: REPLY_STR("com.apple.Preferences");
-        // Thunderbolt: the audio server's routing layer makes a device of this transport a driver device with one output and one input
-        // port of its own. Built-in devices are only used through Apple's port descriptions, and a USB device must carry a USB location
-        // ('lcID') that the HAL does not take from a plug-in (i529).
-        case kAudioDevicePropertyTransportType: REPLY(UInt32, kAudioDeviceTransportTypeThunderbolt);
+        /* UID Speaker selects the stock Device_Speaker_Aspen factory. Its
+         * required tap is a playback reference, independently of MicReady. */
+        case kAudioDevicePropertyTransportType: REPLY(UInt32, kAudioDeviceTransportTypeBuiltIn);
         case kAudioDevicePropertyRelatedDevices: REPLY(AudioObjectID, kDevice);
         case kAudioDevicePropertyClockDomain: REPLY(UInt32, 0);
         case kAudioDevicePropertyDeviceIsAlive: REPLY(UInt32, available());
@@ -81,25 +84,28 @@ static OSStatus propertyData(AudioObjectID o, const AudioObjectPropertyAddress *
         case kAudioDevicePropertyClockAlgorithm: REPLY(UInt32, kAudioDeviceClockAlgorithmRaw);
         case kAudioDevicePropertyPreferredChannelsForStereo: {
             if (inDataSize < 2 * sizeof(UInt32)) return kAudioHardwareBadPropertySizeError;
-            ((UInt32 *)outData)[0] = 1; ((UInt32 *)outData)[1] = a->mScope == kAudioObjectPropertyScopeInput ? 1 : 2;
+            UInt32 first = a->mScope == kAudioObjectPropertyScopeInput && gInputAvailable ? 2 : 1;
+            ((UInt32 *)outData)[0] = first; ((UInt32 *)outData)[1] = first + 1;
             *outDataSize = 2 * sizeof(UInt32); return 0;
         }
         case kAudioDevicePropertyPreferredChannelLayout: {
-            const UInt32 channels = a->mScope == kAudioObjectPropertyScopeInput ? 1 : 2;
+            const UInt32 channels = a->mScope == kAudioObjectPropertyScopeInput && gInputAvailable ? 3 : 2;
             const UInt32 bytes = (UInt32)(offsetof(AudioChannelLayout, mChannelDescriptions) + channels * sizeof(AudioChannelDescription));
             if (inDataSize < bytes) return kAudioHardwareBadPropertySizeError;
             AudioChannelLayout *l = outData;
             memset(l, 0, bytes);
             l->mChannelLayoutTag = kAudioChannelLayoutTag_UseChannelDescriptions;
             l->mNumberChannelDescriptions = channels;
-            l->mChannelDescriptions[0].mChannelLabel = channels == 1 ? kAudioChannelLabel_Mono : kAudioChannelLabel_Left;
-            if (channels == 2) l->mChannelDescriptions[1].mChannelLabel = kAudioChannelLabel_Right;
+            UInt32 first = channels == 3 ? 1 : 0;
+            if (first) l->mChannelDescriptions[0].mChannelLabel = kAudioChannelLabel_Mono;
+            l->mChannelDescriptions[first].mChannelLabel = kAudioChannelLabel_Left;
+            l->mChannelDescriptions[first+1].mChannelLabel = kAudioChannelLabel_Right;
             *outDataSize = bytes; return 0;
         }
         case kAudioObjectPropertyOwnedObjects:
         case kAudioDevicePropertyStreams:
         case kAudioObjectPropertyControlList: {
-            AudioObjectID list[3];
+            AudioObjectID list[4];
             UInt32 n = objects(kDevice, a->mScope, list), out = 0;
             for (UInt32 i = 0; i < n; ++i) {
                 if (s == kAudioDevicePropertyStreams && list[i] == kVolume) continue;
@@ -112,19 +118,23 @@ static OSStatus propertyData(AudioObjectID o, const AudioObjectPropertyAddress *
         default: return kAudioHardwareUnknownPropertyError;
         }
     case kOutStream:
-    case kInStream: {
+    case kInStream:
+    case kReferenceStream: {
         if (o == kInStream && !gInputAvailable) return kAudioHardwareBadObjectError;
-        const UInt32 channels = o == kOutStream ? 2 : 1;
+        const UInt32 channels = o == kInStream ? 1 : 2;
         switch (s) {
         case kAudioObjectPropertyBaseClass: REPLY(AudioClassID, kAudioObjectClassID);
         case kAudioObjectPropertyClass: REPLY(AudioClassID, kAudioStreamClassID);
         case kAudioObjectPropertyOwner: REPLY(AudioObjectID, kDevice);
-        case kAudioObjectPropertyName: if (o == kOutStream) REPLY_STR("Speaker"); REPLY_STR("Microphone");
+        case kAudioObjectPropertyName:
+            if (o == kOutStream) REPLY_STR("Speaker");
+            if (o == kReferenceStream) REPLY_STR("Speaker Reference");
+            REPLY_STR("Microphone");
         case kAudioObjectPropertyOwnedObjects: *outDataSize = 0; return 0;
-        case kAudioStreamPropertyIsActive: REPLY(UInt32, o == kOutStream ? gOutputSelected : gInputSelected);
-        case kAudioStreamPropertyDirection: REPLY(UInt32, o == kInStream);
-        case kAudioStreamPropertyTerminalType: REPLY(UInt32, o == kOutStream ? kAudioStreamTerminalTypeSpeaker : kAudioStreamTerminalTypeMicrophone);
-        case kAudioStreamPropertyStartingChannel: REPLY(UInt32, 1);
+        case kAudioStreamPropertyIsActive: REPLY(UInt32, o == kOutStream ? gOutputSelected : o == kReferenceStream ? gReferenceSelected : gInputSelected);
+        case kAudioStreamPropertyDirection: REPLY(UInt32, o != kOutStream);
+        case kAudioStreamPropertyTerminalType: REPLY(UInt32, o == kOutStream ? kAudioStreamTerminalTypeSpeaker : o == kReferenceStream ? kAudioStreamTerminalTypeUnknown : kAudioStreamTerminalTypeMicrophone);
+        case kAudioStreamPropertyStartingChannel: REPLY(UInt32, o == kReferenceStream && gInputAvailable ? 2 : 1);
         case kAudioStreamPropertyLatency: REPLY(UInt32, 0);
         case kAudioStreamPropertyVirtualFormat:
         case kAudioStreamPropertyPhysicalFormat: REPLY(AudioStreamBasicDescription, format(channels));

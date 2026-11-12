@@ -18,8 +18,9 @@
 #include "../os/NezhaAudioAbi.h"
 #include "../core/AudioRing.h"
 #include "AudioClock.h"
-enum {kPlugIn=kAudioObjectPlugInObject,kDevice=2,kOutStream=3,kInStream=4,kVolume=5};
-#define kDeviceUID "NezhaAudio27Device"
+#include "AudioReference.h"
+enum {kPlugIn=kAudioObjectPlugInObject,kDevice=2,kOutStream=3,kInStream=4,kVolume=5,kReferenceStream=6};
+#define kDeviceUID "Speaker"
 #define kModelUID "NezhaAudio27Model"
 static const Float64 kRate=NA_AUDIO_RATE;
 static const UInt32 kZeroPeriod=NA_AUDIO_RING_FRAMES;
@@ -37,7 +38,9 @@ static io_connect_t gConnect;
 static mach_vm_address_t gMapAddress[3];
 static const NaAudioStatus *gControl;
 static uint64_t *gOutput;static const uint64_t *gInput;
+static uint64_t gReference[NA_AUDIO_RING_FRAMES];
 static UInt32 gIoUsers;static int gInputAvailable,gOutputSelected=1,gInputSelected=1,gCaptureIssued;
+static int gReferenceSelected=1;
 static uint64_t gCaptureTouch;
 static Float32 gVolume=1; /* Upstream default; kernel and amplifier limits still apply. */
 static uint64_t gZeroOrigin,gZeroSeed;
@@ -54,6 +57,9 @@ static void report_hal(uint32_t kind,uint32_t object,uint32_t selector,uint32_t 
 /* Callback observations are retained once per numeric event, before the
  * realtime IO path. A full history never changes a property or IO decision. */
 static void observe_once(uint32_t kind,uint32_t object,uint32_t selector,uint32_t scope,uint32_t element,int32_t result,uint32_t value) {
+    /* The retained kernel observation ABI accepts the original objects1..5.
+     * Reference-stream construction is visible in stock VirtualAudio logs. */
+    if (object>kVolume) return;
     if (!gConnect || gObservationCount==NA_HAL_HISTORY_CAPACITY) return;
     NaHalObservation event={NA_HAL_OBSERVATION_VERSION,kind,object,selector,scope,element,result,value};
     for (uint32_t i=0;i<gObservationCount;++i)
@@ -123,6 +129,7 @@ static void disconnect(void) {
     gConnect=0;gControl=NULL;gOutput=NULL;gInput=NULL;gInputAvailable=0;
     gIoUsers=0;memset(gUsers,0,sizeof gUsers);
     gCaptureIssued=0;gCaptureTouch=0;
+    memset(gReference,0,sizeof gReference);
 }
 static int map_type(unsigned type,uint64_t expected) {
     mach_vm_size_t size=0;mach_vm_address_t address=0;
@@ -170,6 +177,7 @@ static int connect_service(void) {
         gInput=(const uint64_t *)(uintptr_t)gMapAddress[2];
     }
     gEpoch=s.epoch;gReportedDeviceList=UINT32_MAX;gSystemRouteSamples=0;
+    memset(gReference,0,sizeof gReference);
     report_hal(NaHalConnected,kPlugIn,0,0,0,0,1);return 0;
 bad:disconnect();return -1;
 }
@@ -419,7 +427,7 @@ static Boolean HasProperty(AudioServerPlugInDriverRef d,AudioObjectID o,pid_t pi
 static OSStatus IsPropertySettable(AudioServerPlugInDriverRef d,AudioObjectID o,pid_t pid,const AudioObjectPropertyAddress *a,Boolean *value) {
     if (!a || !value) return kAudioHardwareIllegalOperationError;
     *value=(o==kVolume && (a->mSelector==kAudioLevelControlPropertyScalarValue || a->mSelector==kAudioLevelControlPropertyDecibelValue)) ||
-        ((o==kOutStream || o==kInStream) && (a->mSelector==kAudioStreamPropertyIsActive || a->mSelector==kAudioStreamPropertyVirtualFormat || a->mSelector==kAudioStreamPropertyPhysicalFormat)) ||
+        ((o==kOutStream || o==kInStream || o==kReferenceStream) && (a->mSelector==kAudioStreamPropertyIsActive || a->mSelector==kAudioStreamPropertyVirtualFormat || a->mSelector==kAudioStreamPropertyPhysicalFormat)) ||
         (o==kDevice && a->mSelector==kAudioDevicePropertyNominalSampleRate);
     return HasProperty(d,o,pid,a) ? 0:kAudioHardwareUnknownPropertyError;
 }
@@ -431,16 +439,17 @@ static OSStatus SetPropertyData(AudioServerPlugInDriverRef d,AudioObjectID o,pid
         Float32 value=*(const Float32 *)data;
         if (!isfinite(value)) result=kAudioHardwareIllegalOperationError;
         else {if (a->mSelector==kAudioLevelControlPropertyDecibelValue) value=toScalar(value);gVolume=fminf(1,fmaxf(0,value));volume_changed=1;result=0;}
-    } else if ((o==kOutStream || o==kInStream) && a->mSelector==kAudioStreamPropertyIsActive && size==sizeof(UInt32)) {
+    } else if ((o==kOutStream || o==kInStream || o==kReferenceStream) && a->mSelector==kAudioStreamPropertyIsActive && size==sizeof(UInt32)) {
         UInt32 active=*(const UInt32 *)data;
         if (active>1 || (o==kInStream && !gInputAvailable)) result=kAudioHardwareIllegalOperationError;
+        else if (o==kReferenceStream) {gReferenceSelected=active;result=0;}
         else {
             uint32_t selector=o==kOutStream ? (active ? NaAudioStartOutput:NaAudioStopOutput):(active ? NaAudioStartInput:NaAudioStopInput);
             if (gIoUsers && (o==kOutStream || !active) && call(selector)!=KERN_SUCCESS) result=kAudioHardwareNotRunningError;
             else {if (o==kOutStream) gOutputSelected=active;else gInputSelected=active;result=0;}
         }
-    } else if ((o==kOutStream || o==kInStream) && (a->mSelector==kAudioStreamPropertyPhysicalFormat || a->mSelector==kAudioStreamPropertyVirtualFormat)) {
-        AudioStreamBasicDescription expected=format(o==kOutStream ? 2:1);
+    } else if ((o==kOutStream || o==kInStream || o==kReferenceStream) && (a->mSelector==kAudioStreamPropertyPhysicalFormat || a->mSelector==kAudioStreamPropertyVirtualFormat)) {
+        AudioStreamBasicDescription expected=format(o==kInStream ? 1:2);
         result=size==sizeof expected && !memcmp(data,&expected,sizeof expected) ? 0:kAudioDeviceUnsupportedFormatError;
     } else if (o==kDevice && a->mSelector==kAudioDevicePropertyNominalSampleRate)
         result=size==sizeof(Float64) && *(const Float64 *)data==kRate ? 0:kAudioDeviceUnsupportedFormatError;
@@ -496,7 +505,7 @@ static OSStatus GetZeroTimeStamp(AudioServerPlugInDriverRef d,AudioObjectID o,UI
 }
 static OSStatus WillDoIOOperation(AudioServerPlugInDriverRef d,AudioObjectID o,UInt32 client,UInt32 op,Boolean *will,Boolean *inPlace) {
     (void)d;(void)client;if (o!=kDevice || !will || !inPlace) return kAudioHardwareIllegalOperationError;
-    pthread_mutex_lock(&gLock);*will=op==kAudioServerPlugInIOOperationWriteMix || (op==kAudioServerPlugInIOOperationReadInput && gInputAvailable);*inPlace=true;pthread_mutex_unlock(&gLock);return 0;
+    pthread_mutex_lock(&gLock);*will=op==kAudioServerPlugInIOOperationWriteMix || op==kAudioServerPlugInIOOperationReadInput;*inPlace=true;pthread_mutex_unlock(&gLock);return 0;
 }
 static OSStatus BeginIOOperation(AudioServerPlugInDriverRef d,AudioObjectID o,UInt32 c,UInt32 op,UInt32 frames,const AudioServerPlugInIOCycleInfo *i) {(void)d;(void)c;(void)op;return o==kDevice && frames<=4096 && i ? 0:kAudioHardwareIllegalOperationError;}
 static int16_t s16(Float32 value) {if (!isfinite(value)) return 0;value=fmaxf(-1,fminf(1,value));return (int16_t)(value*32767.0f);}
@@ -504,11 +513,12 @@ static OSStatus DoIOOperation(AudioServerPlugInDriverRef d,AudioObjectID o,Audio
     (void)d;(void)client;(void)secondary;
     if (o!=kDevice || !info || !main || !frames || frames>4096) return kAudioHardwareIllegalOperationError;
     int input=op==kAudioServerPlugInIOOperationReadInput && stream==kInStream;
-    if (input) memset(main,0,frames*sizeof(Float32));
+    int reference=op==kAudioServerPlugInIOOperationReadInput && stream==kReferenceStream;
+    if (input || reference) memset(main,0,frames*sizeof(Float32)*(reference ? 2:1));
     if (pthread_mutex_trylock(&gLock)) return kAudioHardwareNotRunningError;
     OSStatus result=kAudioHardwareNotRunningError;NaAudioStatus s;
     if (!gControl || !gIoUsers || na_audio_status_snapshot(gControl,&s) || s.epoch!=gEpoch || (s.state&NaAudioFault)) goto out;
-    const AudioTimeStamp *time=input ? &info->mInputTime:&info->mOutputTime;
+    const AudioTimeStamp *time=input || reference ? &info->mInputTime:&info->mOutputTime;
     Float64 sample=time->mSampleTime;
     if (!(time->mFlags&kAudioTimeStampSampleTimeValid) || !isfinite(sample) || sample<0 || floor(sample)!=sample || sample>NA_AUDIO_MAX_FRAME-frames) goto out;
     uint64_t t=(uint64_t)sample;
@@ -516,8 +526,17 @@ static OSStatus DoIOOperation(AudioServerPlugInDriverRef d,AudioObjectID o,Audio
         if (t<s.out_consumed || t+frames>s.out_consumed+NA_AUDIO_RING_FRAMES) goto out;
         Float32 g=gain();const Float32 *src=main;
         for (unsigned i=0;i<frames;++i) {
-            int r=na_ring_mix(gOutput,t+i,s16(src[2*i]*g),s16(src[2*i+1]*g));
+            int r=na_reference_mix(gOutput,gReference,t+i,s16(src[2*i]*g),s16(src[2*i+1]*g));
             if (r && r!=NA_OWNERSHIP) goto out;
+        }
+        result=0;
+    } else if (reference && gReferenceSelected) {
+        Float32 *out=main;
+        for (unsigned i=0;i<frames;++i) {
+            int16_t left=0,right=0;
+            if (!na_reference_read(gReference,t+i,&left,&right)) {
+                out[2*i]=left/32768.0f;out[2*i+1]=right/32768.0f;
+            }
         }
         result=0;
     } else if (input && gInputAvailable && gInputSelected) {
