@@ -34,6 +34,7 @@ int snapshot(void *,char *out,size_t capacity,size_t *bytes,unsigned *truncated)
     nezha_audio_hal_stats(h);
     // Startup and worker are independently sampled; neither reader takes a
     // lock that a GENI/trace callback could be waiting for USB to service.
+    // first_read_done: payload_bytes,data_size,graph_stage,running,retiring,quarantine,token.
     int n=snprintf(out,capacity,"{\"v\":7,\"mode\":\"playback\",\"startup_phase\":%u,\"startup_error\":%d,"
         "\"identity_phase\":%u,\"identity_cleanup\":%d,\"revision\":[%u,%u],"
         "\"driver_stage\":%u,\"driver_result\":%d,\"adsp_stage\":%u,\"slave\":%u,\"gpr_online\":%u,"
@@ -48,6 +49,7 @@ int snapshot(void *,char *out,size_t capacity,size_t *bytes,unsigned *truncated)
         "\"probe_pcm_frames\":%u,\"HAL_input_published\":false,"
         "\"input_flow\":[%llu,%llu,%u,%u,%u,%u,%u,%d],"
         "\"rejected_done\":[%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u],"
+        "\"first_read_done\":[%u,%u,%u,%u,%u,%u,%u],"
         "\"HAL\":{\"open\":[%u,%u,%u],\"maps\":[%u,%u,%u],\"clock\":[%u,%d],"
         "\"start_output\":[%u,%d],\"start_input\":[%u,%d],\"connected\":%u,\"device_lists\":%u,\"property_errors\":%u,\"records\":%u}}",
         s[0],(int32_t)s[1],s[2],(int32_t)s[3],s[4],s[5],
@@ -61,6 +63,8 @@ int snapshot(void *,char *out,size_t capacity,size_t *bytes,unsigned *truncated)
         (unsigned long long)v[32],(unsigned long long)v[33],(unsigned)v[34],(unsigned)v[35],
         (unsigned)v[36],(unsigned)v[37],(unsigned)v[38],(int)(int64_t)v[39],
         (unsigned)v[40],(unsigned)v[41],(unsigned)v[42],(unsigned)v[43],(unsigned)v[44],(unsigned)v[45],(unsigned)v[46],(unsigned)v[47],(unsigned)v[48],(unsigned)v[49],(unsigned)v[50],(unsigned)v[51],(unsigned)v[52],(unsigned)v[53],(unsigned)v[54],(unsigned)v[55],(unsigned)v[56],(unsigned)v[57],(unsigned)v[58],(unsigned)v[59],(unsigned)v[60],(unsigned)v[61],(unsigned)v[62],
+        (unsigned)(v[63]&255u),(unsigned)((v[63]>>8)&65535u),(unsigned)((v[63]>>27)&31u),
+        (unsigned)((v[63]>>24)&1u),(unsigned)((v[63]>>25)&1u),(unsigned)((v[63]>>26)&1u),(unsigned)(v[63]>>32),
         h[0],h[1],h[2],h[3],h[4],h[5],h[6],(int32_t)h[7],h[8],(int32_t)h[9],h[10],(int32_t)h[11],h[12],h[13],h[14],h[15]);
     if (n<0 || (size_t)n>=capacity) {*truncated=1;return QUD_FAILED;}
     *bytes=(size_t)n;return QUD_OK;

@@ -102,7 +102,7 @@ void run(void *v,wait_result_t) {
         na_stream_rejection_words(&d->stream[1],rejected);
         for (unsigned i=0;i<NA_DONE_REJECTION_WORDS;++i)
             __atomic_store_n(&nezha_audio27_stats[40+i],rejected[i],__ATOMIC_RELAXED);
-        __atomic_store_n(&nezha_audio27_stats[63],0,__ATOMIC_RELAXED);
+        __atomic_store_n(&nezha_audio27_stats[63],d->stream[1].first_read_done,__ATOMIC_RELAXED);
         __atomic_fetch_add(&audioStatsSequence,1,__ATOMIC_RELEASE);
         nezha_audio_owner_unlock();
         // Exact037 PIL preflight, omitted by038's playback worker. Like the

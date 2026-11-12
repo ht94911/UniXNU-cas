@@ -25,6 +25,9 @@ typedef struct {
     uint32_t bytes, stride, period_bytes, frame_bytes, handle, generation;
     uint32_t port, endpoint, capture, running, retiring, quarantine, in_flight;
     uint64_t next, returned, frames, completions;
+    /* First valid READ_DONE: bytes[7:0], data_size[23:8], running/retiring/
+     * quarantine[26:24], graph stage[31:27], token[63:32]. Engine adds stage. */
+    uint64_t first_read_done;
     uint32_t bad_done, remote_errors, underruns, overruns, last_remote_status;
     NaDoneRejection first_bad_done;
     NaBuffer slot[NA_DMA_SLOTS];
