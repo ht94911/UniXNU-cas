@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: BSD-2-Clause-Patent
 #include "NezhaAlsQrtrBackend.h"
+// The existing XNU console export; no host stdio header in the kernel recipe.
+extern int printf(const char *, ...);
 
 static bool endpoint_equal(struct nezha_als_endpoint a, struct nezha_als_endpoint b) {
     return a.node == b.node && a.port == b.port && a.instance == b.instance;
@@ -75,6 +77,26 @@ static int receive_action(void *context) {
     return result ? result : nezha_als_ssc_receive(b->client, arg->node, arg->port,
         arg->qmi, arg->bytes, arg->now_us, arg->receipt_ticks);
 }
+static void wire_failure(const struct ReceiveArg *arg, int result) {
+    // ALS011 bound the real sensor and ACK, then rejected its next indication.
+    // Retain that borrowed frame before the owner reuses its receive buffer.
+    // One terminal report, in 64-byte console rows with explicit offsets.
+    static const char digits[] = "0123456789abcdef";
+    const uint32_t limit = arg->bytes < TCS3760_SNS_QMI_REPORT_MAX ?
+        arg->bytes : TCS3760_SNS_QMI_REPORT_MAX;
+    for (uint32_t offset = 0; offset < limit; offset += 64) {
+        char hex[129];
+        uint32_t count = limit - offset;
+        if (count > 64) count = 64;
+        for (uint32_t i = 0; i < count; ++i) {
+            uint8_t byte = arg->qmi[offset + i];
+            hex[2*i] = digits[byte >> 4]; hex[2*i+1] = digits[byte & 15];
+        }
+        hex[2*count] = 0;
+        printf("NEZHA ALS WIRE: rc=%d bytes=%u captured=%u offset=%u hex=%s\n",
+               result, arg->bytes, limit, offset, hex);
+    }
+}
 static void receive(void *context, QcomQrtr *q, uint32_t local, uint32_t node, uint32_t from,
                      const uint8_t *qmi, uint32_t bytes) {
     struct nezha_als_qrtr_backend *b = context;
@@ -88,7 +110,10 @@ static void receive(void *context, QcomQrtr *q, uint32_t local, uint32_t node, u
         b->ops.now_us(b->ops.context), b->ops.receipt_ticks(b->ops.context)};
     int result = NezhaAlsClientFrontend;
     if (!nezha_als_frontend_worker(receive_action, &arg, &result)) result = NezhaAlsClientFrontend;
-    if (result < 0) fail(b, result);
+    if (result < 0) {
+        if (result == NezhaAlsClientWire) wire_failure(&arg, result);
+        fail(b, result);
+    }
 }
 int32_t nezha_als_qrtr_request_interval(void *context, uint32_t interval) {
     struct nezha_als_qrtr_backend *b = context;

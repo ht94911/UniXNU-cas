@@ -30,3 +30,10 @@ dedicated native recipe reuses the existing input header and binding helpers;
 normal native/PAC/class verification is still required. Host qualification
 compiles this actual class against a kernel-interface model under ASan/UBSan.
 These models do not qualify sensor transport or automatic brightness on hardware.
+
+ALS011 on the board read the retained registry/config files, discovered the
+default ambient-light SUID and received the enable ACK. Its next indication
+failed wire decoding before any valid lux. The QRTR adapter now records that
+single terminal frame in offset-labelled hex rows before its borrowed buffer
+is reused. This preserves the failure for production-codec replay; sensor
+publication and the existing failure behavior still require real valid data.

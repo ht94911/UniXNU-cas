@@ -1,7 +1,7 @@
-name: nezha iPhone27 ALS011 readonly environment existing XNU exports
+name: nezha iPhone27 ALS012 rejected real sensor indication bytes
 on:
   push:
-    branches: [codex/ios27-brightness-als011fix-exports-20261113]
+    branches: [codex/ios27-brightness-als012-wire-20261113]
   workflow_dispatch:
 permissions:
   contents: read

@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Actual G030-test ALS011 method19 readonly fopen_with_env with available XNU strncmp exports",
+  "purpose": "ALS012 observe the single rejected real indication after actual011 SUID and successful enable ACK; no parser or sensor behavior guess",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "49a679e0bfc36c6e01c4ef68ca7a25eb2b29e740",
+  "device_revision": "6ceee4e8107941e46b4c107440e0a3a3d18d7d5a",
   "soc_revision": "e565439bf1a13d0224f0a9adcfc1eef8df7ad142",
   "xcode": "26.6",
   "files": {
@@ -175,12 +175,12 @@
     "source/device/package/als-owner/upstream/ShengGpr.h": "a274dded1f4d1e2709b9f966759bcb1f57d12747ee0f57743dea1fa97d95d23e",
     "source/device/package/als/NezhaAlsBackend.h": "9199f5da849cda5728b6a48fe8deb018263a8eef1538d47dfeea2dfd8ffb3fd7",
     "source/device/package/als/NezhaAlsFrontend.cpp": "bec2f7a9eed95f54aad492cc8f447e1540794780ab36241b00c4447062038215",
-    "source/device/package/als/NezhaAlsQrtrBackend.c": "4e0dba1e5d48a800a73429c7d6b0ce6b7366a60cdfe01a1c5ea14f6c346978e3",
+    "source/device/package/als/NezhaAlsQrtrBackend.c": "a997e79568ce0294db40e323f9f7dffe8aaa4ec8ded974d0cc81450a5e169218",
     "source/device/package/als/NezhaAlsQrtrBackend.h": "bb20b11dc2c110f7843c31638eef8fb9dd5394c952d4e1d440eec9cb32ee9292",
     "source/device/package/als/NezhaAlsSscClient.c": "ec6a76ca75ad294e2466ce1d9999ccc59b635790c161665f6f61e16985042ab9",
     "source/device/package/als/NezhaAlsSscClient.h": "1cb84ad4dd734cb533e9a7aa1669a75ea5a161c643d16f82da1a6481717e82e5",
     "source/device/package/als/NezhaAlsState.h": "2876ff7d3dc8fe4521bc535b28b47c5944382c26ee037fa345c0ea79180e57cf",
-    "source/device/package/als/README.md": "f856f5d4026a9d8579ad9a5e2dad02bd553bd94e665713ac244d8bb34d0334ca",
+    "source/device/package/als/README.md": "ac422000feaacf2ba752eec8bc5c33b3adcff9b2fb980bf651fb42f089219b32",
     "source/device/package/als/Tcs3760Sns.c": "afa3e6d1a961eec1e6bad6899454ed3b3aa297a990a813300785a957109cf8bd",
     "source/device/package/als/Tcs3760Sns.h": "16cbd625381519ad127b761ca57ff46f50b4a6aa1cb40458c50ee8bb6db60249",
     "source/device/package/armcpu/darwin-asm-separators.patch": "15893fd689f266184c3273135761d7eff0d71aa0c42e29d1d71666a0abd60e8f",
@@ -429,7 +429,7 @@
     "hardware": false
   },
   "als_abi": {
-    "source_revision": "49a679e0bfc36c6e01c4ef68ca7a25eb2b29e740",
+    "source_revision": "6ceee4e8107941e46b4c107440e0a3a3d18d7d5a",
     "source_files": [
       "package/als/NezhaAlsBackend.h",
       "package/als/NezhaAlsFrontend.cpp",
@@ -452,7 +452,7 @@
     "phone_operations": false,
     "private_binary_inputs_uploaded": false,
     "opaque_original_event_constructor": true,
-    "runtime_state_machine_changed": true,
+    "runtime_state_machine_changed": false,
     "required_native_call_codegen": [
       "timestamp x0 and six uint32 arguments to original ambient constructor",
       "OSObject-base release: vptr diversity0xcda1, slot5/40bytes, diversity0x3a87"
@@ -466,9 +466,9 @@
     "first_formal_link_selected": true,
     "normal_F2_recipe": true
   },
-  "device_evidence_revision": "b1fbe78496e884d7f073143065ed7bd2b866d9c5",
+  "device_evidence_revision": "6ceee4e8107941e46b4c107440e0a3a3d18d7d5a",
   "als_owner": {
-    "source_revision": "49a679e0bfc36c6e01c4ef68ca7a25eb2b29e740",
+    "source_revision": "6ceee4e8107941e46b4c107440e0a3a3d18d7d5a",
     "source_files": [
       "package/als-owner/platform/AdspFirmware.c",
       "package/als-owner/platform/AdspLink.c",
@@ -640,5 +640,23 @@
     "failure": "Only existing libkern memchr declaration absent in twoC units",
     "old_artifact_retained": true,
     "hardware_qualified": false
+  },
+  "native011_base": {
+    "native_run": 43309806066,
+    "source_revision": "49a679e0bfc36c6e01c4ef68ca7a25eb2b29e740",
+    "head": "2a11814d402010371de4039807f6d4f06a9db8ba",
+    "actual_SUID_and_enable_ACK": true,
+    "lux": false
+  },
+  "als_wire_observation": {
+    "source_revision": "6ceee4e8107941e46b4c107440e0a3a3d18d7d5a",
+    "source": "package/als/NezhaAlsQrtrBackend.c",
+    "terminal_wire_frame_limit": 1023,
+    "console_hex_row_bytes": 64,
+    "borrowed_buffer_captured_before_reuse": true,
+    "parser_unchanged": true,
+    "existing_failure_behavior_retained": true,
+    "actual_hardware": false,
+    "host_qualification_sha256": "cdacdbd57e36332aaceb463b430c5eeabcbbf53d7862e0a327363ef93ed2fdfd"
   }
 }
