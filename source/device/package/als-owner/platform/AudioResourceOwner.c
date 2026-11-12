@@ -12,7 +12,14 @@ int na_resource_owner_init(NaResourceOwner *o,Sm8850Resources *common) {
     /* 004 showed these exact entries invalid/faulted and bank7 disabled.
      * This is board allocation policy, never a claim based on idleness alone.
      * Runtime checks and the shared lease still precede every first write. */
+#ifdef NEZHA_ALS_NATIVE_OWNER
+    /* Actual LPASS compute-cb@3: sensor pd-type3, session SID5,
+     * iommus1005/80 and1045/20. Bank/slots retain the already checked board
+     * assignment; a current conflicting route prevents every first write. */
+    o->assignment=(Sm8850SmmuAssignment){7,0xfe00,{9,10,11,12},{0x1005,0x1085,0x1045,0x1065}};
+#else
     o->assignment=(Sm8850SmmuAssignment){7,0xfe00,{9,10,11,12},{0x1001,0x1081,0x1041,0x1061}};
+#endif
     return NA_OK;
 }
 static int enter(void *v,uint64_t lease) {

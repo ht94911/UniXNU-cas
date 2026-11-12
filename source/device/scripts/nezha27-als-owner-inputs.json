@@ -7,7 +7,7 @@
     "platform/AdspPower.c": "45f78822e84c6d602bfb4b32d3d937ec36187a90e1128250c0887db9a4600bf9",
     "platform/AudioInputPack.c": "9991a396c50bd0e427570d1a04fbe4755202412759fe0e945cd63c53619dea0c",
     "platform/AudioPdMapper.c": "80e78a1a92882dba4af074b817248248930c73fce7e088644c231027083b2cdb",
-    "platform/AudioResourceOwner.c": "b278241705e5dfcfa5303305387faba89f13b418658f14c3e4e67fa68f8e3410",
+    "platform/AudioResourceOwner.c": "809b34c60dc3245a35e0aae8912bb380c699397d0dbf82e55d901e3330c4a535",
     "platform/NezhaAudioPlatform.c": "ec406bb6160d1c6ac4c7cab072a80744d88eb7cc70fd9b2349812a6c9c4184d1",
     "upstream/QcomGlink.c": "d93de74fc679952d3fa327f902d69e4013b3eb95ae6431c77d8b2aa1348999ef",
     "upstream/QcomMdt.c": "706f4a86624d119282683287bf408ae679275368f9bcc28d6f4ba652d3ad377a",
@@ -17,11 +17,19 @@
     "upstream/QcomSmem.c": "4e9eb0ee22458dad30e1fcb7edb74a9d762222aff0623a6d5b85fb4a6e08bd03",
     "upstream/QcomSmp2p.c": "f91c38e60fe86c5a55cbf9e822e0486997f7104d564ea90d6afe6ab40ac9d60b",
     "os/NezhaAudioAdspInputs.cpp": "7d7bac89f33fa2d539ac8f3f4799f248a30cc030db98e6982c16cfef21516cec",
-    "os/NezhaAudioDspProbe.cpp": "b34a848ba0067374cb0985bebd7d5ee440d894bdc6994d6f378e472904804376",
+    "os/NezhaAudioDspProbe.cpp": "047cdf3f5bb902acbe7feb775591d6edcea091eb0d9edabe30db1220e1ec52b7",
     "os/NezhaAudioInputs.c": "46617afe5985f02f108644611b93a19463322be09984968e5e900e10fcfe12aa",
     "os/NezhaAudioNative.cpp": "161b9278946f8b82c825faa62971811b347b45c7bdd1f4e6b3f284b917b49ec2",
     "os/NezhaAudioResourceProbe.c": "127dc692127c733884d6ef839a6a7e3dd3e972d9befd69534d985003a8b028da",
-    "NezhaAlsNativeCaller.cpp": "e6bef95a7cb298d7d979cbd0a7e352af99a57be9bf3f280473d2294781720e17"
+    "NezhaAlsNativeCaller.cpp": "9732cef87bc7ca239483f136dfcf27d46a174dc7b8d2a9d311384f24ee42d02e",
+    "upstream/QcomPdr.c": "746991991eae6418a30eafd6631544f60d874435d77086d4348c9f1942116680",
+    "upstream/QcomFastRpc.c": "ed9e0d33172508a7794792d9db8520af724c34fe5466ae0bf9dfd8a8a99c080a",
+    "upstream/QcomRpcListener.c": "e19b63f804fc3e33629ef5b9a6a69d7f2984c530989cf0185576218367e2cb0d",
+    "platform/NezhaSensorFiles.c": "145d8218db0c5daf5bef6b30080251ba8df4071e51050911ef9ea8c0c8914fc7",
+    "platform/NezhaSensorBundle.c": "0cb7bed44cf9ff64098fbcd84d78d9deaff35b979143751a346635bb8803786b",
+    "os/NezhaSensorInputs.c": "2039fdc3f322a8ecafb123d763473ea096737bc2638ba9c52df23e37f7681623",
+    "os/NezhaSensorNative.cpp": "2dd185b1009539c50b20ea2bf0630f9205419201b5ed32b471470ffacbd8b2df",
+    "os/NezhaAudioSmmu.cpp": "833371d1e1f4068cadf60002da3867f7a346ece265a8a4d5773174649898fff5"
   },
   "headers": {
     "upstream/QcomRpmh.h": "47e299744ff83989449d262f74f5dfd2ba1cdbf921b2886643735f2febb6ee21",
@@ -76,7 +84,13 @@
     "core/AudioProtocol.h": "cdd0adfdf372cb6efc5a69f3066f7976f47bf3287884c42d5f7f9709856c17ba",
     "core/AudioRuntime.h": "427057626089238b91ec840d0b5fc0046166fd43c4794c7a01bee04ac2a89641",
     "core/AudioDriver.h": "b2c04b2d6a842e529ce68ef794fe51c79a67a57e863da42af1b198e56e881e63",
-    "NezhaAlsNativeCaller.h": "e50fa9efc4ec7f7fd34c2d63c1bba50e4f9b827a4350cbb9648c953feddefccc"
+    "NezhaAlsNativeCaller.h": "e50fa9efc4ec7f7fd34c2d63c1bba50e4f9b827a4350cbb9648c953feddefccc",
+    "upstream/QcomPdr.h": "b4acdf86ca147f61045586162d9be8e5db6ef2c79167c920cbe6b145d20bf306",
+    "upstream/QcomFastRpc.h": "58e9b90fdbe5bf0a887469ef9b01baf6c58359cb34f8cf2044976bbc3b8d0c30",
+    "upstream/QcomRpcListener.h": "6f8b807224e6d82fc8ef5aac9d6df191d5417085cb87f775d6abf58008af6364",
+    "platform/NezhaSensorFiles.h": "a9859ffde2ee3756f483953e5fc60a9f43265df5988cd3d21d93d47665bc891e",
+    "platform/NezhaSensorBundle.h": "1efe100ea4804707e0cc0202c0816cf2010252e7ebe8c828fcd9065231d3961b",
+    "os/NezhaSensorNative.h": "d1d841301303141a2f3813d8336018631f7f6072748c7f66de1f7c77821cf3a8"
   },
   "defines": [
     "NEZHA_ALS_CONTROL_ONLY=1",
@@ -138,5 +152,21 @@
     "os/NezhaAudioInputs.c": "46617afe5985f02f108644611b93a19463322be09984968e5e900e10fcfe12aa",
     "os/NezhaAudioNative.cpp": "20270e92d79de0d7d9528bbbb3ce277fc76866a1cf50ceff0d5a465945502258",
     "os/NezhaAudioResourceProbe.c": "ef71e01cce731961f99e7c74dcfb6a5e1122ff9105b11c22caf8ba0c90f546a6"
+  },
+  "sensor_FastRPC": {
+    "PD_path": "msm/adsp/sensor_pd",
+    "PDR_instance": 74,
+    "IDL_source": "oneplus-sm8850-kernel/drivers/soc/qcom/qcom_pdr_msg.c",
+    "FastRPC_source": "SM8850 dsp-kernel at5ab2a689",
+    "userspace_source": "qualcomm/fastrpc d247519650fe5cb16de6c78edaa95bcc4be25073",
+    "GLINK": "fastrpcglink-apps-dsp",
+    "session_sid": 5,
+    "session_pd_type": 3,
+    "iova_sid_shift": 56,
+    "context_PD_index": 2,
+    "inline_slots": 4,
+    "inline_slot_bytes": 131072,
+    "private_section": "__nezsensor",
+    "native_hardware": false
   }
 }

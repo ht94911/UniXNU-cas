@@ -1,7 +1,7 @@
-name: nezha iPhone27 ALS007 acknowledged SUID updates
+name: nezha iPhone27 ALS008 sensor FastRPC bootstrap
 on:
   push:
-    branches: [codex/ios27-brightness-als007-suid-20261112]
+    branches: [codex/ios27-brightness-als008-fastrpc-20261113]
   workflow_dispatch:
 permissions:
   contents: read

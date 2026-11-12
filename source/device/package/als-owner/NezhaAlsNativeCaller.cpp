@@ -23,6 +23,7 @@ struct Caller {
     nezha_als_qrtr_backend backend;
     nezha_als_ssc_client client;
     bool attempted, prepared, selected, failed, linkSeen;
+    uint32_t lastResponses,lastReports,lastPhase,lastUid;
     int error;
 };
 // All callback storage is retained for this owner's boot lifetime, on failure too.
@@ -128,6 +129,14 @@ extern "C" void nezha_als_native_after_receive(NaAdsp *a) {
     }
     const unsigned phase=caller.client.phase,tx=caller.client.tx_state;
     int r=nezha_als_qrtr_poll(&caller.backend);
+    if (caller.client.responses!=caller.lastResponses || caller.client.reports!=caller.lastReports ||
+        caller.client.phase!=caller.lastPhase || caller.client.match.sensor_uid_valid!=caller.lastUid) {
+        caller.lastResponses=caller.client.responses;caller.lastReports=caller.client.reports;
+        caller.lastPhase=caller.client.phase;caller.lastUid=caller.client.match.sensor_uid_valid;
+        printf("NEZHA ALS OWNER: state phase=%u tx=%u replies=%u reports=%u suid=%u samples=%u stale=%u invalid=%u rc=%d\n",
+               caller.client.phase,caller.client.tx_state,caller.client.responses,caller.client.reports,
+               caller.lastUid,caller.client.delivered,caller.client.stale,caller.client.invalid_samples,r);
+    }
     if (!r && tx==NezhaAlsTxQueued && caller.client.tx_state==NezhaAlsTxAwaiting) {
         const auto &client=caller.client;
         const unsigned qmiId=client.tx[3] | (unsigned)client.tx[4]<<8;

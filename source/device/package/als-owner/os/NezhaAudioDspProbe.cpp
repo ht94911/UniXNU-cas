@@ -11,6 +11,7 @@ extern "C" {
 #include "NezhaAudioAdspInputs.h"
 #ifdef NEZHA_ALS_NATIVE_OWNER
 #include "NezhaAlsNativeCaller.h"
+#include "NezhaSensorNative.h"
 #endif
 #include "NezhaAudioSmmu.h"
 #include "NezhaAudioTasBoard.h"
@@ -26,6 +27,9 @@ struct AudioDspProbe {
     NaNativeAdspInputs input;NaAssemblyPlan plan;
     NaNativeSmmu domain;NaSmmu smmu;
     NaNativeMemory dma,tables;
+#ifdef NEZHA_ALS_NATIVE_OWNER
+    NezhaSensorNative sensor;
+#endif
     NaNativeWindow smem,qmp,cmdDb;NaNativeAdspWatchdog watchdog;
     NaPasLoad loader[2];NaProxyPower power;NaAdsp adsp;NaRxQueue rx;
     NaNativeTasBoard tasNative;NaGeniBoard tasBoard;NaTasPowerOps tasOps;
@@ -42,16 +46,24 @@ struct AudioDspProbe {
     int error,tasError,tasCleanup;
 };
 AudioDspProbe nativeAudioProbe;
-uint32_t audioProbeSequence,audioProbeValues[79];
+constexpr unsigned audioProbeBaseWords=79,audioProbeWords=100;
+uint32_t audioProbeSequence,audioProbeValues[audioProbeWords];
 void publish(AudioDspProbe *d) {
     uint32_t fault=0,syndrome=0;uint64_t address=0;
+    const NaNativeSmmu *domain=&d->domain;
+    uint32_t started=d->smmu.started,ownedFsr=d->smmu.stream_result.context.fault_status;
+    int ownedError=d->smmu.error;
+#ifdef NEZHA_ALS_NATIVE_OWNER
+    domain=&d->sensor.native;started=d->sensor.mapped;
+    ownedFsr=d->sensor.stream_result.context.fault_status;ownedError=d->sensor.error;
+#endif
     // IRQ publishes these once through fault_pending; never race its initial
     // non-atomic payload stores when a fault arrives during this snapshot.
-    if (__atomic_load_n(&d->domain.fault_pending,__ATOMIC_ACQUIRE)) {
-        fault=d->domain.fault_status;syndrome=d->domain.fault_syndrome;address=d->domain.fault_address;
+    if (__atomic_load_n(&domain->fault_pending,__ATOMIC_ACQUIRE)) {
+        fault=domain->fault_status;syndrome=domain->fault_syndrome;address=domain->fault_address;
     }
     const uint32_t values[]={d->phase,(uint32_t)d->error,d->adsp.stage,d->adsp.slave,
-        d->adsp.handed,d->adsp.transport.online,d->smmu.started,fault,
+        d->adsp.handed,d->adsp.transport.online,started,fault,
         d->tasPhase,(uint32_t)d->tasError,(uint32_t)d->tasCleanup,d->revision[0],d->revision[1],
         d->input.resources.error ? 1u:0u,d->power.held,d->power.possible,d->power.stage,d->power.active_resource,
         d->power.last_irq,d->power.last_status,d->power.last_command_status,
@@ -70,14 +82,23 @@ void publish(AudioDspProbe *d) {
         d->adsp.mapper.qrtr.tx_refused,d->adsp.mapper.qrtr.remote_count,
         d->adsp.mapper.requests,d->adsp.mapper.answers,d->adsp.mapper.last_transaction,
         (uint32_t)d->adsp.mapper.error,d->adsp.gpr_initiator,
-        d->smmu.stream_result.context.fault_status,(uint32_t)d->smmu.error,
+        ownedFsr,(uint32_t)ownedError,
         d->adsp.glink_delay_ms,(uint32_t)(d->now<d->adsp.glink_after ? d->adsp.glink_after-d->now:0),
         __atomic_load_n(&d->adsp.watchdogs,__ATOMIC_ACQUIRE),d->adsp.auth_watchdogs,
         d->watchdog.irq,d->watchdogStops,(uint32_t)d->watchdogMain,(uint32_t)d->watchdogDtb,
         d->adsp.glink_observe_ms,(uint32_t)(d->now<d->adsp.glink_observe_until ? d->adsp.glink_observe_until-d->now:0)};
-    static_assert(sizeof values==sizeof audioProbeValues,"Diagnostic word layout mismatch");
+    static_assert(sizeof values==audioProbeBaseWords*sizeof(uint32_t),"Diagnostic word layout mismatch");
+    uint32_t sensor[21]={};
+#ifdef NEZHA_ALS_NATIVE_OWNER
+    (void)nezha_sensor_native_state(&d->sensor,sensor);
+    sensor[12]=d->sensor.config.bank;sensor[13]=(uint32_t)d->sensor.memory.bytes;
+    sensor[14]=d->sensor.native.irq_attached;sensor[15]=fault;sensor[16]=syndrome;
+    sensor[17]=(uint32_t)address;sensor[18]=(uint32_t)(address>>32);sensor[19]=d->sensor.attempted;
+#endif
+    sensor[20]=d->mode;
     __atomic_add_fetch(&audioProbeSequence,1,__ATOMIC_ACQ_REL);
-    for (unsigned i=0;i<79;++i) __atomic_store_n(&audioProbeValues[i],values[i],__ATOMIC_RELAXED);
+    for (unsigned i=0;i<audioProbeBaseWords;++i) __atomic_store_n(&audioProbeValues[i],values[i],__ATOMIC_RELAXED);
+    for (unsigned i=0;i<21;++i) __atomic_store_n(&audioProbeValues[audioProbeBaseWords+i],sensor[i],__ATOMIC_RELAXED);
     __atomic_add_fetch(&audioProbeSequence,1,__ATOMIC_RELEASE);
 }
 void glink_header(void *,uint32_t,uint16_t,uint16_t,uint32_t,int);
@@ -106,6 +127,12 @@ void post_ready(void *v,uint32_t point,int result) {
     if (point==NaAdspGlinkSetupReturn && !result) {
         // Register the existing header observer before the first GLINK poll.
         d->adsp.glink.observe_context=d;d->adsp.glink.observe_header=glink_header;
+#ifdef NEZHA_ALS_NATIVE_OWNER
+        // Register before this GLINK's first receive poll, so the remote OPEN
+        // and its initial intents belong to the same fresh sensor session.
+        int sensor=nezha_sensor_native_link(&d->sensor,&d->adsp);
+        if (sensor) nezha_als_native_lost(&d->adsp,sensor);
+#endif
     }
     if (point==NaAdspGlinkDeferred && d->watchdog.pdc.va) {
         // Same existing observer, one read after fresh authentication. The
@@ -132,10 +159,10 @@ void loader_progress(void *v,uint32_t pas,uint32_t point,uint32_t segment,uint64
             pas,point,segment,(unsigned long long)offset,(unsigned long long)bytes,(unsigned long long)pa);
 }
 int snapshot(void *,char *out,size_t capacity,size_t *bytes,unsigned *truncated) {
-    uint32_t v[79];bool valid=false;
+    uint32_t v[audioProbeWords];bool valid=false;
     for (unsigned attempt=0;attempt<4;++attempt) {
         uint32_t seq=__atomic_load_n(&audioProbeSequence,__ATOMIC_ACQUIRE);if (seq&1) continue;
-        for (unsigned i=0;i<79;++i) v[i]=__atomic_load_n(&audioProbeValues[i],__ATOMIC_RELAXED);
+        for (unsigned i=0;i<audioProbeWords;++i) v[i]=__atomic_load_n(&audioProbeValues[i],__ATOMIC_RELAXED);
         __atomic_thread_fence(__ATOMIC_ACQUIRE);
         if (seq==__atomic_load_n(&audioProbeSequence,__ATOMIC_RELAXED)) {valid=true;break;}
     }
@@ -158,12 +185,16 @@ int snapshot(void *,char *out,size_t capacity,size_t *bytes,unsigned *truncated)
         "\"glink_delay_ms\":%u,\"glink_delay_left_ms\":%u,"
         "\"wdog\":%u,\"wdog_base\":%u,\"wdog_irq\":%u,\"wdog_stops\":%u,\"wdog_main\":%d,\"wdog_dtb\":%d,"
         "\"glink_observe_ms\":%u,\"glink_observe_left_ms\":%u,"
-        "\"control_only\":true,\"external_dma\":false,\"owned_smmu_observed\":false,"
+        "\"control_only\":true,\"external_dma\":%s,\"owned_smmu_observed\":%s,"
+        "\"sensor\":{\"mapped\":%u,\"pdr_state\":%u,\"pdr_registered\":%u,\"pdr_revision\":%u,"
+        "\"listener_phase\":%u,\"rpc_sent\":%u,\"rpc_received\":%u,\"reverse_calls\":%u,\"error\":%d,"
+        "\"rpc_stale\":%u,\"rpc_early\":%u,\"file_requests\":%u,\"bank\":%u,\"bytes\":%u,\"irq_attached\":%u,"
+        "\"fault\":%u,\"fault_syndrome\":%u,\"fault_address\":\"0x%llx\",\"attempted\":%u},"
         "\"PCM\":false,\"HAL\":false}",
 #ifdef NEZHA_ALS_CONTROL_ONLY
         "als-control",
 #else
-        nativeAudioProbe.mode==4 ? "tas-identity":"dsp-tas-identity",
+        v[99]==4 ? "tas-identity":"dsp-tas-identity",
 #endif
         v[0],(int32_t)v[1],v[2],v[3],v[4],v[5],v[6],v[7],v[8],(int32_t)v[9],(int32_t)v[10],v[11],v[12],v[13],v[14],v[15],v[16],v[17],v[18],v[19],v[20],
         (unsigned long long)(((uint64_t)v[22]<<32)|v[21]),v[23],v[24],v[25],v[26],(int32_t)v[27],(int32_t)v[28],v[29],v[30],v[31],
@@ -171,7 +202,10 @@ int snapshot(void *,char *out,size_t capacity,size_t *bytes,unsigned *truncated)
         (unsigned long long)(((uint64_t)v[37]<<32)|v[36]),
         v[38],v[39],v[40],v[41],(int32_t)v[42],v[43],v[44],v[45],v[46],(int32_t)v[47],v[48],v[49],v[50],v[51],v[52],v[53],
         v[54],v[55],v[56],v[57],v[58],v[59],v[60],v[61],v[62],v[63],v[64],(int32_t)v[65],v[66],v[67],(int32_t)v[68],v[69],v[70],
-        v[71],v[72],v[73],v[74],(int32_t)v[75],(int32_t)v[76],v[77],v[78]);
+        v[71],v[72],v[73],v[74],(int32_t)v[75],(int32_t)v[76],v[77],v[78],
+        v[79] ? "true":"false",v[93] ? "true":"false",
+        v[79],v[80],v[81],v[82],v[83],v[84],v[85],v[86],(int32_t)v[87],v[88],v[89],v[90],
+        v[91],v[92],v[93],v[94],v[95],(unsigned long long)(((uint64_t)v[97]<<32)|v[96]),v[98]);
     if (n<0 || (size_t)n>=capacity) {*truncated=1;return QUD_FAILED;}
     *bytes=(size_t)n;return QUD_OK;
 }
@@ -238,6 +272,12 @@ int control_buffers_ready(void *v) {
     for (const auto &stream:d->plan.stream)
         if (stream.graph || stream.dma.cpu || stream.dma.physical.bytes || stream.iova || stream.port)
             return NA_OWNERSHIP;
+#ifdef NEZHA_ALS_NATIVE_OWNER
+    // Only sensor FastRPC inline buffers enter the assigned sensor context.
+    // PCM/topology plans above remain explicitly empty.
+    int sensor=nezha_sensor_native_buffers(&d->sensor,&d->input.resources,&d->adsp);
+    if (sensor) return sensor;
+#endif
     capture_crash_baseline(d);
     return na_native_adsp_watchdog_prepare(&d->watchdog,&d->input.resources,&d->adsp,d->plan.adsp_lease);
 }
@@ -426,6 +466,10 @@ void run_probe(void *v,wait_result_t) {
                 d->adsp.glink.observe_context=d;d->adsp.glink.observe_header=glink_header;
             }
             r=na_adsp_poll(&d->adsp,d->now);
+#ifdef NEZHA_ALS_NATIVE_OWNER
+            if (d->sensor.linked) nezha_sensor_native_poll(&d->sensor,&d->adsp,na_native_now_us(nullptr));
+            if (d->sensor.error) nezha_als_native_lost(&d->adsp,d->sensor.error);
+#endif
             if (d->adsp.stage==NaAdspStopMain && !d->pasQueries) {
                 // Same boot after validated proxy power; four bounded read-only
                 // calls, no arbitrary SMC selector exposed over USB. Neither

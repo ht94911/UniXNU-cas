@@ -100,7 +100,7 @@ for source in sources:
 report = {'objects': rows, 'errors': errors, 'native_sources': len(sources),
           'native_framework_abi_only': True, 'control_only': True, 'entry_boot_arg': 'na=2',
           'QRTR_header_sha256': sha(qrtr/'QcomQrtr.h'), 'GLINK_receive_bytes': 1056,
-          'GLINK_channels': ['IPCRTR'], 'HAL': 'excluded', 'PCM': 'excluded',
+          'GLINK_channels': ['IPCRTR','fastrpcglink-apps-dsp'], 'HAL': 'excluded', 'PCM': 'excluded',
           'microphone': 'excluded', 'TAS_execution': 'excluded',
           'shared_resources': LOCK['soc_resource_owner'], 'shared_component': LOCK['ArmSmmu4K'],
           'duplicate_ArmSmmu_objects': False, 'hardware_started': False,
