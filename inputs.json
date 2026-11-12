@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "ALS012 observe the single rejected real indication after actual011 SUID and successful enable ACK; no parser or sensor behavior guess",
+  "purpose": "ALS013 validate actual1022 factory calibration metadata and continue actual1025 lux; preserve existing owner/HID ABI and calibration",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "6ceee4e8107941e46b4c107440e0a3a3d18d7d5a",
+  "device_revision": "4c51f2552482f362c2a381f770b313fe5e7b5cc2",
   "soc_revision": "e565439bf1a13d0224f0a9adcfc1eef8df7ad142",
   "xcode": "26.6",
   "files": {
@@ -175,14 +175,14 @@
     "source/device/package/als-owner/upstream/ShengGpr.h": "a274dded1f4d1e2709b9f966759bcb1f57d12747ee0f57743dea1fa97d95d23e",
     "source/device/package/als/NezhaAlsBackend.h": "9199f5da849cda5728b6a48fe8deb018263a8eef1538d47dfeea2dfd8ffb3fd7",
     "source/device/package/als/NezhaAlsFrontend.cpp": "bec2f7a9eed95f54aad492cc8f447e1540794780ab36241b00c4447062038215",
-    "source/device/package/als/NezhaAlsQrtrBackend.c": "a997e79568ce0294db40e323f9f7dffe8aaa4ec8ded974d0cc81450a5e169218",
+    "source/device/package/als/NezhaAlsQrtrBackend.c": "85191fb6d717ed40dbacb477f28af8d4b3dfdaf6efd86188d1bcf6c4dd444716",
     "source/device/package/als/NezhaAlsQrtrBackend.h": "bb20b11dc2c110f7843c31638eef8fb9dd5394c952d4e1d440eec9cb32ee9292",
     "source/device/package/als/NezhaAlsSscClient.c": "ec6a76ca75ad294e2466ce1d9999ccc59b635790c161665f6f61e16985042ab9",
     "source/device/package/als/NezhaAlsSscClient.h": "1cb84ad4dd734cb533e9a7aa1669a75ea5a161c643d16f82da1a6481717e82e5",
     "source/device/package/als/NezhaAlsState.h": "2876ff7d3dc8fe4521bc535b28b47c5944382c26ee037fa345c0ea79180e57cf",
-    "source/device/package/als/README.md": "ac422000feaacf2ba752eec8bc5c33b3adcff9b2fb980bf651fb42f089219b32",
-    "source/device/package/als/Tcs3760Sns.c": "afa3e6d1a961eec1e6bad6899454ed3b3aa297a990a813300785a957109cf8bd",
-    "source/device/package/als/Tcs3760Sns.h": "16cbd625381519ad127b761ca57ff46f50b4a6aa1cb40458c50ee8bb6db60249",
+    "source/device/package/als/README.md": "318073db16477b50f53692388eb71439397ee6b07f393118807645c677184a84",
+    "source/device/package/als/Tcs3760Sns.c": "3fcf2c8aa51c9b819a4014fe6b64569d63853e2117dc0215cb16551a37590d7f",
+    "source/device/package/als/Tcs3760Sns.h": "bd728857b3a5869954acdc55dbddd94a3995d376769613282e254fb99074c2eb",
     "source/device/package/armcpu/darwin-asm-separators.patch": "15893fd689f266184c3273135761d7eff0d71aa0c42e29d1d71666a0abd60e8f",
     "source/device/package/backlight/BacklightProbe.cpp": "2957453001baf80fab7da4562bc32df9b3271992a162f4e55e8b1d27371c161d",
     "source/device/package/backlight/NezhaBrightnessProfile.h": "e48b8db0b79f6debfb8720e5e018f4b46f25496925d6e1c4c6b9b2262f51d44a",
@@ -429,7 +429,7 @@
     "hardware": false
   },
   "als_abi": {
-    "source_revision": "6ceee4e8107941e46b4c107440e0a3a3d18d7d5a",
+    "source_revision": "4c51f2552482f362c2a381f770b313fe5e7b5cc2",
     "source_files": [
       "package/als/NezhaAlsBackend.h",
       "package/als/NezhaAlsFrontend.cpp",
@@ -466,9 +466,9 @@
     "first_formal_link_selected": true,
     "normal_F2_recipe": true
   },
-  "device_evidence_revision": "6ceee4e8107941e46b4c107440e0a3a3d18d7d5a",
+  "device_evidence_revision": "4c51f2552482f362c2a381f770b313fe5e7b5cc2",
   "als_owner": {
-    "source_revision": "6ceee4e8107941e46b4c107440e0a3a3d18d7d5a",
+    "source_revision": "4c51f2552482f362c2a381f770b313fe5e7b5cc2",
     "source_files": [
       "package/als-owner/platform/AdspFirmware.c",
       "package/als-owner/platform/AdspLink.c",
@@ -649,7 +649,7 @@
     "lux": false
   },
   "als_wire_observation": {
-    "source_revision": "6ceee4e8107941e46b4c107440e0a3a3d18d7d5a",
+    "source_revision": "4c51f2552482f362c2a381f770b313fe5e7b5cc2",
     "source": "package/als/NezhaAlsQrtrBackend.c",
     "terminal_wire_frame_limit": 1023,
     "console_hex_row_bytes": 64,
@@ -658,5 +658,25 @@
     "existing_failure_behavior_retained": true,
     "actual_hardware": false,
     "host_qualification_sha256": "cdacdbd57e36332aaceb463b430c5eeabcbbf53d7862e0a327363ef93ed2fdfd"
+  },
+  "als_calibration_notification": {
+    "source_revision": "4c51f2552482f362c2a381f770b313fe5e7b5cc2",
+    "actual_wire_event": 1022,
+    "actual_frame_sha256": "5a25f659c33217d1bac351eff56b45dfd1276f5ea6f17245b70c31f1779cc45b",
+    "schema_reference": "qualcomm/sensinghub@6363cb4af0b2e48266d49bf37438171f6dc7006a/apis/proto/sns_cal.proto",
+    "schema_sha256": "868c2017b2b854ecea8406417c506691d8cb087e2fb9f576fa16f23fe980e838",
+    "metadata_no_lux": true,
+    "coefficients_not_reapplied": true,
+    "actual_C_replay_NoData": true,
+    "host_codec_checks": 9383,
+    "host_backend_scenarios": 15,
+    "ASan_UBSan": true
+  },
+  "native012_base": {
+    "run": 43316714235,
+    "head": "d3314653a98507257e019703f65975f01aa5ab8e",
+    "source_revision": "6ceee4e8107941e46b4c107440e0a3a3d18d7d5a",
+    "real_SUID_and_enable_ACK": true,
+    "lux": false
   }
 }

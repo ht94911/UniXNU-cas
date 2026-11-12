@@ -1,7 +1,7 @@
-name: nezha iPhone27 ALS012 rejected real sensor indication bytes
+name: nezha iPhone27 ALS013 actual factory calibration notification
 on:
   push:
-    branches: [codex/ios27-brightness-als012-wire-20261113]
+    branches: [codex/ios27-brightness-als013-cal-20261113]
   workflow_dispatch:
 permissions:
   contents: read

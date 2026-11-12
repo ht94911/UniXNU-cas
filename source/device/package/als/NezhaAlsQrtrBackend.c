@@ -60,8 +60,14 @@ static int ready(void *context, uint64_t epoch, bool value) {
 }
 static int sample(void *context, const struct nezha_als_sample *value) {
     struct nezha_als_qrtr_backend *b = context;
-    return value && value->epoch == b->epoch && nezha_als_frontend_sample(value) ?
-        NezhaAlsClientOkay : NezhaAlsClientFrontend;
+    if (!value || value->epoch != b->epoch || !nezha_als_frontend_sample(value))
+        return NezhaAlsClientFrontend;
+    // Current physical cover/uncover verification needs the received values,
+    // not just a report counter. Only accepted real samples reach this point.
+    printf("NEZHA ALS SAMPLE: epoch=%llu seq=%llu ticks=%llu lux=%u\n",
+        (unsigned long long)value->epoch, (unsigned long long)value->sequence,
+        (unsigned long long)value->timestamp, value->integer_lux);
+    return NezhaAlsClientOkay;
 }
 static int drain_intervals(struct nezha_als_qrtr_backend *b);
 struct ReceiveArg {

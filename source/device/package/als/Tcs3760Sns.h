@@ -97,6 +97,9 @@ int tcs3760_sns_decode_response(const uint8_t *qmi, size_t bytes, uint16_t trans
 // lookup SUID, but physical configuration for the actual sensor SUID.
 // A match can omit client_id until a real response/report binds that value.
 // Packed/unpacked float fields and bounded unknown protobuf fields are read.
+// Calibration event1022 is validated as factory metadata (sns_cal.proto) and
+// produces no sample. Its bias/scale/matrix are not applied a second time to
+// the physical sensor's already calibrated1025 data.
 // NoData still fills source/client_id and uid_event. uid_event distinguishes a
 // validated lookup event with an empty default list from an envelope with no
 // lookup event; callers can invalidate a default that has been removed.

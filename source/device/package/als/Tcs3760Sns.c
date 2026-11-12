@@ -7,7 +7,7 @@
 #include "QcomQrtr.h"
 #include <string.h>
 
-enum { SnsLookupRequest=512, SnsLookupEvent=768, SnsOnChange=514,
+enum { SnsLookupRequest=512, SnsLookupEvent=768, SnsOnChange=514, SnsCalibrationEvent=1022,
        SnsStreamConfig=513, SnsSampleEvent=1025, SnsDisable=10, SnsErrorEvent=130 };
 static const char datatype[]="ambient_light";
 static const Tcs3760SnsUid lookup_uid={TCS3760_SNS_LOOKUP_WORD,TCS3760_SNS_LOOKUP_WORD};
@@ -132,6 +132,22 @@ static int error_event(const uint8_t *data,size_t bytes,uint32_t *error) {
     if (!seen) return Tcs3760SnsMalformed;
     *error=code;return Tcs3760SnsOkay;
 }
+static int calibration_event(const uint8_t *data,size_t bytes) {
+    // Qualcomm sns_cal.proto:1022 conveys the factory calibration already
+    // applied by this physical sensor. Its scale_factor is never a lux sample.
+    Pb p={data,bytes};bool status_seen=false;
+    while (p.left) {
+        Field f;int r=field(&p,&f);if (r) return r;
+        if (f.number>=1 && f.number<=3) {
+            if ((f.wire!=5 && f.wire!=2) || f.bytes%4) return Tcs3760SnsMalformed;
+        } else if (f.number==4) {
+            if (f.wire!=0) return Tcs3760SnsMalformed;
+            if (f.value>3) return Tcs3760SnsUnsupported;
+            status_seen=true;
+        } else if (f.number==5 && f.wire!=5) return Tcs3760SnsMalformed;
+    }
+    return status_seen ? Tcs3760SnsOkay:Tcs3760SnsMalformed;
+}
 static int qmi_view(const uint8_t *qmi,size_t bytes,uint8_t type,uint16_t id,uint32_t limit,QcomQmiMessage *m) {
     if (!qmi || bytes>UINT32_MAX) return Tcs3760SnsArgument;
     if (qcom_qmi_parse(qmi,(uint32_t)bytes,m)) return Tcs3760SnsMalformed;
@@ -200,6 +216,10 @@ int tcs3760_sns_decode_report(const uint8_t *qmi,size_t bytes,const Tcs3760SnsMa
         } else if (lookup && e.id==SnsLookupEvent) {
             r=suid_event(e.payload,e.bytes,&result.uid,&result.uid_valid);if (r) return r;
             result.uid_event=true;
+            recognized=true;
+        } else if (!lookup && e.id==SnsCalibrationEvent) {
+            r=calibration_event(e.payload,e.bytes);if (r) return r;
+            ++result.non_sample_events;
             recognized=true;
         } else if (!lookup && e.id==SnsSampleEvent) {
             uint32_t lux=0,status=0;bool valid=false;

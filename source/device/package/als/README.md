@@ -37,3 +37,9 @@ failed wire decoding before any valid lux. The QRTR adapter now records that
 single terminal frame in offset-labelled hex rows before its borrowed buffer
 is reused. This preserves the failure for production-codec replay; sensor
 publication and the existing failure behavior still require real valid data.
+
+ALS012 captured the rejected69-byte indication and identified1022 as the
+standard factory-calibration event. The codec validates its packed/unpacked
+coefficient fields, required accuracy and optional calibration ID as metadata.
+It continues waiting for1025 sensor data; calibration coefficients neither
+publish lux nor rescale the physical sensor's already calibrated samples.
