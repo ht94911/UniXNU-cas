@@ -96,7 +96,10 @@ static int file_open_with_env(NezhaSensorFiles *s,const char *environment,
     static const char search[]=";/vendor/lib/rfsa/adsp;/vendor/dsp;";
     const char *part=search;size_t delimiter_bytes=strlen(delimiter);int result=MISSING;
     while (part) {
-        const char *end=strstr(part,delimiter);size_t bytes=end ? (size_t)(end-part):strlen(part);
+        /* XNU exports strncmp, but has no strstr symbol in this build. */
+        const char *end=part;while (*end && strncmp(end,delimiter,delimiter_bytes)) ++end;
+        if (!*end) end=0;
+        size_t bytes=end ? (size_t)(end-part):strlen(part);
         if (!bytes) result=file_open(s,name,mode,handle);
         else {
             char path[256];size_t length=strlen(name);

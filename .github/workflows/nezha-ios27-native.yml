@@ -1,7 +1,7 @@
-name: nezha iPhone27 ALS011 actual readonly fopen with environment
+name: nezha iPhone27 ALS011 readonly environment existing XNU exports
 on:
   push:
-    branches: [codex/ios27-brightness-als011-env-20261113]
+    branches: [codex/ios27-brightness-als011fix-exports-20261113]
   workflow_dispatch:
 permissions:
   contents: read

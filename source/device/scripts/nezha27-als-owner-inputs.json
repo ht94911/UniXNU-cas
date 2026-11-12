@@ -25,7 +25,7 @@
     "upstream/QcomPdr.c": "746991991eae6418a30eafd6631544f60d874435d77086d4348c9f1942116680",
     "upstream/QcomFastRpc.c": "ed9e0d33172508a7794792d9db8520af724c34fe5466ae0bf9dfd8a8a99c080a",
     "upstream/QcomRpcListener.c": "e19b63f804fc3e33629ef5b9a6a69d7f2984c530989cf0185576218367e2cb0d",
-    "platform/NezhaSensorFiles.c": "ae5127118d72f2b5da408fc0fc3f39ac5d03b17b877ca2695567a8322278dbb9",
+    "platform/NezhaSensorFiles.c": "14e2c3f807fbda33ccc65cc6eacb14e6ed4c88cd2007781fed0ad7e8d6c631a1",
     "platform/NezhaSensorBundle.c": "adf2225c9339e2f21a03d64289d81667664eb8d82859084fc58cb4b9dee29623",
     "os/NezhaSensorInputs.c": "2039fdc3f322a8ecafb123d763473ea096737bc2638ba9c52df23e37f7681623",
     "os/NezhaSensorNative.cpp": "cf31eda2389de8cf6b2f7c91cff8e3bb954cf3cdf1a4c367a9cc680bc203404b",

@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Actual G030-test ALS011: implement real method19 fopen_with_env revealed by010 hardware; same readonly private bundle and transport",
+  "purpose": "Actual G030-test ALS011 method19 readonly fopen_with_env with available XNU strncmp exports",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "ca2cfcb983e1ccad5dc776cef23044dea41c89c9",
+  "device_revision": "49a679e0bfc36c6e01c4ef68ca7a25eb2b29e740",
   "soc_revision": "e565439bf1a13d0224f0a9adcfc1eef8df7ad142",
   "xcode": "26.6",
   "files": {
@@ -281,7 +281,7 @@
     "source/device/scripts/hid-device-iphone-24A446.json": "af4668764ba1d2a4649b9c45d1ddbbabcb69e27659e7c35fbf9899f8f6bdbc7d",
     "source/device/scripts/legacy-display-iphone-24A446.json": "6f08ddf9377cc5c92a4a60ff75c3b452eb1a536720ebdf8fda9361846d8c8fea",
     "source/device/scripts/nezha-armcpu-asm-fix.py": "3d37c0c0e3613453c901a9622bc45a077c9acbd35ffe449046fa575b3b57af3a",
-    "source/device/scripts/nezha27-als-owner-inputs.json": "bdbd35c346696cb09a0702114201a59b36815c0441348c38534b4c25fd14ba55",
+    "source/device/scripts/nezha27-als-owner-inputs.json": "b940b836a2ce93d2640ce8a1196d9475b13972ec2428d03330939462ac4e4733",
     "source/device/scripts/qualify-armcpu-instructions.py": "dae7cb3b9faecaac7b268212bbd324ae172d3dffa0e94b06afc4581c9f4abe9b",
     "source/device/tests/brightness-poll-observation.cpp": "411bbcafa1d880c88608aadeecf573c0c40f31cfe938552f72639a3c50d17c1b",
     "source/device/tests/brightness-poll-observation.py": "1aeff817ab68609d46f47c98539971a6a772003981ff3e978cca7eedbca58111",
@@ -316,7 +316,7 @@
     "source/device/package/als-owner/upstream/QcomPdr.c": "746991991eae6418a30eafd6631544f60d874435d77086d4348c9f1942116680",
     "source/device/package/als-owner/upstream/QcomFastRpc.c": "ed9e0d33172508a7794792d9db8520af724c34fe5466ae0bf9dfd8a8a99c080a",
     "source/device/package/als-owner/upstream/QcomRpcListener.c": "e19b63f804fc3e33629ef5b9a6a69d7f2984c530989cf0185576218367e2cb0d",
-    "source/device/package/als-owner/platform/NezhaSensorFiles.c": "ae5127118d72f2b5da408fc0fc3f39ac5d03b17b877ca2695567a8322278dbb9",
+    "source/device/package/als-owner/platform/NezhaSensorFiles.c": "14e2c3f807fbda33ccc65cc6eacb14e6ed4c88cd2007781fed0ad7e8d6c631a1",
     "source/device/package/als-owner/platform/NezhaSensorBundle.c": "adf2225c9339e2f21a03d64289d81667664eb8d82859084fc58cb4b9dee29623",
     "source/device/package/als-owner/os/NezhaSensorInputs.c": "2039fdc3f322a8ecafb123d763473ea096737bc2638ba9c52df23e37f7681623",
     "source/device/package/als-owner/os/NezhaSensorNative.cpp": "cf31eda2389de8cf6b2f7c91cff8e3bb954cf3cdf1a4c367a9cc680bc203404b",
@@ -429,7 +429,7 @@
     "hardware": false
   },
   "als_abi": {
-    "source_revision": "ca2cfcb983e1ccad5dc776cef23044dea41c89c9",
+    "source_revision": "49a679e0bfc36c6e01c4ef68ca7a25eb2b29e740",
     "source_files": [
       "package/als/NezhaAlsBackend.h",
       "package/als/NezhaAlsFrontend.cpp",
@@ -468,7 +468,7 @@
   },
   "device_evidence_revision": "b1fbe78496e884d7f073143065ed7bd2b866d9c5",
   "als_owner": {
-    "source_revision": "ca2cfcb983e1ccad5dc776cef23044dea41c89c9",
+    "source_revision": "49a679e0bfc36c6e01c4ef68ca7a25eb2b29e740",
     "source_files": [
       "package/als-owner/platform/AdspFirmware.c",
       "package/als-owner/platform/AdspLink.c",
