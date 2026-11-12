@@ -75,6 +75,47 @@ static void clear_status(void *context, uint32_t offset, uint32_t value)
     }
 }
 
+static void record_requeue(void *context, uint32_t offset, uint32_t value)
+{
+    static const uint32_t registers[] = {0x2c04, 0x118, 0x11c, 0x114, 0x11c};
+    static const uint32_t values[] = {0x210000, 0x100, 1, 0x100, 1};
+    unsigned *step = context;
+    assert(*step < 5 && registers[*step] == offset && values[*step] == value);
+    ++*step;
+}
+
+struct TestPattern {
+    struct Session *receiver;
+    uint32_t registers[0x200 / 4];
+    bool generator_started;
+    bool ignore_type;
+};
+
+static uint32_t tpg_read(void *context, uint32_t offset)
+{
+    struct TestPattern *tpg = context;
+    assert(offset < 0x200 && offset % 4 == 0);
+    return tpg->registers[offset / 4];
+}
+
+static void tpg_write(void *context, uint32_t offset, uint32_t value)
+{
+    struct TestPattern *tpg = context;
+    (void)tpg_read(context, offset);
+    if (offset == 0x1f4 && value == 0x10) {
+        assert(tpg->receiver->rdi_started && tpg->receiver->buffer_count == 2);
+        tpg->generator_started = true;
+    }
+    if (offset != 0x80 || !tpg->ignore_type) {
+        tpg->registers[offset / 4] = value;
+    }
+}
+
+static void tpg_wait(void *context, unsigned ms)
+{
+    assert(context != NULL && ms == 1);
+}
+
 int main(void)
 {
     struct Session session = {0};
@@ -88,6 +129,15 @@ int main(void)
 
     session = (struct Session){0};
     input.lanes[3] = 2;
+    assert(!nezha_camera1080_start_rdi0(&io, &input, 4096, 3072, buffers));
+    assert(session.writes == 0);
+
+    input = (struct NezhaCamera1080Input){NezhaCamera1080Cphy, 0, 3, {0, 1, 2}};
+    assert(nezha_camera1080_start_rdi0(&io, &input, 4096, 3072, buffers));
+    assert(session.rdi_started && session.rx_config == 0x01102102);
+
+    session = (struct Session){0};
+    input.lanes[2] = 3;
     assert(!nezha_camera1080_start_rdi0(&io, &input, 4096, 3072, buffers));
     assert(session.writes == 0);
 
@@ -105,6 +155,21 @@ int main(void)
     assert(irq.buffers == 0x20000 && irq.rdi0 == 1 && irq.top == 0x3000c && irq.commits == 1);
     assert(nezha_camera1080_take_rdi0_events(&csid, &events));
     assert(!events.buffer_done && !events.start_of_frame && irq.commits == 1);
+
+    unsigned step = 0;
+    struct NezhaCameraRdi1080 layout;
+    assert(nezha_camera_rdi1080_layout(640, 480, buffers, &layout));
+    const struct NezhaCamera1080Io requeue = {&step, record_requeue, record_requeue};
+    assert(nezha_camera1080_requeue_rdi0(&requeue, &layout, 1) && step == 5);
+
+    session = (struct Session){0};
+    struct TestPattern tpg = {.receiver = &session, .registers = {0x20040000}, .ignore_type = true};
+    const struct NezhaCameraRegisterIo tpg_io = {&tpg, tpg_read, tpg_write, tpg_wait};
+    assert(!nezha_camera1080_start_tpg_bars(&io, &tpg_io, 2, buffers));
+    assert(session.writes == 0 && !tpg.generator_started);
+    tpg.ignore_type = false;
+    assert(nezha_camera1080_start_tpg_bars(&io, &tpg_io, 2, buffers));
+    assert(tpg.generator_started && tpg.registers[0x7c / 4] == 0x028001e0);
 
     puts("CAMSS1080 ordered both frame buffers and their updates before starting RDI0");
 }

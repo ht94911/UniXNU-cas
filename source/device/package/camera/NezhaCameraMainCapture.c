@@ -10,7 +10,8 @@ bool nezha_camera_main_capture_start(const struct NezhaCameraMainCaptureIo *io,
     if (io == NULL || io->cci == NULL || io->camss == NULL || io->smmu == NULL ||
         mode == NULL || mode->expected_identity == 0 || buffers == NULL ||
         context == NULL || context->lower_tables != &buffers->tables || capture == NULL ||
-        capture->stage != NezhaCaptureIdle || mode->input.source != NezhaCamera1080Dphy ||
+        capture->stage != NezhaCaptureIdle ||
+        (mode->input.source != NezhaCamera1080Dphy && mode->input.source != NezhaCamera1080Cphy) ||
         !nezha_camera_rdi1080_layout(mode->width, mode->height, buffers->frames, &layout)) {
         return false;
     }
@@ -26,7 +27,7 @@ bool nezha_camera_main_capture_start(const struct NezhaCameraMainCaptureIo *io,
 
     capture->stage = NezhaCaptureStandby;
     capture->sensor_status = nezha_camera_ovx10500u_apply_mode(io->cci, mode->standby,
-        mode->standby_count, &capture->applied_writes, &capture->sensor_transfer);
+        mode->standby_count, io->cci_queue_words, &capture->applied_writes, &capture->sensor_transfer);
     if (capture->sensor_status != NezhaCciOk) {
         return false;
     }

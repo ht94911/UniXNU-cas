@@ -236,11 +236,17 @@ static void camera_probe(void)
         const struct NezhaCameraRegisterIo io = {(void *)(camcc - 0x21000u), read_page, write_page, wait_ms};
         struct NezhaCameraCamccLease lease = {0};
         const int acquire = nezha_camera_camcc_acquire_top(&io, &lease);
+        printf("NEZHA CAMERA: top result=%d gdsc=%#x status=%#x core=%#x cpas=%#x owned=%#x\n",
+               acquire, read32(camcc, CameraTopGdsc), read32(camcc, CameraTopStatus),
+               read32(camcc, 0x348), read32(camcc, 0x37c), lease.enabled_by_us);
         int rate = NezhaCameraCamccInvalid;
         int gate = NezhaCameraCamccInvalid;
         bool quiet = true;
         if (acquire == NezhaCameraCamccOk) {
             rate = nezha_camera_camcc_select_cci0_rate(&io, &lease, 19200000);
+            printf("NEZHA CAMERA: CCI0 rate result=%d cmd=%#x cfg=%#x branch=%#x\n",
+                   rate, read32(camcc, CameraCciCommand), read32(camcc, CameraCciConfig),
+                   read32(camcc, CameraCciBranch));
             if (rate == NezhaCameraCamccOk) {
                 gate = nezha_camera_camcc_enable_cci0(&io, &lease);
                 if (gate == NezhaCameraCamccOk) {

@@ -88,15 +88,22 @@ enum NezhaCameraCamccStatus nezha_camera_camcc_acquire_top(
         return NezhaCameraCamccBusy;
     }
 
-    const uint32_t power_mask = CamccPowerDown | CamccPowerUp;
-    const uint32_t power = io->read(io->context, CamccTopStatus) & power_mask;
-    if (power == CamccPowerDown) {
+    const uint32_t power = io->read(io->context, CamccTopStatus);
+    if (power == UINT32_MAX) {
+        return NezhaCameraCamccBusy;
+    }
+    /* CFG_GDSCR completion flags are polled independently, as in gdsc.c.
+     * A completed up transition may coexist with the down-complete flag. */
+    if ((power & CamccPowerUp) == 0) {
+        if ((power & CamccPowerDown) == 0) {
+            return NezhaCameraCamccBusy;
+        }
         if ((io->read(io->context, CamccTopGdsc) & CamccCollapse) == 0) {
             return NezhaCameraCamccBusy;
         }
         lease->enabled_by_us |= OwnTop;
         change_bits(io, CamccTopGdsc, CamccCollapse, 0);
-        if (!wait_bits(io, CamccTopStatus, power_mask, CamccPowerUp)) {
+        if (!wait_bits(io, CamccTopStatus, CamccPowerUp, CamccPowerUp)) {
             return NezhaCameraCamccTimeout;
         }
         io->wait_ms(io->context, 1);
@@ -104,8 +111,6 @@ enum NezhaCameraCamccStatus nezha_camera_camcc_acquire_top(
             lease->enabled_by_us |= OwnRetain;
             change_bits(io, CamccTopGdsc, CamccRetain, CamccRetain);
         }
-    } else if (power != CamccPowerUp) {
-        return NezhaCameraCamccBusy;
     }
 
     if (!enable_branch(io, lease, CamccCoreAhb, OwnCoreAhb, false) ||
@@ -151,6 +156,12 @@ enum NezhaCameraCamccStatus nezha_camera_camcc_select_cci0_rate(
     }
     if ((io->read(io->context, CamccCci0) & (CamccEnable | clock_off)) != clock_off) {
         return NezhaCameraCamccBusy;
+    }
+
+    /* clk_rcg2_shared commits the new configuration with a running root.
+     * This branch was off and belongs to this lease until restoration. */
+    if (!enable_branch(io, lease, CamccCci0, OwnCci0, true)) {
+        return NezhaCameraCamccTimeout;
     }
 
     lease->cci_rate_owned = true;
@@ -201,11 +212,8 @@ enum NezhaCameraCamccStatus nezha_camera_camcc_release(
         return NezhaCameraCamccInvalid;
     }
     lease->top_ready = false;
-    if (!disable_owned_branch(io, lease, CamccCci0, OwnCci0, true)) {
-        return NezhaCameraCamccTimeout;
-    }
     if (lease->cci_rate_owned) {
-        if ((io->read(io->context, CamccCci0) & (CamccEnable | clock_off)) != clock_off) {
+        if ((lease->enabled_by_us & OwnCci0) == 0) {
             return NezhaCameraCamccBusy;
         }
         if (!wait_bits(io, CamccCci0Command, CamccUpdate, 0)) {
@@ -225,6 +233,9 @@ enum NezhaCameraCamccStatus nezha_camera_camcc_release(
         }
         lease->cci_rate_owned = false;
     }
+    if (!disable_owned_branch(io, lease, CamccCci0, OwnCci0, true)) {
+        return NezhaCameraCamccTimeout;
+    }
     if (!disable_owned_branch(io, lease, CamccCpasAhb, OwnCpasAhb, true) ||
         !disable_owned_branch(io, lease, CamccCoreAhb, OwnCoreAhb, false)) {
         return NezhaCameraCamccTimeout;
@@ -238,7 +249,7 @@ enum NezhaCameraCamccStatus nezha_camera_camcc_release(
     }
     if ((lease->enabled_by_us & OwnTop) != 0) {
         change_bits(io, CamccTopGdsc, CamccCollapse, CamccCollapse);
-        if (!wait_bits(io, CamccTopStatus, CamccPowerDown | CamccPowerUp, CamccPowerDown)) {
+        if (!wait_bits(io, CamccTopStatus, CamccPowerDown, CamccPowerDown)) {
             return NezhaCameraCamccTimeout;
         }
         lease->enabled_by_us &= ~(unsigned)OwnTop;

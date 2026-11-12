@@ -232,13 +232,13 @@ int main(void)
 
     m = initial();
     size_t applied = 99;
-    const struct NezhaCameraOvxModeWrite invalid[] = {{0x3514, 0x7e, 0}, {0x0100, 1, 0}};
-    assert(nezha_camera_ovx10500u_apply_mode(&io, invalid, 2, &applied, &observed) == NezhaCciInvalid);
+    const struct NezhaCameraOvxModeWrite invalid[] = {{.reg = 0x3514, .value = 0x7e}, {.reg = 0x0100, .value = 1}};
+    assert(nezha_camera_ovx10500u_apply_mode(&io, invalid, 2, 0, &applied, &observed) == NezhaCciInvalid);
     assert(applied == 0 && m.writes == 0);
 
     m.expected_write = 0x7e143539;
-    const struct NezhaCameraOvxModeWrite standby[] = {{0x3514, 0x7e, 1}};
-    assert(nezha_camera_ovx10500u_apply_mode(&io, standby, 1, &applied, &observed) == NezhaCciOk);
+    const struct NezhaCameraOvxModeWrite standby[] = {{.reg = 0x3514, .value = 0x7e, .delay_ms = 1}};
+    assert(nezha_camera_ovx10500u_apply_mode(&io, standby, 1, 0, &applied, &observed) == NezhaCciOk);
     assert(applied == 1 && m.submitted == 1 && m.waits == 1);
     m = initial();
     m.expected_write = 0x01000139;

@@ -13,6 +13,7 @@ struct CamccModel {
     uint32_t cci_config, cci_command;
     unsigned writes, waits;
     bool no_power_ack, no_cci_disable_ack, no_rcg_ack;
+    bool sticky_completion;
 };
 
 static uint32_t read32(void *context, uint32_t offset)
@@ -44,7 +45,8 @@ static void write32(void *context, uint32_t offset, uint32_t value)
         assert(((value ^ model->gdsc) & ~((1u << 11) | 1u)) == 0);
         model->gdsc = value;
         if (!model->no_power_ack) {
-            model->status = (value & 1u) != 0 ? PowerDown : PowerUp;
+            model->status = model->sticky_completion ? PowerDown | PowerUp :
+                ((value & 1u) != 0 ? PowerDown : PowerUp);
         }
         break;
     case 0x21348:
@@ -62,7 +64,7 @@ static void write32(void *context, uint32_t offset, uint32_t value)
         model->cci_command = model->no_rcg_ack ? value : value & ~1u;
         break;
     case 0x21254:
-        assert((model->cci & (off_bit | 1u)) == off_bit);
+        assert((model->cci & (off_bit | 1u)) == 1);
         model->cci_config = value;
         break;
     default: assert(0);
@@ -144,6 +146,13 @@ int main(void)
     model.cci_command = 0;
     assert(nezha_camera_camcc_release(&io, &lease) == NezhaCameraCamccOk);
     assert(model.cci_config == 0x0010021f && model.status == PowerDown);
+
+    model = cold;
+    model.sticky_completion = true;
+    assert(nezha_camera_camcc_acquire_top(&io, &lease) == NezhaCameraCamccOk);
+    assert(model.status == (PowerUp | PowerDown));
+    assert(nezha_camera_camcc_release(&io, &lease) == NezhaCameraCamccOk);
+    assert(model.gdsc == cold.gdsc && lease.enabled_by_us == 0);
 
     puts("Camera CAMCC restores owned gates and keeps the parent on after an uncertain stop");
 }

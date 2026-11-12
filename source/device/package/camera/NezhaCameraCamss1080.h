@@ -8,6 +8,7 @@
 enum NezhaCamera1080Source {
     NezhaCamera1080Dphy,
     NezhaCamera1080Tpg,
+    NezhaCamera1080Cphy,
 };
 
 struct NezhaCamera1080Input {

@@ -27,7 +27,7 @@ enum NezhaCameraCciStatus nezha_camera_ovx10500u_read_identity(
 
 enum NezhaCameraCciStatus nezha_camera_ovx10500u_apply_mode(
     const struct NezhaCameraRegisterIo *cci, const struct NezhaCameraOvxModeWrite *writes,
-    size_t count, size_t *applied, struct NezhaCameraCciObservation *transfer)
+    size_t count, unsigned burst_queue_words, size_t *applied, struct NezhaCameraCciObservation *transfer)
 {
     if (applied == NULL || transfer == NULL) {
         return NezhaCciInvalid;
@@ -38,13 +38,18 @@ enum NezhaCameraCciStatus nezha_camera_ovx10500u_apply_mode(
         return NezhaCciInvalid;
     }
     for (size_t i = 0; i < count; ++i) {
-        if (writes[i].reg == OvxStream) {
+        if (writes[i].reg == OvxStream || (writes[i].burst == NULL) != (writes[i].burst_bytes == 0) ||
+            (writes[i].burst != NULL && (writes[i].burst_bytes > UINT16_MAX ||
+             burst_queue_words < 16 || burst_queue_words > 128))) {
             return NezhaCciInvalid;
         }
     }
     for (size_t i = 0; i < count; ++i) {
-        enum NezhaCameraCciStatus status = nezha_camera_cci_write_byte(
-            cci, OvxMaster, OvxSlave, writes[i].reg, writes[i].value, transfer);
+        const struct NezhaCameraOvxModeWrite *entry = &writes[i];
+        const enum NezhaCameraCciStatus status = entry->burst == NULL ?
+            nezha_camera_cci_write_byte(cci, OvxMaster, OvxSlave, entry->reg, entry->value, transfer) :
+            nezha_camera_cci_write_burst(cci, OvxMaster, OvxSlave, entry->reg, entry->burst,
+                                        entry->burst_bytes, burst_queue_words, transfer);
         if (status != NezhaCciOk) {
             return status;
         }

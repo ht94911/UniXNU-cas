@@ -143,6 +143,16 @@ static bool start_mclk(const struct NezhaCameraRegisterIo *mclk, struct NezhaCam
         }
         state->mclk_config = config;
         state->mclk_rate_owned = true;
+    }
+    /* Shared RCGs commit their update while the root is running. */
+    if ((branch & MclkEnable) == 0) {
+        state->mclk_gate_owned = true;
+        update(mclk, MclkBranch, MclkEnable, MclkEnable);
+    }
+    if (!wait_for(mclk, MclkBranch, clock_off | MclkEnable, MclkEnable)) {
+        return false;
+    }
+    if (state->mclk_rate_owned) {
         update(mclk, MclkConfig, MclkRateMask, MclkXo);
         update(mclk, MclkCommand, MclkUpdate, MclkUpdate);
         if (!wait_for(mclk, MclkCommand, MclkUpdate, 0) ||
@@ -150,11 +160,7 @@ static bool start_mclk(const struct NezhaCameraRegisterIo *mclk, struct NezhaCam
             return false;
         }
     }
-    if ((branch & MclkEnable) == 0) {
-        state->mclk_gate_owned = true;
-        update(mclk, MclkBranch, MclkEnable, MclkEnable);
-    }
-    return wait_for(mclk, MclkBranch, clock_off | MclkEnable, MclkEnable);
+    return true;
 }
 
 bool nezha_camera_main_start_pins(const struct NezhaCameraRegisterIo *tlmm,
@@ -202,13 +208,6 @@ bool nezha_camera_main_start_pins(const struct NezhaCameraRegisterIo *tlmm,
 
 static bool stop_mclk(const struct NezhaCameraRegisterIo *mclk, struct NezhaCameraMainPins *state)
 {
-    if (state->mclk_gate_owned) {
-        update(mclk, MclkBranch, MclkEnable, 0);
-        if (!wait_for(mclk, MclkBranch, clock_off | MclkEnable, clock_off)) {
-            return false;
-        }
-        state->mclk_gate_owned = false;
-    }
     if (state->mclk_rate_owned) {
         if (!wait_for(mclk, MclkCommand, MclkUpdate, 0)) {
             return false;
@@ -224,6 +223,13 @@ static bool stop_mclk(const struct NezhaCameraRegisterIo *mclk, struct NezhaCame
             return false;
         }
         state->mclk_rate_owned = false;
+    }
+    if (state->mclk_gate_owned) {
+        update(mclk, MclkBranch, MclkEnable, 0);
+        if (!wait_for(mclk, MclkBranch, clock_off | MclkEnable, clock_off)) {
+            return false;
+        }
+        state->mclk_gate_owned = false;
     }
     return true;
 }

@@ -4,6 +4,7 @@
 
 #include "NezhaCameraRegisterIo.h"
 #include <stdbool.h>
+#include <stddef.h>
 
 enum NezhaCameraCciStatus {
     NezhaCciOk = 0,
@@ -23,6 +24,7 @@ enum NezhaCameraCciPhase {
     NezhaCciWrite,
     NezhaCciHalt,
     NezhaCciReset,
+    NezhaCciBurst,
 };
 
 struct NezhaCameraCciObservation {
@@ -50,6 +52,14 @@ enum NezhaCameraCciStatus nezha_camera_cci_read_byte(
 enum NezhaCameraCciStatus nezha_camera_cci_write_byte(
     const struct NezhaCameraRegisterIo *io, unsigned master, uint8_t slave,
     uint16_t reg, uint8_t value, struct NezhaCameraCciObservation *observation);
+
+/* Queue 0 must belong to this controller owner and support Qualcomm's
+ * eleven-byte continuations and the Q0 threshold event. queue_words is
+ * the hardware's usable queue depth for this controller. */
+enum NezhaCameraCciStatus nezha_camera_cci_write_burst(
+    const struct NezhaCameraRegisterIo *io, unsigned master, uint8_t slave,
+    uint16_t reg, const uint8_t *bytes, size_t count, unsigned queue_words,
+    struct NezhaCameraCciObservation *observation);
 
 /* Select the original standard-mode timing for a measured controller rate.
  * This programs only the selected idle master's timing registers. */

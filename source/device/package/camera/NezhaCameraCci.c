@@ -22,7 +22,12 @@ enum {
     CciIrqGlobalClear = 0xc00,
     CciIrqClear = 0xc08,
     CciIrqStatus = 0xc0c,
+    CciIrqMask1 = 0xc10,
+    CciIrqClear1 = 0xc14,
+    CciIrqStatus1 = 0xc18,
     CciSetParam = 1,
+    CciLock = 6,
+    CciUnlock = 7,
     CciReport = 8,
     CciWrite = 9,
     CciRead = 10,
@@ -181,6 +186,151 @@ enum NezhaCameraCciStatus nezha_camera_cci_write_byte(
     observation->phase = NezhaCciWrite;
     status = run_queue(io, master, 0, address_word, write_word, observation);
     if (status == NezhaCciOk) {
+        observation->needs_recovery = false;
+    }
+    return status;
+}
+
+struct Burst {
+    const uint8_t *bytes;
+    size_t count, sent;
+    uint16_t reg;
+    unsigned packets, half_packets;
+};
+
+static unsigned burst_packet(struct Burst *burst, uint32_t words[3])
+{
+    uint8_t packet[12] = {0};
+    unsigned used = 1;
+    if (burst->sent == 0) {
+        packet[used++] = (uint8_t)(burst->reg >> 8);
+        packet[used++] = (uint8_t)burst->reg;
+    }
+    while (used < sizeof(packet) && burst->sent < burst->count) {
+        packet[used++] = burst->bytes[burst->sent++];
+    }
+    ++burst->packets;
+    const unsigned wire_count = burst->sent == burst->count ? used - 1 :
+        (burst->packets % burst->half_packets == 0 ? 14u : 15u);
+    packet[0] = (uint8_t)(CciWrite | (wire_count << 4));
+    const unsigned word_count = (used + 3u) / 4u;
+    for (unsigned i = 0; i < word_count; ++i) {
+        words[i] = 0;
+        for (unsigned j = 0; j < 4; ++j) {
+            words[i] |= (uint32_t)packet[i * 4u + j] << (j * 8u);
+        }
+    }
+    return word_count;
+}
+
+static enum NezhaCameraCciStatus burst_wait(const struct NezhaCameraRegisterIo *io,
+    unsigned master, uint32_t threshold, bool final, struct NezhaCameraCciObservation *observation)
+{
+    const uint32_t report = 1u << (4u + 12u * master);
+    const uint32_t nack = 3u << (27u + 2u * master);
+    const uint32_t errors = master == 0 ? 0x18000ee6u : 0x60ee6000u;
+    for (unsigned ms = 0; ms <= CciTimeoutMs; ++ms) {
+        const uint32_t irq = io->read(io->context, CciIrqStatus);
+        const uint32_t irq1 = io->read(io->context, CciIrqStatus1);
+        observation->irq = irq;
+        if ((irq & errors) != 0 || (irq & report) != 0) {
+            clear_status(io, irq & (errors | report));
+            if ((irq & errors) != 0) {
+                return (irq & nack) != 0 ? NezhaCciNack : NezhaCciIoError;
+            }
+            return final ? NezhaCciOk : NezhaCciQueue;
+        }
+        if ((irq1 & threshold) != 0) {
+            io->write(io->context, CciIrqClear1, threshold);
+            io->write(io->context, CciIrqGlobalClear, 1);
+            if (!final) {
+                return NezhaCciOk;
+            }
+        }
+        if (ms != CciTimeoutMs) {
+            io->wait_ms(io->context, 1);
+        }
+    }
+    return NezhaCciTimeout;
+}
+
+enum NezhaCameraCciStatus nezha_camera_cci_write_burst(
+    const struct NezhaCameraRegisterIo *io, unsigned master, uint8_t slave,
+    uint16_t reg, const uint8_t *bytes, size_t count, unsigned queue_words,
+    struct NezhaCameraCciObservation *observation)
+{
+    if (bytes == NULL || count == 0 || count > UINT16_MAX || queue_words < 16 || queue_words > 128) {
+        return NezhaCciInvalid;
+    }
+    enum NezhaCameraCciStatus status = check_request(io, master, slave, observation);
+    if (status != NezhaCciOk) {
+        return status;
+    }
+    const uint32_t offset = queue_offset(master, 0);
+    const uint32_t threshold = 1u << (18u + master * 4u);
+    const uint32_t owned_irq0 = (1u << (4u + 12u * master)) |
+        (master == 0 ? 0x18000ee6u : 0x60ee6000u);
+    const uint32_t mask = io->read(io->context, CciIrqMask1);
+    if (mask == UINT32_MAX || io->read(io->context, CciQueueCount + offset) != 0 ||
+        (io->read(io->context, CciIrqStatus) & owned_irq0) != 0 ||
+        (io->read(io->context, CciIrqStatus1) & threshold) != 0) {
+        return NezhaCciBusy;
+    }
+
+    observation->phase = NezhaCciBurst;
+    io->write(io->context, CciIrqMask1, mask | threshold);
+    if (io->read(io->context, CciIrqMask1) != (mask | threshold)) {
+        io->write(io->context, CciIrqMask1, mask);
+        return NezhaCciIoError;
+    }
+    observation->needs_recovery = true;
+    const uint32_t load = CciQueueLoad + offset;
+    io->write(io->context, load, CciSetParam | ((uint32_t)slave << 4));
+    io->write(io->context, load, CciLock);
+    struct Burst burst = {.bytes = bytes, .count = count, .reg = reg,
+                          .half_packets = (queue_words - 4u) / 6u};
+    unsigned prefix = 2;
+    unsigned packets = 2u * burst.half_packets;
+    while (burst.sent < burst.count) {
+        const uint32_t queued = io->read(io->context, CciQueueCount + offset);
+        if (queued > queue_words || packets * 3u + 2u > queue_words - queued) {
+            status = NezhaCciQueue;
+            break;
+        }
+        unsigned submitted = prefix;
+        for (unsigned i = 0; i < packets && burst.sent < burst.count; ++i) {
+            uint32_t words[3];
+            const unsigned n = burst_packet(&burst, words);
+            for (unsigned j = 0; j < n; ++j) {
+                io->write(io->context, load, words[j]);
+            }
+            submitted += n;
+        }
+        const bool final = burst.sent == burst.count;
+        if (final) {
+            io->write(io->context, load, CciUnlock);
+            io->write(io->context, load, CciReport | CciReportIrqEnable);
+            submitted += 2;
+        }
+        io->write(io->context, CciQueueExec + offset, submitted);
+        io->write(io->context, CciQueueStart, 1u << (master * 2u));
+        status = burst_wait(io, master, threshold, final, observation);
+        if (status != NezhaCciOk) {
+            break;
+        }
+        prefix = 0;
+        packets = burst.half_packets;
+    }
+    if ((io->read(io->context, CciIrqStatus1) & threshold) != 0) {
+        io->write(io->context, CciIrqClear1, threshold);
+        io->write(io->context, CciIrqGlobalClear, 1);
+    }
+    io->write(io->context, CciIrqMask1, mask);
+    if (status == NezhaCciOk) {
+        if (io->read(io->context, CciQueueCount + offset) != 0 ||
+            io->read(io->context, CciIrqMask1) != mask) {
+            return NezhaCciQueue;
+        }
         observation->needs_recovery = false;
     }
     return status;

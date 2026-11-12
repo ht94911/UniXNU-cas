@@ -5,7 +5,8 @@
 
 /* Full CSID/VFE register layout and the two initial buffer sequence come
  * from Qualcomm CAMSS v24, 11c60fc17fd5, csid_configure_stream and
- * vfe_enable_output_v2. The Lite register pages have a different layout. */
+ * vfe_enable_output_v2. The C-PHY selector uses Qualcomm's CSID v2
+ * phy_type field. The Lite register pages have a different layout. */
 enum {
     CsidIrqCommand = 0x110,
     CsidRegUpdate = 0x114,
@@ -20,6 +21,7 @@ enum {
     CsidRdi0IrqClear = 0x22c,
     CsidRxConfig0 = 0x880,
     CsidRxConfig1 = 0x884,
+    CsidRxCphy = 1 << 24,
     CsidRdi0Config0 = 0x5480,
     CsidRdi0Control = 0x5488,
     CsidRdi0Config1 = 0x5494,
@@ -50,15 +52,21 @@ static void apply_rdi0_update(const struct NezhaCamera1080Io *io, uint32_t updat
 
 static bool receiver_config(const struct NezhaCamera1080Input *input, uint32_t *config)
 {
+    const bool cphy = input->source == NezhaCamera1080Cphy;
+    const unsigned lane_limit = cphy ? 3 : 4;
     unsigned lanes;
     uint32_t route;
     switch (input->source) {
     case NezhaCamera1080Dphy:
-        if (input->index >= 6 || input->lane_count == 0 || input->lane_count > 4) {
+    case NezhaCamera1080Cphy:
+        if (input->index >= 6 || input->lane_count == 0 || input->lane_count > lane_limit) {
             return false;
         }
         lanes = input->lane_count;
         route = (input->index + 1u) << 20;
+        if (cphy) {
+            route |= CsidRxCphy;
+        }
         break;
     case NezhaCamera1080Tpg:
         if (input->index >= 3) {
@@ -75,7 +83,7 @@ static bool receiver_config(const struct NezhaCamera1080Input *input, uint32_t *
     uint32_t seen = 0;
     for (unsigned i = 0; i < lanes; ++i) {
         const unsigned position = input->source == NezhaCamera1080Tpg ? i : input->lanes[i];
-        if (position >= 4 || (seen & (1u << position)) != 0) {
+        if (position >= lane_limit || (seen & (1u << position)) != 0) {
             return false;
         }
         seen |= 1u << position;

@@ -29,9 +29,9 @@ enum NezhaCameraCciStatus nezha_camera_ovx10500u_read_identity(
 
 enum NezhaCameraCciStatus nezha_camera_ovx10500u_apply_mode(
     const struct NezhaCameraRegisterIo *cci, const struct NezhaCameraOvxModeWrite *writes,
-    size_t count, size_t *applied, struct NezhaCameraCciObservation *transfer)
+    size_t count, unsigned burst_queue_words, size_t *applied, struct NezhaCameraCciObservation *transfer)
 {
-    assert(cci != NULL && writes != NULL && count == 1);
+    assert(cci != NULL && writes != NULL && count == 1 && burst_queue_words == 64);
     event('m');
     *applied = count;
     *transfer = (struct NezhaCameraCciObservation){0};
@@ -87,6 +87,14 @@ void nezha_camera1080_request_rdi0_stop(const struct NezhaCamera1080Io *io)
     event('t');
 }
 
+bool nezha_camera1080_requeue_rdi0(const struct NezhaCamera1080Io *io,
+    const struct NezhaCameraRdi1080 *layout, unsigned buffer)
+{
+    assert(io != NULL && layout->image_address[0] == 0x2000 && buffer == 0);
+    event('q');
+    return true;
+}
+
 static void unused_register_write(void *context, uint32_t offset, uint32_t value)
 {
     (void)context;
@@ -100,12 +108,12 @@ int main(void)
     const struct NezhaCameraRegisterIo cci = {0};
     const struct NezhaCamera1080Io camss = {NULL, unused_register_write, unused_register_write};
     const ArmSmmu4KIo smmu = {0};
-    const struct NezhaCameraMainCaptureIo io = {&cci, &camss, &smmu};
+    const struct NezhaCameraMainCaptureIo io = {&cci, &camss, &smmu, 64};
     const struct NezhaCameraDmaPlan plan = {.frames = {{0x200000, 0x60000}, {0x300000, 0x60000}}};
     const ArmSmmu4KContextConfig context = {.lower_tables = &plan.tables};
-    const struct NezhaCameraOvxModeWrite standby = {0x3514, 0x7e, 0};
+    const struct NezhaCameraOvxModeWrite standby = {.reg = 0x3514, .value = 0x7e};
     struct NezhaCameraMainMode mode = {0x4321, 640, 480, &standby, 1,
-                                      {NezhaCamera1080Dphy, 0, 4, {0, 1, 2, 3}}};
+                                      {NezhaCamera1080Cphy, 0, 3, {0, 1, 2}}};
     struct NezhaCameraMainCapture capture = {0};
 
     assert(!nezha_camera_main_capture_start(&io, &mode, &plan, &context, 2, 1, 100, &capture));
@@ -125,16 +133,32 @@ int main(void)
     assert(strcmp(operations, "imars") == 0);
     assert(!nezha_camera_main_capture_finish_stop(&io, &context, 100, &capture));
 
+    unsigned buffer = 9;
+    struct NezhaCamera1080Events events = {.start_of_frame = true};
+    assert(!nezha_camera_main_capture_complete_frame(&capture, &events, &buffer) && buffer == 9);
+    events.buffer_done = true;
+    assert(nezha_camera_main_capture_complete_frame(&capture, &events, &buffer) && buffer == 0);
+    assert(nezha_camera_main_capture_release_frame(&io, &capture, 0, true));
+    assert(!nezha_camera_main_capture_release_frame(&io, &capture, 0, true));
+    assert(nezha_camera_main_capture_complete_frame(&capture, &events, &buffer) && buffer == 1);
+    assert(nezha_camera_main_capture_complete_frame(&capture, &events, &buffer) && buffer == 0);
+    assert(!nezha_camera_main_capture_complete_frame(&capture, &events, &buffer));
+    assert(capture.completed_frames == 3 && capture.cpu_frames == 3);
+
     fail_stop = true;
     assert(!nezha_camera_main_capture_request_stop(&io, &capture));
-    assert(strcmp(operations, "imarsx") == 0);
+    assert(strcmp(operations, "imarsqx") == 0);
     assert(capture.dma.context_active && !nezha_camera_main_capture_finish_stop(&io, &context, 100, &capture));
     fail_stop = false;
     capture.sensor_transfer.needs_recovery = false; /* model of owner recovery */
     assert(nezha_camera_main_capture_request_stop(&io, &capture));
-    assert(strcmp(operations, "imarsxxt") == 0);
+    assert(strcmp(operations, "imarsqxxt") == 0);
+    assert(!nezha_camera_main_capture_finish_stop(&io, &context, 100, &capture));
+    assert(!nezha_camera_main_capture_release_frame(&io, &capture, 0, true));
+    assert(nezha_camera_main_capture_release_frame(&io, &capture, 0, false));
+    assert(nezha_camera_main_capture_release_frame(&io, &capture, 1, false));
     assert(nezha_camera_main_capture_finish_stop(&io, &context, 100, &capture));
-    assert(strcmp(operations, "imarsxxtd") == 0 && capture.stage == NezhaCaptureIdle);
+    assert(strcmp(operations, "imarsqxxtd") == 0 && capture.stage == NezhaCaptureIdle);
 
-    puts("Main camera requires the full identity and active DMA before stream-on and retains DMA on failed stop");
+    puts("Main camera verifies identity, starts DMA before stream-on, and hands off frames before teardown");
 }

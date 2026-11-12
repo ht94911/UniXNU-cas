@@ -17,6 +17,8 @@ struct NezhaCameraOvxModeWrite {
     uint16_t reg;
     uint8_t value;
     uint16_t delay_ms;
+    const uint8_t *burst;
+    size_t burst_bytes;
 };
 
 /* Use the powered, initialized and exclusively held nezha CCI0 master 1.
@@ -28,7 +30,8 @@ enum NezhaCameraCciStatus nezha_camera_ovx10500u_read_identity(
  * stays under the capture engine. The original trace is not a mode profile. */
 enum NezhaCameraCciStatus nezha_camera_ovx10500u_apply_mode(
     const struct NezhaCameraRegisterIo *cci, const struct NezhaCameraOvxModeWrite *writes,
-    size_t count, size_t *applied, struct NezhaCameraCciObservation *transfer);
+    size_t count, unsigned burst_queue_words, size_t *applied,
+    struct NezhaCameraCciObservation *transfer);
 
 /* Assert stream-on only after receiver, DMA and buffers are ready. */
 enum NezhaCameraCciStatus nezha_camera_ovx10500u_set_stream(

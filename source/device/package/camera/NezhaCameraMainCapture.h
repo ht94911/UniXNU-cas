@@ -10,6 +10,7 @@ struct NezhaCameraMainCaptureIo {
     const struct NezhaCameraRegisterIo *cci;
     const struct NezhaCamera1080Io *camss;
     const ArmSmmu4KIo *smmu;
+    unsigned cci_queue_words;
 };
 
 struct NezhaCameraMainMode {

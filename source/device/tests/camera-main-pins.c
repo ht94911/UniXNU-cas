@@ -57,7 +57,7 @@ static void clock_write(void *cookie, uint32_t offset, uint32_t value)
     switch (offset) {
     case ClockCommand: board->command = value & ~1u; break;
     case ClockConfig:
-        assert((board->gate & (off | 1u)) == off);
+        assert((board->gate & (off | 1u)) == 1);
         board->config = value;
         break;
     case ClockGate:
