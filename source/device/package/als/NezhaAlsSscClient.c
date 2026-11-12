@@ -3,6 +3,8 @@
 
 // The portable reference uses a synchronous 2s request receipt timeout.
 // This owner-driven client retains bounded asynchronous requests instead.
+// An acknowledged SUID lookup with register_updates remains subscribed while
+// sensors are registering; later SUID events are not pending QMI receipts.
 #define RESPONSE_US UINT64_C(2000000)
 #define CTRL_PORT UINT32_C(0xfffffffe)
 #define MAX_LUX_BITS UINT32_C(0x47811f00) // IEEE binary32 66110.0 lux
@@ -91,7 +93,7 @@ int nezha_als_ssc_interval(struct nezha_als_ssc_client *c, uint32_t interval) {
 int nezha_als_ssc_poll(struct nezha_als_ssc_client *c, uint64_t now) {
     if (!c || !c->epoch) return NezhaAlsClientArgument;
     if (c->error) return c->error;
-    if (c->phase != NezhaAlsRunning && c->phase != NezhaAlsDisabled && now >= c->deadline_us)
+    if (c->tx_state != NezhaAlsTxNone && now >= c->deadline_us)
         return fail(c, NezhaAlsClientTimeout);
     if (c->phase == NezhaAlsLookup && c->tx_state == NezhaAlsTxNone && c->match.sensor_uid_valid) {
         if (c->interval_us) { if (queue_request(c, NezhaAlsEnable, now)) return c->error; }
@@ -152,7 +154,7 @@ int nezha_als_ssc_receive(struct nezha_als_ssc_client *c, uint32_t node, uint32_
     if (node != c->endpoint.node || port != c->endpoint.port) {
         c->stale++; return NezhaAlsClientOkay;
     }
-    if (c->phase != NezhaAlsRunning && c->phase != NezhaAlsDisabled && now >= c->deadline_us)
+    if (c->tx_state != NezhaAlsTxNone && now >= c->deadline_us)
         return fail(c, NezhaAlsClientTimeout);
     if (qmi[0] == 2) return response(c, qmi, bytes);
     Tcs3760SnsReport report = {0};

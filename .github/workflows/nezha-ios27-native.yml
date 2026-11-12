@@ -1,7 +1,7 @@
-name: nezha iPhone27 ALS006 Native006 reviewed caller pin
+name: nezha iPhone27 ALS007 acknowledged SUID updates
 on:
   push:
-    branches: [codex/ios27-brightness-als006-native006fix-20261112]
+    branches: [codex/ios27-brightness-als007-suid-20261112]
   workflow_dispatch:
 permissions:
   contents: read

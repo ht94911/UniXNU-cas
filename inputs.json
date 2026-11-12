@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "ALS006 Native006 repair: reviewed caller pin for the stock QRTR client port candidate over fixed G030/manual005",
+  "purpose": "ALS007: acknowledged SUID update lifetime;2s timeout remains on pending QMI requests over fixed006/G030",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "5e7d8f4f5d885820c7ff1c1564559ec7abf6b793",
+  "device_revision": "f4919d4134b3804cb034d7c1e4350072f12cbe82",
   "soc_revision": "e565439bf1a13d0224f0a9adcfc1eef8df7ad142",
   "xcode": "26.6",
   "files": {
@@ -177,7 +177,7 @@
     "source/device/package/als/NezhaAlsFrontend.cpp": "bec2f7a9eed95f54aad492cc8f447e1540794780ab36241b00c4447062038215",
     "source/device/package/als/NezhaAlsQrtrBackend.c": "4e0dba1e5d48a800a73429c7d6b0ce6b7366a60cdfe01a1c5ea14f6c346978e3",
     "source/device/package/als/NezhaAlsQrtrBackend.h": "bb20b11dc2c110f7843c31638eef8fb9dd5394c952d4e1d440eec9cb32ee9292",
-    "source/device/package/als/NezhaAlsSscClient.c": "13f110815bbd7d44bff672cc001b101afbc45e70fb2332c040ac45c517a45e44",
+    "source/device/package/als/NezhaAlsSscClient.c": "ec6a76ca75ad294e2466ce1d9999ccc59b635790c161665f6f61e16985042ab9",
     "source/device/package/als/NezhaAlsSscClient.h": "1cb84ad4dd734cb533e9a7aa1669a75ea5a161c643d16f82da1a6481717e82e5",
     "source/device/package/als/NezhaAlsState.h": "2876ff7d3dc8fe4521bc535b28b47c5944382c26ee037fa345c0ea79180e57cf",
     "source/device/package/als/README.md": "f856f5d4026a9d8579ad9a5e2dad02bd553bd94e665713ac244d8bb34d0334ca",
@@ -415,7 +415,7 @@
     "hardware": false
   },
   "als_abi": {
-    "source_revision": "5e7d8f4f5d885820c7ff1c1564559ec7abf6b793",
+    "source_revision": "f4919d4134b3804cb034d7c1e4350072f12cbe82",
     "source_files": [
       "package/als/NezhaAlsBackend.h",
       "package/als/NezhaAlsFrontend.cpp",
@@ -438,7 +438,7 @@
     "phone_operations": false,
     "private_binary_inputs_uploaded": false,
     "opaque_original_event_constructor": true,
-    "runtime_state_machine_changed": false,
+    "runtime_state_machine_changed": true,
     "required_native_call_codegen": [
       "timestamp x0 and six uint32 arguments to original ambient constructor",
       "OSObject-base release: vptr diversity0xcda1, slot5/40bytes, diversity0x3a87"
@@ -452,9 +452,9 @@
     "first_formal_link_selected": true,
     "normal_F2_recipe": true
   },
-  "device_evidence_revision": "5e7d8f4f5d885820c7ff1c1564559ec7abf6b793",
+  "device_evidence_revision": "f4919d4134b3804cb034d7c1e4350072f12cbe82",
   "als_owner": {
-    "source_revision": "5e7d8f4f5d885820c7ff1c1564559ec7abf6b793",
+    "source_revision": "f4919d4134b3804cb034d7c1e4350072f12cbe82",
     "source_files": [
       "package/als-owner/NezhaAlsNativeCaller.cpp",
       "package/als-owner/NezhaAlsNativeCaller.h",
@@ -578,5 +578,12 @@
     "same_framework_tree": true,
     "same_USB_SoC_firmware_sources": true,
     "same_frontend_protocol_sources": true
+  },
+  "native006_base": {
+    "run": 43166312543,
+    "head": "d1d777ce3255efe3d4048fa5877631770c73f0e8",
+    "source": "5e7d8f4f5d885820c7ff1c1564559ec7abf6b793",
+    "phone_ACK_and_report": true,
+    "query_tx_none_timed_out": true
   }
 }
