@@ -1,7 +1,7 @@
-name: nezha iPhone27 GPU bounded App input - native041
+name: nezha iPhone27 camera clock and CCI probe
 on:
   push:
-    branches: [codex/ios27-gpu-autoapp-041-20261111]
+    branches: [codex/ios27-camera001-20261113]
   workflow_dispatch:
 permissions:
   contents: read

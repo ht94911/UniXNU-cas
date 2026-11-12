@@ -527,6 +527,7 @@ extern void sheng_audio_probe(void);
 extern void sheng_buttons_probe(void);
 extern void sheng_backlight_probe(void);
 extern "C" void sheng_dpu_probe(void);
+extern "C" void nezha27_camera_probe_start(void);
 void native_legacy_display_late_probe(void) {
     // NEZHA_GPU_STARTUP_DIAG_BEGIN
     IOLog("NEZHA LATE INIT: enter keystore\n");
@@ -538,6 +539,7 @@ void native_legacy_display_late_probe(void) {
     // Same post-IOBSD source lifecycle;only nezha touch/keys and selected27 HID.
     nezha_input_start();
     native_hid_input_probe();
+    nezha27_camera_probe_start();
     // NEZHA_GPU_STARTUP_DIAG_BEGIN
     IOLog("NEZHA LATE INIT: HID returned; enter IOSurface\n");
     // NEZHA_GPU_STARTUP_DIAG_END
