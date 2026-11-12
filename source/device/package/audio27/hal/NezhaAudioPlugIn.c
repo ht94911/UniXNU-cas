@@ -37,6 +37,7 @@ static atomic_uint gDiscoveryActive;
 static io_connect_t gConnect;
 static mach_vm_address_t gMapAddress[3];
 static const NaAudioStatus *gControl;
+static NaAudioStatus gLastStatus;
 static uint64_t *gOutput;static const uint64_t *gInput;
 static uint64_t gReference[NA_AUDIO_RING_FRAMES];
 static UInt32 gIoUsers;static int gInputAvailable,gOutputSelected=1,gInputSelected=1,gCaptureIssued;
@@ -50,6 +51,16 @@ static struct {UInt32 id,count;} gUsers[32];
 static uint32_t gReportedDeviceList=UINT32_MAX,gObservationCount;
 static UInt32 gSystemRouteSamples;
 static NaHalObservation gObservations[NA_HAL_HISTORY_CAPACITY];
+/* One handled scheduling miss and one remaining failure, forwarded on the
+ * existing discovery timer. The realtime callback never makes a logging RPC. */
+static struct {atomic_uint state;uint32_t reason,flags,frames;int32_t result,delta;} gIoNotes[2];
+static void note_io(unsigned slot,uint32_t reason,uint32_t flags,uint32_t frames,int32_t result,int64_t delta) {
+    unsigned expected=0;
+    if (!atomic_compare_exchange_strong(&gIoNotes[slot].state,&expected,1)) return;
+    gIoNotes[slot].reason=reason;gIoNotes[slot].flags=flags;gIoNotes[slot].frames=frames;gIoNotes[slot].result=result;
+    gIoNotes[slot].delta=delta<INT32_MIN ? INT32_MIN:delta>INT32_MAX ? INT32_MAX:(int32_t)delta;
+    atomic_store_explicit(&gIoNotes[slot].state,2,memory_order_release);
+}
 static void report_hal(uint32_t kind,uint32_t object,uint32_t selector,uint32_t scope,uint32_t element,int32_t result,uint32_t value) {
     if (!gConnect) return;
     NaHalObservation event={NA_HAL_OBSERVATION_VERSION,kind,object,selector,scope,element,result,value};
@@ -129,6 +140,7 @@ static void disconnect(void) {
     }
     if (gConnect) IOServiceClose(gConnect);
     gConnect=0;gControl=NULL;gOutput=NULL;gInput=NULL;gInputAvailable=0;
+    memset(&gLastStatus,0,sizeof gLastStatus);
     gIoUsers=0;memset(gUsers,0,sizeof gUsers);
     gCaptureIssued=0;gCaptureTouch=0;
     memset(gReference,0,sizeof gReference);
@@ -178,14 +190,24 @@ static int connect_service(void) {
         if (map_type(NaAudioInputMemory,NA_AUDIO_RING_BYTES)) goto bad;
         gInput=(const uint64_t *)(uintptr_t)gMapAddress[2];
     }
-    gEpoch=s.epoch;gReportedDeviceList=UINT32_MAX;gSystemRouteSamples=0;
+    gEpoch=s.epoch;gLastStatus=s;gReportedDeviceList=UINT32_MAX;gSystemRouteSamples=0;
     memset(gReference,0,sizeof gReference);
     report_hal(NaHalConnected,kPlugIn,0,0,0,0,1);return 0;
 bad:disconnect();return -1;
 }
+/* gLock protects the mapping and this last complete status. A busy publication
+ * does not retire a live connection or its immutable clock. PCM callers must
+ * use fresh counters and drop the period when the publication is busy. */
+static int status_snapshot(NaAudioStatus *s,int allow_cached_clock) {
+    if (!gControl) return NA_MISSING;
+    int result=na_audio_status_snapshot(gControl,s);
+    if (!result) gLastStatus=*s;
+    else if (result==NA_BUSY && allow_cached_clock) {*s=gLastStatus;return NA_OK;}
+    return result;
+}
 static int available(void) {
     NaAudioStatus s;
-    return gControl && !na_audio_status_snapshot(gControl,&s) && s.epoch==gEpoch &&
+    return !status_snapshot(&s,1) && s.epoch==gEpoch &&
         (s.state&NaAudioOutputReady) && !(s.state&NaAudioFault);
 }
 static void check_service(void) {
@@ -318,7 +340,17 @@ static void sample_system_route(void) {
     pthread_mutex_unlock(&gLock);
     if (sample==8 && !events[0].result) sample_default_eligibility(epoch,connection,target);
 }
-static void retry_service(void *context) {(void)context;check_service();sample_system_route();}
+static void retry_service(void *context) {
+    (void)context;check_service();sample_system_route();
+    pthread_mutex_lock(&gLock);
+    if (gConnect) for (unsigned i=0;i<2;++i) if (atomic_load_explicit(&gIoNotes[i].state,memory_order_acquire)==2) {
+        report_hal(NaHalPropertyError,kOutStream,'wMix',kAudioObjectPropertyScopeOutput,gIoNotes[i].reason,gIoNotes[i].result,gIoNotes[i].flags);
+        report_hal(NaHalPropertyError,kOutStream,'wDel',kAudioObjectPropertyScopeOutput,gIoNotes[i].reason,gIoNotes[i].result,(uint32_t)gIoNotes[i].delta);
+        report_hal(NaHalPropertyError,kOutStream,'wLen',kAudioObjectPropertyScopeOutput,gIoNotes[i].reason,gIoNotes[i].result,gIoNotes[i].frames);
+        atomic_store_explicit(&gIoNotes[i].state,3,memory_order_release);
+    }
+    pthread_mutex_unlock(&gLock);
+}
 static UInt32 latencyFrames(void) {return NA_AUDIO_LEAD_FRAMES;}
 static Float32 toDb(Float32 value) {if (!isfinite(value)) return kMinDb;Float32 r=1.0f-fminf(1,fmaxf(0,value));return kMinDb*r*r;}
 static Float32 toScalar(Float32 db) {if (!isfinite(db) || db<=kMinDb) return 0;return db>=0 ? 1:1-sqrtf(db/kMinDb);}
@@ -484,7 +516,7 @@ static OSStatus StartIO(AudioServerPlugInDriverRef d,AudioObjectID o,UInt32 clie
     if (slot==32) goto out;
     if (!gIoUsers) {
         NaAudioStatus s;
-        if (na_audio_status_snapshot(gControl,&s) || clock_ready(&s)) goto out;
+        if (status_snapshot(&s,1) || clock_ready(&s)) goto out;
         if (gOutputSelected && call(NaAudioStartOutput)!=KERN_SUCCESS) goto out;
         gCaptureIssued=0;gCaptureTouch=0; /* Input starts on actual ReadInput. */
         if (na_clock_frames(s.anchor_host,mach_absolute_time(),s.ticks_per_frame_q32,&gZeroOrigin)) {call(NaAudioStopOutput);call(NaAudioStopInput);goto out;}
@@ -502,9 +534,11 @@ static OSStatus StopIO(AudioServerPlugInDriverRef d,AudioObjectID o,UInt32 clien
 }
 static OSStatus GetZeroTimeStamp(AudioServerPlugInDriverRef d,AudioObjectID o,UInt32 client,Float64 *sample,UInt64 *host,UInt64 *seed) {
     (void)d;(void)client;if (o!=kDevice || !sample || !host || !seed) return kAudioHardwareIllegalOperationError;
-    if (pthread_mutex_trylock(&gLock)) return kAudioHardwareNotRunningError;
+    /* Metadata/close operations share this lock. Contention is not a stopped
+     * clock: serialize the scalar timestamp snapshot with those operations. */
+    pthread_mutex_lock(&gLock);
     NaAudioStatus s;uint64_t frames,stamp;OSStatus r=kAudioHardwareNotRunningError;
-    if (gControl && gIoUsers && !na_audio_status_snapshot(gControl,&s) && s.epoch==gEpoch &&
+    if (gControl && gIoUsers && !status_snapshot(&s,1) && s.epoch==gEpoch &&
         (s.state&NaAudioOutputReady) && !(s.state&NaAudioFault) &&
         !na_clock_frames(s.anchor_host,mach_absolute_time(),s.ticks_per_frame_q32,&frames)) {
         uint64_t wraps=frames>gZeroOrigin ? (frames-gZeroOrigin)/kZeroPeriod:0;
@@ -525,20 +559,45 @@ static OSStatus DoIOOperation(AudioServerPlugInDriverRef d,AudioObjectID o,Audio
     if (o!=kDevice || !info || !main || !frames || frames>4096) return kAudioHardwareIllegalOperationError;
     int input=op==kAudioServerPlugInIOOperationReadInput && stream==kInStream;
     int reference=op==kAudioServerPlugInIOOperationReadInput && stream==kReferenceStream;
+    int output=op==kAudioServerPlugInIOOperationWriteMix && stream==kOutStream;
+    if (!input && !reference && !output) return kAudioHardwareIllegalOperationError;
     if (input || reference) memset(main,0,frames*sizeof(Float32)*(reference ? 2:1));
-    if (pthread_mutex_trylock(&gLock)) return kAudioHardwareNotRunningError;
-    OSStatus result=kAudioHardwareNotRunningError;NaAudioStatus s;
-    if (!gControl || !gIoUsers || na_audio_status_snapshot(gControl,&s) || s.epoch!=gEpoch || (s.state&NaAudioFault)) goto out;
+    if (pthread_mutex_trylock(&gLock)) {
+        note_io(0,1,output ? info->mOutputTime.mFlags:info->mInputTime.mFlags,frames,0,0);
+        return 0; /* A dropped output period or silent input is an underrun. */
+    }
+    OSStatus result=kAudioHardwareNotRunningError;NaAudioStatus s={0};
+    int snapshot=gControl && gIoUsers ? status_snapshot(&s,0):NA_MISSING;
+    if (snapshot==NA_BUSY) {
+        note_io(0,7,0,frames,0,snapshot);result=0;goto out;
+    }
+    if (!gControl || !gIoUsers || snapshot || s.epoch!=gEpoch ||
+        !(s.state&NaAudioOutputReady) || (s.state&NaAudioFault)) {
+        uint32_t flags=(gControl ? 1u:0u)|(gIoUsers ? 2u:0u)|(!snapshot ? 4u:0u)|
+            (!snapshot && s.epoch==gEpoch ? 8u:0u)|(s.state<<8);
+        note_io(1,2,flags,frames,result,snapshot);goto out;
+    }
     const AudioTimeStamp *time=input || reference ? &info->mInputTime:&info->mOutputTime;
     Float64 sample=time->mSampleTime;
-    if (!(time->mFlags&kAudioTimeStampSampleTimeValid) || !isfinite(sample) || sample<0 || floor(sample)!=sample || sample>NA_AUDIO_MAX_FRAME-frames) goto out;
+    if (!(time->mFlags&kAudioTimeStampSampleTimeValid) || !isfinite(sample) || sample<0 || floor(sample)!=sample || sample>NA_AUDIO_MAX_FRAME-frames) {
+        result=kAudioHardwareIllegalOperationError;note_io(1,3,time->mFlags,frames,result,0);goto out;
+    }
     uint64_t t=(uint64_t)sample;
     if (!input && op==kAudioServerPlugInIOOperationWriteMix && stream==kOutStream && gOutputSelected) {
-        if (t<s.out_consumed || t+frames>s.out_consumed+NA_AUDIO_RING_FRAMES) goto out;
+        if (t+frames>s.out_consumed+NA_AUDIO_RING_FRAMES) {
+            result=kAudioHardwareIllegalOperationError;note_io(1,5,time->mFlags,frames,result,(int64_t)t-(int64_t)s.out_consumed);goto out;
+        }
+        unsigned first=0;
+        if (t<s.out_consumed) {
+            uint64_t late=s.out_consumed-t;
+            first=late<frames ? (unsigned)late:frames;
+            note_io(0,4,time->mFlags,frames,0,-(int64_t)late);
+        }
         Float32 g=gain();const Float32 *src=main;
-        for (unsigned i=0;i<frames;++i) {
+        for (unsigned i=first;i<frames;++i) {
             int r=na_reference_mix(gOutput,gReference,t+i,s16(src[2*i]*g),s16(src[2*i+1]*g));
-            if (r && r!=NA_OWNERSHIP) goto out;
+            if (r==NA_BUSY) {note_io(0,8,time->mFlags,frames,0,r);continue;}
+            if (r && r!=NA_OWNERSHIP) {note_io(1,6,time->mFlags,frames,result,r);goto out;}
         }
         result=0;
     } else if (reference && gReferenceSelected) {
@@ -555,7 +614,8 @@ static OSStatus DoIOOperation(AudioServerPlugInDriverRef d,AudioObjectID o,Audio
         if (!gCaptureIssued || now-gCaptureTouch>=s.host_hz/10) {
             /* This selector only updates a kernel request/lease, never waits
              * for ADC, DSP or DMA. Do not record on output-only StartIO. */
-            if (call(NaAudioStartInput)!=KERN_SUCCESS) goto out;
+            kern_return_t requested=call(NaAudioStartInput);
+            if (requested!=KERN_SUCCESS) {note_io(1,11,time->mFlags,frames,result,requested);goto out;}
             gCaptureIssued=1;gCaptureTouch=now;
         }
         Float32 *out=main;
@@ -564,7 +624,8 @@ static OSStatus DoIOOperation(AudioServerPlugInDriverRef d,AudioObjectID o,Audio
             if (t+i<s.in_produced && s.in_produced-(t+i)<=NA_AUDIO_RING_FRAMES && !na_ring_read(gInput,t+i,&value)) out[i]=value/32768.0f;
         }
         result=0;
-    }
+    } else note_io(1,10,(gOutputSelected ? 1u:0u)|(gReferenceSelected ? 2u:0u)|
+                        (gInputAvailable ? 4u:0u)|(gInputSelected ? 8u:0u),frames,result,stream);
 out:pthread_mutex_unlock(&gLock);return result;
 }
 static OSStatus EndIOOperation(AudioServerPlugInDriverRef d,AudioObjectID o,UInt32 c,UInt32 op,UInt32 frames,const AudioServerPlugInIOCycleInfo *i) {(void)d;(void)c;(void)op;(void)frames;(void)i;return o==kDevice ? 0:kAudioHardwareBadObjectError;}
