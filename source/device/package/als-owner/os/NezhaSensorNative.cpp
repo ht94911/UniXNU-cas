@@ -23,6 +23,20 @@ int room(void *v,uint32_t bytes) {
 void observe(void *,const char *kind,const char *name,uint32_t method,int result) {
     printf("NEZHA SENSOR RPC: kind=%s method=%u result=%d name=%s\n",kind,method,result,name);
 }
+int32_t invoke(void *v,uint32_t handle,uint32_t scalar,QcomRpcArg *args,uint32_t count) {
+    auto *s=static_cast<NezhaSensorNative *>(v);
+    uint32_t word0=0,word1=0;
+    if (count && args && args[0].data && args[0].bytes>=4) memcpy(&word0,args[0].data,4);
+    if (count && args && args[0].data && args[0].bytes>=8) memcpy(&word1,static_cast<uint8_t *>(args[0].data)+4,4);
+    const int32_t result=nezha_sensor_files_invoke(&s->files,handle,scalar,args,count);
+    // Fill the missing call identity in the existing observer. No extra trace
+    // buffer, transport, file contents or property values are logged.
+    printf("NEZHA SENSOR CALL: call=%u handle=%#x scalar=%#x argc=%u bytes=%u/%u/%u/%u words=%#x/%#x result=%d\n",
+           s->listener.reverse_calls+1,handle,scalar,count,
+           count>0 ? args[0].bytes:0,count>1 ? args[1].bytes:0,
+           count>2 ? args[2].bytes:0,count>3 ? args[3].bytes:0,word0,word1,result);
+    return result;
+}
 }
 extern "C" int nezha_sensor_native_buffers(NezhaSensorNative *s,NaResourceOwner *owner,NaAdsp *a) {
     if (!s || !owner || !a || s->attempted || a->stage!=NaAdspDma || a->initial_stop_mask!=3 ||
@@ -71,7 +85,7 @@ extern "C" int nezha_sensor_native_link(NezhaSensorNative *s,NaAdsp *a) {
     /* One actual fresh FastRPC session, unique within this owned link. The
      * Android driver also allocates its tgid_frpc instead of copying a PID. */
     if (!r) r=qcom_rpc_prepare(&s->rpc,&a->glink,s->memory.va,(uint32_t)s->memory.bytes,UINT64_C(0x0500000070000000),1,1,&rpc);
-    QcomRpcProvider provider={&s->files,nezha_sensor_files_invoke};
+    QcomRpcProvider provider={s,invoke};
     if (!r) r=qcom_listener_prepare(&s->listener,&s->rpc,&provider);
     if (r) return fail(s,r);
     s->linked=1;printf("NEZHA SENSOR: registered FastRPC and PDR local=%u epoch=fresh-adsp\n",port);return 0;

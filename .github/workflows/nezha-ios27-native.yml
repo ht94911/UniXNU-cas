@@ -1,7 +1,7 @@
-name: nezha iPhone27 ALS008 sensor FastRPC kernel declaration fix
+name: nezha iPhone27 ALS010 identify actual reverse sensor calls
 on:
   push:
-    branches: [codex/ios27-brightness-als008fix-memchr-20261113]
+    branches: [codex/ios27-brightness-als010-call-20261113]
   workflow_dispatch:
 permissions:
   contents: read

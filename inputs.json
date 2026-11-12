@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Actual G030-test ALS008 sensor-PD notifier, inline FastRPC, readonly listener and sensor SMMU binding; private inputs finalized only locally",
+  "purpose": "Actual G030-test ALS010: retained observer records actual reverse FastRPC methods and results after successful009 ODM stat; private inputs finalized only locally",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "b1fbe78496e884d7f073143065ed7bd2b866d9c5",
+  "device_revision": "c23c1b0500f6d1da5deac75538819d9761a61a99",
   "soc_revision": "e565439bf1a13d0224f0a9adcfc1eef8df7ad142",
   "xcode": "26.6",
   "files": {
@@ -281,7 +281,7 @@
     "source/device/scripts/hid-device-iphone-24A446.json": "af4668764ba1d2a4649b9c45d1ddbbabcb69e27659e7c35fbf9899f8f6bdbc7d",
     "source/device/scripts/legacy-display-iphone-24A446.json": "6f08ddf9377cc5c92a4a60ff75c3b452eb1a536720ebdf8fda9361846d8c8fea",
     "source/device/scripts/nezha-armcpu-asm-fix.py": "3d37c0c0e3613453c901a9622bc45a077c9acbd35ffe449046fa575b3b57af3a",
-    "source/device/scripts/nezha27-als-owner-inputs.json": "d450e6d5ea2ec183663645c1caf6f9bf9534d17e6020e1f714bb1a2734a77d30",
+    "source/device/scripts/nezha27-als-owner-inputs.json": "004f78202298b4417a2ae68c3210a18050219b6c5c4f373083a3a7ed2df62cf0",
     "source/device/scripts/qualify-armcpu-instructions.py": "dae7cb3b9faecaac7b268212bbd324ae172d3dffa0e94b06afc4581c9f4abe9b",
     "source/device/tests/brightness-poll-observation.cpp": "411bbcafa1d880c88608aadeecf573c0c40f31cfe938552f72639a3c50d17c1b",
     "source/device/tests/brightness-poll-observation.py": "1aeff817ab68609d46f47c98539971a6a772003981ff3e978cca7eedbca58111",
@@ -319,7 +319,7 @@
     "source/device/package/als-owner/platform/NezhaSensorFiles.c": "4be7a61fcf9c267f6512478598074069d009b1849507c0095c6d7002e8372308",
     "source/device/package/als-owner/platform/NezhaSensorBundle.c": "adf2225c9339e2f21a03d64289d81667664eb8d82859084fc58cb4b9dee29623",
     "source/device/package/als-owner/os/NezhaSensorInputs.c": "2039fdc3f322a8ecafb123d763473ea096737bc2638ba9c52df23e37f7681623",
-    "source/device/package/als-owner/os/NezhaSensorNative.cpp": "2dd185b1009539c50b20ea2bf0630f9205419201b5ed32b471470ffacbd8b2df",
+    "source/device/package/als-owner/os/NezhaSensorNative.cpp": "cf31eda2389de8cf6b2f7c91cff8e3bb954cf3cdf1a4c367a9cc680bc203404b",
     "source/device/package/als-owner/os/NezhaAudioSmmu.cpp": "833371d1e1f4068cadf60002da3867f7a346ece265a8a4d5773174649898fff5",
     "source/device/package/als-owner/upstream/QcomPdr.h": "b4acdf86ca147f61045586162d9be8e5db6ef2c79167c920cbe6b145d20bf306",
     "source/device/package/als-owner/upstream/QcomFastRpc.h": "58e9b90fdbe5bf0a887469ef9b01baf6c58359cb34f8cf2044976bbc3b8d0c30",
@@ -429,7 +429,7 @@
     "hardware": false
   },
   "als_abi": {
-    "source_revision": "b1fbe78496e884d7f073143065ed7bd2b866d9c5",
+    "source_revision": "c23c1b0500f6d1da5deac75538819d9761a61a99",
     "source_files": [
       "package/als/NezhaAlsBackend.h",
       "package/als/NezhaAlsFrontend.cpp",
@@ -468,7 +468,7 @@
   },
   "device_evidence_revision": "b1fbe78496e884d7f073143065ed7bd2b866d9c5",
   "als_owner": {
-    "source_revision": "b1fbe78496e884d7f073143065ed7bd2b866d9c5",
+    "source_revision": "c23c1b0500f6d1da5deac75538819d9761a61a99",
     "source_files": [
       "package/als-owner/platform/AdspFirmware.c",
       "package/als-owner/platform/AdspLink.c",

@@ -28,7 +28,7 @@
     "platform/NezhaSensorFiles.c": "4be7a61fcf9c267f6512478598074069d009b1849507c0095c6d7002e8372308",
     "platform/NezhaSensorBundle.c": "adf2225c9339e2f21a03d64289d81667664eb8d82859084fc58cb4b9dee29623",
     "os/NezhaSensorInputs.c": "2039fdc3f322a8ecafb123d763473ea096737bc2638ba9c52df23e37f7681623",
-    "os/NezhaSensorNative.cpp": "2dd185b1009539c50b20ea2bf0630f9205419201b5ed32b471470ffacbd8b2df",
+    "os/NezhaSensorNative.cpp": "cf31eda2389de8cf6b2f7c91cff8e3bb954cf3cdf1a4c367a9cc680bc203404b",
     "os/NezhaAudioSmmu.cpp": "833371d1e1f4068cadf60002da3867f7a346ece265a8a4d5773174649898fff5"
   },
   "headers": {
