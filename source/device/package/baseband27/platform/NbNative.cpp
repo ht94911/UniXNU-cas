@@ -10,17 +10,41 @@
 #include <kern/clock.h>
 #include <kern/task.h>
 #include <arm/caches_internal.h>
+#include <pexpert/device_tree.h>
 #endif
 #include "NbNative.h"
+#include "NbLowMemory.h"
 #ifdef IOKIT_ENABLE_SHARED_PTR
 #error Requalify the native pointer ABI before changing the selected compile flags.
 #endif
 extern "C" IOReturn armcpu_spi_attach(uint32_t,bool,void (*)(void *),void *,uint32_t *,uint64_t *);
 namespace {
+NbLowMemory low_pool;
+IODeviceMemory *low_owner;
+IOMemoryMap *low_mapping;
+uint8_t *low_cpu;
 void barrier(){
 #ifndef NB_HOST_TEST
     __asm__ volatile("dsb sy" ::: "memory");
 #endif
+}
+int prepare_low_memory(){
+    if(low_cpu)return NB_OK;
+    DTEntry chosen=nullptr;const void *raw=nullptr;unsigned bytes=0;uint64_t range[2];
+    if(SecureDTLookupEntry(nullptr,"/chosen",&chosen)!=kSuccess ||
+       SecureDTGetProperty(chosen,"nezha-baseband-low-memory",&raw,&bytes)!=kSuccess ||
+       !raw||bytes!=sizeof range)return NB_MISSING;
+    memcpy(range,raw,sizeof range);
+    if(nb_low_memory_init(&low_pool,range[0],range[1]))return NB_OWNERSHIP;
+    low_owner=IODeviceMemory::withRange(range[0],range[1]);
+    if(!low_owner)return NB_IO;
+    low_mapping=low_owner->map(kIOMapAnywhere|kIOMapWriteCombineCache);
+    if(!low_mapping)return NB_IO;
+    low_cpu=reinterpret_cast<uint8_t *>(low_mapping->getVirtualAddress());
+    if(!low_cpu)return NB_IO;
+    printf("NEZHA27 BB stage=low-memory result=0 pa=%#llx bytes=%u\n",
+           (unsigned long long)low_pool.physical,low_pool.bytes);
+    return NB_OK;
 }
 int fence(void *){barrier();return 0;}
 uint32_t raw(NbNativeSmmu *s,size_t at){barrier();uint32_t v=*reinterpret_cast<volatile uint32_t *>(s->registers+at);barrier();return v;}
@@ -62,24 +86,43 @@ extern "C" void *nb_native_map(uint64_t pa,uint32_t bytes,int memory){
 }
 extern "C" int nb_native_allocate(NbNativeMemory *m,uint32_t bytes,uint32_t align,int low,int uncached){
     if(!m||m->descriptor||!bytes||bytes>0x2000000||(bytes&4095)||align<4096||(align&(align-1)))return NB_ARGUMENT;
+    if(low){
+        int r=prepare_low_memory();if(r)return r;
+        uint64_t pa=0;r=nb_low_memory_take(&low_pool,bytes,align,&pa);if(r)return r;
+        uint8_t *cpu=low_cpu+(pa-low_pool.physical);bzero(cpu,bytes);barrier();
+        // The loader's reserved pool and WC alias stay retained through reset.
+        // It is never returned to XNU's high-memory allocator.
+        *m={low_owner,nullptr,cpu,pa,bytes};return NB_OK;
+    }
     IOOptionBits opts=IOOptionBits(kIOMemoryPhysicallyContiguous)|IOOptionBits(kIODirectionInOut)|IOOptionBits(kIOMemoryMapperNone);
-    IOBufferMemoryDescriptor *d=low?IOBufferMemoryDescriptor::inTaskWithPhysicalMask(kernel_task,opts,bytes,UINT64_C(0xffffffff)&~uint64_t(align-1)):
-        IOBufferMemoryDescriptor::inTaskWithOptions(kernel_task,opts,bytes,align);
+    IOBufferMemoryDescriptor *d=IOBufferMemoryDescriptor::inTaskWithOptions(kernel_task,opts,bytes,align);
     if(!d)return NB_IO;
     IOByteCount length=0;uint64_t pa=d->getPhysicalSegment(0,&length,kIOMemoryMapperNone);auto *cpu=static_cast<uint8_t *>(d->getBytesNoCopy());
-    if(!cpu||!pa||(pa&(align-1))||length<bytes||pa>UINT64_MAX-bytes||(low&&pa+bytes>0x100000000ULL)) {d->release();return NB_OWNERSHIP;}
+    if(!cpu||!pa||(pa&(align-1))||length<bytes||pa>UINT64_MAX-bytes) {d->release();return NB_OWNERSHIP;}
     bzero(cpu,bytes);flush_dcache64(pa,bytes,TRUE);barrier();
     IOMemoryMap *mapping=nullptr;
     if(uncached){mapping=d->map(kIOMapAnywhere|kIOMapWriteCombineCache);if(!mapping){d->release();return NB_IO;}cpu=reinterpret_cast<uint8_t *>(mapping->getVirtualAddress());}
     *m={d,mapping,cpu,pa,bytes};return NB_OK;
 }
 extern "C" void nb_native_release(NbNativeMemory *m){
+    if(m->descriptor==low_owner&&low_owner){*m={};return;}
     if(m->mapping)static_cast<IOMemoryMap *>(m->mapping)->release();
     if(m->descriptor)static_cast<IOBufferMemoryDescriptor *>(m->descriptor)->release();
     *m={};
 }
+extern "C" void nb_native_publish_writes(){barrier();}
+extern "C" int nb_native_low_sync(void *cpu,uint64_t pa,uint64_t bytes){
+    if(!cpu||!bytes||!low_cpu||pa<low_pool.physical||
+       pa-low_pool.physical>=low_pool.used||bytes>low_pool.used-(pa-low_pool.physical))
+        return NB_OWNERSHIP;
+    if(cpu!=low_cpu+(pa-low_pool.physical))return NB_OWNERSHIP;
+    barrier();return NB_OK;
+}
 extern "C" int nb_native_sync(void *,void *cpu,uint64_t pa,uint64_t bytes){
     if(!cpu||!pa||!bytes||bytes>0x2000000||pa>UINT64_MAX-bytes)return NB_ARGUMENT;
+    if(low_cpu&&pa>=low_pool.physical&&pa-low_pool.physical<low_pool.bytes){
+        return nb_native_low_sync(cpu,pa,bytes);
+    }
     flush_dcache64(pa,(unsigned)bytes,TRUE);barrier();return NB_OK;
 }
 extern "C" uint64_t nb_native_now_ms(){uint64_t ns=0;absolutetime_to_nanoseconds(mach_absolute_time(),&ns);return ns/1000000;}

@@ -39,6 +39,9 @@ kernel_args = ["-v", "keepsyms=1", "debug=0x14e", "cpus=8", "boot-progress=2", "
 [adt.chosen.u32]
 "nezha-baseband" = 1
 "kernel-ctrr-to-be-enabled" = 0
+[adt.chosen.bytes]
+# DarwinBoot fills the physical address after reserving 5MiB of free low RAM.
+"nezha-baseband-low-memory" = "00000000000000000000500000000000"
 
 # First root mount: use the real independently verified iPhone OS identity.
 [root]

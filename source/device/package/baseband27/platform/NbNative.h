@@ -20,6 +20,8 @@ int nb_native_allocate(NbNativeMemory *,uint32_t bytes,uint32_t alignment,int lo
 void nb_native_release(NbNativeMemory *);
 void *nb_native_map(uint64_t physical,uint32_t bytes,int memory);
 int nb_native_sync(void *,void *,uint64_t,uint64_t);
+int nb_native_low_sync(void *cpu,uint64_t physical,uint64_t bytes);
+void nb_native_publish_writes(void);
 uint64_t nb_native_now_ms(void);
 int nb_native_smmu_prepare(NbNativeSmmu *,Sm8850Resources *,const NbNativeMemory *,const NbIpaMemory *);
 int nb_native_smmu_enable(NbNativeSmmu *);

@@ -22,11 +22,13 @@ extern "C" IOReturn armcpu_spi_attach(uint32_t,bool,void (*)(void *),void *,uint
 extern "C" void nezha_bb_class_init(void) __asm__("__GLOBAL__sub_I_coachz_baseband.cpp");
 extern kmod_info_t g_kernel_kmod_info;
 namespace {
+const NbRange firmware_regions[]={{0x99590000,0xa000},{0x8aa00000,0xe100000},{0x99500000,0x80000}};
 struct Board {
     Sm8850Resources *common;
     NbPower power;NbNativeSmmu smmu;
     NbArchive archive;NbFirmware firmware[3];NbPas pas[3];
     NbNativeMemory metadata[3],dma[5],shared,parameters,memshare[NB_MEMSHARE_CLIENTS];
+    uint8_t *firmware_map[3];
     uint8_t mem_assigned[NB_MEMSHARE_CLIENTS];
     NbRmtfs rmtfs;uint8_t *read_scratch,*hash_scratch;
     uint64_t image_bytes,bridge_handle;int bridge_state;
@@ -68,6 +70,24 @@ int pas_call(void *,uint32_t command,uint32_t image,uint64_t a,uint64_t b){
     int r=nezha_bb_scm_pas(command,image,a,b);
     if(!r&&command==6)board.pas_touched&=~bit;
     log_stage(command==1?"pas-init":command==2?"pas-memory":command==5?"pas-auth":"pas-stop",r);return r;
+}
+int pas_sync(void *v,void *cpu,uint64_t pa,uint64_t bytes){
+    auto *b=static_cast<Board *>(v);
+    if(b!=&board||!cpu||!bytes||bytes>0x10000||pa>UINT64_MAX-bytes)return NB_ARGUMENT;
+    for(auto &m:b->metadata){
+        if(!m.descriptor||pa<m.physical||pa-m.physical>=m.bytes||bytes>m.bytes-(pa-m.physical))continue;
+        if(cpu!=m.cpu+(pa-m.physical))return NB_OWNERSHIP;
+        return nb_native_low_sync(cpu,pa,bytes);
+    }
+    for(unsigned i=0;i<3;i++){
+        const auto &r=firmware_regions[i];
+        if(!b->firmware_map[i]||pa<r.base||pa-r.base>=r.bytes||bytes>r.bytes-(pa-r.base))continue;
+        if(cpu!=b->firmware_map[i]+(pa-r.base))return NB_OWNERSHIP;
+        // These three exact mappings use WriteCombineCache. The audio PAS
+        // adapter orders the same stores with DSB instead of the RAM physmap.
+        nb_native_publish_writes();return NB_OK;
+    }
+    return NB_OWNERSHIP;
 }
 void transport_trace(void *,const char *stage,int result){log_stage(stage,result);}
 int smem_lock(void *){int r=sm8850_smem_trylock(board.common,NB_OWNER);return !r?NB_OK:r==Sm8850Busy?NB_BUSY:NB_IO;}
@@ -172,13 +192,14 @@ extern "C" int nezha_bb_bind(NbBasebandConfig *config){
     }
     r=nb_native_smmu_prepare(&board.smmu,board.common,board.dma,&config->ipa_memory);if(r)return fail("smmu-bind",r);
     const char *names[]={"ipa_fws","modem","modem_dtb"};
-    const NbRange regions[]={{0x99590000,0xa000},{0x8aa00000,0xe100000},{0x99500000,0x80000}};const unsigned ids[]={15,4,0x26};
-    const NbPasOps pas_ops={nullptr,pas_call,nb_native_sync};
+    const unsigned ids[]={15,4,0x26};
+    const NbPasOps pas_ops={&board,pas_call,pas_sync};
     for(unsigned i=0;i<3;i++){
         r=nb_firmware_open(&board.firmware[i],&board.archive,names[i],board.hash_scratch,65536);if(r)return fail("firmware-index",r);
         r=nb_native_allocate(&board.metadata[i],65536,4096,1,0);if(r)return fail("metadata",r);
-        void *mapped=nb_native_map(regions[i].base,(uint32_t)regions[i].bytes,1);if(!mapped)return fail("firmware-map",NB_IO);
-        r=nb_pas_begin(&board.pas[i],ids[i],regions[i],mapped,board.firmware[i].bytes,nb_firmware_read,&board.firmware[i],
+        board.firmware_map[i]=static_cast<uint8_t *>(nb_native_map(firmware_regions[i].base,(uint32_t)firmware_regions[i].bytes,1));
+        if(!board.firmware_map[i])return fail("firmware-map",NB_IO);
+        r=nb_pas_begin(&board.pas[i],ids[i],firmware_regions[i],board.firmware_map[i],board.firmware[i].bytes,nb_firmware_read,&board.firmware[i],
             board.metadata[i].cpu,board.metadata[i].physical,board.metadata[i].bytes,&pas_ops,nb_native_now_ms(),120000);
         if(r)return fail("firmware-parse",r);
     }

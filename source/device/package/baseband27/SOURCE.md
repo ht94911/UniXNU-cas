@@ -1,7 +1,9 @@
 # nezha iOS 27 基带与蜂窝数据：源码交付与静态审查
 
 任务：`docs/handoffs/IOS27-BASEBAND-DATA-VOICE-CODEX-20261107.md`。分支 `codex/baseband27-20261107`（基于 `codex/main-ios27@675500a`，仅本地，push 已禁用）。
-本文是构建前交付。**人类指定测试包之前，不集成、不编译、不跑 CI、不封包、不上机。**
+第1–9节保留原构建前审查的硬件与来源。人类已在
+`docs/handoffs/MSS-AUTHORIZATIONS.md` 第197条选择 GPU024 并授权持续适配；
+当前接续进度见第10节起及私有 `research/CHECKPOINT.md`。
 
 ## 1. 固定来源
 
@@ -59,7 +61,7 @@
 | 数据面 | IPA v5.5/GSI v12、QMAP | QcomBaseband v4.2 实现，派生到 v5.5 | Coachz v4.2 真机 IPv4 | 命令、RX、GSI、QMI 结构 | 寄存器生成器、Qtime 聚合、8 位端点、v5 status、哈希表、端点 2/24 | IPA 的 SMMU CB 和 IOVA 由包内提供者负责；时钟/ICC 投票未接 | 宿主模型；上机看 INIT_DRIVER/INIT_COMPLETE、TX/RX 计数 |
 | iOS 桥 | ABM/BBUpdater/CommCenter、SAHARA、QMUX、PDP | QcomBaseband baseband/ | Coachz 21H461 真机 | 全部 | Mav21 ChipId、48 字节 hash、端点、纯 QMAP、bootstage | 27 PDP 是 Skywalk，而桥用 BSD ifnet `pdp_ip` | 上游宿主模型（派生版）；上机看 ABM 引导、QMUX 客户端、SIM、注册 |
 | 系统任务 | launchd 策略 | 设备树 BootWatchdogPolicy | — | — | 在 ADT 开关打开时保留 CommCenter（集成补丁） | — | 上机看 CommCenter 进程 |
-| IMS/通话 | Apple CoreIMS/IPTelephony；modem 语音 | 第 8 节 | — | — | 设计阶段 | 依赖数据通路、ISIM、音频 | 后续阶段 |
+| IMS/通话 | Apple IPTelephony；modem 语音 | 第 8 节 | — | — | 设计阶段 | 依赖数据通路、ISIM、音频 | 后续阶段 |
 
 ## 4. 原厂逆向对照（摘要）
 
@@ -123,7 +125,15 @@
 
 ## 8. IMS/语音设计（后续阶段）
 
-- 27 自带 Apple 的 AP 侧 IMS（CoreIMS.framework、IPTelephony.framework；CommCenter 负责 P-CSCF 解析，区分蜂窝和 Wi-Fi 两种 IMS 传输）。首选路线 A：AP 侧 IMS 跑在 modem 提供的 IMS PDN 上（WDS 走 IMS APN，绑定第二个 QMAP mux，即 `pdp_ip1`）。鉴权用 ISIM/USIM AKA，经 UIM 桥转发 APDU；媒体和音频走 AP 侧，依赖 audio27 的麦克风/听筒/扬声器通路。
+- 本地24A446的 `libIPTelephony` 有真实 SIP、AKA、IPsec 与 IMS 传输实现，
+  CommCenter 的 `EurekaCallCommandDriver` 创建 VOICE 客户端；
+  `QMISMSCommandDriver` 实现 WMS 初始化、路由、接收确认和发送。
+  原先仅凭 CoreIMS 的名字把它列为电话 IMS 来源不准确，已纠正。
+  函数边界、原版字节和调用链只保存在私有 `research/abi-next002/`。
+  首选设计路线 A：AP 侧 IMS 跑在 modem 提供的 IMS PDN 上
+  （WDS 的 IMS APN 与独立 QMAP mux，当前桥为 `pdp_ip1`）。
+  鉴权经 UIM 的 ISIM/USIM AKA，媒体依赖 audio27 的麦克风、听筒和扬声器；
+  上述系统消费者与本机传输、IMS 注册、媒体均待真机验证。
 - 备选路线 B：modem 侧 IMS，同原厂安卓。语音 PCM 经 modem ↔ ADSP 语音图，需要 audio27 提供语音 DAI/图，并把 BasebandVoice.driver 的通道映射过去，工作量更大。
 - 依赖：
   - 数据通路稳定，IPv4/IPv6 双栈；
@@ -235,3 +245,35 @@ ASan/UBSan与`-Werror`通过。完整宿主检查和29单元Linux/17头文件编
 VOICE 呼叫状态、IMSA 注册、WMS 收发及系统入口分别验收。通话音频依赖
 音频专项的真实播放/录音与 voice graph。当前没有拨号、短信发送、手机预约
 或 iOS27 蜂窝真机成功的记录。
+
+## 12. 首次实机阻塞与低地址内存修复（2026-11-13）
+
+Native002/run `43302261690`、源码 `8849f74` 已真实 arm64e/iOS27 编译，
+严格38组件闭包、PAC、固定GPU024配套与临时镜像检查通过。
+208MiB带索引资料镜像已在批准的独立钉住文件中安装一次并全量读回；
+616条目、66段extent的映射保持，镜像和本机专属内容只在私有路径。
+第一次 B002 实机于415.793秒通过归档读取/校验，参数页分配返回 `-2`；
+没有 PAS 调用、MSS 启动或 QRTR 服务，数据/电话/短信未验。
+一次正常 XNU 返回后的安卓/root、文件映射/头与采集器退出通过并释放。
+
+本机 XNU 只拥有 `0x8c0000000` 起的高RAM，旧
+`inTaskWithPhysicalMask(...,0xffffffff...)` 无低4GiB页可分。
+独立 DarwinBoot 从 UEFI 实际空闲页分配5MiB `EfiReservedMemoryType`，
+将物理地址填进 `/chosen/nezha-baseband-low-memory` 的16字节占位。
+开关缺省或0时不分配；没有固定物理地址后备。
+`NbLowMemory.h` 在该保留池中放参数4KiB、三份元数据各64KiB、
+rmtfs共享4MiB，XNU只建立一份WC映射。
+
+缓存同步复用音频 `NezhaAudioAdspInputs.cpp::na_native_pas_sync` 已实测的
+映射语义和既有GPU/Pandora PAS loader的DSB：
+低池与三份固件WC映射只在真实物理范围和CPU别名一致时发布写入；
+SCM共享拥有者也通过同一低池检查发布参数，不再对低地址调用高RAM physmap
+缓存清理。原高RAM SMMU表缓存清理、SCM锁/WAITQ、原厂固件地址保持。
+宿主测试实际走过三份PAS拷贝/清零/同步、低池边界、错误CPU别名、
+越界和SCM参数注册/终止失败。另修正两处已有原生编译警告的明确初值/计数写法。
+
+必要上游复查：UniXNU/main `dff2765` 为新APFS/macOS存储改动，
+myron-next `f1a1bfe`、QcomBaseband `dd0199c`、Trogdor `1df7f75` 不变；
+固定GPU024框架未升级。下一候选为 Native003；低地址池实际分配、
+PAS/DSM/MSS ready、QRTR、IPA和系统蜂窝仍按阶段上机验收。
+普通测试号码已由人类指定，仅存在私有文件，尚未拨号或发送短信。

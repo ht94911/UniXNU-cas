@@ -19,7 +19,7 @@ static uint32_t bandwidth(const QcomRpmhResource *r,uint32_t avg,uint32_t peak,u
 }
 int nb_power_init(NbPower *p,Sm8850Resources *common,volatile uint32_t *ram,const uint8_t *db,size_t dbbytes){
     if(!p||!common||!common->initialized||!ram||!db)return NB_ARGUMENT;
-    *p=(NbPower){0};p->common=common;uint32_t version,config;
+    *p=(NbPower){0};p->common=common;uint32_t version=0,config=0;
     if(common->io.lock(common->io.context))return NB_BUSY;
     int rc=common->io.read32(common->io.context,Sm8850Rsc,0,&version)||common->io.read32(common->io.context,Sm8850Rsc,0xc,&config);
     common->io.unlock(common->io.context);

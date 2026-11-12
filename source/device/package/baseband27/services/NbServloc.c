@@ -50,7 +50,7 @@ uint32_t nb_servloc_answer(const NbPdDomain *domains, unsigned count, const uint
     if (nb_qmi_begin(&w, out, capacity, NB_QMI_RESPONSE, m.transaction, m.message)) return 0;
     nb_qmi_result(&w, 0, 0);
     uint32_t total = 0;
-    for (unsigned i = 0; i < count; ++i) total += provides(&domains[i], name, name_size);
+    for (unsigned i = 0; i < count; ++i) if (provides(&domains[i], name, name_size)) total++;
     uint8_t b[2];
     nb_put16(b, total); nb_qmi_put(&w, 0x10, b, 2);
     nb_put16(b, 1); nb_qmi_put(&w, 0x11, b, 2);

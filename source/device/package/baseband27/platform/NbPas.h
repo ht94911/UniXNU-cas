@@ -28,7 +28,7 @@ typedef struct {
     void *context;
     /* command is one of NB_PAS_*; 0 on success, NB_BUSY when the shared owner could not take the call now (nothing sent). */
     int (*pas)(void *context, uint32_t command, uint32_t pas, uint64_t arg1, uint64_t arg2);
-    /* Clean the CPU cache over bytes written for the secure world or the modem. */
+    /* Publish writes through the actual mapping: clean cached RAM or order WC stores. */
     int (*sync)(void *context, void *cpu, uint64_t physical, uint64_t bytes);
 } NbPasOps;
 

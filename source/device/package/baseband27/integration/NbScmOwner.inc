@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: BSD-2-Clause */
 /* Included after scm_smc in NezhaScm.c. No second SMC or WAITQ implementation. */
 #include "../platform/NbScm.h"
+extern int nb_native_low_sync(void *cpu,uint64_t physical,uint64_t bytes);
 static int nb_scm_result(const struct scm_res *r)
 {
     if (r->a0) return NB_IO;
@@ -22,7 +23,7 @@ int nezha_bb_scm_assign(void *page,uint64_t pa,int *bridge_state,uint64_t *handl
 {
     if (!bridge_state || !handle || *bridge_state<0) return NB_OWNERSHIP;
     int e=nb_scm_assignment_page(page,pa,region,to_remote,shared);if(e)return e;
-    flush_dcache64(pa,4096,TRUE);
+    e=nb_native_low_sync(page,pa,4096);if(e)return e;
     struct scm_res r={0,0,0,0};
     if (!*bridge_state) {
         /* Same registered parameter page for every request, retained at boot.
