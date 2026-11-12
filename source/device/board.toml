@@ -13,7 +13,8 @@ include = ["ArmDTPlatform", "ArmCpu", "XnuPrelink", "QcomXnuUsbDebug", "ShengUfs
 defconfig = "nezha_ios27_defconfig"
 config_fragments = ["arch:configs/common.config", "soc:configs/sm8850.config", "os:configs/ipados.config"]
 patch_series = ["arch:patches/xnu/series", "soc:patches/xnu-12377/series", "os:patches/xnu/series", "device:patches/xnu-12377/series", "component:QcomXnuUsbDebug/patches/darwin25-xnu12377-unixnu/series"]
-archives = ["build-corecrypto-14.py", "build-corecrypto-14.py --namespace", "component:ArmDTPlatform", "nezha-armcpu-asm-fix.py", "component:ArmCpu", "qualify-armcpu-instructions.py", "build-libpthread-kernel.py", "component:QcomXnuUsbDebug", "build-nezha27-usb-control.py", "build-ios27-pmgr.py", "component:ShengUfs", "component:RamBlock", "component:AppleKeyStoreState", "build-gop-legacy-display-27.py", "build-nezha27-input.py", "component:Adreno840", "build-nezha27-camera-core.py"]
+# A840 inventories all other declared link archives before building its own.
+archives = ["build-corecrypto-14.py", "build-corecrypto-14.py --namespace", "component:ArmDTPlatform", "nezha-armcpu-asm-fix.py", "component:ArmCpu", "qualify-armcpu-instructions.py", "build-libpthread-kernel.py", "component:QcomXnuUsbDebug", "build-nezha27-usb-control.py", "build-ios27-pmgr.py", "component:ShengUfs", "component:RamBlock", "component:AppleKeyStoreState", "build-gop-legacy-display-27.py", "build-nezha27-input.py", "build-nezha27-camera-core.py", "component:Adreno840"]
 # G3 read-only root closure. Explicit IOStorageFamily retains its generic
 # IOBlockStorageDriver/IOMediaBSDClient matching; dependency-only strips it.
 [kernel.prelink]

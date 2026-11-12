@@ -21,6 +21,8 @@ enum NezhaCameraCciPhase {
     NezhaCciAddress,
     NezhaCciData,
     NezhaCciWrite,
+    NezhaCciHalt,
+    NezhaCciReset,
 };
 
 struct NezhaCameraCciObservation {
@@ -49,5 +51,12 @@ enum NezhaCameraCciStatus nezha_camera_cci_write_byte(
  * This programs only the selected idle master's timing registers. */
 bool nezha_camera_cci_standard_timing(const struct NezhaCameraRegisterIo *io,
     unsigned master, uint32_t clock_hz);
+
+/* Recover a failed transaction. The owner must serialize the CCI controller
+ * while the common reset-complete bit is in use. Only the selected master's
+ * halt, reset and timing are programmed. */
+enum NezhaCameraCciStatus nezha_camera_cci_recover_master(
+    const struct NezhaCameraRegisterIo *io, unsigned master, uint32_t clock_hz,
+    struct NezhaCameraCciObservation *observation);
 
 #endif

@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "nezha iOS 27 camera clock/CCI native candidate",
+  "purpose": "camera001b: verified A840 provider order and main GPIO/MCLK/CCI lifetime",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "d65774f3d10f541d05647a1f8b2011d3cdcf8631",
+  "device_revision": "521f18961b81596b8e68b70aa1db539c501f561e",
   "soc_revision": "5a71f9eb5724ff58eddf49f7f5baecc9f4233a7c",
   "xcode": "26.6",
   "files": {
@@ -78,7 +78,7 @@
     "source/adreno/NativeGpuTrace.h": "d95cae4f86a9d3666adf4b04e876ff50bfa609a45de17a8ef6dc570ef84204b1",
     "source/adreno/NativeGpuTrace.inc": "89f44d7740f9ba38929c714866fd1ad87ecf1de939efc2e09077b62378567993",
     "source/adreno/NativeGpuTraceStore.h": "4a2984192bc2c68383146f558212d1000c920a8d9cbe54ccec8badd935844823",
-    "source/device/board.toml": "7d66bd30ffa81e0ef16da8f4ad611eda83f7d9d9df6d5044a6b82c4e0616f872",
+    "source/device/board.toml": "2a8146ab4318a8bf17668c0a97d905ab9205e7dfa663753113c35d1a2332cec7",
     "source/device/configs/nezha_ios27_defconfig": "998ef6040d5a826b41ce3b687751aaba497fbe919f5add7ca6e2d5caca712ea5",
     "source/device/feeds.toml": "89cd3214bf98295e76dacf3606cfce03f4a903c27e865d6558e45bacd3e154b0",
     "source/device/package/.gitkeep": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
@@ -229,8 +229,8 @@
     "source/device/package/camera/NezhaCameraCamcc.h": "664457a3678cc679bdd8c59c31721a4a410f4963e7553932b17861813f132ada",
     "source/device/package/camera/NezhaCameraCamss1080.c": "39f3a1e88aaa773446e3595d5579fb8cdb072d0dd964047e615ab437b1bf0463",
     "source/device/package/camera/NezhaCameraCamss1080.h": "3454e361cb861a494331f7e931f11114a19256b20121f5a10908a1e953bd9ea2",
-    "source/device/package/camera/NezhaCameraCci.c": "ea94d1bd3469aa03296b6cda67351d569de0fe7e900510c84380d0993c0ad102",
-    "source/device/package/camera/NezhaCameraCci.h": "d860f0c2459128ef7e7fdd6ccb9f9fa9a8935f36cb7d4aa8cd5add640817690b",
+    "source/device/package/camera/NezhaCameraCci.c": "dc4fc0061be942862e9c7b9d8ed5fd61722965c2396864afe9a4cb558e71a7a2",
+    "source/device/package/camera/NezhaCameraCci.h": "efe7485d311b8b5c56126aa285cbf98ef0f8d14341f0c7daa50d81eeec71f2f8",
     "source/device/package/camera/NezhaCameraDma.c": "6d9ed489dc294be91c6a2f36c8f97c339137133a4cacce2e99928702b9e8f83d",
     "source/device/package/camera/NezhaCameraDma.h": "7d006b27af8b03ef9363a0d4df9651090b45b19f32001d86ac36c5b956503323",
     "source/device/package/camera/NezhaCameraMainCapture.c": "2bf3fc789e80f5e46d62344fe2e5ae5da57a4f38588c12b5b0e64929fe949955",
@@ -241,17 +241,20 @@
     "source/device/package/camera/NezhaCameraRdi1080.c": "b3c636178f7e24446adfa5f36e6ae6cc5489ea5b8c6f53ac82405bfa28864da3",
     "source/device/package/camera/NezhaCameraRdi1080.h": "b3ea4d51fbc11b22b9cfcb6e0ade8fded26c76df046440e0b45e1d26c0399943",
     "source/device/package/camera/NezhaCameraRegisterIo.h": "5d8fd09ec4e7dcfef34122abd80c88700b62c1ec2833ad1182e6ca708a5fee12",
-    "source/device/scripts/build-nezha27-camera-core.py": "c381f313374ef8e49958860f269f7eb35fa5ed976f2292514f5729a5c8849067",
-    "source/device/scripts/check-nezha27-camera-core.sh": "25ef41c62959ae83361d42430eafc6896bd0e3fcde07fa454ff189589d8759ee",
-    "source/device/scripts/collect-nezha-camera-android.py": "b2b2fcd1367a557c5f88089842840e0c2ef737d88a2821fbcb0d812853666f37",
+    "source/device/scripts/build-nezha27-camera-core.py": "c6fba8b1de0d9e91d3b8295c2501fc84c50f25f8a9c726fade472af6300abc37",
+    "source/device/scripts/check-nezha27-camera-core.sh": "94524502a83463a22d94a96994aec0fcb9a077589633f4064246f9e854f80e70",
+    "source/device/scripts/collect-nezha-camera-android.py": "f8ba556db50a95a1a13ceabc0ce6561dba602ec32589e5d45a0cf52ab0be1c6d",
     "source/device/scripts/inspect-nezha-camera-dtb.py": "1675ad7699d8d9304bb1989026f3fae8d1554816430aacae342f7045ddc493ab",
     "source/device/scripts/inspect-nezha-camera-raw10.py": "021760626b5111b592a5668ee1d9133448aa085bb655d30c10681fd232163620",
     "source/device/tests/camera-camcc.c": "eb733e8a7b7cb26068cff97ce361acf4666722da759a9b9118391102b7eb763a",
     "source/device/tests/camera-camss1080.c": "464f2fada1950735bedcd2fdde74cdab0fdffff8774556218209ffd1108bd105",
-    "source/device/tests/camera-cci.c": "585945532b7f85fc32aab8a66225961931b5d210e6122791c6b6d604aa35e74b",
+    "source/device/tests/camera-cci.c": "92e6caf74bfb0a047e26004bfba67cc1bd622dc4af0081f511855a7fa87d4d4f",
     "source/device/tests/camera-dma.c": "022bd02efc7b347ddb0c5f0baeb3555abaeb3ffee9c8ee909727609a990eb594",
     "source/device/tests/camera-main-capture.c": "c8d74e59516fefe060f5f00a790a6a2fa474d59d8617c704e651a3669de28b30",
-    "source/device/tests/camera-rdi1080.c": "20be2764ac866bf290e8fc058be51c19cff46a1df212f0b61af5f8e2a3be68b9"
+    "source/device/tests/camera-rdi1080.c": "20be2764ac866bf290e8fc058be51c19cff46a1df212f0b61af5f8e2a3be68b9",
+    "source/device/package/camera/NezhaCameraMainPins.c": "9d898419710ce30ed718a49b388d1db241e544adda8d5c3089f35fd2fc2ad73e",
+    "source/device/package/camera/NezhaCameraMainPins.h": "0644d84205672da8b5de4058ac76e4a78e7e03a06153ddaae3f7f6eacff35d78",
+    "source/device/tests/camera-main-pins.c": "3f5f042582a761910a9cac85a470a0525a2e66c197bfb26faad84be94920b05f"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
@@ -300,10 +303,11 @@
     "snapshot_scope": "listed headers and native implementation units only"
   },
   "camera": {
-    "source_revision": "d65774f3d10f541d05647a1f8b2011d3cdcf8631",
+    "source_revision": "521f18961b81596b8e68b70aa1db539c501f561e",
     "device_base": "7435e49e46705d2bfcabe09487ff80a4821fd577",
     "mode_default": "disabled",
-    "host_core_tests": 6,
-    "private_camera_modes_uploaded": false
+    "host_core_tests": 7,
+    "private_camera_modes_uploaded": false,
+    "failed_predecessor_run": 43298685064
   }
 }

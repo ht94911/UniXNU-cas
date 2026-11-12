@@ -34,6 +34,8 @@ struct Model {
     uint32_t second_address;
     uint32_t timing[5];
     bool discard_load;
+    bool halt_timeout;
+    unsigned resets;
 };
 
 static uint32_t read32(void *context, uint32_t offset)
@@ -60,6 +62,19 @@ static void write32(void *context, uint32_t offset, uint32_t value)
     struct Model *model = context;
     ++model->writes;
     switch (offset) {
+    case 0x034:
+        assert(value == 2);
+        if (!model->halt_timeout) {
+            model->irq |= 1u << 26;
+        }
+        break;
+    case 0x004:
+        assert(value == 0x0003f001);
+        ++model->resets;
+        model->irq |= 1u << 24;
+        model->fifo_level = 0;
+        model->queued[0] = model->queued[1] = 0;
+        break;
     case 0x200: case 0x204: case 0x208: case 0x20c: case 0x210:
         model->timing[(offset - 0x200u) / 4u] = value;
         break;
@@ -224,6 +239,19 @@ int main(void)
     m = initial();
     m.expected_write = 0x01000139;
     assert(nezha_camera_ovx10500u_set_stream(&io, true, &observed) == NezhaCciOk);
+
+    m = initial();
+    m.irq |= M1DataNack | (1u << 24) | (1u << 26);
+    m.queued[1] = 3;
+    m.fifo_level = 1;
+    assert(nezha_camera_cci_recover_master(&io, 1, 37500000, &observed) == NezhaCciOk);
+    assert(m.resets == 1 && m.irq == M0Report && m.timing[0] == 0xc900ae);
+    assert(!observed.needs_recovery && observed.phase == NezhaCciReset);
+
+    m = initial();
+    m.halt_timeout = true;
+    assert(nezha_camera_cci_recover_master(&io, 1, 37500000, &observed) == NezhaCciTimeout);
+    assert(m.resets == 0 && observed.needs_recovery && observed.phase == NezhaCciHalt);
 
     puts("Camera CCI passed the address/data, IRQ ownership, error, timeout and FIFO checks");
 }

@@ -6,20 +6,30 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
+import re
+import shlex
 import subprocess
 
 
 MODULE_DIRS = (
     "/vendor/lib64/camera", "/odm/lib64/camera", "/vendor/lib64/hw",
     "/odm/lib64/hw", "/vendor/etc/camera", "/odm/etc/camera",
+    "/vendor_dlkm/lib/modules",
 )
+CAMERA_EVENT = re.compile(rb"cam_sensor|cam_cci|cam_csiphy|cam_ife|cam_smmu|camx|ovx10500|s5kjn5|s5khpe", re.I)
+DEBUG_ROOTS = ("/sys/kernel/debug", "/dev/_nungsd_/viickvzr")
 
 
 def collect(args):
     adb = [str(args.adb), "-H", args.host, "-P", str(args.port), "-s", args.serial]
 
     def read(*command, optional=False):
-        result = subprocess.run(adb + list(command), capture_output=True, timeout=15)
+        try:
+            result = subprocess.run(adb + list(command), capture_output=True, timeout=15)
+        except subprocess.TimeoutExpired:
+            if optional:
+                return None
+            raise
         if result.returncode:
             if optional:
                 return None
@@ -44,7 +54,10 @@ def collect(args):
 
     build = read("exec-out", "getprop", "ro.vendor.build.fingerprint")
     save("vendor-build.txt", build)
-    save("media-camera.txt", read("exec-out", "dumpsys", "media.camera"))
+    service = read("exec-out", "dumpsys", "-t", "10", "media.camera")
+    if not service.strip() or b"DUMP TIMEOUT" in service or b"Can't find service" in service:
+        raise RuntimeError("The Android camera service did not return a complete dump")
+    save("media-camera.txt", service)
 
     listing = []
     for directory in MODULE_DIRS:
@@ -54,8 +67,28 @@ def collect(args):
         for name in names.decode("utf-8", errors="replace").splitlines():
             if directory.endswith("/hw") and not any(x in name.lower() for x in ("cam", "isp")):
                 continue
+            if directory.endswith("/modules") and "cam" not in name.lower():
+                continue
             listing.append(f"{directory}/{name}")
     save("camera-module-paths.txt", ("\n".join(listing) + "\n").encode("utf-8"))
+
+    def root_read(command):
+        return read("exec-out", "su", "-c", shlex.quote(command), optional=True)
+
+    if (root_read("id -u") or b"").strip() == b"0":
+        # These stock debugfs reports identify inherited clock and rail votes.
+        for leaf, name in (("clk/clk_summary", "android-clocks.txt"),
+                           ("regulator/regulator_summary", "android-regulators.txt")):
+            for debug in DEBUG_ROOTS:
+                data = root_read(f"cat {debug}/{leaf} 2>/dev/null")
+                if data and data.strip():
+                    save(name, data)
+                    break
+        dmesg = root_read("dmesg")
+        if dmesg:
+            camera = [line for line in dmesg.splitlines() if CAMERA_EVENT.search(line)]
+            if camera:
+                save("camera-dmesg.txt", b"\n".join(camera) + b"\n")
     (args.output / "receipt.json").write_text(json.dumps(saved, indent=2) + "\n", encoding="utf-8")
     print(f"Saved Camera2 diagnostic and {len(listing)} module paths to {args.output}")
 

@@ -6,7 +6,9 @@
 /* Register layout and FIFO packing cross-checked against i2c-qcom-cci.c at
  * Linux 9d66f26fefac and the nezha w33 probe in u0er ed8978ac0087. */
 enum {
+    CciResetCommand = 0x004,
     CciQueueStart = 0x008,
+    CciHaltRequest = 0x034,
     CciSclControl = 0x100,
     CciSdaControl0 = 0x104,
     CciSdaControl1 = 0x108,
@@ -25,6 +27,7 @@ enum {
     CciWrite = 9,
     CciRead = 10,
     CciReportIrqEnable = 1 << 8,
+    CciResetAck = 1 << 24,
     CciTimeoutMs = 100,
 };
 
@@ -191,4 +194,69 @@ bool nezha_camera_cci_standard_timing(const struct NezhaCameraRegisterIo *io,
     io->write(io->context, CciSdaControl2 + offset, timing[3]);
     io->write(io->context, CciMiscControl + offset, timing[4]);
     return true;
+}
+
+static bool wait_ack(const struct NezhaCameraRegisterIo *io, uint32_t ack,
+                     struct NezhaCameraCciObservation *observation)
+{
+    for (unsigned ms = 0; ms <= CciTimeoutMs; ++ms) {
+        observation->irq = io->read(io->context, CciIrqStatus);
+        if ((observation->irq & ack) != 0) {
+            clear_status(io, ack);
+            return true;
+        }
+        if (ms != CciTimeoutMs) {
+            io->wait_ms(io->context, 1);
+        }
+    }
+    return false;
+}
+
+enum NezhaCameraCciStatus nezha_camera_cci_recover_master(
+    const struct NezhaCameraRegisterIo *io, unsigned master, uint32_t clock_hz,
+    struct NezhaCameraCciObservation *observation)
+{
+    if (io == NULL || io->read == NULL || io->write == NULL || io->wait_ms == NULL ||
+        master > 1 || (clock_hz != 19200000 && clock_hz != 37500000) || observation == NULL) {
+        return NezhaCciInvalid;
+    }
+    *observation = (struct NezhaCameraCciObservation){
+        .phase = NezhaCciHalt, .needs_recovery = true,
+    };
+    /* Master halt and reset masks are the same as Linux i2c-qcom-cci.c. */
+    const uint32_t halt_ack = 1u << (25u + master);
+    clear_status(io, io->read(io->context, CciIrqStatus) & halt_ack);
+    if ((io->read(io->context, CciIrqStatus) & halt_ack) != 0) {
+        return NezhaCciBusy;
+    }
+    io->write(io->context, CciHaltRequest, 1u << master);
+    if (!wait_ack(io, halt_ack, observation)) {
+        return NezhaCciTimeout;
+    }
+
+    observation->phase = NezhaCciReset;
+    clear_status(io, io->read(io->context, CciIrqStatus) & CciResetAck);
+    if ((io->read(io->context, CciIrqStatus) & CciResetAck) != 0) {
+        return NezhaCciBusy;
+    }
+    io->write(io->context, CciResetCommand, master == 0 ? 0x000003f1u : 0x0003f001u);
+    if (!wait_ack(io, CciResetAck, observation)) {
+        return NezhaCciTimeout;
+    }
+    const uint32_t master_status = (0x111u << (12u * master)) |
+        (master == 0 ? 0x18000ee6u : 0x60ee6000u);
+    clear_status(io, io->read(io->context, CciIrqStatus) & master_status);
+    if (io->read(io->context, CciQueueCount + queue_offset(master, 0)) != 0 ||
+        io->read(io->context, CciQueueCount + queue_offset(master, 1)) != 0) {
+        return NezhaCciQueue;
+    }
+    observation->fifo_words = io->read(io->context, CciReadLevel + 0x100u * master);
+    if (observation->fifo_words != 0) {
+        return NezhaCciFifo;
+    }
+    if (!nezha_camera_cci_standard_timing(io, master, clock_hz)) {
+        return NezhaCciInvalid;
+    }
+    observation->needs_recovery = false;
+    return NezhaCciOk;
 }
