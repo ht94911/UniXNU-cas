@@ -64,12 +64,12 @@ static void reset(){clockUs=1000;infoCalls=stateCalls=readCalls=0;infoError=stat
 static nbwait::Sample take(){nbwait::Sample s{};s.id=1;s.tid=999;s.stackLow=0x1000;s.stackHigh=0x2000;
  nbwait::capture(55,s,now);return s;}
 int main(int argc,char **argv){assert(argc==2);assert(nbwait::kSampleBudget==6144);unsigned cases=0;
- reset();auto s=take();assert(s.depth==8 && readCalls==8 && stateCalls==2 && infoCalls==1);
+ reset();auto s=take();assert(s.depth==16 && readCalls==16 && stateCalls==2 && infoCalls==1);
  assert(s.cpuUs==11000077 && s.flags==31 && s.stop==nbwait::FrameLimit && s.stateKr==0);
  assert(s.beganUs<=s.infoEndedUs && s.infoEndedUs<=s.stateEndedUs && s.stateEndedUs<s.endedUs);
- traceWaitBytes(27,s.id,&s,sizeof(s));assert(records.size()==7);
+ traceWaitBytes(27,s.id,&s,sizeof(s));assert(records.size()==12);
  nbwait::Image image{};image.header=0x187f00000;image.slide=0x1230000;strcpy(image.path,"/system/Example");
- traceWaitBytes(28,1,&image,sizeof(image));assert(records.size()==11);
+ traceWaitBytes(28,1,&image,sizeof(image));assert(records.size()==16);
  FILE *f=fopen(argv[1],"wb");assert(f);assert(fwrite(records.data(),72,records.size(),f)==records.size());fclose(f);++cases;
  reset();stateError=5;s=take();assert(s.stop==nbwait::NoRegisters && !readCalls && stateCalls==1 && !(s.flags&2));++cases;
  reset();frameStart=0x2000;s=take();assert(!readCalls && !s.depth && s.stop==nbwait::OutsideStack);++cases;
@@ -101,12 +101,64 @@ spec=importlib.util.spec_from_file_location('render_wait_decoder',a.decoder);dec
 decoded=decoder.read_frames(a.out/'actual-producer.trace',require_header=False)
 assert decoded['sample_count']==1 and decoded['image_count']==1 and not decoded['quality']
 row=decoded['samples'][0];assert row['thread']==999 and row['state']=='waiting' and row['cpu_us']==11000077
-assert row['depth']==8 and row['flag_meaning']['registers_matched_after_read'] and not row['atomic_stack_snapshot']
+assert row['depth']==16 and row['flag_meaning']['registers_matched_after_read'] and not row['atomic_stack_snapshot']
 assert decoded['images'][0]['slide']==0x1230000 and decoded['images'][0]['path']=='/system/Example'
 raw=(a.out/'actual-producer.trace').read_bytes()
 for name,value,reason in [('missing',raw[72:],'missing_fragments'),('duplicate',raw[:72]+raw,'duplicate_fragment')]:
     path=a.out/(name+'.trace');path.write_bytes(value);bad=decoder.read_frames(path,require_header=False)
     assert not bad['samples'] and bad['quality'].get(reason),bad
+
+# Force only the existing header's ARM64 branch under controlled Mach types.
+# No ARM program is executed on this host; the production field copy is run.
+arm_declarations=r"""
+static constexpr unsigned ARM_THREAD_STATE64=6,ARM_THREAD_STATE64_COUNT=68;
+struct arm_thread_state64_t {
+ uint64_t __x[29]{},__fp=0,__lr=0,__sp=0,__pc=0;uint32_t __cpsr=0,__pad=0;
+};
+static void *__darwin_arm_thread_state64_get_pc_fptr(const arm_thread_state64_t &s){return (void *)(uintptr_t)s.__pc;}
+static void *__darwin_arm_thread_state64_get_lr_fptr(const arm_thread_state64_t &s){return (void *)(uintptr_t)s.__lr;}
+static uint64_t __darwin_arm_thread_state64_get_fp(const arm_thread_state64_t &s){return s.__fp;}
+static uint64_t __darwin_arm_thread_state64_get_sp(const arm_thread_state64_t &s){return s.__sp;}
+static int arm_thread_get_state(unsigned thread,unsigned flavor,thread_state_t p,mach_msg_type_number_t *count){
+ assert(thread==55 && flavor==ARM_THREAD_STATE64 && *count==ARM_THREAD_STATE64_COUNT);++stateCalls;
+ auto &s=*(arm_thread_state64_t *)p;s.__pc=0x187f01000+(changeState && stateCalls>1?4:0);
+ s.__lr=0x187f02000;s.__fp=frameStart;s.__sp=invalidSp?0:0x1000;
+ for(unsigned i=0;i<29;++i)s.__x[i]=0xf00d000000000000ull+((uint64_t)stateCalls<<32)+i;
+ if(shortCount){--*count;}
+ return stateError;
+}
+#define thread_get_state arm_thread_get_state
+"""
+arm_header=controlled_header.replace('#if defined(__arm64__) || defined(__aarch64__)','#if 1 /* controlled ARM64 state */',1)
+assert arm_header!=controlled_header
+arm_cases=cases.replace('s.flags==31','s.flags==95')
+needle='traceWaitBytes(27,s.id,&s,sizeof(s));assert(records.size()==12);'
+assert arm_cases.count(needle)==1
+arm_cases=arm_cases.replace(needle,r"""
+ assert(s.version==2 && s.bytes==576 && s.architecture==1 && (s.flags&nbwait::IntegerRegistersValid));
+ for(unsigned i=0;i<14;++i)assert(s.integers[i]==0xf00d000100000000ull+(i<4?i:i+15));
+"""+needle)
+arm_fixture=a.out/'capture-arm64-controlled.cpp';arm_fixture.write_text(prefix+arm_declarations+arm_header+record+sink+fragment+arm_cases)
+arm_binary=a.out/'capture-arm64-controlled'
+arm_command=[a.cxx,'-std=c++17','-O1','-g','-Wall','-Wextra','-Werror','-Wno-unused-function','-fsanitize=address,undefined',str(arm_fixture),'-o',str(arm_binary)]
+subprocess.run(arm_command,check=True)
+arm_run=subprocess.run([str(arm_binary),str(a.out/'arm64-producer.trace')],env=env,capture_output=True,text=True,timeout=30)
+(a.out/'arm64-controlled.log').write_text(arm_run.stdout+arm_run.stderr);assert arm_run.returncode==0,(arm_run.stdout,arm_run.stderr)
+arm_decoded=decoder.read_frames(a.out/'arm64-producer.trace',require_header=False)
+assert arm_decoded['sample_count']==arm_decoded['image_count']==1 and not arm_decoded['quality']
+arm_row=arm_decoded['samples'][0]
+assert arm_row['version']==2 and arm_row['bytes']==576 and arm_row['depth']==16
+assert arm_row['integer_registers_from_first_get_state'] and not arm_row['integer_registers_rechecked']
+assert arm_row['arm64_integer_registers']=={'x'+str(i):hex(0xf00d000100000000+i) for i in [0,1,2,3,*range(19,29)]}
+assert decoded['samples'][0]['arm64_integer_registers'] is None
+# A fragment group cannot mix the two declared sizes admitted by the decoder.
+import struct
+mixed=bytearray((a.out/'arm64-producer.trace').read_bytes());struct.pack_into('<I',mixed,44,336)
+(a.out/'mixed-sizes.trace').write_bytes(mixed);bad=decoder.read_frames(a.out/'mixed-sizes.trace',require_header=False)
+assert not bad['samples'] and bad['quality'].get('invalid_fragment_header')
+maximum_UI_bytes=90001*12*72+1024*4*72+4*72
+assert maximum_UI_bytes<=80<<20
+
 real=dict(executed=False,platform=platform.system(),device_sandbox_verified=False)
 if platform.system()=='Darwin':
     registry=s[s.index('struct RenderWaitTarget {'):s.index('static void traceRenderWaitImages(')]
@@ -169,7 +221,8 @@ int main(int argc,char **argv){assert(argc==2);assert(nbwait::kSampleBudget==614
     real_decoded=decoder.read_frames(a.out/'real-mach-wait.trace',require_header=False)
     assert real_decoded['sample_count']==2 and not real_decoded['quality']
     real.update(executed=True,passed=True,result=json.loads(live.stdout),command=compile_command)
-report=dict(passed=True,controlled_cases=12,fragment_rejection_cases=2,ASan_UBSan=True,
+report=dict(passed=True,controlled_cases=24,fragment_rejection_cases=3,ASan_UBSan=True,
+    ARM64_integer_values_from_actual_reader=True,integer_registers_unmodified_64bit=True,stack_frames=16,wire_version=2,wire_bytes=576,maximum_UI_bytes=maximum_UI_bytes,required_UI_read_bound_bytes=80<<20,
     actual_capture_and_fragment_code=True,actual_registration_code_on_Mac=real['executed'],
     real_Mach_wait=real,source_sha256=hashlib.sha256(a.source.read_bytes()).hexdigest(),
     header_sha256=hashlib.sha256(a.header.read_bytes()).hexdigest(),decoder_sha256=hashlib.sha256(a.decoder.read_bytes()).hexdigest(),

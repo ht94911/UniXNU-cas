@@ -1,7 +1,7 @@
-name: nezha iPhone27 display discovery and UI coverage 038c
+name: nezha iPhone27 image arguments and shared pipeline cache 039
 on:
   push:
-    branches: [codex/ios27-gpu27-metal-full-038c-20261112]
+    branches: [codex/ios27-gpu27-metal-full-039-20261112]
   workflow_dispatch:
 permissions:
   contents: read
@@ -100,6 +100,9 @@ jobs:
       - name: Exercise delayed display discovery with actual Objective-C and Mach reads
         id: display_discovery
         run: device/ci/gpu-userland/logrun display-discovery python3 device/ci/gpu-userland/check-display-discovery.py --source unixnu/drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm --out "$LOGS/display-discovery"
+      - name: Check shader sharing on the actual prepared Turnip source
+        id: pipeline_cache
+        run: device/ci/gpu-userland/logrun pipeline-cache python3 device/ci/gpu-userland/check-pipeline-cache.py --source unixnu/.cache/mesa-work/src/freedreno/vulkan/tu_pipeline.cc --patch unixnu/patches/mesa/turnip-shaders-shared-across-pipeline-caches.patch --out "$LOGS/pipeline-cache"
       - name: Build Turnip for the actual A840 arm64e iOS27 target
         id: turnip_ios27
         working-directory: unixnu
@@ -152,6 +155,7 @@ jobs:
           OUTCOME_FRAME_OBSERVERS: ${{ steps.frame_observers.outcome }}
           OUTCOME_UI_MAIN: ${{ steps.ui_main.outcome }}
           OUTCOME_DISPLAY_DISCOVERY: ${{ steps.display_discovery.outcome }}
+          OUTCOME_PIPELINE_CACHE: ${{ steps.pipeline_cache.outcome }}
         run: |
           set -euo pipefail
           export PATH="$(brew --prefix openssl@3)/bin:$PATH"
@@ -195,6 +199,7 @@ jobs:
           FRAME_OBSERVERS: ${{ steps.frame_observers.outcome }}
           UI_MAIN: ${{ steps.ui_main.outcome }}
           DISPLAY_DISCOVERY: ${{ steps.display_discovery.outcome }}
+          PIPELINE_CACHE: ${{ steps.pipeline_cache.outcome }}
         run: |
           set -euo pipefail
           test "$TARGETS" = success
@@ -209,6 +214,7 @@ jobs:
           test "$FRAME_OBSERVERS" = success
           test "$UI_MAIN" = success
           test "$DISPLAY_DISCOVERY" = success
+          test "$PIPELINE_CACHE" = success
           test "$BUFFER_RESERVE" = skipped
           test "$VULKAN_OPERATIONS" = skipped
           test "$TILED_WORDS" = skipped

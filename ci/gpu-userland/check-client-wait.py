@@ -28,7 +28,7 @@ report=dict(source_sha256=hashlib.sha256(a.source.read_bytes()).hexdigest(),
     display_state_header_sha256=hashlib.sha256((folder/'NativeDisplayWaitState.h').read_bytes()).hexdigest(),
     phone_operations=False,real_Mac_main_thread=dict(executed=False,platform=platform.system()),
     controlled_host_changes=['getprogname selects SpringBoard in the test process','sample limit8/duration1second','join instead of detach for fixture ownership'],
-    separate_client_filename='springboard-waits.trace',images_emission_stubbed_in_this_Mach_test=True,production_maximum_samples=90000,production_duration_seconds=1800,required_read_bound_bytes=67108864)
+    separate_client_filename='springboard-waits.trace',images_emission_stubbed_in_this_Mach_test=True,production_maximum_samples=90000,production_duration_seconds=1800,required_read_bound_bytes=83886080)
 assert front.count('/m2v/springboard-waits.trace')==2
 assert 'const char *const *paths=render?renderPaths:clientPaths;' in front
 assert 'if(!diagOn() || (!render && !client))return;' in front

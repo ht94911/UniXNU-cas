@@ -155,7 +155,15 @@ assert discovery_profile['source_sha256']==hashlib.sha256((a.unixnu/'drivers/Adr
 assert discovery_profile['observer_include_sha256']==hashlib.sha256((a.unixnu/'drivers/AdrenoMetal/NativeFrameObservers.inc').read_bytes()).hexdigest()
 for marker in (b'display-wait discovery=',b'ui-wait begin',b'ui-wait end',b'budget_s=1800 max=90000'):
     assert marker in data,marker
-report=dict(actual_display_discovery=discovery_profile,actual_frame_observers=observer_profile,actual_UI_main_thread=client_profile,actual_render_wait_profile=wait_profile,actual_display_profile=display_profile,actual_sync_profile=sync_profile,initial_tile_store_error_propagation_source_bound=True,actual_target_checked=True,plugin_sha256=hashlib.sha256(data).hexdigest(),
+cache_profile=json.loads((a.logs/'pipeline-cache/report.json').read_text())
+assert cache_profile['passed'] and cache_profile['actual_Turnip_functions']
+assert cache_profile['actual_prepared_source_sha256']==hashlib.sha256((a.unixnu/'.cache/mesa-work/src/freedreno/vulkan/tu_pipeline.cc').read_bytes()).hexdigest()
+assert cache_profile['patch_sha256']==hashlib.sha256((a.unixnu/'patches/mesa/turnip-shaders-shared-across-pipeline-caches.patch').read_bytes()).hexdigest()
+assert [row['objects_for_three_caches'] for row in cache_profile['rows']]==[3,1]
+assert wait_profile['ARM64_integer_values_from_actual_reader'] and wait_profile['wire_version']==2
+assert wait_profile['wire_bytes']==576 and wait_profile['stack_frames']==16
+assert client_profile['required_read_bound_bytes']==83886080
+report=dict(actual_pipeline_cache_host=cache_profile,actual_display_discovery=discovery_profile,actual_frame_observers=observer_profile,actual_UI_main_thread=client_profile,actual_render_wait_profile=wait_profile,actual_display_profile=display_profile,actual_sync_profile=sync_profile,initial_tile_store_error_propagation_source_bound=True,actual_target_checked=True,plugin_sha256=hashlib.sha256(data).hexdigest(),
             profile=profile,required_markers_present=True,iPad_raw_reader_markers_absent=True,
             bundle_signature_verified=True,host_pixel_result='legacy host010 failure retained;host GUI path not run by this build;A840 acceptance remains separate',
             actual_device_registry_compiled=True,old_singleton_symbol_absent=True,

@@ -350,6 +350,13 @@ def main():
     profile_patch = root / 'patches/mesa/turnip-driver-cpu-profile.patch'
     must(['git', '-C', mesa, 'apply', '--check', profile_patch])
     must(['git', '-C', mesa, 'apply', profile_patch])
+    # The cache-sharing patch is introduced by the same late recipe.
+    shared_cache_patch = root / 'patches/mesa/turnip-shaders-shared-across-pipeline-caches.patch'
+    must(['git', '-C', mesa, 'apply', '--check', shared_cache_patch])
+    must(['git', '-C', mesa, 'apply', shared_cache_patch])
+    record['pipeline_cache_sharing'] = dict(patch_sha256=sha(shared_cache_patch),
+        source_sha256=sha(mesa / 'src/freedreno/vulkan/tu_pipeline.cc'),
+        upstream='c34f018aafd6befd5dc93c05a8dccd5bdce6724b')
     final_pins = json.loads((root / 'scripts/data/adreno-compiler-inputs.json').read_text())
     validate_recorded_patches(root, mesa, final_pins)
     assert sha(mesa / 'src/freedreno/vulkan/tu_knl_darwin.cc') == '6f8b09b7ee19eadf3e06df4128f7b3ee016c0528a16506a2b8d637ade9af7242'

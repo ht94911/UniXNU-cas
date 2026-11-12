@@ -15,7 +15,7 @@
   "drivers/AdrenoMetal/GpuScanoutClient.h": "50f47add181c46c29818d838d1a11f5597ef72a5753ad840f89c5f1cc06b77cc",
   "drivers/GopFramebuffer/NativeGOPWire.h": "70ed58ac9a2406f6ebd7a1e69261fb62f5075a13440e1bf05f075cbf92d0450c",
   "drivers/GopFramebuffer/NativeGOPTiming.h": "c30ee39fc384ad0a7bb95a098deb614601642764801e6da08e1dc5b9a6a603fc",
-  "drivers/AdrenoMetal/NativeRenderWaitSample.h": "bbc7688e97ff38df8e745018fe869d05ea3c1386e7f6199c0d1e6a7a988a9e87",
+  "drivers/AdrenoMetal/NativeRenderWaitSample.h": "dc7a05f0e7b3cd9bd2dd7959a56bf07aab079e721dd1fa0e21bc9776ec0c8d54",
   "drivers/AdrenoMetal/NativeDisplayWaitState.h": "29abb88e4a59271d46731c7881ea2a0acb6720b0c5001c7f00b4406b0f693c17",
   "drivers/AdrenoMetal/NativeFrameObservers.inc": "e6bc2cc1c226e88d1f490f9b0639d33600fc9e41cb1e734c9209e0f2b6d07b04"
 }
