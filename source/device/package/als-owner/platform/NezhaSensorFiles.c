@@ -2,6 +2,9 @@
 /* QAIC layouts: Qualcomm apps_std_skel.c/apps_remotectl_skel.c d247519. */
 #include "NezhaSensorFiles.h"
 #include <string.h>
+/* XNU's exported string.h omits this existing libkern routine. The native
+ * kernel provides _memchr with the ordinary C pointer/int/size_t ABI. */
+extern void *memchr(const void *,int,size_t);
 #define BAD 0x0e
 #define UNSUPPORTED 0x14
 #define NO_HANDLE 0x2c

@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "d38f8a12ca04ea6bc4296cd94b5b1cfc80288b1c",
+  "device_revision": "b1fbe78496e884d7f073143065ed7bd2b866d9c5",
   "soc_revision": "e565439bf1a13d0224f0a9adcfc1eef8df7ad142",
   "xcode": "26.6",
   "files": {
@@ -281,7 +281,7 @@
     "source/device/scripts/hid-device-iphone-24A446.json": "af4668764ba1d2a4649b9c45d1ddbbabcb69e27659e7c35fbf9899f8f6bdbc7d",
     "source/device/scripts/legacy-display-iphone-24A446.json": "6f08ddf9377cc5c92a4a60ff75c3b452eb1a536720ebdf8fda9361846d8c8fea",
     "source/device/scripts/nezha-armcpu-asm-fix.py": "3d37c0c0e3613453c901a9622bc45a077c9acbd35ffe449046fa575b3b57af3a",
-    "source/device/scripts/nezha27-als-owner-inputs.json": "3bd203b0839434e9371e52f4cc3658ce7652bfdc9394f787039fc7ceb4e5de3b",
+    "source/device/scripts/nezha27-als-owner-inputs.json": "d450e6d5ea2ec183663645c1caf6f9bf9534d17e6020e1f714bb1a2734a77d30",
     "source/device/scripts/qualify-armcpu-instructions.py": "dae7cb3b9faecaac7b268212bbd324ae172d3dffa0e94b06afc4581c9f4abe9b",
     "source/device/tests/brightness-poll-observation.cpp": "411bbcafa1d880c88608aadeecf573c0c40f31cfe938552f72639a3c50d17c1b",
     "source/device/tests/brightness-poll-observation.py": "1aeff817ab68609d46f47c98539971a6a772003981ff3e978cca7eedbca58111",
@@ -316,8 +316,8 @@
     "source/device/package/als-owner/upstream/QcomPdr.c": "746991991eae6418a30eafd6631544f60d874435d77086d4348c9f1942116680",
     "source/device/package/als-owner/upstream/QcomFastRpc.c": "ed9e0d33172508a7794792d9db8520af724c34fe5466ae0bf9dfd8a8a99c080a",
     "source/device/package/als-owner/upstream/QcomRpcListener.c": "e19b63f804fc3e33629ef5b9a6a69d7f2984c530989cf0185576218367e2cb0d",
-    "source/device/package/als-owner/platform/NezhaSensorFiles.c": "145d8218db0c5daf5bef6b30080251ba8df4071e51050911ef9ea8c0c8914fc7",
-    "source/device/package/als-owner/platform/NezhaSensorBundle.c": "0cb7bed44cf9ff64098fbcd84d78d9deaff35b979143751a346635bb8803786b",
+    "source/device/package/als-owner/platform/NezhaSensorFiles.c": "4be7a61fcf9c267f6512478598074069d009b1849507c0095c6d7002e8372308",
+    "source/device/package/als-owner/platform/NezhaSensorBundle.c": "adf2225c9339e2f21a03d64289d81667664eb8d82859084fc58cb4b9dee29623",
     "source/device/package/als-owner/os/NezhaSensorInputs.c": "2039fdc3f322a8ecafb123d763473ea096737bc2638ba9c52df23e37f7681623",
     "source/device/package/als-owner/os/NezhaSensorNative.cpp": "2dd185b1009539c50b20ea2bf0630f9205419201b5ed32b471470ffacbd8b2df",
     "source/device/package/als-owner/os/NezhaAudioSmmu.cpp": "833371d1e1f4068cadf60002da3867f7a346ece265a8a4d5773174649898fff5",
@@ -429,7 +429,7 @@
     "hardware": false
   },
   "als_abi": {
-    "source_revision": "d38f8a12ca04ea6bc4296cd94b5b1cfc80288b1c",
+    "source_revision": "b1fbe78496e884d7f073143065ed7bd2b866d9c5",
     "source_files": [
       "package/als/NezhaAlsBackend.h",
       "package/als/NezhaAlsFrontend.cpp",
@@ -466,9 +466,9 @@
     "first_formal_link_selected": true,
     "normal_F2_recipe": true
   },
-  "device_evidence_revision": "d38f8a12ca04ea6bc4296cd94b5b1cfc80288b1c",
+  "device_evidence_revision": "b1fbe78496e884d7f073143065ed7bd2b866d9c5",
   "als_owner": {
-    "source_revision": "d38f8a12ca04ea6bc4296cd94b5b1cfc80288b1c",
+    "source_revision": "b1fbe78496e884d7f073143065ed7bd2b866d9c5",
     "source_files": [
       "package/als-owner/platform/AdspFirmware.c",
       "package/als-owner/platform/AdspLink.c",
@@ -632,5 +632,13 @@
     "CI_head": "810b2974041da9874b79b581ca6566f1725c1e58",
     "CI_run": 43185831831,
     "qualification": "ACK timeout removed on actual hardware; no real lux; new bootstrap is not hardware-qualified"
+  },
+  "native008_first_attempt": {
+    "run": 43266616910,
+    "head": "a9f7220bc7ca85a9e3fcf867c9715b79f46da884",
+    "actual_compiled_units": 28,
+    "failure": "Only existing libkern memchr declaration absent in twoC units",
+    "old_artifact_retained": true,
+    "hardware_qualified": false
   }
 }

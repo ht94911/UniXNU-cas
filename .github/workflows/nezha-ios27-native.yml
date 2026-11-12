@@ -1,7 +1,7 @@
-name: nezha iPhone27 ALS008 sensor FastRPC bootstrap
+name: nezha iPhone27 ALS008 sensor FastRPC kernel declaration fix
 on:
   push:
-    branches: [codex/ios27-brightness-als008-fastrpc-20261113]
+    branches: [codex/ios27-brightness-als008fix-memchr-20261113]
   workflow_dispatch:
 permissions:
   contents: read

@@ -25,8 +25,8 @@
     "upstream/QcomPdr.c": "746991991eae6418a30eafd6631544f60d874435d77086d4348c9f1942116680",
     "upstream/QcomFastRpc.c": "ed9e0d33172508a7794792d9db8520af724c34fe5466ae0bf9dfd8a8a99c080a",
     "upstream/QcomRpcListener.c": "e19b63f804fc3e33629ef5b9a6a69d7f2984c530989cf0185576218367e2cb0d",
-    "platform/NezhaSensorFiles.c": "145d8218db0c5daf5bef6b30080251ba8df4071e51050911ef9ea8c0c8914fc7",
-    "platform/NezhaSensorBundle.c": "0cb7bed44cf9ff64098fbcd84d78d9deaff35b979143751a346635bb8803786b",
+    "platform/NezhaSensorFiles.c": "4be7a61fcf9c267f6512478598074069d009b1849507c0095c6d7002e8372308",
+    "platform/NezhaSensorBundle.c": "adf2225c9339e2f21a03d64289d81667664eb8d82859084fc58cb4b9dee29623",
     "os/NezhaSensorInputs.c": "2039fdc3f322a8ecafb123d763473ea096737bc2638ba9c52df23e37f7681623",
     "os/NezhaSensorNative.cpp": "2dd185b1009539c50b20ea2bf0630f9205419201b5ed32b471470ffacbd8b2df",
     "os/NezhaAudioSmmu.cpp": "833371d1e1f4068cadf60002da3867f7a346ece265a8a4d5773174649898fff5"

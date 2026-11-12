@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #include "NezhaSensorBundle.h"
 #include <string.h>
+/* Existing libkern symbol; omitted from XNU's exported string.h. */
+extern void *memchr(const void *,int,size_t);
 static int octal(const uint8_t *p,unsigned bytes,uint32_t *result) {
     uint32_t n=0;unsigned i=0;while (i<bytes && p[i]==' ') ++i;
     for (;i<bytes && p[i] && p[i]!=' ';++i) {if (p[i]<'0' || p[i]>'7' || n>UINT32_MAX/8) return -1;n=n*8+p[i]-'0';}
