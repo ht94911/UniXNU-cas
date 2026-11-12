@@ -26,6 +26,7 @@ enum {
     CamccUpdate = 1,
     CamccRateMask = 0x371f, /* source, HID and fractional mode */
     CamccTimeoutMs = 100,
+    BranchFsmOn = 2,
     OwnTop = 1,
     OwnRetain = 2,
     OwnCoreAhb = 4,
@@ -70,12 +71,23 @@ static bool enable_branch(const struct NezhaCameraRegisterIo *io,
     if ((io->read(io->context, offset) & CamccEnable) == 0) {
         lease->enabled_by_us |= owned_bit;
         change_bits(io, offset, CamccEnable, CamccEnable);
-        if (!has_halt) {
+    }
+    /* clk_branch_wait uses a delay for BRANCH_HALT_DELAY. The normal
+     * branch2 path polls CLK_OFF/NOC_FSM, independently of enable readback. */
+    if (!has_halt) {
+        io->wait_ms(io->context, 1);
+        return true;
+    }
+    for (unsigned ms = 0; ms <= CamccTimeoutMs; ++ms) {
+        const uint32_t value = io->read(io->context, offset);
+        if (value != UINT32_MAX && ((value & clock_off) == 0 || ((value >> 28) & 7u) == BranchFsmOn)) {
+            return true;
+        }
+        if (ms < CamccTimeoutMs) {
             io->wait_ms(io->context, 1);
         }
     }
-    const uint32_t mask = CamccEnable | (has_halt ? clock_off : 0);
-    return wait_bits(io, offset, mask, CamccEnable);
+    return false;
 }
 
 enum NezhaCameraCamccStatus nezha_camera_camcc_acquire_top(
@@ -196,9 +208,7 @@ static bool disable_owned_branch(const struct NezhaCameraRegisterIo *io,
     change_bits(io, offset, CamccEnable, 0);
     if (!has_halt) {
         io->wait_ms(io->context, 1);
-    }
-    const uint32_t off = has_halt ? clock_off : 0;
-    if (!wait_bits(io, offset, CamccEnable | off, off)) {
+    } else if (!wait_bits(io, offset, clock_off, clock_off)) {
         return false;
     }
     lease->enabled_by_us &= ~owned_bit;

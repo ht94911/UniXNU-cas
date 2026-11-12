@@ -96,7 +96,7 @@ def prepare(framework, work):
     (work / 'device/local.toml').write_text(
         '[[source]]\nname = "sm8850"\nkind = "soc"\nlocal = "../soc"\n'
         '\n[[source]]\nname = "QcomXnuUsbDebug"\nkind = "driver"\nlocal = "../usb"\n')
-    jobs = max(1, min(os.cpu_count() or 1, 3))  # hosted M1 memory/CPU budget; local builds retain 32.
+    jobs = max(1, min(os.cpu_count() or 1, 4))  # fixed macos-26-intel runner
     with (work / 'device/local.toml').open('a') as output:
         output.write('\n[[source]]\nname = "ShengUfs"\nkind = "driver"\nlocal = "../ufs"\n')
     with (work / 'device/local.toml').open('a') as output:

@@ -63,7 +63,7 @@ static vm_offset_t map_clocked_cci(vm_offset_t camcc)
     const uint32_t power = read32(camcc, CameraTopStatus);
     const uint32_t branch = read32(camcc, CameraCciBranch);
     const uint32_t root = read32(camcc, CameraCciCommand);
-    if ((power & CameraTopPowerUp) == 0 || (branch & (clock_off | 1u)) != 1u ||
+    if ((power & CameraTopPowerUp) == 0 || (branch & clock_off) != 0 ||
         (root & clock_off) != 0) {
         printf("NEZHA CAMERA: CCI0 not clocked top=%#x root=%#x branch=%#x\n",
                power, root, branch);

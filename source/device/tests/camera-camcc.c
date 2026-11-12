@@ -14,6 +14,7 @@ struct CamccModel {
     unsigned writes, waits;
     bool no_power_ack, no_cci_disable_ack, no_rcg_ack;
     bool sticky_completion;
+    bool core_enable_unobservable;
 };
 
 static uint32_t read32(void *context, uint32_t offset)
@@ -50,7 +51,7 @@ static void write32(void *context, uint32_t offset, uint32_t value)
         }
         break;
     case 0x21348:
-        model->core = value;
+        model->core = model->core_enable_unobservable ? value & ~1u : value;
         break;
     case 0x2137c:
         model->cpas = (value & 1u) != 0 ? value & ~off_bit : value | off_bit;
@@ -153,6 +154,14 @@ int main(void)
     assert(model.status == (PowerUp | PowerDown));
     assert(nezha_camera_camcc_release(&io, &lease) == NezhaCameraCamccOk);
     assert(model.gdsc == cold.gdsc && lease.enabled_by_us == 0);
+
+    model = cold;
+    model.core_enable_unobservable = true;
+    assert(nezha_camera_camcc_acquire_top(&io, &lease) == NezhaCameraCamccOk);
+    assert(model.core == 0 && model.cpas == 1);
+    assert(nezha_camera_camcc_enable_cci0(&io, &lease) == NezhaCameraCamccOk);
+    assert(nezha_camera_camcc_release(&io, &lease) == NezhaCameraCamccOk);
+    assert(model.status == PowerDown && lease.enabled_by_us == 0);
 
     puts("Camera CAMCC restores owned gates and keeps the parent on after an uncertain stop");
 }

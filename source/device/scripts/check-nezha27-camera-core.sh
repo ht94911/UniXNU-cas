@@ -29,6 +29,7 @@ check cci "$camera/NezhaCameraCci.c" "$camera/NezhaCameraOvx10500u.c"
 check cci-burst "$camera/NezhaCameraCci.c" "$camera/NezhaCameraOvx10500u.c"
 check rdi1080 "$camera/NezhaCameraRdi1080.c"
 check camss1080 "$camera/NezhaCameraRdi1080.c" "$camera/NezhaCameraCamss1080.c"
+check csiphy24 "$camera/NezhaCameraCsiphy24.c"
 check dma "$camera/NezhaCameraRdi1080.c" "$camera/NezhaCameraDma.c" \
     "$smmu/ArmSmmu4K.c" "$smmu/ArmSmmu4KContext.c" "$smmu/ArmSmmu4KProgram.c" \
     "$smmu/ArmSmmu4KStreams.c"

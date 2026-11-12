@@ -149,7 +149,7 @@ static bool start_mclk(const struct NezhaCameraRegisterIo *mclk, struct NezhaCam
         state->mclk_gate_owned = true;
         update(mclk, MclkBranch, MclkEnable, MclkEnable);
     }
-    if (!wait_for(mclk, MclkBranch, clock_off | MclkEnable, MclkEnable)) {
+    if (!wait_for(mclk, MclkBranch, clock_off, 0)) {
         return false;
     }
     if (state->mclk_rate_owned) {
@@ -226,7 +226,7 @@ static bool stop_mclk(const struct NezhaCameraRegisterIo *mclk, struct NezhaCame
     }
     if (state->mclk_gate_owned) {
         update(mclk, MclkBranch, MclkEnable, 0);
-        if (!wait_for(mclk, MclkBranch, clock_off | MclkEnable, clock_off)) {
+        if (!wait_for(mclk, MclkBranch, clock_off, clock_off)) {
             return false;
         }
         state->mclk_gate_owned = false;

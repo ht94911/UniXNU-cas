@@ -159,11 +159,34 @@ class StockModule:
             yield dict(register=register, operation=OPERATIONS[op], address_bytes=address_bytes,
                        data_bytes=data_bytes, delay_us=u32(delay, 0), values=values)
 
+    def initialization(self):
+        root = self.data[0x20:0x24 + u32(self.data, 0x20)]
+        result = []
+        for offset in range(4, len(root) - 8, 4):
+            present, index = struct.unpack_from('<II', root, offset)
+            if present != 1 or index >= len(self.symbols) or len(self.symbol(index)) != 24:
+                continue
+            record = struct.unpack_from('<6I', self.symbol(index))
+            if record[0] != 20 or record[5] >= len(self.symbols):
+                continue
+            if record[3] == 8:
+                shape, count, target = record[3:]
+            elif record[4] == 1 and len(self.symbol(record[5])) == 12:
+                shape, count, target = struct.unpack_from('<III', self.symbol(record[5]))
+            else:
+                continue
+            if shape == 8 and count > 0 and target < len(self.symbols) and len(self.symbol(target)) == count * 60:
+                result.append(dict(sensor_version=record[1], settings_symbol=target,
+                                   settings=list(self.settings(target))))
+        require(result, 'No initialization records found in the selected sensor driver')
+        return result
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("module", type=Path, nargs="+")
     parser.add_argument("--mode", type=int, help="also extract the selected mode's register groups")
+    parser.add_argument("--initialization", action="store_true", help="also extract initialization and revision reads")
     parser.add_argument("--output", required=True, type=Path, help="local private output JSON")
     args = parser.parse_args()
     result = []
@@ -175,6 +198,8 @@ def main():
             require(0 <= args.mode < len(modes), "Requested mode is outside its module")
             mode = modes[args.mode]
             item["selected_settings"] = list(module.settings(mode["settings_symbol"]))
+        if args.initialization:
+            item['initialization'] = module.initialization()
         result.append(item)
     args.output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
 
