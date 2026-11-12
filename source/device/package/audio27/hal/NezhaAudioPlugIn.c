@@ -23,7 +23,8 @@ enum {kPlugIn=kAudioObjectPlugInObject,kDevice=2,kOutStream=3,kInStream=4,kVolum
 #define kDeviceUID "NezhaAudio27Device"
 #define kModelUID "NezhaAudio27Model"
 static const Float64 kRate=NA_AUDIO_RATE;
-static const UInt32 kZeroPeriod=NA_AUDIO_RING_FRAMES;
+/* Zero timestamps follow the10ms DSP period, independently of ring capacity. */
+static const UInt32 kZeroPeriod=NA_AUDIO_PERIOD_FRAMES;
 static const Float32 kMinDb=-36.0f;
 static pthread_mutex_t gLock=PTHREAD_MUTEX_INITIALIZER;
 static atomic_uint gRefs=1;
