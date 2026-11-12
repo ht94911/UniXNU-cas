@@ -1,0 +1,30 @@
+--- a/bsd/kern/kern_shutdown.c
++++ b/bsd/kern/kern_shutdown.c
+@@ -180,6 +180,10 @@
+ extern int vm_swapfile_create_thread_running;
+ extern int vm_swapfile_gc_thread_running;
+ extern uint32_t cl_sparse_push_error;
++/* The selected Nezha power archive owns its worker and Data logger. Normal
++ * shutdown must join that owner while Data is still mounted; the later
++ * power-plane systemWillShutdown notification follows VFS unmount. */
++extern int nezha_power27_prepare_shutdown(void);
+ 
+ int
+ reboot_kernel(int howto, char *message)
+@@ -267,6 +271,16 @@
+ 			halt_log_enter("shutdown.trace", 0, mach_absolute_time() - startTime);
+ 		}
+ 
++		/* The existing worker performs its one drain and closes the existing
++		 * logger. Do not repeat it here or unmount beneath a running owner. */
++		int nezha_power_error = nezha_power27_prepare_shutdown();
++		if (nezha_power_error != 0) {
++			printf("NEZHA27 POWER: before-unmount owner still active, error=%d\n",
++			    nezha_power_error);
++			return nezha_power_error;
++		}
++		printf("NEZHA27 POWER: before-unmount owner ended; log result retained\n");
++
+ 		IOSystemShutdownNotification(howto, kIOSystemShutdownNotificationStageRootUnmount);
+ 
+ 		if (cl_sparse_push_error) {
