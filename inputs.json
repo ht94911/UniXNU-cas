@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "ALS006 Native006 ordinary QRTR client port and existing owner request diagnostics over fixed G030/manual005",
+  "purpose": "ALS006 Native006 repair: reviewed caller pin for the stock QRTR client port candidate over fixed G030/manual005",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "21180ffada73b7f94b16f2e65f8ef1d7c7cc99ec",
+  "device_revision": "5e7d8f4f5d885820c7ff1c1564559ec7abf6b793",
   "soc_revision": "e565439bf1a13d0224f0a9adcfc1eef8df7ad142",
   "xcode": "26.6",
   "files": {
@@ -281,7 +281,7 @@
     "source/device/scripts/hid-device-iphone-24A446.json": "af4668764ba1d2a4649b9c45d1ddbbabcb69e27659e7c35fbf9899f8f6bdbc7d",
     "source/device/scripts/legacy-display-iphone-24A446.json": "6f08ddf9377cc5c92a4a60ff75c3b452eb1a536720ebdf8fda9361846d8c8fea",
     "source/device/scripts/nezha-armcpu-asm-fix.py": "3d37c0c0e3613453c901a9622bc45a077c9acbd35ffe449046fa575b3b57af3a",
-    "source/device/scripts/nezha27-als-owner-inputs.json": "a156e73b415890d2cbdc49e394203207295bed9879ca32c9ab92b7d1917b4dc1",
+    "source/device/scripts/nezha27-als-owner-inputs.json": "d0f6262b4eb5e6a9a2c87aa78efa9f7fa9c23a73033000ed3546f71524f1aa48",
     "source/device/scripts/qualify-armcpu-instructions.py": "dae7cb3b9faecaac7b268212bbd324ae172d3dffa0e94b06afc4581c9f4abe9b",
     "source/device/tests/brightness-poll-observation.cpp": "411bbcafa1d880c88608aadeecf573c0c40f31cfe938552f72639a3c50d17c1b",
     "source/device/tests/brightness-poll-observation.py": "1aeff817ab68609d46f47c98539971a6a772003981ff3e978cca7eedbca58111",
@@ -415,7 +415,7 @@
     "hardware": false
   },
   "als_abi": {
-    "source_revision": "21180ffada73b7f94b16f2e65f8ef1d7c7cc99ec",
+    "source_revision": "5e7d8f4f5d885820c7ff1c1564559ec7abf6b793",
     "source_files": [
       "package/als/NezhaAlsBackend.h",
       "package/als/NezhaAlsFrontend.cpp",
@@ -452,9 +452,9 @@
     "first_formal_link_selected": true,
     "normal_F2_recipe": true
   },
-  "device_evidence_revision": "21180ffada73b7f94b16f2e65f8ef1d7c7cc99ec",
+  "device_evidence_revision": "5e7d8f4f5d885820c7ff1c1564559ec7abf6b793",
   "als_owner": {
-    "source_revision": "21180ffada73b7f94b16f2e65f8ef1d7c7cc99ec",
+    "source_revision": "5e7d8f4f5d885820c7ff1c1564559ec7abf6b793",
     "source_files": [
       "package/als-owner/NezhaAlsNativeCaller.cpp",
       "package/als-owner/NezhaAlsNativeCaller.h",
