@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Audio064 binds the existing owned TAS diagnostic-wait counter to output and VI graph endpoint preparation. Existing hardware5s and DSP2s limits remain. The final package retains063 AcousticID8001 and its original062 HAL; this native-only public recipe contains no device inputs or phone operations.",
+  "purpose": "Audio064 binds the existing owned TAS diagnostic-wait counter to output and VI graph endpoint preparation. Existing hardware5s and DSP2s limits remain. The final package retains063 AcousticID8001 and its original062 HAL; this native-only public recipe contains no device inputs or phone operations. Correct the public source export to include the existing inline AudioReference.h used by the preserved062 HAL source.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -219,7 +219,7 @@
     "source/device/package/audio27/platform/AudioSmmu.h": "41401f1b97e3481c7e5cc3e02c47f926e91eec9fa34f4a48981a3fc3b723cddd",
     "source/device/package/audio27/upstream/ShengGpr.c": "c4f498f07e2cb601b593e64a8d32474a21d6a87375618e1a67b99d52c5d3160e",
     "source/device/package/audio27/platform/SoundWire.h": "334e51c447b865e66ed7d67eb448510dfaa0b5a8c66598a3d722f84ce69f565c",
-    ".github/workflows/nezha-ios27-native.yml": "e7b1a06973178ce472f3780139a6f8d28dba06347d28f0bd92538fc75a697ff2",
+    ".github/workflows/nezha-ios27-native.yml": "88d68e6cea61c891a47b4460e2449ea21126a3fa88312ba03fb97f5ba9cd4aa1",
     "source/device/package/audio27/upstream/ShengGpr.h": "a274dded1f4d1e2709b9f966759bcb1f57d12747ee0f57743dea1fa97d95d23e",
     "source/device/package/audio27/os/NezhaAudioNative.h": "12517b0d7145fc498ae371fbd3ba47cd9415468d655989c08090010de79cc2ba",
     "source/device/package/audio27/upstream/ShengAudioReach.h": "b135177a5feb3e24e0d8a6aabb301600e2c37078b970a09ada6e8eb7bb6a5b98",
@@ -342,7 +342,8 @@
     "source/device/package/audio27/platform/NezhaMicPower.h": "d97b5f6370bbdf52cadca10c2848f7e2db07aa4e43793d672317ab3b8f7e9d2f",
     "source/device/package/audio27/core/AudioHalDiagnostics.c": "6cab23333f800435aa87b00acec63a8d3be0d97a52b8a12f2a5526fb3a6e650b",
     "source/device/package/audio27/core/AudioHalDiagnostics.h": "c1bc3943933d64ef926ebe2ec1d378f54e3c753fb2be2de0e098f340602e2ace",
-    "source/device/patches/xnu-12377/vmwait-dyld-pager-source-release.patch": "916c930f4b6b2e7515329bafc8d2ab52ba014d4dacbc8c706e8cc5d603ff5a32"
+    "source/device/patches/xnu-12377/vmwait-dyld-pager-source-release.patch": "916c930f4b6b2e7515329bafc8d2ab52ba014d4dacbc8c706e8cc5d603ff5a32",
+    "source/device/package/audio27/hal/AudioReference.h": "86350d6b8a8e226cf2f2c4d3cacc2cbcb2022abc8c29420c6e3fe60a32b8d325"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
@@ -585,6 +586,7 @@
       "new_trace_facility": false
     },
     "final_package_HAL_reused_from": "audio063",
-    "final_package_HAL_sha256": "58441b97f36f70fb12c12f148447ada547006812041125bf40374990217d6517"
+    "final_package_HAL_sha256": "58441b97f36f70fb12c12f148447ada547006812041125bf40374990217d6517",
+    "existing_HAL_reference_header_exported": true
   }
 }
