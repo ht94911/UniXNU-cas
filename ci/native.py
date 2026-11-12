@@ -88,7 +88,7 @@ def prepare(framework, work):
     run(['git', 'apply', '--index', *framework_files, overlay], cwd=framework)
     tree = run(['git', 'write-tree'], cwd=framework)
     if tree != userlog['framework_tree']:
-        raise ValueError('Native016 UserLog adapter tree differs from its explicit overlay')
+        raise ValueError('Native017 UserLog adapter tree differs from its explicit overlay')
     work.mkdir(parents=True, exist_ok=False)
     for name in ('device', 'soc'):
         shutil.copytree(ROOT / 'source' / name, work / name)
@@ -113,7 +113,7 @@ def prepare(framework, work):
     run(['git', 'apply', '--index', *usb_files, overlay], cwd=usb)
     usb_tree = run(['git', 'write-tree'], cwd=usb)
     if usb_tree != userlog['usb_tree']:
-        raise ValueError('Native016 USB source differs from its explicit overlay tree')
+        raise ValueError('Native017 USB source differs from its explicit overlay tree')
     userlog_sources = {name: sha(usb / name) for name in userlog['source_files']}
     if userlog_sources != userlog['source_files']:
         raise ValueError('Pinned UserLog source or wire differs')
@@ -245,7 +245,7 @@ def build(framework, work):
     kernels = {path.resolve() for path in
         (work / 'out/nezha/ios-27.0.1-24A446-iphone14-4').glob('*/kernel/kernel.macho')}
     if len(kernels) != 1:
-        raise ValueError('Select exactly one actual Native016 kernel for target checks')
+        raise ValueError('Select exactly one actual Native017 kernel for target checks')
     kernel = next(iter(kernels))
     tree = kernel.parent.parent / 'tree'
     llvm = Path(run(['brew', '--prefix', 'llvm'])) / 'bin'
@@ -297,7 +297,7 @@ def collect(framework, work, sealed):
 
     add(ROOT / 'inputs.json', 'inputs.json')
     userlog = json.loads((ROOT / 'inputs.json').read_text())['userlog_target']
-    add(ROOT / userlog['source_overlay'], 'userlog-source/native016-userlog.patch')
+    add(ROOT / userlog['source_overlay'], 'userlog-source/native017-userlog.patch')
     add(framework / 'scripts/build-qcom-usb-debug.py', 'userlog-source/build-qcom-usb-debug.py')
     add(HERE / 'check-native-userlog.py', 'userlog-source/check-native-userlog.py')
     for name in userlog['source_files']:

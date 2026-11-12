@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Native016 fixes only the UserLog consumed BSD record lifecycle: capture actual bytes once for hash/flags, retain the raw snapshot and compare final bytes only for the witnessed bootstrap0-to-final1 transition. Native015 handler, wire/FIFO, signed diagnostic actor and all original driver/runtime/boot inputs are preserved. Original Native015 CI remains failure; Native016 target/runtime qualification is pending.",
+  "purpose": "Native017 guarded pairing sender observation acceptance; retain Native016 consumed BSD record and all baseline source",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,15 +14,15 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "b692f72b24a125aa5b3575e38b295e79cb484b9a",
+  "device_revision": "bc4df33f33626c9051c595c43eb7aba06489bc29",
   "soc_revision": "3435fa55c3e835a4aaebf7d833473fd5d20073fd",
   "xcode": "26.6",
   "files": {
-    ".github/workflows/nezha-ios27-native.yml": "a85d09233cbce2d514cf0fb4ad4d65a03524df877689dff6d47e9dc1551bfacf",
+    ".github/workflows/nezha-ios27-native.yml": "01ccde0f83ae168a2ecad384f4a36d733b791ba3399b9798a3b0489f89f19deb",
     "ci/cache-signature-template.py": "3596fbb421e2d223c9d01b6280af68ca7e83595c99d3d96e481450f187201d72",
     "ci/check-native-userlog.py": "74e7abe9164a853b10d4406a46f55f67670ade42795f066068e84f14b2ebc006",
-    "ci/native.py": "3d0ff3820b16b6b3b388a710844a4c0dc669cada261e1e41781f1c300e28a43c",
-    "ci/test-native-userlog-producer.py": "a2cdfcfe864f2c2d7ef709f43df5f81803dd193bb1197b0b4e1c8d46a930342c",
+    "ci/native.py": "31d59bfa0a3a83ebf56f3ed8c2a21858624017a9fb2259bc22f04be7b4b3dda9",
+    "ci/test-native-userlog-producer.py": "619bc31f6f41b16d562bcbc83a41588f6ada45a5268e23ef5c4985e5f364e403",
     "ci/test-native-userlog-record.py": "26bd1269caa7be579917e9ad140f8a10295ff169d57d3533a3ddc1ce7e4e0123",
     "ci/test-native-userlog.py": "f64f5aff7c83cbbff7ce9bd15ab276dd7022f5e42d227999157b796afe414f9e",
     "source/adreno/LICENSE": "16fbc0170994a48f60938d9f0d992d3bad113383cf90882f75c206e079c2a2dc",
@@ -84,7 +84,7 @@
     "source/adreno/NativeGpuTrace.h": "d06f67c151c03ef9be786ffd582b74e5d91d955e513d00217c6fe177332323fa",
     "source/adreno/NativeGpuTrace.inc": "24460c37660233ba80a6a3c22bda1415e353d5dba6a6f04adb3dff415c3ee23b",
     "source/adreno/NativeGpuTraceStore.h": "4a2984192bc2c68383146f558212d1000c920a8d9cbe54ccec8badd935844823",
-    "source/device/README.md": "33caecc7f512b8a58c9d989833639aa1fe65273c56eb5465a2a2876729b37006",
+    "source/device/README.md": "6a680edddb868d50a881180d5a6d89709cad09b5d4bc788da1f99727f16f76c8",
     "source/device/board.toml": "43474f64ed1cdddcec276ea1e256a0d9e794e516c30f567fe216873f63dca90f",
     "source/device/components/AppleKeyStoreState/AGENTS.md": "31cf5883eab836cd09fdcc5dfbbdd0668b0ea21ee9512191f78583b9e960c47d",
     "source/device/components/AppleKeyStoreState/LICENSE": "0a99193bda702c77e5b6a1b10029b68b6d4691cc2a4bf1010efb7dd8e5043e1b",
@@ -381,7 +381,9 @@
     "source/software-aes/OriginalAESABI.h": "80ff874a6556d6908826e74622e449fb82eb217e99bd4384418fe08e06c95e2f",
     "source/software-aes/README.md": "fb6af9b196316b4a39aa504e3ff92ebbaa7b6a0bb005c35f27bc360490dd52a4",
     "source/ufs.bundle": "3a7c1c6ac7e5a39e6cb4adcc6143fa1e4c6c24ae862aa501102f9fb70c21a534",
-    "source/usb.bundle": "fc77b40791b6994f0da015b13b68a13cee5e8bc84e510cee4e518866165efeb2"
+    "source/usb.bundle": "fc77b40791b6994f0da015b13b68a13cee5e8bc84e510cee4e518866165efeb2",
+    "source/native017-userlog.patch": "30be3f9567f08ea396b1ecd9230f3c584182dd7047b48120115d0a02e4eb4625",
+    "source/native017-userlog.md": "89779efcc4532f2983247a3ca74e96b13002de8f47d9cf02e9fd7c4bd88809b3"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
@@ -521,8 +523,8 @@
     "keyboard_pairing_fixed": false
   },
   "userlog_target": {
-    "source_overlay": "source/native016-userlog.patch",
-    "source_overlay_sha256": "5a2d8f4a42f3ebe278ab4cfa75ef6f8b709eb76159f7f47fc406cb995019dabd",
+    "source_overlay": "source/native017-userlog.patch",
+    "source_overlay_sha256": "30be3f9567f08ea396b1ecd9230f3c584182dd7047b48120115d0a02e4eb4625",
     "framework_overlay_files": [
       "scripts/build-qcom-usb-debug.py"
     ],
@@ -534,7 +536,7 @@
     "framework_tree": "091abd45bf6d85f19b49a3aea6619b653bd1850a",
     "usb_base_revision": "9bfbf258d8356efcc0fbf03603d1518874829798",
     "usb_base_tree": "0b1327323a45484cbe96f2419e7a8d34ccdf63f9",
-    "usb_tree": "949e36cf0c83652e0149a6cd10bac64855b6d929",
+    "usb_tree": "c9717c696a18d75edae0be64eb2ca1946b604994",
     "base_framework_source_files": {
       "scripts/build-qcom-usb-debug.py": "aff8a4c8821d5cfb20d57ec507363d2cfecbd3586f52b3be808a08dafb45e395"
     },
@@ -551,7 +553,7 @@
       "userland/QcomUserLogTransport.h": "6981a8a4863c80f0109de4e821c4ef2d72f75f143eb39f4a65a2abb2a4df4531"
     },
     "source_files": {
-      "kernel/QcomUsbUserLog.c": "4cade6842439ef27afe914d7135c6bc9b99b42afbdeb4f035fcebc17d7a60815",
+      "kernel/QcomUsbUserLog.c": "42a725cc991d1ae2ab10b3156826f1b84b0b0a1b3071f24041948744e9ebb8a5",
       "scripts/build.py": "7da9eec0c9d3b7bfc8a2bebc3d99d45eab8bec62904b5de0edeeacf103c4d44e",
       "include/QcomUserLogWire.h": "965d7aeaa4043bcceb151cd6331ce50faefe21f57ce7c91cf781a52b4917397b",
       "kernel/QcomUsbBuffer.h": "a1a2c75faf01a0dc2e0ba1904b110059802c526c9dcec5f7d8bcc1e281435554",
@@ -659,6 +661,24 @@
         "10": [
           0,
           1
+        ],
+        "11": [
+          0,
+          1
+        ],
+        "12": [
+          0,
+          1
+        ],
+        "13": [
+          0,
+          1
+        ],
+        "14": [
+          1
+        ],
+        "15": [
+          1
         ]
       },
       "max_payload_bytes": 128,
@@ -676,9 +696,9 @@
       "retries": 0,
       "sleeps": 0,
       "signed_daemon_CDHash_pending": false,
-      "signed_daemon_CDHash": "42b75d95d901fa02cb3160dd5a5c6cc3d37809f3",
-      "signed_daemon_sha256": "0106bfcf690245ee30d7d6c3efd5aa85161e8f4416f110ecbcab863c54ce2710",
-      "signed_daemon_origin": "Root-signed private/daemon-ui015/bluetoothd; binary not included in this public CI source",
+      "signed_daemon_CDHash": "b9befed8cf1e158ead5b3926a005731067898ccc",
+      "signed_daemon_sha256": "dba2e58e0864a1d439630f8b49a0db418bca7a4e605925bb05072b17230917fa",
+      "signed_daemon_origin": "Root private/daemon-send018: unchanged actual017158 permissions, originalUI15 and five sender observations; binary not in CI source",
       "kernel_embeds_daemon_CDHash": false
     },
     "wire": {
@@ -698,7 +718,7 @@
       "record": "objects/bsd/DEVELOPMENT/subr_prf.o.json",
       "object": "usb-attempts/<original evidence_directory.parent.name>/QcomUsbUserLog.o",
       "kernel": "build/kernel/kernel.macho",
-      "overlay": "userlog-source/native016-userlog.patch",
+      "overlay": "userlog-source/native017-userlog.patch",
       "snapshot": "usb-attempts/<original evidence_directory.parent.name>/userlog-compile-record.json"
     },
     "target_compiled": false,

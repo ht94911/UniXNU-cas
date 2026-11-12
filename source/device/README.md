@@ -1,3 +1,17 @@
+# Bluetooth Native017: guarded sender path observations
+
+This independent candidate retains the tested Native016 board, controller,
+KeyStore, firmware, USB wire/FIFO and consumed BSD record handling. The scoped
+CI overlay extends only the exact btlog actor scalar domain with points11–15.
+They describe the original client suspension gate, original predicate result,
+notification policy state, completed XPC send and original suppression path.
+Old points1–10 and all existing limits remain. The daemon keeps its original017
+158 permissions and mobile UID; original decisions and replies are retained.
+The15-point generated-code model passed1284 cases. The actual C parser/FIFO host
+checks passed under ASan/UBSan; native target build and runtime acceptance remain
+pending. Original017's one phone numeric success and later same-byte failures
+are separate references; this is diagnostic preparation, not a proven fix.
+
 # Bluetooth Native016: retain the consumed BSD compile record
 
 Native016 changes only UserLog build metadata and qualification. The builder
