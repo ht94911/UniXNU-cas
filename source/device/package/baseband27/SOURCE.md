@@ -158,3 +158,80 @@
 5. EUR20 的 SAHARA 映像 ID 清单。
 6. IPA SMMU 和时钟投票在指定包里的提供者。
 7. 测试用 SIM、运营商和测试号码由人类提供。
+
+## 10. 独立副本接续与上游复查（2026-11-13）
+
+人类要求保留原工作区，在完整独立副本
+`/home/hua/nezha-work/ios27/baseband27-codex-next-20261113/` 接续开发。
+本设备分支为 `codex/baseband27-next-20261113`，起点 `0341339`，
+保留原先指定的 GPU024/source `673cde8`。原工作区五个仓库的提交和工作树未变；
+副本 Git 对象独立，208 MiB 本地镜像已逐字节比对。
+
+已重新 fetch UniXNU/main `2366e33`、myron-next `f1a1bfe`、QcomBaseband/main
+`dd0199c`、Trogdor/main `1df7f75`，并检查同 SoC 公开设备、内核、模块、分支、
+QcomBaseband 的 fork 和已关闭 PR。GitHub 的 SM8850 两页仓库索引及按
+`canoe-modem-pas`、`AppleBasebandPCIMAVPDP` 检索的原始结果留在 Git 外的
+`research/github-search-20261113/`。带 fork 的宽泛 README 检索有大量重复构建器，
+这里只按实际驱动和协议源码评估；没有将仓库描述当作功能验收。
+
+| 来源与固定提交 | 核实的范围 | 接续采用方式 |
+| --- | --- | --- |
+| UniXNU/QcomBaseband `dd0199c` | main 和唯一公开 fork 提交一致；Coachz/iOS17 的控制桥、IPv4 与 PDP 重连已有作者实测；IPv6、长会话仍待验 | 保留既有 BSD 派生基础和计数式生成器 |
+| chiba233/Trogdor-ipadOS `1df7f75` | `ffbda28`、`1df7f75` 新增卡端点映射、选择和 eSIM 清理；未同步到 QcomBaseband/main | 参考 UIM 请求和代际处理；eSIM profile 操作不混入本机双实体卡阶段 |
+| OctoDevStudios/ios-popsicle `a4ef4ed` | 同 SM8850，MSS 带服务启动、RAM 存储；尚无 iOS27 数据/通话桥 | 复核 PAS、SMEM、SMP2P、rmtfs/TFTP；无许可的文件只参考事实 |
+| lx200332/popsicle-ios-port `31e0626` | 有 modem/板级资料和源码，但不能由文件存在推定联网或通话 | 对照原厂地址与初始化边界，不作为真机功能基线 |
+| lolipuru/android_kernel_xiaomi_sm8850-modules `73e69d3` | dataipa 的 IPA_5_5、datarmnet/QMAP 与音频 UAPI | 对照本机原厂和既有派生；保留许可，寄存器与协议事实不作为 Linux 代码拷贝 |
+| lolipuru/android_kernel_xiaomi_sm8850-devicetrees `e942232` | `qcom/canoe.dtsi` 的 MSS、IPCC 和 rmtfs | 板级范围由本机 N0/原厂资料最终确定 |
+| OnePlusOSS kernel `fc30e54` / modules `5ab2a68` | canoe PAS、下游 IPA/GSI/rmnet 与 DTS | 对照 ELF/PAS、内存、服务和数据面 |
+| map220v/sm8850-mainline `b9e356d` | IPA v5.5 / GSI v5.0 寄存器源码 | 检查生成器使用的寄存器事实，不整体升级框架 |
+| linux-mobile-broadband/libqmi `3454c2c` | CTL、UIM、WDS、VOICE 消息布局 | 核对线上字段与测试输入 |
+| myron-device `d9b6be4`、songyuan-device `b489567`、UniXNU-pma120 `06d8772`、公共 SM8850 SoC `01dc053` | 未找到可直接采用的 iOS27 蜂窝/电话实现 | 只采用有源码或证据支撑的相关部分 |
+| pandora/data-a-live `d2c7089`、fairlady `bb05659`、cas `8e2d37a`、umi `3eb7257` | 复查源码和现有接口，未找到可替换本机蜂窝桥的实现 | 保留硬件和组件参考 |
+| Pagani_SM8750 `fcab49e` | 缓存源码无基带实现；新副本 fetch 遇到 unresolved delta | 只记录已读提交，不宣称最新远端已检查 |
+
+已有原厂只读表含 64 条 modem 服务公告，其中 52 个不同服务可由 QMUX 的
+8 位 service 字段表示。`coachz_bb_qmux.h` 的 CTL GetVersionInfo 目前最多返回
+32 个服务；按该表的顺序，后面的 UIM、WDS、NAS、DMS 会被漏报。
+这是接口清单的可复现缺口，尚未把它称为实机启动失败的根因。
+
+接续修正：由 `derive-bridge27.py` 生成包内的 `bridge/coachz_bb_qmux.h`，
+版本清单覆盖已有的 64 个 server 槽；未修改 vendored 上游原件。
+`qmux_version_test.c` 对原版复现 52 项漏报，对修正版验证完整服务成员、
+VOICE/IMSS/IMSA、64 项边界及不足一字节的应答缓冲。
+该回归用 `-Werror`、ASan/UBSan 通过；使用恢复的固定 SMMU 输入后，
+`sh tests/baseband27/check.sh ../research/upstream/QcomBaseband` 全部通过。
+此结果为宿主源码资格，iOS27 原生编译与实际注册、流量和通话仍待验证。
+
+2026-11-11 的 CI 快照 `7cd6502` 已存在，旧 CHECKPOINT 对“快照未做”的记录
+滞后；本轮仍需核原生构建、依赖闭包和真机结果。原宿主测试用的 SMMU 路径已经
+缺失，固定 `ArmSmmu4K@83969cd` 已恢复到副本 `research/owners/ArmSmmu4K`，
+通过现有 `BB_SMMU_SOURCE` 接口选择。REA 当前 Windows provider 未配置 Ghidra，
+其 Windows 深分析范围也不覆盖 ARM64 Mach-O；本地二进制事实继续用已有
+WSL 解析/反汇编工具核对，不能把普通脚本输出称作 REA Evidence。
+
+## 11. 端点绑定与电话、短信控制通路接续（2026-11-13）
+
+本次已通读“新基带”会话、上述交接和现有实测资料；仍在独立副本开发。
+新 fetch 的 UniXNU/main `4796a8a` 仅更新设备记录；myron-next `f1a1bfe`、
+QcomBaseband `dd0199c`、Trogdor `1df7f75` 不变。GPU024 的选择和现有
+共享控制器来源保持。
+
+原 QMUX 接收函数丢弃 QRTR 来源端口，只按节点和服务最低 instance 查询。
+由 `derive-bridge27.py` 生成的修正版为每个客户端固定实际 node/port；
+同节点其它端点、短包、非回应/通知及尾随字节被拒绝。后到的较低 instance
+只影响新分配的客户端，已有客户端不被静默迁移。DEL_SERVER 撤销实际端点
+的客户端，生成 CTL RevokeClientId，保留对应槽直至通知入队及 DEL_CLIENT；
+已有队列发包前再次核对该端点。原上游文件保持原样。
+
+来源是 QcomBaseband 的公开桥接口、QRTR node/port 契约与 libqmi
+`3454c2c` 的服务定义。VOICE `9`、WMS `5`、IMSA `33`、IMSS `18`
+均由现有 QMI 通路保留请求、回应和通知内容，不把 Android RIL 二进制移进 XNU。
+`qmux_endpoint_test.c` 的319项检查覆盖两条通道、16位 transaction、
+完整内容、不同实例、撤销与重分配、错误端点和帧边界；全部使用合成数据，
+ASan/UBSan与`-Werror`通过。完整宿主检查和29单元Linux/17头文件编译检查
+通过；它们不代替 iOS27 原生 ABI 或真机结果。
+
+电话/短信最终仍须验证 CommCenter 对本机服务的实际消息和能力：
+VOICE 呼叫状态、IMSA 注册、WMS 收发及系统入口分别验收。通话音频依赖
+音频专项的真实播放/录音与 voice graph。当前没有拨号、短信发送、手机预约
+或 iOS27 蜂窝真机成功的记录。

@@ -269,8 +269,9 @@ static void bb_data_step(void)
     return;
   }
   int *slot = &bb_data_slot[service == CBD_SVC_DPM ? 0 : 1];
+  if (*slot >= 0 && !cbq_client_server(&bb_qmux, (unsigned)*slot)) *slot = -1;
   if (*slot < 0) *slot = cbq_client_alloc(&bb_qmux, CBQ_INTERNAL, service);
-  const struct cbq_server *server = cbq_server_find(&bb_qmux, service);
+  const struct cbq_server *server = *slot < 0 ? nullptr : cbq_client_server(&bb_qmux, (unsigned)*slot);
   if (*slot < 0 || !server) {
     printf("COACHZ baseband: data port: no client for service %u\n", service);
     bb_data.step = CBD_DONE;
@@ -361,8 +362,11 @@ static void bb_esim_step(void)
   if (!bb_esim_in || !bb_esim_resp) return;
   const struct cbq_server *server = cbq_server_find(&bb_qmux, CBE_SVC_UIM);
   if (!server) return;
+  if (bb_esim_slot >= 0 && !cbq_client_server(&bb_qmux, (unsigned)bb_esim_slot)) bb_esim_slot = -1;
   if (bb_esim_slot < 0) bb_esim_slot = cbq_client_alloc(&bb_qmux, CBQ_INTERNAL, CBE_SVC_UIM);
   if (bb_esim_slot < 0) return;
+  server = cbq_client_server(&bb_qmux, (unsigned)bb_esim_slot);
+  if (!server) return;
   const uint32_t now = bb_now_ms();
   while (!bb_esim.freeze && !bb_esim.route_failed && (bb_esim.slots.known || (bb_esim.step == CBE_S_IDLE && bb_esim.txn)) &&
          bb_uim_count && bb_tx_count < BB_TX) {
@@ -1192,12 +1196,12 @@ extern "C" void coachz_baseband_del_server(uint32_t service, uint32_t node, uint
 }
 
 // QRTR data for one of the bridge's client ports: 1 when the port is the bridge's.
-extern "C" int coachz_baseband_qrtr(uint32_t dst_port, uint32_t src_node, uint32_t, const void *body, uint32_t size)
+extern "C" int coachz_baseband_qrtr(uint32_t dst_port, uint32_t src_node, uint32_t src_port, const void *body, uint32_t size)
 {
   if (dst_port < CBQ_PORT_BASE || dst_port >= CBQ_PORT_BASE + CBQ_MAX_CLIENTS) return 0;
   if (!bb_lock) return 1;
   IOLockLock(bb_lock);
-  const struct cbq_result r = cbq_from_modem(&bb_qmux, dst_port, src_node, static_cast<const uint8_t *>(body), size, bb_out, sizeof bb_out);
+  const struct cbq_result r = cbq_from_modem(&bb_qmux, dst_port, src_node, src_port, static_cast<const uint8_t *>(body), size, bb_out, sizeof bb_out);
   if (r.kind == CBQ_TO_HOST && r.channel == CBQ_INTERNAL) {
     bb_trace("int-rx", 0, r.service, r.cid, static_cast<const uint8_t *>(body), size);
     if (bb_esim_slot >= 0 && dst_port == CBQ_PORT_BASE + (uint32_t)bb_esim_slot) {
@@ -1233,10 +1237,24 @@ extern "C" void coachz_baseband_poll(void)
   uint32_t n = 0, released[16], r = 0, port;
   IOLockLock(bb_lock);
   bb_esim_step();
+  for (unsigned i = 0; i < CBQ_MAX_CLIENTS; i++) {
+    const struct cbq_result revoke = cbq_next_revoke(&bb_qmux, bb_out, sizeof bb_out);
+    if (revoke.kind != CBQ_TO_HOST) break;
+    const uint32_t channel = revoke.channel ? CBH_QMUX2 : CBH_QMUX1;
+    const uint32_t queued = bb_ch[channel].count;
+    bb_push(channel, bb_out, revoke.len);
+    if (bb_ch[channel].count == queued) {
+      bb_qmux.client[revoke.local_port - CBQ_PORT_BASE].revoke_pending = 1;
+      break;
+    }
+  }
   while (bb_tx_count && n < 16) {
-    batch[n++] = bb_txq[bb_tx_head];
+    const bb_tx pending = bb_txq[bb_tx_head];
     bb_tx_head = (bb_tx_head + 1) % BB_TX;
     bb_tx_count--;
+    const struct cbq_server *endpoint = cbq_client_server(&bb_qmux, pending.local_port - CBQ_PORT_BASE);
+    if (endpoint && endpoint->node == pending.node && endpoint->port == pending.port) batch[n++] = pending;
+    else { IOFreeData(pending.data, pending.len); bb_tx_dropped++; }
   }
   while (r < 16 && (port = cbq_next_release(&bb_qmux))) released[r++] = port;
   IOLockUnlock(bb_lock);

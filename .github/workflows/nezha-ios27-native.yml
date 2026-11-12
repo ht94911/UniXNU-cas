@@ -1,7 +1,7 @@
-name: nezha iPhone27 B package on GPU024 - native001
+name: nezha iPhone27 B package on GPU024 - native002
 on:
   push:
-    branches: [codex/ios27-bb-gpu024-native001-20261111]
+    branches: [codex/ios27-bb-gpu024-native002-20261113]
   workflow_dispatch:
 permissions:
   contents: read
@@ -53,6 +53,14 @@ jobs:
           python3 "$RUNNER_TEMP/ios27/work/gop/Test/check-plane-view.py" --output "$RUNNER_TEMP/ios27/gop-view-check"
       - name: Check the actual guarded waiting-stack sampler
         run: python3 task/source/device/scripts/check-stable-kernel-stack.py
+      - name: Verify QMUX service and endpoint contracts on the host
+        run: |
+          set -euo pipefail
+          bb="$RUNNER_TEMP/ios27/work/device"
+          for test in qmux_version qmux_endpoint; do
+            clang -std=gnu11 -Wall -Wextra -Werror -fsanitize=address,undefined -I "$bb/package/baseband27/bridge" -I "$bb/package/baseband27/bridge/upstream" "$bb/tests/baseband27/${test}_test.c" -o "$RUNNER_TEMP/ios27/$test"
+            "$RUNNER_TEMP/ios27/$test"
+          done
       - name: Qualify compiler and run the standard native build
         env:
           GITHUB_TOKEN: ${{ github.token }}

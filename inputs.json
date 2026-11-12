@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Source-only iPhone14,4 24A446 arm64e native build of the GPU024 base plus the gated B package archives (shared transport, board binding, RAM services). No firmware, image, identity data or logs. Not a candidate until local strict prelink and qualification. No phone operations.",
+  "purpose": "Source-only arm64e iOS27 build of the fixed GPU024 base and the B package, including complete CTL catalogue and QRTR endpoint-bound data/VOICE/WMS/IMS control. No firmware, identity data, images or phone operations. Local strict prelink required.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "0341339f304471b3725908313b8869e323be707d",
+  "device_revision": "8849f74befa1b643a8cc0b517922de711a6ada9d",
   "soc_revision": "703d7b4bb00904b4a6e5d96f9e9bf72eec170f6b",
   "xcode": "26.6",
   "files": {
@@ -105,11 +105,12 @@
     "source/device/package/backlight/NezhaBrightnessRequest.h": "876811b23045660b71c82c5f6ff33780a6f7bfaaa4311c116c71d179b348a59c",
     "source/device/package/backlight/NezhaDsi0.h": "28a964006beffe03238af70bc9eed4c479ca1aeaef574d4583f18f96fd1690e1",
     "source/device/package/backlight/OriginalAppleARMBacklightABI.h": "dab34c394c2123ae4cbfd6648980d5e7b024539773abe5852f7d2622f9bf7b8b",
-    "source/device/package/baseband27/SOURCE.md": "be4d3a8399e61e7a0e0c3d1d9ee71110ce4468221c5ec753b6634b0a9cce1ea0",
+    "source/device/package/baseband27/SOURCE.md": "b260f9c645aab5ff765b4945e3ddab02c415ccdda51500ff2ec15f8311777286",
     "source/device/package/baseband27/bridge/QcomBaseband.h": "733a2f4c4685509a07f10e54681c8c0b8b9c0e6e9674928b6778f53c4a8b21f8",
-    "source/device/package/baseband27/bridge/coachz_baseband.cpp": "76d2af609c96b1f5466111604e6eb33f67e64d0bc450031af7942953e53f1634",
+    "source/device/package/baseband27/bridge/coachz_baseband.cpp": "6952b9b7bbe938c9f9f7626c081f8866051dc5da56e68f5c757e3dff2c38c68f",
     "source/device/package/baseband27/bridge/coachz_bb_data.h": "5c3d1fc8dd827ba162bbff15b35d11cae4d0603394deda63821204ff5e0c2216",
     "source/device/package/baseband27/bridge/coachz_bb_pdp.cpp": "37d29ed45a359ac5589806460e1a1b631cf931de552a1aaa3e840b067d18b897",
+    "source/device/package/baseband27/bridge/coachz_bb_qmux.h": "4d29de18b8a734cf2e5b9ce0aa099746ff5bc7744696a18705b6a24baa11cbb9",
     "source/device/package/baseband27/bridge/coachz_bb_sahara.h": "c585301830657b693a3afc8fb6d9c25f084718ac9a38b584646ef97835982ff2",
     "source/device/package/baseband27/bridge/upstream/LICENSE": "14af460c3b62a4498efe9ac781e3745049edc4c9a2184942ccbe68b7925d7b5c",
     "source/device/package/baseband27/bridge/upstream/QcomBaseband.h": "578d5a904314ff8f3351191f53b5c9c8b184b77c156b702bb22b0d2d664efd55",
@@ -310,6 +311,8 @@
     "source/device/scripts/nezha_macho_late.py": "fc5a2869ef22bd2c06702930fc0c88b0e071ab7ef851824b403234633040fc37",
     "source/device/scripts/prepare-nezha27-baseband.py": "ce944b75e982386c055ad072dd1a87675675e0ff2460e649686a9cc08e5ea93b",
     "source/device/scripts/qualify-armcpu-instructions.py": "dae7cb3b9faecaac7b268212bbd324ae172d3dffa0e94b06afc4581c9f4abe9b",
+    "source/device/tests/baseband27/qmux_endpoint_test.c": "4849b019d981705ced226509ef0f07611b5160b5bfd3b310ab93d83a9708708b",
+    "source/device/tests/baseband27/qmux_version_test.c": "22691125e857e6d0ab485ca906ea044106a58541e441fac65553bbe417503579",
     "source/device/tests/cpu27-policy.c": "e1682fcec436a58085ef34ebdf82a536523f933e99a873ea1aacd7d3cd45b61c",
     "source/device/tests/input-chain-trace.c": "9170cb8675b3ce94e9e1cfd5af0aaa4f322655fb1ef177789aef888a13348669",
     "source/device/tests/input-selftest.c": "df31503c40fbbdc7c8d20757a715987c4133eabdbc32a43cbd1f4e0546f7fd72",
@@ -387,6 +390,9 @@
     "base_device_revision": "673cde869b7378658b470c4e6b2b9a1766b99411",
     "switch": "/chosen/nezha-baseband",
     "private_inputs": false,
-    "image_uploaded": false
+    "image_uploaded": false,
+    "control_endpoint_binding": true,
+    "host_cases": 319,
+    "phone_operations": false
   }
 }
