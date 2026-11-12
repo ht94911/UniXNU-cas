@@ -44,11 +44,55 @@ bool nezha_camera_main_capture_start(const struct NezhaCameraMainCaptureIo *io,
     if (!capture->rdi_started) {
         return false;
     }
+    capture->layout = layout;
+    capture->queued[0] = 0;
+    capture->queued[1] = 1;
+    capture->queued_count = 2;
+    capture->completed_frames = 0;
+    capture->cpu_frames = 0;
 
     capture->stage = NezhaCaptureStreamRequest;
     capture->stream_may_be_on = true;
     capture->sensor_status = nezha_camera_ovx10500u_set_stream(io->cci, true, &capture->sensor_transfer);
     return capture->sensor_status == NezhaCciOk;
+}
+
+bool nezha_camera_main_capture_complete_frame(struct NezhaCameraMainCapture *capture,
+    const struct NezhaCamera1080Events *events, unsigned *buffer)
+{
+    if (capture == NULL || events == NULL || buffer == NULL || !events->buffer_done ||
+        !capture->rdi_started || !capture->dma.context_active ||
+        capture->queued_count == 0 || capture->queued_count > 2) {
+        return false;
+    }
+    const unsigned index = capture->queued[0];
+    if (index > 1 || (capture->cpu_frames & (1u << index)) != 0) {
+        return false;
+    }
+    capture->queued[0] = capture->queued[1];
+    --capture->queued_count;
+    capture->cpu_frames |= 1u << index;
+    ++capture->completed_frames;
+    *buffer = index;
+    return true;
+}
+
+bool nezha_camera_main_capture_release_frame(const struct NezhaCameraMainCaptureIo *io,
+    struct NezhaCameraMainCapture *capture, unsigned buffer, bool requeue)
+{
+    if (capture == NULL || buffer > 1 || (capture->cpu_frames & (1u << buffer)) == 0) {
+        return false;
+    }
+    if (requeue) {
+        if (io == NULL || !capture->rdi_started || !capture->stream_may_be_on ||
+            !capture->dma.context_active || capture->queued_count >= 2 ||
+            !nezha_camera1080_requeue_rdi0(io->camss, &capture->layout, buffer)) {
+            return false;
+        }
+        capture->queued[capture->queued_count++] = (uint8_t)buffer;
+    }
+    capture->cpu_frames &= ~(1u << buffer);
+    return true;
 }
 
 bool nezha_camera_main_capture_request_stop(const struct NezhaCameraMainCaptureIo *io,
@@ -80,9 +124,10 @@ bool nezha_camera_main_capture_finish_stop(const struct NezhaCameraMainCaptureIo
     struct NezhaCameraMainCapture *capture)
 {
     if (io == NULL || capture == NULL || capture->stream_may_be_on ||
-        capture->rdi_started || capture->sensor_transfer.needs_recovery) {
+        capture->rdi_started || capture->sensor_transfer.needs_recovery || capture->cpu_frames != 0) {
         return false;
     }
+    capture->queued_count = 0;
     if (capture->dma.context_active || capture->dma.needs_hardware_recovery) {
         capture->dma_status = nezha_camera_detach_ife_dma(io->smmu, context, poll_budget,
             &capture->dma, &capture->dma_readback);

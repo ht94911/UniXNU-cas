@@ -115,11 +115,11 @@ static enum NezhaCameraCciStatus check_request(
     return NezhaCciOk;
 }
 
-enum NezhaCameraCciStatus nezha_camera_cci_read_byte(
+enum NezhaCameraCciStatus nezha_camera_cci_read(
     const struct NezhaCameraRegisterIo *io, unsigned master, uint8_t slave,
-    uint16_t reg, uint8_t *value, struct NezhaCameraCciObservation *observation)
+    uint16_t reg, uint8_t *bytes, unsigned count, struct NezhaCameraCciObservation *observation)
 {
-    if (value == NULL) {
+    if (bytes == NULL || count == 0 || count > 3) {
         return NezhaCciInvalid;
     }
     enum NezhaCameraCciStatus status = check_request(io, master, slave, observation);
@@ -137,7 +137,7 @@ enum NezhaCameraCciStatus nezha_camera_cci_read_byte(
     }
 
     observation->phase = NezhaCciData;
-    status = run_queue(io, master, 1, address_word, CciRead | (1u << 4), observation);
+    status = run_queue(io, master, 1, address_word, CciRead | ((uint32_t)count << 4), observation);
     if (status != NezhaCciOk) {
         return status;
     }
@@ -148,9 +148,19 @@ enum NezhaCameraCciStatus nezha_camera_cci_read_byte(
         return NezhaCciFifo;
     }
     observation->fifo_word = io->read(io->context, CciReadData + fifo_offset);
-    *value = (uint8_t)(observation->fifo_word >> 8);
+    /* The controller places a header byte before the requested bytes. */
+    for (unsigned i = 0; i < count; ++i) {
+        bytes[i] = (uint8_t)(observation->fifo_word >> (8u * (i + 1u)));
+    }
     observation->needs_recovery = false;
     return NezhaCciOk;
+}
+
+enum NezhaCameraCciStatus nezha_camera_cci_read_byte(
+    const struct NezhaCameraRegisterIo *io, unsigned master, uint8_t slave,
+    uint16_t reg, uint8_t *value, struct NezhaCameraCciObservation *observation)
+{
+    return nezha_camera_cci_read(io, master, slave, reg, value, 1, observation);
 }
 
 enum NezhaCameraCciStatus nezha_camera_cci_write_byte(

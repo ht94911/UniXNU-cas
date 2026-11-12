@@ -34,5 +34,6 @@ check dma "$camera/NezhaCameraRdi1080.c" "$camera/NezhaCameraDma.c" \
 check camcc "$camera/NezhaCameraCamcc.c"
 check main-capture "$camera/NezhaCameraMainCapture.c" "$camera/NezhaCameraRdi1080.c"
 check main-pins "$camera/NezhaCameraMainPins.c"
+check rpmh "$camera/NezhaCameraRpmh.c" "$camera/upstream/QcomRpmh.c"
 
 python3 "$device/scripts/build-nezha27-camera-core.py" --out "$out"

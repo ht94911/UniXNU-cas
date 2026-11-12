@@ -57,4 +57,14 @@ bool nezha_camera1080_requeue_rdi0(const struct NezhaCamera1080Io *io,
  * must establish DMA quiescence before freeing mappings or clocks. */
 void nezha_camera1080_request_rdi0_stop(const struct NezhaCamera1080Io *io);
 
+/* The optional 640×480 RAW10 color-bar source uses the same owned
+ * receiver and DMA path. Start the generator only after RDI is armed. */
+bool nezha_camera1080_start_tpg_bars(const struct NezhaCamera1080Io *io,
+    const struct NezhaCameraRegisterIo *tpg, unsigned index,
+    const struct NezhaCameraFrameMapping buffers[2]);
+
+/* The caller still verifies DMA drain and releases its mappings. */
+void nezha_camera1080_request_tpg_stop(const struct NezhaCamera1080Io *io,
+    const struct NezhaCameraRegisterIo *tpg);
+
 #endif

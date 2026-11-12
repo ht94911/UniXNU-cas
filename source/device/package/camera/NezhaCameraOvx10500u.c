@@ -1,13 +1,12 @@
 /* SPDX-License-Identifier: MIT */
 #include "NezhaCameraOvx10500u.h"
 
-/* Same-device u0er ed8978ac0087 w33 capture, cross-checked with the
- * stock main sensor's CCI master in the Android device tree. */
+/* Main sensor route from nezha's stock DT. All four stock OVX10500U
+ * module variants probe slave 0x20 (8-bit) with a word at 0x300b. */
 enum {
     OvxMaster = 1,
     OvxSlave = 0x10,
-    OvxIdHigh = 0x300a,
-    OvxIdLow = 0x300b,
+    OvxIdRegister = 0x300b,
     OvxStream = 0x0100,
 };
 
@@ -18,16 +17,12 @@ enum NezhaCameraCciStatus nezha_camera_ovx10500u_read_identity(
         return NezhaCciInvalid;
     }
     *identity = (struct NezhaCameraOvxIdentity){0};
-    const uint16_t address[] = {OvxIdHigh, OvxIdLow};
-    for (unsigned i = 0; i < 2; ++i) {
-        enum NezhaCameraCciStatus status = nezha_camera_cci_read_byte(
-            cci, OvxMaster, OvxSlave, address[i], &identity->bytes[i], &identity->transfer);
-        if (status != NezhaCciOk) {
-            return status;
-        }
-        ++identity->bytes_read;
+    const enum NezhaCameraCciStatus status = nezha_camera_cci_read(
+        cci, OvxMaster, OvxSlave, OvxIdRegister, identity->bytes, 2, &identity->transfer);
+    if (status == NezhaCciOk) {
+        identity->bytes_read = 2;
     }
-    return NezhaCciOk;
+    return status;
 }
 
 enum NezhaCameraCciStatus nezha_camera_ovx10500u_apply_mode(

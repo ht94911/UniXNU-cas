@@ -1,7 +1,7 @@
-name: nezha iPhone27 camera clock and CCI probe
+name: nezha iPhone27 stock main-camera identity probe
 on:
   push:
-    branches: [codex/ios27-camera001b-20261113]
+    branches: [codex/ios27-camera002-20261113]
   workflow_dispatch:
 permissions:
   contents: read

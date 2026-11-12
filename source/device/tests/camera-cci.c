@@ -31,7 +31,7 @@ struct Model {
     uint32_t data_words;
     uint32_t fifo_word;
     uint32_t expected_write;
-    uint32_t second_address;
+    uint32_t expected_read;
     uint32_t timing[5];
     bool discard_load;
     bool halt_timeout;
@@ -95,16 +95,14 @@ static void write32(void *context, uint32_t offset, uint32_t value)
         ++model->submitted;
         if (value == 4) {
             assert(model->commands[0][0] == 0x101);
-            const uint32_t expected = model->submitted == 3 && model->second_address != 0 ?
-                model->second_address : model->expected_write;
-            assert(model->commands[0][1] == expected);
+            assert(model->commands[0][1] == model->expected_write);
             assert(model->commands[0][2] == 0x108);
             model->irq |= model->address_result;
             model->queued[0] = 0;
         } else {
             assert(value == 8);
             assert(model->commands[1][0] == 0x101);
-            assert(model->commands[1][1] == 0x1a);
+            assert(model->commands[1][1] == model->expected_read);
             assert(model->commands[1][2] == 0x108);
             model->irq |= model->data_result;
             model->fifo_level = model->data_words;
@@ -140,6 +138,7 @@ static struct Model initial(void)
         .data_words = 1,
         .fifo_word = 0x12345621,
         .expected_write = 0x000a3029,
+        .expected_read = 0x1a,
     };
 }
 
@@ -216,12 +215,17 @@ int main(void)
     assert(m.timing[0] == 0x4e0072 && m.timing[4] == 0x161);
 
     m = initial();
-    m.second_address = 0x000b3029;
+    m.expected_write = 0x000b3029;
+    m.expected_read = 0x2a;
+    m.fifo_word = 0x00585021;
     struct NezhaCameraOvxIdentity identity;
     assert(nezha_camera_ovx10500u_read_identity(&io, &identity) == NezhaCciOk);
-    assert(identity.bytes_read == 2 && m.submitted == 4 && m.fifo_reads == 2);
+    assert(identity.bytes_read == 2 && m.submitted == 2 && m.fifo_reads == 1);
+    assert(((unsigned)identity.bytes[0] << 8 | identity.bytes[1]) == NezhaCameraOvx10500uId);
 
     m = initial();
+    m.expected_write = 0x000b3029;
+    m.expected_read = 0x2a;
     m.data_result = M1DataNack;
     assert(nezha_camera_ovx10500u_read_identity(&io, &identity) == NezhaCciNack);
     assert(identity.bytes_read == 0 && m.submitted == 2);

@@ -5,6 +5,8 @@
 #include "NezhaCameraCci.h"
 #include <stddef.h>
 
+enum { NezhaCameraOvx10500uId = 0x5058 };
+
 struct NezhaCameraOvxIdentity {
     uint8_t bytes[2];
     unsigned bytes_read;

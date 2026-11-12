@@ -36,7 +36,11 @@ struct NezhaCameraCciObservation {
 };
 
 /* The caller owns the powered controller's selected master, both idle queues,
- * and completion delivery. Handle any halt/reset before transfer. */
+ * and completion delivery. Up to three sequential bytes fit a FIFO word. */
+enum NezhaCameraCciStatus nezha_camera_cci_read(
+    const struct NezhaCameraRegisterIo *io, unsigned master, uint8_t slave,
+    uint16_t reg, uint8_t *bytes, unsigned count, struct NezhaCameraCciObservation *observation);
+
 enum NezhaCameraCciStatus nezha_camera_cci_read_byte(
     const struct NezhaCameraRegisterIo *io, unsigned master, uint8_t slave,
     uint16_t reg, uint8_t *value, struct NezhaCameraCciObservation *observation);

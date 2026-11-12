@@ -170,6 +170,7 @@ bool nezha_camera1080_requeue_rdi0(const struct NezhaCamera1080Io *io,
     }
     io->write_vfe(io->context, VfeRdi0ImageAddress, layout->image_address[buffer]);
     apply_rdi0_update(io, CsidAddressUpdate);
+    apply_rdi0_update(io, CsidRegUpdate);
     return true;
 }
 
@@ -179,4 +180,64 @@ void nezha_camera1080_request_rdi0_stop(const struct NezhaCamera1080Io *io)
     io->write_csid(io->context, CsidRdi0Config0, raw10_vc0);
     apply_rdi0_update(io, CsidRegUpdate);
     io->write_vfe(io->context, VfeRdi0Config, 0);
+}
+
+enum {
+    TpgVersion = 0x000,
+    TpgVersion24 = 0x20040000,
+    TpgControl = 0x064,
+    TpgVc0Config = 0x068,
+    TpgVc0Seed = 0x06c,
+    TpgVc0Hblank = 0x070,
+    TpgVc0Vblank = 0x074,
+    TpgVc0Bars = 0x078,
+    TpgDt0Size = 0x07c,
+    TpgDt0Type = 0x080,
+    TpgDt0Payload = 0x084,
+    TpgCommand = 0x1f4,
+    TpgReset = 1,
+    TpgEnable = 1 << 4,
+};
+
+bool nezha_camera1080_start_tpg_bars(const struct NezhaCamera1080Io *io,
+    const struct NezhaCameraRegisterIo *tpg, unsigned index,
+    const struct NezhaCameraFrameMapping buffers[2])
+{
+    if (io == NULL || io->write_csid == NULL || io->write_vfe == NULL || buffers == NULL ||
+        tpg == NULL || tpg->read == NULL || tpg->write == NULL || tpg->wait_ms == NULL ||
+        index >= 3 || tpg->read(tpg->context, TpgVersion) != TpgVersion24) {
+        return false;
+    }
+
+    /* Qualcomm v24 camss-tpg-gen1.c and the same-device TPG v2.4.0
+     * register readback. VC0, one RAW10 data type, four lanes. */
+    tpg->write(tpg->context, TpgCommand, TpgReset);
+    tpg->wait_ms(tpg->context, 1);
+    tpg->write(tpg->context, TpgVc0Config, 0);
+    tpg->write(tpg->context, TpgVc0Seed, 0x12345678);
+    tpg->write(tpg->context, TpgVc0Hblank, 1090);
+    tpg->write(tpg->context, TpgVc0Vblank, 48);
+    tpg->write(tpg->context, TpgVc0Bars, 0xa00);
+    tpg->write(tpg->context, TpgDt0Size, (640u << 16) | 480u);
+    tpg->write(tpg->context, TpgDt0Type, 0x2b);
+    tpg->write(tpg->context, TpgDt0Payload, 0x20000be8);
+    tpg->write(tpg->context, TpgControl, 0x30);
+    if (tpg->read(tpg->context, TpgDt0Size) != ((640u << 16) | 480u) ||
+        tpg->read(tpg->context, TpgDt0Type) != 0x2b ||
+        tpg->read(tpg->context, TpgDt0Payload) != 0x20000be8) {
+        return false;
+    }
+    const struct NezhaCamera1080Input input = {.source = NezhaCamera1080Tpg, .index = index};
+    if (!nezha_camera1080_start_rdi0(io, &input, 640, 480, buffers)) {
+        return false;
+    }
+    tpg->write(tpg->context, TpgCommand, TpgEnable);
+    return true;
+}
+
+void nezha_camera1080_request_tpg_stop(const struct NezhaCamera1080Io *io,
+    const struct NezhaCameraRegisterIo *tpg)
+{
+    tpg->write(tpg->context, TpgCommand, TpgReset);
+    nezha_camera1080_request_rdi0_stop(io);
 }

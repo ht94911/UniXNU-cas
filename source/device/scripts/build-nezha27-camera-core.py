@@ -12,7 +12,7 @@ import sys
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MODULES = ("Cci", "Ovx10500u", "Rdi1080", "Camss1080", "Dma", "Camcc", "MainCapture", "MainPins")
+MODULES = ("Cci", "Ovx10500u", "Rdi1080", "Camss1080", "Dma", "Camcc", "MainCapture", "MainPins", "Rpmh")
 
 
 def tool(env_name, mac_name, local_name):
@@ -48,9 +48,10 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
 
     objects = []
-    for module in modules:
-        name = "NezhaCamera" + module
-        source = kit / (name + ".c")
+    sources = [kit / ("NezhaCamera" + module + ".c") for module in modules]
+    sources.append(kit / "upstream/QcomRpmh.c")
+    for source in sources:
+        name = source.stem
         obj = out / (name + ".arm64e.o")
         if staged:
             command = helper["compile_command"](compile_record, source, obj, ["-I", str(smmu)], [])

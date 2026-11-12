@@ -38,6 +38,11 @@ struct NezhaCameraMainCapture {
     struct NezhaCameraCciObservation sensor_transfer;
     struct NezhaCameraDmaReadback dma_readback;
     struct NezhaCameraDmaAttachment dma;
+    struct NezhaCameraRdi1080 layout;
+    uint32_t completed_frames;
+    uint8_t queued[2];
+    unsigned queued_count;
+    unsigned cpu_frames;
     size_t applied_writes;
     bool rdi_started;
     bool stream_may_be_on;
@@ -50,6 +55,17 @@ bool nezha_camera_main_capture_start(const struct NezhaCameraMainCaptureIo *io,
     const struct NezhaCameraMainMode *mode, const struct NezhaCameraDmaPlan *buffers,
     const ArmSmmu4KContextConfig *context, unsigned slot, unsigned bank,
     unsigned poll_budget, struct NezhaCameraMainCapture *capture);
+
+/* Consume exactly one BUF_DONE event. The 1080 writer retires queued
+ * addresses in submission order. Keep all calls on the capture owner
+ * and transfer cache ownership before accessing the returned buffer. */
+bool nezha_camera_main_capture_complete_frame(struct NezhaCameraMainCapture *capture,
+    const struct NezhaCamera1080Events *events, unsigned *buffer);
+
+/* Drop the CPU's claim after copying/processing. Requeue only while the
+ * receiver and DMA are active, after synchronizing for device access. */
+bool nezha_camera_main_capture_release_frame(const struct NezhaCameraMainCaptureIo *io,
+    struct NezhaCameraMainCapture *capture, unsigned buffer, bool requeue);
 
 /* On a CCI failure retain the current mapping. Once the platform has
  * recovered that master, clear its recovery flag and retry stopping. */
