@@ -1,7 +1,7 @@
-name: nezha iPhone27 display discovery and UI coverage 038
+name: nezha iPhone27 display discovery and UI coverage 038b
 on:
   push:
-    branches: [codex/ios27-gpu27-metal-full-038-20261111]
+    branches: [codex/ios27-gpu27-metal-full-038b-20261112]
   workflow_dispatch:
 permissions:
   contents: read

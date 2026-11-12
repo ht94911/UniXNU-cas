@@ -923,7 +923,7 @@ index 0000000..6cebfbb
 +}
 diff --git a/NativeFrameObservers.inc b/NativeFrameObservers.inc
 new file mode 100644
-index 0000000..cef99f4
+index 0000000..3ab147c
 --- /dev/null
 +++ b/NativeFrameObservers.inc
 @@ -0,0 +1,158 @@
@@ -1031,8 +1031,8 @@ index 0000000..cef99f4
 +  (unsigned long long)gDiscoveryDisplayCount,gObservedWindowDisplay?1u:0u);
 + native_bridge_metal_note(text);
 +}
-+static void traceDisplayObserver(uint64_t id,uint64_t copy) {
-+ nbdisplaywait::State state{};state.id=id;state.lastCopyUs=copy;
++static void traceDisplayObserver(uint64_t sampleId,uint64_t copy) {
++ nbdisplaywait::State state{};state.id=sampleId;state.lastCopyUs=copy;
 + // Retain a class-matched rejected candidate only for read-only diagnostics;
 + // capture still stops at the original UUID/vtable/memory validation gates.
 + id candidate=gObservedWindowDisplay?:gObservedWindowCandidate;
@@ -1040,7 +1040,7 @@ index 0000000..cef99f4
 + nbdisplaywait::capture(state,gObservedQuartzSlide,readObserverMemory,nowUs);
 + state.reads[9]=gDisplayDiscovery.status;
 + if(gRenderWaitCopyUs.load(std::memory_order_acquire)==copy)state.flags|=nbdisplaywait::SameCopyAtEnd;
-+ traceWaitBytes(29,id,&state,sizeof(state));
++ traceWaitBytes(29,sampleId,&state,sizeof(state));
 +}
 +static void startClientWaitSampler() {
 + if(!clientWaitOn())return;
