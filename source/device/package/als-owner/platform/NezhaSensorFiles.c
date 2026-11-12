@@ -83,6 +83,37 @@ static int file_open(NezhaSensorFiles *s,const char *path,const char *mode,uint3
     s->files[i].data=data;s->files[i].bytes=bytes;s->files[i].used=1;s->files[i].position=0;s->files[i].eof=0;
     *handle=i+1;return 0;
 }
+/* Qualcomm apps_std_imp.c get_dirlist_from_env/fopen_from_dirlist and
+ * src/Makefile.am's Android default. XNU has no Android process environment;
+ * standard DSP paths resolve only to the retained readonly bundle. The empty
+ * first path preserves absolute names and the original direct-file fallback. */
+static int file_open_with_env(NezhaSensorFiles *s,const char *environment,
+                              const char *delimiter,const char *name,
+                              const char *mode,uint32_t *handle) {
+    if (strcmp(environment,"ADSP_LIBRARY_PATH") && strcmp(environment,"DSP_LIBRARY_PATH")) return BAD;
+    if (!*delimiter) return BAD;
+    if (strcmp(mode,"r") && strcmp(mode,"rb")) return READONLY;
+    static const char search[]=";/vendor/lib/rfsa/adsp;/vendor/dsp;";
+    const char *part=search;size_t delimiter_bytes=strlen(delimiter);int result=MISSING;
+    while (part) {
+        const char *end=strstr(part,delimiter);size_t bytes=end ? (size_t)(end-part):strlen(part);
+        if (!bytes) result=file_open(s,name,mode,handle);
+        else {
+            char path[256];size_t length=strlen(name);
+            if (bytes+length+7<sizeof path) {
+                memcpy(path,part,bytes);memcpy(path+bytes,"/adsp/",6);memcpy(path+bytes+6,name,length+1);
+                result=file_open(s,path,mode,handle);if (!result) return 0;
+            }
+            if (bytes+length+2<sizeof path) {
+                memcpy(path,part,bytes);path[bytes]='/';memcpy(path+bytes+1,name,length+1);
+                result=file_open(s,path,mode,handle);
+            }
+        }
+        if (!result || result==FULL) return result;
+        part=end ? end+delimiter_bytes:0;
+    }
+    return result;
+}
 static int std(NezhaSensorFiles *s,uint32_t sc,QcomRpcArg *a,uint32_t count) {
     uint32_t method=sc>>24;
     if (method==0) {
@@ -92,6 +123,18 @@ static int std(NezhaSensorFiles *s,uint32_t sc,QcomRpcArg *a,uint32_t count) {
         uint32_t handle=0;int r=file_open(s,path,mode,&handle);
         if (!r) p32(a[3].data,handle);
         observed(s,"file",path,method,r);return r;
+    }
+    if (method==19) {
+        /* apps_std_skel_invoke method19: four string lengths, four input
+         * strings, then one32-bit apps_std_FILE result; no incoming handle. */
+        if (!shape(sc,5,1,a,count,16,4)) return BAD;
+        const uint8_t *primitive=a[0].data;
+        const char *environment=string(a[1],g32(primitive)),*delimiter=string(a[2],g32(primitive+4));
+        const char *name=string(a[3],g32(primitive+8)),*mode=string(a[4],g32(primitive+12));
+        if (!environment || !delimiter || !name || !mode) return BAD;
+        uint32_t handle=0;int r=file_open_with_env(s,environment,delimiter,name,mode,&handle);
+        if (!r) p32(a[5].data,handle);
+        observed(s,"env-file",name,method,r);return r;
     }
     if (method==16) {
         if (!shape(sc,2,2,a,count,8,4)) return BAD;
