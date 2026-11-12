@@ -62,9 +62,10 @@ static OSStatus propertyData(AudioObjectID o, const AudioObjectPropertyAddress *
         case 'auto': REPLY(UInt32, 0);
         case kAudioObjectPropertyElementName: REPLY_STR("");
         case kAudioDevicePropertyConfigurationApplication: REPLY_STR("com.apple.Preferences");
-        /* UID Speaker selects the stock Device_Speaker_Aspen factory. Its
-         * required tap is a playback reference, independently of MicReady. */
-        case kAudioDevicePropertyTransportType: REPLY(UInt32, kAudioDeviceTransportTypeBuiltIn);
+        /* Use the stock USB output class accepted by the iPhone playback
+         * routes. TAS/AudioReach supply the native speaker protection; this
+         * stereo device does not expose Apple speaker IV telemetry. */
+        case kAudioDevicePropertyTransportType: REPLY(UInt32, kAudioDeviceTransportTypeUSB);
         case kAudioDevicePropertyRelatedDevices: REPLY(AudioObjectID, kDevice);
         case kAudioDevicePropertyClockDomain: REPLY(UInt32, 0);
         case kAudioDevicePropertyDeviceIsAlive: REPLY(UInt32, available());
