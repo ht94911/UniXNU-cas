@@ -61,6 +61,8 @@ jobs:
             clang -std=gnu11 -Wall -Wextra -Werror -fsanitize=address,undefined -I "$bb/package/baseband27/bridge" -I "$bb/package/baseband27/bridge/upstream" "$bb/tests/baseband27/${test}_test.c" -o "$RUNNER_TEMP/ios27/$test"
             "$RUNNER_TEMP/ios27/$test"
           done
+          clang -std=gnu11 -Wall -Wextra -Werror -fsanitize=address,undefined "$bb/tests/baseband27/mss_reuse_test.c" "$bb/package/baseband27/platform/NbMss.c" "$bb/package/baseband27/platform/NbPas.c" "$bb/package/baseband27/upstream/QcomMdt.c" "$bb/package/baseband27/upstream/QcomGlink.c" "$bb/package/baseband27/upstream/QcomSmem.c" "$bb/package/baseband27/upstream/QcomSmp2p.c" -o "$RUNNER_TEMP/ios27/mss_reuse"
+          "$RUNNER_TEMP/ios27/mss_reuse"
       - name: Qualify compiler and run the standard native build
         env:
           GITHUB_TOKEN: ${{ github.token }}
