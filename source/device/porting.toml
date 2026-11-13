@@ -1,6 +1,20 @@
 # Local machine-checkable integration contract; no published porting record or hardware claim.
 schema_version = 1
 
+[[area]]
+id = "camera"
+status = "planned"
+components = ["QcomXnuUsbDebug", "ArmSmmu4K"]
+paths = ["package/camera/**", "scripts/*camera*", "tests/camera-*.c"]
+inputs = ["Stock nezha Camera2, DT and sensor modules retained privately; Qualcomm CAMSS 1080 and Canoe CAMCC/CRM-v3 source."]
+configuration = ["Isolated codex/camera27-main-raw; current camera004 uses only opt-in C1 and the verified multiboot envelope."]
+procedure = ["Run check-nezha27-camera-core.sh and check-nezha27-camera-observer.py; native Mac, strict prelink and QEMU qualify each test candidate before the shared phone queue."]
+findings = ["camera003 completed top GDSC power-up, then an extra Core AHB enable-bit wait timed out; camera004 follows upstream branch halt semantics and awaits the brightness013 handoff.", "C2 core includes the stock C-PHY tables' lifecycle, continuous CCI burst, RAW10 RDI, two frame mappings and stop handling. CRM-v3 reads firmware frequency LUTs and waits for its own VCD completion; no C2 native MMIO is enabled yet.", "Four local stock module profiles pass full C decoding and byte-for-byte initialization/mode/burst roundtrips. A camera slot reuses GPU's local resource finalizer before strict prelink and HMAC; source-only CI carries an empty slot."]
+completion = ["C1 requires actual 0x300b identity word 0x5058 and repeatable restoration; C2 requires 20 real frames; native Camera.app and all lenses remain later stages."]
+limits = ["Host and arm64e core checks are not sensor identity, hardware capture or OS camera acceptance. Native C2 clock/power/DMA integration remains in progress."]
+next_action = ["Retain brightness013 until its owner releases; test camera004 when selected. Integrate acknowledged shared resources before enabling C2 capture."]
+evidence = []
+
 [device]
 name = "nezha"
 soc = "SM8850"

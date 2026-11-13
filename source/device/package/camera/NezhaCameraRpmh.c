@@ -46,6 +46,10 @@ static bool transact(struct NezhaCameraRpmh *owner, uint32_t address,
     const QcomRscLayout *l = &owner->layout;
     const uint32_t tcs_relative = CameraTcs * l->tcs_stride;
     const uint32_t tcs = TcsOffset + tcs_relative;
+    owner->last_address = address;
+    owner->last_value = value;
+    owner->last_irq = read_rsc(owner, TcsOffset + l->irq_status);
+    owner->last_tcs_status = read_rsc(owner, tcs + l->status);
     if (owner->unsettled || !idle(owner, tcs)) {
         owner->status = NezhaCameraRpmhBusy;
         return false;
@@ -87,8 +91,9 @@ static bool transact(struct NezhaCameraRpmh *owner, uint32_t address,
 
     bool done = false;
     for (unsigned ms = 0; ms <= 100; ++ms) {
-        if ((read_rsc(owner, TcsOffset + l->irq_status) & TcsBit) != 0 &&
-            read_rsc(owner, tcs + l->status) == 1) {
+        owner->last_irq = read_rsc(owner, TcsOffset + l->irq_status);
+        owner->last_tcs_status = read_rsc(owner, tcs + l->status);
+        if ((owner->last_irq & TcsBit) != 0 && owner->last_tcs_status == 1) {
             done = true;
             break;
         }
@@ -102,10 +107,12 @@ static bool transact(struct NezhaCameraRpmh *owner, uint32_t address,
     }
 
     const uint32_t command_status = read_rsc(owner, tcs + l->cmd_data + 4);
+    owner->last_command_status = command_status;
     const bool acknowledged = command_status != UINT32_MAX &&
         (command_status & CommandAcknowledged) == CommandAcknowledged;
     if (reply != NULL && acknowledged) {
         *reply = read_rsc(owner, tcs + l->cmd_data + 8);
+        owner->last_reply = *reply;
     }
     const unsigned finish_count = qcom_rpmh_finish(l, CameraTcs, writes, 9);
     for (unsigned i = 0; i < finish_count; ++i) {

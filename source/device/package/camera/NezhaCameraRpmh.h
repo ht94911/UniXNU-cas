@@ -28,6 +28,7 @@ struct NezhaCameraRpmh {
     QcomRscLayout layout;
     struct NezhaCameraVrmState rail[3];
     enum NezhaCameraRpmhStatus status;
+    uint32_t last_address, last_value, last_irq, last_tcs_status, last_command_status, last_reply;
     bool unsettled;
 };
 

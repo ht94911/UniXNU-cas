@@ -1,7 +1,7 @@
-name: nezha iPhone27 stock main-camera identity probe
+name: nezha iPhone27 camera stage snapshots and local profile resource
 on:
   push:
-    branches: [codex/ios27-camera004-20261113]
+    branches: [codex/ios27-camera005-20261113]
   workflow_dispatch:
 permissions:
   contents: read
@@ -67,6 +67,8 @@ jobs:
           "$RUNNER_TEMP/ios27/input-host/callbacks" > "$RUNNER_TEMP/ios27/work/logs/auto-input-callbacks-run.log" 2>&1
       - name: Check the actual guarded waiting-stack sampler
         run: python3 task/source/device/scripts/check-stable-kernel-stack.py
+      - name: Check the actual read-only camera USB snapshot callbacks
+        run: python3 task/source/device/scripts/check-nezha27-camera-observer.py --usb "$RUNNER_TEMP/ios27/work/usb" --out "$RUNNER_TEMP/ios27/camera-observer"
       - name: Qualify compiler and run the standard native build
         env:
           GITHUB_TOKEN: ${{ github.token }}

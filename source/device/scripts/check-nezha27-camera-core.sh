@@ -34,6 +34,8 @@ check dma "$camera/NezhaCameraRdi1080.c" "$camera/NezhaCameraDma.c" \
     "$smmu/ArmSmmu4K.c" "$smmu/ArmSmmu4KContext.c" "$smmu/ArmSmmu4KProgram.c" \
     "$smmu/ArmSmmu4KStreams.c"
 check camcc "$camera/NezhaCameraCamcc.c"
+check crm "$camera/NezhaCameraCrm.c"
+check profile "$camera/NezhaCameraProfile.c"
 check main-capture "$camera/NezhaCameraMainCapture.c" "$camera/NezhaCameraRdi1080.c"
 check main-pins "$camera/NezhaCameraMainPins.c"
 check rpmh "$camera/NezhaCameraRpmh.c" "$camera/upstream/QcomRpmh.c"

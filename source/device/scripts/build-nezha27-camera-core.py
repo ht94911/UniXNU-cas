@@ -12,7 +12,7 @@ import sys
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MODULES = ("Cci", "Ovx10500u", "Rdi1080", "Camss1080", "Csiphy24", "Dma", "Camcc", "MainCapture", "MainPins", "Rpmh")
+MODULES = ("Cci", "Ovx10500u", "Rdi1080", "Camss1080", "Csiphy24", "Dma", "Camcc", "Crm", "Profile", "MainCapture", "MainPins", "Rpmh")
 
 
 def tool(env_name, mac_name, local_name):
@@ -54,7 +54,11 @@ def main():
         name = source.stem
         obj = out / (name + ".arm64e.o")
         if staged:
-            command = helper["compile_command"](compile_record, source, obj, ["-I", str(smmu)], [])
+            includes = ["-I", str(smmu)]
+            if name == "NezhaCameraProbe":
+                includes += ["-I", str(ROOT / "drivers/QcomXnuUsbDebug/include"),
+                             "-I", str(ROOT / "kits/nezha/nezha27-input")]
+            command = helper["compile_command"](compile_record, source, obj, includes, [])
             subprocess.run(command, cwd=compile_record["directory"], check=True)
             check_object(obj.read_bytes(), name)
         else:
@@ -63,6 +67,13 @@ def main():
                 "-Wall", "-Wextra", "-Wconversion", "-Werror", "-I", str(smmu),
                 "-c", str(source), "-o", str(obj)], check=True)
         objects.append(str(obj))
+
+    slot = kit / 'NezhaCameraProfileSlot.S'
+    slot_object = out / 'NezhaCameraProfileSlot.arm64e.o'
+    subprocess.run(cc + ['-target', 'arm64e-apple-ios27.0', '-c', str(slot), '-o', str(slot_object)], check=True)
+    if staged:
+        check_object(slot_object.read_bytes(), slot.name)
+    objects.append(str(slot_object))
 
     archive = out / "libNezha27CameraCore.a"
     temporary = out / ".libNezha27CameraCore.a"

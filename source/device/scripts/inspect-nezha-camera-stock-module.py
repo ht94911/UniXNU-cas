@@ -176,7 +176,10 @@ class StockModule:
             else:
                 continue
             if shape == 8 and count > 0 and target < len(self.symbols) and len(self.symbol(target)) == count * 60:
-                result.append(dict(sensor_version=record[1], settings_symbol=target,
+                # The stock 6.0.7 descriptor extends the public XSD. Keep
+                # this scalar uninterpreted until its version/delay role is
+                # established in the matching HAL.
+                result.append(dict(header_value=record[1], settings_symbol=target,
                                    settings=list(self.settings(target))))
         require(result, 'No initialization records found in the selected sensor driver')
         return result
@@ -186,7 +189,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("module", type=Path, nargs="+")
     parser.add_argument("--mode", type=int, help="also extract the selected mode's register groups")
-    parser.add_argument("--initialization", action="store_true", help="also extract initialization and revision reads")
+    parser.add_argument("--initialization", action="store_true", help="also extract initialization and adjacent read groups")
     parser.add_argument("--output", required=True, type=Path, help="local private output JSON")
     args = parser.parse_args()
     result = []
