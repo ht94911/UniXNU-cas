@@ -20,6 +20,11 @@
 // inputs. Bind only the proven original integer constructor; event storage
 // stays owned by original IOHIDFamily.
 static constexpr IOHIDEventType nezhaAlsEventType = 12;
+// Actual24A446 AppleEmbeddedLightSensor returns ff00/4. CBABModuleiOS
+// allocates its AABC only for this pair; standard20/41 merely joins its other
+// service list. Both pairs use the same original integer ambient event type12.
+static constexpr UInt32 nezhaAlsUsagePage = 0xff00;
+static constexpr UInt32 nezhaAlsUsage = 4;
 // Actual 24A446 start reads this key and skips its initial asynchronous
 // registration only when the value is kOSBooleanFalse.
 static constexpr const char *nezhaAlsRegisterServiceKey = "RegisterService";
@@ -257,8 +262,8 @@ class NativeNezhaAls : public IOHIDEventService {
         static_cast<NativeNezhaAls *>(owner)->process();
     }
 protected:
-    UInt32 getPrimaryUsagePage() override { return 0x20; }
-    UInt32 getPrimaryUsage() override { return 0x41; }
+    UInt32 getPrimaryUsagePage() override { return nezhaAlsUsagePage; }
+    UInt32 getPrimaryUsage() override { return nezhaAlsUsage; }
     UInt32 getReportInterval() override {
         IOLockLock(stateLock);
         uint32_t value = intervalUs;

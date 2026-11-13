@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "ALS014 observe actual owner polling, HID gate and event completion, interval acceptance after ALS013 real lux stopped",
+  "purpose": "ALS015 publish actual original27 ALS usage ff00/4 to initialize CoreBrightness AABC on genuine measured lux",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "98365a15cf6acbb8625d042867d597677007925f",
+  "device_revision": "143449b47dddc8ef5a50c59d3994b603163a9e17",
   "soc_revision": "e565439bf1a13d0224f0a9adcfc1eef8df7ad142",
   "xcode": "26.6",
   "files": {
@@ -174,13 +174,13 @@
     "source/device/package/als-owner/upstream/ShengAudioReach.h": "b135177a5feb3e24e0d8a6aabb301600e2c37078b970a09ada6e8eb7bb6a5b98",
     "source/device/package/als-owner/upstream/ShengGpr.h": "a274dded1f4d1e2709b9f966759bcb1f57d12747ee0f57743dea1fa97d95d23e",
     "source/device/package/als/NezhaAlsBackend.h": "e247947cf12abf156db1a62a111d453c89463c3dd56a6b6aa382ff1d54719a8d",
-    "source/device/package/als/NezhaAlsFrontend.cpp": "1c5120d535a30e75553867f7d7d1883c8f70939660414e435b4381724a3bce8e",
+    "source/device/package/als/NezhaAlsFrontend.cpp": "4393481b06a5010904b868a57e41c5d17507a508dd3b29f6ed7ef162516b4aa9",
     "source/device/package/als/NezhaAlsQrtrBackend.c": "85191fb6d717ed40dbacb477f28af8d4b3dfdaf6efd86188d1bcf6c4dd444716",
     "source/device/package/als/NezhaAlsQrtrBackend.h": "bb20b11dc2c110f7843c31638eef8fb9dd5394c952d4e1d440eec9cb32ee9292",
     "source/device/package/als/NezhaAlsSscClient.c": "ec6a76ca75ad294e2466ce1d9999ccc59b635790c161665f6f61e16985042ab9",
     "source/device/package/als/NezhaAlsSscClient.h": "1cb84ad4dd734cb533e9a7aa1669a75ea5a161c643d16f82da1a6481717e82e5",
     "source/device/package/als/NezhaAlsState.h": "2876ff7d3dc8fe4521bc535b28b47c5944382c26ee037fa345c0ea79180e57cf",
-    "source/device/package/als/README.md": "0eca9ae05828e573a738aadbf4e4ed653be6af95f85c47da45be780a7d4cb58c",
+    "source/device/package/als/README.md": "894fa60051009db8e41c152a9a3a9e051f776dc4d5e1dc42f1aa5f4c084b0347",
     "source/device/package/als/Tcs3760Sns.c": "3fcf2c8aa51c9b819a4014fe6b64569d63853e2117dc0215cb16551a37590d7f",
     "source/device/package/als/Tcs3760Sns.h": "bd728857b3a5869954acdc55dbddd94a3995d376769613282e254fb99074c2eb",
     "source/device/package/armcpu/darwin-asm-separators.patch": "15893fd689f266184c3273135761d7eff0d71aa0c42e29d1d71666a0abd60e8f",
@@ -429,7 +429,7 @@
     "hardware": false
   },
   "als_abi": {
-    "source_revision": "98365a15cf6acbb8625d042867d597677007925f",
+    "source_revision": "143449b47dddc8ef5a50c59d3994b603163a9e17",
     "source_files": [
       "package/als/NezhaAlsBackend.h",
       "package/als/NezhaAlsFrontend.cpp",
@@ -696,6 +696,36 @@
     "snapshot_actual_fixture_max_progress_bytes": 1914,
     "owner_gate_and_delivery_points": true,
     "sample_generation_changed": false,
+    "actual_hardware": false
+  },
+  "native014_base": {
+    "source_revision": "98365a15cf6acbb8625d042867d597677007925f",
+    "head": "9596711a63fecc4c49f6f623dd5274f544c27960",
+    "run": 43403823744,
+    "real_lux": [
+      100,
+      122,
+      135,
+      149
+    ],
+    "worker_gate_and_delivery_progress_confirmed": true
+  },
+  "als_original_usage": {
+    "source_revision": "143449b47dddc8ef5a50c59d3994b603163a9e17",
+    "primary_usage_page": 65280,
+    "primary_usage": 4,
+    "original_AppleEmbeddedLightSensor_getters": [
+      "0xfffffff0088010ec",
+      "0xfffffff0088010f8"
+    ],
+    "original_PAC_diversities": [
+      "0x7eca",
+      "0xf128"
+    ],
+    "original_CBAB_allocation_gate": "IOHIDServiceClientConformsTo(service,0xff00,4)",
+    "event_type": 12,
+    "genuine_TCS3760_samples_retained": true,
+    "class_members_added": false,
     "actual_hardware": false
   }
 }

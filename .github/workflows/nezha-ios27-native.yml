@@ -1,7 +1,7 @@
-name: nezha iPhone27 ALS014 owner and HID run observation
+name: nezha iPhone27 ALS015 original ALS consumer usage
 on:
   push:
-    branches: [codex/ios27-brightness-als014-runstate-20261113]
+    branches: [codex/ios27-brightness-als015-original-usage-20261113]
   workflow_dispatch:
 permissions:
   contents: read

@@ -1,7 +1,7 @@
 # Nezha27 real ALS front end
 
 This is a separate original-backed `IOHIDEventService` for the board's actual
-TCS3760 sensor. It uses Sensor Ambient Light usage `0x20/0x41` and original
+TCS3760 sensor. It uses the original27 ALS consumer usage `0xff00/4` and original
 type12 integer-lux events. The touchscreen descriptor and reports are independent.
 
 The unique backend owner prepares the boot-lifetime service with a real provider,
@@ -30,6 +30,13 @@ dedicated native recipe reuses the existing input header and binding helpers;
 normal native/PAC/class verification is still required. Host qualification
 compiles this actual class against a kernel-interface model under ASan/UBSan.
 These models do not qualify sensor transport or automatic brightness on hardware.
+
+ALS015 corrects the consumer usage after original24A446 CBABModuleiOS was
+found to instantiate AABC only for `0xff00/4`. Its standard `0x20/0x41` branch
+accepts other service clients without creating the automatic-brightness object.
+The actual AppleEmbeddedLightSensor usage getters return `0xff00` and4, with
+the original authenticated getter slots. The board name, real TCS3760 lux,
+event type12, Built-In boolean and sample/interval lifecycle stay unchanged.
 
 ALS011 on the board read the retained registry/config files, discovered the
 default ambient-light SUID and received the enable ACK. Its next indication
