@@ -313,7 +313,7 @@
     "source/soc/patches/xnu-12377/native-smp-secondary.patch": "9d9164921da548a9f13ccbd6093c799583f54e590ef3d562288dcea9ba5a2774",
     "source/soc/patches/xnu-12377/sheng-platform-power.patch": "6e68dbcdac670624f2a9806a61fef42110bfe6586029b3f1a0acb068c3a23ec2",
     "source/soc/patches/xnu-12377/series": "bb95255800677aae6c7ba2742e892e0d40b4c34eb40816b58214c1393759bc1d",
-    ".github/workflows/nezha-ios27-native.yml": "77849898b3bc3b31e07da9b79040c894c4cf6bc44453dbc1304107b1fef88363",
+    ".github/workflows/nezha-ios27-native.yml": "be78c728a65c5abd15db1333221d6a4dbb61288588870bda4e3744f47ea9f0b6",
     "ci/native.py": "36ed97f9317aa0503e5261639fbe48cd8818dc80d3965edf65376065b88e57be"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
