@@ -191,7 +191,22 @@ extern "C" int nezha_bb_bind(NbBasebandConfig *config){
         r=nb_native_allocate(&board.dma[i],sizes[i],align,0,1);if(r)return fail("dma",r);
         *dma[i]={board.dma[i].cpu,iova,sizes[i]};iova+=sizes[i];
     }
-    r=nb_native_smmu_prepare(&board.smmu,board.common,board.dma,&config->ipa_memory);if(r)return fail("smmu-bind",r);
+    /* Android has already allocated item497. Read its immutable location
+     * under the shared SMEM mutex before replacing the IPA AP/uC tables. */
+    QcomSmem smem={static_cast<volatile uint8_t *>(config->smem),config->smem_bytes};
+    QcomSmemPartition partition={};NbRange smem_region={};
+    uint64_t smem_deadline=nb_native_now_ms()+1000;
+    while((r=smem_lock(&board))==NB_BUSY && nb_native_now_ms()<smem_deadline)IOSleep(1);
+    if(r)return fail("ipa-smem",r);
+    r=qcom_smem_partition(&smem,QCOM_SMEM_HOST_APPS,NB_MSS_SMEM_HOST,&partition);
+    if(!r)r=nb_ipa_smem_region(&smem,&partition,config->smem_physical,&smem_region,&config->ipa_smem_address);
+    smem_unlock(&board);
+    if(r||board.error)return fail("ipa-smem",r?r:board.error);
+    config->ipa_smem_bytes=NB_IPA_SMEM_BYTES;
+    printf("NEZHA27 BB stage=ipa-smem result=0 item=%u address=%#x bytes=%u map=%#llx+%#llx\n",
+           NB_SMEM_IPA_FILTER_TABLE,config->ipa_smem_address,config->ipa_smem_bytes,
+           (unsigned long long)smem_region.base,(unsigned long long)smem_region.bytes);
+    r=nb_native_smmu_prepare(&board.smmu,board.common,board.dma,&config->ipa_memory,smem_region);if(r)return fail("smmu-bind",r);
     const char *names[]={"ipa_fws","modem","modem_dtb"};
     const unsigned ids[]={15,4,0x26};
     const NbPasOps pas_ops={&board,pas_call,pas_sync};

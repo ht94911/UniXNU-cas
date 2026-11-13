@@ -121,7 +121,8 @@ static int smp2p_ipa(void *context, uint32_t mask, uint32_t value)
 int nb_baseband_init(NbBaseband *b, const NbBasebandConfig *c)
 {
     if (!b || !c || !c->smem || !c->ipa_fws || !c->modem || !c->modem_dtb || !c->rmtfs || !c->platform.ipa_power || !c->platform.ipa_smmu ||
-        !c->qrtr_tx || !c->tftp_packet || !c->tftp_files || !c->ipcrtr_intents || !c->ds_intents || !c->tx_queue) return NB_ARGUMENT;
+        !c->qrtr_tx || !c->tftp_packet || !c->tftp_files || !c->ipcrtr_intents || !c->ds_intents || !c->tx_queue ||
+        c->ipa_smem_bytes != NB_IPA_SMEM_BYTES || !c->ipa_smem_address) return NB_ARGUMENT;
     *b = (NbBaseband){0};
     b->c = *c;
     int r = nb_mss_init(&b->mss, c->smem, c->smem_bytes, c->modem, c->modem_dtb, &c->mss);
@@ -144,25 +145,6 @@ static void attach_glink(NbBaseband *b)
     const QcomGlinkClient ipcrtr = { ipcrtr_state, ipcrtr_receive }, ds = { ds_state, ds_receive };
     b->ipcrtr = qcom_glink_channel(g, "IPCRTR", NB_IPCRTR_INTENT_BYTES, NB_IPCRTR_INTENTS, b->c.ipcrtr_intents, &ipcrtr, b, 0);
     b->ds = qcom_glink_channel(g, "DS", NB_DS_INTENT_BYTES, NB_DS_INTENTS, b->c.ds_intents, &ds, b, 0);
-}
-
-/* SMEM_IPA_FILTER_TABLE, allocated in the modem partition as mainline ipa_smem_init does; the modem finds its statistics block at
- * the start of it. INIT_DRIVER goes out long after this. */
-static int allot_smem(NbBaseband *b)
-{
-    if (b->smem_done || !b->ipcrtr) return NB_OK;
-    if (b->c.mss.smem_lock(b->c.mss.context)) return NB_PENDING;
-    uint32_t offset = 0, size = 0;
-    int r = qcom_smem_find(&b->mss.smem, &b->mss.partition, NB_SMEM_IPA_FILTER_TABLE, &offset, &size);
-    if (r) {
-        r = qcom_smem_alloc(&b->mss.smem, &b->mss.partition, NB_SMEM_IPA_FILTER_TABLE, NB_IPA_SMEM_BYTES);
-        if (!r) r = qcom_smem_find(&b->mss.smem, &b->mss.partition, NB_SMEM_IPA_FILTER_TABLE, &offset, &size);
-    }
-    b->c.mss.smem_unlock(b->c.mss.context);
-    if (r || size < NB_IPA_SMEM_BYTES) return NB_WIRE;
-    nb_ipa_set_smem(NB_IPA_SMEM_BYTES, (uint32_t)(b->c.smem_physical + offset));
-    b->smem_done = 1;
-    return NB_OK;
 }
 
 static void service_online(NbBaseband *b, uint64_t now)
@@ -195,6 +177,7 @@ int nb_baseband_poll(NbBaseband *b, uint64_t now)
         return NB_PENDING;
     case NbBasebandConfigure: {
         const NbIpaBoard board = { &b->qrtr, NB_PORT_IPA_HOST, NB_PORT_IPA_CLIENT, b->c.platform.qmp_send, smp2p_ipa, b };
+        nb_ipa_set_smem(b->c.ipa_smem_bytes, b->c.ipa_smem_address);
         r = nb_ipa_configure(&board, &b->c.ipa_memory);
         if (r) return fail(b, r);
         nb_pas_arm(b->c.ipa_fws, now);
@@ -222,7 +205,6 @@ int nb_baseband_poll(NbBaseband *b, uint64_t now)
             b->error = r;
             return r;
         }
-        { const int s = allot_smem(b); if (s < 0) return fail(b, s); }
         service_online(b, now);
         if (r == NB_OK && !b->reported_online) {
             b->reported_online = 1;

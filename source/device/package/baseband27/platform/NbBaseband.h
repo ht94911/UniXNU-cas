@@ -11,6 +11,7 @@
 #ifndef NB_BASEBAND_H
 #define NB_BASEBAND_H
 #include "NbMss.h"
+#include "NbIpaSmem.h"
 #include "../ipa/nb_ipa_board.h"
 #include "../services/NbMemshare.h"
 #include "../services/NbRmtfs.h"
@@ -27,8 +28,6 @@ extern "C" {
 #define NB_TX_QUEUE 32u
 #define NB_TX_SLOT_BYTES 8192u
 #define NB_TFTP_MAX_BLKSIZE 7168u   /* the OACK carries it; the frame must fit one queue slot */
-#define NB_SMEM_IPA_FILTER_TABLE 497u
-#define NB_IPA_SMEM_BYTES 0x19000u
 #define NB_REPLY_BYTES 4096u
 
 /* Local QRTR ports. The bridge's client ports start at NB_PORT_BRIDGE. */
@@ -66,6 +65,9 @@ typedef struct {
     volatile void *smem;
     uint32_t smem_bytes;
     uint64_t smem_physical;
+    /* Existing item497, read before the IPA context is installed. Its
+     * aligned pages are mapped at the same physical/IOVA address. */
+    uint32_t ipa_smem_bytes, ipa_smem_address;
     /* Begun with nb_pas_begin against their carveouts: ipa_fws (PAS 15), modem (PAS 4) and modem_dtb (PAS 0x26). */
     NbPas *ipa_fws, *modem, *modem_dtb;
     NbRmtfs *rmtfs;                /* initialized with its images and shared buffer */
@@ -93,7 +95,7 @@ typedef struct {
     uint8_t reply[NB_REPLY_BYTES];
     uint32_t tx_head, tx_count, tx_length[NB_TX_QUEUE];
     uint32_t stage;
-    uint8_t smem_done, reported_online, link_up;
+    uint8_t reported_online, link_up;
     int error;
     uint64_t tx_queued, tx_dropped, ds_packets;
 } NbBaseband;

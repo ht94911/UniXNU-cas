@@ -389,4 +389,29 @@ MSS在proxy完成后且第一次stop之前执行固定4查询（4:7/9，0x26:7/9
 宿主实际wrapper和MSS已验查询data非setter错误、a0失败、实际-22解密路径、
 proxy/查询/stop顺序、失败不绕过、繁忙/后续tick不重复。29Linux17头编译screen通过，
 真实iOS27原生对象及下一实机rawreply待验证。
+
+## 18. IPA统计SMEM页表映射（009，2026-11-13）
+
+008真机在63.660s收到MSS fresh-ready，主/DTB初始化、内存设置、认证及
+初始停止原始寄存器全0，GLINK/QRTR后收到modem IPA服务和65.863s
+INDICATION_REGISTER。随后无返回请求而复位，OEM历史在10:14:18UTC
+记录`tz_others`，未给出地址；不把查询时序当稳定停止修复，也不称XPU违规。
+
+已确认的缺口是item497统计区没有加入替换IPA上下文的页表：
+OnePlus SM8850下游`5ab2a68`的`ipa_smmu_ap_cb_probe`先按真实SMEM
+地址对齐并作恒等映射，再把未对齐地址给`per_stats_smem_pa`；
+Linux `ipa_mem.c::ipa_smem_init`同样映射该页段。本机原厂
+`ipa_bootup`已记录102400字节、AP SID0x4a0、uC SID0x4a2。
+框架/其他设备没有现成nezha绑定，沿已有QcomSmem和ArmSmmu4K接口补齐。
+本轮开工fetch UniXNU/main `7d85ede`与myron-next `f1a1bfe`，未升级GPU024。
+
+009只读查已有apps/modem分区item497，要求原102400字节，
+在原SMEM mutex下取其真实地址和页段；不分配或清零。IPA尚未开启时
+将该段加入原六范围的同一32位IOVA/36位物理页表，RW/NC/outer属性保持。
+QMI使用同一个已映射的原始item地址，不在MSS认证之后再创建或更换统计区。
+保持原PAS门槛、固件、DSM、GLINK、IPA/GSI寄存器和Data/存储权限。
+
+宿主真实绑定已走出实际TTBR页表，验证未对齐item首尾均恒等映射、
+相邻未声明页仍缺失，原DMA和IPA寄存器区可达；缺失/错尺寸/损坏SMEM拒绝。
+完整ASan/UBSan回归通过；实际iOS27原生、IPA握手和复位效果待下一轮。
 来源仍固定GPU024/SMMU/USB/common；最新fetch UniXNU7d85ede、myronf1a1bfe。

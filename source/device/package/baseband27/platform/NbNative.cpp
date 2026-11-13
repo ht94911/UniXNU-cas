@@ -126,21 +126,24 @@ extern "C" int nb_native_sync(void *,void *cpu,uint64_t pa,uint64_t bytes){
     flush_dcache64(pa,(unsigned)bytes,TRUE);barrier();return NB_OK;
 }
 extern "C" uint64_t nb_native_now_ms(){uint64_t ns=0;absolutetime_to_nanoseconds(mach_absolute_time(),&ns);return ns/1000000;}
-extern "C" int nb_native_smmu_prepare(NbNativeSmmu *s,Sm8850Resources *common,const NbNativeMemory *memory,const NbIpaMemory *ipa){
-    if(!s||!common||!memory||!ipa||s->common)return NB_ARGUMENT;
+extern "C" int nb_native_smmu_prepare(NbNativeSmmu *s,Sm8850Resources *common,const NbNativeMemory *memory,const NbIpaMemory *ipa,NbRange smem){
+    if(!s||!common||!memory||!ipa||s->common||!nb_range_valid(smem)||
+       ((smem.base|smem.bytes)&4095)||smem.base<0x81d00000||
+       smem.bytes>0x200000||smem.base-0x81d00000>0x200000-smem.bytes)return NB_ARGUMENT;
     s->common=common;s->assignment={8,0xfd00,{13,14,0,0},{0x4a0,0x4a2,0,0},2};
     int r=sm8850_resource_acquire(common,NB_RES_SMMU,NB_OWNER,&s->lease);if(r)return NB_OWNERSHIP;
     s->registers=static_cast<volatile uint8_t *>(nb_native_map(0x15000000,0x100000,0));if(!s->registers)return NB_IO;
     if(nb_native_allocate(&s->tables,0x10000,4096,0,0))return NB_IO;
     s->config={32,36,s->tables.physical,2048};
     const NbIpaDma *dma[]={&ipa->zero,&ipa->ring,&ipa->lan_rx,&ipa->modem_rx,&ipa->modem_tx};
-    ArmSmmu4KRange ranges[6]={{0x14683000,0x14683000,0x2000,ArmSmmu4KRead|ArmSmmu4KWrite,0,2}};
+    ArmSmmu4KRange ranges[7]={{0x14683000,0x14683000,0x2000,ArmSmmu4KRead|ArmSmmu4KWrite,0,2}};
     for(unsigned i=0;i<5;i++){
         if(!memory[i].descriptor||memory[i].cpu!=dma[i]->virt||memory[i].bytes!=dma[i]->bytes||dma[i]->iova<0x20000000||
            dma[i]->iova>=0x40000000||dma[i]->bytes>0x40000000-dma[i]->iova)return NB_OWNERSHIP;
         ranges[i+1]={dma[i]->iova,memory[i].physical,memory[i].bytes,ArmSmmu4KRead|ArmSmmu4KWrite,0,2};
     }
-    if(ArmSmmu4KBuild(&s->config,ranges,6,reinterpret_cast<uint64_t *>(s->tables.cpu),16,&s->result))return NB_OWNERSHIP;
+    ranges[6]={smem.base,smem.base,smem.bytes,ArmSmmu4KRead|ArmSmmu4KWrite,0,2};
+    if(ArmSmmu4KBuild(&s->config,ranges,7,reinterpret_cast<uint64_t *>(s->tables.cpu),16,&s->result))return NB_OWNERSHIP;
     if(nb_native_sync(nullptr,s->tables.cpu,s->tables.physical,s->tables.bytes))return NB_IO;
     s->context={&s->config,nullptr,&s->result,nullptr,0,0,s->assignment.asid,1,0,0,0};
     s->io={s,0x100000,read32,read64,write32,write64,fence};return NB_OK;

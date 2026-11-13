@@ -1,7 +1,7 @@
-name: nezha iPhone27 B package on GPU024 - native008
+name: nezha iPhone27 B package on GPU024 - native009
 on:
   push:
-    branches: [codex/ios27-bb-gpu024-native008-20261113]
+    branches: [codex/ios27-bb-gpu024-native009-20261113]
   workflow_dispatch:
 permissions:
   contents: read
@@ -63,6 +63,8 @@ jobs:
           done
           clang -std=gnu11 -Wall -Wextra -Werror -fsanitize=address,undefined "$bb/tests/baseband27/mss_reuse_test.c" "$bb/package/baseband27/platform/NbMss.c" "$bb/package/baseband27/platform/NbPas.c" "$bb/package/baseband27/upstream/QcomMdt.c" "$bb/package/baseband27/upstream/QcomGlink.c" "$bb/package/baseband27/upstream/QcomSmem.c" "$bb/package/baseband27/upstream/QcomSmp2p.c" -o "$RUNNER_TEMP/ios27/mss_reuse"
           "$RUNNER_TEMP/ios27/mss_reuse"
+          clang -std=gnu11 -Wall -Wextra -Werror -fsanitize=address,undefined "$bb/tests/baseband27/ipa_smem_test.c" "$bb/package/baseband27/upstream/QcomSmem.c" -o "$RUNNER_TEMP/ios27/ipa_smem"
+          "$RUNNER_TEMP/ios27/ipa_smem"
       - name: Qualify compiler and run the standard native build
         env:
           GITHUB_TOKEN: ${{ github.token }}
