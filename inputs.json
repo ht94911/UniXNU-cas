@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Source-only arm64e/iOS27 build on fixed GPU024: retain the qualified low pool, SIM and PDP fixes, retain raw PAS/MSS/VOICE paths and successful initial stops/SMEM497 mapping; retain the stock twelve MSM statistics records and same actual QMI address; add only the IPA v5.5 uC descriptor first-word marker after SRAM canaries, before IPA firmware. No private or phone inputs.",
+  "purpose": "Source-only arm64e/iOS27 build on fixed GPU024: retain the qualified low pool, SIM and PDP fixes, retain raw PAS/MSS/VOICE paths and successful initial stops/SMEM497 mapping; retain the stock twelve MSM statistics records and same actual QMI address; retain the real012 descriptor marker and completeIPA/uC handshake; answer actual original CONFIG0x27 with no fake handshakeflags. CPMS uses only local original validated-page capability input at packaging time. No private or phone inputs.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "c6be8d01304caccbaf46bf8dac8a45c61fe4954b",
+  "device_revision": "5bb7eb729916a58d1f2ff93a70c17fae7ec0e74d",
   "soc_revision": "703d7b4bb00904b4a6e5d96f9e9bf72eec170f6b",
   "xcode": "26.6",
   "files": {
@@ -105,7 +105,7 @@
     "source/device/package/backlight/NezhaBrightnessRequest.h": "876811b23045660b71c82c5f6ff33780a6f7bfaaa4311c116c71d179b348a59c",
     "source/device/package/backlight/NezhaDsi0.h": "28a964006beffe03238af70bc9eed4c479ca1aeaef574d4583f18f96fd1690e1",
     "source/device/package/backlight/OriginalAppleARMBacklightABI.h": "dab34c394c2123ae4cbfd6648980d5e7b024539773abe5852f7d2622f9bf7b8b",
-    "source/device/package/baseband27/SOURCE.md": "cdc383734039c3e96e5b1f55eddd0ed579ef90d676345ef39eab23e88345ee4f",
+    "source/device/package/baseband27/SOURCE.md": "8f7b4c31858ab86a35d71617bb0fd570e0a2f1ab2222d29d6fa2f7e57548dbda",
     "source/device/package/baseband27/bridge/NbPdpFlow.h": "2ab5ed3b35fe447f291132bc6acb3eeecdb41affa3805524390f71bb997484ab",
     "source/device/package/baseband27/bridge/NbPdpFlow.inc": "af014ecb1f25d494faa9d01128797d404c2f533a411c84fdf22a175b7c9629f8",
     "source/device/package/baseband27/bridge/NbSim.h": "123867fad6f3f2b7aef736637270097b1a7fafb5b64906a9d281bab0e8430537",
@@ -140,6 +140,7 @@
     "source/device/package/baseband27/integration/adt-baseband.toml": "53a13e66cf9623e7b518910f62c0bc9bf5f80a0e6bd46702e13f9565e2166ce1",
     "source/device/package/baseband27/integration/board-owners.patch": "76d7beac74fc5b3c38d5f7611d71d47a4a7c04bed154a028eaf1b2d1ae8993d0",
     "source/device/package/baseband27/integration/bridge-switch.patch": "f9b28c1093cf2c4d7b07acd305144ac6bfdac66c46898736475dd01a244af388",
+    "source/device/package/baseband27/integration/cpms-capability.json": "8b1680e80f518d22c2acdd71a1d7c214f90f2cf4be0cd02b00fa7213c9a96c35",
     "source/device/package/baseband27/integration/draft.json": "b901988dcade7d61734c7bd6370b81bb3e2e3469d553164f2a8bb7abdea38135",
     "source/device/package/baseband27/integration/format2-baseband-node.patch": "ce0fe44a3dff762299756e0457f31559d95148b3c80894c0fb919a89e079f853",
     "source/device/package/baseband27/integration/ipa-source.json": "b53c40bcac7f654c2698683a0017f9019a43ad781e8710e5f3519ea421917e78",
@@ -158,7 +159,7 @@
     "source/device/package/baseband27/ipa/nb_ipa55_qmi.h": "88255d3f82d6cd0f08e3b9022f55c0325ea6ac6a3ba259fff9cd9b2428ba387d",
     "source/device/package/baseband27/ipa/nb_ipa55_rx.c": "14b61b66ba4cb4e643ccbdf167b68cb8568a39397d082711e14e132a169b1c1e",
     "source/device/package/baseband27/ipa/nb_ipa55_rx_proto.h": "4f9e7d0a9c2dc099872ad6ac0544ea077353baca89ddb9a854da805d57be7312",
-    "source/device/package/baseband27/ipa/nb_ipa_board.c": "6f98628b948a093ea994ba409300d82be5789d7acf635407f49f26b6435ca05b",
+    "source/device/package/baseband27/ipa/nb_ipa_board.c": "9c79f1d2e2b45ecd99f8702a9e1f5ced8775ddc87f1d69ed0b88fa4e03ff9abd",
     "source/device/package/baseband27/ipa/nb_ipa_board.h": "44331f0ac638c747fc69a245fcd455baa30da7904047ffb44eb881c9223a9d26",
     "source/device/package/baseband27/ipa/nb_ipa_v55.h": "bf7a476ab206571aa66b7844bcd4e6f8a3ee426c04817c06e89419e5c854975d",
     "source/device/package/baseband27/ipa/upstream/LICENSE": "14af460c3b62a4498efe9ac781e3745049edc4c9a2184942ccbe68b7925d7b5c",
@@ -429,6 +430,8 @@
     "stock_MSM_peripheral_statistics_before_firmware": true,
     "existing_canary_reserved_statistics_tail_preserved": true,
     "stock_IPA_uc_descriptor_marker_before_firmware": true,
-    "uc_shared_command_region_unchanged": true
+    "uc_shared_command_region_unchanged": true,
+    "stock_IPA_CONFIG_response": true,
+    "native_CPMS_capability_disabled_on_board_without_ApplePPM": true
   }
 }

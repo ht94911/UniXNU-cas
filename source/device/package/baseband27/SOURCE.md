@@ -493,3 +493,45 @@ descriptor区非空时，于canary之后写首字`0xABCDEF01`。本机原版ipam
 开工fetch UniXNU/main7d85ede与myron-nextf1a1bfe；继续沿第10节现成来源
 检索结论，固定GPU024框架不升级。实际iOS27编译、完整IPA握手和移动数据、
 电话/短信结果单独验收。
+
+## 22. IPA CONFIG请求应答（013，2026-11-14）
+
+012真机61.849s读回descriptor首字，65.843s完成uC与全部IPA握手，
+TX11/RX1进入Running并持续至570秒；原生CommCenter仍在SIM激活前反复退出，
+待取实际崩溃。握手后远端65.843s发送CONFIG0x27，67.938s发送INSTALL_FILTER0x23；
+当前桥均未应答，后者需要真正的过滤规则安装，不能用通用成功响应替代。
+
+同SoC OnePlus SM8850下游5ab2a68的`handle_ipa_config_req`调用
+`ipa_mhi_handle_ipa_config_req`后回复结果。本机原版ipam.ko实际函数
+0x104e4c..0x104ef8只有现有日志调用并返回0，不读取配置内容或改动硬件。
+013采用这个已核实的CONFIG应答合同，沿原QMI writer回复同transaction；
+只允许REQUEST0x27，不将CONFIG错误视为uC ready或indication注册。
+发送失败仍不推进状态，原0x20/0x35初始化和0x23未实现行为保持。
+
+实际nb_qmi函数抽取后以ASan/UBSan执行，验证同transaction的14B回复、
+CONFIG前后握手状态不变、发送失败不推进、indication不误应答、0x23无假成功
+与真实0x35仍置uC-ready。开工fetch UniXNU/main7d85ede和myron-nextf1a1bfe，
+沿第10节公开实现检索；未升级固定GPU024框架。此源码步骤只补CONFIG，
+不能独自证明CommCenter修复、过滤规则、移动数据或电话短信可用。
+
+## 23. 原生CommCenter的CPMS能力与本板一致（013，2026-11-14）
+
+012的CommCenter PID95于124.926s退出；只读完整报告的procExitAbsTime
+2398441163/19.2MHz与此对应，bootUUID127BB615-FBBA-4EDE-A24F-773F6795D7D0。
+faultingThread在cpms.mod，libBasebandManager原UUID
+e7e1cd9b-2938-3519-92a0-7a119279a107，bootstrap回调偏移0x798d0的brk1；
+原指令与报告instructionByteStream完全对应。断言条件为fCPMSAgent非空，
+之前sharedCPMSAgent返回null；此时尚无宿主QMUX、SIM激活或WDS数据请求。
+
+原CPMSModule::create仅在capabilities::abs::getCPMSVariant返回1时创建；
+其余值沿原User-space CPMS not supported分支返回空模块。原CPMSAgent依赖
+ApplePPM服务/CPMSSupported属性、UserClient和通知，固定GPU024没有这个
+Apple专用功率预算实现。实际SM8850温控/电源实现仍由既有驱动负责。
+
+013以已存在的native-text-fixup在签名验证后的RAM页中，将该能力查询入口
+返回0；选择原生不支持路径，不改bootstrap断言、不模拟预算代理。
+原文件/root/Data不写；固定IPSW库UUID40dce84e-e426-333e-b135-9f1c600e3cb0、
+共享缓存.19文件偏移0x4fbd668和8字节原文均需吻合。配置见
+integration/cpms-capability.json，保留PAC调用入口检查，由叶函数普通ret
+返回调用者；目标内核已有的签名页替换机制负责一致性。电脑解析和原函数
+控制流需单独验证，实际CommCenter能否继续初始化仍待下一候选真机。

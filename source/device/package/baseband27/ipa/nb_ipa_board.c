@@ -148,7 +148,10 @@ static void nb_qmi(int client, uint32_t node, uint32_t port, const uint8_t *body
         if (r.ok) ci_on_init_driver_success(&nb_hs);
     } else {
         uint8_t message[32];
-        const int known = m.type == CI_QMI_REQUEST && (m.id == CI_INDICATION_REGISTER || m.id == CI_DRIVER_INIT_COMPLETE);
+        /* ipam.ko ipa_mhi_handle_ipa_config_req accepts CONFIG without
+         * programming hardware on this MSM v5.5 board. Preserve its reply. */
+        const int known = m.type == CI_QMI_REQUEST && (m.id == CI_INDICATION_REGISTER ||
+            m.id == CI_DRIVER_INIT_COMPLETE || m.id == 0x27u);
         printf("COACHZ ipa: QMI type %u message 0x%x from %u:0x%x%s\n", m.type, m.id, node, port, known ? "" : ", not handled");
         if (!known) return;
         nb_peer_node = node;
@@ -160,7 +163,7 @@ static void nb_qmi(int client, uint32_t node, uint32_t port, const uint8_t *body
             return;
         }
         if (m.id == CI_INDICATION_REGISTER) ci_on_indication_register_answered(&nb_hs);
-        else ci_on_driver_init_complete_answered(&nb_hs);
+        else if (m.id == CI_DRIVER_INIT_COMPLETE) ci_on_driver_init_complete_answered(&nb_hs);
     }
     nb_step();
 }
