@@ -115,7 +115,10 @@ static bool transact(struct NezhaCameraRpmh *owner, uint32_t address,
         return false;
     }
     owner->unsettled = true;
-    if ((irq_enable & TcsBit) != 0 && !set_irq(owner, false)) {
+    /* Unlike touch's ACK-only poll, this path qualifies completion with
+     * the TCS IRQ status. The RSC only publishes that bit when enabled,
+     * as in Linux and the existing native audio/baseband owner. */
+    if ((irq_enable & TcsBit) == 0 && !set_irq(owner, true)) {
         leave(owner);
         owner->status = NezhaCameraRpmhReadback;
         return false;
@@ -143,8 +146,10 @@ static bool transact(struct NezhaCameraRpmh *owner, uint32_t address,
     for (unsigned ms = 0; ms <= 100; ++ms) {
         owner->last_irq = read_rsc(owner, TcsOffset + l->irq_status);
         owner->last_tcs_status = read_rsc(owner, tcs + l->status);
+        owner->last_command_status = read_rsc(owner, tcs + l->cmd_data + 4);
         if (owner->last_irq != UINT32_MAX && (owner->last_irq & TcsBit) != 0 &&
-            owner->last_tcs_status == 1) {
+            owner->last_tcs_status == 1 && owner->last_command_status != UINT32_MAX &&
+            (owner->last_command_status & CommandAcknowledged) == CommandAcknowledged) {
             done = true;
             break;
         }
@@ -153,6 +158,10 @@ static bool transact(struct NezhaCameraRpmh *owner, uint32_t address,
         }
     }
     if (!done) {
+        if (reply != NULL && owner->last_command_status != UINT32_MAX &&
+            (owner->last_command_status & CommandAcknowledged) == CommandAcknowledged) {
+            owner->last_reply = read_rsc(owner, tcs + l->cmd_data + 8);
+        }
         owner->status = NezhaCameraRpmhTimeout;
         return false;
     }
@@ -175,7 +184,7 @@ static bool transact(struct NezhaCameraRpmh *owner, uint32_t address,
         restored = write_rsc(owner, TcsOffset + writes[i].offset, writes[i].value);
     }
     restored = restored && write_rsc(owner, tcs + l->wait_for_cmpl, 0) &&
-        ((irq_enable & TcsBit) == 0 || set_irq(owner, true));
+        ((irq_enable & TcsBit) != 0 || set_irq(owner, false));
     owner->unsettled = !restored || !idle(owner, tcs) ||
         ((read_rsc(owner, TcsOffset) ^ irq_enable) & TcsBit) != 0;
     leave(owner);

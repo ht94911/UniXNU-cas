@@ -57,7 +57,7 @@ static void write_rsc(void *context, uint32_t offset, uint32_t value)
             *field = rsc->reg[(Tcs + Data) / 4];
         }
         rsc->reg[(Tcs + Ack) / 4] = 0x10100;
-        rsc->reg[IrqStatus / 4] |= Slot;
+        if (rsc->reg[IrqEnable / 4] & Slot) rsc->reg[IrqStatus / 4] |= Slot;
     }
 }
 
@@ -99,7 +99,7 @@ static bool guarded_irq(void *context, bool enabled)
     struct Rsc *rsc = context;
     assert(rsc->locked);
     /* Model an unrelated slot becoming enabled before our IRQ restore. */
-    if (enabled) {
+    if (!enabled) {
         rsc->foreign_irq = true;
         rsc->reg[IrqEnable / 4] |= 1;
     }
@@ -179,10 +179,10 @@ int main(void)
 
     const struct NezhaCameraRegisterIo guarded_io = {&rsc, read_rsc, NULL, wait_ms};
     const struct NezhaCameraRpmhGuard guard = {enter, leave, guarded_write, guarded_irq};
-    rsc.reg[IrqEnable / 4] = 2 | Slot;
+    rsc.reg[IrqEnable / 4] = 2;
     assert(nezha_camera_rpmh_init_guarded(&owner, &guarded_io, &guard, db, sizeof(db)));
     assert(nezha_camera_rpmh_acquire(&owner, NezhaCameraMainBob1, 3400));
-    assert(rsc.reg[IrqEnable / 4] == (3 | Slot) && !rsc.locked && !owner.unsettled);
+    assert(rsc.reg[IrqEnable / 4] == 3 && !rsc.locked && !owner.unsettled);
     const unsigned reads = rsc.reads, votes = rsc.votes, waits = rsc.waits;
     rsc.failed_offset = Tcs + Address;
     assert(!nezha_camera_rpmh_acquire(&owner, NezhaCameraMainVio, 1800));

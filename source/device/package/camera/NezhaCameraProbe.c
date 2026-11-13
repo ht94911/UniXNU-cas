@@ -438,6 +438,11 @@ static bool main_identity_probe(vm_offset_t cci, vm_offset_t mclk, unsigned cci_
                 (unsigned)rpmh.status, rpmh.last_address);
             printf("NEZHA CAMERA: main power held=%u on=%u votes=%#x rpmh=%d pending=%u\n",
                    (unsigned)held, (unsigned)powered, pins.rails_requested, rpmh.status, (unsigned)rpmh.unsettled);
+            printf("NEZHA CAMERA: main RPMh addr=%#x value=%#x irq=%#x status=%#x ack=%#x reply=%#x "
+                   "enable=%#x control=%#x commands=%#x msg=%#x\n",
+                   rpmh.last_address, rpmh.last_value, rpmh.last_irq, rpmh.last_tcs_status,
+                   rpmh.last_command_status, rpmh.last_reply, read32(rsc, 0xd00),
+                   read32(rsc, 0x1264), read32(rsc, 0x126c), read32(rsc, 0x1274));
             const bool quiet = !powered || read_main_identity(cci, cci_hz);
             released = quiet && (!pins.reset_held || nezha_camera_main_restore_pins(&gpio, &clock, &rails, &pins));
             diagnostic_words[DiagCciQuiet] = (unsigned)quiet;

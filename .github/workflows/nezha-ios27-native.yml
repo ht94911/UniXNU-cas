@@ -1,7 +1,7 @@
-name: nezha iPhone27 camera GPIO correction and power checkpoints
+name: nezha iPhone27 camera TCS completion and power state reads
 on:
   push:
-    branches: [codex/ios27-camera008-20261113]
+    branches: [codex/ios27-camera009-20261113]
   workflow_dispatch:
 permissions:
   contents: read
