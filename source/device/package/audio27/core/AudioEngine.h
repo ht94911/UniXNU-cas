@@ -22,6 +22,7 @@ typedef struct {
     NaGraph *graph[3]; /* third graph carries DSP-only speaker VI feedback */
     NaEngineOps ops;
     uint32_t active[2],stale_packets,rx_faults;
+    uint32_t output_idle; /* running graph/DMA, silent PCM, amplifier off */
     uint32_t staged[2];
     uint64_t staged_sequence[2],activation_deadline[2];
     uint64_t periods_submitted[2];
@@ -33,6 +34,9 @@ int na_engine_attach_control(NaEngine *,NaGraph *feedback);
 /* Link notifications must be serialized by the worker before packet delivery.
  * Never treat re-open alone as DSP quiescence or release quarantined buffers. */
 void na_engine_link(NaEngine *,int online);
+/* Worker only. Invalidate an unsent staged period when its mode changes;
+ * already submitted DMA is still returned by its authenticated DONE. */
+void na_engine_output_idle(NaEngine *,int idle);
 int na_engine_poll(NaEngine *,uint64_t now_ms);
 #ifdef __cplusplus
 }

@@ -160,8 +160,14 @@ static uint32_t property_observation_value(AudioObjectID object,const AudioObjec
 static kern_return_t call(uint32_t selector) {
     return gConnect ? IOConnectCallScalarMethod(gConnect,selector,NULL,0,NULL,NULL):KERN_FAILURE;
 }
+static kern_return_t stop_output(void) {
+    /* Stop also drops the queued accepted-output tap. A rapid new WriteMix
+     * must not add old stopped samples in the reference but fresh samples in
+     * the kernel output ring. gLock serializes this with both I/O callbacks. */
+    na_ring_silence(gReference);return call(NaAudioStopOutput);
+}
 static void disconnect(void) {
-    if (gConnect) {call(NaAudioStopOutput);call(NaAudioStopInput);}
+    if (gConnect) {stop_output();call(NaAudioStopInput);}
     for (unsigned i=0;i<3;++i) if (gMapAddress[i]) {
         IOConnectUnmapMemory64(gConnect,i,mach_task_self(),gMapAddress[i]);gMapAddress[i]=0;
     }
@@ -472,7 +478,7 @@ static OSStatus RemoveDeviceClient(AudioServerPlugInDriverRef d,AudioObjectID o,
     (void)d;if (o!=kDevice || !c) return kAudioHardwareBadObjectError;
     pthread_mutex_lock(&gLock);
     for (unsigned i=0;i<32;++i) if (gUsers[i].count && gUsers[i].id==c->mClientID) {gIoUsers-=gUsers[i].count;gUsers[i].count=0;break;}
-    if (!gIoUsers) {call(NaAudioStopOutput);call(NaAudioStopInput);}
+    if (!gIoUsers) {stop_output();call(NaAudioStopInput);}
     observe_once(NaHalDeviceClient,o,1,0,0,0,c->mClientID);
     pthread_mutex_unlock(&gLock);return 0;
 }
@@ -529,7 +535,8 @@ static OSStatus SetPropertyData(AudioServerPlugInDriverRef d,AudioObjectID o,pid
         else if (o==kReferenceStream) {gReferenceSelected=active;result=0;}
         else {
             uint32_t selector=o==kOutStream ? (active ? NaAudioStartOutput:NaAudioStopOutput):(active ? NaAudioStartInput:NaAudioStopInput);
-            if (gIoUsers && (o==kOutStream || !active) && call(selector)!=KERN_SUCCESS) result=kAudioHardwareNotRunningError;
+            if (gIoUsers && (o==kOutStream || !active) &&
+                (selector==NaAudioStopOutput ? stop_output():call(selector))!=KERN_SUCCESS) result=kAudioHardwareNotRunningError;
             else {if (o==kOutStream) gOutputSelected=active;else gInputSelected=active;result=0;}
         }
     } else if ((o==kOutStream || o==kInStream || o==kReferenceStream) && (a->mSelector==kAudioStreamPropertyPhysicalFormat || a->mSelector==kAudioStreamPropertyVirtualFormat)) {
@@ -560,7 +567,7 @@ static OSStatus StartIO(AudioServerPlugInDriverRef d,AudioObjectID o,UInt32 clie
         if (status_snapshot(&s,1) || clock_ready(&s)) goto out;
         if (gOutputSelected && call(NaAudioStartOutput)!=KERN_SUCCESS) goto out;
         gCaptureIssued=0;gCaptureTouch=0; /* Input starts on actual ReadInput. */
-        if (na_clock_frames(s.anchor_host,mach_absolute_time(),s.ticks_per_frame_q32,&gZeroOrigin)) {call(NaAudioStopOutput);call(NaAudioStopInput);goto out;}
+        if (na_clock_frames(s.anchor_host,mach_absolute_time(),s.ticks_per_frame_q32,&gZeroOrigin)) {stop_output();call(NaAudioStopInput);goto out;}
         if (!gFlowStartHost) gFlowStartHost=mach_absolute_time();
         ++gZeroSeed;
     }
@@ -571,7 +578,7 @@ static OSStatus StopIO(AudioServerPlugInDriverRef d,AudioObjectID o,UInt32 clien
     (void)d;if (o!=kDevice) return kAudioHardwareBadObjectError;
     pthread_mutex_lock(&gLock);
     for (unsigned i=0;i<32;++i) if (gUsers[i].count && gUsers[i].id==client) {--gUsers[i].count;--gIoUsers;break;}
-    if (!gIoUsers) {call(NaAudioStopOutput);call(NaAudioStopInput);}
+    if (!gIoUsers) {stop_output();call(NaAudioStopInput);}
     pthread_mutex_unlock(&gLock);return 0;
 }
 static OSStatus GetZeroTimeStamp(AudioServerPlugInDriverRef d,AudioObjectID o,UInt32 client,Float64 *sample,UInt64 *host,UInt64 *seed) {

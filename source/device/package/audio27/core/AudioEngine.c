@@ -14,6 +14,10 @@ int na_engine_attach_control(NaEngine *e,NaGraph *g) {
     for (unsigned i=0;i<2;++i) if (e->graph[i] && e->graph[i]->stream->port==g->stream->port) return NA_OWNERSHIP;
     e->graph[2]=g;return NA_OK;
 }
+void na_engine_output_idle(NaEngine *e,int idle) {
+    if (!e || e->output_idle==(uint32_t)!!idle) return;
+    e->output_idle=!!idle;e->active[0]=0;e->staged[0]=0;e->activation_deadline[0]=0;
+}
 void na_engine_link(NaEngine *e,int online) {
     if (!e) return;
     na_session_link(e->session,online);
@@ -85,7 +89,7 @@ static int periods(NaEngine *e,unsigned direction,uint64_t now) {
         ++e->periods_submitted[direction];
         e->staged[direction]=0;
     }
-    if (!e->active[direction] && s->in_flight>=2) {
+    if (!e->active[direction] && (direction || !e->output_idle) && s->in_flight>=2) {
         if (!e->activation_deadline[direction]) e->activation_deadline[direction]=now+5000;
         if (now>=e->activation_deadline[direction]) return fault(g,NA_TIMEOUT);
         int r=e->ops.activate(e->ops.context,(int)direction);

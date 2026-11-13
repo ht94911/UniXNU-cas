@@ -64,9 +64,16 @@ static int activate(void *v,int direction) {
     if (!d->feedback_attached || !d->protection_instance) return NA_MISSING;
     if (d->graph[2].error || d->graph[2].stage==NaGraphFault) return NA_REMOTE;
     if (d->graph[2].stage!=NaGraphRunning) return NA_PENDING;
+    if (d->speaker->state==NaTasOff || (d->speaker->changing && d->speaker->target==NaTasPrepared)) {
+        int r=na_tas_endpoint_request(d->speaker,NaTasPrepared);
+        if (r) return r;
+        r=na_tas_endpoint_poll(d->speaker,d->now_ms);
+        return r ? r:NA_PENDING; /* Active follows a completed muted preparation */
+    }
     int r=na_tas_endpoint_request(d->speaker,NaTasActive);
     return r ? r:na_tas_endpoint_poll(d->speaker,d->now_ms);
 }
+static int standby(void *v) {return mute_endpoint(&((NaDriver *)v)->direction[0]);}
 static int health(void *v) {
     NaDriver *d=v;
     int r=d->ops.dma_health(d->ops.context);if (r) return r;
@@ -92,7 +99,7 @@ int na_driver_init(NaDriver *d,NaAdsp *adsp,NaTasEndpoint *speaker,const NaDrive
         if (!i) d->graph[i].endpoint_trace_wait_us=speaker->ops.trace_wait_us;
     }
     int r=na_prm_init(&d->prm,&d->session,resources,count,send_packet,d);if (r) return r;
-    NaRuntimeOps ro={d,host_time,activate,health};
+    NaRuntimeOps ro={d,host_time,activate,health,standby};
     return na_runtime_init(&d->runtime,&d->session,adsp->rx,&d->graph[0],in ? &d->graph[1]:0,&d->prm,&adsp->transport,
         status,out_ring,in_ring,numer,denom,outvotes,invotes,capture_proven,&ro);
 }

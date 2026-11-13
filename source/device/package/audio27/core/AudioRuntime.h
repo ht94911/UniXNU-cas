@@ -15,6 +15,9 @@ typedef struct {
     int (*activate)(void *,int direction);
     /* Returns current physical endpoint faults; never clears/retries them. */
     int (*health)(void *);
+    /* Worker-only analog shutdown, with graph/VI and their PRM votes retained.
+     * NA_PENDING is polled while silence continues through the running DMA. */
+    int (*standby)(void *);
 } NaRuntimeOps;
 enum {NaProbeIdle,NaProbeStarting,NaProbeCollecting,NaProbeDraining,NaProbeComplete,NaProbeFailed};
 #define NA_CAPTURE_PROBE_PCM_FRAMES NA_AUDIO_PERIOD_FRAMES
@@ -28,8 +31,10 @@ typedef struct {
     NaEngine engine;NaPrm *prm;NaTransport *transport;
     NaRuntimeOps ops;
     NaAudioStatus status,*shared;
-    uint64_t *output,*input,origin[2];
-    uint32_t request,service_ready,origin_set[2],votes[2],capture_proven;
+    uint64_t *output,*input,origin[2],relative_origin[2];
+    uint32_t request,service_ready,disabled,origin_set[2],votes[2],capture_proven;
+    uint32_t output_held,output_stop_pending,output_idle_ready;
+    uint64_t output_stops,output_seen_stop,output_idle_fence;
     uint64_t input_heartbeat,input_seen,input_deadline;
     uint32_t capture_probe_allowed;
     NaCaptureProbe probe;
@@ -42,12 +47,16 @@ int na_runtime_init(NaRuntime *,NaSession *,NaRxQueue *,NaGraph *,NaGraph *,NaPr
                     NaAudioStatus *,uint64_t *output,uint64_t *input,
                     uint32_t numer,uint32_t denom,uint32_t output_votes,uint32_t input_votes,
                     int capture_proven,const NaRuntimeOps *);
-/* Called on client methods; only the atomic request mask crosses threads. */
+/* Client methods publish atomic requests/Stop events. StopOutput also clears
+ * the CPU ring while that client's HAL writer is serialized by StopIO. */
 int na_runtime_request(NaRuntime *,uint32_t selector);
 /* Worker only. Transport's GLINK polling stays on its original owner thread. */
 int na_runtime_poll(NaRuntime *,uint64_t now_ms);
 void na_runtime_disable(NaRuntime *);
 int na_runtime_quiescent(const NaRuntime *);
+/* CPU-map handoff: either fully quiescent or a healthy silent retained output
+ * graph, with the amplifier off and all pre-stop PCM returned. */
+int na_runtime_rebind_ready(const NaRuntime *);
 /* OS owner serializes this with driver_poll. All supplied maps are fresh and
  * zeroed; old mappings are never recycled into a new client connection. */
 int na_runtime_rebind(NaRuntime *,NaAudioStatus *,uint64_t *output,uint64_t *input);

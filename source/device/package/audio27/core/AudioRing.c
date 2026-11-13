@@ -38,6 +38,11 @@ int na_ring_take(uint64_t *ring,uint64_t frame,int16_t *l,int16_t *r) {
     }
     return NA_BUSY;
 }
+void na_ring_silence(uint64_t *ring) {
+    if (!ring || ((uintptr_t)ring&7)) return;
+    for (unsigned i=0;i<NA_AUDIO_RING_FRAMES;++i)
+        __atomic_fetch_and(ring+i,0xffffffff00000000ULL,__ATOMIC_ACQ_REL);
+}
 int na_ring_capture(uint64_t *ring,uint64_t frame,int16_t value) {
     if (!valid(ring,frame)) return NA_ARGUMENT;
     __atomic_store_n(ring+frame%NA_AUDIO_RING_FRAMES,((frame+1)<<32)|(uint16_t)value,__ATOMIC_RELEASE);return NA_OK;

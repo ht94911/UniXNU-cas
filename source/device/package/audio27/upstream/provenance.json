@@ -152,8 +152,9 @@
       "source": "hal/ShengAudioPlugIn.c",
       "local": "hal/NezhaAudioPlugIn.c",
       "sha256": "ca1b9284976b020383adc54d7c6530b77d1bbba08adf61450ab1f2abd9588ffc",
-      "local_sha256": "39899a2e37e8fb7891c6c12db27e090c7511cce4eb3258ec4d78d805f4c96faa",
-      "modified": true
+      "local_sha256": "74af9c9caa6cad6c16b8a0a5df35db95a591de42ff7a754350fe1ec021593538",
+      "modified": true,
+      "adaptation_080": "pandora0301 retained silentDSP graph/offamp, freshclient maps/shutdown; HALStopIO clears pending output reference without dropping tags"
     },
     {
       "source": "hal/ShengAudioPlugIn.c",
@@ -173,8 +174,9 @@
       "source": "package/ShengAudioService.cpp",
       "local": "os/NezhaAudioService.cpp",
       "sha256": "eb732665cd493969887d8cf53eebec540d8efbedc2cff7d22757adab822262be",
-      "local_sha256": "acfa0f80209b9baae192b4daea0fcd5cfecfa6ed104030e903157cad40f0756e",
-      "modified": true
+      "local_sha256": "1b167c549d41984635520d86e916c4552fc0c09f2240ba0b3c13cd23144a5884",
+      "modified": true,
+      "adaptation_080": "pandora0301 retained silentDSP graph/offamp, freshclient maps/shutdown; HALStopIO clears pending output reference without dropping tags"
     },
     {
       "source": "package/ShengAudioService.cpp",

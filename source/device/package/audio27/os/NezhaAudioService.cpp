@@ -6,6 +6,9 @@
 #include <IOKit/IOUserClient.h>
 #include <IOKit/IOBufferMemoryDescriptor.h>
 #include <IOKit/IOLib.h>
+#include <IOKit/IONotifier.h>
+#include <IOKit/IOMessage.h>
+#include <IOKit/pwr_mgt/RootDomain.h>
 #include <kern/task.h>
 #include <kern/thread.h>
 #include <sys/proc.h>
@@ -28,6 +31,26 @@ enum {OpenAttempts,OpenRejected,OpenConnected,ControlMaps,OutputMaps,InputMaps,
       ClockCalls,ClockResult,OutputStarts,OutputResult,InputStarts,InputResult,
       HalConnections,HalDeviceLists,HalPropertyErrors,HalRecords};
 IOReturn result(int);
+IOReturn powerMessage(void *,void *,UInt32 type,IOService *,void *,vm_size_t) {
+    if (type!=kIOMessageSystemWillPowerOff && type!=kIOMessageSystemWillRestart) return kIOReturnSuccess;
+    nezha_audio_owner_lock();
+    NaRuntime *r=runtime;
+    if (r) {
+        na_runtime_request(r,NaAudioStopOutput);
+        na_runtime_request(r,NaAudioStopInput);
+        na_runtime_disable(r); /* actual shutdown closes retained graphs */
+    }
+    nezha_audio_owner_unlock();
+    // The original worker continues graph STOP/CLOSE/UNMAP and analog cleanup.
+    // Wait outside its gate within the graph/endpoint budgets. A timeout never
+    // establishes DMA quiescence or grants permission to reclaim a buffer.
+    for (unsigned waited=0;r && waited<10000;++waited) {
+        nezha_audio_owner_lock();bool quiet=na_runtime_quiescent(r);nezha_audio_owner_unlock();
+        if (quiet) break;
+        IOSleep(1);
+    }
+    return kIOReturnSuccess;
+}
 void increment(unsigned field) {__atomic_fetch_add(&halStats[field],1,__ATOMIC_RELAXED);}
 void store(unsigned field,uint32_t value) {__atomic_store_n(&halStats[field],value,__ATOMIC_RELEASE);}
 bool rejectOpen() {increment(OpenRejected);return false;}
@@ -69,12 +92,16 @@ bool allowedCaller() {
 }
 class NezhaAudio27 : public IOService {
     OSDeclareDefaultStructors(NezhaAudio27);
+    IONotifier *powerNotice=nullptr;
 public:
     bool publishAudio() {
         if (!setProperty("NativeSandboxGrantProcess","audiomxd,mediaserverd,coreaudiod") ||
             !setProperty("IOUserClientClass","NezhaAudio27UserClient")) return false;
+        powerNotice=registerPrioritySleepWakeInterest(powerMessage,this,nullptr);
+        if (!powerNotice) return false;
         registerService();return true;
     }
+    void free() override {if (powerNotice) {powerNotice->remove();powerNotice=nullptr;}IOService::free();}
 };
 OSDefineMetaClassAndStructors(NezhaAudio27,IOService);
 class NezhaAudio27UserClient : public IOUserClient {
@@ -82,6 +109,7 @@ class NezhaAudio27UserClient : public IOUserClient {
     task_t owner=nullptr;
     uint32_t closed=0;
     bool claimed=false;
+    bool bound=false;
     IOLock *gate=nullptr;
     void closeAudio() {
         if (!gate) return;
@@ -89,12 +117,17 @@ class NezhaAudio27UserClient : public IOUserClient {
         if (closed) {IOLockUnlock(gate);return;}
         closed=1;
         if (claimed) {
-            na_runtime_request(runtime,NaAudioStopOutput);
-            na_runtime_request(runtime,NaAudioStopInput);
+            nezha_audio_owner_lock();
+            if (bound) {
+                na_runtime_request(runtime,NaAudioStopOutput);
+                na_runtime_request(runtime,NaAudioStopInput);
+                bound=false;
+            }
             // Publish the stops before giving a new connection its ownership.
             void *expected=this;
             __atomic_compare_exchange_n(&connection,&expected,nullptr,false,__ATOMIC_ACQ_REL,__ATOMIC_ACQUIRE);
             claimed=false;
+            nezha_audio_owner_unlock();
         }
         IOLockUnlock(gate);
     }
@@ -111,7 +144,7 @@ public:
         if (!claimed) {IOUserClient::stop(provider);return rejectOpen();}
         nezha_audio_owner_lock();
         IOBufferMemoryDescriptor *fresh[3]={};
-        int r=na_runtime_quiescent(runtime) ? allocateMaps(fresh,runtime->input!=nullptr):NA_BUSY;
+        int r=na_runtime_rebind_ready(runtime) ? allocateMaps(fresh,runtime->input!=nullptr):NA_BUSY;
         if (!r) r=na_runtime_rebind(runtime,(NaAudioStatus *)fresh[0]->getBytesNoCopy(),
             (uint64_t *)fresh[1]->getBytesNoCopy(),fresh[2] ? (uint64_t *)fresh[2]->getBytesNoCopy():nullptr);
         if (!r) {
@@ -120,6 +153,7 @@ public:
                 // reference cannot turn an old writable map into the new ring.
                 if (maps[i]) maps[i]->release();maps[i]=fresh[i];fresh[i]=nullptr;
             }
+            bound=true;
         }
         for (auto *memory:fresh) if (memory) memory->release();
         nezha_audio_owner_unlock();
