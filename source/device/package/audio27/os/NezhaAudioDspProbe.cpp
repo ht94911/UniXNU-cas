@@ -336,14 +336,7 @@ int poll_tas_only(AudioDspProbe *d) {
     return d->phase==4 ? NA_OK:NA_OWNERSHIP;
 }
 bool read_crash_message(AudioDspProbe *d,char *message) {
-    memset(message,0,161);
-    QcomSmemPartition global;uint32_t at=0,bytes=0;
-    int r=qcom_smem_partition(&d->adsp.smem,QCOM_SMEM_HOST_GLOBAL,QCOM_SMEM_HOST_GLOBAL,&global);
-    if (!r) r=qcom_smem_find(&d->adsp.smem,&global,423,&at,&bytes);
-    if (r || !bytes || at>d->adsp.smem.size || bytes>d->adsp.smem.size-at) return false;
-    unsigned n=0,limit=bytes<160 ? bytes:160;
-    while (n<limit) {uint8_t c=d->adsp.smem.base[at+n];if (!c) break;message[n++]=c>=32 && c<=126 ? (char)c:'.';}
-    return true;
+    return na_adsp_crash_message(&d->adsp,message)!=0;
 }
 void capture_crash_baseline(AudioDspProbe *d) {
     d->crashBaselinePresent=read_crash_message(d,d->crashBaseline);

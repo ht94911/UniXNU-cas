@@ -49,12 +49,32 @@ void run(void *v,wait_result_t) {
     uint32_t lastMicGraph=~0u,lastMicStage=~0u,lastMicIndex=~0u;
     int lastMicError=0,lastMicCleanup=0;
     int lastError=0;bool service=false,publicationFailed=false;
+    char crashBaseline[161]={0},crashMessage[161]={0};
+    bool crashBaselineSet=false,crashBaselinePresent=false,crashReported=false;
     int captureFrames=0;PE_parse_boot_argn("na-capture-probe",&captureFrames,sizeof captureFrames);
     bool probeSubmitted=false;uint32_t lastProbe=~0u;
     for (;;) {
         uint64_t now=na_native_now_us(nullptr)/1000;
+        bool reportCrash=false,crashPresent=false,crashSameBaseline=false,crashWatchdog=false;
         nezha_audio_owner_lock();
+        /* Same pre-auth baseline as the existing control probe. Read before
+         * this poll can issue authentication; never clear shared DSP text. */
+        if (!crashBaselineSet && d->adsp->main_image->stage==NaPasAuthenticate) {
+            crashBaselinePresent=na_adsp_crash_message(d->adsp,crashBaseline)!=0;
+            crashBaselineSet=true;
+        }
         int r=na_driver_poll(d,now);
+        if (!crashReported && d->adsp->stage==NaAdspFailed && d->adsp->error==NA_REMOTE) {
+            const bool fatal=(d->adsp->slave&1) &&
+                __atomic_load_n(&d->adsp->doorbells,__ATOMIC_ACQUIRE)!=d->adsp->auth_doorbells;
+            if (fatal || d->adsp->watchdog_fault) {
+                crashPresent=na_adsp_crash_message(d->adsp,crashMessage)!=0;
+                crashSameBaseline=crashPresent && crashBaselineSet && crashBaselinePresent &&
+                    !strcmp(crashMessage,crashBaseline);
+                crashWatchdog=d->adsp->watchdog_fault!=0;reportCrash=true;
+                crashReported=true;
+            }
+        }
         if (captureFrames>0 && !probeSubmitted && na_driver_ready(d)) {
             int requested=na_runtime_probe_capture(&d->runtime,(uint32_t)captureFrames,now);
             if (requested!=NA_BUSY) {
@@ -105,6 +125,10 @@ void run(void *v,wait_result_t) {
         __atomic_store_n(&nezha_audio27_stats[63],d->stream[1].first_read_done,__ATOMIC_RELAXED);
         __atomic_fetch_add(&audioStatsSequence,1,__ATOMIC_RELEASE);
         nezha_audio_owner_unlock();
+        if (reportCrash)
+            printf("NEZHA AUDIO27 DSP: playback post-auth %s SMEM423 present=%u same-baseline=%u (bounded): %s\n",
+                crashWatchdog ? "watchdog":"fatal",crashPresent,crashSameBaseline,
+                crashPresent ? crashMessage:"unavailable");
         // Exact037 PIL preflight, omitted by038's playback worker. Like the
         // control probe, run after the proxy poll reaches StopMain and before
         // the next poll issues PAS6. No audio gate is held across the SMCs.

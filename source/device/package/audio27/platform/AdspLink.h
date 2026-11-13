@@ -67,6 +67,9 @@ void na_adsp_smp2p_event(NaAdsp *);
 /* The board's dedicated watchdog IRQ is distinct from SMP2P fatal. The ISR
  * only publishes an event; the existing worker handles a fresh post-auth fault. */
 void na_adsp_watchdog_event(NaAdsp *);
+/* Existing SMEM423 crash text, copied read-only and bounded to 160 bytes.
+ * Presence or a changed string never alters the ADSP lifecycle. */
+int na_adsp_crash_message(const NaAdsp *,char message[161]);
 /* Sole ADSP worker. A timer also polls: no unbounded wait, no lost-wake dependency. */
 int na_adsp_poll(NaAdsp *,uint64_t now_ms);
 #ifdef __cplusplus

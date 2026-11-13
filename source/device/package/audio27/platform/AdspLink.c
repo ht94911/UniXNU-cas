@@ -52,6 +52,20 @@ int na_adsp_init(NaAdsp *a,volatile void *smem,uint32_t bytes,NaPasLoad *main_im
 }
 void na_adsp_smp2p_event(NaAdsp *a) {if (a) __atomic_fetch_add(&a->doorbells,1,__ATOMIC_RELEASE);}
 void na_adsp_watchdog_event(NaAdsp *a) {if (a) __atomic_fetch_add(&a->watchdogs,1,__ATOMIC_RELEASE);}
+int na_adsp_crash_message(const NaAdsp *a,char message[161]) {
+    if (!a || !message) return 0;
+    memset(message,0,161);
+    QcomSmemPartition global;uint32_t at=0,bytes=0;
+    int r=qcom_smem_partition(&a->smem,QCOM_SMEM_HOST_GLOBAL,QCOM_SMEM_HOST_GLOBAL,&global);
+    if (!r) r=qcom_smem_find(&a->smem,&global,423,&at,&bytes);
+    if (r || !bytes || at>a->smem.size || bytes>a->smem.size-at) return 0;
+    unsigned n=0,limit=bytes<160 ? bytes:160;
+    while (n<limit) {
+        uint8_t c=a->smem.base[at+n];if (!c) break;
+        message[n++]=c>=32 && c<=126 ? (char)c:'.';
+    }
+    return 1;
+}
 static int failed(NaAdsp *a,int r) {
     r=r<0 ? r:NA_IO;a->stage=NaAdspFailed;a->error=r;
     if (a->transport.channel) na_transport_lost(&a->transport);
