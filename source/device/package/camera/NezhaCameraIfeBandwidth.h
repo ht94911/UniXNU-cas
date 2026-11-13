@@ -5,6 +5,10 @@
 #include "upstream/QcomRpmh.h"
 #include <stdbool.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 enum { NezhaCameraIfeBcmCount = 6 };
 
 struct NezhaCameraIfeBcmCommand {
@@ -26,4 +30,7 @@ bool nezha_camera_ife_bandwidth(const uint8_t *db, size_t db_bytes,
     uint32_t wake_average, uint32_t wake_peak, uint32_t sleep_average,
     uint32_t sleep_peak, struct NezhaCameraIfeBandwidth *out);
 
+#ifdef __cplusplus
+}
+#endif
 #endif

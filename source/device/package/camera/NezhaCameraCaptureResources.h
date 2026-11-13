@@ -9,6 +9,10 @@
 #include "NezhaCameraIfeRsc.h"
 #include "NezhaCameraRpmh.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 struct NezhaCameraCaptureResourceIo {
     const struct NezhaCameraGccIo *gcc;
     const struct NezhaCameraRegisterIo *camcc, *crm, *crmc, *crm_common, *ife_rsc, *cpas;
@@ -37,8 +41,8 @@ struct NezhaCameraCaptureResources {
 };
 
 /* Normal worker, with exclusive camera and RPMh ownership. No capture or
- * sensor MMIO runs before this sequence succeeds. Use the actual selected
- * stock C-PHY tables and separately calculated IFE0 bandwidth. */
+ * sensor MMIO runs before this sequence succeeds. A null profile selects
+ * the internal test generator and leaves the sensor/PHY rails off. */
 bool nezha_camera_capture_resources_start(const struct NezhaCameraCaptureResourceIo *io,
     const struct NezhaCameraIfeBandwidth *bandwidth, const struct NezhaCameraCsiphy24Profile *profile,
     struct NezhaCameraCaptureResources *state);
@@ -54,4 +58,7 @@ bool nezha_camera_capture_resources_stop(const struct NezhaCameraCaptureResource
     const struct NezhaCameraIfeBandwidth *clear, const struct NezhaCameraCsiphy24Profile *profile,
     struct NezhaCameraCaptureResources *state, bool sensor_quiet, bool dma_detached);
 
+#ifdef __cplusplus
+}
+#endif
 #endif

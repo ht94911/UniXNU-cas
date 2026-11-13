@@ -1,7 +1,7 @@
-name: nezha iPhone27 camera TCS completion and power state reads
+name: nezha iPhone27 camera acknowledged rail votes and CCI identity
 on:
   push:
-    branches: [codex/ios27-camera009-20261113]
+    branches: [codex/ios27-camera010-20261113]
   workflow_dispatch:
 permissions:
   contents: read

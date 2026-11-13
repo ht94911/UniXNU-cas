@@ -5,14 +5,14 @@ schema_version = 1
 id = "camera"
 status = "planned"
 components = ["QcomXnuUsbDebug", "ArmSmmu4K"]
-paths = ["package/camera/**", "scripts/*camera*", "tests/camera-*.c"]
+paths = ["package/camera/**", "scripts/*camera*", "tests/camera-*.c", "tests/camera-*.cpp"]
 inputs = ["Stock nezha Camera2, DT and sensor modules retained privately; Qualcomm CAMSS 1080 and Canoe CAMCC/CRM-v3 source."]
-configuration = ["Isolated codex/camera27-main-raw. camera008 keeps C1 USB-gated and corrects Canoe TLMM's 0x100000 GPIO aperture; its bounded checkpoints use existing iOS27 Data."]
+configuration = ["Isolated codex/camera27-main-raw. C1 uses a single USB request and the existing iOS27 Data journal. The shared SM8850 owner and TPG2 frame probe are opt-in at native build time."]
 procedure = ["Run check-nezha27-camera-core.sh and check-nezha27-camera-observer.py; native Mac, strict prelink and QEMU qualify each test candidate before the shared phone queue."]
 findings = ["camera003 completed top GDSC power-up, then an extra Core AHB enable-bit wait timed out; the follow-up uses upstream branch halt semantics.", "camera007 passed the prior touch boundary and acknowledged one USB request. Its recovered 12-record Data journal proves CAMCC top/rate and CCI0 version reads completed; the last record is before the sensor power path. The original camera GPIO address missed Canoe's pinctrl REG_BASE; the tested touch driver already uses the correct aperture. Actual Android/root, mapped files, Data generation and collector exit passed.", "C2 includes stock C-PHY, continuous CCI burst, PLL/CRM/CPAS control, dedicated IFE0 RSC bandwidth, inherited interface clocks and two RAW10 frames. The bounded frame probe rejects stale reused buffers. Native memory reuses NativeAdrenoMemory; shared SMMU/RPMh/GCC adapters are opt-in at build time.", "Four local stock module profiles pass byte-for-byte host decoding. The locally loaded SEMCO sensor component is known; AS1 revision selection and actual frame capture remain pending."]
 completion = ["C1 requires actual 0x300b identity word 0x5058 and repeatable restoration; C2 requires 20 real frames; native Camera.app and all lenses remain later stages."]
 limits = ["Host and arm64e core checks are not sensor identity, hardware capture or OS camera acceptance. Native C2 clock/power/DMA integration remains in progress."]
-next_action = ["Qualify and test camera008 after its selected protected handoff. Confirm corrected GPIO access, then stock rail/MCLK order, sensor identity and restoration. Use the exact per-step journal on interruption; finish native C2 integration before enabling frame capture."]
+next_action = ["camera009 confirmed fresh TCS2 IRQ and command ACK, then read zero after BOB2 voltage/enable writes. camera010 records all acknowledged votes and tests CCI after the bounded isolated vote path. Verify identity and explicit disable before interpreting hardware power. Qualify TPG2 separately with the selected shared USB owner."]
 evidence = []
 
 [device]

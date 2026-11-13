@@ -6,6 +6,10 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 enum NezhaCameraCciStatus {
     NezhaCciOk = 0,
     NezhaCciInvalid,
@@ -73,4 +77,7 @@ enum NezhaCameraCciStatus nezha_camera_cci_recover_master(
     const struct NezhaCameraRegisterIo *io, unsigned master, uint32_t clock_hz,
     struct NezhaCameraCciObservation *observation);
 
+#ifdef __cplusplus
+}
+#endif
 #endif

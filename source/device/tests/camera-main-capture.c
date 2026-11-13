@@ -100,6 +100,22 @@ bool nezha_camera1080_start_rdi0(const struct NezhaCamera1080Io *io,
     return true;
 }
 
+bool nezha_camera1080_start_tpg_bars(const struct NezhaCamera1080Io *io,
+    const struct NezhaCameraRegisterIo *tpg, unsigned index,
+    const struct NezhaCameraFrameMapping buffers[2])
+{
+    assert(io != NULL && tpg != NULL && index == 2 && buffers != NULL && !dma_locked);
+    event('p');
+    return true;
+}
+
+void nezha_camera1080_request_tpg_stop(const struct NezhaCamera1080Io *io,
+    const struct NezhaCameraRegisterIo *tpg)
+{
+    assert(io != NULL && tpg != NULL && !dma_locked);
+    event('z');
+}
+
 void nezha_camera1080_request_rdi0_stop(const struct NezhaCamera1080Io *io)
 {
     assert(io != NULL);
@@ -195,6 +211,20 @@ int main(void)
     assert(capture.dma.context_active);
     assert(nezha_camera_main_capture_finish_stop(&io, &context, 100, &capture, true));
     assert(strcmp(operations, "imarsqxxtd") == 0 && capture.stage == NezhaCaptureIdle);
+
+    operation_count = 0;
+    struct NezhaCameraMainCaptureIo pattern_io = io;
+    const struct NezhaCameraRegisterIo tpg = {.write = unused_register_write};
+    pattern_io.cci = NULL;
+    pattern_io.tpg = &tpg;
+    const struct NezhaCameraMainMode pattern = {.width = 640, .height = 480,
+        .input = {.source = NezhaCamera1080Tpg, .index = 2}};
+    assert(nezha_camera_main_capture_start(&pattern_io, &pattern, &plan, &context, 2, 1, 100, &capture));
+    assert(strcmp(operations, "ap") == 0 && capture.stream_may_be_on);
+    assert(nezha_camera_main_capture_request_stop(&pattern_io, &capture));
+    assert(strcmp(operations, "apz") == 0 && !capture.stream_may_be_on);
+    assert(nezha_camera_main_capture_finish_stop(&pattern_io, &context, 100, &capture, true));
+    assert(strcmp(operations, "apzd") == 0);
 
     puts("Main camera verifies identity, starts DMA before stream-on, and hands off frames before teardown");
 }

@@ -4,6 +4,10 @@
 
 #include "NezhaCameraMainCapture.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 enum NezhaCameraFrameStatus {
     NezhaFramesOk, NezhaFramesInvalid, NezhaFramesTimeout, NezhaFramesIo,
     NezhaFramesSmmu, NezhaFramesSequence, NezhaFramesUnwritten, NezhaFramesCache,
@@ -14,10 +18,14 @@ struct NezhaCameraFrameMemoryIo {
     uint8_t *(*acquire)(void *context, unsigned buffer);
     bool (*return_frame)(void *context, unsigned buffer, bool requeue);
     uint32_t (*fault)(void *context);
+    /* Optional single IRQ consumer. Fill a zero event when none is
+     * pending. A queue overflow or hardware read failure returns false. */
+    bool (*next_event)(void *context, struct NezhaCamera1080Events *event);
 };
 
 struct NezhaCameraFrameResult {
     unsigned frames, updated, sof, eof;
+    unsigned final_buffer;
     uint32_t last_rx, last_rdi, last_buffer, last_address, fault;
     uint32_t sample_digest[2];
     bool sampled[2];
@@ -34,4 +42,7 @@ enum NezhaCameraFrameStatus nezha_camera_frame_probe(
     const struct NezhaCameraFrameMemoryIo *memory, unsigned target, unsigned budget_ms,
     struct NezhaCameraFrameResult *result);
 
+#ifdef __cplusplus
+}
+#endif
 #endif

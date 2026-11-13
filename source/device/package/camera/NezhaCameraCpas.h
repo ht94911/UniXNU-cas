@@ -5,6 +5,10 @@
 #include "NezhaCameraRegisterIo.h"
 #include <stdbool.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 enum NezhaCameraCpasStatus {
     NezhaCameraCpasOk,
     NezhaCameraCpasInvalid,
@@ -39,4 +43,7 @@ enum NezhaCameraCpasStatus nezha_camera_cpas_drain(
 enum NezhaCameraCpasStatus nezha_camera_cpas_restore(
     const struct NezhaCameraRegisterIo *top, struct NezhaCameraCpas *state);
 
+#ifdef __cplusplus
+}
+#endif
 #endif

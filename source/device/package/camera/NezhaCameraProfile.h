@@ -5,6 +5,10 @@
 #include "NezhaCameraCsiphy24.h"
 #include "NezhaCameraOvx10500u.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 enum { NezhaCameraProfileCapacity = 128 * 1024, NezhaCameraProfileHeader = 192 };
 
 struct NezhaCameraProfile {
@@ -31,4 +35,7 @@ bool nezha_camera_profile_writes(const struct NezhaCameraProfile *profile,
 extern const uint8_t nezha_camera_profile_slot[];
 extern const uint64_t nezha_camera_profile_slot_size;
 
+#ifdef __cplusplus
+}
+#endif
 #endif

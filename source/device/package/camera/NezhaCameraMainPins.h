@@ -5,6 +5,10 @@
 #include "NezhaCameraRegisterIo.h"
 #include <stdbool.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 enum { NezhaCameraMainPinCount = 6 };
 
 enum NezhaCameraMainRail {
@@ -60,4 +64,7 @@ bool nezha_camera_main_restore_pins(const struct NezhaCameraRegisterIo *tlmm,
     const struct NezhaCameraRegisterIo *mclk, const struct NezhaCameraMainRailIo *rails,
     struct NezhaCameraMainPins *state);
 
+#ifdef __cplusplus
+}
+#endif
 #endif

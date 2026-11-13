@@ -16,7 +16,7 @@ struct Rsc {
     uint32_t mv[8], on[5];
     unsigned reads, votes, waits;
     uint32_t failed_offset;
-    bool timeout, locked, foreign_irq;
+    bool timeout, locked, foreign_irq, zero_readback;
 };
 
 static uint32_t read_rsc(void *context, uint32_t offset)
@@ -51,7 +51,7 @@ static void write_rsc(void *context, uint32_t offset, uint32_t value)
         }
         if (message == 0x108) {
             ++rsc->reads;
-            rsc->reg[(Tcs + Reply) / 4] = *field;
+            rsc->reg[(Tcs + Reply) / 4] = rsc->zero_readback ? 0 : *field;
         } else {
             ++rsc->votes;
             *field = rsc->reg[(Tcs + Data) / 4];
@@ -183,6 +183,16 @@ int main(void)
     assert(nezha_camera_rpmh_init_guarded(&owner, &guarded_io, &guard, db, sizeof(db)));
     assert(nezha_camera_rpmh_acquire(&owner, NezhaCameraMainBob1, 3400));
     assert(rsc.reg[IrqEnable / 4] == 3 && !rsc.locked && !owner.unsettled);
+    rsc.zero_readback = true;
+    rsc.on[0] = 0;
+    assert(!nezha_camera_rpmh_acquire(&owner, NezhaCameraMainBob2, 3296));
+    assert(rsc.on[0] == 1 && !owner.rail[0].readback_unavailable && owner.status == NezhaCameraRpmhReadback);
+    assert(nezha_camera_rpmh_release(&owner, NezhaCameraMainBob2) && rsc.on[0] == 0);
+    owner.isolated_sensor_votes = true;
+    assert(nezha_camera_rpmh_acquire(&owner, NezhaCameraMainBob2, 3296));
+    assert(rsc.on[0] == 1 && owner.rail[0].readback_unavailable && !rsc.locked);
+    assert(nezha_camera_rpmh_release(&owner, NezhaCameraMainBob2) && rsc.on[0] == 0);
+    rsc.zero_readback = false;
     const unsigned reads = rsc.reads, votes = rsc.votes, waits = rsc.waits;
     rsc.failed_offset = Tcs + Address;
     assert(!nezha_camera_rpmh_acquire(&owner, NezhaCameraMainVio, 1800));

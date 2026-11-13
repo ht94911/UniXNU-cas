@@ -61,7 +61,7 @@ bool nezha_camera_capture_resources_start(const struct NezhaCameraCaptureResourc
     const struct NezhaCameraIfeBandwidth *bandwidth, const struct NezhaCameraCsiphy24Profile *profile,
     struct NezhaCameraCaptureResources *state)
 {
-    if (!valid(io, state) || !bandwidth || !profile || state->step != NezhaResourcesIdle) {
+    if (!valid(io, state) || !bandwidth || state->step != NezhaResourcesIdle) {
         return false;
     }
     state->step = NezhaResourcesArc;
@@ -75,11 +75,13 @@ bool nezha_camera_capture_resources_start(const struct NezhaCameraCaptureResourc
         }
     }
     state->step = NezhaResourcesPhyRails;
-    for (unsigned i = 0; i < 2; ++i) {
-        state->detail = i;
-        if (!nezha_camera_rpmh_acquire_phy(io->rpmh, (enum NezhaCameraPhyRail)i)) {
-            state->status = io->rpmh->status;
-            return false;
+    if (profile) {
+        for (unsigned i = 0; i < 2; ++i) {
+            state->detail = i;
+            if (!nezha_camera_rpmh_acquire_phy(io->rpmh, (enum NezhaCameraPhyRail)i)) {
+                state->status = io->rpmh->status;
+                return false;
+            }
         }
     }
     state->detail = 0;
@@ -99,10 +101,12 @@ bool nezha_camera_capture_resources_start(const struct NezhaCameraCaptureResourc
     }
     if (!clocks_start(io, state)) return false;
     state->detail = 0;
-    state->step = NezhaResourcesCciClock;
-    state->status = nezha_camera_camcc_select_cci0_rate(io->camcc, &state->top, 37500000);
-    if (!state->status) state->status = nezha_camera_camcc_enable_cci0(io->camcc, &state->top);
-    if (state->status) return false;
+    if (profile) {
+        state->step = NezhaResourcesCciClock;
+        state->status = nezha_camera_camcc_select_cci0_rate(io->camcc, &state->top, 37500000);
+        if (!state->status) state->status = nezha_camera_camcc_enable_cci0(io->camcc, &state->top);
+        if (state->status) return false;
+    }
     state->step = NezhaResourcesCaptureClock;
     state->status = nezha_camera_camcc_acquire_capture(io->camcc, &state->top, &state->pll0, &state->capture);
     if (state->status) return false;
@@ -113,7 +117,7 @@ bool nezha_camera_capture_resources_start(const struct NezhaCameraCaptureResourc
     state->status = nezha_camera_cpas_start(io->cpas, &state->cpas);
     if (state->status) return false;
     state->step = NezhaResourcesPhy;
-    if (!nezha_camera_csiphy24_start(io->phy, profile, &state->phy)) {
+    if (profile && !nezha_camera_csiphy24_start(io->phy, profile, &state->phy)) {
         state->status = 1;
         return false;
     }
@@ -155,7 +159,7 @@ bool nezha_camera_capture_resources_stop(const struct NezhaCameraCaptureResource
         if (lease->requested && nezha_camera_crm_release(io->crm, lease, true) != NezhaCameraCrmOk) return false;
     }
     state->cleanup_step = NezhaResourcesCciClock;
-    if (state->step >= NezhaResourcesCciClock &&
+    if (profile && state->step >= NezhaResourcesCciClock &&
         nezha_camera_camcc_release_cci0(io->camcc, &state->top) != NezhaCameraCamccOk) return false;
     state->cleanup_step = NezhaResourcesPll0;
     if (state->step >= NezhaResourcesPll0 && nezha_camera_camcc_release_pll0(io->camcc, &state->pll0, true) != NezhaCameraCamccOk) return false;
@@ -165,8 +169,10 @@ bool nezha_camera_capture_resources_stop(const struct NezhaCameraCaptureResource
     if (state->step >= NezhaResourcesInterface &&
         nezha_camera_interfaces_stop(io->gcc, io->camcc, &state->interfaces, true) != NezhaCameraCamccOk) return false;
     state->cleanup_step = NezhaResourcesPhyRails;
-    for (unsigned i = 2; i != 0; --i) {
-        if (!nezha_camera_rpmh_release_phy(io->rpmh, (enum NezhaCameraPhyRail)(i - 1))) return false;
+    if (profile) {
+        for (unsigned i = 2; i != 0; --i) {
+            if (!nezha_camera_rpmh_release_phy(io->rpmh, (enum NezhaCameraPhyRail)(i - 1))) return false;
+        }
     }
     state->cleanup_step = NezhaResourcesArc;
     for (unsigned i = 2; i != 0; --i) {

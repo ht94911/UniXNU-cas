@@ -5,6 +5,10 @@
 #include "NezhaCameraRegisterIo.h"
 #include "NezhaCameraRdi1080.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 enum NezhaCamera1080Source {
     NezhaCamera1080Dphy,
     NezhaCamera1080Tpg,
@@ -76,4 +80,7 @@ bool nezha_camera1080_start_tpg_bars(const struct NezhaCamera1080Io *io,
 void nezha_camera1080_request_tpg_stop(const struct NezhaCamera1080Io *io,
     const struct NezhaCameraRegisterIo *tpg);
 
+#ifdef __cplusplus
+}
+#endif
 #endif

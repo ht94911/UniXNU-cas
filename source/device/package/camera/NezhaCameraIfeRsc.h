@@ -5,6 +5,10 @@
 #include "NezhaCameraIfeBandwidth.h"
 #include "NezhaCameraRegisterIo.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 enum NezhaCameraIfeRscStatus {
     NezhaCameraIfeRscOk,
     NezhaCameraIfeRscInvalid,
@@ -31,4 +35,7 @@ enum NezhaCameraIfeRscStatus nezha_camera_ife_rsc_start(const struct NezhaCamera
 enum NezhaCameraIfeRscStatus nezha_camera_ife_rsc_stop(const struct NezhaCameraRegisterIo *io,
     const struct NezhaCameraIfeBandwidth *clear, struct NezhaCameraIfeRsc *state, bool drained);
 
+#ifdef __cplusplus
+}
+#endif
 #endif

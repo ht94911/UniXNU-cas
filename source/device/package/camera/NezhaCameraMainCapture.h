@@ -6,6 +6,10 @@
 #include "NezhaCameraDma.h"
 #include "NezhaCameraOvx10500u.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 struct NezhaCameraMainCaptureIo {
     const struct NezhaCameraRegisterIo *cci;
     const struct NezhaCamera1080Io *camss;
@@ -16,6 +20,7 @@ struct NezhaCameraMainCaptureIo {
     void *dma_owner;
     bool (*dma_enter)(void *owner);
     void (*dma_leave)(void *owner);
+    const struct NezhaCameraRegisterIo *tpg;
 };
 
 struct NezhaCameraMainMode {
@@ -52,6 +57,7 @@ struct NezhaCameraMainCapture {
     size_t applied_writes;
     bool rdi_started;
     bool stream_may_be_on;
+    bool uses_tpg;
 };
 
 /* Start with zeroed state. The platform owns live sensor power/CCI timing,
@@ -85,4 +91,7 @@ bool nezha_camera_main_capture_finish_stop(const struct NezhaCameraMainCaptureIo
     const ArmSmmu4KContextConfig *context, unsigned poll_budget,
     struct NezhaCameraMainCapture *capture, bool dma_drained);
 
+#ifdef __cplusplus
+}
+#endif
 #endif

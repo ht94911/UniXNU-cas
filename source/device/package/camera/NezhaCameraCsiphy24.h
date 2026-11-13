@@ -6,6 +6,10 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 struct NezhaCameraPhyRegister {
     uint32_t offset, value, delay_us, kind;
 };
@@ -44,4 +48,7 @@ bool nezha_camera_csiphy24_start(const struct NezhaCameraCsiphy24Io *io,
 bool nezha_camera_csiphy24_stop(const struct NezhaCameraCsiphy24Io *io,
     const struct NezhaCameraCsiphy24Profile *profile, struct NezhaCameraCsiphy24State *state);
 
+#ifdef __cplusplus
+}
+#endif
 #endif

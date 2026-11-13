@@ -25,6 +25,7 @@ struct NezhaCameraVrmState {
     bool observed_on;
     bool voltage_changed;
     bool enable_changed;
+    bool readback_unavailable;
 };
 
 enum NezhaCameraPhyRail { NezhaCameraPhy1p2, NezhaCameraPhy0p9 };
@@ -49,6 +50,7 @@ struct NezhaCameraRpmh {
     struct NezhaCameraRegisterIo rsc;
     struct NezhaCameraRpmhGuard guard;
     bool (*before_transaction)(void *context, uint32_t address, uint32_t value, bool read);
+    void (*vote_acknowledged)(void *context, uint32_t address, uint32_t value, uint32_t ack);
     void *observer_context;
     QcomRscLayout layout;
     struct NezhaCameraVrmState rail[5];
@@ -56,6 +58,9 @@ struct NezhaCameraRpmh {
     enum NezhaCameraRpmhStatus status;
     uint32_t last_address, last_value, last_irq, last_tcs_status, last_command_status, last_reply;
     bool unsettled, capture_resources, restoring;
+    /* Only the isolated CCI identity trial, with no other local camera
+     * rail consumers, can test an acknowledged but unreadable vote. */
+    bool isolated_sensor_votes;
 };
 
 /* The camera-only test calls this after its existing APPS RPMh consumer is

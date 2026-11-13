@@ -12,29 +12,39 @@ bool nezha_camera_main_capture_start(const struct NezhaCameraMainCaptureIo *io,
     unsigned poll_budget, struct NezhaCameraMainCapture *capture)
 {
     struct NezhaCameraRdi1080 layout;
-    if (io == NULL || io->cci == NULL || io->camss == NULL || io->smmu == NULL || !valid_dma_owner(io) ||
-        mode == NULL || mode->expected_identity == 0 || buffers == NULL ||
+    if (io == NULL || io->camss == NULL || io->smmu == NULL || !valid_dma_owner(io) ||
+        mode == NULL || buffers == NULL ||
         context == NULL || context->lower_tables != &buffers->tables || capture == NULL ||
         capture->stage != NezhaCaptureIdle ||
-        (mode->input.source != NezhaCamera1080Dphy && mode->input.source != NezhaCamera1080Cphy) ||
         !nezha_camera_rdi1080_layout(mode->width, mode->height, buffers->frames, &layout)) {
         return false;
     }
 
-    capture->stage = NezhaCaptureIdentity;
-    capture->sensor_status = nezha_camera_ovx10500u_read_identity(io->cci, &capture->identity);
-    capture->sensor_transfer = capture->identity.transfer;
-    const uint16_t chip = (uint16_t)((uint16_t)capture->identity.bytes[0] << 8) |
-        capture->identity.bytes[1];
-    if (capture->sensor_status != NezhaCciOk || chip != mode->expected_identity) {
-        return false;
-    }
+    capture->uses_tpg = mode->input.source == NezhaCamera1080Tpg;
+    if (capture->uses_tpg) {
+        if (io->tpg == NULL || mode->input.index >= 3 || mode->width != 640 || mode->height != 480) {
+            return false;
+        }
+    } else {
+        if (io->cci == NULL || mode->expected_identity == 0 ||
+            (mode->input.source != NezhaCamera1080Dphy && mode->input.source != NezhaCamera1080Cphy)) {
+            return false;
+        }
+        capture->stage = NezhaCaptureIdentity;
+        capture->sensor_status = nezha_camera_ovx10500u_read_identity(io->cci, &capture->identity);
+        capture->sensor_transfer = capture->identity.transfer;
+        const uint16_t chip = (uint16_t)((uint16_t)capture->identity.bytes[0] << 8) |
+            capture->identity.bytes[1];
+        if (capture->sensor_status != NezhaCciOk || chip != mode->expected_identity) {
+            return false;
+        }
 
-    capture->stage = NezhaCaptureStandby;
-    capture->sensor_status = nezha_camera_ovx10500u_apply_mode(io->cci, mode->standby,
-        mode->standby_count, io->cci_queue_words, &capture->applied_writes, &capture->sensor_transfer);
-    if (capture->sensor_status != NezhaCciOk) {
-        return false;
+        capture->stage = NezhaCaptureStandby;
+        capture->sensor_status = nezha_camera_ovx10500u_apply_mode(io->cci, mode->standby,
+            mode->standby_count, io->cci_queue_words, &capture->applied_writes, &capture->sensor_transfer);
+        if (capture->sensor_status != NezhaCciOk) {
+            return false;
+        }
     }
 
     capture->stage = NezhaCaptureDma;
@@ -52,8 +62,9 @@ bool nezha_camera_main_capture_start(const struct NezhaCameraMainCaptureIo *io,
     }
 
     capture->stage = NezhaCaptureReceiver;
-    capture->rdi_started = nezha_camera1080_start_rdi0(io->camss, &mode->input, mode->width,
-        mode->height, buffers->frames);
+    capture->rdi_started = capture->uses_tpg ?
+        nezha_camera1080_start_tpg_bars(io->camss, io->tpg, mode->input.index, buffers->frames) :
+        nezha_camera1080_start_rdi0(io->camss, &mode->input, mode->width, mode->height, buffers->frames);
     if (!capture->rdi_started) {
         return false;
     }
@@ -66,7 +77,9 @@ bool nezha_camera_main_capture_start(const struct NezhaCameraMainCaptureIo *io,
 
     capture->stage = NezhaCaptureStreamRequest;
     capture->stream_may_be_on = true;
-    capture->sensor_status = nezha_camera_ovx10500u_set_stream(io->cci, true, &capture->sensor_transfer);
+    if (!capture->uses_tpg) {
+        capture->sensor_status = nezha_camera_ovx10500u_set_stream(io->cci, true, &capture->sensor_transfer);
+    }
     return capture->sensor_status == NezhaCciOk;
 }
 
@@ -117,7 +130,7 @@ bool nezha_camera_main_capture_request_stop(const struct NezhaCameraMainCaptureI
     if (io == NULL || capture == NULL || capture->sensor_transfer.needs_recovery) {
         return false;
     }
-    if (capture->stream_may_be_on) {
+    if (capture->stream_may_be_on && !capture->uses_tpg) {
         capture->sensor_status = nezha_camera_ovx10500u_set_stream(
             io->cci, false, &capture->sensor_transfer);
         if (capture->sensor_status != NezhaCciOk) {
@@ -129,7 +142,15 @@ bool nezha_camera_main_capture_request_stop(const struct NezhaCameraMainCaptureI
         if (io->camss == NULL || io->camss->write_csid == NULL || io->camss->write_vfe == NULL) {
             return false;
         }
-        nezha_camera1080_request_rdi0_stop(io->camss);
+        if (capture->uses_tpg) {
+            if (io->tpg == NULL || io->tpg->write == NULL) {
+                return false;
+            }
+            nezha_camera1080_request_tpg_stop(io->camss, io->tpg);
+            capture->stream_may_be_on = false;
+        } else {
+            nezha_camera1080_request_rdi0_stop(io->camss);
+        }
         capture->rdi_started = false;
     }
     return true;

@@ -17,19 +17,25 @@ struct NezhaCameraNativeSmmu;
 ArmSmmu4KStatus nezha_camera_native_smmu_prepare(struct NezhaCameraNativeSmmu **out,
     unsigned slot, unsigned bank, unsigned asid, unsigned *physical_bits);
 
-/* The capture worker keeps this lock only across validation/programming
- * or fault/disable/TLBSYNC. Sensor transfers and frame cache work run
- * outside it. No allocation or waits with the common lock held. */
-ArmSmmu4KStatus nezha_camera_native_smmu_enter(struct NezhaCameraNativeSmmu *state,
+ArmSmmu4KStatus nezha_camera_native_smmu_bind(struct NezhaCameraNativeSmmu *state,
     const struct NezhaCameraNativeMemory *memory);
-void nezha_camera_native_smmu_leave(struct NezhaCameraNativeSmmu *state);
-/* After the first enter has bound the table descriptor and interrupt,
- * these paired hooks may be used directly by MainCapture. */
+/* The worker uses this pair around attachment. It installs the fault
+ * interrupt and stock ACTLR under the same lock as context programming. */
 bool nezha_camera_native_smmu_capture_enter(void *state);
 void nezha_camera_native_smmu_capture_leave(void *state);
 const ArmSmmu4KIo *nezha_camera_native_smmu_io(const struct NezhaCameraNativeSmmu *state);
 const ArmSmmu4KContextConfig *nezha_camera_native_smmu_context(const struct NezhaCameraNativeSmmu *state);
 uint32_t nezha_camera_native_smmu_fault(const struct NezhaCameraNativeSmmu *state);
+struct NezhaCameraNativeSmmuFault {
+    uint64_t address;
+    uint32_t status, syndrome;
+};
+void nezha_camera_native_smmu_fault_info(const struct NezhaCameraNativeSmmu *state,
+    struct NezhaCameraNativeSmmuFault *info);
+/* After producer and CPAS drain, retire the IRQ and reconcile the fault.
+ * Holds the configuration lock through detach and ACTLR restoration.
+ * Caller must finish or quarantine with release before leaving. */
+bool nezha_camera_native_smmu_prepare_detach(struct NezhaCameraNativeSmmu *state);
 
 /* ArmCpu's selected SPI interface is boot-lifetime. After a successful
  * detach, its callback remains inert over a permanently mapped, disabled

@@ -190,6 +190,9 @@ static bool transact(struct NezhaCameraRpmh *owner, uint32_t address,
     leave(owner);
     const bool ok = !owner->unsettled && acknowledged && (reply == NULL || *reply != UINT32_MAX);
     owner->status = ok ? NezhaCameraRpmhOk : NezhaCameraRpmhReadback;
+    if (ok && reply == NULL && owner->vote_acknowledged != NULL) {
+        owner->vote_acknowledged(owner->observer_context, address, value, command_status);
+    }
     return ok;
 }
 
@@ -251,6 +254,7 @@ static bool acquire_vrm(struct NezhaCameraRpmh *owner, unsigned index, unsigned 
     }
     rail->original_on = rail->observed_on;
     rail->original_mv = rail->observed_mv;
+    rail->readback_unavailable = false;
     const bool original_in_range = rail->original_mv >= rail_profile[index].min_mv &&
         rail->original_mv <= rail_profile[index].max_mv;
     if ((!original_in_range && (rail->original_on || rail->original_mv != 0)) ||
@@ -271,8 +275,19 @@ static bool acquire_vrm(struct NezhaCameraRpmh *owner, unsigned index, unsigned 
             return false;
         }
     }
-    if ((rail->voltage_changed || rail->enable_changed) && !read_rail(owner, rail)) {
-        return false;
+    if (rail->voltage_changed || rail->enable_changed) {
+        if (owner->isolated_sensor_votes && index < FirstPhy) {
+            owner->rsc.wait_ms(owner->rsc.context, 2);
+        }
+        if (!read_rail(owner, rail)) return false;
+        if (owner->isolated_sensor_votes && index < FirstPhy &&
+            rail->original_mv == 0 && !rail->original_on && rail->observed_mv == 0 && !rail->observed_on) {
+            /* The 009 hardware completed both writes and returned zero
+             * for both reads. The ACKs grant this temporary APPS vote;
+             * only a real CCI response can qualify sensor power. */
+            rail->readback_unavailable = true;
+            return true;
+        }
     }
     if (!rail->observed_on || rail->observed_mv != millivolts) {
         owner->status = NezhaCameraRpmhReadback;
@@ -297,7 +312,9 @@ static bool release_vrm(struct NezhaCameraRpmh *owner, unsigned index)
         return false;
     }
 
-    if (rail->enable_changed && rail->observed_on &&
+    /* A zero reply after an acknowledged enable can be an unsupported
+     * readback, not proof that our APPS vote has already been removed. */
+    if (rail->enable_changed &&
         !transact(owner, rail->address + VrmEnable, 0, NULL)) {
         return false;
     }

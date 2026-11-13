@@ -80,7 +80,7 @@ static enum NezhaCameraFrameStatus simulate(struct FrameModel *model, struct Nez
     const struct NezhaCamera1080Io camss = {model, write, write};
     const struct NezhaCameraMainCaptureIo io = {.camss = &camss};
     const struct NezhaCameraRegisterIo csid = {model, csid_read, write, wait}, vfe = {model, vfe_read, write, wait};
-    const struct NezhaCameraFrameMemoryIo memory = {model, acquire, release, fault};
+    const struct NezhaCameraFrameMemoryIo memory = {model, acquire, release, fault, NULL};
     struct NezhaCameraMainCapture capture = {.rdi_started = true, .stream_may_be_on = true, .dma.context_active = true,
         .layout = {{48, 4, 64, 64, 256}, 1, {model->addresses[0], model->addresses[1]}},
         .queued = {0, 1}, .queued_count = 2};

@@ -5,6 +5,10 @@
 #include "NezhaCameraCci.h"
 #include <stddef.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 enum { NezhaCameraOvx10500uId = 0x5058 };
 
 struct NezhaCameraOvxIdentity {
@@ -38,4 +42,7 @@ enum NezhaCameraCciStatus nezha_camera_ovx10500u_set_stream(
     const struct NezhaCameraRegisterIo *cci, bool running,
     struct NezhaCameraCciObservation *transfer);
 
+#ifdef __cplusplus
+}
+#endif
 #endif

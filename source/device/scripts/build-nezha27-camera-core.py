@@ -12,7 +12,7 @@ import sys
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MODULES = ("Cci", "Ovx10500u", "Rdi1080", "Camss1080", "Csiphy24", "Dma", "Camcc", "Crm", "Cpas", "Profile", "MainCapture", "MainPins", "Rpmh", "IfeBandwidth", "IfeRsc", "CaptureResources", "FrameProbe")
+MODULES = ("Cci", "Ovx10500u", "Rdi1080", "Camss1080", "Csiphy24", "Dma", "Camcc", "Crm", "Cpas", "Profile", "MainCapture", "MainPins", "Rpmh", "IfeBandwidth", "IfeRsc", "CaptureResources", "FrameProbe", "IrqQueue")
 
 
 def tool(env_name, mac_name, local_name):
@@ -25,8 +25,8 @@ def tool(env_name, mac_name, local_name):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", type=Path, default=ROOT / "build/nezha27-camera-core")
-    parser.add_argument("--shared-soc-include", type=Path,
-                        help="the selected common SM8850 owner for native C2")
+    parser.add_argument("--shared-soc", type=Path,
+                        help="selected SM8850 native owner source with include/ and src/")
     args = parser.parse_args()
 
     kit = ROOT / "kits/nezha/camera"
@@ -57,9 +57,11 @@ def main():
     sources.append(kit / "upstream/QcomRpmh.c")
     if staged:
         sources.append(kit / "NezhaCameraNativeMemory.cpp")
-        if args.shared_soc_include is not None:
-            sources.extend(kit / ("NezhaCameraNative" + name + ".cpp") for name in ("Smmu", "Rpmh", "Gcc"))
-    elif args.shared_soc_include is not None:
+        if args.shared_soc is not None:
+            shared = args.shared_soc.resolve()
+            sources.extend(shared / "src" / name for name in ("Sm8850Resources.c", "Sm8850ResourcesNative.cpp"))
+            sources.extend(kit / ("NezhaCameraNative" + name + ".cpp") for name in ("Smmu", "Rpmh", "Gcc", "Irq", "Capture"))
+    elif args.shared_soc is not None:
         parser.error("C2 shared-SMMU adapter requires the native staged build")
     for source in sources:
         name = source.stem
@@ -69,10 +71,13 @@ def main():
             if name == "NezhaCameraProbe":
                 includes += ["-I", str(ROOT / "drivers/QcomXnuUsbDebug/include"),
                              "-I", str(ROOT / "kits/nezha/nezha27-input")]
+                if args.shared_soc is not None:
+                    includes += ["-DNEZHA_CAMERA_NATIVE_CAPTURE=1"]
             if source.suffix == ".cpp":
                 includes += ["-I", str(ROOT / "refer/Adreno740"), "-I", str(ROOT / ".cache/xnu-work/osfmk")]
-            if name in ("NezhaCameraNativeSmmu", "NezhaCameraNativeRpmh", "NezhaCameraNativeGcc"):
-                includes += ["-I", str(args.shared_soc_include.resolve())]
+            if args.shared_soc is not None and name in ("NezhaCameraNativeSmmu", "NezhaCameraNativeRpmh",
+                    "NezhaCameraNativeGcc", "Sm8850Resources", "Sm8850ResourcesNative"):
+                includes += ["-I", str(shared / "include")]
             compile_record = records[source.suffix]
             command = helper["compile_command"](compile_record, source, obj, includes, [])
             subprocess.run(command, cwd=compile_record["directory"], check=True)

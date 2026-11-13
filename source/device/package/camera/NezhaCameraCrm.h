@@ -5,6 +5,10 @@
 #include "NezhaCameraRegisterIo.h"
 #include <stdbool.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 enum NezhaCameraCrmClock {
     NezhaCameraCrmTfe0 = 0,
     NezhaCameraCrmCsid = 6,
@@ -77,4 +81,7 @@ enum NezhaCameraCrmStatus nezha_camera_crm_release(
     const struct NezhaCameraRegisterIo *drv, struct NezhaCameraCrmLease *lease,
     bool consumers_quiescent);
 
+#ifdef __cplusplus
+}
+#endif
 #endif

@@ -52,7 +52,9 @@ enum NezhaCameraFrameStatus nezha_camera_frame_probe(
             return NezhaFramesSmmu;
         }
         struct NezhaCamera1080Events events;
-        if (!nezha_camera1080_take_rdi0_events(csid, vfe, &events)) {
+        const bool received = memory->next_event ? memory->next_event(memory->context, &events) :
+            nezha_camera1080_take_rdi0_events(csid, vfe, &events);
+        if (!received) {
             return NezhaFramesIo;
         }
         result->updated += events.updated;
@@ -95,6 +97,7 @@ enum NezhaCameraFrameStatus nezha_camera_frame_probe(
                 return NezhaFramesUnwritten;
             }
             if (result->frames == target) {
+                result->final_buffer = buffer;
                 return result->updated && result->sof && result->eof ? NezhaFramesOk : NezhaFramesSequence;
             }
         }
