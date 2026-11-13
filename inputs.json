@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "ALS013 validate actual1022 factory calibration metadata and continue actual1025 lux; preserve existing owner/HID ABI and calibration",
+  "purpose": "ALS014 observe actual owner polling, HID gate and event completion, interval acceptance after ALS013 real lux stopped",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "4c51f2552482f362c2a381f770b313fe5e7b5cc2",
+  "device_revision": "98365a15cf6acbb8625d042867d597677007925f",
   "soc_revision": "e565439bf1a13d0224f0a9adcfc1eef8df7ad142",
   "xcode": "26.6",
   "files": {
@@ -101,7 +101,7 @@
     "source/device/package/SourceRootPolicies.cpp": "714af8d95b5a8db89058be9f14a7e71a5fc2e97ded4d067c39e04299f0db27d5",
     "source/device/package/SourceStorage.cpp": "d0b8e0433ef71a1761e5d3dd055d8c4a6b709a5b8dabb2da36ab558291c9d2f3",
     "source/device/package/als-owner/NezhaAlsNativeCaller.cpp": "9732cef87bc7ca239483f136dfcf27d46a174dc7b8d2a9d311384f24ee42d02e",
-    "source/device/package/als-owner/NezhaAlsNativeCaller.h": "e50fa9efc4ec7f7fd34c2d63c1bba50e4f9b827a4350cbb9648c953feddefccc",
+    "source/device/package/als-owner/NezhaAlsNativeCaller.h": "d139a7a20319d469790d520f9471e0b43cfd490bed91421a4ba99117c5467ce3",
     "source/device/package/als-owner/core/AudioDriver.h": "b2c04b2d6a842e529ce68ef794fe51c79a67a57e863da42af1b198e56e881e63",
     "source/device/package/als-owner/core/AudioEngine.h": "ab50290851d1c6c5b097c971cbc95b587455feaf4199d3e842e686daf39ba915",
     "source/device/package/als-owner/core/AudioGraph.h": "6f6d6113e81261e686857285229628c0394c302a62ff5010edc343a15d3d9b42",
@@ -116,7 +116,7 @@
     "source/device/package/als-owner/os/NezhaAudioAbi.h": "5e3129d7cdb654f39c1d81a3224860e8c6108feb08e72eeb05a16d08ca7687ad",
     "source/device/package/als-owner/os/NezhaAudioAdspInputs.cpp": "7d7bac89f33fa2d539ac8f3f4799f248a30cc030db98e6982c16cfef21516cec",
     "source/device/package/als-owner/os/NezhaAudioAdspInputs.h": "b6e72b300a4c6426bb95f2844bb3ccd099a8c4c5ff59b1e95183c2af632120bb",
-    "source/device/package/als-owner/os/NezhaAudioDspProbe.cpp": "047cdf3f5bb902acbe7feb775591d6edcea091eb0d9edabe30db1220e1ec52b7",
+    "source/device/package/als-owner/os/NezhaAudioDspProbe.cpp": "a595faf9352aabe44fb5e500b86dff8e9f3e40ed485b3ab7874c9b21e2fc6903",
     "source/device/package/als-owner/os/NezhaAudioInputs.c": "46617afe5985f02f108644611b93a19463322be09984968e5e900e10fcfe12aa",
     "source/device/package/als-owner/os/NezhaAudioInputs.h": "94f7ecc7d5c7594b799e2e6ac50cfb85ba3057270bd9628c60e1b97febd4ba5b",
     "source/device/package/als-owner/os/NezhaAudioMicBoard.h": "0178b76deba0d7ccc716d553a56908f249d6d7d36008cfc82425cca6569b303d",
@@ -130,7 +130,7 @@
     "source/device/package/als-owner/os/NezhaAudioXpuTrace.h": "878099997a306aebd7471a9195b9800d43ec3d2b78c2e5b65c8489a244ea9da9",
     "source/device/package/als-owner/platform/AdspFirmware.c": "9ea4c9700080a92cf33b55958ffd21a1395c17513a1f26ee60a2e79080480117",
     "source/device/package/als-owner/platform/AdspFirmware.h": "4096f93fd761bee7d0afe1557c7af77e3eef3040650da32153e582c6a5330756",
-    "source/device/package/als-owner/platform/AdspLink.c": "e256216ff41455a6d41ac16c20d88f3e577c7060e689149369a5bb7a23a76d68",
+    "source/device/package/als-owner/platform/AdspLink.c": "060bdf968c9f78ce7b0f1118c0d74fa1c86f8988fbad6e306ea4d8ea256fb22a",
     "source/device/package/als-owner/platform/AdspLink.h": "b7441587c471f593e830f0724ebe49462a7041df9bb8f784b68459e555ba2d65",
     "source/device/package/als-owner/platform/AdspPower.c": "45f78822e84c6d602bfb4b32d3d937ec36187a90e1128250c0887db9a4600bf9",
     "source/device/package/als-owner/platform/AdspPower.h": "82dab228d396b3053aeac43b5d5ba7cbb28c19aa41cef88438392acfbbcb251b",
@@ -173,14 +173,14 @@
     "source/device/package/als-owner/upstream/QcomSmp2p.h": "894f36fd14be184252ce64c4c8c908d161d31433185b190041f4bd18d47d68c6",
     "source/device/package/als-owner/upstream/ShengAudioReach.h": "b135177a5feb3e24e0d8a6aabb301600e2c37078b970a09ada6e8eb7bb6a5b98",
     "source/device/package/als-owner/upstream/ShengGpr.h": "a274dded1f4d1e2709b9f966759bcb1f57d12747ee0f57743dea1fa97d95d23e",
-    "source/device/package/als/NezhaAlsBackend.h": "9199f5da849cda5728b6a48fe8deb018263a8eef1538d47dfeea2dfd8ffb3fd7",
-    "source/device/package/als/NezhaAlsFrontend.cpp": "bec2f7a9eed95f54aad492cc8f447e1540794780ab36241b00c4447062038215",
+    "source/device/package/als/NezhaAlsBackend.h": "e247947cf12abf156db1a62a111d453c89463c3dd56a6b6aa382ff1d54719a8d",
+    "source/device/package/als/NezhaAlsFrontend.cpp": "1c5120d535a30e75553867f7d7d1883c8f70939660414e435b4381724a3bce8e",
     "source/device/package/als/NezhaAlsQrtrBackend.c": "85191fb6d717ed40dbacb477f28af8d4b3dfdaf6efd86188d1bcf6c4dd444716",
     "source/device/package/als/NezhaAlsQrtrBackend.h": "bb20b11dc2c110f7843c31638eef8fb9dd5394c952d4e1d440eec9cb32ee9292",
     "source/device/package/als/NezhaAlsSscClient.c": "ec6a76ca75ad294e2466ce1d9999ccc59b635790c161665f6f61e16985042ab9",
     "source/device/package/als/NezhaAlsSscClient.h": "1cb84ad4dd734cb533e9a7aa1669a75ea5a161c643d16f82da1a6481717e82e5",
     "source/device/package/als/NezhaAlsState.h": "2876ff7d3dc8fe4521bc535b28b47c5944382c26ee037fa345c0ea79180e57cf",
-    "source/device/package/als/README.md": "318073db16477b50f53692388eb71439397ee6b07f393118807645c677184a84",
+    "source/device/package/als/README.md": "0eca9ae05828e573a738aadbf4e4ed653be6af95f85c47da45be780a7d4cb58c",
     "source/device/package/als/Tcs3760Sns.c": "3fcf2c8aa51c9b819a4014fe6b64569d63853e2117dc0215cb16551a37590d7f",
     "source/device/package/als/Tcs3760Sns.h": "bd728857b3a5869954acdc55dbddd94a3995d376769613282e254fb99074c2eb",
     "source/device/package/armcpu/darwin-asm-separators.patch": "15893fd689f266184c3273135761d7eff0d71aa0c42e29d1d71666a0abd60e8f",
@@ -281,7 +281,7 @@
     "source/device/scripts/hid-device-iphone-24A446.json": "af4668764ba1d2a4649b9c45d1ddbbabcb69e27659e7c35fbf9899f8f6bdbc7d",
     "source/device/scripts/legacy-display-iphone-24A446.json": "6f08ddf9377cc5c92a4a60ff75c3b452eb1a536720ebdf8fda9361846d8c8fea",
     "source/device/scripts/nezha-armcpu-asm-fix.py": "3d37c0c0e3613453c901a9622bc45a077c9acbd35ffe449046fa575b3b57af3a",
-    "source/device/scripts/nezha27-als-owner-inputs.json": "b940b836a2ce93d2640ce8a1196d9475b13972ec2428d03330939462ac4e4733",
+    "source/device/scripts/nezha27-als-owner-inputs.json": "2261695c1b7374deeaf67ac9170b0bcfa5e18612a1b60c9fffe2e1a991151f2f",
     "source/device/scripts/qualify-armcpu-instructions.py": "dae7cb3b9faecaac7b268212bbd324ae172d3dffa0e94b06afc4581c9f4abe9b",
     "source/device/tests/brightness-poll-observation.cpp": "411bbcafa1d880c88608aadeecf573c0c40f31cfe938552f72639a3c50d17c1b",
     "source/device/tests/brightness-poll-observation.py": "1aeff817ab68609d46f47c98539971a6a772003981ff3e978cca7eedbca58111",
@@ -429,7 +429,7 @@
     "hardware": false
   },
   "als_abi": {
-    "source_revision": "4c51f2552482f362c2a381f770b313fe5e7b5cc2",
+    "source_revision": "98365a15cf6acbb8625d042867d597677007925f",
     "source_files": [
       "package/als/NezhaAlsBackend.h",
       "package/als/NezhaAlsFrontend.cpp",
@@ -468,7 +468,7 @@
   },
   "device_evidence_revision": "4c51f2552482f362c2a381f770b313fe5e7b5cc2",
   "als_owner": {
-    "source_revision": "4c51f2552482f362c2a381f770b313fe5e7b5cc2",
+    "source_revision": "98365a15cf6acbb8625d042867d597677007925f",
     "source_files": [
       "package/als-owner/platform/AdspFirmware.c",
       "package/als-owner/platform/AdspLink.c",
@@ -678,5 +678,24 @@
     "source_revision": "6ceee4e8107941e46b4c107440e0a3a3d18d7d5a",
     "real_SUID_and_enable_ACK": true,
     "lux": false
+  },
+  "native013_base": {
+    "source_revision": "4c51f2552482f362c2a381f770b313fe5e7b5cc2",
+    "head": "7d482d5a852d1da3956ed022ac40e1f3a060ebc8",
+    "run": 43322721279,
+    "real_lux": true,
+    "original_consumer_lux": 26,
+    "controlled_light_response": false
+  },
+  "als_run_observation": {
+    "source_revision": "98365a15cf6acbb8625d042867d597677007925f",
+    "static_state": true,
+    "class_members_added": false,
+    "original_slots": 219,
+    "snapshot_capacity": 2048,
+    "snapshot_actual_fixture_max_progress_bytes": 1914,
+    "owner_gate_and_delivery_points": true,
+    "sample_generation_changed": false,
+    "actual_hardware": false
   }
 }

@@ -1,7 +1,7 @@
-name: nezha iPhone27 ALS013 actual factory calibration notification
+name: nezha iPhone27 ALS014 owner and HID run observation
 on:
   push:
-    branches: [codex/ios27-brightness-als013-cal-20261113]
+    branches: [codex/ios27-brightness-als014-runstate-20261113]
   workflow_dispatch:
 permissions:
   contents: read

@@ -2,6 +2,7 @@
 #ifndef NEZHA_ALS_NATIVE_CALLER_H
 #define NEZHA_ALS_NATIVE_CALLER_H
 #include "platform/AdspLink.h"
+#include "NezhaAlsBackend.h"
 #ifdef __cplusplus
 extern "C" {
 #endif

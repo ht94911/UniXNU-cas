@@ -122,7 +122,13 @@ int na_adsp_poll(NaAdsp *a,uint64_t now) {
     if (!a->deadline) a->deadline=now+30000;
     if (a->stage!=NaAdspOnline && now>=a->deadline) return failed(a,NA_TIMEOUT);
     if (a->ops.poll_shared) {
+#ifdef NEZHA_ALS_NATIVE_OWNER
+        nezha_als_diagnostic_transport(NezhaAlsTransportShared);
+#endif
         int shared=a->ops.poll_shared(a->ops.context);
+#ifdef NEZHA_ALS_NATIVE_OWNER
+        nezha_als_diagnostic_transport(NezhaAlsTransportSharedReturned);
+#endif
         if (shared==NA_BUSY || shared==NA_PENDING) return NA_PENDING;
         if (shared) return failed(a,shared);
     }
@@ -210,18 +216,44 @@ int na_adsp_poll(NaAdsp *a,uint64_t now) {
             if (a->glink_initialized && !paused && checkpoint(a,NaAdspGlinkBegin,0,now)!=NA_PENDING) {
             /* The router and GPR share this one GLINK poll. Drain queued
              * locator/flow-control replies before and after its callbacks. */
-            int qr=na_pd_mapper_poll(&a->mapper);if (qr<0) return failed(a,qr);
+#ifdef NEZHA_ALS_NATIVE_OWNER
+            nezha_als_diagnostic_transport(NezhaAlsTransportMapper);
+#endif
+            int qr=na_pd_mapper_poll(&a->mapper);
+#ifdef NEZHA_ALS_NATIVE_OWNER
+            nezha_als_diagnostic_transport(NezhaAlsTransportMapperReturned);
+#endif
+            if (qr<0) return failed(a,qr);
 #ifdef NEZHA_ALS_CONTROL_ONLY
             /* One receive poll; callbacks finish before the final TX drain. */
+#ifdef NEZHA_ALS_NATIVE_OWNER
+            nezha_als_diagnostic_transport(NezhaAlsTransportGlink);
+#endif
             int gr=qcom_glink_poll(&a->glink);int tr=gr<0 ? NA_WIRE:NA_OK;
+#ifdef NEZHA_ALS_NATIVE_OWNER
+            nezha_als_diagnostic_transport(NezhaAlsTransportGlinkReturned);
+#endif
 #else
             int tr=na_transport_poll(&a->transport);
 #endif
             int wait=checkpoint(a,NaAdspGlinkReturn,tr,now);if (tr<0) return failed(a,tr);
             #ifdef NEZHA_ALS_NATIVE_OWNER
-            if (wait!=NA_PENDING) nezha_als_native_after_receive(a);
+            if (wait!=NA_PENDING) {
+                nezha_als_diagnostic_transport(NezhaAlsTransportFrontend);
+                nezha_als_native_after_receive(a);
+                nezha_als_diagnostic_transport(NezhaAlsTransportFrontendReturned);
+            }
 #endif
-            if (wait!=NA_PENDING) {qr=na_pd_mapper_poll(&a->mapper);if (qr<0) return failed(a,qr);}
+            if (wait!=NA_PENDING) {
+#ifdef NEZHA_ALS_NATIVE_OWNER
+                nezha_als_diagnostic_transport(NezhaAlsTransportDrain);
+#endif
+                qr=na_pd_mapper_poll(&a->mapper);
+#ifdef NEZHA_ALS_NATIVE_OWNER
+                nezha_als_diagnostic_transport(NezhaAlsTransportDrainReturned);
+#endif
+                if (qr<0) return failed(a,qr);
+            }
             }
         }
         break;

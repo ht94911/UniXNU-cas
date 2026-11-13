@@ -167,6 +167,12 @@ int snapshot(void *,char *out,size_t capacity,size_t *bytes,unsigned *truncated)
         if (seq==__atomic_load_n(&audioProbeSequence,__ATOMIC_RELAXED)) {valid=true;break;}
     }
     *bytes=0;*truncated=0;if (!valid) return QUD_BUSY;
+    struct nezha_als_run_status run={};
+#ifdef NEZHA_ALS_NATIVE_OWNER
+    // The live status remains readable when this worker or the HID timer is
+    // blocked inside a call. Existing published transport fields stay seqlocked.
+    nezha_als_diagnostic_status(&run);
+#endif
     int n=snprintf(out,capacity,"{\"v\":2,\"mode\":\"%s\",\"phase\":%u,\"error\":%d,"
         "\"adsp_stage\":%u,\"slave\":%u,\"handover\":%u,\"gpr_online\":%u,\"smmu\":%u,"
         "\"fault\":%u,\"tas_phase\":%u,\"tas_error\":%d,\"tas_cleanup\":%d,\"revision\":[%u,%u],"
@@ -190,7 +196,9 @@ int snapshot(void *,char *out,size_t capacity,size_t *bytes,unsigned *truncated)
         "\"listener_phase\":%u,\"rpc_sent\":%u,\"rpc_received\":%u,\"reverse_calls\":%u,\"error\":%d,"
         "\"rpc_stale\":%u,\"rpc_early\":%u,\"file_requests\":%u,\"bank\":%u,\"bytes\":%u,\"irq_attached\":%u,"
         "\"fault\":%u,\"fault_syndrome\":%u,\"fault_address\":\"0x%llx\",\"attempted\":%u},"
-        "\"PCM\":false,\"HAL\":false}",
+        "\"PCM\":false,\"HAL\":false,"
+        "\"run\":{\"worker\":[%u,%u,%u],\"gate\":[%u,%u,%u],\"delivery\":[%u,%u,%llu],"
+        "\"copy\":[%u,%u],\"interval\":[%u,%u,%u,%u,%d],\"sample\":[%llu,%u,%u]}}",
 #ifdef NEZHA_ALS_CONTROL_ONLY
         "als-control",
 #else
@@ -205,7 +213,11 @@ int snapshot(void *,char *out,size_t capacity,size_t *bytes,unsigned *truncated)
         v[71],v[72],v[73],v[74],(int32_t)v[75],(int32_t)v[76],v[77],v[78],
         v[79] ? "true":"false",v[93] ? "true":"false",
         v[79],v[80],v[81],v[82],v[83],v[84],v[85],v[86],(int32_t)v[87],v[88],v[89],v[90],
-        v[91],v[92],v[93],v[94],v[95],(unsigned long long)(((uint64_t)v[97]<<32)|v[96]),v[98]);
+        v[91],v[92],v[93],v[94],v[95],(unsigned long long)(((uint64_t)v[97]<<32)|v[96]),v[98],
+        run.worker_loops,run.worker_point,run.transport_point,run.gate_calls,run.gate_returns,run.gate_point,
+        run.delivery_point,run.deliveries,(unsigned long long)run.delivery_sequence,
+        run.copy_calls,run.copy_returns,run.interval_calls,run.interval_returns,run.interval_requested,
+        run.interval_accepted,run.interval_result,(unsigned long long)run.sample_sequence,run.sample_lux,run.state_flags);
     if (n<0 || (size_t)n>=capacity) {*truncated=1;return QUD_FAILED;}
     *bytes=(size_t)n;return QUD_OK;
 }
@@ -452,6 +464,7 @@ void run_probe(void *v,wait_result_t) {
     int lastQrtrError=0;
     uint32_t lastServices=UINT32_MAX;
     for (;;) {
+        nezha_als_diagnostic_worker(NezhaAlsWorkerLoop);
         d->now=na_native_now_us(nullptr)/1000;int r=NA_PENDING;
 #ifndef NEZHA_ALS_CONTROL_ONLY
         if (d->mode==4) r=poll_tas_only(d);
@@ -465,9 +478,15 @@ void run_probe(void *v,wait_result_t) {
             if (d->adsp.glink_initialized && !d->adsp.glink.observe_header) {
                 d->adsp.glink.observe_context=d;d->adsp.glink.observe_header=glink_header;
             }
+            nezha_als_diagnostic_worker(NezhaAlsWorkerAdsp);
             r=na_adsp_poll(&d->adsp,d->now);
+            nezha_als_diagnostic_worker(NezhaAlsWorkerAdspReturned);
 #ifdef NEZHA_ALS_NATIVE_OWNER
-            if (d->sensor.linked) nezha_sensor_native_poll(&d->sensor,&d->adsp,na_native_now_us(nullptr));
+            if (d->sensor.linked) {
+                nezha_als_diagnostic_worker(NezhaAlsWorkerSensor);
+                nezha_sensor_native_poll(&d->sensor,&d->adsp,na_native_now_us(nullptr));
+                nezha_als_diagnostic_worker(NezhaAlsWorkerSensorReturned);
+            }
             if (d->sensor.error) nezha_als_native_lost(&d->adsp,d->sensor.error);
 #endif
             if (d->adsp.stage==NaAdspStopMain && !d->pasQueries) {
@@ -495,6 +514,7 @@ void run_probe(void *v,wait_result_t) {
             }
 #endif
         }
+        nezha_als_diagnostic_worker(NezhaAlsWorkerCrash);
         if (d->mode!=4 && d->phase>=2 && d->phase<=4) observe_crash_message(d);
         if (r<0 || (d->phase<4 && d->now>=d->deadline)) {
             d->error=r<0 ? r:NA_TIMEOUT;d->phase=5;
@@ -504,6 +524,7 @@ void run_probe(void *v,wait_result_t) {
 #endif
             if (d->mode!=4 && !d->adsp.watchdog_fault) crash_reason(d);
         }
+        nezha_als_diagnostic_worker(NezhaAlsWorkerPublish);
         publish(d);
         if (last!=d->adsp.stage || lastPhase!=d->phase || lastError!=d->error || lastSlave!=d->adsp.slave || lastGpr!=d->adsp.transport.online || lastHeld!=d->power.held) {
             if (d->mode==4)
@@ -536,10 +557,12 @@ void run_probe(void *v,wait_result_t) {
             lastServices=router.qrtr.remote_count;
         }
         if (d->phase==5 || (d->mode==4 && d->phase==4)) break;
+        nezha_als_diagnostic_worker(NezhaAlsWorkerSleep);
         assert_wait_timeout((event_t)d,THREAD_UNINT,1,kMillisecondScale);thread_block(THREAD_CONTINUE_NULL);
     }
     // Static state, firmware mappings and PAS/control leases remain retained. The
     // existing USB path continues; no automatic reset or PAS replay follows.
+    nezha_als_diagnostic_worker(NezhaAlsWorkerExited);
     thread_terminate(current_thread());thread_block(THREAD_CONTINUE_NULL);
 }
 }

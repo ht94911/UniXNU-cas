@@ -43,3 +43,29 @@ standard factory-calibration event. The codec validates its packed/unpacked
 coefficient fields, required accuracy and optional calibration ID as metadata.
 It continues waiting for1025 sensor data; calibration coefficients neither
 publish lux nor rescale the physical sensor's already calibrated samples.
+
+ALS013 produced four real39/30/37/26 lux samples in the closed local trial.
+Original CoreBrightness added the service and read26 lux, but the user's later
+cover/uncover intervention produced no new sample. The correct Display & Text
+Size page had no Auto-Brightness switch. Automatic brightness is not accepted.
+
+ALS014 adds static atomic progress observations, read through provider8 without
+entering the HID gate or state lock. It records the existing owner loop and
+shared/mapper/GLINK/frontend calls, gate entry/return, timer delivery stages,
+copyEvent call/return, actual interval acceptance and cached sample flags. These
+fields do not add class members, virtual slots, hardware reads or retries.
+The existing100-word transport snapshot stays seqlocked; the live progress
+fields are independent observations, not an atomic view of all driver state.
+
+Provider8 `run` arrays use these orders:
+
+- `worker`: loop count, worker point, transport point (the enums in the header).
+- `gate`: calls, returns, point (1 waiting,2 action,3 action returned,4 gate returned).
+- `delivery`: point, completed dispatch count, actual delivered sample sequence.
+  Points3/4 surround registration,5/6 dispatch and7 release;8 is completed,
+  9 has no current pending sample and10 is event allocation failure.
+- `copy`: calls, returns.
+- `interval`: calls, returns, last request, accepted interval in microseconds,
+  actual returned IOReturn. An in-flight call has no new completed result yet.
+- `sample`: latest sequence, integer lux, flags (1 published,2 ready,4 paused,
+  8 stopped,16 pending,32 valid). Lux without the valid bit is not a new sample.

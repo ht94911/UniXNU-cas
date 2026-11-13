@@ -51,6 +51,51 @@ volatile uint32_t nezha_als_conforms, nezha_als_published;
 volatile int32_t nezha_als_meta_status = -1;
 }
 
+// Static diagnostics keep the original class allocation and 219 PAC slots.
+// USB readers never need a lock that the observed callback may be holding.
+static uint64_t diagnosticWorker, diagnosticGate, diagnosticCopy, diagnosticInterval;
+static uint64_t diagnosticDeliverySequence, diagnosticSampleSequence;
+static uint32_t diagnosticTransport, diagnosticGatePoint, diagnosticDeliveryPoint;
+static uint32_t diagnosticDeliveries, diagnosticRequested, diagnosticAccepted;
+static uint32_t diagnosticLux, diagnosticFlags;
+static int32_t diagnosticIntervalResult;
+static IOHIDEvent *completeCopy(IOHIDEvent *event) {
+    __atomic_fetch_add(&diagnosticCopy, UINT64_C(1), __ATOMIC_RELEASE);
+    return event;
+}
+
+extern "C" void nezha_als_diagnostic_worker(uint32_t point) {
+    uint64_t value = __atomic_load_n(&diagnosticWorker, __ATOMIC_RELAXED);
+    if (point == NezhaAlsWorkerLoop) value += UINT64_C(1) << 32;
+    __atomic_store_n(&diagnosticWorker, (value & UINT64_C(0xffffffff00000000)) | point,
+                     __ATOMIC_RELEASE);
+}
+extern "C" void nezha_als_diagnostic_transport(uint32_t point) {
+    __atomic_store_n(&diagnosticTransport, point, __ATOMIC_RELEASE);
+}
+extern "C" void nezha_als_diagnostic_status(struct nezha_als_run_status *status) {
+    uint64_t worker = __atomic_load_n(&diagnosticWorker, __ATOMIC_ACQUIRE);
+    uint64_t gate = __atomic_load_n(&diagnosticGate, __ATOMIC_ACQUIRE);
+    uint64_t copy = __atomic_load_n(&diagnosticCopy, __ATOMIC_ACQUIRE);
+    uint64_t interval = __atomic_load_n(&diagnosticInterval, __ATOMIC_ACQUIRE);
+    status->worker_loops = (uint32_t)(worker >> 32);
+    status->worker_point = (uint32_t)worker;
+    status->transport_point = __atomic_load_n(&diagnosticTransport, __ATOMIC_ACQUIRE);
+    status->gate_calls = (uint32_t)(gate >> 32); status->gate_returns = (uint32_t)gate;
+    status->gate_point = __atomic_load_n(&diagnosticGatePoint, __ATOMIC_ACQUIRE);
+    status->delivery_point = __atomic_load_n(&diagnosticDeliveryPoint, __ATOMIC_ACQUIRE);
+    status->delivery_sequence = __atomic_load_n(&diagnosticDeliverySequence, __ATOMIC_ACQUIRE);
+    status->deliveries = __atomic_load_n(&diagnosticDeliveries, __ATOMIC_ACQUIRE);
+    status->copy_calls = (uint32_t)(copy >> 32); status->copy_returns = (uint32_t)copy;
+    status->interval_calls = (uint32_t)(interval >> 32); status->interval_returns = (uint32_t)interval;
+    status->interval_requested = __atomic_load_n(&diagnosticRequested, __ATOMIC_ACQUIRE);
+    status->interval_accepted = __atomic_load_n(&diagnosticAccepted, __ATOMIC_ACQUIRE);
+    status->interval_result = __atomic_load_n(&diagnosticIntervalResult, __ATOMIC_ACQUIRE);
+    status->sample_sequence = __atomic_load_n(&diagnosticSampleSequence, __ATOMIC_ACQUIRE);
+    status->sample_lux = __atomic_load_n(&diagnosticLux, __ATOMIC_ACQUIRE);
+    status->state_flags = __atomic_load_n(&diagnosticFlags, __ATOMIC_ACQUIRE);
+}
+
 #ifndef NEZHA_ALS_HOST_MODEL
 static_assert(sizeof(IOService) == 0x88, "selected27 IOService layout");
 static_assert(sizeof(IOHIDEventService) == 0xc8, "actual24A446 event-service layout");
@@ -74,11 +119,22 @@ class NativeNezhaAls : public IOHIDEventService {
     bool stopped = false;
     bool paused = false;
 
+    // Caller holds stateLock, or is configuring before singleton publication.
+    void recordState() {
+        __atomic_store_n(&diagnosticSampleSequence, state.latest.sequence, __ATOMIC_RELAXED);
+        __atomic_store_n(&diagnosticLux, state.latest.integer_lux, __ATOMIC_RELAXED);
+        uint32_t flags = (published ? 1u : 0u) | (state.ready ? 2u : 0u) |
+            (paused ? 4u : 0u) | (stopped ? 8u : 0u) | (state.pending ? 16u : 0u) |
+            (state.latest.valid ? 32u : 0u);
+        __atomic_store_n(&diagnosticFlags, flags, __ATOMIC_RELEASE);
+    }
+
     static IOReturn beginAction(OSObject *owner, void *arg, void *, void *, void *) {
         auto self = static_cast<NativeNezhaAls *>(owner);
         if (self->stopped) return kIOReturnNotReady;
         IOLockLock(self->stateLock);
         bool ok = nezha_als_begin(&self->state, *static_cast<uint64_t *>(arg));
+        self->recordState();
         IOLockUnlock(self->stateLock);
         if (ok) self->timer->cancelTimeout();
         return ok ? kIOReturnSuccess : kIOReturnBadArgument;
@@ -90,6 +146,7 @@ class NativeNezhaAls : public IOHIDEventService {
         if (self->stopped) return kIOReturnNotReady;
         IOLockLock(self->stateLock);
         bool ok = nezha_als_ready(&self->state, ready->epoch, ready->ready);
+        self->recordState();
         IOLockUnlock(self->stateLock);
         if (ok && !ready->ready) self->timer->cancelTimeout();
         return ok ? kIOReturnSuccess : kIOReturnBadArgument;
@@ -99,6 +156,7 @@ class NativeNezhaAls : public IOHIDEventService {
         if (self->stopped || self->paused) return kIOReturnNotReady;
         IOLockLock(self->stateLock);
         int result = nezha_als_submit(&self->state, static_cast<nezha_als_sample *>(arg));
+        self->recordState();
         IOLockUnlock(self->stateLock);
         if (result == 1) self->timer->setTimeoutUS(1);
         else if (result == -1) self->timer->cancelTimeout();
@@ -109,10 +167,12 @@ class NativeNezhaAls : public IOHIDEventService {
         auto self = static_cast<NativeNezhaAls *>(owner);
         if (self->stopped) return kIOReturnNotReady;
         auto operation = static_cast<WorkerArg *>(arg);
+        __atomic_store_n(&diagnosticGatePoint, 2u, __ATOMIC_RELEASE);
         // Selected XNU IOCommandGate runs actions on the calling thread and
         // uses a recursive workloop lock. Nested ready/sample stay on the sole
         // transport worker. No state/queue lock is held across their gate entry.
         *operation->result = operation->action(operation->context);
+        __atomic_store_n(&diagnosticGatePoint, 3u, __ATOMIC_RELEASE);
         return kIOReturnSuccess;
     }
     static IOReturn intervalAction(OSObject *owner, void *arg, void *, void *, void *) {
@@ -129,6 +189,8 @@ class NativeNezhaAls : public IOHIDEventService {
             self->state.latest.valid = false;
             self->state.pending = false;
         }
+        __atomic_store_n(&diagnosticAccepted, interval, __ATOMIC_RELEASE);
+        self->recordState();
         IOLockUnlock(self->stateLock);
         if (!interval) self->timer->cancelTimeout();
         return self->setProperty(kIOHIDReportIntervalKey, interval, 32) ?
@@ -143,20 +205,25 @@ class NativeNezhaAls : public IOHIDEventService {
         self->state.ready = false;
         self->state.latest.valid = false;
         self->state.pending = false;
+        self->recordState();
         IOLockUnlock(self->stateLock);
         self->timer->cancelTimeout();
         return kIOReturnSuccess;
     }
     void process() {
+        __atomic_store_n(&diagnosticDeliveryPoint, 1u, __ATOMIC_RELEASE);
         struct nezha_als_sample sample;
         IOLockLock(stateLock);
         bool valid = !stopped && !paused && state.ready && state.latest.valid && state.pending;
         sample = state.latest;
         state.pending = false;
+        recordState();
         IOLockUnlock(stateLock);
-        if (!valid) return;
+        if (!valid) { __atomic_store_n(&diagnosticDeliveryPoint, 9u, __ATOMIC_RELEASE); return; }
+        __atomic_store_n(&diagnosticDeliverySequence, sample.sequence, __ATOMIC_RELEASE);
         IOHIDEvent *event = makeAmbientEvent(sample.timestamp, sample.integer_lux);
-        if (!event) return;
+        if (!event) { __atomic_store_n(&diagnosticDeliveryPoint, 10u, __ATOMIC_RELEASE); return; }
+        __atomic_store_n(&diagnosticDeliveryPoint, 2u, __ATOMIC_RELEASE);
         // Backend mutations and timer delivery share the workloop gate. The
         // sample is cached before publication so the original client's initial
         // copyEvent can obtain actual data even before its event callback opens.
@@ -164,19 +231,27 @@ class NativeNezhaAls : public IOHIDEventService {
         if (first) {
             IOLockLock(stateLock);
             published = true;
+            recordState();
             IOLockUnlock(stateLock);
+            __atomic_store_n(&diagnosticDeliveryPoint, 3u, __ATOMIC_RELEASE);
             registerService();
+            __atomic_store_n(&diagnosticDeliveryPoint, 4u, __ATOMIC_RELEASE);
             nezha_als_published = 1;
             nezha_als_stage = 2;
             printf("NEZHA ALS: real integer-lux service registered;epoch=%llu seq=%llu ticks=%llu lux=%u\n",
                 (unsigned long long)sample.epoch, (unsigned long long)sample.sequence,
                 (unsigned long long)sample.timestamp, sample.integer_lux);
         }
+        __atomic_store_n(&diagnosticDeliveryPoint, 5u, __ATOMIC_RELEASE);
         dispatchEvent(event);
+        __atomic_store_n(&diagnosticDeliveryPoint, 6u, __ATOMIC_RELEASE);
         releaseAmbientEvent(event);
+        __atomic_store_n(&diagnosticDeliveryPoint, 7u, __ATOMIC_RELEASE);
         IOLockLock(stateLock);
         dispatched++;
         IOLockUnlock(stateLock);
+        __atomic_fetch_add(&diagnosticDeliveries, 1u, __ATOMIC_RELAXED);
+        __atomic_store_n(&diagnosticDeliveryPoint, 8u, __ATOMIC_RELEASE);
     }
     static void fired(OSObject *owner, IOTimerEventSource *) {
         static_cast<NativeNezhaAls *>(owner)->process();
@@ -209,7 +284,10 @@ public:
     bool configure(const struct nezha_als_backend_ops *ops, uint64_t epoch) {
         backend = *ops;
         intervalUs = ops->initial_interval_us;
-        return nezha_als_begin(&state, epoch);
+        __atomic_store_n(&diagnosticAccepted, intervalUs, __ATOMIC_RELEASE);
+        bool result = nezha_als_begin(&state, epoch);
+        recordState();
+        return result;
     }
     IOWorkLoop *getWorkLoop() const override { return loop; }
     bool begin(uint64_t epoch) {
@@ -225,7 +303,12 @@ public:
     }
     bool worker(int (*action)(void *), void *context, int *result) {
         WorkerArg arg = {action, context, result};
-        return gate->runAction(&NativeNezhaAls::workerAction, &arg) == kIOReturnSuccess;
+        __atomic_fetch_add(&diagnosticGate, UINT64_C(1) << 32, __ATOMIC_RELAXED);
+        __atomic_store_n(&diagnosticGatePoint, 1u, __ATOMIC_RELEASE);
+        bool accepted = gate->runAction(&NativeNezhaAls::workerAction, &arg) == kIOReturnSuccess;
+        __atomic_store_n(&diagnosticGatePoint, 4u, __ATOMIC_RELEASE);
+        __atomic_fetch_add(&diagnosticGate, UINT64_C(1), __ATOMIC_RELEASE);
+        return accepted;
     }
     void snapshot(struct nezha_als_status *status) {
         IOLockLock(stateLock);
@@ -239,20 +322,21 @@ public:
         IOLockUnlock(stateLock);
     }
     IOHIDEvent *copyEvent(IOHIDEventType type, IOHIDEvent *, IOOptionBits) override {
-        if (type != nezhaAlsEventType) return nullptr;
+        __atomic_fetch_add(&diagnosticCopy, UINT64_C(1) << 32, __ATOMIC_RELAXED);
+        if (type != nezhaAlsEventType) return completeCopy(nullptr);
         IOLockLock(stateLock);
         struct nezha_als_sample sample = state.latest;
         bool valid = published && !stopped && !paused && state.ready && sample.valid;
         IOLockUnlock(stateLock);
-        if (!valid) return nullptr;
+        if (!valid) return completeCopy(nullptr);
         IOHIDEvent *event = makeAmbientEvent(sample.timestamp, sample.integer_lux);
-        if (!event) return nullptr;
+        if (!event) return completeCopy(nullptr);
         IOLockLock(stateLock);
         valid = !stopped && !paused && state.ready && state.latest.valid &&
             state.latest.epoch == sample.epoch && state.latest.sequence == sample.sequence;
         IOLockUnlock(stateLock);
-        if (!valid) { releaseAmbientEvent(event); return nullptr; }
-        return event;
+        if (!valid) { releaseAmbientEvent(event); return completeCopy(nullptr); }
+        return completeCopy(event);
     }
     IOReturn setProperties(OSObject *properties) override {
         auto dictionary = OSDynamicCast(OSDictionary, properties);
@@ -262,7 +346,12 @@ public:
             kIOReturnBadArgument : kIOReturnUnsupported;
         if (interval->unsigned64BitValue() > UINT32_MAX) return kIOReturnBadArgument;
         uint32_t value = interval->unsigned32BitValue();
-        return gate->runAction(&NativeNezhaAls::intervalAction, &value);
+        __atomic_fetch_add(&diagnosticInterval, UINT64_C(1) << 32, __ATOMIC_RELAXED);
+        __atomic_store_n(&diagnosticRequested, value, __ATOMIC_RELEASE);
+        IOReturn result = gate->runAction(&NativeNezhaAls::intervalAction, &value);
+        __atomic_store_n(&diagnosticIntervalResult, result, __ATOMIC_RELEASE);
+        __atomic_fetch_add(&diagnosticInterval, UINT64_C(1), __ATOMIC_RELEASE);
+        return result;
     }
     void stop(IOService *provider) override {
         if (gate->runAction(&NativeNezhaAls::stopAction) == kIOReturnSuccess) {

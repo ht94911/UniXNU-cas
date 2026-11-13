@@ -37,6 +37,34 @@ struct nezha_als_status {
     bool sampling_paused;
 };
 
+// Read without entering the HID gate or state lock. The owner and transport
+// points have one writer, the existing DSP worker. Call/return pairs are read
+// from one atomic word; the other fields are independent progress observations.
+// Counters are diagnostic uint32 values, not transport sequence identities.
+struct nezha_als_run_status {
+    uint32_t worker_loops, worker_point, transport_point;
+    uint32_t gate_calls, gate_returns, gate_point;
+    uint32_t delivery_point, deliveries;
+    uint64_t delivery_sequence;
+    uint32_t copy_calls, copy_returns;
+    uint32_t interval_calls, interval_returns, interval_requested, interval_accepted;
+    int32_t interval_result;
+    uint64_t sample_sequence;
+    uint32_t sample_lux, state_flags;
+};
+enum nezha_als_worker_point {
+    NezhaAlsWorkerLoop = 1, NezhaAlsWorkerAdsp, NezhaAlsWorkerAdspReturned,
+    NezhaAlsWorkerSensor, NezhaAlsWorkerSensorReturned, NezhaAlsWorkerCrash,
+    NezhaAlsWorkerPublish, NezhaAlsWorkerSleep, NezhaAlsWorkerExited
+};
+enum nezha_als_transport_point {
+    NezhaAlsTransportShared = 1, NezhaAlsTransportSharedReturned,
+    NezhaAlsTransportMapper, NezhaAlsTransportMapperReturned,
+    NezhaAlsTransportGlink, NezhaAlsTransportGlinkReturned,
+    NezhaAlsTransportFrontend, NezhaAlsTransportFrontendReturned,
+    NezhaAlsTransportDrain, NezhaAlsTransportDrainReturned
+};
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -59,6 +87,9 @@ bool nezha_als_frontend_sample(const struct nezha_als_sample *sample);
 bool nezha_als_frontend_worker(int (*action)(void *), void *context, int *result);
 bool nezha_als_frontend_status(struct nezha_als_status *status);
 void nezha_als_frontend_stop(void);
+void nezha_als_diagnostic_worker(uint32_t point);
+void nezha_als_diagnostic_transport(uint32_t point);
+void nezha_als_diagnostic_status(struct nezha_als_run_status *status);
 #ifdef __cplusplus
 }
 #endif
