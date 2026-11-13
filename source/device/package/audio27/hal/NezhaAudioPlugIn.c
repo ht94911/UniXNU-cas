@@ -23,8 +23,11 @@ enum {kPlugIn=kAudioObjectPlugInObject,kDevice=2,kOutStream=3,kInStream=4,kVolum
 #define kDeviceUID "NezhaAudio27Device"
 #define kModelUID "NezhaAudio27Model"
 static const Float64 kRate=NA_AUDIO_RATE;
-/* Zero timestamps follow the10ms DSP period, independently of ring capacity. */
-static const UInt32 kZeroPeriod=NA_AUDIO_PERIOD_FRAMES;
+/* CoreAudio requires a timestamp period beyond safety offset + one IO cycle.
+ * Half the ring satisfies that requirement and still leaves room for the
+ * first WriteMix block, which is scheduled near the next timestamp boundary.
+ * This HAL clock interval is independent of the DSP's 480-frame periods. */
+static const UInt32 kZeroPeriod=NA_AUDIO_RING_FRAMES/2;
 static const Float32 kMinDb=-36.0f;
 static pthread_mutex_t gLock=PTHREAD_MUTEX_INITIALIZER;
 static atomic_uint gRefs=1;
