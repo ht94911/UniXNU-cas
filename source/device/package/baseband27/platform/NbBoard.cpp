@@ -90,6 +90,7 @@ int pas_sync(void *v,void *cpu,uint64_t pa,uint64_t bytes){
     return NB_OWNERSHIP;
 }
 void transport_trace(void *,const char *stage,int result){log_stage(stage,result);}
+int pas_query(void *,unsigned command,unsigned image,uint64_t raw[4]){return nezha_bb_scm_query(command,image,raw);}
 int smem_lock(void *){int r=sm8850_smem_trylock(board.common,NB_OWNER);return !r?NB_OK:r==Sm8850Busy?NB_BUSY:NB_IO;}
 void smem_unlock(void *){if(sm8850_smem_unlock(board.common,NB_OWNER))board.error=NB_OWNERSHIP;}
 void doorbell(void *,uint32_t signal){if((signal!=0&&signal!=2)||sm8850_ipcc_send(board.common,0x20000|signal))board.error=NB_IO;}
@@ -217,7 +218,7 @@ extern "C" int nezha_bb_bind(NbBasebandConfig *config){
     board.rmtfs.count=4;board.rmtfs.shared=board.shared.cpu;board.rmtfs.shared_phys=board.shared.physical;board.rmtfs.shared_bytes=board.shared.bytes;
     board.rmtfs.sync=remote_sync;board.rmtfs.context=&board;if(nb_rmtfs_init(&board.rmtfs))return fail("ram-store",NB_WIRE);
     log_stage("ram-store",NB_OK);
-    config->platform={&board,ipa_power,ipa_smmu,qmp_send};config->mss={&board,smem_lock,smem_unlock,doorbell,proxy,dsm_assign,transport_trace};
+    config->platform={&board,ipa_power,ipa_smmu,qmp_send};config->mss={&board,smem_lock,smem_unlock,doorbell,proxy,dsm_assign,transport_trace,pas_query};
     config->memshare={&board,memory_alloc,memory_release,memory_assign};config->tftp={&board,lookup,read_file};
     config->ipa_fws=&board.pas[0];config->modem=&board.pas[1];config->modem_dtb=&board.pas[2];config->rmtfs=&board.rmtfs;
     void *handle=OSMetaClass::preModLoad(g_kernel_kmod_info.name);if(!handle)return fail("classes",NB_IO);

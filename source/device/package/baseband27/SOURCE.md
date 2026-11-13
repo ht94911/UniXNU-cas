@@ -371,3 +371,22 @@ watchdog基线同doorbell取在主固件认证前，旧事件不代表新固件�
 UniXNU/main新7d85ede仅文档记录、myron-next f1a1bfe，固定GPU024框架不升级。
 宿主实际MSS状态机已验成功/两停止失败不写/繁忙/-22延迟/错尺寸/
 旧ready/新watchdog/remote索引；必要Mac原生构建及实机结果待验证。
+
+
+## 17. 原始PAS返回与PIL只读前检（008，2026-11-13）
+
+007已实机到MSS proxy完成；PAS4和0x26停止均被包装为NB_IO(-2)，
+原始安全返回未记录。旧MSS/SIM/IPA与成品不改，008补这一个真实诊断缺口。
+按同SoC音频 `NezhaScm.c::nezha_audio_pas_call/query` 及已实际使用的
+PIL helper，在原SCM/WAITQ拥有者记录实际a0..a3后再返回原状态。
+QUERY7为支持状态，QUERY9为允许固件内存范围，a1是查询数据不能作为setter错误。
+公开tz_syscall_pub.h的GET_MEM_AREA_ID=9确认语义，它不能证明remote stopped。
+
+MSS在proxy完成后且第一次stop之前执行固定4查询（4:7/9，0x26:7/9），
+每条提交前记录query_mask，失败和后续tick不再执行。查询不修改停止路径，
+任一实际stop失败仍阻止DSM/旧SMEM/基带加载；rawreturn保留未知TZ码和边界。
+无新SMC/锁/USB任意选择器，无猜测PAS ID、NV、运营商写入。
+宿主实际wrapper和MSS已验查询data非setter错误、a0失败、实际-22解密路径、
+proxy/查询/stop顺序、失败不绕过、繁忙/后续tick不重复。29Linux17头编译screen通过，
+真实iOS27原生对象及下一实机rawreply待验证。
+来源仍固定GPU024/SMMU/USB/common；最新fetch UniXNU7d85ede、myronf1a1bfe。

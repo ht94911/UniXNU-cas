@@ -7,13 +7,20 @@
 static _Alignas(4096) uint8_t memory[0x200000], original[0x10000];
 static NbMss m; static NbPas main_image, dtb_image; static QcomSmp2p peer;
 static unsigned lock_busy, locked, stops, assigns, powers, power_off, auths, busy_stop, decrypt;
-static int fail_main, fail_dtb; static volatile uint32_t *desc;
+static unsigned queries;
+static int fail_main, fail_dtb, query_error; static volatile uint32_t *desc;
 static void wr(unsigned at,unsigned v) { memcpy(memory+at,&v,4); }
 static int lock(void *v) { (void)v; if(lock_busy)return NB_BUSY; assert(!locked);locked=1;return 0; }
 static void unlock(void *v) { (void)v; assert(locked);locked=0; }
 static void bell(void *v,unsigned sig) { (void)v; assert(sig==0 || sig==2); assert(!locked); }
 static int proxy(void *v,int on) { (void)v;if(on)++powers;else ++power_off;return 0; }
 static int assign(void *v,int on) { (void)v; assert(on && m.masters_stopped && m.initial_stop_mask==3);++assigns;return 0; }
+static int query(void *v,unsigned cmd,unsigned image,uint64_t raw[4]) {
+    (void)v;assert(!locked && powers && !stops && !assigns && !m.p2p.out && queries<4);
+    assert(cmd==((queries&1)?9u:7u) && image==(queries<2?4u:0x26u));++queries;
+    raw[0]=query_error ? 1:0;raw[1]=1;raw[2]=0x8aa00000;raw[3]=0x99500000;
+    return query_error;
+}
 static int pas(void *v,unsigned cmd,unsigned id,uint64_t a,uint64_t b)
 {
     (void)v;(void)a;(void)b; assert(!locked && powers && (id==4 || id==0x26));
@@ -32,13 +39,13 @@ static volatile uint8_t *allocate(unsigned id,unsigned bytes)
 static void fixture(unsigned bad_out,unsigned bad_fifo)
 {
     memset(memory,0,sizeof memory);memset(&m,0,sizeof m);memset(&main_image,0,sizeof main_image);memset(&dtb_image,0,sizeof dtb_image);
-    lock_busy=locked=stops=assigns=powers=power_off=auths=busy_stop=decrypt=0;fail_main=fail_dtb=0;
+    lock_busy=locked=stops=assigns=powers=power_off=auths=busy_stop=decrypt=queries=0;fail_main=fail_dtb=query_error=0;
     unsigned toc=sizeof memory-4096,part=0x10000,size=0x10000;
     wr(toc,0x434f5424);wr(toc+4,1);wr(toc+8,1);wr(toc+32,part);wr(toc+36,size);wr(toc+44,1u<<16);wr(toc+48,64);
     wr(part,0x54525024);wr(part+4,1u<<16);wr(part+8,size);wr(part+12,32);wr(part+16,size);
     main_image.pas=4;dtb_image.pas=0x26;main_image.stage=dtb_image.stage=NbPasInit;
     main_image.ops.pas=pas;dtb_image.ops.pas=pas;main_image.timeout=dtb_image.timeout=30000;
-    NbMssOps ops={0,lock,unlock,bell,proxy,assign,0};
+    NbMssOps ops={0,lock,unlock,bell,proxy,assign,0,query};
     assert(!nb_mss_init(&m,memory,sizeof memory,&main_image,&dtb_image,&ops));
     memset((void *)allocate(428,bad_out ? 344:340),0xaa,bad_out ? 344:340);
     qcom_smp2p_init_out(&peer,(volatile uint32_t *)allocate(435,340),1,0);
@@ -70,6 +77,8 @@ int main(void)
     assert(desc[0]==0 && desc[1]==0 && desc[2]==0 && desc[3]==8);
     assert(nb_mss_poll(&m,15)==NB_OK && m.glink_polled && m.handed && power_off==1);
     assert(nb_mss_poll(&m,16)==NB_OK && stops==2 && powers==1 && assigns==1 && auths==1);
+    assert(queries==4 && m.query_mask==15);
+    fixture(0,0);query_error=NB_IO;to_dtb();assert(queries==4 && m.query_mask==15);
     /* Stale SMEM ready and shared lock contention cannot publish transport. */
     fixture(0,0);to_dtb();authenticate();assert(!m.glink_ready && !m.handed);
     assert(nb_mss_poll(&m,6000)==NB_TIMEOUT && !m.glink_ready);
@@ -84,6 +93,7 @@ int main(void)
     /* Busy submits nothing; EINVAL uses the existing decrypt stop schedule. */
     fixture(0,0);busy_stop=1;decrypt=1;assert(nb_mss_poll(&m,0)==NB_PENDING);
     assert(nb_mss_poll(&m,1)==NB_PENDING && !stops);assert(nb_mss_poll(&m,2)==NB_PENDING && m.retry_at==102);
+    assert(queries==4 && m.query_mask==15);
     assert(nb_mss_poll(&m,101)==NB_PENDING && !stops);assert(nb_mss_poll(&m,102)==NB_PENDING && stops==1);
     assert(nb_mss_poll(&m,103)==NB_PENDING && stops==2 && m.masters_stopped);
     assert(nb_mss_poll(&m,104)==NB_PENDING && m.stage==NbMssAssign);

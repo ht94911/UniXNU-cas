@@ -190,6 +190,15 @@ int nb_mss_poll(NbMss *m, uint64_t now)
         if (!r) m->stage = NbMssInitialStopMain;
         break;
     case NbMssInitialStopMain:
+        if (!m->query_mask && m->ops.query) {
+            const unsigned ids[2]={NB_MSS_PAS,NB_MSS_DTB_PAS},commands[2]={7,9};
+            for (unsigned i=0;i<2;++i) for (unsigned j=0;j<2;++j) {
+                uint64_t raw[4]={0,0,0,0};
+                /* Mark before invoking: failed observations are not replayed. */
+                m->query_mask|=(uint8_t)(1u<<(2*i+j));
+                (void)m->ops.query(m->ops.context,commands[j],ids[i],raw);
+            }
+        }
         if (now < m->retry_at) return NB_PENDING;
         r = m->main_image->ops.pas(m->main_image->ops.context, NB_PAS_SHUTDOWN, NB_MSS_PAS, 0, 0);
         if (r == NB_BUSY) return NB_PENDING;

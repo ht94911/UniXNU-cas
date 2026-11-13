@@ -62,6 +62,9 @@ typedef struct {
      * shutdown. NB_PENDING keeps the same request; an error is terminal (no replay of a half-done assignment). */
     int (*assign)(void *context, int on);
     void (*trace)(void *context, const char *stage, int result);
+    /* Four fixed read-only queries after proxy and before the first PAS stop.
+     * Neither query data nor query failure supplies stopped/DMA proof. */
+    int (*query)(void *context, unsigned command, unsigned image, uint64_t result[4]);
 } NbMssOps;
 
 enum {
@@ -83,7 +86,7 @@ typedef struct {
     uint32_t stage, slave, ipa_in, ipa_in_changed;
     uint32_t doorbells, auth_doorbells, wdog_events, auth_wdog_events;
     uint8_t assigned, voted, handed, glink_ready, glink_rx_attached, decrypt_retries, glink_polled;
-    uint8_t masters_stopped, initial_stop_mask;
+    uint8_t masters_stopped, initial_stop_mask, query_mask;
     uint64_t deadline, retry_at;
     int error, cleanup_error, initial_stop[2];
     char crash_reason[96];
