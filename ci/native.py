@@ -146,12 +146,15 @@ def build(framework, work):
     if probe:
         return probe
     config = work / 'build.toml'
+    # The archive recipe runs in the exact UniXNU target tree. The
+    # environment carries the already hash-checked SM8850 common source.
+    env = dict(os.environ, NEZHA_CAMERA_SHARED_SOC=str(work / 'soc'))
     commands = [
         ['python3', framework / 'unixnu', 'defconfig', 'nezha_ios27_defconfig', '--config', config],
         ['python3', framework / 'unixnu', 'kernel', '--skip-prelink', '--config', config],
     ]
     for index, command in enumerate(commands):
-        code = run(command, cwd=framework, log=logs / ('step-' + str(index) + '.log'))
+        code = run(command, cwd=framework, env=env, log=logs / ('step-' + str(index) + '.log'))
         if code:
             return code
     return 0

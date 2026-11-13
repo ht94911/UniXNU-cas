@@ -23,7 +23,7 @@ static char path[64];
 static unsigned step;
 static bool active;
 
-static int journal_append(const char *line, unsigned bytes, bool create)
+static int write_file(const char *target, const void *buffer, unsigned bytes, unsigned limit, bool create)
 {
     const uint32_t state = native_data_persist_state;
     if ((state != 2 && state != 3) || native_data_persist_errors != 0) {
@@ -32,7 +32,7 @@ static int journal_append(const char *line, unsigned bytes, bool create)
     vfs_context_t ctx = vfs_context_kernel();
     vnode_t file = NULLVP;
     const int flags = FWRITE | O_NOFOLLOW | (create ? (O_CREAT | O_EXCL) : O_APPEND);
-    int error = vnode_open(path, flags, 0600, 0, &file, ctx);
+    int error = vnode_open(target, flags, 0600, 0, &file, ctx);
     if (error != 0) {
         return error;
     }
@@ -47,12 +47,12 @@ static int journal_append(const char *line, unsigned bytes, bool create)
         !VATTR_IS_SUPPORTED(&attr, va_nlink) || attr.va_uid != 0 || attr.va_nlink != 1)) {
         error = EACCES;
     }
-    if (error == 0 && (attr.va_data_size > JournalLimit || bytes > JournalLimit - attr.va_data_size)) {
+    if (error == 0 && (attr.va_data_size > limit || bytes > limit - attr.va_data_size)) {
         error = EFBIG;
     }
     if (error == 0) {
         int residual = (int)bytes;
-        error = vn_rdwr(UIO_WRITE, file, (caddr_t)line, (int)bytes, 0, UIO_SYSSPACE,
+        error = vn_rdwr(UIO_WRITE, file, (caddr_t)buffer, (int)bytes, 0, UIO_SYSSPACE,
             IO_APPEND | IO_SYNC | IO_NOAUTH, vfs_context_ucred(ctx), &residual, vfs_context_proc(ctx));
         if (error == 0 && residual != 0) {
             error = EIO;
@@ -93,7 +93,7 @@ int nezha_camera_journal_begin(unsigned token, unsigned mode)
     if (size <= 0 || (size_t)size >= sizeof(line)) {
         return EINVAL;
     }
-    const int error = journal_append(line, (unsigned)size, true);
+    const int error = write_file(path, line, (unsigned)size, JournalLimit, true);
     active = error == 0;
     return error;
 }
@@ -109,9 +109,19 @@ int nezha_camera_journal_mark(unsigned phase, unsigned status, unsigned a, unsig
     if (size <= 0 || (size_t)size >= sizeof(line)) {
         return EINVAL;
     }
-    const int error = journal_append(line, (unsigned)size, false);
+    const int error = write_file(path, line, (unsigned)size, JournalLimit, false);
     if (error != 0) {
         active = false;
     }
     return error;
+}
+
+int nezha_camera_journal_save_pattern(unsigned token, const void *frame, unsigned bytes)
+{
+    if (!active || !token || !frame || bytes != NezhaCameraPatternBytes) {
+        return EINVAL;
+    }
+    char target[64];
+    snprintf(target, sizeof(target), "/private/var/log/nezha-camera-%08x.raw10", token);
+    return write_file(target, frame, bytes, NezhaCameraPatternBytes, true);
 }

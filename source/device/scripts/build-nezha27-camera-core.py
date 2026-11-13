@@ -25,7 +25,7 @@ def tool(env_name, mac_name, local_name):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", type=Path, default=ROOT / "build/nezha27-camera-core")
-    parser.add_argument("--shared-soc", type=Path,
+    parser.add_argument("--shared-soc", type=Path, default=os.environ.get("NEZHA_CAMERA_SHARED_SOC"),
                         help="selected SM8850 native owner source with include/ and src/")
     args = parser.parse_args()
 

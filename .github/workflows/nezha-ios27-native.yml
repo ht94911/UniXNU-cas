@@ -1,7 +1,7 @@
-name: nezha iPhone27 camera acknowledged rail votes and CCI identity
+name: nezha iPhone27 camera TPG2 RAW10 and shared SMMU
 on:
   push:
-    branches: [codex/ios27-camera010-20261113]
+    branches: [codex/ios27-camera011-tpg-20261113]
   workflow_dispatch:
 permissions:
   contents: read

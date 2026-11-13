@@ -121,27 +121,43 @@ static int camera_snapshot(void *cookie, char *output, size_t capacity, size_t *
         sequence != __atomic_load_n(&camera_physical_diagnostic.sequence, __ATOMIC_ACQUIRE)) {
         return QUD_BUSY;
     }
-    const int size = snprintf(output, capacity,
-        "{\"v\":1,\"mode\":%u,\"phase\":%u,\"status\":%u,\"first_failed_phase\":%u,\"first_failed_status\":%u,"
-        "\"request\":%u,"
-        "\"camcc\":[%u,%u,%u,%u],\"cci\":[%u,%u,%u,%u,%u,%u,%u,%u],"
-        "\"mclk\":[%u,%u,%u],\"power\":[%u,%u,%u],\"identity\":[%u,%u,%u,%u,%u,%u],"
-        "\"cleanup\":[%u,%u,%u],\"gpio\":[%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u],"
-        "\"vrm\":[%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u],\"rsc\":[%u,%u,%u,%u,%u,%u,%u,%u]}",
-        words[DiagMode], words[DiagPhase], words[DiagStatus], words[DiagFailedPhase], words[DiagFailedStatus],
-        __atomic_load_n(&probe_request, __ATOMIC_ACQUIRE),
-        words[DiagGdsc], words[DiagGdscStatus], words[DiagCoreAhb], words[DiagCpasAhb],
-        words[DiagCciCommand], words[DiagCciConfig], words[DiagCciBranch], words[DiagCciVersion],
-        words[DiagCciIrq], words[DiagCciQueue0], words[DiagCciQueue1], words[DiagCciFifo],
-        words[DiagMclkCommand], words[DiagMclkConfig], words[DiagMclkBranch],
-        words[DiagPowerOn], words[DiagPowerVotes], words[DiagRpmhStatus],
-        words[DiagIdStatus], words[DiagIdWord], words[DiagIdBytes], words[DiagIdPhase],
-        words[DiagIdIrq], words[DiagIdFifoWord], words[DiagCciQuiet], words[DiagPinsRestored], words[DiagClockRestore],
-        physical[0], physical[1], physical[2], physical[3], physical[4], physical[5],
-        physical[6], physical[7], physical[8], physical[9], physical[10], physical[11],
-        physical[12], physical[13], physical[14], physical[15], physical[16], physical[17],
-        physical[18], physical[19], physical[20], physical[21], physical[22], physical[23],
-        physical[24], physical[25], physical[26], physical[27], physical[28], physical[29], physical[30], physical[31]);
+    int size;
+    if (words[DiagMode] == 4) {
+        size = snprintf(output, capacity,
+            "{\"v\":1,\"mode\":4,\"phase\":%u,\"status\":%u,\"request\":%u,"
+            "\"capture\":[%u,%u,%u,%u,%u,%u,%u,%u,%u,%u],"
+            "\"frames\":[%u,%u,%u,%u,%u,%u,%u,%u,%u,%u],"
+            "\"irq\":[%u,%u,%u],\"smmu\":[%u,%u,%u,%u],"
+            "\"rpmh\":[%u,%u,%u],\"sample\":[%u,%u]}",
+            words[DiagPhase], words[DiagStatus], __atomic_load_n(&probe_request, __ATOMIC_ACQUIRE),
+            physical[0], physical[1], physical[2], physical[3], physical[4], physical[5], physical[6],
+            physical[7], physical[8], physical[9], physical[10], physical[11], physical[12], physical[13],
+            physical[14], physical[15], physical[16], physical[17], physical[18], physical[19],
+            physical[20], physical[21], physical[22], physical[23], physical[24], physical[25], physical[26],
+            physical[27], physical[28], physical[29], physical[30], physical[31]);
+    } else {
+        size = snprintf(output, capacity,
+            "{\"v\":1,\"mode\":%u,\"phase\":%u,\"status\":%u,\"first_failed_phase\":%u,\"first_failed_status\":%u,"
+            "\"request\":%u,"
+            "\"camcc\":[%u,%u,%u,%u],\"cci\":[%u,%u,%u,%u,%u,%u,%u,%u],"
+            "\"mclk\":[%u,%u,%u],\"power\":[%u,%u,%u],\"identity\":[%u,%u,%u,%u,%u,%u],"
+            "\"cleanup\":[%u,%u,%u],\"gpio\":[%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u],"
+            "\"vrm\":[%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u],\"rsc\":[%u,%u,%u,%u,%u,%u,%u,%u]}",
+            words[DiagMode], words[DiagPhase], words[DiagStatus], words[DiagFailedPhase], words[DiagFailedStatus],
+            __atomic_load_n(&probe_request, __ATOMIC_ACQUIRE),
+            words[DiagGdsc], words[DiagGdscStatus], words[DiagCoreAhb], words[DiagCpasAhb],
+            words[DiagCciCommand], words[DiagCciConfig], words[DiagCciBranch], words[DiagCciVersion],
+            words[DiagCciIrq], words[DiagCciQueue0], words[DiagCciQueue1], words[DiagCciFifo],
+            words[DiagMclkCommand], words[DiagMclkConfig], words[DiagMclkBranch],
+            words[DiagPowerOn], words[DiagPowerVotes], words[DiagRpmhStatus],
+            words[DiagIdStatus], words[DiagIdWord], words[DiagIdBytes], words[DiagIdPhase],
+            words[DiagIdIrq], words[DiagIdFifoWord], words[DiagCciQuiet], words[DiagPinsRestored], words[DiagClockRestore],
+            physical[0], physical[1], physical[2], physical[3], physical[4], physical[5],
+            physical[6], physical[7], physical[8], physical[9], physical[10], physical[11],
+            physical[12], physical[13], physical[14], physical[15], physical[16], physical[17],
+            physical[18], physical[19], physical[20], physical[21], physical[22], physical[23],
+            physical[24], physical[25], physical[26], physical[27], physical[28], physical[29], physical[30], physical[31]);
+    }
     if (size < 0 || (size_t)size >= capacity) {
         *truncated = 1;
         return QUD_FAILED;
@@ -251,14 +267,26 @@ static void camera_test_pattern(void)
         (void)hardware_mark(CameraWorkerFailure, ENOMEM, AopCommandDb, 0, 0);
         return;
     }
+    uint8_t *sample = IOMallocData(NezhaCameraPatternBytes);
+    if (sample == NULL) {
+        ml_io_unmap(db, AopCommandDbBytes);
+        record_diagnostic(CameraWorkerFailure, ENOMEM);
+        (void)hardware_mark(CameraWorkerFailure, ENOMEM, NezhaCameraPatternBytes, 0, 0);
+        return;
+    }
     const struct NezhaCameraNativeCaptureRequest request = {
         .test_pattern = true, .slot = slot, .bank = bank, .asid = asid,
         .command_database = (const uint8_t *)db, .database_bytes = AopCommandDbBytes,
+        .raw_sample = sample, .raw_sample_capacity = NezhaCameraPatternBytes,
         .checkpoint = capture_checkpoint, .rpmh_checkpoint = main_rpmh_checkpoint,
     };
     const bool passed = nezha_camera_native_capture(&request, &result);
     const struct NezhaCameraFrameResult *frames = &result.frames;
     if (result.cleaned) ml_io_unmap(db, AopCommandDbBytes);
+    const int saved = passed ? nezha_camera_journal_save_pattern(journal_token, sample,
+        (unsigned)result.raw_sample_bytes) : 0;
+    IOFreeData(sample, NezhaCameraPatternBytes);
+    const unsigned status = passed ? (unsigned)saved : EIO;
     diagnostic_physical[0] = result.step;
     diagnostic_physical[1] = result.status;
     diagnostic_physical[2] = (unsigned)result.cleanup_step;
@@ -289,8 +317,10 @@ static void camera_test_pattern(void)
     diagnostic_physical[27] = result.rpmh_address;
     diagnostic_physical[28] = result.rpmh_ack;
     diagnostic_physical[29] = result.rpmh_reply;
-    record_diagnostic(CameraFinished, passed ? 0 : EIO);
-    (void)hardware_mark(80, passed ? 0 : EIO, result.step, result.status, (unsigned)result.cleanup_step);
+    diagnostic_physical[30] = (uint32_t)result.raw_sample_bytes;
+    diagnostic_physical[31] = (uint32_t)saved;
+    record_diagnostic(CameraFinished, status);
+    (void)hardware_mark(80, status, result.step, result.status, (unsigned)result.cleanup_step);
     (void)hardware_mark(81, result.resources.status, (unsigned)result.resources.step,
         result.resources.detail, (unsigned)result.resources.cleanup_step);
     (void)hardware_mark(82, result.dma_status, frames->frames, frames->sof, frames->eof);
@@ -299,13 +329,14 @@ static void camera_test_pattern(void)
     (void)hardware_mark(84, result.smmu_fault.status, result.smmu_fault.syndrome,
         (uint32_t)result.smmu_fault.address, (uint32_t)(result.smmu_fault.address >> 32));
     (void)hardware_mark(85, 0, result.rpmh_address, result.rpmh_ack, result.rpmh_reply);
+    (void)hardware_mark(86, (unsigned)saved, (unsigned)result.raw_sample_bytes, 640, 480);
     printf("NEZHA CAMERA: TPG2 result=%u step=%u status=%u resources=%u/%u/%u dma=%u "
-           "frames=%u sof=%u eof=%u rup=%u irq=%#x/%#x/%#x smmu=%#x cleanup=%u/%u\n",
+           "frames=%u sof=%u eof=%u rup=%u irq=%#x/%#x/%#x smmu=%#x cleanup=%u/%u sample=%u/%d\n",
            (unsigned)passed, result.step, result.status, (unsigned)result.resources.step,
            result.resources.status, result.resources.detail, result.dma_status,
            frames->frames, frames->sof, frames->eof, frames->updated, result.irq_fault,
            result.irq_failure.rx_irq, result.irq_failure.rdi0_irq, result.smmu_fault.status,
-           (unsigned)result.cleaned, (unsigned)result.cleanup_step);
+           (unsigned)result.cleaned, (unsigned)result.cleanup_step, (unsigned)result.raw_sample_bytes, saved);
 }
 #endif
 
