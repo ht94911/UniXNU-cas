@@ -469,3 +469,27 @@ pandora、Pagani、fairlady、cas和umi没有可直接搬的同版统计绑定�
 零区/已有数据两例的2KiB结果与本候选完全相同。ASan/UBSan实际
 SMEM及板级绑定验证两停止门、原标记/尾区保持和重试不重置计数；
 29单元Linux17头编译screen通过，原iOS27目标和真机结果另行验收。
+
+## 21. IPA v5.5 uC描述符首字（012，2026-11-14）
+
+011真机已验证12项统计读回、IPA/MSS认证和fresh-ready，但同IPA注册20后
+自发复位；OEM记录仍为tz_others，没有实际违规地址。012补齐另一个已核实
+的初始化缺口，复位因果关系仍待真机。
+
+同SoC OnePlus SM8850下游5ab2a68的`_ipa_init_sram_v3`在IPA>=v5.5、
+descriptor区非空时，于canary之后写首字`0xABCDEF01`。本机原版ipam.ko
+的0x6d40..0x6d80实际指令相同：版本比较24、检查区大小、构造常量并写入。
+本机布局为descriptor偏移0/大小0x300，uC共享命令区另在0x300/大小0x80；
+011实测SHARED_MEM_SIZE=0xa00，即mem_offset0/mem_size0x5000。
+
+012在现有mem_config中保留canary写入，只补该四字节marker并沿既有printf
+读回；生成器同步修改。原SRAM表、uC命令区、MODEM区、DMA清零范围、
+统计/INIT_DRIVER参数、时钟与SMMU/PAS、GPU024、存储权限均保持。
+
+实际配置函数以宿主MMIO执行，验证当前大小、较大报告、非零restricted
+偏移及无效大小；逐字节核对全部SRAM、共享命令区、descriptor尾区和DMA
+边界。原厂ARM64标记分支不改指令，以显式ipa3_ctx布局执行v5.5/旧版/空区
+三例，只有v5.5非空区写该首字。该证据和ASan/UBSan通过只证明初始化合同。
+开工fetch UniXNU/main7d85ede与myron-nextf1a1bfe；继续沿第10节现成来源
+检索结论，固定GPU024框架不升级。实际iOS27编译、完整IPA握手和移动数据、
+电话/短信结果单独验收。

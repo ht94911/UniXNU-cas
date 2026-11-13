@@ -52,6 +52,14 @@ static int mem_config(struct coachz_ipa *ipa)
             if (at + 4u > CIP_SHARED_BYTES) { printf("COACHZ ipa: canary 0x%x outside ipa-shared\n", at); return -EINVAL; }
             wr(ipa->shared, at, CIP_CANARY);
         }
+    /* IPA v5.5 _ipa_init_sram_v3: publish the uC descriptor marker
+     * after the canaries. Its region is separate from uC command/shared RAM. */
+    if (!cipa_mem[CIPA_MEM_UC_DESC_RAM].size ||
+        cipa_mem[CIPA_MEM_UC_DESC_RAM].offset + 4u > ipa->mem_size)
+        return -EINVAL;
+    const uint32_t descriptor = ipa->mem_offset + cipa_mem[CIPA_MEM_UC_DESC_RAM].offset;
+    wr(ipa->shared, descriptor, 0xabcdef01u);
+    printf("COACHZ ipa: uC descriptor marker 0x%x at 0x%x\n", rd(ipa->shared, descriptor), descriptor);
     __builtin_memset(ipa->zero_virt, 0, CIP_MEM_MAX);
     return 0;
 }
