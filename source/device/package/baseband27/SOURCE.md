@@ -444,3 +444,28 @@ mutex、页表和PAS逻辑分别复用QcomSmem、SM8850 common、ArmSmmu4K及
 以两个进程分别测试缺失/已有项，实际TTBR首尾恒等映射、相邻缺页、
 原DMA/PAS路径均通过；完整ASan/UBSan/Werror宿主回归通过。
 宿主检查不代替原生目标与真机IPA握手、移动数据、电话或短信验收。
+
+## 20. 原厂MSM外设统计初始化（011，2026-11-13）
+
+010实机已确认两MSS初停、497创建/映射、IPA和MSS认证成功；
+收到IPA INDICATION_REGISTER后仍自发TZ复位，与008停在同一位置。
+原厂复位记录没有违规地址，本轮不据此推定XPU或SMMU根因。
+
+已对照同SoC下游`ipa_stats.c::ipa3_peripheral_stats_init`的MSM分支，
+并核本机原版ipam.ko同名函数：统计区首104字节含12条Q6定义的
+记录，类型依次0/1/2/7/8/9/10/11/12/13/17/19，长度均4，
+计数/枚举初值0。010仅复用QcomSmem分配的零区，缺少这个初始化。
+
+011在两MSS成功停止、原SMEM mutex内、IPA/固件开启之前补齐这些
+记录并读回。保持canary、reserved、104字节之后的全部原内容；
+不清空2KiB前缀或102400字节整项。沿已有32位对齐SMEM访问和DSB发布，
+SMMU enable重试不再初始化；原统计地址、页段、QMI字段、DMA、
+IPA/GSI、PAS、DSM、GLINK、GPU024与存储授权保持。
+
+来源为OnePlus SM8850模块仓库5ab2a68的MSM初始化及本机原版函数。
+开工fetch UniXNU/main7d85ede与myron-nextf1a1bfe，固定框架未升级；
+pandora、Pagani、fairlady、cas和umi没有可直接搬的同版统计绑定。
+独立电脑比对执行原厂ARM64函数的MSM分支，只重定位ipa3_ctx两条引用，
+零区/已有数据两例的2KiB结果与本候选完全相同。ASan/UBSan实际
+SMEM及板级绑定验证两停止门、原标记/尾区保持和重试不重置计数；
+29单元Linux17头编译screen通过，原iOS27目标和真机结果另行验收。

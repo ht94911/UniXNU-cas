@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Source-only arm64e/iOS27 build on fixed GPU024: retain the qualified low pool, SIM and PDP fixes, retain raw PAS/MSS/VOICE paths; stop both MSS images before allocating or reusing the SMEM497 statistics item and establishing its original IPA mapping before firmware startup; QMI uses the same actual item address. No private or phone inputs.",
+  "purpose": "Source-only arm64e/iOS27 build on fixed GPU024: retain the qualified low pool, SIM and PDP fixes, retain raw PAS/MSS/VOICE paths and successful initial stops/SMEM497 mapping; initialize only the stock twelve MSM peripheral statistics records under the original mutex before IPA firmware startup; QMI uses the same actual item address. No private or phone inputs.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "7568c24a4d1b88e27e81d9aec76a9b07f9321c27",
+  "device_revision": "3f8cb96a4bd2ee529c71f151acc854a301b01dd5",
   "soc_revision": "703d7b4bb00904b4a6e5d96f9e9bf72eec170f6b",
   "xcode": "26.6",
   "files": {
@@ -105,7 +105,7 @@
     "source/device/package/backlight/NezhaBrightnessRequest.h": "876811b23045660b71c82c5f6ff33780a6f7bfaaa4311c116c71d179b348a59c",
     "source/device/package/backlight/NezhaDsi0.h": "28a964006beffe03238af70bc9eed4c479ca1aeaef574d4583f18f96fd1690e1",
     "source/device/package/backlight/OriginalAppleARMBacklightABI.h": "dab34c394c2123ae4cbfd6648980d5e7b024539773abe5852f7d2622f9bf7b8b",
-    "source/device/package/baseband27/SOURCE.md": "51cce9448d8d3ca97f86cc2aaa0306e14e9d9e9a96599df7e7ef91e4673136fe",
+    "source/device/package/baseband27/SOURCE.md": "6465f3935e74454cacc63a904f31863604cc15635c76406d497766bc53f76947",
     "source/device/package/baseband27/bridge/NbPdpFlow.h": "2ab5ed3b35fe447f291132bc6acb3eeecdb41affa3805524390f71bb997484ab",
     "source/device/package/baseband27/bridge/NbPdpFlow.inc": "af014ecb1f25d494faa9d01128797d404c2f533a411c84fdf22a175b7c9629f8",
     "source/device/package/baseband27/bridge/NbSim.h": "123867fad6f3f2b7aef736637270097b1a7fafb5b64906a9d281bab0e8430537",
@@ -182,12 +182,12 @@
     "source/device/package/baseband27/platform/NbArchive.h": "2ceaf16d3593870f3a0efbe781795a9e318cea75be8bdff3f3ecccfc11abacd7",
     "source/device/package/baseband27/platform/NbBaseband.c": "d8487436bee9cc59da34d413c6f33bed802bb71557ea4115d32af7eaa1041d67",
     "source/device/package/baseband27/platform/NbBaseband.h": "222ae7a499973603aea0a06e492b78ddb084f445056999226f1be134a2721d9d",
-    "source/device/package/baseband27/platform/NbBoard.cpp": "03b9ca0d13483938c64690dd2f0a4440fa9a3ffd63b27dc17c84b55ee09579d1",
+    "source/device/package/baseband27/platform/NbBoard.cpp": "ee295659f26bd5df4ce1f67582f9673d127937918881135df585784e59ce4958",
     "source/device/package/baseband27/platform/NbBridgeGlue.c": "5650f0083e44fe6ed88b5aa3b0592575cd43ad85e9a98598d9771998d1259e2c",
     "source/device/package/baseband27/platform/NbCommon.h": "5c9cfb1bb4806c786d4f92d9d4a004c13f92630cf8fa48dcff480e5d5e8c090a",
     "source/device/package/baseband27/platform/NbFirmware.c": "743e6bb82d54aa7297841b19a6362d4e67d9b4a312da97df8d2737063ef4d1a4",
     "source/device/package/baseband27/platform/NbFirmware.h": "699fc4b825aa299191d7520c310d6d46758c9914daac1710438073ca74bdbe9c",
-    "source/device/package/baseband27/platform/NbIpaSmem.h": "29ca999b23b02417a39d6ea34c3f6a39b73f86e13be385c60b06fa127158ed4d",
+    "source/device/package/baseband27/platform/NbIpaSmem.h": "88422c197632c6123a91110417923ace5ead6f0b565d2fd7f8f417cac43d431d",
     "source/device/package/baseband27/platform/NbLowMemory.h": "d88001a0444c6d5c7102dcb61206ce3e1b7c760779b1362b29456dd621353e11",
     "source/device/package/baseband27/platform/NbMss.c": "6e03631a604250772a86dec86605d89f133cbb131dc386e383a4e2bc2e608cd7",
     "source/device/package/baseband27/platform/NbMss.h": "c0a083ba249db912245c829962529ab12601caad1fbc265f5fbc0e6bb5aeb1bd",
@@ -319,7 +319,7 @@
     "source/device/scripts/nezha_macho_late.py": "fc5a2869ef22bd2c06702930fc0c88b0e071ab7ef851824b403234633040fc37",
     "source/device/scripts/prepare-nezha27-baseband.py": "ce944b75e982386c055ad072dd1a87675675e0ff2460e649686a9cc08e5ea93b",
     "source/device/scripts/qualify-armcpu-instructions.py": "dae7cb3b9faecaac7b268212bbd324ae172d3dffa0e94b06afc4581c9f4abe9b",
-    "source/device/tests/baseband27/ipa_smem_test.c": "8369b88c9640509b17307016b78a7feb6108f5966c4bea5dd73ba231beaa5524",
+    "source/device/tests/baseband27/ipa_smem_test.c": "5b630ac808334e0d861cf02bb71e657234ed37ee3e0f720c061ddf986e51c6af",
     "source/device/tests/baseband27/low_memory_test.c": "2786276035452a9503c364d291545fe82c447f3db7745569378b4cacd0ba5a40",
     "source/device/tests/baseband27/mss_reuse_test.c": "cc6bc4de1511d10993cc6448a4c08af35600f53fe1a99a6b54b09af53e536232",
     "source/device/tests/baseband27/pdp_flow_test.c": "9aad5c6f5e9e6655f1213dfc484c81681d7ffacd481918c48552071b731b4bcd",
@@ -422,6 +422,8 @@
     "existing_IPA_SMEM_identity_mapping": true,
     "statistics_mapping_before_activation": true,
     "initial_MSS_stop_before_IPA": true,
-    "missing_statistics_allocation_after_stop": true
+    "missing_statistics_allocation_after_stop": true,
+    "stock_MSM_peripheral_statistics_before_firmware": true,
+    "existing_canary_reserved_statistics_tail_preserved": true
   }
 }

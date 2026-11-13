@@ -105,10 +105,14 @@ int ipa_smmu(void *,int on,const NbMss *m,const NbIpaMemory *memory,uint32_t *ad
         if(now>=board.ipa_smem_deadline)return fail("ipa-smem",NB_TIMEOUT);
         int r=smem_lock(&board);if(r==NB_BUSY)return NB_PENDING;if(r)return fail("ipa-smem",r);
         NbRange region={};r=nb_ipa_smem_prepare(m,0x81d00000,&region,&board.ipa_smem_address);
+        if(!r)r=nb_ipa_smem_stats_init(m,0x81d00000,board.ipa_smem_address);
+        if(!r)nb_native_publish_writes();
         smem_unlock(&board);if(r||board.error)return fail("ipa-smem",r?r:board.error);
         printf("NEZHA27 BB stage=ipa-smem result=0 item=%u address=%#x bytes=%u map=%#llx+%#llx\n",
                NB_SMEM_IPA_FILTER_TABLE,board.ipa_smem_address,NB_IPA_SMEM_BYTES,
                (unsigned long long)region.base,(unsigned long long)region.bytes);
+        printf("NEZHA27 BB stage=ipa-peripheral-stats result=0 entries=%u bytes=%u\n",
+               NB_IPA_PER_STATS_ENTRIES,NB_IPA_PER_STATS_BYTES);
         r=nb_native_smmu_prepare(&board.smmu,board.common,board.dma,memory,region);
         if(r)return fail("smmu-bind",r);
     }
