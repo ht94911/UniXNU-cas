@@ -28,6 +28,7 @@ static constexpr UInt32 nezhaAlsUsage = 4;
 // Actual 24A446 start reads this key and skips its initial asynchronous
 // registration only when the value is kOSBooleanFalse.
 static constexpr const char *nezhaAlsRegisterServiceKey = "RegisterService";
+static constexpr const char *nezhaAlsContinuousModeKey = "IOHIDALSContinuousMode";
 #ifndef NEZHA_ALS_HOST_MODEL
 extern "C" IOHIDEvent *nezha_als_original_ambient_event(
     uint64_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t)
@@ -123,6 +124,7 @@ class NativeNezhaAls : public IOHIDEventService {
     bool published = false;
     bool stopped = false;
     bool paused = false;
+    bool continuous = false;
 
     // Caller holds stateLock, or is configuring before singleton publication.
     void recordState() {
@@ -130,7 +132,7 @@ class NativeNezhaAls : public IOHIDEventService {
         __atomic_store_n(&diagnosticLux, state.latest.integer_lux, __ATOMIC_RELAXED);
         uint32_t flags = (published ? 1u : 0u) | (state.ready ? 2u : 0u) |
             (paused ? 4u : 0u) | (stopped ? 8u : 0u) | (state.pending ? 16u : 0u) |
-            (state.latest.valid ? 32u : 0u);
+            (state.latest.valid ? 32u : 0u) | (continuous ? 64u : 0u);
         __atomic_store_n(&diagnosticFlags, flags, __ATOMIC_RELEASE);
     }
 
@@ -180,15 +182,19 @@ class NativeNezhaAls : public IOHIDEventService {
         __atomic_store_n(&diagnosticGatePoint, 3u, __ATOMIC_RELEASE);
         return kIOReturnSuccess;
     }
-    static IOReturn intervalAction(OSObject *owner, void *arg, void *, void *, void *) {
+    struct SamplingArg { uint32_t interval; bool continuous, hasInterval, hasContinuous; };
+    static IOReturn samplingAction(OSObject *owner, void *arg, void *, void *, void *) {
         auto self = static_cast<NativeNezhaAls *>(owner);
-        uint32_t interval = *static_cast<uint32_t *>(arg);
+        auto control = static_cast<SamplingArg *>(arg);
         if (self->stopped) return kIOReturnNotReady;
-        if (!self->backend.request_interval) return kIOReturnUnsupported;
-        IOReturn result = self->backend.request_interval(self->backend.context, interval);
+        if (!self->backend.request_sampling) return kIOReturnUnsupported;
+        uint32_t interval = control->hasInterval ? control->interval : self->intervalUs;
+        bool continuous = control->hasContinuous ? control->continuous : self->continuous;
+        IOReturn result = self->backend.request_sampling(self->backend.context, interval, continuous);
         if (result != kIOReturnSuccess) return result;
         IOLockLock(self->stateLock);
         self->intervalUs = interval;
+        self->continuous = continuous;
         self->paused = interval == 0;
         if (self->paused) {
             self->state.latest.valid = false;
@@ -198,8 +204,9 @@ class NativeNezhaAls : public IOHIDEventService {
         self->recordState();
         IOLockUnlock(self->stateLock);
         if (!interval) self->timer->cancelTimeout();
-        return self->setProperty(kIOHIDReportIntervalKey, interval, 32) ?
-            kIOReturnSuccess : kIOReturnNoMemory;
+        bool publishedInterval = !control->hasInterval || self->setProperty(kIOHIDReportIntervalKey, interval, 32);
+        bool publishedMode = !control->hasContinuous || self->setProperty(nezhaAlsContinuousModeKey, (uint32_t)continuous, 32);
+        return publishedInterval && publishedMode ? kIOReturnSuccess : kIOReturnNoMemory;
     }
     static IOReturn stopAction(OSObject *owner, void *, void *, void *, void *) {
         auto self = static_cast<NativeNezhaAls *>(owner);
@@ -324,6 +331,7 @@ public:
         status->published = published;
         status->stopped = stopped;
         status->sampling_paused = paused;
+        status->continuous = continuous;
         IOLockUnlock(stateLock);
     }
     IOHIDEvent *copyEvent(IOHIDEventType type, IOHIDEvent *, IOOptionBits) override {
@@ -346,14 +354,23 @@ public:
     IOReturn setProperties(OSObject *properties) override {
         auto dictionary = OSDynamicCast(OSDictionary, properties);
         if (!dictionary) return kIOReturnBadArgument;
-        auto interval = OSDynamicCast(OSNumber, dictionary->getObject(kIOHIDReportIntervalKey));
-        if (!interval) return dictionary->getObject(kIOHIDReportIntervalKey) ?
-            kIOReturnBadArgument : kIOReturnUnsupported;
-        if (interval->unsigned64BitValue() > UINT32_MAX) return kIOReturnBadArgument;
-        uint32_t value = interval->unsigned32BitValue();
+        OSObject *intervalObject = dictionary->getObject(kIOHIDReportIntervalKey);
+        OSObject *modeObject = dictionary->getObject(nezhaAlsContinuousModeKey);
+        if (!intervalObject && !modeObject) return kIOReturnUnsupported;
+        SamplingArg arg = {};
+        if (intervalObject) {
+            auto interval = OSDynamicCast(OSNumber, intervalObject);
+            if (!interval || interval->unsigned64BitValue() > UINT32_MAX) return kIOReturnBadArgument;
+            arg.interval = interval->unsigned32BitValue(); arg.hasInterval = true;
+        }
+        if (modeObject) {
+            auto mode = OSDynamicCast(OSNumber, modeObject);
+            if (!mode || mode->unsigned64BitValue() > 1) return kIOReturnBadArgument;
+            arg.continuous = mode->unsigned32BitValue() != 0; arg.hasContinuous = true;
+        }
         __atomic_fetch_add(&diagnosticInterval, UINT64_C(1) << 32, __ATOMIC_RELAXED);
-        __atomic_store_n(&diagnosticRequested, value, __ATOMIC_RELEASE);
-        IOReturn result = gate->runAction(&NativeNezhaAls::intervalAction, &value);
+        if (arg.hasInterval) __atomic_store_n(&diagnosticRequested, arg.interval, __ATOMIC_RELEASE);
+        IOReturn result = gate->runAction(&NativeNezhaAls::samplingAction, &arg);
         __atomic_store_n(&diagnosticIntervalResult, result, __ATOMIC_RELEASE);
         __atomic_fetch_add(&diagnosticInterval, UINT64_C(1), __ATOMIC_RELEASE);
         return result;

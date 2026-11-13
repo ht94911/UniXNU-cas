@@ -21,7 +21,9 @@ struct nezha_als_backend_ops {
     // ReportInterval is microseconds. Zero requests that sampling stop. Return
     // an IOReturn. Accepted requests update the driver's requested interval;
     // registry publication can subsequently fail with kIOReturnNoMemory.
-    int32_t (*request_interval)(void *context, uint32_t interval_us);
+    // ContinuousMode requests fresh periodic sensor measurements; it does not
+    // permit redispatching a cached sample with an invented timestamp.
+    int32_t (*request_sampling)(void *context, uint32_t interval_us, bool continuous);
     // The initial requested reporting interval must be nonzero, matching the
     // SSC client's initial subscription. Later ReportInterval0 pauses it.
     uint32_t initial_interval_us;
@@ -35,6 +37,7 @@ struct nezha_als_status {
     bool published;
     bool stopped;
     bool sampling_paused;
+    bool continuous;
 };
 
 // Read without entering the HID gate or state lock. The owner and transport

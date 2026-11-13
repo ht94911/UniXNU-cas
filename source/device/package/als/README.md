@@ -1,3 +1,13 @@
+Current017 implements the original IOHIDALSContinuousMode control after016
+restored sustained lux and bidirectional automatic brightness but remained slow.
+ActualAndroidattributes017 found the same TCS3760/hw_id0 under
+ambient_light_cal_strm with supported1/2/5/20Hz rates. Continuous mode disables
+the old subscription, dynamically resolves that calibrated datatype and enables
+standard513 sampling.400000us requests select5Hz and retain a400000us delivery
+limit. Interval0 stops; wake resumes from new real samples. OriginalFF00/4,
+integer eventtype12 and QRTRRESUME fix remain. New native/package/physical
+response-speed checks are still pending.
+
 # Nezha27 real ALS front end
 
 This is a separate original-backed `IOHIDEventService` for the board's actual

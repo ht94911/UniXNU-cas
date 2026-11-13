@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "31a5d8fa4bd46c280964541fb153d6ae35c2a787",
+  "device_revision": "374f5b66b8094e0327c65345809ce9019f236ae2",
   "soc_revision": "e565439bf1a13d0224f0a9adcfc1eef8df7ad142",
   "xcode": "26.6",
   "files": {
@@ -173,16 +173,16 @@
     "source/device/package/als-owner/upstream/QcomSmp2p.h": "894f36fd14be184252ce64c4c8c908d161d31433185b190041f4bd18d47d68c6",
     "source/device/package/als-owner/upstream/ShengAudioReach.h": "b135177a5feb3e24e0d8a6aabb301600e2c37078b970a09ada6e8eb7bb6a5b98",
     "source/device/package/als-owner/upstream/ShengGpr.h": "a274dded1f4d1e2709b9f966759bcb1f57d12747ee0f57743dea1fa97d95d23e",
-    "source/device/package/als/NezhaAlsBackend.h": "e247947cf12abf156db1a62a111d453c89463c3dd56a6b6aa382ff1d54719a8d",
-    "source/device/package/als/NezhaAlsFrontend.cpp": "4393481b06a5010904b868a57e41c5d17507a508dd3b29f6ed7ef162516b4aa9",
-    "source/device/package/als/NezhaAlsQrtrBackend.c": "85191fb6d717ed40dbacb477f28af8d4b3dfdaf6efd86188d1bcf6c4dd444716",
-    "source/device/package/als/NezhaAlsQrtrBackend.h": "bb20b11dc2c110f7843c31638eef8fb9dd5394c952d4e1d440eec9cb32ee9292",
-    "source/device/package/als/NezhaAlsSscClient.c": "ec6a76ca75ad294e2466ce1d9999ccc59b635790c161665f6f61e16985042ab9",
-    "source/device/package/als/NezhaAlsSscClient.h": "1cb84ad4dd734cb533e9a7aa1669a75ea5a161c643d16f82da1a6481717e82e5",
+    "source/device/package/als/NezhaAlsBackend.h": "3bbf1b04d0a4a1af2d61c2b05402aaa1a5271c5061684128284417a145b6394c",
+    "source/device/package/als/NezhaAlsFrontend.cpp": "d88e9fc0a685fe534d8a83aa51b6732f157e6196c1ea4449e58bafdaa5b474a8",
+    "source/device/package/als/NezhaAlsQrtrBackend.c": "b7f2508324eae4f1fc95b0b6a0649f229eb70c67cafe123632c214940177f5f6",
+    "source/device/package/als/NezhaAlsQrtrBackend.h": "2b37349b161ae1ef0268c8dfe40dce5a02100ff5444d41620ebcf4c7f4d59dc2",
+    "source/device/package/als/NezhaAlsSscClient.c": "165a74fc71aa5317aca7d068c5e26257de1f3c82046aadbbc1476e153b254a83",
+    "source/device/package/als/NezhaAlsSscClient.h": "fe2a2d54d623ca343191e55aa86f8c8274870268f9f970f189ee6fb0a65b71f6",
     "source/device/package/als/NezhaAlsState.h": "2876ff7d3dc8fe4521bc535b28b47c5944382c26ee037fa345c0ea79180e57cf",
-    "source/device/package/als/README.md": "d3faa3a5453aad50dd0d4db1859f015b7ea90fc608c0ca0027705c0354a358ac",
-    "source/device/package/als/Tcs3760Sns.c": "3fcf2c8aa51c9b819a4014fe6b64569d63853e2117dc0215cb16551a37590d7f",
-    "source/device/package/als/Tcs3760Sns.h": "bd728857b3a5869954acdc55dbddd94a3995d376769613282e254fb99074c2eb",
+    "source/device/package/als/README.md": "ab7d9aa59652ff1881aa77cba9e311b820c93c757fd13c5db855b1b2e78d3369",
+    "source/device/package/als/Tcs3760Sns.c": "8bdd0689fa54210f06e3164acb52ccc316bdddd05ecb33a02003a64f22ac204f",
+    "source/device/package/als/Tcs3760Sns.h": "1e8918ea9c94984d85e7fe28365019bd68d2ac40e57a4f8f9c867e2087b700da",
     "source/device/package/armcpu/darwin-asm-separators.patch": "15893fd689f266184c3273135761d7eff0d71aa0c42e29d1d71666a0abd60e8f",
     "source/device/package/backlight/BacklightProbe.cpp": "2957453001baf80fab7da4562bc32df9b3271992a162f4e55e8b1d27371c161d",
     "source/device/package/backlight/NezhaBrightnessProfile.h": "e48b8db0b79f6debfb8720e5e018f4b46f25496925d6e1c4c6b9b2262f51d44a",
@@ -429,7 +429,7 @@
     "hardware": false
   },
   "als_abi": {
-    "source_revision": "143449b47dddc8ef5a50c59d3994b603163a9e17",
+    "source_revision": "374f5b66b8094e0327c65345809ce9019f236ae2",
     "source_files": [
       "package/als/NezhaAlsBackend.h",
       "package/als/NezhaAlsFrontend.cpp",
@@ -452,7 +452,7 @@
     "phone_operations": false,
     "private_binary_inputs_uploaded": false,
     "opaque_original_event_constructor": true,
-    "runtime_state_machine_changed": false,
+    "runtime_state_machine_changed": true,
     "required_native_call_codegen": [
       "timestamp x0 and six uint32 arguments to original ambient constructor",
       "OSObject-base release: vptr diversity0xcda1, slot5/40bytes, diversity0x3a87"
@@ -748,5 +748,23 @@
     "host_refusal_checked": true,
     "existing_HID_class_unchanged": true,
     "actual_hardware": false
+  },
+  "als_continuous017": {
+    "source_revision": "374f5b66b8094e0327c65345809ce9019f236ae2",
+    "original_key": "IOHIDALSContinuousMode",
+    "actual_attribute_run": "2026-11-14-brightness27-als-attributes017-local001",
+    "actual_attribute_response_sha256": "60ccb1ccc38811b1eaec3d82f3aad013157976eac1d450f81f8463a27195a181",
+    "datatype": "ambient_light_cal_strm",
+    "supported_rates_Hz": [
+      1,
+      2,
+      5,
+      20
+    ],
+    "standard_request_msgid": 513,
+    "requested_interval400000_source_rate_Hz": 5,
+    "original_QRTR016_retained": true,
+    "real_new_samples_only": true,
+    "source_only": true
   }
 }

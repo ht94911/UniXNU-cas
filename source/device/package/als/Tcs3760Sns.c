@@ -10,6 +10,7 @@
 enum { SnsLookupRequest=512, SnsLookupEvent=768, SnsOnChange=514, SnsCalibrationEvent=1022,
        SnsStreamConfig=513, SnsSampleEvent=1025, SnsDisable=10, SnsErrorEvent=130 };
 static const char datatype[]="ambient_light";
+static const char calibrated_datatype[]="ambient_light_cal_strm";
 static const Tcs3760SnsUid lookup_uid={TCS3760_SNS_LOOKUP_WORD,TCS3760_SNS_LOOKUP_WORD};
 static uint16_t rd16(const uint8_t *p) { return (uint16_t)(p[0]|(uint16_t)p[1]<<8); }
 static uint32_t rd32(const uint8_t *p) { return (uint32_t)rd16(p)|(uint32_t)rd16(p+2)<<16; }
@@ -73,14 +74,14 @@ static int event_decode(const uint8_t *data,size_t bytes,Event *out) {
     if (seen!=7) return Tcs3760SnsMalformed;
     *out=e;return Tcs3760SnsOkay;
 }
-static int suid_event(const uint8_t *data,size_t bytes,Tcs3760SnsUid *uid,bool *valid) {
+static int suid_event(const uint8_t *data,size_t bytes,const char *datatype,size_t name_bytes,Tcs3760SnsUid *uid,bool *valid) {
     Pb p={data,bytes};bool name_seen=false,named=false,found=false;Tcs3760SnsUid selected={0,0};
     while (p.left) {
         Field f;int r=field(&p,&f);if (r) return r;
         if (f.number==1) {
             if (f.wire!=2) return Tcs3760SnsMalformed;
             name_seen=true;
-            named=f.bytes==sizeof(datatype)-1 && !memcmp(f.data,datatype,sizeof(datatype)-1);
+            named=f.bytes==name_bytes && !memcmp(f.data,datatype,name_bytes);
         } else if (f.number==2) {
             Tcs3760SnsUid u;if (f.wire!=2) return Tcs3760SnsMalformed;
             r=uid_decode(f.data,f.bytes,&u);if (r) return r;
@@ -214,7 +215,10 @@ int tcs3760_sns_decode_report(const uint8_t *qmi,size_t bytes,const Tcs3760SnsMa
             result.error_valid=true;
             recognized=true;
         } else if (lookup && e.id==SnsLookupEvent) {
-            r=suid_event(e.payload,e.bytes,&result.uid,&result.uid_valid);if (r) return r;
+            const bool streaming = match && match->calibrated_stream_lookup;
+            r=suid_event(e.payload,e.bytes,streaming?calibrated_datatype:datatype,
+                        streaming?sizeof(calibrated_datatype)-1:sizeof(datatype)-1,
+                        &result.uid,&result.uid_valid);if (r) return r;
             result.uid_event=true;
             recognized=true;
         } else if (!lookup && e.id==SnsCalibrationEvent) {
@@ -271,6 +275,24 @@ int tcs3760_sns_encode_lookup(uint16_t transaction,uint8_t *out,size_t capacity,
     uint8_t payload[19]={0x0a,13};memcpy(payload+2,datatype,13);
     payload[15]=0x10;payload[16]=1;payload[17]=0x18;payload[18]=1;
     return encode(lookup_uid,SnsLookupRequest,0,payload,sizeof payload,transaction,out,capacity,bytes);
+}
+int tcs3760_sns_encode_calibrated_lookup(uint16_t transaction,uint8_t *out,size_t capacity,size_t *bytes) {
+    const size_t name_bytes=sizeof(calibrated_datatype)-1;
+    uint8_t payload[sizeof(calibrated_datatype)+5]={0x0a,(uint8_t)name_bytes};
+    memcpy(payload+2,calibrated_datatype,name_bytes);
+    payload[2+name_bytes]=0x10;payload[3+name_bytes]=1;
+    payload[4+name_bytes]=0x18;payload[5+name_bytes]=1;
+    return encode(lookup_uid,SnsLookupRequest,0,payload,sizeof payload,transaction,out,capacity,bytes);
+}
+int tcs3760_sns_encode_streaming(Tcs3760SnsUid uid,uint32_t interval,uint16_t transaction,uint8_t *out,size_t capacity,size_t *bytes) {
+    if (interval<50000) return Tcs3760SnsArgument;
+    // Actual017 TCS3760 attributes publish1,2,5,20Hz. Select the slowest
+    // supported rate that satisfies the requested reporting cadence.
+    uint32_t rate=interval>=1000000?UINT32_C(0x3f800000):
+        interval>=500000?UINT32_C(0x40000000):
+        interval>=200000?UINT32_C(0x40a00000):UINT32_C(0x41a00000);
+    uint8_t payload[5]={0x0d};wr32(payload+1,rate);
+    return encode(uid,SnsStreamConfig,1,payload,sizeof payload,transaction,out,capacity,bytes);
 }
 int tcs3760_sns_encode_on_change(Tcs3760SnsUid uid,uint16_t transaction,uint8_t *out,size_t capacity,size_t *bytes) {
     return encode(uid,SnsOnChange,1,0,0,transaction,out,capacity,bytes);

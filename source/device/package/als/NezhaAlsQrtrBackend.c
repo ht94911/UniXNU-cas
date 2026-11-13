@@ -26,6 +26,7 @@ static void close_queue(struct nezha_als_qrtr_backend *b) {
     b->ops.lock(b->ops.context);
     b->accepting = false;
     b->worker_interval_us = b->accepted_interval_us;
+    b->worker_continuous = b->accepted_continuous;
     b->count = 0;
     b->ops.unlock(b->ops.context);
 }
@@ -121,16 +122,19 @@ static void receive(void *context, QcomQrtr *q, uint32_t local, uint32_t node, u
         fail(b, result);
     }
 }
-int32_t nezha_als_qrtr_request_interval(void *context, uint32_t interval) {
+int32_t nezha_als_qrtr_request_sampling(void *context, uint32_t interval, bool continuous) {
     struct nezha_als_qrtr_backend *b = context;
     b->ops.lock(b->ops.context);
     int32_t result = 0;
     if (!b->accepting) result = b->ops.interval_not_ready;
+    else if (continuous && interval && interval < 50000) result = b->ops.interval_not_ready;
     else if (b->count == NEZHA_ALS_INTERVAL_SLOTS) result = b->ops.interval_no_space;
     else {
         b->intervals[(b->head + b->count) % NEZHA_ALS_INTERVAL_SLOTS] = interval;
+        b->modes[(b->head + b->count) % NEZHA_ALS_INTERVAL_SLOTS] = continuous;
         b->count++;
         b->accepted_interval_us = interval;
+        b->accepted_continuous = continuous;
     }
     b->ops.unlock(b->ops.context);
     if (!result) b->ops.wake(b->ops.context);
@@ -152,7 +156,7 @@ int nezha_als_qrtr_prepare(struct nezha_als_qrtr_backend *b, void *provider,
     if (qcom_qrtr_add_client(q, local_port, receive, b)) {
         b->error = NezhaAlsClientArgument; b->stopped = true; return b->error;
     }
-    const struct nezha_als_backend_ops frontend_ops = {b, nezha_als_qrtr_request_interval, initial_interval};
+    const struct nezha_als_backend_ops frontend_ops = {b, nezha_als_qrtr_request_sampling, initial_interval};
     if (!nezha_als_frontend_prepare(provider, &frontend_ops, epoch)) {
         b->error = NezhaAlsClientFrontend; b->stopped = true; return b->error;
     }
@@ -180,24 +184,27 @@ static int drain_intervals(struct nezha_als_qrtr_backend *b) {
     // accepted between this bounded drain and the client's ready/sample calls.
     for (unsigned i = 0; i < NEZHA_ALS_INTERVAL_SLOTS; ++i) {
         uint32_t interval = 0;
+        bool continuous = false;
         b->ops.lock(b->ops.context);
         bool present = b->count != 0;
         if (present) {
             interval = b->intervals[b->head];
+            continuous = b->modes[b->head];
             b->head = (b->head + 1) % NEZHA_ALS_INTERVAL_SLOTS; b->count--;
         }
         b->ops.unlock(b->ops.context);
         if (!present) break;
         b->worker_interval_us = interval;
+        b->worker_continuous = continuous;
         if (b->client) {
-            int result = nezha_als_ssc_interval(b->client, interval);
+            int result = nezha_als_ssc_sampling(b->client, interval, continuous);
             if (result) return result;
         }
     }
     if (!b->client) return NezhaAlsClientOkay;
-    // A new owned session retains the last accepted requested interval, but
+    // A new owned session retains the last accepted requested interval/mode, but
     // the client and frontend still require a newly received valid sample.
-    return nezha_als_ssc_interval(b->client, b->worker_interval_us);
+    return nezha_als_ssc_sampling(b->client, b->worker_interval_us, b->worker_continuous);
 }
 static int poll_action(void *context) {
     struct nezha_als_qrtr_backend *b = context;

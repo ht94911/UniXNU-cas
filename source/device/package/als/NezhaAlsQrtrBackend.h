@@ -41,6 +41,7 @@ struct nezha_als_qrtr_backend {
     uint32_t local_port, initial_interval_us, worker_interval_us;
     // Only these queue fields and accepting are shared with the HID callback.
     uint32_t intervals[NEZHA_ALS_INTERVAL_SLOTS], head, count, accepted_interval_us;
+    bool modes[NEZHA_ALS_INTERVAL_SLOTS], worker_continuous, accepted_continuous;
     bool accepting;
     // Remaining state belongs exclusively to the transport owner's worker.
     bool stopped;
@@ -65,9 +66,9 @@ int nezha_als_qrtr_select(struct nezha_als_qrtr_backend *,
 // Interval dequeue and bounded SSC poll share the frontend gate with HID
 // interval acceptance; no hardware/FIFO/PAS work runs inside that gate.
 int nezha_als_qrtr_poll(struct nezha_als_qrtr_backend *);
-// HID callback: only queue a uint32 command, then wake after unlocking. Success
+// HID callback: queue requested interval/mode, then wake after unlocking. Success
 // means accepted into the queue, separately from eventual SSC/DSP ACK.
-int32_t nezha_als_qrtr_request_interval(void *, uint32_t interval_us);
+int32_t nezha_als_qrtr_request_sampling(void *, uint32_t interval_us, bool continuous);
 void nezha_als_qrtr_lost(struct nezha_als_qrtr_backend *, int error);
 // Explicit final boot-lifetime stop; does not reset/release the owner transport.
 void nezha_als_qrtr_stop(struct nezha_als_qrtr_backend *);

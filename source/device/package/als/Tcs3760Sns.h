@@ -55,6 +55,7 @@ typedef struct {
     bool client_id_valid, sensor_uid_valid;
     uint64_t client_id;
     Tcs3760SnsUid sensor_uid;
+    bool calibrated_stream_lookup;
 } Tcs3760SnsMatch;
 
 typedef struct {
@@ -79,6 +80,9 @@ typedef struct {
 // Disable uses client message 10. These functions never send or change state.
 // On failure, out and *bytes remain unchanged. Transaction zero is permitted.
 int tcs3760_sns_encode_lookup(uint16_t transaction, uint8_t *out, size_t capacity, size_t *bytes);
+int tcs3760_sns_encode_calibrated_lookup(uint16_t transaction, uint8_t *out, size_t capacity, size_t *bytes);
+int tcs3760_sns_encode_streaming(Tcs3760SnsUid uid, uint32_t interval_us, uint16_t transaction,
+                               uint8_t *out, size_t capacity, size_t *bytes);
 int tcs3760_sns_encode_on_change(Tcs3760SnsUid uid, uint16_t transaction,
                                uint8_t *out, size_t capacity, size_t *bytes);
 int tcs3760_sns_encode_disable(Tcs3760SnsUid uid, uint16_t transaction,

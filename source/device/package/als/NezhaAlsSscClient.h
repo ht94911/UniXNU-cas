@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 enum { NezhaAlsLookup = 1, NezhaAlsEnable, NezhaAlsRunning,
-       NezhaAlsDisable, NezhaAlsDisabled, NezhaAlsFailed };
+       NezhaAlsDisable, NezhaAlsDisabled, NezhaAlsFailed, NezhaAlsConfigure };
 enum { NezhaAlsTxNone, NezhaAlsTxQueued, NezhaAlsTxAwaiting };
 enum { NezhaAlsClientOkay = 0, NezhaAlsClientAgain = 1,
        NezhaAlsClientArgument = -1, NezhaAlsClientTransport = -2,
@@ -49,6 +49,9 @@ struct nezha_als_ssc_client {
     size_t tx_bytes;
     uint32_t reports, responses, stale, invalid_samples, delivered;
     bool sensor_enabled, pending, ready;
+    bool continuous;
+    bool stream_active, stream_target, switch_lookup_pending;
+    uint32_t configured_interval_us;
     int error;
 };
 
@@ -69,6 +72,7 @@ int nezha_als_ssc_begin(struct nezha_als_ssc_client *, const struct nezha_als_ss
                        uint64_t epoch, uint32_t interval_us, uint64_t now_us);
 int nezha_als_ssc_poll(struct nezha_als_ssc_client *, uint64_t now_us);
 int nezha_als_ssc_interval(struct nezha_als_ssc_client *, uint32_t interval_us);
+int nezha_als_ssc_sampling(struct nezha_als_ssc_client *, uint32_t interval_us, bool continuous);
 int nezha_als_ssc_receive(struct nezha_als_ssc_client *, uint32_t node, uint32_t port,
                          const uint8_t *qmi, size_t bytes,
                          uint64_t now_us, uint64_t receipt_ticks);

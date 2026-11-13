@@ -47,11 +47,19 @@ static int queue_request(struct nezha_als_ssc_client *c, uint32_t phase, uint64_
         return fail(c, NezhaAlsClientArgument);
     uint16_t transaction = c->transaction + 1;
     int result;
-    if (phase == NezhaAlsLookup)
-        result = tcs3760_sns_encode_lookup(transaction, c->tx, sizeof c->tx, &c->tx_bytes);
-    else if (phase == NezhaAlsEnable)
-        result = tcs3760_sns_encode_on_change(c->match.sensor_uid, transaction,
-                                             c->tx, sizeof c->tx, &c->tx_bytes);
+    if (phase == NezhaAlsLookup) {
+        result = c->match.calibrated_stream_lookup ?
+            tcs3760_sns_encode_calibrated_lookup(transaction, c->tx, sizeof c->tx, &c->tx_bytes) :
+            tcs3760_sns_encode_lookup(transaction, c->tx, sizeof c->tx, &c->tx_bytes);
+    } else if (phase == NezhaAlsEnable || phase == NezhaAlsConfigure) {
+        result = c->match.calibrated_stream_lookup ?
+            tcs3760_sns_encode_streaming(c->match.sensor_uid, c->interval_us, transaction,
+                                        c->tx, sizeof c->tx, &c->tx_bytes) :
+            tcs3760_sns_encode_on_change(c->match.sensor_uid, transaction,
+                                         c->tx, sizeof c->tx, &c->tx_bytes);
+        c->configured_interval_us = c->interval_us;
+        c->stream_target = c->match.calibrated_stream_lookup;
+    }
     else
         result = tcs3760_sns_encode_disable(c->match.sensor_uid, transaction,
                                            c->tx, sizeof c->tx, &c->tx_bytes);
@@ -79,10 +87,11 @@ int nezha_als_ssc_begin(struct nezha_als_ssc_client *c, const struct nezha_als_s
     if (c->ops.ready(c->ops.context, epoch, false)) return fail(c, NezhaAlsClientFrontend);
     return queue_request(c, NezhaAlsLookup, now);
 }
-int nezha_als_ssc_interval(struct nezha_als_ssc_client *c, uint32_t interval) {
+int nezha_als_ssc_sampling(struct nezha_als_ssc_client *c, uint32_t interval, bool continuous) {
     if (!c || !c->epoch) return NezhaAlsClientArgument;
     if (c->error) return c->error;
     c->interval_us = interval;
+    c->continuous = continuous;
     if (!interval) {
         c->pending = false;
         c->latest.valid = false;
@@ -90,18 +99,46 @@ int nezha_als_ssc_interval(struct nezha_als_ssc_client *c, uint32_t interval) {
     }
     return NezhaAlsClientOkay;
 }
+int nezha_als_ssc_interval(struct nezha_als_ssc_client *c, uint32_t interval) {
+    return nezha_als_ssc_sampling(c, interval, c ? c->continuous : false);
+}
+static int change_lookup(struct nezha_als_ssc_client *c, uint64_t now) {
+    c->match.sensor_uid_valid=false;
+    c->match.sensor_uid=(Tcs3760SnsUid){0,0};
+    c->match.calibrated_stream_lookup=c->continuous;
+    c->switch_lookup_pending=false;
+    c->pending=false; c->latest.valid=false;
+    c->last_ssc_ticks=0;
+    if (readiness(c,false)) return fail(c,NezhaAlsClientFrontend);
+    return queue_request(c,NezhaAlsLookup,now);
+}
 int nezha_als_ssc_poll(struct nezha_als_ssc_client *c, uint64_t now) {
     if (!c || !c->epoch) return NezhaAlsClientArgument;
     if (c->error) return c->error;
     if (c->tx_state != NezhaAlsTxNone && now >= c->deadline_us)
         return fail(c, NezhaAlsClientTimeout);
-    if (c->phase == NezhaAlsLookup && c->tx_state == NezhaAlsTxNone && c->match.sensor_uid_valid) {
+    if (c->phase == NezhaAlsLookup && c->tx_state == NezhaAlsTxNone && c->match.sensor_uid_valid &&
+        c->continuous != c->match.calibrated_stream_lookup) {
+        if (change_lookup(c,now)) return c->error;
+    } else if (c->phase == NezhaAlsRunning && c->tx_state == NezhaAlsTxNone &&
+        c->interval_us && c->continuous != c->stream_active) {
+        c->switch_lookup_pending=true;
+        c->pending=false; c->latest.valid=false;
+        if (readiness(c,false)) return fail(c,NezhaAlsClientFrontend);
+        if (queue_request(c,NezhaAlsDisable,now)) return c->error;
+    } else if (c->phase == NezhaAlsDisabled && c->tx_state == NezhaAlsTxNone && c->interval_us &&
+               (c->switch_lookup_pending || c->continuous != c->match.calibrated_stream_lookup)) {
+        if (change_lookup(c,now)) return c->error;
+    } else if (c->phase == NezhaAlsLookup && c->tx_state == NezhaAlsTxNone && c->match.sensor_uid_valid) {
         if (c->interval_us) { if (queue_request(c, NezhaAlsEnable, now)) return c->error; }
         else c->phase = NezhaAlsDisabled;
     } else if (c->phase == NezhaAlsRunning && !c->interval_us) {
         if (queue_request(c, NezhaAlsDisable, now)) return c->error;
     } else if (c->phase == NezhaAlsDisabled && c->interval_us) {
         if (queue_request(c, NezhaAlsEnable, now)) return c->error;
+    } else if (c->phase == NezhaAlsRunning && c->tx_state == NezhaAlsTxNone &&
+               c->stream_active && c->configured_interval_us != c->interval_us) {
+        if (queue_request(c,NezhaAlsConfigure,now)) return c->error;
     }
     if (c->tx_state == NezhaAlsTxQueued) {
         int result = c->ops.send(c->ops.context, &c->endpoint, c->local_port, c->tx, c->tx_bytes);
@@ -135,8 +172,9 @@ static int response(struct nezha_als_ssc_client *c, const uint8_t *qmi, size_t b
         c->match.client_id = ack.client_id; c->match.client_id_valid = true;
     }
     c->tx_state = NezhaAlsTxNone;
-    if (c->phase == NezhaAlsEnable) {
+    if (c->phase == NezhaAlsEnable || c->phase == NezhaAlsConfigure) {
         c->sensor_enabled = true;
+        c->stream_active = c->stream_target;
         c->phase = NezhaAlsRunning;
     } else if (c->phase == NezhaAlsDisable) {
         c->sensor_enabled = false;
@@ -171,11 +209,14 @@ int nezha_als_ssc_receive(struct nezha_als_ssc_client *c, uint32_t node, uint32_
     if (report.uid_event && !report.uid_valid && c->match.sensor_uid_valid)
         return fail(c, NezhaAlsClientIdentity);
     if (report.uid_valid) {
+        if (c->match.calibrated_stream_lookup != c->continuous && !c->sensor_enabled && c->tx_state == NezhaAlsTxNone) {
+            return change_lookup(c,now);
+        }
         if (c->match.sensor_uid_valid && !same_uid(c->match.sensor_uid, report.uid))
             return fail(c, NezhaAlsClientIdentity);
         c->match.sensor_uid = report.uid; c->match.sensor_uid_valid = true;
     }
-    if (!report.sample_valid || (c->phase != NezhaAlsEnable && c->phase != NezhaAlsRunning) || !c->interval_us)
+    if (!report.sample_valid || (c->phase != NezhaAlsEnable && c->phase != NezhaAlsRunning && c->phase != NezhaAlsConfigure) || !c->interval_us)
         return NezhaAlsClientOkay;
     const Tcs3760SnsSample *sample = &report.sample;
     if (!sample->timestamp || sample->timestamp <= c->last_ssc_ticks || receipt < c->last_receipt_ticks) {
