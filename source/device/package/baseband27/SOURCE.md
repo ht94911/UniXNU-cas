@@ -325,3 +325,49 @@ add写该格、remove清零、get返回该格。`NbPdpFlow.h/.inc`直接实现�
 全十格设置/查询/删除、完整输入输出形状、短结构与越界及错误不改变状态
 使用ASan/UBSan和Werror通过；完整host、29单元Linux17头screen通过。
 005实际arm64e/iOS27与数据流尚未验证；不更新003手机排队资格。
+
+
+## 15. 原生电话音频格式观察（006，2026-11-13）
+
+本机原厂 `libqmiservices.so` VOICE v2/minor162 的IDL表确认了
+BindSubscription0x44、AllCallStatus0x2e/GetAllCallInfo0x2f，及
+SpeechCodecInfo0x53/GetSpeechCodecInfo0x6e的实际TLV、枚举和长度。
+通话数组为1字节计数、每项7字节、最多7项；查询回复用TLV10，通知用TLV01。
+codec TLV11为4字节、encoderHz TLV12为4字节、callId TLV13为1字节。
+公开wire-os voice_service_v02.h只作字段名称和枚举注释参考，最终格式核原厂表。
+
+Apple原版24A446 `QMIAudioCommandDriver::queryVocoderInfo` 查询AUDIO(e1)
+message2f；VocoderTypeInfo通知为30，TLV01为codec/rate两字节。
+实际codec映射、rate解析及两个方向的写入例程已核字节和边界。
+`NbVoice.h` 只被动观察已获QMUX验证的原VOICE流量，不新增拨号、SMS、注册、
+切卡或modem请求。明确成功的订阅绑定和当前通话才能发布；卡2/相同callId隔离，
+结束/撤销/新绑定清除旧格式。未知codec/rate返回原NOT_SUPPORTED。
+`NbVoiceBridge.inc` 沿原锁与发送队列回答真实格式查询和格式通知；硬件
+AudioRateSwitchComplete及路由/静音/音量仍保留原不支持，不能替代媒体验收。
+UEFI低内存、PAS、IPA、双卡身份和PDP flow沿005保持，003–005固定成品不动。
+UniXNU/main dff2765、myron-next f1a1bfe、QcomBaseband dd0199c已fetch，
+未在现有同SoC参考中找到该Apple/原厂VOICE转换，沿现有QMUX bridge补必要部分。
+
+
+## 16. MSS已有SMEM寿命修复（007，2026-11-13）
+
+003真机60.895s在check_cold因已有SMEM项返回OWNERSHIP(-5)，此前
+真实低池/归档-RAM/SMMU/IPA三PAS/GSI已通过，MSS主固件/DTB的PAS0。
+因此存在项不能作为基带已启动的证据；XNU不能凭空重置这些项。
+
+按同SoC音频clock071 `AdspLink.c`（源6733d4a，原生/实机路径）的
+initial proxy→PAS主/DTB stop合同，以及Linux `qcom_glink_smem.c` 的
+EEXIST→确切尺寸检查/仅重置AP索引，007先确认PAS4和0x26实际停止。
+任何非decrypt停止失败均终止，不触DSM/旧SMEM/固件。modem主停止
+仅沿既有qcom_pas_shutdown_poll_decrypt的-22/100ms/50次处理，不将-22当已停止。
+
+随后两DSM赋权、重用340字节OUT并在共享锁内发布SMP2P；GLINK的32字节
+descriptor/16KiB TX在新的主认证和fresh ready后才建立。RX未绑定前不poll。
+保留remote TX-tail/RX-head；caller先接IPCRTR/DS再进行第一次FIFO处理。
+watchdog基线同doorbell取在主固件认证前，旧事件不代表新固件故障。
+诊断已有stage编号保持，新initial power/stop追加18–20。
+
+007包含独立006原VOICE→AUDIO格式观察，003–005成品不动。
+UniXNU/main新7d85ede仅文档记录、myron-next f1a1bfe，固定GPU024框架不升级。
+宿主实际MSS状态机已验成功/两停止失败不写/繁忙/-22延迟/错尺寸/
+旧ready/新watchdog/remote索引；必要Mac原生构建及实机结果待验证。

@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
-/* The modem subsystem (MSS) lifecycle on nezha: cold check, memory assignment, SMEM/SMP2P/GLINK setup, proxy votes, DTB and
+/* The modem subsystem (MSS) lifecycle on nezha: proxy votes, proven PAS stop, memory assignment, SMEM/SMP2P setup, DTB and
  * main image through PAS, ready/handover, crash and watchdog, and an orderly stop.
  *
  * Sequence: Linux qcom_q6v5_pas.c sm8750_mpss_resource (the closest mainline entry to the device's "qcom,canoe-modem-pas")
@@ -68,6 +68,8 @@ enum {
     NbMssCold, NbMssCheck, NbMssAssign, NbMssSetup, NbMssPower, NbMssDtb, NbMssMain, NbMssWaitReady, NbMssOnline,
     NbMssStopRequest, NbMssStopWait, NbMssShutdownMain, NbMssShutdownDtb, NbMssUnassign, NbMssUnvote, NbMssStopped,
     NbMssCrashed, NbMssFailed,
+    /* Append to preserve the diagnostic stage IDs from the first candidates. */
+    NbMssInitialPower, NbMssInitialStopMain, NbMssInitialStopDtb,
 };
 
 typedef struct {
@@ -79,10 +81,11 @@ typedef struct {
     NbPas *main_image, *dtb_image;
     int stop_entry, ipa_entry, mailbox_entry;  /* outbound SMP2P entry indices */
     uint32_t stage, slave, ipa_in, ipa_in_changed;
-    uint32_t doorbells, auth_doorbells, wdog_events;
+    uint32_t doorbells, auth_doorbells, wdog_events, auth_wdog_events;
     uint8_t assigned, voted, handed, glink_ready, glink_rx_attached, decrypt_retries, glink_polled;
+    uint8_t masters_stopped, initial_stop_mask;
     uint64_t deadline, retry_at;
-    int error, cleanup_error;
+    int error, cleanup_error, initial_stop[2];
     char crash_reason[96];
 } NbMss;
 

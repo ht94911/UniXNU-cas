@@ -21,11 +21,16 @@ static volatile uint8_t *item(NbMss *m, const QcomSmemPartition *part, uint16_t 
 
 static int alloc_item(NbMss *m, uint16_t id, uint32_t bytes)
 {
+    if (!m->masters_stopped && !m->glink_ready && m->stage != NbMssOnline) return NB_OWNERSHIP;
     int r = m->ops.smem_lock(m->ops.context);
     if (r) return r == NB_BUSY ? NB_PENDING : r;
     r = qcom_smem_alloc(&m->smem, &m->partition, id, bytes);
+    if (r == QcomSmemOk || r == QcomSmemExists) {
+        uint32_t at = 0, size = 0;
+        r = qcom_smem_find(&m->smem, &m->partition, id, &at, &size) || size != bytes ? NB_WIRE : NB_OK;
+    } else r = NB_IO;
     m->ops.smem_unlock(m->ops.context);
-    return r == QcomSmemOk ? NB_OK : r == QcomSmemExists ? NB_OWNERSHIP : NB_IO;
+    return r;
 }
 
 static void glink_kick(void *v) { NbMss *m = v; m->ops.doorbell(m->ops.context, NB_MSS_IPCC_GLINK); }
@@ -34,7 +39,8 @@ int nb_mss_init(NbMss *m, volatile void *smem, uint32_t bytes, NbPas *main_image
 {
     if (!m || !smem || ((uintptr_t)smem & 3) || bytes != 0x200000 || !main_image || !dtb_image ||
         main_image->pas != NB_MSS_PAS || dtb_image->pas != NB_MSS_DTB_PAS || main_image->stage != NbPasInit ||
-        dtb_image->stage != NbPasInit || !ops || !ops->smem_lock || !ops->smem_unlock || !ops->doorbell || !ops->proxy ||
+        dtb_image->stage != NbPasInit || !main_image->ops.pas || !dtb_image->ops.pas || !ops ||
+        !ops->smem_lock || !ops->smem_unlock || !ops->doorbell || !ops->proxy ||
         !ops->assign) return NB_ARGUMENT;
     *m = (NbMss){0};
     m->smem = (QcomSmem){(volatile uint8_t *)smem, bytes};
@@ -43,7 +49,7 @@ int nb_mss_init(NbMss *m, volatile void *smem, uint32_t bytes, NbPas *main_image
     m->ops = *ops;
     m->stop_entry = m->ipa_entry = m->mailbox_entry = -1;
     if (qcom_smem_partition(&m->smem, QCOM_SMEM_HOST_APPS, NB_MSS_SMEM_HOST, &m->partition)) return NB_MISSING;
-    m->stage = NbMssCheck;
+    m->stage = NbMssInitialPower;
     return NB_OK;
 }
 
@@ -82,41 +88,60 @@ static int crashed(NbMss *m)
     return NB_REMOTE;
 }
 
-/* A modem started earlier in this boot (SMEM is rebuilt by the boot loader on every boot) must not be adopted: its items
- * exist already. Missing items are the cold proof. */
+/* Allocations survive a remote firmware lifetime. A successful stop of both
+ * PAS images establishes ownership; item existence does not establish liveness. */
 static int check_cold(NbMss *m)
 {
-    if (item(m, &m->partition, NB_MSS_SMP2P_OUT, 4, 0) || item(m, &m->partition, NB_MSS_SMP2P_IN, 4, 0) ||
-        item(m, &m->partition, NB_MSS_GLINK_DESC, 4, 0)) return NB_OWNERSHIP;
-    return NB_OK;
+    return m->masters_stopped && m->initial_stop_mask == 3 && !m->initial_stop[0] && !m->initial_stop[1] ? NB_OK : NB_OWNERSHIP;
 }
 
 static int setup(NbMss *m)
 {
     int r = alloc_item(m, NB_MSS_SMP2P_OUT, QCOM_SMP2P_ITEM_BYTES);
-    if (!r) r = alloc_item(m, NB_MSS_GLINK_DESC, 32);
-    if (!r) r = alloc_item(m, NB_MSS_GLINK_TX, NB_MSS_GLINK_TX_BYTES);
     if (r) return r;
-    uint32_t tx_bytes = 0;
+    r = m->ops.smem_lock(m->ops.context);
+    if (r) return r == NB_BUSY ? NB_PENDING : r;
     volatile uint8_t *out = item(m, &m->partition, NB_MSS_SMP2P_OUT, QCOM_SMP2P_ITEM_BYTES, 0);
-    volatile uint8_t *desc = item(m, &m->partition, NB_MSS_GLINK_DESC, 32, 0);
-    volatile uint8_t *tx = item(m, &m->partition, NB_MSS_GLINK_TX, NB_MSS_GLINK_TX_BYTES, &tx_bytes);
-    if (!out || !desc || !tx || tx_bytes != NB_MSS_GLINK_TX_BYTES) return NB_WIRE;
+    if (!out) { m->ops.smem_unlock(m->ops.context); return NB_WIRE; }
     /* The phone's smp2p.ko (qcom_smp2p_alloc_outbound_item) publishes version 1, or the modem's own version when its inbound
      * item already exists and says more; it then waits for equal versions without rewriting ours. V1 and v2 share the layout. */
     volatile uint32_t *in = (volatile uint32_t *)item(m, &m->partition, NB_MSS_SMP2P_IN, QCOM_SMP2P_ITEM_BYTES, 0);
     const uint8_t version = in && !qcom_smp2p_check_in(in, 0, NB_MSS_SMEM_HOST) && (in[1] & 0xff) > 1 ? (uint8_t)(in[1] & 0xff) : 1;
-    if (qcom_smp2p_init_out_version(&m->p2p, (volatile uint32_t *)out, 0, NB_MSS_SMEM_HOST, version)) return NB_WIRE;
-    m->stop_entry = qcom_smp2p_add_entry(&m->p2p, "master-kernel");
-    m->ipa_entry = qcom_smp2p_add_entry(&m->p2p, "ipa");
-    m->mailbox_entry = qcom_smp2p_add_entry(&m->p2p, "smem-mailbox");
-    if (m->stop_entry < 0 || m->ipa_entry < 0 || m->mailbox_entry < 0) return NB_WIRE;
+    r = qcom_smp2p_init_out_version(&m->p2p, (volatile uint32_t *)out, 0, NB_MSS_SMEM_HOST, version);
+    if (!r) {
+        m->stop_entry = qcom_smp2p_add_entry(&m->p2p, "master-kernel");
+        m->ipa_entry = qcom_smp2p_add_entry(&m->p2p, "ipa");
+        m->mailbox_entry = qcom_smp2p_add_entry(&m->p2p, "smem-mailbox");
+        if (m->stop_entry < 0 || m->ipa_entry < 0 || m->mailbox_entry < 0) r = NB_WIRE;
+    }
+    m->ops.smem_unlock(m->ops.context);
+    if (r) return NB_WIRE;
     m->ops.doorbell(m->ops.context, NB_MSS_IPCC_SMP2P);
+    return NB_OK;
+}
+
+/* Same-SOC audio establishes GLINK only after the authenticated remote's
+ * fresh ready. Preserve the remote-owned TX tail/RX head, reset AP indices. */
+static int setup_glink(NbMss *m)
+{
+    if (m->stage != NbMssOnline) return NB_OWNERSHIP;
+    int r = alloc_item(m, NB_MSS_GLINK_DESC, 32);
+    if (!r) r = alloc_item(m, NB_MSS_GLINK_TX, NB_MSS_GLINK_TX_BYTES);
+    if (r) return r;
+    r = m->ops.smem_lock(m->ops.context);
+    if (r) return r == NB_BUSY ? NB_PENDING : r;
+    uint32_t tx_bytes = 0;
+    volatile uint8_t *desc = item(m, &m->partition, NB_MSS_GLINK_DESC, 32, 0);
+    volatile uint8_t *tx = item(m, &m->partition, NB_MSS_GLINK_TX, NB_MSS_GLINK_TX_BYTES, &tx_bytes);
+    if (!desc || !tx || tx_bytes != NB_MSS_GLINK_TX_BYTES) {
+        m->ops.smem_unlock(m->ops.context); return NB_WIRE;
+    }
     /* glink_smem descriptor: tx tail, tx head, rx tail, rx head. */
     volatile uint32_t *d = (volatile uint32_t *)desc;
     const QcomGlinkFifo tf = {&d[1], &d[0], tx, tx_bytes}, rf = {&d[3], &d[2], 0, 0};
     if(m->ops.trace)m->ops.trace(m->ops.context,"glink-init",NB_PENDING);
     qcom_glink_init(&m->glink, tf, rf, glink_kick, m);
+    m->ops.smem_unlock(m->ops.context);
     if(m->ops.trace)m->ops.trace(m->ops.context,"glink-init",NB_OK);
     m->glink_ready = 1;
     return NB_OK;
@@ -159,6 +184,32 @@ int nb_mss_poll(NbMss *m, uint64_t now)
     }
     int r = NB_OK;
     switch (m->stage) {
+    case NbMssInitialPower:
+        m->voted = 1;
+        r = m->ops.proxy(m->ops.context, 1);
+        if (!r) m->stage = NbMssInitialStopMain;
+        break;
+    case NbMssInitialStopMain:
+        if (now < m->retry_at) return NB_PENDING;
+        r = m->main_image->ops.pas(m->main_image->ops.context, NB_PAS_SHUTDOWN, NB_MSS_PAS, 0, 0);
+        if (r == NB_BUSY) return NB_PENDING;
+        if (r == NB_PAS_EINVAL && ++m->decrypt_retries < DECRYPT_TRIES) {
+            m->retry_at = now + DECRYPT_PAUSE_MS;
+            return NB_PENDING;
+        }
+        m->initial_stop[0] = r; m->initial_stop_mask |= 1;
+        if (m->ops.trace) m->ops.trace(m->ops.context, "initial-stop-main", r);
+        m->stage = NbMssInitialStopDtb; r = NB_OK;
+        break;
+    case NbMssInitialStopDtb:
+        r = m->dtb_image->ops.pas(m->dtb_image->ops.context, NB_PAS_SHUTDOWN, NB_MSS_DTB_PAS, 0, 0);
+        if (r == NB_BUSY) return NB_PENDING;
+        m->initial_stop[1] = r; m->initial_stop_mask |= 2;
+        if (m->ops.trace) m->ops.trace(m->ops.context, "initial-stop-dtb", r);
+        if (m->initial_stop[0] || r) return failed(m, m->initial_stop[0] ? m->initial_stop[0] : r);
+        m->masters_stopped = 1; m->decrypt_retries = 0; m->retry_at = 0;
+        m->deadline = now + START_MS; m->stage = NbMssCheck;
+        break;
     case NbMssCheck:
         r = check_cold(m);
         if (!r) m->stage = NbMssAssign;
@@ -172,9 +223,8 @@ int nb_mss_poll(NbMss *m, uint64_t now)
         if (!r) m->stage = NbMssPower;
         break;
     case NbMssPower:
-        r = m->ops.proxy(m->ops.context, 1);
-        m->voted = 1;  /* a partial vote is still ours to remove */
-        if (!r) { m->stage = NbMssDtb; nb_pas_arm(m->dtb_image, now); }
+        if (!m->masters_stopped || !m->voted) return failed(m, NB_OWNERSHIP);
+        m->stage = NbMssDtb; nb_pas_arm(m->dtb_image, now);
         break;
     case NbMssDtb:
         r = nb_pas_poll(m->dtb_image, now);
@@ -182,13 +232,17 @@ int nb_mss_poll(NbMss *m, uint64_t now)
         break;
     case NbMssMain:
         /* The event baseline is taken right before auth_and_reset, so a stale ready bit cannot accept the image. */
-        if (m->main_image->stage == NbPasAuthenticate) m->auth_doorbells = __atomic_load_n(&m->doorbells, __ATOMIC_ACQUIRE);
+        if (m->main_image->stage == NbPasAuthenticate) {
+            m->auth_doorbells = __atomic_load_n(&m->doorbells, __ATOMIC_ACQUIRE);
+            m->auth_wdog_events = __atomic_load_n(&m->wdog_events, __ATOMIC_ACQUIRE);
+            m->masters_stopped = 0;
+        }
         r = nb_pas_poll(m->main_image, now);
         if (!r) { m->stage = NbMssWaitReady; m->deadline = now + READY_MS; }
         break;
     case NbMssWaitReady:
     case NbMssOnline:
-        if (__atomic_load_n(&m->wdog_events, __ATOMIC_ACQUIRE)) return crashed(m);
+        if (__atomic_load_n(&m->wdog_events, __ATOMIC_ACQUIRE) != m->auth_wdog_events) return crashed(m);
         r = smp2p(m);
         if (r < 0) break;
         r = NB_OK;
@@ -197,6 +251,12 @@ int nb_mss_poll(NbMss *m, uint64_t now)
             if (m->slave & NB_MSS_BIT_READY) m->stage = NbMssOnline;
         }
         if (m->stage != NbMssOnline) break;
+        if (!m->glink_ready) {
+            r = setup_glink(m);
+            if (r < 0) return failed(m, r);
+            /* NbBaseband attaches IPCRTR/DS before the first FIFO poll. */
+            return NB_PENDING;
+        }
         if (!m->glink_rx_attached) {
             uint32_t n = 0;
             volatile uint8_t *rx = item(m, &m->partition, NB_MSS_GLINK_RX, 64, &n);
@@ -208,6 +268,7 @@ int nb_mss_poll(NbMss *m, uint64_t now)
                 m->glink_rx_attached = 1;
             }
         }
+        if (!m->glink_rx_attached) return NB_PENDING;
         if ((m->slave & NB_MSS_BIT_HANDOVER) && !m->handed) {
             r = m->ops.proxy(m->ops.context, 0);
             if (!r) { m->handed = 1; m->voted = 0; }

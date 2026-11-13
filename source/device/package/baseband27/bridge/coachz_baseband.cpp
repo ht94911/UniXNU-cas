@@ -26,6 +26,7 @@
 #include "coachz_bb_pdp.h"
 #include "coachz_bb_esim.h"
 #include "NbSim.h"
+#include "NbVoice.h"
 
 #define BB_FRAME_MAX (64u * 1024u)       // one read or write: a QMUX frame, a SAHARA packet or a READ_DATA answer
 // Frames waiting for ABM, per channel. At boot the 53 clients' registrations and indications arrive faster than ABM reads; with 64 the
@@ -321,12 +322,14 @@ static void bb_pdp_note(uint32_t local_port, uint32_t cid, uint32_t channel, con
 }
 
 static void bb_sim_request(const struct cbq_result &r, const uint8_t *sdu);
+static void bb_voice_request(const struct cbq_result &r, const uint8_t *sdu);
 
 // A request for the modem, with the data port named as this modem has it.
 static void bb_to_modem(const struct cbq_result &r, const uint8_t *sdu)
 {
   if (r.service == CBD_SVC_WDS) bb_pdp_note(r.local_port, r.cid, r.channel, sdu, r.len);
   bb_sim_request(r, sdu);
+  bb_voice_request(r, sdu);
   if (r.service == CBE_SVC_UIM && bb_esim.route_failed) {
     const uint32_t n = cbq_private_answer(sdu, r.service, r.cid, CBE_ERR_INTERNAL, nullptr, 0, bb_out, sizeof bb_out);
     if (n) bb_push(r.channel ? CBH_QMUX2 : CBH_QMUX1, bb_out, n);
@@ -417,11 +420,13 @@ static void bb_esim_step(void)
 }
 
 #include "NbSimBridge.inc"
+#include "NbVoiceBridge.inc"
 
 // A private request the bridge answers itself: 1 when it did.
 static int bb_private_answer(uint32_t channel, const struct cbq_result &r, const uint8_t *sdu)
 {
   const uint32_t message = (uint32_t)(sdu[3] | sdu[4] << 8);
+  if (bb_audio_answer(channel, r, sdu)) return 1;
   if (r.service == CBE_SVC_VINYL) {
     const uint32_t n = bb_esim_in && bb_esim_resp ?
       cbe_host(&bb_esim, r.channel, r.cid, sdu, r.len, bb_out, sizeof bb_out, bb_now_ms()) :
@@ -505,6 +510,7 @@ static void bb_host_write(uint32_t channel, const uint8_t *data, uint32_t len)
   switch (r.kind) {
   case CBQ_TO_HOST:
     bb_push(channel, bb_out, r.len);
+    if (r.service == NB_VOICE_SERVICE || !r.service) bb_voice_indicate();
     // The first WDS client ABM takes: set the data port up as ModemManager does before its first bind.
     if (r.service == CBD_SVC_WDS && r.local_port && cbq_rd16(data + CBQ_HDR + 2) == CBQ_CTL_GET_CLIENT_ID) bb_data_start();
     if (bb_qmux.ctl_other != bb_ctl_logged) {
@@ -1136,7 +1142,7 @@ extern "C" void coachz_baseband_configure(void (*send)(uint32_t, uint32_t, uint3
 // The modem stopped or crashed: libTelephonyBasebandDynamic treats a boot stage below 2 as down.
 extern "C" void coachz_baseband_down(void)
 {
-  if (bb_lock) { IOLockLock(bb_lock); nb_sim_reset(&bb_sim); IOLockUnlock(bb_lock); }
+  if (bb_lock) { IOLockLock(bb_lock); nb_sim_reset(&bb_sim); nb_voice_reset(&bb_voice); IOLockUnlock(bb_lock); }
   if (bb_control_service) bb_control_service->setProperty("bootstage", 0ull, 32);
 }
 
@@ -1154,6 +1160,7 @@ extern "C" void coachz_baseband_del_server(uint32_t service, uint32_t node, uint
   if (!bb_lock) return;
   IOLockLock(bb_lock);
   cbq_server_del(&bb_qmux, service, node, port);
+  if (service == NB_VOICE_SERVICE) bb_voice_indicate();
   if (service == CBD_SVC_UIM && nb_sim_endpoint_lost(&bb_sim, node, port)) bb_activation_indicate();
   if (service == CBD_SVC_WDS) bzero(bb_pdp_clients, sizeof bb_pdp_clients);
   IOLockUnlock(bb_lock);
@@ -1188,6 +1195,7 @@ extern "C" int coachz_baseband_qrtr(uint32_t dst_port, uint32_t src_node, uint32
       bb_push(r.channel == 0 ? CBH_QMUX1 : CBH_QMUX2, bb_out, CBQ_HDR + fixed);
     } else bb_push(r.channel == 0 ? CBH_QMUX1 : CBH_QMUX2, bb_out, r.len);
     bb_sim_answer(r, sdu, size);   // after the original answer; the activation uses bb_out
+    bb_voice_answer(r, src_node, src_port, sdu, size);
   }
   IOLockUnlock(bb_lock);
   return 1;
