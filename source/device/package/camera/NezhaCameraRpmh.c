@@ -29,9 +29,39 @@ static uint32_t read_rsc(const struct NezhaCameraRpmh *owner, uint32_t offset)
     return owner->rsc.read(owner->rsc.context, offset);
 }
 
-static void write_rsc(const struct NezhaCameraRpmh *owner, uint32_t offset, uint32_t value)
+static bool write_rsc(const struct NezhaCameraRpmh *owner, uint32_t offset, uint32_t value)
 {
+    if (owner->guard.write != NULL) {
+        return owner->guard.write(owner->rsc.context, offset, value);
+    }
     owner->rsc.write(owner->rsc.context, offset, value);
+    return true;
+}
+
+static bool enter(const struct NezhaCameraRpmh *owner)
+{
+    return owner->guard.enter == NULL || owner->guard.enter(owner->rsc.context);
+}
+
+static void leave(const struct NezhaCameraRpmh *owner)
+{
+    if (owner->guard.leave != NULL) {
+        owner->guard.leave(owner->rsc.context);
+    }
+}
+
+static bool set_irq(const struct NezhaCameraRpmh *owner, bool enabled)
+{
+    if (owner->guard.irq_enable != NULL) {
+        return owner->guard.irq_enable(owner->rsc.context, enabled);
+    }
+    const uint32_t old = read_rsc(owner, TcsOffset);
+    if (old == UINT32_MAX) {
+        return false;
+    }
+    const uint32_t expected = enabled ? old | TcsBit : old & ~(uint32_t)TcsBit;
+    return write_rsc(owner, TcsOffset, expected) &&
+        ((read_rsc(owner, TcsOffset) ^ expected) & TcsBit) == 0;
 }
 
 static bool idle(const struct NezhaCameraRpmh *owner, uint32_t tcs)
@@ -52,11 +82,21 @@ static bool transact(struct NezhaCameraRpmh *owner, uint32_t address,
     const uint32_t tcs = TcsOffset + tcs_relative;
     owner->last_address = address;
     owner->last_value = value;
+    if (!owner->restoring && owner->before_transaction != NULL &&
+        !owner->before_transaction(owner->observer_context, address, value, reply != NULL)) {
+        owner->status = NezhaCameraRpmhReadback;
+        return false;
+    }
+    if (owner->unsettled || !enter(owner)) {
+        owner->status = NezhaCameraRpmhBusy;
+        return false;
+    }
     owner->last_irq = read_rsc(owner, TcsOffset + l->irq_status);
     owner->last_tcs_status = read_rsc(owner, tcs + l->status);
     owner->last_command_status = UINT32_MAX;
     owner->last_reply = UINT32_MAX;
-    if (owner->unsettled || !idle(owner, tcs)) {
+    if (!idle(owner, tcs)) {
+        leave(owner);
         owner->status = NezhaCameraRpmhBusy;
         return false;
     }
@@ -64,23 +104,22 @@ static bool transact(struct NezhaCameraRpmh *owner, uint32_t address,
     QcomRpmhWrite writes[9];
     const unsigned count = qcom_rpmh_active_request(l, CameraTcs, &address, &value, 1, writes, 9);
     if (count != 9) {
+        leave(owner);
         owner->status = NezhaCameraRpmhInvalid;
         return false;
     }
     const uint32_t irq_enable = read_rsc(owner, TcsOffset);
     if (irq_enable == UINT32_MAX) {
+        leave(owner);
         owner->status = NezhaCameraRpmhReadback;
         return false;
     }
-    if ((irq_enable & TcsBit) != 0) {
-        write_rsc(owner, TcsOffset, irq_enable & ~(uint32_t)TcsBit);
-        if ((read_rsc(owner, TcsOffset) & TcsBit) != 0) {
-            owner->status = NezhaCameraRpmhReadback;
-            return false;
-        }
-    }
-
     owner->unsettled = true;
+    if ((irq_enable & TcsBit) != 0 && !set_irq(owner, false)) {
+        leave(owner);
+        owner->status = NezhaCameraRpmhReadback;
+        return false;
+    }
     for (unsigned i = 0; i < count; ++i) {
         const uint32_t offset = writes[i].offset;
         uint32_t word = writes[i].value;
@@ -92,14 +131,20 @@ static bool transact(struct NezhaCameraRpmh *owner, uint32_t address,
                 continue;
             }
         }
-        write_rsc(owner, TcsOffset + offset, word);
+        if (!write_rsc(owner, TcsOffset + offset, word)) {
+            leave(owner);
+            owner->status = NezhaCameraRpmhReadback;
+            return false;
+        }
     }
+    leave(owner);
 
     bool done = false;
     for (unsigned ms = 0; ms <= 100; ++ms) {
         owner->last_irq = read_rsc(owner, TcsOffset + l->irq_status);
         owner->last_tcs_status = read_rsc(owner, tcs + l->status);
-        if ((owner->last_irq & TcsBit) != 0 && owner->last_tcs_status == 1) {
+        if (owner->last_irq != UINT32_MAX && (owner->last_irq & TcsBit) != 0 &&
+            owner->last_tcs_status == 1) {
             done = true;
             break;
         }
@@ -112,6 +157,10 @@ static bool transact(struct NezhaCameraRpmh *owner, uint32_t address,
         return false;
     }
 
+    if (!enter(owner)) {
+        owner->status = NezhaCameraRpmhBusy;
+        return false;
+    }
     const uint32_t command_status = read_rsc(owner, tcs + l->cmd_data + 4);
     owner->last_command_status = command_status;
     const bool acknowledged = command_status != UINT32_MAX &&
@@ -121,19 +170,15 @@ static bool transact(struct NezhaCameraRpmh *owner, uint32_t address,
         owner->last_reply = *reply;
     }
     const unsigned finish_count = qcom_rpmh_finish(l, CameraTcs, writes, 9);
-    for (unsigned i = 0; i < finish_count; ++i) {
-        write_rsc(owner, TcsOffset + writes[i].offset, writes[i].value);
+    bool restored = finish_count != 0;
+    for (unsigned i = 0; restored && i < finish_count; ++i) {
+        restored = write_rsc(owner, TcsOffset + writes[i].offset, writes[i].value);
     }
-    write_rsc(owner, tcs + l->wait_for_cmpl, 0);
-    if ((irq_enable & TcsBit) != 0) {
-        const uint32_t now = read_rsc(owner, TcsOffset);
-        if (now == UINT32_MAX) {
-            owner->status = NezhaCameraRpmhReadback;
-            return false;
-        }
-        write_rsc(owner, TcsOffset, now | TcsBit);
-    }
-    owner->unsettled = !idle(owner, tcs) || ((read_rsc(owner, TcsOffset) ^ irq_enable) & TcsBit) != 0;
+    restored = restored && write_rsc(owner, tcs + l->wait_for_cmpl, 0) &&
+        ((irq_enable & TcsBit) == 0 || set_irq(owner, true));
+    owner->unsettled = !restored || !idle(owner, tcs) ||
+        ((read_rsc(owner, TcsOffset) ^ irq_enable) & TcsBit) != 0;
+    leave(owner);
     const bool ok = !owner->unsettled && acknowledged && (reply == NULL || *reply != UINT32_MAX);
     owner->status = ok ? NezhaCameraRpmhOk : NezhaCameraRpmhReadback;
     return ok;
@@ -142,11 +187,24 @@ static bool transact(struct NezhaCameraRpmh *owner, uint32_t address,
 bool nezha_camera_rpmh_init(struct NezhaCameraRpmh *owner,
     const struct NezhaCameraRegisterIo *rsc, const uint8_t *db, size_t db_bytes)
 {
-    if (owner == NULL || rsc == NULL || rsc->read == NULL || rsc->write == NULL || rsc->wait_ms == NULL ||
+    return nezha_camera_rpmh_init_guarded(owner, rsc, NULL, db, db_bytes);
+}
+
+bool nezha_camera_rpmh_init_guarded(struct NezhaCameraRpmh *owner,
+    const struct NezhaCameraRegisterIo *rsc, const struct NezhaCameraRpmhGuard *guard,
+    const uint8_t *db, size_t db_bytes)
+{
+    if (owner == NULL || rsc == NULL || rsc->read == NULL || rsc->wait_ms == NULL ||
+        (guard == NULL && rsc->write == NULL) ||
+        (guard != NULL && (guard->enter == NULL || guard->leave == NULL || guard->write == NULL ||
+                          guard->irq_enable == NULL)) ||
         rsc->read(rsc->context, 0) != AppsDrvId || rsc->read(rsc->context, 0xc) != AppsConfig) {
         return false;
     }
     struct NezhaCameraRpmh init = {.rsc = *rsc, .layout = qcom_rsc_layout(AppsDrvId)};
+    if (guard != NULL) {
+        init.guard = *guard;
+    }
     for (unsigned i = 0; i < 3; ++i) {
         QcomRpmhResource resource;
         if (qcom_cmd_db_find(db, db_bytes, rail_profile[i].name, &resource) != QcomRpmhOk ||
@@ -260,7 +318,14 @@ bool nezha_camera_rpmh_acquire(void *context, enum NezhaCameraMainRail rail, uns
 
 bool nezha_camera_rpmh_release(void *context, enum NezhaCameraMainRail rail)
 {
-    return context != NULL && (unsigned)rail < FirstPhy && release_vrm(context, (unsigned)rail);
+    if (context == NULL || (unsigned)rail >= FirstPhy) {
+        return false;
+    }
+    struct NezhaCameraRpmh *owner = context;
+    owner->restoring = true;
+    const bool result = release_vrm(owner, (unsigned)rail);
+    owner->restoring = false;
+    return result;
 }
 
 bool nezha_camera_rpmh_init_capture(struct NezhaCameraRpmh *owner,

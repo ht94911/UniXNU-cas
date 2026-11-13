@@ -25,6 +25,8 @@ const ArmSmmu4KConfig *nezha_camera_native_memory_config(const struct NezhaCamer
 bool nezha_camera_native_memory_hold(struct NezhaCameraNativeMemory *memory);
 const void *nezha_camera_native_memory_acquire(struct NezhaCameraNativeMemory *memory, unsigned index);
 bool nezha_camera_native_memory_publish(struct NezhaCameraNativeMemory *memory, unsigned index);
+/* A synchronous CPU reader can drop its claim without requeuing the frame. */
+bool nezha_camera_native_memory_drop(struct NezhaCameraNativeMemory *memory, unsigned index);
 
 /* No backing may be freed before CPAS drain and SMMU detach/TLBSYNC.
  * An uncertain teardown keeps the object and its device references. */

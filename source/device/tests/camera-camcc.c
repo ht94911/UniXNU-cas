@@ -61,6 +61,21 @@ static void capture_wait(void *context, unsigned milliseconds)
     assert(milliseconds == 1);
 }
 
+static uint32_t gcc_read(void *context, uint32_t offset)
+{
+    uint32_t *registers = context;
+    assert(offset == 0x26004 || offset == 0x2603c || offset == 0xa0004 ||
+           offset == 0x26014 || offset == 0x26028);
+    return registers[offset / 4];
+}
+
+static bool gcc_update(void *context, uint32_t offset, bool enabled)
+{
+    uint32_t *registers = context;
+    registers[offset / 4] = (gcc_read(context, offset) & ~1u) | (enabled ? 1u : 0u);
+    return true;
+}
+
 static uint32_t read32(void *context, uint32_t offset)
 {
     const struct CamccModel *model = context;
@@ -287,6 +302,21 @@ int main(void)
     assert(clocks.word[0x21008 / 4] == PowerDown && clocks.word[0x212e4 / 4] == 1);
     assert(clocks.word[0x20004 / 4] == 0x100000 && clocks.word[0x200e0 / 4] == 0);
     assert(!capture.gates.enabled_by_us && !capture.roots && !capture.tfe_owned);
+
+    static uint32_t gcc_words[0xa0008 / 4];
+    const struct NezhaCameraGccIo gcc = {gcc_words, gcc_read, gcc_update};
+    gcc_words[0x26004 / 4] = 0x101; // Already enabled.
+    gcc_words[0x26014 / 4] = 2;     // Inherited HWCG, independent of enable.
+    clocks.word[0x21398 / 4] = 1;
+    struct NezhaCameraInterfaces interfaces = {0};
+    assert(nezha_camera_interfaces_start(&gcc, &clock_io, &interfaces) == NezhaCameraCamccOk);
+    assert(gcc_words[0x26014 / 4] == 3 && interfaces.gcc_owned == 0x1e);
+    assert(interfaces.camcc_owned == 0x1d && (clocks.word[0x21390 / 4] & 1u) != 0);
+    assert(nezha_camera_interfaces_stop(&gcc, &clock_io, &interfaces, false) == NezhaCameraCamccBusy);
+    assert(gcc_words[0x26014 / 4] == 3 && interfaces.ready);
+    assert(nezha_camera_interfaces_stop(&gcc, &clock_io, &interfaces, true) == NezhaCameraCamccOk);
+    assert(gcc_words[0x26004 / 4] == 0x101 && gcc_words[0x26014 / 4] == 2);
+    assert(clocks.word[0x21398 / 4] == 1 && (clocks.word[0x21390 / 4] & 1u) == 0);
 
     puts("Camera CAMCC owns only C2 gates and software roots, with PLL lock and stop checks");
 }

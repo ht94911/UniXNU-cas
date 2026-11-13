@@ -1,7 +1,8 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 /* Vnode open/attribute validation/IO_SYNC/close follow the tested native
  * NezhaPowerLog.c. Camera persists a bounded record before a risky access
- * from its existing worker, so a later transport loss cannot lose it. */
+ * from its existing worker. Volume and UFS sync precede hardware access;
+ * the matching Android reader verifies what actually survived a return. */
 #include "NezhaCameraJournal.h"
 
 #include <mach/mach_time.h>
@@ -17,7 +18,7 @@ extern volatile uint32_t native_data_persist_state;
 extern volatile uint64_t native_data_persist_errors;
 extern int native_ufs_store_sync(void);
 
-enum { JournalLimit = 4096 };
+enum { JournalLimit = 8192 };
 static char path[64];
 static unsigned step;
 static bool active;

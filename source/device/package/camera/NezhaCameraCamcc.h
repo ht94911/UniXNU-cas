@@ -5,6 +5,10 @@
 #include "NezhaCameraRegisterIo.h"
 #include <stdbool.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 enum NezhaCameraCamccStatus {
     NezhaCameraCamccOk,
     NezhaCameraCamccInvalid,
@@ -32,6 +36,27 @@ struct NezhaCameraCaptureClocks {
     unsigned roots, forced_roots, failed_step;
     bool tfe_owned, retain_owned, ready;
 };
+
+/* Board interface clocks that stock Canoe enables before touching the
+ * camera controllers. The GCC callback updates bit 0 with the shared GCC
+ * owner; the CAMCC callback only accesses its owned camera instance. */
+struct NezhaCameraGccIo {
+    void *context;
+    uint32_t (*read)(void *context, uint32_t offset);
+    bool (*update)(void *context, uint32_t offset, bool enabled);
+};
+
+struct NezhaCameraInterfaces {
+    unsigned gcc_owned, camcc_owned;
+    bool ready;
+};
+
+enum NezhaCameraCamccStatus nezha_camera_interfaces_start(
+    const struct NezhaCameraGccIo *gcc, const struct NezhaCameraRegisterIo *camcc,
+    struct NezhaCameraInterfaces *interfaces);
+enum NezhaCameraCamccStatus nezha_camera_interfaces_stop(
+    const struct NezhaCameraGccIo *gcc, const struct NezhaCameraRegisterIo *camcc,
+    struct NezhaCameraInterfaces *interfaces, bool consumers_quiescent);
 
 /* C2 branch group after the top domain, PLL0, CRM votes and interconnect
  * are live. Configure only the software-owned roots: timer and AHB.
@@ -69,9 +94,17 @@ enum NezhaCameraCamccStatus nezha_camera_camcc_select_cci0_rate(
 enum NezhaCameraCamccStatus nezha_camera_camcc_enable_cci0(
     const struct NezhaCameraRegisterIo *io, struct NezhaCameraCamccLease *lease);
 
+/* Restore the CCI source and gate while PLL0 and the top domain remain
+ * live. Capture teardown may then release PLL0 before powering down top. */
+enum NezhaCameraCamccStatus nezha_camera_camcc_release_cci0(
+    const struct NezhaCameraRegisterIo *io, struct NezhaCameraCamccLease *lease);
+
 /* First quiesce all consumers of the owned clock/domain. Keep ownership if
  * a clock or domain does not confirm restoration. */
 enum NezhaCameraCamccStatus nezha_camera_camcc_release(
     const struct NezhaCameraRegisterIo *io, struct NezhaCameraCamccLease *lease);
 
+#ifdef __cplusplus
+}
+#endif
 #endif

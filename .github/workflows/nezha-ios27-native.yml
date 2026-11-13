@@ -1,7 +1,7 @@
-name: nezha iPhone27 camera USB-armed identity
+name: nezha iPhone27 camera GPIO correction and power checkpoints
 on:
   push:
-    branches: [codex/ios27-camera007-20261113]
+    branches: [codex/ios27-camera008-20261113]
   workflow_dispatch:
 permissions:
   contents: read

@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 #include "NezhaCameraMainPins.h"
+#include "NezhaCameraCanoePins.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -7,6 +8,19 @@
 
 enum { ClockCommand, ClockConfig = 4, ClockGate = 0x18 };
 static const uint32_t off = UINT32_C(1) << 31;
+
+_Static_assert(NezhaCameraGpioPhysical == 0x0f159000, "Canoe first camera GPIO window");
+_Static_assert(NezhaCameraGpioPhysical - NezhaCameraGpioOffset + 106 * NezhaCameraGpioStride == 0x0f16a000,
+               "Canoe sensor reset GPIO106 uses the same pinctrl window as touch");
+
+static unsigned observed;
+static bool observe(void *cookie, enum NezhaCameraPinStep step, unsigned item, unsigned value)
+{
+    (void)cookie;
+    assert(step == NezhaCameraPinRead && item == 106 && value == 106 * 4096);
+    ++observed;
+    return false;
+}
 
 struct MainBoard {
     uint32_t tlmm[117][2];
@@ -141,5 +155,8 @@ int main(void)
     assert(nezha_camera_main_restore_pins(&tlmm, &mclk, &rails, &state));
     assert(board.rails == 0 && memcmp(board.tlmm, original.tlmm, sizeof(board.tlmm)) == 0);
 
+    state.observe = (struct NezhaCameraPinObserver){NULL, observe};
+    assert(!nezha_camera_main_hold_reset(&tlmm, &state));
+    assert(observed == 1 && !state.reset_held && !state.pins_changed && board.rails == 0);
     puts("Main camera applies the stock rail and MCLK order and restores owned resources after failure");
 }

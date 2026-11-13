@@ -15,7 +15,8 @@ struct Rsc {
     uint32_t reg[0x1300 / 4];
     uint32_t mv[8], on[5];
     unsigned reads, votes, waits;
-    bool timeout;
+    uint32_t failed_offset;
+    bool timeout, locked, foreign_irq;
 };
 
 static uint32_t read_rsc(void *context, uint32_t offset)
@@ -31,7 +32,7 @@ static void write_rsc(void *context, uint32_t offset, uint32_t value)
     assert(offset % 4 == 0 && offset < sizeof(rsc->reg));
     rsc->reg[offset / 4] = value;
     if (offset == IrqEnable) {
-        assert((value & ~Slot) == 2);
+        assert((value & ~Slot) == (rsc->foreign_irq ? 3u : 2u));
     } else if (offset == IrqClear) {
         assert(value == Slot);
         rsc->reg[IrqStatus / 4] &= ~value;
@@ -63,7 +64,48 @@ static void write_rsc(void *context, uint32_t offset, uint32_t value)
 static void wait_ms(void *context, unsigned ms)
 {
     struct Rsc *rsc = context;
+    assert(!rsc->locked);
     rsc->waits += ms;
+}
+
+static bool enter(void *context)
+{
+    struct Rsc *rsc = context;
+    assert(!rsc->locked);
+    rsc->locked = true;
+    return true;
+}
+
+static void leave(void *context)
+{
+    struct Rsc *rsc = context;
+    assert(rsc->locked);
+    rsc->locked = false;
+}
+
+static bool guarded_write(void *context, uint32_t offset, uint32_t value)
+{
+    struct Rsc *rsc = context;
+    assert(rsc->locked && offset != IrqEnable);
+    if (offset == rsc->failed_offset) {
+        return false;
+    }
+    write_rsc(context, offset, value);
+    return true;
+}
+
+static bool guarded_irq(void *context, bool enabled)
+{
+    struct Rsc *rsc = context;
+    assert(rsc->locked);
+    /* Model an unrelated slot becoming enabled before our IRQ restore. */
+    if (enabled) {
+        rsc->foreign_irq = true;
+        rsc->reg[IrqEnable / 4] |= 1;
+    }
+    const uint32_t old = rsc->reg[IrqEnable / 4];
+    write_rsc(context, IrqEnable, enabled ? old | Slot : old & ~(uint32_t)Slot);
+    return true;
 }
 
 int main(void)
@@ -134,5 +176,18 @@ int main(void)
     assert(rsc.mv[4] == 880 && rsc.on[4] == 1);
     assert(nezha_camera_rpmh_release_phy(&owner, NezhaCameraPhy0p9));
     assert(rsc.on[4] == 0 && rsc.mv[4] == 880);
+
+    const struct NezhaCameraRegisterIo guarded_io = {&rsc, read_rsc, NULL, wait_ms};
+    const struct NezhaCameraRpmhGuard guard = {enter, leave, guarded_write, guarded_irq};
+    rsc.reg[IrqEnable / 4] = 2 | Slot;
+    assert(nezha_camera_rpmh_init_guarded(&owner, &guarded_io, &guard, db, sizeof(db)));
+    assert(nezha_camera_rpmh_acquire(&owner, NezhaCameraMainBob1, 3400));
+    assert(rsc.reg[IrqEnable / 4] == (3 | Slot) && !rsc.locked && !owner.unsettled);
+    const unsigned reads = rsc.reads, votes = rsc.votes, waits = rsc.waits;
+    rsc.failed_offset = Tcs + Address;
+    assert(!nezha_camera_rpmh_acquire(&owner, NezhaCameraMainVio, 1800));
+    assert(owner.unsettled && !rsc.locked && owner.status == NezhaCameraRpmhReadback);
+    assert(!nezha_camera_rpmh_acquire(&owner, NezhaCameraMainVio, 1800));
+    assert(rsc.reads == reads && rsc.votes == votes && rsc.waits == waits);
     puts("Camera RPMh restores the owned VRM setpoints and ARC indexes without lowering inherited floors");
 }

@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 #include "NezhaCameraMainPins.h"
+#include "NezhaCameraCanoePins.h"
 
 #include <stddef.h>
 
@@ -7,7 +8,7 @@
  * the four stock nezha OVX10500U module variants. */
 enum {
     MainReset, MainLdo, MainMclk, MainSda, MainScl, MainAf,
-    GpioStride = 0x1000,
+    GpioStride = NezhaCameraGpioStride,
     GpioOutput = 1 << 1,
     GpioOutputEnable = 1 << 9,
     GpioFunction1 = 1 << 2,
@@ -28,6 +29,12 @@ static const uint32_t clock_off = UINT32_C(1) << 31;
 static bool registers_valid(const struct NezhaCameraRegisterIo *io)
 {
     return io != NULL && io->read != NULL && io->write != NULL && io->wait_ms != NULL;
+}
+
+static bool observe(const struct NezhaCameraMainPins *state, enum NezhaCameraPinStep step,
+    unsigned item, unsigned value)
+{
+    return state->observe.before == NULL || state->observe.before(state->observe.context, step, item, value);
 }
 
 static void update(const struct NezhaCameraRegisterIo *io, uint32_t offset,
@@ -69,6 +76,13 @@ static bool set_pin(const struct NezhaCameraRegisterIo *io, unsigned index, uint
          (io->read(io->context, offset + 4) & GpioOutput) == (high ? GpioOutput : 0));
 }
 
+static bool start_pin(const struct NezhaCameraRegisterIo *io, unsigned index, uint32_t control,
+    bool high, struct NezhaCameraMainPins *state)
+{
+    return observe(state, NezhaCameraPinDrive, pins[index], control | (high ? 1u << 16 : 0)) &&
+        set_pin(io, index, control, high, state);
+}
+
 static bool restore_pin(const struct NezhaCameraRegisterIo *tlmm, unsigned pin,
                         struct NezhaCameraMainPins *state)
 {
@@ -94,6 +108,9 @@ static bool restore_pin(const struct NezhaCameraRegisterIo *tlmm, unsigned pin,
 static bool acquire_rail(const struct NezhaCameraMainRailIo *rails, enum NezhaCameraMainRail rail,
                          unsigned millivolts, struct NezhaCameraMainPins *state)
 {
+    if (!observe(state, NezhaCameraPinRail, (unsigned)rail, millivolts)) {
+        return false;
+    }
     state->rails_requested |= 1u << rail;
     return rails->acquire(rails->context, rail, millivolts);
 }
@@ -119,12 +136,18 @@ bool nezha_camera_main_hold_reset(const struct NezhaCameraRegisterIo *tlmm,
     }
     for (unsigned i = 0; i < NezhaCameraMainPinCount; ++i) {
         const uint32_t offset = pins[i] * GpioStride;
+        if (!observe(state, NezhaCameraPinRead, pins[i], offset)) {
+            return false;
+        }
         state->pin_control[i] = tlmm->read(tlmm->context, offset);
         const uint32_t output = tlmm->read(tlmm->context, offset + 4);
         if (state->pin_control[i] == UINT32_MAX || output == UINT32_MAX) {
             return false;
         }
         state->pin_output[i] = output & GpioOutput;
+    }
+    if (!observe(state, NezhaCameraPinDrive, pins[MainReset], GpioOutputEnable)) {
+        return false;
     }
     state->reset_held = true;
     return set_pin(tlmm, MainReset, GpioOutputEnable, false, state);
@@ -180,16 +203,17 @@ bool nezha_camera_main_start_pins(const struct NezhaCameraRegisterIo *tlmm,
         return false;
     }
     tlmm->wait_ms(tlmm->context, 2);
-    if (!set_pin(tlmm, MainAf, GpioOutputEnable, true, state)) {
+    if (!start_pin(tlmm, MainAf, GpioOutputEnable, true, state)) {
         return false;
     }
     tlmm->wait_ms(tlmm->context, 10);
-    if (!start_mclk(mclk, state) || !set_pin(tlmm, MainMclk, GpioFunction1, false, state)) {
+    if (!observe(state, NezhaCameraPinClock, 0, 19200000) || !start_mclk(mclk, state) ||
+        !start_pin(tlmm, MainMclk, GpioFunction1, false, state)) {
         return false;
     }
     tlmm->wait_ms(tlmm->context, 2);
     /* VANA, VDIG and CUSTOM1 share this one physical enable. */
-    if (!set_pin(tlmm, MainLdo, GpioOutputEnable, true, state)) {
+    if (!start_pin(tlmm, MainLdo, GpioOutputEnable, true, state)) {
         return false;
     }
     tlmm->wait_ms(tlmm->context, 1);
@@ -197,12 +221,12 @@ bool nezha_camera_main_start_pins(const struct NezhaCameraRegisterIo *tlmm,
         return false;
     }
     tlmm->wait_ms(tlmm->context, 3);
-    if (!set_pin(tlmm, MainReset, GpioOutputEnable, true, state)) {
+    if (!start_pin(tlmm, MainReset, GpioOutputEnable, true, state)) {
         return false;
     }
     tlmm->wait_ms(tlmm->context, 5);
-    state->running = set_pin(tlmm, MainSda, GpioFunction1, false, state) &&
-        set_pin(tlmm, MainScl, GpioFunction1, false, state);
+    state->running = start_pin(tlmm, MainSda, GpioFunction1, false, state) &&
+        start_pin(tlmm, MainScl, GpioFunction1, false, state);
     return state->running;
 }
 

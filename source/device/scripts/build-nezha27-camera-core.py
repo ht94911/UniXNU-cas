@@ -12,7 +12,7 @@ import sys
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MODULES = ("Cci", "Ovx10500u", "Rdi1080", "Camss1080", "Csiphy24", "Dma", "Camcc", "Crm", "Cpas", "Profile", "MainCapture", "MainPins", "Rpmh")
+MODULES = ("Cci", "Ovx10500u", "Rdi1080", "Camss1080", "Csiphy24", "Dma", "Camcc", "Crm", "Cpas", "Profile", "MainCapture", "MainPins", "Rpmh", "IfeBandwidth", "IfeRsc", "CaptureResources", "FrameProbe")
 
 
 def tool(env_name, mac_name, local_name):
@@ -58,7 +58,7 @@ def main():
     if staged:
         sources.append(kit / "NezhaCameraNativeMemory.cpp")
         if args.shared_soc_include is not None:
-            sources.append(kit / "NezhaCameraNativeSmmu.cpp")
+            sources.extend(kit / ("NezhaCameraNative" + name + ".cpp") for name in ("Smmu", "Rpmh", "Gcc"))
     elif args.shared_soc_include is not None:
         parser.error("C2 shared-SMMU adapter requires the native staged build")
     for source in sources:
@@ -71,7 +71,7 @@ def main():
                              "-I", str(ROOT / "kits/nezha/nezha27-input")]
             if source.suffix == ".cpp":
                 includes += ["-I", str(ROOT / "refer/Adreno740"), "-I", str(ROOT / ".cache/xnu-work/osfmk")]
-            if name == "NezhaCameraNativeSmmu":
+            if name in ("NezhaCameraNativeSmmu", "NezhaCameraNativeRpmh", "NezhaCameraNativeGcc"):
                 includes += ["-I", str(args.shared_soc_include.resolve())]
             compile_record = records[source.suffix]
             command = helper["compile_command"](compile_record, source, obj, includes, [])

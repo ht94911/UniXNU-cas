@@ -5,6 +5,10 @@
 #include "NezhaCameraMainPins.h"
 #include "upstream/QcomRpmh.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 enum NezhaCameraRpmhStatus {
     NezhaCameraRpmhOk,
     NezhaCameraRpmhInvalid,
@@ -32,20 +36,35 @@ struct NezhaCameraArcState {
     bool changed;
 };
 
+/* Optional common RSC owner. It serializes only register programming and
+ * IRQ bit updates; the caller holds the TCS lease across the wait. */
+struct NezhaCameraRpmhGuard {
+    bool (*enter)(void *context);
+    void (*leave)(void *context);
+    bool (*write)(void *context, uint32_t offset, uint32_t value);
+    bool (*irq_enable)(void *context, bool enabled);
+};
+
 struct NezhaCameraRpmh {
     struct NezhaCameraRegisterIo rsc;
+    struct NezhaCameraRpmhGuard guard;
+    bool (*before_transaction)(void *context, uint32_t address, uint32_t value, bool read);
+    void *observer_context;
     QcomRscLayout layout;
     struct NezhaCameraVrmState rail[5];
     struct NezhaCameraArcState arc[3];
     enum NezhaCameraRpmhStatus status;
     uint32_t last_address, last_value, last_irq, last_tcs_status, last_command_status, last_reply;
-    bool unsettled, capture_resources;
+    bool unsettled, capture_resources, restoring;
 };
 
 /* The camera-only test calls this after its existing APPS RPMh consumer is
  * finished. A shared integration must use the common APPS TCS owner. */
 bool nezha_camera_rpmh_init(struct NezhaCameraRpmh *owner,
     const struct NezhaCameraRegisterIo *rsc, const uint8_t *db, size_t db_bytes);
+bool nezha_camera_rpmh_init_guarded(struct NezhaCameraRpmh *owner,
+    const struct NezhaCameraRegisterIo *rsc, const struct NezhaCameraRpmhGuard *guard,
+    const uint8_t *db, size_t db_bytes);
 bool nezha_camera_rpmh_acquire(void *context, enum NezhaCameraMainRail rail, unsigned millivolts);
 bool nezha_camera_rpmh_release(void *context, enum NezhaCameraMainRail rail);
 
@@ -61,4 +80,7 @@ bool nezha_camera_rpmh_acquire_arc(struct NezhaCameraRpmh *owner,
     enum NezhaCameraArcRail rail, unsigned level);
 bool nezha_camera_rpmh_release_arc(struct NezhaCameraRpmh *owner, enum NezhaCameraArcRail rail);
 
+#ifdef __cplusplus
+}
+#endif
 #endif

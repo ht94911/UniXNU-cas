@@ -140,13 +140,22 @@ bool nezha_camera_native_memory_publish(NezhaCameraNativeMemory *memory, unsigne
     return true;
 }
 
+bool nezha_camera_native_memory_drop(NezhaCameraNativeMemory *memory, unsigned index)
+{
+    if (!memory || !memory->ready || index > 1 || (memory->cpu & (1u << index)) == 0) {
+        return false;
+    }
+    memory->cpu &= ~(1u << index);
+    return true;
+}
+
 bool nezha_camera_native_memory_release(NezhaCameraNativeMemory **out, bool dma_detached)
 {
     if (!out || *out != &memory_storage || !memory_in_use) {
         return false;
     }
     auto *memory = *out;
-    if (memory->held && !dma_detached) {
+    if ((memory->held && !dma_detached) || memory->cpu) {
         return false;
     }
     memory->ready = false;

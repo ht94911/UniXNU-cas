@@ -7,6 +7,7 @@
 #include <sys/systm.h>
 
 #include "NezhaCameraCamcc.h"
+#include "NezhaCameraCanoePins.h"
 #include "NezhaCameraOvx10500u.h"
 #include "NezhaCameraRpmh.h"
 #include "NezhaCameraProfile.h"
@@ -21,9 +22,6 @@ enum {
     CameraClockPage = 0x958e000,
     MainMclkPage = 0x1764000,
     CameraCci0Page = 0x941b000,
-    CameraTlmm = 0xf000000,
-    CameraTlmmFirst = 89 * 0x1000,
-    CameraTlmmBytes = (116 - 89 + 1) * 0x1000,
     AppsRscDrv2 = 0x18920000,
     AppsRscBytes = 0x10000,
     AopCommandDb = 0x81c60000,
@@ -66,6 +64,10 @@ enum CameraHardwareMark {
     CameraBeforeTop, CameraBeforeRate, CameraBeforeGate, CameraBeforeCciRead,
     CameraBeforePower, CameraBeforeCciPrepare, CameraBeforeSensorRead,
     CameraBeforeRestore,
+    CameraBeforeTlmmMap = 31, CameraBeforeRscMap, CameraBeforeDbMap,
+    CameraBeforeRpmhInit, CameraRpmhInitialized,
+    CameraBeforePinRead, CameraBeforePinDrive, CameraBeforeRail, CameraBeforeClock,
+    CameraBeforeRpmhTransaction,
 };
 
 enum CameraDiagnosticWord {
@@ -198,6 +200,24 @@ static bool hardware_mark(unsigned phase, unsigned status, unsigned a, unsigned 
     return true;
 }
 
+static bool main_pin_checkpoint(void *cookie, enum NezhaCameraPinStep step, unsigned item, unsigned value)
+{
+    (void)cookie;
+    static const unsigned phase[] = {
+        CameraBeforePinRead, CameraBeforePinDrive, CameraBeforeRail, CameraBeforeClock,
+    };
+    const unsigned physical = step == NezhaCameraPinRead || step == NezhaCameraPinDrive ?
+        NezhaCameraTlmmResource + NezhaCameraTlmmGpioWindow + item * NezhaCameraGpioStride :
+        step == NezhaCameraPinClock ? MainMclkPage : AppsRscDrv2;
+    return hardware_mark(phase[step], 0, item, value, physical);
+}
+
+static bool main_rpmh_checkpoint(void *cookie, uint32_t address, uint32_t value, bool read)
+{
+    (void)cookie;
+    return hardware_mark(CameraBeforeRpmhTransaction, 0, address, value, (unsigned)read);
+}
+
 static vm_offset_t map_registers(vm_offset_t physical, vm_size_t bytes)
 {
     return ml_io_map_unmappable(physical, bytes, 7 /* VM_WIMG_IO */);
@@ -281,8 +301,8 @@ static void record_main_physical(vm_offset_t gpio_base, const struct NezhaCamera
     }
     const unsigned pins[] = {106, 107, 89, 111, 112, 116};
     for (unsigned i = 0; i < 6; ++i) {
-        diagnostic_physical[2 * i] = read32(gpio_base, pins[i] * 0x1000);
-        diagnostic_physical[2 * i + 1] = read32(gpio_base, pins[i] * 0x1000 + 4);
+        diagnostic_physical[2 * i] = read32(gpio_base, pins[i] * NezhaCameraGpioStride);
+        diagnostic_physical[2 * i + 1] = read32(gpio_base, pins[i] * NezhaCameraGpioStride + 4);
     }
     for (unsigned i = 0; i < 3; ++i) {
         const struct NezhaCameraVrmState *rail = &rpmh->rail[i];
@@ -384,19 +404,26 @@ static bool main_identity_probe(vm_offset_t cci, vm_offset_t mclk, unsigned cci_
     if (!hardware_mark(CameraBeforePower, 0, version, AppsRscDrv2, MainMclkPage)) {
         return true;
     }
-    const vm_offset_t tlmm = map_registers(CameraTlmm + CameraTlmmFirst, CameraTlmmBytes);
-    const vm_offset_t rsc = map_registers(AppsRscDrv2, AppsRscBytes);
-    const vm_offset_t db = map_registers(AopCommandDb, AopCommandDbBytes);
+    const vm_offset_t tlmm = hardware_mark(CameraBeforeTlmmMap, 0, NezhaCameraGpioPhysical, NezhaCameraGpioBytes, 0) ?
+        map_registers(NezhaCameraGpioPhysical, NezhaCameraGpioBytes) : 0;
+    const vm_offset_t rsc = tlmm != 0 && hardware_mark(CameraBeforeRscMap, 0, AppsRscDrv2, AppsRscBytes, 0) ?
+        map_registers(AppsRscDrv2, AppsRscBytes) : 0;
+    const vm_offset_t db = rsc != 0 && hardware_mark(CameraBeforeDbMap, 0, AopCommandDb, AopCommandDbBytes, 0) ?
+        map_registers(AopCommandDb, AopCommandDbBytes) : 0;
     bool released = true;
     if (tlmm != 0 && rsc != 0 && db != 0) {
-        const struct NezhaCameraRegisterIo gpio = {(void *)(tlmm - CameraTlmmFirst), read_page, write_page, wait_ms};
+        const struct NezhaCameraRegisterIo gpio = {(void *)(tlmm - NezhaCameraGpioOffset), read_page, write_page, wait_ms};
         const struct NezhaCameraRegisterIo clock = {(void *)mclk, read_page, write_page, wait_ms};
         const struct NezhaCameraRegisterIo apps = {(void *)rsc, read_page, write_page, wait_ms};
         struct NezhaCameraRpmh rpmh;
-        if (nezha_camera_rpmh_init(&rpmh, &apps, (const uint8_t *)db, AopCommandDbBytes)) {
+        if (hardware_mark(CameraBeforeRpmhInit, 0, AppsRscDrv2, AopCommandDb, 0) &&
+            nezha_camera_rpmh_init(&rpmh, &apps, (const uint8_t *)db, AopCommandDbBytes) &&
+            hardware_mark(CameraRpmhInitialized, 0, rpmh.rail[0].address,
+                          rpmh.rail[1].address, rpmh.rail[2].address)) {
+            rpmh.before_transaction = main_rpmh_checkpoint;
             record_diagnostic(CameraResources, 0);
             const struct NezhaCameraMainRailIo rails = {&rpmh, nezha_camera_rpmh_acquire, nezha_camera_rpmh_release};
-            struct NezhaCameraMainPins pins = {0};
+            struct NezhaCameraMainPins pins = {.observe = {NULL, main_pin_checkpoint}};
             const bool held = nezha_camera_main_hold_reset(&gpio, &pins);
             const bool powered = held && nezha_camera_main_start_pins(&gpio, &clock, &rails, &pins);
             diagnostic_words[DiagPowerOn] = (unsigned)powered;
@@ -405,7 +432,7 @@ static bool main_identity_probe(vm_offset_t cci, vm_offset_t mclk, unsigned cci_
             diagnostic_words[DiagMclkCommand] = read32(mclk, 0);
             diagnostic_words[DiagMclkConfig] = read32(mclk, 4);
             diagnostic_words[DiagMclkBranch] = read32(mclk, 0x18);
-            record_main_physical(tlmm - CameraTlmmFirst, &rpmh);
+            record_main_physical(tlmm - NezhaCameraGpioOffset, &rpmh);
             record_diagnostic(CameraPower, powered ? 0 : 1);
             (void)hardware_mark(CameraPower, powered ? 0 : 1, pins.rails_requested,
                 (unsigned)rpmh.status, rpmh.last_address);
@@ -416,7 +443,7 @@ static bool main_identity_probe(vm_offset_t cci, vm_offset_t mclk, unsigned cci_
             diagnostic_words[DiagCciQuiet] = (unsigned)quiet;
             diagnostic_words[DiagPinsRestored] = (unsigned)released;
             diagnostic_words[DiagRpmhStatus] = (unsigned)rpmh.status;
-            record_main_physical(tlmm - CameraTlmmFirst, &rpmh);
+            record_main_physical(tlmm - NezhaCameraGpioOffset, &rpmh);
             record_diagnostic(CameraSensorRestored, released ? 0 : 1);
             (void)hardware_mark(CameraSensorRestored, released ? 0 : 1, (unsigned)quiet,
                 (unsigned)rpmh.status, pins.rails_requested);
@@ -444,7 +471,7 @@ static bool main_identity_probe(vm_offset_t cci, vm_offset_t mclk, unsigned cci_
         ml_io_unmap(rsc, AppsRscBytes);
     }
     if (tlmm != 0) {
-        ml_io_unmap(tlmm, CameraTlmmBytes);
+        ml_io_unmap(tlmm, NezhaCameraGpioBytes);
     }
     return released;
 }

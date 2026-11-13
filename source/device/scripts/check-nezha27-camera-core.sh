@@ -40,5 +40,11 @@ check profile "$camera/NezhaCameraProfile.c"
 check main-capture "$camera/NezhaCameraMainCapture.c" "$camera/NezhaCameraRdi1080.c"
 check main-pins "$camera/NezhaCameraMainPins.c"
 check rpmh "$camera/NezhaCameraRpmh.c" "$camera/upstream/QcomRpmh.c"
+check ife-bandwidth "$camera/NezhaCameraIfeBandwidth.c" "$camera/upstream/QcomRpmh.c"
+check ife-rsc "$camera/NezhaCameraIfeRsc.c"
+check frame-probe "$camera/NezhaCameraFrameProbe.c" "$camera/NezhaCameraMainCapture.c" \
+    "$camera/NezhaCameraCamss1080.c" "$camera/NezhaCameraRdi1080.c" \
+    "$camera/NezhaCameraOvx10500u.c" "$camera/NezhaCameraCci.c" "$camera/NezhaCameraDma.c" \
+    "$smmu/ArmSmmu4K.c" "$smmu/ArmSmmu4KContext.c" "$smmu/ArmSmmu4KProgram.c" "$smmu/ArmSmmu4KStreams.c"
 
 python3 "$device/scripts/build-nezha27-camera-core.py" --out "$out"

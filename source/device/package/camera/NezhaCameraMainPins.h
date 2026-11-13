@@ -13,6 +13,15 @@ enum NezhaCameraMainRail {
     NezhaCameraMainVio,
 };
 
+enum NezhaCameraPinStep {
+    NezhaCameraPinRead, NezhaCameraPinDrive, NezhaCameraPinRail, NezhaCameraPinClock,
+};
+
+struct NezhaCameraPinObserver {
+    void *context;
+    bool (*before)(void *context, enum NezhaCameraPinStep step, unsigned item, unsigned value);
+};
+
 struct NezhaCameraMainRailIo {
     void *context;
     bool (*acquire)(void *context, enum NezhaCameraMainRail rail, unsigned millivolts);
@@ -21,6 +30,7 @@ struct NezhaCameraMainRailIo {
 };
 
 struct NezhaCameraMainPins {
+    struct NezhaCameraPinObserver observe;
     uint32_t pin_control[NezhaCameraMainPinCount];
     uint32_t pin_output[NezhaCameraMainPinCount];
     uint32_t mclk_config;

@@ -72,6 +72,97 @@ static bool wait_bits(const struct NezhaCameraRegisterIo *io,
     return false;
 }
 
+/* Stock GCC permanent CAM AHB/XO and MCLK AHB, then CPAS HF/SF AXI.
+ * AXI has BRANCH_HALT_SKIP; a gate request is not a DMA-ready check. */
+static const uint32_t gcc_interfaces[] = {0x26004, 0x2603c, 0xa0004, 0x26014, 0x26028};
+/* Stock CAMCC probe retains CAMNOC DCD XO, DRV AHB/XO, GDSC and sleep. */
+static const uint32_t camcc_interfaces[] = {0x21308, 0x21398, 0x21390, 0x21364, 0x21368};
+
+static bool interfaces_valid(const struct NezhaCameraGccIo *gcc,
+    const struct NezhaCameraRegisterIo *camcc, const struct NezhaCameraInterfaces *interfaces)
+{
+    return gcc && gcc->read && gcc->update && io_valid(camcc) && interfaces;
+}
+
+enum NezhaCameraCamccStatus nezha_camera_interfaces_start(
+    const struct NezhaCameraGccIo *gcc, const struct NezhaCameraRegisterIo *camcc,
+    struct NezhaCameraInterfaces *interfaces)
+{
+    if (!interfaces_valid(gcc, camcc, interfaces)) {
+        return NezhaCameraCamccInvalid;
+    }
+    if (interfaces->ready || interfaces->gcc_owned || interfaces->camcc_owned) {
+        return NezhaCameraCamccBusy;
+    }
+    for (unsigned i = 0; i < sizeof(gcc_interfaces) / sizeof(gcc_interfaces[0]); ++i) {
+        const uint32_t offset = gcc_interfaces[i];
+        const uint32_t previous = gcc->read(gcc->context, offset);
+        if (previous == UINT32_MAX) {
+            return NezhaCameraCamccSource;
+        }
+        if (!(previous & CamccEnable)) {
+            interfaces->gcc_owned |= 1u << i;
+            if (!gcc->update(gcc->context, offset, true)) {
+                return NezhaCameraCamccSource;
+            }
+        }
+    }
+    for (unsigned i = 0; i < sizeof(camcc_interfaces) / sizeof(camcc_interfaces[0]); ++i) {
+        const uint32_t offset = camcc_interfaces[i];
+        const uint32_t previous = camcc->read(camcc->context, offset);
+        if (previous == UINT32_MAX) {
+            return NezhaCameraCamccSource;
+        }
+        if (!(previous & CamccEnable)) {
+            interfaces->camcc_owned |= 1u << i;
+            camcc->write(camcc->context, offset, previous | CamccEnable);
+            if (!wait_bits(camcc, offset, CamccEnable, CamccEnable)) {
+                return NezhaCameraCamccTimeout;
+            }
+        }
+    }
+    interfaces->ready = true;
+    return NezhaCameraCamccOk;
+}
+
+enum NezhaCameraCamccStatus nezha_camera_interfaces_stop(
+    const struct NezhaCameraGccIo *gcc, const struct NezhaCameraRegisterIo *camcc,
+    struct NezhaCameraInterfaces *interfaces, bool consumers_quiescent)
+{
+    if (!interfaces_valid(gcc, camcc, interfaces)) {
+        return NezhaCameraCamccInvalid;
+    }
+    if (!consumers_quiescent) {
+        return NezhaCameraCamccBusy;
+    }
+    interfaces->ready = false;
+    for (unsigned i = sizeof(camcc_interfaces) / sizeof(camcc_interfaces[0]); i != 0; --i) {
+        const unsigned bit = 1u << (i - 1);
+        if (interfaces->camcc_owned & bit) {
+            const uint32_t offset = camcc_interfaces[i - 1];
+            const uint32_t current = camcc->read(camcc->context, offset);
+            if (current == UINT32_MAX) {
+                return NezhaCameraCamccSource;
+            }
+            camcc->write(camcc->context, offset, current & ~(uint32_t)CamccEnable);
+            if (!wait_bits(camcc, offset, CamccEnable, 0)) {
+                return NezhaCameraCamccTimeout;
+            }
+            interfaces->camcc_owned &= ~bit;
+        }
+    }
+    for (unsigned i = sizeof(gcc_interfaces) / sizeof(gcc_interfaces[0]); i != 0; --i) {
+        const unsigned bit = 1u << (i - 1);
+        if (interfaces->gcc_owned & bit) {
+            if (!gcc->update(gcc->context, gcc_interfaces[i - 1], false)) {
+                return NezhaCameraCamccSource;
+            }
+            interfaces->gcc_owned &= ~bit;
+        }
+    }
+    return NezhaCameraCamccOk;
+}
+
 enum NezhaCameraCamccStatus nezha_camera_camcc_acquire_pll0(
     const struct NezhaCameraRegisterIo *io, struct NezhaCameraPll0Lease *lease)
 {
@@ -326,13 +417,12 @@ static bool disable_owned_branch(const struct NezhaCameraRegisterIo *io,
     return true;
 }
 
-enum NezhaCameraCamccStatus nezha_camera_camcc_release(
+enum NezhaCameraCamccStatus nezha_camera_camcc_release_cci0(
     const struct NezhaCameraRegisterIo *io, struct NezhaCameraCamccLease *lease)
 {
     if (!io_valid(io) || lease == NULL) {
         return NezhaCameraCamccInvalid;
     }
-    lease->top_ready = false;
     if (lease->cci_rate_owned) {
         if ((lease->enabled_by_us & OwnCci0) == 0) {
             return NezhaCameraCamccBusy;
@@ -357,6 +447,17 @@ enum NezhaCameraCamccStatus nezha_camera_camcc_release(
     if (!disable_owned_branch(io, lease, CamccCci0, OwnCci0, true)) {
         return NezhaCameraCamccTimeout;
     }
+    return NezhaCameraCamccOk;
+}
+
+enum NezhaCameraCamccStatus nezha_camera_camcc_release(
+    const struct NezhaCameraRegisterIo *io, struct NezhaCameraCamccLease *lease)
+{
+    const enum NezhaCameraCamccStatus cci = nezha_camera_camcc_release_cci0(io, lease);
+    if (cci != NezhaCameraCamccOk) {
+        return cci;
+    }
+    lease->top_ready = false;
     if (!disable_owned_branch(io, lease, CamccCpasAhb, OwnCpasAhb, true) ||
         !disable_owned_branch(io, lease, CamccCoreAhb, OwnCoreAhb, false)) {
         return NezhaCameraCamccTimeout;
