@@ -1,0 +1,18 @@
+--- a/bsd/kern/kern_exec.c
++++ b/bsd/kern/kern_exec.c
+@@ -8064,8 +8064,15 @@
+ #if defined(XNU_OWNER_UNION_SYSTEMOS) && XNU_OWNER_UNION_SYSTEMOS
+ 	cache_authorized = cache_authorized && native_union;
+ #endif
+ 	if (!cache_authorized) { error = EAUTH; goto done; }
++	/* This authenticated read-only volume supplies executable system pages.
++	 * XNU leaves init and DEXTs alive during its first unmount pass.  Use its
++	 * standard system-volume classification so their backing pages survive
++	 * until proc_shutdown(FALSE) has quiesced them.  Data remains unchanged. */
++	vfs_setmntsystem(cache_mount);
++	printf("NEZHA27 SYSTEMOS: shutdown-system=%u readonly=%d union=%d\n",
++	    (unsigned)((cache_mount->mnt_kern_flag & MNTK_SYSTEM) != 0), readonly, native_union);
+ 	native_owner_cache_stage = 5;
+ #if !defined(XNU_OWNER_UNION_SYSTEMOS) || !XNU_OWNER_UNION_SYSTEMOS
+ 	if ((error = copyout(environment, environment_vector[0], strlen(environment) + 1)) != 0 ||
+ 	    (error = copyout(environment_vector, scratch + 0x500, sizeof(environment_vector))) != 0) goto done;
