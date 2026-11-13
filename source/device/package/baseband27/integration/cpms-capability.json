@@ -6,8 +6,9 @@
   "cache_file": "dyld_shared_cache_arm64e.19",
   "file_offset": "0x4fbd668",
   "virtual_address": "0x1cd3bd668",
-  "original": "7f2303d5ffc300d1",
-  "replacement": "00008052c0035fd6",
+  "original": "7f2303d5ffc300d1f44f01a9",
+  "replacement": "7f2303d500008052ff0f5fd6",
+  "entry_return_contract": "Keep the original PACIBSP landing instruction and stack pointer, then return zero through RETAB",
   "result": "variant zero uses CPMSModule::create's existing unsupported path",
   "boundary": "Applied to a validated RAM page by the existing native-text-fixup implementation; root and Data files are not rewritten",
   "hardware_verified": false

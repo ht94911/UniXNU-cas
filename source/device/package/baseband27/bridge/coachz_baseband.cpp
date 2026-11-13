@@ -27,6 +27,8 @@
 #include "coachz_bb_esim.h"
 #include "NbSim.h"
 #include "NbVoice.h"
+#include "NbBoot.h"
+extern "C" int coachz_modem_boot_ready(void);
 
 #define BB_FRAME_MAX (64u * 1024u)       // one read or write: a QMUX frame, a SAHARA packet or a READ_DATA answer
 // Frames waiting for ABM, per channel. At boot the 53 clients' registrations and indications arrive faster than ABM reads; with 64 the
@@ -999,7 +1001,12 @@ public:
     uint64_t out[4] = { 0 };
     uint32_t nout = args->scalarOutputCount < 4 ? args->scalarOutputCount : 4;
     IOLockLock(bb_lock);
-    const int result = cbc_call(&bb_control, selector, args->scalarInput, args->scalarInputCount, out, &nout);
+    int result;
+    if (selector == CBC_GET_PROPERTY && args->scalarInputCount == 1 &&
+        args->scalarInput[0] == NB_BOOT_READY_PROPERTY) {
+      if (!nout) result = CBC_BAD_ARGUMENT;
+      else { out[0] = coachz_modem_boot_ready() != 0; nout = 1; result = CBC_OK; }
+    } else result = cbc_call(&bb_control, selector, args->scalarInput, args->scalarInputCount, out, &nout);
     // A reset or power-on goes back to before SendImage: nothing greets until the next one.
     if (!result && (selector == CBC_RESET_MODEM || selector == CBC_POWERCYCLE || (selector == CBC_POWER && args->scalarInputCount && args->scalarInput[0]))) {
       bb_boot_image_sent = false;

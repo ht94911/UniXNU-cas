@@ -1,7 +1,7 @@
-name: nezha iPhone27 B package on GPU024 - native012
+name: nezha iPhone27 B package on GPU024 - native014
 on:
   push:
-    branches: [codex/ios27-bb-gpu024-native013-20261114]
+    branches: [codex/ios27-bb-gpu024-native014-20261114]
   workflow_dispatch:
 permissions:
   contents: read
@@ -67,6 +67,8 @@ jobs:
           "$RUNNER_TEMP/ios27/ipa_smem"
           clang -std=gnu11 -Wall -Wextra -Werror -fsanitize=address,undefined "$bb/tests/baseband27/startup_order_test.c" "$bb/package/baseband27/platform/NbBaseband.c" "$bb/package/baseband27/platform/NbMss.c" "$bb/package/baseband27/platform/NbPas.c" "$bb/package/baseband27/upstream/QcomMdt.c" "$bb/package/baseband27/upstream/QcomGlink.c" "$bb/package/baseband27/upstream/QcomSmem.c" "$bb/package/baseband27/upstream/QcomSmp2p.c" "$bb/package/baseband27/transport/NbQrtr.c" "$bb/package/baseband27/services/NbRmtfs.c" "$bb/package/baseband27/services/NbTftp.c" "$bb/package/baseband27/services/NbMemshare.c" "$bb/package/baseband27/services/NbServloc.c" -o "$RUNNER_TEMP/ios27/startup_order"
           "$RUNNER_TEMP/ios27/startup_order"
+          clang -std=gnu11 -Wall -Wextra -Werror -fsanitize=address,undefined "$bb/tests/baseband27/boot_ready_test.c" "$bb/package/baseband27/transport/NbQrtr.c" -o "$RUNNER_TEMP/ios27/boot_ready"
+          "$RUNNER_TEMP/ios27/boot_ready"
           CC=clang python3 "$bb/tests/baseband27/ipa_sram_test.py"
       - name: Qualify compiler and run the standard native build
         env:

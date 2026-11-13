@@ -1,0 +1,56 @@
+{
+  "image": "libBasebandManager.dylib",
+  "image_uuid": "e7e1cd9b-2938-3519-92a0-7a119279a107",
+  "native_prepare_address": "0x2bea74594",
+  "native_boot_address": "0x2bea746c4",
+  "query_function": "_TelephonyBasebandControllerGetBasebandProperty",
+  "query_address": "0x2bfaf69a4",
+  "board_property": "0x4e42",
+  "ready_requires": "actual worker PAS/MSS/IPCRTR/WDS/DMS/NAS/UIM and IPA open",
+  "original_BootModule_IPC_error_and_event_flow_retained": true,
+  "root_and_Data_files_unmodified": true,
+  "fixups": [
+    {
+      "name": "BootControllerLegacy::prepare",
+      "cache_file": "dyld_shared_cache_arm64e.71",
+      "file_offset": "0x6674594",
+      "original": "7f2303d5ff8303d1f6570ba9f44f0ca9",
+      "replacement": "7f2303d5ff8300d1fd7b01a9fd430091"
+    },
+    {
+      "name": "BootControllerLegacy::prepare",
+      "cache_file": "dyld_shared_cache_arm64e.71",
+      "file_offset": "0x66745a4",
+      "original": "fd7b0da9fd430391f30301aaf50300aa",
+      "replacement": "000840f9400100b4ff0700f941c88952"
+    },
+    {
+      "name": "BootControllerLegacy::prepare",
+      "cache_file": "dyld_shared_cache_arm64e.71",
+      "file_offset": "0x66745b4",
+      "original": "e8f301b2e82301a9f4830091e80700f9",
+      "replacement": "e2230091fb084294a0000034e80740f9"
+    },
+    {
+      "name": "BootControllerLegacy::prepare",
+      "cache_file": "dyld_shared_cache_arm64e.71",
+      "file_offset": "0x66745c4",
+      "original": "f6230091e8230091cd2f5a9440e5054f",
+      "replacement": "1f0500f1e0179f1a0200001400008052"
+    },
+    {
+      "name": "BootControllerLegacy::prepare",
+      "cache_file": "dyld_shared_cache_arm64e.71",
+      "file_offset": "0x66745d4",
+      "original": "808203ade08303ade08302ad",
+      "replacement": "fd7b41a9ff830091ff0f5fd6"
+    },
+    {
+      "name": "BootControllerLegacy::bootModem",
+      "cache_file": "dyld_shared_cache_arm64e.71",
+      "file_offset": "0x66746c4",
+      "original": "7f2303d5ff8304d1",
+      "replacement": "7f2303d5b4ffff17"
+    }
+  ]
+}

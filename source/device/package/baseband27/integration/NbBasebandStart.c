@@ -28,6 +28,8 @@ extern int nezha_bb_owners_ready(void);
 extern int nezha_bb_diag_register(void);
 extern NbBasebandBridge nb_bridge_hooks(NbBaseband *);
 extern void nb_bridge_poll(void);
+extern void nb_bridge_state(int);
+extern void nb_bridge_invalidate(void);
 extern void nb_bridge_report(unsigned);
 static NbBaseband nb_worker;
 static NbBasebandConfig nb_config;
@@ -57,7 +59,7 @@ static void publish(int r)
     __atomic_fetch_add(&nb_stats_sequence,1,__ATOMIC_RELEASE);
 }
 static void on_smp2p(void){nb_baseband_smp2p_event(&nb_worker);}
-static void on_watchdog(void){nb_baseband_wdog_event(&nb_worker);}
+static void on_watchdog(void){nb_bridge_invalidate();nb_baseband_wdog_event(&nb_worker);}
 static uint64_t now_ms(void){uint64_t ns=0;absolutetime_to_nanoseconds(mach_absolute_time(),&ns);return ns/1000000;}
 static void *storage(size_t n){return kalloc_data(n,Z_WAITOK|Z_ZERO);}
 static void trace_stages(uint32_t last[5],int result)
@@ -93,6 +95,7 @@ static void worker(void *arg,wait_result_t reason)
         trace_stages(stages,NB_PENDING);
         r=nezha_bb_dispatch();if(!r)r=nb_baseband_poll(&nb_worker,now_ms());
         trace_stages(stages,r);publish(r);nezha_baseband_status=r<0?r:0;
+        nb_bridge_state(r);
         if(r<0){printf("NEZHA27 BB stage=worker-stop result=%d\n",r);break;}
         nb_bridge_poll();unsigned second=(unsigned)(now_ms()/1000);
         if(second!=last_second){last_second=second;if(!(second%10))nb_bridge_report(second);}

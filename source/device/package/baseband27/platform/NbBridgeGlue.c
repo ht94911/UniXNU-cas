@@ -4,8 +4,11 @@
  * the bridge's client-port data come from it, and the data adapter is the IPA board layer. Everything runs on the worker thread. */
 #include "NbBaseband.h"
 #include "../bridge/QcomBaseband.h"
+#include "../bridge/NbBoot.h"
 
 static NbBaseband *nb_glue;   /* the bridge's C entry points carry no context; one baseband per boot */
+static uint32_t nb_boot_online;
+static uint32_t nb_boot_watchdog;
 
 static void bridge_send(uint32_t local_port, uint32_t node, uint32_t port, const void *body, uint32_t length)
 {
@@ -51,6 +54,20 @@ NbBasebandBridge nb_bridge_hooks(NbBaseband *b)
 }
 
 /* The bridge's poll and report, from the worker after nb_baseband_poll. */
+void nb_bridge_state(int result)
+{
+    if (nb_glue) __atomic_store_n(&nb_boot_watchdog, nb_glue->mss.auth_wdog_events,
+                                  __ATOMIC_RELEASE);
+    __atomic_store_n(&nb_boot_online, nb_boot_ready(nb_glue, result, nb_ipa_data_ready()),
+                     __ATOMIC_RELEASE);
+}
+void nb_bridge_invalidate(void) { __atomic_store_n(&nb_boot_online, 0, __ATOMIC_RELEASE); }
+int coachz_modem_boot_ready(void)
+{
+    return __atomic_load_n(&nb_boot_online, __ATOMIC_ACQUIRE) && nb_glue &&
+        __atomic_load_n(&nb_glue->mss.wdog_events, __ATOMIC_ACQUIRE) ==
+        __atomic_load_n(&nb_boot_watchdog, __ATOMIC_ACQUIRE);
+}
 void nb_bridge_poll(void) { coachz_baseband_poll(); }
 void nb_bridge_report(unsigned second) { coachz_baseband_report(second); nb_ipa_report(second); }
 
