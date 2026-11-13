@@ -25,6 +25,7 @@
 #include "coachz_bb_data.h"
 #include "coachz_bb_pdp.h"
 #include "coachz_bb_esim.h"
+#include "NbSim.h"
 
 #define BB_FRAME_MAX (64u * 1024u)       // one read or write: a QMUX frame, a SAHARA packet or a READ_DATA answer
 // Frames waiting for ABM, per channel. At boot the 53 clients' registrations and indications arrive faster than ABM reads; with 64 the
@@ -74,6 +75,7 @@ static int bb_data_slot[2] = { -1, -1 }; // the bridge's own DPM and WDA clients
 static uint32_t bb_endpoint_fixes, bb_activations;
 static uint8_t bb_fix[2048];
 static struct cbe bb_esim;
+static struct nb_sim bb_sim;
 static int bb_esim_slot = -1;
 static bb_tx bb_uim_held[BB_TX];
 static uint32_t bb_uim_head, bb_uim_count;
@@ -414,48 +416,7 @@ static void bb_esim_step(void)
     printf("COACHZ baseband: esim event %u a%u b%u c%u d%u e%u\n", event.kind, event.a, event.b, event.c, event.d, event.e);
 }
 
-// The activation indication (coachz_bb_data.h) to the BSP client that registered, with slot one's ICCID and IMSI once the card gave them.
-static uint8_t bb_iccid[CBD_ICCID_BYTES], bb_imsi[CBD_IMSI_BYTES], bb_iccid_known, bb_imsi_known, bb_act_known, bb_act_channel, bb_act_cid;
-static void bb_activation_indicate(void)
-{
-  if (!bb_act_known) return;
-  uint8_t tlvs[CBD_ACTIVATION_SIM_TLVS];
-  const uint32_t t = cbd_activation_state(tlvs, sizeof tlvs, bb_iccid_known ? bb_iccid : nullptr, bb_imsi_known ? bb_imsi : nullptr);
-  const uint32_t n = cbq_private_indication(CBD_BSP_ACTIVATION_REGISTER, CBD_SVC_BSP, bb_act_cid, tlvs, t, bb_out, sizeof bb_out);
-  if (n) bb_push(bb_act_channel, bb_out, n);
-}
-
-// CommCenter's own EF_ICCID and EF_IMSI reads: the request's client, transaction and file, so the answer can be recognized. Never logged.
-struct bb_sim_read { uint8_t used, channel, cid; uint16_t txn, file; };
-static bb_sim_read bb_sim_reads[8];
-static uint32_t bb_sim_next;
-static void bb_sim_request(const struct cbq_result &r, const uint8_t *sdu)
-{
-  if (r.service != CBD_SVC_UIM) return;
-  const uint32_t file = cbd_uim_read_file(sdu, r.len);
-  if (file != CBD_EF_ICCID && file != CBD_EF_IMSI) return;
-  bb_sim_reads[bb_sim_next++ % 8] = { 1, r.channel, r.cid, cbd_rd16(sdu + 1), (uint16_t)file };
-}
-static void bb_sim_answer(const struct cbq_result &r, const uint8_t *sdu, uint32_t n)
-{
-  if (r.service != CBD_SVC_UIM || n < 7u || sdu[0] != 2u || cbd_rd16(sdu + 3) != CBD_UIM_READ_TRANSPARENT) return;
-  for (auto &q : bb_sim_reads) {
-    if (!q.used || q.channel != r.channel || q.cid != r.cid || q.txn != cbd_rd16(sdu + 1)) continue;
-    q.used = 0;
-    uint8_t ef[16], value[CBD_ICCID_BYTES];
-    const uint32_t len = cbd_uim_read_content(sdu, n, ef, sizeof ef);
-    const bool iccid = q.file == CBD_EF_ICCID;
-    if (iccid ? !cbd_iccid_from_ef(ef, len, value) : !cbd_imsi_from_ef(ef, len, value)) return;
-    uint8_t *have = iccid ? bb_iccid : bb_imsi, *known = iccid ? &bb_iccid_known : &bb_imsi_known;
-    const uint32_t size = iccid ? CBD_ICCID_BYTES : CBD_IMSI_BYTES;
-    if (*known && !memcmp(value, have, size)) return;
-    memcpy(have, value, size); *known = 1;
-    printf("COACHZ baseband: slot one %s read from the card, activation indication %s\n", iccid ? "ICCID" : "IMSI",
-           bb_act_known ? "sent again with it" : "waits for registration");
-    bb_activation_indicate();
-    return;
-  }
-}
+#include "NbSimBridge.inc"
 
 // A private request the bridge answers itself: 1 when it did.
 static int bb_private_answer(uint32_t channel, const struct cbq_result &r, const uint8_t *sdu)
@@ -506,8 +467,8 @@ static int bb_private_answer(uint32_t channel, const struct cbq_result &r, const
     bb_act_known = 1; bb_act_channel = (uint8_t)channel; bb_act_cid = r.cid;
     bb_activation_indicate();
     if (bb_activations++ < 4)
-      printf("COACHZ baseband: activation register answered, state activated, slot one ICCID %s, IMSI %s\n", bb_iccid_known ? "included" : "not read yet",
-             bb_imsi_known ? "included" : "not read yet");
+      printf("COACHZ baseband: activation register answered; real two-card mapping %s\n",
+             bb_sim.mapping_known ? "known" : "awaited");
     return 1;
   }
   return 0;
@@ -1174,6 +1135,7 @@ extern "C" void coachz_baseband_configure(void (*send)(uint32_t, uint32_t, uint3
 // The modem stopped or crashed: libTelephonyBasebandDynamic treats a boot stage below 2 as down.
 extern "C" void coachz_baseband_down(void)
 {
+  if (bb_lock) { IOLockLock(bb_lock); nb_sim_reset(&bb_sim); IOLockUnlock(bb_lock); }
   if (bb_control_service) bb_control_service->setProperty("bootstage", 0ull, 32);
 }
 
@@ -1191,6 +1153,7 @@ extern "C" void coachz_baseband_del_server(uint32_t service, uint32_t node, uint
   if (!bb_lock) return;
   IOLockLock(bb_lock);
   cbq_server_del(&bb_qmux, service, node, port);
+  if (service == CBD_SVC_UIM && nb_sim_endpoint_lost(&bb_sim, node, port)) bb_activation_indicate();
   if (service == CBD_SVC_WDS) bzero(bb_pdp_clients, sizeof bb_pdp_clients);
   IOLockUnlock(bb_lock);
 }
@@ -1223,7 +1186,7 @@ extern "C" int coachz_baseband_qrtr(uint32_t dst_port, uint32_t src_node, uint32
       memcpy(bb_out + CBQ_HDR, bb_fix, fixed);
       bb_push(r.channel == 0 ? CBH_QMUX1 : CBH_QMUX2, bb_out, CBQ_HDR + fixed);
     } else bb_push(r.channel == 0 ? CBH_QMUX1 : CBH_QMUX2, bb_out, r.len);
-    bb_sim_answer(r, sdu, size);   // after the answer itself: bb_activation_indicate reuses bb_out
+    bb_sim_answer(r, sdu, size);   // after the original answer; the activation uses bb_out
   }
   IOLockUnlock(bb_lock);
   return 1;

@@ -277,3 +277,30 @@ myron-next `f1a1bfe`、QcomBaseband `dd0199c`、Trogdor `1df7f75` 不变；
 固定GPU024框架未升级。下一候选为 Native003；低地址池实际分配、
 PAS/DSM/MSS ready、QRTR、IPA和系统蜂窝仍按阶段上机验收。
 普通测试号码已由人类指定，仅存在私有文件，尚未拨号或发送短信。
+
+## 13. 双实体卡的激活身份（2026-11-13，独立004源码）
+
+003已全部电脑合格并文件排队，完整boot/payload和入口保持固定。
+等待手机期间，在独立 `sim004-device` 分支 `codex/baseband27-dualsim004`
+修正现有桥把两张卡的EF_ICCID/EF_IMSI都填入slot1激活记录的缺口。
+原 `upstream/` 字节保持，修改仍由计数式生成器导出。
+
+`NbSim.h` 和 `NbSimBridge.inc` 只被动读取CommCenter已有的UIM请求/回应：
+按TLV1的真实会话类型、TLV0x10的四个provisioning index与完整卡/应用/AID表
+定位物理卡；真实primary/secondary subscription各自读取该卡的身份。
+端点、local port、transaction和mapping generation一致才收下EF回应。
+卡移除、端点撤销、mapping更新丢弃对应旧请求；新ICCID不混入旧IMSI。
+两张卡分别填入slot1的0x42/0x43与slot2的0x46/0x47，并在slot2实际身份
+已读到时填0x51 provisioned。没有发新卡请求、切槽或PIN/PUK操作。
+
+来源：QcomBaseband现有EF读取/BCD和BSP激活语义，libqmi固定`3454c2c`
+的qmi-service-uim.json/qmi-enums-uim.h，24A446原版
+QMIMav13ActivationCommandDriver的两卡parser与consumer函数。
+实际ICCID为10字节、IMSI为8字节，两卡getter和consumer字节只保存在私有
+`research/abi-next002/dual-sim-activation-callers.json`。
+不再沿用iOS17记录里ActivationInfo内部字段偏移去推定iOS27布局。
+
+新增宿主模型使用合成双卡，覆盖同transaction不同client、两卡不同身份、
+provisioning反向映射、删除卡、失败和错误端点、旧代回应、所有短帧、
+未知会话和新ICCID等待IMSI。ASan/UBSan/`-Werror`、完整host及29单元
+Linux17头编译检查通过。实际arm64e/iOS27与双卡运营商匹配仍待验证。

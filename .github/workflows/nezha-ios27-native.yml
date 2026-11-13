@@ -1,7 +1,7 @@
-name: nezha iPhone27 B package on GPU024 - native003
+name: nezha iPhone27 B package on GPU024 - native004
 on:
   push:
-    branches: [codex/ios27-bb-gpu024-native003-20261113]
+    branches: [codex/ios27-bb-gpu024-native004-20261113]
   workflow_dispatch:
 permissions:
   contents: read
@@ -57,7 +57,7 @@ jobs:
         run: |
           set -euo pipefail
           bb="$RUNNER_TEMP/ios27/work/device"
-          for test in qmux_version qmux_endpoint low_memory; do
+          for test in qmux_version qmux_endpoint low_memory sim_identity; do
             clang -std=gnu11 -Wall -Wextra -Werror -fsanitize=address,undefined -I "$bb/package/baseband27/bridge" -I "$bb/package/baseband27/bridge/upstream" "$bb/tests/baseband27/${test}_test.c" -o "$RUNNER_TEMP/ios27/$test"
             "$RUNNER_TEMP/ios27/$test"
           done

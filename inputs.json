@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Source-only arm64e/iOS27 build on fixed GPU024: use a loader-reserved low pool for PAS/SCM/rmtfs and publish only owned WC aliases. No private firmware, EFS or phone operations.",
+  "purpose": "Source-only arm64e/iOS27 build on fixed GPU024: retain native003 low-pool fix and bind two SIM identities to actual UIM sessions/card mapping. No private identity data or phone operations.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "af323ed47333bbce0871e19c44cff8839f99bc7a",
+  "device_revision": "4933ccc67489ae3f2736b3935ec55ceb763ff5cc",
   "soc_revision": "703d7b4bb00904b4a6e5d96f9e9bf72eec170f6b",
   "xcode": "26.6",
   "files": {
@@ -105,9 +105,11 @@
     "source/device/package/backlight/NezhaBrightnessRequest.h": "876811b23045660b71c82c5f6ff33780a6f7bfaaa4311c116c71d179b348a59c",
     "source/device/package/backlight/NezhaDsi0.h": "28a964006beffe03238af70bc9eed4c479ca1aeaef574d4583f18f96fd1690e1",
     "source/device/package/backlight/OriginalAppleARMBacklightABI.h": "dab34c394c2123ae4cbfd6648980d5e7b024539773abe5852f7d2622f9bf7b8b",
-    "source/device/package/baseband27/SOURCE.md": "c3985c36738f854841f3dc173de6dec135349469ffa52bef0fe1cdc50c7b3178",
+    "source/device/package/baseband27/SOURCE.md": "0eff76ea8dd5bedd40d7be55931e793493813fdc5339b6548b0625ba4836eb7e",
+    "source/device/package/baseband27/bridge/NbSim.h": "123867fad6f3f2b7aef736637270097b1a7fafb5b64906a9d281bab0e8430537",
+    "source/device/package/baseband27/bridge/NbSimBridge.inc": "b79df6f563c6207f3fec2ed97484bd3a2da200bb6ddf6d9e66039729d047051b",
     "source/device/package/baseband27/bridge/QcomBaseband.h": "733a2f4c4685509a07f10e54681c8c0b8b9c0e6e9674928b6778f53c4a8b21f8",
-    "source/device/package/baseband27/bridge/coachz_baseband.cpp": "6952b9b7bbe938c9f9f7626c081f8866051dc5da56e68f5c757e3dff2c38c68f",
+    "source/device/package/baseband27/bridge/coachz_baseband.cpp": "fcdea58e39db123bf4cf9ed6929e3136788269707f70d5a2e9f19a0370042ae5",
     "source/device/package/baseband27/bridge/coachz_bb_data.h": "5c3d1fc8dd827ba162bbff15b35d11cae4d0603394deda63821204ff5e0c2216",
     "source/device/package/baseband27/bridge/coachz_bb_pdp.cpp": "37d29ed45a359ac5589806460e1a1b631cf931de552a1aaa3e840b067d18b897",
     "source/device/package/baseband27/bridge/coachz_bb_qmux.h": "4d29de18b8a734cf2e5b9ce0aa099746ff5bc7744696a18705b6a24baa11cbb9",
@@ -315,6 +317,7 @@
     "source/device/tests/baseband27/low_memory_test.c": "2786276035452a9503c364d291545fe82c447f3db7745569378b4cacd0ba5a40",
     "source/device/tests/baseband27/qmux_endpoint_test.c": "4849b019d981705ced226509ef0f07611b5160b5bfd3b310ab93d83a9708708b",
     "source/device/tests/baseband27/qmux_version_test.c": "22691125e857e6d0ab485ca906ea044106a58541e441fac65553bbe417503579",
+    "source/device/tests/baseband27/sim_identity_test.c": "94afdb0d9dfab11aeec64d127fab720f35e6dbfd8420d46fdeeecec234991193",
     "source/device/tests/cpu27-policy.c": "e1682fcec436a58085ef34ebdf82a536523f933e99a873ea1aacd7d3cd45b61c",
     "source/device/tests/input-chain-trace.c": "9170cb8675b3ce94e9e1cfd5af0aaa4f322655fb1ef177789aef888a13348669",
     "source/device/tests/input-selftest.c": "df31503c40fbbdc7c8d20757a715987c4133eabdbc32a43cbd1f4e0546f7fd72",
@@ -398,6 +401,7 @@
     "phone_operations": false,
     "low_pool_bytes": 5242880,
     "low_pool_source": "UEFI reserved allocation through chosen ADT",
-    "owned_WC_publish": true
+    "owned_WC_publish": true,
+    "passive_dual_SIM_identity": true
   }
 }
