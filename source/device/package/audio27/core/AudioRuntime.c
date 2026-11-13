@@ -25,10 +25,11 @@ static int playback(void *v,uint64_t relative,void *pcm,uint32_t bytes) {
     for (unsigned i=0;i<bytes/4;++i) {
         int16_t l=0,rr=0;e=na_ring_take(r->output,start+i,&l,&rr);
         if (e==NA_MISSING || e==NA_BUSY) ++missing;else if (e) return e;
-        /* First speaker path is bounded to -18 dBFS, regardless of a malicious
-         * HAL writer. Amplifier calibration still imposes its own limits. */
-        out[2*i]=r->engine.output_idle ? 0:(int16_t)(l/8);
-        out[2*i+1]=r->engine.output_idle ? 0:(int16_t)(rr/8);
+        /* HAL and tagged-ring mixing already saturate to S16. Use their
+         * full signal range; factory TAS gain/calibration and running VI
+         * retain speaker protection. Idle still discards PCM unconditionally. */
+        out[2*i]=r->engine.output_idle ? 0:l;
+        out[2*i+1]=r->engine.output_idle ? 0:rr;
     }
     if (missing && !r->engine.output_idle && r->status.underruns!=UINT32_MAX) ++r->status.underruns;
     r->status.out_consumed=start+bytes/4;
