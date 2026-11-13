@@ -36,6 +36,7 @@ enum NezhaCameraNativeCaptureStep {
     NezhaNativeIdle, NezhaNativeProfile, NezhaNativeSharedOwners, NezhaNativeResources,
     NezhaNativePins, NezhaNativeCci, NezhaNativeCsid, NezhaNativeIrq,
     NezhaNativeMemory, NezhaNativeSmmu, NezhaNativeStream, NezhaNativeFrames, NezhaNativeRevision,
+    NezhaNativeIfeBandwidth, NezhaNativeRegisterMap, NezhaNativeGccOwner, NezhaNativeRpmhOwner,
 };
 
 enum NezhaCameraNativeCleanupStep {
@@ -48,6 +49,7 @@ struct NezhaCameraNativeCaptureResult {
     unsigned step, status;
     enum NezhaCameraNativeCleanupStep cleanup_step;
     unsigned capture_stage, sensor_status, dma_status;
+    struct NezhaCameraIfeBcmFailure bandwidth_failure;
     size_t applied_writes;
     size_t raw_sample_bytes;
     uint32_t irq_fault;

@@ -27,7 +27,7 @@ def main():
     profile = args.profile.read_bytes()
     require(hashlib.sha256(profile).hexdigest() == args.expected_profile_sha256,
             'Camera profile SHA256 differs')
-    require(len(profile) == 128 * 1024 and profile[:8] in (b'N27CAM01', b'N27CAM02'),
+    require(len(profile) == 128 * 1024 and profile[:8] in (b'N27CAM01', b'N27CAM02', b'N27CAM03'),
             'Expected a prepared local camera profile')
     require(args.kernel.resolve() != args.out.resolve(), 'Output must be a new native kernel')
     receipt = args.out.with_suffix(args.out.suffix + '.camera-resource.json')

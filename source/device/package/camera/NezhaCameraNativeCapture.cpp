@@ -229,10 +229,14 @@ bool nezha_camera_native_capture(const NezhaCameraNativeCaptureRequest *request,
     if (request->raw_sample && request->raw_sample_capacity < sample_bytes) return false;
     state.used = true;
     if (!checkpoint(*request, *result, NezhaNativeSharedOwners, physical[Camcc], physical[Csid], physical[Vfe])) return false;
+    result->step = NezhaNativeRegisterMap;
     for (unsigned i = 0; i < sizeof(physical) / sizeof(physical[0]); ++i) {
         if ((pattern && (i == Phy || i == Cci)) || (!pattern && i == Tpg)) continue;
         state.window[i] = {ml_io_map(physical[i], sizes[i]), sizes[i]};
-        if (!state.window[i].address) return false;
+        if (!state.window[i].address) {
+            result->status = physical[i];
+            return false;
+        }
         state.reg[i] = {&state.window[i], read, write, wait};
     }
     // Unaligned DT apertures are views of their correctly page-covered maps.
@@ -244,12 +248,17 @@ bool nezha_camera_native_capture(const NezhaCameraNativeCaptureRequest *request,
         NezhaCameraGpioBytes + NezhaCameraGpioOffset};
     RegisterWindow mclk_window{pattern ? 0 : ml_io_map(0x1764000, 0x1000), 0x1000};
     if (!pattern) {
-        if (!gpio_window.address || !mclk_window.address) return false;
+        if (!gpio_window.address || !mclk_window.address) {
+            result->status = !gpio_window.address ? NezhaCameraGpioPhysical : 0x1764000;
+            return false;
+        }
         gpio_window.address -= NezhaCameraGpioOffset;
     }
     const NezhaCameraRegisterIo gpio{&gpio_window, read, write, wait}, mclk{&mclk_window, read, write, wait};
-    if (!nezha_camera_native_gcc(&state.gcc) || !nezha_camera_native_rpmh_open(&state.rpmh,
-        request->command_database, request->database_bytes)) return false;
+    result->step = NezhaNativeGccOwner;
+    if (!nezha_camera_native_gcc(&state.gcc)) return false;
+    result->step = NezhaNativeRpmhOwner;
+    if (!nezha_camera_native_rpmh_open(&state.rpmh, request->command_database, request->database_bytes)) return false;
     state.rpmh->before_transaction = request->rpmh_checkpoint;
     state.rpmh->vote_acknowledged = request->rpmh_vote_acknowledged;
     state.rpmh->isolated_sensor_votes = !pattern && request->isolated_sensor_votes;
@@ -268,9 +277,14 @@ bool nezha_camera_native_capture(const NezhaCameraNativeCaptureRequest *request,
         // Qualcomm CAMSS v24 Nord HF MNOC reference for 4096x3072
         // at 30 fps. CAMNOC's separate clock floor is applied by CRM.
         constexpr uint32_t average = 471860000, peak = 925857000;
-        if (!nezha_camera_ife_bandwidth(request->command_database, request->database_bytes,
-            average, peak, average, peak, &state.bandwidth) ||
-            !nezha_camera_ife_bandwidth(request->command_database, request->database_bytes, 0, 0, 0, 0, &state.clear)) break;
+        result->step = NezhaNativeIfeBandwidth;
+        if (!nezha_camera_ife_bandwidth_checked(request->command_database, request->database_bytes,
+            average, peak, average, peak, &state.bandwidth, &result->bandwidth_failure) ||
+            !nezha_camera_ife_bandwidth_checked(request->command_database, request->database_bytes,
+                0, 0, 0, 0, &state.clear, &result->bandwidth_failure)) {
+            result->status = result->bandwidth_failure.issue;
+            break;
+        }
         if (!checkpoint(*request, *result, NezhaNativeResources, physical[Crm], physical[IfeRsc], physical[Cpas]) ||
             !nezha_camera_capture_resources_start(&state.resources_io, &state.bandwidth, profile, &result->resources)) break;
         if (!pattern) {

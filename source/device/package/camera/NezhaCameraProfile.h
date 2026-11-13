@@ -17,7 +17,7 @@ struct NezhaCameraProfile {
     uint32_t width, height;
     uint64_t data_rate;
     size_t alternate_initialization_count;
-    uint8_t vendor, as1_version;
+    uint8_t vendor, other_vendor, as1_version;
     struct NezhaCameraCsiphy24Profile phy;
 };
 

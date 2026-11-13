@@ -192,6 +192,12 @@ int main(void)
     assert(nezha_camera_rpmh_acquire(&owner, NezhaCameraMainBob2, 3296));
     assert(rsc.on[0] == 1 && owner.rail[0].readback_unavailable && !rsc.locked);
     assert(nezha_camera_rpmh_release(&owner, NezhaCameraMainBob2) && rsc.on[0] == 0);
+    assert(nezha_camera_rpmh_init_capture(&owner, db, sizeof(db)));
+    const unsigned before_zero_arc = rsc.votes;
+    assert(!nezha_camera_rpmh_acquire_arc(&owner, NezhaCameraArcMmCx, 64));
+    assert(owner.arc[0].changed && rsc.mv[5] == 4);
+    assert(nezha_camera_rpmh_release_arc(&owner, NezhaCameraArcMmCx));
+    assert(!owner.arc[0].changed && rsc.mv[5] == 0 && rsc.votes == before_zero_arc + 2);
     rsc.zero_readback = false;
     const unsigned reads = rsc.reads, votes = rsc.votes, waits = rsc.waits;
     rsc.failed_offset = Tcs + Address;

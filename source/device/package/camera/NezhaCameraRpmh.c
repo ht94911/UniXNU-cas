@@ -467,14 +467,14 @@ bool nezha_camera_rpmh_release_arc(struct NezhaCameraRpmh *owner, enum NezhaCame
     if (!read_arc(owner, arc)) {
         return false;
     }
-    if (arc->observed_index != arc->original_index) {
-        if (arc->observed_index != arc->requested_index) {
-            owner->status = NezhaCameraRpmhReadback;
-            return false;
-        }
-        if (!transact(owner, arc->resource.address, arc->original_index, NULL) || !read_arc(owner, arc)) {
-            return false;
-        }
+    if (arc->observed_index != arc->original_index && arc->observed_index != arc->requested_index) {
+        owner->status = NezhaCameraRpmhReadback;
+        return false;
+    }
+    /* Even an unchanged readback does not retract our acknowledged vote.
+     * Submit the saved APPS request before releasing this resource. */
+    if (!transact(owner, arc->resource.address, arc->original_index, NULL) || !read_arc(owner, arc)) {
+        return false;
     }
     if (arc->observed_index != arc->original_index) {
         owner->status = NezhaCameraRpmhReadback;

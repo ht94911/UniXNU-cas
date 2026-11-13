@@ -44,10 +44,13 @@ bool nezha_camera_profile_open(const uint8_t *bytes, size_t capacity,
             return false;
         }
     }
-    const bool paired = bytes[7] == '2' && word(bytes + 8) == 2;
-    const size_t header = paired ? 240 : NezhaCameraProfileHeader;
+    const uint32_t version = word(bytes + 8);
+    if (version < 1 || version > 3 || bytes[7] != '0' + version) return false;
+    const bool paired = version >= 2;
+    const bool combined = version == 3;
+    const size_t header = combined ? 304 : paired ? 240 : NezhaCameraProfileHeader;
     const uint32_t used = word(bytes + 12);
-    if ((!paired && (bytes[7] != '1' || word(bytes + 8) != 1)) || used < header || used > capacity ||
+    if (used < header || used > capacity ||
         word(bytes + 16) != NezhaCameraOvx10500uId || word(bytes + 20) != 4096 ||
         word(bytes + 24) != 3072 || word(bytes + 28) != 10 || word(bytes + 32) != 0x210 ||
         word(bytes + 36) > UINT16_MAX || word(bytes + 104) != 1 || word(bytes + 108) != 1 ||
@@ -62,10 +65,12 @@ bool nezha_camera_profile_open(const uint8_t *bytes, size_t capacity,
     }
     if (paired) {
         const uint32_t vendor = word(bytes + 200);
-        if ((vendor != 3 && vendor != 7) || word(bytes + 204) != 0x41) {
+        if ((vendor != 3 && vendor != 7) || (combined && vendor != 3) || word(bytes + 204) != 0x41) {
             return false;
         }
         next.vendor = (uint8_t)vendor;
+        /* The packer requires exact register equality for both vendors. */
+        next.other_vendor = combined ? 7 : 0;
         next.as1_version = 0x41;
     }
     const unsigned descriptors[] = {48, 56, 192};
@@ -141,7 +146,8 @@ bool nezha_camera_profile_revision_writes(const struct NezhaCameraProfile *profi
     *count = 0;
     struct NezhaCameraProfile verified;
     if (profile == NULL || !nezha_camera_profile_open(profile->bytes, profile->used_bytes, &verified) ||
-        verified.vendor == 0 || vendor != verified.vendor || revision < verified.as1_version ||
+        verified.vendor == 0 || vendor == 0 || (vendor != verified.vendor && vendor != verified.other_vendor) ||
+        revision < verified.as1_version ||
         revision == UINT8_MAX) {
         return false;
     }

@@ -26,6 +26,11 @@ int main(void)
         aux[4] = 4;
         aux[6] = vcd[i];
     }
+    /* Camera011's own GPU log read ACV as unit=1 and width=0. It
+     * needs the address and group, so zero width must not reject it. */
+    uint8_t *acv = db + 144 + 24 * count + 5 * 8;
+    acv[0] = 1;
+    acv[1] = acv[4] = 0;
     struct NezhaCameraIfeBandwidth plan;
     assert(nezha_camera_ife_bandwidth(db, sizeof(db), 4000000, 8000000, 4000000, 4000000, &plan));
     assert(plan.count == 6);
@@ -48,5 +53,9 @@ int main(void)
     }
     assert(!nezha_camera_ife_bandwidth(db, sizeof(db), 0, 4000000, 0, 8000000, &plan));
     assert(!nezha_camera_ife_bandwidth(db, sizeof(db) - 1, 0, 0, 0, 0, &plan));
+    db[144 + 24 * count + 4] = 0;
+    struct NezhaCameraIfeBcmFailure error;
+    assert(!nezha_camera_ife_bandwidth_checked(db, sizeof(db), 4000000, 8000000, 4000000, 4000000, &plan, &error));
+    assert(error.issue == NezhaIfeBcmScale && error.index == 0 && error.address == 0x50000);
     puts("IFE0 BCM votes follow the live virtual clock groups and restore a zero vote without losing commits");
 }

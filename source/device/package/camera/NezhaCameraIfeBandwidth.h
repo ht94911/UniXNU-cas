@@ -22,6 +22,17 @@ struct NezhaCameraIfeBandwidth {
     unsigned count;
 };
 
+enum NezhaCameraIfeBcmIssue {
+    NezhaIfeBcmOkay, NezhaIfeBcmArguments, NezhaIfeBcmLookup,
+    NezhaIfeBcmAddress, NezhaIfeBcmAuxLength, NezhaIfeBcmScale, NezhaIfeBcmDuplicate,
+};
+
+struct NezhaCameraIfeBcmFailure {
+    enum NezhaCameraIfeBcmIssue issue;
+    unsigned index;
+    uint32_t address, detail;
+};
+
 /* Pure compiler for the stock IFE0 high-frequency route. Inputs are
  * the path's average and peak in bytes/s for the two power states. The
  * caller supplies the actual AOP database and programs the dedicated
@@ -29,6 +40,10 @@ struct NezhaCameraIfeBandwidth {
 bool nezha_camera_ife_bandwidth(const uint8_t *db, size_t db_bytes,
     uint32_t wake_average, uint32_t wake_peak, uint32_t sleep_average,
     uint32_t sleep_peak, struct NezhaCameraIfeBandwidth *out);
+bool nezha_camera_ife_bandwidth_checked(const uint8_t *db, size_t db_bytes,
+    uint32_t wake_average, uint32_t wake_peak, uint32_t sleep_average,
+    uint32_t sleep_peak, struct NezhaCameraIfeBandwidth *out,
+    struct NezhaCameraIfeBcmFailure *failure);
 
 #ifdef __cplusplus
 }

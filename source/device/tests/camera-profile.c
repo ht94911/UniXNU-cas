@@ -22,7 +22,7 @@ int main(int argc, char **argv)
         puts("Camera profile rejects the intentionally empty source-only CI slot");
         return 0;
     }
-    assert(argc >= 2 && argc <= 4);
+    assert(argc >= 2 && argc <= 5);
     FILE *in = fopen(argv[1], "rb");
     assert(in != NULL && fread(bytes, 1, sizeof(resource), in) == sizeof(resource));
     assert(fgetc(in) == EOF && fclose(in) == 0);
@@ -31,18 +31,20 @@ int main(int argc, char **argv)
     assert((profile.initialization_count == 1697 || profile.initialization_count == 1707) &&
            profile.mode_count == 202 && profile.data_rate == UINT64_C(8000000000));
     const bool paired = profile.vendor != 0;
-    const bool as1 = argc == 4 && strtoul(argv[3], NULL, 0) == 0x41;
+    const bool as1 = argc >= 4 && strtoul(argv[3], NULL, 0) == 0x41;
     const uint8_t revision = as1 ? 0x41 : 0x42;
+    const uint8_t vendor = argc == 5 ? (uint8_t)strtoul(argv[4], NULL, 0) : profile.vendor;
     if (paired) {
         assert(!nezha_camera_profile_writes(&profile, decoded, 2048));
         assert(!nezha_camera_profile_revision_writes(&profile, 8, revision, decoded, 2048, &count));
+        assert(!nezha_camera_profile_revision_writes(&profile, 0, revision, decoded, 2048, &count));
         assert(count == 0);
         assert(!nezha_camera_profile_revision_writes(&profile, profile.vendor, 0x40, decoded, 2048, &count));
         assert(!nezha_camera_profile_revision_writes(&profile, profile.vendor, 0xff, decoded, 2048, &count));
-        assert(nezha_camera_profile_revision_writes(&profile, profile.vendor, revision, decoded, 2048, &count));
+        assert(nezha_camera_profile_revision_writes(&profile, vendor, revision, decoded, 2048, &count));
         assert(count == (as1 ? 1909u : 1899u));
     } else {
-        assert(argc != 4 && nezha_camera_profile_writes(&profile, decoded, 2048));
+        assert(argc <= 3 && nezha_camera_profile_writes(&profile, decoded, 2048));
     }
     assert(decoded[0].reg == 0x103 && decoded[0].value == 1);
     assert(profile.phy.lane_offsets[0] == 0x200 && profile.phy.lane_offsets[1] == 0x600 &&
@@ -75,7 +77,7 @@ int main(int argc, char **argv)
     decoded[0].reg = 0xa55a;
     if (paired) {
         size_t rejected;
-        assert(!nezha_camera_profile_revision_writes(&profile, profile.vendor, revision, decoded, count - 1, &rejected));
+        assert(!nezha_camera_profile_revision_writes(&profile, vendor, revision, decoded, count - 1, &rejected));
         assert(rejected == 0);
     } else {
         assert(!nezha_camera_profile_writes(&profile, decoded, count - 1));
@@ -86,7 +88,7 @@ int main(int argc, char **argv)
     bytes[last] = 0;
     bytes[last + 1] = 1; /* A late stream-on record must reject the whole view. */
     if (paired) {
-        assert(!nezha_camera_profile_revision_writes(&profile, profile.vendor, revision, decoded, 2048, &count));
+        assert(!nezha_camera_profile_revision_writes(&profile, vendor, revision, decoded, 2048, &count));
     } else {
         assert(!nezha_camera_profile_writes(&profile, decoded, 2048));
     }

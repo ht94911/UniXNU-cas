@@ -258,7 +258,7 @@ static bool capture_checkpoint(unsigned step, unsigned a, unsigned b, unsigned c
 
 static void camera_capture(void)
 {
-    /* Independent of the SEMCO module revision. The shared owner checks
+    /* Independent of the main sensor module revision. The shared owner checks
      * the proposed bank, exact SID and slot against the live apps SMMU. */
     enum { slot = 15, bank = 9, asid = 0xfc00 };
     static struct NezhaCameraNativeCaptureResult result;
@@ -346,6 +346,12 @@ static void camera_capture(void)
     (void)hardware_mark(86, (unsigned)saved, (unsigned)result.raw_sample_bytes, width, height);
     (void)hardware_mark(87, result.sensor_status, diagnostic_words[DiagIdWord],
         result.revision.vendor, result.revision.version);
+    const struct NezhaCameraIfeBcmFailure *bcm = &result.bandwidth_failure;
+    if (bcm->issue) {
+        (void)hardware_mark(88, bcm->issue, bcm->index, bcm->address, bcm->detail);
+        printf("NEZHA CAMERA: IFE bandwidth issue=%u resource=%u addr=%#x detail=%#x\n",
+            (unsigned)bcm->issue, bcm->index, bcm->address, bcm->detail);
+    }
     printf("NEZHA CAMERA: %s result=%u step=%u status=%u resources=%u/%u/%u dma=%u "
            "frames=%u sof=%u eof=%u rup=%u irq=%#x/%#x/%#x smmu=%#x cleanup=%u/%u sample=%u/%d\n",
            pattern ? "TPG2" : "MAIN", (unsigned)passed, result.step, result.status, (unsigned)result.resources.step,

@@ -42,27 +42,42 @@ static uint32_t make_vote(const QcomRpmhResource *resource, unsigned index,
     return (x || y ? 1u << 29 : 0) | (x << 14) | y;
 }
 
-bool nezha_camera_ife_bandwidth(const uint8_t *db, size_t db_bytes,
+static bool reject(struct NezhaCameraIfeBcmFailure *failure, enum NezhaCameraIfeBcmIssue issue,
+    unsigned index, uint32_t address, uint32_t detail)
+{
+    if (failure) *failure = (struct NezhaCameraIfeBcmFailure){issue, index, address, detail};
+    return false;
+}
+
+bool nezha_camera_ife_bandwidth_checked(const uint8_t *db, size_t db_bytes,
     uint32_t wake_average, uint32_t wake_peak, uint32_t sleep_average,
-    uint32_t sleep_peak, struct NezhaCameraIfeBandwidth *out)
+    uint32_t sleep_peak, struct NezhaCameraIfeBandwidth *out,
+    struct NezhaCameraIfeBcmFailure *failure)
 {
     if (!out || wake_peak < wake_average || sleep_peak < sleep_average ||
         wake_average < sleep_average || wake_peak < sleep_peak) {
-        return false;
+        return reject(failure, NezhaIfeBcmArguments, 0, 0, 0);
     }
     QcomRpmhResource resource[NezhaCameraIfeBcmCount];
     unsigned order[NezhaCameraIfeBcmCount];
     for (unsigned i = 0; i < NezhaCameraIfeBcmCount; ++i) {
         QcomRpmhResource *bcm = &resource[i];
-        if (qcom_cmd_db_find(db, db_bytes, route[i].name, bcm) != QcomRpmhOk ||
-            (bcm->address & 0xffff0003u) != 0x50000u || bcm->aux_bytes < 8 ||
-            !(bcm->aux[0] | bcm->aux[1] | bcm->aux[2] | bcm->aux[3]) ||
-            !(bcm->aux[4] | bcm->aux[5])) {
-            return false;
+        const int status = qcom_cmd_db_find(db, db_bytes, route[i].name, bcm);
+        if (status != QcomRpmhOk) return reject(failure, NezhaIfeBcmLookup, i, 0, (uint32_t)status);
+        if ((bcm->address & 0xffff0003u) != 0x50000u)
+            return reject(failure, NezhaIfeBcmAddress, i, bcm->address, 0);
+        if (bcm->aux_bytes < 8) return reject(failure, NezhaIfeBcmAuxLength, i, bcm->address, bcm->aux_bytes);
+        /* The board's ACV is a mask BCM, with unit 1 and width 0.
+         * Only bandwidth BCMs use either field in their arithmetic. All
+         * BCMs still require their own valid address and VCD group. */
+        if (route[i].width && (!(bcm->aux[0] | bcm->aux[1] | bcm->aux[2] | bcm->aux[3]) ||
+                              !(bcm->aux[4] | bcm->aux[5]))) {
+            const uint32_t scale = (uint32_t)bcm->aux[4] | (uint32_t)bcm->aux[5] << 8;
+            return reject(failure, NezhaIfeBcmScale, i, bcm->address, scale);
         }
         for (unsigned j = 0; j < i; ++j) {
             if (bcm->address == resource[j].address) {
-                return false;
+                return reject(failure, NezhaIfeBcmDuplicate, i, bcm->address, j);
             }
         }
         unsigned j = i;
@@ -84,5 +99,14 @@ bool nezha_camera_ife_bandwidth(const uint8_t *db, size_t db_bytes,
             bit | make_vote(bcm, index, sleep_average, sleep_peak), false};
     }
     *out = result;
+    if (failure) *failure = (struct NezhaCameraIfeBcmFailure){0};
     return true;
+}
+
+bool nezha_camera_ife_bandwidth(const uint8_t *db, size_t db_bytes,
+    uint32_t wake_average, uint32_t wake_peak, uint32_t sleep_average,
+    uint32_t sleep_peak, struct NezhaCameraIfeBandwidth *out)
+{
+    return nezha_camera_ife_bandwidth_checked(db, db_bytes, wake_average, wake_peak,
+        sleep_average, sleep_peak, out, NULL);
 }
