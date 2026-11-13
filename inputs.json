@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "ALS015 publish actual original27 ALS usage ff00/4 to initialize CoreBrightness AABC on genuine measured lux",
+  "purpose": "ALS016 correct QRTR receive-confirmation header and flow endpoint, continue real ambient-light reports beyond remote watermarks",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "143449b47dddc8ef5a50c59d3994b603163a9e17",
+  "device_revision": "31a5d8fa4bd46c280964541fb153d6ae35c2a787",
   "soc_revision": "e565439bf1a13d0224f0a9adcfc1eef8df7ad142",
   "xcode": "26.6",
   "files": {
@@ -162,7 +162,7 @@
     "source/device/package/als-owner/upstream/QcomMdt.h": "22d8e567b285e254becf1af41f8ba0c9c1cfcc5295f6246b4b9d09e5fef88477",
     "source/device/package/als-owner/upstream/QcomQmp.c": "6d5dd2e0ebf1f425f7fc929555edb275b8d499cfaa1f9c887bfcb68f09785249",
     "source/device/package/als-owner/upstream/QcomQmp.h": "dd6722ade248435930c5f242ef78728f58f7e3bc6a9765fe229b32c87f342503",
-    "source/device/package/als-owner/upstream/QcomQrtr.c": "617cada601d7715d83a0965a99f051d5f939d48bb45c37d440a479f04aa3d476",
+    "source/device/package/als-owner/upstream/QcomQrtr.c": "aefcf3d646fc42bd415a2ef0d9d81e38035c55032bbc2f0ea1b0e9e8f539f0c3",
     "source/device/package/als-owner/upstream/QcomQrtr.h": "665853eacbd6bf293ed16f02bce71f90a656da4feb02c5fe1da1d6eb032b2f5f",
     "source/device/package/als-owner/upstream/QcomRpmh.c": "679a55467e6ed4c7e75a8191f1d6da48637377088ef5e27879b1c99bc4a62314",
     "source/device/package/als-owner/upstream/QcomRpmh.h": "47e299744ff83989449d262f74f5dfd2ba1cdbf921b2886643735f2febb6ee21",
@@ -180,7 +180,7 @@
     "source/device/package/als/NezhaAlsSscClient.c": "ec6a76ca75ad294e2466ce1d9999ccc59b635790c161665f6f61e16985042ab9",
     "source/device/package/als/NezhaAlsSscClient.h": "1cb84ad4dd734cb533e9a7aa1669a75ea5a161c643d16f82da1a6481717e82e5",
     "source/device/package/als/NezhaAlsState.h": "2876ff7d3dc8fe4521bc535b28b47c5944382c26ee037fa345c0ea79180e57cf",
-    "source/device/package/als/README.md": "894fa60051009db8e41c152a9a3a9e051f776dc4d5e1dc42f1aa5f4c084b0347",
+    "source/device/package/als/README.md": "d3faa3a5453aad50dd0d4db1859f015b7ea90fc608c0ca0027705c0354a358ac",
     "source/device/package/als/Tcs3760Sns.c": "3fcf2c8aa51c9b819a4014fe6b64569d63853e2117dc0215cb16551a37590d7f",
     "source/device/package/als/Tcs3760Sns.h": "bd728857b3a5869954acdc55dbddd94a3995d376769613282e254fb99074c2eb",
     "source/device/package/armcpu/darwin-asm-separators.patch": "15893fd689f266184c3273135761d7eff0d71aa0c42e29d1d71666a0abd60e8f",
@@ -281,7 +281,7 @@
     "source/device/scripts/hid-device-iphone-24A446.json": "af4668764ba1d2a4649b9c45d1ddbbabcb69e27659e7c35fbf9899f8f6bdbc7d",
     "source/device/scripts/legacy-display-iphone-24A446.json": "6f08ddf9377cc5c92a4a60ff75c3b452eb1a536720ebdf8fda9361846d8c8fea",
     "source/device/scripts/nezha-armcpu-asm-fix.py": "3d37c0c0e3613453c901a9622bc45a077c9acbd35ffe449046fa575b3b57af3a",
-    "source/device/scripts/nezha27-als-owner-inputs.json": "2261695c1b7374deeaf67ac9170b0bcfa5e18612a1b60c9fffe2e1a991151f2f",
+    "source/device/scripts/nezha27-als-owner-inputs.json": "bddc324b2df587b2c00e10383748e9429a3842da9af7557c0d8b4b671205af1b",
     "source/device/scripts/qualify-armcpu-instructions.py": "dae7cb3b9faecaac7b268212bbd324ae172d3dffa0e94b06afc4581c9f4abe9b",
     "source/device/tests/brightness-poll-observation.cpp": "411bbcafa1d880c88608aadeecf573c0c40f31cfe938552f72639a3c50d17c1b",
     "source/device/tests/brightness-poll-observation.py": "1aeff817ab68609d46f47c98539971a6a772003981ff3e978cca7eedbca58111",
@@ -468,7 +468,7 @@
   },
   "device_evidence_revision": "4c51f2552482f362c2a381f770b313fe5e7b5cc2",
   "als_owner": {
-    "source_revision": "98365a15cf6acbb8625d042867d597677007925f",
+    "source_revision": "31a5d8fa4bd46c280964541fb153d6ae35c2a787",
     "source_files": [
       "package/als-owner/platform/AdspFirmware.c",
       "package/als-owner/platform/AdspLink.c",
@@ -726,6 +726,27 @@
     "event_type": 12,
     "genuine_TCS3760_samples_retained": true,
     "class_members_added": false,
+    "actual_hardware": false
+  },
+  "native015_base": {
+    "source_revision": "143449b47dddc8ef5a50c59d3994b603163a9e17",
+    "native_run": 43411554156,
+    "head": "aaa7dfd4c4067c5bc2dbd6e26dd78913e625f8a5",
+    "automatic_brightness_switch_present_enabled": true,
+    "controlled_light_response": false
+  },
+  "qrtr_resume_fix": {
+    "source_revision": "31a5d8fa4bd46c280964541fb153d6ae35c2a787",
+    "source": "package/als-owner/upstream/QcomQrtr.c",
+    "reply_header_source": "local node / original DATA destination port",
+    "reply_header_destination": "original DATA sender node / sender port",
+    "payload_client": "original DATA receiver local node / local port",
+    "Linux_SM8850_contract_checked": true,
+    "host_scenarios": 17,
+    "host_flow_samples": 31,
+    "host_successful_resumes": 6,
+    "host_refusal_checked": true,
+    "existing_HID_class_unchanged": true,
     "actual_hardware": false
   }
 }

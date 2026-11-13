@@ -12,7 +12,7 @@
     "upstream/QcomGlink.c": "d93de74fc679952d3fa327f902d69e4013b3eb95ae6431c77d8b2aa1348999ef",
     "upstream/QcomMdt.c": "706f4a86624d119282683287bf408ae679275368f9bcc28d6f4ba652d3ad377a",
     "upstream/QcomQmp.c": "6d5dd2e0ebf1f425f7fc929555edb275b8d499cfaa1f9c887bfcb68f09785249",
-    "upstream/QcomQrtr.c": "617cada601d7715d83a0965a99f051d5f939d48bb45c37d440a479f04aa3d476",
+    "upstream/QcomQrtr.c": "aefcf3d646fc42bd415a2ef0d9d81e38035c55032bbc2f0ea1b0e9e8f539f0c3",
     "upstream/QcomRpmh.c": "679a55467e6ed4c7e75a8191f1d6da48637377088ef5e27879b1c99bc4a62314",
     "upstream/QcomSmem.c": "4e9eb0ee22458dad30e1fcb7edb74a9d762222aff0623a6d5b85fb4a6e08bd03",
     "upstream/QcomSmp2p.c": "f91c38e60fe86c5a55cbf9e822e0486997f7104d564ea90d6afe6ab40ac9d60b",

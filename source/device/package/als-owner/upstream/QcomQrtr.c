@@ -1,5 +1,8 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #include "QcomQrtr.h"
+#ifdef NEZHA_ALS_NATIVE_OWNER
+extern int printf(const char *, ...);
+#endif
 
 static uint16_t le16(const uint8_t *p) {return (uint16_t)(p[0] | (uint16_t)p[1] << 8);}
 static uint32_t le32(const uint8_t *p) {return (uint32_t)le16(p) | (uint32_t)le16(p + 2) << 16;}
@@ -117,8 +120,22 @@ int qcom_qrtr_receive(QcomQrtr *q, const uint8_t *packet, uint32_t length)
         if (i < q->local_count) q->local[i].receive(q->local[i].context, q, dst_port, src_node, src_port, data, size);
         else q->rx_unrouted++;
         if (confirm) {  /* the sender waits for this before it sends more to the port */
-            const uint32_t words[4] = {src_node, src_port, 0, 0};
-            if (!control(q, QCOM_QRTR_RESUME_TX, words)) q->resumes_sent++;
+            // Qualcomm qrtr_send_resume_tx replies from the DATA receiver to
+            // its sender, and names the DATA receiver in the client payload.
+            // A name-service broadcast naming the sender does not clear the
+            // sender's per-destination flow counter.
+            uint8_t resume[CTRL_BYTES] = {0};
+            put32(resume, QCOM_QRTR_RESUME_TX);
+            put32(resume + 4, q->local_node);
+            put32(resume + 8, dst_port);
+            const int result = emit(q, QCOM_QRTR_RESUME_TX, dst_port, src_node, src_port,
+                                    resume, sizeof resume);
+            if (!result) q->resumes_sent++;
+#ifdef NEZHA_ALS_NATIVE_OWNER
+            if (q->resumes_sent <= 8)
+                printf("NEZHA QRTR RX CONFIRM: src=%u/%u dst=%u/%u bytes=%u rc=%d resumes=%u\n",
+                       src_node, src_port, q->local_node, dst_port, size, result, q->resumes_sent);
+#endif
         }
         return 0;
     }

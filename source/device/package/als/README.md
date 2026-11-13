@@ -76,3 +76,20 @@ Provider8 `run` arrays use these orders:
   actual returned IOReturn. An in-flight call has no new completed result yet.
 - `sample`: latest sequence, integer lux, flags (1 published,2 ready,4 paused,
   8 stopped,16 pending,32 valid). Lux without the valid bit is not a new sample.
+
+
+ALS015 restored the original Auto-Brightness control; the user enabled it.
+Complete cover/uncover produced no new lux or matching screen change. Two
+provider8 snapshots show548024 additional worker loops and balanced gate
+calls, while GLINK686/QRTR29 and sample sequence4 stay fixed. The trial closed
+normally after the human observation, and its16 frozen exports were verified.
+
+ALS016 corrects QRTR RESUME_TX: its header replies from the original DATA
+receiver to the sender, and its client payload names the original receiver.
+The previous name-service control packet both used the control port and named
+the sender; this could not clear the sender's per-destination credit. The
+SM8850 Linux qrtr_send_resume_tx/qrtr_tx_resume contract and the user-requested
+xiaomi17u flow-control reference agree. A production QRTR/SSC/frontend test
+now delivers31 changing samples through six low-watermark confirmations and
+checks refused confirmation sends remain visible. Real sustained samples
+and physical automatic brightness still require the next board trial.

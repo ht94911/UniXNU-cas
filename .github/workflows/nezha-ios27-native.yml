@@ -1,7 +1,7 @@
-name: nezha iPhone27 ALS015 original ALS consumer usage
+name: nezha iPhone27 ALS016 QRTR receive credit endpoint
 on:
   push:
-    branches: [codex/ios27-brightness-als015-original-usage-20261113]
+    branches: [codex/ios27-brightness-als016-qrtr-resume-20261113]
   workflow_dispatch:
 permissions:
   contents: read
