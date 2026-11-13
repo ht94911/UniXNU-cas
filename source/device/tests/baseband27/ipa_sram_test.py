@@ -13,7 +13,8 @@ with tempfile.TemporaryDirectory(prefix="nb-ipa-sram-") as name:
     headers = {
         "sys/param.h": "#include <stdint.h>\n#include <stddef.h>\n",
         "sys/systm.h": "#include <stdio.h>\n#include <string.h>\nvoid delay(int);\n",
-        "sys/errno.h": "#include <errno.h>\n",
+        "sys/errno.h": ("#include_next <sys/errno.h>\n" if sys.platform == "darwin"
+                        else "#include <errno.h>\n"),
         "machine/machine_routines.h": (
             "#pragma once\n#include <stdint.h>\n#include <stddef.h>\n"
             "typedef uintptr_t vm_offset_t;\ntypedef size_t vm_size_t;\n"

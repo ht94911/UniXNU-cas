@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "d539bf0cf5e43268190d1164b1e718886896896b",
+  "device_revision": "c6be8d01304caccbaf46bf8dac8a45c61fe4954b",
   "soc_revision": "703d7b4bb00904b4a6e5d96f9e9bf72eec170f6b",
   "xcode": "26.6",
   "files": {
@@ -321,7 +321,7 @@
     "source/device/scripts/qualify-armcpu-instructions.py": "dae7cb3b9faecaac7b268212bbd324ae172d3dffa0e94b06afc4581c9f4abe9b",
     "source/device/tests/baseband27/ipa_smem_test.c": "5b630ac808334e0d861cf02bb71e657234ed37ee3e0f720c061ddf986e51c6af",
     "source/device/tests/baseband27/ipa_sram_test.c": "2bbcb46561c3a5db61bc34f74e5b36343f73d54a5ed30a78ab83d86d2c79ae46",
-    "source/device/tests/baseband27/ipa_sram_test.py": "708940a9664f244720f7085f15e27ab53434ddaeb31ee34c4330f50057ad8fe3",
+    "source/device/tests/baseband27/ipa_sram_test.py": "bc7efb1008eb074496efe74d00cb5c0d6d03ce73aceda8a8efa779d1e0f02313",
     "source/device/tests/baseband27/low_memory_test.c": "2786276035452a9503c364d291545fe82c447f3db7745569378b4cacd0ba5a40",
     "source/device/tests/baseband27/mss_reuse_test.c": "cc6bc4de1511d10993cc6448a4c08af35600f53fe1a99a6b54b09af53e536232",
     "source/device/tests/baseband27/pdp_flow_test.c": "9aad5c6f5e9e6655f1213dfc484c81681d7ffacd481918c48552071b731b4bcd",
