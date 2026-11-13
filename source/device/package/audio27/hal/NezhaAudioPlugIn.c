@@ -55,6 +55,29 @@ static NaHalObservation gObservations[NA_HAL_HISTORY_CAPACITY];
 /* One handled scheduling miss and one remaining failure, forwarded on the
  * existing discovery timer. The realtime callback never makes a logging RPC. */
 static struct {atomic_uint state;uint32_t reason,flags,frames;int32_t result,delta;} gIoNotes[2];
+/* Sample the first output lifecycle through the retained HAL history. Counts
+ * and source peak are updated locally; only the discovery timer sends RPCs. */
+static atomic_uint gWriteCapabilities,gWriteCalls,gWrittenFrames,gMixPeak;
+static uint64_t gFlowStartHost;
+static int gFlowReported,gFirstMixTime;
+static int32_t gMixConsumedDelta,gMixNowDelta;
+static int32_t frame_delta(int64_t delta) {
+    return delta<INT32_MIN ? INT32_MIN:delta>INT32_MAX ? INT32_MAX:(int32_t)delta;
+}
+static void note_mix_source(const Float32 *src,UInt32 frames) {
+    atomic_fetch_add_explicit(&gWriteCalls,1,memory_order_relaxed);
+    uint32_t peak=0;
+    for (UInt32 i=0;i<2*frames;++i) {
+        Float32 value=fabsf(src[i]);
+        if (isfinite(value)) {
+            uint32_t v=(uint32_t)(fminf(value,1)*32767.0f);
+            if (v>peak) peak=v;
+        }
+    }
+    uint32_t old=atomic_load_explicit(&gMixPeak,memory_order_relaxed);
+    while (old<peak && !atomic_compare_exchange_weak_explicit(&gMixPeak,&old,peak,
+            memory_order_relaxed,memory_order_relaxed)) {}
+}
 static void note_io(unsigned slot,uint32_t reason,uint32_t flags,uint32_t frames,int32_t result,int64_t delta) {
     unsigned expected=0;
     if (!atomic_compare_exchange_strong(&gIoNotes[slot].state,&expected,1)) return;
@@ -348,6 +371,16 @@ static void sample_system_route(void) {
 static void retry_service(void *context) {
     (void)context;check_service();sample_system_route();
     pthread_mutex_lock(&gLock);
+    if (gConnect && gFlowStartHost && !gFlowReported &&
+        mach_absolute_time()-gFlowStartHost>=10ULL*gLastStatus.host_hz) {
+        report_hal(NaHalPropertyRead,kOutStream,'wCap',kAudioObjectPropertyScopeOutput,12,0,atomic_load(&gWriteCapabilities));
+        report_hal(NaHalPropertyRead,kOutStream,'wCnt',kAudioObjectPropertyScopeOutput,12,0,atomic_load(&gWriteCalls));
+        report_hal(NaHalPropertyRead,kOutStream,'wFrm',kAudioObjectPropertyScopeOutput,12,0,atomic_load(&gWrittenFrames));
+        report_hal(NaHalPropertyRead,kOutStream,'wPek',kAudioObjectPropertyScopeOutput,12,0,atomic_load(&gMixPeak));
+        report_hal(NaHalPropertyRead,kOutStream,'wCon',kAudioObjectPropertyScopeOutput,12,gFirstMixTime ? 0:NA_MISSING,(uint32_t)gMixConsumedDelta);
+        report_hal(NaHalPropertyRead,kOutStream,'wNow',kAudioObjectPropertyScopeOutput,12,gFirstMixTime ? 0:NA_MISSING,(uint32_t)gMixNowDelta);
+        gFlowReported=1;
+    }
     if (gConnect) for (unsigned i=0;i<2;++i) if (atomic_load_explicit(&gIoNotes[i].state,memory_order_acquire)==2) {
         report_hal(NaHalPropertyError,kOutStream,'wMix',kAudioObjectPropertyScopeOutput,gIoNotes[i].reason,gIoNotes[i].result,gIoNotes[i].flags);
         report_hal(NaHalPropertyError,kOutStream,'wDel',kAudioObjectPropertyScopeOutput,gIoNotes[i].reason,gIoNotes[i].result,(uint32_t)gIoNotes[i].delta);
@@ -525,6 +558,7 @@ static OSStatus StartIO(AudioServerPlugInDriverRef d,AudioObjectID o,UInt32 clie
         if (gOutputSelected && call(NaAudioStartOutput)!=KERN_SUCCESS) goto out;
         gCaptureIssued=0;gCaptureTouch=0; /* Input starts on actual ReadInput. */
         if (na_clock_frames(s.anchor_host,mach_absolute_time(),s.ticks_per_frame_q32,&gZeroOrigin)) {call(NaAudioStopOutput);call(NaAudioStopInput);goto out;}
+        if (!gFlowStartHost) gFlowStartHost=mach_absolute_time();
         ++gZeroSeed;
     }
     gUsers[slot].id=client;++gUsers[slot].count;++gIoUsers;r=0;
@@ -555,6 +589,7 @@ static OSStatus GetZeroTimeStamp(AudioServerPlugInDriverRef d,AudioObjectID o,UI
 }
 static OSStatus WillDoIOOperation(AudioServerPlugInDriverRef d,AudioObjectID o,UInt32 client,UInt32 op,Boolean *will,Boolean *inPlace) {
     (void)d;(void)client;if (o!=kDevice || !will || !inPlace) return kAudioHardwareIllegalOperationError;
+    if (op==kAudioServerPlugInIOOperationWriteMix) atomic_fetch_add_explicit(&gWriteCapabilities,1,memory_order_relaxed);
     pthread_mutex_lock(&gLock);*will=op==kAudioServerPlugInIOOperationWriteMix || op==kAudioServerPlugInIOOperationReadInput;*inPlace=true;pthread_mutex_unlock(&gLock);return 0;
 }
 static OSStatus BeginIOOperation(AudioServerPlugInDriverRef d,AudioObjectID o,UInt32 c,UInt32 op,UInt32 frames,const AudioServerPlugInIOCycleInfo *i) {(void)d;(void)c;(void)op;return o==kDevice && frames<=4096 && i ? 0:kAudioHardwareIllegalOperationError;}
@@ -566,12 +601,13 @@ static OSStatus DoIOOperation(AudioServerPlugInDriverRef d,AudioObjectID o,Audio
     int reference=op==kAudioServerPlugInIOOperationReadInput && stream==kReferenceStream;
     int output=op==kAudioServerPlugInIOOperationWriteMix && stream==kOutStream;
     if (!input && !reference && !output) return kAudioHardwareIllegalOperationError;
+    if (output) note_mix_source(main,frames);
     if (input || reference) memset(main,0,frames*sizeof(Float32)*(reference ? 2:1));
     if (pthread_mutex_trylock(&gLock)) {
         note_io(0,1,output ? info->mOutputTime.mFlags:info->mInputTime.mFlags,frames,0,0);
         return 0; /* A dropped output period or silent input is an underrun. */
     }
-    OSStatus result=kAudioHardwareNotRunningError;NaAudioStatus s={0};
+    OSStatus result=kAudioHardwareNotRunningError;NaAudioStatus s={0};UInt32 written=0;
     int snapshot=gControl && gIoUsers ? status_snapshot(&s,0):NA_MISSING;
     if (snapshot==NA_BUSY) {
         note_io(0,7,0,frames,0,snapshot);result=0;goto out;
@@ -589,6 +625,13 @@ static OSStatus DoIOOperation(AudioServerPlugInDriverRef d,AudioObjectID o,Audio
     }
     uint64_t t=(uint64_t)sample;
     if (!input && op==kAudioServerPlugInIOOperationWriteMix && stream==kOutStream && gOutputSelected) {
+        if (!gFirstMixTime) {
+            uint64_t now;
+            if (!na_clock_frames(s.anchor_host,mach_absolute_time(),s.ticks_per_frame_q32,&now)) {
+                gMixConsumedDelta=frame_delta((int64_t)t-(int64_t)s.out_consumed);
+                gMixNowDelta=frame_delta((int64_t)t-(int64_t)now);gFirstMixTime=1;
+            }
+        }
         if (t+frames>s.out_consumed+NA_AUDIO_RING_FRAMES) {
             result=kAudioHardwareIllegalOperationError;note_io(1,5,time->mFlags,frames,result,(int64_t)t-(int64_t)s.out_consumed);goto out;
         }
@@ -603,6 +646,7 @@ static OSStatus DoIOOperation(AudioServerPlugInDriverRef d,AudioObjectID o,Audio
             int r=na_reference_mix(gOutput,gReference,t+i,s16(src[2*i]*g),s16(src[2*i+1]*g));
             if (r==NA_BUSY) {note_io(0,8,time->mFlags,frames,0,r);continue;}
             if (r && r!=NA_OWNERSHIP) {note_io(1,6,time->mFlags,frames,result,r);goto out;}
+            if (!r) ++written;
         }
         result=0;
     } else if (reference && gReferenceSelected) {
@@ -631,7 +675,9 @@ static OSStatus DoIOOperation(AudioServerPlugInDriverRef d,AudioObjectID o,Audio
         result=0;
     } else note_io(1,10,(gOutputSelected ? 1u:0u)|(gReferenceSelected ? 2u:0u)|
                         (gInputAvailable ? 4u:0u)|(gInputSelected ? 8u:0u),frames,result,stream);
-out:pthread_mutex_unlock(&gLock);return result;
+out:
+    if (written) atomic_fetch_add_explicit(&gWrittenFrames,written,memory_order_relaxed);
+    pthread_mutex_unlock(&gLock);return result;
 }
 static OSStatus EndIOOperation(AudioServerPlugInDriverRef d,AudioObjectID o,UInt32 c,UInt32 op,UInt32 frames,const AudioServerPlugInIOCycleInfo *i) {(void)d;(void)c;(void)op;(void)frames;(void)i;return o==kDevice ? 0:kAudioHardwareBadObjectError;}
 static AudioServerPlugInDriverInterface gInterface={NULL,QueryInterface,AddRef,Release,Initialize,CreateDevice,DestroyDevice,AddDeviceClient,RemoveDeviceClient,PerformDeviceConfigurationChange,AbortDeviceConfigurationChange,HasProperty,IsPropertySettable,GetPropertyDataSize,GetPropertyData,SetPropertyData,StartIO,StopIO,GetZeroTimeStamp,WillDoIOOperation,BeginIOOperation,DoIOOperation,EndIOOperation};

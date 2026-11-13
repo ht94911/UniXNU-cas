@@ -125,7 +125,13 @@ int na_driver_attach_feedback(NaDriver *d,const NaDriverStream *s,const NaTiCali
 }
 static int fail(NaDriver *d,int error) {
     d->error=error<0 ? error:NA_IO;d->stage=DFault;
+    /* The outer ADSP/board failure bypasses normal runtime publication. Retire
+     * the mapped ready/running state before the HAL can attempt another start. */
+    if (!d->runtime.fault) d->runtime.fault=d->error;
     na_runtime_disable(&d->runtime);
+    d->runtime.status.state=NaAudioFault;
+    d->runtime.status.last_error=(uint32_t)d->runtime.fault;
+    na_audio_status_publish(d->runtime.shared,&d->runtime.status);
     na_graph_request(&d->graph[0],0);if (d->input_enabled) na_graph_request(&d->graph[1],0);
     if (d->feedback_attached) na_graph_request(&d->graph[2],0);
     /* Also mute bootstrap's endpoint when no graph owns it yet. */
