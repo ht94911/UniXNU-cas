@@ -71,6 +71,20 @@ static void authenticate(void)
 }
 int main(void)
 {
+    fixture(0,0);
+    assert(nb_mss_prepare_stop(&m,0)==NB_PENDING);
+    assert(nb_mss_prepare_stop(&m,1)==NB_PENDING);
+    assert(nb_mss_prepare_stop(&m,2)==NB_OK && m.stage==NbMssCheck);
+    assert(stops==2 && !assigns && !m.p2p.out && m.masters_stopped);
+    assert(nb_mss_prepare_stop(&m,3)==NB_OK && stops==2 && !assigns);
+    assert(!memcmp(original,memory+0x10000,sizeof original));
+    assert(nb_mss_poll(&m,4)==NB_PENDING && m.stage==NbMssAssign);
+    assert(nb_mss_prepare_stop(&m,5)==NB_OWNERSHIP);
+    fixture(0,0);fail_main=NB_IO;
+    assert(nb_mss_prepare_stop(&m,0)==NB_PENDING);
+    assert(nb_mss_prepare_stop(&m,1)==NB_PENDING);
+    assert(nb_mss_prepare_stop(&m,2)==NB_IO && !assigns && !m.p2p.out);
+    assert(nb_mss_prepare_stop(&m,3)==NB_IO && stops==2);
     fixture(0,0);to_dtb();authenticate();nb_mss_smp2p_event(&m);lock_busy=1;
     assert(nb_mss_poll(&m,13)==NB_PENDING && m.stage==NbMssOnline && !m.glink_ready);
     lock_busy=0;assert(nb_mss_poll(&m,14)==NB_PENDING && m.glink_ready && !m.glink_polled);

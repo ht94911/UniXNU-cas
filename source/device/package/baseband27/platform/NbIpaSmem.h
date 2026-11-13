@@ -1,9 +1,10 @@
 /* SPDX-License-Identifier: BSD-2-Clause */
-/* Existing SMEM item only: ipa_smem_init/ipa_smmu_ap_cb_probe use an
- * identity mapping rounded out to complete pages. No allocation or writes. */
+/* ipa_smem_init/ipa_smmu_ap_cb_probe map the actual item through complete
+ * identity-mapped pages. Missing storage is allocated after both MSS stops. */
 #ifndef NB_IPA_SMEM_H
 #define NB_IPA_SMEM_H
 #include "NbCommon.h"
+#include "NbMss.h"
 #include "../upstream/QcomSmem.h"
 
 #define NB_SMEM_IPA_FILTER_TABLE 497u
@@ -31,5 +32,21 @@ static inline int nb_ipa_smem_region(const QcomSmem *smem,
     *region = (NbRange){start, end - start};
     *item_address = (uint32_t)address;
     return NB_OK;
+}
+
+/* Caller holds the existing SMEM hardware mutex. Initial PAS success is
+ * required even when the item exists; missing storage is allotted only here. */
+static inline int nb_ipa_smem_prepare(const NbMss *m, uint64_t physical,
+                                      NbRange *region, uint32_t *item_address)
+{
+    if (!m || m->stage != NbMssCheck || !m->masters_stopped ||
+        m->initial_stop_mask != 3 || m->initial_stop[0] || m->initial_stop[1])
+        return NB_OWNERSHIP;
+    int r = nb_ipa_smem_region(&m->smem, &m->partition, physical, region, item_address);
+    if (r != NB_MISSING) return r;
+    r = qcom_smem_alloc(&m->smem, &m->partition, NB_SMEM_IPA_FILTER_TABLE,
+                        NB_IPA_SMEM_BYTES);
+    if (r && r != QcomSmemExists) return NB_WIRE;
+    return nb_ipa_smem_region(&m->smem, &m->partition, physical, region, item_address);
 }
 #endif

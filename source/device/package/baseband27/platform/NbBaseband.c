@@ -121,8 +121,7 @@ static int smp2p_ipa(void *context, uint32_t mask, uint32_t value)
 int nb_baseband_init(NbBaseband *b, const NbBasebandConfig *c)
 {
     if (!b || !c || !c->smem || !c->ipa_fws || !c->modem || !c->modem_dtb || !c->rmtfs || !c->platform.ipa_power || !c->platform.ipa_smmu ||
-        !c->qrtr_tx || !c->tftp_packet || !c->tftp_files || !c->ipcrtr_intents || !c->ds_intents || !c->tx_queue ||
-        c->ipa_smem_bytes != NB_IPA_SMEM_BYTES || !c->ipa_smem_address) return NB_ARGUMENT;
+        !c->qrtr_tx || !c->tftp_packet || !c->tftp_files || !c->ipcrtr_intents || !c->ds_intents || !c->tx_queue) return NB_ARGUMENT;
     *b = (NbBaseband){0};
     b->c = *c;
     int r = nb_mss_init(&b->mss, c->smem, c->smem_bytes, c->modem, c->modem_dtb, &c->mss);
@@ -133,7 +132,7 @@ int nb_baseband_init(NbBaseband *b, const NbBasebandConfig *c)
         nb_qrtr_add_service(&b->qrtr, NB_SERVLOC_SERVICE, NB_SERVLOC_INSTANCE, NB_PORT_SERVLOC, servloc_receive, b)) return NB_ARGUMENT;
     if (nb_tftp_init(&b->tftp, &b->qrtr, NB_PORT_TFTP, NB_PORT_TFTP_SESSION, NB_TFTP_MAX_BLKSIZE, &c->tftp, c->tftp_packet, c->tftp_files)) return NB_ARGUMENT;
     if (nb_memshare_init(&b->memshare, &b->qrtr, NB_PORT_MEMSHARE, nb_nezha_memshare_clients, nb_nezha_memshare_client_count, &c->memshare)) return NB_ARGUMENT;
-    b->stage = NbBasebandPower;
+    b->stage = NbBasebandInitialStop;
     return NB_OK;
 }
 
@@ -165,15 +164,26 @@ int nb_baseband_poll(NbBaseband *b, uint64_t now)
     int r;
     if (!b) return NB_ARGUMENT;
     switch (b->stage) {
+    case NbBasebandInitialStop:
+        r = nb_mss_prepare_stop(&b->mss, now);
+        if (r < 0) return fail(b, r);
+        if (r == NB_OK) b->stage = NbBasebandPower;
+        return NB_PENDING;
     case NbBasebandPower:
         r = b->c.platform.ipa_power(b->c.platform.context, 1);
         if (r < 0) return fail(b, r);
         if (r == NB_OK) b->stage = NbBasebandSmmu;
         return NB_PENDING;
     case NbBasebandSmmu:
-        r = b->c.platform.ipa_smmu(b->c.platform.context, 1);
+        if (now >= b->mss.deadline) return fail(b, NB_TIMEOUT);
+        r = b->c.platform.ipa_smmu(b->c.platform.context, 1, &b->mss,
+                                  &b->c.ipa_memory, &b->c.ipa_smem_address);
         if (r < 0) return fail(b, r);
-        if (r == NB_OK) b->stage = NbBasebandConfigure;
+        if (r == NB_OK) {
+            if (!b->c.ipa_smem_address) return fail(b, NB_OWNERSHIP);
+            b->c.ipa_smem_bytes = NB_IPA_SMEM_BYTES;
+            b->stage = NbBasebandConfigure;
+        }
         return NB_PENDING;
     case NbBasebandConfigure: {
         const NbIpaBoard board = { &b->qrtr, NB_PORT_IPA_HOST, NB_PORT_IPA_CLIENT, b->c.platform.qmp_send, smp2p_ipa, b };

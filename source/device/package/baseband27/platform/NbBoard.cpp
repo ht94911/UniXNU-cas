@@ -32,6 +32,7 @@ struct Board {
     uint8_t mem_assigned[NB_MEMSHARE_CLIENTS];
     NbRmtfs rmtfs;uint8_t *read_scratch,*hash_scratch;
     uint64_t image_bytes,bridge_handle;int bridge_state;
+    uint64_t ipa_smem_deadline;uint32_t ipa_smem_address;
     unsigned bind_attempted,bound,pas_touched,dsm_index,dsm_direction,dsm_mask,events;
     int error;
     void (*smp2p)(),(*watchdog)();
@@ -96,7 +97,25 @@ void smem_unlock(void *){if(sm8850_smem_unlock(board.common,NB_OWNER))board.erro
 void doorbell(void *,uint32_t signal){if((signal!=0&&signal!=2)||sm8850_ipcc_send(board.common,0x20000|signal))board.error=NB_IO;}
 int proxy(void *,int on){return nb_power_set(&board.power,NB_POWER_MSS,on,nb_native_now_ms());}
 int ipa_power(void *,int on){return nb_power_set(&board.power,NB_POWER_IPA,on,nb_native_now_ms());}
-int ipa_smmu(void *,int on){if(!on)return NB_OWNERSHIP;int r=nb_native_smmu_enable(&board.smmu);return r==NB_BUSY?NB_PENDING:r;}
+int ipa_smmu(void *,int on,const NbMss *m,const NbIpaMemory *memory,uint32_t *address){
+    if(!on||!m||!memory||!address||m->stage!=NbMssCheck||!m->masters_stopped||
+       m->initial_stop_mask!=3||m->initial_stop[0]||m->initial_stop[1])return NB_OWNERSHIP;
+    if(!board.smmu.common){
+        uint64_t now=nb_native_now_ms();if(!board.ipa_smem_deadline)board.ipa_smem_deadline=now+1000;
+        if(now>=board.ipa_smem_deadline)return fail("ipa-smem",NB_TIMEOUT);
+        int r=smem_lock(&board);if(r==NB_BUSY)return NB_PENDING;if(r)return fail("ipa-smem",r);
+        NbRange region={};r=nb_ipa_smem_prepare(m,0x81d00000,&region,&board.ipa_smem_address);
+        smem_unlock(&board);if(r||board.error)return fail("ipa-smem",r?r:board.error);
+        printf("NEZHA27 BB stage=ipa-smem result=0 item=%u address=%#x bytes=%u map=%#llx+%#llx\n",
+               NB_SMEM_IPA_FILTER_TABLE,board.ipa_smem_address,NB_IPA_SMEM_BYTES,
+               (unsigned long long)region.base,(unsigned long long)region.bytes);
+        r=nb_native_smmu_prepare(&board.smmu,board.common,board.dma,memory,region);
+        if(r)return fail("smmu-bind",r);
+    }
+    int r=nb_native_smmu_enable(&board.smmu);
+    if(!r)*address=board.ipa_smem_address;
+    return r==NB_BUSY?NB_PENDING:r;
+}
 int qmp_send(const char *text){
     // Existing IPA configuration call is synchronous. Yield on the same worker
     // while its common mailbox lease waits for an acknowledgement.
@@ -191,22 +210,6 @@ extern "C" int nezha_bb_bind(NbBasebandConfig *config){
         r=nb_native_allocate(&board.dma[i],sizes[i],align,0,1);if(r)return fail("dma",r);
         *dma[i]={board.dma[i].cpu,iova,sizes[i]};iova+=sizes[i];
     }
-    /* Android has already allocated item497. Read its immutable location
-     * under the shared SMEM mutex before replacing the IPA AP/uC tables. */
-    QcomSmem smem={static_cast<volatile uint8_t *>(config->smem),config->smem_bytes};
-    QcomSmemPartition partition={};NbRange smem_region={};
-    uint64_t smem_deadline=nb_native_now_ms()+1000;
-    while((r=smem_lock(&board))==NB_BUSY && nb_native_now_ms()<smem_deadline)IOSleep(1);
-    if(r)return fail("ipa-smem",r);
-    r=qcom_smem_partition(&smem,QCOM_SMEM_HOST_APPS,NB_MSS_SMEM_HOST,&partition);
-    if(!r)r=nb_ipa_smem_region(&smem,&partition,config->smem_physical,&smem_region,&config->ipa_smem_address);
-    smem_unlock(&board);
-    if(r||board.error)return fail("ipa-smem",r?r:board.error);
-    config->ipa_smem_bytes=NB_IPA_SMEM_BYTES;
-    printf("NEZHA27 BB stage=ipa-smem result=0 item=%u address=%#x bytes=%u map=%#llx+%#llx\n",
-           NB_SMEM_IPA_FILTER_TABLE,config->ipa_smem_address,config->ipa_smem_bytes,
-           (unsigned long long)smem_region.base,(unsigned long long)smem_region.bytes);
-    r=nb_native_smmu_prepare(&board.smmu,board.common,board.dma,&config->ipa_memory,smem_region);if(r)return fail("smmu-bind",r);
     const char *names[]={"ipa_fws","modem","modem_dtb"};
     const unsigned ids[]={15,4,0x26};
     const NbPasOps pas_ops={&board,pas_call,pas_sync};

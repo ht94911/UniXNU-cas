@@ -25,9 +25,24 @@ int main(void)
     word(part+36,NB_IPA_SMEM_BYTES);
     word(part+32,0xa5a5u|(496u<<16));
     assert(nb_ipa_smem_region(&smem,&partition,0x81d00000,&region,&item)==NB_MISSING);
+    word(part+12,32);word(part+16,partition.size);
+    NbMss m={0};m.smem=smem;m.partition=partition;
+    memcpy(original,data,sizeof data);
+    assert(nb_ipa_smem_prepare(&m,0x81d00000,&region,&item)==NB_OWNERSHIP);
+    assert(!memcmp(data,original,sizeof data));
+    m.stage=NbMssCheck;m.masters_stopped=1;m.initial_stop_mask=3;
+    m.initial_stop[1]=NB_IO;
+    assert(nb_ipa_smem_prepare(&m,0x81d00000,&region,&item)==NB_OWNERSHIP);
+    assert(!memcmp(data,original,sizeof data));
+    m.initial_stop[1]=0;
+    assert(!nb_ipa_smem_prepare(&m,0x81d00000,&region,&item));
+    assert(item==0x81d10030 && region.base==0x81d10000 && region.bytes==0x1a000);
+    memcpy(original,data,sizeof data);
+    assert(!nb_ipa_smem_prepare(&m,0x81d00000,&region,&item));
+    assert(!memcmp(data,original,sizeof data));
     word(part+32,0);
     assert(nb_ipa_smem_region(&smem,&partition,0x81d00000,&region,&item)==NB_WIRE);
     assert(nb_ipa_smem_region(&smem,&partition,UINT64_MAX-4095,&region,&item)==NB_ARGUMENT);
     assert(nb_ipa_smem_region(&smem,&partition,0xfffff000,&region,&item)==NB_ARGUMENT);
-    puts("PASS IPA SMEM: actual unaligned item, exact page rounding, immutable lookup, wrong-size/missing/corrupt/range rejection");
+    puts("PASS IPA SMEM: no allocation before two stopped images; missing item allocated once; existing unaligned range reused, corruption/size rejected");
 }

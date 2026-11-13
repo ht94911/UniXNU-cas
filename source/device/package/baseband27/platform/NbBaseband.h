@@ -2,9 +2,9 @@
 /* The baseband worker: the single owner of the IPA bring-up, the modem lifecycle, the QRTR router over GLINK "IPCRTR" and the
  * application-processor services the modem needs (rmtfs, service locator, TFTP, memory share, IPA QMI).
  *
- * Order, on one thread with a bounded poll: IPA power and SMMU lease; ipa_config; ipa_fws through PAS 15; ipa_setup; modem PAS and
- * lifecycle; then every service runs while the modem is online. The IPA comes first because the phone's own driver loads ipa_fws
- * and finishes its setup before the modem asks for INIT_DRIVER, and the QMI server must exist when the modem says hello.
+ * Order, on one thread with a bounded poll: stop both MSS images; IPA power, statistics SMEM and SMMU lease; ipa_config;
+ * ipa_fws through PAS 15; ipa_setup; modem PAS and lifecycle; then every service runs while the modem is online. Statistics
+ * storage is allocated or reused while MSS is stopped. IPA setup and its QMI server are ready before the modem restarts.
  *
  * A failure stops this sequence for the boot and is printed; nothing else in the system depends on it. A modem crash is reported
  * and not restarted in this first phase: the IPA endpoints and their DMA memory stay as they are until the next boot. */
@@ -42,7 +42,8 @@ typedef struct {
     int (*ipa_power)(void *context, int on);
     /* on: the IPA's SMMU context banks (SIDs 0x4a0, 0x4a2) with the DMA memory, the SMEM item and the mappings the device tree
      * lists. 0 done, NB_PENDING busy, < 0 failed. */
-    int (*ipa_smmu)(void *context, int on);
+    int (*ipa_smmu)(void *context, int on, const NbMss *stopped,
+                    const NbIpaMemory *memory, uint32_t *smem_address);
     int (*qmp_send)(const char *text);
 } NbBasebandPlatform;
 
@@ -65,8 +66,8 @@ typedef struct {
     volatile void *smem;
     uint32_t smem_bytes;
     uint64_t smem_physical;
-    /* Existing item497, read before the IPA context is installed. Its
-     * aligned pages are mapped at the same physical/IOVA address. */
+    /* Item497, allotted/reused after both initial MSS stops and before
+     * IPA context activation; exact original address is used in QMI. */
     uint32_t ipa_smem_bytes, ipa_smem_address;
     /* Begun with nb_pas_begin against their carveouts: ipa_fws (PAS 15), modem (PAS 4) and modem_dtb (PAS 0x26). */
     NbPas *ipa_fws, *modem, *modem_dtb;
@@ -83,6 +84,7 @@ typedef struct {
 enum {
     NbBasebandPower, NbBasebandSmmu, NbBasebandConfigure, NbBasebandFirmware, NbBasebandSetup, NbBasebandModem, NbBasebandDown,
     NbBasebandFailed,
+    NbBasebandInitialStop,
 };
 
 typedef struct {

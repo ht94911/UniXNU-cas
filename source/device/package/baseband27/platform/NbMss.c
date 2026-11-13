@@ -344,6 +344,17 @@ int nb_mss_poll(NbMss *m, uint64_t now)
     return m->stage == NbMssOnline ? NB_OK : NB_PENDING;
 }
 
+int nb_mss_prepare_stop(NbMss *m, uint64_t now)
+{
+    if (!m) return NB_ARGUMENT;
+    if (m->stage == NbMssCheck) return check_cold(m);
+    if (m->stage != NbMssInitialPower && m->stage != NbMssInitialStopMain &&
+        m->stage != NbMssInitialStopDtb && m->stage != NbMssFailed) return NB_OWNERSHIP;
+    int r = nb_mss_poll(m, now);
+    if (r < 0) return r;
+    return m->stage == NbMssCheck ? check_cold(m) : NB_PENDING;
+}
+
 int nb_mss_stop(NbMss *m, uint64_t now)
 {
     if (!m || m->stage != NbMssOnline || now > UINT64_MAX - STOP_ACK_MS) return NB_ARGUMENT;

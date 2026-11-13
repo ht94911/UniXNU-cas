@@ -415,3 +415,32 @@ QMI使用同一个已映射的原始item地址，不在MSS认证之后再创建�
 相邻未声明页仍缺失，原DMA和IPA寄存器区可达；缺失/错尺寸/损坏SMEM拒绝。
 完整ASan/UBSan回归通过；实际iOS27原生、IPA握手和复位效果待下一轮。
 来源仍固定GPU024/SMMU/USB/common；最新fetch UniXNU7d85ede、myronf1a1bfe。
+
+## 19. MSS初始停止前移与统计区创建（010，2026-11-13）
+
+009实际本机在60.631s查不到SMEM497，setup=-7；IPA配置、IPA PAS、
+MSS PAS和QRTR均未开始。该结果比008退步，证明不能假设安卓分配的
+统计项跨临时启动仍存在。009已一次正常返回安卓/root、通过必要保护后验，
+63132采集器退出，12:41:12UTC释放；其固定源码与成品保留。
+
+010沿007音频复用的initial proxy→PAS4停止→PAS0x26停止路径，
+将这段从原MSS启动流程中先执行，成功停在NbMssCheck。任何实际停止
+失败仍终止，不修改SMEM、DSM或IPA；保留008四查询及原始返回。
+随后在原SMEM硬件mutex内调用既有QcomSmem查询/分配接口：
+已有497要求原102400字节且不写，缺失才创建一次，读回真实地址后
+沿009精确页段建立原IPA页表。QMI仍使用同一个实际已映射地址。
+IPA固件和配置完成后，原MSS状态机从Check继续DSM/SMEM/认证/fresh-ready。
+原阶段号保留，新的worker InitialStop仅追加；不新建trace设施。
+
+统计项分配及恒等映射合同来自同SoC OnePlus SM8850下游5ab2a68
+`ipa_smmu_ap_cb_probe`和Linux `ipa_mem.c::ipa_smem_init`；实际分配、
+mutex、页表和PAS逻辑分别复用QcomSmem、SM8850 common、ArmSmmu4K及
+已集成的NbMss。GPU024、低池、DMA/GSI/IPA寄存器、PAS参数和存储权限保持。
+009结果后fetch UniXNU/main7d85ede80092050f4d87f72ac7229bb605ce07fb
+与myron-nextf1a1bfe561226dbb48e2904e0a2e74c67d2485ed，未升级固定框架。
+
+实际C worker/MSS/SMEM状态机回归验证两停止前无IPA电源/分配/映射，
+缺失创建和已有原样复用、两停止失败均不写且不重发。C++真实board绑定
+以两个进程分别测试缺失/已有项，实际TTBR首尾恒等映射、相邻缺页、
+原DMA/PAS路径均通过；完整ASan/UBSan/Werror宿主回归通过。
+宿主检查不代替原生目标与真机IPA握手、移动数据、电话或短信验收。

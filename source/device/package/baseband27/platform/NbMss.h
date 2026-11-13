@@ -102,6 +102,9 @@ void nb_mss_wdog_event(NbMss *m);
 /* The only worker. Bounded; a timer also calls it, so no wake-up can be lost. NB_OK when online, NB_PENDING while
  * starting or stopping, NB_REMOTE after a crash, another error after a failure. */
 int nb_mss_poll(NbMss *m, uint64_t now_ms);
+/* Execute only initial proxy/two PAS stops. Success pauses at NbMssCheck;
+ * the owner can prepare IPA memory while both images remain stopped. */
+int nb_mss_prepare_stop(NbMss *m, uint64_t now_ms);
 /* Online only: starts an orderly stop (stop bit, stop-ack, PAS shutdown with the decrypt retry, unassign, unvote). The
  * owner should have sent the SSCTL shutdown request first so the modem flushed its state. */
 int nb_mss_stop(NbMss *m, uint64_t now_ms);
