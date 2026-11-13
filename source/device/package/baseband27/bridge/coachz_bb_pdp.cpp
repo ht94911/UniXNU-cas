@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
 // Included by coachz_baseband.cpp. XNU's raw-IP KPI joins the existing IPA QMAP backend (nezha: plain QMAP).
 // CommCenter owns WDS and address configuration; this layer never dials or invents addresses.
+#include "NbPdpFlow.h"
 #include <sys/socket.h>
 #include <sys/sockio.h>
 #include <sys/kpi_mbuf.h>
@@ -119,6 +120,7 @@ static void bb_pdp_receive(uint32_t mux, const uint8_t *ip, uint32_t n, uint32_t
   if (error) mbuf_freem(m);
   else p->rx++;
 }
+#include "NbPdpFlow.inc"
 static void bb_pdp_init()
 {
   if (bb_pdp_initialized) return;

@@ -304,3 +304,24 @@ QMIMav13ActivationCommandDriver的两卡parser与consumer函数。
 provisioning反向映射、删除卡、失败和错误端点、旧代回应、所有短帧、
 未知会话和新ICCID等待IMSI。ASan/UBSan/`-Werror`、完整host及29单元
 Linux17头编译检查通过。实际arm64e/iOS27与双卡运营商匹配仍待验证。
+
+## 14. 原生PDP flow映射（2026-11-13，独立005源码）
+
+003仍按文件队列等待，004原生双卡候选已封包/部署完成；两份成品保持固定。
+独立 `data005-device` / `codex/baseband27-pdp-flow005` 补现有
+AppleIPAppenderUserClient的addFlow/removeFlow/getFlow零回应缺口。
+这三项只保存/返回系统请求的traffic class→flow映射，不发WDS或选择mux。
+
+来源：QcomBaseband的既有PDP服务与用户客户端、24A446原版AppleIPAppender
+21项dispatch表及其原生方法，ApplePDPHelper实际调用。
+selector0输入是8字节结构（两个little-endian u32）；1是一个scalar class；
+2是一个scalar class和一个scalar输出。原版table只接受class0–9，
+add写该格、remove清零、get返回该格。`NbPdpFlow.h/.inc`直接实现这段语义，
+使用现有PDP锁，错误输入不改变原映射。其它selector保留当前行为。
+没有把原版enable的零输出视为支持启用：Apple默认实现自己拒绝true，
+具体媒体/数据能力仍需后续拥有者与真机消费者。
+
+字段/dispatch/方法字节留私有`research/abi-next002/original27-appender-*`。
+全十格设置/查询/删除、完整输入输出形状、短结构与越界及错误不改变状态
+使用ASan/UBSan和Werror通过；完整host、29单元Linux17头screen通过。
+005实际arm64e/iOS27与数据流尚未验证；不更新003手机排队资格。

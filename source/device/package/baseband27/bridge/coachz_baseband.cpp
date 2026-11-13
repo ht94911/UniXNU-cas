@@ -1046,6 +1046,7 @@ public:
         static_cast<unsigned long long>(args->structureInputSize), static_cast<unsigned long long>(args->structureOutputSize),
         static_cast<unsigned long long>(args->structureInputDescriptor ? args->structureInputDescriptor->getLength() : 0),
         static_cast<unsigned long long>(args->structureOutputDescriptor ? args->structureOutputDescriptor->getLength() : 0));
+    if (selector <= 2) return bb_pdp_flow(selector, args);
     if (selector == 16) {
       if (args->scalarInputCount != 2) return kIOReturnBadArgument;
       return bb_pdp_block(static_cast<uint32_t>(args->scalarInput[0]), static_cast<uint32_t>(args->scalarInput[1]));
