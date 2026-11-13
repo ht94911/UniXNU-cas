@@ -70,6 +70,13 @@ int main(void) {
     assert(camera_submit(NULL,&request,result,sizeof(result),&bytes,&truncated)==QUD_OK);
     assert(camera_snapshot(NULL,result,sizeof(result),&bytes,&truncated)==QUD_OK);
     assert(bytes==strlen(result) && truncated==0);puts(result);
+    requested_mode=5;probe_request=CameraArmed;
+    diagnostic_words[DiagIdWord]=0x5058;diagnostic_words[DiagPowerOn]=3;
+    diagnostic_words[DiagPowerVotes]=0x41;diagnostic_physical[30]=15728640;
+    record_diagnostic(CameraFinished,0);
+    assert(camera_submit(NULL,&request,result,sizeof(result),&bytes,&truncated)==QUD_OK);
+    assert(camera_snapshot(NULL,result,sizeof(result),&bytes,&truncated)==QUD_OK);
+    assert(bytes==strlen(result) && truncated==0);puts(result);
     return 0;
 }
 '''
@@ -80,12 +87,14 @@ int main(void) {
                     '-I', str(ROOT / 'package/nezha27-input'), '-I', str(args.usb / 'include'),
                     str(path), '-o', str(exe)], check=True)
     result = subprocess.check_output([str(exe)], text=True)
-    record, pattern = map(json.loads, result.splitlines())
+    record, pattern, sensor = map(json.loads, result.splitlines())
     assert record['phase'] == 12 and record['status'] == 0 and record['first_failed_phase'] == 3
     assert record['first_failed_status'] == 3 and record['camcc'][:3] == [0xfa22f800, 0x04070000, 0x08000000]
     assert len(record['gpio']) == 12 and len(record['vrm']) == 12 and len(record['rsc']) == 8
     assert pattern['mode'] == 4 and pattern['request'] == 2 and pattern['frames'][0] == 20
     assert pattern['sample'] == [384000, 0] and len(pattern['smmu']) == 4
+    assert sensor['mode'] == 5 and sensor['sensor'][1] == 0x5058 and sensor['sensor'][3:5] == [3, 0x41]
+    assert sensor['sample'] == [15728640, 0]
     (args.out / 'camera-observer.json').write_text(json.dumps(record, indent=2) + '\n')
     print('Camera snapshot retains the first failure and rejects torn or truncated observations')
 

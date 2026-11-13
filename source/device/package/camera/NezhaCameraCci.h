@@ -31,6 +31,8 @@ enum NezhaCameraCciPhase {
     NezhaCciBurst,
 };
 
+enum { NezhaCameraCciCanoeVersion = 0x100a0000, NezhaCameraCciCanoeQueue0Words = 1024 };
+
 struct NezhaCameraCciObservation {
     enum NezhaCameraCciPhase phase;
     uint32_t irq;
@@ -56,6 +58,12 @@ enum NezhaCameraCciStatus nezha_camera_cci_read_byte(
 enum NezhaCameraCciStatus nezha_camera_cci_write_byte(
     const struct NezhaCameraRegisterIo *io, unsigned master, uint8_t slave,
     uint16_t reg, uint8_t value, struct NezhaCameraCciObservation *observation);
+
+/* Samsung sensor tables use 16-bit register addresses and big-endian
+ * 16-bit values. The address and both bytes are one I2C message. */
+enum NezhaCameraCciStatus nezha_camera_cci_write_word(
+    const struct NezhaCameraRegisterIo *io, unsigned master, uint8_t slave,
+    uint16_t reg, uint16_t value, struct NezhaCameraCciObservation *observation);
 
 /* Queue 0 must belong to this controller owner and support Qualcomm's
  * eleven-byte continuations and the Q0 threshold event. queue_words is

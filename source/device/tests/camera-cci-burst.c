@@ -10,7 +10,7 @@ enum { QueueExec = 0x500, QueueCount = 0x504, QueueLoad = 0x510, QueueStart = 8,
 
 struct Model {
     uint32_t wire[300];
-    unsigned length, queued, staged, exec, waits, starts;
+    unsigned length, queued, staged, exec, waits, starts, queue_words;
     uint32_t irq0, irq1, mask1;
     bool timeout;
 };
@@ -48,7 +48,7 @@ static void write_reg(void *cookie, uint32_t offset, uint32_t value)
         assert(value == 1);
         break;
     case QueueLoad:
-        assert(m->length < sizeof(m->wire) / sizeof(m->wire[0]) && m->queued < 64);
+        assert(m->length < sizeof(m->wire) / sizeof(m->wire[0]) && m->queued < m->queue_words);
         m->wire[m->length++] = value;
         ++m->queued;
         ++m->staged;
@@ -68,8 +68,9 @@ static void write_reg(void *cookie, uint32_t offset, uint32_t value)
             m->queued = 0;
             m->irq0 |= Report;
         } else {
-            assert(m->queued >= 30);
-            m->queued = 30; /* The other half remains queued at the threshold. */
+            const unsigned half_words = (m->queue_words - 4u) / 6u * 3u;
+            assert(m->queued >= half_words);
+            m->queued = half_words;
             m->irq1 |= Threshold;
         }
         break;
@@ -90,7 +91,7 @@ static uint8_t word_byte(const uint32_t *word, unsigned position)
 
 int main(void)
 {
-    const struct Model inherited = {.irq0 = 1u << 4, .irq1 = 1u << 18, .mask1 = 1u << 18};
+    const struct Model inherited = {.irq0 = 1u << 4, .irq1 = 1u << 18, .mask1 = 1u << 18, .queue_words = 64};
     struct Model m = inherited;
     const struct NezhaCameraRegisterIo io = {&m, read_reg, write_reg, wait_ms};
     uint8_t bytes[929];
@@ -128,6 +129,17 @@ int main(void)
         cursor += (n + 4u) / 4u;
     }
     assert(cursor + 2 == m.length && m.wire[cursor] == 7 && m.wire[cursor + 1] == 0x108);
+
+    const unsigned sizes[] = {16, 32, 128, NezhaCameraCciCanoeQueue0Words};
+    for (unsigned i = 0; i < sizeof(sizes) / sizeof(sizes[0]); ++i) {
+        m = inherited;
+        m.queue_words = sizes[i];
+        assert(nezha_camera_ovx10500u_apply_mode(&io, &mode, 1, sizes[i], &applied, &observed) == NezhaCciOk);
+        assert(applied == 1 && m.queued == 0 && !observed.needs_recovery && m.mask1 == inherited.mask1);
+        if (sizes[i] == NezhaCameraCciCanoeQueue0Words) {
+            assert(m.starts == 1);
+        }
+    }
 
     m = inherited;
     m.timeout = true;

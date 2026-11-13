@@ -16,6 +16,8 @@ struct NezhaCameraProfile {
     size_t used_bytes, initialization_count, mode_count;
     uint32_t width, height;
     uint64_t data_rate;
+    size_t alternate_initialization_count;
+    uint8_t vendor, as1_version;
     struct NezhaCameraCsiphy24Profile phy;
 };
 
@@ -31,6 +33,11 @@ bool nezha_camera_profile_open(const uint8_t *bytes, size_t capacity,
  * addresses copied from a host. The capture engine retains stream-on. */
 bool nezha_camera_profile_writes(const struct NezhaCameraProfile *profile,
     struct NezhaCameraOvxModeWrite *out, size_t capacity);
+
+/* Paired resource. Require the measured vendor and a matching revision. */
+bool nezha_camera_profile_revision_writes(const struct NezhaCameraProfile *profile,
+    uint8_t vendor, uint8_t revision, struct NezhaCameraOvxModeWrite *out,
+    size_t capacity, size_t *count);
 
 extern const uint8_t nezha_camera_profile_slot[];
 extern const uint64_t nezha_camera_profile_slot_size;

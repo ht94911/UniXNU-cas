@@ -9,8 +9,8 @@ int nezha_camera_journal_begin(unsigned token, unsigned mode);
 int nezha_camera_journal_mark(unsigned phase, unsigned status,
     unsigned a, unsigned b, unsigned c);
 
-enum { NezhaCameraPatternBytes = 640 * 480 * 5 / 4 };
-/* Persist a complete TPG2 frame after DMA teardown on existing iOS27 Data. */
-int nezha_camera_journal_save_pattern(unsigned token, const void *frame, unsigned bytes);
+enum { NezhaCameraPatternBytes = 640 * 480 * 5 / 4, NezhaCameraMainBytes = 4096 * 3072 * 5 / 4 };
+/* Persist one complete frame after DMA teardown on existing iOS27 Data. */
+int nezha_camera_journal_save_frame(unsigned token, const void *frame, unsigned bytes);
 
 #endif

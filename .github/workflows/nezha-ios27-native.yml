@@ -1,7 +1,7 @@
-name: nezha iPhone27 camera TPG2 RAW10 and shared SMMU
+name: nezha iPhone27 camera measured revision and main RAW10 capture
 on:
   push:
-    branches: [codex/ios27-camera011-tpg-20261113]
+    branches: [codex/ios27-camera012-main-20261114]
   workflow_dispatch:
 permissions:
   contents: read

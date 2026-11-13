@@ -25,6 +25,39 @@ enum NezhaCameraCciStatus nezha_camera_ovx10500u_read_identity(
     return status;
 }
 
+enum NezhaCameraCciStatus nezha_camera_ovx10500u_read_revision(
+    const struct NezhaCameraRegisterIo *cci, struct NezhaCameraOvxRevision *revision)
+{
+    if (revision == NULL) return NezhaCciInvalid;
+    *revision = (struct NezhaCameraOvxRevision){0};
+    enum NezhaCameraCciStatus status = nezha_camera_cci_read_byte(cci, OvxMaster, 0x51, 0x0001,
+        &revision->vendor, &revision->transfer);
+    if (status != NezhaCciOk) return status;
+    revision->vendor_read = true;
+    if (revision->vendor != 3 && revision->vendor != 7) return NezhaCciInvalid;
+
+    /* Stock selector: start the identified sensor, read its version,
+     * then return it to standby before loading any mode table. */
+    revision->stream_may_be_on = true;
+    status = nezha_camera_ovx10500u_set_stream(cci, true, &revision->transfer);
+    if (status != NezhaCciOk) return status;
+    cci->wait_ms(cci->context, 3);
+    status = nezha_camera_cci_read_byte(cci, OvxMaster, OvxSlave, 0x900e,
+        &revision->version, &revision->transfer);
+    if (status != NezhaCciOk) {
+        if (!revision->transfer.needs_recovery) {
+            struct NezhaCameraCciObservation stop;
+            revision->stream_may_be_on = nezha_camera_ovx10500u_set_stream(cci, false, &stop) != NezhaCciOk;
+            if (revision->stream_may_be_on) revision->transfer = stop;
+        }
+        return status;
+    }
+    revision->version_read = true;
+    status = nezha_camera_ovx10500u_set_stream(cci, false, &revision->transfer);
+    revision->stream_may_be_on = status != NezhaCciOk;
+    return status;
+}
+
 enum NezhaCameraCciStatus nezha_camera_ovx10500u_apply_mode(
     const struct NezhaCameraRegisterIo *cci, const struct NezhaCameraOvxModeWrite *writes,
     size_t count, unsigned burst_queue_words, size_t *applied, struct NezhaCameraCciObservation *transfer)
@@ -40,7 +73,7 @@ enum NezhaCameraCciStatus nezha_camera_ovx10500u_apply_mode(
     for (size_t i = 0; i < count; ++i) {
         if (writes[i].reg == OvxStream || (writes[i].burst == NULL) != (writes[i].burst_bytes == 0) ||
             (writes[i].burst != NULL && (writes[i].burst_bytes > UINT16_MAX ||
-             burst_queue_words < 16 || burst_queue_words > 128))) {
+             burst_queue_words < 16 || burst_queue_words > NezhaCameraCciCanoeQueue0Words))) {
             return NezhaCciInvalid;
         }
     }

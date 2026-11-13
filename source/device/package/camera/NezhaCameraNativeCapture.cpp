@@ -131,6 +131,7 @@ bool restore_cci(Capture &s)
 bool prepare_cci(Capture &s, NezhaCameraNativeCaptureResult &result)
 {
     auto &bus = s.reg[Cci];
+    if (bus.read(bus.context, 0) != NezhaCameraCciCanoeVersion) return false;
     s.cci_mask = bus.read(bus.context, 0xc04);
     if (s.cci_mask == UINT32_MAX || !cci_idle(bus)) return false;
     for (unsigned i = 0; i < 5; ++i) {
@@ -219,9 +220,8 @@ bool nezha_camera_native_capture(const NezhaCameraNativeCaptureRequest *request,
     *result = {};
     result->step = NezhaNativeProfile;
     const bool pattern = request->test_pattern;
-    if (!pattern && (!request->module_match_confirmed || request->cci_queue_words < 16 ||
-        request->cci_queue_words > 128 || !nezha_camera_profile_open(request->profile, request->profile_bytes, &state.profile) ||
-        !nezha_camera_profile_writes(&state.profile, state.writes, sizeof(state.writes) / sizeof(state.writes[0])))) return false;
+    if (!pattern && (request->cci_queue_words != NezhaCameraCciCanoeQueue0Words ||
+        !nezha_camera_profile_open(request->profile, request->profile_bytes, &state.profile) || !state.profile.vendor)) return false;
     const auto *profile = pattern ? nullptr : &state.profile.phy;
     const uint32_t width = pattern ? 640 : state.profile.width;
     const uint32_t height = pattern ? 480 : state.profile.height;
@@ -251,6 +251,8 @@ bool nezha_camera_native_capture(const NezhaCameraNativeCaptureRequest *request,
     if (!nezha_camera_native_gcc(&state.gcc) || !nezha_camera_native_rpmh_open(&state.rpmh,
         request->command_database, request->database_bytes)) return false;
     state.rpmh->before_transaction = request->rpmh_checkpoint;
+    state.rpmh->vote_acknowledged = request->rpmh_vote_acknowledged;
+    state.rpmh->isolated_sensor_votes = !pattern && request->isolated_sensor_votes;
     const NezhaCameraMainRailIo rails{state.rpmh, nezha_camera_rpmh_acquire, nezha_camera_rpmh_release};
     state.phy = {state.reg[Phy], wait_us};
     state.resources_io = {&state.gcc, &state.reg[Camcc], &state.reg[Crm], &state.reg[Crmc],
@@ -261,6 +263,7 @@ bool nezha_camera_native_capture(const NezhaCameraNativeCaptureRequest *request,
     state.capture_io.camss = &state.camss;
     state.capture_io.cci_queue_words = request->cci_queue_words;
     bool okay = false;
+    size_t writes = 0;
     do {
         // Qualcomm CAMSS v24 Nord HF MNOC reference for 4096x3072
         // at 30 fps. CAMNOC's separate clock floor is applied by CRM.
@@ -276,6 +279,25 @@ bool nezha_camera_native_capture(const NezhaCameraNativeCaptureRequest *request,
                 !nezha_camera_main_start_pins(&gpio, &mclk, &rails, &state.pins)) break;
             if (!checkpoint(*request, *result, NezhaNativeCci, physical[Cci], 37500000, 1) ||
                 !prepare_cci(state, *result)) break;
+            if (!checkpoint(*request, *result, NezhaNativeRevision, 0x51, 0x10, 0x900e)) break;
+            auto &cci = state.reg[Cci];
+            auto &identity = state.capture.identity;
+            auto &revision = result->revision;
+            result->status = nezha_camera_ovx10500u_read_identity(&cci, &identity);
+            state.capture.sensor_transfer = identity.transfer;
+            const unsigned chip = (unsigned)identity.bytes[0] << 8 | identity.bytes[1];
+            if (result->status != NezhaCciOk || chip != NezhaCameraOvx10500uId) break;
+            result->status = nezha_camera_ovx10500u_read_revision(&cci, &revision);
+            state.capture.sensor_transfer = revision.transfer;
+            state.capture.stream_may_be_on = revision.stream_may_be_on;
+            if (result->status != NezhaCciOk) break;
+            if (!nezha_camera_profile_revision_writes(&state.profile, revision.vendor, revision.version,
+                state.writes, sizeof(state.writes) / sizeof(state.writes[0]), &writes)) {
+                result->status = NezhaCciInvalid;
+                break;
+            }
+            if (!checkpoint(*request, *result, NezhaNativeRevision, revision.vendor,
+                revision.version, (unsigned)writes)) break;
         }
         uint32_t reset;
         if (!checkpoint(*request, *result, NezhaNativeCsid, physical[Csid], physical[Vfe], 0) ||
@@ -301,7 +323,7 @@ bool nezha_camera_native_capture(const NezhaCameraNativeCaptureRequest *request,
         const NezhaCamera1080Input input = pattern ? NezhaCamera1080Input{NezhaCamera1080Tpg, 2, 0, {}} :
             NezhaCamera1080Input{NezhaCamera1080Cphy, 0, 3, {0, 1, 2, 0}};
         const NezhaCameraMainMode mode{NezhaCameraOvx10500uId, width, height,
-            state.writes, state.profile.initialization_count + state.profile.mode_count, input};
+            state.writes, writes, input};
         if (!nezha_camera_main_capture_start(&state.capture_io, &mode,
             nezha_camera_native_memory_plan(state.memory), nezha_camera_native_smmu_context(state.smmu),
             request->slot, request->bank, 100, &state.capture)) break;

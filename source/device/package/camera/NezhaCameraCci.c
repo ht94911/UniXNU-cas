@@ -51,7 +51,7 @@ static void clear_status(const struct NezhaCameraRegisterIo *io, uint32_t status
 
 static enum NezhaCameraCciStatus run_queue(
     const struct NezhaCameraRegisterIo *io, unsigned master, unsigned queue,
-    uint32_t address_word, uint32_t transfer_word,
+    uint32_t address_word, const uint32_t *transfer, unsigned words,
     struct NezhaCameraCciObservation *observation)
 {
     const uint32_t offset = queue_offset(master, queue);
@@ -72,12 +72,14 @@ static enum NezhaCameraCciStatus run_queue(
 
     observation->needs_recovery = true;
     io->write(io->context, CciQueueLoad + offset, address_word);
-    io->write(io->context, CciQueueLoad + offset, transfer_word);
+    for (unsigned i = 0; i < words; ++i) {
+        io->write(io->context, CciQueueLoad + offset, transfer[i]);
+    }
     io->write(io->context, CciQueueLoad + offset, CciReport | CciReportIrqEnable);
-    if (io->read(io->context, CciQueueCount + offset) != 3) {
+    if (io->read(io->context, CciQueueCount + offset) != words + 2) {
         return NezhaCciQueue;
     }
-    io->write(io->context, CciQueueExec + offset, 3);
+    io->write(io->context, CciQueueExec + offset, words + 2);
     io->write(io->context, CciQueueStart, 1u << (2u * master + queue));
 
     for (unsigned ms = 0; ms <= CciTimeoutMs; ++ms) {
@@ -136,13 +138,14 @@ enum NezhaCameraCciStatus nezha_camera_cci_read(
     const uint32_t register_word = (CciWrite | (2u << 4)) |
         ((uint32_t)(reg >> 8) << 8) | ((uint32_t)(reg & 0xffu) << 16);
     observation->phase = NezhaCciAddress;
-    status = run_queue(io, master, 0, address_word, register_word, observation);
+    status = run_queue(io, master, 0, address_word, &register_word, 1, observation);
     if (status != NezhaCciOk) {
         return status;
     }
 
     observation->phase = NezhaCciData;
-    status = run_queue(io, master, 1, address_word, CciRead | ((uint32_t)count << 4), observation);
+    const uint32_t read_word = CciRead | ((uint32_t)count << 4);
+    status = run_queue(io, master, 1, address_word, &read_word, 1, observation);
     if (status != NezhaCciOk) {
         return status;
     }
@@ -184,7 +187,27 @@ enum NezhaCameraCciStatus nezha_camera_cci_write_byte(
         ((uint32_t)(reg >> 8) << 8) | ((uint32_t)(reg & 0xffu) << 16) |
         ((uint32_t)value << 24);
     observation->phase = NezhaCciWrite;
-    status = run_queue(io, master, 0, address_word, write_word, observation);
+    status = run_queue(io, master, 0, address_word, &write_word, 1, observation);
+    if (status == NezhaCciOk) {
+        observation->needs_recovery = false;
+    }
+    return status;
+}
+
+enum NezhaCameraCciStatus nezha_camera_cci_write_word(
+    const struct NezhaCameraRegisterIo *io, unsigned master, uint8_t slave,
+    uint16_t reg, uint16_t value, struct NezhaCameraCciObservation *observation)
+{
+    enum NezhaCameraCciStatus status = check_request(io, master, slave, observation);
+    if (status != NezhaCciOk) {
+        return status;
+    }
+    const uint32_t address_word = CciSetParam | ((uint32_t)slave << 4);
+    const uint32_t transfer[] = {(CciWrite | (4u << 4)) |
+        ((uint32_t)(reg >> 8) << 8) | ((uint32_t)(reg & 0xffu) << 16) |
+        ((uint32_t)(value >> 8) << 24), value & 0xffu};
+    observation->phase = NezhaCciWrite;
+    status = run_queue(io, master, 0, address_word, transfer, 2, observation);
     if (status == NezhaCciOk) {
         observation->needs_recovery = false;
     }
@@ -259,7 +282,8 @@ enum NezhaCameraCciStatus nezha_camera_cci_write_burst(
     uint16_t reg, const uint8_t *bytes, size_t count, unsigned queue_words,
     struct NezhaCameraCciObservation *observation)
 {
-    if (bytes == NULL || count == 0 || count > UINT16_MAX || queue_words < 16 || queue_words > 128) {
+    if (bytes == NULL || count == 0 || count > UINT16_MAX ||
+        queue_words < 16 || queue_words > NezhaCameraCciCanoeQueue0Words) {
         return NezhaCciInvalid;
     }
     enum NezhaCameraCciStatus status = check_request(io, master, slave, observation);
@@ -293,7 +317,12 @@ enum NezhaCameraCciStatus nezha_camera_cci_write_burst(
     unsigned packets = 2u * burst.half_packets;
     while (burst.sent < burst.count) {
         const uint32_t queued = io->read(io->context, CciQueueCount + offset);
-        if (queued > queue_words || packets * 3u + 2u > queue_words - queued) {
+        const size_t bytes_left = burst.count - burst.sent + (burst.sent == 0 ? 2u : 0u);
+        const size_t full_packets = bytes_left / 11;
+        const size_t tail_bytes = bytes_left % 11;
+        const size_t tail_words = tail_bytes ? (tail_bytes + 4) / 4 : 0;
+        const size_t load_words = full_packets >= packets ? 3u * packets : 3u * full_packets + tail_words;
+        if (queued > queue_words || load_words + 2u > queue_words - queued) {
             status = NezhaCciQueue;
             break;
         }

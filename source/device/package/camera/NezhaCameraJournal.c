@@ -116,12 +116,12 @@ int nezha_camera_journal_mark(unsigned phase, unsigned status, unsigned a, unsig
     return error;
 }
 
-int nezha_camera_journal_save_pattern(unsigned token, const void *frame, unsigned bytes)
+int nezha_camera_journal_save_frame(unsigned token, const void *frame, unsigned bytes)
 {
-    if (!active || !token || !frame || bytes != NezhaCameraPatternBytes) {
+    if (!active || !token || !frame || (bytes != NezhaCameraPatternBytes && bytes != NezhaCameraMainBytes)) {
         return EINVAL;
     }
     char target[64];
     snprintf(target, sizeof(target), "/private/var/log/nezha-camera-%08x.raw10", token);
-    return write_file(target, frame, bytes, NezhaCameraPatternBytes, true);
+    return write_file(target, frame, bytes, bytes, true);
 }

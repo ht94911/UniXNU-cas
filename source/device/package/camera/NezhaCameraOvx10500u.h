@@ -30,6 +30,18 @@ struct NezhaCameraOvxModeWrite {
 enum NezhaCameraCciStatus nezha_camera_ovx10500u_read_identity(
     const struct NezhaCameraRegisterIo *cci, struct NezhaCameraOvxIdentity *identity);
 
+struct NezhaCameraOvxRevision {
+    struct NezhaCameraCciObservation transfer;
+    uint8_t vendor, version;
+    bool vendor_read, version_read, stream_may_be_on;
+};
+
+/* Run the stock revision discriminator on an identified, exclusively
+ * owned sensor in standby. CSI receiver and DMA are still stopped.
+ * stream_may_be_on requires recovery/stream-off after a failed command. */
+enum NezhaCameraCciStatus nezha_camera_ovx10500u_read_revision(
+    const struct NezhaCameraRegisterIo *cci, struct NezhaCameraOvxRevision *revision);
+
 /* Execute the caller's verified, ordered pre-stream profile. Stream state
  * stays under the capture engine. The original trace is not a mode profile. */
 enum NezhaCameraCciStatus nezha_camera_ovx10500u_apply_mode(

@@ -14,12 +14,12 @@ extern "C" {
 struct NezhaCameraNativeCaptureRequest {
     const uint8_t *profile;
     size_t profile_bytes;
-    /* Packaging records the actually matched stock module. A chip ID
-     * alone cannot choose ordinary vs AS1 initialization. */
-    bool module_match_confirmed;
     /* The board's internal TPG2 emits color bars through CSID0/RDI0.
      * This path does not power a physical camera or consume a profile. */
     bool test_pattern;
+    /* The camera-only trial uses the same three acknowledged sensor
+     * votes proven by 010. PHY/ARC continue to require readback. */
+    bool isolated_sensor_votes;
     unsigned slot, bank, asid, cci_queue_words;
     const uint8_t *command_database;
     size_t database_bytes;
@@ -29,12 +29,13 @@ struct NezhaCameraNativeCaptureRequest {
     /* Optional checkpoint from the existing worker, before MMIO stages. */
     bool (*checkpoint)(unsigned step, unsigned a, unsigned b, unsigned c);
     bool (*rpmh_checkpoint)(void *context, uint32_t address, uint32_t value, bool read);
+    void (*rpmh_vote_acknowledged)(void *context, uint32_t address, uint32_t value, uint32_t ack);
 };
 
 enum NezhaCameraNativeCaptureStep {
     NezhaNativeIdle, NezhaNativeProfile, NezhaNativeSharedOwners, NezhaNativeResources,
     NezhaNativePins, NezhaNativeCci, NezhaNativeCsid, NezhaNativeIrq,
-    NezhaNativeMemory, NezhaNativeSmmu, NezhaNativeStream, NezhaNativeFrames,
+    NezhaNativeMemory, NezhaNativeSmmu, NezhaNativeStream, NezhaNativeFrames, NezhaNativeRevision,
 };
 
 enum NezhaCameraNativeCleanupStep {
@@ -56,6 +57,7 @@ struct NezhaCameraNativeCaptureResult {
     struct NezhaCameraCaptureResources resources;
     struct NezhaCameraFrameResult frames;
     struct NezhaCameraOvxIdentity identity;
+    struct NezhaCameraOvxRevision revision;
     struct NezhaCameraCciObservation cci;
     uint32_t rpmh_address, rpmh_ack, rpmh_reply;
 };

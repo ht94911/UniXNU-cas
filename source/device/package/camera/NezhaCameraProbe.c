@@ -122,19 +122,21 @@ static int camera_snapshot(void *cookie, char *output, size_t capacity, size_t *
         return QUD_BUSY;
     }
     int size;
-    if (words[DiagMode] == 4) {
+    if (words[DiagMode] >= 4) {
         size = snprintf(output, capacity,
-            "{\"v\":1,\"mode\":4,\"phase\":%u,\"status\":%u,\"request\":%u,"
+            "{\"v\":1,\"mode\":%u,\"phase\":%u,\"status\":%u,\"request\":%u,"
             "\"capture\":[%u,%u,%u,%u,%u,%u,%u,%u,%u,%u],"
             "\"frames\":[%u,%u,%u,%u,%u,%u,%u,%u,%u,%u],"
             "\"irq\":[%u,%u,%u],\"smmu\":[%u,%u,%u,%u],"
-            "\"rpmh\":[%u,%u,%u],\"sample\":[%u,%u]}",
-            words[DiagPhase], words[DiagStatus], __atomic_load_n(&probe_request, __ATOMIC_ACQUIRE),
+            "\"rpmh\":[%u,%u,%u],\"sample\":[%u,%u],\"sensor\":[%u,%u,%u,%u,%u,%u]}",
+            words[DiagMode], words[DiagPhase], words[DiagStatus], __atomic_load_n(&probe_request, __ATOMIC_ACQUIRE),
             physical[0], physical[1], physical[2], physical[3], physical[4], physical[5], physical[6],
             physical[7], physical[8], physical[9], physical[10], physical[11], physical[12], physical[13],
             physical[14], physical[15], physical[16], physical[17], physical[18], physical[19],
             physical[20], physical[21], physical[22], physical[23], physical[24], physical[25], physical[26],
-            physical[27], physical[28], physical[29], physical[30], physical[31]);
+            physical[27], physical[28], physical[29], physical[30], physical[31],
+            words[DiagIdStatus], words[DiagIdWord], words[DiagIdBytes], words[DiagPowerOn],
+            words[DiagPowerVotes], words[DiagRpmhStatus]);
     } else {
         size = snprintf(output, capacity,
             "{\"v\":1,\"mode\":%u,\"phase\":%u,\"status\":%u,\"first_failed_phase\":%u,\"first_failed_status\":%u,"
@@ -254,12 +256,15 @@ static bool capture_checkpoint(unsigned step, unsigned a, unsigned b, unsigned c
     return hardware_mark(64 + step, 0, a, b, c);
 }
 
-static void camera_test_pattern(void)
+static void camera_capture(void)
 {
     /* Independent of the SEMCO module revision. The shared owner checks
      * the proposed bank, exact SID and slot against the live apps SMMU. */
     enum { slot = 15, bank = 9, asid = 0xfc00 };
     static struct NezhaCameraNativeCaptureResult result;
+    const bool pattern = requested_mode == 4;
+    const unsigned sample_bytes = pattern ? NezhaCameraPatternBytes : NezhaCameraMainBytes;
+    const unsigned width = pattern ? 640 : 4096, height = pattern ? 480 : 3072;
     if (!hardware_mark(64, 0, AopCommandDb, AopCommandDbBytes, 0)) return;
     const vm_offset_t db = map_registers(AopCommandDb, AopCommandDbBytes);
     if (db == 0) {
@@ -267,25 +272,28 @@ static void camera_test_pattern(void)
         (void)hardware_mark(CameraWorkerFailure, ENOMEM, AopCommandDb, 0, 0);
         return;
     }
-    uint8_t *sample = IOMallocData(NezhaCameraPatternBytes);
+    uint8_t *sample = IOMallocData(sample_bytes);
     if (sample == NULL) {
         ml_io_unmap(db, AopCommandDbBytes);
         record_diagnostic(CameraWorkerFailure, ENOMEM);
-        (void)hardware_mark(CameraWorkerFailure, ENOMEM, NezhaCameraPatternBytes, 0, 0);
+        (void)hardware_mark(CameraWorkerFailure, ENOMEM, sample_bytes, 0, 0);
         return;
     }
     const struct NezhaCameraNativeCaptureRequest request = {
-        .test_pattern = true, .slot = slot, .bank = bank, .asid = asid,
+        .profile = nezha_camera_profile_slot, .profile_bytes = (size_t)nezha_camera_profile_slot_size,
+        .test_pattern = pattern, .isolated_sensor_votes = !pattern,
+        .slot = slot, .bank = bank, .asid = asid, .cci_queue_words = NezhaCameraCciCanoeQueue0Words,
         .command_database = (const uint8_t *)db, .database_bytes = AopCommandDbBytes,
-        .raw_sample = sample, .raw_sample_capacity = NezhaCameraPatternBytes,
+        .raw_sample = sample, .raw_sample_capacity = sample_bytes,
         .checkpoint = capture_checkpoint, .rpmh_checkpoint = main_rpmh_checkpoint,
+        .rpmh_vote_acknowledged = main_vote_acknowledged,
     };
     const bool passed = nezha_camera_native_capture(&request, &result);
     const struct NezhaCameraFrameResult *frames = &result.frames;
     if (result.cleaned) ml_io_unmap(db, AopCommandDbBytes);
-    const int saved = passed ? nezha_camera_journal_save_pattern(journal_token, sample,
+    const int saved = passed ? nezha_camera_journal_save_frame(journal_token, sample,
         (unsigned)result.raw_sample_bytes) : 0;
-    IOFreeData(sample, NezhaCameraPatternBytes);
+    IOFreeData(sample, sample_bytes);
     const unsigned status = passed ? (unsigned)saved : EIO;
     diagnostic_physical[0] = result.step;
     diagnostic_physical[1] = result.status;
@@ -319,6 +327,12 @@ static void camera_test_pattern(void)
     diagnostic_physical[29] = result.rpmh_reply;
     diagnostic_physical[30] = (uint32_t)result.raw_sample_bytes;
     diagnostic_physical[31] = (uint32_t)saved;
+    diagnostic_words[DiagIdStatus] = result.sensor_status;
+    diagnostic_words[DiagIdWord] = (unsigned)result.identity.bytes[0] << 8 | result.identity.bytes[1];
+    diagnostic_words[DiagIdBytes] = result.identity.bytes_read;
+    diagnostic_words[DiagPowerOn] = result.revision.vendor;
+    diagnostic_words[DiagPowerVotes] = result.revision.version;
+    diagnostic_words[DiagRpmhStatus] = (uint32_t)result.applied_writes;
     record_diagnostic(CameraFinished, status);
     (void)hardware_mark(80, status, result.step, result.status, (unsigned)result.cleanup_step);
     (void)hardware_mark(81, result.resources.status, (unsigned)result.resources.step,
@@ -329,10 +343,12 @@ static void camera_test_pattern(void)
     (void)hardware_mark(84, result.smmu_fault.status, result.smmu_fault.syndrome,
         (uint32_t)result.smmu_fault.address, (uint32_t)(result.smmu_fault.address >> 32));
     (void)hardware_mark(85, 0, result.rpmh_address, result.rpmh_ack, result.rpmh_reply);
-    (void)hardware_mark(86, (unsigned)saved, (unsigned)result.raw_sample_bytes, 640, 480);
-    printf("NEZHA CAMERA: TPG2 result=%u step=%u status=%u resources=%u/%u/%u dma=%u "
+    (void)hardware_mark(86, (unsigned)saved, (unsigned)result.raw_sample_bytes, width, height);
+    (void)hardware_mark(87, result.sensor_status, diagnostic_words[DiagIdWord],
+        result.revision.vendor, result.revision.version);
+    printf("NEZHA CAMERA: %s result=%u step=%u status=%u resources=%u/%u/%u dma=%u "
            "frames=%u sof=%u eof=%u rup=%u irq=%#x/%#x/%#x smmu=%#x cleanup=%u/%u sample=%u/%d\n",
-           (unsigned)passed, result.step, result.status, (unsigned)result.resources.step,
+           pattern ? "TPG2" : "MAIN", (unsigned)passed, result.step, result.status, (unsigned)result.resources.step,
            result.resources.status, result.resources.detail, result.dma_status,
            frames->frames, frames->sof, frames->eof, frames->updated, result.irq_fault,
            result.irq_failure.rx_irq, result.irq_failure.rdi0_irq, result.smmu_fault.status,
@@ -628,8 +644,8 @@ static bool main_identity_probe(vm_offset_t cci, vm_offset_t mclk, unsigned cci_
 static void camera_probe(void)
 {
 #ifdef NEZHA_CAMERA_NATIVE_CAPTURE
-    if (requested_mode == 4) {
-        camera_test_pattern();
+    if (requested_mode >= 4) {
+        camera_capture();
         return;
     }
 #endif
@@ -796,7 +812,7 @@ void nezha27_camera_probe_start(void)
     unsigned mode = 0;
     unsigned stopped = 0;
 #ifdef NEZHA_CAMERA_NATIVE_CAPTURE
-    const unsigned max_mode = 4;
+    const unsigned max_mode = 5;
 #else
     const unsigned max_mode = 3;
 #endif
@@ -808,7 +824,7 @@ void nezha27_camera_probe_start(void)
     thread_t thread = THREAD_NULL;
     (void)PE_parse_boot_argn("nezha-cj", &journal_token, sizeof(journal_token));
     (void)PE_parse_boot_argn("nezha-cusb", &usb_gated, sizeof(usb_gated));
-    if ((usb_gated && (mode < 3 || !journal_token)) || (mode == 4 && !usb_gated)) {
+    if ((usb_gated && (mode < 3 || !journal_token)) || (mode >= 4 && !usb_gated)) {
         printf("NEZHA CAMERA: invalid USB probe configuration\n");
         return;
     }

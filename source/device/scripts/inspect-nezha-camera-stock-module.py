@@ -184,12 +184,52 @@ class StockModule:
         require(result, 'No initialization records found in the selected sensor driver')
         return result
 
+    def ovx_module_selection(self):
+        """Resolve the stock module's selector and wire operations, without executing them."""
+        require('ovx10500u_wide' in self.name, 'Selector layout is qualified only for OVX10500U')
+        names = [i for i, (_, size, alias) in enumerate(self.symbols)
+                 if i == alias and size == 14 and self.symbol(i) == b'sensorVersion\0']
+        require(len(names) == 1 and names[0] >= 4, 'Missing unique OVX sensorVersion field')
+        selector = names[0]
+        groups = list(struct.iter_unpack('<6I', self.symbol(selector - 4)))
+        require(len(groups) == 2 and [r[1] for r in groups] == [2, 1], 'Unexpected OVX selector groups')
+
+        def string(index, size):
+            raw = self.symbol(index)
+            require(len(raw) == size and size > 1 and raw[-1] == 0 and b'\0' not in raw[:-1],
+                    'Invalid OVX selector string')
+            return bytes(raw[:-1]).decode('ascii')
+
+        result = []
+        for record_size, count, conditions_id, shape, operations, settings_id in groups:
+            require(record_size == 20 and shape == 8 and 1 <= operations <= 3, 'Unknown OVX selector layout')
+            rows = list(struct.iter_unpack('<11I', self.symbol(conditions_id)))
+            require(len(rows) == count, 'OVX selector condition count differs')
+            conditions = []
+            for size, key_size, key_id, value_size, value_id, *parameters in rows:
+                require(size == 40, 'Unknown OVX selector condition')
+                conditions.append(dict(field=string(key_id, key_size), predicate=string(value_id, value_size),
+                                       parameters=parameters))
+            settings = list(self.settings(settings_id))
+            require(len(settings) == operations, 'OVX selector operation count differs')
+            for entry, words in zip(settings, struct.iter_unpack('<15I', self.symbol(settings_id))):
+                require(words[1] == 1 and len(self.symbol(words[2])) == 2,
+                        'OVX selector command lacks a slave address')
+                slave, = struct.unpack('<H', self.symbol(words[2]))
+                require(slave in (0x20, 0xa2), 'Unexpected OVX selector slave')
+                entry['slave_7bit'] = slave >> 1
+            result.append(dict(conditions=conditions, operations=settings))
+        require([c['field'] for c in result[0]['conditions']] == ['vendorId', 'sensorVersion'],
+                'OVX selector fields differ')
+        return result
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("module", type=Path, nargs="+")
     parser.add_argument("--mode", type=int, help="also extract the selected mode's register groups")
     parser.add_argument("--initialization", action="store_true", help="also extract initialization and adjacent read groups")
+    parser.add_argument("--module-selection", action="store_true", help="also decode OVX10500U module selectors")
     parser.add_argument("--output", required=True, type=Path, help="local private output JSON")
     args = parser.parse_args()
     result = []
@@ -203,6 +243,8 @@ def main():
             item["selected_settings"] = list(module.settings(mode["settings_symbol"]))
         if args.initialization:
             item['initialization'] = module.initialization()
+        if args.module_selection and 'ovx10500u_wide' in module.name:
+            item['module_selection'] = module.ovx_module_selection()
         result.append(item)
     args.output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
 

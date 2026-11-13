@@ -29,7 +29,7 @@ def sha(data):
     return hashlib.sha256(data).hexdigest()
 
 
-def make_pack(module_path, phy_path, kernel_path):
+def make_pack(module_path, phy_path, kernel_path, alternate_module_path=None):
     module = StockModule(module_path)
     board = module.board()
     require('ovx10500u_wide' in module.name and board['slave_7bit'] == 0x10 and
@@ -48,6 +48,24 @@ def make_pack(module_path, phy_path, kernel_path):
     require(len(initialization) == 1 and initialization[0][0]['register'] == 0x103 and
             initialization[0][0]['values'] == [1], 'Ambiguous sensor initialization')
     sequences = [initialization[0], list(module.settings(mode['settings_symbol']))]
+    selection = []
+    if alternate_module_path is not None:
+        alternate = StockModule(alternate_module_path)
+        alternate_initialization = [g['settings'] for g in alternate.initialization()
+                                    if all(s['operation'] in ('WRITE', 'WRITE_BURST') for s in g['settings'])]
+        require(len(alternate_initialization) == 1 and alternate.board() == board and
+                alternate.modes()[1]['streams'] == mode['streams'] and
+                list(alternate.settings(alternate.modes()[1]['settings_symbol'])) == sequences[1],
+                'The two stock revisions differ outside their initialization')
+        for source in (module, alternate):
+            conditions = {v['field']: v['predicate'] for v in source.ovx_module_selection()[0]['conditions']}
+            selection.append((int(conditions['vendorId'], 16), conditions['sensorVersion']))
+        require(selection[0][0] in (3, 7) and selection[1][0] == selection[0][0] and
+                {v[1] for v in selection} == {'0x41', 'gt 0x41'}, 'Expected one ordinary and one AS1 profile')
+        if selection[0][1] == '0x41':
+            module, alternate = alternate, module
+            sequences[0], alternate_initialization[0] = alternate_initialization[0], sequences[0]
+        sequences.append(alternate_initialization[0])
     phy = json.loads(phy_path.read_text())
     require(phy['source_sha256'] == sha(kernel_path.read_bytes()) and
             phy['control'] == 'ctrl_reg_2_4_0_1' and
@@ -55,17 +73,21 @@ def make_pack(module_path, phy_path, kernel_path):
             phy['selected']['max_data_rate'] >= mode['data_rate_bps'],
             'PHY source or selected data-rate profile differs')
 
-    pack = bytearray(HEADER)
-    struct.pack_into('<8s8IQ', pack, 0, b'N27CAM01', 1, 0, 0x5058,
+    pack = bytearray(HEADER + (48 if selection else 0))
+    version = 2 if selection else 1
+    struct.pack_into('<8s8IQ', pack, 0, b'N27CAM02' if selection else b'N27CAM01', version, 0, 0x5058,
                      image['width'], image['height'], image['bits'], board['csi_lane_assign'],
                      mode['settle_ns'], mode['data_rate_bps'])
     struct.pack_into('<5I', pack, 104, 1, 1, *[phy['lane_offsets'][i] for i in (1, 3, 5)])
     struct.pack_into('<I', pack, 124, image['data_type'])
     pack[128:160] = bytes.fromhex(module.sha256)
     pack[160:192] = bytes.fromhex(phy['source_sha256'])
+    if selection:
+        struct.pack_into('<II', pack, 200, selection[0][0], 0x41)
+        pack[208:240] = bytes.fromhex(alternate.sha256)
     pending_bursts = []
     for table, sequence in enumerate(sequences):
-        struct.pack_into('<II', pack, 48 + table * 8, len(pack), len(sequence))
+        struct.pack_into('<II', pack, 192 if table == 2 else 48 + table * 8, len(pack), len(sequence))
         for entry in sequence:
             values = entry['values']
             require(entry['address_bytes'] == 2 and entry['data_bytes'] == 1 and
@@ -102,18 +124,21 @@ def make_pack(module_path, phy_path, kernel_path):
         initialization_count=len(sequences[0]), mode_count=len(sequences[1]),
         burst_bytes=[len(data) for _, data in pending_bursts],
         phy_control=phy['control'], rate_profile=phy['selected']['symbol'],
-        used_bytes=used, capacity_bytes=CAPACITY, sha256=sha(pack),
+        used_bytes=used, capacity_bytes=CAPACITY, sha256=sha(pack), profile_version=version,
+        alternate_module_sha256=alternate.sha256 if selection else None,
+        alternate_initialization_count=len(sequences[2]) if selection else None,
         module_hardware_match_verified=False, hardware_verified=False)
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--module', type=Path, required=True)
+    parser.add_argument('--alternate-module', type=Path, help='the other stock revision for this module vendor')
     parser.add_argument('--phy', type=Path, required=True)
     parser.add_argument('--camera-kernel', type=Path, required=True)
     parser.add_argument('--out', type=Path, required=True)
     args = parser.parse_args()
-    pack, report = make_pack(args.module, args.phy, args.camera_kernel)
+    pack, report = make_pack(args.module, args.phy, args.camera_kernel, args.alternate_module)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     with args.out.open('xb') as stream:
         stream.write(pack)

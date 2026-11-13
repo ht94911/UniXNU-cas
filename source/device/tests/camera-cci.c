@@ -18,7 +18,7 @@ enum {
 };
 
 struct Model {
-    uint32_t commands[2][3];
+    uint32_t commands[2][4];
     unsigned queued[2];
     unsigned submitted;
     unsigned writes;
@@ -31,8 +31,12 @@ struct Model {
     uint32_t data_words;
     uint32_t fifo_word;
     uint32_t expected_write;
+    uint32_t expected_write_tail;
     uint32_t expected_read;
     uint32_t timing[5];
+    unsigned revision_step;
+    uint8_t revision_vendor;
+    bool revision_script, revision_read_nack;
     bool discard_load;
     bool halt_timeout;
     unsigned resets;
@@ -82,21 +86,43 @@ static void write32(void *context, uint32_t offset, uint32_t value)
     case 0x610: {
         unsigned queue = offset == 0x510 ? 0 : 1;
         if (!model->discard_load) {
-            assert(model->queued[queue] < 3);
+            assert(model->queued[queue] < 4);
             model->commands[queue][model->queued[queue]++] = value;
         }
         break;
     }
     case 0x500:
     case 0x600:
-        assert(value == 3);
+        assert(value == model->queued[offset == 0x500 ? 0 : 1]);
         break;
     case 0x008:
         ++model->submitted;
+        if (model->revision_script) {
+            static const uint32_t slave[] = {0x511, 0x511, 0x101, 0x101, 0x101, 0x101};
+            static const uint32_t transfer[] = {0x00010029, 0x1a, 0x01000139, 0x000e9029, 0x1a, 0x00000139};
+            const unsigned index = model->revision_step++;
+            const unsigned queue = index == 1 || index == 4;
+            assert(index < 6 && value == (queue ? 8u : 4u));
+            assert(model->commands[queue][0] == slave[index] && model->commands[queue][1] == transfer[index]);
+            assert(model->commands[queue][2] == 0x108);
+            model->queued[queue] = 0;
+            if (queue) {
+                model->irq |= index == 4 && model->revision_read_nack ? M1DataNack : M1DataReport | M1ReadDone;
+                model->fifo_level = !(index == 4 && model->revision_read_nack);
+                model->fifo_word = index == 1 ? (uint32_t)model->revision_vendor << 8 : 0x4100;
+            } else {
+                model->irq |= M1AddressReport;
+            }
+            break;
+        }
         if (value == 4) {
             assert(model->commands[0][0] == 0x101);
             assert(model->commands[0][1] == model->expected_write);
-            assert(model->commands[0][2] == 0x108);
+            const unsigned words = model->queued[0];
+            if (words == 4) {
+                assert(model->commands[0][2] == model->expected_write_tail);
+            }
+            assert(words >= 3 && model->commands[0][words - 1] == 0x108);
             model->irq |= model->address_result;
             model->queued[0] = 0;
         } else {
@@ -125,8 +151,8 @@ static void write32(void *context, uint32_t offset, uint32_t value)
 static void wait_ms(void *context, unsigned milliseconds)
 {
     struct Model *model = context;
-    assert(milliseconds == 1);
-    ++model->waits;
+    assert(milliseconds == 1 || (model->revision_script && milliseconds == 3));
+    model->waits += milliseconds;
 }
 
 static struct Model initial(void)
@@ -202,6 +228,12 @@ int main(void)
     assert(observed.phase == NezhaCciWrite);
 
     m = initial();
+    m.expected_write = 0x125a6f49;
+    m.expected_write_tail = 0x34;
+    assert(nezha_camera_cci_write_word(&io, 1, 0x10, 0x6f5a, 0x1234, &observed) == NezhaCciOk);
+    assert(m.submitted == 1 && m.fifo_reads == 0 && !observed.needs_recovery);
+
+    m = initial();
     m.expected_write = 0x7e143539;
     m.address_result = M1AddressNack;
     assert(nezha_camera_cci_write_byte(&io, 1, 0x10, 0x3514, 0x7e, &observed) == NezhaCciNack);
@@ -243,6 +275,26 @@ int main(void)
     m = initial();
     m.expected_write = 0x01000139;
     assert(nezha_camera_ovx10500u_set_stream(&io, true, &observed) == NezhaCciOk);
+
+    m = initial();
+    m.revision_script = true;
+    m.revision_vendor = 3;
+    struct NezhaCameraOvxRevision revision;
+    assert(nezha_camera_ovx10500u_read_revision(&io, &revision) == NezhaCciOk);
+    assert(revision.vendor == 3 && revision.version == 0x41 && revision.vendor_read && revision.version_read);
+    assert(!revision.stream_may_be_on && m.submitted == 6 && m.waits == 3);
+
+    m = initial();
+    m.revision_script = true;
+    m.revision_vendor = 9;
+    assert(nezha_camera_ovx10500u_read_revision(&io, &revision) == NezhaCciInvalid);
+    assert(revision.vendor_read && !revision.version_read && !revision.stream_may_be_on && m.submitted == 2);
+
+    m = initial();
+    m.revision_script = m.revision_read_nack = true;
+    m.revision_vendor = 7;
+    assert(nezha_camera_ovx10500u_read_revision(&io, &revision) == NezhaCciNack);
+    assert(revision.stream_may_be_on && revision.transfer.needs_recovery && m.submitted == 5);
 
     m = initial();
     m.irq |= M1DataNack | (1u << 24) | (1u << 26);
