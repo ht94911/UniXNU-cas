@@ -1,3 +1,20 @@
+# Bluetooth Native018: complete the outgoing pairing lifecycle
+
+This independent Native017/Wi-Fi023 copy expands the existing signed-page table
+from32 to64 bounded entries. Bluetooth024 uses44 total: all original21 Wi-Fi
+entries and23 for the selected service deferral, terminal cleanup and new
+attempt. Original signature validation, byte matching,16-byte entry bounds,
+page ownership and fallback behavior remain. No firmware, UART, clock, USB,
+KeyStore, input, GPU, persistent Data or system service policy changes.
+
+The Bluetooth024 helper reuses the original023 deferral bytes. A stock
+selected-peer terminal result now performs the existing cleanupPairing,
+setBluetoothIsBusy:0 and foreground allowBluetoothScans:1 operations before
+stock success/failure display. The next selected row connect removes only its
+transient PIN-ended field. Original confirmation and error results remain.
+Instruction models and source qualification are separate from the native build
+and device acceptance. Original023 remains the tested comparison and rollback.
+
 # Bluetooth Native017: guarded sender path observations
 
 This independent candidate retains the tested Native016 board, controller,

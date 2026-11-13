@@ -1,4 +1,4 @@
-name: nezha Bluetooth pairing notification sender observations on Wi-Fi023 - native017
+name: nezha Bluetooth terminal pairing recovery table on Wi-Fi023 - native018
 on:
   push:
     branches: [codex/ios27-bt27-wifi023-owner006-20261109]

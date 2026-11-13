@@ -39,3 +39,6 @@ zzzz-native-shutdown-unmount-observe.patch
 # Existing bounded exit reason/backtrace for the native Bluetooth services.
 nezha-bluetooth-exit-diagnostic.patch
 nezha-bluetooth-runtime.patch
+
+#024 needs44 entries: original21 Wi-Fi plus23 selected pairing lifecycle entries.
+nezha-bluetooth-text-fixup-capacity.patch

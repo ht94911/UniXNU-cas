@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Native017 guarded pairing sender observation acceptance; retain Native016 consumed BSD record and all baseline source",
+  "purpose": "Bluetooth024 terminal pairing recovery on fixed Wi-Fi023/Native017;64-entry native table",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,14 +14,14 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "bc4df33f33626c9051c595c43eb7aba06489bc29",
+  "device_revision": "95154ea0405453f0d67d8b20289d53404ada2979",
   "soc_revision": "3435fa55c3e835a4aaebf7d833473fd5d20073fd",
   "xcode": "26.6",
   "files": {
-    ".github/workflows/nezha-ios27-native.yml": "01ccde0f83ae168a2ecad384f4a36d733b791ba3399b9798a3b0489f89f19deb",
+    ".github/workflows/nezha-ios27-native.yml": "c3e8a4a102b2177eee40d9ea48dbfbbbb79c1443e32983390f16f2a02e1db3d9",
     "ci/cache-signature-template.py": "3596fbb421e2d223c9d01b6280af68ca7e83595c99d3d96e481450f187201d72",
     "ci/check-native-userlog.py": "74e7abe9164a853b10d4406a46f55f67670ade42795f066068e84f14b2ebc006",
-    "ci/native.py": "31d59bfa0a3a83ebf56f3ed8c2a21858624017a9fb2259bc22f04be7b4b3dda9",
+    "ci/native.py": "cef869436bfdb9706a72f726c45dcc634a693652c12e887b2f457012a8d2e4c4",
     "ci/test-native-userlog-producer.py": "619bc31f6f41b16d562bcbc83a41588f6ada45a5268e23ef5c4985e5f364e403",
     "ci/test-native-userlog-record.py": "26bd1269caa7be579917e9ad140f8a10295ff169d57d3533a3ddc1ce7e4e0123",
     "ci/test-native-userlog.py": "f64f5aff7c83cbbff7ce9bd15ab276dd7022f5e42d227999157b796afe414f9e",
@@ -84,7 +84,7 @@
     "source/adreno/NativeGpuTrace.h": "d06f67c151c03ef9be786ffd582b74e5d91d955e513d00217c6fe177332323fa",
     "source/adreno/NativeGpuTrace.inc": "24460c37660233ba80a6a3c22bda1415e353d5dba6a6f04adb3dff415c3ee23b",
     "source/adreno/NativeGpuTraceStore.h": "4a2984192bc2c68383146f558212d1000c920a8d9cbe54ccec8badd935844823",
-    "source/device/README.md": "6a680edddb868d50a881180d5a6d89709cad09b5d4bc788da1f99727f16f76c8",
+    "source/device/README.md": "bd6feff9cff445ed3d2ab17508fd2cff1fca3c81f49a8ad73364b6cb41335ab2",
     "source/device/board.toml": "43474f64ed1cdddcec276ea1e256a0d9e794e516c30f567fe216873f63dca90f",
     "source/device/components/AppleKeyStoreState/AGENTS.md": "31cf5883eab836cd09fdcc5dfbbdd0668b0ea21ee9512191f78583b9e960c47d",
     "source/device/components/AppleKeyStoreState/LICENSE": "0a99193bda702c77e5b6a1b10029b68b6d4691cc2a4bf1010efb7dd8e5043e1b",
@@ -306,7 +306,7 @@
     "source/device/patches/xnu-12377/nezha-wifi-addon-truncate.patch": "c3b980c547fbc138ac7aedfd735d350cfef85d2a32ff78ec7bef894c4068ce63",
     "source/device/patches/xnu-12377/nezha-wifi-kernel-events.patch": "967cf792a5202711d0063463fe08bda58c554621b690b87f66904c18f81d057f",
     "source/device/patches/xnu-12377/nezha-wifi-mmio-recovery.patch": "89642756f4fe3179d44f076fbfd4786d21d0089ec7786943cb717b3eb78ecbe1",
-    "source/device/patches/xnu-12377/series": "19b0015466de583abbc7557a0adbaac3894329cd76c850baf0d4ac60b2a08580",
+    "source/device/patches/xnu-12377/series": "0a95a48e9e48e1a962babe5a6e798d541ad7e89c44950b2ae8cfc2e850a891a8",
     "source/device/patches/xnu-12377/source-storage-runtime.patch": "25c377c60db417b15fcc137acf380f0319cbff9d5ba012af1907f3485602b584",
     "source/device/patches/xnu-12377/zzyd-sheng-audio-addon-mount.patch": "b51ed480b34c92452ea984fe056e5fce310bd929992d418f383a7e9268313c51",
     "source/device/patches/xnu-12377/zzye-sheng-cpu-idle.patch": "95f57fb9994796c3de2429fe82b6a521620b9f13b83e29eba12185f5ada4da86",
@@ -383,7 +383,9 @@
     "source/ufs.bundle": "3a7c1c6ac7e5a39e6cb4adcc6143fa1e4c6c24ae862aa501102f9fb70c21a534",
     "source/usb.bundle": "fc77b40791b6994f0da015b13b68a13cee5e8bc84e510cee4e518866165efeb2",
     "source/native017-userlog.patch": "30be3f9567f08ea396b1ecd9230f3c584182dd7047b48120115d0a02e4eb4625",
-    "source/native017-userlog.md": "89779efcc4532f2983247a3ca74e96b13002de8f47d9cf02e9fd7c4bd88809b3"
+    "source/native017-userlog.md": "89779efcc4532f2983247a3ca74e96b13002de8f47d9cf02e9fd7c4bd88809b3",
+    "source/device/patches/xnu-12377/nezha-bluetooth-text-fixup-capacity.patch": "b1eb82eab5390d7ece20f82436363dfea865b292dbbfa207b527a59b73d1cf73",
+    "source/device/package/bluetooth27/text-fixup-capacity024-source.json": "974d7333c3ced602de8cb91e69f842ea077c837b6a25cfdc7c87ba58ee8cf705"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
@@ -434,7 +436,7 @@
     "firmware_slot_bytes": 262144,
     "snapshot_scope": "listed headers and native implementation units only"
   },
-  "qualification_iteration": "Native016: durable consumed BSD record snapshot and complete original compile recipe qualification; preserve the exact Native015 handler and record the original failed015 CI identity. No target/phone execution by this preparation.",
+  "qualification_iteration": "018",
   "software_aes": {
     "source_revision": "c9ce79e16e6a4e74cbbb7f4315ad2ec342933c89",
     "upstream_revision": "4a45326da5c2cd6fe6813d79ee43db20805628af",
@@ -766,5 +768,15 @@
       "original_failure_record_retained": true
     },
     "host_record_lifecycle_checker": "ci/test-native-userlog-record.py"
+  },
+  "pairing_recovery024": {
+    "base_native_build": "017",
+    "base_device_revision": "bc4df33f33626c9051c595c43eb7aba06489bc29",
+    "capacity_before": 32,
+    "capacity_after": 64,
+    "required_entries": 44,
+    "board_patch": "source/device/patches/xnu-12377/nezha-bluetooth-text-fixup-capacity.patch",
+    "stock_entry_and_signature_semantics_retained": true,
+    "phone_operations": false
   }
 }

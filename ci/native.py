@@ -186,6 +186,14 @@ def prepare(framework, work):
         'device_executed': False, 'proprietary_inputs_uploaded': False,
     }, indent=2) + '\n')
     check_keystore_source(framework, work)
+    recovery = manifest.get('pairing_recovery024')
+    if recovery:
+        patch_file = ROOT / recovery['board_patch']
+        text = patch_file.read_text()
+        if (recovery['capacity_before'], recovery['capacity_after'], recovery['required_entries']) != (32, 64, 44):
+            raise ValueError('Native018 selected pairing capacity differs')
+        if '-#define CS_TEXT_FIXUP_MAX 32\n+#define CS_TEXT_FIXUP_MAX 64' not in text:
+            raise ValueError('Native018 requires the original bounded table capacity increment')
 
 
 def build(framework, work):
@@ -377,10 +385,14 @@ def collect(framework, work, sealed):
                 if path.suffix in ('.log', '.json', '.o'):
                     add(path, 'usb-attempts/' + attempt.parent.name + '/' + path.name)
         objects = tree / 'build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837'
-        for pattern in ('IOPlatformExpert.cpo*', 'uipc_mbuf.o*'):
+        for pattern in ('IOPlatformExpert.cpo*', 'uipc_mbuf.o*', 'ubc_subr.o*'):
             for path in sorted(objects.glob('**/' + pattern)):
                 if path.suffix in ('.o', '.cpo', '.json'):
                     add(path, 'objects/' + str(path.relative_to(objects)))
+        add(tree / '.cache/xnu-work/bsd/kern/ubc_subr.c', 'text-fixup-source/ubc_subr.c')
+        recovery = json.loads((ROOT / 'inputs.json').read_text()).get('pairing_recovery024')
+        if recovery:
+            add(ROOT / recovery['board_patch'], 'text-fixup-source/native018-capacity.patch')
         for name in ('link.filelist', 'all-alias.exp'):
             add(objects / name, 'objects/' + name)
         add(tree / 'build/xnu/owner-data-volume.h', 'build/owner-data-volume.h')
