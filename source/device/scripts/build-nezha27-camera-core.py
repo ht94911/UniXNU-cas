@@ -12,7 +12,7 @@ import sys
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MODULES = ("Cci", "Ovx10500u", "Rdi1080", "Camss1080", "Csiphy24", "Dma", "Camcc", "Crm", "Profile", "MainCapture", "MainPins", "Rpmh")
+MODULES = ("Cci", "Ovx10500u", "Rdi1080", "Camss1080", "Csiphy24", "Dma", "Camcc", "Crm", "Cpas", "Profile", "MainCapture", "MainPins", "Rpmh")
 
 
 def tool(env_name, mac_name, local_name):
@@ -37,7 +37,7 @@ def main():
         helper = runpy.run_path(str(ROOT / "scripts/build-sheng-source-drivers.py"))
         record = ROOT / "build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837/bsd/DEVELOPMENT/bsd_init.o.json"
         compile_record = json.loads(record.read_text().strip().rstrip(","))
-        modules += ("Probe",)
+        modules += ("Journal", "Probe")
     else:
         kit = ROOT / "package/camera"
         smmu = ROOT / "package/gpu/adreno"

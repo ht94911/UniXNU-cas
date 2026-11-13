@@ -9,11 +9,11 @@ enum { IrqEnable = 0xd00, IrqStatus = 0xd04, IrqClear = 0xd08, Tcs = 0x1240,
        Control = 0x24, Status = 0x28, Command = 0x34, Address = 0x38, Data = 0x3c,
        Ack = 0x40, Reply = 0x44, Slot = 4 };
 
-static const uint32_t address[] = {0x40010, 0x40000, 0x44040};
+static const uint32_t address[] = {0x40010, 0x40000, 0x44040, 0x44050, 0x44060, 0x30010, 0x30020, 0x30030};
 
 struct Rsc {
     uint32_t reg[0x1300 / 4];
-    uint32_t mv[3], on[3];
+    uint32_t mv[8], on[5];
     unsigned reads, votes, waits;
     bool timeout;
 };
@@ -39,10 +39,10 @@ static void write_rsc(void *context, uint32_t offset, uint32_t value)
         const uint32_t target = rsc->reg[(Tcs + Address) / 4];
         const uint32_t message = rsc->reg[(Tcs + Command) / 4];
         unsigned rail = 0;
-        while (rail < 3 && target != address[rail] && target != address[rail] + 4) {
+        while (rail < 8 && target != address[rail] && (rail >= 5 || target != address[rail] + 4)) {
             ++rail;
         }
-        assert(rail < 3 && (message == 0x108 || message == 0x10108));
+        assert(rail < 8 && (message == 0x108 || message == 0x10108));
         uint32_t *field = target == address[rail] ? &rsc->mv[rail] : &rsc->on[rail];
         if (rsc->timeout) {
             rsc->reg[(Tcs + Status) / 4] = 0;
@@ -68,18 +68,24 @@ static void wait_ms(void *context, unsigned ms)
 
 int main(void)
 {
-    uint8_t db[144 + 24 * 3] = {[4] = 0xdb, [5] = 0x30, [6] = 0x03, [7] = 0x0c, [8] = 4, [14] = 3};
-    const char *names[] = {"B2B_E0", "B1B_E0", "L5M_E1"};
-    for (unsigned i = 0; i < 3; ++i) {
+    uint8_t db[144 + 24 * 8 + 10] = {
+        [4] = 0xdb, [5] = 0x30, [6] = 0x03, [7] = 0x0c, [8] = 4, [12] = 24 * 8, [14] = 8};
+    const char *names[] = {"B2B_E0", "B1B_E0", "L5M_E1", "L1D_E0", "L3I_E0", "mmcx.lvl", "mxc.lvl", "mx.lvl"};
+    for (unsigned i = 0; i < 8; ++i) {
         uint8_t *entry = db + 144 + i * 24;
-        memcpy(entry, names[i], 6);
+        memcpy(entry, names[i], strlen(names[i]));
         for (unsigned b = 0; b < 4; ++b) {
             entry[16 + b] = (uint8_t)(address[i] >> (b * 8));
         }
+        if (i >= 5) {
+            entry[20] = 10;
+        }
     }
+    const uint8_t levels[] = {0, 0, 16, 0, 48, 0, 56, 0, 64, 0};
+    memcpy(db + 144 + 24 * 8, levels, sizeof(levels));
     struct Rsc rsc = {.reg = {[0] = 0x40300, [0xc / 4] = 0x800c8104,
                               [IrqEnable / 4] = 2 | Slot, [(Tcs + Status) / 4] = 1},
-                      .mv = {2720, 3400, 1200}, .on = {1, 1, 0}};
+                      .mv = {2720, 3400, 1200, 1200, 880, 1, 4, 0}, .on = {1, 1, 0}};
     const struct NezhaCameraRegisterIo io = {&rsc, read_rsc, write_rsc, wait_ms};
     struct NezhaCameraRpmh owner;
     assert(nezha_camera_rpmh_init(&owner, &io, db, sizeof(db)));
@@ -107,5 +113,26 @@ int main(void)
     assert(!nezha_camera_rpmh_acquire(&owner, NezhaCameraMainVio, 1800));
     assert(rsc.votes == 6 && rsc.waits == 100);
 
-    puts("Camera RPMh reads and restores live rails and leaves a timed-out request owned");
+    rsc.timeout = false;
+    rsc.reg[(Tcs + Control) / 4] = 0;
+    rsc.reg[(Tcs + Status) / 4] = 1;
+    rsc.reg[(Tcs + 0x20) / 4] = 0;
+    rsc.reg[(Tcs + 0x2c) / 4] = 0;
+    assert(nezha_camera_rpmh_init(&owner, &io, db, sizeof(db)));
+    assert(nezha_camera_rpmh_init_capture(&owner, db, sizeof(db)));
+    const unsigned before_arc = rsc.votes;
+    assert(nezha_camera_rpmh_acquire_arc(&owner, NezhaCameraArcMmCx, 55));
+    assert(rsc.mv[5] == 3 && owner.arc[0].observed_index == 3 && rsc.votes == before_arc + 1);
+    assert(nezha_camera_rpmh_release_arc(&owner, NezhaCameraArcMmCx));
+    assert(rsc.mv[5] == 1 && rsc.votes == before_arc + 2);
+    assert(nezha_camera_rpmh_acquire_arc(&owner, NezhaCameraArcMxC, 56));
+    assert(nezha_camera_rpmh_release_arc(&owner, NezhaCameraArcMxC));
+    assert(rsc.mv[6] == 4 && rsc.votes == before_arc + 2);
+    assert(!nezha_camera_rpmh_acquire_arc(&owner, NezhaCameraArcMx, 65));
+    assert(rsc.votes == before_arc + 2);
+    assert(nezha_camera_rpmh_acquire_phy(&owner, NezhaCameraPhy0p9));
+    assert(rsc.mv[4] == 880 && rsc.on[4] == 1);
+    assert(nezha_camera_rpmh_release_phy(&owner, NezhaCameraPhy0p9));
+    assert(rsc.on[4] == 0 && rsc.mv[4] == 880);
+    puts("Camera RPMh restores the owned VRM setpoints and ARC indexes without lowering inherited floors");
 }

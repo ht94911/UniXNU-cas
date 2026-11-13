@@ -5,40 +5,60 @@
 #include <stdio.h>
 #include <string.h>
 
-enum { Vcd = 7, VcdBase = 0x11c + Vcd * 0x20, Lut = Vcd * 0x210 + 0x150 };
+enum { Vcd = 7, VcdBase = 0x11c + Vcd * 0x20, Lut = Vcd * 0x210 + 0x150,
+       BwBase = 0x21c, BwIrq = 0x24c };
 
 struct Model {
     uint32_t drv[0x400 / 4], lut[0x2000 / 4];
     unsigned writes, active_writes, waits;
-    bool late_completion, lose_sleep;
+    bool late_completion, lose_sleep, bandwidth;
 };
+
+static bool allowed(const struct Model *m, uint32_t offset)
+{
+    if (offset % 4 != 0) {
+        return false;
+    }
+    return m->bandwidth ? ((offset >= BwBase && offset <= BwBase + 8) ||
+                          (offset >= BwIrq && offset <= BwIrq + 8)) :
+        offset >= VcdBase && offset < VcdBase + 0x20;
+}
 
 static uint32_t read_drv(void *context, uint32_t offset)
 {
     const struct Model *m = context;
-    assert(offset >= VcdBase && offset < VcdBase + 0x20 && offset % 4 == 0);
+    assert(allowed(m, offset));
     return m->drv[offset / 4];
 }
 
 static void write_drv(void *context, uint32_t offset, uint32_t value)
 {
     struct Model *m = context;
-    assert(offset >= VcdBase && offset < VcdBase + 0x20 && offset % 4 == 0);
+    assert(allowed(m, offset));
+    const unsigned vote = m->bandwidth ? BwBase : VcdBase;
+    const unsigned irq = m->bandwidth ? BwIrq : VcdBase + 0x10;
     ++m->writes;
-    if (offset == VcdBase + 0x14) {
+    if (offset == irq + 4) {
         assert(value == 1);
-        m->drv[(VcdBase + 0x10) / 4] &= ~value;
+        m->drv[irq / 4] &= ~value;
         return;
     }
-    if (offset == VcdBase + 4 && m->lose_sleep) {
+    if (offset == vote + 4 && m->lose_sleep) {
         return;
     }
     m->drv[offset / 4] = value;
-    if (offset == VcdBase) {
+    if (offset == vote) {
         ++m->active_writes;
-        assert(value <= 7 && m->drv[(VcdBase + 0x10) / 4] == 0);
+        assert(m->drv[irq / 4] == 0 && (m->drv[(irq + 8) / 4] & 1u) != 0);
+        if (m->bandwidth) {
+            assert((value & 0xe0000000u) == 0xe0000000u);
+            /* Response and commit controls need not read back latched. */
+            m->drv[offset / 4] &= 0x3fffffffu;
+        } else {
+            assert(value <= 7);
+        }
         if (!m->late_completion) {
-            m->drv[(VcdBase + 0x10) / 4] = 1;
+            m->drv[irq / 4] = 1;
         }
     }
 }
@@ -126,6 +146,20 @@ int main(void)
     m.late_completion = false;
     assert(nezha_camera_crm_release(&drv, &lease, true) == NezhaCameraCrmOk);
     assert(m.active_writes == 2 && !lease.pending && !lease.requested);
+
+    m = cold;
+    m.bandwidth = true;
+    assert(nezha_camera_crm_acquire_camnoc(&drv, 200000001, &lease) == NezhaCameraCrmOk);
+    assert(lease.ready && lease.installed == 300);
+    assert(m.drv[BwBase / 4] == (0x20000000u | 300u));
+    assert(m.drv[(BwBase + 4) / 4] == (0x60000000u | 300u));
+    m.late_completion = true;
+    assert(nezha_camera_crm_release(&drv, &lease, true) == NezhaCameraCrmTimeout);
+    assert(lease.pending && lease.pending_vote == 0 && lease.installed == 300);
+    m.drv[BwIrq / 4] = 1;
+    assert(nezha_camera_crm_release(&drv, &lease, true) == NezhaCameraCrmOk);
+    assert(m.drv[BwBase / 4] == 0x20000000u && m.drv[(BwIrq + 8) / 4] == 0 &&
+           !lease.requested && m.active_writes == 2);
 
     m = cold;
     m.lose_sleep = true;

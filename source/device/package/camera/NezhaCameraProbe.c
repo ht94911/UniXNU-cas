@@ -3,12 +3,14 @@
 #include <kern/thread.h>
 #include <machine/machine_routines.h>
 #include <pexpert/pexpert.h>
+#include <sys/errno.h>
 #include <sys/systm.h>
 
 #include "NezhaCameraCamcc.h"
 #include "NezhaCameraOvx10500u.h"
 #include "NezhaCameraRpmh.h"
 #include "NezhaCameraProfile.h"
+#include "NezhaCameraJournal.h"
 #include "NezhaInputTelemetry.h"
 #include <QcomUsbDiagnostic.h>
 
@@ -54,6 +56,13 @@ enum CameraDiagnosticPhase {
     CameraResources, CameraPower, CameraCciPrepared, CameraIdentity,
     CameraSensorRestored, CameraClockRestored, CameraFinished,
     CameraDependencyTimeout, CameraWorkerFailure,
+};
+
+enum CameraHardwareMark {
+    CameraBeforeMap = 20, CameraBeforeCamccRead, CameraBeforeMclkRead,
+    CameraBeforeTop, CameraBeforeRate, CameraBeforeGate, CameraBeforeCciRead,
+    CameraBeforePower, CameraBeforeCciPrepare, CameraBeforeSensorRead,
+    CameraBeforeRestore,
 };
 
 enum CameraDiagnosticWord {
@@ -135,6 +144,26 @@ static const struct qud_diag_provider camera_provider = {
     28, 1, 1u << QUD_SNAPSHOT, 0, 0, "nezhacamera", NULL, camera_snapshot, NULL,
 };
 
+static unsigned journal_token;
+static bool journal_ready;
+
+static bool hardware_mark(unsigned phase, unsigned status, unsigned a, unsigned b, unsigned c)
+{
+    if (journal_token == 0) {
+        return true;
+    }
+    if (!journal_ready) {
+        return false;
+    }
+    const int error = nezha_camera_journal_mark(phase, status, a, b, c);
+    if (error != 0) {
+        journal_ready = false;
+        printf("NEZHA CAMERA: journal stopped phase=%u error=%d\n", phase, error);
+        return false;
+    }
+    return true;
+}
+
 static vm_offset_t map_registers(vm_offset_t physical, vm_size_t bytes)
 {
     return ml_io_map_unmappable(physical, bytes, 7 /* VM_WIMG_IO */);
@@ -166,6 +195,10 @@ static vm_offset_t map_clocked_cci(vm_offset_t camcc)
         printf("NEZHA CAMERA: CCI0 map failed\n");
         return 0;
     }
+    if (!hardware_mark(CameraBeforeCciRead, 0, CameraCci0Page, root, branch)) {
+        ml_io_unmap(cci, RegisterPageBytes);
+        return 0;
+    }
     printf("NEZHA CAMERA: CCI0 hw=%#x irq-mask=%#x irq=%#x m1q0=%u m1q1=%u fifo=%u\n",
            read32(cci, CameraCciVersion), read32(cci, CameraCciIrqMask),
            read32(cci, CameraCciIrqStatus), read32(cci, 0x504), read32(cci, 0x604),
@@ -176,6 +209,8 @@ static vm_offset_t map_clocked_cci(vm_offset_t camcc)
     diagnostic_words[DiagCciQueue1] = read32(cci, 0x604);
     diagnostic_words[DiagCciFifo] = read32(cci, 0x21c);
     record_diagnostic(CameraCci, 0);
+    (void)hardware_mark(CameraCci, 0, diagnostic_words[DiagCciVersion],
+        diagnostic_words[DiagCciIrq], diagnostic_words[DiagCciFifo]);
     return cci;
 }
 
@@ -234,6 +269,9 @@ static void record_main_physical(vm_offset_t gpio_base, const struct NezhaCamera
 
 static bool read_main_identity(vm_offset_t cci, unsigned cci_hz)
 {
+    if (!hardware_mark(CameraBeforeCciPrepare, 0, CameraCci0Page, cci_hz, 1)) {
+        return true;
+    }
     const struct NezhaCameraRegisterIo bus = {(void *)cci, read_page, write_page, wait_ms};
     const uint32_t mask = read32(cci, CameraCciIrqMask);
     uint32_t timing[5];
@@ -255,6 +293,8 @@ static bool read_main_identity(vm_offset_t cci, unsigned cci_hz)
     struct NezhaCameraCciObservation prep;
     const enum NezhaCameraCciStatus prepared = nezha_camera_cci_recover_master(&bus, 1, cci_hz, &prep);
     record_diagnostic(CameraCciPrepared, (unsigned)prepared);
+    (void)hardware_mark(CameraCciPrepared, (unsigned)prepared, (unsigned)prep.phase,
+        prep.irq, prep.fifo_words);
     printf("NEZHA CAMERA: main CCI0 preparation=%d phase=%d irq=%#x fifo=%u\n",
            prepared, prep.phase, prep.irq, prep.fifo_words);
     if (prepared != NezhaCciOk) {
@@ -262,8 +302,9 @@ static bool read_main_identity(vm_offset_t cci, unsigned cci_hz)
         return false;
     }
 
-    struct NezhaCameraOvxIdentity id;
-    const enum NezhaCameraCciStatus status = nezha_camera_ovx10500u_read_identity(&bus, &id);
+    struct NezhaCameraOvxIdentity id = {0};
+    const enum NezhaCameraCciStatus status = hardware_mark(CameraBeforeSensorRead, 0, 0x10, 0x300b, 2) ?
+        nezha_camera_ovx10500u_read_identity(&bus, &id) : NezhaCciIoError;
     const unsigned word = (unsigned)id.bytes[0] << 8 | id.bytes[1];
     diagnostic_words[DiagIdStatus] = (unsigned)status;
     diagnostic_words[DiagIdWord] = word;
@@ -273,6 +314,7 @@ static bool read_main_identity(vm_offset_t cci, unsigned cci_hz)
     diagnostic_words[DiagIdFifoWord] = id.transfer.fifo_word;
     record_diagnostic(CameraIdentity, status != NezhaCciOk ? (unsigned)status :
                       word == NezhaCameraOvx10500uId ? 0 : NezhaCciInvalid);
+    (void)hardware_mark(CameraIdentity, diagnostic_words[DiagStatus], word, id.bytes_read, id.transfer.irq);
     printf("NEZHA CAMERA: OVX10500U CCI0/M1 reg=0x300b bytes=%u id=%#x expected=%#x match=%u status=%d phase=%d irq=%#x fifo=%#x\n",
            id.bytes_read, word, (unsigned)NezhaCameraOvx10500uId,
            (unsigned)(status == NezhaCciOk && word == NezhaCameraOvx10500uId),
@@ -305,6 +347,9 @@ static bool main_identity_probe(vm_offset_t cci, vm_offset_t mclk, unsigned cci_
                version, (unsigned)(mclk != 0));
         return true;
     }
+    if (!hardware_mark(CameraBeforePower, 0, version, AppsRscDrv2, MainMclkPage)) {
+        return true;
+    }
     const vm_offset_t tlmm = map_registers(CameraTlmm + CameraTlmmFirst, CameraTlmmBytes);
     const vm_offset_t rsc = map_registers(AppsRscDrv2, AppsRscBytes);
     const vm_offset_t db = map_registers(AopCommandDb, AopCommandDbBytes);
@@ -328,6 +373,8 @@ static bool main_identity_probe(vm_offset_t cci, vm_offset_t mclk, unsigned cci_
             diagnostic_words[DiagMclkBranch] = read32(mclk, 0x18);
             record_main_physical(tlmm - CameraTlmmFirst, &rpmh);
             record_diagnostic(CameraPower, powered ? 0 : 1);
+            (void)hardware_mark(CameraPower, powered ? 0 : 1, pins.rails_requested,
+                (unsigned)rpmh.status, rpmh.last_address);
             printf("NEZHA CAMERA: main power held=%u on=%u votes=%#x rpmh=%d pending=%u\n",
                    (unsigned)held, (unsigned)powered, pins.rails_requested, rpmh.status, (unsigned)rpmh.unsettled);
             const bool quiet = !powered || read_main_identity(cci, cci_hz);
@@ -337,6 +384,8 @@ static bool main_identity_probe(vm_offset_t cci, vm_offset_t mclk, unsigned cci_
             diagnostic_words[DiagRpmhStatus] = (unsigned)rpmh.status;
             record_main_physical(tlmm - CameraTlmmFirst, &rpmh);
             record_diagnostic(CameraSensorRestored, released ? 0 : 1);
+            (void)hardware_mark(CameraSensorRestored, released ? 0 : 1, (unsigned)quiet,
+                (unsigned)rpmh.status, pins.rails_requested);
             for (unsigned i = 0; i < 3; ++i) {
                 const struct NezhaCameraVrmState *rail = &rpmh.rail[i];
                 printf("NEZHA CAMERA: VRM[%u] addr=%#x start=%u/%u final=%u/%u owned=%u/%u\n",
@@ -368,15 +417,17 @@ static bool main_identity_probe(vm_offset_t cci, vm_offset_t mclk, unsigned cci_
 
 static void camera_probe(void)
 {
-    struct NezhaCameraProfile profile;
-    const bool profile_present = nezha_camera_profile_open(nezha_camera_profile_slot,
-        (size_t)nezha_camera_profile_slot_size, &profile);
-    printf("NEZHA CAMERA: local stock profile=%u (C1 does not execute sensor initialization)\n",
-           (unsigned)profile_present);
+    if (!hardware_mark(CameraBeforeMap, 0, CameraClockPage, MainMclkPage, CameraCci0Page)) {
+        return;
+    }
     const vm_offset_t camcc = map_registers(CameraClockPage, RegisterPageBytes);
     if (camcc == 0) {
         record_diagnostic(CameraMapped, 1);
         printf("NEZHA CAMERA: CAMCC map failed\n");
+        return;
+    }
+    if (!hardware_mark(CameraBeforeCamccRead, 0, CameraClockPage, CameraTopStatus, 0)) {
+        ml_io_unmap(camcc, RegisterPageBytes);
         return;
     }
     const uint32_t top = read32(camcc, CameraTopStatus);
@@ -387,7 +438,7 @@ static void camera_probe(void)
            read32(camcc, CameraCciBranch));
 
     const vm_offset_t mclk = map_registers(MainMclkPage, RegisterPageBytes);
-    if (mclk != 0) {
+    if (mclk != 0 && hardware_mark(CameraBeforeMclkRead, 0, MainMclkPage, 0, 0)) {
         diagnostic_words[DiagMclkCommand] = read32(mclk, 0);
         diagnostic_words[DiagMclkConfig] = read32(mclk, 4);
         diagnostic_words[DiagMclkBranch] = read32(mclk, 0x18);
@@ -395,7 +446,8 @@ static void camera_probe(void)
                read32(mclk, 0), read32(mclk, 4), read32(mclk, 0x18));
     }
 
-    if (requested_mode >= 2 && top != UINT32_MAX) {
+    if (requested_mode >= 2 && top != UINT32_MAX &&
+        hardware_mark(CameraBeforeTop, 0, top, read32(camcc, CameraTopGdsc), 0)) {
         const struct NezhaCameraRegisterIo io = {(void *)(camcc - 0x21000u), read_page, write_page, wait_ms};
         struct NezhaCameraCamccLease lease = {0};
         const int acquire = nezha_camera_camcc_acquire_top(&io, &lease);
@@ -404,22 +456,28 @@ static void camera_probe(void)
         diagnostic_words[DiagCoreAhb] = read32(camcc, 0x348);
         diagnostic_words[DiagCpasAhb] = read32(camcc, 0x37c);
         record_diagnostic(CameraTop, (unsigned)acquire);
+        (void)hardware_mark(CameraTop, (unsigned)acquire, diagnostic_words[DiagGdscStatus],
+            diagnostic_words[DiagCoreAhb], diagnostic_words[DiagCpasAhb]);
         printf("NEZHA CAMERA: top result=%d gdsc=%#x status=%#x core=%#x cpas=%#x owned=%#x\n",
                acquire, read32(camcc, CameraTopGdsc), read32(camcc, CameraTopStatus),
                read32(camcc, 0x348), read32(camcc, 0x37c), lease.enabled_by_us);
         int rate = NezhaCameraCamccInvalid;
         int gate = NezhaCameraCamccInvalid;
         bool quiet = true;
-        if (acquire == NezhaCameraCamccOk) {
+        if (acquire == NezhaCameraCamccOk &&
+            hardware_mark(CameraBeforeRate, 0, diagnostic_words[DiagCciCommand], 19200000, 0)) {
             rate = nezha_camera_camcc_select_cci0_rate(&io, &lease, 19200000);
             diagnostic_words[DiagCciCommand] = read32(camcc, CameraCciCommand);
             diagnostic_words[DiagCciConfig] = read32(camcc, CameraCciConfig);
             diagnostic_words[DiagCciBranch] = read32(camcc, CameraCciBranch);
             record_diagnostic(CameraRate, (unsigned)rate);
+            (void)hardware_mark(CameraRate, (unsigned)rate, diagnostic_words[DiagCciCommand],
+                diagnostic_words[DiagCciConfig], diagnostic_words[DiagCciBranch]);
             printf("NEZHA CAMERA: CCI0 rate result=%d cmd=%#x cfg=%#x branch=%#x\n",
                    rate, read32(camcc, CameraCciCommand), read32(camcc, CameraCciConfig),
                    read32(camcc, CameraCciBranch));
-            if (rate == NezhaCameraCamccOk) {
+            if (rate == NezhaCameraCamccOk &&
+                hardware_mark(CameraBeforeGate, 0, diagnostic_words[DiagCciBranch], 0, 0)) {
                 gate = nezha_camera_camcc_enable_cci0(&io, &lease);
                 diagnostic_words[DiagCciBranch] = read32(camcc, CameraCciBranch);
                 record_diagnostic(CameraCci, (unsigned)gate);
@@ -434,12 +492,15 @@ static void camera_probe(void)
                 }
             }
         }
+        (void)hardware_mark(CameraBeforeRestore, 0, lease.enabled_by_us, (unsigned)quiet, 0);
         const int restore = quiet ? nezha_camera_camcc_release(&io, &lease) : NezhaCameraCamccBusy;
         diagnostic_words[DiagClockRestore] = (unsigned)restore;
         record_diagnostic(CameraClockRestored, (unsigned)restore);
+        (void)hardware_mark(CameraClockRestored, (unsigned)restore, lease.enabled_by_us,
+            (unsigned)rate, (unsigned)gate);
         printf("NEZHA CAMERA: clock probe top=%d rate=%d gate=%d restore=%d owned=%#x rate-owned=%u\n",
                acquire, rate, gate, restore, lease.enabled_by_us, (unsigned)lease.cci_rate_owned);
-    } else {
+    } else if (requested_mode == 1) {
         const vm_offset_t cci = map_clocked_cci(camcc);
         if (cci != 0) {
             ml_io_unmap(cci, RegisterPageBytes);
@@ -450,6 +511,8 @@ static void camera_probe(void)
     }
     ml_io_unmap(camcc, RegisterPageBytes);
     record_diagnostic(CameraFinished, 0);
+    (void)hardware_mark(CameraFinished, diagnostic_words[DiagFailedStatus],
+        diagnostic_words[DiagFailedPhase], diagnostic_words[DiagIdWord], diagnostic_words[DiagClockRestore]);
 }
 
 static void camera_probe_thread(void *argument, wait_result_t wait_result)
@@ -461,8 +524,24 @@ static void camera_probe_thread(void *argument, wait_result_t wait_result)
         const uint32_t storage = native_source_storage_boot_state;
         /* GPU039 has a single existing APPS DRV2 consumer. The touch stage
          * reaches 7 only after its synchronous vote and controller setup. */
+        if (storage == 4 && nezha27_usb_reset_owner_ready != 0 && journal_token != 0 && !journal_ready) {
+            const int error = nezha_camera_journal_begin(journal_token, requested_mode);
+            journal_ready = error == 0;
+            if (journal_ready) {
+                (void)hardware_mark(CameraWaiting, 0, storage, nezha27_usb_reset_owner_ready,
+                    (unsigned)nezha_touch_stage);
+                printf("NEZHA CAMERA: journal token=%08x ready\n", journal_token);
+            } else if (error != ENOENT && error != EROFS) {
+                printf("NEZHA CAMERA: journal token=%08x error=%d\n", journal_token, error);
+                record_diagnostic(CameraWorkerFailure, (unsigned)error);
+                thread_terminate_self();
+                return;
+            }
+        }
         if (storage == 4 && nezha27_usb_reset_owner_ready != 0 &&
-            (requested_mode < 3 || nezha_touch_stage == 7)) {
+            (journal_token == 0 || journal_ready) && (requested_mode < 3 || nezha_touch_stage == 7)) {
+            printf("NEZHA CAMERA: worker ready mode=%u storage=%u usb=%u touch=%d\n",
+                requested_mode, storage, nezha27_usb_reset_owner_ready, nezha_touch_stage);
             camera_probe();
             thread_terminate_self();
             return;
@@ -475,6 +554,8 @@ static void camera_probe_thread(void *argument, wait_result_t wait_result)
     printf("NEZHA CAMERA: waiting for storage/USB/touch timed out state=%u usb=%u touch=%d\n",
            native_source_storage_boot_state, nezha27_usb_reset_owner_ready, nezha_touch_stage);
     record_diagnostic(CameraDependencyTimeout, 1);
+    (void)hardware_mark(CameraDependencyTimeout, 1, native_source_storage_boot_state,
+        nezha27_usb_reset_owner_ready, (unsigned)nezha_touch_stage);
     thread_terminate_self();
 }
 
@@ -489,6 +570,13 @@ void nezha27_camera_probe_start(void)
         return;
     }
     thread_t thread = THREAD_NULL;
+    (void)PE_parse_boot_argn("nezha-cj", &journal_token, sizeof(journal_token));
+    /* Retain the same empty/local resource slot and verify it at the early
+     * boot point, before the worker is eligible for any hardware access. */
+    struct NezhaCameraProfile profile;
+    const bool profile_present = nezha_camera_profile_open(nezha_camera_profile_slot,
+        (size_t)nezha_camera_profile_slot_size, &profile);
+    printf("NEZHA CAMERA: local stock profile=%u\n", (unsigned)profile_present);
     record_diagnostic(CameraWaiting, 0);
     printf("NEZHA CAMERA: USB provider28 registration=%u\n", (unsigned)qcom_usb_diag_register(&camera_provider));
     const kern_return_t result = kernel_thread_start(camera_probe_thread, NULL, &thread);

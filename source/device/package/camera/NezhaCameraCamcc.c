@@ -34,6 +34,13 @@ enum {
     OwnCci0 = 16,
 };
 static const uint32_t clock_off = UINT32_C(1) << 31;
+static const uint32_t pll_locked = UINT32_C(1) << 31;
+enum { PllResetN = 4, PllOut = 1, PllRun = 1, PllVoteRun = 1 << 25 };
+static const uint32_t pll0_registers[] = {0x10, 0x14, 0x20, 0x24, 0x28, 0x18, 0x1c};
+/* Lucid Evo's configure routine sets both calibration fields to 0x44. */
+static const uint32_t pll0_config[] = {
+    0x4444003e, 0x8000, 0x25c400e7, 0x0a8062e0, 0xf51dea20, 0x840f, 2
+};
 
 static bool io_valid(const struct NezhaCameraRegisterIo *io)
 {
@@ -54,7 +61,8 @@ static bool wait_bits(const struct NezhaCameraRegisterIo *io,
                       uint32_t offset, uint32_t mask, uint32_t value)
 {
     for (unsigned ms = 0; ms <= CamccTimeoutMs; ++ms) {
-        if ((io->read(io->context, offset) & mask) == value) {
+        const uint32_t observed = io->read(io->context, offset);
+        if (observed != UINT32_MAX && (observed & mask) == value) {
             return true;
         }
         if (ms < CamccTimeoutMs) {
@@ -62,6 +70,109 @@ static bool wait_bits(const struct NezhaCameraRegisterIo *io,
         }
     }
     return false;
+}
+
+enum NezhaCameraCamccStatus nezha_camera_camcc_acquire_pll0(
+    const struct NezhaCameraRegisterIo *io, struct NezhaCameraPll0Lease *lease)
+{
+    if (!io_valid(io) || lease == NULL) {
+        return NezhaCameraCamccInvalid;
+    }
+    if (lease->owned || lease->ready) {
+        return NezhaCameraCamccBusy;
+    }
+    struct NezhaCameraPll0Lease next = {
+        .mode_before = io->read(io->context, CamccPll0Mode),
+        .opmode_before = io->read(io->context, CamccPll0Opmode),
+    };
+    if (next.mode_before == UINT32_MAX || next.opmode_before > PllRun) {
+        return NezhaCameraCamccSource;
+    }
+    for (unsigned i = 0; i < 7; ++i) {
+        next.saved[i] = io->read(io->context, pll0_registers[i]);
+        if (next.saved[i] == UINT32_MAX) {
+            return NezhaCameraCamccSource;
+        }
+    }
+    const bool rate_matches = (next.saved[0] & 0xffffu) == 0x3e &&
+        next.saved[1] == 0x8000 && (next.saved[5] & 0x3fc07u) == 0x8407u;
+    if (next.opmode_before == PllRun || (next.mode_before & PllOut) != 0) {
+        if (!rate_matches || next.opmode_before != PllRun ||
+            (next.mode_before & (pll_locked | PllResetN | PllOut)) != (pll_locked | PllResetN | PllOut)) {
+            return NezhaCameraCamccBusy;
+        }
+        lease->ready = true;
+        return NezhaCameraCamccOk;
+    }
+    if ((next.saved[5] & PllVoteRun) != 0 || (next.mode_before & (1u << 20)) != 0 ||
+        (next.mode_before & pll_locked) != 0 || ((next.saved[0] & 0xffffu) != 0 && !rate_matches)) {
+        return NezhaCameraCamccSource;
+    }
+
+    next.owned = true;
+    *lease = next;
+    if ((next.saved[0] & 0xffffu) == 0) {
+        change_bits(io, CamccPll0Mode, PllResetN, 0);
+        lease->configured = true;
+        for (unsigned i = 0; i < 7; ++i) {
+            io->write(io->context, pll0_registers[i], pll0_config[i]);
+        }
+        for (unsigned i = 0; i < 7; ++i) {
+            if (io->read(io->context, pll0_registers[i]) != pll0_config[i]) {
+                return NezhaCameraCamccSource;
+            }
+        }
+    }
+    change_bits(io, CamccPll0Mode, PllResetN, PllResetN);
+    io->write(io->context, CamccPll0Opmode, PllRun);
+    if (!wait_bits(io, CamccPll0Mode, pll_locked, pll_locked)) {
+        return NezhaCameraCamccTimeout;
+    }
+    change_bits(io, CamccPll0Mode, PllOut, PllOut);
+    const uint32_t running = io->read(io->context, CamccPll0Mode);
+    if (running == UINT32_MAX || (running & (pll_locked | PllResetN | PllOut)) !=
+        (pll_locked | PllResetN | PllOut) || io->read(io->context, CamccPll0Opmode) != PllRun) {
+        return NezhaCameraCamccSource;
+    }
+    lease->ready = true;
+    return NezhaCameraCamccOk;
+}
+
+enum NezhaCameraCamccStatus nezha_camera_camcc_release_pll0(
+    const struct NezhaCameraRegisterIo *io, struct NezhaCameraPll0Lease *lease,
+    bool consumers_quiescent)
+{
+    if (!io_valid(io) || lease == NULL) {
+        return NezhaCameraCamccInvalid;
+    }
+    if (!consumers_quiescent) {
+        return NezhaCameraCamccBusy;
+    }
+    if (lease->owned) {
+        change_bits(io, CamccPll0Mode, PllOut, 0);
+        io->write(io->context, CamccPll0Opmode, 0);
+        change_bits(io, CamccPll0Mode, PllResetN, 0);
+        if (!wait_bits(io, CamccPll0Mode, pll_locked | PllOut | PllResetN, 0) ||
+            io->read(io->context, CamccPll0Opmode) != 0) {
+            return NezhaCameraCamccTimeout;
+        }
+        if (lease->configured) {
+            for (unsigned i = 0; i < 7; ++i) {
+                io->write(io->context, pll0_registers[i], lease->saved[i]);
+            }
+            for (unsigned i = 0; i < 7; ++i) {
+                if (io->read(io->context, pll0_registers[i]) != lease->saved[i]) {
+                    return NezhaCameraCamccSource;
+                }
+            }
+        }
+        change_bits(io, CamccPll0Mode, PllResetN, lease->mode_before & PllResetN);
+        if (!wait_bits(io, CamccPll0Mode, PllResetN, lease->mode_before & PllResetN)) {
+            return NezhaCameraCamccTimeout;
+        }
+    }
+    *lease = (struct NezhaCameraPll0Lease){0};
+    return NezhaCameraCamccOk;
 }
 
 static bool enable_branch(const struct NezhaCameraRegisterIo *io,

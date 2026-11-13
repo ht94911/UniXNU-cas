@@ -23,13 +23,23 @@ struct NezhaCameraVrmState {
     bool enable_changed;
 };
 
+enum NezhaCameraPhyRail { NezhaCameraPhy1p2, NezhaCameraPhy0p9 };
+enum NezhaCameraArcRail { NezhaCameraArcMmCx, NezhaCameraArcMxC, NezhaCameraArcMx };
+
+struct NezhaCameraArcState {
+    QcomRpmhResource resource;
+    uint32_t original_index, observed_index, requested_index;
+    bool changed;
+};
+
 struct NezhaCameraRpmh {
     struct NezhaCameraRegisterIo rsc;
     QcomRscLayout layout;
-    struct NezhaCameraVrmState rail[3];
+    struct NezhaCameraVrmState rail[5];
+    struct NezhaCameraArcState arc[3];
     enum NezhaCameraRpmhStatus status;
     uint32_t last_address, last_value, last_irq, last_tcs_status, last_command_status, last_reply;
-    bool unsettled;
+    bool unsettled, capture_resources;
 };
 
 /* The camera-only test calls this after its existing APPS RPMh consumer is
@@ -38,5 +48,17 @@ bool nezha_camera_rpmh_init(struct NezhaCameraRpmh *owner,
     const struct NezhaCameraRegisterIo *rsc, const uint8_t *db, size_t db_bytes);
 bool nezha_camera_rpmh_acquire(void *context, enum NezhaCameraMainRail rail, unsigned millivolts);
 bool nezha_camera_rpmh_release(void *context, enum NezhaCameraMainRail rail);
+
+/* C2 additions. Resolve all addresses from the live command database.
+ * Calls share the same acknowledged APPS TCS transaction as C1. The
+ * platform retains its shared resource lease across all calls and owns
+ * the APPS rail requests, not the combined state of other RPMh masters. */
+bool nezha_camera_rpmh_init_capture(struct NezhaCameraRpmh *owner,
+    const uint8_t *db, size_t db_bytes);
+bool nezha_camera_rpmh_acquire_phy(struct NezhaCameraRpmh *owner, enum NezhaCameraPhyRail rail);
+bool nezha_camera_rpmh_release_phy(struct NezhaCameraRpmh *owner, enum NezhaCameraPhyRail rail);
+bool nezha_camera_rpmh_acquire_arc(struct NezhaCameraRpmh *owner,
+    enum NezhaCameraArcRail rail, unsigned level);
+bool nezha_camera_rpmh_release_arc(struct NezhaCameraRpmh *owner, enum NezhaCameraArcRail rail);
 
 #endif

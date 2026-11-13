@@ -58,5 +58,36 @@ int main(void)
         tables, 20, &plan) == ArmSmmu4KOverlap);
     assert(plan.frames[0].mapped_bytes == 0 && tables[0] == UINT64_C(0x5a5a5a5a5a5a5a5a));
 
-    puts("Camera IFE SMMU tables map the two RAW10 buffers and leave their guards unmapped");
+    /* Actual mode1: two 15 MiB RAW10 frames, each backed by separate
+     * physical spans while their device IOVAs remain contiguous. */
+    const uint64_t frame_bytes = UINT64_C(4096) * 3072 * 10 / 8;
+    const struct NezhaCameraFrameMapping frames[] = {{0x1000000, frame_bytes}, {0x2000000, frame_bytes}};
+    ArmSmmu4KRange spans[] = {
+        {0x1000000, UINT64_C(0x8c3000000), 4096, 3, 0, 2},
+        {0x1001000, UINT64_C(0x8c5000000), frame_bytes - 4096, 3, 0, 2},
+        {0x2000000, UINT64_C(0x8c7000000), 8 * 1024 * 1024, 3, 0, 2},
+        {0x2800000, UINT64_C(0x8c9000000), frame_bytes - 8 * 1024 * 1024, 3, 0, 2}};
+    ArmSmmu4KConfig main_config = config;
+    main_config.leaf_budget = 8000;
+    assert(nezha_camera_build_frame_span_tables(&main_config, frames, 4096, 3072,
+        spans, 4, tables, 20, &plan) == ArmSmmu4KSuccess);
+    assert(plan.tables.leaf_pages == 7680);
+    for (unsigned i = 0; i < 4; ++i) {
+        assert(translation(&main_config, &plan.tables, spans[i].iova) == spans[i].physical);
+        assert(translation(&main_config, &plan.tables, spans[i].iova + spans[i].bytes - 1) ==
+               spans[i].physical + spans[i].bytes - 1);
+    }
+    assert(translation(&main_config, &plan.tables, frames[0].iova + frame_bytes) == 0);
+    assert(translation(&main_config, &plan.tables, frames[1].iova + frame_bytes) == 0);
+    memset(tables, 0x5a, sizeof(tables));
+    spans[1].iova += 4096;
+    assert(nezha_camera_build_frame_span_tables(&main_config, frames, 4096, 3072,
+        spans, 4, tables, 20, &plan) == ArmSmmu4KBadRange);
+    spans[1].iova -= 4096;
+    spans[3].physical = spans[0].physical;
+    assert(nezha_camera_build_frame_span_tables(&main_config, frames, 4096, 3072,
+        spans, 4, tables, 20, &plan) == ArmSmmu4KOverlap);
+    assert(plan.frames[0].mapped_bytes == 0 && tables[0] == UINT64_C(0x5a5a5a5a5a5a5a5a));
+
+    puts("Camera IFE SMMU tables map contiguous or fragmented RAW10 buffers and leave guards unmapped");
 }

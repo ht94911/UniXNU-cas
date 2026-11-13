@@ -21,6 +21,22 @@ struct NezhaCameraCamccLease {
     uint32_t cci_config_installed;
 };
 
+struct NezhaCameraPll0Lease {
+    uint32_t mode_before, opmode_before, saved[7];
+    bool owned, configured, ready;
+};
+
+/* CAM PLL0 serves the PHY timer and the first C-PHY/CSID clock plans.
+ * Caller owns this camera domain and has taken the stock calibration
+ * floor on VDD_MXC (LOW_SVS_D1 for the 1.306 GHz calibration). A live,
+ * correctly configured PLL is borrowed without writes. PLL3 remains
+ * under the firmware's CRM clock plan. */
+enum NezhaCameraCamccStatus nezha_camera_camcc_acquire_pll0(
+    const struct NezhaCameraRegisterIo *io, struct NezhaCameraPll0Lease *lease);
+enum NezhaCameraCamccStatus nezha_camera_camcc_release_pll0(
+    const struct NezhaCameraRegisterIo *io, struct NezhaCameraPll0Lease *lease,
+    bool consumers_quiescent);
+
 /* Requires the platform's exclusive, correctly mapped CAMCC instance.
  * Initialize the lease to zero and retain it for cleanup after failure. */
 enum NezhaCameraCamccStatus nezha_camera_camcc_acquire_top(

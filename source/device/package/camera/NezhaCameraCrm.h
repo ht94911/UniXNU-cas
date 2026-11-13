@@ -9,6 +9,7 @@ enum NezhaCameraCrmClock {
     NezhaCameraCrmTfe0 = 0,
     NezhaCameraCrmCsid = 6,
     NezhaCameraCrmCphyRx = 7,
+    NezhaCameraCrmCamnoc = 8,
 };
 
 enum NezhaCameraCrmStatus {
@@ -45,7 +46,7 @@ struct NezhaCameraCrmLease {
     enum NezhaCameraCrmClock clock;
     uint32_t before[3];
     uint32_t irq_enable_before;
-    unsigned installed;
+    uint32_t installed, pending_vote;
     bool requested, pending, ready;
 };
 
@@ -58,11 +59,17 @@ enum NezhaCameraCrmStatus nezha_camera_crm_load_plan(
 
 /* Exclusive SW DRV0 ownership and a mapped, clocked qcom,cam-crm-v3 instance
  * are prerequisites. drv is relative to stock 0x9548000. Its other VCDs,
- * hardware voters, global enable and bandwidth votes are not modified.
+ * hardware voters and global enable are not modified. The platform
+ * holds the SW DRV0 interrupt masked at the GIC or consumes it here.
  * Retain a failed lease: a timed-out active request must not be replayed. */
 enum NezhaCameraCrmStatus nezha_camera_crm_acquire(
     const struct NezhaCameraRegisterIo *drv, const struct NezhaCameraCrmPlan *plan,
     uint32_t minimum_hz, struct NezhaCameraCrmLease *lease);
+
+/* Camera RT/NRT CAMNOC root: SW DRV0 bandwidth node 0 receives the
+ * selected CAMNOC rate in MHz. This is separate from DDR/LLCC votes. */
+enum NezhaCameraCrmStatus nezha_camera_crm_acquire_camnoc(
+    const struct NezhaCameraRegisterIo *drv, uint32_t minimum_hz, struct NezhaCameraCrmLease *lease);
 
 /* Capture/DMA/IRQs must be stopped before restoration. A timed-out request
  * can only be reconciled by its own completion, never by another request. */

@@ -11,10 +11,14 @@ enum {
     LutVcdStride = 0x210, LutLevelStride = 0x18,
     LutConfig = 0x150, LutLAlpha = 0x154,
     SwDrv0 = 0x11c, SwVcdStride = 0x20,
+    SwBw0 = SwDrv0 + 0x100,
     Active = 0, Sleep = 4, Wake = 8,
     IrqStatus = 0x10, IrqClear = 0x14, IrqEnable = 0x18,
+    BwIrqBias = 0x20,
     Completion = 1, TimeoutMs = 100,
 };
+static const uint32_t bw_response = UINT32_C(1) << 31;
+static const uint32_t bw_commit_valid = UINT32_C(3) << 29;
 
 static bool clock_valid(enum NezhaCameraCrmClock clock)
 {
@@ -140,13 +144,27 @@ enum NezhaCameraCrmStatus nezha_camera_crm_load_plan(
 
 static uint32_t base(const struct NezhaCameraCrmLease *lease)
 {
+    if (lease->clock == NezhaCameraCrmCamnoc) {
+        return SwBw0;
+    }
     return SwDrv0 + (unsigned)lease->clock * SwVcdStride;
+}
+
+static uint32_t irq_base(const struct NezhaCameraCrmLease *lease)
+{
+    return base(lease) + (lease->clock == NezhaCameraCrmCamnoc ? BwIrqBias : 0);
+}
+
+static bool vote_matches(const struct NezhaCameraCrmLease *lease, uint32_t observed, uint32_t requested)
+{
+    const uint32_t mask = lease->clock == NezhaCameraCrmCamnoc ? UINT32_C(0x1fffffff) : UINT32_MAX;
+    return observed != UINT32_MAX && ((observed ^ requested) & mask) == 0;
 }
 
 static enum NezhaCameraCrmStatus finish_active(
     const struct NezhaCameraRegisterIo *drv, struct NezhaCameraCrmLease *lease)
 {
-    const uint32_t offset = base(lease);
+    const uint32_t offset = irq_base(lease);
     for (unsigned ms = 0; ms <= TimeoutMs; ++ms) {
         const uint32_t irq = drv->read(drv->context, offset + IrqStatus);
         if (irq == UINT32_MAX) {
@@ -157,7 +175,7 @@ static enum NezhaCameraCrmStatus finish_active(
              * is insufficient if the software vote register did not latch. */
             drv->write(drv->context, offset + IrqClear, Completion);
             if ((drv->read(drv->context, offset + IrqStatus) & Completion) != 0 ||
-                drv->read(drv->context, offset + Active) != lease->installed) {
+                !vote_matches(lease, drv->read(drv->context, base(lease) + Active), lease->pending_vote)) {
                 return NezhaCameraCrmReadback;
             }
             lease->pending = false;
@@ -172,12 +190,65 @@ static enum NezhaCameraCrmStatus finish_active(
 
 static enum NezhaCameraCrmStatus install_active(
     const struct NezhaCameraRegisterIo *drv, struct NezhaCameraCrmLease *lease,
-    unsigned level)
+    uint32_t vote)
 {
-    lease->installed = level;
+    lease->pending_vote = vote;
     lease->pending = true;
-    drv->write(drv->context, base(lease) + Active, level);
+    const uint32_t command = lease->clock == NezhaCameraCrmCamnoc ? bw_response | bw_commit_valid | vote : vote;
+    drv->write(drv->context, base(lease) + Active, command);
     return finish_active(drv, lease);
+}
+
+static uint32_t state_vote(const struct NezhaCameraCrmLease *lease, uint32_t vote)
+{
+    return lease->clock == NezhaCameraCrmCamnoc ? bw_commit_valid | vote : vote;
+}
+
+static enum NezhaCameraCrmStatus acquire_vote(
+    const struct NezhaCameraRegisterIo *drv, enum NezhaCameraCrmClock clock,
+    uint32_t vote, struct NezhaCameraCrmLease *lease)
+{
+    if (lease->requested || lease->pending || lease->ready) {
+        return NezhaCameraCrmBusy;
+    }
+    struct NezhaCameraCrmLease next = {.clock = clock};
+    const uint32_t offset = base(&next);
+    const uint32_t irq = irq_base(&next);
+    for (unsigned state = 0; state < 3; ++state) {
+        next.before[state] = drv->read(drv->context, offset + state * 4u);
+        /* This camera test does not take over another SW DRV0 client. */
+        if (!vote_matches(&next, next.before[state], 0)) {
+            return NezhaCameraCrmBusy;
+        }
+    }
+    if (drv->read(drv->context, irq + IrqStatus) != 0) {
+        return NezhaCameraCrmBusy;
+    }
+    next.irq_enable_before = drv->read(drv->context, irq + IrqEnable);
+    if (next.irq_enable_before == UINT32_MAX) {
+        return NezhaCameraCrmReadback;
+    }
+    next.requested = true;
+    next.installed = vote;
+    *lease = next;
+    /* Vendor CRM enables this source. The camera worker polls its status
+     * with the CRM SPI held by its platform owner. */
+    drv->write(drv->context, irq + IrqEnable, next.irq_enable_before | Completion);
+    if (drv->read(drv->context, irq + IrqEnable) != (next.irq_enable_before | Completion)) {
+        return NezhaCameraCrmReadback;
+    }
+    enum NezhaCameraCrmStatus result = install_active(drv, lease, vote);
+    if (result != NezhaCameraCrmOk) {
+        return result;
+    }
+    drv->write(drv->context, offset + Sleep, state_vote(lease, vote));
+    drv->write(drv->context, offset + Wake, state_vote(lease, vote));
+    if (!vote_matches(lease, drv->read(drv->context, offset + Sleep), vote) ||
+        !vote_matches(lease, drv->read(drv->context, offset + Wake), vote)) {
+        return NezhaCameraCrmReadback;
+    }
+    lease->ready = true;
+    return NezhaCameraCrmOk;
 }
 
 enum NezhaCameraCrmStatus nezha_camera_crm_acquire(
@@ -188,60 +259,37 @@ enum NezhaCameraCrmStatus nezha_camera_crm_acquire(
         plan->count == 0 || plan->count > 7 || minimum_hz == 0) {
         return NezhaCameraCrmInvalid;
     }
-    if (lease->requested || lease->pending || lease->ready) {
-        return NezhaCameraCrmBusy;
-    }
-    unsigned level = 1;
-    while (level <= plan->count && plan->rate[level - 1] < minimum_hz) {
-        ++level;
-    }
-    if (level > plan->count) {
-        return NezhaCameraCrmNoRate;
-    }
-
-    struct NezhaCameraCrmLease next = {.clock = plan->clock};
-    const uint32_t offset = base(&next);
-    for (unsigned state = 0; state < 3; ++state) {
-        next.before[state] = drv->read(drv->context, offset + state * 4u);
-        /* This camera test does not take over another SW DRV0 client. */
-        if (next.before[state] != 0) {
-            return NezhaCameraCrmBusy;
+    for (unsigned level = 1; level <= plan->count; ++level) {
+        if (plan->rate[level - 1] >= minimum_hz) {
+            return acquire_vote(drv, plan->clock, level, lease);
         }
     }
-    if (drv->read(drv->context, offset + IrqStatus) != 0) {
-        return NezhaCameraCrmBusy;
+    return NezhaCameraCrmNoRate;
+}
+
+enum NezhaCameraCrmStatus nezha_camera_crm_acquire_camnoc(
+    const struct NezhaCameraRegisterIo *drv, uint32_t minimum_hz, struct NezhaCameraCrmLease *lease)
+{
+    if (!io_valid(drv) || lease == NULL || minimum_hz == 0) {
+        return NezhaCameraCrmInvalid;
     }
-    next.irq_enable_before = drv->read(drv->context, offset + IrqEnable);
-    if (next.irq_enable_before == UINT32_MAX) {
-        return NezhaCameraCrmReadback;
+    /* Stock camcc-canoe rate table and clk_rcg2_vote_bw's node0
+     * bandwidth encoding. Capture selects at least the 200 MHz plan. */
+    static const unsigned mhz[] = {200, 300, 400, 480};
+    for (unsigned i = 0; i < sizeof(mhz) / sizeof(mhz[0]); ++i) {
+        if (mhz[i] * 1000000u >= minimum_hz) {
+            return acquire_vote(drv, NezhaCameraCrmCamnoc, mhz[i], lease);
+        }
     }
-    next.requested = true;
-    *lease = next;
-    /* Poll completion in the camera worker. Do not introduce a second IRQ
-     * dispatcher or clear pending events belonging to another voter. */
-    drv->write(drv->context, offset + IrqEnable, next.irq_enable_before & ~1u);
-    if ((drv->read(drv->context, offset + IrqEnable) & Completion) != 0) {
-        return NezhaCameraCrmReadback;
-    }
-    enum NezhaCameraCrmStatus result = install_active(drv, lease, level);
-    if (result != NezhaCameraCrmOk) {
-        return result;
-    }
-    drv->write(drv->context, offset + Sleep, level);
-    drv->write(drv->context, offset + Wake, level);
-    if (drv->read(drv->context, offset + Sleep) != level ||
-        drv->read(drv->context, offset + Wake) != level) {
-        return NezhaCameraCrmReadback;
-    }
-    lease->ready = true;
-    return NezhaCameraCrmOk;
+    return NezhaCameraCrmNoRate;
 }
 
 enum NezhaCameraCrmStatus nezha_camera_crm_release(
     const struct NezhaCameraRegisterIo *drv, struct NezhaCameraCrmLease *lease,
     bool consumers_quiescent)
 {
-    if (!io_valid(drv) || lease == NULL || !clock_valid(lease->clock)) {
+    if (!io_valid(drv) || lease == NULL ||
+        (!clock_valid(lease->clock) && lease->clock != NezhaCameraCrmCamnoc)) {
         return NezhaCameraCrmInvalid;
     }
     if (!consumers_quiescent) {
@@ -258,28 +306,32 @@ enum NezhaCameraCrmStatus nezha_camera_crm_release(
         }
     }
     const uint32_t offset = base(lease);
+    const uint32_t irq = irq_base(lease);
     for (unsigned state = 0; state < 3; ++state) {
         const uint32_t current = drv->read(drv->context, offset + state * 4u);
-        if (current != lease->installed && current != lease->before[state]) {
+        if (!vote_matches(lease, current, lease->installed) && !vote_matches(lease, current, lease->before[state])) {
             return NezhaCameraCrmBusy;
         }
     }
-    drv->write(drv->context, offset + Wake, lease->before[2]);
-    drv->write(drv->context, offset + Sleep, lease->before[1]);
-    if (drv->read(drv->context, offset + Sleep) != lease->before[1] ||
-        drv->read(drv->context, offset + Wake) != lease->before[2]) {
+    drv->write(drv->context, offset + Wake, state_vote(lease, 0));
+    drv->write(drv->context, offset + Sleep, state_vote(lease, 0));
+    if (!vote_matches(lease, drv->read(drv->context, offset + Sleep), lease->before[1]) ||
+        !vote_matches(lease, drv->read(drv->context, offset + Wake), lease->before[2])) {
         return NezhaCameraCrmReadback;
     }
-    if (drv->read(drv->context, offset + Active) != lease->before[0]) {
-        const enum NezhaCameraCrmStatus result = install_active(drv, lease, lease->before[0]);
+    if (!vote_matches(lease, drv->read(drv->context, offset + Active), lease->before[0])) {
+        const enum NezhaCameraCrmStatus result = install_active(drv, lease, 0);
         if (result != NezhaCameraCrmOk) {
             return result;
         }
     }
-    const uint32_t irq_enable = drv->read(drv->context, offset + IrqEnable);
-    drv->write(drv->context, offset + IrqEnable,
+    const uint32_t irq_enable = drv->read(drv->context, irq + IrqEnable);
+    if (irq_enable == UINT32_MAX) {
+        return NezhaCameraCrmReadback;
+    }
+    drv->write(drv->context, irq + IrqEnable,
         (irq_enable & ~1u) | (lease->irq_enable_before & 1u));
-    if (drv->read(drv->context, offset + IrqEnable) !=
+    if (drv->read(drv->context, irq + IrqEnable) !=
         ((irq_enable & ~1u) | (lease->irq_enable_before & 1u))) {
         return NezhaCameraCrmReadback;
     }

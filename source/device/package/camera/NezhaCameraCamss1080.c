@@ -38,6 +38,8 @@ enum {
     CsidRdiCamifEof = 1 << 3,
     VfeRdi0Config = 0x2c00,
     VfeRdi0ImageAddress = 0x2c04,
+    VfeRdi0AddressConfig = 0x2c70,
+    VfeRdi0LastConsumedAddress = 0x2c90,
     VfeFrameModeEnable = (1 << 16) | 1,
 };
 
@@ -112,6 +114,9 @@ bool nezha_camera1080_start_rdi0(const struct NezhaCamera1080Io *io,
     io->write_csid(io->context, CsidRdi0PixelStore, 9);
 
     nezha_camera_rdi1080_program_geometry(&vfe, io->context, io->write_vfe);
+    /* The stock expanded-memory path stores address >> 8 plus a separate
+     * low-byte offset. These owned frame IOVAs are 256-byte aligned. */
+    io->write_vfe(io->context, VfeRdi0AddressConfig, 0);
     io->write_vfe(io->context, VfeRdi0Config, VfeFrameModeEnable);
     for (unsigned i = 0; i < 2; ++i) {
         io->write_vfe(io->context, VfeRdi0ImageAddress, vfe.image_address[i]);
@@ -127,20 +132,34 @@ bool nezha_camera1080_start_rdi0(const struct NezhaCamera1080Io *io,
 }
 
 bool nezha_camera1080_take_rdi0_events(const struct NezhaCameraRegisterIo *csid,
-    struct NezhaCamera1080Events *events)
+    const struct NezhaCameraRegisterIo *vfe, struct NezhaCamera1080Events *events)
 {
-    if (csid == NULL || csid->read == NULL || csid->write == NULL || events == NULL) {
+    if (csid == NULL || csid->read == NULL || csid->write == NULL ||
+        vfe == NULL || vfe->read == NULL || events == NULL) {
         return false;
     }
+    *events = (struct NezhaCamera1080Events){0};
     events->top_irq = csid->read(csid->context, CsidTopIrqStatus);
     events->rx_irq = csid->read(csid->context, CsidRxIrqStatus);
     events->buffer_irq = csid->read(csid->context, CsidBufferIrqStatus);
     events->rdi0_irq = csid->read(csid->context, CsidRdi0IrqStatus);
+    if (events->top_irq == UINT32_MAX || events->rx_irq == UINT32_MAX ||
+        events->buffer_irq == UINT32_MAX || events->rdi0_irq == UINT32_MAX) {
+        return false;
+    }
 
     const uint32_t sof = CsidRdiInputSof | CsidRdiCamifSof;
     const uint32_t eof = CsidRdiInputEof | CsidRdiCamifEof;
     const uint32_t rdi = events->rdi0_irq & (sof | eof | CsidRdiUpdated);
     const uint32_t buffer = events->buffer_irq & CsidRdi0BufferDone;
+    if (buffer != 0) {
+        /* Stock cam_vfe_bus_ver3 reads addr_status_0 for the RDI client
+         * at BUF_DONE. A failed read must not publish a CPU-owned frame. */
+        events->consumed_address = vfe->read(vfe->context, VfeRdi0LastConsumedAddress);
+        if (events->consumed_address == UINT32_MAX) {
+            return false;
+        }
+    }
     events->updated = (rdi & CsidRdiUpdated) != 0;
     events->start_of_frame = (rdi & sof) != 0;
     events->end_of_frame = (rdi & eof) != 0;

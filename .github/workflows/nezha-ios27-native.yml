@@ -1,7 +1,7 @@
-name: nezha iPhone27 camera stage snapshots and local profile resource
+name: nezha iPhone27 camera identity and durable checkpoints
 on:
   push:
-    branches: [codex/ios27-camera005-20261113]
+    branches: [codex/ios27-camera006-20261113]
   workflow_dispatch:
 permissions:
   contents: read

@@ -7,54 +7,103 @@ enum {
     CameraFirstIova = 0x100000,
 };
 
-ArmSmmu4KStatus nezha_camera_build_frame_tables(const ArmSmmu4KConfig *config,
-    const struct NezhaCameraDmaBacking backing[2], uint32_t width, uint32_t height,
+ArmSmmu4KStatus nezha_camera_build_frame_span_tables(const ArmSmmu4KConfig *config,
+    const struct NezhaCameraFrameMapping frames[2], uint32_t width, uint32_t height,
+    const ArmSmmu4KRange *ranges, size_t range_count,
     uint64_t *tables, size_t capacity_pages, struct NezhaCameraDmaPlan *out)
 {
     if (out == NULL) {
         return ArmSmmu4KArgument;
     }
     *out = (struct NezhaCameraDmaPlan){0};
-    if (config == NULL || backing == NULL || tables == NULL || config->input_bits != 32) {
+    if (config == NULL || frames == NULL || ranges == NULL || range_count == 0 ||
+        tables == NULL || config->input_bits != 32) {
         return ArmSmmu4KArgument;
     }
 
-    const struct NezhaCameraFrameMapping candidate[2] = {
-        {backing[0].iova, backing[0].bytes}, {backing[1].iova, backing[1].bytes},
-    };
     struct NezhaCameraRdi1080 layout;
-    if (!nezha_camera_rdi1080_layout(width, height, candidate, &layout)) {
+    if (!nezha_camera_rdi1080_layout(width, height, frames, &layout)) {
         return ArmSmmu4KBadRange;
     }
     const uint64_t page_mask = TablePageBytes - 1u;
     const uint64_t bytes = ((uint64_t)layout.layout.frame_bytes + page_mask) & ~page_mask;
-    ArmSmmu4KRange range[2];
-    for (unsigned i = 0; i < 2; ++i) {
-        const struct NezhaCameraDmaBacking *b = &backing[i];
-        if (b->iova < CameraFirstIova || ((b->physical | b->iova) & page_mask) != 0 ||
-            b->bytes < bytes || b->physical == 0 || b->physical > UINT64_MAX - bytes) {
+    size_t cursor = 0;
+    for (unsigned frame = 0; frame < 2; ++frame) {
+        const uint64_t start = frames[frame].iova;
+        if (start < CameraFirstIova || (start & page_mask) != 0 ||
+            frames[frame].mapped_bytes < bytes || start > UINT64_MAX - bytes) {
             return ArmSmmu4KBadRange;
         }
-        range[i] = (ArmSmmu4KRange){
-            .iova = b->iova, .physical = b->physical, .bytes = bytes,
-            .permissions = ArmSmmu4KRead | ArmSmmu4KWrite,
-            .writeback = 0, .shareability = 2,
-        };
+        uint64_t next = start;
+        const uint64_t end = start + bytes;
+        while (next < end) {
+            if (cursor == range_count) {
+                return ArmSmmu4KBadRange;
+            }
+            const ArmSmmu4KRange *range = &ranges[cursor++];
+            if (range->iova != next || range->bytes == 0 || range->bytes > end - next ||
+                ((range->iova | range->physical | range->bytes) & page_mask) != 0 ||
+                range->physical == 0 || range->physical > UINT64_MAX - range->bytes ||
+                range->permissions != (ArmSmmu4KRead | ArmSmmu4KWrite) ||
+                range->writeback != 0 || range->shareability != 2) {
+                return ArmSmmu4KBadRange;
+            }
+            next += range->bytes;
+        }
     }
-    if (range[0].physical < range[1].physical + bytes &&
-        range[1].physical < range[0].physical + bytes) {
-        return ArmSmmu4KOverlap;
+    if (cursor != range_count) {
+        return ArmSmmu4KBadRange;
+    }
+    /* The same physical page cannot represent two independent in-flight
+     * camera buffers. Allocator spans are normally few and coalesced. */
+    for (size_t i = 0; i < range_count; ++i) {
+        for (size_t j = 0; j < i; ++j) {
+            if (ranges[i].physical < ranges[j].physical + ranges[j].bytes &&
+                ranges[j].physical < ranges[i].physical + ranges[i].bytes) {
+                return ArmSmmu4KOverlap;
+            }
+        }
     }
 
     ArmSmmu4KResult result;
-    ArmSmmu4KStatus status = ArmSmmu4KBuild(config, range, 2, tables, capacity_pages, &result);
+    ArmSmmu4KStatus status = ArmSmmu4KBuild(config, ranges, range_count, tables, capacity_pages, &result);
     if (status != ArmSmmu4KSuccess) {
         return status;
     }
-    out->frames[0] = (struct NezhaCameraFrameMapping){range[0].iova, bytes};
-    out->frames[1] = (struct NezhaCameraFrameMapping){range[1].iova, bytes};
+    out->frames[0] = (struct NezhaCameraFrameMapping){frames[0].iova, bytes};
+    out->frames[1] = (struct NezhaCameraFrameMapping){frames[1].iova, bytes};
     out->tables = result;
     return ArmSmmu4KSuccess;
+}
+
+ArmSmmu4KStatus nezha_camera_build_frame_tables(const ArmSmmu4KConfig *config,
+    const struct NezhaCameraDmaBacking backing[2], uint32_t width, uint32_t height,
+    uint64_t *tables, size_t capacity_pages, struct NezhaCameraDmaPlan *out)
+{
+    if (backing == NULL || config == NULL || tables == NULL || out == NULL || config->input_bits != 32) {
+        if (out != NULL) {
+            *out = (struct NezhaCameraDmaPlan){0};
+        }
+        return ArmSmmu4KArgument;
+    }
+    const struct NezhaCameraFrameMapping frames[] = {
+        {backing[0].iova, backing[0].bytes}, {backing[1].iova, backing[1].bytes}};
+    struct NezhaCameraRdi1080 layout;
+    if (!nezha_camera_rdi1080_layout(width, height, frames, &layout)) {
+        if (out != NULL) {
+            *out = (struct NezhaCameraDmaPlan){0};
+        }
+        return ArmSmmu4KBadRange;
+    }
+    const uint64_t bytes = ((uint64_t)layout.layout.frame_bytes + TablePageBytes - 1u) &
+        ~(uint64_t)(TablePageBytes - 1u);
+    ArmSmmu4KRange ranges[2];
+    for (unsigned i = 0; i < 2; ++i) {
+        ranges[i] = (ArmSmmu4KRange){backing[i].iova, backing[i].physical, bytes,
+            ArmSmmu4KRead | ArmSmmu4KWrite, 0, 2};
+    }
+    return nezha_camera_build_frame_span_tables(config, frames, width, height,
+        ranges, 2, tables, capacity_pages, out);
 }
 
 ArmSmmu4KStatus nezha_camera_attach_ife_dma(const ArmSmmu4KIo *io,

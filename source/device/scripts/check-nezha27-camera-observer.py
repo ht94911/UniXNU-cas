@@ -19,7 +19,7 @@ def main():
     args.out.mkdir(parents=True, exist_ok=True)
     probe = (ROOT / 'package/camera/NezhaCameraProbe.c').read_text()
     begin = probe.index('enum CameraDiagnosticPhase {')
-    end = probe.index('static vm_offset_t map_registers', begin)
+    end = probe.index('static unsigned journal_token;', begin)
     source = '''#include <assert.h>
 #include <stdio.h>
 #include <string.h>

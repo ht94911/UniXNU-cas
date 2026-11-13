@@ -48,8 +48,16 @@ static void write_vfe(void *context, uint32_t offset, uint32_t value)
 
 struct IrqSession {
     uint32_t top, rx, buffers, rdi0;
+    uint32_t address;
     unsigned commits;
 };
+
+static uint32_t read_consumed(void *context, uint32_t offset)
+{
+    struct IrqSession *session = context;
+    assert(offset == 0x2c90 && (session->buffers & 0x10000) != 0);
+    return session->address;
+}
 
 static uint32_t read_status(void *context, uint32_t offset)
 {
@@ -146,14 +154,19 @@ int main(void)
     assert(session.rdi_started && session.rx_config == 0x38032103);
 
     struct IrqSession irq = {.top = 0x3000c, .rx = 0x40,
-        .buffers = 0x30000, .rdi0 = 0x801201};
+        .buffers = 0x30000, .rdi0 = 0x801201, .address = UINT32_MAX};
     struct NezhaCamera1080Events events;
     const struct NezhaCameraRegisterIo csid = {&irq, read_status, clear_status, NULL};
-    assert(nezha_camera1080_take_rdi0_events(&csid, &events));
+    const struct NezhaCameraRegisterIo vfe = {.context = &irq, .read = read_consumed};
+    assert(!nezha_camera1080_take_rdi0_events(&csid, &vfe, &events));
+    assert(irq.commits == 0 && irq.buffers == 0x30000 && !events.buffer_done);
+    irq.address = 0x200000;
+    assert(nezha_camera1080_take_rdi0_events(&csid, &vfe, &events));
     assert(events.buffer_done && events.updated && events.start_of_frame && events.end_of_frame);
+    assert(events.consumed_address == 0x200000);
     assert(events.rx_irq == 0x40 && events.rdi0_irq == 0x801201);
     assert(irq.buffers == 0x20000 && irq.rdi0 == 1 && irq.top == 0x3000c && irq.commits == 1);
-    assert(nezha_camera1080_take_rdi0_events(&csid, &events));
+    assert(nezha_camera1080_take_rdi0_events(&csid, &vfe, &events));
     assert(!events.buffer_done && !events.start_of_frame && irq.commits == 1);
 
     unsigned step = 0;

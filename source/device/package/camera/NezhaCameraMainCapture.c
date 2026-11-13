@@ -67,7 +67,10 @@ bool nezha_camera_main_capture_complete_frame(struct NezhaCameraMainCapture *cap
         return false;
     }
     const unsigned index = capture->queued[0];
-    if (index > 1 || (capture->cpu_frames & (1u << index)) != 0) {
+    /* An interrupt can coalesce multiple completions. Do not infer that
+     * the queue head completed if hardware reports a different address. */
+    if (index > 1 || (capture->cpu_frames & (1u << index)) != 0 ||
+        events->consumed_address != capture->layout.image_address[index]) {
         return false;
     }
     capture->queued[0] = capture->queued[1];
@@ -122,10 +125,13 @@ bool nezha_camera_main_capture_request_stop(const struct NezhaCameraMainCaptureI
 
 bool nezha_camera_main_capture_finish_stop(const struct NezhaCameraMainCaptureIo *io,
     const ArmSmmu4KContextConfig *context, unsigned poll_budget,
-    struct NezhaCameraMainCapture *capture)
+    struct NezhaCameraMainCapture *capture, bool dma_drained)
 {
     if (io == NULL || capture == NULL || capture->stream_may_be_on ||
         capture->rdi_started || capture->sensor_transfer.needs_recovery || capture->cpu_frames != 0) {
+        return false;
+    }
+    if (!dma_drained && capture->stage >= NezhaCaptureReceiver) {
         return false;
     }
     capture->queued_count = 0;

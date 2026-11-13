@@ -19,6 +19,17 @@ struct NezhaCameraDmaPlan {
     ArmSmmu4KResult tables;
 };
 
+/* The same two contiguous IOVA frames backed by the allocator's real
+ * physical spans. This permits reuse of NativeAdrenoMemory without a
+ * physically contiguous 15 MiB allocation per frame. Ranges must tile the
+ * two rounded RAW10 frames exactly, in IOVA order, with no mapped guards.
+ * Supply owned RW, normal-NC, outer-shareable spans; publish the tables
+ * and apply the allocator's CPU/device cache operations before activation. */
+ArmSmmu4KStatus nezha_camera_build_frame_span_tables(const ArmSmmu4KConfig *config,
+    const struct NezhaCameraFrameMapping frames[2], uint32_t width, uint32_t height,
+    const ArmSmmu4KRange *ranges, size_t range_count,
+    uint64_t *tables, size_t capacity_pages, struct NezhaCameraDmaPlan *out);
+
 /* Build inactive stage-1 tables for two independently owned frame buffers.
  * Supply the 32-bit low IOVA config and an owned native-4K table pool.
  * Backings are ordered by increasing IOVA. The platform owns cache sync,

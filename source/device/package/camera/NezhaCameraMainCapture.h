@@ -57,9 +57,9 @@ bool nezha_camera_main_capture_start(const struct NezhaCameraMainCaptureIo *io,
     const ArmSmmu4KContextConfig *context, unsigned slot, unsigned bank,
     unsigned poll_budget, struct NezhaCameraMainCapture *capture);
 
-/* Consume exactly one BUF_DONE event. The 1080 writer retires queued
- * addresses in submission order. Keep all calls on the capture owner
- * and transfer cache ownership before accessing the returned buffer. */
+/* Consume exactly one BUF_DONE whose VFE consumed address agrees with
+ * the queued head. A mismatch retains ownership and calls for a drain.
+ * Keep all calls on the capture owner and synchronize before CPU access. */
 bool nezha_camera_main_capture_complete_frame(struct NezhaCameraMainCapture *capture,
     const struct NezhaCamera1080Events *events, unsigned *buffer);
 
@@ -73,9 +73,10 @@ bool nezha_camera_main_capture_release_frame(const struct NezhaCameraMainCapture
 bool nezha_camera_main_capture_request_stop(const struct NezhaCameraMainCaptureIo *io,
     struct NezhaCameraMainCapture *capture);
 
-/* Call after actual confirmation that writes to the frame buffers drained. */
+/* Pass dma_drained only after CPAS has acknowledged stop (or before any
+ * capture start reached the receiver). A failed drain keeps the tables. */
 bool nezha_camera_main_capture_finish_stop(const struct NezhaCameraMainCaptureIo *io,
     const ArmSmmu4KContextConfig *context, unsigned poll_budget,
-    struct NezhaCameraMainCapture *capture);
+    struct NezhaCameraMainCapture *capture, bool dma_drained);
 
 #endif

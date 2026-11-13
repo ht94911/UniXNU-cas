@@ -10,11 +10,13 @@ static const uint32_t off_bit = UINT32_C(1) << 31;
 struct CamccModel {
     uint32_t gdsc, status, core, cpas, cci;
     uint32_t pll_mode, pll_opmode, pll_l, pll_alpha, pll_user;
+    uint32_t pll_cfg[3], pll_user_hi;
     uint32_t cci_config, cci_command;
     unsigned writes, waits;
     bool no_power_ack, no_cci_disable_ack, no_rcg_ack;
     bool sticky_completion;
     bool core_enable_unobservable;
+    bool pll_no_lock;
 };
 
 static uint32_t read32(void *context, uint32_t offset)
@@ -33,6 +35,8 @@ static uint32_t read32(void *context, uint32_t offset)
     case 0x10: return model->pll_l;
     case 0x14: return model->pll_alpha;
     case 0x18: return model->pll_user;
+    case 0x1c: return model->pll_user_hi;
+    case 0x20: case 0x24: case 0x28: return model->pll_cfg[(offset - 0x20) / 4];
     default: assert(0); return 0;
     }
 }
@@ -68,6 +72,30 @@ static void write32(void *context, uint32_t offset, uint32_t value)
         assert((model->cci & (off_bit | 1u)) == 1);
         model->cci_config = value;
         break;
+    case 0:
+        if ((value & 1u) != 0) {
+            assert((model->pll_mode & off_bit) != 0 && model->pll_opmode == 1);
+        }
+        model->pll_mode = (value & ~off_bit) | (model->pll_mode & off_bit);
+        break;
+    case 4:
+        model->pll_opmode = value;
+        if (value == 1) {
+            assert((model->pll_mode & 4u) != 0 && (model->pll_mode & 1u) == 0);
+            assert(model->pll_l == 0x4444003e && model->pll_alpha == 0x8000 && model->pll_user == 0x840f);
+            if (!model->pll_no_lock) {
+                model->pll_mode |= off_bit;
+            }
+        } else {
+            assert(value == 0 && (model->pll_mode & 1u) == 0);
+            model->pll_mode &= ~off_bit;
+        }
+        break;
+    case 0x10: model->pll_l = value; break;
+    case 0x14: model->pll_alpha = value; break;
+    case 0x18: model->pll_user = value; break;
+    case 0x1c: model->pll_user_hi = value; break;
+    case 0x20: case 0x24: case 0x28: model->pll_cfg[(offset - 0x20) / 4] = value; break;
     default: assert(0);
     }
 }
@@ -163,5 +191,33 @@ int main(void)
     assert(nezha_camera_camcc_release(&io, &lease) == NezhaCameraCamccOk);
     assert(model.status == PowerDown && lease.enabled_by_us == 0);
 
-    puts("Camera CAMCC restores owned gates and keeps the parent on after an uncertain stop");
+    struct NezhaCameraPll0Lease pll = {0};
+    model = cold;
+    assert(nezha_camera_camcc_acquire_pll0(&io, &pll) == NezhaCameraCamccOk);
+    assert(pll.ready && pll.owned && (model.pll_mode & (off_bit | 5u)) == (off_bit | 5u));
+    assert(nezha_camera_camcc_release_pll0(&io, &pll, false) == NezhaCameraCamccBusy);
+    assert((model.pll_mode & 1u) != 0);
+    assert(nezha_camera_camcc_release_pll0(&io, &pll, true) == NezhaCameraCamccOk);
+    assert(model.pll_mode == 0 && model.pll_l == 0 && model.pll_user == 0 && model.pll_cfg[0] == 0);
+
+    model = cold;
+    model.pll_no_lock = true;
+    assert(nezha_camera_camcc_acquire_pll0(&io, &pll) == NezhaCameraCamccTimeout);
+    assert(pll.owned && !pll.ready && (model.pll_mode & 1u) == 0 && model.waits == 100);
+    assert(nezha_camera_camcc_release_pll0(&io, &pll, true) == NezhaCameraCamccOk);
+    assert(model.pll_l == 0 && model.pll_mode == 0);
+
+    model = cold;
+    model.pll_mode = off_bit | 5;
+    model.pll_opmode = 1;
+    model.pll_l = 0x4444003e;
+    model.pll_alpha = 0x8000;
+    model.pll_user = 0x840f;
+    assert(nezha_camera_camcc_acquire_pll0(&io, &pll) == NezhaCameraCamccOk);
+    assert(pll.ready && !pll.owned && model.writes == 0);
+    assert(nezha_camera_camcc_release_pll0(&io, &pll, true) == NezhaCameraCamccOk && model.writes == 0);
+    model.pll_l = 0x44440032;
+    assert(nezha_camera_camcc_acquire_pll0(&io, &pll) == NezhaCameraCamccBusy && model.writes == 0);
+
+    puts("Camera CAMCC restores owned gates and opens PLL0 outputs only after lock");
 }
