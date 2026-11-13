@@ -1,7 +1,7 @@
-name: nezha iPhone27 ALS016 QRTR receive credit endpoint
+name: nezha iPhone27 ALS017 continuous calibrated sampling
 on:
   push:
-    branches: [codex/ios27-brightness-als016-qrtr-resume-20261113]
+    branches: [codex/ios27-brightness-als017-continuous-control-20261114]
   workflow_dispatch:
 permissions:
   contents: read
