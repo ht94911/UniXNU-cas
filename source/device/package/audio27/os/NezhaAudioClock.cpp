@@ -47,7 +47,8 @@ static void synchronize_code(void *address,size_t bytes) {
     for (uintptr_t p=first&~(line-1);p<last;p+=line) __asm__ volatile("dc cvau,%0"::"r"(p):"memory");
     __asm__ volatile("dsb ish":::"memory");line=4ULL<<(ctr&15);
     for (uintptr_t p=first&~(line-1);p<last;p+=line) __asm__ volatile("ic ivau,%0"::"r"(p):"memory");
-    __asm__ volatile("dsb ish;isb":::"memory");
+    __asm__ volatile("dsb ish":::"memory");
+    __asm__ volatile("isb":::"memory");
 }
 struct Pin {
     IOMemoryDescriptor *memory=nullptr;bool prepared=false;
