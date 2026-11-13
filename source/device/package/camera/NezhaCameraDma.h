@@ -6,6 +6,10 @@
 #include "ArmSmmu4KStreams.h"
 #include "NezhaCameraRdi1080.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 enum { NezhaCameraIfeSid = 0x1c00 };
 
 struct NezhaCameraDmaBacking {
@@ -64,5 +68,9 @@ ArmSmmu4KStatus nezha_camera_detach_ife_dma(const ArmSmmu4KIo *io,
     const ArmSmmu4KContextConfig *context, unsigned poll_budget,
     struct NezhaCameraDmaAttachment *attachment,
     struct NezhaCameraDmaReadback *readback);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

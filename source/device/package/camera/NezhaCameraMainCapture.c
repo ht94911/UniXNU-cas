@@ -1,13 +1,18 @@
 /* SPDX-License-Identifier: MIT */
 #include "NezhaCameraMainCapture.h"
 
+static bool valid_dma_owner(const struct NezhaCameraMainCaptureIo *io)
+{
+    return (io->dma_enter == NULL) == (io->dma_leave == NULL);
+}
+
 bool nezha_camera_main_capture_start(const struct NezhaCameraMainCaptureIo *io,
     const struct NezhaCameraMainMode *mode, const struct NezhaCameraDmaPlan *buffers,
     const ArmSmmu4KContextConfig *context, unsigned slot, unsigned bank,
     unsigned poll_budget, struct NezhaCameraMainCapture *capture)
 {
     struct NezhaCameraRdi1080 layout;
-    if (io == NULL || io->cci == NULL || io->camss == NULL || io->smmu == NULL ||
+    if (io == NULL || io->cci == NULL || io->camss == NULL || io->smmu == NULL || !valid_dma_owner(io) ||
         mode == NULL || mode->expected_identity == 0 || buffers == NULL ||
         context == NULL || context->lower_tables != &buffers->tables || capture == NULL ||
         capture->stage != NezhaCaptureIdle ||
@@ -33,8 +38,15 @@ bool nezha_camera_main_capture_start(const struct NezhaCameraMainCaptureIo *io,
     }
 
     capture->stage = NezhaCaptureDma;
+    if (io->dma_enter != NULL && !io->dma_enter(io->dma_owner)) {
+        capture->dma_status = ArmSmmu4KBusy;
+        return false;
+    }
     capture->dma_status = nezha_camera_attach_ife_dma(io->smmu, slot, bank, context,
         poll_budget, &capture->dma, &capture->dma_readback);
+    if (io->dma_leave != NULL) {
+        io->dma_leave(io->dma_owner);
+    }
     if (capture->dma_status != ArmSmmu4KSuccess) {
         return false;
     }
@@ -127,7 +139,7 @@ bool nezha_camera_main_capture_finish_stop(const struct NezhaCameraMainCaptureIo
     const ArmSmmu4KContextConfig *context, unsigned poll_budget,
     struct NezhaCameraMainCapture *capture, bool dma_drained)
 {
-    if (io == NULL || capture == NULL || capture->stream_may_be_on ||
+    if (io == NULL || !valid_dma_owner(io) || capture == NULL || capture->stream_may_be_on ||
         capture->rdi_started || capture->sensor_transfer.needs_recovery || capture->cpu_frames != 0) {
         return false;
     }
@@ -136,8 +148,15 @@ bool nezha_camera_main_capture_finish_stop(const struct NezhaCameraMainCaptureIo
     }
     capture->queued_count = 0;
     if (capture->dma.context_active || capture->dma.needs_hardware_recovery) {
+        if (io->dma_enter != NULL && !io->dma_enter(io->dma_owner)) {
+            capture->dma_status = ArmSmmu4KBusy;
+            return false;
+        }
         capture->dma_status = nezha_camera_detach_ife_dma(io->smmu, context, poll_budget,
             &capture->dma, &capture->dma_readback);
+        if (io->dma_leave != NULL) {
+            io->dma_leave(io->dma_owner);
+        }
         if (capture->dma_status != ArmSmmu4KSuccess) {
             return false;
         }

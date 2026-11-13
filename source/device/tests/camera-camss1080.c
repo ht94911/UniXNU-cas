@@ -49,7 +49,8 @@ static void write_vfe(void *context, uint32_t offset, uint32_t value)
 struct IrqSession {
     uint32_t top, rx, buffers, rdi0;
     uint32_t address;
-    unsigned commits;
+    unsigned commits, resets, waits;
+    bool fail_reset;
 };
 
 static uint32_t read_consumed(void *context, uint32_t offset)
@@ -75,12 +76,26 @@ static void clear_status(void *context, uint32_t offset, uint32_t value)
 {
     struct IrqSession *session = context;
     switch (offset) {
+    case 0x108: assert(value == 0x11); break;
+    case 0x10c:
+        assert(value == 5 && (session->top & 1u) == 0);
+        ++session->resets;
+        if (!session->fail_reset) {
+            session->top |= 1;
+        }
+        break;
     case 0x188: session->top &= ~value; break;
     case 0x1a8: session->buffers &= ~value; break;
     case 0x22c: session->rdi0 &= ~value; break;
     case 0x110: assert(value == 1); ++session->commits; break;
     default: assert(0);
     }
+}
+
+static void reset_wait(void *context, unsigned milliseconds)
+{
+    struct IrqSession *session = context;
+    session->waits += milliseconds;
 }
 
 static void record_requeue(void *context, uint32_t offset, uint32_t value)
@@ -156,7 +171,7 @@ int main(void)
     struct IrqSession irq = {.top = 0x3000c, .rx = 0x40,
         .buffers = 0x30000, .rdi0 = 0x801201, .address = UINT32_MAX};
     struct NezhaCamera1080Events events;
-    const struct NezhaCameraRegisterIo csid = {&irq, read_status, clear_status, NULL};
+    const struct NezhaCameraRegisterIo csid = {&irq, read_status, clear_status, reset_wait};
     const struct NezhaCameraRegisterIo vfe = {.context = &irq, .read = read_consumed};
     assert(!nezha_camera1080_take_rdi0_events(&csid, &vfe, &events));
     assert(irq.commits == 0 && irq.buffers == 0x30000 && !events.buffer_done);
@@ -168,6 +183,14 @@ int main(void)
     assert(irq.buffers == 0x20000 && irq.rdi0 == 1 && irq.top == 0x3000c && irq.commits == 1);
     assert(nezha_camera1080_take_rdi0_events(&csid, &vfe, &events));
     assert(!events.buffer_done && !events.start_of_frame && irq.commits == 1);
+
+    irq = (struct IrqSession){.top = 0x10001, .buffers = 0x30000};
+    uint32_t reset_status = 0;
+    assert(nezha_camera1080_prepare_csid(&csid, &reset_status));
+    assert(reset_status == 0x10001 && irq.resets == 1 && irq.top == 0x10000 && irq.buffers == 0x20000);
+    irq.fail_reset = true;
+    assert(!nezha_camera1080_prepare_csid(&csid, &reset_status));
+    assert(irq.resets == 2 && irq.waits == 100);
 
     unsigned step = 0;
     struct NezhaCameraRdi1080 layout;

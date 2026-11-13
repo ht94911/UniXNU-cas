@@ -19,7 +19,7 @@ def main():
     args.out.mkdir(parents=True, exist_ok=True)
     probe = (ROOT / 'package/camera/NezhaCameraProbe.c').read_text()
     begin = probe.index('enum CameraDiagnosticPhase {')
-    end = probe.index('static unsigned journal_token;', begin)
+    end = probe.index('static bool journal_ready;', begin)
     source = '''#include <assert.h>
 #include <stdio.h>
 #include <string.h>
@@ -38,8 +38,18 @@ int main(void) {
     diagnostic_words[DiagClockRestore]=0;
     record_diagnostic(CameraClockRestored,0);
     record_diagnostic(CameraFinished,0);
-    assert(camera_provider.id==28 && camera_provider.operations==(1u<<QUD_SNAPSHOT));
-    assert(camera_provider.submit==NULL);
+    assert(camera_provider.id==28 && camera_provider.operations==((1u<<QUD_SNAPSHOT)|(1u<<QUD_SUBMIT)));
+    struct qud_diag_request request={QUD_SUBMIT,28,1,0x1234,0,0};
+    assert(camera_submit(NULL,&request,result,sizeof(result),&bytes,&truncated)==QUD_UNSUPPORTED);
+    journal_token=0x1234;usb_gated=1;probe_request=CameraArmed;
+    request.arg1=0x5678;
+    assert(camera_submit(NULL,&request,result,sizeof(result),&bytes,&truncated)==QUD_INVALID);
+    assert(probe_request==CameraArmed);
+    request.arg1=0x1234;
+    assert(camera_submit(NULL,&request,result,1,&bytes,&truncated)==QUD_FAILED && probe_request==CameraArmed);
+    assert(camera_submit(NULL,&request,result,sizeof(result),&bytes,&truncated)==QUD_OK);
+    assert(probe_request==CameraQueued && bytes==12 && strstr(result,"queued")!=NULL);
+    assert(camera_submit(NULL,&request,result,sizeof(result),&bytes,&truncated)==QUD_BUSY);
     assert(camera_snapshot(NULL,result,sizeof(result),&bytes,&truncated)==QUD_OK);
     assert(bytes==strlen(result) && truncated==0);puts(result);
     uint32_t sequence=nzi_begin(&camera_diagnostic);

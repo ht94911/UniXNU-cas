@@ -10,6 +10,25 @@
 static char operations[16];
 static unsigned operation_count;
 static bool fail_attach, fail_stop;
+static bool dma_locked, fail_lock;
+
+static bool enter_dma(void *unused)
+{
+    (void)unused;
+    assert(!dma_locked);
+    if (fail_lock) {
+        return false;
+    }
+    dma_locked = true;
+    return true;
+}
+
+static void leave_dma(void *unused)
+{
+    (void)unused;
+    assert(dma_locked);
+    dma_locked = false;
+}
 
 static void event(char marker)
 {
@@ -21,7 +40,7 @@ static void event(char marker)
 enum NezhaCameraCciStatus nezha_camera_ovx10500u_read_identity(
     const struct NezhaCameraRegisterIo *cci, struct NezhaCameraOvxIdentity *identity)
 {
-    assert(cci != NULL);
+    assert(cci != NULL && !dma_locked);
     event('i');
     *identity = (struct NezhaCameraOvxIdentity){.bytes = {0x12, 0x34}, .bytes_read = 2};
     return NezhaCciOk;
@@ -31,7 +50,7 @@ enum NezhaCameraCciStatus nezha_camera_ovx10500u_apply_mode(
     const struct NezhaCameraRegisterIo *cci, const struct NezhaCameraOvxModeWrite *writes,
     size_t count, unsigned burst_queue_words, size_t *applied, struct NezhaCameraCciObservation *transfer)
 {
-    assert(cci != NULL && writes != NULL && count == 1 && burst_queue_words == 64);
+    assert(cci != NULL && writes != NULL && count == 1 && burst_queue_words == 64 && !dma_locked);
     event('m');
     *applied = count;
     *transfer = (struct NezhaCameraCciObservation){0};
@@ -42,7 +61,7 @@ enum NezhaCameraCciStatus nezha_camera_ovx10500u_set_stream(
     const struct NezhaCameraRegisterIo *cci, bool running,
     struct NezhaCameraCciObservation *transfer)
 {
-    assert(cci != NULL);
+    assert(cci != NULL && !dma_locked);
     event(running ? 's' : 'x');
     *transfer = (struct NezhaCameraCciObservation){.needs_recovery = !running && fail_stop};
     return transfer->needs_recovery ? NezhaCciTimeout : NezhaCciOk;
@@ -54,7 +73,7 @@ ArmSmmu4KStatus nezha_camera_attach_ife_dma(const ArmSmmu4KIo *io,
     struct NezhaCameraDmaReadback *readback)
 {
     assert(io != NULL && slot == 2 && bank == 1 && context != NULL && poll_budget != 0);
-    assert(readback != NULL);
+    assert(readback != NULL && dma_locked);
     event('a');
     attachment->context_active = !fail_attach;
     return fail_attach ? ArmSmmu4KBusy : ArmSmmu4KSuccess;
@@ -66,7 +85,7 @@ ArmSmmu4KStatus nezha_camera_detach_ife_dma(const ArmSmmu4KIo *io,
     struct NezhaCameraDmaReadback *readback)
 {
     assert(io != NULL && context != NULL && poll_budget != 0 && readback != NULL);
-    assert(attachment->context_active);
+    assert(attachment->context_active && dma_locked);
     event('d');
     attachment->context_active = false;
     return ArmSmmu4KSuccess;
@@ -76,7 +95,7 @@ bool nezha_camera1080_start_rdi0(const struct NezhaCamera1080Io *io,
     const struct NezhaCamera1080Input *input, uint32_t width, uint32_t height,
     const struct NezhaCameraFrameMapping buffers[2])
 {
-    assert(io != NULL && input != NULL && width == 640 && height == 480 && buffers != NULL);
+    assert(io != NULL && input != NULL && width == 640 && height == 480 && buffers != NULL && !dma_locked);
     event('r');
     return true;
 }
@@ -108,7 +127,10 @@ int main(void)
     const struct NezhaCameraRegisterIo cci = {0};
     const struct NezhaCamera1080Io camss = {NULL, unused_register_write, unused_register_write};
     const ArmSmmu4KIo smmu = {0};
-    const struct NezhaCameraMainCaptureIo io = {&cci, &camss, &smmu, 64};
+    const struct NezhaCameraMainCaptureIo io = {
+        .cci = &cci, .camss = &camss, .smmu = &smmu, .cci_queue_words = 64,
+        .dma_enter = enter_dma, .dma_leave = leave_dma,
+    };
     const struct NezhaCameraDmaPlan plan = {.frames = {{0x200000, 0x60000}, {0x300000, 0x60000}}};
     const ArmSmmu4KContextConfig context = {.lower_tables = &plan.tables};
     const struct NezhaCameraOvxModeWrite standby = {.reg = 0x3514, .value = 0x7e};
@@ -122,9 +144,15 @@ int main(void)
 
     operation_count = 0;
     mode.expected_identity = 0x1234;
+    fail_lock = true;
+    assert(!nezha_camera_main_capture_start(&io, &mode, &plan, &context, 2, 1, 100, &capture));
+    assert(strcmp(operations, "im") == 0 && capture.dma_status == ArmSmmu4KBusy && !dma_locked);
+    assert(nezha_camera_main_capture_finish_stop(&io, &context, 100, &capture, false));
+    fail_lock = false;
+    operation_count = 0;
     fail_attach = true;
     assert(!nezha_camera_main_capture_start(&io, &mode, &plan, &context, 2, 1, 100, &capture));
-    assert(strcmp(operations, "ima") == 0 && capture.dma_status == ArmSmmu4KBusy);
+    assert(strcmp(operations, "ima") == 0 && capture.dma_status == ArmSmmu4KBusy && !dma_locked);
     assert(nezha_camera_main_capture_finish_stop(&io, &context, 100, &capture, false));
 
     operation_count = 0;

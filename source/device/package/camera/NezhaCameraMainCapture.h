@@ -11,6 +11,11 @@ struct NezhaCameraMainCaptureIo {
     const struct NezhaCamera1080Io *camss;
     const ArmSmmu4KIo *smmu;
     unsigned cci_queue_words;
+    /* Optional paired hooks. The native shared SMMU owner supplies both
+     * when configured; CCI and receiver work run outside this section. */
+    void *dma_owner;
+    bool (*dma_enter)(void *owner);
+    void (*dma_leave)(void *owner);
 };
 
 struct NezhaCameraMainMode {
@@ -50,7 +55,8 @@ struct NezhaCameraMainCapture {
 };
 
 /* Start with zeroed state. The platform owns live sensor power/CCI timing,
- * CSIPHY, camera clocks, DMA tables and the selected stream/slot/bank lock.
+ * CSIPHY, camera clocks and DMA tables. The paired hooks cover only the
+ * selected stream/slot/bank configuration; otherwise the caller owns it.
  * This only submits the stream. Count RUP and real BUF_DONE separately. */
 bool nezha_camera_main_capture_start(const struct NezhaCameraMainCaptureIo *io,
     const struct NezhaCameraMainMode *mode, const struct NezhaCameraDmaPlan *buffers,

@@ -5,6 +5,10 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 struct NezhaCameraRaw10Layout {
     uint32_t width;
     uint32_t height;
@@ -36,4 +40,7 @@ bool nezha_camera_rdi1080_layout(uint32_t width, uint32_t height,
 void nezha_camera_rdi1080_program_geometry(const struct NezhaCameraRdi1080 *layout,
     void *context, void (*write)(void *, uint32_t offset, uint32_t value));
 
+#ifdef __cplusplus
+}
+#endif
 #endif

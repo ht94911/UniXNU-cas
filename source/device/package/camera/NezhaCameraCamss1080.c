@@ -8,6 +8,8 @@
  * vfe_enable_output_v2. The C-PHY selector uses Qualcomm's CSID v2
  * phy_type field. The Lite register pages have a different layout. */
 enum {
+    CsidResetConfig = 0x108,
+    CsidResetCommand = 0x10c,
     CsidIrqCommand = 0x110,
     CsidRegUpdate = 0x114,
     CsidAddressUpdate = 0x118,
@@ -31,6 +33,7 @@ enum {
     CsidRdi0BufferDone = 1 << 16,
     CsidTopRdi0 = 1 << 16,
     CsidTopBuffer = 1 << 3,
+    CsidResetDone = 1,
     CsidRdiUpdated = 1 << 23,
     CsidRdiInputSof = 1 << 12,
     CsidRdiInputEof = 1 << 9,
@@ -42,6 +45,52 @@ enum {
     VfeRdi0LastConsumedAddress = 0x2c90,
     VfeFrameModeEnable = (1 << 16) | 1,
 };
+
+bool nezha_camera1080_prepare_csid(const struct NezhaCameraRegisterIo *csid,
+    uint32_t *reset_status)
+{
+    if (csid == NULL || csid->read == NULL || csid->write == NULL ||
+        csid->wait_ms == NULL || reset_status == NULL) {
+        return false;
+    }
+    /* The selected full CSID is stopped and exclusively owned, as in the
+     * Qualcomm CAMSS v24 csid_reset path. Keep mask programming with the
+     * IRQ owner; here the worker polls reset status and clears owned bits. */
+    const uint32_t top = csid->read(csid->context, CsidTopIrqStatus);
+    const uint32_t buffer = csid->read(csid->context, CsidBufferIrqStatus);
+    if (top == UINT32_MAX || buffer == UINT32_MAX) {
+        return false;
+    }
+    if (top & CsidResetDone) {
+        csid->write(csid->context, CsidTopIrqClear, CsidResetDone);
+    }
+    if (buffer & CsidRdi0BufferDone) {
+        csid->write(csid->context, CsidBufferIrqClear, CsidRdi0BufferDone);
+    }
+    csid->write(csid->context, CsidIrqCommand, 1);
+    *reset_status = csid->read(csid->context, CsidTopIrqStatus);
+    if (*reset_status == UINT32_MAX || (*reset_status & CsidResetDone) != 0) {
+        return false;
+    }
+    csid->write(csid->context, CsidResetConfig, 0x11);
+    csid->write(csid->context, CsidResetCommand, 5);
+    for (unsigned ms = 0; ms <= 100; ++ms) {
+        *reset_status = csid->read(csid->context, CsidTopIrqStatus);
+        if (*reset_status == UINT32_MAX) {
+            return false;
+        }
+        if (*reset_status & CsidResetDone) {
+            csid->write(csid->context, CsidTopIrqClear, CsidResetDone);
+            csid->write(csid->context, CsidIrqCommand, 1);
+            const uint32_t after = csid->read(csid->context, CsidTopIrqStatus);
+            return after != UINT32_MAX && (after & CsidResetDone) == 0;
+        }
+        if (ms != 100) {
+            csid->wait_ms(csid->context, 1);
+        }
+    }
+    return false;
+}
 
 static const uint32_t raw10_vc0 =
     (0x2bu << 16) | (0xfu << 12) | (1u << 8) | (1u << 6) | (1u << 5);

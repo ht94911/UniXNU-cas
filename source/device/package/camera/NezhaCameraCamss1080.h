@@ -25,6 +25,11 @@ struct NezhaCamera1080Io {
     void (*write_vfe)(void *, uint32_t offset, uint32_t value);
 };
 
+/* Reset only the owned, idle full CSID before enabling its RDI stream.
+ * Use the vendor reset acknowledgement; this is separate from DMA drain. */
+bool nezha_camera1080_prepare_csid(const struct NezhaCameraRegisterIo *csid,
+    uint32_t *reset_status);
+
 /* Queue VC0 RAW10 on full CSID1080 + full VFE1080 RDI0. The caller owns
  * both stopped blocks, their reset and clock domains, the configured input,
  * the DMA mappings, and IRQ setup. Success means the register sequence was

@@ -58,6 +58,9 @@ enum CameraDiagnosticPhase {
     CameraDependencyTimeout, CameraWorkerFailure,
 };
 
+static unsigned journal_token, usb_gated, probe_request;
+enum CameraRequestState { CameraDisarmed, CameraArmed, CameraQueued, CameraRunning, CameraDone };
+
 enum CameraHardwareMark {
     CameraBeforeMap = 20, CameraBeforeCamccRead, CameraBeforeMclkRead,
     CameraBeforeTop, CameraBeforeRate, CameraBeforeGate, CameraBeforeCciRead,
@@ -115,11 +118,13 @@ static int camera_snapshot(void *cookie, char *output, size_t capacity, size_t *
     }
     const int size = snprintf(output, capacity,
         "{\"v\":1,\"mode\":%u,\"phase\":%u,\"status\":%u,\"first_failed_phase\":%u,\"first_failed_status\":%u,"
+        "\"request\":%u,"
         "\"camcc\":[%u,%u,%u,%u],\"cci\":[%u,%u,%u,%u,%u,%u,%u,%u],"
         "\"mclk\":[%u,%u,%u],\"power\":[%u,%u,%u],\"identity\":[%u,%u,%u,%u,%u,%u],"
         "\"cleanup\":[%u,%u,%u],\"gpio\":[%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u],"
         "\"vrm\":[%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u],\"rsc\":[%u,%u,%u,%u,%u,%u,%u,%u]}",
         words[DiagMode], words[DiagPhase], words[DiagStatus], words[DiagFailedPhase], words[DiagFailedStatus],
+        __atomic_load_n(&probe_request, __ATOMIC_ACQUIRE),
         words[DiagGdsc], words[DiagGdscStatus], words[DiagCoreAhb], words[DiagCpasAhb],
         words[DiagCciCommand], words[DiagCciConfig], words[DiagCciBranch], words[DiagCciVersion],
         words[DiagCciIrq], words[DiagCciQueue0], words[DiagCciQueue1], words[DiagCciFifo],
@@ -140,11 +145,40 @@ static int camera_snapshot(void *cookie, char *output, size_t capacity, size_t *
     return QUD_OK;
 }
 
+/* The existing USB worker only submits a fixed one-shot request. The
+ * camera thread owns all file I/O, MMIO, delays and resource cleanup. */
+static int camera_submit(void *cookie, const struct qud_diag_request *request,
+    char *output, size_t capacity, size_t *bytes, unsigned *truncated)
+{
+    (void)cookie;
+    *bytes = 0;
+    *truncated = 0;
+    if (usb_gated == 0 || journal_token == 0 || requested_mode != 3) {
+        return QUD_UNSUPPORTED;
+    }
+    if (request == NULL || request->op != QUD_SUBMIT || request->provider != 28 ||
+        request->arg0 != 1 || request->arg1 != journal_token || request->experiment || request->cursor) {
+        return QUD_INVALID;
+    }
+    static const char reply[] = "{\"queued\":1}";
+    if (capacity < sizeof(reply)) {
+        return QUD_FAILED;
+    }
+    unsigned idle = CameraArmed;
+    if (!__atomic_compare_exchange_n(&probe_request, &idle, CameraQueued, false,
+                                     __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE)) {
+        return QUD_BUSY;
+    }
+    memcpy(output, reply, sizeof(reply));
+    *bytes = sizeof(reply) - 1;
+    return QUD_OK;
+}
+
 static const struct qud_diag_provider camera_provider = {
-    28, 1, 1u << QUD_SNAPSHOT, 0, 0, "nezhacamera", NULL, camera_snapshot, NULL,
+    28, 1, (1u << QUD_SNAPSHOT) | (1u << QUD_SUBMIT), 1, UINT32_MAX,
+    "nezhacamera", NULL, camera_snapshot, camera_submit,
 };
 
-static unsigned journal_token;
 static bool journal_ready;
 
 static bool hardware_mark(unsigned phase, unsigned status, unsigned a, unsigned b, unsigned c)
@@ -524,6 +558,13 @@ static void camera_probe_thread(void *argument, wait_result_t wait_result)
         const uint32_t storage = native_source_storage_boot_state;
         /* GPU039 has a single existing APPS DRV2 consumer. The touch stage
          * reaches 7 only after its synchronous vote and controller setup. */
+        if (usb_gated) {
+            const unsigned request = __atomic_load_n(&probe_request, __ATOMIC_ACQUIRE);
+            if (request != CameraQueued || nezha_touch_stage != 7) {
+                IOSleep(50);
+                continue;
+            }
+        }
         if (storage == 4 && nezha27_usb_reset_owner_ready != 0 && journal_token != 0 && !journal_ready) {
             const int error = nezha_camera_journal_begin(journal_token, requested_mode);
             journal_ready = error == 0;
@@ -534,15 +575,22 @@ static void camera_probe_thread(void *argument, wait_result_t wait_result)
             } else if (error != ENOENT && error != EROFS) {
                 printf("NEZHA CAMERA: journal token=%08x error=%d\n", journal_token, error);
                 record_diagnostic(CameraWorkerFailure, (unsigned)error);
+                __atomic_store_n(&probe_request, CameraDone, __ATOMIC_RELEASE);
                 thread_terminate_self();
                 return;
             }
         }
         if (storage == 4 && nezha27_usb_reset_owner_ready != 0 &&
             (journal_token == 0 || journal_ready) && (requested_mode < 3 || nezha_touch_stage == 7)) {
+            if (usb_gated) {
+                /* Allow the existing USB worker to transmit its queue reply. */
+                IOSleep(250);
+                __atomic_store_n(&probe_request, CameraRunning, __ATOMIC_RELEASE);
+            }
             printf("NEZHA CAMERA: worker ready mode=%u storage=%u usb=%u touch=%d\n",
                 requested_mode, storage, nezha27_usb_reset_owner_ready, nezha_touch_stage);
             camera_probe();
+            __atomic_store_n(&probe_request, CameraDone, __ATOMIC_RELEASE);
             thread_terminate_self();
             return;
         }
@@ -554,6 +602,7 @@ static void camera_probe_thread(void *argument, wait_result_t wait_result)
     printf("NEZHA CAMERA: waiting for storage/USB/touch timed out state=%u usb=%u touch=%d\n",
            native_source_storage_boot_state, nezha27_usb_reset_owner_ready, nezha_touch_stage);
     record_diagnostic(CameraDependencyTimeout, 1);
+    __atomic_store_n(&probe_request, CameraDone, __ATOMIC_RELEASE);
     (void)hardware_mark(CameraDependencyTimeout, 1, native_source_storage_boot_state,
         nezha27_usb_reset_owner_ready, (unsigned)nezha_touch_stage);
     thread_terminate_self();
@@ -571,6 +620,11 @@ void nezha27_camera_probe_start(void)
     }
     thread_t thread = THREAD_NULL;
     (void)PE_parse_boot_argn("nezha-cj", &journal_token, sizeof(journal_token));
+    (void)PE_parse_boot_argn("nezha-cusb", &usb_gated, sizeof(usb_gated));
+    if (usb_gated && (mode != 3 || !journal_token)) {
+        printf("NEZHA CAMERA: invalid USB probe configuration\n");
+        return;
+    }
     /* Retain the same empty/local resource slot and verify it at the early
      * boot point, before the worker is eligible for any hardware access. */
     struct NezhaCameraProfile profile;
@@ -578,11 +632,16 @@ void nezha27_camera_probe_start(void)
         (size_t)nezha_camera_profile_slot_size, &profile);
     printf("NEZHA CAMERA: local stock profile=%u\n", (unsigned)profile_present);
     record_diagnostic(CameraWaiting, 0);
+    __atomic_store_n(&probe_request, usb_gated ? CameraArmed : CameraDisarmed, __ATOMIC_RELEASE);
     printf("NEZHA CAMERA: USB provider28 registration=%u\n", (unsigned)qcom_usb_diag_register(&camera_provider));
+    if (usb_gated) {
+        printf("NEZHA CAMERA: armed, no hardware access before USB submit\n");
+    }
     const kern_return_t result = kernel_thread_start(camera_probe_thread, NULL, &thread);
     if (result == KERN_SUCCESS) {
         thread_deallocate(thread);
     } else {
+        __atomic_store_n(&probe_request, CameraDone, __ATOMIC_RELEASE);
         record_diagnostic(CameraWorkerFailure, (unsigned)result);
         printf("NEZHA CAMERA: could not start probe thread: %d\n", result);
     }

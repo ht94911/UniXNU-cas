@@ -3,8 +3,8 @@
 
 #include <stddef.h>
 
-/* The same-device CAMCC GDSC/AHB probe at u0er ed8978ac0087. This
- * sequence owns only the top and CCI0 gates, and does not program a PLL. */
+/* The C1 GDSC/AHB sequence follows the same-device probe at
+ * u0er ed8978ac0087. C2 uses the stock Canoe clock topology. */
 enum {
     CamccTopGdsc = 0x21334,
     CamccTopStatus = 0x21338,
@@ -374,6 +374,154 @@ enum NezhaCameraCamccStatus nezha_camera_camcc_release(
             return NezhaCameraCamccTimeout;
         }
         lease->enabled_by_us &= ~(unsigned)OwnTop;
+    }
+    return NezhaCameraCamccOk;
+}
+
+enum {
+    CamccTfeGdsc = 0x21004, CamccTfeStatus = 0x21008,
+    RootForce = 1 << 1, RootFields = CamccRateMask | (1 << 20),
+};
+static const struct { uint32_t command, fields; } capture_roots[] = {
+    {0x20000, 0x100301}, // CSI0 PHY timer: PLL0 odd / 1 = 400 MHz.
+    {0x200dc, 0x100203}, // Fast AHB: PLL0 even / 2 = 300 MHz.
+    {0x20100, 0x10020e}, // Slow AHB: PLL0 even / 7.5 = 80 MHz.
+};
+static const uint32_t capture_branches[] = {
+    0x2136c, 0x212f8, 0x212e4, 0x20018, 0x2001c, 0x20020,
+    0x212bc, 0x2105c, 0x21030, 0x21040, 0x21060, 0x21044,
+};
+
+static bool change_root(const struct NezhaCameraRegisterIo *io,
+    struct NezhaCameraCaptureClocks *capture, unsigned index, uint32_t fields)
+{
+    const unsigned bit = 1u << index;
+    const uint32_t command = capture_roots[index].command;
+    if (!wait_bits(io, command, CamccUpdate, 0)) {
+        return false;
+    }
+    const uint32_t before = io->read(io->context, command);
+    if (before == UINT32_MAX) {
+        return false;
+    }
+    if ((before & RootForce) == 0) {
+        capture->forced_roots |= bit;
+        change_bits(io, command, RootForce, RootForce);
+    }
+    if (!wait_bits(io, command, clock_off, 0)) {
+        return false;
+    }
+    change_bits(io, command + 4, RootFields, fields);
+    change_bits(io, command, CamccUpdate, CamccUpdate);
+    if (!wait_bits(io, command, CamccUpdate, 0) ||
+        (io->read(io->context, command + 4) & RootFields) != fields) {
+        return false;
+    }
+    if (capture->forced_roots & bit) {
+        change_bits(io, command, RootForce, 0);
+        if (!wait_bits(io, command, RootForce, 0)) {
+            return false;
+        }
+        capture->forced_roots &= ~bit;
+    }
+    return true;
+}
+
+enum NezhaCameraCamccStatus nezha_camera_camcc_acquire_capture(
+    const struct NezhaCameraRegisterIo *io, const struct NezhaCameraCamccLease *top,
+    const struct NezhaCameraPll0Lease *pll, struct NezhaCameraCaptureClocks *capture)
+{
+    if (!io_valid(io) || top == NULL || pll == NULL || capture == NULL || !top->top_ready || !pll->ready) {
+        return NezhaCameraCamccInvalid;
+    }
+    if (capture->ready || capture->gates.enabled_by_us || capture->roots ||
+        capture->forced_roots || capture->tfe_owned || capture->retain_owned) {
+        return NezhaCameraCamccBusy;
+    }
+    capture->failed_step = 1;
+    const uint32_t power = io->read(io->context, CamccTfeStatus);
+    const uint32_t control = io->read(io->context, CamccTfeGdsc);
+    if (power == UINT32_MAX || control == UINT32_MAX) {
+        return NezhaCameraCamccBusy;
+    }
+    if ((power & CamccPowerUp) == 0) {
+        if ((power & CamccPowerDown) == 0 || (control & CamccCollapse) == 0) {
+            return NezhaCameraCamccBusy;
+        }
+        capture->tfe_owned = true;
+        change_bits(io, CamccTfeGdsc, CamccCollapse, 0);
+        if (!wait_bits(io, CamccTfeStatus, CamccPowerUp, CamccPowerUp)) {
+            return NezhaCameraCamccTimeout;
+        }
+        io->wait_ms(io->context, 1);
+        if ((control & CamccRetain) == 0) {
+            capture->retain_owned = true;
+            change_bits(io, CamccTfeGdsc, CamccRetain, CamccRetain);
+        }
+    }
+    for (unsigned i = 0; i < 3; ++i) {
+        capture->failed_step = i + 2;
+        const uint32_t before = io->read(io->context, capture_roots[i].command + 4);
+        if (before == UINT32_MAX) {
+            return NezhaCameraCamccSource;
+        }
+        capture->root_before[i] = before & RootFields;
+        if (capture->root_before[i] != capture_roots[i].fields) {
+            capture->roots |= 1u << i;
+            if (!change_root(io, capture, i, capture_roots[i].fields)) {
+                return NezhaCameraCamccTimeout;
+            }
+        }
+    }
+    for (unsigned i = 0; i < sizeof(capture_branches) / sizeof(capture_branches[0]); ++i) {
+        capture->failed_step = i + 5;
+        if (!enable_branch(io, &capture->gates, capture_branches[i], 1u << i, true)) {
+            return NezhaCameraCamccTimeout;
+        }
+    }
+    capture->failed_step = 0;
+    capture->ready = true;
+    return NezhaCameraCamccOk;
+}
+
+enum NezhaCameraCamccStatus nezha_camera_camcc_release_capture(
+    const struct NezhaCameraRegisterIo *io, struct NezhaCameraCaptureClocks *capture,
+    bool consumers_quiescent)
+{
+    if (!io_valid(io) || capture == NULL) {
+        return NezhaCameraCamccInvalid;
+    }
+    if (!consumers_quiescent) {
+        return NezhaCameraCamccBusy;
+    }
+    capture->ready = false;
+    for (unsigned i = sizeof(capture_branches) / sizeof(capture_branches[0]); i != 0; --i) {
+        if (!disable_owned_branch(io, &capture->gates, capture_branches[i - 1], 1u << (i - 1), true)) {
+            return NezhaCameraCamccTimeout;
+        }
+    }
+    for (unsigned i = 3; i != 0; --i) {
+        const unsigned index = i - 1, bit = 1u << index;
+        if ((capture->roots | capture->forced_roots) & bit) {
+            if (!change_root(io, capture, index, capture->root_before[index])) {
+                return NezhaCameraCamccTimeout;
+            }
+            capture->roots &= ~bit;
+        }
+    }
+    if (capture->retain_owned) {
+        change_bits(io, CamccTfeGdsc, CamccRetain, 0);
+        if (!wait_bits(io, CamccTfeGdsc, CamccRetain, 0)) {
+            return NezhaCameraCamccTimeout;
+        }
+        capture->retain_owned = false;
+    }
+    if (capture->tfe_owned) {
+        change_bits(io, CamccTfeGdsc, CamccCollapse, CamccCollapse);
+        if (!wait_bits(io, CamccTfeStatus, CamccPowerDown, CamccPowerDown)) {
+            return NezhaCameraCamccTimeout;
+        }
+        capture->tfe_owned = false;
     }
     return NezhaCameraCamccOk;
 }

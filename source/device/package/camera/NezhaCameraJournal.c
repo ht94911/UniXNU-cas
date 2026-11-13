@@ -8,6 +8,7 @@
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/vnode.h>
+#include <sys/mount.h>
 #include <sys/uio.h>
 #include <sys/fcntl.h>
 #include <sys/errno.h>
@@ -54,6 +55,16 @@ static int journal_append(const char *line, unsigned bytes, bool create)
             IO_APPEND | IO_SYNC | IO_NOAUTH, vfs_context_ucred(ctx), &residual, vfs_context_proc(ctx));
         if (error == 0 && residual != 0) {
             error = EIO;
+        }
+    }
+    /* IO_SYNC on file data and the UFS cache sync do not alone commit
+     * APFS namespace/checkpoint metadata across an abrupt return. */
+    if (error == 0) {
+        mount_t mount = vnode_mount(file);
+        if (mount == NULL || (vfs_flags(mount) & MNT_RDONLY) != 0) {
+            error = EROFS;
+        } else {
+            error = VFS_SYNC(mount, MNT_WAIT | MNT_VOLUME, ctx);
         }
     }
     const int close_error = vnode_close(file, FWRITE, ctx);

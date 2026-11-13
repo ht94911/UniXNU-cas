@@ -19,6 +19,48 @@ struct CamccModel {
     bool pll_no_lock;
 };
 
+struct CaptureModel {
+    uint32_t word[0x22000 / 4];
+    uint32_t refuse_off;
+};
+
+static uint32_t capture_read(void *context, uint32_t offset)
+{
+    const struct CaptureModel *m = context;
+    assert((offset & 3u) == 0 && offset < sizeof(m->word));
+    return m->word[offset / 4];
+}
+
+static void capture_write(void *context, uint32_t offset, uint32_t value)
+{
+    struct CaptureModel *m = context;
+    assert((offset & 3u) == 0 && offset < sizeof(m->word));
+    if (offset == 0x21004) {
+        m->word[0x21008 / 4] = (value & 1u) ? PowerDown : PowerUp;
+    } else if (offset == 0x20000 || offset == 0x200dc || offset == 0x20100) {
+        if ((value & 1u) != 0) {
+            assert((value & 2u) != 0 && (m->word[offset / 4] & off_bit) == 0);
+        }
+        value = (value & ~off_bit & ~1u) | ((value & 2u) != 0 ? 0 : off_bit);
+    } else if (offset == 0x20004 || offset == 0x200e0 || offset == 0x20104) {
+        assert((m->word[(offset - 4) / 4] & (off_bit | 2u)) == 2u);
+    } else {
+        assert(offset != 0x21064 && offset != 0x212a4 && offset != 0x21018 && offset != 0x212cc);
+        if (value & 1u) {
+            value &= ~off_bit;
+        } else if (offset != m->refuse_off) {
+            value |= off_bit;
+        }
+    }
+    m->word[offset / 4] = value;
+}
+
+static void capture_wait(void *context, unsigned milliseconds)
+{
+    (void)context;
+    assert(milliseconds == 1);
+}
+
 static uint32_t read32(void *context, uint32_t offset)
 {
     const struct CamccModel *model = context;
@@ -219,5 +261,32 @@ int main(void)
     model.pll_l = 0x44440032;
     assert(nezha_camera_camcc_acquire_pll0(&io, &pll) == NezhaCameraCamccBusy && model.writes == 0);
 
-    puts("Camera CAMCC restores owned gates and opens PLL0 outputs only after lock");
+    struct CaptureModel clocks = {0};
+    const struct NezhaCameraRegisterIo clock_io = {&clocks, capture_read, capture_write, capture_wait};
+    clocks.word[0x21004 / 4] = 0x22f001;
+    clocks.word[0x21008 / 4] = PowerDown;
+    clocks.word[0x20000 / 4] = off_bit;
+    clocks.word[0x200dc / 4] = off_bit;
+    clocks.word[0x20100 / 4] = off_bit;
+    clocks.word[0x20004 / 4] = 0x100000;
+    clocks.word[0x212e4 / 4] = 1; // Inherited live gate; the lease won't turn it off.
+    const struct NezhaCameraCamccLease top = {.top_ready = true};
+    const struct NezhaCameraPll0Lease ready_pll = {.ready = true};
+    struct NezhaCameraCaptureClocks capture = {0};
+    assert(nezha_camera_camcc_acquire_capture(&clock_io, &top, &ready_pll, &capture) == NezhaCameraCamccOk);
+    assert(capture.ready && clocks.word[0x21008 / 4] == PowerUp);
+    assert(clocks.word[0x20004 / 4] == 0x100301 && clocks.word[0x20000 / 4] == off_bit);
+    assert(clocks.word[0x200e0 / 4] == 0x100203 && clocks.word[0x20104 / 4] == 0x10020e);
+    assert(nezha_camera_camcc_release_capture(&clock_io, &capture, false) == NezhaCameraCamccBusy);
+    clocks.refuse_off = 0x21044;
+    assert(nezha_camera_camcc_release_capture(&clock_io, &capture, true) == NezhaCameraCamccTimeout);
+    assert(clocks.word[0x21008 / 4] == PowerUp && clocks.word[0x20104 / 4] == 0x10020e);
+    clocks.refuse_off = 0;
+    clocks.word[0x21044 / 4] |= off_bit; // Hardware completes the issued stop.
+    assert(nezha_camera_camcc_release_capture(&clock_io, &capture, true) == NezhaCameraCamccOk);
+    assert(clocks.word[0x21008 / 4] == PowerDown && clocks.word[0x212e4 / 4] == 1);
+    assert(clocks.word[0x20004 / 4] == 0x100000 && clocks.word[0x200e0 / 4] == 0);
+    assert(!capture.gates.enabled_by_us && !capture.roots && !capture.tfe_owned);
+
+    puts("Camera CAMCC owns only C2 gates and software roots, with PLL lock and stop checks");
 }

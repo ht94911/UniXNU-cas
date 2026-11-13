@@ -26,6 +26,23 @@ struct NezhaCameraPll0Lease {
     bool owned, configured, ready;
 };
 
+struct NezhaCameraCaptureClocks {
+    struct NezhaCameraCamccLease gates;
+    uint32_t root_before[3];
+    unsigned roots, forced_roots, failed_step;
+    bool tfe_owned, retain_owned, ready;
+};
+
+/* C2 branch group after the top domain, PLL0, CRM votes and interconnect
+ * are live. Configure only the software-owned roots: timer and AHB.
+ * TFE, CSID, C-PHY RX and CAMNOC rate transitions belong to CRM. */
+enum NezhaCameraCamccStatus nezha_camera_camcc_acquire_capture(
+    const struct NezhaCameraRegisterIo *io, const struct NezhaCameraCamccLease *top,
+    const struct NezhaCameraPll0Lease *pll, struct NezhaCameraCaptureClocks *capture);
+enum NezhaCameraCamccStatus nezha_camera_camcc_release_capture(
+    const struct NezhaCameraRegisterIo *io, struct NezhaCameraCaptureClocks *capture,
+    bool consumers_quiescent);
+
 /* CAM PLL0 serves the PHY timer and the first C-PHY/CSID clock plans.
  * Caller owns this camera domain and has taken the stock calibration
  * floor on VDD_MXC (LOW_SVS_D1 for the 1.306 GHz calibration). A live,

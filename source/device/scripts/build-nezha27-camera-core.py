@@ -25,6 +25,8 @@ def tool(env_name, mac_name, local_name):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", type=Path, default=ROOT / "build/nezha27-camera-core")
+    parser.add_argument("--shared-soc-include", type=Path,
+                        help="the selected common SM8850 owner for native C2")
     args = parser.parse_args()
 
     kit = ROOT / "kits/nezha/camera"
@@ -35,8 +37,11 @@ def main():
         from kernel_target import check_object
 
         helper = runpy.run_path(str(ROOT / "scripts/build-sheng-source-drivers.py"))
-        record = ROOT / "build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837/bsd/DEVELOPMENT/bsd_init.o.json"
-        compile_record = json.loads(record.read_text().strip().rstrip(","))
+        objects_dir = ROOT / "build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837"
+        records = {}
+        for suffix, relative in ((".c", "bsd/DEVELOPMENT/bsd_init.o.json"),
+                                 (".cpp", "iokit/DEVELOPMENT/IOPlatformExpert.cpo.json")):
+            records[suffix] = json.loads((objects_dir / relative).read_text().strip().rstrip(","))
         modules += ("Journal", "Probe")
     else:
         kit = ROOT / "package/camera"
@@ -50,6 +55,12 @@ def main():
     objects = []
     sources = [kit / ("NezhaCamera" + module + ".c") for module in modules]
     sources.append(kit / "upstream/QcomRpmh.c")
+    if staged:
+        sources.append(kit / "NezhaCameraNativeMemory.cpp")
+        if args.shared_soc_include is not None:
+            sources.append(kit / "NezhaCameraNativeSmmu.cpp")
+    elif args.shared_soc_include is not None:
+        parser.error("C2 shared-SMMU adapter requires the native staged build")
     for source in sources:
         name = source.stem
         obj = out / (name + ".arm64e.o")
@@ -58,6 +69,11 @@ def main():
             if name == "NezhaCameraProbe":
                 includes += ["-I", str(ROOT / "drivers/QcomXnuUsbDebug/include"),
                              "-I", str(ROOT / "kits/nezha/nezha27-input")]
+            if source.suffix == ".cpp":
+                includes += ["-I", str(ROOT / "refer/Adreno740"), "-I", str(ROOT / ".cache/xnu-work/osfmk")]
+            if name == "NezhaCameraNativeSmmu":
+                includes += ["-I", str(args.shared_soc_include.resolve())]
+            compile_record = records[source.suffix]
             command = helper["compile_command"](compile_record, source, obj, includes, [])
             subprocess.run(command, cwd=compile_record["directory"], check=True)
             check_object(obj.read_bytes(), name)
