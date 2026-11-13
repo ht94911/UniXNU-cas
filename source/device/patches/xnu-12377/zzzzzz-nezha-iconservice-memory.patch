@@ -1,0 +1,44 @@
+diff --git a/bsd/kern/kern_memorystatus.c b/bsd/kern/kern_memorystatus.c
+--- a/bsd/kern/kern_memorystatus.c
++++ b/bsd/kern/kern_memorystatus.c
+@@ -185,5 +185,26 @@
+ static int memorystatus_highwater_enabled = 1;  /* Update the cached memlimit data. */
+ 
++/*
++ * The 24A446 icon service keeps its in-process native Metal device after work.
++ * Its original 15 MiB inactive allowance killed it at 114/192 MiB on nezha,
++ * with more than 1 GiB of free pages. Keep the existing finite active allowance
++ * while idle too. Pressure priority, idle exit, active limit and fatality stay
++ * with the original policy. Other processes and other limit pairs are unchanged.
++ */
++static TUNABLE(bool, nezha_icon_memory, "nezha-icon-memory", false);
++
++static int32_t
++nezha_icon_inactive_limit(bool enabled, const char *name, int32_t active,
++    int32_t inactive, memlimit_options_t options)
++{
++	if (enabled && active == 200 && inactive == 15 &&
++	    (options & (MEMLIMIT_ACTIVE_FATAL | MEMLIMIT_INACTIVE_FATAL)) == MEMLIMIT_INACTIVE_FATAL &&
++	    strcmp(name, "iconservicesagent") == 0) {
++		return active;
++	}
++	return inactive;
++}
++
+ /*
+  * Cache this proc's active limit as its current limit before writing it to
+  * the ledger. Returns whether the new limit should be written to the ledger.
+@@ -3235,6 +3256,13 @@
+ 	int err = 0;
+ 	LCK_MTX_ASSERT(&proc_list_mlock, LCK_MTX_ASSERT_OWNED);
+ 
++	const int32_t adjusted = nezha_icon_inactive_limit(nezha_icon_memory,
++	    proc_best_name(p), active_limit, inactive_limit, options);
++	if (adjusted != inactive_limit) {
++		printf("NEZHA ICON MEMORY: pid %d active %d inactive %d->%d MB flags 0x%x\n",
++		    proc_getpid(p), active_limit, inactive_limit, adjusted, (unsigned int)options);
++		inactive_limit = adjusted;
++	}
+ 	int32_t default_active_limit = memorystatus_get_default_task_active_limit(p);
+ 	int32_t default_inactive_limit = memorystatus_get_default_task_inactive_limit(p);
+ 

@@ -154,7 +154,13 @@ def build(framework, work):
         code = run(command, cwd=framework, log=logs / ('step-' + str(index) + '.log'))
         if code:
             return code
-    return 0
+    sources = list((work / 'out/nezha/ios-27.0.1-24A446-iphone14-4').glob(
+        '*/tree/.cache/xnu-work/bsd/kern/kern_memorystatus.c'))
+    if len(sources) != 1:
+        raise ValueError('select the actual compiled memorystatus source')
+    return run([sys.executable, work / 'device/scripts/check-iconservice-memory.py',
+                '--source', sources[0], '--out', work / 'icon-memory-host'],
+               log=logs / 'icon-memory-host.log')
 
 
 def reference(framework, work):
@@ -192,6 +198,8 @@ def collect(framework, work, sealed):
     for name in ('source-report.json', 'integration-source-qualified.json', 'compiler-report.json', 'authenticated-null.c',
                  'authenticated-null.o', 'authenticated-null.s'):
         add(work / name, name)
+    for name in ('report.json', 'actual-memory-limit.c', 'execution.txt'):
+        add(work / 'icon-memory-host' / name, 'icon-memory-host/' + name)
     for path in sorted((work / 'logs').glob('*.log')):
         add(path, 'logs/' + path.name)
     for path in sorted((work.parent / 'setup-logs').glob('*.log')):
@@ -244,6 +252,8 @@ def collect(framework, work, sealed):
         for name in ('link.filelist', 'all-alias.exp'):
             add(objects / name, 'objects/' + name)
         add(tree / 'build/xnu/owner-data-volume.h', 'build/owner-data-volume.h')
+        for name in ('kern_memorystatus.c', 'kern_exec.c'):
+            add(tree / '.cache/xnu-work/bsd/kern' / name, 'compiled-source/' + name)
         reference = tree / 'build/xnu/fileset-reference'
         for path in sorted(reference.glob('*.json')):
             add(path, 'reference/' + path.name)
@@ -264,7 +274,7 @@ def collect(framework, work, sealed):
             for name in ('inputs.json', 'source-sha256.json', 'lto-command.json', 'lto-build.log'):
                 add(selected / name, 'reference/' + name)
         for stem in ('start', 'pe_kprintf', 'debug', 'printf', 'serial_console', 'serial_general',
-                     'bsd_init', 'subr_prf', 'arm_init', 'startup', 'machine_routines', 'IOUserServer'):
+                     'bsd_init', 'subr_prf', 'arm_init', 'startup', 'machine_routines', 'IOUserServer', 'kern_memorystatus'):
             for path in sorted(objects.glob('**/' + stem + '.o*')):
                 if path.suffix in ('.o', '.json'):
                     add(path, 'objects/' + str(path.relative_to(objects)))
