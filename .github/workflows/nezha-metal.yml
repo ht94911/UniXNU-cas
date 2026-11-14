@@ -1,7 +1,7 @@
 name: nezha iPhone27 icon limits and pressure source 040
 on:
   push:
-    branches: [codex/ios27-gpu27-metal-full-040-20261114]
+    branches: [codex/ios27-gpu27-metal-full-040b-20261114]
   workflow_dispatch:
 permissions:
   contents: read
