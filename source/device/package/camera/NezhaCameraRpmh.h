@@ -33,7 +33,10 @@ enum NezhaCameraArcRail { NezhaCameraArcMmCx, NezhaCameraArcMxC, NezhaCameraArcM
 
 struct NezhaCameraArcState {
     QcomRpmhResource resource;
-    uint32_t original_index, observed_index, requested_index;
+    /* This APPS consumer's acknowledged request, as in the stock
+     * rpmh_regulator_arc_get_voltage_sel. It is not a measured voltage
+     * or the aggregate level held by other remote RPMh requesters. */
+    uint32_t original_index, current_index, requested_index;
     bool changed;
 };
 

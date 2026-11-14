@@ -1,7 +1,7 @@
-name: nezha iPhone27 camera ACV and main RAW10 capture
+name: nezha iPhone27 camera ARC requester state and main RAW10 capture
 on:
   push:
-    branches: [codex/ios27-camera013-acv-20261114]
+    branches: [codex/ios27-camera014-arc-20261114]
   workflow_dispatch:
 permissions:
   contents: read

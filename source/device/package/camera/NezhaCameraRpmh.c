@@ -409,20 +409,6 @@ bool nezha_camera_rpmh_release_phy(struct NezhaCameraRpmh *owner, enum NezhaCame
         release_vrm(owner, FirstPhy + (unsigned)rail);
 }
 
-static bool read_arc(struct NezhaCameraRpmh *owner, struct NezhaCameraArcState *arc)
-{
-    uint32_t reply;
-    if (!transact(owner, arc->resource.address, 0, &reply)) {
-        return false;
-    }
-    if (reply >= arc->resource.level_count) {
-        owner->status = NezhaCameraRpmhReadback;
-        return false;
-    }
-    arc->observed_index = reply;
-    return true;
-}
-
 bool nezha_camera_rpmh_acquire_arc(struct NezhaCameraRpmh *owner,
     enum NezhaCameraArcRail rail, unsigned level)
 {
@@ -436,22 +422,27 @@ bool nezha_camera_rpmh_acquire_arc(struct NezhaCameraRpmh *owner,
         owner->status = NezhaCameraRpmhInvalid;
         return false;
     }
-    if (arc->changed || !read_arc(owner, arc)) {
+    if (arc->changed || arc->current_index >= arc->resource.level_count) {
         return false;
     }
-    arc->original_index = arc->observed_index;
+    arc->original_index = arc->current_index;
     arc->requested_index = index;
-    if (arc->resource.levels[arc->observed_index] >= level) {
+    if (arc->resource.levels[arc->current_index] >= level) {
         return true;
     }
     arc->changed = true;
-    if (!transact(owner, arc->resource.address, index, NULL) || !read_arc(owner, arc)) {
+    /* Stock OnePlus SM8850 fc30e54174d2 rpmh-regulator.c functions
+     * rpmh_regulator_arc_get_voltage_sel / send_aggregate_requests cache
+     * the APPS request and wait for
+     * an ACK when raising it. The raw read response is not that getter:
+     * camera013 read zero after a fully acknowledged index3 request.
+     * Linux rpmhpd_send_corner likewise uses ACK plus active_corner.
+     * This isolated capture package is the sole local MMCX/MXC ARC
+     * requester; GPU firmware retains its separate GMU request. */
+    if (!transact(owner, arc->resource.address, index, NULL)) {
         return false;
     }
-    if (arc->observed_index != index) {
-        owner->status = NezhaCameraRpmhReadback;
-        return false;
-    }
+    arc->current_index = index;
     return true;
 }
 
@@ -464,22 +455,16 @@ bool nezha_camera_rpmh_release_arc(struct NezhaCameraRpmh *owner, enum NezhaCame
     if (!arc->changed) {
         return true;
     }
-    if (!read_arc(owner, arc)) {
-        return false;
-    }
-    if (arc->observed_index != arc->original_index && arc->observed_index != arc->requested_index) {
+    if (arc->current_index != arc->original_index && arc->current_index != arc->requested_index) {
         owner->status = NezhaCameraRpmhReadback;
         return false;
     }
-    /* Even an unchanged readback does not retract our acknowledged vote.
-     * Submit the saved APPS request before releasing this resource. */
-    if (!transact(owner, arc->resource.address, arc->original_index, NULL) || !read_arc(owner, arc)) {
+    /* A partial or rejected transaction retains changed until the
+     * original request has received its own completion ACK. */
+    if (!transact(owner, arc->resource.address, arc->original_index, NULL)) {
         return false;
     }
-    if (arc->observed_index != arc->original_index) {
-        owner->status = NezhaCameraRpmhReadback;
-        return false;
-    }
+    arc->current_index = arc->original_index;
     arc->changed = false;
     return true;
 }

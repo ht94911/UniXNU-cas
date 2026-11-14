@@ -162,16 +162,21 @@ int main(void)
     rsc.reg[(Tcs + 0x2c) / 4] = 0;
     assert(nezha_camera_rpmh_init(&owner, &io, db, sizeof(db)));
     assert(nezha_camera_rpmh_init_capture(&owner, db, sizeof(db)));
+    /* A pre-existing local requester floor is known from this owner's
+     * acknowledged ledger. Remote aggregate/RSC data is not the ledger. */
+    owner.arc[0].current_index = 1;
+    owner.arc[1].current_index = 4;
     const unsigned before_arc = rsc.votes;
+    const unsigned before_arc_reads = rsc.reads;
     assert(nezha_camera_rpmh_acquire_arc(&owner, NezhaCameraArcMmCx, 55));
-    assert(rsc.mv[5] == 3 && owner.arc[0].observed_index == 3 && rsc.votes == before_arc + 1);
+    assert(rsc.mv[5] == 3 && owner.arc[0].current_index == 3 && rsc.votes == before_arc + 1);
     assert(nezha_camera_rpmh_release_arc(&owner, NezhaCameraArcMmCx));
     assert(rsc.mv[5] == 1 && rsc.votes == before_arc + 2);
     assert(nezha_camera_rpmh_acquire_arc(&owner, NezhaCameraArcMxC, 56));
     assert(nezha_camera_rpmh_release_arc(&owner, NezhaCameraArcMxC));
     assert(rsc.mv[6] == 4 && rsc.votes == before_arc + 2);
     assert(!nezha_camera_rpmh_acquire_arc(&owner, NezhaCameraArcMx, 65));
-    assert(rsc.votes == before_arc + 2);
+    assert(rsc.votes == before_arc + 2 && rsc.reads == before_arc_reads);
     assert(nezha_camera_rpmh_acquire_phy(&owner, NezhaCameraPhy0p9));
     assert(rsc.mv[4] == 880 && rsc.on[4] == 1);
     assert(nezha_camera_rpmh_release_phy(&owner, NezhaCameraPhy0p9));
@@ -194,10 +199,21 @@ int main(void)
     assert(nezha_camera_rpmh_release(&owner, NezhaCameraMainBob2) && rsc.on[0] == 0);
     assert(nezha_camera_rpmh_init_capture(&owner, db, sizeof(db)));
     const unsigned before_zero_arc = rsc.votes;
-    assert(!nezha_camera_rpmh_acquire_arc(&owner, NezhaCameraArcMmCx, 64));
-    assert(owner.arc[0].changed && rsc.mv[5] == 4);
+    const unsigned before_zero_reads = rsc.reads;
+    assert(nezha_camera_rpmh_acquire_arc(&owner, NezhaCameraArcMmCx, 64));
+    assert(owner.arc[0].changed && owner.arc[0].current_index == 4 && rsc.mv[5] == 4);
     assert(nezha_camera_rpmh_release_arc(&owner, NezhaCameraArcMmCx));
-    assert(!owner.arc[0].changed && rsc.mv[5] == 0 && rsc.votes == before_zero_arc + 2);
+    assert(!owner.arc[0].changed && rsc.mv[5] == 0 && rsc.votes == before_zero_arc + 2 &&
+        rsc.reads == before_zero_reads);
+    rsc.failed_offset = Tcs + Address;
+    assert(!nezha_camera_rpmh_acquire_arc(&owner, NezhaCameraArcMmCx, 64));
+    assert(owner.arc[0].changed && owner.arc[0].current_index == 0 && owner.unsettled);
+    assert(!nezha_camera_rpmh_release_arc(&owner, NezhaCameraArcMmCx) && owner.arc[0].changed);
+    /* Recover the known idle fixture only; production must retain it. */
+    rsc.failed_offset = 0;
+    rsc.reg[(Tcs + Control) / 4] = rsc.reg[(Tcs + 0x2c) / 4] = rsc.reg[(Tcs + 0x20) / 4] = 0;
+    rsc.reg[IrqStatus / 4] &= ~Slot;
+    assert(nezha_camera_rpmh_init_guarded(&owner, &guarded_io, &guard, db, sizeof(db)));
     rsc.zero_readback = false;
     const unsigned reads = rsc.reads, votes = rsc.votes, waits = rsc.waits;
     rsc.failed_offset = Tcs + Address;
@@ -205,5 +221,5 @@ int main(void)
     assert(owner.unsettled && !rsc.locked && owner.status == NezhaCameraRpmhReadback);
     assert(!nezha_camera_rpmh_acquire(&owner, NezhaCameraMainVio, 1800));
     assert(rsc.reads == reads && rsc.votes == votes && rsc.waits == waits);
-    puts("Camera RPMh restores the owned VRM setpoints and ARC indexes without lowering inherited floors");
+    puts("Camera RPMh restores VRM state and acknowledged local ARC floors without treating an RSC response as voltage");
 }
