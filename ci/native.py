@@ -128,23 +128,24 @@ def build_camera_userland(work, sdk):
     source = work / 'device/package/camera/userland'
     output = work / 'camera-userland'
     output.mkdir(exist_ok=False)
-    units = ['NezhaCameraPreview', 'NezhaCameraPixelBuffer', 'NezhaCameraGraphOutput',
-             'NezhaFigCapture24A446', 'NezhaCameraFigProvider']
+    units = ['NezhaCameraPreview.c', 'NezhaCameraPixelBuffer.c', 'NezhaCameraGraphOutput.c',
+             'NezhaFigCapture24A446.c', 'NezhaCameraFigProvider.c', 'NezhaCameraFormats.c',
+             'NezhaCameraFactory.c', 'NezhaCameraDeviceBackend.c', 'NezhaCameraSystemVendor.m']
     flags = ['xcrun', '--sdk', 'iphoneos', 'clang', '-target', 'arm64e-apple-ios27.0',
              '-isysroot', sdk, '-std=gnu11', '-O2', '-fblocks', '-fPIC',
              '-Wall', '-Wextra', '-Werror', '-I', str(source)]
     objects = []
-    for unit in [*units, 'upstream/hakios/camera_isp']:
-        obj = output / (Path(unit).name + '.o')
+    for unit in [*units, 'upstream/hakios/camera_isp.c']:
+        obj = output / (Path(unit).stem + '.o')
         command = [*flags]
         if unit.startswith('upstream/'):
             command += ['-Wno-unused-parameter']
-        run([*command, '-c', source / (unit + '.c'), '-o', obj])
+        run([*command, '-c', source / unit, '-o', obj])
         objects.append(obj)
     library = output / 'libNezhaCamera27.dylib'
     run([*flags, '-dynamiclib', '-install_name', '@rpath/libNezhaCamera27.dylib',
          *objects, '-framework', 'CoreFoundation', '-framework', 'CoreMedia',
-         '-framework', 'CoreVideo', '-o', library])
+         '-framework', 'CoreVideo', '-lobjc', '-o', library])
     run([*flags, '-S', source / 'NezhaCameraFigProvider.c', '-o', output / 'FigProvider.s'])
     (output / 'sdk-qualified.json').write_text(json.dumps({
         'compiler': run(['xcrun', '--sdk', 'iphoneos', 'clang', '--version']),

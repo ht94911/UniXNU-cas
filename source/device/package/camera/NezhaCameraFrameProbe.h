@@ -31,6 +31,24 @@ struct NezhaCameraFrameResult {
     bool sampled[2];
 };
 
+/* Continuous worker's CPU reader. Deliver finishes before this exact DMA
+ * buffer is republished. It returns false on consumer failure. Continue
+ * also gates callback-triggered Stop before any requeue. */
+struct NezhaCameraFrameConsumer {
+    void *context;
+    bool (*continuing)(void *);
+    bool (*deliver)(void *, const struct NezhaCameraRaw10Layout *, const uint8_t *,
+        size_t bytes, uint64_t completed_time, uint32_t sequence);
+};
+
+/* Drain one completed frame with a bounded wait from an already running
+ * capture. The caller repeats only while its real client remains active,
+ * then stops producers/IRQ and drains DMA through the existing teardown. */
+enum NezhaCameraFrameStatus nezha_camera_frame_consume(
+    const struct NezhaCameraMainCaptureIo *io, struct NezhaCameraMainCapture *capture,
+    const struct NezhaCameraRegisterIo *csid, const struct NezhaCameraFrameMemoryIo *memory,
+    const struct NezhaCameraFrameConsumer *consumer, unsigned budget_ms);
+
 /* Collect up to 20 completed frames from the already streaming RDI0.
  * A completion must name the expected queue head. Sample several rows
  * after cache acquisition to detect an untouched sentinel or an empty

@@ -48,6 +48,9 @@ struct NezhaCamera1080Events {
     uint32_t rdi0_irq;
     uint32_t buffer_irq;
     uint32_t consumed_address;
+    /* Native IRQ time for this completion; preserved through the queue.
+     * Poll-only diagnostic callers can leave this zero. */
+    uint64_t completed_time;
     bool updated;
     bool start_of_frame;
     bool end_of_frame;

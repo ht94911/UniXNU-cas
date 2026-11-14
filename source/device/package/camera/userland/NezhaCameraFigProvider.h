@@ -14,6 +14,10 @@ struct NezhaCameraFigBackend {
     void *context;
     NezhaFigStatus (*begin)(void *);
     NezhaFigStatus (*end)(void *);
+    /* Optional frame-reader binding. The device owns the stream while
+     * bound. Finalize stops the reader and unbinds before dropping that
+     * stream. A backend can reject a second simultaneous stream. */
+    NezhaFigStatus (*bind_stream)(void *, NezhaFigObject);
 };
 
 /* Create one rear-wide stream for the already qualified main-sensor
@@ -34,5 +38,14 @@ NezhaFigStatus nezha_camera_fig_provider_create(NezhaFigAllocator allocator,
 NezhaFigStatus nezha_camera_fig_provider_deliver(NezhaFigObject device,
     const struct NezhaCameraPreviewFrame *frame, const uint8_t *raw,
     size_t raw_bytes, uint64_t completed_time, CFDictionaryRef metadata);
+
+/* Queue one completed CPU frame without blocking its reader behind the
+ * property queue. The caller retains raw until release(context); the
+ * provider retains its stream while queued. Stop/restart discards an old
+ * reservation's queued frame through the same stream generation gate. */
+NezhaFigStatus nezha_camera_fig_stream_enqueue(NezhaFigObject stream,
+    const struct NezhaCameraPreviewFrame *frame, const uint8_t *raw,
+    size_t raw_bytes, uint64_t completed_time, CFDictionaryRef metadata,
+    void (*release)(void *), void *context);
 
 #endif

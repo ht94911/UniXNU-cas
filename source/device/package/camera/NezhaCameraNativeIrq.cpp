@@ -2,6 +2,7 @@
 #include "NezhaCameraNativeIrq.h"
 
 #include <IOKit/IOLib.h>
+#include <kern/clock.h>
 
 extern "C" IOReturn armcpu_spi_attach(uint32_t, bool, void (*)(void *),
     void *, uint32_t *, uint64_t *);
@@ -23,7 +24,7 @@ struct NezhaCameraNativeIrq {
     NezhaCamera1080Events failure{};
     uint32_t fault{}, handlers{}, spi_readback{};
     uint64_t spi_route{};
-    bool used{}, armed{};
+    bool used{}, armed{}, stopped{};
 };
 
 static NezhaCameraNativeIrq irq;
@@ -41,6 +42,7 @@ static void interrupt(void *cookie)
     if (__atomic_load_n(&owner->armed, __ATOMIC_SEQ_CST)) {
         NezhaCamera1080Events event{};
         const bool read = nezha_camera1080_take_rdi0_events(&owner->csid, &owner->vfe, &event);
+        if (read && event.buffer_done) event.completed_time = mach_absolute_time();
         const bool failed = (event.rx_irq & RxErrors) || (event.rdi0_irq & RdiErrors);
         const bool frame_event = event.updated || event.start_of_frame || event.end_of_frame || event.buffer_done;
         if (!read || failed || (frame_event && !nezha_camera_irq_push(&owner->queue, &event))) {
@@ -56,16 +58,21 @@ static void interrupt(void *cookie)
 bool nezha_camera_native_irq_open(NezhaCameraNativeIrq **out,
     const NezhaCameraRegisterIo *csid, const NezhaCameraRegisterIo *vfe)
 {
-    if (!out || *out || !csid || !csid->read || !csid->write || !vfe || !vfe->read || irq.used) {
+    if (!out || *out || !csid || !csid->read || !csid->write || !vfe || !vfe->read ||
+        (irq.used && (!irq.stopped || irq.fault || irq.handlers))) {
         return false;
     }
     for (uint32_t offset : masks) if (csid->read(csid->context, offset) != 0) return false;
+    const bool attached = irq.used;
     irq.used = true;
+    irq.stopped = false;
+    irq.queue = {};
+    irq.failure = {};
     irq.csid = *csid;
     irq.vfe = *vfe;
     *out = &irq;
     // Stock CSID0 SPI 0x259, rising-edge. ArmCpu accepts the architectural INTID.
-    if (armcpu_spi_attach(32u + 0x259u, true, interrupt, &irq, &irq.spi_readback, &irq.spi_route) != kIOReturnSuccess ||
+    if ((!attached && armcpu_spi_attach(32u + 0x259u, true, interrupt, &irq, &irq.spi_readback, &irq.spi_route) != kIOReturnSuccess) ||
         (irq.spi_readback & 7u) != 7u) return false;
     constexpr uint32_t BufferDone = 1u << 16;
     __atomic_store_n(&irq.armed, true, __ATOMIC_SEQ_CST);
@@ -106,6 +113,7 @@ bool nezha_camera_native_irq_stop(NezhaCameraNativeIrq *owner)
     for (unsigned ms = 0; ms <= 100; ++ms) {
         if (__atomic_load_n(&owner->handlers, __ATOMIC_SEQ_CST) == 0) {
             for (uint32_t offset : masks) if (owner->csid.read(owner->csid.context, offset) != 0) return false;
+            owner->stopped = true;
             return true;
         }
         if (ms < 100) IOSleep(1);

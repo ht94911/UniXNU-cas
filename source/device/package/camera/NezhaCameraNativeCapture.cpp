@@ -21,6 +21,7 @@ struct RegisterWindow {
 
 struct Capture {
     RegisterWindow window[11]{};
+    RegisterWindow gpio_window{}, mclk_window{};
     NezhaCameraRegisterIo reg[11]{};
     NezhaCameraGccIo gcc{};
     NezhaCameraCsiphy24Io phy{};
@@ -37,7 +38,8 @@ struct Capture {
     NezhaCameraMainCaptureIo capture_io{};
     NezhaCameraMainCapture capture{};
     uint32_t cci_mask{}, timing[5]{};
-    bool used{}, cci_touched{}, dma_touched{};
+    bool used{}, cci_touched{}, dma_touched{}, running{}, cancelled{};
+    unsigned stopped{};
 };
 
 Capture state;
@@ -105,6 +107,20 @@ bool frame_next(void *cookie, NezhaCamera1080Events *event)
     return nezha_camera_native_irq_next(static_cast<Capture *>(cookie)->irq, event);
 }
 
+bool client_continuing(void *cookie)
+{
+    const auto *request = static_cast<const NezhaCameraNativeCaptureRequest *>(cookie);
+    return !__atomic_load_n(&state.stopped, __ATOMIC_ACQUIRE) &&
+        request->consumer->continuing(request->consumer->context);
+}
+
+bool client_deliver(void *cookie, const NezhaCameraRaw10Layout *layout, const uint8_t *frame,
+    size_t bytes, uint64_t ticks, uint32_t sequence)
+{
+    const auto *request = static_cast<const NezhaCameraNativeCaptureRequest *>(cookie);
+    return request->consumer->deliver(request->consumer->context, layout, frame, bytes, ticks, sequence);
+}
+
 bool cci_idle(const NezhaCameraRegisterIo &bus)
 {
     return bus.read(bus.context, 0x304) == 0 && bus.read(bus.context, 0x404) == 0 &&
@@ -149,6 +165,10 @@ bool checkpoint(const NezhaCameraNativeCaptureRequest &request, NezhaCameraNativ
     NezhaCameraNativeCaptureStep step, unsigned a = 0, unsigned b = 0, unsigned c = 0)
 {
     result.step = step;
+    if (request.consumer && !client_continuing(const_cast<NezhaCameraNativeCaptureRequest *>(&request))) {
+        state.cancelled = true;
+        return false;
+    }
     return !request.checkpoint || request.checkpoint(step, a, b, c);
 }
 
@@ -217,6 +237,8 @@ bool nezha_camera_native_capture(const NezhaCameraNativeCaptureRequest *request,
 {
     if (!request || !result || state.used ||
         !request->command_database || request->database_bytes != 0x20000) return false;
+    if (request->consumer && (request->test_pattern || request->raw_sample ||
+        !request->consumer->continuing || !request->consumer->deliver)) return false;
     *result = {};
     result->step = NezhaNativeProfile;
     const bool pattern = request->test_pattern;
@@ -228,33 +250,44 @@ bool nezha_camera_native_capture(const NezhaCameraNativeCaptureRequest *request,
     const size_t sample_bytes = size_t(width) * height * 5 / 4;
     if (request->raw_sample && request->raw_sample_capacity < sample_bytes) return false;
     state.used = true;
-    if (!checkpoint(*request, *result, NezhaNativeSharedOwners, physical[Camcc], physical[Csid], physical[Vfe])) return false;
+    state.stopped = 0;
+    state.cancelled = false;
+    if (!checkpoint(*request, *result, NezhaNativeSharedOwners, physical[Camcc], physical[Csid], physical[Vfe])) {
+        if (state.cancelled) {
+            state.used = false;
+            result->passed = result->cleaned = true;
+            result->cleanup_step = NezhaNativeCleanupDone;
+        }
+        return result->passed;
+    }
     result->step = NezhaNativeRegisterMap;
     for (unsigned i = 0; i < sizeof(physical) / sizeof(physical[0]); ++i) {
         if ((pattern && (i == Phy || i == Cci)) || (!pattern && i == Tpg)) continue;
-        state.window[i] = {ml_io_map(physical[i], sizes[i]), sizes[i]};
         if (!state.window[i].address) {
-            result->status = physical[i];
-            return false;
+            state.window[i] = {ml_io_map(physical[i], sizes[i]), sizes[i]};
+            if (!state.window[i].address) {
+                result->status = physical[i];
+                return false;
+            }
+            // Unaligned DT apertures retain a view of a permanent map.
+            if (i == Crmc) { state.window[i].address += 0x600; state.window[i].bytes -= 0x600; }
+            if (i == CrmCommon) { state.window[i].address += 0xc00; state.window[i].bytes -= 0xc00; }
         }
         state.reg[i] = {&state.window[i], read, write, wait};
     }
-    // Unaligned DT apertures are views of their correctly page-covered maps.
-    state.window[Crmc].address += 0x600;
-    state.window[Crmc].bytes -= 0x600;
-    state.window[CrmCommon].address += 0xc00;
-    state.window[CrmCommon].bytes -= 0xc00;
-    RegisterWindow gpio_window{pattern ? 0 : ml_io_map(NezhaCameraGpioPhysical, NezhaCameraGpioBytes),
-        NezhaCameraGpioBytes + NezhaCameraGpioOffset};
-    RegisterWindow mclk_window{pattern ? 0 : ml_io_map(0x1764000, 0x1000), 0x1000};
     if (!pattern) {
-        if (!gpio_window.address || !mclk_window.address) {
-            result->status = !gpio_window.address ? NezhaCameraGpioPhysical : 0x1764000;
+        if (!state.gpio_window.address) {
+            const vm_offset_t address = ml_io_map(NezhaCameraGpioPhysical, NezhaCameraGpioBytes);
+            if (address) state.gpio_window = {address - NezhaCameraGpioOffset,
+                NezhaCameraGpioBytes + NezhaCameraGpioOffset};
+        }
+        if (!state.mclk_window.address) state.mclk_window = {ml_io_map(0x1764000, 0x1000), 0x1000};
+        if (!state.gpio_window.address || !state.mclk_window.address) {
+            result->status = !state.gpio_window.address ? NezhaCameraGpioPhysical : 0x1764000;
             return false;
         }
-        gpio_window.address -= NezhaCameraGpioOffset;
     }
-    const NezhaCameraRegisterIo gpio{&gpio_window, read, write, wait}, mclk{&mclk_window, read, write, wait};
+    const NezhaCameraRegisterIo gpio{&state.gpio_window, read, write, wait}, mclk{&state.mclk_window, read, write, wait};
     result->step = NezhaNativeGccOwner;
     if (!nezha_camera_native_gcc(&state.gcc)) return false;
     result->step = NezhaNativeRpmhOwner;
@@ -267,6 +300,7 @@ bool nezha_camera_native_capture(const NezhaCameraNativeCaptureRequest *request,
     state.resources_io = {&state.gcc, &state.reg[Camcc], &state.reg[Crm], &state.reg[Crmc],
         &state.reg[CrmCommon], &state.reg[IfeRsc], &state.reg[Cpas], &state.phy, state.rpmh};
     state.camss = {&state, write_csid, write_vfe};
+    state.capture_io = {};
     state.capture_io.cci = pattern ? nullptr : &state.reg[Cci];
     state.capture_io.tpg = pattern ? &state.reg[Tpg] : nullptr;
     state.capture_io.camss = &state.camss;
@@ -345,8 +379,21 @@ bool nezha_camera_native_capture(const NezhaCameraNativeCaptureRequest *request,
         // consuming the two-frame queue.
         result->step = NezhaNativeFrames;
         const NezhaCameraFrameMemoryIo memory{&state, frame_acquire, frame_return, frame_fault, frame_next};
-        result->status = nezha_camera_frame_probe(&state.capture_io, &state.capture, &state.reg[Csid],
-            &state.reg[Vfe], &memory, 20, 3000, &result->frames);
+        if (request->consumer) {
+            const NezhaCameraFrameConsumer client{const_cast<NezhaCameraNativeCaptureRequest *>(request),
+                client_continuing, client_deliver};
+            __atomic_store_n(&state.running, true, __ATOMIC_RELEASE);
+            result->status = NezhaFramesOk;
+            while (client_continuing(client.context)) {
+                result->status = nezha_camera_frame_consume(&state.capture_io, &state.capture,
+                    &state.reg[Csid], &memory, &client, 1000);
+                if (result->status != NezhaFramesOk) break;
+            }
+            result->frames.frames = state.capture.completed_frames;
+        } else {
+            result->status = nezha_camera_frame_probe(&state.capture_io, &state.capture, &state.reg[Csid],
+                &state.reg[Vfe], &memory, 20, 3000, &result->frames);
+        }
         okay = result->status == NezhaFramesOk;
     } while (false);
     result->identity = state.capture.identity;
@@ -359,7 +406,29 @@ bool nezha_camera_native_capture(const NezhaCameraNativeCaptureRequest *request,
     result->rpmh_reply = state.rpmh->last_reply;
     if (state.capture.stage >= NezhaCaptureIdentity && !pattern) result->cci = state.capture.sensor_transfer;
     result->cleaned = cleanup(state, *result, gpio, mclk, rails, profile, okay ? request->raw_sample : nullptr);
-    result->passed = okay && result->cleaned && !result->irq_fault && !result->frames.fault &&
+    result->passed = (okay || state.cancelled) && result->cleaned && !result->irq_fault && !result->frames.fault &&
         (!request->raw_sample || result->raw_sample_bytes == sample_bytes);
+    __atomic_store_n(&state.running, false, __ATOMIC_RELEASE);
+    if (request->consumer && result->passed) {
+        state.capture = {};
+        state.pins = {};
+        state.irq = nullptr;
+        state.dma_touched = false;
+        state.cci_touched = false;
+        state.used = false;
+    }
     return result->passed;
+}
+
+void nezha_camera_native_capture_request_stop(void)
+{
+    /* The normal worker performs all sensor/IRQ/DMA teardown; callers
+     * only close its gate. A callback can request this without waiting
+     * for the worker that is currently delivering its frame. */
+    __atomic_store_n(&state.stopped, 1u, __ATOMIC_RELEASE);
+}
+
+bool nezha_camera_native_capture_running(void)
+{
+    return __atomic_load_n(&state.running, __ATOMIC_ACQUIRE);
 }

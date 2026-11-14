@@ -61,6 +61,7 @@ def main():
             shared = args.shared_soc.resolve()
             sources.extend(shared / "src" / name for name in ("Sm8850Resources.c", "Sm8850ResourcesNative.cpp"))
             sources.extend(kit / ("NezhaCameraNative" + name + ".cpp") for name in ("Smmu", "Rpmh", "Gcc", "Irq", "Capture"))
+            sources.append(kit / "NezhaCameraNativeDevice.c")
     elif args.shared_soc is not None:
         parser.error("C2 shared-SMMU adapter requires the native staged build")
     for source in sources:

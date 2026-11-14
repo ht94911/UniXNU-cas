@@ -23,7 +23,7 @@ struct Stream {
     unsigned stills, generation;
     bool collecting, running, invalid;
 };
-struct Device { NezhaFigObject stream; CFArrayRef streams; CFDictionaryRef supported; };
+struct Device { NezhaFigObject stream; CFArrayRef streams; CFDictionaryRef supported; bool bound; };
 
 static struct Stream *stream_of(NezhaFigObject o) { return nezha_fig_capture24_storage(o); }
 static struct Device *device_of(NezhaFigObject o) { return nezha_fig_capture24_storage(o); }
@@ -154,6 +154,7 @@ static NezhaFigStatus begin(struct Stream *s, bool graph)
         s->collecting=true;
     }
     if (graph) {
+        __atomic_add_fetch(&s->generation,1u,__ATOMIC_RELEASE);
         s->running=true;
         NezhaFigStatus result=refresh_outputs(s);
         if (result) {
@@ -167,7 +168,7 @@ static NezhaFigStatus begin(struct Stream *s, bool graph)
 
 static NezhaFigStatus stop_on_queue(struct Stream *s)
 {
-    s->running=false;s->stills=0;++s->generation;
+    s->running=false;s->stills=0;__atomic_add_fetch(&s->generation,1u,__ATOMIC_RELEASE);
     for (unsigned i=0;i<3;++i) nezha_camera_graph_output_stop(&s->output[i]);
     if (!s->collecting) return 0;
     NezhaFigStatus result=s->backend.end(s->backend.context);
@@ -226,6 +227,11 @@ static NezhaFigStatus stream_copy(NezhaFigObject o,NezhaFigString key,NezhaFigAl
         else if (key_is(key,"NonLocalizedName") || key_is(key,"LocalizedName")) value=CFRetain(CFSTR("nezha main camera"));
         else if (key_is(key,"Manufacturer")) value=CFRetain(CFSTR("Xiaomi"));
         else if (key_is(key,"SupportedFormatsArray")) value=CFRetain(s->formats);
+        else if (key_is(key,"FormatDescription")) {
+            CFDictionaryRef format=CFArrayGetValueAtIndex(s->formats,0);
+            CFTypeRef description=CFDictionaryGetValue(format,CFSTR("FormatDescription"));
+            if (description) value=CFRetain(description);
+        }
         else if (key_is(key,"SupportedPropertiesDictionary")) value=CFRetain(s->supported);
         else if (key_is(key,"Clock")) value=CFRetain(CMClockGetHostTimeClock());
         else if (key_is(key,"FormatIndex")) value=number(0);
@@ -264,7 +270,7 @@ static NezhaFigStatus stream_set(NezhaFigObject o,NezhaFigString key,const void 
             if (result) return;
             replace(where,value);
             if (where==&s->colors) { result=0;return; }
-            ++s->generation;
+            __atomic_add_fetch(&s->generation,1u,__ATOMIC_RELEASE);
             result=refresh_outputs(s);
             if (result) {
                 s->running=false;
@@ -326,6 +332,12 @@ static NezhaFigStatus device_invalidate(NezhaFigObject o)
 static void device_finalize(NezhaFigObject o)
 {
     struct Device *d=device_of(o);if (!d) return;
+    if (d->stream) {
+        (void)stream_invalidate(d->stream);
+        struct Stream *s=stream_of(d->stream);
+        if (d->bound && s->backend.bind_stream)
+            (void)s->backend.bind_stream(s->backend.context,NULL);
+    }
     if (d->streams) CFRelease(d->streams);
     if (d->supported) CFRelease(d->supported);
 }
@@ -367,6 +379,7 @@ NezhaFigStatus nezha_camera_fig_provider_create(NezhaFigAllocator allocator,
         {"PortType","String","ReadOnly"},{"UniqueID","String","ReadOnly"},
         {"NonLocalizedName","String","ReadOnly"},{"Manufacturer","String","ReadOnly"},
         {"SupportedFormatsArray","Collection","ReadOnly"},{"Clock","Clock","ReadOnly"},
+        {"FormatDescription","FormatDescription","ReadOnly"},
         {"FocalLength","Number","ReadOnly"},{"LensFNumber","Number","ReadOnly"},
         {"PixelSize","Number","ReadOnly"},{"MaxZoomFactor","Number","ReadOnly"},
         {"SupportedColorSpaces","Collection","ReadOnly"},{"ColorSpace","Number","ReadWrite"},
@@ -393,23 +406,27 @@ NezhaFigStatus nezha_camera_fig_provider_create(NezhaFigAllocator allocator,
     nezha_camera_preview_init(&s->preview);
     status=nezha_fig_capture24_create_device(allocator,&device_table,&device);
     if (status) { CFRelease(stream);return status; }
-    struct Device *d=device_of(device);d->stream=stream;
+    struct Device *d=device_of(device);
     d->streams=CFArrayCreate(NULL,(const void **)&stream,1,&kCFTypeArrayCallBacks);
+    d->stream=d->streams ? stream : NULL;
     d->supported=supported(device_props,sizeof(device_props)/sizeof(device_props[0]));
     CFRelease(stream);
     if (!d->streams || !d->supported) { CFRelease(device);return Unavailable; }
+    if (backend->bind_stream) {
+        status=backend->bind_stream(backend->context,d->stream);
+        if (status) { CFRelease(device);return status; }
+        d->bound=true;
+    }
     *out=device;return 0;
 }
 
-NezhaFigStatus nezha_camera_fig_provider_deliver(NezhaFigObject o,
+static NezhaFigStatus deliver_stream(struct Stream *s,
     const struct NezhaCameraPreviewFrame *frame,const uint8_t *raw,size_t bytes,
     uint64_t completed_time,CFDictionaryRef metadata)
 {
-    struct Device *d=device_of(o);
-    if (!d || !frame || frame->width!=4096 || frame->height!=3072 || frame->stride!=5120 ||
+    if (!s || !frame || frame->width!=4096 || frame->height!=3072 || frame->stride!=5120 ||
         frame->bayer!=3 || frame->black!=64 || frame->white!=1023 || bytes!=15728640 ||
         !raw || !completed_time || !metadata || CFGetTypeID(metadata)!=CFDictionaryGetTypeID()) return Invalid;
-    struct Stream *s=stream_of(d->stream);
     __block NezhaFigStatus result=Unavailable;
     serial(s,^{
         if (!s->running || s->invalid) return;
@@ -424,4 +441,31 @@ NezhaFigStatus nezha_camera_fig_provider_deliver(NezhaFigObject o,
             if (status && i==2 && s->running && s->generation==generation) s->stills=1;
         }
     });return result;
+}
+
+NezhaFigStatus nezha_camera_fig_provider_deliver(NezhaFigObject o,
+    const struct NezhaCameraPreviewFrame *frame,const uint8_t *raw,size_t bytes,
+    uint64_t ticks,CFDictionaryRef metadata)
+{
+    struct Device *d=device_of(o);
+    return d && d->stream ? deliver_stream(stream_of(d->stream),frame,raw,bytes,ticks,metadata) : Invalid;
+}
+
+NezhaFigStatus nezha_camera_fig_stream_enqueue(NezhaFigObject stream,
+    const struct NezhaCameraPreviewFrame *frame,const uint8_t *raw,size_t bytes,
+    uint64_t ticks,CFDictionaryRef metadata,void (*release)(void *),void *context)
+{
+    struct Stream *s=stream_of(stream);
+    if (!s || !frame || !raw || !bytes || !ticks || !metadata || !release ||
+        CFGetTypeID(metadata)!=CFDictionaryGetTypeID()) return Invalid;
+    const unsigned generation=__atomic_load_n(&s->generation,__ATOMIC_ACQUIRE);
+    const struct NezhaCameraPreviewFrame geometry=*frame;
+    CFRetain(stream);CFRetain(metadata);
+    dispatch_async(s->queue,^{
+        if (s->generation==generation)
+            (void)deliver_stream(s,&geometry,raw,bytes,ticks,metadata);
+        CFRelease(metadata);CFRelease(stream);
+        release(context);
+    });
+    return 0;
 }

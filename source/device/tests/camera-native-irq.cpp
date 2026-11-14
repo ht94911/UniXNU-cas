@@ -21,6 +21,8 @@ extern "C" int armcpu_spi_attach(uint32_t id, bool edge, void (*callback)(void *
 }
 
 extern "C" void IOSleep(unsigned ms) { assert(ms == 1); }
+static uint64_t completed_ticks;
+extern "C" uint64_t mach_absolute_time(void) { return ++completed_ticks; }
 
 struct Model {
     uint32_t top{}, rx{}, rdi{}, buffer{}, address{};
@@ -89,13 +91,23 @@ int main()
         assert(nezha_camera_native_irq_next(owner, &event));
         assert(event.buffer_done && event.start_of_frame && event.end_of_frame && event.updated);
         assert(event.consumed_address == 0x10000u + i * 0x10000u);
+        assert(event.completed_time == i+1);
     }
     assert(nezha_camera_native_irq_next(owner, &event) && !event.buffer_done);
+    assert(nezha_camera_native_irq_stop(owner));
+    const unsigned stopped_reads=model.reads, stopped_writes=model.writes;
+    handler(irq_context);
+    assert(model.reads==stopped_reads && model.writes==stopped_writes);
+    NezhaCameraNativeIrq *reopened=nullptr;
+    assert(nezha_camera_native_irq_open(&reopened,&io,&io) && reopened==owner && attaches==1);
+    assert(nezha_camera_native_irq_next(owner,&event) && !event.buffer_done);
     model.rx = 1u << 12; // Lost EOT on lane 0.
     handler(irq_context);
     assert(nezha_camera_native_irq_fault(owner) == 2 && !nezha_camera_native_irq_next(owner, &event));
     assert(nezha_camera_native_irq_stop(owner));
     assert(nezha_camera_native_irq_failure(owner, &event) && event.rx_irq == (1u << 12));
+    reopened=nullptr;
+    assert(!nezha_camera_native_irq_open(&reopened,&io,&io) && !reopened && attaches==1);
     const unsigned reads = model.reads, writes = model.writes;
     handler(irq_context);
     assert(model.reads == reads && model.writes == writes);

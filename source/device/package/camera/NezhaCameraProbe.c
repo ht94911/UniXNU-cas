@@ -16,6 +16,7 @@
 #include <QcomUsbDiagnostic.h>
 #ifdef NEZHA_CAMERA_NATIVE_CAPTURE
 #include "NezhaCameraNativeCapture.h"
+#include "NezhaCameraNativeDevice.h"
 #endif
 
 /* Stock nezha FDT: canoe-camcc, canoe-cambistmclkcc and CCI0. Map only
@@ -818,7 +819,7 @@ void nezha27_camera_probe_start(void)
     unsigned mode = 0;
     unsigned stopped = 0;
 #ifdef NEZHA_CAMERA_NATIVE_CAPTURE
-    const unsigned max_mode = 5;
+    const unsigned max_mode = 6;
 #else
     const unsigned max_mode = 3;
 #endif
@@ -830,7 +831,8 @@ void nezha27_camera_probe_start(void)
     thread_t thread = THREAD_NULL;
     (void)PE_parse_boot_argn("nezha-cj", &journal_token, sizeof(journal_token));
     (void)PE_parse_boot_argn("nezha-cusb", &usb_gated, sizeof(usb_gated));
-    if ((usb_gated && (mode < 3 || !journal_token)) || (mode >= 4 && !usb_gated)) {
+    if ((mode==6 && (usb_gated || journal_token)) ||
+        (mode<6 && ((usb_gated && (mode < 3 || !journal_token)) || (mode >= 4 && !usb_gated)))) {
         printf("NEZHA CAMERA: invalid USB probe configuration\n");
         return;
     }
@@ -840,6 +842,16 @@ void nezha27_camera_probe_start(void)
     const bool profile_present = nezha_camera_profile_open(nezha_camera_profile_slot,
         (size_t)nezha_camera_profile_slot_size, &profile);
     printf("NEZHA CAMERA: local stock profile=%u\n", (unsigned)profile_present);
+#ifdef NEZHA_CAMERA_NATIVE_CAPTURE
+    if (mode==6) {
+        const vm_offset_t database=map_registers(AopCommandDb,AopCommandDbBytes);
+        const bool made=profile_present && database && nezha_camera_native_device_init(nezha_camera_profile_slot,
+            (size_t)nezha_camera_profile_slot_size,(const uint8_t *)database,AopCommandDbBytes);
+        printf("NEZHA CAMERA: native main frame device=%u\n",(unsigned)made);
+        if (!made && database) ml_io_unmap(database,AopCommandDbBytes);
+        return;
+    }
+#endif
     record_diagnostic(CameraWaiting, 0);
     __atomic_store_n(&probe_request, usb_gated ? CameraArmed : CameraDisarmed, __ATOMIC_RELEASE);
     printf("NEZHA CAMERA: USB provider28 registration=%u\n", (unsigned)qcom_usb_diag_register(&camera_provider));

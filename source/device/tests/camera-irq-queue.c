@@ -10,12 +10,14 @@ int main(void)
     struct NezhaCamera1080Events event;
     assert(!nezha_camera_irq_pop(&queue, &event));
     for (unsigned i = 0; i < NezhaCameraIrqSlots; ++i) {
-        const struct NezhaCamera1080Events next = {.consumed_address = 0x10000u + i, .buffer_done = true};
+        const struct NezhaCamera1080Events next = {.consumed_address = 0x10000u + i,
+            .completed_time = 1000u+i, .buffer_done = true};
         assert(nezha_camera_irq_push(&queue, &next));
     }
     for (unsigned i = 0; i < NezhaCameraIrqSlots; ++i) {
         assert(nezha_camera_irq_pop(&queue, &event));
         assert(event.consumed_address == 0x10000u + i && event.buffer_done);
+        assert(event.completed_time == 1000u+i);
     }
     assert(!nezha_camera_irq_pop(&queue, &event));
     queue.produced = queue.consumed = UINT32_MAX - 1;

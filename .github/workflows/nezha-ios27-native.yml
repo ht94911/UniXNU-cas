@@ -1,7 +1,7 @@
-name: nezha iPhone27 camera PHY requests and GCC gates
+name: nezha iPhone27 continuous main camera and native frame provider
 on:
   push:
-    branches: [codex/ios27-camera016-phy-gcc-20261114]
+    branches: [codex/ios27-camera017-continuous-20261114]
   workflow_dispatch:
 permissions:
   contents: read

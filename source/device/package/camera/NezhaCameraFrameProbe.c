@@ -33,6 +33,49 @@ static bool sample(const uint8_t *frame, const struct NezhaCameraRdi1080 *rdi, u
     return true;
 }
 
+enum NezhaCameraFrameStatus nezha_camera_frame_consume(
+    const struct NezhaCameraMainCaptureIo *io, struct NezhaCameraMainCapture *capture,
+    const struct NezhaCameraRegisterIo *csid, const struct NezhaCameraFrameMemoryIo *memory,
+    const struct NezhaCameraFrameConsumer *consumer, unsigned budget_ms)
+{
+    if (!io || !capture || !capture->rdi_started || !capture->stream_may_be_on ||
+        !csid || !csid->wait_ms || !memory || !memory->next_event || !memory->acquire ||
+        !memory->return_frame || !memory->fault || !consumer || !consumer->continuing ||
+        !consumer->deliver || !budget_ms || budget_ms > 3000) return NezhaFramesInvalid;
+    for (unsigned ms=0;ms<=budget_ms;++ms) {
+        if (!consumer->continuing(consumer->context)) return NezhaFramesOk;
+        if (memory->fault(memory->context)) return NezhaFramesSmmu;
+        struct NezhaCamera1080Events event;
+        if (!memory->next_event(memory->context,&event)) return NezhaFramesIo;
+        if (event.buffer_done) {
+            if (!event.completed_time || capture->completed_frames==UINT32_MAX) return NezhaFramesSequence;
+            unsigned index;
+            if (!nezha_camera_main_capture_complete_frame(capture,&event,&index)) return NezhaFramesSequence;
+            uint8_t *frame=memory->acquire(memory->context,index);
+            if (!frame) {
+                (void)nezha_camera_main_capture_release_frame(io,capture,index,false);
+                return NezhaFramesCache;
+            }
+            uint32_t digest;
+            const bool changed=sample(frame,&capture->layout,&digest);
+            const bool delivered=changed && consumer->deliver(consumer->context,&capture->layout.layout,
+                frame,capture->layout.layout.frame_bytes,event.completed_time,capture->completed_frames);
+            const bool requeue=delivered && consumer->continuing(consumer->context);
+            if (requeue) {
+                for (unsigned row=0;row<4;++row) {
+                    uint8_t *line=frame+sample_offset(&capture->layout.layout,row);
+                    for (unsigned i=0;i<64;++i) line[i]=0xa5;
+                }
+            }
+            if (!memory->return_frame(memory->context,index,requeue)) return NezhaFramesCache;
+            if (!nezha_camera_main_capture_release_frame(io,capture,index,requeue)) return NezhaFramesSequence;
+            return !changed ? NezhaFramesUnwritten : !delivered ? NezhaFramesIo : NezhaFramesOk;
+        }
+        if (ms<budget_ms) csid->wait_ms(csid->context,1);
+    }
+    return NezhaFramesTimeout;
+}
+
 enum NezhaCameraFrameStatus nezha_camera_frame_probe(
     const struct NezhaCameraMainCaptureIo *io, struct NezhaCameraMainCapture *capture,
     const struct NezhaCameraRegisterIo *csid, const struct NezhaCameraRegisterIo *vfe,

@@ -32,7 +32,7 @@ struct NezhaCameraNativeSmmu {
     unsigned physical_bits{};
     uint32_t fault{}, syndrome{}, irq_readback{}, actlr{}, handlers{};
     uint64_t fault_address{}, irq_route{};
-    bool locked{}, irq_attached{}, has_context{}, programming_started{}, actlr_touched{}, fault_irq_masked{};
+    bool locked{}, irq_attached{}, has_context{}, programming_started{}, actlr_touched{}, fault_irq_masked{}, route_attached{};
 };
 
 static NezhaCameraNativeSmmu domain;
@@ -83,10 +83,13 @@ static bool retire_irq(NezhaCameraNativeSmmu &state)
 ArmSmmu4KStatus nezha_camera_native_smmu_prepare(NezhaCameraNativeSmmu **out,
     unsigned slot, unsigned bank, unsigned asid, unsigned *physical_bits)
 {
-    if (!out || *out || !physical_bits || domain_used || !asid || asid > 0xffff ||
+    if (!out || *out || !physical_bits || !asid || asid > 0xffff ||
         bank >= 22 || slot >= 128 || !sm8850_usb_domain_ready()) {
         return ArmSmmu4KArgument;
     }
+    if (domain_used && (domain.lease || domain.locked || domain.irq_attached || domain.handlers ||
+        domain.has_context || domain.fault || domain.assignment.bank != bank ||
+        domain.assignment.asid != asid || domain.assignment.slot[0] != slot)) return ArmSmmu4KBusy;
     auto *common = sm8850_native_resources();
     if (!common || sm8850_resource_acquire(common, CameraResource, CameraOwner, &domain.lease)) {
         return ArmSmmu4KBusy;
@@ -95,10 +98,11 @@ ArmSmmu4KStatus nezha_camera_native_smmu_prepare(NezhaCameraNativeSmmu **out,
     *out = &domain;
     domain.common = common;
     domain.assignment = {bank, asid, {slot, 0, 0, 0}, {NezhaCameraIfeSid, 0, 0, 0}, 1};
-    domain.map = {reinterpret_cast<volatile unsigned char *>(ml_io_map(0x15000000, SmmuBytes)), SmmuBytes};
-    if (ArmSmmu4KBindMmio(&domain.map, &domain.io) != ArmSmmu4KSuccess) {
-        return ArmSmmu4KIoError;
+    if (!domain.map.mapping) {
+        domain.map = {reinterpret_cast<volatile unsigned char *>(ml_io_map(0x15000000, SmmuBytes)), SmmuBytes};
+        if (ArmSmmu4KBindMmio(&domain.map, &domain.io) != ArmSmmu4KSuccess) return ArmSmmu4KIoError;
     }
+    if (!domain.io.read32 || !domain.io.write32) return ArmSmmu4KIoError;
     if (sm8850_resource_enter(common, CameraResource, CameraOwner, domain.lease)) {
         return ArmSmmu4KBusy;
     }
@@ -145,10 +149,11 @@ static bool prepare_hardware(NezhaCameraNativeSmmu *state)
         return false;
     }
     // Bank 0..21 follows the board DT's level-high SPI 0x61+bank.
-    if (armcpu_spi_attach(129u + state->assignment.bank, false, fault_irq, state,
-                          &state->irq_readback, &state->irq_route) != kIOReturnSuccess ||
-        (state->irq_readback & 7u) != 3u) {
-        return false;
+    if (!state->route_attached) {
+        if (armcpu_spi_attach(129u + state->assignment.bank, false, fault_irq, state,
+                             &state->irq_readback, &state->irq_route) != kIOReturnSuccess ||
+            (state->irq_readback & 7u) != 3u) return false;
+        state->route_attached = true;
     }
     // The stock qcom,actlr entry for exact SID 0x1c00 is 1. Like
     // qsmmuv500_init_cb, install it on the owned disabled bank and flush
@@ -294,6 +299,9 @@ bool nezha_camera_native_smmu_release(NezhaCameraNativeSmmu **out, bool dma_deta
     }
     domain.lease = 0;
     domain.has_context = false;
+    domain.context = {};
+    domain.programming_started = false;
+    domain.fault_irq_masked = false;
     *out = nullptr;
     return true;
 }

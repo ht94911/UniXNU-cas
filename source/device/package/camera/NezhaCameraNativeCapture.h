@@ -31,6 +31,10 @@ struct NezhaCameraNativeCaptureRequest {
     bool (*checkpoint)(unsigned step, unsigned a, unsigned b, unsigned c);
     bool (*rpmh_checkpoint)(void *context, uint32_t address, uint32_t value, bool read);
     void (*rpmh_vote_acknowledged)(void *context, uint32_t address, uint32_t value, uint32_t ack);
+    /* Optional continuous main-camera reader on the normal capture worker.
+     * It gates Stop and completes its CPU copy before DMA reuse. Both
+     * callbacks must finish promptly; raw_sample and TPG are diagnostic. */
+    const struct NezhaCameraFrameConsumer *consumer;
 };
 
 enum NezhaCameraNativeCaptureStep {
@@ -65,11 +69,18 @@ struct NezhaCameraNativeCaptureResult {
     uint32_t rpmh_address, rpmh_ack, rpmh_reply;
 };
 
-/* Source-only until integrated with the selected shared USB/SMMU owner.
- * One normal-thread capture per boot. All backing and IRQ contexts have
- * boot lifetime if hardware cannot confirm teardown. */
+/* One normal capture worker. Diagnostic mode stops at 20 frames; a bound
+ * consumer runs until its Stop gate closes and can restart only after
+ * complete successful teardown. IRQ contexts remain mapped for the boot
+ * lifetime. Indeterminate cleanup or a fault retains the original state. */
 bool nezha_camera_native_capture(const struct NezhaCameraNativeCaptureRequest *request,
     struct NezhaCameraNativeCaptureResult *result);
+
+/* Continuous session: Stop only closes the worker's gate; it never waits
+ * from the delivering callback. The platform joins the worker before
+ * destroying the client's context or starting another session. */
+void nezha_camera_native_capture_request_stop(void);
+bool nezha_camera_native_capture_running(void);
 
 #ifdef __cplusplus
 }
