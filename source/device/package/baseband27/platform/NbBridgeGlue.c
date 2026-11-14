@@ -15,6 +15,14 @@ static void bridge_send(uint32_t local_port, uint32_t node, uint32_t port, const
     if (nb_glue) nb_qrtr_send_data(nb_baseband_qrtr(nb_glue), local_port, node, port, (const uint8_t *)body, length);
 }
 
+/* NAS shared-port transactions must see actual queue refusal. The existing
+ * per-client bridge callback and all non-NAS routes retain their original ABI. */
+int coachz_modem_qmi_send(uint32_t local_port, uint32_t node, uint32_t port, const void *body, uint32_t length)
+{
+    return nb_glue ? nb_qrtr_send_data(nb_baseband_qrtr(nb_glue), local_port, node, port,
+                                      (const uint8_t *)body, length) : NbQrtrDown;
+}
+
 static void bridge_del_client(uint32_t port)
 {
     if (nb_glue) nb_qrtr_del_client(nb_baseband_qrtr(nb_glue), port);

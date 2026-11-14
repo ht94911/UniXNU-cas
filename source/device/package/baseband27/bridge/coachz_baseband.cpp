@@ -28,7 +28,9 @@
 #include "NbSim.h"
 #include "NbVoice.h"
 #include "NbBoot.h"
+#include "NbNasMux.h"
 extern "C" int coachz_modem_boot_ready(void);
+extern "C" int coachz_modem_qmi_send(uint32_t, uint32_t, uint32_t, const void *, uint32_t);
 
 #define BB_FRAME_MAX (64u * 1024u)       // one read or write: a QMUX frame, a SAHARA packet or a READ_DATA answer
 // Frames waiting for ABM, per channel. At boot the 53 clients' registrations and indications arrive faster than ABM reads; with 64 the
@@ -60,6 +62,7 @@ struct bb_tx { uint32_t local_port, node, port, len; uint8_t *data; };
 static IOLock *bb_lock;
 static thread_call_t bb_complete_call;
 static struct cbq_bridge bb_qmux;
+static struct nb_nas_mux bb_nas;
 static struct cbs_device bb_sahara;
 static struct cbc_state bb_control;
 static bb_channel bb_ch[CBH_PUBLISHED];
@@ -130,6 +133,9 @@ extern "C" int coachz_baseband_enabled(void)
 
 // ------------------------------------------------------------------ queues (bb_lock held)
 static void bb_complete(thread_call_param_t, thread_call_param_t);
+static uint8_t *bb_nas_allocate(void *, uint32_t);
+static void bb_nas_release(void *, uint8_t *, uint32_t);
+static void bb_nas_emit(void *, uint32_t, uint32_t, uint32_t, const uint8_t *, uint32_t);
 
 static void bb_init(void)
 {
@@ -137,6 +143,7 @@ static void bb_init(void)
   bb_lock = IOLockAlloc();
   bb_complete_call = thread_call_allocate(bb_complete, nullptr);
   cbq_init(&bb_qmux);
+  nb_nas_init(&bb_nas, nullptr, bb_nas_allocate, bb_nas_release, bb_nas_emit);
   bb_esim_in = static_cast<uint8_t *>(IOMallocData(BB_ESIM_BYTES));
   bb_esim_resp = static_cast<uint8_t *>(IOMallocData(BB_ESIM_BYTES));
   cbe_init(&bb_esim, bb_esim_in, bb_esim_in ? BB_ESIM_BYTES : 0,
@@ -205,6 +212,8 @@ static void bb_push(uint32_t channel, const uint8_t *data, uint32_t len)
   IOLockWakeup(bb_lock, c, false);
   if (c->reads_waiting && bb_complete_call) thread_call_enter(bb_complete_call);
 }
+
+#include "NbNasBridge.inc"
 
 static bb_frame bb_pop(uint32_t channel)
 {
@@ -511,6 +520,7 @@ static void bb_host_write(uint32_t channel, const uint8_t *data, uint32_t len)
   const struct cbq_result r = cbq_from_host(&bb_qmux, qmux, data, len, bb_out, sizeof bb_out);
   switch (r.kind) {
   case CBQ_TO_HOST:
+    bb_nas_reconcile();
     bb_push(channel, bb_out, r.len);
     if (r.service == NB_VOICE_SERVICE || !r.service) bb_voice_indicate();
     // The first WDS client ABM takes: set the data port up as ModemManager does before its first bind.
@@ -527,7 +537,8 @@ static void bb_host_write(uint32_t channel, const uint8_t *data, uint32_t len)
       if (n) bb_push(channel, bb_out, n);
       break;
     }
-    bb_to_modem(r, data + CBQ_HDR);
+    if (r.service == NB_NAS_SERVICE) bb_nas_request(r, data + CBQ_HDR);
+    else bb_to_modem(r, data + CBQ_HDR);
     break;
   case CBQ_PRIVATE: {
     const uint8_t *sdu = data + CBQ_HDR;
@@ -1167,6 +1178,7 @@ extern "C" void coachz_baseband_del_server(uint32_t service, uint32_t node, uint
   if (!bb_lock) return;
   IOLockLock(bb_lock);
   cbq_server_del(&bb_qmux, service, node, port);
+  if (service == NB_NAS_SERVICE) nb_nas_endpoint_lost(&bb_nas, node, port);
   if (service == NB_VOICE_SERVICE) bb_voice_indicate();
   if (service == CBD_SVC_UIM && nb_sim_endpoint_lost(&bb_sim, node, port)) bb_activation_indicate();
   if (service == CBD_SVC_WDS) bzero(bb_pdp_clients, sizeof bb_pdp_clients);
@@ -1176,9 +1188,14 @@ extern "C" void coachz_baseband_del_server(uint32_t service, uint32_t node, uint
 // QRTR data for one of the bridge's client ports: 1 when the port is the bridge's.
 extern "C" int coachz_baseband_qrtr(uint32_t dst_port, uint32_t src_node, uint32_t src_port, const void *body, uint32_t size)
 {
-  if (dst_port < CBQ_PORT_BASE || dst_port >= CBQ_PORT_BASE + CBQ_MAX_CLIENTS) return 0;
+  if (dst_port < CBQ_PORT_BASE || dst_port >= NB_NAS_PORT_BASE + NB_NAS_SUBSCRIPTIONS) return 0;
   if (!bb_lock) return 1;
   IOLockLock(bb_lock);
+  if (dst_port >= NB_NAS_PORT_BASE) {
+    nb_nas_receive(&bb_nas, dst_port, src_node, src_port, static_cast<const uint8_t *>(body), size);
+    IOLockUnlock(bb_lock);
+    return 1;
+  }
   const struct cbq_result r = cbq_from_modem(&bb_qmux, dst_port, src_node, src_port, static_cast<const uint8_t *>(body), size, bb_out, sizeof bb_out);
   if (r.kind == CBQ_TO_HOST && r.channel == CBQ_INTERNAL) {
     bb_trace("int-rx", 0, r.service, r.cid, static_cast<const uint8_t *>(body), size);
@@ -1213,9 +1230,15 @@ extern "C" void coachz_baseband_poll(void)
 {
   if (!bb_lock || !bb_send) return;
   bb_tx batch[16];
+  struct nb_nas_packet nas[NB_NAS_SUBSCRIPTIONS];
+  uint32_t nas_count = 0;
   uint32_t n = 0, released[16], r = 0, port;
   IOLockLock(bb_lock);
   bb_esim_step();
+  bb_nas_reconcile();
+  nb_nas_poll_deadlines(&bb_nas, bb_now_ms());
+  while (nas_count < NB_NAS_SUBSCRIPTIONS &&
+         nb_nas_next(&bb_nas, bb_now_ms(), &nas[nas_count])) ++nas_count;
   for (unsigned i = 0; i < CBQ_MAX_CLIENTS; i++) {
     const struct cbq_result revoke = cbq_next_revoke(&bb_qmux, bb_out, sizeof bb_out);
     if (revoke.kind != CBQ_TO_HOST) break;
@@ -1243,6 +1266,13 @@ extern "C" void coachz_baseband_poll(void)
   }
   for (uint32_t i = 0; i < r; i++)
     if (bb_del_client) bb_del_client(released[i]);
+  for (uint32_t i = 0; i < nas_count; ++i) {
+    const int result = coachz_modem_qmi_send(nas[i].local_port, nas[i].node, nas[i].port,
+                                             nas[i].data, nas[i].bytes);
+    IOLockLock(bb_lock);
+    nb_nas_sent(&bb_nas, &nas[i], result);
+    IOLockUnlock(bb_lock);
+  }
   bb_pdp_poll();
 }
 

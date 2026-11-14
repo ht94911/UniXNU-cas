@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Source-only arm64e iOS27 build on fixed GPU024. Retain actual015 native BootModule queries and dual-QMUX. Parse both legacy and real stock extended UIM CardStatus to publish actual two-card activation identities. Retain endpoint-bound client routing/revoke/release with128slots after actual015 client exhaustion. PAS/MSS, IPA descriptor/CONFIG, CPMS and pinned storage/normal-return contracts unchanged. No phone logs, identities, EFS or proprietary firmware input.",
+  "purpose": "Source-only arm64e iOS27 build on fixed GPU024. Preserve original017 fallback fixup, real dual-SIM identities and128native clients. Multiplex the17original NAS CIDs over two real subscription-specific QRTR source ports; require real Bind and Register responses, merge stock89optional registration fields and retain original transaction/error/cancellation/endpoint lifetimes. Other services, PAS/MSS, IPA, pinned storage and normal return unchanged. No phone logs, identities, EFS, IPSW or proprietary firmware input.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "f2982366c8b5029e8a9197e1b8ff73350abc28b8",
+  "device_revision": "5a1f80864446b59e55ab0ed1f439fd18bdc0c9d7",
   "soc_revision": "703d7b4bb00904b4a6e5d96f9e9bf72eec170f6b",
   "xcode": "26.6",
   "files": {
@@ -106,14 +106,16 @@
     "source/device/package/backlight/NezhaDsi0.h": "28a964006beffe03238af70bc9eed4c479ca1aeaef574d4583f18f96fd1690e1",
     "source/device/package/backlight/OriginalAppleARMBacklightABI.h": "dab34c394c2123ae4cbfd6648980d5e7b024539773abe5852f7d2622f9bf7b8b",
     "source/device/package/baseband27/bridge/NbBoot.h": "99eb1dcfd6be4f50bc742237bb39ac6a50ad4930d4d8007e77749d12ce214ae4",
+    "source/device/package/baseband27/bridge/NbNasBridge.inc": "1938d656f395cc7ab7a014bc1f66a72e0b4bfbbb41aa7a4284e9ef2252a40d80",
+    "source/device/package/baseband27/bridge/NbNasMux.h": "91e3cc04aedd732165ebd1890b6bb5475d44940cf5b91a1658a2002b7849d3b6",
     "source/device/package/baseband27/bridge/NbPdpFlow.h": "2ab5ed3b35fe447f291132bc6acb3eeecdb41affa3805524390f71bb997484ab",
     "source/device/package/baseband27/bridge/NbPdpFlow.inc": "af014ecb1f25d494faa9d01128797d404c2f533a411c84fdf22a175b7c9629f8",
     "source/device/package/baseband27/bridge/NbSim.h": "69f92d0f015735be4f2f72e1ed505b223f9474ecf7e3ce3e332833f8d27e1553",
     "source/device/package/baseband27/bridge/NbSimBridge.inc": "b79df6f563c6207f3fec2ed97484bd3a2da200bb6ddf6d9e66039729d047051b",
     "source/device/package/baseband27/bridge/NbVoice.h": "5cb76917a2e49fedad8461e2a164f830d41908f01a116cb732f4a6333d40181f",
     "source/device/package/baseband27/bridge/NbVoiceBridge.inc": "ff17034745cb93c04353777b40cc4508ae160822c72b2a53793ccf72d6dff189",
-    "source/device/package/baseband27/bridge/QcomBaseband.h": "1d281f90bacb423b10f1bb296e3d68f39b73dfa8a1c102d8f01b2aa8a55ed7ca",
-    "source/device/package/baseband27/bridge/coachz_baseband.cpp": "07c7c824f3ddec3c5f2452821290fdf061e9d794d80b574ab3567d58fe908546",
+    "source/device/package/baseband27/bridge/QcomBaseband.h": "a72471ff90728dcae8a5878edee6e25f016e7164f46265f4959f0f1dd01f86ac",
+    "source/device/package/baseband27/bridge/coachz_baseband.cpp": "b5e68becea73ea83a634c5cfce3ef6381f5986fe151b21f6b542531141371364",
     "source/device/package/baseband27/bridge/coachz_bb_data.h": "5c3d1fc8dd827ba162bbff15b35d11cae4d0603394deda63821204ff5e0c2216",
     "source/device/package/baseband27/bridge/coachz_bb_pdp.cpp": "cf3864858a345b1bff63c814302f5892ae5acd52796d5bbc1f5097485a202b82",
     "source/device/package/baseband27/bridge/coachz_bb_qmux.h": "56001ee59a8db8569f6bae238111036e460fa97aa1ce3628eb6f3253ba9468b9",
@@ -144,6 +146,7 @@
     "source/device/package/baseband27/integration/format2-baseband-node.patch": "ce0fe44a3dff762299756e0457f31559d95148b3c80894c0fb919a89e079f853",
     "source/device/package/baseband27/integration/ipa-source.json": "b53c40bcac7f654c2698683a0017f9019a43ad781e8710e5f3519ea421917e78",
     "source/device/package/baseband27/integration/native-boot-query.json": "035bd43ffb80f7117724f98cd74daf48d227a7e780c976b2cd25483a25ee810b",
+    "source/device/package/baseband27/integration/native-fallback-apn.json": "4219927659d2c8298b4e060d7b2b44d5408e74297efcaa54a2237d97f5e3d76a",
     "source/device/package/baseband27/integration/owners.json": "2b95b3b401c4e7eb26df4e5db730ac9bfea5886c4b8a88fe0703925ccd10ea76",
     "source/device/package/baseband27/integration/series": "3d6402c55716c899baf7c9f147beee84853b54d180d2b60914013caea806c087",
     "source/device/package/baseband27/integration/soc-stream-count.patch": "14bef801c5375eed549d85235e9c294aa0ab93c35b04fd2fd195659eec258ae7",
@@ -184,7 +187,7 @@
     "source/device/package/baseband27/platform/NbBaseband.c": "d8487436bee9cc59da34d413c6f33bed802bb71557ea4115d32af7eaa1041d67",
     "source/device/package/baseband27/platform/NbBaseband.h": "222ae7a499973603aea0a06e492b78ddb084f445056999226f1be134a2721d9d",
     "source/device/package/baseband27/platform/NbBoard.cpp": "ee295659f26bd5df4ce1f67582f9673d127937918881135df585784e59ce4958",
-    "source/device/package/baseband27/platform/NbBridgeGlue.c": "960c5de8d60213f4821cdf6ae6dcc76ece8c4c58557ffa89637bf8a592598fa5",
+    "source/device/package/baseband27/platform/NbBridgeGlue.c": "38b3d464f6c124fa7895ea7f810cd692bf7d0ad60af129504ea3e1e0817fab61",
     "source/device/package/baseband27/platform/NbCommon.h": "5c9cfb1bb4806c786d4f92d9d4a004c13f92630cf8fa48dcff480e5d5e8c090a",
     "source/device/package/baseband27/platform/NbFirmware.c": "743e6bb82d54aa7297841b19a6362d4e67d9b4a312da97df8d2737063ef4d1a4",
     "source/device/package/baseband27/platform/NbFirmware.h": "699fc4b825aa299191d7520c310d6d46758c9914daac1710438073ca74bdbe9c",
@@ -326,6 +329,7 @@
     "source/device/tests/baseband27/ipa_sram_test.py": "bc7efb1008eb074496efe74d00cb5c0d6d03ce73aceda8a8efa779d1e0f02313",
     "source/device/tests/baseband27/low_memory_test.c": "2786276035452a9503c364d291545fe82c447f3db7745569378b4cacd0ba5a40",
     "source/device/tests/baseband27/mss_reuse_test.c": "cc6bc4de1511d10993cc6448a4c08af35600f53fe1a99a6b54b09af53e536232",
+    "source/device/tests/baseband27/nas_mux_test.c": "905860e96b02a66b5c1dc0b561a63efda20b7959787688cc5d358031c0b62b5c",
     "source/device/tests/baseband27/pdp_flow_test.c": "9aad5c6f5e9e6655f1213dfc484c81681d7ffacd481918c48552071b731b4bcd",
     "source/device/tests/baseband27/qmux_capacity_test.c": "f45ef951298ebc3b0951eaaa80ee61bc2c4397e13a97a4e92727d8a9a72ab401",
     "source/device/tests/baseband27/qmux_endpoint_test.c": "4849b019d981705ced226509ef0f07611b5160b5bfd3b310ab93d83a9708708b",
@@ -438,6 +442,15 @@
     "native_boot_requires_actual_worker_ready": true,
     "no_donor_modem_firmware_download": true,
     "extended_UIM_card_status": true,
-    "QMI_dual_SIM_client_capacity": 128
+    "QMI_dual_SIM_client_capacity": 128,
+    "native_empty_fallback_APN": true,
+    "NAS_native_CID_identity_preserved": true,
+    "NAS_real_subscription_ports": [
+      16768,
+      16769
+    ],
+    "NAS_real_bind_and_registration_required": true,
+    "NAS_registration_optional_fields": 89,
+    "NAS_post_registration_cross_subscription_rebind_supported": false
   }
 }
