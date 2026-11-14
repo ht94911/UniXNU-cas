@@ -1,4 +1,4 @@
-name: nezha iPhone27 GPU015 board temperature - power063
+name: nezha iPhone27 GPU015 wired CCCV - power066
 on:
   push:
     branches: [codex/ios27-power-gpu015-066-20261114]
