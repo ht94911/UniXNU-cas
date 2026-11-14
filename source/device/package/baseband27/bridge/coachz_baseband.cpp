@@ -27,6 +27,7 @@
 #include "coachz_bb_esim.h"
 #include "NbSim.h"
 #include "NbVoice.h"
+#include "NbDeviceIdentity.h"
 #include "NbBoot.h"
 #include "NbNasMux.h"
 extern "C" int coachz_modem_boot_ready(void);
@@ -1160,7 +1161,11 @@ extern "C" void coachz_baseband_configure(void (*send)(uint32_t, uint32_t, uint3
 // The modem stopped or crashed: libTelephonyBasebandDynamic treats a boot stage below 2 as down.
 extern "C" void coachz_baseband_down(void)
 {
-  if (bb_lock) { IOLockLock(bb_lock); nb_sim_reset(&bb_sim); nb_voice_reset(&bb_voice); IOLockUnlock(bb_lock); }
+  if (bb_lock) {
+    IOLockLock(bb_lock);
+    nb_sim_reset(&bb_sim); nb_voice_reset(&bb_voice); nb_device_reset(&bb_device_identity);
+    IOLockUnlock(bb_lock);
+  }
   if (bb_control_service) bb_control_service->setProperty("bootstage", 0ull, 32);
 }
 
@@ -1181,6 +1186,8 @@ extern "C" void coachz_baseband_del_server(uint32_t service, uint32_t node, uint
   if (service == NB_NAS_SERVICE) nb_nas_endpoint_lost(&bb_nas, node, port);
   if (service == NB_VOICE_SERVICE) bb_voice_indicate();
   if (service == CBD_SVC_UIM && nb_sim_endpoint_lost(&bb_sim, node, port)) bb_activation_indicate();
+  if (service == NB_DEVICE_DMS && nb_device_endpoint_lost(&bb_device_identity, node, port))
+    bb_activation_indicate();
   if (service == CBD_SVC_WDS) bzero(bb_pdp_clients, sizeof bb_pdp_clients);
   IOLockUnlock(bb_lock);
 }
