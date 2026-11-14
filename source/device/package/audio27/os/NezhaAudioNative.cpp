@@ -213,9 +213,14 @@ extern "C" int nezha_audio27_copy_stats(uint64_t out[64]) {
 extern "C" int nezha_audio27_capture_pcm(uint32_t offset,uint32_t count,int16_t *out,uint32_t *copied) {
     if (!out || !copied || !count || count>NA_CAPTURE_PROBE_PAGE_FRAMES || offset>=NA_CAPTURE_PROBE_PCM_FRAMES) return NA_ARGUMENT;
     *copied=0;
-    if (!nezha_audio_owner_try_lock()) return NA_BUSY;
     NaDriver *d=__atomic_load_n(&worker,__ATOMIC_ACQUIRE);int result=NA_BUSY;
-    if (d && (d->runtime.probe.state==NaProbeComplete || d->runtime.probe.state==NaProbeFailed)) {
+    /* This native worker submits its finite probe once per boot. Its retained
+     * driver is never freed; rebind replaces CPU rings but not this PCM array.
+     * The release terminal state publishes the completed, immutable samples.
+     * Playback/VI may hold the hardware owner for an entire poll, so reading
+     * this finished array must not contend with that unrelated work. */
+    uint32_t state=d ? __atomic_load_n(&d->runtime.probe.state,__ATOMIC_ACQUIRE):(uint32_t)NaProbeIdle;
+    if (d && (state==NaProbeComplete || state==NaProbeFailed)) {
         const NaCaptureProbe *p=&d->runtime.probe;
         if (offset>=p->pcm_frames) result=NA_ARGUMENT;
         else {
@@ -223,7 +228,7 @@ extern "C" int nezha_audio27_capture_pcm(uint32_t offset,uint32_t count,int16_t 
             memcpy(out,p->pcm+offset,count*sizeof *out);*copied=count;result=NA_OK;
         }
     }
-    nezha_audio_owner_unlock();return result;
+    return result;
 }
 extern "C" int na_native_map(NaNativeWindow *w,NaRange range,uint64_t lease) {
     if (!w || w->mapping || !lease || !ownedWindow(range)) return NA_ARGUMENT;

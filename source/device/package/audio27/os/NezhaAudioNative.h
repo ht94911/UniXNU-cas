@@ -42,8 +42,8 @@ int nezha_audio_worker_start(NaDriver *);
 /* Bounded read of the existing worker statistics for USB provider8/v6.
  * Does not acquire the audio owner lock or touch hardware. */
 int nezha_audio27_copy_stats(uint64_t out[64]);
-/* Read only the retained, completed finite PCM under the existing short
- * owner try-lock. The caller supplies an index/count, never an address. */
+/* Read only the once-per-boot finite PCM after its release terminal state.
+ * Playback/VI ownership does not affect this immutable completed array. */
 int nezha_audio27_capture_pcm(uint32_t offset,uint32_t count,int16_t *,uint32_t *copied);
 #ifdef __cplusplus
 }
