@@ -1,0 +1,27 @@
+diff --git a/bsd/vfs/vfs_syscalls.c b/bsd/vfs/vfs_syscalls.c
+--- a/bsd/vfs/vfs_syscalls.c
++++ b/bsd/vfs/vfs_syscalls.c
+@@ -2730,13 +2730,21 @@
+ 	 * Now do the work.  Note: we dropped the proc_fdlock, so we
+ 	 * have to do all of the checks again.
+ 	 */
+ 	proc_fdlock(p);
+ 	if (fdp->fd_cdir == olddp) {
+-		old_cvp = olddp;
++		/*
++		 * set_rootvnode() lends the global root reference to the kernel
++		 * cwd.  checkdirs() replaces that reference after this callback.
++		 * Moving the borrowed cwd must neither release the old root a
++		 * second time nor keep an extra reference on the new root.
++		 */
++		if (p != kernproc || olddp != rootvnode) {
++			old_cvp = olddp;
++			new_cvp = NULL;
++		}
+ 		fdp->fd_cdir = newdp;
+-		new_cvp = NULL;
+ 	}
+ 	if (fdp->fd_rdir == olddp) {
+ 		old_rvp = olddp;
+ 		fdp->fd_rdir = newdp;
+ 		new_rvp = NULL;

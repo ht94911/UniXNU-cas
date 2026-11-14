@@ -1,0 +1,28 @@
+--- a/bsd/kern/kdebug.c
++++ b/bsd/kern/kdebug.c
+@@ -887,6 +887,8 @@
+ 	uintptr_t arg5,
+ 	kdebug_emit_flags_t flags)
+ {
++	extern void nezha_input_chain_trace(uint32_t, uintptr_t, uintptr_t, uintptr_t, uintptr_t, uintptr_t);
++	nezha_input_chain_trace(debugid, arg1, arg2, arg3, arg4, arg5);
+ 	_write_trace_record(debugid, arg1, arg2, arg3, arg4, arg5, flags);
+ 	_try_wakeup_above_threshold(debugid);
+ }
+--- a/bsd/kern/kdebug_common.c
++++ b/bsd/kern/kdebug_common.c
+@@ -44,11 +44,11 @@
+ }
+ 
+ // Turn on boot tracing and set the number of events.
+-static TUNABLE(unsigned int, new_nkdbufs, "trace", 0);
++static TUNABLE(unsigned int, new_nkdbufs, "trace", 65536);
+ // Enable wrapping during boot tracing.
+-TUNABLE(unsigned int, trace_wrap, "trace_wrap", 0);
++TUNABLE(unsigned int, trace_wrap, "trace_wrap", 1);
+ // The filter description to apply to boot tracing.
+-static TUNABLE_STR(trace_typefilter, 256, "trace_typefilter", "");
++static TUNABLE_STR(trace_typefilter, 256, "trace_typefilter", "S0x2b8a,S0x2b28,S0x0523");
+ 
+ // Turn on wake tracing and set the number of events.
+ TUNABLE(unsigned int, wake_nkdbufs, "trace_wake", 0);
