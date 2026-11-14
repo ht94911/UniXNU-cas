@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "purpose": "Bounded AVFoundation main-camera discovery; no camera permission request and no capture start; manual Camera.app test remains deferred.",
+  "device_revision": "5224e9092077b1989cf2f04dac5da6cd368f8cad",
+  "files": {
+    "source/NezhaCameraEnumerate.m": "937534ad2a3e2fb75bcf19024e79c2c0f977de77b2568a6fc4084fd28dae3806",
+    ".github/workflows/nezha-ios27-native.yml": "cdb572477324dfe8e31524164479fa5f48741aea4d6d9a13d534cd329eccfef4"
+  },
+  "builder_sha256": "d8ea3d711fcb3771da67ec7d97107b4d878f32cb0fe290c1b0a7ea654ae501cc",
+  "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
+  "certificate_sha256": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
+  "kernel_build_required": false,
+  "private_inputs_uploaded": false,
+  "phone_operations": false
+}
