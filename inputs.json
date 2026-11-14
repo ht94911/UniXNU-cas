@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "82c4d451134a991351258898ae2e15df0ec2e711",
+  "device_revision": "bbf20f3ac66bbe23c2382a1c227eb4f7c0c5e941",
   "soc_revision": "3af99241822776cd8318b66f0e4093a4c8f20a2d",
   "xcode": "26.6",
   "files": {
@@ -313,8 +313,8 @@
     "source/soc/patches/xnu-12377/native-smp-secondary.patch": "9d9164921da548a9f13ccbd6093c799583f54e590ef3d562288dcea9ba5a2774",
     "source/soc/patches/xnu-12377/sheng-platform-power.patch": "6e68dbcdac670624f2a9806a61fef42110bfe6586029b3f1a0acb068c3a23ec2",
     "source/soc/patches/xnu-12377/series": "bb95255800677aae6c7ba2742e892e0d40b4c34eb40816b58214c1393759bc1d",
-    ".github/workflows/nezha-ios27-native.yml": "6724dc367833efc6f029a79e84db79477193db62cb2d9a4d63c54cd743c57cb7",
-    "ci/native.py": "954cafdab0c11f80522beee5569be22c2e29ff297c0262a93706cce4642fba0c",
+    ".github/workflows/nezha-ios27-native.yml": "cd7015a7d518e83ff63a045edcee8aa138e3b301a061dfd38ebcb7af5f094668",
+    "ci/native.py": "d497c52c25e103230e057fda15c234ef0a5d15c362bd0b9118fdbf2d11205f9e",
     "source/device/package/camera/userland/NezhaCameraPreview.c": "724435ef79b3ebe1b56cd21c6bbdb2e6312ef9a71e85d2f3adcbaf01e75b0429",
     "source/device/package/camera/userland/NezhaCameraPreview.h": "b3e588fe11c72cfd3bf01c2dafd454cea915c72863d91f4958ecdf38fe24726a",
     "source/device/package/camera/userland/NezhaCameraPixelBuffer.c": "f85531cc4a9c2dac433629e2c3869191ce6de2dba331ea60e4accd69d1003472",
@@ -340,7 +340,7 @@
     "source/device/package/camera/userland/NezhaCameraFormats.c": "7074c95abad4fbc9f5e9182dd1bd7d2e73fd889ca949df7b472bd44615ba84c0",
     "source/device/package/camera/userland/NezhaCameraFormats.h": "8e23c3fbafab0b2c3659236b88dc676d3c48415da37d7f3cbd1d0c9fc0ae9e86",
     "source/device/package/camera/userland/NezhaCameraRawPreview.c": "00568484834e61f1bf392b4cee3178052f79f000193745d9595061012418eca9",
-    "source/device/package/camera/userland/NezhaCameraSystemVendor.m": "36bf7521b7df6f1d2ea9353e430e9c81f81c38cf2517d94b29afeeeb81516788",
+    "source/device/package/camera/userland/NezhaCameraSystemVendor.m": "05e718eb8040c806ed21844b5017f8027cdacf2cf8b193401a763bf1dac35b2c",
     "source/device/package/camera/userland/README.md": "df24968d570b5e37bab55ed2128db9a76654b3c5e69d3b06cc014c2d55c4ae1b",
     "source/device/patches/xnu-12377/zzzzzz-nezha-camera-service-environment.patch": "c4f5809394b1c0f22f97f2432923941a5251230a9c9679344afc0cabc3f00310",
     "source/device/scripts/check-nezha27-camera-continuous.sh": "86f976e10aad06ab61c900dfe71dce550c30bcb7d47aebb96a196c4678a6feb3",
@@ -373,7 +373,7 @@
     "source/device/tests/camera-platform/vendor-fixture/objc/runtime.h": "b9dfaa5564941ce7a833f26806792dc519cc1fa5f4d1b16ae3a196b85a640bd1",
     "source/device/tests/camera-platform/vendor-fixture/ptrauth.h": "91a3caaf31d58a2172b56ff1a751104aaf84c3ea08ee31bff78d6814700dfdca",
     "source/device/tests/camera-preview.c": "4948e1633077443e934d673760b423bf6bc4c5489dcc4e971f88d64f530a7874",
-    "source/device/tests/camera-system-vendor.c": "85abc39f97309280f3d3f69a6fa3cff80a88af97434b894f8f84d31326217bb1"
+    "source/device/tests/camera-system-vendor.c": "9aee965758cbbf97d25b43238cd161fbdb79b4c0bdfdadc2bf4e1b97d9a2c7b8"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
@@ -473,8 +473,8 @@
     "camera013_Android_protection_release": true
   },
   "soc_previous_source": "5a71f9eb5724ff58eddf49f7f5baecc9f4233a7c",
-  "userland_revision": "82c4d451134a991351258898ae2e15df0ec2e711",
-  "ci_native_sha256": "954cafdab0c11f80522beee5569be22c2e29ff297c0262a93706cce4642fba0c",
+  "userland_revision": "bbf20f3ac66bbe23c2382a1c227eb4f7c0c5e941",
+  "ci_native_sha256": "d497c52c25e103230e057fda15c234ef0a5d15c362bd0b9118fdbf2d11205f9e",
   "prior_camera_native": {
     "run": 43587391588,
     "attempt": 2,
