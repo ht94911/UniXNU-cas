@@ -91,12 +91,32 @@ int submit(void *,const qud_diag_request *request,char *out,size_t capacity,size
         if (n<0 || (size_t)n>=capacity-used) {*truncated=1;return QUD_FAILED;}
         *bytes=used+(size_t)n;return QUD_OK;
     }
-    if (request->arg0>64 || request->arg1 ||
+    const bool encoded=request->arg1==2;
+    if (request->arg0>(encoded ? NA_CAPTURE_PROBE_PAGE_FRAMES:64u) ||
+        (request->arg1 && !encoded) ||
         request->cursor>=NA_CAPTURE_PROBE_PCM_FRAMES) return QUD_INVALID;
-    int16_t pcm[64];uint32_t copied=0;
+    int16_t pcm[NA_CAPTURE_PROBE_PAGE_FRAMES];uint32_t copied=0;
     int r=nezha_audio27_capture_pcm((uint32_t)request->cursor,request->arg0 ? request->arg0:64,pcm,&copied);
     if (r==NA_BUSY) return QUD_BUSY;
     if (r) return r==NA_ARGUMENT ? QUD_INVALID:QUD_FAILED;
+    if (encoded) {
+        int n=snprintf(out,capacity,"{\"kind\":\"capture_pcm\",\"rate\":48000,\"channels\":1,\"bits\":16,\"offset\":%u,\"frames\":%u,\"encoding\":\"s16le-base64\",\"data\":\"",
+            (unsigned)request->cursor,copied);
+        if (n<0 || (size_t)n>=capacity) {*truncated=1;return QUD_FAILED;}
+        size_t used=(size_t)n,count=copied*sizeof *pcm;
+        const uint8_t *data=reinterpret_cast<const uint8_t *>(pcm);
+        static const char alphabet[]="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        if (4*((count+2)/3)+3>=capacity-used) {*truncated=1;return QUD_FAILED;}
+        for (size_t i=0;i<count;i+=3) {
+            uint32_t word=(uint32_t)data[i]<<16;
+            if (i+1<count) word|=(uint32_t)data[i+1]<<8;
+            if (i+2<count) word|=data[i+2];
+            out[used++]=alphabet[word>>18];out[used++]=alphabet[(word>>12)&63];
+            out[used++]=i+1<count ? alphabet[(word>>6)&63]:'=';
+            out[used++]=i+2<count ? alphabet[word&63]:'=';
+        }
+        memcpy(out+used,"\"}",3);*bytes=used+2;return QUD_OK;
+    }
     int n=snprintf(out,capacity,"{\"kind\":\"capture_pcm\",\"rate\":48000,\"channels\":1,\"bits\":16,\"offset\":%u,\"frames\":%u,\"samples\":[",
         (unsigned)request->cursor,copied);
     if (n<0 || (size_t)n>=capacity) {*truncated=1;return QUD_FAILED;}
@@ -110,7 +130,7 @@ int submit(void *,const qud_diag_request *request,char *out,size_t capacity,size
     if (n<0 || (size_t)n>=capacity-used) {*truncated=1;return QUD_FAILED;}
     *bytes=used+(size_t)n;return QUD_OK;
 }
-const qud_diag_provider provider={8,7,(1u<<QUD_SNAPSHOT)|(1u<<QUD_HISTORY),64,1,"nezhaaudio",nullptr,snapshot,submit};
+const qud_diag_provider provider={8,7,(1u<<QUD_SNAPSHOT)|(1u<<QUD_HISTORY),NA_CAPTURE_PROBE_PAGE_FRAMES,2,"nezhaaudio",nullptr,snapshot,submit};
 void run_start(void *v,wait_result_t) {
     auto *s=static_cast<NaNativePlaybackStart *>(v);
     thread_set_thread_name(current_thread(),"nezha-audio27-start");

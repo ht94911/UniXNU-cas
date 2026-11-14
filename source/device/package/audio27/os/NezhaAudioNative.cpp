@@ -211,7 +211,7 @@ extern "C" int nezha_audio27_copy_stats(uint64_t out[64]) {
     return NA_BUSY;
 }
 extern "C" int nezha_audio27_capture_pcm(uint32_t offset,uint32_t count,int16_t *out,uint32_t *copied) {
-    if (!out || !copied || !count || count>64 || offset>=NA_CAPTURE_PROBE_PCM_FRAMES) return NA_ARGUMENT;
+    if (!out || !copied || !count || count>NA_CAPTURE_PROBE_PAGE_FRAMES || offset>=NA_CAPTURE_PROBE_PCM_FRAMES) return NA_ARGUMENT;
     *copied=0;
     if (!nezha_audio_owner_try_lock()) return NA_BUSY;
     NaDriver *d=__atomic_load_n(&worker,__ATOMIC_ACQUIRE);int result=NA_BUSY;
