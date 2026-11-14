@@ -269,15 +269,16 @@ int na_runtime_poll(NaRuntime *r,uint64_t now) {
             e=na_graph_request(g,1);if (e<0 && e!=NA_BUSY && !r->fault) r->fault=e;
         }
         if (g->stage==NaGraphOff) r->origin_set[i]=0;
-        /* Capture starts at the first submitted period. The callback uses the
-         * actual returned byte count; it cannot fabricate a full-period read. */
-        if (i==1 && g->stage==NaGraphRunning && !r->origin_set[i]) origin(r,i);
     }
     na_prm_request(r->prm,mask);
+    NaGraph *in=r->engine.graph[1];
     e=na_engine_poll(&r->engine,now);
+    /* Analog settling now precedes the first READ. Anchor captured frames
+     * when that READ is actually submitted, not when the graph starts. */
+    if (in && in->stage==NaGraphRunning && in->stream->next && !r->origin_set[1])
+        origin(r,1);
     /* An opt-in, unpublished input probe owns its own failure. Keep healthy
      * output/VI running while its original CLOSE/UNMAP drain continues. */
-    NaGraph *in=r->engine.graph[1];
     if (!r->capture_proven && probe>=NaProbeStarting && in && in->error) {
         if (probe<=NaProbeDraining) {
             if (!r->probe.error) r->probe.error=in->error;

@@ -58,6 +58,19 @@ static int periods(NaEngine *e,unsigned direction,uint64_t now) {
         }
     }
     if (g->stage!=NaGraphRunning || !g->want || !s->running) return NA_OK;
+    /* The codec capture path must finish its analog settle and unmute before
+     * the first READ, as in sheng's micStream. Output needs queued PCM before
+     * amplifier activation; applying that output condition to input leaves
+     * READs waiting on a still-muted capture source. */
+    if (direction && !e->active[direction]) {
+        if (!e->activation_deadline[direction]) e->activation_deadline[direction]=now+5000;
+        if (now>=e->activation_deadline[direction]) return fault(g,NA_TIMEOUT);
+        int r=e->ops.activate(e->ops.context,(int)direction);
+        if (r==NA_PENDING) return NA_OK;
+        if (r) return fault(g,r);
+        e->active[direction]=1;
+        ++e->activation_completed[direction];
+    }
     for (unsigned n=0;n<NA_DMA_FLIGHT;++n) {
         uint8_t packet[GPR_MAX_PACKET];unsigned index=0;uint32_t length=0;
         int r=na_stream_prepare(s,e->session,now,2000,&index,packet,&length);
@@ -89,7 +102,7 @@ static int periods(NaEngine *e,unsigned direction,uint64_t now) {
         ++e->periods_submitted[direction];
         e->staged[direction]=0;
     }
-    if (!e->active[direction] && (direction || !e->output_idle) && s->in_flight>=2) {
+    if (!direction && !e->active[direction] && !e->output_idle && s->in_flight>=2) {
         if (!e->activation_deadline[direction]) e->activation_deadline[direction]=now+5000;
         if (now>=e->activation_deadline[direction]) return fault(g,NA_TIMEOUT);
         int r=e->ops.activate(e->ops.context,(int)direction);
