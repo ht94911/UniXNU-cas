@@ -315,10 +315,86 @@ static void native_extension_registration(void)
     assert(m.client[1].registration.enabled[0xe7] == 1);
     stop(&m);
 }
+static void native_network_time_cache(void)
+{
+    struct nb_nas_mux m;
+    uint8_t data[512];
+    nb_nas_init(&m, NULL, allocate, release, emit); outputs = 0;
+    nb_nas_attach(&m, 0, 0, 1, 0, 0x123);
+    nb_nas_attach(&m, 1, 0, 2, 0, 0x123);
+    nb_nas_attach(&m, 2, 1, 1, 0, 0x123);
+    /* The original NetworkTimeCachePeriod writer emits TLV0xc0, length4,
+     * and all four little-endian duration bytes. Its enclosing native network
+     * registration builder obtains the period from the carrier profile. */
+    uint8_t period[] = { 0xc0, 4, 0, 0x2c, 1, 0, 0 };
+    unsigned n = message(data, NB_NAS_REGISTER, 0x40, period, sizeof period);
+    assert(!nb_nas_submit(&m, 0, data, n));
+    struct nb_nas_packet p;
+    assert(nb_nas_next(&m, 1, &p) && cbq_rd16(p.data + 3) == NB_NAS_BIND);
+    respond(&m, &p, 0);
+    assert(nb_nas_next(&m, 2, &p) && p.bytes == n
+        && !memcmp(p.data + 7, period, sizeof period));
+    respond(&m, &p, 0);
+    /* Equal explicit periods can share one real subscription. */
+    n = message(data, NB_NAS_REGISTER, 0x41, period, sizeof period);
+    assert(!nb_nas_submit(&m, 1, data, n) && nb_nas_next(&m, 3, &p));
+    respond(&m, &p, 0);
+    /* An explicit zero is a duration, not withdrawal of a boolean report.
+     * Its conflict must fail without changing the real accepted packet. */
+    memset(period + 3, 0, 4);
+    n = message(data, NB_NAS_REGISTER, 0x42, period, sizeof period);
+    assert(!nb_nas_submit(&m, 1, data, n) && !nb_nas_next(&m, 4, &p));
+    assert(nb_nas_error(output[outputs - 1].data, output[outputs - 1].bytes)
+        == CBQ_ERR_NOT_SUPPORTED);
+    const uint8_t sys_info[] = { 0x18, 1, 0, 1 };
+    n = message(data, NB_NAS_REGISTER, 0x43, sys_info, sizeof sys_info);
+    assert(!nb_nas_submit(&m, 1, data, n) && nb_nas_next(&m, 5, &p));
+    uint32_t size = 0;
+    const uint8_t *field = cbq_tlv(p.data + 7, p.bytes - 7, 0xc0, &size);
+    assert(field && size == 4 && !memcmp(field, "\x2c\x01\x00\x00", 4));
+    respond(&m, &p, 0);
+    /* Retiring one client leaves the other owner's period. A real rejected
+     * change and a cancelled owner's completion cannot update its cache. */
+    nb_nas_retire(&m, 0);
+    n = message(data, NB_NAS_REGISTER, 0x44, period, sizeof period);
+    assert(!nb_nas_submit(&m, 1, data, n) && nb_nas_next(&m, 6, &p));
+    respond(&m, &p, CBQ_ERR_MALFORMED_MESSAGE);
+    n = message(data, NB_NAS_REGISTER, 0x45, sys_info, sizeof sys_info);
+    assert(!nb_nas_submit(&m, 1, data, n) && nb_nas_next(&m, 7, &p));
+    field = cbq_tlv(p.data + 7, p.bytes - 7, 0xc0, &size);
+    assert(field && size == 4 && !memcmp(field, "\x2c\x01\x00\x00", 4));
+    respond(&m, &p, 0);
+    /* Secondary has its own actual bind and its own duration. */
+    const uint8_t secondary[] = { 1, 1, 0, 1 };
+    n = message(data, NB_NAS_BIND, 0x46, secondary, sizeof secondary);
+    assert(!nb_nas_submit(&m, 2, data, n) && nb_nas_next(&m, 8, &p));
+    respond(&m, &p, 0);
+    n = message(data, NB_NAS_REGISTER, 0x47, period, sizeof period);
+    assert(!nb_nas_submit(&m, 2, data, n) && nb_nas_next(&m, 9, &p)
+        && p.master == 1 && !memcmp(p.data + 7, period, sizeof period));
+    respond(&m, &p, 0);
+    period[3] = 0xff; period[4] = 0xff; period[5] = 0xff; period[6] = 0xff;
+    n = message(data, NB_NAS_REGISTER, 0x48, period, sizeof period);
+    assert(!nb_nas_submit(&m, 2, data, n) && nb_nas_next(&m, 10, &p)
+        && !memcmp(p.data + 7, period, sizeof period));
+    nb_nas_retire(&m, 2);
+    respond(&m, &p, 0);
+    assert(!m.client[2].used);
+    /* Exact lengths remain mandatory, including a zero-valued duration. */
+    const uint8_t wrong_length[] = { 0xc0, 1, 0, 1 };
+    n = message(data, NB_NAS_REGISTER, 0x49, wrong_length, sizeof wrong_length);
+    assert(nb_nas_submit(&m, 1, data, n) == CBQ_ERR_MALFORMED_MESSAGE);
+    n = message(data, NB_NAS_REGISTER, 0x4a, period, sizeof period - 1);
+    assert(nb_nas_submit(&m, 1, data, n) == CBQ_ERR_MALFORMED_MESSAGE);
+    uint8_t duplicate[14]; memcpy(duplicate, period, 7); memcpy(duplicate + 7, period, 7);
+    n = message(data, NB_NAS_REGISTER, 0x4b, duplicate, sizeof duplicate);
+    assert(nb_nas_submit(&m, 1, data, n) == CBQ_ERR_MALFORMED_MESSAGE);
+    stop(&m);
+}
 int main(void)
 {
     original_client_exhaustion(); seventeen_clients(); registration_union();
-    native_extension_registration();
+    native_extension_registration(); native_network_time_cache();
     cancellation_and_endpoint(); ordered_requests_and_failures();
     puts("PASS NAS mux:17 clients, two subscriptions, transaction restoration, real errors, registration union, cancellation and endpoint lifetime");
     return 0;

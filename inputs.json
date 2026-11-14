@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Source-only arm64e iOS27 build on fixed GPU024. Retain real018 NAS port sharing, native CIDs and responses after real error5 disappeared. Preserve native NAS indication registration one-byte extensions and mode2 alongside stock flags, forwarding the complete merged request to the real modem. Keep real errors and update cache only after real success. PAS/MSS, IPA, SIM/WDS/PDP/VOICE/WMS, pinned storage, normal-return and original8RAMfixups unchanged. No phone logs, identities, EFS, IPSW or proprietary firmware input.",
+  "purpose": "Source-only arm64e iOS27 build on fixed GPU024. Preserve the original four-byte little-endian NAS network time cache period alongside existing one-byte extensions and mode2, with real modem errors and success-only cache updates. Equal per-subscription periods share the real port; conflicting durations remain unsupported without changing accepted state. PAS/MSS, IPA, SIM/WDS/PDP/VOICE/WMS, pinned storage, normal-return and original8RAMfixups unchanged. No phone logs, identities, EFS, IPSW or proprietary firmware input.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "5725bcb3b40228e6b601b6a4d4fa852d85b75c6c",
+  "device_revision": "b5db101e616a854e43eed8e7340203c18884eee9",
   "soc_revision": "703d7b4bb00904b4a6e5d96f9e9bf72eec170f6b",
   "xcode": "26.6",
   "files": {
@@ -107,7 +107,7 @@
     "source/device/package/backlight/OriginalAppleARMBacklightABI.h": "dab34c394c2123ae4cbfd6648980d5e7b024539773abe5852f7d2622f9bf7b8b",
     "source/device/package/baseband27/bridge/NbBoot.h": "99eb1dcfd6be4f50bc742237bb39ac6a50ad4930d4d8007e77749d12ce214ae4",
     "source/device/package/baseband27/bridge/NbNasBridge.inc": "1938d656f395cc7ab7a014bc1f66a72e0b4bfbbb41aa7a4284e9ef2252a40d80",
-    "source/device/package/baseband27/bridge/NbNasMux.h": "e17ab852138472d1f371ae4bea94b89c805f9a10869a083d08ede45f10fa97b4",
+    "source/device/package/baseband27/bridge/NbNasMux.h": "77e1f6caa43e4872f5bb0b671403de4036f3b7055e08c7a4d7531d5c000c3cc6",
     "source/device/package/baseband27/bridge/NbPdpFlow.h": "2ab5ed3b35fe447f291132bc6acb3eeecdb41affa3805524390f71bb997484ab",
     "source/device/package/baseband27/bridge/NbPdpFlow.inc": "af014ecb1f25d494faa9d01128797d404c2f533a411c84fdf22a175b7c9629f8",
     "source/device/package/baseband27/bridge/NbSim.h": "69f92d0f015735be4f2f72e1ed505b223f9474ecf7e3ce3e332833f8d27e1553",
@@ -329,7 +329,7 @@
     "source/device/tests/baseband27/ipa_sram_test.py": "bc7efb1008eb074496efe74d00cb5c0d6d03ce73aceda8a8efa779d1e0f02313",
     "source/device/tests/baseband27/low_memory_test.c": "2786276035452a9503c364d291545fe82c447f3db7745569378b4cacd0ba5a40",
     "source/device/tests/baseband27/mss_reuse_test.c": "cc6bc4de1511d10993cc6448a4c08af35600f53fe1a99a6b54b09af53e536232",
-    "source/device/tests/baseband27/nas_mux_test.c": "98ea70074f59504e9bba61b025f27f81c16349dbc246cfde7e864fad0a50251a",
+    "source/device/tests/baseband27/nas_mux_test.c": "90837c1bb9aa59c1ad21b7cbd4cccc24a5c61b7565e77e59437c60388b679e9f",
     "source/device/tests/baseband27/pdp_flow_test.c": "9aad5c6f5e9e6655f1213dfc484c81681d7ffacd481918c48552071b731b4bcd",
     "source/device/tests/baseband27/qmux_capacity_test.c": "f45ef951298ebc3b0951eaaa80ee61bc2c4397e13a97a4e92727d8a9a72ab401",
     "source/device/tests/baseband27/qmux_endpoint_test.c": "4849b019d981705ced226509ef0f07611b5160b5bfd3b310ab93d83a9708708b",
@@ -454,6 +454,8 @@
     "NAS_post_registration_cross_subscription_rebind_supported": false,
     "NAS_stock_registration_optional_fields": 89,
     "NAS_native_one_byte_extension_fields": true,
-    "NAS_native_nonzero_mode_values_preserved": true
+    "NAS_native_nonzero_mode_values_preserved": true,
+    "NAS_native_network_time_cache_uint32": true,
+    "NAS_conflicting_network_time_periods_rejected": true
   }
 }

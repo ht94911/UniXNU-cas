@@ -1,7 +1,7 @@
-name: nezha iPhone27 B package on GPU024 - native019
+name: nezha iPhone27 B package on GPU024 - native020
 on:
   push:
-    branches: [codex/ios27-bb-gpu024-native019-20261114]
+    branches: [codex/ios27-bb-gpu024-native020-20261114]
   workflow_dispatch:
 permissions:
   contents: read

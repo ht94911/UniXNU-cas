@@ -20,13 +20,15 @@
 #define NB_NAS_PORT_BASE (CBQ_PORT_BASE + CBQ_MAX_CLIENTS)
 #define NB_NAS_BIND 0x45u
 #define NB_NAS_REGISTER 3u
+#define NB_NAS_NETWORK_TIME_CACHE 0xc0u
 #define NB_NAS_REG_FIELDS 0x100u
-#define NB_NAS_REG_MAX_BYTES 968u /* SDU +240one-byte fields and the two-byte0x21 */
+#define NB_NAS_REG_MAX_BYTES 971u /* SDU +238 single-byte fields, two-byte0x21, four-byte0xc0 */
 #define NB_NAS_WAIT_MS 300000u   /* libqmi proxy's existing maximum command wait */
 #define NB_NAS_ERROR_INTERNAL 3u
 
 struct nb_nas_registration {
     uint8_t present[NB_NAS_REG_FIELDS], enabled[NB_NAS_REG_FIELDS], suppress_reject;
+    uint32_t network_time_cache_period;
 };
 struct nb_nas_client {
     uint8_t used, channel, cid, subscription;
@@ -142,17 +144,20 @@ static inline int nb_nas_parse_registration(struct nb_nas_registration *r,
     for (uint32_t at = 0; at < bytes;) {
         if (bytes - at < 3) return 0;
         uint32_t id = data[at], n = cbq_rd16(data + at + 1);
-        /* The stock IDL ends at0x6a, but native iOS also registers one-byte
-         * Apple fields (for example0xb0=2 for frequency and stop reports).
-         * Preserve those fields and values for the real modem to accept or
-         * reject; the stock boolean schema is not an iOS wire validator. */
+        /* Native iOS also registers Apple fields. NetworkTimeCachePeriod0xc0
+         * writes a little-endian uint32; frequency mode0xb0 writes one byte.
+         * Preserve their values for the real modem to accept or reject. */
         const int stock_flag = id < 0x6bu && id != 0x11 && id != 0x16;
+        const uint32_t expected = id == 0x21 ? 2u : id == NB_NAS_NETWORK_TIME_CACHE ? 4u : 1u;
         if (n > bytes - at - 3 || id < 0x10 || seen[id]
-            || n != (id == 0x21 ? 2u : 1u)
+            || n != expected
             || (stock_flag && data[at + 3] > 1)
             || (id == 0x21 && data[at + 4] > 1)) return 0;
         seen[id] = r->present[id] = 1;
-        r->enabled[id] = data[at + 3];
+        if (id == NB_NAS_NETWORK_TIME_CACHE)
+            r->network_time_cache_period = cbq_rd16(data + at + 3)
+                | (uint32_t)cbq_rd16(data + at + 5) << 16;
+        else r->enabled[id] = data[at + 3];
         if (id == 0x21) r->suppress_reject = data[at + 4];
         at += 3 + n;
     }
@@ -205,10 +210,13 @@ static inline uint32_t nb_nas_registration_packet(struct nb_nas_mux *s, unsigned
         p->registration.present[id] = 1;
         p->registration.enabled[id] = update.enabled[id];
         if (id == 0x21) p->registration.suppress_reject = update.suppress_reject;
+        if (id == NB_NAS_NETWORK_TIME_CACHE)
+            p->registration.network_time_cache_period = update.network_time_cache_period;
     }
     struct nb_nas_registration merged = s->master[lane].registration;
     __builtin_memset(merged.enabled, 0, sizeof merged.enabled);
     merged.suppress_reject = 1;
+    int cache_period_seen = 0;
     for (unsigned i = 0; i < CBQ_MAX_CLIENTS; ++i) {
         const struct nb_nas_client *c = &s->client[i];
         if (!c->used || c->subscription != lane || c->node != p->node || c->port != p->port) continue;
@@ -216,7 +224,16 @@ static inline uint32_t nb_nas_registration_packet(struct nb_nas_mux *s, unsigned
         for (unsigned id = 0x10; id < NB_NAS_REG_FIELDS; ++id) {
             if (!r->present[id]) continue;
             merged.present[id] = 1;
-            if (id < 0x6bu && id != 0x11 && id != 0x16) {
+            if (id == NB_NAS_NETWORK_TIME_CACHE) {
+                /* This is a duration, including an explicit zero. Equal
+                 * periods can share a subscription; differing periods have
+                 * no established union. Keep the accepted modem state until
+                 * a request with one unambiguous period actually succeeds. */
+                if (cache_period_seen
+                    && r->network_time_cache_period != merged.network_time_cache_period) return 0;
+                merged.network_time_cache_period = r->network_time_cache_period;
+                cache_period_seen = 1;
+            } else if (id < 0x6bu && id != 0x11 && id != 0x16) {
                 merged.enabled[id] |= r->enabled[id];
             } else {
                 /* Opaque one-byte modes are not bit masks. Equal nonzero
@@ -235,9 +252,16 @@ static inline uint32_t nb_nas_registration_packet(struct nb_nas_mux *s, unsigned
     uint32_t at = CBQ_SDU_HDR;
     for (unsigned id = 0x10; id < NB_NAS_REG_FIELDS; ++id) {
         if (!merged.present[id]) continue;
-        p->data[at] = (uint8_t)id; cbq_wr16(p->data + at + 1, id == 0x21 ? 2u : 1u);
-        p->data[at + 3] = merged.enabled[id]; at += 4;
-        if (id == 0x21) p->data[at++] = merged.suppress_reject;
+        const uint32_t size = id == 0x21 ? 2u : id == NB_NAS_NETWORK_TIME_CACHE ? 4u : 1u;
+        p->data[at] = (uint8_t)id; cbq_wr16(p->data + at + 1, size);
+        if (id == NB_NAS_NETWORK_TIME_CACHE) {
+            cbq_wr16(p->data + at + 3, merged.network_time_cache_period);
+            cbq_wr16(p->data + at + 5, merged.network_time_cache_period >> 16);
+        } else {
+            p->data[at + 3] = merged.enabled[id];
+            if (id == 0x21) p->data[at + 4] = merged.suppress_reject;
+        }
+        at += 3 + size;
     }
     cbq_wr16(p->data + 5, at - CBQ_SDU_HDR);
     return at;
