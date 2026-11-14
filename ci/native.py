@@ -26,6 +26,41 @@ def run(argv, *, cwd=None, env=None, log=None):
     return subprocess.check_output([str(a) for a in argv], cwd=cwd, env=env, text=True).strip()
 
 
+def check_keystore_source(framework, work):
+    """Bind the existing explicit module override before any target compilation."""
+    manifest = json.loads((ROOT / 'inputs.json').read_text())
+    selected = (work / 'device/components/AppleKeyStoreState').resolve()
+    sys.path.insert(0, str(framework / 'scripts'))
+    from unixnu.cli import parser
+    from unixnu.config import Context
+    from unixnu.feeds import resolve
+    override = 'driver:AppleKeyStoreState=' + str(selected)
+    args = parser().parse_args(['status', '--config', str(work / 'build.toml'),
+                               '--device', str(work / 'device'), '--out', str(work / 'out'),
+                               '--local-module', override])
+    module = resolve(Context(args))[('driver', 'AppleKeyStoreState')]
+    if module.path.resolve() != selected or module.origin != 'local (--local-module)':
+        raise ValueError('The effective AppleKeyStoreState source is not the explicit snapshot')
+    actual = {name: sha(selected / name) for name in manifest['keystore']['source_files']}
+    if actual != manifest['keystore']['source_files']:
+        raise ValueError('Effective AppleKeyStoreState source SHA differs')
+    lock = work / 'device/package/keystore013-source-lock.json'
+    if sha(lock) != manifest['keystore']['source_lock_sha256']:
+        raise ValueError('Effective AppleKeyStoreState source lock differs')
+    source_lock = json.loads(lock.read_text())
+    if (source_lock['source_revision'] != manifest['keystore']['source_revision'] or
+            source_lock['tree'] != manifest['keystore']['source_tree'] or
+            actual != {name: item['sha256'] for name, item in source_lock['source_files'].items()} or
+            sha(work / 'device/package/KeyStoreProbe.cpp') != source_lock['device_callback_source_sha256']):
+        raise ValueError('Effective KeyStore component/getter provenance differs')
+    result = dict(passed=True, module='AppleKeyStoreState', origin=module.origin,
+                  source=str(selected), source_files=actual,
+                  device_revision=manifest['device_revision'], override=override,
+                  source_lock_sha256=sha(lock), callback_source_sha256=source_lock['device_callback_source_sha256'],
+                  phone_operations=False, target_compiled=False)
+    (work / 'keystore-source-selection.json').write_text(json.dumps(result, indent=2) + '\n')
+    return override
+
 def prepare(framework, work):
     manifest = json.loads((ROOT / 'inputs.json').read_text())
     for name, digest in manifest['files'].items():
@@ -44,10 +79,19 @@ def prepare(framework, work):
     tree = run(['git', 'write-tree'], cwd=framework)
     if tree != manifest['framework']['source_tree']:
         raise ValueError('reconstructed framework tree differs from integration tree')
+    base_tree = tree
+    userlog = manifest['userlog_target']
+    overlay = ROOT / userlog['source_overlay']
+    selected = ['--include=' + name for name in userlog['framework_overlay_files']]
+    run(['git', 'apply', '--check', '--index', *selected, overlay], cwd=framework)
+    run(['git', 'apply', '--index', *selected, overlay], cwd=framework)
+    tree = run(['git', 'write-tree'], cwd=framework)
+    if tree != userlog['framework_tree']:
+        raise ValueError('Accepted UserLog framework adapter tree differs')
     work.mkdir(parents=True, exist_ok=False)
     for name in ('device', 'soc'):
         shutil.copytree(ROOT / 'source' / name, work / name)
-    for name in ('adreno', 'metal'):
+    for name in ('adreno', 'metal', 'software-aes'):
         shutil.copytree(ROOT / 'source' / name, work / name)
     usb = work / 'usb'
     run(['git', 'init', '-q', usb])
@@ -60,6 +104,13 @@ def prepare(framework, work):
         raise ValueError('USB source tree mismatch')
     if run(['git', '-C', usb, 'status', '--porcelain']):
         raise ValueError('USB source is not clean')
+    actual_userlog = {name: sha(usb / name) for name in userlog['source_files']}
+    if actual_userlog != userlog['source_files']:
+        raise ValueError('Composed USB/UserLog source identity differs')
+    (work / 'userlog-source-selection.json').write_text(json.dumps(dict(
+        passed=True, actual_usb_tree=manifest['usb']['source_tree'],
+        base_framework_tree=base_tree, actual_framework_tree=tree,
+        source_files=actual_userlog, source_only=True), indent=2) + '\n')
     run(['git', '-C', usb, 'remote', 'add', 'origin', manifest['usb']['repository']])
     run(['git', '-C', usb, 'remote', 'set-url', '--push', 'origin', 'DISABLED-no-push'])
     ufs = work / 'ufs'
@@ -106,6 +157,8 @@ def prepare(framework, work):
                      '\n[[source]]\nname = "AdrenoMetal"\nkind = "refer"\nlocal = "../metal"\n')
     with (work / 'device/local.toml').open('a') as output:
         output.write('\n[[source]]\nname = "GopFramebuffer"\nkind = "driver"\nlocal = "../gop"\n')
+    with (work / 'device/local.toml').open('a') as output:
+        output.write('\n[[source]]\nname = "SoftwareAES"\nkind = "driver"\nlocal = "../software-aes"\n')
     config = {'device': str(work / 'device'), 'out': str(work / 'out'), 'jobs': jobs}
     text = '[build]\n' + ''.join(k + ' = ' + json.dumps(v) + '\n' for k, v in config.items())
     (work / 'build.toml').write_text(text)
@@ -114,9 +167,10 @@ def prepare(framework, work):
          '--out', work / 'integration-source-qualified.json'])
     (work / 'source-report.json').write_text(json.dumps({
         'source_inputs': manifest, 'actual_framework_base': run(['git', 'rev-parse', 'HEAD'], cwd=framework),
-        'actual_framework_tree': tree, 'source_tree_verified': True, 'jobs': jobs,
+        'actual_framework_tree': tree, 'base_framework_tree': base_tree, 'source_tree_verified': True, 'jobs': jobs,
         'device_executed': False, 'proprietary_inputs_uploaded': False,
     }, indent=2) + '\n')
+    check_keystore_source(framework, work)
 
 
 def build(framework, work):
@@ -136,7 +190,10 @@ def build(framework, work):
               'null_codegen_review_required': True, 'target_code_executed': False}
     if not probe:
         sys.path.insert(0, str(framework / 'scripts'))
-        os.environ.update(UNIXNU_XNU_ARCH='arm64e', UNIXNU_IOS_VERSION='27.0')
+        manifest = json.loads((ROOT / 'inputs.json').read_text())
+        os.environ.update(UNIXNU_XNU_ARCH='arm64e', UNIXNU_IOS_VERSION='27.0',
+                          UNIXNU_QCOM_USB_USERLOG='1',
+                          UNIXNU_QCOM_USB_USERLOG_TREE=manifest['usb']['source_tree'])
         from kernel_target import check_object
         check_object((work / 'authenticated-null.o').read_bytes(), 'authenticated-null probe')
         report['object_target_validated'] = True
@@ -146,9 +203,10 @@ def build(framework, work):
     if probe:
         return probe
     config = work / 'build.toml'
+    keystore_override = check_keystore_source(framework, work)
     commands = [
-        ['python3', framework / 'unixnu', 'defconfig', 'nezha_ios27_defconfig', '--config', config],
-        ['python3', framework / 'unixnu', 'kernel', '--skip-prelink', '--config', config],
+        ['python3', framework / 'unixnu', 'defconfig', 'nezha_ios27_defconfig', '--config', config, '--local-module', keystore_override],
+        ['python3', framework / 'unixnu', 'kernel', '--skip-prelink', '--config', config, '--local-module', keystore_override],
     ]
     for index, command in enumerate(commands):
         code = run(command, cwd=framework, log=logs / ('step-' + str(index) + '.log'))
@@ -158,9 +216,27 @@ def build(framework, work):
         '*/tree/.cache/xnu-work/bsd/kern/kern_memorystatus.c'))
     if len(sources) != 1:
         raise ValueError('select the actual compiled memorystatus source')
-    return run([sys.executable, work / 'device/scripts/check-iconservice-memory.py',
+    code = run([sys.executable, work / 'device/scripts/check-iconservice-memory.py',
                 '--source', sources[0], '--out', work / 'icon-memory-host'],
                log=logs / 'icon-memory-host.log')
+    if code: return code
+    kernels = {path.resolve() for path in
+        (work / 'out/nezha/ios-27.0.1-24A446-iphone14-4').glob('*/kernel/kernel.macho')}
+    if len(kernels) != 1: raise ValueError('Select the actual joint Native043')
+    kernel = next(iter(kernels)); tree = kernel.parent.parent / 'tree'
+    llvm = Path(run(['brew', '--prefix', 'llvm'])) / 'bin'
+    code = run([sys.executable, tree / 'scripts/check-keystore-source.py',
+                '--source', tree / 'drivers/AppleKeyStoreState',
+                '--probe', tree / 'kits/nezha/KeyStoreProbe.cpp',
+                '--lock', tree / 'kits/nezha/keystore013-source-lock.json',
+                '--tree', tree, '--llvm', llvm, '--kernel', kernel,
+                '--out', work / 'keystore-target-qualification.json'],
+               log=logs / 'keystore-target-qualification.log')
+    if code: return code
+    return run([sys.executable, HERE / 'check-native-userlog.py',
+                '--tree', tree, '--component', work / 'usb', '--llvm', llvm,
+                '--kernel', kernel, '--out', work / 'userlog-target-qualification.json'],
+               log=logs / 'userlog-target-qualification.log')
 
 
 def reference(framework, work):
@@ -195,6 +271,17 @@ def collect(framework, work, sealed):
         names.append(name)
 
     add(ROOT / 'inputs.json', 'inputs.json')
+    manifest = json.loads((ROOT / 'inputs.json').read_text())
+    for name in ('keystore-source-selection.json', 'keystore-target-qualification.json',
+                 'userlog-source-selection.json', 'userlog-target-qualification.json'):
+        add(work / name, name)
+    for name in manifest['userlog_target']['source_files']:
+        add(work / 'usb' / name, 'userlog-source/' + name)
+    add(framework / 'scripts/build-qcom-usb-debug.py', 'userlog-source/build-qcom-usb-debug.py')
+    for path in sorted((work / 'userlog-producer-host').glob('*')):
+        if path.is_file() and path.suffix in ('.json', '.log', '.c'):
+            add(path, 'userlog-producer-host/' + path.name)
+
     for name in ('source-report.json', 'integration-source-qualified.json', 'compiler-report.json', 'authenticated-null.c',
                  'authenticated-null.o', 'authenticated-null.s'):
         add(work / name, name)
@@ -248,6 +335,16 @@ def collect(framework, work, sealed):
             for path in sorted(attempt.iterdir()):
                 if path.suffix in ('.log', '.json', '.o'):
                     add(path, 'usb-attempts/' + attempt.parent.name + '/' + path.name)
+        for name in ('nezha27-wifi', 'nezha27-bluetooth', 'software-aes',
+                     'nezha27-als', 'nezha27-als-owner', 'apple-key-store-state'):
+            for path in sorted((tree / 'build' / name).glob('*')):
+                if path.is_file() and path.suffix in ('.a', '.o', '.json', '.log', '.d', '.S', '.h', '.cpp', '.c', '.txt'):
+                    add(path, 'archives/' + name + '/' + path.name)
+        for name in manifest['keystore']['source_files']:
+            add(tree / 'drivers/AppleKeyStoreState' / name, 'keystore-source/' + name)
+        add(tree / 'kits/nezha/KeyStoreProbe.cpp', 'keystore-source/KeyStoreProbe.cpp')
+        add(tree / 'kits/nezha/keystore013-source-lock.json', 'keystore-source/source-lock.json')
+        add(tree / '.cache/xnu-work/bsd/kern/ubc_subr.c', 'text-fixup-source/ubc_subr.c')
         objects = tree / 'build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837'
         for name in ('link.filelist', 'all-alias.exp'):
             add(objects / name, 'objects/' + name)
@@ -274,7 +371,7 @@ def collect(framework, work, sealed):
             for name in ('inputs.json', 'source-sha256.json', 'lto-command.json', 'lto-build.log'):
                 add(selected / name, 'reference/' + name)
         for stem in ('start', 'pe_kprintf', 'debug', 'printf', 'serial_console', 'serial_general',
-                     'bsd_init', 'subr_prf', 'arm_init', 'startup', 'machine_routines', 'IOUserServer', 'kern_memorystatus'):
+                     'bsd_init', 'subr_prf', 'arm_init', 'startup', 'machine_routines', 'IOUserServer', 'kern_memorystatus', 'ubc_subr'):
             for path in sorted(objects.glob('**/' + stem + '.o*')):
                 if path.suffix in ('.o', '.json'):
                     add(path, 'objects/' + str(path.relative_to(objects)))

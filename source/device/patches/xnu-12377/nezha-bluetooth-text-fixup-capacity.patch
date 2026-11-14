@@ -1,0 +1,10 @@
+diff --git a/bsd/kern/ubc_subr.c b/bsd/kern/ubc_subr.c
+--- a/bsd/kern/ubc_subr.c
++++ b/bsd/kern/ubc_subr.c
+@@ -6005,5 +6005,5 @@
+ #include <pexpert/device_tree.h>
+-#define CS_TEXT_FIXUP_MAX 32
++#define CS_TEXT_FIXUP_MAX 64
+ #define CS_TEXT_FIXUP_BYTES 16
+ struct cs_text_fixup {
+ 	char            name[64];

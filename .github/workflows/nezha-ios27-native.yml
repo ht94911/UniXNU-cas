@@ -1,7 +1,7 @@
-name: nezha iPhone27 GPU icon service memory - native042
+name: nezha GPU047 with WiFi023 Bluetooth024 ALS017 - native043
 on:
   push:
-    branches: [codex/ios27-gpu-icon-memory-042-20261113]
+    branches: [codex/ios27-gpu47-wifi-bt-als-043-20261114]
   workflow_dispatch:
 permissions:
   contents: read
@@ -45,6 +45,10 @@ jobs:
           printf 'UNIXNU_LLVM_OBJDUMP=%s/bin/llvm-objdump\n' "$(brew --prefix llvm)" >> "$GITHUB_ENV"
       - name: Reconstruct and verify the exact integration source tree
         run: python3 task/ci/native.py prepare --framework unixnu --work "$RUNNER_TEMP/ios27/work"
+      - name: Verify the accepted UserLog producer and actual BSD record routing
+        run: |
+          python3 task/ci/test-native-userlog.py --wrapper unixnu/scripts/build-qcom-usb-debug.py
+          python3 task/ci/test-native-userlog-producer.py --component "$RUNNER_TEMP/ios27/work/usb" --output "$RUNNER_TEMP/ios27/work/userlog-producer-host"
       - name: Exercise actual iPhone27 reboot and plane mapping methods
         run: |
           python3 "$RUNNER_TEMP/ios27/work/device/scripts/check-persistent-data.py" --ufs "$RUNNER_TEMP/ios27/work/ufs" --device "$RUNNER_TEMP/ios27/work/device" --usb "$RUNNER_TEMP/ios27/work/usb" --output "$RUNNER_TEMP/ios27/persist-contracts"

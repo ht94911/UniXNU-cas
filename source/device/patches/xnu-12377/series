@@ -38,3 +38,12 @@ zzzzzz-nezha-gpu-external-ipc-scope.patch
 
 # Keep the native icon service inside its existing finite active allowance at idle.
 zzzzzz-nezha-iconservice-memory.patch
+
+# Accepted Wi-Fi023/AES and Bluetooth024 over the retained GPU046 patches.
+nezha-wifi-mmio-recovery.patch
+nezha-wifi-kernel-events.patch
+nezha-wifi-addon-truncate.patch
+zzz-wifi-aes-late-personality.patch
+nezha-bluetooth-exit-diagnostic.patch
+nezha-bluetooth-runtime.patch
+nezha-bluetooth-text-fixup-capacity.patch

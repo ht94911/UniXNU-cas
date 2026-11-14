@@ -32,8 +32,8 @@ commit = "282606b528b2595bc4274ea7490b62b323f35a5f"
 [[source]]
 name = "sm8850"
 kind = "soc"
-git = "https://github.com/ht94911/UniXNU-sm8850-common.git"
-commit = "5a71f9eb5724ff58eddf49f7f5baecc9f4233a7c"
+# Accepted ALS017 shared resources/DSI005 plus Wi-Fi023 RPMh, fixed locally.
+local = "components/sm8850"
 [[source]]
 name = "ArmCpu"
 kind = "driver"
@@ -57,11 +57,20 @@ commit = "589e02907fb0431c7ce246a3fd8a0ada1afdfeb4"
 [[source]]
 name = "AppleKeyStoreState"
 kind = "driver"
-git = "https://github.com/UniXNU/AppleKeyStoreState.git"
-commit = "42ff83e08b2265fe741d4adaf084bebe003452ba"
+local = "components/AppleKeyStoreState"
 
 [[source]]
 name = "RamBlock"
 kind = "driver"
 git = "https://github.com/UniXNU/RamBlock.git"
 commit = "1c861fce7b246f3728a6a28d0cabe6448821de85"
+
+[[source]]
+name = "SoftwareAES"
+kind = "driver"
+local = "components/SoftwareAES"
+
+[[source]]
+name = "QcaBluetooth"
+kind = "refer"
+local = "components/QcaBluetooth"

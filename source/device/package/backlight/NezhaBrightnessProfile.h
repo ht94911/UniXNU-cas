@@ -42,3 +42,42 @@ static inline bool nezha_brightness_profile_decode(const void *raw,size_t bytes,
     for(uint32_t i=0;i<count;++i)out->marketing[i]=nezha_profile_u32(p+NEZHA_BL_PROFILE_HEADER_BYTES+4*i);
     return true;
 }
+
+// The validated NBLNC001 samples were generated at equally spaced DBV
+// positions between minimum and maximum (069/070), not at equal nits. Invert
+// that same piecewise curve for the 27 signed16.16 brightness-nits request.
+// Keep the conservative profile endpoints; do not rescale to the14-bit field
+// maximum or the active panel's separate8191 normal limit. Call after decode.
+static inline uint32_t nezha_brightness_level_for_nits(
+    const struct nezha_brightness_profile *p,int32_t fixed_nits) {
+    if(fixed_nits<=0)return 0;
+    const uint32_t nits=(uint32_t)fixed_nits,segments=p->count-1;
+    if(nits<=p->marketing[0])return p->minimum;
+    if(nits>=p->marketing[segments])return p->maximum;
+    for(uint32_t i=1;i<=segments;++i) {
+        if(nits>p->marketing[i])continue;
+        const uint32_t low=p->marketing[i-1],span=p->marketing[i]-low;
+        const uint64_t denominator=(uint64_t)segments*span;
+        const uint64_t position=(uint64_t)(i-1)*span+nits-low;
+        return p->minimum+(uint32_t)(((uint64_t)(p->maximum-p->minimum)*position+
+                                     denominator/2)/denominator);
+    }
+    return p->maximum;
+}
+
+// Publish measured command state in the same curve's units. Zero is the
+// existing off command; all positive levels are within decoded endpoints.
+static inline uint32_t nezha_brightness_nits_for_level(
+    const struct nezha_brightness_profile *p,uint32_t level) {
+    if(!level)return 0;
+    if(level<=p->minimum)return p->marketing[0];
+    if(level>=p->maximum)return p->marketing[p->count-1];
+    const uint32_t range=p->maximum-p->minimum;
+    const uint64_t position=(uint64_t)(level-p->minimum)*(p->count-1);
+    const uint32_t i=(uint32_t)(position/range),remainder=(uint32_t)(position%range);
+    return p->marketing[i]+(uint32_t)(((uint64_t)(p->marketing[i+1]-p->marketing[i])*
+                                      remainder+range/2)/range);
+}
+static inline uint32_t nezha_brightness_millinits(uint32_t fixed_nits) {
+    return (uint32_t)(((uint64_t)fixed_nits*1000+32768)/65536);
+}

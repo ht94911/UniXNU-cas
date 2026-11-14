@@ -1,0 +1,18 @@
+diff --git a/iokit/KernelConfigTables.cpp b/iokit/KernelConfigTables.cpp
+--- a/iokit/KernelConfigTables.cpp
++++ b/iokit/KernelConfigTables.cpp
+@@ -70,6 +70,14 @@ const char * gIOKernelConfigTables =
+     "     'IOProbeScore'    = 1000:32;"
+     "   }"
+ #endif
++#if defined(XNU_SOURCE_CORECRYPTO14) && XNU_SOURCE_CORECRYPTO14
++    "   ,{"
++    "     'IOClass'         = NativeAESBootstrap;"
++    "     'IOProviderClass' = IOResources;"
++    "     'IOResourceMatch' = IOBSD;"
++    "     'IOProbeScore'    = 1000:32;"
++    "   }"
++#endif
+ #if defined(XNU_NATIVE_VIRTIO_BLOCK) && XNU_NATIVE_VIRTIO_BLOCK
+     "   ,{"
+     "     'IOClass'         = NativeVirtioBlock;"

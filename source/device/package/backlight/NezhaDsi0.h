@@ -5,6 +5,7 @@
 #include <IOKit/IOLib.h>
 #include <pexpert/pexpert.h>
 #include "Sm8850DsiFifo.h"
+#include "NezhaDsiObservation.h"
 
 // Board mapping only. Generic FIFO operation stays in the selected SM8850
 // source. DSI1,MDSS top,clock/reset registers and memory DMA are untouched.
@@ -25,7 +26,8 @@ struct NezhaDsi0 {
     static bool read(void *cookie,uint32_t offset,uint32_t *value) {
         auto self=static_cast<NezhaDsi0 *>(cookie);
         if(!self || !self->words || !value || !validOffset(offset))return false;
-        __asm__ volatile("dsb sy" ::: "memory");*value=self->words[offset/4];return true;
+        __asm__ volatile("dsb sy" ::: "memory");*value=self->words[offset/4];
+        nezha_dsi_observation_read(cookie,offset,*value);return true;
     }
     static bool write(void *cookie,uint32_t offset,uint32_t value) {
         auto self=static_cast<NezhaDsi0 *>(cookie);

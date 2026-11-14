@@ -1,0 +1,54 @@
+--- a/ArmCpu.cpp
++++ b/ArmCpu.cpp
+@@ -833,7 +833,21 @@
+ }
+ 
+ // Readback after configuration: bit 0 group 1, bit 1 enabled, bit 2 edge, bits 8..15 priority; IROUTER separately.
+-extern "C" IOReturn armcpu_spi_attach (uint32_t intid, bool edge, void (*handler) (void *), void *context,
++// SPI registration and mask contract reused from UniXNU/ArmCpu 696e092.
++// Old-array adapter: keep this kernel's CPU/IPI/dispatch code and all routes.
++static IOLock *nezhaBtSpiLock;
++static IOLock *nezhaBtSpiRegistrationLock()
++{
++  IOLock *lock = __atomic_load_n(&nezhaBtSpiLock, __ATOMIC_ACQUIRE);
++  if (lock) return lock;
++  IOLock *candidate = IOLockAlloc();
++  if (!candidate) return nullptr;
++  if (!__atomic_compare_exchange_n(&nezhaBtSpiLock, &lock, candidate, false, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE)) {
++    IOLockFree(candidate); return lock;
++  }
++  return candidate;
++}
++static IOReturn nezhaBtSpiAttachUnlocked (uint32_t intid, bool edge, void (*handler) (void *), void *context,
+                                        uint32_t *readback, uint64_t *router)
+ {
+   if (gDist == 0 || armcpu_gic_ready == 0 || handler == nullptr) { return kIOReturnNotReady; }
+@@ -865,6 +879,28 @@
+   return kIOReturnSuccess;
+ }
+ 
++extern "C" IOReturn armcpu_spi_attach(uint32_t intid, bool edge, void (*handler)(void *), void *context,
++                                      uint32_t *readback, uint64_t *router)
++{
++  IOLock *lock = nezhaBtSpiRegistrationLock();
++  if (!lock) return kIOReturnNoResources;
++  IOLockLock(lock);
++  IOReturn result = nezhaBtSpiAttachUnlocked(intid, edge, handler, context, readback, router);
++  IOLockUnlock(lock);
++  return result;
++}
++extern "C" IOReturn armcpu_spi_mask(uint32_t intid, bool masked)
++{
++  if (!gDist || !armcpu_gic_ready || intid < 32 || intid >= 1020) return kIOReturnNotReady;
++  const uint32_t used = __atomic_load_n(&gSpiUsed, __ATOMIC_ACQUIRE);
++  bool found = false;
++  for (uint32_t slot = 0; slot < used; slot++) if (gSpi[slot].id == intid) { found = true; break; }
++  if (!found) return kIOReturnNotFound;
++  write32(gDist, (masked ? 0x180U : 0x100U) + (intid / 32) * 4, 1U << (intid % 32));
++  __asm__ volatile("dsb sy" ::: "memory");
++  return kIOReturnSuccess;
++}
++
+ extern "C" uint64_t armcpu_spi_count (uint32_t intid)
+ {
+   const uint32_t used = __atomic_load_n (&gSpiUsed, __ATOMIC_ACQUIRE);

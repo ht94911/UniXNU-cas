@@ -7,6 +7,7 @@ callers authenticate with, so every original slot is declared under a name whose
 code is bound at its fileset address plus the collection slide; no original instruction or vtable is changed.
 """
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -19,6 +20,18 @@ if ARCH != 'arm64e' or IOS_VERSION.split('.')[0] != '27':
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / 'build/native-legacy-display'
 OUT.mkdir(parents=True, exist_ok=True)
+# The ordered component recipe already built the normal archive. Bind both
+# invocations to the same selected public snapshot before making a late object.
+keystore_spec = importlib.util.spec_from_file_location('keystore_source_check',
+    ROOT / 'scripts/check-keystore-source.py')
+keystore_check = importlib.util.module_from_spec(keystore_spec)
+keystore_spec.loader.exec_module(keystore_check)
+keystore_source = ROOT / 'kits/nezha/KeyStoreProbe.cpp'
+keystore_lock = ROOT / 'kits/nezha/keystore013-source-lock.json'
+keystore_module = ROOT / 'drivers/AppleKeyStoreState'
+keystore_inputs = keystore_check.check_inputs(keystore_module, keystore_source, keystore_lock)
+initial_keyevents_command = keystore_check.check_command(ROOT)
+initial_keyevents_object = keystore_check.sha(ROOT / 'build/apple-key-store-state/NativeKeyStoreEvents.o')
 sys.path.insert(0, str(ROOT / 'kits/XnuPrelink'))
 ABI_PATH = Path(__file__).resolve().with_name('legacy-display-iphone-24A446.json')
 abi = json.loads(ABI_PATH.read_text())
@@ -379,11 +392,14 @@ extern "C" uint64_t native_legacy_surface_allocation(OSObject *surface) {
 }
 ''')
 compile_cpp(support, OUT / 'LegacyDisplaySupport27.o')
-# The keystore state service (AppleKeyStoreState) and its probe, unchanged from iPadOS 17.
-keystore_source = ROOT / 'kits/nezha/KeyStoreProbe.cpp'
+# Reuse the canonical component builder and the existing explicit initializer.
 compile_cpp(keystore_source, OUT / 'KeyStoreProbe.o')
-print(run(['python3', ROOT / 'scripts/build-arm-driver.py', 'NativeKeyStoreEvents'], text=True), end='')
+print(run(['python3', ROOT / 'scripts/build-arm-driver.py', 'AppleKeyStoreState'], text=True), end='')
 keyevents = ROOT / 'build/apple-key-store-state'
+require(initial_keyevents_object == sha(keyevents / 'NativeKeyStoreEvents.o'),
+        'Ordered normal KeyStore build and Legacy rebuild selected different object bytes')
+require(initial_keyevents_command == keystore_check.check_command(ROOT),
+        'Ordered normal KeyStore build and Legacy rebuild selected different commands')
 keyevents_late = keyevents / 'NativeKeyStoreEvents.late.o'
 run([llvm / 'llvm-objcopy', '--remove-section=__DATA,__mod_init_func', '--globalize-symbol=__GLOBAL__sub_I_NativeKeyStoreEvents.cpp',
      keyevents / 'NativeKeyStoreEvents.o', keyevents_late])
@@ -396,6 +412,13 @@ archive = OUT / 'libNativeLegacyDisplay.late.a'
 archive.unlink(missing_ok=True)
 run(['xcrun', 'ar', 'rcs', archive, late, OUT / 'original-bindings.o', OUT / 'original-addresses.o', OUT / 'LegacyDisplayProbe.o', OUT / 'LegacyDisplaySupport27.o', gop_late,
      OUT / 'KeyStoreProbe.o', keyevents_late])
+require(keystore_inputs == keystore_check.check_inputs(keystore_module, keystore_source, keystore_lock),
+        'Selected KeyStore source changed during the build')
+keystore_report = keystore_check.check_objects(ROOT, llvm, keystore_inputs)
+keystore_report.update(initial_normal_object_sha256=initial_keyevents_object,
+                       initial_normal_command_sha256=initial_keyevents_command,
+                       ordered_normal_and_legacy_rebuild_identical=True)
+(keyevents / 'source-report.json').write_text(json.dumps(keystore_report, indent=2) + '\n')
 sources = [ROOT / 'drivers/GopFramebuffer/NativeLegacyDisplay.cpp', ROOT / 'drivers/GopFramebuffer/NativeLegacyRequest.h',
            ROOT / 'drivers/GopFramebuffer/NativeGOPPresenter.cpp', ROOT / 'drivers/GopFramebuffer/NativeGOPWire.h',
            ROOT / 'drivers/GopFramebuffer/NativeHalfCodes.h', source,
@@ -406,5 +429,6 @@ sources = [ROOT / 'drivers/GopFramebuffer/NativeLegacyDisplay.cpp', ROOT / 'driv
     kernelcache_sha256=abi['kernelcache_sha256'], compiled_object_sha256=sha(obj), archive_sha256=sha(archive),
     sheng_recipe_revision='69c3c6037e761e63b8c527829deaa09c6c49f6a8', original_GOP_source_sha256=sha(upstream/'NativeLegacyDisplay.cpp'), absent_optional_providers=absent, actual_BootProgress_provider_required=True, HID_nezha_input_selected=True, A840_backend_selected=True, GPU_SM8550_probes_selected=False,
     bindings={n: hex(v) for n, v in bindings.items()}, virtual_entries=len(slots), owned_entries=owned,
-    inherited_native_entries=native, original_bindings='fixed-collection-addresses', original_instructions_modified=False), indent=2) + '\n')
+    inherited_native_entries=native, original_bindings='fixed-collection-addresses', original_instructions_modified=False,
+    keystore=keystore_report), indent=2) + '\n')
 print(f'Built the owned Legacy backend on the iPadOS 27 class: {len(owned)} owned, {len(native)} native, {len(bindings)} original bindings')

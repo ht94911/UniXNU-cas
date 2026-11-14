@@ -8,6 +8,8 @@
 #include <libkern/c++/OSSymbol.h>
 #include <pexpert/pexpert.h>
 #include <mach/kmod.h>
+#include <stdint.h>
+#include <stddef.h>
 extern kmod_info_t g_kernel_kmod_info;
 extern "C" void native_keyevents_static_init(void) __asm__("__GLOBAL__sub_I_NativeKeyStoreEvents.cpp");
 extern "C" IOService *native_keyevents_allocate(void);
@@ -72,6 +74,31 @@ void native_aks_call(uint32_t selector, int32_t result) {
     native_aks_calls = native_aks_calls + 1;
     if (selector < 96) { aks_count[selector] = aks_count[selector] + 1; aks_rc[selector] = result; }
     aks_publish();
+}
+// Existing /chosen platform-seed identity, not a hardware fuse identifier.
+// Return raw bytes written; 0 means unavailable. Never publish identity data.
+size_t native_aks_device_id(uint8_t *out, size_t capacity) {
+    constexpr size_t identity_bytes = 8;
+    if (!out || capacity < identity_bytes) return 0;
+    IORegistryEntry *chosen = IORegistryEntry::fromPath("/chosen", gIODTPlane);
+    if (!chosen) return 0;
+    OSData *data = OSDynamicCast(OSData, chosen->getProperty("unique-chip-id"));
+    size_t written = 0;
+    if (data && data->getLength() == identity_bytes) {
+        const uint8_t *bytes = static_cast<const uint8_t *>(data->getBytesNoCopy());
+        if (bytes) {
+            uint8_t identity[identity_bytes];
+            memcpy(identity, bytes, identity_bytes);
+            uint8_t nonzero = 0;
+            for (size_t i = 0; i < identity_bytes; ++i) nonzero |= identity[i];
+            if (nonzero) {
+                memcpy(out, identity, identity_bytes);
+                written = identity_bytes;
+            }
+        }
+    }
+    OSSafeReleaseNULL(chosen);
+    return written;
 }
 static void native_keyevents_probe(void) {
     unsigned enabled = 0, original = 0;

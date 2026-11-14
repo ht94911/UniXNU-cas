@@ -1,0 +1,704 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
+#include "qbt_internal.h"
+#include <assert.h>
+#include <stdlib.h>
+struct event { uint64_t at; uint8_t bytes[260]; size_t size, offset; };
+struct fixture {
+    struct qbt *q; uint64_t now, tx_done;
+    struct event events[128]; unsigned allocations, frees, waits;
+    unsigned speed, flow_off, flow_on, clock_off, clock_on, commands, firmware_gets, tx_acks;
+    size_t write_limit, receive_room, received_length;
+    uint8_t received[70000], tx_frame[70000], transmitted[70000]; unsigned tx_count, tx_need;
+    size_t transmitted_length;
+    uint8_t patch[1001], nvm[603], downloaded[2048]; size_t downloaded_length, download_size;
+    bool progress_acks, progress_loss, speed_reply; unsigned progress_sent; uint64_t progress_delay, speed_settle, speed_command_at, speed_reply_delay, hardware_fault_at;
+    unsigned download_mode, failed_opcode; bool missing_replies, missing_wake, board_specific;
+    bool nvm_edited, address_written, wake_armed, hardware_fault, clock_fault;
+    uint8_t speed_status, nvm_baud, address[6]; bool stale_address, short_address, legacy_speed_reply;
+    bool ganges, malformed_board, zero_board_metadata;uint32_t soc;
+};
+static void put16(uint8_t *p,unsigned v){p[0]=v;p[1]=v>>8;}
+static void put32(uint8_t *p,unsigned v){put16(p,v);put16(p+2,v>>16);}
+static unsigned le16(const uint8_t *p){return p[0]|(unsigned)p[1]<<8;}
+static unsigned le32(const uint8_t *p){return le16(p)|le16(p+2)<<16;}
+static void queue(struct fixture *f,const uint8_t *p,size_t n,uint64_t delay){
+    for(unsigned i=0;i<128;i++)if(!f->events[i].size){
+        struct event *e=&f->events[i];assert(n<=sizeof(e->bytes));memcpy(e->bytes,p,n);e->size=n;e->offset=0;e->at=f->now+delay;return;
+    }assert(!"event overflow");
+}
+static void complete(struct fixture *f,unsigned op,const uint8_t *p,size_t n){
+    if(f->missing_replies)return;
+    uint8_t e[260]={4,0x0e,(uint8_t)(n+3),1,(uint8_t)op,(uint8_t)(op>>8)};
+    memcpy(e+6,p,n);queue(f,e,n+6,200000);
+}
+static void controller(struct fixture *f,const uint8_t *p,unsigned n){
+    unsigned op=le16(p+1);assert(n==p[3]+4u);f->commands++;
+    const uint8_t *param=p+4;uint8_t response[64]={0};size_t length=1;
+    if(op==0xfc48){ /* no synchronous completion; a late report may follow the switch */
+        f->speed_command_at=f->now;
+        if(f->speed_reply){
+            uint64_t delay=f->speed_reply_delay?f->speed_reply_delay:f->speed_settle/2;
+            if(f->legacy_speed_reply){const uint8_t e[]={4,0xff,2,0x92,f->speed_status};queue(f,e,sizeof(e),delay);}
+            else {const uint8_t e[]={4,0x0e,4,1,0x48,0xfc,f->speed_status};queue(f,e,sizeof(e),delay);}
+        }
+        return;
+    }
+    if(op==0xfc00){
+        response[1]=param[0];length=2;
+        if(param[0]==0x19){length=15;response[2]=0;put32(response+3,f->ganges?0x1e:0x21);put16(response+7,0x1234);put16(response+9,0x0200);put32(response+11,f->soc?f->soc:0x400c0200);}
+        else if(param[0]==0x23){length=f->malformed_board?4:5;response[2]=f->zero_board_metadata?0:2;if(f->board_specific){response[3]=0x12;response[4]=0x34;}}
+        else if(param[0]==0x20){const char *label="WCN7850-fixture";length=strlen(label)+3;response[2]=strlen(label);memcpy(response+3,label,strlen(label));}
+        else if(param[0]==0x1e){
+            unsigned bytes=param[1];assert(bytes==n-6&&bytes<=243);
+            /* A segment that arrives before the controller finished its speed change is lost. */
+            if(f->speed_settle)assert(f->now>=f->speed_command_at+f->speed_settle);
+            if(!f->downloaded_length){assert(bytes>=28);
+                if(param[2]==0x7f){f->download_size=sizeof(f->patch);f->download_mode=3;}
+                else {f->download_size=(le32(param+2)>>8)+4;f->download_mode=param[2]==1?param[16]:0;}}
+            assert(f->downloaded_length+bytes<=sizeof(f->downloaded));memcpy(f->downloaded+f->downloaded_length,param+2,bytes);f->downloaded_length+=bytes;
+            if(f->downloaded_length==f->download_size){
+                if(f->downloaded[0]==2){
+                    const uint8_t *tag=f->downloaded+4;assert(le16(tag)==17);assert((tag[12]&0x80)&&tag[13]==f->nvm_baud);
+                    tag+=15;assert(le16(tag)==27&&(tag[12]&1));f->nvm_edited=true;
+                }f->downloaded_length=0;
+            } else if(f->download_mode==1||f->download_mode==3){
+                if(f->progress_acks){
+                    /* Stale reports arrive behind the bytes the host is sending. */
+                    static const uint8_t status[]={0x10,0x11,0x10,0x01};
+                    uint8_t ack[]={4,0x0e,5,1,0,0xfc,status[f->progress_sent%4],0x1e};
+                    f->progress_sent++;
+                    if(!f->progress_loss)queue(f,ack,sizeof(ack),f->progress_delay?f->progress_delay:50000);
+                }
+                return;
+            }
+        }
+    } else if(op==0xfc14){const uint8_t expected[]={2,2,3,4,5,7};assert(!memcmp(param,expected,6));for(unsigned i=0;i<6;i++)f->address[i]=param[5-i];f->address_written=true;}
+    else if(op==0x1009){length=f->short_address&&f->address_written?6:7;memcpy(response+1,f->address,6);if(f->stale_address&&f->address_written)memset(response+1,0x42,6);}
+    if(f->failed_opcode==op)response[0]=1;
+    complete(f,op,response,length);
+}
+static void tx_byte(struct fixture *f,uint8_t b){
+    if(!f->tx_count){
+        if(b==0xfd){if(!f->missing_wake){uint8_t ack=0xfc;queue(f,&ack,1,200000);}return;}
+        if(b==0xfc){f->tx_acks++;return;}
+        if(b==0xfe)return;
+        assert(b==1||b==2||b==3||b==5);f->tx_need=b==1||b==3?4:5;
+    }
+    assert(f->tx_count<sizeof(f->tx_frame));f->tx_frame[f->tx_count++]=b;
+    unsigned type=f->tx_frame[0],header=type==1||type==3?4u:5u;
+    if(f->tx_count==header)f->tx_need+=type==1||type==3?f->tx_frame[3]:le16(f->tx_frame+3)&(type==5?0x3fff:0xffff);
+    if(f->tx_count==f->tx_need){if(f->tx_frame[0]==1)controller(f,f->tx_frame,f->tx_count);f->tx_count=0;}
+}
+static void *allocate(void *c,size_t n){struct fixture *f=c;f->allocations++;return calloc(1,n);}
+static void release(void *c,void *p,size_t n){(void)n;((struct fixture *)c)->frees++;free(p);}
+static uint64_t now(void *c){return ((struct fixture *)c)->now;}
+static bool drained(void *c){struct fixture *f=c;return f->now>=f->tx_done;}
+static size_t write_uart(void *c,const uint8_t *p,size_t n){
+    struct fixture *f=c;if(!drained(c))return 0;if(n>f->write_limit)n=f->write_limit;
+    assert(n<=sizeof(f->transmitted)-f->transmitted_length);
+    memcpy(f->transmitted+f->transmitted_length,p,n);f->transmitted_length+=n;
+    f->tx_done=f->now+100000;for(size_t i=0;i<n;i++)tx_byte(f,p[i]);return n;
+}
+static int speed(void *c,uint32_t n){
+    struct fixture *f=c;assert(drained(c));
+    if(f->ganges && n!=115200)assert(f->now>=f->speed_command_at+20000000);
+    f->speed=n;return 0;
+}
+static int flow(void *c,bool on){struct fixture *f=c;if(on)f->flow_on++;else f->flow_off++;return 0;}
+static int clock_vote(void *c,bool on){struct fixture *f=c;if(on){if(f->clock_fault)return -ENXIO;f->clock_on++;}else{if(!f->wake_armed)return -EBUSY;assert(drained(c));f->clock_off++;}return 0;}
+static size_t receive(void *c,const uint8_t *p,size_t n){
+    struct fixture *f=c;if(n>f->receive_room)n=f->receive_room;assert(n<=sizeof(f->received)-f->received_length);
+    memcpy(f->received+f->received_length,p,n);f->received_length+=n;f->receive_room-=n;return n;
+}
+static void pump(void *c){
+    struct fixture *f=c;
+    if(f->hardware_fault || (f->hardware_fault_at && f->now>=f->hardware_fault_at)){qbt_fail(f->q,-EIO);return;}
+    /* The wire is ordered: finish the earliest due event before starting another. */
+    for(;;){
+        struct event *e=NULL;
+        for(unsigned i=0;i<128;i++){
+            struct event *c=&f->events[i];if(!c->size||c->at>f->now)continue;
+            if(c->offset){e=c;break;}
+            if(!e||c->at<e->at)e=c;
+        }
+        if(!e)return;
+        size_t n=e->size-e->offset;if(n>3)n=3; /* every reply spans parser calls */
+        size_t used=qbt_receive(f->q,e->bytes+e->offset,n);
+        e->offset+=used;if(e->offset==e->size)e->size=0;
+        if(!used)return;
+    }
+}
+static void wait_until(void *c,uint64_t deadline){
+    struct fixture *f=c;assert(++f->waits<100000);
+    uint64_t next=deadline;
+    if(f->tx_done>f->now&&f->tx_done<next)next=f->tx_done;
+    for(unsigned i=0;i<128;i++)if(f->events[i].size){
+        uint64_t at=f->events[i].at;if(at<=f->now)at=f->now+1000;if(at<next)next=at;
+    }
+    assert(next>=f->now);f->now=next;
+}
+static int firmware(void *c,const char *name,const uint8_t **p,size_t *n){
+    struct fixture *f=c;f->firmware_gets++;
+    if(f->ganges){
+        if(!strcmp(name,"qca/gngbtfw20.mbn")){*p=f->patch;*n=sizeof(f->patch);return 0;}
+        if(!strcmp(name,"qca/gngbtnv20.b1234")){*p=f->nvm;*n=sizeof(f->nvm);return 0;}
+        assert(!strcmp(name,"qca/gngbtnv20.bin"));return -ENOENT;
+    }
+    if(!strcmp(name,"qca/hmtbtfw20.tlv")){*p=f->patch;*n=sizeof(f->patch);return 0;}
+    if(!strcmp(name,"qca/hmtnv20.bin")){*p=f->nvm;*n=sizeof(f->nvm);return 0;}
+    assert(!strcmp(name,"qca/hmtnv20.b1234"));return -ENOENT;
+}
+static void firmware_put(void *c,const uint8_t *p,size_t n){(void)c;(void)p;(void)n;}
+static void make(struct fixture *f,unsigned mode){
+    memset(f,0,sizeof(*f));f->now=1000000000;f->write_limit=31;f->receive_room=sizeof(f->received);f->wake_armed=true;
+    f->speed_reply=true;f->speed_status=1;f->nvm_baud=17;memset(f->address,0x42,6);
+    put32(f->patch,((sizeof(f->patch)-4)<<8)|1);f->patch[14]=mode;
+    put32(f->nvm,((sizeof(f->nvm)-4)<<8)|2);uint8_t *tag=f->nvm+4;
+    put16(tag,17);put16(tag+2,3);tag+=15;put16(tag,27);put16(tag+2,1);tag+=13;
+    put16(tag,2);put16(tag+2,6);memset(tag+12,0x42,6);tag+=18;
+    put16(tag,99);put16(tag+2,(unsigned)(f->nvm+sizeof(f->nvm)-tag-12));
+    struct qbt_platform p={.context=f,.allocate=allocate,.release=release,.now_ns=now,.uart_write=write_uart,.uart_drained=drained,.uart_speed=speed,.uart_flow=flow,.clock=clock_vote,.pump=pump,.wait_until=wait_until,.receive=receive,.firmware_get=firmware,.firmware_put=firmware_put};
+    f->q=qbt_create(&p);assert(f->q);
+}
+static int boot(struct fixture *f){const uint8_t address[]={2,2,3,4,5,7};return qbt_boot(f->q,3200000,address);}
+static void destroy(struct fixture *f){qbt_destroy(f->q);assert(f->allocations==f->frees);}
+static void drive(struct fixture *f,unsigned steps){for(unsigned i=0;i<steps;i++){pump(f);qbt_step(f->q);if(f->q->info.state==3)return;uint64_t d=qbt_deadline(f->q);if(d==UINT64_MAX){if(drained(f))return;d=f->tx_done;}if(!d)d=f->now+1000;wait_until(f,d);}}
+static void initialization(void){
+    for(unsigned mode=0;mode<=3;mode+=3){struct fixture *f=calloc(1,sizeof(*f));make(f,mode);f->board_specific=true;
+        assert(!boot(f));struct qbt_info info;qbt_get_info(f->q,&info);assert(info.state==2&&info.baud==3200000&&info.rom==0x0200&&!strcmp(info.firmware,"WCN7850-fixture"));
+        assert(f->firmware_gets==3&&f->nvm_edited&&f->address_written&&f->speed==3200000&&f->flow_off==1&&f->flow_on==1);
+        assert(!f->q->stats.hci.recent_total); /* bootstrap commands are not runtime traffic */
+        assert(!qbt_shutdown(f->q));destroy(f);free(f);
+    }
+}
+/* WCN7850 reports every skipped TLV segment with status 0x10 in Command Complete.
+ * Those reports must not answer the wait on the final segment. */
+static void progress_reports(void){
+    struct fixture *f=calloc(1,sizeof(*f));make(f,3);f->progress_acks=true;f->progress_delay=400000;
+    assert(!boot(f));struct qbt_info info;qbt_get_info(f->q,&info);assert(info.state==2&&f->address_written);
+    struct qbt_stats stats;qbt_get_stats(f->q,&stats);
+    assert(f->progress_sent>0&&stats.tlv_sent==stats.tlv_acks);
+    destroy(f);
+    /* Missing reports for skipped segments do not delay the final status. */
+    make(f,3);f->progress_acks=true;f->progress_loss=true;
+    assert(!boot(f));
+    destroy(f);free(f);
+}
+/* WCN7850 changes speed after the host could already be sending. The first TLV
+ * segment holds the download mode, so it must wait for the controller. */
+static void speed_settle(void){
+    struct fixture *f=calloc(1,sizeof(*f));make(f,3);f->speed_settle=4000000;f->speed_reply=true;
+    assert(!boot(f));assert(f->address_written);destroy(f);
+    make(f,3);f->speed_settle=50000000;f->speed_reply=false;
+    assert(!boot(f));assert(f->address_written);destroy(f);free(f);
+}
+static void failures(void){
+    struct fixture *f=calloc(1,sizeof(*f));make(f,3);f->failed_opcode=0xfc17;assert(boot(f)==-EIO&&f->q->info.state==3);
+    uint8_t packet[]={1,3,12,0};assert(qbt_transmit(f->q,packet,sizeof(packet))==-ENETDOWN);destroy(f);
+    make(f,0);f->missing_replies=true;uint64_t start=f->now;assert(boot(f)==-ETIMEDOUT);assert(f->now-start==QBT_COMMAND_TIMEOUT&&f->waits<10);destroy(f);
+    make(f,0);f->hardware_fault=true;start=f->now;assert(boot(f)==-EIO && f->now==start && !f->waits);destroy(f);free(f);
+}
+static void speed_and_identity_failures(void){
+    struct fixture *f=calloc(1,sizeof(*f));
+    make(f,3);f->speed_status=0;assert(boot(f)==-EIO && !f->firmware_gets && !f->address_written);destroy(f);
+    make(f,3);f->speed_status=2;assert(boot(f)==-EIO && !f->firmware_gets);destroy(f);
+    make(f,3);f->speed_reply=false;assert(!boot(f) && f->address_written);destroy(f);
+    make(f,3);f->legacy_speed_reply=true;assert(!boot(f) && f->address_written);destroy(f);
+    make(f,3);f->stale_address=true;assert(boot(f)==-EIO && f->address_written);destroy(f);
+    make(f,3);f->short_address=true;assert(boot(f)==-EIO && f->address_written);destroy(f);
+    make(f,3);f->failed_opcode=0xfc14;assert(boot(f)==-EIO);destroy(f);free(f);
+}
+static void receive_pressure(void){
+    struct fixture *f=calloc(1,sizeof(*f));make(f,3);assert(!boot(f));qbt_set_service(f->q,true);
+    uint8_t packet[]={2,1,0,6,0,0xfd,0xfc,0xfe,1,2,3};f->receive_room=0;
+    size_t used=qbt_receive(f->q,packet,sizeof(packet));assert(used==5);assert(qbt_receive(f->q,packet+used,sizeof(packet)-used)==0);
+    f->receive_room=sizeof(f->received);qbt_step(f->q);assert(qbt_receive(f->q,packet+used,sizeof(packet)-used)==sizeof(packet)-used);
+    assert(f->received_length==sizeof(packet)&&!memcmp(f->received,packet,sizeof(packet)));
+    uint8_t e[]={4,0x0e,4,1,3,12,0};for(unsigned i=0;i<sizeof(e);i++)assert(qbt_receive(f->q,e+i,1)==1);
+    assert(f->received_length==sizeof(packet)+sizeof(e)&&!memcmp(f->received+sizeof(packet),e,sizeof(e)));
+    /* A channel reopened during an RX frame must not inherit its old bytes. */
+    f->received_length=0;
+    assert(qbt_receive(f->q,packet,4)==4);qbt_set_service(f->q,false);qbt_set_service(f->q,true);
+    assert(qbt_receive(f->q,packet+4,sizeof(packet)-4)==sizeof(packet)-4);assert(!f->received_length);
+    assert(qbt_receive(f->q,packet,sizeof(packet))==sizeof(packet));assert(f->received_length==sizeof(packet));
+    destroy(f);free(f);
+}
+static void sleep_and_wake(void){
+    struct fixture *f=calloc(1,sizeof(*f));make(f,3);assert(!boot(f));qbt_set_service(f->q,true);drive(f,50);assert(!f->q->clock_on&&f->clock_off);
+    uint8_t acl[205]={2,1,0,200,0};assert(!qbt_transmit(f->q,acl,sizeof(acl)));drive(f,80);assert(!f->q->tx_length&&!f->tx_count&&f->clock_on);
+    qbt_rx_wake(f->q);uint8_t wake=0xfd;assert(qbt_receive(f->q,&wake,1)==1);qbt_step(f->q);assert(f->q->rx_awake&&f->q->clock_on);
+    uint8_t asleep=0xfe;qbt_receive(f->q,&asleep,1);drive(f,50);assert(!f->q->clock_on);destroy(f);free(f);
+}
+static void lost_wake(void){
+    struct fixture *f=calloc(1,sizeof(*f));make(f,3);assert(!boot(f));qbt_set_service(f->q,true);drive(f,40);f->missing_wake=true;
+    uint8_t acl[]={2,1,0,1,0,0};assert(!qbt_transmit(f->q,acl,sizeof(acl)));drive(f,60);assert(f->q->info.state==3&&f->q->info.error==-ETIMEDOUT);destroy(f);free(f);
+}
+static void clock_failure(void){
+    struct fixture *f=calloc(1,sizeof(*f));
+    for(unsigned path=0;path<3;path++) {
+        make(f,3);assert(!boot(f));qbt_set_service(f->q,true);drive(f,50);
+        assert(!f->q->clock_on);f->clock_fault=true;
+        unsigned commands=f->commands,acks=f->tx_acks;
+        uint8_t acl[]={2,1,0,1,0,0},wake=0xfd;
+        if(path==0){assert(!qbt_transmit(f->q,acl,sizeof(acl)));qbt_step(f->q);}
+        else if(path==1)qbt_rx_wake(f->q);
+        else assert(qbt_receive(f->q,&wake,1)==1);
+        assert(f->q->info.state==3 && f->q->info.error==-ENXIO && !f->q->service);
+        assert(qbt_deadline(f->q)==UINT64_MAX && !qbt_transmit_capacity(f->q));
+        assert(!qbt_receive(f->q,&wake,1));qbt_step(f->q);
+        assert(f->commands==commands && f->tx_acks==acks);
+        destroy(f);
+    }
+    free(f);
+}
+static void tx_ibs_boundaries(void){
+    struct fixture *f=calloc(1,sizeof(*f));make(f,3);assert(!boot(f));qbt_set_service(f->q,true);
+    uint8_t acl[4101]={2,1,0,0,16};memset(acl+5,0xfc,sizeof(acl)-5);
+    assert(!qbt_transmit(f->q,acl,20));drive(f,40);
+    assert(f->q->tx_frame.type==2 && f->tx_count==20);
+    /* Empty host queue at a partial frame must neither sleep nor busy-spin. */
+    f->now+=QBT_TX_IDLE;qbt_step(f->q);assert(f->q->tx_state==QBT_AWAKE);
+    assert(qbt_deadline(f->q)==UINT64_MAX);
+    unsigned acks=f->tx_acks;uint8_t wake=0xfd;qbt_receive(f->q,&wake,1);
+    qbt_step(f->q);assert(f->tx_acks==acks);
+    assert(!qbt_transmit(f->q,acl+20,sizeof(acl)-20));drive(f,500);
+    assert(!f->q->tx_length && !f->tx_count && !f->q->tx_frame.type);
+    assert(f->tx_acks==acks+1 && !memcmp(f->tx_frame,acl,sizeof(acl)));
+    assert(!qbt_transmit(f->q,acl,10));drive(f,5);qbt_set_service(f->q,false);
+    assert(f->q->info.state==3 && f->q->info.error==-ECANCELED);
+    destroy(f);free(f);
+}
+static void make_metadata(struct fixture *f){
+    make(f,0);f->q->info.state=2;qbt_set_service(f->q,true);f->missing_replies=true;
+}
+static const struct qbt_hci_recent *recent_at(const struct qbt_hci_stats *s,unsigned index){
+    assert(index<s->recent_count);
+    return &s->recent[(s->recent_next+QBT_HCI_RECENT_CAPACITY-s->recent_count+index)%QBT_HCI_RECENT_CAPACITY];
+}
+static void metadata_send(struct fixture *f,const uint8_t *p,size_t n){
+    assert(!qbt_transmit(f->q,p,n));drive(f,400);
+    assert(!f->q->tx_length && !f->q->tx_frame.type && !f->tx_count);
+}
+static void append_bytes(uint8_t *out,size_t *used,const uint8_t *p,size_t n){memcpy(out+*used,p,n);*used+=n;}
+static void runtime_metadata_tx(void){
+    struct fixture *f=calloc(1,sizeof(*f));make_metadata(f);f->write_limit=1;
+    const uint8_t enable[]={1,0x42,0x20,6,1,0,0,0,0,0};
+    assert(!qbt_transmit(f->q,enable,1));drive(f,20);
+    assert(!f->q->stats.hci.recent_total && f->q->tx_frame.type==1);
+    assert(!qbt_transmit(f->q,enable+1,2));drive(f,20);
+    assert(!f->q->stats.hci.recent_total && f->q->tx_frame.have==2);
+    assert(!qbt_transmit(f->q,enable+3,1));drive(f,20);
+    assert(!f->q->stats.hci.recent_total && f->q->tx_frame.body==6);
+    assert(!qbt_transmit(f->q,enable+4,1));drive(f,20);
+    assert(!f->q->stats.hci.recent_total && f->q->tx_frame.body==5);
+    assert(!qbt_transmit(f->q,enable+5,5));f->write_limit=0;
+    for(unsigned i=0;i<3;i++){
+        f->now=f->tx_done;qbt_step(f->q);
+        /* Each preview reaches the command end, but UART takes no bytes. */
+        assert(!f->q->stats.hci.commands_tx && !f->q->stats.hci.recent_total);
+        assert(f->transmitted_length==5 && f->q->tx_frame.body==5);
+    }
+    f->write_limit=2;
+    for(unsigned i=0;i<2;i++){
+        f->now=f->tx_done;qbt_step(f->q);assert(!f->q->stats.hci.recent_total);
+    }
+    f->now=f->tx_done;qbt_step(f->q);
+    struct qbt_hci_stats *s=&f->q->stats.hci;
+    assert(s->commands_tx==1 && s->le_scan_enable_tx==1 && s->recent_total==1);
+    const struct qbt_hci_recent *r=recent_at(s,0);
+    assert(r->sequence==1 && r->ns==f->now && r->opcode==0x2042 && r->kind==QBT_HCI_TX);
+    assert(r->code==1 && r->status==0xff && r->value==1);
+    assert(f->transmitted_length==sizeof(enable) && !memcmp(f->transmitted,enable,sizeof(enable)));
+    const uint8_t inquiry[]={1,1,4,5,0xd7,0xe7,0xfd,0xfc,0xfe},cancel[]={1,2,4,0};
+    const uint8_t parameters[]={1,0x0b,0x20,7,0xd7,0xd7,0xd7,0xd7,0xd7,0xd7,0xd7};
+    const uint8_t on[]={1,0x0c,0x20,2,1,0},off[]={1,0x0c,0x20,2,0,1};
+    const uint8_t ext_parameters[]={1,0x41,0x20,8,0xe7,0xe7,0xe7,0xe7,0xe7,0xe7,0xe7,0xe7};
+    const uint8_t ext_off[]={1,0x42,0x20,6,0,0,0,0,0,0};
+    const uint8_t page_scan[]={1,0x1a,0x0c,1,3},address[]={1,5,0x20,6,0xd7,0xd7,0xd7,0xd7,0xd7,0xd7};
+    uint8_t sco[14]={3,1,0,10},acl[15]={2,1,0,10,0},iso[15]={5,1,0,10,0x40};
+    memcpy(sco+4,enable,10);memcpy(acl+5,enable,10);memcpy(iso+5,enable,10);
+    uint8_t merged[256];size_t merged_length=0;
+#define ADD_TX(packet) append_bytes(merged,&merged_length,packet,sizeof(packet))
+    ADD_TX(inquiry);ADD_TX(sco);ADD_TX(cancel);ADD_TX(acl);ADD_TX(parameters);ADD_TX(on);ADD_TX(off);
+    ADD_TX(iso);ADD_TX(ext_parameters);ADD_TX(ext_off);ADD_TX(page_scan);ADD_TX(address);
+#undef ADD_TX
+    f->write_limit=1;metadata_send(f,merged,merged_length);
+    assert(s->commands_tx==10 && s->inquiry_tx==1 && s->inquiry_cancel_tx==1);
+    assert(s->le_scan_parameters_tx==2 && s->le_scan_enable_tx==2 && s->le_scan_disable_tx==2);
+    assert(s->recent_total==10 && !s->command_complete && !s->command_status && !s->command_errors);
+    assert(!f->q->stats.commands && f->commands==10); /* original internal-command count stays separate */
+    assert(f->transmitted_length==sizeof(enable)+merged_length);
+    assert(!memcmp(f->transmitted+sizeof(enable),merged,merged_length));
+    for(unsigned i=0;i<s->recent_count;i++){
+        r=recent_at(s,i);assert(r->kind==QBT_HCI_TX && r->status==0xff && r->code==1);
+        if(r->opcode==0x2042 || r->opcode==0x200c)assert(r->value==0 || r->value==1);
+        else if(r->opcode==0x0c1a)assert(r->value==3);
+        else assert(r->value==0xff); /* Inquiry/address/private bodies are not copied */
+    }
+    destroy(f);free(f);
+}
+static void metadata_feed(struct fixture *f,const uint8_t *p,size_t n,unsigned chunk,uint8_t *expected,size_t *length){
+    append_bytes(expected,length,p,n);
+    for(size_t at=0;at<n;){size_t take=n-at;if(take>chunk)take=chunk;assert(qbt_receive(f->q,p+at,take)==take);at+=take;}
+}
+static void event_bytes(uint8_t *p,size_t n,uint8_t code,uint8_t first){
+    memset(p,0xd7,n);p[0]=4;p[1]=code;p[2]=(uint8_t)(n-3);p[3]=first;
+}
+static void runtime_metadata_rx(void){
+    struct fixture *f=calloc(1,sizeof(*f));make_metadata(f);
+    uint8_t expected[4000];size_t length=0;
+    const uint8_t cc[]={4,0x0e,4,1,0x41,0x20,0};
+    append_bytes(expected,&length,cc,sizeof(cc));f->receive_room=2;
+    assert(qbt_receive(f->q,cc,sizeof(cc))==sizeof(cc));
+    assert(f->q->stats.hci.command_complete==1 && f->q->stats.hci.recent_total==1 && f->received_length==2);
+    qbt_step(f->q);assert(f->q->stats.hci.recent_total==1);
+    f->receive_room=sizeof(f->received)-f->received_length;qbt_step(f->q);
+    assert(f->q->stats.hci.recent_total==1 && f->received_length==sizeof(cc));
+    const uint8_t error[]={4,0x0e,4,1,0x42,0x20,0x0c},no_status[]={4,0x0e,3,1,0x0b,0x20};
+    const uint8_t inquiry_status[]={4,0x0f,4,0,1,1,4},scan_status[]={4,0x0f,4,0x12,1,0x0c,0x20};
+    const uint8_t optional_status[]={4,0x0f,4,1,1,0x5b,0x0c},inquiry_complete[]={4,1,1,0};
+    metadata_feed(f,error,sizeof(error),1,expected,&length);
+    metadata_feed(f,no_status,sizeof(no_status),1,expected,&length);
+    metadata_feed(f,inquiry_status,sizeof(inquiry_status),1,expected,&length);
+    metadata_feed(f,scan_status,sizeof(scan_status),2,expected,&length);
+    metadata_feed(f,optional_status,sizeof(optional_status),3,expected,&length);
+    metadata_feed(f,inquiry_complete,sizeof(inquiry_complete),1,expected,&length);
+    uint8_t inquiry_result[32],inquiry_rssi[18],inquiry_extended[258],remote_name[258];
+    event_bytes(inquiry_result,sizeof(inquiry_result),2,2);
+    event_bytes(inquiry_rssi,sizeof(inquiry_rssi),0x22,1);
+    event_bytes(inquiry_extended,sizeof(inquiry_extended),0x2f,1);
+    event_bytes(remote_name,sizeof(remote_name),7,0x0c);
+    metadata_feed(f,inquiry_result,sizeof(inquiry_result),1,expected,&length);
+    metadata_feed(f,inquiry_rssi,sizeof(inquiry_rssi),3,expected,&length);
+    metadata_feed(f,inquiry_extended,sizeof(inquiry_extended),2,expected,&length);
+    metadata_feed(f,remote_name,sizeof(remote_name),1,expected,&length);
+    remote_name[3]=0;metadata_feed(f,remote_name,sizeof(remote_name),3,expected,&length);
+    uint8_t legacy[28],extended[33];event_bytes(legacy,sizeof(legacy),0x3e,2);
+    legacy[4]=2;legacy[13]=3;legacy[26]=0; /* two standard reports, data lengths3 and0 */
+    event_bytes(extended,sizeof(extended),0x3e,0x0d);extended[4]=1;extended[28]=4;
+    metadata_feed(f,legacy,sizeof(legacy),1,expected,&length);
+    metadata_feed(f,extended,sizeof(extended),3,expected,&length);
+    const uint8_t timeout[]={4,0x3e,1,0x11},vendor[]={4,0xff,3,0xd7,0xfc,0xfe};
+    metadata_feed(f,timeout,sizeof(timeout),1,expected,&length);metadata_feed(f,vendor,sizeof(vendor),1,expected,&length);
+    uint8_t sco[11]={3,1,0,7},acl[12]={2,1,0,7,0},iso[12]={5,1,0,7,0x40};
+    memcpy(sco+4,error,7);memcpy(acl+5,error,7);memcpy(iso+5,error,7);
+    metadata_feed(f,sco,sizeof(sco),1,expected,&length);metadata_feed(f,acl,sizeof(acl),2,expected,&length);
+    metadata_feed(f,iso,sizeof(iso),1,expected,&length);
+    struct qbt_hci_stats *s=&f->q->stats.hci;
+    assert(!s->commands_tx && s->command_complete==3 && s->command_status==3 && s->command_errors==3);
+    assert(s->scan_responses==4 && s->scan_errors==2);
+    assert(s->inquiry_complete==1 && s->inquiry_result_events==3 && s->announced_devices==4);
+    assert(s->remote_name_completions==2 && s->remote_name_errors==1);
+    assert(s->legacy_report_events==1 && s->extended_report_events==1 && s->announced_advertisements==3);
+    assert(s->recent_total==14 && s->recent_count==14);
+    const struct qbt_hci_recent *r=recent_at(s,2);
+    assert(r->kind==QBT_HCI_CC && r->opcode==0x200b && r->status==0xff && r->value==1);
+    for(unsigned i=0;i<s->recent_count;i++){
+        r=recent_at(s,i);assert(r->sequence==i+1u && r->ns==f->now);
+        if(r->kind==QBT_HCI_CC || r->kind==QBT_HCI_CS)assert(r->value==1);
+        else {
+            assert(!r->opcode);
+            if(r->code==7 || (r->kind==QBT_HCI_EVENT && r->code==1))assert(r->value==0xff);
+            else assert(r->status==0xff && (r->value==1 || r->value==2));
+        }
+    }
+    assert(f->q->info.state==2 && !f->q->info.error);
+    assert(f->received_length==length && !memcmp(f->received,expected,length));
+    destroy(f);free(f);
+}
+static void runtime_metadata_rollover(void){
+    struct fixture *f=calloc(1,sizeof(*f));make_metadata(f);
+    uint8_t commands[35*5];
+    for(unsigned i=0;i<35;i++){
+        uint8_t *p=commands+5*i;p[0]=1;put16(p+1,0xfc80+i);p[3]=1;p[4]=(uint8_t)(0xd7+i);
+    }
+    metadata_send(f,commands,sizeof(commands));
+    struct qbt_stats copied;qbt_get_stats(f->q,&copied);const struct qbt_hci_stats *s=&copied.hci;
+    assert(s->commands_tx==35 && s->recent_total==35 && s->recent_count==24 && s->recent_next==11);
+    uint64_t last=0;
+    for(unsigned i=0;i<24;i++){
+        const struct qbt_hci_recent *r=recent_at(s,i);
+        assert(r->sequence==12u+i && r->opcode==0xfc80u+r->sequence-1);
+        assert(r->ns>=last && r->kind==QBT_HCI_TX && r->code==1 && r->status==0xff && r->value==0xff);last=r->ns;
+    }
+    assert(f->transmitted_length==sizeof(commands) && !memcmp(f->transmitted,commands,sizeof(commands)));
+    destroy(f);free(f);
+}
+static void runtime_metadata_gates(void){
+    struct fixture *f=calloc(1,sizeof(*f));make(f,0);f->missing_replies=true;
+    const uint8_t private_bytes[]={0xd7,0xe7,0xfc},reply[]={4,0x0e,4,1,0x41,0x20,0};
+    assert(!qbt_send_command(f->q,0xfce1,private_bytes,sizeof(private_bytes)));
+    assert(qbt_receive(f->q,reply,sizeof(reply))==sizeof(reply));assert(!f->q->stats.hci.recent_total);
+    f->q->info.state=1;f->q->service=true;
+    assert(!qbt_send_command(f->q,0xfce2,private_bytes,sizeof(private_bytes)));
+    assert(qbt_receive(f->q,reply,sizeof(reply))==sizeof(reply));assert(!f->q->stats.hci.recent_total);
+    f->q->info.state=2;qbt_set_service(f->q,false);
+    assert(!qbt_send_command(f->q,0xfce3,private_bytes,sizeof(private_bytes)));
+    assert(qbt_receive(f->q,reply,sizeof(reply))==sizeof(reply));assert(!f->q->stats.hci.recent_total);
+    qbt_set_service(f->q,true);
+    assert(!qbt_send_command(f->q,0xfce4,private_bytes,sizeof(private_bytes)));
+    assert(qbt_receive(f->q,reply,sizeof(reply))==sizeof(reply));assert(f->q->stats.hci.recent_total==2);
+    const struct qbt_hci_stats before=f->q->stats.hci;
+    qbt_set_service(f->q,false);assert(qbt_receive(f->q,reply,sizeof(reply))==sizeof(reply));
+    qbt_set_service(f->q,true);f->q->info.state=1;assert(qbt_receive(f->q,reply,sizeof(reply))==sizeof(reply));
+    assert(!memcmp(&before,&f->q->stats.hci,sizeof(before)));destroy(f);free(f);
+}
+static void runtime_metadata(void){
+    runtime_metadata_tx();runtime_metadata_rx();runtime_metadata_rollover();runtime_metadata_gates();
+    puts("PASS: runtime HCI metadata through the production TX/RX framer, consumed-byte commits without preview effects, split/coalesced frames, exact passthrough, no private payload metadata, missing-status replies and24-record history");
+}
+static const struct qbt_link_recent *link_at(const struct qbt_link_stats *s,unsigned index){
+    assert(index<s->recent_count);
+    return &s->recent[(s->recent_next+QBT_LINK_RECENT_CAPACITY-s->recent_count+index)%QBT_LINK_RECENT_CAPACITY];
+}
+static size_t acl_packet(uint8_t *out,unsigned handle,unsigned pb,const uint8_t *body,size_t length){
+    out[0]=2;put16(out+1,handle|(pb<<12));put16(out+3,(unsigned)length);
+    memcpy(out+5,body,length);return length+5;
+}
+static size_t smp_packet(uint8_t *out,unsigned handle,unsigned cid,const uint8_t *body,size_t length){
+    uint8_t l2cap[100];assert(length+4<=sizeof(l2cap));
+    put16(l2cap,(unsigned)length);put16(l2cap+2,cid);memcpy(l2cap+4,body,length);
+    return acl_packet(out,handle,2,l2cap,length+4);
+}
+static void no_secret_metadata(struct fixture *f){
+    const uint8_t *regions[]={(const uint8_t *)&f->q->stats.link,
+        (const uint8_t *)&f->q->rx_acl,(const uint8_t *)&f->q->tx_acl};
+    const size_t lengths[]={sizeof(f->q->stats.link),sizeof(f->q->rx_acl),sizeof(f->q->tx_acl)};
+    for(unsigned r=0;r<3;r++)for(size_t at=0;at+6<=lengths[r];at++){
+        unsigned count=0;while(count<6 && regions[r][at+count]==0xd7)count++;
+        assert(count!=6); /* synthetic address/PIN/key marker never enters metadata */
+    }
+}
+static void runtime_link_events(void){
+    struct fixture *f=calloc(1,sizeof(*f));make_metadata(f);
+    uint8_t expected[10000];size_t length=0;
+    uint8_t connection[14];event_bytes(connection,sizeof(connection),3,0);
+    put16(connection+4,0x42);connection[12]=1;connection[13]=0;
+    const uint8_t auth[]={4,6,3,5,0x42,0},encryption[]={4,8,4,0,0x42,0,1};
+    const uint8_t encryption2[]={4,0x59,5,0,0x42,0,1,16};
+    const uint8_t refresh[]={4,0x30,3,0,0x42,0},disconnect[]={4,5,4,0,0x42,0,0x13};
+    uint8_t request[9],capability[12],confirm[13],passkey[13],key[26],pair[10];
+    event_bytes(request,sizeof(request),0x16,0xd7);event_bytes(capability,sizeof(capability),0x32,0xd7);
+    capability[9]=2;capability[10]=0;capability[11]=5;
+    event_bytes(confirm,sizeof(confirm),0x33,0xd7);event_bytes(passkey,sizeof(passkey),0x3b,0xd7);
+    event_bytes(key,sizeof(key),0x18,0xd7);key[25]=8;
+    event_bytes(pair,sizeof(pair),0x36,0x05);
+    uint8_t le[34],ltk[16];event_bytes(le,sizeof(le),0x3e,0x0a);
+    le[4]=0;put16(le+5,3);le[7]=0;
+    event_bytes(ltk,sizeof(ltk),0x3e,5);put16(ltk+4,3);
+    const uint8_t failed_command[]={4,0x0f,4,0x0c,1,5,4};
+    const uint8_t accepted_command[]={4,0x0f,4,0,1,0x11,4};
+    const uint8_t short_auth[]={4,6,2,0,0x42};
+#define LINK_RX(packet) metadata_feed(f,packet,sizeof(packet),1,expected,&length)
+    LINK_RX(connection);LINK_RX(auth);LINK_RX(encryption);LINK_RX(encryption2);LINK_RX(refresh);
+    LINK_RX(request);LINK_RX(capability);LINK_RX(confirm);LINK_RX(passkey);LINK_RX(key);
+    LINK_RX(pair);LINK_RX(le);LINK_RX(ltk);LINK_RX(failed_command);LINK_RX(accepted_command);
+    LINK_RX(disconnect);LINK_RX(short_auth);
+#undef LINK_RX
+    struct qbt_link_stats *s=&f->q->stats.link;
+    assert(s->classic_connections==1 && !s->classic_connection_errors && s->le_connections==1 && !s->le_connection_errors);
+    assert(s->authentication_complete==1 && s->authentication_errors==1);
+    assert(s->pairing_complete==1 && s->pairing_errors==1 && s->encryption_change==3 && !s->encryption_errors);
+    assert(s->command_errors==1 && s->disconnects==1 && s->recent_count==16);
+    assert(link_at(s,0)->code==3 && link_at(s,0)->handle==0x42 && link_at(s,0)->value==1);
+    assert(link_at(s,1)->status==5 && link_at(s,1)->handle==0x42);
+    assert(link_at(s,3)->value==0x1001);
+    assert(link_at(s,6)->value==0x00050002 && link_at(s,6)->handle==UINT16_MAX);
+    assert(link_at(s,7)->code==0x33 && link_at(s,7)->value==UINT32_MAX);
+    assert(link_at(s,8)->code==0x3b && link_at(s,8)->value==UINT32_MAX);
+    assert(link_at(s,9)->code==0x18 && link_at(s,9)->value==8);
+    assert(link_at(s,11)->kind==QBT_LINK_LE_EVENT && link_at(s,11)->handle==3 && link_at(s,11)->code==0x0a);
+    assert(link_at(s,12)->code==5 && link_at(s,12)->status==0xff && link_at(s,12)->value==UINT32_MAX);
+    assert(link_at(s,13)->kind==QBT_LINK_CS && link_at(s,13)->opcode==0x0405 && link_at(s,13)->status==0x0c);
+    assert(link_at(s,14)->status==0); /* command acceptance did not increment authentication_complete */
+    assert(link_at(s,15)->code==5 && link_at(s,15)->value==0x13);
+    const struct qbt_link_stats saved=*s;
+    uint8_t advertisement[33];event_bytes(advertisement,sizeof(advertisement),0x3e,0x0d);advertisement[4]=1;
+    for(unsigned i=0;i<100;i++)metadata_feed(f,advertisement,sizeof(advertisement),3,expected,&length);
+    assert(!memcmp(&saved,s,sizeof(saved)) && f->q->stats.hci.recent_count==24);
+    assert(f->received_length==length && !memcmp(f->received,expected,length));
+    assert(f->q->info.state==2 && !f->q->stats.malformed);no_secret_metadata(f);destroy(f);free(f);
+}
+static void runtime_link_commands(void){
+    struct fixture *f=calloc(1,sizeof(*f));make_metadata(f);f->write_limit=1;
+    uint8_t pin[27]={1,0x0d,4,23},link_key[26]={1,0x0b,4,22};
+    uint8_t capability[13]={1,0x2b,4,9},passkey[14]={1,0x2e,4,10},ltk[22]={1,0x1a,0x20,18};
+    memset(pin+4,0xd7,23);pin[10]=6;memset(link_key+4,0xd7,22);
+    memset(capability+4,0xd7,9);capability[10]=2;capability[11]=0;capability[12]=5;
+    memset(passkey+4,0xd7,10);memset(ltk+4,0xd7,18);put16(ltk+4,3);
+    const uint8_t encrypt[]={1,0x13,4,3,0x42,0,1},negative[]={1,0x1b,0x20,2,3,0};
+    uint8_t expected[256];size_t length=0;
+#define LINK_TX(packet) append_bytes(expected,&length,packet,sizeof(packet));metadata_send(f,packet,sizeof(packet))
+    LINK_TX(pin);LINK_TX(link_key);LINK_TX(capability);LINK_TX(passkey);LINK_TX(ltk);LINK_TX(encrypt);LINK_TX(negative);
+#undef LINK_TX
+    const struct qbt_link_stats *s=&f->q->stats.link;
+    assert(s->recent_count==7 && !s->authentication_complete && !s->pairing_complete && !s->encryption_change);
+    assert(link_at(s,0)->opcode==0x040d && link_at(s,0)->value==6 && link_at(s,0)->handle==UINT16_MAX);
+    assert(link_at(s,1)->value==UINT32_MAX && link_at(s,1)->handle==UINT16_MAX);
+    assert(link_at(s,2)->value==0x00050002 && link_at(s,2)->handle==UINT16_MAX);
+    assert(link_at(s,3)->opcode==0x042e && link_at(s,3)->value==UINT32_MAX);
+    assert(link_at(s,4)->handle==3 && link_at(s,4)->value==UINT32_MAX);
+    assert(link_at(s,5)->handle==0x42 && link_at(s,5)->value==1);
+    assert(link_at(s,6)->opcode==0x201b && link_at(s,6)->handle==3);
+    assert(f->transmitted_length==length && !memcmp(f->transmitted,expected,length));
+    no_secret_metadata(f);destroy(f);free(f);
+}
+static void runtime_smp_metadata(void){
+    struct fixture *f=calloc(1,sizeof(*f));make_metadata(f);
+    uint8_t expected[10000],packet[100],body[65];size_t length=0,n;
+    const uint8_t pairing[]={1,2,0,0x0d,16,3,3},failure[]={5,3},security[]={11,9};
+    n=smp_packet(packet,3,6,pairing,sizeof(pairing));
+    append_bytes(expected,&length,packet,n);f->receive_room=2;
+    size_t used=qbt_receive(f->q,packet,n);assert(used==5 && !f->q->stats.link.smp_packets);
+    f->receive_room=sizeof(f->received)-f->received_length;
+    assert(qbt_receive(f->q,packet+used,n-used)==n-used);qbt_step(f->q);
+    assert(f->q->stats.link.smp_packets==1);qbt_step(f->q);assert(f->q->stats.link.smp_packets==1);
+    n=smp_packet(packet,3,6,failure,sizeof(failure));metadata_feed(f,packet,n,1,expected,&length);
+    memset(body,0xd7,sizeof(body));body[0]=12; /* public-key payload is skipped, never copied */
+    uint8_t l2cap[69];put16(l2cap,65);put16(l2cap+2,6);memcpy(l2cap+4,body,65);
+    n=acl_packet(packet,4,2,l2cap,9);metadata_feed(f,packet,n,1,expected,&length);
+    assert(f->q->stats.link.smp_packets==2);no_secret_metadata(f);
+    n=acl_packet(packet,4,1,l2cap+9,60);metadata_feed(f,packet,n,2,expected,&length);
+    /* L2CAP header itself and pairing parameters can span HCI ACL fragments. */
+    uint8_t request[11];put16(request,7);put16(request+2,7);memcpy(request+4,pairing,7);
+    n=acl_packet(packet,5,0,request,2);metadata_feed(f,packet,n,1,expected,&length);
+    n=acl_packet(packet,6,2,request,5);metadata_feed(f,packet,n,1,expected,&length);
+    n=acl_packet(packet,5,1,request+2,3);metadata_feed(f,packet,n,1,expected,&length);
+    n=acl_packet(packet,6,1,request+5,6);metadata_feed(f,packet,n,1,expected,&length);
+    n=acl_packet(packet,5,1,request+5,6);metadata_feed(f,packet,n,1,expected,&length);
+    /* PB3 complete PDU is observed with an exact declared length. */
+    n=acl_packet(packet,7,3,request,sizeof(request));metadata_feed(f,packet,n,1,expected,&length);
+    const struct qbt_link_stats *s=&f->q->stats.link;
+    assert(s->smp_packets==6 && s->smp_failures==1 && !s->acl_observation_dropped);
+    assert(link_at(s,0)->value==0x100d0002 && link_at(s,0)->opcode==6 && link_at(s,0)->handle==3);
+    assert(link_at(s,1)->kind==QBT_LINK_SMP_RX && link_at(s,1)->status==3);
+    assert(link_at(s,2)->code==12 && link_at(s,2)->value==UINT32_MAX && link_at(s,2)->handle==4);
+    assert(link_at(s,3)->opcode==7 && link_at(s,3)->handle==6);
+    assert(link_at(s,4)->handle==5 && link_at(s,5)->handle==7);
+    assert(f->received_length==length && !memcmp(f->received,expected,length));no_secret_metadata(f);
+    /* Zero UART consumption cannot commit the TX preview or SMP metadata. */
+    n=smp_packet(packet,3,6,security,sizeof(security));f->write_limit=0;
+    assert(!qbt_transmit(f->q,packet,n));for(unsigned i=0;i<3;i++)qbt_step(f->q);
+    assert(s->smp_packets==6 && !f->q->tx_acl.slots[0].active);
+    f->write_limit=1;drive(f,400);
+    assert(!f->q->tx_length && s->smp_packets==7 && link_at(s,6)->kind==QBT_LINK_SMP_TX && link_at(s,6)->value==9);
+    n=smp_packet(packet,3,6,failure,sizeof(failure));metadata_send(f,packet,n);
+    assert(s->smp_packets==8 && s->smp_failures==2 && link_at(s,7)->status==3);
+    no_secret_metadata(f);destroy(f);free(f);
+}
+static void runtime_smp_observation_gaps(void){
+    struct fixture *f=calloc(1,sizeof(*f));make_metadata(f);
+    uint8_t expected[5000],packet[100],body[]={7,0,6,0,1,2,0,0x0d,16,3,3};size_t length=0,n;
+    /* A non-SMP channel containing SMP-shaped bytes is never decoded. */
+    body[2]=4;n=acl_packet(packet,1,2,body,sizeof(body));metadata_feed(f,packet,n,1,expected,&length);body[2]=6;
+    /* Invalid command length, oversize continuation and a truncated PB3 PDU
+     * are diagnostic gaps, not transport errors or synthesized SMP failures. */
+    body[0]=8;n=acl_packet(packet,1,2,body,sizeof(body));metadata_feed(f,packet,n,1,expected,&length);
+    const uint8_t extra[]={0xd7};n=acl_packet(packet,1,1,extra,1);metadata_feed(f,packet,n,1,expected,&length);body[0]=7;
+    n=acl_packet(packet,2,2,body,5);metadata_feed(f,packet,n,1,expected,&length);
+    n=acl_packet(packet,2,1,body,7);metadata_feed(f,packet,n,1,expected,&length);
+    n=acl_packet(packet,3,3,body,5);metadata_feed(f,packet,n,1,expected,&length);
+    /* A full observation pool never delays or drops the forwarded packet. */
+    for(unsigned handle=4;handle<=8;handle++){
+        n=acl_packet(packet,handle,2,body,5);metadata_feed(f,packet,n,1,expected,&length);
+    }
+    assert(f->q->stats.link.acl_observation_dropped==4 && !f->q->stats.link.smp_packets);
+    /* A completed disconnect retires pending metadata before handle reuse. */
+    const uint8_t disconnect[]={4,5,4,0,4,0,0x13};metadata_feed(f,disconnect,sizeof(disconnect),1,expected,&length);
+    n=acl_packet(packet,4,1,body+5,6);metadata_feed(f,packet,n,1,expected,&length);
+    assert(!f->q->stats.link.smp_packets);
+    const uint8_t reset[]={4,0x0e,4,1,3,0x0c,0};metadata_feed(f,reset,sizeof(reset),1,expected,&length);
+    for(unsigned i=0;i<QBT_ACL_OBSERVER_SLOTS;i++)assert(!f->q->rx_acl.slots[i].active);
+    n=acl_packet(packet,5,1,body+5,6);metadata_feed(f,packet,n,1,expected,&length);
+    assert(!f->q->stats.link.smp_packets && !f->q->stats.malformed && f->q->info.state==2);
+    assert(f->received_length==length && !memcmp(f->received,expected,length));no_secret_metadata(f);
+    qbt_set_service(f->q,false);
+    for(unsigned i=0;i<QBT_ACL_OBSERVER_SLOTS;i++)assert(!f->q->rx_acl.slots[i].active);
+    destroy(f);free(f);
+}
+static void runtime_link_rollover_and_gates(void){
+    struct fixture *f=calloc(1,sizeof(*f));make_metadata(f);
+    uint8_t expected[10000];size_t length=0;
+    const uint8_t failure[]={4,0x0f,4,0x0c,1,1,0xfc};
+    for(unsigned i=0;i<40;i++){f->now++;metadata_feed(f,failure,sizeof(failure),1,expected,&length);}
+    struct qbt_link_stats copied=f->q->stats.link;
+    assert(copied.command_errors==40 && copied.recent_count==32 && copied.recent_total==40);
+    assert(link_at(&copied,0)->sequence==9 && link_at(&copied,31)->sequence==40);
+    qbt_set_service(f->q,false);assert(qbt_receive(f->q,failure,sizeof(failure))==sizeof(failure));
+    qbt_set_service(f->q,true);f->q->info.state=1;
+    assert(qbt_receive(f->q,failure,sizeof(failure))==sizeof(failure));
+    assert(!memcmp(&copied,&f->q->stats.link,sizeof(copied)));destroy(f);free(f);
+}
+static void runtime_smp_new_boundary(void){
+    struct fixture *f=calloc(1,sizeof(*f));make_metadata(f);
+    uint8_t expected[1000],packet[100];size_t length=0,n;
+    const uint8_t partial[]={2,0,6,0,5},reason[]={3},short_body[]={0xd7};
+    const unsigned pb[]={3,3,0,2},sizes[]={0,1,0,0};
+    for(unsigned i=0;i<4;i++){
+        n=acl_packet(packet,4,2,partial,sizeof(partial));metadata_feed(f,packet,n,1,expected,&length);
+        assert(f->q->rx_acl.slots[0].active && !f->q->stats.link.smp_failures);
+        n=acl_packet(packet,4,pb[i],short_body,sizes[i]);metadata_feed(f,packet,n,1,expected,&length);
+        assert(!f->q->rx_acl.slots[0].active);
+        n=acl_packet(packet,4,1,reason,sizeof(reason));metadata_feed(f,packet,n,1,expected,&length);
+        assert(!f->q->stats.link.smp_packets && !f->q->stats.link.smp_failures);
+    }
+    assert(f->q->info.state==2 && !f->q->stats.malformed);
+    assert(f->received_length==length && !memcmp(f->received,expected,length));no_secret_metadata(f);destroy(f);free(f);
+}
+static void runtime_link_metadata(void){
+    runtime_link_events();runtime_link_commands();runtime_smp_metadata();
+    runtime_smp_observation_gaps();runtime_smp_new_boundary();runtime_link_rollover_and_gates();
+    puts("PASS: separate32-record link/security metadata, BR/EDR/LE authentication and encryption events, redacted PIN/passkey/key commands, streamed SMP and interleaved ACL fragments, preview isolation, diagnostic gap/pool handling, handle retirement and exact passthrough under pressure");
+}
+static void ganges_startup(void){
+#ifdef QBT_WCN7860_SOURCE
+    struct fixture *f=calloc(1,sizeof(*f));
+    const uint8_t address[]={2,2,3,4,5,7};
+    struct qbt_boot_options o={.controller=QBT_WCN7860,.baud_method=QBT_BAUD_FC48,
+        .initial_baud=115200,.operating_baud=3200000,.rampatch="gngbtfw20.mbn",.nvm="gngbtnv20",
+        .expected_product=0x1e,.expected_rom=0x200,.nvm_by_board=true};
+    for(unsigned test=0;test<9;test++){
+        make(f,3);f->ganges=f->board_specific=true;
+        memcpy(f->patch,"\177ELF\1\1\1",7);
+        if(test==1)f->speed_reply=false;
+        if(test==2)f->board_specific=false;
+        if(test==3)f->malformed_board=true;
+        if(test==8)f->zero_board_metadata=true;
+        o.expected_rom=test==4?0x201:0x200;
+        if(test==5)f->speed_reply_delay=150000000;
+        if(test==6){f->speed_reply_delay=200000000;f->legacy_speed_reply=true;}
+        if(test==7){f->speed_reply=false;f->hardware_fault_at=f->now+50000000;}
+        int e=qbt_boot_controller(f->q,&o,address);
+        if(test==0 || test==5 || test==6 || test==8){
+            assert(!e && f->address_written && f->firmware_gets==2 && f->q->info.board_valid && f->q->info.board==0x1234);
+            if(test)assert(f->now>=f->speed_command_at+f->speed_reply_delay);
+        }
+        else if(test==1){assert(e==-ETIMEDOUT && !f->firmware_gets && f->q->stats.timeouts==1 && f->now>=f->speed_command_at+1000000000);}
+        else if(test==4){assert(e==-ENODEV && !f->firmware_gets);}
+        else if(test==7){assert(e==-EIO && !f->firmware_gets && f->now-f->speed_command_at<100000000 && f->waits<1000);}
+        else {assert(e<0 && !f->address_written);}
+        destroy(f);
+    }
+    /* Actual Ganges tuple: the explicit same-rate diagnostic never sends
+     * FC48, but still requires full ELF/NVM, board and HCI address replies. */
+    make(f,3);f->ganges=f->board_specific=true;f->soc=0x40210200;f->nvm_baud=0;f->speed=115200;
+    memcpy(f->patch,"\177ELF\1\1\1",7);
+    o.baud_method=QBT_BAUD_CURRENT;o.initial_baud=o.operating_baud=115200;
+    o.expected_rom=0x200;o.expected_soc=0x40210200;
+    assert(!qbt_boot_controller(f->q,&o,address));
+    assert(!f->speed_command_at && !f->flow_off && !f->flow_on && f->speed==115200);
+    assert(f->q->info.state==2 && f->q->info.baud==115200 && f->q->info.board_valid &&
+           f->firmware_gets==2 && f->nvm_edited && f->address_written);
+    destroy(f);
+    make(f,3);f->ganges=f->board_specific=true;f->soc=0x40210200;
+    o.baud_method=QBT_BAUD_FC48;o.operating_baud=3200000;
+    assert(qbt_boot_controller(f->q,&o,address)==-EOPNOTSUPP &&
+           !f->speed_command_at && !f->firmware_gets && !f->flow_off);
+    destroy(f);
+    make(f,3);o.baud_method=QBT_BAUD_CURRENT;o.operating_baud=3200000;
+    assert(qbt_boot_controller(f->q,&o,address)==-EOPNOTSUPP && !f->commands && !f->firmware_gets);
+    destroy(f);
+    free(f);puts("PASS: modeled WCN7860 ELF startup, exact ROM/board selection, refused generic NVM, real one-second baud deadline, delayed unified/vendor completions, prompt UART failure and malformed board reply");
+#endif
+}
+int main(void){initialization();failures();speed_and_identity_failures();progress_reports();speed_settle();receive_pressure();sleep_and_wake();lost_wake();clock_failure();tx_ibs_boundaries();runtime_metadata();runtime_link_metadata();ganges_startup();puts("PASS: original Linux WCN7850 setup, firmware/BID fallback, NVM edits, Qualcomm baud status/timeout and BD_ADDR readback, H4 fragmentation/backpressure, status failure, true timeout, partial DMA TX, IBS packet boundaries, clock/wake recovery and terminal clock faults");}

@@ -315,8 +315,12 @@ void worker(void *,wait_result_t)
     thread_terminate(current_thread());thread_block(THREAD_CONTINUE_NULL);
 }
 }
+/* Board late-init fan-out: keep the USB consumer's locked bsd_init unchanged.
+ * Audio checks its own explicit argument and waits for touch initialization. */
+extern "C" void nezha_audio27_start(void);
 extern "C" void nezha_adreno840_start(void)
 {
+    nezha_audio27_start();
     static bool attempted=false;
     if(attempted)return;
     attempted=true;

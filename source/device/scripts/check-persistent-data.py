@@ -135,6 +135,11 @@ static int store_ready=1,store_sync=1,store_gpt=0;
 static int native_ufs_store_ready(void){return store_ready;}
 static int native_ufs_store_sync(void){return store_sync;}
 static unsigned native_ufs_store_gpt_check(void){return store_gpt;}
+static int bt_stop_result;
+static unsigned bt_stop_calls;
+static int nezha_bluetooth_stop_and_wait(uint32_t timeout){
+ assert(timeout==30000);bt_stop_calls++;return bt_stop_result;
+}
 static int restart_owner(unsigned);''')
 fixture=fixture.replace('static int current_thread(void){return 1;}',
                         'static int current_thread(void){return running_thread;}')
@@ -153,6 +158,8 @@ fixture=fixture.replace('shutdown_calls++;return -99;', '''shutdown_calls++;
  }return -99;''')
 needle=' nezha27_usb_control_prepare();assert(qcom_usb_debug_control_start());'
 addition='''
+ if(!strcmp(test,"bt-cleanup-fail") || !strcmp(test,"persist-bt-cleanup-fail") ||
+    !strcmp(test,"ram-normal-bt-cleanup-fail"))bt_stop_result=-110;
  if(!strncmp(test,"persist-",8)){
   persist=2;boot_gate=1;native_data_persist_state=2;native_data_persist_writes=17;persistent_real_shutdown=1;
   if(!strcmp(test,"persist-fresh"))native_data_persist_state=3;
@@ -168,13 +175,22 @@ addition='''
   if(!strcmp(test,"persist-owner-after-ticket"))after_ticket=5;
   if(!strcmp(test,"persist-other-thread"))after_ticket=6;
  }
+ if(!strncmp(test,"ram-normal-",11)){
+  boot_gate=1;persistent_real_shutdown=1;
+  if(!strcmp(test,"ram-normal-transport-off-after-ticket"))after_ticket=1;
+  if(!strcmp(test,"ram-normal-before-final-stage"))after_ticket=2;
+  if(!strcmp(test,"ram-normal-owner-after-ticket"))after_ticket=5;
+  if(!strcmp(test,"ram-normal-other-thread"))after_ticket=6;
+ }
 '''+needle+'''
- if(!strncmp(test,"persist-",8)){
+ if(!strncmp(test,"persist-",8) || !strncmp(test,"ram-normal-",11)){
   assert(qcom_usb_debug_control_reset_available());request(usb_control_context.state.session);
   assert(control_reboot_requested);
   if(!setjmp(reset_exit))nezha27_usb_control_service();
-  int ok=!strcmp(test,"persist-resume")||!strcmp(test,"persist-fresh")||after_ticket==1;
+  int ok=!strcmp(test,"persist-resume")||!strcmp(test,"persist-fresh")||
+         !strcmp(test,"ram-normal-success")||after_ticket==1;
   assert(reset_calls==(unsigned)ok && shutdown_calls==(unsigned)(ok||after_ticket));
+  if(bt_stop_result)assert(bt_stop_calls==1 && !reset_calls && !shutdown_calls);
   if(ok){assert(normal_shutdown_started==2 && control_reboot_armed==2);assert(restart_owner(1)==-10);}
   else{assert(!normal_shutdown_started);assert_resumed();}
   goto done;
@@ -186,6 +202,9 @@ cmd=['gcc','-std=c11','-O1','-g','-Wall','-Wextra','-Werror','-Wno-unused-functi
 subprocess.run(cmd,check=True)
 cases=['success','continuous-log','guard-busy','buffer-busy','drain-fail','guard-timeout','old-session','old-generation','owner-changed','disconnect','cancel','poll-fail','generation-during-drain','owner-during-drain','session-during-drain','cancel-during-drain','create-fail','wrong-cpu','no-control','no-mode','persistent-data','RAM-writes','owner-after-arm','queue-after-arm','log-after-arm','generation-after-arm','consume-once','not-armed','not-drained','failed-without-request','normal-shutdown-return','nonreboot-continuous','generic-drain','persist-resume','persist-fresh','persist-error','persist-missing','persist-bad-gpt','persist-sync-fail','persist-bad-state','persist-transport-off-after-ticket','persist-before-final-stage','persist-without-XNU-start','persist-write-error-after-ticket','persist-owner-after-ticket']
 cases.append('persist-other-thread')
+cases += ['bt-cleanup-fail','persist-bt-cleanup-fail','ram-normal-success',
+          'ram-normal-transport-off-after-ticket','ram-normal-before-final-stage',
+          'ram-normal-owner-after-ticket','ram-normal-other-thread','ram-normal-bt-cleanup-fail']
 results={case:subprocess.check_output([str(O/'reboot-persist'),case],text=True).strip() for case in cases}
 report=dict(phone_operations=False,ufs_actual_commands=ufs_output,root_command_regression=read_output,usb_actual_protocol_and_board_cases=results,sources={str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in [U/'RootCommands.h',U/'PinnedDataWindow.h',U/'NativeUfs.cpp',D/'package/Nezha27UsbControl.c',USB/'kernel/QcomXnuUsbDebug.c']})
 (O/'report.json').write_text(json.dumps(report,indent=2)+'\n')
