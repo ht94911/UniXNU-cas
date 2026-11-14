@@ -1,7 +1,7 @@
 name: nezha iPhone27 GPU015 wired CCCV - power068
 on:
   push:
-    branches: [codex/ios27-power-gpu015-067-20261115]
+    branches: [codex/ios27-power-gpu015-069-20261115]
   workflow_dispatch:
 permissions:
   contents: read
