@@ -1,0 +1,166 @@
+diff --git a/bsd/vfs/vfs_syscalls.c b/bsd/vfs/vfs_syscalls.c
+--- a/bsd/vfs/vfs_syscalls.c
++++ b/bsd/vfs/vfs_syscalls.c
+@@ -3015,8 +3015,27 @@
+ 
+ /*
+  * Do the actual file system unmount.
+  */
++
++/*
++ * Shutdown-only observation. Do not change mount flags, references, wait
++ * policies or return values. The normal console remains available through
++ * the existing USB shutdown observer.
++ */
++extern uint32_t system_inshutdown;
++static void
++nezha_shutdown_unmount_phase(struct mount *mp, const char *phase, int status)
++{
++    if (__atomic_load_n(&system_inshutdown, __ATOMIC_RELAXED) == 0) {
++        return;
++    }
++    printf("NEZHA27 UNMOUNT: phase=%s status=%d path=%.64s refs=%d iter=%d flags=%#x kflags=%#x\n",
++        phase, status, mp->mnt_vfsstat.f_mntonname,
++        (int)mp->mnt_count, (int)mp->mnt_iterref,
++        (unsigned)mp->mnt_flag, (unsigned)mp->mnt_kern_flag);
++}
++
+ int
+ dounmount(struct mount *mp, int flags, int withref, vfs_context_t ctx)
+ {
+ 	vnode_t coveredvp = (vnode_t)0;
+@@ -3036,8 +3055,9 @@
+ 		fsevent_unmount(mp, ctx);  /* has to come first! */
+ 	}
+ #endif
+ 
++	nezha_shutdown_unmount_phase(mp, "mount-lock", 0);
+ 	mount_lock(mp);
+ 
+ 	/*
+ 	 * If already an unmount in progress just return EBUSY.
+@@ -3079,8 +3099,9 @@
+ 		 * Force unmount any mounts in this filesystem.
+ 		 * If any unmounts fail - just leave them dangling.
+ 		 * Avoids recursion.
+ 		 */
++		nezha_shutdown_unmount_phase(mp, "submounts", 0);
+ 		(void) dounmount_submounts(mp, flags | MNT_LNOSUB, ctx);
+ 	}
+ 
+ 	/*
+@@ -3090,8 +3111,9 @@
+ 	 * vp->v_mountedhere->mnt_realrootvp
+ 	 * bumping mount_generation causes the cached values
+ 	 * to be invalidated
+ 	 */
++	nezha_shutdown_unmount_phase(mp, "name-cache-lock", 0);
+ 	name_cache_lock();
+ 	mount_generation++;
+ 	name_cache_unlock();
+ 
+@@ -3099,18 +3121,22 @@
+ 	 * Make sure there are no one in the mount iterations or lookup.
+ 	 * Drain makes 'mnt_iterref' -ve so on error exit we need to ensure that
+ 	 * 'mnt_iterref' is reset back to 0 by calling mount_iterreset().
+ 	 */
++	nezha_shutdown_unmount_phase(mp, "iteration-drain", 0);
+ 	mount_iterdrain(mp);
+ 
++	nezha_shutdown_unmount_phase(mp, "mount-rwlock", 0);
+ 	lck_rw_lock_exclusive(&mp->mnt_rwlock);
+ 	if (withref != 0) {
+ 		mount_drop(mp, 0);
+ 	}
+ 	error = 0;
+ 	if (forcedunmount == 0) {
++		nezha_shutdown_unmount_phase(mp, "ubc-purge", 0);
+ 		ubc_umount(mp); /* release cached vnodes */
+ 		if ((mp->mnt_flag & MNT_RDONLY) == 0) {
++			nezha_shutdown_unmount_phase(mp, "filesystem-sync", 0);
+ 			error = VFS_SYNC(mp, MNT_WAIT, ctx);
+ 			if (error) {
+ 				mount_iterreset(mp);
+ 				mount_lock(mp);
+@@ -3121,17 +3147,20 @@
+ 			}
+ 		}
+ 	}
+ 
++	nezha_shutdown_unmount_phase(mp, "iokit-notify", 0);
+ 	IOBSDMountChange(mp, kIOMountChangeUnmount);
+ 
+ #if CONFIG_TRIGGERS
++	nezha_shutdown_unmount_phase(mp, "nested-triggers", 0);
+ 	vfs_nested_trigger_unmounts(mp, flags, ctx);
+ 	did_vflush = 1;
+ #endif
+ 	if (forcedunmount) {
+ 		lflags |= FORCECLOSE;
+ 	}
++	nezha_shutdown_unmount_phase(mp, "vnode-flush", 0);
+ 	error = vflush(mp, NULLVP, SKIPSWAP | SKIPSYSTEM  | SKIPROOT | lflags);
+ 	if ((forcedunmount == 0) && error) {
+ 		mount_iterreset(mp);
+ 		mount_lock(mp);
+@@ -3140,9 +3169,11 @@
+ 		mp->mnt_lflag &= ~MNT_LFORCE;
+ 		goto out;
+ 	}
+ 
++	nezha_shutdown_unmount_phase(mp, "filesystem-unmount", 0);
+ 	error = VFS_UNMOUNT(mp, flags, ctx);
++	nezha_shutdown_unmount_phase(mp, "filesystem-return", error);
+ 	if (error) {
+ 		mount_iterreset(mp);
+ 		mount_lock(mp);
+ 		mp->mnt_kern_flag &= ~MNTK_UNMOUNT;
+@@ -3166,9 +3197,11 @@
+ 		vnode_clearmountedon(devvp);
+ 		vnode_put(devvp);
+ 	}
+ 	lck_rw_done(&mp->mnt_rwlock);
++	nezha_shutdown_unmount_phase(mp, "mount-list-remove", 0);
+ 	mount_list_remove(mp);
++	nezha_shutdown_unmount_phase(mp, "mount-rwlock", 0);
+ 	lck_rw_lock_exclusive(&mp->mnt_rwlock);
+ 
+ 	/* mark the mount point hook in the vp but not drop the ref yet */
+ 	if ((coveredvp = mp->mnt_vnodecovered) != NULLVP) {
+@@ -3178,8 +3211,9 @@
+ 		 * if the Filesystem to which the covered vnode belongs is
+ 		 * undergoing forced unmounts. Since we hold a usecount, the
+ 		 * vnode cannot be reused (it can, however, still be terminated)
+ 		 */
++		nezha_shutdown_unmount_phase(mp, "covered-vnode", 0);
+ 		vnode_getalways(coveredvp);
+ 		vnode_lock_spin(coveredvp);
+ 
+ 		mp->mnt_crossref++;
+@@ -3194,8 +3228,9 @@
+ 	mount_list_lock();
+ 	mp->mnt_vtable->vfc_refcount--;
+ 	mount_list_unlock();
+ 
++	nezha_shutdown_unmount_phase(mp, "name-cache-purge", 0);
+ 	cache_purgevfs(mp);     /* remove cache entries for this file sys */
+ 	vfs_event_signal(NULL, VQ_UNMOUNT, (intptr_t)NULL);
+ 	mount_lock(mp);
+ 	mp->mnt_lflag |= MNT_LDEAD;
+@@ -3210,14 +3245,16 @@
+ 		 */
+ 		mp->mnt_lflag &= ~MNT_LWAIT;
+ 		wakeup((caddr_t)mp);
+ 	}
++	nezha_shutdown_unmount_phase(mp, "reference-drain", 0);
+ 	mount_refdrain(mp);
+ 
+ 	/* free disk_conditioner_info structure for this mount */
+ 	disk_conditioner_unmount(mp);
+ 
+ out:
++	nezha_shutdown_unmount_phase(mp, "out", error);
+ 	if (mp->mnt_lflag & MNT_LWAIT) {
+ 		mp->mnt_lflag &= ~MNT_LWAIT;
+ 		needwakeup = 1;
+ 	}
