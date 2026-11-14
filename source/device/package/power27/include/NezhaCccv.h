@@ -1,0 +1,30 @@
+/* SPDX-License-Identifier: BSD-2-Clause-Patent */
+#ifndef NEZHA_CCCV_H
+#define NEZHA_CCCV_H
+#include "NezhaPower.h"
+#ifdef __cplusplus
+extern "C" {
+#endif
+typedef struct {
+ uint64_t epoch,attachment,sampled_ms;
+ int32_t temperature_c,zone,stage,voltage_mv,current_max_ma,current_min_ma;
+ uint32_t rows,valid;
+ uint8_t initialized;
+} NpCccv;
+typedef struct {
+ int32_t battery_mv,battery_ma,bus_ma,limit_mv,limit_ma;
+ uint32_t adapter_ma,real_type;
+ uint64_t now_ms,last_boost_ms,last_buck_ms;
+ uint8_t boost_done;
+} NpCccvInput;
+/* Actual wired N0 ATL normal curves and OS4 stage arithmetic. No FFC flag,
+ * gauge calibration, hardware access or default high-current permission. */
+int np_cccv_update(NpCccv *,const NpSnapshot *,const NpGaugeIdentity *,int,
+                   uint64_t epoch,uint64_t attachment);
+/* Signed mV adjustment from the observed stock ratio2 branch. The caller
+ * supplies the actual battery/adapter ceilings and encodes the20mV request. */
+int32_t np_cccv_delta(const NpCccv *,const NpCccvInput *);
+#ifdef __cplusplus
+}
+#endif
+#endif
