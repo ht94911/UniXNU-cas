@@ -3,8 +3,8 @@
   "image_uuid": "e7e1cd9b-2938-3519-92a0-7a119279a107",
   "native_prepare_address": "0x2bea74594",
   "native_boot_address": "0x2bea746c4",
-  "query_function": "_TelephonyBasebandControllerGetBasebandProperty",
-  "query_address": "0x2bfaf69a4",
+  "query_function": "_TelephonyBasebandGetBasebandProperty",
+  "query_address": "0x2bfaf0470",
   "board_property": "0x4e42",
   "ready_requires": "actual worker PAS/MSS/IPCRTR/WDS/DMS/NAS/UIM and IPA open",
   "original_BootModule_IPC_error_and_event_flow_retained": true,
@@ -29,7 +29,7 @@
       "cache_file": "dyld_shared_cache_arm64e.71",
       "file_offset": "0x66745b4",
       "original": "e8f301b2e82301a9f4830091e80700f9",
-      "replacement": "e2230091fb084294a0000034e80740f9"
+      "replacement": "e2230091aeef4194a0000034e80740f9"
     },
     {
       "name": "BootControllerLegacy::prepare",

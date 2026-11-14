@@ -24,6 +24,29 @@ static uint32_t status(unsigned reversed, unsigned removed)
     unsigned n = cbd_tlv(tlvs, sizeof tlvs, 0x10, card, at);
     return message(4, 0x32, 0, tlvs, n);
 }
+/* Real UIM Extended Card Status wire: independently counted GW and1x
+ * application-index lists, then cards. Payloads contain synthetic AIDs. */
+static uint32_t extended_status(unsigned type, unsigned reversed, unsigned removed)
+{
+    status(reversed, removed);
+    unsigned bytes;
+    const uint8_t *legacy = cbd_find(msg, 7u + cbd_rd16(msg + 5), 0x10, &bytes);
+    assert(legacy && bytes >= 9);
+    uint8_t value[160], tlvs[192];
+    value[0] = 2;   /* two GW subscriptions */
+    memcpy(value + 1, legacy, 2);
+    memcpy(value + 3, legacy + 4, 2);
+    value[5] = 0;   /* no 1x provisioning sessions */
+    memcpy(value + 6, legacy + 8, bytes - 8);
+    unsigned n = 0;
+    if (type == 2) {
+        const uint8_t success[4] = {0};
+        n = cbd_tlv(tlvs, sizeof tlvs, 2, success, sizeof success);
+    }
+    n += cbd_tlv(tlvs + n, sizeof tlvs - n, type == 2 ? 0x13 : 0x12,
+                 value, bytes - 2);
+    return message(type, type == 2 ? 0x2f : 0x32, type == 2 ? 11 : 0, tlvs, n);
+}
 static uint32_t request(unsigned session, unsigned file, unsigned txn)
 {
     uint8_t tlvs[64], sess[2] = { (uint8_t)session, 0 }, f[5] = {0};
@@ -69,8 +92,44 @@ static void check_activation(struct nb_sim *s, unsigned second, unsigned reverse
     assert((cbd_find(msg, n, 0x51, &bytes) != NULL) == (second != 0));
     assert(!nb_sim_activation(s, wire, n - 8));
 }
+static void extended_identity(void)
+{
+    struct nb_sim s;
+    nb_sim_reset(&s);
+    unsigned n = extended_status(2, 0, 0);
+    assert(nb_sim_message(&s, 0x4100, 0, 212, msg, n));
+    assert(s.mapping_known && nb_sim_physical(&s, 0) == 1 && nb_sim_physical(&s, 2) == 2);
+    assert(!nb_sim_physical(&s, 1) && !nb_sim_physical(&s, 3));
+    assert(observe(&s, 0x4100, 0, CBD_EF_ICCID, 12, iccid1, 10));
+    assert(observe(&s, 0x4100, 2, CBD_EF_ICCID, 13, iccid2, 10));
+    assert(observe(&s, 0x4100, 0, CBD_EF_IMSI, 14, imsi1, 9));
+    assert(observe(&s, 0x4100, 2, CBD_EF_IMSI, 15, imsi2, 9));
+    check_activation(&s, 1, 0);
+    n = extended_status(4, 1, 0);
+    assert(nb_sim_message(&s, 0x4100, 0, 212, msg, n));
+    check_activation(&s, 1, 1);
+    n = extended_status(4, 0, 1);
+    assert(nb_sim_message(&s, 0x4100, 0, 212, msg, n));
+    check_activation(&s, 0, 0);
+    n = extended_status(4, 0, 1);
+    memcpy(wire, msg, n);
+    uint8_t present[2], provision[4];
+    for (unsigned cut = 0; cut < n; ++cut)
+        assert(nb_sim_status(wire, cut, present, provision) <= 0);
+    unsigned bytes;
+    const uint8_t *value = cbd_find(wire, n, 0x12, &bytes);
+    assert(value && bytes > 6);
+    wire[value - wire] = 6;   /* count exceeds the real UIM max5 */
+    assert(nb_sim_status(wire, n, present, provision) == -1);
+    n = extended_status(2, 0, 0);
+    memcpy(wire, msg, n);
+    value = cbd_find(wire, n, 0x13, &bytes);
+    wire[value - wire + 6] = 5;   /* advertised cards exceed the supplied records */
+    assert(nb_sim_status(wire, n, present, provision) == -1);
+}
 int main(void)
 {
+    extended_identity();
     struct nb_sim s;nb_sim_reset(&s);
     assert(!nb_sim_physical(&s, 0) && nb_sim_physical(&s, 6) == 1 && nb_sim_physical(&s, 7) == 2);
     unsigned n = request(0, CBD_EF_ICCID, 1);assert(nb_sim_read_begin(&s, 0x4100, 0, 212, msg, n));

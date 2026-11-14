@@ -42,20 +42,43 @@ static inline unsigned nb_sim_subscription(const struct nb_sim *s, unsigned slot
     return s->provision[at] ? s->provision[at] : s->provision[at + 1];
 }
 
-/* Parse the common UIM Card Status TLV (0x10), including every application
- * and AID before using its four provisioning indices. Return 1 for a valid
- * status, 0 for a different message, -1 for a malformed status. */
+/* Parse legacy Card Status (0x10) or Extended Card Status (response0x13,
+ * indication0x12). The latter has counted GW and 1x index arrays, followed
+ * by a counted card array. Both use the same card/application wire records.
+ * Sources: libqmi UIM Card Status, Trogdor cbl_card_bytes, and the phone's
+ * libqmiservices UIM type35/type41 descriptors. Return1 for a valid status,
+ * 0 for a different message, -1 for malformed input. */
 static inline int nb_sim_status(const uint8_t *sdu, uint32_t n, uint8_t present[2], uint8_t provision[4])
 {
     if (!cbd_sdu_ok(sdu, n) || 7u + cbd_rd16(sdu + 5) != n) return -1;
     unsigned msg = cbd_rd16(sdu + 3);
     if (!((sdu[0] == 2 && msg == 0x2f && !cbd_error(sdu, n)) || (sdu[0] == 4 && msg == 0x32))) return 0;
     uint32_t bytes = 0;
-    const uint8_t *v = cbd_find(sdu, n, 0x10, &bytes);
-    if (!v || bytes < 9 || v[8] > 5) return -1;
+    const uint8_t *v = cbd_find(sdu, n, sdu[0] == 2 ? 0x13 : 0x12, &bytes);
+    uint16_t indices[4] = {0xffff, 0xffff, 0xffff, 0xffff};
+    uint32_t at = 0;
+    if (v) {
+        /* Extended arrays are ordered by subscription, separately for GW
+         * and1x. Keep the first two subscriptions and validate every entry. */
+        for (unsigned family = 0; family < 2; ++family) {
+            if (at >= bytes) return -1;
+            unsigned count = v[at++];
+            if (count > 5 || bytes - at < 2u * count) return -1;
+            for (unsigned i = 0; i < count && i < 2; ++i)
+                indices[2u * i + family] = cbd_rd16(v + at + 2u * i);
+            at += 2u * count;
+        }
+    } else {
+        v = cbd_find(sdu, n, 0x10, &bytes);
+        if (!v || bytes < 9) return -1;
+        for (unsigned i = 0; i < 4; ++i) indices[i] = cbd_rd16(v + 2u * i);
+        at = 8;
+    }
+    if (at >= bytes) return -1;
+    unsigned count = v[at++];
+    if (count > 5) return -1;
     uint8_t cards[5] = {0}, apps[5] = {0};
-    uint32_t at = 9;
-    for (unsigned i = 0; i < v[8]; ++i) {
+    for (unsigned i = 0; i < count; ++i) {
         if (bytes - at < 6) return -1;
         cards[i] = v[at] == 1; apps[i] = v[at + 5]; at += 6;
         for (unsigned j = 0; j < apps[i]; ++j) {
@@ -68,7 +91,7 @@ static inline int nb_sim_status(const uint8_t *sdu, uint32_t n, uint8_t present[
     if (at != bytes) return -1;
     present[0] = cards[0]; present[1] = cards[1];
     for (unsigned i = 0; i < 4; ++i) {
-        unsigned index = cbd_rd16(v + 2 * i), card = index >> 8, app = index & 255;
+        unsigned index = indices[i], card = index >> 8, app = index & 255;
         provision[i] = index != 0xffff && card < 2 && cards[card] && app < apps[card] ? (uint8_t)(card + 1) : 0;
     }
     return 1;
