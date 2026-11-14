@@ -3,7 +3,7 @@
   "attempt": 1,
   "head": "c384a9b6f0bbb76a38811166cd49e497fb1da88d",
   "runtime_tree": "139445c01681140b6ccfb13c7ab160fd0e0f8553",
-  "frontend_sha256": "90ad68cef96ed232a2725c5e7f5bac98c7938c0fbeda3ae22ff0834882a7ef9e",
+  "frontend_sha256": "89c67b117abc79881aeab2a6f973292dcecb4d147f96c4e78226d56a4991921d",
   "runtime_sources_sha256": "f73b0ce1e1c34125e729b8a4249b8f98fd7dae2c48e63c23d2470b2a9f0f4aa7",
   "reports": {
     "buffer_reserve": {
@@ -23,6 +23,6 @@
       "sha256": "cebca8f576f2a1b50f7f2425158d3640cf95c5d0ccd29150fd6e998abd6c19c5"
     }
   },
-  "previous_frontend_sha256": "511bfc3061933483775d4d7fdf311ac3525d886dabab1033cdcf143fd9433184",
-  "frontend_changes_checked_separately": "Read-only display discovery retry/failure retention and bounded UI coverage; same rendering, synchronization, runtime and Mesa"
+  "previous_frontend_sha256": "90ad68cef96ed232a2725c5e7f5bac98c7938c0fbeda3ae22ff0834882a7ef9e",
+  "frontend_changes_checked_separately": "Actual limits fill and pressure-source lifetime checks; same rendering, synchronization, runtime and Mesa"
 }

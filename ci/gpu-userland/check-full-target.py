@@ -163,7 +163,13 @@ assert [row['objects_for_three_caches'] for row in cache_profile['rows']]==[3,1]
 assert wait_profile['ARM64_integer_values_from_actual_reader'] and wait_profile['wire_version']==2
 assert wait_profile['wire_bytes']==576 and wait_profile['stack_frames']==16
 assert client_profile['required_read_bound_bytes']==83886080
-report=dict(actual_pipeline_cache_host=cache_profile,actual_display_discovery=discovery_profile,actual_frame_observers=observer_profile,actual_UI_main_thread=client_profile,actual_render_wait_profile=wait_profile,actual_display_profile=display_profile,actual_sync_profile=sync_profile,initial_tile_store_error_propagation_source_bound=True,actual_target_checked=True,plugin_sha256=hashlib.sha256(data).hexdigest(),
+icon_limits=json.loads((a.logs/'icon-limits/report.json').read_text())
+assert icon_limits['passed'] and icon_limits['actual']['cases']==23
+assert icon_limits['real_Mac_MTLDevice_getters'] and icon_limits['real_ARC_pressure_lifetime_test']
+assert icon_limits['old_ARC_disposal_reproduced']
+assert icon_limits['source_sha256']==hashlib.sha256((a.unixnu/'drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm').read_bytes()).hexdigest()
+assert b'base limits: %u fields of %zu bytes filled from the device' in data
+report=dict(actual_icon_limits_host=icon_limits,actual_pipeline_cache_host=cache_profile,actual_display_discovery=discovery_profile,actual_frame_observers=observer_profile,actual_UI_main_thread=client_profile,actual_render_wait_profile=wait_profile,actual_display_profile=display_profile,actual_sync_profile=sync_profile,initial_tile_store_error_propagation_source_bound=True,actual_target_checked=True,plugin_sha256=hashlib.sha256(data).hexdigest(),
             profile=profile,required_markers_present=True,iPad_raw_reader_markers_absent=True,
             bundle_signature_verified=True,host_pixel_result='legacy host010 failure retained;host GUI path not run by this build;A840 acceptance remains separate',
             actual_device_registry_compiled=True,old_singleton_symbol_absent=True,

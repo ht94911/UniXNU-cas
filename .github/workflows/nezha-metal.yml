@@ -1,7 +1,7 @@
-name: nezha iPhone27 image arguments and shared pipeline cache 039
+name: nezha iPhone27 icon limits and pressure source 040
 on:
   push:
-    branches: [codex/ios27-gpu27-metal-full-039-20261112]
+    branches: [codex/ios27-gpu27-metal-full-040-20261114]
   workflow_dispatch:
 permissions:
   contents: read
@@ -103,6 +103,9 @@ jobs:
       - name: Check shader sharing on the actual prepared Turnip source
         id: pipeline_cache
         run: device/ci/gpu-userland/logrun pipeline-cache python3 device/ci/gpu-userland/check-pipeline-cache.py --source unixnu/.cache/mesa-work/src/freedreno/vulkan/tu_pipeline.cc --patch unixnu/patches/mesa/turnip-shaders-shared-across-pipeline-caches.patch --out "$LOGS/pipeline-cache"
+      - name: Exercise actual Metal limits and ARC memory-pressure lifetime
+        id: icon_limits
+        run: device/ci/gpu-userland/logrun icon-limits python3 device/ci/gpu-userland/check-icon-limits.py --source unixnu/drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm --out "$LOGS/icon-limits"
       - name: Build Turnip for the actual A840 arm64e iOS27 target
         id: turnip_ios27
         working-directory: unixnu
@@ -156,6 +159,7 @@ jobs:
           OUTCOME_UI_MAIN: ${{ steps.ui_main.outcome }}
           OUTCOME_DISPLAY_DISCOVERY: ${{ steps.display_discovery.outcome }}
           OUTCOME_PIPELINE_CACHE: ${{ steps.pipeline_cache.outcome }}
+          OUTCOME_ICON_LIMITS: ${{ steps.icon_limits.outcome }}
         run: |
           set -euo pipefail
           export PATH="$(brew --prefix openssl@3)/bin:$PATH"
@@ -200,6 +204,7 @@ jobs:
           UI_MAIN: ${{ steps.ui_main.outcome }}
           DISPLAY_DISCOVERY: ${{ steps.display_discovery.outcome }}
           PIPELINE_CACHE: ${{ steps.pipeline_cache.outcome }}
+          ICON_LIMITS: ${{ steps.icon_limits.outcome }}
         run: |
           set -euo pipefail
           test "$TARGETS" = success
@@ -215,6 +220,7 @@ jobs:
           test "$UI_MAIN" = success
           test "$DISPLAY_DISCOVERY" = success
           test "$PIPELINE_CACHE" = success
+          test "$ICON_LIMITS" = success
           test "$BUFFER_RESERVE" = skipped
           test "$VULKAN_OPERATIONS" = skipped
           test "$TILED_WORDS" = skipped
