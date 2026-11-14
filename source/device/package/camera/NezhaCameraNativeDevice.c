@@ -8,7 +8,7 @@
 #include <kern/thread.h>
 #include <sys/conf.h>
 #include <sys/errno.h>
-#include <sys/fcntl.h>
+#include <sys/vnode.h>
 #include <sys/systm.h>
 #include <sys/uio.h>
 #include <miscfs/devfs/devfs.h>

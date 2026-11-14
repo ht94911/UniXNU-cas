@@ -6,7 +6,7 @@
 #include <sys/conf.h>
 #include <sys/systm.h>
 #include <sys/uio.h>
-#include <sys/fcntl.h>
+#include <sys/vnode.h>
 #include <assert.h>
 #include <stdlib.h>
 #include <stdio.h>
