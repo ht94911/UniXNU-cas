@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "purpose": "Only build and sign the measured main camera model and system resource factory; reuse already qualified camera018 kernel separately",
+  "device_revision": "948715c429b092e18a82fa7fd851790124e071ed",
+  "soc_revision": "3af99241822776cd8318b66f0e4093a4c8f20a2d",
+  "files": {
+    "source/device/package/camera/userland/NezhaCameraDeviceBackend.c": "ad586619e5f8695b987c175e9827aa717315466b783c978961c755d7a5524ece",
+    "source/device/package/camera/userland/NezhaCameraDeviceBackend.h": "bd221f90b66840935dad111de76c8a8dc35989b40f42712b2aa201e8245264d1",
+    "source/device/package/camera/userland/NezhaCameraFactory.c": "894707b2ebbcd0ede50fb19f8efd423399a65ffa8612454f48a89da5fa5f6fbd",
+    "source/device/package/camera/userland/NezhaCameraFactory.h": "97b5032428eaa0c8358441fd8623e65494a5904ef9a7b4c99a72e0e78eba4d59",
+    "source/device/package/camera/userland/NezhaCameraFigProvider.c": "63609c701a6323210fd1b8e95401659702f63cec40c81eb1596ff467c36a56aa",
+    "source/device/package/camera/userland/NezhaCameraFigProvider.h": "200a7ff1789334606562daaa060b8d78066e2878b8aa43698c4d7474eba5e918",
+    "source/device/package/camera/userland/NezhaCameraFormats.c": "7074c95abad4fbc9f5e9182dd1bd7d2e73fd889ca949df7b472bd44615ba84c0",
+    "source/device/package/camera/userland/NezhaCameraFormats.h": "8e23c3fbafab0b2c3659236b88dc676d3c48415da37d7f3cbd1d0c9fc0ae9e86",
+    "source/device/package/camera/userland/NezhaCameraGraphOutput.c": "8bf0028d152a42c29a0f060691dec3df1ee827b36a0420e4effa2fe47b51ba50",
+    "source/device/package/camera/userland/NezhaCameraGraphOutput.h": "c1e87f82ab36945a3ea05591281f731fe139483f937bf8553129750dfa67ec3c",
+    "source/device/package/camera/userland/NezhaCameraPixelBuffer.c": "f85531cc4a9c2dac433629e2c3869191ce6de2dba331ea60e4accd69d1003472",
+    "source/device/package/camera/userland/NezhaCameraPixelBuffer.h": "931d021b118aef94dada5ebe4ee8c44172c89c8826d0e1dfcbbe21574a504141",
+    "source/device/package/camera/userland/NezhaCameraPreview.c": "724435ef79b3ebe1b56cd21c6bbdb2e6312ef9a71e85d2f3adcbaf01e75b0429",
+    "source/device/package/camera/userland/NezhaCameraPreview.h": "b3e588fe11c72cfd3bf01c2dafd454cea915c72863d91f4958ecdf38fe24726a",
+    "source/device/package/camera/userland/NezhaCameraRawPreview.c": "00568484834e61f1bf392b4cee3178052f79f000193745d9595061012418eca9",
+    "source/device/package/camera/userland/NezhaCameraSystemVendor.m": "3587ab8e733932383663c4f9c93ba3a12535703a78c6cf54e5a2b6cec252d5a2",
+    "source/device/package/camera/userland/NezhaFigCapture24A446.c": "2805a810d0dc4874bba35b682b3b1d3ccdf48e96b5ef7e125882e3a6fab3a850",
+    "source/device/package/camera/userland/NezhaFigCapture24A446.h": "d31d3abe7761aa99f92eaab45357716c6d4c4372e5425658d2a7af80f3894212",
+    "source/device/package/camera/userland/README.md": "df24968d570b5e37bab55ed2128db9a76654b3c5e69d3b06cc014c2d55c4ae1b",
+    "source/device/package/camera/userland/upstream/hakios/LICENSE": "26289124703e5931e099f915c784296b0c0fcf0485c743214365a3a82a514f05",
+    "source/device/package/camera/userland/upstream/hakios/ORIGIN.json": "7eabf5e908032ac1a9cc8da1558ae4eb457448d77f671ca1093cfdaed4e6b4d8",
+    "source/device/package/camera/userland/upstream/hakios/camera_isp.c": "74551f27b7579a4c11aaca764a7d1ff682e6b20de955a89e23ceadb9b749d915",
+    "source/device/package/camera/userland/upstream/hakios/camera_isp.h": "4124e9493c2a8ce94f1e50c952c89795d83f3e8d7fe3ceaa838a86ef7f1eff9f",
+    "source/device/package/camera/userland/upstream/hakios/hakios.camera.h": "97f80aa60adb7d2a43d93f3edfde294ba0c447586069cb81fa9ac58c789d6444",
+    "source/device/scripts/make-nezha27-camera-model.py": "505d5742093c37f6ddacd7f34d70508ded7859f78bc8164d067336f3bc9124b2",
+    ".github/workflows/nezha-ios27-native.yml": "8ec796549525e070bca5066ecddacbb8f5a586246bc7b59bc19615e55e284f87"
+  },
+  "private_inputs_uploaded": false,
+  "kernel_build_required": false,
+  "prior_native": {
+    "run": 43614014372,
+    "head": "6f98a943e71b51542a182caa28eb54c0fea66a07"
+  },
+  "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
+  "certificate_sha256": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
+  "builder_sha256": "c26e5cd4c0c534a54993bb0d205b8d1a77cd35df89580229913f0ea32569ba07"
+}

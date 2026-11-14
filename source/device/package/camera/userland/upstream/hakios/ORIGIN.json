@@ -1,0 +1,18 @@
+{
+  "repository": "https://github.com/yfl520/hackios-raphael",
+  "revision": "f128f1d8e2ef1f588002787c5efb94ec134ddeac",
+  "source_paths": {
+    "camera_isp.c": "userland/src/camera_isp.c",
+    "camera_isp.h": "userland/src/camera_isp.h",
+    "hakios.camera.h": "userland/src/hakios.camera.h",
+    "LICENSE": "LICENSE"
+  },
+  "sha256": {
+    "camera_isp.c": "74551f27b7579a4c11aaca764a7d1ff682e6b20de955a89e23ceadb9b749d915",
+    "camera_isp.h": "4124e9493c2a8ce94f1e50c952c89795d83f3e8d7fe3ceaa838a86ef7f1eff9f",
+    "hakios.camera.h": "97f80aa60adb7d2a43d93f3edfde294ba0c447586069cb81fa9ac58c789d6444",
+    "LICENSE": "26289124703e5931e099f915c784296b0c0fcf0485c743214365a3a82a514f05"
+  },
+  "unmodified": true,
+  "scope": "User-space RAW10 processing; no kernel camera ABI or FigCapture registration is imported"
+}
