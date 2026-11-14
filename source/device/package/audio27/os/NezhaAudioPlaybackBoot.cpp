@@ -13,20 +13,20 @@ extern "C" kern_return_t thread_terminate(thread_t);
 namespace {
 NaNativePlaybackStart playbackStart;
 uint32_t started;
-uint32_t startupSequence,startupValues[7];
+uint32_t startupSequence,startupValues[8];
 void publish_start(const NaNativePlaybackStart *s) {
     const uint32_t values[]={s->phase,(uint32_t)s->error,s->identity.phase,
-        (uint32_t)s->identity.cleanup_error,s->identity.revision[0],s->identity.revision[1],s->capture_frames};
+        (uint32_t)s->identity.cleanup_error,s->identity.revision[0],s->identity.revision[1],s->capture_frames,s->input_ready};
     __atomic_fetch_add(&startupSequence,1,__ATOMIC_ACQ_REL);
-    for (unsigned i=0;i<7;++i) __atomic_store_n(&startupValues[i],values[i],__ATOMIC_RELAXED);
+    for (unsigned i=0;i<8;++i) __atomic_store_n(&startupValues[i],values[i],__ATOMIC_RELAXED);
     __atomic_fetch_add(&startupSequence,1,__ATOMIC_RELEASE);
 }
 int snapshot(void *,char *out,size_t capacity,size_t *bytes,unsigned *truncated) {
-    uint32_t s[7],h[16];uint64_t v[64];bool valid=false;
+    uint32_t s[8],h[16];uint64_t v[64];bool valid=false;
     *bytes=0;*truncated=0;
     for (unsigned attempt=0;attempt<4;++attempt) {
         uint32_t seq=__atomic_load_n(&startupSequence,__ATOMIC_ACQUIRE);if (seq&1) continue;
-        for (unsigned i=0;i<7;++i) s[i]=__atomic_load_n(&startupValues[i],__ATOMIC_RELAXED);
+        for (unsigned i=0;i<8;++i) s[i]=__atomic_load_n(&startupValues[i],__ATOMIC_RELAXED);
         __atomic_thread_fence(__ATOMIC_ACQUIRE);
         if (seq==__atomic_load_n(&startupSequence,__ATOMIC_RELAXED)) {valid=true;break;}
     }
@@ -46,7 +46,7 @@ int snapshot(void *,char *out,size_t capacity,size_t *bytes,unsigned *truncated)
         "\"service_published\":%s,\"capture_enabled\":%s,\"HAL_load_verified\":%s,\"automatic_pcm\":false,"
         "\"probe_requested_frames\":%u,\"probe_state\":%u,\"probe_frames\":%u,\"probe_periods\":%u,"
         "\"probe_nonzero\":%u,\"probe_peak\":%u,\"probe_squares\":%llu,\"probe_error\":%d,"
-        "\"probe_pcm_frames\":%u,\"HAL_input_published\":false,"
+        "\"probe_pcm_frames\":%u,\"HAL_input_published\":%s,"
         "\"input_flow\":[%llu,%llu,%u,%u,%u,%u,%u,%d],"
         "\"rejected_done\":[%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u],"
         "\"first_read_done\":[%u,%u,%u,%u,%u,%u,%u],"
@@ -59,7 +59,7 @@ int snapshot(void *,char *out,size_t capacity,size_t *bytes,unsigned *truncated)
         (unsigned)v[10],(unsigned)v[11],(unsigned)v[12],(unsigned)v[13],(unsigned)v[14],(unsigned)v[15],
         (unsigned)v[22],v[21] ? "true":"false",v[23] ? "true":"false",h[12] ? "true":"false",s[6],
         (unsigned)v[24],(unsigned)v[25],(unsigned)v[26],(unsigned)v[27],(unsigned)v[28],
-        (unsigned long long)v[29],(int)(int64_t)v[30],(unsigned)v[31],
+        (unsigned long long)v[29],(int)(int64_t)v[30],(unsigned)v[31],s[7] && v[21] ? "true":"false",
         (unsigned long long)v[32],(unsigned long long)v[33],(unsigned)v[34],(unsigned)v[35],
         (unsigned)v[36],(unsigned)v[37],(unsigned)v[38],(int)(int64_t)v[39],
         (unsigned)v[40],(unsigned)v[41],(unsigned)v[42],(unsigned)v[43],(unsigned)v[44],(unsigned)v[45],(unsigned)v[46],(unsigned)v[47],(unsigned)v[48],(unsigned)v[49],(unsigned)v[50],(unsigned)v[51],(unsigned)v[52],(unsigned)v[53],(unsigned)v[54],(unsigned)v[55],(unsigned)v[56],(unsigned)v[57],(unsigned)v[58],(unsigned)v[59],(unsigned)v[60],(unsigned)v[61],(unsigned)v[62],
@@ -136,8 +136,10 @@ void run_start(void *v,wait_result_t) {
     thread_set_thread_name(current_thread(),"nezha-audio27-start");
     mach_timebase_info_data_t timebase={};clock_timebase_info(&timebase);
     int requested=0;PE_parse_boot_argn("na-capture-probe",&requested,sizeof requested);
-    if (requested<0 || requested>(int)(2*NA_AUDIO_RATE)) {s->error=NA_ARGUMENT;s->phase=5;}
-    else s->capture_frames=(uint32_t)requested;
+    int ready=0;PE_parse_boot_argn("na-mic-ready",&ready,sizeof ready);
+    if (requested<0 || requested>(int)(2*NA_AUDIO_RATE) || ready<0 || ready>1 || (requested && ready)) {
+        s->error=NA_ARGUMENT;s->phase=5;
+    } else {s->capture_frames=(uint32_t)requested;s->input_ready=(uint32_t)ready;}
     unsigned last=UINT32_MAX;int r=NA_PENDING;
     for (;;) {
         r=na_native_playback_start_step(s,na_native_now_us(nullptr)/1000,timebase.numer,timebase.denom);

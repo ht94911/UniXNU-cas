@@ -13,7 +13,7 @@ typedef struct {
     NaTasSelection speaker;
     uint32_t iova[3],port[3]; /* output/VI/optional microphone; not physical addresses */
     NaPrmResource resources[NA_PRM_RESOURCES];
-    uint32_t resource_count,output_votes,input_votes,timebase_numer,timebase_denom,capture_probe;
+    uint32_t resource_count,output_votes,input_votes,timebase_numer,timebase_denom,capture_probe,input_ready;
 } NaNativePlaybackConfig;
 typedef struct {
     NaNativeAdspInputs inputs;NaPlaybackInputs playback;NaCaptureInputs capture;
@@ -47,7 +47,7 @@ typedef struct {
     NaNativeTasBoard identity_native;NaGeniBoard identity_board;NaTasIdentity identity;
     NaNativePlaybackConfig config;
     uint64_t deadline;
-    uint32_t phase,capture_frames;
+    uint32_t phase,capture_frames,input_ready;
     int error;
 } NaNativePlaybackStart;
 int na_native_playback_start_step(NaNativePlaybackStart *,uint64_t now_ms,

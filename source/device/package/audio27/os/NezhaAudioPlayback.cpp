@@ -61,7 +61,7 @@ extern "C" int na_native_capture_config(NaNativePlaybackConfig *c) {
 }
 extern "C" int na_native_playback_prepare(NaNativePlayback *s,const NaNativePlaybackConfig *c) {
     if (!s || !c || s->attempted || s->ready || s->error ||
-        c->capture_probe>1 || (c->capture_probe ? !c->input_votes:
+        c->capture_probe>1 || c->input_ready>1 || (c->input_ready && !c->capture_probe) || (c->capture_probe ? !c->input_votes:
             (c->input_votes || c->iova[2] || c->port[2])) ||
         !c->resource_count || c->resource_count>NA_PRM_RESOURCES || !c->output_votes ||
         ((c->output_votes|c->input_votes)>>c->resource_count) || !c->timebase_numer || !c->timebase_denom ||
@@ -113,6 +113,8 @@ extern "C" int na_native_playback_prepare(NaNativePlayback *s,const NaNativePlay
     memcpy(p.resources,c->resources,c->resource_count*sizeof *c->resources);
     p.resource_count=c->resource_count;p.output_votes=c->output_votes;p.input_votes=c->input_votes;
     p.timebase_numer=c->timebase_numer;p.timebase_denom=c->timebase_denom;
+    p.capture_proven=c->input_ready;
+    if (c->input_ready) p.capture_probe_allowed=0;
     p.ops={s,smem_lock,smem_unlock,doorbell,sync,na_native_host_time,dispatch};
     r=na_assembly_init(&s->assembly,&p,na_native_now_us(nullptr)/1000);if (r) return failed(s,r);
     // Carry the actual037 channel-opening path and diagnostic timing into
@@ -124,7 +126,8 @@ extern "C" int na_native_playback_prepare(NaNativePlayback *s,const NaNativePlay
     s->ready=1;return NA_OK;
 }
 extern "C" int na_native_playback_start_step(NaNativePlaybackStart *s,uint64_t now,uint32_t numer,uint32_t denom) {
-    if (!s || !numer || !denom || now>UINT64_MAX-120000 || s->capture_frames>2*NA_AUDIO_RATE) return NA_ARGUMENT;
+    if (!s || !numer || !denom || now>UINT64_MAX-120000 || s->capture_frames>2*NA_AUDIO_RATE ||
+        s->input_ready>1 || (s->input_ready && s->capture_frames)) return NA_ARGUMENT;
     if (s->error) return s->error;
     if (s->phase==4) return NA_OK;
     if (!s->deadline) s->deadline=now+120000;
@@ -149,7 +152,8 @@ extern "C" int na_native_playback_start_step(NaNativePlaybackStart *s,uint64_t n
             r=na_native_unmap(&s->identity_native.geni,1);
             if (!r) r=na_native_unmap(&s->identity_native.tlmm,1);
             if (!r) r=na_native_speaker_config(&s->config,s->identity.revision,numer,denom);
-            if (!r && s->capture_frames) r=na_native_capture_config(&s->config);
+            if (!r && (s->capture_frames || s->input_ready)) r=na_native_capture_config(&s->config);
+            if (!r) s->config.input_ready=s->input_ready;
             if (!r) s->phase=2;
         }
     } else if (!r && s->phase==2) {

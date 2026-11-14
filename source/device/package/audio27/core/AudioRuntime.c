@@ -218,7 +218,9 @@ int na_runtime_poll(NaRuntime *r,uint64_t now) {
             r->output_idle_fence=out->stream->next;
         }
     }
-    if ((wanted&1) && !disabled) r->output_held=1;
+    /* A system microphone request needs the same retained output/VI as the
+     * finite probe, even when no output stream has ever started. */
+    if ((wanted&3) && !disabled) r->output_held=1;
     int keep_output=r->output_held && !disabled && !r->fault;
     int idle=!keep_output || !(wanted&1) || r->output_stop_pending;
     na_engine_output_idle(&r->engine,idle);
@@ -241,6 +243,12 @@ int na_runtime_poll(NaRuntime *r,uint64_t now) {
                    (r->prm->held&r->votes[0])==r->votes[0]) ||
                    r->engine.graph[1]->stage!=NaGraphOff)) wanted|=2u;
     }
+    /* Open a cold input only after output/VI clocks and the silent endpoint
+     * settle. The shared request stays pending and its heartbeat is retained. */
+    if ((wanted&2) && r->engine.graph[1] && r->engine.graph[1]->stage==NaGraphOff &&
+        (out->stage!=NaGraphRunning || (vi && vi->stage!=NaGraphRunning) ||
+         r->prm->error || (r->prm->held&r->votes[0])!=r->votes[0] ||
+         (!(wanted&1) && !r->output_idle_ready))) wanted&=~2u;
     if (r->engine.graph[2]) {
         int draining=out->stage>=NaGraphMuting;
         /* A new Start while the prior stream drains stays queued. Keeping VI
