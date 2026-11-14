@@ -1,4 +1,4 @@
-name: nezha iPhone27 B package on GPU024 - native022
+name: nezha iPhone27 B package on GPU024 - native023
 on:
   push:
     branches: [codex/ios27-bb-gpu024-native022-20261115]
@@ -57,7 +57,7 @@ jobs:
         run: |
           set -euo pipefail
           bb="$RUNNER_TEMP/ios27/work/device"
-          for test in qmux_version qmux_endpoint qmux_capacity nas_mux low_memory sim_identity device_identity pdp_flow voice_state; do
+          for test in qmux_version qmux_endpoint qmux_capacity nas_mux low_memory sim_identity device_identity device_identity pdp_flow voice_state; do
             clang -std=gnu11 -Wall -Wextra -Werror -fsanitize=address,undefined -I "$bb/package/baseband27/bridge" -I "$bb/package/baseband27/bridge/upstream" "$bb/tests/baseband27/${test}_test.c" -o "$RUNNER_TEMP/ios27/$test"
             "$RUNNER_TEMP/ios27/$test"
           done
@@ -70,6 +70,8 @@ jobs:
           clang -std=gnu11 -Wall -Wextra -Werror -fsanitize=address,undefined "$bb/tests/baseband27/boot_ready_test.c" "$bb/package/baseband27/transport/NbQrtr.c" -o "$RUNNER_TEMP/ios27/boot_ready"
           "$RUNNER_TEMP/ios27/boot_ready"
           CC=clang python3 "$bb/tests/baseband27/ipa_sram_test.py"
+      - name: Validate synthetic launch cache with native macOS consumers
+        run: python3 task/source/device/tests/baseband27/cellular_runtime_test.py
       - name: Qualify compiler and run the standard native build
         env:
           GITHUB_TOKEN: ${{ github.token }}

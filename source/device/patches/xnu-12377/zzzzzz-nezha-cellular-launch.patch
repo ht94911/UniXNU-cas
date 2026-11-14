@@ -1,0 +1,39 @@
+diff --git a/bsd/kern/kern_exec.c b/bsd/kern/kern_exec.c
+--- a/bsd/kern/kern_exec.c
++++ b/bsd/kern/kern_exec.c
+@@ -8660,2 +8660,3 @@
++#include <pexpert/device_tree.h>
+ static void
+ native_gpu_addon_prepare(proc_t p, user_addr_t scratch)
+@@ -8675,3 +8676,31 @@ native_gpu_addon_prepare(proc_t p, user_addr_t scratch)
++	/* The signed iOS27 service cache owns system launch jobs. Reuse the
++	 * upstream sheng service-cache and executable union views for the
++	 * selected cellular test, after the normal addon installation. */
++	DTEntry cellular_chosen = NULL;
++	const void *cellular_launch = NULL;
++	unsigned int cellular_launch_size = 0;
++	uint32_t cellular_launch_version = 0;
++	if (SecureDTLookupEntry(NULL, "/chosen", &cellular_chosen) == kSuccess &&
++	    SecureDTGetProperty(cellular_chosen, "nezha-cellular-launch", &cellular_launch,
++	        &cellular_launch_size) == kSuccess && cellular_launch &&
++	    cellular_launch_size == sizeof(cellular_launch_version)) {
++		memcpy(&cellular_launch_version, cellular_launch, sizeof(cellular_launch_version));
++	}
++	if (cellular_launch_version == 23) {
++		static const char cellular_xpc_source[] = "/private/var/ngpu/cellular-xpc";
++		static const char cellular_xpc_point[] = "/System/Library/xpc";
++		static volatile int cellular_cache_stage, cellular_cache_status;
++		native_gpu_addon_mount(p, scratch, 0x600, cellular_xpc_source, sizeof(cellular_xpc_source),
++		    cellular_xpc_point, sizeof(cellular_xpc_point), "/System/Library/xpc/launchd.plist.sig",
++		    "/System/Library/xpc/launchd.plist", &cellular_cache_stage, &cellular_cache_status);
++		static const char cellular_bin_source[] = "/private/var/ngpu/cellular-bin", cellular_bin_point[] = "/usr/libexec";
++		static volatile int cellular_bin_stage, cellular_bin_status;
++		native_gpu_addon_mount(p, scratch, 0x600, cellular_bin_source, sizeof(cellular_bin_source),
++		    cellular_bin_point, sizeof(cellular_bin_point), "/usr/libexec/launchd_cache_loader",
++		    "/usr/libexec/cellular-demand021", &cellular_bin_stage, &cellular_bin_status);
++		printf("NEZHA27 cellular launch cache=%d/%d executable=%d/%d\n", cellular_cache_stage, cellular_cache_status,
++		    cellular_bin_stage, cellular_bin_status);
++	}
+ 	native_cryptex_os_view(p, scratch);
+ 	native_gestalt_cache_drop(p, scratch);
+ 	native_ls_store_drop(p, scratch);
