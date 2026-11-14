@@ -1,0 +1,43 @@
+name: nezha baseband021 ordinary cellular demand
+on:
+  push:
+    branches: [codex/ios27-bb-gpu024-demand021-20261114]
+permissions:
+  contents: read
+concurrency:
+  group: nezha-cellular-demand-${{ github.ref }}
+  cancel-in-progress: false
+defaults:
+  run:
+    shell: bash
+env:
+  HOMEBREW_NO_AUTO_UPDATE: 1
+  HOMEBREW_NO_INSTALL_CLEANUP: 1
+  HOMEBREW_NO_ENV_HINTS: 1
+  DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+jobs:
+  build:
+    runs-on: macos-26-intel
+    timeout-minutes: 15
+    steps:
+      - name: Check out the necessary helper source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Prepare the existing encryption tool
+        run: brew install openssl@3 > "$RUNNER_TEMP/cellular-demand-setup.log" 2>&1
+      - name: Compile and qualify the ordinary iOS request
+        run: |
+          set -euo pipefail
+          export PATH="$(brew --prefix openssl@3)/bin:$PATH"
+          python3 ci/cellular-demand.py --output "$RUNNER_TEMP/cellular-demand" --sealed "$RUNNER_TEMP/cellular-demand-sealed"
+      - name: Retain the existing encrypted envelope
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: nezha-ios27-native-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/cellular-demand-sealed/bundle.cms
+            ${{ runner.temp }}/cellular-demand-sealed/envelope.json
+          if-no-files-found: error
+          retention-days: 90

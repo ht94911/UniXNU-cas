@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "purpose": "One genuine system Network.framework cellular HTTPS demand on the already qualified020 kernel",
+  "files": {
+    ".github/workflows/nezha-ios27-native.yml": "b393ea387fce40dd0531feb84b46f5246c000d1f0b5aa7bec38b22b9d09fb187",
+    "ci/artifact-recipient.pem": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
+    "ci/artifacts.py": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
+    "ci/cellular-demand.py": "f5ef89ec155f8cd99c2d33d354277e8379e734654d0316cc9ad68f6d340c7047",
+    "source/CellularDemand.mm": "e80d81141445fdc6d5e66b840c0a52c699534b53519a1e4110a3b8bf7370333b",
+    "source/QcomUserLogTransport.h": "6981a8a4863c80f0109de4e821c4ef2d72f75f143eb39f4a65a2abb2a4df4531",
+    "source/QcomUserLogWire.h": "965d7aeaa4043bcceb151cd6331ce50faefe21f57ce7c91cf781a52b4917397b",
+    "source/com.apple.iomfb_fdr_loader.plist": "a74a4bda2681cad546281340876c353bc5bd2000793057c7e048f40f1c148e11",
+    "source/entitlements.plist": "1724180180bebb6ef363cada7bed75fb9c5c988ef41c806353652e5d1183185b"
+  },
+  "source_only": true,
+  "phone_data": false,
+  "kernel_rebuild": false
+}
