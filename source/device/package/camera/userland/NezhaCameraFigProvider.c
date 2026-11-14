@@ -304,10 +304,34 @@ static NezhaFigStatus stream_set(NezhaFigObject o,NezhaFigString key,const void 
     });return result;
 }
 
+static void add_missing(const void *key,const void *value,void *context)
+{
+    CFMutableDictionaryRef dictionary=context;
+    if (!CFDictionaryGetValue(dictionary,key)) CFDictionarySetValue(dictionary,key,value);
+}
+
 static NezhaFigStatus stream_attachments(NezhaFigObject o,NezhaFigSample sample,NezhaFigDictionary options)
 {
     (void)o;(void)options;
-    return sample ? 0 : Invalid; /* GraphOutput already propagates per-frame metadata. */
+    if (!sample) return Invalid;
+    /* HakiOS's AddAttachmentsToSampleBuffer moves the actual pixel's
+     * metadata to the sample the capture graph created, preserving its
+     * own fields. A last-frame fallback could attach a different frame's
+     * timestamp, so this provider only accepts this image's dictionary. */
+    CVImageBufferRef image=CMSampleBufferGetImageBuffer(sample);
+    if (!image) return 0;
+    CFTypeRef own=CVBufferGetAttachment(image,CFSTR("MetadataDictionary"),NULL);
+    if (!own || CFGetTypeID(own)!=CFDictionaryGetTypeID()) return 0;
+    CFTypeRef existing=CMGetAttachment(sample,CFSTR("MetadataDictionary"),NULL);
+    if (existing==own) return 0;
+    CFMutableDictionaryRef merged=CFDictionaryCreateMutableCopy(NULL,0,
+        existing && CFGetTypeID(existing)==CFDictionaryGetTypeID() ? existing:own);
+    if (!merged) return Unavailable;
+    if (existing && CFGetTypeID(existing)==CFDictionaryGetTypeID())
+        CFDictionaryApplyFunction(own,add_missing,merged);
+    CMSetAttachment(sample,CFSTR("MetadataDictionary"),merged,kCMAttachmentMode_ShouldPropagate);
+    CFRelease(merged);
+    return 0;
 }
 
 static const struct NezhaFigBaseClass stream_base={.version=1,.storage_size=sizeof(struct Stream),

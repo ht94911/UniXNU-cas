@@ -120,7 +120,7 @@ bool nezha_camera_capture_resources_start(const struct NezhaCameraCaptureResourc
     if (state->status) return false;
     state->step = NezhaResourcesCpas;
     state->status = nezha_camera_cpas_start(io->cpas, &state->cpas);
-    if (state->status) return false;
+    if (state->status) { state->detail = state->cpas.failed_offset; return false; }
     state->step = NezhaResourcesPhy;
     if (profile && !nezha_camera_csiphy24_start(io->phy, profile, &state->phy)) {
         state->status = 1;

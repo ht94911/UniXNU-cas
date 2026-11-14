@@ -352,6 +352,12 @@ static void camera_capture(void)
             result.resources.pll0.failed_offset, result.resources.pll0.failed_value,
             result.resources.status);
     }
+    const struct NezhaCameraCpas *cpas = &result.resources.cpas;
+    if (cpas->failed_offset) {
+        printf("NEZHA CAMERA: CPAS offset=%#x control=%#x status=%#x expected=%u\n",
+            cpas->failed_offset, cpas->failed_control, cpas->failed_status,
+            cpas->failed_expected);
+    }
     const struct NezhaCameraIfeBcmFailure *bcm = &result.bandwidth_failure;
     if (bcm->issue) {
         (void)hardware_mark(88, bcm->issue, bcm->index, bcm->address, bcm->detail);

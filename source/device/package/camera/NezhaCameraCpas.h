@@ -21,13 +21,15 @@ enum NezhaCameraCpasStatus {
 struct NezhaCameraCpas {
     uint32_t before[3];
     uint32_t status[3];
-    unsigned touched;
+    uint32_t failed_offset, failed_control, failed_status, failed_expected;
+    unsigned touched, stop_requested;
     bool acquired, ready, drained;
 };
 
 /* CPAS top at 0x900b000, with the camera domains, interconnect and all
  * three Q-channels exclusively owned and clocked by the caller. Only the
- * identified Titan 1080 / CPAS 1.0.0 handshake is implemented here. */
+ * identified Titan 1080 / CPAS 1.0.0 handshake is implemented here. Observe
+ * all three channels first, then use the stock forced-on pass if needed. */
 enum NezhaCameraCpasStatus nezha_camera_cpas_start(
     const struct NezhaCameraRegisterIo *top, struct NezhaCameraCpas *state);
 

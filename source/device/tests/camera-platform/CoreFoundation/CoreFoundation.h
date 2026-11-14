@@ -38,6 +38,7 @@ CFMutableDictionaryRef CFDictionaryCreateMutable(CFAllocatorRef, CFIndex,
     const CFDictionaryKeyCallBacks *, const CFDictionaryValueCallBacks *);
 CFTypeRef CFDictionaryGetValue(CFDictionaryRef, const void *);
 void CFDictionarySetValue(CFMutableDictionaryRef, const void *, const void *);
+void CFDictionaryApplyFunction(CFDictionaryRef, void (*)(const void *,const void *,void *),void *);
 CFNumberRef CFNumberCreate(CFAllocatorRef, int, const void *);
 unsigned char CFNumberGetValue(CFNumberRef, int, void *);
 CFStringRef CFStringCreateWithCString(CFAllocatorRef, const char *, CFStringEncoding);

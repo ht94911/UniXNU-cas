@@ -20,8 +20,9 @@ struct __CFArray { struct Obj h; CFIndex count; const void *values[32]; };
 struct __CFDictionary { struct Obj h; unsigned count; const void *keys[32], *values[32]; };
 struct OpaqueCMBaseObject { struct Obj h; const struct NezhaFigBaseClass *base; const void *class; unsigned char data[]; };
 struct __CVPixelBufferPool { struct Obj h; bool fail; };
-struct __CVBuffer { struct Obj h; bool locked; unsigned attachments; uint8_t data[36*6]; };
+struct __CVBuffer { struct Obj h; bool locked; unsigned attachments; uint8_t data[36*6]; CFDictionaryRef metadata; };
 struct opaqueCMFormatDescription { struct Obj h; uint32_t code;int32_t width,height; };
+struct opaqueCMSampleBuffer { CVImageBufferRef image; CFDictionaryRef metadata; };
 const CFArrayCallBacks kCFTypeArrayCallBacks={0};
 const CFDictionaryKeyCallBacks kCFTypeDictionaryKeyCallBacks={0};
 const CFDictionaryValueCallBacks kCFTypeDictionaryValueCallBacks={0};
@@ -90,6 +91,7 @@ void CFRelease(CFTypeRef o)
         struct OpaqueCMBaseObject *f=(void *)p;f->base->finalize(f);
     } else if (p->type==Pixel) {
         assert(!((CVPixelBufferRef)p)->locked);--live_pixels;
+        if (((CVPixelBufferRef)p)->metadata) CFRelease(((CVPixelBufferRef)p)->metadata);
     }
     free(p);--live_objects;
 }
@@ -193,6 +195,12 @@ void CVBufferSetAttachment(CVPixelBufferRef p,CFStringRef key,CFTypeRef value,CV
     assert(!p->locked && mode==1);
     if (same(key,CFSTR("MetadataDictionary"))) {
         assert(CFGetTypeID(value)==Dictionary && CFDictionaryGetValue(value,CFSTR("FrameSequence")));
+        assert(same(CFDictionaryGetValue(value,CFSTR("PortType")),CFSTR("PortTypeBack")));
+        CFDictionaryRef time=CFDictionaryGetValue(value,CFSTR("OriginalPresentationTimeStamp"));
+        double actual;
+        assert(CFGetTypeID(time)==Dictionary &&
+            CFNumberGetValue(CFDictionaryGetValue(time,CFSTR("value")),kCFNumberDoubleType,&actual) && actual==77);
+        p->metadata=CFRetain(value);
         p->attachments|=4;
     } else if (key==kCVImageBufferColorPrimariesKey) {
         assert(value==kCVImageBufferColorPrimaries_ITU_R_709_2);p->attachments|=1;
@@ -201,6 +209,29 @@ void CVBufferSetAttachment(CVPixelBufferRef p,CFStringRef key,CFTypeRef value,CV
     } else abort();
 }
 CMTime CMClockMakeHostTimeFromSystemUnits(uint64_t time) { return (CMTime){(int64_t)time,19200000,1,0}; }
+void CFDictionaryApplyFunction(CFDictionaryRef d,void (*apply)(const void *,const void *,void *),void *context)
+{for(unsigned i=0;i<d->count;++i)apply(d->keys[i],d->values[i],context);}
+CVImageBufferRef CMSampleBufferGetImageBuffer(CMSampleBufferRef sample) {return sample->image;}
+CFTypeRef CVBufferGetAttachment(CVImageBufferRef pixel,CFStringRef key,CVAttachmentMode *mode)
+{assert(!mode && same(key,CFSTR("MetadataDictionary")));return pixel->metadata;}
+CFTypeRef CMGetAttachment(CMSampleBufferRef sample,CFStringRef key,CMAttachmentMode *mode)
+{assert(!mode && same(key,CFSTR("MetadataDictionary")));return sample->metadata;}
+void CMSetAttachment(CMSampleBufferRef sample,CFStringRef key,CFTypeRef value,CMAttachmentMode mode)
+{
+ assert(mode==1 && same(key,CFSTR("MetadataDictionary")));
+ if(sample->metadata)CFRelease(sample->metadata);
+ sample->metadata=CFRetain(value);
+}
+CFDictionaryRef CMTimeCopyAsDictionary(CMTime time,CFAllocatorRef allocator)
+{
+    assert(!allocator && time.timescale==19200000);
+    double value=(double)time.value;
+    CFNumberRef number=CFNumberCreate(NULL,kCFNumberDoubleType,&value);
+    const void *keys[]={CFSTR("value")},*values[]={number};
+    CFDictionaryRef result=CFDictionaryCreate(NULL,keys,values,1,
+        &kCFTypeDictionaryKeyCallBacks,&kCFTypeDictionaryValueCallBacks);
+    CFRelease(number);return result;
+}
 int32_t CMVideoFormatDescriptionCreate(CFAllocatorRef a,uint32_t code,int32_t width,int32_t height,
     CFDictionaryRef extensions,CMVideoFormatDescriptionRef *out)
 {
@@ -225,6 +256,25 @@ static void assert_pixel(CVPixelBufferRef pixel,CMTime time)
         for (unsigned x=0;x<32;++x) assert(pixel->data[row*36+x]==255);
         for (unsigned x=32;x<36;++x) assert(pixel->data[row*36+x]==0xcd);
     }
+}
+static const struct NezhaFigStreamVTable *attachment_methods;
+static NezhaFigObject attachment_stream;
+static void check_sample_metadata(CVPixelBufferRef pixel)
+{
+ struct opaqueCMSampleBuffer sample={.image=pixel};
+ assert(attachment_methods->stream->add_attachments(attachment_stream,&sample,NULL)==0 && sample.metadata);
+ assert(same(CFDictionaryGetValue(sample.metadata,CFSTR("PortType")),CFSTR("PortTypeBack")));
+ assert(CFDictionaryGetValue(sample.metadata,CFSTR("OriginalPresentationTimeStamp")));
+ CFRelease(sample.metadata);
+ sample.metadata=one("GraphField",kCFBooleanTrue);
+ assert(attachment_methods->stream->add_attachments(attachment_stream,&sample,NULL)==0);
+ assert(CFDictionaryGetValue(sample.metadata,CFSTR("GraphField"))==kCFBooleanTrue &&
+        CFDictionaryGetValue(sample.metadata,CFSTR("FrameSequence")));
+ CFRelease(sample.metadata);
+ sample.metadata=one("PortType",CFSTR("graph-preserved"));
+ assert(attachment_methods->stream->add_attachments(attachment_stream,&sample,NULL)==0);
+ assert(same(CFDictionaryGetValue(sample.metadata,CFSTR("PortType")),CFSTR("graph-preserved")));
+ CFRelease(sample.metadata);
 }
 static NezhaFigStatus backend_begin(void *p) { assert(p==&begins);++begins;return begin_fail ? -7 : 0; }
 static NezhaFigStatus backend_end(void *p) { assert(p==&begins);++ends;return end_fail ? -8 : 0; }
@@ -260,6 +310,7 @@ int main(void)
     assert(dt->base->copy_property(device,CFSTR("StreamArray"),NULL,&streams)==0 && CFArrayGetCount(streams)==1);
     NezhaFigObject stream=(NezhaFigObject)CFArrayGetValueAtIndex(streams,0);
     const struct NezhaFigStreamVTable *st=stream->class;
+    attachment_methods=st;attachment_stream=stream;
     CFTypeRef value=NULL;
     assert(st->base->copy_property(stream,CFSTR("FormatDescription"),NULL,&value)==0 &&
         CFGetTypeID(value)==Format && ((CMVideoFormatDescriptionRef)value)->width==4096);
@@ -296,7 +347,9 @@ int main(void)
     struct __CVPixelBufferPool *pool=new(sizeof(*pool),Pool),*still_pool=new(sizeof(*still_pool),Pool);
     NezhaCameraPixelHandler primary_handler=^(CVPixelBufferRef pixel,CMTime time) { assert_pixel(pixel,time);++previews; };
     NezhaCameraPixelHandler second_handler=^(CVPixelBufferRef pixel,CMTime time) { assert_pixel(pixel,time);++secondary; };
-    NezhaCameraPixelHandler still_handler=^(CVPixelBufferRef pixel,CMTime time) { assert_pixel(pixel,time);++stills; };
+    NezhaCameraPixelHandler still_handler=^(CVPixelBufferRef pixel,CMTime time) {
+        assert_pixel(pixel,time);check_sample_metadata(pixel);++stills;
+    };
     CFDictionaryRef configs=nest("PrimaryScaler","BufferPool",pool),handlers=nest("PrimaryScaler","PixelBufferHandler",primary_handler);
     CFDictionaryRef enabled=one("PrimaryScaler",kCFBooleanTrue);
     assert(st->base->set_property(stream,CFSTR("VideoOutputConfigurations"),configs)==0);

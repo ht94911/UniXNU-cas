@@ -8,9 +8,10 @@
 struct Object { CFTypeID type; unsigned refs; };
 struct __CVPixelBufferPool { struct Object object; };
 struct __CVBuffer { struct Object object; bool rendered, metadata; };
-struct __CFDictionary { struct Object object; };
-struct __CFString { int value; };
-static struct __CFString metadata_key;
+struct __CFDictionary { struct Object object; bool port, timestamp; };
+struct __CFString { const char *value; };
+static struct __CFString metadata_key={"MetadataDictionary"},port_key={"PortType"},
+    port_value={"PortTypeBack"},time_key={"OriginalPresentationTimeStamp"};
 static unsigned allocations, releases, delivered, high_water, live;
 static bool pool_failure, render_failure;
 CFTypeID CFGetTypeID(CFTypeRef v) { return ((const struct Object *)v)->type; }
@@ -23,15 +24,26 @@ void CFRelease(CFTypeRef v)
     assert(object->refs);
     if (--object->refs) return;
     if (object->type==3) { ++releases; --live; }
-    free(object);
+    assert(object->type!=4);free(object);
 }
 CFMutableDictionaryRef CFDictionaryCreateMutableCopy(CFAllocatorRef a, CFIndex capacity, CFDictionaryRef original)
 {
     assert(!a && !capacity && original->object.type==2);
     struct __CFDictionary *copy=malloc(sizeof(*copy));
-    assert(copy); copy->object=(struct Object){2,1}; return copy;
+    assert(copy); *copy=(struct __CFDictionary){{2,1},false,false}; return copy;
 }
-CFStringRef nezha_test_cfstr(const char *name) { assert(!strcmp(name,"MetadataDictionary")); return &metadata_key; }
+CFStringRef nezha_test_cfstr(const char *name) {
+ struct __CFString *strings[]={&metadata_key,&port_key,&port_value,&time_key};
+ for(unsigned i=0;i<4;++i)if(!strcmp(name,strings[i]->value))return strings[i];
+ abort();
+}
+CFDictionaryRef CMTimeCopyAsDictionary(CMTime time,CFAllocatorRef allocator)
+{assert(!allocator && time.value==77 && time.timescale==19200000);struct __CFDictionary *d=calloc(1,sizeof(*d));assert(d);d->object=(struct Object){2,1};return d;}
+void CFDictionarySetValue(CFMutableDictionaryRef d,const void *key,const void *value)
+{
+ if(key==&port_key){assert(value==&port_value);d->port=true;}
+ else{assert(key==&time_key && CFGetTypeID(value)==2);d->timestamp=true;}
+}
 CVReturn CVPixelBufferPoolCreatePixelBuffer(CFAllocatorRef a, CVPixelBufferPoolRef pool, CVPixelBufferRef *out)
 {
     assert(!a && pool->object.refs==2 && pool->object.type==1); ++allocations;
@@ -50,6 +62,7 @@ CVReturn nezha_camera_preview_pixel_buffer(const struct NezhaCameraPreview *p,
 void CVBufferSetAttachment(CVPixelBufferRef pixel, CFStringRef key, CFTypeRef value, CVAttachmentMode mode)
 {
     assert(pixel->rendered && key==&metadata_key && CFGetTypeID(value)==2 && mode==1);
+    const struct __CFDictionary *metadata=value;assert(metadata->port && metadata->timestamp);
     pixel->metadata=true;
 }
 CMTime CMClockMakeHostTimeFromSystemUnits(uint64_t timestamp)
@@ -59,7 +72,7 @@ CMTime CMClockMakeHostTimeFromSystemUnits(uint64_t timestamp)
 int main(void)
 {
     struct __CVPixelBufferPool pool={{1,1}};
-    struct __CFDictionary metadata={{2,1}};
+    struct __CFDictionary metadata={{2,1},false,false};
     struct NezhaCameraGraphOutput output={0};
     struct NezhaCameraPreview preview={0};
     struct NezhaCameraPreviewFrame frame={0};

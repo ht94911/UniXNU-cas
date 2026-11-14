@@ -359,6 +359,7 @@ int main(void)
     struct NezhaCameraCaptureClocks capture = {0};
     assert(nezha_camera_camcc_acquire_capture(&clock_io, &top, &ready_pll, &capture) == NezhaCameraCamccOk);
     assert(capture.ready && clocks.word[0x21008 / 4] == PowerUp);
+    assert((clocks.word[0x21330 / 4] & (off_bit | 1u)) == 1);
     assert(clocks.word[0x20004 / 4] == 0x100301 && clocks.word[0x20000 / 4] == off_bit);
     assert(clocks.word[0x200e0 / 4] == 0x100203 && clocks.word[0x20104 / 4] == 0x10020e);
     assert(nezha_camera_camcc_release_capture(&clock_io, &capture, false) == NezhaCameraCamccBusy);
@@ -371,6 +372,7 @@ int main(void)
     assert(clocks.word[0x21008 / 4] == PowerDown && clocks.word[0x212e4 / 4] == 1);
     assert(clocks.word[0x20004 / 4] == 0x100000 && clocks.word[0x200e0 / 4] == 0);
     assert(!capture.gates.enabled_by_us && !capture.roots && !capture.tfe_owned);
+    assert((clocks.word[0x21330 / 4] & 1u) == 0);
 
     static uint32_t gcc_words[0xa0008 / 4];
     const struct NezhaCameraGccIo gcc = {gcc_words, gcc_read, gcc_update};

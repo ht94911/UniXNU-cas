@@ -548,7 +548,9 @@ static const struct { uint32_t command, fields; } capture_roots[] = {
     {0x20100, 0x10020e}, // Slow AHB: PLL0 even / 7.5 = 80 MHz.
 };
 static const uint32_t capture_branches[] = {
-    0x2136c, 0x212f8, 0x212e4, 0x20018, 0x2001c, 0x20020,
+    /* Stock CPAS clocks include QDSS debug XO (0x21330), independently
+     * of CAMNOC DCD XO retained by the clock-controller probe. */
+    0x2136c, 0x212f8, 0x212e4, 0x21330, 0x20018, 0x2001c, 0x20020,
     0x212bc, 0x2105c, 0x21030, 0x21040, 0x21060, 0x21044,
 };
 

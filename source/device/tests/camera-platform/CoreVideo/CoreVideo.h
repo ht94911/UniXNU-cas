@@ -8,6 +8,7 @@
 #include <stdint.h>
 #include <CoreFoundation/CoreFoundation.h>
 typedef struct __CVBuffer *CVPixelBufferRef;
+typedef struct __CVBuffer *CVImageBufferRef;
 typedef struct __CVPixelBufferPool *CVPixelBufferPoolRef;
 typedef int32_t CVReturn;
 typedef unsigned char Boolean;
@@ -30,6 +31,7 @@ size_t CVPixelBufferGetDataSize(CVPixelBufferRef);
 CVReturn CVPixelBufferLockBaseAddress(CVPixelBufferRef, CVPixelBufferLockFlags);
 CVReturn CVPixelBufferUnlockBaseAddress(CVPixelBufferRef, CVPixelBufferLockFlags);
 void CVBufferSetAttachment(CVPixelBufferRef, CFStringRef, CFTypeRef, CVAttachmentMode);
+CFTypeRef CVBufferGetAttachment(CVImageBufferRef,CFStringRef,CVAttachmentMode *);
 CFTypeID CVPixelBufferPoolGetTypeID(void);
 CVReturn CVPixelBufferPoolCreatePixelBuffer(CFAllocatorRef, CVPixelBufferPoolRef, CVPixelBufferRef *);
 extern const CFStringRef kCVImageBufferYCbCrMatrixKey;
