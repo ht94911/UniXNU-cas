@@ -1,0 +1,37 @@
+diff --git a/bsd/kern/kern_exec.c b/bsd/kern/kern_exec.c
+--- a/bsd/kern/kern_exec.c
++++ b/bsd/kern/kern_exec.c
+@@ -8660,2 +8660,3 @@
++#include <pexpert/device_tree.h>
+ static void
+ native_gpu_addon_prepare(proc_t p, user_addr_t scratch)
+@@ -8675,3 +8676,29 @@ native_gpu_addon_prepare(proc_t p, user_addr_t scratch)
++	/* The selected recorder is an independent owner job. Its cache retains
++	 * all original system services; both views use the existing read-only
++	 * addon union mount and remain absent outside this diagnostic payload. */
++	DTEntry audio_chosen = NULL;
++	const void *audio_record = NULL;
++	unsigned int audio_record_size = 0;
++	uint32_t audio_record_version = 0;
++	if (SecureDTLookupEntry(NULL, "/chosen", &audio_chosen) == kSuccess &&
++	    SecureDTGetProperty(audio_chosen, "nezha-audio-record", &audio_record,
++	        &audio_record_size) == kSuccess && audio_record &&
++	    audio_record_size == sizeof(audio_record_version)) {
++		memcpy(&audio_record_version, audio_record, sizeof(audio_record_version));
++	}
++	if (audio_record_version == 90) {
++		static const char record_cache_source[] = "/private/var/ngpu/audio-record-xpc", record_cache_point[] = "/System/Library/xpc";
++		static volatile int record_cache_stage, record_cache_status;
++		native_gpu_addon_mount(p, scratch, 0x600, record_cache_source, sizeof(record_cache_source),
++		    record_cache_point, sizeof(record_cache_point), "/System/Library/xpc/foreground_user_endpoints.plist",
++		    "/System/Library/xpc/launchd.plist", &record_cache_stage, &record_cache_status);
++		printf("nezha-audio: recorder cache mount stage %d status %d\n", record_cache_stage, record_cache_status);
++		static const char record_source[] = "/private/var/ngpu/audio-record-bin", record_point[] = "/usr/libexec";
++		static volatile int record_stage, record_status;
++		native_gpu_addon_mount(p, scratch, 0x600, record_source, sizeof(record_source), record_point,
++		    sizeof(record_point), "/usr/libexec/launchd_cache_loader", "/usr/libexec/audio-record090", &record_stage, &record_status);
++		printf("nezha-audio: recorder executable mount stage %d status %d\n", record_stage, record_status);
++	}
+ 	native_cryptex_os_view(p, scratch);
+ 	native_gestalt_cache_drop(p, scratch);
+ 	native_ls_store_drop(p, scratch);

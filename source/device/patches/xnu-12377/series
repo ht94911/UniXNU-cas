@@ -40,3 +40,7 @@ zzzzzz-nezha-system-reset-evidence.patch
 
 # Release the held source before assembling the other 16 KiB dyld fixup parts.
 vmwait-dyld-pager-source-release.patch
+
+# Explicit two-second recorder: owner job, read-only cache/bin and exact signed launch.
+zzzzzz-nezha-audio-record-entry.patch
+zzzzzz-nezha-audio-record-launch-identity.patch
