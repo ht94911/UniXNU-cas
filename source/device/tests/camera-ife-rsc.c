@@ -11,6 +11,7 @@ enum { Complete = 0x494, Update = 0x498, Busy = 0x49c, Enable = 0x4a0,
 struct Model {
     uint32_t regs[4096 / 4];
     unsigned switches, writes;
+    uint32_t retained_completion;
     bool timeout;
 };
 
@@ -28,7 +29,7 @@ static void write(void *cookie, uint32_t offset, uint32_t value)
     ++m->writes;
     if (offset == Complete) {
         assert(value == 0x80000000u);
-        m->regs[Complete / 4] = 0;
+        m->regs[Complete / 4] = m->retained_completion;
     } else if (offset == Update) {
         if (value) {
             assert(value == 1 || value == 2);
@@ -39,7 +40,7 @@ static void write(void *cookie, uint32_t offset, uint32_t value)
             ++m->switches;
             if (!m->timeout) {
                 m->regs[Busy / 4] = value;
-                m->regs[Complete / 4] = value == 1 ? 1 : 4;
+                m->regs[Complete / 4] = (value == 1 ? 1 : 4) | m->retained_completion;
             }
         }
         m->regs[Update / 4] = value;
@@ -85,6 +86,24 @@ int main(void)
     assert(model.writes == active_writes && model.switches == 1);
     assert(nezha_camera_ife_rsc_stop(&io, &clear, &state, true) == NezhaCameraIfeRscOk);
     assert(!state.owned && model.switches == 2 && !memcmp(original.regs, model.regs, sizeof(model.regs)));
+
+    /* Actual025: CH_CLEAR_STATUS completed while bit4 remains set.
+     * Only bits0..3 describe the two channels' WAKE/SLEEP status. */
+    model = original;
+    model.retained_completion = 0x10;
+    assert(nezha_camera_ife_rsc_start(&io, &votes, &state) == NezhaCameraIfeRscOk);
+    assert(model.regs[Complete / 4] == 0x10);
+    assert(nezha_camera_ife_rsc_stop(&io, &clear, &state, true) == NezhaCameraIfeRscOk);
+    assert(!state.owned && model.switches == 2 && model.regs[Complete / 4] == 0x10);
+
+    model = original;
+    assert(nezha_camera_ife_rsc_start(&io, &votes, &state) == NezhaCameraIfeRscOk);
+    model.regs[Complete / 4] = 2; // A real channel0 SLEEP event is not reserved.
+    const unsigned writes = model.writes;
+    assert(nezha_camera_ife_rsc_stop(&io, &clear, &state, true) == NezhaCameraIfeRscBusy);
+    assert(model.writes == writes && state.owned && !state.releasing);
+    model.regs[Complete / 4] = 0;
+    assert(nezha_camera_ife_rsc_stop(&io, &clear, &state, true) == NezhaCameraIfeRscOk);
 
     model = original;
     model.timeout = true;

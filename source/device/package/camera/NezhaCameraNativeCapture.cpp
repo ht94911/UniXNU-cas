@@ -399,6 +399,25 @@ bool nezha_camera_native_capture(const NezhaCameraNativeCaptureRequest *request,
         }
         okay = result->status == NezhaFramesOk;
     } while (false);
+    if (!okay && state.capture.stream_may_be_on && state.capture.rdi_started) {
+        /* Use the existing console result after cleanup, retaining this
+         * pre-stop observation. No IRQ acknowledgement or poll fallback. */
+        static constexpr uint32_t offsets[] = {
+            0x880, 0x884, 0x180, 0x1b0, 0x224, 0x1a0,
+            0x8c0, 0x8c4, 0x8c8, 0x5480, 0x5488, 0x5494,
+        };
+        for (unsigned i = 0; i < sizeof(offsets) / sizeof(offsets[0]); ++i)
+            result->capture_registers[i] = read(&state.window[Csid], offsets[i]);
+        result->capture_registers[12] = read(&state.window[Vfe], 0x2c00);
+        if (!pattern && !state.capture.sensor_transfer.needs_recovery) {
+            uint8_t running = 0;
+            NezhaCameraCciObservation observed{};
+            result->stream_readback_status = nezha_camera_cci_read_byte(&state.reg[Cci], 1, 0x10,
+                0x0100, &running, &observed);
+            result->stream_readback = running;
+            if (observed.needs_recovery) state.capture.sensor_transfer = observed;
+        }
+    }
     result->identity = state.capture.identity;
     result->capture_stage = state.capture.stage;
     result->sensor_status = state.capture.sensor_status;

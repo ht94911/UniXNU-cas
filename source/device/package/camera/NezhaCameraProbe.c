@@ -368,6 +368,13 @@ static void camera_capture(void)
         printf("NEZHA CAMERA: IFE RSC cleanup=%u en=%#x update=%#x busy=%#x complete=%#x\n",
             result.resources.cleanup_status, ife->enable, ife->update, ife->busy, ife->completion);
     }
+    if (result.step == NezhaNativeFrames && !passed) {
+        const uint32_t *r = result.capture_registers;
+        printf("NEZHA CAMERA: stream=%#x read=%u RX=%#x/%#x TOP=%#x RXirq=%#x RDIirq=%#x BUF=%#x "
+            "packets=%u ecc=%#x crc=%#x RDI=%#x/%#x/%#x WM=%#x\n",
+            result.stream_readback, result.stream_readback_status, r[0], r[1], r[2], r[3], r[4], r[5],
+            r[6], r[7], r[8], r[9], r[10], r[11], r[12]);
+    }
     const struct NezhaCameraIfeBcmFailure *bcm = &result.bandwidth_failure;
     if (bcm->issue) {
         (void)hardware_mark(88, bcm->issue, bcm->index, bcm->address, bcm->detail);

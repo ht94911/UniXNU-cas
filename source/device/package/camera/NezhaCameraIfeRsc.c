@@ -10,6 +10,7 @@ enum {
     TcsBase = 0x520, TcsStride = 0x150, TcsWait = 0x20, TcsControl = 0x24,
     TcsStatus = 0x28, TcsEnable = 0x2c, TcsMessage = 0x34, CommandStride = 0x18,
     Write = 0x10008, Response = 0x100, CommandMask = (1 << NezhaCameraIfeBcmCount) - 1,
+    ChannelStatusMask = 0xf, /* stock CH{0,1}_{WAKE,SLEEP}_TCS_STATUS */
 };
 static const uint32_t clear_completion = UINT32_C(1) << 31;
 
@@ -112,7 +113,8 @@ enum NezhaCameraIfeRscStatus nezha_camera_ife_rsc_start(const struct NezhaCamera
         return NezhaCameraIfeRscReadback;
     }
     sample(io, state);
-    if (state->enable || state->update || state->busy || state->completion) {
+    if (state->enable || state->update || state->busy || state->completion == UINT32_MAX ||
+        (state->completion & ChannelStatusMask)) {
         return NezhaCameraIfeRscBusy;
     }
     for (unsigned slot = 0; slot < 4; ++slot) {
@@ -158,7 +160,8 @@ enum NezhaCameraIfeRscStatus nezha_camera_ife_rsc_stop(const struct NezhaCameraR
         }
     }
     sample(io, state);
-    if (state->enable != 1 || state->update != 1 || state->busy != 1 || state->completion) {
+    if (state->enable != 1 || state->update != 1 || state->busy != 1 ||
+        state->completion == UINT32_MAX || (state->completion & ChannelStatusMask)) {
         return NezhaCameraIfeRscBusy;
     }
     state->releasing = state->pending = true;
@@ -173,7 +176,8 @@ enum NezhaCameraIfeRscStatus nezha_camera_ife_rsc_stop(const struct NezhaCameraR
         return NezhaCameraIfeRscReadback;
     }
     sample(io, state);
-    if (state->enable || state->update || state->busy || state->completion) {
+    if (state->enable || state->update || state->busy || state->completion == UINT32_MAX ||
+        (state->completion & ChannelStatusMask)) {
         return NezhaCameraIfeRscReadback;
     }
     for (unsigned slot = 0; slot < 4; ++slot) {
