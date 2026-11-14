@@ -1,0 +1,17 @@
+--- a/bsd/kern/kern_exec.c
++++ b/bsd/kern/kern_exec.c
+@@ -8015,6 +8015,14 @@
+ native_owner_cache_checkpoint(int status, int authorized)
+ {
+ 	__asm__ volatile("" : : "r"(status), "r"(authorized) : "memory");
++	int verbose = 0;
++	if (PE_parse_boot_argn("boot-progress", &verbose, sizeof(verbose)) && verbose == 2) {
++		printf("nezha-owner-startup: SystemOS stage=%d status=%d mount=%d ro=%d auth=%d root_recheck=%d union=%d selected=%x mounted=%x\n",
++		    native_owner_cache_stage, status, native_owner_cache_mount_status,
++		    native_owner_cache_readonly, authorized, native_owner_cache_root_recheck,
++		    native_owner_cache_native_union, (unsigned)native_owner_cache_selected_device,
++		    (unsigned)native_owner_cache_mounted_device);
++	}
+ }
+ 
+ static int
