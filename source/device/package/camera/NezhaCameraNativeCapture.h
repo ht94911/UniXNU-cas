@@ -71,6 +71,7 @@ struct NezhaCameraNativeCaptureResult {
     /* One bounded readback before teardown of a failed active stream.
      * Raw register values never count as completed frames. */
     uint32_t stream_readback_status, stream_readback;
+    uint32_t stream_start_readback_status, stream_start_readback;
     uint32_t capture_registers[13];
     uint32_t rpmh_address, rpmh_ack, rpmh_reply;
 };

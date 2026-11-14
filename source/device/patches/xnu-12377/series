@@ -38,3 +38,6 @@ zzzzzz-nezha-gpu-external-ipc-scope.patch
 
 # Scoped camera daemon library for the opt-in continuous main sensor.
 zzzzzz-nezha-camera-service-environment.patch
+
+# Existing source-only system cache and bounded camera enumeration.
+zzzzzz-nezha-camera-discovery-launch.patch

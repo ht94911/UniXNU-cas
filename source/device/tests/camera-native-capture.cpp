@@ -126,12 +126,13 @@ int main()
         assert(!nezha_camera_native_capture_running() && !resources_active && !memory_active && !smmu_active && !irq_active);
         assert(maps==12); /* MMIO callbacks retain permanent mapping; no second-run leak */
     }
-    assert(copies==6 && reads==6 && stream_readbacks==0);
+    assert(copies==6 && reads==6 && stream_readbacks==2);
     frame_timeout=true;
     csid[0x880/4]=0x1100212;
     csid[0x8c0/4]=27;
     vfe[0x2c00/4]=0x10001;
-    assert(!nezha_camera_native_capture(&request,&result) && result.cleaned && stream_readbacks==1);
+    assert(!nezha_camera_native_capture(&request,&result) && result.cleaned && stream_readbacks==4);
+    assert(result.stream_start_readback==1 && result.stream_start_readback_status==NezhaCciOk);
     assert(result.status==NezhaFramesTimeout && result.stream_readback==1 && result.stream_readback_status==NezhaCciOk);
     assert(result.capture_registers[0]==0x1100212 && result.capture_registers[6]==27 &&
         result.capture_registers[12]==0x10001);

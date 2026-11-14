@@ -378,6 +378,18 @@ bool nezha_camera_native_capture(const NezhaCameraNativeCaptureRequest *request,
         if (!nezha_camera_main_capture_start(&state.capture_io, &mode,
             nezha_camera_native_memory_plan(state.memory), nezha_camera_native_smmu_context(state.smmu),
             request->slot, request->bank, 100, &state.capture)) break;
+        if (!pattern) {
+            uint8_t running = 0;
+            NezhaCameraCciObservation observed{};
+            result->stream_start_readback_status = nezha_camera_cci_read_byte(&state.reg[Cci], 1, 0x10,
+                0x0100, &running, &observed);
+            result->stream_start_readback = running;
+            if (observed.needs_recovery) state.capture.sensor_transfer = observed;
+            if (result->stream_start_readback_status != NezhaCciOk) {
+                result->status = result->stream_start_readback_status;
+                break;
+            }
+        }
         // Streaming has already begun. Avoid a filesystem sync before
         // consuming the two-frame queue.
         result->step = NezhaNativeFrames;

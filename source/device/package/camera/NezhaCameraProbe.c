@@ -375,6 +375,10 @@ static void camera_capture(void)
             result.stream_readback, result.stream_readback_status, r[0], r[1], r[2], r[3], r[4], r[5],
             r[6], r[7], r[8], r[9], r[10], r[11], r[12]);
     }
+    if (result.applied_writes) {
+        printf("NEZHA CAMERA: stream-start=%#x read=%u\n",
+            result.stream_start_readback, result.stream_start_readback_status);
+    }
     const struct NezhaCameraIfeBcmFailure *bcm = &result.bandwidth_failure;
     if (bcm->issue) {
         (void)hardware_mark(88, bcm->issue, bcm->index, bcm->address, bcm->detail);

@@ -1,7 +1,7 @@
-name: nezha iPhone27 measured RSC field and capture input
+name: nezha iPhone27 stock repeated START and actual sensor stream
 on:
   push:
-    branches: [codex/ios27-camera027-input-20261115]
+    branches: [codex/ios27-camera028-cci-20261115]
   workflow_dispatch:
 permissions:
   contents: read
