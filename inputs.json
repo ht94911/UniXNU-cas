@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "f2a442c45d88409892ff407ea2a804bf9fec2286",
+  "device_revision": "14ad8387d985b4011ecfcfc992f46c510665a601",
   "soc_revision": "703d7b4bb00904b4a6e5d96f9e9bf72eec170f6b",
   "xcode": "26.6",
   "files": {
@@ -395,8 +395,8 @@
   "audio": {
     "base": "GPU023",
     "base_device_revision": "673cde869b7378658b470c4e6b2b9a1766b99411",
-    "source_revision": "f2a442c45d88409892ff407ea2a804bf9fec2286",
-    "source_only_revision": "f2a442c45d88409892ff407ea2a804bf9fec2286",
+    "source_revision": "14ad8387d985b4011ecfcfc992f46c510665a601",
+    "source_only_revision": "14ad8387d985b4011ecfcfc992f46c510665a601",
     "hardware_enabled": false,
     "resource_census_enabled": true,
     "private_inputs": false,
