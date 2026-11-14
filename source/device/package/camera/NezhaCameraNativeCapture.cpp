@@ -351,7 +351,10 @@ bool nezha_camera_native_capture(const NezhaCameraNativeCaptureRequest *request,
         if (!checkpoint(*request, *result, NezhaNativeCsid, physical[Csid], physical[Vfe], 0) ||
             !nezha_camera1080_prepare_csid(&state.reg[Csid], &reset)) break;
         if (!checkpoint(*request, *result, NezhaNativeIrq, reset, 0, 0) ||
-            !nezha_camera_native_irq_open(&state.irq, &state.reg[Csid], &state.reg[Vfe])) break;
+            !nezha_camera_native_irq_open(&state.irq, &state.reg[Csid], &state.reg[Vfe], &result->irq_setup)) {
+            result->status = result->irq_setup.status;
+            break;
+        }
         unsigned physical_bits;
         if (!checkpoint(*request, *result, NezhaNativeSmmu, request->slot, request->bank, request->asid)) break;
         result->status = nezha_camera_native_smmu_prepare(&state.smmu, request->slot, request->bank,

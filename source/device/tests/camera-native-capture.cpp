@@ -57,7 +57,7 @@ extern "C" NezhaCameraCciStatus nezha_camera_ovx10500u_read_identity(const Nezha
 extern "C" NezhaCameraCciStatus nezha_camera_ovx10500u_read_revision(const NezhaCameraRegisterIo *,NezhaCameraOvxRevision *r)
 { r->vendor=3;r->version=0x42;return NezhaCciOk; }
 extern "C" bool nezha_camera1080_prepare_csid(const NezhaCameraRegisterIo *,uint32_t *r) { *r=1;return true; }
-extern "C" bool nezha_camera_native_irq_open(NezhaCameraNativeIrq **out,const NezhaCameraRegisterIo *,const NezhaCameraRegisterIo *)
+extern "C" bool nezha_camera_native_irq_open(NezhaCameraNativeIrq **out,const NezhaCameraRegisterIo *,const NezhaCameraRegisterIo *,NezhaCameraNativeIrqSetup *)
 { assert(!*out && !irq_active);*out=(NezhaCameraNativeIrq *)1;irq_active=true;return true; }
 extern "C" bool nezha_camera_native_irq_stop(NezhaCameraNativeIrq *) { irq_active=false;return true; }
 extern "C" uint32_t nezha_camera_native_irq_fault(const NezhaCameraNativeIrq *) { return 0; }

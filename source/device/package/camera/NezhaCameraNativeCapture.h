@@ -6,6 +6,7 @@
 #include "NezhaCameraFrameProbe.h"
 #include "NezhaCameraProfile.h"
 #include "NezhaCameraNativeSmmu.h"
+#include "NezhaCameraNativeIrq.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -58,6 +59,7 @@ struct NezhaCameraNativeCaptureResult {
     size_t applied_writes;
     size_t raw_sample_bytes;
     uint32_t irq_fault;
+    struct NezhaCameraNativeIrqSetup irq_setup;
     struct NezhaCamera1080Events irq_failure;
     struct NezhaCameraNativeSmmuFault smmu_fault;
     bool passed, cleaned;

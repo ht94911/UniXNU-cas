@@ -1,7 +1,7 @@
-name: nezha iPhone27 stock CPAS handshake and native RAW capture
+name: nezha iPhone27 stock reset IRQ mask and native RAW capture
 on:
   push:
-    branches: [codex/ios27-camera024-cpas-20261115]
+    branches: [codex/ios27-camera025-irq-20261115]
   workflow_dispatch:
 permissions:
   contents: read

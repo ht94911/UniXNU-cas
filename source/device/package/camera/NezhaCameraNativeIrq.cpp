@@ -16,6 +16,7 @@ constexpr uint32_t RdiEvents = (1u << 23) | (1u << 12) | (1u << 9) | (1u << 4) |
 constexpr uint32_t RxErrors = 0x25fff000u | 0x08000000u;
 constexpr uint32_t RdiErrors = 0x2c1c6001u | 0x12000000u | 0x180u;
 constexpr uint32_t masks[] = {TopMask, BufferMask, RxMask, RdiMask};
+constexpr uint32_t ResetDone = 1;
 }
 
 struct NezhaCameraNativeIrq {
@@ -24,6 +25,7 @@ struct NezhaCameraNativeIrq {
     NezhaCamera1080Events failure{};
     uint32_t fault{}, handlers{}, spi_readback{};
     uint64_t spi_route{};
+    uint32_t mask_before[4]{};
     bool used{}, armed{}, stopped{};
 };
 
@@ -32,7 +34,8 @@ static NezhaCameraNativeIrq irq;
 static void stop_sources(NezhaCameraNativeIrq *owner)
 {
     // The caller qualified an otherwise idle, exclusive CSID0 instance.
-    for (uint32_t offset : masks) owner->csid.write(owner->csid.context, offset, 0);
+    for (unsigned i = 0; i < 4; ++i)
+        owner->csid.write(owner->csid.context, masks[i], owner->mask_before[i]);
 }
 
 static void interrupt(void *cookie)
@@ -56,13 +59,26 @@ static void interrupt(void *cookie)
 }
 
 bool nezha_camera_native_irq_open(NezhaCameraNativeIrq **out,
-    const NezhaCameraRegisterIo *csid, const NezhaCameraRegisterIo *vfe)
+    const NezhaCameraRegisterIo *csid, const NezhaCameraRegisterIo *vfe,
+    NezhaCameraNativeIrqSetup *setup)
 {
+    if (!setup) return false;
+    *setup = {NezhaIrqSetupInvalid, 0, 0, 0};
     if (!out || *out || !csid || !csid->read || !csid->write || !vfe || !vfe->read ||
         (irq.used && (!irq.stopped || irq.fault || irq.handlers))) {
         return false;
     }
-    for (uint32_t offset : masks) if (csid->read(csid->context, offset) != 0) return false;
+    uint32_t before[4];
+    for (unsigned i = 0; i < 4; ++i) {
+        before[i] = csid->read(csid->context, masks[i]);
+        /* Stock CSID common v1 leaves its reset-done subscription on
+         * TOP while otherwise stopped. It is not a live frame consumer. */
+        const uint32_t allowed = i == 0 ? ResetDone : 0;
+        if (before[i] & ~allowed) {
+            *setup = {NezhaIrqSetupBusyMask, masks[i], before[i], allowed};
+            return false;
+        }
+    }
     const bool attached = irq.used;
     irq.used = true;
     irq.stopped = false;
@@ -70,20 +86,37 @@ bool nezha_camera_native_irq_open(NezhaCameraNativeIrq **out,
     irq.failure = {};
     irq.csid = *csid;
     irq.vfe = *vfe;
+    for (unsigned i = 0; i < 4; ++i) irq.mask_before[i] = before[i];
     *out = &irq;
     // Stock CSID0 SPI 0x259, rising-edge. ArmCpu accepts the architectural INTID.
-    if ((!attached && armcpu_spi_attach(32u + 0x259u, true, interrupt, &irq, &irq.spi_readback, &irq.spi_route) != kIOReturnSuccess) ||
-        (irq.spi_readback & 7u) != 7u) return false;
+    if (!attached) {
+        const IOReturn status = armcpu_spi_attach(32u + 0x259u, true, interrupt,
+            &irq, &irq.spi_readback, &irq.spi_route);
+        if (status != kIOReturnSuccess) {
+            *setup = {NezhaIrqSetupAttach, 633, static_cast<uint32_t>(status), 0};
+            return false;
+        }
+    }
+    if ((irq.spi_readback & 7u) != 7u) {
+        *setup = {NezhaIrqSetupSpiReadback, 633, irq.spi_readback, 7};
+        return false;
+    }
     constexpr uint32_t BufferDone = 1u << 16;
     __atomic_store_n(&irq.armed, true, __ATOMIC_SEQ_CST);
     csid->write(csid->context, RdiMask, RdiEvents | RdiErrors);
     csid->write(csid->context, BufferMask, BufferDone);
     csid->write(csid->context, RxMask, RxErrors);
-    csid->write(csid->context, TopMask, TopEvents);
-    return csid->read(csid->context, RdiMask) == (RdiEvents | RdiErrors) &&
-        csid->read(csid->context, BufferMask) == BufferDone &&
-        csid->read(csid->context, RxMask) == RxErrors &&
-        csid->read(csid->context, TopMask) == TopEvents;
+    csid->write(csid->context, TopMask, TopEvents | before[0]);
+    const uint32_t expected[] = {TopEvents | before[0], BufferDone, RxErrors, RdiEvents | RdiErrors};
+    for (unsigned i = 0; i < 4; ++i) {
+        const uint32_t observed = csid->read(csid->context, masks[i]);
+        if (observed != expected[i]) {
+            *setup = {NezhaIrqSetupMaskReadback, masks[i], observed, expected[i]};
+            return false;
+        }
+    }
+    *setup = {NezhaIrqSetupOk, 0, 0, 0};
+    return true;
 }
 
 bool nezha_camera_native_irq_next(NezhaCameraNativeIrq *owner, NezhaCamera1080Events *event)
@@ -112,7 +145,8 @@ bool nezha_camera_native_irq_stop(NezhaCameraNativeIrq *owner)
     __atomic_store_n(&owner->armed, false, __ATOMIC_SEQ_CST);
     for (unsigned ms = 0; ms <= 100; ++ms) {
         if (__atomic_load_n(&owner->handlers, __ATOMIC_SEQ_CST) == 0) {
-            for (uint32_t offset : masks) if (owner->csid.read(owner->csid.context, offset) != 0) return false;
+            for (unsigned i = 0; i < 4; ++i)
+                if (owner->csid.read(owner->csid.context, masks[i]) != owner->mask_before[i]) return false;
             owner->stopped = true;
             return true;
         }

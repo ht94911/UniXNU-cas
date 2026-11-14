@@ -9,12 +9,21 @@ extern "C" {
 #endif
 
 struct NezhaCameraNativeIrq;
+enum NezhaCameraNativeIrqSetupStatus {
+    NezhaIrqSetupOk, NezhaIrqSetupInvalid, NezhaIrqSetupBusyMask,
+    NezhaIrqSetupAttach, NezhaIrqSetupSpiReadback, NezhaIrqSetupMaskReadback,
+};
+struct NezhaCameraNativeIrqSetup {
+    enum NezhaCameraNativeIrqSetupStatus status;
+    uint32_t offset, observed, expected;
+};
 
 /* Call after the owned CSID reset has completed, before RDI0 starts.
  * The supplied MMIO contexts remain valid for the callback's boot-long
  * lifetime, matching the selected ArmCpu SPI interface. */
 bool nezha_camera_native_irq_open(struct NezhaCameraNativeIrq **owner,
-    const struct NezhaCameraRegisterIo *csid, const struct NezhaCameraRegisterIo *vfe);
+    const struct NezhaCameraRegisterIo *csid, const struct NezhaCameraRegisterIo *vfe,
+    struct NezhaCameraNativeIrqSetup *setup);
 bool nezha_camera_native_irq_next(struct NezhaCameraNativeIrq *owner,
     struct NezhaCamera1080Events *event);
 uint32_t nezha_camera_native_irq_fault(const struct NezhaCameraNativeIrq *owner);

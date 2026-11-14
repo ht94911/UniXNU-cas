@@ -28,6 +28,7 @@ struct Model {
     uint32_t top{}, rx{}, rdi{}, buffer{}, address{};
     uint32_t masks[4]{};
     unsigned reads{}, writes{};
+    uint32_t refused_mask{};
 };
 
 static uint32_t read(void *cookie, uint32_t offset)
@@ -52,6 +53,7 @@ static void write(void *cookie, uint32_t offset, uint32_t value)
 {
     auto &m = *static_cast<Model *>(cookie);
     ++m.writes;
+    if (offset == m.refused_mask) return;
     switch (offset) {
     case 0x188: m.top &= ~value; break;
     case 0x1a8: m.buffer &= ~value; break;
@@ -70,11 +72,14 @@ int main()
     Model model;
     const NezhaCameraRegisterIo io = {&model, read, write, nullptr};
     NezhaCameraNativeIrq *owner = nullptr;
+    NezhaCameraNativeIrqSetup setup{};
     model.masks[2] = 1;
-    assert(!nezha_camera_native_irq_open(&owner, &io, &io) && !owner && !attaches);
+    assert(!nezha_camera_native_irq_open(&owner, &io, &io, &setup) && !owner && !attaches);
+    assert(setup.status == NezhaIrqSetupBusyMask && setup.offset == 0x1b4 && setup.observed == 1);
     model.masks[2] = 0;
-    assert(nezha_camera_native_irq_open(&owner, &io, &io));
-    assert(attaches == 1 && model.masks[0] == ((1u << 16) | (1u << 3) | (1u << 2)) &&
+    model.masks[0] = 1; // Stock stopped TOP retains the reset-done subscription.
+    assert(nezha_camera_native_irq_open(&owner, &io, &io, &setup));
+    assert(attaches == 1 && model.masks[0] == ((1u << 16) | (1u << 3) | (1u << 2) | 1) &&
            model.masks[1] == (1u << 16));
     NezhaCamera1080Events event{};
     assert(nezha_camera_native_irq_next(owner, &event) && !event.buffer_done);
@@ -95,11 +100,19 @@ int main()
     }
     assert(nezha_camera_native_irq_next(owner, &event) && !event.buffer_done);
     assert(nezha_camera_native_irq_stop(owner));
+    assert(model.masks[0] == 1 && model.masks[1] == 0 && model.masks[2] == 0 && model.masks[3] == 0);
     const unsigned stopped_reads=model.reads, stopped_writes=model.writes;
     handler(irq_context);
     assert(model.reads==stopped_reads && model.writes==stopped_writes);
     NezhaCameraNativeIrq *reopened=nullptr;
-    assert(nezha_camera_native_irq_open(&reopened,&io,&io) && reopened==owner && attaches==1);
+    model.refused_mask = 0x228;
+    assert(!nezha_camera_native_irq_open(&reopened,&io,&io,&setup) && reopened==owner);
+    assert(setup.status == NezhaIrqSetupMaskReadback && setup.offset == 0x228 &&
+        setup.observed == 0 && setup.expected != 0);
+    model.refused_mask = 0;
+    assert(nezha_camera_native_irq_stop(owner) && model.masks[0] == 1);
+    reopened=nullptr;
+    assert(nezha_camera_native_irq_open(&reopened,&io,&io,&setup) && reopened==owner && attaches==1);
     assert(nezha_camera_native_irq_next(owner,&event) && !event.buffer_done);
     model.rx = 1u << 12; // Lost EOT on lane 0.
     handler(irq_context);
@@ -107,7 +120,7 @@ int main()
     assert(nezha_camera_native_irq_stop(owner));
     assert(nezha_camera_native_irq_failure(owner, &event) && event.rx_irq == (1u << 12));
     reopened=nullptr;
-    assert(!nezha_camera_native_irq_open(&reopened,&io,&io) && !reopened && attaches==1);
+    assert(!nezha_camera_native_irq_open(&reopened,&io,&io,&setup) && !reopened && attaches==1);
     const unsigned reads = model.reads, writes = model.writes;
     handler(irq_context);
     assert(model.reads == reads && model.writes == writes);

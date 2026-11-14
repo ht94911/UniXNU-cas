@@ -29,7 +29,7 @@ enum NezhaCameraResourceStep {
 
 struct NezhaCameraCaptureResources {
     enum NezhaCameraResourceStep step, cleanup_step;
-    unsigned status, detail;
+    unsigned status, detail, cleanup_status;
     struct NezhaCameraInterfaces interfaces;
     struct NezhaCameraCamccLease top;
     struct NezhaCameraPll0Lease pll0;

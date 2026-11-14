@@ -154,7 +154,10 @@ bool nezha_camera_capture_resources_stop(const struct NezhaCameraCaptureResource
     state->cleanup_step = NezhaResourcesCpas;
     if (state->cpas.acquired && nezha_camera_cpas_restore(io->cpas, &state->cpas) != NezhaCameraCpasOk) return false;
     state->cleanup_step = NezhaResourcesIfeRsc;
-    if (state->ife.owned && nezha_camera_ife_rsc_stop(io->ife_rsc, clear, &state->ife, true) != NezhaCameraIfeRscOk) return false;
+    if (state->ife.owned) {
+        state->cleanup_status = nezha_camera_ife_rsc_stop(io->ife_rsc, clear, &state->ife, true);
+        if (state->cleanup_status != NezhaCameraIfeRscOk) return false;
+    }
     state->cleanup_step = NezhaResourcesCaptureClock;
     if (state->step >= NezhaResourcesCaptureClock &&
         nezha_camera_camcc_release_capture(io->camcc, &state->capture, true) != NezhaCameraCamccOk) return false;

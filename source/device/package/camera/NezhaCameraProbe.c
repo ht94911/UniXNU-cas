@@ -358,6 +358,16 @@ static void camera_capture(void)
             cpas->failed_offset, cpas->failed_control, cpas->failed_status,
             cpas->failed_expected);
     }
+    if (result.irq_setup.status) {
+        printf("NEZHA CAMERA: IRQ setup=%u offset=%#x observed=%#x expected=%#x\n",
+            (unsigned)result.irq_setup.status, result.irq_setup.offset,
+            result.irq_setup.observed, result.irq_setup.expected);
+    }
+    if (result.resources.cleanup_step == NezhaResourcesIfeRsc && result.resources.cleanup_status) {
+        const struct NezhaCameraIfeRsc *ife = &result.resources.ife;
+        printf("NEZHA CAMERA: IFE RSC cleanup=%u en=%#x update=%#x busy=%#x complete=%#x\n",
+            result.resources.cleanup_status, ife->enable, ife->update, ife->busy, ife->completion);
+    }
     const struct NezhaCameraIfeBcmFailure *bcm = &result.bandwidth_failure;
     if (bcm->issue) {
         (void)hardware_mark(88, bcm->issue, bcm->index, bcm->address, bcm->detail);
