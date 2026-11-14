@@ -47,3 +47,6 @@ zzzzzz-nezha-audio-record-launch-identity.patch
 
 # Upstream94a70b1: replacement addon files must also set their shorter length.
 zzzzzz-nezha-audio-addon-size.patch
+
+# Original xpcproxy typed SETEXEC reaches the same fixed recorder identity.
+zzzzzz-nezha-audio-record-setexec.patch

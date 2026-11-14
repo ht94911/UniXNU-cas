@@ -1,0 +1,16 @@
+--- a/security/mac_process.c
++++ b/security/mac_process.c
+@@ -934,7 +934,12 @@
+ 	}
+ 	memcpy(&selected, property, sizeof(selected));
+ 	struct _posix_spawnattr *attr = imgp->ip_px_sa;
+-	if (selected != 90 || !(imgp->ip_flags & IMGPF_SPAWN) || imgp->ip_scriptvp ||
++	/* xpcproxy replaces itself with POSIX_SPAWN_SETEXEC. The original
++	 * launchd parent and typed system-service spawn attributes survive it. */
++	bool spawn = (imgp->ip_flags & IMGPF_SPAWN) != 0;
++	bool setexec = (imgp->ip_flags & IMGPF_EXEC) != 0 &&
++	    attr && (attr->psa_flags & POSIX_SPAWN_SETEXEC) != 0;
++	if (selected != 90 || (!spawn && !setexec) || imgp->ip_scriptvp ||
+ 	    attr == NULL || attr->psa_launch_type != CS_LAUNCH_TYPE_SYSTEM_SERVICE ||
+ 	    proc_original_ppid(p) != 1 || !(imgp->ip_csflags & CS_VALID)) {
+ 		return false;
