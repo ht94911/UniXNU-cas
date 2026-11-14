@@ -1,7 +1,7 @@
 name: nezha iPhone27 GPU015 board temperature - power063
 on:
   push:
-    branches: [codex/ios27-power-gpu015-063-20261114]
+    branches: [codex/ios27-power-gpu015-064-20261114]
   workflow_dispatch:
 permissions:
   contents: read
