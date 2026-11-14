@@ -37,10 +37,15 @@ jobs:
         with:
           python-version: '3.13'
       - name: Install host build tools
+        timeout-minutes: 12
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: 1
+          HOMEBREW_NO_INSTALL_FROM_API: 0
+          HOMEBREW_NO_BOTTLE_SOURCE_FALLBACK: 1
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/ios27/setup-logs"
-          brew install cmake ninja unifdef llvm openssl@3 > "$RUNNER_TEMP/ios27/setup-logs/brew.log" 2>&1
+          brew install --force-bottle cmake ninja unifdef llvm openssl@3 > "$RUNNER_TEMP/ios27/setup-logs/brew.log" 2>&1
           test -x "$(brew --prefix llvm)/bin/llvm-objdump"
           printf 'UNIXNU_LLVM_OBJDUMP=%s/bin/llvm-objdump\n' "$(brew --prefix llvm)" >> "$GITHUB_ENV"
       - name: Reconstruct and verify the exact integration source tree
