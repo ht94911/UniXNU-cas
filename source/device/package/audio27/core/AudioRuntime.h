@@ -64,6 +64,9 @@ int na_runtime_rebind(NaRuntime *,NaAudioStatus *,uint64_t *output,uint64_t *inp
  * under the OS owner gate. Default disabled, max2s, statistics and first PCM period.
  * It does not publish HAL input or mark the physical microphone as proven. */
 int na_runtime_probe_capture(NaRuntime *,uint32_t frames,uint64_t now_ms);
+/* Complete/fail the finite probe after a worker poll, including outer ADSP
+ * faults. Failed DMA ownership stays quarantined in its original graph. */
+void na_runtime_probe_finish(NaRuntime *);
 #ifdef __cplusplus
 }
 #endif

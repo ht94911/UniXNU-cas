@@ -163,13 +163,32 @@ int na_runtime_probe_capture(NaRuntime *r,uint32_t frames,uint64_t now) {
     if (!r->capture_probe_allowed || r->capture_proven || !r->engine.graph[1] || !r->votes[1] ||
         __atomic_load_n(&r->disabled,__ATOMIC_ACQUIRE) ||
         !__atomic_load_n(&r->service_ready,__ATOMIC_ACQUIRE) || r->fault) return NA_MISSING;
+    if (r->engine.graph[1]->error) return r->engine.graph[1]->error;
     uint32_t state=__atomic_load_n(&r->probe.state,__ATOMIC_ACQUIRE);
     if (!cpu_maps_quiet(r) || __atomic_load_n(&r->request,__ATOMIC_ACQUIRE) ||
         (state>=NaProbeStarting && state<=NaProbeDraining)) return NA_BUSY;
     r->probe.limit_frames=frames;r->probe.frames=r->probe.periods=r->probe.nonzero=r->probe.peak=0;
     r->probe.squares=0;r->probe.deadline=now+30000;r->probe.error=0;
     r->probe.pcm_frames=0;memset(r->probe.pcm,0,sizeof r->probe.pcm);
+    /* Reuse080's proven running/silent output + VI pair before recording.
+     * Closing the last input graph must not enter the unconfigured DSP island.
+     * No output request or amplifier activation is synthesized. */
+    r->output_held=1;
     __atomic_store_n(&r->probe.state,NaProbeStarting,__ATOMIC_RELEASE);return NA_OK;
+}
+void na_runtime_probe_finish(NaRuntime *r) {
+    if (!r) return;
+    uint32_t state=__atomic_load_n(&r->probe.state,__ATOMIC_ACQUIRE);
+    if (state<NaProbeStarting || state>NaProbeDraining) return;
+    if (r->fault) {
+        if (!r->probe.error) r->probe.error=r->fault;
+        __atomic_store_n(&r->probe.state,NaProbeFailed,__ATOMIC_RELEASE);
+    } else if (state==NaProbeDraining && r->engine.graph[1] &&
+               r->engine.graph[1]->stage==NaGraphFault) {
+        if (!r->probe.error) r->probe.error=r->engine.graph[1]->error ? r->engine.graph[1]->error:NA_OWNERSHIP;
+        __atomic_store_n(&r->probe.state,NaProbeFailed,__ATOMIC_RELEASE);
+    } else if (state==NaProbeDraining && cpu_maps_quiet(r))
+        __atomic_store_n(&r->probe.state,r->probe.error ? NaProbeFailed:NaProbeComplete,__ATOMIC_RELEASE);
 }
 int na_runtime_poll(NaRuntime *r,uint64_t now) {
     if (!r || now>UINT64_MAX-10000) return NA_ARGUMENT;
@@ -215,9 +234,12 @@ int na_runtime_poll(NaRuntime *r,uint64_t now) {
     uint32_t probe=__atomic_load_n(&r->probe.state,__ATOMIC_ACQUIRE);
     if (probe==NaProbeStarting || probe==NaProbeCollecting) {
         if (r->fault || disabled || now>=r->probe.deadline) {
-            r->probe.error=r->fault ? r->fault:disabled ? NA_OFFLINE:NA_TIMEOUT;
+            if (!r->probe.error) r->probe.error=r->fault ? r->fault:disabled ? NA_OFFLINE:NA_TIMEOUT;
             __atomic_store_n(&r->probe.state,NaProbeDraining,__ATOMIC_RELEASE);
-        } else if (!disabled) wanted|=2u;
+        } else if (!disabled && ((r->output_idle_ready && out->stage==NaGraphRunning &&
+                   (!vi || vi->stage==NaGraphRunning) && !r->prm->error &&
+                   (r->prm->held&r->votes[0])==r->votes[0]) ||
+                   r->engine.graph[1]->stage!=NaGraphOff)) wanted|=2u;
     }
     if (r->engine.graph[2]) {
         int draining=out->stage>=NaGraphMuting;
@@ -245,6 +267,18 @@ int na_runtime_poll(NaRuntime *r,uint64_t now) {
     }
     na_prm_request(r->prm,mask);
     e=na_engine_poll(&r->engine,now);
+    /* An opt-in, unpublished input probe owns its own failure. Keep healthy
+     * output/VI running while its original CLOSE/UNMAP drain continues. */
+    NaGraph *in=r->engine.graph[1];
+    if (!r->capture_proven && probe>=NaProbeStarting && in && in->error) {
+        if (probe<=NaProbeDraining) {
+            if (!r->probe.error) r->probe.error=in->error;
+            __atomic_store_n(&r->probe.state,NaProbeDraining,__ATOMIC_RELEASE);
+        }
+        if ((e==in->error || (in->cleanup_error && e==in->cleanup_error)) &&
+            !out->error && !out->cleanup_error && (!vi || (!vi->error && !vi->cleanup_error)) &&
+            !r->engine.rx_faults && r->engine.session->online) e=NA_OK;
+    }
     if (e<0 && e!=NA_OFFLINE && !r->fault) r->fault=e;
     e=na_prm_poll(r->prm,now);
     if (e<0 && e!=NA_OFFLINE && !r->fault) r->fault=e;
@@ -259,13 +293,7 @@ int na_runtime_poll(NaRuntime *r,uint64_t now) {
         if (i) r->status.input_periods=g->stream->returned;else r->status.output_periods=g->stream->returned;
     }
     if (!r->origin_set[0]) r->status.out_consumed=frame;
-    probe=__atomic_load_n(&r->probe.state,__ATOMIC_ACQUIRE);
-    if (probe>=NaProbeStarting && probe<=NaProbeDraining && r->fault) {
-        r->probe.error=r->fault;
-        __atomic_store_n(&r->probe.state,NaProbeDraining,__ATOMIC_RELEASE);
-    }
-    if (__atomic_load_n(&r->probe.state,__ATOMIC_ACQUIRE)==NaProbeDraining && cpu_maps_quiet(r))
-        __atomic_store_n(&r->probe.state,r->probe.error ? NaProbeFailed:NaProbeComplete,__ATOMIC_RELEASE);
+    na_runtime_probe_finish(r);
     r->status.last_error=(uint32_t)r->fault;
     na_audio_status_publish(r->shared,&r->status);return r->fault;
 }

@@ -24,6 +24,13 @@ int na_swr_bind(NaSwr *,const NaSwrIo *,uint64_t lease);
 int na_swr_read(NaSwr *,uint16_t reg,uint8_t *);
 int na_swr_write(NaSwr *,uint16_t reg,uint8_t value);
 int na_swr_update(NaSwr *,uint16_t reg,uint8_t mask,uint8_t value);
+/* Stock TX MCLK is9.6MHz; a50x16 frame needs6 SSPs for the4kHz sync.
+ * ADC_LP4.8MHz has interval (2*9.6/4.8)-1, independently of PCM48kHz. */
+enum {NA_SWR_TX_FRAME_SHAPE=15,NA_SWR_TX_FRAME_CTRL=(5u<<16)|15u,
+      NA_SWR_TX_ADC_LP_INTERVAL=3};
+/* Complete the stock broadcast bank-switch command and confirm the active
+ * bank before a capture graph can submit DMA. No paging-device registers. */
+int na_swr_select_tx_bank(NaSwr *,unsigned bank);
 #ifdef __cplusplus
 }
 #endif

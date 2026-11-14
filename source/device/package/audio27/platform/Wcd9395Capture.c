@@ -36,13 +36,13 @@ int na_wcd_capture_init(NaWcdCapture *c,NaSwr *bus,const NaTxIo *tx,uint8_t bias
 }
 static int ports(NaWcdCapture *c) {
     NaSwr *s=c->bus;int r;
-    /* Isolated capture owns these ports in both banks. DT UC0 gives offset0,
-     * lane1. ADC_LP data is4.8MHz: interval1 on the9.6MHz bus. Port numbers in
-     * DT are zero based; slave logical0 becomes physical DP1. */
+    /* Isolated capture owns these ports in both banks. Stock TX UC0 gives
+     * offset0/lane1. Modern swr-mstr-ctrl uses both clock edges: interval3
+     * carries4.8MHz ADC_LP on the retained9.6MHz bus. Slave logical0 is DP1. */
     for (unsigned bank=0;bank<2;++bank) {
         uint16_t b=(uint16_t)(bank*0x10);
         const uint16_t reg[7]={0x122,0x123,0x124,0x125,0x126,0x127,0x128};
-        const uint8_t value[7]={1,0,0,0,0xff,1,1};
+        const uint8_t value[7]={NA_SWR_TX_ADC_LP_INTERVAL,0,0,0,0xff,1,1};
         for (unsigned i=0;i<7;++i) if ((r=na_swr_write(s,reg[i]+b,value[i]))) return r;
     }
     if ((r=na_swr_write(s,0x102,0)) || (r=na_swr_write(s,0x103,0)) || (r=na_swr_write(s,0x105,2))) return r;
@@ -50,15 +50,18 @@ static int ports(NaWcdCapture *c) {
      * physical channel2. They are intentionally different masks. */
     for (unsigned bank=0;bank<2;++bank) {
         uint32_t b=bank*0x40;
-        s->io.write(s->io.context,0x1224+b,1u|(4u<<24));
+        s->io.write(s->io.context,0x1224+b,NA_SWR_TX_ADC_LP_INTERVAL|(4u<<24));
         s->io.write(s->io.context,0x1228+b,1);
         s->io.write(s->io.context,0x1230+b,0);
         s->io.write(s->io.context,0x1234+b,0xf0);
         s->io.write(s->io.context,0x1238+b,1);
+        s->io.write(s->io.context,0x101c+b,NA_SWR_TX_FRAME_CTRL);
     }
     s->io.write(s->io.context,0x122c,0);
     if ((r=na_swr_write(s,0x120,2)) || (r=na_swr_write(s,0x130,2))) return r;
-    return NA_OK;
+    uint32_t active=s->io.read(s->io.context,0x104c);
+    if (s->io.error(s->io.context)) return NA_IO;
+    return na_swr_select_tx_bank(s,(active&1)^1u);
 }
 int na_wcd_capture_prepare(NaWcdCapture *c,uint64_t now) {
     if (!c || now>UINT64_MAX-5000) return NA_ARGUMENT;
@@ -119,7 +122,7 @@ int na_wcd_capture_shutdown(NaWcdCapture *c,int quiescent) {
     int r=na_wcd_capture_mute(c);if (!quiescent) return NA_OWNERSHIP;
     if (r || (r=tx_update(c,0x500,0x20,0)) || (r=tx_update(c,0x110,0xf,0)) ||
         (r=tx_update(c,0x114,3,0))) return failed(c,r);
-    for (unsigned bank=0;bank<2;++bank) c->bus->io.write(c->bus->io.context,0x1224+0x40*bank,1);
+    for (unsigned bank=0;bank<2;++bank) c->bus->io.write(c->bus->io.context,0x1224+0x40*bank,NA_SWR_TX_ADC_LP_INTERVAL);
     r=na_swr_write(c->bus,0x120,0);
     if (!r) r=na_swr_write(c->bus,0x130,0);
     if (!r) r=na_swr_write(c->bus,0x105,0);

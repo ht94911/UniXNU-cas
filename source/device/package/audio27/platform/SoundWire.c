@@ -65,3 +65,27 @@ int na_swr_update(NaSwr *s,uint16_t reg,uint8_t mask,uint8_t value) {
     uint8_t old;int r=na_swr_read(s,reg,&old);
     return r ? r:na_swr_write(s,reg,(uint8_t)((old&~mask)|value));
 }
+int na_swr_select_tx_bank(NaSwr *s,unsigned bank) {
+    if (!s || !s->lease || !s->device || s->failed || bank>1) return NA_ARGUMENT;
+    /* swrm_apply_port_config sets the legacy host DIV2 before switching.
+     * Command id15 is reserved by the controller for FRAME_CTRL broadcast. */
+    int r=wait_fifo(s,0);if (r) return r;
+    uint32_t word=command(s,(uint16_t)(0xe0+bank*0x10),1);
+    s->io.write(s->io.context,0x5020,(word&~0xf00000u)|0xf00000u);
+    if (s->io.error(s->io.context)) return fail(s,NA_IO);
+    s->io.pause_us(s->io.context,150);
+    r=wait_fifo(s,0);if (r) return r;++s->writes;
+    s->io.write(s->io.context,0x5020,(NA_SWR_TX_FRAME_SHAPE<<24)|0xff0000u|0x60u|bank*0x10);
+    if (s->io.error(s->io.context)) return fail(s,NA_IO);
+    s->io.pause_us(s->io.context,150);
+    r=wait_fifo(s,0);if (r) return r;++s->writes;
+    uint64_t now=s->io.now_us(s->io.context);
+    for (unsigned i=0;i<200;++i) {
+        uint32_t active=s->io.read(s->io.context,0x104c);
+        if (s->io.error(s->io.context)) return fail(s,NA_IO);
+        if ((active&1)==bank) return NA_OK;
+        if (s->io.now_us(s->io.context)-now>=10000) break;
+        s->io.pause_us(s->io.context,50);
+    }
+    return fail(s,NA_TIMEOUT);
+}

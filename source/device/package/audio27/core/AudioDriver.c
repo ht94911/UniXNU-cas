@@ -136,6 +136,7 @@ static int fail(NaDriver *d,int error) {
      * the mapped ready/running state before the HAL can attempt another start. */
     if (!d->runtime.fault) d->runtime.fault=d->error;
     na_runtime_disable(&d->runtime);
+    na_runtime_probe_finish(&d->runtime);
     d->runtime.status.state=NaAudioFault;
     d->runtime.status.last_error=(uint32_t)d->runtime.fault;
     na_audio_status_publish(d->runtime.shared,&d->runtime.status);

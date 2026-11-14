@@ -84,6 +84,10 @@ int na_mic_board_prepare(void *v,NaWcdCapture *capture) {
         if ((r=update(m,VA,1,1)) || (r=update(m,VA+4,3,3)) || (r=update(m,VA+4,3,1)) ||
             (r=update(m,VA+0x80,2,2)) || (r=update(m,VA+8,2,2)) || (r=update(m,VA+8,1,1)) ||
             (r=update(m,VA+8,2,0)) || (r=update(m,TX,1,1)) || (r=update(m,TX+4,1,1))) return failed(m,r);
+        /* Stock lpass_cdc_va_macro_init initializes the SWR mic clock pairs;
+         * these are VA logical0x30d0/4/8 after subtracting VA_START_OFFSET. */
+        for (unsigned i=0;i<3;++i)
+            if ((r=update(m,VA+0xd0+4*i,0xee,0xcc))) return failed(m,r);
         m->macro_on=1;
         if ((r=read_reg(m,SWR,&value))) return failed(m,r);
         /* Stock nezha DT selects the2.0 register layout; its driver logs a
@@ -94,7 +98,7 @@ int na_mic_board_prepare(void *v,NaWcdCapture *capture) {
         m->stage=3;m->wait_until=now+1000;return NA_PENDING;
     case 3: {
         const uint32_t registers[]={0x101c,0x500,0x1048,0x18,0x5060,0x314,0x4,0x4,0x5008,0x5004,0x4};
-        const uint32_t values[]={15,1,0x3e0000,1,1,0x80000007,1,2,0x1dfdfd,0,3};
+        const uint32_t values[]={NA_SWR_TX_FRAME_CTRL,1,0x3e0000,1,1,0x80000007,1,2,0x1dfdfd,0,3};
         for (unsigned i=0;i<sizeof registers/sizeof registers[0];++i) {
             uint32_t mask=registers[i]==0x1048 ? 0x3e0000:~0u;
             if ((r=update(m,SWR+registers[i],mask,values[i]))) return failed(m,r);
