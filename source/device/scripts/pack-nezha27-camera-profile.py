@@ -42,11 +42,19 @@ def selector(module):
     return int(conditions['vendorId'], 16), conditions['sensorVersion']
 
 
+def mode_program(module, mode):
+    program = []
+    for name in ('pre_resolution_settings_symbol', 'settings_symbol', 'post_resolution_settings_symbol'):
+        if mode[name] is not None:
+            program.extend(module.settings(mode[name]))
+    return program
+
+
 def same_capture_contract(module, board, mode, mode_settings):
     actual = module.modes()[1]
     fields = ('c_phy', 'lanes', 'data_rate_bps', 'fps', 'settle_ns', 'streams')
     return (module.board() == board and all(actual[k] == mode[k] for k in fields) and
-            list(module.settings(actual['settings_symbol'])) == mode_settings)
+            mode_program(module, actual) == mode_settings)
 
 
 def make_pack(module_path, phy_path, kernel_path, alternate_module_path=None, other_vendor_paths=None):
@@ -63,7 +71,9 @@ def make_pack(module_path, phy_path, kernel_path, alternate_module_path=None, ot
             (4096, 3072, 10, 0, 0x2b), 'Unsupported mode1 image stream')
     # The old schema does not identify the current header_value field. Select
     # the one actual write array and retain the other read groups in evidence.
-    sequences = [write_initialization(module), list(module.settings(mode['settings_symbol']))]
+    # Preserve the original mode brackets, including the sensor group
+    # commit before the separately controlled stream-on operation.
+    sequences = [write_initialization(module), mode_program(module, mode)]
     selection = []
     other_modules = []
     if alternate_module_path is not None:
@@ -146,6 +156,9 @@ def make_pack(module_path, phy_path, kernel_path, alternate_module_path=None, ot
     return bytes(pack), dict(module=module.name, module_sha256=module.sha256,
         camera_kernel_sha256=phy['source_sha256'], mode=1,
         initialization_count=len(sequences[0]), mode_count=len(sequences[1]),
+        mode_register_count=mode['settings_count'],
+        pre_resolution_count=mode['pre_resolution_settings_count'],
+        post_resolution_count=mode['post_resolution_settings_count'],
         burst_bytes=[len(data) for _, data in pending_bursts],
         phy_control=phy['control'], rate_profile=phy['selected']['symbol'],
         used_bytes=used, capacity_bytes=CAPACITY, sha256=sha(pack), profile_version=version,

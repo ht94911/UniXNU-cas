@@ -19,6 +19,7 @@ enum {
     CsidBufferIrqStatus = 0x1a0,
     CsidBufferIrqClear = 0x1a8,
     CsidRxIrqStatus = 0x1b0,
+    CsidRxIrqClear = 0x1b8,
     CsidRdi0IrqStatus = 0x224,
     CsidRdi0IrqClear = 0x22c,
     CsidRxConfig0 = 0x880,
@@ -32,6 +33,7 @@ enum {
     CsidRdi0MipiPacking = 1 << 15,
     CsidRdi0BufferDone = 1 << 16,
     CsidTopRdi0 = 1 << 16,
+    CsidTopRx = 1 << 2,
     CsidTopBuffer = 1 << 3,
     CsidResetDone = 1,
     CsidRdiUpdated = 1 << 23,
@@ -199,7 +201,8 @@ bool nezha_camera1080_take_rdi0_events(const struct NezhaCameraRegisterIo *csid,
 
     const uint32_t sof = CsidRdiInputSof | CsidRdiCamifSof;
     const uint32_t eof = CsidRdiInputEof | CsidRdiCamifEof;
-    const uint32_t rdi = events->rdi0_irq & (sof | eof | CsidRdiUpdated);
+    const uint32_t rdi = events->rdi0_irq;
+    const uint32_t rx = events->rx_irq;
     const uint32_t buffer = events->buffer_irq & CsidRdi0BufferDone;
     if (buffer != 0) {
         /* Stock cam_vfe_bus_ver3 reads addr_status_0 for the RDI client
@@ -214,24 +217,23 @@ bool nezha_camera1080_take_rdi0_events(const struct NezhaCameraRegisterIo *csid,
     events->end_of_frame = (rdi & eof) != 0;
     events->buffer_done = buffer != 0;
 
-    /* Keep aggregate status asserted if an unhandled child bit is pending. */
-    uint32_t top = 0;
-    if (rdi != 0 && rdi == events->rdi0_irq) {
-        top |= events->top_irq & CsidTopRdi0;
-    }
+    /* The native IRQ owner exclusively owns RX0 and RDI0. Retain their
+     * complete status in the event, then acknowledge the entire observed
+     * child words as stock cam_irq_controller does before dispatch.
+     * Informational VCDT_GRP0_SEL otherwise keeps TOP asserted after SOF
+     * and prevents the next rising-edge delivery, including later faults.
+     * Other RDI clients and buffer completions are outside this owner. */
+    uint32_t top = events->top_irq & (CsidTopRdi0 | CsidTopRx);
     if (buffer != 0 && buffer == events->buffer_irq) {
         top |= events->top_irq & CsidTopBuffer;
     }
-    if (top != 0) {
-        csid->write(csid->context, CsidTopIrqClear, top);
-    }
-    if (buffer != 0) {
-        csid->write(csid->context, CsidBufferIrqClear, buffer);
-    }
-    if (rdi != 0) {
-        csid->write(csid->context, CsidRdi0IrqClear, rdi);
-    }
-    if ((top | buffer | rdi) != 0) {
+    /* Clear registers are sticky until reset, so write zero for an empty
+     * group before committing another group's acknowledgement. */
+    csid->write(csid->context, CsidTopIrqClear, top);
+    csid->write(csid->context, CsidBufferIrqClear, buffer);
+    csid->write(csid->context, CsidRxIrqClear, rx);
+    csid->write(csid->context, CsidRdi0IrqClear, rdi);
+    if ((top | buffer | rx | rdi) != 0) {
         csid->write(csid->context, CsidIrqCommand, 1);
     }
     return true;

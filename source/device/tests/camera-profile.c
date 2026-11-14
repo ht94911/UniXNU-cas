@@ -29,7 +29,9 @@ int main(int argc, char **argv)
     assert(nezha_camera_profile_open(bytes, sizeof(resource), &profile));
     size_t count = profile.initialization_count + profile.mode_count;
     assert((profile.initialization_count == 1697 || profile.initialization_count == 1707) &&
-           profile.mode_count == 202 && profile.data_rate == UINT64_C(8000000000));
+           (profile.mode_count == 202 || profile.mode_count == 206) &&
+           profile.data_rate == UINT64_C(8000000000));
+    const size_t brackets = profile.mode_count - 202;
     const bool paired = profile.vendor != 0;
     const bool as1 = argc >= 4 && strtoul(argv[3], NULL, 0) == 0x41;
     const uint8_t revision = as1 ? 0x41 : 0x42;
@@ -42,11 +44,19 @@ int main(int argc, char **argv)
         assert(!nezha_camera_profile_revision_writes(&profile, profile.vendor, 0x40, decoded, 2048, &count));
         assert(!nezha_camera_profile_revision_writes(&profile, profile.vendor, 0xff, decoded, 2048, &count));
         assert(nezha_camera_profile_revision_writes(&profile, vendor, revision, decoded, 2048, &count));
-        assert(count == (as1 ? 1909u : 1899u));
+        assert(count == (as1 ? 1909u : 1899u) + brackets);
     } else {
         assert(argc <= 3 && nezha_camera_profile_writes(&profile, decoded, 2048));
     }
     assert(decoded[0].reg == 0x103 && decoded[0].value == 1);
+    if (brackets != 0) {
+        const size_t begin = as1 ? profile.alternate_initialization_count : profile.initialization_count;
+        assert(decoded[begin].reg == 0x5101 && decoded[begin].value == 0);
+        assert(decoded[begin + 1].reg == 0x3288 && decoded[begin + 1].value == 0);
+        assert(decoded[count - 3].reg == 0x3288 && decoded[count - 3].value == 0xe0);
+        assert(decoded[count - 2].reg == 0x3208 && decoded[count - 2].value == 0x11);
+        assert(decoded[count - 1].reg == 0x3208 && decoded[count - 1].value == 0xa1);
+    }
     assert(profile.phy.lane_offsets[0] == 0x200 && profile.phy.lane_offsets[1] == 0x600 &&
            profile.phy.lane_offsets[2] == 0xa00 && profile.phy.settle_count == 35);
     size_t bursts = 0;

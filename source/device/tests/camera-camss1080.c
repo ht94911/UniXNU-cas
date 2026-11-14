@@ -86,6 +86,7 @@ static void clear_status(void *context, uint32_t offset, uint32_t value)
         break;
     case 0x188: session->top &= ~value; break;
     case 0x1a8: session->buffers &= ~value; break;
+    case 0x1b8: session->rx &= ~value; break;
     case 0x22c: session->rdi0 &= ~value; break;
     case 0x110: assert(value == 1); ++session->commits; break;
     default: assert(0);
@@ -180,7 +181,8 @@ int main(void)
     assert(events.buffer_done && events.updated && events.start_of_frame && events.end_of_frame);
     assert(events.consumed_address == 0x200000);
     assert(events.rx_irq == 0x40 && events.rdi0_irq == 0x801201);
-    assert(irq.buffers == 0x20000 && irq.rdi0 == 1 && irq.top == 0x3000c && irq.commits == 1);
+    assert(irq.buffers == 0x20000 && irq.rdi0 == 0 && irq.rx == 0 &&
+        irq.top == 0x20008 && irq.commits == 1);
     assert(nezha_camera1080_take_rdi0_events(&csid, &vfe, &events));
     assert(!events.buffer_done && !events.start_of_frame && irq.commits == 1);
 

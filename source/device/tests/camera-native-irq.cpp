@@ -57,6 +57,7 @@ static void write(void *cookie, uint32_t offset, uint32_t value)
     switch (offset) {
     case 0x188: m.top &= ~value; break;
     case 0x1a8: m.buffer &= ~value; break;
+    case 0x1b8: m.rx &= ~value; break;
     case 0x22c: m.rdi &= ~value; break;
     case 0x110: assert(value == 1); break;
     case 0x184: m.masks[0] = value; break;
@@ -84,13 +85,13 @@ int main()
     NezhaCamera1080Events event{};
     assert(nezha_camera_native_irq_next(owner, &event) && !event.buffer_done);
     for (unsigned i = 0; i < 2; ++i) {
-        model.top = 1u << 16 | 1u << 3;
+        model.top = 1u << 16 | 1u << 3 | 1u << 2;
         model.rx = 1u << 4; // Informational lane start.
-        model.rdi = 1u << 23 | 1u << 12 | 1u << 9;
+        model.rdi = 1u << 23 | 1u << 16 | 1u << 12 | 1u << 9;
         model.buffer = 1u << 16;
         model.address = 0x10000u + i * 0x10000u;
         handler(irq_context);
-        assert(!model.top && !model.rdi && !model.buffer);
+        assert(!model.top && !model.rdi && !model.buffer && !model.rx);
     }
     for (unsigned i = 0; i < 2; ++i) {
         assert(nezha_camera_native_irq_next(owner, &event));
@@ -115,10 +116,13 @@ int main()
     assert(nezha_camera_native_irq_open(&reopened,&io,&io,&setup) && reopened==owner && attaches==1);
     assert(nezha_camera_native_irq_next(owner,&event) && !event.buffer_done);
     model.rx = 1u << 12; // Lost EOT on lane 0.
+    model.rdi = 1u << 24; // Illegal batch ID must remain a fatal event.
+    model.top = 1u << 16 | 1u << 2;
     handler(irq_context);
     assert(nezha_camera_native_irq_fault(owner) == 2 && !nezha_camera_native_irq_next(owner, &event));
     assert(nezha_camera_native_irq_stop(owner));
-    assert(nezha_camera_native_irq_failure(owner, &event) && event.rx_irq == (1u << 12));
+    assert(nezha_camera_native_irq_failure(owner, &event) && event.rx_irq == (1u << 12) &&
+        event.rdi0_irq == (1u << 24) && !model.top && !model.rx && !model.rdi);
     reopened=nullptr;
     assert(!nezha_camera_native_irq_open(&reopened,&io,&io,&setup) && !reopened && attaches==1);
     const unsigned reads = model.reads, writes = model.writes;

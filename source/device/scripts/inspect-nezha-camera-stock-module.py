@@ -131,11 +131,29 @@ class StockModule:
                     settings = self.symbol(settings_id)
                     require(shape == 8 and len(settings) == settings_count * 60 and settings_count > 0 and
                             u32(settings, 0) == 56, "Unexpected mode settings reference")
+                    # Parser6.0.7 ResolutionData::Load maps these optional
+                    # arrays to native +0x100/+0x118. The matching HAL's
+                    # CreateAndSubmitCommand brackets Res with types24/25.
+                    adjacent = {}
+                    for name, position in (('pre_resolution', 160), ('post_resolution', 168)):
+                        present, descriptor = struct.unpack_from('<II', record, position)
+                        require(present in (0, 1), 'Unexpected adjacent mode settings flag')
+                        count, target = 0, None
+                        if present:
+                            descriptor_bytes = self.symbol(descriptor)
+                            require(len(descriptor_bytes) == 12, 'Unexpected adjacent mode settings descriptor')
+                            shape, count, target = struct.unpack('<III', descriptor_bytes)
+                            require(shape == 8 and count > 0 and
+                                    len(self.symbol(target)) == count * 60 and
+                                    len(list(self.settings(target))) == count,
+                                    'Unexpected adjacent mode settings array')
+                        adjacent[name + '_settings_symbol'] = target
+                        adjacent[name + '_settings_count'] = count
                     modes.append(dict(index=len(modes), fps=fps, lanes=lanes, c_phy=bool(three_phase),
                                       settle_ns=settle, output_pixel_clock_hz=output_pixel_clock,
                                       data_rate_bps=output_pixel_clock * streams[0]["bits"] // lanes,
                                       streams=streams, settings_symbol=settings_id,
-                                      settings_count=settings_count))
+                                      settings_count=settings_count, **adjacent))
                     offset += size
             except (ValueError, struct.error):
                 continue
@@ -241,6 +259,9 @@ def main():
             require(0 <= args.mode < len(modes), "Requested mode is outside its module")
             mode = modes[args.mode]
             item["selected_settings"] = list(module.settings(mode["settings_symbol"]))
+            for name in ('pre_resolution', 'post_resolution'):
+                target = mode[name + '_settings_symbol']
+                item[name + '_settings'] = list(module.settings(target)) if target is not None else []
         if args.initialization:
             item['initialization'] = module.initialization()
         if args.module_selection and 'ovx10500u_wide' in module.name:

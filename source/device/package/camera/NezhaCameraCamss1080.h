@@ -57,10 +57,11 @@ struct NezhaCamera1080Events {
     bool buffer_done;
 };
 
-/* Take only RDI0 events owned by this stream. On BUF_DONE read TFE's
- * last-consumed address before acknowledging CSID, using the same address
- * units as WM_IMAGE_ADDR. The platform must preserve and diagnose other
- * IRQ status, including RX and unexpected RDI0 errors. */
+/* The caller exclusively owns RX0 and RDI0. Retain their full status for
+ * the IRQ consumer, then acknowledge those observed words and only RDI0's
+ * buffer completion. Other paths and buffer clients remain pending. On
+ * BUF_DONE read TFE's last-consumed address before acknowledging CSID,
+ * using the same address units as WM_IMAGE_ADDR. */
 bool nezha_camera1080_take_rdi0_events(const struct NezhaCameraRegisterIo *csid,
     const struct NezhaCameraRegisterIo *vfe, struct NezhaCamera1080Events *events);
 

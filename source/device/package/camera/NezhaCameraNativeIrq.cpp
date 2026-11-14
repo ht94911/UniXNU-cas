@@ -14,7 +14,7 @@ constexpr uint32_t RdiEvents = (1u << 23) | (1u << 12) | (1u << 9) | (1u << 4) |
 // The stock 1080 common v1 table also exposes informational lane and
 // line events. Those status bits can be set during a valid capture.
 constexpr uint32_t RxErrors = 0x25fff000u | 0x08000000u;
-constexpr uint32_t RdiErrors = 0x2c1c6001u | 0x12000000u | 0x180u;
+constexpr uint32_t RdiErrors = 0x2c1c6001u | 0x12000000u | 0x180u | (1u << 24);
 constexpr uint32_t masks[] = {TopMask, BufferMask, RxMask, RdiMask};
 constexpr uint32_t ResetDone = 1;
 }
