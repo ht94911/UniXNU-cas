@@ -18,7 +18,8 @@ struct NezhaCameraNativeCaptureRequest {
      * This path does not power a physical camera or consume a profile. */
     bool test_pattern;
     /* The camera-only trial uses the same three acknowledged sensor
-     * votes proven by 010. PHY/ARC continue to require readback. */
+     * votes proven by 010. PHY/ARC requests use their stock software
+     * ledger plus ACK; actual PHY and frame results qualify hardware. */
     bool isolated_sensor_votes;
     unsigned slot, bank, asid, cci_queue_words;
     const uint8_t *command_database;

@@ -96,6 +96,7 @@ enum NezhaCameraCamccStatus nezha_camera_interfaces_start(
     }
     for (unsigned i = 0; i < sizeof(gcc_interfaces) / sizeof(gcc_interfaces[0]); ++i) {
         const uint32_t offset = gcc_interfaces[i];
+        interfaces->failed_offset = offset;
         const uint32_t previous = gcc->read(gcc->context, offset);
         if (previous == UINT32_MAX) {
             return NezhaCameraCamccSource;
@@ -109,6 +110,7 @@ enum NezhaCameraCamccStatus nezha_camera_interfaces_start(
     }
     for (unsigned i = 0; i < sizeof(camcc_interfaces) / sizeof(camcc_interfaces[0]); ++i) {
         const uint32_t offset = camcc_interfaces[i];
+        interfaces->failed_offset = offset;
         const uint32_t previous = camcc->read(camcc->context, offset);
         if (previous == UINT32_MAX) {
             return NezhaCameraCamccSource;
@@ -122,6 +124,7 @@ enum NezhaCameraCamccStatus nezha_camera_interfaces_start(
         }
     }
     interfaces->ready = true;
+    interfaces->failed_offset = 0;
     return NezhaCameraCamccOk;
 }
 

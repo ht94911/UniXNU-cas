@@ -109,7 +109,10 @@ int sm8850_gcc_update(Sm8850Resources *r,uint32_t offset,uint32_t allowed,uint32
     if (!r || (offset&3) || !mask || (mask&~allowed) || (value&~mask)) return Sm8850Invalid;
     uint32_t old,got;
     if (rd(r,2,offset,&old) || wr(r,2,offset,(old&~mask)|value) || fence(r) || rd(r,2,offset,&got)) return Sm8850Io;
-    return got==((old&~mask)|value) ? Sm8850Okay:Sm8850Conflict;
+    /* CBCR CLK_OFF/FSM fields are hardware status and may change as the
+     * request takes effect. The transaction only owns mask; its old
+     * read-only status cannot be a required post-write value. */
+    return (got&mask)==value ? Sm8850Okay:Sm8850Conflict;
 }
 int sm8850_smem_trylock(Sm8850Resources *r,uint32_t owner) {
     if (!owner || owner==UINT32_MAX) return Sm8850Invalid;

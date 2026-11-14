@@ -8,7 +8,7 @@ enum {
     AppsDrvId = 0x40300, AppsConfig = 0x800c8104u,
     TcsOffset = 0xd00, CameraTcs = 2, TcsBit = 1 << CameraTcs,
     CommandWrite = 1 << 16, CommandAcknowledged = (1 << 16) | (1 << 8),
-    VrmVoltage = 0, VrmEnable = 4, VrmVoltageMask = 0x1fff, VrmEnableMask = 1,
+    VrmVoltage = 0, VrmEnable = 4, VrmMode = 8, VrmVoltageMask = 0x1fff, VrmEnableMask = 1,
     FirstPhy = 3,
 };
 
@@ -398,15 +398,72 @@ bool nezha_camera_rpmh_init_capture(struct NezhaCameraRpmh *owner,
 
 bool nezha_camera_rpmh_acquire_phy(struct NezhaCameraRpmh *owner, enum NezhaCameraPhyRail rail)
 {
+    if (!owner || !owner->capture_resources || (unsigned)rail >= 2 || owner->unsettled) return false;
+    struct NezhaCameraPhyRequest *req = &owner->phy[rail];
     const unsigned index = FirstPhy + (unsigned)rail;
-    return owner != NULL && owner->capture_resources && (unsigned)rail < 2 &&
-        acquire_vrm(owner, index, rail_profile[index].requested_mv);
+    const uint32_t address = owner->rail[index].address;
+    /* Actual csiphy0 DT loads: L1D 14660uA, L3I 151020uA. The stock
+     * pmic7-ldo mode table maps DT2/DT3 to VRM4/VRM5, with 30000uA
+     * threshold. Set mode and voltage before enable, as stock reorder. */
+    unsigned mode = rail == NezhaCameraPhy1p2 ? 4u : 5u;
+    unsigned millivolts = rail_profile[index].requested_mv;
+    if (req->voltage_changed || req->mode_changed || req->enable_changed ||
+        (req->millivolts && (req->millivolts < rail_profile[index].min_mv ||
+                            req->millivolts > rail_profile[index].max_mv))) {
+        owner->status = NezhaCameraRpmhReadback;
+        return false;
+    }
+    req->original_mv = req->millivolts;
+    req->original_mode = req->mode;
+    req->original_on = req->enabled;
+    if (req->enabled && req->millivolts > millivolts) millivolts = req->millivolts;
+    if (req->enabled && req->mode > mode) mode = req->mode;
+    /* Same-module rpmh-regulator.ko getters read req+0x15c/0x160.
+     * camera014's zero RSC response after ACK is not this request. Keep
+     * a partially submitted request owned until its teardown ACKs. */
+    if (req->mode != mode) {
+        req->mode_changed = true;
+        if (!transact(owner, address + VrmMode, mode, NULL)) return false;
+        req->mode = mode;
+    }
+    if (req->millivolts != millivolts) {
+        req->voltage_changed = true;
+        if (!transact(owner, address + VrmVoltage, millivolts, NULL)) return false;
+        req->millivolts = millivolts;
+    }
+    if (!req->enabled) {
+        req->enable_changed = true;
+        if (!transact(owner, address + VrmEnable, 1, NULL)) return false;
+        req->enabled = true;
+    }
+    owner->status = NezhaCameraRpmhOk;
+    return true;
 }
 
 bool nezha_camera_rpmh_release_phy(struct NezhaCameraRpmh *owner, enum NezhaCameraPhyRail rail)
 {
-    return owner != NULL && owner->capture_resources && (unsigned)rail < 2 &&
-        release_vrm(owner, FirstPhy + (unsigned)rail);
+    if (!owner || !owner->capture_resources || (unsigned)rail >= 2) return false;
+    struct NezhaCameraPhyRequest *req = &owner->phy[rail];
+    const uint32_t address = owner->rail[FirstPhy + (unsigned)rail].address;
+    if (!req->voltage_changed && !req->mode_changed && !req->enable_changed) return true;
+    if (owner->unsettled) return false;
+    /* Disable first. A disabled stock VRM retains its programmed mode
+     * and voltage; absent original setpoints are not zero-voltage writes. */
+    if (req->enable_changed) {
+        if (!transact(owner, address + VrmEnable, req->original_on ? 1u : 0u, NULL)) return false;
+        req->enabled = req->original_on;
+    }
+    if (req->voltage_changed && req->original_mv && req->millivolts != req->original_mv) {
+        if (!transact(owner, address + VrmVoltage, req->original_mv, NULL)) return false;
+        req->millivolts = req->original_mv;
+    }
+    if (req->mode_changed && req->original_mode && req->mode != req->original_mode) {
+        if (!transact(owner, address + VrmMode, req->original_mode, NULL)) return false;
+        req->mode = req->original_mode;
+    }
+    req->voltage_changed = req->mode_changed = req->enable_changed = false;
+    owner->status = NezhaCameraRpmhOk;
+    return true;
 }
 
 bool nezha_camera_rpmh_acquire_arc(struct NezhaCameraRpmh *owner,

@@ -61,6 +61,8 @@ static void capture_wait(void *context, unsigned milliseconds)
     assert(milliseconds == 1);
 }
 
+static uint32_t gcc_failure;
+
 static uint32_t gcc_read(void *context, uint32_t offset)
 {
     uint32_t *registers = context;
@@ -72,6 +74,7 @@ static uint32_t gcc_read(void *context, uint32_t offset)
 static bool gcc_update(void *context, uint32_t offset, bool enabled)
 {
     uint32_t *registers = context;
+    if (offset == gcc_failure) return false;
     registers[offset / 4] = (gcc_read(context, offset) & ~1u) | (enabled ? 1u : 0u);
     return true;
 }
@@ -317,6 +320,12 @@ int main(void)
     assert(nezha_camera_interfaces_stop(&gcc, &clock_io, &interfaces, true) == NezhaCameraCamccOk);
     assert(gcc_words[0x26004 / 4] == 0x101 && gcc_words[0x26014 / 4] == 2);
     assert(clocks.word[0x21398 / 4] == 1 && (clocks.word[0x21390 / 4] & 1u) == 0);
+
+    gcc_failure = 0x2603c;
+    assert(nezha_camera_interfaces_start(&gcc, &clock_io, &interfaces) == NezhaCameraCamccSource);
+    assert(interfaces.failed_offset == gcc_failure && !interfaces.ready && interfaces.gcc_owned);
+    gcc_failure = 0;
+    assert(nezha_camera_interfaces_stop(&gcc, &clock_io, &interfaces, true) == NezhaCameraCamccOk);
 
     puts("Camera CAMCC owns only C2 gates and software roots, with PLL lock and stop checks");
 }

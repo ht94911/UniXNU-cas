@@ -31,6 +31,14 @@ struct NezhaCameraVrmState {
 enum NezhaCameraPhyRail { NezhaCameraPhy1p2, NezhaCameraPhy0p9 };
 enum NezhaCameraArcRail { NezhaCameraArcMmCx, NezhaCameraArcMxC, NezhaCameraArcMx };
 
+/* A PHY consumer's software request, matching stock VRM get_voltage and
+ * is_enabled. Zero initially means this consumer has no local vote; it
+ * does not describe the voltage held by remote RPMh masters. */
+struct NezhaCameraPhyRequest {
+    unsigned millivolts, mode, original_mv, original_mode;
+    bool enabled, original_on, voltage_changed, mode_changed, enable_changed;
+};
+
 struct NezhaCameraArcState {
     QcomRpmhResource resource;
     /* This APPS consumer's acknowledged request, as in the stock
@@ -57,6 +65,7 @@ struct NezhaCameraRpmh {
     void *observer_context;
     QcomRscLayout layout;
     struct NezhaCameraVrmState rail[5];
+    struct NezhaCameraPhyRequest phy[2];
     struct NezhaCameraArcState arc[3];
     enum NezhaCameraRpmhStatus status;
     uint32_t last_address, last_value, last_irq, last_tcs_status, last_command_status, last_reply;

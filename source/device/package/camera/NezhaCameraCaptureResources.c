@@ -87,7 +87,12 @@ bool nezha_camera_capture_resources_start(const struct NezhaCameraCaptureResourc
     state->detail = 0;
     state->step = NezhaResourcesInterface;
     state->status = nezha_camera_interfaces_start(io->gcc, io->camcc, &state->interfaces);
-    if (state->status) return false;
+    if (state->status) {
+        /* The existing resource-detail journal word identifies the
+         * actual first failed interface register, before cleanup. */
+        state->detail = state->interfaces.failed_offset;
+        return false;
+    }
     state->step = NezhaResourcesTop;
     state->status = nezha_camera_camcc_acquire_top(io->camcc, &state->top);
     if (state->status) return false;

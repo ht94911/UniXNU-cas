@@ -13,7 +13,8 @@ static const uint32_t address[] = {0x40010, 0x40000, 0x44040, 0x44050, 0x44060, 
 
 struct Rsc {
     uint32_t reg[0x1300 / 4];
-    uint32_t mv[8], on[5];
+    uint32_t mv[8], on[5], mode[5];
+    uint32_t vote_address[128], vote_value[128];
     unsigned reads, votes, waits;
     uint32_t failed_offset;
     bool timeout, locked, foreign_irq, zero_readback;
@@ -40,11 +41,13 @@ static void write_rsc(void *context, uint32_t offset, uint32_t value)
         const uint32_t target = rsc->reg[(Tcs + Address) / 4];
         const uint32_t message = rsc->reg[(Tcs + Command) / 4];
         unsigned rail = 0;
-        while (rail < 8 && target != address[rail] && (rail >= 5 || target != address[rail] + 4)) {
+        while (rail < 8 && target != address[rail] &&
+               (rail >= 5 || (target != address[rail] + 4 && target != address[rail] + 8))) {
             ++rail;
         }
         assert(rail < 8 && (message == 0x108 || message == 0x10108));
-        uint32_t *field = target == address[rail] ? &rsc->mv[rail] : &rsc->on[rail];
+        uint32_t *field = target == address[rail] ? &rsc->mv[rail] :
+            target == address[rail] + 4 ? &rsc->on[rail] : &rsc->mode[rail];
         if (rsc->timeout) {
             rsc->reg[(Tcs + Status) / 4] = 0;
             return;
@@ -53,6 +56,9 @@ static void write_rsc(void *context, uint32_t offset, uint32_t value)
             ++rsc->reads;
             rsc->reg[(Tcs + Reply) / 4] = rsc->zero_readback ? 0 : *field;
         } else {
+            assert(rsc->votes < 128);
+            rsc->vote_address[rsc->votes] = target;
+            rsc->vote_value[rsc->votes] = rsc->reg[(Tcs + Data) / 4];
             ++rsc->votes;
             *field = rsc->reg[(Tcs + Data) / 4];
         }
@@ -162,6 +168,34 @@ int main(void)
     rsc.reg[(Tcs + 0x2c) / 4] = 0;
     assert(nezha_camera_rpmh_init(&owner, &io, db, sizeof(db)));
     assert(nezha_camera_rpmh_init_capture(&owner, db, sizeof(db)));
+    const unsigned before_phy_reads = rsc.reads, before_phy_votes = rsc.votes;
+    assert(nezha_camera_rpmh_acquire_phy(&owner, NezhaCameraPhy1p2));
+    assert(owner.phy[0].millivolts == 1200 && owner.phy[0].enabled && owner.phy[0].mode == 4);
+    assert(rsc.reads == before_phy_reads && rsc.votes == before_phy_votes + 3);
+    assert(rsc.vote_address[before_phy_votes] == address[3] + 8 && rsc.vote_value[before_phy_votes] == 4);
+    assert(rsc.vote_address[before_phy_votes + 1] == address[3] && rsc.vote_value[before_phy_votes + 1] == 1200);
+    assert(rsc.vote_address[before_phy_votes + 2] == address[3] + 4 && rsc.vote_value[before_phy_votes + 2] == 1);
+    assert(nezha_camera_rpmh_release_phy(&owner, NezhaCameraPhy1p2));
+    assert(!owner.phy[0].enabled && !owner.phy[0].mode_changed && !owner.phy[0].voltage_changed &&
+        !owner.phy[0].enable_changed && rsc.on[3] == 0 && rsc.votes == before_phy_votes + 4);
+    assert(rsc.vote_address[before_phy_votes + 3] == address[3] + 4 && rsc.vote_value[before_phy_votes + 3] == 0);
+    const unsigned before_phy0p9 = rsc.votes;
+    assert(nezha_camera_rpmh_acquire_phy(&owner, NezhaCameraPhy0p9));
+    assert(owner.phy[1].millivolts == 880 && owner.phy[1].enabled && owner.phy[1].mode == 5);
+    assert(nezha_camera_rpmh_release_phy(&owner, NezhaCameraPhy0p9));
+    assert(rsc.votes == before_phy0p9 + 4 && rsc.reads == before_phy_reads);
+    const unsigned before_phy_repeat = rsc.votes;
+    assert(nezha_camera_rpmh_acquire_phy(&owner, NezhaCameraPhy1p2));
+    assert(rsc.votes == before_phy_repeat + 1); /* programmed disabled setpoints are retained */
+    assert(nezha_camera_rpmh_release_phy(&owner, NezhaCameraPhy1p2) && rsc.votes == before_phy_repeat + 2);
+    owner.phy[0].enabled = true;
+    owner.phy[0].millivolts = 1256;
+    owner.phy[0].mode = 5;
+    const unsigned before_phy_borrow = rsc.votes;
+    assert(nezha_camera_rpmh_acquire_phy(&owner, NezhaCameraPhy1p2));
+    assert(owner.phy[0].millivolts == 1256 && owner.phy[0].mode == 5 && rsc.votes == before_phy_borrow);
+    assert(nezha_camera_rpmh_release_phy(&owner, NezhaCameraPhy1p2) && owner.phy[0].enabled);
+    owner.phy[0].enabled = false;
     /* A pre-existing local requester floor is known from this owner's
      * acknowledged ledger. Remote aggregate/RSC data is not the ledger. */
     owner.arc[0].current_index = 1;
@@ -205,6 +239,18 @@ int main(void)
     assert(nezha_camera_rpmh_release_arc(&owner, NezhaCameraArcMmCx));
     assert(!owner.arc[0].changed && rsc.mv[5] == 0 && rsc.votes == before_zero_arc + 2 &&
         rsc.reads == before_zero_reads);
+    /* A failed disable retains the PHY lease and its acknowledged request;
+     * an unlatched TCS prevents cleanup from being fabricated. */
+    assert(nezha_camera_rpmh_acquire_phy(&owner, NezhaCameraPhy1p2));
+    rsc.failed_offset = Tcs + Address;
+    assert(!nezha_camera_rpmh_release_phy(&owner, NezhaCameraPhy1p2));
+    assert(owner.phy[0].enabled && owner.phy[0].enable_changed && owner.unsettled);
+    rsc.failed_offset = 0;
+    rsc.reg[(Tcs + Control) / 4] = rsc.reg[(Tcs + 0x2c) / 4] = rsc.reg[(Tcs + 0x20) / 4] = 0;
+    rsc.reg[IrqStatus / 4] &= ~Slot;
+    /* Fixture-only completion of the failed write permits a new instance. */
+    assert(nezha_camera_rpmh_init_guarded(&owner, &guarded_io, &guard, db, sizeof(db)));
+    assert(nezha_camera_rpmh_init_capture(&owner, db, sizeof(db)));
     rsc.failed_offset = Tcs + Address;
     assert(!nezha_camera_rpmh_acquire_arc(&owner, NezhaCameraArcMmCx, 64));
     assert(owner.arc[0].changed && owner.arc[0].current_index == 0 && owner.unsettled);
@@ -221,5 +267,5 @@ int main(void)
     assert(owner.unsettled && !rsc.locked && owner.status == NezhaCameraRpmhReadback);
     assert(!nezha_camera_rpmh_acquire(&owner, NezhaCameraMainVio, 1800));
     assert(rsc.reads == reads && rsc.votes == votes && rsc.waits == waits);
-    puts("Camera RPMh restores VRM state and acknowledged local ARC floors without treating an RSC response as voltage");
+    puts("Camera RPMh restores sensor VRM state and ARC/PHY requester ledgers; stock mode-before-enable, zero-readback and partial teardown preserved");
 }

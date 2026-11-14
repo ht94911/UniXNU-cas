@@ -119,6 +119,43 @@ def prepare(framework, work):
     }, indent=2) + '\n')
 
 
+def build_camera_userland(work, sdk):
+    """Compile the existing provider with the target frameworks and PAC ABI.
+
+    This output is retained for C4; the C2 image keeps cameracaptured
+    isolated and does not load or register this user-space library yet.
+    """
+    source = work / 'device/package/camera/userland'
+    output = work / 'camera-userland'
+    output.mkdir(exist_ok=False)
+    units = ['NezhaCameraPreview', 'NezhaCameraPixelBuffer', 'NezhaCameraGraphOutput',
+             'NezhaFigCapture24A446', 'NezhaCameraFigProvider']
+    flags = ['xcrun', '--sdk', 'iphoneos', 'clang', '-target', 'arm64e-apple-ios27.0',
+             '-isysroot', sdk, '-std=gnu11', '-O2', '-fblocks', '-fPIC',
+             '-Wall', '-Wextra', '-Werror', '-I', str(source)]
+    objects = []
+    for unit in [*units, 'upstream/hakios/camera_isp']:
+        obj = output / (Path(unit).name + '.o')
+        command = [*flags]
+        if unit.startswith('upstream/'):
+            command += ['-Wno-unused-parameter']
+        run([*command, '-c', source / (unit + '.c'), '-o', obj])
+        objects.append(obj)
+    library = output / 'libNezhaCamera27.dylib'
+    run([*flags, '-dynamiclib', '-install_name', '@rpath/libNezhaCamera27.dylib',
+         *objects, '-framework', 'CoreFoundation', '-framework', 'CoreMedia',
+         '-framework', 'CoreVideo', '-o', library])
+    run([*flags, '-S', source / 'NezhaCameraFigProvider.c', '-o', output / 'FigProvider.s'])
+    (output / 'sdk-qualified.json').write_text(json.dumps({
+        'compiler': run(['xcrun', '--sdk', 'iphoneos', 'clang', '--version']),
+        'sdk': sdk, 'target': 'arm64e-apple-ios27.0',
+        'actual_CF_CM_CV_headers': True, 'library_linked': True,
+        'library_sha256': sha(library), 'objects': {p.name: sha(p) for p in objects},
+        'system_camera_registered': False, 'physical_frames_verified': False,
+        'C2_library_loaded': False,
+    }, indent=2) + '\n')
+
+
 def build(framework, work):
     logs = work / 'logs'
     logs.mkdir(exist_ok=True)
@@ -145,6 +182,7 @@ def build(framework, work):
     (work / 'compiler-report.json').write_text(json.dumps(report, indent=2) + '\n')
     if probe:
         return probe
+    build_camera_userland(work, sdk)
     config = work / 'build.toml'
     # The archive recipe runs in the exact UniXNU target tree. The
     # environment carries the already hash-checked SM8850 common source.
@@ -197,6 +235,9 @@ def collect(framework, work, sealed):
         add(work / name, name)
     for path in sorted((work / 'logs').glob('*.log')):
         add(path, 'logs/' + path.name)
+    for path in sorted((work / 'camera-userland').glob('*')):
+        if path.is_file() and path.suffix in ('.json', '.o', '.s', '.dylib'):
+            add(path, 'camera-userland/' + path.name)
     for path in sorted((work.parent / 'setup-logs').glob('*.log')):
         add(path, 'setup/' + path.name)
     builds = list((work / 'out/nezha/ios-27.0.1-24A446-iphone14-4').glob('*'))

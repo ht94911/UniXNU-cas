@@ -48,6 +48,7 @@ struct NezhaCameraGccIo {
 
 struct NezhaCameraInterfaces {
     unsigned gcc_owned, camcc_owned;
+    uint32_t failed_offset;
     bool ready;
 };
 

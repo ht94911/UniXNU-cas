@@ -110,6 +110,9 @@ bool nezha_camera_native_rpmh_close(NezhaCameraRpmh **owner)
             return false;
         }
     }
+    for (const auto &phy : native.rpmh.phy) {
+        if (phy.voltage_changed || phy.mode_changed || phy.enable_changed) return false;
+    }
     if (!enter(&native)) {
         return false;
     }
