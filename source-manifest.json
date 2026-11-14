@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "purpose": "One explicitly selected native AudioQueue recording through the real system input",
+  "files": {
+    ".github/workflows/nezha-ios27-native.yml": "45d8b44b396491025eefad15fb10678d47759fe20e66ac9171c512d99546c5aa",
+    "ci/artifact-recipient.pem": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
+    "ci/artifacts.py": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
+    "ci/audio-record.py": "9c8b0f2fd278e2378cf999e72fd5d76932c9c63ffed8659f767c6d85acc7ecea",
+    "source/AudioRecord.mm": "4a230eb809c800d62ad60d8b9aea8dffbc25a5ca04d23929f0d06688f471401e",
+    "source/Info.plist": "5e3499be02e1440766ec9592654eea1d5e271f6cd1e00a81ed7e79a64b4da27d",
+    "source/QcomUserLogTransport.h": "6981a8a4863c80f0109de4e821c4ef2d72f75f143eb39f4a65a2abb2a4df4531",
+    "source/QcomUserLogWire.h": "965d7aeaa4043bcceb151cd6331ce50faefe21f57ce7c91cf781a52b4917397b",
+    "source/com.apple.iomfb_fdr_loader.plist": "8f01beb517e05f1e3e914e101d0c8d5a9baae59638c44b275462d209b92d2940",
+    "source/entitlements.plist": "a672c7d1c13b772d8a02b93e3f08622a8a176632bb1102ccbdfb655a2f2db2ec"
+  },
+  "source_only": true,
+  "phone_data": false,
+  "kernel_rebuild": false
+}

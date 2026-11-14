@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>CFBundleIdentifier</key><string>org.unixnu.nezha.audio-record</string>
+  <key>CFBundleName</key><string>UniXNU Audio Record Test</string>
+  <key>CFBundleExecutable</key><string>audio-record090</string>
+  <key>NSMicrophoneUsageDescription</key><string>Record at most two seconds of the selected audio driver test source.</string>
+</dict></plist>
