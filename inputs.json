@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Audio083 fixes082 noPCM capture clock setup with exact modern stock SWR dual-edgeSI3/6SSP/4kHz/DIV2/frame bank switch and stockVA micclock pairs. Reuses actual080/081 silent outputVI lifecycle before finitecapture to avoid last input shutdown Island; inputprobe firsterror preserved with original DMA quarantine/STOP-CLOSE-UNMAP, outerdriverfault terminal. Retain081 humanvalidated factorygain/fullPCM/HAL repeatedplayback. Nine productionASanUBSan suites, currentnativebinding/coldAssembly and actualshutdowncaller passed. Fullnativebuild necessary; no paging/USBSS/unknownTXversion writes. Only publicsources/CMScertificate; privateevidence andinputs local.",
+  "purpose": "Audio084 fixes083 unhealthy publication gating: finite inputfirsterror retained, clean inputshutdown leaveshealthy silent outputVI eligible fororiginal HAL throughcurrent rebindReady. Two once-only39-word exact stockTX/SWR/codec controlreadbacks, atactivation andbeforefirstmute, useexistingMICconsole/clockedlease/FIFO bounds, no PCMdataread/newtrace/testmux/reset. Retain083 actualIslandfix and081 verifiedfactorygain/HAL. Sevenproductionpublisher/9regressions/currentcoldAssemblypassed. Publicsource+certificate only; localprivateevidence neveruploaded.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "71d23b38cb19635c9ad01b78afe627ce8a686e5a",
+  "device_revision": "accb0c9f2e8290b05077c7230e0e32a9060dffb0",
   "soc_revision": "703d7b4bb00904b4a6e5d96f9e9bf72eec170f6b",
   "xcode": "26.6",
   "files": {
@@ -219,7 +219,7 @@
     "source/device/package/audio27/platform/AudioSmmu.h": "41401f1b97e3481c7e5cc3e02c47f926e91eec9fa34f4a48981a3fc3b723cddd",
     "source/device/package/audio27/upstream/ShengGpr.c": "c4f498f07e2cb601b593e64a8d32474a21d6a87375618e1a67b99d52c5d3160e",
     "source/device/package/audio27/platform/SoundWire.h": "4a7766b35144477400821afca1a9b264688f969353f8818dd99ef05ad9e677d8",
-    ".github/workflows/nezha-ios27-native.yml": "29e4acfe15a08d269193c7b07ef7a95cefab9be7fdd1287f1a6ef06b54386eff",
+    ".github/workflows/nezha-ios27-native.yml": "a82badef537bc0021d4d207d6ef21c803d95f1121f3a1fe7bd4be5c34321c91f",
     "source/device/package/audio27/upstream/ShengGpr.h": "a274dded1f4d1e2709b9f966759bcb1f57d12747ee0f57743dea1fa97d95d23e",
     "source/device/package/audio27/os/NezhaAudioNative.h": "12517b0d7145fc498ae371fbd3ba47cd9415468d655989c08090010de79cc2ba",
     "source/device/package/audio27/upstream/ShengAudioReach.h": "b135177a5feb3e24e0d8a6aabb301600e2c37078b970a09ada6e8eb7bb6a5b98",
@@ -245,7 +245,7 @@
     "source/device/package/audio27/upstream/ShengAudioReach.c": "9b198e58272d325bad48e68633f59c8cc5bdc97033d2a485abb6691a402b6a8d",
     "source/device/package/audio27/platform/Tas25xxTables.h": "194b22f95f786a746e284868d4fcd292da52cfd52d8e3987f2726082f4712b02",
     "source/device/package/audio27/platform/GeniTasBus.h": "a2cba9aa9fbfec01112142b4108b795a5593417602b9d297003b3dc7e64cd374",
-    "source/device/package/audio27/os/NezhaAudioNative.cpp": "3c65012562d014bb62157bfe9618bfb705169f365fd0bb8157d0ae3e9693ac4e",
+    "source/device/package/audio27/os/NezhaAudioNative.cpp": "309086fa03b34ff75a88ca343ede985ec45e95e985e313f878c14e20a6df9cc9",
     "source/device/package/audio27/upstream/LICENSE.PandoraAcdb": "f984c0a808afdeb2e050ceb47bc24d764156daa29b5dfde10fb9afec2f83f351",
     "source/device/package/audio27/upstream/QcomSmem.c": "4e9eb0ee22458dad30e1fcb7edb74a9d762222aff0623a6d5b85fb4a6e08bd03",
     "source/device/package/audio27/platform/Tas25xxEndpoint.c": "a108ad9b9e46b5a0ac1d772699e2ef70985fb4abba855d3ff517c3adc3e03549",
@@ -266,7 +266,7 @@
     "source/device/package/audio27/platform/AdspLink.c": "7fda7bedfcddb854b91328144e6b3092d2db0a039b118419248d530164fd171e",
     "source/device/package/audio27/core/AudioProtocol.h": "cdd0adfdf372cb6efc5a69f3066f7976f47bf3287884c42d5f7f9709856c17ba",
     "source/device/package/audio27/platform/Tas25xxProgram.c": "f50be194ca696b36bc3df7767a12ad3ec392f531eba0c0df216dbae292f53968",
-    "source/device/package/audio27/platform/Wcd9395Capture.h": "3c62e3c27295bf456345ee22339e7dd5c98c7347fcdee04f8e52c9ced734cd72",
+    "source/device/package/audio27/platform/Wcd9395Capture.h": "6dfa43da306ca8c396249463bd03769842a02118e90766e037801e9d01e42929",
     "source/device/package/audio27/core/AudioProtocol.c": "d5474bef69ab8c3198a3713556cb3e08deb8613f901b831519ecf80c281f6466",
     "source/device/package/audio27/upstream/QcomRpmh.c": "679a55467e6ed4c7e75a8191f1d6da48637377088ef5e27879b1c99bc4a62314",
     "source/device/package/audio27/platform/AdspPower.c": "45f78822e84c6d602bfb4b32d3d937ec36187a90e1128250c0887db9a4600bf9",
@@ -280,7 +280,7 @@
     "source/device/package/audio27/platform/AudioSmmu.c": "9a0b40fb61392d11c7e61ab8015d1cbfa16d49e4892fc49f20be5e40c0aa274b",
     "source/device/package/audio27/core/AudioGraph.c": "9c7f7ca2385c29cd788d1d70b6bd7f0b725b529c7d7168990f9429d704afc465",
     "source/device/package/audio27/platform/AdspLink.h": "ee9d498a55641eabc0ff8b7d0496037bc3d860bd7a1fd3f8e0519db821ddca4d",
-    "source/device/package/audio27/platform/Wcd9395Capture.c": "6099d1b65495c1ef5042a73df5f381059c04cf4471f747c271af067cef490b93",
+    "source/device/package/audio27/platform/Wcd9395Capture.c": "1d41f2613ab20b7cd70c8f274b8c7744e3cf826b3826d4af73ac6f6515105d1d",
     "source/device/package/audio27/upstream/GeniI2c.h": "8028a263a7c7dd24f41ed1e58613442ff4fc9b25812a6e12ff48d2640d8b24a5",
     "source/device/package/audio27/os/NezhaAudioService.cpp": "1b167c549d41984635520d86e916c4552fc0c09f2240ba0b3c13cd23144a5884",
     "source/device/package/audio27/platform/AdspPower.h": "82dab228d396b3053aeac43b5d5ba7cbb28c19aa41cef88438392acfbbcb251b",
@@ -395,15 +395,15 @@
   "audio": {
     "base": "GPU023",
     "base_device_revision": "673cde869b7378658b470c4e6b2b9a1766b99411",
-    "source_revision": "71d23b38cb19635c9ad01b78afe627ce8a686e5a",
-    "source_only_revision": "71d23b38cb19635c9ad01b78afe627ce8a686e5a",
+    "source_revision": "accb0c9f2e8290b05077c7230e0e32a9060dffb0",
+    "source_only_revision": "accb0c9f2e8290b05077c7230e0e32a9060dffb0",
     "hardware_enabled": false,
     "resource_census_enabled": true,
     "private_inputs": false,
     "HAL_target": "arm64e-apple-ios27.0",
     "shared_resource_owner": "703d7b4bb00904b4a6e5d96f9e9bf72eec170f6b",
     "private_input_slot_bytes": 35651584,
-    "previous_audio_behavior_source": "8fd36cec31fc11092f418bd30d434020f4768b23",
+    "previous_audio_behavior_source": "71d23b38cb19635c9ad01b78afe627ce8a686e5a",
     "base_native_run": 42401029411,
     "base_Metal_revision": "eb59f022a326d03330d398b3c1dbcb6f0aeb633f",
     "diagnostic_glink_delay_ms": 20000,
@@ -574,7 +574,7 @@
       "patch_sha256": "916c930f4b6b2e7515329bafc8d2ab52ba014d4dacbc8c706e8cc5d603ff5a32",
       "HAL_and_hardware_source_unchanged": true
     },
-    "parent_candidate": "audio081",
+    "parent_candidate": "audio083",
     "playback_endpoint_trace_accounting": {
       "existing_TAS_owner_counter": true,
       "graphs": [
@@ -648,6 +648,10 @@
     "VA_swr_clock_pairs": true,
     "unpublished_capture_fault_isolated": true,
     "cold_capture_silent_output_VI": true,
-    "outer_capture_fault_terminal": true
+    "outer_capture_fault_terminal": true,
+    "healthy_output_publication_after_failed_input": true,
+    "MIC_registers_before_first_mute": true,
+    "MIC_readback_words": 39,
+    "MIC_readback_phases": 2
   }
 }

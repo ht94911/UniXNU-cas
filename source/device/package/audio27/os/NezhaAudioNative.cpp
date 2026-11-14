@@ -47,6 +47,7 @@ void run(void *v,wait_result_t) {
     auto *d=static_cast<NaDriver *>(v);thread_set_thread_name(current_thread(),"nezha-audio27");
     uint32_t lastStage=~0u,lastTasPhase=~0u,lastTasIndex=~0u,pilQueries=0;uint64_t lastOutput=0,lastInput=0,nextPeriods=0;
     uint32_t lastMicGraph=~0u,lastMicStage=~0u,lastMicIndex=~0u;
+    uint32_t lastMicRegisters=0;
     int lastMicError=0,lastMicCleanup=0;
     int lastError=0;bool service=false,publicationFailed=false;
     char crashBaseline[161]={0},crashMessage[161]={0};
@@ -133,6 +134,18 @@ void run(void *v,wait_result_t) {
         // control probe, run after the proxy poll reaches StopMain and before
         // the next poll issues PAS6. No audio gate is held across the SMCs.
         na_native_pil_preflight(d->adsp,&pilQueries);
+        for (unsigned phase=0;phase<2;++phase) if ((d->microphone.registers_done&~lastMicRegisters)&(1u<<phase)) {
+            char line[512];size_t used=0;
+            for (unsigned i=0;i<d->microphone.registers_valid[phase];++i) {
+                int length=snprintf(line+used,sizeof line-used,"%s%x",i ? ",":"",d->microphone.registers[phase][i]);
+                if (length<0 || (size_t)length>=sizeof line-used) break;
+                used+=(size_t)length;
+            }
+            line[used]=0;
+            printf("NEZHA AUDIO27 MIC REG: phase=%u valid=%u error=%d values=[%s]\n",
+                phase,d->microphone.registers_valid[phase],d->microphone.registers_error[phase],line);
+            lastMicRegisters|=1u<<phase;
+        }
         if (d->input_enabled && (lastMicGraph!=d->graph[1].stage ||
             lastMicStage!=d->microphone.stage || lastMicIndex!=d->microphone.index ||
             lastMicError!=d->graph[1].error || lastMicCleanup!=d->graph[1].cleanup_error)) {
@@ -164,8 +177,11 @@ void run(void *v,wait_result_t) {
                 d->runtime.probe.state,d->runtime.probe.frames,d->runtime.probe.periods,d->runtime.probe.nonzero,d->runtime.probe.peak,d->runtime.probe.pcm_frames,d->runtime.probe.error);
             lastProbe=d->runtime.probe.state;
         }
+        /* A bounded, unpublished capture diagnostic owns its first failure.
+         * A failed probe may still leave the proven silent output/VI healthy.
+         * Publish that output after its maps settle; never promote input here. */
         if (!service && !publicationFailed && na_driver_ready(d) &&
-            (!captureFrames || d->runtime.probe.state==NaProbeComplete)) {
+            na_runtime_rebind_ready(&d->runtime)) {
             if (!classesReady) {
                 void *handle=OSMetaClass::preModLoad(g_kernel_kmod_info.name);
                 if (handle) {nezha_audio_service_static_init();classesReady=OSMetaClass::postModLoad(handle)==0;}

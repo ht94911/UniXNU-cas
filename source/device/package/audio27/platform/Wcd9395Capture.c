@@ -10,6 +10,33 @@
 #include <limits.h>
 typedef struct {uint16_t reg;uint8_t mask,value;uint32_t delay_ms;} WcdStep;
 #include "Wcd9395Fields.inc"
+static void capture_registers(NaWcdCapture *c,unsigned phase) {
+    if (phase>1 || (c->registers_done&(1u<<phase))) return;
+    c->registers_done|=1u<<phase;
+    /* Fifteen TX-master controls/status, eight TX-macro words, sixteen codec
+     * control readbacks. No FIFO DATA read, new mux, test source or reset. */
+    static const uint16_t master[]={0x4,0x104c,0x101c,0x105c,0x1090,
+        0x1224,0x1264,0x1228,0x1268,0x122c,0x1238,0x1278,0x5000,0x1200,0x124c};
+    static const uint16_t tx[]={0,4,0x110,0x114,0x500,0x504,0x530,0x900};
+    static const uint16_t codec[]={0x3022,0x300f,0x3127,0x3405,0x3408,0x3409,0x3410,0x3417,
+        0x3457,0x104,0x120,0x130,0x122,0x132,0x128,0x138};
+    uint32_t *out=c->registers[phase];unsigned count=0;
+    for (unsigned i=0;i<sizeof master/sizeof master[0];++i) {
+        out[count]=c->bus->io.read(c->bus->io.context,master[i]);
+        if (c->bus->io.error(c->bus->io.context)) {c->registers_error[phase]=NA_IO;return;}
+        c->registers_valid[phase]=++count;
+    }
+    for (unsigned i=0;i<sizeof tx/sizeof tx[0];++i) {
+        out[count]=c->tx.read_tx(c->tx.context,tx[i]);
+        if (c->tx.error(c->tx.context)) {c->registers_error[phase]=NA_IO;return;}
+        c->registers_valid[phase]=++count;
+    }
+    for (unsigned i=0;i<sizeof codec/sizeof codec[0];++i) {
+        uint8_t value=0;int r=na_swr_read(c->bus,codec[i],&value);
+        if (r) {c->registers_error[phase]=r;return;}
+        out[count]=value;c->registers_valid[phase]=++count;
+    }
+}
 static int tx_update(NaWcdCapture *c,uint32_t reg,uint32_t mask,uint32_t value) {
     uint32_t old=c->tx.read_tx(c->tx.context,reg);
     if (c->tx.error(c->tx.context)) return NA_IO;
@@ -21,6 +48,7 @@ static uint16_t mic_reg(const NaWcdCapture *c) {
 }
 int na_wcd_capture_mute(NaWcdCapture *c) {
     if (!c || !c->bus) return NA_ARGUMENT;
+    if (c->active) capture_registers(c,1);
     int r=tx_update(c,0x500,0x10,0x10);
     if (!r) {c->muted=1;c->active=0;}return r;
 }
@@ -114,7 +142,7 @@ int na_wcd_capture_activate(NaWcdCapture *c,uint64_t now) {
     if (!c || !c->prepared || c->error) return c && c->error ? c->error:NA_OWNERSHIP;
     if (now<c->wait_until) return NA_PENDING;
     int r=tx_update(c,0x500,0x10,0);if (r) return failed(c,r);
-    c->muted=0;c->active=1;return NA_OK;
+    c->muted=0;c->active=1;capture_registers(c,0);return NA_OK;
 }
 int na_wcd_capture_shutdown(NaWcdCapture *c,int quiescent) {
     if (!c) return NA_ARGUMENT;

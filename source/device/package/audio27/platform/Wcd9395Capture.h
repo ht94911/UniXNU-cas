@@ -9,12 +9,17 @@ typedef struct {
     void *context;uint32_t (*read_tx)(void *,uint32_t);void (*write_tx)(void *,uint32_t,uint32_t);
     int (*error)(void *);
 } NaTxIo;
+#define NA_MIC_CAPTURE_REG_WORDS 39u
 typedef struct {
     NaSwr *bus;NaTxIo tx;uint32_t stage,index,muted,prepared,active;
     uint64_t wait_until,deadline;uint8_t micbias,adc_gain,version;
     const uint64_t *trace_wait_us;
     uint64_t trace_base_us;
     int error;
+    /* Existing MIC console records copy each phase once. Values are captured
+     * while its original TX/SWR lease is powered, before stop changes them. */
+    uint32_t registers[2][NA_MIC_CAPTURE_REG_WORDS],registers_done,registers_valid[2];
+    int registers_error[2];
 } NaWcdCapture;
 /* ADC2 <- AMIC1, slave DP1 channel2 -> master DP2 channel3 -> SWR_MIC2 ->
  * TX DEC2, 48k/S16/mono. micbias is resolved from the actual board supply path;
