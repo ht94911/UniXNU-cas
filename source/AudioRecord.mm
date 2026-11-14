@@ -5,13 +5,15 @@
 #include <CoreFoundation/CoreFoundation.h>
 #include <IOKit/IOKitLib.h>
 #include <os/log.h>
+#include <fcntl.h>
 #include <signal.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <sys/sysctl.h>
 #include <time.h>
 #include <unistd.h>
 #include <zlib.h>
-#include "QcomUserLogTransport.h"
 
 static constexpr uint32_t rate = 48000, limit = 2 * rate;
 static int16_t pcm[limit];
@@ -21,6 +23,10 @@ static uint64_t queue_start_ms, queue_stop_ms;
 static OSStatus callback_error;
 static AudioQueueRef queue;
 static bool collecting;
+static FILE *result_file;
+static char boot_uuid[64];
+static constexpr const char *result_path = "/private/var/mobile/Library/Logs/audio-record090-result.jsonl";
+static constexpr const char *sample_path = "/private/var/mobile/Library/Logs/audio-record090.wav.gz";
 
 static uint64_t uptime_ms(void)
 {
@@ -39,7 +45,15 @@ static void report(const char *event, int value)
         peak, nonzero, (unsigned long long)squares, (int)callback_error,
         (unsigned long long)queue_start_ms, (unsigned long long)queue_stop_ms);
     os_log(OS_LOG_DEFAULT, "%{public}s", text);
-    (void)QcomUserLog::status(text);
+    if (result_file) {
+        fprintf(result_file, "{\"event\":\"%s\",\"value\":%d,\"boot_uuid\":\"%s\","
+            "\"uptime_ms\":%llu,\"frames\":%u,\"callbacks\":%u,\"peak\":%u,\"nonzero\":%u,"
+            "\"squares\":%llu,\"callback_error\":%d,\"start_ms\":%llu,\"stop_ms\":%llu}\n",
+            event, value, boot_uuid, (unsigned long long)uptime_ms(), frames, callbacks,
+            peak, nonzero, (unsigned long long)squares, (int)callback_error,
+            (unsigned long long)queue_start_ms, (unsigned long long)queue_stop_ms);
+        fflush(result_file);
+    }
 }
 
 static void hard_timeout(int signal_number)
@@ -91,21 +105,18 @@ static void received(void *, AudioQueueRef aq, AudioQueueBufferRef buffer,
 
 static bool wave_snapshot(void)
 {
-    static const char path[] = "/private/var/ngpu/audio-record090.wav.gz";
     // Standard mono S16LE RIFF. The helper runs only on the arm64e LE target.
     uint32_t header[11] = {
         0x46464952, 36 + frames * 2, 0x45564157, 0x20746d66, 16,
         0x00010001, rate, rate * 2, 0x00100002, 0x61746164, frames * 2
     };
-    gzFile file = gzopen(path, "wb1");
+    gzFile file = gzopen(sample_path, "wb1");
     if (!file) return false;
     int h = gzwrite(file, header, sizeof header);
     int n = gzwrite(file, pcm, frames * 2);
     int closed = gzclose(file);
     if (h != (int)sizeof header || n != (int)(frames * 2) || closed != Z_OK) return false;
-    bool sent = QcomUserLog::snapshot(path, 90);
-    if (sent) unlink(path);
-    return sent;
+    return true;
 }
 
 int main(void)
@@ -113,6 +124,12 @@ int main(void)
     if (geteuid() != 0 || !selected_payload()) return 0;
     signal(SIGALRM, hard_timeout);
     alarm(260);
+    size_t uuid_bytes = sizeof boot_uuid;
+    if (sysctlbyname("kern.bootsessionuuid", boot_uuid, &uuid_bytes, nullptr, 0)) return 1;
+    int fd = open(result_path, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW, 0600);
+    if (fd < 0) return 1;
+    result_file = fdopen(fd, "w");
+    if (!result_file) { close(fd); return 1; }
     // Fixed uptime lets the USB observer schedule the human-confirmed local
     // source before this request; no Wi-Fi or app interaction is needed.
     report("selected_wait_until_150s", 0);
@@ -138,7 +155,9 @@ int main(void)
             snprintf(text, sizeof text, "AU90 route type=%s uid=%s rate=%.0f",
                      port.portType.UTF8String, port.UID.UTF8String, session.sampleRate);
             os_log(OS_LOG_DEFAULT, "%{public}s", text);
-            (void)QcomUserLog::status(text);
+            fprintf(result_file, "{\"event\":\"route\",\"boot_uuid\":\"%s\",\"type\":\"%s\",\"sample_rate\":%.0f}\n",
+                    boot_uuid, port.portType.UTF8String, session.sampleRate);
+            fflush(result_file);
         }
         AudioStreamBasicDescription format = {};
         format.mSampleRate = rate;
@@ -189,6 +208,9 @@ int main(void)
         report("capture_finished", result);
         if (frames && !wave_snapshot()) { report("sample_export_failed", 1); result = 12; }
         report("helper_finished", result);
+        fsync(fileno(result_file));
+        fclose(result_file);
+        result_file = nullptr;
         alarm(0);
         return result;
     }

@@ -1,4 +1,4 @@
-"""Build one ordinary Network.framework cellular request and seal its outputs."""
+"""Build one selected native audio input client and seal its outputs."""
 from pathlib import Path
 import argparse
 import hashlib
@@ -48,7 +48,6 @@ try:
         "application-identifier": "org.unixnu.nezha.audio-record",
         "com.apple.private.security.no-container": True,
         "com.apple.private.tcc.allow": ["kTCCServiceMicrophone"],
-        "com.apple.security.exception.sysctl.read-write": ["debug.qcom_usb_userlog"],
     }
     assert plistlib.loads(entitlements.read_bytes()) == expected
     binary = args.output / "audio-record090"
@@ -105,7 +104,10 @@ try:
         "maximum_retained_PCM_frames": 96000, "rate": 48000, "channels": 1, "bits": 16,
         "requested_capture_seconds": 2, "queue_completion_timeout_seconds": 2,
         "selected_ADT_property": "nezha-audio-record", "selected_value": 90,
-        "fixed_request_uptime_seconds": 150, "global_TCC_configuration_changed": False,
+        "fixed_request_uptime_seconds": 150,
+        "result_Data_path": "/private/var/mobile/Library/Logs/audio-record090-result.jsonl",
+        "PCM_Data_path": "/private/var/mobile/Library/Logs/audio-record090.wav.gz",
+        "snapshot_transport": "existing Android readonly APFS over pinned Data", "global_TCC_configuration_changed": False,
         "private_data_uploaded": False, "native_kernel_rebuilt": False,
         "device_executed": False, "physical_capture_verified": False, "phone_operations": False,
     }
