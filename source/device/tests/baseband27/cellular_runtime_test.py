@@ -47,6 +47,8 @@ if sys.platform == "darwin":
     xpc.xpc_dictionary_get_count.restype = ctypes.c_size_t
     xpc.xpc_array_get_string.argtypes = [ctypes.c_void_p, ctypes.c_size_t]
     xpc.xpc_array_get_string.restype = ctypes.c_char_p
+    xpc.xpc_dictionary_get_bool.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+    xpc.xpc_dictionary_get_bool.restype = ctypes.c_bool
     xpc.xpc_release.argtypes = [ctypes.c_void_p]
     buffer = ctypes.create_string_buffer(merged)
     parsed = xpc.xpc_create_from_plist(buffer, len(merged))
@@ -56,6 +58,8 @@ if sys.platform == "darwin":
     job = xpc.xpc_dictionary_get_value(jobs, runtime.JOB_KEY.encode())
     arguments = xpc.xpc_dictionary_get_value(job, b"ProgramArguments")
     assert xpc.xpc_array_get_string(arguments, 0) == b"/usr/libexec/cellular-demand021"
+    assert xpc.xpc_dictionary_get_bool(job, b"LaunchOnlyOnce")
+    assert xpc.xpc_dictionary_get_bool(job, b"KeepAlive")
     xpc.xpc_release(parsed)
     with tempfile.TemporaryDirectory() as folder:
         path = Path(folder) / "launchd.plist"

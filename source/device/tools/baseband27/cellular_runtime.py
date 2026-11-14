@@ -16,7 +16,10 @@ JOB = {
     "Label": LABEL,
     "ProgramArguments": ["/usr/libexec/cellular-demand021"],
     "RunAtLoad": True,
-    "KeepAlive": False,
+    "LaunchOnlyOnce": True,
+    # The native initial launch condition schedules the job; LaunchOnlyOnce
+    # removes it after its first exit, including an unsuccessful request.
+    "KeepAlive": True,
     "UserName": "root",
     "LimitLoadToSessionType": "System",
     "ProcessType": "Background",
