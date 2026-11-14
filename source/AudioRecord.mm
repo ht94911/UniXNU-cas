@@ -17,6 +17,7 @@ static constexpr uint32_t rate = 48000, limit = 2 * rate;
 static int16_t pcm[limit];
 static uint32_t frames, callbacks, peak, nonzero;
 static uint64_t squares;
+static uint64_t queue_start_ms, queue_stop_ms;
 static OSStatus callback_error;
 static AudioQueueRef queue;
 static bool collecting;
@@ -33,9 +34,10 @@ static void report(const char *event, int value)
     char text[480];
     snprintf(text, sizeof text,
         "AU90 event=%s value=%d uptime_ms=%llu frames=%u callbacks=%u "
-        "peak=%u nonzero=%u squares=%llu callback_error=%d",
+        "peak=%u nonzero=%u squares=%llu callback_error=%d start_ms=%llu stop_ms=%llu",
         event, value, (unsigned long long)uptime_ms(), frames, callbacks,
-        peak, nonzero, (unsigned long long)squares, (int)callback_error);
+        peak, nonzero, (unsigned long long)squares, (int)callback_error,
+        (unsigned long long)queue_start_ms, (unsigned long long)queue_stop_ms);
     os_log(OS_LOG_DEFAULT, "%{public}s", text);
     (void)QcomUserLog::status(text);
 }
@@ -156,12 +158,15 @@ int main(void)
             if (status) { report("queue_buffer_failed", (int)status); result = 6; break; }
         }
         if (!result) {
+            report("queue_start_requested", 0);
             collecting = true;
+            queue_start_ms = uptime_ms();
             status = AudioQueueStart(queue, nullptr);
             if (status) { report("queue_start_failed", (int)status); result = 7; }
             else {
-                report("queue_started", 0);
-                uint64_t deadline = uptime_ms() + 2000;
+                // USB log delivery can wait on its FIFO. Defer it until Stop
+                // so it cannot extend the selected recording window.
+                uint64_t deadline = queue_start_ms + 2000;
                 while (frames < limit && !callback_error && uptime_ms() < deadline)
                     CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.025, true);
                 if (callback_error || frames != limit) result = 8;
@@ -169,6 +174,7 @@ int main(void)
         }
         collecting = false;
         if (queue) {
+            queue_stop_ms = uptime_ms();
             status = AudioQueueStop(queue, true);
             report("queue_stopped", (int)status);
             if (status) result = 9;
