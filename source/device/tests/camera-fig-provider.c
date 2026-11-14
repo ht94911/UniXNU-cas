@@ -212,8 +212,8 @@ CMTime CMClockMakeHostTimeFromSystemUnits(uint64_t time) { return (CMTime){(int6
 void CFDictionaryApplyFunction(CFDictionaryRef d,void (*apply)(const void *,const void *,void *),void *context)
 {for(unsigned i=0;i<d->count;++i)apply(d->keys[i],d->values[i],context);}
 CVImageBufferRef CMSampleBufferGetImageBuffer(CMSampleBufferRef sample) {return sample->image;}
-CFTypeRef CVBufferGetAttachment(CVImageBufferRef pixel,CFStringRef key,CVAttachmentMode *mode)
-{assert(!mode && same(key,CFSTR("MetadataDictionary")));return pixel->metadata;}
+CFTypeRef CVBufferCopyAttachment(CVImageBufferRef pixel,CFStringRef key,CVAttachmentMode *mode)
+{assert(!mode && same(key,CFSTR("MetadataDictionary")));return pixel->metadata?CFRetain(pixel->metadata):NULL;}
 CFTypeRef CMGetAttachment(CMSampleBufferRef sample,CFStringRef key,CMAttachmentMode *mode)
 {assert(!mode && same(key,CFSTR("MetadataDictionary")));return sample->metadata;}
 void CMSetAttachment(CMSampleBufferRef sample,CFStringRef key,CFTypeRef value,CMAttachmentMode mode)

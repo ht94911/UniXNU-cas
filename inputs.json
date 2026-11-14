@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "4cefaf2b7b208760bed02f84ae56974feb5f2bde",
+  "device_revision": "4c3f1d2cc25ebf2076a20efabca6443dedc1b5c7",
   "soc_revision": "3af99241822776cd8318b66f0e4093a4c8f20a2d",
   "xcode": "26.6",
   "files": {
@@ -323,7 +323,7 @@
     "source/device/package/camera/userland/NezhaCameraGraphOutput.h": "c1e87f82ab36945a3ea05591281f731fe139483f937bf8553129750dfa67ec3c",
     "source/device/package/camera/userland/NezhaFigCapture24A446.c": "2805a810d0dc4874bba35b682b3b1d3ccdf48e96b5ef7e125882e3a6fab3a850",
     "source/device/package/camera/userland/NezhaFigCapture24A446.h": "d31d3abe7761aa99f92eaab45357716c6d4c4372e5425658d2a7af80f3894212",
-    "source/device/package/camera/userland/NezhaCameraFigProvider.c": "4951815d80e7be6083555e2bde96d43a4ed16be7b72bb0fd5a5ddfc9814b5b18",
+    "source/device/package/camera/userland/NezhaCameraFigProvider.c": "c2abb0e449eb194a9921cce6598b5cad510be4ce53e83fd718ce2fe050db792f",
     "source/device/package/camera/userland/NezhaCameraFigProvider.h": "200a7ff1789334606562daaa060b8d78066e2878b8aa43698c4d7474eba5e918",
     "source/device/package/camera/userland/upstream/hakios/camera_isp.c": "74551f27b7579a4c11aaca764a7d1ff682e6b20de955a89e23ceadb9b749d915",
     "source/device/package/camera/userland/upstream/hakios/camera_isp.h": "4124e9493c2a8ce94f1e50c952c89795d83f3e8d7fe3ceaa838a86ef7f1eff9f",
@@ -348,7 +348,7 @@
     "source/device/scripts/check-nezha27-camera-service.py": "666d8f85f6c2c6f8cee9a09f8a0f24375591d2455e59fb746af18f3f3c3251b0",
     "source/device/tests/camera-device-backend.c": "1b717f9e8b3d7d8325118fb262b9ee4c005637a86876bd9ca6ea8feda4583d9a",
     "source/device/tests/camera-fig-api.c": "718a85f2ad62eaadbb8a8413eebbbd14ace8c297517a802af90fd9599f342404",
-    "source/device/tests/camera-fig-provider.c": "c1e4412ef9f03436e3ade0e131ddb17c2b00373bec666ecfa9b6eb347dd5a5f0",
+    "source/device/tests/camera-fig-provider.c": "f42deebb9ade3b6a30ad877b27698aa6cad8edbb82faad4b14c46119466e85eb",
     "source/device/tests/camera-graph-output.c": "8f354904ef8e47ed6dc7fedc51d7054c461a1bb0f4399222682e4dae194e0cee",
     "source/device/tests/camera-native-capture.cpp": "235bbba93e037764fb91d53bbd6209afe58c9ecfcea81c9d94a3e04cf648374c",
     "source/device/tests/camera-native-device.c": "81cef9984a35073c02a32c2399a756111415573d8709a9c40331bc11e0f9b5c0",
@@ -356,7 +356,7 @@
     "source/device/tests/camera-pixel-buffer.c": "66b9d6e3d1632ef0ec2120a72cdba21bed4b725a2254a8e598c6525ac7f2e9d0",
     "source/device/tests/camera-platform/CoreFoundation/CoreFoundation.h": "05ac21347bfd17e9d803a8d01f4e859e67c6c8799297859dad0585979116caa1",
     "source/device/tests/camera-platform/CoreMedia/CoreMedia.h": "259126657d083db821b0bd0aba3d9708a63a1cabf2b91c2875b3173d6b3a6446",
-    "source/device/tests/camera-platform/CoreVideo/CoreVideo.h": "015eb38bfe833eab761cd985340fb25123e3c7511bd5fd89cf8bc2c556ab5082",
+    "source/device/tests/camera-platform/CoreVideo/CoreVideo.h": "843fc5da3e5ed3cd2671b08085f37e8f0f8f22ef7273963c10e48d263ad185c7",
     "source/device/tests/camera-platform/kernel-fixture/IOKit/IOLib.h": "f311dfcfe5906e69fb60866e9a0ac7c14940e9af345767ebd55fd4f6ca072305",
     "source/device/tests/camera-platform/kernel-fixture/kern/clock.h": "ec6eec1d278dd9ab2d59e6aa30d5c4b0a50a9959344a6ba2e6833576aec747c7",
     "source/device/tests/camera-platform/kernel-fixture/kern/locks.h": "088b3ffde865676a1a2ded0535d8bdf0cea1ebad059ab853fe311872ea294b1f",
@@ -425,14 +425,14 @@
     "snapshot_scope": "listed headers and native implementation units only"
   },
   "camera": {
-    "source_revision": "4cefaf2b7b208760bed02f84ae56974feb5f2bde",
+    "source_revision": "4c3f1d2cc25ebf2076a20efabca6443dedc1b5c7",
     "device_base": "7435e49e46705d2bfcabe09487ff80a4821fd577",
     "mode_default": "disabled",
     "host_core_tests": 18,
     "private_camera_modes_uploaded": false,
     "failed_predecessor_run": 43298685064,
     "stock_module_bytes_uploaded": false,
-    "previous_native_run": 43625203503,
+    "previous_native_run": 43632634202,
     "optional_probe_mode": 5,
     "full_stock_profiles_uploaded": false,
     "local_profile_host_roundtrips": 4,
@@ -474,7 +474,7 @@
     "ARC_RSC_response_not_voltage": true,
     "camera013_actual_frames": 0,
     "camera013_Android_protection_release": true,
-    "previous_native_conclusion": "kernel camera archive failed for missing sys/vnode.h",
+    "previous_native_conclusion": "Only deprecated CVBufferGetAttachment rejected by actual SDK; XNU compilation not started",
     "native_vnode_IO_NDELAY": 16,
     "host_nonblocking_fixture_corrected": true,
     "actual_frames_verified": false,
@@ -495,7 +495,8 @@
     "stock_Qchannel_observe_then_force": true,
     "stock_Cpas_QDSS_XO_enabled": true,
     "first_Cpas_failed_values_retained": true,
-    "frame_metadata_at_sample_attachments": true
+    "frame_metadata_at_sample_attachments": true,
+    "supported_current_pixel_attachment_copy": true
   },
   "soc_previous_source": "5a71f9eb5724ff58eddf49f7f5baecc9f4233a7c",
   "userland_revision": "948715c429b092e18a82fa7fd851790124e071ed",

@@ -320,15 +320,17 @@ static NezhaFigStatus stream_attachments(NezhaFigObject o,NezhaFigSample sample,
      * timestamp, so this provider only accepts this image's dictionary. */
     CVImageBufferRef image=CMSampleBufferGetImageBuffer(sample);
     if (!image) return 0;
-    CFTypeRef own=CVBufferGetAttachment(image,CFSTR("MetadataDictionary"),NULL);
-    if (!own || CFGetTypeID(own)!=CFDictionaryGetTypeID()) return 0;
+    CFTypeRef own=CVBufferCopyAttachment(image,CFSTR("MetadataDictionary"),NULL);
+    if (!own) return 0;
+    if (CFGetTypeID(own)!=CFDictionaryGetTypeID()) { CFRelease(own);return 0; }
     CFTypeRef existing=CMGetAttachment(sample,CFSTR("MetadataDictionary"),NULL);
-    if (existing==own) return 0;
+    if (existing==own) { CFRelease(own);return 0; }
     CFMutableDictionaryRef merged=CFDictionaryCreateMutableCopy(NULL,0,
         existing && CFGetTypeID(existing)==CFDictionaryGetTypeID() ? existing:own);
-    if (!merged) return Unavailable;
+    if (!merged) { CFRelease(own);return Unavailable; }
     if (existing && CFGetTypeID(existing)==CFDictionaryGetTypeID())
         CFDictionaryApplyFunction(own,add_missing,merged);
+    CFRelease(own);
     CMSetAttachment(sample,CFSTR("MetadataDictionary"),merged,kCMAttachmentMode_ShouldPropagate);
     CFRelease(merged);
     return 0;
