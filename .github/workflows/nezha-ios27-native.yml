@@ -1,7 +1,7 @@
-name: nezha iPhone27 measured single camera model and signed provider
+name: nezha iPhone27 actual frame port and timestamp metadata
 on:
   push:
-    branches: [codex/ios27-camera019-model-20261115]
+    branches: [codex/ios27-camera022-metadata-20261115]
 permissions:
   contents: read
 concurrency:

@@ -1,7 +1,7 @@
 {
   "schema": 1,
-  "purpose": "Only build and sign the measured main camera model and system resource factory; reuse already qualified camera018 kernel separately",
-  "device_revision": "948715c429b092e18a82fa7fd851790124e071ed",
+  "purpose": "Compile only actual PortType and OriginalPresentationTimeStamp metadata in the measured main provider; reuse qualified camera021 kernel and model. No new frame source or manufactured exposure.",
+  "device_revision": "3a5bb6742e7a505aabb4c3a24f73189bfcc87727",
   "soc_revision": "3af99241822776cd8318b66f0e4093a4c8f20a2d",
   "files": {
     "source/device/package/camera/userland/NezhaCameraDeviceBackend.c": "ad586619e5f8695b987c175e9827aa717315466b783c978961c755d7a5524ece",
@@ -12,7 +12,7 @@
     "source/device/package/camera/userland/NezhaCameraFigProvider.h": "200a7ff1789334606562daaa060b8d78066e2878b8aa43698c4d7474eba5e918",
     "source/device/package/camera/userland/NezhaCameraFormats.c": "7074c95abad4fbc9f5e9182dd1bd7d2e73fd889ca949df7b472bd44615ba84c0",
     "source/device/package/camera/userland/NezhaCameraFormats.h": "8e23c3fbafab0b2c3659236b88dc676d3c48415da37d7f3cbd1d0c9fc0ae9e86",
-    "source/device/package/camera/userland/NezhaCameraGraphOutput.c": "8bf0028d152a42c29a0f060691dec3df1ee827b36a0420e4effa2fe47b51ba50",
+    "source/device/package/camera/userland/NezhaCameraGraphOutput.c": "d052a032bd060ca77ad0f3c02dc4e84e61bdda0758cf6789df91d5d7a96967ee",
     "source/device/package/camera/userland/NezhaCameraGraphOutput.h": "c1e87f82ab36945a3ea05591281f731fe139483f937bf8553129750dfa67ec3c",
     "source/device/package/camera/userland/NezhaCameraPixelBuffer.c": "f85531cc4a9c2dac433629e2c3869191ce6de2dba331ea60e4accd69d1003472",
     "source/device/package/camera/userland/NezhaCameraPixelBuffer.h": "931d021b118aef94dada5ebe4ee8c44172c89c8826d0e1dfcbbe21574a504141",
@@ -29,13 +29,13 @@
     "source/device/package/camera/userland/upstream/hakios/camera_isp.h": "4124e9493c2a8ce94f1e50c952c89795d83f3e8d7fe3ceaa838a86ef7f1eff9f",
     "source/device/package/camera/userland/upstream/hakios/hakios.camera.h": "97f80aa60adb7d2a43d93f3edfde294ba0c447586069cb81fa9ac58c789d6444",
     "source/device/scripts/make-nezha27-camera-model.py": "505d5742093c37f6ddacd7f34d70508ded7859f78bc8164d067336f3bc9124b2",
-    ".github/workflows/nezha-ios27-native.yml": "8ec796549525e070bca5066ecddacbb8f5a586246bc7b59bc19615e55e284f87"
+    ".github/workflows/nezha-ios27-native.yml": "72bb1ed6d1b3ebb72e0a5bfcea18cd174ccbcfb6108ec6e45593005d735199c1"
   },
   "private_inputs_uploaded": false,
   "kernel_build_required": false,
   "prior_native": {
-    "run": 43614014372,
-    "head": "6f98a943e71b51542a182caa28eb54c0fea66a07"
+    "run": 43625203503,
+    "head": "894d1ac78e8e2e42c769b442e5fb40d9f719483f"
   },
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
   "certificate_sha256": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",

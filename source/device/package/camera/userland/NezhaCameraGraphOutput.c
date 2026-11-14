@@ -83,6 +83,17 @@ CVReturn nezha_camera_graph_output_deliver(struct NezhaCameraGraphOutput *output
         CFRelease(pixel);
         return kCVReturnAllocationFailed;
     }
+    /* Original 24A446 CMCaptureCore keys, also required by HakiOS's
+     * still-output path: the real frame's sensor port and host time. */
+    CFDictionaryRef time = CMTimeCopyAsDictionary(CMClockMakeHostTimeFromSystemUnits(timestamp), NULL);
+    if (!time) {
+        CFRelease(attached);
+        CFRelease(pixel);
+        return kCVReturnAllocationFailed;
+    }
+    CFDictionarySetValue(attached, CFSTR("PortType"), CFSTR("PortTypeBack"));
+    CFDictionarySetValue(attached, CFSTR("OriginalPresentationTimeStamp"), time);
+    CFRelease(time);
     CVBufferSetAttachment(pixel, CFSTR("MetadataDictionary"), attached, kCVAttachmentMode_ShouldPropagate);
     CFRelease(attached);
     /* Keep the block alive if its callback synchronously stops/reconfigures
