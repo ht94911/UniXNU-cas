@@ -313,7 +313,7 @@
     "source/soc/patches/xnu-12377/native-smp-secondary.patch": "9d9164921da548a9f13ccbd6093c799583f54e590ef3d562288dcea9ba5a2774",
     "source/soc/patches/xnu-12377/sheng-platform-power.patch": "6e68dbcdac670624f2a9806a61fef42110bfe6586029b3f1a0acb068c3a23ec2",
     "source/soc/patches/xnu-12377/series": "bb95255800677aae6c7ba2742e892e0d40b4c34eb40816b58214c1393759bc1d",
-    ".github/workflows/nezha-ios27-native.yml": "cd7015a7d518e83ff63a045edcee8aa138e3b301a061dfd38ebcb7af5f094668",
+    ".github/workflows/nezha-ios27-native.yml": "b426bb34acd8d1997d13a7fb494b607ce7fb6d6325908e31409e8c709437cd13",
     "ci/native.py": "d497c52c25e103230e057fda15c234ef0a5d15c362bd0b9118fdbf2d11205f9e",
     "source/device/package/camera/userland/NezhaCameraPreview.c": "724435ef79b3ebe1b56cd21c6bbdb2e6312ef9a71e85d2f3adcbaf01e75b0429",
     "source/device/package/camera/userland/NezhaCameraPreview.h": "b3e588fe11c72cfd3bf01c2dafd454cea915c72863d91f4958ecdf38fe24726a",
