@@ -151,7 +151,7 @@ int main(void)
     const ArmSmmu4KContextConfig context = {.lower_tables = &plan.tables};
     const struct NezhaCameraOvxModeWrite standby = {.reg = 0x3514, .value = 0x7e};
     struct NezhaCameraMainMode mode = {0x4321, 640, 480, &standby, 1,
-                                      {NezhaCamera1080Cphy, 0, 3, {0, 1, 2}}};
+                                      {NezhaCamera1080Cphy, 0, 3, {0, 1, 2}, false}};
     struct NezhaCameraMainCapture capture = {0};
 
     assert(!nezha_camera_main_capture_start(&io, &mode, &plan, &context, 2, 1, 100, &capture));

@@ -9,6 +9,7 @@ struct Session {
     unsigned buffer_count;
     unsigned address_updates;
     uint32_t rx_config;
+    uint32_t rx_config1;
     bool vfe_enabled;
     bool rdi_started;
 };
@@ -20,6 +21,8 @@ static void write_csid(void *context, uint32_t offset, uint32_t value)
     ++session->writes;
     if (offset == 0x880) {
         session->rx_config = value;
+    } else if (offset == 0x884) {
+        session->rx_config1 = value;
     } else if (offset == 0x118) {
         assert(value == 0x100 && session->buffer_count == 2);
         ++session->address_updates;
@@ -147,7 +150,7 @@ int main(void)
     const struct NezhaCameraFrameMapping buffers[2] = {
         {0x20000000, 0x01000000}, {0x21000000, 0x01000000},
     };
-    struct NezhaCamera1080Input input = {NezhaCamera1080Dphy, 2, 4, {0, 1, 2, 3}};
+    struct NezhaCamera1080Input input = {NezhaCamera1080Dphy, 2, 4, {0, 1, 2, 3}, false};
     assert(nezha_camera1080_start_rdi0(&io, &input, 4096, 3072, buffers));
     assert(session.rdi_started && session.rx_config == 0x00332103);
 
@@ -156,9 +159,15 @@ int main(void)
     assert(!nezha_camera1080_start_rdi0(&io, &input, 4096, 3072, buffers));
     assert(session.writes == 0);
 
-    input = (struct NezhaCamera1080Input){NezhaCamera1080Cphy, 0, 3, {0, 1, 2}};
+    input = (struct NezhaCamera1080Input){NezhaCamera1080Cphy, 0, 3, {0, 1, 2}, false};
     assert(nezha_camera1080_start_rdi0(&io, &input, 4096, 3072, buffers));
     assert(session.rdi_started && session.rx_config == 0x01102102);
+    assert(session.rx_config1 == 1);
+
+    session = (struct Session){0};
+    input.epd_mode = true;
+    assert(nezha_camera1080_start_rdi0(&io, &input, 4096, 3072, buffers));
+    assert(session.rdi_started && session.rx_config == 0x01102102 && session.rx_config1 == 0x101);
 
     session = (struct Session){0};
     input.lanes[2] = 3;
@@ -166,6 +175,10 @@ int main(void)
     assert(session.writes == 0);
 
     input = (struct NezhaCamera1080Input){.source = NezhaCamera1080Tpg, .index = 2};
+    input.epd_mode = true;
+    assert(!nezha_camera1080_start_rdi0(&io, &input, 640, 480, buffers));
+    assert(session.writes == 0);
+    input.epd_mode = false;
     assert(nezha_camera1080_start_rdi0(&io, &input, 640, 480, buffers));
     assert(session.rdi_started && session.rx_config == 0x38032103);
 

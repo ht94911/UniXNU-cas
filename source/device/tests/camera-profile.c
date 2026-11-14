@@ -27,6 +27,14 @@ int main(int argc, char **argv)
     assert(in != NULL && fread(bytes, 1, sizeof(resource), in) == sizeof(resource));
     assert(fgetc(in) == EOF && fclose(in) == 0);
     assert(nezha_camera_profile_open(bytes, sizeof(resource), &profile));
+    const bool epd_profile = word(bytes + 8) == 4;
+    assert(profile.epd_mode == epd_profile);
+    if (epd_profile) {
+        bytes[304] |= 2; /* A flag without receiver integration is refused. */
+        assert(!nezha_camera_profile_open(bytes, sizeof(resource), &profile));
+        bytes[304] &= (uint8_t)~2u;
+        assert(nezha_camera_profile_open(bytes, sizeof(resource), &profile));
+    }
     size_t count = profile.initialization_count + profile.mode_count;
     assert((profile.initialization_count == 1697 || profile.initialization_count == 1707) &&
            (profile.mode_count == 202 || profile.mode_count == 206) &&

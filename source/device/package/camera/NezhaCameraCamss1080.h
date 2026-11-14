@@ -21,6 +21,7 @@ struct NezhaCamera1080Input {
     unsigned lane_count;
     /* Lane positions as consumed by the CSID, after PHY routing. */
     uint8_t lanes[4];
+    bool epd_mode;
 };
 
 struct NezhaCamera1080Io {

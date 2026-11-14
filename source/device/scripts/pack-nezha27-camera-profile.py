@@ -52,7 +52,7 @@ def mode_program(module, mode):
 
 def same_capture_contract(module, board, mode, mode_settings):
     actual = module.modes()[1]
-    fields = ('c_phy', 'lanes', 'data_rate_bps', 'fps', 'settle_ns', 'streams')
+    fields = ('c_phy', 'lanes', 'data_rate_bps', 'fps', 'settle_ns', 'streams', 'mipi_flags')
     return (module.board() == board and all(actual[k] == mode[k] for k in fields) and
             mode_program(module, actual) == mode_settings)
 
@@ -105,8 +105,10 @@ def make_pack(module_path, phy_path, kernel_path, alternate_module_path=None, ot
             phy['selected']['max_data_rate'] >= mode['data_rate_bps'],
             'PHY source or selected data-rate profile differs')
 
-    version = 3 if other_modules else 2 if selection else 1
-    pack = bytearray(HEADER + (48 if selection else 0) + (64 if other_modules else 0))
+    require(mode['mipi_flags'] & ~1 == 0, 'Mode MIPI flags need explicit receiver integration')
+    require(mode['mipi_flags'] == 0 or other_modules, 'Mode flags require the combined version4 profile')
+    version = 4 if mode['mipi_flags'] else 3 if other_modules else 2 if selection else 1
+    pack = bytearray(HEADER + (48 if selection else 0) + (64 if other_modules else 0) + (4 if version == 4 else 0))
     struct.pack_into('<8s8IQ', pack, 0, f'N27CAM0{version}'.encode(), version, 0, 0x5058,
                      image['width'], image['height'], image['bits'], board['csi_lane_assign'],
                      mode['settle_ns'], mode['data_rate_bps'])
@@ -119,6 +121,8 @@ def make_pack(module_path, phy_path, kernel_path, alternate_module_path=None, ot
         pack[208:240] = bytes.fromhex(alternate.sha256)
     if other_modules:
         pack[240:304] = b''.join(bytes.fromhex(entry.sha256) for entry in other_modules)
+    if version == 4:
+        struct.pack_into('<I', pack, 304, mode['mipi_flags'])
     pending_bursts = []
     for table, sequence in enumerate(sequences):
         struct.pack_into('<II', pack, 192 if table == 2 else 48 + table * 8, len(pack), len(sequence))
@@ -159,6 +163,7 @@ def make_pack(module_path, phy_path, kernel_path, alternate_module_path=None, ot
         mode_register_count=mode['settings_count'],
         pre_resolution_count=mode['pre_resolution_settings_count'],
         post_resolution_count=mode['post_resolution_settings_count'],
+        mipi_flags=mode['mipi_flags'],
         burst_bytes=[len(data) for _, data in pending_bursts],
         phy_control=phy['control'], rate_profile=phy['selected']['symbol'],
         used_bytes=used, capacity_bytes=CAPACITY, sha256=sha(pack), profile_version=version,

@@ -1,7 +1,7 @@
-name: nezha iPhone27 owned camera IRQ edge after stock mode commit
+name: nezha iPhone27 stock main sensor EPD mode propagation
 on:
   push:
-    branches: [codex/ios27-camera030-irq-20261115]
+    branches: [codex/ios27-camera031-epd-20261115]
   workflow_dispatch:
 permissions:
   contents: read

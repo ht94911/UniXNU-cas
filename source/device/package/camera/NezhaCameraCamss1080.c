@@ -25,6 +25,7 @@ enum {
     CsidRxConfig0 = 0x880,
     CsidRxConfig1 = 0x884,
     CsidRxCphy = 1 << 24,
+    CsidRxEpd = 1 << 8,
     CsidRdi0Config0 = 0x5480,
     CsidRdi0Control = 0x5488,
     CsidRdi0Config1 = 0x5494,
@@ -122,7 +123,7 @@ static bool receiver_config(const struct NezhaCamera1080Input *input, uint32_t *
         }
         break;
     case NezhaCamera1080Tpg:
-        if (input->index >= 3) {
+        if (input->index >= 3 || input->epd_mode) {
             return false;
         }
         lanes = 4;
@@ -158,7 +159,9 @@ bool nezha_camera1080_start_rdi0(const struct NezhaCamera1080Io *io,
     }
 
     io->write_csid(io->context, CsidRxConfig0, rx);
-    io->write_csid(io->context, CsidRxConfig1, 1); /* CSI-2 ECC correction. */
+    /* Stock mode1 advertises EPDEnabled. cam_ife_csid_ver2_enable_csi2
+     * propagates that mode contract at cfg1 bit8 independently of PHY. */
+    io->write_csid(io->context, CsidRxConfig1, 1u | (input->epd_mode ? CsidRxEpd : 0u));
     io->write_csid(io->context, CsidRdi0Control, 0);
     io->write_csid(io->context, CsidRdi0Config0, raw10_vc0);
     io->write_csid(io->context, CsidRdi0Config1, CsidRdi0MipiPacking);

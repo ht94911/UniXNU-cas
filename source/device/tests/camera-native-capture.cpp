@@ -14,6 +14,7 @@ static uint32_t camcc[0x80000/4],crm[0x2000/4],crmc[0x3000/4],crmcommon[0x1000/4
 static unsigned maps, starts, stops, reads, copies;
 static bool resources_active, irq_active, smmu_active, memory_active, stream_active, keep_running, source_fail;
 static bool frame_timeout;
+static bool selected_epd;
 static unsigned stream_readbacks;
 static NezhaCameraRpmh rpmh{};
 static NezhaCameraDmaPlan plan{};
@@ -33,7 +34,7 @@ extern "C" unsigned long ml_io_map(unsigned long physical,unsigned long) {
 extern "C" void IOSleep(unsigned) { }
 extern "C" void IODelay(unsigned) { }
 extern "C" bool nezha_camera_profile_open(const uint8_t *,size_t,NezhaCameraProfile *p)
-{ p->vendor=3;p->width=4096;p->height=3072;return true; }
+{ p->vendor=3;p->width=4096;p->height=3072;p->epd_mode=selected_epd;return true; }
 extern "C" bool nezha_camera_profile_revision_writes(const NezhaCameraProfile *,uint8_t vendor,uint8_t revision,NezhaCameraOvxModeWrite *,size_t,size_t *count)
 { assert(vendor==3 && revision==0x42);*count=1;return true; }
 extern "C" bool nezha_camera_native_gcc(NezhaCameraGccIo *) { return true; }
@@ -89,8 +90,8 @@ extern "C" bool nezha_camera_native_smmu_release(NezhaCameraNativeSmmu **out,boo
 { assert(detached);*out=nullptr;smmu_active=false;return true; }
 extern "C" uint32_t nezha_camera_native_smmu_fault(const NezhaCameraNativeSmmu *) { return 0; }
 extern "C" void nezha_camera_native_smmu_fault_info(const NezhaCameraNativeSmmu *,NezhaCameraNativeSmmuFault *f) { *f={}; }
-extern "C" bool nezha_camera_main_capture_start(const NezhaCameraMainCaptureIo *,const NezhaCameraMainMode *,const NezhaCameraDmaPlan *,const ArmSmmu4KContextConfig *,unsigned,unsigned,unsigned,NezhaCameraMainCapture *c)
-{ assert(!stream_active && !c->rdi_started);c->rdi_started=true;c->stream_may_be_on=true;stream_active=true;return true; }
+extern "C" bool nezha_camera_main_capture_start(const NezhaCameraMainCaptureIo *,const NezhaCameraMainMode *mode,const NezhaCameraDmaPlan *,const ArmSmmu4KContextConfig *,unsigned,unsigned,unsigned,NezhaCameraMainCapture *c)
+{ assert(!stream_active && !c->rdi_started && mode->input.epd_mode==selected_epd);c->rdi_started=true;c->stream_may_be_on=true;stream_active=true;return true; }
 extern "C" bool nezha_camera_main_capture_request_stop(const NezhaCameraMainCaptureIo *,NezhaCameraMainCapture *c) { c->stream_may_be_on=false;stream_active=false;return true; }
 extern "C" bool nezha_camera_main_capture_finish_stop(const NezhaCameraMainCaptureIo *,const ArmSmmu4KContextConfig *,unsigned,NezhaCameraMainCapture *,bool quiet) { assert(quiet);return true; }
 extern "C" bool nezha_camera_main_capture_release_frame(const NezhaCameraMainCaptureIo *,NezhaCameraMainCapture *,unsigned,bool) { return true; }
@@ -121,6 +122,7 @@ int main()
     assert(nezha_camera_native_capture(&request,&result) && result.cleaned && !starts && !maps);
     keep_running=true;
     for (unsigned turn=0;turn<2;++turn) {
+        selected_epd=turn!=0;
         assert(nezha_camera_native_capture(&request,&result));
         assert(result.cleaned && result.frames.frames==3 && starts==turn+1 && stops==turn+1);
         assert(!nezha_camera_native_capture_running() && !resources_active && !memory_active && !smmu_active && !irq_active);

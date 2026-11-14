@@ -371,8 +371,8 @@ bool nezha_camera_native_capture(const NezhaCameraNativeCaptureRequest *request,
         state.capture_io.dma_leave = nezha_camera_native_smmu_capture_leave;
         if (!checkpoint(*request, *result, NezhaNativeStream, pattern ? physical[Tpg] : physical[Phy], width, height)) break;
         state.dma_touched = true;
-        const NezhaCamera1080Input input = pattern ? NezhaCamera1080Input{NezhaCamera1080Tpg, 2, 0, {}} :
-            NezhaCamera1080Input{NezhaCamera1080Cphy, 0, 3, {0, 1, 2, 0}};
+        const NezhaCamera1080Input input = pattern ? NezhaCamera1080Input{NezhaCamera1080Tpg, 2, 0, {}, false} :
+            NezhaCamera1080Input{NezhaCamera1080Cphy, 0, 3, {0, 1, 2, 0}, state.profile.epd_mode};
         const NezhaCameraMainMode mode{NezhaCameraOvx10500uId, width, height,
             state.writes, writes, input};
         if (!nezha_camera_main_capture_start(&state.capture_io, &mode,

@@ -45,10 +45,10 @@ bool nezha_camera_profile_open(const uint8_t *bytes, size_t capacity,
         }
     }
     const uint32_t version = word(bytes + 8);
-    if (version < 1 || version > 3 || bytes[7] != '0' + version) return false;
+    if (version < 1 || version > 4 || bytes[7] != '0' + version) return false;
     const bool paired = version >= 2;
-    const bool combined = version == 3;
-    const size_t header = combined ? 304 : paired ? 240 : NezhaCameraProfileHeader;
+    const bool combined = version >= 3;
+    const size_t header = version == 4 ? 308 : combined ? 304 : paired ? 240 : NezhaCameraProfileHeader;
     const uint32_t used = word(bytes + 12);
     if (used < header || used > capacity ||
         word(bytes + 16) != NezhaCameraOvx10500uId || word(bytes + 20) != 4096 ||
@@ -62,6 +62,11 @@ bool nezha_camera_profile_open(const uint8_t *bytes, size_t capacity,
         .data_rate = (uint64_t)word(bytes + 40) | (uint64_t)word(bytes + 44) << 32};
     if (next.data_rate == 0) {
         return false;
+    }
+    if (version == 4) {
+        const uint32_t flags = word(bytes + 304);
+        if (flags & ~1u) return false;
+        next.epd_mode = (flags & 1u) != 0;
     }
     if (paired) {
         const uint32_t vendor = word(bytes + 200);

@@ -149,11 +149,20 @@ class StockModule:
                                     'Unexpected adjacent mode settings array')
                         adjacent[name + '_settings_symbol'] = target
                         adjacent[name + '_settings_count'] = count
+                    # The same HAL loads the MIPI enum list at native
+                    # +0x390/+0x398 and passes its bitset to CSI2/PHY.
+                    flags_count, flags_symbol = struct.unpack_from('<II', record, 320)
+                    flags_bytes = self.symbol(flags_symbol)
+                    require(len(flags_bytes) == flags_count * 4, 'Unexpected mode MIPI flags array')
+                    mipi_flags = 0
+                    for (flag,) in struct.iter_unpack('<I', flags_bytes):
+                        require(flag < 16, 'MIPI flag exceeds the native wire bitset')
+                        mipi_flags |= 1 << flag
                     modes.append(dict(index=len(modes), fps=fps, lanes=lanes, c_phy=bool(three_phase),
                                       settle_ns=settle, output_pixel_clock_hz=output_pixel_clock,
                                       data_rate_bps=output_pixel_clock * streams[0]["bits"] // lanes,
                                       streams=streams, settings_symbol=settings_id,
-                                      settings_count=settings_count, **adjacent))
+                                      settings_count=settings_count, mipi_flags=mipi_flags, **adjacent))
                     offset += size
             except (ValueError, struct.error):
                 continue
