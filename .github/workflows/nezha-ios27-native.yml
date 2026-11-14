@@ -1,7 +1,7 @@
-name: nezha iPhone27 PLL0 output ownership and native RAW capture
+name: nezha iPhone27 measured PLL0 calibration and native RAW capture
 on:
   push:
-    branches: [codex/ios27-camera020-pll-20261115]
+    branches: [codex/ios27-camera021-pllcal-20261115]
   workflow_dispatch:
 permissions:
   contents: read

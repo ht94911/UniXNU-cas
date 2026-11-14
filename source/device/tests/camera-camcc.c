@@ -18,6 +18,7 @@ struct CamccModel {
     bool core_enable_unobservable;
     bool pll_no_lock;
     bool pll_refuse_outputs;
+    bool pll_l_reserved,pll_l_refuse;
 };
 
 struct CaptureModel {
@@ -152,7 +153,10 @@ static void write32(void *context, uint32_t offset, uint32_t value)
             model->pll_mode &= ~off_bit;
         }
         break;
-    case 0x10: model->pll_l = value; break;
+    case 0x10:
+        if (!model->pll_l_refuse)
+            model->pll_l = model->pll_l_reserved ? value & 0x00ffffffu : value;
+        break;
     case 0x14: model->pll_alpha = value; break;
     case 0x18:
         model->pll_user = model->pll_refuse_outputs ?
@@ -326,6 +330,20 @@ int main(void)
     model.pll_l = 0x00440032;
     assert(nezha_camera_camcc_acquire_pll0(&io, &pll) == NezhaCameraCamccSource && model.writes == 0);
     assert(pll.failed_offset == 0x10 && pll.failed_value == 0x00440032);
+
+    /* Actual020 readback: L's reserved top byte drops the attempted
+     * duplicated Lucid field. Keep the effective calibration and rate. */
+    model = cold;
+    model.pll_l_reserved = true;
+    assert(nezha_camera_camcc_acquire_pll0(&io, &pll) == NezhaCameraCamccOk);
+    assert(model.pll_l == 0x0044003e && pll.configured && pll.ready);
+    assert(nezha_camera_camcc_release_pll0(&io, &pll, true) == NezhaCameraCamccOk && model.pll_l == 0);
+    model = cold;
+    model.pll_l_refuse = true;
+    assert(nezha_camera_camcc_acquire_pll0(&io, &pll) == NezhaCameraCamccSource);
+    assert(pll.failed_offset == 0x10 && pll.failed_value == 0 && !pll.ready);
+    model.pll_l_refuse = false;
+    assert(nezha_camera_camcc_release_pll0(&io, &pll, true) == NezhaCameraCamccOk && model.pll_l == 0);
 
     struct CaptureModel clocks = {0};
     const struct NezhaCameraRegisterIo clock_io = {&clocks, capture_read, capture_write, capture_wait};

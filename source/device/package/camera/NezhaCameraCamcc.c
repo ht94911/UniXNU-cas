@@ -38,9 +38,13 @@ static const uint32_t pll_locked = UINT32_C(1) << 31;
 enum { PllResetN = 4, PllOut = 1, PllRun = 1, PllVoteRun = 1 << 25 };
 enum { PllOutputs = 7, PllRateUserMask = 0x3fc00 };
 static const uint32_t pll0_registers[] = {0x10, 0x14, 0x20, 0x24, 0x28, 0x18, 0x1c};
-/* Lucid Evo's configure routine sets both calibration fields to 0x44. */
+/* Same-device w29 and the actual020 readback use the Taycan calibration
+ * field at [23:16]. [31:24] is not retained by this CAMCC PLL instance. */
 static const uint32_t pll0_config[] = {
-    0x4444003e, 0x8000, 0x25c400e7, 0x0a8062e0, 0xf51dea20, 0x840f, 2
+    0x0044003e, 0x8000, 0x25c400e7, 0x0a8062e0, 0xf51dea20, 0x840f, 2
+};
+static const uint32_t pll0_masks[] = {
+    0x00ffffff, UINT32_MAX, UINT32_MAX, UINT32_MAX, UINT32_MAX, UINT32_MAX, UINT32_MAX
 };
 
 static bool io_valid(const struct NezhaCameraRegisterIo *io)
@@ -243,9 +247,10 @@ enum NezhaCameraCamccStatus nezha_camera_camcc_acquire_pll0(
             io->write(io->context, pll0_registers[i], pll0_config[i]);
         }
         for (unsigned i = 0; i < 7; ++i) {
-            if (io->read(io->context, pll0_registers[i]) != pll0_config[i]) {
+            const uint32_t observed = io->read(io->context, pll0_registers[i]);
+            if (observed == UINT32_MAX || (observed & pll0_masks[i]) != (pll0_config[i] & pll0_masks[i])) {
                 return pll0_error(lease, NezhaCameraCamccSource, pll0_registers[i],
-                    io->read(io->context, pll0_registers[i]));
+                    observed);
             }
         }
     }
@@ -295,7 +300,8 @@ enum NezhaCameraCamccStatus nezha_camera_camcc_release_pll0(
                 io->write(io->context, pll0_registers[i], lease->saved[i]);
             }
             for (unsigned i = 0; i < 7; ++i) {
-                if (io->read(io->context, pll0_registers[i]) != lease->saved[i]) {
+                const uint32_t observed = io->read(io->context, pll0_registers[i]);
+                if (observed == UINT32_MAX || (observed & pll0_masks[i]) != (lease->saved[i] & pll0_masks[i])) {
                     return NezhaCameraCamccSource;
                 }
             }

@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Repair PLL0 rate checks that included output enable bits; retain existing rates, own missing outputs and export first failed register. RAW mode5 first; all other resource/Android protection rules retained.",
+  "purpose": "Use the actual camera020 Taycan L readback, 0x0044003e, and its 24 effective bits. Keep the existing real lock, rate, output ownership and ordered teardown checks; RAW mode5 remains isolated.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "2dcaf8f447341f17d4c78e4f07f5246bdd1b87e6",
+  "device_revision": "901e64d155201bee800d9e283cb26a8d58f95e61",
   "soc_revision": "3af99241822776cd8318b66f0e4093a4c8f20a2d",
   "xcode": "26.6",
   "files": {
@@ -155,7 +155,7 @@
     "source/device/tests/camera-profile.c": "11b402f19bc24bd20501dbb5b4d65c2044f768e4658cba5110a7121db1e4130b",
     "source/device/tests/camera-irq-queue.c": "621b50bce1b6eb9982c8f4c1e2f0e9cd242be57e420b486a90929993fc09a44b",
     "source/device/tests/camera-main-capture.c": "c1ae2eb7605d484ebc04cdbbf9df48225a4c7af16e8ddb490d76a377cd027a40",
-    "source/device/tests/camera-camcc.c": "83e7999e12e8553e1a7458fab022a9a2f0ae3c3c30306c6b81a8a029cf753a5c",
+    "source/device/tests/camera-camcc.c": "9a143dd2023999669ff8b73b3141a5bde076b63f09ab6cd68c476a30ef5a2d3b",
     "source/device/tests/camera-rdi1080.c": "20be2764ac866bf290e8fc058be51c19cff46a1df212f0b61af5f8e2a3be68b9",
     "source/device/tests/account-input-usb.cpp": "e783353465e36370e5d2b449f5629750e8b47b3d2a21e7ad36cd99cc7b0297d7",
     "source/device/tests/camera-cpas.c": "10d17c5fa50e1bf9c789deb273a3683fc80fcdb94a3234878338b5bbd955247f",
@@ -235,7 +235,7 @@
     "source/device/package/camera/NezhaCameraFrameProbe.h": "f1831095bac6df0401c21b2d8e4d9e15aa64319a2ccce912aa3b20aeb584728e",
     "source/device/package/camera/NezhaCameraRdi1080.h": "faeb952707f6bab074150eb0bd5a0cfd3c3d553c9edff0bf384bca70a0e2e207",
     "source/device/package/camera/NezhaCameraIfeRsc.c": "aa607c2ee76841843d979c99f690112449653922fb053090fa13fe586d45072b",
-    "source/device/package/camera/NezhaCameraCamcc.c": "f0c0b39876d3327db8dbbd0fe86191775b5b7210bf8b5b325099f85ff3cbca6d",
+    "source/device/package/camera/NezhaCameraCamcc.c": "db4a08481d01db259f225743e8f4adb777a1a083631ce55811f542581f6b0304",
     "source/device/package/camera/NezhaCameraDma.h": "d1bf47b5b45f7b41340cfb1a57bbd182ccbc87bdf3517f79689074285e6081bd",
     "source/device/package/camera/NezhaCameraCsiphy24.c": "507dfe9c38ab895e2184914b3d279ea004ea2024dab78819805e9d0953c8ac76",
     "source/device/package/camera/NezhaCameraNativeSmmu.cpp": "297ed123a2fe02f12e776cca4348d3f28c20abc4d5f1b608aacbb42c84921df3",
@@ -313,7 +313,7 @@
     "source/soc/patches/xnu-12377/native-smp-secondary.patch": "9d9164921da548a9f13ccbd6093c799583f54e590ef3d562288dcea9ba5a2774",
     "source/soc/patches/xnu-12377/sheng-platform-power.patch": "6e68dbcdac670624f2a9806a61fef42110bfe6586029b3f1a0acb068c3a23ec2",
     "source/soc/patches/xnu-12377/series": "bb95255800677aae6c7ba2742e892e0d40b4c34eb40816b58214c1393759bc1d",
-    ".github/workflows/nezha-ios27-native.yml": "4144fac51e42aac18dcb505a799028d20d781714642e8241a9e6eca4abaa2c1e",
+    ".github/workflows/nezha-ios27-native.yml": "8ce4e89b40692106936ab0df3375cebe7ad7e7eb70aad4d7b2ab07dc241246fc",
     "ci/native.py": "d497c52c25e103230e057fda15c234ef0a5d15c362bd0b9118fdbf2d11205f9e",
     "source/device/package/camera/userland/NezhaCameraPreview.c": "724435ef79b3ebe1b56cd21c6bbdb2e6312ef9a71e85d2f3adcbaf01e75b0429",
     "source/device/package/camera/userland/NezhaCameraPreview.h": "b3e588fe11c72cfd3bf01c2dafd454cea915c72863d91f4958ecdf38fe24726a",
@@ -375,7 +375,7 @@
     "source/device/tests/camera-system-vendor.c": "05ceb321dc8b502b42dca968597163370a96e68b9172a38db9b4a4634889c53f",
     "source/device/tests/camera-platform/kernel-fixture/sys/vnode.h": "ddcb098a61c96644a7f6d1d4987e8653f2abbab04d1ac130392d782092b701f0",
     "source/device/scripts/prepare-nezha27-camera-addon.py": "199af848e45ae35f7e4103e653acca365568c96951e913ac40475752ca1e89f1",
-    "source/device/scripts/package-nezha27-camera-system.py": "03936323a2041c577673380be339402f911b2a3aebf949acdda51cf7f83c4c64",
+    "source/device/scripts/package-nezha27-camera-system.py": "4afe61cc871711d9a6ea7513fe925f0ebff013de4fb52b8aa76cf9390b6e857c",
     "source/device/scripts/make-nezha27-camera-model.py": "505d5742093c37f6ddacd7f34d70508ded7859f78bc8164d067336f3bc9124b2"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
@@ -425,14 +425,14 @@
     "snapshot_scope": "listed headers and native implementation units only"
   },
   "camera": {
-    "source_revision": "2dcaf8f447341f17d4c78e4f07f5246bdd1b87e6",
+    "source_revision": "901e64d155201bee800d9e283cb26a8d58f95e61",
     "device_base": "7435e49e46705d2bfcabe09487ff80a4821fd577",
     "mode_default": "disabled",
     "host_core_tests": 18,
     "private_camera_modes_uploaded": false,
     "failed_predecessor_run": 43298685064,
     "stock_module_bytes_uploaded": false,
-    "previous_native_run": 43614014372,
+    "previous_native_run": 43621590165,
     "optional_probe_mode": 5,
     "full_stock_profiles_uploaded": false,
     "local_profile_host_roundtrips": 4,
@@ -483,16 +483,21 @@
     "camera018_Phy_requests_interface_and_top_passed": true,
     "PLL_user_output_bits_not_rate": true,
     "existing_output_ownership_restored": true,
-    "existing_PLL_error_register_reported": true
+    "existing_PLL_error_register_reported": true,
+    "camera020_actual_first_register": "0x10",
+    "camera020_actual_first_value": "0x0044003e",
+    "camera020_PLL_config_full_word_refused": true,
+    "PLL_effective_L_mask": "0x00ffffff",
+    "camera020_normalAndroidroot_postflight": true
   },
   "soc_previous_source": "5a71f9eb5724ff58eddf49f7f5baecc9f4233a7c",
   "userland_revision": "948715c429b092e18a82fa7fd851790124e071ed",
   "ci_native_sha256": "d497c52c25e103230e057fda15c234ef0a5d15c362bd0b9118fdbf2d11205f9e",
   "prior_camera_native": {
-    "run": 43614014372,
+    "run": 43621590165,
     "attempt": 1,
-    "head": "6f98a943e71b51542a182caa28eb54c0fea66a07",
-    "real_result": "PHY/interface/top passed; Pll0 source refused; cleanup1/8; normalAndroidrootpostflightpassed"
+    "head": "07b778a8f4a213e15b707ca263007eb76f570d0d",
+    "real_result": "PLL0 L config write 4444003e read44003e; RAW0; cleanup1/8; full quickAndroidroot release"
   },
   "reviewed_upstream": {
     "UniXNU": "0c1bac3d51a3009dca1708b15a5198f4b43d057a",

@@ -69,7 +69,8 @@ def main():
     user_sources = [name for name in library_inputs['files']
                     if name.startswith('source/device/package/camera/userland/')]
     assert user_sources
-    if addon.get('camera_model_sha256'):
+    exact_userland = all(inputs['files'].get(name) == library_inputs['files'][name] for name in user_sources)
+    if not exact_userland and addon.get('camera_model_sha256'):
         # A userland-only descendant of the selected C2 source may update
         # the factory/model, while every kernel source and ABI stays fixed.
         source = addon['source_revision']
@@ -84,7 +85,7 @@ def main():
                                                  source + ':' + name.removeprefix('source/device/')])
             assert sha(original) == library_inputs['files'][name], name
     else:
-        assert all(inputs['files'].get(name) == library_inputs['files'][name] for name in user_sources)
+        assert exact_userland
     a.out.mkdir(parents=True, exist_ok=False)
     stage = a.out / 'stage'
     for name, digest in package['members'].items():
