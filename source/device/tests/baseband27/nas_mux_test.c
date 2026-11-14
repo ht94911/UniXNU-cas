@@ -240,9 +240,85 @@ static void original_client_exhaustion(void)
     for (unsigned i = 0; i < outputs; ++i) assert(!nb_nas_error(output[i].data, output[i].bytes));
     stop(&m);
 }
+static void native_extension_registration(void)
+{
+    struct nb_nas_mux m;
+    uint8_t data[512];
+    nb_nas_init(&m, NULL, allocate, release, emit); outputs = 0;
+    nb_nas_attach(&m, 0, 0, 1, 0, 0x123);
+    nb_nas_attach(&m, 1, 0, 2, 0, 0x123);
+    /* Actual native Mav20QMIDesenseCommandDriver::registerFrequencyReporting
+     * constructs TLV0xb0 and stores2, then its unchanged writer emits one byte.
+     * Network registration also emits the three one-byte Apple flags below.
+     * The018 parser rejected these structurally valid requests before QRTR. */
+    const uint8_t native[] = {
+        0x18, 1, 0, 1, 0x21, 2, 0, 1, 0,
+        0xb0, 1, 0, 2, 0xd2, 1, 0, 1,
+        0xe4, 1, 0, 1, 0xe7, 1, 0, 1,
+    };
+    unsigned n = message(data, NB_NAS_REGISTER, 0x34, native, sizeof native);
+    assert(!nb_nas_submit(&m, 0, data, n));
+    struct nb_nas_packet p;
+    assert(nb_nas_next(&m, 1, &p) && cbq_rd16(p.data + 3) == NB_NAS_BIND);
+    respond(&m, &p, 0);
+    assert(nb_nas_next(&m, 2, &p) && cbq_rd16(p.data + 3) == NB_NAS_REGISTER);
+    assert(p.bytes == n && !memcmp(p.data + 7, native, sizeof native));
+    respond(&m, &p, 0);
+    assert(m.client[0].registration.enabled[0xb0] == 2);
+    const uint8_t withdraw[] = { 0xb0, 1, 0, 0, 0xe7, 1, 0, 0 };
+    n = message(data, NB_NAS_REGISTER, 0x35, withdraw, sizeof withdraw);
+    assert(!nb_nas_submit(&m, 1, data, n) && nb_nas_next(&m, 3, &p));
+    uint32_t size = 0;
+    const uint8_t *mode = cbq_tlv(p.data + 7, p.bytes - 7, 0xb0, &size);
+    assert(mode && size == 1 && *mode == 2);
+    respond(&m, &p, 0);
+    assert(!m.client[1].registration.enabled[0xb0] && m.master[0].registration.enabled[0xb0] == 2);
+    /* A real unsupported response must not change the extension cache. */
+    n = message(data, NB_NAS_REGISTER, 0x36, withdraw, sizeof withdraw);
+    assert(!nb_nas_submit(&m, 0, data, n) && nb_nas_next(&m, 4, &p));
+    mode = cbq_tlv(p.data + 7, p.bytes - 7, 0xb0, &size);
+    assert(mode && !*mode);
+    respond(&m, &p, 71);
+    assert(m.client[0].registration.enabled[0xb0] == 2);
+    const uint8_t conflict[] = { 0xb0, 1, 0, 1 };
+    n = message(data, NB_NAS_REGISTER, 0x37, conflict, sizeof conflict);
+    assert(!nb_nas_submit(&m, 1, data, n));
+    assert(!nb_nas_next(&m, 5, &p));
+    assert(nb_nas_error(output[outputs - 1].data, output[outputs - 1].bytes) == CBQ_ERR_NOT_SUPPORTED);
+    assert(m.master[0].registration.enabled[0xb0] == 2);
+    /* Duplicate, truncated and malformed stock fields still fail on structure;
+     * no modem reply is manufactured for any extension. */
+    const uint8_t duplicate[] = { 0xb0, 1, 0, 2, 0xb0, 1, 0, 2 };
+    n = message(data, NB_NAS_REGISTER, 0x38, duplicate, sizeof duplicate);
+    assert(nb_nas_submit(&m, 1, data, n) == CBQ_ERR_MALFORMED_MESSAGE);
+    n = message(data, NB_NAS_REGISTER, 0x39, native, sizeof native - 1);
+    assert(nb_nas_submit(&m, 1, data, n) == CBQ_ERR_MALFORMED_MESSAGE);
+    /* The original network-registration builder emits this optional field set
+     * when its feature queries are true. Its TLVs are deliberately in native
+     * insertion order, while the wire union is emitted in TLV-id order. */
+    const uint8_t network[] = {
+        0x10, 1, 0, 1, 0x23, 1, 0, 1, 0x13, 1, 0, 0, 0x18, 1, 0, 1,
+        0x1e, 1, 0, 1, 0x17, 1, 0, 1, 0x25, 1, 0, 1, 0x29, 1, 0, 1,
+        0x26, 1, 0, 1, 0x2b, 1, 0, 1, 0x21, 2, 0, 1, 0, 0x4b, 1, 0, 1,
+        0x61, 1, 0, 1, 0xe4, 1, 0, 1, 0xd2, 1, 0, 1, 0x4a, 1, 0, 1,
+        0xe7, 1, 0, 1,
+    };
+    n = message(data, NB_NAS_REGISTER, 0x3a, network, sizeof network);
+    assert(!nb_nas_submit(&m, 1, data, n) && nb_nas_next(&m, 6, &p));
+    for (unsigned at = 0; at < sizeof network;) {
+        const uint8_t *field = cbq_tlv(p.data + 7, p.bytes - 7, network[at], &size);
+        const unsigned bytes = cbq_rd16(network + at + 1);
+        assert(field && size == bytes && !memcmp(field, network + at + 3, bytes));
+        at += 3 + bytes;
+    }
+    respond(&m, &p, 0);
+    assert(m.client[1].registration.enabled[0xe7] == 1);
+    stop(&m);
+}
 int main(void)
 {
     original_client_exhaustion(); seventeen_clients(); registration_union();
+    native_extension_registration();
     cancellation_and_endpoint(); ordered_requests_and_failures();
     puts("PASS NAS mux:17 clients, two subscriptions, transaction restoration, real errors, registration union, cancellation and endpoint lifetime");
     return 0;

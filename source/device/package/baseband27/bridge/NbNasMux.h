@@ -20,8 +20,8 @@
 #define NB_NAS_PORT_BASE (CBQ_PORT_BASE + CBQ_MAX_CLIENTS)
 #define NB_NAS_BIND 0x45u
 #define NB_NAS_REGISTER 3u
-#define NB_NAS_REG_FIELDS 0x6bu
-#define NB_NAS_REG_MAX_BYTES 364u /* 7-byte SDU + stock maximum357-byte TLVs */
+#define NB_NAS_REG_FIELDS 0x100u
+#define NB_NAS_REG_MAX_BYTES 968u /* SDU +240one-byte fields and the two-byte0x21 */
 #define NB_NAS_WAIT_MS 300000u   /* libqmi proxy's existing maximum command wait */
 #define NB_NAS_ERROR_INTERNAL 3u
 
@@ -142,9 +142,15 @@ static inline int nb_nas_parse_registration(struct nb_nas_registration *r,
     for (uint32_t at = 0; at < bytes;) {
         if (bytes - at < 3) return 0;
         uint32_t id = data[at], n = cbq_rd16(data + at + 1);
-        if (n > bytes - at - 3 || id < 0x10 || id >= NB_NAS_REG_FIELDS
-            || id == 0x11 || id == 0x16 || seen[id] || n != (id == 0x21 ? 2u : 1u)
-            || data[at + 3] > 1 || (id == 0x21 && data[at + 4] > 1)) return 0;
+        /* The stock IDL ends at0x6a, but native iOS also registers one-byte
+         * Apple fields (for example0xb0=2 for frequency and stop reports).
+         * Preserve those fields and values for the real modem to accept or
+         * reject; the stock boolean schema is not an iOS wire validator. */
+        const int stock_flag = id < 0x6bu && id != 0x11 && id != 0x16;
+        if (n > bytes - at - 3 || id < 0x10 || seen[id]
+            || n != (id == 0x21 ? 2u : 1u)
+            || (stock_flag && data[at + 3] > 1)
+            || (id == 0x21 && data[at + 4] > 1)) return 0;
         seen[id] = r->present[id] = 1;
         r->enabled[id] = data[at + 3];
         if (id == 0x21) r->suppress_reject = data[at + 4];
@@ -210,7 +216,18 @@ static inline uint32_t nb_nas_registration_packet(struct nb_nas_mux *s, unsigned
         for (unsigned id = 0x10; id < NB_NAS_REG_FIELDS; ++id) {
             if (!r->present[id]) continue;
             merged.present[id] = 1;
-            merged.enabled[id] |= r->enabled[id];
+            if (id < 0x6bu && id != 0x11 && id != 0x16) {
+                merged.enabled[id] |= r->enabled[id];
+            } else {
+                /* Opaque one-byte modes are not bit masks. Equal nonzero
+                 * requests share the original value, and a client's zero
+                 * does not withdraw another client's active report mode.
+                 * Incompatible active modes cannot be merged without knowing
+                 * their modem semantics; retain the last accepted state. */
+                const uint8_t value = r->enabled[id];
+                if (value && merged.enabled[id] && value != merged.enabled[id]) return 0;
+                if (value) merged.enabled[id] = value;
+            }
         }
         if (r->present[0x21] && r->enabled[0x21]) merged.suppress_reject &= r->suppress_reject;
     }
@@ -281,7 +298,15 @@ static inline int nb_nas_next(struct nb_nas_mux *s, uint32_t now, struct nb_nas_
         cbq_wr16(p->bind + 8, 1); p->bind[10] = (uint8_t)lane;
         data = p->bind; bytes = sizeof p->bind;
     } else {
-        if (p->is_register) p->bytes = nb_nas_registration_packet(s, lane, p);
+        if (p->is_register) {
+            p->bytes = nb_nas_registration_packet(s, lane, p);
+            if (!p->bytes) {
+                nb_nas_emit_error(s, p->client, p->transaction, p->command, CBQ_ERR_NOT_SUPPORTED);
+                nb_nas_clear_pending(s, chosen);
+                m->pending = NB_NAS_PENDING; m->sending = 0;
+                return 0;
+            }
+        }
         cbq_wr16(p->data + 1, m->transaction); data = p->data; bytes = p->bytes;
     }
     /* The pending request owns both buffers until sending completes, including
