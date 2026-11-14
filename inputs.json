@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Audio090 restores existing sheng micStream graph/analogsettle/unmute beforeREAD instead ofoutput queuecondition oninput. Stock swrm_copy_data_port_config always initializesSAMPLECTRL2 highbyte; bothDP2banks zeroed andobserved throughoriginal39wordMIC. Actualproduction pending/error/deadline beforeREAD plusstaleSAMPLECTRL2 banks andcoldHALrenewal/stoprestart/VI/faultshutdown passedASanUBSan. Exact081speaker/HAL and089explicit input optin retained, fulltargetrequired. No physicalmicrophone acceptance yet; source/certificate only.",
+  "purpose": "Audio092 adds existingread-onlyaddonunion /usr/bin onlywhenchosennezha-audio-record90. Originalsignedlaunchdcache andactualFDRjob preserved; same signedfiniteAudioQueue clientwilluse cachedexecutablefilename. Actual090 oldFDRlaunch103.199s andnohelper/HALStart proveplistonlydidnotrunrequest. Exact58audio/DSP/board/runtime/HAL090sourceunchanged. No newtrace/physicalacceptance/no privateinputs uploaded.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "14ad8387d985b4011ecfcfc992f46c510665a601",
+  "device_revision": "058247508496bfa2f03dc7e18b5954a1c73fe885",
   "soc_revision": "703d7b4bb00904b4a6e5d96f9e9bf72eec170f6b",
   "xcode": "26.6",
   "files": {
@@ -154,7 +154,7 @@
     "source/device/package/nezha27-input/NezhaTouchEdge.h": "d132e77508b3b01d4ac01a13ec8617881ebe816fdd608461de1d7dd34c4b31dd",
     "source/device/package/nezha27-input/NezhaTouchSelfTest.h": "9262f7035de652a7336f8dd9b0a65bb6c1213cec0a0f8c4ce41d0b00037b1fd7",
     "source/device/package/nezha27-input/ResourceProbe.c": "c92b2ba262f2885d90499ba4bfa97c5bc2904c42e4ba3b48618bdac98bd49524",
-    "source/device/patches/xnu-12377/series": "dc40ced286206c1ed672a28df2a211e6e86d3b88e54414ba1945a5b5fbe53f40",
+    "source/device/patches/xnu-12377/series": "67ec217ce308bcc9bafff21ba0b7a8bdccc2cebbd32fc499c883fa12166363e4",
     "source/device/patches/xnu-12377/source-storage-runtime.patch": "25c377c60db417b15fcc137acf380f0319cbff9d5ba012af1907f3485602b584",
     "source/device/patches/xnu-12377/zzyd-sheng-audio-addon-mount.patch": "b51ed480b34c92452ea984fe056e5fce310bd929992d418f383a7e9268313c51",
     "source/device/patches/xnu-12377/zzye-sheng-cpu-idle.patch": "95f57fb9994796c3de2429fe82b6a521620b9f13b83e29eba12185f5ada4da86",
@@ -219,7 +219,7 @@
     "source/device/package/audio27/platform/AudioSmmu.h": "41401f1b97e3481c7e5cc3e02c47f926e91eec9fa34f4a48981a3fc3b723cddd",
     "source/device/package/audio27/upstream/ShengGpr.c": "c4f498f07e2cb601b593e64a8d32474a21d6a87375618e1a67b99d52c5d3160e",
     "source/device/package/audio27/platform/SoundWire.h": "4a7766b35144477400821afca1a9b264688f969353f8818dd99ef05ad9e677d8",
-    ".github/workflows/nezha-ios27-native.yml": "c7e792a34e05a44e6c3d53591461547998a49c358b3e232ae66adc3202856dda",
+    ".github/workflows/nezha-ios27-native.yml": "a4c351cbcd6a423a7e8ef445183e79462930372aa9666c9bf5e1c14f89e77545",
     "source/device/package/audio27/upstream/ShengGpr.h": "a274dded1f4d1e2709b9f966759bcb1f57d12747ee0f57743dea1fa97d95d23e",
     "source/device/package/audio27/os/NezhaAudioNative.h": "c6944299b8751aae8b4041ebf8bcdfe71ccd25e3de5289240517e75ce1b17e06",
     "source/device/package/audio27/upstream/ShengAudioReach.h": "b135177a5feb3e24e0d8a6aabb301600e2c37078b970a09ada6e8eb7bb6a5b98",
@@ -343,7 +343,8 @@
     "source/device/package/audio27/core/AudioHalDiagnostics.c": "6cab23333f800435aa87b00acec63a8d3be0d97a52b8a12f2a5526fb3a6e650b",
     "source/device/package/audio27/core/AudioHalDiagnostics.h": "c1bc3943933d64ef926ebe2ec1d378f54e3c753fb2be2de0e098f340602e2ace",
     "source/device/patches/xnu-12377/vmwait-dyld-pager-source-release.patch": "916c930f4b6b2e7515329bafc8d2ab52ba014d4dacbc8c706e8cc5d603ff5a32",
-    "source/device/package/audio27/hal/AudioReference.h": "86350d6b8a8e226cf2f2c4d3cacc2cbcb2022abc8c29420c6e3fe60a32b8d325"
+    "source/device/package/audio27/hal/AudioReference.h": "86350d6b8a8e226cf2f2c4d3cacc2cbcb2022abc8c29420c6e3fe60a32b8d325",
+    "source/device/patches/xnu-12377/zzzzzz-nezha-audio-record-entry.patch": "2db564e912261ba78f6554b9bae72183f8f496a6276974e76f8a6210f950dd10"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
@@ -395,15 +396,15 @@
   "audio": {
     "base": "GPU023",
     "base_device_revision": "673cde869b7378658b470c4e6b2b9a1766b99411",
-    "source_revision": "14ad8387d985b4011ecfcfc992f46c510665a601",
-    "source_only_revision": "14ad8387d985b4011ecfcfc992f46c510665a601",
+    "source_revision": "058247508496bfa2f03dc7e18b5954a1c73fe885",
+    "source_only_revision": "058247508496bfa2f03dc7e18b5954a1c73fe885",
     "hardware_enabled": false,
     "resource_census_enabled": true,
     "private_inputs": false,
     "HAL_target": "arm64e-apple-ios27.0",
     "shared_resource_owner": "703d7b4bb00904b4a6e5d96f9e9bf72eec170f6b",
     "private_input_slot_bytes": 35651584,
-    "previous_audio_behavior_source": "8e8be60e7cb127215b725c1568f7119c6ca7b7a4",
+    "previous_audio_behavior_source": "14ad8387d985b4011ecfcfc992f46c510665a601",
     "base_native_run": 42401029411,
     "base_Metal_revision": "eb59f022a326d03330d398b3c1dbcb6f0aeb633f",
     "diagnostic_glink_delay_ms": 20000,
@@ -574,7 +575,7 @@
       "patch_sha256": "916c930f4b6b2e7515329bafc8d2ab52ba014d4dacbc8c706e8cc5d603ff5a32",
       "HAL_and_hardware_source_unchanged": true
     },
-    "parent_candidate": "audio089",
+    "parent_candidate": "audio090",
     "playback_endpoint_trace_accounting": {
       "existing_TAS_owner_counter": true,
       "graphs": [
@@ -669,6 +670,7 @@
     "capture_pre_read_activation": true,
     "stock_SAMPLECTRL2_banks_initialized": true,
     "MIC_SAMPLECTRL2_readbacks": true,
-    "capture_input_frame_anchor_at_first_read": true
+    "capture_input_frame_anchor_at_first_read": true,
+    "selected_cached_FDR_executable_union": true
   }
 }

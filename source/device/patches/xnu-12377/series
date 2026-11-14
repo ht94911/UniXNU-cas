@@ -40,3 +40,6 @@ zzzzzz-nezha-system-reset-evidence.patch
 
 # Release the held source before assembling the other 16 KiB dyld fixup parts.
 vmwait-dyld-pager-source-release.patch
+
+# Selected finite recorder reuses the actual cached FDR executable entry.
+zzzzzz-nezha-audio-record-entry.patch

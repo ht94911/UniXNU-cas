@@ -1,0 +1,30 @@
+diff --git a/bsd/kern/kern_exec.c b/bsd/kern/kern_exec.c
+--- a/bsd/kern/kern_exec.c
++++ b/bsd/kern/kern_exec.c
+@@ -8660,2 +8660,3 @@
++#include <pexpert/device_tree.h>
+ static void
+ native_gpu_addon_prepare(proc_t p, user_addr_t scratch)
+@@ -8675,3 +8676,22 @@ native_gpu_addon_prepare(proc_t p, user_addr_t scratch)
++	/* The original signed launch cache actually starts IOMFB_FDR_Loader.
++	 * Give only the selected finite audio test that cached executable name,
++	 * through the existing addon read-only union mounting implementation. */
++	DTEntry audio_chosen = NULL;
++	const void *audio_record = NULL;
++	unsigned int audio_record_size = 0;
++	uint32_t audio_record_version = 0;
++	if (SecureDTLookupEntry(NULL, "/chosen", &audio_chosen) == kSuccess &&
++	    SecureDTGetProperty(audio_chosen, "nezha-audio-record", &audio_record,
++	        &audio_record_size) == kSuccess && audio_record &&
++	    audio_record_size == sizeof(audio_record_version)) {
++		memcpy(&audio_record_version, audio_record, sizeof(audio_record_version));
++	}
++	if (audio_record_version == 90) {
++		static const char record_source[] = "/private/var/ngpu/audio-record-bin", record_point[] = "/usr/bin";
++		static volatile int record_stage, record_status;
++		native_gpu_addon_mount(p, scratch, 0x600, record_source, sizeof(record_source), record_point,
++		    sizeof(record_point), "/usr/bin/defaults", "/usr/bin/IOMFB_FDR_Loader", &record_stage, &record_status);
++	}
+ 	native_cryptex_os_view(p, scratch);
+ 	native_gestalt_cache_drop(p, scratch);
+ 	native_ls_store_drop(p, scratch);
