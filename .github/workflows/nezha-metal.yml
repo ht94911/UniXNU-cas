@@ -1,7 +1,7 @@
 name: nezha iPhone27 icon limits and pressure source 040
 on:
   push:
-    branches: [codex/ios27-gpu27-metal-full-040b-20261114]
+    branches: [codex/ios27-gpu27-metal-full-040c-20261114]
   workflow_dispatch:
 permissions:
   contents: read
@@ -67,6 +67,9 @@ jobs:
           echo "NMB_HOST_LOADER=$(brew --prefix molten-vk)/lib/libMoltenVK.dylib" >> "$GITHUB_ENV"
       - name: Prepare the exact public source and patch inputs
         run: device/ci/gpu-userland/logrun prepare python3 device/ci/gpu-userland/prepare.py --unixnu unixnu --record "$LOGS/sources.json"
+      - name: Exercise actual Metal limits and ARC memory-pressure lifetime
+        id: icon_limits
+        run: device/ci/gpu-userland/logrun icon-limits python3 device/ci/gpu-userland/check-icon-limits.py --source unixnu/drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm --out "$LOGS/icon-limits"
       - name: Check actual-source real Mesa trees,device lifetimes and swap API guards
         id: device_contexts
         run: device/ci/gpu-userland/logrun device-contexts python3 device/ci/gpu-userland/check-device-context-host.py --unixnu unixnu --logs "$LOGS"
@@ -103,9 +106,6 @@ jobs:
       - name: Check shader sharing on the actual prepared Turnip source
         id: pipeline_cache
         run: device/ci/gpu-userland/logrun pipeline-cache python3 device/ci/gpu-userland/check-pipeline-cache.py --source unixnu/.cache/mesa-work/src/freedreno/vulkan/tu_pipeline.cc --patch unixnu/patches/mesa/turnip-shaders-shared-across-pipeline-caches.patch --out "$LOGS/pipeline-cache"
-      - name: Exercise actual Metal limits and ARC memory-pressure lifetime
-        id: icon_limits
-        run: device/ci/gpu-userland/logrun icon-limits python3 device/ci/gpu-userland/check-icon-limits.py --source unixnu/drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm --out "$LOGS/icon-limits"
       - name: Build Turnip for the actual A840 arm64e iOS27 target
         id: turnip_ios27
         working-directory: unixnu

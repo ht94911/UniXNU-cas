@@ -169,13 +169,15 @@ if platform.system() == "Darwin":
 #include <unordered_map>
 static std::unordered_map<SEL,uint64_t> gAnswers;
 static unsigned notes=0;
+static id fixtureDeviceLifetime;
 #define NBLOG(...) do{++notes;(void)filled;}while(0)
 static NSUInteger answer(id,SEL sel){return gAnswers.at(sel);}
 """
     metal_main = r"""
 int main() {@autoreleasepool {
  (void)[MTLCompileOptions new];
- Class base=objc_getClass("_MTLDevice");assert(base);
+ Class base=objc_getClass("_MTLDevice");
+ fprintf(stderr,"base=%p\n",(__bridge void *)base);assert(base);
  Class cls=objc_allocateClassPair(base,"NBBaseLimitsCheck045",0);assert(cls);
  const char *names[]={"maxTextureWidth2D","maxTextureHeight2D"};
  for(const char *name:names) {
@@ -183,15 +185,23 @@ int main() {@autoreleasepool {
   gAnswers[s]=16384;assert(class_addMethod(cls,s,(IMP)answer,"Q16@0:8"));
  }
  objc_registerClassPair(cls);
- id device=class_createInstance(cls,0);assert(device);
+ // The real frontend retains its device for the process lifetime too. This
+ // fixture must not invoke an uninitialized hardware base's deallocation.
+ fixtureDeviceLifetime=class_createInstance(cls,0);
+ id device=fixtureDeviceLifetime;assert(device);
  SEL limitsSel=sel_registerName("limits");
  auto *limits=((uint8_t *(*)(id,SEL))objc_msgSend)(device,limitsSel);assert(limits);
  auto original=[&](const char *name){
   SEL s=sel_registerName(name);
   return ((NSUInteger (*)(id,SEL))method_getImplementation(class_getInstanceMethod(base,s)))(device,s);
  };
+ fprintf(stderr,"before width=%lu height=%lu size=%zu offset=%td\n",
+  (unsigned long)original(names[0]),(unsigned long)original(names[1]),
+  class_getInstanceSize(base),limits-(uint8_t *)(__bridge void *)device);
  assert(original(names[0])==0 && original(names[1])==0);
  fillBaseLimits(device);
+ fprintf(stderr,"after width=%lu height=%lu notes=%u\n",
+  (unsigned long)original(names[0]),(unsigned long)original(names[1]),notes);
  assert(original(names[0])==16384 && original(names[1])==16384 && notes==1);
  const ptrdiff_t limitsOffset=limits-(uint8_t *)(__bridge void *)device;
  printf("{\"real_Mac_MTLDevice\":true,\"original_getters\":true,\"width\":%lu,\"height\":%lu,\"limits_offset\":%td}\n",
@@ -205,8 +215,9 @@ int main() {@autoreleasepool {
                     "-Wall", "-Wextra", "-Werror", "-fsanitize=address,undefined",
                     str(metal), "-framework", "Foundation", "-framework", "Metal",
                     "-o", str(metal_binary)], check=True)
-    result = subprocess.run([str(metal_binary)], check=True, capture_output=True, text=True)
+    result = subprocess.run([str(metal_binary)], capture_output=True, text=True)
     (args.out / "original-Metal-run.log").write_text(result.stdout + result.stderr)
+    assert result.returncode == 0, result.stdout + result.stderr
     report.update(real_Mac_MTLDevice_getters=True, original_Metal_result=json.loads(result.stdout))
     # Foundation owns these objects with the same ARC rules as the production
     # dispatch source. Only event delivery is replaced, to inject a warning.
@@ -263,8 +274,9 @@ int main() {
     subprocess.run([args.cxx, "-std=c++17", "-fobjc-arc", "-fblocks", "-O1", "-g",
                     "-Wall", "-Wextra", "-Werror", "-fsanitize=address,undefined",
                     str(arc), "-framework", "Foundation", "-o", str(arc_binary)], check=True)
-    result = subprocess.run([str(arc_binary)], check=True, capture_output=True, text=True)
+    result = subprocess.run([str(arc_binary)], capture_output=True, text=True)
     (args.out / "pressure-run.log").write_text(result.stdout + result.stderr)
+    assert result.returncode == 0, result.stdout + result.stderr
     report.update(real_ARC_pressure_lifetime_test=True, pressure_result=json.loads(result.stdout),
                   real_system_memory_pressure_delivered=False)
     old_pressure = pressure.replace(" static dispatch_source_t source;\n", "")
@@ -285,8 +297,9 @@ int main() {
     subprocess.run([args.cxx, "-std=c++17", "-fobjc-arc", "-fblocks", "-O1", "-g",
                     "-Wall", "-Wextra", "-Werror", "-fsanitize=address,undefined",
                     str(old), "-framework", "Foundation", "-o", str(old_binary)], check=True)
-    result = subprocess.run([str(old_binary)], check=True, capture_output=True, text=True)
+    result = subprocess.run([str(old_binary)], capture_output=True, text=True)
     (args.out / "old-pressure-run.log").write_text(result.stdout + result.stderr)
+    assert result.returncode == 0, result.stdout + result.stderr
     report["old_ARC_disposal_reproduced"] = json.loads(result.stdout)["old_source_disposed"]
 (args.out / "report.json").write_text(json.dumps(report, indent=2) + "\n")
 print(json.dumps(report, indent=2))
