@@ -49,7 +49,9 @@ check frame-probe "$camera/NezhaCameraFrameProbe.c" "$camera/NezhaCameraMainCapt
     "$camera/NezhaCameraOvx10500u.c" "$camera/NezhaCameraCci.c" "$camera/NezhaCameraDma.c" \
     "$smmu/ArmSmmu4K.c" "$smmu/ArmSmmu4KContext.c" "$smmu/ArmSmmu4KProgram.c" "$smmu/ArmSmmu4KStreams.c"
 
-mkdir -p "$out/native-fixture/IOKit"
+mkdir -p "$out/native-fixture/IOKit" "$out/native-fixture/kern"
+printf '#include <stdint.h>\nextern "C" uint64_t mach_absolute_time(void);\n' \
+    > "$out/native-fixture/kern/clock.h"
 printf 'typedef int IOReturn;\n#define kIOReturnSuccess 0\nextern "C" void IOSleep(unsigned);\n' \
     > "$out/native-fixture/IOKit/IOLib.h"
 for unit in IrqQueue Camss1080 Rdi1080; do

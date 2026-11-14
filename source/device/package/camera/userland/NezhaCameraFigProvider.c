@@ -223,8 +223,11 @@ static NezhaFigStatus stream_copy(NezhaFigObject o,NezhaFigString key,NezhaFigAl
     __block CFTypeRef value=NULL;
     serial(s,^{
         if (key_is(key,"PortType")) value=CFRetain(CFSTR("PortTypeBack"));
-        else if (key_is(key,"UniqueID") || key_is(key,"ModelID")) value=CFRetain(CFSTR("nezha.ovx10500u.main"));
-        else if (key_is(key,"NonLocalizedName") || key_is(key,"LocalizedName")) value=CFRetain(CFSTR("nezha main camera"));
+        /* CMCapture's measured model loader looks up this built-in rear
+         * role; ModelID separately names the actual sensor implementation. */
+        else if (key_is(key,"UniqueID")) value=CFRetain(CFSTR("com.apple.avfoundation.avcapturedevice.built-in_video:0"));
+        else if (key_is(key,"ModelID")) value=CFRetain(CFSTR("nezha.ovx10500u.main"));
+        else if (key_is(key,"NonLocalizedName") || key_is(key,"LocalizedName")) value=CFRetain(CFSTR("Back Camera"));
         else if (key_is(key,"Manufacturer")) value=CFRetain(CFSTR("Xiaomi"));
         else if (key_is(key,"SupportedFormatsArray")) value=CFRetain(s->formats);
         else if (key_is(key,"FormatDescription")) {

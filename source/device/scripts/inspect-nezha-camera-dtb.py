@@ -22,9 +22,10 @@ CELLS = (
     "cell-index", "cci-master", "csiphy-sd-index", "clock-rates",
     "interrupts", "power-domains", "clocks", "iommus", "regulator-min-microvolt",
     "regulator-max-microvolt", "rgltr-min-voltage", "rgltr-max-voltage",
-    "data-lanes", "lane-polarities", "bus-type",
+    "rgltr-load-current", "data-lanes", "lane-polarities", "bus-type", "gpios",
 )
-STRINGS = ("compatible", "clock-names", "interrupt-names", "regulator-names", "reg-names")
+STRINGS = ("compatible", "clock-names", "interrupt-names", "regulator-names", "reg-names",
+           "gpio-req-tbl-label", "pinctrl-names")
 
 
 def node_path(node):
@@ -33,6 +34,22 @@ def node_path(node):
         names.append(node.name)
         node = node.parent
     return "/" + "/".join(reversed(names))
+
+
+def regulator_info(node):
+    provider = node.parent
+    result = {"regulator": node.strings("regulator-name")}
+    for key in ("regulator-min-microvolt", "regulator-max-microvolt", "qcom,init-voltage",
+                "qcom,init-mode", "qcom,set", "gpio", "gpios"):
+        if key in node.properties:
+            result[key] = node.cells(key)
+    if provider is not None:
+        for key in ("qcom,resource-name", "qcom,regulator-type"):
+            if key in provider.properties:
+                result[key] = provider.strings(key)
+        if "qcom,supported-modes" in provider.properties:
+            result["qcom,supported-modes"] = provider.cells("qcom,supported-modes")
+    return result
 
 
 def inventory(blob, read_fdt, registers):
@@ -60,11 +77,15 @@ def inventory(blob, read_fdt, registers):
             ]
         links = {}
         for key in node.properties:
-            if key.endswith(("-supply", "-src")) or key == "remote-endpoint":
+            if (key.endswith(("-supply", "-src")) or key == "remote-endpoint" or
+                    re.fullmatch(r"pinctrl-\d+", key)):
                 targets = []
                 for ref in node.cells(key):
                     target = phandles.get(ref)
-                    targets.append({"phandle": ref, "path": node_path(target) if target else None})
+                    item = {"phandle": ref, "path": node_path(target) if target else None}
+                    if target is not None and key.endswith("-supply"):
+                        item.update(regulator_info(target))
+                    targets.append(item)
                 links[key] = targets
         if links:
             entry["links"] = links

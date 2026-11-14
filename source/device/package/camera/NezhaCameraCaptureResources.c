@@ -98,7 +98,7 @@ bool nezha_camera_capture_resources_start(const struct NezhaCameraCaptureResourc
     if (state->status) return false;
     state->step = NezhaResourcesPll0;
     state->status = nezha_camera_camcc_acquire_pll0(io->camcc, &state->pll0);
-    if (state->status) return false;
+    if (state->status) { state->detail = state->pll0.failed_offset; return false; }
     state->step = NezhaResourcesCrmIdentity;
     if (!crm_ready(io->crm_common)) {
         state->status = NezhaCameraCrmReadback;

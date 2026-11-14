@@ -1,7 +1,7 @@
-name: nezha iPhone27 camera vnode flag and continuous native provider
+name: nezha iPhone27 PLL0 output ownership and native RAW capture
 on:
   push:
-    branches: [codex/ios27-camera018-vnode-20261115]
+    branches: [codex/ios27-camera020-pll-20261115]
   workflow_dispatch:
 permissions:
   contents: read

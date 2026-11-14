@@ -17,6 +17,7 @@ struct CamccModel {
     bool sticky_completion;
     bool core_enable_unobservable;
     bool pll_no_lock;
+    bool pll_refuse_outputs;
 };
 
 struct CaptureModel {
@@ -142,7 +143,7 @@ static void write32(void *context, uint32_t offset, uint32_t value)
         model->pll_opmode = value;
         if (value == 1) {
             assert((model->pll_mode & 4u) != 0 && (model->pll_mode & 1u) == 0);
-            assert(model->pll_l == 0x4444003e && model->pll_alpha == 0x8000 && model->pll_user == 0x840f);
+            assert((model->pll_l & 0xffffu) == 0x3e && model->pll_alpha == 0x8000 && model->pll_user == 0x840f);
             if (!model->pll_no_lock) {
                 model->pll_mode |= off_bit;
             }
@@ -153,7 +154,10 @@ static void write32(void *context, uint32_t offset, uint32_t value)
         break;
     case 0x10: model->pll_l = value; break;
     case 0x14: model->pll_alpha = value; break;
-    case 0x18: model->pll_user = value; break;
+    case 0x18:
+        model->pll_user = model->pll_refuse_outputs ?
+            (value & ~7u) | (model->pll_user & 7u) : value;
+        break;
     case 0x1c: model->pll_user_hi = value; break;
     case 0x20: case 0x24: case 0x28: model->pll_cfg[(offset - 0x20) / 4] = value; break;
     default: assert(0);
@@ -278,6 +282,50 @@ int main(void)
     assert(nezha_camera_camcc_release_pll0(&io, &pll, true) == NezhaCameraCamccOk && model.writes == 0);
     model.pll_l = 0x44440032;
     assert(nezha_camera_camcc_acquire_pll0(&io, &pll) == NezhaCameraCamccBusy && model.writes == 0);
+
+    /* The stock configure function preserves a nonzero L while always
+     * enabling the three output bits. They are not the rate/divider bits. */
+    model = cold;
+    model.pll_mode = 4;
+    model.pll_l = 0x0044003e;
+    model.pll_alpha = 0x8000;
+    model.pll_user = 0x8408;
+    const struct CamccModel standby = model;
+    assert(nezha_camera_camcc_acquire_pll0(&io, &pll) == NezhaCameraCamccOk);
+    assert(pll.owned && pll.ready && !pll.configured && pll.outputs_owned == 7);
+    assert(model.pll_l == standby.pll_l && model.pll_user == 0x840f);
+    assert(nezha_camera_camcc_release_pll0(&io, &pll, true) == NezhaCameraCamccOk);
+    assert(model.pll_l == standby.pll_l && model.pll_user == standby.pll_user &&
+        model.pll_mode == standby.pll_mode && model.pll_opmode == standby.pll_opmode);
+
+    /* Borrowing an already enabled Taycan follows its actual is_enabled
+     * ABI. Enable only missing child outputs, not a new calibration. */
+    model = standby;
+    model.pll_mode = 5;
+    model.pll_opmode = 1;
+    model.pll_user = 0x8409;
+    assert(nezha_camera_camcc_acquire_pll0(&io, &pll) == NezhaCameraCamccOk);
+    assert(!pll.owned && !pll.configured && pll.ready && pll.outputs_owned == 6);
+    assert(model.writes == 1 && model.pll_user == 0x840f && model.pll_l == standby.pll_l);
+    assert(nezha_camera_camcc_release_pll0(&io, &pll, true) == NezhaCameraCamccOk);
+    assert(model.writes == 2 && model.pll_user == 0x8409 && model.pll_mode == 5 && model.pll_opmode == 1);
+
+    model = standby;
+    model.pll_refuse_outputs = true;
+    assert(nezha_camera_camcc_acquire_pll0(&io, &pll) == NezhaCameraCamccSource);
+    assert(pll.failed_offset == 0x18 && pll.failed_value == 0x8408 && pll.owned);
+    model.pll_refuse_outputs = false;
+    assert(nezha_camera_camcc_release_pll0(&io, &pll, true) == NezhaCameraCamccOk);
+    assert(pll.failed_offset == 0x18 && pll.failed_value == 0x8408 && !pll.owned && !pll.outputs_owned);
+
+    model = standby;
+    model.pll_opmode = 2;
+    assert(nezha_camera_camcc_acquire_pll0(&io, &pll) == NezhaCameraCamccSource && model.writes == 0);
+    assert(pll.failed_offset == 4 && pll.failed_value == 2);
+    model = standby;
+    model.pll_l = 0x00440032;
+    assert(nezha_camera_camcc_acquire_pll0(&io, &pll) == NezhaCameraCamccSource && model.writes == 0);
+    assert(pll.failed_offset == 0x10 && pll.failed_value == 0x00440032);
 
     struct CaptureModel clocks = {0};
     const struct NezhaCameraRegisterIo clock_io = {&clocks, capture_read, capture_write, capture_wait};

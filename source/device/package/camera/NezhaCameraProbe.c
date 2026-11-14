@@ -347,6 +347,11 @@ static void camera_capture(void)
     (void)hardware_mark(86, (unsigned)saved, (unsigned)result.raw_sample_bytes, width, height);
     (void)hardware_mark(87, result.sensor_status, diagnostic_words[DiagIdWord],
         result.revision.vendor, result.revision.version);
+    if (result.resources.step == NezhaResourcesPll0 && result.resources.status) {
+        printf("NEZHA CAMERA: PLL0 source offset=%#x observed=%#x status=%u\n",
+            result.resources.pll0.failed_offset, result.resources.pll0.failed_value,
+            result.resources.status);
+    }
     const struct NezhaCameraIfeBcmFailure *bcm = &result.bandwidth_failure;
     if (bcm->issue) {
         (void)hardware_mark(88, bcm->issue, bcm->index, bcm->address, bcm->detail);

@@ -265,6 +265,12 @@ int main(void)
         CFGetTypeID(value)==Format && ((CMVideoFormatDescriptionRef)value)->width==4096);
     CFRelease(value);
     assert(st->base->copy_property(stream,CFSTR("PortType"),NULL,&value)==0 && !strcmp(((CFStringRef)value)->text,"PortTypeBack"));CFRelease(value);
+    assert(st->base->copy_property(stream,CFSTR("UniqueID"),NULL,&value)==0 &&
+        !strcmp(((CFStringRef)value)->text,"com.apple.avfoundation.avcapturedevice.built-in_video:0"));CFRelease(value);
+    assert(st->base->copy_property(stream,CFSTR("ModelID"),NULL,&value)==0 &&
+        !strcmp(((CFStringRef)value)->text,"nezha.ovx10500u.main"));CFRelease(value);
+    assert(st->base->copy_property(stream,CFSTR("NonLocalizedName"),NULL,&value)==0 &&
+        !strcmp(((CFStringRef)value)->text,"Back Camera"));CFRelease(value);
     assert(dt->device->request_streams(device,(NezhaFigArray)streams,NULL)==0 && begins==1);
     assert(dt->device->request_streams(device,(NezhaFigArray)streams,NULL)==0 && begins==1);
     uint8_t *raw=malloc(15728640);assert(raw);memset(raw,255,15728640);

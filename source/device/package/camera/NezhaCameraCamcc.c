@@ -36,6 +36,7 @@ enum {
 static const uint32_t clock_off = UINT32_C(1) << 31;
 static const uint32_t pll_locked = UINT32_C(1) << 31;
 enum { PllResetN = 4, PllOut = 1, PllRun = 1, PllVoteRun = 1 << 25 };
+enum { PllOutputs = 7, PllRateUserMask = 0x3fc00 };
 static const uint32_t pll0_registers[] = {0x10, 0x14, 0x20, 0x24, 0x28, 0x18, 0x1c};
 /* Lucid Evo's configure routine sets both calibration fields to 0x44. */
 static const uint32_t pll0_config[] = {
@@ -166,42 +167,72 @@ enum NezhaCameraCamccStatus nezha_camera_interfaces_stop(
     return NezhaCameraCamccOk;
 }
 
+static enum NezhaCameraCamccStatus pll0_error(struct NezhaCameraPll0Lease *lease,
+    enum NezhaCameraCamccStatus status, uint32_t offset, uint32_t value)
+{
+    lease->failed_offset = offset;
+    lease->failed_value = value;
+    return status;
+}
+
 enum NezhaCameraCamccStatus nezha_camera_camcc_acquire_pll0(
     const struct NezhaCameraRegisterIo *io, struct NezhaCameraPll0Lease *lease)
 {
     if (!io_valid(io) || lease == NULL) {
         return NezhaCameraCamccInvalid;
     }
-    if (lease->owned || lease->ready) {
+    if (lease->owned || lease->ready || lease->outputs_owned) {
         return NezhaCameraCamccBusy;
     }
     struct NezhaCameraPll0Lease next = {
         .mode_before = io->read(io->context, CamccPll0Mode),
         .opmode_before = io->read(io->context, CamccPll0Opmode),
     };
-    if (next.mode_before == UINT32_MAX || next.opmode_before > PllRun) {
-        return NezhaCameraCamccSource;
-    }
+    if (next.mode_before == UINT32_MAX)
+        return pll0_error(lease, NezhaCameraCamccSource, CamccPll0Mode, next.mode_before);
+    if (next.opmode_before > PllRun)
+        return pll0_error(lease, NezhaCameraCamccSource, CamccPll0Opmode, next.opmode_before);
     for (unsigned i = 0; i < 7; ++i) {
         next.saved[i] = io->read(io->context, pll0_registers[i]);
         if (next.saved[i] == UINT32_MAX) {
-            return NezhaCameraCamccSource;
+            return pll0_error(lease, NezhaCameraCamccSource, pll0_registers[i], next.saved[i]);
         }
     }
     const bool rate_matches = (next.saved[0] & 0xffffu) == 0x3e &&
-        next.saved[1] == 0x8000 && (next.saved[5] & 0x3fc07u) == 0x8407u;
+        next.saved[1] == 0x8000 && (next.saved[5] & PllRateUserMask) == 0x8400u;
     if (next.opmode_before == PllRun || (next.mode_before & PllOut) != 0) {
-        if (!rate_matches || next.opmode_before != PllRun ||
-            (next.mode_before & (pll_locked | PllResetN | PllOut)) != (pll_locked | PllResetN | PllOut)) {
-            return NezhaCameraCamccBusy;
+        if (!rate_matches)
+            return pll0_error(lease, NezhaCameraCamccBusy,
+                (next.saved[0] & 0xffffu) != 0x3e ? CamccPll0L :
+                next.saved[1] != 0x8000 ? CamccPll0Alpha : CamccPll0User,
+                (next.saved[0] & 0xffffu) != 0x3e ? next.saved[0] :
+                next.saved[1] != 0x8000 ? next.saved[1] : next.saved[5]);
+        /* Stock trion_pll_is_enabled (Taycan ops alias) reads RUN and
+         * global OUTCTRL. A borrowed, running PLL is never reconfigured
+         * or forced through a new lock/calibration sequence. */
+        if (next.opmode_before != PllRun || (next.mode_before & (PllResetN | PllOut)) != (PllResetN | PllOut))
+            return pll0_error(lease, NezhaCameraCamccBusy, CamccPll0Mode, next.mode_before);
+        *lease = next;
+        lease->outputs_owned = PllOutputs & ~next.saved[5];
+        if (lease->outputs_owned) {
+            change_bits(io, CamccPll0User, lease->outputs_owned, lease->outputs_owned);
+            const uint32_t observed = io->read(io->context, CamccPll0User);
+            if (observed == UINT32_MAX || (observed & PllOutputs) != PllOutputs)
+                return pll0_error(lease, NezhaCameraCamccSource, CamccPll0User, observed);
         }
         lease->ready = true;
         return NezhaCameraCamccOk;
     }
-    if ((next.saved[5] & PllVoteRun) != 0 || (next.mode_before & (1u << 20)) != 0 ||
-        (next.mode_before & pll_locked) != 0 || ((next.saved[0] & 0xffffu) != 0 && !rate_matches)) {
-        return NezhaCameraCamccSource;
-    }
+    if ((next.saved[5] & PllVoteRun) != 0)
+        return pll0_error(lease, NezhaCameraCamccSource, CamccPll0User, next.saved[5]);
+    if ((next.mode_before & ((1u << 20) | pll_locked)) != 0)
+        return pll0_error(lease, NezhaCameraCamccSource, CamccPll0Mode, next.mode_before);
+    if ((next.saved[0] & 0xffffu) != 0 && !rate_matches)
+        return pll0_error(lease, NezhaCameraCamccSource,
+            (next.saved[0] & 0xffffu) != 0x3e ? CamccPll0L :
+            next.saved[1] != 0x8000 ? CamccPll0Alpha : CamccPll0User,
+            (next.saved[0] & 0xffffu) != 0x3e ? next.saved[0] :
+            next.saved[1] != 0x8000 ? next.saved[1] : next.saved[5]);
 
     next.owned = true;
     *lease = next;
@@ -213,20 +244,29 @@ enum NezhaCameraCamccStatus nezha_camera_camcc_acquire_pll0(
         }
         for (unsigned i = 0; i < 7; ++i) {
             if (io->read(io->context, pll0_registers[i]) != pll0_config[i]) {
-                return NezhaCameraCamccSource;
+                return pll0_error(lease, NezhaCameraCamccSource, pll0_registers[i],
+                    io->read(io->context, pll0_registers[i]));
             }
         }
     }
+    /* The stock configure path enables USER_CTL[2:0] even when an
+     * existing L value causes it to skip the rate/config writes. */
+    lease->outputs_owned = PllOutputs & ~next.saved[5];
+    change_bits(io, CamccPll0User, PllOutputs, PllOutputs);
+    const uint32_t outputs = io->read(io->context, CamccPll0User);
+    if (outputs == UINT32_MAX || (outputs & PllOutputs) != PllOutputs)
+        return pll0_error(lease, NezhaCameraCamccSource, CamccPll0User, outputs);
     change_bits(io, CamccPll0Mode, PllResetN, PllResetN);
     io->write(io->context, CamccPll0Opmode, PllRun);
     if (!wait_bits(io, CamccPll0Mode, pll_locked, pll_locked)) {
-        return NezhaCameraCamccTimeout;
+        return pll0_error(lease, NezhaCameraCamccTimeout, CamccPll0Mode,
+            io->read(io->context, CamccPll0Mode));
     }
     change_bits(io, CamccPll0Mode, PllOut, PllOut);
     const uint32_t running = io->read(io->context, CamccPll0Mode);
     if (running == UINT32_MAX || (running & (pll_locked | PllResetN | PllOut)) !=
         (pll_locked | PllResetN | PllOut) || io->read(io->context, CamccPll0Opmode) != PllRun) {
-        return NezhaCameraCamccSource;
+        return pll0_error(lease, NezhaCameraCamccSource, CamccPll0Mode, running);
     }
     lease->ready = true;
     return NezhaCameraCamccOk;
@@ -265,7 +305,17 @@ enum NezhaCameraCamccStatus nezha_camera_camcc_release_pll0(
             return NezhaCameraCamccTimeout;
         }
     }
-    *lease = (struct NezhaCameraPll0Lease){0};
+    if (lease->outputs_owned && !lease->configured) {
+        const uint32_t observed = io->read(io->context, CamccPll0User);
+        if (observed == UINT32_MAX) return NezhaCameraCamccSource;
+        change_bits(io, CamccPll0User, lease->outputs_owned, lease->saved[5] & lease->outputs_owned);
+        if (!wait_bits(io, CamccPll0User, lease->outputs_owned, lease->saved[5] & lease->outputs_owned))
+            return NezhaCameraCamccTimeout;
+    }
+    /* Preserve the first failure for the existing resource-detail report
+     * after successful cleanup, without retaining a released resource. */
+    *lease = (struct NezhaCameraPll0Lease){.failed_offset = lease->failed_offset,
+        .failed_value = lease->failed_value};
     return NezhaCameraCamccOk;
 }
 
