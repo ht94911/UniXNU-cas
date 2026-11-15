@@ -55,8 +55,8 @@ def dictionary_refs(data, offset, ref_size):
     return refs[:count], refs[count:], at
 
 
-def merge_cache(source):
-    """Preserve original object bytes and its four-byte reference representation."""
+def merge_cache(source, *, replacement_key=None, replacement_job=None):
+    """Preserve object bytes while adding or replacing one selected job."""
     original = plistlib.loads(source)
     if source[:8] != b"bplist00" or original.get("VersionNumber") != 7:
         raise ValueError("Expected the selected iOS27 binary service cache")
@@ -65,7 +65,11 @@ def merge_cache(source):
         raise ValueError("Expected the original four-byte cache tables")
     offsets = [int.from_bytes(source[table + 4 * i:table + 4 * i + 4], "big") for i in range(count)]
     jobs = original["LaunchDaemons"]
-    if JOB_KEY in jobs or any(job.get("Label") == LABEL for job in jobs.values()):
+    replace = replacement_key is not None
+    if replace:
+        if replacement_key not in jobs or not isinstance(replacement_job, dict):
+            raise ValueError("Expected one existing task and its replacement dictionary")
+    elif JOB_KEY in jobs or any(job.get("Label") == LABEL for job in jobs.values()):
         raise ValueError("Cellular job already exists; start from the original cache")
     keys, values, root_at = dictionary_refs(source, offsets[root], ref_size)
     position = list(original).index("LaunchDaemons")
@@ -94,11 +98,17 @@ def merge_cache(source):
         body.extend(encoded)
         return index
 
-    key, job = append(JOB_KEY), append(JOB)
+    if replace:
+        selected = list(jobs).index(replacement_key)
+        job_values[selected] = append(replacement_job)
+    else:
+        key, job = append(JOB_KEY), append(JOB)
+        job_keys.append(key)
+        job_values.append(job)
     new_jobs = len(offsets)
     offsets.append(len(body))
-    body.extend(counted(0xd0, len(jobs) + 1))
-    body.extend(b"".join(struct.pack(">I", i) for i in job_keys + [key] + job_values + [job]))
+    body.extend(counted(0xd0, len(job_keys)))
+    body.extend(b"".join(struct.pack(">I", i) for i in job_keys + job_values))
     root_slot = root_at + (len(keys) + position) * ref_size
     body[root_slot:root_slot + 4] = struct.pack(">I", new_jobs)
     new_table = len(body)
@@ -106,7 +116,15 @@ def merge_cache(source):
     body.extend(struct.pack(">6xBBQQQ", 4, 4, len(offsets), root, new_table))
     merged = bytes(body)
     decoded = plistlib.loads(merged)
-    if decoded["LaunchDaemons"].pop(JOB_KEY) != JOB or decoded != original:
+    if replace:
+        expected = dict(original)
+        expected["LaunchDaemons"] = dict(jobs)
+        expected["LaunchDaemons"][replacement_key] = replacement_job
+    else:
+        if decoded["LaunchDaemons"].pop(JOB_KEY) != JOB:
+            raise ValueError("Added cellular job differs")
+        expected = original
+    if decoded != expected:
         raise ValueError("Original cache content changed outside the owner job")
     if merged[:root_slot] != source[:root_slot] or merged[root_slot + 4:table] != source[root_slot + 4:table]:
         raise ValueError("Original cache objects changed outside their dictionary reference")
