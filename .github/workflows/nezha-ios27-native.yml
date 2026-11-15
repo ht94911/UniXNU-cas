@@ -1,7 +1,7 @@
-name: nezha GPU047 with WiFi023 Bluetooth024 ALS017 - native043
+name: nezha GPU050 large allocation phases - native044
 on:
   push:
-    branches: [codex/ios27-gpu47-wifi-bt-als-043-20261114]
+    branches: [codex/ios27-gpu50-boalloc-native044-20261116]
   workflow_dispatch:
 permissions:
   contents: read
@@ -69,6 +69,10 @@ jobs:
           "$RUNNER_TEMP/ios27/input-host/core" > "$RUNNER_TEMP/ios27/work/logs/auto-input-core-run.log" 2>&1
           clang++ -std=c++17 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined -fno-sanitize-recover=all -I "$RUNNER_TEMP/ios27/work/device/package/nezha27-input" -I "$RUNNER_TEMP/ios27/work/usb/include" "$RUNNER_TEMP/ios27/work/device/tests/account-input-usb.cpp" -o "$RUNNER_TEMP/ios27/input-host/callbacks" > "$RUNNER_TEMP/ios27/work/logs/auto-input-callbacks-build.log" 2>&1
           "$RUNNER_TEMP/ios27/input-host/callbacks" > "$RUNNER_TEMP/ios27/work/logs/auto-input-callbacks-run.log" 2>&1
+      - name: Exercise the existing BoAlloc phase adapter and trace storage
+        env:
+          CXX: clang++
+        run: python3 "$RUNNER_TEMP/ios27/work/device/tests/check-gpu-bo-phases.py" --native "$RUNNER_TEMP/ios27/work/adreno" --out "$RUNNER_TEMP/ios27/work/bo-phases-host"
       - name: Check the actual guarded waiting-stack sampler
         run: python3 task/source/device/scripts/check-stable-kernel-stack.py
       - name: Qualify compiler and run the standard native build

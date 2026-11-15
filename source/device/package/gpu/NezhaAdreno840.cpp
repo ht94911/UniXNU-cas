@@ -25,6 +25,14 @@ extern "C" void nezha_cpu_start(void);
 #include <pexpert/pexpert.h>
 #include <string.h>
 #include "NezhaGpuPerfUsb.h"
+#include "NezhaGpuBoPhases.h"
+
+extern "C" int proc_selfpid(void);
+static void nezhaGpuBoPhases(const NativeAdrenoBoTrace *trace)
+{
+    nezhaGpuRecordBoPhases(trace, uint32_t(proc_selfpid()),
+                          thread_tid(current_thread()));
+}
 
 extern "C" IOReturn native_adreno_publish(NativeAdrenoVm *,NativeAdrenoSubmit *,NativeAdrenoRing *,
     const NativeAdrenoRingClock *,const NativeAdrenoTimer *,const NativeAdrenoAbiDeviceInfo *,uint32_t,uint32_t);
@@ -288,6 +296,10 @@ IOReturn bringUp()
     native_adreno_stall_read_words=readStallWords;
     status=native_adreno_publish(vm,&submit,&ring,&clock,&timer,&info,context->inputBits(),report.output_bits);
     if(checkpoint(13,status,"NativeAdreno user client"))return status;
+    if(native_gpu_trace_enabled() && !native_adreno_bo_hook) {
+        native_adreno_bo_hook=nezhaGpuBoPhases;
+        IOLog("NEZHA GPU BO: existing phase hook installed; >=256KiB and >=10ms on event65\n");
+    }
     ring.setTimeline(true); // existing A8xx CP_ALWAYS_ON timestamps around each real job
     if(nezha_gpu_platform_perf_start())return checkpoint(13,kIOReturnIOError,"GPU performance owner");
     nezha_cpu_start(); // SCMI/thermal owner using the27 processor API

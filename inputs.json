@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "GPU047 current046 + accepted WiFi023 Bluetooth024 manual005 ALS017; actual joint resource and persistent-Data integration. Source-only native043; private runtime/images/identity filled locally.",
+  "purpose": "GPU050: expose existing slow large-BoAlloc phases through the existing retained event65 diagnostic path; preserveGPU049 userland and acceptedGPU047 WiFi/Bluetooth/ALS. Native044 only.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "99ec050a754a91dd1ad61a8e6386dd1829f9f244",
+  "device_revision": "76c5952683041a6581224135461ab7c21d47f6a5",
   "soc_revision": "device-local-composition-e565439+3435fa5",
   "xcode": "26.6",
   "files": {
@@ -368,7 +368,7 @@
     "source/device/package/boot-progress/upstream.json": "bbcd4cc639b104c9d4619076c8350cfb90483a92347dcd5e39443ba0f8fd8a13",
     "source/device/package/cpu/NezhaCpu.c": "16084adaa01e1e2052f77af807448173793f71c3a5373fcb816012d46a7f6052",
     "source/device/package/cpu/NezhaCpu27Policy.h": "14869e171aabc71ea536d26bc79877db1889a29a13c09115557a45b1b8629dc7",
-    "source/device/package/gpu/NezhaAdreno840.cpp": "7a70a2e8c8118fbf1de6519ab74f93745b299cd47a426666995f9841f6036908",
+    "source/device/package/gpu/NezhaAdreno840.cpp": "503649d5f893cc3735be4173a92c190dbd7a5555a070c04f1319c51f35758b77",
     "source/device/package/gpu/NezhaDpuTiming.h": "5f4d92cb5173c4d583f3f0746c41746abe188c89d82faf34039cb22816d2a31d",
     "source/device/package/gpu/NezhaDpuTimingAdapter.h": "407c6e0b7346d02e7a5316d0c9a9886ef819457b667a3f1bf2d7f26da31167aa",
     "source/device/package/gpu/NezhaGpu.c": "f72aaa33dc9af922647798fcac6f740bfca893f4c05cc8196b88fe72e17799ff",
@@ -502,7 +502,11 @@
     "ci/test-native-userlog.py": "f64f5aff7c83cbbff7ce9bd15ab276dd7022f5e42d227999157b796afe414f9e",
     "ci/check-native-userlog.py": "74e7abe9164a853b10d4406a46f55f67670ade42795f066068e84f14b2ebc006",
     "ci/test-native-userlog-producer.py": "619bc31f6f41b16d562bcbc83a41588f6ada45a5268e23ef5c4985e5f364e403",
-    "ci/native.py": "e191f27218e82d98b5463084e975347fbe50e816553fa1ed7c9aa7dc4c52a5e2"
+    "ci/native.py": "ff35504afc8c13d7b77291dc2d54034e68a25dc0b6e56ada9dc0ec5d5eb40a3f",
+    "source/device/package/gpu/NezhaGpuBoPhases.h": "6b609e93c766b0f88b569dc1c04177b529f090e23f06a260c4c427afe8dfcbb6",
+    "source/device/tests/gpu-bo-phases.cpp": "a7d609b520a3166ca53c24581f89c6d2f02ca53f00b09326749c0356a3fc63e9",
+    "source/device/tests/check-gpu-bo-phases.py": "e34cab3913626ff9e80d533e9013791565229a3386fbb1599ed4c71c68afc181",
+    "source/device/docs/GPU050-BO-PHASES.md": "9a5d2f357315c7883d9e660a69969f72e7eaa290f09731dd2b39d390123557e4"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
@@ -562,8 +566,8 @@
     ],
     "framework_base_tree": "87bb1c5c70a736b7e2ac2b1bdada1cf8a80c3beb",
     "framework_tree": "091abd45bf6d85f19b49a3aea6619b653bd1850a",
-    "usb_base_revision": "9bfbf258d8356efcc0fbf03603d1518874829798",
-    "usb_base_tree": "0b1327323a45484cbe96f2419e7a8d34ccdf63f9",
+    "usb_base_revision": "b80705648032ee04df08e492b3127ee6c20b1bd6",
+    "usb_base_tree": "2e1661856cfefd8b8e0d1900d6c171c25852afdd",
     "usb_tree": "2e1661856cfefd8b8e0d1900d6c171c25852afdd",
     "base_framework_source_files": {
       "scripts/build-qcom-usb-debug.py": "aff8a4c8821d5cfb20d57ec507363d2cfecbd3586f52b3be808a08dafb45e395"
@@ -767,7 +771,7 @@
       "artifact_snapshot": "usb-attempts/<original evidence_directory.parent.name>/userlog-compile-record.json"
     },
     "standalone_recipe": {
-      "component_revision": "9bfbf258d8356efcc0fbf03603d1518874829798",
+      "component_revision": "b80705648032ee04df08e492b3127ee6c20b1bd6",
       "xnu_profile": "darwin25-xnu12377-unixnu",
       "soc": "soc/Sm8850.h",
       "compat_defines": [
@@ -853,5 +857,17 @@
     "local_fixup_count": 46,
     "runtime_actor_rebuilt": false,
     "GPU_Metal_rebuilt": false
+  },
+  "gpu050": {
+    "device_base": "99ec050a754a91dd1ad61a8e6386dd1829f9f244",
+    "driver_core_unchanged": true,
+    "Metal_rebuild": false,
+    "bo_hook_ABI_bytes": 56,
+    "minimum_KiB": 256,
+    "minimum_wall_us": 10000,
+    "observed_GPU049_texture_call_ms": 165.44,
+    "observed_GPU049_foreground_memory_ms": 165.212,
+    "existing_trace_event": 65,
+    "model_check": "tests/check-gpu-bo-phases.py"
   }
 }
