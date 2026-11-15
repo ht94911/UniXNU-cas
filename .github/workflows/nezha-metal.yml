@@ -1,7 +1,7 @@
-name: nezha iPhone27 extern kernel lookup and tiled mip output 041
+name: nezha iPhone27 tiled mip input and icon program evidence 042
 on:
   push:
-    branches: [codex/ios27-gpu27-metal-full-041-20261115]
+    branches: [codex/ios27-gpu27-metal-full-042-20261115]
   workflow_dispatch:
 permissions:
   contents: read
@@ -70,7 +70,7 @@ jobs:
       - name: Exercise actual Metal limits and ARC memory-pressure lifetime
         id: icon_limits
         run: device/ci/gpu-userland/logrun icon-limits python3 device/ci/gpu-userland/check-icon-limits.py --source unixnu/drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm --out "$LOGS/icon-limits"
-      - name: Exercise actual external kernel lookup and retained bitcode
+      - name: Exercise actual external kernel lookup and bounded icon-library evidence
         id: extern_function
         run: device/ci/gpu-userland/logrun extern-function python3 device/ci/gpu-userland/check-extern-function.py --unixnu unixnu --logs "$LOGS"
       - name: Check actual-source real Mesa trees,device lifetimes and swap API guards
@@ -117,7 +117,7 @@ jobs:
         id: plugin
         working-directory: unixnu
         run: ../device/ci/gpu-userland/logrun plugin python3 scripts/build-adreno-metal-plugin.py --target ios27 --iphone-24a446 --no-replay
-      - name: Bind changed runtime and test multi-level output planning
+      - name: Bind changed runtime and test multi-level input and output planning
         id: runtime_source
         run: device/ci/gpu-userland/logrun runtime-source python3 device/ci/gpu-userland/check-multi-level-output.py --unixnu unixnu --logs "$LOGS"
       - name: Test the actual patched allocator and bind its complete source

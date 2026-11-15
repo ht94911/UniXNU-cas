@@ -30,15 +30,19 @@ flags = ["-std=c++17", "-fobjc-arc", "-O1", "-g0", "-Wall", "-Wextra", "-Werror"
 frameworks = ["-framework", "Foundation", "-framework", "Metal",
               "-framework", "IOSurface", "-framework", "CoreFoundation"]
 
-def run_case(label, harness):
+def run_case(label, harness, trace=None):
     exe = out / label
     command = ["xcrun", "clang++", *flags, str(harness), str(archive), *frameworks,
                "-o", str(exe)]
     compiled = subprocess.run(command, capture_output=True, text=True)
     (out / (label + "-build.log")).write_text(compiled.stdout + compiled.stderr)
     assert compiled.returncode == 0, f"{label}: target test compilation failed"
-    execution = subprocess.run([str(exe)], capture_output=True, text=True,
-                               timeout=45, env=dict(os.environ, SHENG_DIAG="0"))
+    environment=dict(os.environ, SHENG_DIAG="0")
+    environment.pop("SHENG_GPU_TRACE", None)
+    if trace:
+        environment["SHENG_GPU_TRACE"]="1"
+    execution = subprocess.run([str(exe), *(["trace"] if trace is not None else [])],
+                               capture_output=True, text=True, timeout=45, env=environment)
     (out / (label + "-run.log")).write_text(execution.stdout + execution.stderr)
     return execution
 
@@ -57,12 +61,20 @@ with tempfile.TemporaryDirectory(prefix="extern-old-", dir=out) as temporary:
         '#import "../NativeBridgeMetalFrontend.mm"', '#import "frontend-before.mm"'))
     previous = run_case("previous", harness)
     assert previous.returncode == 1 and "FAIL missing production newExternFunctionWithName:" in previous.stdout
+trace_test=kit / "bridge/icon_library_trace_host.mm"
+enabled=run_case("icon-trace-on",trace_test,True)
+assert enabled.returncode==0 and "enabled=1 checks=14 records=96" in enabled.stdout,enabled.stdout+enabled.stderr
+disabled=run_case("icon-trace-off",trace_test,False)
+assert disabled.returncode==0 and "enabled=0 checks=9 records=0" in disabled.stdout,disabled.stdout+disabled.stderr
 report = dict(
     passed=True, source_sha256=sha(source), test_sha256=sha(test),
     production_ObjectiveC_selector_executed=True, checks=12,
     previous_missing_selector_reproduced=True,
     exact_kernel_bitcode_and_library_lifetime_verified=True,
     real_GPU_created=False, CoreImage_render_verified=False,
-    target_iconservice_verified=False, fixture_authored_no_private_inputs=True)
+    target_iconservice_verified=False, fixture_authored_no_private_inputs=True,
+    icon_library_trace_test_sha256=sha(trace_test),icon_library_trace_methods_executed=True,
+    icon_library_trace_enabled_checks=14,icon_library_trace_disabled_checks=9,
+    icon_library_trace_budget=96,icon_library_trace_disabled_records=0)
 (out / "report.json").write_text(json.dumps(report, indent=2) + "\n")
 print(json.dumps(report, indent=2))

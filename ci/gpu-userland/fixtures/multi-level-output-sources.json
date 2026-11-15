@@ -1,7 +1,7 @@
 {
   "original_pin": "963f0e64f103d2e682cd0cc454a8fe50f52c8cbb",
-  "patched_tree": "a90c34dc93df6ef5f5a5e76309032ed71d577a86",
-  "builder_sha256": "f3221d3c73784a0abafb097f78a302a1c5ffca6c812fdea239301c2c36c55379",
+  "patched_tree": "dd26fe493415352f39c081572ae322dcc626305e",
+  "builder_sha256": "02007219ee85c4e6915e7d753dda980246177f12695ae5febdf309a7af455a3f",
   "patch_hashes": {
     "0002-resource-wait-storage-dependencies.patch": "4536f03ac5a829d0a23d839491837c62af00c1aa884dc75cdae0f195c7953c0c",
     "0003-cache-device-entry-point-priming.patch": "ca1c0e3733bc048d9771fc3a5d061fc4224eee3341dc41d4b64a71e6e9d06408",
@@ -37,7 +37,8 @@
     "0037-runtime-963f-contracts.patch": "bcec51c15fb694d957c5712d7ef8219580b435c38afa18ab881fb0bb505004ce",
     "0038-fused-tiled-image-copy.patch": "2085e83c3f985b6657fe34aad903321aa96f2e1fb0a1550facf0be78599393fa",
     "0039-render-pass-driver-clocks.patch": "9d9bf7e50fd5fd6eb6cae2ad8d10e2c099218d84aa1614d1518aaaddca7211f1",
-    "0040-multi-level-tiled-output.patch": "cf4c65c2e71d21907d55a16becb7824478c253d5f45a456559449f3b1ddbf68d"
+    "0040-multi-level-tiled-output.patch": "cf4c65c2e71d21907d55a16becb7824478c253d5f45a456559449f3b1ddbf68d",
+    "0041-multi-level-tiled-input.patch": "6424943312a09ac67057357e22b8f5964be12da60178a2598e311fdcf106ba5b"
   },
   "source_hashes": {
     "crates/metal2vulkan-runtime/src/written_commands.rs": "5c1a9ac622de2d0cfc199de4115a087c6ee9550f4b94059513da4339a4207ac2",
@@ -256,7 +257,7 @@
     "crates/metal2vulkan-runtime/src/texture/in_place_image.rs": "94597dfb1588bdb1b3b42a4fd90ef77aa65140e6204e6e037cfcf7b7633393dc",
     "crates/metal2vulkan-runtime/src/texture/usage_shadow.rs": "385f4166f40182563e6c59a064a4b4108266f8e1b030eae329ef35353f4c2cd5",
     "crates/metal2vulkan-runtime/src/texture/ycbcr_image.rs": "441d849d4622333aa8eaac4acae4104e5095fe7f8400ad36934963206d4d329f",
-    "crates/metal2vulkan-runtime/src/texture/heap_tiled.rs": "49f2a13a2531912cc9d24de956ec1d2eeb4c80864f378c173397fbabef29d601",
+    "crates/metal2vulkan-runtime/src/texture/heap_tiled.rs": "ed8c58e9b3d7afc4fae2cfb7b7afe571eb5ed1084560249035338f3f2b8329f8",
     "crates/metal2vulkan-runtime/src/texture/shared.rs": "da7aaf754719098e9a17dd07c7a2e67d554fe6e616b0ac347938f133e1ac9ac7",
     "crates/metal2vulkan-runtime/src/texture/surface_two_planes.rs": "d1d8db90017ffe476d1cc5fa7ae06b6be09ee3dc59509a1e1d6aa5693fdc81dd",
     "crates/metal2vulkan-runtime/src/texture/stand_in.rs": "37429d0b169c799950fbae2e14f49e24d8a008294e92c4bd5b4feb102eaf2132",
@@ -476,7 +477,7 @@
     "crates/metal2vulkan-runtime/src/tests/device.rs": "468b8635b1b9bc9c45195fe85449b897e88b68c818b67d170f5791f1a946a1aa",
     "crates/metal2vulkan-runtime/src/tests/unsubmitted.rs": "7dc82d40b3a07135c187d1ef2246b8f4b6920b7b3664decf3e2326238301c9fc",
     "crates/metal2vulkan-runtime/src/tests/sparse.rs": "fbb2d6959e2d258b9958d12035425cd11204b6c55e3ffac60bc0bbf29ce35655",
-    "crates/metal2vulkan-runtime/src/tests/heap_tiled.rs": "98c465ff4a39df0eca6bc717573ee71a68f93346ca8c777d45618f2c67f50a31",
+    "crates/metal2vulkan-runtime/src/tests/heap_tiled.rs": "af23aaa50e09425082130dd005e4218a8a95c04cec8a1e911734a864316e1c3d",
     "crates/metal2vulkan-runtime/src/tests/indirect_command_buffer.rs": "60df811ece12ad68d70e598e69bc7e3d5cea0bdfbe5533c16f0daac6e601fd5b",
     "crates/metal2vulkan-runtime/src/tests/rebind_making_wait.rs": "98e0ca386a8c7b05e08d606390d45a6dd9e8d81b548c0eb31ff1fc380445747d",
     "crates/metal2vulkan-runtime/src/tests/encoder_holds.rs": "26a6087808a99dcf000b1fa13f6035ce782858b84165c23d069bd7e9096dd561",
@@ -541,7 +542,7 @@
     "crates/metal2vulkan-runtime/src/tests/gate.rs": "f9dabc47803e2cf6e6a7d4d5bfed0eaf8284414ee440cbb0689582513d940edf",
     "crates/metal2vulkan-runtime/src/tests/host_shadow.rs": "62491e48d77daf265222b30014e28ce8fbcbcbd010cdba577bab4316841941e2",
     "crates/metal2vulkan-runtime/src/tests/direct_arguments_from_compiled.rs": "b6675e9e232985830f9a76f76279f691953205312abd755d3b1dd923c2f22b97",
-    "crates/metal2vulkan-runtime/src/tests/tiled_device_words.rs": "02409a0a4b4e1bb1575b0a078332820c130bc18d45d21a1ad3497ddb5f5775bb",
+    "crates/metal2vulkan-runtime/src/tests/tiled_device_words.rs": "10d5870ffc75ea13c9764c8c1fbd32af6d3c196511cdea7691acde9b5690780c",
     "crates/metal2vulkan-runtime/src/tests/interop.rs": "574eca030589558569f9cb108ba52f0d81bdbafb00d578d0a186a00b944e8052",
     "crates/metal2vulkan-runtime/src/tests/pixel_format_info.rs": "d4f13d752134d61683210541657e7e9ebef8ec066321d8a9a1d345943e78069c",
     "crates/metal2vulkan-runtime/src/tests/trails.rs": "bd470ec8bca14641196d0f98e16cf03d34845bf99cf9be481e3b979f65c310ea",
@@ -1468,7 +1469,7 @@
     "crates/metal2vulkan/src/tests/engine_extended_range/targets.rs": "ef971c3c98f234d4dd2f90c5b991d9ca498a2d5fcdea021d806496d9dfa8717e",
     "crates/metal2vulkan/src/cache/codec/tests.rs": "85916b691f32e27b9b5957e8d1af73979a78664fdd36e5b583270c70f335a922",
     "crates/metal2vulkan/src/cache/digest/tests.rs": "90ae1ab7e016b698aed0fbf638b1d67493270576860d503a9c280e4e280469af",
-    "crates/metal2vulkan-runtime/README.md": "cab3e89814f28bf9e9cc84429d8e6cb24065aac3babbcdbb4e80ca228fbcb15d"
+    "crates/metal2vulkan-runtime/README.md": "23a7e52850d231d99a019bddad334f98a7d9631ea4a838420a7a4134f02e822d"
   },
   "local_changed_files": [
     "crates/metal2vulkan-air/src/canon/mod.rs",
@@ -1533,25 +1534,27 @@
   "phone_operations": false,
   "linux_execution_reference": {
     "passed": true,
-    "runtime_tree": "a90c34dc93df6ef5f5a5e76309032ed71d577a86",
-    "production_runtime_file_sha256": "49f2a13a2531912cc9d24de956ec1d2eeb4c80864f378c173397fbabef29d601",
+    "runtime_tree": "dd26fe493415352f39c081572ae322dcc626305e",
+    "production_runtime_file_sha256": "ed8c58e9b3d7afc4fae2cfb7b7afe571eb5ed1084560249035338f3f2b8329f8",
     "cpu_vulkan_device": "llvmpipe LLVM20.1.2",
     "multi_level_shapes": 60,
     "multi_level_independent_writer_merges": 24,
     "single_level_shapes": 45,
     "single_level_independent_writer_merges": 18,
+    "extra_padded_input_array_volume_shapes": 9,
+    "extra_padded_input_level_dispatches": 39,
     "each_shape_round_trips": 2,
     "whole_buffer_pixel_padding_prefix_suffix_verified": true,
-    "production_output_dispatch_grids_verified": true,
+    "production_input_output_dispatch_grids_verified": true,
     "unsupported_layout_fallbacks_verified": true,
     "release_build": true,
     "clippy_warnings_denied_passed": true,
+    "planner_tests": 18,
     "logs_sha256": {
-      "multi_level_tiled_output_preserves_pixels_padding_and_merges-verified.log": "ecd3925e69180f9344ca18529242a2eb8366a7d371606acbf40f1c3ff30ec1ff",
-      "fixed_heap_runtime_copies_preserve_pixels_padding_and_fallbacks-verified.log": "78be08154cec7b5227367b3d6b5cff2eeed898604cd94e7d43e47777edc61813",
-      "tiled_output_plans_keep_unsupported_levels_on_the_generic_path-verified.log": "fa6103ce99bcadd9291f0e289c7da9aa22e8c22eb765c1f07b833eb5dad9b949",
-      "grid-cost.log": "c23c65811c72ccfdac6c1d01f233d27eb5679798655b8ad660665c5aa2b5cff4",
-      "clippy-runtime.log": "9a8d3a8e3888e22d4dd69fe2819b27827c462ddcca2b3769786979ff516abe27"
+      "multi-level-input-test.log": "d70e2d33019e7b02dd86e7ee167d06c3a90b09dd030110917990deeaee77e605",
+      "planner.log": "d95fa6dbacf7006c045fd62041f89521f91c66de05f40a4975691fa6f0db44f4",
+      "single-level.log": "9b2e7035f140b0310a92ed4a5b64937f1694ff4df07250854cbdefeac64946f4",
+      "clippy.log": "8d5043d3d23b4343952449748ff1e397c1aa292f10156506ab3ac51d4dc51aa8"
     },
     "physical_A840_performance_verified": false
   },

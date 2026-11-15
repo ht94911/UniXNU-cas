@@ -346,7 +346,9 @@ def main():
         must(['git', '-C', repository, 'apply', selected])
         record.setdefault('runtime_963f_patches', {})[name] = sha(selected)
     for repository, name in [(root, 'gpu048-recipes.patch'),
-                             (root / 'drivers/AdrenoMetal', 'gpu048-plugin.patch')]:
+                             (root / 'drivers/AdrenoMetal', 'gpu048-plugin.patch'),
+                             (root, 'gpu049-recipes.patch'),
+                             (root / 'drivers/AdrenoMetal', 'gpu049-plugin.patch')]:
         selected = HERE / 'patches' / name
         must(['git', '-C', repository, 'apply', '--check', selected])
         must(['git', '-C', repository, 'apply', selected])

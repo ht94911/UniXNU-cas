@@ -1,0 +1,525 @@
+diff --git a/NativeBridgeMetalFrontend.mm b/NativeBridgeMetalFrontend.mm
+index 49aea34..de00b91 100644
+--- a/NativeBridgeMetalFrontend.mm
++++ b/NativeBridgeMetalFrontend.mm
+@@ -46,6 +46,7 @@
+ #include <string.h>
+ #include <unistd.h>
+ #include <sys/stat.h>
++#include <cstdarg>
+ #include "bridge/NativeMetalObjects.h"
+ #include "SharedShaderCache.h"
+ #include "QueuePriority.h"
+@@ -780,6 +781,17 @@ static void iconMetalText(const char *line) {
+  strlcpy((char *)&rec.value[1],line,sizeof(rec.value)-sizeof(rec.value[0]));
+  (void)gFrameTransport(NativeGpuTraceMethod,&rec,sizeof(rec));
+ }
++// The first library/lookup decisions in the selected diagnostic client. A
++// missing program can precede any pipeline call, so completed GPU work alone
++// cannot establish that Core Image loaded its kernel names.
++static std::atomic<unsigned> gIconLibraryNotes{0};
++static void iconLibraryNote(const char *format,...) __attribute__((format(printf,1,2)));
++static void iconLibraryNote(const char *format,...) {
++ if(!iconMetalTrace() || gIconLibraryNotes.fetch_add(1)>=96)return;
++ char text[88];
++ va_list args;va_start(args,format);vsnprintf(text,sizeof text,format,args);va_end(args);
++ iconMetalText(text);
++}
+ static thread_local bool tQuietProblems;
+ extern "C" void native_bridge_metal_quiet_problems(bool quiet) {tQuietProblems=quiet;}
+ // Notes every process makes and that change nothing it draws: they must not stand in the one line a client's failure is reported on.
+@@ -1814,6 +1826,8 @@ static bool forEachLibraryEntry(NBLibrary *library,const std::function<bool(cons
+  for(uint32_t i=0,n=nmb_library_function_count(_handle);i<n;i++) {
+   char name[256];nmb_library_function_name(_handle,i,name,sizeof name);[names addObject:[NSString stringWithUTF8String:name]];
+  }
++ iconLibraryNote("ci-names lib=%llx kind=ordinary n=%lu",
++  (unsigned long long)(uintptr_t)(__bridge void *)self,(unsigned long)names.count);
+  return names;
+ }
+ // _MTLLibrary's externFunctionNames: the entries of external linkage (TYPE 5), an empty array for a library without any. iPadOS 27's Core
+@@ -1823,10 +1837,12 @@ static bool forEachLibraryEntry(NBLibrary *library,const std::function<bool(cons
+ // 26.5.1 answers 228 names for its ci_stdlib and 612 for ci_filters, none for a stitchable library.
+ - (NSArray<NSString *> *)externFunctionNames {
+  NSMutableArray<NSString *> *names=[NSMutableArray array];
+- forEachLibraryEntry(self,[&](const std::string &entry,int type) {
++ const bool valid=forEachLibraryEntry(self,[&](const std::string &entry,int type) {
+   if(type==5 && !entry.empty())if(NSString *name=@(entry.c_str()))[names addObject:name];
+   return true;
+  });
++ iconLibraryNote("ci-names lib=%llx kind=extern n=%lu valid=%d",
++  (unsigned long long)(uintptr_t)(__bridge void *)self,(unsigned long)names.count,valid);
+  return names;
+ }
+ // Core Image's PrecompiledKernels::new_function uses this SPI on iPhone24A446.
+@@ -1926,6 +1942,8 @@ static NBFunction *ciKernelFunction(NBLibrary *library,NSString *name) {
+   }
+   return false;
+  });
++ iconLibraryNote("ci-kernel lib=%llx hit=%d name=%.40s",
++  (unsigned long long)(uintptr_t)(__bridge void *)library,found!=nil,wanted);
+  return found;
+ }
+ @interface NBComputePipeline : NBObject
+@@ -4529,17 +4547,36 @@ static void fillBaseLimits(id device);
+  const void *bytes=nullptr;size_t size=0;dispatch_data_t mapped=dispatch_data_create_map(data,&bytes,&size);
+  const uint64_t libraryBegan=nowUs();
+  NmbLibrary *handle=syncDetail(25,"nmb_library_new",[&]{return nmb_library_new(gDevice,bytes,size,false);});gTimeLibrary.add(libraryBegan);
+- if(!handle)return failWith<id<MTLLibrary>>(error,@"library",nil);
++ if(!handle) {
++  iconLibraryNote("ci-library data bytes=%llu type=%d ok=0",
++   (unsigned long long)size,size>10?((const uint8_t *)bytes)[10]:-1);
++  return failWith<id<MTLLibrary>>(error,@"library",nil);
++ }
+  NBLibrary *library=[NBLibrary new];library.handle=handle;library.storage=mapped;library.bytes=(const uint8_t *)bytes;library.length=size;
++ iconLibraryNote("ci-lib %llx data bytes=%llu type=%d",
++  (unsigned long long)(uintptr_t)(__bridge void *)library,(unsigned long long)size,
++  size>10?((const uint8_t *)bytes)[10]:-1);
+  if(error)*error=nil;return (id<MTLLibrary>)library;
+ }
+ - (id<MTLLibrary>)newLibraryWithFile:(NSString *)path error:(NSError **)error {
+  DetailSpan timing(22,(uintptr_t)(__bridge void *)self,(uintptr_t)__func__);
+- NSData *bytes=path?[NSData dataWithContentsOfFile:path options:NSDataReadingMappedIfSafe error:error]:nil;if(!bytes)return nil;
++ NSData *bytes=path?[NSData dataWithContentsOfFile:path options:NSDataReadingMappedIfSafe error:error]:nil;
++ if(!bytes) {
++  iconLibraryNote("ci-library read=0 file=%.55s",path.lastPathComponent.UTF8String?:"(nil)");
++  return nil;
++ }
+  const uint64_t libraryBegan=nowUs();
+  NmbLibrary *handle=syncDetail(25,"nmb_library_new",[&]{return nmb_library_new(gDevice,bytes.bytes,bytes.length,false);});gTimeLibrary.add(libraryBegan);
+- if(!handle)return failWith<id<MTLLibrary>>(error,@"library",nil);
++ if(!handle) {
++  iconLibraryNote("ci-library bytes=%llu type=%d ok=0 file=%.36s",
++   (unsigned long long)bytes.length,bytes.length>10?((const uint8_t *)bytes.bytes)[10]:-1,
++   path.lastPathComponent.UTF8String?:"(nil)");
++  return failWith<id<MTLLibrary>>(error,@"library",nil);
++ }
+  NBLibrary *library=[NBLibrary new];library.handle=handle;library.storage=bytes;library.bytes=(const uint8_t *)bytes.bytes;library.length=bytes.length;
++ iconLibraryNote("ci-lib %llx bytes=%llu type=%d file=%.30s",
++  (unsigned long long)(uintptr_t)(__bridge void *)library,(unsigned long long)bytes.length,
++  bytes.length>10?((const uint8_t *)bytes.bytes)[10]:-1,path.lastPathComponent.UTF8String?:"(nil)");
+  if(error)*error=nil;return (id<MTLLibrary>)library;
+ }
+ - (id<MTLLibrary>)newLibraryWithURL:(NSURL *)url error:(NSError **)error {
+@@ -4588,6 +4625,8 @@ static void fillBaseLimits(id device);
+ - (id<MTLLibrary>)newLibraryWithStitchedDescriptor:(MTLStitchedLibraryDescriptor *)d error:(NSError **)error {
+  DetailSpan timing(22,(uintptr_t)(__bridge void *)self,(uintptr_t)__func__);
+  NSArray<MTLFunctionStitchingGraph *> *graphs=d.functionGraphs;NSArray<id<MTLFunction>> *functions=d.functions;
++ iconLibraryNote("ci-stitch graphs=%lu functions=%lu",
++  (unsigned long)graphs.count,(unsigned long)functions.count);
+  if(!graphs.count || !functions.count){if(error)*error=nbError(@"a stitched library needs graphs and functions");return nil;}
+  NSString *dag=[(id<NBOriginalStitching>)self newDagStringWithGraphs:graphs];
+  if(!dag.length){if(error)*error=nbError(@"the stitching graphs have no DAG text");return nil;}
+diff --git a/README.md b/README.md
+index 4d45bd9..7f7eaaf 100644
+--- a/README.md
++++ b/README.md
+@@ -25,6 +25,13 @@ lookup, retaining the same returned-function ownership and the library's
+ stitching bitcode. Missing names remain nil. This also accepts ordinary functions
+ as the runtime's corresponding library method does.
+ 
++In a diagnostic boot, the existing icon-service trace also records the first
++96 library loads, function-name queries and external-kernel lookups. File-read
++failure is recorded before it returns nil, and stitching requests report their
++graph and function counts. These records distinguish program setup from the
++already recorded device, queue and completed work; they do not change the calls'
++results.
++
+ ## Memory reuse
+ 
+ Unused owned image backing can serve later pooled or dedicated images. Image spares expire after ten seconds and are reclaimed on allocation failure or memory pressure; they have no byte limit. Unused buffer reservations share a separate 64 MiB device budget across memory types. The room worker rechecks demand and reuses a spare of the same pool and memory type before allocating. If foreground completions restore room during allocation, the new owned buffer stays spare with its address object intact. Owned blocks are freed on the runtime's existing free thread; a full 64-item queue releases on the caller. Allocation failure reclaims spares and waits for posted frees before retrying. Imported memory and owner callbacks retain their release ordering.
+@@ -55,6 +62,13 @@ These timestamps are CPU recording boundaries, not GPU copy durations.
+ The existing type 11 copy-row counters are retained when they change, sampled
+ by the frame writer every 250 ms, to report actual per-row blits separately.
+ 
++Single-sample tiled mip chains with 4-, 8- or 16-byte elements use the existing
++tile-coordinate kernel in both directions, with a distinct shape and descriptor
++for each level. Input leaves transfer padding unchanged, as the generic wide-word
++path does. The image transfers, staging, heap ownership, barriers and independent
++writer merges retain their existing behavior. Narrow elements and unsupported
++dispatch grids keep the generic conversion.
++
+ Linear heap shadows on Turnip keep their Metal-visible tight rows. For single-sample,
+ single-level, single-layer 2D color images with 4, 8 or 16 bytes per texel and a
+ row pitch that misses 64-byte alignment, the existing unsigned-integer view and
+diff --git a/bridge/icon_library_trace_host.mm b/bridge/icon_library_trace_host.mm
+new file mode 100644
+index 0000000..77baade
+--- /dev/null
++++ b/bridge/icon_library_trace_host.mm
+@@ -0,0 +1,75 @@
++// SPDX-License-Identifier: MIT
++// Exercise the production diagnostic decisions without opening a GPU or using
++// private libraries. The external-kernel fixture is authored by this project.
++#define main external_lookup_fixture_main
++#import "extern_function_host.mm"
++#undef main
++
++static std::vector<std::string> records;
++static bool captureIconText(uint32_t method,const void *bytes,uint32_t length) {
++    assert(method==NativeGpuTraceMethod && length==sizeof(NativeGpuTraceRecord));
++    const auto &record=*static_cast<const NativeGpuTraceRecord *>(bytes);
++    assert(record.event==GpuTraceProblem && record.value[0]==0);
++    const char *text=reinterpret_cast<const char *>(&record.value[1]);
++    const size_t bound=sizeof(record.value)-sizeof(record.value[0]);
++    assert(memchr(text,0,bound));
++    records.emplace_back(text);
++    return true;
++}
++
++static bool hasRecord(const char *text) {
++    for(const std::string &record:records)
++        if(record.find(text)!=std::string::npos)return true;
++    return false;
++}
++
++int main(int argc,char **) {
++    if(argc!=2)return 2;
++    @autoreleasepool {
++        gFrameTransport=captureIconText;
++        const bool enabled=getenv("SHENG_GPU_TRACE")!=nullptr;
++        unsigned checks=0;
++        const char *prior=getprogname();
++        setprogname("unselected-client");
++        iconLibraryNote("not selected");
++        assert(records.empty() && gIconLibraryNotes.load()==0);++checks;
++        setprogname("iconservicesagent");
++        gFrameTransport=nullptr;
++        iconLibraryNote("no transport");
++        assert(records.empty() && gIconLibraryNotes.load()==0);++checks;
++        gFrameTransport=captureIconText;
++        NSMutableData *storage=kernelLibraryFixture();
++        NBLibrary *library=[NBLibrary new];
++        library.storage=storage;
++        library.bytes=static_cast<const uint8_t *>(storage.bytes);
++        library.length=storage.length;
++        assert([[library externFunctionNames] isEqualToArray:@[@"kernel_fixture"]]);++checks;
++        NBFunction *function=(NBFunction *)[library newExternFunctionWithName:@"kernel_fixture"];
++        assert(function && function.library==library && function.functionType==4);++checks;
++        assert(ciKernelFunction(library,@"missing_fixture")==nil);++checks;
++        assert(functionBitcode(function).length==8);++checks;
++        NBDeviceMethods *device=[NBDeviceMethods new];
++        NSError *error=nil;
++        assert([(id<MTLDevice>)device newLibraryWithFile:@"/__missing_ci_fixture__/missing.metallib" error:&error]==nil);
++        assert(error!=nil);++checks;
++        error=nil;
++        MTLStitchedLibraryDescriptor *empty=[MTLStitchedLibraryDescriptor new];
++        assert([(id<MTLDevice>)device newLibraryWithStitchedDescriptor:empty error:&error]==nil);
++        assert(error!=nil);++checks;
++        if(enabled) {
++            assert(hasRecord("kind=extern n=1 valid=1"));++checks;
++            assert(hasRecord("hit=1 name=kernel_fixture"));++checks;
++            assert(hasRecord("hit=0 name=missing_fixture"));++checks;
++            assert(hasRecord("read=0 file=missing.metallib"));++checks;
++            assert(hasRecord("ci-stitch graphs=0 functions=0"));++checks;
++            for(unsigned i=0;i<120;++i)iconLibraryNote("bounded %u",i);
++            assert(records.size()==96);++checks;
++        } else {
++            assert(records.empty() && gIconLibraryNotes.load()==0);++checks;
++        }
++        setprogname(prior);
++        printf("PASS icon library trace: enabled=%d checks=%u records=%lu\n",
++               enabled,checks,(unsigned long)records.size());
++    }
++    return 0;
++}
+diff --git a/bridge/patches/0041-multi-level-tiled-input.patch b/bridge/patches/0041-multi-level-tiled-input.patch
+new file mode 100644
+index 0000000..0be58b2
+--- /dev/null
++++ b/bridge/patches/0041-multi-level-tiled-input.patch
+@@ -0,0 +1,295 @@
++diff --git a/crates/metal2vulkan-runtime/README.md b/crates/metal2vulkan-runtime/README.md
++index 5dc8ac22a..d22632e90 100644
++--- a/crates/metal2vulkan-runtime/README.md
+++++ b/crates/metal2vulkan-runtime/README.md
++@@ -32,12 +32,12 @@ runtime and on `metal2vulkan`: the runtime's calls take the translator's descrip
++ value types, which it does not re-export (`metal2vulkan::pipeline::RenderPipelineDescriptor`,
++ `metal2vulkan::metal::PixelFormat`, ...).
++ 
++-Heap texture copies back to tiled bytes use a tile-coordinate dispatch for each
+++Heap texture copies between tiled bytes and images use a tile-coordinate dispatch for each
++ level when every single-sample level has 4-, 8- or 16-byte elements and fits the
++ device's dispatch limits. Each level retains its own shape and descriptor set.
++ The original image transfer, staging padding, copy-back ranges and independent
++-writer merges remain in place. Multi-level input, smaller elements and unsupported
++-grids retain the generic conversion.
+++writer merges remain in place. Input preserves the previous transfer-padding bytes;
+++smaller elements and unsupported grids retain the generic conversion.
++ 
++ ## Depending on it
++ 
++diff --git a/crates/metal2vulkan-runtime/src/tests/heap_tiled.rs b/crates/metal2vulkan-runtime/src/tests/heap_tiled.rs
++index 1845859ec..86cb7ba60 100644
++--- a/crates/metal2vulkan-runtime/src/tests/heap_tiled.rs
+++++ b/crates/metal2vulkan-runtime/src/tests/heap_tiled.rs
++@@ -1540,29 +1540,30 @@ fn level_moves(layout: &TiledLayout, at: u32) -> Vec<metal2vulkan::bind::TiledLe
++ }
++ 
++ #[test]
++-fn tiled_output_plans_keep_unsupported_levels_on_the_generic_path() {
+++fn tiled_move_plans_keep_unsupported_levels_on_the_generic_path() {
++     use crate::texture::heap_tiled::tiled_move_plans;
++     use metal2vulkan::bind::TiledTexelsModule;
++     let layout = TiledLayout::of(4, Elements::Texels, T::Type2D, [129, 97, 1], 3, 1).unwrap();
++     let levels = level_moves(&layout, 0);
++-    let plans = tiled_move_plans(&levels, false, [65535; 3]).unwrap();
++-    assert_eq!(plans.len(), 3);
++-    for ((shape, grid), level) in plans.iter().zip(&levels) {
++-        let expected = TiledTexelsModule::tiled_dispatch(level, false).unwrap();
++-        assert_eq!(*shape, expected.0);
++-        assert_eq!(*grid, expected.1);
++-    }
++-    assert!(tiled_move_plans(&levels, true, [65535; 3]).is_none());
++-    assert!(tiled_move_plans(&[], false, [65535; 3]).is_none());
++-    assert!(tiled_move_plans(&levels, false, [1, 1, 1]).is_none());
++-    for unit in [1, 2, 32, 64] {
++-        let mut changed = levels.clone();
++-        changed[1].unit = unit;
++-        assert!(tiled_move_plans(&changed, false, [65535; 3]).is_none());
+++    for into in [true, false] {
+++        let plans = tiled_move_plans(&levels, into, [65535; 3]).unwrap();
+++        assert_eq!(plans.len(), 3);
+++        for ((shape, grid), level) in plans.iter().zip(&levels) {
+++            let expected = TiledTexelsModule::tiled_dispatch(level, into).unwrap();
+++            assert_eq!(*shape, expected.0);
+++            assert_eq!(*grid, expected.1);
+++        }
+++        assert!(tiled_move_plans(&[], into, [65535; 3]).is_none());
+++        assert!(tiled_move_plans(&levels, into, [1, 1, 1]).is_none());
+++        for unit in [1, 2, 32, 64] {
+++            let mut changed = levels.clone();
+++            changed[1].unit = unit;
+++            assert!(tiled_move_plans(&changed, into, [65535; 3]).is_none());
+++        }
+++        let mut misaligned = levels.clone();
+++        misaligned[1].tight_first += 2;
+++        assert!(tiled_move_plans(&misaligned, into, [65535; 3]).is_none());
++     }
++-    let mut misaligned = levels.clone();
++-    misaligned[1].tight_first += 2;
++-    assert!(tiled_move_plans(&misaligned, false, [65535; 3]).is_none());
++ }
++ 
++ #[test]
++diff --git a/crates/metal2vulkan-runtime/src/tests/tiled_device_words.rs b/crates/metal2vulkan-runtime/src/tests/tiled_device_words.rs
++index 4e8177856..608e1cdd0 100644
++--- a/crates/metal2vulkan-runtime/src/tests/tiled_device_words.rs
+++++ b/crates/metal2vulkan-runtime/src/tests/tiled_device_words.rs
++@@ -95,6 +95,81 @@ fn aligned_transfer_rows_execute_on_vulkan() {
++     }
++ }
++ 
+++#[test]
+++fn multi_level_tiled_input_preserves_transfer_padding() {
+++    use crate::texture::heap_tiled::{tiled_move_plans, Elements, TiledLayout};
+++    use metal2vulkan::metal::TextureType;
+++
+++    let scratch = Scratch::new("multi-level-input-padding");
+++    let device = device(&scratch.0);
+++    for unit in [4, 8, 16] {
+++        for (kind, extent, count, slices) in [
+++            (TextureType::Type2D, [129, 97, 1], 4, 1),
+++            (TextureType::Type2DArray, [191, 132, 1], 4, 3),
+++            (TextureType::Type3D, [67, 35, 3], 5, 1),
+++        ] {
+++            let layout =
+++                TiledLayout::of(unit, Elements::Texels, kind, extent, count, slices).unwrap();
+++            let mut tight_end = 128;
+++            let levels: Vec<_> = layout
+++                .levels
+++                .iter()
+++                .map(|level| {
+++                    let images = if layout.volume {
+++                        level.depth
+++                    } else {
+++                        layout.chains
+++                    } as u32;
+++                    let mut moving = TiledLevelMove::new(
+++                        unit as u32,
+++                        level.extent.map(|n| n as u32),
+++                        images,
+++                        level.tile.map(|n| n as u32),
+++                        level.across as u32,
+++                        128 + level.base as u32,
+++                        layout.stride as u32,
+++                        tight_end,
+++                        level.bytes as u32,
+++                    );
+++                    moving.tight_row_pitch =
+++                        (moving.extent[0] * unit as u32).next_multiple_of(256) + 256;
+++                    tight_end += moving.tight_row_pitch * moving.extent[1] * images + 128;
+++                    moving
+++                })
+++                .collect();
+++            let mut tight: Vec<u8> = (0..tight_end)
+++                .map(|i| (i.wrapping_mul(7) + i / 257 + 3) as u8)
+++                .collect();
+++            let tiled: Vec<u8> = (0..layout.size + 256)
+++                .map(|i| (i.wrapping_mul(13) + i / 251 + 5) as u8)
+++                .collect();
+++            let plans = tiled_move_plans(
+++                &levels,
+++                true,
+++                device
+++                    .properties()
+++                    .description
+++                    .limits
+++                    .max_compute_work_group_count,
+++            )
+++            .expect("word-wide multi-level input uses tile coordinates");
+++            assert_eq!(plans.len(), levels.len());
+++            for (level, (shape, grid)) in levels.iter().zip(plans) {
+++                let wanted = expected(level, true, &tight, &tiled);
+++                run_plan(
+++                    &device,
+++                    &shape,
+++                    grid,
+++                    (&tight, &tiled),
+++                    (&wanted.0, &wanted.1),
+++                    "multi-level input: pixels, row padding and inter-level gaps",
+++                );
+++                tight = wanted.0;
+++            }
+++        }
+++    }
+++}
+++
++ fn run_plan(
++     device: &Device,
++     shape: &[u8],
++@@ -646,7 +721,7 @@ fn fixed_heap_runtime_copies_preserve_pixels_padding_and_fallbacks() {
++ }
++ 
++ #[test]
++-fn multi_level_tiled_output_preserves_pixels_padding_and_merges() {
+++fn multi_level_tiled_moves_preserve_pixels_padding_and_merges() {
++     fixed_heap_runtime_copies_for_levels(true);
++ }
++ 
++@@ -737,21 +812,22 @@ fn fixed_heap_runtime_copies_for_levels(multi_level: bool) {
++                 })
++                 .collect();
++             if multi_level {
++-                let plans = tiled_move_plans(
++-                    &movements,
++-                    false,
++-                    device
++-                        .properties()
++-                        .description
++-                        .limits
++-                        .max_compute_work_group_count,
++-                )
++-                .expect("all levels fit tile-coordinate output");
++-                assert_eq!(plans.len(), level_count as usize);
++-                assert!(plans
++-                    .iter()
++-                    .all(|(shape, _)| shape[12..16] == 1u32.to_le_bytes()));
++-                assert!(tiled_move_plans(&movements, true, [65535; 3]).is_none());
+++                for into in [true, false] {
+++                    let plans = tiled_move_plans(
+++                        &movements,
+++                        into,
+++                        device
+++                            .properties()
+++                            .description
+++                            .limits
+++                            .max_compute_work_group_count,
+++                    )
+++                    .expect("all levels fit tile-coordinate moves");
+++                    assert_eq!(plans.len(), level_count as usize);
+++                    assert!(plans
+++                        .iter()
+++                        .all(|(shape, _)| shape[12..16] == 1u32.to_le_bytes()));
+++                }
++             }
++             let regions = copy_plane_regions(&planes, 1);
++             assert!(planes[0].pitch.is_multiple_of(copy_alignment[1]));
++@@ -831,21 +907,23 @@ fn fixed_heap_runtime_copies_for_levels(multi_level: bool) {
++                 )
++                 .unwrap();
++                 if multi_level {
++-                    let grids = copies.output_dispatch_grids();
++-                    let wanted_grids: Vec<_> = tiled_move_plans(
++-                        &movements,
++-                        false,
++-                        device
++-                            .properties()
++-                            .description
++-                            .limits
++-                            .max_compute_work_group_count,
++-                    )
++-                    .unwrap()
++-                    .into_iter()
++-                    .map(|(_, grid)| grid)
++-                    .collect();
++-                    assert_eq!(grids, wanted_grids, "production records each level's grid");
+++                    for into in [true, false] {
+++                        let grids = copies.dispatch_grids(into);
+++                        let wanted_grids: Vec<_> = tiled_move_plans(
+++                            &movements,
+++                            into,
+++                            device
+++                                .properties()
+++                                .description
+++                                .limits
+++                                .max_compute_work_group_count,
+++                        )
+++                        .unwrap()
+++                        .into_iter()
+++                        .map(|(_, grid)| grid)
+++                        .collect();
+++                        assert_eq!(grids, wanted_grids, "production records each level's grid");
+++                    }
++                 }
++                 assert!(copies.regions()[0]
++                     .buffer_offset
++diff --git a/crates/metal2vulkan-runtime/src/texture/heap_tiled.rs b/crates/metal2vulkan-runtime/src/texture/heap_tiled.rs
++index bf16047e3..16e849eb4 100644
++--- a/crates/metal2vulkan-runtime/src/texture/heap_tiled.rs
+++++ b/crates/metal2vulkan-runtime/src/texture/heap_tiled.rs
++@@ -133,7 +133,7 @@
++ //! the image; back, the heap's bytes copied into the staging buffer again, the image into the
++ //! tight buffer, the kernel into the staging buffer (each element's bytes; every other byte as
++ //! the heap held it), and each level's bytes of each chain on into the heap. Eligible single-sample
++-//! word-wide outputs use one tile-coordinate dispatch per level; smaller elements or a level
+++//! word-wide moves use one tile-coordinate dispatch per level; smaller elements or a level
++ //! outside the device's grid retain the generic all-level dispatch. Each step is
++ //! ordered after the one before by a full barrier, and the buffers are the texture's for its
++ //! life. The texture's CPU copies move each element between the heap's bytes and the caller's
++@@ -1602,18 +1602,15 @@ struct Move {
++ }
++ 
++ /// Tile-coordinate dispatches for the move, when every level fits that form.
++-/// A multi-level output writes disjoint texel words and leaves all padding in
++-/// staging as the original heap copy left it. Multi-level input retains its
++-/// existing single dispatch, including its internal transfer-padding writes.
+++/// Each level writes disjoint texel words. Output leaves staging padding as the
+++/// heap copy left it. Input leaves transfer padding as it was, just as the
+++/// generic word-wide input selects the previous word outside the texels.
++ pub(crate) fn tiled_move_plans(
++     levels: &[TiledLevelMove],
++     into: bool,
++     limits: [u32; 3],
++ ) -> Option<Vec<(Vec<u8>, [u32; 3])>> {
++-    if levels.is_empty()
++-        || levels.len() > TiledTexelsModule::MAX_LEVELS as usize
++-        || (into && levels.len() > 1)
++-    {
+++    if levels.is_empty() || levels.len() > TiledTexelsModule::MAX_LEVELS as usize {
++         return None;
++     }
++     levels
++@@ -1732,8 +1729,11 @@ struct MovedTexture {
++ impl HeapTiledCopies {
++     /// The recorded dispatch grids, for the production-path pixel regression.
++     #[cfg(all(test, any(m2v_gpu, m2v_cpu_icd)))]
++-    pub(crate) fn output_dispatch_grids(&self) -> Vec<[u32; 3]> {
++-        self.moves[1].iter().map(|step| step.groups).collect()
+++    pub(crate) fn dispatch_grids(&self, into: bool) -> Vec<[u32; 3]> {
+++        self.moves[usize::from(!into)]
+++            .iter()
+++            .map(|step| step.groups)
+++            .collect()
++     }
++ 
++     /// The tight buffer's copies to and from the image, one a level, each in the image's
