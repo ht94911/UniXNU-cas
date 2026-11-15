@@ -1,10 +1,10 @@
 {
   "schema": 1,
-  "purpose": "Preserve original CFString creation context without unsupported Default-value restriction; record original copyDeviceForPublishingWithID error and factory prevalidation inputs. Native037 kernel and source backing diagnostics unchanged.",
-  "device_revision": "aafc1ffd7c6b3a773d413f9b4399a88c471f190f",
+  "purpose": "Reuse HakiOS presence check during camera registration; keep original later native open permission and record actual UID/errno/devfs metadata after real043 unavailable node. Native037 kernel and camera hardware/ABI remain unchanged.",
+  "device_revision": "9aa37ccb2cd5b51ed211f53dfacb33f61a2b46f9",
   "soc_revision": "3af99241822776cd8318b66f0e4093a4c8f20a2d",
   "files": {
-    "source/device/package/camera/userland/NezhaCameraDeviceBackend.c": "ad586619e5f8695b987c175e9827aa717315466b783c978961c755d7a5524ece",
+    "source/device/package/camera/userland/NezhaCameraDeviceBackend.c": "2e9800611a60e38e83ebc66ac3c1c37b035eeba216e4a8dc7ed5653a0f9d2834",
     "source/device/package/camera/userland/NezhaCameraDeviceBackend.h": "bd221f90b66840935dad111de76c8a8dc35989b40f42712b2aa201e8245264d1",
     "source/device/package/camera/userland/NezhaCameraFactory.c": "a961fc0cb7d95ebc18a49c4eaf0d0a57bee95d85d28eceb1f9c67fcaa443c55a",
     "source/device/package/camera/userland/NezhaCameraFactory.h": "42934d370ccc191eeda6a29e103b86b457d03964af071db973182f731e62f5a8",
@@ -29,7 +29,7 @@
     "source/device/package/camera/userland/upstream/hakios/camera_isp.h": "4124e9493c2a8ce94f1e50c952c89795d83f3e8d7fe3ceaa838a86ef7f1eff9f",
     "source/device/package/camera/userland/upstream/hakios/hakios.camera.h": "97f80aa60adb7d2a43d93f3edfde294ba0c447586069cb81fa9ac58c789d6444",
     "source/device/scripts/make-nezha27-camera-model.py": "505d5742093c37f6ddacd7f34d70508ded7859f78bc8164d067336f3bc9124b2",
-    ".github/workflows/nezha-ios27-native.yml": "d3c6fb8a40df76f6d75565346eadc5a567309eaebbf214660cc782c71e60be1a"
+    ".github/workflows/nezha-ios27-native.yml": "f9eb9c3a2e00f3769d77bf2e812f28ae184ad931d9d6f14a4f0c58fb0bb8129a"
   },
   "private_inputs_uploaded": false,
   "kernel_build_required": false,
@@ -41,8 +41,8 @@
   "certificate_sha256": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
   "builder_sha256": "c26e5cd4c0c534a54993bb0d205b8d1a77cd35df89580229913f0ea32569ba07",
   "prior_userland": {
-    "run": 43713350557,
-    "head": "a52e0d9d1ac32b1d387d5a9fd177a7cbca7b717d"
+    "run": 43714892290,
+    "head": "30eb78201143e61d3d11096d3f29bef0c9711406"
   },
   "prior_failed_userland": {
     "run": 43708681116,
