@@ -1,7 +1,7 @@
-name: nezha iPhone27 original DAS pager and union fixes
+name: nezha iPhone27 bounded originalCamera scene
 on:
   push:
-    branches: [codex/ios27-camera060-pager-union-20261116]
+    branches: [codex/ios27-camera064-native-launch-20261116]
   workflow_dispatch:
 permissions:
   contents: read

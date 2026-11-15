@@ -77,12 +77,19 @@ static int capture_snapshot(void *cookie,uint8_t *rgb,size_t capacity,uint32_t *
  if(!frame||frame!=v.frame||v.depth!=32||v.width!=1200||v.height!=2608||v.stride<4800||v.stride>8192||
     frame<0xffff000000000000ULL||frame>UINTPTR_MAX-(uint64_t)v.height*v.stride||capacity<600U*1304U*3U)return 0;
  __asm__ volatile("dsb sy" :::"memory");
- for(unsigned y=0;y<1304;++y) {
-  const volatile uint8_t *row=(const volatile uint8_t *)(frame+(uint64_t)y*2*v.stride);
-  for(unsigned x=0;x<600;++x){const volatile uint8_t *p=row+x*8;*rgb++=p[2];*rgb++=p[1];*rgb++=p[0];}
+ /* Keep the existing retained framebuffer snapshot. A camera scene
+  * selected in this diagnostic uses one RGB sample per4x4 source pixels
+  * to bound a realUSB screenshot before normal shutdown; default2x2
+  * output is unchanged. This is transport inspection, not video proof. */
+ unsigned camera=0;
+ unsigned scale=(PE_parse_boot_argn("nezha-camera",&camera,sizeof(camera)) && camera==6) ? 4 : 2;
+ const unsigned w=v.width/scale,h=v.height/scale;
+ for(unsigned y=0;y<h;++y) {
+  const volatile uint8_t *row=(const volatile uint8_t *)(frame+(uint64_t)y*scale*v.stride);
+  for(unsigned x=0;x<w;++x){const volatile uint8_t *p=row+(uint64_t)x*scale*4;*rgb++=p[2];*rgb++=p[1];*rgb++=p[0];}
  }
  if(__atomic_load_n(&boot_progress_panic_vinfo.frame,__ATOMIC_ACQUIRE)!=frame)return 0;
- *width=600;*height=1304;return 1;
+ *width=w;*height=h;return 1;
 }
 void nezha27_usb_control_prepare(void) {
  if(__atomic_exchange_n(&prepared,1,__ATOMIC_ACQ_REL))return;

@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Reuse upstream sheng0215f34 dyld source release and frameworkf105b31 shared region source release plus union directory EOF continuation. Original16KiB fixup/PAC/signature paths and original DAS code/data retained; same guarded059 main kernel wait. Actual058 nil freezer model resource and057 constant-page wait are the supported diagnosis targets.",
+  "purpose": "Reuse actual062 pager/union kernel and allow one exact signed064 launch-only helper through existing typed system-service predicate; normal ownedGOP snapshot uses300x652 only in camera6 to bound scene transfer. OriginalCamera pixels/graph/photograph still requirephone; library063 separatelysigned reused.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "7791f77f392509dc831e09ab5b5e751194cbed0c",
+  "device_revision": "2a55969fdc46b3761286f569e00d7f0b24f7e81b",
   "soc_revision": "3af99241822776cd8318b66f0e4093a4c8f20a2d",
   "xcode": "26.6",
   "files": {
@@ -127,7 +127,7 @@
     "source/device/package/BootUiTraceProbe.c": "6fdb0563939fcafc22c13a5acb23e7f6c6625f3a4c7408accf1a43e9e1060122",
     "source/device/package/BootLog.c": "b8a76a03be5b1595c09ab8181acadf6332f88196022c086eb4628addac25acb3",
     "source/device/package/BootWatchdogPolicy.c": "e54733d72d2506ff1fe357f303592d277de46ef43a5eea62ec765c181c42b0c6",
-    "source/device/package/Nezha27UsbControl.c": "e0465c9996b74bf7116853be87bc5223d803926df373ea25e4523ff2f9a441c8",
+    "source/device/package/Nezha27UsbControl.c": "228422477bfeea4f20204cbeffeebc4c295eef8b60e7945333985cc8806d6905",
     "source/device/package/SourceRootPolicies.cpp": "714af8d95b5a8db89058be9f14a7e71a5fc2e97ded4d067c39e04299f0db27d5",
     "source/device/package/BootProcessWorker.c": "3794da8877841cf58869babfa3d0b575993c9c9640fb4d989a619cac0946067e",
     "source/device/package/SourceRootBinding.cpp": "f395a15d37b89a10bc9e965d9093dc29d0ff54d5eb61ded87ef623300cdf0f20",
@@ -313,7 +313,7 @@
     "source/soc/patches/xnu-12377/native-smp-secondary.patch": "9d9164921da548a9f13ccbd6093c799583f54e590ef3d562288dcea9ba5a2774",
     "source/soc/patches/xnu-12377/sheng-platform-power.patch": "6e68dbcdac670624f2a9806a61fef42110bfe6586029b3f1a0acb068c3a23ec2",
     "source/soc/patches/xnu-12377/series": "bb95255800677aae6c7ba2742e892e0d40b4c34eb40816b58214c1393759bc1d",
-    ".github/workflows/nezha-ios27-native.yml": "1c0db06c1abc4582aa719898135be4f53daf2805ee8ca1f841000ae2d5eb630d",
+    ".github/workflows/nezha-ios27-native.yml": "b03780e77211f1e71579aa0e13639bd705de17b04747aa624629a5e32ec1f08d",
     "ci/native.py": "234270e28c98fab87cb1a2dc4aabcfd820403d90e3c47847109655f168a48932",
     "source/device/package/camera/userland/NezhaCameraPreview.c": "724435ef79b3ebe1b56cd21c6bbdb2e6312ef9a71e85d2f3adcbaf01e75b0429",
     "source/device/package/camera/userland/NezhaCameraPreview.h": "b3e588fe11c72cfd3bf01c2dafd454cea915c72863d91f4958ecdf38fe24726a",
@@ -379,13 +379,14 @@
     "source/device/scripts/make-nezha27-camera-model.py": "acc5799c642bcbe523b939f48069eef91350d24658f0b2871e0b03c40a5c3b89",
     "source/device/patches/xnu-12377/zzzzzz-nezha-camera-discovery-launch.patch": "14e5c1a987985e5e847341ac5b22829ed34cb0dbd2adccce232b1c3a2bebd644",
     "source/device/patches/xnu-12377/zzzzzz-nezha-camera-addon-size.patch": "5087cd2e214f0fd88f7105a5de56af74e01ab8d6bc75b7c9a65a36ba07245159",
-    "source/device/patches/xnu-12377/zzzzzz-nezha-camera-discovery-identity.patch": "e998c6cd6329bb711ee827b0b4fa448147816942b220633e70834c20cb25e5cb",
+    "source/device/patches/xnu-12377/zzzzzz-nezha-camera-discovery-identity.patch": "e25ace443f53d1785cb49e26d53282f0692ecf3c3b0f0568e81a9f94fc00c97a",
     "source/device/patches/xnu-12377/zzzzzz-nezha-camera-dyld-policy.patch": "f8d0d761fd5601aa0b0f7ab0059ff81f8657b5a5fc9917a3af11447a80043ae6",
     "source/device/patches/xnu-12377/zzzzzz-nezha-camera-media-view.patch": "914128b856010ca755d3e7e5bcbfc6b3a5b465680bb7f1055444822cf74400ac",
     "source/device/patches/xnu-12377/zzzzzz-nezha-camera-node-access.patch": "2bb556f20e10decf9da305a0afbd12e4d6e6410754f8651db3fcd2d2ed95017f",
     "source/device/patches/xnu-12377/vmwait-dyld-pager-source-release.patch": "916c930f4b6b2e7515329bafc8d2ab52ba014d4dacbc8c706e8cc5d603ff5a32",
     "source/device/patches/xnu-12377/vmwait-shared-region-source-release.patch": "892db3781f37ca6e22d6231d6ad8dbc51cad97db2a29ad895b4f440aa56c639f",
-    "source/device/patches/xnu-12377/native-union-readdir-eof.patch": "764075e4cb2d9905e6e9488cf1ad9d3bb9c958eca06bd454d7de2afc4354e136"
+    "source/device/patches/xnu-12377/native-union-readdir-eof.patch": "764075e4cb2d9905e6e9488cf1ad9d3bb9c958eca06bd454d7de2afc4354e136",
+    "source/device/package/camera/userland/NezhaCameraLaunch.m": "9f0fd6b61033fa44742b331051899dda6a398bcdfc33d054789c99181eb13101"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
@@ -434,7 +435,7 @@
     "snapshot_scope": "listed headers and native implementation units only"
   },
   "camera": {
-    "source_revision": "7791f77f392509dc831e09ab5b5e751194cbed0c",
+    "source_revision": "2a55969fdc46b3761286f569e00d7f0b24f7e81b",
     "device_base": "7435e49e46705d2bfcabe09487ff80a4821fd577",
     "mode_default": "disabled",
     "host_core_tests": 18,
@@ -562,16 +563,30 @@
     "DAS_resource_model_unchanged": true,
     "pager_host_cases": 204,
     "union_host_cases": 20,
-    "actual_Camera_app_verified": false
+    "actual_Camera_app_verified": false,
+    "exact_originalCamera_launcher_cdhash": "995d1befbcc1a1fb4ef47cbce3db28fe0f636c1f",
+    "exact_originalCamera_launcher_identifier": "org.unixnu.nezha.camera-launch",
+    "launcher_native_run": 43767958541,
+    "launcher_no_TCC_or_capture_request": true,
+    "snapshot_retained_source_mode6_RGB": [
+      300,
+      652
+    ],
+    "snapshot_default_RGB": [
+      600,
+      1304
+    ],
+    "normal_XNU_shutdown_unchanged": true,
+    "actual_Camera_UI_verified": false
   },
   "soc_previous_source": "5a71f9eb5724ff58eddf49f7f5baecc9f4233a7c",
   "userland_revision": "948715c429b092e18a82fa7fd851790124e071ed",
   "ci_native_sha256": "234270e28c98fab87cb1a2dc4aabcfd820403d90e3c47847109655f168a48932",
   "prior_camera_native": {
-    "run": 43759054127,
+    "run": 43761706251,
     "attempt": 1,
-    "head": "3402e9dbe51b8bdc25f4978c3d00d3116a3bc390",
-    "real_result": "059 native success; actual058zeroFrames/13DASfreezerURLnil aborts; protectedAndroidreturn20:50"
+    "head": "d63fdbc0f4a270ac83e355e5c066db337f8f01a9",
+    "real_result": "062actualDAS79message loop/originalNSURLnilabort0 and partial desktop; discoverydeviceinvalidate first close/zeroFrames; protectedAndroid21:58"
   },
   "reviewed_upstream": {
     "framework": "2d3288d7a9db3d14a6a1d0aae2e45a32351cd848",
