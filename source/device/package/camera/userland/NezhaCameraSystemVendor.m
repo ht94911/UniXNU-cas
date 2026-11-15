@@ -85,7 +85,8 @@ static id shared_vendor(id self,SEL selector,CameraCreate factory)
         CameraCreate saved=NULL;
         if (layout) memcpy(&saved,(const uint8_t *)vendor+8,sizeof(saved));
         const uintptr_t stored=(uintptr_t)ptrauth_strip(saved,ptrauth_key_function_pointer);
-        const uintptr_t ours=(uintptr_t)ptrauth_strip(nezha_camera_device_create,ptrauth_key_function_pointer);
+        const CameraCreate ours_factory=nezha_camera_device_create;
+        const uintptr_t ours=(uintptr_t)ptrauth_strip(ours_factory,ptrauth_key_function_pointer);
         fprintf(stderr,"nezha-camera: vendor request backend=%d deviceVendor=%u savedLayout=%u savedFactory=%u savedOurs=%u\n",
             status,(unsigned)(vendor!=NULL),(unsigned)layout,(unsigned)(stored!=0),(unsigned)(stored==ours));
     }
