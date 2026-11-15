@@ -34,7 +34,7 @@ static const char backings_init_selector[]="initWithSourceInfoDictionaries:commo
 static const char backings_list_selector[]="sourceBackings";
 static const uint8_t capture_uuid[16]={0x99,0x5f,0xc2,0x2b,0x41,0xbd,0x37,0xb4,
     0x81,0x2f,0x26,0x86,0xb8,0x1c,0x26,0x94};
-typedef NezhaFigStatus (*CameraCreate)(NezhaFigAllocator,NezhaFigDictionary,NezhaFigObject *);
+typedef NezhaFigStatus (*CameraCreate)(NezhaFigAllocator,NezhaFigString,NezhaFigObject *);
 
 /* _fcsbp_plistCreateAndPreprocess calls the original NSBundle lookup with
  * AVCaptureSession.plist, including a NULL subdirectory in actual24A446. Redirect only

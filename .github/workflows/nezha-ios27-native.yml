@@ -1,7 +1,7 @@
-name: nezha iPhone27 actual parsed model and source backing construction
+name: nezha iPhone27 actual Default CFString factory ABI
 on:
   push:
-    branches: [codex/ios27-camera041-source-backings-20261115]
+    branches: [codex/ios27-camera042-default-string-factory-20261115]
 permissions:
   contents: read
 concurrency:

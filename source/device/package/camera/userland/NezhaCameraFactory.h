@@ -11,6 +11,6 @@
 NezhaFigStatus nezha_camera_factory_bind(const struct NezhaCameraFigBackend *backend,
     bool (*ready)(void *));
 NezhaFigStatus nezha_camera_device_create(NezhaFigAllocator allocator,
-    NezhaFigDictionary options, NezhaFigObject *device);
+    NezhaFigString device_id, NezhaFigObject *device);
 
 #endif

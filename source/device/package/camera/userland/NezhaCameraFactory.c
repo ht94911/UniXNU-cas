@@ -3,10 +3,12 @@
 #include "NezhaCameraFormats.h"
 #include <pthread.h>
 #include <stdio.h>
+#include <string.h>
 
 /* HakiOS camera_device.c supplies the vendor factory sequence. The
- * selected H13ISPCaptureDeviceCreate stores x0/x1/x2 as allocator/options/
- * output, and BWFigCaptureDeviceVendor retains the supplied callback.
+ * selected H13ISPCaptureDeviceCreate stores x0/x1/x2 as allocator/deviceID/
+ * output, reads x1 with CFStringGetCStringPtr/GetCString, and the vendor
+ * retains the supplied callback. The measured built-in device ID is Default.
  * This binding waits for an actual backend; it cannot use a diagnostic
  * journal, TPG frame or a file renderer as a live camera. */
 static pthread_mutex_t mutex=PTHREAD_MUTEX_INITIALIZER;
@@ -27,12 +29,17 @@ NezhaFigStatus nezha_camera_factory_bind(const struct NezhaCameraFigBackend *val
 }
 
 NezhaFigStatus nezha_camera_device_create(NezhaFigAllocator allocator,
-    NezhaFigDictionary options, NezhaFigObject *device)
+    NezhaFigString device_id, NezhaFigObject *device)
 {
     static unsigned reported;
     if (!device) return Invalid;
     *device=NULL;
-    if (options && CFGetTypeID(options)!=CFDictionaryGetTypeID()) return Invalid;
+    if (device_id) {
+        char name[32];
+        if (CFGetTypeID(device_id)!=CFStringGetTypeID() ||
+            !CFStringGetCString(device_id,name,sizeof(name),kCFStringEncodingUTF8) ||
+            strcmp(name,"Default")) return Invalid;
+    }
     pthread_mutex_lock(&mutex);
     const bool available=bound;
     const struct NezhaCameraFigBackend selected=backend;
