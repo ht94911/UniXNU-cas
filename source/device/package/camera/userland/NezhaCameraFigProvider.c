@@ -29,6 +29,17 @@ struct Device { NezhaFigObject stream; CFArrayRef streams; CFDictionaryRef suppo
 static struct Stream *stream_of(NezhaFigObject o) { return nezha_fig_capture24_storage(o); }
 static struct Device *device_of(NezhaFigObject o) { return nezha_fig_capture24_storage(o); }
 
+/* The original HakiOS provider records graph start/stop and reservation
+ * churn. Keep this existing daemon stderr bounded while locating the
+ * actual close before native058's first completed frame. */
+static void report_lifecycle(const char *operation, const struct Stream *s, NezhaFigStatus status)
+{
+    static unsigned reports;
+    if (__atomic_fetch_add(&reports,1u,__ATOMIC_RELAXED)>=48) return;
+    fprintf(stderr,"nezha-camera: lifecycle %s status=%d collecting=%u running=%u invalid=%u generation=%u\n",
+        operation,status,(unsigned)s->collecting,(unsigned)s->running,(unsigned)s->invalid,s->generation);
+}
+
 static void serial(struct Stream *stream, dispatch_block_t work)
 {
     if (dispatch_get_specific(&queue_key) == stream) work();
@@ -213,21 +224,23 @@ static NezhaFigStatus stream_start(NezhaFigObject o)
 {
     struct Stream *s=stream_of(o);if (!s || !s->queue) return Unavailable;
     __block NezhaFigStatus result;
-    serial(s,^{ result=begin(s,true); });return result;
+    serial(s,^{ result=begin(s,true); report_lifecycle("graph-start",s,result); });return result;
 }
 
 static NezhaFigStatus stream_stop(NezhaFigObject o)
 {
     struct Stream *s=stream_of(o);if (!s || !s->queue) return Unavailable;
     __block NezhaFigStatus result;
-    serial(s,^{ result=stop_on_queue(s); });return result;
+    serial(s,^{ report_lifecycle("graph-stop-enter",s,0); result=stop_on_queue(s);
+        report_lifecycle("graph-stop-done",s,result); });return result;
 }
 
 static NezhaFigStatus stream_invalidate(NezhaFigObject o)
 {
     struct Stream *s=stream_of(o);if (!s || !s->queue) return Unavailable;
     __block NezhaFigStatus result;
-    serial(s,^{ s->invalid=true; result=stop_on_queue(s); });return result;
+    serial(s,^{ report_lifecycle("invalidate-enter",s,0); s->invalid=true; result=stop_on_queue(s);
+        report_lifecycle("invalidate-done",s,result); });return result;
 }
 
 static void stream_finalize(NezhaFigObject o)
@@ -392,6 +405,7 @@ static NezhaFigStatus device_control(NezhaFigObject o,NezhaFigArray streams,bool
          * discovery/reservation churn. Only actual graph Stop, inactive
          * client, invalidate or finalize shuts down this owned sensor. */
         result=release ? 0:begin(s,false);
+        report_lifecycle(release ? "relinquish":"request",s,result);
     });return result;
 }
 static NezhaFigStatus request(NezhaFigObject o,NezhaFigArray streams,NezhaFigDictionary options)
@@ -430,8 +444,13 @@ static NezhaFigStatus device_copy(NezhaFigObject o,NezhaFigString key,NezhaFigAl
 static NezhaFigStatus device_set(NezhaFigObject o,NezhaFigString key,const void *value)
 {
     struct Device *d=device_of(o);if (!d) return Unavailable;
-    if (key_is(key,"ClientIsActive") && value && CFGetTypeID(value)==CFBooleanGetTypeID())
-        return CFBooleanGetValue(value) ? 0 : stream_stop(d->stream);
+    if (key_is(key,"ClientIsActive") && value && CFGetTypeID(value)==CFBooleanGetTypeID()) {
+        struct Stream *s=stream_of(d->stream);
+        const bool active=CFBooleanGetValue(value);
+        if (s && s->queue)
+            serial(s,^{ report_lifecycle(active ? "client-active":"client-inactive",s,0); });
+        return active ? 0 : stream_stop(d->stream);
+    }
     return Unsupported;
 }
 static const struct NezhaFigBaseClass device_base={.version=1,.storage_size=sizeof(struct Device),

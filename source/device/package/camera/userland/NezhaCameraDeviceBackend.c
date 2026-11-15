@@ -56,12 +56,16 @@ static void released(void *context)
 
 static void frame_ready(void *context)
 {
+    const char *failure_step="read";
+    int status=0;
     if ((uintptr_t)context!=reader.reservation || reader.fd<0 || !reader.stream ||
         __atomic_exchange_n(&reader.busy,1u,__ATOMIC_ACQ_REL)) return;
     const ssize_t bytes=read(reader.fd,reader.frame,FrameBytes);
+    const int read_error=bytes<0 ? errno:0;
     if (bytes<0 && (errno==EAGAIN || errno==EWOULDBLOCK)) { released(NULL);return; }
     struct hakios_camera_frame header;
     if (bytes!=FrameBytes) goto failed;
+    failure_step="header";
     memcpy(&header,reader.frame,sizeof(header));
     if (memcmp(header.magic,HAKIOS_CAMERA_MAGIC,8) || header.header_bytes!=sizeof(header) ||
         header.width!=4096 || header.height!=3072 || header.stride!=5120 || header.format!=1 ||
@@ -69,6 +73,7 @@ static void frame_ready(void *context)
         header.time<=reader.last_time) goto failed;
     reader.last_sequence=header.sequence;reader.last_time=header.time;
     const struct NezhaCameraPreviewFrame geometry={4096,3072,5120,3,64,1023};
+    failure_step="metadata";
     double sequence=(double)header.sequence;
     CFNumberRef number=CFNumberCreate(NULL,kCFNumberDoubleType,&sequence);
     if (!number) goto failed;
@@ -77,11 +82,19 @@ static void frame_ready(void *context)
         &kCFTypeDictionaryKeyCallBacks,&kCFTypeDictionaryValueCallBacks);
     CFRelease(number);
     if (!metadata) goto failed;
-    const int status=nezha_camera_fig_stream_enqueue(reader.stream,&geometry,reader.frame+sizeof(header),
+    failure_step="enqueue";
+    status=nezha_camera_fig_stream_enqueue(reader.stream,&geometry,reader.frame+sizeof(header),
         RawBytes,header.time,metadata,released,NULL);
     CFRelease(metadata);
     if (!status) return;
 failed:
+    {
+        static unsigned reports;
+        if (__atomic_fetch_add(&reports,1u,__ATOMIC_RELAXED)<12)
+            fprintf(stderr,"nezha-camera: reader failure step=%s bytes=%lld expected=%u errno=%d status=%d sequence=%llu\n",
+                failure_step,(long long)bytes,(unsigned)FrameBytes,read_error,status,
+                (unsigned long long)reader.last_sequence);
+    }
     /* One bad native frame ends this reservation. No template frame or
      * automatic reopen may conceal a native driver or copied-frame error. */
     dispatch_source_cancel(reader.timer);
@@ -125,6 +138,10 @@ static int end(void *context)
 {
     (void)context;
     dispatch_sync(reader.queue,^{
+        static unsigned reports;
+        if (__atomic_fetch_add(&reports,1u,__ATOMIC_RELAXED)<12)
+            fprintf(stderr,"nezha-camera: reader end fd=%d timer=%u sequence=%llu error=%d\n",
+                reader.fd,(unsigned)(reader.timer!=NULL),(unsigned long long)reader.last_sequence,reader.stopped_error);
         if (reader.timer) {
             dispatch_source_cancel(reader.timer);
             dispatch_release(reader.timer);reader.timer=NULL;

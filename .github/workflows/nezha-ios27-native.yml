@@ -1,7 +1,7 @@
-name: nezha iPhone27 original camera reservation lifetime
+name: nezha iPhone27 original camera stream close origin
 on:
   push:
-    branches: [codex/ios27-camera058-reservation-lifetime-20261116]
+    branches: [codex/ios27-camera061-stream-stop-origin-20261116]
 permissions:
   contents: read
 concurrency:
