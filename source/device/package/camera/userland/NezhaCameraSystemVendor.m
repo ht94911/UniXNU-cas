@@ -29,7 +29,7 @@ static const uint8_t capture_uuid[16]={0x99,0x5f,0xc2,0x2b,0x41,0xbd,0x37,0xb4,
 typedef NezhaFigStatus (*CameraCreate)(NezhaFigAllocator,NezhaFigDictionary,NezhaFigObject *);
 
 /* _fcsbp_plistCreateAndPreprocess calls the original NSBundle lookup with
- * AVCaptureSession.plist in the selected model subdirectory. Redirect only
+ * AVCaptureSession.plist, including a NULL subdirectory in actual24A446. Redirect only
  * this exact camera bundle lookup to the matching single-main model; every
  * other resource still uses its unchanged bundle and original method. */
 static id model_resource(id self,SEL selector,id resource,id extension,id subdirectory)
@@ -40,7 +40,7 @@ static id model_resource(id self,SEL selector,id resource,id extension,id subdir
         (bundle_id,sel_registerName("isEqualToString:"),(id)CFSTR("com.apple.CMCapture"));
     const bool camera_file=resource && ((bool (*)(id,SEL,id))objc_msgSend)
         (resource,sel_registerName("isEqualToString:"),(id)CFSTR("AVCaptureSession.plist"));
-    const bool selected=camera_bundle && camera_file && !extension && subdirectory;
+    const bool selected=camera_bundle && camera_file && !extension;
     const bool readable=selected && access("/System/Library/MediaCapture/NezhaCameraModel.plist",R_OK)==0;
     if (camera_file && __atomic_fetch_add(&reported,1u,__ATOMIC_RELAXED)<4)
         fprintf(stderr,"nezha-camera: model lookup camera=%u extension=%u directory=%u readable=%u\n",

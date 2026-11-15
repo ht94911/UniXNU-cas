@@ -1,7 +1,7 @@
-name: nezha iPhone27 system camera factory result
+name: nezha iPhone27 actual camera null-directory model lookup
 on:
   push:
-    branches: [codex/ios27-camera038-system-factory-20261115]
+    branches: [codex/ios27-camera039-model-null-directory-20261115]
 permissions:
   contents: read
 concurrency:
