@@ -1,7 +1,7 @@
-name: nezha iPhone27 actual vendor saved callback and device IDs
+name: nezha iPhone27 actual parsed model and source backing construction
 on:
   push:
-    branches: [codex/ios27-camera040-saved-vendor-factory-20261115]
+    branches: [codex/ios27-camera041-source-backings-20261115]
 permissions:
   contents: read
 concurrency:
