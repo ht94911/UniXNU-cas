@@ -1,7 +1,21 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><dict>
-  <key>application-identifier</key><string>org.unixnu.nezha.audio-record</string>
-  <key>com.apple.private.security.no-container</key><true/>
-  <key>com.apple.private.tcc.allow</key><array><string>kTCCServiceMicrophone</string></array>
-</dict></plist>
+<plist version="1.0">
+<dict>
+	<key>application-identifier</key>
+	<string>org.unixnu.nezha.audio-record</string>
+	<key>com.apple.private.security.no-container</key>
+	<true/>
+	<key>com.apple.private.tcc.allow</key>
+	<array>
+		<string>kTCCServiceMicrophone</string>
+	</array>
+	<key>com.apple.private.sandbox.profile:embedded</key>
+	<string>temporary-sandbox</string>
+	<key>com.apple.security.exception.mach-lookup.global-name</key>
+	<array>
+		<string>com.apple.audio.AudioSession</string>
+		<string>com.apple.coremedia.routediscoverer.xpc</string>
+	</array>
+</dict>
+</plist>

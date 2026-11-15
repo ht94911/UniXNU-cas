@@ -1,21 +1,28 @@
 {
   "schema": 1,
-  "purpose": "One explicitly selected native AudioQueue recording through the real system input",
+  "purpose": "Re-sign the existing boundedAudioQueue diagnostic helper with its own executable identity and originalnamed audio profile plus two actualmissing services. No capturekernel, API, samples, deadline, or globalconfiguration change.",
   "files": {
-    ".github/workflows/nezha-ios27-native.yml": "7c4c594ca51dd3ae990893a3b518cc3fd70eee82193f43fa3542caa078d8ceed",
+    ".github/workflows/nezha-ios27-native.yml": "f7f626975318ae93c5d605c587432bb024d16ca5f8c8924b397c79a6ae5e4cb5",
     "ci/artifact-recipient.pem": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
     "ci/artifacts.py": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
-    "ci/audio-record.py": "55c310eedcd0975905377fb54b1f4bf794d0711218a9ce5bc61b2c70771f3fcd",
+    "ci/audio-record.py": "4abd36489126e96667f7eea211a065da6032d62f9e8dd9b3e0e71ee21bf27dad",
     "source/AudioRecord.mm": "ab2f12bb0995c9cd340e34feee8a8f35cc2d2a7ec06a3da5a89262f117402fe9",
-    "source/Info.plist": "5e3499be02e1440766ec9592654eea1d5e271f6cd1e00a81ed7e79a64b4da27d",
+    "source/Info.plist": "fd3f25d00604d58c1d02d933a07d622b54a38fa8d332e660d046e3157ecc4d00",
     "source/QcomUserLogTransport.h": "6981a8a4863c80f0109de4e821c4ef2d72f75f143eb39f4a65a2abb2a4df4531",
     "source/QcomUserLogWire.h": "965d7aeaa4043bcceb151cd6331ce50faefe21f57ce7c91cf781a52b4917397b",
     "source/com.apple.iomfb_fdr_loader.plist": "8f01beb517e05f1e3e914e101d0c8d5a9baae59638c44b275462d209b92d2940",
-    "source/entitlements.plist": "ae5049e803b13a29ba659db89859fe440aee5675904c953c6e2dff6acb789911"
+    "source/entitlements.plist": "58b4d70a490a0f03277c1046ebb05095481c643cc806d694641ce9074bcadfd9"
   },
   "source_only": true,
   "phone_data": false,
   "kernel_rebuild": false,
   "source_Data_test_output": true,
-  "snapshot_transport": "existing readonly APFS"
+  "snapshot_transport": "existing readonly APFS",
+  "previous_helper_source_revision": "c96744162028c6226caa1941d19ec145c625a1ac",
+  "helper_program_path": "/usr/libexec/audio-record104",
+  "exact_audio_session_services": [
+    "com.apple.audio.AudioSession",
+    "com.apple.coremedia.routediscoverer.xpc"
+  ],
+  "original_named_profile": "temporary-sandbox"
 }

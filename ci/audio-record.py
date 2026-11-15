@@ -48,9 +48,11 @@ try:
         "application-identifier": "org.unixnu.nezha.audio-record",
         "com.apple.private.security.no-container": True,
         "com.apple.private.tcc.allow": ["kTCCServiceMicrophone"],
+        "com.apple.private.sandbox.profile:embedded": "temporary-sandbox",
+        "com.apple.security.exception.mach-lookup.global-name": ["com.apple.audio.AudioSession", "com.apple.coremedia.routediscoverer.xpc"],
     }
     assert plistlib.loads(entitlements.read_bytes()) == expected
-    binary = args.output / "audio-record090"
+    binary = args.output / "audio-record104"
     run("compile", [
         "xcrun", "--sdk", "iphoneos", "clang++", "-target", "arm64e-apple-ios27.0",
         "-isysroot", sdk, "-std=c++17", "-fobjc-arc", "-fblocks",
