@@ -13,9 +13,9 @@ static bool fits(size_t stride, size_t rows, size_t bytes, size_t capacity)
         rows - 1 <= (SIZE_MAX - bytes) / stride && (rows - 1) * stride + bytes <= capacity;
 }
 
-bool nezha_camera_preview_render(const struct NezhaCameraPreview *preview,
+static bool render(const struct NezhaCameraPreview *preview,
     const struct NezhaCameraPreviewFrame *frame, const uint8_t *raw, size_t raw_bytes,
-    const struct NezhaCameraPreviewOutput *output)
+    const struct NezhaCameraPreviewOutput *output, bool still)
 {
     if (preview == NULL || frame == NULL || raw == NULL || output == NULL ||
         frame->width < 4 || frame->width > 16384 || frame->width % 4 ||
@@ -48,10 +48,28 @@ bool nezha_camera_preview_render(const struct NezhaCameraPreview *preview,
     if (output->format == NezhaCameraPreviewBgra) {
         isp_render_bgra(&preview->processing, &input, raw, output->plane[0], output->stride[0],
             output->width, output->height, 0, output->height);
+    } else if (still) {
+        return isp_render_still_nv12(&preview->processing, &input, raw, output->plane[0], output->stride[0],
+            output->plane[1], output->stride[1], output->width, output->height, 0, output->height,
+            output->format == NezhaCameraPreviewNv12Video);
     } else {
         isp_render_nv12(&preview->processing, &input, raw, output->plane[0], output->stride[0],
             output->plane[1], output->stride[1], output->width, output->height, 0, output->height,
             output->format == NezhaCameraPreviewNv12Video);
     }
     return true;
+}
+
+bool nezha_camera_preview_render(const struct NezhaCameraPreview *preview,
+    const struct NezhaCameraPreviewFrame *frame, const uint8_t *raw, size_t raw_bytes,
+    const struct NezhaCameraPreviewOutput *output)
+{
+    return render(preview, frame, raw, raw_bytes, output, false);
+}
+
+bool nezha_camera_still_render(const struct NezhaCameraPreview *preview,
+    const struct NezhaCameraPreviewFrame *frame, const uint8_t *raw, size_t raw_bytes,
+    const struct NezhaCameraPreviewOutput *output)
+{
+    return render(preview, frame, raw, raw_bytes, output, true);
 }

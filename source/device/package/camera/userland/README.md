@@ -1,10 +1,12 @@
 # nezha RAW10 preview processing
 
-`upstream/hakios` contains unchanged, pinned HakiOS user-space files from
+`upstream/hakios` contains pinned HakiOS user-space files from
 `yfl520/hackios-raphael@f128f1d8e2ef1f588002787c5efb94ec134ddeac`.
-`ORIGIN.json` records each original path and SHA-256; `LICENSE` preserves
+`ORIGIN.json` records each original path, original SHA-256 and local hashes; `LICENSE` preserves
 the upstream MIT notice. `hakios.camera.h` is needed by the upstream C
 processor. Its device path and commands are not used by this adaptation.
+The local still renderer returns allocation failure before writing output
+when any scratch plane is unavailable. Its Bayer demosaic is preserved.
 
 `NezhaCameraPreview` accepts completed, CPU-owned MIPI RAW10 frames and
 renders BGRA or BT.601 NV12 in either full or video range. The stock
@@ -32,6 +34,10 @@ found in the original 24A446 CoreVideo export trie. The host fixture checks
 padded output, malformed chroma geometry, partial RAW and failed locks;
 the ARM64e object built with fixture declarations only checks code
 generation. A target SDK build and graph delivery remain required.
+StillImage 420f/420v uses `isp_render_still_nv12` to demosaic individual
+sensor sites before scaling; scaler outputs retain the preview renderer.
+BGRA uses the upstream preview path. A failed still render reaches the
+existing graph failure path before a callback or buffer attachment.
 
 `NezhaFigCapture24A446` binds the selected CoreMedia object constructor
 and the device/stream ClassID exports in `CMCaptureDevice.framework`.

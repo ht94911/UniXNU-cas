@@ -813,7 +813,7 @@ demosaic_row(const struct isp *isp, const struct hakios_camera_frame *f, const u
 	full_line(isp, f, (const int *const *)l, row, colour, p, rgb);
 }
 
-void
+bool
 isp_render_still_nv12(const struct isp *isp, const struct hakios_camera_frame *f, const uint8_t *raw, uint8_t *y, size_t y_stride,
     uint8_t *uv, size_t uv_stride, uint32_t width, uint32_t height, uint32_t first_row, uint32_t end_row, bool video_range)
 {
@@ -843,9 +843,13 @@ isp_render_still_nv12(const struct isp *isp, const struct hakios_camera_frame *f
 		}
 		have_width = width;
 	}
-	if (lines[2] == NULL || rows[1] == NULL || out[1] == NULL) {
-		return;
-	}
+	/* Nezha needs a failed render to leave the graph buffer undelivered.
+	 * Check every scratch plane before the unchanged demosaic. A later
+	 * still request may allocate again if this allocation did not finish. */
+	if (lines[0] == NULL || lines[1] == NULL || lines[2] == NULL ||
+	    rows[0] == NULL || rows[1] == NULL) have_fw = 0;
+	if (out[0] == NULL || out[1] == NULL) have_width = 0;
+	if (!have_fw || !have_width) return false;
 	crop(isp, f, width, height, &x0, &y0, &cw, &ch);
 	cfa(f->bayer, colour);
 	pipe_init(isp, &p);
@@ -898,6 +902,7 @@ isp_render_still_nv12(const struct isp *isp, const struct hakios_camera_frame *f
 		nv12_pair(out[0], out[1], width, y + (size_t)row * y_stride, second ? y + (size_t)(row + 1) * y_stride : NULL,
 		    uv + (size_t)(row / 2) * uv_stride, video_range);
 	}
+	return true;
 }
 
 /* ---- lens shading from a flat field --------------------------------------------------------------------- */

@@ -1,7 +1,7 @@
-name: nezha iPhone27 original property reads
+name: nezha iPhone27 actual still Bayer demosaic
 on:
   push:
-    branches: [codex/ios27-camera047-actual-property-reads-20261115]
+    branches: [codex/ios27-camera048-real-still-demosaic-20261115]
 permissions:
   contents: read
 concurrency:

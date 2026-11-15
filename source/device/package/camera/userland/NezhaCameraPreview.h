@@ -42,4 +42,10 @@ bool nezha_camera_preview_render(const struct NezhaCameraPreview *preview,
     const struct NezhaCameraPreviewFrame *frame, const uint8_t *raw, size_t raw_bytes,
     const struct NezhaCameraPreviewOutput *output);
 
+/* StillImage NV12 uses the pinned processor's full Bayer demosaic before
+ * scaling. BGRA follows its existing preview path, as in HakiOS. */
+bool nezha_camera_still_render(const struct NezhaCameraPreview *preview,
+    const struct NezhaCameraPreviewFrame *frame, const uint8_t *raw, size_t raw_bytes,
+    const struct NezhaCameraPreviewOutput *output);
+
 #endif

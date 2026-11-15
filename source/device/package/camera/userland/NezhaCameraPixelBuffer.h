@@ -13,4 +13,8 @@ CVReturn nezha_camera_preview_pixel_buffer(const struct NezhaCameraPreview *prev
     const struct NezhaCameraPreviewFrame *frame, const uint8_t *raw,
     size_t raw_bytes, CVPixelBufferRef pixel_buffer);
 
+CVReturn nezha_camera_still_pixel_buffer(const struct NezhaCameraPreview *preview,
+    const struct NezhaCameraPreviewFrame *frame, const uint8_t *raw,
+    size_t raw_bytes, CVPixelBufferRef pixel_buffer);
+
 #endif
