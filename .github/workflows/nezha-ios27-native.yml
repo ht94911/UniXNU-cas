@@ -1,7 +1,7 @@
-name: nezha iPhone27 B package on GPU024 - native032
+name: nezha iPhone27 B package on GPU024 - native033
 on:
   push:
-    branches: [codex/ios27-bb-gpu024-native032-20261116]
+    branches: [codex/ios27-bb-gpu024-native033-20261116]
   workflow_dispatch:
 permissions:
   contents: read
@@ -73,7 +73,9 @@ jobs:
       - name: Validate synthetic launch cache with native macOS consumers
         run: python3 task/source/device/tests/baseband27/cellular_runtime_test.py
       - name: Exercise the selected signed cellular launch predicate
-        run: CXX=clang++ python3 task/source/device/tests/baseband27/cellular_launch_test.py
+        run: |
+          CXX=clang++ python3 task/source/device/tests/baseband27/cellular_launch_test.py
+          python3 task/source/device/tests/baseband27/cellular_network_runtime_test.py
       - name: Qualify compiler and run the standard native build
         env:
           GITHUB_TOKEN: ${{ github.token }}

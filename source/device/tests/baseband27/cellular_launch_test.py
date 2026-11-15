@@ -36,8 +36,8 @@ static unsigned scenario,queries,policy_calls;
 static uint32_t launch=29,demand=21;
 static cs_blob blob;
 static const uint8_t expected[20]={
-    0xb2,0x8e,0xb5,0xcc,0x62,0x9c,0xc9,0x11,0x2b,0xf7,
-    0x01,0x34,0xa0,0x1e,0x4d,0x57,0xc2,0xee,0x3b,0x41
+    0xd9,0xbb,0xe1,0xe1,0x0a,0xa9,0x4f,0x3d,0x1b,0x4a,
+    0xc2,0x96,0xfa,0xc4,0x14,0x24,0x6e,0x35,0x7c,0x3c
 };
 static uint8_t supplied_hash[20];
 static int SecureDTLookupEntry(void*,const char *path,DTEntry *out) {
@@ -112,7 +112,9 @@ with tempfile.TemporaryDirectory() as folder:
 assert "if (nezha_cellular_request_launch(curp, imgp))" in added
 entry = (ROOT / "patches/xnu-12377/zzzzzz-nezha-cellular-cached-entry.patch").read_text()
 assert '+\tif (cellular_launch_version == 29)' in entry
-assert '"/usr/libexec/DumpPanic"' in entry
+original_view = (ROOT / "patches/xnu-12377/zzzzzz-nezha-cellular-launch.patch").read_text()
+assert '"/usr/libexec/cellular-demand021"' in original_view
+assert '"/usr/libexec/DumpPanic"' not in entry
 print(json.dumps(dict(
     passed=True, phone_operations=False, actual_predicate_executed=True,
     source_patch_sha256=hashlib.sha256(patch.read_bytes()).hexdigest(),

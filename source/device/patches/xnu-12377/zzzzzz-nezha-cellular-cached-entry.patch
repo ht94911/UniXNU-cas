@@ -8,11 +8,3 @@ diff --git a/bsd/kern/kern_exec.c b/bsd/kern/kern_exec.c
 +	if (cellular_launch_version == 29) {
  		static const char cellular_xpc_source[] = "/private/var/ngpu/cellular-xpc";
  		static const char cellular_xpc_point[] = "/System/Library/xpc";
-@@ -8738,6 +8738,6 @@ native_gpu_addon_prepare(proc_t p, user_addr_t scratch)
- 		native_gpu_addon_mount(p, scratch, 0x600, cellular_bin_source, sizeof(cellular_bin_source),
- 		    cellular_bin_point, sizeof(cellular_bin_point), "/usr/libexec/launchd_cache_loader",
--		    "/usr/libexec/cellular-demand021", &cellular_bin_stage, &cellular_bin_status);
-+		    "/usr/libexec/DumpPanic", &cellular_bin_stage, &cellular_bin_status);
- 		printf("NEZHA27 cellular launch cache=%d/%d executable=%d/%d\n", cellular_cache_stage, cellular_cache_status,
- 		    cellular_bin_stage, cellular_bin_status);
- 	}
