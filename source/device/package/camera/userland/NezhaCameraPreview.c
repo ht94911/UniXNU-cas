@@ -13,15 +13,34 @@ static bool fits(size_t stride, size_t rows, size_t bytes, size_t capacity)
         rows - 1 <= (SIZE_MAX - bytes) / stride && (rows - 1) * stride + bytes <= capacity;
 }
 
+static bool frame_valid(const struct NezhaCameraPreviewFrame *frame,
+    const uint8_t *raw, size_t raw_bytes)
+{
+    return frame && raw && frame->width >= 4 && frame->width <= 16384 && !(frame->width % 4) &&
+        frame->height >= 4 && frame->height <= 16384 && !(frame->height % 2) &&
+        frame->bayer <= 3 && frame->black == 64 && frame->white == 1023 &&
+        fits(frame->stride, frame->height, (size_t)frame->width / 4 * 5, raw_bytes);
+}
+
+bool nezha_camera_preview_update_white_balance(struct NezhaCameraPreview *preview,
+    const struct NezhaCameraPreviewFrame *frame, const uint8_t *raw, size_t raw_bytes)
+{
+    if (!preview || !frame_valid(frame, raw, raw_bytes)) return false;
+    const struct hakios_camera_frame input = {
+        .width = frame->width, .height = frame->height, .stride = frame->stride,
+        .bayer = frame->bayer, .black = frame->black,
+    };
+    struct isp_stats statistics;
+    isp_measure(&preview->processing, &input, raw, &statistics);
+    isp_awb(&preview->processing, &statistics);
+    return true;
+}
+
 static bool render(const struct NezhaCameraPreview *preview,
     const struct NezhaCameraPreviewFrame *frame, const uint8_t *raw, size_t raw_bytes,
     const struct NezhaCameraPreviewOutput *output, bool still)
 {
-    if (preview == NULL || frame == NULL || raw == NULL || output == NULL ||
-        frame->width < 4 || frame->width > 16384 || frame->width % 4 ||
-        frame->height < 4 || frame->height > 16384 || frame->height % 2 ||
-        frame->bayer > 3 || frame->black != 64 || frame->white != 1023 ||
-        !fits(frame->stride, frame->height, (size_t)frame->width / 4 * 5, raw_bytes) ||
+    if (preview == NULL || !frame_valid(frame, raw, raw_bytes) || output == NULL ||
         output->width < 2 || output->width > 8192 || output->width % 2 ||
         output->height < 2 || output->height > 8192 || output->height % 2 ||
         output->plane[0] == NULL) return false;

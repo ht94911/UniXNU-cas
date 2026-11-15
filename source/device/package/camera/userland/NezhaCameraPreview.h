@@ -32,6 +32,12 @@ struct NezhaCameraPreview {
 
 void nezha_camera_preview_init(struct NezhaCameraPreview *preview);
 
+/* Measure each completed frame once before its three outputs. HakiOS's
+ * grey/neutral-cell estimator smooths the shared red/blue gains; sensor
+ * exposure and analog gain remain under the native capture controller. */
+bool nezha_camera_preview_update_white_balance(struct NezhaCameraPreview *preview,
+    const struct NezhaCameraPreviewFrame *frame, const uint8_t *raw, size_t raw_bytes);
+
 /* Current stock OVX mode is BGGR, black=64, white=1023. The unchanged
  * upstream processor uses that black/white scale. Other calibrations
  * must be implemented explicitly before they can be accepted here.

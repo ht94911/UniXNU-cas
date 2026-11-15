@@ -1,7 +1,7 @@
-name: nezha iPhone27 original stream reservation
+name: nezha iPhone27 shared white balance
 on:
   push:
-    branches: [codex/ios27-camera050-stream-reservation-20261116]
+    branches: [codex/ios27-camera051-white-balance-20261116]
 permissions:
   contents: read
 concurrency:

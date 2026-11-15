@@ -186,6 +186,7 @@ static NezhaFigStatus begin(struct Stream *s, bool graph)
         s->collecting=true;
     }
     if (graph) {
+        nezha_camera_preview_init(&s->preview);
         __atomic_add_fetch(&s->generation,1u,__ATOMIC_RELEASE);
         s->running=true;
         NezhaFigStatus result=refresh_outputs(s);
@@ -497,6 +498,10 @@ static NezhaFigStatus deliver_stream(struct Stream *s,
         if (!s->running || s->invalid) return;
         const unsigned generation=s->generation;
         bool attempted=false;
+        bool enabled=false;
+        for (unsigned i=0;i<3;++i)
+            enabled |= s->output[i].running && (i!=2 || s->stills);
+        if (!enabled || !nezha_camera_preview_update_white_balance(&s->preview,frame,raw,bytes)) return;
         for (unsigned i=0;i<3 && s->running && s->generation==generation;++i) {
             if (!s->output[i].running || (i==2 && !s->stills)) continue;
             if (i==2) s->stills=0;

@@ -104,6 +104,12 @@ Blocks with the production Fig/RAW path and fixture native reads,
 including Stop inside the graph callback and finalization. Target SDK
 and on-device integration remain required for this increment.
 
+Each valid frame with an active output now updates one shared white
+balance estimate before rendering. The pinned HakiOS neutral/grey-cell
+estimator and its smoothing apply the same gains to preview and still
+outputs. A new stream start resets those gains. This does not set sensor
+exposure or import a donor's color calibration.
+
 The same command builds `nezha-camera-raw-preview`. To decode a real main
 camera sample, run `nezha-camera-raw-preview main.raw10 4096 3072 5120 BGGR
 1024 768 main-preview.ppm`. It accepts exactly one complete input frame,
