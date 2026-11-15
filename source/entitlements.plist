@@ -10,7 +10,7 @@
 	<array>
 		<string>debug.qcom_usb_userlog</string>
 	</array>
-	<key>com.apple.private.security.no-sandbox</key>
-	<true/>
+	<key>com.apple.private.sandbox.profile:embedded</key>
+	<string>temporary-sandbox</string>
 </dict>
 </plist>
