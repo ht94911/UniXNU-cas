@@ -1,10 +1,10 @@
 {
   "schema": 1,
-  "purpose": "Use existing HakiOS still NV12 Bayer demosaic before scaling for StillImage outputs. Preserve preview BGRA/NV12, original graph lifecycle and native046 kernel; return scratch allocation failure before delivery. Actual stored main RAW and seven scratch failures passed locally.",
-  "device_revision": "20580ce984094f57e90fc95712d27b1e8cf87fb5",
+  "purpose": "Observe measured original BWFigCaptureDevice stream count after publishing, exact original discovery stream reservation result and owned node open errno. Original24A446 source container requests control before sourceInfo; keep all returns and existing048 full still path, native046 unchanged.",
+  "device_revision": "6aca14e257063a827384170429917bcae444a7aa",
   "soc_revision": "3af99241822776cd8318b66f0e4093a4c8f20a2d",
   "files": {
-    "source/device/package/camera/userland/NezhaCameraDeviceBackend.c": "2e9800611a60e38e83ebc66ac3c1c37b035eeba216e4a8dc7ed5653a0f9d2834",
+    "source/device/package/camera/userland/NezhaCameraDeviceBackend.c": "9de235cacb36a8c62afe1e63aae1f3c5fd66e62c046d370388ef7882603d6c25",
     "source/device/package/camera/userland/NezhaCameraDeviceBackend.h": "bd221f90b66840935dad111de76c8a8dc35989b40f42712b2aa201e8245264d1",
     "source/device/package/camera/userland/NezhaCameraFactory.c": "a961fc0cb7d95ebc18a49c4eaf0d0a57bee95d85d28eceb1f9c67fcaa443c55a",
     "source/device/package/camera/userland/NezhaCameraFactory.h": "42934d370ccc191eeda6a29e103b86b457d03964af071db973182f731e62f5a8",
@@ -19,7 +19,7 @@
     "source/device/package/camera/userland/NezhaCameraPreview.c": "03f4829bc59db5d2949dcec34e58c5eb23ca9cb1b19ba78ff7947f6c3f0269ac",
     "source/device/package/camera/userland/NezhaCameraPreview.h": "5416528b73b66824214eab80ec990389365d0becf54d6bfb35dab963f10030ea",
     "source/device/package/camera/userland/NezhaCameraRawPreview.c": "00568484834e61f1bf392b4cee3178052f79f000193745d9595061012418eca9",
-    "source/device/package/camera/userland/NezhaCameraSystemVendor.m": "4fefbeaf87d7e485139eeb5dc7993e3902e154f1ce94ad692521545af6e0e3e5",
+    "source/device/package/camera/userland/NezhaCameraSystemVendor.m": "413c5858a5b45ebd54ffe203a94eb0424d79c7027a1d570505e41dc2a74802d9",
     "source/device/package/camera/userland/NezhaFigCapture24A446.c": "35db683c0466feaa171cc0906a91940d2140319ed20d3af0cdb13936f9b1342c",
     "source/device/package/camera/userland/NezhaFigCapture24A446.h": "d31d3abe7761aa99f92eaab45357716c6d4c4372e5425658d2a7af80f3894212",
     "source/device/package/camera/userland/README.md": "0eec2b09e541a514161bebc0bb513e379d06abef2d6df6d259d1080a4a3997ed",
@@ -29,7 +29,7 @@
     "source/device/package/camera/userland/upstream/hakios/camera_isp.h": "311a1fae76f71d05c767915b5d6ba52c498381ae49621307dcc085fe14c29875",
     "source/device/package/camera/userland/upstream/hakios/hakios.camera.h": "97f80aa60adb7d2a43d93f3edfde294ba0c447586069cb81fa9ac58c789d6444",
     "source/device/scripts/make-nezha27-camera-model.py": "acc5799c642bcbe523b939f48069eef91350d24658f0b2871e0b03c40a5c3b89",
-    ".github/workflows/nezha-ios27-native.yml": "0582387c90e7bc418dd87beddbfa7193181ca7cb7451b88d351bbf3a28ff2aac"
+    ".github/workflows/nezha-ios27-native.yml": "db0cecb758d4074b0e66bc59ee42fcf20a6a5f4a8ce2903cca5a81a503361b6f"
   },
   "private_inputs_uploaded": false,
   "kernel_build_required": false,
@@ -41,8 +41,8 @@
   "certificate_sha256": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
   "builder_sha256": "c26e5cd4c0c534a54993bb0d205b8d1a77cd35df89580229913f0ea32569ba07",
   "prior_userland": {
-    "run": 43724014897,
-    "head": "0602464f22805b37c628a658568ee1423369dca3"
+    "run": 43730332601,
+    "head": "0d1099f00fa5db335f3dce65b9f768adf498940d"
   },
   "prior_failed_userland": {
     "run": 43708681116,

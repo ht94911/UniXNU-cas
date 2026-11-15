@@ -23,18 +23,21 @@ static bool model_installed;
 static bool device_ids_installed;
 static bool backings_init_installed,backings_list_installed;
 static bool publishing_installed;
+static bool stream_request_installed;
 static intptr_t capture_slide;
 static IMP original;
 static IMP original_model_resource;
 static IMP original_device_ids;
 static IMP original_backings_init,original_backings_list;
 static IMP original_publishing;
+static IMP original_stream_request;
 static const char selector_name[]="sharedCaptureDeviceVendorWithDefaultDeviceCreateFunction:";
 static const char model_selector_name[]="URLForResource:withExtension:subdirectory:";
 static const char device_ids_selector_name[]="deviceIDs";
 static const char backings_init_selector[]="initWithSourceInfoDictionaries:commonSettings:";
 static const char backings_list_selector[]="sourceBackings";
 static const char publishing_selector[]="copyDeviceForPublishingWithID:error:";
+static const char stream_request_selector[]="copyStreamsFromDevice:positions:deviceTypes:deviceClientPriority:allowsStreamControlLoss:error:";
 static const uint8_t capture_uuid[16]={0x99,0x5f,0xc2,0x2b,0x41,0xbd,0x37,0xb4,
     0x81,0x2f,0x26,0x86,0xb8,0x1c,0x26,0x94};
 typedef NezhaFigStatus (*CameraCreate)(NezhaFigAllocator,NezhaFigString,NezhaFigObject *);
@@ -143,8 +146,41 @@ static id publishing_device(id self,SEL selector,id device_id,int32_t *error)
         (unsigned)(device_id && ((bool (*)(id,SEL,id))objc_msgSend)(device_id,sel_registerName("isEqualToString:"),(id)CFSTR("Default"))),
         (unsigned)(error!=NULL));
     id device=((id (*)(id,SEL,id,int32_t *))original_publishing)(self,selector,device_id,error);
-    if (report) fprintf(stderr,"nezha-camera: publishing result device=%u error=%d\n",(unsigned)(device!=NULL),error?*error:0);
+    if (report) {
+        id streams=device ? ((id (*)(id,SEL))objc_msgSend)(device,sel_registerName("streams")) : NULL;
+        const unsigned long count=streams ? ((unsigned long (*)(id,SEL))objc_msgSend)(streams,sel_registerName("count")) : 0;
+        fprintf(stderr,"nezha-camera: publishing result device=%u error=%d streams=%lu\n",
+            (unsigned)(device!=NULL),error?*error:0,count);
+    }
     return device;
+}
+
+static id request_streams(id self,SEL selector,id device,id positions,id types,
+    int32_t priority,bool allows_loss,int32_t *error)
+{
+    static unsigned reported;
+    const bool report=__atomic_fetch_add(&reported,1u,__ATOMIC_RELAXED)<4;
+    id streams=((id (*)(id,SEL,id,id,id,int32_t,bool,int32_t *))original_stream_request)
+        (self,selector,device,positions,types,priority,allows_loss,error);
+    if (report) {
+        const unsigned long count=streams ? ((unsigned long (*)(id,SEL))objc_msgSend)
+            (streams,sel_registerName("count")) : 0;
+        fprintf(stderr,"nezha-camera: original stream request priority=%d loss=%u streams=%lu error=%d\n",
+            priority,(unsigned)allows_loss,count,error?*error:0);
+    }
+    return streams;
+}
+
+static void install_stream_request(void)
+{
+    if (stream_request_installed) return;
+    Class type=objc_getClass("BWFigCaptureDeviceVendor");
+    Method method=type ? class_getInstanceMethod(type,sel_registerName(stream_request_selector)) : NULL;
+    IMP current=method ? method_getImplementation(method) : NULL;
+    if (!current || (uintptr_t)ptrauth_strip(current,ptrauth_key_function_pointer)!=(uintptr_t)(0x1b0436bf8ULL+capture_slide)) return;
+    original_stream_request=current;method_setImplementation(method,(IMP)request_streams);
+    stream_request_installed=true;
+    fprintf(stderr,"nezha-camera: measured original stream request observer installed\n");
 }
 
 static void install_publishing(void)
@@ -224,7 +260,7 @@ static bool uuid_matches(const struct mach_header_64 *header)
 
 static void image_added(const struct mach_header *header,intptr_t slide)
 {
-    if (installed && model_installed && device_ids_installed && publishing_installed && backings_init_installed && backings_list_installed) return;
+    if (installed && model_installed && device_ids_installed && publishing_installed && stream_request_installed && backings_init_installed && backings_list_installed) return;
     if (uuid_matches((const struct mach_header_64 *)header)) {
         capture_present=true;capture_slide=slide;
     }
@@ -232,6 +268,7 @@ static void image_added(const struct mach_header *header,intptr_t slide)
     install_model_resource();
     install_device_ids();
     install_publishing();
+    install_stream_request();
     install_backings();
     if (installed) return;
     Class type=objc_getClass("BWFigCaptureDeviceVendor");

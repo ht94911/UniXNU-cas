@@ -91,6 +91,7 @@ failed:
 
 static int begin(void *context)
 {
+    static unsigned reported;
     (void)context;
     __block int result=0;
     dispatch_sync(reader.queue,^{
@@ -100,7 +101,14 @@ static int begin(void *context)
             result=Unavailable;return;
         }
         reader.fd=open("/dev/nezha-camera",O_RDONLY|O_NONBLOCK|O_CLOEXEC);
-        if (reader.fd<0) { result=Unavailable;return; }
+        if (reader.fd<0) {
+            const int error=errno;
+            if (__atomic_fetch_add(&reported,1u,__ATOMIC_RELAXED)<4)
+                fprintf(stderr,"nezha-camera: native open status=%d errno=%d\n",Unavailable,error);
+            result=Unavailable;return;
+        }
+        if (__atomic_fetch_add(&reported,1u,__ATOMIC_RELAXED)<4)
+            fprintf(stderr,"nezha-camera: native open status=0 errno=0\n");
         reader.timer=dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER,0,0,reader.queue);
         if (!reader.timer) { close(reader.fd);reader.fd=-1;result=Unavailable;return; }
         ++reader.reservation;

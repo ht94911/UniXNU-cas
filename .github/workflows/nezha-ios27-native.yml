@@ -1,7 +1,7 @@
-name: nezha iPhone27 actual still Bayer demosaic
+name: nezha iPhone27 original stream reservation
 on:
   push:
-    branches: [codex/ios27-camera048-real-still-demosaic-20261115]
+    branches: [codex/ios27-camera050-stream-reservation-20261116]
 permissions:
   contents: read
 concurrency:
