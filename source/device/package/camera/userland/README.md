@@ -65,7 +65,9 @@ provider/backend wiring are still needed.
 `NezhaCameraFigProvider` creates one rear main device and one stream with
 the verified 24A446 callback tables. The caller supplies the measured
 format and bounded backend begin/end operations. RequestStreams reserves
-the sensor; graph Start separately enables the PrimaryScaler,
+the sensor and RelinquishStreams preserves that worker during discovery
+churn, following HakiOS f128f1d. Graph Stop, an inactive client, invalidate
+and finalize still perform bounded teardown. Graph Start separately enables the PrimaryScaler,
 SecondaryScaler and requested StillImage callbacks. Only a complete
 4096x3072 BGGR RAW10 frame with its actual completion time and metadata
 can enter the output path. Stop gates callbacks before backend teardown;

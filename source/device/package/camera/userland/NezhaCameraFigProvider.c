@@ -386,7 +386,13 @@ static NezhaFigStatus device_control(NezhaFigObject o,NezhaFigArray streams,bool
         CFArrayGetValueAtIndex(streams,0)!=d->stream) return Invalid;
     struct Stream *s=stream_of(d->stream);
     __block NezhaFigStatus result;
-    serial(s,^{ result=release ? stop_on_queue(s) : begin(s,false); });return result;
+    serial(s,^{
+        if (s->invalid) {result=Unavailable;return;}
+        /* HakiOS f128f1d keeps the frame worker across the system's
+         * discovery/reservation churn. Only actual graph Stop, inactive
+         * client, invalidate or finalize shuts down this owned sensor. */
+        result=release ? 0:begin(s,false);
+    });return result;
 }
 static NezhaFigStatus request(NezhaFigObject o,NezhaFigArray streams,NezhaFigDictionary options)
 { (void)options;return device_control(o,streams,false); }
