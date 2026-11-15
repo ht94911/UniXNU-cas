@@ -147,6 +147,8 @@ def build_camera_userland(work, sdk):
          *objects, '-framework', 'CoreFoundation', '-framework', 'CoreMedia',
          '-framework', 'CoreVideo', '-lobjc', '-o', library])
     run([*flags, '-S', source / 'NezhaCameraFigProvider.c', '-o', output / 'FigProvider.s'])
+    run(['codesign', '--force', '--sign', '-', '--pagesize', '4096', '--identifier', 'org.unixnu.nezha.camera27', library])
+    run(['codesign', '--verify', '--strict', library])
     (output / 'sdk-qualified.json').write_text(json.dumps({
         'compiler': run(['xcrun', '--sdk', 'iphoneos', 'clang', '--version']),
         'sdk': sdk, 'target': 'arm64e-apple-ios27.0',
@@ -154,6 +156,7 @@ def build_camera_userland(work, sdk):
         'library_sha256': sha(library), 'objects': {p.name: sha(p) for p in objects},
         'system_camera_registered': False, 'physical_frames_verified': False,
         'C2_library_loaded': False,
+        'owner_4K_signed': True, 'Apple_codesign_strict_passed': True,
     }, indent=2) + '\n')
 
 

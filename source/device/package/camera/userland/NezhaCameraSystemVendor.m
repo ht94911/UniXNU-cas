@@ -40,10 +40,10 @@ static id model_resource(id self,SEL selector,id resource,id extension,id subdir
     const bool camera_file=resource && ((bool (*)(id,SEL,id))objc_msgSend)
         (resource,sel_registerName("isEqualToString:"),(id)CFSTR("AVCaptureSession.plist"));
     if (camera_bundle && camera_file && !extension && subdirectory &&
-        access("/private/var/ngpu/camera/NezhaCameraModel.plist",R_OK)==0) {
+        access("/System/Library/MediaCapture/NezhaCameraModel.plist",R_OK)==0) {
         Class url=objc_getClass("NSURL");
         if (url) return ((id (*)(id,SEL,id))objc_msgSend)(url,sel_registerName("fileURLWithPath:"),
-            (id)CFSTR("/private/var/ngpu/camera/NezhaCameraModel.plist"));
+            (id)CFSTR("/System/Library/MediaCapture/NezhaCameraModel.plist"));
     }
     return ((id (*)(id,SEL,id,id,id))original_model_resource)(self,selector,resource,extension,subdirectory);
 }

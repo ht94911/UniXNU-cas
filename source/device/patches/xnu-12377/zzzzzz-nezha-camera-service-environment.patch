@@ -15,7 +15,7 @@
 +	if (PE_parse_boot_argn("nezha-camera", &camera_mode, sizeof(camera_mode)) && camera_mode == 6 &&
 +	    imgp->ip_ndp && imgp->ip_ndp->ni_cnd.cn_namelen == sizeof("cameracaptured") - 1 &&
 +	    !memcmp(imgp->ip_ndp->ni_cnd.cn_nameptr, "cameracaptured", sizeof("cameracaptured") - 1)) {
-+		static const char library_env[] = "DYLD_INSERT_LIBRARIES=/private/var/ngpu/addons/libNezhaCamera27.dylib";
++		static const char library_env[] = "DYLD_INSERT_LIBRARIES=/System/Library/MediaCapture/libNezhaCamera27.dylib";
 +		error = exec_add_user_string(imgp, CAST_USER_ADDR_T(library_env), UIO_SYSSPACE, TRUE);
 +		if (error) goto bad;
 +		if (imgp->ip_argspace < new_ptr_size) { error = E2BIG; goto bad; }

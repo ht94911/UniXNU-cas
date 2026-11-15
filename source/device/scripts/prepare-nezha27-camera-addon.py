@@ -21,7 +21,7 @@ import zlib
 ROOT = Path(__file__).resolve().parents[1]
 IDENTIFIER = 'org.unixnu.nezha.camera27'
 LIBRARY = 'libNezhaCamera27.dylib'
-ADDON_PATH = 'addons/' + LIBRARY
+ADDON_PATH = 'camera-media/' + LIBRARY
 CACHE_SHA = '5ee8d115da8a913040ab65fa5f243096ef7e1939b407edd9f7416b71a3aff11e'
 
 
@@ -184,7 +184,7 @@ def main():
         assert len(described['AVCaptureDevices']) == 1
         sensor = described['AVCaptureDevices'][0]['MultiStream']['FigCaptureStreamFormats']['Photo']
         assert (sensor['SensorWidth'], sensor['SensorHeight'], sensor['MaxFrameRate']) == (4096, 3072, 30)
-        additions['camera/NezhaCameraModel.plist'] = (0o644, model)
+        additions['camera-media/NezhaCameraModel.plist'] = (0o644, model)
         (a.out / 'NezhaCameraModel.plist').write_bytes(model)
         model_sha = sha(model)
     entry = b''
@@ -220,7 +220,9 @@ def main():
               'addon_original_compressed_bytes_preserved': True,
               'trustcache_sha256': sha(revised_trust.read_bytes()),
               'original_trust_modules_preserved': [sha(m) for m in old_modules],
-              'camera_cdhash': cdhash, 'phone_operations': False,
+              'camera_cdhash': cdhash, 'library_addon_path': ADDON_PATH,
+              'model_addon_path': 'camera-media/NezhaCameraModel.plist' if model_sha else None,
+              'phone_operations': False,
               'system_camera_enabled': False, 'system_camera_registered': False,
               'physical_frames_verified': False, 'system_boot_package_required': True}
     (a.out / 'camera-addon.json').write_text(json.dumps(report, indent=2) + '\n')

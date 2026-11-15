@@ -44,7 +44,7 @@ int main(void)
  struct image_params image={&name,32,2};
  mode=5;assert(!apply(&image) && !appended && image.ip_argspace==32 && image.ip_envc==2);
  mode=6;assert(!apply(&image) && appended==1 && image.ip_argspace==24 && image.ip_envc==3);
- assert(!strcmp(value,"DYLD_INSERT_LIBRARIES=/private/var/ngpu/addons/libNezhaCamera27.dylib"));
+ assert(!strcmp(value,"DYLD_INSERT_LIBRARIES=/System/Library/MediaCapture/libNezhaCamera27.dylib"));
  name.ni_cnd.cn_nameptr="mediaserverd";name.ni_cnd.cn_namelen=12;
  assert(!apply(&image) && appended==1);
  name.ni_cnd.cn_nameptr="cameracapturedX";name.ni_cnd.cn_namelen=15;

@@ -1,7 +1,7 @@
-name: nezha iPhone27 original signed camera plugin dyld policy
+name: nezha iPhone27 sandbox-compatible readonly camera media view
 on:
   push:
-    branches: [codex/ios27-camera036-dyld-policy-20261115]
+    branches: [codex/ios27-camera037-media-view-20261115]
   workflow_dispatch:
 permissions:
   contents: read

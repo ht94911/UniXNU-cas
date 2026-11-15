@@ -103,14 +103,18 @@ def main():
     readers = module(a.gpu_tools / 'gpu007_inputs.py', 'camera_system_package_readers')
     old_addon = readers.addon_files((prior / 'stage' / (KERNEL + '.gpuaddon')).read_bytes())
     new_addon = readers.addon_files((stage / (KERNEL + '.gpuaddon')).read_bytes())
-    additions = {'addons/libNezhaCamera27.dylib':
+    library_path = addon.get('library_addon_path', 'addons/libNezhaCamera27.dylib')
+    assert library_path in ('addons/libNezhaCamera27.dylib', 'camera-media/libNezhaCamera27.dylib')
+    additions = {library_path:
                  (0o644, (a.addon / 'libNezhaCamera27.dylib').read_bytes())}
     if addon.get('camera_model_sha256'):
         model = (a.addon / 'NezhaCameraModel.plist').read_bytes()
         assert sha(model) == addon['camera_model_sha256']
         parsed = plistlib.loads(model)
         assert len(parsed['AVCaptureDevices']) == 1
-        additions['camera/NezhaCameraModel.plist'] = (0o644, model)
+        model_path = addon.get('model_addon_path', 'camera/NezhaCameraModel.plist')
+        assert model_path in ('camera/NezhaCameraModel.plist', 'camera-media/NezhaCameraModel.plist')
+        additions[model_path] = (0o644, model)
     assert new_addon == old_addon | additions
     old_trust = readers.trust_modules((prior / 'stage' / (KERNEL + '.trustcache')).read_bytes())
     new_trust = readers.trust_modules((stage / (KERNEL + '.trustcache')).read_bytes())

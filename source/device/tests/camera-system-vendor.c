@@ -40,7 +40,7 @@ Method class_getInstanceMethod(Class cls,SEL selector) {assert(cls==(Class)4 && 
 IMP method_getImplementation(Method m) {return m->implementation;}
 IMP method_setImplementation(Method m,IMP replacement) {IMP old=m->implementation;m->implementation=replacement;++replacements;return old;}
 CFStringRef nezha_test_cfstr(const char *s) {return (CFStringRef)s;}
-int model_test_access(const char *path,int flags) {assert(!strcmp(path,"/private/var/ngpu/camera/NezhaCameraModel.plist") && flags==R_OK);return model_readable ? 0:-1;}
+int model_test_access(const char *path,int flags) {assert(!strcmp(path,"/System/Library/MediaCapture/NezhaCameraModel.plist") && flags==R_OK);return model_readable ? 0:-1;}
 /* Real objc_msgSend is an assembly dispatch entry, cast to each method's
  * typed ABI. The fixture's variadic C entry must not attach one function
  * sanitizer signature to those different, legitimate dispatch calls. */
@@ -49,7 +49,7 @@ __attribute__((no_sanitize("function"))) id objc_msgSend(id self,SEL selector,..
  va_list args;va_start(args,selector);id result=NULL;
  if (selector==(SEL)4)result=self; /* bundle fixture is its identifier */
  else if (selector==(SEL)5)result=(id)(uintptr_t)(strcmp(self,va_arg(args,const char *))==0);
- else {assert(self==(Class)5 && selector==(SEL)6);assert(!strcmp(va_arg(args,const char *),"/private/var/ngpu/camera/NezhaCameraModel.plist"));result=(id)9;}
+ else {assert(self==(Class)5 && selector==(SEL)6);assert(!strcmp(va_arg(args,const char *),"/System/Library/MediaCapture/NezhaCameraModel.plist"));result=(id)9;}
  va_end(args);return result;
 }
 void _dyld_register_func_for_add_image(void (*callback)(const struct mach_header *,intptr_t)) {arrived=callback;}
