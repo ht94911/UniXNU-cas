@@ -371,9 +371,9 @@ static void camera_capture(void)
     if (result.step == NezhaNativeFrames && !passed) {
         const uint32_t *r = result.capture_registers;
         printf("NEZHA CAMERA: stream=%#x read=%u RX=%#x/%#x TOP=%#x RXirq=%#x RDIirq=%#x BUF=%#x "
-            "packets=%u ecc=%#x crc=%#x RDI=%#x/%#x/%#x WM=%#x\n",
+            "packets=%u ecc=%#x crc=%#x RDI=%#x/%#x/%#x WM=%#x busCGC=%#x\n",
             result.stream_readback, result.stream_readback_status, r[0], r[1], r[2], r[3], r[4], r[5],
-            r[6], r[7], r[8], r[9], r[10], r[11], r[12]);
+            r[6], r[7], r[8], r[9], r[10], r[11], r[12], r[13]);
     }
     if (result.applied_writes) {
         printf("NEZHA CAMERA: stream-start=%#x read=%u\n",

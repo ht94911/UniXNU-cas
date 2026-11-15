@@ -37,8 +37,8 @@ struct Capture {
     NezhaCamera1080Io camss{};
     NezhaCameraMainCaptureIo capture_io{};
     NezhaCameraMainCapture capture{};
-    uint32_t cci_mask{}, timing[5]{};
-    bool used{}, cci_touched{}, dma_touched{}, running{}, cancelled{};
+    uint32_t cci_mask{}, timing[5]{}, vfe_bus_cgc_before{};
+    bool used{}, cci_touched{}, dma_touched{}, running{}, cancelled{}, vfe_bus_cgc_owned{};
     unsigned stopped{};
 };
 
@@ -50,6 +50,10 @@ constexpr uint32_t sizes[] = {0x80000, 0x2000, 0x3000, 0x1000, 0x1000,
     0x1000, 0x2000, 0x1000, 0x6000, 0x20000, 0x1000};
 constexpr uint32_t cci_master_irqs = 0x60ee6000u | (1u << 12) | (1u << 16) |
     (1u << 20) | (1u << 24) | (1u << 26);
+// Qualcomm CAMSS v24 vfe_wm_start disables input clock gating before
+// programming the full VFE1080 write master. The stock tfe1080 table
+// confirms bus_wr_base 0x1000 and cgc_ovd offset 8.
+constexpr uint32_t VfeBusCgc = 0x1008, VfeBusCgcNoGating = 0x07ffffff;
 
 uint32_t read(void *cookie, uint32_t offset)
 {
@@ -81,6 +85,32 @@ void write_vfe(void *cookie, uint32_t offset, uint32_t value)
 {
     auto *s = static_cast<Capture *>(cookie);
     write(&s->window[Vfe], offset, value);
+}
+
+bool acquire_vfe_bus(Capture &s)
+{
+    auto &bus = s.reg[Vfe];
+    if (s.vfe_bus_cgc_owned) return false;
+    s.vfe_bus_cgc_before = bus.read(bus.context, VfeBusCgc);
+    if (s.vfe_bus_cgc_before == UINT32_MAX) return false;
+    s.vfe_bus_cgc_owned = true;
+    const uint32_t expected = s.vfe_bus_cgc_before | VfeBusCgcNoGating;
+    bus.write(bus.context, VfeBusCgc, expected);
+    return bus.read(bus.context, VfeBusCgc) == expected;
+}
+
+bool restore_vfe_bus(Capture &s)
+{
+    if (!s.vfe_bus_cgc_owned) return true;
+    auto &bus = s.reg[Vfe];
+    const uint32_t current = bus.read(bus.context, VfeBusCgc);
+    if (current == UINT32_MAX) return false;
+    const uint32_t expected = (current & ~VfeBusCgcNoGating) |
+        (s.vfe_bus_cgc_before & VfeBusCgcNoGating);
+    bus.write(bus.context, VfeBusCgc, expected);
+    if (bus.read(bus.context, VfeBusCgc) != expected) return false;
+    s.vfe_bus_cgc_owned = false;
+    return true;
 }
 
 uint8_t *frame_acquire(void *cookie, unsigned buffer)
@@ -220,6 +250,9 @@ bool cleanup(Capture &s, NezhaCameraNativeCaptureResult &result,
         }
     }
     if (s.memory && !nezha_camera_native_memory_release(&s.memory, true)) return false;
+    // Restore the bus clock bits only after producers, IRQ and DMA have
+    // stopped. Capture resources still keep the VFE register page powered.
+    if (!restore_vfe_bus(s)) return false;
     result.cleanup_step = NezhaNativeRestorePins;
     if (!restore_cci(s)) return false;
     if (s.pins.reset_held && !nezha_camera_main_restore_pins(&gpio, &mclk, &rails, &s.pins)) return false;
@@ -370,6 +403,10 @@ bool nezha_camera_native_capture(const NezhaCameraNativeCaptureRequest *request,
         state.capture_io.dma_enter = nezha_camera_native_smmu_capture_enter;
         state.capture_io.dma_leave = nezha_camera_native_smmu_capture_leave;
         if (!checkpoint(*request, *result, NezhaNativeStream, pattern ? physical[Tpg] : physical[Phy], width, height)) break;
+        if (!acquire_vfe_bus(state)) {
+            result->status = VfeBusCgc;
+            break;
+        }
         state.dma_touched = true;
         const NezhaCamera1080Input input = pattern ? NezhaCamera1080Input{NezhaCamera1080Tpg, 2, 0, {}, false} :
             NezhaCamera1080Input{NezhaCamera1080Cphy, 0, 3, {0, 1, 2, 0}, state.profile.epd_mode};
@@ -421,6 +458,7 @@ bool nezha_camera_native_capture(const NezhaCameraNativeCaptureRequest *request,
         for (unsigned i = 0; i < sizeof(offsets) / sizeof(offsets[0]); ++i)
             result->capture_registers[i] = read(&state.window[Csid], offsets[i]);
         result->capture_registers[12] = read(&state.window[Vfe], 0x2c00);
+        result->capture_registers[13] = read(&state.window[Vfe], VfeBusCgc);
         if (!pattern && !state.capture.sensor_transfer.needs_recovery) {
             uint8_t running = 0;
             NezhaCameraCciObservation observed{};

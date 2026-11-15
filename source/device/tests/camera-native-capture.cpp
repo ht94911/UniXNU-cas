@@ -16,6 +16,7 @@ static bool resources_active, irq_active, smmu_active, memory_active, stream_act
 static bool frame_timeout;
 static bool selected_epd;
 static unsigned stream_readbacks;
+static uint32_t original_bus_cgc;
 static NezhaCameraRpmh rpmh{};
 static NezhaCameraDmaPlan plan{};
 static ArmSmmu4KContextConfig context{};
@@ -50,7 +51,8 @@ extern "C" bool nezha_camera_capture_resources_start(const NezhaCameraCaptureRes
 extern "C" bool nezha_camera_capture_resources_drain(const NezhaCameraCaptureResourceIo *,NezhaCameraCaptureResources *,bool quiet)
 { assert(quiet && !stream_active && resources_active);return true; }
 extern "C" bool nezha_camera_capture_resources_stop(const NezhaCameraCaptureResourceIo *,const NezhaCameraIfeBandwidth *,const NezhaCameraCsiphy24Profile *,NezhaCameraCaptureResources *,bool quiet,bool detached)
-{ assert(quiet && detached && !memory_active && !smmu_active && !irq_active);resources_active=false;++stops;return true; }
+{ assert(quiet && detached && !memory_active && !smmu_active && !irq_active);
+  assert(vfe[0x1008/4]==original_bus_cgc);resources_active=false;++stops;return true; }
 extern "C" bool nezha_camera_main_hold_reset(const NezhaCameraRegisterIo *,NezhaCameraMainPins *p) { p->reset_held=true;return true; }
 extern "C" bool nezha_camera_main_start_pins(const NezhaCameraRegisterIo *,const NezhaCameraRegisterIo *,const NezhaCameraMainRailIo *,NezhaCameraMainPins *) { return true; }
 extern "C" bool nezha_camera_main_restore_pins(const NezhaCameraRegisterIo *,const NezhaCameraRegisterIo *,const NezhaCameraMainRailIo *,NezhaCameraMainPins *p) { p->reset_held=false;return true; }
@@ -91,7 +93,9 @@ extern "C" bool nezha_camera_native_smmu_release(NezhaCameraNativeSmmu **out,boo
 extern "C" uint32_t nezha_camera_native_smmu_fault(const NezhaCameraNativeSmmu *) { return 0; }
 extern "C" void nezha_camera_native_smmu_fault_info(const NezhaCameraNativeSmmu *,NezhaCameraNativeSmmuFault *f) { *f={}; }
 extern "C" bool nezha_camera_main_capture_start(const NezhaCameraMainCaptureIo *,const NezhaCameraMainMode *mode,const NezhaCameraDmaPlan *,const ArmSmmu4KContextConfig *,unsigned,unsigned,unsigned,NezhaCameraMainCapture *c)
-{ assert(!stream_active && !c->rdi_started && mode->input.epd_mode==selected_epd);c->rdi_started=true;c->stream_may_be_on=true;stream_active=true;return true; }
+{ assert(!stream_active && !c->rdi_started && mode->input.epd_mode==selected_epd);
+  assert(vfe[0x1008/4]==(original_bus_cgc|0x07ffffff));
+  c->rdi_started=true;c->stream_may_be_on=true;stream_active=true;return true; }
 extern "C" bool nezha_camera_main_capture_request_stop(const NezhaCameraMainCaptureIo *,NezhaCameraMainCapture *c) { c->stream_may_be_on=false;stream_active=false;return true; }
 extern "C" bool nezha_camera_main_capture_finish_stop(const NezhaCameraMainCaptureIo *,const ArmSmmu4KContextConfig *,unsigned,NezhaCameraMainCapture *,bool quiet) { assert(quiet);return true; }
 extern "C" bool nezha_camera_main_capture_release_frame(const NezhaCameraMainCaptureIo *,NezhaCameraMainCapture *,unsigned,bool) { return true; }
@@ -123,9 +127,12 @@ int main()
     keep_running=true;
     for (unsigned turn=0;turn<2;++turn) {
         selected_epd=turn!=0;
+        original_bus_cgc=turn ? 0x88000400 : 0x40000000;
+        vfe[0x1008/4]=original_bus_cgc;
         assert(nezha_camera_native_capture(&request,&result));
         assert(result.cleaned && result.frames.frames==3 && starts==turn+1 && stops==turn+1);
         assert(!nezha_camera_native_capture_running() && !resources_active && !memory_active && !smmu_active && !irq_active);
+        assert(vfe[0x1008/4]==original_bus_cgc);
         assert(maps==12); /* MMIO callbacks retain permanent mapping; no second-run leak */
     }
     assert(copies==6 && reads==6 && stream_readbacks==2);
@@ -137,7 +144,9 @@ int main()
     assert(result.stream_start_readback==1 && result.stream_start_readback_status==NezhaCciOk);
     assert(result.status==NezhaFramesTimeout && result.stream_readback==1 && result.stream_readback_status==NezhaCciOk);
     assert(result.capture_registers[0]==0x1100212 && result.capture_registers[6]==27 &&
-        result.capture_registers[12]==0x10001);
+        result.capture_registers[12]==0x10001 &&
+        result.capture_registers[13]==(original_bus_cgc|0x07ffffff));
+    assert(vfe[0x1008/4]==original_bus_cgc);
     const unsigned failed_starts=starts;
     assert(!nezha_camera_native_capture(&request,&result) && starts==failed_starts);
     puts("Native continuous camera: two three-frame sessions, callback Stop, permanent maps and ordered resource release passed");
