@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Source-only arm64e iOS27 exact signed helper031 code-directory update on fixed GPU024. 031 helper preserves028 request/TLS/timeout/source and adds the original no-sandbox signed entitlement. Only the MAC predicate's fixed allowed CDHash changes,retaining launch29/demand21,parent1,system-service type,CS_VALID and identity. No modem/radio/identity commands or otherdriver changes. Private originalcache/signature/helper staylocal;Mac-only native build and CMS output.",
+  "purpose": "Source-only arm64e iOS27 exact signed helper032 code-directory update on fixed GPU024. 032 helper preserves028 request/TLS/timeout/source and uses the sameOS original embedded temporary-sandbox profile string. Only the MAC predicate's fixed allowed CDHash changes,retaining launch29/demand21,parent1,system-service type,CS_VALID and identity. No modem/radio/identity commands or otherdriver changes. Private originalcache/signature/helper staylocal;Mac-only native build and CMS output.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "989dde371897a6fed401bf3e574e1e3efd66b59e",
+  "device_revision": "16242ecee7b54732bb46a8be9ce74cb8cb9537b1",
   "soc_revision": "703d7b4bb00904b4a6e5d96f9e9bf72eec170f6b",
   "xcode": "26.6",
   "files": {
@@ -296,12 +296,12 @@
     "source/device/patches/xnu-12377/zzzzzz-nezha-adreno840-start.patch": "d32bb0d5e678e5773786dcce90467e0258d844550b418b438e1548fb32392f79",
     "source/device/patches/xnu-12377/zzzzzz-nezha-cellular-addon-size.patch": "5087cd2e214f0fd88f7105a5de56af74e01ab8d6bc75b7c9a65a36ba07245159",
     "source/device/patches/xnu-12377/zzzzzz-nezha-cellular-cached-entry.patch": "e09a867ddfd3e1f65d6adb44ba082b8cb05ff3c8bdae100acf75104dbb57bf75",
-    "source/device/patches/xnu-12377/zzzzzz-nezha-cellular-launch-identity.patch": "9b61c926aef19d2cbea01f2652aeedcfd4961d729f66aad5822b96dc774ef4c8",
+    "source/device/patches/xnu-12377/zzzzzz-nezha-cellular-launch-identity.patch": "645b76eaa50c9dede5c476c77da89f9e84ab3ddeec9c3285b599b37d17f88cb9",
     "source/device/patches/xnu-12377/zzzzzz-nezha-cellular-launch.patch": "51f1ca96611c96ef836bef4952b69983e287ae655efa5ffa9170c6f8b83c7821",
     "source/device/patches/xnu-12377/zzzzzz-nezha-input-chain-trace.patch": "c4d05419e7ec3af0de619754bdb6c2deb69b74d714c2219e509360ebfe1b947e",
     "source/device/patches/xnu-12377/zzzzzz-nezha-kernel-class-lock-order.patch": "cd90c61d6838f4e6a7248da81b6180f14db03d00f2f7a64f4bbe4034c0aa8dcb",
     "source/device/patches/xnu-12377/zzzzzz-nezha-sigp-startup-order.patch": "18275910b909d187e459c68f5d937cc09bc01923180141dc155aa7f4ff14aaf9",
-    "source/device/porting.toml": "cced1c5f279ff6eccba7c6e8b2e22a2abbf27c3c2e8c744932cb5371016763a8",
+    "source/device/porting.toml": "f571692c12a0730375d1c9ab57e5c5f03069f95f5147e567dd678beede16c334",
     "source/device/scripts/backlight-iphone-24A446.json": "446eb5fe6440335bfe9fca75b32f7d815ddcafbb8a3c2d7f697c1e5c3f40f6cb",
     "source/device/scripts/build-adreno840.py": "269f32fe2c97d7baf846a148fed7c111a53869486626a87ec8daab7fdfc3ab91",
     "source/device/scripts/build-boot-progress.py": "a210eb1f0443574eb1506932aa9e8181d5c73aecf99397d8cc731568bd3210ba",
@@ -329,7 +329,7 @@
     "source/device/scripts/prepare-nezha27-baseband.py": "ce944b75e982386c055ad072dd1a87675675e0ff2460e649686a9cc08e5ea93b",
     "source/device/scripts/qualify-armcpu-instructions.py": "dae7cb3b9faecaac7b268212bbd324ae172d3dffa0e94b06afc4581c9f4abe9b",
     "source/device/tests/baseband27/boot_ready_test.c": "415b5a8f68ba7a529d33f2f6905fe8af155fb42f344284a344a98138b4c68965",
-    "source/device/tests/baseband27/cellular_launch_test.py": "49f0a20c81646309e90c08194e8d3a032f9db4eef15a939e97c65155f844e464",
+    "source/device/tests/baseband27/cellular_launch_test.py": "2e69cd8776662ddc744c297356d6536af263f382a76b2134241d0d71fd0d734e",
     "source/device/tests/baseband27/cellular_runtime_test.py": "e7247f99919141365a212381524469ff5142a37ef85197a792c518cf815c327b",
     "source/device/tests/baseband27/cellular_task_permissions_test.py": "30180ced672e1e8d16b3ae8f3b9546e01e7567fc957b69e59fccd307970c651f",
     "source/device/tests/baseband27/check.sh": "a191fc75178a16968eb270c4a338d1cec1cc6263b2fdb746b80d2c060d6a8d5f",
@@ -486,8 +486,9 @@
     "cellular_demand_marker": 21,
     "cellular_exact_helper_launch_identity": true,
     "cellular_typed_system_SETEXEC": true,
-    "cellular_helper_build_reused": 43713600352,
-    "cellular_helper_cdhash": "69d9b2c582467a0319fe8a3a102e48e7404840d0",
-    "cellular_helper_signed_no_sandbox": true
+    "cellular_helper_build_reused": 43742046532,
+    "cellular_helper_cdhash": "b28eb5cc629cc9112bf70134a01e4d57c2ee3b41",
+    "cellular_helper_signed_no_sandbox": false,
+    "cellular_helper_embedded_profile": "temporary-sandbox"
   }
 }
