@@ -1,7 +1,7 @@
-name: nezha iPhone27 actual Default CFString factory ABI
+name: nezha iPhone27 actual publishing failure and creation context
 on:
   push:
-    branches: [codex/ios27-camera042-default-string-factory-20261115]
+    branches: [codex/ios27-camera043-publishing-context-20261115]
 permissions:
   contents: read
 concurrency:

@@ -8,7 +8,8 @@
 /* HakiOS camera_device.c supplies the vendor factory sequence. The
  * selected H13ISPCaptureDeviceCreate stores x0/x1/x2 as allocator/deviceID/
  * output, reads x1 with CFStringGetCStringPtr/GetCString, and the vendor
- * retains the supplied callback. The measured built-in device ID is Default.
+ * retains the supplied callback. x1 carries the create-request context;
+ * the selected vendor routes Default to this one physical device.
  * This binding waits for an actual backend; it cannot use a diagnostic
  * journal, TPG frame or a file renderer as a live camera. */
 static pthread_mutex_t mutex=PTHREAD_MUTEX_INITIALIZER;
@@ -32,21 +33,21 @@ NezhaFigStatus nezha_camera_device_create(NezhaFigAllocator allocator,
     NezhaFigString device_id, NezhaFigObject *device)
 {
     static unsigned reported;
+    const bool report=__atomic_fetch_add(&reported,1u,__ATOMIC_RELAXED)<4;
+    const bool string_context=device_id && CFGetTypeID(device_id)==CFStringGetTypeID();
+    char context[128]={0};
+    if (string_context) (void)CFStringGetCString(device_id,context,sizeof(context),kCFStringEncodingUTF8);
+    if (report) fprintf(stderr,"nezha-camera: factory incoming output=%u string=%u context=%s\n",
+        (unsigned)(device!=NULL),(unsigned)string_context,context);
     if (!device) return Invalid;
     *device=NULL;
-    if (device_id) {
-        char name[32];
-        if (CFGetTypeID(device_id)!=CFStringGetTypeID() ||
-            !CFStringGetCString(device_id,name,sizeof(name),kCFStringEncodingUTF8) ||
-            strcmp(name,"Default")) return Invalid;
-    }
+    if (device_id && !string_context) return Invalid;
     pthread_mutex_lock(&mutex);
     const bool available=bound;
     const struct NezhaCameraFigBackend selected=backend;
     bool (*ready)(void *)=backend_ready;
     pthread_mutex_unlock(&mutex);
     const bool hardware_ready=available && ready(selected.context);
-    const bool report=__atomic_fetch_add(&reported,1u,__ATOMIC_RELAXED)<4;
     if (report) fprintf(stderr,"nezha-camera: device factory bound=%u node=%u\n",
         (unsigned)available,(unsigned)hardware_ready);
     if (!hardware_ready) return Unavailable;

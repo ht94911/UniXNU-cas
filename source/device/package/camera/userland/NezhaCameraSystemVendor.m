@@ -22,16 +22,19 @@ static bool capture_present;
 static bool model_installed;
 static bool device_ids_installed;
 static bool backings_init_installed,backings_list_installed;
+static bool publishing_installed;
 static intptr_t capture_slide;
 static IMP original;
 static IMP original_model_resource;
 static IMP original_device_ids;
 static IMP original_backings_init,original_backings_list;
+static IMP original_publishing;
 static const char selector_name[]="sharedCaptureDeviceVendorWithDefaultDeviceCreateFunction:";
 static const char model_selector_name[]="URLForResource:withExtension:subdirectory:";
 static const char device_ids_selector_name[]="deviceIDs";
 static const char backings_init_selector[]="initWithSourceInfoDictionaries:commonSettings:";
 static const char backings_list_selector[]="sourceBackings";
+static const char publishing_selector[]="copyDeviceForPublishingWithID:error:";
 static const uint8_t capture_uuid[16]={0x99,0x5f,0xc2,0x2b,0x41,0xbd,0x37,0xb4,
     0x81,0x2f,0x26,0x86,0xb8,0x1c,0x26,0x94};
 typedef NezhaFigStatus (*CameraCreate)(NezhaFigAllocator,NezhaFigString,NezhaFigObject *);
@@ -132,6 +135,30 @@ static void install_device_ids(void)
     fprintf(stderr,"nezha-camera: measured device list observer installed\n");
 }
 
+static id publishing_device(id self,SEL selector,id device_id,int32_t *error)
+{
+    static unsigned reported;
+    const bool report=__atomic_fetch_add(&reported,1u,__ATOMIC_RELAXED)<4;
+    if (report) fprintf(stderr,"nezha-camera: publishing request default=%u errorOut=%u\n",
+        (unsigned)(device_id && ((bool (*)(id,SEL,id))objc_msgSend)(device_id,sel_registerName("isEqualToString:"),(id)CFSTR("Default"))),
+        (unsigned)(error!=NULL));
+    id device=((id (*)(id,SEL,id,int32_t *))original_publishing)(self,selector,device_id,error);
+    if (report) fprintf(stderr,"nezha-camera: publishing result device=%u error=%d\n",(unsigned)(device!=NULL),error?*error:0);
+    return device;
+}
+
+static void install_publishing(void)
+{
+    if (publishing_installed) return;
+    Class type=objc_getClass("BWFigCaptureDeviceVendor");
+    Method method=type ? class_getInstanceMethod(type,sel_registerName(publishing_selector)) : NULL;
+    IMP current=method ? method_getImplementation(method) : NULL;
+    if (!current || (uintptr_t)ptrauth_strip(current,ptrauth_key_function_pointer)!=(uintptr_t)(0x1b080b458ULL+capture_slide)) return;
+    original_publishing=current;method_setImplementation(method,(IMP)publishing_device);
+    publishing_installed=true;
+    fprintf(stderr,"nezha-camera: measured publishing request observer installed\n");
+}
+
 static id backings_init(id self,SEL selector,id dictionaries,id common)
 {
     static unsigned reported;
@@ -197,13 +224,14 @@ static bool uuid_matches(const struct mach_header_64 *header)
 
 static void image_added(const struct mach_header *header,intptr_t slide)
 {
-    if (installed && model_installed && device_ids_installed && backings_init_installed && backings_list_installed) return;
+    if (installed && model_installed && device_ids_installed && publishing_installed && backings_init_installed && backings_list_installed) return;
     if (uuid_matches((const struct mach_header_64 *)header)) {
         capture_present=true;capture_slide=slide;
     }
     if (!capture_present) return;
     install_model_resource();
     install_device_ids();
+    install_publishing();
     install_backings();
     if (installed) return;
     Class type=objc_getClass("BWFigCaptureDeviceVendor");
