@@ -47,6 +47,7 @@ try:
     expected = {
         "application-identifier": "org.unixnu.nezha.cellular-demand",
         "com.apple.private.security.no-container": True,
+        "com.apple.private.security.no-sandbox": True,
         "com.apple.security.exception.sysctl.read-write": ["debug.qcom_usb_userlog"],
     }
     assert plistlib.loads(entitlements.read_bytes()) == expected

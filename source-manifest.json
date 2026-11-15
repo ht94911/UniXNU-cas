@@ -1,16 +1,16 @@
 {
   "schema": 1,
-  "purpose": "Diagnose existing helper entry and selected-payload gate; preserve one original Network.framework cellular request on qualified027 kernel",
+  "purpose": "Sign the unchanged finite cellular request helper with original sameOS no-sandbox entitlement, addressing real029 DNS/NECP EPERM; kernel exact hash updated separately, no modem/identity payload",
   "files": {
-    ".github/workflows/nezha-ios27-native.yml": "5309ec29938872f11887d089d021fb8af806142f2dde9409cabfbe540a6e9964",
+    ".github/workflows/nezha-ios27-native.yml": "46b70bd083ee92caf90abfa21869395b66caf07d8aa59a0bff58f59b654628c2",
     "ci/artifact-recipient.pem": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
     "ci/artifacts.py": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
-    "ci/cellular-demand.py": "f5ef89ec155f8cd99c2d33d354277e8379e734654d0316cc9ad68f6d340c7047",
+    "ci/cellular-demand.py": "ad12df88198f02d77595cd189b9b241f34db33a9b93bed5a4211a05d399e60a3",
     "source/CellularDemand.mm": "989aaff69fc63e3d802aa4551943af5cf4e22df6247bb7ebe081314bf6bcc187",
     "source/QcomUserLogTransport.h": "6981a8a4863c80f0109de4e821c4ef2d72f75f143eb39f4a65a2abb2a4df4531",
     "source/QcomUserLogWire.h": "965d7aeaa4043bcceb151cd6331ce50faefe21f57ce7c91cf781a52b4917397b",
     "source/com.apple.iomfb_fdr_loader.plist": "a74a4bda2681cad546281340876c353bc5bd2000793057c7e048f40f1c148e11",
-    "source/entitlements.plist": "1724180180bebb6ef363cada7bed75fb9c5c988ef41c806353652e5d1183185b"
+    "source/entitlements.plist": "f49331219f69385982dc4969fa2d2aed43c421349aa7055ebad70e9fec1c1e0c"
   },
   "source_only": true,
   "phone_data": false,
