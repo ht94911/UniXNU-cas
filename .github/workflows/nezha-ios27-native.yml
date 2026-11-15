@@ -1,7 +1,7 @@
-name: nezha iPhone27 original camera stream close origin
+name: nezha iPhone27 original camera stream reader lifetime
 on:
   push:
-    branches: [codex/ios27-camera061-stream-stop-origin-20261116]
+    branches: [codex/ios27-camera063-stream-reader-owner-20261116]
 permissions:
   contents: read
 concurrency:

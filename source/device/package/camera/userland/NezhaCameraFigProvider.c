@@ -22,9 +22,9 @@ struct Stream {
     CFArrayRef formats;
     CFDictionaryRef supported;
     unsigned stills, generation;
-    bool collecting, running, invalid;
+    bool collecting, running, invalid, bound;
 };
-struct Device { NezhaFigObject stream; CFArrayRef streams; CFDictionaryRef supported; bool bound; };
+struct Device { NezhaFigObject stream; CFArrayRef streams; CFDictionaryRef supported; };
 
 static struct Stream *stream_of(NezhaFigObject o) { return nezha_fig_capture24_storage(o); }
 static struct Device *device_of(NezhaFigObject o) { return nezha_fig_capture24_storage(o); }
@@ -248,6 +248,8 @@ static void stream_finalize(NezhaFigObject o)
     struct Stream *s=stream_of(o);if (!s) return;
     if (s->queue) {
         (void)stream_invalidate(o);
+        if (s->bound && s->backend.bind_stream)
+            (void)s->backend.bind_stream(s->backend.context,NULL);
         serial(s,^{ for (unsigned i=0;i<3;++i) nezha_camera_graph_output_reset(&s->output[i]); });
         dispatch_release(s->queue);
     }
@@ -413,16 +415,23 @@ static NezhaFigStatus request(NezhaFigObject o,NezhaFigArray streams,NezhaFigDic
 static NezhaFigStatus relinquish(NezhaFigObject o,NezhaFigArray streams,NezhaFigDictionary options)
 { (void)options;return device_control(o,streams,true); }
 static NezhaFigStatus device_invalidate(NezhaFigObject o)
-{ struct Device *d=device_of(o);return d && d->stream ? stream_invalidate(d->stream) : 0; }
+{
+    struct Device *d=device_of(o);
+    if (d && d->stream) {
+        struct Stream *s=stream_of(d->stream);
+        serial(s,^{ report_lifecycle("device-invalidate",s,0); });
+    }
+    /* HakiOS f128f1d keeps the independent stream alive when discovery
+     * invalidates its temporary device. Actual062 closed before frame1
+     * here; stream Stop/invalidate/finalize still owns hardware release. */
+    return 0;
+}
 static void device_finalize(NezhaFigObject o)
 {
     struct Device *d=device_of(o);if (!d) return;
-    if (d->stream) {
-        (void)stream_invalidate(d->stream);
-        struct Stream *s=stream_of(d->stream);
-        if (d->bound && s->backend.bind_stream)
-            (void)s->backend.bind_stream(s->backend.context,NULL);
-    }
+    /* The capture graph may retain StreamArray after releasing this
+     * device. Its last stream reference, rather than this device, ends
+     * and unbinds the native reader, as the original provider does. */
     if (d->streams) CFRelease(d->streams);
     if (d->supported) CFRelease(d->supported);
 }
@@ -506,7 +515,7 @@ NezhaFigStatus nezha_camera_fig_provider_create(NezhaFigAllocator allocator,
     if (backend->bind_stream) {
         status=backend->bind_stream(backend->context,d->stream);
         if (status) { CFRelease(device);return status; }
-        d->bound=true;
+        s->bound=true;
     }
     *out=device;return 0;
 }
