@@ -25,6 +25,54 @@ struct NezhaCameraOvxModeWrite {
     size_t burst_bytes;
 };
 
+struct NezhaCameraOvxControls {
+    uint32_t exposure_lines, frame_lines, gain_q8;
+};
+
+struct NezhaCameraOvxControlPlan {
+    uint32_t exposure_lines, frame_lines;
+    uint16_t analog_gain_q8, digital_gain_q10;
+    struct NezhaCameraOvxModeWrite writes[14];
+};
+
+/* Pure mode1 control conversion. Addresses and byte order come from the
+ * actual nezha HAL/sensor plugin; no bus or stream operation occurs here.
+ * gain_q8 is 256 for 1x. This mode retains unity sensor digital gain and
+ * the upstream piecewise analog quantization. Apply only under the same
+ * sensor/CCI owner and after selecting this measured mode. The stock
+ * mode1 group-hold commands bracket all eleven exposure/gain bytes. */
+bool nezha_camera_ovx10500u_control_plan(const struct NezhaCameraOvxControls *controls,
+    struct NezhaCameraOvxControlPlan *plan);
+
+struct NezhaCameraOvxControlResult {
+    struct NezhaCameraOvxControlPlan plan;
+    struct NezhaCameraCciObservation transfer;
+    size_t applied_writes;
+    bool group_may_be_held;
+};
+
+/* Only the selected mode1 capture worker may apply this transaction.
+ * Report the first CCI error without issuing a group release or retry;
+ * the owner stops capture and recovers that master through its teardown. */
+enum NezhaCameraCciStatus nezha_camera_ovx10500u_apply_controls(
+    const struct NezhaCameraRegisterIo *cci, const struct NezhaCameraOvxControls *controls,
+    struct NezhaCameraOvxControlResult *result);
+
+struct NezhaCameraOvxControlReadback {
+    uint32_t exposure_lines, frame_lines;
+    uint16_t analog_gain_q8;
+    uint32_t digital_gain_q10;
+    uint8_t registers[11];
+    unsigned bytes_read;
+    struct NezhaCameraCciObservation transfer;
+};
+
+/* Read the original mode1 control registers under the same CCI owner.
+ * Return only values actually read; an interrupted read is incomplete.
+ * Current registers alone do not date the settings of a queued RAW frame. */
+enum NezhaCameraCciStatus nezha_camera_ovx10500u_read_controls(
+    const struct NezhaCameraRegisterIo *cci, struct NezhaCameraOvxControlReadback *result);
+
 /* Use the powered, initialized and exclusively held nezha CCI0 master 1.
  * Obtain both identity bytes before matching the actual stock module. */
 enum NezhaCameraCciStatus nezha_camera_ovx10500u_read_identity(

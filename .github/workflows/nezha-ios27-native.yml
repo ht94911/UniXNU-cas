@@ -1,7 +1,7 @@
 name: nezha iPhone27 original DAS pager and union fixes
 on:
   push:
-    branches: [codex/ios27-camera060-pager-union-20261116]
+    branches: [codex/ios27-camera065-real-frame-exposure-20261116]
   workflow_dispatch:
 permissions:
   contents: read

@@ -9,6 +9,7 @@
 #include <cassert>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 
 static uint32_t camcc[0x80000/4],crm[0x2000/4],crmc[0x3000/4],crmcommon[0x1000/4],ife[0x1000/4],cpas[0x1000/4],phy[0x2000/4],cci[0x1000/4],csid[0x6000/4],vfe[0x20000/4],gpio[NezhaCameraGpioBytes/4],mclk[0x1000/4];
 static unsigned maps, starts, stops, reads, copies;
@@ -16,6 +17,44 @@ static bool resources_active, irq_active, smmu_active, memory_active, stream_act
 static bool frame_timeout;
 static bool selected_epd;
 static unsigned stream_readbacks;
+static unsigned control_takes, control_commits, control_completions;
+static NezhaCameraCciStatus control_failure=NezhaCciOk;
+static bool control_pending, stop_at_control;
+static unsigned control_readbacks;
+static bool readback_mismatch;
+static bool longer_control_session;
+extern "C" NezhaCameraCciStatus nezha_camera_ovx10500u_read_controls(
+ const NezhaCameraRegisterIo *io,NezhaCameraOvxControlReadback *r)
+{
+ assert(io && stream_active && smmu_active && irq_active);++control_readbacks;
+ *r={};r->bytes_read=11;r->exposure_lines=readback_mismatch ? 321:320;
+ r->frame_lines=4000;r->analog_gain_q8=544;r->digital_gain_q10=1024;return NezhaCciOk;
+}
+static void controls_readback(void *,const NezhaCameraOvxControlReadback *r,uint32_t after)
+{ assert(after>=1 && r->bytes_read==11); }
+extern "C" NezhaCameraCciStatus nezha_camera_ovx10500u_apply_controls(
+    const NezhaCameraRegisterIo *bus,const NezhaCameraOvxControls *c,NezhaCameraOvxControlResult *r)
+{
+ assert(bus && stream_active && memory_active && smmu_active && irq_active);
+ assert(c->exposure_lines==320 && c->gain_q8==544 && c->frame_lines==4000);
+ ++control_commits;r->plan.exposure_lines=320;r->plan.frame_lines=4000;r->plan.analog_gain_q8=544;r->plan.digital_gain_q10=1024;r->applied_writes=control_failure==NezhaCciOk ? 14:5;
+ r->transfer.needs_recovery=control_failure!=NezhaCciOk;
+ r->group_may_be_held=control_failure!=NezhaCciOk;
+ return control_failure;
+}
+static bool take_controls(void *,NezhaCameraOvxControls *out)
+{
+ ++control_takes;
+ if (!control_pending) return false;
+ control_pending=false;*out={320,4000,544};return true;
+}
+static void complete_controls(void *,NezhaCameraCciStatus status,
+ const NezhaCameraOvxControlResult *r,uint32_t before)
+{
+ ++control_completions;assert(before==1 && status==control_failure);
+ assert(r->applied_writes==(status==NezhaCciOk ? 14:5));
+ if(stop_at_control)nezha_camera_native_capture_request_stop();
+}
 static uint32_t original_bus_cgc;
 static NezhaCameraRpmh rpmh{};
 static NezhaCameraDmaPlan plan{};
@@ -112,9 +151,11 @@ extern "C" NezhaCameraFrameStatus nezha_camera_frame_consume(const NezhaCameraMa
 }
 static bool continuing(void *) { return keep_running; }
 static bool delivered(void *,const NezhaCameraRaw10Layout *,const uint8_t *,size_t,uint64_t,uint32_t sequence)
-{ ++copies;if (sequence==3) nezha_camera_native_capture_request_stop();return true; }
-int main()
+{ ++copies;if (sequence==(longer_control_session ? 4u:3u)) nezha_camera_native_capture_request_stop();return true; }
+int main(int argc,char **argv)
 {
+    const bool test_mismatch=argc==2 && !strcmp(argv[1],"controls-mismatch");
+    const bool test_controls=test_mismatch || (argc==2 && !strcmp(argv[1],"controls"));
     cci[0]=NezhaCameraCciCanoeVersion;
     uint8_t profile=0,database=0;
     NezhaCameraFrameConsumer consumer{NULL,continuing,delivered};
@@ -136,6 +177,54 @@ int main()
         assert(maps==12); /* MMIO callbacks retain permanent mapping; no second-run leak */
     }
     assert(copies==6 && reads==6 && stream_readbacks==2);
+    if(test_controls) {
+    NezhaCameraNativeControlConsumer control{NULL,take_controls,complete_controls,controls_readback};
+    request.controls=&control;
+    const unsigned before_controls=starts;
+    control_pending=true;
+    assert(nezha_camera_native_capture(&request,&result));
+    assert(result.control_attempted && result.control_status==NezhaCciOk &&
+        result.control_completed_before==1 && result.control_result.applied_writes==14);
+    assert(control_takes==1 && control_commits==1 && control_completions==1 &&
+        result.frames.frames==3 && starts==before_controls+1);
+    control_pending=true;stop_at_control=true;
+    assert(nezha_camera_native_capture(&request,&result) && result.frames.frames==1);
+    assert(control_commits==2 && control_completions==2 && result.cleaned);
+    stop_at_control=false;control_pending=false;
+    control_takes=0;
+    assert(nezha_camera_native_capture(&request,&result) && !result.control_attempted &&
+        control_commits==2 && result.frames.frames==3);
+    NezhaCameraNativeControlConsumer invalid{NULL,take_controls,NULL,controls_readback};
+    request.controls=&invalid;
+    assert(!nezha_camera_native_capture(&request,&result));
+    request.controls=&control;
+    // Register sampling follows the complete group by two actual frame boundaries.
+    longer_control_session=true;control_pending=true;
+    const unsigned readbacks_before=control_readbacks;
+    assert(nezha_camera_native_capture(&request,&result) && result.frames.frames==4);
+    assert(result.control_readback_after==3 && result.control_readback.bytes_read==11 &&
+        control_readbacks==readbacks_before+2 && control_commits==3);
+    longer_control_session=false;
+    if(test_mismatch) {
+        control_pending=true;longer_control_session=true;readback_mismatch=true;
+        const unsigned commits_before=control_commits;
+        assert(!nezha_camera_native_capture(&request,&result) && result.cleaned);
+        assert(result.status==NezhaFramesIo && result.control_readback_after==3 &&
+            result.control_readback.exposure_lines==321 && control_commits==commits_before+1);
+        puts("Native control mismatch: real sampled value retained, one group only, no fabricated match, normal teardown passed");
+        return 0;
+    }
+    // The first NACK ends this owner without another take or group commit.
+    control_failure=NezhaCciNack;control_pending=true;
+    const unsigned takes_before=control_takes;
+    assert(!nezha_camera_native_capture(&request,&result) && result.cleaned);
+    assert(result.control_attempted && result.control_status==NezhaCciNack &&
+        result.control_result.applied_writes==5 && result.control_result.group_may_be_held &&
+        result.control_completed_before==1 && result.sensor_status==NezhaCciNack);
+    assert(control_takes==takes_before+1 && control_commits==4 && control_completions==4);
+    puts("Native controls: sole worker frame boundary, one ACK, callback Stop, no empty/repeated commits and first NACK cleanup passed");
+    return 0;
+    }
     frame_timeout=true;
     csid[0x880/4]=0x1100212;
     csid[0x8c0/4]=27;

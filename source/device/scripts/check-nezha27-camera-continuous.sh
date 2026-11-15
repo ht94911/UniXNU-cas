@@ -32,6 +32,8 @@ flags=(-std=c++17 -Wall -Wextra -Werror -g -fsanitize=address,undefined
        -I"$shared/include" -I"$out/fixture")
 g++ "${flags[@]}" "$out/NativeCapture-host.cpp" tests/camera-native-capture.cpp -o "$out/test-capture"
 "$out/test-capture"
+"$out/test-capture" controls
+"$out/test-capture" controls-mismatch
 g++ "${flags[@]}" package/camera/NezhaCameraNativeSmmu.cpp tests/camera-native-smmu.cpp -o "$out/test-smmu"
 "$out/test-smmu"
 for unit in NativeCapture NativeSmmu; do
@@ -43,5 +45,9 @@ done
 gcc -std=gnu11 -Wall -Wextra -Werror -g -fsanitize=address,undefined \
     -fno-omit-frame-pointer -Ipackage/camera -Ipackage/gpu/adreno \
     -Itests/camera-platform/kernel-fixture package/camera/NezhaCameraNativeDevice.c \
+    package/camera/NezhaCameraOvx10500u.c package/camera/NezhaCameraCci.c \
     tests/camera-native-device.c -pthread -o "$out/test-device"
 "$out/test-device"
+gcc -std=c11 -Wall -Wextra -Werror -g -fsanitize=address,undefined -Ipackage/camera \
+    package/camera/NezhaCameraOvx10500u.c tests/camera-ovx-readback.c -o "$out/test-ovx-readback"
+"$out/test-ovx-readback"

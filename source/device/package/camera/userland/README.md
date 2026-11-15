@@ -1,10 +1,12 @@
 # nezha RAW10 preview processing
 
-`upstream/hakios` contains unchanged, pinned HakiOS user-space files from
+`upstream/hakios` contains pinned HakiOS user-space files from
 `yfl520/hackios-raphael@f128f1d8e2ef1f588002787c5efb94ec134ddeac`.
-`ORIGIN.json` records each original path and SHA-256; `LICENSE` preserves
+`ORIGIN.json` records each original path, original SHA-256 and local hashes; `LICENSE` preserves
 the upstream MIT notice. `hakios.camera.h` is needed by the upstream C
 processor. Its device path and commands are not used by this adaptation.
+The local still renderer returns allocation failure before writing output
+when any scratch plane is unavailable. Its Bayer demosaic is preserved.
 
 `NezhaCameraPreview` accepts completed, CPU-owned MIPI RAW10 frames and
 renders BGRA or BT.601 NV12 in either full or video range. The stock
@@ -32,6 +34,10 @@ found in the original 24A446 CoreVideo export trie. The host fixture checks
 padded output, malformed chroma geometry, partial RAW and failed locks;
 the ARM64e object built with fixture declarations only checks code
 generation. A target SDK build and graph delivery remain required.
+StillImage 420f/420v uses `isp_render_still_nv12` to demosaic individual
+sensor sites before scaling; scaler outputs retain the preview renderer.
+BGRA uses the upstream preview path. A failed still render reaches the
+existing graph failure path before a callback or buffer attachment.
 
 `NezhaFigCapture24A446` binds the selected CoreMedia object constructor
 and the device/stream ClassID exports in `CMCaptureDevice.framework`.
@@ -59,7 +65,9 @@ provider/backend wiring are still needed.
 `NezhaCameraFigProvider` creates one rear main device and one stream with
 the verified 24A446 callback tables. The caller supplies the measured
 format and bounded backend begin/end operations. RequestStreams reserves
-the sensor; graph Start separately enables the PrimaryScaler,
+the sensor and RelinquishStreams preserves that worker during discovery
+churn, following HakiOS f128f1d. Graph Stop, an inactive client, invalidate
+and finalize still perform bounded teardown. Graph Start separately enables the PrimaryScaler,
 SecondaryScaler and requested StillImage callbacks. Only a complete
 4096x3072 BGGR RAW10 frame with its actual completion time and metadata
 can enter the output path. Stop gates callbacks before backend teardown;
@@ -97,6 +105,12 @@ native read closes the reservation. The host test uses real dispatch and
 Blocks with the production Fig/RAW path and fixture native reads,
 including Stop inside the graph callback and finalization. Target SDK
 and on-device integration remain required for this increment.
+
+Each valid frame with an active output now updates one shared white
+balance estimate before rendering. The pinned HakiOS neutral/grey-cell
+estimator and its smoothing apply the same gains to preview and still
+outputs. A new stream start resets those gains. This does not set sensor
+exposure or import a donor's color calibration.
 
 The same command builds `nezha-camera-raw-preview`. To decode a real main
 camera sample, run `nezha-camera-raw-preview main.raw10 4096 3072 5120 BGGR

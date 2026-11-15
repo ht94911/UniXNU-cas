@@ -6,7 +6,8 @@ struct uio;
 struct cdevsw {
  int (*d_open)(dev_t,int,int,struct proc *),(*d_close)(dev_t,int,int,struct proc *);
  int (*d_read)(dev_t,struct uio *,int),(*d_write)(dev_t,struct uio *,int);
- void *d_ioctl,*d_stop,*d_reset,*d_select,*d_mmap,*d_strategy;
+ int (*d_ioctl)(dev_t,u_long,caddr_t,int,struct proc *);
+ void *d_stop,*d_reset,*d_select,*d_mmap,*d_strategy;
  int d_type;
 };
 #define eno_rdwrt ((int (*)(dev_t,struct uio *,int))0)

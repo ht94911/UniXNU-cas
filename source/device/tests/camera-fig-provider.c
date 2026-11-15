@@ -34,6 +34,11 @@ static unsigned literal_count;
 static unsigned begins, ends, live_objects, allocations, live_pixels, high_water, previews, secondary, stills;
 static bool begin_fail, end_fail;
 static bool backend_available;
+static bool ae_reject;
+static unsigned ae_requests;
+static struct hakios_camera_command ae_command;
+static NezhaFigStatus backend_exposure(void *p,const struct hakios_camera_command *c)
+{ assert(p==&begins && c && c->command==HAKIOS_CAMERA_EXPOSURE && c->c>=3200);++ae_requests;ae_command=*c;return ae_reject ? -12781:0; }
 struct QueuedRelease { dispatch_semaphore_t completed;unsigned count; };
 static void queued_release(void *context)
 {
@@ -280,9 +285,10 @@ static NezhaFigStatus backend_begin(void *p) { assert(p==&begins);++begins;retur
 static NezhaFigStatus backend_end(void *p) { assert(p==&begins);++ends;return end_fail ? -8 : 0; }
 static bool backend_ready(void *p) { assert(p==&begins);return backend_available; }
 
-int main(void)
+int main(int argc,char **argv)
 {
-    struct NezhaCameraFigBackend backend={.context=&begins,.begin=backend_begin,.end=backend_end};
+    const bool ae_mode=argc==2 && !strcmp(argv[1],"ae");
+    struct NezhaCameraFigBackend backend={.context=&begins,.begin=backend_begin,.end=backend_end,.exposure=ae_mode ? backend_exposure:NULL};
     NezhaFigObject unavailable=(void *)1;
     assert(nezha_camera_device_create(NULL,NULL,&unavailable)==-12783 && !unavailable);
     assert(nezha_camera_factory_bind(&backend,NULL)==-12780);
@@ -327,6 +333,9 @@ int main(void)
         !strcmp(((CFStringRef)value)->text,"Back Camera"));CFRelease(value);
     assert(dt->device->request_streams(device,(NezhaFigArray)streams,NULL)==0 && begins==1);
     assert(dt->device->request_streams(device,(NezhaFigArray)streams,NULL)==0 && begins==1);
+    assert(dt->device->relinquish_streams(device,(NezhaFigArray)streams,NULL)==0 && ends==0);
+    assert(dt->device->request_streams(device,(NezhaFigArray)streams,NULL)==0 && begins==1 && ends==0);
+    assert(dt->device->relinquish_streams(device,(NezhaFigArray)streams,NULL)==0 && ends==0);
     uint8_t *raw=malloc(15728640);assert(raw);memset(raw,255,15728640);
     const struct NezhaCameraPreviewFrame frame={4096,3072,5120,3,64,1023};
     double sequence=5;
@@ -364,6 +373,30 @@ int main(void)
     assert(nezha_camera_fig_provider_deliver(device,&frame,raw,15728640,77,(CFDictionaryRef)kCFBooleanTrue)==-12780 && !allocations);
     for (unsigned i=0;i<7;++i) assert(nezha_camera_fig_provider_deliver(device,&frame,raw,15728640,77,metadata)==0);
     assert(previews==7 && live_pixels==3 && high_water==3);
+    if(ae_mode) {
+        assert(ae_requests==0); // sequence-only metadata does not drive sensor writes
+        const char *names[]={"FrameSequence","ExposureLines","LineNanoseconds","AnalogGainQ8","GainUnity",
+            "GainMaximum","FrameLengthLines","MinimumFrameLengthLines","MaximumFrameLengthLines","ExposureMargin"};
+        const double control_values[]={5,200,10000,256,256,65280,3200,3200,6400,10};
+        CFMutableDictionaryRef controls=CFDictionaryCreateMutable(NULL,0,&kCFTypeDictionaryKeyCallBacks,&kCFTypeDictionaryValueCallBacks);
+        for(unsigned i=0;i<10;++i){CFNumberRef number=CFNumberCreate(NULL,kCFNumberDoubleType,&control_values[i]);CFStringRef key=CFStringCreateWithCString(NULL,names[i],kCFStringEncodingUTF8);CFDictionarySetValue(controls,key,number);CFRelease(number);CFRelease(key);}
+        ae_reject=true;
+        assert(nezha_camera_fig_provider_deliver(device,&frame,raw,15728640,77,controls)==0 && ae_requests==1);
+        assert(nezha_camera_fig_provider_deliver(device,&frame,raw,15728640,77,controls)==0 && ae_requests==2); // rejection does not leave asked=true
+        ae_reject=false;
+        assert(nezha_camera_fig_provider_deliver(device,&frame,raw,15728640,77,controls)==0 && ae_requests==3);
+        assert(ae_command.a<200 && ae_command.b==256);
+        assert(nezha_camera_fig_provider_deliver(device,&frame,raw,15728640,77,controls)==0 && ae_requests==3); // pending actualcontrols differs
+        assert(st->stream->stop(stream)==0);
+        CFRelease(controls);CFRelease(configs);CFRelease(handlers);CFRelease(enabled);CFRelease(pool);CFRelease(still_pool);
+        free(raw);CFRelease(metadata);CFRelease(streams);CFRelease(device);
+        assert(!live_objects && !live_pixels);
+        puts("Camera graph AE: sequence-only zero controls, queue rejection restoresAE, actual fields queue once, pending readback holds and complete release passed");
+        return 0;
+    }
+
+    assert(dt->device->relinquish_streams(device,(NezhaFigArray)streams,NULL)==0 && ends==1);
+    assert(dt->device->request_streams(device,(NezhaFigArray)streams,NULL)==0 && begins==3);
     assert(st->stream->start(stream)==0 && begins==3 && live_pixels==3);
 
     /* An invalid new configuration must leave the working output intact. */
@@ -430,11 +463,15 @@ int main(void)
     end_fail=false;
     assert(st->stream->stop(stream)==0 && ends==4);
     assert(dt->base->invalidate(device)==0);
-    assert(st->stream->start(stream)==-12783 && begins==4);
+    assert(st->stream->start(stream)==0 && begins==5);
+    CFRelease(device);device=NULL; /* the retained stream survives its device */
+    assert(st->stream->start(stream)==0 && begins==5);
+    assert(st->base->invalidate(stream)==0 && ends==5);
+    assert(st->stream->start(stream)==-12783 && begins==5);
     assert(st->base->set_property(stream,CFSTR("StillImageCaptureNow"),metadata)==-12783);
     CFRelease(all_configs);CFRelease(all_handlers);CFRelease(all_enabled);
     CFRelease(configs);CFRelease(handlers);CFRelease(enabled);CFRelease(pool);CFRelease(still_pool);
-    CFRelease(metadata);CFRelease(streams);CFRelease(device);
+    CFRelease(metadata);CFRelease(streams);
     free(raw);assert(!live_objects && !live_pixels);
     puts("camera Fig provider: ready-only factory, measured format, real RAW-to-pool callbacks, still retry, restart and complete release passed");
     return 0;

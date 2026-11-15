@@ -14,10 +14,11 @@ import hashlib, json
 from pathlib import Path
 p = Path('package/camera/userland/upstream/hakios')
 origin = json.loads((p / 'ORIGIN.json').read_text())
-assert origin['unmodified']
+assert origin['repository'] == 'https://github.com/yfl520/hackios-raphael'
+assert origin['revision'] == 'f128f1d8e2ef1f588002787c5efb94ec134ddeac'
 for name, digest in origin['sha256'].items():
     assert hashlib.sha256((p / name).read_bytes()).hexdigest() == digest, name
-print('HakiOS RAW processor: four pinned source/license hashes passed')
+print('HakiOS RAW processor: four source/license hashes passed; local still allocation result retained')
 PY
 camera=package/camera/userland
 flags=(-std=gnu11 -Wall -Wextra -Werror -g -fsanitize=address,undefined
@@ -28,6 +29,12 @@ flags=(-std=gnu11 -Wall -Wextra -Werror -g -fsanitize=address,undefined
 "${CAMERA_HOST_CC:-gcc}" "${flags[@]}" "$camera/NezhaCameraPreview.c" \
     tests/camera-preview.c "$out/hakios-isp.o" -lm -o "$out/test-camera-preview"
 "$out/test-camera-preview"
+"${CAMERA_HOST_CC:-gcc}" "${flags[@]}" -Wno-unused-parameter \
+    -Dmalloc=still_test_malloc -Dfree=still_test_free \
+    -c "$camera/upstream/hakios/camera_isp.c" -o "$out/still-allocation-isp.o"
+"${CAMERA_HOST_CC:-gcc}" "${flags[@]}" "$camera/NezhaCameraPreview.c" \
+    tests/camera-still-allocation.c "$out/still-allocation-isp.o" -lm -o "$out/test-camera-still-allocation"
+for slot in {1..7}; do "$out/test-camera-still-allocation" "$slot"; done
 "${CAMERA_HOST_CC:-gcc}" "${flags[@]}" -Itests/camera-platform \
     "$camera/NezhaCameraPreview.c" "$camera/NezhaCameraPixelBuffer.c" \
     tests/camera-pixel-buffer.c "$out/hakios-isp.o" -lm -o "$out/test-camera-pixel-buffer"
@@ -61,9 +68,10 @@ done
     -Itests/camera-platform -L"$blocks/lib" -Wl,-rpath,"$blocks/lib" \
     -lBlocksRuntime -ldispatch -lm -o "$out/test-camera-fig-provider"
 "$out/test-camera-fig-provider"
+"$out/test-camera-fig-provider" ae
 "${CAMERA_HOST_CLANG:-clang}" "${flags[@]}" -fblocks -Itests/camera-platform \
     -I"$blocks/include" -Daccess=backend_test_access -Dopen=backend_test_open \
-    -Dclose=backend_test_close -Dread=backend_test_read \
+    -Dclose=backend_test_close -Dread=backend_test_read -Dioctl=backend_test_ioctl \
     -c "$camera/NezhaCameraDeviceBackend.c" -o "$out/NezhaCameraDeviceBackend.o"
 "${CAMERA_HOST_CLANG:-clang}" "${flags[@]}" -fblocks -Itests/camera-platform \
     -I"$blocks/include" -c tests/camera-device-backend.c -o "$out/camera-device-backend.o"

@@ -11,7 +11,7 @@
 #include <stdatomic.h>
 #include <unistd.h>
 
-static atomic_uint native_reads,native_closes,native_opens;
+static atomic_uint native_reads,native_closes,native_opens,native_controls;
 static atomic_bool bad_frame,has_frame;
 static dispatch_semaphore_t got_frame;
 int backend_test_access(const char *path,int mode)
@@ -24,6 +24,8 @@ int backend_test_open(const char *path,int flags,...)
 { assert(!strcmp(path,"/dev/nezha-camera") && (flags&O_NONBLOCK));atomic_fetch_add(&native_opens,1);return 42; }
 int backend_test_close(int fd)
 { assert(fd==42);atomic_fetch_add(&native_closes,1);return 0; }
+int backend_test_ioctl(int fd,unsigned long command,...)
+{ assert(fd==42 && command==0x80184e31UL);atomic_fetch_add(&native_controls,1);return 0; }
 ssize_t backend_test_read(int fd,void *bytes,size_t count)
 {
  assert(fd==42 && count==sizeof(struct hakios_camera_frame)+15728640);
@@ -66,6 +68,9 @@ int main(void)
  assert(st->base->set_property(stream,CFSTR("VideoOutputHandlers"),handlers)==0);
  assert(st->base->set_property(stream,CFSTR("VideoOutputsEnabled"),enabled)==0);
  assert(st->stream->start(stream)==0);
+ assert(dt->base->invalidate(device)==0);
+ CFRelease(device);device=NULL;
+ assert(atomic_load(&native_opens)==1 && atomic_load(&native_closes)==0);
  atomic_store(&has_frame,true);
  assert(dispatch_semaphore_wait(got_frame,dispatch_time(DISPATCH_TIME_NOW,2000000000))==0);
  wait_for_close(1);
@@ -79,8 +84,8 @@ int main(void)
  wait_for_close(2);
  assert(st->stream->stop(stream)==0);
  CFRelease(configs);CFRelease(handlers);CFRelease(enabled);CFRelease(pool);
- CFRelease(streams);CFRelease(device);dispatch_release(got_frame);
+ CFRelease(streams);dispatch_release(got_frame);
  assert(!live_objects && !live_pixels);
- assert(atomic_load(&native_reads)>=2 && atomic_load(&native_opens)==2);
+ assert(atomic_load(&native_reads)>=2 && atomic_load(&native_opens)==2 && !atomic_load(&native_controls));
  puts("Camera native reader: timer-to-render delivery, reentrant Stop, exclusive stream, bad native frame closure and finalization passed");
 }

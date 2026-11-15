@@ -61,3 +61,6 @@ zzzzzz-nezha-camera-dyld-policy.patch
 # Original camera sandbox reads its signed plugin through the media union view.
 zzzzzz-nezha-camera-media-view.patch
 zzzzzz-nezha-camera-node-access.patch
+
+# Exact original camera reader queues only its bounded sensor exposure ioctl.
+zzzzzz-nezha-camera-exposure-ioctl.patch

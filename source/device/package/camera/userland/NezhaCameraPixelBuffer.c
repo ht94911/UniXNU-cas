@@ -17,9 +17,9 @@ static bool plane_capacity(size_t stride, size_t rows, size_t *capacity)
     return true;
 }
 
-CVReturn nezha_camera_preview_pixel_buffer(const struct NezhaCameraPreview *preview,
+static CVReturn pixel_buffer(const struct NezhaCameraPreview *preview,
     const struct NezhaCameraPreviewFrame *frame, const uint8_t *raw,
-    size_t raw_bytes, CVPixelBufferRef pixel)
+    size_t raw_bytes, CVPixelBufferRef pixel, bool still)
 {
     if (!preview || !frame || !raw || !pixel) return kCVReturnInvalidArgument;
     const size_t width = CVPixelBufferGetWidth(pixel), height = CVPixelBufferGetHeight(pixel);
@@ -59,7 +59,9 @@ CVReturn nezha_camera_preview_pixel_buffer(const struct NezhaCameraPreview *prev
         output.capacity[0] = CVPixelBufferGetDataSize(pixel);
         valid = true;
     }
-    const bool rendered = valid && nezha_camera_preview_render(preview, frame, raw, raw_bytes, &output);
+    const bool rendered = valid && (still ?
+        nezha_camera_still_render(preview, frame, raw, raw_bytes, &output) :
+        nezha_camera_preview_render(preview, frame, raw, raw_bytes, &output));
     status = CVPixelBufferUnlockBaseAddress(pixel, 0);
     if (!rendered) return kCVReturnInvalidArgument;
     if (status != kCVReturnSuccess) return status;
@@ -70,4 +72,18 @@ CVReturn nezha_camera_preview_pixel_buffer(const struct NezhaCameraPreview *prev
     CVBufferSetAttachment(pixel, kCVImageBufferTransferFunctionKey,
         kCVImageBufferTransferFunction_sRGB, kCVAttachmentMode_ShouldPropagate);
     return kCVReturnSuccess;
+}
+
+CVReturn nezha_camera_preview_pixel_buffer(const struct NezhaCameraPreview *preview,
+    const struct NezhaCameraPreviewFrame *frame, const uint8_t *raw,
+    size_t raw_bytes, CVPixelBufferRef pixel)
+{
+    return pixel_buffer(preview, frame, raw, raw_bytes, pixel, false);
+}
+
+CVReturn nezha_camera_still_pixel_buffer(const struct NezhaCameraPreview *preview,
+    const struct NezhaCameraPreviewFrame *frame, const uint8_t *raw,
+    size_t raw_bytes, CVPixelBufferRef pixel)
+{
+    return pixel_buffer(preview, frame, raw, raw_bytes, pixel, true);
 }

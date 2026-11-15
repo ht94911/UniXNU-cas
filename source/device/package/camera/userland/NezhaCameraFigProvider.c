@@ -2,7 +2,9 @@
 #include "NezhaCameraFigProvider.h"
 #include <Block.h>
 #include <dispatch/dispatch.h>
+#include <stdio.h>
 #include <string.h>
+#include <math.h>
 
 /* HakiOS f128f1d camera_device.c is the device/stream property and graph
  * sequencing reference. Tables use this port's measured 24A446 PAC ABI;
@@ -21,12 +23,23 @@ struct Stream {
     CFArrayRef formats;
     CFDictionaryRef supported;
     unsigned stills, generation;
-    bool collecting, running, invalid;
+    bool collecting, running, invalid, bound;
 };
-struct Device { NezhaFigObject stream; CFArrayRef streams; CFDictionaryRef supported; bool bound; };
+struct Device { NezhaFigObject stream; CFArrayRef streams; CFDictionaryRef supported; };
 
 static struct Stream *stream_of(NezhaFigObject o) { return nezha_fig_capture24_storage(o); }
 static struct Device *device_of(NezhaFigObject o) { return nezha_fig_capture24_storage(o); }
+
+/* The original HakiOS provider records graph start/stop and reservation
+ * churn. Keep this existing daemon stderr bounded while locating the
+ * actual close before native058's first completed frame. */
+static void report_lifecycle(const char *operation, const struct Stream *s, NezhaFigStatus status)
+{
+    static unsigned reports;
+    if (__atomic_fetch_add(&reports,1u,__ATOMIC_RELAXED)>=48) return;
+    fprintf(stderr,"nezha-camera: lifecycle %s status=%d collecting=%u running=%u invalid=%u generation=%u\n",
+        operation,status,(unsigned)s->collecting,(unsigned)s->running,(unsigned)s->invalid,s->generation);
+}
 
 static void serial(struct Stream *stream, dispatch_block_t work)
 {
@@ -49,6 +62,37 @@ static bool key_is(CFStringRef key, const char *name)
 static CFStringRef string(const char *name)
 {
     return CFStringCreateWithCString(NULL, name, kCFStringEncodingUTF8);
+}
+
+/* Keep the existing daemon stderr bounded while observing the original
+ * source loader's requests. This does not change a property or its error. */
+static void report_property(bool stream, CFStringRef key, NezhaFigStatus status, CFTypeRef value)
+{
+    static unsigned reports[2];
+    if (__atomic_fetch_add(&reports[stream],1u,__ATOMIC_RELAXED) >= (stream ? 96u : 32u)) return;
+    char name[128]="<invalid>", text[128]="";
+    if (key && CFGetTypeID(key)==CFStringGetTypeID())
+        (void)CFStringGetCString(key,name,sizeof(name),kCFStringEncodingUTF8);
+    const char *kind="null";
+    long count=-1;
+    double scalar=0;
+    if (value) {
+        CFTypeID type=CFGetTypeID(value);
+        kind="object";
+        if (type==CFStringGetTypeID()) {
+            kind="string";
+            (void)CFStringGetCString(value,text,sizeof(text),kCFStringEncodingUTF8);
+        } else if (type==CFArrayGetTypeID()) {
+            kind="array";count=CFArrayGetCount(value);
+        } else if (type==CFDictionaryGetTypeID()) kind="dictionary";
+        else if (type==CFNumberGetTypeID()) {
+            kind="number";(void)CFNumberGetValue(value,kCFNumberDoubleType,&scalar);
+        } else if (type==CFBooleanGetTypeID()) {
+            kind="boolean";scalar=CFBooleanGetValue(value);
+        }
+    }
+    fprintf(stderr,"nezha-camera: %s copy key=%s status=%d kind=%s count=%ld scalar=%.3f text=%s\n",
+        stream ? "stream" : "device",name,status,kind,count,scalar,text);
 }
 
 static CFDictionaryRef dictionary(void)
@@ -154,6 +198,7 @@ static NezhaFigStatus begin(struct Stream *s, bool graph)
         s->collecting=true;
     }
     if (graph) {
+        nezha_camera_preview_init(&s->preview);
         __atomic_add_fetch(&s->generation,1u,__ATOMIC_RELEASE);
         s->running=true;
         NezhaFigStatus result=refresh_outputs(s);
@@ -180,21 +225,23 @@ static NezhaFigStatus stream_start(NezhaFigObject o)
 {
     struct Stream *s=stream_of(o);if (!s || !s->queue) return Unavailable;
     __block NezhaFigStatus result;
-    serial(s,^{ result=begin(s,true); });return result;
+    serial(s,^{ result=begin(s,true); report_lifecycle("graph-start",s,result); });return result;
 }
 
 static NezhaFigStatus stream_stop(NezhaFigObject o)
 {
     struct Stream *s=stream_of(o);if (!s || !s->queue) return Unavailable;
     __block NezhaFigStatus result;
-    serial(s,^{ result=stop_on_queue(s); });return result;
+    serial(s,^{ report_lifecycle("graph-stop-enter",s,0); result=stop_on_queue(s);
+        report_lifecycle("graph-stop-done",s,result); });return result;
 }
 
 static NezhaFigStatus stream_invalidate(NezhaFigObject o)
 {
     struct Stream *s=stream_of(o);if (!s || !s->queue) return Unavailable;
     __block NezhaFigStatus result;
-    serial(s,^{ s->invalid=true; result=stop_on_queue(s); });return result;
+    serial(s,^{ report_lifecycle("invalidate-enter",s,0); s->invalid=true; result=stop_on_queue(s);
+        report_lifecycle("invalidate-done",s,result); });return result;
 }
 
 static void stream_finalize(NezhaFigObject o)
@@ -202,6 +249,8 @@ static void stream_finalize(NezhaFigObject o)
     struct Stream *s=stream_of(o);if (!s) return;
     if (s->queue) {
         (void)stream_invalidate(o);
+        if (s->bound && s->backend.bind_stream)
+            (void)s->backend.bind_stream(s->backend.context,NULL);
         serial(s,^{ for (unsigned i=0;i<3;++i) nezha_camera_graph_output_reset(&s->output[i]); });
         dispatch_release(s->queue);
     }
@@ -253,7 +302,10 @@ static NezhaFigStatus stream_copy(NezhaFigObject o,NezhaFigString key,NezhaFigAl
         else if (key_is(key,"VideoOutputsEnabled")) value=CFRetain(s->enabled);
         else if (key_is(key,"VideoOutputsColorInfo")) value=CFRetain(s->colors);
     });
-    *(CFTypeRef *)out=value;return value ? 0 : Unavailable;
+    *(CFTypeRef *)out=value;
+    const NezhaFigStatus status=value ? 0 : Unavailable;
+    report_property(true,key,status,value);
+    return status;
 }
 
 static NezhaFigStatus stream_set(NezhaFigObject o,NezhaFigString key,const void *value)
@@ -350,23 +402,37 @@ static NezhaFigStatus device_control(NezhaFigObject o,NezhaFigArray streams,bool
         CFArrayGetValueAtIndex(streams,0)!=d->stream) return Invalid;
     struct Stream *s=stream_of(d->stream);
     __block NezhaFigStatus result;
-    serial(s,^{ result=release ? stop_on_queue(s) : begin(s,false); });return result;
+    serial(s,^{
+        if (s->invalid) {result=Unavailable;return;}
+        /* HakiOS f128f1d keeps the frame worker across the system's
+         * discovery/reservation churn. Only actual graph Stop, inactive
+         * client, invalidate or finalize shuts down this owned sensor. */
+        result=release ? 0:begin(s,false);
+        report_lifecycle(release ? "relinquish":"request",s,result);
+    });return result;
 }
 static NezhaFigStatus request(NezhaFigObject o,NezhaFigArray streams,NezhaFigDictionary options)
 { (void)options;return device_control(o,streams,false); }
 static NezhaFigStatus relinquish(NezhaFigObject o,NezhaFigArray streams,NezhaFigDictionary options)
 { (void)options;return device_control(o,streams,true); }
 static NezhaFigStatus device_invalidate(NezhaFigObject o)
-{ struct Device *d=device_of(o);return d && d->stream ? stream_invalidate(d->stream) : 0; }
+{
+    struct Device *d=device_of(o);
+    if (d && d->stream) {
+        struct Stream *s=stream_of(d->stream);
+        serial(s,^{ report_lifecycle("device-invalidate",s,0); });
+    }
+    /* HakiOS f128f1d keeps the independent stream alive when discovery
+     * invalidates its temporary device. Actual062 closed before frame1
+     * here; stream Stop/invalidate/finalize still owns hardware release. */
+    return 0;
+}
 static void device_finalize(NezhaFigObject o)
 {
     struct Device *d=device_of(o);if (!d) return;
-    if (d->stream) {
-        (void)stream_invalidate(d->stream);
-        struct Stream *s=stream_of(d->stream);
-        if (d->bound && s->backend.bind_stream)
-            (void)s->backend.bind_stream(s->backend.context,NULL);
-    }
+    /* The capture graph may retain StreamArray after releasing this
+     * device. Its last stream reference, rather than this device, ends
+     * and unbinds the native reader, as the original provider does. */
     if (d->streams) CFRelease(d->streams);
     if (d->supported) CFRelease(d->supported);
 }
@@ -381,14 +447,20 @@ static NezhaFigStatus device_copy(NezhaFigObject o,NezhaFigString key,NezhaFigAl
     if (key_is(key,"StreamArray")) *(CFTypeRef *)out=CFRetain(d->streams);
     else if (key_is(key,"Clock")) *(CFTypeRef *)out=CFRetain(CMClockGetHostTimeClock());
     else if (key_is(key,"SupportedPropertiesDictionary")) *(CFTypeRef *)out=CFRetain(d->supported);
-    else return Unavailable;
-    return 0;
+    const NezhaFigStatus status=*(CFTypeRef *)out ? 0 : Unavailable;
+    report_property(false,key,status,*(CFTypeRef *)out);
+    return status;
 }
 static NezhaFigStatus device_set(NezhaFigObject o,NezhaFigString key,const void *value)
 {
     struct Device *d=device_of(o);if (!d) return Unavailable;
-    if (key_is(key,"ClientIsActive") && value && CFGetTypeID(value)==CFBooleanGetTypeID())
-        return CFBooleanGetValue(value) ? 0 : stream_stop(d->stream);
+    if (key_is(key,"ClientIsActive") && value && CFGetTypeID(value)==CFBooleanGetTypeID()) {
+        struct Stream *s=stream_of(d->stream);
+        const bool active=CFBooleanGetValue(value);
+        if (s && s->queue)
+            serial(s,^{ report_lifecycle(active ? "client-active":"client-inactive",s,0); });
+        return active ? 0 : stream_stop(d->stream);
+    }
     return Unsupported;
 }
 static const struct NezhaFigBaseClass device_base={.version=1,.storage_size=sizeof(struct Device),
@@ -444,7 +516,7 @@ NezhaFigStatus nezha_camera_fig_provider_create(NezhaFigAllocator allocator,
     if (backend->bind_stream) {
         status=backend->bind_stream(backend->context,d->stream);
         if (status) { CFRelease(device);return status; }
-        d->bound=true;
+        s->bound=true;
     }
     *out=device;return 0;
 }
@@ -461,6 +533,45 @@ static NezhaFigStatus deliver_stream(struct Stream *s,
         if (!s->running || s->invalid) return;
         const unsigned generation=s->generation;
         bool attempted=false;
+        bool enabled=false;
+        for (unsigned i=0;i<3;++i)
+            enabled |= s->output[i].running && (i!=2 || s->stills);
+        struct isp_stats statistics;
+        if (!enabled || !nezha_camera_preview_measure(&s->preview,frame,raw,bytes,&statistics)) return;
+        if (s->backend.exposure) {
+            const char *names[]={"FrameSequence","ExposureLines","LineNanoseconds","AnalogGainQ8",
+                "GainUnity","GainMaximum","FrameLengthLines","MinimumFrameLengthLines",
+                "MaximumFrameLengthLines","ExposureMargin"};
+            uint32_t values[10]={0};bool complete=true;
+            for (unsigned i=0;i<10;++i) {
+                CFStringRef key=string(names[i]);
+                CFTypeRef value=key ? CFDictionaryGetValue(metadata,key):NULL;
+                double n=0;
+                complete &= value && CFGetTypeID(value)==CFNumberGetTypeID() &&
+                    CFNumberGetValue(value,kCFNumberDoubleType,&n) && isfinite(n) &&
+                    n>=1 && n<=UINT32_MAX && n==(double)(uint32_t)n;
+                if (complete) values[i]=(uint32_t)n;
+                if (key) CFRelease(key);
+            }
+            if (complete) {
+                const struct hakios_camera_frame actual={.sequence=values[0],.time=completed_time,
+                    .exposure_lines=values[1],.line_ns=values[2],.gain=values[3],.gain_unity=values[4],
+                    .gain_max=values[5],.frame_lines=values[6],.frame_lines_min=values[7],
+                    .frame_lines_max=values[8],.margin=values[9]};
+                struct hakios_camera_command command;
+                const struct isp previous=s->preview.processing;
+                if (nezha_camera_preview_auto_exposure(&s->preview,&actual,&statistics,&command) &&
+                    s->backend.exposure(s->backend.context,&command)) {
+                    /* Retain AWB from this frame, restore only AE when
+                     * the native queue rejects the request. */
+                    s->preview.processing.digital=previous.digital;
+                    s->preview.processing.asked=previous.asked;
+                    s->preview.processing.asked_lines=previous.asked_lines;
+                    s->preview.processing.asked_gain=previous.asked_gain;
+                    s->preview.processing.asked_frame_lines=previous.asked_frame_lines;
+                }
+            }
+        }
         for (unsigned i=0;i<3 && s->running && s->generation==generation;++i) {
             if (!s->output[i].running || (i==2 && !s->stills)) continue;
             if (i==2) s->stills=0;

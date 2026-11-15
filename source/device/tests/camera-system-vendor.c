@@ -35,6 +35,13 @@ static unsigned publishing_calls;
 static id publishing_original(id self,SEL selector,id device_id,int32_t *error)
 {assert(self==&retained_vendor && selector==(SEL)14 && !strcmp(device_id,"Default"));++publishing_calls;if(error)*error=-12780;return NULL;}
 static struct TestMethod publishing_method={(IMP)publishing_original};
+static unsigned stream_request_calls;
+static bool publish_success;
+static id publishing_succeeded(id self,SEL selector,id device_id,int32_t *error)
+{assert(publish_success && self==&retained_vendor && selector==(SEL)14 && !strcmp(device_id,"Default"));if(error)*error=0;return (id)22;}
+static id streams_original(id self,SEL selector,id device,id positions,id types,int32_t priority,bool loss,int32_t *error)
+{assert(self==&retained_vendor && selector==(SEL)15 && device==(id)22 && positions==(id)11 && types==(id)11 && priority==3 && !loss);++stream_request_calls;if(error)*error=-12783;return NULL;}
+static struct TestMethod streams_method={(IMP)streams_original};
 static bool backings_available;
 static unsigned backing_inits,backing_lists;
 static id backings_init_original(id self,SEL selector,id input,id common)
@@ -68,12 +75,15 @@ SEL sel_registerName(const char *name) {
  if (!strcmp(name,backings_init_selector))return (SEL)12;
  if (!strcmp(name,backings_list_selector))return (SEL)13;
  if (!strcmp(name,publishing_selector))return (SEL)14;
+ if (!strcmp(name,stream_request_selector))return (SEL)15;
+ if (!strcmp(name,"streams"))return (SEL)16;
  assert(!strcmp(name,"fileURLWithPath:"));return (SEL)6;
 }
 Method class_getClassMethod(Class cls,SEL selector) {assert(cls==(Class)1 && selector==(SEL)2);return &method;}
 Method class_getInstanceMethod(Class cls,SEL selector) {
  if(cls==(Class)1 && selector==(SEL)7)return &list_method;
  if(cls==(Class)1 && selector==(SEL)14)return &publishing_method;
+ if(cls==(Class)1 && selector==(SEL)15)return &streams_method;
  if(cls==(Class)16 && selector==(SEL)12)return &backings_init_method;
  if(cls==(Class)16 && selector==(SEL)13)return &backings_list_method;
  assert(cls==(Class)4 && selector==(SEL)3);return &resource_method;
@@ -94,6 +104,7 @@ __attribute__((no_sanitize("function"))) id objc_msgSend(id self,SEL selector,..
  else if (selector==(SEL)9) {assert(self==(id)11 && !strcmp(va_arg(args,const char *),"Default"));result=(id)1;}
  else if (selector==(SEL)10) {assert(self==(Class)17 && !strcmp(va_arg(args,const char *),"/System/Library/MediaCapture/NezhaCameraModel.plist"));result=(id)18;}
  else if (selector==(SEL)11) {assert(self==(id)18 && !strcmp(va_arg(args,const char *),"AVCaptureDevices"));result=(id)11;}
+ else if (selector==(SEL)16) {assert(self==(id)22);result=(id)11;}
  else {assert(self==(Class)5 && selector==(SEL)6);assert(!strcmp(va_arg(args,const char *),"/System/Library/MediaCapture/NezhaCameraModel.plist"));result=(id)9;}
  va_end(args);return result;
 }
@@ -152,6 +163,12 @@ int main(void)
  install_publishing();assert(publishing_installed && replacements==6);
  id (*publish)(id,SEL,id,int32_t *)=(void *)publishing_method.implementation;
  int32_t error=0;assert(publish(&retained_vendor,(SEL)14,(id)"Default",&error)==NULL && error==-12780 && publishing_calls==1);
+ capture_slide=(intptr_t)(uintptr_t)streams_original-(intptr_t)0x1b0436bf8ULL;
+ install_stream_request();assert(stream_request_installed && replacements==7);
+ id (*request)(id,SEL,id,id,id,int32_t,bool,int32_t *)=(void *)streams_method.implementation;
+ error=0;assert(request(&retained_vendor,(SEL)15,(id)22,(id)11,(id)11,3,false,&error)==NULL && error==-12783 && stream_request_calls==1);
+ publish_success=true;original_publishing=(IMP)publishing_succeeded;
+ assert(publish(&retained_vendor,(SEL)14,(id)"Default",&error)==(id)22 && error==0);
  puts("Camera system vendor: exact process/UUID/method, delayed class arrival, factory replacement and original fallback passed");
  puts("Camera model resource: exact camera bundle/file only, original unrelated resource and unavailable-model fallback passed");
 }

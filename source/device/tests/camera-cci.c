@@ -37,6 +37,10 @@ struct Model {
     unsigned revision_step;
     uint8_t revision_vendor;
     bool revision_script, revision_read_nack;
+    bool controls_script;
+    unsigned controls_step, controls_fail;
+    enum NezhaCameraCciStatus controls_error;
+    struct NezhaCameraOvxControlPlan controls_plan;
     bool discard_load;
     bool halt_timeout;
     unsigned resets;
@@ -119,6 +123,20 @@ static void write32(void *context, uint32_t offset, uint32_t value)
         }
         if (value == 4) {
             assert(model->commands[0][0] == 0x101);
+            if (model->controls_script) {
+                const unsigned index = model->controls_step++;
+                assert(index < 14 && model->queued[0] == 3);
+                const struct NezhaCameraOvxModeWrite *entry = &model->controls_plan.writes[index];
+                const uint32_t expected = 0x39u | ((uint32_t)(entry->reg >> 8) << 8) |
+                    ((uint32_t)(entry->reg & 255) << 16) | ((uint32_t)entry->value << 24);
+                assert(model->commands[0][1] == expected && model->commands[0][2] == 0x108);
+                if (index == model->controls_fail && model->controls_error != NezhaCciOk) {
+                    if (model->controls_error == NezhaCciNack)
+                        model->irq |= M1AddressReport | M1AddressNack;
+                } else model->irq |= M1AddressReport;
+                model->queued[0] = 0;
+                break;
+            }
             assert(model->commands[0][1] == model->expected_write);
             const unsigned words = model->queued[0];
             if (words == 4) {
@@ -183,6 +201,28 @@ int main(void)
 {
     struct Model m = initial();
     struct NezhaCameraCciObservation observed;
+    const struct NezhaCameraOvxControls controls = {200,3200,545};
+    struct NezhaCameraOvxControlResult control_result;
+    for (unsigned kind=0;kind<2;++kind) for (unsigned stop=0;stop<14;++stop) {
+        m = initial();
+        m.controls_script = true;
+        m.controls_fail = stop;
+        m.controls_error = kind ? NezhaCciTimeout : NezhaCciNack;
+        assert(nezha_camera_ovx10500u_control_plan(&controls,&m.controls_plan));
+        const struct NezhaCameraRegisterIo control_io = {&m,read32,write32,wait_ms};
+        assert(nezha_camera_ovx10500u_apply_controls(&control_io,&controls,&control_result)==m.controls_error);
+        assert(control_result.applied_writes==stop && m.controls_step==stop+1 && m.submitted==stop+1);
+        assert(control_result.transfer.needs_recovery && control_result.group_may_be_held);
+    }
+    m = initial();m.controls_script=true;
+    assert(nezha_camera_ovx10500u_control_plan(&controls,&m.controls_plan));
+    const struct NezhaCameraRegisterIo control_io = {&m,read32,write32,wait_ms};
+    assert(nezha_camera_ovx10500u_apply_controls(&control_io,&controls,&control_result)==NezhaCciOk);
+    assert(control_result.applied_writes==14 && m.controls_step==14 && !control_result.group_may_be_held);
+    m = initial();m.queued[0]=1;
+    assert(nezha_camera_ovx10500u_apply_controls(&control_io,&controls,&control_result)==NezhaCciBusy);
+    assert(!m.submitted && !control_result.group_may_be_held && !control_result.applied_writes);
+    m = initial();
     uint8_t value = 0;
     assert(probe(&m, &value, &observed) == NezhaCciOk);
     assert(value == 0x56 && m.submitted == 1 && m.fifo_reads == 1);

@@ -14,6 +14,7 @@ static struct __CFString metadata_key={"MetadataDictionary"},port_key={"PortType
     port_value={"PortTypeBack"},time_key={"OriginalPresentationTimeStamp"};
 static unsigned allocations, releases, delivered, high_water, live;
 static bool pool_failure, render_failure;
+static unsigned preview_renders, still_renders;
 CFTypeID CFGetTypeID(CFTypeRef v) { return ((const struct Object *)v)->type; }
 CFTypeID CFDictionaryGetTypeID(void) { return 2; }
 CFTypeID CVPixelBufferPoolGetTypeID(void) { return 1; }
@@ -56,6 +57,14 @@ CVReturn CVPixelBufferPoolCreatePixelBuffer(CFAllocatorRef a, CVPixelBufferPoolR
 CVReturn nezha_camera_preview_pixel_buffer(const struct NezhaCameraPreview *p,
     const struct NezhaCameraPreviewFrame *f, const uint8_t *raw, size_t bytes, CVPixelBufferRef pixel)
 {
+    ++preview_renders;
+    assert(p && f && raw && bytes==10);pixel->rendered=!render_failure;
+    return render_failure ? -8 : 0;
+}
+CVReturn nezha_camera_still_pixel_buffer(const struct NezhaCameraPreview *p,
+    const struct NezhaCameraPreviewFrame *f, const uint8_t *raw, size_t bytes, CVPixelBufferRef pixel)
+{
+    ++still_renders;
     assert(p && f && raw && bytes==10);pixel->rendered=!render_failure;
     return render_failure ? -8 : 0;
 }
@@ -97,6 +106,7 @@ int main(void)
     render_failure=false;
     assert(nezha_camera_graph_output_configure(&output,&pool,handler,false)==0);
     assert(nezha_camera_graph_output_deliver(&output,&preview,&frame,raw,10,77,&metadata)==0 && !live && delivered==8);
+    assert(still_renders==1 && preview_renders==8);
     struct NezhaCameraGraphOutput *same=&output;
     handler=^(CVPixelBufferRef pixel, CMTime time) {
         assert(pixel->rendered && pixel->metadata && time.value==77);

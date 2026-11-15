@@ -125,7 +125,8 @@ void isp_render_bgra(const struct isp *isp, const struct hakios_camera_frame *f,
  * moving pictures are) demosaiced as isp_render_full_nv12() does, and scaled to the picture between the
  * two nearest lines and pixels; rows from first_row to end_row (even), NV12.
  */
-void isp_render_still_nv12(const struct isp *isp, const struct hakios_camera_frame *f, const uint8_t *raw, uint8_t *y,
+/* Nezha adaptation: false means scratch allocation failed before any output. */
+bool isp_render_still_nv12(const struct isp *isp, const struct hakios_camera_frame *f, const uint8_t *raw, uint8_t *y,
     size_t y_stride, uint8_t *uv, size_t uv_stride, uint32_t width, uint32_t height, uint32_t first_row, uint32_t end_row,
     bool video_range);
 void isp_render_full_nv12(const struct isp *isp, const struct hakios_camera_frame *f, const uint8_t *raw, uint8_t *y, size_t y_stride,

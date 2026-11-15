@@ -73,7 +73,9 @@ CVReturn nezha_camera_graph_output_deliver(struct NezhaCameraGraphOutput *output
     CVReturn status = CVPixelBufferPoolCreatePixelBuffer(NULL, output->pool, &pixel);
     if (status != kCVReturnSuccess) return status;
     if (!pixel) return kCVReturnAllocationFailed;
-    status = nezha_camera_preview_pixel_buffer(preview, frame, raw, raw_bytes, pixel);
+    status = output->preview ?
+        nezha_camera_preview_pixel_buffer(preview, frame, raw, raw_bytes, pixel) :
+        nezha_camera_still_pixel_buffer(preview, frame, raw, raw_bytes, pixel);
     if (status != kCVReturnSuccess) {
         CFRelease(pixel);
         return status;

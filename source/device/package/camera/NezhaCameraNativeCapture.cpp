@@ -272,6 +272,8 @@ bool nezha_camera_native_capture(const NezhaCameraNativeCaptureRequest *request,
         !request->command_database || request->database_bytes != 0x20000) return false;
     if (request->consumer && (request->test_pattern || request->raw_sample ||
         !request->consumer->continuing || !request->consumer->deliver)) return false;
+    if (request->controls && (!request->consumer || !request->controls->take ||
+        !request->controls->complete || !request->controls->readback)) return false;
     *result = {};
     result->step = NezhaNativeProfile;
     const bool pattern = request->test_pattern;
@@ -436,10 +438,59 @@ bool nezha_camera_native_capture(const NezhaCameraNativeCaptureRequest *request,
                 client_continuing, client_deliver};
             __atomic_store_n(&state.running, true, __ATOMIC_RELEASE);
             result->status = NezhaFramesOk;
+            uint32_t read_controls_after=0;
+            bool control_waiting=false;
             while (client_continuing(client.context)) {
                 result->status = nezha_camera_frame_consume(&state.capture_io, &state.capture,
                     &state.reg[Csid], &memory, &client, 1000);
                 if (result->status != NezhaFramesOk) break;
+                if (request->controls && client_continuing(client.context)) {
+                    /* Read initial settings after one actual frame. A new
+                     * group gets two complete-frame boundaries to settle,
+                     * following HakiOS's queued-control lifecycle. Report
+                     * register sampling, not a guessed RAW setting epoch. */
+                    if (!result->control_readback_verified ||
+                        (control_waiting && state.capture.completed_frames>=read_controls_after)) {
+                        result->control_readback_after=state.capture.completed_frames;
+                        result->control_readback_status=nezha_camera_ovx10500u_read_controls(
+                            &state.reg[Cci],&result->control_readback);
+                        if (result->control_readback_status!=NezhaCciOk) {
+                            state.capture.sensor_transfer=result->control_readback.transfer;
+                            state.capture.sensor_status=result->control_readback_status;
+                            result->status=NezhaFramesIo;
+                            break;
+                        }
+                        result->control_readback_verified=true;
+                        if (control_waiting && (result->control_readback.exposure_lines!=result->control_result.plan.exposure_lines ||
+                            result->control_readback.frame_lines!=result->control_result.plan.frame_lines ||
+                            result->control_readback.analog_gain_q8!=result->control_result.plan.analog_gain_q8 ||
+                            result->control_readback.digital_gain_q10!=result->control_result.plan.digital_gain_q10)) {
+                            result->status=NezhaFramesIo;
+                            break;
+                        }
+                        request->controls->readback(request->controls->context,
+                            &result->control_readback,result->control_readback_after);
+                        control_waiting=false;
+                    }
+                    if (control_waiting) continue;
+                    NezhaCameraOvxControls controls{};
+                    if (request->controls->take(request->controls->context, &controls)) {
+                        result->control_attempted = true;
+                        result->control_completed_before = state.capture.completed_frames;
+                        result->control_status = nezha_camera_ovx10500u_apply_controls(
+                            &state.reg[Cci], &controls, &result->control_result);
+                        request->controls->complete(request->controls->context,
+                            result->control_status, &result->control_result, result->control_completed_before);
+                        if (result->control_status != NezhaCciOk) {
+                            state.capture.sensor_transfer = result->control_result.transfer;
+                            state.capture.sensor_status = result->control_status;
+                            result->status = NezhaFramesIo;
+                            break;
+                        }
+                        read_controls_after=state.capture.completed_frames+2;
+                        control_waiting=true;
+                    }
+                }
             }
             result->frames.frames = state.capture.completed_frames;
         } else {

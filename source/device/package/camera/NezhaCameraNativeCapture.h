@@ -12,6 +12,19 @@
 extern "C" {
 #endif
 
+/* A caller queues settings without touching CCI. The sole capture worker
+ * takes one request after a completed-frame boundary and reports the actual
+ * group ACK or first error. The boundary is not a claim that an already
+ * queued RAW frame contains those settings. Callbacks run without DMA locks. */
+struct NezhaCameraNativeControlConsumer {
+    void *context;
+    bool (*take)(void *, struct NezhaCameraOvxControls *);
+    void (*complete)(void *, enum NezhaCameraCciStatus,
+        const struct NezhaCameraOvxControlResult *, uint32_t completed_before);
+    void (*readback)(void *, const struct NezhaCameraOvxControlReadback *,
+        uint32_t sampled_after);
+};
+
 struct NezhaCameraNativeCaptureRequest {
     const uint8_t *profile;
     size_t profile_bytes;
@@ -36,6 +49,7 @@ struct NezhaCameraNativeCaptureRequest {
      * It gates Stop and completes its CPU copy before DMA reuse. Both
      * callbacks must finish promptly; raw_sample and TPG are diagnostic. */
     const struct NezhaCameraFrameConsumer *consumer;
+    const struct NezhaCameraNativeControlConsumer *controls;
 };
 
 enum NezhaCameraNativeCaptureStep {
@@ -68,6 +82,14 @@ struct NezhaCameraNativeCaptureResult {
     struct NezhaCameraOvxIdentity identity;
     struct NezhaCameraOvxRevision revision;
     struct NezhaCameraCciObservation cci;
+    struct NezhaCameraOvxControlResult control_result;
+    uint32_t control_completed_before;
+    enum NezhaCameraCciStatus control_status;
+    bool control_attempted;
+    struct NezhaCameraOvxControlReadback control_readback;
+    uint32_t control_readback_after;
+    enum NezhaCameraCciStatus control_readback_status;
+    bool control_readback_verified;
     /* One bounded readback before teardown of a failed active stream.
      * Raw register values never count as completed frames. */
     uint32_t stream_readback_status, stream_readback;

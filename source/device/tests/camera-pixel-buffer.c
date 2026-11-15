@@ -78,24 +78,28 @@ int main(void)
         assert(y[0] == (video ? 235 : 255) && uv[0] == 128 && uv[1] == 128);
         assert(y[4] == 0xcd && y[10] == 0xcd && uv[4] == 0xcd);
         assert(pixel.locks == 1 && pixel.unlocks == 1 && pixel.attachments == 0x15);
+        assert(nezha_camera_still_pixel_buffer(&processor,&frame,raw,sizeof(raw),&pixel)==0);
+        assert(y[0]==(video ? 235:255) && uv[0]==128 && uv[1]==128);
+        assert(pixel.locks==2 && pixel.unlocks==2 && pixel.attachments==0x15);
+        assert(y[4]==0xcd && y[10]==0xcd && uv[4]==0xcd);
     }
     pixel.plane_width[1] = 4;
     assert(nezha_camera_preview_pixel_buffer(&processor,&frame,raw,sizeof(raw),&pixel) == kCVReturnInvalidArgument);
-    assert(pixel.locks == 1);
+    assert(pixel.locks == 2);
     pixel.plane_width[1] = 2;
     pixel.lock_status = -7; pixel.attachments = 0;
     assert(nezha_camera_preview_pixel_buffer(&processor,&frame,raw,sizeof(raw),&pixel) == -7);
-    assert(pixel.unlocks == 1 && !pixel.attachments);
+    assert(pixel.unlocks == 2 && !pixel.attachments);
     pixel.lock_status = 0; pixel.unlock_status = -8;
     assert(nezha_camera_preview_pixel_buffer(&processor,&frame,raw,sizeof(raw),&pixel) == -8);
-    assert(pixel.unlocks == 2 && !pixel.attachments);
+    assert(pixel.unlocks == 3 && !pixel.attachments);
     pixel.unlock_status = 0;
     memset(y,0xcd,sizeof(y));
     assert(nezha_camera_preview_pixel_buffer(&processor,&frame,raw,48,&pixel) == kCVReturnInvalidArgument);
-    assert(pixel.unlocks == 3 && y[0] == 0xcd && !pixel.attachments);
+    assert(pixel.unlocks == 4 && y[0] == 0xcd && !pixel.attachments);
     pixel.stride[0] = SIZE_MAX;
     assert(nezha_camera_preview_pixel_buffer(&processor,&frame,raw,sizeof(raw),&pixel) == kCVReturnInvalidArgument);
-    assert(pixel.unlocks == 4 && y[0] == 0xcd);
+    assert(pixel.unlocks == 5 && y[0] == 0xcd);
     puts("camera pixel buffers: graph strides, BGRA/420f/420v, unlock-before-delivery and actual lock failures passed");
     return 0;
 }

@@ -14,16 +14,20 @@ struct NezhaCameraFigBackend {
     void *context;
     NezhaFigStatus (*begin)(void *);
     NezhaFigStatus (*end)(void *);
-    /* Optional frame-reader binding. The device owns the stream while
-     * bound. Finalize stops the reader and unbinds before dropping that
-     * stream. A backend can reject a second simultaneous stream. */
+    /* Optional frame-reader binding. The independent stream owns it;
+     * final stream release stops the reader and unbinds it. A temporary
+     * device may release its array while the graph retains that stream.
+     * A backend can reject a second simultaneous stream. */
     NezhaFigStatus (*bind_stream)(void *, NezhaFigObject);
+    /* Queue one original HakiOS exposure command on the frame descriptor.
+     * A successful return acknowledges queueing, not hardware application. */
+    NezhaFigStatus (*exposure)(void *, const struct hakios_camera_command *);
 };
 
 /* Create one rear-wide stream for the already qualified main-sensor
  * backend. formats is the actual capture-source array, with measured
  * sensor geometry/rates and the graph outputs this backend implements.
- * The caller keeps backend.context alive until the device is finalized.
+ * The caller keeps backend.context alive until its last stream is finalized.
  * The returned object is a FigCaptureDevice with one owned stream. */
 NezhaFigStatus nezha_camera_fig_provider_create(NezhaFigAllocator allocator,
     const struct NezhaCameraFigBackend *backend, CFArrayRef formats,

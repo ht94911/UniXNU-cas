@@ -32,6 +32,24 @@ struct NezhaCameraPreview {
 
 void nezha_camera_preview_init(struct NezhaCameraPreview *preview);
 
+/* Measure each completed frame once before its three outputs. HakiOS's
+ * grey/neutral-cell estimator smooths the shared red/blue gains; sensor
+ * exposure and analog gain remain under the native capture controller. */
+bool nezha_camera_preview_update_white_balance(struct NezhaCameraPreview *preview,
+    const struct NezhaCameraPreviewFrame *frame, const uint8_t *raw, size_t raw_bytes);
+
+/* Same once-per-frame measurement, optionally used by the real exposure
+ * controller. AWB is shared across all graph outputs as before. */
+bool nezha_camera_preview_measure(struct NezhaCameraPreview *preview,
+    const struct NezhaCameraPreviewFrame *frame,const uint8_t *raw,size_t raw_bytes,
+    struct isp_stats *statistics);
+
+/* Generate a queued exposure request only from actual frame control
+ * metadata. Zero/partial fields do not invoke AE or change its state. */
+bool nezha_camera_preview_auto_exposure(struct NezhaCameraPreview *preview,
+    const struct hakios_camera_frame *actual,const struct isp_stats *statistics,
+    struct hakios_camera_command *command);
+
 /* Current stock OVX mode is BGGR, black=64, white=1023. The unchanged
  * upstream processor uses that black/white scale. Other calibrations
  * must be implemented explicitly before they can be accepted here.
@@ -39,6 +57,12 @@ void nezha_camera_preview_init(struct NezhaCameraPreview *preview);
  * Acquire CPU ownership of a completed DMA frame and invalidate its cache
  * before passing it to this processor; retain its memory until return. */
 bool nezha_camera_preview_render(const struct NezhaCameraPreview *preview,
+    const struct NezhaCameraPreviewFrame *frame, const uint8_t *raw, size_t raw_bytes,
+    const struct NezhaCameraPreviewOutput *output);
+
+/* StillImage NV12 uses the pinned processor's full Bayer demosaic before
+ * scaling. BGRA follows its existing preview path, as in HakiOS. */
+bool nezha_camera_still_render(const struct NezhaCameraPreview *preview,
     const struct NezhaCameraPreviewFrame *frame, const uint8_t *raw, size_t raw_bytes,
     const struct NezhaCameraPreviewOutput *output);
 
