@@ -1,0 +1,57 @@
+--- a/security/mac_process.c
++++ b/security/mac_process.c
+@@ -78,6 +78,7 @@
+ #include <kern/task.h>
+ #include <kern/zalloc.h>
+ #include <pexpert/pexpert.h>
++#include <sys/codesign.h>
+ 
+ #include <os/hash.h>
+ 
+@@ -915,11 +917,46 @@
+ // entry are valid: the constraint category of an owner or cryptex binary is not the platform one. The original release
+ // AMFI ignores its own amfi_* boot arguments, so the check is cleared here when the board asks for it. An option of the
+ // instrumented board only: the boot argument, not the default, decides.
++/* Reuse audio096's exact signed system-service launch contract for the
++ * bounded enumeration helper in explicit camera mode6. Preserve the
++ * original signature checks and every other service constraint. */
++static bool
++nezha_camera_discovery_launch(proc_t p, struct image_params *imgp)
++{
++	unsigned selected = 0;
++	if (!PE_parse_boot_argn("nezha-camera", &selected, sizeof(selected)) || selected != 6) {
++		return false;
++	}
++	struct _posix_spawnattr *attr = imgp->ip_px_sa;
++	/* Reuse the actual xpcproxy SETEXEC case verified by audio096. */
++	bool spawn = (imgp->ip_flags & IMGPF_SPAWN) != 0;
++	bool setexec = (imgp->ip_flags & IMGPF_EXEC) != 0 &&
++	    attr && (attr->psa_flags & POSIX_SPAWN_SETEXEC) != 0;
++	if ((!spawn && !setexec) || imgp->ip_scriptvp ||
++	    attr == NULL || attr->psa_launch_type != CS_LAUNCH_TYPE_SYSTEM_SERVICE ||
++	    proc_original_ppid(p) != 1 || !(imgp->ip_csflags & CS_VALID)) {
++		return false;
++	}
++	struct cs_blob *blob = csvnode_get_blob(imgp->ip_vp, imgp->ip_arch_offset);
++	const uint8_t *hash = blob ? csblob_get_cdhash(blob) : NULL;
++	const char *identity = blob ? csblob_get_identity(blob) : NULL;
++	static const uint8_t enumerator_hash[CS_CDHASH_LEN] = {
++	    0xf0, 0x92, 0x33, 0x1c, 0x0b, 0x92, 0xf4, 0xb7, 0xf7, 0xb9,
++	    0x78, 0x4a, 0x3d, 0x0d, 0x15, 0xa9, 0x1b, 0xaa, 0x02, 0x9f
++	};
++	return hash && identity &&
++	       strcmp(identity, "org.unixnu.nezha.camera-enumerate") == 0 &&
++	       memcmp(hash, enumerator_hash, sizeof(enumerator_hash)) == 0;
++}
++
+ int
+ mac_proc_check_launch_constraints(proc_t curp, struct image_params *imgp, os_reason_t *reasonp)
+ {
+ 	uint32_t skip = 0;
+ 	if (PE_parse_boot_argn("sheng-no-lc", &skip, sizeof(skip)) && skip != 0) {
++		return 0;
++	}
++	if (nezha_camera_discovery_launch(curp, imgp)) {
+ 		return 0;
+ 	}
+ 	char *fatal_failure_desc = NULL;

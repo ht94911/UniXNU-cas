@@ -1,7 +1,7 @@
-name: nezha iPhone27 full VFE bus input clock initialization
+name: nezha iPhone27 signed system camera discovery launch
 on:
   push:
-    branches: [codex/ios27-camera033-vfe-bus-20261115]
+    branches: [codex/ios27-camera034-discovery-launch-20261115]
   workflow_dispatch:
 permissions:
   contents: read

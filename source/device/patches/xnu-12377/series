@@ -44,3 +44,6 @@ zzzzzz-nezha-camera-discovery-launch.patch
 
 # Upstream94a70b1: complete replacement of the local system-service cache.
 zzzzzz-nezha-camera-addon-size.patch
+
+# Exact signed once-only camera enumerator, including typed xpcproxy SETEXEC.
+zzzzzz-nezha-camera-discovery-identity.patch

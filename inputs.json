@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Restore the full VFE1080 bus input clock initialization from Qualcomm CAMSS v24 before RAW10 stream start, retain prior bus state and restore after DMA drain; preserve native source ABI and existing source-only CMS flow.",
+  "purpose": "Reuse verified audio096 typed xpcproxy SETEXEC and original exact signed system-service predicate for the bounded camera enumeration client in explicit mode6; preserve actual signatures, launchd parent and all unrelated service constraints.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "c31a321d316aff705b38bd42b23666eeb5764d32",
+  "device_revision": "d417d2fb161878077ad74c66f9f3ffb8ca757c6f",
   "soc_revision": "3af99241822776cd8318b66f0e4093a4c8f20a2d",
   "xcode": "26.6",
   "files": {
@@ -291,7 +291,7 @@
     "source/device/patches/xnu-12377/zzzzzz-nezha-input-chain-trace.patch": "c4d05419e7ec3af0de619754bdb6c2deb69b74d714c2219e509360ebfe1b947e",
     "source/device/patches/xnu-12377/zzzzzz-nezha-gpu-external-ipc-scope.patch": "0798c2f7699e5914b041f69779224c3973fe1973173cb19dfe77ccfa388360f3",
     "source/device/patches/xnu-12377/zzzzzz-nezha-kernel-class-lock-order.patch": "cd90c61d6838f4e6a7248da81b6180f14db03d00f2f7a64f4bbe4034c0aa8dcb",
-    "source/device/patches/xnu-12377/series": "6b13542c1f0ce7fca1780191508321b2c0a6553ab9a4ff9b0be6cde183476cb2",
+    "source/device/patches/xnu-12377/series": "92dbd8cfea4698813c6823e80d9b33d74ceebc13dab7edf3c4b64894e8d16729",
     "source/device/patches/xnu-12377/zzzzz-nezha-owner-data-ready.patch": "306414945401c128472d3b0acddd03c88bec57ec47d6988660173d0b432c3e4b",
     "source/device/patches/xnu-12377/zzye-sheng-cpu-idle.patch": "95f57fb9994796c3de2429fe82b6a521620b9f13b83e29eba12185f5ada4da86",
     "source/device/patches/xnu-12377/zzzzz-nezha-owner-data-console.patch": "cb29cedb0b5f7d388fcdff028140c6973628d65ea108d7796e23dcb956542828",
@@ -378,7 +378,8 @@
     "source/device/scripts/package-nezha27-camera-system.py": "4afe61cc871711d9a6ea7513fe925f0ebff013de4fb52b8aa76cf9390b6e857c",
     "source/device/scripts/make-nezha27-camera-model.py": "505d5742093c37f6ddacd7f34d70508ded7859f78bc8164d067336f3bc9124b2",
     "source/device/patches/xnu-12377/zzzzzz-nezha-camera-discovery-launch.patch": "14e5c1a987985e5e847341ac5b22829ed34cb0dbd2adccce232b1c3a2bebd644",
-    "source/device/patches/xnu-12377/zzzzzz-nezha-camera-addon-size.patch": "5087cd2e214f0fd88f7105a5de56af74e01ab8d6bc75b7c9a65a36ba07245159"
+    "source/device/patches/xnu-12377/zzzzzz-nezha-camera-addon-size.patch": "5087cd2e214f0fd88f7105a5de56af74e01ab8d6bc75b7c9a65a36ba07245159",
+    "source/device/patches/xnu-12377/zzzzzz-nezha-camera-discovery-identity.patch": "e998c6cd6329bb711ee827b0b4fa448147816942b220633e70834c20cb25e5cb"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
@@ -427,14 +428,14 @@
     "snapshot_scope": "listed headers and native implementation units only"
   },
   "camera": {
-    "source_revision": "c31a321d316aff705b38bd42b23666eeb5764d32",
+    "source_revision": "d417d2fb161878077ad74c66f9f3ffb8ca757c6f",
     "device_base": "7435e49e46705d2bfcabe09487ff80a4821fd577",
     "mode_default": "disabled",
     "host_core_tests": 18,
     "private_camera_modes_uploaded": false,
     "failed_predecessor_run": 43298685064,
     "stock_module_bytes_uploaded": false,
-    "previous_native_run": 43681472671,
+    "previous_native_run": 43688915572,
     "optional_probe_mode": 5,
     "full_stock_profiles_uploaded": false,
     "local_profile_host_roundtrips": 4,
@@ -527,7 +528,13 @@
     "main_sensor_EPD_and_mode_writes_unchanged": true,
     "VFE_bus_CGC_initialized": true,
     "VFE_bus_CGC_restored_after_DMA_stop": true,
-    "CGC_reference": "qualcomm-linux/kernel-topics@11c60fc17fd55823fe1b12e85a9b05554ebbe868:camss-vfe-1080.c vfe_wm_start"
+    "CGC_reference": "qualcomm-linux/kernel-topics@11c60fc17fd55823fe1b12e85a9b05554ebbe868:camss-vfe-1080.c vfe_wm_start",
+    "exact_camera_enumerator_launch": true,
+    "typed_xpcproxy_SETEXEC": true,
+    "enumerator_CDhash": "f092331c0b92f4b7f7b9784a3d0d15a91baa029f",
+    "enumerator_identity": "org.unixnu.nezha.camera-enumerate",
+    "enumerator_native_run": 43637926183,
+    "source_contract_from_audio096": "9387e982f31647f88d34b846acc0af5806a30476"
   },
   "soc_previous_source": "5a71f9eb5724ff58eddf49f7f5baecc9f4233a7c",
   "userland_revision": "948715c429b092e18a82fa7fd851790124e071ed",
