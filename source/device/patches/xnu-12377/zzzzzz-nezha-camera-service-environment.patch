@@ -1,0 +1,25 @@
+--- a/bsd/kern/kern_exec.c
++++ b/bsd/kern/kern_exec.c
+@@ -6938,6 +6938,22 @@
+ 			goto bad;
+ 		}
+ 		imgp->ip_argspace -= new_ptr_size; /* to hold envv[] entry */
++		imgp->ip_envc++;
++	}
++
++	/* HakiOS f128f1d exec_inject_env supplies the per-process environment
++	 * append. The nezha camera library is only for the original camera
++	 * daemon in this explicit continuous-camera boot; original argv/env,
++	 * code signatures and service permissions remain in force. */
++	unsigned camera_mode = 0;
++	if (PE_parse_boot_argn("nezha-camera", &camera_mode, sizeof(camera_mode)) && camera_mode == 6 &&
++	    imgp->ip_ndp && imgp->ip_ndp->ni_cnd.cn_namelen == sizeof("cameracaptured") - 1 &&
++	    !memcmp(imgp->ip_ndp->ni_cnd.cn_nameptr, "cameracaptured", sizeof("cameracaptured") - 1)) {
++		static const char library_env[] = "DYLD_INSERT_LIBRARIES=/System/Library/MediaCapture/libNezhaCamera27.dylib";
++		error = exec_add_user_string(imgp, CAST_USER_ADDR_T(library_env), UIO_SYSSPACE, TRUE);
++		if (error) goto bad;
++		if (imgp->ip_argspace < new_ptr_size) { error = E2BIG; goto bad; }
++		imgp->ip_argspace -= new_ptr_size;
+ 		imgp->ip_envc++;
+ 	}
+ 

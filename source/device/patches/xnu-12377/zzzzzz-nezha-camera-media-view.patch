@@ -1,0 +1,16 @@
+--- a/bsd/kern/kern_exec.c
++++ b/bsd/kern/kern_exec.c
+@@ -8730,6 +8730,13 @@
+ 		    camera_xpc_point, sizeof(camera_xpc_point), "/System/Library/xpc/launchd.plist.sig",
+ 		    "/System/Library/xpc/launchd.plist", &camera_cache_stage, &camera_cache_status);
+ 		static const char camera_bin_source[] = "/private/var/ngpu/camera-bin", camera_bin_point[] = "/usr/libexec";
++		static const char camera_media_source[] = "/private/var/ngpu/camera-media";
++		static const char camera_media_point[] = "/System/Library/MediaCapture";
++		static volatile int camera_media_stage, camera_media_status;
++		native_gpu_addon_mount(p, scratch, 0x600, camera_media_source, sizeof(camera_media_source),
++		    camera_media_point, sizeof(camera_media_point), "/System/Library/MediaCapture/H13ISP.mediacapture",
++		    "/System/Library/MediaCapture/libNezhaCamera27.dylib", &camera_media_stage, &camera_media_status);
++		printf("NEZHA27 camera media=%d/%d\n", camera_media_stage, camera_media_status);
+ 		static volatile int camera_bin_stage, camera_bin_status;
+ 		native_gpu_addon_mount(p, scratch, 0x600, camera_bin_source, sizeof(camera_bin_source),
+ 		    camera_bin_point, sizeof(camera_bin_point), "/usr/libexec/launchd_cache_loader",
