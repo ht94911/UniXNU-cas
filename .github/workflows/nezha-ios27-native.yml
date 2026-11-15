@@ -1,7 +1,7 @@
-name: nezha iPhone27 stock main sensor EPD mode propagation
+name: nezha iPhone27 exact system camera addon replacement
 on:
   push:
-    branches: [codex/ios27-camera031-epd-20261115]
+    branches: [codex/ios27-camera032-cache-size-20261115]
   workflow_dispatch:
 permissions:
   contents: read
