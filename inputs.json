@@ -1,15 +1,16 @@
 {
   "schema": 1,
-  "purpose": "Bounded AVFoundation main-camera discovery; no camera permission request and no capture start; manual Camera.app test remains deferred.",
-  "device_revision": "5224e9092077b1989cf2f04dac5da6cd368f8cad",
+  "purpose": "One bounded25second originalCamera.app LaunchServices request, using existingAppSync ProbeRunner entry; no camera data/permissions/touches; no success claimed by queuedBOOL. Original app identity must be registered.",
+  "device_revision": "ae7ca1915d296ac345ae9531df37da18b058e897",
   "files": {
-    "source/NezhaCameraEnumerate.m": "937534ad2a3e2fb75bcf19024e79c2c0f977de77b2568a6fc4084fd28dae3806",
-    ".github/workflows/nezha-ios27-native.yml": "cdb572477324dfe8e31524164479fa5f48741aea4d6d9a13d534cd329eccfef4"
+    "source/NezhaCameraLaunch.m": "9f0fd6b61033fa44742b331051899dda6a398bcdfc33d054789c99181eb13101",
+    ".github/workflows/nezha-ios27-native.yml": "7e02acdaa2846079d5f4d59f99d20af7b5575213255646530c6d335618492b88"
   },
-  "builder_sha256": "d8ea3d711fcb3771da67ec7d97107b4d878f32cb0fe290c1b0a7ea654ae501cc",
+  "builder_sha256": "dcf12609050f85dbc3f51b761033fa1cfd1086f0e30648a76d4f5729ab92cda2",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
   "certificate_sha256": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
   "kernel_build_required": false,
   "private_inputs_uploaded": false,
-  "phone_operations": false
+  "phone_operations": false,
+  "original_LaunchServices_method": "-[LSApplicationWorkspace openApplicationWithBundleID:] at24A4460x186e67d38"
 }

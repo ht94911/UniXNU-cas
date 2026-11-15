@@ -1,7 +1,7 @@
-name: nezha iPhone27 bounded system camera discovery
+name: nezha iPhone27 bounded originalCamera launch
 on:
   push:
-    branches: [codex/ios27-camera026-discovery-20261115]
+    branches: [codex/ios27-camera064-original-app-launch-20261116]
 permissions:
   contents: read
 concurrency:
@@ -26,7 +26,7 @@ jobs:
           persist-credentials: false
       - name: Prepare the existing encryption tool
         run: brew install openssl@3 > "$RUNNER_TEMP/camera-userland-setup.log" 2>&1
-      - name: Build and sign the bounded AVFoundation discovery client
+      - name: Build and sign the bounded originalCamera launch helper
         run: |
           set -euo pipefail
           export PATH="$(brew --prefix openssl@3)/bin:$PATH"
