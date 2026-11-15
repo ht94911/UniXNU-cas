@@ -94,6 +94,27 @@ static int ports(NaWcdCapture *c) {
     if (s->io.error(s->io.context)) return NA_IO;
     return na_swr_select_tx_bank(s,(active&1)^1u);
 }
+static int tx_adaptive_prepare(NaWcdCapture *c) {
+    /* Actual nezha Android Recorder changes DEC2's adaptive block from
+     * bypass0x51 to running0x41. The original TX driver initializes this
+     * block after its5ms settle; static DT version7 does not describe its
+     * runtime-selected layout. All values below were read twice in recording
+     * and match the original tx-macro driver and this board's seven DT rows. */
+    static const WcdStep steps[]={
+        {0x934,0xff,0x59,0},{0x938,0xff,0x06,0},
+        {0x504,0xff,0x00,0},{0x900,0xff,0x41,0},
+        {0x530,0xff,0x01,0},
+        {0x910,0xff,0x4c,0},{0x914,0xff,0x1d,0},
+        {0x918,0xff,0x7c,0},{0x91c,0xff,0x3c,0},
+        {0x920,0xff,0x67,0},{0x924,0xff,0x16,0},
+        {0x928,0xff,0x03,0}
+    };
+    for (unsigned i=0;i<sizeof steps/sizeof steps[0];++i) {
+        const WcdStep *p=&steps[i];int r=tx_update(c,p->reg,p->mask,p->value);
+        if (r) return r;
+    }
+    return NA_OK;
+}
 int na_wcd_capture_prepare(NaWcdCapture *c,uint64_t now) {
     if (!c || now>UINT64_MAX-5000) return NA_ARGUMENT;
     if (c->error) return c->error;
@@ -128,13 +149,14 @@ int na_wcd_capture_prepare(NaWcdCapture *c,uint64_t now) {
             WcdStep *p=&steps[c->index++];r=na_swr_update(c->bus,p->reg,p->mask,p->value);c->wait_until=now+p->delay_ms;
         } else {c->stage=2;c->index=0;}
     } else if (c->stage==2) {
-        r=ports(c);if (!r) {c->stage=3;c->wait_until=now+1;}
+        r=ports(c);if (!r) {c->stage=3;c->wait_until=now+5;}
     } else if (c->stage==3) {
         uint8_t pending=0;r=na_swr_read(c->bus,0x104,&pending);
         if (r) return failed(c,r);
         if (pending&2) return NA_PENDING;
         if ((r=tx_update(c,0x110,0x0f,3)) || /*SMIC2 enum3*/
             (r=tx_update(c,0x114,3,1)) ||    /*DEC2 source SWR_MIC*/
+            (r=tx_adaptive_prepare(c)) ||
             (r=tx_update(c,0x504,0x66,0x40)) || /*150Hz HPF*/
             (r=tx_update(c,0x500,0x3f,0x34))) return failed(c,r);
         c->prepared=1;c->wait_until=now+300;return NA_OK;
@@ -152,7 +174,8 @@ int na_wcd_capture_shutdown(NaWcdCapture *c,int quiescent) {
     if (!c->bus) return NA_ARGUMENT;
     int r=na_wcd_capture_mute(c);if (!quiescent) return NA_OWNERSHIP;
     if (r || (r=tx_update(c,0x500,0x20,0)) || (r=tx_update(c,0x110,0xf,0)) ||
-        (r=tx_update(c,0x114,3,0))) return failed(c,r);
+        (r=tx_update(c,0x114,3,0)) ||
+        (r=tx_update(c,0x530,0xff,0x03))) return failed(c,r);
     for (unsigned bank=0;bank<2;++bank) c->bus->io.write(c->bus->io.context,0x1224+0x40*bank,NA_SWR_TX_ADC_LP_INTERVAL);
     r=na_swr_write(c->bus,0x120,0);
     if (!r) r=na_swr_write(c->bus,0x130,0);
