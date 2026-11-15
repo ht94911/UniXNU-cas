@@ -21,6 +21,7 @@ static size_t sent_bytes, received_bytes;
 static char header[8193];
 static size_t header_bytes;
 static int http_status;
+static unsigned payload_selection_stage;
 
 static void report(const char *event, int value)
 {
@@ -44,14 +45,18 @@ static bool selected_payload(void)
 {
     io_registry_entry_t chosen = IORegistryEntryFromPath(kIOMainPortDefault, "IODeviceTree:/chosen");
     if (!chosen) return false;
+    payload_selection_stage = 1;
     CFTypeRef value = IORegistryEntryCreateCFProperty(chosen, CFSTR("nezha-cellular-demand"),
                                                      kCFAllocatorDefault, 0);
     IOObjectRelease(chosen);
     bool selected = false;
+    if (value) payload_selection_stage = 2;
     if (value && CFGetTypeID(value) == CFDataGetTypeID()
         && CFDataGetLength((CFDataRef)value) == 4) {
+        payload_selection_stage = 3;
         const UInt8 *bytes = CFDataGetBytePtr((CFDataRef)value);
         selected = bytes[0] == 21 && !bytes[1] && !bytes[2] && !bytes[3];
+        if (selected) payload_selection_stage = 4;
     }
     if (value) CFRelease(value);
     return selected;
@@ -162,7 +167,15 @@ static void start_request(void)
 
 int main(void)
 {
-    if (geteuid() != 0 || !selected_payload()) return 0;
+    uid_t uid = geteuid();
+    report("helper_entry", (int)uid);
+    bool payload_selected = selected_payload();
+    report("payload_selection_stage", (int)payload_selection_stage);
+    if (uid != 0 || !payload_selected) {
+        report("payload_gate_rejected", uid != 0 ? 1 : 2);
+        return 0;
+    }
+    report("payload_gate_accepted", 0);
     signal(SIGALRM, timeout);
     alarm(400);
     queue = dispatch_queue_create("org.unixnu.nezha.cellular-demand", DISPATCH_QUEUE_SERIAL);
