@@ -13,11 +13,12 @@ typedef struct {uint16_t reg;uint8_t mask,value;uint32_t delay_ms;} WcdStep;
 static void capture_registers(NaWcdCapture *c,unsigned phase) {
     if (phase>1 || (c->registers_done&(1u<<phase))) return;
     c->registers_done|=1u<<phase;
-    /* Fifteen TX-master controls/status, eight TX-macro words, sixteen codec
+    /* Fifteen TX-master controls/status, fourteen TX-macro words, sixteen codec
      * control readbacks. No FIFO DATA read, new mux, test source or reset. */
     static const uint16_t master[]={0x4,0x104c,0x101c,0x105c,0x1090,
         0x1224,0x1264,0x1228,0x1268,0x122c,0x1238,0x1278,0x5000,0x123c,0x127c};
-    static const uint16_t tx[]={0,4,0x110,0x114,0x500,0x504,0x530,0x900};
+    static const uint16_t tx[]={0,4,0x110,0x114,0x500,0x504,0x530,0x900,
+        0x508,0x50c,0x518,0x904,0x908,0x90c};
     static const uint16_t codec[]={0x3022,0x300f,0x3127,0x3405,0x3408,0x3409,0x3410,0x3417,
         0x3457,0x104,0x120,0x130,0x122,0x132,0x128,0x138};
     uint32_t *out=c->registers[phase];unsigned count=0;
@@ -95,6 +96,24 @@ static int ports(NaWcdCapture *c) {
     return na_swr_select_tx_bank(s,(active&1)^1u);
 }
 static int tx_adaptive_prepare(NaWcdCapture *c) {
+    /* The stock TX clock-enable path first synchronizes its regmap cache.
+     * Restore only the clock and DEC2 defaults consumed by this mono route;
+     * the analog WCD reset does not initialize the separate LPASS TX macro.
+     * These defaults also match the confirmed stock Recorder capture. Keep
+     * upper MMIO bits, other decimators and their muxes untouched. */
+    static const WcdStep defaults[]={
+        {0x88,0xff,0x60,0},{0xc0,0xff,0x0e,0},
+        {0x508,0xff,0x1b,0},{0x50c,0xff,0x00,0},
+        {0x510,0xff,0x00,0},{0x514,0xff,0x00,0},
+        {0x518,0xff,0x01,0},{0x51c,0xff,0x3c,0},
+        {0x520,0xff,0x20,0},{0x524,0xff,0x00,0},
+        {0x528,0xff,0x00,0},{0x904,0xff,0x11,0},
+        {0x908,0xff,0x01,0},{0x90c,0xff,0x02,0}
+    };
+    for (unsigned i=0;i<sizeof defaults/sizeof defaults[0];++i) {
+        const WcdStep *p=&defaults[i];int r=tx_update(c,p->reg,p->mask,p->value);
+        if (r) return r;
+    }
     /* Actual nezha Android Recorder changes DEC2's adaptive block from
      * bypass0x51 to running0x41. The original TX driver initializes this
      * block after its5ms settle; static DT version7 does not describe its
@@ -158,7 +177,10 @@ int na_wcd_capture_prepare(NaWcdCapture *c,uint64_t now) {
             (r=tx_update(c,0x114,3,1)) ||    /*DEC2 source SWR_MIC*/
             (r=tx_adaptive_prepare(c)) ||
             (r=tx_update(c,0x504,0x66,0x40)) || /*150Hz HPF*/
-            (r=tx_update(c,0x500,0x3f,0x34))) return failed(c,r);
+            (r=tx_update(c,0x500,0x3f,0x34)) ||
+            /* Stock enable_dec reapplies gain after the decimator is on.
+             * Keep098's digital0dB; level scaling stays in the PCM consumer. */
+            (r=tx_update(c,0x50c,0xff,0x00))) return failed(c,r);
         c->prepared=1;c->wait_until=now+300;return NA_OK;
     } else return failed(c,NA_OWNERSHIP);
     return r ? failed(c,r):NA_PENDING;
