@@ -1,7 +1,7 @@
-name: nezha iPhone27 native camera worker stage observation
+name: nezha iPhone27 original DAS main kernel wait
 on:
   push:
-    branches: [codex/ios27-camera057-native-worker-stage-20261116]
+    branches: [codex/ios27-camera059-DAS-main-wait-20261116]
   workflow_dispatch:
 permissions:
   contents: read

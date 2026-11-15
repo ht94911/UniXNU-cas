@@ -59,6 +59,11 @@ static void bt_kernel_stack(thread_t thread,uint64_t *out) {
 }
 #define BT_ROLES 4
 static struct bt_main draft_main[BT_ROLES],published_main[BT_ROLES];
+/* Preserve the already captured main thread's kernel wait. A cold page
+ * read in dasd was absent from HOT/TRP rows, which filter by activity or
+ * Mach trap. Keep the same guarded sampler and publication lifetime. */
+struct bt_main_kernel {uint64_t frames[BT_KFRAMES],event,tid;unsigned state,hint;int pri;};
+static struct bt_main_kernel main_kernel_draft[BT_ROLES],main_kernel_published[BT_ROLES];
 static struct bt_prev hot_prev[BT_ROLES][BT_MAX_THREADS];
 static struct bt_hotrow hot_draft[BT_ROLES][BT_HOT],hot_published[BT_ROLES][BT_HOT];
 // Threads inside a Mach trap other than mach_msg (vm_deallocate, semaphore_wait): kept apart from the hot ones so a busy role cannot crowd
@@ -77,6 +82,7 @@ volatile unsigned boot_ui_trace_phase,boot_ui_trace_index;
 
 void boot_ui_trace_begin(void) {
  memset(draft_main,0,sizeof(draft_main));memset(hot_draft,0,sizeof(hot_draft));memset(trap_draft,0,sizeof(trap_draft));memset(cpu_draft,0,sizeof(cpu_draft));
+ memset(main_kernel_draft,0,sizeof(main_kernel_draft));
  memset(&draft,0,sizeof(draft));memset(draft_pid,0,sizeof(draft_pid));
  memset(draft_slide,0,sizeof(draft_slide));memset(draft_names,0,sizeof(draft_names));
  draft_busy=0;draft_omitted=0;boot_ui_trace_phase=1;
@@ -131,6 +137,9 @@ void boot_ui_trace_task(task_t task,unsigned index,int pid,const char *name,unsi
   boot_ui_trace_phase=role?3:2;
   if(samples[i].index==1) {
    struct bt_main *main=&draft_main[role];main->entry=samples[i];main->pid=pid;main->slide=slide;
+   struct bt_main_kernel *kernel=&main_kernel_draft[role];
+   memcpy(kernel->frames,sample_k[i],sizeof(kernel->frames));kernel->event=sample_event[i];
+   kernel->tid=sample_tid[i];kernel->state=sample_state[i];kernel->hint=sample_hint[i];kernel->pri=sample_pri[i];
    if(!main->entry.error)bt_walk_n(&main->entry,read_user,map,main->frames,32);
    main->error=main->entry.error;
    uint64_t info[2]={0},image[3]={0};main->image_error=1;
@@ -208,6 +217,7 @@ void boot_ui_trace_task(task_t task,unsigned index,int pid,const char *name,unsi
 void boot_ui_trace_publish(void) {
  if(!__atomic_exchange_n(&trace_lock,1,__ATOMIC_ACQUIRE)) {
   published=draft;memcpy(published_main,draft_main,sizeof(draft_main));memcpy(hot_published,hot_draft,sizeof(hot_draft));memcpy(trap_published,trap_draft,sizeof(trap_draft));memcpy(cpu_published,cpu_draft,sizeof(cpu_draft));memcpy(published_pid,draft_pid,sizeof(draft_pid));
+  memcpy(main_kernel_published,main_kernel_draft,sizeof(main_kernel_draft));
   memcpy(published_slide,draft_slide,sizeof(draft_slide));memcpy(published_names,draft_names,sizeof(draft_names));
   published_busy=draft_busy;published_omitted=draft_omitted;
   __atomic_store_n(&trace_lock,0,__ATOMIC_RELEASE);
@@ -231,6 +241,17 @@ unsigned boot_ui_trace_role_rows(unsigned role,char rows[][120],unsigned max,uns
    int at=snprintf(rows[n],120,"STK%c %02u",c,row*8+1);
    for(unsigned i=0;i<8 && at>0 && at<119;++i)at+=snprintf(rows[n]+at,120-at," %llx",m->frames[row*8+i]);
    ++n;
+  }
+  const struct bt_main_kernel *kernel=&main_kernel_published[role];
+  if(n<max && kernel->tid) {
+   snprintf(rows[n++],120,"STK%cK tid=%llx st=%x hint=%u pri=%d ev=%llx sampled",c,(unsigned long long)kernel->tid,
+    kernel->state,kernel->hint,kernel->pri,(unsigned long long)kernel->event);
+   for(unsigned slice=0;slice<3 && n<max && kernel->frames[slice*4];++slice) {
+    int at=snprintf(rows[n],120,"STK%cK %02u",c,slice*4+1);
+    for(unsigned i=slice*4;i<slice*4+4 && kernel->frames[i] && at>0 && at<105;++i)
+     at+=snprintf(rows[n]+at,120-at," %llx",(unsigned long long)kernel->frames[i]);
+    ++n;
+   }
   }
  } else if(published_pid[role]) {
   snprintf(rows[n++],120,"STK%c %.31s p%u cache+%x image=%llx",c,published_names[role],published_pid[role],published_slide[role],m->image);
