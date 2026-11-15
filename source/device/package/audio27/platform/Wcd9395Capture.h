@@ -9,7 +9,7 @@ typedef struct {
     void *context;uint32_t (*read_tx)(void *,uint32_t);void (*write_tx)(void *,uint32_t,uint32_t);
     int (*error)(void *);
 } NaTxIo;
-#define NA_MIC_CAPTURE_REG_WORDS 41u
+#define NA_MIC_CAPTURE_REG_WORDS 39u
 typedef struct {
     NaSwr *bus;NaTxIo tx;uint32_t stage,index,muted,prepared,active;
     uint64_t wait_until,deadline;uint8_t micbias,adc_gain,version;

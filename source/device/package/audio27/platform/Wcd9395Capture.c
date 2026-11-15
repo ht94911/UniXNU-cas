@@ -13,11 +13,11 @@ typedef struct {uint16_t reg;uint8_t mask,value;uint32_t delay_ms;} WcdStep;
 static void capture_registers(NaWcdCapture *c,unsigned phase) {
     if (phase>1 || (c->registers_done&(1u<<phase))) return;
     c->registers_done|=1u<<phase;
-    /* Fifteen TX-master controls/status, ten TX-macro words, sixteen codec
+    /* Fifteen TX-master controls/status, eight TX-macro words, sixteen codec
      * control readbacks. No FIFO DATA read, new mux, test source or reset. */
     static const uint16_t master[]={0x4,0x104c,0x101c,0x105c,0x1090,
         0x1224,0x1264,0x1228,0x1268,0x122c,0x1238,0x1278,0x5000,0x123c,0x127c};
-    static const uint16_t tx[]={0,4,0x110,0x114,0x500,0x504,0x530,0x900,0x508,0x50c};
+    static const uint16_t tx[]={0,4,0x110,0x114,0x500,0x504,0x530,0x900};
     static const uint16_t codec[]={0x3022,0x300f,0x3127,0x3405,0x3408,0x3409,0x3410,0x3417,
         0x3457,0x104,0x120,0x130,0x122,0x132,0x128,0x138};
     uint32_t *out=c->registers[phase];unsigned count=0;
@@ -158,12 +158,7 @@ int na_wcd_capture_prepare(NaWcdCapture *c,uint64_t now) {
             (r=tx_update(c,0x114,3,1)) ||    /*DEC2 source SWR_MIC*/
             (r=tx_adaptive_prepare(c)) ||
             (r=tx_update(c,0x504,0x66,0x40)) || /*150Hz HPF*/
-            (r=tx_update(c,0x500,0x3f,0x34)) ||
-            /* Stock bot-main-mic sets TX_DEC2 Volume102. Its signed control
-             * spans -84..40, so index102 writes +18dB (0x12), not102.
-             * Apply after the decimator is enabled, as in enable_dec. Keep
-             * ADC2 Volume6; this gain precedes the DSP/HAL S16 conversion. */
-            (r=tx_update(c,0x50c,0xff,0x12))) return failed(c,r);
+            (r=tx_update(c,0x500,0x3f,0x34))) return failed(c,r);
         c->prepared=1;c->wait_until=now+300;return NA_OK;
     } else return failed(c,NA_OWNERSHIP);
     return r ? failed(c,r):NA_PENDING;

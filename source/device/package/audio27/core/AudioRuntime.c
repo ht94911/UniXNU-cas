@@ -58,7 +58,15 @@ static int capture(void *v,uint64_t relative,const void *pcm,uint32_t bytes) {
     int e=origin(r,1);if (e) return e;
     if (relative>NA_AUDIO_MAX_FRAME-r->origin[1] || r->origin[1]+relative>NA_AUDIO_MAX_FRAME-bytes/2) return NA_OVERFLOW;
     const int16_t *in=pcm;uint64_t first=r->origin[1]+relative;
-    for (unsigned i=0;i<bytes/2;++i) {e=na_ring_capture(r->input,first+i,in[i]);if (e) return e;}
+    /* Recorded098 speech was quiet at the accepted ADC2 setting. Restore
+     * that codec setup and apply a fixed +12.04dB gain to the system input,
+     * using the same S16 saturation as ring mixing. Raw finite-probe samples
+     * above keep their original amplitude for hardware measurements. */
+    for (unsigned i=0;i<bytes/2;++i) {
+        int32_t value=(int32_t)in[i]*4;
+        int16_t amplified=(int16_t)(value>32767 ? 32767:value< -32768 ? -32768:value);
+        e=na_ring_capture(r->input,first+i,amplified);if (e) return e;
+    }
     r->status.in_produced=first+bytes/2;return NA_OK;
 }
 static int activate(void *v,int direction) {
