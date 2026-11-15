@@ -92,6 +92,8 @@ int na_runtime_request(NaRuntime *r,uint32_t selector) {
     uint32_t probe=__atomic_load_n(&r->probe.state,__ATOMIC_ACQUIRE);
     if (start && probe>=NaProbeStarting && probe<=NaProbeDraining) return NA_BUSY;
     if (start && (__atomic_load_n(&r->disabled,__ATOMIC_ACQUIRE) || !__atomic_load_n(&r->service_ready,__ATOMIC_ACQUIRE) || (bit==2 && !r->capture_proven))) return NA_MISSING;
+    if (start && bit==2 && r->engine.graph[1] && r->engine.graph[1]->error)
+        return r->engine.graph[1]->error;
     if (start) {
         if (bit==2) __atomic_fetch_add(&r->input_heartbeat,1,__ATOMIC_ACQ_REL);
         __atomic_fetch_or(&r->request,bit,__ATOMIC_ACQ_REL);
@@ -111,6 +113,7 @@ void na_runtime_disable(NaRuntime *r) {
     __atomic_store_n(&r->disabled,1,__ATOMIC_RELEASE);
     __atomic_store_n(&r->service_ready,0,__ATOMIC_RELEASE);
     __atomic_store_n(&r->request,0,__ATOMIC_RELEASE);
+    if (r->engine.graph[1]) r->engine.graph[1]->retain_on_stop=0;
 }
 int na_runtime_quiescent(const NaRuntime *r) {
     if (!r || r->prm->possible || r->prm->token) return 0;
@@ -128,7 +131,12 @@ static int cpu_maps_quiet(const NaRuntime *r) {
     for (unsigned i=0;i<3;++i) if (r->engine.graph[i]) {
         const NaGraph *g=r->engine.graph[i];
         if (i==1) {
-            if (g->stage!=NaGraphOff || g->endpoint_owned || g->map_possible || g->stream->quarantine) return 0;
+            int stopped=g->stage==NaGraphOff && !g->endpoint_owned && !g->map_possible;
+            int paused=g->stage==NaGraphPaused && g->retain_on_stop && !g->start_possible &&
+                !g->token && g->stream->handle && g->stream->generation==g->session->generation &&
+                !g->stream->running && !g->stream->in_flight && g->stream->next==g->stream->returned;
+            if ((!stopped && !paused) || (paused && (g->error || g->cleanup_error)) ||
+                g->stream->quarantine) return 0;
         } else if (g->stage!=NaGraphRunning || g->error || g->cleanup_error || !g->want ||
                    !g->stream->running || g->stream->quarantine) return 0;
     }
@@ -209,7 +217,9 @@ int na_runtime_poll(NaRuntime *r,uint64_t now) {
     if (r->fault) {na_runtime_disable(r);wanted=0;}
     int disabled=__atomic_load_n(&r->disabled,__ATOMIC_ACQUIRE);
     if (disabled) wanted=0;
-    NaGraph *out=r->engine.graph[0],*vi=r->engine.graph[2];
+    NaGraph *out=r->engine.graph[0],*vi=r->engine.graph[2],*in=r->engine.graph[1];
+    if (in) in->retain_on_stop=r->capture_proven && !disabled && !r->fault && !in->error && !in->cleanup_error;
+    if (in && (in->error || in->cleanup_error)) wanted&=~2u;
     uint64_t stops=__atomic_load_n(&r->output_stops,__ATOMIC_ACQUIRE);
     if (stops!=r->output_seen_stop) {
         r->output_seen_stop=stops;
@@ -271,16 +281,17 @@ int na_runtime_poll(NaRuntime *r,uint64_t now) {
         if (g->stage==NaGraphOff) r->origin_set[i]=0;
     }
     na_prm_request(r->prm,mask);
-    NaGraph *in=r->engine.graph[1];
     e=na_engine_poll(&r->engine,now);
+    if (in && in->stage==NaGraphPaused && !in->stream->in_flight &&
+        in->stream->next==in->stream->returned) r->origin_set[1]=0;
     /* Analog settling now precedes the first READ. Anchor captured frames
      * when that READ is actually submitted, not when the graph starts. */
     if (in && in->stage==NaGraphRunning && in->stream->next && !r->origin_set[1])
         origin(r,1);
-    /* An opt-in, unpublished input probe owns its own failure. Keep healthy
+    /* An input READ failure belongs to that input graph. Keep healthy
      * output/VI running while its original CLOSE/UNMAP drain continues. */
-    if (!r->capture_proven && probe>=NaProbeStarting && in && in->error) {
-        if (probe<=NaProbeDraining) {
+    if (in && in->error && (r->capture_proven || probe>=NaProbeStarting)) {
+        if (!r->capture_proven && probe<=NaProbeDraining) {
             if (!r->probe.error) r->probe.error=in->error;
             __atomic_store_n(&r->probe.state,NaProbeDraining,__ATOMIC_RELEASE);
         }
@@ -292,7 +303,7 @@ int na_runtime_poll(NaRuntime *r,uint64_t now) {
     e=na_prm_poll(r->prm,now);
     if (e<0 && e!=NA_OFFLINE && !r->fault) r->fault=e;
     if (!r->fault && !__atomic_load_n(&r->disabled,__ATOMIC_ACQUIRE) && r->engine.session->online) {
-        r->status.state=NaAudioOutputReady|(r->capture_proven ? NaAudioInputReady:0);
+        r->status.state=NaAudioOutputReady|(r->capture_proven && in && !in->error && !in->cleanup_error ? NaAudioInputReady:0);
         __atomic_store_n(&r->service_ready,1,__ATOMIC_RELEASE);
     } else {r->status.state=r->fault ? NaAudioFault:0;__atomic_store_n(&r->service_ready,0,__ATOMIC_RELEASE);}
     for (unsigned i=0;i<2;++i) if (r->engine.graph[i]) {

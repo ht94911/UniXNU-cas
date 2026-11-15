@@ -157,6 +157,14 @@ int na_stream_take(NaStream *s,void *capture,uint32_t capacity,uint32_t *bytes) 
     memset(b,0,sizeof *b);return NA_OK;
 }
 void na_stream_stop(NaStream *s) { if (s) {s->running=0;s->retiring=1;} }
+int na_stream_resume(NaStream *s,int stop_ack) {
+    if (!s || !s->capture || !stop_ack || !s->handle || !s->generation ||
+        s->running || !s->retiring || s->quarantine || s->in_flight ||
+        s->next!=s->returned) return NA_OWNERSHIP;
+    for (unsigned i=0;i<NA_DMA_SLOTS;++i)
+        if (s->slot[i].state!=NaBufferFree) return NA_OWNERSHIP;
+    s->retiring=0;s->next=s->returned=s->frames=0;return NA_OK;
+}
 void na_stream_expire(NaStream *s,uint64_t now) {
     if (!s) return;
     for (unsigned i=0;i<NA_DMA_SLOTS;++i)

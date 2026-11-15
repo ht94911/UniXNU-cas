@@ -50,6 +50,9 @@ void na_stream_rejection_words(const NaStream *s,uint32_t out[NA_DONE_REJECTION_
  * Capture copies precisely length bytes from offset, never modulo a bad offset. */
 int na_stream_take(NaStream *s,void *capture,uint32_t capacity,uint32_t *bytes);
 void na_stream_stop(NaStream *s);
+/* Retained capture only: STOP was acknowledged and every submitted buffer
+ * was returned and consumed. Preserve the original DSP map and generation. */
+int na_stream_resume(NaStream *s,int stop_ack);
 void na_stream_expire(NaStream *s,uint64_t now);
 void na_stream_lost(NaStream *s);
 /* Explicit proofs from graph manager/platform; a GLINK reconnect is NOT proof.

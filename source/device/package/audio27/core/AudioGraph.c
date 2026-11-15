@@ -27,7 +27,7 @@ int na_graph_request(NaGraph *g,int start) {
      * first error rather than masking it with a new ownership error. */
     if (start && g->error) return g->error;
     if (start && (g->stage==NaGraphFault || g->stream->quarantine)) return NA_OWNERSHIP;
-    if (start && g->stage>=NaGraphMuting) return NA_BUSY;
+    if (start && g->stage>=NaGraphMuting && g->stage!=NaGraphPaused) return NA_BUSY;
     g->want=!!start;
     if (!start && g->stage!=NaGraphOff) na_stream_stop(g->stream);
     return NA_OK;
@@ -119,6 +119,17 @@ int na_graph_poll(NaGraph *g,uint64_t now) {
     if (!g || now>UINT64_MAX-5000) return NA_ARGUMENT;
     NaStream *s=g->stream;
     if (g->stage==NaGraphFault) return g->error ? g->error : NA_OWNERSHIP;
+    if (g->stage==NaGraphPaused) {
+        if (!g->retain_on_stop || g->error || g->cleanup_error || s->quarantine ||
+            !g->session->online || s->generation!=g->session->generation)
+            return cleanup(g);
+        if (!g->want || s->in_flight || s->next!=s->returned) return NA_OK;
+        int r=na_stream_resume(s,1);
+        if (r) {g->error=r;return cleanup(g);}
+        /* sheng's startInput re-prepares/restarts the retained graph; it
+         * does not reset SoundWire or remap the input on each recording. */
+        g->stage=NaGraphPrepare;
+    }
     if (g->stage==NaGraphRelease) return finish(g,now);
     if (g->stage==NaGraphMuting) return muted(g,now);
     if (g->stage==NaGraphOff) {
@@ -157,7 +168,12 @@ int na_graph_poll(NaGraph *g,uint64_t now) {
         case NaGraphStart:
             r=na_stream_start(s);if (r) {g->error=r;return cleanup(g);}
             g->stage=NaGraphRunning;break;
-        case NaGraphStop:g->start_possible=0;g->stage=NaGraphClose;break;
+        case NaGraphStop:
+            g->start_possible=0;
+            if (g->retain_on_stop && s->capture && !g->error && !g->cleanup_error)
+                g->stage=NaGraphPaused;
+            else g->stage=NaGraphClose;
+            break;
         case NaGraphClose:g->close_ack=1;g->open_possible=0;g->stage=NaGraphUnmap;break;
         case NaGraphUnmap:
             g->unmap_ack=1;
@@ -169,7 +185,7 @@ int na_graph_poll(NaGraph *g,uint64_t now) {
         }
     }
     if (g->stage<NaGraphStop && (!g->want || s->quarantine || !g->session->online)) return cleanup(g);
-    if (g->stage==NaGraphRunning) return NA_OK;
+    if (g->stage==NaGraphRunning || g->stage==NaGraphPaused) return NA_OK;
     int r=send_command(g,now);
     if (r==NA_BUSY) return NA_PENDING; /* not queued; bounded owner deadline */
     if (r<0) {

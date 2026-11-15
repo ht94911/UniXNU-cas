@@ -29,11 +29,14 @@ typedef struct {
 } NaGraphOps;
 enum { NaGraphOff,NaGraphEndpoint,NaGraphMap,NaGraphOpen,NaGraphConfig,NaGraphPrepare,
        NaGraphStart,NaGraphRunning,NaGraphMuting,NaGraphStop,NaGraphClose,NaGraphUnmap,
-       NaGraphRelease,NaGraphFault };
+       NaGraphRelease,NaGraphFault,NaGraphPaused };
 typedef struct {
     NaSession *session;NaStream *stream;NaTopology topology;NaGraphOps ops;
     uint32_t stage,token,config_index,want,endpoint_owned;
     uint32_t map_possible,open_possible,start_possible,close_ack,unmap_ack;
+    /* System input STOP keeps its prepared codec and original mapping.
+     * Only an acknowledged STOP and returned DMA can enter Paused. */
+    uint32_t retain_on_stop;
     uint64_t enqueue_deadline,endpoint_deadline;
     /* Optional worker-owned diagnostic time. The five-second endpoint budget
      * still counts hardware and scheduler time; DSP command deadlines do not
