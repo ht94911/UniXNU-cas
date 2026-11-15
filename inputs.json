@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Audio101 restores fourteen missing original mono TX defaults before first capture and reapplies digital0dB after DEC2 enable. Retain100 system PCM gain,098 STOP retention and081 output. Existing MIC readback45 words; actual firstPCM/repeat/level pending.",
+  "purpose": "Audio102 sets original single-bit PDM block format0 on both master and slave banks. Original stop preserves this measured control; active port sampling was not obtained. Retain101 TX defaults,100 system PCM gain,098 repeat flow and081 playback. Actual firstPCM/repeat pending.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "00787cfebf10a49d778609d62e8ac947b5b18e88",
+  "device_revision": "ab45b24d583109bc346077afbd1696a8bcb717e5",
   "soc_revision": "703d7b4bb00904b4a6e5d96f9e9bf72eec170f6b",
   "xcode": "26.6",
   "files": {
@@ -219,7 +219,7 @@
     "source/device/package/audio27/platform/AudioSmmu.h": "41401f1b97e3481c7e5cc3e02c47f926e91eec9fa34f4a48981a3fc3b723cddd",
     "source/device/package/audio27/upstream/ShengGpr.c": "c4f498f07e2cb601b593e64a8d32474a21d6a87375618e1a67b99d52c5d3160e",
     "source/device/package/audio27/platform/SoundWire.h": "4a7766b35144477400821afca1a9b264688f969353f8818dd99ef05ad9e677d8",
-    ".github/workflows/nezha-ios27-native.yml": "79a99ee1c93360c8d401edaa7c485fe98082c52fee6ef8c8652942dd30505533",
+    ".github/workflows/nezha-ios27-native.yml": "ec7951074ae4639f93924f5012ab581559b27b7b3c88c61581f90121b3b17610",
     "source/device/package/audio27/upstream/ShengGpr.h": "a274dded1f4d1e2709b9f966759bcb1f57d12747ee0f57743dea1fa97d95d23e",
     "source/device/package/audio27/os/NezhaAudioNative.h": "c6944299b8751aae8b4041ebf8bcdfe71ccd25e3de5289240517e75ce1b17e06",
     "source/device/package/audio27/upstream/ShengAudioReach.h": "b135177a5feb3e24e0d8a6aabb301600e2c37078b970a09ada6e8eb7bb6a5b98",
@@ -280,7 +280,7 @@
     "source/device/package/audio27/platform/AudioSmmu.c": "9a0b40fb61392d11c7e61ab8015d1cbfa16d49e4892fc49f20be5e40c0aa274b",
     "source/device/package/audio27/core/AudioGraph.c": "4a7ec459ea2a83b40b4f70ff2444c2c4e90e179d6565007538bcfd8b7e0ab910",
     "source/device/package/audio27/platform/AdspLink.h": "ee9d498a55641eabc0ff8b7d0496037bc3d860bd7a1fd3f8e0519db821ddca4d",
-    "source/device/package/audio27/platform/Wcd9395Capture.c": "6725d5977cd1b134b228391e31abbe35483171616924365edbe0d78787ce3208",
+    "source/device/package/audio27/platform/Wcd9395Capture.c": "02fb0e8a382e2a18e1f6088cb06afe8bbeb63b0a5cfb234efc17a737335b8512",
     "source/device/package/audio27/upstream/GeniI2c.h": "8028a263a7c7dd24f41ed1e58613442ff4fc9b25812a6e12ff48d2640d8b24a5",
     "source/device/package/audio27/os/NezhaAudioService.cpp": "1b167c549d41984635520d86e916c4552fc0c09f2240ba0b3c13cd23144a5884",
     "source/device/package/audio27/platform/AdspPower.h": "82dab228d396b3053aeac43b5d5ba7cbb28c19aa41cef88438392acfbbcb251b",
@@ -399,15 +399,15 @@
   "audio": {
     "base": "GPU023",
     "base_device_revision": "673cde869b7378658b470c4e6b2b9a1766b99411",
-    "source_revision": "00787cfebf10a49d778609d62e8ac947b5b18e88",
-    "source_only_revision": "00787cfebf10a49d778609d62e8ac947b5b18e88",
+    "source_revision": "ab45b24d583109bc346077afbd1696a8bcb717e5",
+    "source_only_revision": "ab45b24d583109bc346077afbd1696a8bcb717e5",
     "hardware_enabled": false,
     "resource_census_enabled": true,
     "private_inputs": false,
     "HAL_target": "arm64e-apple-ios27.0",
     "shared_resource_owner": "703d7b4bb00904b4a6e5d96f9e9bf72eec170f6b",
     "private_input_slot_bytes": 35651584,
-    "previous_audio_behavior_source": "dc28248c4e229357d7040e22d2ee7b4d9bf31d5a",
+    "previous_audio_behavior_source": "00787cfebf10a49d778609d62e8ac947b5b18e88",
     "base_native_run": 42401029411,
     "base_Metal_revision": "eb59f022a326d03330d398b3c1dbcb6f0aeb633f",
     "diagnostic_glink_delay_ms": 20000,
@@ -578,7 +578,7 @@
       "patch_sha256": "916c930f4b6b2e7515329bafc8d2ab52ba014d4dacbc8c706e8cc5d603ff5a32",
       "HAL_and_hardware_source_unchanged": true
     },
-    "parent_candidate": "audio100",
+    "parent_candidate": "audio101",
     "playback_endpoint_trace_accounting": {
       "existing_TAS_owner_counter": true,
       "graphs": [
@@ -710,6 +710,8 @@
     "raw_probe_unscaled": true,
     "stock_TX_mono_defaults_restored": true,
     "TX_DEC2_digital_gain_reapplied_after_enable": true,
-    "codec_configuration_reused_from098": false
+    "codec_configuration_reused_from098": false,
+    "unpacked_single_bit_PDM_banks": true,
+    "master_slave_BLOCK_CTRL3": 0
   }
 }

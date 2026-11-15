@@ -71,7 +71,10 @@ static int ports(NaWcdCapture *c) {
     for (unsigned bank=0;bank<2;++bank) {
         uint16_t b=(uint16_t)(bank*0x10);
         const uint16_t reg[7]={0x122,0x123,0x124,0x125,0x126,0x127,0x128};
-        const uint8_t value[7]={NA_SWR_TX_ADC_LP_INTERVAL,0,0,0,0xff,1,1};
+        /* Single-bit PDM uses the stock unpacked block format on both ends.
+         * TX port configuration leaves BLOCK_CTRL3 at0; disable_ports only
+         * clears channels, so the measured post-recording0 remains valid. */
+        const uint8_t value[7]={NA_SWR_TX_ADC_LP_INTERVAL,0,0,0,0xff,0,1};
         for (unsigned i=0;i<7;++i) if ((r=na_swr_write(s,reg[i]+b,value[i]))) return r;
     }
     if ((r=na_swr_write(s,0x102,0)) || (r=na_swr_write(s,0x103,0)) || (r=na_swr_write(s,0x105,2))) return r;
@@ -86,7 +89,7 @@ static int ports(NaWcdCapture *c) {
         s->io.write(s->io.context,0x1228+b,1);
         s->io.write(s->io.context,0x1230+b,0);
         s->io.write(s->io.context,0x1234+b,0xf0);
-        s->io.write(s->io.context,0x1238+b,1);
+        s->io.write(s->io.context,0x1238+b,0);
         s->io.write(s->io.context,0x101c+b,NA_SWR_TX_FRAME_CTRL);
     }
     s->io.write(s->io.context,0x122c,0);
