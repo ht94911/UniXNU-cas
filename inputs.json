@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Audio102 sets original single-bit PDM block format0 on both master and slave banks. Original stop preserves this measured control; active port sampling was not obtained. Retain101 TX defaults,100 system PCM gain,098 repeat flow and081 playback. Actual firstPCM/repeat pending.",
+  "purpose": "Audio104 uses the existing finiteAudioQueue helper ownname and exactsignedidentity after audio102 actualrecordings passed. OriginaltaskProgramArguments-onlycache and two missingAudioSession services selected; noDSP/HAL/WCD/graph changes. Source-only Mac/CMS, privatecache/binaries/phoneevidence staylocal.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "ab45b24d583109bc346077afbd1696a8bcb717e5",
+  "device_revision": "1be2ee4d32cfeee3a34bd38b6686ff9ce5c6f520",
   "soc_revision": "703d7b4bb00904b4a6e5d96f9e9bf72eec170f6b",
   "xcode": "26.6",
   "files": {
@@ -219,7 +219,7 @@
     "source/device/package/audio27/platform/AudioSmmu.h": "41401f1b97e3481c7e5cc3e02c47f926e91eec9fa34f4a48981a3fc3b723cddd",
     "source/device/package/audio27/upstream/ShengGpr.c": "c4f498f07e2cb601b593e64a8d32474a21d6a87375618e1a67b99d52c5d3160e",
     "source/device/package/audio27/platform/SoundWire.h": "4a7766b35144477400821afca1a9b264688f969353f8818dd99ef05ad9e677d8",
-    ".github/workflows/nezha-ios27-native.yml": "c0bfeb82ad29499d85a90759827e638eadac051c17fb929372963f4be2cb35cc",
+    ".github/workflows/nezha-ios27-native.yml": "9b6b681aaf104baa9c81b7da243db34a8d608afcb49a0dd78a293bf99129b2e0",
     "source/device/package/audio27/upstream/ShengGpr.h": "a274dded1f4d1e2709b9f966759bcb1f57d12747ee0f57743dea1fa97d95d23e",
     "source/device/package/audio27/os/NezhaAudioNative.h": "c6944299b8751aae8b4041ebf8bcdfe71ccd25e3de5289240517e75ce1b17e06",
     "source/device/package/audio27/upstream/ShengAudioReach.h": "b135177a5feb3e24e0d8a6aabb301600e2c37078b970a09ada6e8eb7bb6a5b98",
@@ -344,8 +344,8 @@
     "source/device/package/audio27/core/AudioHalDiagnostics.h": "c1bc3943933d64ef926ebe2ec1d378f54e3c753fb2be2de0e098f340602e2ace",
     "source/device/patches/xnu-12377/vmwait-dyld-pager-source-release.patch": "916c930f4b6b2e7515329bafc8d2ab52ba014d4dacbc8c706e8cc5d603ff5a32",
     "source/device/package/audio27/hal/AudioReference.h": "86350d6b8a8e226cf2f2c4d3cacc2cbcb2022abc8c29420c6e3fe60a32b8d325",
-    "source/device/patches/xnu-12377/zzzzzz-nezha-audio-record-entry.patch": "e0cf4172058af45a30d8bf2124de5aa120ad989977e88137aa4a709ab177d86b",
-    "source/device/patches/xnu-12377/zzzzzz-nezha-audio-record-launch-identity.patch": "b5c66167fb319886099f1e28931e0c452e8196ad1061e46073ab4367f3ac48e5",
+    "source/device/patches/xnu-12377/zzzzzz-nezha-audio-record-entry.patch": "cca693ac37b387819ee1546c0fab0a345a7786696f52e8c5a55608e3a9f14a28",
+    "source/device/patches/xnu-12377/zzzzzz-nezha-audio-record-launch-identity.patch": "cf89b4794b6901f1e65144c7c0f91f123312aa092ae7d47931b2cfe41eb33d34",
     "source/device/patches/xnu-12377/zzzzzz-nezha-audio-addon-size.patch": "5087cd2e214f0fd88f7105a5de56af74e01ab8d6bc75b7c9a65a36ba07245159",
     "source/device/patches/xnu-12377/zzzzzz-nezha-audio-record-setexec.patch": "1ce1bb78ed46fb646ddff751daaea47b3026431ca480cd220ce46b34daf6fb44"
   },
@@ -399,15 +399,15 @@
   "audio": {
     "base": "GPU023",
     "base_device_revision": "673cde869b7378658b470c4e6b2b9a1766b99411",
-    "source_revision": "ab45b24d583109bc346077afbd1696a8bcb717e5",
-    "source_only_revision": "ab45b24d583109bc346077afbd1696a8bcb717e5",
+    "source_revision": "1be2ee4d32cfeee3a34bd38b6686ff9ce5c6f520",
+    "source_only_revision": "1be2ee4d32cfeee3a34bd38b6686ff9ce5c6f520",
     "hardware_enabled": false,
     "resource_census_enabled": true,
     "private_inputs": false,
     "HAL_target": "arm64e-apple-ios27.0",
     "shared_resource_owner": "703d7b4bb00904b4a6e5d96f9e9bf72eec170f6b",
     "private_input_slot_bytes": 35651584,
-    "previous_audio_behavior_source": "00787cfebf10a49d778609d62e8ac947b5b18e88",
+    "previous_audio_behavior_source": "ab45b24d583109bc346077afbd1696a8bcb717e5",
     "base_native_run": 42401029411,
     "base_Metal_revision": "eb59f022a326d03330d398b3c1dbcb6f0aeb633f",
     "diagnostic_glink_delay_ms": 20000,
@@ -578,7 +578,7 @@
       "patch_sha256": "916c930f4b6b2e7515329bafc8d2ab52ba014d4dacbc8c706e8cc5d603ff5a32",
       "HAL_and_hardware_source_unchanged": true
     },
-    "parent_candidate": "audio101",
+    "parent_candidate": "audio102",
     "playback_endpoint_trace_accounting": {
       "existing_TAS_owner_counter": true,
       "graphs": [
@@ -712,6 +712,16 @@
     "TX_DEC2_digital_gain_reapplied_after_enable": true,
     "codec_configuration_reused_from098": false,
     "unpacked_single_bit_PDM_banks": true,
-    "master_slave_BLOCK_CTRL3": 0
+    "master_slave_BLOCK_CTRL3": 0,
+    "recording_helper_build": 43767573031,
+    "recording_helper_cdhash": "fe5e807344e5d6af6c53068f8aaa593f847759a0",
+    "recording_helper_ownpath": "/usr/libexec/audio-record104",
+    "exact_audio_service_list": [
+      "com.apple.audio.AudioSession",
+      "com.apple.coremedia.routediscoverer.xpc"
+    ],
+    "original729_jobs_preserved": true,
+    "only_originaltaskProgramArguments_changed": true,
+    "hardware_andHAL_source_byte_identical102": true
   }
 }

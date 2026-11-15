@@ -29,7 +29,7 @@ diff --git a/bsd/kern/kern_exec.c b/bsd/kern/kern_exec.c
 +		static const char record_source[] = "/private/var/ngpu/audio-record-bin", record_point[] = "/usr/libexec";
 +		static volatile int record_stage, record_status;
 +		native_gpu_addon_mount(p, scratch, 0x600, record_source, sizeof(record_source), record_point,
-+		    sizeof(record_point), "/usr/libexec/launchd_cache_loader", "/usr/libexec/DumpPanic", &record_stage, &record_status);
++		    sizeof(record_point), "/usr/libexec/launchd_cache_loader", "/usr/libexec/audio-record104", &record_stage, &record_status);
 +		printf("nezha-audio: recorder executable mount stage %d status %d\n", record_stage, record_status);
 +	}
  	native_cryptex_os_view(p, scratch);
