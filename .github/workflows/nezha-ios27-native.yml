@@ -1,7 +1,7 @@
-name: nezha iPhone27 native camera node presence and actual credentials
+name: nezha iPhone27 original property reads
 on:
   push:
-    branches: [codex/ios27-camera044-native-node-presence-20261115]
+    branches: [codex/ios27-camera047-actual-property-reads-20261115]
 permissions:
   contents: read
 concurrency:

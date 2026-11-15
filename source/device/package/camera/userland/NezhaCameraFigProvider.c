@@ -2,6 +2,7 @@
 #include "NezhaCameraFigProvider.h"
 #include <Block.h>
 #include <dispatch/dispatch.h>
+#include <stdio.h>
 #include <string.h>
 
 /* HakiOS f128f1d camera_device.c is the device/stream property and graph
@@ -49,6 +50,37 @@ static bool key_is(CFStringRef key, const char *name)
 static CFStringRef string(const char *name)
 {
     return CFStringCreateWithCString(NULL, name, kCFStringEncodingUTF8);
+}
+
+/* Keep the existing daemon stderr bounded while observing the original
+ * source loader's requests. This does not change a property or its error. */
+static void report_property(bool stream, CFStringRef key, NezhaFigStatus status, CFTypeRef value)
+{
+    static unsigned reports[2];
+    if (__atomic_fetch_add(&reports[stream],1u,__ATOMIC_RELAXED) >= (stream ? 96u : 32u)) return;
+    char name[128]="<invalid>", text[128]="";
+    if (key && CFGetTypeID(key)==CFStringGetTypeID())
+        (void)CFStringGetCString(key,name,sizeof(name),kCFStringEncodingUTF8);
+    const char *kind="null";
+    long count=-1;
+    double scalar=0;
+    if (value) {
+        CFTypeID type=CFGetTypeID(value);
+        kind="object";
+        if (type==CFStringGetTypeID()) {
+            kind="string";
+            (void)CFStringGetCString(value,text,sizeof(text),kCFStringEncodingUTF8);
+        } else if (type==CFArrayGetTypeID()) {
+            kind="array";count=CFArrayGetCount(value);
+        } else if (type==CFDictionaryGetTypeID()) kind="dictionary";
+        else if (type==CFNumberGetTypeID()) {
+            kind="number";(void)CFNumberGetValue(value,kCFNumberDoubleType,&scalar);
+        } else if (type==CFBooleanGetTypeID()) {
+            kind="boolean";scalar=CFBooleanGetValue(value);
+        }
+    }
+    fprintf(stderr,"nezha-camera: %s copy key=%s status=%d kind=%s count=%ld scalar=%.3f text=%s\n",
+        stream ? "stream" : "device",name,status,kind,count,scalar,text);
 }
 
 static CFDictionaryRef dictionary(void)
@@ -253,7 +285,10 @@ static NezhaFigStatus stream_copy(NezhaFigObject o,NezhaFigString key,NezhaFigAl
         else if (key_is(key,"VideoOutputsEnabled")) value=CFRetain(s->enabled);
         else if (key_is(key,"VideoOutputsColorInfo")) value=CFRetain(s->colors);
     });
-    *(CFTypeRef *)out=value;return value ? 0 : Unavailable;
+    *(CFTypeRef *)out=value;
+    const NezhaFigStatus status=value ? 0 : Unavailable;
+    report_property(true,key,status,value);
+    return status;
 }
 
 static NezhaFigStatus stream_set(NezhaFigObject o,NezhaFigString key,const void *value)
@@ -381,8 +416,9 @@ static NezhaFigStatus device_copy(NezhaFigObject o,NezhaFigString key,NezhaFigAl
     if (key_is(key,"StreamArray")) *(CFTypeRef *)out=CFRetain(d->streams);
     else if (key_is(key,"Clock")) *(CFTypeRef *)out=CFRetain(CMClockGetHostTimeClock());
     else if (key_is(key,"SupportedPropertiesDictionary")) *(CFTypeRef *)out=CFRetain(d->supported);
-    else return Unavailable;
-    return 0;
+    const NezhaFigStatus status=*(CFTypeRef *)out ? 0 : Unavailable;
+    report_property(false,key,status,*(CFTypeRef *)out);
+    return status;
 }
 static NezhaFigStatus device_set(NezhaFigObject o,NezhaFigString key,const void *value)
 {

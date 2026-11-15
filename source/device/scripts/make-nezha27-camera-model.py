@@ -13,7 +13,8 @@ import plistlib
 
 def main_camera_model():
     stream = {'SensorWidth': 4096, 'SensorHeight': 3072,
-              'MinFrameRate': 30, 'MaxFrameRate': 30, 'AutoFocusSystem': 0}
+              'MinFrameRate': 30, 'MaxFrameRate': 30, 'AutoFocusSystem': 0,
+              'Binned': True}
     outputs = {
         '12MP': {'Width': 4096, 'Height': 3072, 'CaptureStreamFormat': 'Photo'},
         '1080p30': {'Width': 1920, 'Height': 1080, 'CaptureStreamFormat': 'Photo'},

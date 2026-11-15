@@ -1,14 +1,14 @@
 {
   "schema": 1,
-  "purpose": "Reuse HakiOS presence check during camera registration; keep original later native open permission and record actual UID/errno/devfs metadata after real043 unavailable node. Native037 kernel and camera hardware/ABI remain unchanged.",
-  "device_revision": "9aa37ccb2cd5b51ed211f53dfacb33f61a2b46f9",
+  "purpose": "Observe original device and stream copy-property keys, exact errors and returned values with bounded existing daemon stderr after actual045 published one Fig device but sourceInfo remained empty. Retain measured main model and native046 exact node access; no hardware or global policy change.",
+  "device_revision": "19559051813b7590a23a4094ea15cadbb4317a9a",
   "soc_revision": "3af99241822776cd8318b66f0e4093a4c8f20a2d",
   "files": {
     "source/device/package/camera/userland/NezhaCameraDeviceBackend.c": "2e9800611a60e38e83ebc66ac3c1c37b035eeba216e4a8dc7ed5653a0f9d2834",
     "source/device/package/camera/userland/NezhaCameraDeviceBackend.h": "bd221f90b66840935dad111de76c8a8dc35989b40f42712b2aa201e8245264d1",
     "source/device/package/camera/userland/NezhaCameraFactory.c": "a961fc0cb7d95ebc18a49c4eaf0d0a57bee95d85d28eceb1f9c67fcaa443c55a",
     "source/device/package/camera/userland/NezhaCameraFactory.h": "42934d370ccc191eeda6a29e103b86b457d03964af071db973182f731e62f5a8",
-    "source/device/package/camera/userland/NezhaCameraFigProvider.c": "c2abb0e449eb194a9921cce6598b5cad510be4ce53e83fd718ce2fe050db792f",
+    "source/device/package/camera/userland/NezhaCameraFigProvider.c": "1130320d46543e0f9ce2860f61cc1355662ffbb24012f48196b389fa5b80b507",
     "source/device/package/camera/userland/NezhaCameraFigProvider.h": "200a7ff1789334606562daaa060b8d78066e2878b8aa43698c4d7474eba5e918",
     "source/device/package/camera/userland/NezhaCameraFormats.c": "7074c95abad4fbc9f5e9182dd1bd7d2e73fd889ca949df7b472bd44615ba84c0",
     "source/device/package/camera/userland/NezhaCameraFormats.h": "8e23c3fbafab0b2c3659236b88dc676d3c48415da37d7f3cbd1d0c9fc0ae9e86",
@@ -28,21 +28,21 @@
     "source/device/package/camera/userland/upstream/hakios/camera_isp.c": "74551f27b7579a4c11aaca764a7d1ff682e6b20de955a89e23ceadb9b749d915",
     "source/device/package/camera/userland/upstream/hakios/camera_isp.h": "4124e9493c2a8ce94f1e50c952c89795d83f3e8d7fe3ceaa838a86ef7f1eff9f",
     "source/device/package/camera/userland/upstream/hakios/hakios.camera.h": "97f80aa60adb7d2a43d93f3edfde294ba0c447586069cb81fa9ac58c789d6444",
-    "source/device/scripts/make-nezha27-camera-model.py": "505d5742093c37f6ddacd7f34d70508ded7859f78bc8164d067336f3bc9124b2",
-    ".github/workflows/nezha-ios27-native.yml": "f9eb9c3a2e00f3769d77bf2e812f28ae184ad931d9d6f14a4f0c58fb0bb8129a"
+    "source/device/scripts/make-nezha27-camera-model.py": "acc5799c642bcbe523b939f48069eef91350d24658f0b2871e0b03c40a5c3b89",
+    ".github/workflows/nezha-ios27-native.yml": "cd9ca0ec62195cdfb10dfbf720b9efccdc7f76db27fe67cf65585988b6176a49"
   },
   "private_inputs_uploaded": false,
   "kernel_build_required": false,
   "prior_native": {
-    "run": 43700356315,
-    "head": "929690f75adf7f0a9c4228df158f736b3dab4826"
+    "run": 43722098669,
+    "head": "1c1338d51a3320dc0d2776f0bbcfcfc2bd30f37d"
   },
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
   "certificate_sha256": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
   "builder_sha256": "c26e5cd4c0c534a54993bb0d205b8d1a77cd35df89580229913f0ea32569ba07",
   "prior_userland": {
-    "run": 43714892290,
-    "head": "30eb78201143e61d3d11096d3f29bef0c9711406"
+    "run": 43717045506,
+    "head": "0c2c0f60c57a59bbe1a88d57346dc5f3796f6323"
   },
   "prior_failed_userland": {
     "run": 43708681116,
