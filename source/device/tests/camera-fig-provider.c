@@ -303,7 +303,10 @@ int main(void)
         CFDictionaryGetValue(supported_outputs,CFSTR("StillImage")));
     assert(CFNumberGetValue(CFDictionaryGetValue(primary_format,CFSTR("NativeWidth")),kCFNumberDoubleType,&value_number) && value_number==4096);
     assert(CFArrayGetCount(CFDictionaryGetValue(primary_format,CFSTR("SupportedPixelFormats")))==3);
-    NezhaFigObject device=NULL;assert(nezha_camera_device_create(NULL,NULL,&device)==0);
+    NezhaFigObject device=NULL;
+    assert(nezha_camera_device_create(NULL,CFSTR("Default"),&device)==0);
+    NezhaFigObject rejected=(void *)1;
+    assert(nezha_camera_device_create(NULL,(NezhaFigString)kCFBooleanTrue,&rejected)==-12780 && !rejected);
     CFRelease(formats);
     const struct NezhaFigDeviceVTable *dt=device->class;
     CFArrayRef streams=NULL;

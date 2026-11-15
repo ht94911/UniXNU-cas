@@ -53,3 +53,4 @@ zzzzzz-nezha-camera-dyld-policy.patch
 
 # Original camera sandbox reads its signed plugin through the media union view.
 zzzzzz-nezha-camera-media-view.patch
+zzzzzz-nezha-camera-node-access.patch

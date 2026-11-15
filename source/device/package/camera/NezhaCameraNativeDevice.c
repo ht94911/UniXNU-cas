@@ -27,6 +27,7 @@ static struct NezhaCameraNativeCaptureRequest request;
 static struct NezhaCameraNativeCaptureResult result;
 static bool made,opened,worker_active,reading,frame_ready;
 static int failure;
+static dev_t camera_dev;
 static uint64_t last_read;
 extern void thread_terminate_self(void);
 extern volatile uint32_t native_source_storage_boot_state;
@@ -170,6 +171,14 @@ static const struct cdevsw device_methods={
     .d_mmap=eno_mmap,.d_strategy=eno_strat,.d_type=0
 };
 
+/* Match the one owned character node by devfs tag and device identity.
+ * No pathname aliases or other device nodes receive the camera grant. */
+bool nezha_camera_native_node(vnode_t node)
+{
+    return made && node && vnode_ischr(node) && vnode_tag(node)==VT_DEVFS &&
+        vnode_specrdev(node)==camera_dev;
+}
+
 bool nezha_camera_native_device_init(const uint8_t *profile,size_t profile_bytes,
     const uint8_t *database,size_t database_bytes)
 {
@@ -185,7 +194,8 @@ bool nezha_camera_native_device_init(const uint8_t *profile,size_t profile_bytes
         .isolated_sensor_votes=true,.slot=80,.bank=8,.asid=0xfc00,.cci_queue_words=NezhaCameraCciCanoeQueue0Words,
         .command_database=database,.database_bytes=database_bytes,.checkpoint=checkpoint,.consumer=&consumer};
     const int major=cdevsw_add(-1,&device_methods);
-    made=major>=0 && devfs_make_node(makedev(major,0),DEVFS_CHAR,MobileUid,MobileGid,0600,"nezha-camera")!=NULL;
+    camera_dev=major>=0 ? makedev(major,0):0;
+    made=major>=0 && devfs_make_node(camera_dev,DEVFS_CHAR,MobileUid,MobileGid,0600,"nezha-camera")!=NULL;
     if (!made) { IOFreeData(staging,FrameBytes);staging=NULL; }
     return made;
 }

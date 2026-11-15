@@ -114,6 +114,7 @@ def main():
     p.add_argument('--framework', type=Path, required=True)
     p.add_argument('--rcodesign', type=Path, help='needed only for an unsigned target library')
     p.add_argument('--cache-header', type=Path, required=True)
+    p.add_argument('--model-plist', type=Path, help='locally generated measured camera model, outside the sealed CI result')
     p.add_argument('--out', type=Path, required=True)
     a = p.parse_args()
     dispatch = load(a.native_work / 'ci-dispatch.json')
@@ -178,8 +179,14 @@ def main():
     assert all(d['weak'] or d['path'] in cache for d in qualified['dependencies'])
     additions = {ADDON_PATH: (0o644, signed.read_bytes())}
     model_sha = None
-    if (result / 'NezhaCameraModel.plist').is_file():
-        model = sealed('NezhaCameraModel.plist')
+    model_input = None
+    if a.model_plist or (result / 'NezhaCameraModel.plist').is_file():
+        if a.model_plist:
+            model = a.model_plist.read_bytes()
+            model_input = {'origin': 'local-input', 'path': str(a.model_plist.resolve())}
+        else:
+            model = sealed('NezhaCameraModel.plist')
+            model_input = {'origin': 'sealed-native-result', 'path': 'NezhaCameraModel.plist'}
         described = plistlib.loads(model)
         assert len(described['AVCaptureDevices']) == 1
         sensor = described['AVCaptureDevices'][0]['MultiStream']['FigCaptureStreamFormats']['Photo']
@@ -216,6 +223,7 @@ def main():
               'signer_sha256': sha(a.rcodesign.read_bytes()) if not sdk.get('owner_4K_signed') else None,
               'Apple_signed_CI_library_preserved': bool(sdk.get('owner_4K_signed')),
               'camera_model_sha256': model_sha, 'cache_header_sha256': CACHE_SHA,
+              'camera_model_input': model_input,
               'addon_sha256': sha(revised), 'addon_original_files_preserved': len(old_files),
               'addon_original_compressed_bytes_preserved': True,
               'trustcache_sha256': sha(revised_trust.read_bytes()),

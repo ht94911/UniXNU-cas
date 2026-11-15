@@ -3,6 +3,7 @@
 #include <dlfcn.h>
 #include <pthread.h>
 #include <stdbool.h>
+#include <stdio.h>
 
 /* CoreMedia UUID a1e3885b22be3c7695c17821276212f6 and CMCaptureDevice
  * UUID 909cdfeb39563ad68f6f462d31023c89, from the selected 24A446 cache.
@@ -21,12 +22,19 @@ static void bind(void)
     void *core = dlopen("/System/Library/Frameworks/CoreMedia.framework/CoreMedia", RTLD_NOW | RTLD_LOCAL);
     void *capture = dlopen("/System/Library/PrivateFrameworks/CMCaptureDevice.framework/CMCaptureDevice",
         RTLD_NOW | RTLD_LOCAL);
-    if (!core || !capture) return;
+    if (!core || !capture) {
+        const char *error=dlerror();
+        fprintf(stderr,"nezha-camera: Fig framework unavailable core=%u capture=%u error=%s\n",
+            (unsigned)(core!=NULL),(unsigned)(capture!=NULL),error?error:"none");
+        return;
+    }
     create = (NezhaFigStatus (*)(NezhaFigAllocator, const void *, const void *, NezhaFigObject *))
         dlsym(core, "CMDerivedObjectCreate");
     storage = (void *(*)(NezhaFigObject))dlsym(core, "CMBaseObjectGetDerivedStorage");
     device_id = (const void *(*)(void))dlsym(capture, "FigCaptureDeviceGetClassID");
     stream_id = (const void *(*)(void))dlsym(capture, "FigCaptureStreamGetClassID");
+    fprintf(stderr,"nezha-camera: Fig API create=%u storage=%u deviceClass=%u streamClass=%u\n",
+        (unsigned)(create!=NULL),(unsigned)(storage!=NULL),(unsigned)(device_id!=NULL),(unsigned)(stream_id!=NULL));
 }
 
 static bool available(void)

@@ -5,6 +5,8 @@
 #include <dispatch/dispatch.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <stdio.h>
+#include <sys/stat.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -26,8 +28,24 @@ static struct {
 
 static bool ready(void *context)
 {
+    static unsigned reported;
     (void)context;
-    return access("/dev/nezha-camera",R_OK)==0;
+    /* HakiOS's vendor discovery tests presence. access(R_OK) uses real
+     * credentials, while the later open is the actual capture permission
+     * check. Registering a device must not begin a hardware reservation. */
+    const int exists=access("/dev/nezha-camera",F_OK);
+    const int presence_error=exists ? errno:0;
+    if (__atomic_fetch_add(&reported,1u,__ATOMIC_RELAXED)<4) {
+        const int readable=access("/dev/nezha-camera",R_OK);
+        const int read_error=readable ? errno:0;
+        struct stat info={0};
+        const int metadata=stat("/dev/nezha-camera",&info);
+        const int metadata_error=metadata ? errno:0;
+        fprintf(stderr,"nezha-camera: native node exists=%u errno=%d readable=%u errno=%d stat=%d uid=%u euid=%u owner=%u mode=%o\n",
+            (unsigned)(exists==0),presence_error,(unsigned)(readable==0),read_error,metadata_error,
+            (unsigned)getuid(),(unsigned)geteuid(),(unsigned)info.st_uid,(unsigned)info.st_mode);
+    }
+    return exists==0;
 }
 
 static void released(void *context)

@@ -1,7 +1,7 @@
-name: nezha iPhone27 sandbox-compatible readonly camera media view
+name: nezha iPhone27 exact original camera daemon native-node read grant
 on:
   push:
-    branches: [codex/ios27-camera037-media-view-20261115]
+    branches: [codex/ios27-camera046-scoped-native-node-20261115]
   workflow_dispatch:
 permissions:
   contents: read

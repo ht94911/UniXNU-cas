@@ -15,7 +15,11 @@ static atomic_uint native_reads,native_closes,native_opens;
 static atomic_bool bad_frame,has_frame;
 static dispatch_semaphore_t got_frame;
 int backend_test_access(const char *path,int mode)
-{ assert(!strcmp(path,"/dev/nezha-camera") && mode==R_OK);return 0; }
+{
+ assert(!strcmp(path,"/dev/nezha-camera") && (mode==R_OK || mode==F_OK));
+ if(mode==R_OK){errno=EACCES;return -1;}
+ return 0;
+}
 int backend_test_open(const char *path,int flags,...)
 { assert(!strcmp(path,"/dev/nezha-camera") && (flags&O_NONBLOCK));atomic_fetch_add(&native_opens,1);return 42; }
 int backend_test_close(int fd)

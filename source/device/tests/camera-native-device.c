@@ -17,6 +17,10 @@ static void (*queued_worker)(void *,wait_result_t);
 static unsigned runs,stops;
 static uint64_t ticks;
 static bool stream_failure,copy_failure;
+extern bool nezha_camera_native_node(vnode_t);
+int vnode_ischr(vnode_t n) {return n->character;}
+int vnode_tag(vnode_t n) {return n->tag;}
+dev_t vnode_specrdev(vnode_t n) {return n->device;}
 volatile uint32_t native_source_storage_boot_state=4;
 volatile unsigned nezha27_usb_reset_owner_ready=1;
 volatile int nezha_touch_stage=7;
@@ -65,6 +69,10 @@ int main(void)
  uint8_t profile=0,database=0;
  assert(nezha_camera_native_device_init(&profile,NezhaCameraProfileCapacity,&database,0x20000));
  assert(methods && !runs);
+ struct vnode own={1,VT_DEVFS,makedev(1,0)},other={1,VT_DEVFS,makedev(2,0)};
+ assert(nezha_camera_native_node(&own) && !nezha_camera_native_node(&other) && !nezha_camera_native_node(NULL));
+ own.character=0;assert(!nezha_camera_native_node(&own));own.character=1;
+ own.tag=0;assert(!nezha_camera_native_node(&own));own.tag=VT_DEVFS;
  assert(methods->d_open(0,0,0,NULL)==0);
  assert(methods->d_open(0,0,0,NULL)==EBUSY);
  uint8_t *buffer=malloc(sizeof(struct hakios_camera_frame)+15728640);assert(buffer);
