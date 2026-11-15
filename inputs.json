@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Grant only original signed cameracaptured UID501 mode6 read/stat of the one owned native devfs character node after actual044 EPERM. Preserve original failures, other nodes/processes/writes, Android and kernel capture. Retain model Binned alignment.",
+  "purpose": "Reuse the existing capture checkpoint callback and console to report actual native continuous worker stages, first copied RAW and result after early054/056 Android returns. No MMIO probes, additional waits, shader/media changes or Data reset.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "3578b1708d5bddc9bb8b6ff1d0453af989f0a800",
+  "device_revision": "6102fae1d192c346e2d067c5900d0a7c29c80a14",
   "soc_revision": "3af99241822776cd8318b66f0e4093a4c8f20a2d",
   "xcode": "26.6",
   "files": {
@@ -331,7 +331,7 @@
     "source/device/package/camera/userland/upstream/hakios/LICENSE": "26289124703e5931e099f915c784296b0c0fcf0485c743214365a3a82a514f05",
     "source/device/package/camera/userland/upstream/hakios/ORIGIN.json": "7eabf5e908032ac1a9cc8da1558ae4eb457448d77f671ca1093cfdaed4e6b4d8",
     "source/soc/tests/gcc-camera.c": "005c5b23e75a76a01048a47fa50b0422cb4ab31dffa1a5f303f9c60bf773352b",
-    "source/device/package/camera/NezhaCameraNativeDevice.c": "99317827f7e95977c94a7f091fdda278159123fc6f3afc8d7b242caf341eae1d",
+    "source/device/package/camera/NezhaCameraNativeDevice.c": "4f4212d942d70575066c2e66c07eb5610680cc074aec395eb23a22042d6d9f36",
     "source/device/package/camera/NezhaCameraNativeDevice.h": "57dc339cec222582c302b5976f632ae7094e093938991859a24d4d0ab526aed4",
     "source/device/package/camera/userland/NezhaCameraDeviceBackend.c": "2e9800611a60e38e83ebc66ac3c1c37b035eeba216e4a8dc7ed5653a0f9d2834",
     "source/device/package/camera/userland/NezhaCameraDeviceBackend.h": "bd221f90b66840935dad111de76c8a8dc35989b40f42712b2aa201e8245264d1",
@@ -364,7 +364,7 @@
     "source/device/tests/camera-platform/kernel-fixture/miscfs/devfs/devfs.h": "7c4f5fa6fa0a5f7c1ba44c3be9522d2e1b91f3ecc30ffb7e99b702e0bb35de77",
     "source/device/tests/camera-platform/kernel-fixture/sys/conf.h": "ce147d302223cb5e381c759b70ea05df604d9ccbe477218f959a69e1423bc956",
     "source/device/tests/camera-platform/kernel-fixture/sys/errno.h": "6e7de80b970121f1c7092f504ec8b3595924a9b9d6880801950caa7170b6d678",
-    "source/device/tests/camera-platform/kernel-fixture/sys/systm.h": "8b2b036e730cfd8aaadc2cf30f6f4c07aba8dfb0ebc0ae9987af190b84ce4d05",
+    "source/device/tests/camera-platform/kernel-fixture/sys/systm.h": "3747a6d440e94058ffe74bbad5c0ae0b32698663ccba25bd70d21ae3b4ac53f0",
     "source/device/tests/camera-platform/kernel-fixture/sys/uio.h": "37658ae82e16a2c6d563e8c25f26a1387b29b743de30722b424a3d9e639c320b",
     "source/device/tests/camera-platform/vendor-fixture/mach-o/dyld.h": "307168f3e4effbd8174e484e6e553ac3c982890efbdad288d37c27ab6e7f9658",
     "source/device/tests/camera-platform/vendor-fixture/mach-o/loader.h": "c10af6888039aa753cdcbefbcd312ac7a37d1c8fa9a1b608a5bcbc38a428cde8",
@@ -546,20 +546,25 @@
     "actual036_scoped_dyld_flags_after": 123,
     "actual036_camera_sandbox_path_refusal": true,
     "camera_media_readonly_union": true,
-    "owner4K_signed_camera_library": true
+    "owner4K_signed_camera_library": true,
+    "native_worker_existing_checkpoints_reported": true,
+    "native_worker_first_frame_reported": true,
+    "native_worker_result_reported": true,
+    "hardware_completion_claimed": false
   },
   "soc_previous_source": "5a71f9eb5724ff58eddf49f7f5baecc9f4233a7c",
   "userland_revision": "948715c429b092e18a82fa7fd851790124e071ed",
   "ci_native_sha256": "234270e28c98fab87cb1a2dc4aabcfd820403d90e3c47847109655f168a48932",
   "prior_camera_native": {
-    "run": 43621590165,
+    "run": 43722098669,
     "attempt": 1,
-    "head": "07b778a8f4a213e15b707ca263007eb76f570d0d",
-    "real_result": "PLL0 L config write 4444003e read44003e; RAW0; cleanup1/8; full quickAndroidroot release"
+    "head": "1c1338d51a3320dc0d2776f0bbcfcfc2bd30f37d",
+    "kernel_sha256": "756beb585495be3f76ec11b09182c3013ba37874f457525da5ec8804ca362738",
+    "real_result": "047 and053 sourceInfo1;054/056 spontaneousAndroidreturn before fullstack;physicalpreview pending"
   },
   "reviewed_upstream": {
-    "framework": "4c452e150dd1da266d969e1209db57951af923f2",
+    "framework": "0b6fa93eb48c0cc16e0a4647348730a2e210f418",
     "myron-next": "f1a1bfe561226dbb48e2904e0a2e74c67d2485ed",
-    "same-device": "94979af"
+    "hakios": "f128f1d8e2ef1f588002787c5efb94ec134ddeac"
   }
 }

@@ -52,8 +52,12 @@ static bool continuing(void *context)
 
 static bool checkpoint(unsigned step,unsigned a,unsigned b,unsigned c)
 {
-    (void)step;(void)a;(void)b;(void)c;
-    return continuing(NULL);
+    const bool on=continuing(NULL);
+    /* Reuse the capture engine's existing stage callback and kernel
+     * console. No extra MMIO, waits, file writes or IRQ logging. */
+    printf("NEZHA CAMERA: native worker step=%u a=%#x b=%#x c=%#x continuing=%u\n",
+        step,a,b,c,(unsigned)on);
+    return on;
 }
 
 static bool delivered(void *context,const struct NezhaCameraRaw10Layout *layout,
@@ -75,6 +79,9 @@ static bool delivered(void *context,const struct NezhaCameraRaw10Layout *layout,
     }
     lck_mtx_unlock(&camera_mutex);
     wakeup(&frame_ready);
+    if (sequence==1)
+        printf("NEZHA CAMERA: native first frame sequence=%u bytes=%u ticks=%llu\n",
+            sequence,(unsigned)bytes,(unsigned long long)ticks);
     return true;
 }
 
@@ -82,6 +89,8 @@ static void worker(void *argument,wait_result_t wait_result)
 {
     (void)argument;(void)wait_result;
     thread_set_thread_name(current_thread(),"nezha-camera-frames");
+    printf("NEZHA CAMERA: native worker waiting storage=%u usb=%u touch=%d\n",
+        native_source_storage_boot_state,nezha27_usb_reset_owner_ready,nezha_touch_stage);
     /* Publishing the node precedes camera-daemon discovery. The first
      * open waits for the same storage/USB/touch prerequisites as C2. */
     bool eligible=false;
@@ -93,6 +102,12 @@ static void worker(void *argument,wait_result_t wait_result)
         IOSleep(50);
     }
     const bool okay=!continuing(NULL) || (eligible && nezha_camera_native_capture(&request,&result));
+    printf("NEZHA CAMERA: native worker result=%u eligible=%u step=%u status=%u "
+        "resources=%u/%u/%u frames=%u sensor=%u writes=%u irq=%#x smmu=%#x cleanup=%u/%u\n",
+        (unsigned)okay,(unsigned)eligible,result.step,result.status,
+        (unsigned)result.resources.step,result.resources.status,result.resources.detail,
+        result.frames.frames,result.sensor_status,(unsigned)result.applied_writes,
+        result.irq_fault,result.smmu_fault.status,(unsigned)result.cleaned,(unsigned)result.cleanup_step);
     lck_mtx_lock(&camera_mutex);
     if (!okay) failure=EIO;
     else if (opened) failure=EAGAIN; /* idle client must close before reopening */

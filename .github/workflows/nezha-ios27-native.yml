@@ -1,7 +1,7 @@
-name: nezha iPhone27 exact original camera daemon native-node read grant
+name: nezha iPhone27 native camera worker stage observation
 on:
   push:
-    branches: [codex/ios27-camera046-scoped-native-node-20261115]
+    branches: [codex/ios27-camera057-native-worker-stage-20261116]
   workflow_dispatch:
 permissions:
   contents: read
