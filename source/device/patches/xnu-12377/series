@@ -47,3 +47,6 @@ zzzzzz-nezha-camera-addon-size.patch
 
 # Exact signed once-only camera enumerator, including typed xpcproxy SETEXEC.
 zzzzzz-nezha-camera-discovery-identity.patch
+
+# Original camera daemon consumes its scoped signed plugin environment.
+zzzzzz-nezha-camera-dyld-policy.patch

@@ -1,7 +1,7 @@
-name: nezha iPhone27 signed system camera discovery launch
+name: nezha iPhone27 original signed camera plugin dyld policy
 on:
   push:
-    branches: [codex/ios27-camera034-discovery-launch-20261115]
+    branches: [codex/ios27-camera036-dyld-policy-20261115]
   workflow_dispatch:
 permissions:
   contents: read
