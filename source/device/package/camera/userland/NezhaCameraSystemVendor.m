@@ -7,6 +7,7 @@
 #include <objc/runtime.h>
 #include <ptrauth.h>
 #include <stdint.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -19,11 +20,14 @@
 static bool installed;
 static bool capture_present;
 static bool model_installed;
+static bool device_ids_installed;
 static intptr_t capture_slide;
 static IMP original;
 static IMP original_model_resource;
+static IMP original_device_ids;
 static const char selector_name[]="sharedCaptureDeviceVendorWithDefaultDeviceCreateFunction:";
 static const char model_selector_name[]="URLForResource:withExtension:subdirectory:";
+static const char device_ids_selector_name[]="deviceIDs";
 static const uint8_t capture_uuid[16]={0x99,0x5f,0xc2,0x2b,0x41,0xbd,0x37,0xb4,
     0x81,0x2f,0x26,0x86,0xb8,0x1c,0x26,0x94};
 typedef NezhaFigStatus (*CameraCreate)(NezhaFigAllocator,NezhaFigDictionary,NezhaFigObject *);
@@ -74,9 +78,44 @@ static id shared_vendor(id self,SEL selector,CameraCreate factory)
     if (status==0)
         factory=nezha_camera_device_create;
     const id vendor=((id (*)(id,SEL,CameraCreate))original)(self,selector,factory);
-    if (__atomic_fetch_add(&reported,1u,__ATOMIC_RELAXED)<4)
-        fprintf(stderr,"nezha-camera: vendor request backend=%d deviceVendor=%u\n",status,(unsigned)(vendor!=NULL));
+    if (__atomic_fetch_add(&reported,1u,__ATOMIC_RELAXED)<4) {
+        Class type=objc_getClass("BWFigCaptureDeviceVendor");
+        Ivar ivar=type ? class_getInstanceVariable(type,"_defaultDeviceCreateFunction") : NULL;
+        const bool layout=vendor && object_getClass(vendor)==type && ivar && ivar_getOffset(ivar)==8;
+        CameraCreate saved=NULL;
+        if (layout) memcpy(&saved,(const uint8_t *)vendor+8,sizeof(saved));
+        const uintptr_t stored=(uintptr_t)ptrauth_strip(saved,ptrauth_key_function_pointer);
+        const uintptr_t ours=(uintptr_t)ptrauth_strip(nezha_camera_device_create,ptrauth_key_function_pointer);
+        fprintf(stderr,"nezha-camera: vendor request backend=%d deviceVendor=%u savedLayout=%u savedFactory=%u savedOurs=%u\n",
+            status,(unsigned)(vendor!=NULL),(unsigned)layout,(unsigned)(stored!=0),(unsigned)(stored==ours));
+    }
     return vendor;
+}
+
+static id device_ids(id self,SEL selector)
+{
+    static unsigned reported;
+    id ids=((id (*)(id,SEL))original_device_ids)(self,selector);
+    if (__atomic_fetch_add(&reported,1u,__ATOMIC_RELAXED)<4) {
+        const unsigned long count=ids ? ((unsigned long (*)(id,SEL))objc_msgSend)(ids,sel_registerName("count")) : 0;
+        const bool main=ids && ((bool (*)(id,SEL,id))objc_msgSend)(ids,sel_registerName("containsObject:"),(id)CFSTR("Default"));
+        fprintf(stderr,"nezha-camera: vendor deviceIDs count=%lu default=%u\n",count,(unsigned)main);
+    }
+    return ids;
+}
+
+static void install_device_ids(void)
+{
+    if (device_ids_installed) return;
+    Class type=objc_getClass("BWFigCaptureDeviceVendor");
+    Method method=type ? class_getInstanceMethod(type,sel_registerName(device_ids_selector_name)) : NULL;
+    IMP current=method ? method_getImplementation(method) : NULL;
+    const uintptr_t address=(uintptr_t)ptrauth_strip(current,ptrauth_key_function_pointer);
+    if (!current || address!=(uintptr_t)(0x1b080b2b8ULL+capture_slide)) return;
+    original_device_ids=current;
+    method_setImplementation(method,(IMP)device_ids);
+    device_ids_installed=true;
+    fprintf(stderr,"nezha-camera: measured device list observer installed\n");
 }
 
 static bool uuid_matches(const struct mach_header_64 *header)
@@ -97,12 +136,13 @@ static bool uuid_matches(const struct mach_header_64 *header)
 
 static void image_added(const struct mach_header *header,intptr_t slide)
 {
-    if (installed && model_installed) return;
+    if (installed && model_installed && device_ids_installed) return;
     if (uuid_matches((const struct mach_header_64 *)header)) {
         capture_present=true;capture_slide=slide;
     }
     if (!capture_present) return;
     install_model_resource();
+    install_device_ids();
     if (installed) return;
     Class type=objc_getClass("BWFigCaptureDeviceVendor");
     Method method=type ? class_getClassMethod(type,sel_registerName(selector_name)) : NULL;

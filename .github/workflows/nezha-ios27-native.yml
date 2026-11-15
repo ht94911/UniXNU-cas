@@ -1,7 +1,7 @@
-name: nezha iPhone27 actual camera null-directory model lookup
+name: nezha iPhone27 actual vendor saved callback and device IDs
 on:
   push:
-    branches: [codex/ios27-camera039-model-null-directory-20261115]
+    branches: [codex/ios27-camera040-saved-vendor-factory-20261115]
 permissions:
   contents: read
 concurrency:
