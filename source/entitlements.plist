@@ -12,5 +12,7 @@
 	</array>
 	<key>com.apple.private.sandbox.profile:embedded</key>
 	<string>temporary-sandbox</string>
+	<key>com.apple.security.network.client</key>
+	<true/>
 </dict>
 </plist>

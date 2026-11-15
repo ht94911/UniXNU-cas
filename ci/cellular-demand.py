@@ -48,6 +48,7 @@ try:
         "application-identifier": "org.unixnu.nezha.cellular-demand",
         "com.apple.private.security.no-container": True,
         "com.apple.private.sandbox.profile:embedded": "temporary-sandbox",
+        "com.apple.security.network.client": True,
         "com.apple.security.exception.sysctl.read-write": ["debug.qcom_usb_userlog"],
     }
     assert plistlib.loads(entitlements.read_bytes()) == expected

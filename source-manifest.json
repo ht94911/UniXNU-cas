@@ -1,16 +1,16 @@
 {
   "schema": 1,
-  "purpose": "Sign the unchanged finite cellular request helper with the sameOS original temporary-sandbox profile string selected by the original exec parser. Replace ineffective031 no-sandbox entitlement; no request/TLS/deadline or modem change. Kernel exact helper hash qualified separately; public source and certificate only, CMS output.",
+  "purpose": "Sign the unchanged finite cellular request helper with the original network client entitlement and sameOS temporary-sandbox profile string selected by the original exec parser. Original temporary profile consumes network.client; own helper name removes irrelevant DumpPanic Autobox table; no request/TLS/deadline or modem change. Kernel exact helper hash qualified separately; public source and certificate only, CMS output.",
   "files": {
-    ".github/workflows/nezha-ios27-native.yml": "50f4e60d48488bf4bb019bf5ade7b5e988535a49933820339180a3d841ca666a",
+    ".github/workflows/nezha-ios27-native.yml": "eea414875ca00f000907f9193115a13c1ba8e2d17abe459f2e739021ef848517",
     "ci/artifact-recipient.pem": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
     "ci/artifacts.py": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
-    "ci/cellular-demand.py": "9220962b1204ee34bc0cffbcd0a1cc193ca02246d940ea922195d7cedcd111ee",
+    "ci/cellular-demand.py": "0139da4071b9966c3da3755f0b91e9987e0a5cb761801255719104ea700702de",
     "source/CellularDemand.mm": "989aaff69fc63e3d802aa4551943af5cf4e22df6247bb7ebe081314bf6bcc187",
     "source/QcomUserLogTransport.h": "6981a8a4863c80f0109de4e821c4ef2d72f75f143eb39f4a65a2abb2a4df4531",
     "source/QcomUserLogWire.h": "965d7aeaa4043bcceb151cd6331ce50faefe21f57ce7c91cf781a52b4917397b",
     "source/com.apple.iomfb_fdr_loader.plist": "a74a4bda2681cad546281340876c353bc5bd2000793057c7e048f40f1c148e11",
-    "source/entitlements.plist": "4b3e946cfc768dda6692a58a662a07251e318c37e09125042d231ba55d5b2283"
+    "source/entitlements.plist": "decff1e734d66c18c0941f593e114b7894afe076459d7d0f6ddeaf7e36c072a6"
   },
   "source_only": true,
   "phone_data": false,
