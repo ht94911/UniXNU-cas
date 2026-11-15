@@ -2,6 +2,7 @@
 #include "NezhaCameraFactory.h"
 #include "NezhaCameraFormats.h"
 #include <pthread.h>
+#include <stdio.h>
 
 /* HakiOS camera_device.c supplies the vendor factory sequence. The
  * selected H13ISPCaptureDeviceCreate stores x0/x1/x2 as allocator/options/
@@ -28,6 +29,7 @@ NezhaFigStatus nezha_camera_factory_bind(const struct NezhaCameraFigBackend *val
 NezhaFigStatus nezha_camera_device_create(NezhaFigAllocator allocator,
     NezhaFigDictionary options, NezhaFigObject *device)
 {
+    static unsigned reported;
     if (!device) return Invalid;
     *device=NULL;
     if (options && CFGetTypeID(options)!=CFDictionaryGetTypeID()) return Invalid;
@@ -36,10 +38,15 @@ NezhaFigStatus nezha_camera_device_create(NezhaFigAllocator allocator,
     const struct NezhaCameraFigBackend selected=backend;
     bool (*ready)(void *)=backend_ready;
     pthread_mutex_unlock(&mutex);
-    if (!available || !ready(selected.context)) return Unavailable;
+    const bool hardware_ready=available && ready(selected.context);
+    const bool report=__atomic_fetch_add(&reported,1u,__ATOMIC_RELAXED)<4;
+    if (report) fprintf(stderr,"nezha-camera: device factory bound=%u node=%u\n",
+        (unsigned)available,(unsigned)hardware_ready);
+    if (!hardware_ready) return Unavailable;
     CFArrayRef formats=nezha_camera_main_formats();
     if (!formats) return Unavailable;
     const NezhaFigStatus status=nezha_camera_fig_provider_create(allocator,&selected,formats,device);
+    if (report) fprintf(stderr,"nezha-camera: Fig device create status=%d object=%u\n",status,(unsigned)(*device!=NULL));
     CFRelease(formats);
     return status;
 }

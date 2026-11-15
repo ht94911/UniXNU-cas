@@ -1,7 +1,7 @@
-name: nezha iPhone27 actual frame port and timestamp metadata
+name: nezha iPhone27 system camera factory result
 on:
   push:
-    branches: [codex/ios27-camera022-metadata-20261115]
+    branches: [codex/ios27-camera038-system-factory-20261115]
 permissions:
   contents: read
 concurrency:

@@ -34,16 +34,21 @@ typedef NezhaFigStatus (*CameraCreate)(NezhaFigAllocator,NezhaFigDictionary,Nezh
  * other resource still uses its unchanged bundle and original method. */
 static id model_resource(id self,SEL selector,id resource,id extension,id subdirectory)
 {
+    static unsigned reported;
     const id bundle_id=((id (*)(id,SEL))objc_msgSend)(self,sel_registerName("bundleIdentifier"));
     const bool camera_bundle=bundle_id && ((bool (*)(id,SEL,id))objc_msgSend)
         (bundle_id,sel_registerName("isEqualToString:"),(id)CFSTR("com.apple.CMCapture"));
     const bool camera_file=resource && ((bool (*)(id,SEL,id))objc_msgSend)
         (resource,sel_registerName("isEqualToString:"),(id)CFSTR("AVCaptureSession.plist"));
-    if (camera_bundle && camera_file && !extension && subdirectory &&
-        access("/private/var/ngpu/camera/NezhaCameraModel.plist",R_OK)==0) {
+    const bool selected=camera_bundle && camera_file && !extension && subdirectory;
+    const bool readable=selected && access("/System/Library/MediaCapture/NezhaCameraModel.plist",R_OK)==0;
+    if (camera_file && __atomic_fetch_add(&reported,1u,__ATOMIC_RELAXED)<4)
+        fprintf(stderr,"nezha-camera: model lookup camera=%u extension=%u directory=%u readable=%u\n",
+            (unsigned)camera_bundle,(unsigned)(extension!=NULL),(unsigned)(subdirectory!=NULL),(unsigned)readable);
+    if (readable) {
         Class url=objc_getClass("NSURL");
         if (url) return ((id (*)(id,SEL,id))objc_msgSend)(url,sel_registerName("fileURLWithPath:"),
-            (id)CFSTR("/private/var/ngpu/camera/NezhaCameraModel.plist"));
+            (id)CFSTR("/System/Library/MediaCapture/NezhaCameraModel.plist"));
     }
     return ((id (*)(id,SEL,id,id,id))original_model_resource)(self,selector,resource,extension,subdirectory);
 }
@@ -64,9 +69,14 @@ static void install_model_resource(void)
 
 static id shared_vendor(id self,SEL selector,CameraCreate factory)
 {
-    if (nezha_camera_device_backend_bind()==0)
+    static unsigned reported;
+    const int status=nezha_camera_device_backend_bind();
+    if (status==0)
         factory=nezha_camera_device_create;
-    return ((id (*)(id,SEL,CameraCreate))original)(self,selector,factory);
+    const id vendor=((id (*)(id,SEL,CameraCreate))original)(self,selector,factory);
+    if (__atomic_fetch_add(&reported,1u,__ATOMIC_RELAXED)<4)
+        fprintf(stderr,"nezha-camera: vendor request backend=%d deviceVendor=%u\n",status,(unsigned)(vendor!=NULL));
+    return vendor;
 }
 
 static bool uuid_matches(const struct mach_header_64 *header)
