@@ -1,0 +1,69 @@
+diff --git a/security/mac_process.c b/security/mac_process.c
+--- a/security/mac_process.c
++++ b/security/mac_process.c
+@@ -78,6 +78,8 @@
+ #include <kern/task.h>
+ #include <kern/zalloc.h>
+ #include <pexpert/pexpert.h>
++#include <pexpert/device_tree.h>
++#include <sys/codesign.h>
+ 
+ #include <os/hash.h>
+ 
+@@ -915,11 +917,56 @@
+ // entry are valid: the constraint category of an owner or cryptex binary is not the platform one. The original release
+ // AMFI ignores its own amfi_* boot arguments, so the check is cleared here when the board asks for it. An option of the
+ // instrumented board only: the boot argument, not the default, decides.
++/* Reuse the qualified audio096 system-task entry for one cellular request.
++ * Match the selected payload and the already validated helper's exact code
++ * directory. xpcproxy's typed SETEXEC retains launchd as original parent. */
++static bool
++nezha_cellular_request_launch(proc_t p, struct image_params *imgp)
++{
++	DTEntry chosen = NULL;
++	const void *property = NULL;
++	unsigned int length = 0;
++	uint32_t selected = 0, demand = 0;
++	if (SecureDTLookupEntry(NULL, "/chosen", &chosen) != kSuccess ||
++	    SecureDTGetProperty(chosen, "nezha-cellular-launch", &property, &length) != kSuccess ||
++	    property == NULL || length != sizeof(selected)) {
++		return false;
++	}
++	memcpy(&selected, property, sizeof(selected));
++	if (SecureDTGetProperty(chosen, "nezha-cellular-demand", &property, &length) != kSuccess ||
++	    property == NULL || length != sizeof(demand)) {
++		return false;
++	}
++	memcpy(&demand, property, sizeof(demand));
++	struct _posix_spawnattr *attr = imgp->ip_px_sa;
++	bool spawn = (imgp->ip_flags & IMGPF_SPAWN) != 0;
++	bool setexec = (imgp->ip_flags & IMGPF_EXEC) != 0 &&
++	    attr && (attr->psa_flags & POSIX_SPAWN_SETEXEC) != 0;
++	if (selected != 29 || demand != 21 || (!spawn && !setexec) || imgp->ip_scriptvp ||
++	    attr == NULL || attr->psa_launch_type != CS_LAUNCH_TYPE_SYSTEM_SERVICE ||
++	    proc_original_ppid(p) != 1 || !(imgp->ip_csflags & CS_VALID)) {
++		return false;
++	}
++	struct cs_blob *blob = csvnode_get_blob(imgp->ip_vp, imgp->ip_arch_offset);
++	const uint8_t *hash = blob ? csblob_get_cdhash(blob) : NULL;
++	const char *identity = blob ? csblob_get_identity(blob) : NULL;
++	static const uint8_t helper_hash[CS_CDHASH_LEN] = {
++	    0xbd, 0xba, 0x7c, 0xe9, 0x16, 0x1f, 0x4e, 0xf8, 0x8b, 0x28,
++	    0xd1, 0xa2, 0x21, 0xd7, 0xb3, 0xf5, 0x3c, 0x39, 0x10, 0x16
++	};
++	return hash && identity &&
++	       strcmp(identity, "org.unixnu.nezha.cellular-demand") == 0 &&
++	       memcmp(hash, helper_hash, sizeof(helper_hash)) == 0;
++}
++
+ int
+ mac_proc_check_launch_constraints(proc_t curp, struct image_params *imgp, os_reason_t *reasonp)
+ {
+ 	uint32_t skip = 0;
+ 	if (PE_parse_boot_argn("sheng-no-lc", &skip, sizeof(skip)) && skip != 0) {
++		return 0;
++	}
++	if (nezha_cellular_request_launch(curp, imgp)) {
+ 		return 0;
+ 	}
+ 	char *fatal_failure_desc = NULL;

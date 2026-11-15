@@ -35,3 +35,7 @@ zzzz-native-shutdown-unmount-observe.patch
 # Signed iOS27 cache and executable views for the selected cellular request.
 zzzzzz-nezha-cellular-launch.patch
 zzzzzz-nezha-cellular-addon-size.patch
+
+# Qualified audio096 system-task entry, selected cellular29 and exact signed helper.
+zzzzzz-nezha-cellular-cached-entry.patch
+zzzzzz-nezha-cellular-launch-identity.patch
