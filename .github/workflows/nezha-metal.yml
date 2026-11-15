@@ -1,7 +1,7 @@
-name: nezha iPhone27 icon limits and pressure source 040
+name: nezha iPhone27 extern kernel lookup and tiled mip output 041
 on:
   push:
-    branches: [codex/ios27-gpu27-metal-full-040c-20261114]
+    branches: [codex/ios27-gpu27-metal-full-041-20261115]
   workflow_dispatch:
 permissions:
   contents: read
@@ -70,6 +70,9 @@ jobs:
       - name: Exercise actual Metal limits and ARC memory-pressure lifetime
         id: icon_limits
         run: device/ci/gpu-userland/logrun icon-limits python3 device/ci/gpu-userland/check-icon-limits.py --source unixnu/drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm --out "$LOGS/icon-limits"
+      - name: Exercise actual external kernel lookup and retained bitcode
+        id: extern_function
+        run: device/ci/gpu-userland/logrun extern-function python3 device/ci/gpu-userland/check-extern-function.py --unixnu unixnu --logs "$LOGS"
       - name: Check actual-source real Mesa trees,device lifetimes and swap API guards
         id: device_contexts
         run: device/ci/gpu-userland/logrun device-contexts python3 device/ci/gpu-userland/check-device-context-host.py --unixnu unixnu --logs "$LOGS"
@@ -114,24 +117,24 @@ jobs:
         id: plugin
         working-directory: unixnu
         run: ../device/ci/gpu-userland/logrun plugin python3 scripts/build-adreno-metal-plugin.py --target ios27 --iphone-24a446 --no-replay
-      - name: Bind unchanged runtime to prior host-test sources
+      - name: Bind changed runtime and test multi-level output planning
         id: runtime_source
-        run: device/ci/gpu-userland/logrun runtime-source python3 device/ci/gpu-userland/check-unchanged-runtime.py --unixnu unixnu --logs "$LOGS"
+        run: device/ci/gpu-userland/logrun runtime-source python3 device/ci/gpu-userland/check-multi-level-output.py --unixnu unixnu --logs "$LOGS"
       - name: Test the actual patched allocator and bind its complete source
         id: buffer_reserve
-        if: ${{ false }} # Exact unchanged runtime: reuse prior Mac tests, recorded separately.
+        if: ${{ false }} # This subsystem is unchanged; current multi-level output has separate checks.
         run: device/ci/gpu-userland/logrun buffer-reserve python3 device/ci/gpu-userland/check-buffer-reserve.py --unixnu unixnu --logs "$LOGS"
       - name: Check actual Vulkan recorder arguments and diagnostic links
         id: vulkan_operations
-        if: ${{ false }} # Exact unchanged runtime: reuse prior Mac tests, recorded separately.
+        if: ${{ false }} # This subsystem is unchanged; current multi-level output has separate checks.
         run: device/ci/gpu-userland/logrun vulkan-operations python3 device/ci/gpu-userland/check-vulkan-operations.py --unixnu unixnu --logs "$LOGS"
       - name: Check exact tiled bytes, edge padding and dispatch limits
         id: tiled_words
-        if: ${{ false }} # Exact unchanged runtime: reuse prior Mac tests, recorded separately.
+        if: ${{ false }} # This subsystem is unchanged; current multi-level output has separate checks.
         run: device/ci/gpu-userland/logrun tiled-words python3 device/ci/gpu-userland/check-tiled-words.py --unixnu unixnu --logs "$LOGS"
       - name: Check the retained edge preservation planner and byte oracle
         id: heap_copies
-        if: ${{ false }} # Exact unchanged runtime: reuse prior Mac tests, recorded separately.
+        if: ${{ false }} # This subsystem is unchanged; current multi-level output has separate checks.
         run: device/ci/gpu-userland/logrun heap-copies python3 device/ci/gpu-userland/check-heap-copies.py --unixnu unixnu --logs "$LOGS"
       - name: Verify the actual signed target and full-chain code selection
         id: full_target
@@ -160,6 +163,7 @@ jobs:
           OUTCOME_DISPLAY_DISCOVERY: ${{ steps.display_discovery.outcome }}
           OUTCOME_PIPELINE_CACHE: ${{ steps.pipeline_cache.outcome }}
           OUTCOME_ICON_LIMITS: ${{ steps.icon_limits.outcome }}
+          OUTCOME_EXTERN_FUNCTION: ${{ steps.extern_function.outcome }}
         run: |
           set -euo pipefail
           export PATH="$(brew --prefix openssl@3)/bin:$PATH"
@@ -205,6 +209,7 @@ jobs:
           DISPLAY_DISCOVERY: ${{ steps.display_discovery.outcome }}
           PIPELINE_CACHE: ${{ steps.pipeline_cache.outcome }}
           ICON_LIMITS: ${{ steps.icon_limits.outcome }}
+          EXTERN_FUNCTION: ${{ steps.extern_function.outcome }}
         run: |
           set -euo pipefail
           test "$TARGETS" = success
@@ -221,6 +226,7 @@ jobs:
           test "$DISPLAY_DISCOVERY" = success
           test "$PIPELINE_CACHE" = success
           test "$ICON_LIMITS" = success
+          test "$EXTERN_FUNCTION" = success
           test "$BUFFER_RESERVE" = skipped
           test "$VULKAN_OPERATIONS" = skipped
           test "$TILED_WORDS" = skipped

@@ -1,0 +1,875 @@
+diff --git a/NativeBridgeMetalFrontend.mm b/NativeBridgeMetalFrontend.mm
+index b517bbf..49aea34 100644
+--- a/NativeBridgeMetalFrontend.mm
++++ b/NativeBridgeMetalFrontend.mm
+@@ -1829,6 +1829,12 @@ static bool forEachLibraryEntry(NBLibrary *library,const std::function<bool(cons
+  });
+  return names;
+ }
++// Core Image's PrecompiledKernels::new_function uses this SPI on iPhone24A446.
++// It has the same name lookup and +1 ownership as newFunctionWithName:, including
++// TYPE 5 kernel functions whose retained library supplies the stitcher's bitcode.
++- (id<MTLFunction>)newExternFunctionWithName:(NSString *)name {
++ return [self newFunctionWithName:name];
++}
+ - (id<MTLFunction>)newFunctionWithName:(NSString *)name {
+  DetailSpan timing(22,(uintptr_t)(__bridge void *)self,(uintptr_t)__func__);
+  const uint64_t functionBegan=nowUs();
+diff --git a/README.md b/README.md
+index 239bf27..4d45bd9 100644
+--- a/README.md
++++ b/README.md
+@@ -19,6 +19,12 @@ also retains process lifetime under ARC, following upstream46fdc91, so its
+ existing resource-release handler remains available after initialization.
+ Actual icon latency and Core Image program creation remain hardware checks.
+ 
++Core Image's precompiled-kernel lookup on iPhone24A446 calls
++`newExternFunctionWithName:`. The library forwards it to the existing function
++lookup, retaining the same returned-function ownership and the library's
++stitching bitcode. Missing names remain nil. This also accepts ordinary functions
++as the runtime's corresponding library method does.
++
+ ## Memory reuse
+ 
+ Unused owned image backing can serve later pooled or dedicated images. Image spares expire after ten seconds and are reclaimed on allocation failure or memory pressure; they have no byte limit. Unused buffer reservations share a separate 64 MiB device budget across memory types. The room worker rechecks demand and reuses a spare of the same pool and memory type before allocating. If foreground completions restore room during allocation, the new owned buffer stays spare with its address object intact. Owned blocks are freed on the runtime's existing free thread; a full 64-item queue releases on the caller. Allocation failure reclaims spares and waits for posted frees before retrying. Imported memory and owner callbacks retain their release ordering.
+diff --git a/bridge/coreimage_host.mm b/bridge/coreimage_host.mm
+index af13c83..8287e95 100644
+--- a/bridge/coreimage_host.mm
++++ b/bridge/coreimage_host.mm
+@@ -12,6 +12,10 @@
+ #include "../NativeBridgeMetalFrontend.h"
+ extern "C" size_t native_bridge_metal_telemetry(char *, size_t);
+ 
++@protocol NBCoreImageLibrary
++- (id<MTLFunction>)newExternFunctionWithName:(NSString *)name;
++@end
++
+ static void onMissing(const char *cls, const char *sel) {std::fprintf(stderr, "missing selector: %s %s\n", cls, sel);}
+ 
+ int main(int argc, char **argv) {
+@@ -33,6 +37,18 @@ int main(int argc, char **argv) {
+             NSArray *externs = [(id)kernels respondsToSelector:@selector(externFunctionNames)] ? [(id)kernels performSelector:@selector(externFunctionNames)] : nil;
+             std::printf("EXTERNS %lu\n", (unsigned long)[externs count]);
+             if (![externs containsObject:@"_add"]) {std::printf("FAIL extern function names\n"); return 1;}
++            // The target's actual precompiled-kernel lookup uses this selector,
++            // not newFunctionWithName:constantValues:error:.
++            if (![(id)kernels respondsToSelector:@selector(newExternFunctionWithName:)]) {
++                std::printf("FAIL extern function selector\n"); return 1;
++            }
++            id<MTLFunction> external = [(id<NBCoreImageLibrary>)kernels newExternFunctionWithName:@"_add"];
++            if (!external || external.functionType != 4 || ![external.name isEqualToString:@"_add"]) {
++                std::printf("FAIL extern function lookup\n"); return 1;
++            }
++            if ([(id<NBCoreImageLibrary>)kernels newExternFunctionWithName:@"__absent_ci_kernel_fixture__"]) {
++                std::printf("FAIL absent extern function accepted\n"); return 1;
++            }
+             // As Apple's Metal answers (macOS 26.5.1): no names, the kernel by name, function type 4.
+             if (kernels.functionNames.count || add.functionType != 4) {std::printf("FAIL kernel library answers\n"); return 1;}
+         }
+diff --git a/bridge/extern_function_host.mm b/bridge/extern_function_host.mm
+new file mode 100644
+index 0000000..44b5ee3
+--- /dev/null
++++ b/bridge/extern_function_host.mm
+@@ -0,0 +1,99 @@
++// SPDX-License-Identifier: MIT
++// Compile the production frontend in this translation unit so the test invokes
++// NBLibrary's real Objective-C methods and retains its real kernel-function owner.
++#import "../NativeBridgeMetalFrontend.mm"
++#include <cassert>
++
++@protocol NBExternFunctionLookup
++- (id<MTLFunction>)newExternFunctionWithName:(NSString *)name;
++@end
++
++static NSMutableData *kernelLibraryFixture() {
++    std::vector<uint8_t> entry(4);
++    auto tag = [&](const char *name, const void *bytes, uint16_t length) {
++        entry.insert(entry.end(), name, name + 4);
++        entry.push_back((uint8_t)length);
++        entry.push_back((uint8_t)(length >> 8));
++        const auto *p = (const uint8_t *)bytes;
++        entry.insert(entry.end(), p, p + length);
++    };
++    const char name[] = "kernel_fixture";
++    const uint8_t type = 5;
++    const uint64_t bitcodeSize = 8, offsets[3] = {};
++    tag("NAME", name, sizeof name);
++    tag("TYPE", &type, sizeof type);
++    tag("MDSZ", &bitcodeSize, sizeof bitcodeSize);
++    tag("OFFT", offsets, sizeof offsets);
++    entry.insert(entry.end(), {'E', 'N', 'D', 'T'});
++    const uint32_t size = (uint32_t)entry.size(), count = 1;
++    memcpy(entry.data(), &size, sizeof size);
++    NSMutableData *data = [NSMutableData dataWithLength:88];
++    uint8_t *head = (uint8_t *)data.mutableBytes;
++    memcpy(head, "MTLB", 4);
++    head[10] = 1;
++    const uint64_t list = 88, bitcode = list + sizeof count + entry.size();
++    memcpy(head + 24, &list, sizeof list);
++    memcpy(head + 72, &bitcode, sizeof bitcode);
++    memcpy(head + 80, &bitcodeSize, sizeof bitcodeSize);
++    [data appendBytes:&count length:sizeof count];
++    [data appendBytes:entry.data() length:entry.size()];
++    const uint8_t payload[8] = {'B', 'C', 0xc0, 0xde, 1, 2, 3, 4};
++    [data appendBytes:payload length:sizeof payload];
++    return data;
++}
++
++@interface NBDispatchForwardingCheck : NBLibrary
++@property(nonatomic) NSUInteger calls;
++@property(nonatomic,strong) NSString *lastName;
++@property(nonatomic,strong) NBFunction *answer;
++@end
++@implementation NBDispatchForwardingCheck
++- (id<MTLFunction>)newFunctionWithName:(NSString *)name {
++    self.calls++;
++    self.lastName = name;
++    return [name isEqualToString:@"ordinary"] ? (id<MTLFunction>)self.answer : nil;
++}
++@end
++
++int main() {
++    @autoreleasepool {
++        const SEL external = @selector(newExternFunctionWithName:);
++        if (!class_getInstanceMethod([NBLibrary class], external)) {
++            puts("FAIL missing production newExternFunctionWithName:");
++            return 1;
++        }
++        unsigned cases = 0;
++        __weak NBLibrary *weakLibrary;
++        __weak NSData *weakStorage;
++        __attribute__((objc_precise_lifetime)) NBFunction *kept;
++        @autoreleasepool {
++            NSMutableData *storage = kernelLibraryFixture();
++            NBLibrary *library = [NBLibrary new];
++            library.storage = storage;
++            library.bytes = (const uint8_t *)storage.bytes;
++            library.length = storage.length;
++            weakLibrary = library;
++            weakStorage = storage;
++            assert([[library externFunctionNames] isEqualToArray:@[@"kernel_fixture"]]); ++cases;
++            kept = (NBFunction *)[(id<NBExternFunctionLookup>)library newExternFunctionWithName:@"kernel_fixture"];
++            assert(kept && kept.functionType == 4 && kept.handle == nullptr); ++cases;
++            assert(kept.library == library && [kept.sourceName isEqualToString:@"kernel_fixture"]); ++cases;
++            NSData *bitcode = functionBitcode(kept);
++            assert(bitcode.length == 8 && !memcmp(bitcode.bytes, "BC\xc0\xde", 4)); ++cases;
++        }
++        assert(weakLibrary && weakStorage); ++cases;
++        kept = nil;
++        assert(!weakLibrary && !weakStorage); ++cases;
++
++        NBDispatchForwardingCheck *proxy = [NBDispatchForwardingCheck new];
++        proxy.answer = [NBFunction new];
++        assert([(id<NBExternFunctionLookup>)proxy newExternFunctionWithName:@"ordinary"] == (id<MTLFunction>)proxy.answer); ++cases;
++        assert(proxy.calls == 1 && [proxy.lastName isEqualToString:@"ordinary"]); ++cases;
++        assert([(id<NBExternFunctionLookup>)proxy newExternFunctionWithName:@"absent"] == nil); ++cases;
++        assert(proxy.calls == 2 && [proxy.lastName isEqualToString:@"absent"]); ++cases;
++        assert([(id<NBExternFunctionLookup>)proxy newExternFunctionWithName:nil] == nil); ++cases;
++        assert(proxy.calls == 3 && proxy.lastName == nil); ++cases;
++        printf("PASS extern lookup: %u actual production selector, kernel ownership, bitcode and forwarding checks\n", cases);
++    }
++    return 0;
++}
+diff --git a/bridge/patches/0040-multi-level-tiled-output.patch b/bridge/patches/0040-multi-level-tiled-output.patch
+new file mode 100644
+index 0000000..a16356d
+--- /dev/null
++++ b/bridge/patches/0040-multi-level-tiled-output.patch
+@@ -0,0 +1,696 @@
++diff --git a/crates/metal2vulkan-runtime/src/texture/heap_tiled.rs b/crates/metal2vulkan-runtime/src/texture/heap_tiled.rs
++--- a/crates/metal2vulkan-runtime/src/texture/heap_tiled.rs
+++++ b/crates/metal2vulkan-runtime/src/texture/heap_tiled.rs
++@@ -132,7 +132,9 @@
++ //! a tight buffer of the image's elements (`heap_plane_layout`), and that buffer copied into
++ //! the image; back, the heap's bytes copied into the staging buffer again, the image into the
++ //! tight buffer, the kernel into the staging buffer (each element's bytes; every other byte as
++-//! the heap held it), and each level's bytes of each chain on into the heap. Each step is
+++//! the heap held it), and each level's bytes of each chain on into the heap. Eligible single-sample
+++//! word-wide outputs use one tile-coordinate dispatch per level; smaller elements or a level
+++//! outside the device's grid retain the generic all-level dispatch. Each step is
++ //! ordered after the one before by a full barrier, and the buffers are the texture's for its
++ //! life. The texture's CPU copies move each element between the heap's bytes and the caller's
++ //! as laid out (`TiledLayout::element`); a command that writes the bytes two ways merges as
++@@ -1599,9 +1601,33 @@
++     groups: [u32; 3],
++ }
++ 
+++/// Tile-coordinate dispatches for the move, when every level fits that form.
+++/// A multi-level output writes disjoint texel words and leaves all padding in
+++/// staging as the original heap copy left it. Multi-level input retains its
+++/// existing single dispatch, including its internal transfer-padding writes.
+++pub(crate) fn tiled_move_plans(
+++    levels: &[TiledLevelMove],
+++    into: bool,
+++    limits: [u32; 3],
+++) -> Option<Vec<(Vec<u8>, [u32; 3])>> {
+++    if levels.is_empty()
+++        || levels.len() > TiledTexelsModule::MAX_LEVELS as usize
+++        || (into && levels.len() > 1)
+++    {
+++        return None;
+++    }
+++    levels
+++        .iter()
+++        .map(|level| {
+++            TiledTexelsModule::tiled_dispatch(level, into)
+++                .filter(|(_, grid)| grid.iter().zip(limits).all(|(&n, limit)| n <= limit))
+++        })
+++        .collect()
+++}
+++
++ /// A heap texture's moves between its image and its elements tiled in the heap's bytes (the
++-/// module docs): the tight buffer of the image's elements, the shapes, and the kernel's two sets
++-/// (into the image, then back).
+++/// module docs): the tight buffer of the image's elements, the shapes, and one descriptor set
+++/// per dispatch into the image or back.
++ pub(crate) struct HeapTiledCopies {
++     /// Metal's layout of the texture's elements.
++     pub(crate) tiles: TiledTexture,
++@@ -1621,10 +1647,10 @@
++     /// moves are planned over.
++     planes: Vec<HeapPlane>,
++     tight_at: u64,
++-    /// The two shapes; held for the texture's life.
+++    /// The shapes of both moves; held for the texture's life.
++     _shapes: Buffer,
++     shapes_raw: vk::Buffer,
++-    moves: [Move; 2],
+++    moves: [Vec<Move>; 2],
++     kernel: OwnedKernel,
++     sets: OwnedSets,
++     preserve: Option<Vec<vk::BufferCopy>>,
++@@ -1704,6 +1730,12 @@
++ }
++ 
++ impl HeapTiledCopies {
+++    /// The recorded dispatch grids, for the production-path pixel regression.
+++    #[cfg(all(test, any(m2v_gpu, m2v_cpu_icd)))]
+++    pub(crate) fn output_dispatch_grids(&self) -> Vec<[u32; 3]> {
+++        self.moves[1].iter().map(|step| step.groups).collect()
+++    }
+++
++     /// The tight buffer's copies to and from the image, one a level, each in the image's
++     /// aspects, level and slices.
++     pub(crate) fn regions(&self) -> &[vk::BufferImageCopy] {
++@@ -1879,30 +1911,27 @@
++             )
++             .max(16);
++         let tight = device.own_buffer(tight_bytes + alignment - 1, options)?;
++-        let shapes = device.own_buffer(2 * SHAPE_SLOT, options)?;
++         let (tight_raw, tight_at) = tight.at(0);
++         let tight_at = tight_at.next_multiple_of(alignment);
++-        let (shapes_raw, shapes_at) = shapes.at(0);
++         let (staging_raw, staging_at) = (staging.raw(), staging.into.dst_offset);
++         let local = TiledTexelsModule::LOCAL_SIZE;
++-        let mut moves = Vec::new();
+++        let mut plans = Vec::new();
++         for into in [true, false] {
++             let invocations = u64::from(TiledTexelsModule::invocations(&levels, into));
++-            let direct = match levels.as_slice() {
++-                [level] => TiledTexelsModule::tiled_dispatch(level, into).filter(|(_, grid)| {
++-                    grid.iter()
++-                        .zip(
++-                            device
++-                                .properties()
++-                                .description
++-                                .limits
++-                                .max_compute_work_group_count,
++-                        )
++-                        .all(|(&used, allowed)| used <= allowed)
++-                }),
++-                _ => None,
++-            };
++-            let (shape, groups) = match direct {
+++            let tiled = (samples == 1 || levels.len() == 1)
+++                .then(|| {
+++                    tiled_move_plans(
+++                        &levels,
+++                        into,
+++                        device
+++                            .properties()
+++                            .description
+++                            .limits
+++                            .max_compute_work_group_count,
+++                    )
+++                })
+++                .flatten();
+++            let steps = match tiled {
++                 Some(plan) => plan,
++                 None => {
++                     let [x, y] = Self::grid(device, invocations).ok_or_else(|| {
++@@ -1912,13 +1941,29 @@
++                         TiledTexelsModule::shape(&levels, into, x * local).ok_or_else(|| {
++                             internal("a tiled heap texture of more levels than a shape")
++                         })?;
++-                    (shape, [x, y, 1])
+++                    vec![(shape, [x, y, 1])]
++                 }
++             };
++-            let at = shapes_at + if into { 0 } else { SHAPE_SLOT };
++-            moves.push(Move { shape, at, groups });
++-        }
++-        let [into, back] = <[Move; 2]>::try_from(moves)
+++            plans.push(steps);
+++        }
+++        let shape_count = plans.iter().map(Vec::len).sum::<usize>() as u64;
+++        let shapes = device.own_buffer(shape_count * SHAPE_SLOT, options)?;
+++        let (shapes_raw, shapes_at) = shapes.at(0);
+++        let mut next_slot = shapes_at;
+++        let moves: Vec<Vec<Move>> = plans
+++            .into_iter()
+++            .map(|steps| {
+++                steps
+++                    .into_iter()
+++                    .map(|(shape, groups)| {
+++                        let at = next_slot;
+++                        next_slot += SHAPE_SLOT;
+++                        Move { shape, at, groups }
+++                    })
+++                    .collect()
+++            })
+++            .collect();
+++        let [into, back] = <[Vec<Move>; 2]>::try_from(moves)
++             .map_err(|_| internal("a tiled heap texture's moves are two"))?;
++         let shape_bytes = 4 * u64::from(TiledTexelsModule::SHAPE_WORDS);
++         let kernel = device.owned_kernel(OwnedModule::TiledTexels)?;
++@@ -1928,6 +1973,7 @@
++             &kernel,
++             &[&into, &back]
++                 .iter()
+++                .flat_map(|steps| steps.iter())
++                 .map(|step| {
++                     vec![
++                         (tight_raw, tight_at, tight_bytes),
++@@ -1956,6 +2002,7 @@
++                 let (raw, _) = buffer.at(0);
++                 let bindings = [&into, &back]
++                     .iter()
+++                    .flat_map(|steps| steps.iter())
++                     .map(|step| {
++                         vec![
++                             (tight_raw, tight_at, tight_bytes),
++@@ -2028,7 +2075,7 @@
++         let Ok(kernel) = device.owned_kernel(OwnedModule::TiledImageCopy(words.texel)) else {
++             return;
++         };
++-        let at = self.moves[1].at;
+++        let at = self.moves[1][0].at;
++         let Ok(sets) = OwnedSets::write_each(
++             device,
++             &[kernel],
++@@ -2086,34 +2133,41 @@
++         into: bool,
++         sets: &OwnedSets,
++     ) {
++-        let (step, set) = match into {
++-            true => (&self.moves[0], sets.sets[0]),
++-            false => (&self.moves[1], sets.sets[1]),
+++        let (steps, first_set) = match into {
+++            true => (&self.moves[0], 0),
+++            false => (&self.moves[1], self.moves[0].len()),
++         };
++         // SAFETY: the caller's contract; the shape fits its slot, and the sets bind the
++         // texture's own buffers.
++         unsafe {
++-            device.cmd_update_buffer(command_buffer, self.shapes_raw, step.at, &step.shape);
+++            for step in steps {
+++                device.cmd_update_buffer(command_buffer, self.shapes_raw, step.at, &step.shape);
+++            }
++             Barrier::everything().record(device, command_buffer);
++             device.cmd_bind_pipeline(
++                 command_buffer,
++                 vk::PipelineBindPoint::COMPUTE,
++                 self.kernel.pipeline,
++             );
++-            device.cmd_bind_descriptor_sets(
++-                command_buffer,
++-                vk::PipelineBindPoint::COMPUTE,
++-                self.kernel.layout,
++-                0,
++-                &[set],
++-                &[],
++-            );
++-            device.cmd_dispatch(
++-                command_buffer,
++-                step.groups[0],
++-                step.groups[1],
++-                step.groups[2],
++-            );
+++            // Each level's output has separate texel words. Every shape has a
+++            // separate immutable slot during these dispatches; the original
+++            // barriers order their common input and their final copy back.
+++            for (index, step) in steps.iter().enumerate() {
+++                device.cmd_bind_descriptor_sets(
+++                    command_buffer,
+++                    vk::PipelineBindPoint::COMPUTE,
+++                    self.kernel.layout,
+++                    0,
+++                    &[sets.sets[first_set + index]],
+++                    &[],
+++                );
+++                device.cmd_dispatch(
+++                    command_buffer,
+++                    step.groups[0],
+++                    step.groups[1],
+++                    step.groups[2],
+++                );
+++            }
++             Barrier::everything().record(device, command_buffer);
++         }
++     }
++diff --git a/crates/metal2vulkan-runtime/src/tests/tiled_device_words.rs b/crates/metal2vulkan-runtime/src/tests/tiled_device_words.rs
++--- a/crates/metal2vulkan-runtime/src/tests/tiled_device_words.rs
+++++ b/crates/metal2vulkan-runtime/src/tests/tiled_device_words.rs
++@@ -642,6 +642,15 @@
++ /// copy-back, rather than a second implementation of their command sequence.
++ #[test]
++ fn fixed_heap_runtime_copies_preserve_pixels_padding_and_fallbacks() {
+++    fixed_heap_runtime_copies_for_levels(false);
+++}
+++
+++#[test]
+++fn multi_level_tiled_output_preserves_pixels_padding_and_merges() {
+++    fixed_heap_runtime_copies_for_levels(true);
+++}
+++
+++fn fixed_heap_runtime_copies_for_levels(multi_level: bool) {
++     use crate::binding_view::VkView;
++     use crate::resource::ResourceKey;
++     use crate::shadow::{
++@@ -650,14 +659,20 @@
++     use crate::shadow_copy_back::{word_format, WordView};
++     use crate::shadow_merge::{ScratchSpares, ShadowMerge};
++     use crate::texture::heap::{aligned_copy_planes, copy_plane_regions, heap_plane_layout};
++-    use crate::texture::heap_tiled::{Elements, HeapTiledCopies, TiledLayout, TiledTexture};
+++    use crate::texture::heap_tiled::{
+++        tiled_move_plans, Elements, HeapTiledCopies, TiledLayout, TiledTexture,
+++    };
++     use crate::texture::kept_image::KeptImages;
++     use crate::tracker::{Access, UseRange};
++     use crate::{CpuCacheMode, HazardTrackingMode, StorageMode, TextureDescriptor};
++     use metal2vulkan::metal::{PixelFormat, TextureType, TextureUsage};
++     use metal2vulkan::vk::{ComponentMapping, ImageAspectFlags, ImageUsageFlags, ImageViewType};
++     use std::sync::{atomic::AtomicU64, Arc};
++-    let scratch = Scratch::new("fixed-heap-runtime");
+++    let scratch = Scratch::new(if multi_level {
+++        "multi-level-heap-runtime"
+++    } else {
+++        "fixed-heap-runtime"
+++    });
++     let device = device(&scratch.0);
++     let mut direct_count = 0;
++     let mut fallback_count = 0;
++@@ -678,37 +693,66 @@
++             metal2vulkan::vk::Format::R32G32B32A32_UINT,
++         ),
++     ] {
++-        for [width, height] in [[64, 64], [129, 97], [1204, 2328]] {
+++        let cases = if multi_level {
+++            vec![(129, 97, 2), (536, 80, 2), (526, 844, 2), (1200, 2608, 12)]
+++        } else {
+++            vec![(64, 64, 1), (129, 97, 1), (1204, 2328, 1)]
+++        };
+++        for (width, height, level_count) in cases {
++             let tiled = TiledTexture::one(
++                 TiledLayout::of(
++                     unit,
++                     Elements::Texels,
++                     TextureType::Type2D,
++                     [width, height, 1],
++-                    1,
+++                    level_count,
++                     1,
++                 )
++                 .unwrap(),
++             );
++             let layout = &tiled.parts[0].layout;
++-            let level = &layout.levels[0];
++-            let mut movement = TiledLevelMove::new(
++-                unit as u32,
++-                [width as u32, height as u32],
++-                1,
++-                level.tile.map(|x| x as u32),
++-                level.across as u32,
++-                level.base as u32,
++-                layout.stride as u32,
++-                0,
++-                level.bytes as u32,
++-            );
++             let copy_alignment = device.shared().textures.copy_alignment;
++             let (planes, tight_bytes) = aligned_copy_planes(
++-                heap_plane_layout(format, pf, [width as u32, height as u32, 1], 1, 1).0,
+++                heap_plane_layout(format, pf, [width as u32, height as u32, 1], level_count, 1).0,
++                 copy_alignment,
++             );
++-            movement.tight_row_pitch = planes[0].pitch as u32;
+++            let movements: Vec<_> = layout
+++                .levels
+++                .iter()
+++                .zip(&planes)
+++                .map(|(level, plane)| {
+++                    let mut movement = TiledLevelMove::new(
+++                        unit as u32,
+++                        level.extent.map(|x| x as u32),
+++                        1,
+++                        level.tile.map(|x| x as u32),
+++                        level.across as u32,
+++                        level.base as u32,
+++                        layout.stride as u32,
+++                        plane.offset as u32,
+++                        level.bytes as u32,
+++                    );
+++                    movement.tight_row_pitch = plane.pitch as u32;
+++                    movement
+++                })
+++                .collect();
+++            if multi_level {
+++                let plans = tiled_move_plans(
+++                    &movements,
+++                    false,
+++                    device
+++                        .properties()
+++                        .description
+++                        .limits
+++                        .max_compute_work_group_count,
+++                )
+++                .expect("all levels fit tile-coordinate output");
+++                assert_eq!(plans.len(), level_count as usize);
+++                assert!(plans
+++                    .iter()
+++                    .all(|(shape, _)| shape[12..16] == 1u32.to_le_bytes()));
+++                assert!(tiled_move_plans(&movements, true, [65535; 3]).is_none());
+++            }
++             let regions = copy_plane_regions(&planes, 1);
++             assert!(planes[0].pitch.is_multiple_of(copy_alignment[1]));
++             let align = device
++@@ -786,11 +830,29 @@
++                     whole_heap.then_some(&heap),
++                 )
++                 .unwrap();
+++                if multi_level {
+++                    let grids = copies.output_dispatch_grids();
+++                    let wanted_grids: Vec<_> = tiled_move_plans(
+++                        &movements,
+++                        false,
+++                        device
+++                            .properties()
+++                            .description
+++                            .limits
+++                            .max_compute_work_group_count,
+++                    )
+++                    .unwrap()
+++                    .into_iter()
+++                    .map(|(_, grid)| grid)
+++                    .collect();
+++                    assert_eq!(grids, wanted_grids, "production records each level's grid");
+++                }
++                 assert!(copies.regions()[0]
++                     .buffer_offset
++                     .is_multiple_of(copy_alignment[0]));
++                 let actual_direct = copies.direct_for(heap_raw, false);
++-                let expected_direct = want_direct && (heap_at + prefix).is_multiple_of(align);
+++                let expected_direct =
+++                    !multi_level && want_direct && (heap_at + prefix).is_multiple_of(align);
++                 assert_eq!(actual_direct, expected_direct, "{label}");
++                 assert!(!copies.direct_for(vk::Buffer::null(), false));
++                 assert_eq!(
++@@ -803,6 +865,7 @@
++                     fallback_count += 1;
++                 }
++                 let mut desc = TextureDescriptor::texture_2d(pf, width, height, false);
+++                desc.mipmap_level_count = u64::from(level_count);
++                 desc.usage = TextureUsage::SHADER_READ
++                     | TextureUsage::SHADER_WRITE
++                     | TextureUsage::PIXEL_FORMAT_VIEW;
++@@ -853,7 +916,7 @@
++                     shadow_key: ResourceKey::new(),
++                     shadow_range: UseRange::Image {
++                         aspects: vk::ImageAspectFlags::COLOR,
++-                        levels: 0..1,
+++                        levels: 0..level_count,
++                         layers: 0..1,
++                     },
++                     tracked: identity.tracked,
++@@ -946,9 +1009,16 @@
++                     .collect();
++                 let original_tiles = &initial[prefix as usize..(prefix + tiled.size) as usize];
++                 let zero = vec![0; tight_bytes as usize];
++-                let wanted_linear = expected(&movement, true, &zero, original_tiles).0;
++-                let changed = expected(&movement, false, &replacement, original_tiles).1;
++-                let changed_linear = expected(&movement, true, &zero, &changed).0;
+++                let convert = |into, tight: &[u8], tiles: &[u8]| {
+++                    movements
+++                        .iter()
+++                        .fold((tight.to_vec(), tiles.to_vec()), |(t, p), movement| {
+++                            expected(movement, into, &t, &p)
+++                        })
+++                };
+++                let wanted_linear = convert(true, &zero, original_tiles).0;
+++                let changed = convert(false, &replacement, original_tiles).1;
+++                let changed_linear = convert(true, &zero, &changed).0;
++                 let mut wanted_heap = initial.clone();
++                 wanted_heap[prefix as usize..(prefix + tiled.size) as usize]
++                     .copy_from_slice(&changed);
++@@ -991,7 +1061,7 @@
++                                         .subresource_range(vk::ImageSubresourceRange {
++                                             aspect_mask: vk::ImageAspectFlags::COLOR,
++                                             base_mip_level: 0,
++-                                            level_count: 1,
+++                                            level_count,
++                                             base_array_layer: 0,
++                                             layer_count: 1,
++                                         });
++@@ -1184,19 +1254,195 @@
++                     );
++                     drop(lease);
++                     eprintln!(
++-                        "FIXED-HEAP-MERGE {width}x{height} unit{unit} {label}: kept independent word, changed image word and all padding"
+++                        "FIXED-HEAP-MERGE {width}x{height} levels{level_count} unit{unit} {label}: kept independent word, changed image word and all padding"
++                     );
++                 }
++                 eprintln!(
++-                    "FIXED-HEAP-PIPELINE {width}x{height} unit{unit} {label} direct{actual_direct}: two production round trips and all bytes passed"
+++                    "FIXED-HEAP-PIPELINE {width}x{height} levels{level_count} unit{unit} {label} direct{actual_direct}: two production round trips and all bytes passed"
++                 );
++             }
++         }
++     }
++-    assert!(direct_count > 0 && fallback_count > 0);
+++    assert!((multi_level || direct_count > 0) && fallback_count > 0);
++     eprintln!(
++         "FIXED-HEAP-PIPELINE direct={direct_count} fallback={fallback_count}; physical GPU performance not measured"
++     );
+++}
+++
+++#[test]
+++fn multi_level_output_grid_cost_on_cpu_vulkan() {
+++    use crate::texture::heap::{aligned_copy_planes, heap_plane_layout};
+++    use crate::texture::heap_tiled::{tiled_move_plans, tiled_word_grid, Elements, TiledLayout};
+++    use metal2vulkan::metal::{PixelFormat, TextureType};
+++    use metal2vulkan::vk::Format;
+++
+++    let scratch = Scratch::new("multi-level-grid-cost");
+++    let device = device(&scratch.0);
+++    for (width, height, count) in [(526, 844, 2), (1200, 2608, 12)] {
+++        let layout = TiledLayout::of(
+++            4,
+++            Elements::Texels,
+++            TextureType::Type2D,
+++            [width, height, 1],
+++            count,
+++            1,
+++        )
+++        .unwrap();
+++        let (planes, tight_len) = aligned_copy_planes(
+++            heap_plane_layout(
+++                Format::R8G8B8A8_UINT,
+++                PixelFormat::RGBA8Uint,
+++                [width as u32, height as u32, 1],
+++                count,
+++                1,
+++            )
+++            .0,
+++            device.shared().textures.copy_alignment,
+++        );
+++        let levels: Vec<_> = layout
+++            .levels
+++            .iter()
+++            .zip(&planes)
+++            .map(|(level, plane)| {
+++                let mut movement = TiledLevelMove::new(
+++                    4,
+++                    level.extent.map(|v| v as u32),
+++                    1,
+++                    level.tile.map(|v| v as u32),
+++                    level.across as u32,
+++                    level.base as u32,
+++                    layout.stride as u32,
+++                    plane.offset as u32,
+++                    level.bytes as u32,
+++                );
+++                movement.tight_row_pitch = plane.pitch as u32;
+++                movement
+++            })
+++            .collect();
+++        let tight: Vec<_> = (0..tight_len).map(|i| (i * 7 + 17) as u8).collect();
+++        let tiled: Vec<_> = (0..layout.size).map(|i| (i * 13 + 5) as u8).collect();
+++        let mut wanted = tiled.clone();
+++        for level in &levels {
+++            wanted = expected(level, false, &tight, &wanted).1;
+++        }
+++        let limits = device
+++            .properties()
+++            .description
+++            .limits
+++            .max_compute_work_group_count;
+++        let [x, y] = tiled_word_grid(
+++            u64::from(TiledTexelsModule::invocations(&levels, false)),
+++            [limits[0], limits[1]],
+++        )
+++        .unwrap();
+++        let generic = vec![(
+++            TiledTexelsModule::shape(&levels, false, x * 64).unwrap(),
+++            [x, y, 1],
+++        )];
+++        let split = tiled_move_plans(&levels, false, limits).unwrap();
+++        let input = device
+++            .new_buffer_with_bytes(&tight, ResourceOptions::shared())
+++            .unwrap();
+++        let output = device
+++            .new_buffer_with_bytes(&tiled, ResourceOptions::shared())
+++            .unwrap();
+++        let kernel = device.owned_kernel(OwnedModule::TiledTexels).unwrap();
+++        let binding = |buffer: &Buffer, length: u64| {
+++            let (raw, at) = buffer.at(0);
+++            (raw, at, length)
+++        };
+++        let mut all_shapes = Vec::new();
+++        let mut all_sets = Vec::new();
+++        for plan in [&generic, &split] {
+++            let shapes: Vec<_> = plan
+++                .iter()
+++                .map(|(shape, _)| {
+++                    device
+++                        .new_buffer_with_bytes(shape, ResourceOptions::shared())
+++                        .unwrap()
+++                })
+++                .collect();
+++            let ranges: Vec<_> = shapes
+++                .iter()
+++                .zip(plan)
+++                .map(|(shape, (bytes, _))| {
+++                    vec![
+++                        binding(&input, tight_len),
+++                        binding(&output, layout.size),
+++                        binding(shape, bytes.len() as u64),
+++                    ]
+++                })
+++                .collect();
+++            all_sets.push(OwnedSets::write(&device, &kernel, &ranges).unwrap());
+++            all_shapes.push(shapes);
+++        }
+++        let plans = [&generic, &split];
+++        let mut measured = [Vec::new(), Vec::new()];
+++        for index in [0, 1, 1, 0, 0, 1, 1, 0] {
+++            let start = Instant::now();
+++            device
+++                .submit_internal(|raw, command| {
+++                    let before = vk::MemoryBarrier::default()
+++                        .src_access_mask(
+++                            vk::AccessFlags::MEMORY_WRITE | vk::AccessFlags::HOST_WRITE,
+++                        )
+++                        .dst_access_mask(
+++                            vk::AccessFlags::SHADER_READ | vk::AccessFlags::SHADER_WRITE,
+++                        );
+++                    let after = vk::MemoryBarrier::default()
+++                        .src_access_mask(vk::AccessFlags::SHADER_WRITE)
+++                        .dst_access_mask(vk::AccessFlags::HOST_READ);
+++                    // SAFETY: the exact production shapes, all sets, input/output and
+++                    // per-level shape buffers remain alive through the synchronous submit.
+++                    unsafe {
+++                        raw.cmd_pipeline_barrier(
+++                            command,
+++                            vk::PipelineStageFlags::ALL_COMMANDS,
+++                            vk::PipelineStageFlags::COMPUTE_SHADER,
+++                            vk::DependencyFlags::empty(),
+++                            &[before],
+++                            &[],
+++                            &[],
+++                        );
+++                        raw.cmd_bind_pipeline(
+++                            command,
+++                            vk::PipelineBindPoint::COMPUTE,
+++                            kernel.pipeline,
+++                        );
+++                        for (step, (_, grid)) in plans[index].iter().enumerate() {
+++                            raw.cmd_bind_descriptor_sets(
+++                                command,
+++                                vk::PipelineBindPoint::COMPUTE,
+++                                kernel.layout,
+++                                0,
+++                                &[all_sets[index].sets[step]],
+++                                &[],
+++                            );
+++                            raw.cmd_dispatch(command, grid[0], grid[1], grid[2]);
+++                        }
+++                        raw.cmd_pipeline_barrier(
+++                            command,
+++                            vk::PipelineStageFlags::COMPUTE_SHADER,
+++                            vk::PipelineStageFlags::HOST,
+++                            vk::DependencyFlags::empty(),
+++                            &[after],
+++                            &[],
+++                            &[],
+++                        );
+++                    }
+++                })
+++                .unwrap();
+++            measured[index].push(start.elapsed().as_secs_f64() * 1000.0);
+++            assert_bytes(
+++                "both grid forms preserve all texels and padding",
+++                &output,
+++                &wanted,
+++            );
+++        }
+++        eprintln!("MULTILEVEL-GRID {width}x{height} levels{count} generic={:?} per-level={:?}; CPU Vulkan submit/wait wall ms, not A840 time",
+++                  measured[0], measured[1]);
+++        drop(all_shapes);
+++    }
++ }
++ 
++ /// Execute real sampled integer views of normalized, sRGB and floating images.
++diff --git a/crates/metal2vulkan-runtime/src/tests/heap_tiled.rs b/crates/metal2vulkan-runtime/src/tests/heap_tiled.rs
++--- a/crates/metal2vulkan-runtime/src/tests/heap_tiled.rs
+++++ b/crates/metal2vulkan-runtime/src/tests/heap_tiled.rs
++@@ -1537,6 +1537,32 @@
++             )
++         })
++         .collect()
+++}
+++
+++#[test]
+++fn tiled_output_plans_keep_unsupported_levels_on_the_generic_path() {
+++    use crate::texture::heap_tiled::tiled_move_plans;
+++    use metal2vulkan::bind::TiledTexelsModule;
+++    let layout = TiledLayout::of(4, Elements::Texels, T::Type2D, [129, 97, 1], 3, 1).unwrap();
+++    let levels = level_moves(&layout, 0);
+++    let plans = tiled_move_plans(&levels, false, [65535; 3]).unwrap();
+++    assert_eq!(plans.len(), 3);
+++    for ((shape, grid), level) in plans.iter().zip(&levels) {
+++        let expected = TiledTexelsModule::tiled_dispatch(level, false).unwrap();
+++        assert_eq!(*shape, expected.0);
+++        assert_eq!(*grid, expected.1);
+++    }
+++    assert!(tiled_move_plans(&levels, true, [65535; 3]).is_none());
+++    assert!(tiled_move_plans(&[], false, [65535; 3]).is_none());
+++    assert!(tiled_move_plans(&levels, false, [1, 1, 1]).is_none());
+++    for unit in [1, 2, 32, 64] {
+++        let mut changed = levels.clone();
+++        changed[1].unit = unit;
+++        assert!(tiled_move_plans(&changed, false, [65535; 3]).is_none());
+++    }
+++    let mut misaligned = levels.clone();
+++    misaligned[1].tight_first += 2;
+++    assert!(tiled_move_plans(&misaligned, false, [65535; 3]).is_none());
++ }
++ 
++ #[test]
++diff --git a/crates/metal2vulkan-runtime/README.md b/crates/metal2vulkan-runtime/README.md
++--- a/crates/metal2vulkan-runtime/README.md
+++++ b/crates/metal2vulkan-runtime/README.md
++@@ -31,6 +31,13 @@
++ runtime and on `metal2vulkan`: the runtime's calls take the translator's descriptors and Metal's
++ value types, which it does not re-export (`metal2vulkan::pipeline::RenderPipelineDescriptor`,
++ `metal2vulkan::metal::PixelFormat`, ...).
+++
+++Heap texture copies back to tiled bytes use a tile-coordinate dispatch for each
+++level when every single-sample level has 4-, 8- or 16-byte elements and fits the
+++device's dispatch limits. Each level retains its own shape and descriptor set.
+++The original image transfer, staging padding, copy-back ranges and independent
+++writer merges remain in place. Multi-level input, smaller elements and unsupported
+++grids retain the generic conversion.
++ 
++ ## Depending on it
++ 

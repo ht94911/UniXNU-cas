@@ -169,6 +169,16 @@ assert icon_limits['real_Mac_MTLDevice_getters'] and icon_limits['real_ARC_press
 assert icon_limits['old_ARC_disposal_reproduced']
 assert icon_limits['source_sha256']==hashlib.sha256((a.unixnu/'drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm').read_bytes()).hexdigest()
 assert b'base limits: %u fields of %zu bytes filled from the device' in data
+extern_function=json.loads((a.logs/'extern-function/report.json').read_text())
+assert extern_function['passed'] and extern_function['checks']==12
+assert extern_function['production_ObjectiveC_selector_executed'] and extern_function['previous_missing_selector_reproduced']
+assert extern_function['exact_kernel_bitcode_and_library_lifetime_verified']
+assert extern_function['source_sha256']==hashlib.sha256((root/'drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm').read_bytes()).hexdigest()
+assert extern_function['test_sha256']==hashlib.sha256((root/'drivers/AdrenoMetal/bridge/extern_function_host.mm').read_bytes()).hexdigest()
+multi_level=json.loads((a.logs/'multi-level-output/report.json').read_text())
+assert multi_level['passed'] and multi_level['exact_runtime_source_verified'] and multi_level['current_Mac_planner_tests_passed']
+target_symbols=subprocess.check_output(['nm',str(bundle/'NativeAdrenoMetal')],text=True)
+assert '-[NBLibrary newExternFunctionWithName:]' in target_symbols
 report=dict(actual_icon_limits_host=icon_limits,actual_pipeline_cache_host=cache_profile,actual_display_discovery=discovery_profile,actual_frame_observers=observer_profile,actual_UI_main_thread=client_profile,actual_render_wait_profile=wait_profile,actual_display_profile=display_profile,actual_sync_profile=sync_profile,initial_tile_store_error_propagation_source_bound=True,actual_target_checked=True,plugin_sha256=hashlib.sha256(data).hexdigest(),
             profile=profile,required_markers_present=True,iPad_raw_reader_markers_absent=True,
             bundle_signature_verified=True,host_pixel_result='legacy host010 failure retained;host GUI path not run by this build;A840 acceptance remains separate',
@@ -180,5 +190,6 @@ report=dict(actual_icon_limits_host=icon_limits,actual_pipeline_cache_host=cache
             actual_enum_stack_connection_offset=enum_offset,
             actual_Mac_source_bound_context_tests=contexts,
             real_A840_shader_or_UI_verified=False,phone_operations=False)
+report.update(actual_extern_function=extern_function,actual_multi_level_output=multi_level)
 (a.logs/'full-target-qualified.json').write_text(json.dumps(report,indent=2)+'\n')
 print(json.dumps({k:v for k,v in report.items() if k!='profile'},indent=2))

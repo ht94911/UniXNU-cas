@@ -1,0 +1,59 @@
+diff --git a/docs/drivers/adreno-metal.md b/docs/drivers/adreno-metal.md
+index dab6948..d4b71ad 100644
+--- a/docs/drivers/adreno-metal.md
++++ b/docs/drivers/adreno-metal.md
+@@ -1,5 +1,17 @@
+ # AdrenoMetal
+ 
++The frontend library answers Core Image's `newExternFunctionWithName:` through
++the existing function lookup, including extern kernel functions and their retained
++library bitcode. A missing name remains nil. This matches the selector used by
++the iPhone24A446 precompiled-kernel path; complete icon rendering remains a hardware
++check.
++
++Single-sample tiled heap output with multiple levels uses the existing
++tile-coordinate conversion once per eligible level. Each dispatch has its own
++shape and descriptor set; staging bytes, image transfers, copy-back ranges and
++independent-writer merges retain their original behavior. CPU Vulkan tests cover
++two-level and twelve-level images, padding and fallback layouts.
++
+ AdrenoMetal publishes a Metal device through `MTLAddDevice`. It translates AIR through metal2vulkan, compiles SPIR-V with Turnip, and submits work to [Adreno740](/drivers/adreno740). Firmware, power votes and display integration come from the board.
+ 
+ ## Rendering and interfaces
+diff --git a/docs/zh/drivers/adreno-metal.md b/docs/zh/drivers/adreno-metal.md
+index 2c9addc..d93bc9f 100644
+--- a/docs/zh/drivers/adreno-metal.md
++++ b/docs/zh/drivers/adreno-metal.md
+@@ -1,5 +1,13 @@
+ # AdrenoMetal
+ 
++前端库把 Core Image 实际使用的 `newExternFunctionWithName:` 接入现有函数查找，
++保留 extern 内核函数的库和 bitcode；不存在的名称仍返回 nil。该接口与 iPhone24A446
++的预编译内核调用一致，完整图标渲染仍需实机验证。
++
++多级单采样 heap 纹理回写在布局适合时逐级复用现有 tile 坐标转换，每次 dispatch
++持有独立形状和描述符。原 staging、图片传输、回写范围与独立写入者合并保持；
++CPU Vulkan 已覆盖两级、十二级、填充字节及回退布局。
++
+ AdrenoMetal 通过 `MTLAddDevice` 发布 Metal 设备。metal2vulkan 将 AIR 翻译为 SPIR-V，Turnip 完成编译，并向 [Adreno740](/zh/drivers/adreno740) 提交任务。固件、电源投票和显示集成由设备仓库提供。
+ 
+ ## 渲染和接口
+diff --git a/drivers/AdrenoMetal b/drivers/AdrenoMetal
+index 1604fe2..340139b 160000
+--- a/drivers/AdrenoMetal
++++ b/drivers/AdrenoMetal
+@@ -1 +1 @@
+-Subproject commit 1604fe247b979d5dd69a709e51fd7ee8dcfd0de9
++Subproject commit 340139b41925d2669bd30f0a45cf1592de64f0db
+diff --git a/scripts/build-adreno-metal-bridge.py b/scripts/build-adreno-metal-bridge.py
+index 27f888a..a17ef06 100644
+--- a/scripts/build-adreno-metal-bridge.py
++++ b/scripts/build-adreno-metal-bridge.py
+@@ -86,6 +86,7 @@ PATCHES = [ROOT / 'drivers/AdrenoMetal/bridge/patches' / name for name in [
+     '0037-runtime-963f-contracts.patch',
+     '0038-fused-tiled-image-copy.patch',
+     '0039-render-pass-driver-clocks.patch',
++    '0040-multi-level-tiled-output.patch',
+ ]]
+ 
+ 

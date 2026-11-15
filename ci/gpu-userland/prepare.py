@@ -345,6 +345,12 @@ def main():
         must(['git', '-C', repository, 'apply', '--check', selected])
         must(['git', '-C', repository, 'apply', selected])
         record.setdefault('runtime_963f_patches', {})[name] = sha(selected)
+    for repository, name in [(root, 'gpu048-recipes.patch'),
+                             (root / 'drivers/AdrenoMetal', 'gpu048-plugin.patch')]:
+        selected = HERE / 'patches' / name
+        must(['git', '-C', repository, 'apply', '--check', selected])
+        must(['git', '-C', repository, 'apply', selected])
+        record.setdefault('gpu048_patches', {})[name] = sha(selected)
     # The profile patch is introduced by the late runtime recipe. Keep the
     # original KMD check above, then apply and check this distinct final source.
     profile_patch = root / 'patches/mesa/turnip-driver-cpu-profile.patch'
