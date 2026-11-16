@@ -269,7 +269,7 @@ def build(framework, work):
     kernel = next(iter(kernels)); tree = kernel.parent.parent / 'tree'
     globals_text = run(['xcrun', 'nm', '-gU', kernel])
     required_camera = ['_nezha27_camera_probe_start', '_nezha_camera_native_capture',
-                       '_nezha_camera_native_device_start', '_nezha_camera_profile_slot',
+                       '_nezha_camera_native_device_init', '_nezha_camera_profile_slot',
                        '_nezha_camera_cmd_db_find', '_sm8850_native_resources']
     # Confirm the combined target links the real camera archive and one common owner.
     for name in required_camera:

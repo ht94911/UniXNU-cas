@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Original Camera071 capture/provider and current24A446 LSInstallInfo registration on human-selected GPU051 joint base. Retain GPU051 display,WiFi023,Bluetooth024,ALS017,CPU and Data1;single shared SMMU owner. New original-helper signature bound in native source. No physical preview/photo claim. Reuse existing Wi-Fi addon truncate patch only once;actual114 complete patch applications verified locally.",
+  "purpose": "Original Camera071 capture/provider and current24A446 LSInstallInfo registration on human-selected GPU051 joint base. Retain GPU051 display,WiFi023,Bluetooth024,ALS017,CPU and Data1;single shared SMMU owner. New original-helper signature bound in native source. No physical preview/photo claim. Reuse existing Wi-Fi addon truncate patch only once;actual114 complete patch applications verified locally. Explicit capture archive and original postHID start;isolate extended camera RPMh symbols from unchanged ALS ABI.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,12 +14,12 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "f89cd95eded05a9b73a9c641874e18dd9432c270",
+  "device_revision": "2bf0b2cc70f2bc56c500ded1311ca1c515c67674",
   "soc_revision": "device-local-GPU051-camera071-common-owner",
   "xcode": "26.6",
   "files": {
     "ci/check-native-userlog.py": "74e7abe9164a853b10d4406a46f55f67670ade42795f066068e84f14b2ebc006",
-    "ci/native.py": "eec0fa6da2efad0bb8e12f747e905a458af9c07a35d973d78d4d40d203b1f253",
+    "ci/native.py": "20f7bcb06f6ce5f8a3d4d12e4272a8f3c8e684f489c8096f678fe9cf3c8feaf1",
     "ci/test-native-userlog-producer.py": "619bc31f6f41b16d562bcbc83a41588f6ada45a5268e23ef5c4985e5f364e403",
     "ci/test-native-userlog.py": "f64f5aff7c83cbbff7ce9bd15ab276dd7022f5e42d227999157b796afe414f9e",
     "source/adreno/LICENSE": "16fbc0170994a48f60938d9f0d992d3bad113383cf90882f75c206e079c2a2dc",
@@ -145,7 +145,7 @@
     "source/device/components/QcaBluetooth/userland/Type0.c": "344199611337890af31410c66794f9e7d0d43b1475ed2fc0c6963f172b98e11b",
     "source/device/components/QcaBluetooth/vendor/linux-wcn7860/btqca.c": "9b756a89d436d6dd9c85268bb58360cd4adda348baf5e04f8a4e26754e9a5242",
     "source/device/components/QcaBluetooth/vendor/linux-wcn7860/btqca.h": "0d795bcd1106b2c69a75e94813f1adca15078b433d90e041e34aabb0d2179187",
-    "source/device/configs/nezha_ios27_defconfig": "541a55e67c80878fa12edeb479c2488a40bb16265cdf505d5d2c98f130bce051",
+    "source/device/configs/nezha_ios27_defconfig": "c6f49e5ad9023376c48721568f245278513a00d3bb19af39b695fdfc0359ecf1",
     "source/device/docs/GPU050-BO-PHASES.md": "9a5d2f357315c7883d9e660a69969f72e7eaa290f09731dd2b39d390123557e4",
     "source/device/dts/nezha.dts": "4452810e9574759a1ad43f9d2f05f44d4cf030266bfcbc35f4f9b3d2f798d495",
     "source/device/feeds.toml": "7d13156d84837f3891c892915274eaa2b2d7f30eb3547c0cb9ecf69dc48ddad6",
@@ -161,7 +161,7 @@
     "source/device/package/BootUiTraceProbe.c": "6fdb0563939fcafc22c13a5acb23e7f6c6625f3a4c7408accf1a43e9e1060122",
     "source/device/package/BootWatchdogPolicy.c": "02087f0b09cdc8a76d799372ba392610614f806b99b1d38cd29bab48b3fb4397",
     "source/device/package/KeyStoreProbe.cpp": "35ff8e97c56fd438158b1fe929c53e52dd027bc18f1b4e0eac8a2fdf662fd933",
-    "source/device/package/LegacyDisplayProbe.cpp": "25b92ed49e347237f89533acbd41bcd6179d7103b201042fd127a599dce656b9",
+    "source/device/package/LegacyDisplayProbe.cpp": "e89dcf99edfb1431c2a9c7bca1633420fd849913e25f1ba7b29cef1756cddba0",
     "source/device/package/Nezha27UsbControl.c": "779d441ea12863cbfd06653b7a93a1816eb253f02cfe326ca80c96011f41cbb3",
     "source/device/package/NezhaIOS27Pmgr.cpp": "dc943bd7a202d650fceacc0522619e6f7649570c2d11ec32c44ebc4547e89fbe",
     "source/device/package/NezhaJointResources.h": "54c616f64f252172f45e94d4701c141d802687d5b3b1e2f84b4ced90f6b57cd8",
@@ -438,7 +438,7 @@
     "source/device/package/camera/NezhaCameraRpmh.c": "9ac6fefcaf1979279dba9dfa7fa19f703a38e383a9dca04472e86d62b13a3a04",
     "source/device/package/camera/NezhaCameraRpmh.h": "e8424db55dd5e6d4d57de73e633b334294c65663301038c875aac4f60d555810",
     "source/device/package/camera/upstream/QcomRpmh.c": "9cc1438645964ab020e152a0e96c0ab428a2c76df8233bfce6117665b7e8d4de",
-    "source/device/package/camera/upstream/QcomRpmh.h": "aa4307cd209c25a6b2e6b80d075f1e76deda0059eca7a333895ae73a3c724d38",
+    "source/device/package/camera/upstream/QcomRpmh.h": "e8ae5b8d52cc7e3ec73d3a7a5f5ce34cdfd5357af22853bb0bf523d921ac8d27",
     "source/device/package/camera/upstream/service-cache/ORIGIN.json": "972a3639efd7837369ec2bae77edc85bed421a82a2ac55ca32fe33ca91ca93f6",
     "source/device/package/camera/upstream/service-cache/cellular_runtime.py": "a40684ecd9b828dbc9dbaca285e72b87d50fa3dbd451a16eecb799125d5934de",
     "source/device/package/camera/userland/NezhaCameraDeviceBackend.c": "0ab259eca1a6ad30ef2763ba5a6a4701a1504be2e29874ff2e194d025cb8791a",
@@ -541,7 +541,7 @@
     "source/device/patches/xnu-12377/zzzzzz-nezha-input-chain-trace.patch": "c4d05419e7ec3af0de619754bdb6c2deb69b74d714c2219e509360ebfe1b947e",
     "source/device/patches/xnu-12377/zzzzzz-nezha-kernel-class-lock-order.patch": "cd90c61d6838f4e6a7248da81b6180f14db03d00f2f7a64f4bbe4034c0aa8dcb",
     "source/device/patches/xnu-12377/zzzzzz-nezha-sigp-startup-order.patch": "18275910b909d187e459c68f5d937cc09bc01923180141dc155aa7f4ff14aaf9",
-    "source/device/porting.toml": "29c52c6a166638db9fc979dc3c41d56a9c4801c1d28101b95adf557861e435d2",
+    "source/device/porting.toml": "a1c9400b44a97310b2ce4975d33b4366575e03b9d52048d1facea00cc8e69559",
     "source/device/scripts/aes-iphone-24A446.json": "d55ed6d1d65fdff5de46dd602552eaf3309d1f7370fcd3f15eddb391225ffe8a",
     "source/device/scripts/als-event-service-iphone-24A446.json": "34c27f1a58bab3c518570a57c006a23fce315b90a584e691629d61c0850bd4d8",
     "source/device/scripts/backlight-iphone-24A446.json": "446eb5fe6440335bfe9fca75b32f7d815ddcafbb8a3c2d7f697c1e5c3f40f6cb",
@@ -1051,9 +1051,9 @@
     "existing_trace_event": 65,
     "model_check": "tests/check-gpu-bo-phases.py"
   },
-  "userland_revision": "f89cd95eded05a9b73a9c641874e18dd9432c270",
+  "userland_revision": "2bf0b2cc70f2bc56c500ded1311ca1c515c67674",
   "camera": {
-    "source_revision": "f89cd95eded05a9b73a9c641874e18dd9432c270",
+    "source_revision": "2bf0b2cc70f2bc56c500ded1311ca1c515c67674",
     "device_base": "7435e49e46705d2bfcabe09487ff80a4821fd577",
     "mode_default": "disabled",
     "host_core_tests": 18,
@@ -1203,5 +1203,5 @@
     "Metal_run": 43807847110,
     "Metal_head": "59282c1dd681f80746443bad9d1e45835dcf38d6"
   },
-  "ci_native_sha256": "eec0fa6da2efad0bb8e12f747e905a458af9c07a35d973d78d4d40d203b1f253"
+  "ci_native_sha256": "20f7bcb06f6ce5f8a3d4d12e4272a8f3c8e684f489c8096f678fe9cf3c8feaf1"
 }
