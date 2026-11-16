@@ -267,6 +267,17 @@ def build(framework, work):
         (work / 'out/nezha/ios-27.0.1-24A446-iphone14-4').glob('*/kernel/kernel.macho')}
     if len(kernels) != 1: raise ValueError('Select the actual joint Native043')
     kernel = next(iter(kernels)); tree = kernel.parent.parent / 'tree'
+    globals_text = run(['xcrun', 'nm', '-gU', kernel])
+    required_camera = ['_nezha27_camera_probe_start', '_nezha_camera_native_capture',
+                       '_nezha_camera_native_device_start', '_nezha_camera_profile_slot',
+                       '_nezha_camera_cmd_db_find', '_sm8850_native_resources']
+    # Confirm the combined target links the real camera archive and one common owner.
+    for name in required_camera:
+        if sum(row.split()[-1] == name for row in globals_text.splitlines() if row.split()) != 1:
+            raise ValueError('Combined camera entry missing or duplicated: ' + name)
+    (work / 'camera-native-link-qualified.json').write_text(json.dumps(dict(
+        passed=True, actual_kernel_sha256=sha(kernel), required_symbols=required_camera,
+        single_shared_owner=True, extended_camera_parser_isolated=True, hardware_verified=False), indent=2) + '\n')
     llvm = Path(run(['brew', '--prefix', 'llvm'])) / 'bin'
     code = run([sys.executable, tree / 'scripts/check-keystore-source.py',
                 '--source', tree / 'drivers/AppleKeyStoreState',
@@ -316,7 +327,7 @@ def collect(framework, work, sealed):
     add(ROOT / 'inputs.json', 'inputs.json')
     manifest = json.loads((ROOT / 'inputs.json').read_text())
     for name in ('keystore-source-selection.json', 'keystore-target-qualification.json',
-                 'userlog-source-selection.json', 'userlog-target-qualification.json'):
+                 'userlog-source-selection.json', 'userlog-target-qualification.json', 'camera-native-link-qualified.json'):
         add(work / name, name)
     for name in manifest['userlog_target']['source_files']:
         add(work / 'usb' / name, 'userlog-source/' + name)

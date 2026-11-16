@@ -136,8 +136,8 @@ evidence = []
 [[area]]
 id = "audio"
 status = "planned"
-components = []
-paths = ["patches/xnu-12377/zzyd-sheng-audio-addon-mount.patch"]
+components = ["SoftwareAES"]
+paths = ["patches/xnu-12377/zzyd-sheng-audio-addon-mount.patch", "scripts/build-software-aes-iphone.py"]
 inputs = ["Unchanged sheng conditional addon mount patch."]
 configuration = ["board.toml and configs/nezha_ios27_defconfig select the current source-only step."]
 procedure = ["Use ./unixnu with isolated local inputs/out, jobs=32; preserve existing Android/ios17 and active Wi-Fi workspace."]

@@ -3,8 +3,16 @@
  * ARC resource takes, and describe the register writes of one active-only request in a TCS of the application processor's RSC, for
  * both register layouts (the RSC's major version 3 moved the TCS registers). Nothing here touches hardware: the owner applies the
  * writes and waits for the TCS done interrupt. */
-#ifndef QCOM_RPMH_H
-#define QCOM_RPMH_H
+#ifndef NEZHA_CAMERA_QCOM_RPMH_H
+#define NEZHA_CAMERA_QCOM_RPMH_H
+/* Camera's command database result includes BCM auxiliary bytes. The ALS
+ * owner retains the upstream shorter result structure, so these functions
+ * must not share link symbols with that independently compiled parser. */
+#define qcom_cmd_db_find nezha_camera_cmd_db_find
+#define qcom_rpmh_level_index nezha_camera_rpmh_level_index
+#define qcom_rsc_layout nezha_camera_rsc_layout
+#define qcom_rpmh_active_request nezha_camera_rpmh_active_request
+#define qcom_rpmh_finish nezha_camera_rpmh_finish
 #include <stddef.h>
 #include <stdint.h>
 #ifdef __cplusplus
