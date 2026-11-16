@@ -231,11 +231,14 @@ def collect(framework, work, sealed):
         for path in sorted((tree / 'build/adreno840').glob('*')):
             if path.is_file() and path.suffix in ('.json','.log','.o','.S','.h','.cpp'):
                 add(path, 'archives/adreno840/' + path.name)
-        for folder in ('nezha27-shared', 'nezha27-baseband'):
+        for folder in ('nezha27-shared', 'nezha27-baseband', 'nezha27-audio'):
             for path in sorted((tree / 'build' / folder).glob('*')):
                 if path.is_file() and path.suffix in ('.json', '.log', '.o', '.txt'):
                     add(path, 'archives/' + folder + '/' + path.name)
         add(tree / 'build/nezha27-baseband-stage/stage.json', 'archives/nezha27-baseband-stage/stage.json')
+        for path in sorted((tree / 'build/nezha27-audio/NezhaAudio27.driver').rglob('*')):
+            if path.is_file():
+                add(path, 'archives/nezha27-audio/NezhaAudio27.driver/' + path.relative_to(tree / 'build/nezha27-audio/NezhaAudio27.driver').as_posix())
         for path in sorted((tree / 'build/boot-progress').glob('*')):
             if path.is_file() and path.suffix in ('.json','.asm','.o','.c','.h'):
                 add(path, 'archives/boot-progress/' + path.name)

@@ -35,7 +35,7 @@
     "ArmSmmu4KTableMemory.h": "316b85ee835686744feb7777b4216917578833e3ff510aeecc4bbe8325568f86"
   },
   "board": {
-    "package/gpu/NezhaScm.c": "d5eff9fb85bd9215411e9c9ef56f40b5bc28334b9e1dd246d4f61b4f6aae4ab3",
+    "package/gpu/NezhaScm.c": "2acee2b6a797383944749b3fa500464b8f081ceaf574367d7d84e554b1ee24dc",
     "package/SourceStorage.cpp": "d0b8e0433ef71a1761e5d3dd055d8c4a6b709a5b8dabb2da36ab558291c9d2f3",
     "package/BootWatchdogPolicy.c": "67ebfeb8ced02c3b18bd31a4cc1872f80066ba5101a36d93b92329a0c8f25c4c"
   },

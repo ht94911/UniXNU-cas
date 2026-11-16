@@ -65,6 +65,7 @@ def stage(tree, soc=None, check=False):
             subprocess.run(['git','apply','--check',str(integration/name)],cwd=output/'device',check=True)
             subprocess.run(['git','apply',str(integration/name)],cwd=output/'device',check=True)
     subprocess.run(['git','apply',str(integration/'soc-stream-count.patch')],cwd=output/'soc',check=True)
+    subprocess.run(['git','apply',str(integration/'soc-shared-ipcc-append.patch')],cwd=output/'soc',check=True)
     subprocess.run(['git','apply',str(integration/'format2-baseband-node.patch')],cwd=output/'framework',check=True)
     source=output/'ShengUfs/NativeUfs.cpp';body=source.read_text();marker='static int loadRootExtents(const char **why) {'
     if body.count(marker)!=1:raise ValueError('ShengUfs insertion point differs')

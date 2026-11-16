@@ -39,3 +39,6 @@ zzzzzz-nezha-cellular-addon-size.patch
 # Qualified audio096 system-task entry, selected cellular29 and exact signed helper.
 zzzzzz-nezha-cellular-cached-entry.patch
 zzzzzz-nezha-cellular-launch-identity.patch
+
+# Accepted audio102 HAL union, after the original cellular addon mounts.
+zzzzzz-nezha-audio-hal-mount.patch

@@ -1,0 +1,10 @@
+{
+  "repository": "https://github.com/ShueiTsuki/data-a-live",
+  "commit": "d2c7089b0a2e6da2b1e7e843337b503ec032b2c5",
+  "source": "tools/spk_graph.py",
+  "source_sha256": "979eb7e4991aa8ceb25b8f208800b44bbf850ce273b45e1cb33a2049375ee320",
+  "local": "upstream/PandoraAcdb.py",
+  "local_sha256": "2b14f3594a90effdc80142273bd3f617efd7f9c81ba23831b52fa9580d2c75ac",
+  "license": "MIT",
+  "changes": "Keep parser library; remove firmware packing CLI and trailing blank lines. Bounded checked wrapper in tools/inspect_acdb.py."
+}

@@ -9,8 +9,9 @@
 extern "C" {
 #endif
 /* Same common ledger IDs as the existing audio owner. TCS1 and QMP are
- * leased per acknowledged transaction. Bank8 has a separate ledger slot. */
-enum {NB_OWNER=0x4e42,NB_RES_QMP=5,NB_RES_TCS=6,NB_RES_SMMU=8,NB_POWER_RESOURCES=11};
+ * leased per acknowledged transaction. Audio owns ADSP PAS in ledger8;
+ * MSS bank8 owns its independent SMMU lease in ledger9. */
+enum {NB_OWNER=0x4e42,NB_RES_QMP=5,NB_RES_TCS=6,NB_RES_SMMU=9,NB_POWER_RESOURCES=11};
 enum {NB_POWER_IPA,NB_POWER_MSS};
 typedef struct {
     Sm8850Resources *common;

@@ -22,6 +22,7 @@ static int snapshot(void *cookie,char *out,size_t capacity,size_t *used,unsigned
     }
     if(capacity-at<2){*truncated=1;return QUD_FAILED;}out[at++]='}';out[at]=0;*used=at;return QUD_OK;
 }
-/* GPU024 already uses provider 7. ID 8 is this package's read-only provider. */
-static const struct qud_diag_provider provider={8,1,(1u<<QUD_SNAPSHOT)|(1u<<QUD_HISTORY),0,0,"nezha-mss",0,snapshot,0};
+/* Existing GPU024 uses provider7; the accepted audio source uses provider8.
+ * The existing GNSS integration allocates9 to MSS. Retain the MSS name/ABI. */
+static const struct qud_diag_provider provider={9,1,(1u<<QUD_SNAPSHOT)|(1u<<QUD_HISTORY),0,0,"nezha-mss",0,snapshot,0};
 int nezha_bb_diag_register(void){return qcom_usb_diag_register(&provider)?NB_OK:NB_IO;}

@@ -315,8 +315,12 @@ void worker(void *,wait_result_t)
     thread_terminate(current_thread());thread_block(THREAD_CONTINUE_NULL);
 }
 }
+/* Accepted audio102 uses this same original late-init fan-out. Its own
+ * explicit na mode and once-only worker gates precede hardware access. */
+extern "C" void nezha_audio27_start(void);
 extern "C" void nezha_adreno840_start(void)
 {
+    nezha_audio27_start();
     static bool attempted=false;
     if(attempted)return;
     attempted=true;
