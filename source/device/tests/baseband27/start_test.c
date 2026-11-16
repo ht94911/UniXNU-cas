@@ -3,7 +3,7 @@
 #include "../../package/baseband27/integration/NbBasebandStart.c"
 #include "../../package/baseband27/integration/NbDiagnostic.c"
 #include <assert.h>
-static unsigned switch_value,property_size=4,property_present=1,threads,bindings,registrations,alloc_count,sleeps,ended,events;
+static unsigned switch_value,property_size=4,property_present=1,threads,bindings,registrations,diagnostic_error,alloc_count,sleeps,ended,events;
 static int thread_error,bind_error=NB_IO,ready_waits;
 static uint64_t clock_ms;static void *allocations[32];static void (*entry)(void *,wait_result_t);
 static const struct qud_diag_provider *diagnostic;
@@ -29,7 +29,7 @@ int nezha_gnss_diagnostic(uint64_t cursor,uint32_t page,char *out,size_t capacit
     (void)cursor;(void)page;(void)out;(void)capacity;*used=0;*truncated=0;
     return QUD_UNSUPPORTED; /* This startup fixture has no LOC endpoint. */
 }
-int qcom_usb_diag_register(const struct qud_diag_provider *p){assert(p&&p->id==8&&p->version==2&&p->submit);diagnostic=p;registrations++;return 1;}
+int qcom_usb_diag_register(const struct qud_diag_provider *p){assert(p&&p->id==9&&p->version==2&&p->submit);diagnostic=p;registrations++;return !diagnostic_error;}
 int main(void){
     property_present=0;nezha_baseband_late_init();property_present=1;switch_value=2;nezha_baseband_late_init();switch_value=1;property_size=8;nezha_baseband_late_init();
     assert(!threads&&!bindings&&!registrations&&!alloc_count);
@@ -41,6 +41,10 @@ int main(void){
     nb_stats_sequence=1;assert(diagnostic->snapshot(NULL,out,sizeof out,&used,&truncated)==QUD_BUSY&&!used);nb_stats_sequence=0;
     /* A fresh boot fixture: successful setup, then a terminal owner failure. */
     nb_started=0;bind_error=0;assert(!nezha_baseband_start());entry(NULL,0);assert(bindings==2&&events==1&&alloc_count==6&&ended==2);
+    /* A duplicate diagnostic ID must fail before another worker is created. */
+    nb_started=0;diagnostic_error=1;unsigned previous_threads=threads;
+    assert(nezha_baseband_start()==NB_IO&&threads==previous_threads);
+    diagnostic_error=0;
     nb_started=0;thread_error=1;unsigned before=bindings;assert(nezha_baseband_start()==NB_IO&&bindings==before);assert(nezha_baseband_start()==NB_BUSY);
     for(unsigned i=0;i<alloc_count;i++)free(allocations[i]);
     puts("PASS late start: off has no side effects, once only, readiness, failure, bounded consistent provider");

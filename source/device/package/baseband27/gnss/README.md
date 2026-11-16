@@ -96,7 +96,8 @@ evidence. If signal types are missing, constellation usage can be reported but
 frequency usage stays unknown. If only satellites are visible, the result is
 “已观测到北斗，参与解算待证”.
 
-The existing USB provider8 gains HISTORY requests. Page0 returns the current
+The existing USB diagnostic catalogue uses provider9 for MSS/GNSS HISTORY
+requests; GPU051 retains its audio provider8. Page0 returns the current
 valid fix, IEEE coordinate/precision bits, UTC/receive time, generation, sequence
 and usage counts; pages1..176 expose individual used satellites. Page256 is the
 sky summary, pages257..432 its tracking records. Subsequent pages must carry the
@@ -127,21 +128,50 @@ commands and Core Location app consumption are still required device checks.
 `integration/gnss-locationd.patch` keeps locationd enabled only when the typed
 `/chosen/nezha-gnss=1` switch is selected. It uses the existing per-job policy
 writer and does not change other jobs or Data. The switch also requires
-`nezha-baseband=1`. This source tree leaves its board switch off; only the
-human-selected package receives the GNSS ADT delta.
+`nezha-baseband=1`. The selected GPU051 candidate enables both switches.
+`nezha-gnss-test-app=1` also mounts its signed ordinary test app and current
+LaunchServices registration helper through the existing read-only unions.
 
-## Static review and next execution
+## GPU051 qualification and physical acceptance
 
-Source syntax parsing, Python AST and shell syntax checks are separate from
-compiler checks. Existing three baseband integration patches plus the GNSS
-locationd policy patch apply sequentially in a temporary source directory.
-Six generated bridge files reproduce the checked-in source byte-for-byte.
-The donor recipe validates SHA/UUID/guard instructions and emits two source
-entries. All model tests in `tests/gnss27` are prepared but **uncompiled and
-unexecuted**; no target archive, ABI/PAC, prelink, signature, CI or phone success
-is claimed.
+The fixed compiled implementation is device revision
+`586340c4f7cd003878f572853989d961e9cb941f`. Native003 run43884693400,
+head1159a6c2d40c9b3644a4a985f0c1507e2dc21984, passed23 baseband/GNSS
+translation units,355 external imports and the actual KeyStore/USB checks.
+Strict prelink passed38 components and348 original imports. The1062 baseband
+and754 GPU/Legacy/HID authenticated slots retain their targets and PAC data.
+The final kernel passed the production loader parser, HMAC, guarded60-entry
+text-fixup parser and single/eight-CPU QEMU controls. QEMU disables physical
+Qualcomm drivers; it establishes no satellite result.
 
-After the user selects a fixed test package:
+The ordinary Core Location scene app and current24A446 modifydb registration
+helper passed run43884264768,9 actual consumer registration fixtures, every
+4KiB signature page and actual iPhone cache dependencies. The app has empty
+entitlements. Its normal WhenInUse/full-accuracy permission is required for
+position updates. The signed launch cache preserves GPU051's729 jobs and adds
+one bounded launcher;54 non-cache addon entries and all four original trust
+modules remain byte-identical.
+
+Stock LOCv2/minor177 descriptors confirm the selected scalar fields, legacy
+80-SV arrays, expanded176-SV arrays and28/29-byte satellite wire aggregates.
+The larger reports add optional payloads. Stock Android HAL declares B1I,
+B1C and B2a; tracking and same-fix use still require physical reports.
+
+Package `gnss001-GPU051` has boot SHA-256
+`a5907a796c920216229d5b9d7d14f88eeb07f1e2a13ac7db1f54c26ecb2f9284`,
+payload SHA-256
+`b96c1dea7b02bf57e6056c047e07891a52ceb2b4b5767ea02f79e54b9561eeb2`.
+Its complete embedded payload preserves GPU051's Data generation1 and root
+policy; the existing baseband firmware file is only read. Windows r008's75
+files and concrete lifecycle passed. Raw/private evidence stays at the local
+project `evidence/gnss27-gpu051-20261116` and package001 directory.
+
+The user deferred manual permission and window/outdoor reception. The first
+phone trial checks startup, baseband/LOC ready, locationd and ordinary app
+registration. Receiver fixes, GPS/BeiDou use and ordinary callbacks remain
+unaccepted until matching physical evidence is available.
+
+The integration and acceptance sequence remains:
 
 1. Create its isolated copy. Apply this source delta onto that version; preserve
    newer NAS/VOICE/UIM/WDS/IPA/device identities instead of replacing its bridge
@@ -165,6 +195,17 @@ After the user selects a fixed test package:
 6. Return normally to Android, complete the required real protection postflight
    and collector exit, then write the run result and integration/rollback handoff.
 
-Rollback uses the prior selected-package boot/payload. The GNSS source adds no
-phone files or persistent data. Full system positioning and device usability
+Rollback uses the prior selected-package boot/payload. The test app and launcher use the existing
+addon directory on Data; they require no phone payload write or Data reset. Full system positioning and device usability
 remain unaccepted until the real application/receiver evidence is available.
+
+
+GNSS001 physical startup on2026-11-17 reached root/Data, locationd and both
+readonly app/helper mounts. Its inherited provider8 conflicted with GPU051
+audio8, so `nezha_baseband_start` returned before creating the worker.
+The fix selects unused provider9, keeps the audio diagnostic identity and
+checks startup registration against that catalogue. The ordinary application
+registration reached original `com.apple.lsd.modifydb` lookup3/NoSuchProcess;
+no app registration or satellite fix was accepted. The run returned normally
+to Android/root, verified unchanged17 and Data generation1, stopped its
+collector and released without a phone payload write.

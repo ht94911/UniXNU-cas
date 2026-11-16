@@ -1,7 +1,7 @@
-name: nezha GPU051 GNSS GPS BeiDou - native003
+name: nezha GPU051 GNSS GPS BeiDou - native004
 on:
   push:
-    branches: [codex/ios27-gnss-gpu051-native003-20261116]
+    branches: [codex/ios27-gnss-gpu051-native004-20261117]
   workflow_dispatch:
 permissions:
   contents: read
@@ -89,6 +89,12 @@ jobs:
           done
           clang -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -I "$RUNNER_TEMP/ios27/work/soc/include" "$bb/tests/gnss27/shared_ipcc_test.c" "$RUNNER_TEMP/ios27/work/soc/src/Sm8850Resources.c" -o "$RUNNER_TEMP/ios27/shared-ipcc"
           "$RUNNER_TEMP/ios27/shared-ipcc"
+      - name: Check MSS startup against the GPU051 audio diagnostic identity
+        run: |
+          set -euo pipefail
+          bb="$RUNNER_TEMP/ios27/work/device"
+          clang -std=gnu11 -Wall -Wextra -Werror -Wno-unused-function -fsanitize=address,undefined -I "$bb/tests/baseband27" -I "$RUNNER_TEMP/ios27/work/usb/include" "$bb/tests/baseband27/start_test.c" -o "$RUNNER_TEMP/ios27/start-provider9"
+          "$RUNNER_TEMP/ios27/start-provider9"
       - name: Qualify compiler and run the standard native build
         env:
           GITHUB_TOKEN: ${{ github.token }}

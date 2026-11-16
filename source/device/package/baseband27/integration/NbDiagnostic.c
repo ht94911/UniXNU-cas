@@ -23,12 +23,12 @@ static int snapshot(void *cookie,char *out,size_t capacity,size_t *used,unsigned
     }
     if(capacity-at<2){*truncated=1;return QUD_FAILED;}out[at++]='}';out[at]=0;*used=at;return QUD_OK;
 }
-/* GPU024 already uses provider 7. ID 8 is this package's read-only provider. */
+/* GPU051 keeps GPU7 and audio8. ID9 owns MSS/GNSS diagnostics. */
 static int history(void *cookie,const struct qud_diag_request *request,char *out,size_t capacity,size_t *used,unsigned *truncated)
 {
     (void)cookie;*used=0;*truncated=0;
     if(request->op!=QUD_HISTORY)return QUD_UNSUPPORTED;
     return nezha_gnss_diagnostic(request->cursor,request->arg0,out,capacity,used,truncated);
 }
-static const struct qud_diag_provider provider={8,2,(1u<<QUD_SNAPSHOT)|(1u<<QUD_HISTORY),432,0,"nezha-mss",0,snapshot,history};
+static const struct qud_diag_provider provider={9,2,(1u<<QUD_SNAPSHOT)|(1u<<QUD_HISTORY),432,0,"nezha-mss",0,snapshot,history};
 int nezha_bb_diag_register(void){return qcom_usb_diag_register(&provider)?NB_OK:NB_IO;}

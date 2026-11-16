@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "GPU051 GNSS final native candidate: retained LOC PDS backend and ordinary app/launcher readonly union mounts. Normal app permission; no private input uploaded.",
+  "purpose": "GNSS002 on fixed GPU051: retain actual audio provider8 and register MSS/GNSS as9; exact GNSS001 runtime and normal app authorization preserved.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "586340c4f7cd003878f572853989d961e9cb941f",
+  "device_revision": "9255bde3d5cb573ceec600f035ee3b29a8d07f73",
   "soc_revision": "GPU051 e565439+3435fa5 and GNSS counted IPA plus immutable IPCC append",
   "xcode": "26.6",
   "files": {
@@ -370,11 +370,11 @@
     "source/device/package/baseband27/gnss/NbGnss.h": "ba18936b5c3ae68b2eea2ca1801d79b36a5264130a66319d17e4f2b4ddcc7fef",
     "source/device/package/baseband27/gnss/NbGnssProtocol.c": "25afd9139e16410cc22c488e133d32d68e780b75d1068462c0e3927392d68ab2",
     "source/device/package/baseband27/gnss/NbGnssProtocol.h": "f219ec68188499c458c5a38839af2151bc10adcacac62255398cef39bbfe8017",
-    "source/device/package/baseband27/gnss/README.md": "df05592231a9ed53a444f2901f1084349f4e4f9e82792dd9eab1f2d7e725abce",
+    "source/device/package/baseband27/gnss/README.md": "9f6d14693492a1e663ec6087666e76432f3a72f882351ad60c1e39f0aaf8a99d",
     "source/device/package/baseband27/gnss/bridge.patch": "c1cc6cc8f943c50ad98df7eb4f0eb50b800bab400a75212b2eefdfd25a2976a2",
     "source/device/package/baseband27/integration/BootWatchdogPolicy-baseband.patch": "fc53c30d6660634fb3db67ced515951271695b83e51740d9af0557d05804494b",
     "source/device/package/baseband27/integration/NbBasebandStart.c": "472dd6d438734945f4d0158d03d4516adf1f43f78a09a25b4f3810d331f244f2",
-    "source/device/package/baseband27/integration/NbDiagnostic.c": "dae6c0b1f341e398a0a3edb8f4efc25c51b308c1d230b694c05f83d0e7337534",
+    "source/device/package/baseband27/integration/NbDiagnostic.c": "7ead4d911fbc64c77aa7229e410d61860bbca51c7735163c7400596dd720c6ca",
     "source/device/package/baseband27/integration/NbScmOwner.inc": "6eeca5c66f385233ebb1ecf14b55f6906456b0d6c831660cbc4301e3245f6530",
     "source/device/package/baseband27/integration/NbUfsReadOnly.inc": "ac0abf51978021a8a1231dea65bb59800601080295dd632e21a27338f22d501c",
     "source/device/package/baseband27/integration/PLAN.md": "89af0d442e8ecadebdb77b119a63ce30c2a81c262632a2f79e650b2d455b1cc4",
@@ -574,7 +574,7 @@
     "source/device/patches/xnu-12377/zzzzzz-nezha-input-chain-trace.patch": "c4d05419e7ec3af0de619754bdb6c2deb69b74d714c2219e509360ebfe1b947e",
     "source/device/patches/xnu-12377/zzzzzz-nezha-kernel-class-lock-order.patch": "cd90c61d6838f4e6a7248da81b6180f14db03d00f2f7a64f4bbe4034c0aa8dcb",
     "source/device/patches/xnu-12377/zzzzzz-nezha-sigp-startup-order.patch": "18275910b909d187e459c68f5d937cc09bc01923180141dc155aa7f4ff14aaf9",
-    "source/device/porting.toml": "7fae58097ca07dda0e2094bc61419c8f6b50d47c5717380092eb55e0ed3059c1",
+    "source/device/porting.toml": "c5ade7d7aca1ba260b62babcca629dd6f4c92e1e641038c4ef92ddeced72b1bf",
     "source/device/scripts/aes-iphone-24A446.json": "d55ed6d1d65fdff5de46dd602552eaf3309d1f7370fcd3f15eddb391225ffe8a",
     "source/device/scripts/als-event-service-iphone-24A446.json": "34c27f1a58bab3c518570a57c006a23fce315b90a584e691629d61c0850bd4d8",
     "source/device/scripts/backlight-iphone-24A446.json": "446eb5fe6440335bfe9fca75b32f7d815ddcafbb8a3c2d7f697c1e5c3f40f6cb",
@@ -648,7 +648,7 @@
     "source/device/tests/baseband27/resource_binding_test.c": "65bc03433778bbdcac8ee80bcfde97b1628fd7287e1266d9d210c8fa9d814f29",
     "source/device/tests/baseband27/resources_test.py": "9e810cd29d3a06c11372ba962359cb1684432bb4ac11f500153b5fae899d9faf",
     "source/device/tests/baseband27/sim_identity_test.c": "8730f1325f630334ce68786bb64145be5a92fd818a6fc3c7fd00c39155cab4c1",
-    "source/device/tests/baseband27/start_test.c": "bc90642d0447b91b00713b927fd29dac0b76737a30fa6effd66b920d8e2a22db",
+    "source/device/tests/baseband27/start_test.c": "33c363a3ce85aec96b6c5071043961e127bfce04c3ddac37a584a2d2854341ad",
     "source/device/tests/baseband27/startup_order_test.c": "edf7bf8fdcdbaf955bc1593e33807168c2ca9d8c55120b7048858d096dea84cb",
     "source/device/tests/baseband27/transport_model_test.c": "9ff09f08651fb1b43ab7fd6b0fe7b26612fe3ca48a50214db8ae50e2fa7598aa",
     "source/device/tests/baseband27/trial_windows_test.py": "c455fc111af8c8684f3e0a3adb677a396142a3312f726850c8c8a2500747837d",
@@ -1080,6 +1080,9 @@
     "phone_operations": false,
     "previous_native_run": 43878644400,
     "previous_native_conclusion": "success",
-    "test_app_mounts": "Typed nezha-gnss-test-app=1; /private/var/ngpu/gnss-apps over /Applications and gnss-bin over /usr/libexec; existing xpc cache reused"
+    "test_app_mounts": "Typed nezha-gnss-test-app=1; /private/var/ngpu/gnss-apps over /Applications and gnss-bin over /usr/libexec; existing xpc cache reused",
+    "diagnostic_provider": 9,
+    "provider8_owner": "GPU051 original nezhaaudio",
+    "physical_GNSS001_failure": "Inherited provider8 collision prevents MSS worker creation"
   }
 }
