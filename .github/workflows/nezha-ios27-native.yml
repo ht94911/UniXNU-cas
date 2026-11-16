@@ -1,7 +1,7 @@
 name: nezha Camera072 on GPU051 - native
 on:
   push:
-    branches: [codex/ios27-camera072-gpu051-boot-arc-native-20261116]
+    branches: [codex/ios27-camera072b-gpu051-boot-arc-native-20261116]
   workflow_dispatch:
 permissions:
   contents: read
@@ -67,7 +67,7 @@ jobs:
           src="$RUNNER_TEMP/ios27/work/device"
           soc="$RUNNER_TEMP/ios27/work/soc"
           out="$RUNNER_TEMP/ios27/camera-boot-arc-host"
-          mkdir -p "$out/IOKit" "$out/sys"
+          mkdir -p "$out/IOKit" "$out/sys" "$RUNNER_TEMP/ios27/work/logs"
           printf 'extern "C" void IOSleep(unsigned);\n' > "$out/IOKit/IOLib.h"
           printf 'extern "C" int printf(const char *,...);\n' > "$out/sys/systm.h"
           for unit in NezhaCameraRpmh upstream/QcomRpmh; do

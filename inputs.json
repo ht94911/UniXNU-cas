@@ -1210,5 +1210,6 @@
     "Metal_run": 43807847110,
     "Metal_head": "59282c1dd681f80746443bad9d1e45835dcf38d6"
   },
-  "ci_native_sha256": "20f7bcb06f6ce5f8a3d4d12e4272a8f3c8e684f489c8096f678fe9cf3c8feaf1"
+  "ci_native_sha256": "20f7bcb06f6ce5f8a3d4d12e4272a8f3c8e684f489c8096f678fe9cf3c8feaf1",
+  "ci_host_log_directory_fix": true
 }
