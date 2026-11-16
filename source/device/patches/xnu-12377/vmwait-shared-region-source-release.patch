@@ -1,0 +1,43 @@
+From UniXNU/UniXNU f105b318080f6990c16cd5ab18176b1c66c51912.
+
+Release only the already copied source and placeholder before the existing
+16 KiB shared-region part slide. Apply after zzzz-sheng-ipados27-bringup.patch.
+The current source validation and fixup functions are retained.
+
+--- a/osfmk/vm/vm_shared_region_pager.c
++++ b/osfmk/vm/vm_shared_region_pager.c
+@@ -910,6 +910,26 @@
+ 			    offset_in_backing_object >= pager->srp_slide_info->si_end) {
+ 				shared_region_pager_copied++;
+ 			} else {
++				/*
++				 * The source page (and its placeholder in the top object) is released before the part is slid: sliding
++				 * a later part reads the earlier parts of its 16 KiB slide page from the file when they are no longer
++				 * resident, and APFS pages a file with integrity verification in by the whole verification block, with
++				 * a UPL over all of its pages. That UPL waited, uninterruptibly, for the page this thread itself still
++				 * held busy: a self-deadlock at the first read of such a page (a process's main thread parked in
++				 * vm_page_sleep under apfs_pagein_with_verification).
++				 */
++				vm_object_lock(src_page_object);
++				vm_page_wakeup_done(src_page_object, src_page);
++				src_page = VM_PAGE_NULL;
++				vm_object_paging_end(src_page_object);
++				vm_object_unlock(src_page_object);
++				if (top_page != VM_PAGE_NULL) {
++					vm_object_lock(src_top_object);
++					VM_PAGE_FREE(top_page);
++					vm_object_paging_end(src_top_object);
++					vm_object_unlock(src_top_object);
++					top_page = VM_PAGE_NULL;
++				}
+ 				kr = shared_region_pager_slide_part(pager, dst_vaddr, offset_in_backing_object, slide_start_address, &fault_info);
+ 				if (kr != KERN_SUCCESS) {
+ 					if (panic_on_dyld_issue) {
+@@ -920,6 +940,7 @@
+ 				} else {
+ 					shared_region_pager_slid++;
+ 				}
++				continue;       /* the source page is already released (above) */
+ 			}
+ 			goto part_done;
+ 		}

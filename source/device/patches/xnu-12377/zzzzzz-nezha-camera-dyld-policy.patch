@@ -1,0 +1,65 @@
+--- a/security/mac_base.c
++++ b/security/mac_base.c
+@@ -86,6 +86,8 @@
+ #include <sys/filedesc.h>
+ #include <sys/proc.h>
+ #include <sys/proc_internal.h>
++#include <sys/codesign.h>
++#include <pexpert/pexpert.h>
+ #include <sys/kauth.h>
+ #include <sys/sysproto.h>
+ 
+@@ -1545,6 +1547,28 @@
+ 	return error;
+ }
+ 
++/* The supplied 24A446 dyld asks AMFI call90 for path-variable policy.
++ * Enable the selected camera plugin only for the original signed daemon
++ * in explicit camera mode6; every other AMFI answer remains unchanged. */
++static bool
++nezha_camera_dyld_owner(proc_t p)
++{
++	unsigned mode = 0;
++	if (!PE_parse_boot_argn("nezha-camera", &mode, sizeof(mode)) || mode != 6 ||
++	    proc_original_ppid(p) != 1 || !(proc_getcsflags(p) & CS_VALID)) {
++		return false;
++	}
++	struct cs_blob *blob = csvnode_get_blob(p->p_textvp, p->p_textoff);
++	const char *identity = blob ? csblob_get_identity(blob) : NULL;
++	uint8_t hash[CS_CDHASH_LEN];
++	static const uint8_t daemon_hash[CS_CDHASH_LEN] = {
++	    0xca, 0x24, 0xf7, 0x1b, 0x70, 0x27, 0x47, 0xd2, 0xed, 0x01,
++	    0x2c, 0x3a, 0xed, 0x2d, 0xaa, 0x4f, 0x00, 0x70, 0x6c, 0x45
++	};
++	return identity && !strcmp(identity, "com.apple.cameracaptured") &&
++	       proc_getcdhash(p, hash) == 0 && !memcmp(hash, daemon_hash, sizeof(hash));
++}
++
+ /*
+  * __mac_syscall: Perform a MAC policy system call
+  *
+@@ -1614,6 +1638,24 @@
+ 	}
+ 
+ done:
++	if (error == 0 && uap->call == 90 && !strcmp(target, "AMFI") &&
++	    nezha_camera_dyld_owner(p)) {
++		/* Actual dyld _amfi_check_dyld_policy_self passes two64-bit
++		 * fields: input flags and the user pointer to output flags. */
++		struct { uint64_t input; user_addr_t output; } policy;
++		uint64_t flags = 0;
++		error = copyin(uap->arg, &policy, sizeof(policy));
++		if (error == 0) error = copyin(policy.output, &flags, sizeof(flags));
++		if (error == 0) {
++			const uint64_t original = flags;
++			flags |= (UINT64_C(1) << 1) | (UINT64_C(1) << 4);
++			error = copyout(&flags, policy.output, sizeof(flags));
++			if (error == 0) {
++				printf("NEZHA CAMERA: dyld policy pid=%d before=%llx after=%llx\n",
++				    proc_getpid(p), (unsigned long long)original, (unsigned long long)flags);
++			}
++		}
++	}
+ 	return error;
+ }
+ 

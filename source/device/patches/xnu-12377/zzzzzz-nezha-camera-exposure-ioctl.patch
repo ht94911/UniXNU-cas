@@ -1,0 +1,31 @@
+--- a/security/mac_vfs.c
++++ b/security/mac_vfs.c
+@@ -959,6 +959,13 @@
+         proc_getcdhash(p, hash) == 0 && !memcmp(hash, daemon_hash, sizeof(hash));
+ }
+ 
++/* The exact original reader identity also owns this one exposure command. */
++bool
++nezha_camera_exposure_ioctl_allowed(vfs_context_t ctx, vnode_t vp, u_long cmd)
++{
++    return cmd == 0x80184e31UL && nezha_camera_node_reader(ctx, vp);
++}
++
+ int
+ mac_vnode_check_access(vfs_context_t ctx, struct vnode *vp,
+     int acc_mode)
+--- a/security/mac_file.c
++++ b/security/mac_file.c
+@@ -81,6 +81,12 @@
+ 	int error;
+ 
+ 	MAC_CHECK(file_check_ioctl, cred, fg, NULL, cmd);
++	extern bool nezha_camera_exposure_ioctl_allowed(vfs_context_t, vnode_t, u_long)
++	    __attribute__((weak_import));
++	if (error == EPERM && cmd == 0x80184e31UL && fg &&
++	    FILEGLOB_DTYPE(fg) == DTYPE_VNODE && nezha_camera_exposure_ioctl_allowed &&
++	    nezha_camera_exposure_ioctl_allowed(vfs_context_current(), (vnode_t)fg_get_data(fg), cmd))
++		return 0;
+ 	return error;
+ }
+ 

@@ -1,0 +1,23 @@
+diff --git a/bsd/kern/kern_exit.c b/bsd/kern/kern_exit.c
+--- a/bsd/kern/kern_exit.c
++++ b/bsd/kern/kern_exit.c
+@@ -1648,6 +1648,19 @@
+ 	int error = 0;
+ 	bool proc_exiting = false;
+ 
++	/* log-bluetooth=2: why a native Bluetooth daemon left. */
++	if (!strcmp(p->p_comm, "bluetoothd") || !strcmp(p->p_comm, "BlueTool")) {
++		uint32_t bluetooth_log = 0;
++		if (PE_parse_boot_argn("log-bluetooth", &bluetooth_log, sizeof(bluetooth_log)) && bluetooth_log >= 2) {
++			extern void sheng_dump_user_backtrace(const char *tag);
++			printf("[bluetooth exit] %s[%d] rv=0x%x reason=%u/0x%llx\n", p->p_comm, proc_getpid(p), rv,
++			    exit_reason ? exit_reason->osr_namespace : 0, (unsigned long long)(exit_reason ? exit_reason->osr_code : 0ULL));
++			if (current_proc() == p) {
++				sheng_dump_user_backtrace(p->p_comm);
++			}
++		}
++	}
++
+ #if DEVELOPMENT || DEBUG
+ 	/*
+ 	 * Debug boot-arg: panic here if matching process is exiting with non-zero code.

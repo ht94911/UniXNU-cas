@@ -1,0 +1,1217 @@
+{
+  "instance_bytes": 200,
+  "gMetaClass": "0xfffffff00af04140",
+  "vtable": "0xfffffff008009260",
+  "slots_start": "0xfffffff008009270",
+  "virtual_entries": 219,
+  "slots": [
+    {
+      "slot": 0,
+      "target": "0xfffffff0099dd9d8",
+      "diversity": "0x3771"
+    },
+    {
+      "slot": 1,
+      "target": "0xfffffff0099dd9e0",
+      "diversity": "0x56b7"
+    },
+    {
+      "slot": 2,
+      "target": "0xfffffff00a873fa8",
+      "diversity": "0xbaa2"
+    },
+    {
+      "slot": 3,
+      "target": "0xfffffff00a873f9c",
+      "diversity": "0x3607"
+    },
+    {
+      "slot": 4,
+      "target": "0xfffffff00a873f6c",
+      "diversity": "0x2e4a"
+    },
+    {
+      "slot": 5,
+      "target": "0xfffffff00a873f3c",
+      "diversity": "0x3a87"
+    },
+    {
+      "slot": 6,
+      "target": "0xfffffff00a873db4",
+      "diversity": "0x89a9"
+    },
+    {
+      "slot": 7,
+      "target": "0xfffffff0099dda40",
+      "diversity": "0xfffc"
+    },
+    {
+      "slot": 8,
+      "target": "0xfffffff00a870cc8",
+      "diversity": "0xfc74"
+    },
+    {
+      "slot": 9,
+      "target": "0xfffffff00a873d24",
+      "diversity": "0x5635"
+    },
+    {
+      "slot": 10,
+      "target": "0xfffffff00a873cf4",
+      "diversity": "0xbe60"
+    },
+    {
+      "slot": 11,
+      "target": "0xfffffff00a873b9c",
+      "diversity": "0x32e5"
+    },
+    {
+      "slot": 12,
+      "target": "0xfffffff009a03ac0",
+      "diversity": "0x9209"
+    },
+    {
+      "slot": 13,
+      "target": "0xfffffff00a873b90",
+      "diversity": "0x4a6a"
+    },
+    {
+      "slot": 14,
+      "target": "0xfffffff0099e03d0",
+      "diversity": "0xedc5"
+    },
+    {
+      "slot": 15,
+      "target": "0xfffffff00a8ec180",
+      "diversity": "0x5c68"
+    },
+    {
+      "slot": 16,
+      "target": "0xfffffff00a8ebfa0",
+      "diversity": "0x6a10"
+    },
+    {
+      "slot": 17,
+      "target": "0xfffffff00a8ebdc0",
+      "diversity": "0x7a2a"
+    },
+    {
+      "slot": 18,
+      "target": "0xfffffff00a8ebcfc",
+      "diversity": "0xaf75"
+    },
+    {
+      "slot": 19,
+      "target": "0xfffffff00a8ebc38",
+      "diversity": "0x137e"
+    },
+    {
+      "slot": 20,
+      "target": "0xfffffff00a8ebb1c",
+      "diversity": "0x655"
+    },
+    {
+      "slot": 21,
+      "target": "0xfffffff0099ddabc",
+      "diversity": "0x43aa"
+    },
+    {
+      "slot": 22,
+      "target": "0xfffffff00a8eb6bc",
+      "diversity": "0x12e9"
+    },
+    {
+      "slot": 23,
+      "target": "0xfffffff00a8eb490",
+      "diversity": "0x4578"
+    },
+    {
+      "slot": 24,
+      "target": "0xfffffff00a8eb408",
+      "diversity": "0x4275"
+    },
+    {
+      "slot": 25,
+      "target": "0xfffffff00a8eb380",
+      "diversity": "0xff53"
+    },
+    {
+      "slot": 26,
+      "target": "0xfffffff00a8eb2c8",
+      "diversity": "0x1814"
+    },
+    {
+      "slot": 27,
+      "target": "0xfffffff00a8eb208",
+      "diversity": "0x122e"
+    },
+    {
+      "slot": 28,
+      "target": "0xfffffff00a8eb0ec",
+      "diversity": "0x13f6"
+    },
+    {
+      "slot": 29,
+      "target": "0xfffffff00a8eafd0",
+      "diversity": "0x1d35"
+    },
+    {
+      "slot": 30,
+      "target": "0xfffffff00a8eaed0",
+      "diversity": "0xacb1"
+    },
+    {
+      "slot": 31,
+      "target": "0xfffffff00a8eae54",
+      "diversity": "0x7eb0"
+    },
+    {
+      "slot": 32,
+      "target": "0xfffffff00a8eadd8",
+      "diversity": "0x1262"
+    },
+    {
+      "slot": 33,
+      "target": "0xfffffff00a8eacd8",
+      "diversity": "0x82eb"
+    },
+    {
+      "slot": 34,
+      "target": "0xfffffff00a8eac58",
+      "diversity": "0x164e"
+    },
+    {
+      "slot": 35,
+      "target": "0xfffffff00a8eabd8",
+      "diversity": "0x37a5"
+    },
+    {
+      "slot": 36,
+      "target": "0xfffffff00a8ea9f8",
+      "diversity": "0xb659"
+    },
+    {
+      "slot": 37,
+      "target": "0xfffffff00a8ea818",
+      "diversity": "0x6c51"
+    },
+    {
+      "slot": 38,
+      "target": "0xfffffff00a8ea638",
+      "diversity": "0xa20f"
+    },
+    {
+      "slot": 39,
+      "target": "0xfffffff00a8ea510",
+      "diversity": "0xb3b6"
+    },
+    {
+      "slot": 40,
+      "target": "0xfffffff00a8ea3e8",
+      "diversity": "0x6bcb"
+    },
+    {
+      "slot": 41,
+      "target": "0xfffffff00a8ea2c0",
+      "diversity": "0x5a20"
+    },
+    {
+      "slot": 42,
+      "target": "0xfffffff00a8ea140",
+      "diversity": "0x5062"
+    },
+    {
+      "slot": 43,
+      "target": "0xfffffff00a902004",
+      "diversity": "0xd7"
+    },
+    {
+      "slot": 44,
+      "target": "0xfffffff0099dffcc",
+      "diversity": "0x7c85"
+    },
+    {
+      "slot": 45,
+      "target": "0xfffffff00a8e9dcc",
+      "diversity": "0x8a26"
+    },
+    {
+      "slot": 46,
+      "target": "0xfffffff00a8e9c14",
+      "diversity": "0x3539"
+    },
+    {
+      "slot": 47,
+      "target": "0xfffffff00a8e9bb4",
+      "diversity": "0x688b"
+    },
+    {
+      "slot": 48,
+      "target": "0xfffffff00a8e999c",
+      "diversity": "0x1e60"
+    },
+    {
+      "slot": 49,
+      "target": "0xfffffff00a8e97e4",
+      "diversity": "0x1955"
+    },
+    {
+      "slot": 50,
+      "target": "0xfffffff00a8e9784",
+      "diversity": "0x689"
+    },
+    {
+      "slot": 51,
+      "target": "0xfffffff00a8e95ac",
+      "diversity": "0xc256"
+    },
+    {
+      "slot": 52,
+      "target": "0xfffffff00a8e93d4",
+      "diversity": "0xa383"
+    },
+    {
+      "slot": 53,
+      "target": "0xfffffff00a8e91dc",
+      "diversity": "0xf021"
+    },
+    {
+      "slot": 54,
+      "target": "0xfffffff00a8e9020",
+      "diversity": "0x1f0a"
+    },
+    {
+      "slot": 55,
+      "target": "0xfffffff00a8e8bf4",
+      "diversity": "0xb4bb"
+    },
+    {
+      "slot": 56,
+      "target": "0xfffffff00a8e8a38",
+      "diversity": "0x8ffc"
+    },
+    {
+      "slot": 57,
+      "target": "0xfffffff00a8e88a0",
+      "diversity": "0xb5b9"
+    },
+    {
+      "slot": 58,
+      "target": "0xfffffff00a8e86e4",
+      "diversity": "0x8764"
+    },
+    {
+      "slot": 59,
+      "target": "0xfffffff00a8e85d8",
+      "diversity": "0x5d96"
+    },
+    {
+      "slot": 60,
+      "target": "0xfffffff00a8e7aa8",
+      "diversity": "0x80d9"
+    },
+    {
+      "slot": 61,
+      "target": "0xfffffff00a8e7984",
+      "diversity": "0xc9c"
+    },
+    {
+      "slot": 62,
+      "target": "0xfffffff00a8e7864",
+      "diversity": "0x5d0a"
+    },
+    {
+      "slot": 63,
+      "target": "0xfffffff00a8e7668",
+      "diversity": "0xcbcc"
+    },
+    {
+      "slot": 64,
+      "target": "0xfffffff00a8e7588",
+      "diversity": "0x617d"
+    },
+    {
+      "slot": 65,
+      "target": "0xfffffff00a8e748c",
+      "diversity": "0x848a"
+    },
+    {
+      "slot": 66,
+      "target": "0xfffffff00a8e73e4",
+      "diversity": "0x2312"
+    },
+    {
+      "slot": 67,
+      "target": "0xfffffff00a8e7358",
+      "diversity": "0x3540"
+    },
+    {
+      "slot": 68,
+      "target": "0xfffffff00a8e7284",
+      "diversity": "0xc257"
+    },
+    {
+      "slot": 69,
+      "target": "0xfffffff00a8e71e4",
+      "diversity": "0x3025"
+    },
+    {
+      "slot": 70,
+      "target": "0xfffffff00a8e713c",
+      "diversity": "0x9fc2"
+    },
+    {
+      "slot": 71,
+      "target": "0xfffffff00a8e682c",
+      "diversity": "0x5038"
+    },
+    {
+      "slot": 72,
+      "target": "0xfffffff00a8e66ec",
+      "diversity": "0xc666"
+    },
+    {
+      "slot": 73,
+      "target": "0xfffffff00a8e5f30",
+      "diversity": "0x6cc3"
+    },
+    {
+      "slot": 74,
+      "target": "0xfffffff00a901f54",
+      "diversity": "0x550c"
+    },
+    {
+      "slot": 75,
+      "target": "0xfffffff00a901eb0",
+      "diversity": "0xa19a"
+    },
+    {
+      "slot": 76,
+      "target": "0xfffffff00a901e20",
+      "diversity": "0xa51b"
+    },
+    {
+      "slot": 77,
+      "target": "0xfffffff00a901cc4",
+      "diversity": "0x4577"
+    },
+    {
+      "slot": 78,
+      "target": "0xfffffff00a929de4",
+      "diversity": "0x573c"
+    },
+    {
+      "slot": 79,
+      "target": "0xfffffff00a92b464",
+      "diversity": "0x1a4e"
+    },
+    {
+      "slot": 80,
+      "target": "0xfffffff00a901b3c",
+      "diversity": "0x6c3d"
+    },
+    {
+      "slot": 81,
+      "target": "0xfffffff00a90187c",
+      "diversity": "0xb049"
+    },
+    {
+      "slot": 82,
+      "target": "0xfffffff00a9015b8",
+      "diversity": "0xc4b2"
+    },
+    {
+      "slot": 83,
+      "target": "0xfffffff00a9015ac",
+      "diversity": "0xc90d"
+    },
+    {
+      "slot": 84,
+      "target": "0xfffffff00a8fa7f0",
+      "diversity": "0x7d59"
+    },
+    {
+      "slot": 85,
+      "target": "0xfffffff00a8fa7e8",
+      "diversity": "0x4897"
+    },
+    {
+      "slot": 86,
+      "target": "0xfffffff0099ddb44",
+      "diversity": "0x3c68"
+    },
+    {
+      "slot": 87,
+      "target": "0xfffffff0099df724",
+      "diversity": "0xb085"
+    },
+    {
+      "slot": 88,
+      "target": "0xfffffff00a8fa550",
+      "diversity": "0x4529"
+    },
+    {
+      "slot": 89,
+      "target": "0xfffffff0099e2578",
+      "diversity": "0x639f"
+    },
+    {
+      "slot": 90,
+      "target": "0xfffffff00a8fa27c",
+      "diversity": "0xccfb"
+    },
+    {
+      "slot": 91,
+      "target": "0xfffffff0099e0828",
+      "diversity": "0x55eb"
+    },
+    {
+      "slot": 92,
+      "target": "0xfffffff009a16264",
+      "diversity": "0xe933"
+    },
+    {
+      "slot": 93,
+      "target": "0xfffffff0099e093c",
+      "diversity": "0xaec3"
+    },
+    {
+      "slot": 94,
+      "target": "0xfffffff00a8f915c",
+      "diversity": "0x5ec5"
+    },
+    {
+      "slot": 95,
+      "target": "0xfffffff00a8f8c28",
+      "diversity": "0x5219"
+    },
+    {
+      "slot": 96,
+      "target": "0xfffffff00a8f8744",
+      "diversity": "0xc6b2"
+    },
+    {
+      "slot": 97,
+      "target": "0xfffffff00a8f8508",
+      "diversity": "0x8a43"
+    },
+    {
+      "slot": 98,
+      "target": "0xfffffff00a8f8460",
+      "diversity": "0x4a20"
+    },
+    {
+      "slot": 99,
+      "target": "0xfffffff00a8f8450",
+      "diversity": "0xd9f2"
+    },
+    {
+      "slot": 100,
+      "target": "0xfffffff00a8f83cc",
+      "diversity": "0x981a"
+    },
+    {
+      "slot": 101,
+      "target": "0xfffffff0099df9c0",
+      "diversity": "0xa27f"
+    },
+    {
+      "slot": 102,
+      "target": "0xfffffff00a8f838c",
+      "diversity": "0xc4f9"
+    },
+    {
+      "slot": 103,
+      "target": "0xfffffff00a8f8304",
+      "diversity": "0x6b87"
+    },
+    {
+      "slot": 104,
+      "target": "0xfffffff00a8f8098",
+      "diversity": "0x60a1"
+    },
+    {
+      "slot": 105,
+      "target": "0xfffffff00a8f7fac",
+      "diversity": "0x7e78"
+    },
+    {
+      "slot": 106,
+      "target": "0xfffffff00a8f7ec0",
+      "diversity": "0x36aa"
+    },
+    {
+      "slot": 107,
+      "target": "0xfffffff00a8f7d40",
+      "diversity": "0x86ef"
+    },
+    {
+      "slot": 108,
+      "target": "0xfffffff00a8f78a0",
+      "diversity": "0x9be9"
+    },
+    {
+      "slot": 109,
+      "target": "0xfffffff00a8f22e4",
+      "diversity": "0x7318"
+    },
+    {
+      "slot": 110,
+      "target": "0xfffffff00a8f2260",
+      "diversity": "0x93b7"
+    },
+    {
+      "slot": 111,
+      "target": "0xfffffff00a8f21ec",
+      "diversity": "0x638e"
+    },
+    {
+      "slot": 112,
+      "target": "0xfffffff00a8f21b0",
+      "diversity": "0x61a6"
+    },
+    {
+      "slot": 113,
+      "target": "0xfffffff00a8f2058",
+      "diversity": "0x9175"
+    },
+    {
+      "slot": 114,
+      "target": "0xfffffff00a8f201c",
+      "diversity": "0x136b"
+    },
+    {
+      "slot": 115,
+      "target": "0xfffffff00a8f1fe0",
+      "diversity": "0xdb58"
+    },
+    {
+      "slot": 116,
+      "target": "0xfffffff00a8f1b64",
+      "diversity": "0x4a31"
+    },
+    {
+      "slot": 117,
+      "target": "0xfffffff00a8f150c",
+      "diversity": "0x988"
+    },
+    {
+      "slot": 118,
+      "target": "0xfffffff00a8f143c",
+      "diversity": "0x5393"
+    },
+    {
+      "slot": 119,
+      "target": "0xfffffff00a8f1430",
+      "diversity": "0xabe0"
+    },
+    {
+      "slot": 120,
+      "target": "0xfffffff00a8f1370",
+      "diversity": "0xad9"
+    },
+    {
+      "slot": 121,
+      "target": "0xfffffff00a8f1294",
+      "diversity": "0x6c99"
+    },
+    {
+      "slot": 122,
+      "target": "0xfffffff00a8f1214",
+      "diversity": "0xd52d"
+    },
+    {
+      "slot": 123,
+      "target": "0xfffffff00a8f1188",
+      "diversity": "0xe213"
+    },
+    {
+      "slot": 124,
+      "target": "0xfffffff00a8f1150",
+      "diversity": "0x308f"
+    },
+    {
+      "slot": 125,
+      "target": "0xfffffff00a8f1054",
+      "diversity": "0xd78d"
+    },
+    {
+      "slot": 126,
+      "target": "0xfffffff00a8f0f94",
+      "diversity": "0x3a1d"
+    },
+    {
+      "slot": 127,
+      "target": "0xfffffff00a8f0eb4",
+      "diversity": "0xa390"
+    },
+    {
+      "slot": 128,
+      "target": "0xfffffff00a8f0e08",
+      "diversity": "0x240b"
+    },
+    {
+      "slot": 129,
+      "target": "0xfffffff00a8f0d5c",
+      "diversity": "0x1b89"
+    },
+    {
+      "slot": 130,
+      "target": "0xfffffff00a8f09a8",
+      "diversity": "0x8d3c"
+    },
+    {
+      "slot": 131,
+      "target": "0xfffffff00a8f0998",
+      "diversity": "0x2652"
+    },
+    {
+      "slot": 132,
+      "target": "0xfffffff0099e31c4",
+      "diversity": "0x7f14"
+    },
+    {
+      "slot": 133,
+      "target": "0xfffffff00a8f0560",
+      "diversity": "0x759"
+    },
+    {
+      "slot": 134,
+      "target": "0xfffffff00a8f0484",
+      "diversity": "0x63c4"
+    },
+    {
+      "slot": 135,
+      "target": "0xfffffff00a8efa50",
+      "diversity": "0x800f"
+    },
+    {
+      "slot": 136,
+      "target": "0xfffffff00a8efa14",
+      "diversity": "0x9cc2"
+    },
+    {
+      "slot": 137,
+      "target": "0xfffffff00a8ef9d8",
+      "diversity": "0x2ac"
+    },
+    {
+      "slot": 138,
+      "target": "0xfffffff00a8ef5f0",
+      "diversity": "0x785f"
+    },
+    {
+      "slot": 139,
+      "target": "0xfffffff00a8ef5e0",
+      "diversity": "0xcc6b"
+    },
+    {
+      "slot": 140,
+      "target": "0xfffffff0099e2f94",
+      "diversity": "0x82cd"
+    },
+    {
+      "slot": 141,
+      "target": "0xfffffff00a8ef24c",
+      "diversity": "0x808e"
+    },
+    {
+      "slot": 142,
+      "target": "0xfffffff00a8ef1cc",
+      "diversity": "0x37ce"
+    },
+    {
+      "slot": 143,
+      "target": "0xfffffff00a8eefd8",
+      "diversity": "0xa4c7"
+    },
+    {
+      "slot": 144,
+      "target": "0xfffffff00a914060",
+      "diversity": "0xe8de"
+    },
+    {
+      "slot": 145,
+      "target": "0xfffffff00a926f08",
+      "diversity": "0xa343"
+    },
+    {
+      "slot": 146,
+      "target": "0xfffffff00a926ec4",
+      "diversity": "0x4bc0"
+    },
+    {
+      "slot": 147,
+      "target": "0xfffffff00a928014",
+      "diversity": "0xf8a6"
+    },
+    {
+      "slot": 148,
+      "target": "0xfffffff00a928d04",
+      "diversity": "0xac7f"
+    },
+    {
+      "slot": 149,
+      "target": "0xfffffff00a929ba4",
+      "diversity": "0x7974"
+    },
+    {
+      "slot": 150,
+      "target": "0xfffffff00a929e48",
+      "diversity": "0xea1b"
+    },
+    {
+      "slot": 151,
+      "target": "0xfffffff00a929e54",
+      "diversity": "0x4b35"
+    },
+    {
+      "slot": 152,
+      "target": "0xfffffff00a927294",
+      "diversity": "0x9eb4"
+    },
+    {
+      "slot": 153,
+      "target": "0xfffffff00a927dd4",
+      "diversity": "0x595a"
+    },
+    {
+      "slot": 154,
+      "target": "0xfffffff00a929c10",
+      "diversity": "0x5b2b"
+    },
+    {
+      "slot": 155,
+      "target": "0xfffffff00a92b2d0",
+      "diversity": "0x699e"
+    },
+    {
+      "slot": 156,
+      "target": "0xfffffff00a92b2dc",
+      "diversity": "0x2b52"
+    },
+    {
+      "slot": 157,
+      "target": "0xfffffff00a92b350",
+      "diversity": "0xf40e"
+    },
+    {
+      "slot": 158,
+      "target": "0xfffffff00a92b3d0",
+      "diversity": "0xddb"
+    },
+    {
+      "slot": 159,
+      "target": "0xfffffff00a92b444",
+      "diversity": "0xf88"
+    },
+    {
+      "slot": 160,
+      "target": "0xfffffff00a92b450",
+      "diversity": "0x8700"
+    },
+    {
+      "slot": 161,
+      "target": "0xfffffff00a929ee0",
+      "diversity": "0x36c3"
+    },
+    {
+      "slot": 162,
+      "target": "0xfffffff00a929ef0",
+      "diversity": "0x58e"
+    },
+    {
+      "slot": 163,
+      "target": "0xfffffff00a929f00",
+      "diversity": "0xf16e"
+    },
+    {
+      "slot": 164,
+      "target": "0xfffffff00a92a5f8",
+      "diversity": "0x3a71"
+    },
+    {
+      "slot": 165,
+      "target": "0xfffffff00a92a608",
+      "diversity": "0xda1e"
+    },
+    {
+      "slot": 166,
+      "target": "0xfffffff00a92a69c",
+      "diversity": "0x10b6"
+    },
+    {
+      "slot": 167,
+      "target": "0xfffffff00a92b45c",
+      "diversity": "0x8654"
+    },
+    {
+      "slot": 168,
+      "target": "0xfffffff0099e09dc",
+      "diversity": "0x96c3"
+    },
+    {
+      "slot": 169,
+      "target": "0xfffffff0099e09e8",
+      "diversity": "0x4cb5"
+    },
+    {
+      "slot": 170,
+      "target": "0xfffffff0099e09f0",
+      "diversity": "0x19b8"
+    },
+    {
+      "slot": 171,
+      "target": "0xfffffff0099e0bb0",
+      "diversity": "0x6518"
+    },
+    {
+      "slot": 172,
+      "target": "0xfffffff0099e0c7c",
+      "diversity": "0x5717"
+    },
+    {
+      "slot": 173,
+      "target": "0xfffffff0099e0d48",
+      "diversity": "0xd2bf"
+    },
+    {
+      "slot": 174,
+      "target": "0xfffffff0099e0e14",
+      "diversity": "0x9fa"
+    },
+    {
+      "slot": 175,
+      "target": "0xfffffff0099e0ee0",
+      "diversity": "0xad91"
+    },
+    {
+      "slot": 176,
+      "target": "0xfffffff0099e0fac",
+      "diversity": "0xd335"
+    },
+    {
+      "slot": 177,
+      "target": "0xfffffff0099e0a60",
+      "diversity": "0x4902"
+    },
+    {
+      "slot": 178,
+      "target": "0xfffffff0099e0ad0",
+      "diversity": "0xae57"
+    },
+    {
+      "slot": 179,
+      "target": "0xfffffff0099e0b40",
+      "diversity": "0xaad9"
+    },
+    {
+      "slot": 180,
+      "target": "0xfffffff0099e1078",
+      "diversity": "0x5299"
+    },
+    {
+      "slot": 181,
+      "target": "0xfffffff0099e1084",
+      "diversity": "0xe604"
+    },
+    {
+      "slot": 182,
+      "target": "0xfffffff0099e1094",
+      "diversity": "0x8660"
+    },
+    {
+      "slot": 183,
+      "target": "0xfffffff0099e11ec",
+      "diversity": "0x189"
+    },
+    {
+      "slot": 184,
+      "target": "0xfffffff0099e1358",
+      "diversity": "0xc3de"
+    },
+    {
+      "slot": 185,
+      "target": "0xfffffff0099e1368",
+      "diversity": "0x41f6"
+    },
+    {
+      "slot": 186,
+      "target": "0xfffffff0099e1434",
+      "diversity": "0x5c1e"
+    },
+    {
+      "slot": 187,
+      "target": "0xfffffff0099e1474",
+      "diversity": "0xb54e"
+    },
+    {
+      "slot": 188,
+      "target": "0xfffffff0099e14b4",
+      "diversity": "0xef25"
+    },
+    {
+      "slot": 189,
+      "target": "0xfffffff0099dfa8c",
+      "diversity": "0x4bdd"
+    },
+    {
+      "slot": 190,
+      "target": "0xfffffff0099e1500",
+      "diversity": "0xefa8"
+    },
+    {
+      "slot": 191,
+      "target": "0xfffffff0099e17e8",
+      "diversity": "0x9835"
+    },
+    {
+      "slot": 192,
+      "target": "0xfffffff0099e18a8",
+      "diversity": "0xae71"
+    },
+    {
+      "slot": 193,
+      "target": "0xfffffff0099e21a8",
+      "diversity": "0x67cf"
+    },
+    {
+      "slot": 194,
+      "target": "0xfffffff0099e21dc",
+      "diversity": "0xa85e"
+    },
+    {
+      "slot": 195,
+      "target": "0xfffffff0099e2210",
+      "diversity": "0x7b4f"
+    },
+    {
+      "slot": 196,
+      "target": "0xfffffff0099e2244",
+      "diversity": "0x4abb"
+    },
+    {
+      "slot": 197,
+      "target": "0xfffffff0099e29dc",
+      "diversity": "0xc0d0"
+    },
+    {
+      "slot": 198,
+      "target": "0xfffffff0099e2a7c",
+      "diversity": "0x1134"
+    },
+    {
+      "slot": 199,
+      "target": "0xfffffff0099e2d28",
+      "diversity": "0x7eca"
+    },
+    {
+      "slot": 200,
+      "target": "0xfffffff0099e2e58",
+      "diversity": "0xf128"
+    },
+    {
+      "slot": 201,
+      "target": "0xfffffff0099e2f88",
+      "diversity": "0xc748"
+    },
+    {
+      "slot": 202,
+      "target": "0xfffffff0099e2300",
+      "diversity": "0xa49a"
+    },
+    {
+      "slot": 203,
+      "target": "0xfffffff0099e23dc",
+      "diversity": "0xde1d"
+    },
+    {
+      "slot": 204,
+      "target": "0xfffffff0099e24c4",
+      "diversity": "0x90ba"
+    },
+    {
+      "slot": 205,
+      "target": "0xfffffff0099e3220",
+      "diversity": "0xea29"
+    },
+    {
+      "slot": 206,
+      "target": "0xfffffff0099e322c",
+      "diversity": "0xce88"
+    },
+    {
+      "slot": 207,
+      "target": "0xfffffff0099e3238",
+      "diversity": "0xc62d"
+    },
+    {
+      "slot": 208,
+      "target": "0xfffffff0099e3248",
+      "diversity": "0x78"
+    },
+    {
+      "slot": 209,
+      "target": "0xfffffff0099e3254",
+      "diversity": "0xdce"
+    },
+    {
+      "slot": 210,
+      "target": "0xfffffff0099e325c",
+      "diversity": "0x454b"
+    },
+    {
+      "slot": 211,
+      "target": "0xfffffff0099e33c8",
+      "diversity": "0xc58b"
+    },
+    {
+      "slot": 212,
+      "target": "0xfffffff0099e33d4",
+      "diversity": "0xe23b"
+    },
+    {
+      "slot": 213,
+      "target": "0xfffffff0099e3554",
+      "diversity": "0x2684"
+    },
+    {
+      "slot": 214,
+      "target": "0xfffffff0099e3ee4",
+      "diversity": "0xcca1"
+    },
+    {
+      "slot": 215,
+      "target": "0xfffffff0099e3eec",
+      "diversity": "0xfe11"
+    },
+    {
+      "slot": 216,
+      "target": "0xfffffff0099e3ef4",
+      "diversity": "0x69fc"
+    },
+    {
+      "slot": 217,
+      "target": "0xfffffff0099e3efc",
+      "diversity": "0xaaca"
+    },
+    {
+      "slot": 218,
+      "target": "0xfffffff0099e3f04",
+      "diversity": "0x6518"
+    }
+  ],
+  "method_matches": [
+    {
+      "symbol": "__ZN17IOHIDEventService13dispatchEventEP10IOHIDEventj",
+      "discriminator": "0x1134",
+      "matches": [
+        {
+          "slot": 198,
+          "target": "0xfffffff0099e2a7c",
+          "diversity": "0x1134"
+        }
+      ]
+    },
+    {
+      "symbol": "__ZN17IOHIDEventService9copyEventEjP10IOHIDEventj",
+      "discriminator": "0xc748",
+      "matches": [
+        {
+          "slot": 201,
+          "target": "0xfffffff0099e2f88",
+          "diversity": "0xc748"
+        }
+      ]
+    },
+    {
+      "symbol": "__ZN17IOHIDEventService19getPrimaryUsagePageEv",
+      "discriminator": "0x7eca",
+      "matches": [
+        {
+          "slot": 199,
+          "target": "0xfffffff0099e2d28",
+          "diversity": "0x7eca"
+        }
+      ]
+    },
+    {
+      "symbol": "__ZN17IOHIDEventService15getPrimaryUsageEv",
+      "discriminator": "0xf128",
+      "matches": [
+        {
+          "slot": 200,
+          "target": "0xfffffff0099e2e58",
+          "diversity": "0xf128"
+        }
+      ]
+    },
+    {
+      "symbol": "__ZN17IOHIDEventService17getReportIntervalEv",
+      "discriminator": "0x9835",
+      "matches": [
+        {
+          "slot": 191,
+          "target": "0xfffffff0099e17e8",
+          "diversity": "0x9835"
+        }
+      ]
+    },
+    {
+      "symbol": "__ZN17IOHIDEventService11handleStartEP9IOService",
+      "discriminator": "0x96c3",
+      "matches": [
+        {
+          "slot": 168,
+          "target": "0xfffffff0099e09dc",
+          "diversity": "0x96c3"
+        }
+      ]
+    },
+    {
+      "symbol": "__ZN17IOHIDEventService10handleStopEP9IOService",
+      "discriminator": "0x4cb5",
+      "matches": [
+        {
+          "slot": 169,
+          "target": "0xfffffff0099e09e8",
+          "diversity": "0x4cb5"
+        }
+      ]
+    },
+    {
+      "symbol": "__ZN17IOHIDEventService17getReportElementsEv",
+      "discriminator": "0x5299",
+      "matches": [
+        {
+          "slot": 180,
+          "target": "0xfffffff0099e1078",
+          "diversity": "0x5299"
+        }
+      ]
+    }
+  ],
+  "kernelcache_sha256": "d99b7719ad4b367db264a7682806aecaf6e0621c6761d07325a58337319d4238",
+  "profile": "ios-27.0.1-24A446-iphone14-4",
+  "IOHIDFamily_revision": "e31e90a24c27ad6cbe981650d12a1a4124065b03",
+  "bindings": {
+    "__ZN17IOHIDEventServiceC2EPK11OSMetaClass": "0xfffffff0099dd960",
+    "__ZN17IOHIDEventServiceD2Ev": "0xfffffff0099dd9d0",
+    "__ZN17IOHIDEventService10gMetaClassE": "0xfffffff00af04140",
+    "__ZTV17IOHIDEventService": "0xfffffff008009260",
+    "__ZN17IOHIDEventService4initEP12OSDictionary": "0xfffffff0099ddabc",
+    "__ZN17IOHIDEventService4freeEv": "0xfffffff0099e03d0",
+    "__ZN17IOHIDEventService5startEP9IOService": "0xfffffff0099ddb44",
+    "__ZN17IOHIDEventService4stopEP9IOService": "0xfffffff0099df724",
+    "__ZN17IOHIDEventService13setPropertiesEP8OSObject": "0xfffffff0099dffcc",
+    "__ZN10IOHIDEvent23ambientLightSensorEventEyjjjjjj": "0xfffffff0099ea494"
+  },
+  "evidence": {
+    "instance_size": "Original MetaClass constructors x1=IOHIDEventService,w3=200; source ABI0xc8",
+    "base_constructor": "Derived class constructors call0xfffffff0099dd960; it calls IOService constructor and signs/writes original vtable",
+    "base_destructor": "Derived destructors call0xfffffff0099dd9d0, original IOService destructor branch",
+    "ambient_constructor": "Original264-byte function: x0 timestamp,w1 level,w2..w5 rawchannels,w6options; type12, integerlevel at eventData16; each input is stored exactly",
+    "virtual_binding": "All219 contiguous slots are authenticated key0/address-diverse; direct added-method discriminators and inherited canonical signatures match exact offsets",
+    "native_compiler_PAC_layout": "pending; this fixture is a read-only original donor input for dedicated native build"
+  }
+}

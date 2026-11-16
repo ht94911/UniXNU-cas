@@ -1,0 +1,8 @@
+{
+  "repository": "local nezha baseband device",
+  "revision": "18f5aa8c95c0f7f046a0f60df68bc6597f8f8422",
+  "path": "tools/baseband27/cellular_runtime.py",
+  "sha256": "a40684ecd9b828dbc9dbaca285e72b87d50fa3dbd451a16eecb799125d5934de",
+  "unmodified": true,
+  "scope": "Use existing binary plist/cache signature functions; camera wrapper supplies its own one-shot job"
+}

@@ -1,0 +1,52 @@
+--- a/bsd/kern/kern_exec.c
++++ b/bsd/kern/kern_exec.c
+@@ -6960,6 +6960,30 @@
+ 		imgp->ip_envc++;
+ 	}
+ 
++	/* Camera074's modifydb lookup is absent. Load the Camera-only
++	 * registration extension in the original LS server; it runs inside
++	 * its native database bootstrap and retains the original seed. */
++	if (camera_mode == 6 && imgp->ip_ndp &&
++	    imgp->ip_ndp->ni_cnd.cn_namelen == sizeof("lsd") - 1 &&
++	    !memcmp(imgp->ip_ndp->ni_cnd.cn_nameptr, "lsd", sizeof("lsd") - 1)) {
++		struct cs_blob *blob = csvnode_get_blob(imgp->ip_vp, imgp->ip_arch_offset);
++		const char *identity = blob ? csblob_get_identity(blob) : NULL;
++		const uint8_t *hash = blob ? csblob_get_cdhash(blob) : NULL;
++		static const uint8_t lsd_hash[CS_CDHASH_LEN] = {
++		    0xea, 0x57, 0xfe, 0x6d, 0xbb, 0x8d, 0x64, 0x09, 0x30, 0x3e,
++		    0x21, 0x67, 0x59, 0x80, 0xe2, 0xf7, 0x91, 0x65, 0x80, 0x14
++		};
++		if (identity && hash && !strcmp(identity, "com.apple.lsd") &&
++		    !memcmp(hash, lsd_hash, sizeof(lsd_hash))) {
++			static const char library_env[] = "DYLD_INSERT_LIBRARIES=/System/Library/MediaCapture/libNezhaCameraLS27.dylib";
++			error = exec_add_user_string(imgp, CAST_USER_ADDR_T(library_env), UIO_SYSSPACE, TRUE);
++			if (error) goto bad;
++			if (imgp->ip_argspace < new_ptr_size) { error = E2BIG; goto bad; }
++			imgp->ip_argspace -= new_ptr_size;
++			imgp->ip_envc++;
++		}
++	}
++
+ 	/* Save space for envv[] NULL terminator */
+ 	if (imgp->ip_argspace < new_ptr_size) {
+ 		error = E2BIG;
+--- a/security/mac_base.c
++++ b/security/mac_base.c
+@@ -1575,8 +1575,14 @@
+ 	    0xca, 0x24, 0xf7, 0x1b, 0x70, 0x27, 0x47, 0xd2, 0xed, 0x01,
+ 	    0x2c, 0x3a, 0xed, 0x2d, 0xaa, 0x4f, 0x00, 0x70, 0x6c, 0x45
+ 	};
+-	return identity && !strcmp(identity, "com.apple.cameracaptured") &&
+-	       proc_getcdhash(p, hash) == 0 && !memcmp(hash, daemon_hash, sizeof(hash));
++	static const uint8_t lsd_hash[CS_CDHASH_LEN] = {
++	    0xea, 0x57, 0xfe, 0x6d, 0xbb, 0x8d, 0x64, 0x09, 0x30, 0x3e,
++	    0x21, 0x67, 0x59, 0x80, 0xe2, 0xf7, 0x91, 0x65, 0x80, 0x14
++	};
++	return identity && proc_getcdhash(p, hash) == 0 &&
++	       ((!strcmp(identity, "com.apple.cameracaptured") &&
++	         !memcmp(hash, daemon_hash, sizeof(hash))) ||
++	        (!strcmp(identity, "com.apple.lsd") && !memcmp(hash, lsd_hash, sizeof(hash))));
+ }
+ 
+ /*

@@ -1,0 +1,19 @@
+--- a/bsd/kern/kern_exit.c
++++ b/bsd/kern/kern_exit.c
+@@ -2118,6 +2118,16 @@
+ 		    ((ut->uu_exception & 0x0f) << 20) |
+ 		    ((int)ut->uu_code & 0xfffff);
+ 
++		/* OriginalCamera072 exited via SIGKILL after native capture setup
++		 * failed. Its EXC_CRASH signal code alone omits the system's reason.
++		 * Preserve termination and report only this actual Camera exit. */
++		if (strcmp(proc_best_name(p), "Camera") == 0 && WTERMSIG(rv) == SIGKILL) {
++			printf("NEZHA CAMERA EXIT: pid=%d namespace=%u reason=%#llx description=%s\n",
++			    p->p_pid, p->p_exit_reason ? p->p_exit_reason->osr_namespace : 0,
++			    p->p_exit_reason ? (unsigned long long)p->p_exit_reason->osr_code : 0,
++			    p->p_exit_reason ? exit_reason_get_string_desc(p->p_exit_reason) : "<absent>");
++		}
++
+ 		saved_code = ut->uu_code;
+ 		subcode = ut->uu_subcode;
+ 		etype = ut->uu_exception;
