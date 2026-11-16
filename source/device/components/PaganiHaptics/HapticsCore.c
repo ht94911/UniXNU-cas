@@ -96,6 +96,23 @@ static int status_data(PghCore *h, uint16_t sel, uint8_t *msb, uint8_t *lsb)
     return rc;
 }
 
+/* Stock HAP530 uses selector5 source4 to identify an actual SoundWire play.
+ * SWR_ACCESS only enables its interface. Restore the original selection. */
+static int factory_swr_busy(PghCore *h)
+{
+    uint8_t old[2]={0},driver[2]={0};
+    int rc=rdn(h,PGH_CFG,PGH_CFG_MOD_STATUS_SEL,old,2);
+    if(rc)return rc;
+    rc=wr(h,PGH_CFG,PGH_CFG_MOD_STATUS_XT,0);
+    if(!rc)rc=wr(h,PGH_CFG,PGH_CFG_MOD_STATUS_SEL,5);
+    if(!rc)rc=rdn(h,PGH_CFG,PGH_CFG_STATUS_DATA_MSB,driver,2);
+    const int restore_xt=wr(h,PGH_CFG,PGH_CFG_MOD_STATUS_XT,old[1]);
+    const int restore_sel=restore_xt?restore_xt:wr(h,PGH_CFG,PGH_CFG_MOD_STATUS_SEL,old[0]);
+    h->sel=0xffff;
+    if(rc || restore_sel)return rc?rc:restore_sel;
+    return (driver[1]&7u)==4u?E_BUSY:0;
+}
+
 /* ---- the on-time budget: refills with time, drains while playing ---- */
 static void budget_tick(PghCore *h)
 {
@@ -344,10 +361,9 @@ static int stop_play(PghCore *h, const char *why)
 static int prologue(PghCore *h, uint32_t request_mv, uint32_t *chosen)
 {
     if(h->factory_mode) {
-        uint8_t swr=0,hw_fault=0;
-        const int rc=rd(h,PGH_CFG,0x4e,&swr);
+        uint8_t hw_fault=0;
+        const int rc=factory_swr_busy(h);
         if(rc)return rc;
-        if(swr&0xc0u)return E_BUSY;
         if(rd(h,PGH_CFG,PGH_CFG_FAULT_STATUS,&hw_fault))return E_IO;
         if(hw_fault&PGH_FAULT_SC){fault(h,"short circuit before start",E_IO);return E_IO;}
     }
@@ -844,14 +860,14 @@ static int factory_init(PghCore *h)
     const PghFactoryState *f=h->cfg.factory;
     if(!f || !f->valid || f->t_lra_us<1000 || f->t_lra_us>PGH_TLRA_MAX_US ||
        f->rc_count>1023 || (f->rc_mode!=0 && f->rc_mode!=4 && f->rc_mode!=8))return E_INVAL;
-    uint8_t play=0,swr=0,faults=0;
+    uint8_t play=0,faults=0;
     int rc=rd(h,PGH_CFG,PGH_CFG_SPMI_PLAY,&play);
-    if(!rc)rc=rd(h,PGH_CFG,0x4e,&swr);
+    if(!rc)rc=factory_swr_busy(h);
     if(!rc)rc=rd(h,PGH_CFG,PGH_CFG_FAULT_STATUS,&faults);
     if(rc)return rc;
     /* This is a new consumer: a foreign play or SWR consumer owns the block.
      * Neither is cancelled or hidden by the initialization. */
-    if((play&PGH_PLAY_EN) || (swr&0xc0u))return E_BUSY;
+    if(play&PGH_PLAY_EN)return E_BUSY;
     if(faults&PGH_FAULT_SC)return E_IO;
     rc=boost_free(h);if(rc)return rc;
     h->factory_mode=1;h->cfg.t_lra_us=f->t_lra_us;h->cl_t_lra_us=f->t_lra_us;

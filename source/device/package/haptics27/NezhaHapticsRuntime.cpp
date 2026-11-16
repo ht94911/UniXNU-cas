@@ -253,7 +253,9 @@ void worker(void *,wait_result_t) {
        core.spmi.p[PGH_CFG].type!=0x15 || core.spmi.p[PGH_CFG].subtype!=0x0a ||
        !core.spmi.p[PGH_PTN].identified || core.spmi.p[PGH_PTN].rev[1]!=5 ||
        core.spmi.p[PGH_CFG].owner || core.spmi.p[PGH_PTN].owner){e=-ENODEV;goto done;}
-    e=nz_haptics_factory(&bus,&factory);if(e)goto done;
+    e=nz_haptics_factory(&bus,&factory);
+    IOLog("NEZHA HAPTICS: factory result=%d period=%u rc-mode=%u rc-count=%u\n",e,factory.t_lra_us,factory.rc_mode,factory.rc_count);
+    if(e)goto done;
     nz_haptics_config(&cfg,&factory,PGH_MODE_ON);e=pgh_core_init(&core,&cfg,&ops,&bus.io);
     if(e || mode==NZ_HAPTICS_PREPARE)goto done;
     major=cdevsw_add(-1,&deviceSwitch);

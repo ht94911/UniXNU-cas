@@ -123,6 +123,8 @@ static inline uint8_t m_read(Model *m, int p, uint8_t reg)
             } else if (xt == 0 && sel == 3) {
                 msb = m->good[0];
                 lsb = m->good[1];
+            } else if (xt == 0 && sel == 5) {
+                lsb = m->reg[PGH_CFG][0x4f]; /* modeled actual driver source */
             }
             return reg == PGH_CFG_STATUS_DATA_MSB ? msb : lsb;
         }

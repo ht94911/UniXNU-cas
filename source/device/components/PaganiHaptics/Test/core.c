@@ -455,7 +455,7 @@ static void factory_lifecycle(void)
     cfg.max_play_ms=cfg.max_stream_ms=500;cfg.brake_len=0;cfg.autores=0;
     m.reg[PGH_CFG][PGH_CFG_CAL_EN]=f.rc_mode;
     m.reg[PGH_CFG][PGH_CFG_SPMI_PLAY]=0;
-    m.reg[PGH_CFG][0x4e]=0;
+    m.reg[PGH_CFG][0x4e]=0xc0; /* interface enabled, source remains idle */
     PghSpmiIo io;
     CHECK(init_with(&m,cfg,&io)==0 && core.factory_mode && core.cfg.t_lra_us==5723);
     CHECK(m_find(&m,0,PGH_CFG,PGH_CFG_CAL_EN)<0);
@@ -468,7 +468,11 @@ static void factory_lifecycle(void)
     CHECK(pgh_core_quiesce(&core)==0 && core.state==PGH_ST_OFF && !m.playing);
     CHECK(m_find(&m,0,PGH_CFG,PGH_CFG_CAL_EN)<0);
     m_init(&m);m.reg[PGH_CFG][PGH_CFG_SPMI_PLAY]=0x81;m.reg[PGH_CFG][PGH_CFG_CAL_EN]=4;
-    CHECK(init_with(&m,cfg,&io)==-16 && m.log_n==0);
+    CHECK(init_with(&m,cfg,&io)==-16 && !m.playing);
+    m_init(&m);m.reg[PGH_CFG][PGH_CFG_SPMI_PLAY]=0;m.reg[PGH_CFG][PGH_CFG_CAL_EN]=4;
+    m.reg[PGH_CFG][0x4f]=4; /* actual SWR source, even with access bits clear */
+    CHECK(init_with(&m,cfg,&io)==-16 && !m.playing);
+    CHECK(m_find(&m,0,PGH_CFG,PGH_CFG_VMAX)<0);
 }
 
 int main(void)
