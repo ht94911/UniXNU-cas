@@ -56,7 +56,6 @@ nezha-bluetooth-text-fixup-capacity.patch
 # Original camera transport, service loading and repaired launcher.
 zzzzzz-nezha-camera-service-environment.patch
 zzzzzz-nezha-camera-discovery-launch.patch
-zzzzzz-nezha-camera-addon-size.patch
 zzzzzz-nezha-camera-discovery-identity.patch
 zzzzzz-nezha-camera-dyld-policy.patch
 zzzzzz-nezha-camera-media-view.patch

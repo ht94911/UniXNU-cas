@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Original Camera071 capture/provider and current24A446 LSInstallInfo registration on human-selected GPU051 joint base. Retain GPU051 display,WiFi023,Bluetooth024,ALS017,CPU and Data1;single shared SMMU owner. New original-helper signature bound in native source. No physical preview/photo claim.",
+  "purpose": "Original Camera071 capture/provider and current24A446 LSInstallInfo registration on human-selected GPU051 joint base. Retain GPU051 display,WiFi023,Bluetooth024,ALS017,CPU and Data1;single shared SMMU owner. New original-helper signature bound in native source. No physical preview/photo claim. Reuse existing Wi-Fi addon truncate patch only once;actual114 complete patch applications verified locally.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "38bef79a141b932e5203a3afe8db525811556a56",
+  "device_revision": "f89cd95eded05a9b73a9c641874e18dd9432c270",
   "soc_revision": "device-local-GPU051-camera071-common-owner",
   "xcode": "26.6",
   "files": {
@@ -510,7 +510,7 @@
     "source/device/patches/xnu-12377/nezha-wifi-addon-truncate.patch": "c3b980c547fbc138ac7aedfd735d350cfef85d2a32ff78ec7bef894c4068ce63",
     "source/device/patches/xnu-12377/nezha-wifi-kernel-events.patch": "967cf792a5202711d0063463fe08bda58c554621b690b87f66904c18f81d057f",
     "source/device/patches/xnu-12377/nezha-wifi-mmio-recovery.patch": "89642756f4fe3179d44f076fbfd4786d21d0089ec7786943cb717b3eb78ecbe1",
-    "source/device/patches/xnu-12377/series": "7d8b6fab54b0bd208059235c067d915fc017d464b9e622a14ecfcb3880bf3a68",
+    "source/device/patches/xnu-12377/series": "f6bc2c7e706c4cd99b9c2cc0a841708cd62ad572aadf6c23d25e19c5bee52363",
     "source/device/patches/xnu-12377/source-storage-runtime.patch": "25c377c60db417b15fcc137acf380f0319cbff9d5ba012af1907f3485602b584",
     "source/device/patches/xnu-12377/vmwait-dyld-pager-source-release.patch": "916c930f4b6b2e7515329bafc8d2ab52ba014d4dacbc8c706e8cc5d603ff5a32",
     "source/device/patches/xnu-12377/vmwait-shared-region-source-release.patch": "892db3781f37ca6e22d6231d6ad8dbc51cad97db2a29ad895b4f440aa56c639f",
@@ -1051,9 +1051,9 @@
     "existing_trace_event": 65,
     "model_check": "tests/check-gpu-bo-phases.py"
   },
-  "userland_revision": "38bef79a141b932e5203a3afe8db525811556a56",
+  "userland_revision": "f89cd95eded05a9b73a9c641874e18dd9432c270",
   "camera": {
-    "source_revision": "38bef79a141b932e5203a3afe8db525811556a56",
+    "source_revision": "f89cd95eded05a9b73a9c641874e18dd9432c270",
     "device_base": "7435e49e46705d2bfcabe09487ff80a4821fd577",
     "mode_default": "disabled",
     "host_core_tests": 18,
