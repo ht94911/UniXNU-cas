@@ -26,8 +26,6 @@ static AudioQueueRef queue;
 static bool collecting;
 static FILE *result_file;
 static char boot_uuid[64];
-static constexpr const char *result_path = "/private/var/mobile/Library/Logs/audio-record090-result.jsonl";
-static constexpr const char *sample_path = "/private/var/mobile/Library/Logs/audio-record090.wav.gz";
 
 static uint64_t uptime_ms(void)
 {
@@ -165,8 +163,8 @@ int main(void)
     }
     result_file = fdopen(fd, "w");
     if (!result_file) { close(fd); return 1; }
-    // Fixed uptime lets the USB observer schedule the human-confirmed local
-    // source before this request; no Wi-Fi or app interaction is needed.
+    // Preserve the existing bounded startup interval before the two-second
+    // system input request. No app action or external sound source is needed.
     report("selected_wait_until_150s", 0);
     while (uptime_ms() < 150000) usleep(50000);
     alarm(60);

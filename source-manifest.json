@@ -6,7 +6,7 @@
     "ci/artifact-recipient.pem": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
     "ci/artifacts.py": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
     "ci/audio-record.py": "8107c786d06c0262967d2375db31b0cb61fe313cf17a201c685fb91e350ce7ce",
-    "source/AudioRecord.mm": "8c4f72cb26a62d160e450380e2a345156c58856bc3ffeb67ff2a860da64ed365",
+    "source/AudioRecord.mm": "0ad9324ad7ce70fe3bafce1af81d3fd3ff2040ae8141538e7dcdb7090180c157",
     "source/Info.plist": "da3fa1956212d0abbb6e7741e6bcb1ba481d00d6281573aa03c7f45ee3f3e11d",
     "source/QcomUserLogTransport.h": "6981a8a4863c80f0109de4e821c4ef2d72f75f143eb39f4a65a2abb2a4df4531",
     "source/QcomUserLogWire.h": "965d7aeaa4043bcceb151cd6331ce50faefe21f57ce7c91cf781a52b4917397b",
