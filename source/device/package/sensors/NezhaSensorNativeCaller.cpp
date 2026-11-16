@@ -38,7 +38,7 @@ void wake(void *v){thread_wakeup((event_t)static_cast<Caller *>(v)->event);}
 bool online(void *v){auto a=static_cast<Caller *>(v)->owner;
     return a&&a->stage==NaAdspOnline&&a->mapper.online&&!a->error&&!a->mapper.error&&!a->glink.broken;}
 uint64_t now(void *){return na_native_now_us(nullptr);}
-uint64_t host(void *){return na_native_host_time(nullptr);}
+uint64_t darwinTicks(void *){return na_native_host_time(nullptr);}
 uint64_t counter(void *){
     // Stock sensors_timeutil reads CNTVCT for SSC's platform QTimer domain.
     // Pairing removes the Darwin boot epoch; first hardware batches must
@@ -108,7 +108,7 @@ extern "C" int nezha_sensors_native_prepared(NaAdsp *a){
     uint64_t frequency;__asm__ volatile("mrs %0, cntfrq_el0":"=r"(frequency));
 #endif
     if(frequency!=19200000)return initializationFailed(QsscTime);
-    struct nezha_sensor_owner_ops ops={&caller,lock,unlock,wake,online,now,counter,host,room,19200000,19200000};
+    struct nezha_sensor_owner_ops ops={&caller,lock,unlock,wake,online,now,counter,darwinTicks,room,19200000,19200000};
     caller.error=nezha_sensors_prepare(&caller.adapter,caller.provider,&a->mapper.qrtr,&ops,caller.epoch);
     if(!caller.error){
         caller.power=registerPrioritySleepWakeInterest(powerMessage,&caller);

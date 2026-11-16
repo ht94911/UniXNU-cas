@@ -86,6 +86,7 @@ for source in sources:
         q=[p for p in deps if Path(p).name=='QcomQrtr.h']
         if q:require(q==[str((qrtr/'QcomQrtr.h').resolve())],'no second QRTR header')
     details.append(row)
+(OUT/'compile-report.json').write_text(json.dumps(dict(sources=details,errors=errors),indent=2)+'\n')
 require(not errors,'compile errors: '+', '.join(errors))
 frontend=OUT/'NezhaSensorHid.o';raw=frontend.read_bytes();symbols=ns['object_symbols'](raw)
 vtable=[n for n,_,kind in symbols if n.startswith('__ZTV') and kind!=1 and '9MetaClassE' not in n]
@@ -96,10 +97,14 @@ for i,(_,word) in enumerate(entries):
     require(word>>63 and word>>48&1 and word>>49&3==0 and word>>32&0xffff==int(abi['slots'][i]['diversity'],16),f'sensor PAC slot{i}')
 all_bindings={n:int(v,16) for n,v in abi['bindings'].items()}
 for name,row in fixture['constructors'].items():all_bindings[name]=int(row['address'],16)
+base_slots={name:i for i,(name,word) in enumerate(entries) if '17IOHIDEventService' in name}
 for name,_,kind in symbols:
     if kind!=1 or '17IOHIDEventService' not in name or name in all_bindings:continue
-    candidates=[i for i,s in enumerate(abi['slots']) if int(s['diversity'],16)==ns['discriminator'](name[1:])]
-    require(len(candidates)==1,'unclassified original import '+name);all_bindings[name]=int(abi['slots'][candidates[0]]['target'],16)
+    if name in base_slots:index=base_slots[name]
+    else:
+        candidates=[i for i,s in enumerate(abi['slots']) if int(s['diversity'],16)==ns['discriminator'](name[1:])]
+        require(len(candidates)==1,'unclassified original import '+name);index=candidates[0]
+    all_bindings[name]=int(abi['slots'][index]['target'],16)
 needed={n for n,_,kind in symbols if kind==1}
 bindings={n:v for n,v in all_bindings.items() if n in needed and n not in provided_bindings}
 for name in needed&provided_bindings.keys():
