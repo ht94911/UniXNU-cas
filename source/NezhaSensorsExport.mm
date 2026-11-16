@@ -6,7 +6,6 @@
 #pragma clang diagnostic pop
 #include <dirent.h>
 #include <signal.h>
-#include <string>
 static volatile sig_atomic_t stopping;
 static void stop(int){stopping=1;}
 int main(){
@@ -15,17 +14,18 @@ int main(){
     FILE *input=nullptr;
     for(unsigned wait=0;!stopping&&wait<300;wait++){
         const char *base="/private/var/mobile/Containers/Data/Application";
-        DIR *directory=opendir(base);std::string selected;unsigned found=0;
+        DIR *directory=opendir(base);char selected[512]={};unsigned found=0;
         if(directory){
             while(struct dirent *entry=readdir(directory)){
                 if(entry->d_name[0]=='.')continue;
-                std::string path=std::string(base)+"/"+entry->d_name+"/Documents/nezha-sensors001.jsonl";
+                char path[512];int length=snprintf(path,sizeof path,"%s/%s/Documents/nezha-sensors001.jsonl",base,entry->d_name);
+                if(length<=0||(size_t)length>=sizeof path)continue;
                 struct stat info{};
-                if(!lstat(path.c_str(),&info)&&S_ISREG(info.st_mode)){selected=path;found++;}
+                if(!lstat(path,&info)&&S_ISREG(info.st_mode)){memcpy(selected,path,(size_t)length+1);found++;}
             }
             closedir(directory);
         }
-        if(found==1)input=fopen(selected.c_str(),"r");
+        if(found==1)input=fopen(selected,"r");
         if(input)break;sleep(1);
     }
     if(!input){QcomUserLog::status("sensors001: dedicated app log unavailable");return 3;}

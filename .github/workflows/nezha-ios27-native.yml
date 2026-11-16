@@ -1,7 +1,7 @@
-name: nezha Sensors001f exporter only
+name: nezha Sensors001g exporter only
 on:
   push:
-    branches: [codex/ios27-sensors001f-exporter-20261117]
+    branches: [codex/ios27-sensors001g-exporter-20261117]
 permissions:
   contents: read
 concurrency:
