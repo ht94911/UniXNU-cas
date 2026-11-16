@@ -1,11 +1,11 @@
 name: nezha iPhone27 normal Core Location test app
 on:
   push:
-    branches: [codex/ios27-gnss-corelocation001-20261116]
+    branches: [codex/ios27-gnss-corelocation002-20261116]
 permissions:
   contents: read
 concurrency:
-  group: nezha-camera-userland-${{ github.ref }}
+  group: nezha-gnss-userland-${{ github.ref }}
   cancel-in-progress: false
 defaults:
   run:
@@ -25,19 +25,19 @@ jobs:
         with:
           persist-credentials: false
       - name: Prepare the existing encryption tool
-        run: brew install openssl@3 > "$RUNNER_TEMP/camera-userland-setup.log" 2>&1
+        run: brew install openssl@3 > "$RUNNER_TEMP/gnss-userland-setup.log" 2>&1
       - name: Build and sign the ordinary Core Location app and retained LS launcher
         run: |
           set -euo pipefail
           export PATH="$(brew --prefix openssl@3)/bin:$PATH"
-          python3 ci/corelocation.py --out "$RUNNER_TEMP/camera-userland" --sealed "$RUNNER_TEMP/camera-userland-sealed"
-      - name: Retain only the encrypted camera envelope
+          python3 ci/corelocation.py --out "$RUNNER_TEMP/gnss-userland" --sealed "$RUNNER_TEMP/gnss-userland-sealed"
+      - name: Retain only the encrypted GNSS app envelope
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: nezha-ios27-native-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
-            ${{ runner.temp }}/camera-userland-sealed/bundle.cms
-            ${{ runner.temp }}/camera-userland-sealed/envelope.json
+            ${{ runner.temp }}/gnss-userland-sealed/bundle.cms
+            ${{ runner.temp }}/gnss-userland-sealed/envelope.json
           if-no-files-found: error
           retention-days: 90

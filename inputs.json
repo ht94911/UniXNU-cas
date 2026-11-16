@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "purpose": "Normal foreground CLLocationManager app with WhenInUse prompt and fullAccuracy/sourceInformation evidence; reuse original LS system-domain registration only to launch this bundle. No simulated locations/TCC/private source input.",
-  "device_revision": "8dc1d6297324d26409ef3e292b14a353704e4535",
+  "device_revision": "65220637fea1fc771201d87a43a0ebec0c54de3b",
   "files": {
     "source/NezhaLocation.m": "98201d9c30af07e50baf5f25a2836bc549f485583f4ac7f5ab925b9aa95c52d6",
     "source/Info.plist": "d22a8a478357aaf3a42279295f5b7c704415e64c0fc049b3371c9556cabc902e",
@@ -9,7 +9,7 @@
     "source/NezhaLocationLaunch.m": "777bb09e814b70d50203bf5121b7996c3eca8ffc542ecd369ffd11bdacec7c6f",
     "source/NezhaLocationLaunch.entitlements.plist": "28c5ce718672d302b46f4f67b6e49784a354fefa042d92c5fb025e3d96688ef9",
     "ci/corelocation.py": "8c8171cb9b3836da82c2438d8e78d4930e65d1573cb2324bc201e30934979cc5",
-    ".github/workflows/nezha-ios27-native.yml": "ad0e184ea64477ad6e2243fb945b54353602c8bab973512d890916ac4334a88d"
+    ".github/workflows/nezha-ios27-native.yml": "49f7e450789edbf55bac5227fc66945dda3e7c43ee03d600e0dfc496e5063083"
   },
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
   "certificate_sha256": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
