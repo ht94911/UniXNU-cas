@@ -1,14 +1,14 @@
 {
   "schema": 1,
-  "purpose": "Original24A446 LSOperationRequestContext.targetUserID NSNumber0 selects original systemSessionDomain; repair Camera System registration bootstraplookup NoSuchProcess observed072. Exact existing Camera bundle, same uid/rebuild entitlement; nine actual Foundation consumers and nested native errors; CMS only.",
-  "device_revision": "330f4839bd0cf2435915c2e7ad1e766c526a9ac3",
+  "purpose": "Camera074 original LS System info registration through current modifydb post-install endpoint; both old rebuild domains absent onactual073. Same originalCamera path/Info/executable, owned helper native can-register-install-results permission fromactualserver; no app file install,rootwrite or fabricatedregistration. Nine Foundation consumers,currentnativeerrorandfreshproxygate;CMS only.",
+  "device_revision": "31fac3876cdf04f6db99b7404e7deb404bdde4c4",
   "files": {
-    "source/NezhaCameraLaunch.m": "9cf69cfea97cbaf91fce329ca002df8a4f2acbd2744264e04784432271224483",
-    "source/camera-launch-registration.m": "ecb45e2cb70f6a662dd2c4fa42bc7e8707c7df20b60f41b1bd67d50d5e69dc16",
-    "source/NezhaCameraLaunch.entitlements.plist": "28c5ce718672d302b46f4f67b6e49784a354fefa042d92c5fb025e3d96688ef9",
-    ".github/workflows/nezha-ios27-native.yml": "24c7ab9e574845df4d3b9165196e4ce69378392635b2486de7fb72309225efdb"
+    "source/NezhaCameraLaunch.m": "3be1683af298babb1f9c7e03f879deae02a0d95793d5797ed028df984f490452",
+    "source/camera-launch-registration.m": "97482df8e2426d8c5788ef4806d82926022ddb03d727f2b43f766ffbf151c275",
+    "source/NezhaCameraLaunch.entitlements.plist": "990976e864664ee1a6264c30806d55194650549bbf3f9ee484d80a456230e054",
+    ".github/workflows/nezha-ios27-native.yml": "7804bc76a399a08eb4fe02ceda223c92db862ee6d2d1b2f5b842a1b258c435f9"
   },
-  "builder_sha256": "587a51920cb25d2ef36af7259ad441dde78ca842a98d865e4a54e98880989065",
+  "builder_sha256": "2faa13ca5b78eab7708de9dfea6da2ec066304d6a85218b1db214707d7503cae",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
   "certificate_sha256": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
   "kernel_build_required": false,

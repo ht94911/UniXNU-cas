@@ -3,6 +3,6 @@
 <plist version="1.0"><dict>
 <key>platform-application</key><true/>
 <key>com.apple.private.mobileinstall.allowedSPI</key><array><string>InstallForLaunchServices</string></array>
-<key>com.apple.private.coreservices.can-perform-rebuild-registration</key><true/>
+<key>com.apple.private.coreservices.can-register-install-results</key><true/>
 <key>com.apple.frontboard.launchapplications</key><true/>
 </dict></plist>

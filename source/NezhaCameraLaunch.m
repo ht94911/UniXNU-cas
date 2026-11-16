@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 /* Use the original LaunchServices request for Camera.app. Original24A446
- * registerApplicationForRebuildWithInstallInfo: is the current entry for a
+ * registerContainerizedApplicationWithInfoDictionaries: registers a
  * system bundle missing from the current Data's application registration.
  * Registration is restricted to the existing /Applications/Camera.app;
  * no bundle, executable, signature, user app or root volume is rewritten. */
@@ -18,10 +18,10 @@
 - (NSString *)applicationIdentifier;
 - (BOOL)isInstalled;
 - (BOOL)isPlaceholder;
-- (BOOL)registerApplicationForRebuildWithInfoDictionaries:(NSArray *)dictionaries
-    requestContext:(id)context registrationError:(NSError **)error;
+- (id)registerContainerizedApplicationWithInfoDictionaries:(NSArray *)dictionaries
+    operationUUID:(NSUUID *)operation requestContext:(id)context saveObserver:(id)observer
+    registrationError:(NSError **)error;
 - (BOOL)openApplicationWithBundleID:(NSString *)identifier;
-- (void)setTargetUserID:(NSNumber *)uid;
 @end
 
 static BOOL registered_camera(id application)
@@ -46,7 +46,7 @@ static void report_proxy(const char *step,id application)
 
 /* Tests exercise this exact consumer with Foundation and fixture LS classes.
  * Runtime supplies only the measured original Camera path below. */
-static int open_camera(Class proxy,id service,NSURL *system_url,Class request_context_class)
+static int open_camera(Class proxy,id service,NSURL *system_url)
 {
     NSString *identifier=@"com.apple.camera";
     id application=[proxy applicationProxyForIdentifier:identifier];
@@ -68,28 +68,20 @@ static int open_camera(Class proxy,id service,NSURL *system_url,Class request_co
         /* The native synchronous return is followed by a fresh proxy query.
          * Do not equate queued registration or placeholder presence with an
          * installed app; no private replacement identity is synthesized. */
-        /* Reuse UIKitTools' original System bundle description through
-         * the current24A446 LSInstallInfo conversion. The old dictionary
-         * endpoint returns false unconditionally in this actual OS. */
+        /* The old rebuild endpoints were absent from the actual072/073
+         * bootstrap domains. Current24A446 converts this same System
+         * dictionary to LSInstallInfo, then performPostInstallationRegistration
+         * on the existing modifydb service. This only registers the existing
+         * Camera bundle; it does not install files or make a new app identity. */
         if (![service respondsToSelector:
-            @selector(registerApplicationForRebuildWithInfoDictionaries:requestContext:registrationError:)]) return 5;
-        /* Actual24A446 _requestContextForUserDomain: selects its original
-         * systemSessionDomain when targetUserID is @0. A nil context picks
-         * the current mobile user domain, where072's com.apple.lsd.rebuild
-         * lookup returned NoSuchProcess. The caller keeps its original uid
-         * and rebuild entitlement; only the LS request domain changes. */
-        id context=[request_context_class new];
-        if (![context respondsToSelector:@selector(setTargetUserID:)]) {
-            fputs("nezha-camera-launch: original LS request context unavailable\n",stderr);
-            return 5;
-        }
-        [context setTargetUserID:@0];
+            @selector(registerContainerizedApplicationWithInfoDictionaries:operationUUID:requestContext:saveObserver:registrationError:)]) return 5;
         NSDictionary *registration=@{@"ApplicationType":@"System",
             @"BundleNameIsLocalized":@1,@"CFBundleIdentifier":identifier,
             @"CompatibilityState":@0,@"IsDeletable":@0,@"Path":system_url.path};
         error=nil;
-        const BOOL registered=[service registerApplicationForRebuildWithInfoDictionaries:@[registration]
-            requestContext:context registrationError:&error];
+        id result=[service registerContainerizedApplicationWithInfoDictionaries:@[registration]
+            operationUUID:[NSUUID UUID] requestContext:nil saveObserver:nil registrationError:&error];
+        const BOOL registered=result!=nil && error==nil;
         fprintf(stderr,"nezha-camera-launch: original system Camera registration=%u error=%ld domain=%s path=%s\n",
             (unsigned)registered,(long)error.code,error.domain.UTF8String ?: "<none>",system_url.path.UTF8String);
         if (!registered && error) {
@@ -136,15 +128,14 @@ int main(void)
         void *handle=dlopen(framework,RTLD_NOW|RTLD_LOCAL);
         Class proxy=objc_getClass("LSApplicationProxy");
         Class workspace=objc_getClass("LSApplicationWorkspace");
-        Class request_context=objc_getClass("LSOperationRequestContext");
-        if (!handle || !proxy || !workspace || !request_context ||
+        if (!handle || !proxy || !workspace ||
             ![proxy respondsToSelector:@selector(applicationProxyForIdentifier:)] ||
             ![workspace respondsToSelector:@selector(defaultWorkspace)]) {
             fputs("nezha-camera-launch: original LaunchServices interface unavailable\n",stderr);
             return 3;
         }
         return open_camera(proxy,[workspace defaultWorkspace],
-            [NSURL fileURLWithPath:@"/Applications/Camera.app" isDirectory:YES],request_context);
+            [NSURL fileURLWithPath:@"/Applications/Camera.app" isDirectory:YES]);
     }
 }
 #endif
