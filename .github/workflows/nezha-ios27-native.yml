@@ -1,7 +1,7 @@
-name: nezha audio105 two-second native recording
+name: nezha audio106 two-second native recording
 on:
   push:
-    branches: [codex/ios27-audio-record105-20261116]
+    branches: [codex/ios27-audio-record106-20261116]
 permissions:
   contents: read
 concurrency:

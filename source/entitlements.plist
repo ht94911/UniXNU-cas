@@ -11,11 +11,16 @@
 		<string>kTCCServiceMicrophone</string>
 	</array>
 	<key>com.apple.private.sandbox.profile:embedded</key>
-	<string>temporary-sandbox</string>
+	<string>baseline</string>
 	<key>com.apple.security.exception.mach-lookup.global-name</key>
 	<array>
 		<string>com.apple.audio.AudioSession</string>
 		<string>com.apple.coremedia.routediscoverer.xpc</string>
+	</array>
+	<key>com.apple.security.exception.files.absolute-path.read-write</key>
+	<array>
+		<string>/private/var/mobile/Library/Logs/audio-record090-result.jsonl</string>
+		<string>/private/var/mobile/Library/Logs/audio-record090.wav.gz</string>
 	</array>
 </dict>
 </plist>
