@@ -51,10 +51,12 @@ int nz_haptics_factory(NzHapticsBus *b,PghFactoryState *f) {
         if((cal&12)==4 && l)us=(uint32_t)(l*l*833333/c/1000000)+70; /* original rev_t_lra_us */
         else if(!(cal&12))us=(uint32_t)(c*3333000/1000000);
     }
-    /* The original accepts160..180Hz. Without a usable result use exactly the
-     * already programmed period when it is in that range; never invent f0. */
+    /* N0 stock haptics_get_closeloop_lra_period(in_boot=true) falls back to
+     * qcom,lra-f0-default=170 when XBL reports outside160..180Hz. Preserve
+     * this board fallback; do not import a stale measurement or write its
+     * default RC_CLK_CAL_COUNT=570 into the hardware calibration registers. */
     f->t_lra_us=us;f->rc_count=(uint16_t)(((count[0]&3u)<<8)|count[1]);f->rc_mode=cal&12;
-    if(us<1000000/180 || us>1000000/160)return -34;
     if((cal&12)!=0 && (cal&12)!=4 && (cal&12)!=8)return -22;
+    if(us<1000000/180 || us>1000000/160)f->t_lra_us=1000000/170;
     f->drv_duty=duty;f->autores_cfg=autores;f->valid=1;return 0;
 }

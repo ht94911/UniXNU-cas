@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "29ade69a2f79d28a57cf219e694b48da12091f4b",
+  "device_revision": "6c977fd86f047689a45f44a41823397f1f0e6cec",
   "soc_revision": "device-local-composition-e565439+3435fa5",
   "xcode": "26.6",
   "files": {
@@ -224,7 +224,7 @@
     "source/device/package/haptics27/NezhaHapticsBoard.c": "86bf09302c1b589d57c7baa2a73f75759e6f70a972c09e4e398d0fba7e212a93",
     "source/device/package/haptics27/NezhaHapticsQueue.c": "7a0420c79ada5b7b37c2022117547c35bf6e34621887528ddd45dc147604efa1",
     "source/device/package/haptics27/NezhaHaptics.h": "0b4ba44cf1ac2461a73c0957dedfba548023e889f9958e7ced7ba990a186bcc2",
-    "source/device/package/haptics27/NezhaHapticsFactory.c": "cd590a44109bfb5cb99487eda3e366af8d348e32f54ae625c12971383cea242f",
+    "source/device/package/haptics27/NezhaHapticsFactory.c": "15f74d8f49ac738e4b37ba35d9e4b483fe1e2522084e674f7fecb308b5b72936",
     "source/device/package/als/NezhaAlsSscClient.h": "fe2a2d54d623ca343191e55aa86f8c8274870268f9f970f189ee6fb0a65b71f6",
     "source/device/package/als/Tcs3760Sns.h": "1e8918ea9c94984d85e7fe28365019bd68d2ac40e57a4f8f9c867e2087b700da",
     "source/device/package/als/NezhaAlsQrtrBackend.h": "2b37349b161ae1ef0268c8dfe40dce5a02100ff5444d41620ebcf4c7f4d59dc2",
@@ -918,7 +918,7 @@
   },
   "haptics": {
     "device_base": "76c5952683041a6581224135461ab7c21d47f6a5",
-    "device_revision": "29ade69a2f79d28a57cf219e694b48da12091f4b",
+    "device_revision": "6c977fd86f047689a45f44a41823397f1f0e6cec",
     "source_ready": "519474045402d8467a41d78275af5ad78a3a948a",
     "HAP530_revision": "c268dc55744d2137b25f0ed4914a5bb3eb1200b6",
     "SPMI_revision": "2d874249a4d58906cf8241f2ded0d7ab0dd60f1f",
@@ -937,6 +937,10 @@
     "first_phone_bus_verified": true,
     "first_phone_motor_started": false,
     "first_phone_error": -16,
-    "stock_swr_source_fix": true
+    "stock_swr_source_fix": true,
+    "second_motor_no_start": true,
+    "factory_outlier_us": 11862,
+    "stock_fallback_Hz": 170,
+    "stock_fallback_register_calibration_writes": 0
   }
 }
