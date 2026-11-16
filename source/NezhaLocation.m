@@ -116,18 +116,29 @@
 @end
 
 @interface NezhaLocationApp : UIResponder <UIApplicationDelegate>
-@property(nonatomic,strong) UIWindow *window;
 @end
 @implementation NezhaLocationApp
-- (BOOL)application:(UIApplication *)app didFinishLaunchingWithOptions:(NSDictionary *)options
+- (UISceneConfiguration *)application:(UIApplication *)app configurationForConnectingSceneSession:(UISceneSession *)session options:(UISceneConnectionOptions *)options
 {
-    (void)app;(void)options;self.window=[[UIWindow alloc]initWithFrame:UIScreen.mainScreen.bounds];
-    self.window.rootViewController=[[UINavigationController alloc]initWithRootViewController:[NezhaLocationController new]];
-    [self.window makeKeyAndVisible];return YES;
+    (void)app;(void)options;
+    return [[UISceneConfiguration alloc]initWithName:@"NezhaLocation" sessionRole:session.role];
 }
-- (void)applicationDidEnterBackground:(UIApplication *)app
+@end
+@interface NezhaLocationScene : UIResponder <UIWindowSceneDelegate>
+@property(nonatomic,strong) UIWindow *window;
+@end
+@implementation NezhaLocationScene
+- (void)scene:(UIScene *)scene willConnectToSession:(UISceneSession *)session options:(UISceneConnectionOptions *)options
 {
-    (void)app;UINavigationController *nav=(UINavigationController *)self.window.rootViewController;
+    (void)session;(void)options;
+    if(![scene isKindOfClass:UIWindowScene.class])return;
+    self.window=[[UIWindow alloc]initWithWindowScene:(UIWindowScene *)scene];
+    self.window.rootViewController=[[UINavigationController alloc]initWithRootViewController:[NezhaLocationController new]];
+    [self.window makeKeyAndVisible];
+}
+- (void)sceneDidEnterBackground:(UIScene *)scene
+{
+    (void)scene;UINavigationController *nav=(UINavigationController *)self.window.rootViewController;
     [(NezhaLocationController *)nav.topViewController end];
 }
 @end

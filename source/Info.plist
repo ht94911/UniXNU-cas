@@ -13,5 +13,12 @@
 <key>UIDeviceFamily</key><array><integer>1</integer></array>
 <key>NSLocationWhenInUseUsageDescription</key><string>验证本机 GPS 和北斗位置能通过系统定位接口提供给应用。</string>
 <key>UILaunchScreen</key><dict/>
+<key>UIApplicationSceneManifest</key><dict>
+<key>UIApplicationSupportsMultipleScenes</key><false/>
+<key>UISceneConfigurations</key><dict>
+<key>UIWindowSceneSessionRoleApplication</key><array><dict>
+<key>UISceneConfigurationName</key><string>NezhaLocation</string>
+<key>UISceneDelegateClassName</key><string>NezhaLocationScene</string>
+</dict></array></dict></dict>
 <key>UISupportedInterfaceOrientations</key><array><string>UIInterfaceOrientationPortrait</string></array>
 </dict></plist>
