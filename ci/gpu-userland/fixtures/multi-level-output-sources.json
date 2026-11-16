@@ -1,7 +1,7 @@
 {
   "original_pin": "963f0e64f103d2e682cd0cc454a8fe50f52c8cbb",
-  "patched_tree": "dd26fe493415352f39c081572ae322dcc626305e",
-  "builder_sha256": "02007219ee85c4e6915e7d753dda980246177f12695ae5febdf309a7af455a3f",
+  "patched_tree": "6949ff1ac37893ddf59674f79085d0ae3b7d6707",
+  "builder_sha256": "2ab66ca0c707295e23090d7d0d3fe18452bde74a4c86f2ccdf627f397a40023d",
   "patch_hashes": {
     "0002-resource-wait-storage-dependencies.patch": "4536f03ac5a829d0a23d839491837c62af00c1aa884dc75cdae0f195c7953c0c",
     "0003-cache-device-entry-point-priming.patch": "ca1c0e3733bc048d9771fc3a5d061fc4224eee3341dc41d4b64a71e6e9d06408",
@@ -38,7 +38,8 @@
     "0038-fused-tiled-image-copy.patch": "2085e83c3f985b6657fe34aad903321aa96f2e1fb0a1550facf0be78599393fa",
     "0039-render-pass-driver-clocks.patch": "9d9bf7e50fd5fd6eb6cae2ad8d10e2c099218d84aa1614d1518aaaddca7211f1",
     "0040-multi-level-tiled-output.patch": "cf4c65c2e71d21907d55a16becb7824478c253d5f45a456559449f3b1ddbf68d",
-    "0041-multi-level-tiled-input.patch": "6424943312a09ac67057357e22b8f5964be12da60178a2598e311fdcf106ba5b"
+    "0041-multi-level-tiled-input.patch": "6424943312a09ac67057357e22b8f5964be12da60178a2598e311fdcf106ba5b",
+    "0042-ios-foreground-blocks.patch": "cab055528569dcd5f513868dd8d33f0ae1e0cc8d714b0d062f6742509032c6b4"
   },
   "source_hashes": {
     "crates/metal2vulkan-runtime/src/written_commands.rs": "5c1a9ac622de2d0cfc199de4115a087c6ee9550f4b94059513da4339a4207ac2",
@@ -110,7 +111,7 @@
     "crates/metal2vulkan-runtime/src/indirect_command_buffer.rs": "f514af1630d62e26dd99c933e21cf12eff19752c92d1598141283f8d27ddf209",
     "crates/metal2vulkan-runtime/src/depth_stencil_scratch.rs": "6b6d3cc0628b5d9d24db7a649695fc29accab562cf06307bee3c8c761e3590be",
     "crates/metal2vulkan-runtime/src/stencil_copy.rs": "ad0ad67bb307d5b732498ae7d00358cdd45b95dcaa006d6dc62e0261d6fc3df7",
-    "crates/metal2vulkan-runtime/src/memory.rs": "24cf9a047a97a889e07ecc607f3ea109754831d0395eea215208f0170e60de5c",
+    "crates/metal2vulkan-runtime/src/memory.rs": "fe5dfdfbc44ac3a9deb2b800edc6662d12c89684bd8bb0036b8aa247977edc6a",
     "crates/metal2vulkan-runtime/src/wrapped_buffer.rs": "b970105c5234db7b3542b51e51d95537c12e4b7c0b59e61d8094084427af2fac",
     "crates/metal2vulkan-runtime/src/copy_plan.rs": "a81e23c7ff6387bd4376a1bea35adbd265e3b6a06c9062c542570e09c838d1a5",
     "crates/metal2vulkan-runtime/src/queue.rs": "24c6e9feba4bae6f2a248ad59172d5ebba4f24c71909559bd3a0f21df3025663",
@@ -1469,7 +1470,7 @@
     "crates/metal2vulkan/src/tests/engine_extended_range/targets.rs": "ef971c3c98f234d4dd2f90c5b991d9ca498a2d5fcdea021d806496d9dfa8717e",
     "crates/metal2vulkan/src/cache/codec/tests.rs": "85916b691f32e27b9b5957e8d1af73979a78664fdd36e5b583270c70f335a922",
     "crates/metal2vulkan/src/cache/digest/tests.rs": "90ae1ab7e016b698aed0fbf638b1d67493270576860d503a9c280e4e280469af",
-    "crates/metal2vulkan-runtime/README.md": "23a7e52850d231d99a019bddad334f98a7d9631ea4a838420a7a4134f02e822d"
+    "crates/metal2vulkan-runtime/README.md": "0879c33f5e46e2b99db583cf8fb346c02201c2022b02ded26677ea56403ece50"
   },
   "local_changed_files": [
     "crates/metal2vulkan-air/src/canon/mod.rs",
@@ -1534,34 +1535,35 @@
   "phone_operations": false,
   "linux_execution_reference": {
     "passed": true,
-    "runtime_tree": "dd26fe493415352f39c081572ae322dcc626305e",
-    "production_runtime_file_sha256": "ed8c58e9b3d7afc4fae2cfb7b7afe571eb5ed1084560249035338f3f2b8329f8",
-    "cpu_vulkan_device": "llvmpipe LLVM20.1.2",
+    "runtime_tree": "6949ff1ac37893ddf59674f79085d0ae3b7d6707",
+    "source_sha256": "fe5dfdfbc44ac3a9deb2b800edc6662d12c89684bd8bb0036b8aa247977edc6a",
+    "allocator_tests": 9,
+    "model_tests": 8,
+    "real_Vulkan_copy_and_reuse": true,
+    "actual_24MiB_request_allocates32MiB": true,
+    "background_reserve64MiB_retained": true,
+    "sentinel_and_recycled_zero_verified": true,
     "multi_level_shapes": 60,
     "multi_level_independent_writer_merges": 24,
-    "single_level_shapes": 45,
-    "single_level_independent_writer_merges": 18,
-    "extra_padded_input_array_volume_shapes": 9,
-    "extra_padded_input_level_dispatches": 39,
     "each_shape_round_trips": 2,
     "whole_buffer_pixel_padding_prefix_suffix_verified": true,
-    "production_input_output_dispatch_grids_verified": true,
-    "unsupported_layout_fallbacks_verified": true,
+    "cpu_vulkan_device": "llvmpipe LLVM20.1.2",
     "release_build": true,
     "clippy_warnings_denied_passed": true,
-    "planner_tests": 18,
+    "production_policy_only_ios_turnip_unified": true,
+    "physical_A840_performance_verified": false,
     "logs_sha256": {
-      "multi-level-input-test.log": "d70e2d33019e7b02dd86e7ee167d06c3a90b09dd030110917990deeaee77e605",
-      "planner.log": "d95fa6dbacf7006c045fd62041f89521f91c66de05f40a4975691fa6f0db44f4",
-      "single-level.log": "9b2e7035f140b0310a92ed4a5b64937f1694ff4df07250854cbdefeac64946f4",
-      "clippy.log": "8d5043d3d23b4343952449748ff1e397c1aa292f10156506ab3ac51d4dc51aa8"
-    },
-    "physical_A840_performance_verified": false
+      "allocator-device.log": "eb345d70656efb6a563134abe1017adb61ab05c2344e415d0a25aa0b32bdc4e5",
+      "tiled.log": "a82407df384ffe5a51ec5f8ef08ce944766cdfadb22bc614eb2421c6cdace6af",
+      "clippy.log": "441faf4e2c686121484751aeb134df9ef70e597f1037cd13919e1b5ec66d2311"
+    }
   },
   "unchanged_test_reference": {
     "original_runtime_tree": "139445c01681140b6ccfb13c7ab160fd0e0f8553",
     "CI_run": 42657775361,
     "attempt": 1,
     "scope": "Unchanged allocator, Vulkan diagnostic routing and original single-level translator source; current changed output runtime is tested separately"
-  }
+  },
+  "prior049_runtime_tree": "dd26fe493415352f39c081572ae322dcc626305e",
+  "current_allocator_checks_required": true
 }

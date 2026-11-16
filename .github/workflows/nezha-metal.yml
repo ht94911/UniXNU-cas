@@ -1,7 +1,7 @@
 name: nezha iPhone27 tiled mip input and icon program evidence 042
 on:
   push:
-    branches: [codex/ios27-gpu27-metal-full-042-20261115]
+    branches: [codex/ios27-gpu51-foreground-metal043-20261116]
   workflow_dispatch:
 permissions:
   contents: read

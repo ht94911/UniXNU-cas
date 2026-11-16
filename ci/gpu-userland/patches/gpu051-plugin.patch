@@ -1,0 +1,443 @@
+diff --git a/bridge/patches/0042-ios-foreground-blocks.patch b/bridge/patches/0042-ios-foreground-blocks.patch
+new file mode 100644
+index 0000000..48df150
+--- /dev/null
++++ b/bridge/patches/0042-ios-foreground-blocks.patch
+@@ -0,0 +1,437 @@
++diff --git a/crates/metal2vulkan-runtime/README.md b/crates/metal2vulkan-runtime/README.md
++index d22632e90..d4ae31467 100644
++--- a/crates/metal2vulkan-runtime/README.md
+++++ b/crates/metal2vulkan-runtime/README.md
++@@ -39,6 +39,14 @@ The original image transfer, staging padding, copy-back ranges and independent
++ writer merges remain in place. Input preserves the previous transfer-padding bytes;
++ smaller elements and unsupported grids retain the generic conversion.
++ 
+++On iOS with Turnip and unified memory, a foreground pool miss sizes its new
+++backing block from the request, rounded to a power of two with a 4 MiB minimum.
+++Existing pooled space is still used first, and large or explicitly isolated
+++allocations retain their dedicated size. The background room keeper continues
+++to grow its reserves up to 64 MiB. This limits the pages synchronously prepared
+++by a foreground miss without changing texture contents or transfer ordering;
+++it can increase the number of small backing blocks.
+++
++ ## Depending on it
++ 
++ Not on crates.io yet. Depend on both crates from the same git revision (or checkout):
++diff --git a/crates/metal2vulkan-runtime/src/memory.rs b/crates/metal2vulkan-runtime/src/memory.rs
++index b7d73e60d..209d0ed43 100644
++--- a/crates/metal2vulkan-runtime/src/memory.rs
+++++ b/crates/metal2vulkan-runtime/src/memory.rs
++@@ -1209,6 +1209,10 @@ pub(super) struct Memory {
++     /// The buffers' pools by memory type, then the images' ([`Memory::pool`]).
++     pools: Vec<Pool<Block>>,
++     block_bytes: u64,
+++    /// The iOS Turnip driver wires every new page synchronously. Foreground
+++    /// pool misses make a block for the request; the room keeper still grows
+++    /// its reserves with the pool.
+++    demand_sized_foreground: bool,
++     /// Blocks are allocated with `VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT`: the device enabled
++     /// `bufferDeviceAddress`, so buffers carry device addresses.
++     device_address: bool,
++@@ -1281,6 +1285,9 @@ impl Memory {
++                 .collect(),
++             types,
++             block_bytes: BLOCK_BYTES.min(max_allocation.max(1)),
+++            demand_sized_foreground: cfg!(target_os = "ios")
+++                && unified
+++                && driver == Some(DriverId::MESA_TURNIP),
++             device_address,
++             address_types: None,
++             kept: None,
++@@ -1595,6 +1602,21 @@ impl Memory {
++             .max(size)
++     }
++ 
+++    /// Backing made on a foreground pool miss. On iOS Turnip a 64 MiB
+++    /// allocation spent 113 ms in IOKit prepare inside a 128 ms texture call;
+++    /// its tight conversion buffer needed a pooled range, not a whole reserve.
+++    /// Keep at least the initial block and round requests up to a power of two
+++    /// so nearby allocations still share it. Existing blocks and the room
+++    /// keeper retain their original sizes, age and pressure handling.
+++    fn foreground_block_bytes(&self, pool: (Holds, u32), size: u64) -> u64 {
+++        let grown = self.next_block_bytes(pool, size);
+++        if self.demand_sized_foreground {
+++            grown.min(FIRST_BLOCK_BYTES.max(size.next_power_of_two()))
+++        } else {
+++            grown
+++        }
+++    }
+++
++     /// What making a block takes, copied out so that the block is made with the memory's lock
++     /// released ([`place`], [`keep_room`]).
++     fn maker(&self) -> BlockMaker {
++@@ -2621,7 +2643,7 @@ fn place(
++         let pool = (holds, type_index);
++         let block_size = match dedicated {
++             true => size,
++-            false => lock(memory).next_block_bytes(pool, size),
+++            false => lock(memory).foreground_block_bytes(pool, size),
++         };
++         let available = lock(memory).pool(pool.0, pool.1).room();
++         let trace = trace_memory(pool, block_size, available, 1);
++@@ -2805,15 +2827,25 @@ mod latency_tests {
++     static FREED: AtomicU64 = AtomicU64::new(0);
++     static ALLOCATED: AtomicU64 = AtomicU64::new(0);
++     static DESTROYED_BUFFERS: AtomicU64 = AtomicU64::new(0);
+++    static REQUESTED_BYTES: Mutex<Vec<u64>> = Mutex::new(Vec::new());
+++    static ALLOC_RESULTS: Mutex<std::collections::VecDeque<vk::Result>> =
+++        Mutex::new(std::collections::VecDeque::new());
++     static ALLOC_HOOKS: Mutex<std::collections::VecDeque<Box<dyn FnOnce() + Send>>> =
++         Mutex::new(std::collections::VecDeque::new());
++ 
++     unsafe extern "system" fn allocate_memory(
++         _: vk::Device,
++-        _: *const vk::MemoryAllocateInfo<'_>,
+++        info: *const vk::MemoryAllocateInfo<'_>,
++         _: *const vk::AllocationCallbacks<'_>,
++         out: *mut vk::DeviceMemory,
++     ) -> vk::Result {
+++        // SAFETY: BlockMaker supplies the live allocation info for this call.
+++        lock(&REQUESTED_BYTES).push(unsafe { (*info).allocation_size });
+++        if let Some(result) = lock(&ALLOC_RESULTS).pop_front() {
+++            if result != vk::Result::SUCCESS {
+++                return result;
+++            }
+++        }
++         let number = ALLOCATED.fetch_add(1, Ordering::Relaxed) + 1000;
++         // SAFETY: BlockMaker supplies one writable memory handle.
++         unsafe { out.write(vk::DeviceMemory::from_raw(number)) };
++@@ -2881,6 +2913,334 @@ mod latency_tests {
++         Memory::new(&props, 1 << 30, false, true, Vec::new(), None, None)
++     }
++ 
+++    #[test]
+++    fn foreground_backing_uses_request_size_and_preserves_room_refill() {
+++        let _serial = lock(&SERIAL);
+++        ALLOCATED.store(0, Ordering::Relaxed);
+++        FREED.store(0, Ordering::Relaxed);
+++        lock(&REQUESTED_BYTES).clear();
+++        lock(&ALLOC_RESULTS).clear();
+++        let driver = driver();
+++        let mut state = allocator();
+++        // Select only this policy for a host model; no Vulkan device identity
+++        // or real driver timing is claimed by the test.
+++        state.demand_sized_foreground = true;
+++        state.kept = Some(vec![(Holds::Buffers, 0)]);
+++        state
+++            .pool(Holds::Buffers, 0)
+++            .add(BLOCK_BYTES, false, block(1, BLOCK_BYTES), 43 << 20);
+++        let memory = Mutex::new(state);
+++        let requirements = vk::MemoryRequirements {
+++            size: 24 << 20,
+++            alignment: 4096,
+++            memory_type_bits: 1,
+++        };
+++        let placement = place(
+++            &memory,
+++            &driver,
+++            &requirements,
+++            MemoryClass::Private,
+++            None,
+++            Holds::Buffers,
+++            Fit::Pooled,
+++        )
+++        .unwrap();
+++        assert_eq!(*lock(&REQUESTED_BYTES), vec![32 << 20]);
+++        assert_eq!(placement.size, requirements.size);
+++        assert_eq!(placement.offset, 0);
+++        assert_eq!(placement.memory.as_raw(), 1000);
+++        assert_eq!(lock(&memory).pool(Holds::Buffers, 0).room(), 21 << 20);
+++
+++        // The background reserve stays 64 MiB, with enough free range for
+++        // the largest pooled placement. The next foreground request uses it.
+++        keep_room(&memory, &driver, &Counters::default());
+++        assert_eq!(*lock(&REQUESTED_BYTES), vec![32 << 20, BLOCK_BYTES]);
+++        let next = place(
+++            &memory,
+++            &driver,
+++            &requirements,
+++            MemoryClass::Private,
+++            None,
+++            Holds::Buffers,
+++            Fit::Pooled,
+++        )
+++        .unwrap();
+++        assert_eq!(next.memory.as_raw(), 1001);
+++        assert_eq!(ALLOCATED.load(Ordering::Relaxed), 2);
+++        let mut state = lock(&memory);
+++        state.free(&driver, &placement);
+++        state.free(&driver, &next);
+++        drop(state.destroy(&driver));
+++        assert_eq!(FREED.load(Ordering::Relaxed), 3);
+++    }
+++
+++    #[test]
+++    fn foreground_backing_preserves_existing_pool_and_other_driver_growth() {
+++        let _serial = lock(&SERIAL);
+++        ALLOCATED.store(0, Ordering::Relaxed);
+++        lock(&REQUESTED_BYTES).clear();
+++        let driver = driver();
+++        let requirements = vk::MemoryRequirements {
+++            size: 24 << 20,
+++            alignment: 4096,
+++            memory_type_bits: 1,
+++        };
+++        for enabled in [false, true] {
+++            let mut state = allocator();
+++            state.demand_sized_foreground = enabled;
+++            state
+++                .pool(Holds::Buffers, 0)
+++                .add(BLOCK_BYTES, false, block(1, BLOCK_BYTES), 43 << 20);
+++            let memory = Mutex::new(state);
+++            let small = vk::MemoryRequirements {
+++                size: 16 << 20,
+++                ..requirements
+++            };
+++            let existing = place(
+++                &memory,
+++                &driver,
+++                &small,
+++                MemoryClass::Private,
+++                None,
+++                Holds::Buffers,
+++                Fit::Pooled,
+++            )
+++            .unwrap();
+++            assert_eq!(existing.memory.as_raw(), 1);
+++            assert_eq!(existing.offset, 43 << 20);
+++            assert!(lock(&REQUESTED_BYTES).is_empty());
+++            let made = place(
+++                &memory,
+++                &driver,
+++                &requirements,
+++                MemoryClass::Private,
+++                None,
+++                Holds::Buffers,
+++                Fit::Pooled,
+++            )
+++            .unwrap();
+++            assert_eq!(
+++                *lock(&REQUESTED_BYTES),
+++                vec![if enabled { 32 << 20 } else { BLOCK_BYTES }]
+++            );
+++            let mut state = lock(&memory);
+++            state.free(&driver, &existing);
+++            state.free(&driver, &made);
+++            drop(state.destroy(&driver));
+++            lock(&REQUESTED_BYTES).clear();
+++        }
+++    }
+++
+++    #[test]
+++    fn foreground_backing_keeps_alignment_dedicated_sizes_and_allocation_failure() {
+++        let _serial = lock(&SERIAL);
+++        ALLOCATED.store(0, Ordering::Relaxed);
+++        FREED.store(0, Ordering::Relaxed);
+++        lock(&REQUESTED_BYTES).clear();
+++        lock(&ALLOC_RESULTS).clear();
+++        let driver = driver();
+++        let mut state = allocator();
+++        state.demand_sized_foreground = true;
+++        assert_eq!(
+++            state.foreground_block_bytes((Holds::Images, 0), 1),
+++            FIRST_BLOCK_BYTES
+++        );
+++        state.block_bytes = 2 << 20;
+++        assert_eq!(state.foreground_block_bytes((Holds::Images, 0), 1), 2 << 20);
+++        state.block_bytes = BLOCK_BYTES;
+++        let memory = Mutex::new(state);
+++        for (size, fit) in [
+++            (32 << 20, Fit::Pooled),
+++            ((32 << 20) + 4096, Fit::Pooled),
+++            (12 << 20, Fit::Apart),
+++        ] {
+++            let requirements = vk::MemoryRequirements {
+++                size,
+++                alignment: 2 << 20,
+++                memory_type_bits: 1,
+++            };
+++            let placed = place(
+++                &memory,
+++                &driver,
+++                &requirements,
+++                MemoryClass::Private,
+++                None,
+++                Holds::Images,
+++                fit,
+++            )
+++            .unwrap();
+++            assert_eq!(placed.offset % requirements.alignment, 0);
+++            assert_eq!(placed.size, size);
+++        }
+++        assert_eq!(
+++            *lock(&REQUESTED_BYTES),
+++            vec![32 << 20, (32 << 20) + 4096, 12 << 20]
+++        );
+++        lock(&ALLOC_RESULTS).push_back(vk::Result::ERROR_OUT_OF_DEVICE_MEMORY);
+++        let error = place(
+++            &memory,
+++            &driver,
+++            &vk::MemoryRequirements {
+++                size: 32 << 20,
+++                alignment: 4096,
+++                memory_type_bits: 1,
+++            },
+++            MemoryClass::Private,
+++            None,
+++            Holds::Images,
+++            Fit::Pooled,
+++        );
+++        assert!(matches!(error, Err(Error::OutOfMemory(_))));
+++        assert_eq!(ALLOCATED.load(Ordering::Relaxed), 3);
+++        let mut state = lock(&memory);
+++        assert_eq!(state.allocated, (76 << 20) + 4096);
+++        drop(state.destroy(&driver));
+++        assert_eq!(FREED.load(Ordering::Relaxed), 3);
+++    }
+++
+++    #[test]
+++    #[cfg(any(m2v_gpu, m2v_cpu_icd))]
+++    fn foreground_backing_executes_copies_and_keeps_adjacent_ranges() {
+++        use crate::{Device, DeviceKind, DeviceOptions, ResourceOptions, ShaderCacheOptions};
+++
+++        let cache =
+++            std::env::temp_dir().join(format!("m2v-foreground-backing-{}", std::process::id()));
+++        std::fs::create_dir_all(&cache).unwrap();
+++        let device = Device::system_default_with(&DeviceOptions {
+++            kinds: if cfg!(m2v_cpu_icd) {
+++                vec![DeviceKind::Cpu]
+++            } else {
+++                vec![
+++                    DeviceKind::Discrete,
+++                    DeviceKind::Integrated,
+++                    DeviceKind::Virtual,
+++                ]
+++            },
+++            shader_cache: ShaderCacheOptions::in_directory(&cache),
+++            ..DeviceOptions::default()
+++        })
+++        .unwrap();
+++        let shared = device.shared();
+++        lock(&shared.memory).demand_sized_foreground = false;
+++        let guards: Vec<_> = (0..4)
+++            .map(|_| {
+++                device
+++                    .own_buffer(16 << 20, ResourceOptions::shared())
+++                    .unwrap()
+++            })
+++            .collect();
+++        for buffer in &guards {
+++            // SAFETY: all buffers are host-visible, held here and not submitted.
+++            unsafe {
+++                std::slice::from_raw_parts_mut(
+++                    buffer.contents().unwrap().as_ptr(),
+++                    buffer.length() as usize,
+++                )
+++            }
+++            .fill(0x6d);
+++        }
+++        lock(&shared.memory).demand_sized_foreground = true;
+++        let before = lock(&shared.memory).allocated;
+++        let bytes = 24 << 20;
+++        let source = device.own_buffer(bytes, ResourceOptions::shared()).unwrap();
+++        assert_eq!(
+++            lock(&shared.memory).allocated - before,
+++            32 << 20,
+++            "the actual Vulkan allocation grows by the request-sized block"
+++        );
+++        let target = device.own_buffer(bytes, ResourceOptions::shared()).unwrap();
+++        // SAFETY: these mappings are the buffers' full lengths; GPU work has not started.
+++        unsafe {
+++            let src =
+++                std::slice::from_raw_parts_mut(source.contents().unwrap().as_ptr(), bytes as usize);
+++            for (index, byte) in src.iter_mut().enumerate() {
+++                *byte = (index * 13 + 17) as u8;
+++            }
+++            std::slice::from_raw_parts_mut(target.contents().unwrap().as_ptr(), bytes as usize)
+++                .fill(0xc7);
+++        }
+++        let (src, src_offset) = source.at(64);
+++        let (dst, dst_offset) = target.at(64);
+++        device
+++            .submit_internal(|raw, command| {
+++                let before = vk::MemoryBarrier::default()
+++                    .src_access_mask(vk::AccessFlags::HOST_WRITE)
+++                    .dst_access_mask(
+++                        vk::AccessFlags::TRANSFER_READ | vk::AccessFlags::TRANSFER_WRITE,
+++                    );
+++                let after = vk::MemoryBarrier::default()
+++                    .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
+++                    .dst_access_mask(vk::AccessFlags::HOST_READ);
+++                // SAFETY: these live buffers cover the disjoint source/destination ranges;
+++                // submit_internal waits for completion, and the barriers order host access.
+++                unsafe {
+++                    raw.cmd_pipeline_barrier(
+++                        command,
+++                        vk::PipelineStageFlags::HOST,
+++                        vk::PipelineStageFlags::TRANSFER,
+++                        vk::DependencyFlags::empty(),
+++                        &[before],
+++                        &[],
+++                        &[],
+++                    );
+++                    raw.cmd_copy_buffer(
+++                        command,
+++                        src,
+++                        dst,
+++                        &[vk::BufferCopy {
+++                            src_offset,
+++                            dst_offset,
+++                            size: bytes - 128,
+++                        }],
+++                    );
+++                    raw.cmd_pipeline_barrier(
+++                        command,
+++                        vk::PipelineStageFlags::TRANSFER,
+++                        vk::PipelineStageFlags::HOST,
+++                        vk::DependencyFlags::empty(),
+++                        &[after],
+++                        &[],
+++                        &[],
+++                    );
+++                }
+++            })
+++            .unwrap();
+++        // SAFETY: the internal submission completed and made GPU writes host-visible.
+++        let actual = unsafe {
+++            std::slice::from_raw_parts(target.contents().unwrap().as_ptr(), bytes as usize)
+++        };
+++        assert!(actual[..64].iter().all(|&byte| byte == 0xc7));
+++        assert!(actual[bytes as usize - 64..]
+++            .iter()
+++            .all(|&byte| byte == 0xc7));
+++        assert!(actual[64..bytes as usize - 64]
+++            .iter()
+++            .enumerate()
+++            .all(|(index, &byte)| byte == ((index + 64) * 13 + 17) as u8));
+++        for buffer in &guards {
+++            // SAFETY: these retained neighboring ranges were never GPU destinations.
+++            let held = unsafe {
+++                std::slice::from_raw_parts(
+++                    buffer.contents().unwrap().as_ptr(),
+++                    buffer.length() as usize,
+++                )
+++            };
+++            assert!(held.iter().all(|&byte| byte == 0x6d));
+++        }
+++        drop((source, target));
+++        let recycled = device.own_buffer(bytes, ResourceOptions::shared()).unwrap();
+++        // SAFETY: this new owner's host-visible buffer has completed its creation-time clear.
+++        assert!(unsafe {
+++            std::slice::from_raw_parts(recycled.contents().unwrap().as_ptr(), bytes as usize)
+++        }
+++        .iter()
+++        .all(|&byte| byte == 0));
+++        drop(recycled);
+++        drop(guards);
+++        drop(device);
+++        std::fs::remove_dir_all(cache).unwrap();
+++    }
+++
++     #[test]
++     fn surplus_pooled_image_backing_can_be_reused() {
++         let _serial = lock(&SERIAL);

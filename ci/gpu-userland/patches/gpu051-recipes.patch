@@ -1,0 +1,12 @@
+diff --git a/scripts/build-adreno-metal-bridge.py b/scripts/build-adreno-metal-bridge.py
+index 4fdde43..c4ab2bd 100644
+--- a/scripts/build-adreno-metal-bridge.py
++++ b/scripts/build-adreno-metal-bridge.py
+@@ -88,6 +88,7 @@ PATCHES = [ROOT / 'drivers/AdrenoMetal/bridge/patches' / name for name in [
+     '0039-render-pass-driver-clocks.patch',
+     '0040-multi-level-tiled-output.patch',
+     '0041-multi-level-tiled-input.patch',
++    '0042-ios-foreground-blocks.patch',
+ ]]
+ 
+ 

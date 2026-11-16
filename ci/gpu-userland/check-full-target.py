@@ -180,6 +180,7 @@ assert extern_function['source_sha256']==hashlib.sha256((root/'drivers/AdrenoMet
 assert extern_function['test_sha256']==hashlib.sha256((root/'drivers/AdrenoMetal/bridge/extern_function_host.mm').read_bytes()).hexdigest()
 multi_level=json.loads((a.logs/'multi-level-output/report.json').read_text())
 assert multi_level['passed'] and multi_level['exact_runtime_source_verified'] and multi_level['current_Mac_planner_tests_passed']
+assert multi_level['current_Mac_allocator_tests_passed'] and multi_level['current_Mac_allocator_cases']==8
 extern_spec=importlib.util.spec_from_file_location('extern_target',Path(__file__).with_name('check-extern-target.py'))
 extern_target=importlib.util.module_from_spec(extern_spec)
 extern_spec.loader.exec_module(extern_target)

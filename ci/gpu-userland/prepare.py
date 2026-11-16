@@ -348,7 +348,9 @@ def main():
     for repository, name in [(root, 'gpu048-recipes.patch'),
                              (root / 'drivers/AdrenoMetal', 'gpu048-plugin.patch'),
                              (root, 'gpu049-recipes.patch'),
-                             (root / 'drivers/AdrenoMetal', 'gpu049-plugin.patch')]:
+                             (root / 'drivers/AdrenoMetal', 'gpu049-plugin.patch'),
+                             (root, 'gpu051-recipes.patch'),
+                             (root / 'drivers/AdrenoMetal', 'gpu051-plugin.patch')]:
         selected = HERE / 'patches' / name
         must(['git', '-C', repository, 'apply', '--check', selected])
         must(['git', '-C', repository, 'apply', selected])
