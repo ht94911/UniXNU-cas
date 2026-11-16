@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Source-only045 reuseacceptedAudio102 onhumanselectedGPU024/current42baseband source; oneQcomSoCarchive/diag9/MSSledger9/lateIPCCappend/50audioobjects. OriginalSIP/AKA/IPsec andprivateaudioHALfirmware/identity/logs local. Mac-onlycompile withsameCMS output; current44hardwaretrial independent.",
+  "purpose": "046 sourcepatchcontext repair foralreadyqualified045audio102/commonMSS integration; onlyHALmount patchcontext changed. Current44longtrialindependent, noSIP/AKA/security orprivateinputsuploaded.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "10d46999bc00a4d9777bf565477db50314ae0ad7",
+  "device_revision": "f245bb011fe37962caeba2238f88ecc6fb0ab825",
   "soc_revision": "703d7b4bb00904b4a6e5d96f9e9bf72eec170f6b",
   "xcode": "26.6",
   "files": {
@@ -466,7 +466,7 @@
     "source/device/patches/xnu-12377/zzzzz-nezha-owner-data-console.patch": "cb29cedb0b5f7d388fcdff028140c6973628d65ea108d7796e23dcb956542828",
     "source/device/patches/xnu-12377/zzzzz-nezha-owner-data-ready.patch": "306414945401c128472d3b0acddd03c88bec57ec47d6988660173d0b432c3e4b",
     "source/device/patches/xnu-12377/zzzzzz-nezha-adreno840-start.patch": "d32bb0d5e678e5773786dcce90467e0258d844550b418b438e1548fb32392f79",
-    "source/device/patches/xnu-12377/zzzzzz-nezha-audio-hal-mount.patch": "c6fe1833480aff52dbfe4f44c75d7c5fd995efe1d524f3bc7671fd6559719bef",
+    "source/device/patches/xnu-12377/zzzzzz-nezha-audio-hal-mount.patch": "ce13279e70179bf1b875ba57225c311d49eea43615b84796540d8bac0e056da1",
     "source/device/patches/xnu-12377/zzzzzz-nezha-cellular-addon-size.patch": "5087cd2e214f0fd88f7105a5de56af74e01ab8d6bc75b7c9a65a36ba07245159",
     "source/device/patches/xnu-12377/zzzzzz-nezha-cellular-cached-entry.patch": "f9d023a17fbc05500c1d7b8e4477b9e81632912d5da5f62e78dd9ad1534f12bb",
     "source/device/patches/xnu-12377/zzzzzz-nezha-cellular-launch-identity.patch": "8636bf51136c0d8cf57daaebb3f1d5c101844fd4be26bd51842037972c509dc2",
