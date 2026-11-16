@@ -1,0 +1,33 @@
+diff --git a/bsd/kern/kern_exec.c b/bsd/kern/kern_exec.c
+--- a/bsd/kern/kern_exec.c
++++ b/bsd/kern/kern_exec.c
+@@ -8740,3 +8740,29 @@ native_gpu_addon_prepare(proc_t p, user_addr_t scratch)
++	/* The GNSS test app uses the original Core Location authorization path.
++	 * Reuse the selected package's read-only unions after addon installation.
++	 * Its launch job is merged into the existing signed Bluetooth cache. */
++	DTEntry gnss_chosen = NULL;
++	const void *gnss_property = NULL;
++	unsigned int gnss_property_bytes = 0;
++	uint32_t gnss_test = 0;
++	if (SecureDTLookupEntry(NULL, "/chosen", &gnss_chosen) == kSuccess &&
++	    SecureDTGetProperty(gnss_chosen, "nezha-gnss-test-app", &gnss_property,
++	        &gnss_property_bytes) == kSuccess && gnss_property &&
++	    gnss_property_bytes == sizeof(gnss_test)) {
++		memcpy(&gnss_test, gnss_property, sizeof(gnss_test));
++	}
++	if (gnss_test == 1) {
++		static const char gnss_bin_source[] = "/private/var/ngpu/gnss-bin", gnss_bin_point[] = "/usr/libexec";
++		static const char gnss_apps_source[] = "/private/var/ngpu/gnss-apps", gnss_apps_point[] = "/Applications";
++		static volatile int gnss_bin_stage, gnss_bin_status, gnss_apps_stage, gnss_apps_status;
++		native_gpu_addon_mount(p, scratch, 0x600, gnss_bin_source, sizeof(gnss_bin_source),
++		    gnss_bin_point, sizeof(gnss_bin_point), "/usr/libexec/launchd_cache_loader",
++		    "/usr/libexec/nezha-location-launch", &gnss_bin_stage, &gnss_bin_status);
++		native_gpu_addon_mount(p, scratch, 0x600, gnss_apps_source, sizeof(gnss_apps_source),
++		    gnss_apps_point, sizeof(gnss_apps_point), "/Applications/Preferences.app/Info.plist",
++		    "/Applications/NezhaLocation.app/Info.plist", &gnss_apps_stage, &gnss_apps_status);
++		printf("NEZHA27 GNSS test runtime executable=%d/%d app=%d/%d\n",
++		    gnss_bin_stage, gnss_bin_status, gnss_apps_stage, gnss_apps_status);
++	}
+ 	native_cryptex_os_view(p, scratch);
+ 	native_gestalt_cache_drop(p, scratch);
+ 	native_ls_store_drop(p, scratch);

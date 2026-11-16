@@ -164,12 +164,12 @@ evidence = []
 [[area]]
 id = "packaging"
 status = "planned"
-components = []
+components = ["SoftwareAES"]
 paths = ["board.toml", "scripts/nezha_bootimg.py"]
 inputs = ["Official unixnu kernel/prelink/payload/bootimg outputs and isolated iPhone profile."]
 configuration = ["board.toml and configs/nezha_ios27_defconfig select the current source-only step."]
 procedure = ["Use ./unixnu with isolated local inputs/out, jobs=32; preserve existing Android/ios17 and active Wi-Fi workspace."]
-findings = ["Native-only compile configuration is not a bootable desktop package; no Data seed/root or payload produced."]
+findings = ["This device record predates GPU051 package qualification. GPU051 retains the selected SoftwareAES source ABI/archive; GNSS adds no cryptographic implementation.", "New GNSS full image qualification is pending; original GPU051 is the fixed package reference."]
 completion = ["Real iPhone iOS27 desktop/settings operable with protection verification; validate this area separately before promotion."]
 limits = ["No iOS27 device execution, donor ABI qualification or phone allocation is claimed."]
 next_action = ["Finish source closure, donor bindings and restricted disk manifest before payload assembly."]
@@ -313,3 +313,18 @@ completion = ["Native artifact and PAC/strict closure checks pass", "Real shader
 limits = ["Source/host evidence only;not a new hardware result", "Original078 and17 masters unchanged;no main promotion"]
 next_action = ["Complete integrated009 qualification and use the113 GPU window"]
 evidence = [{kind = "source", reference = "scripts/check-stable-kernel-stack.py", result = "Actual function extraction;ASan/UBSan pass256 state variants,short/null/out-of-range saved state,overflow/misaligned/cyclic frames and preserved normal three-frame output;arm64e PAC checked separately on the native artifact."}]
+
+
+[[area]]
+id = "ios27-gnss-gpu051"
+status = "planned"
+components = ["QcomXnuUsbDebug", "ShengUfs"]
+paths = ["package/baseband27/gnss/*", "package/baseband27/bridge/NbGnssBridge.inc", "package/gnss27/userland/*", "tools/gnss27/*", "patches/xnu-12377/nezha-gnss-test-runtime.patch"]
+inputs = ["Human-selected GPU051 boot 4e4b785ca1bf7bea18d68248ade4cde09a9d9efb5d557fe65e4eaa975dac849a and device76c5952.", "Baseband038 source ff72fcc0e1ff55dbaae856f0891f444578d7d4ae; original24A446 locationd and stock LOC service16/v2 minor177."]
+configuration = ["Typed chosen nezha-baseband=1 and nezha-gnss=1; retain GPU051 original kernel arguments.", "Foreground app uses ordinary Core Location authorization and scene lifecycle."]
+procedure = ["Qualify target objects and same-candidate package before claiming the shared phone window.", "Correlate same-fix receiver used-satellite pages and ordinary Core Location samples."]
+findings = ["GPU051 selected by the user; preserve original GPU051 runtime and persistent Data generation 1.", "Reuse baseband038 MSS/QRTR backend and the single GPU051 ALS shared transport/resource owner; no second modem or shared archive.", "Host protocol, session lifecycle, QMUX and shared IPCC checks pass; Android stock HAL declares BeiDou B1I, B1C and B2a signal types.", "Native001 retained 21 successfully compiled baseband objects; archive processing stopped because its exported Mach-O late-initializer helper was missing. GNSS object compilation, final target link and physical fixes are pending.", "Ordinary foreground Core Location app and former rebuild helper compiled and signed; same-device camera073 confirms that endpoint is unavailable. The current helper reuses camera074 original modifydb post-install registration and its existing permission.", "Typed nezha-gnss-test-app selects readonly app and helper unions after GPU051 addon installation; merge its launch job into the retained729-job Bluetooth cache. Per-event app authorization, process ID, application session and monotonic time support exact-boot evidence. Physical registration, permission and fix are pending."]
+completion = ["Actual arm64e/iOS27 objects, imports, PAC, strict prelink, signatures and full GPU051-derived image pass qualification.", "Same-boot receiver fix and used GPS/BeiDou satellites correlate with a fresh ordinary authorized Core Location callback; preserve precise local evidence and distinguish signal tracking from use in fix.", "Repeated start/stop, multiple consumers, exit and fix recovery are verified on the phone, followed by protected Android/root return."]
+evidence = []
+limits = ["No new GNSS image or physical fix accepted; stock signal capability declaration is separate from observed tracking or use."]
+next_action = ["Complete the repaired native and app builds, then strict prelink and full GPU051-derived package qualification."]

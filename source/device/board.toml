@@ -96,6 +96,7 @@ kernel_args = ["-v", "keepsyms=1", "debug=0x14e", "cpus=8", "boot-progress=2", "
 "kernel-ctrr-to-be-enabled" = 0
 "nezha-baseband" = 1
 "nezha-gnss" = 1
+"nezha-gnss-test-app" = 1
 
 [adt.chosen.bytes]
 "nezha-baseband-low-memory" = "00000000000000000000500000000000"

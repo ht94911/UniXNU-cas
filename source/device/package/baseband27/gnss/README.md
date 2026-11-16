@@ -1,9 +1,14 @@
 # nezha iOS27 GNSS source delivery
 
 This increment connects the existing nezha modem/QRTR worker to the original
-24A446 Eureka PDS consumer. It is source-stage work. The user must select a
-fixed test package before integration, compilation, CI, image creation or phone
-testing. No candidate package is selected by this directory.
+24A446 Eureka PDS consumer. The user selected GPU051 for integration and
+testing on 2026-11-16. The fixed base is device revision
+`76c5952683041a6581224135461ab7c21d47f6a5`, boot SHA-256
+`4e4b785ca1bf7bea18d68248ade4cde09a9d9efb5d557fe65e4eaa975dac849a`.
+The GPU051 shared ALS resource owner supplies the sole transport archive;
+the modem backend reuses qualified baseband038 source. Target build, full
+package qualification and physical Core Location acceptance are recorded
+separately; source and host checks do not establish a satellite fix.
 
 The original task and acceptance requirements are in the local project handoff
 `docs/handoffs/IOS27-GNSS-CODEX-20261116.md`. GPS and BeiDou participate in the
