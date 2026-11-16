@@ -35,7 +35,7 @@ PghCore core;
 NzHapticsBus bus;
 PghFactoryState factory;
 NzHapticsQueue queue;
-int stopResult;
+int stopResult,terminalStopResult;
 struct Map {uint64_t physical;vm_offset_t address;} maps[32];
 unsigned mapped,mode;
 uint32_t sessionCounter,logCount;
@@ -243,6 +243,7 @@ IOReturn powerMessage(void *,void *,UInt32 type,IOService *,void *,vm_size_t) {
 void worker(void *,wait_result_t) {
     Sm8850SpmiOps io={nullptr,read32,write32,pauseUs,busAcquire,busRelease};
     PghOps ops={nullptr,nowUs,pauseUs,trace,nullptr};PghConfig cfg={};
+    int quiesceError=0;
     int e=nz_haptics_bus_init(&bus,&io);
     nz_haptics_config(&cfg,nullptr,PGH_MODE_DRY);
     if(!e){e=pgh_core_init(&core,&cfg,&ops,&bus.io);if(e==1)e=0;}
@@ -328,7 +329,7 @@ void worker(void *,wait_result_t) {
     enabled=false;IOLockUnlock(hapticGate);
 done:
     if(core.state!=PGH_ST_DRY && core.state!=PGH_ST_OFF) {
-        int stop=pgh_core_quiesce(&core);if(stop)e=stop;
+        int stop=pgh_core_quiesce(&core);if(stop){e=stop;quiesceError=darwinError(stop);}
     }
     /* The notice and hapticGate have kernel lifetime. Removing a notifier from its
      * worker while the shutdown callback waits for exited would deadlock. */
@@ -338,7 +339,9 @@ done:
      * a queued STOP is never used as permission to unmap live hardware. */
     if((!e || core.state==PGH_ST_DRY || core.state==PGH_ST_OFF) && !bus.bus.pending && !core.restore_pending)
         for(unsigned i=0;i<mapped;++i)ml_io_unmap(maps[i].address,4096);
-    IOLockLock(hapticGate);queue.error=(uint32_t)darwinError(e);enabled=false;exited=true;diagnosticStatus.ready=0;diagnosticStatus.error=queue.error;IOLockWakeup(hapticGate,&exited,false);IOLockWakeup(hapticGate,&enabled,false);IOLockUnlock(hapticGate);
+    /* An identity/ownership refusal before touching the motor is a diagnostic
+     * error, not a failed stop. Only unresolved hardware blocks shutdown. */
+    IOLockLock(hapticGate);terminalStopResult=quiesceError?quiesceError:(bus.bus.pending || core.restore_pending?EIO:0);queue.error=(uint32_t)darwinError(e);enabled=false;exited=true;diagnosticStatus.ready=0;diagnosticStatus.error=queue.error;IOLockWakeup(hapticGate,&exited,false);IOLockWakeup(hapticGate,&enabled,false);IOLockUnlock(hapticGate);
     IOLog("NEZHA HAPTICS: worker exit error=%d mapped=%u pending=%u\n",e,mapped,bus.bus.pending);
     thread_terminate(current_thread());
     thread_block(THREAD_CONTINUE_NULL);
@@ -356,7 +359,7 @@ extern "C" int nezha_haptics_quiesce(void) {
     IOLockWakeup(hapticGate,&queue,false);
     uint64_t deadline;clock_interval_to_deadline(1000,NSEC_PER_MSEC,&deadline);
     while(!exited)if(IOLockSleepDeadline(hapticGate,&exited,deadline,THREAD_UNINT)==THREAD_TIMED_OUT)break;
-    int e=exited?(int)queue.error:ETIMEDOUT;IOLockUnlock(hapticGate);return e;
+    int e=exited?terminalStopResult:ETIMEDOUT;IOLockUnlock(hapticGate);return e;
 }
 extern "C" int nezha_haptics_wait_ready(uint32_t timeout_ms) {
     if(!hapticGate || !timeout_ms || timeout_ms>2000)return EINVAL;
