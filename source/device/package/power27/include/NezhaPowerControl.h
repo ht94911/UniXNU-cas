@@ -1,0 +1,89 @@
+/* SPDX-License-Identifier: BSD-2-Clause-Patent */
+#ifndef NEZHA_POWER_CONTROL_H
+#define NEZHA_POWER_CONTROL_H
+#include "NezhaPower.h"
+#include "NezhaCharge.h"
+#include "NezhaBuck.h"
+#include "NezhaJeita.h"
+#include "NezhaConnectorAntiburn.h"
+#include "NezhaBoardThermal.h"
+#ifdef __cplusplus
+extern "C" {
+#endif
+enum { NP_META_ICL,NP_META_FCC,NP_META_TERM,NP_META_ENABLED,NP_META_BOOST,
+ NP_META_GATE,NP_META_SUSPEND,NP_META_TYPE,NP_META_VERIFY,NP_META_PDOS,
+ NP_META_TYPEC,NP_META_PPS,NP_META_DATA_ROLE,NP_META_PD_STATE,
+ NP_META_CID,NP_META_OTG_PLUGIN,NP_META_COUNT };
+/* Preserve the existing provider9 SNAPSHOT vector and2048-byte contract.
+ * The new one-byte connector signals are consumed by the policy/history. */
+enum { NP_META_SNAPSHOT_COUNT=NP_META_CID };
+typedef struct { uint32_t value;int32_t error;uint64_t at_ms,retry_ms;uint8_t valid; } NpMeta;
+typedef struct {
+ uint64_t id,attachment;uint32_t property,value;uint16_t reply_bytes;
+ uint8_t write,control,index;
+} NpAuxCommand;
+typedef struct {
+ NpBuck buck;NpPdCaps caps;NpMeta meta[NP_META_COUNT];
+ NpSnapshot sample;NpPump pump;NpAuxCommand pending_command;
+ uint64_t epoch,attachment,next_id,pump_at,last_armed_attachment,source_online_at_ms;
+ uint32_t mode,cursor,pump_error,changes,queries,errors,source_online,adc_error;
+ uint8_t pending,stopping,allow_control,source_online_valid,connector_policy_enabled;
+ NpJeita jeita;NpGaugeIdentity identity;uint32_t country_cn;
+ NpConnectorThermal connector_sample;
+ NpConnectorAntiburn connector_antiburn;
+ int32_t stock_support100w;
+ uint8_t ffc_enabled,ffc_valid,ffc_active,ffc_owned,ffc_failed,ffc_cleanup_failed;
+ NpChargerThermalCurrent charger_thermal;
+ uint64_t charger_thermal_begin_ms;
+ uint8_t charger_thermal_enabled,adapter_verified;
+} NpPowerControl;
+typedef struct {
+ uint64_t id,at_ms,generation,attachment;
+ int32_t soc,battery_mv,battery_ma,temperature,remaining,external,charging,vbus_uv,buck_ua;
+ uint32_t valid,pump_valid,pump_error,pump_mode,pump_enable,pump_ibus_ma;
+ uint32_t real_type,icl_ma,fcc_ma,meta_valid,state,blocked,owned;
+ uint32_t baseline_icl,baseline_fcc,target_icl,target_fcc,control_errors;
+ uint32_t backend,confirmation;
+ int32_t feedback_baseline_ma,feedback_target_ma;
+ uint32_t confirmed_vbus_mv,usb_ovp_baseline,usb_ovp_raw,protection_restored;
+} NpPowerHistoryRecord;
+void np_control_init(NpPowerControl *,unsigned mode);
+void np_control_connector_policy_enable(NpPowerControl *,int enabled);
+void np_control_connector_sample(NpPowerControl *,const NpConnectorThermal *,uint64_t now_ms);
+void np_control_connector_invalidate(NpPowerControl *,int error);
+void np_control_connector_signals(const NpPowerControl *,uint64_t now_ms,NpConnectorAntiburnSignals *);
+void np_control_connector_vote(const NpPowerControl *,uint64_t now_ms,NpConnectorAntiburnVote *);
+void np_control_link(NpPowerControl *,uint64_t epoch,int up);
+void np_control_source_event(NpPowerControl *);
+/* Current OS4 USB_TYPE data is online/type, not an attachment counter.
+ * PD10 <-> verified-PD11 keeps the same connected adapter identity. */
+int np_control_usb_type(NpPowerControl *,uint32_t online,uint32_t type,uint64_t now_ms);
+void np_control_sample(NpPowerControl *,const NpSnapshot *,const NpPump *,int,uint64_t);
+void np_control_profile(NpPowerControl *,const NpGaugeIdentity *,int);
+/* Actual local BUCK support19 outcome; -1 leaves type11 choice unavailable. */
+void np_control_adapter_support(NpPowerControl *,int);
+/* OS4 get_pd_type combines raw11 with this source's completed host report.
+ * Raw metadata remains unchanged; a new attachment/link clears the report. */
+int np_control_adapter_verified(NpPowerControl *,uint64_t epoch,uint64_t attachment,int);
+uint32_t np_control_charge_type(const NpPowerControl *,uint64_t now_ms);
+void np_control_charger_thermal_enable(NpPowerControl *,int);
+int np_control_charger_thermal_sample(NpPowerControl *,const NpBoardThermal *,uint64_t now_ms);
+void np_control_ffc_result(NpPowerControl *,unsigned requested,const NpFastModeReading *,int error);
+int np_control_ffc_desired(const NpPowerControl *,uint64_t now_ms);
+/* Oldest required mode11 running-pump metadata approaching its3s expiry.
+ * Ordinary1s reads remain round robin. NP_META_COUNT means none. */
+unsigned np_control_refresh_due(const NpPowerControl *,uint64_t now_ms);
+int np_control_refresh_next(NpPowerControl *,uint64_t now_ms,NpAuxCommand *);
+int np_control_next(NpPowerControl *,uint64_t,NpAuxCommand *);
+int np_control_complete(NpPowerControl *,const NpAuxCommand *,int,const uint8_t *,size_t,uint64_t);
+int np_control_write_allowed(NpPowerControl *,const NpAuxCommand *,uint64_t);
+int np_control_register_allowed(NpPowerControl *,const NpAuxCommand *,uint64_t);
+void np_control_stop(NpPowerControl *);
+void np_control_facts(const NpPowerControl *,uint64_t,NpBuckFacts *);
+/* Project the same completed cohort for IOPMPowerSource. Preserve the main
+ * buck's raw fields while recognizing a fresh, running mode9 charge pump. */
+void np_control_snapshot(const NpPowerControl *,uint64_t,NpSnapshot *);
+#ifdef __cplusplus
+}
+#endif
+#endif
