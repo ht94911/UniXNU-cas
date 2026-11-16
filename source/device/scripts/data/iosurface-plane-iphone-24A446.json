@@ -1,0 +1,15 @@
+{
+  "kernelcache_sha256": "d99b7719ad4b367db264a7682806aecaf6e0621c6761d07325a58337319d4238",
+  "entry": "com.apple.iokit.IOSurface",
+  "prototype": "uint64_t getter(OSObject *surface, uint32_t plane)",
+  "evidence": "Original 24A446 routines invoked in the fixed GPU010 QEMU kernel using real IOSurface factory/allocate and explicit synthetic properties. Plain plane0 falls back to global layout; single-plane &BGA used distinct global/plane row bytes and a 4096-byte offset. Not phone surface values.",
+  "limits": "Presentation requires one supported plane, base equal to offset and size within the descriptor. Extended-pixel origins are refused. No compression decoding or arbitrary format support is claimed.",
+  "functions": {
+    "_native_legacy_surface_plane_width": {"address": "0xfffffff009c02c30", "bytes": 204, "sha256": "c473e4cf7e5f1d6ffc169a2d010ba9c8abefdce07c33effda893eaae1566adf0"},
+    "_native_legacy_surface_plane_height": {"address": "0xfffffff009c02cfc", "bytes": 204, "sha256": "7a612f49828d1eb220b346eb2c72901c03184a531a2a844e474b28ecbea0735b"},
+    "_native_legacy_surface_plane_stride": {"address": "0xfffffff009c02f60", "bytes": 204, "sha256": "407b8177e9ecee8f858f16965258ed0be40002eeaf12e32373533dd4727ed29c"},
+    "_native_legacy_surface_plane_size": {"address": "0xfffffff009c02b64", "bytes": 204, "sha256": "4a718c31db1ad5f37078995a27c4894955a041660606ec3023c0bdea8b226081"},
+    "_native_legacy_surface_plane_offset": {"address": "0xfffffff009c029cc", "bytes": 204, "sha256": "444362fa7cb3ce6d527dc080a813433713163af1f69d491ca445a33bc488f722"},
+    "_native_legacy_surface_plane_base": {"address": "0xfffffff009c02a98", "bytes": 204, "sha256": "ad8714f1987ce708723eaeffd059bd0e3623871b1749766c5e904e48f07bbe1c"}
+  }
+}
