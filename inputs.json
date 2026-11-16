@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "purpose": "Camera075 registers existing original Camera inside actual original LS server bootstrap; preserves seed, exact identity, source-only; app-side native device lists observed without authorization or capture.",
+  "device_revision": "2291846f8209cd2efd2d13c2c7ca6414ded8dd84",
+  "files": {
+    "source/NezhaCameraLSRegistration.m": "db6ec555ccc78313b395700134294386c174d66ff2a999f664424ae5b5d02000",
+    "source/NezhaCameraLaunch.entitlements.plist": "990976e864664ee1a6264c30806d55194650549bbf3f9ee484d80a456230e054",
+    "source/NezhaCameraLaunch.m": "70461b88f2d072d45c8ad760c44174a8cb23c37bfcaed52b9db3b06f4eab2e2a",
+    "source/camera-launch-registration.m": "97482df8e2426d8c5788ef4806d82926022ddb03d727f2b43f766ffbf151c275",
+    "source/camera-ls-registration.m": "157543915ce5cf3b6863432d8a0a00d464a0b51d0c49a7ab2b9cb384038905e3"
+  },
+  "builder_sha256": "bed2cdb45c7d9494cfc5535b3f70b9d965c728cded6ccb7bd89423ca5d314466",
+  "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
+  "certificate_sha256": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
+  "kernel_build_required": false,
+  "private_inputs_uploaded": false,
+  "phone_operations": false,
+  "original_LaunchServices_method": "-[LSApplicationWorkspace openApplicationWithBundleID:] at24A4460x186e67d38",
+  "original_LaunchServices_register_method": "-[LSApplicationWorkspace registerApplicationForRebuildWithInfoDictionaries:requestContext:registrationError:] -> original LSInstallInfo and native registration",
+  "original_LaunchServices_registration_verified": true
+}
