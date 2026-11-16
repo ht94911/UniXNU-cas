@@ -52,7 +52,7 @@ try:
         "com.apple.security.exception.mach-lookup.global-name": ["com.apple.audio.AudioSession", "com.apple.coremedia.routediscoverer.xpc", "com.apple.audio.AudioQueueServer", "com.apple.audioanalyticsd"],
     }
     assert plistlib.loads(entitlements.read_bytes()) == expected
-    binary = args.output / "audio-record108"
+    binary = args.output / "audio-record109"
     run("compile", [
         "xcrun", "--sdk", "iphoneos", "clang++", "-target", "arm64e-apple-ios27.0",
         "-isysroot", sdk, "-std=c++17", "-fobjc-arc", "-fblocks",
@@ -104,7 +104,7 @@ try:
         "entitlements": expected, "required_imports": required, "dependencies": dependencies,
         "platform_report": build, "API": "AVAudioSession+AudioQueue input",
         "maximum_retained_PCM_frames": 96000, "rate": 48000, "channels": 1, "bits": 16,
-        "requested_capture_seconds": 2, "queue_completion_timeout_seconds": 2,
+        "requested_capture_seconds": 2, "queue_completion_timeout_seconds": 3, "startup_zero_discard_timeout_seconds": 10,
         "selected_ADT_property": "nezha-audio-record", "selected_value": 90,
         "fixed_request_uptime_seconds": 150,
         "result_Data_path": "/private/var/mobile/Library/Logs/audio-record090-result.jsonl",

@@ -1,13 +1,13 @@
 {
   "schema": 1,
-  "purpose": "Connect the two actually denied AudioQueue services after successful107 AudioSession and output descriptor setup.",
+  "purpose": "Discard actual startup zero callbacks within10seconds, then retain only96000 frames of real input; original kernel unchanged.",
   "files": {
-    ".github/workflows/nezha-ios27-native.yml": "1217d80a2623f21d86e882170536febcd1e78ff188b59b8e4a7af6d6ed816e5c",
+    ".github/workflows/nezha-ios27-native.yml": "f2c71bfaad442dddd99be9e9c03e7b5b5b5d9c5043239ffb69dfb44e60bb8aba",
     "ci/artifact-recipient.pem": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
     "ci/artifacts.py": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
-    "ci/audio-record.py": "83d387f33c1642c067c6b0d16aff6ed00cca94d4cc360cbe688066300f72ea0d",
-    "source/AudioRecord.mm": "0ad9324ad7ce70fe3bafce1af81d3fd3ff2040ae8141538e7dcdb7090180c157",
-    "source/Info.plist": "0592b4ab0f604ee2117f4ad17f047b73e184d340b01c1daa3c67a17e5c954678",
+    "ci/audio-record.py": "68568951df5a7b355284d1ece3009cfd9ec869e5a7e134e079706998b2b8ce53",
+    "source/AudioRecord.mm": "cb0229d8aad335c05bc28121827c5c6ddaa67e0550348f88ab0f12a5decbff04",
+    "source/Info.plist": "4c1f09183ec9d7bee94725b4c3902e102c14a3defebeb97eb0b313ab5dc90e0a",
     "source/QcomUserLogTransport.h": "6981a8a4863c80f0109de4e821c4ef2d72f75f143eb39f4a65a2abb2a4df4531",
     "source/QcomUserLogWire.h": "965d7aeaa4043bcceb151cd6331ce50faefe21f57ce7c91cf781a52b4917397b",
     "source/com.apple.iomfb_fdr_loader.plist": "8f01beb517e05f1e3e914e101d0c8d5a9baae59638c44b275462d209b92d2940",
@@ -18,8 +18,8 @@
   "kernel_rebuild": false,
   "source_Data_test_output": true,
   "snapshot_transport": "existing readonly APFS",
-  "previous_helper_source_revision": "3aade2dc26cfad29b0f2ea081c092b7ccfdd554e",
-  "helper_program_path": "/usr/libexec/audio-record108",
+  "previous_helper_source_revision": "7ce834f90c2a50beb25d45bd0fc708ad68e2dd81",
+  "helper_program_path": "/usr/libexec/audio-record109",
   "exact_audio_session_services": [
     "com.apple.audio.AudioSession",
     "com.apple.coremedia.routediscoverer.xpc",
@@ -31,5 +31,8 @@
   "exact_output_paths": [
     "/private/var/mobile/Library/Logs/audio-record090-result.jsonl",
     "/private/var/mobile/Library/Logs/audio-record090.wav.gz"
-  ]
+  ],
+  "maximum_retained_frames": 96000,
+  "startup_wait_seconds": 10,
+  "retained_input_delivery_seconds": 3
 }

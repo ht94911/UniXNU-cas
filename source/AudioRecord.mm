@@ -19,6 +19,8 @@ static constexpr uint32_t rate = 48000, limit = 2 * rate;
 static int16_t pcm[limit];
 static int sample_fd = -1;
 static uint32_t frames, callbacks, peak, nonzero;
+static uint32_t startup_zero_frames, startup_zero_callbacks;
+static uint64_t first_input_ms;
 static uint64_t squares;
 static uint64_t queue_start_ms, queue_stop_ms;
 static OSStatus callback_error;
@@ -90,6 +92,17 @@ static void received(void *, AudioQueueRef aq, AudioQueueBufferRef buffer,
     if (buffer->mAudioDataByteSize & 1) { callback_error = kAudio_ParamError; return; }
     const int16_t *samples = (const int16_t *)buffer->mAudioData;
     uint32_t take = buffer->mAudioDataByteSize / 2;
+    if (!first_input_ms) {
+        bool have_input = false;
+        for (uint32_t i = 0; i < take; ++i) if (samples[i]) { have_input = true; break; }
+        if (!have_input) {
+            startup_zero_frames += take;
+            ++startup_zero_callbacks;
+            callback_error = AudioQueueEnqueueBuffer(aq, buffer, 0, nullptr);
+            return;
+        }
+        first_input_ms = uptime_ms();
+    }
     if (take > limit - frames) take = limit - frames;
     for (uint32_t i = 0; i < take; ++i) {
         int32_t value = samples[i];
@@ -218,9 +231,15 @@ int main(void)
             else {
                 // USB log delivery can wait on its FIFO. Defer it until Stop
                 // so it cannot extend the selected recording window.
-                uint64_t deadline = queue_start_ms + 2000;
-                while (frames < limit && !callback_error && uptime_ms() < deadline)
+                // Cold microphone preparation precedes the first real buffer.
+                // Keep it separate from the fixed two-second retained PCM.
+                // All-zero startup buffers are returned immediately, never saved.
+                const uint64_t startup_deadline = queue_start_ms + 10000;
+                while (frames < limit && !callback_error) {
+                    const uint64_t deadline = first_input_ms ? first_input_ms + 3000 : startup_deadline;
+                    if (uptime_ms() >= deadline) break;
                     CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.025, true);
+                }
                 if (callback_error || frames != limit) result = 8;
             }
         }
@@ -238,6 +257,10 @@ int main(void)
         if (![session setActive:NO error:&error]) {
             report("session_deactivation_failed", (int)error.code); result = 11;
         }
+        fprintf(result_file, "{\"event\":\"input_startup\",\"boot_uuid\":\"%s\","
+            "\"first_input_ms\":%llu,\"discarded_frames\":%u,\"discarded_callbacks\":%u}\n",
+            boot_uuid, (unsigned long long)first_input_ms, startup_zero_frames, startup_zero_callbacks);
+        fflush(result_file);
         report("capture_finished", result);
         if (frames && !wave_snapshot()) { report("sample_export_failed", 1); result = 12; }
         report("helper_finished", result);
