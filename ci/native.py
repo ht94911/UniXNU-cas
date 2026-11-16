@@ -233,10 +233,6 @@ def build(framework, work):
                 '--out', work / 'keystore-target-qualification.json'],
                log=logs / 'keystore-target-qualification.log')
     if code: return code
-    code = run([sys.executable, work / 'device/scripts/build-nezha27-sensors-userland.py',
-                '--source', work / 'device/package/sensors/userland', '--usb', work / 'usb',
-                '--output', work / 'sensors-userland'], log=logs / 'sensors-userland.log')
-    if code: return code
     return run([sys.executable, HERE / 'check-native-userlog.py',
                 '--tree', tree, '--component', work / 'usb', '--llvm', llvm,
                 '--kernel', kernel, '--out', work / 'userlog-target-qualification.json'],

@@ -123,8 +123,10 @@ int qssc_client_poll(QsscClient *c,uint64_t now){
     return QsscOkay;
 }
 static void lookup_complete(QsscClient *c){
-    if(c->awaiting&&c->tx_id==QsscLookupRequest&&c->lookup_ack&&c->lookup_event){
-        QsscStream *s=&c->stream[c->tx_kind];s->lookup_sent=true;s->phase=s->present?QsscIdle:QsscMissing;c->awaiting=false;}
+    if(c->awaiting&&c->tx_id==QsscLookupRequest&&c->lookup_ack){
+        // ALS017 confirmed delayed register_updates SUID events. Only the
+        // QMI receipt has a deadline; the acknowledged lookup stays active.
+        QsscStream *s=&c->stream[c->tx_kind];s->lookup_sent=true;s->phase=s->present?QsscIdle:QsscLookup;c->awaiting=false;}
     if(c->awaiting&&c->tx_id==QsscAttrRequest&&c->attribute_ack&&c->attribute_event)c->awaiting=false;
 }
 static int response(QsscClient *c,const uint8_t *raw,size_t bytes){
@@ -155,7 +157,7 @@ static int lookup_report(QsscClient *c,const QsscReport *r){
             }
             s->present=present;if(present){s->uid=u;
                 if(s->phase==QsscMissing){s->phase=QsscIdle;s->error=0;}}
-            if(!present){s->error=QsscNoData;
+            if(!present){s->error=0;s->phase=QsscLookup;
                 if(state(c,k,false,QsscNoData))return fail(c,QsscConsumer);}
             if(c->awaiting&&c->tx_id==QsscLookupRequest&&c->tx_kind==k)c->lookup_event=true;
             break;

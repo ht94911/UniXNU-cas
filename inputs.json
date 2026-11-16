@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Sensors001d on fixed GPU051: repair actual XNU host-name collision and reuse verified219-vtable inherited slot binding; four new event constructors only.",
+  "purpose": "Sensors002 follows accepted ALS017 ACK-only SUID receipt timeout and delayed empty/default register_updates; native002 only; all signed userland from001d+001g reused.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "9e04e07ef460d99dfcc09b2ea5943191f0476a00",
+  "device_revision": "f19637768a4dd4656f6996d44748ac4bcf8f2d1f",
   "soc_revision": "device-local-composition-e565439+3435fa5",
   "xcode": "26.6",
   "files": {
@@ -502,25 +502,25 @@
     "ci/test-native-userlog.py": "f64f5aff7c83cbbff7ce9bd15ab276dd7022f5e42d227999157b796afe414f9e",
     "ci/check-native-userlog.py": "74e7abe9164a853b10d4406a46f55f67670ade42795f066068e84f14b2ebc006",
     "ci/test-native-userlog-producer.py": "619bc31f6f41b16d562bcbc83a41588f6ada45a5268e23ef5c4985e5f364e403",
-    "ci/native.py": "e43b34aadc0780155a6e1d9d9c5503a997a2fcd7ee12f07cec3b5d7b36f481e3",
+    "ci/native.py": "41608f05b663e160738f7e06ab0ecff95464c42b0a70b254e64560987dcda651",
     "source/device/package/gpu/NezhaGpuBoPhases.h": "6b609e93c766b0f88b569dc1c04177b529f090e23f06a260c4c427afe8dfcbb6",
     "source/device/tests/gpu-bo-phases.cpp": "a7d609b520a3166ca53c24581f89c6d2f02ca53f00b09326749c0356a3fc63e9",
     "source/device/tests/check-gpu-bo-phases.py": "e34cab3913626ff9e80d533e9013791565229a3386fbb1599ed4c71c68afc181",
     "source/device/docs/GPU050-BO-PHASES.md": "9a5d2f357315c7883d9e660a69969f72e7eaa290f09731dd2b39d390123557e4",
     "source/device/components/QcomSscSensors/.gitignore": "84fc43d5a4c0a60c5752c9719c8049d310699d222749abc31579aabe35d8aa14",
-    "source/device/components/QcomSscSensors/ORIGIN.json": "d1256a37a31e7dc8b95f5ab2e21a3526fffad25f27346b86462de6c376da2cfc",
+    "source/device/components/QcomSscSensors/ORIGIN.json": "0ff5c116a6369714bad5b181656e896bf2e5e24fc4ecbdc90dc6566ac8e5d3ed",
     "source/device/components/QcomSscSensors/README.md": "ca16a65734e1f2457d2ca513bab00c94b456c1feb914bdb0b335a3047f98fcff",
     "source/device/components/QcomSscSensors/docs/README.md": "b4f463da1206f49df4ffe4f31655bc1798cd9483e8493ae9201869411c69b22c",
     "source/device/components/QcomSscSensors/include/QcomSscClient.h": "a513dca501a80da36739a4ecaf368c37600447a022f2cddae7a691cb062da387",
     "source/device/components/QcomSscSensors/include/QcomSscMath.h": "012b45b05f3500c477c3207828a8375c49f14badbab792483db946ff1479708a",
     "source/device/components/QcomSscSensors/include/QcomSscMotion.h": "75eda3a3b71fb3a7bfdbb0ec4017bc457f519bf9adf9661ad51f8aa8be2d2da5",
     "source/device/components/QcomSscSensors/include/QcomSscWire.h": "49ef9bafa7b7de55da0bd85eea7825263f7515a741f9871fda7eb0fcdc3eff84",
-    "source/device/components/QcomSscSensors/src/QcomSscClient.c": "322abd93897102927dd9a836cef5b3faae42e38df843b2cdad593e09b5aed358",
+    "source/device/components/QcomSscSensors/src/QcomSscClient.c": "83526417c037e3b58bf67f6b8b4b0c5466ec9db8b6ef2b237ad1c4d5d0a287a0",
     "source/device/components/QcomSscSensors/src/QcomSscMath.c": "3fa51b4d553563f7d2b2977f841e529ae5eacd0415fcc532bc9f03a5ff362f34",
     "source/device/components/QcomSscSensors/src/QcomSscMotion.c": "f7f089afa449fd23836b4606a28f1355a56f3c24bbaa7c741522acbc6fca7c49",
     "source/device/components/QcomSscSensors/src/QcomSscWire.c": "5c7071f7f08922cb9be92fe1c0df6305833914c490a2746d679a43923d0b1a6f",
     "source/device/components/QcomSscSensors/tests/run-after-baseline.py": "7a588d510a71bca886d20ea9240e95d8a3bf10495b35f5690234421016c38778",
-    "source/device/components/QcomSscSensors/tests/ssc-sensors.c": "2e00dbb6f6410b762e508bcb6130e7a49b88d921037bb8e8dd798f0d589615db",
+    "source/device/components/QcomSscSensors/tests/ssc-sensors.c": "ed31b1ba633da39bf828a725bdb37a4caa738385f08bcfe109d0e6ff29478b6b",
     "source/device/package/sensors/NezhaSensorHid.cpp": "113a2ef4001224559d633422ade577f88b26acaeb7601bcce1fb3c524e62005f",
     "source/device/package/sensors/NezhaSensorNativeCaller.cpp": "d19e2f6f3792bf3634964bc40e7f94807a269e8b98288d98e77660509f65a44e",
     "source/device/package/sensors/NezhaSensorNativeCaller.h": "6d4345ff467045797fe30fd0d545c24cf618205741e5c9ec76a8760c5a386075",
@@ -541,7 +541,7 @@
     "source/device/tests/sensors-hid-host-shim.h": "fe1a5a11663090897b1cff0d7d2d6a7a19475223d2f5c88234bee5a1e4cfdfa9",
     "source/device/tests/sensors-integration-host.cpp": "c078442e6c285343cce05f33c3d98f5125082e3e80a286964105eccec3846e8b",
     "source/device/tests/sensors-integration-host.py": "2d99bac067e84bce3003b8939adc947d749b11a1fb088e6cce2ea20892e767df",
-    ".github/workflows/nezha-ios27-native.yml": "a14a21cbb2b60c2cff96adaf6ab0adbea3875fd0dec0d5ef72eea33b88568972"
+    ".github/workflows/nezha-ios27-native.yml": "fe185f908bc28d9407c926824191a2561070d60df7894436b5d001eb57baeebc"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
@@ -912,5 +912,12 @@
     "base_boot_sha256": "4e4b785ca1bf7bea18d68248ade4cde09a9d9efb5d557fe65e4eaa975dac849a",
     "Metal_rebuild": false,
     "opt_in": "ns=1"
+  },
+  "sensors002": {
+    "base": "GPU05176c5952",
+    "component_revision": "54dc45ce44988b4493fa58e21eee2600922e6416",
+    "only_native_code_change": "QcomSscClient delayed acknowledged SUID",
+    "reuse_userland_native001d": 43905531293,
+    "reuse_exporter001g": 43914376696
   }
 }

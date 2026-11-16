@@ -129,4 +129,23 @@ static void sleep_and_stop(void){
     n=ack(p,c.transaction);assert(!qssc_client_receive(&c,5,17,p,n,205,19203000));
     assert(qssc_client_drained(&c));
 }
-int main(void){math();wire();calibration_and_time();independent_consumers();flush_ack_order();early_enable_event();fusion();sleep_and_stop();puts("SSC production codec/client/math/fusion/sleep/stop scenarios passed");}
+static void acknowledged_delayed_suid(void){
+    QsscClient c={0};struct Mock m={0};begin(&c,&m);
+    assert(!qssc_client_demand(&c,QsscProximityKind,0,(QsscDemand){1,0,true,true}));
+    assert(!qssc_client_poll(&c,200)&&c.tx_id==QsscLookupRequest);
+    uint8_t p[1023];size_t n=ack(p,c.transaction);
+    assert(!qssc_client_receive(&c,5,17,p,n,201,19201000));
+    assert(!c.awaiting&&c.stream[3].lookup_sent);
+    assert(qssc_client_poll(&c,5000000)==QsscNoData&&!c.error);
+    uint8_t empty[]={10,9,'p','r','o','x','i','m','i','t','y'};
+    n=report(p,(QsscUid){QSSC_LOOKUP_WORD,QSSC_LOOKUP_WORD},QsscLookupEvent,19202000,empty,sizeof empty);
+    assert(!qssc_client_receive(&c,5,17,p,n,5000001,19203000));
+    assert(!c.stream[3].present&&!c.stream[3].error);
+    uint8_t lookup[64];memcpy(lookup,empty,sizeof empty);lookup[11]=18;lookup[12]=18;
+    n=13+pbuid(lookup+13,(QsscUid){3,4});
+    n=report(p,(QsscUid){QSSC_LOOKUP_WORD,QSSC_LOOKUP_WORD},QsscLookupEvent,19203100,lookup,n);
+    assert(!qssc_client_receive(&c,5,17,p,n,5000002,19204000));
+    assert(c.stream[3].present&&!c.stream[3].error);
+    assert(!qssc_client_poll(&c,5000003)&&c.tx_id==QsscAttrRequest);
+}
+int main(void){math();wire();calibration_and_time();independent_consumers();flush_ack_order();early_enable_event();fusion();sleep_and_stop();acknowledged_delayed_suid();puts("SSC production codec/client/math/fusion/sleep/stop/delayed SUID scenarios passed");}
