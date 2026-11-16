@@ -26,7 +26,7 @@ typedef struct {
     uint32_t initialized,smem_owner,ipcc_busy,ipcc_sealed,ipcc_count,ipcc_unknown_count,ipcc_last_unknown;
     Sm8850IpccRoute ipcc[Sm8850IpccRoutes];
 } Sm8850Resources;
-typedef struct {uint32_t bank,asid,slot[4],sid[4];} Sm8850SmmuAssignment;
+typedef struct {uint32_t bank,asid,slot[4],sid[4],count; /* count 0 preserves legacy four-stream callers */} Sm8850SmmuAssignment;
 /* No probing or writes here. Board supplies explicit resource numbers and
  * assignments. Registering this object is not permission for a second owner
  * to access an already-owned controller outside the same lock. */

@@ -5,6 +5,11 @@ zzyd-sheng-audio-addon-mount.patch
 source-storage-runtime.patch
 zzzz-sheng-ipados27-bringup.patch
 
+# Existing upstream paging/union directory fixes required by this camera.
+vmwait-dyld-pager-source-release.patch
+vmwait-shared-region-source-release.patch
+native-union-readdir-eof.patch
+
 # Kernel static linking cannot leave these optional weak imports unresolved.
 zzzz-nezha-optional-runtime.patch
 
@@ -47,3 +52,13 @@ zzz-wifi-aes-late-personality.patch
 nezha-bluetooth-exit-diagnostic.patch
 nezha-bluetooth-runtime.patch
 nezha-bluetooth-text-fixup-capacity.patch
+
+# Original camera transport, service loading and repaired launcher.
+zzzzzz-nezha-camera-service-environment.patch
+zzzzzz-nezha-camera-discovery-launch.patch
+zzzzzz-nezha-camera-addon-size.patch
+zzzzzz-nezha-camera-discovery-identity.patch
+zzzzzz-nezha-camera-dyld-policy.patch
+zzzzzz-nezha-camera-media-view.patch
+zzzzzz-nezha-camera-node-access.patch
+zzzzzz-nezha-camera-exposure-ioctl.patch

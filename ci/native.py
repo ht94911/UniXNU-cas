@@ -173,6 +173,48 @@ def prepare(framework, work):
     check_keystore_source(framework, work)
 
 
+def build_camera_userland(work, sdk):
+    """Compile the existing provider with the target frameworks and PAC ABI.
+
+    This output supplies the combined mode6 original Camera provider.
+    Physical preview and photo acceptance still require the device test.
+    """
+    source = work / 'device/package/camera/userland'
+    output = work / 'camera-userland'
+    output.mkdir(exist_ok=False)
+    units = ['NezhaCameraPreview.c', 'NezhaCameraPixelBuffer.c', 'NezhaCameraGraphOutput.c',
+             'NezhaFigCapture24A446.c', 'NezhaCameraFigProvider.c', 'NezhaCameraFormats.c',
+             'NezhaCameraFactory.c', 'NezhaCameraDeviceBackend.c', 'NezhaCameraSystemVendor.m']
+    flags = ['xcrun', '--sdk', 'iphoneos', 'clang', '-target', 'arm64e-apple-ios27.0',
+             '-isysroot', sdk, '-std=gnu11', '-O2', '-fblocks', '-fPIC',
+             '-Wall', '-Wextra', '-Werror', '-I', str(source)]
+    objects = []
+    for unit in [*units, 'upstream/hakios/camera_isp.c']:
+        obj = output / (Path(unit).stem + '.o')
+        command = [*flags]
+        if unit.startswith('upstream/'):
+            command += ['-Wno-unused-parameter']
+        run([*command, '-c', source / unit, '-o', obj])
+        objects.append(obj)
+    library = output / 'libNezhaCamera27.dylib'
+    run([*flags, '-dynamiclib', '-install_name', '@rpath/libNezhaCamera27.dylib',
+         *objects, '-framework', 'CoreFoundation', '-framework', 'CoreMedia',
+         '-framework', 'CoreVideo', '-lobjc', '-o', library])
+    run([*flags, '-S', source / 'NezhaCameraFigProvider.c', '-o', output / 'FigProvider.s'])
+    run(['codesign', '--force', '--sign', '-', '--pagesize', '4096', '--identifier', 'org.unixnu.nezha.camera27', library])
+    run(['codesign', '--verify', '--strict', library])
+    (output / 'sdk-qualified.json').write_text(json.dumps({
+        'compiler': run(['xcrun', '--sdk', 'iphoneos', 'clang', '--version']),
+        'sdk': sdk, 'target': 'arm64e-apple-ios27.0',
+        'actual_CF_CM_CV_headers': True, 'library_linked': True,
+        'library_sha256': sha(library), 'objects': {p.name: sha(p) for p in objects},
+        'system_camera_registered': False, 'physical_frames_verified': False,
+        'C2_library_loaded': False,
+        'owner_4K_signed': True, 'Apple_codesign_strict_passed': True,
+    }, indent=2) + '\n')
+
+
+
 def build(framework, work):
     logs = work / 'logs'
     logs.mkdir(exist_ok=True)
@@ -212,6 +254,7 @@ def build(framework, work):
         code = run(command, cwd=framework, log=logs / ('step-' + str(index) + '.log'))
         if code:
             return code
+    build_camera_userland(work, sdk)
     sources = list((work / 'out/nezha/ios-27.0.1-24A446-iphone14-4').glob(
         '*/tree/.cache/xnu-work/bsd/kern/kern_memorystatus.c'))
     if len(sources) != 1:
@@ -291,6 +334,9 @@ def collect(framework, work, sealed):
         add(work / 'icon-memory-host' / name, 'icon-memory-host/' + name)
     for path in sorted((work / 'logs').glob('*.log')):
         add(path, 'logs/' + path.name)
+    for path in sorted((work / 'camera-userland').glob('*')):
+        if path.is_file() and path.suffix in ('.json', '.o', '.s', '.dylib'):
+            add(path, 'camera-userland/' + path.name)
     for path in sorted((work.parent / 'setup-logs').glob('*.log')):
         add(path, 'setup/' + path.name)
     builds = list((work / 'out/nezha/ios-27.0.1-24A446-iphone14-4').glob('*'))
@@ -338,7 +384,7 @@ def collect(framework, work, sealed):
                 if path.suffix in ('.log', '.json', '.o'):
                     add(path, 'usb-attempts/' + attempt.parent.name + '/' + path.name)
         for name in ('nezha27-wifi', 'nezha27-bluetooth', 'software-aes',
-                     'nezha27-als', 'nezha27-als-owner', 'apple-key-store-state'):
+                     'nezha27-als', 'nezha27-als-owner', 'apple-key-store-state', 'nezha27-camera-core'):
             for path in sorted((tree / 'build' / name).glob('*')):
                 if path.is_file() and path.suffix in ('.a', '.o', '.json', '.log', '.d', '.S', '.h', '.cpp', '.c', '.txt'):
                     add(path, 'archives/' + name + '/' + path.name)
@@ -347,6 +393,7 @@ def collect(framework, work, sealed):
         add(tree / 'kits/nezha/KeyStoreProbe.cpp', 'keystore-source/KeyStoreProbe.cpp')
         add(tree / 'kits/nezha/keystore013-source-lock.json', 'keystore-source/source-lock.json')
         add(tree / '.cache/xnu-work/bsd/kern/ubc_subr.c', 'text-fixup-source/ubc_subr.c')
+        add(tree / '.cache/xnu-work/security/mac_process.c', 'compiled-source/mac_process.c')
         objects = tree / 'build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837'
         for name in ('link.filelist', 'all-alias.exp'):
             add(objects / name, 'objects/' + name)

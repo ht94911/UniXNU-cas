@@ -1,7 +1,7 @@
-name: nezha GPU050 large allocation phases - native044
+name: nezha Camera071 on GPU051 - native
 on:
   push:
-    branches: [codex/ios27-gpu50-boalloc-native044-20261116]
+    branches: [codex/ios27-camera071-gpu051-native-20261116]
   workflow_dispatch:
 permissions:
   contents: read

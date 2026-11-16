@@ -1,0 +1,76 @@
+--- a/security/mac_vfs.c
++++ b/security/mac_vfs.c
+@@ -69,6 +69,10 @@
+ #include <sys/systm.h>
+ #include <sys/kernel.h>
+ #include <sys/proc.h>
++#include <sys/proc_internal.h>
++#include <sys/codesign.h>
++#include <pexpert/pexpert.h>
++#include <sys/fcntl.h>
+ #include <sys/kauth.h>
+ 
+ #include <sys/file_internal.h>
+@@ -931,6 +935,30 @@
+ 	return result;
+ }
+ 
++/* The original camera service may read only this port's owned character
++ * device. Preserve original policy failures for other processes, nodes,
++ * writes and camera modes. Permissions and driver exclusivity still apply. */
++extern bool nezha_camera_native_node(vnode_t) __attribute__((weak_import));
++static bool
++nezha_camera_node_reader(vfs_context_t ctx, vnode_t vp)
++{
++    unsigned mode = 0;
++    if (!nezha_camera_native_node || !nezha_camera_native_node(vp) ||
++        !PE_parse_boot_argn("nezha-camera", &mode, sizeof(mode)) || mode != 6 ||
++        kauth_cred_getuid(vfs_context_ucred(ctx)) != 501) return false;
++    proc_t p = vfs_context_proc(ctx);
++    if (!p || proc_original_ppid(p) != 1 || !(proc_getcsflags(p) & CS_VALID)) return false;
++    struct cs_blob *blob = csvnode_get_blob(p->p_textvp, p->p_textoff);
++    const char *identity = blob ? csblob_get_identity(blob) : NULL;
++    uint8_t hash[CS_CDHASH_LEN];
++    static const uint8_t daemon_hash[CS_CDHASH_LEN] = {
++        0xca, 0x24, 0xf7, 0x1b, 0x70, 0x27, 0x47, 0xd2, 0xed, 0x01,
++        0x2c, 0x3a, 0xed, 0x2d, 0xaa, 0x4f, 0x00, 0x70, 0x6c, 0x45
++    };
++    return identity && !strcmp(identity, "com.apple.cameracaptured") &&
++        proc_getcdhash(p, hash) == 0 && !memcmp(hash, daemon_hash, sizeof(hash));
++}
++
+ int
+ mac_vnode_check_access(vfs_context_t ctx, struct vnode *vp,
+     int acc_mode)
+@@ -954,6 +982,7 @@
+ 	VFS_KERNEL_DEBUG_START1(29, vp);
+ 	MAC_CHECK(vnode_check_access, cred, vp, mac_vnode_label(vp), mask);
+ 	VFS_KERNEL_DEBUG_END1(29, vp);
++	if (error == EPERM && acc_mode == R_OK && nezha_camera_node_reader(ctx, vp)) return 0;
+ 	return error;
+ }
+ 
+@@ -1672,6 +1701,7 @@
+ 	VFS_KERNEL_DEBUG_START1(52, vp);
+ 	MAC_CHECK(vnode_check_open, cred, vp, mac_vnode_label(vp), acc_mode);
+ 	VFS_KERNEL_DEBUG_END1(52, vp);
++	if (error == EPERM && (acc_mode & (FREAD | FWRITE)) == FREAD && nezha_camera_node_reader(ctx, vp)) return 0;
+ 	return error;
+ }
+ 
+@@ -1697,6 +1727,7 @@
+ 	    mac_vnode_label(vp));
+ 	VFS_KERNEL_DEBUG_END1(53, vp);
+ 
++	if (error == EPERM && true && nezha_camera_node_reader(ctx, vp)) return 0;
+ 	return error;
+ }
+ 
+@@ -2057,6 +2088,7 @@
+ 	MAC_CHECK(vnode_check_stat, cred, file_cred, vp,
+ 	    mac_vnode_label(vp));
+ 	VFS_KERNEL_DEBUG_END1(68, vp);
++	if (error == EPERM && true && nezha_camera_node_reader(ctx, vp)) return 0;
+ 	return error;
+ }
+ 

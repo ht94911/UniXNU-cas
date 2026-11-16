@@ -7,7 +7,7 @@
     "platform/AdspPower.c": "88ca6578cd78e78aa2355a62621074bff48b2bf012d5acaf2da41025584244c8",
     "platform/AudioInputPack.c": "9991a396c50bd0e427570d1a04fbe4755202412759fe0e945cd63c53619dea0c",
     "platform/AudioPdMapper.c": "80e78a1a92882dba4af074b817248248930c73fce7e088644c231027083b2cdb",
-    "platform/AudioResourceOwner.c": "63455208ce034559d837baf7dfbc5e72355805ac858d3a6af9d5db8170a914f1",
+    "platform/AudioResourceOwner.c": "16ac109d1f33a969cc71d57dbe109c2485fcd6a3285319a48628f7cf4f163d7c",
     "platform/NezhaAudioPlatform.c": "ec406bb6160d1c6ac4c7cab072a80744d88eb7cc70fd9b2349812a6c9c4184d1",
     "upstream/QcomGlink.c": "d93de74fc679952d3fa327f902d69e4013b3eb95ae6431c77d8b2aa1348999ef",
     "upstream/QcomMdt.c": "706f4a86624d119282683287bf408ae679275368f9bcc28d6f4ba652d3ad377a",
@@ -100,9 +100,9 @@
   "soc_resource_owner": {
     "revision": "e565439bf1a13d0224f0a9adcfc1eef8df7ad142",
     "files": {
-      "include/Sm8850Resources.h": "e75bd077715897e28bf518770f3e0de4c74d52d34aa525b3a8531cae5460b1f3",
+      "include/Sm8850Resources.h": "37170caea244bc7a257c800cd57f9e6c08b9fe1474b1959b68f0fbe857cd42d1",
       "include/Sm8850ResourcesNative.h": "96a542ad251ca57765dbd299e71267eca66632356f6922007c8952b85917fc63",
-      "src/Sm8850Resources.c": "944379b776f769dd0718492749abb46b52bb74bef6b903dca4f674469d7bae26",
+      "src/Sm8850Resources.c": "2565513a2fd3d17c4864b2c0388fe9697b3c77e42fe9f5f13da6e815f6853e41",
       "src/Sm8850ResourcesNative.cpp": "0f3b7453cf11c59d50ab2cec923699af791f1510d0f6fe95b0f7413e4201b36a"
     }
   },
@@ -177,5 +177,17 @@
       "Keep successful WCN lmx floor during ALS proxy handover using the real command database."
     ],
     "board_header_sha256": "54c616f64f252172f45e94d4701c141d802687d5b3b1e2f84b4ced90f6b57cd8"
+  },
+  "camera_integration": {
+    "revision": "c104def2f37ead1326efab651321fd15eadecb0b",
+    "shared_count_zero_preserves_four_streams": true,
+    "GCC_mask_readback_same_phone_qualified": true,
+    "previous_shared_hashes": {
+      "include/Sm8850Resources.h": "e75bd077715897e28bf518770f3e0de4c74d52d34aa525b3a8531cae5460b1f3",
+      "include/Sm8850ResourcesNative.h": "96a542ad251ca57765dbd299e71267eca66632356f6922007c8952b85917fc63",
+      "src/Sm8850Resources.c": "944379b776f769dd0718492749abb46b52bb74bef6b903dca4f674469d7bae26",
+      "src/Sm8850ResourcesNative.cpp": "0f3b7453cf11c59d50ab2cec923699af791f1510d0f6fe95b0f7413e4201b36a"
+    },
+    "common_objects_built_once_in_ALS_owner": true
   }
 }
