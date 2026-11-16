@@ -21,6 +21,7 @@
 - (BOOL)registerApplicationForRebuildWithInfoDictionaries:(NSArray *)dictionaries
     requestContext:(id)context registrationError:(NSError **)error;
 - (BOOL)openApplicationWithBundleID:(NSString *)identifier;
+- (void)setTargetUserID:(NSNumber *)uid;
 @end
 
 static BOOL registered_camera(id application)
@@ -45,7 +46,7 @@ static void report_proxy(const char *step,id application)
 
 /* Tests exercise this exact consumer with Foundation and fixture LS classes.
  * Runtime supplies only the measured original Camera path below. */
-static int open_camera(Class proxy,id service,NSURL *system_url)
+static int open_camera(Class proxy,id service,NSURL *system_url,Class request_context_class)
 {
     NSString *identifier=@"com.apple.camera";
     id application=[proxy applicationProxyForIdentifier:identifier];
@@ -72,12 +73,23 @@ static int open_camera(Class proxy,id service,NSURL *system_url)
          * endpoint returns false unconditionally in this actual OS. */
         if (![service respondsToSelector:
             @selector(registerApplicationForRebuildWithInfoDictionaries:requestContext:registrationError:)]) return 5;
+        /* Actual24A446 _requestContextForUserDomain: selects its original
+         * systemSessionDomain when targetUserID is @0. A nil context picks
+         * the current mobile user domain, where072's com.apple.lsd.rebuild
+         * lookup returned NoSuchProcess. The caller keeps its original uid
+         * and rebuild entitlement; only the LS request domain changes. */
+        id context=[request_context_class new];
+        if (![context respondsToSelector:@selector(setTargetUserID:)]) {
+            fputs("nezha-camera-launch: original LS request context unavailable\n",stderr);
+            return 5;
+        }
+        [context setTargetUserID:@0];
         NSDictionary *registration=@{@"ApplicationType":@"System",
             @"BundleNameIsLocalized":@1,@"CFBundleIdentifier":identifier,
             @"CompatibilityState":@0,@"IsDeletable":@0,@"Path":system_url.path};
         error=nil;
         const BOOL registered=[service registerApplicationForRebuildWithInfoDictionaries:@[registration]
-            requestContext:nil registrationError:&error];
+            requestContext:context registrationError:&error];
         fprintf(stderr,"nezha-camera-launch: original system Camera registration=%u error=%ld domain=%s path=%s\n",
             (unsigned)registered,(long)error.code,error.domain.UTF8String ?: "<none>",system_url.path.UTF8String);
         if (!registered && error) {
@@ -124,14 +136,15 @@ int main(void)
         void *handle=dlopen(framework,RTLD_NOW|RTLD_LOCAL);
         Class proxy=objc_getClass("LSApplicationProxy");
         Class workspace=objc_getClass("LSApplicationWorkspace");
-        if (!handle || !proxy || !workspace ||
+        Class request_context=objc_getClass("LSOperationRequestContext");
+        if (!handle || !proxy || !workspace || !request_context ||
             ![proxy respondsToSelector:@selector(applicationProxyForIdentifier:)] ||
             ![workspace respondsToSelector:@selector(defaultWorkspace)]) {
             fputs("nezha-camera-launch: original LaunchServices interface unavailable\n",stderr);
             return 3;
         }
         return open_camera(proxy,[workspace defaultWorkspace],
-            [NSURL fileURLWithPath:@"/Applications/Camera.app" isDirectory:YES]);
+            [NSURL fileURLWithPath:@"/Applications/Camera.app" isDirectory:YES],request_context);
     }
 }
 #endif

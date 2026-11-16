@@ -1,14 +1,14 @@
 {
   "schema": 1,
-  "purpose": "Original Camera registration/XPC error detail after actual071NSCocoaError4099; unchanged current LSInstallInfo API, entitlements, exact original bundle, once-only request and launch. Native Foundation fixture validates nested original errors. Source only and CMS outputs.",
-  "device_revision": "9df273047d528cbbe7a6ae5aeac25062b68fd36a",
+  "purpose": "Original24A446 LSOperationRequestContext.targetUserID NSNumber0 selects original systemSessionDomain; repair Camera System registration bootstraplookup NoSuchProcess observed072. Exact existing Camera bundle, same uid/rebuild entitlement; nine actual Foundation consumers and nested native errors; CMS only.",
+  "device_revision": "330f4839bd0cf2435915c2e7ad1e766c526a9ac3",
   "files": {
-    "source/NezhaCameraLaunch.m": "7c02bce39f598bac8120f37d19bd4fadb50493ee146f903f4ff168de728f0c36",
-    "source/camera-launch-registration.m": "bb4f374491536a697dd0ec834b0ad52e1339895814402d092fce7d4ccd5184b7",
+    "source/NezhaCameraLaunch.m": "9cf69cfea97cbaf91fce329ca002df8a4f2acbd2744264e04784432271224483",
+    "source/camera-launch-registration.m": "ecb45e2cb70f6a662dd2c4fa42bc7e8707c7df20b60f41b1bd67d50d5e69dc16",
     "source/NezhaCameraLaunch.entitlements.plist": "28c5ce718672d302b46f4f67b6e49784a354fefa042d92c5fb025e3d96688ef9",
-    ".github/workflows/nezha-ios27-native.yml": "ee52ab9fffc1ec10283ab65912a121f3321ffe8c30fe1bbcd972827b27382bfc"
+    ".github/workflows/nezha-ios27-native.yml": "24c7ab9e574845df4d3b9165196e4ce69378392635b2486de7fb72309225efdb"
   },
-  "builder_sha256": "f1c7128d2071d6b470f9dd733c817aee6a25537f5b04b471627884e1435a57b5",
+  "builder_sha256": "587a51920cb25d2ef36af7259ad441dde78ca842a98d865e4a54e98880989065",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
   "certificate_sha256": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
   "kernel_build_required": false,
