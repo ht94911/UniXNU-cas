@@ -22,7 +22,9 @@
 #include <sys/vnode.h>
 #include <sys/namei.h>
 #include <vm/memory_types.h>
+extern "C" {
 #include <QcomUsbDiagnostic.h>
+}
 extern "C" vm_offset_t ml_io_map_unmappable(vm_offset_t,vm_size_t,uint32_t);
 extern "C" void ml_io_unmap(vm_offset_t,vm_size_t);
 extern "C" int nezha_spmi_bus_acquire(void);
@@ -100,7 +102,9 @@ int stopped(const char *why,bool completion=false) {
     stopResult=darwinError(e);return e;
 }
 bool allowed(proc_t p) {
-    if(!p || kauth_getuid()!=0)return false;
+    const uid_t user=kauth_getuid();
+    /* GPU051's actual signed launchd cache runs audiomxd as mobile(501). */
+    if(!p || (user!=0 && user!=501))return false;
     char name[32]={0};proc_name(proc_pid(p),name,sizeof name);
     return !strcmp(name,"audiomxd") || !strcmp(name,"coreaudiod") ||
         !strcmp(name,"mediaserverd") || !strcmp(name,"NezhaHapticTest");
@@ -253,7 +257,7 @@ void worker(void *,wait_result_t) {
     if(e || mode==NZ_HAPTICS_PREPARE)goto done;
     major=cdevsw_add(-1,&deviceSwitch);
     if(major<0){e=-ENXIO;goto done;}
-    node=devfs_make_node(makedev((uint32_t)major,0),DEVFS_CHAR,0,0,0600,"nezha-haptics27");
+    node=devfs_make_node(makedev((uint32_t)major,0),DEVFS_CHAR,501,501,0600,"nezha-haptics27");
     if(!node){e=-ENXIO;goto done;}
     powerNotice=registerPrioritySleepWakeInterest(powerMessage,nullptr,nullptr);
     if(!powerNotice){e=-ENOMEM;goto done;}
@@ -379,8 +383,8 @@ extern "C" boolean_t nezha_haptics_vnode(vfs_context_t ctx,vnode_t vp,struct com
     if(!ctx || !vp || !allowed(vfs_context_proc(ctx)))return FALSE;
     char filesystem[32]={0};vnode_vfsname(vp,filesystem);
     if(strcmp(filesystem,"devfs"))return FALSE;
-    if(name)return vnode_vtype(vp)==VDIR && name->cn_namelen==14 &&
-        !memcmp(name->cn_nameptr,"nezha-haptics27",14);
+    if(name)return vnode_vtype(vp)==VDIR && name->cn_namelen==sizeof("nezha-haptics27")-1 &&
+        !memcmp(name->cn_nameptr,"nezha-haptics27",sizeof("nezha-haptics27")-1);
     if(vnode_vtype(vp)!=VCHR)return FALSE;
     const char *actual=vnode_getname(vp);bool matched=actual && !strcmp(actual,"nezha-haptics27");
     if(actual)vnode_putname(actual);return matched;
