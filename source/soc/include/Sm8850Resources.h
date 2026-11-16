@@ -47,6 +47,12 @@ void sm8850_resource_leave(Sm8850Resources *);
  * banks, masked SID overlap and ASID collisions. Never chooses a free bank.
  * Includes disabled banks' ASIDs to coexist with QcomUsbDmaDomain checks. */
 int sm8850_smmu_check_assignment(Sm8850Resources *,const Sm8850SmmuAssignment *);
+/* Caller holds its bank lease/configuration lock and has already disabled
+ * translation, synchronized its ASID TLB and drained/detached every producer.
+ * Retire only the exact owned table image; active routes or changed pointers
+ * refuse. Clear stale TTBR/ASID before releasing the tables and bank lease. */
+int sm8850_smmu_retire_disabled_bank(Sm8850Resources *,unsigned bank,
+    uint64_t expected_ttbr0,uint64_t expected_ttbr1);
 /* Caller already entered the resource. Exact TCS writes only. */
 int sm8850_tcs_idle(Sm8850Resources *,unsigned tcs);
 int sm8850_tcs_write(Sm8850Resources *,unsigned tcs,uint32_t offset,uint32_t value);

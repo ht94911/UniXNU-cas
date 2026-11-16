@@ -64,3 +64,6 @@ zzzzzz-nezha-camera-exposure-ioctl.patch
 
 # One recorded original LaunchServices IOKit MIG denial; unchanged verdict.
 zzzzzz-nezha-camera-lsd-denial-observer.patch
+
+# Existing original Camera SIGKILL code lacks termination reason; scoped log.
+zzzzzz-nezha-camera-exit-reason.patch

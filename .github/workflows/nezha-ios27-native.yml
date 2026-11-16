@@ -1,7 +1,7 @@
-name: nezha Camera072 on GPU051 - native
+name: nezha Camera073 on GPU051 - native
 on:
   push:
-    branches: [codex/ios27-camera072b-gpu051-boot-arc-native-20261116]
+    branches: [codex/ios27-camera073-gpu051-smmu-reopen-LS-20261116]
   workflow_dispatch:
 permissions:
   contents: read
@@ -76,6 +76,8 @@ jobs:
           clang -std=c11 -Wall -Wextra -Werror -g -fsanitize=address,undefined -fno-sanitize-recover=all -I "$soc/include" -c "$soc/src/Sm8850Resources.c" -o "$out/shared.o"
           clang++ -std=c++17 -Wall -Wextra -Werror -g -fsanitize=address,undefined -fno-sanitize-recover=all -I "$src/package/camera" -I "$soc/include" -I "$out" "$src/tests/camera-native-rpmh.cpp" "$src/package/camera/NezhaCameraNativeRpmh.cpp" "$out/NezhaCameraRpmh.o" "$out/QcomRpmh.o" "$out/shared.o" -o "$out/consumer"
           "$out/consumer" > "$RUNNER_TEMP/ios27/work/logs/camera-boot-arc-host.log" 2>&1
+          clang -std=c11 -Wall -Wextra -Werror -g -fsanitize=address,undefined -fno-sanitize-recover=all -I "$soc/include" "$src/tests/camera-smmu-retire.c" "$soc/src/Sm8850Resources.c" -o "$out/smmu-retire"
+          "$out/smmu-retire" > "$RUNNER_TEMP/ios27/work/logs/camera-smmu-retire-host.log" 2>&1
       - name: Exercise the reused bounded HID input and original pacer
         run: |
           set -euo pipefail

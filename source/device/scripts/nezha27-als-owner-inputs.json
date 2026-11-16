@@ -100,9 +100,9 @@
   "soc_resource_owner": {
     "revision": "e565439bf1a13d0224f0a9adcfc1eef8df7ad142",
     "files": {
-      "include/Sm8850Resources.h": "732cdf393756251f2657932473e5a29fe38d2fa62e296c5153672d31ab94886a",
+      "include/Sm8850Resources.h": "5e3faddec82a44d3f7d660d637f2b7eb6c7a08902a7b4ef9ef74ce4fa4cd5009",
       "include/Sm8850ResourcesNative.h": "96a542ad251ca57765dbd299e71267eca66632356f6922007c8952b85917fc63",
-      "src/Sm8850Resources.c": "379c01d30719fece3ec94bcf44a701ee59d74fb0e80660ed5018d3ca8707cbfd",
+      "src/Sm8850Resources.c": "e79cde4b2dd4a2f6c89045b9bb18183bde70436ffcee1a8f34822421f71bea3d",
       "src/Sm8850ResourcesNative.cpp": "0f3b7453cf11c59d50ab2cec923699af791f1510d0f6fe95b0f7413e4201b36a"
     }
   },
@@ -207,5 +207,17 @@
     },
     "acknowledged_floors_retained_after_camera_close": true,
     "physical_display_acceptance_pending": true
+  },
+  "camera_smmu_retirement": {
+    "expected_owned_disabled_TTBRs_only": true,
+    "previous_shared_hashes": {
+      "include/Sm8850Resources.h": "732cdf393756251f2657932473e5a29fe38d2fa62e296c5153672d31ab94886a",
+      "include/Sm8850ResourcesNative.h": "96a542ad251ca57765dbd299e71267eca66632356f6922007c8952b85917fc63",
+      "src/Sm8850Resources.c": "379c01d30719fece3ec94bcf44a701ee59d74fb0e80660ed5018d3ca8707cbfd",
+      "src/Sm8850ResourcesNative.cpp": "0f3b7453cf11c59d50ab2cec923699af791f1510d0f6fe95b0f7413e4201b36a"
+    },
+    "camera_after_072_prior_client_cleanup_StateMismatch": true,
+    "do_not_ignore_foreign_ASIDs": true,
+    "hardware_reopen_verified": false
   }
 }

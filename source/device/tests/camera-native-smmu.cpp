@@ -8,6 +8,7 @@
 static uint32_t registers[0x100000/4];
 static Sm8850Resources common{};
 static unsigned maps, attaches, locks;
+static unsigned retired;
 static uint64_t sequence;
 static void (*handler)(void *);
 static void *irq_context;
@@ -24,6 +25,8 @@ extern "C" int sm8850_resource_quarantine(Sm8850Resources *,unsigned,uint32_t,ui
 { assert(false);return -1; }
 extern "C" int sm8850_smmu_check_assignment(Sm8850Resources *,const Sm8850SmmuAssignment *a)
 { assert(locks && a->count==1 && a->sid[0]==0x1c00 && a->bank==8 && a->slot[0]==80 && a->asid==0xfc00);return 0; }
+extern "C" int sm8850_smmu_retire_disabled_bank(Sm8850Resources *,unsigned bank,uint64_t tt0,uint64_t tt1)
+{ assert(locks && bank==8 && tt0==(UINT64_C(0xfc00)<<48|0x10000000) && tt1==(UINT64_C(0xfc00)<<48));++retired;return 0; }
 extern "C" unsigned long ml_io_map(unsigned long physical,unsigned long bytes)
 { assert(physical==0x15000000 && bytes==sizeof(registers));++maps;return reinterpret_cast<unsigned long>(registers); }
 extern "C" void IOSleep(unsigned ms) { assert(ms==1); }
@@ -50,6 +53,7 @@ extern "C" const NezhaCameraDmaPlan *nezha_camera_native_memory_plan(const Nezha
 
 int main()
 {
+    plan.tables.root_physical=0x10000000;
     registers[0x24/4]=0x60000051;registers[0x28/4]=0x5221;
     constexpr size_t bank=136*4096;registers[(bank+4)/4]=0;
     NezhaCameraNativeSmmu *state=nullptr;
@@ -63,6 +67,7 @@ int main()
         assert(nezha_camera_native_smmu_prepare_detach(state) && locks==1);
         assert(nezha_camera_native_smmu_release(&state,true) && !state && !locks && !common.lease[11]);
         assert(registers[(bank+4)/4]==0);
+        assert(retired==turn+1);
         handler(irq_context); /* retired callback remains inert on permanent mapping */
     }
     unsigned physical_bits=0;

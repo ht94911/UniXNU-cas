@@ -288,7 +288,17 @@ bool nezha_camera_native_smmu_release(NezhaCameraNativeSmmu **out, bool dma_deta
     if (!out || *out != &domain || !domain.lease) {
         return false;
     }
-    const bool restored = dma_detached && restore_actlr(domain);
+    bool retired = dma_detached;
+    if (retired && domain.programming_started) {
+        /* DisableOwnedContext intentionally retains its translation image.
+         * The shared assignment scan must keep rejecting unknown retained
+         * ASIDs; remove only this drained camera lease's exact old tables. */
+        const uint64_t asid = uint64_t(domain.assignment.asid) << 48;
+        retired = domain.locked && domain.context.lower_tables && !domain.context.upper &&
+            sm8850_smmu_retire_disabled_bank(domain.common, domain.assignment.bank,
+                asid | domain.context.lower_tables->root_physical, asid) == Sm8850Okay;
+    }
+    const bool restored = retired && restore_actlr(domain);
     unlock(&domain);
     if (!restored || __atomic_load_n(&domain.irq_attached, __ATOMIC_SEQ_CST)) {
         (void)sm8850_resource_quarantine(domain.common, CameraResource, CameraOwner, domain.lease);

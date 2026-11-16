@@ -80,6 +80,29 @@ int sm8850_smmu_check_assignment(Sm8850Resources *r,const Sm8850SmmuAssignment *
     if (fsr&~0x600u) return Sm8850Conflict;
     return Sm8850Okay;
 }
+int sm8850_smmu_retire_disabled_bank(Sm8850Resources *r,unsigned bank,
+    uint64_t expected_ttbr0,uint64_t expected_ttbr1) {
+    if (!r || !r->initialized || (!expected_ttbr0 && !expected_ttbr1)) return Sm8850Invalid;
+    uint32_t id0,id1,sctlr;
+    if (rd(r,Sm8850Smmu,0x20,&id0) || rd(r,Sm8850Smmu,0x24,&id1)) return Sm8850Io;
+    unsigned banks=id1&255,pages=2u<<((id1>>28)&7),stage2=(id1>>16)&255;
+    if ((id1>>31) || bank<stage2 || bank>=banks || banks>pages || pages>128 || (id0&(1u<<8)))
+        return Sm8850Conflict;
+    uint32_t cb=(pages+bank)*4096;uint64_t tt0,tt1;
+    if (rd(r,Sm8850Smmu,cb,&sctlr) || r->io.read64(r->io.context,Sm8850Smmu,cb+0x20,&tt0) ||
+        r->io.read64(r->io.context,Sm8850Smmu,cb+0x28,&tt1)) return Sm8850Io;
+    if (sctlr || tt0!=expected_ttbr0 || tt1!=expected_ttbr1) return Sm8850Conflict;
+    for (unsigned i=0;i<(id0&255);++i) {
+        uint32_t smr,s2cr;
+        if (rd(r,Sm8850Smmu,0x800+4*i,&smr) || rd(r,Sm8850Smmu,0xc00+4*i,&s2cr)) return Sm8850Io;
+        if ((smr&0x80000000u) && ((s2cr>>16)&3)==0 && (s2cr&255)==bank) return Sm8850Conflict;
+    }
+    if (wr(r,Sm8850Smmu,cb+0x20,0) || wr(r,Sm8850Smmu,cb+0x24,0) ||
+        wr(r,Sm8850Smmu,cb+0x28,0) || wr(r,Sm8850Smmu,cb+0x2c,0) || fence(r) ||
+        r->io.read64(r->io.context,Sm8850Smmu,cb+0x20,&tt0) ||
+        r->io.read64(r->io.context,Sm8850Smmu,cb+0x28,&tt1)) return Sm8850Io;
+    return (tt0 || tt1) ? Sm8850Conflict:Sm8850Okay;
+}
 int sm8850_tcs_idle(Sm8850Resources *r,unsigned tcs) {
     if (!r || tcs>=3) return Sm8850Invalid;
     uint32_t id,config,status,control,enable,wait,irq,b=0xd00+0x2a0*tcs;
