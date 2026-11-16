@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: BSD-2-Clause-Patent
 // Root diagnostic job exports only the dedicated sensor app's test log.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunused-function"
 #include "QcomUserLogTransport.h"
+#pragma clang diagnostic pop
 #include <dirent.h>
 #include <signal.h>
 #include <string>

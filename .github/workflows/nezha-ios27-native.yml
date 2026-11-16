@@ -1,7 +1,7 @@
-name: nezha Sensors001e exporter only
+name: nezha Sensors001f exporter only
 on:
   push:
-    branches: [codex/ios27-sensors001e-exporter-20261117]
+    branches: [codex/ios27-sensors001f-exporter-20261117]
 permissions:
   contents: read
 concurrency:
@@ -26,12 +26,12 @@ jobs:
           persist-credentials: false
       - name: Prepare the existing encryption tool
         run: brew install openssl@3 > "$RUNNER_TEMP/sensors-userland-setup.log" 2>&1
-      - name: Build and sign the originalCamera registration and launch repair helper
+      - name: Build and sign corrected sensor exporter
         run: |
           set -euo pipefail
           export PATH="$(brew --prefix openssl@3)/bin:$PATH"
           python3 ci/exporter.py --out "$RUNNER_TEMP/sensors-userland" --sealed "$RUNNER_TEMP/sensors-userland-sealed"
-      - name: Retain only the encrypted camera envelope
+      - name: Retain encrypted sensor exporter
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
