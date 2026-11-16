@@ -1,19 +1,20 @@
 {
   "schema": 1,
-  "purpose": "Fix actual068 launcher failure. Use original LS installed proxy without requiring readable Info; if absent register only verified original /Applications/Camera.app through original24A446 registerApplication, query installed nonplaceholder proxy then request open once. Native registration error and45s deadline remain failures; no root bundle/signature changes.",
-  "device_revision": "11bd6c67135e6f1d7cb807a6ab16cb63e90e5d1a",
+  "purpose": "Original System Camera registration for actual24A446 through LSInstallInfo/current rebuild API and its native allowedSPI entitlement; replace disabled legacy dictionary/URL registration. Use exact measured Camera bundle; preserve native errors, actual proxy gate and once-only opening; eight real Foundation host consumer scenarios before target compilation.",
+  "device_revision": "083d9532ba7ebd0ca0220f1bfccbf3441cdbe2b7",
   "files": {
-    "source/NezhaCameraLaunch.m": "2fc4782ae3898cc646af8fe0f5d68c7f19bb7bbf51fbf5e2a0078cd342ffafca",
-    "source/camera-launch-registration.m": "f436c692fdd55c44501e1ae428e608b9e6c41385b5a0e7eaac872432fada642a",
-    ".github/workflows/nezha-ios27-native.yml": "2e265d975b9af6a8dad0727771ba7b3ef7590a3b2809cfd91d9a0992e6718700"
+    "source/NezhaCameraLaunch.m": "c778e09a6d3ef11c01cbe58f53759cba11b3aa5d73ed47fb2c982fd74cd88a7e",
+    "source/camera-launch-registration.m": "230850a21b2f91cb92c6978c1db3bee3735ef5d3512dd8af1cd3493d87a2af85",
+    "source/NezhaCameraLaunch.entitlements.plist": "28c5ce718672d302b46f4f67b6e49784a354fefa042d92c5fb025e3d96688ef9",
+    ".github/workflows/nezha-ios27-native.yml": "33c71062c3c9feb0445a214fc0f405349bd1d1c5d04d7d2486c8d0fa7d5fd3ec"
   },
-  "builder_sha256": "42d140f8d93a13ab4ab2bece73538872da57fbecf71ccf09c9311172654229c2",
+  "builder_sha256": "f1c7128d2071d6b470f9dd733c817aee6a25537f5b04b471627884e1435a57b5",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
   "certificate_sha256": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
   "kernel_build_required": false,
   "private_inputs_uploaded": false,
   "phone_operations": false,
   "original_LaunchServices_method": "-[LSApplicationWorkspace openApplicationWithBundleID:] at24A4460x186e67d38",
-  "original_LaunchServices_register_method": "-[LSApplicationWorkspace registerApplication:] at24A4460x186f85c70 -> LSRegisterURL(url,0)",
+  "original_LaunchServices_register_method": "-[LSApplicationWorkspace registerApplicationForRebuildWithInfoDictionaries:requestContext:registrationError:] -> original LSInstallInfo and native registration",
   "original_LaunchServices_registration_verified": true
 }

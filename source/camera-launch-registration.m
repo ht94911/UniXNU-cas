@@ -24,8 +24,16 @@ static BOOL registration_result,launch_result,registration_visible;
 @interface CameraFixtureWorkspace : NSObject
 @end
 @implementation CameraFixtureWorkspace
-- (BOOL)registerApplication:(NSURL *)url
+- (BOOL)registerApplicationForRebuildWithInfoDictionaries:(NSArray *)dictionaries
+    requestContext:(id)context registrationError:(NSError **)error
 {
+    assert(context==nil && dictionaries.count==1);
+    NSDictionary *registration=dictionaries[0];
+    if (!registration_result && error)*error=[NSError errorWithDomain:@"FixtureRegistration" code:13 userInfo:nil];
+    assert([registration[@"ApplicationType"] isEqualToString:@"System"]);
+    assert([registration[@"CFBundleIdentifier"] isEqualToString:@"com.apple.camera"]);
+    assert([registration[@"CompatibilityState"] isEqual:@0] && [registration[@"IsDeletable"] isEqual:@0]);
+    NSURL *url=[NSURL fileURLWithPath:registration[@"Path"] isDirectory:YES];
     assert([url.lastPathComponent isEqualToString:@"Camera.app"]);++registrations;
     if (registration_result && registration_visible) {
         CameraFixtureProxy *proxy=[CameraFixtureProxy new];proxy.identifier=@"com.apple.camera";
