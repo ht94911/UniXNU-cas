@@ -12,12 +12,14 @@
 #include <kern/task.h>
 #include <kern/thread.h>
 #include <sys/proc.h>
+#include <uuid/uuid.h>
 #include "NezhaAudioService.h"
 #include "../core/AudioHalDiagnostics.h"
 #ifdef IOKIT_ENABLE_SHARED_PTR
 #error This source requires the selected native build's raw OSPtr convention; audit before changing flags.
 #endif
 extern "C" IOReturn nezha_audio_fix_host_clock(task_t);
+extern "C" uuid_string_t bootsessionuuid_string;
 namespace {
 IOBufferMemoryDescriptor *maps[3];
 NaRuntime *runtime;
@@ -95,6 +97,9 @@ class NezhaAudio27 : public IOService {
     IONotifier *powerNotice=nullptr;
 public:
     bool publishAudio() {
+        // The existing kernel boot UUID identifies captured files without a
+        // restricted sysctl request from the finite diagnostic client.
+        if (!setProperty("BootSessionUUID", bootsessionuuid_string)) return false;
         if (!setProperty("NativeSandboxGrantProcess","audiomxd,mediaserverd,coreaudiod") ||
             !setProperty("IOUserClientClass","NezhaAudio27UserClient")) return false;
         powerNotice=registerPrioritySleepWakeInterest(powerMessage,this,nullptr);
