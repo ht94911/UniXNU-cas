@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: BSD-2-Clause-Patent
 // Marble's char-device/worker boundary, adapted to the retained HAP530 core.
-// One worker owns all bus operations. Queue decisions use a sleepable gate,
+// One worker owns all bus operations. Queue decisions use a sleepable hapticGate,
 // released during hardware work. cdev callbacks never access MMIO.
 #include "NezhaHaptics.h"
 #include <IOKit/IOLib.h>
@@ -21,14 +21,14 @@
 #include <sys/kauth.h>
 #include <sys/vnode.h>
 #include <sys/namei.h>
-#include <mach/vm_param.h>
+#include <vm/memory_types.h>
 #include <QcomUsbDiagnostic.h>
 extern "C" vm_offset_t ml_io_map_unmappable(vm_offset_t,vm_size_t,uint32_t);
 extern "C" void ml_io_unmap(vm_offset_t,vm_size_t);
 extern "C" int nezha_spmi_bus_acquire(void);
 extern "C" void nezha_spmi_bus_release(void);
 namespace {
-IOLock *gate;
+IOLock *hapticGate;
 PghCore core;
 NzHapticsBus bus;
 PghFactoryState factory;
@@ -52,7 +52,7 @@ static const qud_diag_provider diagnosticProvider={12,1,(1u<<QUD_SNAPSHOT)|(1u<<
     "nezha-haptics",nullptr,diagnosticSnapshot,diagnosticSubmit};
 static_assert(sizeof(NzHapticsPacket)==40,"haptics packet ABI");
 uint64_t nowUs(void *) {uint64_t ns=0;absolutetime_to_nanoseconds(mach_absolute_time(),&ns);return ns/1000;}
-void pauseUs(void *,unsigned us) {delay(us);}
+void pauseUs(void *,unsigned us) {delay((int)us);}
 int busAcquire(void *) {return nezha_spmi_bus_acquire();}
 void busRelease(void *) {nezha_spmi_bus_release();}
 bool physicalRead(uint64_t a) {
@@ -91,12 +91,12 @@ int darwinError(int e) {
 int stopped(const char *why,bool completion=false) {
     const bool hadPlay=queue.active_sequence || core.state==PGH_ST_DIRECT || core.state==PGH_ST_EFFECT;
     const PghCmd command={PGH_CMD_STOP,0,0,0};
-    IOLockUnlock(gate);
+    IOLockUnlock(hapticGate);
     int e=pgh_core_command(&core,&command);
-    IOLockLock(gate);
+    IOLockLock(hapticGate);
     if(hadPlay || e)note(why,queue.active_sequence,e);
     if(!e){queue.active_sequence=0;queue.active_until_us=0;queue.on_begin_us=0;if(hadPlay && completion)++queue.completed;}
-    else {queue.error=darwinError(e);queue.ready=0;nz_haptics_queue_close(&queue);}
+    else {queue.error=(uint32_t)darwinError(e);queue.ready=0;nz_haptics_queue_close(&queue);}
     stopResult=darwinError(e);return e;
 }
 bool allowed(proc_t p) {
@@ -106,27 +106,27 @@ bool allowed(proc_t p) {
         !strcmp(name,"mediaserverd") || !strcmp(name,"NezhaHapticTest");
 }
 int openDevice(dev_t,int,int,struct proc *p) {
-    if(!gate || !allowed(p))return EACCES;
-    IOLockLock(gate);int e=0;
+    if(!hapticGate || !allowed(p))return EACCES;
+    IOLockLock(hapticGate);int e=0;
     if(!enabled || exitRequested || suspended)e=ENXIO;
     else if(client || queue.stopping || queue.active_sequence || nowUs(nullptr)<cooldownUntil)e=EBUSY;
     else if(sessionCounter==UINT32_MAX)e=EOVERFLOW;
     else {client=p;diagnosticOwner=false;nz_haptics_queue_open(&queue,++sessionCounter);}
-    IOLockUnlock(gate);return e;
+    IOLockUnlock(hapticGate);return e;
 }
 int closeDevice(dev_t,int,int,struct proc *) {
-    if(!gate)return 0;
-    IOLockLock(gate);
+    if(!hapticGate)return 0;
+    IOLockLock(hapticGate);
     /* An exclusive vnode can be closed by a passed fd's final owner. Closing
      * it always cancels the session; it never grants a new producer access. */
-    if(client){client=nullptr;nz_haptics_queue_close(&queue);IOLockWakeup(gate,&queue,false);}
-    IOLockUnlock(gate);return 0;
+    if(client){client=nullptr;nz_haptics_queue_close(&queue);IOLockWakeup(hapticGate,&queue,false);}
+    IOLockUnlock(hapticGate);return 0;
 }
 int ioctlDevice(dev_t,u_long command,caddr_t data,int,struct proc *p) {
     if(command!=NZ_HAPTICS_GET_STATUS || !data)return ENOTTY;
-    IOLockLock(gate);int e=client!=p?EACCES:0;
+    IOLockLock(hapticGate);int e=client!=p?EACCES:0;
     if(!e)nz_haptics_status(&queue,(NzHapticsStatus *)data);
-    IOLockUnlock(gate);return e;
+    IOLockUnlock(hapticGate);return e;
 }
 uint64_t packetTime(uint64_t host,uint64_t now,int *error) {
     if(!host)return now;
@@ -150,24 +150,24 @@ int request(const NzHapticsPacket *p,uint64_t now) {
     queue.head=0;queue.count=1;++queue.next_sequence;++queue.requests;return 0;
 }
 int diagnosticSnapshot(void *,char *out,size_t capacity,size_t *bytes,unsigned *truncated) {
-    if(!out || !bytes || !truncated || !gate)return QUD_INVALID;
-    if(!IOLockTryLock(gate))return QUD_BUSY;
+    if(!out || !bytes || !truncated || !hapticGate)return QUD_INVALID;
+    if(!IOLockTryLock(hapticGate))return QUD_BUSY;
     NzHapticsStatus s=diagnosticStatus;uint32_t phase=stats[0],plays=stats[4],stops=stats[5];
-    IOLockUnlock(gate);
+    IOLockUnlock(hapticGate);
     int n=snprintf(out,capacity,"{\"v\":1,\"cached\":true,\"ready\":%u,\"active\":%u,\"queued\":%u,\"error\":%u,\"requests\":%u,\"completed\":%u,\"cancelled\":%u,\"session\":%u,\"epoch\":%u,\"phase\":%u,\"plays\":%u,\"stops\":%u}",
         s.ready,s.active,s.queued,s.error,s.requests,s.completed,s.cancelled,s.session,s.epoch,phase,plays,stops);
     *truncated=n<0 || (size_t)n>=capacity;*bytes=n<0?0:(size_t)n<capacity?(size_t)n:capacity;
     return QUD_OK;
 }
 int diagnosticSubmit(void *,const qud_diag_request *r,char *out,size_t capacity,size_t *bytes,unsigned *truncated) {
-    if(!r || !out || !bytes || !truncated || !gate || r->provider!=12)return QUD_INVALID;
-    if(!IOLockTryLock(gate))return QUD_BUSY;
+    if(!r || !out || !bytes || !truncated || !hapticGate || r->provider!=12)return QUD_INVALID;
+    if(!IOLockTryLock(hapticGate))return QUD_BUSY;
     int e=0;
     if(!enabled || exitRequested || suspended)e=ENXIO;
     else if(client)e=EBUSY;
     else if(r->op==QUD_CANCEL) {
         if(!diagnosticOwner)e=EACCES;
-        else {nz_haptics_queue_close(&queue);diagnosticOwner=false;IOLockWakeup(gate,&queue,false);}
+        else {nz_haptics_queue_close(&queue);diagnosticOwner=false;IOLockWakeup(hapticGate,&queue,false);}
     } else if(r->op!=QUD_CONFIG || !r->arg0 || r->arg0>3)e=EINVAL;
     else if(queue.active_sequence || queue.count || queue.stopping)e=EBUSY;
     else if((r->arg0==1 && (!r->arg1 || r->arg1>100)) ||
@@ -180,9 +180,9 @@ int diagnosticSubmit(void *,const qud_diag_request *r,char *out,size_t capacity,
         NzHapticsPacket p={NZ_HAPTICS_MAGIC,NZ_HAPTICS_ABI,r->arg0==2?NzHapticsEffect:NzHapticsPulse,
             r->arg1,queue.session,epoch,queue.next_sequence,r->arg0==3?500u:250u,0};
         if(!e)e=request(&p,nowUs(nullptr));
-        if(!e){diagnosticOwner=true;IOLockWakeup(gate,&queue,false);}
+        if(!e){diagnosticOwner=true;IOLockWakeup(hapticGate,&queue,false);}
     }
-    IOLockUnlock(gate);
+    IOLockUnlock(hapticGate);
     int n=snprintf(out,capacity,"{\"queued\":%s,\"error\":%d}",e?"false":"true",e);
     *truncated=n<0 || (size_t)n>=capacity;*bytes=n<0?0:(size_t)n<capacity?(size_t)n:capacity;
     return !e?QUD_OK:e==EBUSY?QUD_BUSY:e==EINVAL?QUD_INVALID:QUD_FAILED;
@@ -197,7 +197,7 @@ int writeDevice(dev_t,struct uio *uio,int) {
        packet.operation<NzHapticsStart || packet.operation>NzHapticsEffect ||
        n!=(int)(sizeof packet+(packet.operation==NzHapticsPCM?(uint64_t)packet.count*2:0))))e=EINVAL;
     if(!e) {
-        IOLockLock(gate);
+        IOLockLock(hapticGate);
         if(client!=current_proc() || !enabled || exitRequested || suspended)e=ENXIO;
         else if(packet.operation==NzHapticsStart) {
             if(packet.count || packet.value || packet.host_time || packet.epoch!=queue.epoch || packet.sequence)e=EINVAL;
@@ -208,9 +208,9 @@ int writeDevice(dev_t,struct uio *uio,int) {
             else {
                 e=-nz_haptics_queue_stop(&queue,packet.session,packet.epoch);
                 if(!e) {
-                    IOLockWakeup(gate,&queue,false);
+                    IOLockWakeup(hapticGate,&queue,false);
                     uint64_t deadline;clock_interval_to_deadline(100,NSEC_PER_MSEC,&deadline);
-                    while(queue.stopping && !exited)if(IOLockSleepDeadline(gate,&queue,deadline,THREAD_UNINT)==THREAD_TIMED_OUT)break;
+                    while(queue.stopping && !exited)if(IOLockSleepDeadline(hapticGate,&queue,deadline,THREAD_UNINT)==THREAD_TIMED_OUT)break;
                     e=queue.stopping?ETIMEDOUT:stopResult;
                     if(exited && !e)e=ENXIO;
                 }
@@ -220,8 +220,8 @@ int writeDevice(dev_t,struct uio *uio,int) {
             if(now<cooldownUntil)e=EBUSY;
             if(!e)e=-nz_haptics_queue_pcm(&queue,&packet,(const int16_t *)(bytes+sizeof packet),now,at);
         } else e=request(&packet,nowUs(nullptr));
-        if(!e){note("queued",packet.sequence,0);IOLockWakeup(gate,&queue,false);}
-        IOLockUnlock(gate);
+        if(!e){note("queued",packet.sequence,0);IOLockWakeup(hapticGate,&queue,false);}
+        IOLockUnlock(hapticGate);
     }
     IOFree(bytes,(size_t)n);return e;
 }
@@ -253,23 +253,23 @@ void worker(void *,wait_result_t) {
     if(e || mode==NZ_HAPTICS_PREPARE)goto done;
     major=cdevsw_add(-1,&deviceSwitch);
     if(major<0){e=-ENXIO;goto done;}
-    node=devfs_make_node(makedev(major,0),DEVFS_CHAR,0,0,0600,"nezha-haptics27");
+    node=devfs_make_node(makedev((uint32_t)major,0),DEVFS_CHAR,0,0,0600,"nezha-haptics27");
     if(!node){e=-ENXIO;goto done;}
     powerNotice=registerPrioritySleepWakeInterest(powerMessage,nullptr,nullptr);
     if(!powerNotice){e=-ENOMEM;goto done;}
-    IOLockLock(gate);enabled=true;queue.stopping=0;diagnosticStatus.ready=1;IOLockWakeup(gate,&enabled,false);
-    IOLockUnlock(gate);qcom_usb_diag_register(&diagnosticProvider);IOLockLock(gate);
+    IOLockLock(hapticGate);enabled=true;queue.stopping=0;diagnosticStatus.ready=1;IOLockWakeup(hapticGate,&enabled,false);
+    IOLockUnlock(hapticGate);qcom_usb_diag_register(&diagnosticProvider);IOLockLock(hapticGate);
     IOLog("NEZHA HAPTICS: Actuator endpoint ready, factory%uus cap2000mV envelope2ms\n",factory.t_lra_us);
     while(!exitRequested) {
         uint64_t now=nowUs(nullptr);
         if(queue.stopping || suspended) {
-            e=stopped(queue.stopping?"cancel":"suspend");queue.stopping=0;IOLockWakeup(gate,&queue,false);
+            e=stopped(queue.stopping?"cancel":"suspend");queue.stopping=0;IOLockWakeup(hapticGate,&queue,false);
             if(e)break;
         }
         unsigned oldState=(unsigned)core.state;
-        IOLockUnlock(gate);(void)pgh_core_poll(&core);IOLockLock(gate);
+        IOLockUnlock(hapticGate);(void)pgh_core_poll(&core);IOLockLock(hapticGate);
         now=nowUs(nullptr);
-        if(core.state==PGH_ST_FAULT){e=core.fault_rc;queue.error=darwinError(e);break;}
+        if(core.state==PGH_ST_FAULT){e=core.fault_rc;queue.error=(uint32_t)darwinError(e);break;}
         if(queue.stopping || exitRequested)continue;
         if(oldState==PGH_ST_DIRECT && core.state==PGH_ST_IDLE) {
             if(queue.active_operation==NzHapticsPCM || now-core.t_start>=500000 || core.budget_us<=0) {
@@ -286,7 +286,7 @@ void worker(void *,wait_result_t) {
             if(now<cooldownUntil) {++queue.underruns;continue;}
             const uint32_t session=queue.session;
             queue.active_sequence=segment.sequence;queue.active_operation=segment.operation;
-            IOLockUnlock(gate);
+            IOLockUnlock(hapticGate);
             if(segment.operation==NzHapticsEffect) {
                 PghCmd command={PGH_CMD_EFFECT,segment.effect,segment.amplitude,0};e=pgh_core_command(&core,&command);
             } else if(!segment.amplitude) {
@@ -297,15 +297,15 @@ void worker(void *,wait_result_t) {
                 unsigned ms=segment.operation==NzHapticsPulse?(unsigned)((segment.end_us-now+999)/1000):500;
                 PghCmd command={PGH_CMD_CONSTANT,segment.amplitude,ms,0};e=pgh_core_command(&core,&command);
             }
-            IOLockLock(gate);
+            IOLockLock(hapticGate);
             /* Cancellation can arrive while the bus operation runs. Retire
              * that operation, stop it, then acknowledge the cancelling epoch.
-             * The request gate never blocks PCM on a hardware transaction. */
+             * The request hapticGate never blocks PCM on a hardware transaction. */
             if(queue.stopping || session!=queue.session || segment.epoch!=queue.epoch || exitRequested) {
-                int stop=stopped("cancel during hardware");queue.stopping=0;IOLockWakeup(gate,&queue,false);
+                int stop=stopped("cancel during hardware");queue.stopping=0;IOLockWakeup(hapticGate,&queue,false);
                 if(stop){e=stop;break;}continue;
             }
-            if(e){note("rejected",segment.sequence,e);queue.error=darwinError(e);queue.stopping=1;
+            if(e){note("rejected",segment.sequence,e);queue.error=(uint32_t)darwinError(e);queue.stopping=1;
                 queue.head=queue.count=0;queue.running=0;}
             else if(segment.amplitude && core.state!=PGH_ST_IDLE){queue.active_sequence=segment.sequence;
                 queue.active_until_us=segment.end_us+(segment.operation==NzHapticsPCM?8000:0);}
@@ -315,18 +315,18 @@ void worker(void *,wait_result_t) {
         if(queue.active_sequence && now>=queue.active_until_us) {
             e=stopped("finished",true);if(e)break;
         }
-        stats[0]=core.state;stats[1]=queue.error;stats[2]=queue.requests;stats[3]=queue.completed;
+        stats[0]=(uint32_t)core.state;stats[1]=queue.error;stats[2]=queue.requests;stats[3]=queue.completed;
         stats[4]=core.plays;stats[5]=core.stops;stats[6]=queue.underruns;
         nz_haptics_status(&queue,&diagnosticStatus);diagnosticStatus.ready=enabled && !queue.error;
         uint64_t deadline;clock_interval_to_deadline(1,NSEC_PER_MSEC,&deadline);
-        (void)IOLockSleepDeadline(gate,&queue,deadline,THREAD_UNINT);
+        (void)IOLockSleepDeadline(hapticGate,&queue,deadline,THREAD_UNINT);
     }
-    enabled=false;IOLockUnlock(gate);
+    enabled=false;IOLockUnlock(hapticGate);
 done:
     if(core.state!=PGH_ST_DRY && core.state!=PGH_ST_OFF) {
         int stop=pgh_core_quiesce(&core);if(stop)e=stop;
     }
-    /* The notice and gate have kernel lifetime. Removing a notifier from its
+    /* The notice and hapticGate have kernel lifetime. Removing a notifier from its
      * worker while the shutdown callback waits for exited would deadlock. */
     if(node){devfs_remove(node);node=nullptr;}
     if(major>=0){cdevsw_remove(major,&deviceSwitch);major=-1;}
@@ -334,7 +334,7 @@ done:
      * a queued STOP is never used as permission to unmap live hardware. */
     if((!e || core.state==PGH_ST_DRY || core.state==PGH_ST_OFF) && !bus.bus.pending && !core.restore_pending)
         for(unsigned i=0;i<mapped;++i)ml_io_unmap(maps[i].address,4096);
-    IOLockLock(gate);queue.error=darwinError(e);enabled=false;exited=true;diagnosticStatus.ready=0;diagnosticStatus.error=queue.error;IOLockWakeup(gate,&exited,false);IOLockWakeup(gate,&enabled,false);IOLockUnlock(gate);
+    IOLockLock(hapticGate);queue.error=(uint32_t)darwinError(e);enabled=false;exited=true;diagnosticStatus.ready=0;diagnosticStatus.error=queue.error;IOLockWakeup(hapticGate,&exited,false);IOLockWakeup(hapticGate,&enabled,false);IOLockUnlock(hapticGate);
     IOLog("NEZHA HAPTICS: worker exit error=%d mapped=%u pending=%u\n",e,mapped,bus.bus.pending);
     thread_terminate(current_thread());
     thread_block(THREAD_CONTINUE_NULL);
@@ -342,38 +342,38 @@ done:
 }
 extern "C" void nezha_haptics_start(void) {
     uint32_t selected=0;
-    if(gate || !PE_parse_boot_argn("nezha-haptics",&selected,sizeof selected) || !selected || selected>3)return;
-    gate=IOLockAlloc();if(!gate)return;mode=selected;
+    if(hapticGate || !PE_parse_boot_argn("nezha-haptics",&selected,sizeof selected) || !selected || selected>3)return;
+    hapticGate=IOLockAlloc();if(!hapticGate)return;mode=selected;
     thread_t t;if(kernel_thread_start(worker,nullptr,&t)==KERN_SUCCESS)thread_deallocate(t);
     else {exited=true;queue.error=ENOMEM;}
 }
 extern "C" int nezha_haptics_quiesce(void) {
-    if(!gate)return 0;IOLockLock(gate);exitRequested=true;queue.stopping=1;queue.running=0;
-    IOLockWakeup(gate,&queue,false);
+    if(!hapticGate)return 0;IOLockLock(hapticGate);exitRequested=true;queue.stopping=1;queue.running=0;
+    IOLockWakeup(hapticGate,&queue,false);
     uint64_t deadline;clock_interval_to_deadline(1000,NSEC_PER_MSEC,&deadline);
-    while(!exited)if(IOLockSleepDeadline(gate,&exited,deadline,THREAD_UNINT)==THREAD_TIMED_OUT)break;
-    int e=exited?(int)queue.error:ETIMEDOUT;IOLockUnlock(gate);return e;
+    while(!exited)if(IOLockSleepDeadline(hapticGate,&exited,deadline,THREAD_UNINT)==THREAD_TIMED_OUT)break;
+    int e=exited?(int)queue.error:ETIMEDOUT;IOLockUnlock(hapticGate);return e;
 }
 extern "C" int nezha_haptics_wait_ready(uint32_t timeout_ms) {
-    if(!gate || !timeout_ms || timeout_ms>2000)return EINVAL;
-    IOLockLock(gate);uint64_t deadline;clock_interval_to_deadline(timeout_ms,NSEC_PER_MSEC,&deadline);
+    if(!hapticGate || !timeout_ms || timeout_ms>2000)return EINVAL;
+    IOLockLock(hapticGate);uint64_t deadline;clock_interval_to_deadline(timeout_ms,NSEC_PER_MSEC,&deadline);
     while(!enabled && !exited)
-        if(IOLockSleepDeadline(gate,&enabled,deadline,THREAD_UNINT)==THREAD_TIMED_OUT)break;
-    int e=enabled?0:queue.error?(int)queue.error:ETIMEDOUT;IOLockUnlock(gate);return e;
+        if(IOLockSleepDeadline(hapticGate,&enabled,deadline,THREAD_UNINT)==THREAD_TIMED_OUT)break;
+    int e=enabled?0:queue.error?(int)queue.error:ETIMEDOUT;IOLockUnlock(hapticGate);return e;
 }
 extern "C" int nezha_haptics_suspended(int suspend) {
-    if(!gate)return 0;IOLockLock(gate);suspended=suspend!=0;
-    if(suspended){queue.running=0;nz_haptics_queue_close(&queue);}IOLockWakeup(gate,&queue,false);
+    if(!hapticGate)return 0;IOLockLock(hapticGate);suspended=suspend!=0;
+    if(suspended){queue.running=0;nz_haptics_queue_close(&queue);}IOLockWakeup(hapticGate,&queue,false);
     uint64_t deadline;clock_interval_to_deadline(100,NSEC_PER_MSEC,&deadline);
     while(suspended && queue.stopping && !exited)
-        if(IOLockSleepDeadline(gate,&queue,deadline,THREAD_UNINT)==THREAD_TIMED_OUT)break;
+        if(IOLockSleepDeadline(hapticGate,&queue,deadline,THREAD_UNINT)==THREAD_TIMED_OUT)break;
     int e=suspended && queue.stopping?ETIMEDOUT:stopResult;
-    IOLockUnlock(gate);return e;
+    IOLockUnlock(hapticGate);return e;
 }
 extern "C" int nezha_haptics_runtime_ready(void);
 extern "C" int nezha_haptics_runtime_ready(void) {
-    if(!gate)return 0;IOLockLock(gate);int ready=enabled && !exitRequested && mode==NZ_HAPTICS_ON;
-    IOLockUnlock(gate);return ready;
+    if(!hapticGate)return 0;IOLockLock(hapticGate);int ready=enabled && !exitRequested && mode==NZ_HAPTICS_ON;
+    IOLockUnlock(hapticGate);return ready;
 }
 extern "C" boolean_t nezha_haptics_vnode(vfs_context_t ctx,vnode_t vp,struct componentname *name) {
     if(!ctx || !vp || !allowed(vfs_context_proc(ctx)))return FALSE;

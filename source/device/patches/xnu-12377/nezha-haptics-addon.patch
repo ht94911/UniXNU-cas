@@ -14,16 +14,16 @@
 +		native_gpu_addon_mount(p, scratch, 0x600, hap_source, sizeof(hap_source), hap_point, sizeof(hap_point),
 +		    "/Library/Audio/Plug-Ins/HAL/VirtualAudio.plugin/Info.plist",
 +		    "/Library/Audio/Plug-Ins/HAL/NezhaHaptics27.driver/Info.plist", &hap_stage, &hap_status);
-+		extern int nezha_haptics_ios_commit(int, int);
-+		extern void nezha_haptics_start(void);
-+		extern int nezha_haptics_wait_ready(uint32_t);
-+		nezha_haptics_start();
-+		int hap_ready = nezha_haptics_wait_ready(1000);
++		extern int nezha_haptics_ios_commit(int, int) __attribute__((weak_import));
++		extern void nezha_haptics_start(void) __attribute__((weak_import));
++		extern int nezha_haptics_wait_ready(uint32_t) __attribute__((weak_import));
++		if (nezha_haptics_start) nezha_haptics_start();
++		int hap_ready = nezha_haptics_wait_ready ? nezha_haptics_wait_ready(1000) : ENXIO;
 +		vnode_t preset = NULLVP;
 +		int preset_visible = !vnode_lookup("/Library/Audio/Tunings/D16/Haptics/hapticengineconfig.plist", 0,
 +		    &preset, vfs_context_current());
 +		if (preset_visible) vnode_put(preset);
-+		int hap_commit = nezha_haptics_ios_commit(hap_stage == 5 && !hap_status && !hap_ready, preset_visible);
++		int hap_commit = nezha_haptics_ios_commit ? nezha_haptics_ios_commit(hap_stage == 5 && !hap_status && !hap_ready, preset_visible) : ENXIO;
 +		printf("NEZHA HAPTICS: addon %d/%d preset %d commit %d\n", hap_stage, hap_status, preset_visible, hap_commit);
 +	}
  	native_cryptex_os_view(p, scratch);

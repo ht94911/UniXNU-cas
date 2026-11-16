@@ -124,7 +124,8 @@ static Value property(AudioObjectID o,const AudioObjectPropertyAddress *a,UInt32
             case kAudioPlugInPropertyBoxList:case kAudioPlugInPropertyClockDeviceList:EMPTY();break;
             case kAudioPlugInPropertyTranslateUIDToDevice:
                 WORD(kAudioObjectUnknown);if(qs==sizeof(CFStringRef)&&q&&*(CFStringRef const *)q&&
-                    CFEqual(*(CFStringRef const *)q,CFSTR("Actuator")))v.data.words[0]=kActuator;break;
+                    CFEqual(*(CFStringRef const *)q,CFSTR("Actuator")))v.data.words[0]=kActuator;
+                break;
             case kAudioPlugInPropertyTranslateUIDToBox:case kAudioPlugInPropertyTranslateUIDToClockDevice:WORD(kAudioObjectUnknown);break;
             case kAudioPlugInPropertyResourceBundle:TEXT("");break;
         }

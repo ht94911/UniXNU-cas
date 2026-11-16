@@ -1,7 +1,7 @@
 name: nezha Haptics001 on fixed GPU051
 on:
   push:
-    branches: [codex/ios27-haptics001-gpu051-native-20261116]
+    branches: [codex/ios27-haptics002-gpu051-native-20261116]
   workflow_dispatch:
 permissions:
   contents: read

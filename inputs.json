@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "aba322f3e84ec335c2beeb9da865132c6918e2a0",
+  "device_revision": "3d22dd03d50c937aeb48c111f393f68456e346fd",
   "soc_revision": "device-local-composition-e565439+3435fa5",
   "xcode": "26.6",
   "files": {
@@ -421,9 +421,9 @@
     "source/device/package/haptics27/NezhaHapticsIOS.cpp": "0922df4011189f20716c66e2a97ad4654e3dfd13d8e6045efc1654ba6b826f3d",
     "source/device/package/haptics27/NezhaHapticsProtocol.h": "6f3bd9d7fa11551a8c7d50117c4c2108c45bdde9d4b810bf2198cd1fa92401ff",
     "source/device/package/haptics27/NezhaHapticsQueue.c": "7a0420c79ada5b7b37c2022117547c35bf6e34621887528ddd45dc147604efa1",
-    "source/device/package/haptics27/NezhaHapticsRuntime.cpp": "be0870dcea94408d6ec0ad92a3f9a8878efa869504ca7ad9a1a6302469744759",
+    "source/device/package/haptics27/NezhaHapticsRuntime.cpp": "35a24854f62446200a98bb477dc7bc4588a74bff1dc0f0f121450a2aeccd1cf6",
     "source/device/package/haptics27/hal/Info.plist": "e6816bcb3088caf2bc08cfbb6be6139342c0499e16315069ce3ceb2a67668e0b",
-    "source/device/package/haptics27/hal/NezhaHapticsPlugIn.c": "bacc1b17d6a61fb21a9b06516f1c6ca4af43ee27db5245e4cdcc0d499a1caaa6",
+    "source/device/package/haptics27/hal/NezhaHapticsPlugIn.c": "0750bffaa6e5b72cf8f2ff7d1ce92eca3606768f6a9525d17678f1bd65277ade",
     "source/device/package/haptics27/hal/NezhaHapticsProbe.c": "5036fdfdcd3e815c9e1a34d2fe9ee0de5568e6e5af1b43be0fde61a6a3245aac",
     "source/device/package/haptics27/tests/queue_cases.c": "6890095e60235df1680f8ea9ecec7beddb8c28c30621199976e4e13d98484a35",
     "source/device/package/ios27-root-owner-public.pem": "0afc03662d11ce57d705807de90f1c5491555280e56f300bb6e560af4513c1ad",
@@ -447,8 +447,8 @@
     "source/device/patches/xnu-12377/nezha-bluetooth-exit-diagnostic.patch": "193654ad33bb3de0edd9e62a7bd7cab4f31dbf5a8c1ca996c8b8d2fb48b793e9",
     "source/device/patches/xnu-12377/nezha-bluetooth-runtime.patch": "4d4fd6049250eaf399e6a0d5ff4e34232c148081820148532cf8c0c7119fd57b",
     "source/device/patches/xnu-12377/nezha-bluetooth-text-fixup-capacity.patch": "b1eb82eab5390d7ece20f82436363dfea865b292dbbfa207b527a59b73d1cf73",
-    "source/device/patches/xnu-12377/nezha-haptics-addon.patch": "60e47487b4cc07dd921810f20614c9366697855d1cf8389b4602455d0fa3e1a4",
-    "source/device/patches/xnu-12377/nezha-haptics-device-access.patch": "61dd0d2d67d1a011b661a3e2790ff9d3ed4dcbc113c9b126f68941185bf73a18",
+    "source/device/patches/xnu-12377/nezha-haptics-addon.patch": "358e75f60d22c79cd804ca84709faf7977a1c18eff47122bca057dd0cf57c4c2",
+    "source/device/patches/xnu-12377/nezha-haptics-device-access.patch": "10efc24d32bf6160cf0591d174d80c3d3a1bddac6e02f932d457cf9264d03364",
     "source/device/patches/xnu-12377/nezha-wifi-addon-truncate.patch": "c3b980c547fbc138ac7aedfd735d350cfef85d2a32ff78ec7bef894c4068ce63",
     "source/device/patches/xnu-12377/nezha-wifi-kernel-events.patch": "967cf792a5202711d0063463fe08bda58c554621b690b87f66904c18f81d057f",
     "source/device/patches/xnu-12377/nezha-wifi-mmio-recovery.patch": "89642756f4fe3179d44f076fbfd4786d21d0089ec7786943cb717b3eb78ecbe1",
@@ -918,7 +918,7 @@
   },
   "haptics": {
     "device_base": "76c5952683041a6581224135461ab7c21d47f6a5",
-    "device_revision": "aba322f3e84ec335c2beeb9da865132c6918e2a0",
+    "device_revision": "3d22dd03d50c937aeb48c111f393f68456e346fd",
     "source_ready": "519474045402d8467a41d78275af5ad78a3a948a",
     "HAP530_revision": "c268dc55744d2137b25f0ed4914a5bb3eb1200b6",
     "SPMI_revision": "2d874249a4d58906cf8241f2ded0d7ab0dd60f1f",
@@ -926,6 +926,8 @@
     "motor_cap_mv": 2000,
     "Data_recreated": false,
     "GPU_Metal_rebuild": false,
-    "HAL_build": true
+    "HAL_build": true,
+    "first_native_run": 43859154356,
+    "first_native_conclusion": "failure; seven objects compiled; visible header/name/HAL warning fixes applied"
   }
 }
