@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "GNSS001 LOC v2 to native27 PDS on the human-selected fixed GPU051 source and unchanged GPU051 userland; source-only Mac compile and encrypted artifact, no device/private input.",
+  "purpose": "GNSS002 LOC v2 to native27 PDS on the human-selected fixed GPU051 source and unchanged GPU051 userland; source-only Mac compile and encrypted artifact, no device/private input. Includes the existing late-initializer Mach-O helper omitted from Native001 export.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -704,7 +704,8 @@
     "source/software-aes/OriginalAESABI.h": "80ff874a6556d6908826e74622e449fb82eb217e99bd4384418fe08e06c95e2f",
     "source/software-aes/README.md": "fb6af9b196316b4a39aa504e3ff92ebbaa7b6a0bb005c35f27bc360490dd52a4",
     "source/ufs.bundle": "3a7c1c6ac7e5a39e6cb4adcc6143fa1e4c6c24ae862aa501102f9fb70c21a534",
-    "source/usb.bundle": "c11677e274e735ce3ca849dde0e1654404eafb23538cadb0b25d0e6d2c98a5f4"
+    "source/usb.bundle": "c11677e274e735ce3ca849dde0e1654404eafb23538cadb0b25d0e6d2c98a5f4",
+    "source/device/scripts/nezha_macho_late.py": "fc5a2869ef22bd2c06702930fc0c88b0e071ab7ef851824b403234633040fc37"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
@@ -1075,6 +1076,8 @@
     "gnss_source": "6c509a9b27a38b7ea659dc39b066b471c356052c",
     "shared_implementation": "ALS-owner only; counted IPA assignment and appended immutable IPCC routes",
     "compiler_jobs": 32,
-    "phone_operations": false
+    "phone_operations": false,
+    "previous_native_run": 43872352515,
+    "previous_native_conclusion": "failure"
   }
 }
