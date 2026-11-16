@@ -10,7 +10,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
-#include <sys/sysctl.h>
+#include <uuid/uuid.h>
 #include <time.h>
 #include <unistd.h>
 #include <zlib.h>
@@ -124,8 +124,27 @@ int main(void)
     if (geteuid() != 0 || !selected_payload()) return 0;
     signal(SIGALRM, hard_timeout);
     alarm(260);
-    size_t uuid_bytes = sizeof boot_uuid;
-    if (sysctlbyname("kern.bootsessionuuid", boot_uuid, &uuid_bytes, nullptr, 0)) return 1;
+    // Reuse the audio service's immutable per-boot property. The original
+    // named process profile denies this client's kern.bootsessionuuid read.
+    while (!boot_uuid[0] && uptime_ms() < 150000) {
+        io_service_t service = IOServiceGetMatchingService(kIOMainPortDefault,
+                                                           IOServiceMatching("NezhaAudio27"));
+        if (service) {
+            CFTypeRef value = IORegistryEntryCreateCFProperty(service, CFSTR("BootSessionUUID"),
+                                                              kCFAllocatorDefault, 0);
+            IOObjectRelease(service);
+            if (value && CFGetTypeID(value) == CFStringGetTypeID()) {
+                char candidate[sizeof boot_uuid] = {};
+                uuid_t parsed;
+                if (CFStringGetCString((CFStringRef)value, candidate, sizeof candidate,
+                                       kCFStringEncodingASCII) && !uuid_parse(candidate, parsed))
+                    memcpy(boot_uuid, candidate, sizeof boot_uuid);
+            }
+            if (value) CFRelease(value);
+        }
+        if (!boot_uuid[0]) usleep(50000);
+    }
+    if (!boot_uuid[0]) return 1;
     int fd = open(result_path, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW, 0600);
     if (fd < 0) return 1;
     result_file = fdopen(fd, "w");

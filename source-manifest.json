@@ -1,13 +1,13 @@
 {
   "schema": 1,
-  "purpose": "Re-sign the existing boundedAudioQueue diagnostic helper with its own executable identity and originalnamed audio profile plus two actualmissing services. No capturekernel, API, samples, deadline, or globalconfiguration change.",
+  "purpose": "Read the originalaudio service BootSessionUUID property instead of denied sysctl; finiteAudioQueue two-second capture unchanged.",
   "files": {
-    ".github/workflows/nezha-ios27-native.yml": "f7f626975318ae93c5d605c587432bb024d16ca5f8c8924b397c79a6ae5e4cb5",
+    ".github/workflows/nezha-ios27-native.yml": "89119c8493a566189d3e3d5b686119d8ef0b7dade6e3d16bad4f8347ccca11e1",
     "ci/artifact-recipient.pem": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
     "ci/artifacts.py": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
-    "ci/audio-record.py": "4abd36489126e96667f7eea211a065da6032d62f9e8dd9b3e0e71ee21bf27dad",
-    "source/AudioRecord.mm": "ab2f12bb0995c9cd340e34feee8a8f35cc2d2a7ec06a3da5a89262f117402fe9",
-    "source/Info.plist": "fd3f25d00604d58c1d02d933a07d622b54a38fa8d332e660d046e3157ecc4d00",
+    "ci/audio-record.py": "1ec9ad736b952b9cd0cbd99a06ebb6aa98d2199c1f57da26eb54616db807202f",
+    "source/AudioRecord.mm": "27020e962635f47656221543a014ab16abc509f2d9bed58e22fc19fb9166cf42",
+    "source/Info.plist": "5573ec3b56d9042123428389177974f2eccd14690ce3547b5be4f631de742bc5",
     "source/QcomUserLogTransport.h": "6981a8a4863c80f0109de4e821c4ef2d72f75f143eb39f4a65a2abb2a4df4531",
     "source/QcomUserLogWire.h": "965d7aeaa4043bcceb151cd6331ce50faefe21f57ce7c91cf781a52b4917397b",
     "source/com.apple.iomfb_fdr_loader.plist": "8f01beb517e05f1e3e914e101d0c8d5a9baae59638c44b275462d209b92d2940",
@@ -18,8 +18,8 @@
   "kernel_rebuild": false,
   "source_Data_test_output": true,
   "snapshot_transport": "existing readonly APFS",
-  "previous_helper_source_revision": "c96744162028c6226caa1941d19ec145c625a1ac",
-  "helper_program_path": "/usr/libexec/audio-record104",
+  "previous_helper_source_revision": "8f9f53c3f16b0d21150067652e94011dcd79ad37",
+  "helper_program_path": "/usr/libexec/audio-record105",
   "exact_audio_session_services": [
     "com.apple.audio.AudioSession",
     "com.apple.coremedia.routediscoverer.xpc"

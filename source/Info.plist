@@ -7,7 +7,7 @@
 	<key>CFBundleName</key>
 	<string>UniXNU Audio Record Test</string>
 	<key>CFBundleExecutable</key>
-	<string>audio-record104</string>
+	<string>audio-record105</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Record at most two seconds of the selected audio driver test source.</string>
 </dict>
