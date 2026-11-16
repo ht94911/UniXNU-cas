@@ -72,6 +72,38 @@ int main(void)
     assert(!nb_wds_failure_completion(&c,input,size+5,tlvs,sizeof tlvs));
     size=failure(input,1,14,6,51);cbd_wr16(input+8,63);
     assert(!nb_wds_failure_completion(&c,input,size,tlvs,sizeof tlvs));
-    puts("PASS038 exact failed Start completion, original reasons and live IPv6 preserved; unrelated, repeated and malformed input rejected");
+    /* Actual040 IPv6 Start failure: reason1022, 3GPP43. Complete only that
+     * pending inactive family; an already-active IPv4 remains usable. */
+    c=original; c.family=6;
+    struct cbp_client ipv4=original; ipv4.active=1; ipv4.settings=1; ipv4.handle=808036768;
+    const struct cbp_client original4=ipv4;
+    size=failure(input,1,14,6,43); cbd_wr16(input+17,1022); memcpy(saved,input,size);
+    assert(nb_wds_failure_completion(&c,input,size,tlvs,sizeof tlvs)==21);
+    const uint8_t expected6[]={1,2,0,1,0,0x10,2,0,0xfe,3,0x11,4,0,6,0,43,0,0x12,1,0,6};
+    assert(!memcmp(tlvs,expected6,sizeof expected6)&&!memcmp(input,saved,size));
+    n=cbq_private_indication(CBP_STATUS,1,9,tlvs,21,wire,sizeof wire);
+    assert(n==34&&wire[5]==9&&cbp_observe(&c,input,size)&&!c.start_pending);
+    assert(!nb_wds_failure_completion(&c,input,size,tlvs,sizeof tlvs));
+    assert(cbp_observe(&c,wire+CBQ_HDR,n-CBQ_HDR)&&!c.active);
+    struct cbp_client surviving[]={ipv4,c};
+    assert(cbp_active_families(surviving,2,2)==1&&!memcmp(&ipv4,&original4,sizeof ipv4));
+    c=original; c.family=6;
+    for (unsigned i=0;i<8;i++) {
+        struct cbp_client rejected=c;
+        if(i==0) rejected.start_pending=0;
+        if(i==1) rejected.start_txn=8;
+        if(i==2) rejected.active=1;
+        if(i==3) rejected.mux=0;
+        if(i==4) rejected.family=4;
+        if(i==5) rejected.bind_pending=1;
+        if(i==6) rejected.family_pending=1;
+        if(i==7) rejected.family=5;
+        assert(!nb_wds_failure_completion(&rejected,input,size,tlvs,sizeof tlvs));
+    }
+    size=failure(input,1,14,6,51);
+    assert(!nb_wds_failure_completion(&c,input,size,tlvs,sizeof tlvs));
+    size=failure(input,1,14,6,43); c.family=4;
+    assert(!nb_wds_failure_completion(&c,input,size,tlvs,sizeof tlvs));
+    puts("PASS042 exact IPv4cause51/IPv6cause43 failed Start completion, original reasons and surviving family preserved; unrelated, repeated and malformed input rejected");
     return 0;
 }

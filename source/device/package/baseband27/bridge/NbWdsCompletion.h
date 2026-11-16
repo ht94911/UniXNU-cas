@@ -1,7 +1,8 @@
 /* SPDX-License-Identifier: BSD-2-Clause */
 /* Apple's Start reply handler waits for a PacketServiceStatus indication for
- * 3GPP failures. This modem reports an IPv6-only rejection only in the reply.
- * Project that actual failed IPv4 request to a disconnected completion; keep
+ * 3GPP failures. This modem reports the observed IPv4 cause51 and IPv6 cause43
+ * failures only in the reply. Project the failed request to a disconnected
+ * completion; keep
  * the original reply, reasons and other family untouched. */
 #ifndef NB_WDS_COMPLETION_H
 #define NB_WDS_COMPLETION_H
@@ -13,7 +14,7 @@ static inline uint32_t nb_wds_failure_completion(const struct cbp_client *client
     if (!client || !cbd_sdu_ok(sdu, size) || sdu[0] != 2u ||
         cbd_rd16(sdu + 3) != CBP_START || !client->start_pending ||
         cbd_rd16(sdu + 1) != client->start_txn || client->active ||
-        !cbp_mux_ok(client->mux) || client->family != 4u ||
+        !cbp_mux_ok(client->mux) || !cbp_family_bit(client->family) ||
         client->bind_pending || client->family_pending) return 0;
     const uint8_t *result = 0, *reason = 0, *verbose = 0;
     for (uint32_t at = 7; at < size;) {
@@ -35,12 +36,17 @@ static inline uint32_t nb_wds_failure_completion(const struct cbp_client *client
         }
         at += 3u + length;
     }
-    /* QMI_ERR_CALL_FAILED; 3GPP cause51 is IPv6 only allowed. A failed
-     * response never produces a connected state, handle, address or success. */
+    /* QMI_ERR_CALL_FAILED. Cause51 means IPv6 only allowed for the observed
+     * IPv4 request. Cause43 is the observed UNKNOWN_PDP_CONTEXT IPv6 failure
+     * after a normal STOP. Preserve the reply's actual reasons; neither
+     * response produces a connected state, handle, address or success. */
     if (!result || cbd_rd16(result) != 1u || cbd_rd16(result + 2) != 14u ||
         !reason || !verbose || cbd_rd16(verbose) != 6u ||
-        cbd_rd16(verbose + 2) != 51u || room < 21u) return 0;
-    const uint8_t disconnected[2] = {1, 0}, family = 4;
+        room < 21u) return 0;
+    const uint32_t code = cbd_rd16(verbose + 2);
+    if (!((client->family == 4u && code == 51u) ||
+          (client->family == 6u && code == 43u))) return 0;
+    const uint8_t disconnected[2] = {1, 0}, family = client->family;
     uint32_t bytes = cbd_tlv(out, room, 1, disconnected, sizeof disconnected);
     bytes += cbd_tlv(out + bytes, room - bytes, 0x10, reason, 2);
     bytes += cbd_tlv(out + bytes, room - bytes, 0x11, verbose, 4);

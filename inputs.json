@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Source-only arm64e iOS27 board WDS failure completion on fixed GPU024. 038 projects the actual pending IPv4 Start CALL_FAILED/3GPP IPv6-only cause51 into the original disconnected status completion after forwarding the original reply. Original transaction, reasons, endpoint/channel/client, unrelated responses and active IPv6 are retained. Original037 twelve signed-page fixups, helper033/network.client/runtime remain local and unchanged. No firmware/logs/identity/EFS or private Apple bytes uploaded; necessary Mac-only native build and CMS output.",
+  "purpose": "Source-only042 arm64e bridge completion for the observed failed IPv6 Start CALL_FAILED/3GPP43 in addition to038 IPv4cause51. Original pending transaction, client/channel/mux and real reasons are preserved; failed family gets original disconnected status after its original reply, keeping the other family. Board payload fixups, Apple/firmware/identity/logs remain local. Necessary Mac-only native build with existing CMS encrypted artifact.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "ff72fcc0e1ff55dbaae856f0891f444578d7d4ae",
+  "device_revision": "193e1d2b54578459ddb15e2575cf439394907401",
   "soc_revision": "703d7b4bb00904b4a6e5d96f9e9bf72eec170f6b",
   "xcode": "26.6",
   "files": {
@@ -115,9 +115,9 @@
     "source/device/package/baseband27/bridge/NbSimBridge.inc": "df7b218cfba4e86dd257aaf34a9a47426acf433b0834ef154e5c70ba062e3246",
     "source/device/package/baseband27/bridge/NbVoice.h": "5cb76917a2e49fedad8461e2a164f830d41908f01a116cb732f4a6333d40181f",
     "source/device/package/baseband27/bridge/NbVoiceBridge.inc": "ff17034745cb93c04353777b40cc4508ae160822c72b2a53793ccf72d6dff189",
-    "source/device/package/baseband27/bridge/NbWdsCompletion.h": "f5efd45c5c90b8cf922d3a07877dfa092dcf160479fe229d863fb5d08c9ad37b",
+    "source/device/package/baseband27/bridge/NbWdsCompletion.h": "87805216755bb8a8fa7636f911a2ff01d92f0f3954badd0a26e5e54ba668b016",
     "source/device/package/baseband27/bridge/QcomBaseband.h": "a72471ff90728dcae8a5878edee6e25f016e7164f46265f4959f0f1dd01f86ac",
-    "source/device/package/baseband27/bridge/coachz_baseband.cpp": "465c4732f8f2a2a16578ee1ccde83571528ee913617cc5b1a568f34edb3a2946",
+    "source/device/package/baseband27/bridge/coachz_baseband.cpp": "c8c527df876402f3a4b4cabbbec023823258891a1431c218be543cdd81a57651",
     "source/device/package/baseband27/bridge/coachz_bb_data.h": "5c3d1fc8dd827ba162bbff15b35d11cae4d0603394deda63821204ff5e0c2216",
     "source/device/package/baseband27/bridge/coachz_bb_pdp.cpp": "cf3864858a345b1bff63c814302f5892ae5acd52796d5bbc1f5097485a202b82",
     "source/device/package/baseband27/bridge/coachz_bb_qmux.h": "56001ee59a8db8569f6bae238111036e460fa97aa1ce3628eb6f3253ba9468b9",
@@ -350,7 +350,7 @@
     "source/device/tests/baseband27/sim_identity_test.c": "8730f1325f630334ce68786bb64145be5a92fd818a6fc3c7fd00c39155cab4c1",
     "source/device/tests/baseband27/startup_order_test.c": "edf7bf8fdcdbaf955bc1593e33807168c2ca9d8c55120b7048858d096dea84cb",
     "source/device/tests/baseband27/voice_state_test.c": "6c5ebac19d0780856dc3712d50b25578554c8048e64e19ebb55fd048375f9c17",
-    "source/device/tests/baseband27/wds_completion_test.c": "b1df8a10c9574d83334874241fe5658f40ed9c812c84782a8307fb23b91c8631",
+    "source/device/tests/baseband27/wds_completion_test.c": "085a25118d4e394112e9a6cce3f76445148a3412c1dfb1f9c62483b08ca986d3",
     "source/device/tests/baseband27/wds_diagnostics_test.py": "886bb80ac184b1878382a443f031378e377d5ddd21b35e9ea1d68cf3a565a37d",
     "source/device/tests/cpu27-policy.c": "e1682fcec436a58085ef34ebdf82a536523f933e99a873ea1aacd7d3cd45b61c",
     "source/device/tests/input-chain-trace.c": "9170cb8675b3ce94e9e1cfd5af0aaa4f322655fb1ef177789aef888a13348669",
@@ -501,6 +501,8 @@
     "cellular_helper_signed_network_client": true,
     "WDS_actual_IPv6_only_failed_Start_completion": true,
     "WDS_original_reply_reason_and_IPv6_preserved": true,
-    "WDS_status_completion_transaction_bound": true
+    "WDS_status_completion_transaction_bound": true,
+    "WDS_actual_IPv6_failed_Start_completion": true,
+    "WDS_failed_Start_actual_reason_preserved": true
   }
 }
