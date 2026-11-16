@@ -80,6 +80,17 @@ static int open_camera(Class proxy,id service,NSURL *system_url)
             requestContext:nil registrationError:&error];
         fprintf(stderr,"nezha-camera-launch: original system Camera registration=%u error=%ld domain=%s path=%s\n",
             (unsigned)registered,(long)error.code,error.domain.UTF8String ?: "<none>",system_url.path.UTF8String);
+        if (!registered && error) {
+            /* NSCocoaError4099 alone loses the service name and the native
+             * interruption reason. Preserve the actual XPC diagnostic for
+             * this one registration; do not resubmit a failed request. */
+            fprintf(stderr,"nezha-camera-launch: registration-detail=%s\n",
+                error.description.UTF8String ?: "<absent>");
+            NSError *underlying=error.userInfo[NSUnderlyingErrorKey];
+            if ([underlying isKindOfClass:[NSError class]])
+                fprintf(stderr,"nezha-camera-launch: registration-underlying=%s\n",
+                    underlying.description.UTF8String ?: "<absent>");
+        }
         if (!registered) return 6;
         application=[proxy applicationProxyForIdentifier:identifier];
         report_proxy("after",application);

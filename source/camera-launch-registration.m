@@ -29,7 +29,12 @@ static BOOL registration_result,launch_result,registration_visible;
 {
     assert(context==nil && dictionaries.count==1);
     NSDictionary *registration=dictionaries[0];
-    if (!registration_result && error)*error=[NSError errorWithDomain:@"FixtureRegistration" code:13 userInfo:nil];
+    if (!registration_result && error) {
+        NSError *underlying=[NSError errorWithDomain:@"FixtureXPC" code:4099
+            userInfo:@{NSLocalizedDescriptionKey:@"com.apple.lsd.modify connection interrupted"}];
+        *error=[NSError errorWithDomain:@"FixtureRegistration" code:13
+            userInfo:@{NSUnderlyingErrorKey:underlying}];
+    }
     assert([registration[@"ApplicationType"] isEqualToString:@"System"]);
     assert([registration[@"CFBundleIdentifier"] isEqualToString:@"com.apple.camera"]);
     assert([registration[@"CompatibilityState"] isEqual:@0] && [registration[@"IsDeletable"] isEqual:@0]);
