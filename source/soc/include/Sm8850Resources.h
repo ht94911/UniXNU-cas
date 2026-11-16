@@ -8,6 +8,8 @@ extern "C" {
 enum {Sm8850Okay=0,Sm8850Busy=-1,Sm8850Invalid=-2,Sm8850Conflict=-3,Sm8850Io=-4};
 enum {Sm8850Smmu=0,Sm8850Rsc=1,Sm8850Gcc=2,Sm8850Mutex=3,Sm8850Ipcc=4};
 enum {Sm8850ResourceCount=16,Sm8850IpccRoutes=16};
+enum {Sm8850ArcBootFloors=3};
+typedef struct {uint32_t address,index;} Sm8850ArcBootFloor;
 typedef struct {
     void *context;
     /* One short configuration lock shared by every registered consumer.
@@ -25,6 +27,9 @@ typedef struct {
     uint32_t owner[Sm8850ResourceCount],quarantined[Sm8850ResourceCount];
     uint32_t initialized,smem_owner,ipcc_busy,ipcc_sealed,ipcc_count,ipcc_unknown_count,ipcc_last_unknown;
     Sm8850IpccRoute ipcc[Sm8850IpccRoutes];
+    /* An acknowledged APPS boot proxy survives a peripheral's TCS lease.
+     * The board supplies its real cmd-db address and requested index. */
+    Sm8850ArcBootFloor arc_boot_floor[Sm8850ArcBootFloors];
 } Sm8850Resources;
 typedef struct {uint32_t bank,asid,slot[4],sid[4],count; /* count 0 preserves legacy four-stream callers */} Sm8850SmmuAssignment;
 /* No probing or writes here. Board supplies explicit resource numbers and
@@ -48,6 +53,10 @@ int sm8850_tcs_write(Sm8850Resources *,unsigned tcs,uint32_t offset,uint32_t val
 /* Change only this TCS's IRQ-enable bit under the common configuration lock;
  * return its previous value so a completed lease can restore it. */
 int sm8850_tcs_irq_update(Sm8850Resources *,unsigned tcs,unsigned enabled,unsigned *previous);
+/* Called under the common configuration lock. Record only after the board's
+ * boot-proxy command ACK. A missing entry is not an inherited zero request. */
+int sm8850_arc_boot_floor_get(Sm8850Resources *,uint32_t address,uint32_t *index);
+int sm8850_arc_boot_floor_record(Sm8850Resources *,uint32_t address,uint32_t index);
 /* Read/modify/write only the supplied owned bits, under the common lock. */
 int sm8850_gcc_update(Sm8850Resources *,uint32_t offset,uint32_t allowed,uint32_t mask,uint32_t value);
 /* TCSR mutex 3: local gate prevents two APPS threads both observing owner1.

@@ -100,9 +100,9 @@
   "soc_resource_owner": {
     "revision": "e565439bf1a13d0224f0a9adcfc1eef8df7ad142",
     "files": {
-      "include/Sm8850Resources.h": "37170caea244bc7a257c800cd57f9e6c08b9fe1474b1959b68f0fbe857cd42d1",
+      "include/Sm8850Resources.h": "732cdf393756251f2657932473e5a29fe38d2fa62e296c5153672d31ab94886a",
       "include/Sm8850ResourcesNative.h": "96a542ad251ca57765dbd299e71267eca66632356f6922007c8952b85917fc63",
-      "src/Sm8850Resources.c": "2565513a2fd3d17c4864b2c0388fe9697b3c77e42fe9f5f13da6e815f6853e41",
+      "src/Sm8850Resources.c": "379c01d30719fece3ec94bcf44a701ee59d74fb0e80660ed5018d3ca8707cbfd",
       "src/Sm8850ResourcesNative.cpp": "0f3b7453cf11c59d50ab2cec923699af791f1510d0f6fe95b0f7413e4201b36a"
     }
   },
@@ -189,5 +189,23 @@
       "src/Sm8850ResourcesNative.cpp": "0f3b7453cf11c59d50ab2cec923699af791f1510d0f6fe95b0f7413e4201b36a"
     },
     "common_objects_built_once_in_ALS_owner": true
+  },
+  "camera_boot_arc": {
+    "stock_kernel_revision": "fc30e54174d254ff7f33622a9278e4435f6718d2",
+    "board_profile": "package/camera/NezhaCameraBootArc.h",
+    "level": 384,
+    "resources": [
+      "mmcx.lvl",
+      "mxc.lvl",
+      "mx.lvl"
+    ],
+    "original_shared_hashes": {
+      "include/Sm8850Resources.h": "37170caea244bc7a257c800cd57f9e6c08b9fe1474b1959b68f0fbe857cd42d1",
+      "include/Sm8850ResourcesNative.h": "96a542ad251ca57765dbd299e71267eca66632356f6922007c8952b85917fc63",
+      "src/Sm8850Resources.c": "2565513a2fd3d17c4864b2c0388fe9697b3c77e42fe9f5f13da6e815f6853e41",
+      "src/Sm8850ResourcesNative.cpp": "0f3b7453cf11c59d50ab2cec923699af791f1510d0f6fe95b0f7413e4201b36a"
+    },
+    "acknowledged_floors_retained_after_camera_close": true,
+    "physical_display_acceptance_pending": true
   }
 }

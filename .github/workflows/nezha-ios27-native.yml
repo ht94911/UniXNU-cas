@@ -1,7 +1,7 @@
-name: nezha Camera071 on GPU051 - native
+name: nezha Camera072 on GPU051 - native
 on:
   push:
-    branches: [codex/ios27-camera071c-gpu051-native-20261116]
+    branches: [codex/ios27-camera072-gpu051-boot-arc-native-20261116]
   workflow_dispatch:
 permissions:
   contents: read
@@ -61,6 +61,21 @@ jobs:
           mkdir -p "$RUNNER_TEMP/ios27/dpu-timing-host"
           clang -std=c11 -O2 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-sanitize-recover=all -I "$RUNNER_TEMP/ios27/work/device/package/gpu" -I "$RUNNER_TEMP/ios27/work/gop" "$RUNNER_TEMP/ios27/work/device/tests/display-dpu-timing.c" -o "$RUNNER_TEMP/ios27/dpu-timing-host/reader"
           "$RUNNER_TEMP/ios27/dpu-timing-host/reader"
+      - name: Check the actual camera boot proxy and shared resource adapter
+        run: |
+          set -euo pipefail
+          src="$RUNNER_TEMP/ios27/work/device"
+          soc="$RUNNER_TEMP/ios27/work/soc"
+          out="$RUNNER_TEMP/ios27/camera-boot-arc-host"
+          mkdir -p "$out/IOKit" "$out/sys"
+          printf 'extern "C" void IOSleep(unsigned);\n' > "$out/IOKit/IOLib.h"
+          printf 'extern "C" int printf(const char *,...);\n' > "$out/sys/systm.h"
+          for unit in NezhaCameraRpmh upstream/QcomRpmh; do
+            clang -std=c11 -Wall -Wextra -Werror -g -fsanitize=address,undefined -fno-sanitize-recover=all -I "$src/package/camera" -c "$src/package/camera/$unit.c" -o "$out/$(basename "$unit").o"
+          done
+          clang -std=c11 -Wall -Wextra -Werror -g -fsanitize=address,undefined -fno-sanitize-recover=all -I "$soc/include" -c "$soc/src/Sm8850Resources.c" -o "$out/shared.o"
+          clang++ -std=c++17 -Wall -Wextra -Werror -g -fsanitize=address,undefined -fno-sanitize-recover=all -I "$src/package/camera" -I "$soc/include" -I "$out" "$src/tests/camera-native-rpmh.cpp" "$src/package/camera/NezhaCameraNativeRpmh.cpp" "$out/NezhaCameraRpmh.o" "$out/QcomRpmh.o" "$out/shared.o" -o "$out/consumer"
+          "$out/consumer" > "$RUNNER_TEMP/ios27/work/logs/camera-boot-arc-host.log" 2>&1
       - name: Exercise the reused bounded HID input and original pacer
         run: |
           set -euo pipefail

@@ -44,6 +44,7 @@ struct Capture {
 };
 
 Capture state;
+RegisterWindow display_observer[2];
 enum { Camcc, Crm, Crmc, CrmCommon, IfeRsc, Cpas, Phy, Cci, Csid, Vfe, Tpg };
 constexpr uint32_t physical[] = {0x956d000, 0x9548000, 0x954a000, 0x954c000,
     0x9545000, 0x900b000, 0x9523000, 0x941b000, 0x9253000, 0x9151000, 0x93ff000};
@@ -75,6 +76,22 @@ void write(void *cookie, uint32_t offset, uint32_t value)
 
 void wait(void *, unsigned ms) { IOSleep(ms); }
 void wait_us(void *, unsigned us) { IODelay(us); }
+
+/* Four samples distinguish loss during the first APPS request from loss
+ * during teardown. These are read-only versions/statuses, not frame
+ * delivery evidence. Stock nezha DT supplies both physical addresses. */
+void display_state(const char *stage)
+{
+    constexpr uint32_t address[] = {0x09800000, 0x09ac0000};
+    for (unsigned i = 0; i < 2; ++i) {
+        if (!display_observer[i].address)
+            display_observer[i] = {ml_io_map(address[i], 0x1000), 0x1000};
+    }
+    if (!display_observer[0].address || !display_observer[1].address) return;
+    printf("NEZHA CAMERA DISPLAY: %s dpu=%#x dsi=%#x ctrl=%#x status=%#x\n", stage,
+        read(&display_observer[0], 0), read(&display_observer[1], 0),
+        read(&display_observer[1], 4), read(&display_observer[1], 8));
+}
 
 void write_csid(void *cookie, uint32_t offset, uint32_t value)
 {
@@ -258,8 +275,10 @@ bool cleanup(Capture &s, NezhaCameraNativeCaptureResult &result,
     if (!restore_cci(s)) return false;
     if (s.pins.reset_held && !nezha_camera_main_restore_pins(&gpio, &mclk, &rails, &s.pins)) return false;
     result.cleanup_step = NezhaNativeReleaseResources;
+    display_state("before-release");
     if (!nezha_camera_capture_resources_stop(&s.resources_io, &s.clear, profile,
         &result.resources, true, true)) return false;
+    display_state("after-release");
     if (!nezha_camera_native_rpmh_close(&s.rpmh)) return false;
     result.cleanup_step = NezhaNativeCleanupDone;
     return true;
@@ -327,7 +346,16 @@ bool nezha_camera_native_capture(const NezhaCameraNativeCaptureRequest *request,
     result->step = NezhaNativeGccOwner;
     if (!nezha_camera_native_gcc(&state.gcc)) return false;
     result->step = NezhaNativeRpmhOwner;
-    if (!nezha_camera_native_rpmh_open(&state.rpmh, request->command_database, request->database_bytes)) return false;
+    display_state("before-boot-proxy");
+    if (!nezha_camera_native_rpmh_open(&state.rpmh, request->command_database, request->database_bytes)) {
+        if (state.rpmh && nezha_camera_native_rpmh_close(&state.rpmh)) {
+            state.used = false;
+            result->cleaned = true;
+            result->cleanup_step = NezhaNativeCleanupDone;
+        }
+        return false;
+    }
+    display_state("after-boot-proxy");
     state.rpmh->before_transaction = request->rpmh_checkpoint;
     state.rpmh->vote_acknowledged = request->rpmh_vote_acknowledged;
     state.rpmh->isolated_sensor_votes = !pattern && request->isolated_sensor_votes;

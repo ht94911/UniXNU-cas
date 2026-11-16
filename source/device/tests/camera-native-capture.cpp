@@ -75,6 +75,7 @@ static uint32_t original_bus_cgc;
 static NezhaCameraRpmh rpmh{};
 static NezhaCameraDmaPlan plan{};
 static ArmSmmu4KContextConfig context{};
+static uint32_t display[2][0x1000 / 4]{};
 extern "C" unsigned long ml_io_map(unsigned long physical,unsigned long) {
     ++maps;
     switch (physical) {
@@ -84,6 +85,7 @@ extern "C" unsigned long ml_io_map(unsigned long physical,unsigned long) {
     case 0x9523000:return (unsigned long)phy;case 0x941b000:return (unsigned long)cci;
     case 0x9253000:return (unsigned long)csid;case 0x9151000:return (unsigned long)vfe;
     case NezhaCameraGpioPhysical:return (unsigned long)gpio;case 0x1764000:return (unsigned long)mclk;
+    case 0x09800000:return (unsigned long)display[0];case 0x09ac0000:return (unsigned long)display[1];
     default:assert(false);return 0;
     }
 }
@@ -213,7 +215,7 @@ int main(int argc,char **argv)
         assert(result.cleaned && result.frames.frames==3 && starts==turn+1 && stops==turn+1);
         assert(!nezha_camera_native_capture_running() && !resources_active && !memory_active && !smmu_active && !irq_active);
         assert(vfe[0x1008/4]==original_bus_cgc);
-        assert(maps==12); /* MMIO callbacks retain permanent mapping; no second-run leak */
+        assert(maps==14); /* Includes two retained read-only display observers; no second-run leak. */
     }
     assert(copies==6 && reads==6 && stream_readbacks==2);
     if(test_controls) {

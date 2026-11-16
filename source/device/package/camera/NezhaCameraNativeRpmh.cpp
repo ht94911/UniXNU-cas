@@ -1,8 +1,10 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #include "NezhaCameraNativeRpmh.h"
+#include "NezhaCameraBootArc.h"
 #include "Sm8850ResourcesNative.h"
 
 #include <IOKit/IOLib.h>
+#include <sys/systm.h>
 
 namespace {
 // Match NaResourceMicTcs, not a second independent lease for TCS2.
@@ -18,6 +20,37 @@ struct NativeRsc {
 };
 
 NativeRsc native;
+bool enter(void *cookie);
+void leave(void *cookie);
+
+/* The camera's TCS lease protects its commands; the shared ledger retains
+ * acknowledged boot proxies independently of that temporary lease. */
+bool preserve_boot_arcs()
+{
+    for (unsigned i = 0; i < NezhaCameraBootArcCount; ++i) {
+        auto &arc = native.rpmh.arc[i];
+        uint32_t index = 0;
+        if (!enter(&native)) return false;
+        const int found = sm8850_arc_boot_floor_get(native.common, arc.resource.address, &index);
+        leave(&native);
+        if (found == Sm8850Okay) {
+            if (index >= arc.resource.level_count || arc.resource.levels[index] != NezhaCameraBootArcLevel)
+                return false;
+            arc.current_index = arc.original_index = index;
+            continue;
+        }
+        if (found != Sm8850Conflict || !nezha_camera_rpmh_preserve_boot_arc(&native.rpmh,
+            static_cast<NezhaCameraArcRail>(i), NezhaCameraBootArcLevel)) return false;
+        if (!enter(&native)) return false;
+        const int recorded = sm8850_arc_boot_floor_record(native.common, arc.resource.address, arc.current_index);
+        leave(&native);
+        printf("NEZHA CAMERA ARC: boot-proxy address=%#x index=%u level=%u ack=%#x record=%d\n",
+            arc.resource.address, arc.current_index, NezhaCameraBootArcLevel,
+            native.rpmh.last_command_status, recorded);
+        if (recorded != Sm8850Okay) return false;
+    }
+    return true;
+}
 
 bool enter(void *cookie)
 {
@@ -92,7 +125,9 @@ bool nezha_camera_native_rpmh_open(NezhaCameraRpmh **owner, const uint8_t *db, s
         return false;
     }
     *owner = &native.rpmh;
-    return true;
+    /* Publish the owner before writes so an incomplete boot-proxy command
+     * follows the same retained-lease teardown path as other RPMh errors. */
+    return preserve_boot_arcs();
 }
 
 bool nezha_camera_native_rpmh_close(NezhaCameraRpmh **owner)

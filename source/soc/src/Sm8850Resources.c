@@ -105,6 +105,22 @@ int sm8850_tcs_irq_update(Sm8850Resources *r,unsigned tcs,unsigned enabled,unsig
     if (wr(r,1,0xd00,value) || fence(r) || rd(r,1,0xd00,&got)) return Sm8850Io;
     return got==value ? Sm8850Okay:Sm8850Conflict;
 }
+int sm8850_arc_boot_floor_get(Sm8850Resources *r,uint32_t address,uint32_t *index) {
+    if (!r || !r->initialized || !index || (address&0xffff0003u)!=0x30000u) return Sm8850Invalid;
+    for (unsigned i=0;i<Sm8850ArcBootFloors;++i) if (r->arc_boot_floor[i].address==address) {
+        *index=r->arc_boot_floor[i].index;return Sm8850Okay;
+    }
+    return Sm8850Conflict;
+}
+int sm8850_arc_boot_floor_record(Sm8850Resources *r,uint32_t address,uint32_t index) {
+    if (!r || !r->initialized || !index || index>=32 || (address&0xffff0003u)!=0x30000u) return Sm8850Invalid;
+    for (unsigned i=0;i<Sm8850ArcBootFloors;++i) if (r->arc_boot_floor[i].address==address)
+        return r->arc_boot_floor[i].index==index ? Sm8850Okay:Sm8850Conflict;
+    for (unsigned i=0;i<Sm8850ArcBootFloors;++i) if (!r->arc_boot_floor[i].address) {
+        r->arc_boot_floor[i]=(Sm8850ArcBootFloor){address,index};return Sm8850Okay;
+    }
+    return Sm8850Busy;
+}
 int sm8850_gcc_update(Sm8850Resources *r,uint32_t offset,uint32_t allowed,uint32_t mask,uint32_t value) {
     if (!r || (offset&3) || !mask || (mask&~allowed) || (value&~mask)) return Sm8850Invalid;
     uint32_t old,got;

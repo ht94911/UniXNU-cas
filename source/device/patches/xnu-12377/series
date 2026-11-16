@@ -61,3 +61,6 @@ zzzzzz-nezha-camera-dyld-policy.patch
 zzzzzz-nezha-camera-media-view.patch
 zzzzzz-nezha-camera-node-access.patch
 zzzzzz-nezha-camera-exposure-ioctl.patch
+
+# One recorded original LaunchServices IOKit MIG denial; unchanged verdict.
+zzzzzz-nezha-camera-lsd-denial-observer.patch

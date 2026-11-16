@@ -41,9 +41,8 @@ struct NezhaCameraPhyRequest {
 
 struct NezhaCameraArcState {
     QcomRpmhResource resource;
-    /* This APPS consumer's acknowledged request, as in the stock
-     * rpmh_regulator_arc_get_voltage_sel. It is not a measured voltage
-     * or the aggregate level held by other remote RPMh requesters. */
+    /* Acknowledged APPS request including the board's retained boot proxy.
+     * It is not a measured voltage or another remote master's request. */
     uint32_t original_index, current_index, requested_index;
     bool changed;
 };
@@ -96,6 +95,10 @@ bool nezha_camera_rpmh_release_phy(struct NezhaCameraRpmh *owner, enum NezhaCame
 bool nezha_camera_rpmh_acquire_arc(struct NezhaCameraRpmh *owner,
     enum NezhaCameraArcRail rail, unsigned level);
 bool nezha_camera_rpmh_release_arc(struct NezhaCameraRpmh *owner, enum NezhaCameraArcRail rail);
+/* Establish the board's boot proxy before a camera request. Its exact level
+ * is a board input; it stays owned by shared SoC support after camera close. */
+bool nezha_camera_rpmh_preserve_boot_arc(struct NezhaCameraRpmh *owner,
+    enum NezhaCameraArcRail rail, unsigned level);
 
 #ifdef __cplusplus
 }

@@ -1,0 +1,19 @@
+--- a/osfmk/kern/ipc_kobject.c
++++ b/osfmk/kern/ipc_kobject.c
+@@ -575,6 +575,16 @@
+ 		kern_return_t kr = mac_task_kobj_msg_evaluate(curproc,
+ 		    request_msgh_id, idx);
+ 		if (kr != KERN_SUCCESS) {
++			/* 071 lsd repeatedly denied the original64-bit IOKit notification
++			 * registration. Record one actual MIG identity before preserving
++			 * the existing denial; no permission or return-value change. */
++			static unsigned nezha_lsd_denial_recorded;
++			const char *name = curproc ? proc_name_address(curproc) : NULL;
++			if (idx == 136 && name && strcmp(name, "lsd") == 0 &&
++			    !__atomic_exchange_n(&nezha_lsd_denial_recorded, 1, __ATOMIC_RELAXED)) {
++				printf("NEZHA CAMERA LS: denied pid=%d mig=%d id=%d bytes=%u result=%d\n",
++				    proc_pid(curproc), idx, request_msgh_id, req_hdr->msgh_size, kr);
++			}
+ 			ipc_kobject_set_reply_error_status(reply, kr);
+ 			goto skip_kobjcall;
+ 		}

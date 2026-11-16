@@ -466,6 +466,24 @@ bool nezha_camera_rpmh_release_phy(struct NezhaCameraRpmh *owner, enum NezhaCame
     return true;
 }
 
+bool nezha_camera_rpmh_preserve_boot_arc(struct NezhaCameraRpmh *owner,
+    enum NezhaCameraArcRail rail, unsigned level)
+{
+    if (!owner || !owner->capture_resources || (unsigned)rail >= 3 || !level || owner->unsettled)
+        return false;
+    struct NezhaCameraArcState *arc = &owner->arc[rail];
+    uint32_t index;
+    if (arc->changed || arc->current_index ||
+        qcom_rpmh_level_index(&arc->resource, level, &index) != QcomRpmhOk ||
+        arc->resource.levels[index] != level) {
+        owner->status = NezhaCameraRpmhInvalid;
+        return false;
+    }
+    if (!transact(owner, arc->resource.address, index, NULL)) return false;
+    arc->original_index = arc->current_index = index;
+    return true;
+}
+
 bool nezha_camera_rpmh_acquire_arc(struct NezhaCameraRpmh *owner,
     enum NezhaCameraArcRail rail, unsigned level)
 {
@@ -494,8 +512,9 @@ bool nezha_camera_rpmh_acquire_arc(struct NezhaCameraRpmh *owner,
      * an ACK when raising it. The raw read response is not that getter:
      * camera013 read zero after a fully acknowledged index3 request.
      * Linux rpmhpd_send_corner likewise uses ACK plus active_corner.
-     * This isolated capture package is the sole local MMCX/MXC ARC
-     * requester; GPU firmware retains its separate GMU request. */
+     * A native integration seeds this request from the shared boot proxy
+     * before capture. Camera votes must not lower that inherited APPS
+     * request; a different TCS is not a different remote ARC master. */
     if (!transact(owner, arc->resource.address, index, NULL)) {
         return false;
     }
