@@ -137,6 +137,7 @@ static int native_ufs_store_sync(void){return store_sync;}
 static unsigned native_ufs_store_gpt_check(void){return store_gpt;}
 static int bt_stop_result;
 static unsigned bt_stop_calls;
+static int nezha_haptics_quiesce(void){return 0;}
 static int nezha_bluetooth_stop_and_wait(uint32_t timeout){
  assert(timeout==30000);bt_stop_calls++;return bt_stop_result;
 }

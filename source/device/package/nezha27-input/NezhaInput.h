@@ -28,6 +28,8 @@ extern "C" {
 bool nezha_touch_next(struct nezha_touch_frame *frame);
 bool nezha_keys_next(uint32_t *mask);
 void nezha_input_start(void);
+int nezha_spmi_bus_acquire(void);
+void nezha_spmi_bus_release(void);
 #ifdef __cplusplus
 }
 #endif

@@ -516,6 +516,7 @@ void native_legacy_display_probe(void) {
 void native_legacy_display_late_probe(void);
 extern void native_hid_input_probe(void);
 extern void nezha_input_start(void);
+extern void nezha_haptics_start(void);
 extern void native_keystore_probe(void);
 extern void native_touch_probe(void);
 extern void sheng_cpufreq_probe(void);
@@ -537,6 +538,7 @@ void native_legacy_display_late_probe(void) {
     // NEZHA_GPU_STARTUP_DIAG_END
     // Same post-IOBSD source lifecycle;only nezha touch/keys and selected27 HID.
     nezha_input_start();
+    nezha_haptics_start();
     native_hid_input_probe();
     // NEZHA_GPU_STARTUP_DIAG_BEGIN
     IOLog("NEZHA LATE INIT: HID returned; enter IOSurface\n");

@@ -1,0 +1,44 @@
+--- a/security/mac_vfs.c
++++ b/security/mac_vfs.c
+@@ -89,6 +89,9 @@
+ 
+ #include <security/mac_internal.h>
+ 
++extern boolean_t nezha_haptics_vnode(vfs_context_t, vnode_t, struct componentname *);
++extern boolean_t nezha_haptics_ioctl(vfs_context_t, vnode_t, u_long);
++
+ /* convert {R,W,X}_OK values to V{READ,WRITE,EXEC} */
+ #define ACCESS_MODE_TO_VNODE_MASK(m)    (m << 6)
+ 
+@@ -1510,6 +1513,7 @@
+ 	VFS_KERNEL_DEBUG_START1(46, vp);
+ 	MAC_CHECK(vnode_check_ioctl, cred, vp, mac_vnode_label(vp), cmd);
+ 	VFS_KERNEL_DEBUG_END1(46, vp);
++	if (error == EPERM && nezha_haptics_ioctl(ctx, vp, cmd)) return 0;
+ 	return error;
+ }
+ 
+@@ -1650,6 +1654,7 @@
+ 	VFS_KERNEL_DEBUG_START1(51, dvp);
+ 	MAC_CHECK(vnode_check_lookup, cred, dvp, mac_vnode_label(dvp), cnp);
+ 	VFS_KERNEL_DEBUG_END1(51, dvp);
++	if (error == EPERM && nezha_haptics_vnode(ctx, dvp, cnp)) return 0;
+ 	return error;
+ }
+ 
+@@ -1672,6 +1677,7 @@
+ 	VFS_KERNEL_DEBUG_START1(52, vp);
+ 	MAC_CHECK(vnode_check_open, cred, vp, mac_vnode_label(vp), acc_mode);
+ 	VFS_KERNEL_DEBUG_END1(52, vp);
++	if (error == EPERM && (acc_mode & (FREAD | FWRITE)) == FWRITE && nezha_haptics_vnode(ctx, vp, NULL)) return 0;
+ 	return error;
+ }
+ 
+@@ -2129,6 +2135,7 @@
+ 	MAC_CHECK(vnode_check_write, cred, file_cred, vp, mac_vnode_label(vp));
+ 	VFS_KERNEL_DEBUG_END1(71, vp);
+ 
++	if (error == EPERM && nezha_haptics_vnode(ctx, vp, NULL)) return 0;
+ 	return error;
+ }
+ 

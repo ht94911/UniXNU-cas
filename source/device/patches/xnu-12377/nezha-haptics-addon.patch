@@ -1,0 +1,31 @@
+--- a/bsd/kern/kern_exec.c
++++ b/bsd/kern/kern_exec.c
+@@ -8736,6 +8736,28 @@
+ 		printf("[bluetooth-runtime] library=%d/%d executables=%d/%d cache=%d/%d\n",
+ 		    bt_lib_stage, bt_lib_status, bt_bin_stage, bt_bin_status, bt_xpc_stage, bt_xpc_status);
+ 	}
++	/* Independent Actuator plug-in, original D16 preset stays on the root.
++	 * Reuse the readonly /Library audio union; don't replace speaker HAL. */
++	uint32_t haptic_os = 0;
++	if (PE_parse_boot_argn("nezha-haptics-ios", &haptic_os, sizeof(haptic_os)) && haptic_os) {
++		static const char hap_source[] = "/private/var/ngpu/haptics-hal";
++		static const char hap_point[] = "/Library/Audio/Plug-Ins/HAL";
++		static volatile int hap_stage, hap_status;
++		native_gpu_addon_mount(p, scratch, 0x600, hap_source, sizeof(hap_source), hap_point, sizeof(hap_point),
++		    "/Library/Audio/Plug-Ins/HAL/VirtualAudio.plugin/Info.plist",
++		    "/Library/Audio/Plug-Ins/HAL/NezhaHaptics27.driver/Info.plist", &hap_stage, &hap_status);
++		extern int nezha_haptics_ios_commit(int, int);
++		extern void nezha_haptics_start(void);
++		extern int nezha_haptics_wait_ready(uint32_t);
++		nezha_haptics_start();
++		int hap_ready = nezha_haptics_wait_ready(1000);
++		vnode_t preset = NULLVP;
++		int preset_visible = !vnode_lookup("/Library/Audio/Tunings/D16/Haptics/hapticengineconfig.plist", 0,
++		    &preset, vfs_context_current());
++		if (preset_visible) vnode_put(preset);
++		int hap_commit = nezha_haptics_ios_commit(hap_stage == 5 && !hap_status && !hap_ready, preset_visible);
++		printf("NEZHA HAPTICS: addon %d/%d preset %d commit %d\n", hap_stage, hap_status, preset_visible, hap_commit);
++	}
+ 	native_cryptex_os_view(p, scratch);
+ 	native_gestalt_cache_drop(p, scratch);
+ 	native_ls_store_drop(p, scratch);

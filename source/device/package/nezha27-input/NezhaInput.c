@@ -46,6 +46,7 @@
 #include <kern/thread.h>
 #include <kern/sched_prim.h>
 #include <machine/machine_routines.h>
+#include <IOKit/IOLocks.h>
 #include <pexpert/pexpert.h>
 #include <vm/vm_kern.h>
 #include <vm/vm_kern_xnu.h>
@@ -1909,10 +1910,40 @@ fk_rd(vm_offset_t base, uint32_t off)
 	return v;
 }
 
+static IOLock *nz_spmi_bus_lock;
+int
+nezha_spmi_bus_acquire(void)
+{
+	IOLock *lock = __atomic_load_n(&nz_spmi_bus_lock, __ATOMIC_ACQUIRE);
+	if (!lock) {
+		IOLock *created = IOLockAlloc();
+		if (!created) {
+			return ENOMEM;
+		}
+		IOLock *empty = NULL;
+		if (!__atomic_compare_exchange_n(&nz_spmi_bus_lock, &empty, created,
+		    false, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE)) {
+			IOLockFree(created);
+		}
+		lock = __atomic_load_n(&nz_spmi_bus_lock, __ATOMIC_ACQUIRE);
+	}
+	IOLockLock(lock);
+	return 0;
+}
+
+void
+nezha_spmi_bus_release(void)
+{
+	IOLockUnlock(__atomic_load_n(&nz_spmi_bus_lock, __ATOMIC_ACQUIRE));
+}
+
 static bool
 fk_read(uint16_t apid, uint8_t reg, uint8_t *out)
 {
 	if (apid == FK_NO_APID) {
+		return false;
+	}
+	if (nezha_spmi_bus_acquire()) {
 		return false;
 	}
 	uint32_t off = 0x20u * apid;
@@ -1924,13 +1955,16 @@ fk_read(uint16_t apid, uint8_t reg, uint8_t *out)
 		fk_last_status = fk_rd(fk_obs, off + 0x08u);
 		if (fk_last_status & 1u) {
 			if (fk_last_status & 0x0eu) {
+				nezha_spmi_bus_release();
 				return false;
 			}
 			*out = (uint8_t)fk_rd(fk_obs, off + 0x18u);
+			nezha_spmi_bus_release();
 			return true;
 		}
 		delay(1);
 	}
+	nezha_spmi_bus_release();
 	return false;
 }
 

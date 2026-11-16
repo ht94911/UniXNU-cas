@@ -289,6 +289,8 @@ def collect(framework, work, sealed):
         add(work / name, name)
     for name in ('report.json', 'actual-memory-limit.c', 'execution.txt'):
         add(work / 'icon-memory-host' / name, 'icon-memory-host/' + name)
+    for path in sorted((work / 'haptics-hal').rglob('*')):
+        if path.is_file():add(path,'haptics-hal/'+path.relative_to(work/'haptics-hal').as_posix())
     for path in sorted((work / 'logs').glob('*.log')):
         add(path, 'logs/' + path.name)
     for path in sorted((work.parent / 'setup-logs').glob('*.log')):
@@ -338,7 +340,7 @@ def collect(framework, work, sealed):
                 if path.suffix in ('.log', '.json', '.o'):
                     add(path, 'usb-attempts/' + attempt.parent.name + '/' + path.name)
         for name in ('nezha27-wifi', 'nezha27-bluetooth', 'software-aes',
-                     'nezha27-als', 'nezha27-als-owner', 'apple-key-store-state'):
+                     'nezha27-als', 'nezha27-als-owner', 'apple-key-store-state', 'nezha27-haptics'):
             for path in sorted((tree / 'build' / name).glob('*')):
                 if path.is_file() and path.suffix in ('.a', '.o', '.json', '.log', '.d', '.S', '.h', '.cpp', '.c', '.txt'):
                     add(path, 'archives/' + name + '/' + path.name)

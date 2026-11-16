@@ -22,6 +22,7 @@ extern int native_ufs_store_sync(void);
 extern unsigned native_ufs_store_gpt_check(void);
 extern uint32_t system_inshutdown,final_shutdown_stage;
 extern int nezha_bluetooth_stop_and_wait(uint32_t);
+extern int nezha_haptics_quiesce(void);
 static unsigned normal_shutdown_started;
 static thread_t normal_shutdown_thread;
 struct nz27_video {unsigned height,width,depth,stride;uintptr_t frame;};
@@ -106,6 +107,8 @@ static void reboot_worker(void *arg,wait_result_t wr) {
  thread_bind(cpu);thread_block(THREAD_CONTINUE_NULL);
  if(cpu_number()!=boot_cpu_id){result=-2;goto out;}
  if(!storage_ready()){result=-11;goto out;}
+ int haptic_stop=nezha_haptics_quiesce();
+ if(haptic_stop){printf("NEZHA27 USB REBOOT: haptics stop failed %d; exit refused\n",haptic_stop);result=-15;goto out;}
  // Retire our UART DMA and shared lease before either existing USB exit mode.
  int bt_stop=nezha_bluetooth_stop_and_wait(30000);
  if(bt_stop){printf("NEZHA27 USB REBOOT: Bluetooth cleanup failed %d; exit refused\n",bt_stop);result=-14;goto out;}

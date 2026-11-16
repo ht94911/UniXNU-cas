@@ -313,3 +313,17 @@ completion = ["Native artifact and PAC/strict closure checks pass", "Real shader
 limits = ["Source/host evidence only;not a new hardware result", "Original078 and17 masters unchanged;no main promotion"]
 next_action = ["Complete integrated009 qualification and use the113 GPU window"]
 evidence = [{kind = "source", reference = "scripts/check-stable-kernel-stack.py", result = "Actual function extraction;ASan/UBSan pass256 state variants,short/null/out-of-range saved state,overflow/misaligned/cyclic frames and preserved normal three-frame output;arm64e PAC checked separately on the native artifact."}]
+
+[[area]]
+id = "haptics"
+status = "implemented"
+components = []
+paths = ["package/haptics27/**", "components/PaganiHaptics/**", "components/sm8850/kits/Sm8850SpmiV8/**", "scripts/build-nezha27-haptics*.py", "patches/xnu-12377/nezha-haptics*.patch"]
+inputs = ["PMIH010x/HAP530 on SM8850 SPMI v8 bus1 SID7; original OS4 N0 factory motor parameters and volatile calibration.", "Reference OS iPhone14,4 D16 27.0.1/24A446; final test package remains unspecified."]
+configuration = ["Source-only nezha-haptics=1/2/3 and nezha-haptics-ios=1/2; neither added to an active board, feed, archive or image."]
+procedure = ["Apply independent SoC, HAP530 component and device commits only after the human specifies the fixed test package.", "Compile the actual target, original host cases, strict prelink/HAL/sign/trust; then obtain an authorized phone window and verify real haptic requests."]
+findings = ["PaganiHaptics core reused; bus-local v8 owner indexing and factory RC/period retention implemented.", "Independent Actuator HAL submits session/epoch/sequence timed PCM envelopes to one worker; stop completion requires hardware readback.", "Noncompiling static syntax and source/interface review completed; no hardware or system-haptics success is claimed."]
+completion = ["Factory-range repeatable short motor pulses and reliable stop, followed by normal UIKit/CoreHaptics/system requests with correlated actual sensation."]
+limits = ["No target compilation, CI, packaging, integration or device verification in this stage.", "Sharpness uses fixed LRA carrier; fine frequency/PWLE, long ringer patterns and full stability are pending.", "Source record stays local; the user explicitly requested waiting before builds."]
+next_action = ["Wait for the human to specify the fixed test package; use an independent copy, compile and validate the allowed increment."]
+evidence = [{ kind = "source", reference = "package/haptics27/STATIC-REVIEW.md", result = "Source and noncompiling static review ready; target and hardware unverified." }, { kind = "source", reference = "package/haptics27/SOURCES.md", result = "Fixed sources, licenses, hardware and donor boundaries identified." }]
