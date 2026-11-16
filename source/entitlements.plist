@@ -16,6 +16,8 @@
 	<array>
 		<string>com.apple.audio.AudioSession</string>
 		<string>com.apple.coremedia.routediscoverer.xpc</string>
+		<string>com.apple.audio.AudioQueueServer</string>
+		<string>com.apple.audioanalyticsd</string>
 	</array>
 </dict>
 </plist>

@@ -49,10 +49,10 @@ try:
         "com.apple.private.security.no-container": True,
         "com.apple.private.tcc.allow": ["kTCCServiceMicrophone"],
         "com.apple.private.sandbox.profile:embedded": "temporary-sandbox",
-        "com.apple.security.exception.mach-lookup.global-name": ["com.apple.audio.AudioSession", "com.apple.coremedia.routediscoverer.xpc"],
+        "com.apple.security.exception.mach-lookup.global-name": ["com.apple.audio.AudioSession", "com.apple.coremedia.routediscoverer.xpc", "com.apple.audio.AudioQueueServer", "com.apple.audioanalyticsd"],
     }
     assert plistlib.loads(entitlements.read_bytes()) == expected
-    binary = args.output / "audio-record107"
+    binary = args.output / "audio-record108"
     run("compile", [
         "xcrun", "--sdk", "iphoneos", "clang++", "-target", "arm64e-apple-ios27.0",
         "-isysroot", sdk, "-std=c++17", "-fobjc-arc", "-fblocks",

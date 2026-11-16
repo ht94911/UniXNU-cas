@@ -1,28 +1,30 @@
 {
   "schema": 1,
-  "purpose": "Use original launchd exact output descriptors under working105 profile; avoid106 runtime syscall denial and observed crash relaunch.",
+  "purpose": "Connect the two actually denied AudioQueue services after successful107 AudioSession and output descriptor setup.",
   "files": {
-    ".github/workflows/nezha-ios27-native.yml": "f99f87b622b3001094a22e3e2fc30cb8fcd3dea44a059afae56256bdac075707",
+    ".github/workflows/nezha-ios27-native.yml": "1217d80a2623f21d86e882170536febcd1e78ff188b59b8e4a7af6d6ed816e5c",
     "ci/artifact-recipient.pem": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
     "ci/artifacts.py": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
-    "ci/audio-record.py": "8107c786d06c0262967d2375db31b0cb61fe313cf17a201c685fb91e350ce7ce",
+    "ci/audio-record.py": "83d387f33c1642c067c6b0d16aff6ed00cca94d4cc360cbe688066300f72ea0d",
     "source/AudioRecord.mm": "0ad9324ad7ce70fe3bafce1af81d3fd3ff2040ae8141538e7dcdb7090180c157",
-    "source/Info.plist": "da3fa1956212d0abbb6e7741e6bcb1ba481d00d6281573aa03c7f45ee3f3e11d",
+    "source/Info.plist": "0592b4ab0f604ee2117f4ad17f047b73e184d340b01c1daa3c67a17e5c954678",
     "source/QcomUserLogTransport.h": "6981a8a4863c80f0109de4e821c4ef2d72f75f143eb39f4a65a2abb2a4df4531",
     "source/QcomUserLogWire.h": "965d7aeaa4043bcceb151cd6331ce50faefe21f57ce7c91cf781a52b4917397b",
     "source/com.apple.iomfb_fdr_loader.plist": "8f01beb517e05f1e3e914e101d0c8d5a9baae59638c44b275462d209b92d2940",
-    "source/entitlements.plist": "58b4d70a490a0f03277c1046ebb05095481c643cc806d694641ce9074bcadfd9"
+    "source/entitlements.plist": "40feb471fc5f58b4c50843fffb7702478ce043728f7d95b761b3898671c018d7"
   },
   "source_only": true,
   "phone_data": false,
   "kernel_rebuild": false,
   "source_Data_test_output": true,
   "snapshot_transport": "existing readonly APFS",
-  "previous_helper_source_revision": "a5107f846562b6dd57721ace15facb033fa5d2d0",
-  "helper_program_path": "/usr/libexec/audio-record107",
+  "previous_helper_source_revision": "3aade2dc26cfad29b0f2ea081c092b7ccfdd554e",
+  "helper_program_path": "/usr/libexec/audio-record108",
   "exact_audio_session_services": [
     "com.apple.audio.AudioSession",
-    "com.apple.coremedia.routediscoverer.xpc"
+    "com.apple.coremedia.routediscoverer.xpc",
+    "com.apple.audio.AudioQueueServer",
+    "com.apple.audioanalyticsd"
   ],
   "original_named_profile": "temporary-sandbox",
   "output_transport": "original launchd StandardOutPath and StandardErrorPath descriptors",
