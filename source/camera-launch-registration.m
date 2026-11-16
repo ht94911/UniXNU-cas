@@ -47,7 +47,7 @@ int main(void)
         NSFileManager *files=[NSFileManager defaultManager];NSError *error=nil;
         assert([files createDirectoryAtURL:url withIntermediateDirectories:NO attributes:nil error:&error]);
         NSURL *info=[url URLByAppendingPathComponent:@"Info.plist"];
-        assert([@{@"CFBundleIdentifier":@"com.apple.camera",@"CFBundleExecutable":@"Camera"} writeToURL:info atomically:YES]);
+        assert(([@{@"CFBundleIdentifier":@"com.apple.camera",@"CFBundleExecutable":@"Camera"} writeToURL:info atomically:YES]));
         assert([[@"fixture" dataUsingEncoding:NSUTF8StringEncoding] writeToURL:[url URLByAppendingPathComponent:@"Camera"] atomically:YES]);
         CameraFixtureWorkspace *workspace=[CameraFixtureWorkspace new];
         reset();CameraFixtureProxy *proxy=[CameraFixtureProxy new];proxy.identifier=@"com.apple.camera";
@@ -63,7 +63,7 @@ int main(void)
         reset();proxy=[CameraFixtureProxy new];proxy.identifier=@"com.apple.camera";proxy.installed=YES;proxy.placeholder=YES;current_proxy=proxy;
         assert(open_camera([CameraFixtureProxy class],workspace,url)==0);assert(registrations==1 && launches==1);
         reset();launch_result=NO;assert(open_camera([CameraFixtureProxy class],workspace,url)==9);assert(launches==1);
-        reset();assert([@{@"CFBundleIdentifier":@"com.apple.other",@"CFBundleExecutable":@"Camera"} writeToURL:info atomically:YES]);
+        reset();assert(([@{@"CFBundleIdentifier":@"com.apple.other",@"CFBundleExecutable":@"Camera"} writeToURL:info atomically:YES]));
         assert(open_camera([CameraFixtureProxy class],workspace,url)==4);assert(registrations==0 && launches==0);
         reset();assert([files removeItemAtURL:info error:&error]);
         assert(open_camera([CameraFixtureProxy class],workspace,url)==4);assert(registrations==0 && launches==0);

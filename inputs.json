@@ -1,10 +1,10 @@
 {
   "schema": 1,
   "purpose": "Fix actual068 launcher failure. Use original LS installed proxy without requiring readable Info; if absent register only verified original /Applications/Camera.app through original24A446 registerApplication, query installed nonplaceholder proxy then request open once. Native registration error and45s deadline remain failures; no root bundle/signature changes.",
-  "device_revision": "988f7b9b678c525d727801ead239c94d1b22cabf",
+  "device_revision": "11bd6c67135e6f1d7cb807a6ab16cb63e90e5d1a",
   "files": {
     "source/NezhaCameraLaunch.m": "2fc4782ae3898cc646af8fe0f5d68c7f19bb7bbf51fbf5e2a0078cd342ffafca",
-    "source/camera-launch-registration.m": "a880fc1fb1938886ad9e80fe5d976ca2bb9f2e7cadd76bc70dcd6957b83f37dd",
+    "source/camera-launch-registration.m": "f436c692fdd55c44501e1ae428e608b9e6c41385b5a0e7eaac872432fada642a",
     ".github/workflows/nezha-ios27-native.yml": "2e265d975b9af6a8dad0727771ba7b3ef7590a3b2809cfd91d9a0992e6718700"
   },
   "builder_sha256": "42d140f8d93a13ab4ab2bece73538872da57fbecf71ccf09c9311172654229c2",
