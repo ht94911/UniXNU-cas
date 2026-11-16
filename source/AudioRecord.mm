@@ -17,6 +17,7 @@
 
 static constexpr uint32_t rate = 48000, limit = 2 * rate;
 static int16_t pcm[limit];
+static int sample_fd = -1;
 static uint32_t frames, callbacks, peak, nonzero;
 static uint64_t squares;
 static uint64_t queue_start_ms, queue_stop_ms;
@@ -110,7 +111,9 @@ static bool wave_snapshot(void)
         0x46464952, 36 + frames * 2, 0x45564157, 0x20746d66, 16,
         0x00010001, rate, rate * 2, 0x00100002, 0x61746164, frames * 2
     };
-    gzFile file = gzopen(sample_path, "wb1");
+    if (sample_fd < 0) return false;
+    gzFile file = gzdopen(sample_fd, "wb1");
+    if (file) sample_fd = -1;
     if (!file) return false;
     int h = gzwrite(file, header, sizeof header);
     int n = gzwrite(file, pcm, frames * 2);
@@ -146,8 +149,20 @@ int main(void)
         usleep(50000);
     } while (!boot_uuid[0]);
     if (!boot_uuid[0]) return 1;
-    int fd = open(result_path, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW, 0600);
-    if (fd < 0) return 1;
+    // launchd opens the two exact paths before applying this process profile.
+    // Validate its inherited regular file descriptors and rewind them; no
+    // pathname open is needed in the finite recorder.
+    struct stat result_stat = {}, sample_stat = {};
+    if (fstat(STDOUT_FILENO, &result_stat) || fstat(STDERR_FILENO, &sample_stat)
+        || !S_ISREG(result_stat.st_mode) || !S_ISREG(sample_stat.st_mode)
+        || (result_stat.st_dev == sample_stat.st_dev && result_stat.st_ino == sample_stat.st_ino)) return 1;
+    int fd = dup(STDOUT_FILENO);
+    sample_fd = dup(STDERR_FILENO);
+    if (fd < 0 || sample_fd < 0) { if (fd >= 0) close(fd); return 1; }
+    if (ftruncate(fd, 0) || lseek(fd, 0, SEEK_SET) != 0
+        || ftruncate(sample_fd, 0) || lseek(sample_fd, 0, SEEK_SET) != 0) {
+        close(fd); close(sample_fd); sample_fd = -1; return 1;
+    }
     result_file = fdopen(fd, "w");
     if (!result_file) { close(fd); return 1; }
     // Fixed uptime lets the USB observer schedule the human-confirmed local
@@ -231,6 +246,7 @@ int main(void)
         fsync(fileno(result_file));
         fclose(result_file);
         result_file = nullptr;
+        if (sample_fd >= 0) { close(sample_fd); sample_fd = -1; }
         alarm(0);
         return result;
     }

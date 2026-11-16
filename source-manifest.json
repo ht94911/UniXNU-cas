@@ -1,13 +1,13 @@
 {
   "schema": 1,
-  "purpose": "Read the originalaudio service BootSessionUUID property instead of denied sysctl; finiteAudioQueue two-second capture unchanged.",
+  "purpose": "Use original launchd exact output descriptors under working105 profile; avoid106 runtime syscall denial and observed crash relaunch.",
   "files": {
-    ".github/workflows/nezha-ios27-native.yml": "89119c8493a566189d3e3d5b686119d8ef0b7dade6e3d16bad4f8347ccca11e1",
+    ".github/workflows/nezha-ios27-native.yml": "f99f87b622b3001094a22e3e2fc30cb8fcd3dea44a059afae56256bdac075707",
     "ci/artifact-recipient.pem": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
     "ci/artifacts.py": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
-    "ci/audio-record.py": "1ec9ad736b952b9cd0cbd99a06ebb6aa98d2199c1f57da26eb54616db807202f",
-    "source/AudioRecord.mm": "d0c28dcf3ffeca93e5c0901e57cba4a42e5a54be425c61e80fd97906f3228e88",
-    "source/Info.plist": "5573ec3b56d9042123428389177974f2eccd14690ce3547b5be4f631de742bc5",
+    "ci/audio-record.py": "8107c786d06c0262967d2375db31b0cb61fe313cf17a201c685fb91e350ce7ce",
+    "source/AudioRecord.mm": "8c4f72cb26a62d160e450380e2a345156c58856bc3ffeb67ff2a860da64ed365",
+    "source/Info.plist": "da3fa1956212d0abbb6e7741e6bcb1ba481d00d6281573aa03c7f45ee3f3e11d",
     "source/QcomUserLogTransport.h": "6981a8a4863c80f0109de4e821c4ef2d72f75f143eb39f4a65a2abb2a4df4531",
     "source/QcomUserLogWire.h": "965d7aeaa4043bcceb151cd6331ce50faefe21f57ce7c91cf781a52b4917397b",
     "source/com.apple.iomfb_fdr_loader.plist": "8f01beb517e05f1e3e914e101d0c8d5a9baae59638c44b275462d209b92d2940",
@@ -18,11 +18,16 @@
   "kernel_rebuild": false,
   "source_Data_test_output": true,
   "snapshot_transport": "existing readonly APFS",
-  "previous_helper_source_revision": "8f9f53c3f16b0d21150067652e94011dcd79ad37",
-  "helper_program_path": "/usr/libexec/audio-record105",
+  "previous_helper_source_revision": "a5107f846562b6dd57721ace15facb033fa5d2d0",
+  "helper_program_path": "/usr/libexec/audio-record107",
   "exact_audio_session_services": [
     "com.apple.audio.AudioSession",
     "com.apple.coremedia.routediscoverer.xpc"
   ],
-  "original_named_profile": "temporary-sandbox"
+  "original_named_profile": "temporary-sandbox",
+  "output_transport": "original launchd StandardOutPath and StandardErrorPath descriptors",
+  "exact_output_paths": [
+    "/private/var/mobile/Library/Logs/audio-record090-result.jsonl",
+    "/private/var/mobile/Library/Logs/audio-record090.wav.gz"
+  ]
 }

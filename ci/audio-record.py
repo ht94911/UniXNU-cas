@@ -52,7 +52,7 @@ try:
         "com.apple.security.exception.mach-lookup.global-name": ["com.apple.audio.AudioSession", "com.apple.coremedia.routediscoverer.xpc"],
     }
     assert plistlib.loads(entitlements.read_bytes()) == expected
-    binary = args.output / "audio-record105"
+    binary = args.output / "audio-record107"
     run("compile", [
         "xcrun", "--sdk", "iphoneos", "clang++", "-target", "arm64e-apple-ios27.0",
         "-isysroot", sdk, "-std=c++17", "-fobjc-arc", "-fblocks",
@@ -78,7 +78,7 @@ try:
         "_AudioQueueNewInput", "_AudioQueueAllocateBuffer", "_AudioQueueEnqueueBuffer",
         "_AudioQueueStart", "_AudioQueueStop", "_AudioQueueDispose",
         "_CFRunLoopRunInMode", "_IORegistryEntryCreateCFProperty", "_IOServiceGetMatchingService", "_IOServiceMatching", "_uuid_parse",
-        "_gzopen", "_gzwrite", "_gzclose",
+        "_gzdopen", "_gzwrite", "_gzclose", "_dup", "_fstat", "_ftruncate", "_lseek",
     ]
     assert all(name in imports.split() for name in required)
     dependencies = run("dependencies", ["xcrun", "otool", "-L", binary]).decode()
