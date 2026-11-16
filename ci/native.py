@@ -233,6 +233,10 @@ def build(framework, work):
                 '--out', work / 'keystore-target-qualification.json'],
                log=logs / 'keystore-target-qualification.log')
     if code: return code
+    code = run([sys.executable, work / 'device/scripts/build-nezha27-sensors-userland.py',
+                '--source', work / 'device/package/sensors/userland', '--usb', work / 'usb',
+                '--output', work / 'sensors-userland'], log=logs / 'sensors-userland.log')
+    if code: return code
     return run([sys.executable, HERE / 'check-native-userlog.py',
                 '--tree', tree, '--component', work / 'usb', '--llvm', llvm,
                 '--kernel', kernel, '--out', work / 'userlog-target-qualification.json'],
@@ -271,7 +275,12 @@ def collect(framework, work, sealed):
         names.append(name)
 
     add(ROOT / 'inputs.json', 'inputs.json')
+    for path in sorted((work / 'sensors-userland').rglob('*')):
+        if path.is_file(): add(path, 'sensors-userland/' + path.relative_to(work / 'sensors-userland').as_posix())
     manifest = json.loads((ROOT / 'inputs.json').read_text())
+    for folder in ('sensors-common-host', 'sensors-board-host'):
+        for path in sorted((work.parent / folder).rglob('*')):
+            if path.is_file(): add(path, folder + '/' + path.relative_to(work.parent / folder).as_posix())
     for name in ('keystore-source-selection.json', 'keystore-target-qualification.json',
                  'userlog-source-selection.json', 'userlog-target-qualification.json'):
         add(work / name, name)
@@ -338,7 +347,7 @@ def collect(framework, work, sealed):
                 if path.suffix in ('.log', '.json', '.o'):
                     add(path, 'usb-attempts/' + attempt.parent.name + '/' + path.name)
         for name in ('nezha27-wifi', 'nezha27-bluetooth', 'software-aes',
-                     'nezha27-als', 'nezha27-als-owner', 'apple-key-store-state'):
+                     'nezha27-als', 'nezha27-als-owner', 'nezha27-sensors', 'apple-key-store-state'):
             for path in sorted((tree / 'build' / name).glob('*')):
                 if path.is_file() and path.suffix in ('.a', '.o', '.json', '.log', '.d', '.S', '.h', '.cpp', '.c', '.txt'):
                     add(path, 'archives/' + name + '/' + path.name)

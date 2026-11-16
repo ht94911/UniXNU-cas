@@ -70,6 +70,7 @@ for source in sources:
     record = records[source.suffix == '.c']
     extra = ['-I', str(ROOT/'.cache/xnu-work/osfmk'), '-I', str(SRC),
              '-I', str(als), '-I', str(qrtr), '-I', str(smmu), '-I', str(soc/'include'),
+             '-I', str(device/'package/sensors'), '-I', str(device/'components/QcomSscSensors/include'),
              '-I', str(ROOT/'drivers/QcomXnuUsbDebug/include'),
              '-DNEZHA_ALS_NATIVE_OWNER=1', '-DNEZHA_ALS_CONTROL_ONLY=1',
              '-Wno-unknown-warning-option']

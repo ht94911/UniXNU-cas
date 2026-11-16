@@ -47,3 +47,4 @@ zzz-wifi-aes-late-personality.patch
 nezha-bluetooth-exit-diagnostic.patch
 nezha-bluetooth-runtime.patch
 nezha-bluetooth-text-fixup-capacity.patch
+zzzzzz-nezha-sensors-runtime.patch

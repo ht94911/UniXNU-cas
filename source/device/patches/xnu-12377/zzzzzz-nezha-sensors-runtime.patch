@@ -1,0 +1,22 @@
+diff --git a/bsd/kern/kern_exec.c b/bsd/kern/kern_exec.c
+--- a/bsd/kern/kern_exec.c
++++ b/bsd/kern/kern_exec.c
+@@ -1,3 +1,18 @@
++	/* Sensor test inputs use the same readonly addon union services as GPU051. */
++	unsigned sensor_mode = 0;
++	if (PE_parse_boot_argn("ns", &sensor_mode, sizeof(sensor_mode)) && sensor_mode == 1) {
++		static const char sx[] = "/private/var/ngpu/sensors-xpc", xp[] = "/System/Library/xpc";
++		static const char sb[] = "/private/var/ngpu/sensors-bin", bp[] = "/usr/libexec";
++		static const char sa[] = "/private/var/ngpu/sensors-apps", ap[] = "/Applications";
++		static volatile int xs, xr, bs, br, as, ar;
++		native_gpu_addon_mount(p, scratch, 0x600, sx, sizeof(sx), xp, sizeof(xp),
++		    "/System/Library/xpc/launchd.plist.sig", "/System/Library/xpc/launchd.plist", &xs, &xr);
++		native_gpu_addon_mount(p, scratch, 0x600, sb, sizeof(sb), bp, sizeof(bp),
++		    "/usr/libexec/lsd", "/usr/libexec/nezha-sensors-launch", &bs, &br);
++		native_gpu_addon_mount(p, scratch, 0x600, sa, sizeof(sa), ap, sizeof(ap),
++		    "/Applications/Preferences.app/Info.plist", "/Applications/NezhaSensors.app/Info.plist", &as, &ar);
++		printf("NEZHA SENSORS APP: cache=%d/%d bin=%d/%d app=%d/%d\n", xs, xr, bs, br, as, ar);
++	}
+ 	native_cryptex_os_view(p, scratch);
+ 	native_gestalt_cache_drop(p, scratch);
+ 	native_ls_store_drop(p, scratch);

@@ -8,8 +8,9 @@
 extern void nezha_audio27_dsp_probe_start(void);
 void nezha_audio27_start(void);
 void nezha_audio27_start(void) {
-    unsigned option=0;
-    if (PE_parse_boot_argn("na",&option,sizeof option) && option==2)
+    unsigned option=0,sensors=0;
+    if ((PE_parse_boot_argn("na",&option,sizeof option) && option==2) ||
+        (PE_parse_boot_argn("ns",&sensors,sizeof sensors) && sensors==1))
         nezha_audio27_dsp_probe_start();
 }
 #else

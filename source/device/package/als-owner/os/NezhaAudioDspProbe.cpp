@@ -11,6 +11,7 @@ extern "C" {
 #include "NezhaAudioAdspInputs.h"
 #ifdef NEZHA_ALS_NATIVE_OWNER
 #include "NezhaAlsNativeCaller.h"
+#include "../../sensors/NezhaSensorNativeCaller.h"
 #include "NezhaSensorNative.h"
 #endif
 #include "NezhaAudioSmmu.h"
@@ -318,6 +319,7 @@ int prepare(AudioDspProbe *d) {
 #ifdef NEZHA_ALS_NATIVE_OWNER
     // One boot lifetime created by this fresh owner; never reuse after loss.
     r=nezha_als_native_install(&d->adsp,d,1,200000);if (r) return r;
+    r=nezha_sensors_native_install(&d->adsp,d,1);if (r) return r;
 #endif
     // Android GLINK's create_local and pandora_adsp_gpr=2 both initiate OPEN
     // when no remote adsp_apps OPEN exists. Audio018 never observed that name;
@@ -487,7 +489,10 @@ void run_probe(void *v,wait_result_t) {
                 nezha_sensor_native_poll(&d->sensor,&d->adsp,na_native_now_us(nullptr));
                 nezha_als_diagnostic_worker(NezhaAlsWorkerSensorReturned);
             }
-            if (d->sensor.error) nezha_als_native_lost(&d->adsp,d->sensor.error);
+            if (d->sensor.error) {
+                nezha_als_native_lost(&d->adsp,d->sensor.error);
+                nezha_sensors_native_lost(&d->adsp,d->sensor.error);
+            }
 #endif
             if (d->adsp.stage==NaAdspStopMain && !d->pasQueries) {
                 // Same boot after validated proxy power; four bounded read-only

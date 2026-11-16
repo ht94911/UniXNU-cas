@@ -3,7 +3,7 @@
   "audio043_recipe_sha256": "874be0f6b88c14caeb0824e5554a84ebca7a6149f667484f01baaba870ef583f",
   "sources": {
     "platform/AdspFirmware.c": "9ea4c9700080a92cf33b55958ffd21a1395c17513a1f26ee60a2e79080480117",
-    "platform/AdspLink.c": "060bdf968c9f78ce7b0f1118c0d74fa1c86f8988fbad6e306ea4d8ea256fb22a",
+    "platform/AdspLink.c": "da22dfd418737efa69fa54486d5fd3ca25154282efdd5022eaa5bbd333a84144",
     "platform/AdspPower.c": "88ca6578cd78e78aa2355a62621074bff48b2bf012d5acaf2da41025584244c8",
     "platform/AudioInputPack.c": "9991a396c50bd0e427570d1a04fbe4755202412759fe0e945cd63c53619dea0c",
     "platform/AudioPdMapper.c": "80e78a1a92882dba4af074b817248248930c73fce7e088644c231027083b2cdb",
@@ -17,10 +17,10 @@
     "upstream/QcomSmem.c": "4e9eb0ee22458dad30e1fcb7edb74a9d762222aff0623a6d5b85fb4a6e08bd03",
     "upstream/QcomSmp2p.c": "f91c38e60fe86c5a55cbf9e822e0486997f7104d564ea90d6afe6ab40ac9d60b",
     "os/NezhaAudioAdspInputs.cpp": "7d7bac89f33fa2d539ac8f3f4799f248a30cc030db98e6982c16cfef21516cec",
-    "os/NezhaAudioDspProbe.cpp": "a595faf9352aabe44fb5e500b86dff8e9f3e40ed485b3ab7874c9b21e2fc6903",
+    "os/NezhaAudioDspProbe.cpp": "43665e6637b28a8a9cc3e028dbce4f2b78c1166d5ee46da920615aa1cf5a9b88",
     "os/NezhaAudioInputs.c": "46617afe5985f02f108644611b93a19463322be09984968e5e900e10fcfe12aa",
     "os/NezhaAudioNative.cpp": "161b9278946f8b82c825faa62971811b347b45c7bdd1f4e6b3f284b917b49ec2",
-    "os/NezhaAudioResourceProbe.c": "127dc692127c733884d6ef839a6a7e3dd3e972d9befd69534d985003a8b028da",
+    "os/NezhaAudioResourceProbe.c": "5ad99cd167554eb8ad3ef6ed7126b00d7d4dc9e0a2f617c6e5447eec8809d60c",
     "NezhaAlsNativeCaller.cpp": "9732cef87bc7ca239483f136dfcf27d46a174dc7b8d2a9d311384f24ee42d02e",
     "upstream/QcomPdr.c": "746991991eae6418a30eafd6631544f60d874435d77086d4348c9f1942116680",
     "upstream/QcomFastRpc.c": "ed9e0d33172508a7794792d9db8520af724c34fe5466ae0bf9dfd8a8a99c080a",
@@ -177,5 +177,11 @@
       "Keep successful WCN lmx floor during ALS proxy handover using the real command database."
     ],
     "board_header_sha256": "54c616f64f252172f45e94d4701c141d802687d5b3b1e2f84b4ced90f6b57cd8"
+  },
+  "sensor_increment": {
+    "base": "GPU051 device76c5952683041a6581224135461ab7c21d47f6a5",
+    "opt_in": "ns=1",
+    "single_ADSP_worker": true,
+    "no_new_GLlNK": true
   }
 }

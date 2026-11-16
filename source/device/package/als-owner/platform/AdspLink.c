@@ -3,6 +3,7 @@
 #include "AdspLink.h"
 #ifdef NEZHA_ALS_NATIVE_OWNER
 #include "NezhaAlsNativeCaller.h"
+#include "../../sensors/NezhaSensorNativeCaller.h"
 #endif
 #include <string.h>
 #include <limits.h>
@@ -59,6 +60,7 @@ static int failed(NaAdsp *a,int r) {
     r=r<0 ? r:NA_IO;a->stage=NaAdspFailed;a->error=r;
 #ifdef NEZHA_ALS_NATIVE_OWNER
     nezha_als_native_lost(a,r);
+    nezha_sensors_native_lost(a,r);
 #endif
 #ifndef NEZHA_ALS_CONTROL_ONLY
     if (a->transport.channel) na_transport_lost(&a->transport);
@@ -98,6 +100,7 @@ static int setup_glink(NaAdsp *a) {
     if (!r) a->glink_initialized=1;
 #ifdef NEZHA_ALS_NATIVE_OWNER
     if (!r) r=nezha_als_native_prepared(a);
+    if (!r) (void)nezha_sensors_native_prepared(a);
 #endif
     return r;
 }
@@ -241,6 +244,7 @@ int na_adsp_poll(NaAdsp *a,uint64_t now) {
             if (wait!=NA_PENDING) {
                 nezha_als_diagnostic_transport(NezhaAlsTransportFrontend);
                 nezha_als_native_after_receive(a);
+                (void)nezha_sensors_native_after_receive(a);
                 nezha_als_diagnostic_transport(NezhaAlsTransportFrontendReturned);
             }
 #endif

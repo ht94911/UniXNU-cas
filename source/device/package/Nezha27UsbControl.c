@@ -22,6 +22,7 @@ extern int native_ufs_store_sync(void);
 extern unsigned native_ufs_store_gpt_check(void);
 extern uint32_t system_inshutdown,final_shutdown_stage;
 extern int nezha_bluetooth_stop_and_wait(uint32_t);
+extern int nezha_sensors_stop_and_wait(uint32_t);
 static unsigned normal_shutdown_started;
 static thread_t normal_shutdown_thread;
 struct nz27_video {unsigned height,width,depth,stride;uintptr_t frame;};
@@ -106,6 +107,9 @@ static void reboot_worker(void *arg,wait_result_t wr) {
  thread_bind(cpu);thread_block(THREAD_CONTINUE_NULL);
  if(cpu_number()!=boot_cpu_id){result=-2;goto out;}
  if(!storage_ready()){result=-11;goto out;}
+ // The ADSP worker remains the only router reader while subscriptions retire.
+ int sensor_stop=nezha_sensors_stop_and_wait(30000);
+ if(sensor_stop){printf("NEZHA27 USB REBOOT: sensor disable drain failed %d; exit refused\n",sensor_stop);result=-15;goto out;}
  // Retire our UART DMA and shared lease before either existing USB exit mode.
  int bt_stop=nezha_bluetooth_stop_and_wait(30000);
  if(bt_stop){printf("NEZHA27 USB REBOOT: Bluetooth cleanup failed %d; exit refused\n",bt_stop);result=-14;goto out;}
