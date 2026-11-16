@@ -23,6 +23,14 @@ PY
 camera=package/camera/userland
 flags=(-std=gnu11 -Wall -Wextra -Werror -g -fsanitize=address,undefined
        -fno-omit-frame-pointer -I"$camera")
+"${CAMERA_HOST_CC:-gcc}" "${flags[@]}" -Ipackage/camera \
+    package/camera/NezhaCameraAfCalibration.c tests/camera-af-calibration.c \
+    -o "$out/test-camera-af-calibration"
+"$out/test-camera-af-calibration"
+"${CAMERA_HOST_CC:-gcc}" "${flags[@]}" -Ipackage/camera \
+    package/camera/NezhaCameraAfParking.c tests/camera-af-parking.c -lm \
+    -o "$out/test-camera-af-parking"
+"$out/test-camera-af-parking"
 # Preserve the pinned source; its pixel helper retains an unused ISP argument.
 "${CAMERA_HOST_CC:-gcc}" "${flags[@]}" -Wno-unused-parameter \
     -c "$camera/upstream/hakios/camera_isp.c" -o "$out/hakios-isp.o"

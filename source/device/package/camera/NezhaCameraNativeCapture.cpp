@@ -10,6 +10,7 @@
 #include <IOKit/IOLib.h>
 #include <machine/machine_routines.h>
 #include <string.h>
+#include <sys/systm.h>
 
 extern "C" vm_offset_t ml_io_map(vm_offset_t, vm_size_t);
 
@@ -381,6 +382,30 @@ bool nezha_camera_native_capture(const NezhaCameraNativeCaptureRequest *request,
             }
             if (!checkpoint(*request, *result, NezhaNativeRevision, revision.vendor,
                 revision.version, (unsigned)writes)) break;
+            if (request->AF_readonly_probe) {
+                result->AF_readonly_attempted=true;
+                result->AF_eeprom_status=nezha_camera_eeprom_read_af(&cci,&result->AF_eeprom);
+                printf("NEZHA CAMERA: AF readonly EEPROM status=%u bytes=%u checksum=%u infinity=%u macro=%u\n",
+                    (unsigned)result->AF_eeprom_status,result->AF_eeprom.bytes_read,
+                    (unsigned)result->AF_eeprom.AF_checksum_valid,result->AF_eeprom.infinity_dac,
+                    result->AF_eeprom.macro_dac);
+                if (result->AF_eeprom_status!=NezhaCciOk) {
+                    state.capture.sensor_transfer=result->AF_eeprom.transfer;
+                    state.capture.sensor_status=result->AF_eeprom_status;
+                    result->status=result->AF_eeprom_status;
+                    break;
+                }
+                result->AF_position_status=nezha_camera_ak7316_read_position(&cci,&result->AF_position);
+                printf("NEZHA CAMERA: AF readonly position status=%u DAC=%u raw=%#x read=%u\n",
+                    (unsigned)result->AF_position_status,result->AF_position.position_dac,
+                    result->AF_position.register_value,(unsigned)result->AF_position.position_read);
+                if (result->AF_position_status!=NezhaCciOk) {
+                    state.capture.sensor_transfer=result->AF_position.transfer;
+                    state.capture.sensor_status=result->AF_position_status;
+                    result->status=result->AF_position_status;
+                    break;
+                }
+            }
         }
         uint32_t reset;
         if (!checkpoint(*request, *result, NezhaNativeCsid, physical[Csid], physical[Vfe], 0) ||

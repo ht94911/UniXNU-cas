@@ -275,7 +275,7 @@ bool nezha_camera_native_node(vnode_t node)
 }
 
 bool nezha_camera_native_device_init(const uint8_t *profile,size_t profile_bytes,
-    const uint8_t *database,size_t database_bytes)
+    const uint8_t *database,size_t database_bytes,bool AF_readonly_probe)
 {
     if (made || !profile || profile_bytes!=NezhaCameraProfileCapacity || !database || database_bytes!=0x20000)
         return false;
@@ -288,7 +288,8 @@ bool nezha_camera_native_device_init(const uint8_t *profile,size_t profile_bytes
     static const struct NezhaCameraNativeControlConsumer controls={NULL,take_controls,completed_controls,readback_controls};
     request=(struct NezhaCameraNativeCaptureRequest){.profile=profile,.profile_bytes=profile_bytes,
         .isolated_sensor_votes=true,.slot=80,.bank=8,.asid=0xfc00,.cci_queue_words=NezhaCameraCciCanoeQueue0Words,
-        .command_database=database,.database_bytes=database_bytes,.checkpoint=checkpoint,.consumer=&consumer,.controls=&controls};
+        .command_database=database,.database_bytes=database_bytes,.checkpoint=checkpoint,.consumer=&consumer,.controls=&controls,
+        .AF_readonly_probe=AF_readonly_probe};
     const int major=cdevsw_add(-1,&device_methods);
     camera_dev=major>=0 ? makedev(major,0):0;
     made=major>=0 && devfs_make_node(camera_dev,DEVFS_CHAR,MobileUid,MobileGid,0600,"nezha-camera")!=NULL;

@@ -12,7 +12,7 @@ import sys
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MODULES = ("Cci", "Ovx10500u", "Rdi1080", "Camss1080", "Csiphy24", "Dma", "Camcc", "Crm", "Cpas", "Profile", "MainCapture", "MainPins", "Rpmh", "IfeBandwidth", "IfeRsc", "CaptureResources", "FrameProbe", "IrqQueue")
+MODULES = ("Cci", "Ovx10500u", "Ak7316", "EepromAf", "Rdi1080", "Camss1080", "Csiphy24", "Dma", "Camcc", "Crm", "Cpas", "Profile", "MainCapture", "MainPins", "Rpmh", "IfeBandwidth", "IfeRsc", "CaptureResources", "FrameProbe", "IrqQueue")
 
 
 def tool(env_name, mac_name, local_name):

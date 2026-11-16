@@ -136,3 +136,11 @@ absent. The adapter does not declare AE/AWB/AF stability, invent ISO or
 lux, or attach requested sensor settings before readback takes effect.
 The actual frame dictionary is copied for the three output paths; the
 caller retains its original dictionary.
+
+The original HakiOS first-output/rate diagnostic is retained in bounded
+camera daemon stderr: each output reports its successful callback count
+and the completed frames' first/last host-clock ticks on first output,
+every 300 callbacks and graph Stop. At most 24 records are emitted per
+process. Stop/Start and failed renders cannot increment the new stream
+generation. A graph callback measures delivery; Camera.app pixels and
+photo save still require their own device result.

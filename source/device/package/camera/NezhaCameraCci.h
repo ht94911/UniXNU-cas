@@ -54,6 +54,22 @@ enum NezhaCameraCciStatus nezha_camera_cci_read_byte(
     const struct NezhaCameraRegisterIo *io, unsigned master, uint8_t slave,
     uint16_t reg, uint8_t *value, struct NezhaCameraCciObservation *observation);
 
+/* Main AK7316 uses one register-address byte. Keep the same idle-queue,
+ * repeated-START and FIFO completion rules as the sensor read path. */
+enum NezhaCameraCciStatus nezha_camera_cci_read_reg8(
+    const struct NezhaCameraRegisterIo *io, unsigned master, uint8_t slave,
+    uint8_t reg, uint8_t *bytes, unsigned count, struct NezhaCameraCciObservation *observation);
+
+/* One address byte followed by one or two data bytes in one message.
+ * Word data follows the stock CamX/CCI high-byte-first wire order. */
+enum NezhaCameraCciStatus nezha_camera_cci_write_reg8_byte(
+    const struct NezhaCameraRegisterIo *io, unsigned master, uint8_t slave,
+    uint8_t reg, uint8_t value, struct NezhaCameraCciObservation *observation);
+
+enum NezhaCameraCciStatus nezha_camera_cci_write_reg8_word(
+    const struct NezhaCameraRegisterIo *io, unsigned master, uint8_t slave,
+    uint8_t reg, uint16_t value, struct NezhaCameraCciObservation *observation);
+
 /* For 16-bit register addresses and one data byte. The owner supplies the
  * validated sensor mode sequence and keeps stream control separate. */
 enum NezhaCameraCciStatus nezha_camera_cci_write_byte(

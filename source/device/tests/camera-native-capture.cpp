@@ -23,6 +23,22 @@ static bool control_pending, stop_at_control;
 static unsigned control_readbacks;
 static bool readback_mismatch;
 static bool longer_control_session;
+static unsigned AF_eeprom_calls,AF_position_calls;
+static NezhaCameraCciStatus AF_eeprom_failure=NezhaCciOk,AF_position_failure=NezhaCciOk;
+extern "C" NezhaCameraCciStatus nezha_camera_eeprom_read_af(const NezhaCameraRegisterIo *io,NezhaCameraEepromAfRead *r)
+{
+ assert(io && resources_active && !stream_active && !memory_active && !smmu_active && !irq_active);
+ ++AF_eeprom_calls;*r={};r->bytes_read=68;r->AF_checksum_valid=AF_eeprom_failure==NezhaCciOk;
+ r->infinity_dac=512;r->macro_dac=3640;r->transfer.needs_recovery=AF_eeprom_failure!=NezhaCciOk;
+ return AF_eeprom_failure;
+}
+extern "C" NezhaCameraCciStatus nezha_camera_ak7316_read_position(const NezhaCameraRegisterIo *io,NezhaCameraAk7316Result *r)
+{
+ assert(io && resources_active && !stream_active && !memory_active && !smmu_active && !irq_active);
+ ++AF_position_calls;*r={};r->position_read=AF_position_failure==NezhaCciOk;
+ r->position_dac=1350;r->register_value=0x5460;r->transfer.needs_recovery=AF_position_failure!=NezhaCciOk;
+ return AF_position_failure;
+}
 extern "C" NezhaCameraCciStatus nezha_camera_ovx10500u_read_controls(
  const NezhaCameraRegisterIo *io,NezhaCameraOvxControlReadback *r)
 {
@@ -156,6 +172,29 @@ int main(int argc,char **argv)
 {
     const bool test_mismatch=argc==2 && !strcmp(argv[1],"controls-mismatch");
     const bool test_controls=test_mismatch || (argc==2 && !strcmp(argv[1],"controls"));
+    if(argc==2 && (!strcmp(argv[1],"AF-eeprom-fail") || !strcmp(argv[1],"AF-position-fail") || !strcmp(argv[1],"AF-readonly"))) {
+        keep_running=true;cci[0]=NezhaCameraCciCanoeVersion;
+        uint8_t profile=0,database=0;
+        NezhaCameraFrameConsumer consumer{NULL,continuing,delivered};
+        NezhaCameraNativeCaptureRequest request{};
+        request.profile=&profile;request.profile_bytes=NezhaCameraProfileCapacity;
+        request.command_database=&database;request.database_bytes=0x20000;
+        request.cci_queue_words=NezhaCameraCciCanoeQueue0Words;request.consumer=&consumer;request.AF_readonly_probe=true;
+        if(!strcmp(argv[1],"AF-eeprom-fail")) AF_eeprom_failure=NezhaCciNack;
+        if(!strcmp(argv[1],"AF-position-fail")) AF_position_failure=NezhaCciTimeout;
+        NezhaCameraNativeCaptureResult result{};
+        const bool success=AF_eeprom_failure==NezhaCciOk && AF_position_failure==NezhaCciOk;
+        assert(nezha_camera_native_capture(&request,&result)==success);
+        assert(result.cleaned && result.AF_readonly_attempted && AF_eeprom_calls==1);
+        assert(AF_position_calls==(AF_eeprom_failure==NezhaCciOk ? 1u:0u));
+        if(!success) {
+            const unsigned attempts=AF_eeprom_calls+AF_position_calls;
+            assert(!nezha_camera_native_capture(&request,&result));
+            assert(AF_eeprom_calls+AF_position_calls==attempts);
+        }
+        puts("Native AF read-only phase runs before DMA and retains first fault without retry");
+        return 0;
+    }
     cci[0]=NezhaCameraCciCanoeVersion;
     uint8_t profile=0,database=0;
     NezhaCameraFrameConsumer consumer{NULL,continuing,delivered};

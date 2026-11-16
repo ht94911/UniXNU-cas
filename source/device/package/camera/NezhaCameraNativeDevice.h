@@ -12,7 +12,7 @@ extern "C" {
  * validated profile and command database alive for this device's lifetime.
  * Publishing the mobile-owned node starts no camera hardware. */
 bool nezha_camera_native_device_init(const uint8_t *profile,size_t profile_bytes,
-    const uint8_t *database,size_t database_bytes);
+    const uint8_t *database,size_t database_bytes,bool AF_readonly_probe);
 
 #ifdef __cplusplus
 }

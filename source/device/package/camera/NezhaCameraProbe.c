@@ -876,9 +876,15 @@ void nezha27_camera_probe_start(void)
     printf("NEZHA CAMERA: local stock profile=%u\n", (unsigned)profile_present);
 #ifdef NEZHA_CAMERA_NATIVE_CAPTURE
     if (mode==6) {
+        unsigned AF_readonly=0;
+        (void)PE_parse_boot_argn("nezha-caf-read",&AF_readonly,sizeof(AF_readonly));
+        if (AF_readonly>1) {
+            printf("NEZHA CAMERA: invalid AF read-only probe configuration\n");
+            return;
+        }
         const vm_offset_t database=map_registers(AopCommandDb,AopCommandDbBytes);
         const bool made=profile_present && database && nezha_camera_native_device_init(nezha_camera_profile_slot,
-            (size_t)nezha_camera_profile_slot_size,(const uint8_t *)database,AopCommandDbBytes);
+            (size_t)nezha_camera_profile_slot_size,(const uint8_t *)database,AopCommandDbBytes,AF_readonly!=0);
         printf("NEZHA CAMERA: native main frame device=%u\n",(unsigned)made);
         if (!made && database) ml_io_unmap(database,AopCommandDbBytes);
         return;

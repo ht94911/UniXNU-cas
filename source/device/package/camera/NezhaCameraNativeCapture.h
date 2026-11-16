@@ -7,6 +7,8 @@
 #include "NezhaCameraProfile.h"
 #include "NezhaCameraNativeSmmu.h"
 #include "NezhaCameraNativeIrq.h"
+#include "NezhaCameraEepromAf.h"
+#include "NezhaCameraAk7316.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -50,6 +52,10 @@ struct NezhaCameraNativeCaptureRequest {
      * callbacks must finish promptly; raw_sample and TPG are diagnostic. */
     const struct NezhaCameraFrameConsumer *consumer;
     const struct NezhaCameraNativeControlConsumer *controls;
+    /* Optional once-per-session AF preparation read, before receiver or
+     * DMA starts. Read only EEPROM prefix68 and programmed actuator DAC.
+     * This never writes the actuator, advertises AF or sets framefocus. */
+    bool AF_readonly_probe;
 };
 
 enum NezhaCameraNativeCaptureStep {
@@ -90,6 +96,10 @@ struct NezhaCameraNativeCaptureResult {
     uint32_t control_readback_after;
     enum NezhaCameraCciStatus control_readback_status;
     bool control_readback_verified;
+    bool AF_readonly_attempted;
+    enum NezhaCameraCciStatus AF_eeprom_status, AF_position_status;
+    struct NezhaCameraEepromAfRead AF_eeprom;
+    struct NezhaCameraAk7316Result AF_position;
     /* One bounded readback before teardown of a failed active stream.
      * Raw register values never count as completed frames. */
     uint32_t stream_readback_status, stream_readback;

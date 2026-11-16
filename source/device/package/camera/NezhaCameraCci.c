@@ -127,9 +127,10 @@ static enum NezhaCameraCciStatus check_request(
     return NezhaCciOk;
 }
 
-enum NezhaCameraCciStatus nezha_camera_cci_read(
+static enum NezhaCameraCciStatus read_register(
     const struct NezhaCameraRegisterIo *io, unsigned master, uint8_t slave,
-    uint16_t reg, uint8_t *bytes, unsigned count, struct NezhaCameraCciObservation *observation)
+    uint16_t reg, unsigned address_bytes, uint8_t *bytes, unsigned count,
+    struct NezhaCameraCciObservation *observation)
 {
     if (bytes == NULL || count == 0 || count > 3) {
         return NezhaCciInvalid;
@@ -140,8 +141,12 @@ enum NezhaCameraCciStatus nezha_camera_cci_read(
     }
 
     const uint32_t address_word = CciSetParam | ((uint32_t)slave << 4);
-    const uint32_t register_word = (CciWriteNoStop | (2u << 4)) |
-        ((uint32_t)(reg >> 8) << 8) | ((uint32_t)(reg & 0xffu) << 16);
+    /* Stock cam_cci_read encodes the declared address byte count and
+     * emits each address byte high first. AK7316 declares one byte. */
+    const uint32_t register_word = address_bytes == 1 ?
+        (CciWriteNoStop | (1u << 4)) | ((uint32_t)reg << 8) :
+        (CciWriteNoStop | (2u << 4)) | ((uint32_t)(reg >> 8) << 8) |
+        ((uint32_t)(reg & 0xffu) << 16);
     /* Stock cam_cci_read uses LOCK, SET_PARAM, WRITE_DISABLE_P, READ,
      * UNLOCK in one queue. The register address and read are a repeated
      * START transaction; a STOP between them can lose sensor state. */
@@ -165,6 +170,20 @@ enum NezhaCameraCciStatus nezha_camera_cci_read(
     }
     observation->needs_recovery = false;
     return NezhaCciOk;
+}
+
+enum NezhaCameraCciStatus nezha_camera_cci_read(
+    const struct NezhaCameraRegisterIo *io, unsigned master, uint8_t slave,
+    uint16_t reg, uint8_t *bytes, unsigned count, struct NezhaCameraCciObservation *observation)
+{
+    return read_register(io, master, slave, reg, 2, bytes, count, observation);
+}
+
+enum NezhaCameraCciStatus nezha_camera_cci_read_reg8(
+    const struct NezhaCameraRegisterIo *io, unsigned master, uint8_t slave,
+    uint8_t reg, uint8_t *bytes, unsigned count, struct NezhaCameraCciObservation *observation)
+{
+    return read_register(io, master, slave, reg, 1, bytes, count, observation);
 }
 
 enum NezhaCameraCciStatus nezha_camera_cci_read_byte(
@@ -215,6 +234,39 @@ enum NezhaCameraCciStatus nezha_camera_cci_write_word(
         observation->needs_recovery = false;
     }
     return status;
+}
+
+/* Original cam_cci_data_queue emits the single address byte followed by
+ * the requested value's high byte and then low byte. Reuse the existing
+ * queue owner and completion path; no new timing or recovery policy. */
+static enum NezhaCameraCciStatus write_register8(
+    const struct NezhaCameraRegisterIo *io, unsigned master, uint8_t slave,
+    uint32_t word, struct NezhaCameraCciObservation *observation)
+{
+    enum NezhaCameraCciStatus status = check_request(io, master, slave, observation);
+    if (status != NezhaCciOk) return status;
+    const uint32_t address_word = CciSetParam | ((uint32_t)slave << 4);
+    observation->phase = NezhaCciWrite;
+    status = run_queue(io, master, 0, address_word, &word, 1, observation, false);
+    if (status == NezhaCciOk) observation->needs_recovery = false;
+    return status;
+}
+
+enum NezhaCameraCciStatus nezha_camera_cci_write_reg8_byte(
+    const struct NezhaCameraRegisterIo *io, unsigned master, uint8_t slave,
+    uint8_t reg, uint8_t value, struct NezhaCameraCciObservation *observation)
+{
+    const uint32_t word = (CciWrite | (2u << 4)) | ((uint32_t)reg << 8) | ((uint32_t)value << 16);
+    return write_register8(io, master, slave, word, observation);
+}
+
+enum NezhaCameraCciStatus nezha_camera_cci_write_reg8_word(
+    const struct NezhaCameraRegisterIo *io, unsigned master, uint8_t slave,
+    uint8_t reg, uint16_t value, struct NezhaCameraCciObservation *observation)
+{
+    const uint32_t word = (CciWrite | (3u << 4)) | ((uint32_t)reg << 8) |
+        ((uint32_t)(value >> 8) << 16) | ((uint32_t)(value & 0xffu) << 24);
+    return write_register8(io, master, slave, word, observation);
 }
 
 struct Burst {

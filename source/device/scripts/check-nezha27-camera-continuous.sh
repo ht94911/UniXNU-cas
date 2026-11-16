@@ -10,7 +10,8 @@ mkdir -p "$1"
 out=$(cd "$1" && pwd)
 cd "$device"
 shared=${NEZHA_CAMERA_SHARED_SOC:?Set the selected SM8850 owner source path}
-mkdir -p "$out/fixture/IOKit" "$out/fixture/machine" "$out/target-fixture"
+mkdir -p "$out/fixture/IOKit" "$out/fixture/machine" "$out/fixture/sys" "$out/target-fixture"
+printf 'extern "C" int printf(const char *,...);\n' > "$out/fixture/sys/systm.h"
 printf '#include <stddef.h>\nextern "C" void *memcpy(void *,const void *,size_t);\n' > "$out/target-fixture/string.h"
 printf 'typedef unsigned long vm_offset_t;\ntypedef unsigned long vm_size_t;\ntypedef int IOReturn;\n#define kIOReturnSuccess 0\nextern "C" void IOSleep(unsigned);\nextern "C" void IODelay(unsigned);\n' > "$out/fixture/IOKit/IOLib.h"
 printf 'typedef unsigned long vm_offset_t;\ntypedef unsigned long vm_size_t;\n' > "$out/fixture/machine/machine_routines.h"
@@ -34,6 +35,9 @@ g++ "${flags[@]}" "$out/NativeCapture-host.cpp" tests/camera-native-capture.cpp 
 "$out/test-capture"
 "$out/test-capture" controls
 "$out/test-capture" controls-mismatch
+"$out/test-capture" AF-readonly
+"$out/test-capture" AF-eeprom-fail
+"$out/test-capture" AF-position-fail
 g++ "${flags[@]}" package/camera/NezhaCameraNativeSmmu.cpp tests/camera-native-smmu.cpp -o "$out/test-smmu"
 "$out/test-smmu"
 for unit in NativeCapture NativeSmmu; do
@@ -48,6 +52,7 @@ gcc -std=gnu11 -Wall -Wextra -Werror -g -fsanitize=address,undefined \
     package/camera/NezhaCameraOvx10500u.c package/camera/NezhaCameraCci.c \
     tests/camera-native-device.c -pthread -o "$out/test-device"
 "$out/test-device"
+"$out/test-device" AF-readonly
 gcc -std=c11 -Wall -Wextra -Werror -g -fsanitize=address,undefined -Ipackage/camera \
     package/camera/NezhaCameraOvx10500u.c tests/camera-ovx-readback.c -o "$out/test-ovx-readback"
 "$out/test-ovx-readback"

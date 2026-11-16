@@ -29,6 +29,8 @@ check() {
 check cci "$camera/NezhaCameraCci.c" "$camera/NezhaCameraOvx10500u.c"
 check cci-burst "$camera/NezhaCameraCci.c" "$camera/NezhaCameraOvx10500u.c"
 check ovx-controls "$camera/NezhaCameraCci.c" "$camera/NezhaCameraOvx10500u.c"
+check ak7316 "$camera/NezhaCameraCci.c" "$camera/NezhaCameraOvx10500u.c" "$camera/NezhaCameraAk7316.c"
+check eeprom-af "$camera/NezhaCameraCci.c" "$camera/NezhaCameraOvx10500u.c" "$camera/NezhaCameraEepromAf.c"
 check rdi1080 "$camera/NezhaCameraRdi1080.c"
 check camss1080 "$camera/NezhaCameraRdi1080.c" "$camera/NezhaCameraCamss1080.c"
 check csiphy24 "$camera/NezhaCameraCsiphy24.c"

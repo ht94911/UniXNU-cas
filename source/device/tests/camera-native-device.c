@@ -20,6 +20,7 @@ static uint64_t ticks;
 static bool stream_failure,copy_failure;
 static unsigned controls_taken;
 static bool control_requested;
+static bool expected_AF_readonly;
 extern bool nezha_camera_native_node(vnode_t);
 int vnode_ischr(vnode_t n) {return n->character;}
 int vnode_tag(vnode_t n) {return n->tag;}
@@ -62,6 +63,7 @@ void nezha_camera_native_capture_request_stop(void) { ++stops; }
 bool nezha_camera_native_capture(const struct NezhaCameraNativeCaptureRequest *request,struct NezhaCameraNativeCaptureResult *result)
 {
  ++runs;assert(request->consumer && request->consumer->continuing(NULL));
+ assert(request->AF_readonly_probe==expected_AF_readonly);
  assert(request->controls && request->controls->take && request->controls->complete && request->controls->readback);
  struct NezhaCameraOvxControls control;
  uint32_t sampled_after=1;
@@ -85,10 +87,11 @@ bool nezha_camera_native_capture(const struct NezhaCameraNativeCaptureRequest *r
  assert(request->consumer->deliver(NULL,&layout,raw,layout.frame_bytes,77,3));free(raw);
  result->cleaned=true;return !stream_failure;
 }
-int main(void)
+int main(int argc,char **argv)
 {
  uint8_t profile=0,database=0;
- assert(nezha_camera_native_device_init(&profile,NezhaCameraProfileCapacity,&database,0x20000));
+ expected_AF_readonly=argc==2 && !strcmp(argv[1],"AF-readonly");
+ assert(nezha_camera_native_device_init(&profile,NezhaCameraProfileCapacity,&database,0x20000,expected_AF_readonly));
  assert(methods && !runs);
  struct vnode own={1,VT_DEVFS,makedev(1,0)},other={1,VT_DEVFS,makedev(2,0)};
  assert(nezha_camera_native_node(&own) && !nezha_camera_native_node(&other) && !nezha_camera_native_node(NULL));

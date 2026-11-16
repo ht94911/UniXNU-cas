@@ -31,6 +31,7 @@ struct Model {
     uint32_t data_words;
     uint32_t fifo_word;
     uint32_t expected_write;
+    uint32_t expected_slave;
     uint32_t expected_write_tail;
     uint32_t expected_read;
     uint32_t timing[5];
@@ -122,7 +123,7 @@ static void write32(void *context, uint32_t offset, uint32_t value)
             break;
         }
         if (value == 4) {
-            assert(model->commands[0][0] == 0x101);
+            assert(model->commands[0][0] == model->expected_slave);
             if (model->controls_script) {
                 const unsigned index = model->controls_step++;
                 assert(index < 14 && model->queued[0] == 3);
@@ -148,7 +149,7 @@ static void write32(void *context, uint32_t offset, uint32_t value)
         } else {
             assert(value == 8);
             assert(model->queued[1] == 6 && model->commands[1][0] == 6);
-            assert(model->commands[1][1] == 0x101);
+            assert(model->commands[1][1] == model->expected_slave);
             assert(model->commands[1][2] == (model->expected_write | 2u));
             assert(model->commands[1][3] == model->expected_read);
             assert(model->commands[1][4] == 7 && model->commands[1][5] == 0x108);
@@ -186,6 +187,7 @@ static struct Model initial(void)
         .data_words = 1,
         .fifo_word = 0x12345621,
         .expected_write = 0x000a3029,
+        .expected_slave = 0x101,
         .expected_read = 0x1a,
     };
 }
@@ -203,6 +205,36 @@ int main(void)
     struct NezhaCameraCciObservation observed;
     const struct NezhaCameraOvxControls controls = {200,3200,545};
     struct NezhaCameraOvxControlResult control_result;
+    const struct NezhaCameraRegisterIo actuator_io = {&m,read32,write32,wait_ms};
+    m.expected_slave=0xc1;m.expected_write=0x00200229;
+    assert(nezha_camera_cci_write_reg8_byte(&actuator_io,1,0x0c,2,0x20,&observed)==NezhaCciOk);
+    assert(m.submitted==1 && !observed.needs_recovery && !m.fifo_reads);
+    m=initial();m.expected_slave=0xc1;m.expected_write=0x60540039;
+    assert(nezha_camera_cci_write_reg8_word(&actuator_io,1,0x0c,0,0x5460,&observed)==NezhaCciOk);
+    assert(m.submitted==1 && !observed.needs_recovery && !m.fifo_reads);
+    m=initial();m.expected_slave=0xc1;m.expected_write=0x00000219;m.expected_read=0x1a;
+    uint8_t actuator_bytes[3]={0xcc,0xcc,0xcc};
+    assert(nezha_camera_cci_read_reg8(&actuator_io,1,0x0c,2,actuator_bytes,1,&observed)==NezhaCciOk);
+    assert(actuator_bytes[0]==0x56 && m.submitted==1 && m.fifo_reads==1 && !observed.needs_recovery);
+    m=initial();m.expected_slave=0xc1;m.expected_write=0x00000019;m.expected_read=0x2a;m.fifo_word=0x00605421;
+    assert(nezha_camera_cci_read_reg8(&actuator_io,1,0x0c,0,actuator_bytes,2,&observed)==NezhaCciOk);
+    assert(actuator_bytes[0]==0x54 && actuator_bytes[1]==0x60 && m.submitted==1 && !observed.needs_recovery);
+    m=initial();m.expected_slave=0xc1;m.expected_write=0x60540039;m.address_result=M1AddressNack;
+    assert(nezha_camera_cci_write_reg8_word(&actuator_io,1,0x0c,0,0x5460,&observed)==NezhaCciNack);
+    assert(m.submitted==1 && observed.needs_recovery);
+    m=initial();m.expected_slave=0xc1;m.expected_write=0x00000219;m.expected_read=0x1a;m.data_result=M1DataNack;
+    actuator_bytes[0]=0xcc;
+    assert(nezha_camera_cci_read_reg8(&actuator_io,1,0x0c,2,actuator_bytes,1,&observed)==NezhaCciNack);
+    assert(m.submitted==1 && observed.needs_recovery && actuator_bytes[0]==0xcc);
+    m=initial();m.expected_slave=0xc1;m.expected_write=0x00200229;m.address_result=0;
+    assert(nezha_camera_cci_write_reg8_byte(&actuator_io,1,0x0c,2,0x20,&observed)==NezhaCciTimeout);
+    assert(m.submitted==1 && m.waits==100 && observed.needs_recovery);
+    m=initial();m.queued[0]=1;
+    assert(nezha_camera_cci_write_reg8_byte(&actuator_io,1,0x0c,2,0x20,&observed)==NezhaCciBusy);
+    assert(!m.writes && !m.submitted);
+    m=initial();
+    assert(nezha_camera_cci_read_reg8(&actuator_io,1,0x0c,2,actuator_bytes,0,&observed)==NezhaCciInvalid);
+    assert(!m.writes && !m.submitted);
     for (unsigned kind=0;kind<2;++kind) for (unsigned stop=0;stop<14;++stop) {
         m = initial();
         m.controls_script = true;
@@ -359,4 +391,5 @@ int main(void)
     assert(m.resets == 0 && observed.needs_recovery && observed.phase == NezhaCciHalt);
 
     puts("Camera CCI passed the address/data, IRQ ownership, error, timeout and FIFO checks");
+    return 0;
 }

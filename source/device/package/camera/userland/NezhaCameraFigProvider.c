@@ -23,6 +23,7 @@ struct Stream {
     CFArrayRef formats;
     CFDictionaryRef supported;
     unsigned stills, generation;
+    uint64_t delivered[3], first_time[3], last_time[3];
     bool collecting, running, invalid, bound;
 };
 struct Device { NezhaFigObject stream; CFArrayRef streams; CFDictionaryRef supported; };
@@ -39,6 +40,15 @@ static void report_lifecycle(const char *operation, const struct Stream *s, Nezh
     if (__atomic_fetch_add(&reports,1u,__ATOMIC_RELAXED)>=48) return;
     fprintf(stderr,"nezha-camera: lifecycle %s status=%d collecting=%u running=%u invalid=%u generation=%u\n",
         operation,status,(unsigned)s->collecting,(unsigned)s->running,(unsigned)s->invalid,s->generation);
+}
+
+static void report_output(const struct Stream *s, unsigned index)
+{
+    static unsigned reports;
+    if (!s->delivered[index] || __atomic_fetch_add(&reports,1u,__ATOMIC_RELAXED)>=24) return;
+    fprintf(stderr,"nezha-camera: output=%s callbacks=%llu first_ticks=%llu last_ticks=%llu generation=%u\n",
+        output_names[index],(unsigned long long)s->delivered[index],
+        (unsigned long long)s->first_time[index],(unsigned long long)s->last_time[index],s->generation);
 }
 
 static void serial(struct Stream *stream, dispatch_block_t work)
@@ -199,6 +209,9 @@ static NezhaFigStatus begin(struct Stream *s, bool graph)
     }
     if (graph) {
         nezha_camera_preview_init(&s->preview);
+        memset(s->delivered,0,sizeof(s->delivered));
+        memset(s->first_time,0,sizeof(s->first_time));
+        memset(s->last_time,0,sizeof(s->last_time));
         __atomic_add_fetch(&s->generation,1u,__ATOMIC_RELEASE);
         s->running=true;
         NezhaFigStatus result=refresh_outputs(s);
@@ -213,6 +226,7 @@ static NezhaFigStatus begin(struct Stream *s, bool graph)
 
 static NezhaFigStatus stop_on_queue(struct Stream *s)
 {
+    if (s->running) for (unsigned i=0;i<3;++i) report_output(s,i);
     s->running=false;s->stills=0;__atomic_add_fetch(&s->generation,1u,__ATOMIC_RELEASE);
     for (unsigned i=0;i<3;++i) nezha_camera_graph_output_stop(&s->output[i]);
     if (!s->collecting) return 0;
@@ -615,6 +629,15 @@ static NezhaFigStatus deliver_stream(struct Stream *s,
             if (!s->output[i].running || (i==2 && !s->stills)) continue;
             if (i==2) s->stills=0;
             NezhaFigStatus status=nezha_camera_graph_output_deliver(&s->output[i],&s->preview,frame,raw,bytes,completed_time,attached);
+            /* HakiOS reports the first completed output and output_rate
+             * after successful callbacks. These counters use the actual
+             * completed frame clock, no new timer, IRQ trace or frame
+             * reads. A reentrant Stop/Start cannot enter the next epoch. */
+            if (!status && s->running && s->generation==generation) {
+                s->last_time[i]=completed_time;
+                if (!s->delivered[i]++) s->first_time[i]=completed_time;
+                if (s->delivered[i]==1 || s->delivered[i]%300==0) report_output(s,i);
+            }
             if (!attempted || (status && !result)) result=status;
             attempted=true;
             if (status && i==2 && s->running && s->generation==generation) s->stills=1;

@@ -1,7 +1,7 @@
-name: nezha iPhone27 originalCamera actual frame metadata
+name: nezha iPhone27 readonly main AF preparation
 on:
   push:
-    branches: [codex/ios27-camera067-actual-frame-metadata-20261116]
+    branches: [codex/ios27-camera069-af-readonly-20261116]
   workflow_dispatch:
 permissions:
   contents: read
