@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "1bb177bbe57c1cbf469f717b0856c78e820afabb",
+  "device_revision": "36d59a35c62a26d997fab024f30ff672e95f7b41",
   "soc_revision": "device-local-composition-e565439+3435fa5",
   "xcode": "26.6",
   "files": {
@@ -540,7 +540,7 @@
     "source/device/tests/sensors-caller-host-shim.h": "f0abbfa55058f5a1381ed0b70d4102fdbab6242cdcfdcf5dbec5ecd3a3d3551b",
     "source/device/tests/sensors-hid-host-shim.h": "fe1a5a11663090897b1cff0d7d2d6a7a19475223d2f5c88234bee5a1e4cfdfa9",
     "source/device/tests/sensors-integration-host.cpp": "c078442e6c285343cce05f33c3d98f5125082e3e80a286964105eccec3846e8b",
-    "source/device/tests/sensors-integration-host.py": "e8eedc3703f227cb1cb7e11c6803ce8a2270046585d2e0a1b7a4f7843cc63b59",
+    "source/device/tests/sensors-integration-host.py": "2d99bac067e84bce3003b8939adc947d749b11a1fb088e6cce2ea20892e767df",
     ".github/workflows/nezha-ios27-native.yml": "11480fc2d43877cf1d12e1cfff7eb50c420e294d0de79229ae9aa3f40a9cfdb1"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
