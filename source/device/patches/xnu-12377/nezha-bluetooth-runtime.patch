@@ -1,0 +1,31 @@
+diff --git a/bsd/kern/kern_exec.c b/bsd/kern/kern_exec.c
+--- a/bsd/kern/kern_exec.c
++++ b/bsd/kern/kern_exec.c
+@@ -8715,6 +8715,27 @@
+ 	native_gpu_addon_mount(p, scratch, 0xa00, audio_source, sizeof(audio_source), audio_point, sizeof(audio_point),
+ 	    "/System/Library/Audio/Plug-Ins/HAL/BuiltinAudioPlugin.driver", "/System/Library/Audio/Plug-Ins/HAL/ShengAudio.driver/Info.plist",
+ 	    &native_gpu_addon4_stage, &native_gpu_addon4_status);
++	/* Reuse sheng's readonly system-path unions and original launchd cache. */
++	uint32_t bluetooth_enabled = 0;
++	if (PE_parse_boot_argn("nezha-bluetooth", &bluetooth_enabled, sizeof(bluetooth_enabled)) && bluetooth_enabled == 1) {
++		static const char bt_lib_source[] = "/private/var/ngpu/bluetooth-lib", bt_lib_point[] = "/usr/lib";
++		static const char bt_bin_source[] = "/private/var/ngpu/bluetooth-bin", bt_bin_point[] = "/usr/sbin";
++		static const char bt_xpc_source[] = "/private/var/ngpu/xpc", bt_xpc_point[] = "/System/Library/xpc";
++		static volatile int bt_lib_stage, bt_lib_status, bt_bin_stage, bt_bin_status, bt_xpc_stage, bt_xpc_status;
++		native_gpu_addon_mount(p, scratch, 0x600, bt_lib_source, sizeof(bt_lib_source),
++		    bt_lib_point, sizeof(bt_lib_point), "/usr/lib/dyld", "/usr/lib/QcaBTType0.dylib", &bt_lib_stage, &bt_lib_status);
++		if (bt_lib_stage == 5 && !bt_lib_status) {
++			native_gpu_addon_mount(p, scratch, 0x600, bt_bin_source, sizeof(bt_bin_source),
++			    bt_bin_point, sizeof(bt_bin_point), "/usr/sbin/notifyd", "/usr/sbin/QcaBluetooth.runtime", &bt_bin_stage, &bt_bin_status);
++			if (bt_bin_stage == 5 && !bt_bin_status) {
++				native_gpu_addon_mount(p, scratch, 0x600, bt_xpc_source, sizeof(bt_xpc_source),
++				    bt_xpc_point, sizeof(bt_xpc_point), "/System/Library/xpc/foreground_user_endpoints.plist",
++				    "/System/Library/xpc/launchd.plist", &bt_xpc_stage, &bt_xpc_status);
++			}
++		}
++		printf("[bluetooth-runtime] library=%d/%d executables=%d/%d cache=%d/%d\n",
++		    bt_lib_stage, bt_lib_status, bt_bin_stage, bt_bin_status, bt_xpc_stage, bt_xpc_status);
++	}
+ 	native_cryptex_os_view(p, scratch);
+ 	native_gestalt_cache_drop(p, scratch);
+ 	native_ls_store_drop(p, scratch);

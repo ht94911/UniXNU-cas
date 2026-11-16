@@ -1,0 +1,25 @@
+diff --git a/bsd/kern/kern_exec.c b/bsd/kern/kern_exec.c
+--- a/bsd/kern/kern_exec.c
++++ b/bsd/kern/kern_exec.c
+@@ -8722,3 +8722,21 @@ native_gpu_addon_prepare(proc_t p, user_addr_t scratch)
++	/* Reuse the accepted sheng union views for the bounded camera
++	 * discovery service. Hardware-only modes retain the original cache. */
++	unsigned camera_mode = 0;
++	if (PE_parse_boot_argn("nezha-camera", &camera_mode, sizeof(camera_mode)) && camera_mode == 6) {
++		static const char camera_xpc_source[] = "/private/var/ngpu/camera-xpc";
++		static const char camera_xpc_point[] = "/System/Library/xpc";
++		static volatile int camera_cache_stage, camera_cache_status;
++		native_gpu_addon_mount(p, scratch, 0x600, camera_xpc_source, sizeof(camera_xpc_source),
++		    camera_xpc_point, sizeof(camera_xpc_point), "/System/Library/xpc/launchd.plist.sig",
++		    "/System/Library/xpc/launchd.plist", &camera_cache_stage, &camera_cache_status);
++		static const char camera_bin_source[] = "/private/var/ngpu/camera-bin", camera_bin_point[] = "/usr/libexec";
++		static volatile int camera_bin_stage, camera_bin_status;
++		native_gpu_addon_mount(p, scratch, 0x600, camera_bin_source, sizeof(camera_bin_source),
++		    camera_bin_point, sizeof(camera_bin_point), "/usr/libexec/launchd_cache_loader",
++		    "/usr/libexec/nezha-camera-enumerate", &camera_bin_stage, &camera_bin_status);
++		printf("NEZHA27 camera launch cache=%d/%d executable=%d/%d\n", camera_cache_stage, camera_cache_status,
++		    camera_bin_stage, camera_bin_status);
++	}
+ 	native_cryptex_os_view(p, scratch);
+ 	native_gestalt_cache_drop(p, scratch);
+ 	native_ls_store_drop(p, scratch);

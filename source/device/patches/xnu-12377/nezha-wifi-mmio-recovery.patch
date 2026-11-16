@@ -1,0 +1,70 @@
+--- a/osfmk/arm64/machine_routines_asm.s
++++ b/osfmk/arm64/machine_routines_asm.s
+@@ -2144,6 +2144,46 @@
+ 	ret
+ #endif /* CONFIG_EXCLAVES && NEEDS_MTE_IRG_RESEED */
+ 
++
++/* Nezha WCN7860 aligned device access; adapted from data-a-live0096.
++ * Recovery metadata uses this XNU's original authenticated copyio mechanism.
++ * The RAM input/output word is outside the recoverable device range. */
++    .text
++    .align 3
++    .globl _nezha_wifi_mmio_access
++_nezha_wifi_mmio_access:
++    cbz w2, Lnw_read
++    ldr x4, [x1]
++    COPYIO_RECOVER_RANGE Lnw_end, Lnw_fault
++    .globl _nezha_wifi_mmio_begin
++_nezha_wifi_mmio_begin:
++    cbz w3, Lnw_write32
++    str x4, [x0]
++    b Lnw_barrier
++Lnw_write32:
++    str w4, [x0]
++    b Lnw_barrier
++Lnw_read:
++    COPYIO_RECOVER_RANGE Lnw_end, Lnw_fault
++    cbz w3, Lnw_read32
++    ldr x4, [x0]
++    b Lnw_barrier
++Lnw_read32:
++    ldr w4, [x0]
++Lnw_barrier:
++    dsb sy
++Lnw_end:
++    .globl _nezha_wifi_mmio_end
++_nezha_wifi_mmio_end:
++    cbnz w2, Lnw_ok
++    str x4, [x1]
++Lnw_ok:
++    mov w0, #0
++    ret
++Lnw_fault:
++    mov w0, #1
++    ret
++
+     /* THIS MUST STAY LAST IN THIS FILE */
+ 	COPYIO_RECOVER_TABLE_SYM	copyio_recover_table_end
+ 
+--- a/osfmk/arm64/sleh.c
++++ b/osfmk/arm64/sleh.c
+@@ -2572,6 +2572,18 @@
+ 	}
+ #endif
+ 
++	/* Only the board's precise aligned MMIO instruction range. Retain MTE,
++	 * PAC, instruction-abort and ordinary kernel fault handling unchanged. */
++	extern char nezha_wifi_mmio_begin[], nezha_wifi_mmio_end[];
++	uintptr_t wifi_pc = get_saved_state_pc(state);
++	if (recover && wifi_pc >= (uintptr_t)nezha_wifi_mmio_begin &&
++	    wifi_pc < (uintptr_t)nezha_wifi_mmio_end &&
++	    VM_KERNEL_ADDRESS(fault_addr) && fault_addr == get_saved_state_reg(state, 0) &&
++	    (is_vm_fault(fault_code) || fault_code == 0x10)) {
++		handle_kernel_abort_recover(state, esr, fault_addr, thread, recover);
++		return;
++	}
++
+ #if HAS_MTE
+ 	if (is_tag_check_fault(fault_code)) {
+ #ifdef CONFIG_XNUPOST

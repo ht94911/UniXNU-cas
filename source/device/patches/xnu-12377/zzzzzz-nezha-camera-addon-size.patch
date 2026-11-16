@@ -1,0 +1,9 @@
+diff --git a/bsd/kern/kern_exec.c b/bsd/kern/kern_exec.c
+--- a/bsd/kern/kern_exec.c
++++ b/bsd/kern/kern_exec.c
+@@ -8388,3 +8388,5 @@ native_gpu_addon_write(const char *path, const uint8_t *data, uint64_t size, uint32_t mode, vfs_context_t ctx)
+ 		VATTR_INIT(&va);
+ 		VATTR_SET(&va, va_mode, mode);
++		/* UniXNU94a70b1: kernel vnode_open leaves the old size on O_TRUNC. */
++		VATTR_SET(&va, va_data_size, size);
+ 		error = vnode_setattr(vp, &va, ctx);
