@@ -1,7 +1,7 @@
-name: nezha GPU050 large allocation phases - native044
+name: nezha GPU052 union resource enumeration - native045
 on:
   push:
-    branches: [codex/ios27-gpu50-boalloc-native044-20261116]
+    branches: [codex/ios27-gpu52-resource-native045-20261116]
   workflow_dispatch:
 permissions:
   contents: read

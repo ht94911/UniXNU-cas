@@ -47,3 +47,5 @@ zzz-wifi-aes-late-personality.patch
 nezha-bluetooth-exit-diagnostic.patch
 nezha-bluetooth-runtime.patch
 nezha-bluetooth-text-fixup-capacity.patch
+# Continue union resource enumeration until the lower directory also ends.
+native-union-readdir-eof.patch

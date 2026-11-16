@@ -347,6 +347,7 @@ def collect(framework, work, sealed):
         add(tree / 'kits/nezha/KeyStoreProbe.cpp', 'keystore-source/KeyStoreProbe.cpp')
         add(tree / 'kits/nezha/keystore013-source-lock.json', 'keystore-source/source-lock.json')
         add(tree / '.cache/xnu-work/bsd/kern/ubc_subr.c', 'text-fixup-source/ubc_subr.c')
+        add(tree / '.cache/xnu-work/bsd/vfs/vfs_syscalls.c', 'compiled-source/vfs_syscalls.c')
         objects = tree / 'build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837'
         for name in ('link.filelist', 'all-alias.exp'):
             add(objects / name, 'objects/' + name)
@@ -373,7 +374,7 @@ def collect(framework, work, sealed):
             for name in ('inputs.json', 'source-sha256.json', 'lto-command.json', 'lto-build.log'):
                 add(selected / name, 'reference/' + name)
         for stem in ('start', 'pe_kprintf', 'debug', 'printf', 'serial_console', 'serial_general',
-                     'bsd_init', 'subr_prf', 'arm_init', 'startup', 'machine_routines', 'IOUserServer', 'kern_memorystatus', 'ubc_subr'):
+                     'bsd_init', 'subr_prf', 'arm_init', 'startup', 'machine_routines', 'IOUserServer', 'kern_memorystatus', 'ubc_subr', 'vfs_syscalls'):
             for path in sorted(objects.glob('**/' + stem + '.o*')):
                 if path.suffix in ('.o', '.json'):
                     add(path, 'objects/' + str(path.relative_to(objects)))
