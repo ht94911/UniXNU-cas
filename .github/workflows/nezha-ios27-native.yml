@@ -1,7 +1,7 @@
-name: nezha Sensors001b on fixed GPU051
+name: nezha Sensors001c on fixed GPU051
 on:
   push:
-    branches: [codex/ios27-sensors001b-gpu051-native-20261116]
+    branches: [codex/ios27-sensors001c-gpu051-native-20261116]
   workflow_dispatch:
 permissions:
   contents: read

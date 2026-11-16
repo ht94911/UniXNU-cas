@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Sensors001b preserves001 production code and repairs actual persistent USB test interface; human-selected GPU051; target native and ordinary CoreMotion app.",
+  "purpose": "Sensors001c preserves001b tested sensor code and applies source-reconstructed runtime mount patch to fixed GPU051.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "b136ac5c4bc13021b53b3cd142720b8a2a819f0e",
+  "device_revision": "f5ec27e9844443f8242e7c1f99d9b0ea0315118a",
   "soc_revision": "device-local-composition-e565439+3435fa5",
   "xcode": "26.6",
   "files": {
@@ -533,7 +533,7 @@
     "source/device/package/sensors/userland/NezhaSensorsLaunch.m": "84daf4bb2b0f6020151a5a071a3dfd979ea53fa52354a199bff59f25696d5655",
     "source/device/package/sensors/userland/app.entitlements.plist": "feb1ff10804738f27f888a92395f7da2f5c6e80e7a2a375ae31dedeea06f8728",
     "source/device/package/sensors/userland/launch.entitlements.plist": "1b17bd00cb8bf68f7118c99c0cb8a9e7296e867511d07907d9e7d762b30a5dc8",
-    "source/device/patches/xnu-12377/zzzzzz-nezha-sensors-runtime.patch": "576604a43a01030f523c9358c7bfae6350918eff127168422011091180d35d0e",
+    "source/device/patches/xnu-12377/zzzzzz-nezha-sensors-runtime.patch": "39fb8a0412540374778d79ba7727d33b15fd47c9cd66254eeb44c784a00140a6",
     "source/device/scripts/build-nezha27-sensors-userland.py": "83de70e055bc84cad4e524c925fa8f276f676891a1328577e6027c5a8f69be2d",
     "source/device/scripts/build-nezha27-sensors.py": "6664f6a81adf88b7b972a67c0d9b2f1f093d1cf82babd06a1fde3e71789cccf6",
     "source/device/scripts/sensors-event-constructors-iphone-24A446.json": "02203ed4fcdd138c986484849c9a8f3bb0518a01a6d20ff443fd0b660d8cb9c3",
@@ -541,7 +541,7 @@
     "source/device/tests/sensors-hid-host-shim.h": "fe1a5a11663090897b1cff0d7d2d6a7a19475223d2f5c88234bee5a1e4cfdfa9",
     "source/device/tests/sensors-integration-host.cpp": "c078442e6c285343cce05f33c3d98f5125082e3e80a286964105eccec3846e8b",
     "source/device/tests/sensors-integration-host.py": "2d99bac067e84bce3003b8939adc947d749b11a1fb088e6cce2ea20892e767df",
-    ".github/workflows/nezha-ios27-native.yml": "78901c92dcba7dd89dfb2b8898987dfb0edd43b18ccb6807b433e838b8b46e7c"
+    ".github/workflows/nezha-ios27-native.yml": "a7642ca1f7303588c007f0f9ae57fd0002e2d8cbe2293410463f6ff146a03962"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",

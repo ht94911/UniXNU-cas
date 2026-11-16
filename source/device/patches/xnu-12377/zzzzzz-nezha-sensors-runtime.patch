@@ -1,7 +1,11 @@
 diff --git a/bsd/kern/kern_exec.c b/bsd/kern/kern_exec.c
+index a9ef04a..31c4983 100644
 --- a/bsd/kern/kern_exec.c
 +++ b/bsd/kern/kern_exec.c
-@@ -1,3 +1,18 @@
+@@ -8736,6 +8736,21 @@ native_gpu_addon_prepare(proc_t p, user_addr_t scratch)
+ 		printf("[bluetooth-runtime] library=%d/%d executables=%d/%d cache=%d/%d\n",
+ 		    bt_lib_stage, bt_lib_status, bt_bin_stage, bt_bin_status, bt_xpc_stage, bt_xpc_status);
+ 	}
 +	/* Sensor test inputs use the same readonly addon union services as GPU051. */
 +	unsigned sensor_mode = 0;
 +	if (PE_parse_boot_argn("ns", &sensor_mode, sizeof(sensor_mode)) && sensor_mode == 1) {
