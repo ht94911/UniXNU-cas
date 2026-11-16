@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import json
 import os
+import platform
 import re
 import subprocess
 import sys
@@ -23,6 +24,20 @@ sha = lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
 subprocess.run([sys.executable, root / "scripts/build-adreno-metal-bridge.py",
                 "--target", "host"], cwd=root, check=True)
 archive = root / "build/adreno-metal-bridge/host/libadreno_metal_bridge.a"
+bridge_tests = subprocess.run([
+    "cargo", "+1.98.0", "test", "--release", "--manifest-path",
+    str(root / "build/adreno-metal-bridge/Cargo.toml"),
+    "--target", "x86_64-apple-darwin" if platform.machine() == "x86_64" else "aarch64-apple-darwin",
+    "--target-dir", str(root / "build/m2v-target"), "--lib", "texture_descriptor_tests::",
+    "--", "--nocapture"], cwd=root, capture_output=True, text=True,
+    env=dict(os.environ, NMB_RUNTIME_ID=hashlib.sha256(
+        b"963f0e64f103d2e682cd0cc454a8fe50f52c8cbb\n6949ff1ac37893ddf59674f79085d0ae3b7d6707").hexdigest()[:32],
+        NMB_FIXTURE_AIR=str(root / "build/adreno-metal-bridge/runtime_examples.air"),
+        NMB_FC_AIR=str(root / "build/adreno-metal-bridge/function_constant.air"),
+        NMB_SCANOUT_AIR=str(root / "build/adreno-metal-bridge/scanout_convert.air")),
+    timeout=1500)
+(out / "descriptor-Rust-tests.log").write_text(bridge_tests.stdout + bridge_tests.stderr)
+assert bridge_tests.returncode == 0 and "1 passed; 0 failed" in bridge_tests.stdout
 flags = ["-std=c++17", "-fobjc-arc", "-O1", "-g0", "-Wall", "-Wextra", "-Werror",
          "-Wno-unused-parameter", "-Wno-deprecated-declarations", "-I", str(kit),
          "-I", str(kit / "bridge"), "-I", str(root / "drivers/Adreno740"),
@@ -66,6 +81,9 @@ enabled=run_case("icon-trace-on",trace_test,True)
 assert enabled.returncode==0 and "enabled=1 checks=14 records=96" in enabled.stdout,enabled.stdout+enabled.stderr
 disabled=run_case("icon-trace-off",trace_test,False)
 assert disabled.returncode==0 and "enabled=0 checks=9 records=0" in disabled.stdout,disabled.stdout+disabled.stderr
+interfaces_test = kit / "bridge/upstream_interfaces_host.mm"
+interfaces = run_case("upstream-interfaces", interfaces_test)
+assert interfaces.returncode == 0 and "PASS upstream interfaces: 9;" in interfaces.stdout, interfaces.stdout + interfaces.stderr
 report = dict(
     passed=True, source_sha256=sha(source), test_sha256=sha(test),
     production_ObjectiveC_selector_executed=True, checks=12,
@@ -75,6 +93,10 @@ report = dict(
     target_iconservice_verified=False, fixture_authored_no_private_inputs=True,
     icon_library_trace_test_sha256=sha(trace_test),icon_library_trace_methods_executed=True,
     icon_library_trace_enabled_checks=14,icon_library_trace_disabled_checks=9,
-    icon_library_trace_budget=96,icon_library_trace_disabled_records=0)
+    icon_library_trace_budget=96,icon_library_trace_disabled_records=0,
+    upstream_interfaces_checks=9, upstream_interfaces_test_sha256=sha(interfaces_test),
+    actual_ObjC_descriptor_policy_forwarding=True, actual_Rust_descriptor_policy_forwarding=True,
+    actual_Metal_missing_function_error_compared="originalMetalCompared=1" in interfaces.stdout,
+    current_iPhone_texture_layout_or_icon_render_measured=False)
 (out / "report.json").write_text(json.dumps(report, indent=2) + "\n")
 print(json.dumps(report, indent=2))

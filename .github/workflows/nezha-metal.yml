@@ -1,7 +1,7 @@
-name: nezha iPhone27 tiled mip input and icon program evidence 042
+name: nezha iPhone27 upstream texture policy and CoreImage lookup 044
 on:
   push:
-    branches: [codex/ios27-gpu51-foreground-metal043-20261116]
+    branches: [codex/ios27-gpu52-interfaces-metal044-20261116]
   workflow_dispatch:
 permissions:
   contents: read

@@ -79,6 +79,11 @@ with tempfile.TemporaryDirectory(prefix='frontend-target-') as temp:
     before = work / 'original/NativeBridgeMetalFrontend.mm'
     before.parent.mkdir()
     before.write_bytes(original)
+    # The baseline frontend used the baseline descriptor layout. Its headers
+    # must accompany it when current fields are added across the bridge ABI.
+    (before.parent / 'bridge').mkdir()
+    (before.parent / 'bridge/NativeMetalObjects.h').write_bytes(subprocess.check_output([
+        'git', '-C', str(kit), 'show', '816022307852de7e1741ac05ae9111982318763f:bridge/NativeMetalObjects.h']))
     for target in ('arm64-apple-ios17.0', 'arm64e-apple-ios27.0'):
         hashes, handlers = [], []
         for label, path in (('before', before), ('after', source)):

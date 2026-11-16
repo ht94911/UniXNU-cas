@@ -1,0 +1,243 @@
+diff --git a/NativeBridgeMetalFrontend.mm b/NativeBridgeMetalFrontend.mm
+index de00b91..8d41320 100644
+--- a/NativeBridgeMetalFrontend.mm
++++ b/NativeBridgeMetalFrontend.mm
+@@ -1423,7 +1423,7 @@ static uint64_t packedSwizzle(MTLTextureSwizzleChannels s) {
+ static bool textureDescriptor(MTLTextureDescriptor *d,NmbTextureDescriptor *out) {
+  if(!d)return false;
+  *out={(uint64_t)d.textureType,(uint64_t)d.pixelFormat,d.width,d.height,d.depth,d.mipmapLevelCount,d.sampleCount,d.arrayLength,(uint64_t)d.usage,(uint64_t)d.resourceOptions,
+-       textureRotation(d),textureFlag(d,"framebufferOnly"),textureFlag(d,"isDrawable"),packedSwizzle(d.swizzle)};
++       textureRotation(d),textureFlag(d,"framebufferOnly"),textureFlag(d,"isDrawable"),packedSwizzle(d.swizzle),(uint64_t)d.allowGPUOptimizedContents};
+  if(singleSample() && out->samples>1) {
+   out->samples=1;
+   if(out->type==MTLTextureType2DMultisample)out->type=MTLTextureType2D;
+@@ -1463,6 +1463,7 @@ static bool textureDescriptor(MTLTextureDescriptor *d,NmbTextureDescriptor *out)
+ - (MTLCPUCacheMode)cpuCacheMode {return (MTLCPUCacheMode)((_descriptor.options&MTLResourceCPUCacheModeMask)>>MTLResourceCPUCacheModeShift);}
+ - (BOOL)isFramebufferOnly {return _descriptor.framebuffer_only!=0;}
+ - (BOOL)isDrawable {return _descriptor.is_drawable!=0;}
++- (BOOL)allowGPUOptimizedContents {return _descriptor.allow_gpu_optimized_contents!=0;}
+ - (IOSurfaceRef)iosurface {return _surface;}
+ - (NSUInteger)iosurfacePlane {return 0;}
+ - (id<MTLBuffer>)buffer {return _surface?nil:(id<MTLBuffer>)_buffer;}
+@@ -1747,6 +1748,20 @@ static std::string quartzCoreCallers();
+ // no runtime handle: it is stitched from its bitcode (functionBitcode) and refused as a pipeline's own function.
+ static NBFunction *ciKernelFunction(NBLibrary *library,NSString *name);
+ static bool forEachLibraryEntry(NBLibrary *library,const std::function<bool(const std::string &,int)> &visit);
++static NSError *functionLookupError(NBLibrary *library, NSString *name, NSString *detail) {
++ const char *wanted = name.UTF8String;
++ bool found = false;
++ // Core Image can search several libraries for the same kernel. Keep a missing
++ // function distinguishable from a failure to specialize a function that exists.
++ if(wanted && forEachLibraryEntry(library,[&](const std::string &entry,int) {
++  found = entry == wanted;
++  return !found;
++ }) && !found) {
++  return [NSError errorWithDomain:MTLLibraryErrorDomain code:MTLLibraryErrorFunctionNotFound
++                         userInfo:@{NSLocalizedDescriptionKey:detail}];
++ }
++ return nbError(detail);
++}
+ @implementation NBLibrary
+ - (void)dealloc {DetailSpan timing(9,(uintptr_t)_handle);nmb_library_release(_handle);}
+ - (id<MTLFunction>)newFunctionWithName:(NSString *)name constantValues:(MTLFunctionConstantValues *)values error:(NSError **)error {
+@@ -1793,7 +1808,8 @@ static bool forEachLibraryEntry(NBLibrary *library,const std::function<bool(cons
+  }
+  if(!handle){
+   noteProblem([NSString stringWithFormat:@"specialized function %@: %@",name,lastError()]);
+-  if(error)*error=nbError([NSString stringWithFormat:@"specialized function: %@",lastError()]);return nil;
++  if(error)*error=functionLookupError(self,name,[NSString stringWithFormat:@"specialized function: %@",lastError()]);
++  return nil;
+  }
+  NBFunction *function=[NBFunction new];function.handle=handle;function.name=name;function.sourceName=name;function.functionType=(MTLFunctionType)nmb_function_type(handle);
+  function.constantsText=text;function.library=self;function.constantValues=snapshot;if(error)*error=nil;return (id<MTLFunction>)function;
+@@ -1808,7 +1824,10 @@ static bool forEachLibraryEntry(NBLibrary *library,const std::function<bool(cons
+  DetailSpan timing(22,(uintptr_t)(__bridge void *)self,(uintptr_t)__func__);
+  if(!d.name){if(error)*error=nbError(@"a function name is required");return nil;}
+  NBFunction *function=(NBFunction *)(d.constantValues?[self newFunctionWithName:d.name constantValues:d.constantValues error:error]:[self newFunctionWithName:d.name]);
+- if(!function){if(error && !d.constantValues)*error=nbError([NSString stringWithFormat:@"function %@: %@",d.name,lastError()]);return nil;}
++ if(!function){
++  if(error && !d.constantValues)*error=functionLookupError(self,d.name,[NSString stringWithFormat:@"function %@: %@",d.name,lastError()]);
++  return nil;
++ }
+  if(d.specializedName) {
+   if(function.handle && !nmb_function_set_specialized_name(function.handle,d.specializedName.UTF8String)) {
+    if(error)*error=nbError(lastError());return nil;
+diff --git a/README.md b/README.md
+index 7f7eaaf..c47b67e 100644
+--- a/README.md
++++ b/README.md
+@@ -1,5 +1,11 @@
+ # AdrenoMetal
+ 
++GPU052 carries upstream fixes 56ce432 and 6d4a3f3: texture descriptors and views
++preserve `allowGPUOptimizedContents`, and absent library functions report
++`MTLLibraryErrorFunctionNotFound` so a caller can continue its library search.
++The iPhone/A840 adaptations, GPU051 foreground allocation sizing, and existing
++multi-level transfer paths remain in place.
++
+ Metal frontend through metal2vulkan and Turnip.
+ 
+ The frontend uses metal2vulkan and Turnip with the kernel GPU interface and selected OS ABI. GPU composition has been verified on sheng with A740.
+diff --git a/bridge/NativeMetalObjects.h b/bridge/NativeMetalObjects.h
+index b93b96b..c867ed4 100644
+--- a/bridge/NativeMetalObjects.h
++++ b/bridge/NativeMetalObjects.h
+@@ -106,6 +106,7 @@ struct NmbTextureDescriptor {
+     uint64_t type, format, width, height, depth, levels, samples, array_length, usage, options;
+     uint64_t rotation, framebuffer_only, is_drawable;
+     uint64_t swizzle; /* RGBA bytes, bit 32 marks an explicit value; zero means identity */
++    uint64_t allow_gpu_optimized_contents;
+ };
+ /* Heaps: type 0 automatic / 1 placement; offset UINT64_MAX asks an automatic heap to place the resource. */
+ NmbHeap *nmb_heap_new(NmbDevice *, uint64_t type, uint64_t size, uint64_t options);
+diff --git a/bridge/NativeMetalObjects.rs b/bridge/NativeMetalObjects.rs
+index 0fef320..cc8a0a2 100644
+--- a/bridge/NativeMetalObjects.rs
++++ b/bridge/NativeMetalObjects.rs
+@@ -1163,6 +1163,7 @@ pub struct NmbTextureDescriptor {
+     pub framebuffer_only: u64,
+     pub is_drawable: u64,
+     pub swizzle: u64,
++    pub allow_gpu_optimized_contents: u64,
+ }
+ 
+ // Bit 32 distinguishes an explicit all-zero swizzle from an omitted descriptor field.
+@@ -1192,10 +1193,32 @@ fn texture_descriptor(d: *const NmbTextureDescriptor) -> Result<TextureDescripto
+     out.rotation = d.rotation;
+     out.framebuffer_only = d.framebuffer_only != 0;
+     out.is_drawable = d.is_drawable != 0;
++    out.allow_gpu_optimized_contents = d.allow_gpu_optimized_contents != 0;
+     if let Some(swizzle) = swizzle_of(d.swizzle)? { out.swizzle = swizzle; }
+     Ok(out)
+ }
+ 
++#[cfg(test)]
++mod texture_descriptor_tests {
++    use super::*;
++
++    #[test]
++    fn heap_layout_preserves_the_callers_optimization_policy() {
++        let mut descriptor = NmbTextureDescriptor {
++            kind: TextureType::Type2D.as_raw() as u64,
++            format: PixelFormat::RGBA16Float.as_raw() as u64,
++            width: 242, height: 242, depth: 1, levels: 1, samples: 1, array_length: 1,
++            usage: TextureUsage::SHADER_READ.as_raw() as u64,
++            options: ResourceOptions::private().raw(),
++            rotation: 0, framebuffer_only: 0, is_drawable: 0, swizzle: 0,
++            allow_gpu_optimized_contents: 0,
++        };
++        assert!(!texture_descriptor(&descriptor).unwrap().allow_gpu_optimized_contents);
++        descriptor.allow_gpu_optimized_contents = 1;
++        assert!(texture_descriptor(&descriptor).unwrap().allow_gpu_optimized_contents);
++    }
++}
++
+ #[unsafe(no_mangle)]
+ pub extern "C" fn nmb_texture_new(device: *mut NmbDevice, descriptor: *const NmbTextureDescriptor) -> *mut NmbTexture {
+     guard(std::ptr::null_mut(), || {
+@@ -1314,6 +1337,7 @@ pub extern "C" fn nmb_texture_describe(texture: *const NmbTexture, out: *mut Nmb
+             framebuffer_only: u64::from(t.framebuffer_only()),
+             is_drawable: u64::from(t.is_drawable()),
+             swizzle: swizzle_packed(t.swizzle()),
++            allow_gpu_optimized_contents: u64::from(t.allow_gpu_optimized_contents()),
+         };
+         Ok(())
+     })
+diff --git a/bridge/interface_regressions_host.mm b/bridge/interface_regressions_host.mm
+index 00e4e8a..fe96e01 100644
+--- a/bridge/interface_regressions_host.mm
++++ b/bridge/interface_regressions_host.mm
+@@ -53,6 +53,20 @@ int main(int argc,char **argv) {@autoreleasepool {
+  td.storageMode=MTLStorageModePrivate;td.usage=MTLTextureUsageShaderRead|MTLTextureUsagePixelFormatView;
+  auto ht=[heap newTextureWithDescriptor:td];CHECK(ht);used=heap.usedSize;
+  [ht makeAliasable];CHECK(ht.isAliasable && heap.usedSize<used);
++ // Query and allocation must use the same layout policy, including texture views.
++ for(bool optimized:{false,true}) {
++  auto layout=[MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA16Float width:242 height:242 mipmapped:NO];
++  layout.storageMode=MTLStorageModePrivate;layout.usage=MTLTextureUsageShaderRead;
++  layout.allowGPUOptimizedContents=optimized;
++  auto footprint=[dev heapTextureSizeAndAlignWithDescriptor:layout];CHECK(footprint.size && footprint.align);
++  auto exact=[MTLHeapDescriptor new];exact.type=MTLHeapTypePlacement;exact.storageMode=layout.storageMode;exact.size=footprint.size;
++  auto storage=[dev newHeapWithDescriptor:exact];CHECK(storage);
++  auto placed=[storage newTextureWithDescriptor:layout offset:0];
++  CHECK(placed && placed.heap==storage && placed.allowGPUOptimizedContents==optimized);
++  CHECK(placed.allocatedSize<=storage.size);
++  auto alias=[placed newTextureViewWithPixelFormat:placed.pixelFormat];CHECK(alias && alias.allowGPUOptimizedContents==optimized);
++  auto overflow=[storage newTextureWithDescriptor:layout offset:footprint.align];CHECK(!overflow);
++ }
+  // Zero is a real swizzle, not a marker for the identity.
+  td.swizzle=MTLTextureSwizzleChannelsMake(MTLTextureSwizzleZero,MTLTextureSwizzleZero,MTLTextureSwizzleZero,MTLTextureSwizzleZero);
+  auto zero=[dev newTextureWithDescriptor:td];CHECK(zero && zero.swizzle.red==MTLTextureSwizzleZero && zero.swizzle.alpha==MTLTextureSwizzleZero);
+diff --git a/bridge/upstream_interfaces_host.mm b/bridge/upstream_interfaces_host.mm
+new file mode 100644
+index 0000000..72aa8c0
+--- /dev/null
++++ b/bridge/upstream_interfaces_host.mm
+@@ -0,0 +1,67 @@
++// SPDX-License-Identifier: MIT
++// Exercise the production descriptor bridge and missing-function fallback.
++#define main retained_extern_function_checks
++#include "extern_function_host.mm"
++#undef main
++#include <cstddef>
++
++static_assert(sizeof(NmbTextureDescriptor) == 120);
++static_assert(offsetof(NmbTextureDescriptor, allow_gpu_optimized_contents) == 112);
++
++int main() {
++    @autoreleasepool {
++        unsigned checks = 0;
++        for (bool optimized : {false, true}) {
++            auto descriptor = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA16Float
++                width:242 height:242 mipmapped:NO];
++            descriptor.storageMode = MTLStorageModePrivate;
++            descriptor.usage = MTLTextureUsageShaderRead;
++            descriptor.allowGPUOptimizedContents = optimized;
++            NmbTextureDescriptor wire{};
++            assert(textureDescriptor(descriptor, &wire));
++            assert(wire.allow_gpu_optimized_contents == uint64_t(optimized)); ++checks;
++            NBTexture *texture = [NBTexture new];
++            texture.descriptor = wire;
++            assert([(id<MTLTexture>)texture allowGPUOptimizedContents] == optimized); ++checks;
++        }
++
++        NSMutableData *storage = kernelLibraryFixture();
++        NBLibrary *library = [NBLibrary new];
++        library.storage = storage;
++        library.bytes = (const uint8_t *)storage.bytes;
++        library.length = storage.length;
++        auto descriptor = [MTLFunctionDescriptor new];
++        descriptor.name = @"absent_kernel";
++        NSError *error = nil;
++        assert(![library newFunctionWithDescriptor:descriptor error:&error]);
++        assert([error.domain isEqualToString:MTLLibraryErrorDomain] && error.code == MTLLibraryErrorFunctionNotFound); ++checks;
++        auto constants = [MTLFunctionConstantValues new];
++        error = nil;
++        assert(![library newFunctionWithName:@"absent_kernel" constantValues:constants error:&error]);
++        assert([error.domain isEqualToString:MTLLibraryErrorDomain] && error.code == MTLLibraryErrorFunctionNotFound); ++checks;
++        descriptor.name = @"kernel_fixture";
++        NBFunction *function = (NBFunction *)[library newFunctionWithDescriptor:descriptor error:&error];
++        assert(function && !error && function.library == library && function.functionType == 4); ++checks;
++        NSError *declared = functionLookupError(library, @"kernel_fixture", @"specialization failed");
++        assert(![declared.domain isEqualToString:MTLLibraryErrorDomain] && declared.code == -1); ++checks;
++        NBLibrary *malformed = [NBLibrary new];
++        NSError *invalid = functionLookupError(malformed, @"absent_kernel", @"invalid library");
++        assert(![invalid.domain isEqualToString:MTLLibraryErrorDomain]); ++checks;
++
++        id<MTLDevice> original = MTLCreateSystemDefaultDevice();
++        bool originalCompared = false;
++        if (original) {
++            NSString *source = @"#include <metal_stdlib>\nusing namespace metal; kernel void present_kernel(uint i [[thread_position_in_grid]]) {(void)i;}";
++            error = nil;
++            id<MTLLibrary> real = [original newLibraryWithSource:source options:nil error:&error];
++            assert(real && !error);
++            error = nil;
++            assert(![real newFunctionWithName:@"absent_kernel" constantValues:constants error:&error]);
++            assert([error.domain isEqualToString:MTLLibraryErrorDomain] && error.code == MTLLibraryErrorFunctionNotFound);
++            originalCompared = true;
++        }
++        printf("PASS upstream interfaces: %u; originalMetalCompared=%d descriptorBytes=%zu\n",
++            checks, int(originalCompared), sizeof(NmbTextureDescriptor));
++    }
++    return 0;
++}
