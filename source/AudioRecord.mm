@@ -126,7 +126,7 @@ int main(void)
     alarm(260);
     // Reuse the audio service's immutable per-boot property. The original
     // named process profile denies this client's kern.bootsessionuuid read.
-    while (!boot_uuid[0] && uptime_ms() < 150000) {
+    do {
         io_service_t service = IOServiceGetMatchingService(kIOMainPortDefault,
                                                            IOServiceMatching("NezhaAudio27"));
         if (service) {
@@ -142,8 +142,9 @@ int main(void)
             }
             if (value) CFRelease(value);
         }
-        if (!boot_uuid[0]) usleep(50000);
-    }
+        if (boot_uuid[0] || uptime_ms() >= 150000) break;
+        usleep(50000);
+    } while (!boot_uuid[0]);
     if (!boot_uuid[0]) return 1;
     int fd = open(result_path, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW, 0600);
     if (fd < 0) return 1;
