@@ -85,7 +85,7 @@ static void whitelist(void)
      * six one-byte registers and brake spans (8 start points). */
     unsigned brake = 0;
     for (unsigned r = 0; r < 8; ++r) brake += 8 - r;
-    CHECK(allowed == 16 + 1 + 1 + 6 + brake);
+    CHECK(allowed == 17 + 1 + 1 + 8 + brake);
     const uint8_t v80 = 0x80, v40 = 0x40, v81 = 0x81, v89 = 0x89, v84 = 0x84, v90 = 0x90, vff = 0xff, v8b = 0x8b, v01 = 0x01;
     CHECK(pgh_spmi_allowed(&s, PGH_CFG, PGH_CFG_EN_CTL, &v80, 1) && !pgh_spmi_allowed(&s, PGH_CFG, PGH_CFG_EN_CTL, &v40, 1));
     CHECK(pgh_spmi_allowed(&s, PGH_CFG, PGH_CFG_SPMI_PLAY, &v81, 1) && pgh_spmi_allowed(&s, PGH_CFG, PGH_CFG_SPMI_PLAY, &v89, 1));

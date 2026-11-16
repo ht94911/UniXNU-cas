@@ -47,7 +47,7 @@ void nz_haptics_config(PghConfig *c,const PghFactoryState *f,unsigned mode) {
      * voltage for this source candidate. All requests stop at factory2000. */
     c->hard_mv=2000;c->cap_mv=2000;c->max_play_ms=NZ_HAPTICS_MAX_MS;c->max_stream_ms=NZ_HAPTICS_MAX_MS;
     c->budget_ms=500;c->refill_permille=500;c->drv_shape=1;c->brake_shape=1;c->brake_len=0;
-    c->f0_min_dhz=1600;c->f0_max_dhz=1800;c->factory=f;c->log=1;c->autores=0;c->spmi_retry=0;
+    c->f0_min_dhz=1600;c->f0_max_dhz=1800;c->factory=f;c->log=1;c->autores=1;c->spmi_retry=0;
     static const uint8_t cycles[NZ_HAPTICS_EFFECT_COUNT]={4,6,2,3,3,6,0,2,2,2,2,2,2,2,2};
     __builtin_memcpy(c->effect_cycles,cycles,sizeof cycles);c->effects=NZ_HAPTICS_EFFECT_COUNT;
 }

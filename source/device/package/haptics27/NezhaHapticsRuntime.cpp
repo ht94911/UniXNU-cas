@@ -47,10 +47,11 @@ void *node;
 IONotifier *powerNotice;
 volatile uint32_t stats[16];
 NzHapticsStatus diagnosticStatus;
+struct Electrical {uint32_t play,power,source,vmax,amplitude,voltage_raw,current_raw,voltage_mv,current_ma,stop_reads,recoveries,vsense_ctl,isense_ctl,visense_enable,frontend_check;} diagnosticElectrical;
 bool diagnosticOwner;
 int diagnosticSnapshot(void *,char *,size_t,size_t *,unsigned *);
 int diagnosticSubmit(void *,const qud_diag_request *,char *,size_t,size_t *,unsigned *);
-static const qud_diag_provider diagnosticProvider={12,1,(1u<<QUD_SNAPSHOT)|(1u<<QUD_CONFIG)|(1u<<QUD_CANCEL),3,500,
+static const qud_diag_provider diagnosticProvider={12,1,(1u<<QUD_SNAPSHOT)|(1u<<QUD_CONFIG)|(1u<<QUD_CANCEL),4,500,
     "nezha-haptics",nullptr,diagnosticSnapshot,diagnosticSubmit};
 static_assert(sizeof(NzHapticsPacket)==40,"haptics packet ABI");
 uint64_t nowUs(void *) {uint64_t ns=0;absolutetime_to_nanoseconds(mach_absolute_time(),&ns);return ns/1000;}
@@ -156,10 +157,14 @@ int request(const NzHapticsPacket *p,uint64_t now) {
 int diagnosticSnapshot(void *,char *out,size_t capacity,size_t *bytes,unsigned *truncated) {
     if(!out || !bytes || !truncated || !hapticGate)return QUD_INVALID;
     if(!IOLockTryLock(hapticGate))return QUD_BUSY;
-    NzHapticsStatus s=diagnosticStatus;uint32_t phase=stats[0],plays=stats[4],stops=stats[5];
+    NzHapticsStatus s=diagnosticStatus;Electrical electrical=diagnosticElectrical;
+    uint32_t phase=stats[0],plays=stats[4],stops=stats[5];
     IOLockUnlock(hapticGate);
-    int n=snprintf(out,capacity,"{\"v\":1,\"cached\":true,\"ready\":%u,\"active\":%u,\"queued\":%u,\"error\":%u,\"requests\":%u,\"completed\":%u,\"cancelled\":%u,\"session\":%u,\"epoch\":%u,\"phase\":%u,\"plays\":%u,\"stops\":%u}",
-        s.ready,s.active,s.queued,s.error,s.requests,s.completed,s.cancelled,s.session,s.epoch,phase,plays,stops);
+    int n=snprintf(out,capacity,"{\"v\":1,\"cached\":true,\"ready\":%u,\"active\":%u,\"queued\":%u,\"error\":%u,\"requests\":%u,\"completed\":%u,\"cancelled\":%u,\"session\":%u,\"epoch\":%u,\"phase\":%u,\"plays\":%u,\"stops\":%u,\"electrical\":{\"play\":%u,\"power\":%u,\"source\":%u,\"vmax\":%u,\"amplitude\":%u,\"voltage_raw\":%u,\"current_raw\":%u,\"voltage_mv\":%u,\"current_ma\":%u,\"stop_reads\":%u,\"recoveries\":%u,\"vsense_ctl\":%u,\"isense_ctl\":%u,\"visense_enable\":%u,\"frontend_check\":%u},\"mechanical_verified\":false}",
+        s.ready,s.active,s.queued,s.error,s.requests,s.completed,s.cancelled,s.session,s.epoch,phase,plays,stops,
+        electrical.play,electrical.power,electrical.source,electrical.vmax,electrical.amplitude,electrical.voltage_raw,
+        electrical.current_raw,electrical.voltage_mv,electrical.current_ma,electrical.stop_reads,electrical.recoveries,
+        electrical.vsense_ctl,electrical.isense_ctl,electrical.visense_enable,electrical.frontend_check);
     *truncated=n<0 || (size_t)n>=capacity;*bytes=n<0?0:(size_t)n<capacity?(size_t)n:capacity;
     return QUD_OK;
 }
@@ -172,17 +177,17 @@ int diagnosticSubmit(void *,const qud_diag_request *r,char *out,size_t capacity,
     else if(r->op==QUD_CANCEL) {
         if(!diagnosticOwner)e=EACCES;
         else {nz_haptics_queue_close(&queue);diagnosticOwner=false;IOLockWakeup(hapticGate,&queue,false);}
-    } else if(r->op!=QUD_CONFIG || !r->arg0 || r->arg0>3)e=EINVAL;
+    } else if(r->op!=QUD_CONFIG || !r->arg0 || r->arg0>4)e=EINVAL;
     else if(queue.active_sequence || queue.count || queue.stopping)e=EBUSY;
     else if((r->arg0==1 && (!r->arg1 || r->arg1>100)) ||
             (r->arg0==2 && r->arg1>=NZ_HAPTICS_EFFECT_COUNT) ||
-            (r->arg0==3 && (!r->arg1 || r->arg1>500)))e=EINVAL;
+            (r->arg0>=3 && (!r->arg1 || r->arg1>500)))e=EINVAL;
     else if(sessionCounter==UINT32_MAX)e=EOVERFLOW;
     else {
         nz_haptics_queue_open(&queue,++sessionCounter);uint32_t epoch=0;
         e=-nz_haptics_queue_start(&queue,queue.session,&epoch);
         NzHapticsPacket p={NZ_HAPTICS_MAGIC,NZ_HAPTICS_ABI,r->arg0==2?NzHapticsEffect:NzHapticsPulse,
-            r->arg1,queue.session,epoch,queue.next_sequence,r->arg0==3?500u:250u,0};
+            r->arg1,queue.session,epoch,queue.next_sequence,r->arg0==4?1000u:r->arg0==3?500u:250u,0};
         if(!e)e=request(&p,nowUs(nullptr));
         if(!e){diagnosticOwner=true;IOLockWakeup(hapticGate,&queue,false);}
     }
@@ -244,6 +249,7 @@ void worker(void *,wait_result_t) {
     Sm8850SpmiOps io={nullptr,read32,write32,pauseUs,busAcquire,busRelease};
     PghOps ops={nullptr,nowUs,pauseUs,trace,nullptr};PghConfig cfg={};
     int quiesceError=0;
+    uint64_t electricalAt=0;
     int e=nz_haptics_bus_init(&bus,&io);
     nz_haptics_config(&cfg,nullptr,PGH_MODE_DRY);
     if(!e){e=pgh_core_init(&core,&cfg,&ops,&bus.io);if(e==1)e=0;}
@@ -319,6 +325,15 @@ void worker(void *,wait_result_t) {
             else {queue.active_sequence=0;queue.active_until_us=0;}
         }
         now=nowUs(nullptr);
+        if(diagnosticOwner && now>=electricalAt) {
+            IOLockUnlock(hapticGate);e=pgh_core_output(&core);IOLockLock(hapticGate);
+            electricalAt=now+10000;
+            diagnosticElectrical={core.last_play_reg,core.last_hpwr,core.last_driver_source,core.last_vmax_reg,
+                core.last_amplitude_reg,core.voltage_peak_raw,core.current_peak_raw,core.voltage_peak_mv,
+                core.current_peak_ma,core.stop_readbacks,core.stop_recoveries,core.vsense_ctl,core.isense_ctl,
+                core.visense_enable,core.frontend_check};
+            if(e){queue.error=(uint32_t)darwinError(e);break;}
+        }
         if(queue.active_sequence && now>=queue.active_until_us) {
             e=stopped("finished",true);if(e)break;
         }
@@ -343,7 +358,15 @@ done:
         for(unsigned i=0;i<mapped;++i)ml_io_unmap(maps[i].address,4096);
     /* An identity/ownership refusal before touching the motor is a diagnostic
      * error, not a failed stop. Only unresolved hardware blocks shutdown. */
-    IOLockLock(hapticGate);terminalStopResult=quiesceError?quiesceError:(bus.bus.pending || core.restore_pending?EIO:0);queue.error=(uint32_t)darwinError(e);enabled=false;exited=true;diagnosticStatus.ready=0;diagnosticStatus.error=queue.error;IOLockWakeup(hapticGate,&exited,false);IOLockWakeup(hapticGate,&enabled,false);IOLockUnlock(hapticGate);
+    IOLockLock(hapticGate);terminalStopResult=quiesceError?quiesceError:(bus.bus.pending || core.restore_pending?EIO:0);queue.error=(uint32_t)darwinError(e);enabled=false;exited=true;
+    if(!terminalStopResult){queue.active_sequence=0;queue.active_until_us=0;queue.stopping=0;}
+    nz_haptics_status(&queue,&diagnosticStatus);diagnosticStatus.ready=0;diagnosticStatus.error=queue.error;
+    stats[0]=(uint32_t)core.state;stats[4]=core.plays;stats[5]=core.stops;
+    diagnosticElectrical={core.last_play_reg,core.last_hpwr,core.last_driver_source,core.last_vmax_reg,
+        core.last_amplitude_reg,core.voltage_peak_raw,core.current_peak_raw,core.voltage_peak_mv,
+        core.current_peak_ma,core.stop_readbacks,core.stop_recoveries,core.vsense_ctl,core.isense_ctl,
+        core.visense_enable,core.frontend_check};
+    IOLockWakeup(hapticGate,&exited,false);IOLockWakeup(hapticGate,&enabled,false);IOLockUnlock(hapticGate);
     IOLog("NEZHA HAPTICS: worker exit error=%d mapped=%u pending=%u\n",e,mapped,bus.bus.pending);
     thread_terminate(current_thread());
     thread_block(THREAD_CONTINUE_NULL);

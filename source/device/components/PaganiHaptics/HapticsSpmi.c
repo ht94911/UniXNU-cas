@@ -180,6 +180,8 @@ int pgh_spmi_allowed(const PghSpmi *s, unsigned periph, uint8_t reg, const uint8
         case PGH_CFG_ZX_SYNC_CFG:
         case PGH_CFG_CAL_EN:
             return 1;
+        case PGH_CFG_VISENSE_PEAK_CTL:
+            return 1; /* owned peak bits updated with the original remaining bits preserved */
         default: return 0;
         }
     }
@@ -190,6 +192,9 @@ int pgh_spmi_allowed(const PghSpmi *s, unsigned periph, uint8_t reg, const uint8
         if (len != 1) return 0;
         const uint8_t v = data[0];
         switch (reg) {
+        case PGH_PTN_VSENSE_ADC_CTL:
+        case PGH_PTN_ISENSE_ADC_CTL:
+            return 1; /* stock register mask covers the complete byte */
         case PGH_PTN_FIFO_DIN_1B:
         case PGH_PTN_DIRECT_PLAY:
         case PGH_PTN_CL_VDRIVE_CTL:

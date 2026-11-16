@@ -195,6 +195,12 @@ static int hpwr_settle(PghCore *h)
 static int set_vmax(PghCore *h, uint32_t mv)
 {
     const uint8_t code = (uint8_t)(mv / PGH_VMAX_STEP_MV);
+    if(h->factory_mode) {
+        /* N0 stock haptics_set_vmax_mv uses500mV headroom for a9ohm LRA
+         * at<=3500mV; the driver cap here is2000mV. */
+        const int hdrm=wr(h,PGH_CFG,PGH_CFG_VMAX_HDRM,10);
+        if(hdrm)return hdrm;
+    }
     if (code == h->vmax_code) return 0;
     uint8_t vdrive = 0;
     int rc = update(h, PGH_CFG, PGH_CFG_ZX_SYNC_CFG, PGH_EN_PDN_ZX_TO_FAULT, PGH_EN_PDN_ZX_TO_FAULT);
@@ -246,7 +252,21 @@ static int brake_wait(PghCore *h)
         }
     }
     h->hpwr_timeouts++;
-    if (h->factory_mode) { fault(h, "stop HPWR timeout", E_BUSY); return E_BUSY; }
+    if (h->factory_mode) {
+        /* Stock waits for the brake, then resets an idle stuck module only
+         * when the actual source is not SWR. Never reset a foreign play. */
+        const int busy=factory_swr_busy(h);
+        if(busy)return busy;
+        int rc=wr(h,PGH_CFG,PGH_CFG_EN_CTL,0);
+        if(!rc){wait(h,PGH_EN_DELAY_US);rc=wr(h,PGH_CFG,PGH_CFG_EN_CTL,PGH_HAPTICS_EN);}
+        if(!rc){h->en_on=1;h->stop_recoveries++;}
+        for(unsigned i=0;!rc && i<20;++i) {
+            uint8_t value=0;wait(h,PGH_HPWR_POLL_US);rc=rd(h,PGH_CFG,PGH_CFG_HPWR_INTF,&value);
+            h->last_hpwr=value&PGH_HPWR_MASK;
+            if(!rc && h->last_hpwr==PGH_HPWR_DISABLED){wait(h,PGH_DISCHARGE_US);return 0;}
+        }
+        return rc?rc:E_BUSY;
+    }
     return toggle_enable(h);
 }
 
@@ -330,9 +350,11 @@ static int stop_play(PghCore *h, const char *why)
     rc = rd(h, PGH_CFG, PGH_CFG_SPMI_PLAY, &stopped);
     if (!rc && (stopped & PGH_PLAY_EN)) rc = E_IO;
     if (rc) { fault(h, "stop readback", rc); return rc; }
+    h->last_play_reg=stopped;h->stop_readbacks++;
+    rc = brake_wait(h);
+    if(rc){fault(h,"stop power readback",rc);return rc;}
     h->state = PGH_ST_IDLE;
     h->stops++;
-    rc = brake_wait(h);
     if (!rc && fifo) rc = update(h, PGH_PTN, PGH_PTN_FIFO_PLAY_RATE, PGH_FIFO_RATE_MASK, PGH_RATE_T_LRA);
     if (!rc && fifo && !h->factory_mode) rc = update(h, PGH_CFG, PGH_CFG_CAL_EN, PGH_CAL_RC_CLK_MASK, PGH_CAL_RC_CLK_AUTO);
     if (!rc) rc = wr(h, PGH_CFG, PGH_CFG_VMAX_HDRM, (uint8_t)(PGH_HDRM_DEFAULT_MV / PGH_VMAX_STEP_MV));   /* HAP530: back to 1.5 V */
@@ -404,6 +426,13 @@ static int trigger(PghCore *h, uint8_t src, int brake, int next_state)
     h->brake_on = (uint8_t)(brake ? 1 : 0);
     if (!rc) rc = wr(h, PGH_CFG, PGH_CFG_SPMI_PLAY, (uint8_t)(PGH_PLAY_EN | (brake ? PGH_BRAKE_EN : 0) | src));
     if (rc) return rc;
+    uint8_t actual=0;
+    rc=rd(h,PGH_CFG,PGH_CFG_SPMI_PLAY,&actual);
+    if(rc)return rc;
+    h->last_play_reg=actual;
+    if((actual&(PGH_PLAY_EN|PGH_PAT_SRC_MASK))!=(PGH_PLAY_EN|src)) {
+        fault(h,"start readback",E_IO);return E_IO;
+    }
     h->state = next_state;
     h->t_start = now(h);
     h->plays++;
@@ -881,9 +910,22 @@ static int factory_init(PghCore *h)
     if(!rc)rc=rd(h,PGH_CFG,PGH_CFG_VMAX,&h->saved_vmax);
     if(!rc)rc=rd(h,PGH_CFG,PGH_CFG_VMAX_HDRM,&h->saved_headroom);
     if(!rc)rc=rd(h,PGH_PTN,PGH_PTN_FIFO_EMPTY_CFG,&h->saved_threshold);
+    if(!rc)rc=rd(h,PGH_PTN,PGH_PTN_VISENSE_EN,&play);
+    h->visense_on=(uint8_t)!!(play&0x80u);
+    if(!rc && h->visense_on)rc=rd(h,PGH_PTN,PGH_PTN_VSENSE_ADC_CTL,&h->saved_vsense);
+    if(!rc && h->visense_on)rc=rd(h,PGH_PTN,PGH_PTN_ISENSE_ADC_CTL,&h->saved_isense);
+    if(!rc && h->visense_on)rc=rd(h,PGH_CFG,PGH_CFG_VISENSE_PEAK_CTL,&h->saved_peak);
     if(rc)return rc;
     if((h->saved_cal&PGH_CAL_RC_CLK_MASK)!=f->rc_mode)return E_INVAL;
     h->restore_pending=1;
+    /* HAP530 runtime_resume opens both V/I channels. Android shutdown can
+     * leave its module enable bit set while these channels remain gated. */
+    if(h->visense_on) {
+        rc=wr(h,PGH_PTN,PGH_PTN_VSENSE_ADC_CTL,0xffu);
+        if(!rc)rc=wr(h,PGH_PTN,PGH_PTN_ISENSE_ADC_CTL,0xffu);
+        if(!rc)rc=update(h,PGH_CFG,PGH_CFG_VISENSE_PEAK_CTL,0xd0u,0xc0u);
+        if(rc)return rc;
+    }
     /* factory calibration is already in the volatile block; only the period
      * is reconstructed from the board's qualified state. No RC/NVM write. */
     rc=write_tlra(h,f->t_lra_us);
@@ -1049,7 +1091,31 @@ int pgh_core_quiesce(PghCore *h)
 {
     if(!h)return E_INVAL;
     int rc=0;
-    if(h->state==PGH_ST_FAULT)return h->fault_rc ? h->fault_rc : E_IO;
+    if(h->state==PGH_ST_FAULT) {
+        /* A fault prevents new playback. A successful terminal STOP is still
+         * possible after an HPWR timeout, and must use actual readback. */
+        uint8_t play=PGH_PLAY_EN,power=1;
+        int stop=pgh_spmi_read(&h->spmi,PGH_CFG,PGH_CFG_SPMI_PLAY,&play,1);
+        /* A bus failure stays closed; do not restore configuration through it. */
+        if(h->spmi.closed)return h->fault_rc?h->fault_rc:E_IO;
+        if(!stop && (play&PGH_PLAY_EN))stop=wr(h,PGH_CFG,PGH_CFG_SPMI_PLAY,0);
+        if(!stop)stop=factory_swr_busy(h);
+        /* Stock suspend_config stops playback and disables the module. The
+         * source check above protects a live SoundWire consumer. */
+        if(!stop)stop=wr(h,PGH_CFG,PGH_CFG_EN_CTL,0);
+        if(stop)return stop;
+        h->en_on=0;
+        for(unsigned attempt=0;attempt<100;++attempt) {
+            wait(h,PGH_HPWR_POLL_US);
+            stop=pgh_spmi_read(&h->spmi,PGH_CFG,PGH_CFG_HPWR_INTF,&power,1);
+            if(stop || !(power&PGH_HPWR_MASK))break;
+        }
+        if(stop || (power&PGH_HPWR_MASK))return stop?stop:E_BUSY;
+        stop=pgh_spmi_read(&h->spmi,PGH_CFG,PGH_CFG_SPMI_PLAY,&play,1);
+        if(stop || (play&PGH_PLAY_EN))return stop?stop:E_IO;
+        h->last_play_reg=play;h->last_hpwr=power&PGH_HPWR_MASK;h->stop_readbacks++;
+        h->state=PGH_ST_IDLE;
+    }
     if(h->state==PGH_ST_OFF || h->state==PGH_ST_DRY)return 0;
     rc=stop_play(h,"quiesce");
     if(!rc && h->factory_mode && h->restore_pending) {
@@ -1060,6 +1126,9 @@ int pgh_core_quiesce(PghCore *h)
         if(!rc)rc=wr(h,PGH_CFG,PGH_CFG_AUTORES_CFG,h->saved_autores);
         if(!rc)rc=wr(h,PGH_CFG,PGH_CFG_DRV_WF_SEL,h->saved_wave);
         if(!rc)rc=wr(h,PGH_PTN,PGH_PTN_FIFO_EMPTY_CFG,h->saved_threshold);
+        if(!rc && h->visense_on)rc=wr(h,PGH_PTN,PGH_PTN_VSENSE_ADC_CTL,h->saved_vsense);
+        if(!rc && h->visense_on)rc=wr(h,PGH_PTN,PGH_PTN_ISENSE_ADC_CTL,h->saved_isense);
+        if(!rc && h->visense_on)rc=wr(h,PGH_CFG,PGH_CFG_VISENSE_PEAK_CTL,h->saved_peak);
         /* VMAX stays within this driver's cap; factory values above that cap
          * are not a request to raise voltage at teardown. */
         if(!rc && h->saved_vmax<=h->spmi.vmax_code_max)rc=set_vmax(h,(uint32_t)h->saved_vmax*PGH_VMAX_STEP_MV);
@@ -1071,6 +1140,28 @@ int pgh_core_quiesce(PghCore *h)
     }
     if(rc){fault(h,"quiesce",rc);return rc;}
     h->state=PGH_ST_OFF;return 0;
+}
+
+int pgh_core_output(PghCore *h)
+{
+    if(!h || h->state==PGH_ST_DRY || h->state==PGH_ST_OFF)return E_NODEV;
+    uint8_t value=0,msb=0,lsb=0,v[2]={0},i[2]={0};
+    int rc=rd(h,PGH_CFG,PGH_CFG_SPMI_PLAY,&value);h->last_play_reg=value;
+    if(!rc){rc=rd(h,PGH_CFG,PGH_CFG_HPWR_INTF,&value);h->last_hpwr=value&PGH_HPWR_MASK;}
+    if(!rc){rc=status_data(h,5,&msb,&lsb);h->last_driver_source=lsb&7u;}
+    if(!rc){rc=rd(h,PGH_CFG,PGH_CFG_VMAX,&value);h->last_vmax_reg=value;}
+    if(!rc){rc=rd(h,PGH_PTN,PGH_PTN_DIRECT_PLAY,&value);h->last_amplitude_reg=value;}
+    if(!rc){rc=rd(h,PGH_PTN,PGH_PTN_VISENSE_EN,&value);h->visense_enable=value;}
+    if(!rc){rc=rd(h,PGH_PTN,PGH_PTN_VSENSE_ADC_CTL,&value);h->vsense_ctl=value;}
+    if(!rc){rc=rd(h,PGH_PTN,PGH_PTN_ISENSE_ADC_CTL,&value);h->isense_ctl=value;}
+    if(!rc){rc=rd(h,PGH_CFG,0xb8,&value);h->frontend_check=value;}
+    if(!rc && h->visense_on)rc=rdn(h,PGH_CFG,PGH_CFG_VSENSE_PEAK,v,2);
+    if(!rc && h->visense_on)rc=rdn(h,PGH_CFG,PGH_CFG_ISENSE_PEAK,i,2);
+    if(!rc){h->voltage_peak_raw=((uint32_t)(v[1]&63u)<<8)|v[0];
+        h->current_peak_raw=((uint32_t)(i[1]&31u)<<8)|i[0];
+        h->voltage_peak_mv=h->voltage_peak_raw*50u/64u;
+        h->current_peak_ma=h->current_peak_raw*1000u/4096u;}
+    return rc;
 }
 
 void pgh_core_export(const PghCore *h, int32_t w[16])

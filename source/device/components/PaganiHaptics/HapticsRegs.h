@@ -67,6 +67,12 @@
 #define   PGH_PAT_SRC_MASK         0x07u
 #define   PGH_SRC_FIFO             0u
 #define   PGH_SRC_DIRECT           1u
+#define PGH_CFG_VISENSE_PEAK_CTL   0xc7u
+#define PGH_CFG_VSENSE_PEAK        0xc8u /* LSB/MSB, 50mV / 64 */
+#define PGH_CFG_ISENSE_PEAK        0xcau /* LSB/MSB, 1000mA / 4096 */
+#define PGH_PTN_VISENSE_EN         0x46u
+#define PGH_PTN_VSENSE_ADC_CTL     0x68u
+#define PGH_PTN_ISENSE_ADC_CTL     0x69u
 #define PGH_CFG_BRAKE_MODE_CFG     0x50u   /* 7:6 mode (0 open loop), 3:2 sine gain, 1:0 brake shape */
 #define   PGH_BRAKE_CFG_MASK       0xcfu
 #define PGH_CFG_TLRA_OL_HIGH       0x5cu   /* 3:0, with LOW: the open-loop LRA period in 5 us steps */

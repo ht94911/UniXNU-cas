@@ -33,7 +33,7 @@ typedef struct {
     int fail_writes_after;        /* the write after this many more fails (-1: never) */
     int fail_repeat;              /* that many more writes after it fail too */
     uint32_t fail_status;         /* the status word a failing write gets */
-    int never_done, obs_fail, hpwr_stuck, sc_persistent;
+    int never_done, obs_fail, hpwr_stuck, sc_persistent, hpwr_until_reset;
     int obs_drops;                /* the next observer reads the arbiter drops */
     int owner_after_drop;         /* a dropped write hands the channel to another EE */
     /* FIFO and playback */
@@ -129,7 +129,7 @@ static inline uint8_t m_read(Model *m, int p, uint8_t reg)
             return reg == PGH_CFG_STATUS_DATA_MSB ? msb : lsb;
         }
         if (reg == PGH_CFG_HPWR_INTF) {
-            if (m->hpwr_stuck) return 1;
+            if (m->hpwr_stuck || m->hpwr_until_reset) return 1;
             return (m->playing || m->now_us < m->brake_until_us) ? PGH_HPWR_READY : PGH_HPWR_DISABLED;
         }
     }
@@ -138,6 +138,7 @@ static inline uint8_t m_read(Model *m, int p, uint8_t reg)
 
 static inline void m_write(Model *m, int p, uint8_t reg, uint8_t v)
 {
+    if(p==PGH_CFG && reg==PGH_CFG_EN_CTL && !v)m->hpwr_until_reset=0;
     if (p == PGH_CFG && reg == PGH_CFG_SPMI_PLAY) {
         const int was = m->playing;
         m->reg[p][reg] = v;

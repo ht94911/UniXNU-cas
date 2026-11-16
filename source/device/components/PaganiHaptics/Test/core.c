@@ -475,6 +475,50 @@ static void factory_lifecycle(void)
     CHECK(m_find(&m,0,PGH_CFG,PGH_CFG_VMAX)<0);
 }
 
+static void factory_runtime_and_fault_exit(void)
+{
+    static Model m;
+    m_init(&m);
+    PghFactoryState f={5723,570,4,0x15,0x89,1};
+    PghConfig cfg=m_config(PGH_MODE_ON);cfg.factory=&f;
+    cfg.hard_mv=cfg.cap_mv=2000;cfg.brake_len=0;cfg.autores=1;
+    cfg.max_play_ms=cfg.max_stream_ms=500;
+    m.reg[PGH_CFG][PGH_CFG_CAL_EN]=4;m.reg[PGH_CFG][PGH_CFG_SPMI_PLAY]=0;
+    m.reg[PGH_PTN][PGH_PTN_VISENSE_EN]=0x80;
+    m.reg[PGH_PTN][PGH_PTN_VSENSE_ADC_CTL]=0;
+    m.reg[PGH_PTN][PGH_PTN_ISENSE_ADC_CTL]=0;
+    m.reg[PGH_CFG][PGH_CFG_VISENSE_PEAK_CTL]=0;
+    PghSpmiIo io;
+    CHECK(init_with(&m,cfg,&io)==0 && core.visense_on);
+    CHECK(m.reg[PGH_PTN][PGH_PTN_VSENSE_ADC_CTL]==0xff &&
+          m.reg[PGH_PTN][PGH_PTN_ISENSE_ADC_CTL]==0xff);
+    CHECK(m.reg[PGH_CFG][PGH_CFG_VISENSE_PEAK_CTL]==0xc0);
+    CHECK(command(PGH_CMD_CONSTANT,500,300,0)==0);
+    CHECK(core.last_play_reg==0x81 && (m.reg[PGH_CFG][PGH_CFG_AUTORES_CFG]&0x80));
+    /* Electrical zero is still zero despite the command/PLAY_EN readback. */
+    CHECK(pgh_core_output(&core)==0 && core.voltage_peak_raw==0 && core.current_peak_raw==0);
+    m.reg[PGH_CFG][PGH_CFG_VSENSE_PEAK]=0x00;m.reg[PGH_CFG][PGH_CFG_VSENSE_PEAK+1]=0x0a;
+    m.reg[PGH_CFG][PGH_CFG_ISENSE_PEAK]=0;m.reg[PGH_CFG][PGH_CFG_ISENSE_PEAK+1]=2;
+    CHECK(pgh_core_output(&core)==0 && core.voltage_peak_mv==2000 && core.current_peak_ma==125);
+    m.hpwr_until_reset=1;
+    CHECK(command(PGH_CMD_STOP,0,0,0)==0 && core.state==PGH_ST_IDLE && !m.playing);
+    CHECK(core.stop_recoveries==1 && core.stop_readbacks==1);
+    CHECK(pgh_core_quiesce(&core)==0 && core.state==PGH_ST_OFF);
+    CHECK(m.reg[PGH_PTN][PGH_PTN_VSENSE_ADC_CTL]==0 && m.reg[PGH_PTN][PGH_PTN_ISENSE_ADC_CTL]==0);
+    CHECK(m_find(&m,0,PGH_CFG,PGH_CFG_CAL_EN)<0 &&
+          m_find(&m,0,PGH_PTN,PGH_PTN_BRAKE_AMP)<0);
+    /* An unrecovered power timeout cannot claim STOP completed; terminal
+     * suspend can retry readback after the external state becomes idle. */
+    m_init(&m);m.reg[PGH_CFG][PGH_CFG_CAL_EN]=4;m.reg[PGH_CFG][PGH_CFG_SPMI_PLAY]=0;
+    CHECK(init_with(&m,cfg,&io)==0 && command(PGH_CMD_CONSTANT,500,300,0)==0);
+    m.hpwr_stuck=1;
+    CHECK(command(PGH_CMD_STOP,0,0,0)==-16 && core.state==PGH_ST_FAULT && core.stops==0);
+    CHECK(pgh_core_quiesce(&core)==-16);
+    m.hpwr_stuck=0;
+    CHECK(pgh_core_quiesce(&core)==0 && core.state==PGH_ST_OFF && !m.playing);
+    CHECK(m_find(&m,0,PGH_CFG,PGH_CFG_CAL_EN)<0);
+}
+
 int main(void)
 {
     dry_run();
@@ -489,6 +533,7 @@ int main(void)
     pgh_core_export(&core, w);
     CHECK(w[0] == 3 && w[1] == PGH_ST_IDLE);
     factory_lifecycle();
+    factory_runtime_and_fault_exit();
     printf("PASS core: %u checks\n", checks);
     return 0;
 }

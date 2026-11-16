@@ -103,6 +103,11 @@ typedef struct {
     uint8_t factory_mode, saved_en, saved_priority, saved_cal, saved_rate;
     uint8_t restore_pending;
     uint8_t saved_wave, saved_hold, saved_autores, saved_vmax, saved_headroom, saved_threshold;
+    uint8_t saved_vsense, saved_isense, saved_peak, visense_on;
+    uint32_t last_play_reg, last_hpwr, last_driver_source, last_vmax_reg, last_amplitude_reg;
+    uint32_t voltage_peak_mv, current_peak_ma, stop_readbacks, stop_recoveries;
+    uint32_t voltage_peak_raw, current_peak_raw;
+    uint32_t vsense_ctl, isense_ctl, visense_enable, frontend_check;
     /* budget */
     int64_t budget_us;
     uint64_t t_budget;
@@ -127,6 +132,8 @@ uint32_t pgh_core_poll(PghCore *c);
 int pgh_core_quiesce(PghCore *);
 /* Change an active carrier's amplitude without replacing its deadline. */
 int pgh_core_amplitude(PghCore *, uint32_t permille);
+/* Worker-only electrical evidence; these are not mechanical vibration readings. */
+int pgh_core_output(PghCore *);
 void pgh_core_export(const PghCore *c, int32_t words[16]);
 /* The drive voltage a request gets (mV): the caps, the boost clamp and the low-battery rule applied. */
 uint32_t pgh_core_vmax(PghCore *c, uint32_t request_mv);
