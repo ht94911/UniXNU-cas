@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Source-only arm64e iOS27 exact signed helper033 code-directory and own executablepath update on fixed GPU024. 033 helper preserves028 request/TLS/timeout/source, uses sameOS embeddedtemporary-sandbox plus network.client;original task ProgramArguments alone selects its ownname rather than DumpPanic Autobox. MAC fixedCDHash and executableprobe path change,retaining launch29/demand21,parent1,system-service type,CS_VALID and identity. No modem/radio/identity commands or otherdriver changes. Private originalcache/signature/helper staylocal;Mac-only native build and CMS output.",
+  "purpose": "Source-only arm64e iOS27 board WDS failure completion on fixed GPU024. 038 projects the actual pending IPv4 Start CALL_FAILED/3GPP IPv6-only cause51 into the original disconnected status completion after forwarding the original reply. Original transaction, reasons, endpoint/channel/client, unrelated responses and active IPv6 are retained. Original037 twelve signed-page fixups, helper033/network.client/runtime remain local and unchanged. No firmware/logs/identity/EFS or private Apple bytes uploaded; necessary Mac-only native build and CMS output.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "6a2eef8bc8b0a374d80f86a1e356310243af9d84",
+  "device_revision": "fc7939c0a669ebd7e820f3a0500d6a8b347447c3",
   "soc_revision": "703d7b4bb00904b4a6e5d96f9e9bf72eec170f6b",
   "xcode": "26.6",
   "files": {
@@ -115,8 +115,9 @@
     "source/device/package/baseband27/bridge/NbSimBridge.inc": "df7b218cfba4e86dd257aaf34a9a47426acf433b0834ef154e5c70ba062e3246",
     "source/device/package/baseband27/bridge/NbVoice.h": "5cb76917a2e49fedad8461e2a164f830d41908f01a116cb732f4a6333d40181f",
     "source/device/package/baseband27/bridge/NbVoiceBridge.inc": "ff17034745cb93c04353777b40cc4508ae160822c72b2a53793ccf72d6dff189",
+    "source/device/package/baseband27/bridge/NbWdsCompletion.h": "f5efd45c5c90b8cf922d3a07877dfa092dcf160479fe229d863fb5d08c9ad37b",
     "source/device/package/baseband27/bridge/QcomBaseband.h": "a72471ff90728dcae8a5878edee6e25f016e7164f46265f4959f0f1dd01f86ac",
-    "source/device/package/baseband27/bridge/coachz_baseband.cpp": "4d818a985a4991dc8ff6a4241528f8aa2f247c02f115e1b3cf4f09082ecc6d88",
+    "source/device/package/baseband27/bridge/coachz_baseband.cpp": "465c4732f8f2a2a16578ee1ccde83571528ee913617cc5b1a568f34edb3a2946",
     "source/device/package/baseband27/bridge/coachz_bb_data.h": "5c3d1fc8dd827ba162bbff15b35d11cae4d0603394deda63821204ff5e0c2216",
     "source/device/package/baseband27/bridge/coachz_bb_pdp.cpp": "cf3864858a345b1bff63c814302f5892ae5acd52796d5bbc1f5097485a202b82",
     "source/device/package/baseband27/bridge/coachz_bb_qmux.h": "56001ee59a8db8569f6bae238111036e460fa97aa1ce3628eb6f3253ba9468b9",
@@ -301,7 +302,7 @@
     "source/device/patches/xnu-12377/zzzzzz-nezha-input-chain-trace.patch": "c4d05419e7ec3af0de619754bdb6c2deb69b74d714c2219e509360ebfe1b947e",
     "source/device/patches/xnu-12377/zzzzzz-nezha-kernel-class-lock-order.patch": "cd90c61d6838f4e6a7248da81b6180f14db03d00f2f7a64f4bbe4034c0aa8dcb",
     "source/device/patches/xnu-12377/zzzzzz-nezha-sigp-startup-order.patch": "18275910b909d187e459c68f5d937cc09bc01923180141dc155aa7f4ff14aaf9",
-    "source/device/porting.toml": "e6ac0181239197484554b0840f91672797ba808d49053677dea3b2cee4269444",
+    "source/device/porting.toml": "7e427a30de5406cc4b154bc747865f219a6ab8f138ddaaf1f69e9bcfad68d3e3",
     "source/device/scripts/backlight-iphone-24A446.json": "446eb5fe6440335bfe9fca75b32f7d815ddcafbb8a3c2d7f697c1e5c3f40f6cb",
     "source/device/scripts/build-adreno840.py": "269f32fe2c97d7baf846a148fed7c111a53869486626a87ec8daab7fdfc3ab91",
     "source/device/scripts/build-boot-progress.py": "a210eb1f0443574eb1506932aa9e8181d5c73aecf99397d8cc731568bd3210ba",
@@ -333,8 +334,9 @@
     "source/device/tests/baseband27/cellular_network_runtime_test.py": "6668677676a93b6d297a1552eb9ac17ab442d43456ca1cd274ced6d4310d99ec",
     "source/device/tests/baseband27/cellular_runtime_test.py": "e7247f99919141365a212381524469ff5142a37ef85197a792c518cf815c327b",
     "source/device/tests/baseband27/cellular_task_permissions_test.py": "30180ced672e1e8d16b3ae8f3b9546e01e7567fc957b69e59fccd307970c651f",
-    "source/device/tests/baseband27/check.sh": "d354957783ab9d9d9673504b5fe456b5c50b4aebceaef8f05b44c4a779884e14",
+    "source/device/tests/baseband27/check.sh": "0c7fec7e9d73a33dc36b61166b661648dcc2b9847fb26a356ec44c8b957ccda5",
     "source/device/tests/baseband27/device_identity_test.c": "387c69ec7a01ed929b1dc83d358228f7911052e0d17dd619f33d780d57e37f8d",
+    "source/device/tests/baseband27/ims_diagnostics_test.py": "ddedb9b0ce3cca975716229192b3d2b8c123397f04470568d3d03ebae3ae5ffd",
     "source/device/tests/baseband27/ipa_smem_test.c": "5b630ac808334e0d861cf02bb71e657234ed37ee3e0f720c061ddf986e51c6af",
     "source/device/tests/baseband27/ipa_sram_test.c": "2bbcb46561c3a5db61bc34f74e5b36343f73d54a5ed30a78ab83d86d2c79ae46",
     "source/device/tests/baseband27/ipa_sram_test.py": "bc7efb1008eb074496efe74d00cb5c0d6d03ce73aceda8a8efa779d1e0f02313",
@@ -348,6 +350,8 @@
     "source/device/tests/baseband27/sim_identity_test.c": "8730f1325f630334ce68786bb64145be5a92fd818a6fc3c7fd00c39155cab4c1",
     "source/device/tests/baseband27/startup_order_test.c": "edf7bf8fdcdbaf955bc1593e33807168c2ca9d8c55120b7048858d096dea84cb",
     "source/device/tests/baseband27/voice_state_test.c": "6c5ebac19d0780856dc3712d50b25578554c8048e64e19ebb55fd048375f9c17",
+    "source/device/tests/baseband27/wds_completion_test.c": "b1df8a10c9574d83334874241fe5658f40ed9c812c84782a8307fb23b91c8631",
+    "source/device/tests/baseband27/wds_diagnostics_test.py": "886bb80ac184b1878382a443f031378e377d5ddd21b35e9ea1d68cf3a565a37d",
     "source/device/tests/cpu27-policy.c": "e1682fcec436a58085ef34ebdf82a536523f933e99a873ea1aacd7d3cd45b61c",
     "source/device/tests/input-chain-trace.c": "9170cb8675b3ce94e9e1cfd5af0aaa4f322655fb1ef177789aef888a13348669",
     "source/device/tests/input-selftest.c": "df31503c40fbbdc7c8d20757a715987c4133eabdbc32a43cbd1f4e0546f7fd72",
@@ -358,6 +362,8 @@
     "source/device/tools/baseband27/cellular_runtime.py": "7ba40acca1b2c5093dead282c549f7a61e6a9edaec9907c6d842e0e078ac773f",
     "source/device/tools/baseband27/cellular_task_permissions.py": "361b3081751524a6490e4582fd1896720ea56c5236a2afa7a9ab83d7e8c8ed86",
     "source/device/tools/baseband27/derive-ipa55.py": "9209ca9008790dcacd1888f6f57346973229a7386e21604eb27c36decdb30f22",
+    "source/device/tools/baseband27/ims_diagnostics.py": "725c63073c86fb9fff5a21801ebc608200de85be872aeef3a30a02111b4c5da2",
+    "source/device/tools/baseband27/wds_diagnostics.py": "12a491f9d05c392c6f0d7928fb2bc030c47152b824e0608959a3d6315ee297bc",
     "source/device/unixnu.lock": "20bddaafe9eabe0874d433fd101156d0db2b3e5786681062de46afe971639daf",
     "source/framework.patch": "f512d59876db84a36cfdbddc639a8c12f1e8337d4cb9e2abc2c5a1dceac05c8d",
     "source/gop.bundle": "f34490ac928abedadcb704558e1fbc59a793ba6ecb6c79f477218b4c82aecb2a",
@@ -492,6 +498,9 @@
     "cellular_helper_cdhash": "d9bbe1e10aa94f3d1b4ac296fac414246e357c3c",
     "cellular_helper_signed_no_sandbox": false,
     "cellular_helper_embedded_profile": "temporary-sandbox",
-    "cellular_helper_signed_network_client": true
+    "cellular_helper_signed_network_client": true,
+    "WDS_actual_IPv6_only_failed_Start_completion": true,
+    "WDS_original_reply_reason_and_IPv6_preserved": true,
+    "WDS_status_completion_transaction_bound": true
   }
 }

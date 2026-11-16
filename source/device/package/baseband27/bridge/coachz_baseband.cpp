@@ -27,6 +27,7 @@
 #include "coachz_bb_esim.h"
 #include "NbSim.h"
 #include "NbVoice.h"
+#include "NbWdsCompletion.h"
 #include "NbDeviceIdentity.h"
 #include "NbBoot.h"
 #include "NbNasMux.h"
@@ -1210,6 +1211,15 @@ extern "C" int coachz_baseband_qrtr(uint32_t dst_port, uint32_t src_node, uint32
       cbe_answer(&bb_esim, static_cast<const uint8_t *>(body), size, bb_now_ms());
     } else if (cbd_answer(&bb_data, r.service, static_cast<const uint8_t *>(body), size)) bb_data_step();
   } else if (r.kind == CBQ_TO_HOST) {
+    uint8_t wds_failure[21];
+    uint32_t wds_failure_bytes = 0;
+    if (r.service == CBD_SVC_WDS) {
+      const uint32_t slot = dst_port - CBQ_PORT_BASE;
+      const uint32_t owner = 1u + r.cid + (r.channel << 8);
+      if (slot < CBQ_MAX_CLIENTS && bb_pdp_owners[slot] == owner)
+        wds_failure_bytes = nb_wds_failure_completion(&bb_pdp_clients[slot],
+          static_cast<const uint8_t *>(body), size, wds_failure, sizeof wds_failure);
+    }
     if (r.service == CBD_SVC_WDS) bb_pdp_note(dst_port, r.cid, r.channel, static_cast<const uint8_t *>(body), size);
     // A temporary eUICC card-status indication is not the restored logical SIM.
     const uint8_t *sdu = static_cast<const uint8_t *>(body);
@@ -1225,6 +1235,15 @@ extern "C" int coachz_baseband_qrtr(uint32_t dst_port, uint32_t src_node, uint32
       memcpy(bb_out + CBQ_HDR, bb_fix, fixed);
       bb_push(r.channel == 0 ? CBH_QMUX1 : CBH_QMUX2, bb_out, CBQ_HDR + fixed);
     } else bb_push(r.channel == 0 ? CBH_QMUX1 : CBH_QMUX2, bb_out, r.len);
+    if (wds_failure_bytes) {
+      const uint32_t channel = r.channel == 0 ? CBH_QMUX1 : CBH_QMUX2;
+      const uint32_t queued = bb_ch[channel].count;
+      const uint32_t bytes = cbq_private_indication(CBP_STATUS, CBD_SVC_WDS, r.cid,
+        wds_failure, wds_failure_bytes, bb_out, sizeof bb_out);
+      if (bytes) bb_push(channel, bb_out, bytes);
+      printf("NEZHA WDS completion: failed IPv4 Start cid %u channel %u txn %u 3GPP cause 51 projected disconnected queued %u\n",
+        r.cid, r.channel, cbd_rd16(static_cast<const uint8_t *>(body) + 1), bb_ch[channel].count != queued);
+    }
     bb_sim_answer(r, sdu, size);   // after the original answer; the activation uses bb_out
     bb_voice_answer(r, src_node, src_port, sdu, size);
   }
