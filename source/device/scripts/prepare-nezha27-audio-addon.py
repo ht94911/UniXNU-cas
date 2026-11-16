@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: BSD-2-Clause-Patent
 """Prepare an independent audio addon/trust pair using the selected framework.
 
-Uses an already compiled and signed audio HAL plus the unchanged GPU023 addon
-and trust. No compiler, network, phone or Data/seed operation. A new output
+Uses an already compiled and signed audio HAL plus an explicitly pinned base
+addon and trust bundle. No compiler, network, phone or Data/seed operation. A new output
 directory is required. This does not enable playback or qualify a boot image.
 """
 import argparse
@@ -17,8 +17,6 @@ import shutil
 import struct
 import sys
 
-BASE_ADDON = 'ada173ed95defcf3830fbf7c36f53dfee44f1bc4c7b5de12badad1f70bd5328d'
-BASE_TRUST = '8b62c137fca0649b4246a563b808ea285af0ac273263f05b2359d354ae8a15a6'
 TOOLS = {'addon-add-dir.py': 'f7038c80ac859ab48bfc6ffeac95d746b4b4ba4e2c7f50b9d56ab78af419acd8',
          'trust-append-module.py': '5de6c87ea926e2c9b6eefba8ecf643dec656e693d24aa51d7c06f7fb0e57fa4d'}
 
@@ -51,8 +49,10 @@ def prepare(args):
     for name, digest in TOOLS.items():
         if sha(args.framework / 'scripts' / name) != digest:
             raise ValueError('selected framework helper changed: ' + name)
-    if sha(args.base_addon) != BASE_ADDON or sha(args.base_trust) != BASE_TRUST:
-        raise ValueError('inputs must be the human-selected GPU023 pair')
+    for path, digest in ((args.base_addon, args.expected_base_addon_sha256),
+                         (args.base_trust, args.expected_base_trust_sha256)):
+        if not re.fullmatch(r'[0-9a-f]{64}', digest) or sha(path) != digest:
+            raise ValueError('selected base addon/trust identity differs: ' + str(path))
     build = json.loads((args.native_output / 'build-report.json').read_text())
     bundle = args.native_output / 'NezhaAudio27.driver'
     hal = build['HAL']
@@ -76,7 +76,7 @@ def prepare(args):
     for path in staged.rglob('*'):
         if path.is_file():
             path.chmod(0o755 if path.name == 'NezhaAudio27' else 0o644)
-    addon = args.output / 'audio-gpu023.addon'
+    addon = args.output / 'audio.addon'
     helper = invoke(args.framework / 'scripts/addon-add-dir.py', args.base_addon, addon, 'audio', staged.parent)
     before = helper['read'](args.base_addon)
     after = helper['read'](addon)
@@ -84,7 +84,7 @@ def prepare(args):
         raise ValueError('duplicate addon members or an existing audio bundle')
     retained = [(n, m, b) for n, m, b in after if not n.startswith('audio/')]
     if retained != before:
-        raise ValueError('original GPU023 addon member changed')
+        raise ValueError('selected base addon member changed')
     added = [(n, m, b) for n, m, b in after if n.startswith('audio/')]
     if {n for n, _, _ in added} != {'audio/NezhaAudio27.driver/' + p for p in expected}:
         raise ValueError('wrong new audio paths')
@@ -92,12 +92,14 @@ def prepare(args):
         source = bundle / name.removeprefix('audio/NezhaAudio27.driver/')
         if body != source.read_bytes() or mode != (0o755 if source.name == 'NezhaAudio27' else 0o644):
             raise ValueError('HAL bytes or executable mode changed')
-    trust = args.output / 'audio-gpu023.trust'
+    trust = args.output / 'audio.trust'
     invoke(args.framework / 'scripts/trust-append-module.py', args.base_trust, trust, cdhash)
     old, new = modules(args.base_trust), modules(trust)
     if new[:-1] != old or len(new[-1]) != 48 or struct.unpack_from('<I', new[-1])[0] != 2 or struct.unpack_from('<I', new[-1], 20)[0] != 1 or new[-1][24:44].hex() != cdhash or new[-1][44:] != bytes([2, 0, 0, 0]):
         raise ValueError('trust module preservation/append mismatch')
-    result = {'kind': 'computer-only-playback-addon-pair', 'GPU023_members_preserved': len(before),
+    result = {'kind': 'computer-only-audio-addon-pair', 'base_addon_members_preserved': len(before),
+              'base_addon_sha256': args.expected_base_addon_sha256,
+              'base_trust_sha256': args.expected_base_trust_sha256,
               'added_HAL_files': len(added), 'original_trust_modules_preserved': len(old),
               'HAL_sha256': hal['sha256'], 'HAL_cdhash': cdhash,
               'addon_sha256': sha(addon), 'trust_sha256': sha(trust),
@@ -112,4 +114,6 @@ if __name__ == '__main__':
     p = argparse.ArgumentParser(description=__doc__)
     for name in ('framework', 'native-output', 'base-addon', 'base-trust', 'output'):
         p.add_argument('--' + name, required=True, type=Path)
+    for name in ('expected-base-addon-sha256', 'expected-base-trust-sha256'):
+        p.add_argument('--' + name, required=True)
     print(json.dumps(prepare(p.parse_args()), indent=2))

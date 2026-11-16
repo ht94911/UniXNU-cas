@@ -71,8 +71,8 @@ def build_native():
  # The current baseband shared archive already owns the six common Qcom
  # transports and both SoC resource objects. Compile only audio-specific
  # sources here so ADSP and MSS use one lock, ledger and IPCC dispatcher.
- shared={'QcomGlink.c','QcomSmem.c','QcomSmp2p.c','QcomMdt.c','QcomQmp.c','QcomRpmh.c'}
- sources=[p for folder in ['core','platform','upstream','os'] for p in sorted((SRC/folder).glob('*')) if p.suffix in ['.c','.cpp'] and not(folder=='upstream' and p.name in shared)]+[SRC/'hal/AudioClock.c']
+ excluded_shared={'QcomGlink.c','QcomSmem.c','QcomSmp2p.c','QcomMdt.c','QcomQmp.c','QcomRpmh.c'}
+ sources=[p for folder in ['core','platform','upstream','os'] for p in sorted((SRC/folder).glob('*')) if p.suffix in ['.c','.cpp'] and not(folder=='upstream' and p.name in excluded_shared)]+[SRC/'hal/AudioClock.c']
  objects=[];rows=[];errors=[]
  for source in sources:
   relative=str(source.relative_to(SRC)) if source.is_relative_to(SRC) else 'soc/'+str(source.relative_to(soc))

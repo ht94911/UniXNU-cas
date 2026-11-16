@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "046 sourcepatchcontext repair foralreadyqualified045audio102/commonMSS integration; onlyHALmount patchcontext changed. Current44longtrialindependent, noSIP/AKA/security orprivateinputsuploaded.",
+  "purpose": "047 complete native target for actual046 archive-report JSON failure. Keep the original shared-component metadata dictionary and separately name the set of six excluded shared source filenames. The50 audio sources, HAL,29 baseband/common sources and all native flags remain selected. The record and existing addon helper follow the actual source revision; addon generation and private input finalization still run only locally. Current044 long-trial logs and private inputs remain local. Necessary Mac-only build; existing CMS encrypted artifact flow.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "f245bb011fe37962caeba2238f88ecc6fb0ab825",
+  "device_revision": "fd50b47233af83ce1860967c8204370fba77c172",
   "soc_revision": "703d7b4bb00904b4a6e5d96f9e9bf72eec170f6b",
   "xcode": "26.6",
   "files": {
@@ -474,13 +474,13 @@
     "source/device/patches/xnu-12377/zzzzzz-nezha-input-chain-trace.patch": "c4d05419e7ec3af0de619754bdb6c2deb69b74d714c2219e509360ebfe1b947e",
     "source/device/patches/xnu-12377/zzzzzz-nezha-kernel-class-lock-order.patch": "cd90c61d6838f4e6a7248da81b6180f14db03d00f2f7a64f4bbe4034c0aa8dcb",
     "source/device/patches/xnu-12377/zzzzzz-nezha-sigp-startup-order.patch": "18275910b909d187e459c68f5d937cc09bc01923180141dc155aa7f4ff14aaf9",
-    "source/device/porting.toml": "c6f1c2ba00fc4165cee34a9666e49bd88887006fed0b0835993940f4b66dd715",
+    "source/device/porting.toml": "f8bc6c90f274ad917a23ce9e7909059ba14495e4adc47d60a6e2831133b0733a",
     "source/device/scripts/backlight-iphone-24A446.json": "446eb5fe6440335bfe9fca75b32f7d815ddcafbb8a3c2d7f697c1e5c3f40f6cb",
     "source/device/scripts/build-adreno840.py": "269f32fe2c97d7baf846a148fed7c111a53869486626a87ec8daab7fdfc3ab91",
     "source/device/scripts/build-boot-progress.py": "a210eb1f0443574eb1506932aa9e8181d5c73aecf99397d8cc731568bd3210ba",
     "source/device/scripts/build-gop-legacy-display-27.py": "f6f0e2cb69003dff292441f92b3e0431e5bd2519c24fbdef49e9365d519c07ea",
     "source/device/scripts/build-ios27-pmgr.py": "f88a0596937cbf0504922751a3194e3a33bba609f683a415262887d2b64241e4",
-    "source/device/scripts/build-nezha27-audio.py": "dd658c3b43d8084435a8ba8d16d7003a218efa532d6f41a38dedb2c7293d3edc",
+    "source/device/scripts/build-nezha27-audio.py": "72fe22f511d66c1cb9ba1681ef41be9d3db88334a615b55038cc2b8cf8a69ba2",
     "source/device/scripts/build-nezha27-baseband.py": "53f63f977e768776f638007a55b548064b2a3ce3df605a00ce8e041fcdf75597",
     "source/device/scripts/build-nezha27-input.py": "cd559fad30207962411546b32ffb5547ae29379e7fa992d16eaab09a39b6cd28",
     "source/device/scripts/build-nezha27-shared.py": "a9ef6e648f4ec20ca4178870013215ae754ca6bd650c941529cbdbbb2e6419c2",
@@ -500,7 +500,7 @@
     "source/device/scripts/nezha-armcpu-asm-fix.py": "3d37c0c0e3613453c901a9622bc45a077c9acbd35ffe449046fa575b3b57af3a",
     "source/device/scripts/nezha_baseband_build.py": "9e92ecde82bc7c8a4d57139ece368e1d40c078bf4f10323fc8ddfb6e4f8eb308",
     "source/device/scripts/nezha_macho_late.py": "fc5a2869ef22bd2c06702930fc0c88b0e071ab7ef851824b403234633040fc37",
-    "source/device/scripts/prepare-nezha27-audio-addon.py": "4c35184deb90d5cd552b8ca043bca51d1874dd38367813839131128d73081d8f",
+    "source/device/scripts/prepare-nezha27-audio-addon.py": "f161f66015d348ab09b8f34845dff17ea592ceef29e5180c0512af0b297132c8",
     "source/device/scripts/prepare-nezha27-baseband.py": "84f40cec2d3b48b9d372263a50e563666b025605cd132554497bd87cf93eb499",
     "source/device/scripts/qualify-armcpu-instructions.py": "dae7cb3b9faecaac7b268212bbd324ae172d3dffa0e94b06afc4581c9f4abe9b",
     "source/device/tests/baseband27/audio_shared_ipcc_test.c": "4b219ce46ec0ed5b289eb8e8c911a5710b059deaaea9e0308181038816035ccc",
@@ -683,6 +683,7 @@
     "audio_shared_archive_once": true,
     "MSS_diagnostic_ID": 9,
     "MSS_SMMU_lease": 9,
-    "native_audio_source_units": 50
+    "native_audio_source_units": 50,
+    "audio_shared_report_dictionary_preserved": true
   }
 }
