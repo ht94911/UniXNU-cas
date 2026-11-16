@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "device_revision": "45496e39fe466dba9809d7c3600cc358fbbfe24b",
+  "purpose": "Only repair ARC glob conflict in root exporter; reuse completed native001d and signed app/launcher",
+  "files": {
+    "source/QcomUserLogWire.h": "965d7aeaa4043bcceb151cd6331ce50faefe21f57ce7c91cf781a52b4917397b",
+    "source/NezhaSensorsExport.mm": "e21d821537754ee34626d8fa0f95d3d7bda1db4b0470f3580883a5af1f6b4bc0",
+    "source/QcomUserLogTransport.h": "6981a8a4863c80f0109de4e821c4ef2d72f75f143eb39f4a65a2abb2a4df4531",
+    "ci/artifact-recipient.pem": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
+    "ci/artifacts.py": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
+    "ci/exporter.py": "9048c4153955e7441cfb99ebf909a10ce5d79e88076d8103286c2c4edc75bf59",
+    ".github/workflows/nezha-ios27-native.yml": "ef7bc272c7266926ac42ca74f73031fc272833cae309c8a681dc80b5f1d91b85"
+  },
+  "phone_operations": false,
+  "private_inputs": false
+}
