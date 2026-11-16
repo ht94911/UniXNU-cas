@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "purpose": "Camera076 repairs actual075 LSDefaults classaccessor rejection: exactoriginalLSServerMain C singleton getter,originalserverstate andseedretained;no guardremoval;sourceonly CMS",
+  "device_revision": "9aef24a07b677894ed969319d73f51a9e1d50854",
+  "files": {
+    "source/NezhaCameraLSRegistration.m": "98a279367ea29fbb74177e06b4baa492b288bca00c93817ff07656a6f65ec768",
+    "source/NezhaCameraLaunch.entitlements.plist": "990976e864664ee1a6264c30806d55194650549bbf3f9ee484d80a456230e054",
+    "source/NezhaCameraLaunch.m": "c8d9d3d235f0ca5f64fc019758e79cc409f8a65e3ca68109a47e0ae7513357fd",
+    "source/camera-launch-registration.m": "97482df8e2426d8c5788ef4806d82926022ddb03d727f2b43f766ffbf151c275",
+    "source/camera-ls-registration.m": "d8e1382432d04f3c3ebeb78fba853ab0d366eaf3590cfb6169650a21e2a6c9f4"
+  },
+  "builder_sha256": "bed2cdb45c7d9494cfc5535b3f70b9d965c728cded6ccb7bd89423ca5d314466",
+  "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
+  "certificate_sha256": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
+  "kernel_build_required": false,
+  "private_inputs_uploaded": false,
+  "phone_operations": false,
+  "original_LaunchServices_method": "-[LSApplicationWorkspace openApplicationWithBundleID:] at24A4460x186e67d38",
+  "original_LaunchServices_register_method": "-[LSApplicationWorkspace registerApplicationForRebuildWithInfoDictionaries:requestContext:registrationError:] -> original LSInstallInfo and native registration",
+  "original_LaunchServices_registration_verified": true
+}
