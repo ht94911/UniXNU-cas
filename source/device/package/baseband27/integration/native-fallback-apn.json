@@ -1,0 +1,17 @@
+{
+  "image_uuid": "c16c5fc970b0301e83bb78268d40f940",
+  "board_only": true,
+  "source": "actual016 fallback D2 unsupported + native original getApnListForType zero output onnull key",
+  "fixups": [
+    {
+      "name": "Mav20QMIAttachApn fallback eHRPD no-config path",
+      "cache_file": "dyld_shared_cache_arm64e.46",
+      "file_offset": "0x26a238",
+      "original": "e2031caa",
+      "replacement": "e2031faa"
+    }
+  ],
+  "root_and_Data_not_written": true,
+  "keep_LTE_attach_C8": true,
+  "no_eHRPD_success_fabricated": true
+}

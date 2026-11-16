@@ -18,6 +18,8 @@ typedef struct {
     uint32_t address;
     uint16_t levels[QCOM_RPMH_MAX_LEVELS];
     unsigned level_count;
+    uint8_t aux[32];
+    unsigned aux_bytes;
 } QcomRpmhResource;
 
 enum {QcomRpmhOk = 0, QcomRpmhNoDb = -1, QcomRpmhMissing = -2, QcomRpmhCorrupt = -3, QcomRpmhNoLevel = -4, QcomRpmhArgument = -5};

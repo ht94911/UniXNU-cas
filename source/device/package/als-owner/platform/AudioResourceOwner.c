@@ -19,9 +19,9 @@ int na_resource_owner_init(NaResourceOwner *o,Sm8850Resources *common) {
      * assignment; a current conflicting route prevents every first write. */
     o->assignment=(Sm8850SmmuAssignment){NezhaSensorSmmuBank,NezhaSensorSmmuAsid,
         {NezhaSensorFirstSlot,NezhaSensorFirstSlot+1,NezhaSensorFirstSlot+2,NezhaSensorLastSlot},
-        {0x1005,0x1085,0x1045,0x1065}};
+        {0x1005,0x1085,0x1045,0x1065},4};
 #else
-    o->assignment=(Sm8850SmmuAssignment){7,0xfe00,{9,10,11,12},{0x1001,0x1081,0x1041,0x1061}};
+    o->assignment=(Sm8850SmmuAssignment){7,0xfe00,{9,10,11,12},{0x1001,0x1081,0x1041,0x1061},4};
 #endif
     return NA_OK;
 }

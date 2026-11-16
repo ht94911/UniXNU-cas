@@ -1,0 +1,34 @@
+--- a/package/BootWatchdogPolicy.c
++++ b/package/BootWatchdogPolicy.c
+@@ -62,8 +62,14 @@
+ }
+ 
+ // One comma-separated label at *c into the policy as a disabled key; advances *c past it.
++// /chosen/nezha-baseband = 1 (an ADT switch: the loader line, 994 of 1000 bytes, has no room): the cellular bridge runs, so
++// CommCenter must not be disabled, by sheng-lite or by sheng-disable-jobs.
++extern int nezha_baseband_enabled(void);   // package/baseband27/integration/NbBasebandStart.c
++static int baseband_on;
+ static int append_job(const char **cursor) {
+  const char *c=*cursor,*e=c;while(*e && *e!=',')++e;
++ static const char cc[]="com.apple.CommCenter";
++ if(baseband_on && (size_t)(e-c)==sizeof(cc)-1 && !memcmp(c,cc,sizeof(cc)-1)) {*cursor=*e?e+1:e;return 0;}
+  if(e>c) {
+   if(strlcat(policy,"<key>",sizeof(policy))>=sizeof(policy))return EINVAL;
+   size_t at=strlen(policy);if(at+(size_t)(e-c)+1>=sizeof(policy))return EINVAL;
+@@ -120,6 +126,7 @@
+  PE_parse_boot_argn("sheng-disable-watchdogd",&enabled,sizeof(enabled));
+  if(!PE_parse_boot_argn("sheng-disable-jobs",jobs,sizeof(jobs)))jobs[0]=0;jobs[sizeof(jobs)-1]=0;
+  int lite=0;PE_parse_boot_argn("sheng-lite",&lite,sizeof(lite));if(lite!=1)lite=0;
++ baseband_on=nezha_baseband_enabled()==1;
+  if(enabled!=1)enabled=0;
+  for(const char *c=jobs;*c;++c)if(!((*c>='a'&&*c<='z')||(*c>='A'&&*c<='Z')||(*c>='0'&&*c<='9')||*c=='.'||*c=='-'||*c==','))return EINVAL;
+  int setup=0,reset=0;
+@@ -132,7 +139,7 @@
+   return error;
+  }
+  if(setup==1)printf("sheng setup flags reset: Hello page on this boot\n");
+- if(!enabled && !jobs[0] && !lite)return 0;
++ if(!enabled && !jobs[0] && !lite && !baseband_on)return 0;   // rewrite: an older boot's file may disable CommCenter
+  policy[0]=0;strlcat(policy,policy_head,sizeof(policy));
+  if(enabled)strlcat(policy,policy_watchdogd,sizeof(policy));
+  if(lite)for(const char *c=lite_jobs;*c;) {if((error=append_job(&c)))return error;}

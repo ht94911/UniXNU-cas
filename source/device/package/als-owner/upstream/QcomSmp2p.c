@@ -25,8 +25,10 @@ static int same_name(const volatile uint32_t *entry, const char *name)
     return name[16] == 0;
 }
 
-void qcom_smp2p_init_out(QcomSmp2p *s, volatile uint32_t *out, uint16_t local_pid, uint16_t remote_pid)
+int qcom_smp2p_init_out_version(QcomSmp2p *s, volatile uint32_t *out,
+    uint16_t local_pid, uint16_t remote_pid, uint8_t version)
 {
+    if (!s || !out || !version || version > QCOM_SMP2P_MAX_VERSION) return -2;
     *s = (QcomSmp2p){0};
     s->out = out;
     s->local_pid = local_pid;
@@ -37,8 +39,14 @@ void qcom_smp2p_init_out(QcomSmp2p *s, volatile uint32_t *out, uint16_t local_pi
     out[W_PIDS] = local_pid | (uint32_t)remote_pid << 16;
     out[W_COUNTS] = QCOM_SMP2P_MAX_ENTRIES;
     barrier();
-    out[W_VERSION] = QCOM_SMP2P_VERSION | QCOM_SMP2P_FEATURE_SSR_ACK << 8;
+    out[W_VERSION] = version | QCOM_SMP2P_FEATURE_SSR_ACK << 8;
     barrier();
+    return 0;
+}
+
+void qcom_smp2p_init_out(QcomSmp2p *s, volatile uint32_t *out, uint16_t local_pid, uint16_t remote_pid)
+{
+    (void)qcom_smp2p_init_out_version(s, out, local_pid, remote_pid, QCOM_SMP2P_VERSION);
 }
 
 int qcom_smp2p_add_entry(QcomSmp2p *s, const char *name)
@@ -70,7 +78,8 @@ uint32_t qcom_smp2p_out_value(const QcomSmp2p *s, int index) {return s->out[W_EN
 int qcom_smp2p_check_in(const volatile uint32_t *in, uint16_t local_pid, uint16_t remote_pid)
 {
     if (!in || in[0] != QCOM_SMP2P_MAGIC) return -1;
-    if ((in[W_VERSION] & 0xff) != QCOM_SMP2P_VERSION) return -2;
+    const uint32_t version = in[W_VERSION] & 0xff;
+    if (!version || version > QCOM_SMP2P_MAX_VERSION) return -2;
     /* The remote writes its own pid as local. */
     if (in[W_PIDS] != (remote_pid | (uint32_t)local_pid << 16)) return -3;
     const uint32_t counts = in[W_COUNTS];
@@ -102,11 +111,21 @@ int qcom_smp2p_service(QcomSmp2p *s, const char *entry, uint32_t *value, uint32_
             if (features != ours >> 8) {s->out[W_VERSION] = (ours & 0xff) | features << 8; barrier(); ring = 1;}
             s->ssr_ack_enabled = (features & QCOM_SMP2P_FEATURE_SSR_ACK) != 0;
             s->negotiated = 1;
+        } else if ((theirs & 0xff) < (ours & 0xff)) {
+            s->out[W_VERSION] = (ours & ~0xffu) | (theirs & 0xff);
+            barrier();
+            return 1; /* ring, then wait for matching versions */
         }
     }
+    if (!s->negotiated) return ring;
     if (s->ssr_ack_enabled) {
         const uint8_t done = (s->in[W_FLAGS] & QCOM_SMP2P_FLAG_RESTART_DONE) != 0;
         if (done != s->ssr_acked) {
+            /* V2 remotes may publish values before renegotiation after SSR.
+             * Match the stock smp2p.ko reset of inbound last_value: otherwise
+             * a reasserted ready/pong bit can disappear from changed. */
+            if ((s->in[W_VERSION] & 0xff) == 2)
+                for (unsigned i = 0; i < QCOM_SMP2P_MAX_ENTRIES; ++i) s->last[i] = 0;
             s->ssr_acked = done;
             const uint32_t flags = s->out[W_FLAGS];
             s->out[W_FLAGS] = done ? flags | QCOM_SMP2P_FLAG_RESTART_ACK : flags & ~QCOM_SMP2P_FLAG_RESTART_ACK;

@@ -39,6 +39,8 @@ int sm8850_resource_quarantine(Sm8850Resources *r,unsigned slot,uint32_t owner,u
 }
 int sm8850_smmu_check_assignment(Sm8850Resources *r,const Sm8850SmmuAssignment *a) {
     uint32_t id0,id1,id2,cr,fsr;
+    unsigned count=a && a->count ? a->count:4;
+    if(count>4)return Sm8850Invalid;
     if (!r || !a || !a->asid || a->asid>65535) return Sm8850Invalid;
     if (rd(r,0,0x20,&id0) || rd(r,0,0x24,&id1) || rd(r,0,0x28,&id2) ||
         rd(r,0,0,&cr) || rd(r,0,0x48,&fsr)) return Sm8850Io;
@@ -49,17 +51,17 @@ int sm8850_smmu_check_assignment(Sm8850Resources *r,const Sm8850SmmuAssignment *
         !slots || slots>128 || !banks || banks>128 || banks>pages ||
         a->bank<stage2 || a->bank>=banks || shift!=12 || pages>128 ||
         !(id2&(1u<<12)) || (cr&0x40f)!=0x406 || fsr) return Sm8850Conflict;
-    for (unsigned j=0;j<4;++j) {
+    for (unsigned j=0;j<count;++j) {
         if (a->slot[j]>=slots || a->sid[j]>0x7fff) return Sm8850Invalid;
         for (unsigned k=0;k<j;++k) if (a->slot[j]==a->slot[k] || a->sid[j]==a->sid[k]) return Sm8850Invalid;
     }
     for (unsigned i=0;i<slots;++i) {
         uint32_t smr,s2cr;
         if (rd(r,0,0x800+4*i,&smr) || rd(r,0,0xc00+4*i,&s2cr)) return Sm8850Io;
-        for (unsigned j=0;j<4;++j) if (i==a->slot[j] && ((smr&0x80000000u) || s2cr!=0x20000)) return Sm8850Conflict;
+        for (unsigned j=0;j<count;++j) if (i==a->slot[j] && ((smr&0x80000000u) || s2cr!=0x20000)) return Sm8850Conflict;
         if (!(smr&0x80000000u)) continue;
         if (((s2cr>>16)&3)==0 && (s2cr&255)==a->bank) return Sm8850Conflict;
-        for (unsigned j=0;j<4;++j) if (!((a->sid[j]^smr)&~(smr>>16)&0x7fff)) return Sm8850Conflict;
+        for (unsigned j=0;j<count;++j) if (!((a->sid[j]^smr)&~(smr>>16)&0x7fff)) return Sm8850Conflict;
     }
     for (unsigned i=0;i<banks;++i) {
         uint32_t cbar,sctlr;uint64_t tt0,tt1;
@@ -130,7 +132,8 @@ int sm8850_smem_unlock(Sm8850Resources *r,uint32_t owner) {
 int sm8850_ipcc_register(Sm8850Resources *r,uint32_t id,void (*event)(void *,uint32_t),void *ctx) {
     if (id==UINT32_MAX || !event) return Sm8850Invalid;
     int e=lock(r);if (e) return e;
-    if (r->ipcc_sealed) {unlock(r);return Sm8850Conflict;}
+    /* Consumers publish immutable routes under this lock. A later MSS worker
+     * may append its own route after the ADSP dispatcher has started. */
     for (unsigned i=0;i<r->ipcc_count;++i) if (r->ipcc[i].id==id) {unlock(r);return Sm8850Conflict;}
     if (r->ipcc_count==Sm8850IpccRoutes) e=Sm8850Busy;
     else {
@@ -153,13 +156,15 @@ int sm8850_ipcc_dispatch(Sm8850Resources *r,unsigned budget) {
     if (__atomic_exchange_n(&r->ipcc_busy,1,__ATOMIC_ACQ_REL)) {unlock(r);return Sm8850Busy;}
     r->ipcc_sealed=1;unlock(r);
     for (unsigned n=0;n<budget;++n) {
-        /* Registration is initialization-only, before dispatch starts. No
-         * mutation or deletion of published entries is permitted. */
+        /* Route entries are append-only. Copy under the same registration
+         * lock, then invoke outside it; callbacks never consume the RX FIFO. */
         uint32_t id;Sm8850IpccRoute route={0};
         if (rd(r,4,0x10,&id)) {e=Sm8850Io;break;}
         if (id==UINT32_MAX) break;
+        e=lock(r);if (e) break;
         for (unsigned i=0;i<r->ipcc_count;++i) if (r->ipcc[i].id==id) {route=r->ipcc[i];break;}
         if (!route.event) {++r->ipcc_unknown_count;r->ipcc_last_unknown=id;}
+        unlock(r);
         if (wr(r,4,0x1c,id) || fence(r)) {e=Sm8850Io;break;}
         if (route.event) route.event(route.context,id);
     }

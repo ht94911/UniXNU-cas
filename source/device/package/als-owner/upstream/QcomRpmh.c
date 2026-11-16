@@ -28,6 +28,8 @@ int qcom_cmd_db_find(const uint8_t *db, size_t bytes, const char *name, QcomRpmh
             r.address = le32(entry + 16);
             const size_t length = le16(entry + 20), at = data + le16(entry + 22);
             if (!r.address || !fits(at, length, bytes)) return QcomRpmhCorrupt;
+            r.aux_bytes = length < sizeof r.aux ? (unsigned)length : (unsigned)sizeof r.aux;
+            for (unsigned l = 0; l < r.aux_bytes; ++l) r.aux[l] = db[at+l];
             for (size_t l = 0; l + 1 < length && r.level_count < QCOM_RPMH_MAX_LEVELS; l += 2) {
                 const uint16_t level = le16(db + at + l);
                 if (r.level_count && !level) break;  /* the list is zero padded */

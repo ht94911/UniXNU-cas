@@ -1,0 +1,20 @@
+{
+  "purpose": "Select the original optional-3GPP2-profile path for this LTE/NR board without C2K",
+  "image": "libTelephonyCapabilities.dylib",
+  "image_uuid": "40dce84e-e426-333e-b135-9f1c600e3cb0",
+  "symbol": "capabilities::ct::supportsCapabilityC2KDevice()",
+  "cache_file": "dyld_shared_cache_arm64e.19",
+  "file_offset": "0x4fc649c",
+  "virtual_address": "0x1cd3c649c",
+  "original": "7f2303d5f44fbea9fd7b01a9",
+  "replacement": "7f2303d500008052ff0f5fd6",
+  "entry_return_contract": "Retain PACIBSP and original stack pointer, return0 using authenticated RETAB",
+  "source": "Actual035 first3GPP2 profile failure0x51 thenreset/retries; originalQMIDataContextIPAggregator::createProfileIfNeeded supportsCapabilityC2KDevice guard selects sentinel0xfe whenfalse",
+  "board_only": true,
+  "root_and_Data_not_written": true,
+  "signed_page_validation_required": true,
+  "original_3GPP_profile_creation_and_errors_preserved": true,
+  "no_3GPP2_success_fabricated": true,
+  "original035_physical_SIM_branch_preserved": true,
+  "LTE_NR_path_preserved": true
+}

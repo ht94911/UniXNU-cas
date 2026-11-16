@@ -1,0 +1,26 @@
+--- a/package/BootWatchdogPolicy.c
++++ b/package/BootWatchdogPolicy.c
+@@ -70,11 +70,15 @@
+ // /chosen/nezha-baseband = 1 (an ADT switch: the loader line, 994 of 1000 bytes, has no room): the cellular bridge runs, so
+ // CommCenter must not be disabled, by sheng-lite or by sheng-disable-jobs.
+ extern int nezha_baseband_enabled(void);   // package/baseband27/integration/NbBasebandStart.c
++extern int nezha_gnss_enabled(void);
+ static int baseband_on;
++static int gnss_on;
+ static int append_job(const char **cursor) {
+  const char *c=*cursor,*e=c;while(*e && *e!=',')++e;
+  static const char cc[]="com.apple.CommCenter";
+  if(baseband_on && (size_t)(e-c)==sizeof(cc)-1 && !memcmp(c,cc,sizeof(cc)-1)) {*cursor=*e?e+1:e;return 0;}
++ static const char loc[]="com.apple.locationd";
++ if(gnss_on && (size_t)(e-c)==sizeof(loc)-1 && !memcmp(c,loc,sizeof(loc)-1)) {*cursor=*e?e+1:e;return 0;}
+  if(e>c) {
+   if(strlcat(policy,"<key>",sizeof(policy))>=sizeof(policy))return EINVAL;
+   size_t at=strlen(policy);if(at+(size_t)(e-c)+1>=sizeof(policy))return EINVAL;
+@@ -132,6 +136,7 @@
+  if(!PE_parse_boot_argn("sheng-disable-jobs",jobs,sizeof(jobs)))jobs[0]=0;jobs[sizeof(jobs)-1]=0;
+  int lite=0;PE_parse_boot_argn("sheng-lite",&lite,sizeof(lite));if(lite!=1)lite=0;
+  baseband_on=nezha_baseband_enabled()==1;
++ gnss_on=nezha_gnss_enabled()==1;
+  if(enabled!=1)enabled=0;
+  for(const char *c=jobs;*c;++c)if(!((*c>='a'&&*c<='z')||(*c>='A'&&*c<='Z')||(*c>='0'&&*c<='9')||*c=='.'||*c=='-'||*c==','))return EINVAL;
+  int setup=0,reset=0;

@@ -7,15 +7,15 @@
     "platform/AdspPower.c": "88ca6578cd78e78aa2355a62621074bff48b2bf012d5acaf2da41025584244c8",
     "platform/AudioInputPack.c": "9991a396c50bd0e427570d1a04fbe4755202412759fe0e945cd63c53619dea0c",
     "platform/AudioPdMapper.c": "80e78a1a92882dba4af074b817248248930c73fce7e088644c231027083b2cdb",
-    "platform/AudioResourceOwner.c": "63455208ce034559d837baf7dfbc5e72355805ac858d3a6af9d5db8170a914f1",
+    "platform/AudioResourceOwner.c": "7f25c76aed0d4fe20d2d813e7c949ca46d9954193fca06354ef7ef1da1f739e9",
     "platform/NezhaAudioPlatform.c": "ec406bb6160d1c6ac4c7cab072a80744d88eb7cc70fd9b2349812a6c9c4184d1",
     "upstream/QcomGlink.c": "d93de74fc679952d3fa327f902d69e4013b3eb95ae6431c77d8b2aa1348999ef",
-    "upstream/QcomMdt.c": "706f4a86624d119282683287bf408ae679275368f9bcc28d6f4ba652d3ad377a",
+    "upstream/QcomMdt.c": "064776d20165b2f36a6614d6b67f94e7066ce641d2050cad764d013677fc6462",
     "upstream/QcomQmp.c": "6d5dd2e0ebf1f425f7fc929555edb275b8d499cfaa1f9c887bfcb68f09785249",
     "upstream/QcomQrtr.c": "aefcf3d646fc42bd415a2ef0d9d81e38035c55032bbc2f0ea1b0e9e8f539f0c3",
-    "upstream/QcomRpmh.c": "679a55467e6ed4c7e75a8191f1d6da48637377088ef5e27879b1c99bc4a62314",
+    "upstream/QcomRpmh.c": "9cc1438645964ab020e152a0e96c0ab428a2c76df8233bfce6117665b7e8d4de",
     "upstream/QcomSmem.c": "4e9eb0ee22458dad30e1fcb7edb74a9d762222aff0623a6d5b85fb4a6e08bd03",
-    "upstream/QcomSmp2p.c": "f91c38e60fe86c5a55cbf9e822e0486997f7104d564ea90d6afe6ab40ac9d60b",
+    "upstream/QcomSmp2p.c": "7b3f9e647be33d858ef949cb082374f7ab3cd8af58be86aa36c59bb2c4661def",
     "os/NezhaAudioAdspInputs.cpp": "7d7bac89f33fa2d539ac8f3f4799f248a30cc030db98e6982c16cfef21516cec",
     "os/NezhaAudioDspProbe.cpp": "a595faf9352aabe44fb5e500b86dff8e9f3e40ed485b3ab7874c9b21e2fc6903",
     "os/NezhaAudioInputs.c": "46617afe5985f02f108644611b93a19463322be09984968e5e900e10fcfe12aa",
@@ -32,7 +32,7 @@
     "os/NezhaAudioSmmu.cpp": "833371d1e1f4068cadf60002da3867f7a346ece265a8a4d5773174649898fff5"
   },
   "headers": {
-    "upstream/QcomRpmh.h": "47e299744ff83989449d262f74f5dfd2ba1cdbf921b2886643735f2febb6ee21",
+    "upstream/QcomRpmh.h": "aa4307cd209c25a6b2e6b80d075f1e76deda0059eca7a333895ae73a3c724d38",
     "upstream/QcomScm.h": "ab03ab1291f043cb281f4d64b82b0d497d0e4f61a5b888512f0ec852ae1a3244",
     "upstream/QcomGlink.h": "bbf25e52b9bc6f32df7d9faa423c3369f83a919fc89cfd66b05cce30276afddc",
     "upstream/QcomQmp.h": "dd6722ade248435930c5f242ef78728f58f7e3bc6a9765fe229b32c87f342503",
@@ -41,7 +41,7 @@
     "upstream/ShengAudioReach.h": "b135177a5feb3e24e0d8a6aabb301600e2c37078b970a09ada6e8eb7bb6a5b98",
     "upstream/ShengGpr.h": "a274dded1f4d1e2709b9f966759bcb1f57d12747ee0f57743dea1fa97d95d23e",
     "upstream/QcomMdt.h": "22d8e567b285e254becf1af41f8ba0c9c1cfcc5295f6246b4b9d09e5fef88477",
-    "upstream/QcomSmp2p.h": "894f36fd14be184252ce64c4c8c908d161d31433185b190041f4bd18d47d68c6",
+    "upstream/QcomSmp2p.h": "38233b5f432c3ea5eb9d3fd89ad56b944fba851cb0aefa7dcb15202e797dd427",
     "upstream/QcomQrtr.h": "665853eacbd6bf293ed16f02bce71f90a656da4feb02c5fe1da1d6eb032b2f5f",
     "platform/AudioResourceProbe.h": "dfbbea451791c28f4ec3dcbfa80bfbb336fc404246c059410b5d2b44a3cb63f3",
     "platform/Tas25xxEndpoint.h": "4fc3b1e92c06b4269143329592cca55b732394cde05ae39cd0ab857727a0de0a",
@@ -100,9 +100,9 @@
   "soc_resource_owner": {
     "revision": "e565439bf1a13d0224f0a9adcfc1eef8df7ad142",
     "files": {
-      "include/Sm8850Resources.h": "e75bd077715897e28bf518770f3e0de4c74d52d34aa525b3a8531cae5460b1f3",
+      "include/Sm8850Resources.h": "c28fe8ec4e760ea9394b98d05edc729286b6128493fa2d21caa3ccb0593f79aa",
       "include/Sm8850ResourcesNative.h": "96a542ad251ca57765dbd299e71267eca66632356f6922007c8952b85917fc63",
-      "src/Sm8850Resources.c": "944379b776f769dd0718492749abb46b52bb74bef6b903dca4f674469d7bae26",
+      "src/Sm8850Resources.c": "232f744607cc1102ebf0dcda88ba2fd14a173a5ee53f6861b3413c38474354ab",
       "src/Sm8850ResourcesNative.cpp": "0f3b7453cf11c59d50ab2cec923699af791f1510d0f6fe95b0f7413e4201b36a"
     }
   },

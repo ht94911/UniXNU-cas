@@ -1,0 +1,29 @@
+--- a/package/gpu/NezhaScm.c
++++ b/package/gpu/NezhaScm.c
+@@ -127,6 +127,8 @@
+ 	lck_mtx_unlock(&nz_scm_lock);
+ }
+ 
++#include "../baseband27/integration/NbScmOwner.inc"
++
+ void pandora_scm_call(uint64_t fn, uint64_t arginfo, uint64_t x2, uint64_t x3, uint64_t *a0,
+     uint64_t *a1);
+ void
+--- a/package/SourceStorage.cpp
++++ b/package/SourceStorage.cpp
+@@ -22,6 +22,7 @@
+ extern "C" void source_storage_ufs_init(void) __asm__("__GLOBAL__sub_I_NativeUfs.cpp");
+ extern "C" void source_storage_ram_init(void) __asm__("__GLOBAL__sub_I_NativeRamBlock.cpp");
+ extern "C" IOService *native_ufs_source_create(void);
++extern "C" void nezha_baseband_late_init(void);
+ extern "C" bool native_source_root_policies_load(void);
+ // NativeUfs records how far root start got and the last soft-failure reason.
+ extern "C" volatile uint32_t native_ufs_root_step;
+@@ -157,6 +158,7 @@
+               native_ufs_root_failure ? native_ufs_root_failure : "no reason recorded");
+     printf("SourceStorage: UFS started through public IOStorageFamily interface\n");
+     start_data_disk(provider);
++    nezha_baseband_late_init();
+     // The UFS log area exists from here on; the writer only runs with sheng-log=1.
+     boot_log_tick(0);
+     unsigned log = 0;

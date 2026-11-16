@@ -1,0 +1,37 @@
+{
+  "candidate": "baseband026",
+  "image_sha256": "ad268f24802e37a60dcbe12e796685dc0124e308487ebbcbb4d46e47176a486d",
+  "runtime_path": "/usr/libexec/launchd_cache_loader",
+  "retained_log": "/var/log/com.apple.xpc.launchd/cellular_cache_bb026.log",
+  "fixups": [
+    {
+      "file": "launchd_cache_loader",
+      "file_offset": "0x1ce7",
+      "original": "6c61756e6368645f63616368655f6c6f",
+      "replacement": "63656c6c756c61725f63616368655f62",
+      "purpose": "Retain the original loader diagnostic log for candidate026"
+    },
+    {
+      "file": "launchd_cache_loader",
+      "file_offset": "0x1cf7",
+      "original": "616465722e6c6f67",
+      "replacement": "623032362e6c6f67",
+      "purpose": "Retain the original loader diagnostic log for candidate026"
+    },
+    {
+      "file": "launchd_cache_loader",
+      "file_offset": "0x108c",
+      "original": "e82700a9",
+      "replacement": "e80b00a9",
+      "purpose": "Print original fstat file length in the first existing log call"
+    },
+    {
+      "file": "launchd_cache_loader",
+      "file_offset": "0x10a4",
+      "original": "e80240f9",
+      "replacement": "e84b40f9",
+      "purpose": "Print original fstat file length in the second existing log call"
+    }
+  ],
+  "scope": "Existing loader log path and size argument only; original signature,validity,trust lookup,mapping and dispatch unchanged"
+}

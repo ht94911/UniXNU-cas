@@ -328,6 +328,10 @@ def collect(framework, work, sealed):
         for path in sorted((tree / 'build/adreno840').glob('*')):
             if path.is_file() and path.suffix in ('.json','.log','.o','.S','.h','.cpp'):
                 add(path, 'archives/adreno840/' + path.name)
+        for path in sorted((tree / 'build/nezha27-baseband').glob('*')):
+            if path.is_file() and path.suffix in ('.json', '.log', '.o', '.txt'):
+                add(path, 'archives/nezha27-baseband/' + path.name)
+        add(tree / 'build/nezha27-baseband-stage/stage.json', 'archives/nezha27-baseband-stage/stage.json')
         for path in sorted((tree / 'build/boot-progress').glob('*')):
             if path.is_file() and path.suffix in ('.json','.asm','.o','.c','.h'):
                 add(path, 'archives/boot-progress/' + path.name)

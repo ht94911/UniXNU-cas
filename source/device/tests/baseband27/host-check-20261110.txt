@@ -1,0 +1,33 @@
+Source: 699982a2a0e68ade0deb7a8aab14fe002781b3af
+Command: sh tests/baseband27/check.sh ../research/upstream/QcomBaseband
+Exit: 0
+
+PASS data format
+PASS egress
+PASS ingress deaggregation
+PASS v5 status parsing
+PASS buffers and doorbells
+PASS glink remote intent id 0
+PASS smp2p v1/v2 version choice
+PASS qmux and ctl
+PASS sahara device
+PASS baseband methods
+PASS channel table
+PASS data port and activation
+PASS esim tape transport and cleanup
+PASS esim read-only query cache
+PASS PAS: ELF32/ELF64, fixed/relocated, copy/zero, busy/error retention, low-memory bounds
+PASS multi-remote: independent announcements, directed controls, per-node removal
+PASS remote store: writes only modify the RAM copy
+PASS first GLINK poll: before/after stage evidence emitted once
+PASS archive: digest, index, bounds, file reads
+PASS local image tool: deterministic output, SHA-256, rejected invalid inputs
+PASS selected ShengUfs reader: switch, map/GPT/protected bounds, fragmented reads, no write API
+PASS power: shared leases, acknowledged votes, retained timeout, IPA/MSS aggregation
+PASS shared SMMU: explicit two-stream assignment and collision rejection
+PASS SCM owner wrappers: validated page, existing calls, retained failure
+PASS late start: off has no side effects, once only, readiness, failure, bounded consistent provider
+PASS native binding: real archive/PAS preparation, RAM storage, shared SMMU, event and ownership callbacks
+PASS package integration: staged patches, one transport copy, unchanged arguments/prelink, real Format 2 ADT
+PASS IPA v5.5 generator: exact reproduction from fixed local source
+baseband27 host models: all passed

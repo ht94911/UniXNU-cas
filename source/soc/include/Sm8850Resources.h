@@ -26,7 +26,7 @@ typedef struct {
     uint32_t initialized,smem_owner,ipcc_busy,ipcc_sealed,ipcc_count,ipcc_unknown_count,ipcc_last_unknown;
     Sm8850IpccRoute ipcc[Sm8850IpccRoutes];
 } Sm8850Resources;
-typedef struct {uint32_t bank,asid,slot[4],sid[4];} Sm8850SmmuAssignment;
+typedef struct {uint32_t bank,asid,slot[4],sid[4],count; /* count 0 preserves legacy four-stream callers */} Sm8850SmmuAssignment;
 /* No probing or writes here. Board supplies explicit resource numbers and
  * assignments. Registering this object is not permission for a second owner
  * to access an already-owned controller outside the same lock. */
@@ -54,7 +54,8 @@ int sm8850_gcc_update(Sm8850Resources *,uint32_t offset,uint32_t allowed,uint32_
  * One bounded hardware try; no unlock if a remote owns the mutex. */
 int sm8850_smem_trylock(Sm8850Resources *,uint32_t owner);
 int sm8850_smem_unlock(Sm8850Resources *,uint32_t owner);
-/* Routes are immutable for the owner's lifetime; dispatcher is the sole
+/* Published routes are immutable and appended under the common lock;
+ * dispatcher copies under that lock and remains the sole
  * RX_ID/CLEAR consumer. Unknown IDs are counted before acknowledgement.
  * Callbacks must only publish/wake and are invoked outside the config lock. */
 int sm8850_ipcc_register(Sm8850Resources *,uint32_t id,void (*event)(void *,uint32_t),void *);

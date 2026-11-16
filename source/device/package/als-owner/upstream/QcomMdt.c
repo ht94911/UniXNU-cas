@@ -54,6 +54,7 @@ int qcom_mdt_parse(QcomMdtImage *image, uint64_t file_size, QcomMdtRead read, vo
     }
     if (image->hash < 0) return QcomMdtNoHash;
     if (hi == 0) return QcomMdtNoSegments;
+    if (hi > UINT64_MAX - 0xfff) return QcomMdtBadHeaders;
     image->header_size = image->segment[0].file_size;
     /* The first program header (PT_NULL) covers the ELF header and the program headers themselves. */
     if (!image->header_size || !fits(0, image->header_size, file_size) || image->header_size < phoff + (uint64_t)phentsize * phnum)
@@ -65,7 +66,8 @@ int qcom_mdt_parse(QcomMdtImage *image, uint64_t file_size, QcomMdtRead read, vo
 
 uint64_t qcom_mdt_metadata_size(const QcomMdtImage *image)
 {
-    return image->header_size + image->segment[image->hash].file_size;
+    const uint64_t hash_size = image->segment[image->hash].file_size;
+    return hash_size > UINT64_MAX - image->header_size ? UINT64_MAX : image->header_size + hash_size;
 }
 
 int qcom_mdt_metadata(const QcomMdtImage *image, QcomMdtRead read, void *context, uint8_t *to, uint64_t capacity)

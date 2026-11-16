@@ -1,0 +1,22 @@
+{
+  "image_uuid": "3e3091d1-178e-3f0b-99da-5382317ea990",
+  "image_sha256": "aa96ad9197abf1bbb53e053803ea01eb4c724941dcaaafe2f0f6f49a63fe628c",
+  "board_only": true,
+  "source": "Actual034 two physical SIM UIM Ready and completed essential files; original24A446 subscriber effective-state unknown enabled-slot branch and data-subscription dependency",
+  "fixups": [
+    {
+      "name": "For an unknown Apple slot configuration, retain the real physical SIM and essential-file checks",
+      "file": "CommCenter",
+      "file_offset": "0x474a0",
+      "original": "a1000054",
+      "replacement": "e1010054"
+    }
+  ],
+  "signed_page_validation_required": true,
+  "root_and_Data_not_written": true,
+  "known_disabled_slot_branch_preserved": true,
+  "original_SIM_raw_state_and_essential_file_gates_preserved": true,
+  "original_SIM_lock_PIN_and_provisioning_states_preserved": true,
+  "original_postponement_ticket_compatibility034_retained": true,
+  "requires_two_authorized_present_physical_SIM_board": true
+}

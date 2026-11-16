@@ -1,0 +1,316 @@
+--- a/package/baseband27/bridge/coachz_bb_qmux.h
++++ b/package/baseband27/bridge/coachz_bb_qmux.h
+@@ -60,7 +60,7 @@
+ 
+ struct cbq_server { uint32_t service, version, instance, node, port; uint8_t present; };
+ struct cbq_client {
+-    uint8_t used, channel, service, cid, private_service, release_pending, revoke_pending;
++    uint8_t used, channel, service, cid, private_service, release_pending, revoke_pending, local_service;
+     uint32_t node, port;
+ };
+ struct cbq_bridge {
+@@ -68,6 +68,9 @@
+     struct cbq_client client[CBQ_MAX_CLIENTS];
+     uint8_t last_cid[CBQ_CHANNELS + 1][256];
+     uint32_t ctl_other, dropped;
++    /* Optional local PDS provider; available with a real LOC v2 endpoint.
++     * It is separate from the modem's service catalogue and never forwarded. */
++    uint8_t local_pds;
+ };
+ 
+ enum cbq_kind {
+@@ -75,6 +78,7 @@
+     CBQ_TO_HOST,    /* `out` holds `len` bytes: one QMUX frame for `channel` */
+     CBQ_TO_MODEM,   /* send the input frame from offset CBQ_HDR (`len` bytes) from local port `local_port` to node:port */
+     CBQ_PRIVATE,    /* a request to a private service: answer it, or cbq_private_unsupported */
++    CBQ_LOCAL,      /* the opted-in board LOC -> PDS provider owns this request */
+ };
+ struct cbq_result { enum cbq_kind kind; uint32_t len, node, port, local_port; uint8_t channel, service, cid; };
+ 
+@@ -138,7 +142,8 @@
+ {
+     if (channel > CBQ_INTERNAL || !service || service > 0xffu) return -1;
+     const struct cbq_server *server = cbq_private_service(service) ? 0 : cbq_server_find(b, service);
+-    if (!cbq_private_service(service) && !server) return -1;
++    const int local = service == 6u && b->local_pds && !server;
++    if (!cbq_private_service(service) && !server && !local) return -1;
+     int slot = -1;
+     for (unsigned i = 0; i < CBQ_MAX_CLIENTS; i++)
+         if (!b->client[i].used && !b->client[i].release_pending && !b->client[i].revoke_pending) { slot = (int)i; break; }
+@@ -149,7 +154,7 @@
+         if (cbq_client_find(b, channel, service, cid) < 0) {
+             b->last_cid[channel][service] = (uint8_t)cid;
+             b->client[slot] = (struct cbq_client){ 1, (uint8_t)channel, (uint8_t)service, (uint8_t)cid,
+-                (uint8_t)cbq_private_service(service), 0, 0, server ? server->node : 0, server ? server->port : 0 };
++                (uint8_t)cbq_private_service(service), 0, 0, (uint8_t)local, server ? server->node : 0, server ? server->port : 0 };
+             return slot;
+         }
+     }
+@@ -159,7 +164,7 @@
+ static inline void cbq_client_free(struct cbq_bridge *b, unsigned slot)
+ {
+     struct cbq_client *c = &b->client[slot];
+-    c->release_pending = !c->private_service;
++    c->release_pending = !c->private_service && !c->local_service;
+     c->used = 0;
+ }
+ /* the next port that needs a QRTR DEL_CLIENT, or 0; call until 0 after any CTL answer */
+@@ -175,7 +180,7 @@
+ {
+     if (slot >= CBQ_MAX_CLIENTS) return 0;
+     const struct cbq_client *c = &b->client[slot];
+-    if (!c->used || c->private_service) return 0;
++    if (!c->used || c->private_service || c->local_service) return 0;
+     for (unsigned i = 0; i < CBQ_MAX_SERVERS; i++) {
+         const struct cbq_server *s = &b->server[i];
+         if (s->present && s->service == c->service && s->node == c->node && s->port == c->port) return s;
+@@ -279,7 +284,7 @@
+         v = cbq_tlv(tlvs, tlen, 0x01, &vlen);
+         if (!v || vlen < 1) { r.len = cbq_ctl_answer(out, room, txn, id, CBQ_ERR_MISSING_ARGUMENT, 0, 0); break; }
+         const uint32_t service = v[0];
+-        if (!service || (!cbq_private_service(service) && !cbq_server_find(b, service))) {
++        if (!service || (!cbq_private_service(service) && !cbq_server_find(b, service) && !(service == 6u && b->local_pds))) {
+             r.len = cbq_ctl_answer(out, room, txn, id, CBQ_ERR_INVALID_SERVICE_TYPE, 0, 0);
+             break;
+         }
+@@ -307,7 +312,7 @@
+         break;
+     case CBQ_CTL_GET_VERSION_INFO: {
+         /* nezha has 52 distinct QMI services; report the whole retained catalogue. */
+-        uint8_t list[1 + 5 * CBQ_MAX_SERVERS];
++        uint8_t list[1 + 5 * (CBQ_MAX_SERVERS + 1u)];
+         uint32_t count = 0;
+         for (unsigned i = 0; i < CBQ_MAX_SERVERS; i++) {
+             const struct cbq_server *s2 = &b->server[i];
+@@ -315,6 +320,10 @@
+             uint8_t *e = list + 1 + 5 * count++;
+             e[0] = (uint8_t)s2->service; cbq_wr16(e + 1, s2->version); cbq_wr16(e + 3, 0);
+         }
++        if (b->local_pds && !cbq_server_find(b, 6u)) {
++            uint8_t *e = list + 1 + 5 * count++;
++            e[0] = 6; cbq_wr16(e + 1, 1); cbq_wr16(e + 3, 0);
++        }
+         list[0] = (uint8_t)count;
+         r.len = cbq_ctl_answer(out, room, txn, id, 0, list, 1 + 5 * count);
+         break;
+@@ -346,6 +355,7 @@
+     }
+     r.service = (uint8_t)service; r.cid = (uint8_t)cid; r.local_port = CBQ_PORT_BASE + (uint32_t)slot;
+     r.len = n - CBQ_HDR;
++    if (b->client[slot].local_service) { r.kind = CBQ_LOCAL; return r; }
+     if (b->client[slot].private_service) { r.kind = CBQ_PRIVATE; return r; }
+     const struct cbq_server *srv = cbq_client_server(b, (unsigned)slot);
+     if (!srv) { b->dropped++; return r; }
+@@ -360,7 +370,7 @@
+ {
+     struct cbq_result r = { CBQ_DROP, 0, node, 0, local_port, 0, 0, 0 };
+     const uint32_t slot = local_port - CBQ_PORT_BASE;
+-    if (local_port < CBQ_PORT_BASE || slot >= CBQ_MAX_CLIENTS || !b->client[slot].used || b->client[slot].private_service ||
++    if (local_port < CBQ_PORT_BASE || slot >= CBQ_MAX_CLIENTS || !b->client[slot].used || b->client[slot].private_service || b->client[slot].local_service ||
+         n < CBQ_SDU_HDR || CBQ_SDU_HDR + cbq_rd16(sdu + 5) != n || CBQ_HDR + n > room ||
+         n > 0xffffu - (CBQ_HDR - 1u) || (sdu[0] != CBQ_QMI_RESPONSE && sdu[0] != CBQ_QMI_INDICATION)) {
+         b->dropped++;
+--- a/package/baseband27/bridge/coachz_baseband.cpp
++++ b/package/baseband27/bridge/coachz_baseband.cpp
+@@ -30,6 +30,7 @@
+ #include "NbDeviceIdentity.h"
+ #include "NbBoot.h"
+ #include "NbNasMux.h"
++#include "../gnss/NbGnss.h"
+ extern "C" int coachz_modem_boot_ready(void);
+ extern "C" int coachz_modem_qmi_send(uint32_t, uint32_t, uint32_t, const void *, uint32_t);
+ 
+@@ -64,6 +65,10 @@
+ static thread_call_t bb_complete_call;
+ static struct cbq_bridge bb_qmux;
+ static struct nb_nas_mux bb_nas;
++static NbGnss bb_gnss;
++#define BB_GNSS_PORT_BASE 0x4200u
++static uint32_t bb_gnss_epoch, bb_gnss_release;
++static int bb_gnss_enabled, bb_gnss_failed_closed, bb_gnss_online;
+ static struct cbs_device bb_sahara;
+ static struct cbc_state bb_control;
+ static bb_channel bb_ch[CBH_PUBLISHED];
+@@ -97,6 +102,13 @@
+   absolutetime_to_nanoseconds(ticks, &ns);
+   return (uint32_t)(ns / 1000000u);
+ }
++static uint64_t bb_gnss_now_ms(void)
++{
++  uint64_t ticks, ns;
++  clock_get_uptime(&ticks);
++  absolutetime_to_nanoseconds(ticks, &ns);
++  return ns / 1000000u;
++}
+ 
+ extern "C" {
+ int coachz_baseband_enabled(void);
+@@ -137,6 +149,8 @@
+ static uint8_t *bb_nas_allocate(void *, uint32_t);
+ static void bb_nas_release(void *, uint8_t *, uint32_t);
+ static void bb_nas_emit(void *, uint32_t, uint32_t, uint32_t, const uint8_t *, uint32_t);
++static int bb_gnss_emit(void *, uint32_t, uint32_t, const uint8_t *, uint32_t);
++extern "C" int nezha_gnss_enabled(void);
+ 
+ static void bb_init(void)
+ {
+@@ -145,6 +159,8 @@
+   bb_complete_call = thread_call_allocate(bb_complete, nullptr);
+   cbq_init(&bb_qmux);
+   nb_nas_init(&bb_nas, nullptr, bb_nas_allocate, bb_nas_release, bb_nas_emit);
++  bb_gnss_enabled = nezha_gnss_enabled() == 1;
++  nb_gnss_init(&bb_gnss, BB_GNSS_PORT_BASE, nullptr, bb_gnss_emit, nullptr);
+   bb_esim_in = static_cast<uint8_t *>(IOMallocData(BB_ESIM_BYTES));
+   bb_esim_resp = static_cast<uint8_t *>(IOMallocData(BB_ESIM_BYTES));
+   cbe_init(&bb_esim, bb_esim_in, bb_esim_in ? BB_ESIM_BYTES : 0,
+@@ -215,6 +231,7 @@
+ }
+ 
+ #include "NbNasBridge.inc"
++#include "NbGnssBridge.inc"
+ 
+ static bb_frame bb_pop(uint32_t channel)
+ {
+@@ -518,11 +535,13 @@
+   if (channel != CBH_QMUX1 && channel != CBH_QMUX2) return;   // counted above, nothing behind it yet
+   const uint32_t qmux = channel == CBH_QMUX1 ? 0 : 1;
+   bb_trace_frame("host", qmux + 1u, data, len);
++  bb_gnss_reconcile(); /* Include the LOC-backed PDS endpoint in the first CTL catalogue response. */
+   const struct cbq_result r = cbq_from_host(&bb_qmux, qmux, data, len, bb_out, sizeof bb_out);
+   switch (r.kind) {
+   case CBQ_TO_HOST:
+     bb_nas_reconcile();
+     bb_push(channel, bb_out, r.len);
++    bb_gnss_reconcile();
+     if (r.service == NB_VOICE_SERVICE || !r.service) bb_voice_indicate();
+     // The first WDS client ABM takes: set the data port up as ModemManager does before its first bind.
+     if (r.service == CBD_SVC_WDS && r.local_port && cbq_rd16(data + CBQ_HDR + 2) == CBQ_CTL_GET_CLIENT_ID) bb_data_start();
+@@ -549,6 +568,9 @@
+     if (n) bb_push(channel, bb_out, n);
+     break;
+   }
++  case CBQ_LOCAL:
++    bb_gnss_request(r, data + CBQ_HDR);
++    break;
+   case CBQ_DROP:
+     break;
+   }
+@@ -675,7 +697,18 @@
+   {
+     bb_abort_reads(fChannel, this, kIOReturnAborted);
+     IOLockLock(bb_lock);
+-    if (bb_ch[fChannel].owner == this) bb_ch[fChannel].owner = nullptr;
++    if (bb_ch[fChannel].owner == this) {
++      bb_ch[fChannel].owner = nullptr;
++      if (bb_gnss_enabled && (fChannel == CBH_QMUX1 || fChannel == CBH_QMUX2)) {
++        const uint32_t channel = fChannel == CBH_QMUX1 ? 0u : 1u;
++        for (unsigned i = 0; i < CBQ_MAX_CLIENTS; ++i) {
++          struct cbq_client *c = &bb_qmux.client[i];
++          if (c->used && c->local_service && c->channel == channel) {
++            cbq_client_free(&bb_qmux, i); nb_gnss_retire(&bb_gnss, i);
++          }
++        }
++      }
++    }
+     IOLockUnlock(bb_lock);
+   }
+   IOReturn write(IOExternalMethodArguments *args);
+@@ -1140,11 +1173,13 @@
+ // The modem's QRTR is up (GLINK started): publish the services ABM looks for. `send` and `del_client` run on the Wi-Fi thread only.
+ extern "C" void coachz_baseband_configure(void (*send)(uint32_t, uint32_t, uint32_t, const void *, uint32_t), void (*del_client)(uint32_t))
+ {
+-  if (!coachz_baseband_enabled() || bb_published) return;
++  if (!coachz_baseband_enabled()) return;
+   bb_init();
+-  bb_pdp_init();
+   bb_send = send;
+   bb_del_client = del_client;
++  bb_gnss_online = 1;
++  if (bb_published) return;
++  bb_pdp_init();
+   IOService *provider = IOService::getResourceService();
+   int made = 0;
+   made += provider && bb_publish<AppleBaseband>(provider);
+@@ -1164,6 +1199,10 @@
+   if (bb_lock) {
+     IOLockLock(bb_lock);
+     nb_sim_reset(&bb_sim); nb_voice_reset(&bb_voice); nb_device_reset(&bb_device_identity);
++    if (bb_gnss_enabled && bb_gnss.phase != NbGnssAbsent) {
++      bb_gnss_release = bb_gnss.local_port; bb_gnss_revoke(); nb_gnss_lost(&bb_gnss);
++    }
++    bb_gnss_online = 0; bb_gnss_failed_closed = 0;
+     IOLockUnlock(bb_lock);
+   }
+   if (bb_control_service) bb_control_service->setProperty("bootstage", 0ull, 32);
+@@ -1175,6 +1214,7 @@
+   bb_init();
+   IOLockLock(bb_lock);
+   cbq_server_new(&bb_qmux, service, version_instance, node, port);
++  bb_gnss_reconcile();
+   IOLockUnlock(bb_lock);
+ }
+ 
+@@ -1183,6 +1223,10 @@
+   if (!bb_lock) return;
+   IOLockLock(bb_lock);
+   cbq_server_del(&bb_qmux, service, node, port);
++  if (service == NB_GNSS_LOC_SERVICE && bb_gnss.node == node && bb_gnss.port == port) {
++    bb_gnss_release = bb_gnss.local_port; bb_gnss_revoke(); nb_gnss_lost(&bb_gnss);
++    bb_gnss_failed_closed = 0;
++  }
+   if (service == NB_NAS_SERVICE) nb_nas_endpoint_lost(&bb_nas, node, port);
+   if (service == NB_VOICE_SERVICE) bb_voice_indicate();
+   if (service == CBD_SVC_UIM && nb_sim_endpoint_lost(&bb_sim, node, port)) bb_activation_indicate();
+@@ -1195,9 +1239,16 @@
+ // QRTR data for one of the bridge's client ports: 1 when the port is the bridge's.
+ extern "C" int coachz_baseband_qrtr(uint32_t dst_port, uint32_t src_node, uint32_t src_port, const void *body, uint32_t size)
+ {
+-  if (dst_port < CBQ_PORT_BASE || dst_port >= NB_NAS_PORT_BASE + NB_NAS_SUBSCRIPTIONS) return 0;
++  if ((dst_port < CBQ_PORT_BASE || dst_port >= NB_NAS_PORT_BASE + NB_NAS_SUBSCRIPTIONS) &&
++      (dst_port < BB_GNSS_PORT_BASE || dst_port >= BB_GNSS_PORT_BASE + 256u)) return 0;
+   if (!bb_lock) return 1;
+   IOLockLock(bb_lock);
++  if (dst_port >= BB_GNSS_PORT_BASE) {
++    if (bb_gnss_enabled && dst_port == bb_gnss.local_port)
++      nb_gnss_receive(&bb_gnss, src_node, src_port, static_cast<const uint8_t *>(body), size, bb_gnss_now_ms());
++    IOLockUnlock(bb_lock);
++    return 1;
++  }
+   if (dst_port >= NB_NAS_PORT_BASE) {
+     nb_nas_receive(&bb_nas, dst_port, src_node, src_port, static_cast<const uint8_t *>(body), size);
+     IOLockUnlock(bb_lock);
+@@ -1238,11 +1289,20 @@
+   if (!bb_lock || !bb_send) return;
+   bb_tx batch[16];
+   struct nb_nas_packet nas[NB_NAS_SUBSCRIPTIONS];
++  NbGnssPacket gnss;
++  int gnss_pending = 0;
++  uint32_t gnss_release = 0;
+   uint32_t nas_count = 0;
+   uint32_t n = 0, released[16], r = 0, port;
+   IOLockLock(bb_lock);
+   bb_esim_step();
+   bb_nas_reconcile();
++  bb_gnss_reconcile();
++  if (bb_gnss_enabled) {
++    nb_gnss_poll(&bb_gnss, bb_gnss_now_ms());
++    gnss_pending = bb_gnss_online && nb_gnss_next(&bb_gnss, bb_gnss_now_ms(), &gnss);
++    gnss_release = bb_gnss_release; bb_gnss_release = 0;
++  }
+   nb_nas_poll_deadlines(&bb_nas, bb_now_ms());
+   while (nas_count < NB_NAS_SUBSCRIPTIONS &&
+          nb_nas_next(&bb_nas, bb_now_ms(), &nas[nas_count])) ++nas_count;
+@@ -1273,6 +1333,13 @@
+   }
+   for (uint32_t i = 0; i < r; i++)
+     if (bb_del_client) bb_del_client(released[i]);
++  if (gnss_release && bb_del_client) bb_del_client(gnss_release);
++  if (gnss_pending) {
++    const int result = coachz_modem_qmi_send(gnss.local_port, gnss.node, gnss.port, gnss.data, gnss.length);
++    IOLockLock(bb_lock);
++    nb_gnss_sent(&bb_gnss, &gnss, result, bb_gnss_now_ms());
++    IOLockUnlock(bb_lock);
++  }
+   for (uint32_t i = 0; i < nas_count; ++i) {
+     const int result = coachz_modem_qmi_send(nas[i].local_port, nas[i].node, nas[i].port,
+                                              nas[i].data, nas[i].bytes);

@@ -1,0 +1,32 @@
+--- a/package/baseband27/bridge/coachz_baseband.cpp
++++ b/package/baseband27/bridge/coachz_baseband.cpp
+@@ -100,27 +100,10 @@
+ }
+ 
+ // ------------------------------------------------------------------ device tree
+-static OSData *bb_chosen(const char *path, const char *key)
+-{
+-  IORegistryEntry *entry = IORegistryEntry::fromPath(path, gIODTPlane);
+-  if (!entry) return nullptr;
+-  OSData *value = OSDynamicCast(OSData, entry->getProperty(key));
+-  if (value) value->retain();
+-  entry->release();
+-  return value;
+-}
+-
++extern "C" int nezha_baseband_enabled(void);
+ extern "C" int coachz_baseband_enabled(void)
+ {
+-  static int cached = -1;
+-  if (cached < 0) {
+-    OSData *value = bb_chosen("/chosen", "coachz-baseband");
+-    uint32_t on = 0;
+-    if (value && value->getLength() == 4) memcpy(&on, value->getBytesNoCopy(), 4);
+-    OSSafeReleaseNULL(value);
+-    cached = on != 0;
+-  }
+-  return cached;
++  return nezha_baseband_enabled();
+ }
+ 
+ // ------------------------------------------------------------------ queues (bb_lock held)

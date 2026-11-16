@@ -1,7 +1,7 @@
-name: nezha GPU050 large allocation phases - native044
+name: nezha GPU051 GNSS GPS BeiDou - native001
 on:
   push:
-    branches: [codex/ios27-gpu50-boalloc-native044-20261116]
+    branches: [codex/ios27-gnss-gpu051-native001-20261116]
   workflow_dispatch:
 permissions:
   contents: read
@@ -75,6 +75,20 @@ jobs:
         run: python3 "$RUNNER_TEMP/ios27/work/device/tests/check-gpu-bo-phases.py" --native "$RUNNER_TEMP/ios27/work/adreno" --out "$RUNNER_TEMP/ios27/work/bo-phases-host"
       - name: Check the actual guarded waiting-stack sampler
         run: python3 task/source/device/scripts/check-stable-kernel-stack.py
+      - name: Exercise GPS BeiDou protocol and location sessions
+        env:
+          CC: clang
+        run: sh task/source/device/tests/gnss27/check.sh
+      - name: Check the shared ADSP MSS resource consumers
+        run: |
+          set -euo pipefail
+          bb="$RUNNER_TEMP/ios27/work/device"
+          for test in qmux_version qmux_endpoint qmux_capacity nas_mux low_memory sim_identity device_identity pdp_flow wds_completion voice_state; do
+            clang -std=gnu11 -Wall -Wextra -Werror -fsanitize=address,undefined -I "$bb/package/baseband27/bridge" -I "$bb/package/baseband27/bridge/upstream" "$bb/tests/baseband27/${test}_test.c" -o "$RUNNER_TEMP/ios27/$test"
+            "$RUNNER_TEMP/ios27/$test"
+          done
+          clang -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -I "$RUNNER_TEMP/ios27/work/soc/include" "$bb/tests/gnss27/shared_ipcc_test.c" "$RUNNER_TEMP/ios27/work/soc/src/Sm8850Resources.c" -o "$RUNNER_TEMP/ios27/shared-ipcc"
+          "$RUNNER_TEMP/ios27/shared-ipcc"
       - name: Qualify compiler and run the standard native build
         env:
           GITHUB_TOKEN: ${{ github.token }}

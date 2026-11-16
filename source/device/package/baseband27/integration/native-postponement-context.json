@@ -1,0 +1,20 @@
+{
+  "image_uuid": "3e3091d1-178e-3f0b-99da-5382317ea990",
+  "image_sha256": "aa96ad9197abf1bbb53e053803ea01eb4c724941dcaaafe2f0f6f49a63fe628c",
+  "board_only": true,
+  "source": "QcomBaseband dd0199c platform/coachz/tools/coachz_cellular_compat.py; actual033 unassigned context and original24A446 ticket guard",
+  "fixups": [
+    {
+      "name": "Original Internet context selection without Apple postponement ticket",
+      "file": "CommCenter",
+      "file_offset": "0x934d0",
+      "original": "60000036",
+      "replacement": "01000014"
+    }
+  ],
+  "root_and_Data_not_written": true,
+  "signed_page_validation_required": true,
+  "keep_original_context_selection": true,
+  "keep_original_WDS_APN_and_network_results": true,
+  "no_ticket_or_activation_success_fabricated": true
+}

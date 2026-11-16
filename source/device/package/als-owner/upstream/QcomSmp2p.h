@@ -11,6 +11,7 @@ extern "C" {
 
 #define QCOM_SMP2P_MAGIC 0x504d5324u  /* "$SMP" */
 #define QCOM_SMP2P_VERSION 1u
+#define QCOM_SMP2P_MAX_VERSION 2u
 #define QCOM_SMP2P_FEATURE_SSR_ACK 1u
 #define QCOM_SMP2P_FLAG_RESTART_DONE 1u
 #define QCOM_SMP2P_FLAG_RESTART_ACK 2u
@@ -28,6 +29,10 @@ typedef struct {
 
 /* Writes a fresh outbound item (zeroes, header, then the version word last so the remote never sees a half-made item). */
 void qcom_smp2p_init_out(QcomSmp2p *s, volatile uint32_t *out, uint16_t local_pid, uint16_t remote_pid);
+/* V1/V2 share the 340-byte layout. Select the validated peer's version before
+ * publishing OUT; unsupported versions return -2 without changing storage. */
+int qcom_smp2p_init_out_version(QcomSmp2p *s, volatile uint32_t *out,
+    uint16_t local_pid, uint16_t remote_pid, uint8_t version);
 /* Adds a named outbound entry and returns its index, or -1 when full. */
 int qcom_smp2p_add_entry(QcomSmp2p *s, const char *name);
 /* Sets the bits in mask of outbound entry index to value; returns 1 when the value changed (ring the doorbell). */
