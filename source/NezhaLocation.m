@@ -14,6 +14,8 @@
 @property(nonatomic,strong) UIButton *stopButton;
 @property(nonatomic,strong) NSMutableArray *records;
 @property(nonatomic,copy) NSString *bootUUID;
+@property(nonatomic,copy) NSString *applicationSession;
+@property(nonatomic) NSTimeInterval beganUptime;
 @property(nonatomic) BOOL requested;
 @property(nonatomic) BOOL running;
 @end
@@ -28,6 +30,7 @@
     self.manager.desiredAccuracy=kCLLocationAccuracyBest;self.manager.distanceFilter=kCLDistanceFilterNone;
     self.manager.pausesLocationUpdatesAutomatically=NO;
     self.records=[NSMutableArray array];
+    self.applicationSession=NSUUID.UUID.UUIDString;self.beganUptime=NSProcessInfo.processInfo.systemUptime;
     char uuid[128]={0};size_t bytes=sizeof uuid;
     self.bootUUID=sysctlbyname("kern.bootsessionuuid",uuid,&bytes,NULL,0)==0 ? @(uuid):@"unavailable";
     self.status=[UILabel new];self.status.numberOfLines=0;self.status.font=[UIFont preferredFontForTextStyle:UIFontTextStyleHeadline];
@@ -57,12 +60,17 @@
 }
 - (void)save:(NSDictionary *)event
 {
-    [self.records addObject:event];if(self.records.count>256)[self.records removeObjectAtIndex:0];
+    NSMutableDictionary *row=[event mutableCopy];
+    row[@"authorization"]=[self authorization];
+    row[@"accuracy_authorization"]=self.manager.accuracyAuthorization==CLAccuracyAuthorizationFullAccuracy ? @"fullAccuracy":@"reducedAccuracy";
+    row[@"received_uptime_ms"]=@((long long)(NSProcessInfo.processInfo.systemUptime*1000));
+    [self.records addObject:row];if(self.records.count>256)[self.records removeObjectAtIndex:0];
     NSError *error=nil;
     NSString *documents=NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,NSUserDomainMask,YES).firstObject;
     NSData *body=[NSJSONSerialization dataWithJSONObject:@{@"provider":@"CoreLocation",@"boot_session_uuid":self.bootUUID,
         @"authorization":[self authorization],@"accuracy_authorization":self.manager.accuracyAuthorization==CLAccuracyAuthorizationFullAccuracy ? @"fullAccuracy":@"reducedAccuracy",
-        @"events":self.records} options:NSJSONWritingPrettyPrinted error:&error];
+        @"application_session":self.applicationSession,@"process_id":@(NSProcessInfo.processInfo.processIdentifier),
+        @"process_began_uptime_ms":@((long long)(self.beganUptime*1000)),@"events":self.records} options:NSJSONWritingPrettyPrinted error:&error];
     if(body&&documents)[body writeToFile:[documents stringByAppendingPathComponent:@"corelocation.json"] options:NSDataWritingAtomic error:&error];
     if(error)NSLog(@"NezhaLocation evidence write: %@",error);
 }
@@ -135,6 +143,11 @@
     self.window=[[UIWindow alloc]initWithWindowScene:(UIWindowScene *)scene];
     self.window.rootViewController=[[UINavigationController alloc]initWithRootViewController:[NezhaLocationController new]];
     [self.window makeKeyAndVisible];
+}
+- (void)sceneDidDisconnect:(UIScene *)scene
+{
+    (void)scene;UINavigationController *nav=(UINavigationController *)self.window.rootViewController;
+    [(NezhaLocationController *)nav.topViewController end];
 }
 - (void)sceneDidEnterBackground:(UIScene *)scene
 {

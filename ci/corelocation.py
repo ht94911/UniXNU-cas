@@ -19,6 +19,9 @@ try:
     assert sha(root/'ci/artifacts.py')==manifest['artifacts_sha256']
     assert sha(root/'ci/artifact-recipient.pem')==manifest['certificate_sha256']
     shutil.copyfile(root/'inputs.json',args.out/'inputs.json')
+    host=args.out/'registration-host'
+    run('registration-host-compile',['xcrun','clang','-fobjc-arc','-fblocks','-Wall','-Wextra','-Werror','-fsanitize=address,undefined','-O1','-g',root/'source/location-launch-registration.m','-framework','Foundation','-o',host])
+    run('registration-host-execute',[host])
     sdk=run('sdk',['xcrun','--sdk','iphoneos','--show-sdk-path']).stdout.decode().strip()
     app=args.out/'NezhaLocation.app';app.mkdir();shutil.copyfile(root/'source/Info.plist',app/'Info.plist')
     base=['xcrun','--sdk','iphoneos','clang','-target','arm64e-apple-ios27.0','-isysroot',sdk,'-fobjc-arc','-fblocks','-O2','-Wall','-Wextra','-Werror']
@@ -32,7 +35,7 @@ try:
     for label,path in [('app',app),('launcher',launcher)]:
         run(label+'-verify',['codesign','--verify','--strict',path]);r=run(label+'-signature',['codesign','-d','--verbose=4',path]);assert b'Page size=4096'in r.stderr
     imports=run('app-imports',['xcrun','nm','-u',app/'NezhaLocation']).stdout.decode();assert '_UIApplicationMain'in imports
-    (args.out/'qualified.json').write_text(json.dumps(dict(target='arm64e-apple-ios27.0',sdk=sdk,app_sha256=sha(app/'NezhaLocation'),launcher_sha256=sha(launcher),normal_CoreLocation_permission=True,locationd_private_API=False,TCC_changed=False,simulated_locations=False,foreground_only=True,ordinary_location_entitlements=True,original_LS_registration_caller=True,signature_page_bytes=4096,device_executed=False),indent=2)+'\n')
+    (args.out/'qualified.json').write_text(json.dumps(dict(target='arm64e-apple-ios27.0',sdk=sdk,app_sha256=sha(app/'NezhaLocation'),launcher_sha256=sha(launcher),normal_CoreLocation_permission=True,locationd_private_API=False,TCC_changed=False,simulated_locations=False,foreground_only=True,ordinary_location_entitlements=True,original_LS_registration_caller=True,original_modifydb_post_install=True,registration_fixture_cases=9,per_event_authorization_and_uptime=True,signature_page_bytes=4096,device_executed=False),indent=2)+'\n')
 except Exception as e:
     errors.append(dict(error=str(e)))
 finally:

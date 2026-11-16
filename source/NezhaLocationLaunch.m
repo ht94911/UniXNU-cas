@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 /* Use the original LaunchServices request for NezhaLocation.app. Original24A446
- * registerApplicationForRebuildWithInstallInfo: is the current entry for a
+ * registerContainerizedApplicationWithInfoDictionaries: registers a
  * system bundle missing from the current Data's application registration.
  * Registration is restricted to the existing /Applications/NezhaLocation.app;
  * no bundle, executable, signature, user app or root volume is rewritten. */
@@ -11,20 +11,20 @@
 #include <stdio.h>
 #include <unistd.h>
 
-@interface NSObject (NezhaCameraLaunchServices)
+@interface NSObject (NezhaLocationLaunchServices)
 + (id)defaultWorkspace;
 + (id)applicationProxyForIdentifier:(NSString *)identifier;
 - (NSURL *)bundleURL;
 - (NSString *)applicationIdentifier;
 - (BOOL)isInstalled;
 - (BOOL)isPlaceholder;
-- (BOOL)registerApplicationForRebuildWithInfoDictionaries:(NSArray *)dictionaries
-    requestContext:(id)context registrationError:(NSError **)error;
+- (id)registerContainerizedApplicationWithInfoDictionaries:(NSArray *)dictionaries
+    operationUUID:(NSUUID *)operation requestContext:(id)context saveObserver:(id)observer
+    registrationError:(NSError **)error;
 - (BOOL)openApplicationWithBundleID:(NSString *)identifier;
-- (void)setTargetUserID:(NSNumber *)uid;
 @end
 
-static BOOL registered_camera(id application)
+static BOOL registered_location(id application)
 {
     return [application respondsToSelector:@selector(applicationIdentifier)] &&
         [[application applicationIdentifier] isEqualToString:@"org.unixnu.nezha.location"] &&
@@ -45,13 +45,13 @@ static void report_proxy(const char *step,id application)
 }
 
 /* Tests exercise this exact consumer with Foundation and fixture LS classes.
- * Runtime supplies only the measured original Camera path below. */
-static int open_camera(Class proxy,id service,NSURL *system_url,Class request_context_class)
+ * Runtime supplies only the selected NezhaLocation bundle path below. */
+static int open_location(Class proxy,id service,NSURL *system_url)
 {
     NSString *identifier=@"org.unixnu.nezha.location";
     id application=[proxy applicationProxyForIdentifier:identifier];
     report_proxy("before",application);
-    if (!registered_camera(application)) {
+    if (!registered_location(application)) {
         NSError *error=nil;
         NSURL *info_url=[system_url URLByAppendingPathComponent:@"Info.plist"];
         NSData *data=[NSData dataWithContentsOfURL:info_url options:0 error:&error];
@@ -61,36 +61,28 @@ static int open_camera(Class proxy,id service,NSURL *system_url,Class request_co
             ![info[@"CFBundleIdentifier"] isEqualToString:identifier] ||
             ![info[@"CFBundleExecutable"] isEqualToString:@"NezhaLocation"] ||
             access([system_url URLByAppendingPathComponent:@"NezhaLocation"].fileSystemRepresentation,R_OK)) {
-            fprintf(stderr,"nezha-location-launch: system Camera identity unavailable error=%ld path=%s\n",
+            fprintf(stderr,"nezha-location-launch: system NezhaLocation identity unavailable error=%ld path=%s\n",
                 (long)error.code,system_url.path.UTF8String);
             return 4;
         }
         /* The native synchronous return is followed by a fresh proxy query.
          * Do not equate queued registration or placeholder presence with an
          * installed app; no private replacement identity is synthesized. */
-        /* Reuse UIKitTools' original System bundle description through
-         * the current24A446 LSInstallInfo conversion. The old dictionary
-         * endpoint returns false unconditionally in this actual OS. */
+        /* The old rebuild endpoints were absent from the actual072/073
+         * bootstrap domains. Current24A446 converts this same System
+         * dictionary to LSInstallInfo, then performPostInstallationRegistration
+         * on the existing modifydb service. This only registers the existing
+         * NezhaLocation bundle through its real Info.plist; it does not change location authorization. */
         if (![service respondsToSelector:
-            @selector(registerApplicationForRebuildWithInfoDictionaries:requestContext:registrationError:)]) return 5;
-        /* Actual24A446 _requestContextForUserDomain: selects its original
-         * systemSessionDomain when targetUserID is @0. A nil context picks
-         * the current mobile user domain, where072's com.apple.lsd.rebuild
-         * lookup returned NoSuchProcess. The caller keeps its original uid
-         * and rebuild entitlement; only the LS request domain changes. */
-        id context=[request_context_class new];
-        if (![context respondsToSelector:@selector(setTargetUserID:)]) {
-            fputs("nezha-location-launch: original LS request context unavailable\n",stderr);
-            return 5;
-        }
-        [context setTargetUserID:@0];
+            @selector(registerContainerizedApplicationWithInfoDictionaries:operationUUID:requestContext:saveObserver:registrationError:)]) return 5;
         NSDictionary *registration=@{@"ApplicationType":@"System",
             @"BundleNameIsLocalized":@1,@"CFBundleIdentifier":identifier,
             @"CompatibilityState":@0,@"IsDeletable":@0,@"Path":system_url.path};
         error=nil;
-        const BOOL registered=[service registerApplicationForRebuildWithInfoDictionaries:@[registration]
-            requestContext:context registrationError:&error];
-        fprintf(stderr,"nezha-location-launch: original system Camera registration=%u error=%ld domain=%s path=%s\n",
+        id result=[service registerContainerizedApplicationWithInfoDictionaries:@[registration]
+            operationUUID:[NSUUID UUID] requestContext:nil saveObserver:nil registrationError:&error];
+        const BOOL registered=result!=nil && error==nil;
+        fprintf(stderr,"nezha-location-launch: original system NezhaLocation registration=%u error=%ld domain=%s path=%s\n",
             (unsigned)registered,(long)error.code,error.domain.UTF8String ?: "<none>",system_url.path.UTF8String);
         if (!registered && error) {
             /* NSCocoaError4099 alone loses the service name and the native
@@ -106,18 +98,18 @@ static int open_camera(Class proxy,id service,NSURL *system_url,Class request_co
         if (!registered) return 6;
         application=[proxy applicationProxyForIdentifier:identifier];
         report_proxy("after",application);
-        if (!registered_camera(application)) return 7;
+        if (!registered_location(application)) return 7;
     }
     if (![service respondsToSelector:@selector(openApplicationWithBundleID:)]) {
         fputs("nezha-location-launch: original launch method unavailable\n",stderr);
         return 8;
     }
     const BOOL requested=[service openApplicationWithBundleID:identifier];
-    fprintf(stderr,"nezha-location-launch: originalCamera registered=1 launch_request=%u preview_verified=0 photo_verified=0\n",(unsigned)requested);
+    fprintf(stderr,"nezha-location-launch: NezhaLocation registered=1 launch_request=%u CoreLocation_callback_verified=0\n",(unsigned)requested);
     return requested ? 0:9;
 }
 
-#ifndef NEZHA_CAMERA_LAUNCH_TEST
+#ifndef NEZHA_LOCATION_LAUNCH_TEST
 static void deadline(int value)
 {
     (void)value;
@@ -136,15 +128,14 @@ int main(void)
         void *handle=dlopen(framework,RTLD_NOW|RTLD_LOCAL);
         Class proxy=objc_getClass("LSApplicationProxy");
         Class workspace=objc_getClass("LSApplicationWorkspace");
-        Class request_context=objc_getClass("LSOperationRequestContext");
-        if (!handle || !proxy || !workspace || !request_context ||
+        if (!handle || !proxy || !workspace ||
             ![proxy respondsToSelector:@selector(applicationProxyForIdentifier:)] ||
             ![workspace respondsToSelector:@selector(defaultWorkspace)]) {
             fputs("nezha-location-launch: original LaunchServices interface unavailable\n",stderr);
             return 3;
         }
-        return open_camera(proxy,[workspace defaultWorkspace],
-            [NSURL fileURLWithPath:@"/Applications/NezhaLocation.app" isDirectory:YES],request_context);
+        return open_location(proxy,[workspace defaultWorkspace],
+            [NSURL fileURLWithPath:@"/Applications/NezhaLocation.app" isDirectory:YES]);
     }
 }
 #endif

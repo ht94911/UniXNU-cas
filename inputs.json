@@ -1,15 +1,16 @@
 {
   "schema": 1,
-  "purpose": "Normal foreground CLLocationManager app with WhenInUse prompt and fullAccuracy/sourceInformation evidence; reuse original LS system-domain registration only to launch this bundle. No simulated locations/TCC/private source input.",
-  "device_revision": "65220637fea1fc771201d87a43a0ebec0c54de3b",
+  "purpose": "Ordinary Core Location scene app with event authorization and monotonic provenance; same-device original24A446 modifydb post-install registration helper. Only normal permission can start position updates.",
+  "device_revision": "586340c4f7cd003878f572853989d961e9cb941f",
   "files": {
-    "source/NezhaLocation.m": "98201d9c30af07e50baf5f25a2836bc549f485583f4ac7f5ab925b9aa95c52d6",
+    "source/NezhaLocation.m": "6a71ef36ae9323341a82d94a4620ca288d313eec1fc71d92e65b8de332685d68",
     "source/Info.plist": "d22a8a478357aaf3a42279295f5b7c704415e64c0fc049b3371c9556cabc902e",
     "source/NezhaLocation.entitlements.plist": "3a42773d833db52c8a6113f2ea83cd6e97ed6ffbdd4ecb8f10d506868a037626",
-    "source/NezhaLocationLaunch.m": "777bb09e814b70d50203bf5121b7996c3eca8ffc542ecd369ffd11bdacec7c6f",
-    "source/NezhaLocationLaunch.entitlements.plist": "28c5ce718672d302b46f4f67b6e49784a354fefa042d92c5fb025e3d96688ef9",
-    "ci/corelocation.py": "8c8171cb9b3836da82c2438d8e78d4930e65d1573cb2324bc201e30934979cc5",
-    ".github/workflows/nezha-ios27-native.yml": "49f7e450789edbf55bac5227fc66945dda3e7c43ee03d600e0dfc496e5063083"
+    "source/NezhaLocationLaunch.m": "47e21fc173f8be4514824cf04d8286d61f4ace66a4819b826e3448d114177dd3",
+    "source/NezhaLocationLaunch.entitlements.plist": "990976e864664ee1a6264c30806d55194650549bbf3f9ee484d80a456230e054",
+    "ci/corelocation.py": "6f7d4c73b013cec7b13302a1a0ce2dd21f9aa23419493271afbe4aa84a09a94b",
+    ".github/workflows/nezha-ios27-native.yml": "aab36b92a2c94299c36b2d0d2efe25b7bf7468d0e1db6657512613f5853d066c",
+    "source/location-launch-registration.m": "0c8b47b7e3418be49505b70ec51181c4f3b304f969bf7a67ddc0451f4cbf5efd"
   },
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
   "certificate_sha256": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
