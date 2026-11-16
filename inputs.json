@@ -1,16 +1,19 @@
 {
   "schema": 1,
-  "purpose": "One bounded25second originalCamera.app LaunchServices request, using existingAppSync ProbeRunner entry; no camera data/permissions/touches; no success claimed by queuedBOOL. Original app identity must be registered.",
-  "device_revision": "ae7ca1915d296ac345ae9531df37da18b058e897",
+  "purpose": "Fix actual068 launcher failure. Use original LS installed proxy without requiring readable Info; if absent register only verified original /Applications/Camera.app through original24A446 registerApplication, query installed nonplaceholder proxy then request open once. Native registration error and45s deadline remain failures; no root bundle/signature changes.",
+  "device_revision": "988f7b9b678c525d727801ead239c94d1b22cabf",
   "files": {
-    "source/NezhaCameraLaunch.m": "9f0fd6b61033fa44742b331051899dda6a398bcdfc33d054789c99181eb13101",
-    ".github/workflows/nezha-ios27-native.yml": "7e02acdaa2846079d5f4d59f99d20af7b5575213255646530c6d335618492b88"
+    "source/NezhaCameraLaunch.m": "2fc4782ae3898cc646af8fe0f5d68c7f19bb7bbf51fbf5e2a0078cd342ffafca",
+    "source/camera-launch-registration.m": "a880fc1fb1938886ad9e80fe5d976ca2bb9f2e7cadd76bc70dcd6957b83f37dd",
+    ".github/workflows/nezha-ios27-native.yml": "2e265d975b9af6a8dad0727771ba7b3ef7590a3b2809cfd91d9a0992e6718700"
   },
-  "builder_sha256": "dcf12609050f85dbc3f51b761033fa1cfd1086f0e30648a76d4f5729ab92cda2",
+  "builder_sha256": "42d140f8d93a13ab4ab2bece73538872da57fbecf71ccf09c9311172654229c2",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
   "certificate_sha256": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
   "kernel_build_required": false,
   "private_inputs_uploaded": false,
   "phone_operations": false,
-  "original_LaunchServices_method": "-[LSApplicationWorkspace openApplicationWithBundleID:] at24A4460x186e67d38"
+  "original_LaunchServices_method": "-[LSApplicationWorkspace openApplicationWithBundleID:] at24A4460x186e67d38",
+  "original_LaunchServices_register_method": "-[LSApplicationWorkspace registerApplication:] at24A4460x186f85c70 -> LSRegisterURL(url,0)",
+  "original_LaunchServices_registration_verified": true
 }

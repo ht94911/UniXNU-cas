@@ -1,7 +1,9 @@
 /* SPDX-License-Identifier: MIT */
-/* Launch only the original Camera.app through the existing AppSync
- * ProbeRunner LaunchServices entry. The helper never reads camera data,
- * asks for TCC permission, sends touches, or marks the app successful. */
+/* Use the original LaunchServices request for Camera.app. Original24A446
+ * registerApplication: is the synchronous LSRegisterURL entry used for a
+ * system bundle missing from the current Data's application registration.
+ * Registration is restricted to the existing /Applications/Camera.app;
+ * no bundle, executable, signature, user app or root volume is rewritten. */
 #import <Foundation/Foundation.h>
 #import <objc/runtime.h>
 #include <dlfcn.h>
@@ -11,11 +13,80 @@
 
 @interface NSObject (NezhaCameraLaunchServices)
 + (id)defaultWorkspace;
-+ (id)applicationProxyForIdentifier:identifier;
++ (id)applicationProxyForIdentifier:(NSString *)identifier;
 - (NSURL *)bundleURL;
-- (BOOL)openApplicationWithBundleID:identifier;
+- (NSString *)applicationIdentifier;
+- (BOOL)isInstalled;
+- (BOOL)isPlaceholder;
+- (BOOL)registerApplication:(NSURL *)url;
+- (BOOL)openApplicationWithBundleID:(NSString *)identifier;
 @end
 
+static BOOL registered_camera(id application)
+{
+    return [application respondsToSelector:@selector(applicationIdentifier)] &&
+        [[application applicationIdentifier] isEqualToString:@"com.apple.camera"] &&
+        [application respondsToSelector:@selector(isInstalled)] && [application isInstalled] &&
+        [application respondsToSelector:@selector(isPlaceholder)] && ![application isPlaceholder];
+}
+
+static void report_proxy(const char *step,id application)
+{
+    NSString *identifier=[application respondsToSelector:@selector(applicationIdentifier)] ?
+        [application applicationIdentifier]:nil;
+    NSURL *url=[application respondsToSelector:@selector(bundleURL)] ? [application bundleURL]:nil;
+    fprintf(stderr,"nezha-camera-launch: %s proxy=%u identifier=%s installed=%u placeholder=%u path=%s\n",
+        step,(unsigned)(application!=nil),identifier.UTF8String ?: "<absent>",
+        (unsigned)([application respondsToSelector:@selector(isInstalled)] && [application isInstalled]),
+        (unsigned)([application respondsToSelector:@selector(isPlaceholder)] && [application isPlaceholder]),
+        url.path.UTF8String ?: "<absent>");
+}
+
+/* Tests exercise this exact consumer with Foundation and fixture LS classes.
+ * Runtime supplies only the measured original Camera path below. */
+static int open_camera(Class proxy,id service,NSURL *system_url)
+{
+    NSString *identifier=@"com.apple.camera";
+    id application=[proxy applicationProxyForIdentifier:identifier];
+    report_proxy("before",application);
+    if (!registered_camera(application)) {
+        NSError *error=nil;
+        NSURL *info_url=[system_url URLByAppendingPathComponent:@"Info.plist"];
+        NSData *data=[NSData dataWithContentsOfURL:info_url options:0 error:&error];
+        NSDictionary *info=data ? [NSPropertyListSerialization propertyListWithData:data
+            options:NSPropertyListImmutable format:NULL error:&error]:nil;
+        if (![info isKindOfClass:[NSDictionary class]] ||
+            ![info[@"CFBundleIdentifier"] isEqualToString:identifier] ||
+            ![info[@"CFBundleExecutable"] isEqualToString:@"Camera"] ||
+            access([system_url URLByAppendingPathComponent:@"Camera"].fileSystemRepresentation,R_OK)) {
+            fprintf(stderr,"nezha-camera-launch: system Camera identity unavailable error=%ld path=%s\n",
+                (long)error.code,system_url.path.UTF8String);
+            return 4;
+        }
+        if (![service respondsToSelector:@selector(registerApplication:)]) {
+            fputs("nezha-camera-launch: original registration interface unavailable\n",stderr);
+            return 5;
+        }
+        /* The native synchronous return is followed by a fresh proxy query.
+         * Do not equate queued registration or placeholder presence with an
+         * installed app; no private replacement identity is synthesized. */
+        const BOOL registered=[service registerApplication:system_url];
+        fprintf(stderr,"nezha-camera-launch: original system Camera registration=%u\n",(unsigned)registered);
+        if (!registered) return 6;
+        application=[proxy applicationProxyForIdentifier:identifier];
+        report_proxy("after",application);
+        if (!registered_camera(application)) return 7;
+    }
+    if (![service respondsToSelector:@selector(openApplicationWithBundleID:)]) {
+        fputs("nezha-camera-launch: original launch method unavailable\n",stderr);
+        return 8;
+    }
+    const BOOL requested=[service openApplicationWithBundleID:identifier];
+    fprintf(stderr,"nezha-camera-launch: originalCamera registered=1 launch_request=%u preview_verified=0 photo_verified=0\n",(unsigned)requested);
+    return requested ? 0:9;
+}
+
+#ifndef NEZHA_CAMERA_LAUNCH_TEST
 static void deadline(int value)
 {
     (void)value;
@@ -29,35 +100,19 @@ int main(void)
     @autoreleasepool {
         setvbuf(stderr,NULL,_IONBF,0);
         signal(SIGALRM,deadline);
-        alarm(25);
+        alarm(45);
         const char *framework="/System/Library/Frameworks/CoreServices.framework/CoreServices";
         void *handle=dlopen(framework,RTLD_NOW|RTLD_LOCAL);
         Class proxy=objc_getClass("LSApplicationProxy");
         Class workspace=objc_getClass("LSApplicationWorkspace");
-        NSString *identifier=@"com.apple.camera";
         if (!handle || !proxy || !workspace ||
             ![proxy respondsToSelector:@selector(applicationProxyForIdentifier:)] ||
             ![workspace respondsToSelector:@selector(defaultWorkspace)]) {
             fputs("nezha-camera-launch: original LaunchServices interface unavailable\n",stderr);
             return 3;
         }
-        id application=[proxy applicationProxyForIdentifier:identifier];
-        NSURL *bundle=[application respondsToSelector:@selector(bundleURL)] ? [application bundleURL] : nil;
-        NSDictionary *info=bundle ? [NSDictionary dictionaryWithContentsOfURL:[bundle URLByAppendingPathComponent:@"Info.plist"]] : nil;
-        if (![info[@"CFBundleIdentifier"] isEqualToString:identifier] ||
-            ![info[@"CFBundleExecutable"] isEqualToString:@"Camera"]) {
-            fputs("nezha-camera-launch: original Camera bundle is not registered\n",stderr);
-            return 4;
-        }
-        id service=[workspace defaultWorkspace];
-        if (![service respondsToSelector:@selector(openApplicationWithBundleID:)]) {
-            fputs("nezha-camera-launch: original launch method unavailable\n",stderr);
-            return 5;
-        }
-        /* The original24A446 BOOL result acknowledges a request. Actual
-         * Camera PID, graph callbacks and pixels still qualify the run. */
-        const BOOL requested=[service openApplicationWithBundleID:identifier];
-        fprintf(stderr,"nezha-camera-launch: originalCamera registered=1 launch_request=%u preview_verified=0 photo_verified=0\n",(unsigned)requested);
-        return requested ? 0 : 6;
+        return open_camera(proxy,[workspace defaultWorkspace],
+            [NSURL fileURLWithPath:@"/Applications/Camera.app" isDirectory:YES]);
     }
 }
+#endif
