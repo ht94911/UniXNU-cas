@@ -1,12 +1,20 @@
 /* SPDX-License-Identifier: MIT */
 #define NEZHA_LOCATION_LAUNCH_TEST 1
+#define objc_getClass fixture_context_class
 #include "NezhaLocationLaunch.m"
+#undef objc_getClass
 #include <assert.h>
 #include <sys/stat.h>
 
 static id current_proxy;
 static unsigned registrations,launches;
 static BOOL registration_result,launch_result,registration_visible;
+@interface LocationFixtureContext : NSObject
+@property(nonatomic,strong) NSNumber *targetUserID;
+@end
+@implementation LocationFixtureContext
+@end
+Class fixture_context_class(const char *name) { assert(!strcmp(name,"LSOperationRequestContext"));return LocationFixtureContext.class; }
 @interface LocationFixtureProxy : NSObject
 @property(nonatomic,copy) NSString *identifier;
 @property(nonatomic,strong) NSURL *path;
@@ -28,7 +36,7 @@ static BOOL registration_result,launch_result,registration_visible;
     operationUUID:(NSUUID *)operation requestContext:(id)context saveObserver:(id)observer
     registrationError:(NSError **)error
 {
-    assert(dictionaries.count==1 && [operation isKindOfClass:[NSUUID class]] && context==nil && observer==nil);
+    assert(dictionaries.count==1 && [operation isKindOfClass:[NSUUID class]] && [context isKindOfClass:LocationFixtureContext.class] && [[context targetUserID] isEqual:@501] && observer==nil);
     NSDictionary *registration=dictionaries[0];
     if (!registration_result && error) {
         NSError *underlying=[NSError errorWithDomain:@"FixtureXPC" code:4099

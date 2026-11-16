@@ -22,6 +22,7 @@
     operationUUID:(NSUUID *)operation requestContext:(id)context saveObserver:(id)observer
     registrationError:(NSError **)error;
 - (BOOL)openApplicationWithBundleID:(NSString *)identifier;
+- (void)setTargetUserID:(NSNumber *)uid;
 @end
 
 static BOOL registered_location(id application)
@@ -78,9 +79,20 @@ static int open_location(Class proxy,id service,NSURL *system_url)
         NSDictionary *registration=@{@"ApplicationType":@"System",
             @"BundleNameIsLocalized":@1,@"CFBundleIdentifier":identifier,
             @"CompatibilityState":@0,@"IsDeletable":@0,@"Path":system_url.path};
+        /* Original24A446 nil context resolves the current root proxy UID.
+         * This job registers an app for the existing mobile lsd service;
+         * targetUserID selects the original user-domain connection instead
+         * of looking for a root-domain modifydb endpoint that is absent. */
+        Class contextClass=objc_getClass("LSOperationRequestContext");
+        id context=contextClass ? [contextClass new] : nil;
+        if(!context || ![context respondsToSelector:@selector(setTargetUserID:)]) {
+            fputs("nezha-location-launch: original user request context unavailable\n",stderr);
+            return 5;
+        }
+        [context setTargetUserID:@501];
         error=nil;
         id result=[service registerContainerizedApplicationWithInfoDictionaries:@[registration]
-            operationUUID:[NSUUID UUID] requestContext:nil saveObserver:nil registrationError:&error];
+            operationUUID:[NSUUID UUID] requestContext:context saveObserver:nil registrationError:&error];
         const BOOL registered=result!=nil && error==nil;
         fprintf(stderr,"nezha-location-launch: original system NezhaLocation registration=%u error=%ld domain=%s path=%s\n",
             (unsigned)registered,(long)error.code,error.domain.UTF8String ?: "<none>",system_url.path.UTF8String);
