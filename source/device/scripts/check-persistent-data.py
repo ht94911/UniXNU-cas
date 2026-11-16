@@ -140,6 +140,11 @@ static unsigned bt_stop_calls;
 static int nezha_bluetooth_stop_and_wait(uint32_t timeout){
  assert(timeout==30000);bt_stop_calls++;return bt_stop_result;
 }
+static int sensor_stop_result;
+static unsigned sensor_stop_calls;
+static int nezha_sensors_stop_and_wait(uint32_t timeout){
+ assert(timeout==30000);sensor_stop_calls++;return sensor_stop_result;
+}
 static int restart_owner(unsigned);''')
 fixture=fixture.replace('static int current_thread(void){return 1;}',
                         'static int current_thread(void){return running_thread;}')
@@ -160,6 +165,8 @@ needle=' nezha27_usb_control_prepare();assert(qcom_usb_debug_control_start());'
 addition='''
  if(!strcmp(test,"bt-cleanup-fail") || !strcmp(test,"persist-bt-cleanup-fail") ||
     !strcmp(test,"ram-normal-bt-cleanup-fail"))bt_stop_result=-110;
+ if(!strcmp(test,"persist-sensor-cleanup-fail") ||
+    !strcmp(test,"ram-normal-sensor-cleanup-fail"))sensor_stop_result=-110;
  if(!strncmp(test,"persist-",8)){
   persist=2;boot_gate=1;native_data_persist_state=2;native_data_persist_writes=17;persistent_real_shutdown=1;
   if(!strcmp(test,"persist-fresh"))native_data_persist_state=3;
@@ -189,6 +196,7 @@ addition='''
   if(!setjmp(reset_exit))nezha27_usb_control_service();
   int ok=!strcmp(test,"persist-resume")||!strcmp(test,"persist-fresh")||
          !strcmp(test,"ram-normal-success")||after_ticket==1;
+  if(sensor_stop_result)assert(sensor_stop_calls==1 && !bt_stop_calls && !reset_calls && !shutdown_calls);
   assert(reset_calls==(unsigned)ok && shutdown_calls==(unsigned)(ok||after_ticket));
   if(bt_stop_result)assert(bt_stop_calls==1 && !reset_calls && !shutdown_calls);
   if(ok){assert(normal_shutdown_started==2 && control_reboot_armed==2);assert(restart_owner(1)==-10);}
@@ -205,6 +213,7 @@ cases.append('persist-other-thread')
 cases += ['bt-cleanup-fail','persist-bt-cleanup-fail','ram-normal-success',
           'ram-normal-transport-off-after-ticket','ram-normal-before-final-stage',
           'ram-normal-owner-after-ticket','ram-normal-other-thread','ram-normal-bt-cleanup-fail']
+cases += ['persist-sensor-cleanup-fail','ram-normal-sensor-cleanup-fail']
 results={case:subprocess.check_output([str(O/'reboot-persist'),case],text=True).strip() for case in cases}
 report=dict(phone_operations=False,ufs_actual_commands=ufs_output,root_command_regression=read_output,usb_actual_protocol_and_board_cases=results,sources={str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in [U/'RootCommands.h',U/'PinnedDataWindow.h',U/'NativeUfs.cpp',D/'package/Nezha27UsbControl.c',USB/'kernel/QcomXnuUsbDebug.c']})
 (O/'report.json').write_text(json.dumps(report,indent=2)+'\n')

@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Sensors001 on human-selected original GPU051; single ALS017 ADSP/QRTR owner; ordinary CoreMotion app. Source only; native PAC/prelink and device validation pending.",
+  "purpose": "Sensors001b preserves001 production code and repairs actual persistent USB test interface; human-selected GPU051; target native and ordinary CoreMotion app.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "36d59a35c62a26d997fab024f30ff672e95f7b41",
+  "device_revision": "b136ac5c4bc13021b53b3cd142720b8a2a819f0e",
   "soc_revision": "device-local-composition-e565439+3435fa5",
   "xcode": "26.6",
   "files": {
@@ -446,7 +446,7 @@
     "source/device/scripts/check-iconservice-memory.py": "8e445f674b8120b42f710e49b4522b7ed3f90802ebaa318e0433e5514880e63d",
     "source/device/scripts/check-iosurface-plane-27.py": "7aa70c9e3eeafa3b6d3108d88cbcafbe1e4d441eafc757e83184e5155cc2bf6c",
     "source/device/scripts/check-keystore-source.py": "3ca47a3009f5f62c255723ee2d215e0078d15fbb98a0adb27844d25bc7103e7a",
-    "source/device/scripts/check-persistent-data.py": "c2a2c50534d564033e967cb34df230ec9d196c341eb1472f7ad10c06c13f72c3",
+    "source/device/scripts/check-persistent-data.py": "ede35505daee94ef3d8ee618d18773b6a769533fb805b0242a726bac8815b426",
     "source/device/scripts/check-persistent-marker.py": "b44ed26f16e66aa29410e55d94682c616cc30c1c58df4371365e0863d8647bbe",
     "source/device/scripts/check-root-cwd-ownership.py": "704f9231bfeff097c50578c35772b18ceb9f870752e528532b4c5b9edbf71835",
     "source/device/scripts/check-stable-kernel-stack.py": "18ba63991ba388395d0bd02befcef792dce0fbd1ede8749b22fa3e392f73f394",
@@ -541,7 +541,7 @@
     "source/device/tests/sensors-hid-host-shim.h": "fe1a5a11663090897b1cff0d7d2d6a7a19475223d2f5c88234bee5a1e4cfdfa9",
     "source/device/tests/sensors-integration-host.cpp": "c078442e6c285343cce05f33c3d98f5125082e3e80a286964105eccec3846e8b",
     "source/device/tests/sensors-integration-host.py": "2d99bac067e84bce3003b8939adc947d749b11a1fb088e6cce2ea20892e767df",
-    ".github/workflows/nezha-ios27-native.yml": "11480fc2d43877cf1d12e1cfff7eb50c420e294d0de79229ae9aa3f40a9cfdb1"
+    ".github/workflows/nezha-ios27-native.yml": "78901c92dcba7dd89dfb2b8898987dfb0edd43b18ccb6807b433e838b8b46e7c"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
