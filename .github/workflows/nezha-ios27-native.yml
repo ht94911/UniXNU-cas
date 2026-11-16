@@ -1,7 +1,7 @@
-name: nezha Camera073 on GPU051 - native
+name: nezha Camera074 on GPU051 - native
 on:
   push:
-    branches: [codex/ios27-camera073-gpu051-smmu-reopen-LS-20261116]
+    branches: [codex/ios27-camera074-gpu051-streamretire-install-LS-20261116]
   workflow_dispatch:
 permissions:
   contents: read

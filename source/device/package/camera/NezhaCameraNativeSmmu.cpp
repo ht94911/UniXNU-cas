@@ -6,6 +6,7 @@
 #include "Sm8850ResourcesNative.h"
 
 #include <IOKit/IOLib.h>
+#include <sys/systm.h>
 
 extern "C" IOReturn armcpu_spi_attach(uint32_t, bool, void (*)(void *),
     void *, uint32_t *, uint64_t *);
@@ -108,7 +109,8 @@ ArmSmmu4KStatus nezha_camera_native_smmu_prepare(NezhaCameraNativeSmmu **out,
     }
     uint32_t id1 = 0, id2 = 0;
     ArmSmmu4KStatus result = ArmSmmu4KStateMismatch;
-    if (sm8850_smmu_check_assignment(common, &domain.assignment) == Sm8850Okay &&
+    const int assignment_status = sm8850_smmu_check_assignment(common, &domain.assignment);
+    if (assignment_status == Sm8850Okay &&
         !domain.io.read32(domain.io.cookie, 0x24, &id1) &&
         !domain.io.read32(domain.io.cookie, 0x28, &id2)) {
         domain.bank_base = (size_t(2u << ((id1 >> 28) & 7u)) + bank) * 4096;
@@ -119,6 +121,25 @@ ArmSmmu4KStatus nezha_camera_native_smmu_prepare(NezhaCameraNativeSmmu **out,
             *physical_bits = domain.physical_bits;
             result = ArmSmmu4KSuccess;
         }
+    }
+    if (result != ArmSmmu4KSuccess) {
+        /* Repeated073 setup refused without identifying which state was
+         * left after discovery. Read only this leased bank and exact slot;
+         * preserve the rejection, live routes and all configuration. */
+        uint32_t smr=0, route=0, sctlr=0, actlr=0, fsr=0;
+        uint64_t tt0=0, tt1=0;
+        (void)domain.io.read32(domain.io.cookie, 0x24, &id1);
+        const size_t cb=(size_t(2u << ((id1 >> 28)&7u))+bank)*4096;
+        (void)domain.io.read32(domain.io.cookie, 0x800+slot*4, &smr);
+        (void)domain.io.read32(domain.io.cookie, 0xc00+slot*4, &route);
+        (void)domain.io.read32(domain.io.cookie, cb, &sctlr);
+        (void)domain.io.read32(domain.io.cookie, cb+4, &actlr);
+        (void)domain.io.read32(domain.io.cookie, cb+0x58, &fsr);
+        (void)domain.io.read64(domain.io.cookie, cb+0x20, &tt0);
+        (void)domain.io.read64(domain.io.cookie, cb+0x28, &tt1);
+        printf("NEZHA CAMERA SMMU: assignment=%d bank=%u slot=%u smr=%#x route=%#x sctlr=%#x actlr=%#x fsr=%#x ttbr=%#llx/%#llx\n",
+            assignment_status, bank, slot, smr, route, sctlr, actlr, fsr,
+            (unsigned long long)tt0, (unsigned long long)tt1);
     }
     sm8850_resource_leave(common);
     return result;
@@ -296,7 +317,9 @@ bool nezha_camera_native_smmu_release(NezhaCameraNativeSmmu **out, bool dma_deta
         const uint64_t asid = uint64_t(domain.assignment.asid) << 48;
         retired = domain.locked && domain.context.lower_tables && !domain.context.upper &&
             sm8850_smmu_retire_disabled_bank(domain.common, domain.assignment.bank,
-                asid | domain.context.lower_tables->root_physical, asid) == Sm8850Okay;
+                asid | domain.context.lower_tables->root_physical, asid) == Sm8850Okay &&
+            sm8850_smmu_retire_faulted_stream(domain.common, domain.assignment.slot[0],
+                domain.assignment.sid[0]) == Sm8850Okay;
     }
     const bool restored = retired && restore_actlr(domain);
     unlock(&domain);
@@ -312,6 +335,8 @@ bool nezha_camera_native_smmu_release(NezhaCameraNativeSmmu **out, bool dma_deta
     domain.context = {};
     domain.programming_started = false;
     domain.fault_irq_masked = false;
+    printf("NEZHA CAMERA SMMU: bank=%u slot=%u retiredTTBR=%u retiredSMR=%u\n",
+        domain.assignment.bank, domain.assignment.slot[0], (unsigned)retired, (unsigned)retired);
     *out = nullptr;
     return true;
 }

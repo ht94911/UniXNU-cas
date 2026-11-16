@@ -53,6 +53,9 @@ int sm8850_smmu_check_assignment(Sm8850Resources *,const Sm8850SmmuAssignment *)
  * refuse. Clear stale TTBR/ASID before releasing the tables and bank lease. */
 int sm8850_smmu_retire_disabled_bank(Sm8850Resources *,unsigned bank,
     uint64_t expected_ttbr0,uint64_t expected_ttbr1);
+/* After FaultStreams and bank retirement, remove the exact camera match
+ * only when its S2CR is already FAULT. Leaves unknown/changed routes intact. */
+int sm8850_smmu_retire_faulted_stream(Sm8850Resources *,unsigned slot,unsigned sid);
 /* Caller already entered the resource. Exact TCS writes only. */
 int sm8850_tcs_idle(Sm8850Resources *,unsigned tcs);
 int sm8850_tcs_write(Sm8850Resources *,unsigned tcs,uint32_t offset,uint32_t value);

@@ -103,6 +103,17 @@ int sm8850_smmu_retire_disabled_bank(Sm8850Resources *r,unsigned bank,
         r->io.read64(r->io.context,Sm8850Smmu,cb+0x28,&tt1)) return Sm8850Io;
     return (tt0 || tt1) ? Sm8850Conflict:Sm8850Okay;
 }
+int sm8850_smmu_retire_faulted_stream(Sm8850Resources *r,unsigned slot,unsigned sid) {
+    if (!r || !r->initialized || sid>0x7fff) return Sm8850Invalid;
+    uint32_t id0,smr,s2cr,expected=0x80000000u|sid;
+    if (rd(r,Sm8850Smmu,0x20,&id0)) return Sm8850Io;
+    if (slot>=(id0&255) || (id0&(1u<<8))) return Sm8850Invalid;
+    uint32_t at=0x800+4*slot;
+    if (rd(r,Sm8850Smmu,at,&smr) || rd(r,Sm8850Smmu,0xc00+4*slot,&s2cr)) return Sm8850Io;
+    if (smr!=expected || s2cr!=0x20000) return Sm8850Conflict;
+    if (wr(r,Sm8850Smmu,at,sid) || fence(r) || rd(r,Sm8850Smmu,at,&smr)) return Sm8850Io;
+    return smr==sid ? Sm8850Okay:Sm8850Conflict;
+}
 int sm8850_tcs_idle(Sm8850Resources *r,unsigned tcs) {
     if (!r || tcs>=3) return Sm8850Invalid;
     uint32_t id,config,status,control,enable,wait,irq,b=0xd00+0x2a0*tcs;

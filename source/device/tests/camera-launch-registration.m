@@ -7,11 +7,6 @@
 static id current_proxy;
 static unsigned registrations,launches;
 static BOOL registration_result,launch_result,registration_visible;
-@interface CameraFixtureRequestContext : NSObject
-@property(nonatomic,strong) NSNumber *targetUserID;
-@end
-@implementation CameraFixtureRequestContext
-@end
 @interface CameraFixtureProxy : NSObject
 @property(nonatomic,copy) NSString *identifier;
 @property(nonatomic,strong) NSURL *path;
@@ -29,11 +24,11 @@ static BOOL registration_result,launch_result,registration_visible;
 @interface CameraFixtureWorkspace : NSObject
 @end
 @implementation CameraFixtureWorkspace
-- (BOOL)registerApplicationForRebuildWithInfoDictionaries:(NSArray *)dictionaries
-    requestContext:(id)context registrationError:(NSError **)error
+- (id)registerContainerizedApplicationWithInfoDictionaries:(NSArray *)dictionaries
+    operationUUID:(NSUUID *)operation requestContext:(id)context saveObserver:(id)observer
+    registrationError:(NSError **)error
 {
-    assert(dictionaries.count==1 && [context isKindOfClass:[CameraFixtureRequestContext class]] &&
-        [((CameraFixtureRequestContext *)context).targetUserID isEqual:@0]);
+    assert(dictionaries.count==1 && [operation isKindOfClass:[NSUUID class]] && context==nil && observer==nil);
     NSDictionary *registration=dictionaries[0];
     if (!registration_result && error) {
         NSError *underlying=[NSError errorWithDomain:@"FixtureXPC" code:4099
@@ -50,7 +45,7 @@ static BOOL registration_result,launch_result,registration_visible;
         CameraFixtureProxy *proxy=[CameraFixtureProxy new];proxy.identifier=@"com.apple.camera";
         proxy.path=url;proxy.installed=YES;current_proxy=proxy;
     }
-    return registration_result;
+    return registration_result ? @{} : nil;
 }
 - (BOOL)openApplicationWithBundleID:(NSString *)identifier
 { assert([identifier isEqualToString:@"com.apple.camera"]);++launches;return launch_result; }
@@ -71,23 +66,23 @@ int main(void)
         CameraFixtureWorkspace *workspace=[CameraFixtureWorkspace new];
         reset();CameraFixtureProxy *proxy=[CameraFixtureProxy new];proxy.identifier=@"com.apple.camera";
         proxy.installed=YES;proxy.path=[NSURL fileURLWithPath:@"/unreadable/Camera.app"];current_proxy=proxy;
-        assert(open_camera([CameraFixtureProxy class],workspace,proxy.path,[CameraFixtureRequestContext class])==0);
+        assert(open_camera([CameraFixtureProxy class],workspace,proxy.path)==0);
         assert(registrations==0 && launches==1); /* Old Info.plist gate rejected this real installed proxy. */
-        reset();assert(open_camera([CameraFixtureProxy class],workspace,url,Nil)==5);
+        reset();assert(open_camera([CameraFixtureProxy class],nil,url)==5);
         assert(registrations==0 && launches==0);
-        reset();assert(open_camera([CameraFixtureProxy class],workspace,url,[CameraFixtureRequestContext class])==0);
+        reset();assert(open_camera([CameraFixtureProxy class],workspace,url)==0);
         assert(registrations==1 && launches==1); /* Actual current Data missing the application entry. */
-        reset();registration_result=NO;assert(open_camera([CameraFixtureProxy class],workspace,url,[CameraFixtureRequestContext class])==6);
+        reset();registration_result=NO;assert(open_camera([CameraFixtureProxy class],workspace,url)==6);
         assert(registrations==1 && launches==0);
-        reset();registration_visible=NO;assert(open_camera([CameraFixtureProxy class],workspace,url,[CameraFixtureRequestContext class])==7);
+        reset();registration_visible=NO;assert(open_camera([CameraFixtureProxy class],workspace,url)==7);
         assert(registrations==1 && launches==0); /* A native acceptance alone is not a registered app. */
         reset();proxy=[CameraFixtureProxy new];proxy.identifier=@"com.apple.camera";proxy.installed=YES;proxy.placeholder=YES;current_proxy=proxy;
-        assert(open_camera([CameraFixtureProxy class],workspace,url,[CameraFixtureRequestContext class])==0);assert(registrations==1 && launches==1);
-        reset();launch_result=NO;assert(open_camera([CameraFixtureProxy class],workspace,url,[CameraFixtureRequestContext class])==9);assert(launches==1);
+        assert(open_camera([CameraFixtureProxy class],workspace,url)==0);assert(registrations==1 && launches==1);
+        reset();launch_result=NO;assert(open_camera([CameraFixtureProxy class],workspace,url)==9);assert(launches==1);
         reset();assert(([@{@"CFBundleIdentifier":@"com.apple.other",@"CFBundleExecutable":@"Camera"} writeToURL:info atomically:YES]));
-        assert(open_camera([CameraFixtureProxy class],workspace,url,[CameraFixtureRequestContext class])==4);assert(registrations==0 && launches==0);
+        assert(open_camera([CameraFixtureProxy class],workspace,url)==4);assert(registrations==0 && launches==0);
         reset();assert([files removeItemAtURL:info error:&error]);
-        assert(open_camera([CameraFixtureProxy class],workspace,url,[CameraFixtureRequestContext class])==4);assert(registrations==0 && launches==0);
+        assert(open_camera([CameraFixtureProxy class],workspace,url)==4);assert(registrations==0 && launches==0);
         assert([files removeItemAtURL:root error:&error]);
         puts("Camera launcher: 9 original consumer registration, unreadable installed bundle, placeholder and native error cases passed");
     }

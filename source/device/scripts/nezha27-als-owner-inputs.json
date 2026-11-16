@@ -100,9 +100,9 @@
   "soc_resource_owner": {
     "revision": "e565439bf1a13d0224f0a9adcfc1eef8df7ad142",
     "files": {
-      "include/Sm8850Resources.h": "5e3faddec82a44d3f7d660d637f2b7eb6c7a08902a7b4ef9ef74ce4fa4cd5009",
+      "include/Sm8850Resources.h": "01efd268a3d87b38069ce7a07e749dc777c1ef7b0baf8ee9591c6ed7d49fc9c7",
       "include/Sm8850ResourcesNative.h": "96a542ad251ca57765dbd299e71267eca66632356f6922007c8952b85917fc63",
-      "src/Sm8850Resources.c": "e79cde4b2dd4a2f6c89045b9bb18183bde70436ffcee1a8f34822421f71bea3d",
+      "src/Sm8850Resources.c": "9718722083e19c8ba8dd3b75ae64930f5b0b576ef292c692e665faac055a7c2b",
       "src/Sm8850ResourcesNative.cpp": "0f3b7453cf11c59d50ab2cec923699af791f1510d0f6fe95b0f7413e4201b36a"
     }
   },
@@ -219,5 +219,16 @@
     "camera_after_072_prior_client_cleanup_StateMismatch": true,
     "do_not_ignore_foreign_ASIDs": true,
     "hardware_reopen_verified": false
+  },
+  "camera_stream_retirement": {
+    "only_exact_SID_after_FAULT": true,
+    "previous_shared_hashes": {
+      "include/Sm8850Resources.h": "5e3faddec82a44d3f7d660d637f2b7eb6c7a08902a7b4ef9ef74ce4fa4cd5009",
+      "include/Sm8850ResourcesNative.h": "96a542ad251ca57765dbd299e71267eca66632356f6922007c8952b85917fc63",
+      "src/Sm8850Resources.c": "e79cde4b2dd4a2f6c89045b9bb18183bde70436ffcee1a8f34822421f71bea3d",
+      "src/Sm8850ResourcesNative.cpp": "0f3b7453cf11c59d50ab2cec923699af791f1510d0f6fe95b0f7413e4201b36a"
+    },
+    "TTBR_retirement_alone_not_sufficient_on073": true,
+    "fullshared_test_models_faulted_valid_SMR": true
   }
 }

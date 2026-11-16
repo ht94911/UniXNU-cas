@@ -20,7 +20,7 @@ static int rd(void *p, unsigned domain, uint32_t at, uint32_t *v)
 static int rd64(void *p, unsigned domain, uint32_t at, uint64_t *v)
 {uint32_t lo, hi; rd(p, domain, at, &lo); rd(p, domain, at + 4, &hi); *v = lo | (uint64_t)hi << 32; return 0;}
 static int wr(void *p, unsigned domain, uint32_t at, uint32_t v)
-{(void)p; assert(domain == Sm8850Smmu && at >= Bank + 0x20 && at <= Bank + 0x2c); ++writes; reg[at / 4] = v; return 0;}
+{(void)p; assert(domain == Sm8850Smmu && ((at >= Bank + 0x20 && at <= Bank + 0x2c) || at==0x800+4*80)); ++writes; reg[at / 4] = v; return 0;}
 static int fence(void *p) {(void)p; return 0;}
 static void init(void)
 {
@@ -52,5 +52,16 @@ int main(void)
     reg[(129 * 4096 + 0x24) / 4] = (uint32_t)(ttbr0 >> 32);
     assert(sm8850_smmu_retire_disabled_bank(&resources, 8, ttbr0, ttbr1) == Sm8850Okay);
     assert(sm8850_smmu_check_assignment(&resources, &assignment) == Sm8850Conflict);
+    // FaultStreams retains a valid match even though its route is FAULT.
+    // Both that match and the stale TTBR must retire before reacquisition.
+    init(); reg[(0x800+4*80)/4]=0x80001c00;
+    assert(sm8850_smmu_retire_disabled_bank(&resources,8,ttbr0,ttbr1)==Sm8850Okay);
+    assert(sm8850_smmu_check_assignment(&resources,&assignment)==Sm8850Conflict);
+    assert(sm8850_smmu_retire_faulted_stream(&resources,80,0x1c00)==Sm8850Okay);
+    assert(sm8850_smmu_check_assignment(&resources,&assignment)==Sm8850Okay);
+    init(); reg[(0x800+4*80)/4]=0x80001c01;
+    assert(sm8850_smmu_retire_faulted_stream(&resources,80,0x1c00)==Sm8850Conflict && !writes);
+    init(); reg[(0x800+4*80)/4]=0x80001c00;reg[(0xc00+4*80)/4]=8;
+    assert(sm8850_smmu_retire_faulted_stream(&resources,80,0x1c00)==Sm8850Conflict && !writes);
     puts("Shared SMMU retires only exact disabled detached camera TTBRs; actual next assignment passes; active/changed/foreign conflicts remain");
 }
