@@ -1,7 +1,7 @@
-name: nezha iPhone27 Camera088 GPU051 function creation and arguments
+name: nezha iPhone27 Camera088b GPU051 function creation and arguments
 on:
   push:
-    branches: [codex/ios27-camera088-gpu051-stitch-hash-metal-20261118]
+    branches: [codex/ios27-camera088b-gpu051-stitch-compiler-fixture-20261118]
   workflow_dispatch:
 permissions:
   contents: read

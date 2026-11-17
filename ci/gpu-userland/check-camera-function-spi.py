@@ -40,6 +40,16 @@ if executed.returncode:
     debug=subprocess.run(['xcrun','lldb','--batch','-o','run','-o','thread backtrace all','--',str(out/'consumer'),str(out/'tables.air'),str(out/'stitch.air')],capture_output=True,text=True,timeout=90,env=dict(os.environ,SHENG_DIAG='0'))
     (out/'failure-backtrace.log').write_text(debug.stdout+debug.stderr)
 assert executed.returncode == 0 and matched and int(matched[1]) == 37, str(executed.returncode)+' '+executed.stdout+executed.stderr
+# The current Xcode compiler cannot read the runtime fixture's AIRv29.
+# Compile the same authored stitchable functions with its own AIR version.
+compiler_source=out/'shared-functions.metal'
+compiler_source.write_text('#include <metal_stdlib>\nusing namespace metal;\n'
+    '[[stitchable]] float sum2(float a,float b) { return a+b; }\n'
+    '[[stitchable]] float product2(float a,float b) { return a*b; }\n')
+compiler_fixture=subprocess.run(['xcrun','--sdk','macosx','metal','-std=metal3.2','-c',str(compiler_source),
+                                 '-o',str(out/'shared-functions.air')],capture_output=True,text=True)
+(out/'stitch-fixture-build.log').write_text(compiler_fixture.stdout+compiler_fixture.stderr)
+assert compiler_fixture.returncode==0,'Current system compiler could not build the public stitching fixture'
 stitch_test=kit/'bridge/camera_stitch_host.mm'
 stitch_command=['xcrun','clang++',*flags,str(stitch_test),str(archive),
                '-framework','Foundation','-framework','Metal','-framework','IOSurface',
@@ -47,7 +57,7 @@ stitch_command=['xcrun','clang++',*flags,str(stitch_test),str(archive),
 compiled_stitch=subprocess.run(stitch_command,capture_output=True,text=True)
 (out/'stitch-build.log').write_text(compiled_stitch.stdout+compiled_stitch.stderr)
 assert compiled_stitch.returncode==0,'Production stitching consumer compilation failed'
-stitch_run=subprocess.run([str(out/'stitch-consumer'),str(out/'stitch.air')],capture_output=True,text=True,
+stitch_run=subprocess.run([str(out/'stitch-consumer'),str(out/'shared-functions.air')],capture_output=True,text=True,
                          timeout=90,env=dict(os.environ,CAMERA_STITCH_OUT=str(out/'stitched.metallib')))
 (out/'stitch-run.log').write_text(stitch_run.stdout+stitch_run.stderr)
 assert stitch_run.returncode==0 and 'PASS Camera shared AIR stitching:' in stitch_run.stdout,stitch_run.stdout+stitch_run.stderr
@@ -66,6 +76,7 @@ report = dict(passed=True, checks=37, production_cache_selectors_executed=True,
               GPU_submissions=False, phone_operations=False)
 report.update(production_stitch_serialization_executed=True,system_compiler_stitch_passed=True,
               shared_AIR_functions_same_hash=True,stitch_test_sha256=sha(stitch_test),
-              stitched_output_sha256=sha(out/'stitched.metallib'))
+              stitched_output_sha256=sha(out/'stitched.metallib'),
+              current_compiler_public_fixture=True,current_compiler_fixture_sha256=sha(out/'shared-functions.air'))
 (out/'report.json').write_text(json.dumps(report, indent=2)+'\n')
 print(json.dumps(report, indent=2))
