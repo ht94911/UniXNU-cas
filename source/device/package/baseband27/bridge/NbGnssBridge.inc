@@ -92,7 +92,8 @@ extern "C" int nezha_gnss_diagnostic(uint64_t cursor, uint32_t page, char *out,
             "\"lat_bits\":\"%016llx\",\"lon_bits\":\"%016llx\",\"accuracy_bits\":\"%08x\","
             "\"fix_deliveries\":%u,\"fix_id_present\":%u,\"fix_id\":%u,\"system_tick_present\":%u,\"system_tick\":%llu,"
             "\"used_present\":%u,\"signals_present\":%u,\"used_count\":%u,\"gps_used\":%u,\"bds_used\":%u,\"bds_signals\":%llu,"
-            "\"positions\":%llu,\"published\":%llu,\"rejected\":%llu,\"stale\":%llu,\"errors\":%llu,\"drops\":%llu,\"last_error\":%u,\"sky_sequence\":%llu,\"bds_seen\":%u}",
+            "\"positions\":%llu,\"published\":%llu,\"rejected\":%llu,\"stale\":%llu,\"errors\":%llu,\"drops\":%llu,\"last_error\":%u,"
+            "\"loc_command\":%u,\"failed_command\":%u,\"waiting\":%u,\"ack_seen\":%u,\"indication_seen\":%u,\"commands\":%llu,\"sky_sequence\":%llu,\"bds_seen\":%u}",
             (unsigned long long)identity, s->generation, (unsigned)s->phase, s->session, s->running, s->revision,
             (unsigned long long)s->fix.sequence, (unsigned long long)s->fix.utc_ms, (unsigned long long)s->fix.received_ms,
             s->fix.valid, s->fix.raw_valid, s->fix.status, s->fix.technology,
@@ -102,7 +103,9 @@ extern "C" int nezha_gnss_diagnostic(uint64_t cursor, uint32_t page, char *out,
             s->fix.used_present, s->fix.signals_present, s->fix.used_count, s->fix.gps_used, s->fix.bds_used,
             (unsigned long long)s->fix.bds_signals, (unsigned long long)s->positions, (unsigned long long)s->published,
             (unsigned long long)s->rejected, (unsigned long long)s->stale, (unsigned long long)s->errors,
-            (unsigned long long)s->output_drops, s->last_error, (unsigned long long)s->sky.sequence, s->sky.bds_seen);
+            (unsigned long long)s->output_drops, s->last_error, s->command, s->failed_command,
+            s->waiting, s->ack_seen, s->indication_seen, (unsigned long long)s->commands,
+            (unsigned long long)s->sky.sequence, s->sky.bds_seen);
     } else if (sky_page) {
         const uint32_t index = (page & 0xffu) - 1u;
         if (!(page & 0xffu)) {

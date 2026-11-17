@@ -50,8 +50,11 @@ an ellipse at confidence other than95 is kept in raw values and omitted from
 PDS validity. A valid circular precision can still be delivered.
 
 `NbGnss` uses one LOC client owned by the existing baseband worker. It queries
-the real LOC service revision, informs its implemented revision, registers
+the real LOC service revision and, following the stock minor177 client, registers
 position/SV/NMEA/engine/session events, then handles the existing PDS clients.
+The optional legacy INFORM_CLIENT_REVISION request no longer gates startup.
+Registration carries the original AFW client metadata and a descriptive client
+string; the existing operating-system authorization controls application requests.
 The initial provider is standalone: mode4, periodic recurrence1, accuracy3,
 intermediate reports off2. Every client retains its requested interval and
 accuracy threshold. The modem uses the shortest active interval; delivered
@@ -209,3 +212,68 @@ registration reached original `com.apple.lsd.modifydb` lookup3/NoSuchProcess;
 no app registration or satellite fix was accepted. The run returned normally
 to Android/root, verified unchanged17 and Data generation1, stopped its
 collector and released without a phone payload write.
+
+The second candidate, `gnss002-GPU051`, retains that GPU051 baseline and
+baseband038 backend. Compiled device revision
+`9255bde3d5cb573ceec600f035ee3b29a8d07f73` changes MSS/GNSS to provider9;
+GPU7 and the original audio8 remain. Native004 run43922194416 at
+headc818154a19bda5468abc55a582784098ce2a15b6 passed the23 target units,
+355 external imports, strict38-component/348-import closure, authenticated
+tables, production loader/HMAC, guarded60 fixups and single/eight-CPU QEMU.
+No additional shared transport archive is linked.
+
+Packaging revision `21a7328965fed598b09302372f491b44e7232c7d` selects the
+original `LSOperationRequestContext.targetUserID=501`. Original24A446 native
+code resolves that context to the existing mobile LaunchServices domain.
+Run43925409254 at heade5248ad929e5a5b8aef562c4409c59b12babc445 passed
+the9 consumer fixtures, signed pages and actual iPhone dependencies. The
+ordinary app retains empty entitlements and normal location authorization;
+the launcher uses only its existing application-registration permission.
+Successful real mobile-domain registration is still a device check.
+
+The fixed package002 identities are:
+
+- boot: `38861ac45627a7f4cc2e5c6d9e705c97c1afdb437d67d120a7b2225fada0e004`
+- embedded payload: `967d44d752f6ba31c32b7fe7509a2169cc876785dd83130fa6762c4b2a79e2bd`
+- kernel: `075a15bcb6875f107aa46ee56766b77309f82b7ebf59b1e919ad4d05ebc23dfb`
+
+The176168960-byte boot image embeds its167772160-byte payload. It retains
+the original BootShim, GPU051 runtime,54 non-cache addon entries,729 launch
+jobs, four original trust modules and Data generation1. The candidate adds
+the signed app/helper and one bounded launcher. Existing root and modem
+firmware inputs remain read-only. The package and actual113 host-r00875
+files passed their checks; remote deployment and the concrete lifecycle
+were qualified before queueing. The requested113 trial checks real MSS/LOC
+startup, locationd and application registration, then returns normally to
+Android/root. Manual permission, outdoor reception, fresh Core Location
+callbacks and same-fix GPS/BeiDou use remain deferred by the user.
+
+GNSS002 ran on the local host on2026-11-17, after the user moved the phone
+back from113. Fresh provider CAPS identified MSS9 as `nezhamss` because the
+retained USB serializer removes punctuation; the original audio8 remained.
+The initial collector catalogue predates late MSS registration. A fresh
+same-session catalogue and read-only provider9 requests confirmed MSS online,
+GLINK,61 QRTR services, zero watchdog events and LOC service revision177.
+LOC initialization then ended with INVALID_ARG48, before START or a fix.
+Three recorded locationd fatal PAC instructions were BLRAAZ and AUTDA; the
+original fatal path exits before the existing later exception recorder.
+The recovered launcher stderr contains only repeated4099 modifydb lookup
+failures, without a fresh process/boot marker, so new registration is not
+accepted from those bytes.
+
+The run returned normally through sessionc719aaa40e2a442b/request9097df2f.
+Actual Android/root, unchanged135168-byte17 prefix, Data generation1,
+protected mappings/pins and collector17988 exit passed before release at
+2026-11-17T05:14:11Z. Data's ordinary new allocations added36 pages; no
+payload or partition write occurred. Exact USB raw3238853 bytes and the
+two launcher files were recovered with5775360 bytes of read-only APFS input.
+Private raw evidence is in local project
+`runs/2026-11-17-ios27-gnss002-gpu051-local002/`.
+
+The next source increment follows stock direct event registration with AFW
+metadata, retains failed-command and ACK/indication state in HISTORY, and
+uses the existing bounded QMI header tracer for LOC. The first three locationd
+PAC faults are captured before the unchanged fatal handler. The launcher job
+runs as the existing mobile user and logs its actual PID/UID/boot/uptime.
+Host protocol/lifecycle/QMUX tests pass; a new native build and fixed package
+must qualify these changes before another phone window.

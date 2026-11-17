@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "GNSS002 on fixed GPU051: retain actual audio provider8 and register MSS/GNSS as9; exact GNSS001 runtime and normal app authorization preserved.",
+  "purpose": "GNSS003 on fixedGPU051: stock direct AFW LOC registration, exact command/ACK/error evidence and bounded locationd pre-fatal PAC capture. Native004 shared-owner backend and GPU051 unchanged; no private inputs.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "9255bde3d5cb573ceec600f035ee3b29a8d07f73",
+  "device_revision": "7f2b940bae850437e347d2ae604195177d366f06",
   "soc_revision": "GPU051 e565439+3435fa5 and GNSS counted IPA plus immutable IPCC append",
   "xcode": "26.6",
   "files": {
@@ -337,7 +337,7 @@
     "source/device/package/baseband27/SOURCE.md": "177c00393aa63fa4c4da563c85723032b0604d28d3504b32cc8379ac9d298cb0",
     "source/device/package/baseband27/bridge/NbBoot.h": "99eb1dcfd6be4f50bc742237bb39ac6a50ad4930d4d8007e77749d12ce214ae4",
     "source/device/package/baseband27/bridge/NbDeviceIdentity.h": "86dea7c21c2e1dc7f7da4fdfdfa65c9eeb9b9d781a8fc913e7ebd03e737b1e68",
-    "source/device/package/baseband27/bridge/NbGnssBridge.inc": "3fd1773edc1cfc024dd95ca39ee63cdf420e1e21e799b557aa3a0d89c4967b16",
+    "source/device/package/baseband27/bridge/NbGnssBridge.inc": "f9bf18608dac4f243c9b43f9754c448f9365f46d7fdc3b0b8afec6f8073804c4",
     "source/device/package/baseband27/bridge/NbNasBridge.inc": "1938d656f395cc7ab7a014bc1f66a72e0b4bfbbb41aa7a4284e9ef2252a40d80",
     "source/device/package/baseband27/bridge/NbNasMux.h": "77e1f6caa43e4872f5bb0b671403de4036f3b7055e08c7a4d7531d5c000c3cc6",
     "source/device/package/baseband27/bridge/NbPdpFlow.h": "2ab5ed3b35fe447f291132bc6acb3eeecdb41affa3805524390f71bb997484ab",
@@ -348,7 +348,7 @@
     "source/device/package/baseband27/bridge/NbVoiceBridge.inc": "ff17034745cb93c04353777b40cc4508ae160822c72b2a53793ccf72d6dff189",
     "source/device/package/baseband27/bridge/NbWdsCompletion.h": "f5efd45c5c90b8cf922d3a07877dfa092dcf160479fe229d863fb5d08c9ad37b",
     "source/device/package/baseband27/bridge/QcomBaseband.h": "a72471ff90728dcae8a5878edee6e25f016e7164f46265f4959f0f1dd01f86ac",
-    "source/device/package/baseband27/bridge/coachz_baseband.cpp": "712242f2124e6dfbd20ee3be9abc31c6b89e4b979f715a37f65c8b278c31ca92",
+    "source/device/package/baseband27/bridge/coachz_baseband.cpp": "8c91cc0db6cad2d6990e22977c5009af51c99d367eb5e13ad5366a87bdec520b",
     "source/device/package/baseband27/bridge/coachz_bb_data.h": "5c3d1fc8dd827ba162bbff15b35d11cae4d0603394deda63821204ff5e0c2216",
     "source/device/package/baseband27/bridge/coachz_bb_pdp.cpp": "cf3864858a345b1bff63c814302f5892ae5acd52796d5bbc1f5097485a202b82",
     "source/device/package/baseband27/bridge/coachz_bb_qmux.h": "cab98c69d3f64bd0c548e2cc7658ac9f36fdc586d31cdc9135c5f84a46d52658",
@@ -366,11 +366,11 @@
     "source/device/package/baseband27/bridge/upstream/coachz_bb_qmux.h": "ca786da9402bbf11eacfafa47c749aa9e2c13aebfec4a83d7b346947a05da7eb",
     "source/device/package/baseband27/bridge/upstream/coachz_bb_sahara.h": "f333455861e96c1b158a38f0d5e65b671b39d84a860c48b061ee2c9abb828f89",
     "source/device/package/baseband27/bridge/upstream/patches/pdp-mbuf-kpi.patch": "fcd2f0dde5ba44fa7f2773f0a199f2ab3b4aa6058e5a23fdd84e116741cf3160",
-    "source/device/package/baseband27/gnss/NbGnss.c": "290f60135479b0e2eee402fea2497af6cfff5beec767ee91986f177f054d3990",
-    "source/device/package/baseband27/gnss/NbGnss.h": "ba18936b5c3ae68b2eea2ca1801d79b36a5264130a66319d17e4f2b4ddcc7fef",
+    "source/device/package/baseband27/gnss/NbGnss.c": "f5c7acbebfa92433a432c088d96b5b74ed92f1490a249e9719bef380ccc483ee",
+    "source/device/package/baseband27/gnss/NbGnss.h": "ec06cd75021269b2b7f5901d350dc780cd78f159daf14d44746d4fd8a22ac68a",
     "source/device/package/baseband27/gnss/NbGnssProtocol.c": "25afd9139e16410cc22c488e133d32d68e780b75d1068462c0e3927392d68ab2",
     "source/device/package/baseband27/gnss/NbGnssProtocol.h": "f219ec68188499c458c5a38839af2151bc10adcacac62255398cef39bbfe8017",
-    "source/device/package/baseband27/gnss/README.md": "9f6d14693492a1e663ec6087666e76432f3a72f882351ad60c1e39f0aaf8a99d",
+    "source/device/package/baseband27/gnss/README.md": "79250267a224e541e6a05c397b5807aa51ccab435273eed5a4769c2d58a75b01",
     "source/device/package/baseband27/gnss/bridge.patch": "c1cc6cc8f943c50ad98df7eb4f0eb50b800bab400a75212b2eefdfd25a2976a2",
     "source/device/package/baseband27/integration/BootWatchdogPolicy-baseband.patch": "fc53c30d6660634fb3db67ced515951271695b83e51740d9af0557d05804494b",
     "source/device/package/baseband27/integration/NbBasebandStart.c": "472dd6d438734945f4d0158d03d4516adf1f43f78a09a25b4f3810d331f244f2",
@@ -553,7 +553,7 @@
     "source/device/patches/xnu-12377/nezha-wifi-addon-truncate.patch": "c3b980c547fbc138ac7aedfd735d350cfef85d2a32ff78ec7bef894c4068ce63",
     "source/device/patches/xnu-12377/nezha-wifi-kernel-events.patch": "967cf792a5202711d0063463fe08bda58c554621b690b87f66904c18f81d057f",
     "source/device/patches/xnu-12377/nezha-wifi-mmio-recovery.patch": "89642756f4fe3179d44f076fbfd4786d21d0089ec7786943cb717b3eb78ecbe1",
-    "source/device/patches/xnu-12377/series": "b0923a4ed57aa136d64b67064eea650bc31406b9c14631e7e94287bbc706145a",
+    "source/device/patches/xnu-12377/series": "9fc90d675692d1739c685b255ce3f443002e4c5af74406e4e08c919be091eaa3",
     "source/device/patches/xnu-12377/source-storage-runtime.patch": "25c377c60db417b15fcc137acf380f0319cbff9d5ba012af1907f3485602b584",
     "source/device/patches/xnu-12377/zzyd-sheng-audio-addon-mount.patch": "b51ed480b34c92452ea984fe056e5fce310bd929992d418f383a7e9268313c51",
     "source/device/patches/xnu-12377/zzye-sheng-cpu-idle.patch": "95f57fb9994796c3de2429fe82b6a521620b9f13b83e29eba12185f5ada4da86",
@@ -665,7 +665,7 @@
     "source/device/tests/display-dpu-timing.c": "e7ac8e9fbc9e39ae309dea5f3934bdd8ca7ca4bc66601908a2b8d349f9b513c5",
     "source/device/tests/gnss27/check.sh": "5d984b1e80dd8e4516de777d73a8b7214ae7854180588435374914c2b16b998f",
     "source/device/tests/gnss27/evidence_test.py": "fe2944b4c4692c67ce931569244a45d27c120f11409ccb361e902ee9fc74c0c0",
-    "source/device/tests/gnss27/gnss_lifecycle_test.c": "acaeeb6efa4cd386e2ee4dfeb72c9cb774125f56a2424e4a25f055dfd07b1dd4",
+    "source/device/tests/gnss27/gnss_lifecycle_test.c": "226129a4a1bba5531f6ac623637ce95eba057b4860802d0bd1e53f4b6d9a3d2e",
     "source/device/tests/gnss27/gnss_protocol_test.c": "919d77d9c96fdd2292b037c8f56b5edaf5ba3f0d7f0840668d74ffd518b8e664",
     "source/device/tests/gnss27/gnss_qmux_test.c": "4a6e1b3e714bbb3bf6b3a64a5476ddd9de1f20ec052ed0e7548885631128146c",
     "source/device/tests/gnss27/shared_ipcc_test.c": "65ba59a4fcb1bb8413538a205bcc14ef4c7682d454de52680678aefd76fcd97d",
@@ -706,7 +706,9 @@
     "source/ufs.bundle": "3a7c1c6ac7e5a39e6cb4adcc6143fa1e4c6c24ae862aa501102f9fb70c21a534",
     "source/usb.bundle": "c11677e274e735ce3ca849dde0e1654404eafb23538cadb0b25d0e6d2c98a5f4",
     "source/device/scripts/nezha_macho_late.py": "fc5a2869ef22bd2c06702930fc0c88b0e071ab7ef851824b403234633040fc37",
-    "source/device/patches/xnu-12377/nezha-gnss-test-runtime.patch": "68f37196f4777d4cc7721d6c5ab33de3882ae1a826513fd86ef942146e0c55ac"
+    "source/device/patches/xnu-12377/nezha-gnss-test-runtime.patch": "68f37196f4777d4cc7721d6c5ab33de3882ae1a826513fd86ef942146e0c55ac",
+    "source/device/patches/xnu-12377/nezha-gnss-pac-capture.patch": "4092466e0688bd1a73653475df73fb1299ac2e69560bd0ac995aaae19ee112ae",
+    ".github/workflows/nezha-ios27-native.yml": "3ddce8a6183f60f7cdb15f8b8fcea0c36ad000700b1f1079f3a0b70a857c224a"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",

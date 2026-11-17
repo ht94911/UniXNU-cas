@@ -93,6 +93,7 @@ void nb_gnss_lost(NbGnss *s)
     s->last_fix_utc_ms = 0;
     s->anchor_utc_ms = s->anchor_received_ms = 0;
     s->next_transaction = 0; s->next_session = 0;
+    s->command = s->failed_command = 0;
     __builtin_memset(&s->fix, 0, sizeof s->fix); __builtin_memset(&s->sky, 0, sizeof s->sky);
     __builtin_memset(&s->incoming, 0, sizeof s->incoming);
     __builtin_memset(s->me_version, 0, sizeof s->me_version);
@@ -210,7 +211,7 @@ void nb_gnss_request(NbGnss *s, uint32_t i, const uint8_t *data, uint32_t length
 
 static void nb_gnss_fail_command(NbGnss *s, uint32_t error)
 {
-    s->waiting = s->sending = 0; s->last_error = error;
+    s->waiting = s->sending = 0; s->last_error = error; s->failed_command = s->command;
     if (s->phase != NbGnssReady || s->action == NbGnssStop) s->phase = NbGnssFailed;
     if (s->active) nb_gnss_finish(s, error);
     else { ++s->errors; s->inhibited = 1; }
@@ -219,7 +220,10 @@ static void nb_gnss_fail_command(NbGnss *s, uint32_t error)
 static void nb_gnss_command_done(NbGnss *s)
 {
     s->waiting = 0;
-    if (s->phase == NbGnssQuery) { s->phase = NbGnssInform; return; }
+    /* The stock minor177 client opens the service and registers events
+     * directly. INFORM_CLIENT_REVISION is an optional legacy request;
+     * making its acceptance mandatory prevented GNSS002 initialization. */
+    if (s->phase == NbGnssQuery) { s->phase = NbGnssRegister; return; }
     if (s->phase == NbGnssInform) { s->phase = NbGnssRegister; return; }
     if (s->phase == NbGnssRegister) { s->phase = NbGnssReady; return; }
     switch (s->action) {
@@ -301,7 +305,14 @@ int nb_gnss_next(NbGnss *s, uint64_t now_ms, NbGnssPacket *packet)
     case NB_LOC_REGISTER:
         /* Position, satellites, NMEA, engine, session. Normal subscription
          * only; NV, constellation enable masks and factory data are untouched. */
-        nb_qmi_u64(&w, 1, UINT64_C(0x187)); break;
+        nb_qmi_u64(&w, 1, UINT64_C(0x187));
+        /* Original LOC IDL and the actual minor177 HAL supply client
+         * metadata. AFW identifies the normal application framework;
+         * requests remain subject to its ordinary location authorization. */
+        nb_qmi_put(&w, 0x10, "NezhaCoreLocation", sizeof("NezhaCoreLocation") - 1u);
+        nb_qmi_u32(&w, 0x11, 1); /* QMI_LOC_CLIENT_AFW */
+        nb_qmi_u8(&w, 0x12, 1); /* original request notification field */
+        break;
     case NB_LOC_SET_MODE: nb_qmi_u32(&w, 1, 4); break; /* QMI LOC standalone */
     case NB_LOC_START:
         s->session = ++s->next_session;

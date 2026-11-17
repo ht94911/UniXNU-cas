@@ -42,8 +42,14 @@ static void setup(void)
     nb_gnss_attach(&state,1,0,1);nb_gnss_attach(&state,2,1,1);
     request(1,1,NB_PDS_GET_STATE,0,0);CHECK(answers==0);
     CHECK(nb_gnss_next(&state,0,&p)&&p.message==NB_LOC_SERVICE_REVISION);reply(&p,0,1);
-    CHECK(nb_gnss_next(&state,0,&p)&&p.message==NB_LOC_REVISION);reply(&p,0,0);
-    CHECK(nb_gnss_next(&state,0,&p)&&p.message==NB_LOC_REGISTER);reply(&p,0,0);
+    CHECK(nb_gnss_next(&state,0,&p)&&p.message==NB_LOC_REGISTER);
+    NbQmiMessage registration;CHECK(nb_gnss_message(p.data,p.length,&registration));
+    const uint8_t *type=nb_gnss_tlv(&registration,0x11,4);
+    const uint8_t *notify=nb_gnss_tlv(&registration,0x12,1);
+    uint32_t client_length=0;const uint8_t *client=nb_qmi_tlv(&registration,0x10,&client_length);
+    CHECK(type&&nb_le32(type)==1&&notify&&*notify==1);
+    CHECK(client&&client_length==strlen("NezhaCoreLocation")&&!memcmp(client,"NezhaCoreLocation",client_length));
+    reply(&p,0,0);
     CHECK(state.phase==NbGnssReady);CHECK(!nb_gnss_next(&state,0,&p)&&answers==1);
 }
 int main(void)
@@ -85,5 +91,12 @@ int main(void)
     request(1,9,0x37,0,0);CHECK(last_error==NB_QMI_ERR_NOT_SUPPORTED);
     const unsigned before=answers;nb_gnss_lost(&state);CHECK(state.phase==NbGnssAbsent);
     nb_gnss_sent(&state,&p,0,300);CHECK(!state.waiting&&answers==before);
+    /* The actual GNSS002 INVALID_ARG must retain the rejected command and
+     * close this endpoint instead of reporting ready or sending START. */
+    nb_gnss_init(&state,0x4201,0,emit,0);nb_gnss_endpoint(&state,2,0,184);
+    CHECK(nb_gnss_next(&state,0,&p)&&p.message==NB_LOC_SERVICE_REVISION);reply(&p,0,0);
+    CHECK(nb_gnss_next(&state,0,&p)&&p.message==NB_LOC_REGISTER);reply(&p,NB_QMI_ERR_INVALID_ARG,0);
+    CHECK(state.phase==NbGnssFailed&&state.failed_command==NB_LOC_REGISTER&&state.last_error==48);
+    CHECK(!state.running&&!nb_gnss_next(&state,0,&p));
     printf("GNSS lifecycle %u checks, %u failures; %u state indications\n",checks,failures,indications);return failures?1:0;
 }

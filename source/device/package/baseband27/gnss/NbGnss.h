@@ -53,7 +53,7 @@ typedef struct {
     enum NbGnssAction action;
     uint8_t running, session, next_session, inhibited, active, cancelled, fault_cleanup;
     uint8_t waiting, sending, ack_seen, indication_seen;
-    uint16_t next_transaction, transaction, command;
+    uint16_t next_transaction, transaction, command, failed_command;
     uint64_t sent_ms, last_fix_utc_ms, anchor_utc_ms, anchor_received_ms;
     NbGnssCriteria applied, desired;
     NbGnssClient clients[CBQ_MAX_CLIENTS];

@@ -1245,8 +1245,10 @@ extern "C" int coachz_baseband_qrtr(uint32_t dst_port, uint32_t src_node, uint32
   if (!bb_lock) return 1;
   IOLockLock(bb_lock);
   if (dst_port >= BB_GNSS_PORT_BASE) {
-    if (bb_gnss_enabled && dst_port == bb_gnss.local_port)
+    if (bb_gnss_enabled && dst_port == bb_gnss.local_port) {
+      bb_trace("loc-rx", 0, NB_GNSS_LOC_SERVICE, 0, static_cast<const uint8_t *>(body), size);
       nb_gnss_receive(&bb_gnss, src_node, src_port, static_cast<const uint8_t *>(body), size, bb_gnss_now_ms());
+    }
     IOLockUnlock(bb_lock);
     return 1;
   }
@@ -1354,6 +1356,7 @@ extern "C" void coachz_baseband_poll(void)
     if (bb_del_client) bb_del_client(released[i]);
   if (gnss_release && bb_del_client) bb_del_client(gnss_release);
   if (gnss_pending) {
+    bb_trace("loc-tx", 0, NB_GNSS_LOC_SERVICE, 0, gnss.data, gnss.length);
     const int result = coachz_modem_qmi_send(gnss.local_port, gnss.node, gnss.port, gnss.data, gnss.length);
     IOLockLock(bb_lock);
     nb_gnss_sent(&bb_gnss, &gnss, result, bb_gnss_now_ms());

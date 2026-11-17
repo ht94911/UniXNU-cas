@@ -50,3 +50,6 @@ nezha-bluetooth-text-fixup-capacity.patch
 
 # Ordinary GNSS test app and registration helper use the retained read-only unions.
 nezha-gnss-test-runtime.patch
+
+# Capture the first three locationd PAC faults before original fatal handling.
+nezha-gnss-pac-capture.patch

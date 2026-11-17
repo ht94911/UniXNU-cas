@@ -1,0 +1,93 @@
+--- a/osfmk/kern/exception.c
++++ b/osfmk/kern/exception.c
+@@ -822,6 +822,82 @@
+ }
+ 
+ #if __has_feature(ptrauth_calls)
++/* GNSS002 locationd PAC faults are fatal before the existing exception
++ * recorder runs. Reuse its saved-state/frame capture before fatal handling;
++ * only locationd, at most three captures, with the original exit retained. */
++static void
++sheng_gnss_pac_capture(exception_type_t exception, mach_exception_data_t code)
++{
++#ifdef MACH_BSD
++	thread_t thread = current_thread();
++	task_t task = current_task();
++	mach_msg_type_number_t codeCnt = 2;
++	static unsigned captures;
++	if (get_bsdtask_info(task) &&
++	    !strcmp(proc_best_name(get_bsdtask_info(task)), "locationd") &&
++	    __atomic_fetch_add(&captures, 1u, __ATOMIC_RELAXED) < 3u) {
++		printf("sheng-gnss-pac: %s[%d] exception type=0x%x code=0x%llx subcode=0x%llx\n",
++		    proc_best_name(get_bsdtask_info(task)), proc_pid(get_bsdtask_info(task)),
++		    exception, (unsigned long long)code[0], codeCnt > 1 ? (unsigned long long)code[1] : 0ULL);
++#if __arm64__
++		arm_saved_state_t *ss = find_user_regs(thread);
++		if (ss != NULL) {
++			uint64_t pc = get_saved_state_pc(ss);
++			/* The boot log's copy (the message buffer wraps long before a late look at it): the last four, with the frame chain. */
++			{
++				struct sheng_exc_record *rec = &sheng_exc_ring[sheng_exc_count & 3];
++				*rec = (struct sheng_exc_record){};
++				strlcpy(rec->name, proc_best_name(get_bsdtask_info(task)), sizeof(rec->name));
++				rec->pid = (uint32_t)proc_pid(get_bsdtask_info(task));rec->type = (uint32_t)exception;
++				rec->pc = pc;rec->lr = get_saved_state_lr(ss);rec->far = get_saved_state_far(ss);rec->esr = get_saved_state_esr(ss);
++				uint64_t fp = get_saved_state_fp(ss);
++				for (unsigned i = 0; thread == current_thread() && i < 12 && fp && !(fp & 7); i++) {
++					uint64_t frame[2];
++					if (copyin((user_addr_t)fp, frame, sizeof(frame)) != 0) {
++						break;
++					}
++					rec->ret[i] = frame[1] & 0x00007fffffffffffULL;rec->frames = i + 1;
++					if (frame[0] <= fp) {
++						break;
++					}
++					fp = frame[0];
++				}
++				sheng_exc_count = sheng_exc_count + 1;
++			}
++			printf("sheng-gnss-pac: pc=0x%llx lr=0x%llx sp=0x%llx far=0x%llx esr=0x%x\n",
++			    pc, get_saved_state_lr(ss), get_saved_state_sp(ss), get_saved_state_far(ss), get_saved_state_esr(ss));
++			for (unsigned r = 0; r < 29; r += 4) {
++				printf("sheng-gnss-pac: x%u=0x%llx 0x%llx 0x%llx 0x%llx\n", r,
++				    get_saved_state_reg(ss, r), get_saved_state_reg(ss, r + 1),
++				    r + 2 < 29 ? get_saved_state_reg(ss, r + 2) : 0ULL, r + 3 < 29 ? get_saved_state_reg(ss, r + 3) : 0ULL);
++			}
++			uint32_t insn[8] = {};
++			if (copyin((user_addr_t)(pc - 16), insn, sizeof(insn)) == 0) {
++				printf("sheng-gnss-pac: insn@pc-16 %08x %08x %08x %08x | %08x %08x %08x %08x\n",
++				    insn[0], insn[1], insn[2], insn[3], insn[4], insn[5], insn[6], insn[7]);
++			}
++			/* What the fault address maps to: physical page, managed DRAM or not, cache attributes. */
++			extern ppnum_t pmap_find_phys(pmap_t, addr64_t);
++			extern unsigned int pmap_cache_attributes(ppnum_t);
++			extern boolean_t pmap_valid_page(ppnum_t);
++			ppnum_t pn = pmap_find_phys(get_task_pmap(task), get_saved_state_far(ss));
++			printf("sheng-gnss-pac: far page 0x%x managed=%d wimg=0x%x\n", pn, pn ? pmap_valid_page(pn) : -1,
++			    pn ? pmap_cache_attributes(pn) : 0);
++			if (thread == current_thread()) {
++				/* The attributes the MMU uses for this user address (PAR_EL1[63:56] is the MAIR encoding) and SCTLR_EL1. */
++				uint64_t par = 0, sctlr = 0, mair = 0;
++				__asm__ volatile ("at s1e0w, %3\n isb\n mrs %0, par_el1\n mrs %1, sctlr_el1\n mrs %2, mair_el1"
++				    : "=r"(par), "=r"(sctlr), "=r"(mair) : "r"(get_saved_state_far(ss)) : "memory");
++				printf("sheng-gnss-pac: par=0x%llx (attr 0x%llx) sctlr=0x%llx mair=0x%llx\n", par, par >> 56, sctlr, mair);
++				void sheng_dump_user_backtrace(const char *tag);
++				sheng_dump_user_backtrace("sheng-gnss-pac");
++			}
++		}
++#endif /* __arm64__ */
++	}
++#endif /* MACH_BSD */
++}
++
+ static void
+ pac_exception_triage(
+ 	exception_type_t        exception,
+@@ -839,6 +915,7 @@
+ 		proc_name = proc_name_address(proc);
+ 
+ 		if (task_is_pac_exception_fatal(task) && !is_address_space_debugged(proc)) {
++			sheng_gnss_pac_capture(exception, code);
+ 			os_log_error(OS_LOG_DEFAULT, "%s: process %s[%d] hit a pac violation\n",
+ 			    __func__, proc_name, pid);
+ 
