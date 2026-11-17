@@ -10,6 +10,7 @@
 #import "QcomUserLogWire.h"
 
 extern int unixnu_appinst_entry(int argc, const char **argv);
+extern int unixnu_appsync_wifi_install(NSDictionary *config, void (*report)(const char *, ...));
 @interface NSObject (ProbeInstallation)
 + (id)defaultWorkspace;
 + (id)applicationProxyForIdentifier:(NSString *)identifier;
@@ -97,6 +98,9 @@ int main(void)
 {
     @autoreleasepool {
         setvbuf(stderr, NULL, _IONBF, 0);
+        NSDictionary *transfer = [NSDictionary dictionaryWithContentsOfFile:
+            @"/private/var/ngpu/appsync/probe/wifi-install.plist"];
+        if (transfer) return unixnu_appsync_wifi_install(transfer, report);
         report("APPSYNC_PROBE start ram-data direct-install uid=%u\n", (unsigned)getuid());
         sleep(60);
         dlopen("/System/Library/Frameworks/CoreServices.framework/CoreServices", RTLD_NOW);

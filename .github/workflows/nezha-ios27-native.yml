@@ -1,7 +1,7 @@
-name: nezha iPhone27 AppSync one-shot direct CLI probe
+name: nezha iPhone27 AppSync Wi-Fi install probe
 on:
   push:
-    branches: [codex/ios27-appsync-probe033-20261117]
+    branches: [codex/ios27-appsync-probe035-20261117]
   workflow_dispatch:
 permissions:
   contents: read
@@ -29,7 +29,7 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: '3.13'
-      - name: Compile the disposable RAM Data test job
+      - name: Compile the one-shot Wi-Fi install job
         run: |
           set -euo pipefail
           out="$RUNNER_TEMP/ios27/work/appsync-runtime"
@@ -37,18 +37,14 @@ jobs:
           sdk="$(xcrun --sdk iphoneos --show-sdk-path)"
           flags=(-target arm64e-apple-ios27.0 -isysroot "$sdk" -fobjc-arc -Wall -Wextra -Werror)
           xcrun clang "${flags[@]}" -Dmain=unixnu_appinst_entry -DUNIXNU_APPSYNC_PROBE -c task/source/appsync/appinst.m -o "$RUNNER_TEMP/appinst.o"
-          xcrun clang "${flags[@]}" -framework Foundation task/source/appsync/ProbeRunner.m "$RUNNER_TEMP/appinst.o" -o "$out/appsync-probe"
+          xcrun clang "${flags[@]}" -framework Foundation task/source/appsync/ProbeRunner.m \
+            task/source/appsync/WiFiInstall.m "$RUNNER_TEMP/appinst.o" -o "$out/appsync-probe"
           codesign --force --sign - --pagesize 4096 --digest-algorithm sha256 \
             --identifier org.unixnu.nezha.appsync-probe --entitlements task/ci/appsync-probe-entitlements.plist "$out/appsync-probe"
           codesign --verify --strict "$out/appsync-probe"
-          cp task/ci/appsync-probe-entitlements.plist "$RUNNER_TEMP/appinst-entitlements.plist"
-          /usr/libexec/PlistBuddy -c 'Set :application-identifier org.unixnu.appinst' "$RUNNER_TEMP/appinst-entitlements.plist"
-          xcrun clang "${flags[@]}" -framework Foundation task/source/appsync/appinst.m -o "$out/unixnu-appinst"
-          codesign --force --sign - --pagesize 4096 --digest-algorithm sha256 \
-            --identifier org.unixnu.appinst --entitlements "$RUNNER_TEMP/appinst-entitlements.plist" "$out/unixnu-appinst"
-          codesign --verify --strict "$out/unixnu-appinst"
           xcrun nm "$out/appsync-probe" > "$RUNNER_TEMP/appsync-probe.symbols"
           grep -q ' _unixnu_appinst_entry$' "$RUNNER_TEMP/appsync-probe.symbols"
+          grep -q ' _unixnu_appinst_install_received$' "$RUNNER_TEMP/appsync-probe.symbols"
           ! grep -Eq ' _(posix_spawn|alarm)$' "$RUNNER_TEMP/appsync-probe.symbols"
       - name: Seal outputs and diagnostics using the existing owner envelope
         if: always()

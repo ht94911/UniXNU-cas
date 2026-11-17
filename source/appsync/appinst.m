@@ -28,24 +28,63 @@ static void unixnu_appsync_probe_error(const char *stage, NSError *error)
 }
 #endif
 
+static int installFile(NSString *path, NSString *identifier, BOOL consume)
+{
+    const char *framework = "/System/Library/PrivateFrameworks/InstallCoordination.framework/InstallCoordination";
+    if (!dlopen(framework, RTLD_NOW)) {
+        unixnu_appsync_probe_error("load-install-coordinator", nil);
+        return 3;
+    }
+    Class coordinator = objc_getClass("IXAppInstallCoordinator");
+    Class optionsClass = objc_getClass("MIInstallOptions");
+    if (![coordinator respondsToSelector:@selector(installApplication:forPersonaUniqueString:consumeSource:options:completion:)]
+        || ![optionsClass instancesRespondToSelector:@selector(setInstallTargetType:)]
+        || (identifier && ![optionsClass instancesRespondToSelector:@selector(setBundleIdentifier:)])) {
+        unixnu_appsync_probe_error("resolve-install-interface", nil);
+        return 3;
+    }
+    BOOL installed = NO;
+    @try {
+        id options = [optionsClass new];
+        [options setInstallTargetType:1];
+        if (identifier) [options setBundleIdentifier:identifier];
+
+        dispatch_semaphore_t finished = dispatch_semaphore_create(0);
+        __block BOOL accepted = NO;
+        __block NSError *installError = nil;
+        [coordinator installApplication:[NSURL fileURLWithPath:path]
+                 forPersonaUniqueString:nil consumeSource:consume options:options
+                              completion:^(id identity, NSError *failure) {
+            installError = failure;
+            accepted = identity != nil && failure == nil;
+            dispatch_semaphore_signal(finished);
+        }];
+        dispatch_semaphore_wait(finished, DISPATCH_TIME_FOREVER);
+        installed = accepted;
+        if (!installed) unixnu_appsync_probe_error("install-coordination", installError);
+    } @catch (NSException *exception) {
+#ifdef UNIXNU_APPSYNC_PROBE
+        unixnu_appsync_probe_exception(exception);
+#else
+        NSLog(@"Install exception: %@", exception);
+#endif
+    }
+    return installed ? 0 : 1;
+}
+
+#ifdef UNIXNU_APPSYNC_PROBE
+int unixnu_appinst_install_received(NSString *path, NSString *identifier)
+{
+    // The transfer task owns this temporary file and can let iOS consume it.
+    return installFile(path, identifier, YES);
+}
+#endif
+
 int main(int argc, const char **argv) {
     @autoreleasepool {
         if (argc != 2 && argc != 3) {
             fprintf(stderr, "usage: unixnu-appinst [BUNDLE_ID] FILE.ipa\n");
             return 2;
-        }
-        const char *framework = "/System/Library/PrivateFrameworks/InstallCoordination.framework/InstallCoordination";
-        if (!dlopen(framework, RTLD_NOW)) {
-            unixnu_appsync_probe_error("load-install-coordinator", nil);
-            return 3;
-        }
-        Class coordinator = objc_getClass("IXAppInstallCoordinator");
-        Class optionsClass = objc_getClass("MIInstallOptions");
-        if (![coordinator respondsToSelector:@selector(installApplication:forPersonaUniqueString:consumeSource:options:completion:)]
-            || ![optionsClass instancesRespondToSelector:@selector(setInstallTargetType:)]
-            || (argc == 3 && ![optionsClass instancesRespondToSelector:@selector(setBundleIdentifier:)])) {
-            unixnu_appsync_probe_error("resolve-install-interface", nil);
-            return 3;
         }
         NSFileManager *files = NSFileManager.defaultManager;
         NSString *directory = [NSTemporaryDirectory() stringByAppendingPathComponent:NSUUID.UUID.UUIDString];
@@ -56,40 +95,14 @@ int main(int argc, const char **argv) {
             return 4;
         }
         NSString *copy = [directory stringByAppendingPathComponent:@"install.ipa"];
-        BOOL installed = NO;
         @try {
-            if ([files copyItemAtPath:@(argv[argc - 1]) toPath:copy error:&error]) {
-                id options = [optionsClass new];
-                // This is the application target that the native simple installer selects by default.
-                [options setInstallTargetType:1];
-                if (argc == 3) [options setBundleIdentifier:@(argv[1])];
-
-                dispatch_semaphore_t finished = dispatch_semaphore_create(0);
-                __block BOOL accepted = NO;
-                __block NSError *installError = nil;
-                [coordinator installApplication:[NSURL fileURLWithPath:copy]
-                         forPersonaUniqueString:nil consumeSource:NO options:options
-                                      completion:^(id identity, NSError *failure) {
-                    installError = failure;
-                    accepted = identity != nil && failure == nil;
-                    dispatch_semaphore_signal(finished);
-                }];
-                // The coordinator completes on its own queue. Keep the staged IPA until then.
-                dispatch_semaphore_wait(finished, DISPATCH_TIME_FOREVER);
-                installed = accepted;
-                if (!installed) unixnu_appsync_probe_error("install-coordination", installError);
-            } else {
+            if (![files copyItemAtPath:@(argv[argc - 1]) toPath:copy error:&error]) {
                 unixnu_appsync_probe_error("copy-ipa", error);
+                return 1;
             }
-        } @catch (NSException *exception) {
-#ifdef UNIXNU_APPSYNC_PROBE
-            unixnu_appsync_probe_exception(exception);
-#else
-            NSLog(@"Install exception: %@", exception);
-#endif
+            return installFile(copy, argc == 3 ? @(argv[1]) : nil, NO);
         } @finally {
             [files removeItemAtPath:directory error:NULL];
         }
-        return installed ? 0 : 1;
     }
 }
