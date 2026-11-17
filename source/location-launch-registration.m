@@ -11,12 +11,31 @@ static unsigned registrations,launches;
 static BOOL registration_result,launch_result,registration_visible;
 static BOOL launch_callback;
 static NSError *launch_error;
+static id launch_process;
+static id launch_service;
+static BOOL launch_options_available;
 @interface LocationFixtureContext : NSObject
 @property(nonatomic,strong) NSNumber *targetUserID;
 @end
 @implementation LocationFixtureContext
 @end
-Class fixture_context_class(const char *name) { assert(!strcmp(name,"LSOperationRequestContext"));return LocationFixtureContext.class; }
+@interface LocationFixtureLaunchService : NSObject
+@end
+@interface LocationFixtureLaunchOptions : NSObject
+@end
+@interface LocationFixtureProcess : NSObject
+@property(nonatomic) int pid;
+@property(nonatomic) BOOL valid;
+@end
+@implementation LocationFixtureProcess
+- (BOOL)isValid {return self.valid;}
+@end
+Class fixture_context_class(const char *name)
+{
+    if(!strcmp(name,"LSOperationRequestContext"))return LocationFixtureContext.class;
+    if(!strcmp(name,"FBSOpenApplicationService"))return LocationFixtureLaunchService.class;
+    assert(!strcmp(name,"FBSOpenApplicationOptions"));return LocationFixtureLaunchOptions.class;
+}
 @interface LocationFixtureProxy : NSObject
 @property(nonatomic,copy) NSString *identifier;
 @property(nonatomic,strong) NSURL *path;
@@ -57,23 +76,35 @@ Class fixture_context_class(const char *name) { assert(!strcmp(name,"LSOperation
     }
     return registration_result ? @{} : nil;
 }
-- (void)openApplicationWithBundleIdentifier:(NSString *)identifier configuration:(id)configuration
-    completionHandler:(void (^)(BOOL result,NSError *error))completion
+@end
+@implementation LocationFixtureLaunchOptions
++ (id)optionsWithDictionary:(NSDictionary *)dictionary
+{ assert(dictionary.count==0);return launch_options_available ? [self new]:nil; }
+@end
+@implementation LocationFixtureLaunchService
++ (id)serviceWithDefaultShellEndpoint {return launch_service;}
+- (void)openApplication:(NSString *)identifier withOptions:(id)options
+    completion:(void (^)(id process,NSError *error))completion
 {
-    assert([identifier isEqualToString:@"org.unixnu.nezha.location"] && configuration==nil);
+    assert([identifier isEqualToString:@"org.unixnu.nezha.location"] && [options isKindOfClass:LocationFixtureLaunchOptions.class]);
     ++launches;
     if (launch_callback) {
-        BOOL result=launch_result;
+        id process=launch_result ? launch_process:nil;
         NSError *error=launch_error;
         dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT,0),^{
             assert(!NSThread.isMainThread);
-            completion(result,error);
+            completion(process,error);
         });
     }
 }
 @end
 static void reset(void)
-{ current_proxy=nil;registrations=launches=0;registration_result=registration_visible=launch_result=launch_callback=YES;launch_error=nil; }
+{
+    current_proxy=nil;registrations=launches=0;
+    registration_result=registration_visible=launch_result=launch_callback=launch_options_available=YES;
+    launch_error=nil;launch_service=[LocationFixtureLaunchService new];
+    LocationFixtureProcess *process=[LocationFixtureProcess new];process.pid=321;process.valid=YES;launch_process=process;
+}
 int main(void)
 {
     @autoreleasepool {
@@ -112,19 +143,29 @@ int main(void)
         assert(open_location([LocationFixtureProxy class],workspace,url)==9);
         fflush(stderr);assert(dup2(saved_stderr,STDERR_FILENO)>=0);close(saved_stderr);
         NSString *diagnostic=[NSString stringWithContentsOfURL:launch_log encoding:NSUTF8StringEncoding error:&error];
-        assert([diagnostic containsString:@"launch_completed=1 native_result=0 error=31 domain=FixtureLaunch"]);
+        assert([diagnostic containsString:@"launch_completed=1 process_handle=0 process_pid=0 process_valid=0 error=31 domain=FixtureLaunch"]);
         assert([diagnostic containsString:@"application request declined"]);
         assert([diagnostic containsString:@"launch-underlying="] && [diagnostic containsString:@"FixtureOpenService"]);
         assert(registrations==1 && launches==1);
         reset();launch_error=underlying;
         assert(open_location([LocationFixtureProxy class],workspace,url)==9);
         assert(launches==1); /* A true native result with an error is not success. */
-        reset();assert(request_location([NSObject new],@"org.unixnu.nezha.location",DISPATCH_TIME_NOW)==8);
+        reset();assert(request_location(NSObject.class,LocationFixtureLaunchOptions.class,@"org.unixnu.nezha.location",DISPATCH_TIME_NOW)==8);
         assert(launches==0);
         reset();launch_callback=NO;
-        assert(request_location(workspace,@"org.unixnu.nezha.location",
+        assert(request_location(LocationFixtureLaunchService.class,LocationFixtureLaunchOptions.class,@"org.unixnu.nezha.location",
             dispatch_time(DISPATCH_TIME_NOW,10*NSEC_PER_MSEC))==11);
         assert(launches==1); /* One request, no completion and no retry. */
+        reset();launch_process=nil;
+        assert(open_location(LocationFixtureProxy.class,workspace,url)==9);assert(launches==1);
+        reset();[(LocationFixtureProcess *)launch_process setPid:0];
+        assert(open_location(LocationFixtureProxy.class,workspace,url)==9);assert(launches==1);
+        reset();[(LocationFixtureProcess *)launch_process setValid:NO];
+        assert(open_location(LocationFixtureProxy.class,workspace,url)==9);assert(launches==1);
+        reset();launch_service=nil;
+        assert(open_location(LocationFixtureProxy.class,workspace,url)==8);assert(launches==0);
+        reset();launch_options_available=NO;
+        assert(open_location(LocationFixtureProxy.class,workspace,url)==8);assert(launches==0);
         reset();assert(([@{@"CFBundleIdentifier":@"com.apple.other",@"CFBundleExecutable":@"NezhaLocation"} writeToURL:info atomically:YES]));
         assert(open_location([LocationFixtureProxy class],workspace,url)==4);assert(registrations==0 && launches==0);
         reset();assert([files removeItemAtURL:info error:&error]);
@@ -145,7 +186,7 @@ int main(void)
         assert([[NSData dataWithContentsOfURL:new_output]isEqual:
             [NSData dataWithBytes:marker length:sizeof(marker)-1]]);
         assert([files removeItemAtURL:root error:&error]);
-        puts("Location launcher: 13 registration/async completion cases and mobile-owned output beside retained read-only file passed");
+        puts("Location launcher: 18 registration/ordinary shell completion cases and mobile-owned output beside retained read-only file passed");
     }
     return 0;
 }

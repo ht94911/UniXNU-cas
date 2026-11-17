@@ -24,9 +24,13 @@
 - (id)registerContainerizedApplicationWithInfoDictionaries:(NSArray *)dictionaries
     operationUUID:(NSUUID *)operation requestContext:(id)context saveObserver:(id)observer
     registrationError:(NSError **)error;
-- (void)openApplicationWithBundleIdentifier:(NSString *)identifier configuration:(id)configuration
-    completionHandler:(void (^)(BOOL result, NSError *error))completion;
 - (void)setTargetUserID:(NSNumber *)uid;
++ (id)serviceWithDefaultShellEndpoint;
++ (id)optionsWithDictionary:(NSDictionary *)options;
+- (void)openApplication:(NSString *)identifier withOptions:(id)options
+    completion:(void (^)(id process,NSError *error))completion;
+- (int)pid;
+- (BOOL)isValid;
 @end
 
 static BOOL registered_location(id application)
@@ -61,23 +65,29 @@ static int location_output(const char *path)
     return 0;
 }
 
-/* The original synchronous wrapper discards its NSError. This entry uses the
- * same lsd open service and useClientProcessHandle=0, with default options.
- * Wait for its actual completion once, within the existing process deadline. */
-static int request_location(id service,NSString *identifier,dispatch_time_t end)
+/* Original LaunchServices forwards to this same default-shell service.
+ * GNSS008's error identified the intermediate lsd springBoardQueue timeout.
+ * Submit one ordinary request and retain the actual process/error callback. */
+static int request_location(Class serviceClass,Class optionsClass,NSString *identifier,dispatch_time_t end)
 {
-    if (![service respondsToSelector:
-        @selector(openApplicationWithBundleIdentifier:configuration:completionHandler:)]) {
-        fputs("nezha-location-launch: original launch completion method unavailable\n",stderr);
+    if (![serviceClass respondsToSelector:@selector(serviceWithDefaultShellEndpoint)] ||
+        ![optionsClass respondsToSelector:@selector(optionsWithDictionary:)]) {
+        fputs("nezha-location-launch: original shell launch service unavailable\n",stderr);
+        return 8;
+    }
+    id service=[serviceClass serviceWithDefaultShellEndpoint];
+    id options=[optionsClass optionsWithDictionary:@{}];
+    if (!options || ![service respondsToSelector:@selector(openApplication:withOptions:completion:)]) {
+        fputs("nezha-location-launch: original shell launch endpoint/options unavailable\n",stderr);
         return 8;
     }
     dispatch_semaphore_t completion=dispatch_semaphore_create(0);
-    __block BOOL native_result=NO;
+    __block id process=nil;
     __block NSError *launch_error=nil;
-    fputs("nezha-location-launch: NezhaLocation registered=1 launch_submitted=1 method=openApplicationWithBundleIdentifier:configuration:completionHandler:\n",stderr);
-    [service openApplicationWithBundleIdentifier:identifier configuration:nil
-        completionHandler:^(BOOL result,NSError *error) {
-            native_result=result;
+    fputs("nezha-location-launch: NezhaLocation registered=1 launch_submitted=1 method=FBSOpenApplicationService/openApplication:withOptions:completion:\n",stderr);
+    [service openApplication:identifier withOptions:options
+        completion:^(id handle,NSError *error) {
+            process=handle;
             launch_error=error;
             dispatch_semaphore_signal(completion);
         }];
@@ -85,9 +95,11 @@ static int request_location(id service,NSString *identifier,dispatch_time_t end)
         fputs("nezha-location-launch: NezhaLocation registered=1 launch_request=0 launch_completed=0 completion_timeout=1 CoreLocation_callback_verified=0\n",stderr);
         return 11;
     }
-    const BOOL requested=native_result && launch_error==nil;
-    fprintf(stderr,"nezha-location-launch: NezhaLocation registered=1 launch_request=%u launch_completed=1 native_result=%u error=%ld domain=%s CoreLocation_callback_verified=0\n",
-        (unsigned)requested,(unsigned)native_result,(long)launch_error.code,
+    const int pid=[process respondsToSelector:@selector(pid)] ? [process pid]:0;
+    const BOOL valid=[process respondsToSelector:@selector(isValid)] && [process isValid];
+    const BOOL requested=pid>0 && valid && launch_error==nil;
+    fprintf(stderr,"nezha-location-launch: NezhaLocation registered=1 launch_request=%u launch_completed=1 process_handle=%u process_pid=%d process_valid=%u error=%ld domain=%s CoreLocation_callback_verified=0\n",
+        (unsigned)requested,(unsigned)(process!=nil),pid,(unsigned)valid,(long)launch_error.code,
         launch_error.domain.UTF8String ?: "<none>");
     if (launch_error) {
         fprintf(stderr,"nezha-location-launch: launch-detail=%s\n",
@@ -167,7 +179,8 @@ static int open_location(Class proxy,id service,NSURL *system_url)
         report_proxy("after",application);
         if (!registered_location(application)) return 7;
     }
-    return request_location(service,identifier,dispatch_time(DISPATCH_TIME_NOW,30*NSEC_PER_SEC));
+    return request_location(objc_getClass("FBSOpenApplicationService"),
+        objc_getClass("FBSOpenApplicationOptions"),identifier,dispatch_time(DISPATCH_TIME_NOW,30*NSEC_PER_SEC));
 }
 
 #ifndef NEZHA_LOCATION_LAUNCH_TEST
@@ -210,9 +223,10 @@ int main(void)
         }
         const char *framework="/System/Library/Frameworks/CoreServices.framework/CoreServices";
         void *handle=dlopen(framework,RTLD_NOW|RTLD_LOCAL);
+        void *frontboard=dlopen("/System/Library/PrivateFrameworks/FrontBoardServices.framework/FrontBoardServices",RTLD_NOW|RTLD_LOCAL);
         Class proxy=objc_getClass("LSApplicationProxy");
         Class workspace=objc_getClass("LSApplicationWorkspace");
-        if (!handle || !proxy || !workspace ||
+        if (!handle || !frontboard || !proxy || !workspace ||
             ![proxy respondsToSelector:@selector(applicationProxyForIdentifier:)] ||
             ![workspace respondsToSelector:@selector(defaultWorkspace)]) {
             fputs("nezha-location-launch: original LaunchServices interface unavailable\n",stderr);

@@ -1,16 +1,16 @@
 {
   "schema": 1,
-  "purpose": "GNSS008 ordinary LaunchServices asynchronous completion, same open RPC/default configuration/clientProcessHandle0; record actualBOOL and NSError without repeat; retain measured mobileboot task/LOC native008 and normal app",
-  "device_revision": "e39c49eb00f0cd2ce43e3baa1dab5e3aa48176d6",
+  "purpose": "GNSS009 original final FBS default-shell ordinary service and actualprocess/error callback after measured10s lsd queue timeout; calleridentity automatic, emptyoptions, one request; retained mobileboot task/registration/normalapp",
+  "device_revision": "2dff6943ace70037fa5655209d5bf52cbca94bc5",
   "files": {
     "source/NezhaLocation.m": "6a71ef36ae9323341a82d94a4620ca288d313eec1fc71d92e65b8de332685d68",
     "source/Info.plist": "d22a8a478357aaf3a42279295f5b7c704415e64c0fc049b3371c9556cabc902e",
     "source/NezhaLocation.entitlements.plist": "3a42773d833db52c8a6113f2ea83cd6e97ed6ffbdd4ecb8f10d506868a037626",
-    "source/NezhaLocationLaunch.m": "165ec01c6e4c7b83c00a74b1d85a2062c6db4edf5f375653217d574f344a7a00",
+    "source/NezhaLocationLaunch.m": "e25cb2a28a23f352cd0e1acc13d671fd7b5a0bb8098e4a0edf3ddf677b18014c",
     "source/NezhaLocationLaunch.entitlements.plist": "990976e864664ee1a6264c30806d55194650549bbf3f9ee484d80a456230e054",
-    "ci/corelocation.py": "8dc95886342dc1f8e8be694638872054f6989d717b047acd7d797ccfcc9cf7c4",
-    ".github/workflows/nezha-ios27-native.yml": "0426f54e0b9beb16e7bc9cea70b7dffb35874b16ed1dc8fa71b125bd2bfa30f7",
-    "source/location-launch-registration.m": "5b13d42df79e43ee5301aa94883cd35cc552a24d981ef3a0770f2d95b1ef4a17",
+    "ci/corelocation.py": "69a2ab549e52c1f88775d3597ca6637100ee6578d07f2eb4ac6363c29f0ea1e8",
+    ".github/workflows/nezha-ios27-native.yml": "f4676dfd9638b0651bedb695ea070a6de20ab3330f180fca846929da65169cd7",
+    "source/location-launch-registration.m": "ab641a2379b5ff74c9aacda6b5c2b348166de1c4a27848876e4c09dce296d79f",
     "source/org.unixnu.nezha.location-launch.plist": "aab1089eee69522a0567a55c0f08b1e8d192e47780765c0fab6feed7dbbd8e59"
   },
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
