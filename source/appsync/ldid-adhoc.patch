@@ -1,5 +1,5 @@
 diff --git a/ldid.cpp b/ldid.cpp
-index 7813c22..ea71351 100644
+index 7813c22..4612217 100644
 --- a/ldid.cpp
 +++ b/ldid.cpp
 @@ -1454,6 +1454,31 @@ class Map {
@@ -112,7 +112,26 @@ index 7813c22..ea71351 100644
  }
  
  struct State {
-@@ -3208,6 +3259,14 @@ Bundle Sign(const std::string &root, Folder &parent, const ldid::Signer &signer,
+@@ -3163,7 +3214,7 @@ struct State {
+ 
+ Bundle Sign(const std::string &root, Folder &parent, const ldid::Signer &signer, State &local, const std::string &requirements, const Functor<std::string (const std::string &, const std::string &)> &alter, bool merge, uint8_t platform, const Progress &progress) {
+     std::string executable;
+-    std::string identifier;
++    std::string identifier, packageType;
+ 
+     bool mac(false);
+ 
+@@ -3198,6 +3249,9 @@ Bundle Sign(const std::string &root, Folder &parent, const ldid::Signer &signer,
+                 exit(1);
+             }
+             identifier = plist_s(nodebuf);
++            auto package(plist_dict_get_item(node, "CFBundlePackageType"));
++            if (package && plist_get_node_type(package) == PLIST_STRING)
++                packageType = plist_s(package);
+         }));
+     }));
+ 
+@@ -3208,6 +3262,14 @@ Bundle Sign(const std::string &root, Folder &parent, const ldid::Signer &signer,
  
      std::string entitlements;
      folder.Open(executable, fun([&](std::streambuf &buffer, size_t length, const void *flag) {
@@ -127,7 +146,7 @@ index 7813c22..ea71351 100644
          // XXX: this is a miserable fail
          std::stringbuf temp;
          copy(buffer, temp, length, progress);
-@@ -3253,7 +3312,9 @@ Bundle Sign(const std::string &root, Folder &parent, const ldid::Signer &signer,
+@@ -3253,7 +3315,9 @@ Bundle Sign(const std::string &root, Folder &parent, const ldid::Signer &signer,
      }
  
      std::string failure(mac ? "Contents/|Versions/[^/]*/Resources/" : "");
@@ -138,7 +157,7 @@ index 7813c22..ea71351 100644
      std::map<std::string, Bundle> bundles;
  
      if (!flag_w) {
-@@ -3268,7 +3329,7 @@ Bundle Sign(const std::string &root, Folder &parent, const ldid::Signer &signer,
+@@ -3268,7 +3332,7 @@ Bundle Sign(const std::string &root, Folder &parent, const ldid::Signer &signer,
              SubFolder subfolder(folder, bundle);
  
              State remote;
@@ -147,18 +166,17 @@ index 7813c22..ea71351 100644
                  static_cast<const Functor<std::string (const std::string &, const std::string &)> &>(fun([&](const std::string &, const std::string &) -> std::string { return entitlements; }))
              , merge, platform, progress);
              local.Merge(bundle, remote);
-@@ -3457,13 +3518,24 @@ Bundle Sign(const std::string &root, Folder &parent, const ldid::Signer &signer,
+@@ -3457,13 +3521,23 @@ Bundle Sign(const std::string &root, Folder &parent, const ldid::Signer &signer,
      Bundle bundle;
      bundle.path = folder.Path(executable);
  
 +    // Only installable app executables need this entitlement. Derive a stable
 +    // local identity for ad-hoc repairs, without adding it to libraries.
-+    auto bundleName(parent.Path(""));
-+    if (!bundleName.empty() && bundleName.back() == '/') bundleName.pop_back();
-+    const auto extension(bundleName.find_last_of('.'));
-+    const bool installable = extension != std::string::npos &&
-+        (bundleName.compare(extension, std::string::npos, ".app") == 0 ||
-+         bundleName.compare(extension, std::string::npos, ".appex") == 0);
++    const auto extension(root.find_last_of('.'));
++    const bool installable = packageType == "APPL" || (root.empty() && packageType.empty()) ||
++        (extension != std::string::npos &&
++         (root.compare(extension, std::string::npos, ".app/") == 0 ||
++          root.compare(extension, std::string::npos, ".appex/") == 0));
 +    const std::string applicationIdentifier = !mac && merge && !signer && installable
 +        ? "UNIXNULOC0." + identifier : std::string();
 +

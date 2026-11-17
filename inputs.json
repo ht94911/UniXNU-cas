@@ -226,7 +226,7 @@
     "source/appsync/Signing.m": "4a6ea284f6afa85950de365d458d5ad36bacf1f7a433536bc4720f44ec3d421e",
     "source/appsync/appinst.m": "5799ae3f67b90c52666ae2f69e67be5b5ee46bbe089b6b8eb4ffc8a47f220ff0",
     "source/appsync/build.py": "0c18e536d76de9c184e4ff1bb59a8bde256c3f18e8b0042bc41760b060b7888b",
-    "source/appsync/ldid-adhoc.patch": "72b9d561a49563347b9254094cc75cdf6e1567543fe4b3a812b243992433a63a",
+    "source/appsync/ldid-adhoc.patch": "a29bb74ef57066055e2416cc6960ea77fc36bae7ad2e1e2131215bdd02d02d1c",
     "source/appsync/ldid-library.cpp": "a9277e563a6bb4a32d19b1886f04cdb2722cfdcfc35b6c1af4ae5ef124cd7ee7",
     "source/appsync/macho.py": "223107b811c2a8f816f5fa84ccbdb495c8c0ec9ab6806329d4461191fd11631a",
     "source/appsync/signer-sources.json": "4d5747e2dc9ff9b7f2f5b1ddd895d3dd271d5024871f830c35cbfcc5a65e31e7",
