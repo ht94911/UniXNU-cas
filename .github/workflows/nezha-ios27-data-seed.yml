@@ -1,7 +1,7 @@
-name: Independent4GiB iPhone27 RAM Data with official setup and idle preferences
+name: nezha iPhone27 persistent AppSync Data seed
 on:
   push:
-    branches: [codex/ios27-data-seed071-20261103]
+    branches: [codex/ios27-appsync-data-20261118]
   workflow_dispatch:
 permissions:
   contents: read

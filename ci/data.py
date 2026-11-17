@@ -133,6 +133,40 @@ def populate(source, target):
     return counts, records
 
 
+def grow_data(base, target_bytes, work):
+    """Grow the APFS container in a sparse copy, using the existing Mac tools."""
+    logical, extents = packed_ramdisk.regions(base.read_bytes())
+    if target_bytes <= logical or target_bytes > packed_ramdisk.MAX_LOGICAL:
+        raise ValueError('Persistent APFS capacity is outside the packed image limits')
+    raw = work / 'large-data.raw'
+    with raw.open('xb') as stream:
+        stream.truncate(target_bytes)
+        for offset, data in extents:
+            stream.seek(offset)
+            stream.write(data)
+    attached = plistlib.loads(run('hdiutil', 'attach', '-imagekey', 'diskimage-class=CRawDiskImage',
+                                  '-nomount', '-nobrowse', '-plist', raw))
+    physical = next(entity['dev-entry'] for entity in attached['system-entities'] if 'dev-entry' in entity)
+    try:
+        listing = plistlib.loads(run('diskutil', 'apfs', 'list', '-plist'))
+        volumes = [entry['ContainerReference'] for entry in listing['Containers']
+                   if any(store['DeviceIdentifier'] == Path(physical).name for store in entry.get('PhysicalStores', []))]
+        if len(volumes) != 1:
+            raise ValueError('Expected one APFS container on the sparse image')
+        run('diskutil', 'apfs', 'resizeContainer', volumes[0], '0')
+    finally:
+        run('hdiutil', 'detach', physical)
+    with raw.open('rb') as stream:
+        header = stream.read(4096)
+    block_size = int.from_bytes(header[36:40], 'little')
+    blocks = int.from_bytes(header[40:48], 'little')
+    if header[32:36] != b'NXSB' or block_size != 4096 or not target_bytes - 64 * 1024**2 <= blocks * block_size <= target_bytes:
+        raise ValueError('Persistent seed APFS geometry did not grow')
+    packed = work / 'data-persistent.dbr'
+    packed_ramdisk.pack(raw, packed)
+    return packed, blocks * block_size
+
+
 def build(work):
     assert sys.platform == 'darwin' and os.geteuid() == 0
     work.mkdir(parents=True, exist_ok=True)
@@ -181,11 +215,12 @@ def build(work):
             assert stream.read(4096)[32:36] == b'NXSB'
         packed = work / 'data4096.dbr'
         packed_ramdisk.pack(seed, packed)
+        packed, container_bytes = grow_data(packed, PINS['persistent_Data_GiB'] * 1024**3, work)
         identity, header = packed_ramdisk.inspect(packed)
         assert identity['sha256'] == packed_ramdisk.seed_identity(*packed_ramdisk.regions(packed.read_bytes())) and header[32:36] == b'NXSB'
         report.update(status='complete', volume_uuid=uuid, counts=counts, seed=identity,
                       original_OS_sha256=PINS['OS_image_sha256'], manifest_sha256=PINS['manifest_sha256'],
-                      fresh_independent_Data=True, allocation_bytes=seed.stat().st_size, sparse_seed_identity_scheme='SHNGSEED2 (>2GiB); not the plain full-file SHA', original_plain_image_sha256=sha(seed), owners_and_modes_preserved=True, initial_files_decompressed=True,
+                      fresh_independent_Data=True, container_bytes=container_bytes, sparse_seed_identity_scheme='SHNGSEED2', original_plain_image_sha256=sha(seed), owners_and_modes_preserved=True, initial_files_decompressed=True,
                       runtime_writable=True, hardware_qualified=False, phone_operations=False)
         (work / 'seed.json').write_text(json.dumps(report, indent=2))
         print('Fresh independent iPhone27 Data seed complete; runtime qualification remains separate', flush=True)
@@ -202,7 +237,7 @@ def seal(work, output):
         if (work / name).is_file():
             names.append(name)
     if (work / 'seed.json').is_file() and json.loads((work / 'seed.json').read_text())['status'] == 'complete':
-        names.append('data4096.dbr')
+        names.append('data-persistent.dbr')
     artifacts.seal(work, names, ROOT / 'artifact-recipient.pem', output)
 
 
