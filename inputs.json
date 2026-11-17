@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Build the GPU051 AppSync kernel with the myron native 4 KiB bootstrap table capacity.",
+  "purpose": "Build the GPU051 AppSync kernel with large volatile RAM disk allocations backed by VM.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -491,7 +491,7 @@
     "source/metal/LICENSE": "c51a32dfc2140d3d56f796a3a7010e574f2e3649b97c42e010303ad57f848265",
     "source/metal/OriginalAcceleratorABI.h": "211e922f9b760ddec2e3453db6584bac57597b3d39e4bf0d013c1b2debd53365",
     "source/native017-userlog.patch": "30be3f9567f08ea396b1ecd9230f3c584182dd7047b48120115d0a02e4eb4625",
-    "source/ramblock.bundle": "28d547819358f3f45ccd5b572685848ff2327c97b378719285c50552f10114fd",
+    "source/ramblock.bundle": "099e9cdb30d560bf1f08e482a8f2e483b5212463fc976e1011db3362c332ad96",
     "source/soc/Sm8850Rpmh.c": "9307dc367f8d50d70a809391abb5b9fe3f09f48e9c0558ece1f0c21dfabebe38",
     "source/soc/configs/sm8850.config": "5510debad6dc3326908a4d23082f715e62d32a1a5e6587197da3dbf18977e5bc",
     "source/soc/include/Sm8850DsiFifo.h": "d98354f8ebd13b492292fa9c480985b4ec0eeed6a26c4e4397fe4e3be5c68def",
@@ -534,10 +534,10 @@
     "history": "One source-only current tree; pinned independent Data, no private maps or parent history"
   },
   "ramblock": {
-    "source_revision": "1c861fce7b246f3728a6a28d0cabe6448821de85",
-    "source_tree": "17e9dc28a71ba6d8ef29fb1b92596e7d32d1439f",
+    "source_revision": "ec1687eb3f9e06b618499fd664a5fadbf22b3618",
+    "source_tree": "fa621ab52230f91d2f031497c295cd52e63f42e5",
     "repository": "https://github.com/UniXNU/RamBlock.git",
-    "history": "single shallow reviewed explicit4GiB volatile support and actual identity tests"
+    "history": "one source-only tree matching the AppSync volatile backing change ae63d3437563e3c623f3ee56c73b58df60d94eb5"
   },
   "gop": {
     "source_revision": "589f861bd845c30f0c19944c6138ada3ea57061b",
