@@ -1,0 +1,122 @@
+# iPhone iOS27 integration; source-only first compile, NOT a bootable desktop package yet.
+schema_version = 2
+[board]
+name = "nezha"
+soc = "SM8850"
+soc_source = "sm8850"
+os_profile = "ios-27.0.1-24A446-iphone14-4"
+kit = "nezha"
+description = "Xiaomi 17 Ultra: isolated iPhone iOS27 integration, pinned-file policy required"
+[components]
+include = ["ArmDTPlatform", "ArmCpu", "XnuPrelink", "QcomXnuUsbDebug", "ShengUfs", "RamBlock", "GopFramebuffer", "AppleKeyStoreState", "Adreno840", "SoftwareAES"]
+[kernel]
+defconfig = "nezha_ios27_defconfig"
+config_fragments = ["arch:configs/common.config", "soc:configs/sm8850.config", "os:configs/ipados.config"]
+patch_series = ["arch:patches/xnu/series", "soc:patches/xnu-12377/series", "os:patches/xnu/series", "device:patches/xnu-12377/series", "component:QcomXnuUsbDebug/patches/darwin25-xnu12377-unixnu/series"]
+archives = ["build-corecrypto-14.py", "build-corecrypto-14.py --namespace", "component:ArmDTPlatform", "nezha-armcpu-asm-fix.py", "component:ArmCpu", "qualify-armcpu-instructions.py", "build-libpthread-kernel.py", "build-nezha27-als-owner.py", "component:QcomXnuUsbDebug", "build-nezha27-usb-control.py", "build-ios27-pmgr.py", "component:ShengUfs", "component:RamBlock", "component:AppleKeyStoreState", "build-gop-legacy-display-27.py", "build-nezha27-input.py", "build-nezha27-als.py", "build-nezha27-sensors.py", "build-nezha27-wifi.py", "build-nezha27-bluetooth.py", "component:SoftwareAES", "build-software-aes-iphone.py", "component:Adreno840"]
+# G3 read-only root closure. Explicit IOStorageFamily retains its generic
+# IOBlockStorageDriver/IOMediaBSDClient matching; dependency-only strips it.
+[kernel.prelink]
+roots = ["com.apple.security.AppleImage4", "com.apple.driver.AppleMobileFileIntegrity", "com.apple.filesystems.apfs", "com.apple.iokit.IOStorageFamily", "com.apple.AppleFSCompression.AppleFSCompressionTypeZlib", "com.apple.security.sandbox", "com.apple.iokit.IOMobileGraphicsFamily", "com.apple.iokit.IOSurface", "com.apple.iokit.IOHIDFamily", "com.apple.iokit.IOGPUFamily"]
+[device_tree]
+source = "device:dts/nezha.dts"
+include_dirs = ["soc:dts"]
+preserve_memory_ranges = true
+[payload]
+volume = "NEZHA_IOS27"
+size_mib = 176
+loader = "firmware"
+title = "nezha iPhone iOS27 development"
+timeout = -1
+panic_screen = true
+# Only the local pack step stages the authenticated sidecar; CI carries no policies.
+root_policies = "{tree}/build/sheng-source-storage/root-policies.bin"
+# GPU043: the exact 24A446 PNG callsite clears a fresh anonymous mmap a second
+# time. Keep the original allocator/decoder and rely on mmap's zero-fill contract.
+# The native signed-page fixup checks all 16 original bytes; only the BL changes.
+# GPU046: AFDictationConnection must not requeue an availability notification
+# when offlineDictationStatus is nil. The keyboard's notification handler queries
+# this same function; a nil cache otherwise keeps that callback cycle alive.
+# Non-nil state, language selection, ARC cleanup and block flags stay original.
+# GPU047: retain GPU2, Wi-Fi02321 and Bluetooth02423 entries in the64-slot table.
+text_fixups = [
+    "dyld_shared_cache_arm64e.01,74edb9c,e00317aae1031baacf292194a0296c1e,e00317aae1031baa1f2003d5a0296c1e",
+    "dyld_shared_cache_arm64e.07,da6f58,6905009020b143fde00b00fd08410091,b60100b40900b852e90b00f908410091",
+    "dyld_shared_cache_arm64e.69,6eaa8a0,00000000000000000000000000000000,a80740f9a94300912815c1da1f2003d5",
+    "dyld_shared_cache_arm64e.69,6eaa8b0,00000000000000000000000000000000,e9ac3510080109ca501100b010e21991",
+    "dyld_shared_cache_arm64e.69,6eaa8c0,00000000000000000000000000000000,480000b5d0060010c5ab0514000080d2",
+    "dyld_shared_cache_arm64e.69,6eaa8d0,00000000000000000000000000000000,7f2303d5ba950314200080d27f2303d5",
+    "dyld_shared_cache_arm64e.69,6eaa8e0,00000000000000000000000000000000,b7950314c0ee02f9c4ca02f927e30514",
+    "dyld_shared_cache_arm64e.69,6eaa8f0,00000000000000000000000000000000,caee42f96a000037e904003627000014",
+    "dyld_shared_cache_arm64e.69,6eaa900,00000000000000000000000000000000,ffc302d1e00700a9e20f01a9e41702a9",
+    "dyld_shared_cache_arm64e.69,6eaa910,00000000000000000000000000000000,e61f03a9e82704a9ea2f05a9ec3706a9",
+    "dyld_shared_cache_arm64e.69,6eaa920,00000000000000000000000000000000,ee3f07a9f04708a9f27b09a908423bd5",
+    "dyld_shared_cache_arm64e.69,6eaa930,00000000000000000000000000000000,e85300f9e10317aae2030aaae30309aa",
+    "dyld_shared_cache_arm64e.69,6eaa940,00000000000000000000000000000000,040080d200609c520065a572701680d2",
+    "dyld_shared_cache_arm64e.69,6eaa950,00000000000000000000000000000000,011000d4e85340f908421bd5e00740a9",
+    "dyld_shared_cache_arm64e.69,6eaa960,00000000000000000000000000000000,e20f41a9e41742a9e61f43a9e82744a9",
+    "dyld_shared_cache_arm64e.69,6eaa970,00000000000000000000000000000000,ea2f45a9ec3746a9ee3f47a9f04748a9",
+    "dyld_shared_cache_arm64e.69,6eaa980,00000000000000000000000000000000,f27b49a9ffc3029169000036fc031baa",
+    "dyld_shared_cache_arm64e.69,6eaa990,00000000000000000000000000000000,13e4051490e305146ee305143cffffff",
+    "dyld_shared_cache_arm64e.69,6eaa9a0,00000000,20000000",
+    "dyld_shared_cache_arm64e.69,70157d4,f00500d010e21991f1418ed2300ac1da,3354fa1710e21991f1418ed2300ac1da",
+    "dyld_shared_cache_arm64e.69,6f8ffb8,7f2303d5bd0344b2ff0301d1f8df00a9,456afc17bd0344b2ff0301d1f8df00a9",
+    "dyld_shared_cache_arm64e.69,7023584,c4ca02f9c3c602f920cd0bd000202691,d81cfa17c3c602f920cd0bd000202691",
+    "dyld_shared_cache_arm64e.69,7023740,08b943f9e96a68381acd0bf049040036,08b943f9e96a68381acd0bf0691cfa17",
+    "dyld_shared_cache_arm64e.46,6695a28,00000000000000000000000000000000,7f2303d5f27bbfa9a84a593928040036",
+    "dyld_shared_cache_arm64e.46,6695a38,00000000000000000000000000000000,e00313aa79af5594e8b30c9008b545f9",
+    "dyld_shared_cache_arm64e.46,6695a48,00000000000000000000000000000000,020140f931b5559470b155941fc40471",
+    "dyld_shared_cache_arm64e.46,6695a58,00000000000000000000000000000000,01030054e00314aa9c9d5794a0020037",
+    "dyld_shared_cache_arm64e.46,6695a68,00000000000000000000000000000000,a06a79f86daf5594629613b042a03e91",
+    "dyld_shared_cache_arm64e.46,6695a78,00000000000000000000000000000000,26b55594e00100b5900280d2011000d4",
+    "dyld_shared_cache_arm64e.46,6695a88,00000000000000000000000000000000,e20300aa00e09c520065a572210000b0",
+    "dyld_shared_cache_arm64e.46,6695a98,00000000000000000000000000000000,21a035912300805224268052701680d2",
+    "dyld_shared_cache_arm64e.46,6695aa8,00000000000000000000000000000000,011000d4f27bc1a8ff2303d51c150014",
+    "dyld_shared_cache_arm64e.46,6695ab8,00000000000000000000000000000000,f27bc1a8ff2303d5e00315aac0035fd6",
+    "dyld_shared_cache_arm64e.46,6695ac8,00000000000000000000000000000000,7f2303d5f27bbfa9e00315aacb9b5794",
+    "dyld_shared_cache_arm64e.46,6695ad8,00000000000000000000000000000000,e00315aa02008052009e5794e00315aa",
+    "dyld_shared_cache_arm64e.46,6695ae8,00000000000000000000000000000000,22008052999b5794a44a5939a8525939",
+    "dyld_shared_cache_arm64e.46,6695af8,00000000000000000000000000000000,8420082a900280d2011000d4e20300aa",
+    "dyld_shared_cache_arm64e.46,6695b08,00000000000000000000000000000000,00009d520065a572210000b021200e91",
+    "dyld_shared_cache_arm64e.46,6695b18,00000000000000000000000000000000,23008052701680d2011000d4f27bc1a8",
+    "dyld_shared_cache_arm64e.46,6695b28,00000000000000000000000000000000,ff2303d54f1200147f2303d5f27bbfa9",
+    "dyld_shared_cache_arm64e.46,6695b38,00000000000000000000000000000000,e00315aa39af5594629613b042a03e91",
+    "dyld_shared_cache_arm64e.46,6695b48,00000000000000000000000000000000,0ab55594f27bc1a8ff2303d5e00316aa",
+    "dyld_shared_cache_arm64e.46,6695b58,00000000,c0035fd6",
+    "dyld_shared_cache_arm64e.46,669ad64,e00315aa26875794a06a79f8ac9a5594,31ebff9726875794a06a79f8ac9a5594",
+    "dyld_shared_cache_arm64e.46,669a384,2600001468d90fd008018cb9a802088b,d1edff9768d90fd008018cb9a802088b",
+    "dyld_shared_cache_arm64e.46,66a7b90,e00316aaa7535794a00c003408d90fb0,e8b7ff97a7535794a00c003408d90fb0",
+]
+# Root input remains independent of 17; no Data/log persistence or remote reset.
+#031 USB/early-kernel diagnostics are retained for the first read-only root test.
+kernel_args = ["-v", "keepsyms=1", "debug=0x14e", "cpus=8", "boot-progress=2", "nezha-log=0", "native-source-storage=1", "native-source-storage-require-usb=1", "native-ufs-root=1", "sheng-data-persist=2", "ram-data-volatile-4g=0", "sheng-data-reset=0", "sheng-log=0", "nezha-reboot-after=0", "nezha-panic-reset=0", "qcom-usb-debug=1", "qcom-usb-ctl=1", "nezha-usb-reboot=1", "use_contiguous_hint=0", "sheng-pmgr=2", "sheng-disable-watchdogd=1", "sheng-exc-name=SpringBoard,iconservicesagent", "offline-mobile-graphics-load=1", "offline-legacy-register=1", "offline-legacy-gop=1", "offline-legacy-unit-scale=3", "offline-legacy-pm=1", "offline-legacy-validate=1", "offline-legacy-transfer=1", "offline-legacy-cpu-present=1", "offline-legacy-phase=4", "offline-key-events=1", "sheng-aks=1", "sheng-fb-gpu=1", "sheng-dpu-scanout=0", "offline-hid-input=1", "offline-hid-home=1", "sheng-touch-hid=1", "nezha-input=1", "nezha-touch=15", "boot-ui-follow=1", "offline-hid-auto-home=90", "boot-diag-console=2", "nezha-backlight=1", "input-test=0", "nezha-gpu-metal=1", "sheng-gpu-trace=1", "ndt=1", "sheng-gpu-addon=1", "boot-diag-overlay=0", "boot-ui-focus3=Preferences", "ns=1"]
+
+# Format2 exports chosen metadata from the typed ADT table.
+[adt.chosen.u32]
+"kernel-ctrr-to-be-enabled" = 0
+
+# First root mount: use the real independently verified iPhone OS identity.
+[root]
+os_volume_uuid = "28E4CF35-9C12-417E-B8FF-906618C6FD22"
+systemos_volume_uuid = "FFADDA0D-7102-4121-8AB8-48818B912D06"
+os_image_sha256 = "d7037ea730b12d11f72e751884c23b1f3c67bb12ccb828c750f9df5765ad093c"
+systemos_image_sha256 = "00fac48583c9d347aa9403c9cecf8d511650fba28f670aa70265e4c61f46aad8"
+[payload.adt]
+chip_id = "8110"
+unique_chip_id = "required"
+packed_data_ramdisk = true
+root_match_volume_uuid = "28E4CF35-9C12-417E-B8FF-906618C6FD22"
+
+# Same selected-XNU sizing contract as current sheng27, for owned4864MiB.
+# Native xsmall CONFIG_VNODES=1024 would otherwise trigger vnode-pressure jetsam.
+[adt.defaults.u32]
+"kern.maxvnodes" = 78848
+
+# No mechanical Home button on nezha/iPhone14,4;selected official typed ADT.
+[adt.buttons.string]
+compatible = "buttons"
+device_type = "buttons"
+[adt.buttons.strings]
+button-names = ["hold", "voldown", "volup"]
+[adt.buttons.u32]
+home-button-type = 2

@@ -1,0 +1,13 @@
+{
+  "source": "Native017 existing framework native-text-fixup.patch",
+  "source_sha256": "49571672a1f864c0004107de638ae76c1afb34eec6f04d324df8846989b694fd",
+  "change_path": "patches/xnu-12377/nezha-bluetooth-text-fixup-capacity.patch",
+  "change_sha256": "b1eb82eab5390d7ece20f82436363dfea865b292dbbfa207b527a59b73d1cf73",
+  "capacity_before": 32,
+  "capacity_after": 64,
+  "required_entries": 44,
+  "entry_bytes": 16,
+  "stock_signature_and_original_byte_checks_retained": true,
+  "public_source_only": true,
+  "phone_operations": false
+}
