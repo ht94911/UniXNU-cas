@@ -11,6 +11,7 @@
 
 extern int unixnu_appinst_entry(int argc, const char **argv);
 extern int unixnu_appsync_wifi_install(NSDictionary *config, void (*report)(const char *, ...));
+extern int unixnu_appsync_persistent_install(NSDictionary *config, void (*report)(const char *, ...));
 @interface NSObject (ProbeInstallation)
 + (id)defaultWorkspace;
 + (id)applicationProxyForIdentifier:(NSString *)identifier;
@@ -103,6 +104,7 @@ int main(void)
         if (transfer) {
             report("APPSYNC_PROBE wifi-memory bytes=%llu\n",
                    (unsigned long long)NSProcessInfo.processInfo.physicalMemory);
+            if ([transfer[@"persistent"] boolValue]) return unixnu_appsync_persistent_install(transfer, report);
             // libxpc's iOS activity transaction ends when ARC releases it.
             typedef id (*CreateTransaction)(const char *) NS_RETURNS_RETAINED;
             CreateTransaction create = (CreateTransaction)dlsym(RTLD_DEFAULT, "os_transaction_create");
