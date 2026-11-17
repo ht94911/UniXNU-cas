@@ -1,7 +1,7 @@
 name: nezha iPhone27 AppSync signature repair
 on:
   push:
-    branches: [codex/ios27-appsync-probe034-20261117]
+    branches: [codex/ios27-appsync-stream-signer-20261118]
   workflow_dispatch:
 permissions:
   contents: read
