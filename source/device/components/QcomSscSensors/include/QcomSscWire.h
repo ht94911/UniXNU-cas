@@ -16,6 +16,7 @@ extern "C" {
 #define QSSC_MAX_EVENTS 64u
 #define QSSC_MAX_VALUES 6u
 #define QSSC_MAX_RATES 32u
+#define QSSC_UID_CHOICES 8u
 #define QSSC_LOOKUP_WORD UINT64_C(0xabababababababab)
 enum { QsscOkay=0, QsscNoData=1, QsscAgain=2, QsscArgument=-1,
        QsscWire=-2, QsscUnsupported=-3, QsscIdentity=-4, QsscRemote=-5,
@@ -70,11 +71,14 @@ int qssc_encode_request(QsscUid,uint32_t id,bool wakeup,uint32_t batch_us,
                         uint16_t transaction,uint8_t *out,size_t capacity,size_t *bytes);
 int qssc_encode_lookup(const char *datatype,uint16_t transaction,
                        uint8_t *out,size_t capacity,size_t *bytes);
+int qssc_encode_lookup_selection(const char *datatype,bool default_only,uint16_t transaction,
+                                 uint8_t *out,size_t capacity,size_t *bytes);
 int qssc_encode_stream(QsscUid,uint32_t rate_bits,bool wakeup,uint32_t batch_us,
                        uint16_t transaction,uint8_t *out,size_t capacity,size_t *bytes);
 int qssc_decode_response(const uint8_t *,size_t,uint16_t,QsscResponse *);
 int qssc_decode_report(const uint8_t *,size_t,QsscReport *);
 int qssc_decode_lookup(const QsscEvent *,const char *datatype,QsscUid *,bool *present);
+int qssc_decode_lookup_list(const QsscEvent *,const char *datatype,QsscUid *,uint32_t capacity,uint32_t *count);
 int qssc_decode_vector(const QsscEvent *,QsscVector *);
 int qssc_decode_proximity(const QsscEvent *,QsscProximity *);
 int qssc_decode_calibration(const QsscEvent *,QsscCalibration *);

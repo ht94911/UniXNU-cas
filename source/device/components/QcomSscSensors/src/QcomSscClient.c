@@ -78,7 +78,7 @@ static int prepare(QsscClient *c,unsigned k,unsigned id){
     c->tx_kind=k;c->tx_id=id;c->lookup_ack=false;c->lookup_event=false;c->attribute_ack=false;c->attribute_event=false;
     QsscStream *s=&c->stream[k];int r;
     c->tx_interval=s->interval_us;c->tx_batch=s->batch_us;c->tx_wakeup=s->wakeup;
-    if(id==QsscLookupRequest)r=qssc_encode_lookup(s->datatype,c->transaction,c->tx,sizeof c->tx,&c->tx_bytes);
+    if(id==QsscLookupRequest)r=qssc_encode_lookup_selection(s->datatype,k!=QsscProximityKind,c->transaction,c->tx,sizeof c->tx,&c->tx_bytes);
     else if(id==QsscStreamRequest){
         uint32_t hz=(1000000u+s->interval_us-1)/s->interval_us,bits;
         r=qssc_integer_rate(hz,&bits);
@@ -99,7 +99,16 @@ static int choose(QsscClient *c){
     for(unsigned k=0;k<QSSC_SENSOR_COUNT;k++)if(c->stream[k].enabled&&!wanted(c,k))return prepare(c,k,QsscDisableRequest);
     // Calibration subscriptions precede physical streams, preserving stock bias ownership.
     static const unsigned order[]={QsscAccelCal,QsscGyroCal,QsscAccel,QsscGyro,QsscGravity,QsscProximityKind,QsscGameRv};
-    for(unsigned n=0;n<QSSC_SENSOR_COUNT;n++){unsigned k=order[n];QsscStream *s=&c->stream[k];if(!wanted(c,k))continue;
+    for(unsigned n=0;n<QSSC_SENSOR_COUNT;n++){unsigned k=order[n];QsscStream *s=&c->stream[k];
+        // Advance only between completed attribute transactions. All events
+        // from the rejected provider remain associated with their original UID.
+        if(k==QsscProximityKind&&!s->enabled&&!s->attributes_seen&&
+           (s->error==QsscIdentity||s->error==QsscUnsupported)&&
+           c->proximity_choice_index+1<c->proximity_choice_count){
+            s->uid=c->proximity_choices[++c->proximity_choice_index];memset(&s->attributes,0,sizeof s->attributes);
+            s->error=0;s->phase=QsscIdle;
+        }
+        if(!wanted(c,k))continue;
         if(!s->lookup_sent){s->phase=QsscLookup;return prepare(c,k,QsscLookupRequest);}
         if(!s->present)continue;
         if(!s->attributes_seen)return prepare(c,k,QsscAttrRequest);
@@ -158,7 +167,35 @@ static int response(QsscClient *c,const uint8_t *raw,size_t bytes){
 static int lookup_report(QsscClient *c,const QsscReport *r){
     for(unsigned n=0;n<r->count;n++){
         const QsscEvent *e=&r->events[n];if(e->id!=QsscLookupEvent){if(e->id==QsscErrorEvent)return fail(c,QsscRemote);continue;}
-        for(unsigned k=0;k<QSSC_SENSOR_COUNT;k++){QsscUid u={0};bool present=false;int x=qssc_decode_lookup(e,datatypes[k],&u,&present);
+        for(unsigned k=0;k<QSSC_SENSOR_COUNT;k++){QsscUid u={0};bool present=false;
+            int x;
+            if(k==QsscProximityKind){
+                QsscUid choices[QSSC_UID_CHOICES];uint32_t count=0;
+                x=qssc_decode_lookup_list(e,datatypes[k],choices,QSSC_UID_CHOICES,&count);
+                if(x==QsscIdentity)continue;if(x)return fail(c,x);
+                QsscStream *s=&c->stream[k];
+                if(s->present){
+                    unsigned at=0;while(at<count&&!qssc_uid_equal(choices[at],s->uid))at++;
+                    if(at==count)return fail(c,QsscIdentity);
+                    // A selected or in-flight provider is not silently replaced.
+                    // register_updates may advertise the physical provider
+                    // after the initial virtual default; append new candidates
+                    // without changing the selected or in-flight UID.
+                    for(unsigned i=0;i<count;i++){
+                        unsigned j=0;while(j<c->proximity_choice_count&&!qssc_uid_equal(c->proximity_choices[j],choices[i]))j++;
+                        if(j==c->proximity_choice_count){
+                            if(j==QSSC_UID_CHOICES)return fail(c,QsscCapacity);
+                            c->proximity_choices[c->proximity_choice_count++]=choices[i];
+                        }
+                    }
+                }else if(count){
+                    memcpy(c->proximity_choices,choices,count*sizeof *choices);c->proximity_choice_count=count;
+                    c->proximity_choice_index=0;s->uid=choices[0];s->present=true;s->error=0;s->phase=QsscIdle;
+                }else{s->phase=QsscLookup;if(state(c,k,false,QsscNoData))return fail(c,QsscConsumer);}
+                if(c->awaiting&&c->tx_id==QsscLookupRequest&&c->tx_kind==k)c->lookup_event=true;
+                break;
+            }
+            x=qssc_decode_lookup(e,datatypes[k],&u,&present);
             if(x==QsscIdentity)continue;if(x)return fail(c,x);QsscStream *s=&c->stream[k];
             if(s->present&&(!present||!qssc_uid_equal(s->uid,u))){
                 // A service update cannot silently replace an active subscription.

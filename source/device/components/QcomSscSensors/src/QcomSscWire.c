@@ -93,15 +93,22 @@ int qssc_decode_report(const uint8_t *qmi,size_t bytes,QsscReport *out){
             r=event(f.data,f.bytes,&a.events[a.count]);if(r)return r;a.count++;}
     }if(!source)return QsscWire;*out=a;return a.count?QsscOkay:QsscNoData;
 }
-int qssc_decode_lookup(const QsscEvent *e,const char *datatype,QsscUid *out,bool *present){
-    if(!e||!datatype||!out||!present||e->id!=QsscLookupEvent)return QsscArgument;
-    Pb p={e->payload,e->bytes};bool named=false,found=false;QsscUid selected={0};
+int qssc_decode_lookup_list(const QsscEvent *e,const char *datatype,QsscUid *out,uint32_t capacity,uint32_t *count){
+    if(!e||!datatype||!out||!count||!capacity||capacity>QSSC_UID_CHOICES||e->id!=QsscLookupEvent)return QsscArgument;
+    Pb p={e->payload,e->bytes};bool named=false;QsscUid selected[QSSC_UID_CHOICES];uint32_t found=0;
     while(p.left){Field f;int r=field(&p,&f);if(r)return r;
         if(f.number==1){if(named||f.wire!=2)return QsscWire;
             if(f.bytes!=strlen(datatype)||memcmp(f.data,datatype,f.bytes))return QsscIdentity;named=true;}
         else if(f.number==2){QsscUid u;if(f.wire!=2)return QsscWire;r=uid(f.data,f.bytes,&u);if(r)return r;
-            if(found&&!qssc_uid_equal(selected,u))return QsscIdentity;selected=u;found=true;}
-    }if(!named)return QsscWire;*present=found;if(found)*out=selected;return QsscOkay;
+            unsigned at=0;while(at<found&&!qssc_uid_equal(selected[at],u))at++;
+            if(at==found){if(found==capacity)return QsscCapacity;selected[found++]=u;}}
+    }if(!named)return QsscWire;memcpy(out,selected,found*sizeof *out);*count=found;return QsscOkay;
+}
+int qssc_decode_lookup(const QsscEvent *e,const char *datatype,QsscUid *out,bool *present){
+    if(!out||!present)return QsscArgument;
+    QsscUid choices[QSSC_UID_CHOICES];uint32_t count=0;
+    int r=qssc_decode_lookup_list(e,datatype,choices,QSSC_UID_CHOICES,&count);if(r)return r;
+    if(count>1)return QsscIdentity;*present=count!=0;if(count)*out=choices[0];return QsscOkay;
 }
 static int floats(const Field *f,uint32_t *out,unsigned capacity,uint32_t *count){
     if((f->wire!=5&&f->wire!=2)||f->bytes%4)return QsscWire;
@@ -173,11 +180,14 @@ int qssc_encode_request(QsscUid u,uint32_t id,bool wakeup,uint32_t batch_us,cons
     // use_jumbo_report omitted: the actual IDL defaults to normal reports.
     memcpy(out,qmi,total);*bytes=total;return QsscOkay;
 }
-int qssc_encode_lookup(const char *datatype,uint16_t transaction,uint8_t *out,size_t capacity,size_t *bytes){
+int qssc_encode_lookup_selection(const char *datatype,bool default_only,uint16_t transaction,uint8_t *out,size_t capacity,size_t *bytes){
     if(!datatype)return QsscArgument;size_t n=strlen(datatype);if(!n||n>48)return QsscArgument;
     uint8_t payload[54]={10,(uint8_t)n};memcpy(payload+2,datatype,n);
-    payload[n+2]=16;payload[n+3]=1;payload[n+4]=24;payload[n+5]=1;
+    payload[n+2]=16;payload[n+3]=1;payload[n+4]=24;payload[n+5]=default_only?1:0;
     QsscUid u={QSSC_LOOKUP_WORD,QSSC_LOOKUP_WORD};return qssc_encode_request(u,QsscLookupRequest,true,0,payload,n+6,transaction,out,capacity,bytes);
+}
+int qssc_encode_lookup(const char *datatype,uint16_t transaction,uint8_t *out,size_t capacity,size_t *bytes){
+    return qssc_encode_lookup_selection(datatype,true,transaction,out,capacity,bytes);
 }
 int qssc_encode_stream(QsscUid u,uint32_t rate,bool wakeup,uint32_t batch,uint16_t transaction,uint8_t *out,size_t capacity,size_t *bytes){
     if(!qssc_float_finite(rate)||(rate>>31)||!(rate&0x7fffffffu))return QsscArgument;
@@ -199,7 +209,13 @@ static int attribute_value(uint32_t id,const uint8_t *data,size_t bytes,QsscAttr
             if(v.number==1){if(v.wire!=2)return QsscWire;r=attribute_value(id,v.data,v.bytes,a,depth+1);if(r)return r;}
             else if(v.number==2){if(v.wire!=2)return QsscWire;
                 if(id==0){r=string_value(v.data,v.bytes,a->name,sizeof a->name);a->name_valid=!r;}
-                else if(id==1)r=string_value(v.data,v.bytes,a->vendor,sizeof a->vendor);
+                else if(id==1){
+                    // The measured Xiaomi virtual-proximity vendor text has
+                    // a NUL before two trailing bytes. Vendor is display-only;
+                    // name/type/API identity strings keep strict validation.
+                    size_t length=0;while(length<v.bytes&&v.data[length])length++;
+                    r=string_value(v.data,length,a->vendor,sizeof a->vendor);
+                }
                 else if(id==2){r=string_value(v.data,v.bytes,a->datatype,sizeof a->datatype);a->type_valid=!r;}
                 else if(id==5){size_t at=strlen(a->api);if(at)at++;if(at>=sizeof a->api)return QsscCapacity;
                     r=string_value(v.data,v.bytes,a->api+at,sizeof a->api-at);if(!r&&at)a->api[at-1]=';';}

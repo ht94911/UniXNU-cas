@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Sensor003b final immediate retirement: same original GPU051 sources as003; begin error cleanup on existingworker before outstanding ACKs age; no re-send, newDSP owner or ordinary app permission change.",
+  "purpose": "Sensor004: measured vendor padding, attribute-selected physical proximity, original LS container locator; rebuild kernel plus launcher unit only, reuse signed ordinary app and all original GPU051 runtime/private inputs.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "b2136628a4e1ec83022c3ef3adca3c2036b901d2",
+  "device_revision": "6c4c7e24bd85872e13e8fce1243caa80211de65f",
   "soc_revision": "device-local-composition-e565439+3435fa5",
   "xcode": "26.6",
   "files": {
@@ -427,7 +427,7 @@
     "source/device/patches/xnu-12377/zzzzzz-nezha-input-chain-trace.patch": "c4d05419e7ec3af0de619754bdb6c2deb69b74d714c2219e509360ebfe1b947e",
     "source/device/patches/xnu-12377/zzzzzz-nezha-kernel-class-lock-order.patch": "cd90c61d6838f4e6a7248da81b6180f14db03d00f2f7a64f4bbe4034c0aa8dcb",
     "source/device/patches/xnu-12377/zzzzzz-nezha-sigp-startup-order.patch": "18275910b909d187e459c68f5d937cc09bc01923180141dc155aa7f4ff14aaf9",
-    "source/device/porting.toml": "e1fcc4c9aac052606babd92d411f36feb48f41cd1df9cf1928d8e4d0f351d8d1",
+    "source/device/porting.toml": "230ffebe7ffb46715e0282feeb2a6c14f6a1436b92fe467cbf5c2dd6c9002152",
     "source/device/scripts/aes-iphone-24A446.json": "d55ed6d1d65fdff5de46dd602552eaf3309d1f7370fcd3f15eddb391225ffe8a",
     "source/device/scripts/als-event-service-iphone-24A446.json": "34c27f1a58bab3c518570a57c006a23fce315b90a584e691629d61c0850bd4d8",
     "source/device/scripts/backlight-iphone-24A446.json": "446eb5fe6440335bfe9fca75b32f7d815ddcafbb8a3c2d7f697c1e5c3f40f6cb",
@@ -502,25 +502,25 @@
     "ci/test-native-userlog.py": "f64f5aff7c83cbbff7ce9bd15ab276dd7022f5e42d227999157b796afe414f9e",
     "ci/check-native-userlog.py": "74e7abe9164a853b10d4406a46f55f67670ade42795f066068e84f14b2ebc006",
     "ci/test-native-userlog-producer.py": "619bc31f6f41b16d562bcbc83a41588f6ada45a5268e23ef5c4985e5f364e403",
-    "ci/native.py": "a3c09e2a13eac1233df5e208c8dbaa9df4f1e1a122cf371eb9d5d9af6d5de2e3",
+    "ci/native.py": "01def48b59d3bb3536aee2366e0d9b5d5ff226eae243d55e921b15485807afba",
     "source/device/package/gpu/NezhaGpuBoPhases.h": "6b609e93c766b0f88b569dc1c04177b529f090e23f06a260c4c427afe8dfcbb6",
     "source/device/tests/gpu-bo-phases.cpp": "a7d609b520a3166ca53c24581f89c6d2f02ca53f00b09326749c0356a3fc63e9",
     "source/device/tests/check-gpu-bo-phases.py": "e34cab3913626ff9e80d533e9013791565229a3386fbb1599ed4c71c68afc181",
     "source/device/docs/GPU050-BO-PHASES.md": "9a5d2f357315c7883d9e660a69969f72e7eaa290f09731dd2b39d390123557e4",
     "source/device/components/QcomSscSensors/.gitignore": "84fc43d5a4c0a60c5752c9719c8049d310699d222749abc31579aabe35d8aa14",
-    "source/device/components/QcomSscSensors/ORIGIN.json": "df1576214d86640dfc6fece14f9c8903b1ca61fa04641179dbd72c95055a37c8",
+    "source/device/components/QcomSscSensors/ORIGIN.json": "ae1c034ef5f051901a149b7fc5550ed325eb8241aa6b776cef425b3812c8e61a",
     "source/device/components/QcomSscSensors/README.md": "ca16a65734e1f2457d2ca513bab00c94b456c1feb914bdb0b335a3047f98fcff",
     "source/device/components/QcomSscSensors/docs/README.md": "b4f463da1206f49df4ffe4f31655bc1798cd9483e8493ae9201869411c69b22c",
-    "source/device/components/QcomSscSensors/include/QcomSscClient.h": "a5246d7aa708e6fa3ad9c9bfaec9e606a5b56bc2d1cef00fe4321a187f960680",
+    "source/device/components/QcomSscSensors/include/QcomSscClient.h": "452e5004fb91fdfb70f9090ce1e8e491a01d4a8064450c66cc4ce8ccc090be99",
     "source/device/components/QcomSscSensors/include/QcomSscMath.h": "012b45b05f3500c477c3207828a8375c49f14badbab792483db946ff1479708a",
     "source/device/components/QcomSscSensors/include/QcomSscMotion.h": "75eda3a3b71fb3a7bfdbb0ec4017bc457f519bf9adf9661ad51f8aa8be2d2da5",
-    "source/device/components/QcomSscSensors/include/QcomSscWire.h": "49ef9bafa7b7de55da0bd85eea7825263f7515a741f9871fda7eb0fcdc3eff84",
-    "source/device/components/QcomSscSensors/src/QcomSscClient.c": "8a000b621999326cca3b0792ecf6771a0ae51115d0507e43a37e895a3cec40c8",
+    "source/device/components/QcomSscSensors/include/QcomSscWire.h": "45008033172d1f904158b6bd7df8e9f810e0de8c844c0db1b117ad646309f949",
+    "source/device/components/QcomSscSensors/src/QcomSscClient.c": "d1b4622db413045fca4870ac7551d5b45d5c52c2544ba3b7f631470f08c47e7d",
     "source/device/components/QcomSscSensors/src/QcomSscMath.c": "3fa51b4d553563f7d2b2977f841e529ae5eacd0415fcc532bc9f03a5ff362f34",
     "source/device/components/QcomSscSensors/src/QcomSscMotion.c": "f7f089afa449fd23836b4606a28f1355a56f3c24bbaa7c741522acbc6fca7c49",
-    "source/device/components/QcomSscSensors/src/QcomSscWire.c": "5c7071f7f08922cb9be92fe1c0df6305833914c490a2746d679a43923d0b1a6f",
+    "source/device/components/QcomSscSensors/src/QcomSscWire.c": "15a4de94d8c510eef6ba70cdb0c3e258f8acc5ff3ece66a0f1d0f1e30f08bb5e",
     "source/device/components/QcomSscSensors/tests/run-after-baseline.py": "7a588d510a71bca886d20ea9240e95d8a3bf10495b35f5690234421016c38778",
-    "source/device/components/QcomSscSensors/tests/ssc-sensors.c": "5cdc177e96e68bff0b4a4a58aa1760d999a4788a0e5fe0f1bfc90901d68d1bda",
+    "source/device/components/QcomSscSensors/tests/ssc-sensors.c": "9da492c76f97d5d409ee9eff5d10075f4b33fc9b1d42a65e6ed1538db58e03fc",
     "source/device/package/sensors/NezhaSensorHid.cpp": "113a2ef4001224559d633422ade577f88b26acaeb7601bcce1fb3c524e62005f",
     "source/device/package/sensors/NezhaSensorNativeCaller.cpp": "4c5d672ba5c1ef29293511b0dbeb6da6d396d38d7cc94c7a99f0e45cb97be922",
     "source/device/package/sensors/NezhaSensorNativeCaller.h": "6d4345ff467045797fe30fd0d545c24cf618205741e5c9ec76a8760c5a386075",
@@ -530,18 +530,18 @@
     "source/device/package/sensors/userland/Info.plist": "a3553b9b480e317666f347702fdb5beafd2c4b2e7463aba7adb49540a382d9f3",
     "source/device/package/sensors/userland/NezhaSensorsApp.m": "06b82c5e999b9988b1f86bbcdf57d08ed1f5ff9db5720e43d5f5575ce108931b",
     "source/device/package/sensors/userland/NezhaSensorsExport.mm": "7773709c440664560ce6070499fbd54d726c5b82d54fd90ec7dac717ea90db6b",
-    "source/device/package/sensors/userland/NezhaSensorsLaunch.m": "84daf4bb2b0f6020151a5a071a3dfd979ea53fa52354a199bff59f25696d5655",
+    "source/device/package/sensors/userland/NezhaSensorsLaunch.m": "4fe04f57085438017fe6ff8931fde5c4c595b33ea298082e8fdede5fd2d31561",
     "source/device/package/sensors/userland/app.entitlements.plist": "feb1ff10804738f27f888a92395f7da2f5c6e80e7a2a375ae31dedeea06f8728",
     "source/device/package/sensors/userland/launch.entitlements.plist": "1b17bd00cb8bf68f7118c99c0cb8a9e7296e867511d07907d9e7d762b30a5dc8",
     "source/device/patches/xnu-12377/zzzzzz-nezha-sensors-runtime.patch": "39fb8a0412540374778d79ba7727d33b15fd47c9cd66254eeb44c784a00140a6",
-    "source/device/scripts/build-nezha27-sensors-userland.py": "83de70e055bc84cad4e524c925fa8f276f676891a1328577e6027c5a8f69be2d",
+    "source/device/scripts/build-nezha27-sensors-userland.py": "c988ab9dae88619774279e56e9295e6806e483fed4789bc6cd2db212110d832b",
     "source/device/scripts/build-nezha27-sensors.py": "8983a4dfe6b7afcc127f06f30fd0bf5279f77f7140cba8b297ce723f6d3c8dbd",
     "source/device/scripts/sensors-event-constructors-iphone-24A446.json": "02203ed4fcdd138c986484849c9a8f3bb0518a01a6d20ff443fd0b660d8cb9c3",
     "source/device/tests/sensors-caller-host-shim.h": "f0abbfa55058f5a1381ed0b70d4102fdbab6242cdcfdcf5dbec5ecd3a3d3551b",
     "source/device/tests/sensors-hid-host-shim.h": "fe1a5a11663090897b1cff0d7d2d6a7a19475223d2f5c88234bee5a1e4cfdfa9",
     "source/device/tests/sensors-integration-host.cpp": "f6d57937dac2d3cd94feac8262fbcc83bc2f5e4e22258fd1598218d08f15e9e9",
     "source/device/tests/sensors-integration-host.py": "f2c9db810b0523c50066b0b988357f6d130ea281928a304af17a89ea5a82ca26",
-    ".github/workflows/nezha-ios27-native.yml": "e5d798a946ea14fae1291be0151926a0056894bb688a7b3970102f63325a0885"
+    ".github/workflows/nezha-ios27-native.yml": "7fc362e5bcb12941c0af2e89dc5b5da476f7383511f8bc5c7ce752fd30a41c5d"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
@@ -951,5 +951,21 @@
     "parent_native_run": 44044842693,
     "component_revision": "fddfeb80ca4cf052a3e871bf6ad3de568bc4fd89",
     "same_GPU051_inputs": true
+  },
+  "sensors004": {
+    "base": "GPU05176c5952",
+    "component_revision": "acf943b4dd695d2d9e51f7f2833c43984df8b081",
+    "parent_native_run": 44048514238,
+    "only_native_sources_changed_from003b": [
+      "QcomSscWire.c",
+      "QcomSscClient.c",
+      "NezhaSensors.c (QsscClient layout)"
+    ],
+    "launcher_unit_rebuilt": true,
+    "ordinary_app_reused_from_native001d": 43905531293,
+    "actual003_rejected_packet_sha256": "a49c34ed116c61455152e66aef8364a7c43cb82d0fa48dd950d17c9eadef3055",
+    "default_only_proximity": false,
+    "metadata_identity_required": true,
+    "phone_operations": false
   }
 }

@@ -220,9 +220,14 @@ def build(framework, work):
                 '--source', sources[0], '--out', work / 'icon-memory-host'],
                log=logs / 'icon-memory-host.log')
     if code: return code
+    code = run([sys.executable, work / 'device/scripts/build-nezha27-sensors-userland.py',
+                '--source', work / 'device/package/sensors/userland', '--usb', work / 'usb',
+                '--unit', 'launcher', '--output', work / 'sensors-userland'],
+               log=logs / 'sensors-launcher.log')
+    if code: return code
     kernels = {path.resolve() for path in
         (work / 'out/nezha/ios-27.0.1-24A446-iphone14-4').glob('*/kernel/kernel.macho')}
-    if len(kernels) != 1: raise ValueError('Select the actual sensor003 Native')
+    if len(kernels) != 1: raise ValueError('Select the actual sensor004 Native')
     kernel = next(iter(kernels)); tree = kernel.parent.parent / 'tree'
     llvm = Path(run(['brew', '--prefix', 'llvm'])) / 'bin'
     code = run([sys.executable, tree / 'scripts/check-keystore-source.py',

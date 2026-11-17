@@ -28,6 +28,10 @@ static int sample(void *v,const QsscSample *s){struct Mock *m=v;m->samples++;m->
 static int state(void *v,uint32_t kind,uint64_t epoch,bool ready,int error){struct Mock *m=v;(void)kind;(void)ready;(void)error;assert(epoch==1);m->states++;return 0;}
 static int flush(void *v,uint32_t kind,uint64_t epoch,uint64_t serial){struct Mock *m=v;assert(kind==QsscProximityKind&&epoch==1);m->flushes++;m->serial=serial;return 0;}
 static int identity(void *v,uint32_t kind,const QsscAttributes *a){(void)v;(void)kind;return a->available?0:QsscIdentity;}
+static int physical_proximity(void *v,uint32_t kind,const QsscAttributes *a){
+    (void)v;assert(kind==QsscProximityKind);
+    return a->available&&!strcmp(a->name,"tcs3760")&&!strcmp(a->api,"sns_proximity.proto")?0:QsscIdentity;
+}
 static void begin(QsscClient *c,struct Mock *m){QsscClock clock={0};assert(!qssc_clock_anchor(&clock,1,19200000,1000000,19200000,19200000,19200000));QsscClientOps ops={m,send,sample,state,flush,identity};assert(!qssc_client_begin(c,&ops,(QsscEndpoint){5,17,0x101},0x4001,1,&clock,100));}
 static void enabled(QsscClient *c,unsigned kind,QsscUid uid){QsscStream *s=&c->stream[kind];s->uid=uid;s->present=true;s->enabled=true;s->lookup_sent=true;s->attributes_seen=true;s->phase=QsscRunning;s->interval_us=s->configured_interval=20000;s->attributes.available=true;}
 static void math(void){
@@ -199,4 +203,47 @@ static void retirement_failure_is_not_success(void){
     assert(qssc_client_receive(&c,5,17,p,n,102,19201000)==QsscRemote);
     assert(c.error==QsscWire&&c.stop_error==QsscRemote&&!qssc_client_drained(&c));
 }
-int main(void){math();wire();calibration_and_time();independent_consumers();flush_ack_order();early_enable_event();fusion();sleep_and_stop();acknowledged_delayed_suid();retire_decode_failure();retire_pending_enable();retirement_failure_is_not_success();puts("SSC production codec/client/math/fusion/sleep/stop/delayed SUID and error retirement scenarios passed");}
+static size_t string_attr(uint8_t *p,unsigned id,const uint8_t *text,size_t bytes){
+    p[0]=10;p[1]=(uint8_t)(8+bytes);p[2]=8;p[3]=(uint8_t)id;
+    p[4]=18;p[5]=(uint8_t)(4+bytes);p[6]=10;p[7]=(uint8_t)(2+bytes);
+    p[8]=18;p[9]=(uint8_t)bytes;memcpy(p+10,text,bytes);return 10+bytes;
+}
+static void vendor_text_is_not_identity(void){
+    // The current virtual proximity packet has13-byte vendor text ending in
+    // NUL then two non-text bytes; name/type/API remain strict identity fields.
+    uint8_t p[64],vendor[]={'X','i','a','o','M','i','(','V','1','.','7',')',0,0xc9,0x32};
+    QsscEvent e={QsscAttrEvent,1,p,string_attr(p,1,vendor,sizeof vendor)};QsscAttributes a;
+    assert(!qssc_decode_attributes(&e,&a)&&!strcmp(a.vendor,"XiaoMi(V1.7)"));
+    e.bytes=string_attr(p,0,vendor,sizeof vendor);assert(qssc_decode_attributes(&e,&a)==QsscWire);
+    e.bytes=string_attr(p,5,vendor,sizeof vendor);assert(qssc_decode_attributes(&e,&a)==QsscWire);
+}
+static void select_physical_proximity(void){
+    QsscClient c={0};struct Mock m={0};begin(&c,&m);c.ops.identity=physical_proximity;
+    assert(!qssc_client_demand(&c,3,0,(QsscDemand){1,0,true,true}));
+    assert(!qssc_client_poll(&c,101));
+    assert(c.tx[c.tx_bytes-1]==0); // all SUIDs, not the virtual default.
+    uint8_t p[1023],payload[120];size_t n=ack(p,c.transaction);
+    assert(!qssc_client_receive(&c,5,17,p,n,102,19201000));
+    uint8_t lookup[]={10,9,'p','r','o','x','i','m','i','t','y'};memcpy(payload,lookup,sizeof lookup);
+    payload[11]=18;payload[12]=18;pbuid(payload+13,(QsscUid){3,4});payload[31]=18;payload[32]=18;pbuid(payload+33,(QsscUid){5,6});
+    n=report(p,(QsscUid){QSSC_LOOKUP_WORD,QSSC_LOOKUP_WORD},768,19201010,payload,51);
+    assert(!qssc_client_receive(&c,5,17,p,n,103,19202000)&&c.proximity_choice_count==2);
+    assert(!qssc_client_poll(&c,104)&&c.tx_id==QsscAttrRequest&&c.stream[3].uid.low==3);
+    n=ack(p,c.transaction);assert(!qssc_client_receive(&c,5,17,p,n,105,19203000));
+    // Model previously decoded split attributes, then finish the available bit.
+    QsscAttributes *a=&c.stream[3].attributes;strcpy(a->name,"proximity");strcpy(a->datatype,"proximity");strcpy(a->api,"sns_std_sensor.proto");
+    a->name_valid=a->type_valid=a->stream_valid=true;a->stream_type=1;a->present=1|4|(1u<<5)|(1u<<16);
+    uint8_t available[]={10,8,8,3,18,4,10,2,40,1};
+    n=report(p,(QsscUid){3,4},128,19203010,available,sizeof available);
+    assert(!qssc_client_receive(&c,5,17,p,n,106,19204000));assert(!c.error&&!c.stream[3].enabled&&c.stream[3].error==QsscIdentity);
+    assert(!qssc_client_poll(&c,107)&&c.tx_id==QsscAttrRequest&&c.stream[3].uid.low==5);
+    n=ack(p,c.transaction);assert(!qssc_client_receive(&c,5,17,p,n,108,19205000));
+    a=&c.stream[3].attributes;strcpy(a->name,"tcs3760");strcpy(a->datatype,"proximity");strcpy(a->api,"sns_proximity.proto");
+    a->name_valid=a->type_valid=a->stream_valid=true;a->stream_type=1;a->present=1|4|(1u<<5)|(1u<<16);
+    n=report(p,(QsscUid){5,6},128,19205010,available,sizeof available);assert(!qssc_client_receive(&c,5,17,p,n,109,19206000));
+    assert(!qssc_client_poll(&c,110)&&c.tx_id==QsscOnChangeRequest&&c.stream[3].uid.low==5);
+    assert(!qssc_client_stop(&c));n=ack(p,c.transaction);assert(!qssc_client_receive(&c,5,17,p,n,111,19207000));
+    assert(!qssc_client_poll(&c,112)&&c.tx_id==QsscDisableRequest);n=ack(p,c.transaction);
+    assert(!qssc_client_receive(&c,5,17,p,n,113,19208000)&&qssc_client_drained(&c));
+}
+int main(void){math();wire();calibration_and_time();independent_consumers();flush_ack_order();early_enable_event();fusion();sleep_and_stop();acknowledged_delayed_suid();retire_decode_failure();retire_pending_enable();retirement_failure_is_not_success();vendor_text_is_not_identity();select_physical_proximity();puts("SSC production codec/client/math/fusion/error retirement and physical proximity selection scenarios passed");}

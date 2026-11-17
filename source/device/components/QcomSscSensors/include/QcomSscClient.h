@@ -55,6 +55,8 @@ typedef struct {
     QsscEndpoint endpoint;
     QsscClock clock;
     QsscStream stream[QSSC_SENSOR_COUNT];
+    QsscUid proximity_choices[QSSC_UID_CHOICES];
+    uint32_t proximity_choice_count,proximity_choice_index;
     QsscBias calibration[2][QSSC_CAL_HISTORY];
     uint32_t calibration_count[2];
     QsscPending pending[QSSC_PENDING_SAMPLES];

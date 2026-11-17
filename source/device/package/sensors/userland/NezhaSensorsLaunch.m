@@ -16,6 +16,7 @@
 + (id)defaultWorkspace;
 + (id)applicationProxyForIdentifier:(NSString *)identifier;
 - (NSURL *)bundleURL;
+- (NSURL *)dataContainerURL;
 - (NSString *)applicationIdentifier;
 - (BOOL)isInstalled;
 - (BOOL)isPlaceholder;
@@ -37,11 +38,12 @@ static void report_proxy(const char *step,id application)
     NSString *identifier=[application respondsToSelector:@selector(applicationIdentifier)] ?
         [application applicationIdentifier]:nil;
     NSURL *url=[application respondsToSelector:@selector(bundleURL)] ? [application bundleURL]:nil;
-    fprintf(stderr,"nezha-sensors-launch: %s proxy=%u identifier=%s installed=%u placeholder=%u path=%s\n",
+    NSURL *container=[application respondsToSelector:@selector(dataContainerURL)] ? [application dataContainerURL]:nil;
+    fprintf(stderr,"nezha-sensors-launch: %s proxy=%u identifier=%s installed=%u placeholder=%u path=%s data_container=%s pid=%u\n",
         step,(unsigned)(application!=nil),identifier.UTF8String ?: "<absent>",
         (unsigned)([application respondsToSelector:@selector(isInstalled)] && [application isInstalled]),
         (unsigned)([application respondsToSelector:@selector(isPlaceholder)] && [application isPlaceholder]),
-        url.path.UTF8String ?: "<absent>");
+        url.path.UTF8String ?: "<absent>",container.path.UTF8String ?: "<absent>",(unsigned)getpid());
 }
 
 /* Tests exercise this exact consumer with Foundation and fixture LS classes.
@@ -91,6 +93,7 @@ static int open_sensor(Class proxy,id service,NSURL *system_url)
         return 8;
     }
     const BOOL requested=[service openApplicationWithBundleID:identifier];
+    report_proxy("launch",[proxy applicationProxyForIdentifier:identifier]);
     fprintf(stderr,"nezha-sensors-launch: sensor app registered=1 launch_request=%u CoreMotion_verified=0 proximity_verified=0\n",(unsigned)requested);
     return requested ? 0:9;
 }
