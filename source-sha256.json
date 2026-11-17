@@ -1,5 +1,5 @@
 {
-  ".github/workflows/nezha-metal.yml": "5b97bb1160b137d260987f0aace3181126e631c2428953e0c2d57652504b7032",
+  ".github/workflows/nezha-metal.yml": "ba17af8d538efb643019cdf15a1628f8d7d1f14cd3e0ffe3ed076bc7a5757f3b",
   ".gitignore": "862263fa1f46c20f0d1e4dac5ffcc75abd55c08211b2c3864c5f8764b9d87793",
   "ci/gpu-userland/check-buffer-reserve.py": "56bef54d15cb6192d25bfd99516369d45d3ddeffbd44805f9f052739d2fdf57a",
   "ci/gpu-userland/check-camera-function-spi.py": "0925392a7559acd4f1e7252fe809cf3499e6c034401d7e47f5e6e9570d564f21",
@@ -38,7 +38,7 @@
   "ci/gpu-userland/fixtures/bo-trim-old.cpp": "14faa7c262df240935a28101ab6fc58f78491890ace0c2166a16f6aa0371158c",
   "ci/gpu-userland/fixtures/buffer-reserve-sources.json": "f73b0ce1e1c34125e729b8a4249b8f98fd7dae2c48e63c23d2470b2a9f0f4aa7",
   "ci/gpu-userland/fixtures/cache-release.cpp": "24945e2982cab6c11cbb8a0159416a51e3c728d4ee49c388ce89fb1b4a40a4cb",
-  "ci/gpu-userland/fixtures/camera_function_spi_host.mm": "aebaa66f6c1d66a3eb93fe5fe077fc5463d6ee35b1e75da9b2b610ba248bda6f",
+  "ci/gpu-userland/fixtures/camera_function_spi_host.mm": "f9dfbbbc7f1af479fc5040544e17a31c9ee038af6a0bf123679ae220d1977e91",
   "ci/gpu-userland/fixtures/display/NezhaDpuTiming.h": "5f4d92cb5173c4d583f3f0746c41746abe188c89d82faf34039cb22816d2a31d",
   "ci/gpu-userland/fixtures/display/check-dpu-timing.c": "e7ac8e9fbc9e39ae309dea5f3934bdd8ca7ca4bc66601908a2b8d349f9b513c5",
   "ci/gpu-userland/fixtures/driver-profile-test.cpp": "e707fbf13e791b88625f741b5328c3c8bdc160483837d1fe59eee7b0bf288855",

@@ -25,9 +25,15 @@ static NSData *reflectionMetallib(NSData *bitcode,bool tagged,bool stitch=false)
   const uint8_t *at=(const uint8_t *)bytes;entry.insert(entry.end(),at,at+count);
  };
  const char *name=stitch?"sum2":"reflection_tables";uint8_t type=stitch?4:2;
- std::vector<uint8_t> wrapped(20+bitcode.length);
- const uint32_t fields[5]={0x0b17c0de,0,20,(uint32_t)bitcode.length,0};
- memcpy(wrapped.data(),fields,20);memcpy(wrapped.data()+20,bitcode.bytes,bitcode.length);
+ std::vector<uint8_t> wrapped;
+ uint32_t magic=0;if(bitcode.length>=4)memcpy(&magic,bitcode.bytes,4);
+ if(magic==0x0b17c0de) {
+  const uint8_t *begin=(const uint8_t *)bitcode.bytes;wrapped.assign(begin,begin+bitcode.length);
+ } else {
+  wrapped.resize(20+bitcode.length);
+  const uint32_t fields[5]={0x0b17c0de,0,20,(uint32_t)bitcode.length,0};
+  memcpy(wrapped.data(),fields,20);memcpy(wrapped.data()+20,bitcode.bytes,bitcode.length);
+ }
  uint8_t digest[CC_SHA256_DIGEST_LENGTH];CC_SHA256(wrapped.data(),(CC_LONG)wrapped.size(),digest);
  const uint64_t size=wrapped.size(),offsets[3]={0,0,0},reflection=0;
  const uint16_t versions[4]={2,(uint16_t)(stitch?9:8),4,(uint16_t)(stitch?1:0)};
