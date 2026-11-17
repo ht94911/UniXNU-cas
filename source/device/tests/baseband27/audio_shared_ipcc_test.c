@@ -42,11 +42,18 @@ int main(void)
         next=0x20002;assert(!sm8850_ipcc_dispatch(&common,32));
         assert(audio_calls==1&&mss_calls==1&&clears==3&&!held);
         assert(sm8850_ipcc_register(&common,0x20002,mss,0)==Sm8850Conflict);
-        uint64_t adsp=0,ipa=0;
+        uint64_t adsp=0,tas=0,mic=0,ipa=0;
         assert(!sm8850_resource_acquire(&common,8,0x4e41,&adsp));
+        assert(!sm8850_resource_acquire(&common,9,0x4e41,&tas));
+        assert(!sm8850_resource_acquire(&common,10,0x4e41,&mic));
         assert(!sm8850_resource_acquire(&common,NB_RES_SMMU,NB_OWNER,&ipa));
-        assert(NB_RES_SMMU==9&&adsp&&ipa&&adsp!=ipa);
-        assert(common.owner[8]==0x4e41&&common.owner[9]==NB_OWNER);
+        assert(NB_RES_SMMU==11&&adsp&&tas&&mic&&ipa);
+        assert(common.owner[8]==0x4e41&&common.owner[9]==0x4e41&&
+               common.owner[10]==0x4e41&&common.owner[11]==NB_OWNER);
+        assert(sm8850_resource_release(&common,9,NB_OWNER,ipa,1)==Sm8850Conflict);
+        assert(!sm8850_resource_release(&common,9,0x4e41,tas,1));
+        assert(!sm8850_resource_acquire(&common,9,0x4e41,&tas));
+        assert(common.owner[11]==NB_OWNER&&common.lease[11]==ipa);
     }
-    puts("PASS audio102/MSS: either startup order, AOP route retained, append afterdispatch, separate ADSP/IPA leases");
+    puts("PASS audio102/MSS: either startup order, AOP route retained, audio8/9/10 and IPA11 coexist, TAS reacquires without releasing IPA");
 }

@@ -1,7 +1,7 @@
-name: nezha iPhone27 B package on GPU024 - native047
+name: nezha iPhone27 B package on GPU024 - native048
 on:
   push:
-    branches: [codex/ios27-bb-gpu024-native047-20261117]
+    branches: [codex/ios27-bb-gpu024-native048-20261117]
   workflow_dispatch:
 permissions:
   contents: read
@@ -89,6 +89,7 @@ jobs:
           git -C "$smmu" checkout --quiet 83969cd874503e65997ff7639f7dcf3d0a92cd17
           clang -std=gnu11 -Wall -Wextra -Werror -Wno-misleading-indentation -O1 -fsanitize=address,undefined -ffunction-sections -fdata-sections -Wl,-dead_strip -I "$soc/include" -I "$smmu" "$bb/tests/baseband27/audio_shared_ipcc_test.c" "$bb/package/audio27/platform/AudioResourceOwner.c" "$soc/src/Sm8850Resources.c" -o "$RUNNER_TEMP/ios27/audio-shared-ipcc"
           "$RUNNER_TEMP/ios27/audio-shared-ipcc"
+          BB_SOC_SOURCE="$soc" CC=clang CXX=clang++ python3 "$bb/tests/baseband27/audio_tas_lease_test.py"
       - name: Qualify compiler and run the standard native build
         env:
           GITHUB_TOKEN: ${{ github.token }}

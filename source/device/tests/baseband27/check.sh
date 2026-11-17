@@ -46,6 +46,7 @@ ${CXX:-g++} -std=c++17 -Wall -Wextra -Wno-unused-function -fsanitize=address,und
 python3 "$root/tests/baseband27/resources_test.py"
 run late_start -no-pie -I "$root/tests/baseband27" -I "$root/../usb-shared/include" "$root/tests/baseband27/start_test.c"
 python3 "$root/tests/baseband27/native_test.py"
+python3 "$root/tests/baseband27/audio_tas_lease_test.py"
 python3 "$root/tests/baseband27/integration_test.py"
 python3 "$root/tests/baseband27/generator_test.py"
 python3 "$root/tests/baseband27/cellular_launch_test.py"

@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "047 complete native target for actual046 archive-report JSON failure. Keep the original shared-component metadata dictionary and separately name the set of six excluded shared source filenames. The50 audio sources, HAL,29 baseband/common sources and all native flags remain selected. The record and existing addon helper follow the actual source revision; addon generation and private input finalization still run only locally. Current044 long-trial logs and private inputs remain local. Necessary Mac-only build; existing CMS encrypted artifact flow.",
+  "purpose": "048 repair actual047TAS identity lease collision: MSSSMMU usesledger11, audio102 retainsADSP8/TAS9/mic10. OriginalTASclaim/release/identity and actualPAS/SMEM/SMMUbinding regression passedlocally; kernel mustbe rebuilt. Realbank8/ASIDfd00/SID4a0,4a2/streams13,14/provider9 unchanged. FixedGPU024/framework and79nativeunits/originalaudio102 source retained. Only necessaryMacsource/publiccertificate; existingCMSflow; nofirmware/logs/identity.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "fd50b47233af83ce1860967c8204370fba77c172",
+  "device_revision": "5c43c6920b23bed5d3c036d8b3ac450d7dbec305",
   "soc_revision": "703d7b4bb00904b4a6e5d96f9e9bf72eec170f6b",
   "xcode": "26.6",
   "files": {
@@ -373,7 +373,7 @@
     "source/device/package/baseband27/platform/NbPas.c": "db6b3abcbff8bc0ffe07ad1fa9c96bc3dada452efaf8c06d379cb8ac77aeaea8",
     "source/device/package/baseband27/platform/NbPas.h": "5af3d4bc3f83b4f33522eb6962a125b812b9e954f25ed7f02e3f2efbedf4f5a9",
     "source/device/package/baseband27/platform/NbPower.c": "f3886534da34e339cabd9e0ceb3479a3661c0bf6ce32bce52fe116c44e3d24ee",
-    "source/device/package/baseband27/platform/NbPower.h": "fa2ddb292f14de03624b5122ce99e6d992095dfd9bced22bd7a8f7ad702afaad",
+    "source/device/package/baseband27/platform/NbPower.h": "eea87aac56d8fa8a9374c2ead63907edf1f21e55f71343cbecb3e033ce88e2ad",
     "source/device/package/baseband27/platform/NbScm.c": "525b2989483cd3a59db1b6d6951bfbd91b9af2485a32ee4043173ef020dadeda",
     "source/device/package/baseband27/platform/NbScm.h": "c5a750af5c7f17b15e4585c6d321ed42f649a5c7d05cfb0d15d207fc4930dfdc",
     "source/device/package/baseband27/services/NbMemshare.c": "71ca9dd4c2a07c87f0478e8b070f91d5aff1b0cb0e50a7cac7de05caee5f4e20",
@@ -474,7 +474,7 @@
     "source/device/patches/xnu-12377/zzzzzz-nezha-input-chain-trace.patch": "c4d05419e7ec3af0de619754bdb6c2deb69b74d714c2219e509360ebfe1b947e",
     "source/device/patches/xnu-12377/zzzzzz-nezha-kernel-class-lock-order.patch": "cd90c61d6838f4e6a7248da81b6180f14db03d00f2f7a64f4bbe4034c0aa8dcb",
     "source/device/patches/xnu-12377/zzzzzz-nezha-sigp-startup-order.patch": "18275910b909d187e459c68f5d937cc09bc01923180141dc155aa7f4ff14aaf9",
-    "source/device/porting.toml": "f8bc6c90f274ad917a23ce9e7909059ba14495e4adc47d60a6e2831133b0733a",
+    "source/device/porting.toml": "f1b13ba47d9b250f94b10689ce1ea908b366ef3385a3940cb8d586419c5d08e9",
     "source/device/scripts/backlight-iphone-24A446.json": "446eb5fe6440335bfe9fca75b32f7d815ddcafbb8a3c2d7f697c1e5c3f40f6cb",
     "source/device/scripts/build-adreno840.py": "269f32fe2c97d7baf846a148fed7c111a53869486626a87ec8daab7fdfc3ab91",
     "source/device/scripts/build-boot-progress.py": "a210eb1f0443574eb1506932aa9e8181d5c73aecf99397d8cc731568bd3210ba",
@@ -503,13 +503,14 @@
     "source/device/scripts/prepare-nezha27-audio-addon.py": "f161f66015d348ab09b8f34845dff17ea592ceef29e5180c0512af0b297132c8",
     "source/device/scripts/prepare-nezha27-baseband.py": "84f40cec2d3b48b9d372263a50e563666b025605cd132554497bd87cf93eb499",
     "source/device/scripts/qualify-armcpu-instructions.py": "dae7cb3b9faecaac7b268212bbd324ae172d3dffa0e94b06afc4581c9f4abe9b",
-    "source/device/tests/baseband27/audio_shared_ipcc_test.c": "4b219ce46ec0ed5b289eb8e8c911a5710b059deaaea9e0308181038816035ccc",
+    "source/device/tests/baseband27/audio_shared_ipcc_test.c": "cc28b1362d8054aabaffc9cc4a06e208677e4edff7cb7eeb0266d083114aa20f",
+    "source/device/tests/baseband27/audio_tas_lease_test.py": "ab45774bfa439da66f20d5fd94041ea8ee8e7701bb6471f5d3d4bbf6d89e22f6",
     "source/device/tests/baseband27/boot_ready_test.c": "415b5a8f68ba7a529d33f2f6905fe8af155fb42f344284a344a98138b4c68965",
     "source/device/tests/baseband27/cellular_launch_test.py": "6eff8a971d7c88c2b305b8f48369909044dc6ff09b1e860d764e63ffba45f144",
     "source/device/tests/baseband27/cellular_network_runtime_test.py": "6668677676a93b6d297a1552eb9ac17ab442d43456ca1cd274ced6d4310d99ec",
     "source/device/tests/baseband27/cellular_runtime_test.py": "e7247f99919141365a212381524469ff5142a37ef85197a792c518cf815c327b",
     "source/device/tests/baseband27/cellular_task_permissions_test.py": "30180ced672e1e8d16b3ae8f3b9546e01e7567fc957b69e59fccd307970c651f",
-    "source/device/tests/baseband27/check.sh": "0c7fec7e9d73a33dc36b61166b661648dcc2b9847fb26a356ec44c8b957ccda5",
+    "source/device/tests/baseband27/check.sh": "4897047ac67bfc442f08d7502e7f5bf0da61b9a747477058a22b9d8a44a1f33b",
     "source/device/tests/baseband27/device_identity_test.c": "387c69ec7a01ed929b1dc83d358228f7911052e0d17dd619f33d780d57e37f8d",
     "source/device/tests/baseband27/ims_diagnostics_test.py": "ddedb9b0ce3cca975716229192b3d2b8c123397f04470568d3d03ebae3ae5ffd",
     "source/device/tests/baseband27/ipa_smem_test.c": "5b630ac808334e0d861cf02bb71e657234ed37ee3e0f720c061ddf986e51c6af",
@@ -682,8 +683,12 @@
     "audio102_source": "ab45b24d583109bc346077afbd1696a8bcb717e5",
     "audio_shared_archive_once": true,
     "MSS_diagnostic_ID": 9,
-    "MSS_SMMU_lease": 9,
+    "MSS_SMMU_lease": 11,
     "native_audio_source_units": 50,
-    "audio_shared_report_dictionary_preserved": true
+    "audio_shared_report_dictionary_preserved": true,
+    "audio_TAS_lease": 9,
+    "audio_microphone_lease": 10,
+    "original047_TAS_collision_reproduced": true,
+    "original_audio102_TAS_hardware_unchanged": true
   }
 }
