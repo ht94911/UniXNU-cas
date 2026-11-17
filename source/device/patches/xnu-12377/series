@@ -53,3 +53,4 @@ appsync-user-trust.patch
 appsync-arm64-default-jop.patch
 appsync-arm64-user-jop.patch
 appsync-runtime.patch
+nezha-native-4k-large-ram.patch

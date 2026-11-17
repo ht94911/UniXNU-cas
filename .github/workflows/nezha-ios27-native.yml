@@ -1,7 +1,7 @@
 name: nezha AppSync - GPU051 native
 on:
   push:
-    branches: [codex/ios27-appsync-gpu051-native-20261117]
+    branches: [codex/ios27-appsync-ram038-20261118]
   workflow_dispatch:
 permissions:
   contents: read
