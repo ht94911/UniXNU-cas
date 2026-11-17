@@ -45,6 +45,7 @@ typedef struct {
     QsscDemand demands[QSSC_CONSUMERS];
     QsscAttributes attributes;
     bool wakeup,configured_wakeup,present,enabled,lookup_sent,attributes_seen,flush_pending,flush_sent,flush_ack,flush_complete,ready;
+    bool lookup_result_received;
     int error;
 } QsscStream;
 typedef struct {

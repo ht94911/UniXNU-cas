@@ -256,19 +256,25 @@ static void optional_absent_accel_cal(void){
     assert(qssc_client_poll(&c,101)==QsscNoData&&m.sends==0);
     c.ops.optional_accel_cal=true;c.stream[QsscAccelCal].lookup_sent=false;
     assert(!qssc_client_poll(&c,102)&&c.tx_kind==QsscAccelCal&&c.tx_id==QsscLookupRequest);
-    c.awaiting=false;c.stream[QsscAccelCal].lookup_sent=true;
-    assert(!qssc_client_poll(&c,103)&&c.tx_kind==QsscAccel&&c.tx_id==QsscStreamRequest);
     uint8_t p[1023],payload[64];size_t n=ack(p,c.transaction);
-    assert(!qssc_client_receive(&c,5,17,p,n,104,19201000));
+    assert(!qssc_client_receive(&c,5,17,p,n,103,19201000));
+    assert(c.stream[QsscAccelCal].lookup_sent&&!c.stream[QsscAccelCal].lookup_result_received);
+    assert(qssc_client_poll(&c,104)==QsscNoData&&m.sends==1);
+    uint8_t empty[]={10,9,'a','c','c','e','l','_','c','a','l'};
+    n=report(p,(QsscUid){QSSC_LOOKUP_WORD,QSSC_LOOKUP_WORD},QsscLookupEvent,19201100,empty,sizeof empty);
+    assert(!qssc_client_receive(&c,5,17,p,n,105,19202000));
+    assert(c.stream[QsscAccelCal].lookup_result_received&&!c.stream[QsscAccelCal].present);
+    assert(!qssc_client_poll(&c,106)&&c.tx_kind==QsscAccel&&c.tx_id==QsscStreamRequest);
+    n=ack(p,c.transaction);assert(!qssc_client_receive(&c,5,17,p,n,107,19203000));
     uint32_t values[3]={0x3f800000,0,0};n=vector(payload,values,3,3);
-    size_t bytes=report(p,(QsscUid){1,2},QsscSampleEvent,19200200,payload,n);
-    assert(!qssc_client_receive(&c,5,17,p,bytes,105,19202000));
+    size_t bytes=report(p,(QsscUid){1,2},QsscSampleEvent,19202100,payload,n);
+    assert(!qssc_client_receive(&c,5,17,p,bytes,108,19204000));
     assert(m.samples==1&&m.last.valid&&m.last.status==3&&m.last.value[0]==65536);
     c.stream[QsscAccelCal].present=true;c.stream[QsscAccelCal].uid=(QsscUid){3,4};
-    bytes=report(p,(QsscUid){1,2},QsscSampleEvent,19200300,payload,n);
-    assert(!qssc_client_receive(&c,5,17,p,bytes,106,19203000)&&m.samples==1&&c.pending_count==1);
+    bytes=report(p,(QsscUid){1,2},QsscSampleEvent,19203100,payload,n);
+    assert(!qssc_client_receive(&c,5,17,p,bytes,109,19205000)&&m.samples==1&&c.pending_count==1);
     c.stream[QsscAccelCal].enabled=true;uint32_t bias[3]={0x3e800000,0,0};n=cal(payload,bias);
-    bytes=report(p,(QsscUid){3,4},QsscCalibrationEvent,19200250,payload,n);
-    assert(!qssc_client_receive(&c,5,17,p,bytes,107,19204000)&&m.samples==2&&m.last.value[0]==49152);
+    bytes=report(p,(QsscUid){3,4},QsscCalibrationEvent,19202150,payload,n);
+    assert(!qssc_client_receive(&c,5,17,p,bytes,110,19206000)&&m.samples==2&&m.last.value[0]==49152);
 }
 int main(void){math();wire();calibration_and_time();independent_consumers();flush_ack_order();early_enable_event();fusion();sleep_and_stop();acknowledged_delayed_suid();retire_decode_failure();retire_pending_enable();retirement_failure_is_not_success();vendor_text_is_not_identity();select_physical_proximity();optional_absent_accel_cal();puts("SSC production codec/client/math/fusion/error retirement, optional absent accel calibration and physical proximity selection scenarios passed");}

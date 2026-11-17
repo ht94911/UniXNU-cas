@@ -96,7 +96,7 @@ static bool starting(const QsscClient *c,unsigned k){
 }
 static bool optional_cal_absent(const QsscClient *c,unsigned k){
     const QsscStream *cal=&c->stream[QsscAccelCal];
-    return k==QsscAccel&&c->ops.optional_accel_cal&&cal->lookup_sent&&!cal->present;
+    return k==QsscAccel&&c->ops.optional_accel_cal&&cal->lookup_sent&&cal->lookup_result_received&&!cal->present;
 }
 static int choose(QsscClient *c){
     // Cancel unused hardware requests first; each SUID is disabled independently.
@@ -177,7 +177,7 @@ static int lookup_report(QsscClient *c,const QsscReport *r){
                 QsscUid choices[QSSC_UID_CHOICES];uint32_t count=0;
                 x=qssc_decode_lookup_list(e,datatypes[k],choices,QSSC_UID_CHOICES,&count);
                 if(x==QsscIdentity)continue;if(x)return fail(c,x);
-                QsscStream *s=&c->stream[k];
+                QsscStream *s=&c->stream[k];s->lookup_result_received=true;
                 if(s->present){
                     unsigned at=0;while(at<count&&!qssc_uid_equal(choices[at],s->uid))at++;
                     if(at==count)return fail(c,QsscIdentity);
@@ -200,7 +200,7 @@ static int lookup_report(QsscClient *c,const QsscReport *r){
                 break;
             }
             x=qssc_decode_lookup(e,datatypes[k],&u,&present);
-            if(x==QsscIdentity)continue;if(x)return fail(c,x);QsscStream *s=&c->stream[k];
+            if(x==QsscIdentity)continue;if(x)return fail(c,x);QsscStream *s=&c->stream[k];s->lookup_result_received=true;
             if(s->present&&(!present||!qssc_uid_equal(s->uid,u))){
                 // A service update cannot silently replace an active subscription.
                 // The actual owner must establish a fresh session and epoch.
