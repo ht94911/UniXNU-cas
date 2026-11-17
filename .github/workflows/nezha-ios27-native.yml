@@ -1,7 +1,7 @@
 name: nezha iPhone27 AppSync one-shot direct CLI probe
 on:
   push:
-    branches: [codex/ios27-appsync-probe031-20261117]
+    branches: [codex/ios27-appsync-probe032-20261117]
   workflow_dispatch:
 permissions:
   contents: read
@@ -41,6 +41,12 @@ jobs:
           codesign --force --sign - --pagesize 4096 --digest-algorithm sha256 \
             --identifier org.unixnu.nezha.appsync-probe --entitlements task/ci/appsync-probe-entitlements.plist "$out/appsync-probe"
           codesign --verify --strict "$out/appsync-probe"
+          cp task/ci/appsync-probe-entitlements.plist "$RUNNER_TEMP/appinst-entitlements.plist"
+          /usr/libexec/PlistBuddy -c 'Set :application-identifier org.unixnu.appinst' "$RUNNER_TEMP/appinst-entitlements.plist"
+          xcrun clang "${flags[@]}" -framework Foundation task/source/appsync/appinst.m -o "$out/unixnu-appinst"
+          codesign --force --sign - --pagesize 4096 --digest-algorithm sha256 \
+            --identifier org.unixnu.appinst --entitlements "$RUNNER_TEMP/appinst-entitlements.plist" "$out/unixnu-appinst"
+          codesign --verify --strict "$out/unixnu-appinst"
           xcrun nm "$out/appsync-probe" > "$RUNNER_TEMP/appsync-probe.symbols"
           grep -q ' _unixnu_appinst_entry$' "$RUNNER_TEMP/appsync-probe.symbols"
           ! grep -Eq ' _(posix_spawn|alarm)$' "$RUNNER_TEMP/appsync-probe.symbols"

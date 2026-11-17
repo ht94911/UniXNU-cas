@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Build the independent AppSync RAM Data test process and report the first native install or staging errors.",
+  "purpose": "Build the on-device appinst and its RAM Data acceptance probe using the 24A446 InstallCoordination client.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -224,7 +224,7 @@
     "source/appsync/README.md": "6699666502497776989bfaffa21b04676884ac9ba1afd49a70621d0d5ff0cbb8",
     "source/appsync/Signing.h": "29c9da391a8fbe7736405d0405deb2749856e57500fb403ca9292bc20832e2fb",
     "source/appsync/Signing.m": "4a6ea284f6afa85950de365d458d5ad36bacf1f7a433536bc4720f44ec3d421e",
-    "source/appsync/appinst.m": "fd0f81794830bdb5760b43ffbff80dbe922a0b9b582850c453fdf96bcc919ae4",
+    "source/appsync/appinst.m": "5799ae3f67b90c52666ae2f69e67be5b5ee46bbe089b6b8eb4ffc8a47f220ff0",
     "source/appsync/build.py": "f11b53fc314444427caa94b005b090414b39901d6b5de3919d2addc245d457bd",
     "source/appsync/ldid-adhoc.patch": "d01dcfafca63a3d448449cc2feb89f6a549b70994ff8dfc4d43eae4c254f9b82",
     "source/appsync/ldid-library.cpp": "a9277e563a6bb4a32d19b1886f04cdb2722cfdcfc35b6c1af4ae5ef124cd7ee7",
@@ -239,7 +239,7 @@
     "source/appsync/build-fixtures.py": "7592c162246e93b2644ea12c1a96536bd3da71fbafd6eace3eb3cd905157d262",
     "source/appsync/ProbeRunner.m": "d6a99f50eef803603a7426d8fe721c9ba9b6d5ca480e5b4006328a20660a51e8",
     "source/appsync/QcomUserLogWire.h": "965d7aeaa4043bcceb151cd6331ce50faefe21f57ce7c91cf781a52b4917397b",
-    "ci/appsync-probe-entitlements.plist": "38dcd6d23ce4a3b8f5c60ab62ad6070d37da219c080fd65b85b3a8b97fb101f7"
+    "ci/appsync-probe-entitlements.plist": "10eb06d43c9f0e220b64637a998bf6c902564af0c2236226232fc78a5e331ccf"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",

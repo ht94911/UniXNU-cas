@@ -15,6 +15,7 @@
 	<array>
 		<string>com.apple.mobile.installd</string>
 		<string>com.apple.lsd.mapdb</string>
+		<string>com.apple.installcoordinationd</string>
 	</array>
 	<key>platform-application</key>
 	<true/>
