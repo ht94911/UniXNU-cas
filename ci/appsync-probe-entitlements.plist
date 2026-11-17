@@ -11,6 +11,8 @@
 	</array>
 	<key>com.apple.private.security.no-container</key>
 	<true/>
+	<key>com.apple.private.InstallCoordination.allowed</key>
+	<true/>
 	<key>com.apple.security.exception.mach-lookup.global-name</key>
 	<array>
 		<string>com.apple.mobile.installd</string>

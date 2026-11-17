@@ -1,7 +1,7 @@
 name: nezha iPhone27 AppSync one-shot direct CLI probe
 on:
   push:
-    branches: [codex/ios27-appsync-probe032-20261117]
+    branches: [codex/ios27-appsync-probe033-20261117]
   workflow_dispatch:
 permissions:
   contents: read

@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Build the on-device appinst and its RAM Data acceptance probe using the 24A446 InstallCoordination client.",
+  "purpose": "Authorize the iOS 27 appinst client and RAM Data probe on the native InstallCoordination listener.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -239,7 +239,7 @@
     "source/appsync/build-fixtures.py": "7592c162246e93b2644ea12c1a96536bd3da71fbafd6eace3eb3cd905157d262",
     "source/appsync/ProbeRunner.m": "d6a99f50eef803603a7426d8fe721c9ba9b6d5ca480e5b4006328a20660a51e8",
     "source/appsync/QcomUserLogWire.h": "965d7aeaa4043bcceb151cd6331ce50faefe21f57ce7c91cf781a52b4917397b",
-    "ci/appsync-probe-entitlements.plist": "10eb06d43c9f0e220b64637a998bf6c902564af0c2236226232fc78a5e331ccf"
+    "ci/appsync-probe-entitlements.plist": "d1c714f5e466bf81677735f765efc65e068265e395881ba5288a6ce5f19ddee7"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
