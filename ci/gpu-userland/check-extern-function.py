@@ -30,8 +30,7 @@ bridge_tests = subprocess.run([
     "--target", "x86_64-apple-darwin" if platform.machine() == "x86_64" else "aarch64-apple-darwin",
     "--target-dir", str(root / "build/m2v-target"), "--lib", "texture_descriptor_tests::",
     "--", "--nocapture"], cwd=root, capture_output=True, text=True,
-    env=dict(os.environ, NMB_RUNTIME_ID=hashlib.sha256(
-        b"963f0e64f103d2e682cd0cc454a8fe50f52c8cbb\n6949ff1ac37893ddf59674f79085d0ae3b7d6707").hexdigest()[:32],
+    env=dict(os.environ, NMB_RUNTIME_ID=hashlib.sha256((json.loads((Path(__file__).parent / "fixtures/multi-level-output-sources.json").read_text())["original_pin"] + "\n" + json.loads((Path(__file__).parent / "fixtures/multi-level-output-sources.json").read_text())["patched_tree"]).encode()).hexdigest()[:32],
         NMB_FIXTURE_AIR=str(root / "build/adreno-metal-bridge/runtime_examples.air"),
         NMB_FC_AIR=str(root / "build/adreno-metal-bridge/function_constant.air"),
         NMB_SCANOUT_AIR=str(root / "build/adreno-metal-bridge/scanout_convert.air")),
@@ -84,8 +83,12 @@ assert disabled.returncode==0 and "enabled=0 checks=9 records=0" in disabled.std
 interfaces_test = kit / "bridge/upstream_interfaces_host.mm"
 interfaces = run_case("upstream-interfaces", interfaces_test)
 assert interfaces.returncode == 0 and "PASS upstream interfaces: 9;" in interfaces.stdout, interfaces.stdout + interfaces.stderr
+constant_test = kit / "bridge/function_constant_selector_host.mm"
+constants = run_case("function-constant-selector", constant_test)
+assert constants.returncode == 0 and "PASS function constant selector: 10 " in constants.stdout
 report = dict(
     passed=True, source_sha256=sha(source), test_sha256=sha(test),
+    function_constant_required_cases=10, function_constant_required_test_sha256=sha(constant_test),
     production_ObjectiveC_selector_executed=True, checks=12,
     previous_missing_selector_reproduced=True,
     exact_kernel_bitcode_and_library_lifetime_verified=True,

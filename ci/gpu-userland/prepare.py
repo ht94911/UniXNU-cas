@@ -351,7 +351,9 @@ def main():
                              (root / 'drivers/AdrenoMetal', 'gpu049-plugin.patch'),
                              (root, 'gpu051-recipes.patch'),
                              (root / 'drivers/AdrenoMetal', 'gpu051-plugin.patch'),
-                             (root / 'drivers/AdrenoMetal', 'gpu052-plugin.patch')]:
+                             (root / 'drivers/AdrenoMetal', 'gpu052-plugin.patch'),
+                             (root, 'gpu053-recipes.patch'),
+                             (root / 'drivers/AdrenoMetal', 'gpu053-plugin.patch')]:
         selected = HERE / 'patches' / name
         must(['git', '-C', repository, 'apply', '--check', selected])
         must(['git', '-C', repository, 'apply', selected])
@@ -368,9 +370,12 @@ def main():
     record['pipeline_cache_sharing'] = dict(patch_sha256=sha(shared_cache_patch),
         source_sha256=sha(mesa / 'src/freedreno/vulkan/tu_pipeline.cc'),
         upstream='c34f018aafd6befd5dc93c05a8dccd5bdce6724b')
+    cache_first_patch = root / 'patches/mesa/turnip-darwin-sweep-retired-on-cache-miss.patch'
+    must(['git', '-C', mesa, 'apply', '--check', cache_first_patch])
+    must(['git', '-C', mesa, 'apply', cache_first_patch])
     final_pins = json.loads((root / 'scripts/data/adreno-compiler-inputs.json').read_text())
     validate_recorded_patches(root, mesa, final_pins)
-    assert sha(mesa / 'src/freedreno/vulkan/tu_knl_darwin.cc') == '6f8b09b7ee19eadf3e06df4128f7b3ee016c0528a16506a2b8d637ade9af7242'
+    assert sha(mesa / 'src/freedreno/vulkan/tu_knl_darwin.cc') == 'f3c5caa22daf6573a8f78aed3d1f523ab894eeb7715805c31053fa8a929b96a8'
     record['mesa']['patches'] = {p: sha(root / p) for p in final_pins['patches']}
     record['driver_cpu_profile'] = dict(original_KMD='04591f5a3711d4ea68568ea3f7e993f2f57f2070de14e40d63d223c8c570a65e',
         actual_KMD=sha(mesa / 'src/freedreno/vulkan/tu_knl_darwin.cc'), patch_sha256=sha(profile_patch))

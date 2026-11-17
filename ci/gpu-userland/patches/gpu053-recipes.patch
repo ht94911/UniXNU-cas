@@ -1,0 +1,171 @@
+diff --git a/docs/drivers/adreno-metal.md b/docs/drivers/adreno-metal.md
+index d4b71ad..396f957 100644
+--- a/docs/drivers/adreno-metal.md
++++ b/docs/drivers/adreno-metal.md
+@@ -118,3 +118,7 @@ profiling is opt-in with NATIVE_METAL_DRIVER_CPU_PROFILE=1; batch boundaries
+ retain cumulative CPU nanoseconds, validity and query duration in type14.
+ Type29 holds display-state fragments, type30 process/boot identity and type31
+ the actual profiling policy. Hardware performance remains separately measured.
++
++Cache hits in the Darwin BO allocator reuse a completed buffer before scanning retired objects. A cache miss performs the existing retirement and retries the cache. Fence-completion cleanup uses a nonblocking lock attempt; memory-pressure release, age expiry and partial-unmap ownership retain their existing behavior. This avoids unrelated kernel fence/free calls on the allocation hit path.
++
++Released owned buffer backing participates in the existing bounded spare cache. Both pooled and dedicated allocations take an eligible spare before another Vulkan allocation, while retaining its address object and the original import lifetime. The buffer spare budget stays 64 MiB and expiry remains ten seconds.
+diff --git a/docs/zh/drivers/adreno-metal.md b/docs/zh/drivers/adreno-metal.md
+index d93bc9f..600eeca 100644
+--- a/docs/zh/drivers/adreno-metal.md
++++ b/docs/zh/drivers/adreno-metal.md
+@@ -91,3 +91,7 @@ UUID、Mach时钟换算比例和镜像基址，不能把样本当原子快照。
+ 逐Vulkan调用的Mach CPU查询改为NATIVE_METAL_DRIVER_CPU_PROFILE=1显式启用，
+ 默认只在type14批次边界保留累计CPU纳秒、有效位和查询耗时。type29保存显示
+ 状态片段，type30保存进程/启动身份，type31保存实际诊断策略。性能仍须真机独立验收。
++
++Darwin BO 分配器先复用已完成的缓存对象，缓存未命中时才回收退役对象并再次查缓存。完成回调通过非阻塞加锁尝试清理；内存压力、到期回收和部分解映射的所有权保持原有行为，缓存命中路径不再执行无关的内核 fence/free 调用。
++
++释放后的自有 buffer backing 进入已有有界缓存；池化和独立分配在新建 Vulkan 内存前复用可用 backing，并保留原地址对象和导入生命周期。buffer 缓存预算仍为 64MiB，到期时间仍为十秒。
+diff --git a/drivers/AdrenoMetal b/drivers/AdrenoMetal
+index 6f6ea53..7150d1d 160000
+--- a/drivers/AdrenoMetal
++++ b/drivers/AdrenoMetal
+@@ -1 +1 @@
+-Subproject commit 6f6ea532cfc85111c711e62abb0738d2d96abf8a
++Subproject commit 7150d1def3a79c3e80f75044cb8d770743c357c6
+diff --git a/patches/mesa/turnip-darwin-sweep-retired-on-cache-miss.patch b/patches/mesa/turnip-darwin-sweep-retired-on-cache-miss.patch
+new file mode 100644
+index 0000000..b7e0772
+--- /dev/null
++++ b/patches/mesa/turnip-darwin-sweep-retired-on-cache-miss.patch
+@@ -0,0 +1,108 @@
++--- a/src/freedreno/vulkan/tu_knl_darwin.cc
+++++ b/src/freedreno/vulkan/tu_knl_darwin.cc
++@@ -385,7 +385,7 @@
++    }
++ }
++ 
++-static VkResult darwin_collect_retired(struct tu_device *dev, bool allow_age);
+++static VkResult darwin_collect_retired(struct tu_device *dev, bool allow_age, bool opportunistic = false);
++ 
++ static VkResult
++ dw_wait_fence_locked_free(struct tu_device *dev, uint32_t fence, uint64_t abs_timeout_ns)
++@@ -393,7 +393,7 @@
++    VkResult result = dw_wait_fence_raw(dev, fence, abs_timeout_ns);
++    /* Fence observation is also a retirement opportunity, so a quiet application
++     * need not allocate another BO to release completed deferred storage. */
++-   return result == VK_SUCCESS ? darwin_collect_retired(dev, true) : result;
+++   return result == VK_SUCCESS ? darwin_collect_retired(dev, true, true) : result;
++ }
++ 
++ static VkResult
++@@ -913,11 +913,19 @@
++ }
++ 
++ static VkResult
++-darwin_collect_retired(struct tu_device *dev, bool allow_age)
+++darwin_collect_retired(struct tu_device *dev, bool allow_age, bool opportunistic)
++ {
++    struct darwin_retire_state *retire = (struct darwin_retire_state *)dev->darwin_retire;
++    struct darwin_cached_bo claimed = {};
++-   { TU_CPU_PHASE(TU_CPU_RETIRE_LOCK); pthread_mutex_lock(&retire->lock); }
+++   {
+++      TU_CPU_PHASE(TU_CPU_RETIRE_LOCK);
+++      if (opportunistic) {
+++         if (pthread_mutex_trylock(&retire->lock))
+++            return VK_SUCCESS;
+++      } else {
+++         pthread_mutex_lock(&retire->lock);
+++      }
+++   }
++    VkResult result = darwin_reap_locked(dev, retire);
++    const bool release = result == VK_SUCCESS && darwin_cache_trim(dev, retire, allow_age, &claimed);
++    pthread_mutex_unlock(&retire->lock);
++@@ -934,6 +942,33 @@
++    return result;
++ }
++ 
+++/* A ready cache entry needs no fence or release call. Sweep only a miss,
+++ * retaining immediate memory-pressure handling and the existing age policy. */
+++static VkResult
+++darwin_cache_take(struct tu_device *dev, uint64_t size, bool read_only,
+++                  bool need_mapping, struct darwin_cached_bo *hit, bool *reused)
+++{
+++   struct darwin_retire_state *retire = (struct darwin_retire_state *)dev->darwin_retire;
+++   { TU_CPU_PHASE(TU_CPU_RETIRE_LOCK); pthread_mutex_lock(&retire->lock); }
+++   VkResult result = retire->failure;
+++   struct darwin_cached_bo unused = {};
+++   if (result == VK_SUCCESS) {
+++      darwin_cache_trim(dev, retire, false, &unused);
+++      result = retire->failure;
+++   }
+++   *reused = result == VK_SUCCESS && darwin_cache_get(retire, size, read_only, need_mapping, hit);
+++   if (result == VK_SUCCESS && !*reused && retire->count) {
+++      result = darwin_reap_locked(dev, retire);
+++      if (result == VK_SUCCESS) {
+++         darwin_cache_trim(dev, retire, false, &unused);
+++         result = retire->failure;
+++         *reused = result == VK_SUCCESS && darwin_cache_get(retire, size, read_only, need_mapping, hit);
+++      }
+++   }
+++   pthread_mutex_unlock(&retire->lock);
+++   return result;
+++}
+++
++ static VkResult
++ darwin_map_failure(struct tu_device *dev, uint64_t handle, uint64_t iova,
++                    uint64_t size, kern_return_t map_error, bool own_iova = true)
++@@ -968,10 +1003,6 @@
++    TU_CPU_PHASE(TU_CPU_BO_INIT);
++    struct dw_connection &dw = dw_device(dev);
++    MESA_TRACE_FUNC();
++-   VkResult collected = darwin_collect_retired(dev, false);
++-   if (collected != VK_SUCCESS)
++-      return collected;
++-
++    struct darwin_retire_state *retire = (struct darwin_retire_state *)dev->darwin_retire;
++    /* TU_DARWIN_BO_CACHE=0 turns the cache off (the host checks of the release paths need every free to reach the kernel). */
++    static const bool cache_enabled = debug_get_bool_option("TU_DARWIN_BO_CACHE", true);
++@@ -984,11 +1015,16 @@
++    void *cached_mapping = NULL;
++    uint32_t cached_token = 0;
++    bool reused = false;
++-   if (cacheable) {
+++   if (!cacheable) {
+++      VkResult result = darwin_collect_retired(dev, false);
+++      if (result != VK_SUCCESS)
+++         return result;
+++   } else {
++       struct darwin_cached_bo hit;
++-      { TU_CPU_PHASE(TU_CPU_RETIRE_LOCK); pthread_mutex_lock(&retire->lock); }
++-      reused = darwin_cache_get(retire, alloc_size, read_only, !!(flags & TU_BO_ALLOC_INTERNAL_RESOURCE), &hit);
++-      pthread_mutex_unlock(&retire->lock);
+++      VkResult result = darwin_cache_take(dev, alloc_size, read_only,
+++                                          !!(flags & TU_BO_ALLOC_INTERNAL_RESOURCE), &hit, &reused);
+++      if (result != VK_SUCCESS)
+++         return result;
++       if (reused) {
++          handle = hit.handle;
++          alloc_size = hit.size;
+diff --git a/scripts/build-adreno-metal-bridge.py b/scripts/build-adreno-metal-bridge.py
+index c4ab2bd..3727afb 100644
+--- a/scripts/build-adreno-metal-bridge.py
++++ b/scripts/build-adreno-metal-bridge.py
+@@ -89,6 +89,7 @@ PATCHES = [ROOT / 'drivers/AdrenoMetal/bridge/patches' / name for name in [
+     '0040-multi-level-tiled-output.patch',
+     '0041-multi-level-tiled-input.patch',
+     '0042-ios-foreground-blocks.patch',
++    '0043-reuse-freed-buffer-backing.patch',
+ ]]
+ 
+ 
+diff --git a/scripts/data/adreno-compiler-inputs.json b/scripts/data/adreno-compiler-inputs.json
+index aa578e1..4da2fb0 100644
+--- a/scripts/data/adreno-compiler-inputs.json
++++ b/scripts/data/adreno-compiler-inputs.json
+@@ -68,7 +68,8 @@
+     "patches/mesa/turnip-darwin-cache-trim.patch",
+     "patches/mesa/turnip-darwin-atomic-submit.patch",
+     "patches/mesa/turnip-driver-cpu-profile.patch",
+-    "patches/mesa/turnip-shaders-shared-across-pipeline-caches.patch"
++    "patches/mesa/turnip-shaders-shared-across-pipeline-caches.patch",
++    "patches/mesa/turnip-darwin-sweep-retired-on-cache-miss.patch"
+   ],
+   "integer_fma_reference": {
+     "repository": "https://github.com/ucb-bar/berkeley-softfloat-3",

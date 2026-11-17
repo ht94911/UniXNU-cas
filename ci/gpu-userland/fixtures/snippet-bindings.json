@@ -380,15 +380,22 @@
   {
     "marker": "darwin_collect_retired",
     "kind": "function",
-    "sha256": "847a107dd74f7eecf788f5ab9f4f142848e98ba16e74156a8b55625c64934350",
+    "sha256": "d09de8ac86a1a1cc0224f2841ecb1ebb444d6b1d76b67ae840d8c6c74c2b5f1d",
     "fixture": "cache-release.cpp",
     "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc"
   },
   {
     "marker": "dw_wait_fence_locked_free",
     "kind": "function",
-    "sha256": "42cda7a84c798c0abfdcb85cfd8c5c02795f97ce19ae34ab2bf5fd81f0c00fd8",
+    "sha256": "299d01ce2eb832b0be38040b41091d9d67be6f7ec45377c1bd79869ef049ed81",
     "fixture": "cache-release.cpp",
     "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc"
+  },
+  {
+    "fixture": "cache-release.cpp",
+    "source": ".cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc",
+    "marker": "darwin_cache_take",
+    "kind": "function",
+    "sha256": "5a3d83ea4ae70a9ae087ac4169f28508b19b327222428e733f783f6866329a86"
   }
 ]

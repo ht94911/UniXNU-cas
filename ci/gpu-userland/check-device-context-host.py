@@ -71,6 +71,7 @@ report=dict(actual_prepared_sources_match=True,ASan_UBSan=True,old_lifetime_erro
             actual_BO_age_cleanup_bound_and_pressure_cases_passed=True,
             allocation_skips_age_cleanup=True,age_release_outside_retirement_mutex=True,
             claimed_cache_concurrent_growth_pressure_and_partial_unmap_checked=True,
+    cache_first_cases=16, cached_allocation_skips_kernel_fence_calls=True, completion_retirement_uses_trylock=True,
             cache_concurrent_collections=1024,per_device_connections=1,
             explicit_port_and_allocation_balance_checked=True,leak_sanitizer='Linux preflight additionally checked;not supported in all Apple ASan runtimes')
 (a.logs/'device-context-qualified.json').write_text(json.dumps(report,indent=2)+'\n')

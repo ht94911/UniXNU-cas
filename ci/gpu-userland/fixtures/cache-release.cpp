@@ -30,6 +30,8 @@ static volatile uint32_t darwin_memory_pressure=0;
 static thread_local bool retire_owned=false;
 static int checked_lock(pthread_mutex_t *m){int rc=pthread_mutex_lock(m);assert(!rc&&!retire_owned);retire_owned=true;return rc;}
 static int checked_unlock(pthread_mutex_t *m){assert(retire_owned);retire_owned=false;return pthread_mutex_unlock(m);}
+static int checked_trylock(pthread_mutex_t *m){int rc=pthread_mutex_trylock(m);if(!rc){assert(!retire_owned);retire_owned=true;}return rc;}
+#define pthread_mutex_trylock checked_trylock
 #define pthread_mutex_lock checked_lock
 #define pthread_mutex_unlock checked_unlock
 template<typename... A>static VkResult vk_device_set_lost(int*,const char*,A...){return VK_ERROR_DEVICE_LOST;}
@@ -400,12 +402,22 @@ darwin_reap_locked(struct tu_device *dev, struct darwin_retire_state *retire)
    return VK_SUCCESS;
 }
 
+static VkResult darwin_collect_retired(struct tu_device *dev, bool allow_age, bool opportunistic = false);
+
 static VkResult
-darwin_collect_retired(struct tu_device *dev, bool allow_age)
+darwin_collect_retired(struct tu_device *dev, bool allow_age, bool opportunistic)
 {
    struct darwin_retire_state *retire = (struct darwin_retire_state *)dev->darwin_retire;
    struct darwin_cached_bo claimed = {};
-   { TU_CPU_PHASE(TU_CPU_RETIRE_LOCK); pthread_mutex_lock(&retire->lock); }
+   {
+      TU_CPU_PHASE(TU_CPU_RETIRE_LOCK);
+      if (opportunistic) {
+         if (pthread_mutex_trylock(&retire->lock))
+            return VK_SUCCESS;
+      } else {
+         pthread_mutex_lock(&retire->lock);
+      }
+   }
    VkResult result = darwin_reap_locked(dev, retire);
    const bool release = result == VK_SUCCESS && darwin_cache_trim(dev, retire, allow_age, &claimed);
    pthread_mutex_unlock(&retire->lock);
@@ -428,7 +440,32 @@ dw_wait_fence_locked_free(struct tu_device *dev, uint32_t fence, uint64_t abs_ti
    VkResult result = dw_wait_fence_raw(dev, fence, abs_timeout_ns);
    /* Fence observation is also a retirement opportunity, so a quiet application
     * need not allocate another BO to release completed deferred storage. */
-   return result == VK_SUCCESS ? darwin_collect_retired(dev, true) : result;
+   return result == VK_SUCCESS ? darwin_collect_retired(dev, true, true) : result;
+}
+
+static VkResult
+darwin_cache_take(struct tu_device *dev, uint64_t size, bool read_only,
+                  bool need_mapping, struct darwin_cached_bo *hit, bool *reused)
+{
+   struct darwin_retire_state *retire = (struct darwin_retire_state *)dev->darwin_retire;
+   { TU_CPU_PHASE(TU_CPU_RETIRE_LOCK); pthread_mutex_lock(&retire->lock); }
+   VkResult result = retire->failure;
+   struct darwin_cached_bo unused = {};
+   if (result == VK_SUCCESS) {
+      darwin_cache_trim(dev, retire, false, &unused);
+      result = retire->failure;
+   }
+   *reused = result == VK_SUCCESS && darwin_cache_get(retire, size, read_only, need_mapping, hit);
+   if (result == VK_SUCCESS && !*reused && retire->count) {
+      result = darwin_reap_locked(dev, retire);
+      if (result == VK_SUCCESS) {
+         darwin_cache_trim(dev, retire, false, &unused);
+         result = retire->failure;
+         *reused = result == VK_SUCCESS && darwin_cache_get(retire, size, read_only, need_mapping, hit);
+      }
+   }
+   pthread_mutex_unlock(&retire->lock);
+   return result;
 }
 
 static void add(Peer &p,uint64_t handle,uint64_t size=4096,bool old=true){
@@ -462,7 +499,7 @@ int main(){
     {Peer p;peer=&p;lock(p);add(p,1,8192);add(p,2);p.state.cache_trim_cursor=1;unlock(p);p.block_handle=2;
      std::thread completion([&]{assert(darwin_collect_retired(&p.device,true)==0);});
      {std::unique_lock<std::mutex> g(p.mutex);assert(p.gate.wait_for(g,std::chrono::seconds(5),[&]{return p.blocked;}));}
-     assert(pthread_mutex_trylock(&p.state.lock)==0);assert(!retire_owned);retire_owned=true;
+     assert(pthread_mutex_trylock(&p.state.lock)==0);assert(retire_owned);
      darwin_cached_bo hit{};assert(!darwin_cache_get(&p.state,4096,false,true,&hit));
      assert(darwin_cache_evict(&p.device,&p.state,1)==VK_NOT_READY);
      assert(darwin_cache_get(&p.state,8192,false,true,&hit)&&hit.handle==1);
@@ -517,5 +554,40 @@ int main(){
      });for(auto &t:workers)t.join();assert(p.unlocked_frees==256&&!p.locked_frees);
      for(auto &item:p.buffers)assert(item.second.frees==1&&item.second.unmaps==1&&item.second.leases==1);
      empty(p);++cases;}
+    // A ready cache hit skips an unrelated retired fence and every native call.
+    {Peer p;peer=&p;lock(p);add(p,1,4096,false);add(p,2,8192,false);
+     darwin_cached_bo pending{};assert(darwin_cache_get(&p.state,8192,false,true,&pending));
+     p.state.capacity=1;p.state.count=1;p.state.entries=(darwin_retired_bo*)calloc(1,sizeof(darwin_retired_bo));
+     p.state.entries[0]={pending.handle,pending.iova,pending.size,pending.mapping,pending.token,77,true,false};unlock(p);
+     darwin_cached_bo hit{};bool reused=false;p.fence_ready=false;
+     assert(darwin_cache_take(&p.device,4096,false,true,&hit,&reused)==0&&reused&&hit.handle==1);
+     assert(p.native_calls==0&&p.state.count==1&&!p.state.cache_count);++cases;}
+    // A miss polls the pending fence and retains it; a later completed miss reuses it.
+    {Peer p;peer=&p;lock(p);add(p,1,4096,false);darwin_cached_bo item{};
+     assert(darwin_cache_get(&p.state,4096,false,true,&item));p.state.capacity=1;p.state.count=1;
+     p.state.entries=(darwin_retired_bo*)calloc(1,sizeof(darwin_retired_bo));
+     p.state.entries[0]={item.handle,item.iova,item.size,item.mapping,item.token,77,true,false};unlock(p);
+     darwin_cached_bo hit{};bool reused=false;p.fence_ready=false;
+     assert(darwin_cache_take(&p.device,4096,false,true,&hit,&reused)==0&&!reused&&p.state.count==1&&p.native_calls==1);
+     p.fence_ready=true;
+     assert(darwin_cache_take(&p.device,4096,false,true,&hit,&reused)==0&&reused&&hit.handle==1&&!p.state.count);
+     assert(p.native_calls==2&&p.buffers.at(1).allocated&&!p.buffers.at(1).unmaps);++cases;}
+    // Memory pressure cannot be hidden by an otherwise usable cache hit.
+    {Peer p;peer=&p;lock(p);add(p,1,4096,false);unlock(p);darwin_memory_pressure=1;
+     darwin_cached_bo hit{};bool reused=true;
+     assert(darwin_cache_take(&p.device,4096,false,true,&hit,&reused)==0&&!reused);
+     assert(p.locked_frees==1&&!p.state.cache_count);empty(p);++cases;}
+    // Sticky device loss prevents consuming an otherwise valid cache entry.
+    {Peer p;peer=&p;lock(p);add(p,1,4096,false);p.state.failure=VK_ERROR_DEVICE_LOST;unlock(p);
+     darwin_cached_bo hit{};bool reused=true;
+     assert(darwin_cache_take(&p.device,4096,false,true,&hit,&reused)==VK_ERROR_DEVICE_LOST&&!reused);
+     assert(p.native_calls==0&&p.state.cache_count==1);++cases;}
+    // A completion observer returns while another thread owns retirement.
+    {Peer p;peer=&p;lock(p);add(p,1);std::atomic<bool> done{false};
+     std::thread observer([&]{assert(dw_wait_fence_locked_free(&p.device,77,0)==0);done.store(true);});
+     auto until=std::chrono::steady_clock::now()+std::chrono::seconds(2);
+     while(!done.load()&&std::chrono::steady_clock::now()<until)std::this_thread::yield();
+     bool before_unlock=done.load();unlock(p);observer.join();assert(before_unlock);
+     assert(p.state.cache_count==1&&!p.buffers.at(1).frees&&p.native_calls==1);++cases;}
     std::printf("PASS %u cache/reaper cases: normal allocation has no age release; unlocked native cleanup; blocked-release cache reuse/growth/pressure; Busy/error ownership; pending fences; 1024 concurrent collections\n",cases);
 }

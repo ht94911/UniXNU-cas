@@ -1,7 +1,7 @@
-name: nezha iPhone27 upstream texture policy and CoreImage lookup 044
+name: nezha iPhone27 GPU053 cache-first and freed buffer reuse 045
 on:
   push:
-    branches: [codex/ios27-gpu52-interfaces-metal044-20261116]
+    branches: [codex/ios27-gpu53-buffer-reuse-metal045-20261118]
   workflow_dispatch:
 permissions:
   contents: read

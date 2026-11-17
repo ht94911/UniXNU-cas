@@ -177,13 +177,16 @@ assert extern_function['passed'] and extern_function['checks']==12
 assert extern_function['production_ObjectiveC_selector_executed'] and extern_function['previous_missing_selector_reproduced']
 assert extern_function['exact_kernel_bitcode_and_library_lifetime_verified']
 assert extern_function['upstream_interfaces_checks'] == 9
+assert extern_function['function_constant_required_cases'] == 10
+assert contexts['cache_first_cases'] == 16
+assert contexts['cached_allocation_skips_kernel_fence_calls'] and contexts['completion_retirement_uses_trylock']
 assert extern_function['actual_ObjC_descriptor_policy_forwarding']
 assert extern_function['actual_Rust_descriptor_policy_forwarding']
 assert extern_function['source_sha256']==hashlib.sha256((root/'drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm').read_bytes()).hexdigest()
 assert extern_function['test_sha256']==hashlib.sha256((root/'drivers/AdrenoMetal/bridge/extern_function_host.mm').read_bytes()).hexdigest()
 multi_level=json.loads((a.logs/'multi-level-output/report.json').read_text())
 assert multi_level['passed'] and multi_level['exact_runtime_source_verified'] and multi_level['current_Mac_planner_tests_passed']
-assert multi_level['current_Mac_allocator_tests_passed'] and multi_level['current_Mac_allocator_cases']==8
+assert multi_level['current_Mac_allocator_tests_passed'] and multi_level['current_Mac_allocator_cases']==10
 extern_spec=importlib.util.spec_from_file_location('extern_target',Path(__file__).with_name('check-extern-target.py'))
 extern_target=importlib.util.module_from_spec(extern_spec)
 extern_spec.loader.exec_module(extern_target)

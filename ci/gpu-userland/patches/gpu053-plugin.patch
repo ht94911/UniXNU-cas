@@ -1,0 +1,300 @@
+diff --git a/NativeBridgeMetalFrontend.mm b/NativeBridgeMetalFrontend.mm
+index 8d41320..d76da85 100644
+--- a/NativeBridgeMetalFrontend.mm
++++ b/NativeBridgeMetalFrontend.mm
+@@ -1667,8 +1667,10 @@ static void noteUnalignedTexture(MTLTextureDescriptor *d,NSUInteger offset,NSUIn
+ @property(nonatomic) MTLDataType type;
+ @property(nonatomic) NSUInteger index;
+ @property(nonatomic,getter=isRequired) BOOL required;
++- (BOOL)required;
+ @end
+ @implementation NBFunctionConstant
++- (BOOL)required {return self.isRequired;}
+ @end
+ @implementation NBFunction
+ - (NSDictionary<NSString *,MTLFunctionConstant *> *)functionConstantsDictionary {
+diff --git a/README.md b/README.md
+index c47b67e..260e9ba 100644
+--- a/README.md
++++ b/README.md
+@@ -31,6 +31,12 @@ lookup, retaining the same returned-function ownership and the library's
+ stitching bitcode. Missing names remain nil. This also accepts ordinary functions
+ as the runtime's corresponding library method does.
+ 
++Function-constant objects expose both `required` and `isRequired`. Both read
++the same runtime-supplied flag. Original24A446 Core Image calls `required`;
++providing only `isRequired` caused the camera service to terminate during
++program setup. The selector consumer test checks true/false changes through
++the public Metal type and native Objective-C message without creating a GPU.
++
+ In a diagnostic boot, the existing icon-service trace also records the first
+ 96 library loads, function-name queries and external-kernel lookups. File-read
+ failure is recorded before it returns nil, and stitching requests report their
+@@ -251,3 +257,8 @@ the query wall microseconds in cpu0, and validity bit0 in tid2. These query
+ brackets are part of the observation cost; CPU deltas are not GPU duration.
+ Type31 reports the actual profile-hook policy. Rendering calls and synchronization
+ are unchanged; performance and display scheduling still require device evidence.
++
++Freed runtime-owned buffer backing uses the existing spare cache, with its
++64 MiB buffer budget, ten-second expiry and pressure release. Foreground
++allocations can reuse the original mapping and address object before another
++native allocation. Imported resources retain their owner and release ordering.
+diff --git a/bridge/function_constant_selector_host.mm b/bridge/function_constant_selector_host.mm
+new file mode 100644
+index 0000000..ce363e5
+--- /dev/null
++++ b/bridge/function_constant_selector_host.mm
+@@ -0,0 +1,26 @@
++// SPDX-License-Identifier: MIT
++// Exercise the actual Objective-C constant object returned by the frontend.
++#import "../NativeBridgeMetalFrontend.mm"
++#include <cassert>
++
++int main() {
++    @autoreleasepool {
++        NBFunctionConstant *constant=[NBFunctionConstant new];
++        SEL selector=sel_registerName("required");
++        if (![constant respondsToSelector:selector]) {
++            puts("FAIL missing production MTLFunctionConstant required selector");
++            return 1;
++        }
++        unsigned cases=0;
++        for (BOOL required : {NO,YES,NO}) {
++            constant.required=required;
++            assert([(MTLFunctionConstant *)constant required]==required);++cases;
++            assert(constant.isRequired==required);++cases;
++            assert(((BOOL (*)(id,SEL))objc_msgSend)(constant,selector)==required);++cases;
++        }
++        constant.name=@"real_constant";constant.index=7;constant.type=MTLDataTypeInt;
++        assert([constant.name isEqual:@"real_constant"] && constant.index==7 && constant.type==MTLDataTypeInt);++cases;
++        printf("PASS function constant selector: %u production getter and native message cases\n",cases);
++    }
++    return 0;
++}
+diff --git a/bridge/patches/0043-reuse-freed-buffer-backing.patch b/bridge/patches/0043-reuse-freed-buffer-backing.patch
+new file mode 100644
+index 0000000..c344ea3
+--- /dev/null
++++ b/bridge/patches/0043-reuse-freed-buffer-backing.patch
+@@ -0,0 +1,221 @@
++diff --git a/crates/metal2vulkan-runtime/src/memory.rs b/crates/metal2vulkan-runtime/src/memory.rs
++index 209d0ed..ee22d26 100644
++--- a/crates/metal2vulkan-runtime/src/memory.rs
+++++ b/crates/metal2vulkan-runtime/src/memory.rs
++@@ -1761,7 +1761,7 @@ impl Memory {
++         let pool = self.pool(holds, type_index);
++         let (freed, stale) = (pool.release(block, offset, size, now), pool.stale(now));
++         if let Some(stale) = stale {
++-            if holds == Holds::Images && stale.plain() {
+++            if stale.plain() {
++                 self.keep_spare(device, (holds, type_index), stale, now);
++             } else {
++                 // SAFETY: nothing is placed in a kept empty block, and no command reads it.
++@@ -1770,7 +1770,7 @@ impl Memory {
++         }
++         self.age_spare(device, now);
++         match freed {
++-            Some((block, _)) if holds == Holds::Images && block.plain() => {
+++            Some((block, _)) if block.plain() => {
++                 self.keep_spare(device, (holds, type_index), block, now);
++                 after
++             }
++@@ -2659,19 +2659,26 @@ fn place(
++                 return Ok(memory.mark_overflowed(placement, overflowing));
++             }
++         }
++-        // A dedicated image takes a spare block of its pool where one fits ([`SPARE_FOR`]); one
++-        // placed apart takes memory no submission has used ([`Fit`]).
++-        if fit == Fit::Pooled && holds == Holds::Images && addressed.is_none() {
+++        // Reuse unused owned backing of this exact pool before another native allocation.
+++        // A buffer keeps its existing address object; imported memory and placements apart
+++        // retain their original release and allocation paths.
+++        if fit == Fit::Pooled {
++             let mut memory = lock(memory);
++             if let Some(block) =
++                 memory.take_spare(device, pool, if dedicated { size } else { block_size })
++             {
++                 let bytes = block.size;
++-                memory.say_block("took a spare dedicated block for an image", &block);
+++                memory.say_block("took spare owned backing", &block);
++                 let index = memory
++                     .pool(pool.0, pool.1)
++                     .add(bytes, dedicated, block, size);
++-                let placement = memory.placement(pool, index, 0, size, false);
+++                if let Some(counts) = addressed {
+++                    if let Err(error) = memory.address_block(device, type_index, index, counts) {
+++                        drop(memory.release_range(device, pool, index, 0, size, None));
+++                        return Err(error);
+++                    }
+++                }
+++                let placement = memory.placement(pool, index, 0, size, addressed.is_some());
++                 trace_handle(trace, placement.memory);
++                 if trace != 0 {
++                     crate::stage_trace::mark(trace, crate::stage_trace::Stage::MemoryReused, 2);
++@@ -3266,6 +3273,156 @@ mod latency_tests {
++         assert_eq!(FREED.load(Ordering::Relaxed), 3);
++     }
++ 
+++    #[test]
+++    fn freed_buffer_backing_is_reused_without_native_allocation() {
+++        let _serial = lock(&SERIAL);
+++        FREED.store(0, Ordering::Relaxed);
+++        ALLOCATED.store(0, Ordering::Relaxed);
+++        let driver = driver();
+++        let mut state = allocator();
+++        let pool = (Holds::Buffers, 0);
+++        for raw in 1..=3 {
+++            let index =
+++                state
+++                    .pool(pool.0, pool.1)
+++                    .add(32 << 20, false, block(raw, 32 << 20), 32 << 20);
+++            state.release_range(&driver, pool, index, 0, 32 << 20, None);
+++        }
+++        assert_eq!(state.spare.len(), 1);
+++        assert_eq!(FREED.load(Ordering::Relaxed), 0);
+++        let index = state
+++            .pool(pool.0, pool.1)
+++            .add(40 << 20, true, block(4, 40 << 20), 40 << 20);
+++        state.release_range(&driver, pool, index, 0, 40 << 20, None);
+++        assert_eq!(state.spare.len(), 1);
+++        assert_eq!(state.spare[0].block.memory.as_raw(), 4);
+++        assert_eq!(FREED.load(Ordering::Relaxed), 1);
+++        let memory = Mutex::new(state);
+++        let requirements = vk::MemoryRequirements {
+++            size: 40 << 20,
+++            alignment: 4096,
+++            memory_type_bits: 1,
+++        };
+++        let placement = place(
+++            &memory,
+++            &driver,
+++            &requirements,
+++            MemoryClass::Private,
+++            None,
+++            Holds::Buffers,
+++            Fit::Pooled,
+++        )
+++        .unwrap();
+++        assert_eq!(placement.memory.as_raw(), 4);
+++        assert_eq!(ALLOCATED.load(Ordering::Relaxed), 0);
+++        let mut state = lock(&memory);
+++        state.free(&driver, &placement);
+++        assert_eq!(state.release_spare(&driver), 3);
+++        assert_eq!(FREED.load(Ordering::Relaxed), 4);
+++        drop(state.destroy(&driver));
+++    }
+++
+++    #[test]
+++    fn freed_buffer_backing_keeps_address_and_import_release_order() {
+++        let _serial = lock(&SERIAL);
+++        FREED.store(0, Ordering::Relaxed);
+++        ALLOCATED.store(0, Ordering::Relaxed);
+++        DESTROYED_BUFFERS.store(0, Ordering::Relaxed);
+++        let driver = driver();
+++        let mut state = allocator();
+++        let pool = (Holds::Buffers, 0);
+++        let mut owned = block(7, 40 << 20);
+++        owned.addresses = Some(BlockAddresses {
+++            raw: vk::Buffer::from_raw(19),
+++            address: 0x12340000,
+++        });
+++        let index = state
+++            .pool(pool.0, pool.1)
+++            .add(40 << 20, true, owned, 40 << 20);
+++        state.release_range(&driver, pool, index, 0, 40 << 20, None);
+++        let memory = Mutex::new(state);
+++        let requirements = vk::MemoryRequirements {
+++            size: 40 << 20,
+++            alignment: 4096,
+++            memory_type_bits: 1,
+++        };
+++        let placement = place(
+++            &memory,
+++            &driver,
+++            &requirements,
+++            MemoryClass::Private,
+++            Some(&Counters::default()),
+++            Holds::Buffers,
+++            Fit::Pooled,
+++        )
+++        .unwrap();
+++        assert_eq!(placement.memory.as_raw(), 7);
+++        assert_eq!(placement.address, Some(0x12340000));
+++        assert_eq!(ALLOCATED.load(Ordering::Relaxed), 0);
+++        assert_eq!(DESTROYED_BUFFERS.load(Ordering::Relaxed), 0);
+++        let mut state = lock(&memory);
+++        state.free(&driver, &placement);
+++        state.age_spare(&driver, Instant::now() + SPARE_FOR);
+++        assert_eq!(FREED.load(Ordering::Relaxed), 1);
+++        assert_eq!(DESTROYED_BUFFERS.load(Ordering::Relaxed), 1);
+++        let mut imported = block(8, 40 << 20);
+++        imported.imported = true;
+++        let index = state
+++            .pool(pool.0, pool.1)
+++            .add(40 << 20, true, imported, 40 << 20);
+++        state.release_range(&driver, pool, index, 0, 40 << 20, None);
+++        assert!(state.spare.is_empty());
+++        assert_eq!(FREED.load(Ordering::Relaxed), 2);
+++        drop(state.destroy(&driver));
+++    }
+++
+++    #[test]
+++    #[cfg(any(m2v_gpu, m2v_cpu_icd))]
+++    fn freed_buffer_backing_reuses_vulkan_memory_and_zeroes_new_contents() {
+++        use crate::{Device, DeviceKind, DeviceOptions, ResourceOptions, ShaderCacheOptions};
+++
+++        let cache = std::env::temp_dir().join(format!("m2v-buffer-reuse-{}", std::process::id()));
+++        std::fs::create_dir_all(&cache).unwrap();
+++        let device = Device::system_default_with(&DeviceOptions {
+++            kinds: if cfg!(m2v_cpu_icd) {
+++                vec![DeviceKind::Cpu]
+++            } else {
+++                vec![
+++                    DeviceKind::Discrete,
+++                    DeviceKind::Integrated,
+++                    DeviceKind::Virtual,
+++                ]
+++            },
+++            shader_cache: ShaderCacheOptions::in_directory(&cache),
+++            ..DeviceOptions::default()
+++        })
+++        .unwrap();
+++        let bytes = 40 << 20;
+++        let first = device.own_buffer(bytes, ResourceOptions::shared()).unwrap();
+++        let offset = first.at(0).1;
+++        // SAFETY: the buffer is host-visible and no work has been submitted.
+++        unsafe {
+++            std::slice::from_raw_parts_mut(first.contents().unwrap().as_ptr(), bytes as usize)
+++        }
+++        .fill(0xa7);
+++        let allocated = lock(&device.shared().memory).allocated;
+++        drop(first);
+++        let next = device.own_buffer(bytes, ResourceOptions::shared()).unwrap();
+++        assert_eq!(lock(&device.shared().memory).allocated, allocated);
+++        assert_eq!(next.at(0).1, offset);
+++        // The unchanged allocation count proves reuse; a Vulkan handle value may be recycled.
+++        // SAFETY: creation completed its clear and no GPU work names the new buffer.
+++        assert!(unsafe {
+++            std::slice::from_raw_parts(next.contents().unwrap().as_ptr(), bytes as usize)
+++        }
+++        .iter()
+++        .all(|&byte| byte == 0));
+++        drop(next);
+++        device.release_kept_memory();
+++        drop(device);
+++        std::fs::remove_dir_all(cache).unwrap();
+++    }
+++
++     #[test]
++     fn image_spares_age_and_give_room() {
++         let _serial = lock(&SERIAL);
++diff --git a/crates/metal2vulkan-runtime/README.md b/crates/metal2vulkan-runtime/README.md
++index d4ae314..46c205c 100644
++--- a/crates/metal2vulkan-runtime/README.md
+++++ b/crates/metal2vulkan-runtime/README.md
++@@ -713,3 +713,5 @@ option) any later version, at your choice (`GPL-2.0-or-later OR LGPL-3.0-or-late
++ [LICENSE](LICENSE) is the notice; [LICENSE-GPL-2.0](LICENSE-GPL-2.0),
++ [LICENSE-LGPL-3.0](LICENSE-LGPL-3.0) and [LICENSE-GPL-3.0](LICENSE-GPL-3.0) (which the LGPL v3
++ incorporates) are the texts.
+++
+++Unused runtime-owned buffer backing now joins the existing spare cache. Foreground allocations can reuse its mapping and address buffer before another native allocation. Buffer spares retain the shared 64 MiB budget, expire after ten seconds and are released on memory pressure or allocation failure. Imported memory keeps its original owner and release ordering.
