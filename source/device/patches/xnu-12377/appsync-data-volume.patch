@@ -1,0 +1,26 @@
+diff --git a/bsd/kern/kern_exec.c b/bsd/kern/kern_exec.c
+--- a/bsd/kern/kern_exec.c
++++ b/bsd/kern/kern_exec.c
+@@ -9163,9 +9163,21 @@
+ 	/* The independent root publisher and RAM disk match asynchronously.
+ 	 * Wait only for the configured typed Data provider, with a hard bound;
+ 	 * an absent, ambiguous or invalid seed still fails before mount. */
++	const char *data_uuid = XNU_OWNER_DATA_VOLUME_UUID;
++	DTEntry data_chosen;
++	const void *selected_uuid;
++	unsigned int uuid_bytes;
++	if (SecureDTLookupEntry(NULL, "/chosen", &data_chosen) == kSuccess &&
++	    SecureDTGetProperty(data_chosen, "unixnu-data-volume-uuid", &selected_uuid, &uuid_bytes) == kSuccess) {
++		if (uuid_bytes != 37 || strnlen(selected_uuid, uuid_bytes) != 36) {
++			error = EINVAL;
++			goto done;
++		}
++		data_uuid = selected_uuid;
++	}
+ 	extern void IOSleep(unsigned milliseconds);
+ 	unsigned data_wait = 0;
+-	while (!native_ram_block_volume_seed(XNU_OWNER_DATA_VOLUME_UUID, &device, device_path,
++	while (!native_ram_block_volume_seed(data_uuid, &device, device_path,
+ 	    sizeof(device_path), &base, &size, native_owner_data_seed_sha256)) {
+ 		if (data_wait++ == 100) { error = ENOENT; goto done; }
+ 		IOSleep(100);
