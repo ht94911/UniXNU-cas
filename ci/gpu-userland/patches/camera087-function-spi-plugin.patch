@@ -1,21 +1,23 @@
 diff --git a/NativeBridgeMetalFrontend.mm b/NativeBridgeMetalFrontend.mm
-index d86e4dd..7b3dae4 100644
+index d86e4dd..3432c62 100644
 --- a/NativeBridgeMetalFrontend.mm
 +++ b/NativeBridgeMetalFrontend.mm
-@@ -1660,7 +1660,12 @@ static void noteUnalignedTexture(MTLTextureDescriptor *d,NSUInteger offset,NSUIn
+@@ -1660,7 +1660,14 @@ static void noteUnalignedTexture(MTLTextureDescriptor *d,NSUInteger offset,NSUIn
  @property(nonatomic,strong) NBLibrary *library;      // where it came from (stitching reads its bitcode), and the values it was
  @property(nonatomic,strong) NSData *bitCodeHashData;
  @property(nonatomic,strong) MTLFunctionConstantValues *constantValues;   // specialized with (nil: none), for the zero-rest rebuild of a refused pipeline
 +@property(nonatomic,strong) NSArray *argumentList;
 +@property(nonatomic) BOOL argumentsRead;
++@property(nonatomic,strong) MTLType *publicReturnType;
  @end
 +static NSDictionary *reflectionJSON(NmbReflection *,const char *);
 +static NSArray *reflectionArguments(NSArray *);
++static MTLType *publicMetadataType(NSDictionary *);
 +#include "NativeMetalFunctionMetadata.h"
  @interface NBFunctionConstant : NSObject
  @property(nonatomic,copy) NSString *name;
  @property(nonatomic) MTLDataType type;
-@@ -1672,6 +1677,30 @@ static void noteUnalignedTexture(MTLTextureDescriptor *d,NSUInteger offset,NSUIn
+@@ -1672,6 +1679,34 @@ static void noteUnalignedTexture(MTLTextureDescriptor *d,NSUInteger offset,NSUIn
  - (BOOL)required {return self.isRequired;}
  @end
  @implementation NBFunction
@@ -25,7 +27,10 @@ index d86e4dd..7b3dae4 100644
 +   bool publicArguments=false;
 +   NSDictionary *publicJSON=nbPublicFunctionArguments(_library.bytes,_library.length,_sourceName?:_name,&publicArguments);
 +   if(publicArguments) {
-+    if(publicJSON)_argumentList=reflectionArguments(publicJSON[@"bindings"]);
++    if(publicJSON) {
++     if(publicJSON[@"bindings"])_argumentList=reflectionArguments(publicJSON[@"bindings"]);
++     _publicReturnType=publicMetadataType(publicJSON[@"returnType"]);
++    }
 +    else noteProblem([NSString stringWithFormat:@"function arguments %@: invalid public metadata",_sourceName?:_name]);
 +    _argumentsRead=YES;return _argumentList;
 +   }
@@ -43,10 +48,11 @@ index d86e4dd..7b3dae4 100644
 +  return _argumentList;
 + }
 +}
++- (MTLType *)returnType {(void)self.arguments;return _publicReturnType;}
  - (NSDictionary<NSString *,MTLFunctionConstant *> *)functionConstantsDictionary {
   NSMutableDictionary *result=[NSMutableDictionary dictionary];
   if(!_handle)return result;
-@@ -1754,6 +1783,15 @@ static bool forEachLibraryEntry(NBLibrary *library,const std::function<bool(cons
+@@ -1754,6 +1789,15 @@ static bool forEachLibraryEntry(NBLibrary *library,const std::function<bool(cons
  - (id<MTLFunction>)newFunctionWithName:(NSString *)name constantValues:(MTLFunctionConstantValues *)values error:(NSError **)error {
   return [self nb_newFunctionWithName:name constantValues:values zeroRest:NO error:error];
  }
@@ -62,7 +68,7 @@ index d86e4dd..7b3dae4 100644
  // zeroRest: every constant the function declares that values leaves out is zero (nmb_function_new_specialized_zero_rest); only for the
  // retry of a pipeline the runtime refused because such a constant had no value.
  - (id<MTLFunction>)nb_newFunctionWithName:(NSString *)name constantValues:(MTLFunctionConstantValues *)values zeroRest:(BOOL)zeroRest
-@@ -3896,7 +3934,7 @@ static NBTextureReferenceType *reflectionTexture(NSDictionary *json);
+@@ -3896,7 +3940,7 @@ static NBTextureReferenceType *reflectionTexture(NSDictionary *json);
  @end
  @implementation NBTextureReferenceType
  - (MTLDataType)dataType {return MTLDataTypeTexture;}
@@ -71,15 +77,7 @@ index d86e4dd..7b3dae4 100644
  - (MTLTextureType)textureType {return (MTLTextureType)reflectionValue(_json,@"textureType");}
  - (MTLBindingAccess)access {return (MTLBindingAccess)reflectionValue(_json,@"access");}
  - (BOOL)isDepthTexture {return [_json[@"depth"] boolValue];}
-@@ -3931,6 +3969,7 @@ static NBTextureReferenceType *reflectionTexture(NSDictionary *json);
- @interface NBStructMember : MTLStructMember
- @property(nonatomic,strong) NSDictionary *json;
- @end
-+static MTLType *publicMetadataType(NSDictionary *);
- @implementation NBStructMember
- - (NSString *)name {return _json[@"name"];}
- - (NSUInteger)offset {return reflectionValue(_json,@"offset");}
-@@ -3940,6 +3979,7 @@ static NBTextureReferenceType *reflectionTexture(NSDictionary *json);
+@@ -3940,6 +3984,7 @@ static NBTextureReferenceType *reflectionTexture(NSDictionary *json);
  - (MTLArrayType *)arrayType {return (MTLArrayType *)reflectionArray(_json[@"array"]);}
  - (MTLPointerType *)pointerType {return (MTLPointerType *)reflectionPointer(_json[@"pointer"]);}
  - (MTLTextureReferenceType *)textureReferenceType {return (MTLTextureReferenceType *)reflectionTexture(_json[@"texture"]);}
@@ -87,7 +85,7 @@ index d86e4dd..7b3dae4 100644
  @end
  @interface NBStructType : MTLStructType
  @property(nonatomic,strong) NSArray *memberList;
-@@ -3970,11 +4010,33 @@ static NBTextureReferenceType *reflectionTexture(NSDictionary *json) {
+@@ -3970,11 +4015,33 @@ static NBTextureReferenceType *reflectionTexture(NSDictionary *json) {
   if(![json isKindOfClass:[NSDictionary class]])return nil;
   NBTextureReferenceType *type=[NBTextureReferenceType new];type.json=json;return type;
  }
@@ -121,7 +119,7 @@ index d86e4dd..7b3dae4 100644
  @end
  @implementation NBArgument
  - (NSString *)name {return _json[@"name"];}
-@@ -3998,6 +4060,10 @@ static NBTextureReferenceType *reflectionTexture(NSDictionary *json) {
+@@ -3998,6 +4065,10 @@ static NBTextureReferenceType *reflectionTexture(NSDictionary *json) {
  - (MTLDataType)textureDataType {return (MTLDataType)reflectionValue(_json[@"texture"],@"dataType");}
  - (BOOL)isDepthTexture {return [_json[@"texture"][@"depth"] boolValue];}
  - (NSUInteger)arrayLength {return _json[@"texture"]?reflectionValue(_json[@"texture"],@"arrayLength"):1;}
@@ -132,79 +130,12 @@ index d86e4dd..7b3dae4 100644
  - (NSString *)description {return [NSString stringWithFormat:@"<NBArgument %@ type %lu index %lu>",self.name,(unsigned long)self.type,(unsigned long)self.index];}
  @end
  @interface NBRenderPipelineReflection : MTLRenderPipelineReflection
-diff --git a/bridge/NativeMetalObjects.h b/bridge/NativeMetalObjects.h
-index b93b96b..66c2e49 100644
---- a/bridge/NativeMetalObjects.h
-+++ b/bridge/NativeMetalObjects.h
-@@ -226,6 +226,10 @@ void nmb_render_pipeline_release(NmbRenderPipeline *);
- typedef struct NmbReflection NmbReflection;
- NmbReflection *nmb_render_pipeline_reflection(const struct NmbRenderPipelineDescriptor *);
- NmbReflection *nmb_compute_pipeline_reflection(const struct NmbComputePipelineDescriptor *);
-+/* Original Metal function metadata. Success with *out==NULL means the
-+ * library has no reflection; errors return false. Never invent bindings. */
-+bool nmb_function_reflection(const NmbFunction *, NmbReflection **out);
-+bool nmb_library_function_reflection(const NmbLibrary *, const char *name, NmbReflection **out);
- const char *nmb_reflection_json(const NmbReflection *);
- void nmb_reflection_release(NmbReflection *);
- 
-diff --git a/bridge/NativeMetalObjects.rs b/bridge/NativeMetalObjects.rs
-index 0fef320..7f97f68 100644
---- a/bridge/NativeMetalObjects.rs
-+++ b/bridge/NativeMetalObjects.rs
-@@ -2007,6 +2007,47 @@ fn reflection_handle(json: String) -> Result<*mut NmbReflection, String> {
-     Ok(boxed(NmbReflection(std::ffi::CString::new(json).map_err(|_| "a NUL in the reflection".to_string())?)))
- }
- 
-+fn function_reflection_handle(reflection: Option<metal2vulkan::reflection::FunctionReflection>) -> Result<*mut NmbReflection, String> {
-+    let Some(reflection) = reflection else { return Ok(std::ptr::null_mut()); };
-+    let mut json = String::from("{");
-+    reflection_json::stage(&mut json, "bindings", reflection.bindings());
-+    json.push('}');
-+    reflection_handle(json)
-+}
-+
-+/// # Safety
-+/// `out` is writable; the function handle remains alive for this call.
-+#[unsafe(no_mangle)]
-+pub unsafe extern "C" fn nmb_function_reflection(function: *const NmbFunction, out: *mut *mut NmbReflection) -> bool {
-+    guard(false, || {
-+        // SAFETY: the caller's contract.
-+        let out = unsafe { out.as_mut() }.ok_or("null reflection output")?;
-+        *out = std::ptr::null_mut();
-+        let descriptor = get(function)?.0.function_descriptor();
-+        let reflection = descriptor.function.reflection(&metal2vulkan::Budget::standard()).map_err(e("function reflection"))?;
-+        *out = function_reflection_handle(reflection)?;
-+        Ok(true)
-+    })
-+}
-+
-+/// # Safety
-+/// `name` is a C string, `out` is writable, and the library remains alive.
-+#[unsafe(no_mangle)]
-+pub unsafe extern "C" fn nmb_library_function_reflection(library: *const NmbLibrary, name: *const c_char,
-+                                                        out: *mut *mut NmbReflection) -> bool {
-+    guard(false, || {
-+        // SAFETY: the caller's contract.
-+        let out = unsafe { out.as_mut() }.ok_or("null reflection output")?;
-+        *out = std::ptr::null_mut();
-+        if name.is_null() { return Err("null function name".into()); }
-+        // SAFETY: the caller's contract.
-+        let name = unsafe { CStr::from_ptr(name) }.to_str().map_err(e("function name"))?;
-+        let reflection = get(library)?.0.reflection_for_function_with_name(name).map_err(e("function reflection"))?;
-+        *out = function_reflection_handle(reflection)?;
-+        Ok(true)
-+    })
-+}
-+
- /// The reflection of the render pipeline `descriptor` describes: `{"vertex":[...],"fragment":[...]}`.
- #[unsafe(no_mangle)]
- pub extern "C" fn nmb_render_pipeline_reflection(descriptor: *const NmbRenderPipelineDescriptor) -> *mut NmbReflection {
 diff --git a/NativeMetalFunctionMetadata.h b/NativeMetalFunctionMetadata.h
 new file mode 100644
-index 0000000..753e4be
+index 0000000..904881f
 --- /dev/null
 +++ b/NativeMetalFunctionMetadata.h
-@@ -0,0 +1,139 @@
+@@ -0,0 +1,145 @@
 +// SPDX-License-Identifier: MIT
 +// Metal's public ARGR table describes value parameters of external functions.
 +// It is separate from RFLT, which describes resource bindings in compiled stages.
@@ -319,13 +250,19 @@ index 0000000..753e4be
 +   if(!placed || metadataOffset>publicSize || publicSize-metadataOffset<4)return nil;
 +   const uint8_t *block=file+publicAt+metadataOffset;uint32_t blockSize;memcpy(&blockSize,block,4);
 +   if(blockSize<8 || blockSize>publicSize-metadataOffset)return nil;
-+   NBPublicMetadataReader metadata{block+4,blockSize-4};NSDictionary *answer=nil;
++   NBPublicMetadataReader metadata{block+4,blockSize-4};NSMutableDictionary *answer=nil;
 +   while(metadata.at<metadata.length) {
 +    const uint8_t *tag;if(!metadata.take(4,&tag))return nil;
 +    if(!memcmp(tag,"ENDT",4))return answer;
 +    uint16_t bytes;const uint8_t *value;if(!metadata.word(&bytes) || !metadata.take(bytes,&value))return nil;
++    if(!memcmp(tag,"RETR",4)) {
++     *found=true;if(answer[@"returnType"])return nil;
++     NBPublicMetadataReader result{value,bytes};uint8_t kind;if(!result.word(&kind))return nil;
++     NSDictionary *type=result.type(kind);if(!type || result.at!=result.length)return nil;
++     if(!answer)answer=[NSMutableDictionary dictionary];answer[@"returnType"]=type;continue;
++    }
 +    if(memcmp(tag,"ARGR",4))continue;
-+    *found=true;if(answer)return nil;
++    *found=true;if(answer[@"bindings"])return nil;
 +    NBPublicMetadataReader arguments{value,bytes};uint8_t argumentCount;if(!arguments.word(&argumentCount))return nil;
 +    NSMutableArray *bindings=[NSMutableArray array];
 +    for(unsigned j=0;j<argumentCount;j++) {
@@ -336,7 +273,7 @@ index 0000000..753e4be
 +                          @"used":@YES,@"argument":@NO,@"publicType":details}];
 +    }
 +    if(arguments.at!=arguments.length)return nil;
-+    answer=@{@"bindings":bindings};
++    if(!answer)answer=[NSMutableDictionary dictionary];answer[@"bindings"]=bindings;
 +   }
 +   return nil;
 +  }
@@ -344,3 +281,70 @@ index 0000000..753e4be
 + }
 + return nil;
 +}
+diff --git a/bridge/NativeMetalObjects.h b/bridge/NativeMetalObjects.h
+index b93b96b..66c2e49 100644
+--- a/bridge/NativeMetalObjects.h
++++ b/bridge/NativeMetalObjects.h
+@@ -226,6 +226,10 @@ void nmb_render_pipeline_release(NmbRenderPipeline *);
+ typedef struct NmbReflection NmbReflection;
+ NmbReflection *nmb_render_pipeline_reflection(const struct NmbRenderPipelineDescriptor *);
+ NmbReflection *nmb_compute_pipeline_reflection(const struct NmbComputePipelineDescriptor *);
++/* Original Metal function metadata. Success with *out==NULL means the
++ * library has no reflection; errors return false. Never invent bindings. */
++bool nmb_function_reflection(const NmbFunction *, NmbReflection **out);
++bool nmb_library_function_reflection(const NmbLibrary *, const char *name, NmbReflection **out);
+ const char *nmb_reflection_json(const NmbReflection *);
+ void nmb_reflection_release(NmbReflection *);
+ 
+diff --git a/bridge/NativeMetalObjects.rs b/bridge/NativeMetalObjects.rs
+index 0fef320..7f97f68 100644
+--- a/bridge/NativeMetalObjects.rs
++++ b/bridge/NativeMetalObjects.rs
+@@ -2007,6 +2007,47 @@ fn reflection_handle(json: String) -> Result<*mut NmbReflection, String> {
+     Ok(boxed(NmbReflection(std::ffi::CString::new(json).map_err(|_| "a NUL in the reflection".to_string())?)))
+ }
+ 
++fn function_reflection_handle(reflection: Option<metal2vulkan::reflection::FunctionReflection>) -> Result<*mut NmbReflection, String> {
++    let Some(reflection) = reflection else { return Ok(std::ptr::null_mut()); };
++    let mut json = String::from("{");
++    reflection_json::stage(&mut json, "bindings", reflection.bindings());
++    json.push('}');
++    reflection_handle(json)
++}
++
++/// # Safety
++/// `out` is writable; the function handle remains alive for this call.
++#[unsafe(no_mangle)]
++pub unsafe extern "C" fn nmb_function_reflection(function: *const NmbFunction, out: *mut *mut NmbReflection) -> bool {
++    guard(false, || {
++        // SAFETY: the caller's contract.
++        let out = unsafe { out.as_mut() }.ok_or("null reflection output")?;
++        *out = std::ptr::null_mut();
++        let descriptor = get(function)?.0.function_descriptor();
++        let reflection = descriptor.function.reflection(&metal2vulkan::Budget::standard()).map_err(e("function reflection"))?;
++        *out = function_reflection_handle(reflection)?;
++        Ok(true)
++    })
++}
++
++/// # Safety
++/// `name` is a C string, `out` is writable, and the library remains alive.
++#[unsafe(no_mangle)]
++pub unsafe extern "C" fn nmb_library_function_reflection(library: *const NmbLibrary, name: *const c_char,
++                                                        out: *mut *mut NmbReflection) -> bool {
++    guard(false, || {
++        // SAFETY: the caller's contract.
++        let out = unsafe { out.as_mut() }.ok_or("null reflection output")?;
++        *out = std::ptr::null_mut();
++        if name.is_null() { return Err("null function name".into()); }
++        // SAFETY: the caller's contract.
++        let name = unsafe { CStr::from_ptr(name) }.to_str().map_err(e("function name"))?;
++        let reflection = get(library)?.0.reflection_for_function_with_name(name).map_err(e("function reflection"))?;
++        *out = function_reflection_handle(reflection)?;
++        Ok(true)
++    })
++}
++
+ /// The reflection of the render pipeline `descriptor` describes: `{"vertex":[...],"fragment":[...]}`.
+ #[unsafe(no_mangle)]
+ pub extern "C" fn nmb_render_pipeline_reflection(descriptor: *const NmbRenderPipelineDescriptor) -> *mut NmbReflection {

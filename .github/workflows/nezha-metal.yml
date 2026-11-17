@@ -1,7 +1,7 @@
-name: nezha iPhone27 Camera087 GPU051 function creation and arguments
+name: nezha iPhone27 Camera087b GPU051 function creation and arguments
 on:
   push:
-    branches: [codex/ios27-camera087-gpu051-function-spi-metal-20261118]
+    branches: [codex/ios27-camera087b-gpu051-function-types-metal-20261118]
   workflow_dispatch:
 permissions:
   contents: read
@@ -67,6 +67,9 @@ jobs:
           echo "NMB_HOST_LOADER=$(brew --prefix molten-vk)/lib/libMoltenVK.dylib" >> "$GITHUB_ENV"
       - name: Prepare the exact public source and patch inputs
         run: device/ci/gpu-userland/logrun prepare python3 device/ci/gpu-userland/prepare.py --unixnu unixnu --record "$LOGS/sources.json"
+      - name: Check production public parameter metadata before runtime compilation
+        id: camera_public
+        run: device/ci/gpu-userland/logrun camera-public python3 device/ci/gpu-userland/check-camera-public.py --unixnu unixnu --logs "$LOGS"
       - name: Exercise actual Metal limits and ARC memory-pressure lifetime
         id: icon_limits
         run: device/ci/gpu-userland/logrun icon-limits python3 device/ci/gpu-userland/check-icon-limits.py --source unixnu/drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm --out "$LOGS/icon-limits"
@@ -170,6 +173,7 @@ jobs:
           OUTCOME_PIPELINE_CACHE: ${{ steps.pipeline_cache.outcome }}
           OUTCOME_ICON_LIMITS: ${{ steps.icon_limits.outcome }}
           OUTCOME_FUNCTION_CONSTANT: ${{ steps.function_constant.outcome }}
+          OUTCOME_CAMERA_PUBLIC: ${{ steps.camera_public.outcome }}
           OUTCOME_CAMERA_FUNCTION_SPI: ${{ steps.camera_function_spi.outcome }}
           OUTCOME_EXTERN_FUNCTION: ${{ steps.extern_function.outcome }}
         run: |
@@ -218,6 +222,7 @@ jobs:
           PIPELINE_CACHE: ${{ steps.pipeline_cache.outcome }}
           ICON_LIMITS: ${{ steps.icon_limits.outcome }}
           FUNCTION_CONSTANT: ${{ steps.function_constant.outcome }}
+          CAMERA_PUBLIC: ${{ steps.camera_public.outcome }}
           CAMERA_FUNCTION_SPI: ${{ steps.camera_function_spi.outcome }}
           EXTERN_FUNCTION: ${{ steps.extern_function.outcome }}
         run: |
@@ -238,6 +243,7 @@ jobs:
           test "$ICON_LIMITS" = success
           test "$EXTERN_FUNCTION" = success
           test "$FUNCTION_CONSTANT" = success
+          test "$CAMERA_PUBLIC" = success
           test "$CAMERA_FUNCTION_SPI" = success
           test "$BUFFER_RESERVE" = skipped
           test "$VULKAN_OPERATIONS" = skipped

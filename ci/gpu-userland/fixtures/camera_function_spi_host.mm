@@ -56,6 +56,7 @@ static NSData *publicArgumentsMetallib(NSData *payload) {
  };
  const char name[]="public_values";const uint8_t type=5;const uint64_t offsets[3]={0,0,0};
  tag(entry,"NAME",name,sizeof name);tag(entry,"TYPE",&type,1);tag(entry,"OFFT",offsets,24);entry.insert(entry.end(),{'E','N','D','T'});
+ const uint8_t returned=6;tag(metadata,"RETR",&returned,1);
  tag(metadata,"ARGR",payload.bytes,(uint16_t)payload.length);metadata.insert(metadata.end(),{'E','N','D','T'});
  uint32_t entrySize=entry.size(),metadataSize=metadata.size(),count=1;
  memcpy(entry.data(),&entrySize,4);memcpy(metadata.data(),&metadataSize,4);
@@ -73,6 +74,7 @@ static NBFunction *publicFunction(NSData *payload) {
 }
 
 static unsigned publicArgumentCases() {
+ fprintf(stderr,"camera-function-consumer: public metadata start\n");
  unsigned checks=0;
  // Authored scalar, vector, texture-array, sampler, array, pointer and struct.
  NSMutableData *payload=[NSMutableData data];uint8_t count=8;[payload appendBytes:&count length:1];
@@ -88,10 +90,12 @@ static unsigned publicArgumentCases() {
  [payload appendBytes:"field" length:6];element=29;uint32_t index=7;
  [payload appendBytes:&element length:1];[payload appendBytes:&index length:4];argument("half",16);
  NBFunction *function=publicFunction(payload);NSArray *arguments=function.arguments;
+ fprintf(stderr,"camera-function-consumer: public values count=%lu\n",(unsigned long)arguments.count);
  assert(function && !function.handle && arguments.count==8);++checks;
  NBArgument *scalar=arguments[0],*vector=arguments[1],*texture=arguments[2],*sampler=arguments[3],*array=arguments[4],*pointer=arguments[5],*structure=arguments[6];
  assert([scalar.name isEqualToString:@"scalar"] && (NSUInteger)scalar.type==18 && scalar.index==0 && scalar.isActive && !scalar.isArgument);++checks;
  assert(scalar.dataTypeDescription.dataType==MTLDataTypeFloat && vector.dataTypeDescription.dataType==MTLDataTypeFloat4);++checks;
+ fprintf(stderr,"camera-function-consumer: scalar/vector types passed\n");
  MTLArrayType *textureArray=(MTLArrayType *)texture.dataTypeDescription;
  assert(textureArray.arrayLength==2 && textureArray.elementType==MTLDataTypeTexture && textureArray.stride==0);++checks;
  MTLTextureReferenceType *textureType=textureArray.elementTextureReferenceType;
@@ -104,6 +108,7 @@ static unsigned publicArgumentCases() {
  MTLStructType *structType=(MTLStructType *)structure.dataTypeDescription;MTLStructMember *member=[structType memberByName:@"field"];
  assert(structType.members.count==1 && member.dataType==MTLDataTypeInt && member.offset==0 && member.argumentIndex==7);++checks;
  assert(function.arguments==arguments && scalar.dataTypeDescription==scalar.dataTypeDescription);++checks;
+ assert(function.returnType.dataType==MTLDataTypeFloat4 && function.returnType==function.returnType);++checks;
  uint8_t empty=0;assert(publicFunction([NSData dataWithBytes:&empty length:1]).arguments.count==0);++checks;
  NSMutableData *shortened=[payload mutableCopy];shortened.length--;assert(!publicFunction(shortened).arguments);++checks;
  const uint8_t missingNul[]={1,'x'};assert(!publicFunction([NSData dataWithBytes:missingNul length:sizeof missingNul]).arguments);++checks;
@@ -111,6 +116,8 @@ static unsigned publicArgumentCases() {
 }
 
 int main(int argc,char **argv) {@autoreleasepool {
+ setvbuf(stdout,nullptr,_IONBF,0);setvbuf(stderr,nullptr,_IONBF,0);
+ fprintf(stderr,"camera-function-consumer: entered argc=%d\n",argc);
  assert(argc==4 || argc==2);unsigned checks=publicArgumentCases();
  if(argc==2) {
   assert(!strcmp(argv[1],"public"));printf("PASS Camera public metadata: %u cases\n",checks);return 0;
@@ -122,11 +129,13 @@ int main(int argc,char **argv) {@autoreleasepool {
  assert(![cache newFunctionWithName:@"absent" constantValues:values functionCache:opaque error:&error] && error.code==7);++checks;
  assert(cache.calls==2 && cache.askedValues==values);++checks;
  NBFunction *unbacked=[NBFunction new];assert(!unbacked.arguments && unbacked.argumentsRead);++checks;
+ fprintf(stderr,"camera-function-consumer: caches and no reflection passed; opening host runtime\n");
  NmbDevice *device=nmb_device_open(argv[1],argv[2]);assert(device);++checks;
  NSData *air=[NSData dataWithContentsOfFile:@(argv[3])];assert(air.length);++checks;
  for(bool tagged:{false,true}) {
   NSData *bytes=reflectionMetallib(air,tagged);
   NmbLibrary *handle=nmb_library_new(device,bytes.bytes,bytes.length,false);assert(handle);++checks;
+  fprintf(stderr,"camera-function-consumer: actual reflection library tagged=%d loaded\n",tagged);
   NBLibrary *library=[NBLibrary new];library.handle=handle;library.storage=bytes;library.bytes=(const uint8_t *)bytes.bytes;library.length=bytes.length;
   NBFunction *function=(NBFunction *)[library newFunctionWithName:@"reflection_tables"];assert(function);++checks;
   NSArray *arguments=function.arguments;

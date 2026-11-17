@@ -33,10 +33,14 @@ executed = subprocess.run([str(out/'consumer'), loader, str(out/'cache'), str(ou
                           env=dict(os.environ, SHENG_DIAG='0'))
 (out/'run.log').write_text(executed.stdout+executed.stderr)
 matched = re.search(r'PASS Camera function SPI: (\d+) ', executed.stdout)
-assert executed.returncode == 0 and matched and int(matched[1]) == 31, executed.stdout+executed.stderr
+(out/'exit.json').write_text(json.dumps(dict(returncode=executed.returncode, stdout_bytes=len(executed.stdout), stderr_bytes=len(executed.stderr)))+'\n')
+if executed.returncode:
+    debug=subprocess.run(['xcrun','lldb','--batch','-o','run','-o','bt','--',str(out/'consumer'),loader,str(out/'cache'),str(out/'tables.air')],capture_output=True,text=True,timeout=90,env=dict(os.environ,SHENG_DIAG='0'))
+    (out/'failure-backtrace.log').write_text(debug.stdout+debug.stderr)
+assert executed.returncode == 0 and matched and int(matched[1]) == 32, str(executed.returncode)+' '+executed.stdout+executed.stderr
 sha = lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
-report = dict(passed=True, checks=31, production_cache_selectors_executed=True,
-              name_constants_and_error_preserved=True, public_ARGR_cases=13,
+report = dict(passed=True, checks=32, production_cache_selectors_executed=True,
+              name_constants_and_error_preserved=True, public_ARGR_cases=14,
               public_parameters_independent_of_RFLT=True, actual_AIR_reflection_executed=True,
               untagged_reflection_returns_nil=True, repeated_arguments_cached=True,
               source_sha256=sha(kit/'NativeBridgeMetalFrontend.mm'),

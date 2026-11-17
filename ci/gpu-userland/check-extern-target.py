@@ -187,7 +187,7 @@ def verify(binary, map_path):
         assert method['imp'] == link_address('-[NBLibrary ' + selector + ']')
         assert method['imp'] in image.function_starts()
         camera_methods[selector] = dict(types=method['types'], IMP=hex(method['imp']))
-    for class_name, selector in (('NBFunction', 'arguments'), ('NBArgument', 'dataTypeDescription')):
+    for class_name, selector in (('NBFunction', 'arguments'), ('NBFunction', 'returnType'), ('NBArgument', 'dataTypeDescription')):
         class_ro = pointer(symbols['_OBJC_CLASS_$_' + class_name] + 32)
         methods_at = pointer(class_ro + 32)
         method_flags, count = struct.unpack('<II', image.read(methods_at, 8))
