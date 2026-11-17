@@ -1,0 +1,971 @@
+diff --git a/README.md b/README.md
+index 260e9ba..609c41f 100644
+--- a/README.md
++++ b/README.md
+@@ -262,3 +262,7 @@ Freed runtime-owned buffer backing uses the existing spare cache, with its
+ 64 MiB buffer budget, ten-second expiry and pressure release. Foreground
+ allocations can reuse the original mapping and address object before another
+ native allocation. Imported resources retain their owner and release ordering.
++
++Pipeline object collection processes only objects whose last holder was released
++since the preceding collection, using the upstream runtime release queue. It
++retains the exact object keys, destruction order and live shader/layout holds.
+diff --git a/bridge/patches/0044-released-pipeline-objects-only.patch b/bridge/patches/0044-released-pipeline-objects-only.patch
+new file mode 100644
+index 0000000..0a6fb1a
+--- /dev/null
++++ b/bridge/patches/0044-released-pipeline-objects-only.patch
+@@ -0,0 +1,953 @@
++--- a/crates/metal2vulkan-runtime/README.md
+++++ b/crates/metal2vulkan-runtime/README.md
++@@ -715,3 +715,7 @@
++ incorporates) are the texts.
++ 
++ Unused runtime-owned buffer backing now joins the existing spare cache. Foreground allocations can reuse its mapping and address buffer before another native allocation. Buffer spares retain the shared 64 MiB budget, expire after ten seconds and are released on memory pressure or allocation failure. Imported memory keeps its original owner and release ordering.
+++
+++Pipeline object maps collect only objects whose last holder was released since
+++the preceding collection. Live modules, samplers, layouts and linked pipeline
+++parts retain their original ownership and destruction order.
++--- a/crates/metal2vulkan-runtime/src/pipeline/content_keyed.rs
+++++ b/crates/metal2vulkan-runtime/src/pipeline/content_keyed.rs
++@@ -5,35 +5,46 @@
++ //! - **Exact.** An object is found by its whole content (the map hashes it, then compares it):
++ //!   two variants share one only where the content that made it is the same.
++ //! - **The device's, destroyed by the map alone**. An object keeps no device functions and has no
++-//!   `Drop` that reaches Vulkan: a holder's `Arc` (a variant's objects, a kept instance's,
++-//!   `kept.rs`) is a share, a count, never a destructor. Only the map destroys an object
+++//!   `Drop` that reaches Vulkan: a holder's [`Share`] (a variant's objects, a kept instance's,
+++//!   `kept.rs`) is a count, never a destructor. Only the map destroys an object
++ //!   ([`Owned::destroy`], through the device it is handed, `DeviceShared::vk`), on one of three
++ //!   paths, each returning what it let go ([`Gone`]), destroyed once the map's lock is released:
++-//!   - [`ContentKeyed::settle`], in a program's call, once the map's is the object's only share;
+++//!   - [`ContentKeyed::settle`], in a program's call, once no share of the object is left;
++ //!   - [`ContentKeyed::sweep`], on any thread, for the objects of a host step's or a pool piece's
++ //!     own (below) that nothing else holds;
++ //!   - [`ContentKeyed::drain`], at the device's teardown (`DeviceShared::drop`), after the kept
++ //!     variants': everything left.
++ //!
++ //!   So no object is destroyed before the device's teardown while anything else shares it (a new
++-//!   holder takes a share from the map, under its lock, so none appears after the check), and none
++-//!   after it: the map is the device's, so a destruction always has a live device. The check is
++-//!   `Arc::get_mut`, whose Acquire orders every use a released holder made (a pool piece's
++-//!   `vkCreate*Pipelines` from a module, on its thread) before the destruction, as the last
++-//!   drop's fence did when the object destroyed itself; at the teardown the device's own last
++-//!   drop does (every holder's use came before it let go of its device, or of what held its
++-//!   share). A share left at the teardown is one whose holder is dropping its own `Device` right
++-//!   then (a variant whose last device handle goes before its fields), and a share is used only
++-//!   through its holder's device, which is gone: dropping it calls nothing. The order of a
++-//!   holder's fields therefore decides nothing (the earlier rule, a destroying `Drop` of the
++-//!   object's own, gave).
+++//!   share is taken from the map, under its lock, or cloned from a live one, so none appears
+++//!   after the check), and none after it: the map is the device's, so a destruction always has a
+++//!   live device. The check reads the object's count of shares, with an Acquire that orders every
+++//!   use a released holder made (a pool piece's `vkCreate*Pipelines` from a module, on its thread)
+++//!   before the destruction, as each share's Release drop publishes it; at the teardown the
+++//!   device's own last drop does (every holder's use came before it let go of its device, or of
+++//!   what held its share). A share left at the teardown is one whose holder is dropping its own
+++//!   `Device` right then (a variant whose last device handle goes before its fields), and a share
+++//!   is used only through its holder's device, which is gone: dropping it calls nothing. The
+++//!   order of a holder's fields therefore decides nothing (the earlier rule, a destroying `Drop`
+++//!   of the object's own, gave).
+++//! - **A settle visits only what was released.** The share whose drop leaves an object of the map
+++//!   with none queues the object's place in the order of insertion on its map's release queue (a
+++//!   leaf lock: nothing else is taken under it), once until a settle takes it. A settle takes the
+++//!   queue, and destroys each queued object that still has no share, checked under the map's lock,
+++//!   where alone a share can be taken anew; one a lookup took a share of since stays, and is queued
+++//!   again when that share goes. So a settle lets go of exactly the objects whose shares all went,
+++//!   which a walk of every object found, in the same order, at the same calls; but its work is the
+++//!   objects released since the last settle, not every object the device holds, and one with
+++//!   nothing released takes the queue's lock and finds it empty. The device's modules, layouts,
+++//!   sampler sets, graphics pipeline libraries and linked pipelines are all such maps
+++//!   (`objects.rs`, `shared_layouts.rs`, `libraries.rs`): a compute state's creation settles them
+++//!   all, the render libraries among them, and walks none.
++ //! - **On the program's threads, in the program's order** (the owner's HITCH rule 1). Only a
++ //!   program's call ([`program_call`]: a thread of the program's or one running its code, outside
++-//!   a host step and a pool piece) inserts ([`ContentKeyed::insert`]) or settles, each a debug
++-//!   assertion; a host step or a pool piece only looks up ([`ContentKeyed::get`]) and, on a miss,
++-//!   makes an object of its own that no lookup finds. Settling removes in the order of insertion.
++-//!   What remains timing's is only whether a command buffer let its variants go before a settle,
++-//!   as for the kept variants.
+++//!   a host step and a pool piece) inserts or settles, each a debug assertion; a host step or a
+++//!   pool piece only looks up ([`ContentKeyed::get`]) and, on a miss, makes an object of its own
+++//!   that no lookup finds. Settling removes in the order of insertion. What remains timing's is
+++//!   only whether a command buffer let its variants go before a settle, as for the kept variants.
++ //! - **The exception: an object of a host step's own.** No lookup finds it, so it changes nothing
++ //!   another variant takes; the map keeps it apart (`own`) only to destroy it. For a variant a
++ //!   command buffer's host step made (a device-generated replay's, `generated_execute.rs`, which
++@@ -41,9 +52,11 @@
++ //!   command buffer releases its segment, and its own objects go at the next sweep or settle (the
++ //!   next variant made, on any thread) or at the teardown.
++ 
++-use std::collections::HashMap;
+++use crate::device::lock;
+++use std::collections::{BTreeMap, BTreeSet, HashMap};
++ use std::hash::Hash;
++-use std::sync::Arc;
+++use std::sync::atomic::{AtomicUsize, Ordering};
+++use std::sync::{Arc, Mutex};
++ 
++ /// Whether this call is the program's own (the module docs): a thread of the program's, or a
++ /// runtime thread running the program's code (`exit_guard::in_program_call`), and neither a
++@@ -62,22 +75,107 @@
++     fn destroy(&self, owner: &C);
++ }
++ 
+++/// A map's release queue (the module docs): the places in its order of insertion of the objects
+++/// whose last share went since its last settle, each once. Its lock is a leaf: a share's drop
+++/// takes it holding any other, and nothing is taken under it.
+++type Released = Mutex<BTreeSet<u64>>;
+++
+++/// One object, with the count of its holders' shares.
+++struct Held<T> {
+++    object: T,
+++    /// The [`Share`]s of it that live.
+++    shares: AtomicUsize,
+++    /// Its place in its map's order of insertion.
+++    at: u64,
+++    /// The release queue of the map whose lookups find it; `None` for an object no lookup finds
+++    /// (a host step's own, which a sweep looks at, or one no map holds).
+++    released: Option<Arc<Released>>,
+++}
+++
+++/// A holder's share of an object of a device's map (the module docs): a count the map reads,
+++/// never a destructor. Its drop that leaves an object of the map with no share queues it for the
+++/// map's next settle.
+++pub(crate) struct Share<T>(Arc<Held<T>>);
+++
+++impl<T> Share<T> {
+++    /// A new share of `held`.
+++    fn of(held: &Arc<Held<T>>) -> Share<T> {
+++        held.shares.fetch_add(1, Ordering::Relaxed);
+++        Share(Arc::clone(held))
+++    }
+++
+++    /// The share of `object`, which no map holds: dropping it destroys nothing, as there is
+++    /// nothing to destroy (a layout's empty sampler set).
+++    pub(crate) fn unmapped(object: T) -> Share<T> {
+++        let held = Held {
+++            object,
+++            shares: AtomicUsize::new(0),
+++            at: 0,
+++            released: None,
+++        };
+++        Share::of(&Arc::new(held))
+++    }
+++}
+++
+++impl<T> Clone for Share<T> {
+++    fn clone(&self) -> Share<T> {
+++        // As `Arc::clone`: a live share holds the count above zero, so the new one needs no
+++        // ordering of its own.
+++        Share::of(&self.0)
+++    }
+++}
+++
+++impl<T> Drop for Share<T> {
+++    fn drop(&mut self) {
+++        // Release: every use made through this share comes before the settle that reads the
+++        // count it leaves (its Acquire).
+++        if self.0.shares.fetch_sub(1, Ordering::Release) != 1 {
+++            return;
+++        }
+++        // The last share: queued for the map's settle, which checks the count again under the
+++        // queue's lock and the map's. A count read here as zero and taken back up by a lookup
+++        // before that settle leaves the object in the map.
+++        if let Some(released) = &self.0.released {
+++            lock(released).insert(self.0.at);
+++        }
+++    }
+++}
+++
+++impl<T> std::ops::Deref for Share<T> {
+++    type Target = T;
+++
+++    fn deref(&self) -> &T {
+++        &self.0.object
+++    }
+++}
+++
++ /// The device's objects of one kind, by their content `K`.
++ pub(crate) struct ContentKeyed<K, T> {
++-    /// Each object, with its place in the order of insertion.
++-    entries: HashMap<K, (u64, Arc<T>)>,
+++    /// Each object found by lookups, by its content.
+++    entries: HashMap<K, Arc<Held<T>>>,
+++    /// Each such object's content, by its place in the order of insertion.
+++    keys: BTreeMap<u64, K>,
++     /// The objects of a host step's or a pool piece's own, which no lookup finds, in the order
++     /// they were made: held only until a sweep finds nothing else sharing them.
++-    own: Vec<Arc<T>>,
+++    own: Vec<Arc<Held<T>>>,
+++    /// The places of the objects whose last share went since the last settle.
+++    released: Arc<Released>,
++     next: u64,
+++    /// The objects the settles looked at (`tests::content_keyed`'s check of a settle's work).
+++    #[cfg(test)]
+++    looked_at: u64,
++ }
++ 
++ impl<K, T> Default for ContentKeyed<K, T> {
++     fn default() -> Self {
++         ContentKeyed {
++             entries: HashMap::new(),
+++            keys: BTreeMap::new(),
++             own: Vec::new(),
+++            released: Arc::default(),
++             next: 0,
+++            #[cfg(test)]
+++            looked_at: 0,
++         }
++     }
++ }
++@@ -85,7 +183,7 @@
++ /// What a map let go of, in its order: destroyed through the owner once the map's lock is
++ /// released ([`Gone::destroy`]).
++ #[must_use = "the map let these go: destroy them through the device"]
++-pub(crate) struct Gone<T>(Vec<Arc<T>>);
+++pub(crate) struct Gone<T>(Vec<Arc<Held<T>>>);
++ 
++ impl<T> Gone<T> {
++     /// Destroy each, in order, through `owner`.
++@@ -93,70 +191,107 @@
++     where
++         T: Owned<C>,
++     {
++-        for object in &self.0 {
++-            object.destroy(owner);
++-        }
++-    }
++-}
++-
++-impl<K: Hash + Eq, T> ContentKeyed<K, T> {
++-    /// The object of `key`, if the map holds one.
++-    pub(crate) fn get(&self, key: &K) -> Option<Arc<T>> {
++-        self.entries.get(key).map(|(_, object)| Arc::clone(object))
++-    }
++-
++-    /// Hold `object` as the one of `key` (a program's call made it; none was there).
++-    pub(crate) fn insert(&mut self, key: K, object: &Arc<T>) {
+++        for held in &self.0 {
+++            held.object.destroy(owner);
+++        }
+++    }
+++}
+++
+++impl<K: Hash + Eq + Clone, T> ContentKeyed<K, T> {
+++    /// A share of the object of `key`, if the map holds one.
+++    pub(crate) fn get(&self, key: &K) -> Option<Share<T>> {
+++        self.entries.get(key).map(Share::of)
+++    }
+++
+++    /// Hold `object` as the one of `key` (a program's call made it; none was there): a share of
+++    /// it.
+++    fn insert(&mut self, key: K, object: T) -> Share<T> {
++         debug_assert!(
++             program_call(),
++             "a device's map changed outside a program's call"
++         );
++         let at = self.next;
++         self.next += 1;
++-        self.entries.insert(key, (at, Arc::clone(object)));
++-    }
++-
++-    /// The object of `key`, else one `make` makes now (and whether it was made): found by later
++-    /// lookups where `program` (a program's call made it), else the caller's own (a host step's
++-    /// or a pool piece's), which the map holds apart until a sweep.
+++        let held = Arc::new(Held {
+++            object,
+++            shares: AtomicUsize::new(0),
+++            at,
+++            released: Some(Arc::clone(&self.released)),
+++        });
+++        let share = Share::of(&held);
+++        self.keys.insert(at, key.clone());
+++        self.entries.insert(key, held);
+++        share
+++    }
+++
+++    /// A share of the object of `key`, else of one `make` makes now (and whether it was made):
+++    /// found by later lookups where `program` (a program's call made it), else the caller's own
+++    /// (a host step's or a pool piece's), which the map holds apart until a sweep.
++     pub(crate) fn get_or_make<E>(
++         &mut self,
++         key: K,
++         program: bool,
++         make: impl FnOnce() -> Result<T, E>,
++-    ) -> Result<(Arc<T>, bool), E> {
+++    ) -> Result<(Share<T>, bool), E> {
++         if let Some(object) = self.get(&key) {
++             return Ok((object, false));
++         }
++-        let object = Arc::new(make()?);
++-        match program {
++-            true => self.insert(key, &object),
++-            false => self.own.push(Arc::clone(&object)),
++-        }
++-        Ok((object, true))
++-    }
++-
++-    /// Let go of every object the map alone holds, those found by lookups in the order they were
++-    /// inserted, then those of a host step's own: in a program's call.
+++        let object = make()?;
+++        let share = match program {
+++            true => self.insert(key, object),
+++            false => {
+++                let held = Arc::new(Held {
+++                    object,
+++                    shares: AtomicUsize::new(0),
+++                    at: 0,
+++                    released: None,
+++                });
+++                self.own.push(Arc::clone(&held));
+++                Share::of(&held)
+++            }
+++        };
+++        Ok((share, true))
+++    }
+++
+++    /// Let go of every object found by lookups whose last share went since the last settle and
+++    /// that none was taken of since, in the order they were inserted, then of the objects of a
+++    /// host step's own that nothing holds: in a program's call. Only the queued objects are
+++    /// looked at (the module docs).
++     pub(crate) fn settle(&mut self) -> Gone<T> {
++         debug_assert!(
++             program_call(),
++             "a device's map settled outside a program's call"
++         );
++-        let mut gone: Vec<(u64, Arc<T>)> = Vec::new();
++-        self.entries.retain(|_, (at, object)| {
++-            // `Arc::get_mut` answers whether the map's is the only share with an Acquire, so
++-            // every earlier use by a holder that let its share go (a pool piece's
++-            // `vkCreate*Pipelines` from a module) happens before the destruction, as the last
++-            // drop's fence ordered it (the consumer's review).
++-            if Arc::get_mut(object).is_none() {
++-                return true;
+++        let mut gone = Vec::new();
+++        {
+++            // Held while the counts are read: a share whose drop leaves none after this read
+++            // queues its object again once the lock is free, for the next settle; one that left
+++            // none before it is read as none here.
+++            let mut released = lock(&self.released);
+++            while let Some(at) = released.pop_first() {
+++                #[cfg(test)]
+++                {
+++                    self.looked_at += 1;
+++                }
+++                // Gone already: queued again after a settle took it, or drained.
+++                let Some(key) = self.keys.get(&at) else {
+++                    continue;
+++                };
+++                let Some(held) = self.entries.get(key) else {
+++                    continue;
+++                };
+++                // Acquire: every use by a holder that let its share go happens before the
+++                // destruction (the module docs). A share taken since by a lookup keeps it.
+++                if held.shares.load(Ordering::Acquire) != 0 {
+++                    continue;
+++                }
+++                if let Some(key) = self.keys.remove(&at) {
+++                    if let Some(held) = self.entries.remove(&key) {
+++                        gone.push(held);
+++                    }
+++                }
++             }
++-            gone.push((*at, Arc::clone(object)));
++-            false
++-        });
++-        gone.sort_by_key(|(at, _)| *at);
++-        let mut gone: Vec<Arc<T>> = gone.into_iter().map(|(_, object)| object).collect();
+++        }
++         gone.extend(self.unheld_own());
++         Gone(gone)
++     }
++@@ -168,26 +303,30 @@
++     }
++ 
++     /// The own objects nothing else holds, removed, in the order they were made.
++-    fn unheld_own(&mut self) -> Vec<Arc<T>> {
+++    fn unheld_own(&mut self) -> Vec<Arc<Held<T>>> {
++         let mut gone = Vec::new();
++-        self.own.retain_mut(|object| {
++-            // As in `settle`: unique, with an Acquire.
++-            if Arc::get_mut(object).is_none() {
+++        self.own.retain(|held| {
+++            // As in `settle`: no share left, with an Acquire. No lookup finds an own object, so
+++            // none is taken anew.
+++            if held.shares.load(Ordering::Acquire) != 0 {
++                 return true;
++             }
++-            gone.push(Arc::clone(object));
+++            gone.push(Arc::clone(held));
++             false
++         });
++         gone
++     }
++ 
++     /// Every object, those found by lookups in the order they were inserted, then the own ones:
++-    /// the device's teardown, whatever still shares them.
+++    /// the device's teardown, whatever still shares them. A share left then queues nothing that
+++    /// is destroyed again: its drop finds its place gone from the map.
++     pub(crate) fn drain(&mut self) -> Gone<T> {
++-        let mut all: Vec<(u64, Arc<T>)> = self.entries.drain().map(|(_, entry)| entry).collect();
++-        all.sort_by_key(|(at, _)| *at);
++-        let mut all: Vec<Arc<T>> = all.into_iter().map(|(_, object)| object).collect();
+++        let mut all = Vec::with_capacity(self.entries.len() + self.own.len());
+++        while let Some((_, key)) = self.keys.pop_first() {
+++            all.extend(self.entries.remove(&key));
+++        }
++         all.append(&mut self.own);
+++        lock(&self.released).clear();
++         Gone(all)
++     }
++ }
++@@ -195,7 +334,7 @@
++ #[cfg(test)]
++ mod tests {
++     use super::*;
++-    use std::sync::Mutex;
+++    use std::sync::atomic::AtomicBool;
++ 
++     /// An object whose destruction its owner, a log, records; dropping it records nothing.
++     struct Recorded(u32);
++@@ -213,18 +352,34 @@
++         log.lock().unwrap().clone()
++     }
++ 
+++    /// The object of `n`, made for the program where none is.
+++    fn made(map: &mut ContentKeyed<u32, Recorded>, n: u32) -> Share<Recorded> {
+++        map.get_or_make(n, true, || Ok::<_, ()>(Recorded(n)))
+++            .unwrap()
+++            .0
+++    }
+++
+++    /// The objects a settle of `map` looked at.
+++    fn settled(map: &mut ContentKeyed<u32, Recorded>, log: &Log) -> u64 {
+++        let before = map.looked_at;
+++        map.settle().destroy(log);
+++        map.looked_at - before
+++    }
+++
++     #[test]
++     fn objects_leave_only_when_the_map_alone_holds_them_in_insertion_order() {
++         let log = Log::default();
++         let mut map: ContentKeyed<Vec<u32>, Recorded> = ContentKeyed::default();
++-        let a = Arc::new(Recorded(1));
++-        let b = Arc::new(Recorded(2));
++-        let c = Arc::new(Recorded(3));
++-        map.insert(vec![7, 7], &a);
++-        map.insert(vec![8], &b);
++-        map.insert(vec![9], &c);
+++        let mut make = |key: Vec<u32>, n| {
+++            map.get_or_make(key, true, || Ok::<_, ()>(Recorded(n)))
+++                .unwrap()
+++                .0
+++        };
+++        let a = make(vec![7, 7], 1);
+++        let b = make(vec![8], 2);
+++        let c = make(vec![9], 3);
++         // The same content finds the same object; other content none.
++-        assert!(Arc::ptr_eq(&map.get(&vec![7, 7]).unwrap(), &a));
+++        assert!(std::ptr::eq(&*map.get(&vec![7, 7]).unwrap(), &*a));
++         assert!(map.get(&vec![7]).is_none());
++         // Held by a variant: nothing leaves, nothing is destroyed.
++         map.settle().destroy(&log);
++@@ -264,7 +419,7 @@
++         assert!(fresh);
++         let (again, fresh) = map.get_or_make(6, false, made(60)).unwrap();
++         assert!(!fresh);
++-        assert!(Arc::ptr_eq(&first, &again));
+++        assert!(std::ptr::eq(&*first, &*again));
++         // A failed making leaves nothing.
++         assert!(map
++             .get_or_make(7, true, || Err::<Recorded, ()>(()))
++@@ -335,4 +490,197 @@
++             "a late share destroyed nothing"
++         );
++     }
++-}
+++
+++    /// A share that outlives its map (a holder dropping its device after the teardown) goes with
+++    /// no panic, and leaves nothing behind: neither its object nor the map's release queue.
+++    #[test]
+++    fn a_share_dropped_after_its_map_leaves_nothing() {
+++        let log = Log::default();
+++        let mut map: ContentKeyed<u32, Recorded> = ContentKeyed::default();
+++        let late = made(&mut map, 1);
+++        let copy = late.clone();
+++        let object = Arc::downgrade(&late.0);
+++        let queue = Arc::downgrade(&map.released);
+++        map.drain().destroy(&log);
+++        drop(map);
+++        drop(copy);
+++        drop(late);
+++        assert_eq!(destroyed(&log), vec![1], "destroyed once, at the teardown");
+++        assert!(object.upgrade().is_none(), "the object was freed");
+++        assert!(queue.upgrade().is_none(), "the release queue was freed");
+++    }
+++
+++    /// The bound this fixes: a settle looks only at the objects released since the last, however
+++    /// many the map holds, and at none where none was released.
+++    #[test]
+++    fn a_settle_looks_only_at_what_was_released() {
+++        let log = Log::default();
+++        let mut map: ContentKeyed<u32, Recorded> = ContentKeyed::default();
+++        let mut held: Vec<Share<Recorded>> = (0..10_000).map(|n| made(&mut map, n)).collect();
+++        assert_eq!(
+++            settled(&mut map, &log),
+++            0,
+++            "nothing released, nothing looked at"
+++        );
+++        let released = held.swap_remove(4321);
+++        drop(released);
+++        assert_eq!(settled(&mut map, &log), 1, "one released, one looked at");
+++        assert_eq!(destroyed(&log), vec![4321]);
+++        assert_eq!(settled(&mut map, &log), 0);
+++        assert_eq!(map.entries.len(), 9_999);
+++        drop(held);
+++        assert_eq!(settled(&mut map, &log), 9_999);
+++        assert_eq!(map.entries.len(), 0);
+++    }
+++
+++    /// A share taken from the map after the object's last went, before the settle, keeps the
+++    /// object: the settle looks at it and leaves it, and its next release queues it again. Taken
+++    /// and let go again before the settle, it is queued once.
+++    #[test]
+++    fn a_share_taken_again_before_the_settle_keeps_the_object() {
+++        let log = Log::default();
+++        let mut map: ContentKeyed<u32, Recorded> = ContentKeyed::default();
+++        drop(made(&mut map, 1));
+++        let again = map.get(&1).unwrap();
+++        assert_eq!(settled(&mut map, &log), 1);
+++        assert!(destroyed(&log).is_empty(), "the share taken again keeps it");
+++        assert_eq!(map.entries.len(), 1);
+++        drop(again);
+++        drop(map.get(&1).unwrap());
+++        drop(map.get(&1).unwrap());
+++        assert_eq!(settled(&mut map, &log), 1, "queued once");
+++        assert_eq!(destroyed(&log), vec![1]);
+++        assert!(map.get(&1).is_none());
+++    }
+++
+++    /// A thread of the runtime's (`exit_guard::spawn`, as every thread the runtime starts is),
+++    /// running `f`: a holder's, as a handler thread or a pool piece is, outside the program's
+++    /// calls.
+++    fn holder_thread<T: Send + 'static>(
+++        f: impl FnOnce() -> T + Send + 'static,
+++    ) -> std::thread::JoinHandle<T> {
+++        crate::exit_guard::spawn(std::thread::Builder::new(), f).unwrap()
+++    }
+++
+++    /// The same across threads: one thread lets its share go, another takes one from the map
+++    /// before the settle and holds it through it; the object stays until that share goes, then
+++    /// leaves at the next settle.
+++    #[test]
+++    fn a_share_taken_on_another_thread_before_the_settle_keeps_the_object() {
+++        let log = Log::default();
+++        let map = Arc::new(Mutex::new(ContentKeyed::<u32, Recorded>::default()));
+++        let first = made(&mut lock(&map), 1);
+++        holder_thread(move || drop(first)).join().unwrap();
+++        let (taken, give_back) = std::sync::mpsc::channel::<()>();
+++        let holder = {
+++            let map = Arc::clone(&map);
+++            holder_thread(move || {
+++                let share = lock(&map).get(&1).unwrap();
+++                taken.send(()).unwrap();
+++                // Held until the main thread's settle is done.
+++                std::thread::park();
+++                drop(share);
+++            })
+++        };
+++        give_back.recv().unwrap();
+++        lock(&map).settle().destroy(&log);
+++        assert!(
+++            destroyed(&log).is_empty(),
+++            "the other thread's share keeps it"
+++        );
+++        holder.thread().unpark();
+++        holder.join().unwrap();
+++        lock(&map).settle().destroy(&log);
+++        assert_eq!(destroyed(&log), vec![1]);
+++    }
+++
+++    /// An object whose destruction marks it, and a log of each destroyed once.
+++    struct Marked {
+++        id: u32,
+++        destroyed: AtomicBool,
+++    }
+++
+++    impl Owned<Log> for Marked {
+++        fn destroy(&self, log: &Log) {
+++            assert!(
+++                !self.destroyed.swap(true, Ordering::SeqCst),
+++                "destroyed twice"
+++            );
+++            log.lock().unwrap().push(self.id);
+++        }
+++    }
+++
+++    /// Holders' threads that take shares from the map and let them go while the program's
+++    /// thread makes the objects again and settles the map, as a pool piece's or a handler
+++    /// thread's holders race a program's settle: no object is destroyed while a share of it
+++    /// lives, none twice, and every one made by the end. The program's thread lets its own share
+++    /// go as it makes each object, so a holder's share taken before the next settle is what keeps
+++    /// it: the race between a last drop and a settle.
+++    #[test]
+++    fn settles_racing_shares_destroy_nothing_held() {
+++        const THREADS: usize = 4;
+++        const HOLDS: u32 = 2_000;
+++        const KEYS: u32 = 8;
+++        let log = Log::default();
+++        let map = Arc::new(Mutex::new(ContentKeyed::<u32, Marked>::default()));
+++        let running = Arc::new(AtomicUsize::new(THREADS));
+++        let takers: Vec<_> = (0..THREADS as u32)
+++            .map(|t| {
+++                let (map, running) = (Arc::clone(&map), Arc::clone(&running));
+++                holder_thread(move || {
+++                    let (mut held, mut n) = (0, t);
+++                    while held < HOLDS {
+++                        n = n.wrapping_add(1);
+++                        let Some(share) = lock(&map).get(&(n % KEYS)) else {
+++                            continue;
+++                        };
+++                        let copy = share.clone();
+++                        drop(share);
+++                        assert!(
+++                            !copy.destroyed.load(Ordering::SeqCst),
+++                            "destroyed while held"
+++                        );
+++                        held += 1;
+++                    }
+++                    running.fetch_sub(1, Ordering::SeqCst);
+++                })
+++            })
+++            .collect();
+++        // The program's thread: each key's object made again where a settle let it go, its own
+++        // share let go at once; the settle under a lock of its own, so holders take shares
+++        // between the two.
+++        let mut made = 0u32;
+++        while running.load(Ordering::SeqCst) > 0 {
+++            {
+++                let mut map = lock(&map);
+++                for key in 0..KEYS {
+++                    let (share, fresh) = map
+++                        .get_or_make(key, true, || {
+++                            Ok::<_, ()>(Marked {
+++                                id: made,
+++                                destroyed: AtomicBool::new(false),
+++                            })
+++                        })
+++                        .unwrap();
+++                    made += u32::from(fresh);
+++                    drop(share);
+++                }
+++            }
+++            std::thread::yield_now();
+++            let gone = lock(&map).settle();
+++            gone.destroy(&log);
+++        }
+++        for taker in takers {
+++            taker.join().unwrap();
+++        }
+++        lock(&map).settle().destroy(&log);
+++        let mut destroyed = log.lock().unwrap().clone();
+++        destroyed.sort_unstable();
+++        assert_eq!(
+++            destroyed,
+++            (0..made).collect::<Vec<_>>(),
+++            "each made, destroyed once"
+++        );
+++        assert_eq!(lock(&map).entries.len(), 0);
+++    }
+++}
++--- a/crates/metal2vulkan-runtime/src/pipeline/kept.rs
+++++ b/crates/metal2vulkan-runtime/src/pipeline/kept.rs
++@@ -31,6 +31,7 @@
++ //! - **Teardown.** The device destroys what is left at its teardown (`DeviceShared::drop`), the
++ //!   queue's included.
++ 
+++use super::content_keyed::Share;
++ use super::graphics::GraphicsKey;
++ use super::objects::{SamplerSet, StageObject};
++ use super::shared_layouts::SharedLayout;
++@@ -164,13 +165,13 @@
++ /// after these.
++ pub(crate) struct KeptObjects {
++     pub(crate) stages: Vec<StageObject>,
++-    pub(crate) samplers: Arc<SamplerSet>,
+++    pub(crate) samplers: Share<SamplerSet>,
++     /// Its set layouts and pipeline layout, a share of the device's (`shared_layouts.rs`).
++-    pub(crate) layout: Arc<SharedLayout>,
+++    pub(crate) layout: Share<SharedLayout>,
++     /// The digest the variant's makings' records are named by (`objects::variant_content`).
++     pub(crate) content: metal2vulkan::cache::Hash256,
++     /// Each stage's words' digest (`objects::words_digest`), in stage order.
++-    pub(crate) words: std::sync::Arc<[metal2vulkan::cache::Hash256]>,
+++    pub(crate) words: Arc<[metal2vulkan::cache::Hash256]>,
++ }
++ 
++ /// A kept `VkPipeline`: its place, and whether its specialized notices wait for a draw's first
++--- a/crates/metal2vulkan-runtime/src/pipeline/libraries.rs
+++++ b/crates/metal2vulkan-runtime/src/pipeline/libraries.rs
++@@ -45,14 +45,14 @@
++ //!   libraries hold no shader and keep no record.
++ 
++ use super::budget;
++-use super::content_keyed::{program_call, ContentKeyed, Owned};
+++use super::content_keyed::{program_call, ContentKeyed, Owned, Share};
++ use super::shared_layouts::SharedLayout;
++ use crate::device::{lock, DeviceShared};
++ use crate::error::Error;
++ use crate::release;
++ use ash::vk;
++ use metal2vulkan::cache::Hash256;
++-use std::sync::{Arc, Condvar, Mutex, PoisonError};
+++use std::sync::{Condvar, Mutex, PoisonError};
++ 
++ /// The four parts of a graphics pipeline's state, in the order a linked pipeline takes them.
++ #[derive(Clone, Copy, Debug, PartialEq, Eq)]
++@@ -215,10 +215,10 @@
++ pub(crate) struct Link {
++     pipeline: Library,
++     /// Its four libraries, in [`Part::ALL`]'s order.
++-    parts: [Arc<Library>; 4],
+++    parts: [Share<Library>; 4],
++     /// The layout it is linked with: Vulkan may read a pipeline's creation's objects for as long
++     /// as the pipeline lives.
++-    layout: Arc<SharedLayout>,
+++    layout: Share<SharedLayout>,
++ }
++ 
++ impl Owned<DeviceShared> for Link {
++@@ -232,7 +232,7 @@
++ /// The linked pipeline of a variant's key, with the libraries it is linked from, held while the
++ /// variant's pipeline lives: the device's, which other variants of the same link share.
++ #[derive(Clone)]
++-pub(crate) struct Linked(Arc<Link>);
+++pub(crate) struct Linked(Share<Link>);
++ 
++ /// The device's libraries, by part and content, and its linked pipelines, by link
++ /// (`DeviceShared::libraries`).
++@@ -251,10 +251,10 @@
++         &self,
++         shared: &DeviceShared,
++         names: &[Hash256; 4],
++-        layout: &Arc<SharedLayout>,
+++        layout: &Share<SharedLayout>,
++     ) -> Linked {
++         let program = program_call();
++-        let parts: [Arc<Library>; 4] = std::array::from_fn(|at| {
+++        let parts: [Share<Library>; 4] = std::array::from_fn(|at| {
++             let mut map = lock(&self.parts[at]);
++             let (library, _) = match map.get_or_make(names[at], program, || {
++                 Ok::<Library, std::convert::Infallible>(Library::new())
++@@ -277,7 +277,7 @@
++             Ok::<Link, std::convert::Infallible>(Link {
++                 pipeline: Library::new(),
++                 parts,
++-                layout: Arc::clone(layout),
+++                layout: layout.clone(),
++             })
++         }) {
++             Ok(found) => found,
++@@ -314,7 +314,7 @@
++ 
++ impl Linked {
++     /// Its libraries, in [`Part::ALL`]'s order.
++-    pub(crate) fn parts(&self) -> &[Arc<Library>; 4] {
+++    pub(crate) fn parts(&self) -> &[Share<Library>; 4] {
++         &self.0.parts
++     }
++ 
++@@ -348,7 +348,7 @@
++     use crate::error::internal;
++     use crate::exit_guard;
++     use ash::vk::Handle;
++-    use std::sync::mpsc;
+++    use std::sync::{mpsc, Arc};
++     use std::thread::Builder;
++     use std::time::Duration;
++ 
++--- a/crates/metal2vulkan-runtime/src/pipeline/objects.rs
+++++ b/crates/metal2vulkan-runtime/src/pipeline/objects.rs
++@@ -12,7 +12,7 @@
++ //! layout, by their exact definition (`shared_layouts.rs`). Only the device's maps destroy those:
++ //! a variant's are shares.
++ 
++-use super::content_keyed::{program_call, ContentKeyed, Owned};
+++use super::content_keyed::{program_call, ContentKeyed, Owned, Share};
++ use super::graphics::Notices;
++ use super::kept::{Compiled, Instance, KeptObjects, KeptPipeline, Place};
++ use super::libraries::Linked;
++@@ -59,7 +59,7 @@
++ #[derive(Clone)]
++ pub(crate) struct StageObject {
++     pub(super) stage: vk::ShaderStageFlags,
++-    pub(super) module: Arc<ShaderModule>,
+++    pub(super) module: Share<ShaderModule>,
++     pub(super) entry: CString,
++ }
++ 
++@@ -118,12 +118,12 @@
++ pub(crate) fn sampler_set(
++     device: &Device,
++     descs: Vec<metal2vulkan::vk::SamplerDesc>,
++-) -> Result<(Arc<SamplerSet>, bool), Error> {
+++) -> Result<(Share<SamplerSet>, bool), Error> {
++     if descs.is_empty() {
++         let empty = SamplerSet {
++             samplers: Vec::new(),
++         };
++-        return Ok((Arc::new(empty), false));
+++        return Ok((Share::unmapped(empty), false));
++     }
++     // A warm pass makes no sampler, nor holds the device's (`warm/pass.rs`): either would count
++     // against the device's limit at a moment the program's order does not decide.
++@@ -216,7 +216,7 @@
++ 
++ /// One `VkShaderModule`: the device's module of its SPIR-V, shared by every variant whose stage
++ /// has those exact words ([`ShaderModules`]), or a host step's own. It keeps no device functions
++-/// and has no destroying `Drop`: a holder's `Arc` is a share, and only the device's map destroys
+++/// and has no destroying `Drop`: a holder's `Share` is a count, and only the device's map destroys
++ /// it ([`Owned::destroy`]), once nothing else shares it or at the device's teardown
++ /// (`content_keyed.rs`), so a holder that outlives the device's teardown (a variant whose last
++ /// device handle goes before its stages) calls nothing. On MoltenVK a module keeps the libraries
++@@ -339,7 +339,7 @@
++     device: &Device,
++     spirv: &[u32],
++     digest: &Hash256,
++-) -> Result<Arc<ShaderModule>, Error> {
+++) -> Result<Share<ShaderModule>, Error> {
++     let shared = device.shared();
++     let program = program_call();
++     // The lock is held across the creation, so two of the program's calls never make two
++@@ -397,10 +397,10 @@
++     pub(super) device: Device,
++     /// The stages' modules, in the pipeline's stage order.
++     pub(super) stages: Vec<StageObject>,
++-    samplers: Arc<SamplerSet>,
+++    samplers: Share<SamplerSet>,
++     /// Its set layouts and pipeline layout: the device's of their definition
++     /// (`shared_layouts.rs`).
++-    layout: Arc<SharedLayout>,
+++    layout: Share<SharedLayout>,
++     /// What one set of each layout set takes from a pool, by set number.
++     set_needs: Vec<SetNeeds>,
++     /// Whether its draws push set 0 rather than allocate it (`pushes_set_zero`).
++@@ -507,8 +507,8 @@
++         };
++         let objects = KeptObjects {
++             stages: self.stages.clone(),
++-            samplers: Arc::clone(&self.samplers),
++-            layout: Arc::clone(&self.layout),
+++            samplers: self.samplers.clone(),
+++            layout: self.layout.clone(),
++             content: self.content,
++             words: Arc::clone(&self.words),
++         };
++@@ -870,7 +870,7 @@
++ 
++     /// Its share of the device's layout, which a linked pipeline made with it holds
++     /// (`libraries.rs`).
++-    pub(crate) fn shared_layout(&self) -> &Arc<SharedLayout> {
+++    pub(crate) fn shared_layout(&self) -> &Share<SharedLayout> {
++         &self.layout
++     }
++ 
++--- a/crates/metal2vulkan-runtime/src/pipeline/shared_layouts.rs
+++++ b/crates/metal2vulkan-runtime/src/pipeline/shared_layouts.rs
++@@ -21,7 +21,7 @@
++ //!   sampler set its set layouts bake until the map destroys it.
++ //! - **Counted**: `WorkCounts::pipeline_layouts_made`, `WorkCounts::pipeline_layouts_shared`.
++ 
++-use super::content_keyed::{program_call, ContentKeyed, Owned};
+++use super::content_keyed::{program_call, ContentKeyed, Owned, Share};
++ use super::objects::{create_set_layout, SamplerSet};
++ use crate::device::{lock, DeviceShared};
++ use crate::error::{internal, vulkan, Error};
++@@ -29,7 +29,6 @@
++ use crate::Device;
++ use ash::vk;
++ use metal2vulkan::pipeline::{PipelineLayout, PushConstantRange};
++-use std::sync::Arc;
++ 
++ /// One shared layout: its set layouts, by set number, and its pipeline layout. It keeps no
++ /// device functions and destroys nothing itself: only the device's map destroys it, once nothing
++@@ -38,7 +37,7 @@
++     set_layouts: Vec<vk::DescriptorSetLayout>,
++     layout: vk::PipelineLayout,
++     /// The immutable samplers its set layouts bake, held until the map destroys it.
++-    _samplers: Arc<SamplerSet>,
+++    _samplers: Share<SamplerSet>,
++ }
++ 
++ impl Owned<DeviceShared> for SharedLayout {
++@@ -112,9 +111,9 @@
++ pub(crate) fn shared_layout(
++     device: &Device,
++     layout: &PipelineLayout,
++-    samplers: &Arc<SamplerSet>,
+++    samplers: &Share<SamplerSet>,
++     (push_set_zero, dynamic): (bool, &[u32]),
++-) -> Result<Arc<SharedLayout>, Error> {
+++) -> Result<Share<SharedLayout>, Error> {
++     let mut baked = samplers.samplers().iter().copied();
++     let mut sets = Vec::with_capacity(layout.sets.len());
++     for (index, set) in layout.sets.iter().enumerate() {
++@@ -182,13 +181,13 @@
++     device: &Device,
++     layout: &PipelineLayout,
++     key: &LayoutKey,
++-    samplers: &Arc<SamplerSet>,
+++    samplers: &Share<SamplerSet>,
++ ) -> Result<SharedLayout, Error> {
++     let shared = device.shared();
++     let mut made = SharedLayout {
++         set_layouts: Vec::with_capacity(key.sets.len()),
++         layout: vk::PipelineLayout::null(),
++-        _samplers: Arc::clone(samplers),
+++        _samplers: samplers.clone(),
++     };
++     for (set, set_key) in layout.sets.iter().zip(&key.sets) {
++         let immutable: Vec<&[vk::Sampler]> =
++--- a/crates/metal2vulkan-runtime/src/tests/sampler_sets.rs
+++++ b/crates/metal2vulkan-runtime/src/tests/sampler_sets.rs
++@@ -14,7 +14,6 @@
++ use metal2vulkan::bind::SamplerDescriptor;
++ use metal2vulkan::metal::sampler::{vk_sampler, SamplerUse};
++ use metal2vulkan::metal::SamplerAddressMode;
++-use std::sync::Arc;
++ 
++ /// The device the cfg selects: a CPU device under `m2v_cpu_icd`, else a GPU.
++ fn device() -> Device {
++@@ -64,17 +63,17 @@
++         "the set's two samplers"
++     );
++     let (again, made) = sampler_set(&device, descs.clone()).unwrap();
++-    assert!(!made && Arc::ptr_eq(&first, &again), "the device's set");
+++    assert!(!made && std::ptr::eq(&*first, &*again), "the device's set");
++     let (stepped, made) =
++         crate::exit_guard::host_step(|| sampler_set(&device, descs.clone())).unwrap();
++     assert!(
++-        !made && Arc::ptr_eq(&first, &stepped),
+++        !made && std::ptr::eq(&*first, &*stepped),
++         "a host step takes the device's set"
++     );
++     assert_eq!(shared.sampler_count.live(), live + 2, "counted once");
++     let (other, made) = sampler_set(&device, vec![desc(SamplerAddressMode::MirrorRepeat)]).unwrap();
++     assert!(
++-        made && !Arc::ptr_eq(&first, &other),
+++        made && !std::ptr::eq(&*first, &*other),
++         "other samplers, another set"
++     );
++     assert_eq!(shared.sampler_count.live(), live + 3);
++@@ -109,7 +108,7 @@
++     assert_eq!(shared.sampler_count.live(), live + 2);
++     let (program, made) = sampler_set(&device, mirrored).unwrap();
++     assert!(
++-        made && !Arc::ptr_eq(&own, &program),
+++        made && !std::ptr::eq(&*own, &*program),
++         "the step's set is not the device's"
++     );
++     assert_eq!(shared.sampler_count.live(), live + 4);

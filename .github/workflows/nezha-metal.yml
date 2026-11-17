@@ -1,7 +1,7 @@
-name: nezha iPhone27 GPU053 cache-first and freed buffer reuse 045
+name: nezha iPhone27 GPU055 release queue pipeline collection 046
 on:
   push:
-    branches: [codex/ios27-gpu53-buffer-reuse-metal045-20261118]
+    branches: [codex/ios27-gpu55-object-release-metal046-20261118]
   workflow_dispatch:
 permissions:
   contents: read

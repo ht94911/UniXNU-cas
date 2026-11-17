@@ -407,6 +407,12 @@ def main():
     record['replay'] = 'disabled by the current upstream --no-replay option'
     record['target'] = 'arm64e-apple-ios27.0'
 
+    for repository, name in [(root, 'gpu055-recipes.patch'),
+                             (root / 'drivers/AdrenoMetal', 'gpu055-plugin.patch')]:
+        selected = HERE / 'patches' / name
+        must(['git', '-C', repository, 'apply', '--check', selected])
+        must(['git', '-C', repository, 'apply', selected])
+        record.setdefault('gpu055_release_queue_patches', {})[name] = sha(selected)
     progress('all pinned sources and patches verified')
     args.record.parent.mkdir(parents=True, exist_ok=True)
     args.record.write_text(json.dumps(record, indent=2) + '\n')

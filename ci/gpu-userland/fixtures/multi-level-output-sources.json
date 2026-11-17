@@ -1,7 +1,7 @@
 {
   "original_pin": "963f0e64f103d2e682cd0cc454a8fe50f52c8cbb",
-  "patched_tree": "bc866660a56daec9db49dd184713570f54732ce3",
-  "builder_sha256": "afeffb288cac613ff98a81954d590cee0b7dfd72335b0c2bfffaa789cc70b8b8",
+  "patched_tree": "da5ca6c7750f3b79b44ffc61e32932cd0ed9cdc5",
+  "builder_sha256": "43c030281a512ee993cc53352c158e26dfe70ffe14683c5643c6c7d7219951a3",
   "patch_hashes": {
     "0002-resource-wait-storage-dependencies.patch": "4536f03ac5a829d0a23d839491837c62af00c1aa884dc75cdae0f195c7953c0c",
     "0003-cache-device-entry-point-priming.patch": "ca1c0e3733bc048d9771fc3a5d061fc4224eee3341dc41d4b64a71e6e9d06408",
@@ -40,7 +40,8 @@
     "0040-multi-level-tiled-output.patch": "cf4c65c2e71d21907d55a16becb7824478c253d5f45a456559449f3b1ddbf68d",
     "0041-multi-level-tiled-input.patch": "6424943312a09ac67057357e22b8f5964be12da60178a2598e311fdcf106ba5b",
     "0042-ios-foreground-blocks.patch": "cab055528569dcd5f513868dd8d33f0ae1e0cc8d714b0d062f6742509032c6b4",
-    "0043-reuse-freed-buffer-backing.patch": "bbf7c746cb28265a79ee3aa1da06f1de6c16dfc48d6794e53a27360800052608"
+    "0043-reuse-freed-buffer-backing.patch": "bbf7c746cb28265a79ee3aa1da06f1de6c16dfc48d6794e53a27360800052608",
+    "0044-released-pipeline-objects-only.patch": "f3ba376629ff5f1c18f78f3a4ab442d740487c2e2dc6e2c3418701fc0760e035"
   },
   "source_hashes": {
     "crates/metal2vulkan-runtime/src/written_commands.rs": "5c1a9ac622de2d0cfc199de4115a087c6ee9550f4b94059513da4339a4207ac2",
@@ -304,11 +305,11 @@
     "crates/metal2vulkan-runtime/src/pipeline/budget.rs": "0d8cee0ac33bdf913a63f5fe571f1818a710ab6229293ce1c26c42a7bdf81e5d",
     "crates/metal2vulkan-runtime/src/pipeline/attachment_formats.rs": "7381b24d9a0373db2954a7ba5706f3646cf74d313e4ee9091a72944943eaab5e",
     "crates/metal2vulkan-runtime/src/pipeline/texture_access.rs": "f2ca2fa8b830cd776ff41b78aba51f1f4c431838d8e33abc331d4b5655ad028d",
-    "crates/metal2vulkan-runtime/src/pipeline/libraries.rs": "361f69c05779ba9a7ecea2789ed0d8c54f7fff38d10d9c7b171922943c8fa78a",
+    "crates/metal2vulkan-runtime/src/pipeline/libraries.rs": "f65e1162765f8b04a62a4577b4b2dcf50269f9ff9c3f4526e4e2b504b23189bc",
     "crates/metal2vulkan-runtime/src/pipeline/flight.rs": "732a768fdb691db41a4977191b2629f6503e349617f1ad1cc3f587b4dfe4e0ee",
     "crates/metal2vulkan-runtime/src/pipeline/raster_samples.rs": "b49ebfe751f1bd971312b1c9eae10f35bf37e019f619c37c31521d09dd1fbd17",
     "crates/metal2vulkan-runtime/src/pipeline/making.rs": "b082057c5dd37507552ebc0a086f9c4030c3454411fd06723bd6a2d097fa3422",
-    "crates/metal2vulkan-runtime/src/pipeline/content_keyed.rs": "ed4ced6aa0037cb8e0f8663c3b05d97c5a3db7489790fff06ede6b0dfcf4bffc",
+    "crates/metal2vulkan-runtime/src/pipeline/content_keyed.rs": "77584f35278b63c18f2f06ba8772fce7e8890f97ae7e0c587b0abbcca7e8d630",
     "crates/metal2vulkan-runtime/src/pipeline/stand_in.rs": "a4a56f17b9fc53e11881d673613f31894a314390154a76e7983e273a9f47ec9f",
     "crates/metal2vulkan-runtime/src/pipeline/options.rs": "64dd86461c573b4ca74bb67ad360b5d297dfa119b60aa4e79fe59d12a9fdfd45",
     "crates/metal2vulkan-runtime/src/pipeline/render.rs": "014f1f3c45da81a45711d48bebb73328e55569486a49f419a35a15539b2c5de0",
@@ -316,17 +317,17 @@
     "crates/metal2vulkan-runtime/src/pipeline/unrasterized.rs": "9a526aa6eb636ec3551bebabd25d97641e27d44ac02e0ccddd4f83a1062bc181",
     "crates/metal2vulkan-runtime/src/pipeline/piece_holds.rs": "717ec26640b37ed9f5759231321e2fd393b65a2638f389f0b4280dd5fa3f3fc9",
     "crates/metal2vulkan-runtime/src/pipeline/tile.rs": "179e29cdab08e52cf758a1e57ef0422f94295c9a0c720055b88dd4afb1ac706e",
-    "crates/metal2vulkan-runtime/src/pipeline/kept.rs": "359651b75fbb2b6b14dce91c5b0905791dfd3fc75f39f930dfe8a561dff0dfd2",
+    "crates/metal2vulkan-runtime/src/pipeline/kept.rs": "b83dcd4a24484e6f3634e88012f56dd78c2aec5ddb04e4044b742dcfe5f5de11",
     "crates/metal2vulkan-runtime/src/pipeline/unspecialized.rs": "00a7aa19412d1d7ab1342401db1434920627dc07fa7a0ffbec6cb0e14776b53f",
     "crates/metal2vulkan-runtime/src/pipeline/indirect_arguments.rs": "570132324b98025250486573079e083607152df179ae0202f035cc5b6a578a1c",
     "crates/metal2vulkan-runtime/src/pipeline/mod.rs": "0d26aae9541e1c39467f2bd2a8d945b2b464788943d46cede6320b680730bd26",
     "crates/metal2vulkan-runtime/src/pipeline/linked_fragment.rs": "80d6d884bf9878c111140300eb65609c13dee7f441404360c09621abd92aee26",
     "crates/metal2vulkan-runtime/src/pipeline/graphics.rs": "eb6cab6a77d6b10eb7a60ec70bc4ffa2754b5de7357b9dc25b73ccca3f3836de",
-    "crates/metal2vulkan-runtime/src/pipeline/shared_layouts.rs": "58070a6794413d94f8ff6005dde342ca50f14e7271e747a7bed2c34b4c6d55c3",
+    "crates/metal2vulkan-runtime/src/pipeline/shared_layouts.rs": "272c835441a080745edf49ee7451ca2460a17dbf88977acbd41943f37b931e22",
     "crates/metal2vulkan-runtime/src/pipeline/predicted.rs": "2af05b3afac75773bd55c173e15ea6eb6e022ce9c13d10086a71e330582721a0",
     "crates/metal2vulkan-runtime/src/pipeline/additions.rs": "b407fc43d48e57176fb0f5dfb2d197909b7dcee0419495b259af25daf2b25b79",
     "crates/metal2vulkan-runtime/src/pipeline/reaper.rs": "833301c22e30e9281cfa64637986896f149d2695818b8addacd7cab131b6f54c",
-    "crates/metal2vulkan-runtime/src/pipeline/objects.rs": "7b92e409fad8213ef01c2dd77c222aac0eb43d40ba11238a6d40c57543036a4d",
+    "crates/metal2vulkan-runtime/src/pipeline/objects.rs": "898838e57042e87b2471ffb8a3c295a67142a82765d3bb4c2f9295f37f8943cb",
     "crates/metal2vulkan-runtime/src/pipeline/memo.rs": "3e2b9fa5cc2fdeaa38f5553a42ae9fc656a66558cf39f15547ad7ad9d39a8ea3",
     "crates/metal2vulkan-runtime/src/pipeline/creation_log.rs": "8351d9d4c803eaea95656777a08754fb33339865f664c1769ff6a65a8557fabd",
     "crates/metal2vulkan-runtime/src/sparse/bind.rs": "afd63eb759324c0e710e9ff4222ea51871f1ca3968b5c7c37b92293694556955",
@@ -605,7 +606,7 @@
     "crates/metal2vulkan-runtime/src/tests/blit.rs": "c776a3208ffdf2202f33469d5d83840b92f3611bd6c1809ddf4376f6fcc49ba2",
     "crates/metal2vulkan-runtime/src/tests/shadow_runs.rs": "74d4715596b09d20b635dbac6c07107e25288825325f9581d000ef4e85da2fb7",
     "crates/metal2vulkan-runtime/src/tests/reserved_queues.rs": "349506c9131adb555e2d96273e93d772307ce0a1ef8cd1aedf1d444b95676d17",
-    "crates/metal2vulkan-runtime/src/tests/sampler_sets.rs": "8f5ff7578371b4e068719b2f4814305dc3bff105913a495fd1c6cf925048fefe",
+    "crates/metal2vulkan-runtime/src/tests/sampler_sets.rs": "15358728ec3b069ac514dba2566628ce0981787a063021c4673e48cbd75e0515",
     "crates/metal2vulkan-runtime/src/tests/wrapped.rs": "18316018a47edf29b896f1c485ffbc0b98259e6b76d5d0d3e4af8b0ebec4560a",
     "crates/metal2vulkan-runtime/src/tests/linear_plan.rs": "7661f7beaa46d8774311d07f6d20a359a58e2515b64518e1757f2a39cd47f303",
     "crates/metal2vulkan-runtime/src/tests/creation_prediction_kinds.rs": "e726bf4e12038549d17c50b1aca4782a0d263b6f7e7f4001cf1f070993bf542b",
@@ -1471,7 +1472,7 @@
     "crates/metal2vulkan/src/tests/engine_extended_range/targets.rs": "ef971c3c98f234d4dd2f90c5b991d9ca498a2d5fcdea021d806496d9dfa8717e",
     "crates/metal2vulkan/src/cache/codec/tests.rs": "85916b691f32e27b9b5957e8d1af73979a78664fdd36e5b583270c70f335a922",
     "crates/metal2vulkan/src/cache/digest/tests.rs": "90ae1ab7e016b698aed0fbf638b1d67493270576860d503a9c280e4e280469af",
-    "crates/metal2vulkan-runtime/README.md": "78decb47ad3ae180d5dc76e5f1821cb058b024324df5ed5c1e2b3d724fd2d6aa"
+    "crates/metal2vulkan-runtime/README.md": "377fe719b625c64e5f252ee53a6bb85460b89afc2ecad2a52c99bbb1257ddf6a"
   },
   "local_changed_files": [
     "crates/metal2vulkan-runtime/src/memory.rs",
@@ -1539,5 +1540,25 @@
     "scope": "Unchanged allocator, Vulkan diagnostic routing and original single-level translator source; current changed output runtime is tested separately"
   },
   "prior049_runtime_tree": "dd26fe493415352f39c081572ae322dcc626305e",
-  "current_allocator_checks_required": 10
+  "current_allocator_checks_required": 10,
+  "GPU055_release_queue_source": {
+    "upstream": "1c0833c2dd9ecfa67ff6c6a1bdbe58540ffe69cf",
+    "source_fields_identical_except": [
+      "crates/metal2vulkan-runtime/README.md",
+      "crates/metal2vulkan-runtime/src/pipeline/libraries.rs",
+      "crates/metal2vulkan-runtime/src/pipeline/content_keyed.rs",
+      "crates/metal2vulkan-runtime/src/pipeline/kept.rs",
+      "crates/metal2vulkan-runtime/src/pipeline/shared_layouts.rs",
+      "crates/metal2vulkan-runtime/src/pipeline/objects.rs",
+      "crates/metal2vulkan-runtime/src/tests/sampler_sets.rs"
+    ],
+    "map_cases": 9,
+    "pipeline_cases": 61,
+    "real_Vulkan_references": [
+      "sampler lifetime",
+      "shared linked render pixels",
+      "isolated8stage_CoreImage_descriptor"
+    ],
+    "release_only_collection": true
+  }
 }

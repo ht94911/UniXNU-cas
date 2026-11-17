@@ -1,4 +1,4 @@
-"""Bind GPU053 source and run current allocator and tiled-planning checks on macOS."""
+"""Bind GPU055 source and run current allocator and tiled-planning checks on macOS."""
 from pathlib import Path
 import argparse
 import hashlib
@@ -21,7 +21,7 @@ assert git("rev-parse", "HEAD").decode().strip() == expected["original_pin"]
 builder = r / "scripts/build-adreno-metal-bridge.py"
 assert sha(builder) == expected["builder_sha256"]
 patches = re.findall(r"'([0-9]{4}[^']+\.patch)'", builder.read_text())
-assert patches == list(expected["patch_hashes"]) and len(patches) == 38
+assert patches == list(expected["patch_hashes"]) and len(patches) == 39
 for name, digest in expected["patch_hashes"].items():
     assert sha(r / "drivers/AdrenoMetal/bridge/patches" / name) == digest, name
 for name, digest in expected["source_hashes"].items():
@@ -57,10 +57,15 @@ for name in (
     "freed_buffer_backing_keeps_address_and_import_release_order",
 ):
     assert name + " ... ok" in allocator_text
+map_command = command[:]
+map_command[map_command.index("tests::heap_tiled::")] = "pipeline::content_keyed::tests::"
+with (out / "release-map.log").open("w") as log:
+    map_result = subprocess.run(map_command, cwd=r, env=env, stdout=log, stderr=subprocess.STDOUT, timeout=1500)
+assert map_result.returncode == 0 and "9 passed; 0 failed" in (out / "release-map.log").read_text()
 report = dict(passed=True, runtime_tree=expected["patched_tree"],
               source_manifest_sha256=sha(Path(__file__).parent / "fixtures/multi-level-output-sources.json"),
               exact_runtime_source_verified=True, current_Mac_planner_tests_passed=True,
-              current_Mac_allocator_tests_passed=True, current_Mac_allocator_cases=10,
+              current_Mac_allocator_tests_passed=True, current_Mac_allocator_cases=10, current_Mac_release_map_cases=9, current_Mac_release_map_passed=True,
               allocator_callbacks_are_model=True, current_iOS_policy_hardware_measured=False,
               current_Mac_Vulkan_execution=False, target_A840_performance_verified=False,
               Linux_Vulkan_execution_reference=expected["linux_execution_reference"],
