@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Source-only AppSync candidate on GPU024; builds native XNU and the iOS tools. Apple OS copies and prelink stay local.",
+  "purpose": "Build the standalone AppSync RAM Data test process with its own identity and declared installer endpoints.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -239,7 +239,7 @@
     "source/appsync/build-fixtures.py": "7592c162246e93b2644ea12c1a96536bd3da71fbafd6eace3eb3cd905157d262",
     "source/appsync/ProbeRunner.m": "e3619098acb106d0b9cbfbd32560cba389c5952b1aec3fa765762984d46a2b7b",
     "source/appsync/QcomUserLogWire.h": "965d7aeaa4043bcceb151cd6331ce50faefe21f57ce7c91cf781a52b4917397b",
-    "ci/appsync-probe-entitlements.plist": "10a07e7aab5ed615b24aa369e0ad6ad68d0dfc4819584364de4d4b810570053b"
+    "ci/appsync-probe-entitlements.plist": "38dcd6d23ce4a3b8f5c60ab62ad6070d37da219c080fd65b85b3a8b97fb101f7"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",

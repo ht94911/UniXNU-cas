@@ -3,15 +3,18 @@
 <plist version="1.0">
 <dict>
 	<key>application-identifier</key>
-	<string>org.unixnu.appinst</string>
+	<string>org.unixnu.nezha.appsync-probe</string>
 	<key>com.apple.private.mobileinstall.allowedSPI</key>
 	<array>
 		<string>Install</string>
 		<string>InstallForLaunchServices</string>
 	</array>
+	<key>com.apple.private.security.no-container</key>
+	<true/>
 	<key>com.apple.security.exception.mach-lookup.global-name</key>
 	<array>
 		<string>com.apple.mobile.installd</string>
+		<string>com.apple.lsd.mapdb</string>
 	</array>
 	<key>platform-application</key>
 	<true/>
