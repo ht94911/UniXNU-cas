@@ -36,12 +36,15 @@
 - (BOOL)hasInfoForBundleIdentifier:(NSString *)identifier;
 - (NSString *)serviceName;
 - (int)processIdentifier;
+- (id)XPCConnection;
 + (unsigned short)connectionType;
 @end
 
 static IMP original_seed,original_completion,original_listener_init,original_listener_accept,original_listener_resume;
+static IMP original_read_queries,original_read_store,original_rebuilt;
 static intptr_t ls_slide;
 static bool ls_present, installed,listener_observer_installed,listener_accept_installed,listener_resume_installed;
+static bool read_observers_installed;
 static unsigned registration_attempted,completion_registration_attempted;
 static id (*original_defaults)(void);
 static bool (*original_register_url)(void *,NSURL *,uint32_t,id,NSError *__autoreleasing *);
@@ -117,6 +120,85 @@ static void report_server_state(const char *stage)
         stage,(unsigned)geteuid(),(unsigned)[configuration isServer],
         (unsigned)[configuration hasServer],(unsigned)[configuration isInSyncBubble],
         (unsigned)[configuration isLightweightSystemServer]);
+}
+
+/* Actual080 has real incoming LS clients and a locally installed Camera.
+ * Record the original read replies and rebuilt publication; do not send a
+ * second notification, synthesize a record, or change database selection. */
+static int read_client_pid(id client)
+{
+    id connection=[client respondsToSelector:@selector(XPCConnection)] ? [client XPCConnection]:nil;
+    return [connection respondsToSelector:@selector(processIdentifier)] ? [connection processIdentifier]:0;
+}
+
+static void read_queries(id self,SEL selector,id queries,BOOL legacy,id completion)
+{
+    static unsigned reported,board_reported;
+    const int pid=read_client_pid(self);
+    const bool report=__atomic_fetch_add(pid==30 ? &board_reported:&reported,1u,__ATOMIC_RELAXED)<12;
+    if (report) fprintf(stderr,"nezha-camera-ls: original read query entered pid=%d queries=%lu legacy=%u completion=%u\n",
+        pid,(unsigned long)[queries count],(unsigned)legacy,(unsigned)(completion!=nil));
+    /* The original resolveQueries reply passes its dictionary and NSError
+     * in x1/x2. The copied native callback remains owned by the wrapper. */
+    id reply=report && completion ? (id)^(id results,NSError *error) {
+        fprintf(stderr,"nezha-camera-ls: original read query reply pid=%d results=%u count=%lu error=%ld domain=%s\n",
+            pid,(unsigned)(results!=nil),(unsigned long)[results count],(long)error.code,
+            error.domain.UTF8String ?: "<none>");
+        ((void (^)(id,NSError *))completion)(results,error);
+    }:completion;
+    ((void (*)(id,SEL,id,BOOL,id))original_read_queries)(self,selector,queries,legacy,reply);
+}
+
+static void read_store(id self,SEL selector,id completion)
+{
+    static unsigned reported,board_reported;
+    const int pid=read_client_pid(self);
+    const bool report=__atomic_fetch_add(pid==30 ? &board_reported:&reported,1u,__ATOMIC_RELAXED)<12;
+    if (report) fprintf(stderr,"nezha-camera-ls: original read store entered pid=%d completion=%u\n",
+        pid,(unsigned)(completion!=nil));
+    /* Native callback forwards store, catalogue, blocking endpoint, manual
+     * rebuild BOOL and NSError. Preserve all five values and nil callback. */
+    id reply=report && completion ? (id)^(id store,id catalogue,id endpoint,BOOL manual,NSError *error) {
+        fprintf(stderr,"nezha-camera-ls: original read store reply pid=%d store=%u catalogue=%u endpoint=%u manual=%u error=%ld domain=%s\n",
+            pid,(unsigned)(store!=nil),(unsigned)(catalogue!=nil),(unsigned)(endpoint!=nil),
+            (unsigned)manual,(long)error.code,error.domain.UTF8String ?: "<none>");
+        ((void (^)(id,id,id,BOOL,NSError *))completion)(store,catalogue,endpoint,manual,error);
+    }:completion;
+    ((void (*)(id,SEL,id))original_read_store)(self,selector,reply);
+}
+
+static void database_rebuilt(id self,SEL selector)
+{
+    static unsigned reported;
+    const bool report=__atomic_fetch_add(&reported,1u,__ATOMIC_RELAXED)<4;
+    if (report) fputs("nezha-camera-ls: original database rebuilt notification entered\n",stderr);
+    ((void (*)(id,SEL))original_rebuilt)(self,selector);
+    if (report) fputs("nezha-camera-ls: original database rebuilt notification request returned\n",stderr);
+}
+
+static void install_read_observers(void)
+{
+    if (!ls_present || read_observers_installed) return;
+    Class reader=objc_getClass("_LSDReadClient"),progress=objc_getClass("_LSInstallProgressService");
+    struct {Class type;const char *selector,*encoding;uintptr_t address;IMP replacement;IMP *original;} rows[]={
+        {reader,"resolveQueries:legacySPI:completionHandler:","v36@0:8@16B24@?28",0x186ef40e0ULL,(IMP)read_queries,&original_read_queries},
+        {reader,"getServerStoreNonBlockingWithCompletionHandler:","v24@0:8@?16",0x186df65b0ULL,(IMP)read_store,&original_read_store},
+        {progress,"sendDatabaseRebuiltNotification","v16@0:8",0x186f74180ULL,(IMP)database_rebuilt,&original_rebuilt},
+    };
+    Method methods[3];
+    for (unsigned i=0;i<3;++i) {
+        methods[i]=rows[i].type ? class_getInstanceMethod(rows[i].type,sel_registerName(rows[i].selector)):NULL;
+        IMP current=methods[i] ? method_getImplementation(methods[i]):NULL;
+        const char *encoding=methods[i] ? method_getTypeEncoding(methods[i]):NULL;
+        if (!current || !encoding || strcmp(encoding,rows[i].encoding) ||
+            (uintptr_t)ptrauth_strip(current,ptrauth_key_function_pointer)!=(uintptr_t)(rows[i].address+ls_slide)) return;
+    }
+    for (unsigned i=0;i<3;++i) {
+        *rows[i].original=method_getImplementation(methods[i]);
+        method_setImplementation(methods[i],rows[i].replacement);
+    }
+    read_observers_installed=true;
+    fputs("nezha-camera-ls: original read/rebuilt observers installed\n",stderr);
 }
 
 static bool ls_service_name(NSString *name)
@@ -245,9 +327,10 @@ static bool image_matches(const struct mach_header_64 *header)
 
 static void image_arrived(const struct mach_header *header,intptr_t slide)
 {
-    if (installed && listener_observer_installed && listener_accept_installed && listener_resume_installed) return;
+    if (installed && listener_observer_installed && listener_accept_installed && listener_resume_installed && read_observers_installed) return;
     if (image_matches((const struct mach_header_64 *)header)) { ls_present=true;ls_slide=slide; }
     if (!ls_present) return;
+    install_read_observers();
     /* Foundation's native listener has a serviceName and resumes its real
      * libxpc connection. Observe that boundary only inside original lsd.
      * No new listener, endpoint, privilege option or bootstrap domain. */

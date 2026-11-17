@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 #include "NezhaCameraPixelBuffer.h"
 #include <dispatch/dispatch.h>
+#include <stdio.h>
 
 /* Graph-owned BufferPool and Lock/Unlock sequence follow pinned HakiOS
  * camera_device.c. Pixel processing stays in NezhaCameraPreview. These
@@ -16,6 +17,38 @@ static bool plane_capacity(size_t stride, size_t rows, size_t *capacity)
     if (!stride || !rows || rows > SIZE_MAX / stride) return false;
     *capacity = stride * rows;
     return true;
+}
+
+/* The first few actual graph buffers distinguish malformed Y/UV content
+ * from a later display import. Read only after all row groups complete,
+ * while the existing CoreVideo write lock is still held. */
+static void observe_output(const struct NezhaCameraPreviewOutput *output)
+{
+    static unsigned reports;
+    if (__atomic_fetch_add(&reports,1u,__ATOMIC_RELAXED)>=4) return;
+    const size_t x=(output->width/2)&~(size_t)1, y=output->height/2;
+    const size_t bytes=output->format==NezhaCameraPreviewBgra ? 4u:1u;
+    const uint8_t *first=output->plane[0]+y*output->stride[0]+x*bytes;
+    uint8_t values[4]={first[0],0,0,0};
+    if (bytes==4) for (unsigned i=1;i<4;++i) values[i]=first[i];
+    else {
+        const uint8_t *uv=output->plane[1]+(y/2)*output->stride[1]+x;
+        values[1]=uv[0];values[2]=uv[1];
+    }
+    unsigned low=255,high=0;
+    for (unsigned row=0;row<4;++row) {
+        const size_t at=(size_t)row*(output->height-1)/3;
+        const uint8_t *line=output->plane[0]+at*output->stride[0];
+        for (unsigned column=0;column<4;++column) {
+            const uint8_t v=line[(size_t)column*(output->width-1)/3*bytes];
+            if(v<low)low=v;
+            if(v>high)high=v;
+        }
+    }
+    fprintf(stderr,"nezha-camera: rendered pixel format=%u size=%ux%u stride=%llu/%llu center=%u/%u/%u/%u first-plane=%u..%u\n",
+        (unsigned)output->format,output->width,output->height,
+        (unsigned long long)output->stride[0],(unsigned long long)output->stride[1],
+        values[0],values[1],values[2],values[3],low,high);
 }
 
 /* HakiOS f128f1d camera_device.c render_piece/deliver uses eight
@@ -102,6 +135,7 @@ static CVReturn pixel_buffer(const struct NezhaCameraPreview *preview,
     const bool rendered = valid && (still ?
         nezha_camera_still_render(preview, frame, raw, raw_bytes, &output) :
         render_preview(preview, frame, raw, raw_bytes, &output));
+    if (rendered) observe_output(&output);
     status = CVPixelBufferUnlockBaseAddress(pixel, 0);
     if (!rendered) return kCVReturnInvalidArgument;
     if (status != kCVReturnSuccess) return status;

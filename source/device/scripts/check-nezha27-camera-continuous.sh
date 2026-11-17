@@ -48,8 +48,13 @@ for unit in NativeCapture NativeSmmu; do
         -c "package/camera/NezhaCamera$unit.cpp" -o "$out/$unit.arm64e.o"
 done
 gcc -std=gnu11 -Wall -Wextra -Werror -g -fsanitize=address,undefined \
+    -Dmemcpy=nezha_camera_test_memcpy \
     -fno-omit-frame-pointer -Ipackage/camera -Ipackage/gpu/adreno \
-    -Itests/camera-platform/kernel-fixture package/camera/NezhaCameraNativeDevice.c \
+    -Itests/camera-platform/kernel-fixture -c package/camera/NezhaCameraNativeDevice.c \
+    -o "$out/NativeDevice-copy.o"
+gcc -std=gnu11 -Wall -Wextra -Werror -g -fsanitize=address,undefined \
+    -fno-omit-frame-pointer -Ipackage/camera -Ipackage/gpu/adreno \
+    -Itests/camera-platform/kernel-fixture "$out/NativeDevice-copy.o" \
     package/camera/NezhaCameraOvx10500u.c package/camera/NezhaCameraCci.c \
     tests/camera-native-device.c -pthread -o "$out/test-device"
 "$out/test-device"

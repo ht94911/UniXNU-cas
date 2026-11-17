@@ -1,11 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 #include "NezhaCameraFrameProbe.h"
-
-static size_t sample_offset(const struct NezhaCameraRaw10Layout *layout, unsigned row)
-{
-    const size_t y = (size_t)((uint64_t)row * (layout->height - 1) / 3);
-    return y * layout->stride + layout->packed_line_bytes / 2 - 32;
-}
+#include "NezhaCameraFrameMarker.h"
 
 static bool sample(const uint8_t *frame, const struct NezhaCameraRdi1080 *rdi, uint32_t *digest)
 {
@@ -18,7 +13,7 @@ static bool sample(const uint8_t *frame, const struct NezhaCameraRdi1080 *rdi, u
         return false;
     }
     for (unsigned row = 0; row < 4; ++row) {
-        const uint8_t *line = frame + sample_offset(&rdi->layout, row);
+        const uint8_t *line = frame + nezha_camera_frame_marker_offset(&rdi->layout, row);
         bool changed = false, nonzero = false;
         for (unsigned i = 0; i < 64; ++i) {
             changed |= line[i] != 0xa5;
@@ -63,7 +58,7 @@ enum NezhaCameraFrameStatus nezha_camera_frame_consume(
             const bool requeue=delivered && consumer->continuing(consumer->context);
             if (requeue) {
                 for (unsigned row=0;row<4;++row) {
-                    uint8_t *line=frame+sample_offset(&capture->layout.layout,row);
+                    uint8_t *line=frame+nezha_camera_frame_marker_offset(&capture->layout.layout,row);
                     for (unsigned i=0;i<64;++i) line[i]=0xa5;
                 }
             }
@@ -123,7 +118,7 @@ enum NezhaCameraFrameStatus nezha_camera_frame_probe(
             const bool requeue = changed && result->frames < target;
             if (requeue) {
                 for (unsigned row = 0; row < 4; ++row) {
-                    uint8_t *line = frame + sample_offset(&capture->layout.layout, row);
+                    uint8_t *line = frame + nezha_camera_frame_marker_offset(&capture->layout.layout, row);
                     for (unsigned i = 0; i < 64; ++i) line[i] = 0xa5;
                 }
             }

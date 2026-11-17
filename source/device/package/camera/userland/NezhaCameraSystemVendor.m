@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 #include "NezhaCameraDeviceBackend.h"
 #include "NezhaCameraFactory.h"
+#include "NezhaCameraMetal.h"
 #include <dlfcn.h>
 #include <mach-o/dyld.h>
 #include <objc/message.h>
@@ -19,6 +20,7 @@
  * CMCapture UUID. The factory signature and current default initializer
  * were checked in that image, not inherited from its iOS16 shim. */
 static bool installed;
+static bool metal_required_installed;
 static bool capture_present;
 static bool model_installed;
 static bool device_ids_installed;
@@ -430,6 +432,10 @@ static bool uuid_matches(const struct mach_header_64 *header)
 
 static void image_added(const struct mach_header *header,intptr_t slide)
 {
+    if (!metal_required_installed && nezha_camera_metal_install(header,slide)) {
+        metal_required_installed=true;
+        fputs("nezha-camera: exact GPU051 function constant required getter installed\n",stderr);
+    }
     if (installed && model_installed && device_ids_installed && publishing_installed && stream_request_installed && backings_init_installed && backings_list_installed && sources_installed && source_init_installed) return;
     if (uuid_matches((const struct mach_header_64 *)header)) {
         capture_present=true;capture_slide=slide;

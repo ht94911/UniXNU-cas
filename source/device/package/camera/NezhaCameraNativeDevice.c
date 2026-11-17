@@ -133,29 +133,38 @@ static bool delivered(void *context,const struct NezhaCameraRaw10Layout *layout,
     if (!frame || bytes!=FrameBytes || !ticks || layout->width!=4096 ||
         layout->height!=3072 || layout->stride!=5120) return false;
     lck_mtx_lock(&camera_mutex);
-    if (opened && !reading) {
-        memcpy(staging,frame,bytes);
-        bzero(&header,sizeof(header));
-        memcpy(header.magic,HAKIOS_CAMERA_MAGIC,8);
-        header.header_bytes=sizeof(header);
-        header.width=4096;header.height=3072;header.stride=5120;
-        header.format=1;header.bayer=3;header.black=64;
-        header.sequence=sequence;header.time=ticks;header.focus=HAKIOS_CAMERA_NO_FOCUS;
+    const bool copy=opened && !reading;
+    struct hakios_camera_frame completed={0};
+    if (copy) {
+        /* Reserve the sole staging buffer. A read already moving this
+         * buffer wins; otherwise clear readiness before leaving the lock.
+         * Close joins this worker before a new session may reuse storage. */
+        frame_ready=false;
+        memcpy(completed.magic,HAKIOS_CAMERA_MAGIC,8);
+        completed.header_bytes=sizeof(completed);
+        completed.width=4096;completed.height=3072;completed.stride=5120;
+        completed.format=1;completed.bayer=3;completed.black=64;
+        completed.sequence=sequence;completed.time=ticks;completed.focus=HAKIOS_CAMERA_NO_FOCUS;
         if (controls_observed && !control_inflight && sequence>controls_observed_after) {
             /* Values read at this earlier completed-frame boundary. This
              * is a register snapshot; no per-frame exposure is fabricated. */
-            header.reserved[0]=0x4f565852u;
-            header.reserved[1]=observed_controls.exposure_lines;
-            header.reserved[2]=observed_controls.analog_gain_q8;
-            header.reserved[3]=observed_controls.frame_lines;
-            header.reserved[4]=controls_observed_after;
+            completed.reserved[0]=0x4f565852u;
+            completed.reserved[1]=observed_controls.exposure_lines;
+            completed.reserved[2]=observed_controls.analog_gain_q8;
+            completed.reserved[3]=observed_controls.frame_lines;
+            completed.reserved[4]=controls_observed_after;
             if (!control_pending)
-                (void)nezha_camera_frame_exposure(&header,&observed_controls,
+                (void)nezha_camera_frame_exposure(&completed,&observed_controls,
                     controls_observed_after,sequence);
         }
-        frame_ready=true;
     }
     lck_mtx_unlock(&camera_mutex);
+    if (copy) {
+        memcpy(staging,frame,bytes);
+        lck_mtx_lock(&camera_mutex);
+        if (opened) { header=completed;frame_ready=true; }
+        lck_mtx_unlock(&camera_mutex);
+    }
     wakeup(&frame_ready);
     if (sequence==1)
         printf("NEZHA CAMERA: native first frame sequence=%u bytes=%u ticks=%llu\n",

@@ -21,7 +21,9 @@ const ArmSmmu4KConfig *nezha_camera_native_memory_config(const struct NezhaCamer
 
 /* Take device references before installing the context. Once BUF_DONE
  * matches a queued buffer, acquire it before CPU access, and republish
- * it before requeue. No user mapping is created here. */
+ * it before requeue. The consumer is read-only: publication cleans only
+ * the stale-frame marker pages, while acquisition invalidates the whole
+ * DMA frame. No user mapping is created here. */
 bool nezha_camera_native_memory_hold(struct NezhaCameraNativeMemory *memory);
 const void *nezha_camera_native_memory_acquire(struct NezhaCameraNativeMemory *memory, unsigned index);
 bool nezha_camera_native_memory_publish(struct NezhaCameraNativeMemory *memory, unsigned index);

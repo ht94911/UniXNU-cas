@@ -222,3 +222,22 @@ reports CPAS handshake, sampled versus requested controls and the already
 captured receiver registers after cleanup. No additional IRQ logging or
 polling is introduced. Continuous preview, shutter and photo review still
 require device verification.
+
+Actual085 removed the `required` exception. The first two Camera launches
+timed out while creating the scene. After reopening, the physical preview
+was solid green, then black, and no longer exited; the displayed default
+was 2x. Magnification changes did not cause exit. Nineteen RAW frames and
+one PrimaryScaler callback preceded the preserved RDI bit19 overflow
+recovery event. CPAS RT status5 failed drain, with no control write attempted
+and a successful eleven-byte readback. One normal Android/root return,
+protection postflight, collector exit and targeted logs completed.
+
+086 reuses the qualified085 production Metal. RAW acquisition still
+invalidates the entire frame; publication cleans only the four pages that
+contain the CPU's stale-frame markers. The sole staging copy moves outside
+the camera mutex, with readiness cleared before copy and committed after
+copy. Readers cannot enter a partial frame, and Close joins this worker.
+The existing userland console samples the first four rendered buffers while
+CoreVideo holds its write lock, before Unlock and graph delivery. These
+samples record real Y/UV or BGRA values and strides; their colour is not an
+application-preview acceptance result.

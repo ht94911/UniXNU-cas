@@ -21,6 +21,19 @@ static bool stream_failure,copy_failure;
 static unsigned controls_taken;
 static bool control_requested;
 static bool expected_AF_readonly;
+static unsigned copy_read_probes;
+void *nezha_camera_test_memcpy(void *destination,const void *source,size_t bytes)
+{
+ if(bytes==15728640) {
+  /* A reader entering while the production worker copies staging must
+   * see no completed frame and must acquire the mutex without waiting
+   * for the 15 MiB copy. Never expose the partially copied frame. */
+  struct uio probe={NULL,sizeof(struct hakios_camera_frame)+15728640,0};
+  assert(methods && methods->d_read(0,&probe,IO_NDELAY)==EAGAIN);
+  ++copy_read_probes;
+ }
+ return memcpy(destination,source,bytes);
+}
 extern bool nezha_camera_native_node(vnode_t);
 int vnode_ischr(vnode_t n) {return n->character;}
 int vnode_tag(vnode_t n) {return n->tag;}
@@ -131,6 +144,7 @@ int main(int argc,char **argv)
  assert(methods->d_read(0,&uio,0)==0); /* queued completed frame remains valid before terminal fault */
  assert(methods->d_close(0,0,0,NULL)==0);
  assert(methods->d_open(0,0,0,NULL)==EIO);
+ assert(copy_read_probes>=6);
  free(buffer);
  puts("Native camera device: full header/RAW read, exclusive opens, bounded worker close, copy fault and no failed-session restart passed");
 }

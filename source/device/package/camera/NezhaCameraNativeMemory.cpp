@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 #include "NezhaCameraNativeMemory.h"
+#include "NezhaCameraFrameMarker.h"
 #include "NativeAdrenoMemory.h"
 
 #include <IOKit/IOLib.h>
@@ -18,6 +19,7 @@ struct NezhaCameraNativeMemory {
     NezhaCameraDmaPlan plan{};
     ArmSmmu4KConfig config{};
     size_t frame_bytes{};
+    NezhaCameraRaw10Layout layout{};
     unsigned held{}, cpu{};
     bool ready{};
 };
@@ -45,6 +47,7 @@ bool nezha_camera_native_memory_prepare(NezhaCameraNativeMemory **out,
     *out = memory;
     const size_t bytes = (size_t(layout.layout.frame_bytes) + Page - 1) & ~(Page - 1);
     memory->frame_bytes = bytes;
+    memory->layout = layout.layout;
     if (memory->tables.allocate(TablePages * Page, physical_bits, true, TablePages * Page) != kIOReturnSuccess ||
         memory->tables.spanCount() != 1) {
         return false;
@@ -133,8 +136,18 @@ bool nezha_camera_native_memory_publish(NezhaCameraNativeMemory *memory, unsigne
     if (!memory || !memory->ready || index > 1 || (memory->cpu & (1u << index)) == 0) {
         return false;
     }
-    if (memory->frame[index].publishForDevice(0, memory->frame_bytes, true) != kIOReturnSuccess) {
-        return false;
+    /* Acquisition invalidates the entire completed frame before any CPU
+     * read. After its const consumer finishes, only marker pages are dirty.
+     * Keep their positive clean/invalidate before hardware requeue; avoid
+     * maintaining 15 MiB of unchanged CPU lines at every 30fps boundary. */
+    for (unsigned row = 0; row < NezhaCameraFrameMarkerRows; ++row) {
+        const size_t marker = nezha_camera_frame_marker_offset(&memory->layout, row);
+        const size_t begin = marker & ~(Page - 1);
+        const size_t end = (marker + NezhaCameraFrameMarkerBytes + Page - 1) & ~(Page - 1);
+        if (end > memory->frame_bytes || end <= begin ||
+            memory->frame[index].publishForDevice(begin, end - begin, true) != kIOReturnSuccess) {
+            return false;
+        }
     }
     memory->cpu &= ~(1u << index);
     return true;
@@ -176,6 +189,7 @@ bool nezha_camera_native_memory_release(NezhaCameraNativeMemory **out, bool dma_
     memory->plan = {};
     memory->config = {};
     memory->frame_bytes = 0;
+    memory->layout = {};
     memory_in_use = false;
     *out = nullptr;
     return true;
