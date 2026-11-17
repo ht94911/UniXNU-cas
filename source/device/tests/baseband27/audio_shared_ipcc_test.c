@@ -7,12 +7,12 @@
 #include <stdio.h>
 #include <string.h>
 
-static unsigned held, audio_calls, mss_calls, clears;
+static unsigned held, audio_calls, mss_calls, clears, read_failed;
 static uint32_t next = UINT32_MAX;
 static int lock(void *p) {(void)p; assert(!held); held=1; return 0;}
 static void unlock(void *p) {(void)p; assert(held); held=0;}
 static int rd(void *p,unsigned domain,uint32_t offset,uint32_t *value)
-{(void)p; assert(domain==Sm8850Ipcc && offset==0x10); *value=next; return 0;}
+{(void)p; assert(domain==Sm8850Ipcc && offset==0x10); if(read_failed)return -1; *value=next; return 0;}
 static int wr(void *p,unsigned domain,uint32_t offset,uint32_t value)
 {(void)p; assert(domain==Sm8850Ipcc); if(offset==0x1c){assert(value==next);next=UINT32_MAX;clears++;} return 0;}
 static int rd64(void *p,unsigned d,uint32_t at,uint64_t *v)
@@ -29,7 +29,7 @@ int main(void)
     for(unsigned audio_first=0;audio_first<2;audio_first++){
         Sm8850Resources common={0};NaResourceOwner owner={0};NaAdsp dsp={0};
         Sm8850ResourceIo io={0,lock,unlock,rd,wr,rd64,fence};
-        held=audio_calls=mss_calls=clears=0;next=UINT32_MAX;
+        held=audio_calls=mss_calls=clears=read_failed=0;next=UINT32_MAX;
         assert(!sm8850_resources_init(&common,&io));
         assert(!sm8850_ipcc_register(&common,0,aop,0));
         assert(!na_resource_owner_init(&owner,&common));
@@ -41,6 +41,17 @@ int main(void)
         next=0x30002;assert(!sm8850_ipcc_dispatch(&common,32));
         next=0x20002;assert(!sm8850_ipcc_dispatch(&common,32));
         assert(audio_calls==1&&mss_calls==1&&clears==3&&!held);
+        /* The MSS dispatcher can be active while the audio worker polls.
+         * Its busy return is a dependency wait; the original ADSP poll then
+         * yields. It must not poison this owner and fail the next poll. */
+        common.ipcc_busy=1;next=0x30002;
+        assert(na_resource_owner_dispatch(&owner)==NA_BUSY);
+        assert(!owner.error&&next==0x30002&&clears==3);
+        assert(na_resource_owner_dispatch(&owner)==NA_BUSY);
+        assert(!owner.error&&next==0x30002&&clears==3);
+        common.ipcc_busy=0;
+        assert(!na_resource_owner_dispatch(&owner));
+        assert(!owner.error&&audio_calls==2&&mss_calls==1&&clears==4);
         assert(sm8850_ipcc_register(&common,0x20002,mss,0)==Sm8850Conflict);
         uint64_t adsp=0,tas=0,mic=0,ipa=0;
         assert(!sm8850_resource_acquire(&common,8,0x4e41,&adsp));
@@ -54,6 +65,9 @@ int main(void)
         assert(!sm8850_resource_release(&common,9,0x4e41,tas,1));
         assert(!sm8850_resource_acquire(&common,9,0x4e41,&tas));
         assert(common.owner[11]==NB_OWNER&&common.lease[11]==ipa);
+        read_failed=1;
+        assert(na_resource_owner_dispatch(&owner)==NA_IO&&owner.error==NA_IO);
+        assert(na_resource_owner_dispatch(&owner)==NA_OWNERSHIP);
     }
-    puts("PASS audio102/MSS: either startup order, AOP route retained, audio8/9/10 and IPA11 coexist, TAS reacquires without releasing IPA");
+    puts("PASS audio102/MSS: either startup order, shared-dispatch busy preserves the audio owner and pending IRQ, audio8/9/10 and IPA11 coexist");
 }

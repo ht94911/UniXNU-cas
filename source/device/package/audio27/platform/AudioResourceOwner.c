@@ -140,5 +140,9 @@ int na_resource_owner_ipcc(NaResourceOwner *o,NaAdsp *adsp) {
 }
 int na_resource_owner_dispatch(NaResourceOwner *o) {
     if (!o || !o->common || !o->registered || o->error) return NA_OWNERSHIP;
-    int r=sm8850_ipcc_dispatch(o->common,32);return r ? fail(o,r):NA_OK;
+    int r=sm8850_ipcc_dispatch(o->common,32);
+    /* The shared MSS dispatcher may own the FIFO for this poll. Preserve
+     * that transient dependency wait for the original ADSP state machine. */
+    if (r==Sm8850Busy) return NA_BUSY;
+    return r ? fail(o,r):NA_OK;
 }
