@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Build the AppSync kernel with a boot-profile Data volume UUID.",
+  "purpose": "Build the GPU051 AppSync kernel with a profile-selected large pinned Data volume.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -509,7 +509,7 @@
     "source/software-aes/NativeAES.cpp": "15cd9a1b721bd498685d49773de8734daa4303e1e298ccd31157148fa2d54a1e",
     "source/software-aes/OriginalAESABI.h": "80ff874a6556d6908826e74622e449fb82eb217e99bd4384418fe08e06c95e2f",
     "source/software-aes/README.md": "fb6af9b196316b4a39aa504e3ff92ebbaa7b6a0bb005c35f27bc360490dd52a4",
-    "source/ufs.bundle": "3a7c1c6ac7e5a39e6cb4adcc6143fa1e4c6c24ae862aa501102f9fb70c21a534",
+    "source/ufs.bundle": "c22a1460af0ac2bfd10c87e64b292578ce226c24322c2909c47acdf0a2138991",
     "source/usb.bundle": "c11677e274e735ce3ca849dde0e1654404eafb23538cadb0b25d0e6d2c98a5f4",
     "source/device/patches/xnu-12377/nezha-native-4k-large-ram.patch": "6c1e566d009bf384291487f9d5e242514c78a000ea39995fdae9cacfd816e32d",
     "source/device/patches/xnu-12377/appsync-data-volume.patch": "786e9ab7bf1259d5d721b13186e292c7c76513993d9462bf72df5c964befafcc"
@@ -529,10 +529,10 @@
   "phone_operations": false,
   "private_inputs_uploaded": false,
   "ufs": {
-    "source_revision": "988b3e1eb9274af2ab9d9602e2e237bd263f25fb",
-    "source_tree": "a85c7025769cfeb660ef0ee48a0a761b03509dc0",
+    "source_revision": "69e867ca528c97c8a928c18a3011697825612813",
+    "source_tree": "8d499b39f5b56dfdbfb39a78fa6266d43f253e49",
     "repository": "https://github.com/UniXNU/ShengUfs.git",
-    "history": "One source-only current tree; pinned independent Data, no private maps or parent history"
+    "history": "one source-only tree matching the AppSync pinned extents change d6267ccd8c463d44c3f97f3d5f0390c18f2648a8"
   },
   "ramblock": {
     "source_revision": "1c861fce7b246f3728a6a28d0cabe6448821de85",
