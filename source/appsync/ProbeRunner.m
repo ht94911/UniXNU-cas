@@ -101,6 +101,8 @@ int main(void)
         NSDictionary *transfer = [NSDictionary dictionaryWithContentsOfFile:
             @"/private/var/ngpu/appsync/probe/wifi-install.plist"];
         if (transfer) {
+            report("APPSYNC_PROBE wifi-memory bytes=%llu\n",
+                   (unsigned long long)NSProcessInfo.processInfo.physicalMemory);
             // libxpc's iOS activity transaction ends when ARC releases it.
             typedef id (*CreateTransaction)(const char *) NS_RETURNS_RETAINED;
             CreateTransaction create = (CreateTransaction)dlsym(RTLD_DEFAULT, "os_transaction_create");
