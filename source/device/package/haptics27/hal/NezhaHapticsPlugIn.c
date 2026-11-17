@@ -31,6 +31,7 @@ static double ticksPerFrame;
 static struct {uint32_t id,count;} clients[kClients];
 static atomic_uint writes,framesWritten,rejected,lastError;
 static atomic_uint initialized,starts,stops,propertyQueries;
+static atomic_uint lastUnknownObject,lastUnknownSelector;
 static HRESULT QueryInterface(void *self,REFIID uuid,LPVOID *out) {
     if(!out)return E_POINTER;
     CFUUIDRef requested=CFUUIDCreateFromUUIDBytes(NULL,uuid);if(!requested)return E_NOINTERFACE;
@@ -75,7 +76,19 @@ static OSStatus Initialize(AudioServerPlugInDriverRef d,AudioServerPlugInHostRef
     (void)d;mach_timebase_info_data_t t;
     if(mach_timebase_info(&t)||!t.numer||!t.denom)return kAudioHardwareUnspecifiedError;
     pthread_mutex_lock(&gate);host=h;ticksPerFrame=1e9*t.denom/t.numer/NZ_HAPTICS_RATE;
-    anchor=mach_absolute_time();seed=1;atomic_fetch_add(&initialized,1);pthread_mutex_unlock(&gate);return 0;
+    anchor=mach_absolute_time();seed=1;atomic_fetch_add(&initialized,1);pthread_mutex_unlock(&gate);
+    /* Observe the same endpoint the HAL will use without starting playback.
+     * The mature Pagani HAL checks its service at Initialize, before StartIO.
+     * Closing this unused descriptor retires the session through normal close. */
+    int descriptor=open(NZ_HAPTICS_DEVICE,O_WRONLY|O_NONBLOCK|O_CLOEXEC);
+    int error=descriptor<0?errno:0;
+    if(descriptor>=0) {
+        NzHapticsStatus status={0};
+        if(ioctl(descriptor,NZ_HAPTICS_GET_STATUS,&status)<0)error=errno;
+        else if(status.version!=NZ_HAPTICS_ABI || !status.ready)error=ENXIO;
+        close(descriptor);
+    }
+    atomic_store(&lastError,(uint32_t)error);return 0;
 }
 static OSStatus CreateDevice(AudioServerPlugInDriverRef d,CFDictionaryRef x,const AudioServerPlugInClientInfo *c,AudioObjectID *o) {
     (void)d;(void)x;(void)c;(void)o;return kAudioHardwareUnsupportedOperationError;
@@ -102,9 +115,10 @@ static AudioStreamBasicDescription format(void) {
         .mBytesPerPacket=4,.mFramesPerPacket=1,.mBytesPerFrame=4,.mChannelsPerFrame=1,.mBitsPerChannel=32};
 }
 typedef struct {
-    UInt32 size;Boolean found,string;
+    UInt32 size;Boolean found,string,diagnostic;
     union {UInt32 words[4];Float64 rate;CFStringRef text;AudioValueRange range;
-        AudioStreamBasicDescription format;AudioStreamRangedDescription ranged;AudioChannelLayout layout;} data;
+        AudioStreamBasicDescription format;AudioStreamRangedDescription ranged;AudioChannelLayout layout;
+        AudioServerPlugInCustomPropertyInfo custom;} data;
 } Value;
 static Value property(AudioObjectID o,const AudioObjectPropertyAddress *a,UInt32 qs,const void *q) {
     Value v={0};if(!a||(o!=kPlugin&&o!=kActuator&&o!=kStream))return v;
@@ -117,12 +131,16 @@ static Value property(AudioObjectID o,const AudioObjectPropertyAddress *a,UInt32
         case kAudioObjectPropertyClass:WORD(o==kPlugin?kAudioPlugInClassID:o==kActuator?kAudioDeviceClassID:kAudioStreamClassID);return v;
         case kAudioObjectPropertyOwner:WORD(o==kPlugin?kAudioObjectUnknown:o==kActuator?kPlugin:kActuator);return v;
         case kAudioObjectPropertyManufacturer:TEXT("UniXNU");return v;
-        case kAudioObjectPropertyName:TEXT("Actuator");return v;
+        case kAudioObjectPropertyName:case kAudioObjectPropertyModelName:TEXT("Actuator");return v;
+        case kAudioObjectPropertyElementName:TEXT("");return v;
+        case kAudioObjectPropertyIdentify:WORD(0);return v;
         case 'nhpt':
-            v.found=1;v.size=16;v.data.words[0]=atomic_load(&initialized);
-            v.data.words[1]=atomic_load(&starts);v.data.words[2]=atomic_load(&writes);
-            v.data.words[3]=atomic_load(&lastError);return v;
-        case kAudioObjectPropertyCustomPropertyInfoList:EMPTY();return v;
+            v.found=v.diagnostic=1;v.size=sizeof(CFPropertyListRef);return v;
+        case kAudioObjectPropertyCustomPropertyInfoList:
+            v.found=1;v.size=sizeof(v.data.custom);
+            v.data.custom=(AudioServerPlugInCustomPropertyInfo){'nhpt',
+                kAudioServerPlugInCustomPropertyDataTypeCFPropertyList,
+                kAudioServerPlugInCustomPropertyDataTypeNone};return v;
     }
     if(o==kPlugin) {
         switch(a->mSelector) {
@@ -143,6 +161,8 @@ static Value property(AudioObjectID o,const AudioObjectPropertyAddress *a,UInt32
             case kAudioObjectPropertySerialNumber:TEXT("nezha-haptics27");break;
             case kAudioObjectPropertyFirmwareVersion:TEXT("1");break;
             case kAudioDevicePropertyRelatedDevices:WORD(kActuator);break;
+            case kAudioDevicePropertyConfigurationApplication:TEXT("com.apple.Preferences");break;
+            case 'accs':case 'auto':WORD(0);break;
             case kAudioObjectPropertyOwnedObjects:case kAudioDevicePropertyStreams:
                 if(a->mScope==kAudioObjectPropertyScopeInput)EMPTY();else WORD(kStream);break;
             case kAudioObjectPropertyControlList:EMPTY();break;
@@ -163,7 +183,7 @@ static Value property(AudioObjectID o,const AudioObjectPropertyAddress *a,UInt32
         }
     } else {
         switch(a->mSelector) {
-            case kAudioObjectPropertyOwnedObjects:EMPTY();break;
+            case kAudioObjectPropertyOwnedObjects:case 'taps':EMPTY();break;
             case kAudioStreamPropertyIsActive:WORD(active);break;
             case kAudioStreamPropertyDirection:WORD(0);break;
             case kAudioStreamPropertyTerminalType:WORD(kAudioStreamTerminalTypeSpeaker);break;
@@ -179,6 +199,7 @@ static Value property(AudioObjectID o,const AudioObjectPropertyAddress *a,UInt32
 #undef WORD
 #undef EMPTY
 #undef TEXT
+    if(!v.found){atomic_store(&lastUnknownObject,o);atomic_store(&lastUnknownSelector,a->mSelector);}
     return v;
 }
 static Boolean HasProperty(AudioServerPlugInDriverRef d,AudioObjectID o,pid_t pid,const AudioObjectPropertyAddress *a) {
@@ -194,11 +215,30 @@ static OSStatus GetPropertyDataSize(AudioServerPlugInDriverRef d,AudioObjectID o
     (void)d;(void)pid;if(!n)return kAudioHardwareIllegalOperationError;Value v=property(o,a,qs,q);
     if(!v.found)return kAudioHardwareUnknownPropertyError;*n=v.size;return 0;
 }
+static CFDictionaryRef diagnostics(void) {
+    const void *keys[]={CFSTR("initialized"),CFSTR("starts"),CFSTR("writes"),CFSTR("lastError"),
+        CFSTR("stops"),CFSTR("propertyQueries"),CFSTR("lastUnknownObject"),CFSTR("lastUnknownSelector")};
+    uint32_t counters[]={atomic_load(&initialized),atomic_load(&starts),atomic_load(&writes),atomic_load(&lastError),
+        atomic_load(&stops),atomic_load(&propertyQueries),atomic_load(&lastUnknownObject),atomic_load(&lastUnknownSelector)};
+    CFNumberRef values[sizeof(counters)/sizeof(counters[0])]={0};unsigned made=0;
+    for(;made<sizeof(values)/sizeof(values[0]);++made) {
+        int64_t value=counters[made];values[made]=CFNumberCreate(NULL,kCFNumberSInt64Type,&value);
+        if(!values[made])break;
+    }
+    CFDictionaryRef result=made==sizeof(values)/sizeof(values[0])?CFDictionaryCreate(NULL,keys,
+        (const void **)values,made,&kCFTypeDictionaryKeyCallBacks,&kCFTypeDictionaryValueCallBacks):NULL;
+    while(made)CFRelease(values[--made]);return result;
+}
 static OSStatus GetPropertyData(AudioServerPlugInDriverRef d,AudioObjectID o,pid_t pid,const AudioObjectPropertyAddress *a,UInt32 qs,const void *q,UInt32 capacity,UInt32 *n,void *data) {
     (void)d;(void)pid;if(!n)return kAudioHardwareIllegalOperationError;
     pthread_mutex_lock(&gate);Value v=property(o,a,qs,q);pthread_mutex_unlock(&gate);
     if(!v.found)return kAudioHardwareUnknownPropertyError;if(capacity<v.size||(v.size&&!data))return kAudioHardwareBadPropertySizeError;
-    *n=v.size;if(v.size){memcpy(data,&v.data,v.size);if(v.string)CFRetain(v.data.text);}return 0;
+    *n=v.size;
+    if(v.diagnostic) {
+        CFDictionaryRef value=diagnostics();if(!value)return kAudioHardwareUnspecifiedError;
+        memcpy(data,&value,sizeof(value));return 0;
+    }
+    if(v.size){memcpy(data,&v.data,v.size);if(v.string)CFRetain(v.data.text);}return 0;
 }
 static OSStatus SetPropertyData(AudioServerPlugInDriverRef d,AudioObjectID o,pid_t pid,const AudioObjectPropertyAddress *a,UInt32 qs,const void *q,UInt32 n,const void *data) {
     (void)qs;(void)q;Boolean settable=0;OSStatus e=IsPropertySettable(d,o,pid,a,&settable);

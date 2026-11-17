@@ -5,15 +5,15 @@
  		    bt_lib_stage, bt_lib_status, bt_bin_stage, bt_bin_status, bt_xpc_stage, bt_xpc_status);
  	}
 +	/* Independent Actuator plug-in, original D16 preset stays on the root.
-+	 * Reuse the readonly /Library audio union; don't replace speaker HAL. */
++	 * Reuse the proven system HAL union; retain the original speaker drivers. */
 +	uint32_t haptic_os = 0;
 +	if (PE_parse_boot_argn("nezha-haptics-ios", &haptic_os, sizeof(haptic_os)) && haptic_os) {
 +		static const char hap_source[] = "/private/var/ngpu/haptics-hal";
-+		static const char hap_point[] = "/Library/Audio/Plug-Ins/HAL";
++		static const char hap_point[] = "/System/Library/Audio/Plug-Ins/HAL";
 +		static volatile int hap_stage, hap_status;
 +		native_gpu_addon_mount(p, scratch, 0x600, hap_source, sizeof(hap_source), hap_point, sizeof(hap_point),
-+		    "/Library/Audio/Plug-Ins/HAL/VirtualAudio.plugin/Info.plist",
-+		    "/Library/Audio/Plug-Ins/HAL/NezhaHaptics27.driver/Info.plist", &hap_stage, &hap_status);
++		    "/System/Library/Audio/Plug-Ins/HAL/BuiltinAudioPlugin.driver/Info.plist",
++		    "/System/Library/Audio/Plug-Ins/HAL/NezhaHaptics27.driver/Info.plist", &hap_stage, &hap_status);
 +		/* Reuse the recorder/sensor launcher's readonly executable view.
 +		 * System Policy rejects launchd executing a helper from Data. */
 +		static const char hap_bin_source[] = "/private/var/ngpu/haptics-bin";

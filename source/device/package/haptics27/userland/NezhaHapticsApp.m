@@ -7,6 +7,7 @@
 // The original CoreAudio queries are read-only. They distinguish a missing
 // Actuator HAL from a service connection failure before CoreHaptics playback.
 typedef struct { uint32_t selector,scope,element; } HapticProperty;
+typedef struct { void *input;uint32_t inputSize;void *output;uint32_t outputSize; } HapticTranslation;
 typedef int32_t (*HapticGetProperty)(uint32_t,const HapticProperty *,uint32_t,const void *,uint32_t *,void *);
 
 @interface HapticsController : UIViewController
@@ -41,13 +42,31 @@ typedef int32_t (*HapticGetProperty)(uint32_t,const HapticProperty *,uint32_t,co
         CFStringRef uid=(__bridge CFStringRef)name;
         HapticProperty address={'uidd','glob',0};uint32_t device=0,size=sizeof(device);
         int32_t error=get(1,&address,sizeof(uid),&uid,&size,&device);
-        uint32_t diagnostic[4]={0};address.selector='nhpt';size=sizeof(diagnostic);
-        int32_t status=device?get(device,&address,0,NULL,&size,diagnostic):-1;
-        [devices addObject:@{@"uid":name,@"device":@(device),@"error":@(error),@"diagnosticError":@(status),
-            @"HALInitialized":@(diagnostic[0]),@"HALStarts":@(diagnostic[1]),
-            @"HALWrites":@(diagnostic[2]),@"HALError":@(diagnostic[3])}];
+        int32_t translatedError=0;
+        if(error || size!=sizeof(device) || !device) {
+            device=0;HapticTranslation translation={&uid,sizeof(uid),&device,sizeof(device)};
+            address.selector='duid';size=sizeof(translation);
+            translatedError=get(1,&address,0,NULL,&size,&translation);
+            if(translatedError || size!=sizeof(translation))device=0;
+        }
+        CFPropertyListRef diagnostic=NULL;address.selector='nhpt';size=sizeof(diagnostic);
+        int32_t status=device?get(device,&address,0,NULL,&size,&diagnostic):-1;
+        NSDictionary *values=nil;
+        if(!status && size==sizeof(diagnostic) && diagnostic &&
+            CFGetTypeID(diagnostic)==CFDictionaryGetTypeID())values=(__bridge NSDictionary *)diagnostic;
+        [devices addObject:@{@"uid":name,@"device":@(device),@"error":@(error),
+            @"translationError":@(translatedError),@"diagnosticError":@(status),
+            @"diagnostic":values ?: @{}}];
+        if(diagnostic)CFRelease(diagnostic);
     }
-    NSDictionary *row=@{@"audioDevices":devices,@"uptime":@(NSProcessInfo.processInfo.systemUptime)};
+    HapticProperty address={'pibi','glob',0};uint32_t plugin=0;
+    CFStringRef bundle=CFSTR("org.unixnu.nezha.haptics27");
+    HapticTranslation translation={&bundle,sizeof(bundle),&plugin,sizeof(plugin)};
+    uint32_t size=sizeof(translation);
+    int32_t pluginError=get(1,&address,0,NULL,&size,&translation);
+    if(pluginError || size!=sizeof(translation))plugin=0;
+    NSDictionary *row=@{@"audioDevices":devices,@"HALPlugin":@(plugin),@"HALPluginError":@(pluginError),
+        @"uptime":@(NSProcessInfo.processInfo.systemUptime)};
     NSData *data=[NSJSONSerialization dataWithJSONObject:row options:0 error:NULL];
     @try { [self.log writeData:data];[self.log writeData:[@"\n" dataUsingEncoding:NSUTF8StringEncoding]]; }
     @catch(NSException *exception) { NSLog(@"Haptics device log %@",exception.name); }

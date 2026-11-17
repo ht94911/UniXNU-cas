@@ -47,7 +47,7 @@ def main():
                     '--generate-entitlement-der', bundle])
     run('app-verify', ['codesign', '--verify', '--strict', bundle])
     launcher = args.out / 'nezha-haptics-launch'
-    run('launcher-compile', [*flags, args.source / 'NezhaHapticsLaunch.m', '-framework', 'Foundation', '-o', launcher])
+    run('launcher-compile', [*flags, args.source / 'NezhaHapticsLaunch.m', '-framework', 'Foundation', '-framework', 'CoreFoundation', '-o', launcher])
     run('launcher-sign', ['codesign', '--force', '--sign', '-', '--pagesize', '4096', '--digest-algorithm', 'sha256',
                          '--identifier', 'org.unixnu.nezha.haptics-launch', '--entitlements',
                          args.source / 'launch.entitlements.plist', '--generate-entitlement-der', launcher])

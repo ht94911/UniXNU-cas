@@ -1,5 +1,5 @@
 {
-  "stage": "GPU051007 independent target build and113 packaging/entry qualified;005 mechanical failure recorded;007 hardware pending",
+  "stage": "GPU051011 current source after010 real frontend/no-output failure;007 direct motor acceptance passed; system HAL loading and end-to-end pending",
   "profile": "GPU051 iPhone14,4 D16 27.0.1/24A446",
   "framework_reference": "9931232fd68b8ae1db0abd957ecba417f1996e52",
   "xnu_reference": "12377.121.6 source; donor xnu13432.2.10",
@@ -53,9 +53,10 @@
     "source": "hal/NezhaHapticsPlugIn.c",
     "factory": "NezhaHaptics_Create",
     "arch": "arm64e-apple-ios27.0",
-    "destination": "/Library/Audio/Plug-Ins/HAL/NezhaHaptics27.driver",
+    "destination": "/System/Library/Audio/Plug-Ins/HAL/NezhaHaptics27.driver",
     "signing": "reuse selected package owner codesign and trust addon path; 4096-byte code pages",
-    "hardware_probe_executable": "NezhaHapticTest"
+    "hardware_probe_executable": "NezhaHapticTest",
+    "diagnostic_property": "nhpt: registeredCFPropertyList, read-only counters and lastunknown property"
   },
   "private_inputs": [
     "original current Android runtime/calibration and extent references",
@@ -72,21 +73,24 @@
     "ios17-main.json"
   ],
   "pending": [
-    "actual electrical drive and mechanical vibration;007 PLAY_EN/HPWR stop and normal return",
-    "Actuator audio-server loading and normal UI/CoreHaptics request path",
-    "actual sensation and cancellation/sleep/stability"
+    "Actual011 HAL loader directory, preflight and Initialize endpoint readiness",
+    "NormalUIKit/CoreHaptics request, HAL PCM and actual motor output",
+    "Actual system cancellation/sleep and stability"
   ],
   "selected_package": {
     "base_revision": "76c5952683041a6581224135461ab7c21d47f6a5",
     "base_boot_sha256": "4e4b785ca1bf7bea18d68248ade4cde09a9d9efb5d557fe65e4eaa975dac849a",
     "framework": "4a157b58d1a18300a6570792236abc4796aa27a2",
-    "compiled_source_revision": "c7d3ba749849fc2ab46840d275957c50bfbb914f",
-    "native_run": 43933783541,
-    "native_head": "042e9e7205ce4132042c53ead10ce7da3fa1b193",
-    "native_sha256": "279496b76bb3d6bc97e6ea11444cc1799429b638da271f6b71de3ddf147a5231",
+    "compiled_source_revision": "d783970f43f39b29cb6644094791ca89c6b84d7b",
+    "native_run": 44057960588,
+    "native_head": "b1bca697e10df46d903d2e81073a12e0c738d9f8",
+    "native_sha256": "4198f99ce66af5908c5be0aabcfe62e783d3a3fcc4aa27395d9d92ac194fa2a9",
     "motor_boot_sha256": "31dda3c7ad6d51aa3da2d04c2c1f17294b83a35ac7d07f0495e4448f51359a15",
     "motor_embedded_payload_sha256": "306fb898dd97760d097ea2f013bc05eb5b9180b7c51592b05f2f3015f7271d46",
-    "actual_motor_sensation_verified": false,
-    "actual_system_haptics_verified": false
+    "actual_motor_sensation_verified": true,
+    "actual_system_haptics_verified": false,
+    "latest_system_test": "010",
+    "latest_system_engine_error": 4099,
+    "latest_system_plays": 0
   }
 }

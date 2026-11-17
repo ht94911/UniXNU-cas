@@ -11,6 +11,8 @@
 #include <signal.h>
 #include <stdio.h>
 #include <unistd.h>
+#include <dirent.h>
+#include <string.h>
 
 @interface NSObject (NezhaHapticLaunchServices)
 + (id)defaultWorkspace;
@@ -95,6 +97,30 @@ static int open_haptic(Class proxy,id service,NSURL *system_url)
     return requested ? 0:9;
 }
 
+/* Inspect the exact directories the stock HAL loader scans, before opening
+ * the normal application. Preflight validates the bundle but does not run its
+ * factory or replace the audio server's discovery and initialization. */
+static void inspect_hal_bundle(void)
+{
+    const char *directory="/System/Library/Audio/Plug-Ins/HAL";
+    DIR *stream=opendir(directory);unsigned count=0,found=0;
+    if(stream) {
+        struct dirent *entry;
+        while((entry=readdir(stream)) && count<128) {
+            if(entry->d_name[0]=='.')continue;
+            ++count;if(!strcmp(entry->d_name,"NezhaHaptics27.driver"))found=1;
+        }
+        closedir(stream);
+    }
+    NSURL *url=[NSURL fileURLWithPath:@"/System/Library/Audio/Plug-Ins/HAL/NezhaHaptics27.driver" isDirectory:YES];
+    CFBundleRef bundle=CFBundleCreate(NULL,(__bridge CFURLRef)url);
+    CFErrorRef error=NULL;Boolean preflight=bundle?CFBundlePreflightExecutable(bundle,&error):false;
+    NSString *message=error?[(__bridge NSError *)error localizedDescription]:@"";
+    fprintf(stderr,"nezha-haptics-launch: HAL directory=%s entries=%u expected=%u bundle=%u preflight=%u error=%ld description=%s\n",
+        directory,count,found,(unsigned)(bundle!=NULL),(unsigned)preflight,error?(long)CFErrorGetCode(error):0,message.UTF8String);
+    if(error)CFRelease(error);if(bundle)CFRelease(bundle);
+}
+
 #ifndef NEZHA_CAMERA_LAUNCH_TEST
 static void deadline(int value)
 {
@@ -110,6 +136,7 @@ int main(void)
         setvbuf(stderr,NULL,_IONBF,0);
         signal(SIGALRM,deadline);
         alarm(45);
+        inspect_hal_bundle();
         const char *framework="/System/Library/Frameworks/CoreServices.framework/CoreServices";
         void *handle=dlopen(framework,RTLD_NOW|RTLD_LOCAL);
         Class proxy=objc_getClass("LSApplicationProxy");

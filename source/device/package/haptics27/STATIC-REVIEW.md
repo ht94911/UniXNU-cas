@@ -29,3 +29,5 @@ GPU051指定后的审查：真实audiomxd UserName mobile/UID501已核，cdev501
 005实际失败已保存：用户明确无振动，第三较强短脉冲HPWR停止故障，正常XNU返回拒绝；人工回安卓后的真实保护后验与采集器退出通过。007在独立GPU051树修正原厂运行态、直接播放谐振和可靠退出，最新native43933783541成功；007包尚未上机，旧系统006不作为新源码验证。当前不能给出硬件或系统触觉合入通过结论。
 
 007后续实际修正：STOP完成后readback/cache先于停止状态发布，QUD_CANCEL撤掉diagnosticOwner不能留下播放前电气快照；正常HAL客户端期间采样，显式valid/sequence/sampledus。scripts/check-haptics-electrical-stop.py直接提取并执行生产stopped/cacheElectrical，在原硬件模型上确认owner先撤掉、HPWR恢复、失败回读无有效样本，ASan/UBSan通过。007实际direct振动/完全停止与一次正常返回后验已完成，系统触觉待008。
+
+010已经实际执行普通UIKit应用，所有按钮无物理振动；精确app journal记录foreground/selection/impact/notification、CoreHaptics4099，uidd两执行器ID均0，无HALopen/start/PCM/plays。正常返回及root/GPT/prefix/退出/释放通过。011确认的接口缺口为nhpt未登记且返回不可跨进程封送的raw整数数组；改CFPropertyList并按原CustomPropertyInfo声明。初始化端点仅open/ioctl/close不播放，launcher限时目录枚举/preflight，应用查询uidd/duid/pibi；新增生产HAL主机契约用例随Mac构建执行。system HAL mount变化为沿既有成熟挂载路径的有限验证，不能提前宣称其解决009/010。

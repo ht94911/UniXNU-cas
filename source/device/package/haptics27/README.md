@@ -1,6 +1,6 @@
 # nezha iOS27 触觉源码候选
 
-**人类已指定 GPU051；当前007马达候选已完成目标构建、严格预链接、封包及113入口验证，等待文件窗口。007实机已经确认振动与完全停止，系统触觉尚未上机。** 第一阶段交付保持不变；此测试树从 GPU051 固定源码76c595268304创建。最新已编译的内核源码为c7d3ba749849fc2ab46840d275957c50bfbb914f；后续仅文档提交不改变该构建身份。依赖见 `dependencies.json`，复用与许可证见 `SOURCES.md`。
+**人类已指定 GPU051。007 的直接马达振动、完全停止和正常返回实机通过；010 的普通前台应用已执行，但所有按钮无振动，CoreHaptics engine4099、HAL设备ID0、内核requests/plays0。当前011在独立测试树修复自定义属性传输并核对原HAL加载；系统触觉尚未通过。** 编译与实机证据按包身份绑定，旧失败轮次保留。复用与许可证见 `SOURCES.md`，依赖见 `dependencies.json`。
 
 真机已确认 PMIH010x / HAP530、SPMI v8 bus1 SID7，CFG/PTN/HBOOST 分别0xf000/0xf100/0xf200，global APID2254/2255/2256；CFG5.1.8.1、PTN5.1.0.0、HBOOST31/01。马达按原厂LRA、160–180Hz范围，名义5555µs；旧安卓日志5723µs，005本轮读取有效5746µs、RC mode4/count0及8064字节FIFO。9Ω为原厂标称阻抗；具体马达商品型号与当前温度尚未确认。
 
@@ -30,8 +30,12 @@ GPU051集成与验证路径：
 
 2026-11-17电脑结果：最新Mac原生43933783541/head042e9e7205ce4132042c53ead10ce7da3fa1b193成功；native279496b76bb3d6bc97e6ea11444cc1799429b638da271f6b71de3ddf147a5231。核心98857、SPMI14615检查及ASan/UBSan通过；38组件strict零缺失/零stub，1323原有PAC槽与3原资源区复核；loader真实parser、单核/8核QEMU通过；113部署镜像与75文件r008已核。007 boot31dda3c7ad6d51aa3da2d04c2c1f17294b83a35ac7d07f0495e4448f51359a15，embedded payload306fb898dd97760d097ea2f013bc05eb5b9180b7c51592b05f2f3015f7271d46。原729jobs/56addon/4trust模块保留，007不写手机磁盘payload。
 
-实际轮次：001在SWR_ACCESS判定处拒绝，003在越界period处拒绝；均未驱动。005初始化通过，两个50ms/25%及两个300ms/50%仅命令与停止计数通过，用户明确反馈没有振动；第三300ms脉冲HPWR停止超时，正常USB退出被拒绝。随后人工回安卓，实际root/GPT/maps/17/27前缀后验和自有采集器退出通过并释放。007据此修采样、自动谐振和停止链，尚未启动。功能验收仍为：总线/身份已测；机械振动未通过；HAL/UI/CoreHaptics/长期稳定性未测。
+实际轮次：001在SWR_ACCESS判定处拒绝，003在越界period处拒绝；均未驱动。005初始化通过，两个50ms/25%及两个300ms/50%仅命令与停止计数通过，用户明确反馈没有振动；第三300ms脉冲HPWR停止超时，正常USB退出被拒绝。随后人工回安卓，实际root/GPT/maps/17/27前缀后验和自有采集器退出通过并释放。007据此修采样、自动谐振和停止链，尚未启动。该005轮次验收为：总线/身份已测，机械振动失败；后续007实际结果见下段。
 
 007本机实际通过（2026-11-17）：原厂5726µs、FIFO8064；25%/50ms后峰值502mV/38mA，50%/300ms播放中997mV/84mA，全幅300ms播放中1984mV/183mA。人类确认“有震动！我感受到了！”及“已完全停止”。3次100ms重复与6个FIFO效果命令/停止过，六效果实际触感未逐个验。取消有实际stop13/logerror0，但USB电气缓存仍play129/power3；新源在STOP后强制回读、为采样增加valid/sequence/sampledus并在HAL客户端期间采样，生产函数模型ASan/UBSan通过。一次正常XNU返回、Android/root/GPT/map-pin/17同135168/27generation1/52204退出与文件释放通过；未写手机payload。008系统候选在电脑构建，不能沿用旧006验收。
 
 008系统实测（2026-11-17）：productstage2/addon5-error0/D16preset1/commit0已通过；有限CoreHaptics程序在原Data路径被SystemPolicy拒绝，plays0/stops0，结果缺失、stdout/err为0。初始V/I峰值是上轮Android残留而非本轮输出。一次正常返回、Android/root/GPT/maps/17同135168/27gen1/78952退出后验与释放通过。009复用音频105和传感器002已有readonly `/usr/libexec` union，为同一签名Core程序发布系统执行路径；不修改全局执行策略。
+
+009/010系统实测（2026-11-17）：009有限程序从readonly/usr/libexec成功执行，supportsHaptics1但engine4099、requests/plays0。010普通应用原LSproxy installed1/placeholder0、open1，actual foreground278.145s；selection/medium impact50%/notification及重复按钮均已调用，人类明确反馈“实测所有按钮均无震动”。CoreHaptics engine持续4099，原CoreAudio查询Actuator与VirtualAudioDevice_Actuator都device0且无kernel HALopen/start。010正常XNU返回、root/GPT/map-pin/17同135168/27generation1/79064退出、48MiB内自有日志提取与释放通过。
+
+011根据此现场补齐：原loader已静态核三目录及.driver后缀。沿成熟/system/Library/Audio/Plug-Ins/HAL readonly union发布同一独立Actuator，保留原BuiltinAudioPlugin。HALInitialize只开/ioctl/close现有端点取就绪状态，不发播放；nhpt按AudioServerPlugInCustomPropertyInfo登记为CFPropertyList，供原CoreAudio跨进程传输；补成熟Actuator可选属性，记录末次未知selector。应用同时核uidd/duid/pibi，launcher在有限deadline内记录目录枚举和CFBundlePreflightExecutable。硬件电压/波形/校准、正常系统策略和FIFO执行器保持007沿用；待新包实际加载及正常请求。

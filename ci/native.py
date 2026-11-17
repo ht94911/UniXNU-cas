@@ -289,6 +289,8 @@ def collect(framework, work, sealed):
         add(work / name, name)
     for name in ('report.json', 'actual-memory-limit.c', 'execution.txt'):
         add(work / 'icon-memory-host' / name, 'icon-memory-host/' + name)
+    for path in sorted((work / 'haptics-hal-host').rglob('*')):
+        if path.is_file():add(path,'haptics-hal-host/'+path.relative_to(work/'haptics-hal-host').as_posix())
     for path in sorted((work / 'haptics-hal').rglob('*')):
         if path.is_file():add(path,'haptics-hal/'+path.relative_to(work/'haptics-hal').as_posix())
     for path in sorted((work / 'haptics-ui').rglob('*')):
