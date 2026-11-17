@@ -30,6 +30,7 @@ static uint64_t anchor,seed;
 static double ticksPerFrame;
 static struct {uint32_t id,count;} clients[kClients];
 static atomic_uint writes,framesWritten,rejected,lastError;
+static atomic_uint initialized,starts,stops,propertyQueries;
 static HRESULT QueryInterface(void *self,REFIID uuid,LPVOID *out) {
     if(!out)return E_POINTER;
     CFUUIDRef requested=CFUUIDCreateFromUUIDBytes(NULL,uuid);if(!requested)return E_NOINTERFACE;
@@ -74,7 +75,7 @@ static OSStatus Initialize(AudioServerPlugInDriverRef d,AudioServerPlugInHostRef
     (void)d;mach_timebase_info_data_t t;
     if(mach_timebase_info(&t)||!t.numer||!t.denom)return kAudioHardwareUnspecifiedError;
     pthread_mutex_lock(&gate);host=h;ticksPerFrame=1e9*t.denom/t.numer/NZ_HAPTICS_RATE;
-    anchor=mach_absolute_time();seed=1;pthread_mutex_unlock(&gate);return 0;
+    anchor=mach_absolute_time();seed=1;atomic_fetch_add(&initialized,1);pthread_mutex_unlock(&gate);return 0;
 }
 static OSStatus CreateDevice(AudioServerPlugInDriverRef d,CFDictionaryRef x,const AudioServerPlugInClientInfo *c,AudioObjectID *o) {
     (void)d;(void)x;(void)c;(void)o;return kAudioHardwareUnsupportedOperationError;
@@ -107,6 +108,7 @@ typedef struct {
 } Value;
 static Value property(AudioObjectID o,const AudioObjectPropertyAddress *a,UInt32 qs,const void *q) {
     Value v={0};if(!a||(o!=kPlugin&&o!=kActuator&&o!=kStream))return v;
+    atomic_fetch_add(&propertyQueries,1);
 #define WORD(x) do{v.found=1;v.size=4;v.data.words[0]=(x);}while(0)
 #define EMPTY() do{v.found=1;v.size=0;}while(0)
 #define TEXT(x) do{v.found=v.string=1;v.size=sizeof(CFStringRef);v.data.text=CFSTR(x);}while(0)
@@ -116,6 +118,10 @@ static Value property(AudioObjectID o,const AudioObjectPropertyAddress *a,UInt32
         case kAudioObjectPropertyOwner:WORD(o==kPlugin?kAudioObjectUnknown:o==kActuator?kPlugin:kActuator);return v;
         case kAudioObjectPropertyManufacturer:TEXT("UniXNU");return v;
         case kAudioObjectPropertyName:TEXT("Actuator");return v;
+        case 'nhpt':
+            v.found=1;v.size=16;v.data.words[0]=atomic_load(&initialized);
+            v.data.words[1]=atomic_load(&starts);v.data.words[2]=atomic_load(&writes);
+            v.data.words[3]=atomic_load(&lastError);return v;
         case kAudioObjectPropertyCustomPropertyInfoList:EMPTY();return v;
     }
     if(o==kPlugin) {
@@ -210,6 +216,7 @@ static OSStatus SetPropertyData(AudioServerPlugInDriverRef d,AudioObjectID o,pid
 }
 static OSStatus StartIO(AudioServerPlugInDriverRef d,AudioObjectID o,UInt32 id) {
     (void)d;if(o!=kActuator)return kAudioHardwareBadObjectError;
+    atomic_fetch_add(&starts,1);
     pthread_mutex_lock(&gate);unsigned slot=kClients;
     for(unsigned i=0;i<kClients;++i)if(clients[i].count&&clients[i].id==id){slot=i;break;}
     if(slot==kClients)for(unsigned i=0;i<kClients;++i)if(!clients[i].count){slot=i;break;}
@@ -221,6 +228,7 @@ static OSStatus StartIO(AudioServerPlugInDriverRef d,AudioObjectID o,UInt32 id) 
 }
 static OSStatus StopIO(AudioServerPlugInDriverRef d,AudioObjectID o,UInt32 id) {
     (void)d;if(o!=kActuator)return kAudioHardwareBadObjectError;
+    atomic_fetch_add(&stops,1);
     pthread_mutex_lock(&gate);int e=0;
     for(unsigned i=0;i<kClients;++i)if(clients[i].count&&clients[i].id==id) {
         --clients[i].count;--users;if(!users)e=stopEndpoint();break;

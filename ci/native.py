@@ -291,6 +291,8 @@ def collect(framework, work, sealed):
         add(work / 'icon-memory-host' / name, 'icon-memory-host/' + name)
     for path in sorted((work / 'haptics-hal').rglob('*')):
         if path.is_file():add(path,'haptics-hal/'+path.relative_to(work/'haptics-hal').as_posix())
+    for path in sorted((work / 'haptics-ui').rglob('*')):
+        if path.is_file():add(path,'haptics-ui/'+path.relative_to(work/'haptics-ui').as_posix())
     for path in sorted((work / 'logs').glob('*.log')):
         add(path, 'logs/' + path.name)
     for path in sorted((work.parent / 'setup-logs').glob('*.log')):

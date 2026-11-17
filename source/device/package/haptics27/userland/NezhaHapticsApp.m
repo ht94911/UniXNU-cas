@@ -2,6 +2,12 @@
 // Ordinary UIKit/CoreHaptics requests in a foreground diagnostic application.
 #import <UIKit/UIKit.h>
 #import <CoreHaptics/CoreHaptics.h>
+#include <dlfcn.h>
+
+// The original CoreAudio queries are read-only. They distinguish a missing
+// Actuator HAL from a service connection failure before CoreHaptics playback.
+typedef struct { uint32_t selector,scope,element; } HapticProperty;
+typedef int32_t (*HapticGetProperty)(uint32_t,const HapticProperty *,uint32_t,const void *,uint32_t *,void *);
 
 @interface HapticsController : UIViewController
 @property(nonatomic,strong) UILabel *status;
@@ -24,6 +30,28 @@
     @try { [self.log writeData:data]; [self.log writeData:[@"\n" dataUsingEncoding:NSUTF8StringEncoding]]; }
     @catch(NSException *exception) { NSLog(@"Haptics diagnostic log %@",exception.name); }
     self.status.text=[NSString stringWithFormat:@"%@：%@",event,success?@"已发出":@"失败"];
+}
+- (void)inspectAudio
+{
+    void *handle=dlopen("/System/Library/Frameworks/CoreAudio.framework/CoreAudio",RTLD_NOW|RTLD_LOCAL);
+    HapticGetProperty get=handle?(HapticGetProperty)dlsym(handle,"AudioObjectGetPropertyData"):NULL;
+    if(!get){[self record:@"CoreAudio device query unavailable" success:NO error:nil];return;}
+    NSMutableArray *devices=[NSMutableArray array];
+    for(NSString *name in @[@"Actuator",@"VirtualAudioDevice_Actuator"]) {
+        CFStringRef uid=(__bridge CFStringRef)name;
+        HapticProperty address={'uidd','glob',0};uint32_t device=0,size=sizeof(device);
+        int32_t error=get(1,&address,sizeof(uid),&uid,&size,&device);
+        uint32_t diagnostic[4]={0};address.selector='nhpt';size=sizeof(diagnostic);
+        int32_t status=device?get(device,&address,0,NULL,&size,diagnostic):-1;
+        [devices addObject:@{@"uid":name,@"device":@(device),@"error":@(error),@"diagnosticError":@(status),
+            @"HALInitialized":@(diagnostic[0]),@"HALStarts":@(diagnostic[1]),
+            @"HALWrites":@(diagnostic[2]),@"HALError":@(diagnostic[3])}];
+    }
+    NSDictionary *row=@{@"audioDevices":devices,@"uptime":@(NSProcessInfo.processInfo.systemUptime)};
+    NSData *data=[NSJSONSerialization dataWithJSONObject:row options:0 error:NULL];
+    @try { [self.log writeData:data];[self.log writeData:[@"\n" dataUsingEncoding:NSUTF8StringEncoding]]; }
+    @catch(NSException *exception) { NSLog(@"Haptics device log %@",exception.name); }
+    dlclose(handle);
 }
 - (void)selection
 {
@@ -109,12 +137,13 @@
 {
     [super viewDidAppear:animated];if(self.automaticTestStarted)return;self.automaticTestStarted=YES;
     [self record:@"foreground test start" success:YES error:nil];
+    [self inspectAudio];
     __weak HapticsController *weak=self;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW,2*NSEC_PER_SEC),dispatch_get_main_queue(),^{[weak selection];});
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW,3*NSEC_PER_SEC),dispatch_get_main_queue(),^{[weak impact];});
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW,4*NSEC_PER_SEC),dispatch_get_main_queue(),^{[weak notification];});
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW,5*NSEC_PER_SEC),dispatch_get_main_queue(),^{[weak continuous];});
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,6*NSEC_PER_SEC),dispatch_get_main_queue(),^{[weak stop];});
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,6*NSEC_PER_SEC),dispatch_get_main_queue(),^{[weak stop];[weak inspectAudio];});
 }
 - (void)viewWillDisappear:(BOOL)animated { [self stop];[super viewWillDisappear:animated]; }
 - (void)dealloc { [self.log closeFile]; }

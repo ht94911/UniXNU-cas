@@ -1,6 +1,6 @@
 --- a/bsd/kern/kern_exec.c
 +++ b/bsd/kern/kern_exec.c
-@@ -8736,6 +8736,37 @@
+@@ -8736,6 +8736,44 @@
  		printf("[bluetooth-runtime] library=%d/%d executables=%d/%d cache=%d/%d\n",
  		    bt_lib_stage, bt_lib_status, bt_bin_stage, bt_bin_status, bt_xpc_stage, bt_xpc_status);
  	}
@@ -23,6 +23,13 @@
 +		    hap_bin_point, sizeof(hap_bin_point), "/usr/libexec/launchd_cache_loader",
 +		    "/usr/libexec/NezhaHapticCoreTest", &hap_bin_stage, &hap_bin_status);
 +		printf("NEZHA HAPTICS: executables %d/%d\n", hap_bin_stage, hap_bin_status);
++		static const char hap_app_source[] = "/private/var/ngpu/haptics-apps";
++		static const char hap_app_point[] = "/Applications";
++		static volatile int hap_app_stage, hap_app_status;
++		native_gpu_addon_mount(p, scratch, 0x600, hap_app_source, sizeof(hap_app_source),
++		    hap_app_point, sizeof(hap_app_point), "/Applications/Preferences.app/Info.plist",
++		    "/Applications/NezhaHapticsUI.app/Info.plist", &hap_app_stage, &hap_app_status);
++		printf("NEZHA HAPTICS: test app %d/%d\n", hap_app_stage, hap_app_status);
 +		extern int nezha_haptics_ios_commit(int, int) __attribute__((weak_import));
 +		extern void nezha_haptics_start(void) __attribute__((weak_import));
 +		extern int nezha_haptics_wait_ready(uint32_t) __attribute__((weak_import));

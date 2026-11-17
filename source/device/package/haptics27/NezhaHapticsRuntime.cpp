@@ -128,6 +128,7 @@ int openDevice(dev_t,int,int,struct proc *p) {
     else if(client || queue.stopping || queue.active_sequence || nowUs(nullptr)<cooldownUntil)e=EBUSY;
     else if(sessionCounter==UINT32_MAX)e=EOVERFLOW;
     else {client=p;diagnosticOwner=false;nz_haptics_queue_open(&queue,++sessionCounter);}
+    note("HAL open",0,e);
     IOLockUnlock(hapticGate);return e;
 }
 int closeDevice(dev_t,int,int,struct proc *) {
@@ -223,6 +224,7 @@ int writeDevice(dev_t,struct uio *uio,int) {
         else if(packet.operation==NzHapticsStart) {
             if(packet.count || packet.value || packet.host_time || packet.epoch!=queue.epoch || packet.sequence)e=EINVAL;
             else {uint32_t epoch=0;e=-nz_haptics_queue_start(&queue,packet.session,&epoch);}
+            note("HAL start",packet.sequence,e);
         } else if(packet.operation==NzHapticsStop) {
             if(packet.count || packet.value || packet.host_time)e=EINVAL;
             else if(packet.sequence!=queue.next_sequence)e=ESTALE;

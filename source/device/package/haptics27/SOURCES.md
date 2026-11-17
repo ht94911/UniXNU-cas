@@ -19,3 +19,5 @@ QQ 使用人类指定 `M:/QQ_History`，本次档案135181条、2026-10-22至11-
 本地原始证据：`/mnt/i/Code/UniXNU-nezha/evidence/haptics27/20261116/`。新源只保存事实/协议派生常量，不含私有 firmware、DTB、校准转储、聊天原文或身份。
 
 007协议修正继续核同一OS4模块与MiCode固定源：`haptics_runtime_resume/haptics_visense_enable`对应PTN0x68/69通道恢复，`haptics_init_visense_config`对应CFG0xc7峰值模式，`haptics_load_constant_effect`对应direct自动谐振，原9Ω headroom规则对应2000mV时500mV余量，`haptics_wait_brake_complete/haptics_toggle_module_enable/haptics_suspend_config`对应停止恢复与最终module-off。VSENSE原值乘50/64得到mV，ISENSE原值乘1000/4096得到mA。原厂GPIO/OTP/SDAM/校准和保护阈值不作试探写入；芯片峰值不能证明机械位移。
+
+系统路径追踪补充（2026-11-17）：008程序被Data执行策略拒绝，009改readonly/usr/libexec后真实执行，supportsHaptics1但CoreHaptics engine error4099，无HAL请求/马达播放。原24A446 AudioToolbox AVHapticServer.mm确认com.apple.audio.hapticd，由原audiomxd服务缓存发布；初始化需要haptics VAD真实路由到Actuator与AHSFirmwareReadyNotifier的firstmatch。此为原binary静态调用及实际错误，不把能力节点或启动注册冒称正常系统链通过。后续UI普通App从Sensor002/Camera成熟LS注册接口复用，代码页42及平台/entitlement/imports已核，仍未实测。

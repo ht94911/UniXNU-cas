@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "GPU051009 normalCoreHaptics helper via existingreadonly/usr/libexecafter actual008Dataexecute refusal;publicsource/encryptedoutputs.",
+  "purpose": "GPU051010 ordinaryUIKit app/readonlyHALdiscovery andnormalCoreHaptics service diagnostic after009actual4099;motorstockcore unchanged/publicsource/CMSoutputs.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "bf581da7f211bdf332e80ef064f5d34428ce7660",
+  "device_revision": "d783970f43f39b29cb6644094791ca89c6b84d7b",
   "soc_revision": "device-local-composition-e565439+3435fa5",
   "xcode": "26.6",
   "files": {
@@ -219,7 +219,7 @@
     "source/device/package/gpu/NezhaGpuBoPhases.h": "6b609e93c766b0f88b569dc1c04177b529f090e23f06a260c4c427afe8dfcbb6",
     "source/device/package/gpu/NezhaGpuPublicationMode.h": "84b2641f1fa01f14d2a0c2c526525571a31472e532df9e0d401a4baa6bb2a676",
     "source/device/package/haptics27/NezhaHapticsProtocol.h": "6f3bd9d7fa11551a8c7d50117c4c2108c45bdde9d4b810bf2198cd1fa92401ff",
-    "source/device/package/haptics27/NezhaHapticsRuntime.cpp": "c460ec34e14fc10fa11f5ee94130de109ce2dcdd576df26da363e637343e3bb0",
+    "source/device/package/haptics27/NezhaHapticsRuntime.cpp": "fc11eb69e7f2929053f58ae84cf212e62a64c0aa381b4a1f36f6e76c39684700",
     "source/device/package/haptics27/NezhaHapticsIOS.cpp": "0922df4011189f20716c66e2a97ad4654e3dfd13d8e6045efc1654ba6b826f3d",
     "source/device/package/haptics27/NezhaHapticsBoard.c": "2c03b587551fe91453e7ea2c62c83fdc290ca206a044a42bf00085f1a1450c95",
     "source/device/package/haptics27/NezhaHapticsQueue.c": "7a0420c79ada5b7b37c2022117547c35bf6e34621887528ddd45dc147604efa1",
@@ -282,7 +282,7 @@
     "source/device/package/bluetooth27/NezhaBluetoothDiagnostic.c": "e449d948b063aa16d307ccee0f0f607c3388099fbecf7a51f257f73942f749ae",
     "source/device/package/bluetooth27/Sm8850BtDma.c": "5ebdefcae845e424cc6e81f22869aeb9062ac9586c677577b2ca3470ab50cf8c",
     "source/device/package/bluetooth27/NezhaBluetoothPlatform.cpp": "1971d202334f052c3905a828f57c02f9711e3c025748211846daf1711022b5ca",
-    "source/device/package/haptics27/hal/NezhaHapticsPlugIn.c": "0750bffaa6e5b72cf8f2ff7d1ce92eca3606768f6a9525d17678f1bd65277ade",
+    "source/device/package/haptics27/hal/NezhaHapticsPlugIn.c": "beec758ab36406208242e3ec0fee4a733af5d68818c71d74a7be5ac8a63b4ab0",
     "source/device/package/haptics27/hal/Info.plist": "e6816bcb3088caf2bc08cfbb6be6139342c0499e16315069ce3ceb2a67668e0b",
     "source/device/package/haptics27/hal/NezhaHapticsProbe.c": "5036fdfdcd3e815c9e1a34d2fe9ee0de5568e6e5af1b43be0fde61a6a3245aac",
     "source/device/package/haptics27/tests/queue_cases.c": "6890095e60235df1680f8ea9ecec7beddb8c28c30621199976e4e13d98484a35",
@@ -536,7 +536,7 @@
     "source/device/patches/xnu-12377/zzzzzz-nezha-iconservice-memory.patch": "fb96f0e46f8307a52e1f0a686a5d58f70e4f08a7b454cb483c7c603690640952",
     "source/device/patches/xnu-12377/nezha-wifi-mmio-recovery.patch": "89642756f4fe3179d44f076fbfd4786d21d0089ec7786943cb717b3eb78ecbe1",
     "source/device/patches/xnu-12377/zzyd-sheng-audio-addon-mount.patch": "b51ed480b34c92452ea984fe056e5fce310bd929992d418f383a7e9268313c51",
-    "source/device/patches/xnu-12377/nezha-haptics-addon.patch": "5a7c4e31b63d323ba0ffc0efd064113af769db5887a6d997764fc76d581e4665",
+    "source/device/patches/xnu-12377/nezha-haptics-addon.patch": "e6dc35b05a515e7b18adaf0e12a4d0cd66203845a802329c202c829f232a9dec",
     "source/device/patches/xnu-12377/zzzzzz-nezha-adreno840-start.patch": "d32bb0d5e678e5773786dcce90467e0258d844550b418b438e1548fb32392f79",
     "source/soc/include/Sm8850Resources.h": "e75bd077715897e28bf518770f3e0de4c74d52d34aa525b3a8531cae5460b1f3",
     "source/soc/include/Sm8850ResourcesNative.h": "96a542ad251ca57765dbd299e71267eca66632356f6922007c8952b85917fc63",
@@ -555,9 +555,15 @@
     "source/soc/patches/xnu-12377/series": "bb95255800677aae6c7ba2742e892e0d40b4c34eb40816b58214c1393759bc1d",
     "source/device/package/haptics27/README.md": "950594041e80b5849694a9b7e57f99c2f1ad9f7939b8cd77fdbecfb5afd508c5",
     "source/device/package/haptics27/STATIC-REVIEW.md": "f7144cc152d94f46fc77703cffa1292d50bc232030a6be29ec4a59efbd1a1c6a",
-    "source/device/package/haptics27/SOURCES.md": "8e87c2060e0146aea9f0f7482ba0c1ff85bc97a6f6cd9369733d41f689451770",
+    "source/device/package/haptics27/SOURCES.md": "3914785bd862ae23352e1d5db4b53a4afb6b5af9150eb22b7888bf3c204a509d",
     "source/device/package/haptics27/dependencies.json": "6b4c293547dd2e6e046ce3916cba3140ae94f50aa97c6472ac4d06429a34b2dd",
-    "source/device/scripts/check-haptics-electrical-stop.py": "eeffdb645f9c03cb1bf7267d02d3e6901fab06f826179a5991330a1ecb3e2e0e"
+    "source/device/scripts/check-haptics-electrical-stop.py": "eeffdb645f9c03cb1bf7267d02d3e6901fab06f826179a5991330a1ecb3e2e0e",
+    "source/device/scripts/build-nezha27-haptics-userland.py": "29a1c6833eef4097685aaf425a9e729dc6e7208a0e164beab9610e17dbf2a157",
+    "source/device/package/haptics27/userland/NezhaHapticsLaunch.m": "d3ae13d0f819436fc586327ae703850e6e57a1d4d5538e6ba1a5157716c85d76",
+    "source/device/package/haptics27/userland/app.entitlements.plist": "d59055f07768f7dc7258b27d7c8111440c5aec6e48d6c620af73182c35992e53",
+    "source/device/package/haptics27/userland/launch.entitlements.plist": "1b17bd00cb8bf68f7118c99c0cb8a9e7296e867511d07907d9e7d762b30a5dc8",
+    "source/device/package/haptics27/userland/Info.plist": "31166d9473115ff3fb551330e4bb40fb7817445ce4a2275cf2426909b53869e3",
+    "source/device/package/haptics27/userland/NezhaHapticsApp.m": "d6c4cf3389a9bf728ccd1e8499016f76363626018300d48daa152f4f00e17926"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
@@ -923,7 +929,7 @@
   },
   "haptics": {
     "device_base": "76c5952683041a6581224135461ab7c21d47f6a5",
-    "device_revision": "bf581da7f211bdf332e80ef064f5d34428ce7660",
+    "device_revision": "d783970f43f39b29cb6644094791ca89c6b84d7b",
     "source_ready": "519474045402d8467a41d78275af5ad78a3a948a",
     "HAP530_revision": "c268dc55744d2137b25f0ed4914a5bb3eb1200b6",
     "SPMI_revision": "2d874249a4d58906cf8241f2ded0d7ab0dd60f1f",
@@ -964,6 +970,11 @@
     "prior008_native_run": 44028354193,
     "prior008_execute_denied": true,
     "readonly_system_executable_view": "/usr/libexec/NezhaHapticCoreTest",
-    "no_global_system_policy_changes": true
+    "no_global_system_policy_changes": true,
+    "prior009_actual_supportsHaptics": true,
+    "prior009_engine_error": 4099,
+    "normal_UIKit_test_app": true,
+    "actual_HAL_discovery_readonly": true,
+    "motor_limits_unchanged": true
   }
 }
