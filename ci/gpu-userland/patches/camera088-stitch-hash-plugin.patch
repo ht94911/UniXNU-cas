@@ -1,0 +1,46 @@
+diff --git a/NativeBridgeMetalFrontend.mm b/NativeBridgeMetalFrontend.mm
+index 03306d4..b9cce55 100644
+--- a/NativeBridgeMetalFrontend.mm
++++ b/NativeBridgeMetalFrontend.mm
+@@ -1675,6 +1675,7 @@ static MTLType *publicMetadataType(NSDictionary *);
+ @property(nonatomic,getter=isRequired) BOOL required;
+ - (BOOL)required;
+ @end
++static NSData *functionBitcode(NBFunction *function);
+ @implementation NBFunctionConstant
+ - (BOOL)required {return self.isRequired;}
+ @end
+@@ -1723,15 +1724,15 @@ static MTLType *publicMetadataType(NSDictionary *);
+  return result;
+ }
+ - (void)dealloc {DetailSpan timing(8,(uintptr_t)_handle);if(_handle)nmb_function_release(_handle);}
+-// _MTLFunction's bitCodeHash (32 bytes), read by the stitched-library path (createStitchingScriptHash): a digest naming this function
+-// object, its name and a serial no other function in the process has.
++// The stitcher identifies AIR modules, not function objects. Core Image's
++// external functions share one module; the same bytes must have the same hash.
+ - (const void *)bitCodeHash {
+  @synchronized(self) {
+   if(!_bitCodeHashData) {
+-   static std::atomic<uint64_t> serial;
+-   NSData *text=[[NSString stringWithFormat:@"%@#%llu",_name,(unsigned long long)++serial] dataUsingEncoding:NSUTF8StringEncoding];
++   NSData *bitcode=functionBitcode(self);
++   if(!bitcode)return nullptr;
+    NSMutableData *digest=[NSMutableData dataWithLength:CC_SHA256_DIGEST_LENGTH];
+-   CC_SHA256(text.bytes,(CC_LONG)text.length,(unsigned char *)digest.mutableBytes);
++   CC_SHA256(bitcode.bytes,(CC_LONG)bitcode.length,(unsigned char *)digest.mutableBytes);
+    _bitCodeHashData=digest;
+   }
+   return _bitCodeHashData.bytes;
+@@ -4716,6 +4717,12 @@ static void fillBaseLimits(id device);
+  for(id function in functions) {
+   NSData *bitcode=[function isKindOfClass:[NBFunction class]]?functionBitcode((NBFunction *)function):nil;
+   if(!bitcode){if(error)*error=nbError([NSString stringWithFormat:@"stitched function %@ has no bitcode here",[function name]]);return nil;}
++  // Original24A446 serializedRequest emits bhas before bitc. The compiler
++  // uses it to identify shared modules when linking the graph's functions.
++  const void *hash=[(NBFunction *)function bitCodeHash];
++  if(!hash){if(error)*error=nbError(@"the stitching function has no AIR module hash");return nil;}
++  word(0x62686173 /* 'bhas' */);
++  const uint8_t *h=(const uint8_t *)hash;request.insert(request.end(),h,h+CC_SHA256_DIGEST_LENGTH);
+   word(0x62697463 /* 'bitc' */);word((uint32_t)bitcode.length);
+   const uint8_t *b=(const uint8_t *)bitcode.bytes;request.insert(request.end(),b,b+bitcode.length);
+  }

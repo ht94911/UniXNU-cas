@@ -370,8 +370,14 @@ def main():
     must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', '--check', selected])
     must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', selected])
     record['camera_function_SPI_patch'] = sha(selected)
+    selected = HERE / 'patches/camera088-stitch-hash-plugin.patch'
+    must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', '--check', selected])
+    must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', selected])
+    record['camera_stitch_hash_patch'] = sha(selected)
     test = HERE / 'fixtures/camera_function_spi_host.mm'
     shutil.copyfile(test, root / 'drivers/AdrenoMetal/bridge' / test.name)
+    shutil.copyfile(HERE / 'fixtures/camera_stitch_host.mm',
+                    root / 'drivers/AdrenoMetal/bridge/camera_stitch_host.mm')
     # The profile patch is introduced by the late runtime recipe. Keep the
     # original KMD check above, then apply and check this distinct final source.
     profile_patch = root / 'patches/mesa/turnip-driver-cpu-profile.patch'

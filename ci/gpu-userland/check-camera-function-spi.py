@@ -40,6 +40,17 @@ if executed.returncode:
     debug=subprocess.run(['xcrun','lldb','--batch','-o','run','-o','thread backtrace all','--',str(out/'consumer'),str(out/'tables.air'),str(out/'stitch.air')],capture_output=True,text=True,timeout=90,env=dict(os.environ,SHENG_DIAG='0'))
     (out/'failure-backtrace.log').write_text(debug.stdout+debug.stderr)
 assert executed.returncode == 0 and matched and int(matched[1]) == 37, str(executed.returncode)+' '+executed.stdout+executed.stderr
+stitch_test=kit/'bridge/camera_stitch_host.mm'
+stitch_command=['xcrun','clang++',*flags,str(stitch_test),str(archive),
+               '-framework','Foundation','-framework','Metal','-framework','IOSurface',
+               '-framework','CoreFoundation','-o',str(out/'stitch-consumer')]
+compiled_stitch=subprocess.run(stitch_command,capture_output=True,text=True)
+(out/'stitch-build.log').write_text(compiled_stitch.stdout+compiled_stitch.stderr)
+assert compiled_stitch.returncode==0,'Production stitching consumer compilation failed'
+stitch_run=subprocess.run([str(out/'stitch-consumer'),str(out/'stitch.air')],capture_output=True,text=True,
+                         timeout=90,env=dict(os.environ,CAMERA_STITCH_OUT=str(out/'stitched.metallib')))
+(out/'stitch-run.log').write_text(stitch_run.stdout+stitch_run.stderr)
+assert stitch_run.returncode==0 and 'PASS Camera shared AIR stitching:' in stitch_run.stdout,stitch_run.stdout+stitch_run.stderr
 sha = lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
 report = dict(passed=True, checks=37, production_cache_selectors_executed=True,
               name_constants_and_error_preserved=True, public_ARGR_cases=14,
@@ -53,5 +64,8 @@ report = dict(passed=True, checks=37, production_cache_selectors_executed=True,
               test_sha256=sha(harness), public_fixture_sha256=sha(fixture),
               host_runtime_device_opened=False, native_Metal_device_registered=False,
               GPU_submissions=False, phone_operations=False)
+report.update(production_stitch_serialization_executed=True,system_compiler_stitch_passed=True,
+              shared_AIR_functions_same_hash=True,stitch_test_sha256=sha(stitch_test),
+              stitched_output_sha256=sha(out/'stitched.metallib'))
 (out/'report.json').write_text(json.dumps(report, indent=2)+'\n')
 print(json.dumps(report, indent=2))

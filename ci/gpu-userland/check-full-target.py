@@ -254,6 +254,9 @@ assert target_extern['required_function_constant_method_list_verified'] and targ
 report['actual_function_constant'] = function_constant
 camera_function = json.loads((a.logs/'camera-function-spi/report.json').read_text())
 assert camera_function['passed'] and camera_function['checks'] == 37
+assert camera_function['production_stitch_serialization_executed'] and camera_function['system_compiler_stitch_passed']
+assert camera_function['shared_AIR_functions_same_hash']
+assert camera_function['stitch_test_sha256']==hashlib.sha256((root/'drivers/AdrenoMetal/bridge/camera_stitch_host.mm').read_bytes()).hexdigest()
 assert camera_function['source_sha256'] == hashlib.sha256((root/'drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm').read_bytes()).hexdigest()
 assert camera_function['metadata_source_sha256'] == hashlib.sha256((root/'drivers/AdrenoMetal/NativeMetalFunctionMetadata.h').read_bytes()).hexdigest()
 assert camera_function['bridge_source_sha256'] == hashlib.sha256((root/'drivers/AdrenoMetal/bridge/NativeMetalObjects.rs').read_bytes()).hexdigest()
