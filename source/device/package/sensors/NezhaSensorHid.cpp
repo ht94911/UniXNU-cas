@@ -13,6 +13,7 @@
 #include <mach/kmod.h>
 #endif
 #include "NezhaSensors.h"
+extern "C" int printf(const char *,...);
 
 // Original constructors own event memory. All arguments are integer ABI;
 // local code never allocates a private IOHIDEvent layout or uses kernel FP.
@@ -34,7 +35,7 @@ namespace {
 const uint32_t usage[QSSC_OUTPUT_COUNT]={3,9,0x70,5};
 const uint32_t eventType[QSSC_OUTPUT_COUNT]={13,20,1,14};
 const char *const product[QSSC_OUTPUT_COUNT]={"nezha LSM6DSV Accelerometer","nezha LSM6DSV Gyroscope",
-    "nezha SSC Gravity","nezha TCS3760 Proximity"};
+    "nezha SSC Gravity","nezha SSC Proximity"};
 struct GravityData {uint32_t version,bytes;uint64_t timestamp,sequence;int32_t gravity[3],linear[3];uint32_t status,reserved;};
 IOHIDEvent *eventFor(const QsscSample &s){
     if(!s.valid)return nullptr;
@@ -83,7 +84,7 @@ class NativeNezhaSensor : public IOHIDEventService {
     QsscSample latest={},queue[NEZHA_SENSOR_EVENTS]={};
     uint64_t epoch=0,dispatched=0,lastSequence=0,flushSerial=0;
     uint32_t kind=0,interval=20000,batch=0,head=0,count=0,detectionMode=1;
-    bool ready=false,stopped=false,registered=false,wakeup=false,priming=true;
+    bool ready=false,stopped=false,registered=false,wakeup=false,priming=true,copyLogged=false;
     int error=0;
     int32_t requestDemand(uint32_t consumer,QsscDemand d){
         return kind==NEZHA_SENSOR_FUSION_KIND?backend.motion(backend.context,consumer,d):backend.request(backend.context,kind,consumer,d);
@@ -107,6 +108,8 @@ class NativeNezhaSensor : public IOHIDEventService {
         if(!r){if(arg->client){arg->client->interval=nextInterval;arg->client->batch=nextBatch;}
             else{self->interval=nextInterval;self->batch=nextBatch;self->detectionMode=nextMode;}}
         IOLockUnlock(self->clientLock);
+        printf("NEZHA SENSORS HID: control kind=%u consumer=%u interval=%u batch=%u mode=%u rc=%d\n",
+            self->kind,consumer,nextInterval,nextBatch,nextMode,r);
         if(r)return (IOReturn)r;
         // Actual readiness belongs to the aggregated SSC subscription. A
         // consumer's interval0 must not invalidate another active FastPath.
@@ -129,6 +132,9 @@ class NativeNezhaSensor : public IOHIDEventService {
         auto self=static_cast<NativeNezhaSensor *>(object);auto s=static_cast<State *>(value);
         if(s->epoch!=self->epoch)return kIOReturnNotReady;
         if(self->stopped)return s->ready?kIOReturnNotReady:kIOReturnSuccess;
+        if(self->ready!=s->ready||self->error!=s->error)
+            printf("NEZHA SENSORS HID: state kind=%u ready=%u error=%d epoch=%llu\n",
+                self->kind,s->ready,s->error,(unsigned long long)s->epoch);
         self->ready=s->ready;self->error=s->error;
         if(!s->ready){self->latest.valid=false;self->motion.valid=false;self->count=0;self->timer->cancelTimeout();}
         return kIOReturnSuccess;
@@ -148,7 +154,9 @@ class NativeNezhaSensor : public IOHIDEventService {
         if(self->kind!=NEZHA_SENSOR_FUSION_KIND||self->stopped||!self->ready||!f->valid||f->epoch!=self->epoch)return kIOReturnNotReady;
         self->motion=*f;
         IOHIDEvent *event=self->motionEvent();if(!event)return kIOReturnNoMemory;
-        if(!self->registered){self->registered=true;self->registerService();self->finishPrime();}
+        if(!self->registered){self->registered=true;self->registerService();self->finishPrime();
+            printf("NEZHA SENSORS HID: registered kind=%u page=%u usage=%u seq=%llu clients=%u\n",
+                self->kind,0xff0cu,5u,(unsigned long long)f->sequence,self->clientCount);}
         self->dispatchEvent(event);releaseEvent(event);self->dispatched++;return kIOReturnSuccess;
     }
     void drain(){
@@ -156,7 +164,9 @@ class NativeNezhaSensor : public IOHIDEventService {
             QsscSample s=queue[head];head=(head+1)%NEZHA_SENSOR_EVENTS;count--;
             if(stopped||!ready||!s.valid)continue;
             IOHIDEvent *e=eventFor(s);if(!e){error=QsscConsumer;ready=false;latest.valid=false;count=0;backend.fault(backend.context,error);return;}
-            if(!registered){registered=true;registerService();finishPrime();}
+            if(!registered){registered=true;registerService();finishPrime();
+                printf("NEZHA SENSORS HID: registered kind=%u page=%u usage=%u seq=%llu clients=%u\n",
+                    kind,0xff00u,usage[kind],(unsigned long long)s.sequence,clientCount);}
             dispatchEvent(e);releaseEvent(e);dispatched++;
         }
     }
@@ -170,6 +180,9 @@ class NativeNezhaSensor : public IOHIDEventService {
         auto self=static_cast<NativeNezhaSensor *>(object);auto out=static_cast<IOHIDEvent **>(value);
         *out=nullptr;if(self->stopped||!self->ready)return kIOReturnNotReady;
         *out=self->kind==NEZHA_SENSOR_FUSION_KIND?self->motionEvent():self->latest.valid?eventFor(self->latest):nullptr;
+        if(*out&&!self->copyLogged){self->copyLogged=true;
+            printf("NEZHA SENSORS HID: first-copy kind=%u seq=%llu\n",self->kind,
+                (unsigned long long)(self->kind==NEZHA_SENSOR_FUSION_KIND?self->motion.sequence:self->latest.sequence));}
         return *out?kIOReturnSuccess:kIOReturnNoMemory;
     }
     struct FastCopy {FastClient *client;IOHIDEvent *event;};
@@ -177,7 +190,10 @@ class NativeNezhaSensor : public IOHIDEventService {
         auto self=static_cast<NativeNezhaSensor *>(object);auto copy=static_cast<FastCopy *>(value);copy->event=nullptr;
         IOLockLock(self->clientLock);
         bool active=copy->client->active&&copy->client->interval&&self->motion.sequence>copy->client->sequence;
-        if(active){copy->event=self->motionEvent();if(copy->event)copy->client->sequence=self->motion.sequence;}
+        if(active){copy->event=self->motionEvent();if(copy->event){
+            if(!copy->client->sequence)printf("NEZHA SENSORS HID: first-fast-copy kind=%u consumer=%u seq=%llu\n",
+                self->kind,copy->client->consumer,(unsigned long long)self->motion.sequence);
+            copy->client->sequence=self->motion.sequence;}}
         IOLockUnlock(self->clientLock);return copy->event?kIOReturnSuccess:kIOReturnNotReady;
     }
     static IOReturn shutdownAction(OSObject *object,void *,void *,void *,void *){
@@ -222,6 +238,7 @@ protected:
         QsscDemand d={interval,batch,interval!=0&&(kind!=QsscProximityKind||detectionMode!=0),wakeup};
         int32_t r=requestDemand(kind==NEZHA_SENSOR_FUSION_KIND?1:0,d);
         if(!r){clients[index]=client;clientCount++;priming=false;}
+        printf("NEZHA SENSORS HID: open kind=%u interval=%u clients=%u rc=%d\n",kind,interval,clientCount,r);
         IOLockUnlock(clientLock);
         if(r){IOHIDEventService::handleClose(client,options);return false;}
         return true;
@@ -232,6 +249,7 @@ protected:
         for(unsigned n=0;n<QSSC_CONSUMERS;n++)if(clients[n]==client){clients[n]=nullptr;clientCount--;break;}
         if(!clientCount&&!priming){QsscDemand d={interval,batch,false,wakeup};
             int32_t r=requestDemand(kind==NEZHA_SENSOR_FUSION_KIND?1:0,d);if(r){error=QsscConsumer;backend.fault(backend.context,error);}}
+        printf("NEZHA SENSORS HID: close kind=%u clients=%u\n",kind,clientCount);
         IOLockUnlock(clientLock);
     }
 public:
@@ -270,13 +288,16 @@ public:
         int32_t r=requestDemand(n+2,d);
         if(!r){slot->client=client;slot->consumer=n+2;slot->interval=interval;slot->batch=batch;
             slot->sequence=0;slot->active=true;*context=slot;}
+        printf("NEZHA SENSORS HID: fast-open kind=%u consumer=%u interval=%u rc=%d\n",kind,n+2,interval,r);
         IOLockUnlock(clientLock);return !r;
     }
     void closeForClient(IOService *client,void *context,IOOptionBits) override{
         IOLockLock(clientLock);
         for(auto &f:fast)if(&f==context&&f.active&&f.client==client){
             QsscDemand off={f.interval,f.batch,false,wakeup};int32_t r=requestDemand(f.consumer,off);
-            if(r){error=QsscConsumer;backend.fault(backend.context,error);}f.active=false;f.client=nullptr;break;}
+            if(r){error=QsscConsumer;backend.fault(backend.context,error);}
+            printf("NEZHA SENSORS HID: fast-close kind=%u consumer=%u rc=%d\n",kind,f.consumer,r);
+            f.active=false;f.client=nullptr;break;}
         IOLockUnlock(clientLock);
     }
     IOHIDEvent *copyEventForClient(OSObject *,IOOptionBits,void *context) override{

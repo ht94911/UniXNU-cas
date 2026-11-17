@@ -15,7 +15,9 @@ receive actual ACKs. No sensor code starts PAS, GLINK, a second IRQ reader or bu
 
 `userland/` builds an ordinary CoreMotion/UIKit test app, a launcher adapted
 from Camera071's measured LaunchServices interface, and a root-only exporter
-using the existing QcomUserLog transport. The app uses its own container and
+using the existing QcomUserLog transport. Sensor003 omits the exporter job after
+the actual container-directory policy denial; the ordinary app's own log is
+read by original MCM metadata after Android/root postflight. The app uses its own container and
 NSMotionUsageDescription. GPU051's original729 jobs and runtime files are kept.
 
 Host production integration, target compile/PAC, strict prelink, package, loader
@@ -33,3 +35,7 @@ The Windows113 evidence wrapper calls `scripts/run-nezha27-sensors-auto.py` with
 the fixed qualified entry. It completes empty/short captures and takes the final
 retained console after verified normal return, collector exit and release.
 `tests/sensors-auto.py` checks the two authorized automatic closure paths.
+
+`scripts/replay-nezha27-sensors.py --run <run>` preserves the first rejected
+normal packet and invokes production report/event decoders under ASan/UBSan.
+This offline replay generates no sensor samples and performs no phone actions.

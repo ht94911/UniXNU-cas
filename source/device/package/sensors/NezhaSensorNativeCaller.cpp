@@ -142,6 +142,10 @@ extern "C" int nezha_sensors_native_after_receive(NaAdsp *a){
         printf("NEZHA SENSORS STATUS: selected=%u rc=%d ACK=%u report=%u sample=%u bad=%u stale=%u cmd=%u phase=%u,%u,%u,%u,%u,%u,%u\n",
             s.selected,s.error,s.responses,s.reports,s.delivered,s.invalid,s.stale,s.queued_commands,
             s.phase[0],s.phase[1],s.phase[2],s.phase[3],s.phase[4],s.phase[5],s.phase[6]);
+        const auto &motion=caller.adapter.motion;
+        printf("NEZHA SENSORS MOTION: frame=%llu dropped=%u invalid=%u pending=%u,%u,%u ticks=%llu\n",
+            (unsigned long long)motion.sequence,motion.dropped,motion.invalid,
+            motion.count[0],motion.count[1],motion.count[2],(unsigned long long)motion.last_frame);
         caller.next_log=time+2000000;
     }
     if(__atomic_load_n(&caller.sleep_ref,__ATOMIC_ACQUIRE)&&

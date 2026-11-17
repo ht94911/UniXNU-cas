@@ -222,7 +222,7 @@ def build(framework, work):
     if code: return code
     code = run([sys.executable, work / 'device/scripts/build-nezha27-sensors-userland.py',
                 '--source', work / 'device/package/sensors/userland', '--usb', work / 'usb',
-                '--unit', 'launcher', '--output', work / 'sensors-userland'],
+                '--unit', 'app', '--output', work / 'sensors-userland'],
                log=logs / 'sensors-launcher.log')
     if code: return code
     kernels = {path.resolve() for path in

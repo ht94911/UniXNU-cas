@@ -28,6 +28,9 @@ typedef struct {
     int (*state)(void *,uint32_t kind,uint64_t epoch,bool ready,int error);
     int (*flushed)(void *,uint32_t kind,uint64_t epoch,uint64_t serial);
     int (*identity)(void *,uint32_t kind,const QsscAttributes *);
+    // A board whose physical accel already applies SEE calibration may use
+    // its sample when the completed accel_cal lookup reports no provider.
+    bool optional_accel_cal;
 } QsscClientOps;
 typedef struct {
     uint64_t ticks;

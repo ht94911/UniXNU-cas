@@ -95,6 +95,12 @@ kernel_args = ["-v", "keepsyms=1", "debug=0x14e", "cpus=8", "boot-progress=2", "
 [adt.chosen.u32]
 "kernel-ctrr-to-be-enabled" = 0
 
+# Reuse Camera082's measured product description for the selected D16 donor.
+# The original GPU051 sidecar has an empty product node; package finalization
+# adds only this property and retains the existing hardware/resource bytes.
+[adt.product.string]
+unique-model = "D16AP"
+
 # First root mount: use the real independently verified iPhone OS identity.
 [root]
 os_volume_uuid = "28E4CF35-9C12-417E-B8FF-906618C6FD22"

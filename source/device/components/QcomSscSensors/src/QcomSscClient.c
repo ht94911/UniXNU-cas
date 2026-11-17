@@ -94,6 +94,10 @@ static bool wanted(const QsscClient *c,unsigned k){return !c->stopped&&(!c->paus
 static bool starting(const QsscClient *c,unsigned k){
     return c->awaiting&&c->tx_kind==k&&(c->tx_id==QsscStreamRequest||c->tx_id==QsscOnChangeRequest);
 }
+static bool optional_cal_absent(const QsscClient *c,unsigned k){
+    const QsscStream *cal=&c->stream[QsscAccelCal];
+    return k==QsscAccel&&c->ops.optional_accel_cal&&cal->lookup_sent&&!cal->present;
+}
 static int choose(QsscClient *c){
     // Cancel unused hardware requests first; each SUID is disabled independently.
     for(unsigned k=0;k<QSSC_SENSOR_COUNT;k++)if(c->stream[k].enabled&&!wanted(c,k))return prepare(c,k,QsscDisableRequest);
@@ -112,7 +116,7 @@ static int choose(QsscClient *c){
         if(!s->lookup_sent){s->phase=QsscLookup;return prepare(c,k,QsscLookupRequest);}
         if(!s->present)continue;
         if(!s->attributes_seen)return prepare(c,k,QsscAttrRequest);
-        if(k==QsscAccel||k==QsscGyro){unsigned cal=k==QsscAccel?QsscAccelCal:QsscGyroCal;
+        if((k==QsscAccel||k==QsscGyro)&&!optional_cal_absent(c,k)){unsigned cal=k==QsscAccel?QsscAccelCal:QsscGyroCal;
             if(c->stream[cal].error){
                 if(state(c,k,false,c->stream[cal].error))return fail(c,QsscConsumer);continue;}
             if(!c->stream[cal].enabled)continue;}
@@ -248,7 +252,7 @@ static int sample(QsscClient *c,unsigned k,const QsscEvent *e,const QsscVector *
     }else{
         unsigned count=k==QsscGravity?6:k==QsscGameRv?4:3;if(v->count!=count)return QsscWire;a.status=v->status;
         const QsscBias *b=0;
-        if((k==QsscAccel||k==QsscGyro)&&a.status){
+        if((k==QsscAccel||k==QsscGyro)&&a.status&&!optional_cal_absent(c,k)){
             b=bias_for(c,k,e->ticks);
             if(!b){unsigned j=k==QsscAccel?0:1;
                 if(c->calibration_count[j]&&c->calibration[j][0].ticks>e->ticks){c->stale++;return QsscNoData;}

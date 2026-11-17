@@ -32,7 +32,7 @@ static int physical_proximity(void *v,uint32_t kind,const QsscAttributes *a){
     (void)v;assert(kind==QsscProximityKind);
     return a->available&&!strcmp(a->name,"tcs3760")&&!strcmp(a->api,"sns_proximity.proto")?0:QsscIdentity;
 }
-static void begin(QsscClient *c,struct Mock *m){QsscClock clock={0};assert(!qssc_clock_anchor(&clock,1,19200000,1000000,19200000,19200000,19200000));QsscClientOps ops={m,send,sample,state,flush,identity};assert(!qssc_client_begin(c,&ops,(QsscEndpoint){5,17,0x101},0x4001,1,&clock,100));}
+static void begin(QsscClient *c,struct Mock *m){QsscClock clock={0};assert(!qssc_clock_anchor(&clock,1,19200000,1000000,19200000,19200000,19200000));QsscClientOps ops={m,send,sample,state,flush,identity,false};assert(!qssc_client_begin(c,&ops,(QsscEndpoint){5,17,0x101},0x4001,1,&clock,100));}
 static void enabled(QsscClient *c,unsigned kind,QsscUid uid){QsscStream *s=&c->stream[kind];s->uid=uid;s->present=true;s->enabled=true;s->lookup_sent=true;s->attributes_seen=true;s->phase=QsscRunning;s->interval_us=s->configured_interval=20000;s->attributes.available=true;}
 static void math(void){
     int64_t x;int32_t y;assert(!qssc_float_q32(0x3f800000,&x)&&x==INT64_C(4294967296));
@@ -246,4 +246,29 @@ static void select_physical_proximity(void){
     assert(!qssc_client_poll(&c,112)&&c.tx_id==QsscDisableRequest);n=ack(p,c.transaction);
     assert(!qssc_client_receive(&c,5,17,p,n,113,19208000)&&qssc_client_drained(&c));
 }
-int main(void){math();wire();calibration_and_time();independent_consumers();flush_ack_order();early_enable_event();fusion();sleep_and_stop();acknowledged_delayed_suid();retire_decode_failure();retire_pending_enable();retirement_failure_is_not_success();vendor_text_is_not_identity();select_physical_proximity();puts("SSC production codec/client/math/fusion/error retirement and physical proximity selection scenarios passed");}
+static void optional_absent_accel_cal(void){
+    QsscClient c={0};struct Mock m={0};begin(&c,&m);enabled(&c,QsscAccel,(QsscUid){1,2});
+    c.stream[QsscAccel].enabled=false;c.stream[QsscAccelCal].lookup_sent=true;
+    c.stream[QsscAccel].attributes.rate_count=1;c.stream[QsscAccel].attributes.rates[0]=0x42480000;
+    c.stream[QsscAccelCal].interval_us=1;
+    // A board has to opt in; an unresolved lookup or an advertised calibration
+    // provider cannot be treated as an absent calibration service.
+    assert(qssc_client_poll(&c,101)==QsscNoData&&m.sends==0);
+    c.ops.optional_accel_cal=true;c.stream[QsscAccelCal].lookup_sent=false;
+    assert(!qssc_client_poll(&c,102)&&c.tx_kind==QsscAccelCal&&c.tx_id==QsscLookupRequest);
+    c.awaiting=false;c.stream[QsscAccelCal].lookup_sent=true;
+    assert(!qssc_client_poll(&c,103)&&c.tx_kind==QsscAccel&&c.tx_id==QsscStreamRequest);
+    uint8_t p[1023],payload[64];size_t n=ack(p,c.transaction);
+    assert(!qssc_client_receive(&c,5,17,p,n,104,19201000));
+    uint32_t values[3]={0x3f800000,0,0};n=vector(payload,values,3,3);
+    size_t bytes=report(p,(QsscUid){1,2},QsscSampleEvent,19200200,payload,n);
+    assert(!qssc_client_receive(&c,5,17,p,bytes,105,19202000));
+    assert(m.samples==1&&m.last.valid&&m.last.status==3&&m.last.value[0]==65536);
+    c.stream[QsscAccelCal].present=true;c.stream[QsscAccelCal].uid=(QsscUid){3,4};
+    bytes=report(p,(QsscUid){1,2},QsscSampleEvent,19200300,payload,n);
+    assert(!qssc_client_receive(&c,5,17,p,bytes,106,19203000)&&m.samples==1&&c.pending_count==1);
+    c.stream[QsscAccelCal].enabled=true;uint32_t bias[3]={0x3e800000,0,0};n=cal(payload,bias);
+    bytes=report(p,(QsscUid){3,4},QsscCalibrationEvent,19200250,payload,n);
+    assert(!qssc_client_receive(&c,5,17,p,bytes,107,19204000)&&m.samples==2&&m.last.value[0]==49152);
+}
+int main(void){math();wire();calibration_and_time();independent_consumers();flush_ack_order();early_enable_event();fusion();sleep_and_stop();acknowledged_delayed_suid();retire_decode_failure();retire_pending_enable();retirement_failure_is_not_success();vendor_text_is_not_identity();select_physical_proximity();optional_absent_accel_cal();puts("SSC production codec/client/math/fusion/error retirement, optional absent accel calibration and physical proximity selection scenarios passed");}

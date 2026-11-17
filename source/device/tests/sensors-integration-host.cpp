@@ -68,6 +68,14 @@ int main(int argc,char **argv){
     assert(!adapter.client.ops.identity(adapter.client.ops.context,QsscGyroCal,&calibrationAttributes));
     strcpy(calibrationAttributes.api,"sns_oem.proto");
     assert(adapter.client.ops.identity(adapter.client.ops.context,QsscGyroCal,&calibrationAttributes)==QsscIdentity);
+    QsscAttributes proxAttributes={};proxAttributes.available=true;
+    proxAttributes.name_valid=proxAttributes.type_valid=proxAttributes.stream_valid=true;
+    proxAttributes.stream_type=1;strcpy(proxAttributes.name,"proximity");
+    strcpy(proxAttributes.datatype,"proximity");strcpy(proxAttributes.vendor,"XiaoMi(V1.7)");
+    strcpy(proxAttributes.api,"sns_std_sensor.proto");
+    assert(!adapter.client.ops.identity(adapter.client.ops.context,QsscProximityKind,&proxAttributes));
+    strcpy(proxAttributes.vendor,"unknown");
+    assert(adapter.client.ops.identity(adapter.client.ops.context,QsscProximityKind,&proxAttributes)==QsscIdentity);
     for(unsigned k=0;k<QSSC_SENSOR_COUNT;k++)online_stream(k);
     if(argc>1&&std::string(argv[1])=="parser-error-retirement"){
         auto &c=adapter.client;

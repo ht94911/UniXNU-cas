@@ -47,3 +47,5 @@ Rebind accepts only an explicitly owner-established fresh remote session with a
 larger epoch. It restores saved real demands and rediscovers identity/rates and
 biases; this API never performs PAS/GLINK restart. The actual native caller must
 connect the owner recovery path after the selected package is reviewed.
+
+An opted-in board may use physical SEE accel samples when the acknowledged dynamic accel_cal lookup is empty, matching the measured nezha stock HAL. An unresolved lookup or advertised calibration provider still requires its bias stream; gyro always keeps its required dynamic calibration. Missing calibration is not replaced with a fabricated bias.

@@ -63,7 +63,15 @@ static int identity(void *v,uint32_t kind,const QsscAttributes *a){
         if(strcmp(a->name,"lsm6dsv")||a->stream_type!=0||!a->rate_count||
            !api_has(a->api,kind==QsscAccel?"sns_accel.proto":"sns_gyro.proto"))return QsscIdentity;
     }else if(kind==QsscProximityKind){
-        if(strcmp(a->name,"tcs3760")||a->stream_type!=1||!api_has(a->api,"sns_proximity.proto"))return QsscIdentity;
+        bool physical=!strcmp(a->name,"tcs3760")&&api_has(a->api,"sns_proximity.proto");
+        // This nezha firmware exposes the stock Xiaomi virtual proximity
+        // service as its only on-change provider. Its original HAL decodes
+        // the same769 sns_proximity_event; report the source explicitly.
+        bool virtual_provider=!strcmp(a->name,"proximity")&&!strcmp(a->vendor,"XiaoMi(V1.7)")&&
+            api_has(a->api,"sns_std_sensor.proto");
+        if(a->stream_type!=1||(!physical&&!virtual_provider))return QsscIdentity;
+        printf("NEZHA SENSORS: proximity provider=%s vendor=%s physical=%u\n",
+            physical?"tcs3760":"xiaomi-virtual",a->vendor,physical);
     }else if(kind==QsscGravity){
         if(a->stream_type!=0||!a->rate_count||!api_has(a->api,"sns_gravity.proto"))return QsscIdentity;
     }else if(kind==QsscAccelCal||kind==QsscGyroCal){
@@ -193,7 +201,9 @@ int nezha_sensors_poll(struct nezha_sensor_adapter *a){
             if(a->router->remote[n].service!=QSSC_SERVICE||(a->router->remote[n].instance&255)!=QSSC_IDL_MAJOR)continue;
             count++;ep=(QsscEndpoint){a->router->remote[n].node,a->router->remote[n].port,a->router->remote[n].instance};}
         if(!count)return QsscAgain;if(count!=1){nezha_sensors_lost(a,QsscIdentity);return a->error;}
-        QsscClientOps ops={a,send,sample,state,flushed,identity};
+        // Actual stock accelerometer::get_pairedcalsuid falls back to physical
+        // SEE data when no dynamic accel_cal provider exists on this board.
+        QsscClientOps ops={a,send,sample,state,flushed,identity,true};
         int r=a->client.epoch?qssc_client_rebind(&a->client,ep,a->local_port,a->epoch,&a->clock,a->ops.now_us(a->ops.context)):
             qssc_client_begin(&a->client,&ops,ep,a->local_port,a->epoch,&a->clock,a->ops.now_us(a->ops.context));
         if(r){nezha_sensors_lost(a,r);return r;}a->selected=true;

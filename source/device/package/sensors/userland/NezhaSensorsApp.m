@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BSD-2-Clause-Patent
 #import <UIKit/UIKit.h>
 #import <CoreMotion/CoreMotion.h>
+#include <unistd.h>
 
 @interface SensorsController : UIViewController
 @property(nonatomic,strong) CMMotionManager *motion;
@@ -11,6 +12,7 @@
 @property(nonatomic,strong) NSMutableDictionary *samples;
 @property(nonatomic) BOOL rawEnabled,motionEnabled;
 @property(nonatomic) NSUInteger marker;
+@property(nonatomic) NSUInteger refreshCount;
 @end
 
 @implementation SensorsController
@@ -33,6 +35,7 @@
 }
 - (void)setRawEnabled:(BOOL)enabled
 {
+    if(_rawEnabled==enabled)return;
     _rawEnabled=enabled;
     if(enabled) {
         __weak SensorsController *weak=self;
@@ -49,6 +52,7 @@
 }
 - (void)setMotionEnabled:(BOOL)enabled
 {
+    if(_motionEnabled==enabled)return;
     _motionEnabled=enabled;
     if(enabled) {
         __weak SensorsController *weak=self;
@@ -73,6 +77,12 @@
 }
 - (void)refresh
 {
+    self.refreshCount++;
+    [self record:@{@"status":@1,@"refresh":@(self.refreshCount),@"uptime":@(NSProcessInfo.processInfo.systemUptime),
+        @"applicationState":@(UIApplication.sharedApplication.applicationState),@"accelAvailable":@(self.motion.accelerometerAvailable),
+        @"gyroAvailable":@(self.motion.gyroAvailable),@"motionAvailable":@(self.motion.deviceMotionAvailable),
+        @"accelActive":@(self.motion.accelerometerActive),@"gyroActive":@(self.motion.gyroActive),
+        @"motionActive":@(self.motion.deviceMotionActive),@"proximityEnabled":@(UIDevice.currentDevice.proximityMonitoringEnabled)}];
     NSMutableString *text=[NSMutableString stringWithFormat:@"原始流：%@　融合：%@\n接近监测：%@　近远：%@\n标记：%lu\n\n",
         self.rawEnabled?@"开":@"关",self.motionEnabled?@"开":@"关",UIDevice.currentDevice.proximityMonitoringEnabled?@"开":@"不可用",
         UIDevice.currentDevice.proximityState?@"近":@"远",(unsigned long)self.marker];
@@ -95,7 +105,8 @@
     NSString *path=[folder stringByAppendingPathComponent:@"nezha-sensors001.jsonl"];
     [NSFileManager.defaultManager createFileAtPath:path contents:[NSData data] attributes:nil];self.log=[NSFileHandle fileHandleForWritingAtPath:path];
     [self record:@{@"start":@1,@"uptime":@(NSProcessInfo.processInfo.systemUptime),@"accelAvailable":@(self.motion.accelerometerAvailable),
-        @"gyroAvailable":@(self.motion.gyroAvailable),@"motionAvailable":@(self.motion.deviceMotionAvailable)}];
+        @"gyroAvailable":@(self.motion.gyroAvailable),@"motionAvailable":@(self.motion.deviceMotionAvailable),
+        @"referenceFrames":@([CMMotionManager availableAttitudeReferenceFrames]),@"pid":@(getpid()),@"candidate":@"sensors005"}];
     UILabel *title=[UILabel new];title.text=@"传感器测试";title.font=[UIFont preferredFontForTextStyle:UIFontTextStyleTitle1];
     UILabel *hint=[UILabel new];hint.numberOfLines=0;hint.text=@"加速度与重力：g；角速度：rad/s。逐面静置或绕轴转动，遮盖／移开听筒附近。每次换动作点“标记”。";
     NSMutableArray *views=[NSMutableArray arrayWithObjects:title,hint,nil];
@@ -109,10 +120,9 @@
         [stack.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor constant:-16],[stack.topAnchor constraintEqualToAnchor:safe.topAnchor constant:8],
         [stack.bottomAnchor constraintEqualToAnchor:safe.bottomAnchor constant:-8],[self.output.heightAnchor constraintGreaterThanOrEqualToConstant:200]]];
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(proximity:) name:UIDeviceProximityStateDidChangeNotification object:nil];
-    UIDevice.currentDevice.proximityMonitoringEnabled=YES;
-    self.rawEnabled=YES;self.motionEnabled=YES;
     __weak SensorsController *weak=self;
-    self.timer=[NSTimer scheduledTimerWithTimeInterval:1 repeats:YES block:^(NSTimer *timer){(void)timer;[weak refresh];}];
+    self.timer=[NSTimer timerWithTimeInterval:1 repeats:YES block:^(NSTimer *timer){(void)timer;[weak refresh];}];
+    [NSRunLoop.mainRunLoop addTimer:self.timer forMode:NSRunLoopCommonModes];
 }
 - (void)dealloc
 {
@@ -134,10 +144,13 @@
 {
     (void)scene;SensorsController *c=(SensorsController *)self.window.rootViewController;
     c.rawEnabled=NO;c.motionEnabled=NO;UIDevice.currentDevice.proximityMonitoringEnabled=NO;
+    [c record:@{@"lifecycle":@"background",@"uptime":@(NSProcessInfo.processInfo.systemUptime)}];
 }
-- (void)sceneWillEnterForeground:(UIScene *)scene
+- (void)sceneDidBecomeActive:(UIScene *)scene
 {
     (void)scene;SensorsController *c=(SensorsController *)self.window.rootViewController;
+    (void)c.view;
+    [c record:@{@"lifecycle":@"active",@"uptime":@(NSProcessInfo.processInfo.systemUptime)}];
     c.rawEnabled=YES;c.motionEnabled=YES;UIDevice.currentDevice.proximityMonitoringEnabled=YES;
 }
 @end
