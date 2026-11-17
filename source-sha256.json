@@ -1,5 +1,5 @@
 {
-  ".github/workflows/nezha-metal.yml": "d08ff451927a13e4ad3f48d267b02d283b06cac492737c410f97d23116989c1a",
+  ".github/workflows/nezha-metal.yml": "4789d06c53a8cde2c976ec28c17f7d8329f91338e82723c5536378a44628ba36",
   ".gitignore": "862263fa1f46c20f0d1e4dac5ffcc75abd55c08211b2c3864c5f8764b9d87793",
   "ci/gpu-userland/check-buffer-reserve.py": "56bef54d15cb6192d25bfd99516369d45d3ddeffbd44805f9f052739d2fdf57a",
   "ci/gpu-userland/check-client-wait.py": "d145f859a345b7ac4edb8f68518f8203b4f2522ffbf877dd60e5ef97a9aeacb7",
@@ -47,7 +47,7 @@
   "ci/gpu-userland/fixtures/old.cpp": "37b49814016986ab24ec269aae283eb3d01a4a12e92f685c90b2547b6838fd8e",
   "ci/gpu-userland/fixtures/primer-wait-test.cpp.in": "a43dc0cac9541f3b3dbaefb27a169e87fea63878fd6537ff313ce126c7bca71c",
   "ci/gpu-userland/fixtures/snippet-bindings.json": "6e606554b8c27d8d9895b45558b1e9517cfe63ce1ee44d3a90246d7097ca2ee6",
-  "ci/gpu-userland/fixtures/source-bindings.json": "caf695dfdd1fcc5bf2d9060669d737db029b4c0a6fae26dad07481b498ae2c2c",
+  "ci/gpu-userland/fixtures/source-bindings.json": "1db19bacca4cecd6ab83830d4e1d187f0b95315ffd33231ced96f11a076056a0",
   "ci/gpu-userland/fixtures/swap.cpp": "4e440baee494455d42c61b0fd04833ed082272c865babe8221dd8815c50d90ed",
   "ci/gpu-userland/fixtures/tile-store-bindings.json": "33239fdcc1b58b42ff7be3d38a91a95a32b251d8a5f3aec656be644ac12928e8",
   "ci/gpu-userland/fixtures/tile-store-error.cpp": "c07a7636265a315aab62e1012fd27afe54ff13456d4e9c2683c2d8a4462ed3a8",
