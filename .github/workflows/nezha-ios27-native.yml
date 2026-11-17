@@ -1,7 +1,7 @@
 name: nezha iPhone27 AppSync Wi-Fi install probe
 on:
   push:
-    branches: [codex/ios27-appsync-probe037-20261117]
+    branches: [codex/ios27-appsync-probe037b-20261117]
   workflow_dispatch:
 permissions:
   contents: read
@@ -45,8 +45,6 @@ jobs:
           xcrun nm "$out/appsync-probe" > "$RUNNER_TEMP/appsync-probe.symbols"
           grep -q ' _unixnu_appinst_entry$' "$RUNNER_TEMP/appsync-probe.symbols"
           grep -q ' _unixnu_appinst_install_received$' "$RUNNER_TEMP/appsync-probe.symbols"
-          grep -q ' U _xpc_transaction_begin$' "$RUNNER_TEMP/appsync-probe.symbols"
-          grep -q ' U _xpc_transaction_end$' "$RUNNER_TEMP/appsync-probe.symbols"
           ! grep -Eq ' _(posix_spawn|alarm)$' "$RUNNER_TEMP/appsync-probe.symbols"
       - name: Seal outputs and diagnostics using the existing owner envelope
         if: always()

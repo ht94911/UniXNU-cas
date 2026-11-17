@@ -4,7 +4,6 @@
 #import <dlfcn.h>
 #import <unistd.h>
 #import <sys/sysctl.h>
-#import <xpc/xpc.h>
 #import <time.h>
 #import <stdarg.h>
 #import <errno.h>
@@ -102,12 +101,12 @@ int main(void)
         NSDictionary *transfer = [NSDictionary dictionaryWithContentsOfFile:
             @"/private/var/ngpu/appsync/probe/wifi-install.plist"];
         if (transfer) {
-            xpc_transaction_begin();
-            @try {
-                return unixnu_appsync_wifi_install(transfer, report);
-            } @finally {
-                xpc_transaction_end();
-            }
+            // libxpc's iOS activity transaction ends when ARC releases it.
+            typedef id (*CreateTransaction)(const char *) NS_RETURNS_RETAINED;
+            CreateTransaction create = (CreateTransaction)dlsym(RTLD_DEFAULT, "os_transaction_create");
+            __attribute__((objc_precise_lifetime)) id transaction = create ? create("AppSync IPA installation") : nil;
+            report("APPSYNC_PROBE wifi-activity active=%d\n", transaction != nil);
+            return unixnu_appsync_wifi_install(transfer, report);
         }
         report("APPSYNC_PROBE start ram-data direct-install uid=%u\n", (unsigned)getuid());
         sleep(60);
