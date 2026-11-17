@@ -362,6 +362,12 @@ def main():
     record['camera_required_selector_patch'] = sha(selected)
     test = HERE / 'fixtures/function_constant_selector_host.mm'
     shutil.copyfile(test, root / 'drivers/AdrenoMetal/bridge' / test.name)
+    selected = HERE / 'patches/camera087-function-spi-plugin.patch'
+    must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', '--check', selected])
+    must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', selected])
+    record['camera_function_SPI_patch'] = sha(selected)
+    test = HERE / 'fixtures/camera_function_spi_host.mm'
+    shutil.copyfile(test, root / 'drivers/AdrenoMetal/bridge' / test.name)
     # The profile patch is introduced by the late runtime recipe. Keep the
     # original KMD check above, then apply and check this distinct final source.
     profile_patch = root / 'patches/mesa/turnip-driver-cpu-profile.patch'

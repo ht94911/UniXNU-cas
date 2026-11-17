@@ -1,7 +1,7 @@
-name: nezha iPhone27 Camera085 GPU051 required Metal getter
+name: nezha iPhone27 Camera087 GPU051 function creation and arguments
 on:
   push:
-    branches: [codex/ios27-camera085b-gpu051-required-metal-20261117]
+    branches: [codex/ios27-camera087-gpu051-function-spi-metal-20261118]
   workflow_dispatch:
 permissions:
   contents: read
@@ -76,6 +76,9 @@ jobs:
       - name: Exercise both production Metal function constant getters
         id: function_constant
         run: device/ci/gpu-userland/logrun function-constant python3 device/ci/gpu-userland/check-function-constant.py --unixnu unixnu --logs "$LOGS"
+      - name: Exercise production Camera function SPI and public argument metadata
+        id: camera_function_spi
+        run: device/ci/gpu-userland/logrun camera-function-spi python3 device/ci/gpu-userland/check-camera-function-spi.py --unixnu unixnu --logs "$LOGS"
       - name: Check actual-source real Mesa trees,device lifetimes and swap API guards
         id: device_contexts
         run: device/ci/gpu-userland/logrun device-contexts python3 device/ci/gpu-userland/check-device-context-host.py --unixnu unixnu --logs "$LOGS"
@@ -167,6 +170,7 @@ jobs:
           OUTCOME_PIPELINE_CACHE: ${{ steps.pipeline_cache.outcome }}
           OUTCOME_ICON_LIMITS: ${{ steps.icon_limits.outcome }}
           OUTCOME_FUNCTION_CONSTANT: ${{ steps.function_constant.outcome }}
+          OUTCOME_CAMERA_FUNCTION_SPI: ${{ steps.camera_function_spi.outcome }}
           OUTCOME_EXTERN_FUNCTION: ${{ steps.extern_function.outcome }}
         run: |
           set -euo pipefail
@@ -214,6 +218,7 @@ jobs:
           PIPELINE_CACHE: ${{ steps.pipeline_cache.outcome }}
           ICON_LIMITS: ${{ steps.icon_limits.outcome }}
           FUNCTION_CONSTANT: ${{ steps.function_constant.outcome }}
+          CAMERA_FUNCTION_SPI: ${{ steps.camera_function_spi.outcome }}
           EXTERN_FUNCTION: ${{ steps.extern_function.outcome }}
         run: |
           set -euo pipefail
@@ -233,6 +238,7 @@ jobs:
           test "$ICON_LIMITS" = success
           test "$EXTERN_FUNCTION" = success
           test "$FUNCTION_CONSTANT" = success
+          test "$CAMERA_FUNCTION_SPI" = success
           test "$BUFFER_RESERVE" = skipped
           test "$VULKAN_OPERATIONS" = skipped
           test "$TILED_WORDS" = skipped

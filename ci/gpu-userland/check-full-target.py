@@ -209,5 +209,12 @@ assert function_constant['passed'] and function_constant['checks'] == 10
 assert function_constant['source_sha256'] == hashlib.sha256((root/'drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm').read_bytes()).hexdigest()
 assert target_extern['required_function_constant_method_list_verified'] and target_extern['required_forwards_to_original_getter']
 report['actual_function_constant'] = function_constant
+camera_function = json.loads((a.logs/'camera-function-spi/report.json').read_text())
+assert camera_function['passed'] and camera_function['checks'] == 31
+assert camera_function['source_sha256'] == hashlib.sha256((root/'drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm').read_bytes()).hexdigest()
+assert camera_function['metadata_source_sha256'] == hashlib.sha256((root/'drivers/AdrenoMetal/NativeMetalFunctionMetadata.h').read_bytes()).hexdigest()
+assert camera_function['bridge_source_sha256'] == hashlib.sha256((root/'drivers/AdrenoMetal/bridge/NativeMetalObjects.rs').read_bytes()).hexdigest()
+assert target_extern['camera_function_SPI_method_metadata_verified']
+report['actual_camera_function_SPI'] = camera_function
 (a.logs/'full-target-qualified.json').write_text(json.dumps(report,indent=2)+'\n')
 print(json.dumps({k:v for k,v in report.items() if k!='profile'},indent=2))

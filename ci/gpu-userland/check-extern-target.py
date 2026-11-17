@@ -142,7 +142,7 @@ def verify(binary, map_path):
     method_list = pointer(class_ro + 32)
     assert method_list == link_address("__OBJC_$_INSTANCE_METHODS_NBLibrary")
     flags, method_count = struct.unpack("<II", image.read(method_list, 8))
-    assert flags == 0x8000000c and method_count == 21
+    assert flags == 0x8000000c and method_count == 23
     methods = {}
     for i in range(method_count):
         record = method_list + 8 + 12 * i
@@ -178,6 +178,30 @@ def verify(binary, map_path):
     got = [message_slot] if fixups.get(message_slot, {}).get("symbol") == "_objc_msgSend" else []
     assert len(got) == 1 and fixups[got[0]]["auth"] and fixups[got[0]]["key"] == 0
     assert stub_words[4] == 0xf9400230 and stub_words[5] == 0xd71f0a11
+
+    camera_methods = {}
+    for selector in ('newFunctionWithName:constantValues:pipelineLibrary:error:',
+                     'newFunctionWithName:constantValues:functionCache:error:'):
+        method = methods[selector]
+        assert method['types'] == '@48@0:8@16@24@32^@40', (selector, method)
+        assert method['imp'] == link_address('-[NBLibrary ' + selector + ']')
+        assert method['imp'] in image.function_starts()
+        camera_methods[selector] = dict(types=method['types'], IMP=hex(method['imp']))
+    for class_name, selector in (('NBFunction', 'arguments'), ('NBArgument', 'dataTypeDescription')):
+        class_ro = pointer(symbols['_OBJC_CLASS_$_' + class_name] + 32)
+        methods_at = pointer(class_ro + 32)
+        method_flags, count = struct.unpack('<II', image.read(methods_at, 8))
+        assert method_flags == 0x8000000c
+        entries = {}
+        for i in range(count):
+            record = methods_at + 8 + 12*i
+            name_delta, type_delta, imp_delta = struct.unpack('<iii', image.read(record, 12))
+            name = cstring(pointer(record + name_delta))
+            entries[name] = dict(types=cstring(record+4+type_delta), imp=record+8+imp_delta)
+        camera_entry = entries[selector]
+        assert camera_entry['types'] == '@16@0:8' and camera_entry['imp'] == link_address('-['+class_name+' '+selector+']')
+        assert camera_entry['imp'] in image.function_starts()
+        camera_methods[class_name+'.'+selector] = dict(types=camera_entry['types'], IMP=hex(camera_entry['imp']))
 
     # Camera085 builds the correction into the production class. Walk its
     # own metadata and authenticated isRequired message, not a test alias.
@@ -229,7 +253,9 @@ def verify(binary, map_path):
         required_function_constant_encoding='B16@0:8',
         required_function_constant_IMP=hex(required['imp']),
         isRequired_function_constant_IMP=hex(original['imp']),
-        required_forwards_to_original_getter=True)
+        required_forwards_to_original_getter=True,
+        camera_function_SPI_method_metadata_verified=True,
+        camera_function_methods=camera_methods)
 
 if __name__ == '__main__':
     import argparse
