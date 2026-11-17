@@ -1,6 +1,8 @@
+diff --git a/ldid.cpp b/ldid.cpp
+index 7813c22..ea71351 100644
 --- a/ldid.cpp
 +++ b/ldid.cpp
-@@ -1454,6 +1454,31 @@
+@@ -1454,6 +1454,31 @@ class Map {
          return std::string(static_cast<char *>(data_), size_);
      }
  };
@@ -32,8 +34,12 @@
  #endif // LDID_NOTOOLS
  
  namespace ldid {
-@@ -2438,6 +2463,9 @@
- Hash Sign(const void *idata, size_t isize, std::streambuf &output, const std::string &identifier, const std::string &entitlements, bool merge, const std::string &requirements, const ldid::Signer &signer, const Slots &slots, uint32_t flags, uint8_t platform, const Progress &progress) {
+@@ -2435,9 +2460,12 @@ static void req(std::streambuf &buffer, uint8_t (&&data)[Size_]) {
+     put(buffer, zeros, 3 - (Size_ + 3) % 4);
+ }
+ 
+-Hash Sign(const void *idata, size_t isize, std::streambuf &output, const std::string &identifier, const std::string &entitlements, bool merge, const std::string &requirements, const ldid::Signer &signer, const Slots &slots, uint32_t flags, uint8_t platform, const Progress &progress) {
++Hash Sign(const void *idata, size_t isize, std::streambuf &output, const std::string &identifier, const std::string &entitlements, bool merge, const std::string &requirements, const ldid::Signer &signer, const Slots &slots, uint32_t flags, uint8_t platform, const Progress &progress, const std::string &applicationIdentifier) {
      Hash hash;
  
 +    // UniXNU retains AMFI: a signature without CMS must be marked ad-hoc.
@@ -42,7 +48,30 @@
  
      std::string team;
      std::string common;
-@@ -2890,6 +2918,12 @@
+@@ -2513,7 +2541,7 @@ Hash Sign(const void *idata, size_t isize, std::streambuf &output, const std::st
+                 baton.entitlements_.assign(data, size);
+             }));
+ 
+-        if (!baton.entitlements_.empty() || !entitlements.empty()) {
++        if (!baton.entitlements_.empty() || !entitlements.empty() || !applicationIdentifier.empty()) {
+             auto combined(plist(baton.entitlements_));
+             _scope({ plist_free(combined); });
+             if (plist_get_node_type(combined) != PLIST_DICT) {
+@@ -2542,6 +2570,13 @@ Hash Sign(const void *idata, size_t isize, std::streambuf &output, const std::st
+                 plist_dict_set_item(combined, key, plist_copy(value));
+             }
+ 
++            if (!applicationIdentifier.empty()) {
++                auto existing(plist_dict_get_item(combined, "application-identifier"));
++                uint64_t length = 0;
++                if (!existing || !plist_get_string_ptr(existing, &length) || length == 0)
++                    plist_dict_set_item(combined, "application-identifier", plist_new_string(applicationIdentifier.c_str()));
++            }
++
+             baton.derformat_ = der(combined);
+ 
+             char *xml(NULL);
+@@ -2890,6 +2925,12 @@ bool DiskFolder::Look(const std::string &path) const {
  }
  
  void DiskFolder::Open(const std::string &path, const Functor<void (std::streambuf &, size_t, const void *)> &code) const {
@@ -55,10 +84,12 @@
      std::filebuf data;
      auto result(data.open(Path(path).c_str(), std::ios::binary | std::ios::in));
      _assert_(result == &data, "DiskFolder::Open(%s)", Path(path).c_str());
-@@ -3137,6 +3171,16 @@
+@@ -3136,7 +3177,17 @@ struct RuleCode {
+     }
  };
  
- static Hash Sign(const uint8_t *prefix, size_t size, std::streambuf &buffer, Hash &hash, std::streambuf &save, const std::string &identifier, const std::string &entitlements, bool merge, const std::string &requirements, const ldid::Signer &signer, const Slots &slots, size_t length, uint32_t flags, uint8_t platform, const Progress &progress) {
+-static Hash Sign(const uint8_t *prefix, size_t size, std::streambuf &buffer, Hash &hash, std::streambuf &save, const std::string &identifier, const std::string &entitlements, bool merge, const std::string &requirements, const ldid::Signer &signer, const Slots &slots, size_t length, uint32_t flags, uint8_t platform, const Progress &progress) {
++static Hash Sign(const uint8_t *prefix, size_t size, std::streambuf &buffer, Hash &hash, std::streambuf &save, const std::string &identifier, const std::string &entitlements, bool merge, const std::string &requirements, const ldid::Signer &signer, const Slots &slots, size_t length, uint32_t flags, uint8_t platform, const Progress &progress, const std::string &applicationIdentifier = {}) {
 +#ifndef LDID_NOTOOLS
 +    // When the file is mmap'd (DiskFolder::Open), sign straight from the mapping
 +    // so a large binary is never copied onto the heap. The prefix peeked by the
@@ -66,13 +97,22 @@
 +    if (auto *mapped = dynamic_cast<MapBuffer *>(&buffer)) {
 +        (void) prefix, (void) size, (void) length;
 +        HashProxy proxy(hash, save);
-+        return Sign(mapped->data(), mapped->size(), proxy, identifier, entitlements, merge, requirements, signer, slots, flags, platform, progress);
++        return Sign(mapped->data(), mapped->size(), proxy, identifier, entitlements, merge, requirements, signer, slots, flags, platform, progress, applicationIdentifier);
 +    }
 +#endif
      // XXX: this is a miserable fail
      std::stringbuf temp;
      put(temp, prefix, size);
-@@ -3208,6 +3252,14 @@
+@@ -3146,7 +3197,7 @@ static Hash Sign(const uint8_t *prefix, size_t size, std::streambuf &buffer, Has
+     auto data(temp.str());
+ 
+     HashProxy proxy(hash, save);
+-    return Sign(data.data(), data.size(), proxy, identifier, entitlements, merge, requirements, signer, slots, flags, platform, progress);
++    return Sign(data.data(), data.size(), proxy, identifier, entitlements, merge, requirements, signer, slots, flags, platform, progress, applicationIdentifier);
+ }
+ 
+ struct State {
+@@ -3208,6 +3259,14 @@ Bundle Sign(const std::string &root, Folder &parent, const ldid::Signer &signer,
  
      std::string entitlements;
      folder.Open(executable, fun([&](std::streambuf &buffer, size_t length, const void *flag) {
@@ -87,7 +127,7 @@
          // XXX: this is a miserable fail
          std::stringbuf temp;
          copy(buffer, temp, length, progress);
-@@ -3253,7 +3305,9 @@
+@@ -3253,7 +3312,9 @@ Bundle Sign(const std::string &root, Folder &parent, const ldid::Signer &signer,
      }
  
      std::string failure(mac ? "Contents/|Versions/[^/]*/Resources/" : "");
@@ -98,7 +138,7 @@
      std::map<std::string, Bundle> bundles;
  
      if (!flag_w) {
-@@ -3268,7 +3322,7 @@
+@@ -3268,7 +3329,7 @@ Bundle Sign(const std::string &root, Folder &parent, const ldid::Signer &signer,
              SubFolder subfolder(folder, bundle);
  
              State remote;
@@ -107,3 +147,42 @@
                  static_cast<const Functor<std::string (const std::string &, const std::string &)> &>(fun([&](const std::string &, const std::string &) -> std::string { return entitlements; }))
              , merge, platform, progress);
              local.Merge(bundle, remote);
+@@ -3457,13 +3518,24 @@ Bundle Sign(const std::string &root, Folder &parent, const ldid::Signer &signer,
+     Bundle bundle;
+     bundle.path = folder.Path(executable);
+ 
++    // Only installable app executables need this entitlement. Derive a stable
++    // local identity for ad-hoc repairs, without adding it to libraries.
++    auto bundleName(parent.Path(""));
++    if (!bundleName.empty() && bundleName.back() == '/') bundleName.pop_back();
++    const auto extension(bundleName.find_last_of('.'));
++    const bool installable = extension != std::string::npos &&
++        (bundleName.compare(extension, std::string::npos, ".app") == 0 ||
++         bundleName.compare(extension, std::string::npos, ".appex") == 0);
++    const std::string applicationIdentifier = !mac && merge && !signer && installable
++        ? "UNIXNULOC0." + identifier : std::string();
++
+     folder.Open(executable, fun([&](std::streambuf &buffer, size_t length, const void *flag) {
+         progress(root + executable);
+         folder.Save(executable, true, flag, fun([&](std::streambuf &save) {
+             Slots slots;
+             slots[1] = local.files.at(info);
+             slots[3] = local.files.at(signature);
+-            bundle.hash = Sign(NULL, 0, buffer, local.files[executable], save, identifier, entitlements, merge, requirements, signer, slots, length, 0, platform, Progression(progress, root + executable));
++            bundle.hash = Sign(NULL, 0, buffer, local.files[executable], save, identifier, entitlements, merge, requirements, signer, slots, length, 0, platform, Progression(progress, root + executable), applicationIdentifier);
+         }));
+     }));
+ 
+diff --git a/ldid.hpp b/ldid.hpp
+index 740364f..8a59015 100644
+--- a/ldid.hpp
++++ b/ldid.hpp
+@@ -172,7 +172,7 @@ Bundle Sign(const std::string &root, Folder &folder, const Signer &signer, const
+ 
+ typedef std::map<uint32_t, Hash> Slots;
+ 
+-Hash Sign(const void *idata, size_t isize, std::streambuf &output, const std::string &identifier, const std::string &entitlements, bool merge, const std::string &requirements, const Signer &signer, const Slots &slots, uint32_t flags, uint8_t platform, const Progress &progress);
++Hash Sign(const void *idata, size_t isize, std::streambuf &output, const std::string &identifier, const std::string &entitlements, bool merge, const std::string &requirements, const Signer &signer, const Slots &slots, uint32_t flags, uint8_t platform, const Progress &progress, const std::string &applicationIdentifier = {});
+ 
+ }
+ 

@@ -147,6 +147,23 @@ def signing_tests(work):
     # Each nested bundle needs its own resource seal; installd validates them one by one.
     for name in nested:
         build.run('codesign', '--verify', '--strict', unsigned / name)
+    for name, bundle_id in (('Main', 'org.unixnu.fixture'),
+                            ('PlugIns/Widget.appex/Widget', 'org.unixnu.fixture.widget'),
+                            ('Extensions/Capture.appex/Capture', 'org.unixnu.fixture.capture')):
+        assert build.entitlements(unsigned / name) == {
+            'application-identifier': 'UNIXNULOC0.' + bundle_id,
+        }
+    assert 'application-identifier' not in build.entitlements(unsigned / 'Frameworks/Kit.framework/Kit')
+
+    no_identifier = work / 'MissingIdentifier.app'
+    shutil.copytree(base, no_identifier)
+    entitlement_file.write_bytes(plistlib.dumps({'get-task-allow': True}))
+    build.sign(no_identifier / 'Main', 'org.unixnu.fixture', entitlement_file)
+    build.run(harness, no_identifier, 'repair')
+    assert build.entitlements(no_identifier / 'Main') == {
+        'application-identifier': 'UNIXNULOC0.org.unixnu.fixture', 'get-task-allow': True,
+    }
+    assert build.entitlements(no_identifier / 'PlugIns/Widget.appex/Widget') == entitlements
 
     # installd calls the library repeatedly in one process. A failed command
     # (ldid's exit) must return to the caller, and later calls must still sign.

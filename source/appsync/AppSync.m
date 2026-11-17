@@ -9,16 +9,20 @@
 #ifdef AS_HOST_TEST
 #define AS_BOOL_ENCODING @encode(BOOL)
 #define AS_VERIFIER "ASFixtureVerifier"
+#define AS_SIGNING_INFO "ASFixtureSigningInfo"
 #define AS_TRUST "ASFixtureSignatureService"
 #else
 #define AS_BOOL_ENCODING "B"
 #define AS_VERIFIER "MICodeSigningVerifier"
+#define AS_SIGNING_INFO "MICodeSigningInfo"
 #define AS_TRUST "FBSSignatureValidationService"
 #endif
 
 @interface NSObject (UniXNUAppSyncPrivate)
 - (NSURL *)bundleURL;
 - (id)bundle;
+- (id)signingInfo;
+- (NSDictionary *)entitlements;
 - (BOOL)allowAdhocSigning;
 - (BOOL)verifyTrustCachePresence;
 - (BOOL)performOnlineAuthorization;
@@ -45,8 +49,11 @@ static BOOL userBundle(NSURL *url) {
 
 static BOOL validate(id self, SEL command, NSError **error) {
     id bundle = [self bundle];
-    if (![bundle respondsToSelector:@selector(bundleURL)] || !userBundle([bundle bundleURL]))
+    NSURL *url = [bundle respondsToSelector:@selector(bundleURL)] ? [bundle bundleURL] : nil;
+    if (!userBundle(url))
         return originalValidation(self, command, error);
+    BOOL requiresIdentifier = [url.pathExtension isEqualToString:@"app"] ||
+        [url.pathExtension isEqualToString:@"appex"];
     // Validate ad-hoc user packages without a preloaded hash or provisioning
     // profile ID. The kernel trusts their validated CodeDirectories on demand.
     BOOL adhoc = [self allowAdhocSigning], trust = [self verifyTrustCachePresence];
@@ -56,8 +63,16 @@ static BOOL validate(id self, SEL command, NSError **error) {
     [self setPerformOnlineAuthorization:NO];
     [self setSkipProfileIDValidation:YES];
     @try {
-        return ASValidateUserBundle([bundle bundleURL], ^BOOL(NSError **nativeError) {
-            return originalValidation(self, command, nativeError);
+        return ASValidateUserBundle(url, ^BOOL(NSError **nativeError) {
+            BOOL accepted = originalValidation(self, command, nativeError);
+            if (!accepted || !requiresIdentifier) return accepted;
+            id identifier = [[self signingInfo] entitlements][@"application-identifier"];
+            if ([identifier isKindOfClass:NSString.class] && [identifier length]) return YES;
+            // The 24A446 installer checks this after the normal signature verifier.
+            // Repair the staging copy and have the verifier rebuild its signing info.
+            if (nativeError) *nativeError = [NSError errorWithDomain:@"org.unixnu.appsync" code:2
+                userInfo:@{NSLocalizedDescriptionKey: @"The app signature lacks an application identifier"}];
+            return NO;
         }, error);
     } @finally {
         [self setAllowAdhocSigning:adhoc];
@@ -103,7 +118,9 @@ __attribute__((constructor)) static void start(void) {
             const char *getters[] = {"allowAdhocSigning", "verifyTrustCachePresence", "performOnlineAuthorization", "skipProfileIDValidation"};
             const char *setters[] = {"setAllowAdhocSigning:", "setVerifyTrustCachePresence:", "setPerformOnlineAuthorization:", "setSkipProfileIDValidation:"};
             BOOL valid = signature(method, AS_BOOL_ENCODING, 1, arguments) &&
-                signature(class_getInstanceMethod(cls, @selector(bundle)), "@", 0, NULL);
+                signature(class_getInstanceMethod(cls, @selector(bundle)), "@", 0, NULL) &&
+                signature(class_getInstanceMethod(cls, @selector(signingInfo)), "@", 0, NULL) &&
+                signature(class_getInstanceMethod(objc_getClass(AS_SIGNING_INFO), @selector(entitlements)), "@", 0, NULL);
             const char *boolean[] = {AS_BOOL_ENCODING};
             for (unsigned i = 0; i < 4; ++i)
                 valid &= signature(class_getInstanceMethod(cls, sel_registerName(getters[i])), AS_BOOL_ENCODING, 0, NULL) &&

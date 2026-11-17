@@ -82,8 +82,11 @@ def build_runtime(work):
     entitlement_file = work / '.appinst-entitlements.plist'
     entitlement_file.write_bytes(plistlib.dumps({
         'application-identifier': 'org.unixnu.appinst', 'platform-application': True,
+        'com.apple.private.InstallCoordination.allowed': True,
+        'com.apple.private.security.no-container': True,
         'com.apple.private.mobileinstall.allowedSPI': ['Install', 'InstallForLaunchServices'],
-        'com.apple.security.exception.mach-lookup.global-name': ['com.apple.mobile.installd']}))
+        'com.apple.security.exception.mach-lookup.global-name': [
+            'com.apple.mobile.installd', 'com.apple.installcoordinationd']}))
     sign(work / 'libexec/unixnu-appinst', 'org.unixnu.appinst', entitlement_file)
     entitlement_file.unlink()
     return signing

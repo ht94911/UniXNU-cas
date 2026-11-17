@@ -11,8 +11,15 @@
 @implementation ASBundle
 @end
 
+@interface ASFixtureSigningInfo : NSObject
+@property NSDictionary *entitlements;
+@end
+@implementation ASFixtureSigningInfo
+@end
+
 @interface MICodeSigningVerifier : NSObject
 @property ASBundle *bundle;
+@property ASFixtureSigningInfo *signingInfo;
 @property BOOL allowAdhocSigning;
 @property BOOL verifyTrustCachePresence;
 @property BOOL performOnlineAuthorization;
@@ -46,6 +53,7 @@ BOOL ASValidateUserBundle(NSURL *url, BOOL (^validate)(NSError **), NSError **er
     if (validate(error)) return YES;
     if (!repairAllowed) return NO;
     activeVerifier.trusted = YES;
+    activeVerifier.signingInfo.entitlements = @{@"application-identifier": @"UNIXNULOC0.org.unixnu.fixture"};
     BOOL result = validate(error);
     if (result && error) *error = nil;
     return result;
@@ -66,12 +74,22 @@ int main(int argc, const char **argv) {
             MICodeSigningVerifier *verifier = [MICodeSigningVerifier new];
             activeVerifier = verifier;
             verifier.bundle = bundle;
+            verifier.signingInfo = [ASFixtureSigningInfo new];
+            verifier.signingInfo.entitlements = @{@"application-identifier": @"ORIGINAL.org.unixnu.fixture"};
             verifier.trusted = YES;
             verifier.performOnlineAuthorization = YES;
             NSError *error = nil;
             assert([verifier performValidationWithError:&error] == expected);
             assert(verifier.calls == 1);
             assert(!verifier.allowAdhocSigning && !verifier.verifyTrustCachePresence && verifier.performOnlineAuthorization && !verifier.skipProfileIDValidation);
+            if (expected && ![bundle.bundleURL.pathExtension isEqualToString:@"framework"]) {
+                verifier.signingInfo.entitlements = @{};
+                assert(![verifier performValidationWithError:&error] && error.code == 2);
+                repairAllowed = YES;
+                assert([verifier performValidationWithError:&error] && !error);
+                assert([verifier.signingInfo.entitlements[@"application-identifier"] isEqual:@"UNIXNULOC0.org.unixnu.fixture"]);
+                repairAllowed = NO;
+            }
             verifier.trusted = NO;
             assert(![verifier performValidationWithError:&error]);
             assert(error.code == 17);
