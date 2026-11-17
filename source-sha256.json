@@ -1,9 +1,9 @@
 {
-  ".github/workflows/nezha-metal.yml": "be3971b13e796863aacef8f144e7e30ee1058e3c8cdda2ba0243a13757a23470",
+  ".github/workflows/nezha-metal.yml": "2e0a78a20d7a13975b9450a43d4db3879dd181405c9a0f4c08a0461fde7ea575",
   ".gitignore": "862263fa1f46c20f0d1e4dac5ffcc75abd55c08211b2c3864c5f8764b9d87793",
   "ci/gpu-userland/check-buffer-reserve.py": "56bef54d15cb6192d25bfd99516369d45d3ddeffbd44805f9f052739d2fdf57a",
   "ci/gpu-userland/check-camera-function-spi.py": "30b13ff0ffbda673deb2b2a915217649bbe8257c70b9ce68199f16f751a145b1",
-  "ci/gpu-userland/check-camera-public.py": "c6671cab4b2e5a30952b25eebedc9a91c563a7907e24e88d68c7dc0626d956de",
+  "ci/gpu-userland/check-camera-public.py": "e54844340c13547ea27e46ba48eb236b84f498d77c08c8d5f23a3e88e71b50cf",
   "ci/gpu-userland/check-client-wait.py": "d145f859a345b7ac4edb8f68518f8203b4f2522ffbf877dd60e5ef97a9aeacb7",
   "ci/gpu-userland/check-device-context-host.py": "dda22122342621cfdd8c9a8f640825772256d0fc9632ad105afe452e987aaee9",
   "ci/gpu-userland/check-display-discovery.py": "efd35e4dad04f3a24fd225f5d3c47c5b67740d8b5b038eddf3cb595196d5b91d",
