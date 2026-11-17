@@ -1,17 +1,17 @@
 {
   "schema": 1,
-  "purpose": "GNSS003 launcher runs under existing mobile UID501, logs fresh process/boot/uptime; normal CoreLocation app and permissions preserved",
-  "device_revision": "7f2b940bae850437e347d2ae604195177d366f06",
+  "purpose": "GNSS004 ordinary mobile launcher atload once, immediatePID/UID marker and120secondstartupdelay before originalLSregistration; normalCoreLocationapp unchanged",
+  "device_revision": "770e14435cbcf4e2e3e9bcf933eca7cdc9cb8794",
   "files": {
     "source/NezhaLocation.m": "6a71ef36ae9323341a82d94a4620ca288d313eec1fc71d92e65b8de332685d68",
     "source/Info.plist": "d22a8a478357aaf3a42279295f5b7c704415e64c0fc049b3371c9556cabc902e",
     "source/NezhaLocation.entitlements.plist": "3a42773d833db52c8a6113f2ea83cd6e97ed6ffbdd4ecb8f10d506868a037626",
-    "source/NezhaLocationLaunch.m": "c6e77d25c2d85e04831587341b6fedcaf5f5b5ae212b5f89914665e888d9840e",
+    "source/NezhaLocationLaunch.m": "2162588a9ba65e6fcfbbb2dbaaa9d6a3120bc34a9a95feae6c758c155748e418",
     "source/NezhaLocationLaunch.entitlements.plist": "990976e864664ee1a6264c30806d55194650549bbf3f9ee484d80a456230e054",
-    "ci/corelocation.py": "dfb626ed77cc568bf1c9490f13edff9cd96f313acffd3a789f838d39a6a17af6",
-    ".github/workflows/nezha-ios27-native.yml": "81851165c8309408dc64c186af0ce6202c0a7449033a11f8e387f50b94712a1e",
+    "ci/corelocation.py": "b8ca269a4261d76ef6ba689d241ecbd808f72dd11da7a8939623236342b82149",
+    ".github/workflows/nezha-ios27-native.yml": "27427560b6f8b8f7ae8deabf45f1755eb6b483f96fa71b9375651ffcbdd20732",
     "source/location-launch-registration.m": "8bad895e73978d0cd997462a13c8d03c7b255dd55d0b99a446bf06e5c9590452",
-    "source/org.unixnu.nezha.location-launch.plist": "6d60dce0c4cffd6e9d485e0329a8b119f60b74a6d22ad199ef665882f066e47f"
+    "source/org.unixnu.nezha.location-launch.plist": "226234a7185ac46e3f7033e2c18819b3e39752d32ed9b5881e6038a8d42a74bf"
   },
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
   "certificate_sha256": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",

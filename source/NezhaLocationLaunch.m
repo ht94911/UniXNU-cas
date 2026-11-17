@@ -135,6 +135,14 @@ int main(void)
 {
     @autoreleasepool {
         setvbuf(stderr,NULL,_IONBF,0);
+        fprintf(stderr,"nezha-location-launch: scheduled pid=%u uid=%u euid=%u uptime=%.3f delay_seconds=120\n",
+            (unsigned)getpid(),(unsigned)getuid(),(unsigned)geteuid(),
+            NSProcessInfo.processInfo.systemUptime);
+        /* The original RunAtLoad/LaunchOnlyOnce cache condition launches
+         * exactly once. Delay this ordinary registration until startup is
+         * settled, then retain the existing45-second request deadline. */
+        unsigned remaining=120;
+        while(remaining) remaining=sleep(remaining);
         signal(SIGALRM,deadline);
         alarm(45);
         char boot[128]={0};size_t boot_bytes=sizeof boot;

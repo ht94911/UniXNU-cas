@@ -19,7 +19,7 @@ try:
     assert sha(root/'ci/artifacts.py')==manifest['artifacts_sha256']
     assert sha(root/'ci/artifact-recipient.pem')==manifest['certificate_sha256']
     shutil.copyfile(root/'inputs.json',args.out/'inputs.json')
-    job=plistlib.loads((root/'source/org.unixnu.nezha.location-launch.plist').read_bytes());assert job['UserName']=='mobile' and job['LaunchOnlyOnce'] and not job['KeepAlive'] and 'LimitLoadToSessionType' not in job
+    job=plistlib.loads((root/'source/org.unixnu.nezha.location-launch.plist').read_bytes());assert job['UserName']=='mobile' and job['LaunchOnlyOnce'] and job['KeepAlive'] and job['RunAtLoad'] and 'StartInterval' not in job and 'LimitLoadToSessionType' not in job
     shutil.copyfile(root/'source/org.unixnu.nezha.location-launch.plist',args.out/'org.unixnu.nezha.location-launch.plist')
     host=args.out/'registration-host'
     run('registration-host-compile',['xcrun','clang','-fobjc-arc','-fblocks','-Wall','-Wextra','-Werror','-fsanitize=address,undefined','-O1','-g',root/'source/location-launch-registration.m','-framework','Foundation','-o',host])
@@ -37,7 +37,7 @@ try:
     for label,path in [('app',app),('launcher',launcher)]:
         run(label+'-verify',['codesign','--verify','--strict',path]);r=run(label+'-signature',['codesign','-d','--verbose=4',path]);assert b'Page size=4096'in r.stderr
     imports=run('app-imports',['xcrun','nm','-u',app/'NezhaLocation']).stdout.decode();assert '_UIApplicationMain'in imports
-    (args.out/'qualified.json').write_text(json.dumps(dict(target='arm64e-apple-ios27.0',sdk=sdk,app_sha256=sha(app/'NezhaLocation'),launcher_sha256=sha(launcher),normal_CoreLocation_permission=True,locationd_private_API=False,TCC_changed=False,simulated_locations=False,foreground_only=True,ordinary_location_entitlements=True,original_LS_registration_caller=True,original_modifydb_post_install=True,registration_fixture_cases=9,launcher_uid=501,launcher_boot_marker=True,per_event_authorization_and_uptime=True,signature_page_bytes=4096,device_executed=False),indent=2)+'\n')
+    (args.out/'qualified.json').write_text(json.dumps(dict(target='arm64e-apple-ios27.0',sdk=sdk,app_sha256=sha(app/'NezhaLocation'),launcher_sha256=sha(launcher),normal_CoreLocation_permission=True,locationd_private_API=False,TCC_changed=False,simulated_locations=False,foreground_only=True,ordinary_location_entitlements=True,original_LS_registration_caller=True,original_modifydb_post_install=True,registration_fixture_cases=9,launcher_uid=501,launcher_boot_marker=True,launcher_once_at_load=True,launcher_delay_seconds=120,per_event_authorization_and_uptime=True,signature_page_bytes=4096,device_executed=False),indent=2)+'\n')
 except Exception as e:
     errors.append(dict(error=str(e)))
 finally:
