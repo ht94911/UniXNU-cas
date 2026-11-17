@@ -47,3 +47,9 @@ zzz-wifi-aes-late-personality.patch
 nezha-bluetooth-exit-diagnostic.patch
 nezha-bluetooth-runtime.patch
 nezha-bluetooth-text-fixup-capacity.patch
+
+# sheng AppSync with the 24A446 iPhone donor and a volatile-Data fixture job.
+appsync-user-trust.patch
+appsync-arm64-default-jop.patch
+appsync-arm64-user-jop.patch
+appsync-runtime.patch

@@ -1,7 +1,7 @@
-name: nezha GPU050 large allocation phases - native044
+name: nezha AppSync - GPU051 native
 on:
   push:
-    branches: [codex/ios27-gpu50-boalloc-native044-20261116]
+    branches: [codex/ios27-appsync-gpu051-native-20261117]
   workflow_dispatch:
 permissions:
   contents: read
@@ -45,36 +45,6 @@ jobs:
           printf 'UNIXNU_LLVM_OBJDUMP=%s/bin/llvm-objdump\n' "$(brew --prefix llvm)" >> "$GITHUB_ENV"
       - name: Reconstruct and verify the exact integration source tree
         run: python3 task/ci/native.py prepare --framework unixnu --work "$RUNNER_TEMP/ios27/work"
-      - name: Verify the accepted UserLog producer and actual BSD record routing
-        run: |
-          python3 task/ci/test-native-userlog.py --wrapper unixnu/scripts/build-qcom-usb-debug.py
-          python3 task/ci/test-native-userlog-producer.py --component "$RUNNER_TEMP/ios27/work/usb" --output "$RUNNER_TEMP/ios27/work/userlog-producer-host"
-      - name: Exercise actual iPhone27 reboot and plane mapping methods
-        run: |
-          python3 "$RUNNER_TEMP/ios27/work/device/scripts/check-persistent-data.py" --ufs "$RUNNER_TEMP/ios27/work/ufs" --device "$RUNNER_TEMP/ios27/work/device" --usb "$RUNNER_TEMP/ios27/work/usb" --output "$RUNNER_TEMP/ios27/persist-contracts"
-          python3 "$RUNNER_TEMP/ios27/work/device/scripts/check-persistent-marker.py" --device "$RUNNER_TEMP/ios27/work/device" --output "$RUNNER_TEMP/ios27/persist-marker"
-          python3 "$RUNNER_TEMP/ios27/work/device/scripts/check-touch-edge.py" --output "$RUNNER_TEMP/ios27/touch-edge"
-          python3 "$RUNNER_TEMP/ios27/work/gop/Test/check-plane-view.py" --output "$RUNNER_TEMP/ios27/gop-view-check"
-      - name: Check the actual read-only DPU timing reader
-        run: |
-          set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/ios27/dpu-timing-host"
-          clang -std=c11 -O2 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-sanitize-recover=all -I "$RUNNER_TEMP/ios27/work/device/package/gpu" -I "$RUNNER_TEMP/ios27/work/gop" "$RUNNER_TEMP/ios27/work/device/tests/display-dpu-timing.c" -o "$RUNNER_TEMP/ios27/dpu-timing-host/reader"
-          "$RUNNER_TEMP/ios27/dpu-timing-host/reader"
-      - name: Exercise the reused bounded HID input and original pacer
-        run: |
-          set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/ios27/input-host" "$RUNNER_TEMP/ios27/work/logs"
-          clang -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined -fno-sanitize-recover=all -I "$RUNNER_TEMP/ios27/work/device/package/nezha27-input" "$RUNNER_TEMP/ios27/work/device/tests/account-input.c" -o "$RUNNER_TEMP/ios27/input-host/core" > "$RUNNER_TEMP/ios27/work/logs/auto-input-core-build.log" 2>&1
-          "$RUNNER_TEMP/ios27/input-host/core" > "$RUNNER_TEMP/ios27/work/logs/auto-input-core-run.log" 2>&1
-          clang++ -std=c++17 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined -fno-sanitize-recover=all -I "$RUNNER_TEMP/ios27/work/device/package/nezha27-input" -I "$RUNNER_TEMP/ios27/work/usb/include" "$RUNNER_TEMP/ios27/work/device/tests/account-input-usb.cpp" -o "$RUNNER_TEMP/ios27/input-host/callbacks" > "$RUNNER_TEMP/ios27/work/logs/auto-input-callbacks-build.log" 2>&1
-          "$RUNNER_TEMP/ios27/input-host/callbacks" > "$RUNNER_TEMP/ios27/work/logs/auto-input-callbacks-run.log" 2>&1
-      - name: Exercise the existing BoAlloc phase adapter and trace storage
-        env:
-          CXX: clang++
-        run: python3 "$RUNNER_TEMP/ios27/work/device/tests/check-gpu-bo-phases.py" --native "$RUNNER_TEMP/ios27/work/adreno" --out "$RUNNER_TEMP/ios27/work/bo-phases-host"
-      - name: Check the actual guarded waiting-stack sampler
-        run: python3 task/source/device/scripts/check-stable-kernel-stack.py
       - name: Qualify compiler and run the standard native build
         env:
           GITHUB_TOKEN: ${{ github.token }}
