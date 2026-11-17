@@ -15,7 +15,7 @@ static int fence(void *p){(void)p;return 0;}
 static void event(void *p,uint32_t id){assert(!held&&id==(uint32_t)(uintptr_t)p);callbacks++;}
 int main(void)
 {
-    Sm8850Resources r;Sm8850ResourceIo io={0,lock,unlock,read32,write32,read64,fence};
+    Sm8850Resources r={0};Sm8850ResourceIo io={0,lock,unlock,read32,write32,read64,fence};
     assert(!sm8850_resources_init(&r,&io));
     assert(!sm8850_ipcc_register(&r,0x30002,event,(void *)(uintptr_t)0x30002));
     next=0x30002;assert(!sm8850_ipcc_dispatch(&r,32));assert(callbacks==1&&clears==1&&r.ipcc_sealed);
