@@ -22,13 +22,6 @@ index d93bc9f..600eeca 100644
 +Darwin BO 分配器先复用已完成的缓存对象，缓存未命中时才回收退役对象并再次查缓存。完成回调通过非阻塞加锁尝试清理；内存压力、到期回收和部分解映射的所有权保持原有行为，缓存命中路径不再执行无关的内核 fence/free 调用。
 +
 +释放后的自有 buffer backing 进入已有有界缓存；池化和独立分配在新建 Vulkan 内存前复用可用 backing，并保留原地址对象和导入生命周期。buffer 缓存预算仍为 64MiB，到期时间仍为十秒。
-diff --git a/drivers/AdrenoMetal b/drivers/AdrenoMetal
-index 6f6ea53..7150d1d 160000
---- a/drivers/AdrenoMetal
-+++ b/drivers/AdrenoMetal
-@@ -1 +1 @@
--Subproject commit 6f6ea532cfc85111c711e62abb0738d2d96abf8a
-+Subproject commit 7150d1def3a79c3e80f75044cb8d770743c357c6
 diff --git a/patches/mesa/turnip-darwin-sweep-retired-on-cache-miss.patch b/patches/mesa/turnip-darwin-sweep-retired-on-cache-miss.patch
 new file mode 100644
 index 0000000..b7e0772
