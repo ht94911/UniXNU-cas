@@ -309,7 +309,9 @@ int nb_gnss_next(NbGnss *s, uint64_t now_ms, NbGnssPacket *packet)
         /* Original LOC IDL and the actual minor177 HAL supply client
          * metadata. AFW identifies the normal application framework;
          * requests remain subject to its ordinary location authorization. */
-        nb_qmi_put(&w, 0x10, "NezhaCoreLocation", sizeof("NezhaCoreLocation") - 1u);
+        /* QMI_LOC_MAX_CLIENT_ID_STRING_LENGTH is four on both the
+         * inspected IDL and this phone's minor177 service. */
+        nb_qmi_put(&w, 0x10, "NZCL", 4);
         nb_qmi_u32(&w, 0x11, 1); /* QMI_LOC_CLIENT_AFW */
         nb_qmi_u8(&w, 0x12, 1); /* original request notification field */
         break;

@@ -275,5 +275,53 @@ metadata, retains failed-command and ACK/indication state in HISTORY, and
 uses the existing bounded QMI header tracer for LOC. The first three locationd
 PAC faults are captured before the unchanged fatal handler. The launcher job
 runs as the existing mobile user and logs its actual PID/UID/boot/uptime.
-Host protocol/lifecycle/QMUX tests pass; a new native build and fixed package
-must qualify these changes before another phone window.
+Native005 run44028683069 at heade9d4c282d7fb11fdc160cdc2ce7e24a12c2b638c
+compiled the23 target units and resolved355 external imports. The216 other
+runtime objects match native004; only the GNSS state machine and included
+bridge translation units change. Native fatal-capture code is present. Strict
+prelink passes38 components/348 imports,1062 baseband and168/379/207
+GPU/Legacy/HID PAC slots, and seven full original IOSurface routine hashes.
+The final entry/HMAC kernel passes its current production parser, single
+no-root-map refusal and eight-CPU display/HID/backlight6 controls with seven
+secondary CPUs and zero skipped targets.
+
+The mobile launcher and retained ordinary app passed run44028701894,
+head5f3bc06abe1a87cbe8a6d69b6eb6451e03f41783,9 interface fixtures and every
+4KiB signature page. The normal app remains byte-identical. Only the helper,
+its launch-cache job and detached signature change; all729 original jobs,
+54 GPU051 non-cache addon entries and four original trust modules remain.
+Package003 uses boot SHA-256
+`a50ed09ac5e7d0a2a8975603b636492575245a127933730c4aa9c862d94a0be8`,
+payload SHA-256
+`98ca0a5ef4227e4996494cc9d192cd054266fea538dca292cd29f49ababa8dd9`,
+kernel SHA-256
+`cdda3c7a9b6a434238985c196d6edfc65a6a01a09d2caba8e85b1f9851ba96bc`.
+The original boot-loader/FD prefix is identical to package002. Current
+host-r00875 files and the concrete local lifecycle checks pass before
+queueing. Fresh CAPS avoids the stale early catalogue and validates the
+actual sanitized provider name, session and reply provider. The third local
+trial remains pending its selected file window; manual positioning stays
+deferred.
+
+GNSS003 local startup on2026-11-17 confirmed the service-revision query's
+reply and indication, then the original REG_EVENTS0x21 reply returned
+ARGUMENT_TOO_LONG19. The header trace and failed-command33 fields identify
+the exact request. This increment used a16-byte client string although
+both inspected LOC IDLs limit that field to4 bytes. The next request uses
+`NZCL` and remains the ordinary AFW client. Its complete packet is36 bytes.
+No START or fix was produced. This run showed no locationd PAC report in
+the recorded window. The extracted launcher file was unchanged from the
+previous run and had no new scheduled/startup marker.
+
+The next launcher job uses the already-tested RunAtLoad/LaunchOnlyOnce
+condition. The process logs its actual PID/UID immediately, waits120 seconds
+for startup, then uses the original45-second registration deadline. It runs
+as mobile and retains normal application authorization. The job's initial
+KeepAlive condition is removed by LaunchOnlyOnce after its first exit.
+The completed GNSS003 run returned normally to Android/root, verified the
+unchanged135168-byte17 and27 prefixes and Data generation1, confirmed
+collector90388 exit and released at2026-11-17T08:29:52Z. Raw USB2103041 bytes,
+SHA42c714f1ac7e8cb81364dfbb3308a0cddc250cb5a30f6534546dacef3e3458ff,
+and launcher results remain in local project
+`runs/2026-11-17-ios27-gnss003-gpu051-local001/`. New native and application
+qualification are required for the4-byte registration and launch condition.

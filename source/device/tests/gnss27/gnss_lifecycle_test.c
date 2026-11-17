@@ -48,7 +48,8 @@ static void setup(void)
     const uint8_t *notify=nb_gnss_tlv(&registration,0x12,1);
     uint32_t client_length=0;const uint8_t *client=nb_qmi_tlv(&registration,0x10,&client_length);
     CHECK(type&&nb_le32(type)==1&&notify&&*notify==1);
-    CHECK(client&&client_length==strlen("NezhaCoreLocation")&&!memcmp(client,"NezhaCoreLocation",client_length));
+    CHECK(client&&client_length==4&&!memcmp(client,"NZCL",4));
+    CHECK(p.length==36); /* Header7 + mask11 + identifier7 + type7 + notify4. */
     reply(&p,0,0);
     CHECK(state.phase==NbGnssReady);CHECK(!nb_gnss_next(&state,0,&p)&&answers==1);
 }

@@ -1,7 +1,7 @@
-name: nezha GPU051 GNSS GPS BeiDou - native005
+name: nezha GPU051 GNSS GPS BeiDou - native006
 on:
   push:
-    branches: [codex/ios27-gnss-gpu051-native005-20261117]
+    branches: [codex/ios27-gnss-gpu051-native006-20261117]
   workflow_dispatch:
 permissions:
   contents: read
