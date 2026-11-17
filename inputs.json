@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Sensor006b: originalCMDeviceMotion translator/setter preserves vendor angular rate inrad/s. Keep measuredrawHIDdegrees forCMGyroData pi/180,initializedtype3/fields. SameGPU051/005app/004launcher/private inputs; no new localC outputs.",
+  "purpose": "Sensor007: preserve SEE xyzw attitude rotation; originalCoreMotion initialreference andgravity verified against tiltedproductionframes. Preserve actual006b publicmotion50Hz andcorrectSI angularrates. SameGPU051/005app/004launcher/localprivate inputs,unattendedautomaticqueue;nonewC outputs.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "790b7ad1d6f822e5874f526d314f6d6256e20f99",
+  "device_revision": "1babe1a9f36259b91f3ef08e19969da9750d84ac",
   "soc_revision": "device-local-composition-e565439+3435fa5",
   "xcode": "26.6",
   "files": {
@@ -427,7 +427,7 @@
     "source/device/patches/xnu-12377/zzzzzz-nezha-input-chain-trace.patch": "c4d05419e7ec3af0de619754bdb6c2deb69b74d714c2219e509360ebfe1b947e",
     "source/device/patches/xnu-12377/zzzzzz-nezha-kernel-class-lock-order.patch": "cd90c61d6838f4e6a7248da81b6180f14db03d00f2f7a64f4bbe4034c0aa8dcb",
     "source/device/patches/xnu-12377/zzzzzz-nezha-sigp-startup-order.patch": "18275910b909d187e459c68f5d937cc09bc01923180141dc155aa7f4ff14aaf9",
-    "source/device/porting.toml": "7b0f940c055e31db02645bbfe90a49f42aaabbe49d98a96302477e3d9019c980",
+    "source/device/porting.toml": "4be7987c41fc4999a63c50380e36e6f6af787ae089e2cc75f250287c3e547c94",
     "source/device/scripts/aes-iphone-24A446.json": "d55ed6d1d65fdff5de46dd602552eaf3309d1f7370fcd3f15eddb391225ffe8a",
     "source/device/scripts/als-event-service-iphone-24A446.json": "34c27f1a58bab3c518570a57c006a23fce315b90a584e691629d61c0850bd4d8",
     "source/device/scripts/backlight-iphone-24A446.json": "446eb5fe6440335bfe9fca75b32f7d815ddcafbb8a3c2d7f697c1e5c3f40f6cb",
@@ -508,19 +508,19 @@
     "source/device/tests/check-gpu-bo-phases.py": "e34cab3913626ff9e80d533e9013791565229a3386fbb1599ed4c71c68afc181",
     "source/device/docs/GPU050-BO-PHASES.md": "9a5d2f357315c7883d9e660a69969f72e7eaa290f09731dd2b39d390123557e4",
     "source/device/components/QcomSscSensors/.gitignore": "84fc43d5a4c0a60c5752c9719c8049d310699d222749abc31579aabe35d8aa14",
-    "source/device/components/QcomSscSensors/ORIGIN.json": "1d6cb2c2af3a8f7b50c8e61eee47bfcfad2c5fce29fd51d4a2ad5a4345f0eb82",
+    "source/device/components/QcomSscSensors/ORIGIN.json": "134be04d072887749577847c61ccb01a62007c27d550eea08cc645e26d3379f0",
     "source/device/components/QcomSscSensors/README.md": "ca16a65734e1f2457d2ca513bab00c94b456c1feb914bdb0b335a3047f98fcff",
-    "source/device/components/QcomSscSensors/docs/README.md": "8a304f9545284728419f0477f3476933394dbbc9e879fc3adea5d7f1b66089fd",
+    "source/device/components/QcomSscSensors/docs/README.md": "74a77cf159b0ea7159f0fd394793cdac3de24450aea74e335d83022747b74761",
     "source/device/components/QcomSscSensors/include/QcomSscClient.h": "01ff23821c977765ef75d56cefea2a9c09066c03aeda1572a4edfcb5af964bf4",
     "source/device/components/QcomSscSensors/include/QcomSscMath.h": "012b45b05f3500c477c3207828a8375c49f14badbab792483db946ff1479708a",
     "source/device/components/QcomSscSensors/include/QcomSscMotion.h": "6307339751f2703a36ad7d414426392f1c64773a00ba41e2362c67c2ca1a66db",
     "source/device/components/QcomSscSensors/include/QcomSscWire.h": "45008033172d1f904158b6bd7df8e9f810e0de8c844c0db1b117ad646309f949",
     "source/device/components/QcomSscSensors/src/QcomSscClient.c": "b9b47a2ae9e85186434d22ee17e7dd697a6812981a7abcb17a21e80a05dd2819",
     "source/device/components/QcomSscSensors/src/QcomSscMath.c": "3fa51b4d553563f7d2b2977f841e529ae5eacd0415fcc532bc9f03a5ff362f34",
-    "source/device/components/QcomSscSensors/src/QcomSscMotion.c": "3e59a6994f332772390022e9a40d6b317c594fee4219a1012453ac284f9c0cdd",
+    "source/device/components/QcomSscSensors/src/QcomSscMotion.c": "7e158cfaeff64491457e15a0a23d3aeb7fc7035af94481028fb2e5e944eb18c8",
     "source/device/components/QcomSscSensors/src/QcomSscWire.c": "15a4de94d8c510eef6ba70cdb0c3e258f8acc5ff3ece66a0f1d0f1e30f08bb5e",
     "source/device/components/QcomSscSensors/tests/run-after-baseline.py": "7a588d510a71bca886d20ea9240e95d8a3bf10495b35f5690234421016c38778",
-    "source/device/components/QcomSscSensors/tests/ssc-sensors.c": "2bf7be9ac4bb8826633fb9af470d6eb7a51e576481d01a0728f9213cc7a1a83c",
+    "source/device/components/QcomSscSensors/tests/ssc-sensors.c": "bbf978712adda5d11b3d2375cd5c0d357d5af2ad1aebc92a60e7da23b2af3203",
     "source/device/package/sensors/NezhaSensorHid.cpp": "7d3cde87e1b609bf38763bd16242b246fb429e9a7ae3f65b420546328edf8175",
     "source/device/package/sensors/NezhaSensorNativeCaller.cpp": "dc674ad0ab70dd7d290d0d95485dbaab6262d0cc442800e2c7bb0a613eb4721b",
     "source/device/package/sensors/NezhaSensorNativeCaller.h": "6d4345ff467045797fe30fd0d545c24cf618205741e5c9ec76a8760c5a386075",
@@ -541,7 +541,7 @@
     "source/device/tests/sensors-hid-host-shim.h": "fe1a5a11663090897b1cff0d7d2d6a7a19475223d2f5c88234bee5a1e4cfdfa9",
     "source/device/tests/sensors-integration-host.cpp": "5232390e420b9c43eb9d072dcf222780c1e3cadab304391b068ccaa7f4de35e4",
     "source/device/tests/sensors-integration-host.py": "f2c9db810b0523c50066b0b988357f6d130ea281928a304af17a89ea5a82ca26",
-    ".github/workflows/nezha-ios27-native.yml": "81865a31b4e100b330e48a3d700621848697e1e022984d44aef4e2161a62c961"
+    ".github/workflows/nezha-ios27-native.yml": "7de161b4c8d28061c074df0b4fc8aa40c839edb0c3d83ec3648697a2ab2db40c"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
@@ -1015,6 +1015,21 @@
     "old006_never_booted": true,
     "original_translator_sha256": "e3154df10343b305d2a7e0b0709de34c699729ebfabf3f32de6e57727381e644",
     "original_setter_sha256": "2c4c26d2ae716d74c1307be0ec99790d81d955e0fe5fa4bacd7ed1a6acc0c9b1",
+    "phone_operations": false
+  },
+  "sensors007": {
+    "component_revision": "384cc7fe71e7c3bfd56034accb9ea2aa87b63454",
+    "parent_native_run": 44155071343,
+    "only_QcomSscMotion_runtime_changed": true,
+    "SEE_quaternion_preserved": true,
+    "original_public_gravity_reference_replay_passed": true,
+    "raw_HID_degrees": true,
+    "vendor_motion_radians": true,
+    "type3_initialized": true,
+    "ordinary_app_reused_from005": true,
+    "launcher_reused_from004": true,
+    "human_unattended": true,
+    "human_physical_tests_deferred": true,
     "phone_operations": false
   }
 }

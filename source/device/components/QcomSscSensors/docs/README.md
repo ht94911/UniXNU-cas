@@ -32,9 +32,10 @@ The iPhone D16 CoreMotion six-axis backend selects FF0C/5; its original decoder
 requires a60-byte initialized type3 payload (initialized bit8 at1,clientID64@4,xyzw@12,gyro radians/s@28,userAccel(g)@40). The oldtype4 parser clears the public initialized flag; actual original-instruction replay confirmed the type3 guard and vectors. The original motion translator and CMDeviceMotion setter preserve radians/s; CMGyroData's degree-to-radian getter applies only to raw gyro HID events.
 QcomSscMotion pairs actual SEE game_rv/gravity/gyro samples, converts gravity to
 Apple g semantics and encodes that defined payload. Per-source timestamps,
-maximum40ms skew and missing-source rejection stay explicit. Quaternion
-conjugation implements SEE world->device to Apple device->reference; physical
-six-face/three-axis motion validation remains required before acceptance.
+maximum40ms skew and missing-source rejection stay explicit. SEE's xyzw rotation
+is preserved for the original CoreMotion initial-reference and gravity consumer.
+Sensor006b's measured tilt/gravity mismatch exposed the earlier unsupported
+conjugation. Physical six-face/three-axis motion validation remains required.
 
 The board supplies ordinary IOHID event services and the defined FastPath
 open/copy/properties/close lifecycle. Real users select rates/batches through

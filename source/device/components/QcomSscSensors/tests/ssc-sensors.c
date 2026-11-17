@@ -119,6 +119,18 @@ static void fusion(void){
     int64_t decoded;assert(!qssc_float_q32(radians,&decoded)&&decoded==INT64_C(4294967296));
     assert(!qssc_float_q32(linear,&decoded)&&decoded<0);
     assert(qssc_motion_next(&m,&f)==QsscNoData);qssc_motion_invalidate(&m);assert(!m.count[0]&&!m.count[1]&&!m.count[2]);
+    // A tilted, mixed-axis SEE frame must retain its signs for the original
+    // CoreMotion gravity/reference consumer, not silently invert rotation.
+    s.kind=QsscGyro;memset(s.value,0,sizeof s.value);s.ssc_ticks+=96000;s.timestamp+=5000;
+    assert(!qssc_motion_add(&m,&s));s.kind=QsscGravity;assert(!qssc_motion_add(&m,&s));
+    s.kind=QsscGameRv;s.value[0]=16384;s.value[1]=-32768;s.value[2]=16384;s.value[3]=51811;
+    assert(!qssc_motion_add(&m,&s));assert(!qssc_motion_next(&m,&f));
+    assert(f.quaternion[0]==16384&&f.quaternion[1]==-32768&&f.quaternion[2]==16384&&f.quaternion[3]==51811);
+    assert(!qssc_motion_payload(&f,p,sizeof p));
+    for(unsigned n=0;n<4;n++){
+        uint32_t bits=(uint32_t)p[12+4*n]|(uint32_t)p[13+4*n]<<8|(uint32_t)p[14+4*n]<<16|(uint32_t)p[15+4*n]<<24;
+        assert(!qssc_float_q32(bits,&decoded)&&decoded==(int64_t)f.quaternion[n]*65536);
+    }
 }
 static void sleep_and_stop(void){
     QsscClient c={0};struct Mock m={0};begin(&c,&m);

@@ -50,9 +50,10 @@ int qssc_motion_next(QsscMotion *m,QsscMotionFrame *out){
         QsscMotionFrame f={0};f.epoch=m->epoch;f.timestamp=q.timestamp;f.ssc_ticks=q.ssc_ticks;f.client_id=q.client_id;
         f.gravity_ticks=gravity->ssc_ticks;f.gyro_ticks=gyro->ssc_ticks;f.status=q.status;
         if(gyro->status<f.status)f.status=gyro->status;if(gravity->status<f.status)f.status=gravity->status;
-        // SEE specifies world->device xyzw. CoreMotion attitude represents
-        // device->reference, so use the conjugate, retaining the same axes.
-        for(unsigned n=0;n<4;n++){if(q.value[n]==INT32_MIN)return QsscCapacity;f.quaternion[n]=n<3?-q.value[n]:q.value[n];}
+        // SEE's rotation aligns the reference axes with the device axes.
+        // The original CoreMotion reference and gravity consumer use that
+        // same rotation. Conjugating here inverted measured tilt/gravity.
+        for(unsigned n=0;n<4;n++)f.quaternion[n]=q.value[n];
         for(unsigned n=0;n<3;n++){
             int64_t linear=-(int64_t)gravity->value[n+3]*65536;
             int r=qssc_scaled_q16(linear,100000,980665,&f.user_accel[n]);if(r)return r;
