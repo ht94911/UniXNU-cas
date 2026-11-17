@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "GPU051008systemhaptics after actual007motor and normalreturn; fix cancel diagnostic evidence; public source only, encrypted outputs.",
+  "purpose": "GPU051009 normalCoreHaptics helper via existingreadonly/usr/libexecafter actual008Dataexecute refusal;publicsource/encryptedoutputs.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "26c77d6d8d8c54d3769c20634af4ba42bfef44ee",
+  "device_revision": "bf581da7f211bdf332e80ef064f5d34428ce7660",
   "soc_revision": "device-local-composition-e565439+3435fa5",
   "xcode": "26.6",
   "files": {
@@ -536,7 +536,7 @@
     "source/device/patches/xnu-12377/zzzzzz-nezha-iconservice-memory.patch": "fb96f0e46f8307a52e1f0a686a5d58f70e4f08a7b454cb483c7c603690640952",
     "source/device/patches/xnu-12377/nezha-wifi-mmio-recovery.patch": "89642756f4fe3179d44f076fbfd4786d21d0089ec7786943cb717b3eb78ecbe1",
     "source/device/patches/xnu-12377/zzyd-sheng-audio-addon-mount.patch": "b51ed480b34c92452ea984fe056e5fce310bd929992d418f383a7e9268313c51",
-    "source/device/patches/xnu-12377/nezha-haptics-addon.patch": "358e75f60d22c79cd804ca84709faf7977a1c18eff47122bca057dd0cf57c4c2",
+    "source/device/patches/xnu-12377/nezha-haptics-addon.patch": "5a7c4e31b63d323ba0ffc0efd064113af769db5887a6d997764fc76d581e4665",
     "source/device/patches/xnu-12377/zzzzzz-nezha-adreno840-start.patch": "d32bb0d5e678e5773786dcce90467e0258d844550b418b438e1548fb32392f79",
     "source/soc/include/Sm8850Resources.h": "e75bd077715897e28bf518770f3e0de4c74d52d34aa525b3a8531cae5460b1f3",
     "source/soc/include/Sm8850ResourcesNative.h": "96a542ad251ca57765dbd299e71267eca66632356f6922007c8952b85917fc63",
@@ -553,7 +553,7 @@
     "source/soc/patches/xnu-12377/native-smp-secondary.patch": "9d9164921da548a9f13ccbd6093c799583f54e590ef3d562288dcea9ba5a2774",
     "source/soc/patches/xnu-12377/sheng-platform-power.patch": "6e68dbcdac670624f2a9806a61fef42110bfe6586029b3f1a0acb068c3a23ec2",
     "source/soc/patches/xnu-12377/series": "bb95255800677aae6c7ba2742e892e0d40b4c34eb40816b58214c1393759bc1d",
-    "source/device/package/haptics27/README.md": "2ad3dc51a36f6d3c3f383ce053040a29dd3ec9d658b07da7f397784424705e94",
+    "source/device/package/haptics27/README.md": "950594041e80b5849694a9b7e57f99c2f1ad9f7939b8cd77fdbecfb5afd508c5",
     "source/device/package/haptics27/STATIC-REVIEW.md": "f7144cc152d94f46fc77703cffa1292d50bc232030a6be29ec4a59efbd1a1c6a",
     "source/device/package/haptics27/SOURCES.md": "8e87c2060e0146aea9f0f7482ba0c1ff85bc97a6f6cd9369733d41f689451770",
     "source/device/package/haptics27/dependencies.json": "6b4c293547dd2e6e046ce3916cba3140ae94f50aa97c6472ac4d06429a34b2dd",
@@ -923,7 +923,7 @@
   },
   "haptics": {
     "device_base": "76c5952683041a6581224135461ab7c21d47f6a5",
-    "device_revision": "26c77d6d8d8c54d3769c20634af4ba42bfef44ee",
+    "device_revision": "bf581da7f211bdf332e80ef064f5d34428ce7660",
     "source_ready": "519474045402d8467a41d78275af5ad78a3a948a",
     "HAP530_revision": "c268dc55744d2137b25f0ed4914a5bb3eb1200b6",
     "SPMI_revision": "2d874249a4d58906cf8241f2ded0d7ab0dd60f1f",
@@ -960,6 +960,10 @@
     "cancel_snapshot_refresh": true,
     "electrical_sample_identity": true,
     "HAL_electrical_sampling": true,
-    "system_haptics_hardware_verified": false
+    "system_haptics_hardware_verified": false,
+    "prior008_native_run": 44028354193,
+    "prior008_execute_denied": true,
+    "readonly_system_executable_view": "/usr/libexec/NezhaHapticCoreTest",
+    "no_global_system_policy_changes": true
   }
 }

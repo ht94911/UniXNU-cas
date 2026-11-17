@@ -33,3 +33,5 @@ GPU051集成与验证路径：
 实际轮次：001在SWR_ACCESS判定处拒绝，003在越界period处拒绝；均未驱动。005初始化通过，两个50ms/25%及两个300ms/50%仅命令与停止计数通过，用户明确反馈没有振动；第三300ms脉冲HPWR停止超时，正常USB退出被拒绝。随后人工回安卓，实际root/GPT/maps/17/27前缀后验和自有采集器退出通过并释放。007据此修采样、自动谐振和停止链，尚未启动。功能验收仍为：总线/身份已测；机械振动未通过；HAL/UI/CoreHaptics/长期稳定性未测。
 
 007本机实际通过（2026-11-17）：原厂5726µs、FIFO8064；25%/50ms后峰值502mV/38mA，50%/300ms播放中997mV/84mA，全幅300ms播放中1984mV/183mA。人类确认“有震动！我感受到了！”及“已完全停止”。3次100ms重复与6个FIFO效果命令/停止过，六效果实际触感未逐个验。取消有实际stop13/logerror0，但USB电气缓存仍play129/power3；新源在STOP后强制回读、为采样增加valid/sequence/sampledus并在HAL客户端期间采样，生产函数模型ASan/UBSan通过。一次正常XNU返回、Android/root/GPT/map-pin/17同135168/27generation1/52204退出与文件释放通过；未写手机payload。008系统候选在电脑构建，不能沿用旧006验收。
+
+008系统实测（2026-11-17）：productstage2/addon5-error0/D16preset1/commit0已通过；有限CoreHaptics程序在原Data路径被SystemPolicy拒绝，plays0/stops0，结果缺失、stdout/err为0。初始V/I峰值是上轮Android残留而非本轮输出。一次正常返回、Android/root/GPT/maps/17同135168/27gen1/78952退出后验与释放通过。009复用音频105和传感器002已有readonly `/usr/libexec` union，为同一签名Core程序发布系统执行路径；不修改全局执行策略。

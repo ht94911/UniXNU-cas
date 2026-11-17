@@ -1,6 +1,6 @@
 --- a/bsd/kern/kern_exec.c
 +++ b/bsd/kern/kern_exec.c
-@@ -8736,6 +8736,28 @@
+@@ -8736,6 +8736,37 @@
  		printf("[bluetooth-runtime] library=%d/%d executables=%d/%d cache=%d/%d\n",
  		    bt_lib_stage, bt_lib_status, bt_bin_stage, bt_bin_status, bt_xpc_stage, bt_xpc_status);
  	}
@@ -14,6 +14,15 @@
 +		native_gpu_addon_mount(p, scratch, 0x600, hap_source, sizeof(hap_source), hap_point, sizeof(hap_point),
 +		    "/Library/Audio/Plug-Ins/HAL/VirtualAudio.plugin/Info.plist",
 +		    "/Library/Audio/Plug-Ins/HAL/NezhaHaptics27.driver/Info.plist", &hap_stage, &hap_status);
++		/* Reuse the recorder/sensor launcher's readonly executable view.
++		 * System Policy rejects launchd executing a helper from Data. */
++		static const char hap_bin_source[] = "/private/var/ngpu/haptics-bin";
++		static const char hap_bin_point[] = "/usr/libexec";
++		static volatile int hap_bin_stage, hap_bin_status;
++		native_gpu_addon_mount(p, scratch, 0x600, hap_bin_source, sizeof(hap_bin_source),
++		    hap_bin_point, sizeof(hap_bin_point), "/usr/libexec/launchd_cache_loader",
++		    "/usr/libexec/NezhaHapticCoreTest", &hap_bin_stage, &hap_bin_status);
++		printf("NEZHA HAPTICS: executables %d/%d\n", hap_bin_stage, hap_bin_status);
 +		extern int nezha_haptics_ios_commit(int, int) __attribute__((weak_import));
 +		extern void nezha_haptics_start(void) __attribute__((weak_import));
 +		extern int nezha_haptics_wait_ready(uint32_t) __attribute__((weak_import));
