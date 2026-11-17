@@ -1,0 +1,27 @@
+{
+  "schema": 1,
+  "purpose": "Camera081b correct explicit ARC block conversion after actual compile error;original nativeCamera input/session and LS read observations",
+  "device_revision": "26013f2f5cd3b63ec64a2f71e8f8196f72242fa2",
+  "files": {
+    "source/NezhaCameraDiscovery.h": "c2fe0fec08c8b445c9080a845ed0dace057e212094c35f7b734907181ec66338",
+    "source/NezhaCameraDiscovery.m": "31c93ad3e822eab17430769ae1a998f460b30b79e1292cc2723451736886f361",
+    "source/NezhaCameraLSRegistration.m": "9dd471da953fcd325c6e9240b9cbff5f5a1920a3075bcce5de69a8467f5cc200",
+    "source/NezhaFigCapture24A446.h": "d31d3abe7761aa99f92eaab45357716c6d4c4372e5425658d2a7af80f3894212",
+    "source/camera-discovery.m": "9b00140f872d6b1e7eaf8d449952feec6a99038723dde1fb2899c6a627b2315c",
+    "source/camera-ls-registration.m": "4679c18b0354f2a099ba9585eef828856bba95ea4d7a47ad44810802d2503526"
+  },
+  "builder_sha256": "6f8b29c37143dcf16dfae107a4d5e07d8f1477fe92ddad19a59a9a413a8f51f8",
+  "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
+  "certificate_sha256": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
+  "kernel_build_required": false,
+  "private_inputs_uploaded": false,
+  "phone_operations": false,
+  "original_LaunchServices_method": "-[LSApplicationWorkspace openApplicationWithBundleID:] at24A4460x186e67d38",
+  "original_LaunchServices_register_method": "original __LSRegisterBundleURL with native LSInstallInfo/NSError inside mutable bootstrap context",
+  "original_LaunchServices_registration_verified": true,
+  "original_sources_method": "copySourcesWithType:clientAuditToken:clientIsBincompat: original @56@0:8i16{?=[8I]}20B52",
+  "preceding_failed_phone_boot": "2d350aa1409dc9297299a96eb092fc62b37563cef6151b8b2995eac831d2ec22",
+  "preceding_CI_run": 44048485563,
+  "helper079_reused": true,
+  "provider080_reused": true
+}
