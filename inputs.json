@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Build the resumable AppSync service for persistent iOS Data.",
+  "purpose": "Support same-session USB or TCP receipts for the persistent AppSync inbox.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -241,7 +241,7 @@
     "source/appsync/QcomUserLogWire.h": "965d7aeaa4043bcceb151cd6331ce50faefe21f57ce7c91cf781a52b4917397b",
     "ci/appsync-probe-entitlements.plist": "d1c714f5e466bf81677735f765efc65e068265e395881ba5288a6ce5f19ddee7",
     "source/appsync/WiFiInstall.m": "fcad23264977f32c3e6dfc103b1387dcb70a4315bbfd4486cab7418e330251be",
-    "source/appsync/PersistentInstall.m": "d353210459322d9e1b5a759d9cdfc5b52e55c1d64d4800e057ca39a098310fb6"
+    "source/appsync/PersistentInstall.m": "ad083390c01973bc93fbf4ede8d0942749bf41e6d9ce1f2e05a19e8e30b140af"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",

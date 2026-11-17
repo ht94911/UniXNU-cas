@@ -21,7 +21,7 @@ extern int unixnu_appinst_install_received(NSString *path, NSString *identifier)
 @end
 
 enum InstallStatus { Ready, NoSpace, Failed, Installed };
-enum { RequestBytes = 92, TokenBytes = 32, ReplyBytes = 16 };
+enum { RequestBytes = 108, TokenBytes = 32, ReplyBytes = 16 };
 
 static BOOL readAll(int fd, void *buffer, size_t bytes)
 {
@@ -49,7 +49,7 @@ static BOOL writeAll(int fd, const void *buffer, size_t bytes)
     return YES;
 }
 
-static BOOL reply(int connection, enum InstallStatus status, uint64_t value)
+static BOOL sendReply(int connection, enum InstallStatus status, uint64_t value)
 {
     uint8_t response[ReplyBytes] = {'A', 'S', '2', '7', status};
     uint64_t encoded = CFSwapInt64HostToBig(value);
@@ -64,10 +64,10 @@ static uint64_t readSize(const uint8_t *bytes)
     return CFSwapInt64BigToHost(value);
 }
 
-static NSString *digestName(const uint8_t *digest)
+static NSString *hexName(const uint8_t *bytes, size_t count)
 {
-    NSMutableString *name = [NSMutableString stringWithCapacity:2 * CC_SHA256_DIGEST_LENGTH];
-    for (unsigned i = 0; i < CC_SHA256_DIGEST_LENGTH; ++i) [name appendFormat:@"%02x", digest[i]];
+    NSMutableString *name = [NSMutableString stringWithCapacity:2 * count];
+    for (size_t i = 0; i < count; ++i) [name appendFormat:@"%02x", bytes[i]];
     return name;
 }
 
@@ -107,8 +107,16 @@ static BOOL registeredVersion(NSString *identifier, NSString *version)
 static void receiveInstall(int connection, NSString *inbox, NSData *token, InstallReport report)
 {
     uint8_t header[RequestBytes];
-    if (!readAll(connection, header, sizeof(header)) || memcmp(header, "APPSYN02", 8) ||
+    if (!readAll(connection, header, sizeof(header)) ||
         ![token isEqualToData:[NSData dataWithBytes:header + 8 length:TokenBytes]]) return;
+    BOOL usbReplies = memcmp(header, "APPSYNU3", 8) == 0;
+    if (!usbReplies && memcmp(header, "APPSYN03", 8)) return;
+    NSString *request = hexName(header + 92, 16);
+    BOOL (^reply)(enum InstallStatus, uint64_t) = ^BOOL(enum InstallStatus status, uint64_t value) {
+        report("APPSYNC_PROBE persistent-reply request=%s status=%u value=%llu\n",
+               request.UTF8String, (unsigned)status, (unsigned long long)value);
+        return usbReplies || sendReply(connection, status, value);
+    };
     const uint64_t bytes = readSize(header + 40), extraction = readSize(header + 48);
     const uint8_t *expected = header + 56;
     const size_t identifierBytes = (unsigned)header[88] * 256 + header[89];
@@ -117,27 +125,27 @@ static void receiveInstall(int connection, NSString *inbox, NSData *token, Insta
     if (!bytes || bytes > INT64_MAX || !extraction || !identifierBytes || !versionBytes ||
         identifierBytes + versionBytes > sizeof(names) ||
         !readAll(connection, names, identifierBytes + versionBytes)) {
-        reply(connection, Failed, EINVAL);
+        reply(Failed, EINVAL);
         return;
     }
     NSString *identifier = [[NSString alloc] initWithBytes:names length:identifierBytes encoding:NSUTF8StringEncoding];
     NSString *version = [[NSString alloc] initWithBytes:names + identifierBytes length:versionBytes encoding:NSUTF8StringEncoding];
     if (!identifier.length || !version.length) {
-        reply(connection, Failed, EINVAL);
+        reply(Failed, EINVAL);
         return;
     }
-    NSString *name = [inbox stringByAppendingPathComponent:digestName(expected)];
+    NSString *name = [inbox stringByAppendingPathComponent:hexName(expected, CC_SHA256_DIGEST_LENGTH)];
     NSString *receipt = [name stringByAppendingPathExtension:@"plist"];
     NSDictionary *finished = [NSDictionary dictionaryWithContentsOfFile:receipt];
     if ([finished[@"identifier"] isEqual:identifier] && [finished[@"version"] isEqual:version] &&
         registeredVersion(identifier, version)) {
-        reply(connection, Installed, 0);
+        reply(Installed, 0);
         return;
     }
     NSString *path = [name stringByAppendingPathExtension:@"ipa"];
     int fd = open(path.fileSystemRepresentation, O_NOFOLLOW | O_CREAT | O_RDWR, 0600);
     if (fd < 0) {
-        reply(connection, Failed, errno);
+        reply(Failed, errno);
         return;
     }
     @try {
@@ -145,16 +153,17 @@ static void receiveInstall(int connection, NSString *inbox, NSData *token, Insta
         struct statfs volume;
         if (fstat(fd, &current) || !S_ISREG(current.st_mode) || current.st_size < 0 ||
             (uint64_t)current.st_size > bytes || fstatfs(fd, &volume)) {
-            reply(connection, Failed, EIO);
+            reply(Failed, EIO);
             return;
         }
         uint64_t offset = (uint64_t)current.st_size;
         uint64_t available = volume.f_bavail * (uint64_t)volume.f_bsize;
         if (bytes - offset > available || extraction > available - (bytes - offset)) {
-            reply(connection, NoSpace, available);
+            reply(NoSpace, available);
             return;
         }
-        if (lseek(fd, (off_t)offset, SEEK_SET) < 0 || !reply(connection, Ready, offset)) return;
+        if (lseek(fd, (off_t)offset, SEEK_SET) < 0 || !reply(Ready, offset)) return;
+        double started = NSProcessInfo.processInfo.systemUptime;
         uint8_t buffer[128 * 1024];
         while (offset < bytes) {
             ssize_t count = read(connection, buffer, (size_t)MIN(sizeof(buffer), bytes - offset));
@@ -166,32 +175,38 @@ static void receiveInstall(int connection, NSString *inbox, NSData *token, Insta
             offset += (uint64_t)count;
         }
         if (fsync(fd)) {
-            reply(connection, Failed, errno);
+            reply(Failed, errno);
             return;
         }
         if (!verifyArchive(fd, bytes, expected)) {
             unlink(path.fileSystemRepresentation);
-            reply(connection, Failed, EBADMSG);
+            reply(Failed, EBADMSG);
             return;
         }
+        report("APPSYNC_PROBE persistent-transfer request=%s bytes=%llu seconds=%.3f sha256=ok\n",
+               request.UTF8String, (unsigned long long)bytes, NSProcessInfo.processInfo.systemUptime - started);
     } @finally {
         close(fd);
     }
     int result = unixnu_appinst_install_received(path, identifier);
+    NSDictionary *info = nil;
     BOOL registered = NO;
     for (unsigned attempt = 0; !result && !registered && attempt < 5; ++attempt) {
-        registered = registeredVersion(identifier, version);
+        info = registeredBundle(identifier);
+        NSString *actual = info[@"CFBundleShortVersionString"] ?: info[@"CFBundleVersion"];
+        registered = [info[@"CFBundleIdentifier"] isEqual:identifier] && [actual isEqual:version];
         if (!registered) sleep(1);
     }
-    report("APPSYNC_PROBE persistent-install code=%d registered=%d id=%s version=%s\n",
-           result, registered, identifier.UTF8String, version.UTF8String);
+    report("APPSYNC_PROBE persistent-install request=%s code=%d registered=%d id=%s version=%s build=%s\n",
+           request.UTF8String, result, registered, identifier.UTF8String, version.UTF8String,
+           [info[@"CFBundleVersion"] UTF8String] ?: "-");
     if (result || !registered) {
-        reply(connection, Failed, result ?: EIO);
+        reply(Failed, result ?: EIO);
         return;
     }
     [@{@"identifier": identifier, @"version": version} writeToFile:receipt atomically:YES];
     unlink(path.fileSystemRepresentation);
-    reply(connection, Installed, 0);
+    reply(Installed, 0);
 }
 
 int unixnu_appsync_persistent_install(NSDictionary *config, InstallReport report)
