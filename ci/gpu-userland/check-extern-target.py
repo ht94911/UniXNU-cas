@@ -179,11 +179,57 @@ def verify(binary, map_path):
     assert len(got) == 1 and fixups[got[0]]["auth"] and fixups[got[0]]["key"] == 0
     assert stub_words[4] == 0xf9400230 and stub_words[5] == 0xd71f0a11
 
+    # Camera085 builds the correction into the production class. Walk its
+    # own metadata and authenticated isRequired message, not a test alias.
+    constant_class = symbols['_OBJC_CLASS_$_NBFunctionConstant']
+    constant_ro = pointer(constant_class + 32)
+    assert cstring(pointer(constant_ro + 24)) == 'NBFunctionConstant'
+    constant_list = pointer(constant_ro + 32)
+    constant_flags, constant_count = struct.unpack('<II', image.read(constant_list, 8))
+    assert constant_flags == 0x8000000c and constant_count == 10
+    constants = {}
+    for i in range(constant_count):
+        record = constant_list + 8 + 12*i
+        name_delta, type_delta, imp_delta = struct.unpack('<iii', image.read(record, 12))
+        selector_ref = record + name_delta
+        selector = cstring(pointer(selector_ref))
+        assert selector not in constants
+        constants[selector] = dict(selector_ref=selector_ref,
+            types=cstring(record+4+type_delta), imp=record+8+imp_delta)
+    required, original = constants['required'], constants['isRequired']
+    assert required['types'] == original['types'] == 'B16@0:8'
+    assert required['imp'] == link_address('-[NBFunctionConstant required]')
+    assert original['imp'] == link_address('-[NBFunctionConstant isRequired]')
+    assert required['imp'] in image.function_starts()
+    branch, = struct.unpack('<I', image.read(required['imp'], 4))
+    assert branch & 0xfc000000 == 0x14000000
+    required_stub = required['imp'] + signed(branch & 0x3ffffff, 26)*4
+    assert required_stub == link_address('_objc_msgSend$isRequired')
+    words = struct.unpack('<8I', image.read(required_stub, 32))
+    assert words[0] & 0x9f00001f == 0x90000001
+    assert words[1] & 0xffc003ff == 0xf9400021
+    selector_page = (required_stub & ~4095) + (signed(
+        ((words[0] >> 5) & 0x7ffff) << 2 | ((words[0] >> 29) & 3), 21) << 12)
+    selector_ref = selector_page + ((words[1] >> 10) & 0xfff)*8
+    assert selector_ref == original['selector_ref'] and cstring(pointer(selector_ref)) == 'isRequired'
+    assert words[2] & 0x9f00001f == 0x90000011 and words[3] & 0xffc003ff == 0x91000231
+    message_page = ((required_stub+8) & ~4095) + (signed(
+        ((words[2] >> 5) & 0x7ffff) << 2 | ((words[2] >> 29) & 3), 21) << 12)
+    message_slot = message_page + (((words[3] >> 10) & 0xfff) << (12 if words[3] & (1 << 22) else 0))
+    assert fixups[message_slot]['symbol'] == '_objc_msgSend'
+    assert fixups[message_slot]['auth'] and fixups[message_slot]['key'] == 0
+    assert words[4] == 0xf9400230 and words[5] == 0xd71f0a11
+
     return dict(passed=True,binary_sha256=hashlib.sha256(Path(binary).read_bytes()).hexdigest(),
         actual_method_list_verified=True,actual_message_forwarding_verified=True,
         class_address=hex(class_address),method_list=hex(method_list),method_count=method_count,
         extern_IMP=hex(entry["imp"]),message_stub=hex(stub),authenticated_message_branch=True,
-        discarded_local_symbol_required=False,phone_operations=False)
+        discarded_local_symbol_required=False,phone_operations=False,
+        required_function_constant_method_list_verified=True,
+        required_function_constant_encoding='B16@0:8',
+        required_function_constant_IMP=hex(required['imp']),
+        isRequired_function_constant_IMP=hex(original['imp']),
+        required_forwards_to_original_getter=True)
 
 if __name__ == '__main__':
     import argparse

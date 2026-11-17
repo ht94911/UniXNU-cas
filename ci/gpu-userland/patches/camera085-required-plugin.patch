@@ -1,0 +1,15 @@
+diff --git a/NativeBridgeMetalFrontend.mm b/NativeBridgeMetalFrontend.mm
+index de00b91..d86e4dd 100644
+--- a/NativeBridgeMetalFrontend.mm
++++ b/NativeBridgeMetalFrontend.mm
+@@ -1666,8 +1666,10 @@ static void noteUnalignedTexture(MTLTextureDescriptor *d,NSUInteger offset,NSUIn
+ @property(nonatomic) MTLDataType type;
+ @property(nonatomic) NSUInteger index;
+ @property(nonatomic,getter=isRequired) BOOL required;
++- (BOOL)required;
+ @end
+ @implementation NBFunctionConstant
++- (BOOL)required {return self.isRequired;}
+ @end
+ @implementation NBFunction
+ - (NSDictionary<NSString *,MTLFunctionConstant *> *)functionConstantsDictionary {

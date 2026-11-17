@@ -204,5 +204,10 @@ report=dict(actual_icon_limits_host=icon_limits,actual_pipeline_cache_host=cache
             actual_Mac_source_bound_context_tests=contexts,
             real_A840_shader_or_UI_verified=False,phone_operations=False)
 report.update(actual_extern_function=extern_function,actual_extern_target=target_extern,actual_multi_level_output=multi_level)
+function_constant = json.loads((a.logs/'function-constant/report.json').read_text())
+assert function_constant['passed'] and function_constant['checks'] == 10
+assert function_constant['source_sha256'] == hashlib.sha256((root/'drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm').read_bytes()).hexdigest()
+assert target_extern['required_function_constant_method_list_verified'] and target_extern['required_forwards_to_original_getter']
+report['actual_function_constant'] = function_constant
 (a.logs/'full-target-qualified.json').write_text(json.dumps(report,indent=2)+'\n')
 print(json.dumps({k:v for k,v in report.items() if k!='profile'},indent=2))

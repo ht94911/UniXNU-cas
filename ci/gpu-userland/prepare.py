@@ -355,6 +355,13 @@ def main():
         must(['git', '-C', repository, 'apply', '--check', selected])
         must(['git', '-C', repository, 'apply', selected])
         record.setdefault('gpu048_patches', {})[name] = sha(selected)
+    # Original24A446 Camera requires both Metal function-constant getters.
+    selected = HERE / 'patches/camera085-required-plugin.patch'
+    must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', '--check', selected])
+    must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', selected])
+    record['camera_required_selector_patch'] = sha(selected)
+    test = HERE / 'fixtures/function_constant_selector_host.mm'
+    shutil.copyfile(test, root / 'drivers/AdrenoMetal/bridge' / test.name)
     # The profile patch is introduced by the late runtime recipe. Keep the
     # original KMD check above, then apply and check this distinct final source.
     profile_patch = root / 'patches/mesa/turnip-driver-cpu-profile.patch'
