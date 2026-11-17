@@ -47,7 +47,7 @@ void *node;
 IONotifier *powerNotice;
 volatile uint32_t stats[16];
 NzHapticsStatus diagnosticStatus;
-struct Electrical {uint32_t play,power,source,vmax,amplitude,voltage_raw,current_raw,voltage_mv,current_ma,stop_reads,recoveries,vsense_ctl,isense_ctl,visense_enable,frontend_check;} diagnosticElectrical;
+struct Electrical {uint32_t play,power,source,vmax,amplitude,voltage_raw,current_raw,voltage_mv,current_ma,stop_reads,recoveries,vsense_ctl,isense_ctl,visense_enable,frontend_check,valid,sequence;uint64_t sampled_us;} diagnosticElectrical;
 bool diagnosticOwner;
 int diagnosticSnapshot(void *,char *,size_t,size_t *,unsigned *);
 int diagnosticSubmit(void *,const qud_diag_request *,char *,size_t,size_t *,unsigned *);
@@ -91,12 +91,23 @@ int darwinError(int e) {
     switch(e) {case -16:return EBUSY;case -22:return EINVAL;case -1:case -13:return EACCES;
         case -19:return ENODEV;case -34:return ERANGE;case -110:return ETIMEDOUT;default:return EIO;}
 }
+void cacheElectrical(bool valid) {
+    const uint32_t sequence=diagnosticElectrical.sequence+1;
+    diagnosticElectrical={core.last_play_reg,core.last_hpwr,core.last_driver_source,core.last_vmax_reg,
+        core.last_amplitude_reg,core.voltage_peak_raw,core.current_peak_raw,core.voltage_peak_mv,
+        core.current_peak_ma,core.stop_readbacks,core.stop_recoveries,core.vsense_ctl,core.isense_ctl,
+        core.visense_enable,core.frontend_check,valid?1u:0u,sequence,valid?nowUs(nullptr):0};
+}
 int stopped(const char *why,bool completion=false) {
     const bool hadPlay=queue.active_sequence || core.state==PGH_ST_DIRECT || core.state==PGH_ST_EFFECT;
     const PghCmd command={PGH_CMD_STOP,0,0,0};
     IOLockUnlock(hapticGate);
     int e=pgh_core_command(&core,&command);
+    /* Cancel releases diagnostic ownership before this worker stops the
+     * motor. Always sample the completed STOP before publishing its status. */
+    if(!e)e=pgh_core_output(&core);
     IOLockLock(hapticGate);
+    cacheElectrical(!e);
     if(hadPlay || e)note(why,queue.active_sequence,e);
     if(!e){queue.active_sequence=0;queue.active_until_us=0;queue.on_begin_us=0;if(hadPlay && completion)++queue.completed;}
     else {queue.error=(uint32_t)darwinError(e);queue.ready=0;nz_haptics_queue_close(&queue);}
@@ -160,11 +171,12 @@ int diagnosticSnapshot(void *,char *out,size_t capacity,size_t *bytes,unsigned *
     NzHapticsStatus s=diagnosticStatus;Electrical electrical=diagnosticElectrical;
     uint32_t phase=stats[0],plays=stats[4],stops=stats[5];
     IOLockUnlock(hapticGate);
-    int n=snprintf(out,capacity,"{\"v\":1,\"cached\":true,\"ready\":%u,\"active\":%u,\"queued\":%u,\"error\":%u,\"requests\":%u,\"completed\":%u,\"cancelled\":%u,\"session\":%u,\"epoch\":%u,\"phase\":%u,\"plays\":%u,\"stops\":%u,\"electrical\":{\"play\":%u,\"power\":%u,\"source\":%u,\"vmax\":%u,\"amplitude\":%u,\"voltage_raw\":%u,\"current_raw\":%u,\"voltage_mv\":%u,\"current_ma\":%u,\"stop_reads\":%u,\"recoveries\":%u,\"vsense_ctl\":%u,\"isense_ctl\":%u,\"visense_enable\":%u,\"frontend_check\":%u},\"mechanical_verified\":false}",
+    int n=snprintf(out,capacity,"{\"v\":1,\"cached\":true,\"ready\":%u,\"active\":%u,\"queued\":%u,\"error\":%u,\"requests\":%u,\"completed\":%u,\"cancelled\":%u,\"session\":%u,\"epoch\":%u,\"phase\":%u,\"plays\":%u,\"stops\":%u,\"electrical\":{\"play\":%u,\"power\":%u,\"source\":%u,\"vmax\":%u,\"amplitude\":%u,\"voltage_raw\":%u,\"current_raw\":%u,\"voltage_mv\":%u,\"current_ma\":%u,\"stop_reads\":%u,\"recoveries\":%u,\"vsense_ctl\":%u,\"isense_ctl\":%u,\"visense_enable\":%u,\"frontend_check\":%u,\"valid\":%u,\"sequence\":%u,\"sampled_us\":%llu},\"mechanical_verified\":false}",
         s.ready,s.active,s.queued,s.error,s.requests,s.completed,s.cancelled,s.session,s.epoch,phase,plays,stops,
         electrical.play,electrical.power,electrical.source,electrical.vmax,electrical.amplitude,electrical.voltage_raw,
         electrical.current_raw,electrical.voltage_mv,electrical.current_ma,electrical.stop_reads,electrical.recoveries,
-        electrical.vsense_ctl,electrical.isense_ctl,electrical.visense_enable,electrical.frontend_check);
+        electrical.vsense_ctl,electrical.isense_ctl,electrical.visense_enable,electrical.frontend_check,
+        electrical.valid,electrical.sequence,(unsigned long long)electrical.sampled_us);
     *truncated=n<0 || (size_t)n>=capacity;*bytes=n<0?0:(size_t)n<capacity?(size_t)n:capacity;
     return QUD_OK;
 }
@@ -325,13 +337,13 @@ void worker(void *,wait_result_t) {
             else {queue.active_sequence=0;queue.active_until_us=0;}
         }
         now=nowUs(nullptr);
-        if(diagnosticOwner && now>=electricalAt) {
+        /* Sample once at readiness, during either USB or the normal HAL
+         * session, and after a hardware state transition. */
+        if(!diagnosticElectrical.valid || oldState!=(unsigned)core.state ||
+           ((diagnosticOwner || client || core.state==PGH_ST_DIRECT || core.state==PGH_ST_EFFECT) && now>=electricalAt)) {
             IOLockUnlock(hapticGate);e=pgh_core_output(&core);IOLockLock(hapticGate);
             electricalAt=now+10000;
-            diagnosticElectrical={core.last_play_reg,core.last_hpwr,core.last_driver_source,core.last_vmax_reg,
-                core.last_amplitude_reg,core.voltage_peak_raw,core.current_peak_raw,core.voltage_peak_mv,
-                core.current_peak_ma,core.stop_readbacks,core.stop_recoveries,core.vsense_ctl,core.isense_ctl,
-                core.visense_enable,core.frontend_check};
+            cacheElectrical(!e);
             if(e){queue.error=(uint32_t)darwinError(e);break;}
         }
         if(queue.active_sequence && now>=queue.active_until_us) {
@@ -362,10 +374,9 @@ done:
     if(!terminalStopResult){queue.active_sequence=0;queue.active_until_us=0;queue.stopping=0;}
     nz_haptics_status(&queue,&diagnosticStatus);diagnosticStatus.ready=0;diagnosticStatus.error=queue.error;
     stats[0]=(uint32_t)core.state;stats[4]=core.plays;stats[5]=core.stops;
-    diagnosticElectrical={core.last_play_reg,core.last_hpwr,core.last_driver_source,core.last_vmax_reg,
-        core.last_amplitude_reg,core.voltage_peak_raw,core.current_peak_raw,core.voltage_peak_mv,
-        core.current_peak_ma,core.stop_readbacks,core.stop_recoveries,core.vsense_ctl,core.isense_ctl,
-        core.visense_enable,core.frontend_check};
+    /* OFF retains the terminal PLAY_EN/HPWR readback. Peak registers may
+     * retain the last pulse, so the zero-output criterion uses enable/power. */
+    cacheElectrical(diagnosticElectrical.valid && !terminalStopResult);
     IOLockWakeup(hapticGate,&exited,false);IOLockWakeup(hapticGate,&enabled,false);IOLockUnlock(hapticGate);
     IOLog("NEZHA HAPTICS: worker exit error=%d mapped=%u pending=%u\n",e,mapped,bus.bus.pending);
     thread_terminate(current_thread());

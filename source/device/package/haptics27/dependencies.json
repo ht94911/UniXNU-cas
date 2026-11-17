@@ -1,0 +1,92 @@
+{
+  "stage": "GPU051007 independent target build and113 packaging/entry qualified;005 mechanical failure recorded;007 hardware pending",
+  "profile": "GPU051 iPhone14,4 D16 27.0.1/24A446",
+  "framework_reference": "9931232fd68b8ae1db0abd957ecba417f1996e52",
+  "xnu_reference": "12377.121.6 source; donor xnu13432.2.10",
+  "component": {
+    "repository": "https://github.com/IssacL04/UniXNU-Pagani-Drivers",
+    "base": "c888efd3ce1b817d13f28783a77cf689cb2255c9",
+    "local_root": "/home/hua/.codex/worktrees/haptics27-hap530/pagani-reference",
+    "branch": "codex/haptics27-hap530-20261116",
+    "revision": "c268dc55744d2137b25f0ed4914a5bb3eb1200b6"
+  },
+  "soc": {
+    "base": "7279542eb460a5113b56657c85740a1a10aa3df9",
+    "local_root": "/home/hua/.codex/worktrees/haptics27-spmi/soc",
+    "branch": "codex/haptics27-spmi-20261116",
+    "sources": [
+      "kits/Sm8850SpmiV8/Sm8850SpmiV8.c",
+      "kits/Sm8850SpmiV8/Sm8850SpmiV8.h"
+    ],
+    "revision": "2d874249a4d58906cf8241f2ded0d7ab0dd60f1f"
+  },
+  "required_existing_symbols": [
+    "nezha_spmi_bus_acquire",
+    "nezha_spmi_bus_release",
+    "ml_io_map_unmappable",
+    "ml_io_unmap",
+    "IORegistryEntry",
+    "IOLockAlloc",
+    "IOLockSleepDeadline",
+    "registerPrioritySleepWakeInterest",
+    "cdevsw_add",
+    "devfs_make_node"
+  ],
+  "kernel_sources": [
+    "NezhaHapticsBoard.c",
+    "NezhaHapticsFactory.c",
+    "NezhaHapticsQueue.c",
+    "NezhaHapticsRuntime.cpp",
+    "NezhaHapticsIOS.cpp"
+  ],
+  "component_sources": [
+    "HapticsCore.c",
+    "HapticsSpmi.c"
+  ],
+  "new_kernel_hooks": [
+    "nezha_haptics_start",
+    "nezha_haptics_quiesce",
+    "nezha_haptics_suspended",
+    "nezha_haptics_ios_commit"
+  ],
+  "hal": {
+    "source": "hal/NezhaHapticsPlugIn.c",
+    "factory": "NezhaHaptics_Create",
+    "arch": "arm64e-apple-ios27.0",
+    "destination": "/Library/Audio/Plug-Ins/HAL/NezhaHaptics27.driver",
+    "signing": "reuse selected package owner codesign and trust addon path; 4096-byte code pages",
+    "hardware_probe_executable": "NezhaHapticTest"
+  },
+  "private_inputs": [
+    "original current Android runtime/calibration and extent references",
+    "D16 hapticengineconfig.plist",
+    "AID8001 actuator_general.austrip and .dspg",
+    "selected-package addon/union mounts and sandbox grants"
+  ],
+  "unchanged_active_files": [
+    "board.toml",
+    "feeds.toml",
+    "configs/*",
+    "patch series",
+    "ios27-main.json",
+    "ios17-main.json"
+  ],
+  "pending": [
+    "actual electrical drive and mechanical vibration;007 PLAY_EN/HPWR stop and normal return",
+    "Actuator audio-server loading and normal UI/CoreHaptics request path",
+    "actual sensation and cancellation/sleep/stability"
+  ],
+  "selected_package": {
+    "base_revision": "76c5952683041a6581224135461ab7c21d47f6a5",
+    "base_boot_sha256": "4e4b785ca1bf7bea18d68248ade4cde09a9d9efb5d557fe65e4eaa975dac849a",
+    "framework": "4a157b58d1a18300a6570792236abc4796aa27a2",
+    "compiled_source_revision": "c7d3ba749849fc2ab46840d275957c50bfbb914f",
+    "native_run": 43933783541,
+    "native_head": "042e9e7205ce4132042c53ead10ce7da3fa1b193",
+    "native_sha256": "279496b76bb3d6bc97e6ea11444cc1799429b638da271f6b71de3ddf147a5231",
+    "motor_boot_sha256": "31dda3c7ad6d51aa3da2d04c2c1f17294b83a35ac7d07f0495e4448f51359a15",
+    "motor_embedded_payload_sha256": "306fb898dd97760d097ea2f013bc05eb5b9180b7c51592b05f2f3015f7271d46",
+    "actual_motor_sensation_verified": false,
+    "actual_system_haptics_verified": false
+  }
+}
