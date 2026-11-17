@@ -1,16 +1,17 @@
 {
   "schema": 1,
-  "purpose": "GNSS ordinary app registration: target original mobile user domain501 through LSOperationRequestContext; preserve source app and normal location permission.",
-  "device_revision": "21a7328965fed598b09302372f491b44e7232c7d",
+  "purpose": "GNSS003 launcher runs under existing mobile UID501, logs fresh process/boot/uptime; normal CoreLocation app and permissions preserved",
+  "device_revision": "7f2b940bae850437e347d2ae604195177d366f06",
   "files": {
     "source/NezhaLocation.m": "6a71ef36ae9323341a82d94a4620ca288d313eec1fc71d92e65b8de332685d68",
     "source/Info.plist": "d22a8a478357aaf3a42279295f5b7c704415e64c0fc049b3371c9556cabc902e",
     "source/NezhaLocation.entitlements.plist": "3a42773d833db52c8a6113f2ea83cd6e97ed6ffbdd4ecb8f10d506868a037626",
-    "source/NezhaLocationLaunch.m": "e937275ecba19ae0debdd14c66b8347764ecb5a5714e5b1dc6b44315cdb8744a",
+    "source/NezhaLocationLaunch.m": "c6e77d25c2d85e04831587341b6fedcaf5f5b5ae212b5f89914665e888d9840e",
     "source/NezhaLocationLaunch.entitlements.plist": "990976e864664ee1a6264c30806d55194650549bbf3f9ee484d80a456230e054",
-    "ci/corelocation.py": "6f7d4c73b013cec7b13302a1a0ce2dd21f9aa23419493271afbe4aa84a09a94b",
-    ".github/workflows/nezha-ios27-native.yml": "1e8e4bdd6691027273a6d59a94821a0febbaa2320a89861e7fd452452f9c1988",
-    "source/location-launch-registration.m": "8bad895e73978d0cd997462a13c8d03c7b255dd55d0b99a446bf06e5c9590452"
+    "ci/corelocation.py": "dfb626ed77cc568bf1c9490f13edff9cd96f313acffd3a789f838d39a6a17af6",
+    ".github/workflows/nezha-ios27-native.yml": "81851165c8309408dc64c186af0ce6202c0a7449033a11f8e387f50b94712a1e",
+    "source/location-launch-registration.m": "8bad895e73978d0cd997462a13c8d03c7b255dd55d0b99a446bf06e5c9590452",
+    "source/org.unixnu.nezha.location-launch.plist": "6d60dce0c4cffd6e9d485e0329a8b119f60b74a6d22ad199ef665882f066e47f"
   },
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
   "certificate_sha256": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",

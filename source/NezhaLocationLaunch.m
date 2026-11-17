@@ -9,6 +9,7 @@
 #include <dlfcn.h>
 #include <signal.h>
 #include <stdio.h>
+#include <sys/sysctl.h>
 #include <unistd.h>
 
 @interface NSObject (NezhaLocationLaunchServices)
@@ -136,6 +137,15 @@ int main(void)
         setvbuf(stderr,NULL,_IONBF,0);
         signal(SIGALRM,deadline);
         alarm(45);
+        char boot[128]={0};size_t boot_bytes=sizeof boot;
+        const BOOL have_boot=sysctlbyname("kern.bootsessionuuid",boot,&boot_bytes,NULL,0)==0;
+        fprintf(stderr,"nezha-location-launch: startup pid=%u uid=%u euid=%u uptime=%.3f boot=%s\n",
+            (unsigned)getpid(),(unsigned)getuid(),(unsigned)geteuid(),
+            NSProcessInfo.processInfo.systemUptime,have_boot ? boot:"unavailable");
+        if(geteuid()!=501) {
+            fputs("nezha-location-launch: requires the existing mobile launch user\n",stderr);
+            return 5;
+        }
         const char *framework="/System/Library/Frameworks/CoreServices.framework/CoreServices";
         void *handle=dlopen(framework,RTLD_NOW|RTLD_LOCAL);
         Class proxy=objc_getClass("LSApplicationProxy");
