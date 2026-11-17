@@ -1,7 +1,7 @@
-name: nezha iPhone27 normal Core Location test app
+name: nezha iPhone27 Camera088 mobile FBS launcher
 on:
   push:
-    branches: [codex/ios27-gnss-corelocation009-20261118]
+    branches: [codex/ios27-camera088-mobile-FBS-launch-20261118]
 permissions:
   contents: read
 concurrency:
@@ -20,18 +20,18 @@ jobs:
     runs-on: macos-26-intel
     timeout-minutes: 15
     steps:
-      - name: Check out only the necessary GNSS app source
+      - name: Check out only the necessary Camera launcher source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
       - name: Prepare the existing encryption tool
         run: brew install openssl@3 > "$RUNNER_TEMP/gnss-userland-setup.log" 2>&1
-      - name: Build and sign the ordinary Core Location app and retained LS launcher
+      - name: Build and sign the Camera mobile FBS launcher
         run: |
           set -euo pipefail
           export PATH="$(brew --prefix openssl@3)/bin:$PATH"
           python3 ci/corelocation.py --out "$RUNNER_TEMP/gnss-userland" --sealed "$RUNNER_TEMP/gnss-userland-sealed"
-      - name: Retain only the encrypted GNSS app envelope
+      - name: Retain only the encrypted Camera launcher envelope
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:

@@ -1,17 +1,14 @@
 {
   "schema": 1,
-  "purpose": "GNSS009 original final FBS default-shell ordinary service and actualprocess/error callback after measured10s lsd queue timeout; calleridentity automatic, emptyoptions, one request; retained mobileboot task/registration/normalapp",
-  "device_revision": "2dff6943ace70037fa5655209d5bf52cbca94bc5",
+  "purpose": "Camera088 unattended existing Camera.app mobile501/FBSdefaultshell with onevalidprocess callback; noTCC orappfiles changes",
+  "device_revision": "099be6a33fa574c69d270a4527018f959e9daa57",
   "files": {
-    "source/NezhaLocation.m": "6a71ef36ae9323341a82d94a4620ca288d313eec1fc71d92e65b8de332685d68",
-    "source/Info.plist": "d22a8a478357aaf3a42279295f5b7c704415e64c0fc049b3371c9556cabc902e",
-    "source/NezhaLocation.entitlements.plist": "3a42773d833db52c8a6113f2ea83cd6e97ed6ffbdd4ecb8f10d506868a037626",
-    "source/NezhaLocationLaunch.m": "e25cb2a28a23f352cd0e1acc13d671fd7b5a0bb8098e4a0edf3ddf677b18014c",
-    "source/NezhaLocationLaunch.entitlements.plist": "990976e864664ee1a6264c30806d55194650549bbf3f9ee484d80a456230e054",
-    "ci/corelocation.py": "69a2ab549e52c1f88775d3597ca6637100ee6578d07f2eb4ac6363c29f0ea1e8",
-    ".github/workflows/nezha-ios27-native.yml": "f4676dfd9638b0651bedb695ea070a6de20ab3330f180fca846929da65169cd7",
-    "source/location-launch-registration.m": "ab641a2379b5ff74c9aacda6b5c2b348166de1c4a27848876e4c09dce296d79f",
-    "source/org.unixnu.nezha.location-launch.plist": "aab1089eee69522a0567a55c0f08b1e8d192e47780765c0fab6feed7dbbd8e59"
+    "source/NezhaCameraLaunch.m": "465991c9a1e342eb4d9c81c15215d5b6f69cef33bd3d3b0e27c4da4de68ba8e0",
+    "source/NezhaCameraLaunch.entitlements.plist": "990976e864664ee1a6264c30806d55194650549bbf3f9ee484d80a456230e054",
+    "source/camera-launch-registration.m": "20dc777a778bf656ce47e2a38c939a0f1b4339b3e8d12949373d6a61c5ccc2c0",
+    "source/org.unixnu.nezha.camera-launch.plist": "cc0dc8f26c2a0149c2cd25020274d0b523ce215e7e2667761a4462642ddef3e3",
+    "ci/corelocation.py": "0c2cb7d8d88f047d46a0de4f325445a5004fb96b4df88f72ddcce3382de3d5f8",
+    ".github/workflows/nezha-ios27-native.yml": "b1f123e882e541b37dfc82e724a3691d735c1346472386d342e6b241545f31a8"
   },
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
   "certificate_sha256": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
