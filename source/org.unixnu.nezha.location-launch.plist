@@ -6,8 +6,9 @@
 <key>UserName</key><string>mobile</string>
 <key>RunAtLoad</key><true/>
 <key>LaunchOnlyOnce</key><true/>
-<key>KeepAlive</key><true/>
+<key>KeepAlive</key><false/>
+<key>LimitLoadToSessionType</key><string>System</string>
 <key>ProcessType</key><string>Background</string>
-<key>StandardOutPath</key><string>/private/var/mobile/Library/Logs/nezha-location-launch.stdout</string>
-<key>StandardErrorPath</key><string>/private/var/mobile/Library/Logs/nezha-location-launch.stderr</string>
+<key>StandardOutPath</key><string>/dev/null</string>
+<key>StandardErrorPath</key><string>/dev/null</string>
 </dict></plist>

@@ -1,17 +1,17 @@
 {
   "schema": 1,
-  "purpose": "GNSS004 ordinary mobile launcher atload once, immediatePID/UID marker and120secondstartupdelay before originalLSregistration; normalCoreLocationapp unchanged",
-  "device_revision": "770e14435cbcf4e2e3e9bcf933eca7cdc9cb8794",
+  "purpose": "GNSS006 retained mobile launcher opens its own0600output before Foundation and logs processPID/UID; old root-owned output kept; normal app and registration path unchanged",
+  "device_revision": "a6365594fa9cfee9a164d04d5ee1572059848ae2",
   "files": {
     "source/NezhaLocation.m": "6a71ef36ae9323341a82d94a4620ca288d313eec1fc71d92e65b8de332685d68",
     "source/Info.plist": "d22a8a478357aaf3a42279295f5b7c704415e64c0fc049b3371c9556cabc902e",
     "source/NezhaLocation.entitlements.plist": "3a42773d833db52c8a6113f2ea83cd6e97ed6ffbdd4ecb8f10d506868a037626",
-    "source/NezhaLocationLaunch.m": "2162588a9ba65e6fcfbbb2dbaaa9d6a3120bc34a9a95feae6c758c155748e418",
+    "source/NezhaLocationLaunch.m": "fe0e1c6fb5d3be35eff75a80f6430b078351697d19e5cf3d6ba1bce1aa46f350",
     "source/NezhaLocationLaunch.entitlements.plist": "990976e864664ee1a6264c30806d55194650549bbf3f9ee484d80a456230e054",
-    "ci/corelocation.py": "b8ca269a4261d76ef6ba689d241ecbd808f72dd11da7a8939623236342b82149",
-    ".github/workflows/nezha-ios27-native.yml": "27427560b6f8b8f7ae8deabf45f1755eb6b483f96fa71b9375651ffcbdd20732",
-    "source/location-launch-registration.m": "8bad895e73978d0cd997462a13c8d03c7b255dd55d0b99a446bf06e5c9590452",
-    "source/org.unixnu.nezha.location-launch.plist": "226234a7185ac46e3f7033e2c18819b3e39752d32ed9b5881e6038a8d42a74bf"
+    "ci/corelocation.py": "60e35456d28d3484b936a57a070ca8ce0369478ff1c504d1b3001250b87d94de",
+    ".github/workflows/nezha-ios27-native.yml": "9505cad0c88f7843b425d77df4349013813f46883e2ed8e2ff289893c8e0092d",
+    "source/location-launch-registration.m": "93c0c50f46363c796203075ec41d8d8cb6d83fe9fa8fdeabac9dc1c5a8bfa1b4",
+    "source/org.unixnu.nezha.location-launch.plist": "aab1089eee69522a0567a55c0f08b1e8d192e47780765c0fab6feed7dbbd8e59"
   },
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
   "certificate_sha256": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",

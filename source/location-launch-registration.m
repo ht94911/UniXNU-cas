@@ -91,8 +91,23 @@ int main(void)
         assert(open_location([LocationFixtureProxy class],workspace,url)==4);assert(registrations==0 && launches==0);
         reset();assert([files removeItemAtURL:info error:&error]);
         assert(open_location([LocationFixtureProxy class],workspace,url)==4);assert(registrations==0 && launches==0);
+        NSURL *old_output=[root URLByAppendingPathComponent:@"old-root.stderr"];
+        NSURL *new_output=[root URLByAppendingPathComponent:@"mobile.stderr"];
+        NSData *retained=[@"retained prior result" dataUsingEncoding:NSUTF8StringEncoding];
+        assert([retained writeToURL:old_output options:0 error:&error]);
+        assert(chmod(old_output.fileSystemRepresentation,0444)==0);
+        int old_stderr=dup(STDERR_FILENO);assert(old_stderr>=0);
+        assert(location_output(new_output.fileSystemRepresentation)==0);
+        static const char marker[]="new mobile process marker\n";
+        assert(write(STDERR_FILENO,marker,sizeof(marker)-1)==sizeof(marker)-1);
+        assert(dup2(old_stderr,STDERR_FILENO)>=0);close(old_stderr);
+        struct stat output_stat={0};assert(stat(new_output.fileSystemRepresentation,&output_stat)==0);
+        assert(output_stat.st_uid==geteuid()&&(output_stat.st_mode&0777)==0600);
+        assert([[NSData dataWithContentsOfURL:old_output]isEqual:retained]);
+        assert([[NSData dataWithContentsOfURL:new_output]isEqual:
+            [NSData dataWithBytes:marker length:sizeof(marker)-1]]);
         assert([files removeItemAtURL:root error:&error]);
-        puts("Location launcher: 9 original consumer registration, unreadable installed bundle, placeholder and native error cases passed");
+        puts("Location launcher: 9 registration cases and mobile-owned output beside retained read-only file passed");
     }
     return 0;
 }

@@ -1,7 +1,7 @@
 name: nezha iPhone27 normal Core Location test app
 on:
   push:
-    branches: [codex/ios27-gnss-corelocation006-20261117]
+    branches: [codex/ios27-gnss-corelocation007-20261117]
 permissions:
   contents: read
 concurrency:

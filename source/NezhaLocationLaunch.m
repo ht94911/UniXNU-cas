@@ -7,6 +7,7 @@
 #import <Foundation/Foundation.h>
 #import <objc/runtime.h>
 #include <dlfcn.h>
+#include <fcntl.h>
 #include <signal.h>
 #include <stdio.h>
 #include <sys/sysctl.h>
@@ -44,6 +45,18 @@ static void report_proxy(const char *step,id application)
         (unsigned)([application respondsToSelector:@selector(isInstalled)] && [application isInstalled]),
         (unsigned)([application respondsToSelector:@selector(isPlaceholder)] && [application isPlaceholder]),
         url.path.UTF8String ?: "<absent>");
+}
+
+static int location_output(const char *path)
+{
+    int fd=open(path,O_WRONLY|O_CREAT|O_TRUNC|O_NOFOLLOW,0600);
+    if(fd<0) return 10;
+    if(dup2(fd,STDERR_FILENO)<0) {
+        close(fd);
+        return 10;
+    }
+    close(fd);
+    return 0;
 }
 
 /* Tests exercise this exact consumer with Foundation and fixture LS classes.
@@ -133,8 +146,14 @@ static void deadline(int value)
 
 int main(void)
 {
+    /* The old root job created a0644 stderr file owned by uid0. Open the
+     * mobile-owned output before Foundation startup, keeping that old file. */
+    const char *output="/private/var/mobile/Library/Logs/nezha-location-launch-mobile.stderr";
+    if(location_output(output)) return 10;
+    setvbuf(stderr,NULL,_IONBF,0);
+    fprintf(stderr,"nezha-location-launch: process pid=%u uid=%u euid=%u\n",
+        (unsigned)getpid(),(unsigned)getuid(),(unsigned)geteuid());
     @autoreleasepool {
-        setvbuf(stderr,NULL,_IONBF,0);
         fprintf(stderr,"nezha-location-launch: scheduled pid=%u uid=%u euid=%u uptime=%.3f delay_seconds=120\n",
             (unsigned)getpid(),(unsigned)getuid(),(unsigned)geteuid(),
             NSProcessInfo.processInfo.systemUptime);
