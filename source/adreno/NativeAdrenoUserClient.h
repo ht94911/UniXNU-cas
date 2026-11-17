@@ -115,7 +115,9 @@ public:
     IOReturn close();
     /* Connection teardown: waits for every outstanding job, then unmaps and frees every object, closes every queue and
      * closes the client. The first failure stops it and leaves what remains live; nothing is forced. */
-    IOReturn releaseAll(const NativeAdrenoRingClock *,uint32_t timeout_us);
+    using ReleasePages = void (*)(void *, NativeAdrenoSystemPages *);
+    IOReturn releaseAll(const NativeAdrenoRingClock *,uint32_t timeout_us,
+        ReleasePages release_pages=nullptr,void *cookie=nullptr);
     /* Backing object of a token returned by cpuMap while its lease is held (clientMemoryForType); null otherwise. */
     NativeAdrenoMemory *memoryForToken(uint32_t token);
     /* CPU mappings of the BO of this token that BoCpuMap handed out and BoCpuUnmap has not given back; 0 for no such BO. */

@@ -1,7 +1,7 @@
-name: nezha GPU052 union resource enumeration - native045
+name: nezha GPU054 close page release - native046
 on:
   push:
-    branches: [codex/ios27-gpu52-resource-native045-20261116]
+    branches: [codex/ios27-gpu54-close-lock-native046-20261118]
   workflow_dispatch:
 permissions:
   contents: read

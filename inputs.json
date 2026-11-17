@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "GPU052: retain GPU050 joint kernel and BoAlloc diagnostics, adding the original union-directory EOF correction so CFBundle can enumerate lower-volume resources. Native045 only; GPU051 allocator trial stays separate.",
+  "purpose": "GPU054: release closing system BO descriptors outside the global GPU gate, based on the full GPU052 Native045; retain union directory EOF, CPU-map/VM diagnostics, external IPC routing and job stack fix.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -49,7 +49,7 @@
     "source/adreno/NativeAdrenoPollLog.h": "8b6519cec2aeade0870f91db08087462f03ffc2a0eabf6e0d6183216e6c35645",
     "source/adreno/NativeAdrenoPreempt.cpp": "59336613d70291a3d16abd0c3a10025fc8dae5ba2796f76ce8e7c60234f328bb",
     "source/adreno/NativeAdrenoPreempt.h": "33b1804ba28d36d5a8aa3c67ec6476f737803e1864c049804bb6fcd3512d91b6",
-    "source/adreno/NativeAdrenoPublish.cpp": "6d44de74075f7767ddfc3ae589933ea73555cffa800938b4bb72c971f4bc362a",
+    "source/adreno/NativeAdrenoPublish.cpp": "d88e4cc8a2a28882725ba285754a65f5e6ed5eeb4caac7d70b5c0e62e4d9d365",
     "source/adreno/NativeAdrenoPwrup.h": "708830fae4f6a5cea765992d44135126d7a034a239adece94f094d862819e889",
     "source/adreno/NativeAdrenoPwrupRegs.h": "8067d9625e922173912eea09e6a504d9c1b31234d4656f8dd4148855882918e1",
     "source/adreno/NativeAdrenoRing.cpp": "c32eefeac0d32960e585f8046be86408c6c6bda6d28b569261f4eb940922ae66",
@@ -66,8 +66,8 @@
     "source/adreno/NativeAdrenoSubmit.h": "665a31cc8f0af83c33dd2fd1c8323277f59fd9414fae52367d5ce94c128d9c96",
     "source/adreno/NativeAdrenoTimer.cpp": "8f4f2e3c1f774b464e6b284af5ba03679daf797942187550341cf1a513bf229a",
     "source/adreno/NativeAdrenoTimer.h": "7f338cf3c60495f5912a6ad8c83e81bad7883e34a0f6743b11c326b8fea1e364",
-    "source/adreno/NativeAdrenoUserClient.cpp": "768e0f95fc3bc52ec3ca78668c8494c7e6c4424d50f663963cd5fa3dc5d9e7e1",
-    "source/adreno/NativeAdrenoUserClient.h": "232e5fca021f9ed23e7cee0e8f09754671a487904483986e0c7e5556650da682",
+    "source/adreno/NativeAdrenoUserClient.cpp": "ffcf8410231794df7c18c73a5aff7956d8ac63396f5fc63e24574397aba43c29",
+    "source/adreno/NativeAdrenoUserClient.h": "c1b2c98933d733fa8b28fcc6a34d88eb1f8450d4833a6da18192713c85717a11",
     "source/adreno/NativeAdrenoVm.cpp": "117d437e713da51bf939944b427ff7a562344eae168166f55d9c19f300d979b5",
     "source/adreno/NativeAdrenoVm.h": "af700c87a4353527332391d22f24ad41ca185883cf5de9f2f5af6023c4ad56cb",
     "source/adreno/NativeAdrenoVmAlias.h": "35fe908bd80389a18e395eb3bfdd5a40cb2c133fe6634dbead8d68cf2822eeea",
@@ -887,5 +887,23 @@
     "no_private_inputs": true,
     "GPU051_allocator_trial_unmodified": true,
     "phone_operations": false
+  },
+  "gpu054": {
+    "source_revision": "aff2ade55704e0e5249f6c31f8d02c5ec97bc162",
+    "prior_close_source": "9881ec6",
+    "baseline_native_run": 43814252949,
+    "baseline_native_head": "8607841a31d24925872ca0d5c0e47895ef5fbfd2",
+    "baseline_device_revision": "28a3e5f2a6ef20054ce83038d5fe105a175c06e3",
+    "exact052_native_source_retained_except": [
+      "source/adreno/NativeAdrenoPublish.cpp",
+      "source/adreno/NativeAdrenoUserClient.cpp",
+      "source/adreno/NativeAdrenoUserClient.h"
+    ],
+    "host_combined_ASan_UBSan_passed": true,
+    "source_host_report_sha256": "d60429fd6024cf740cad0ac0aba6cbf1299aed8d7a3d10ef922f1c2963de3c2d",
+    "Metal_rebuild": false,
+    "GPU053_fixed": true,
+    "phone_operations": false,
+    "target_wrapper_required": true
   }
 }

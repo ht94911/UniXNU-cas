@@ -170,7 +170,7 @@ IOReturn NativeAdrenoUserClient::close()
     open_=false;vm_=nullptr;submit_=nullptr;ring_=nullptr;timer_=nullptr;status_=nullptr;info_=nullptr;
     return kIOReturnSuccess;
 }
-IOReturn NativeAdrenoUserClient::releaseAll(const NativeAdrenoRingClock *clock,uint32_t timeout_us)
+IOReturn NativeAdrenoUserClient::releaseAll(const NativeAdrenoRingClock *clock,uint32_t timeout_us,ReleasePages release_pages,void *cookie)
 {
     if(!open_)return kIOReturnNotReady;
     if(!clock)return kIOReturnBadArgument;
@@ -182,7 +182,13 @@ IOReturn NativeAdrenoUserClient::releaseAll(const NativeAdrenoRingClock *clock,u
         if(!entry.used)continue;
         entry.mapping_leases=0;
         NativeAdrenoAbiBoFree request{entry.handle};
+        NativeAdrenoSystemPages pages{};
+        if(release_pages)collectFreedPages(&pages);
         status=freeBo(&request);
+        if(release_pages) {
+            collectFreedPages(nullptr);
+            if(pages.descriptor)release_pages(cookie,&pages);
+        }
         if(status)return status;
     }
     for(uint32_t i=1;i<queue_capacity_;++i)queues_[i]=Queue{};
