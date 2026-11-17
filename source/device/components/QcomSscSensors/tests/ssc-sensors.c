@@ -112,11 +112,11 @@ static void fusion(void){
     QsscMotionFrame f;assert(!qssc_motion_next(&m,&f)&&f.valid&&f.quaternion[3]==65536&&f.rotation_rate[0]==65536&&f.user_accel[2]<0);
     uint8_t p[60];assert(!qssc_motion_payload(&f,p,sizeof p)&&p[0]==3&&p[1]==0&&p[2]==1);
     assert(p[24]==0&&p[25]==0&&p[26]==0x80&&p[27]==0x3f);
-    // Native CoreMotion stores the first vector as gyrodegrees, the next as
-    // useracceleration, then applies its public degree->radian getter.
-    uint32_t degrees=(uint32_t)p[28]|(uint32_t)p[29]<<8|(uint32_t)p[30]<<16|(uint32_t)p[31]<<24;
+    // The original motion translator and setter preserve radians/s. The
+    // degree->radian getter belongs only to the separate CMGyroData path.
+    uint32_t radians=(uint32_t)p[28]|(uint32_t)p[29]<<8|(uint32_t)p[30]<<16|(uint32_t)p[31]<<24;
     uint32_t linear=(uint32_t)p[48]|(uint32_t)p[49]<<8|(uint32_t)p[50]<<16|(uint32_t)p[51]<<24;
-    int64_t decoded;assert(!qssc_float_q32(degrees,&decoded)&&decoded>INT64_C(246000000000)&&decoded<INT64_C(247000000000));
+    int64_t decoded;assert(!qssc_float_q32(radians,&decoded)&&decoded==INT64_C(4294967296));
     assert(!qssc_float_q32(linear,&decoded)&&decoded<0);
     assert(qssc_motion_next(&m,&f)==QsscNoData);qssc_motion_invalidate(&m);assert(!m.count[0]&&!m.count[1]&&!m.count[2]);
 }

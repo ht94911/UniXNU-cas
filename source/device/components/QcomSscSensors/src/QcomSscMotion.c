@@ -83,9 +83,9 @@ int qssc_motion_payload(const QsscMotionFrame *f,uint8_t *out,size_t bytes){
     wr64(p+4,f->client_id);
     for(unsigned n=0;n<4;n++)wr32(p+12+4*n,binary32(f->quaternion[n]));
     for(unsigned n=0;n<3;n++){
-        int32_t degrees;int r=qssc_scaled_q16((int64_t)f->rotation_rate[n]*65536,57295780u,1000000u,&degrees);
-        if(r)return r;
-        wr32(p+28+4*n,binary32(degrees));wr32(p+40+4*n,binary32(f->user_accel[n]));
+        // The vendor motion translator and CMDeviceMotion setter preserve
+        // radians/s. Only the separate raw gyro HID event uses degrees/s.
+        wr32(p+28+4*n,binary32(f->rotation_rate[n]));wr32(p+40+4*n,binary32(f->user_accel[n]));
     }
     memcpy(out,p,sizeof p);return QsscOkay;
 }

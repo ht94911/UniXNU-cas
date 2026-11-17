@@ -1,21 +1,21 @@
 {
   "repository": "local/QcomSscSensors",
-  "revision": "6910629c2b585feb710e2b3e52359e40b9ea614e",
+  "revision": "032d4c2fb0c330630db0fe7bc3285def02644978",
   "license": "BSD-2-Clause-Patent",
   "scope": "SSC wire/client/math/motion; no DSP/physical bus",
   "files": {
     ".gitignore": "84fc43d5a4c0a60c5752c9719c8049d310699d222749abc31579aabe35d8aa14",
     "README.md": "ca16a65734e1f2457d2ca513bab00c94b456c1feb914bdb0b335a3047f98fcff",
-    "docs/README.md": "24a118f72ed5906b8c0db014289c118d2756e752e2e30b874672194bd0e4f0d6",
+    "docs/README.md": "8a304f9545284728419f0477f3476933394dbbc9e879fc3adea5d7f1b66089fd",
     "include/QcomSscClient.h": "01ff23821c977765ef75d56cefea2a9c09066c03aeda1572a4edfcb5af964bf4",
     "include/QcomSscMath.h": "012b45b05f3500c477c3207828a8375c49f14badbab792483db946ff1479708a",
-    "include/QcomSscMotion.h": "5ab97f566e090b9dec85db8db66ea30781c0196932b13426e41763377a4df67e",
+    "include/QcomSscMotion.h": "6307339751f2703a36ad7d414426392f1c64773a00ba41e2362c67c2ca1a66db",
     "include/QcomSscWire.h": "45008033172d1f904158b6bd7df8e9f810e0de8c844c0db1b117ad646309f949",
     "src/QcomSscClient.c": "b9b47a2ae9e85186434d22ee17e7dd697a6812981a7abcb17a21e80a05dd2819",
     "src/QcomSscMath.c": "3fa51b4d553563f7d2b2977f841e529ae5eacd0415fcc532bc9f03a5ff362f34",
-    "src/QcomSscMotion.c": "36e7737ba3cadfba1723861b3bd734099922ba5677b76fa91cfeb1c82cb05052",
+    "src/QcomSscMotion.c": "3e59a6994f332772390022e9a40d6b317c594fee4219a1012453ac284f9c0cdd",
     "src/QcomSscWire.c": "15a4de94d8c510eef6ba70cdb0c3e258f8acc5ff3ece66a0f1d0f1e30f08bb5e",
     "tests/run-after-baseline.py": "7a588d510a71bca886d20ea9240e95d8a3bf10495b35f5690234421016c38778",
-    "tests/ssc-sensors.c": "b37aefeb0aec1c09b99af984587807db5df77c5be965e292cdc37ef13767fc1f"
+    "tests/ssc-sensors.c": "2bf7be9ac4bb8826633fb9af470d6eb7a51e576481d01a0728f9213cc7a1a83c"
   }
 }

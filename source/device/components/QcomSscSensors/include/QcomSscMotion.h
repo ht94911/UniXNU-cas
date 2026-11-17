@@ -25,7 +25,7 @@ int qssc_motion_add(QsscMotion *,const QsscSample *);
 int qssc_motion_next(QsscMotion *,QsscMotionFrame *);
 void qssc_motion_invalidate(QsscMotion *);
 // Original CoreMotion type3 initialized six-axis vendor payload:60 bytes.
-// The flags at1 carry actual completed-frame initialization; gyro degrees/s
+// The flags at1 carry actual completed-frame initialization; gyro radians/s
 // precede userAccel(g), as decoded by the selected original27 consumer.
 // Binary32 values are encoded from fixed point without FP instructions.
 int qssc_motion_payload(const QsscMotionFrame *,uint8_t *,size_t);
