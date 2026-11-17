@@ -1,7 +1,7 @@
-name: nezha iPhone27 Camera087d GPU051 function creation and arguments
+name: nezha iPhone27 Camera087e GPU051 function creation and arguments
 on:
   push:
-    branches: [codex/ios27-camera087d-gpu051-metadata-metal-20261118]
+    branches: [codex/ios27-camera087e-gpu051-stitch-values-metal-20261118]
   workflow_dispatch:
 permissions:
   contents: read

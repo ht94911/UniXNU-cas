@@ -1,5 +1,5 @@
 diff --git a/NativeBridgeMetalFrontend.mm b/NativeBridgeMetalFrontend.mm
-index d86e4dd..2e1e977 100644
+index d86e4dd..03306d4 100644
 --- a/NativeBridgeMetalFrontend.mm
 +++ b/NativeBridgeMetalFrontend.mm
 @@ -1660,7 +1660,14 @@ static void noteUnalignedTexture(MTLTextureDescriptor *d,NSUInteger offset,NSUIn
@@ -17,7 +17,7 @@ index d86e4dd..2e1e977 100644
  @interface NBFunctionConstant : NSObject
  @property(nonatomic,copy) NSString *name;
  @property(nonatomic) MTLDataType type;
-@@ -1672,6 +1679,34 @@ static void noteUnalignedTexture(MTLTextureDescriptor *d,NSUInteger offset,NSUIn
+@@ -1672,6 +1679,37 @@ static void noteUnalignedTexture(MTLTextureDescriptor *d,NSUInteger offset,NSUIn
  - (BOOL)required {return self.isRequired;}
  @end
  @implementation NBFunction
@@ -39,7 +39,10 @@ index d86e4dd..2e1e977 100644
 +    nmb_library_function_reflection(_library.bytes,_library.length,(_sourceName?:_name).UTF8String,&reflection);
 +   if(read && reflection) {
 +    NSDictionary *json=reflectionJSON(reflection,"function");
-+    if(json)_argumentList=reflectionArguments(json[@"bindings"]);
++    if(json) {
++     _argumentList=reflectionArguments(json[@"bindings"]);
++     _publicReturnType=publicMetadataType(json[@"returnType"]);
++    }
 +   } else if(!read && _library.bytes) {
 +    noteProblem([NSString stringWithFormat:@"function arguments %@: %@",_sourceName?:_name,lastError()]);
 +   }
@@ -52,7 +55,7 @@ index d86e4dd..2e1e977 100644
  - (NSDictionary<NSString *,MTLFunctionConstant *> *)functionConstantsDictionary {
   NSMutableDictionary *result=[NSMutableDictionary dictionary];
   if(!_handle)return result;
-@@ -1754,6 +1789,15 @@ static bool forEachLibraryEntry(NBLibrary *library,const std::function<bool(cons
+@@ -1754,6 +1792,15 @@ static bool forEachLibraryEntry(NBLibrary *library,const std::function<bool(cons
  - (id<MTLFunction>)newFunctionWithName:(NSString *)name constantValues:(MTLFunctionConstantValues *)values error:(NSError **)error {
   return [self nb_newFunctionWithName:name constantValues:values zeroRest:NO error:error];
  }
@@ -68,7 +71,7 @@ index d86e4dd..2e1e977 100644
  // zeroRest: every constant the function declares that values leaves out is zero (nmb_function_new_specialized_zero_rest); only for the
  // retry of a pipeline the runtime refused because such a constant had no value.
  - (id<MTLFunction>)nb_newFunctionWithName:(NSString *)name constantValues:(MTLFunctionConstantValues *)values zeroRest:(BOOL)zeroRest
-@@ -3896,7 +3940,7 @@ static NBTextureReferenceType *reflectionTexture(NSDictionary *json);
+@@ -3896,7 +3943,7 @@ static NBTextureReferenceType *reflectionTexture(NSDictionary *json);
  @end
  @implementation NBTextureReferenceType
  - (MTLDataType)dataType {return MTLDataTypeTexture;}
@@ -77,7 +80,7 @@ index d86e4dd..2e1e977 100644
  - (MTLTextureType)textureType {return (MTLTextureType)reflectionValue(_json,@"textureType");}
  - (MTLBindingAccess)access {return (MTLBindingAccess)reflectionValue(_json,@"access");}
  - (BOOL)isDepthTexture {return [_json[@"depth"] boolValue];}
-@@ -3940,6 +3984,7 @@ static NBTextureReferenceType *reflectionTexture(NSDictionary *json);
+@@ -3940,13 +3987,16 @@ static NBTextureReferenceType *reflectionTexture(NSDictionary *json);
  - (MTLArrayType *)arrayType {return (MTLArrayType *)reflectionArray(_json[@"array"]);}
  - (MTLPointerType *)pointerType {return (MTLPointerType *)reflectionPointer(_json[@"pointer"]);}
  - (MTLTextureReferenceType *)textureReferenceType {return (MTLTextureReferenceType *)reflectionTexture(_json[@"texture"]);}
@@ -85,7 +88,25 @@ index d86e4dd..2e1e977 100644
  @end
  @interface NBStructType : MTLStructType
  @property(nonatomic,strong) NSArray *memberList;
-@@ -3970,11 +4015,33 @@ static NBTextureReferenceType *reflectionTexture(NSDictionary *json) {
++@property(nonatomic,copy) NSString *publicTypeName;
+ @end
+ @implementation NBStructType
+ - (MTLDataType)dataType {return MTLDataTypeStruct;}
+ - (NSArray<MTLStructMember *> *)members {return _memberList;}
++- (NSString *)typeName {return _publicTypeName;}
+ - (MTLStructMember *)memberByName:(NSString *)name {
+  for(NBStructMember *member in _memberList)if([member.name isEqualToString:name])return member;
+  return nil;
+@@ -3956,7 +4006,7 @@ static NBStructType *reflectionStruct(NSDictionary *json) {
+  if(![json isKindOfClass:[NSDictionary class]])return nil;
+  NSMutableArray *members=[NSMutableArray array];
+  for(NSDictionary *m in json[@"members"]){NBStructMember *member=[NBStructMember new];member.json=m;[members addObject:member];}
+- NBStructType *type=[NBStructType new];type.memberList=members;return type;
++ NBStructType *type=[NBStructType new];type.memberList=members;type.publicTypeName=json[@"typeName"];return type;
+ }
+ static NBArrayType *reflectionArray(NSDictionary *json) {
+  if(![json isKindOfClass:[NSDictionary class]])return nil;
+@@ -3970,11 +4020,33 @@ static NBTextureReferenceType *reflectionTexture(NSDictionary *json) {
   if(![json isKindOfClass:[NSDictionary class]])return nil;
   NBTextureReferenceType *type=[NBTextureReferenceType new];type.json=json;return type;
  }
@@ -119,7 +140,7 @@ index d86e4dd..2e1e977 100644
  @end
  @implementation NBArgument
  - (NSString *)name {return _json[@"name"];}
-@@ -3998,6 +4065,10 @@ static NBTextureReferenceType *reflectionTexture(NSDictionary *json) {
+@@ -3998,6 +4070,10 @@ static NBTextureReferenceType *reflectionTexture(NSDictionary *json) {
  - (MTLDataType)textureDataType {return (MTLDataType)reflectionValue(_json[@"texture"],@"dataType");}
  - (BOOL)isDepthTexture {return [_json[@"texture"][@"depth"] boolValue];}
  - (NSUInteger)arrayLength {return _json[@"texture"]?reflectionValue(_json[@"texture"],@"arrayLength"):1;}
@@ -281,6 +302,183 @@ index 0000000..904881f
 + }
 + return nil;
 +}
+diff --git a/bridge/NativeMetalFunctionMetadata.rs b/bridge/NativeMetalFunctionMetadata.rs
+new file mode 100644
+index 0000000..7aaf481
+--- /dev/null
++++ b/bridge/NativeMetalFunctionMetadata.rs
+@@ -0,0 +1,171 @@
++// SPDX-License-Identifier: MIT
++// Value parameters of visible/stitchable functions, from their AIR signature.
++// Resource reflection is a separate API: it does not carry these values.
++use metal2vulkan_air::{
++    budget::{Budget, Meter},
++    container::{self, FunctionStage, Library},
++    ir::{Const, FuncId, Md, MdId, Module},
++};
++use serde_json::{Value, json};
++
++fn node(module: &Module, id: MdId) -> Result<&[Option<MdId>], String> {
++    match module.md(id) {
++        Some(Md::Node { ops, .. }) => Ok(ops),
++        _ => Err("function metadata is not a node".into()),
++    }
++}
++fn child(ops: &[Option<MdId>], index: usize) -> Result<MdId, String> {
++    ops.get(index).copied().flatten().ok_or_else(|| "function metadata operand missing".into())
++}
++fn string(module: &Module, id: MdId) -> Result<&str, String> {
++    match module.md(id) {
++        Some(Md::String(symbol)) => std::str::from_utf8(module.symbols().get(*symbol).ok_or("metadata symbol missing")?)
++            .map_err(|_| "function metadata string is not UTF8".into()),
++        _ => Err("function metadata is not a string".into()),
++    }
++}
++fn integer(module: &Module, id: MdId) -> Result<u64, String> {
++    match module.md(id) {
++        Some(Md::Value(value)) => match module.consts().get(*value).map(|c| &c.value) {
++            Some(Const::Int(value)) => Ok(*value),
++            _ => Err("function metadata is not an integer".into()),
++        },
++        _ => Err("function metadata is not a value".into()),
++    }
++}
++fn datatype(value: &Value) -> Result<u64, String> {
++    value.get("dataType").and_then(Value::as_u64).ok_or_else(|| "function type missing".into())
++}
++fn attach(value: &mut Value, element: Value) -> Result<(), String> {
++    let key = match datatype(&element)? {
++        1 => "struct", 2 => "array", 58 => "texture", 60 => "pointer", _ => return Ok(()),
++    };
++    value[key] = element;
++    Ok(())
++}
++fn scalar(tag: &str) -> Option<u64> {
++    Some(match tag {
++        "air.float_type" => 3, "air.half_type" => 16,
++        "air.int_type" => 29, "air.uint_type" => 33,
++        "air.short_type" => 37, "air.ushort_type" => 41,
++        "air.char_type" => 45, "air.uchar_type" => 49,
++        "air.bool_type" => 53, "air.long_type" => 81, "air.ulong_type" => 85,
++        "air.sampler_type" => 59, _ => return None,
++    })
++}
++fn descriptor(module: &Module, id: MdId, meter: &mut Meter, depth: u64) -> Result<Value, String> {
++    meter.tick(1).map_err(|e| e.to_string())?;
++    if depth > 64 { return Err("function type nesting exceeds AIR layout limit".into()); }
++    let ops = node(module, id)?;
++    let tag = string(module, child(ops, 0)?)?;
++    let size = integer(module, child(ops, 1)?)?;
++    let alignment = integer(module, child(ops, 2)?)?;
++    if let Some(kind) = scalar(tag) { return Ok(json!({"dataType":kind})); }
++    if tag == "air.vector_type" || tag == "air.matrix_type" {
++        let element = descriptor(module, child(ops, 4)?, meter, depth + 1)?;
++        let kind = datatype(&element)?;
++        let columns = integer(module, child(ops, 5)?)?;
++        let value = if tag == "air.vector_type" {
++            if !(2..=4).contains(&columns) || !matches!(kind,3|16|29|33|37|41|45|49|53|81|85) {
++                return Err("function vector type is unsupported".into());
++            }
++            kind + columns - 1
++        } else {
++            let rows = integer(module, child(ops, 6)?)?;
++            if !(2..=4).contains(&columns) || !(2..=4).contains(&rows) || !matches!(kind,3|16) {
++                return Err("function matrix type is unsupported".into());
++            }
++            (if kind == 3 {7} else {20}) + (columns - 2)*3 + rows - 2
++        };
++        return Ok(json!({"dataType":value}));
++    }
++    if tag == "air.texture_2d_type" {
++        let element = descriptor(module, child(ops, 4)?, meter, depth + 1)?;
++        let access = match string(module, child(ops, 5)?)? {
++            "sample" | "read" => 0, "write" => 1, "read_write" => 2,
++            _ => return Err("function texture access is unsupported".into()),
++        };
++        return Ok(json!({"dataType":58,"elementType":datatype(&element)?,"textureType":2,"access":access,"depth":false}));
++    }
++    if tag == "air.struct_type" {
++        let name = string(module, child(ops, 4)?)?;
++        let fields = node(module, child(ops, 5)?)?;
++        let mut members = Vec::new();
++        for id in fields.iter().copied().flatten() {
++            meter.tick(1).map_err(|e| e.to_string())?;
++            let field = node(module, id)?;
++            if string(module, child(field, 0)?)? != "air.record_field" {return Err("function struct field unsupported".into());}
++            let offset = integer(module, child(field, 1)?)?;
++            let details = descriptor(module, child(field, 3)?, meter, depth + 1)?;
++            let name = string(module, child(field, 4)?)?;
++            let mut member = json!({"name":name,"offset":offset,"dataType":datatype(&details)?,"argumentIndex":0,"details":details});
++            let details = member["details"].clone();attach(&mut member, details)?;members.push(member);
++        }
++        return Ok(json!({"dataType":1,"typeName":name,"members":members}));
++    }
++    if tag == "air.lvalue_reference_type" {
++        let element = descriptor(module, child(ops, 4)?, meter, depth + 1)?;
++        let element_ops = node(module, child(ops, 4)?)?;
++        let element_size = integer(module, child(element_ops, 1)?)?;
++        let element_alignment = integer(module, child(element_ops, 2)?)?;
++        let mut pointer = json!({"dataType":60,"elementType":datatype(&element)?,"access":0,
++                                "alignment":element_alignment,"size":element_size,"argumentBuffer":false});
++        attach(&mut pointer, element)?;return Ok(pointer);
++    }
++    if tag == "air.imageblock_type" {
++        let element = descriptor(module, child(ops, 5)?, meter, depth + 1)?;
++        let mut pointer = json!({"dataType":60,"elementType":1,"access":0,"alignment":alignment,"size":size,"argumentBuffer":false});
++        attach(&mut pointer, element)?;return Ok(pointer);
++    }
++    Err(format!("unsupported function type descriptor {tag}"))
++}
++fn stitching_type(module: &Module, id: MdId, meter: &mut Meter) -> Result<Value, String> {
++    let ops = node(module, id)?;
++    if string(module, child(ops,0)?)? != "air.stitching_type" {return Err("function stitching type missing".into());}
++    descriptor(module, child(ops,1)?,meter,0)
++}
++fn function_id(module:&Module, id:MdId)->Option<FuncId> {
++    match module.md(id)? {Md::Value(c)=>match module.consts().get(*c)?.value {Const::FuncAddr(f)=>Some(f),_=>None},_=>None}
++}
++
++pub fn arguments(bytes:&[u8], name:&str)->Result<Option<String>,String> {
++    let Library::Metallib(library)=container::parse(bytes).map_err(|e|e.to_string())? else {return Ok(None);};
++    let matches=library.functions.iter().filter(|f|f.name==name).collect::<Vec<_>>();
++    if matches.len()!=1 {return Err("function reflection name is missing or ambiguous".into());}
++    let function=matches[0];
++    if function.stage!=FunctionStage::Visible {return Ok(None);}
++    let budget=Budget::standard();let mut meter=Meter::new(&budget);
++    let decoded=metal2vulkan_air::decode(function.bitcode,&mut meter).map_err(|e|e.to_string())?;
++    let module=&decoded.module;
++    for list in module.named_md() {
++        if module.symbols().get(list.name)!=Some(b"air.visible".as_slice()) {continue;}
++        for id in list.ops.iter().copied() {
++            let entry=node(module,id)?;
++            let Some(f)=entry.first().copied().flatten().and_then(|i|function_id(module,i)) else {continue;};
++            if module.func(f).and_then(|f|module.symbols().get(f.name))!=Some(name.as_bytes()) {continue;}
++            let Some(stitching)=entry.get(3).copied().flatten() else {return Ok(None);};
++            let stitching=node(module,stitching)?;
++            if string(module,child(stitching,0)?)?!="air.stitching_info" {return Err("function stitching metadata missing".into());}
++            let mut result=json!({"bindings":[]});
++            if let Some(id)=stitching.get(1).copied().flatten(){result["returnType"]=stitching_type(module,id,&mut meter)?;}
++            let mut bindings=Vec::new();
++            for id in stitching.iter().skip(2).copied().flatten() {
++                let argument=node(module,id)?;
++                if string(module,child(argument,0)?)?!="air.stitching_argument" {return Err("function stitching argument missing".into());}
++                let kind=stitching_type(module,child(argument,1)?,&mut meter)?;
++                let name=argument.get(2).copied().flatten().map(|i|string(module,i)).transpose()?.unwrap_or("");
++                let binding=match datatype(&kind)? {
++                    58=>json!({"name":name,"type":2,"index":0,"access":kind["access"],"used":true,"argument":false,
++                               "texture":{"textureType":kind["textureType"],"dataType":kind["elementType"],"depth":kind["depth"],"arrayLength":1},"publicType":kind}),
++                    59=>json!({"name":name,"type":3,"index":0,"access":0,"used":true,"argument":false,"publicType":kind}),
++                    60=>json!({"name":name,"type":28,"index":0,"access":0,"used":true,"argument":false,"publicType":kind}),
++                    1=>json!({"name":name,"type":29,"index":0,"access":0,"used":true,"argument":false,"publicType":kind}),
++                    _=>json!({"name":name,"type":18,"index":0,"access":0,"used":true,"argument":false,"publicType":kind}),
++                };
++                bindings.push(binding);
++            }
++            result["bindings"]=Value::Array(bindings);return Ok(Some(result.to_string()));
++        }
++    }
++    Err("function has no matching AIR metadata".into())
++}
 diff --git a/bridge/NativeMetalObjects.h b/bridge/NativeMetalObjects.h
 index b93b96b..5caff11 100644
 --- a/bridge/NativeMetalObjects.h
@@ -296,10 +494,17 @@ index b93b96b..5caff11 100644
  void nmb_reflection_release(NmbReflection *);
  
 diff --git a/bridge/NativeMetalObjects.rs b/bridge/NativeMetalObjects.rs
-index 0fef320..c4b266a 100644
+index 0fef320..1a667af 100644
 --- a/bridge/NativeMetalObjects.rs
 +++ b/bridge/NativeMetalObjects.rs
-@@ -2007,6 +2007,36 @@ fn reflection_handle(json: String) -> Result<*mut NmbReflection, String> {
+@@ -2003,10 +2003,47 @@ mod reflection_json {
+     }
+ }
+ 
++#[path = "NativeMetalFunctionMetadata.rs"]
++mod function_metadata;
++
+ fn reflection_handle(json: String) -> Result<*mut NmbReflection, String> {
      Ok(boxed(NmbReflection(std::ffi::CString::new(json).map_err(|_| "a NUL in the reflection".to_string())?)))
  }
  
@@ -325,6 +530,10 @@ index 0fef320..c4b266a 100644
 +        let name = unsafe { CStr::from_ptr(name) }.to_str().map_err(e("function name"))?;
 +        // The compile-layer metadata needs no Vulkan device or submission.
 +        let bytes = unsafe { std::slice::from_raw_parts(bytes.cast::<u8>(), length) };
++        if let Some(json) = function_metadata::arguments(bytes,name)? {
++            *out = reflection_handle(json)?;
++            return Ok(true);
++        }
 +        let library = metal2vulkan::library::Library::parse(bytes).map_err(e("reflection library"))?;
 +        let function = library.function(name).map_err(e("reflection function"))?;
 +        let reflection = function.reflection(&metal2vulkan::Budget::standard()).map_err(e("function reflection"))?;

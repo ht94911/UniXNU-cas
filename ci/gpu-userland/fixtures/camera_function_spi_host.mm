@@ -18,19 +18,19 @@
 }
 @end
 
-static NSData *reflectionMetallib(NSData *bitcode,bool tagged) {
+static NSData *reflectionMetallib(NSData *bitcode,bool tagged,bool stitch=false) {
  std::vector<uint8_t> entry(4);
  auto tag=[&](const char *name,const void *bytes,uint16_t count) {
   entry.insert(entry.end(),name,name+4);entry.push_back(count&255);entry.push_back(count>>8);
   const uint8_t *at=(const uint8_t *)bytes;entry.insert(entry.end(),at,at+count);
  };
- const char *name="reflection_tables";uint8_t type=2;
+ const char *name=stitch?"sum2":"reflection_tables";uint8_t type=stitch?4:2;
  std::vector<uint8_t> wrapped(20+bitcode.length);
  const uint32_t fields[5]={0x0b17c0de,0,20,(uint32_t)bitcode.length,0};
  memcpy(wrapped.data(),fields,20);memcpy(wrapped.data()+20,bitcode.bytes,bitcode.length);
  uint8_t digest[CC_SHA256_DIGEST_LENGTH];CC_SHA256(wrapped.data(),(CC_LONG)wrapped.size(),digest);
  const uint64_t size=wrapped.size(),offsets[3]={0,0,0},reflection=0;
- const uint16_t versions[4]={2,8,4,0};
+ const uint16_t versions[4]={2,(uint16_t)(stitch?9:8),4,(uint16_t)(stitch?1:0)};
  tag("NAME",name,strlen(name)+1);tag("TYPE",&type,1);tag("HASH",digest,sizeof digest);
  tag("MDSZ",&size,8);tag("OFFT",offsets,24);tag("VERS",versions,sizeof versions);
  if(tagged)tag("RFLT",&reflection,8);
@@ -118,7 +118,7 @@ static unsigned publicArgumentCases() {
 int main(int argc,char **argv) {@autoreleasepool {
  setvbuf(stdout,nullptr,_IONBF,0);setvbuf(stderr,nullptr,_IONBF,0);
  fprintf(stderr,"camera-function-consumer: entered argc=%d\n",argc);
- assert(argc==2);unsigned checks=publicArgumentCases();
+ assert(argc==2 || argc==3);unsigned checks=publicArgumentCases();
  if(!strcmp(argv[1],"public")) {
   printf("PASS Camera public metadata: %u cases\n",checks);return 0;
  }
@@ -150,6 +150,18 @@ int main(int argc,char **argv) {@autoreleasepool {
   NmbReflection *missing=(NmbReflection *)(uintptr_t)1;
   assert(!nmb_library_function_reflection(bytes.bytes,bytes.length,"absent",&missing) && !missing);++checks;
  }
+ assert(argc==3);
+ NSData *stitchAIR=[NSData dataWithContentsOfFile:@(argv[2])];assert(stitchAIR.length);++checks;
+ NSData *stitchBytes=reflectionMetallib(stitchAIR,true,true);
+ NBLibrary *stitchLibrary=[NBLibrary new];stitchLibrary.storage=stitchBytes;
+ stitchLibrary.bytes=(const uint8_t *)stitchBytes.bytes;stitchLibrary.length=stitchBytes.length;
+ NBFunction *stitchFunction=[NBFunction new];stitchFunction.library=stitchLibrary;stitchFunction.sourceName=@"sum2";
+ NSArray *valueArguments=stitchFunction.arguments;assert(valueArguments.count==2);++checks;
+ NBArgument *a=valueArguments[0],*b=valueArguments[1];
+ assert([a.name isEqualToString:@"a"] && [b.name isEqualToString:@"b"]);++checks;
+ assert((NSUInteger)a.type==18 && a.dataTypeDescription.dataType==MTLDataTypeFloat);++checks;
+ assert(stitchFunction.returnType.dataType==MTLDataTypeFloat);++checks;
+ assert(stitchFunction.arguments==valueArguments && stitchFunction.returnType==stitchFunction.returnType);++checks;
  printf("PASS Camera function SPI: %u production cache-forwarding and actual reflection cases\n",checks);
  return 0;
 }}

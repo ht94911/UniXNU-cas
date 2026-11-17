@@ -362,6 +362,10 @@ def main():
     record['camera_required_selector_patch'] = sha(selected)
     test = HERE / 'fixtures/function_constant_selector_host.mm'
     shutil.copyfile(test, root / 'drivers/AdrenoMetal/bridge' / test.name)
+    selected = HERE / 'patches/camera087-stitch-metadata-recipes.patch'
+    must(['git', '-C', root, 'apply', '--check', selected])
+    must(['git', '-C', root, 'apply', selected])
+    record['camera_stitch_metadata_recipe_patch'] = sha(selected)
     selected = HERE / 'patches/camera087-function-spi-plugin.patch'
     must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', '--check', selected])
     must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', selected])

@@ -14,6 +14,9 @@ archive = root/'build/adreno-metal-bridge/host/libadreno_metal_bridge.a'
 harness = kit/'bridge/camera_function_spi_host.mm'
 fixture = root/'.cache/gpu-reference/metal2vulkan/crates/metal2vulkan-validation/fixtures/public/reflection/tables.ll'
 assert archive.is_file() and fixture.is_file()
+stitch_fixture=root/'.cache/gpu-reference/metal2vulkan/crates/metal2vulkan-validation/fixtures/public/engine/stitched_caller.ll'
+assert stitch_fixture.is_file()
+subprocess.run(['llvm-as',str(stitch_fixture),'-o',str(out/'stitch.air')],check=True)
 assembled = subprocess.run(['llvm-as', str(fixture), '-o', str(out/'tables.air')], capture_output=True, text=True)
 (out/'assemble.log').write_text(assembled.stdout+assembled.stderr)
 assert assembled.returncode == 0, 'Public AIR fixture assembly failed'
@@ -27,21 +30,23 @@ command = ['xcrun', 'clang++', *flags, str(harness), str(archive),
 compiled = subprocess.run(command, capture_output=True, text=True)
 (out/'build.log').write_text(compiled.stdout+compiled.stderr)
 assert compiled.returncode == 0, 'Production Camera function consumer compilation failed'
-executed = subprocess.run([str(out/'consumer'), str(out/'tables.air')],
+executed = subprocess.run([str(out/'consumer'), str(out/'tables.air'),str(out/'stitch.air')],
                           capture_output=True, text=True, timeout=90,
                           env=dict(os.environ, SHENG_DIAG='0'))
 (out/'run.log').write_text(executed.stdout+executed.stderr)
 matched = re.search(r'PASS Camera function SPI: (\d+) ', executed.stdout)
 (out/'exit.json').write_text(json.dumps(dict(returncode=executed.returncode, stdout_bytes=len(executed.stdout), stderr_bytes=len(executed.stderr)))+'\n')
 if executed.returncode:
-    debug=subprocess.run(['xcrun','lldb','--batch','-o','run','-o','thread backtrace all','--',str(out/'consumer'),str(out/'tables.air')],capture_output=True,text=True,timeout=90,env=dict(os.environ,SHENG_DIAG='0'))
+    debug=subprocess.run(['xcrun','lldb','--batch','-o','run','-o','thread backtrace all','--',str(out/'consumer'),str(out/'tables.air'),str(out/'stitch.air')],capture_output=True,text=True,timeout=90,env=dict(os.environ,SHENG_DIAG='0'))
     (out/'failure-backtrace.log').write_text(debug.stdout+debug.stderr)
-assert executed.returncode == 0 and matched and int(matched[1]) == 31, str(executed.returncode)+' '+executed.stdout+executed.stderr
+assert executed.returncode == 0 and matched and int(matched[1]) == 37, str(executed.returncode)+' '+executed.stdout+executed.stderr
 sha = lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
-report = dict(passed=True, checks=31, production_cache_selectors_executed=True,
+report = dict(passed=True, checks=37, production_cache_selectors_executed=True,
               name_constants_and_error_preserved=True, public_ARGR_cases=14,
               public_parameters_independent_of_RFLT=True, actual_AIR_reflection_executed=True,
               untagged_reflection_returns_nil=True, repeated_arguments_cached=True,
+              actual_stitchable_value_parameters_executed=True, actual_stitchable_return_type_executed=True,
+              stitchable_public_fixture_sha256=sha(stitch_fixture),
               source_sha256=sha(kit/'NativeBridgeMetalFrontend.mm'),
               metadata_source_sha256=sha(kit/'NativeMetalFunctionMetadata.h'),
               bridge_source_sha256=sha(kit/'bridge/NativeMetalObjects.rs'),
