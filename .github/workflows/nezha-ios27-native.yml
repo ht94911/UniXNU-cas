@@ -1,7 +1,7 @@
-name: nezha Sensors005b require received empty calibration result on fixed GPU051
+name: nezha Sensors006 native gyro units and initialized motion report on fixed GPU051
 on:
   push:
-    branches: [codex/ios27-sensors005b-gpu051-native-20261117]
+    branches: [codex/ios27-sensors006-gpu051-native-20261118]
   workflow_dispatch:
 permissions:
   contents: read

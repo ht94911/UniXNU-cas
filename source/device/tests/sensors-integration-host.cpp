@@ -113,6 +113,14 @@ int main(int argc,char **argv){
     assert(!nezha_sensor_hid_sample(&s));
     // copyEvent converts real SI and uses the sample timestamp before timer dispatch.
     auto e=services[0]->copyEvent(13,nullptr,0);assert(e&&e->timestamp==s.timestamp&&e->xyz[2]<-65530&&e->xyz[2]>-65542);e->release();
+    s.kind=QsscGyro;s.value[0]=65536;s.value[1]=-65536;s.value[2]=0;
+    assert(!nezha_sensor_hid_state(s.kind,1,true,0));assert(!nezha_sensor_hid_sample(&s));
+    e=services[1]->copyEvent(20,nullptr,0);
+    assert(e&&e->timestamp==s.timestamp&&e->xyz[0]==3754936&&e->xyz[1]==-3754936&&e->xyz[2]==0);
+    // Apply the actual original public CMGyroData getter's float pi/180.
+    constexpr float degreesToRadians=0.01745329238474369f;
+    float publicRate=(float(e->xyz[0])/65536.0f)*degreesToRadians;
+    assert(publicRate>0.99999f&&publicRate<1.00001f);e->release();
     s.kind=QsscProximityKind;s.near=true;s.raw_adc=42;
     assert(!nezha_sensor_hid_state(s.kind,1,true,0));assert(!nezha_sensor_hid_sample(&s));
     e=services[3]->copyEvent(14,nullptr,0);assert(e&&e->level==1&&e->xyz[0]==64);e->release();

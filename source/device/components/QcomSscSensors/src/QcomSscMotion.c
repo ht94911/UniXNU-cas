@@ -73,11 +73,19 @@ static uint32_t binary32(int32_t q16){
     return (sign?0x80000000u:0)|((bit+111u)<<23)|(mantissa&0x7fffffu);
 }
 int qssc_motion_payload(const QsscMotionFrame *f,uint8_t *out,size_t bytes){
-    if(!f||!f->valid||!out||bytes<60)return QsscArgument;uint8_t p[60]={4};
-    // Type4 parser stores clientID@4. Frame sequence remains diagnostic;
+    if(!f||!f->valid||!out||bytes<60)return QsscArgument;uint8_t p[60]={3};
+    // A completed, time-aligned and reliable six-axis frame is initialized.
+    // Type4's original parser clears the state word; type3 preserves bit8
+    // from bytes1..2, required by CMMotionManager's public callback guard.
+    p[2]=1;
+    // Type3 parser stores clientID@4. Frame sequence remains diagnostic;
     // preserve the actual SSC client identity and the IOHIDEvent sample time.
     wr64(p+4,f->client_id);
     for(unsigned n=0;n<4;n++)wr32(p+12+4*n,binary32(f->quaternion[n]));
-    for(unsigned n=0;n<3;n++){wr32(p+28+4*n,binary32(f->user_accel[n]));wr32(p+40+4*n,binary32(f->rotation_rate[n]));}
+    for(unsigned n=0;n<3;n++){
+        int32_t degrees;int r=qssc_scaled_q16((int64_t)f->rotation_rate[n]*65536,57295780u,1000000u,&degrees);
+        if(r)return r;
+        wr32(p+28+4*n,binary32(degrees));wr32(p+40+4*n,binary32(f->user_accel[n]));
+    }
     memcpy(out,p,sizeof p);return QsscOkay;
 }

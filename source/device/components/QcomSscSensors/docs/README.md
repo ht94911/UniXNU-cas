@@ -29,7 +29,7 @@ This is a source candidate. Executable tests, target compile/PAC, strict prelink
 image assembly and real device acceptance wait for the designated baseline.
 
 The iPhone D16 CoreMotion six-axis backend selects FF0C/5; its original decoder
-requires a60-byte type4 payload (clientID64@4,xyzw@12,userAccel@28,rotationRate@40).
+requires a60-byte initialized type3 payload (initialized bit8 at1,clientID64@4,xyzw@12,gyrodegrees@28,userAccel(g)@40). The oldtype4 parser clears the public initialized flag; actual original-instruction replay confirmed the type3 guard and vectors.
 QcomSscMotion pairs actual SEE game_rv/gravity/gyro samples, converts gravity to
 Apple g semantics and encodes that defined payload. Per-source timestamps,
 maximum40ms skew and missing-source rejection stay explicit. Quaternion

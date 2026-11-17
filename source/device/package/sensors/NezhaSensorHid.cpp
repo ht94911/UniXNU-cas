@@ -56,11 +56,12 @@ IOHIDEvent *eventFor(const QsscSample &s){
     for(unsigned i=0;i<3;i++){
         int64_t si=(int64_t)s.value[i]*65536;
         // SEE uses upward specific acceleration; Apple acceleration is g
-        // with -Z for a face-up device. Gyro remains rad/s and the board axes
-        // already come from SEE's stock -Y,+X,+Z mounting transform.
+        // with -Z for a face-up device. The raw gyro HID field is degrees/s:
+        // CMGyroData.rotationRate applies the original float pi/180 getter.
+        // Internal SEE/fusion values remain rad/s; convert this boundary only.
         if(s.kind==QsscAccel)si=-si;
-        if(qssc_scaled_q16(si,s.kind==QsscAccel?100000u:1u,
-                          s.kind==QsscAccel?980665u:1u,&v[i]))return nullptr;
+        if(qssc_scaled_q16(si,s.kind==QsscAccel?100000u:57295780u,
+                          s.kind==QsscAccel?980665u:1000000u,&v[i]))return nullptr;
     }
     if(s.kind==QsscAccel)return nezha_sensor_original_accel(s.timestamp,v[0],v[1],v[2],0,0,(uint32_t)s.sequence,0);
     if(s.kind==QsscGyro)return nezha_sensor_original_gyro(s.timestamp,v[0],v[1],v[2],0,0,(uint32_t)s.sequence,0);

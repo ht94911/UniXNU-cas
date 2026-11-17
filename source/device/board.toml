@@ -100,6 +100,8 @@ kernel_args = ["-v", "keepsyms=1", "debug=0x14e", "cpus=8", "boot-progress=2", "
 # adds only this property and retains the existing hardware/resource bytes.
 [adt.product.string]
 unique-model = "D16AP"
+[adt.product.bytes]
+product-id = "e153ccb9f39350dfd963a37f6de50e33b9f05607"
 
 # First root mount: use the real independently verified iPhone OS identity.
 [root]
