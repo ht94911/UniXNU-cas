@@ -19,7 +19,7 @@ try:
     assert sha(root/'ci/artifacts.py')==manifest['artifacts_sha256']
     assert sha(root/'ci/artifact-recipient.pem')==manifest['certificate_sha256']
     shutil.copyfile(root/'inputs.json',args.out/'inputs.json')
-    job=plistlib.loads((root/'source/org.unixnu.nezha.location-launch.plist').read_bytes());assert job['UserName']=='mobile' and job['LaunchOnlyOnce'] and job['KeepAlive'] is False and job['RunAtLoad'] and 'StartInterval' not in job and job['LimitLoadToSessionType']=='System' and job['StandardOutPath']==job['StandardErrorPath']=='/dev/null'
+    job=plistlib.loads((root/'source/org.unixnu.nezha.camera-launch.plist').read_bytes());assert job['UserName']=='mobile' and job['LaunchOnlyOnce'] and job['KeepAlive'] is False and job['RunAtLoad'] and 'StartInterval' not in job and job['LimitLoadToSessionType']=='System' and job['StandardOutPath']==job['StandardErrorPath']=='/dev/null'
     shutil.copyfile(root/'source/org.unixnu.nezha.camera-launch.plist',args.out/'org.unixnu.nezha.camera-launch.plist')
     host=args.out/'registration-host'
     run('registration-host-compile',['xcrun','clang','-fobjc-arc','-fblocks','-Wall','-Wextra','-Werror','-fsanitize=address,undefined','-O1','-g',root/'source/camera-launch-registration.m','-framework','Foundation','-o',host])

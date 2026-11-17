@@ -7,8 +7,8 @@
     "source/NezhaCameraLaunch.entitlements.plist": "990976e864664ee1a6264c30806d55194650549bbf3f9ee484d80a456230e054",
     "source/camera-launch-registration.m": "20dc777a778bf656ce47e2a38c939a0f1b4339b3e8d12949373d6a61c5ccc2c0",
     "source/org.unixnu.nezha.camera-launch.plist": "cc0dc8f26c2a0149c2cd25020274d0b523ce215e7e2667761a4462642ddef3e3",
-    "ci/corelocation.py": "0c2cb7d8d88f047d46a0de4f325445a5004fb96b4df88f72ddcce3382de3d5f8",
-    ".github/workflows/nezha-ios27-native.yml": "b1f123e882e541b37dfc82e724a3691d735c1346472386d342e6b241545f31a8"
+    "ci/corelocation.py": "dd26a90a6d42950cba754aff3aca19a6383a17c6e19549a2798d26a787791116",
+    ".github/workflows/nezha-ios27-native.yml": "41515b556859d6b4d8d83d2884c6523ede441b2d002d0ee6ec677a43b6e3ed91"
   },
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
   "certificate_sha256": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",

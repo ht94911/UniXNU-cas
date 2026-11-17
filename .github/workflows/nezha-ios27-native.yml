@@ -1,7 +1,7 @@
 name: nezha iPhone27 Camera088 mobile FBS launcher
 on:
   push:
-    branches: [codex/ios27-camera088-mobile-FBS-launch-20261118]
+    branches: [codex/ios27-camera088b-mobile-FBS-launch-20261118]
 permissions:
   contents: read
 concurrency:
