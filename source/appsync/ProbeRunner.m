@@ -4,6 +4,7 @@
 #import <dlfcn.h>
 #import <unistd.h>
 #import <sys/sysctl.h>
+#import <xpc/xpc.h>
 #import <time.h>
 #import <stdarg.h>
 #import <errno.h>
@@ -100,7 +101,14 @@ int main(void)
         setvbuf(stderr, NULL, _IONBF, 0);
         NSDictionary *transfer = [NSDictionary dictionaryWithContentsOfFile:
             @"/private/var/ngpu/appsync/probe/wifi-install.plist"];
-        if (transfer) return unixnu_appsync_wifi_install(transfer, report);
+        if (transfer) {
+            xpc_transaction_begin();
+            @try {
+                return unixnu_appsync_wifi_install(transfer, report);
+            } @finally {
+                xpc_transaction_end();
+            }
+        }
         report("APPSYNC_PROBE start ram-data direct-install uid=%u\n", (unsigned)getuid());
         sleep(60);
         dlopen("/System/Library/Frameworks/CoreServices.framework/CoreServices", RTLD_NOW);
