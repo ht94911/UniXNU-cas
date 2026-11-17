@@ -117,6 +117,11 @@ extern "C" int na_native_playback_prepare(NaNativePlayback *s,const NaNativePlay
     if (c->input_ready) p.capture_probe_allowed=0;
     p.ops={s,smem_lock,smem_unlock,doorbell,sync,na_native_host_time,dispatch};
     r=na_assembly_init(&s->assembly,&p,na_native_now_us(nullptr)/1000);if (r) return failed(s,r);
+    /* Pandora0301 and102 keep output/VI running silently between requests.
+     * The combined system may wait in its UI before the first audio request;
+     * start that same idle hold before publishing the production input HAL.
+     * Runtime output_idle is already set, and input/request remain clear. */
+    if (c->input_ready) s->assembly.driver.runtime.output_held=1;
     // Carry the actual037 channel-opening path and diagnostic timing into
     // this first playback candidate; do not silently change DSP bring-up.
     s->assembly.adsp.gpr_initiator=1;

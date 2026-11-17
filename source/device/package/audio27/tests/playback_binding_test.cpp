@@ -231,6 +231,7 @@ int main(int argc,char **argv) {
         captureResult=na_native_playback_start_step(starting,120+10*i,625,12);
     assert(!captureResult && starting->phase==4 && calls==14 && workerCalls==1 && current->plan.capture_probe_allowed);
     assert(!current->plan.capture_proven && current->plan.stream[1].graph && starting->config.capture_probe);
+    assert(!current->assembly.driver.runtime.output_held);
     delete starting;starting=nullptr;
     // System input is explicit and opens no automatic finite capture.
     assert(!na_native_speaker_config(&config,revisions,625,12) && !na_native_capture_config(&config));
@@ -243,6 +244,7 @@ int main(int argc,char **argv) {
         captureResult=na_native_playback_start_step(starting,120+10*i,625,12);
     assert(!captureResult && starting->phase==4 && workerCalls==1 && current->plan.capture_proven);
     assert(!current->plan.capture_probe_allowed && current->plan.stream[1].graph && starting->config.input_ready);
+    assert(current->assembly.driver.runtime.output_held && !current->assembly.driver.runtime.request);
     delete starting;starting=nullptr;
     starting=new NaNativePlaybackStart{};starting->input_ready=1;starting->capture_frames=480;calls=0;
     assert(na_native_playback_start_step(starting,100,625,12)==NA_ARGUMENT && !calls);delete starting;

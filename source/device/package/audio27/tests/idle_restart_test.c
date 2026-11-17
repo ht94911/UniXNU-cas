@@ -380,7 +380,27 @@ static void system_input_timeout(void) {
     na_runtime_disable(r);for(unsigned i=0;i<60 && !na_runtime_quiescent(r);++i) assert(!step());
     assert(na_runtime_quiescent(r));
 }
+static void cold_system_idle(void) {
+    initialize_capture(1);NaRuntime *r=&f.driver.runtime;
+    r->capture_proven=1;r->status.in_channels=1;r->output_held=1;
+    /* Same board policy as the production input HAL, before any Start.
+     * The original runtime opens the retained output/VI and sends silence. */
+    for(unsigned i=0;i<120;++i)assert(!step());
+    assert(!r->request&&!r->probe.state&&r->engine.output_idle&&!r->engine.active[0]);
+    assert(r->output_idle_ready&&f.zero_periods&&!f.nonzero_periods&&!f.activated);
+    assert(f.driver.graph[0].stage==NaGraphRunning&&f.driver.graph[2].stage==NaGraphRunning);
+    assert(f.driver.graph[1].stage==NaGraphOff&&!f.reads&&!f.input_maps&&!f.input_opens);
+    assert(f.driver.prm.held==1&&!f.releases&&!f.closes&&!f.unmaps);
+    assert(na_runtime_rebind_ready(r)&&r->service_ready);
+    start();write_next(8000);steps(3);assert(f.nonzero_periods&&r->engine.active[0]);
+    assert(!na_runtime_request(r,NaAudioStopOutput));standby_complete();
+    na_runtime_disable(r);
+    for(unsigned i=0;i<120&&!na_runtime_quiescent(r);++i)assert(!step());
+    assert(na_runtime_quiescent(r)&&f.closes==2&&f.unmaps==2&&f.releases==1);
+    assert(!f.reads&&!f.input_maps&&!f.input_opens);
+}
 int main(void) {
+    cold_system_idle();
     system_input_only();system_duplex_restart();system_input_timeout();
     repeat_and_rebind();staged_stop();failures();probe_after_playback();full_PCM_range();
     cold_probe(0,0);cold_probe(1,0);cold_probe(1,1);outer_probe_fault();
