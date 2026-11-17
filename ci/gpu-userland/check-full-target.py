@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import json
+import plistlib
 import re
 from pathlib import Path
 import subprocess
@@ -13,8 +14,15 @@ import importlib.util
 p=argparse.ArgumentParser(description=__doc__)
 p.add_argument('--unixnu',type=Path,required=True)
 p.add_argument('--logs',type=Path,required=True)
+p.add_argument('--collected',type=Path,
+               help='Verify an already collected target without rebuilding it')
+p.add_argument('--signature-checker',type=Path,
+               help='Existing local CodeDirectory checker for collected arm64e targets')
 a=p.parse_args();root=a.unixnu.resolve()
-bundle=root/'build/adreno-metal-plugin27/NativeAdrenoMetal.bundle'
+if a.signature_checker:
+    assert a.collected, 'The local signature checker requires collected targets'
+bundle=(a.collected/'adreno-metal-plugin/NativeAdrenoMetal.bundle' if a.collected
+        else root/'build/adreno-metal-plugin27/NativeAdrenoMetal.bundle')
 data=(bundle/'NativeAdrenoMetal').read_bytes()
 profile=json.loads((bundle/'gpu-build.json').read_text())
 assert profile['target']=='ios27' and profile['iphone_24a446'] and not profile['ipad_private_layout_enabled']
@@ -24,17 +32,48 @@ for text in (b'PUB iPhone24A446: public policy; iPad raw offsets disabled',
     assert text in data,text
 for text in (b'ca virtualized key %.*s = %u',b'ca virtualized key ? flags %llx = %u'):
     assert text not in data,'iPad-only raw reader survived in the target artifact'
-subprocess.run(['codesign','--verify','--strict',str(bundle)],check=True)
+if a.signature_checker:
+    signature_spec=importlib.util.spec_from_file_location('target_signature',a.signature_checker)
+    signature_checker=importlib.util.module_from_spec(signature_spec)
+    signature_spec.loader.exec_module(signature_checker)
+    target_info=json.loads((a.collected/'run-info.json').read_text())
+    trust=json.loads((a.collected/'adreno-metal-plugin/trust.json').read_text())
+    for name in ('NativeAdrenoMetal','libvulkan_freedreno.dylib'):
+        expected=target_info['checks'][name]
+        trust_key='cdhash' if name=='NativeAdrenoMetal' else 'turnip_cdhash'
+        assert expected['ok'] and expected['signature']['cdhash']==trust[trust_key]
+        special={1:(bundle/'Info.plist').read_bytes(),
+                 3:(bundle/'_CodeSignature/CodeResources').read_bytes()} if name=='NativeAdrenoMetal' else None
+        signature_checker.signature(bundle/name,expected,special)
+    resources=plistlib.loads((bundle/'_CodeSignature/CodeResources').read_bytes())
+    for name,rule in resources['files2'].items():
+        relative=Path(name)
+        assert not relative.is_absolute() and '..' not in relative.parts
+        path=bundle/relative
+        assert path.is_file() and not path.is_symlink()
+        if isinstance(rule,dict) and 'cdhash' in rule:
+            assert name=='libvulkan_freedreno.dylib' and rule['cdhash'].hex()==trust['turnip_cdhash']
+        elif isinstance(rule,dict) and 'hash2' in rule:
+            assert hashlib.sha256(path.read_bytes()).digest()==rule['hash2']
+        elif isinstance(rule,bytes):
+            assert hashlib.sha1(path.read_bytes()).digest()==rule
+        else:
+            raise ValueError('Unqualified bundle resource '+name)
+else:
+    subprocess.run(['codesign','--verify','--strict',str(bundle)],check=True)
 assert b'M cache: reuse published runtime writable directory' in data
 assert b'M cache rejected; test not started; UI remains independent' in data
-library=root/'build/mesa-tu-ios27/src/freedreno/vulkan/libvulkan_freedreno.dylib'
-producer=json.loads((root/'build/mesa-tu-ios27/builtin-build-profile.json').read_text())['profile']
+library=(a.collected/'turnip-ios27/libvulkan_freedreno.dylib' if a.collected
+         else root/'build/mesa-tu-ios27/src/freedreno/vulkan/libvulkan_freedreno.dylib')
+producer_path=(a.collected/'turnip-ios27/builtin-build-profile.json' if a.collected
+               else root/'build/mesa-tu-ios27/builtin-build-profile.json')
+producer=json.loads(producer_path.read_text())['profile']
 mesa=root/'.cache/mesa-work'
 actual_diff=subprocess.check_output(['git','-C',str(mesa),'diff','HEAD','--binary'])
 assert producer['source_diff_sha256']==hashlib.sha256(actual_diff).hexdigest()
 for name,digest in producer['extra_sources'].items():
     assert hashlib.sha256((mesa/name).read_bytes()).hexdigest()==digest,name
-symbols=subprocess.check_output(['nm',str(library)],text=True)
+symbols=subprocess.check_output(['llvm-nm' if a.collected else 'nm',str(library)],text=True)
 assert not re.search(r'_+ZL2dw(?:\b|\.)',symbols), 'old process-global connection survived'
 for marker in (b'M-body cleanup-pending', b'SWAP begin: upstream GMEM/sysmem device+host colour checks',
                b'bad%u/%u', b'metal-work cb=', b'metal-device %s reg='):
@@ -184,7 +223,9 @@ assert multi_level['current_Mac_allocator_tests_passed'] and multi_level['curren
 extern_spec=importlib.util.spec_from_file_location('extern_target',Path(__file__).with_name('check-extern-target.py'))
 extern_target=importlib.util.module_from_spec(extern_spec)
 extern_spec.loader.exec_module(extern_target)
-target_extern=extern_target.verify(bundle/'NativeAdrenoMetal',root/'build/adreno-metal-plugin27/NativeAdrenoMetal.map')
+map_path=(a.collected/'adreno-metal-plugin/NativeAdrenoMetal.map' if a.collected
+          else root/'build/adreno-metal-plugin27/NativeAdrenoMetal.map')
+target_extern=extern_target.verify(bundle/'NativeAdrenoMetal',map_path)
 assert target_extern['passed'] and target_extern['actual_method_list_verified'] and target_extern['authenticated_message_branch']
 (a.logs/'actual-extern-target.json').write_text(json.dumps(target_extern,indent=2)+'\n')
 assert extern_function['icon_library_trace_methods_executed']
@@ -203,6 +244,8 @@ report=dict(actual_icon_limits_host=icon_limits,actual_pipeline_cache_host=cache
             actual_enum_stack_connection_offset=enum_offset,
             actual_Mac_source_bound_context_tests=contexts,
             real_A840_shader_or_UI_verified=False,phone_operations=False)
+report.update(collected_target=bool(a.collected),
+              signature_verification='CodeDirectory pages and CodeResources' if a.signature_checker else 'macOS codesign')
 report.update(actual_extern_function=extern_function,actual_extern_target=target_extern,actual_multi_level_output=multi_level)
 function_constant = json.loads((a.logs/'function-constant/report.json').read_text())
 assert function_constant['passed'] and function_constant['checks'] == 10
