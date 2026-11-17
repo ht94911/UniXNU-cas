@@ -6,6 +6,7 @@
  * no bundle, executable, signature, user app or root volume is rewritten. */
 #import <Foundation/Foundation.h>
 #import <objc/runtime.h>
+#include <dispatch/dispatch.h>
 #include <dlfcn.h>
 #include <fcntl.h>
 #include <signal.h>
@@ -23,7 +24,8 @@
 - (id)registerContainerizedApplicationWithInfoDictionaries:(NSArray *)dictionaries
     operationUUID:(NSUUID *)operation requestContext:(id)context saveObserver:(id)observer
     registrationError:(NSError **)error;
-- (BOOL)openApplicationWithBundleID:(NSString *)identifier;
+- (void)openApplicationWithBundleIdentifier:(NSString *)identifier configuration:(id)configuration
+    completionHandler:(void (^)(BOOL result, NSError *error))completion;
 - (void)setTargetUserID:(NSNumber *)uid;
 @end
 
@@ -57,6 +59,45 @@ static int location_output(const char *path)
     }
     close(fd);
     return 0;
+}
+
+/* The original synchronous wrapper discards its NSError. This entry uses the
+ * same lsd open service and useClientProcessHandle=0, with default options.
+ * Wait for its actual completion once, within the existing process deadline. */
+static int request_location(id service,NSString *identifier,dispatch_time_t end)
+{
+    if (![service respondsToSelector:
+        @selector(openApplicationWithBundleIdentifier:configuration:completionHandler:)]) {
+        fputs("nezha-location-launch: original launch completion method unavailable\n",stderr);
+        return 8;
+    }
+    dispatch_semaphore_t completion=dispatch_semaphore_create(0);
+    __block BOOL native_result=NO;
+    __block NSError *launch_error=nil;
+    fputs("nezha-location-launch: NezhaLocation registered=1 launch_submitted=1 method=openApplicationWithBundleIdentifier:configuration:completionHandler:\n",stderr);
+    [service openApplicationWithBundleIdentifier:identifier configuration:nil
+        completionHandler:^(BOOL result,NSError *error) {
+            native_result=result;
+            launch_error=error;
+            dispatch_semaphore_signal(completion);
+        }];
+    if (dispatch_semaphore_wait(completion,end)) {
+        fputs("nezha-location-launch: NezhaLocation registered=1 launch_request=0 launch_completed=0 completion_timeout=1 CoreLocation_callback_verified=0\n",stderr);
+        return 11;
+    }
+    const BOOL requested=native_result && launch_error==nil;
+    fprintf(stderr,"nezha-location-launch: NezhaLocation registered=1 launch_request=%u launch_completed=1 native_result=%u error=%ld domain=%s CoreLocation_callback_verified=0\n",
+        (unsigned)requested,(unsigned)native_result,(long)launch_error.code,
+        launch_error.domain.UTF8String ?: "<none>");
+    if (launch_error) {
+        fprintf(stderr,"nezha-location-launch: launch-detail=%s\n",
+            launch_error.description.UTF8String ?: "<absent>");
+        NSError *underlying=launch_error.userInfo[NSUnderlyingErrorKey];
+        if ([underlying isKindOfClass:[NSError class]])
+            fprintf(stderr,"nezha-location-launch: launch-underlying=%s\n",
+                underlying.description.UTF8String ?: "<absent>");
+    }
+    return requested ? 0:9;
 }
 
 /* Tests exercise this exact consumer with Foundation and fixture LS classes.
@@ -126,13 +167,7 @@ static int open_location(Class proxy,id service,NSURL *system_url)
         report_proxy("after",application);
         if (!registered_location(application)) return 7;
     }
-    if (![service respondsToSelector:@selector(openApplicationWithBundleID:)]) {
-        fputs("nezha-location-launch: original launch method unavailable\n",stderr);
-        return 8;
-    }
-    const BOOL requested=[service openApplicationWithBundleID:identifier];
-    fprintf(stderr,"nezha-location-launch: NezhaLocation registered=1 launch_request=%u CoreLocation_callback_verified=0\n",(unsigned)requested);
-    return requested ? 0:9;
+    return request_location(service,identifier,dispatch_time(DISPATCH_TIME_NOW,30*NSEC_PER_SEC));
 }
 
 #ifndef NEZHA_LOCATION_LAUNCH_TEST
