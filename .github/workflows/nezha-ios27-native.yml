@@ -1,0 +1,118 @@
+name: nezha Camera080 on GPU051 - native
+on:
+  push:
+    branches: [codex/ios27-camera080-gpu051-native-irq-failure-20261117]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: nezha-ios27-native-${{ github.ref }}
+  cancel-in-progress: false
+defaults:
+  run:
+    shell: bash
+env:
+  HOMEBREW_NO_AUTO_UPDATE: 1
+  HOMEBREW_NO_INSTALL_CLEANUP: 1
+  HOMEBREW_NO_ENV_HINTS: 1
+  DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+jobs:
+  build:
+    runs-on: macos-26-intel
+    timeout-minutes: 345
+    steps:
+      - name: Check out the dedicated build inputs
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          path: task
+          persist-credentials: false
+      - name: Check out the pinned upstream framework
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: UniXNU/UniXNU
+          ref: 88604d01c191727bf4b4113269b3a9518bb730d3
+          path: unixnu
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.13'
+      - name: Install host build tools
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/ios27/setup-logs"
+          brew install cmake ninja unifdef llvm openssl@3 > "$RUNNER_TEMP/ios27/setup-logs/brew.log" 2>&1
+          test -x "$(brew --prefix llvm)/bin/llvm-objdump"
+          printf 'UNIXNU_LLVM_OBJDUMP=%s/bin/llvm-objdump\n' "$(brew --prefix llvm)" >> "$GITHUB_ENV"
+      - name: Reconstruct and verify the exact integration source tree
+        run: python3 task/ci/native.py prepare --framework unixnu --work "$RUNNER_TEMP/ios27/work"
+      - name: Verify the accepted UserLog producer and actual BSD record routing
+        run: |
+          python3 task/ci/test-native-userlog.py --wrapper unixnu/scripts/build-qcom-usb-debug.py
+          python3 task/ci/test-native-userlog-producer.py --component "$RUNNER_TEMP/ios27/work/usb" --output "$RUNNER_TEMP/ios27/work/userlog-producer-host"
+      - name: Exercise actual iPhone27 reboot and plane mapping methods
+        run: |
+          python3 "$RUNNER_TEMP/ios27/work/device/scripts/check-persistent-data.py" --ufs "$RUNNER_TEMP/ios27/work/ufs" --device "$RUNNER_TEMP/ios27/work/device" --usb "$RUNNER_TEMP/ios27/work/usb" --output "$RUNNER_TEMP/ios27/persist-contracts"
+          python3 "$RUNNER_TEMP/ios27/work/device/scripts/check-persistent-marker.py" --device "$RUNNER_TEMP/ios27/work/device" --output "$RUNNER_TEMP/ios27/persist-marker"
+          python3 "$RUNNER_TEMP/ios27/work/device/scripts/check-touch-edge.py" --output "$RUNNER_TEMP/ios27/touch-edge"
+          python3 "$RUNNER_TEMP/ios27/work/gop/Test/check-plane-view.py" --output "$RUNNER_TEMP/ios27/gop-view-check"
+      - name: Check the actual read-only DPU timing reader
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/ios27/dpu-timing-host"
+          clang -std=c11 -O2 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-sanitize-recover=all -I "$RUNNER_TEMP/ios27/work/device/package/gpu" -I "$RUNNER_TEMP/ios27/work/gop" "$RUNNER_TEMP/ios27/work/device/tests/display-dpu-timing.c" -o "$RUNNER_TEMP/ios27/dpu-timing-host/reader"
+          "$RUNNER_TEMP/ios27/dpu-timing-host/reader"
+      - name: Check the actual camera boot proxy and shared resource adapter
+        run: |
+          set -euo pipefail
+          src="$RUNNER_TEMP/ios27/work/device"
+          soc="$RUNNER_TEMP/ios27/work/soc"
+          out="$RUNNER_TEMP/ios27/camera-boot-arc-host"
+          mkdir -p "$out/IOKit" "$out/sys" "$RUNNER_TEMP/ios27/work/logs"
+          printf 'extern "C" void IOSleep(unsigned);\n' > "$out/IOKit/IOLib.h"
+          printf 'extern "C" int printf(const char *,...);\n' > "$out/sys/systm.h"
+          for unit in NezhaCameraRpmh upstream/QcomRpmh; do
+            clang -std=c11 -Wall -Wextra -Werror -g -fsanitize=address,undefined -fno-sanitize-recover=all -I "$src/package/camera" -c "$src/package/camera/$unit.c" -o "$out/$(basename "$unit").o"
+          done
+          clang -std=c11 -Wall -Wextra -Werror -g -fsanitize=address,undefined -fno-sanitize-recover=all -I "$soc/include" -c "$soc/src/Sm8850Resources.c" -o "$out/shared.o"
+          clang++ -std=c++17 -Wall -Wextra -Werror -g -fsanitize=address,undefined -fno-sanitize-recover=all -I "$src/package/camera" -I "$soc/include" -I "$out" "$src/tests/camera-native-rpmh.cpp" "$src/package/camera/NezhaCameraNativeRpmh.cpp" "$out/NezhaCameraRpmh.o" "$out/QcomRpmh.o" "$out/shared.o" -o "$out/consumer"
+          "$out/consumer" > "$RUNNER_TEMP/ios27/work/logs/camera-boot-arc-host.log" 2>&1
+          clang -std=c11 -Wall -Wextra -Werror -g -fsanitize=address,undefined -fno-sanitize-recover=all -I "$soc/include" "$src/tests/camera-smmu-retire.c" "$soc/src/Sm8850Resources.c" -o "$out/smmu-retire"
+          "$out/smmu-retire" > "$RUNNER_TEMP/ios27/work/logs/camera-smmu-retire-host.log" 2>&1
+      - name: Check original LS registration process scope
+        run: CC=clang python3 "$RUNNER_TEMP/ios27/work/device/scripts/check-nezha27-camera-lsd.py" --out "$RUNNER_TEMP/ios27/work/camera-lsd-host"
+      - name: Check original Camera insertion scope
+        run: python3 "$RUNNER_TEMP/ios27/work/device/scripts/check-nezha27-camera-client.py" --out "$RUNNER_TEMP/ios27/work/camera-client-host"
+      - name: Exercise the reused bounded HID input and original pacer
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/ios27/input-host" "$RUNNER_TEMP/ios27/work/logs"
+          clang -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined -fno-sanitize-recover=all -I "$RUNNER_TEMP/ios27/work/device/package/nezha27-input" "$RUNNER_TEMP/ios27/work/device/tests/account-input.c" -o "$RUNNER_TEMP/ios27/input-host/core" > "$RUNNER_TEMP/ios27/work/logs/auto-input-core-build.log" 2>&1
+          "$RUNNER_TEMP/ios27/input-host/core" > "$RUNNER_TEMP/ios27/work/logs/auto-input-core-run.log" 2>&1
+          clang++ -std=c++17 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined -fno-sanitize-recover=all -I "$RUNNER_TEMP/ios27/work/device/package/nezha27-input" -I "$RUNNER_TEMP/ios27/work/usb/include" "$RUNNER_TEMP/ios27/work/device/tests/account-input-usb.cpp" -o "$RUNNER_TEMP/ios27/input-host/callbacks" > "$RUNNER_TEMP/ios27/work/logs/auto-input-callbacks-build.log" 2>&1
+          "$RUNNER_TEMP/ios27/input-host/callbacks" > "$RUNNER_TEMP/ios27/work/logs/auto-input-callbacks-run.log" 2>&1
+      - name: Exercise the existing BoAlloc phase adapter and trace storage
+        env:
+          CXX: clang++
+        run: python3 "$RUNNER_TEMP/ios27/work/device/tests/check-gpu-bo-phases.py" --native "$RUNNER_TEMP/ios27/work/adreno" --out "$RUNNER_TEMP/ios27/work/bo-phases-host"
+      - name: Check the actual guarded waiting-stack sampler
+        run: python3 task/source/device/scripts/check-stable-kernel-stack.py
+      - name: Qualify compiler and run the standard native build
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 task/ci/native.py build --framework unixnu --work "$RUNNER_TEMP/ios27/work"
+      - name: Seal outputs and diagnostics using the existing owner envelope
+        if: always()
+        run: |
+          set -euo pipefail
+          export PATH="$(brew --prefix openssl@3)/bin:$PATH"
+          python3 task/ci/native.py collect --framework unixnu --work "$RUNNER_TEMP/ios27/work" --sealed "$RUNNER_TEMP/ios27/sealed"
+      - name: Upload only the encrypted artifact
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: nezha-ios27-native-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/ios27/sealed/bundle.cms
+            ${{ runner.temp }}/ios27/sealed/envelope.json
+          if-no-files-found: error
+          retention-days: 90
