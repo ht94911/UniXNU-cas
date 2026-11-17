@@ -47,9 +47,9 @@ static void setup(void)
     const uint8_t *type=nb_gnss_tlv(&registration,0x11,4);
     const uint8_t *notify=nb_gnss_tlv(&registration,0x12,1);
     uint32_t client_length=0;const uint8_t *client=nb_qmi_tlv(&registration,0x10,&client_length);
-    CHECK(type&&nb_le32(type)==1&&notify&&*notify==1);
-    CHECK(client&&client_length==4&&!memcmp(client,"NZCL",4));
-    CHECK(p.length==36); /* Header7 + mask11 + identifier7 + type7 + notify4. */
+    CHECK(type&&nb_le32(type)==1&&notify&&*notify==0);
+    CHECK(client&&client_length==3&&!memcmp(client,"HAL",3));
+    CHECK(p.length==35); /* Header7 + mask11 + identifier6 + type7 + notify4. */
     reply(&p,0,0);
     CHECK(state.phase==NbGnssReady);CHECK(!nb_gnss_next(&state,0,&p)&&answers==1);
 }

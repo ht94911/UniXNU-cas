@@ -311,9 +311,12 @@ int nb_gnss_next(NbGnss *s, uint64_t now_ms, NbGnssPacket *packet)
          * requests remain subject to its ordinary location authorization. */
         /* QMI_LOC_MAX_CLIENT_ID_STRING_LENGTH is four on both the
          * inspected IDL and this phone's minor177 service. */
-        nb_qmi_put(&w, 0x10, "NZCL", 4);
+        nb_qmi_put(&w, 0x10, "HAL", 3);
         nb_qmi_u32(&w, 0x11, 1); /* QMI_LOC_CLIENT_AFW */
-        nb_qmi_u8(&w, 0x12, 1); /* original request notification field */
+        /* locClientRegisterEventMask writes valid=1/value=0 on minor177.
+         * A nonzero value is ignored for AFW in the public IDL, but this
+         * board's real service rejected the former request. Match its HAL. */
+        nb_qmi_u8(&w, 0x12, 0);
         break;
     case NB_LOC_SET_MODE: nb_qmi_u32(&w, 1, 4); break; /* QMI LOC standalone */
     case NB_LOC_START:

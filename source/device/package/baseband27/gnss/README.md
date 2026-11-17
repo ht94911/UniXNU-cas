@@ -325,3 +325,80 @@ SHA42c714f1ac7e8cb81364dfbb3308a0cddc250cb5a30f6534546dacef3e3458ff,
 and launcher results remain in local project
 `runs/2026-11-17-ios27-gnss003-gpu051-local001/`. New native and application
 qualification are required for the4-byte registration and launch condition.
+
+
+GNSS004 continues from source `770e14435cbcf4e2e3e9bcf933eca7cdc9cb8794`
+in local branch `codex/gnss27-gpu051-continue-20261117`. The selected package
+remains GPU051. Upstream `630b85a307f19c8d8a4699d5bfc12f6796b874aa` and
+myron-next `f1a1bfe` were fetched on 2026-11-17; neither supplies a new GNSS
+backend. The upstream registration agent change targets macOS Aqua and
+does not change this iOS mobile registration path.
+
+Native006 run `44048805411`, head
+`a0040b8c65e40217adcd360b002fa70f3c923f7b`, compiled the 23 target units
+and resolved all 355 external imports. All 841 returned file identities
+match. The four integration patches regenerate each compiled source hash;
+of 219 runtime objects, only `NbGnss.c.o` differs from Native005. The LOC
+client identifier is four bytes (`NZCL`), and the subscription packet is
+36 bytes. CoreLocation006 run `44048997325`, head
+`ee55a42c69a52d26bfddbf77dcda2419493e0336`, passed the nine original
+registration-consumer cases and the iPhone target build. The ordinary app
+is byte-identical; the mobile helper records its scheduled PID/UID, delays
+120 seconds and attempts registration once.
+
+Package004 passed the strict 38-component / 348-import closure, 1,062
+baseband and 168/379/207 GPU/display/HID table slots, seven original
+IOSurface routine hashes, final kernel entry and POST field, and the current
+single/eight-CPU startup checks. Seven secondary CPUs reached display/HID
+and backlight stage 6 with no skipped targets. The original ADT, BootShim
+and FD remain byte-identical to Package003. All 729 original launch jobs,
+54 non-cache GPU051 addon members and four original trust modules remain.
+The actual Windows entry fixture and 75 host-r008 files passed.
+
+The fixed Package004 identities are:
+
+- boot: `c416ac00d2a0065228ec82a8b42cdc6c205ccf4fe04bf38a2f1447c635b352c2`
+- payload: `4ce004714776deb17dcf9e41eb3e51fcf15ccc12628c455539c31855e46e02d2`
+- kernel: `c1f80a006593a52b4564d9120004b26db1c300cf127acbc6de065a597812a743`
+
+The candidate is queued for one local bottom-layer/startup trial. It checks
+the current LOC subscription reply, provider 9 and the helper's actual
+process/boot markers, then returns normally to Android/root with the
+existing postflight and collector-exit checks. Manual location permission
+and sky reception remain deferred by the user. A satellite fix, same-fix
+GPS/BeiDou use and ordinary Core Location delivery remain unverified.
+Rollback uses retained Package003 or the original selected GPU051 image.
+Local package and raw evidence: `gnss27-codex/package004` and project
+`evidence/gnss27-gpu051-20261116`; physical results belong in the actual run.
+
+
+GNSS004 physical startup ran at 2026-11-17T09:52:31Z. The LOC177 query
+reply and indication succeeded. REG_EVENTS transaction2 was the intended
+36 bytes but returned INVALID_ARG48, followed by a second INTERNAL3 reply.
+Eight fresh provider9 reports consistently recorded failed_command33,
+phase5, no START and no position delivery. The helper output was the same
+1,296 bytes with an old timestamp and no new process/boot marker.
+Normal XNU request6c769f17/session5c436df2604e0aee returned to Android/root;
+protected mappings, unchanged17 135168-byte prefix, Data27 generation1 and
+collector7976 exit passed. The window released at09:59:32Z. Raw USB
+2,999,803 bytes (SHA6d0f9d1b64f8) and both helper files were recovered with
+4,726,784 bytes of bounded read-only APFS input. This is protocol diagnosis
+progress; registration, application startup and satellite positioning remain
+unverified.
+
+The next source matches the actual stock `locClientRegisterEventMask`
+request: client string `HAL` (3 bytes), AFW type1, notification valid1/value0.
+The inspected24-byte structure and LOC177 descriptor were replayed through
+the existing QMI codec under ASan/UBSan: its body is28 bytes, with no inner
+length or terminating NUL in the string TLV, and the complete packet is35
+bytes. No different client type or receiver configuration is requested.
+
+The previous runtime pack updated the cached job but retained the old
+`daemons/org.unixnu.nezha.location-launch.plist`: root, RunAtLoad=false and
+StartInterval120. That daemon/cache mismatch is a concrete packaging error.
+`tools/gnss27/launcher_job.py` now applies one source job to both members and
+compares their decoded dictionaries before packaging. The job uses mobile
+in the System session, RunAtLoad/LaunchOnlyOnce, KeepAlive=false; the
+existing helper owns its120-second startup delay and45-second deadline.
+The mismatch regression and33 protocol /65 lifecycle /10 QMUX checks pass.
+GNSS005 target, complete package and actual startup are still required.
