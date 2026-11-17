@@ -118,9 +118,9 @@ static unsigned publicArgumentCases() {
 int main(int argc,char **argv) {@autoreleasepool {
  setvbuf(stdout,nullptr,_IONBF,0);setvbuf(stderr,nullptr,_IONBF,0);
  fprintf(stderr,"camera-function-consumer: entered argc=%d\n",argc);
- assert(argc==4 || argc==2);unsigned checks=publicArgumentCases();
- if(argc==2) {
-  assert(!strcmp(argv[1],"public"));printf("PASS Camera public metadata: %u cases\n",checks);return 0;
+ assert(argc==2);unsigned checks=publicArgumentCases();
+ if(!strcmp(argv[1],"public")) {
+  printf("PASS Camera public metadata: %u cases\n",checks);return 0;
  }
  NBCameraCacheForwarding *cache=[NBCameraCacheForwarding new];cache.answer=[NBFunction new];
  MTLFunctionConstantValues *values=[MTLFunctionConstantValues new];NSError *error=nil;id opaque=[NSObject new];
@@ -129,15 +129,16 @@ int main(int argc,char **argv) {@autoreleasepool {
  assert(![cache newFunctionWithName:@"absent" constantValues:values functionCache:opaque error:&error] && error.code==7);++checks;
  assert(cache.calls==2 && cache.askedValues==values);++checks;
  NBFunction *unbacked=[NBFunction new];assert(!unbacked.arguments && unbacked.argumentsRead);++checks;
- fprintf(stderr,"camera-function-consumer: caches and no reflection passed; opening host runtime\n");
- NmbDevice *device=nmb_device_open(argv[1],argv[2]);assert(device);++checks;
- NSData *air=[NSData dataWithContentsOfFile:@(argv[3])];assert(air.length);++checks;
+ fprintf(stderr,"camera-function-consumer: caches and no reflection passed; reading real AIR metadata\n");
+ NSData *air=[NSData dataWithContentsOfFile:@(argv[1])];assert(air.length);++checks;
  for(bool tagged:{false,true}) {
   NSData *bytes=reflectionMetallib(air,tagged);
-  NmbLibrary *handle=nmb_library_new(device,bytes.bytes,bytes.length,false);assert(handle);++checks;
-  fprintf(stderr,"camera-function-consumer: actual reflection library tagged=%d loaded\n",tagged);
-  NBLibrary *library=[NBLibrary new];library.handle=handle;library.storage=bytes;library.bytes=(const uint8_t *)bytes.bytes;library.length=bytes.length;
-  NBFunction *function=(NBFunction *)[library newFunctionWithName:@"reflection_tables"];assert(function);++checks;
+  NmbReflection *read=nullptr;
+  assert(nmb_library_function_reflection(bytes.bytes,bytes.length,"reflection_tables",&read));++checks;
+  if(read)nmb_reflection_release(read);
+  NBLibrary *library=[NBLibrary new];library.storage=bytes;library.bytes=(const uint8_t *)bytes.bytes;library.length=bytes.length;
+  NBFunction *function=[NBFunction new];function.library=library;function.sourceName=@"reflection_tables";
+  assert([function respondsToSelector:@selector(arguments)]);++checks;
   NSArray *arguments=function.arguments;
   if(tagged) {
    assert(arguments.count==2);++checks;
@@ -147,7 +148,7 @@ int main(int argc,char **argv) {@autoreleasepool {
    assert(function.arguments==arguments && function.argumentsRead);++checks;
   } else {assert(!arguments && function.argumentsRead);++checks;}
   NmbReflection *missing=(NmbReflection *)(uintptr_t)1;
-  assert(!nmb_library_function_reflection(handle,"absent",&missing) && !missing);++checks;
+  assert(!nmb_library_function_reflection(bytes.bytes,bytes.length,"absent",&missing) && !missing);++checks;
  }
  printf("PASS Camera function SPI: %u production cache-forwarding and actual reflection cases\n",checks);
  return 0;

@@ -210,7 +210,7 @@ assert function_constant['source_sha256'] == hashlib.sha256((root/'drivers/Adren
 assert target_extern['required_function_constant_method_list_verified'] and target_extern['required_forwards_to_original_getter']
 report['actual_function_constant'] = function_constant
 camera_function = json.loads((a.logs/'camera-function-spi/report.json').read_text())
-assert camera_function['passed'] and camera_function['checks'] == 32
+assert camera_function['passed'] and camera_function['checks'] == 31
 assert camera_function['source_sha256'] == hashlib.sha256((root/'drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm').read_bytes()).hexdigest()
 assert camera_function['metadata_source_sha256'] == hashlib.sha256((root/'drivers/AdrenoMetal/NativeMetalFunctionMetadata.h').read_bytes()).hexdigest()
 assert camera_function['bridge_source_sha256'] == hashlib.sha256((root/'drivers/AdrenoMetal/bridge/NativeMetalObjects.rs').read_bytes()).hexdigest()

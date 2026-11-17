@@ -1,5 +1,5 @@
 diff --git a/NativeBridgeMetalFrontend.mm b/NativeBridgeMetalFrontend.mm
-index d86e4dd..3432c62 100644
+index d86e4dd..2e1e977 100644
 --- a/NativeBridgeMetalFrontend.mm
 +++ b/NativeBridgeMetalFrontend.mm
 @@ -1660,7 +1660,14 @@ static void noteUnalignedTexture(MTLTextureDescriptor *d,NSUInteger offset,NSUIn
@@ -35,12 +35,12 @@ index d86e4dd..3432c62 100644
 +    _argumentsRead=YES;return _argumentList;
 +   }
 +   NmbReflection *reflection=nullptr;
-+   const bool read=_handle ? nmb_function_reflection(_handle,&reflection) :
-+    (_library.handle && _sourceName && nmb_library_function_reflection(_library.handle,_sourceName.UTF8String,&reflection));
++   const bool read=_library.bytes && (_sourceName?:_name) &&
++    nmb_library_function_reflection(_library.bytes,_library.length,(_sourceName?:_name).UTF8String,&reflection);
 +   if(read && reflection) {
 +    NSDictionary *json=reflectionJSON(reflection,"function");
 +    if(json)_argumentList=reflectionArguments(json[@"bindings"]);
-+   } else if(!read && (_handle || _library.handle)) {
++   } else if(!read && _library.bytes) {
 +    noteProblem([NSString stringWithFormat:@"function arguments %@: %@",_sourceName?:_name,lastError()]);
 +   }
 +   _argumentsRead=YES;
@@ -282,25 +282,24 @@ index 0000000..904881f
 + return nil;
 +}
 diff --git a/bridge/NativeMetalObjects.h b/bridge/NativeMetalObjects.h
-index b93b96b..66c2e49 100644
+index b93b96b..5caff11 100644
 --- a/bridge/NativeMetalObjects.h
 +++ b/bridge/NativeMetalObjects.h
-@@ -226,6 +226,10 @@ void nmb_render_pipeline_release(NmbRenderPipeline *);
+@@ -226,6 +226,9 @@ void nmb_render_pipeline_release(NmbRenderPipeline *);
  typedef struct NmbReflection NmbReflection;
  NmbReflection *nmb_render_pipeline_reflection(const struct NmbRenderPipelineDescriptor *);
  NmbReflection *nmb_compute_pipeline_reflection(const struct NmbComputePipelineDescriptor *);
 +/* Original Metal function metadata. Success with *out==NULL means the
 + * library has no reflection; errors return false. Never invent bindings. */
-+bool nmb_function_reflection(const NmbFunction *, NmbReflection **out);
-+bool nmb_library_function_reflection(const NmbLibrary *, const char *name, NmbReflection **out);
++bool nmb_library_function_reflection(const void *bytes, size_t length, const char *name, NmbReflection **out);
  const char *nmb_reflection_json(const NmbReflection *);
  void nmb_reflection_release(NmbReflection *);
  
 diff --git a/bridge/NativeMetalObjects.rs b/bridge/NativeMetalObjects.rs
-index 0fef320..7f97f68 100644
+index 0fef320..c4b266a 100644
 --- a/bridge/NativeMetalObjects.rs
 +++ b/bridge/NativeMetalObjects.rs
-@@ -2007,6 +2007,47 @@ fn reflection_handle(json: String) -> Result<*mut NmbReflection, String> {
+@@ -2007,6 +2007,36 @@ fn reflection_handle(json: String) -> Result<*mut NmbReflection, String> {
      Ok(boxed(NmbReflection(std::ffi::CString::new(json).map_err(|_| "a NUL in the reflection".to_string())?)))
  }
  
@@ -313,33 +312,22 @@ index 0fef320..7f97f68 100644
 +}
 +
 +/// # Safety
-+/// `out` is writable; the function handle remains alive for this call.
++/// `bytes` holds `length` bytes, `name` is a C string, and `out` is writable.
 +#[unsafe(no_mangle)]
-+pub unsafe extern "C" fn nmb_function_reflection(function: *const NmbFunction, out: *mut *mut NmbReflection) -> bool {
-+    guard(false, || {
-+        // SAFETY: the caller's contract.
-+        let out = unsafe { out.as_mut() }.ok_or("null reflection output")?;
-+        *out = std::ptr::null_mut();
-+        let descriptor = get(function)?.0.function_descriptor();
-+        let reflection = descriptor.function.reflection(&metal2vulkan::Budget::standard()).map_err(e("function reflection"))?;
-+        *out = function_reflection_handle(reflection)?;
-+        Ok(true)
-+    })
-+}
-+
-+/// # Safety
-+/// `name` is a C string, `out` is writable, and the library remains alive.
-+#[unsafe(no_mangle)]
-+pub unsafe extern "C" fn nmb_library_function_reflection(library: *const NmbLibrary, name: *const c_char,
++pub unsafe extern "C" fn nmb_library_function_reflection(bytes: *const c_void, length: usize, name: *const c_char,
 +                                                        out: *mut *mut NmbReflection) -> bool {
 +    guard(false, || {
 +        // SAFETY: the caller's contract.
 +        let out = unsafe { out.as_mut() }.ok_or("null reflection output")?;
 +        *out = std::ptr::null_mut();
-+        if name.is_null() { return Err("null function name".into()); }
++        if name.is_null() || bytes.is_null() || length == 0 { return Err("library bytes and function name are required".into()); }
 +        // SAFETY: the caller's contract.
 +        let name = unsafe { CStr::from_ptr(name) }.to_str().map_err(e("function name"))?;
-+        let reflection = get(library)?.0.reflection_for_function_with_name(name).map_err(e("function reflection"))?;
++        // The compile-layer metadata needs no Vulkan device or submission.
++        let bytes = unsafe { std::slice::from_raw_parts(bytes.cast::<u8>(), length) };
++        let library = metal2vulkan::library::Library::parse(bytes).map_err(e("reflection library"))?;
++        let function = library.function(name).map_err(e("reflection function"))?;
++        let reflection = function.reflection(&metal2vulkan::Budget::standard()).map_err(e("function reflection"))?;
 +        *out = function_reflection_handle(reflection)?;
 +        Ok(true)
 +    })
