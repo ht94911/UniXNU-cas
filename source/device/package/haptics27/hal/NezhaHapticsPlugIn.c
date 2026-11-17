@@ -217,9 +217,11 @@ static OSStatus GetPropertyDataSize(AudioServerPlugInDriverRef d,AudioObjectID o
 }
 static CFDictionaryRef diagnostics(void) {
     const void *keys[]={CFSTR("initialized"),CFSTR("starts"),CFSTR("writes"),CFSTR("lastError"),
-        CFSTR("stops"),CFSTR("propertyQueries"),CFSTR("lastUnknownObject"),CFSTR("lastUnknownSelector")};
+        CFSTR("stops"),CFSTR("propertyQueries"),CFSTR("lastUnknownObject"),CFSTR("lastUnknownSelector"),
+        CFSTR("processID")};
     uint32_t counters[]={atomic_load(&initialized),atomic_load(&starts),atomic_load(&writes),atomic_load(&lastError),
-        atomic_load(&stops),atomic_load(&propertyQueries),atomic_load(&lastUnknownObject),atomic_load(&lastUnknownSelector)};
+        atomic_load(&stops),atomic_load(&propertyQueries),atomic_load(&lastUnknownObject),atomic_load(&lastUnknownSelector),
+        (uint32_t)getpid()};
     CFNumberRef values[sizeof(counters)/sizeof(counters[0])]={0};unsigned made=0;
     for(;made<sizeof(values)/sizeof(values[0]);++made) {
         int64_t value=counters[made];values[made]=CFNumberCreate(NULL,kCFNumberSInt64Type,&value);

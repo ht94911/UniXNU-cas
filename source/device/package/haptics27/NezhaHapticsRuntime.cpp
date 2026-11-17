@@ -143,6 +143,7 @@ int ioctlDevice(dev_t,u_long command,caddr_t data,int,struct proc *p) {
     if(command!=NZ_HAPTICS_GET_STATUS || !data)return ENOTTY;
     IOLockLock(hapticGate);int e=client!=p?EACCES:0;
     if(!e)nz_haptics_status(&queue,(NzHapticsStatus *)data);
+    note("HAL status",0,e);
     IOLockUnlock(hapticGate);return e;
 }
 uint64_t packetTime(uint64_t host,uint64_t now,int *error) {

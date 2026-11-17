@@ -31,3 +31,5 @@ GPU051指定后的审查：真实audiomxd UserName mobile/UID501已核，cdev501
 007后续实际修正：STOP完成后readback/cache先于停止状态发布，QUD_CANCEL撤掉diagnosticOwner不能留下播放前电气快照；正常HAL客户端期间采样，显式valid/sequence/sampledus。scripts/check-haptics-electrical-stop.py直接提取并执行生产stopped/cacheElectrical，在原硬件模型上确认owner先撤掉、HPWR恢复、失败回读无有效样本，ASan/UBSan通过。007实际direct振动/完全停止与一次正常返回后验已完成，系统触觉待008。
 
 010已经实际执行普通UIKit应用，所有按钮无物理振动；精确app journal记录foreground/selection/impact/notification、CoreHaptics4099，uidd两执行器ID均0，无HALopen/start/PCM/plays。正常返回及root/GPT/prefix/退出/释放通过。011确认的接口缺口为nhpt未登记且返回不可跨进程封送的raw整数数组；改CFPropertyList并按原CustomPropertyInfo声明。初始化端点仅open/ioctl/close不播放，launcher限时目录枚举/preflight，应用查询uidd/duid/pibi；新增生产HAL主机契约用例随Mac构建执行。system HAL mount变化为沿既有成熟挂载路径的有限验证，不能提前宣称其解决009/010。
+
+011实际HAL加载、Actuator35和nhpt跨进程读取均已通过，原VAD仍0、engine4099、normalplays0。缺drte在原CatalogDeviceInfo/HasProperty false分支继续分类，不能用作新接口返回或rootcause。应用本进程HALInitialize errno1与原audiomxd成功open分别记录，不能混成原server硬件错误。下一步仅原VirtualAudio加载/初始化/路由缺口。

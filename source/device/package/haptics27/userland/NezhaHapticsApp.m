@@ -38,7 +38,7 @@ typedef int32_t (*HapticGetProperty)(uint32_t,const HapticProperty *,uint32_t,co
     HapticGetProperty get=handle?(HapticGetProperty)dlsym(handle,"AudioObjectGetPropertyData"):NULL;
     if(!get){[self record:@"CoreAudio device query unavailable" success:NO error:nil];return;}
     NSMutableArray *devices=[NSMutableArray array];
-    for(NSString *name in @[@"Actuator",@"VirtualAudioDevice_Actuator"]) {
+    for(NSString *name in @[@"Actuator",@"VirtualAudioDevice_Actuator",@"VirtualAudioDevice_Default"]) {
         CFStringRef uid=(__bridge CFStringRef)name;
         HapticProperty address={'uidd','glob',0};uint32_t device=0,size=sizeof(device);
         int32_t error=get(1,&address,sizeof(uid),&uid,&size,&device);
@@ -59,13 +59,32 @@ typedef int32_t (*HapticGetProperty)(uint32_t,const HapticProperty *,uint32_t,co
             @"diagnostic":values ?: @{}}];
         if(diagnostic)CFRelease(diagnostic);
     }
-    HapticProperty address={'pibi','glob',0};uint32_t plugin=0;
-    CFStringRef bundle=CFSTR("org.unixnu.nezha.haptics27");
-    HapticTranslation translation={&bundle,sizeof(bundle),&plugin,sizeof(plugin)};
-    uint32_t size=sizeof(translation);
-    int32_t pluginError=get(1,&address,0,NULL,&size,&translation);
-    if(pluginError || size!=sizeof(translation))plugin=0;
-    NSDictionary *row=@{@"audioDevices":devices,@"HALPlugin":@(plugin),@"HALPluginError":@(pluginError),
+    NSMutableArray *plugins=[NSMutableArray array];
+    for(NSString *identifier in @[@"org.unixnu.nezha.haptics27",@"com.apple.audio.CoreAudio.VirtualAudio"]) {
+        HapticProperty address={'bidp','glob',0};uint32_t plugin=0,size=sizeof(plugin);
+        CFStringRef bundle=(__bridge CFStringRef)identifier;
+        int32_t pluginError=get(1,&address,sizeof(bundle),&bundle,&size,&plugin);
+        if(pluginError || size!=sizeof(plugin) || !plugin) {
+            plugin=0;HapticTranslation translation={&bundle,sizeof(bundle),&plugin,sizeof(plugin)};
+            address.selector='pibi';size=sizeof(translation);
+            pluginError=get(1,&address,0,NULL,&size,&translation);
+            if(pluginError || size!=sizeof(translation))plugin=0;
+        }
+        NSMutableDictionary *details=[NSMutableDictionary dictionaryWithDictionary:
+            @{@"bundle":identifier,@"plugin":@(plugin),@"error":@(pluginError)}];
+        if(plugin && [identifier isEqualToString:@"com.apple.audio.CoreAudio.VirtualAudio"]) {
+            /* The original VirtualAudio consumer exposes vain before its
+             * other properties become available: GetPropertyDataSize is 4,
+             * and MediaExperience queries this initialization state. */
+            address=(HapticProperty){'vain','glob',0};uint32_t initialized=0;
+            size=sizeof(initialized);int32_t stateError=get(plugin,&address,0,NULL,&size,&initialized);
+            details[@"initializationError"]=@(stateError);
+            details[@"initializationBytes"]=@(size);
+            if(!stateError && size==sizeof(initialized))details[@"initializationState"]=@(initialized);
+        }
+        [plugins addObject:details];
+    }
+    NSDictionary *row=@{@"audioDevices":devices,@"audioPlugins":plugins,
         @"uptime":@(NSProcessInfo.processInfo.systemUptime)};
     NSData *data=[NSJSONSerialization dataWithJSONObject:row options:0 error:NULL];
     @try { [self.log writeData:data];[self.log writeData:[@"\n" dataUsingEncoding:NSUTF8StringEncoding]]; }

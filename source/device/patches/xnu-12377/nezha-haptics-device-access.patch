@@ -42,3 +42,18 @@
  	return error;
  }
  
+--- a/bsd/kern/sys_generic.c
++++ b/bsd/kern/sys_generic.c
+@@ -930,6 +930,12 @@
+ 	context.vc_ucred = fp->fp_glob->fg_cred;
+ 
+ #if CONFIG_MACF
++	/* The original fileglob policy precedes the vnode ioctl hook. Permit
++	 * only the existing read-only haptic status command on our devfs node;
++	 * every other file, process and command keeps its policy result. */
++	extern boolean_t nezha_haptics_ioctl(vfs_context_t, vnode_t, u_long) __attribute__((weak_import));
+ 	error = mac_file_check_ioctl(context.vc_ucred, fp->fp_glob, com);
++	if (error == EPERM && fp->f_type == DTYPE_VNODE && nezha_haptics_ioctl &&
++	    nezha_haptics_ioctl(&context, (vnode_t)fp_get_data(fp), com)) error = 0;
+ 	if (error) {
+ 		goto out;

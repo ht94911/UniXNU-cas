@@ -112,13 +112,19 @@ static void inspect_hal_bundle(void)
         }
         closedir(stream);
     }
-    NSURL *url=[NSURL fileURLWithPath:@"/System/Library/Audio/Plug-Ins/HAL/NezhaHaptics27.driver" isDirectory:YES];
-    CFBundleRef bundle=CFBundleCreate(NULL,(__bridge CFURLRef)url);
-    CFErrorRef error=NULL;Boolean preflight=bundle?CFBundlePreflightExecutable(bundle,&error):false;
-    NSString *message=error?[(__bridge NSError *)error localizedDescription]:@"";
-    fprintf(stderr,"nezha-haptics-launch: HAL directory=%s entries=%u expected=%u bundle=%u preflight=%u error=%ld description=%s\n",
-        directory,count,found,(unsigned)(bundle!=NULL),(unsigned)preflight,error?(long)CFErrorGetCode(error):0,message.UTF8String);
-    if(error)CFRelease(error);if(bundle)CFRelease(bundle);
+    fprintf(stderr,"nezha-haptics-launch: HAL directory=%s entries=%u expected=%u\n",directory,count,found);
+    NSArray *paths=@[@"/System/Library/Audio/Plug-Ins/HAL/NezhaHaptics27.driver",
+        @"/Library/Audio/Plug-Ins/HAL/VirtualAudio.plugin"];
+    for(NSString *path in paths) {
+        NSURL *url=[NSURL fileURLWithPath:path isDirectory:YES];
+        CFBundleRef bundle=CFBundleCreate(NULL,(__bridge CFURLRef)url);
+        CFErrorRef error=NULL;Boolean preflight=bundle?CFBundlePreflightExecutable(bundle,&error):false;
+        NSString *message=error?[(__bridge NSError *)error localizedDescription]:@"";
+        fprintf(stderr,"nezha-haptics-launch: HAL path=%s bundle=%u preflight=%u error=%ld description=%s\n",
+            path.UTF8String,(unsigned)(bundle!=NULL),(unsigned)preflight,
+            error?(long)CFErrorGetCode(error):0,message.UTF8String);
+        if(error)CFRelease(error);if(bundle)CFRelease(bundle);
+    }
 }
 
 #ifndef NEZHA_CAMERA_LAUNCH_TEST
