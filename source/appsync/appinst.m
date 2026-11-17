@@ -9,6 +9,16 @@
 - (BOOL)installApplication:(NSURL *)url withOptions:(NSDictionary *)options error:(NSError **)error;
 @end
 
+#ifdef UNIXNU_APPSYNC_PROBE
+extern void unixnu_appsync_probe_error(const char *stage, NSError *error);
+extern void unixnu_appsync_probe_exception(NSException *exception);
+#else
+static void unixnu_appsync_probe_error(const char *stage, NSError *error)
+{
+    NSLog(@"%s failed: %@", stage, error);
+}
+#endif
+
 int main(int argc, const char **argv) {
     @autoreleasepool {
         if (argc != 2 && argc != 3) {
@@ -25,19 +35,27 @@ int main(int argc, const char **argv) {
         NSError *error = nil;
         if (![files createDirectoryAtPath:directory withIntermediateDirectories:NO
             attributes:@{NSFilePosixPermissions: @0755} error:&error]) {
-            NSLog(@"%@", error); return 4;
+            unixnu_appsync_probe_error("create-staging-directory", error);
+            return 4;
         }
         NSString *copy = [directory stringByAppendingPathComponent:@"install.ipa"];
         BOOL installed = NO;
         @try {
             // MobileInstallation may consume the input. Keep the caller's IPA.
-            if ([files copyItemAtPath:@(argv[argc - 1]) toPath:copy error:&error])
+            if ([files copyItemAtPath:@(argv[argc - 1]) toPath:copy error:&error]) {
                 installed = [workspace installApplication:[NSURL fileURLWithPath:copy]
                     withOptions:argc == 3 ? @{@"CFBundleIdentifier": @(argv[1]), @"ApplicationType": @"User"} :
                         @{@"ApplicationType": @"User"} error:&error];
-            if (!installed) NSLog(@"Install failed: %@", error);
+                if (!installed) unixnu_appsync_probe_error("install-application", error);
+            } else {
+                unixnu_appsync_probe_error("copy-ipa", error);
+            }
         } @catch (NSException *exception) {
+#ifdef UNIXNU_APPSYNC_PROBE
+            unixnu_appsync_probe_exception(exception);
+#else
             NSLog(@"Install exception: %@", exception);
+#endif
         } @finally {
             [files removeItemAtPath:directory error:NULL];
         }

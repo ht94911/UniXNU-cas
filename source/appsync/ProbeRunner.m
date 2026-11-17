@@ -41,6 +41,35 @@ static void report(const char *format, ...)
     (void)write(STDERR_FILENO,record.data,record.bytes);
 }
 
+static NSString *singleLine(NSString *message)
+{
+    message = [message stringByReplacingOccurrencesOfString:@"\r" withString:@" "];
+    return [message stringByReplacingOccurrencesOfString:@"\n" withString:@" "];
+}
+
+void unixnu_appsync_probe_error(const char *stage, NSError *error)
+{
+    if (!error) {
+        report("APPSYNC_PROBE error stage=%s domain=none code=0\n", stage);
+        return;
+    }
+    for (unsigned depth = 0; error && depth < 4; ++depth) {
+        NSString *message = singleLine(error.localizedDescription);
+        report("APPSYNC_PROBE error stage=%s depth=%u domain=%.96s code=%ld message=%.512s\n",
+               stage, depth, error.domain.UTF8String ?: "-", (long)error.code,
+               message.UTF8String ?: "-");
+        id underlying = error.userInfo[NSUnderlyingErrorKey];
+        error = [underlying isKindOfClass:[NSError class]] && underlying != error ? underlying : nil;
+    }
+}
+
+void unixnu_appsync_probe_exception(NSException *exception)
+{
+    NSString *message = singleLine(exception.reason);
+    report("APPSYNC_PROBE exception name=%.96s message=%.512s\n",
+           exception.name.UTF8String ?: "-", message.UTF8String ?: "-");
+}
+
 static int runInstall(const char *name)
 {
     NSString *path = [@"/private/var/ngpu/appsync/probe" stringByAppendingPathComponent:@(name)];

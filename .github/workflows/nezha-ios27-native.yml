@@ -1,7 +1,7 @@
 name: nezha iPhone27 AppSync one-shot direct CLI probe
 on:
   push:
-    branches: [codex/ios27-appsync-probe030-20261117]
+    branches: [codex/ios27-appsync-probe031-20261117]
   workflow_dispatch:
 permissions:
   contents: read
@@ -36,7 +36,7 @@ jobs:
           mkdir -p "$out"
           sdk="$(xcrun --sdk iphoneos --show-sdk-path)"
           flags=(-target arm64e-apple-ios27.0 -isysroot "$sdk" -fobjc-arc -Wall -Wextra -Werror)
-          xcrun clang "${flags[@]}" -Dmain=unixnu_appinst_entry -c task/source/appsync/appinst.m -o "$RUNNER_TEMP/appinst.o"
+          xcrun clang "${flags[@]}" -Dmain=unixnu_appinst_entry -DUNIXNU_APPSYNC_PROBE -c task/source/appsync/appinst.m -o "$RUNNER_TEMP/appinst.o"
           xcrun clang "${flags[@]}" -framework Foundation task/source/appsync/ProbeRunner.m "$RUNNER_TEMP/appinst.o" -o "$out/appsync-probe"
           codesign --force --sign - --pagesize 4096 --digest-algorithm sha256 \
             --identifier org.unixnu.nezha.appsync-probe --entitlements task/ci/appsync-probe-entitlements.plist "$out/appsync-probe"
