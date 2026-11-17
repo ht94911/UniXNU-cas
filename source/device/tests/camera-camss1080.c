@@ -12,6 +12,8 @@ struct Session {
     uint32_t rx_config1;
     bool vfe_enabled;
     bool rdi_started;
+    bool prefetch_enabled;
+    bool prefetch_range;
 };
 
 static void write_csid(void *context, uint32_t offset, uint32_t value)
@@ -41,11 +43,18 @@ static void write_vfe(void *context, uint32_t offset, uint32_t value)
     ++session->writes;
     if (offset == 0x2c00) {
         assert(value == 0x10001);
+        assert(session->prefetch_enabled && session->prefetch_range);
         session->vfe_enabled = true;
     } else if (offset == 0x2c04) {
         assert(session->vfe_enabled && session->buffer_count < 2);
         assert(value == (session->buffer_count == 0 ? 0x200000u : 0x210000u));
         ++session->buffer_count;
+    } else if (offset == 0x2c60) {
+        assert(value == 1 && !session->vfe_enabled);
+        session->prefetch_enabled = true;
+    } else if (offset == 0x2c64) {
+        assert(value == UINT32_MAX && session->prefetch_enabled && !session->vfe_enabled);
+        session->prefetch_range = true;
     }
 }
 

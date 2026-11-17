@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Camera086: fullRAW invalidate/four dirty marker page publication, staging copy outside mutex and actual output pixel samples; qualified085 source Metal reused",
+  "purpose": "Camera088 existing VFE1080 MMU prefetch before enable; existing mobile501/FBS launcher with fixed actualCDHash;GPU051/native086 source retained",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "40b9f87cca92894515383204c0874d17a83475d0",
+  "device_revision": "d91a3b57d8b3c53d9773d9836282a3e0ce819887",
   "soc_revision": "device-local-GPU051-camera074-bankstreamretirement",
   "xcode": "26.6",
   "files": {
@@ -429,7 +429,7 @@
     "source/device/package/camera/NezhaCameraProfile.c": "d0702e127d143ef998bc48259d0d6b7b360500a7b8acd9716796b5983118d29f",
     "source/device/package/camera/NezhaCameraProfile.h": "c75fef159e0d56edd88d2ea10e50fc313a2d73fc4f818e07167d75ef5ec17e2a",
     "source/device/package/camera/NezhaCameraProfileSlot.S": "83b9e34a382d62155c35aa6d3514ee7c9d641ee0c61e03faf5e3ad9cfe2015d9",
-    "source/device/package/camera/NezhaCameraRdi1080.c": "b3c636178f7e24446adfa5f36e6ae6cc5489ea5b8c6f53ac82405bfa28864da3",
+    "source/device/package/camera/NezhaCameraRdi1080.c": "d223c8b5e6ec4cbda28c14e135d1b767a0627233ac48bcc1e2cd9550db262d5f",
     "source/device/package/camera/NezhaCameraRdi1080.h": "faeb952707f6bab074150eb0bd5a0cfd3c3d553c9edff0bf384bca70a0e2e207",
     "source/device/package/camera/NezhaCameraRegisterIo.h": "5d8fd09ec4e7dcfef34122abd80c88700b62c1ec2833ad1182e6ca708a5fee12",
     "source/device/package/camera/NezhaCameraRpmh.c": "8b47eab5f72d1a759d7d45288464cb4b99d445a8899d57775d1ad621edbdd326",
@@ -438,7 +438,7 @@
     "source/device/package/camera/upstream/QcomRpmh.h": "e8ae5b8d52cc7e3ec73d3a7a5f5ce34cdfd5357af22853bb0bf523d921ac8d27",
     "source/device/package/camera/upstream/service-cache/ORIGIN.json": "972a3639efd7837369ec2bae77edc85bed421a82a2ac55ca32fe33ca91ca93f6",
     "source/device/package/camera/upstream/service-cache/cellular_runtime.py": "a40684ecd9b828dbc9dbaca285e72b87d50fa3dbd451a16eecb799125d5934de",
-    "source/device/package/camera/userland/CAMERA075.md": "1ab6629a577919e319a22a761ca93f1f8b0ce28f976d77fe178444c8c522fb6b",
+    "source/device/package/camera/userland/CAMERA075.md": "31d784ef9ae8e4d3f5aa0a8fc044d625f4c7122c4a322bd258dcc12dbb53ac55",
     "source/device/package/camera/userland/NezhaCameraDeviceBackend.c": "0ab259eca1a6ad30ef2763ba5a6a4701a1504be2e29874ff2e194d025cb8791a",
     "source/device/package/camera/userland/NezhaCameraDeviceBackend.h": "bd221f90b66840935dad111de76c8a8dc35989b40f42712b2aa201e8245264d1",
     "source/device/package/camera/userland/NezhaCameraDiscovery.h": "c2fe0fec08c8b445c9080a845ed0dace057e212094c35f7b734907181ec66338",
@@ -454,7 +454,7 @@
     "source/device/package/camera/userland/NezhaCameraGraphOutput.h": "c1e87f82ab36945a3ea05591281f731fe139483f937bf8553129750dfa67ec3c",
     "source/device/package/camera/userland/NezhaCameraLSRegistration.m": "9dd471da953fcd325c6e9240b9cbff5f5a1920a3075bcce5de69a8467f5cc200",
     "source/device/package/camera/userland/NezhaCameraLaunch.entitlements.plist": "990976e864664ee1a6264c30806d55194650549bbf3f9ee484d80a456230e054",
-    "source/device/package/camera/userland/NezhaCameraLaunch.m": "05c02b16832338690c3167f17845d816a3482aac1c95a3e3036ab63439c29b99",
+    "source/device/package/camera/userland/NezhaCameraLaunch.m": "465991c9a1e342eb4d9c81c15215d5b6f69cef33bd3d3b0e27c4da4de68ba8e0",
     "source/device/package/camera/userland/NezhaCameraPixelBuffer.c": "622f75ca84ad6b478472193e276b00a0b8ae702bb4753d0ce9121c4cc435ef6e",
     "source/device/package/camera/userland/NezhaCameraPixelBuffer.h": "9d76ab5819a877a5e4964139a63f990c2bbcdd69f793422dd2a49423c31649cc",
     "source/device/package/camera/userland/NezhaCameraPreview.c": "2177a1101666599a84a578b12c9a0804711a92c5efb30fc73d6e5055eb427f79",
@@ -530,7 +530,7 @@
     "source/device/patches/xnu-12377/zzzzzz-nezha-adreno840-start.patch": "d32bb0d5e678e5773786dcce90467e0258d844550b418b438e1548fb32392f79",
     "source/device/patches/xnu-12377/zzzzzz-nezha-camera-addon-size.patch": "5087cd2e214f0fd88f7105a5de56af74e01ab8d6bc75b7c9a65a36ba07245159",
     "source/device/patches/xnu-12377/zzzzzz-nezha-camera-client-observer.patch": "619b5005bc0ea1bdbcfe15f8ff91c4c103362cad9001cec73340e4b568578f4b",
-    "source/device/patches/xnu-12377/zzzzzz-nezha-camera-discovery-identity.patch": "aea599c2b8be8ca4310d3ccfc5c687ca9ce0a7b4085d713eace54c7647aa444d",
+    "source/device/patches/xnu-12377/zzzzzz-nezha-camera-discovery-identity.patch": "f13cdd2b75ea70cf7f12fa2cbc87920e4f78d41d46edf2496e15bb96a3c864ac",
     "source/device/patches/xnu-12377/zzzzzz-nezha-camera-discovery-launch.patch": "14e5c1a987985e5e847341ac5b22829ed34cb0dbd2adccce232b1c3a2bebd644",
     "source/device/patches/xnu-12377/zzzzzz-nezha-camera-dyld-policy.patch": "f8d0d761fd5601aa0b0f7ab0059ff81f8657b5a5fc9917a3af11447a80043ae6",
     "source/device/patches/xnu-12377/zzzzzz-nezha-camera-exit-reason.patch": "90ae81b9f1fd9236ffdc03ba6128ec908ec5a225c58075a28097f8ead056060c",
@@ -546,7 +546,7 @@
     "source/device/patches/xnu-12377/zzzzzz-nezha-input-chain-trace.patch": "c4d05419e7ec3af0de619754bdb6c2deb69b74d714c2219e509360ebfe1b947e",
     "source/device/patches/xnu-12377/zzzzzz-nezha-kernel-class-lock-order.patch": "cd90c61d6838f4e6a7248da81b6180f14db03d00f2f7a64f4bbe4034c0aa8dcb",
     "source/device/patches/xnu-12377/zzzzzz-nezha-sigp-startup-order.patch": "18275910b909d187e459c68f5d937cc09bc01923180141dc155aa7f4ff14aaf9",
-    "source/device/porting.toml": "9e37d59e709764755a66421d325122cecd2eb57a101278bcfa9f195b7da9df02",
+    "source/device/porting.toml": "2ce9571066c86a6991f0ec7c7cb7a70f914c3bb1c3fb0b07f05fe80e584bd554",
     "source/device/scripts/aes-iphone-24A446.json": "d55ed6d1d65fdff5de46dd602552eaf3309d1f7370fcd3f15eddb391225ffe8a",
     "source/device/scripts/als-event-service-iphone-24A446.json": "34c27f1a58bab3c518570a57c006a23fce315b90a584e691629d61c0850bd4d8",
     "source/device/scripts/backlight-iphone-24A446.json": "446eb5fe6440335bfe9fca75b32f7d815ddcafbb8a3c2d7f697c1e5c3f40f6cb",
@@ -608,7 +608,7 @@
     "source/device/tests/camera-af-parking.c": "4f631af95eccaff4751fc2cb5a00b21e79926a896d4fd4cc4f6daa1a8d325912",
     "source/device/tests/camera-ak7316.c": "6f5920e70953c697dfbd90fb3625263e60c5475ef3b7ca014b6d08fded815f5c",
     "source/device/tests/camera-camcc.c": "72ece19cac1982f5ec73e68c4caa481e8cf94a409866cdb7b18bbf784bb7c45e",
-    "source/device/tests/camera-camss1080.c": "6454d5b2aae9814101807a6c2723d841dc2740c81d4a9d07677d372eb5c45a95",
+    "source/device/tests/camera-camss1080.c": "98c9b3be1d0863232f8c0c6d876a39ec2157bcabe3aeced2aa34a7d48e16735c",
     "source/device/tests/camera-cci-burst.c": "4976ea09515df490bbd70c41eed92af728bb6361d4e81f8794f72b4e2ad9ea3c",
     "source/device/tests/camera-cci.c": "0d5d00c31811b2e2469743d7ad1737e870bebc80c8fc3e0888f07d64ed151d6f",
     "source/device/tests/camera-cpas.c": "40c96fb2497b8b10465b604a4f6a10e881fb6e1f9c8135dd6f048204985129b1",
@@ -625,7 +625,7 @@
     "source/device/tests/camera-ife-bandwidth.c": "42985b5945450d5c9916e78d783361df50de8ed97f65912cc7152d9925a56c01",
     "source/device/tests/camera-ife-rsc.c": "30252295f5f4dd0578dd8a56c73efc612aa2eb3cc386debea27f29cf347d1118",
     "source/device/tests/camera-irq-queue.c": "621b50bce1b6eb9982c8f4c1e2f0e9cd242be57e420b486a90929993fc09a44b",
-    "source/device/tests/camera-launch-registration.m": "ca2e6a1de6c2801ba467040c89988442164d02ee2b396102d454a4a9a24a4a7d",
+    "source/device/tests/camera-launch-registration.m": "b45bc90e34d4f37f11fa2dc361fd7be2a1093e0c4097cc97ecd50a8fe033ea65",
     "source/device/tests/camera-ls-registration.m": "a2bd935bcf2b7fe5bf884fa074a8f7f71f2469e8cc5a50aa3c5e535b33986a69",
     "source/device/tests/camera-main-capture.c": "226d3d48b868dfac9f8db052abac515b6c5ff11172ff47f74c0d635a4520a22e",
     "source/device/tests/camera-main-pins.c": "ffab1b051044cba4eab2624d72b18b4ebd8f8f7440a864486e055f476d91fda1",
@@ -657,7 +657,7 @@
     "source/device/tests/camera-platform/vendor-fixture/ptrauth.h": "91a3caaf31d58a2172b56ff1a751104aaf84c3ea08ee31bff78d6814700dfdca",
     "source/device/tests/camera-preview.c": "87054cf1d7a211dff14f9a2dc26cf67aff77f80821e41b5fea96350fadfa55ab",
     "source/device/tests/camera-profile.c": "622d6d94a6df616564afc7106928881b10bbeb3d4a8e9ab4b7a537ff8d38e490",
-    "source/device/tests/camera-rdi1080.c": "20be2764ac866bf290e8fc058be51c19cff46a1df212f0b61af5f8e2a3be68b9",
+    "source/device/tests/camera-rdi1080.c": "4cfb8114853851084beb80d362d115dbd27417f1393944b2b0f446becd3c8b98",
     "source/device/tests/camera-rpmh.c": "03091e1ef65d2a672fca178c98fad33e1a379065250c4710d061aae9eaad6d5c",
     "source/device/tests/camera-smmu-retire.c": "3b2cb4cc2f377fcd28ba261a1c72707906e704330e64fd8628bc3f133c6653b2",
     "source/device/tests/camera-still-allocation.c": "bdcf27fcc385b4169c210988680e0c39a5c4bb70bbc74b087c438ecd2e8da379",
@@ -1066,7 +1066,7 @@
     "existing_trace_event": 65,
     "model_check": "tests/check-gpu-bo-phases.py"
   },
-  "userland_revision": "f712214427e829f2794fc86ce3c355d7bf1b39e0",
+  "userland_revision": "d91a3b57d8b3c53d9773d9836282a3e0ce819887",
   "camera": {
     "source_revision": "2bf0b2cc70f2bc56c500ded1311ca1c515c67674",
     "device_base": "7435e49e46705d2bfcabe09487ff80a4821fd577",
@@ -1075,7 +1075,7 @@
     "private_camera_modes_uploaded": false,
     "failed_predecessor_run": 43298685064,
     "stock_module_bytes_uploaded": false,
-    "previous_native_run": 43697188183,
+    "previous_native_run": 44103442360,
     "optional_probe_mode": 5,
     "full_stock_profiles_uploaded": false,
     "local_profile_host_roundtrips": 4,
@@ -1205,9 +1205,9 @@
     "no_AE_AF_AWB_stable_flags_fabricated": true,
     "shared_resources_single_owner": "build-nezha27-als-owner.py",
     "native_probe_mode": 6,
-    "helper_native_run": 43893847994,
-    "helper_native_head": "8969e9807b9feb0cea03dd99d002f6727bbb73d2",
-    "helper_cdhash": "29fa51cca1a021bab5ab8d5f1504dbae3f6c4d2d",
+    "helper_native_run": 44186736257,
+    "helper_native_head": "e6261165ab633ca93d8dc9ccf970431aa972f027",
+    "helper_cdhash": "6f4575d581997dccad3061d6e288e1ca02a68cb6",
     "current_registration_API": "registerApplicationForRebuildWithInfoDictionaries:requestContext:registrationError:",
     "physical_preview_verified": false,
     "physical_photo_verified": false,
@@ -1234,7 +1234,11 @@
     "staging_copy_outside_mutex": true,
     "staging_ready_commit_after_copy": true,
     "first_four_actual_rendered_pixel_samples": true,
-    "production_Metal_reused085": true
+    "production_Metal_reused085": true,
+    "native_MMU_prefetch_before_enable": true,
+    "unattended_mobile_FBS_launch": true,
+    "physical_Camera_preview_verified": false,
+    "physical_Camera_photo_verified": false
   },
   "base_GPU051": {
     "boot_sha256": "4e4b785ca1bf7bea18d68248ade4cde09a9d9efb5d557fe65e4eaa975dac849a",
@@ -1247,6 +1251,6 @@
   "source_parent_kernel": "f712214427e829f2794fc86ce3c355d7bf1b39e0",
   "userland_built_separately": true,
   "builder_sha256": "20f7bcb06f6ce5f8a3d4d12e4272a8f3c8e684f489c8096f678fe9cf3c8feaf1",
-  "camera079_launcher_cdhash": "36c9e1f0c4a1942f56067f1abaf45dc3b93911e9",
-  "library_source_revision": "40b9f87cca92894515383204c0874d17a83475d0"
+  "camera079_launcher_cdhash": "6f4575d581997dccad3061d6e288e1ca02a68cb6",
+  "library_source_revision": "d91a3b57d8b3c53d9773d9836282a3e0ce819887"
 }

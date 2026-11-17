@@ -5,15 +5,15 @@
 #include <stdio.h>
 
 struct Writes {
-    uint32_t offsets[8];
-    uint32_t values[8];
+    uint32_t offsets[10];
+    uint32_t values[10];
     unsigned count;
 };
 
 static void capture_write(void *context, uint32_t offset, uint32_t value)
 {
     struct Writes *writes = context;
-    assert(writes->count < 8);
+    assert(writes->count < 10);
     writes->offsets[writes->count] = offset;
     writes->values[writes->count++] = value;
 }
@@ -37,9 +37,11 @@ int main(void)
     assert(program.layout.frame_bytes == 11796480 && program.frame_increment == 46080);
     struct Writes writes = {0};
     nezha_camera_rdi1080_program_geometry(&program, &writes, capture_write);
-    assert(writes.count == 8);
+    assert(writes.count == 10);
     assert(writes.offsets[0] == 0x2c08 && writes.values[0] == 46080);
     assert(writes.offsets[1] == 0x2c0c && writes.values[1] == 0xffff);
+    assert(writes.offsets[8] == 0x2c60 && writes.values[8] == 1);
+    assert(writes.offsets[9] == 0x2c64 && writes.values[9] == UINT32_MAX);
     for (unsigned i = 0; i < writes.count; ++i) {
         assert(writes.offsets[i] != 0x2c00 && writes.offsets[i] != 0x2c04);
     }

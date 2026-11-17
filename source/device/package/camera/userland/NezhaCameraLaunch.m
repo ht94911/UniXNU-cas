@@ -1,22 +1,20 @@
 /* SPDX-License-Identifier: MIT */
-/* Use the original LaunchServices request for Camera.app. Original24A446
+/* Use the original LaunchServices and FrontBoard request for Camera.app. Original24A446
  * registerContainerizedApplicationWithInfoDictionaries: registers a
  * system bundle missing from the current Data's application registration.
  * Registration is restricted to the existing /Applications/Camera.app;
  * no bundle, executable, signature, user app or root volume is rewritten. */
 #import <Foundation/Foundation.h>
-#ifndef NEZHA_CAMERA_LAUNCH_TEST
-#import <AVFoundation/AVFoundation.h>
-#import <CoreMedia/CoreMedia.h>
-#include "NezhaCameraDiscovery.h"
-#endif
 #import <objc/runtime.h>
+#include <dispatch/dispatch.h>
 #include <dlfcn.h>
+#include <fcntl.h>
 #include <signal.h>
 #include <stdio.h>
+#include <sys/sysctl.h>
 #include <unistd.h>
 
-@interface NSObject (NezhaCameraLaunchServices)
+@interface NSObject (CameraLaunchServices)
 + (id)defaultWorkspace;
 + (id)applicationProxyForIdentifier:(NSString *)identifier;
 - (NSURL *)bundleURL;
@@ -26,8 +24,13 @@
 - (id)registerContainerizedApplicationWithInfoDictionaries:(NSArray *)dictionaries
     operationUUID:(NSUUID *)operation requestContext:(id)context saveObserver:(id)observer
     registrationError:(NSError **)error;
-- (BOOL)openApplicationWithBundleID:(NSString *)identifier;
-- (id)initWithBundleIdentifier:(NSString *)identifier allowPlaceholder:(BOOL)placeholder error:(NSError **)error;
+- (void)setTargetUserID:(NSNumber *)uid;
++ (id)serviceWithDefaultShellEndpoint;
++ (id)optionsWithDictionary:(NSDictionary *)options;
+- (void)openApplication:(NSString *)identifier withOptions:(id)options
+    completion:(void (^)(id process,NSError *error))completion;
+- (int)pid;
+- (BOOL)isValid;
 @end
 
 static BOOL registered_camera(id application)
@@ -50,8 +53,67 @@ static void report_proxy(const char *step,id application)
         url.path.UTF8String ?: "<absent>");
 }
 
+static int camera_output(const char *path)
+{
+    int fd=open(path,O_WRONLY|O_CREAT|O_TRUNC|O_NOFOLLOW,0600);
+    if(fd<0) return 10;
+    if(dup2(fd,STDERR_FILENO)<0) {
+        close(fd);
+        return 10;
+    }
+    close(fd);
+    return 0;
+}
+
+/* Original LaunchServices forwards to this same default-shell service.
+ * GNSS008's error identified the intermediate lsd springBoardQueue timeout.
+ * Submit one ordinary request and retain the actual process/error callback. */
+static int request_camera(Class serviceClass,Class optionsClass,NSString *identifier,dispatch_time_t end)
+{
+    if (![serviceClass respondsToSelector:@selector(serviceWithDefaultShellEndpoint)] ||
+        ![optionsClass respondsToSelector:@selector(optionsWithDictionary:)]) {
+        fputs("nezha-camera-launch: original shell launch service unavailable\n",stderr);
+        return 8;
+    }
+    id service=[serviceClass serviceWithDefaultShellEndpoint];
+    id options=[optionsClass optionsWithDictionary:@{}];
+    if (!options || ![service respondsToSelector:@selector(openApplication:withOptions:completion:)]) {
+        fputs("nezha-camera-launch: original shell launch endpoint/options unavailable\n",stderr);
+        return 8;
+    }
+    dispatch_semaphore_t completion=dispatch_semaphore_create(0);
+    __block id process=nil;
+    __block NSError *launch_error=nil;
+    fputs("nezha-camera-launch: Camera registered=1 launch_submitted=1 method=FBSOpenApplicationService/openApplication:withOptions:completion:\n",stderr);
+    [service openApplication:identifier withOptions:options
+        completion:^(id handle,NSError *error) {
+            process=handle;
+            launch_error=error;
+            dispatch_semaphore_signal(completion);
+        }];
+    if (dispatch_semaphore_wait(completion,end)) {
+        fputs("nezha-camera-launch: Camera registered=1 launch_request=0 launch_completed=0 completion_timeout=1 Camera_preview_verified=0\n",stderr);
+        return 11;
+    }
+    const int pid=[process respondsToSelector:@selector(pid)] ? [process pid]:0;
+    const BOOL valid=[process respondsToSelector:@selector(isValid)] && [process isValid];
+    const BOOL requested=pid>0 && valid && launch_error==nil;
+    fprintf(stderr,"nezha-camera-launch: Camera registered=1 launch_request=%u launch_completed=1 process_handle=%u process_pid=%d process_valid=%u error=%ld domain=%s Camera_preview_verified=0\n",
+        (unsigned)requested,(unsigned)(process!=nil),pid,(unsigned)valid,(long)launch_error.code,
+        launch_error.domain.UTF8String ?: "<none>");
+    if (launch_error) {
+        fprintf(stderr,"nezha-camera-launch: launch-detail=%s\n",
+            launch_error.description.UTF8String ?: "<absent>");
+        NSError *underlying=launch_error.userInfo[NSUnderlyingErrorKey];
+        if ([underlying isKindOfClass:[NSError class]])
+            fprintf(stderr,"nezha-camera-launch: launch-underlying=%s\n",
+                underlying.description.UTF8String ?: "<absent>");
+    }
+    return requested ? 0:9;
+}
+
 /* Tests exercise this exact consumer with Foundation and fixture LS classes.
- * Runtime supplies only the measured original Camera path below. */
+ * Runtime supplies only the selected Camera bundle path below. */
 static int open_camera(Class proxy,id service,NSURL *system_url)
 {
     NSString *identifier=@"com.apple.camera";
@@ -78,15 +140,26 @@ static int open_camera(Class proxy,id service,NSURL *system_url)
          * bootstrap domains. Current24A446 converts this same System
          * dictionary to LSInstallInfo, then performPostInstallationRegistration
          * on the existing modifydb service. This only registers the existing
-         * Camera bundle; it does not install files or make a new app identity. */
+         * Camera bundle through its real Info.plist; it does not change location authorization. */
         if (![service respondsToSelector:
             @selector(registerContainerizedApplicationWithInfoDictionaries:operationUUID:requestContext:saveObserver:registrationError:)]) return 5;
         NSDictionary *registration=@{@"ApplicationType":@"System",
             @"BundleNameIsLocalized":@1,@"CFBundleIdentifier":identifier,
             @"CompatibilityState":@0,@"IsDeletable":@0,@"Path":system_url.path};
+        /* Original24A446 nil context resolves the current root proxy UID.
+         * This job registers an app for the existing mobile lsd service;
+         * targetUserID selects the original user-domain connection instead
+         * of looking for a root-domain modifydb endpoint that is absent. */
+        Class contextClass=objc_getClass("LSOperationRequestContext");
+        id context=contextClass ? [contextClass new] : nil;
+        if(!context || ![context respondsToSelector:@selector(setTargetUserID:)]) {
+            fputs("nezha-camera-launch: original user request context unavailable\n",stderr);
+            return 5;
+        }
+        [context setTargetUserID:@501];
         error=nil;
         id result=[service registerContainerizedApplicationWithInfoDictionaries:@[registration]
-            operationUUID:[NSUUID UUID] requestContext:nil saveObserver:nil registrationError:&error];
+            operationUUID:[NSUUID UUID] requestContext:context saveObserver:nil registrationError:&error];
         const BOOL registered=result!=nil && error==nil;
         fprintf(stderr,"nezha-camera-launch: original system Camera registration=%u error=%ld domain=%s path=%s\n",
             (unsigned)registered,(long)error.code,error.domain.UTF8String ?: "<none>",system_url.path.UTF8String);
@@ -106,51 +179,11 @@ static int open_camera(Class proxy,id service,NSURL *system_url)
         report_proxy("after",application);
         if (!registered_camera(application)) return 7;
     }
-    if (![service respondsToSelector:@selector(openApplicationWithBundleID:)]) {
-        fputs("nezha-camera-launch: original launch method unavailable\n",stderr);
-        return 8;
-    }
-    const BOOL requested=[service openApplicationWithBundleID:identifier];
-    fprintf(stderr,"nezha-camera-launch: originalCamera registered=1 launch_request=%u preview_verified=0 photo_verified=0\n",(unsigned)requested);
-    return requested ? 0:9;
+    return request_camera(objc_getClass("FBSOpenApplicationService"),
+        objc_getClass("FBSOpenApplicationOptions"),identifier,dispatch_time(DISPATCH_TIME_NOW,30*NSEC_PER_SEC));
 }
 
 #ifndef NEZHA_CAMERA_LAUNCH_TEST
-static void report_devices(void)
-{
-    AVCaptureDeviceDiscoverySession *discovery=[AVCaptureDeviceDiscoverySession
-        discoverySessionWithDeviceTypes:@[AVCaptureDeviceTypeBuiltInWideAngleCamera]
-        mediaType:AVMediaTypeVideo position:AVCaptureDevicePositionUnspecified];
-    /* The exact original class method remains in24A446. Compare the full
-     * list with discovery to locate filtering; SDK marks this diagnostic
-     * access deprecated, so keep the suppression on this one call. */
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-    NSArray *all=[AVCaptureDevice devicesWithMediaType:AVMediaTypeVideo];
-#pragma clang diagnostic pop
-    AVCaptureDevice *main=[AVCaptureDevice deviceWithUniqueID:
-        @"com.apple.avfoundation.avcapturedevice.built-in_video:0"];
-    fprintf(stderr,"nezha-camera-launch: native discovery wide=%lu all_video=%lu main=%u authorization=%ld\n",
-        (unsigned long)discovery.devices.count,(unsigned long)all.count,(unsigned)(main!=nil),
-        (long)[AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeVideo]);
-    for (AVCaptureDevice *device in all) {
-        fprintf(stderr,"nezha-camera-launch: native device id=%s type=%s position=%ld formats=%lu\n",
-            device.uniqueID.UTF8String,device.deviceType.UTF8String,(long)device.position,
-            (unsigned long)device.formats.count);
-    }
-}
-
-static void report_camera_record(void)
-{
-    Class records=objc_getClass("LSApplicationRecord");
-    if (![records instancesRespondToSelector:@selector(initWithBundleIdentifier:allowPlaceholder:error:)]) return;
-    NSError *error=nil;
-    id record=[[records alloc] initWithBundleIdentifier:@"com.apple.camera" allowPlaceholder:NO error:&error];
-    fprintf(stderr,"nezha-camera-launch: original Camera record=%u error=%ld domain=%s detail=%s\n",
-        (unsigned)(record!=nil),(long)error.code,error.domain.UTF8String ?: "<none>",
-        error.description.UTF8String ?: "<none>");
-}
-
 static void deadline(int value)
 {
     (void)value;
@@ -161,23 +194,44 @@ static void deadline(int value)
 
 int main(void)
 {
+    /* The old root job created a0644 stderr file owned by uid0. Open the
+     * mobile-owned output before Foundation startup, keeping that old file. */
+    const char *output="/private/var/mobile/Library/Logs/nezha-camera-launch-088.stderr";
+    if(camera_output(output)) return 10;
+    setvbuf(stderr,NULL,_IONBF,0);
+    fprintf(stderr,"nezha-camera-launch: process pid=%u uid=%u euid=%u\n",
+        (unsigned)getpid(),(unsigned)getuid(),(unsigned)geteuid());
     @autoreleasepool {
-        setvbuf(stderr,NULL,_IONBF,0);
+        fprintf(stderr,"nezha-camera-launch: scheduled pid=%u uid=%u euid=%u uptime=%.3f delay_seconds=120\n",
+            (unsigned)getpid(),(unsigned)getuid(),(unsigned)geteuid(),
+            NSProcessInfo.processInfo.systemUptime);
+        /* The original RunAtLoad/LaunchOnlyOnce cache condition launches
+         * exactly once. Delay this ordinary registration until startup is
+         * settled, then retain the existing45-second request deadline. */
+        unsigned remaining=120;
+        while(remaining) remaining=sleep(remaining);
         signal(SIGALRM,deadline);
         alarm(45);
+        char boot[128]={0};size_t boot_bytes=sizeof boot;
+        const BOOL have_boot=sysctlbyname("kern.bootsessionuuid",boot,&boot_bytes,NULL,0)==0;
+        fprintf(stderr,"nezha-camera-launch: startup pid=%u uid=%u euid=%u uptime=%.3f boot=%s\n",
+            (unsigned)getpid(),(unsigned)getuid(),(unsigned)geteuid(),
+            NSProcessInfo.processInfo.systemUptime,have_boot ? boot:"unavailable");
+        if(geteuid()!=501) {
+            fputs("nezha-camera-launch: requires the existing mobile launch user\n",stderr);
+            return 5;
+        }
         const char *framework="/System/Library/Frameworks/CoreServices.framework/CoreServices";
         void *handle=dlopen(framework,RTLD_NOW|RTLD_LOCAL);
+        void *frontboard=dlopen("/System/Library/PrivateFrameworks/FrontBoardServices.framework/FrontBoardServices",RTLD_NOW|RTLD_LOCAL);
         Class proxy=objc_getClass("LSApplicationProxy");
         Class workspace=objc_getClass("LSApplicationWorkspace");
-        if (!handle || !proxy || !workspace ||
+        if (!handle || !frontboard || !proxy || !workspace ||
             ![proxy respondsToSelector:@selector(applicationProxyForIdentifier:)] ||
             ![workspace respondsToSelector:@selector(defaultWorkspace)]) {
             fputs("nezha-camera-launch: original LaunchServices interface unavailable\n",stderr);
             return 3;
         }
-        nezha_camera_discovery_observe();
-        report_devices();
-        report_camera_record();
         return open_camera(proxy,[workspace defaultWorkspace],
             [NSURL fileURLWithPath:@"/Applications/Camera.app" isDirectory:YES]);
     }

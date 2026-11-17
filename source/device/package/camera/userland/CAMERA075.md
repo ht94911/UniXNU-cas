@@ -241,3 +241,19 @@ The existing userland console samples the first four rendered buffers while
 CoreVideo holds its write lock, before Unlock and graph delivery. These
 samples record real Y/UV or BGRA values and strides; their colour is not an
 application-preview acceptance result.
+
+
+Camera088 retains the successful087 production function metadata. Its native
+RDI0 write master now includes Qualcomm v24 MMU prefetch configuration at
+0x2c60/0x2c64 before enable. The observed087 bit19 OVERFLOW_RECOVERY remains
+a real downstream error; this change is a candidate repair, not hardware proof.
+
+Unattended Camera launch follows the already exercised GNSS009/012 mobile
+uid501 request path: wait120seconds after launch, register the existing
+Camera bundle with LSOperationRequestContext targetUserID501 if absent, then
+submit one FBSOpenApplicationService request with empty options. Only a positive
+valid process handle without NSError confirms launch. The existing45second
+process deadline and30second completion wait remain. Preview, shutter and
+photo acceptance require separate device evidence; no permission database is
+changed. The eighteen Foundation cases cover the production request and output
+ownership; actual Camera startup is still to be tested.

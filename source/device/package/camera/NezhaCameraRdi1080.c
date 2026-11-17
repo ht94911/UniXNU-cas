@@ -15,6 +15,8 @@ enum {
     VfeIrqSubsamplePattern = VfeRdi0 + 0x34,
     VfeFrameDropPeriod = VfeRdi0 + 0x38,
     VfeFrameDropPattern = VfeRdi0 + 0x3c,
+    VfeMmuPrefetchConfig = VfeRdi0 + 0x60,
+    VfeMmuPrefetchMaxOffset = VfeRdi0 + 0x64,
 };
 
 bool nezha_camera_rdi1080_layout(uint32_t width, uint32_t height,
@@ -71,4 +73,8 @@ void nezha_camera_rdi1080_program_geometry(const struct NezhaCameraRdi1080 *layo
     write(context, VfeFrameDropPattern, 1);
     write(context, VfeIrqSubsamplePeriod, 0);
     write(context, VfeIrqSubsamplePattern, 1);
+    /* Qualcomm v24 enables the write master's MMU prefetch before
+     * WM_CFG. Keep that production sequence for this full RDI0 client. */
+    write(context, VfeMmuPrefetchConfig, 1);
+    write(context, VfeMmuPrefetchMaxOffset, UINT32_MAX);
 }
