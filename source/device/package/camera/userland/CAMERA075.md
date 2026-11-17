@@ -127,3 +127,98 @@ four native owned properties without changing the returned sources. Native
 teardown reports the IRQ owner's already captured failure words after cleanup.
 These observations distinguish publication and serialization failures;
 physical preview, shutter and photo review remain required.
+
+Actual080 reached the physical system desktop. Camera's icon remained absent,
+and Control Centre opened a black preview followed by termination. Its original
+AVFCapture client returned one real rear main source, four formats, Connected
+true, a nonnil native video device and camera access true. No capture graph
+started and no RAW frames completed. RunningBoard again terminated Camera with
+the same requirements message. Original lsd published its native services and
+accepted 24 observed clients; its native seed completed with Camera installed
+locally. The background helper's later lookup3 is a separate client result and
+does not prove the native service was unpublished. Android/root postflight and
+the collector's actual exit/release completed.
+
+081 observes the next original Camera boundaries: capabilities, preferred
+device, engine/device input, AVCaptureDeviceInput's owned initializer and
+NSError, canAddInput, addInput, commitConfiguration and startRunning. It retains
+all native selections, output ownership, completion blocks and void semantics.
+The capabilities getter also records the real hw.target and capture model.
+Only the original Camera installs these observations, with exact24A446 UUID,
+method address and encoding checks. Logs use its existing permitted /tmp path.
+
+The original LS read replies and database-rebuilt request are observed in lsd.
+Their callbacks preserve the actual query dictionary, store, catalogue,
+blocking endpoint, manual-rebuild BOOL and NSError. A queued request is not a
+completion. No extra installation notification or database reset is added.
+081 retains the qualified080 kernel, GPU051,072 boot power proxy and074 SMMU
+retirement. Physical icon, preview and photo acceptance remain unfinished.
+
+081 was qualified and queued but never claimed or booted. Further original
+model-query analysis found that its retained GPU051 ADT had an empty /product
+node. In24A446, HWModelDescriptionForCamera resolves to that node's unique-model
+property. FigCaptureGetModelSpecificName strips the AP suffix before AVGestalt
+selects its feature table. The original target tree supplies D16AP; the retained
+root already identifies iPhone14,4/D16. Without this input the feature builder
+returns before adding rear-camera capability, independently of real device
+discovery. The unstarted081 waiter was stopped and its queue entry withdrawn.
+
+082 adds only /product/unique-model=D16AP through the normal typed board ADT
+configuration. The package finalizer inserts this one field into the retained
+tree, keeping all existing property bytes, hardware nodes, platform identity
+and seed. It retains081's original input/session and LS observations for actual
+confirmation, the same qualified080 kernel/provider and exact079 helper. This
+fix addresses a missing native model input; it does not prove the icon, preview
+or photo flow until the corrected image runs.
+
+Actual082 confirmed D16AP→D16 in the original Camera, back/front capability
+true and multiCam false. The rear wide device input was created without error,
+canAddInput returned true, add/commit completed and native Start ran. Four
+provider graph-start records returned0. Physical onboarding and lens buttons
+appeared, but the icon stayed absent and the preview remained black before
+exit. No RAW or delivered output frame was verified. The camera service
+terminated17times at `-[NBFunctionConstant required]`: GPU051's actual class
+only exposes `isRequired`. Original Core Image's shader setup calls `required`.
+SpringBoard30 received the actual LS store and catalogue after original seeding
+and database-rebuilt notification. Android/root postflight and57392 collector
+exit/release completed.
+
+083 keeps GPU051's plugin and runtime byte-identical. Inside original Camera
+and cameracaptured, the existing image-arrival callback checks that plugin's
+UUID, exact `isRequired` IMP0x22890, original8bytes and `B16@0:8` type, then
+adds only its missing `required` selector with that same original getter.
+The native flag and all shader/rendering/memory behavior stay original. The
+production Metal source separately adds the same public getter, reading the
+existing flag, on a GPU051-based worktree. Native consumer cases verify true
+and false values, repeated installation and unrelated classes. The original
+device/provider/input/graph contract remains unchanged. New build and physical
+icon, preview, shutter and photo review are still required.
+
+The still-camera icon tag has its own native hardware-description query.
+Original SpringBoard calls MGIsQuestionValid for each supported application
+tag, then MobileGestalt's still-camera answer0x1afa295b0 reads camera-front or
+`/arm-io/isp/camera-rear`. The retained tree lacks that rear property even
+though082 verified the real rear source, input and graph. 084 declares only
+that actual rear presence in the package ADT; the logical isp node has no
+Apple compatible, registers or service. The normal board record selects this
+through camera.adt.rear_present. No front camera or aggregate device is added.
+The package keeps083's exact GPU051 getter correction and082's D16AP model.
+Physical icon and frames still require the corrected new image's result.
+
+Actual084 confirmed the original Camera icon on the physical desktop. All
+displayed magnifications remained black. Intermittent exit was independent
+of magnification changes. The service still reported fifteen missing
+`NBFunctionConstant required` exceptions; the runtime alias was never
+observed installed. The last session produced seven RAW frames and one
+PrimaryScaler callback, then FramesIo and an incomplete CPAS drain. Its
+printed IRQ zero preceded IRQ sampling and did not clear the fault.
+
+085 builds the production `required` getter from the GPU051 Metal source,
+reading the existing `isRequired` flag. It retains the original GPU051
+runtime recipe and all earlier board corrections. On a failed drain, the
+native worker keeps DMA mappings and resource leases, stops only its IRQ
+callback, and reads that owner's preserved fault. The existing console
+reports CPAS handshake, sampled versus requested controls and the already
+captured receiver registers after cleanup. No additional IRQ logging or
+polling is introduced. Continuous preview, shutter and photo review still
+require device verification.

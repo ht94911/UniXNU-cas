@@ -15,6 +15,8 @@ static uint32_t camcc[0x80000/4],crm[0x2000/4],crmc[0x3000/4],crmcommon[0x1000/4
 static unsigned maps, starts, stops, reads, copies;
 static bool resources_active, irq_active, smmu_active, memory_active, stream_active, keep_running, source_fail;
 static bool frame_timeout;
+static bool drain_failure;
+static uint32_t irq_fault;
 static bool selected_epd;
 static unsigned stream_readbacks;
 static unsigned control_takes, control_commits, control_completions;
@@ -105,8 +107,11 @@ extern "C" bool nezha_camera_rpmh_release(void *,NezhaCameraMainRail) { return t
 extern "C" bool nezha_camera_ife_bandwidth_checked(const uint8_t *,size_t,uint32_t,uint32_t,uint32_t,uint32_t,NezhaCameraIfeBandwidth *,NezhaCameraIfeBcmFailure *) { return true; }
 extern "C" bool nezha_camera_capture_resources_start(const NezhaCameraCaptureResourceIo *,const NezhaCameraIfeBandwidth *,const NezhaCameraCsiphy24Profile *,NezhaCameraCaptureResources *r)
 { assert(!resources_active && r->step==NezhaResourcesIdle);r->step=NezhaResourcesReady;resources_active=true;++starts;return !source_fail; }
-extern "C" bool nezha_camera_capture_resources_drain(const NezhaCameraCaptureResourceIo *,NezhaCameraCaptureResources *,bool quiet)
-{ assert(quiet && !stream_active && resources_active);return true; }
+extern "C" bool nezha_camera_capture_resources_drain(const NezhaCameraCaptureResourceIo *,NezhaCameraCaptureResources *r,bool quiet)
+{ assert(quiet && !stream_active && resources_active);
+  if(drain_failure) {r->cleanup_status=NezhaCameraCpasTimeout;r->detail=r->cpas.failed_offset=0xf0;
+    r->cpas.failed_control=0;r->cpas.failed_status=1;r->cpas.failed_expected=0;return false;}
+  return true; }
 extern "C" bool nezha_camera_capture_resources_stop(const NezhaCameraCaptureResourceIo *,const NezhaCameraIfeBandwidth *,const NezhaCameraCsiphy24Profile *,NezhaCameraCaptureResources *,bool quiet,bool detached)
 { assert(quiet && detached && !memory_active && !smmu_active && !irq_active);
   assert(vfe[0x1008/4]==original_bus_cgc);resources_active=false;++stops;return true; }
@@ -124,8 +129,9 @@ extern "C" bool nezha_camera1080_prepare_csid(const NezhaCameraRegisterIo *,uint
 extern "C" bool nezha_camera_native_irq_open(NezhaCameraNativeIrq **out,const NezhaCameraRegisterIo *,const NezhaCameraRegisterIo *,NezhaCameraNativeIrqSetup *)
 { assert(!*out && !irq_active);*out=(NezhaCameraNativeIrq *)1;irq_active=true;return true; }
 extern "C" bool nezha_camera_native_irq_stop(NezhaCameraNativeIrq *) { irq_active=false;return true; }
-extern "C" uint32_t nezha_camera_native_irq_fault(const NezhaCameraNativeIrq *) { return 0; }
-extern "C" bool nezha_camera_native_irq_failure(const NezhaCameraNativeIrq *,NezhaCamera1080Events *) { return false; }
+extern "C" uint32_t nezha_camera_native_irq_fault(const NezhaCameraNativeIrq *) { assert(!irq_active);return irq_fault; }
+extern "C" bool nezha_camera_native_irq_failure(const NezhaCameraNativeIrq *,NezhaCamera1080Events *event)
+{ assert(!irq_active);if(!irq_fault)return false;*event={};event->rx_irq=1u<<12;return true; }
 extern "C" bool nezha_camera_native_irq_next(NezhaCameraNativeIrq *,NezhaCamera1080Events *) { return true; }
 extern "C" ArmSmmu4KStatus nezha_camera_native_smmu_prepare(NezhaCameraNativeSmmu **out,unsigned,unsigned,unsigned,unsigned *bits)
 { assert(!*out && !smmu_active);*out=(NezhaCameraNativeSmmu *)1;*bits=40;smmu_active=true;return ArmSmmu4KSuccess; }
@@ -161,6 +167,7 @@ extern "C" NezhaCameraFrameStatus nezha_camera_frame_probe(const NezhaCameraMain
 extern "C" NezhaCameraFrameStatus nezha_camera_frame_consume(const NezhaCameraMainCaptureIo *,NezhaCameraMainCapture *capture,const NezhaCameraRegisterIo *,const NezhaCameraFrameMemoryIo *,const NezhaCameraFrameConsumer *consumer,unsigned budget)
 {
     assert(budget==1000 && stream_active);++reads;++capture->completed_frames;
+    if(drain_failure) {irq_fault=2;return NezhaFramesIo;}
     if (frame_timeout) return NezhaFramesTimeout;
     const NezhaCameraRaw10Layout layout{4096,3072,5120,5120,15728640};
     uint8_t frame=0x5a;
@@ -204,6 +211,18 @@ int main(int argc,char **argv)
     request.profile=&profile;request.profile_bytes=NezhaCameraProfileCapacity;
     request.command_database=&database;request.database_bytes=0x20000;request.cci_queue_words=NezhaCameraCciCanoeQueue0Words;request.consumer=&consumer;
     NezhaCameraNativeCaptureResult result{};
+    if(argc==2 && !strcmp(argv[1],"drain-failure")) {
+        keep_running=true;drain_failure=true;
+        assert(!nezha_camera_native_capture(&request,&result));
+        assert(result.status==NezhaFramesIo && !result.cleaned && result.cleanup_step==NezhaNativeDrain);
+        assert(result.irq_stopped && result.irq_fault==2 && result.irq_failure.rx_irq==(1u<<12));
+        assert(result.resources.cleanup_status==NezhaCameraCpasTimeout && result.resources.detail==0xf0);
+        assert(resources_active && memory_active && smmu_active && !irq_active && !stream_active && !stops);
+        const unsigned before=starts;
+        assert(!nezha_camera_native_capture(&request,&result) && starts==before);
+        puts("Native failed CPAS drain retains DMA/resources and observes the quiesced original IRQ fault without reopening");
+        return 0;
+    }
     keep_running=false;
     assert(nezha_camera_native_capture(&request,&result) && result.cleaned && !starts && !maps);
     keep_running=true;

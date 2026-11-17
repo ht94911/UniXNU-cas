@@ -232,10 +232,21 @@ bool cleanup(Capture &s, NezhaCameraNativeCaptureResult &result,
     }
     if (!nezha_camera_main_capture_request_stop(&s.capture_io, &s.capture)) return false;
     result.cleanup_step = NezhaNativeDrain;
-    if (!nezha_camera_capture_resources_drain(&s.resources_io, &result.resources, true)) return false;
+    if (!nezha_camera_capture_resources_drain(&s.resources_io, &result.resources, true)) {
+        /* Producers have stopped, but the failed CPAS drain retains every
+         * DMA mapping and resource lease. Quiesce only our IRQ callback so
+         * its preserved first fault is readable even on this early return. */
+        if (s.irq && nezha_camera_native_irq_stop(s.irq)) {
+            result.irq_stopped = true;
+            result.irq_fault = nezha_camera_native_irq_fault(s.irq);
+            (void)nezha_camera_native_irq_failure(s.irq, &result.irq_failure);
+        }
+        return false;
+    }
     result.cleanup_step = NezhaNativeStopIrq;
     if (s.irq && !nezha_camera_native_irq_stop(s.irq)) return false;
     if (s.irq) {
+        result.irq_stopped = true;
         result.irq_fault = nezha_camera_native_irq_fault(s.irq);
         (void)nezha_camera_native_irq_failure(s.irq, &result.irq_failure);
     }

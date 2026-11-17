@@ -35,6 +35,7 @@ g++ "${flags[@]}" "$out/NativeCapture-host.cpp" tests/camera-native-capture.cpp 
 "$out/test-capture"
 "$out/test-capture" controls
 "$out/test-capture" controls-mismatch
+"$out/test-capture" drain-failure
 "$out/test-capture" AF-readonly
 "$out/test-capture" AF-eeprom-fail
 "$out/test-capture" AF-position-fail

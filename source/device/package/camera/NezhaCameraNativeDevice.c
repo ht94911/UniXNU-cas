@@ -181,11 +181,12 @@ static void worker(void *argument,wait_result_t wait_result)
     }
     const bool okay=!continuing(NULL) || (eligible && nezha_camera_native_capture(&request,&result));
     printf("NEZHA CAMERA: native worker result=%u eligible=%u step=%u status=%u "
-        "resources=%u/%u/%u frames=%u sensor=%u writes=%u irq=%#x smmu=%#x cleanup=%u/%u\n",
+        "resources=%u/%u/%u frames=%u sensor=%u writes=%u irq=%#x smmu=%#x cleanup=%u/%u irq-stopped=%u resource-cleanup=%u/%u\n",
         (unsigned)okay,(unsigned)eligible,result.step,result.status,
         (unsigned)result.resources.step,result.resources.status,result.resources.detail,
         result.frames.frames,result.sensor_status,(unsigned)result.applied_writes,
-        result.irq_fault,result.smmu_fault.status,(unsigned)result.cleaned,(unsigned)result.cleanup_step);
+        result.irq_fault,result.smmu_fault.status,(unsigned)result.cleaned,(unsigned)result.cleanup_step,
+        (unsigned)result.irq_stopped,(unsigned)result.resources.cleanup_step,result.resources.cleanup_status);
     if (result.irq_fault) {
         /* The IRQ owner already captured these words before acknowledgement.
          * Report them after teardown; do not read MMIO or log inside the IRQ. */
@@ -193,6 +194,28 @@ static void worker(void *argument,wait_result_t wait_result)
         printf("NEZHA CAMERA: native IRQ failure top=%#x rx=%#x rdi=%#x buffer=%#x consumed=%#x ticks=%llu\n",
             event->top_irq,event->rx_irq,event->rdi0_irq,event->buffer_irq,
             event->consumed_address,(unsigned long long)event->completed_time);
+    }
+    if (!okay) {
+        const struct NezhaCameraCpas *cpas=&result.resources.cpas;
+        printf("NEZHA CAMERA: native CPAS failure offset=%#x control=%#x status=%#x expected=%#x touched=%u stop-requested=%u drained=%u\n",
+            cpas->failed_offset,cpas->failed_control,cpas->failed_status,cpas->failed_expected,
+            cpas->touched,cpas->stop_requested,(unsigned)cpas->drained);
+        const struct NezhaCameraOvxControlReadback *sample=&result.control_readback;
+        const struct NezhaCameraOvxControlPlan *plan=&result.control_result.plan;
+        printf("NEZHA CAMERA: native controls failure attempted=%u write-status=%u before=%u writes=%u held=%u read-status=%u after=%u bytes=%u actual=%u/%u/%u/%u expected=%u/%u/%u/%u\n",
+            (unsigned)result.control_attempted,(unsigned)result.control_status,result.control_completed_before,
+            (unsigned)result.control_result.applied_writes,(unsigned)result.control_result.group_may_be_held,
+            (unsigned)result.control_readback_status,result.control_readback_after,(unsigned)sample->bytes_read,
+            sample->exposure_lines,sample->frame_lines,sample->analog_gain_q8,sample->digital_gain_q10,
+            plan->exposure_lines,plan->frame_lines,plan->analog_gain_q8,plan->digital_gain_q10);
+        printf("NEZHA CAMERA: native stream failure stage=%u dma=%u start=%u/%u running=%u/%u CSID=%#x/%#x/%#x/%#x/%#x/%#x/%#x/%#x/%#x/%#x/%#x/%#x VFE=%#x/%#x\n",
+            result.capture_stage,result.dma_status,result.stream_start_readback_status,result.stream_start_readback,
+            result.stream_readback_status,result.stream_readback,
+            result.capture_registers[0],result.capture_registers[1],result.capture_registers[2],
+            result.capture_registers[3],result.capture_registers[4],result.capture_registers[5],
+            result.capture_registers[6],result.capture_registers[7],result.capture_registers[8],
+            result.capture_registers[9],result.capture_registers[10],result.capture_registers[11],
+            result.capture_registers[12],result.capture_registers[13]);
     }
     lck_mtx_lock(&camera_mutex);
     if (!okay) failure=EIO;

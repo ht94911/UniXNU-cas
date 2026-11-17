@@ -95,6 +95,16 @@ kernel_args = ["-v", "keepsyms=1", "debug=0x14e", "cpus=8", "boot-progress=2", "
 [adt.chosen.u32]
 "kernel-ctrr-to-be-enabled" = 0
 
+# Original24A446 camera model queries read /product/unique-model. Keep the
+# selected iPhone14,4/D16 identity consistent with the root target-type.
+[adt.product.string]
+unique-model = "D16AP"
+
+# The package finalizer describes the actual rear camera to MobileGestalt's
+# still-camera reader. This adds no Apple ISP compatible, register or service.
+[camera.adt]
+rear_present = true
+
 # First root mount: use the real independently verified iPhone OS identity.
 [root]
 os_volume_uuid = "28E4CF35-9C12-417E-B8FF-906618C6FD22"

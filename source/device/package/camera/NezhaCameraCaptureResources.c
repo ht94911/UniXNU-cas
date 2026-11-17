@@ -137,8 +137,14 @@ bool nezha_camera_capture_resources_drain(const struct NezhaCameraCaptureResourc
         return false;
     }
     state->cleanup_step = NezhaResourcesCpas;
-    return !state->cpas.acquired || state->cpas.drained ||
-        nezha_camera_cpas_drain(io->cpas, &state->cpas, true) == NezhaCameraCpasOk;
+    if (!state->cpas.acquired || state->cpas.drained) return true;
+    const enum NezhaCameraCpasStatus status = nezha_camera_cpas_drain(io->cpas, &state->cpas, true);
+    if (status != NezhaCameraCpasOk) {
+        state->cleanup_status = (unsigned)status;
+        state->detail = state->cpas.failed_offset;
+        return false;
+    }
+    return true;
 }
 
 bool nezha_camera_capture_resources_stop(const struct NezhaCameraCaptureResourceIo *io,
