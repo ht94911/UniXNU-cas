@@ -95,7 +95,6 @@ static int acceptIPA(struct in_addr peer, uint16_t port, NSData *token, ProbeRep
         }
         struct timeval auth = {.tv_sec = 5};
         setsockopt(connection, SOL_SOCKET, SO_RCVTIMEO, &auth, sizeof(auth));
-        setsockopt(connection, SOL_SOCKET, SO_NOSIGPIPE, &enabled, sizeof(enabled));
         uint8_t presented[32];
         if (sender.sin_addr.s_addr == peer.s_addr &&
             recv(connection, presented, sizeof(presented), MSG_WAITALL) == (ssize_t)sizeof(presented) &&
@@ -115,9 +114,9 @@ static BOOL receiveIPA(int connection, int out, uint64_t size, NSData *expected,
     CC_SHA256_Init(&hash);
     struct timeval timeout = {.tv_sec = 25};
     setsockopt(connection, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
-    if (send(connection, "R", 1, 0) != 1) return NO;
     double started = NSProcessInfo.processInfo.systemUptime;
     uint64_t received = 0;
+    uint64_t next = 16 << 20;
     while (received < size) {
         size_t want = (size_t)MIN(sizeof(buffer), size - received);
         ssize_t count = recv(connection, buffer, want, 0);
@@ -139,6 +138,11 @@ static BOOL receiveIPA(int connection, int out, uint64_t size, NSData *expected,
         }
         CC_SHA256_Update(&hash, buffer, (CC_LONG)count);
         received += (uint64_t)count;
+        if (received >= next) {
+            report("APPSYNC_PROBE wifi-progress bytes=%llu seconds=%.3f\n",
+                   (unsigned long long)received, NSProcessInfo.processInfo.systemUptime - started);
+            next += 64 << 20;
+        }
     }
     uint8_t digest[CC_SHA256_DIGEST_LENGTH];
     CC_SHA256_Final(digest, &hash);
@@ -149,7 +153,6 @@ static BOOL receiveIPA(int connection, int out, uint64_t size, NSData *expected,
     double elapsed = NSProcessInfo.processInfo.systemUptime - started;
     report("APPSYNC_PROBE wifi-transfer bytes=%llu seconds=%.3f sha256=ok\n",
            (unsigned long long)received, elapsed);
-    (void)send(connection, "K", 1, 0);
     return YES;
 }
 
@@ -178,16 +181,24 @@ int unixnu_appsync_wifi_install(NSDictionary *config, ProbeReport report)
     }
     @try {
         NSString *ipa = [directory stringByAppendingPathComponent:@"install.ipa"];
-        int out = open(ipa.fileSystemRepresentation, O_CREAT | O_EXCL | O_WRONLY, 0644);
-        if (out < 0) {
-            report("APPSYNC_PROBE wifi-error stage=create-file errno=%d\n", errno);
-            return 1;
+        BOOL received = NO;
+        for (unsigned attempt = 0; attempt < 2; ++attempt) {
+            int connection = acceptIPA(peer, (uint16_t)port, token, report);
+            if (connection < 0) return 1;
+            int out = open(ipa.fileSystemRepresentation, O_CREAT | O_TRUNC | O_WRONLY, 0644);
+            if (out < 0) {
+                report("APPSYNC_PROBE wifi-error stage=create-file errno=%d\n", errno);
+                close(connection);
+                return 1;
+            }
+            report("APPSYNC_PROBE wifi-receiving attempt=%u\n", attempt + 1);
+            received = receiveIPA(connection, out, size, sha, report);
+            close(connection);
+            if (close(out) != 0) return 1;
+            if (received) break;
+            if (attempt == 0) report("APPSYNC_PROBE wifi-retry\n");
         }
-        int connection = acceptIPA(peer, (uint16_t)port, token, report);
-        BOOL received = connection >= 0 && receiveIPA(connection, out, size, sha, report);
-        if (connection >= 0) close(connection);
-        int closed = close(out);
-        if (!received || closed != 0) return 1;
+        if (!received) return 1;
 
         report("APPSYNC_PROBE wifi-install-start id=%s\n", identifier.UTF8String);
         int result = unixnu_appinst_install_received(ipa, identifier);

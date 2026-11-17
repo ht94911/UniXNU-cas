@@ -1,7 +1,7 @@
 name: nezha iPhone27 AppSync Wi-Fi install probe
 on:
   push:
-    branches: [codex/ios27-appsync-probe035-20261117]
+    branches: [codex/ios27-appsync-probe036-20261117]
   workflow_dispatch:
 permissions:
   contents: read

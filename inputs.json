@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Build the AppSync one-time LAN transfer and installation probe for a caller-selected IPA.",
+  "purpose": "Stream the selected IPA across the existing LAN session and report integrity through the existing USB log.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -240,7 +240,7 @@
     "source/appsync/ProbeRunner.m": "c53657fd79ccca247b185e67ea5b74e1cb01e1a6dedc0cf1c71cf8fd7aa3679f",
     "source/appsync/QcomUserLogWire.h": "965d7aeaa4043bcceb151cd6331ce50faefe21f57ce7c91cf781a52b4917397b",
     "ci/appsync-probe-entitlements.plist": "d1c714f5e466bf81677735f765efc65e068265e395881ba5288a6ce5f19ddee7",
-    "source/appsync/WiFiInstall.m": "76263203bfbe5f820568396a63feb7bc01921bfb92abe72504c180f8818c0c13"
+    "source/appsync/WiFiInstall.m": "fcad23264977f32c3e6dfc103b1387dcb70a4315bbfd4486cab7418e330251be"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
