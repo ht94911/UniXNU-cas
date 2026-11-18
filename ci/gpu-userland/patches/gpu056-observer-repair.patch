@@ -1,0 +1,111 @@
+diff --git a/NativeBridgeMetalFrontend.mm b/NativeBridgeMetalFrontend.mm
+index 84652eb9cf71c50760e2f0785778b3bffa318360..81374389c2e7d2b00d7ecfc4a29629dfb4fd61e8 100644
+--- a/NativeBridgeMetalFrontend.mm
++++ b/NativeBridgeMetalFrontend.mm
+@@ -3537,8 +3537,8 @@ static char kUserDictionaryKey;
+  commitCpu=threadCpuUs();commitTid=threadIdLow();
+  if(earlyEligible && encodedWork.passes && encodedWork.draws && gpuTraceOn() && gFrameTransport) {
+   static thread_local uint64_t previousRenderCommit;
+-  nblonglatency::producerGap(traceNumber,commitTid,previousRenderCommit,createdUs,committedUs,latencyText);
+-  previousRenderCommit=committedUs;
++  nblonglatency::producerGap(traceNumber,commitTid,previousRenderCommit,createdUs,self.committedUs,latencyText);
++  previousRenderCommit=self.committedUs;
+  }
+  {
+   std::lock_guard<std::mutex> lock(gCommitLock);
+diff --git a/NativeDisplayWaitState.h b/NativeDisplayWaitState.h
+index 6cebfbbae22ebcc3ebb6e42c30785f7c35afd0db..06583216c39cbdfd41cceb4f061108fe4e639e51 100644
+--- a/NativeDisplayWaitState.h
++++ b/NativeDisplayWaitState.h
+@@ -2,13 +2,21 @@
+ #pragma once
+ #include <cstdint>
+ #include <cstring>
++#if defined(__arm64e__)
++#include <ptrauth.h>
++#endif
+ 
+ // Read-only layout of QuartzCore 76ce2a6e-dba4-335d-a5ac-77a1c1b286a6.
+ // Verified locally from CAWindowServerDisplay's _impl metadata and the original
+-// IOMFBServer/CADisplayTimer functions. No addresses or writes for another OS.
++// IOMFBServer/CADisplayTimer functions. AccelServer has the same primary
++// IOMFBServer prefix: its original destructor calls IOMFBServerD2 with the
++// unadjusted this pointer and its set_next_update slot is the same function.
++// Its extra subobject starts at0x620, after the sampled prefix.
++// No addresses or writes for another OS.
+ namespace nbdisplaywait {
+ constexpr uint8_t kQuartzUUID[16]={0x76,0xce,0x2a,0x6e,0xdb,0xa4,0x33,0x5d,0xa5,0xac,0x77,0xa1,0xc1,0xb2,0x86,0xa6};
+ constexpr uint64_t kServerVtable=0x1e900aec8ULL;
++constexpr uint64_t kAccelServerVtable=0x1e8fff298ULL;
+ constexpr uint64_t kDisplayVtable=0x1e900dea8ULL;
+ constexpr uint64_t kTimerCallback=0x1843f05b4ULL;
+ constexpr unsigned kServerTailOffset=0x480,kServerTailBytes=0x1a0;
+@@ -56,7 +64,27 @@ struct Identity {
+  int32_t timebaseKR=-1;uint32_t reserved=0;
+ };
+ static_assert(sizeof(Identity)==96,"observer boot identity wire size");
+-inline uint64_t stripped(uint64_t p){return p&0x0000ffffffffffffULL;}
++inline uint64_t stripped(uint64_t p){
++#if defined(__arm64e__)
++ return (uintptr_t)ptrauth_strip((void *)(uintptr_t)p,ptrauth_key_process_independent_data);
++#else
++ // The UUID-bound iPhone layout uses low47 user addresses. A signed pointer
++ // may carry bit47 too; keeping low48 left that signature bit in old samples.
++ return p&0x00007fffffffffffULL;
++#endif
++}
++inline uint64_t strippedCode(uint64_t p){
++#if defined(__arm64e__)
++ return (uintptr_t)ptrauth_strip((void *)(uintptr_t)p,ptrauth_key_function_pointer);
++#else
++ return p&0x00007fffffffffffULL;
++#endif
++}
++inline bool serverLayoutMatches(uint64_t p,int64_t slide){
++ const uint64_t address=stripped(p);
++ return address==uint64_t(int64_t(kServerVtable)+slide) ||
++        address==uint64_t(int64_t(kAccelServerVtable)+slide);
++}
+ 
+ // Read returns the actual Mach status and rejects short reads. The caller has
+ // already verified the loaded UUID and retained this display object. Samples
+@@ -71,7 +99,7 @@ template<class Read,class Clock> inline void capture(State &s,int64_t slide,Read
+  if(!s.object){finish(NoObject);return;}
+  if(!take(0,s.object+8,&s.impl,8) || !s.impl || !take(1,s.impl+0x40,&s.server,8) || !s.server ||
+     !take(2,s.server,&s.serverVtable,8)){finish(ReadFailed);return;}
+- if(stripped(s.serverVtable)!=uint64_t(int64_t(kServerVtable)+slide)){finish(WrongServerVtable);return;}
++ if(!serverLayoutMatches(s.serverVtable,slide)){finish(WrongServerVtable);return;}
+  if(!take(3,s.server+0x60,&s.display,8) || !s.display || !take(4,s.display,&s.displayVtable,8)){
+   finish(ReadFailed);return;
+  }
+@@ -82,7 +110,7 @@ template<class Read,class Clock> inline void capture(State &s,int64_t slide,Read
+  if(!s.timer){finish(NoSoftwareTimer);return;}
+  if(!take(6,s.timer+kTimerTailOffset,s.timerTail,sizeof(s.timerTail))){finish(ReadFailed);return;}
+  s.flags|=TimerRead;
+- if(stripped(s.timerTail[(0x90-kTimerTailOffset)/8])!=uint64_t(int64_t(kTimerCallback)+slide) ||
++ if(strippedCode(s.timerTail[(0x90-kTimerTailOffset)/8])!=uint64_t(int64_t(kTimerCallback)+slide) ||
+     s.timerTail[(0x98-kTimerTailOffset)/8]!=s.server){finish(WrongTimerIdentity);return;}
+  s.flags|=TimerIdentityMatched;
+  if(!take(7,s.server+0x600,s.confirmServer,sizeof(s.confirmServer)) ||
+diff --git a/README.md b/README.md
+index 7300fa851619c68f54b0db3c82161ee387b0eb0a..f1e3275912f52a4c9c0b435c94b84c0757dd0c61 100644
+--- a/README.md
++++ b/README.md
+@@ -253,9 +253,14 @@ Shared-event waits and encodeDrain now use the existing wall-only span kinds30/3
+ Rendering, deadlines, callbacks, queue policies and synchronization are unchanged.
+ 
+ 
+-The iPhone24A446 observer now records the display server's next-update state and
+-Mach display timer fields when the loaded QuartzCore UUID and both original
+-vtables match. It only reads memory; repeated fields report consistency, not
++The iPhone24A446 observer records the display server's next-update state and
++Mach display timer fields only for the verified QuartzCore UUID and the original
++IOMFBServer primary layout. AccelServer uses that same primary IOMFBServer
++prefix in this exact image: its unadjusted destructor calls IOMFBServerD2 and
++its update virtual slot is inherited. The reader accepts these two exact
++address points, strips data and callback PAC through their proper keys, and
++still verifies the display and timer callback identities. The state wire
++format and read count are unchanged; other subclasses remain rejected. It only reads memory; repeated fields report consistency, not
+ atomicity. The encoding worker joins the registered render-thread observations,
+ bounded to6144 samples. SpringBoard's actual main thread uses the same Mach/stack
+ reader at20ms for at most ten minutes in its own springboard-waits.trace. Both

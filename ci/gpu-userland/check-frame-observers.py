@@ -94,6 +94,31 @@ int main(int argc,char **argv){assert(argc==2);unsigned cases=0;
  for(const auto &r:output){const auto *first=(const uint8_t *)&r.t1;roundtrip.insert(roundtrip.end(),first,first+24);
   const auto *second=(const uint8_t *)&r.c;roundtrip.insert(roundtrip.end(),second,second+24);}
  assert(roundtrip.size()==816 && !memcmp(roundtrip.data(),&s,sizeof(s)) && s.flags==31);++cases;
+
+ // AccelServer's verified primary IOMFBServer prefix, with PAC bits from051.
+ init();put(0x3000,uint64_t(0x1a800000000000ULL|nbdisplaywait::kAccelServerVtable));s=take();
+ assert(s.stop==0 && s.flags==31 && reads==9 && s.serverTail[16]==0x123456789abcdef0);++cases;
+ // Primary IOMFBServer and display pointers may both carry signature bit47.
+ init();put(0x3000,uint64_t(0x6c800000000000ULL|nbdisplaywait::kServerVtable));
+ put(0x4000,uint64_t(0x3a800000000000ULL|nbdisplaywait::kDisplayVtable));s=take();
+ assert(s.stop==0 && s.flags==31 && reads==9);++cases;
+ // The exact retained051 pointer resolves only against051's own slide.
+ init();put(0x3000,uint64_t(0x1a8001e9deb298));
+ put(0x4000,uint64_t(0x38000000000000ULL|(nbdisplaywait::kDisplayVtable+14598144)));
+ uint64_t signedTimer[19]{};signedTimer[3]=0x72800000000000ULL|(nbdisplaywait::kTimerCallback+14598144);
+ signedTimer[4]=0x3000;signedTimer[11]=1234;put(0x5078,signedTimer);
+ s={};s.object=0x1000;nbdisplaywait::capture(s,14598144,readObserverMemory,nowUs);
+ assert(s.stop==0 && s.flags==31 && reads==9);++cases;
+ // Other subclasses and an AccelServer with the wrong slide stay rejected.
+ init();put(0x3000,uint64_t(0x1a800000000000ULL|(nbdisplaywait::kAccelServerVtable+8)));s=take();
+ assert(s.stop==nbdisplaywait::WrongServerVtable && reads==3 && !s.flags);++cases;
+ init();put(0x3000,uint64_t(0x1a8001e9deb298));s=take();
+ assert(s.stop==nbdisplaywait::WrongServerVtable && reads==3 && !s.flags);++cases;
+ // Accepting AccelServer does not accept a different display or timer callback.
+ init();put(0x3000,nbdisplaywait::kAccelServerVtable);put(0x4000,uint64_t(nbdisplaywait::kDisplayVtable+8));s=take();
+ assert(s.stop==nbdisplaywait::WrongDisplayVtable && reads==5 && !s.flags);++cases;
+ init();put(0x3000,nbdisplaywait::kAccelServerVtable);memory[0x5078][3*8]^=4;s=take();
+ assert(s.stop==nbdisplaywait::WrongTimerIdentity && reads==7 && s.flags==7);++cases;
  std::cout<<"cases="<<cases<<" actual_observer_reader_and_batch_fields_passed\n";
 }
 '''
@@ -104,8 +129,8 @@ run=subprocess.run(command,capture_output=True,text=True);(a.out/'build.log').wr
 assert run.returncode==0,run.stderr
 run=subprocess.run([str(binary),str(a.out/'observer.trace')],capture_output=True,text=True,timeout=30)
 (a.out/'test.log').write_text(run.stdout+run.stderr);assert run.returncode==0,run.stdout+run.stderr
-assert 'cases=17 actual_observer_reader_and_batch_fields_passed' in run.stdout
-report=dict(passed=True,actual_source_reader_serializer_batch=True,ASan_UBSan=True,cases=17,
+assert 'cases=24 actual_observer_reader_and_batch_fields_passed' in run.stdout
+report=dict(passed=True,actual_source_reader_serializer_batch=True,ASan_UBSan=True,cases=24,
     source_sha256=hashlib.sha256(a.source.read_bytes()).hexdigest(),
     display_state_header_sha256=hashlib.sha256((folder/'NativeDisplayWaitState.h').read_bytes()).hexdigest(),
     observer_include_sha256=hashlib.sha256((folder/'NativeFrameObservers.inc').read_bytes()).hexdigest(),
