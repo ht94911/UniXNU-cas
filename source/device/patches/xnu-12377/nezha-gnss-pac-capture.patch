@@ -1,9 +1,132 @@
 --- a/osfmk/kern/exception.c
 +++ b/osfmk/kern/exception.c
-@@ -822,6 +822,82 @@
+@@ -96,6 +96,8 @@
+ #include <pexpert/pexpert.h>
+ #if __arm64__
+ #include <arm/thread.h>
++#include <kern/simple_lock.h>
++#include <machine/machine_routines.h>
+ #endif
+ 
+ #include <os/log.h>
+@@ -822,6 +824,199 @@
  }
  
  #if __has_feature(ptrauth_calls)
++/* Copy saved scalar states under try-locks, then read sampled user frames
++ * outside those locks. The current locationd fault already owns this task. */
++#if __arm64__
++struct sheng_gnss_object_peer {
++	uint64_t tid, pc, lr, sp, fp, x19, x20;
++	unsigned state;
++};
++
++static bool
++sheng_gnss_user_range(uint64_t address, unsigned size)
++{
++	return address >= 4096 && address < (UINT64_C(1) << 47) &&
++	       size <= (UINT64_C(1) << 47) - address;
++}
++
++static void
++sheng_gnss_object_words(const char *label, uint64_t address)
++{
++	uint64_t words[16] = {};
++	int error = sheng_gnss_user_range(address, sizeof(words)) ?
++	    copyin((user_addr_t)address, words, sizeof(words)) : -1;
++	printf("NEZHA GNSS OBJECT: %s address=0x%llx bytes=%lu error=%d\n",
++	    label, address, sizeof(words), error);
++	if (error) {
++		return;
++	}
++	for (unsigned i = 0; i < 16; i += 4) {
++		printf("NEZHA GNSS OBJECT: %s+0x%x %llx %llx %llx %llx\n",
++		    label, i * 8, words[i], words[i + 1], words[i + 2], words[i + 3]);
++	}
++}
++
++static void
++sheng_gnss_object_context(task_t task, arm_saved_state_t *fault)
++{
++	static struct sheng_gnss_object_peer peers[64];
++	static unsigned busy;
++	const uint64_t object = get_saved_state_reg(fault, 25);
++	const uint64_t lane = get_saved_state_reg(fault, 20);
++	unsigned count = 0, visited = 0, skipped = 0;
++	if (!ml_get_interrupts_enabled() ||
++	    __atomic_exchange_n(&busy, 1u, __ATOMIC_ACQUIRE)) {
++		printf("NEZHA GNSS OBJECT: peer snapshot unavailable\n");
++		return;
++	}
++	sheng_gnss_object_words("item", object);
++	sheng_gnss_object_words("lane", lane);
++	if (!task_lock_try(task)) {
++		printf("NEZHA GNSS OBJECT: task snapshot busy\n");
++		__atomic_store_n(&busy, 0u, __ATOMIC_RELEASE);
++		return;
++	}
++	thread_t peer;
++	queue_iterate(&task->threads, peer, thread_t, task_threads) {
++		if (visited++ >= 64) {
++			break;
++		}
++		boolean_t irq = ml_set_interrupts_enabled(FALSE);
++		if (!simple_lock_try(&peer->sched_lock, &thread_lck_grp)) {
++			++skipped;
++			ml_set_interrupts_enabled(irq);
++			continue;
++		}
++		arm_saved_state_t *state = peer->machine.upcb;
++		if ((peer->state & (TH_WAIT | TH_RUN)) == TH_WAIT &&
++		    state != NULL && is_saved_state64(state)) {
++			uint64_t sp = get_saved_state_sp(state);
++			bool near = sheng_gnss_user_range(sp, 16) &&
++			    ((object >= sp && object - sp <= 65536) ||
++			     (sp > object && sp - object <= 4096));
++			if (near) {
++				struct sheng_gnss_object_peer *sample = &peers[count++];
++				*sample = (struct sheng_gnss_object_peer){
++					.tid = peer->thread_id, .state = peer->state,
++					.pc = get_saved_state_pc(state), .lr = get_saved_state_lr(state),
++					.sp = sp, .fp = get_saved_state_fp(state),
++					.x19 = get_saved_state_reg(state, 19),
++					.x20 = get_saved_state_reg(state, 20),
++				};
++			}
++		}
++		thread_unlock(peer);
++		ml_set_interrupts_enabled(irq);
++	}
++	unsigned slide = task->task_shared_region_slide;
++	task_unlock(task);
++	printf("NEZHA GNSS OBJECT: peers=%u visited=%u skipped=%u cache_slide=0x%x sampled=1\n",
++	    count, visited > 64 ? 64 : visited, skipped, slide);
++	for (unsigned i = 0; i < count; ++i) {
++		const struct sheng_gnss_object_peer *sample = &peers[i];
++		uint64_t fp = sample->fp;
++		printf("NEZHA GNSS PEER: tid=%llx state=0x%x pc=%llx lr=%llx sp=%llx fp=%llx x19=%llx x20=%llx\n",
++		    sample->tid, sample->state, sample->pc, sample->lr, sample->sp,
++		    fp, sample->x19, sample->x20);
++		for (unsigned frame = 0; frame < 18 && fp; ++frame) {
++			uint64_t pair[2] = {};
++			if (!sheng_gnss_user_range(fp, sizeof(pair)) || (fp & 15) ||
++			    copyin((user_addr_t)fp, pair, sizeof(pair))) {
++				printf("NEZHA GNSS PEER: tid=%llx frame=%u unavailable fp=%llx\n",
++				    sample->tid, frame, fp);
++				break;
++			}
++			printf("NEZHA GNSS PEER: tid=%llx frame=%u fp=%llx next=%llx ret=%llx\n",
++			    sample->tid, frame, fp, pair[0], pair[1] & UINT64_C(0x00007fffffffffff));
++			if (pair[0] <= fp || pair[0] - fp > 1048576) {
++				break;
++			}
++			fp = pair[0];
++		}
++	}
++	__atomic_store_n(&busy, 0u, __ATOMIC_RELEASE);
++}
++#endif /* __arm64__ */
++
 +/* GNSS002 locationd PAC faults are fatal before the existing exception
 + * recorder runs. Reuse its saved-state/frame capture before fatal handling;
 + * only locationd, at most three captures, with the original exit retained. */
@@ -57,6 +180,9 @@
 +			if (copyin((user_addr_t)(pc - 16), insn, sizeof(insn)) == 0) {
 +				printf("sheng-gnss-pac: insn@pc-16 %08x %08x %08x %08x | %08x %08x %08x %08x\n",
 +				    insn[0], insn[1], insn[2], insn[3], insn[4], insn[5], insn[6], insn[7]);
++				if (insn[4] == UINT32_C(0xdac11a30)) {
++					sheng_gnss_object_context(task, ss);
++				}
 +			}
 +			/* What the fault address maps to: physical page, managed DRAM or not, cache attributes. */
 +			extern ppnum_t pmap_find_phys(pmap_t, addr64_t);
@@ -83,7 +209,7 @@
  static void
  pac_exception_triage(
  	exception_type_t        exception,
-@@ -839,6 +915,7 @@
+@@ -839,6 +1034,7 @@
  		proc_name = proc_name_address(proc);
  
  		if (task_is_pac_exception_fatal(task) && !is_address_space_debugged(proc)) {

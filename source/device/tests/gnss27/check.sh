@@ -20,3 +20,4 @@ for task_gnss_case in gnss_protocol_test gnss_lifecycle_test gnss_qmux_test; do
 done
 PYTHONDONTWRITEBYTECODE=1 python3 "$task_gnss_root/tests/gnss27/evidence_test.py"
 PYTHONDONTWRITEBYTECODE=1 python3 "$task_gnss_root/tests/gnss27/launcher_job_test.py"
+PYTHONDONTWRITEBYTECODE=1 python3 "$task_gnss_root/tests/gnss27/exception_context_test.py"

@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "GNSS005 stock LOC HAL client and coherent launcher; initialize actual shared IPCC host fixture before the standard native build",
+  "purpose": "GNSS013: existing locationd fault record captures bounded queue fields and nearby waiting peer frames",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "ee3d0a031f5526071140fe2ba76403566c4b37e7",
+  "device_revision": "9bd9af69b1292188b2c82120b4110203e2872a20",
   "soc_revision": "GPU051 e565439+3435fa5 and GNSS counted IPA plus immutable IPCC append",
   "xcode": "26.6",
   "files": {
@@ -574,7 +574,7 @@
     "source/device/patches/xnu-12377/zzzzzz-nezha-input-chain-trace.patch": "c4d05419e7ec3af0de619754bdb6c2deb69b74d714c2219e509360ebfe1b947e",
     "source/device/patches/xnu-12377/zzzzzz-nezha-kernel-class-lock-order.patch": "cd90c61d6838f4e6a7248da81b6180f14db03d00f2f7a64f4bbe4034c0aa8dcb",
     "source/device/patches/xnu-12377/zzzzzz-nezha-sigp-startup-order.patch": "18275910b909d187e459c68f5d937cc09bc01923180141dc155aa7f4ff14aaf9",
-    "source/device/porting.toml": "bdd88c14137e3832416c2bc6665684133bdf24f8c96461f826e55cf3c3eecef1",
+    "source/device/porting.toml": "8372bacc553085f8e7f59fbc4785b05b83c11bb94e7aa393cd16603eeaa9876f",
     "source/device/scripts/aes-iphone-24A446.json": "d55ed6d1d65fdff5de46dd602552eaf3309d1f7370fcd3f15eddb391225ffe8a",
     "source/device/scripts/als-event-service-iphone-24A446.json": "34c27f1a58bab3c518570a57c006a23fce315b90a584e691629d61c0850bd4d8",
     "source/device/scripts/backlight-iphone-24A446.json": "446eb5fe6440335bfe9fca75b32f7d815ddcafbb8a3c2d7f697c1e5c3f40f6cb",
@@ -663,7 +663,7 @@
     "source/device/tests/check-gpu-bo-phases.py": "e34cab3913626ff9e80d533e9013791565229a3386fbb1599ed4c71c68afc181",
     "source/device/tests/cpu27-policy.c": "e1682fcec436a58085ef34ebdf82a536523f933e99a873ea1aacd7d3cd45b61c",
     "source/device/tests/display-dpu-timing.c": "e7ac8e9fbc9e39ae309dea5f3934bdd8ca7ca4bc66601908a2b8d349f9b513c5",
-    "source/device/tests/gnss27/check.sh": "76c5b1ed3fc3a00a2a1b2f914cef0c60e4d5bd8b98fd30a3bd6939188afc1353",
+    "source/device/tests/gnss27/check.sh": "82e80214e5f11fda00ab0537e4acff273a23cc8fa8e6f36044740e9e47885915",
     "source/device/tests/gnss27/evidence_test.py": "fe2944b4c4692c67ce931569244a45d27c120f11409ccb361e902ee9fc74c0c0",
     "source/device/tests/gnss27/gnss_lifecycle_test.c": "83409845687318906d5021ad136c4d688b47ef23c4cc95224f572512cfa6e793",
     "source/device/tests/gnss27/gnss_protocol_test.c": "919d77d9c96fdd2292b037c8f56b5edaf5ba3f0d7f0840668d74ffd518b8e664",
@@ -707,11 +707,12 @@
     "source/usb.bundle": "c11677e274e735ce3ca849dde0e1654404eafb23538cadb0b25d0e6d2c98a5f4",
     "source/device/scripts/nezha_macho_late.py": "fc5a2869ef22bd2c06702930fc0c88b0e071ab7ef851824b403234633040fc37",
     "source/device/patches/xnu-12377/nezha-gnss-test-runtime.patch": "68f37196f4777d4cc7721d6c5ab33de3882ae1a826513fd86ef942146e0c55ac",
-    "source/device/patches/xnu-12377/nezha-gnss-pac-capture.patch": "4092466e0688bd1a73653475df73fb1299ac2e69560bd0ac995aaae19ee112ae",
-    ".github/workflows/nezha-ios27-native.yml": "2f51ca578e259b9964d772f3b4df93474e9ec36ddb884a8103b7e72112b968c6",
+    "source/device/patches/xnu-12377/nezha-gnss-pac-capture.patch": "433e27a9382331193c32a6a9bbc2a536d63eef6a8247e82979e4b9245a34b0d3",
+    ".github/workflows/nezha-ios27-native.yml": "79b037d39ad109b8ff0036374f6cb693943c7fcc815b4d44c4744ab80a4db864",
     "source/device/tests/gnss27/launcher_job_test.py": "bad064a06b284103f964c8e02d7ec566fa9b5454b9e564e51b74a6bddfa7c448",
     "source/device/tools/gnss27/launcher_job.py": "55669e81cfa07ea3a4750732a7ab59df0694386118d6fd423615f3b4d7321cf9",
-    "source/device/package/gnss27/userland/org.unixnu.nezha.location-launch.plist": "69bee5c36ebedbbd6d686fd108fa9c41ab53eddd380906c472740187b138e49f"
+    "source/device/package/gnss27/userland/org.unixnu.nezha.location-launch.plist": "69bee5c36ebedbbd6d686fd108fa9c41ab53eddd380906c472740187b138e49f",
+    "source/device/tests/gnss27/exception_context_test.py": "de69d1acc861f3732b8c63a5781ce1d66d46a91d3d2f6e73451fc7bb7cd8814b"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
@@ -1089,19 +1090,28 @@
     "diagnostic_provider": 9,
     "provider8_owner": "GPU051 original nezhaaudio",
     "physical_GNSS001_failure": "Inherited provider8 collision prevents MSS worker creation",
-    "current_device_revision": "ee3d0a031f5526071140fe2ba76403566c4b37e7",
+    "current_device_revision": "9bd9af69b1292188b2c82120b4110203e2872a20",
     "LOC_client_string": "HAL",
     "LOC_registration_packet_bytes": 35,
     "LOC_notification_value": 0,
     "actual_GNSS004_error": 48,
     "coherent_launcher_source": "tools/gnss27/launcher_job.py"
   },
-  "previous_native_run": 44048805411,
+  "previous_native_run": 44067720727,
   "previous_native007": {
     "run": 44066302910,
     "head": "56ba392fa295f8e7b4093976eeb4094da76feb99",
     "conclusion": "failure",
     "target_compile_started": false,
     "error": "uninitialized shared IPCC fixture; explicit zero-init reproducer passes"
-  }
+  },
+  "previous_native_head": "39832ccbca24467fc9e24da8f330fbd47f7585b2",
+  "native009_delta": [
+    "patches/xnu-12377/nezha-gnss-pac-capture.patch",
+    "tests/gnss27/exception_context_test.py",
+    "tests/gnss27/check.sh",
+    "porting.toml"
+  ],
+  "GNSS012_App_launch_preserved": true,
+  "GNSS012_metadata_fields_preserved_in_local_packaging": true
 }
