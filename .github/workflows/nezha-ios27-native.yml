@@ -1,7 +1,7 @@
-name: nezha Camera089 on GPU051 - native
+name: nezha Camera091 grouped mode1 on GPU051 - native
 on:
   push:
-    branches: [codex/ios27-camera089-gpu051-vnode-exposure-20261118]
+    branches: [codex/ios27-camera091-gpu051-grouped-controls-20261118]
   workflow_dispatch:
 permissions:
   contents: read
@@ -78,6 +78,18 @@ jobs:
           "$out/consumer" > "$RUNNER_TEMP/ios27/work/logs/camera-boot-arc-host.log" 2>&1
           clang -std=c11 -Wall -Wextra -Werror -g -fsanitize=address,undefined -fno-sanitize-recover=all -I "$soc/include" "$src/tests/camera-smmu-retire.c" "$soc/src/Sm8850Resources.c" -o "$out/smmu-retire"
           "$out/smmu-retire" > "$RUNNER_TEMP/ios27/work/logs/camera-smmu-retire-host.log" 2>&1
+      - name: Check grouped exposure wire and original control readback
+        run: |
+          set -euo pipefail
+          src="$RUNNER_TEMP/ios27/work/device"
+          out="$RUNNER_TEMP/ios27/grouped-control-host"
+          mkdir -p "$out"
+          for name in cci cci-burst ovx-controls; do
+            clang -std=c11 -Wall -Wextra -Werror -g -fsanitize=address,undefined -fno-sanitize-recover=all -I "$src/package/camera" "$src/package/camera/NezhaCameraCci.c" "$src/package/camera/NezhaCameraOvx10500u.c" "$src/tests/camera-$name.c" -o "$out/test-$name"
+            "$out/test-$name"
+          done
+          clang -std=c11 -Wall -Wextra -Werror -g -fsanitize=address,undefined -fno-sanitize-recover=all -I "$src/package/camera" "$src/package/camera/NezhaCameraOvx10500u.c" "$src/tests/camera-ovx-readback.c" -o "$out/test-readback"
+          "$out/test-readback"
       - name: Check original LS registration process scope
         run: CC=clang python3 "$RUNNER_TEMP/ios27/work/device/scripts/check-nezha27-camera-lsd.py" --out "$RUNNER_TEMP/ios27/work/camera-lsd-host"
       - name: Check original Camera insertion scope

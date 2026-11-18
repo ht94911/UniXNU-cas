@@ -18,7 +18,7 @@ enum {
 };
 
 struct Model {
-    uint32_t commands[2][6];
+    uint32_t commands[2][20];
     unsigned queued[2];
     unsigned submitted;
     unsigned writes;
@@ -91,7 +91,7 @@ static void write32(void *context, uint32_t offset, uint32_t value)
     case 0x610: {
         unsigned queue = offset == 0x510 ? 0 : 1;
         if (!model->discard_load) {
-            assert(model->queued[queue] < 6);
+            assert(model->queued[queue] < 20);
             model->commands[queue][model->queued[queue]++] = value;
         }
         break;
@@ -123,21 +123,25 @@ static void write32(void *context, uint32_t offset, uint32_t value)
             break;
         }
         if (value == 4) {
-            assert(model->commands[0][0] == model->expected_slave);
             if (model->controls_script) {
-                const unsigned index = model->controls_step++;
-                assert(index < 14 && model->queued[0] == 3);
-                const struct NezhaCameraOvxModeWrite *entry = &model->controls_plan.writes[index];
-                const uint32_t expected = 0x39u | ((uint32_t)(entry->reg >> 8) << 8) |
-                    ((uint32_t)(entry->reg & 255) << 16) | ((uint32_t)entry->value << 24);
-                assert(model->commands[0][1] == expected && model->commands[0][2] == 0x108);
-                if (index == model->controls_fail && model->controls_error != NezhaCciOk) {
-                    if (model->controls_error == NezhaCciNack)
-                        model->irq |= M1AddressReport | M1AddressNack;
-                } else model->irq |= M1AddressReport;
+                assert(model->queued[0] == 18 && model->commands[0][0] == 6);
+                assert(model->commands[0][1] == model->expected_slave);
+                assert(model->commands[0][16] == 7 && model->commands[0][17] == 0x108);
+                for (unsigned i = 0; i < 14; ++i) {
+                    const struct NezhaCameraOvxModeWrite *entry = &model->controls_plan.writes[i];
+                    const uint32_t expected = 0x39u | ((uint32_t)(entry->reg >> 8) << 8) |
+                        ((uint32_t)(entry->reg & 255) << 16) | ((uint32_t)entry->value << 24);
+                    assert(model->commands[0][i + 2] == expected);
+                }
+                model->controls_step = model->controls_error == NezhaCciOk ? 14 : model->controls_fail;
+                if (model->controls_error == NezhaCciNack)
+                    model->irq |= M1AddressReport | M1AddressNack;
+                else if (model->controls_error == NezhaCciOk)
+                    model->irq |= M1AddressReport;
                 model->queued[0] = 0;
                 break;
             }
+            assert(model->commands[0][0] == model->expected_slave);
             assert(model->commands[0][1] == model->expected_write);
             const unsigned words = model->queued[0];
             if (words == 4) {
@@ -243,14 +247,14 @@ int main(void)
         assert(nezha_camera_ovx10500u_control_plan(&controls,&m.controls_plan));
         const struct NezhaCameraRegisterIo control_io = {&m,read32,write32,wait_ms};
         assert(nezha_camera_ovx10500u_apply_controls(&control_io,&controls,&control_result)==m.controls_error);
-        assert(control_result.applied_writes==stop && m.controls_step==stop+1 && m.submitted==stop+1);
+        assert(control_result.applied_writes==0 && m.controls_step==stop && m.submitted==1);
         assert(control_result.transfer.needs_recovery && control_result.group_may_be_held);
     }
     m = initial();m.controls_script=true;
     assert(nezha_camera_ovx10500u_control_plan(&controls,&m.controls_plan));
     const struct NezhaCameraRegisterIo control_io = {&m,read32,write32,wait_ms};
     assert(nezha_camera_ovx10500u_apply_controls(&control_io,&controls,&control_result)==NezhaCciOk);
-    assert(control_result.applied_writes==14 && m.controls_step==14 && !control_result.group_may_be_held);
+    assert(control_result.applied_writes==14 && m.controls_step==14 && m.submitted==1 && !control_result.group_may_be_held);
     m = initial();m.queued[0]=1;
     assert(nezha_camera_ovx10500u_apply_controls(&control_io,&controls,&control_result)==NezhaCciBusy);
     assert(!m.submitted && !control_result.group_may_be_held && !control_result.applied_writes);

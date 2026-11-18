@@ -52,8 +52,10 @@ struct NezhaCameraOvxControlResult {
 };
 
 /* Only the selected mode1 capture worker may apply this transaction.
- * Report the first CCI error without issuing a group release or retry;
- * the owner stops capture and recovers that master through its teardown. */
+ * The fourteen writes share one queue REPORT. Report the first CCI error
+ * without issuing a group release or retry; applied_writes is fourteen
+ * after success and zero on an unknown partial table. The owner stops
+ * capture and recovers that master through its teardown. */
 enum NezhaCameraCciStatus nezha_camera_ovx10500u_apply_controls(
     const struct NezhaCameraRegisterIo *cci, const struct NezhaCameraOvxControls *controls,
     struct NezhaCameraOvxControlResult *result);

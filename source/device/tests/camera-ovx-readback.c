@@ -25,6 +25,10 @@ enum NezhaCameraCciStatus nezha_camera_cci_read_byte(const struct NezhaCameraReg
 enum NezhaCameraCciStatus nezha_camera_cci_write_byte(const struct NezhaCameraRegisterIo *io,
     unsigned master,uint8_t slave,uint16_t reg,uint8_t byte,struct NezhaCameraCciObservation *transfer)
 {(void)io;(void)master;(void)slave;(void)reg;(void)byte;(void)transfer;assert(false);return NezhaCciInvalid;}
+enum NezhaCameraCciStatus nezha_camera_cci_write_bytes(const struct NezhaCameraRegisterIo *io,
+    unsigned master,uint8_t slave,const struct NezhaCameraCciByteWrite *writes,unsigned count,
+    struct NezhaCameraCciObservation *transfer)
+{(void)io;(void)master;(void)slave;(void)writes;(void)count;(void)transfer;assert(false);return NezhaCciInvalid;}
 enum NezhaCameraCciStatus nezha_camera_cci_write_burst(const struct NezhaCameraRegisterIo *io,
     unsigned master,uint8_t slave,uint16_t reg,const uint8_t *bytes,size_t count,
     unsigned queue,struct NezhaCameraCciObservation *transfer)

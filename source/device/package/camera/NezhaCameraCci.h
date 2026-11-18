@@ -76,6 +76,20 @@ enum NezhaCameraCciStatus nezha_camera_cci_write_byte(
     const struct NezhaCameraRegisterIo *io, unsigned master, uint8_t slave,
     uint16_t reg, uint8_t value, struct NezhaCameraCciObservation *observation);
 
+struct NezhaCameraCciByteWrite {
+    uint16_t reg;
+    uint8_t value;
+};
+
+/* Up to sixteen ordered 16-bit-address/byte-data I2C messages in one
+ * locked queue-0 submission. Each message keeps its STOP; the final
+ * REPORT acknowledges the complete group. An error leaves the applied
+ * prefix unknown and needs_recovery set until the owner's cleanup. */
+enum NezhaCameraCciStatus nezha_camera_cci_write_bytes(
+    const struct NezhaCameraRegisterIo *io, unsigned master, uint8_t slave,
+    const struct NezhaCameraCciByteWrite *writes, unsigned count,
+    struct NezhaCameraCciObservation *observation);
+
 /* Samsung sensor tables use 16-bit register addresses and big-endian
  * 16-bit values. The address and both bytes are one I2C message. */
 enum NezhaCameraCciStatus nezha_camera_cci_write_word(

@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Camera089 missing vnode exposure check for exact existing native node/originalsignedcameracaptured; retain088MMUprefetch/mobilelauncher andGPU051 source",
+  "purpose": "Camera091 original grouped mode1 CCI exposure table; retain089 vnode policy, MMU prefetched RDI and selectedGPU051 source",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "ba64d637a7a64abd6a0d6a265631810fd9155dab",
+  "device_revision": "e68b0ff6c04dd560f94dad3a8a558179408d029a",
   "soc_revision": "device-local-GPU051-camera074-bankstreamretirement",
   "xcode": "26.6",
   "files": {
@@ -381,8 +381,8 @@
     "source/device/package/camera/NezhaCameraCanoePins.h": "9a6ae21777345c5e16ea16d8721fbb3aeabfc221fd61f939467c923f5474a26d",
     "source/device/package/camera/NezhaCameraCaptureResources.c": "6880e4c2096a331560430a17df6404d27fdaba05977e9164a7d899ec2ffe94a7",
     "source/device/package/camera/NezhaCameraCaptureResources.h": "ea7a017dad56d9bd368921e2ad694ac30455c429acbdb42e44a2caede46219d1",
-    "source/device/package/camera/NezhaCameraCci.c": "92ac145e83ce7fc82eebd8929c00b1110c4f65ac2eea99f46cfa75946376be13",
-    "source/device/package/camera/NezhaCameraCci.h": "e7942d70764d9a6bd4c65bf22f59f8118ec298a6051188da1687d421d63c6996",
+    "source/device/package/camera/NezhaCameraCci.c": "3eec2c4c43f1d8c51bbdad8834c81bdb1bc37d51260b9fe319b7bdb370b35fee",
+    "source/device/package/camera/NezhaCameraCci.h": "cc3f709d22214a534e0689a0abba6d37ec8d8641f933e0701238145a52ccbe3a",
     "source/device/package/camera/NezhaCameraControl.h": "88e6e5dadd777e10a36f587decb8fb38300d79033b0c826bcd747b1d7867cae2",
     "source/device/package/camera/NezhaCameraCpas.c": "81536d980a13a5bf5a18b64dcad0ed01c58b87e010a8f3fc97989191267628ec",
     "source/device/package/camera/NezhaCameraCpas.h": "be3ca1961b0bdf95078f8e37a28299b55270d10bc75dda26c9d1cd7ba8bc9387",
@@ -423,8 +423,8 @@
     "source/device/package/camera/NezhaCameraNativeRpmh.h": "cfbc1e50d883d18e9fa803eaafb8ee9aafc2472ed250c77aab045f63aa0e9c37",
     "source/device/package/camera/NezhaCameraNativeSmmu.cpp": "49641d081a9abb620d7502aa7429a432719737c83e9cf3402667aa771c7f5404",
     "source/device/package/camera/NezhaCameraNativeSmmu.h": "4d77108ff33102b661dd6af0685d289c7b8a98a99087c7a1ee26734226752b06",
-    "source/device/package/camera/NezhaCameraOvx10500u.c": "bf79ed5642dc53cf062c092612c600e3153f96c9e3fbb70d3cb6b999d4ad7443",
-    "source/device/package/camera/NezhaCameraOvx10500u.h": "6a0b1ba9b8573807cbae93b86c4f25743b0e5997630598c2b759e8daa695b221",
+    "source/device/package/camera/NezhaCameraOvx10500u.c": "7e4d127cec582291e2a3dcd1b770223ce48dc30ebbfd556c9f561ff209a6961c",
+    "source/device/package/camera/NezhaCameraOvx10500u.h": "e7b3c87dc6698232cb27fcfaa3813fbd3a3383ca5e3fb5efcac78dcfd4afc356",
     "source/device/package/camera/NezhaCameraProbe.c": "862bb0c08940415193a683be0b8f1d63d0d8e3924c6b09764d85a7f8a0bfc51a",
     "source/device/package/camera/NezhaCameraProfile.c": "d0702e127d143ef998bc48259d0d6b7b360500a7b8acd9716796b5983118d29f",
     "source/device/package/camera/NezhaCameraProfile.h": "c75fef159e0d56edd88d2ea10e50fc313a2d73fc4f818e07167d75ef5ec17e2a",
@@ -610,7 +610,7 @@
     "source/device/tests/camera-camcc.c": "72ece19cac1982f5ec73e68c4caa481e8cf94a409866cdb7b18bbf784bb7c45e",
     "source/device/tests/camera-camss1080.c": "98c9b3be1d0863232f8c0c6d876a39ec2157bcabe3aeced2aa34a7d48e16735c",
     "source/device/tests/camera-cci-burst.c": "4976ea09515df490bbd70c41eed92af728bb6361d4e81f8794f72b4e2ad9ea3c",
-    "source/device/tests/camera-cci.c": "0d5d00c31811b2e2469743d7ad1737e870bebc80c8fc3e0888f07d64ed151d6f",
+    "source/device/tests/camera-cci.c": "8fee5c6acbb72665a8d051a49e6a3c751ee35656f6fe9417b1db6191234d66d8",
     "source/device/tests/camera-cpas.c": "40c96fb2497b8b10465b604a4f6a10e881fb6e1f9c8135dd6f048204985129b1",
     "source/device/tests/camera-crm.c": "34a98b7139a394eef250706749fcfd1e82cf34934c140dc05c8c5c1ee23ffe87",
     "source/device/tests/camera-csiphy24.c": "b9800002787a890d87f03dbb26d2cd3b0b7d2113360e694450b05345569ac501",
@@ -629,13 +629,13 @@
     "source/device/tests/camera-ls-registration.m": "a9c992f1477c4a3e0a59c98e16f70b980f66400af3dc88a8df404111214ba050",
     "source/device/tests/camera-main-capture.c": "226d3d48b868dfac9f8db052abac515b6c5ff11172ff47f74c0d635a4520a22e",
     "source/device/tests/camera-main-pins.c": "ffab1b051044cba4eab2624d72b18b4ebd8f8f7440a864486e055f476d91fda1",
-    "source/device/tests/camera-native-capture.cpp": "7b4137fd1584e4d453a715ea60fccd35472a90c9d3ad1403a60e7b4a96510de3",
+    "source/device/tests/camera-native-capture.cpp": "efd19ef94e7fa7b653bf7b559d2449342a1729cd5051bde1d6e06199c3eea75a",
     "source/device/tests/camera-native-device.c": "6527a5a5117ed499966680664f879077f4441096158ab3457b6874dd2be152e6",
     "source/device/tests/camera-native-irq.cpp": "dcc35e5f417bcff54db668db9a84ea867535bd41cd9d0615b99d0f420145e6aa",
     "source/device/tests/camera-native-rpmh.cpp": "58c4dd7bc3bee5d2ff8ae1c758c286f5e69e51e7e8ddc29ed91e0ac1ca83d9a9",
     "source/device/tests/camera-native-smmu.cpp": "cacf3dc0b4b04446c447fe3960e6b89b3cac2ca403dfd113d1d73b726616961a",
     "source/device/tests/camera-ovx-controls.c": "64c5bce4932074b71624e0c5fa9e694352fc63c60eabb80ec1d31621c24602c4",
-    "source/device/tests/camera-ovx-readback.c": "b91b89987b303e92939b2750f7e13ef8123f474aa0a5b940d50edb21b6070cd9",
+    "source/device/tests/camera-ovx-readback.c": "a5a1fd095e4bbe94ea6b7306db905b4439664f0042a0cfef0cf211a338c10b89",
     "source/device/tests/camera-pixel-buffer.c": "6871e80f1d2dc08d40f2e7467c3e541a338130a3661998de0b0bf8797f031cfb",
     "source/device/tests/camera-platform/CoreFoundation/CoreFoundation.h": "05ac21347bfd17e9d803a8d01f4e859e67c6c8799297859dad0585979116caa1",
     "source/device/tests/camera-platform/CoreMedia/CoreMedia.h": "259126657d083db821b0bd0aba3d9708a63a1cabf2b91c2875b3173d6b3a6446",
@@ -1067,7 +1067,7 @@
     "existing_trace_event": 65,
     "model_check": "tests/check-gpu-bo-phases.py"
   },
-  "userland_revision": "d91a3b57d8b3c53d9773d9836282a3e0ce819887",
+  "userland_revision": "e68b0ff6c04dd560f94dad3a8a558179408d029a",
   "camera": {
     "source_revision": "2bf0b2cc70f2bc56c500ded1311ca1c515c67674",
     "device_base": "7435e49e46705d2bfcabe09487ff80a4821fd577",
@@ -1240,7 +1240,14 @@
     "unattended_mobile_FBS_launch": true,
     "physical_Camera_preview_verified": false,
     "physical_Camera_photo_verified": false,
-    "native_exposure_both_ioctl_stages": true
+    "native_exposure_both_ioctl_stages": true,
+    "grouped_exposure_table": true,
+    "grouped_exposure_queue_submissions": 1,
+    "grouped_exposure_writes": 14,
+    "grouped_exposure_prefix_unknown_on_error": true,
+    "CCI_host_group_tests_passed": true,
+    "continuous_native_host_passed": true,
+    "original_readback_and_two_frame_delay": true
   },
   "base_GPU051": {
     "boot_sha256": "4e4b785ca1bf7bea18d68248ade4cde09a9d9efb5d557fe65e4eaa975dac849a",
@@ -1248,11 +1255,11 @@
     "Metal_run": 43807847110,
     "Metal_head": "59282c1dd681f80746443bad9d1e45835dcf38d6"
   },
-  "ci_native_sha256": "20f7bcb06f6ce5f8a3d4d12e4272a8f3c8e684f489c8096f678fe9cf3c8feaf1",
+  "ci_native_sha256": "156d2a840ffbbfa07ab3a3d3e461955594905470ec05f37bf03b8ffca9ff5bab",
   "ci_host_log_directory_fix": true,
-  "source_parent_kernel": "f712214427e829f2794fc86ce3c355d7bf1b39e0",
+  "source_parent_kernel": "ba64d637a7a64abd6a0d6a265631810fd9155dab",
   "userland_built_separately": true,
-  "builder_sha256": "20f7bcb06f6ce5f8a3d4d12e4272a8f3c8e684f489c8096f678fe9cf3c8feaf1",
+  "builder_sha256": "156d2a840ffbbfa07ab3a3d3e461955594905470ec05f37bf03b8ffca9ff5bab",
   "camera079_launcher_cdhash": "6f4575d581997dccad3061d6e288e1ca02a68cb6",
-  "library_source_revision": "d91a3b57d8b3c53d9773d9836282a3e0ce819887"
+  "library_source_revision": "e68b0ff6c04dd560f94dad3a8a558179408d029a"
 }

@@ -56,17 +56,19 @@ enum NezhaCameraCciStatus nezha_camera_ovx10500u_apply_controls(
     *result = (struct NezhaCameraOvxControlResult){0};
     if (!cci || !cci->read || !cci->write || !cci->wait_ms ||
         !nezha_camera_ovx10500u_control_plan(controls, &result->plan)) return NezhaCciInvalid;
+    struct NezhaCameraCciByteWrite writes[14];
     for (unsigned i = 0; i < 14; ++i) {
-        const struct NezhaCameraOvxModeWrite *write = &result->plan.writes[i];
-        const enum NezhaCameraCciStatus status = nezha_camera_cci_write_byte(
-            cci, OvxMaster, OvxSlave, write->reg, write->value, &result->transfer);
-        if (i == 0 && (status == NezhaCciOk || result->transfer.needs_recovery))
-            result->group_may_be_held = true;
-        if (status != NezhaCciOk) return status;
-        ++result->applied_writes;
+        writes[i].reg = result->plan.writes[i].reg;
+        writes[i].value = result->plan.writes[i].value;
     }
-    result->group_may_be_held = false;
-    return NezhaCciOk;
+    const enum NezhaCameraCciStatus status = nezha_camera_cci_write_bytes(
+        cci, OvxMaster, OvxSlave, writes, 14, &result->transfer);
+    /* Only the final queue REPORT proves all fourteen writes, including
+     * group release. A partial table keeps its unknown prefix and the
+     * group lease for the original capture cleanup. */
+    result->group_may_be_held = result->transfer.needs_recovery;
+    if (status == NezhaCciOk) result->applied_writes = 14;
+    return status;
 }
 
 enum NezhaCameraCciStatus nezha_camera_ovx10500u_read_identity(

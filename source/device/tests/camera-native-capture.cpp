@@ -55,7 +55,7 @@ extern "C" NezhaCameraCciStatus nezha_camera_ovx10500u_apply_controls(
 {
  assert(bus && stream_active && memory_active && smmu_active && irq_active);
  assert(c->exposure_lines==320 && c->gain_q8==544 && c->frame_lines==4000);
- ++control_commits;r->plan.exposure_lines=320;r->plan.frame_lines=4000;r->plan.analog_gain_q8=544;r->plan.digital_gain_q10=1024;r->applied_writes=control_failure==NezhaCciOk ? 14:5;
+ ++control_commits;r->plan.exposure_lines=320;r->plan.frame_lines=4000;r->plan.analog_gain_q8=544;r->plan.digital_gain_q10=1024;r->applied_writes=control_failure==NezhaCciOk ? 14:0;
  r->transfer.needs_recovery=control_failure!=NezhaCciOk;
  r->group_may_be_held=control_failure!=NezhaCciOk;
  return control_failure;
@@ -70,7 +70,7 @@ static void complete_controls(void *,NezhaCameraCciStatus status,
  const NezhaCameraOvxControlResult *r,uint32_t before)
 {
  ++control_completions;assert(before==1 && status==control_failure);
- assert(r->applied_writes==(status==NezhaCciOk ? 14:5));
+ assert(r->applied_writes==(status==NezhaCciOk ? 14:0));
  if(stop_at_control)nezha_camera_native_capture_request_stop();
 }
 static uint32_t original_bus_cgc;
@@ -279,7 +279,7 @@ int main(int argc,char **argv)
     const unsigned takes_before=control_takes;
     assert(!nezha_camera_native_capture(&request,&result) && result.cleaned);
     assert(result.control_attempted && result.control_status==NezhaCciNack &&
-        result.control_result.applied_writes==5 && result.control_result.group_may_be_held &&
+        result.control_result.applied_writes==0 && result.control_result.group_may_be_held &&
         result.control_completed_before==1 && result.sensor_status==NezhaCciNack);
     assert(control_takes==takes_before+1 && control_commits==4 && control_completions==4);
     puts("Native controls: sole worker frame boundary, one ACK, callback Stop, no empty/repeated commits and first NACK cleanup passed");

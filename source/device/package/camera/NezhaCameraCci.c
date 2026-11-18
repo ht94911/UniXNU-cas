@@ -236,6 +236,34 @@ enum NezhaCameraCciStatus nezha_camera_cci_write_word(
     return status;
 }
 
+enum NezhaCameraCciStatus nezha_camera_cci_write_bytes(
+    const struct NezhaCameraRegisterIo *io, unsigned master, uint8_t slave,
+    const struct NezhaCameraCciByteWrite *writes, unsigned count,
+    struct NezhaCameraCciObservation *observation)
+{
+    if (observation == NULL) return NezhaCciInvalid;
+    *observation = (struct NezhaCameraCciObservation){0};
+    if (writes == NULL || count == 0 || count > 16) return NezhaCciInvalid;
+    enum NezhaCameraCciStatus status = check_request(io, master, slave, observation);
+    if (status != NezhaCciOk) return status;
+    uint32_t words[16];
+    for (unsigned i = 0; i < count; ++i) {
+        const struct NezhaCameraCciByteWrite *write = &writes[i];
+        words[i] = CciWrite | (3u << 4) |
+            ((uint32_t)(write->reg >> 8) << 8) |
+            ((uint32_t)(write->reg & 0xffu) << 16) |
+            ((uint32_t)write->value << 24);
+    }
+    /* cam_cci_data_queue batches separate WRITE messages under one
+     * queue lock and completes the table at its REPORT. No sensor
+     * auto-increment or I2C burst behavior is assumed here. */
+    observation->phase = NezhaCciWrite;
+    status = run_queue(io, master, 0, CciSetParam | ((uint32_t)slave << 4),
+        words, count, observation, true);
+    if (status == NezhaCciOk) observation->needs_recovery = false;
+    return status;
+}
+
 /* Original cam_cci_data_queue emits the single address byte followed by
  * the requested value's high byte and then low byte. Reuse the existing
  * queue owner and completion path; no new timing or recovery policy. */
