@@ -1,18 +1,18 @@
 {
   "schema": 1,
-  "purpose": "008b app-only SDK effectiveGeometry interface orientation correction; preserve008 native44272615187 kernel and sensor objects; ordinary public CoreMotion automatic independent subscription lifecycle, human reference only",
-  "device_revision": "a3633554e57d6df73bcb51e78c639e146431865b",
-  "native_source": "d812cd3653905b1a84fb6c43e601e8c406084e1b",
-  "native_run": 44272615187,
-  "native_sha256": "21b0271c0f792e7fa84dede2bc2d8896783ec9d13008c4206d2c020cc9aefd56",
+  "purpose": "Sensor014 app-only public interface geometry check and actual supported mask/size/orientation records; sensor timestamp kernel built separately",
+  "device_revision": "03b02ea35de322d6ae05fa2883b6c043850bc189",
+  "native_source": "03b02ea35de322d6ae05fa2883b6c043850bc189",
+  "native_run": null,
+  "native_sha256": null,
   "files": {
-    "source/NezhaSensorsApp.m": "623bf4435e523edb4c253ef513c52e785a0e1ff195cc15ecf3270f1dc5100449",
+    "source/NezhaSensorsApp.m": "0d921722e007ade9dc5361cc3d608e1c26bb5a91c543e58086383ed1e47f910b",
     "source/app.entitlements.plist": "feb1ff10804738f27f888a92395f7da2f5c6e80e7a2a375ae31dedeea06f8728",
-    "source/Info.plist": "0ce9770d42a3414f13900300ad44373acb294dddaeb2d4723140b46deb79a64d",
+    "source/Info.plist": "670be52b1bad4a82977de83b5bacca01c071188fea0d51aeefb126e320c1dfc9",
     "ci/artifact-recipient.pem": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
     "ci/artifacts.py": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
-    "ci/app.py": "5dde5f87df361048ad15510960c39e92f84448d754bab97488af630c8698322b",
-    ".github/workflows/nezha-ios27-native.yml": "b7fb44080ae7661c3c47224cc11d3033f957954077a768e3849d1e0ee09bfcfd"
+    "ci/app.py": "ed3a93b219753b45a1de5dc823add672cb71b1cf55720434507843c05120cdb1",
+    ".github/workflows/nezha-ios27-native.yml": "9339ef40d87bc510ebe19c3525fd211526a9a74f2b9e6ac26d4801ec597f568a"
   },
   "private_inputs_uploaded": false,
   "phone_operations": false

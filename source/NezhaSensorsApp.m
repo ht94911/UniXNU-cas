@@ -16,9 +16,70 @@
 @property(nonatomic) NSUInteger lifecycleStage,lifecycleTicks;
 @property(nonatomic) BOOL lifecycleStarted,lifecycleDone,lifecyclePassed;
 @property(nonatomic,strong) NSDictionary *lifecycleCheckpoint;
+@property(nonatomic,copy) NSString *interfaceCheckStatus;
+@property(nonatomic) UIInterfaceOrientation requestedInterface;
+@property(nonatomic) NSTimeInterval interfaceCheckStarted;
 @end
 
 @implementation SensorsController
+- (UIInterfaceOrientationMask)supportedInterfaceOrientations
+{
+    return UIInterfaceOrientationMaskPortrait|UIInterfaceOrientationMaskLandscapeLeft|UIInterfaceOrientationMaskLandscapeRight;
+}
+- (void)checkInterfaceRotation
+{
+    if(!self.lifecycleDone||self.requestedInterface!=UIInterfaceOrientationUnknown)return;
+    [self record:@{@"interfaceCheck":@"start",@"uptime":@(NSProcessInfo.processInfo.systemUptime),
+        @"deviceOrientation":@(UIDevice.currentDevice.orientation),
+        @"supportedMask":@(self.supportedInterfaceOrientations)}];
+    [self requestInterface:UIInterfaceOrientationLandscapeLeft];
+}
+- (void)requestInterface:(UIInterfaceOrientation)orientation
+{
+    UIWindowScene *scene=self.view.window.windowScene;
+    if(!scene){self.interfaceCheckStatus=@"未完成：窗口不可用";return;}
+    self.requestedInterface=orientation;self.interfaceCheckStarted=NSProcessInfo.processInfo.systemUptime;
+    self.interfaceCheckStatus=orientation==UIInterfaceOrientationPortrait?@"正在返回竖屏":@"正在检查横屏";
+    [self setNeedsUpdateOfSupportedInterfaceOrientations];
+    UIInterfaceOrientationMask mask=(UIInterfaceOrientationMask)(1UL<<orientation);
+    UIWindowSceneGeometryPreferencesIOS *preferences=[[UIWindowSceneGeometryPreferencesIOS alloc] initWithInterfaceOrientations:mask];
+    __weak SensorsController *weak=self;
+    [scene requestGeometryUpdateWithPreferences:preferences errorHandler:^(NSError *error){
+        SensorsController *controller=weak;if(!controller)return;
+        [controller record:@{@"interfaceCheck":@"error",@"target":@(orientation),
+            @"error":@(error.code),@"domain":error.domain?:@"",@"description":error.localizedDescription?:@"",
+            @"uptime":@(NSProcessInfo.processInfo.systemUptime)}];
+        controller.requestedInterface=UIInterfaceOrientationUnknown;
+        controller.interfaceCheckStatus=@"未通过：界面请求返回错误";
+    }];
+}
+- (void)stepInterfaceCheck
+{
+    if(self.requestedInterface==UIInterfaceOrientationUnknown)return;
+    UIInterfaceOrientation actual=self.view.window.windowScene.effectiveGeometry.interfaceOrientation;
+    NSTimeInterval elapsed=NSProcessInfo.processInfo.systemUptime-self.interfaceCheckStarted;
+    BOOL layoutMatches=actual==UIInterfaceOrientationPortrait?
+        self.view.bounds.size.height>self.view.bounds.size.width:
+        self.view.bounds.size.width>self.view.bounds.size.height;
+    if(actual==self.requestedInterface&&layoutMatches){
+        UIInterfaceOrientation target=self.requestedInterface;
+        [self record:@{@"interfaceCheck":@"observed",@"target":@(target),@"actual":@(actual),
+            @"width":@(self.view.bounds.size.width),@"height":@(self.view.bounds.size.height),
+            @"deviceOrientation":@(UIDevice.currentDevice.orientation),@"uptime":@(NSProcessInfo.processInfo.systemUptime)}];
+        self.requestedInterface=UIInterfaceOrientationUnknown;
+        if(target!=UIInterfaceOrientationPortrait){
+            self.interfaceCheckStatus=@"横屏已显示，正在返回竖屏";
+            __weak SensorsController *weak=self;
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(3*NSEC_PER_SEC)),dispatch_get_main_queue(),^{
+                [weak requestInterface:UIInterfaceOrientationPortrait];
+            });
+        }else self.interfaceCheckStatus=@"通过：横屏与竖屏均已显示";
+    }else if(elapsed>=8){
+        [self record:@{@"interfaceCheck":@"timeout",@"target":@(self.requestedInterface),@"actual":@(actual),
+            @"uptime":@(NSProcessInfo.processInfo.systemUptime)}];
+        self.requestedInterface=UIInterfaceOrientationUnknown;self.interfaceCheckStatus=@"未通过：方向未改变";
+    }
+}
 - (void)record:(NSDictionary *)value
 {
     NSData *data=[NSJSONSerialization dataWithJSONObject:value options:NSJSONWritingSortedKeys error:NULL];
@@ -133,13 +194,18 @@
 {
     self.refreshCount++;
     [self stepLifecycleCheck];
+    [self stepInterfaceCheck];
     [self record:@{@"status":@1,@"refresh":@(self.refreshCount),@"uptime":@(NSProcessInfo.processInfo.systemUptime),
         @"applicationState":@(UIApplication.sharedApplication.applicationState),@"accelAvailable":@(self.motion.accelerometerAvailable),
         @"gyroAvailable":@(self.motion.gyroAvailable),@"motionAvailable":@(self.motion.deviceMotionAvailable),
         @"accelActive":@(self.motion.accelerometerActive),@"gyroActive":@(self.motion.gyroActive),
         @"motionActive":@(self.motion.deviceMotionActive),@"proximityEnabled":@(UIDevice.currentDevice.proximityMonitoringEnabled),
         @"deviceOrientation":@(UIDevice.currentDevice.orientation),
-        @"interfaceOrientation":@(self.view.window.windowScene.effectiveGeometry.interfaceOrientation)}];
+        @"interfaceOrientation":@(self.view.window.windowScene.effectiveGeometry.interfaceOrientation),
+        @"supportedInterfaceMask":@(self.supportedInterfaceOrientations),
+        @"viewWidth":@(self.view.bounds.size.width),@"viewHeight":@(self.view.bounds.size.height),
+        @"deviceOrientationNotificationsEnabled":@(UIDevice.currentDevice.generatesDeviceOrientationNotifications),
+        @"interfaceCheckStatus":self.interfaceCheckStatus?:@"尚未开始"}];
     NSMutableString *text=[NSMutableString stringWithFormat:@"原始流：%@　融合：%@\n接近监测：%@　近远：%@\n标记：%lu\n\n",
         self.rawEnabled?@"开":@"关",self.motionEnabled?@"开":@"关",UIDevice.currentDevice.proximityMonitoringEnabled?@"开":@"不可用",
         UIDevice.currentDevice.proximityState?@"近":@"远",(unsigned long)self.marker];
@@ -155,6 +221,7 @@
             else [text appendFormat:@"%@：等待样本\n\n",kind];
         }
     }
+    [text appendFormat:@"界面旋转检查：%@\n",self.interfaceCheckStatus?:@"尚未开始"];
     self.output.text=text;
 }
 - (void)viewDidLoad
@@ -168,12 +235,12 @@
     [NSFileManager.defaultManager createFileAtPath:path contents:[NSData data] attributes:nil];self.log=[NSFileHandle fileHandleForWritingAtPath:path];
     [self record:@{@"start":@1,@"uptime":@(NSProcessInfo.processInfo.systemUptime),@"accelAvailable":@(self.motion.accelerometerAvailable),
         @"gyroAvailable":@(self.motion.gyroAvailable),@"motionAvailable":@(self.motion.deviceMotionAvailable),
-        @"referenceFrames":@([CMMotionManager availableAttitudeReferenceFrames]),@"pid":@(getpid()),@"candidate":@"sensors008"}];
-    UILabel *title=[UILabel new];title.text=@"传感器测试008";title.font=[UIFont preferredFontForTextStyle:UIFontTextStyleTitle1];
-    UILabel *hint=[UILabel new];hint.numberOfLines=0;hint.font=[UIFont preferredFontForTextStyle:UIFontTextStyleFootnote];hint.text=@"启动后自动检查启停约70秒，无需移动手机。人工测试时先完成动作或摆好并静置，最后点一次“标记”，记录此前样本。姿势数据只作功能参考，绝不用于校准。加速度与重力：g；角速度：rad/s。";
+        @"referenceFrames":@([CMMotionManager availableAttitudeReferenceFrames]),@"pid":@(getpid()),@"candidate":@"sensors014"}];
+    UILabel *title=[UILabel new];title.text=@"传感器测试014";title.font=[UIFont preferredFontForTextStyle:UIFontTextStyleTitle1];
+    UILabel *hint=[UILabel new];hint.numberOfLines=0;hint.font=[UIFont preferredFontForTextStyle:UIFontTextStyleFootnote];hint.text=@"自动启停检查完成后，点“界面旋转检查”确认应用能显示横屏，再按提示转动手机。界面检查与随手机转动是两项独立结果；本轮无需标记。姿势只作参考，不用于校准。加速度与重力：g；角速度：rad/s。";
     NSMutableArray *views=[NSMutableArray arrayWithObjects:title,hint,nil];
-    NSArray *names=@[@"原始流开关",@"融合开关",@"标记"];
-    SEL actions[]={@selector(toggleRaw),@selector(toggleMotion),@selector(mark)};
+    NSArray *names=@[@"原始流开关",@"融合开关",@"标记",@"界面旋转检查"];
+    SEL actions[]={@selector(toggleRaw),@selector(toggleMotion),@selector(mark),@selector(checkInterfaceRotation)};
     for(NSUInteger i=0;i<names.count;i++){UIButton *b=[UIButton buttonWithType:UIButtonTypeSystem];[b setTitle:names[i] forState:UIControlStateNormal];[b addTarget:self action:actions[i] forControlEvents:UIControlEventTouchUpInside];[views addObject:b];}
     self.output=[UITextView new];self.output.editable=NO;self.output.font=[UIFont monospacedSystemFontOfSize:14 weight:UIFontWeightRegular];[views addObject:self.output];
     UIStackView *stack=[[UIStackView alloc] initWithArrangedSubviews:views];stack.axis=UILayoutConstraintAxisVertical;stack.spacing=10;stack.translatesAutoresizingMaskIntoConstraints=NO;[self.view addSubview:stack];

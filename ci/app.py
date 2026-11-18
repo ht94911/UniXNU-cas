@@ -18,4 +18,4 @@ finally:
  (a.out/'qualification.json').write_text(json.dumps(dict(passed=passed,unit='app',built_units=['NezhaSensors.app/NezhaSensors'] if passed else [],source_revision=m['device_revision'],source_sha256={n:sha(R/'source'/n) for n in ['NezhaSensorsApp.m','Info.plist','app.entitlements.plist']},outputs={'NezhaSensors.app/NezhaSensors':sha(binary)} if passed else {},commands=commands,phone_operations=False),indent=2)+'\n')
  seal(a.out,sorted(x.relative_to(a.out).as_posix() for x in a.out.rglob('*') if x.is_file()),R/'ci/artifact-recipient.pem',a.sealed)
 if not passed:raise SystemExit(1)
-print('Sensor008b ordinary app-only strict build passed')
+print('Sensor014 interface observation app-only strict build passed')

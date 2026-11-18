@@ -1,7 +1,7 @@
-name: nezha Sensors008b ordinary CoreMotion lifecycle app only
+name: nezha Sensors014 interface rotation observation app
 on:
   push:
-    branches: [codex/ios27-sensors008b-app-20261118]
+    branches: [codex/ios27-sensors014-app-gpu051-20261119]
 permissions:
   contents: read
 concurrency:
