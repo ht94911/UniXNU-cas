@@ -1258,7 +1258,13 @@
     "queued_frame_consumer_zero_wait": true,
     "control_frame_errors_stop_once": true,
     "CCI_wait_host_uses_same_selected_smmu_headers": true,
-    "CCI_wait_host_header_count": 5
+    "CCI_wait_host_header_count": 5,
+    "actual_wait_control_source_cases_already_passed": true,
+    "actual_wait_control_source_run": 44353539726,
+    "actual_wait_control_source_current_run_executed": false,
+    "actual_wait_control_source_log_SHA": "1883f83049fe5492c3a323aa5f77b41fb3b25681ae66aa72a9c4baffe19adae4",
+    "exact_Linux_continuous_checks_passed": true,
+    "original_native_target_build_required": true
   },
   "base_GPU051": {
     "boot_sha256": "4e4b785ca1bf7bea18d68248ade4cde09a9d9efb5d557fe65e4eaa975dac849a",
