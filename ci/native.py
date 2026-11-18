@@ -21,8 +21,19 @@ def sha(path):
 def run(argv, *, cwd=None, env=None, log=None):
     if log:
         with Path(log).open('wb') as stream:
-            return subprocess.run([str(a) for a in argv], cwd=cwd, env=env,
-                                  stdout=stream, stderr=subprocess.STDOUT).returncode
+            result = subprocess.run([str(a) for a in argv], cwd=cwd, env=env,
+                                    stdout=stream, stderr=subprocess.STDOUT)
+        if result.returncode:
+            print('Failed build step: ' + Path(log).name, flush=True)
+            print(Path(log).read_text(errors='replace')[-12000:], flush=True)
+            # The normal UniXNU build keeps archive compiler diagnostics in
+            # its output tree. Surface only failed logs from this source-only
+            # runner when artifact upload is unavailable.
+            for path in sorted(Path(cwd or '.').glob('build/nezha27-sensors/*.log')):
+                text = path.read_text(errors='replace')
+                if 'error:' in text:
+                    print(path.name + '\n' + text[-8000:], flush=True)
+        return result.returncode
     return subprocess.check_output([str(a) for a in argv], cwd=cwd, env=env, text=True).strip()
 
 

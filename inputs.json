@@ -533,12 +533,12 @@
     "source/device/package/als-owner/core/AudioRuntime.h": "427057626089238b91ec840d0b5fc0046166fd43c4794c7a01bee04ac2a89641",
     "source/metal/OriginalAcceleratorABI.h": "211e922f9b760ddec2e3453db6584bac57597b3d39e4bf0d013c1b2debd53365",
     "source/device/package/als-owner/platform/NezhaAudioPlatform.h": "e1f7bccb47b1cf815ce0fe449ba0d61d684b99003157ad9ecf2f39e020bcf599",
-    ".github/workflows/nezha-ios27-native.yml": "16c40fae0a1cb02cdfcf12fc4f746b5c824c2b38da8c05410474af4c14340bbd",
+    ".github/workflows/nezha-ios27-native.yml": "e6cf481423b93e79eafca983d8c63b3718b646e341a5f44043325b73ff4a7e78",
     "source/device/package/boot-progress/BootProgressLifecycle.h": "eaf777e5b71db7b5affaa9a64d0a2806277730b538d9aa96a457f425ccbada6a",
     "source/device/patches/xnu-12377/zzzzzz-nezha-adreno840-start.patch": "d32bb0d5e678e5773786dcce90467e0258d844550b418b438e1548fb32392f79",
     "source/device/package/backlight/OriginalAppleARMBacklightABI.h": "dab34c394c2123ae4cbfd6648980d5e7b024539773abe5852f7d2622f9bf7b8b",
     "source/device/package/NezhaWcn7860/qcom/PeachWmi.c": "075131932d883544f65bb2d22f0fd2ac956cc77f29d349ede6155b7074e7630f",
-    "ci/native.py": "8d6b216cfccb9e88bde037d1c82fa10d789226e194cc0f30b1c6d10ac6c64318",
+    "ci/native.py": "4868c13547e1f3ba237f297e3f65c06df44cd6426772c158a0a259ace1087116",
     "source/adreno/NativeAdrenoPreempt.cpp": "59336613d70291a3d16abd0c3a10025fc8dae5ba2796f76ce8e7c60234f328bb",
     "source/device/package/SourceStorage.cpp": "d0b8e0433ef71a1761e5d3dd055d8c4a6b709a5b8dabb2da36ab558291c9d2f3",
     "source/adreno/NativeAdrenoPwrupRegs.h": "8067d9625e922173912eea09e6a504d9c1b31234d4656f8dd4148855882918e1",
@@ -1085,5 +1085,14 @@
     "original_inputs_retained": true,
     "phone_operations": false,
     "private_data": false
+  },
+  "sensors010b": {
+    "production_source_unchanged": "c3e2b088b97b10c17574d7b950f920312de94d7d",
+    "previous_run": 44324910724,
+    "previous_artifacts_upload_error": "ENOTFOUND",
+    "previous_native_exit": 1,
+    "reason": "No encrypted artifact was created by failed upload; expose existing source-only build error logs before one replacement build",
+    "diagnostics_only": true,
+    "phone_operations": false
   }
 }
