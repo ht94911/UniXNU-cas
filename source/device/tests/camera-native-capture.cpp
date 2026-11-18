@@ -25,6 +25,10 @@ static bool control_pending, stop_at_control;
 static unsigned control_readbacks;
 static bool readback_mismatch;
 static bool longer_control_session;
+static bool delayed_controls,waiting_controls;
+static bool waiting_control_write;
+static bool stop_wait_controls,fault_wait_controls;
+static unsigned control_pending_frames,control_poll_frames,control_waits;
 static unsigned AF_eeprom_calls,AF_position_calls;
 static NezhaCameraCciStatus AF_eeprom_failure=NezhaCciOk,AF_position_failure=NezhaCciOk;
 extern "C" NezhaCameraCciStatus nezha_camera_eeprom_read_af(const NezhaCameraRegisterIo *io,NezhaCameraEepromAfRead *r)
@@ -45,6 +49,12 @@ extern "C" NezhaCameraCciStatus nezha_camera_ovx10500u_read_controls(
  const NezhaCameraRegisterIo *io,NezhaCameraOvxControlReadback *r)
 {
  assert(io && stream_active && smmu_active && irq_active);++control_readbacks;
+ if(delayed_controls) {
+  waiting_controls=true;control_pending_frames=2;
+  io->wait_ms(io->context,1);++control_waits;
+  assert(control_pending_frames==0 || fault_wait_controls);
+  waiting_controls=false;
+ }
  *r={};r->bytes_read=11;r->exposure_lines=readback_mismatch ? 321:320;
  r->frame_lines=4000;r->analog_gain_q8=544;r->digital_gain_q10=1024;return NezhaCciOk;
 }
@@ -55,6 +65,12 @@ extern "C" NezhaCameraCciStatus nezha_camera_ovx10500u_apply_controls(
 {
  assert(bus && stream_active && memory_active && smmu_active && irq_active);
  assert(c->exposure_lines==320 && c->gain_q8==544 && c->frame_lines==4000);
+ if(delayed_controls) {
+  waiting_controls=waiting_control_write=true;control_pending_frames=2;
+  bus->wait_ms(bus->context,1);++control_waits;
+  assert(control_pending_frames==0 || stop_wait_controls || fault_wait_controls);
+  waiting_controls=waiting_control_write=false;
+ }
  ++control_commits;r->plan.exposure_lines=320;r->plan.frame_lines=4000;r->plan.analog_gain_q8=544;r->plan.digital_gain_q10=1024;r->applied_writes=control_failure==NezhaCciOk ? 14:0;
  r->transfer.needs_recovery=control_failure!=NezhaCciOk;
  r->group_may_be_held=control_failure!=NezhaCciOk;
@@ -69,7 +85,7 @@ static bool take_controls(void *,NezhaCameraOvxControls *out)
 static void complete_controls(void *,NezhaCameraCciStatus status,
  const NezhaCameraOvxControlResult *r,uint32_t before)
 {
- ++control_completions;assert(before==1 && status==control_failure);
+ ++control_completions;assert((delayed_controls ? before>=1:before==1) && status==control_failure);
  assert(r->applied_writes==(status==NezhaCciOk ? 14:0));
  if(stop_at_control)nezha_camera_native_capture_request_stop();
 }
@@ -166,7 +182,13 @@ extern "C" NezhaCameraFrameStatus nezha_camera_frame_probe(const NezhaCameraMain
 { assert(false);return NezhaFramesInvalid; }
 extern "C" NezhaCameraFrameStatus nezha_camera_frame_consume(const NezhaCameraMainCaptureIo *,NezhaCameraMainCapture *capture,const NezhaCameraRegisterIo *,const NezhaCameraFrameMemoryIo *,const NezhaCameraFrameConsumer *consumer,unsigned budget)
 {
-    assert(budget==1000 && stream_active);++reads;++capture->completed_frames;
+    assert((budget==1000 || budget==0) && stream_active);
+    if(!budget) {
+        if(!control_pending_frames)return NezhaFramesOk;
+        if(fault_wait_controls)return NezhaFramesIo;
+        --control_pending_frames;++control_poll_frames;
+    }
+    ++reads;++capture->completed_frames;
     if(drain_failure) {irq_fault=2;return NezhaFramesIo;}
     if (frame_timeout) return NezhaFramesTimeout;
     const NezhaCameraRaw10Layout layout{4096,3072,5120,5120,15728640};
@@ -176,11 +198,40 @@ extern "C" NezhaCameraFrameStatus nezha_camera_frame_consume(const NezhaCameraMa
 }
 static bool continuing(void *) { return keep_running; }
 static bool delivered(void *,const NezhaCameraRaw10Layout *,const uint8_t *,size_t,uint64_t,uint32_t sequence)
-{ ++copies;if (sequence==(longer_control_session ? 4u:3u)) nezha_camera_native_capture_request_stop();return true; }
+{
+ ++copies;
+ if(delayed_controls) {
+  if((stop_wait_controls && waiting_control_write) || (!waiting_controls && sequence>=10))
+   nezha_camera_native_capture_request_stop();
+ } else if(sequence==(longer_control_session ? 4u:3u))nezha_camera_native_capture_request_stop();
+ return true;
+}
 int main(int argc,char **argv)
 {
     const bool test_mismatch=argc==2 && !strcmp(argv[1],"controls-mismatch");
     const bool test_controls=test_mismatch || (argc==2 && !strcmp(argv[1],"controls"));
+    if(argc==2 && (!strcmp(argv[1],"control-wait-frames") ||
+       !strcmp(argv[1],"control-wait-stop") || !strcmp(argv[1],"control-wait-fault"))) {
+        keep_running=true;delayed_controls=true;control_pending=true;
+        stop_wait_controls=!strcmp(argv[1],"control-wait-stop");
+        fault_wait_controls=!strcmp(argv[1],"control-wait-fault");
+        cci[0]=NezhaCameraCciCanoeVersion;uint8_t profile=0,database=0;
+        NezhaCameraFrameConsumer consumer{NULL,continuing,delivered};
+        NezhaCameraNativeControlConsumer controls{NULL,take_controls,complete_controls,controls_readback};
+        NezhaCameraNativeCaptureRequest request{};
+        request.profile=&profile;request.profile_bytes=NezhaCameraProfileCapacity;
+        request.command_database=&database;request.database_bytes=0x20000;
+        request.cci_queue_words=NezhaCameraCciCanoeQueue0Words;request.consumer=&consumer;request.controls=&controls;
+        NezhaCameraNativeCaptureResult result{};
+        const bool okay=nezha_camera_native_capture(&request,&result);
+        assert(result.cleaned && control_waits>=1);
+        if(fault_wait_controls)assert(!okay && result.status==NezhaFramesIo && !control_commits);
+        else if(stop_wait_controls)assert(okay && result.control_serviced_frames>=3 && control_completions==1);
+        else assert(okay && control_commits==1 && control_completions==1 && control_poll_frames>=6 &&
+            result.control_serviced_frames==control_poll_frames && result.control_readback_after>=8);
+        puts("Native CCI waits service queued RAW frames, keep ACK/readback separate, and honor Stop/first frame error");
+        return 0;
+    }
     if(argc==2 && (!strcmp(argv[1],"AF-eeprom-fail") || !strcmp(argv[1],"AF-position-fail") || !strcmp(argv[1],"AF-readonly"))) {
         keep_running=true;cci[0]=NezhaCameraCciCanoeVersion;
         uint8_t profile=0,database=0;

@@ -43,7 +43,9 @@ struct NezhaCameraFrameConsumer {
 
 /* Drain one completed frame with a bounded wait from an already running
  * capture. The caller repeats only while its real client remains active,
- * then stops producers/IRQ and drains DMA through the existing teardown. */
+ * then stops producers/IRQ and drains DMA through the existing teardown.
+ * A zero budget checks already queued events without sleeping; no completed
+ * frame is a successful no-op, with completed_frames left unchanged. */
 enum NezhaCameraFrameStatus nezha_camera_frame_consume(
     const struct NezhaCameraMainCaptureIo *io, struct NezhaCameraMainCapture *capture,
     const struct NezhaCameraRegisterIo *csid, const struct NezhaCameraFrameMemoryIo *memory,

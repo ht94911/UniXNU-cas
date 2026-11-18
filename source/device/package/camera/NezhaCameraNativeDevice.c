@@ -190,12 +190,13 @@ static void worker(void *argument,wait_result_t wait_result)
     }
     const bool okay=!continuing(NULL) || (eligible && nezha_camera_native_capture(&request,&result));
     printf("NEZHA CAMERA: native worker result=%u eligible=%u step=%u status=%u "
-        "resources=%u/%u/%u frames=%u sensor=%u writes=%u irq=%#x smmu=%#x cleanup=%u/%u irq-stopped=%u resource-cleanup=%u/%u\n",
+        "resources=%u/%u/%u frames=%u sensor=%u writes=%u irq=%#x smmu=%#x cleanup=%u/%u irq-stopped=%u resource-cleanup=%u/%u control-frames=%u\n",
         (unsigned)okay,(unsigned)eligible,result.step,result.status,
         (unsigned)result.resources.step,result.resources.status,result.resources.detail,
         result.frames.frames,result.sensor_status,(unsigned)result.applied_writes,
         result.irq_fault,result.smmu_fault.status,(unsigned)result.cleaned,(unsigned)result.cleanup_step,
-        (unsigned)result.irq_stopped,(unsigned)result.resources.cleanup_step,result.resources.cleanup_status);
+        (unsigned)result.irq_stopped,(unsigned)result.resources.cleanup_step,result.resources.cleanup_status,
+        result.control_serviced_frames);
     if (result.irq_fault) {
         /* The IRQ owner already captured these words before acknowledgement.
          * Report them after teardown; do not read MMIO or log inside the IRQ. */

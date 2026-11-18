@@ -1,3 +1,5 @@
+Camera091 groups the original mode1 fourteen exposure/gain writes into one locked CCI queue submission with one completion REPORT. Separate register messages, original byte order, sensor group brackets, two-frame setting delay and readback remain. A failed group has an unknown applied prefix and retains its group state for the original teardown. Continuous host/arm64e checks pass; reduced RDI backpressure remains a hardware check.
+
 Camera089: the original cameracaptured exposure ioctl now passes both file and vnode checks for the existing exact signed-reader/native-node predicate. GPU051, MMU prefetch and the mobile launcher are retained. The full source consumer checks both stages and refusal cases; main preview and photos require hardware verification.
 
 GPU047 joint candidate: see `docs/GPU047-INTEGRATION.md` for selected successful modules, resource integration and pending native/package validation. GPU performance work continues after integration.

@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 #include "NezhaCameraFrameProbe.h"
 #include "NezhaCameraFrameMarker.h"
+#include "NezhaCameraIrqQueue.h"
 
 static bool sample(const uint8_t *frame, const struct NezhaCameraRdi1080 *rdi, uint32_t *digest)
 {
@@ -36,8 +37,9 @@ enum NezhaCameraFrameStatus nezha_camera_frame_consume(
     if (!io || !capture || !capture->rdi_started || !capture->stream_may_be_on ||
         !csid || !csid->wait_ms || !memory || !memory->next_event || !memory->acquire ||
         !memory->return_frame || !memory->fault || !consumer || !consumer->continuing ||
-        !consumer->deliver || !budget_ms || budget_ms > 3000) return NezhaFramesInvalid;
-    for (unsigned ms=0;ms<=budget_ms;++ms) {
+        !consumer->deliver || budget_ms > 3000) return NezhaFramesInvalid;
+    const unsigned attempts=budget_ms ? budget_ms+1u:NezhaCameraIrqSlots;
+    for (unsigned ms=0;ms<attempts;++ms) {
         if (!consumer->continuing(consumer->context)) return NezhaFramesOk;
         if (memory->fault(memory->context)) return NezhaFramesSmmu;
         struct NezhaCamera1080Events event;
@@ -66,9 +68,12 @@ enum NezhaCameraFrameStatus nezha_camera_frame_consume(
             if (!nezha_camera_main_capture_release_frame(io,capture,index,requeue)) return NezhaFramesSequence;
             return !changed ? NezhaFramesUnwritten : !delivered ? NezhaFramesIo : NezhaFramesOk;
         }
-        if (ms<budget_ms) csid->wait_ms(csid->context,1);
+        if (!budget_ms) {
+            if (!event.updated && !event.start_of_frame && !event.end_of_frame)
+                return NezhaFramesOk;
+        } else if (ms<budget_ms) csid->wait_ms(csid->context,1);
     }
-    return NezhaFramesTimeout;
+    return budget_ms ? NezhaFramesTimeout:NezhaFramesOk;
 }
 
 enum NezhaCameraFrameStatus nezha_camera_frame_probe(

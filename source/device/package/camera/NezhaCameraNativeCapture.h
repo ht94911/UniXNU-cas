@@ -75,6 +75,7 @@ struct NezhaCameraNativeCaptureResult {
     unsigned step, status;
     enum NezhaCameraNativeCleanupStep cleanup_step;
     unsigned capture_stage, sensor_status, dma_status;
+    unsigned control_serviced_frames;
     struct NezhaCameraIfeBcmFailure bandwidth_failure;
     size_t applied_writes;
     size_t raw_sample_bytes;

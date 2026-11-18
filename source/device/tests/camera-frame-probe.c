@@ -152,6 +152,15 @@ int main(void)
     }
     assert(model.delivered==7 && model.published==7 && !capture.cpu_frames && capture.queued_count==2);
 
+    model=original;capture=streaming(&model);
+    assert(nezha_camera_frame_consume(&io,&capture,&csid,&memory,&consumer,0)==NezhaFramesOk);
+    assert(model.delivered==1 && model.published==1 && capture.completed_frames==1);
+    model.no_event=true;
+    const unsigned before_poll=capture.completed_frames;
+    const unsigned step_before_poll=model.step;
+    assert(nezha_camera_frame_consume(&io,&capture,&csid,&memory,&consumer,0)==NezhaFramesOk);
+    assert(capture.completed_frames==before_poll && model.step==step_before_poll);
+
     model=original;capture=streaming(&model);model.stop_in_callback=true;
     assert(nezha_camera_frame_consume(&io,&capture,&csid,&memory,&consumer,10)==NezhaFramesOk);
     assert(model.delivered==1 && !model.published && !capture.cpu_frames && capture.queued_count==1);

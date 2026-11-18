@@ -1,7 +1,7 @@
-name: nezha Camera091 grouped mode1 on GPU051 - native
+name: nezha Camera092 live CCI frames on GPU051 - native
 on:
   push:
-    branches: [codex/ios27-camera091-gpu051-grouped-controls-20261118]
+    branches: [codex/ios27-camera092-gpu051-live-controls-20261119]
   workflow_dispatch:
 permissions:
   contents: read
@@ -78,6 +78,12 @@ jobs:
           "$out/consumer" > "$RUNNER_TEMP/ios27/work/logs/camera-boot-arc-host.log" 2>&1
           clang -std=c11 -Wall -Wextra -Werror -g -fsanitize=address,undefined -fno-sanitize-recover=all -I "$soc/include" "$src/tests/camera-smmu-retire.c" "$soc/src/Sm8850Resources.c" -o "$out/smmu-retire"
           "$out/smmu-retire" > "$RUNNER_TEMP/ios27/work/logs/camera-smmu-retire-host.log" 2>&1
+      - name: Verify queued RAW consumption during CCI waits
+        run: |
+          set -euo pipefail
+          src="$RUNNER_TEMP/ios27/work/device"
+          soc="$RUNNER_TEMP/ios27/work/soc"
+          NEZHA_CAMERA_SHARED_SOC="$soc" bash "$src/scripts/check-nezha27-camera-continuous.sh" "$RUNNER_TEMP/ios27/cci-live-frames"
       - name: Check grouped exposure wire and original control readback
         run: |
           set -euo pipefail

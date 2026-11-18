@@ -39,6 +39,9 @@ struct Capture {
     NezhaCameraMainCaptureIo capture_io{};
     NezhaCameraMainCapture capture{};
     uint32_t cci_mask{}, timing[5]{}, vfe_bus_cgc_before{};
+    const NezhaCameraNativeCaptureRequest *control_request{};
+    unsigned control_frames{};
+    NezhaCameraFrameStatus control_frame_status{NezhaFramesOk};
     bool used{}, cci_touched{}, dma_touched{}, running{}, cancelled{}, vfe_bus_cgc_owned{};
     unsigned stopped{};
 };
@@ -167,6 +170,30 @@ bool client_deliver(void *cookie, const NezhaCameraRaw10Layout *layout, const ui
 {
     const auto *request = static_cast<const NezhaCameraNativeCaptureRequest *>(cookie);
     return request->consumer->deliver(request->consumer->context, layout, frame, bytes, ticks, sequence);
+}
+
+void wait_controls(void *, unsigned milliseconds)
+{
+    const auto *request=state.control_request;
+    if (!request) { IOSleep(milliseconds);return; }
+    const NezhaCameraFrameMemoryIo memory{&state,frame_acquire,frame_return,frame_fault,frame_next};
+    const NezhaCameraFrameConsumer client{const_cast<NezhaCameraNativeCaptureRequest *>(request),
+        client_continuing,client_deliver};
+    for (unsigned ms=0;ms<milliseconds;++ms) {
+        /* CCI reports complete independently of RAW DMA. Waiting for CCI
+         * must not leave both RAW buffers unconsumed. Reuse this same
+         * worker and its exact cache/callback/requeue path; never consume
+         * IRQs from another thread or poll the hardware a second time. */
+        for (unsigned ready=0;ready<2 && state.control_frame_status==NezhaFramesOk &&
+            client_continuing(client.context);++ready) {
+            const unsigned before=state.capture.completed_frames;
+            state.control_frame_status=nezha_camera_frame_consume(&state.capture_io,&state.capture,
+                &state.reg[Csid],&memory,&client,0);
+            state.control_frames+=state.capture.completed_frames-before;
+            if (state.capture.completed_frames==before) break;
+        }
+        IODelay(1000);
+    }
 }
 
 bool cci_idle(const NezhaCameraRegisterIo &bus)
@@ -341,6 +368,7 @@ bool nezha_camera_native_capture(const NezhaCameraNativeCaptureRequest *request,
         }
         state.reg[i] = {&state.window[i], read, write, wait};
     }
+    state.reg[Cci].wait_ms=wait_controls;
     if (!pattern) {
         if (!state.gpio_window.address) {
             const vm_offset_t address = ml_io_map(NezhaCameraGpioPhysical, NezhaCameraGpioBytes);
@@ -504,6 +532,9 @@ bool nezha_camera_native_capture(const NezhaCameraNativeCaptureRequest *request,
             result->status = NezhaFramesOk;
             uint32_t read_controls_after=0;
             bool control_waiting=false;
+            state.control_request=request;
+            state.control_frames=0;
+            state.control_frame_status=NezhaFramesOk;
             while (client_continuing(client.context)) {
                 result->status = nezha_camera_frame_consume(&state.capture_io, &state.capture,
                     &state.reg[Csid], &memory, &client, 1000);
@@ -515,13 +546,17 @@ bool nezha_camera_native_capture(const NezhaCameraNativeCaptureRequest *request,
                      * register sampling, not a guessed RAW setting epoch. */
                     if (!result->control_readback_verified ||
                         (control_waiting && state.capture.completed_frames>=read_controls_after)) {
-                        result->control_readback_after=state.capture.completed_frames;
                         result->control_readback_status=nezha_camera_ovx10500u_read_controls(
                             &state.reg[Cci],&result->control_readback);
+                        result->control_readback_after=state.capture.completed_frames;
                         if (result->control_readback_status!=NezhaCciOk) {
                             state.capture.sensor_transfer=result->control_readback.transfer;
                             state.capture.sensor_status=result->control_readback_status;
                             result->status=NezhaFramesIo;
+                            break;
+                        }
+                        if (state.control_frame_status!=NezhaFramesOk) {
+                            result->status=state.control_frame_status;
                             break;
                         }
                         result->control_readback_verified=true;
@@ -551,11 +586,17 @@ bool nezha_camera_native_capture(const NezhaCameraNativeCaptureRequest *request,
                             result->status = NezhaFramesIo;
                             break;
                         }
+                        if (state.control_frame_status!=NezhaFramesOk) {
+                            result->status=state.control_frame_status;
+                            break;
+                        }
                         read_controls_after=state.capture.completed_frames+2;
                         control_waiting=true;
                     }
                 }
             }
+            state.control_request=nullptr;
+            result->control_serviced_frames=state.control_frames;
             result->frames.frames = state.capture.completed_frames;
         } else {
             result->status = nezha_camera_frame_probe(&state.capture_io, &state.capture, &state.reg[Csid],
