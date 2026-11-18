@@ -29,13 +29,20 @@ extern "C" int nezha_haptics_ios_commit(int plugin_visible,int preset_visible) {
     bool ok=third && closed && nameData && properties->setObject("name",nameData) &&
         properties->setObject("supports-3rd-party-haptics",third);
     if(ok && stage==2)ok=properties->setObject("closed-loop",closed);
-    if(third)third->release();if(closed)closed->release();if(nameData)nameData->release();
+    if(third)third->release();
+    if(closed)closed->release();
+    if(nameData)nameData->release();
     node=ok?new IORegistryEntry:nullptr;
     if(node && !node->init(properties)){node->release();node=nullptr;}
     properties->release();
     if(!node){product->release();return ENOMEM;}
-    node->setName("haptics",gIODTPlane);ok=node->attachToParent(product,gIODTPlane);
+    // MobileGestalt's DeviceSupportsHaptics enumerates the device-tree plane
+    // but compares IORegistryEntryGetName, which reads the default name.
+    // Match IODTImportEntry: publish both names before attaching the node.
+    node->setName(name);node->setName(name,gIODTPlane);ok=node->attachToParent(product,gIODTPlane);
+    if(ok)IOLog("NEZHA HAPTICS: iOS product node stage=%u Actuator=%d D16preset=%d name=%s dt-name=%s\n",
+        stage,plugin_visible,preset_visible,node->getName(),node->getName(gIODTPlane));
     node->release();product->release();if(!ok)return EIO;
-    committed=true;IOLog("NEZHA HAPTICS: iOS product node stage=%u Actuator=%d D16preset=%d\n",stage,plugin_visible,preset_visible);
+    committed=true;
     return 0;
 }

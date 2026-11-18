@@ -1,7 +1,7 @@
-name: nezha Haptics011 on fixed GPU051
+name: nezha Haptics014 on fixed GPU051
 on:
   push:
-    branches: [codex/ios27-haptics012-gpu051-native-20261118]
+    branches: [codex/ios27-haptics014-gpu051-native-20261118]
   workflow_dispatch:
 permissions:
   contents: read
@@ -79,6 +79,8 @@ jobs:
         run: CC=clang CXX=clang++ python3 "$RUNNER_TEMP/ios27/work/device/scripts/check-haptics-electrical-stop.py" --out "$RUNNER_TEMP/ios27/work/haptics-stop-host"
       - name: Exercise the actual haptics fileglob status policy
         run: CC=clang python3 "$RUNNER_TEMP/ios27/work/device/scripts/check-haptics-ioctl-policy.py" --out "$RUNNER_TEMP/ios27/work/haptics-ioctl-host"
+      - name: Exercise original haptics default-name discovery on production publisher
+        run: CXX=clang++ python3 "$RUNNER_TEMP/ios27/work/device/scripts/check-haptics-ios-discovery.py" --out "$RUNNER_TEMP/ios27/work/haptics-discovery-host"
       - name: Execute production HAL property marshalling and silent Initialize lifetime
         run: |
           set -euo pipefail
