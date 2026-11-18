@@ -33,6 +33,7 @@ int main(int argc,char **argv){
         else if(scenario=="missing-parser")hostParserAllocator=nullptr;
         else if(scenario=="parser-start-failed")hostParserStartFailure=true;
         else if(scenario=="parser-without-orientation")hostParserOrientationMissing=true;
+        else if(scenario=="parser-without-service-identity")hostParserServiceIdentityMissing=true;
         else assert(false);
         assert(nezha_sensor_orientation_prepare(&provider,&ops,1));
         assert(!nezha_sensor_orientation_activate());
@@ -56,7 +57,10 @@ int main(int argc,char **argv){
     auto className=OSString::withCString("IOHIDEventDriver");kernelMatch.setObject("IOClass",className);className->release();
     assert(!orientation->matchPropertyTable(&kernelMatch,&score));
     IOMemoryDescriptor *descriptor=nullptr;assert(!orientation->newReportDescriptor(&descriptor));
-    assert(descriptor->getLength()==sizeof nezha_orientation_descriptor);descriptor->release();
+    assert(descriptor->getLength()==sizeof nezha_orientation_descriptor);
+    assert(descriptor->bytes[0]==0x05&&descriptor->bytes[1]==0x20&&
+           descriptor->bytes[2]==0x09&&descriptor->bytes[3]==0x8a);
+    descriptor->release();
     uint64_t t=10000000;constexpr int32_t g=642689;
     const int32_t vectors[][3]={{0,g,0},{0,-g,0},{g,0,0},{-g,0,0},{0,0,g},{0,0,-g}};
     const unsigned expected[]={1,2,3,4,5,6};

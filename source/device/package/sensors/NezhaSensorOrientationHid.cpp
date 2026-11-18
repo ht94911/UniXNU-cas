@@ -56,14 +56,18 @@ class NativeNezhaOrientation : public IOHIDDevice {
         }
         auto mask=OSDynamicCast(OSNumber,parser->getProperty("SupportedHIDEventMask"));
         uint64_t supported=mask?mask->unsigned64BitValue():0;
-        if(!(supported&(UINT64_C(1)<<10))||!parser->getProperty("DeviceOrientation")){
+        auto page=OSDynamicCast(OSNumber,parser->getProperty("PrimaryUsagePage"));
+        auto usage=OSDynamicCast(OSNumber,parser->getProperty("PrimaryUsage"));
+        if(!(supported&(UINT64_C(1)<<10))||!parser->getProperty("DeviceOrientation")||
+           !page||!usage||page->unsigned64BitValue()!=NezhaOrientationUsagePage||
+           usage->unsigned64BitValue()!=NezhaOrientationUsage){
             interface->close(parser);parser->stop(interface);parser->detach(interface);parser->release();return false;
         }
         // Retain the real original parser for this boot, like the sensor
         // EventServices. Its own report callback and copyEvent own delivery.
         kernelParser=parser;
-        printf("NEZHA SENSORS ORIENTATION: kernel-parser bytes=%u mask=%llu attached=1 started=1\n",
-            meta->getClassSize(),(unsigned long long)supported);
+        printf("NEZHA SENSORS ORIENTATION: kernel-parser bytes=%u mask=%llu attached=1 started=1 page=%u usage=%u\n",
+            meta->getClassSize(),(unsigned long long)supported,NezhaOrientationUsagePage,NezhaOrientationUsage);
         return true;
     }
     int32_t demand(uint32_t value){

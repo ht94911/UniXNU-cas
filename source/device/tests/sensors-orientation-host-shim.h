@@ -54,7 +54,7 @@ public:
     }
     bool start(IOService *p)override{provider=p;if(hostOrientationPublishHook)hostOrientationPublishHook(this);return true;}
 };
-inline bool hostParserStartFailure,hostParserOrientationMissing;
+inline bool hostParserStartFailure,hostParserOrientationMissing,hostParserServiceIdentityMissing;
 inline unsigned hostParserAllocations,hostParserStarts;
 struct HostOriginalOrientationParser : IOService {
     bool start(IOService *p)override{
@@ -62,6 +62,10 @@ struct HostOriginalOrientationParser : IOService {
         if(!hostParserOrientationMissing){
             setProperty("SupportedHIDEventMask",uint64_t(1)<<10,64);
             setProperty("DeviceOrientation",kOSBooleanTrue);
+        }
+        if(!hostParserServiceIdentityMissing){
+            setProperty("PrimaryUsagePage",32,32);
+            setProperty("PrimaryUsage",138,32);
         }
         return true;
     }

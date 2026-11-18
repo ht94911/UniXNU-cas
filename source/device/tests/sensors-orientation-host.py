@@ -16,7 +16,8 @@ subprocess.run(['c++','-std=c++17',*flags,*link,str(D/'tests/sensors-orientation
 result=subprocess.run([str(binary)],check=True,text=True,capture_output=True,
                      env=dict(os.environ,ASAN_OPTIONS='detect_leaks=0:halt_on_error=1',UBSAN_OPTIONS='halt_on_error=1'))
 log=result.stdout+result.stderr
-for case in ['missing-interface','duplicate-interface','missing-parser','parser-start-failed','parser-without-orientation']:
+for case in ['missing-interface','duplicate-interface','missing-parser','parser-start-failed',
+             'parser-without-orientation','parser-without-service-identity']:
     result=subprocess.run([str(binary),case],check=True,text=True,capture_output=True,
                          env=dict(os.environ,ASAN_OPTIONS='detect_leaks=0:halt_on_error=1',UBSAN_OPTIONS='halt_on_error=1'))
     log+=result.stdout+result.stderr
