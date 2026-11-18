@@ -1,4 +1,4 @@
-"""Bind GPU051 source and run current allocator and tiled-planning checks on macOS."""
+"""Bind the camera imageblock backport and retained GPU051 allocator/tiled source."""
 from pathlib import Path
 import argparse
 import hashlib
@@ -21,7 +21,7 @@ assert git("rev-parse", "HEAD").decode().strip() == expected["original_pin"]
 builder = r / "scripts/build-adreno-metal-bridge.py"
 assert sha(builder) == expected["builder_sha256"]
 patches = re.findall(r"'([0-9]{4}[^']+\.patch)'", builder.read_text())
-assert patches == list(expected["patch_hashes"]) and len(patches) == 37
+assert patches == list(expected["patch_hashes"]) and len(patches) == 38
 for name, digest in expected["patch_hashes"].items():
     assert sha(r / "drivers/AdrenoMetal/bridge/patches" / name) == digest, name
 for name, digest in expected["source_hashes"].items():
@@ -55,13 +55,25 @@ for name in (
     "foreground_backing_keeps_alignment_dedicated_sizes_and_allocation_failure",
 ):
     assert name + " ... ok" in allocator_text
+imageblock_command = command[:]
+imageblock_command[imageblock_command.index("metal2vulkan-runtime")] = "metal2vulkan"
+imageblock_command[imageblock_command.index("tests::heap_tiled::")] = "tests::engine_imageblock::"
+with (out / "imageblock.log").open("w") as log:
+    imageblock_result = subprocess.run(imageblock_command, cwd=r, env=env,
+                                      stdout=log, stderr=subprocess.STDOUT, timeout=1500)
+imageblock_text = (out / "imageblock.log").read_text()
+assert imageblock_result.returncode == 0, imageblock_text[-6000:]
+assert "a_cell_holds_the_widest_access_through_its_pointer ... ok" in imageblock_text
 report = dict(passed=True, runtime_tree=expected["patched_tree"],
               source_manifest_sha256=sha(Path(__file__).parent / "fixtures/multi-level-output-sources.json"),
+              current_Mac_imageblock_interpreter_passed=True,
               exact_runtime_source_verified=True, current_Mac_planner_tests_passed=True,
               current_Mac_allocator_tests_passed=True, current_Mac_allocator_cases=8,
               allocator_callbacks_are_model=True, current_iOS_policy_hardware_measured=False,
               current_Mac_Vulkan_execution=False, target_A840_performance_verified=False,
               Linux_Vulkan_execution_reference=expected["linux_execution_reference"],
-              old_unrelated_tests_reused=expected["unchanged_test_reference"], phone_operations=False)
+              old_unrelated_tests_reused=expected["unchanged_test_reference"],
+              original_GPU051_runtime_tree=expected["GPU051_original_runtime_tree"],
+              imageblock_semantics_version=expected["imageblock_semantics_version"], phone_operations=False)
 (out / "report.json").write_text(json.dumps(report, indent=2) + "\n")
 print(json.dumps(report, indent=2))

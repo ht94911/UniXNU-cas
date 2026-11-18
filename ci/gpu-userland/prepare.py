@@ -374,6 +374,19 @@ def main():
     must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', '--check', selected])
     must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', selected])
     record['camera_stitch_hash_patch'] = sha(selected)
+    # Original24A446 heap allocation hints and bounded imageblock cell accesses.
+    selected = HERE / 'patches/camera090-heap-options-plugin.patch'
+    must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', '--check', selected])
+    must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', selected])
+    record['camera_heap_options_patch'] = sha(selected)
+    for name in ['heap_options_host.rs', 'heap_options_frontend_host.mm']:
+        shutil.copyfile(HERE / 'fixtures' / name, root / 'drivers/AdrenoMetal/bridge' / name)
+    shutil.copyfile(HERE / 'fixtures/0043-imageblock-wide-cell.patch',
+                    root / 'drivers/AdrenoMetal/bridge/patches/0043-imageblock-wide-cell.patch')
+    selected = HERE / 'patches/camera090-imageblock-recipes.patch'
+    must(['git', '-C', root, 'apply', '--check', selected])
+    must(['git', '-C', root, 'apply', selected])
+    record['camera_imageblock_recipe_patch'] = sha(selected)
     test = HERE / 'fixtures/camera_function_spi_host.mm'
     shutil.copyfile(test, root / 'drivers/AdrenoMetal/bridge' / test.name)
     shutil.copyfile(HERE / 'fixtures/camera_stitch_host.mm',

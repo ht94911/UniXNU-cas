@@ -1,0 +1,11 @@
+--- a/scripts/build-adreno-metal-bridge.py
++++ b/scripts/build-adreno-metal-bridge.py
+@@ -89,6 +89,8 @@
+     '0040-multi-level-tiled-output.patch',
+     '0041-multi-level-tiled-input.patch',
+     '0042-ios-foreground-blocks.patch',
++    # Kernel imageblock cells hold their widest bounded access (upstream f95c6e6f3).
++    '0043-imageblock-wide-cell.patch',
+ ]]
+ 
+ 

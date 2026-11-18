@@ -1,0 +1,51 @@
+diff --git a/NativeBridgeMetalFrontend.mm b/NativeBridgeMetalFrontend.mm
+index 70db2b1..73a06bf 100644
+--- a/NativeBridgeMetalFrontend.mm
++++ b/NativeBridgeMetalFrontend.mm
+@@ -4507,7 +4507,12 @@ static void fillBaseLimits(id device);
+  if(!d)return nil;
+  NmbHeap *handle=syncDetail(24,"nmb_heap_new",[&]{return nmb_heap_new(gDevice,d.type,d.size,(uint64_t)d.resourceOptions);});
+  if(!handle){NBLOG(@"native-metal: heap refused: %@",lastError());return nil;}
+- NBHeap *heap=[NBHeap new];heap.handle=handle;heap.options=d.resourceOptions;heap.heapType=d.type;return (id<MTLHeap>)heap;
++ const MTLResourceOptions options=d.resourceOptions&~(MTLResourceOptions)0x600000;
++ if(d.resourceOptions&0x600000) {
++  static std::atomic<bool> told{false};
++  if(!told.exchange(true))NBLOG(@"native-metal: heap allocation granularity hints use Vulkan's measured alignment");
++ }
++ NBHeap *heap=[NBHeap new];heap.handle=handle;heap.options=options;heap.heapType=d.type;return (id<MTLHeap>)heap;
+ }
+ // A descriptor the runtime refuses answers {0, 0}, as Metal answers one it makes no texture of.
+ - (MTLSizeAndAlign)heapTextureSizeAndAlignWithDescriptor:(MTLTextureDescriptor *)d {
+diff --git a/bridge/NativeMetalObjects.rs b/bridge/NativeMetalObjects.rs
+index 1a667af..482e99c 100644
+--- a/bridge/NativeMetalObjects.rs
++++ b/bridge/NativeMetalObjects.rs
+@@ -1053,6 +1053,19 @@ pub extern "C" fn nmb_buffer_gpu_address(buffer: *const NmbBuffer) -> u64 {
+ 
+ pub struct NmbHeap(Heap);
+ 
++/// The original iPhone24A446 heap driver accepts bits21/22 as allocation
++/// granularity hints and reports resourceOptions without them. Our owned
++/// Vulkan heap uses the allocator's measured alignment; retain the ordinary
++/// storage, cache, hazard and private read-only fields.
++fn heap_options(value: u64) -> Result<ResourceOptions, String> {
++    const GRANULARITY_HINTS: u64 = (1 << 21) | (1 << 22);
++    options(value & !GRANULARITY_HINTS)
++}
++
++#[cfg(test)]
++#[path = "heap_options_host.rs"]
++mod heap_options_tests;
++
+ /// `newHeapWithDescriptor:`: type (0 automatic, 1 placement), size, resource options. Sparse heaps are not made here.
+ #[unsafe(no_mangle)]
+ pub extern "C" fn nmb_heap_new(device: *mut NmbDevice, heap_type: u64, size: u64, options_word: u64) -> *mut NmbHeap {
+@@ -1062,7 +1075,7 @@ pub extern "C" fn nmb_heap_new(device: *mut NmbDevice, heap_type: u64, size: u64
+         if heap_type == HeapType::Sparse {
+             return Err("sparse heaps are not implemented".into());
+         }
+-        let descriptor = HeapDescriptor::new(heap_type, size, options(options_word)?);
++        let descriptor = HeapDescriptor::new(heap_type, size, heap_options(options_word)?);
+         Ok(boxed(NmbHeap(device.new_heap(&descriptor).map_err(e("heap"))?)))
+     })
+ }
