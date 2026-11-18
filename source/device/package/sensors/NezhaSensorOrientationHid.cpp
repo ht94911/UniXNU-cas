@@ -112,6 +112,13 @@ protected:
     OSString *newTransportString() const override{return OSString::withCString("Virtual");}
     OSString *newProductString() const override{return OSString::withCString("nezha SEE Device Orientation");}
 public:
+    bool matchPropertyTable(OSDictionary *table,SInt32 *score) override{
+        // Sensor009 selected AppleUserHIDEventDriver, whose measured embedded
+        // parser did not publish orientation or its supported event mask.
+        // Keep this owned report device on the original kernel parser.
+        if(table&&(table->getObject("IOUserClass")||table->getObject("IOUserServerName")))return false;
+        return IOHIDDevice::matchPropertyTable(table,score);
+    }
     bool init(OSDictionary *properties=nullptr) override{
         if(!IOHIDDevice::init(properties))return false;
         loop=IOWorkLoop::workLoop();settings=IOLockAlloc();if(!loop||!settings)return false;

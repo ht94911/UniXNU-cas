@@ -31,6 +31,10 @@ int main(){
     };
     assert(nezha_sensor_orientation_activate());assert(nezha_sensor_orientation_activate());hostOrientationPublishHook=nullptr;
     assert(requests==2&&requested.active&&requested.interval_us==20000);
+    OSDictionary kernelMatch,dextMatch;SInt32 score=0;
+    assert(orientation->matchPropertyTable(&kernelMatch,&score));
+    dextMatch.setObject("IOUserClass",kOSBooleanTrue);assert(!orientation->matchPropertyTable(&dextMatch,&score));
+    OSDictionary serverMatch;serverMatch.setObject("IOUserServerName",kOSBooleanTrue);assert(!orientation->matchPropertyTable(&serverMatch,&score));
     IOMemoryDescriptor *descriptor=nullptr;assert(!orientation->newReportDescriptor(&descriptor));
     assert(descriptor->getLength()==sizeof nezha_orientation_descriptor);descriptor->release();
     uint64_t t=10000000;constexpr int32_t g=642689;

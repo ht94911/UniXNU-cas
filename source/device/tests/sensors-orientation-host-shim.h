@@ -3,6 +3,7 @@
 #include "sensors-hid-host-shim.h"
 #include <cstring>
 using IOHIDReportType=uint32_t;
+using SInt32=int32_t;
 constexpr IOHIDReportType kIOHIDReportTypeInput=0,kIOHIDReportTypeFeature=2;
 constexpr unsigned kIODirectionNone=0;
 struct IOMemoryDescriptor : OSObject {
@@ -33,6 +34,7 @@ protected:
     virtual OSString *newTransportString()const{return nullptr;}
     virtual OSString *newProductString()const{return nullptr;}
 public:
+    virtual bool matchPropertyTable(OSDictionary *,SInt32 *){return true;}
     virtual IOReturn newReportDescriptor(IOMemoryDescriptor **out)const=0;
     virtual IOReturn handleReportWithTime(uint64_t t,IOMemoryDescriptor *r,IOHIDReportType,IOOptionBits){
         if(hostOrientationReportFailure)return hostOrientationReportFailure;
