@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "74702103c71007bf14e378c8339c0d3139cfb6c1",
+  "device_revision": "266baca8e3e8bb9927605598877a412bda683935",
   "soc_revision": "device-local-GPU051-camera074-bankstreamretirement",
   "xcode": "26.6",
   "files": {
@@ -645,7 +645,7 @@
     "source/device/tests/camera-platform/kernel-fixture/kern/locks.h": "088b3ffde865676a1a2ded0535d8bdf0cea1ebad059ab853fe311872ea294b1f",
     "source/device/tests/camera-platform/kernel-fixture/kern/thread.h": "15251b621ed7c8fc38ff12625c1efd043653cd07a3d4d7f03f7c6ff358ae75e6",
     "source/device/tests/camera-platform/kernel-fixture/miscfs/devfs/devfs.h": "7c4f5fa6fa0a5f7c1ba44c3be9522d2e1b91f3ecc30ffb7e99b702e0bb35de77",
-    "source/device/tests/camera-platform/kernel-fixture/sys/conf.h": "5e3c8c00a0afd38fb60d557f52eef6dfe3d8a0a0a37e335955ecb151e8466dcc",
+    "source/device/tests/camera-platform/kernel-fixture/sys/conf.h": "006a2ec08fcb8b5547db0ff3c7e13e1d88314767a771e08c835ea72b542429ab",
     "source/device/tests/camera-platform/kernel-fixture/sys/errno.h": "6e7de80b970121f1c7092f504ec8b3595924a9b9d6880801950caa7170b6d678",
     "source/device/tests/camera-platform/kernel-fixture/sys/systm.h": "3747a6d440e94058ffe74bbad5c0ae0b32698663ccba25bd70d21ae3b4ac53f0",
     "source/device/tests/camera-platform/kernel-fixture/sys/uio.h": "37658ae82e16a2c6d563e8c25f26a1387b29b743de30722b424a3d9e639c320b",
@@ -1074,7 +1074,7 @@
   },
   "userland_revision": "e68b0ff6c04dd560f94dad3a8a558179408d029a",
   "camera": {
-    "source_revision": "74702103c71007bf14e378c8339c0d3139cfb6c1",
+    "source_revision": "266baca8e3e8bb9927605598877a412bda683935",
     "device_base": "7435e49e46705d2bfcabe09487ff80a4821fd577",
     "mode_default": "disabled",
     "host_core_tests": 18,
@@ -1272,5 +1272,5 @@
   "userland_built_separately": true,
   "builder_sha256": "156d2a840ffbbfa07ab3a3d3e461955594905470ec05f37bf03b8ffca9ff5bab",
   "camera079_launcher_cdhash": "6f4575d581997dccad3061d6e288e1ca02a68cb6",
-  "library_source_revision": "74702103c71007bf14e378c8339c0d3139cfb6c1"
+  "library_source_revision": "266baca8e3e8bb9927605598877a412bda683935"
 }

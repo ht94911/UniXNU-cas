@@ -1,6 +1,8 @@
 #include <stddef.h>
 #include <sys/types.h>
+#if defined(__linux__)
 #include <sys/sysmacros.h>
+#endif
 struct proc;
 struct uio;
 struct cdevsw {

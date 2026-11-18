@@ -1,7 +1,7 @@
-name: nezha Camera092C live CCI frames on GPU051 - native
+name: nezha Camera092D live CCI frames on GPU051 - native
 on:
   push:
-    branches: [codex/ios27-camera092c-gpu051-live-controls-20261119]
+    branches: [codex/ios27-camera092d-gpu051-live-controls-20261119]
   workflow_dispatch:
 permissions:
   contents: read
