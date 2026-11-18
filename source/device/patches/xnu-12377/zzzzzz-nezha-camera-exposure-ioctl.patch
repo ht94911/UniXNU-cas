@@ -14,6 +14,14 @@
  int
  mac_vnode_check_access(vfs_context_t ctx, struct vnode *vp,
      int acc_mode)
+@@ -1551,6 +1558,7 @@
+ 	VFS_KERNEL_DEBUG_START1(46, vp);
+ 	MAC_CHECK(vnode_check_ioctl, cred, vp, mac_vnode_label(vp), cmd);
+ 	VFS_KERNEL_DEBUG_END1(46, vp);
++	if (error == EPERM && nezha_camera_exposure_ioctl_allowed(ctx, vp, cmd)) return 0;
+ 	return error;
+ }
+ 
 --- a/security/mac_file.c
 +++ b/security/mac_file.c
 @@ -81,6 +81,12 @@

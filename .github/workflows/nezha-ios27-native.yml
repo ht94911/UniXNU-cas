@@ -1,7 +1,7 @@
-name: nezha Camera088 on GPU051 - native
+name: nezha Camera089 on GPU051 - native
 on:
   push:
-    branches: [codex/ios27-camera088-gpu051-native-prefetch-20261118]
+    branches: [codex/ios27-camera089-gpu051-vnode-exposure-20261118]
   workflow_dispatch:
 permissions:
   contents: read

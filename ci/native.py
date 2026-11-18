@@ -267,6 +267,12 @@ def build(framework, work):
         (work / 'out/nezha/ios-27.0.1-24A446-iphone14-4').glob('*/kernel/kernel.macho')}
     if len(kernels) != 1: raise ValueError('Select the actual joint Native043')
     kernel = next(iter(kernels)); tree = kernel.parent.parent / 'tree'
+    exposure_test = work / 'device/scripts/check-camera-exposure-policy.py'
+    exposure_log = work / 'logs/camera-exposure-policy.log'
+    code = run([sys.executable, exposure_test, '--xnu', tree / '.cache/xnu-work',
+                '--out', work / 'camera-exposure-policy'], log=exposure_log)
+    if code:
+        raise ValueError('Actual compiled XNU exposure policy consumer failed')
     globals_text = run(['xcrun', 'nm', '-gU', kernel])
     required_camera = ['_nezha27_camera_probe_start', '_nezha_camera_native_capture',
                        '_nezha_camera_native_device_init', '_nezha_camera_profile_slot',
@@ -405,6 +411,12 @@ def collect(framework, work, sealed):
         add(tree / 'kits/nezha/keystore013-source-lock.json', 'keystore-source/source-lock.json')
         add(tree / '.cache/xnu-work/bsd/kern/ubc_subr.c', 'text-fixup-source/ubc_subr.c')
         add(tree / '.cache/xnu-work/security/mac_process.c', 'compiled-source/mac_process.c')
+        for name in ('mac_file.c', 'mac_vfs.c'):
+            add(tree / '.cache/xnu-work/security' / name, 'compiled-source/' + name)
+        for path in sorted((work / 'camera-exposure-policy').glob('*')):
+            if path.is_file():
+                add(path, 'camera-exposure-policy/' + path.name)
+
         objects = tree / 'build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837'
         for name in ('link.filelist', 'all-alias.exp'):
             add(objects / name, 'objects/' + name)

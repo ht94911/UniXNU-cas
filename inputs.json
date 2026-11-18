@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Camera088 existing VFE1080 MMU prefetch before enable; existing mobile501/FBS launcher with fixed actualCDHash;GPU051/native086 source retained",
+  "purpose": "Camera089 missing vnode exposure check for exact existing native node/originalsignedcameracaptured; retain088MMUprefetch/mobilelauncher andGPU051 source",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "d91a3b57d8b3c53d9773d9836282a3e0ce819887",
+  "device_revision": "ba64d637a7a64abd6a0d6a265631810fd9155dab",
   "soc_revision": "device-local-GPU051-camera074-bankstreamretirement",
   "xcode": "26.6",
   "files": {
@@ -78,7 +78,7 @@
     "source/adreno/NativeGpuTrace.h": "d95cae4f86a9d3666adf4b04e876ff50bfa609a45de17a8ef6dc570ef84204b1",
     "source/adreno/NativeGpuTrace.inc": "89f44d7740f9ba38929c714866fd1ad87ecf1de939efc2e09077b62378567993",
     "source/adreno/NativeGpuTraceStore.h": "4a2984192bc2c68383146f558212d1000c920a8d9cbe54ccec8badd935844823",
-    "source/device/README.md": "9ed7bfb31511d5b65813af09275bf8240192b5d7aa47d4ed20a339bfcd3f4351",
+    "source/device/README.md": "69c61a016c26dd17b7dbd9e01ea030281774eca41ac983aafa29d339397e4652",
     "source/device/board.toml": "961b154af2fedbeaa5be27a77785c225f570e18005bde99186ed0d31349ee1a6",
     "source/device/components/AppleKeyStoreState/AGENTS.md": "31cf5883eab836cd09fdcc5dfbbdd0668b0ea21ee9512191f78583b9e960c47d",
     "source/device/components/AppleKeyStoreState/LICENSE": "0a99193bda702c77e5b6a1b10029b68b6d4691cc2a4bf1010efb7dd8e5043e1b",
@@ -534,7 +534,7 @@
     "source/device/patches/xnu-12377/zzzzzz-nezha-camera-discovery-launch.patch": "14e5c1a987985e5e847341ac5b22829ed34cb0dbd2adccce232b1c3a2bebd644",
     "source/device/patches/xnu-12377/zzzzzz-nezha-camera-dyld-policy.patch": "f8d0d761fd5601aa0b0f7ab0059ff81f8657b5a5fc9917a3af11447a80043ae6",
     "source/device/patches/xnu-12377/zzzzzz-nezha-camera-exit-reason.patch": "90ae81b9f1fd9236ffdc03ba6128ec908ec5a225c58075a28097f8ead056060c",
-    "source/device/patches/xnu-12377/zzzzzz-nezha-camera-exposure-ioctl.patch": "a1d2fb2c6c1684b08f7b915185e4e32b8dfbcb8b1abd5c088e16fa0c2543d54c",
+    "source/device/patches/xnu-12377/zzzzzz-nezha-camera-exposure-ioctl.patch": "b6e96725e99e65f9f283f9ed84366b3520e8b6929125eed778a52c38fc4e9177",
     "source/device/patches/xnu-12377/zzzzzz-nezha-camera-lsd-denial-observer.patch": "ba6d64bbc1885ea5cab700c5972456a7d68ca1598a64cc670c7af544b4ce39c9",
     "source/device/patches/xnu-12377/zzzzzz-nezha-camera-lsd-registration.patch": "e89a563c00a917ea6840df998ea945abb2f5cf3388d1d22dc05126049e0749b0",
     "source/device/patches/xnu-12377/zzzzzz-nezha-camera-media-view.patch": "914128b856010ca755d3e7e5bcbfc6b3a5b465680bb7f1055444822cf74400ac",
@@ -546,7 +546,7 @@
     "source/device/patches/xnu-12377/zzzzzz-nezha-input-chain-trace.patch": "c4d05419e7ec3af0de619754bdb6c2deb69b74d714c2219e509360ebfe1b947e",
     "source/device/patches/xnu-12377/zzzzzz-nezha-kernel-class-lock-order.patch": "cd90c61d6838f4e6a7248da81b6180f14db03d00f2f7a64f4bbe4034c0aa8dcb",
     "source/device/patches/xnu-12377/zzzzzz-nezha-sigp-startup-order.patch": "18275910b909d187e459c68f5d937cc09bc01923180141dc155aa7f4ff14aaf9",
-    "source/device/porting.toml": "2ce9571066c86a6991f0ec7c7cb7a70f914c3bb1c3fb0b07f05fe80e584bd554",
+    "source/device/porting.toml": "6817b0d5c7538f6bfbc632fd84ddabdd2ee01684cccef2ecfb983c0957be7849",
     "source/device/scripts/aes-iphone-24A446.json": "d55ed6d1d65fdff5de46dd602552eaf3309d1f7370fcd3f15eddb391225ffe8a",
     "source/device/scripts/als-event-service-iphone-24A446.json": "34c27f1a58bab3c518570a57c006a23fce315b90a584e691629d61c0850bd4d8",
     "source/device/scripts/backlight-iphone-24A446.json": "446eb5fe6440335bfe9fca75b32f7d815ddcafbb8a3c2d7f697c1e5c3f40f6cb",
@@ -702,7 +702,8 @@
     "source/device/scripts/finalize-nezha27-camera-adt.py": "74f003d2a7563e97d2357979d8e00fcb3b0be1a3284f0add7e625b4b720a2f92",
     "source/device/package/camera/NezhaCameraFrameMarker.h": "45924093bef676d4ff249b57bb8e113edafdffd1c6644fb8e669f1679361a2a2",
     "source/device/package/camera/userland/NezhaCameraMetal.h": "d1d34fa5c4e6c7f5f3d543df8e47a582b1649de4743eca8c3a3c0db7f1587997",
-    "source/device/tests/camera-native-memory.cpp": "6ef871fcdc69c6d84b374c4a650f5c53997aa9a10306f35e45955918ec5be35c"
+    "source/device/tests/camera-native-memory.cpp": "6ef871fcdc69c6d84b374c4a650f5c53997aa9a10306f35e45955918ec5be35c",
+    "source/device/scripts/check-camera-exposure-policy.py": "7e3ca3a93015b226334dab9dfe3c6f82ae1f64a06ee41e2eb0843e17ab452f5f"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
@@ -1238,7 +1239,8 @@
     "native_MMU_prefetch_before_enable": true,
     "unattended_mobile_FBS_launch": true,
     "physical_Camera_preview_verified": false,
-    "physical_Camera_photo_verified": false
+    "physical_Camera_photo_verified": false,
+    "native_exposure_both_ioctl_stages": true
   },
   "base_GPU051": {
     "boot_sha256": "4e4b785ca1bf7bea18d68248ade4cde09a9d9efb5d557fe65e4eaa975dac849a",
