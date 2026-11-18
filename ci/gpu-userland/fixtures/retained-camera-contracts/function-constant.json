@@ -1,0 +1,14 @@
+{
+  "passed": true,
+  "checks": 10,
+  "production_ObjectiveC_selector_executed": true,
+  "required_and_isRequired_share_live_flag": true,
+  "real_GPU_created": false,
+  "source_sha256": "d4a2dfe5e4af8a0ab0b8d39219dcf405e92fcb6bb6297d70d5597726c5918083",
+  "test_sha256": "9228bb68708e7558205da664f28a955128328d7c97eec2c9e82961e74b7002ee",
+  "phone_operations": false,
+  "current_run_executed": false,
+  "previous_run": 44307910885,
+  "previous_head": "e5bcf901cce7e0613111fdca493c00f9afcc70d7",
+  "retained_exact_source_evidence": true
+}

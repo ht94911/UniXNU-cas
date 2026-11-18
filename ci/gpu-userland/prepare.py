@@ -255,36 +255,21 @@ def main():
     progress('bison and Python build tools')
     bison = pins['bison']
     tools = root / '.cache/mesa-tools'
-    with tempfile.TemporaryDirectory(prefix='bison-') as temporary:
-        work = Path(temporary)
-        tarball = work / Path(bison['url']).name
-        for base in [bison['url'].rsplit('/', 1)[0] + '/', *BISON_MIRRORS]:
-            try:
-                with urllib.request.urlopen(base + tarball.name, timeout=120) as response:
-                    data = response.read()
-            except OSError as error:
-                print('bison download failed from', base, error)
-                continue
-            if len(data) == bison['bytes'] and hashlib.sha256(data).hexdigest() == bison['sha256']:
-                tarball.write_bytes(data)
-                break
-            print('bison tarball from', base, 'differs from the pin')
-        else:
-            sys.exit('No mirror served the pinned bison tarball')
-        with tarfile.open(tarball) as archive:
-            archive.extractall(work, filter='data')
-        build = work / tarball.name.removesuffix('.tar.xz')
-        must(['./configure', '--quiet', '--disable-nls', '--prefix=' + str(tools)], cwd=build)
-        must(['make', '-s', '-j4'], cwd=build, quiet=True)
-        must(['make', '-s', 'install'], cwd=build, quiet=True)
-    bison_version = out([tools / 'bin/bison', '--version']).splitlines()[0]
+    tools.mkdir(parents=True, exist_ok=True)
+    (tools / 'bin').mkdir(exist_ok=True)
+    installed = Path(out(['brew', '--prefix', 'bison'])) / 'bin/bison'
+    bison_version = out([installed, '--version']).splitlines()[0]
     if bison['version'] not in bison_version:
-        sys.exit('Built bison reports ' + bison_version)
+        sys.exit('Installed bison differs from the selected version: ' + bison_version)
+    (tools / 'bin/bison').symlink_to(installed)
+    record['bison_tool_selection'] = dict(version=bison_version,
+        executable_sha256=sha(installed), provenance='Homebrew matching release',
+        source_tarball_not_downloaded=True)
     venv = root / '.cache/mesa-venv'
     must([sys.executable, '-m', 'venv', venv])
     must([venv / 'bin/pip', 'install', '--disable-pip-version-check', '-q', 'meson>=1.4,<2', 'mako>=1.3', 'pyyaml', 'packaging'],
-         retries=3)
-    record['tools'] = dict(bison=bison_version, bison_sha256=bison['sha256'],
+         retries=2, timeout=180, label='Python build dependencies')
+    record['tools'] = dict(bison=bison_version, bison_source_tarball_reference_sha256=bison['sha256'],
                            python_packages=out([venv / 'bin/pip', 'freeze', '--disable-pip-version-check']).splitlines())
 
     # One reviewed host-architecture adaptation; iOS27 remains arm64e.

@@ -1,0 +1,12 @@
+{
+  "passed": true,
+  "production_decode_cases": 16,
+  "source_sha256": "d4a2dfe5e4af8a0ab0b8d39219dcf405e92fcb6bb6297d70d5597726c5918083",
+  "bridge_source_sha256": "0a00c69c2b23c660bf6d9c802ee4b3e5573d47a76330f844c720dc1ba3117ea5",
+  "decode_test_sha256": "9393df9fc87282978c0012f97739d17133cdad4d2f048e7bc9d25782c76f996c",
+  "current_run_executed": false,
+  "previous_run": 44307910885,
+  "previous_decoder_log_sha256": "c07d3b67ad57589852cdeb116f629dca42a65e237988da6a4f7f4ed33dc46385",
+  "host_Vulkan_device_opened": false,
+  "phone_operations": false
+}

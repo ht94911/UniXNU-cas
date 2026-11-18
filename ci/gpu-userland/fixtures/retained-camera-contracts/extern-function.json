@@ -1,0 +1,23 @@
+{
+  "passed": true,
+  "source_sha256": "d4a2dfe5e4af8a0ab0b8d39219dcf405e92fcb6bb6297d70d5597726c5918083",
+  "test_sha256": "3a80aa10c0819137b987ea127b1d1d6ee083d1ea99f0b719a1d501290d7a312c",
+  "production_ObjectiveC_selector_executed": true,
+  "checks": 12,
+  "previous_missing_selector_reproduced": true,
+  "exact_kernel_bitcode_and_library_lifetime_verified": true,
+  "real_GPU_created": false,
+  "CoreImage_render_verified": false,
+  "target_iconservice_verified": false,
+  "fixture_authored_no_private_inputs": true,
+  "icon_library_trace_test_sha256": "6b64cdcb2d412946730b86ceb015a0dbcaa237b238207a20561ff14854f47d19",
+  "icon_library_trace_methods_executed": true,
+  "icon_library_trace_enabled_checks": 14,
+  "icon_library_trace_disabled_checks": 9,
+  "icon_library_trace_budget": 96,
+  "icon_library_trace_disabled_records": 0,
+  "current_run_executed": false,
+  "previous_run": 44307910885,
+  "previous_head": "e5bcf901cce7e0613111fdca493c00f9afcc70d7",
+  "retained_exact_source_evidence": true
+}

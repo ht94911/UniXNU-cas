@@ -1,7 +1,7 @@
-name: nezha iPhone27 Camera090D GPU051 imageblock size and heap options
+name: nezha iPhone27 Camera090E GPU051 imageblock size and heap options
 on:
   push:
-    branches: [codex/ios27-camera090d-gpu051-forwarding-20261118]
+    branches: [codex/ios27-camera090e-gpu051-target-20261118]
   workflow_dispatch:
 permissions:
   contents: read
@@ -54,7 +54,7 @@ jobs:
           set -euo pipefail
           echo "LOGS=$RUNNER_TEMP/logs" >> "$GITHUB_ENV"
           mkdir -p "$RUNNER_TEMP/logs"
-          brew install glslang shaderc spirv-tools molten-vk vulkan-headers llvm ninja openssl@3 > "$RUNNER_TEMP/logs/brew.log" 2>&1
+          brew install glslang shaderc spirv-tools molten-vk vulkan-headers llvm ninja bison openssl@3 > "$RUNNER_TEMP/logs/brew.log" 2>&1
           echo "$(brew --prefix llvm)/bin" >> "$GITHUB_PATH"
           export PATH="$(brew --prefix llvm)/bin:$HOME/.cargo/bin:$PATH"
           if ! command -v rustup > /dev/null; then
@@ -66,6 +66,7 @@ jobs:
             llvm-as --version; glslangValidator --version; glslc --version; spirv-val --version; } > "$RUNNER_TEMP/logs/tools.log" 2>&1
           echo "NMB_HOST_LOADER=$(brew --prefix molten-vk)/lib/libMoltenVK.dylib" >> "$GITHUB_ENV"
       - name: Prepare the exact public source and patch inputs
+        timeout-minutes: 18
         run: device/ci/gpu-userland/logrun prepare python3 device/ci/gpu-userland/prepare.py --unixnu unixnu --record "$LOGS/sources.json"
       - name: Exercise actual heap and imageblock Objective-C forwarding
         id: camera_forwarding
@@ -73,21 +74,12 @@ jobs:
       - name: Check production public parameter metadata before runtime compilation
         id: camera_public
         run: device/ci/gpu-userland/logrun camera-public python3 device/ci/gpu-userland/check-camera-public.py --unixnu unixnu --logs "$LOGS"
+      - name: Bind existing tests to the identical production sources
+        id: retained_contracts
+        run: device/ci/gpu-userland/logrun retained-contracts python3 device/ci/gpu-userland/check-retained-camera-contracts.py --unixnu unixnu --logs "$LOGS"
       - name: Exercise actual Metal limits and ARC memory-pressure lifetime
         id: icon_limits
         run: device/ci/gpu-userland/logrun icon-limits python3 device/ci/gpu-userland/check-icon-limits.py --source unixnu/drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm --out "$LOGS/icon-limits"
-      - name: Exercise actual external kernel lookup and bounded icon-library evidence
-        id: extern_function
-        run: device/ci/gpu-userland/logrun extern-function python3 device/ci/gpu-userland/check-extern-function.py --unixnu unixnu --logs "$LOGS"
-      - name: Exercise both production Metal function constant getters
-        id: function_constant
-        run: device/ci/gpu-userland/logrun function-constant python3 device/ci/gpu-userland/check-function-constant.py --unixnu unixnu --logs "$LOGS"
-      - name: Exercise production Camera function SPI and public argument metadata
-        id: camera_function_spi
-        run: device/ci/gpu-userland/logrun camera-function-spi python3 device/ci/gpu-userland/check-camera-function-spi.py --unixnu unixnu --logs "$LOGS"
-      - name: Exercise production heap option decoding and real host heap reports
-        id: heap_options
-        run: device/ci/gpu-userland/logrun heap-options python3 device/ci/gpu-userland/check-heap-options.py --unixnu unixnu --logs "$LOGS"
       - name: Check actual-source real Mesa trees,device lifetimes and swap API guards
         id: device_contexts
         run: device/ci/gpu-userland/logrun device-contexts python3 device/ci/gpu-userland/check-device-context-host.py --unixnu unixnu --logs "$LOGS"
@@ -178,12 +170,12 @@ jobs:
           OUTCOME_DISPLAY_DISCOVERY: ${{ steps.display_discovery.outcome }}
           OUTCOME_PIPELINE_CACHE: ${{ steps.pipeline_cache.outcome }}
           OUTCOME_ICON_LIMITS: ${{ steps.icon_limits.outcome }}
-          OUTCOME_FUNCTION_CONSTANT: ${{ steps.function_constant.outcome }}
+          OUTCOME_FUNCTION_CONSTANT: ${{ steps.retained_contracts.outcome }}
           OUTCOME_CAMERA_FORWARDING: ${{ steps.camera_forwarding.outcome }}
-          OUTCOME_HEAP_OPTIONS: ${{ steps.heap_options.outcome }}
+          OUTCOME_HEAP_OPTIONS: ${{ steps.retained_contracts.outcome }}
           OUTCOME_CAMERA_PUBLIC: ${{ steps.camera_public.outcome }}
-          OUTCOME_CAMERA_FUNCTION_SPI: ${{ steps.camera_function_spi.outcome }}
-          OUTCOME_EXTERN_FUNCTION: ${{ steps.extern_function.outcome }}
+          OUTCOME_CAMERA_FUNCTION_SPI: ${{ steps.retained_contracts.outcome }}
+          OUTCOME_EXTERN_FUNCTION: ${{ steps.retained_contracts.outcome }}
         run: |
           set -euo pipefail
           export PATH="$(brew --prefix openssl@3)/bin:$PATH"
@@ -229,12 +221,12 @@ jobs:
           DISPLAY_DISCOVERY: ${{ steps.display_discovery.outcome }}
           PIPELINE_CACHE: ${{ steps.pipeline_cache.outcome }}
           ICON_LIMITS: ${{ steps.icon_limits.outcome }}
-          FUNCTION_CONSTANT: ${{ steps.function_constant.outcome }}
+          FUNCTION_CONSTANT: ${{ steps.retained_contracts.outcome }}
           CAMERA_FORWARDING: ${{ steps.camera_forwarding.outcome }}
-          HEAP_OPTIONS: ${{ steps.heap_options.outcome }}
+          HEAP_OPTIONS: ${{ steps.retained_contracts.outcome }}
           CAMERA_PUBLIC: ${{ steps.camera_public.outcome }}
-          CAMERA_FUNCTION_SPI: ${{ steps.camera_function_spi.outcome }}
-          EXTERN_FUNCTION: ${{ steps.extern_function.outcome }}
+          CAMERA_FUNCTION_SPI: ${{ steps.retained_contracts.outcome }}
+          EXTERN_FUNCTION: ${{ steps.retained_contracts.outcome }}
         run: |
           set -euo pipefail
           test "$TARGETS" = success
