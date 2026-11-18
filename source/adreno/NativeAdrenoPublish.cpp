@@ -450,6 +450,50 @@ static void releaseClosedSystemPages(void *,NativeAdrenoSystemPages *pages)
     NativeAdrenoMemory::discardSystem(pages);
     IOLockLock(g.lock);
 }
+/* Called with g.lock held and this connection excluded by closing_. All job
+ * inspection/retirement stays under the gate. Only the board's idle wait is
+ * outside it: waitRange holds Job references across idle and cannot safely
+ * release the gate inside its clock callback while other clients retire jobs.
+ * No new job can enter the closing core, so its finite range drains before
+ * the existing releaseAll and VM teardown run under the gate. */
+static IOReturn drainClosingJobs(NativeAdrenoUserClient *core,uint32_t timeout_us)
+{
+    if(!core || !g.submit || !g.clock.now_us || !g.clock.idle)return kIOReturnBadArgument;
+    const uint64_t began=g.clock.now_us(g.clock.cookie);
+    for(;;) {
+        const IOReturn status=g.submit->retireCompleted();
+        if(status)return status;
+        if(!core->ownRangeOutstanding())return kIOReturnSuccess;
+        if(g.clock.now_us(g.clock.cookie)-began>=timeout_us)return kIOReturnTimeout;
+        IOLockUnlock(g.lock);
+        const int idle=g.clock.idle(g.clock.cookie);
+        IOLockLock(g.lock);
+        if(idle)return kIOReturnTimeout;
+    }
+}
+/* releaseAll has removed this client's jobs and BOs. Another client may have
+ * submitted while pages were released, or the CP may still run a trailing
+ * packet after its timestamp. Try the original VM handoff without waiting
+ * under g.lock, then yield outside it and retry against the current queue and
+ * table. The successful idle check, TTBR write and VM removal remain gated. */
+static IOReturn finishClosingVm(NativeAdrenoVm *vm,uint32_t timeout_us)
+{
+    if(!vm || !g.submit || !g.clock.now_us || !g.clock.idle)return kIOReturnBadArgument;
+    const uint64_t began=g.clock.now_us(g.clock.cookie);
+    for(;;) {
+        IOReturn status=g.submit->retireCompleted();
+        if(status)return status;
+        if(!g.submit->outstanding()) {
+            status=g.submit->forgetVm(vm,&g.clock,0);
+            if(status!=kIOReturnTimeout)return status;
+        }
+        if(g.clock.now_us(g.clock.cookie)-began>=timeout_us)return kIOReturnTimeout;
+        IOLockUnlock(g.lock);
+        const int idle=g.clock.idle(g.clock.cookie);
+        IOLockLock(g.lock);
+        if(idle)return kIOReturnTimeout;
+    }
+}
 IOReturn AGXDeviceUserClient::clientClose()
 {
     IOLockLock(g.lock);
@@ -463,9 +507,10 @@ IOReturn AGXDeviceUserClient::clientClose()
     if(gMailboxOwner==this) {mailbox=gMailboxOwner;gMailboxOwner=nullptr;}
     if(live_) {
         const uint64_t peak=core_->windowPeak();
-        status=core_->releaseAll(&g.clock,2000000,&releaseClosedSystemPages,nullptr);
+        status=drainClosingJobs(core_,2000000);
+        if(!status)status=core_->releaseAll(&g.clock,2000000,&releaseClosedSystemPages,nullptr);
         /* The address space goes once the GPU no longer runs it: idle, and the kernel table back in the bank if it was installed. */
-        if(!status && space_)status=g.submit->forgetVm(space_->vm(),&g.clock,2000000);
+        if(!status && space_)status=finishClosingVm(space_->vm(),2000000);
         if(!status && space_) {status=g.context->destroyVm(space_);if(!status)space_=nullptr;}
         /* A failed teardown leaves the objects (and the address space) live: nothing is forced or reused. */
         if(!status) {

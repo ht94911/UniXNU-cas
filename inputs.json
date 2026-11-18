@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "GPU055 retain exactGPU054 close-lock/CPU-map/VM/union and all joint drivers; reuse AppSync039/042 tested12GiB RAMbootstrap pool. Only 16->34 native4KiB bootstrap pages; Metal046 release-only pipeline collection already built and qualified separately. Original persistentData1 unchanged.",
+  "purpose": "GPU057: release the existing GPU gate during closing-client job drain and final VM tail waits; retain real fence, RPTR/RBBM, TTBR and teardown checks. All GPU055 joint components and twelve-GiB bootstrap source retained. GPU056 Metal target is built and qualified separately.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -49,7 +49,7 @@
     "source/adreno/NativeAdrenoPollLog.h": "8b6519cec2aeade0870f91db08087462f03ffc2a0eabf6e0d6183216e6c35645",
     "source/adreno/NativeAdrenoPreempt.cpp": "59336613d70291a3d16abd0c3a10025fc8dae5ba2796f76ce8e7c60234f328bb",
     "source/adreno/NativeAdrenoPreempt.h": "33b1804ba28d36d5a8aa3c67ec6476f737803e1864c049804bb6fcd3512d91b6",
-    "source/adreno/NativeAdrenoPublish.cpp": "d88e4cc8a2a28882725ba285754a65f5e6ed5eeb4caac7d70b5c0e62e4d9d365",
+    "source/adreno/NativeAdrenoPublish.cpp": "0512a695818b91e378f6d6fbd279c5a1da65f7b125ae7ef7176df41e50f82988",
     "source/adreno/NativeAdrenoPwrup.h": "708830fae4f6a5cea765992d44135126d7a034a239adece94f094d862819e889",
     "source/adreno/NativeAdrenoPwrupRegs.h": "8067d9625e922173912eea09e6a504d9c1b31234d4656f8dd4148855882918e1",
     "source/adreno/NativeAdrenoRing.cpp": "c32eefeac0d32960e585f8046be86408c6c6bda6d28b569261f4eb940922ae66",
@@ -923,6 +923,25 @@
     "compression_pool_pages": 1048576,
     "actual_AppSync039and042_ram12884901888": true,
     "no_device_Data_rebuild": true,
+    "phone_operations": false,
+    "private_inputs_uploaded": false
+  },
+  "gpu057": {
+    "source_revision": "25eaab931da6420a5a458dc4d059edd978cfae4d",
+    "base_native047_head": "28db135b95b8011e390c49e408fde7b9aa26fd12",
+    "base_publisher_sha256": "d88e4cc8a2a28882725ba285754a65f5e6ed5eeb4caac7d70b5c0e62e4d9d365",
+    "publisher_sha256": "0512a695818b91e378f6d6fbd279c5a1da65f7b125ae7ef7176df41e50f82988",
+    "changed_production_file": "source/adreno/NativeAdrenoPublish.cpp",
+    "existing_close_exclusion_and_CPU_map_routing_retained": true,
+    "actual_host_job_and_VM_core_tests_passed": true,
+    "host_report_sha256": "e6954ffc6500753ae9b40d8758562502169344f6f6bce22b84cc989aac5e256a",
+    "mutex_cases": 9,
+    "ASan_UBSan": true,
+    "bounded_idle_wait_us": 2000000,
+    "VM_handoff_poll_timeout_us": 0,
+    "successful_TTBR_and_VM_destruction_gated": true,
+    "target_object_and_link_inspection_required": true,
+    "physical_frame_improvement_verified": false,
     "phone_operations": false,
     "private_inputs_uploaded": false
   }
