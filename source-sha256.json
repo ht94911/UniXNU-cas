@@ -1,5 +1,5 @@
 {
-  ".github/workflows/nezha-metal.yml": "efe677eb4631a3ae5d3a4687a941b450caa8e247633de5c059608d6fb7041f88",
+  ".github/workflows/nezha-metal.yml": "2e3cf2e3cb98574082611fc3c0d5da24f815690f8cc3671dbad403407aeeae80",
   ".gitignore": "862263fa1f46c20f0d1e4dac5ffcc75abd55c08211b2c3864c5f8764b9d87793",
   "ci/gpu-userland/check-buffer-reserve.py": "56bef54d15cb6192d25bfd99516369d45d3ddeffbd44805f9f052739d2fdf57a",
   "ci/gpu-userland/check-camera-function-spi.py": "67e830056d41d8d749067f2eda8333bc310b518b6adf6fa113a59e1c566b1e6a",
@@ -49,7 +49,7 @@
   "ci/gpu-userland/fixtures/fence-wait-test.cpp": "22905604695996af39766f29e760c2c34b28801e3bc6b508b23aa3fcdde63173",
   "ci/gpu-userland/fixtures/function_constant_selector_host.mm": "9228bb68708e7558205da664f28a955128328d7c97eec2c9e82961e74b7002ee",
   "ci/gpu-userland/fixtures/guards.cpp": "0183e7853d4ebbb9b90cb29b81dbc837f61039b1afb23d71df3a24eac5ee949d",
-  "ci/gpu-userland/fixtures/heap_options_frontend_host.mm": "6a7b7ec6ac8ed153410cd56c03bb7bea74416aa3e911252031b603a75b915bdf",
+  "ci/gpu-userland/fixtures/heap_options_frontend_host.mm": "cdc72cc8b297007d685e6c2497c777f06e3af459e07e774b2e53dc9e76d283f8",
   "ci/gpu-userland/fixtures/heap_options_host.rs": "9393df9fc87282978c0012f97739d17133cdad4d2f048e7bc9d25782c76f996c",
   "ci/gpu-userland/fixtures/imageblock_frontend_host.mm": "5c1015063ea1c9a670feed1e0aa272d02f8d88951e9983a943d06e61d41bbf3c",
   "ci/gpu-userland/fixtures/multi-level-output-sources.json": "84f2d312792669e3907837411afbee16e7fbe54a7edae1161b16091589a119ec",

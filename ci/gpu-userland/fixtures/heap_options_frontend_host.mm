@@ -35,7 +35,7 @@ int main(int argc, char **argv) {
         invalid.resourceOptions = (MTLResourceOptions)0x600240;
         assert(![device newHeapWithDescriptor:(MTLHeapDescriptor *)invalid]);
         ++checks;
-        assert(![device newHeapWithDescriptor:nil]);
+        assert(![(NBDeviceMethods *)device newHeapWithDescriptor:nil]);
         ++checks;
         printf("PASS heap frontend: %u production calls; real heaps and reported fields\n", checks);
     }

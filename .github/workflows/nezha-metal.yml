@@ -1,7 +1,7 @@
-name: nezha iPhone27 Camera090B GPU051 imageblock size and heap options
+name: nezha iPhone27 Camera090C GPU051 imageblock size and heap options
 on:
   push:
-    branches: [codex/ios27-camera090b-gpu051-imageblock-size-20261118]
+    branches: [codex/ios27-camera090c-gpu051-imageblock-20261118]
   workflow_dispatch:
 permissions:
   contents: read
