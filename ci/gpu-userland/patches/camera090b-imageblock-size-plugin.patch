@@ -1,0 +1,83 @@
+diff --git a/NativeBridgeMetalFrontend.mm b/NativeBridgeMetalFrontend.mm
+index 73a06bf..48673ac 100644
+--- a/NativeBridgeMetalFrontend.mm
++++ b/NativeBridgeMetalFrontend.mm
+@@ -2003,6 +2003,10 @@ static NBFunction *ciKernelFunction(NBLibrary *library,NSString *name) {
+ - (void)dealloc {DetailSpan timing(10,(uintptr_t)_handle);nmb_compute_pipeline_release(_handle);}
+ - (NSUInteger)maxTotalThreadsPerThreadgroup {return nmb_compute_pipeline_max_threads(_handle);}
+ - (NSUInteger)threadExecutionWidth {return nmb_compute_pipeline_execution_width(_handle);}
++- (NSUInteger)imageblockMemoryLengthForDimensions:(MTLSize)dimensions {
++ const std::array<uint64_t,3> size={dimensions.width,dimensions.height,dimensions.depth};
++ return nmb_compute_pipeline_imageblock_memory_length(_handle,size.data());
++}
+ @end
+ @interface NBRenderPipeline : NBObject
+ @property(nonatomic) NmbRenderPipeline *handle;
+@@ -2709,6 +2713,9 @@ static uint64_t encodeCommandOf(id object) {
+ - (void)setThreadgroupMemoryLength:(NSUInteger)n atIndex:(NSUInteger)i {
+  ENCODE([self check:nmb_compute_set_threadgroup_memory(self.handle,(uint32_t)n,(uint32_t)i) what:"setThreadgroupMemoryLength"]);
+ }
++- (void)setImageblockWidth:(NSUInteger)width height:(NSUInteger)height {
++ ENCODE([self check:nmb_compute_set_imageblock_size(self.handle,width,height) what:"setImageblockWidth:height:"]);
++}
+ - (void)dispatch:(MTLSize)size group:(MTLSize)group threads:(bool)threads {
+  gDispatches++;self.commandBuffer->encodedWork.dispatches++;
+  const std::array<uint64_t,3> s={size.width,size.height,size.depth},g={group.width,group.height,group.depth};
+diff --git a/bridge/NativeMetalObjects.h b/bridge/NativeMetalObjects.h
+index 5caff11..212be43 100644
+--- a/bridge/NativeMetalObjects.h
++++ b/bridge/NativeMetalObjects.h
+@@ -215,6 +215,8 @@ struct NmbComputePipelineDescriptor {
+ };
+ NmbComputePipeline *nmb_compute_pipeline_new_with_options(NmbDevice *, NmbFunction *, const struct NmbPipelineOptions *);
+ NmbComputePipeline *nmb_compute_pipeline_new_with_descriptor(NmbDevice *, const struct NmbComputePipelineDescriptor *, const struct NmbPipelineOptions *);
++/* dimensions points to width, height and depth; the runtime owns the memory-size rule. */
++uint64_t nmb_compute_pipeline_imageblock_memory_length(const NmbComputePipeline *, const uint64_t *dimensions);
+ NmbRenderPipeline *nmb_render_pipeline_new_with_options(NmbDevice *, const struct NmbRenderPipelineDescriptor *, const struct NmbPipelineOptions *);
+ /* The archive makes the state as the matching new call does and keeps what it used (addRender/ComputePipelineFunctionsWithDescriptor:). */
+ bool nmb_binary_archive_add_render(NmbBinaryArchive *, const struct NmbRenderPipelineDescriptor *);
+@@ -315,6 +317,8 @@ bool nmb_encoder_set_sampler(NmbEncoder *, uint32_t stage, NmbSampler *, uint32_
+ 
+ bool nmb_compute_set_pipeline(NmbEncoder *, NmbComputePipeline *);
+ bool nmb_compute_set_threadgroup_memory(NmbEncoder *, uint32_t length, uint32_t index);
++/* Kernel imageblock dimensions use the runtime's validation and dispatch binding. */
++bool nmb_compute_set_imageblock_size(NmbEncoder *, uint64_t width, uint64_t height);
+ bool nmb_compute_dispatch(NmbEncoder *, const uint64_t size[3], const uint64_t per_group[3], bool threads);
+ bool nmb_compute_dispatch_indirect(NmbEncoder *, NmbBuffer *, uint64_t offset, const uint64_t per_group[3]);
+ 
+diff --git a/bridge/NativeMetalObjects.rs b/bridge/NativeMetalObjects.rs
+index 482e99c..731332b 100644
+--- a/bridge/NativeMetalObjects.rs
++++ b/bridge/NativeMetalObjects.rs
+@@ -1690,6 +1690,16 @@ pub extern "C" fn nmb_compute_pipeline_execution_width(pipeline: *const NmbCompu
+     guard(0, || Ok(get(pipeline)?.0.thread_execution_width() as u64))
+ }
+ 
++#[unsafe(no_mangle)]
++/// # Safety
++/// `dimensions` is null or points to three readable u64 values.
++pub unsafe extern "C" fn nmb_compute_pipeline_imageblock_memory_length(pipeline: *const NmbComputePipeline, dimensions: *const u64) -> u64 {
++    guard(0, || {
++        let size = unsafe { dimensions.cast::<[u64; 3]>().as_ref() }.ok_or("null imageblock dimensions")?;
++        Ok(get(pipeline)?.0.imageblock_memory_length_for_dimensions(Size::new(size[0], size[1], size[2])))
++    })
++}
++
+ #[repr(C)]
+ pub struct NmbColorAttachment {
+     pub format: u64,
+@@ -2801,6 +2811,14 @@ pub extern "C" fn nmb_compute_set_threadgroup_memory(encoder: *mut NmbEncoder, l
+     })
+ }
+ 
++#[unsafe(no_mangle)]
++pub extern "C" fn nmb_compute_set_imageblock_size(encoder: *mut NmbEncoder, width: u64, height: u64) -> bool {
++    guard(false, || {
++        compute(encoder)?.set_imageblock_size(width, height).map_err(e("imageblock size"))?;
++        Ok(true)
++    })
++}
++
+ #[unsafe(no_mangle)]
+ pub extern "C" fn nmb_compute_dispatch(encoder: *mut NmbEncoder, size: *const u64, per_group: *const u64, threads: bool) -> bool {
+     guard(false, || {

@@ -387,6 +387,12 @@ def main():
     must(['git', '-C', root, 'apply', '--check', selected])
     must(['git', '-C', root, 'apply', selected])
     record['camera_imageblock_recipe_patch'] = sha(selected)
+    selected = HERE / 'patches/camera090b-imageblock-size-plugin.patch'
+    must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', '--check', selected])
+    must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', selected])
+    record['camera_imageblock_size_patch'] = sha(selected)
+    shutil.copyfile(HERE / 'fixtures/imageblock_frontend_host.mm',
+                    root / 'drivers/AdrenoMetal/bridge/imageblock_frontend_host.mm')
     test = HERE / 'fixtures/camera_function_spi_host.mm'
     shutil.copyfile(test, root / 'drivers/AdrenoMetal/bridge' / test.name)
     shutil.copyfile(HERE / 'fixtures/camera_stitch_host.mm',

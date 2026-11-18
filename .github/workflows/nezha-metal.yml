@@ -1,7 +1,7 @@
-name: nezha iPhone27 Camera090 GPU051 imageblock and heap options
+name: nezha iPhone27 Camera090B GPU051 imageblock size and heap options
 on:
   push:
-    branches: [codex/ios27-camera090-gpu051-imageblock-20261118]
+    branches: [codex/ios27-camera090b-gpu051-imageblock-size-20261118]
   workflow_dispatch:
 permissions:
   contents: read
@@ -85,6 +85,9 @@ jobs:
       - name: Exercise production heap option decoding and real host heap reports
         id: heap_options
         run: device/ci/gpu-userland/logrun heap-options python3 device/ci/gpu-userland/check-heap-options.py --unixnu unixnu --logs "$LOGS"
+      - name: Exercise production imageblock sizes, memory queries and GPU pixels
+        id: imageblock_frontend
+        run: device/ci/gpu-userland/logrun imageblock-frontend python3 device/ci/gpu-userland/check-imageblock-frontend.py --unixnu unixnu --logs "$LOGS"
       - name: Check actual-source real Mesa trees,device lifetimes and swap API guards
         id: device_contexts
         run: device/ci/gpu-userland/logrun device-contexts python3 device/ci/gpu-userland/check-device-context-host.py --unixnu unixnu --logs "$LOGS"
@@ -176,6 +179,7 @@ jobs:
           OUTCOME_PIPELINE_CACHE: ${{ steps.pipeline_cache.outcome }}
           OUTCOME_ICON_LIMITS: ${{ steps.icon_limits.outcome }}
           OUTCOME_FUNCTION_CONSTANT: ${{ steps.function_constant.outcome }}
+          OUTCOME_IMAGEBLOCK_FRONTEND: ${{ steps.imageblock_frontend.outcome }}
           OUTCOME_HEAP_OPTIONS: ${{ steps.heap_options.outcome }}
           OUTCOME_CAMERA_PUBLIC: ${{ steps.camera_public.outcome }}
           OUTCOME_CAMERA_FUNCTION_SPI: ${{ steps.camera_function_spi.outcome }}
@@ -226,6 +230,7 @@ jobs:
           PIPELINE_CACHE: ${{ steps.pipeline_cache.outcome }}
           ICON_LIMITS: ${{ steps.icon_limits.outcome }}
           FUNCTION_CONSTANT: ${{ steps.function_constant.outcome }}
+          IMAGEBLOCK_FRONTEND: ${{ steps.imageblock_frontend.outcome }}
           HEAP_OPTIONS: ${{ steps.heap_options.outcome }}
           CAMERA_PUBLIC: ${{ steps.camera_public.outcome }}
           CAMERA_FUNCTION_SPI: ${{ steps.camera_function_spi.outcome }}
@@ -248,6 +253,7 @@ jobs:
           test "$ICON_LIMITS" = success
           test "$EXTERN_FUNCTION" = success
           test "$FUNCTION_CONSTANT" = success
+          test "$IMAGEBLOCK_FRONTEND" = success
           test "$HEAP_OPTIONS" = success
           test "$CAMERA_PUBLIC" = success
           test "$CAMERA_FUNCTION_SPI" = success
