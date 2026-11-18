@@ -9,6 +9,8 @@
 #include <IOKit/IOLocks.h>
 #include <libkern/c++/OSString.h>
 #include <libkern/c++/OSSymbol.h>
+#include <libkern/c++/OSIterator.h>
+#include <libkern/c++/OSNumber.h>
 #include <mach/kmod.h>
 #endif
 #include "NezhaSensors.h"
@@ -26,10 +28,44 @@ class NativeNezhaOrientation : public IOHIDDevice {
     IOWorkLoop *loop=nullptr;
     IOCommandGate *gate=nullptr;
     IOLock *settings=nullptr;
+    IOService *kernelParser=nullptr;
     struct nezha_sensor_hid_ops backend={};
     struct nezha_orientation_filter filter={};
     uint32_t interval=20000,direction=0;
     bool ready=false,stopped=false,clearBeforeReport=false,activated=false,published=false;
+    bool attachKernelParser(){
+        if(kernelParser)return true;
+        OSIterator *children=getChildIterator(gIOServicePlane);if(!children)return false;
+        IOService *interface=nullptr;
+        while(OSObject *child=children->getNextObject()){
+            auto entry=OSDynamicCast(IOService,child);
+            if(!entry||!entry->metaCast("IOHIDInterface"))continue;
+            if(interface){children->release();return false;}
+            interface=entry;
+        }
+        children->release();if(!interface)return false;
+        auto name=OSSymbol::withCStringNoCopy("IOHIDEventDriver");if(!name)return false;
+        const OSMetaClass *meta=OSMetaClass::getMetaClassWithName(name);name->release();if(!meta)return false;
+        OSObject *object=meta->alloc();auto parser=OSDynamicCast(IOService,object);
+        if(!parser||!parser->metaCast("IOHIDEventDriver")||!parser->init()){
+            if(object)object->release();return false;
+        }
+        if(!parser->attach(interface)){parser->release();return false;}
+        if(!parser->start(interface)){
+            interface->close(parser);parser->detach(interface);parser->release();return false;
+        }
+        auto mask=OSDynamicCast(OSNumber,parser->getProperty("SupportedHIDEventMask"));
+        uint64_t supported=mask?mask->unsigned64BitValue():0;
+        if(!(supported&(UINT64_C(1)<<10))||!parser->getProperty("DeviceOrientation")){
+            interface->close(parser);parser->stop(interface);parser->detach(interface);parser->release();return false;
+        }
+        // Retain the real original parser for this boot, like the sensor
+        // EventServices. Its own report callback and copyEvent own delivery.
+        kernelParser=parser;
+        printf("NEZHA SENSORS ORIENTATION: kernel-parser bytes=%u mask=%llu attached=1 started=1\n",
+            meta->getClassSize(),(unsigned long long)supported);
+        return true;
+    }
     int32_t demand(uint32_t value){
         // Keep enough source samples for250ms stability even when a client
         // requests a long report interval. The original HID layer decimates.
@@ -117,6 +153,8 @@ public:
         // parser did not publish orientation or its supported event mask.
         // Keep this owned report device on the original kernel parser.
         if(table&&(table->getObject("IOUserClass")||table->getObject("IOUserServerName")))return false;
+        auto name=table?OSDynamicCast(OSString,table->getObject("IOClass")):nullptr;
+        if(name&&name->isEqualTo("IOHIDEventDriver"))return false;
         return IOHIDDevice::matchPropertyTable(table,score);
     }
     bool init(OSDictionary *properties=nullptr) override{
@@ -128,7 +166,8 @@ public:
         if(!ops||!epoch)return false;backend=*ops;
         return !nezha_orientation_begin(&filter,epoch,19200000)&&
             setProperty("Built-In",kOSBooleanTrue)&&setProperty("HIDDefaultBehavior",kOSBooleanTrue)&&
-            setProperty("ReportInterval",interval,32)&&setProperty("NezhaSensorEpoch",epoch,64);
+            setProperty("RegisterService",kOSBooleanFalse)&&setProperty("ReportInterval",interval,32)&&
+            setProperty("NezhaSensorEpoch",epoch,64);
     }
     IOWorkLoop *getWorkLoop() const override{return loop;}
     IOReturn newReportDescriptor(IOMemoryDescriptor **out) const override{
@@ -151,7 +190,12 @@ public:
     bool beginSampling(){return gate->runAction(&NativeNezhaOrientation::activate)==kIOReturnSuccess;}
     bool publish(IOService *provider){
         if(published)return true;
-        published=IOHIDDevice::start(provider);return published;
+        // With this source unregistered, original start prepares report
+        // storage without relying on a catalogue notification to create the
+        // interface. Explicitly attach/start the original kernel parser once.
+        if(!IOHIDDevice::start(provider))return false;
+        published=IOHIDDevice::createInterface(0)&&attachKernelParser();
+        return published;
     }
     int submit(const QsscSample *sample){
         return gate->runAction(&NativeNezhaOrientation::receive,const_cast<QsscSample *>(sample))==kIOReturnSuccess?0:QsscConsumer;

@@ -15,6 +15,11 @@ subprocess.run(['cc','-std=c11',*flags,'-c',str(D/'package/sensors/NezhaSensorOr
 subprocess.run(['c++','-std=c++17',*flags,*link,str(D/'tests/sensors-orientation-host.cpp'),str(obj),'-o',str(binary)],check=True)
 result=subprocess.run([str(binary)],check=True,text=True,capture_output=True,
                      env=dict(os.environ,ASAN_OPTIONS='detect_leaks=0:halt_on_error=1',UBSAN_OPTIONS='halt_on_error=1'))
-(a.output/'run.log').write_text(result.stdout+result.stderr);print(result.stdout,end='')
+log=result.stdout+result.stderr
+for case in ['missing-interface','duplicate-interface','missing-parser','parser-start-failed','parser-without-orientation']:
+    result=subprocess.run([str(binary),case],check=True,text=True,capture_output=True,
+                         env=dict(os.environ,ASAN_OPTIONS='detect_leaks=0:halt_on_error=1',UBSAN_OPTIONS='halt_on_error=1'))
+    log+=result.stdout+result.stderr
+(a.output/'run.log').write_text(log);print(log,end='')
 (a.output/'qualified.json').write_text(json.dumps(dict(passed=True,ASan_UBSan=True,production_source=True,
                                                      real_IOHID_parser_pending=True,target_and_hardware_pending=True),indent=2)+'\n')

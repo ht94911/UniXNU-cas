@@ -23,12 +23,18 @@ struct IOBufferMemoryDescriptor : IOMemoryDescriptor {
         auto m=new IOBufferMemoryDescriptor;m->bytes.assign(static_cast<const uint8_t *>(p),static_cast<const uint8_t *>(p)+n);return m;
     }
 };
-struct OSString : OSObject {static OSString *withCString(const char *){return new OSString;}};
+struct OSString : OSObject {
+    std::string value;
+    static OSString *withCString(const char *text){auto s=new OSString;s->value=text;return s;}
+    bool isEqualTo(const char *text)const{return value==text;}
+};
 struct HostOrientationReport {uint64_t timestamp;std::vector<uint8_t> bytes;};
 inline std::vector<HostOrientationReport> hostOrientationReports;
 inline int32_t hostOrientationReportFailure;
 struct IOHIDDevice;
 inline std::function<void(IOHIDDevice *)> hostOrientationPublishHook;
+inline std::function<void(IOHIDDevice *)> hostOrientationInterfaceHook;
+inline unsigned hostOrientationInterfaceCreates;
 struct IOHIDDevice : IOService {
 protected:
     virtual OSString *newTransportString()const{return nullptr;}
@@ -42,5 +48,24 @@ public:
     }
     virtual IOReturn getReport(IOMemoryDescriptor *,IOHIDReportType,IOOptionBits){return kIOReturnUnsupported;}
     virtual IOReturn setReport(IOMemoryDescriptor *,IOHIDReportType,IOOptionBits){return kIOReturnUnsupported;}
+    virtual bool createInterface(IOOptionBits){
+        hostOrientationInterfaceCreates++;
+        if(hostOrientationInterfaceHook)hostOrientationInterfaceHook(this);return true;
+    }
     bool start(IOService *p)override{provider=p;if(hostOrientationPublishHook)hostOrientationPublishHook(this);return true;}
 };
+inline bool hostParserStartFailure,hostParserOrientationMissing;
+inline unsigned hostParserAllocations,hostParserStarts;
+struct HostOriginalOrientationParser : IOService {
+    bool start(IOService *p)override{
+        hostParserStarts++;if(hostParserStartFailure)return false;provider=p;
+        if(!hostParserOrientationMissing){
+            setProperty("SupportedHIDEventMask",uint64_t(1)<<10,64);
+            setProperty("DeviceOrientation",kOSBooleanTrue);
+        }
+        return true;
+    }
+};
+inline OSObject *hostAllocateOrientationParser(){hostParserAllocations++;return new HostOriginalOrientationParser;}
+inline IOService hostOrientationInterface;
+inline void hostInstallOrientationInterface(IOHIDDevice *device){device->children.push_back(&hostOrientationInterface);}

@@ -21,8 +21,24 @@ static void feature(uint32_t interval){
     uint8_t r[5]={2};for(unsigned n=0;n<4;n++)r[n+1]=(uint8_t)(interval>>(8*n));
     auto b=IOBufferMemoryDescriptor::withBytes(r,sizeof r,0);assert(!orientation->setReport(b,kIOHIDReportTypeFeature,2));b->release();
 }
-int main(){
+int main(int argc,char **argv){
     hostBaseSize=208;IOService provider;nezha_sensor_hid_ops ops={};ops.request=request;ops.fault=fault;
+    hostParserAllocator=hostAllocateOrientationParser;hostOrientationInterfaceHook=hostInstallOrientationInterface;
+    if(argc>1){
+        std::string scenario=argv[1];
+        if(scenario=="missing-interface")hostOrientationInterfaceHook=nullptr;
+        else if(scenario=="duplicate-interface")hostOrientationInterfaceHook=[&provider](IOHIDDevice *d){
+            d->children.push_back(&hostOrientationInterface);d->children.push_back(&provider);
+        };
+        else if(scenario=="missing-parser")hostParserAllocator=nullptr;
+        else if(scenario=="parser-start-failed")hostParserStartFailure=true;
+        else if(scenario=="parser-without-orientation")hostParserOrientationMissing=true;
+        else assert(false);
+        assert(nezha_sensor_orientation_prepare(&provider,&ops,1));
+        assert(!nezha_sensor_orientation_activate());
+        assert(hostParserStarts<=1&&hostParserAllocations<=1);
+        puts("Original orientation parser setup failure is explicit; no fake ready event");return 0;
+    }
     assert(nezha_sensor_orientation_prepare(&provider,&ops,1));feature(30000);assert(requests==0);
     feature(20000);
     hostOrientationPublishHook=[](IOHIDDevice *device){
@@ -31,10 +47,14 @@ int main(){
     };
     assert(nezha_sensor_orientation_activate());assert(nezha_sensor_orientation_activate());hostOrientationPublishHook=nullptr;
     assert(requests==2&&requested.active&&requested.interval_us==20000);
+    assert(hostOrientationInterfaceCreates==1&&hostParserStarts==1&&hostParserAllocations==1);
+    assert(hostOrientationInterface.children.empty());
     OSDictionary kernelMatch,dextMatch;SInt32 score=0;
     assert(orientation->matchPropertyTable(&kernelMatch,&score));
     dextMatch.setObject("IOUserClass",kOSBooleanTrue);assert(!orientation->matchPropertyTable(&dextMatch,&score));
     OSDictionary serverMatch;serverMatch.setObject("IOUserServerName",kOSBooleanTrue);assert(!orientation->matchPropertyTable(&serverMatch,&score));
+    auto className=OSString::withCString("IOHIDEventDriver");kernelMatch.setObject("IOClass",className);className->release();
+    assert(!orientation->matchPropertyTable(&kernelMatch,&score));
     IOMemoryDescriptor *descriptor=nullptr;assert(!orientation->newReportDescriptor(&descriptor));
     assert(descriptor->getLength()==sizeof nezha_orientation_descriptor);descriptor->release();
     uint64_t t=10000000;constexpr int32_t g=642689;

@@ -32,8 +32,12 @@ inline std::function<void()> hostConstructorHook;
 inline std::function<void()> hostGateEntryHook;
 inline std::function<void()> hostDispatchHook;
 struct OSSymbol;
+struct OSObject;
+inline OSObject *(*hostParserAllocator)()=nullptr;
 struct OSMetaClass {
     uint32_t size;
+    OSObject *(*allocator)()=nullptr;
+    OSObject *alloc()const{return allocator?allocator():nullptr;}
     uint32_t getClassSize() const { return size; }
     static const OSMetaClass *getMetaClassWithName(const OSSymbol *);
     static void *preModLoad(const char *) { return reinterpret_cast<void *>(1); }
@@ -57,7 +61,9 @@ struct OSSymbol : OSObject {
     void release() const { const_cast<OSSymbol *>(this)->OSObject::release(); }
 };
 inline const OSMetaClass *OSMetaClass::getMetaClassWithName(const OSSymbol *symbol){
-    static OSMetaClass meta{200};meta.size=symbol->name=="IOHIDDevice"?hostDeviceBaseSize:hostBaseSize;return &meta;
+    static OSMetaClass meta{200};
+    meta.size=symbol->name=="IOHIDDevice"?hostDeviceBaseSize:hostBaseSize;
+    meta.allocator=symbol->name=="IOHIDEventDriver"?hostParserAllocator:nullptr;return &meta;
 }
 struct OSBoolean : OSObject { bool value; explicit OSBoolean(bool v) : value(v) {} };
 inline OSBoolean hostTrue{true}, hostFalse{false};
@@ -137,14 +143,23 @@ struct IOHIDEvent : OSObject {
 };
 struct HostDispatch { uint64_t timestamp; uint32_t lux; };
 inline std::vector<HostDispatch> hostDispatches;
+struct OSIterator : OSObject {
+    std::vector<OSObject *> objects;
+    size_t index=0;
+    OSObject *getNextObject(){return index<objects.size()?objects[index++]:nullptr;}
+};
+inline const char *gIOServicePlane="IOService";
 struct IOService : OSObject {
     OSDictionary properties;
     IOService *provider = nullptr;
+    std::vector<OSObject *> children;
+    OSIterator *getChildIterator(const char *){auto i=new OSIterator;i->objects=children;return i;}
     virtual bool init(OSDictionary * = nullptr) { return true; }
     virtual bool attach(IOService *p) { provider = p; return true; }
     virtual void detach(IOService *) { provider = nullptr; hostDetached++; }
     virtual bool start(IOService *) { return true; }
     virtual void stop(IOService *) { hostStops++; }
+    void close(IOService *) {}
     virtual IOWorkLoop *getWorkLoop() const { return nullptr; }
     static IOService *getPlatform() { static IOService platform; return &platform; }
     virtual IOReturn setProperties(OSObject *) { return kIOReturnUnsupported; }

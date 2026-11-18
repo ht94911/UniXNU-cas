@@ -132,6 +132,7 @@ static void subscription_lifecycle(NaAdsp &owner){
     puts("Actual HID and QRTR raw/motion toggles, gravity-only traffic and calibration-delayed wake resume passed");
 }
 int main(int argc,char **argv){
+    hostParserAllocator=hostAllocateOrientationParser;hostOrientationInterfaceHook=hostInstallOrientationInterface;
     if(argc>1&&std::string(argv[1])=="stop-before-install"){
         assert(!nezha_sensors_stop_and_wait(10));NaAdsp late={};late.stage=NaAdspPower;
         assert(!nezha_sensors_native_install(&late,&late,1));late.stage=NaAdspOnline;

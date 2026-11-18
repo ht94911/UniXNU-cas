@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Sensor010 confines only the independent orientation report device to the original kernel HID parser, after actual009 selected AppleUserHIDEventDriver and failed public direction despite13successful reports. Retain exact009 kernel/hardware and008 public subscription lifecycle baseline; signed008 app unchanged.",
+  "purpose": "Sensor011 explicitly creates the owned orientation IOHIDInterface then allocates and starts the existing original kernelIOHIDEventDriver, requiring direction support before ready; 010b realreport accepted but no parser opened. Preserve existing raw/fusion/units/SEE and signed008 app; no repeated previous tests.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "c3e2b088b97b10c17574d7b950f920312de94d7d",
+  "device_revision": "c0c9d871d6105f38182f6b6a43c2d04a0b6e95dc",
   "soc_revision": "device-local-composition-e565439+3435fa5",
   "xcode": "26.6",
   "files": {
@@ -43,14 +43,14 @@
     "source/device/porting.toml": "6d1072ee3c4fcf0df3a88918da1c835a71bb432bc3b0a0298853c634470ea15b",
     "source/device/package/sensors/NezhaSensorNativeCaller.h": "6d4345ff467045797fe30fd0d545c24cf618205741e5c9ec76a8760c5a386075",
     "source/device/package/backlight/NezhaDsiObservation.h": "bdb70abfda62f0085e163f474e071e6fe8f612eda081e036c921660260519f0e",
-    "source/device/tests/sensors-orientation-host.py": "e91b5816b200775474425497af1f11a1d8ae45a49cfdc806698446a679c6500a",
+    "source/device/tests/sensors-orientation-host.py": "114cbfd8a440c652ac559612ef4ca45fab6f66d292936105be9b14bcbc0ed65e",
     "source/adreno/LICENSE": "16fbc0170994a48f60938d9f0d992d3bad113383cf90882f75c206e079c2a2dc",
     "source/device/package/boot-progress/BootProgressDisplay.h": "231f580758e4e98592fd7f41203be00ca5670b912508a520bf83fb82d3af10d9",
     "source/device/package/als-owner/core/AudioStream.h": "fcc3474cb52a115599919cb32dc58017b0cb28687d801f4fb7aa24dba26ca472",
     "source/device/package/cpu/NezhaCpu27Policy.h": "14869e171aabc71ea536d26bc79877db1889a29a13c09115557a45b1b8629dc7",
     "source/device/package/ShengAudioAbi.h": "9ef369877cfae3d2255129f7fdf332448b71300a0fc840d6522ec83e09754b52",
     "source/device/tests/input-chain-trace.c": "9170cb8675b3ce94e9e1cfd5af0aaa4f322655fb1ef177789aef888a13348669",
-    "source/device/tests/sensors-hid-host-shim.h": "746be8ee22e613fbcb7b96ef9297c5e2140d0fdcb00b5638a53e4c42c13cb5b6",
+    "source/device/tests/sensors-hid-host-shim.h": "ebc4279dac46e5f928a3d5b319105ad35e8692b022ece124a96b25c8b7b627eb",
     "source/soc/patches/xnu-12377/native-smp-secondary.patch": "9d9164921da548a9f13ccbd6093c799583f54e590ef3d562288dcea9ba5a2774",
     "source/device/package/NezhaWcn7860/qcom/PeachNet.h": "431bf717cc33d61381472daa34c44b791b65479a974e904c11a2a85776be8697",
     "ci/test-native-userlog-producer.py": "619bc31f6f41b16d562bcbc83a41588f6ada45a5268e23ef5c4985e5f364e403",
@@ -81,7 +81,7 @@
     "source/device/package/BootLog.c": "b8a76a03be5b1595c09ab8181acadf6332f88196022c086eb4628addac25acb3",
     "source/device/package/boot-progress/UmiRuntimeTrace.h": "f91cb0cf6a325a57d5a4aecc4bcf9f354e57c26f8198b78030a8b635ca027964",
     "source/device/package/.gitkeep": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
-    "source/device/tests/sensors-orientation-host.cpp": "24f7521d4b7287a5a718efeda75cec62a0a56e9ae5af7b46d94606538d0e1729",
+    "source/device/tests/sensors-orientation-host.cpp": "c7bd1b0d85f3454490742c7cb11f1df99dbbc53aef02c24e775a648754792835",
     "source/device/package/als-owner/upstream/QcomRpmh.c": "679a55467e6ed4c7e75a8191f1d6da48637377088ef5e27879b1c99bc4a62314",
     "source/device/components/QcaBluetooth/include/qbt_firmware.h": "578f8a60097ea45e68b495738c7963d9fa6674c6a0641330856ae4f5a3a6aaa1",
     "source/device/components/QcomSscSensors/ORIGIN.json": "90b3725b48e24df6d8977f2e89e96872d26f0be95dff6a39bea9430a9d682272",
@@ -182,7 +182,7 @@
     "source/device/scripts/build-adreno840.py": "269f32fe2c97d7baf846a148fed7c111a53869486626a87ec8daab7fdfc3ab91",
     "source/soc/src/Sm8850Resources.c": "944379b776f769dd0718492749abb46b52bb74bef6b903dca4f674469d7bae26",
     "source/device/patches/xnu-12377/zzzz-native-root-cwd-ownership.patch": "d3e37aaaff05993250c853eff0dcbbdc5e36e26b0a406742412e580f7e997d36",
-    "source/device/package/sensors/NezhaSensorOrientationHid.cpp": "22e76abb4b939dd1a202360bc006955da89cd99b54929a34189e2e0e8b586552",
+    "source/device/package/sensors/NezhaSensorOrientationHid.cpp": "f4a19a63d5302a49beaf1e49f87e81f0db8c4fef068a5f77e0dc3ba9ee7eb49e",
     "source/device/scripts/hid-device-iphone-24A446.json": "af4668764ba1d2a4649b9c45d1ddbbabcb69e27659e7c35fbf9899f8f6bdbc7d",
     "source/device/package/als-owner/platform/AudioInputPack.h": "e18ba7bf47aacba3347dd872d9584964b6f143109991707f96271a218de1fd68",
     "source/device/package/als/NezhaAlsBackend.h": "3bbf1b04d0a4a1af2d61c2b05402aaa1a5271c5061684128284417a145b6394c",
@@ -349,7 +349,7 @@
     "source/device/package/als/Tcs3760Sns.c": "8bdd0689fa54210f06e3164acb52ccc316bdddd05ecb33a02003a64f22ac204f",
     "source/device/components/QcomSscSensors/include/QcomSscClient.h": "f55072d5b4c879c722e801e8206ad415febd47c4b2554882697902224bf82f50",
     "source/device/package/sensors/userland/NezhaSensorsApp.m": "d80a8bffad1800c612f03f0a5a9c6d853e3167d7607a79cabcbf6fb68eb8a273",
-    "source/device/tests/sensors-orientation-host-shim.h": "30dbb09e072828798aef3476e05b16dd6cdb332ac5675c4686129599c6e8b972",
+    "source/device/tests/sensors-orientation-host-shim.h": "15bbf43a60a141454079621a9bf5a4c5d2c13c42c440b6c518bb9179429fe72d",
     "source/device/patches/xnu-12377/nezha-bluetooth-runtime.patch": "4d4fd6049250eaf399e6a0d5ff4e34232c148081820148532cf8c0c7119fd57b",
     "source/device/components/QcaBluetooth/vendor/linux-wcn7860/btqca.c": "9b756a89d436d6dd9c85268bb58360cd4adda348baf5e04f8a4e26754e9a5242",
     "source/soc/patches/xnu-12377/series": "bb95255800677aae6c7ba2742e892e0d40b4c34eb40816b58214c1393759bc1d",
@@ -368,7 +368,7 @@
     "source/device/components/QcaBluetooth/tools/build-type0.py": "f6671aef03bbec3999b5059bfd28997c3781cfacb1fc93114a6a805b1c4e8bb7",
     "source/adreno/NativeAdrenoPollLog.h": "8b6519cec2aeade0870f91db08087462f03ffc2a0eabf6e0d6183216e6c35645",
     "source/device/package/NezhaWcn7860/NezhaWifiDma.c": "be8276ac114648ef2dd53c1e4956f279bad118e5880723290c868edd14a3c43d",
-    "source/device/tests/sensors-integration-host.cpp": "fd4644b337f7ddff7d7233eed866f98f1c999a4fb274b005344bc6d47d1bea1b",
+    "source/device/tests/sensors-integration-host.cpp": "05c46472fe2667e14e88f5c200158db224fc917abae4946ed027e9eff90943e2",
     "source/device/package/NezhaWcn7860/qcom/PeachTx.h": "14e99a7bde795ba366ae3c4432b1b49dea1e909020c280d7deda0f79f4503f40",
     "source/device/package/bluetooth27/NezhaBluetoothPlatform.h": "5106edd46eac1ec6a4546d96553ec3d077505bd81256b33e8d4f451663367783",
     "source/device/package/nezha27-input/NezhaAA27Input.h": "d112cd0663fc3fb84dc6be506fe4efac4ede748d541b48f2cc9c3a25852829a2",
@@ -533,7 +533,7 @@
     "source/device/package/als-owner/core/AudioRuntime.h": "427057626089238b91ec840d0b5fc0046166fd43c4794c7a01bee04ac2a89641",
     "source/metal/OriginalAcceleratorABI.h": "211e922f9b760ddec2e3453db6584bac57597b3d39e4bf0d013c1b2debd53365",
     "source/device/package/als-owner/platform/NezhaAudioPlatform.h": "e1f7bccb47b1cf815ce0fe449ba0d61d684b99003157ad9ecf2f39e020bcf599",
-    ".github/workflows/nezha-ios27-native.yml": "e6cf481423b93e79eafca983d8c63b3718b646e341a5f44043325b73ff4a7e78",
+    ".github/workflows/nezha-ios27-native.yml": "12a6bd49c6bb016b0259be9aa6680902c0dc0b424aa62fea008a3ac741374ea5",
     "source/device/package/boot-progress/BootProgressLifecycle.h": "eaf777e5b71db7b5affaa9a64d0a2806277730b538d9aa96a457f425ccbada6a",
     "source/device/patches/xnu-12377/zzzzzz-nezha-adreno840-start.patch": "d32bb0d5e678e5773786dcce90467e0258d844550b418b438e1548fb32392f79",
     "source/device/package/backlight/OriginalAppleARMBacklightABI.h": "dab34c394c2123ae4cbfd6648980d5e7b024539773abe5852f7d2622f9bf7b8b",
@@ -1093,6 +1093,16 @@
     "previous_native_exit": 1,
     "reason": "No encrypted artifact was created by failed upload; expose existing source-only build error logs before one replacement build",
     "diagnostics_only": true,
+    "phone_operations": false
+  },
+  "sensors011": {
+    "source": "c0c9d871d6105f38182f6b6a43c2d04a0b6e95dc",
+    "previous_source": "c3e2b088b97b10c17574d7b950f920312de94d7d",
+    "owned_interface_and_parser_once": true,
+    "original_parser_mask_required": true,
+    "explicit_actual_gap": "010b no original parser opened on actualinterface",
+    "host_passed": true,
+    "private_data": false,
     "phone_operations": false
   }
 }
