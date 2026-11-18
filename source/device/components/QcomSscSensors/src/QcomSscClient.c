@@ -37,10 +37,10 @@ int qssc_client_rebind(QsscClient *c,QsscEndpoint ep,uint32_t port,uint64_t epoc
  const QsscClock *clock,uint64_t now){
     if(!c||!c->epoch||!c->error||c->stopped||epoch<=c->epoch||!clock||!clock->valid||clock->epoch!=epoch||
        !port||port>=0xfffffffeu||!ep.node||!ep.port||ep.port>=0xfffffffeu||(ep.instance&255)!=QSSC_IDL_MAJOR)return QsscArgument;
-    QsscDemand demands[QSSC_OUTPUT_COUNT][QSSC_CONSUMERS];
-    for(unsigned k=0;k<QSSC_OUTPUT_COUNT;k++)memcpy(demands[k],c->stream[k].demands,sizeof demands[k]);
+    QsscDemand demands[QSSC_SENSOR_COUNT][QSSC_CONSUMERS];
+    for(unsigned k=0;k<QSSC_SENSOR_COUNT;k++)memcpy(demands[k],c->stream[k].demands,sizeof demands[k]);
     QsscClientOps ops=c->ops;c->epoch=0;int r=qssc_client_begin(c,&ops,ep,port,epoch,clock,now);if(r)return r;
-    for(unsigned k=0;k<QSSC_OUTPUT_COUNT;k++)for(unsigned n=0;n<QSSC_CONSUMERS;n++){
+    for(unsigned k=0;k<QSSC_SENSOR_COUNT;k++)if(k<QSSC_OUTPUT_COUNT||k==QsscGameRv)for(unsigned n=0;n<QSSC_CONSUMERS;n++){
         r=qssc_client_demand(c,k,n,demands[k][n]);if(r)return r;}
     return QsscOkay;
 }
@@ -48,6 +48,12 @@ static void merge(QsscClient *c,unsigned k){
     QsscStream *s=&c->stream[k];uint32_t interval=0,batch=UINT32_MAX;bool wake=false;
     for(unsigned n=0;n<QSSC_CONSUMERS;n++){QsscDemand d=s->demands[n];if(!d.active)continue;
         if(!interval||d.interval_us<interval)interval=d.interval_us;if(d.batch_us<batch)batch=d.batch_us;wake|=d.wakeup;}
+    // A game-RV consumer requires all three motion sources. Keep its demand
+    // separate from raw gyro and the independent diagnostic gravity service.
+    if(k==QsscGyro||k==QsscGravity)for(unsigned n=0;n<QSSC_CONSUMERS;n++){
+        QsscDemand d=c->stream[QsscGameRv].demands[n];if(!d.active)continue;
+        if(!interval||d.interval_us<interval)interval=d.interval_us;if(d.batch_us<batch)batch=d.batch_us;wake|=d.wakeup;
+    }
     s->interval_us=interval;s->batch_us=interval?batch:0;s->wakeup=wake;
     if(k==QsscAccel||k==QsscGyro){unsigned cal=k==QsscAccel?QsscAccelCal:QsscGyroCal;
         c->stream[cal].interval_us=interval?1:0;c->stream[cal].wakeup=wake;c->stream[cal].batch_us=0;}
@@ -57,12 +63,15 @@ int qssc_client_demand(QsscClient *c,uint32_t k,uint32_t consumer,QsscDemand d){
     if(d.active&&(k!=QsscProximityKind&&(d.interval_us<2000||d.interval_us>1000000)))return QsscArgument;
     if(d.active&&k==QsscProximityKind)d.interval_us=1;
     if(d.batch_us>1000000)return QsscArgument;
-    c->stream[k].demands[consumer]=d;merge(c,k);
-    if(k==QsscGravity){c->stream[QsscGameRv].demands[consumer]=d;merge(c,QsscGameRv);}
-    if(c->queued&&(c->tx_kind==k||((k==QsscAccel||k==QsscGyro)&&c->tx_kind==k+QsscAccelCal)))c->queued=false;
-    if(c->stream[k].error==QsscUnsupported&&d.active)c->stream[k].error=0;
-    if(!c->stream[k].interval_us){c->retired_ticks[k]=c->last_receipt_counter;
-        if(state(c,k,false,0))return fail(c,QsscConsumer);}
+    c->stream[k].demands[consumer]=d;
+    unsigned affected[]={k,QsscGyro,QsscGravity};
+    for(unsigned n=0;n<(k==QsscGameRv?3u:1u);n++){
+        unsigned kind=affected[n];merge(c,kind);
+        if(c->queued&&(c->tx_kind==kind||((kind==QsscAccel||kind==QsscGyro)&&c->tx_kind==kind+QsscAccelCal)))c->queued=false;
+        if(c->stream[kind].error==QsscUnsupported&&c->stream[kind].interval_us)c->stream[kind].error=0;
+        if(!c->stream[kind].interval_us){c->retired_ticks[kind]=c->last_receipt_counter;
+            if(state(c,kind,false,0))return fail(c,QsscConsumer);}
+    }
     return QsscOkay;
 }
 int qssc_client_flush(QsscClient *c,uint32_t k,uint64_t serial){

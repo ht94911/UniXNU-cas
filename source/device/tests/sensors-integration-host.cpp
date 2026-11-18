@@ -43,6 +43,91 @@ static void ack_disable(bool require_disable=true){
     sensors_host_counter+=19200;sensors_host_ticks+=19200;
     deliver_qmi(p,sizeof p);assert(c.error==original_error&&!c.stop_error);
 }
+static void lifecycle_report(unsigned kind,uint32_t event,const uint8_t *payload,size_t bytes){
+    uint8_t p[144]={4};auto w16=[&](unsigned at,uint16_t n){p[at]=(uint8_t)n;p[at+1]=(uint8_t)(n>>8);};
+    auto w32=[&](unsigned at,uint32_t n){for(unsigned i=0;i<4;i++)p[at+i]=(uint8_t)(n>>(8*i));};
+    auto w64=[&](unsigned at,uint64_t n){for(unsigned i=0;i<8;i++)p[at+i]=(uint8_t)(n>>(8*i));};
+    auto &c=caller.adapter.client;auto uid=c.stream[kind].uid;size_t length=61+bytes;assert(length<=sizeof p);
+    sensors_host_counter+=96000;sensors_host_ticks+=96000;
+    w16(3,33);w16(5,(uint16_t)(length-7));p[7]=1;w16(8,8);w64(10,55);
+    p[18]=2;w16(19,(uint16_t)(length-21));w16(21,(uint16_t)(length-23));
+    p[23]=10;p[24]=18;p[25]=9;w64(26,uid.low);p[34]=17;w64(35,uid.high);
+    p[43]=18;p[44]=(uint8_t)(16+bytes);p[45]=13;w32(46,event);p[50]=17;w64(51,sensors_host_counter);
+    p[59]=26;p[60]=(uint8_t)bytes;memcpy(p+61,payload,bytes);
+    deliver_qmi(p,length);assert(!c.error&&!caller.adapter.error);
+    // Run the actual HID drain, modelling its workloop timer between packets.
+    if(kind<QSSC_OUTPUT_COUNT)assert(!services[kind]->flushed(1,1));
+}
+static void lifecycle_vector(unsigned kind){
+    uint32_t bits[6]={};unsigned count=kind==QsscGravity?6:kind==QsscGameRv?4:3;
+    if(kind==QsscGameRv)bits[3]=0x3f800000;else if(kind!=QsscGyro)bits[2]=0x411ce80a;
+    uint8_t payload[28]={10,(uint8_t)(count*4)};
+    for(unsigned i=0;i<count;i++)for(unsigned n=0;n<4;n++)payload[2+4*i+n]=(uint8_t)(bits[i]>>(8*n));
+    payload[2+4*count]=16;payload[3+4*count]=3;lifecycle_report(kind,QsscSampleEvent,payload,4+count*4);
+}
+static void lifecycle_bias(){uint8_t p[16]={10,12};p[14]=32;p[15]=3;lifecycle_report(QsscGyroCal,QsscCalibrationEvent,p,sizeof p);}
+static void lifecycle_interval(unsigned kind,uint32_t interval){
+    OSDictionary value;auto number=OSNumber::withNumber(interval,32);value.setObject("ReportInterval",number);number->release();
+    assert(services[kind]->setProperties(&value)==kIOReturnSuccess);
+}
+static void lifecycle_pump(NaAdsp &owner){
+    auto &c=caller.adapter.client;
+    for(unsigned n=0;n<32;n++){
+        int r=nezha_sensors_native_after_receive(&owner);assert(r>=0);
+        if(c.awaiting){ack_disable(false);continue;}
+        if(r==QsscNoData)return;
+    }
+    assert(false&&"Actual subscription ACKs did not settle");
+}
+static void subscription_lifecycle(NaAdsp &owner){
+    auto &a=caller.adapter;auto &c=a.client;a.count=0;
+    for(unsigned k=0;k<QSSC_SENSOR_COUNT;k++){
+        auto &s=c.stream[k];s.enabled=s.ready=false;s.interval_us=s.configured_interval=0;
+        s.attributes.rate_count=1;s.attributes.rates[0]=0x42480000;
+    }
+    c.stream[QsscAccelCal].present=false;c.stream[QsscAccelCal].lookup_result_received=true;
+    IOService clients[5];const unsigned kinds[]={0,1,2,4,3};
+    for(unsigned n=0;n<5;n++){IOHIDEventService *service=services[kinds[n]];assert(service->open(&clients[n]));}
+    lifecycle_pump(owner);assert(c.stream[QsscGameRv].enabled&&c.stream[QsscGyroCal].enabled);
+    // Sensor007 overfilled game-RV history when an independent gravity stream
+    // remained ready but gyro/calibration was absent. Exercise more than64
+    // real QRTR event callbacks, then resume with a fresh gyro sample.
+    for(unsigned n=0;n<70;n++){lifecycle_vector(QsscGravity);lifecycle_vector(QsscGameRv);}
+    assert(!a.motion.count[0]&&!a.motion.count[1]&&!a.motion.count[2]&&!a.motion.sequence);
+    lifecycle_bias();lifecycle_vector(QsscGyro);lifecycle_vector(QsscGravity);lifecycle_vector(QsscGameRv);
+    uint64_t first=a.motion.sequence;auto firstEvent=services[4]->copyEvent(1,nullptr,0);assert(first&&firstEvent);firstEvent->release();
+    lifecycle_interval(0,0);lifecycle_interval(1,0);lifecycle_pump(owner);
+    assert(c.stream[QsscGyro].enabled&&c.stream[QsscGyro].interval_us==20000&&c.stream[QsscGameRv].enabled);
+    lifecycle_vector(QsscGyro);lifecycle_vector(QsscGravity);lifecycle_vector(QsscGameRv);assert(a.motion.sequence>first);
+    // Restore raw consumers, stop only motion, and keep gravity diagnostics.
+    lifecycle_interval(0,20000);lifecycle_interval(1,20000);lifecycle_interval(4,0);lifecycle_pump(owner);
+    assert(c.stream[QsscAccel].enabled&&c.stream[QsscGyro].enabled&&!c.stream[QsscGameRv].enabled);
+    first=a.motion.sequence;
+    for(unsigned n=0;n<70;n++){lifecycle_vector(QsscAccel);lifecycle_vector(QsscGyro);lifecycle_vector(QsscGravity);lifecycle_vector(QsscGameRv);}
+    assert(a.motion.sequence==first&&!a.motion.count[0]&&!a.motion.count[1]&&!a.motion.count[2]);
+    lifecycle_interval(0,0);lifecycle_interval(1,0);lifecycle_pump(owner);
+    assert(!c.stream[QsscGyro].enabled&&c.stream[QsscGravity].enabled&&!c.stream[QsscGameRv].enabled);
+    for(unsigned n=0;n<70;n++)lifecycle_vector(QsscGravity);
+    assert(!a.motion.count[1]&&!a.motion.count[2]&&!c.error);
+    lifecycle_interval(4,20000);lifecycle_pump(owner);
+    for(unsigned n=0;n<70;n++){lifecycle_vector(QsscGravity);lifecycle_vector(QsscGameRv);}
+    assert(a.motion.sequence==first&&!a.motion.count[1]&&!a.motion.count[2]);
+    lifecycle_bias();lifecycle_vector(QsscGyro);lifecycle_vector(QsscGravity);lifecycle_vector(QsscGameRv);
+    assert(a.motion.sequence>first&&!c.error);
+    lifecycle_interval(0,20000);lifecycle_interval(1,20000);lifecycle_pump(owner);
+    sensors_host_power(nullptr,nullptr,kIOMessageSystemWillSleep,nullptr,(void *)1,0);lifecycle_pump(owner);
+    assert(c.paused&&c.stream[QsscProximityKind].enabled&&!c.stream[QsscGyro].enabled&&!c.stream[QsscGameRv].enabled);
+    uint8_t near[]={8,1,16,0,24,3};lifecycle_report(QsscProximityKind,QsscProximityEvent,near,sizeof near);
+    first=a.motion.sequence;sensors_host_power(nullptr,nullptr,kIOMessageSystemHasPoweredOn,nullptr,(void *)2,0);lifecycle_pump(owner);
+    assert(!c.paused&&c.stream[QsscGameRv].enabled);
+    for(unsigned n=0;n<70;n++){lifecycle_vector(QsscGravity);lifecycle_vector(QsscGameRv);}
+    assert(a.motion.sequence==first&&!a.motion.count[1]&&!a.motion.count[2]);
+    lifecycle_bias();lifecycle_vector(QsscGyro);lifecycle_vector(QsscGravity);lifecycle_vector(QsscGameRv);
+    assert(a.motion.sequence>first&&!c.error&&!a.error);
+    sensors_host_worker=[&](){ack_disable(false);(void)nezha_sensors_native_after_receive(&owner);};
+    assert(!nezha_sensors_stop_and_wait(30000)&&nezha_sensors_native_drained(&owner));
+    puts("Actual HID and QRTR raw/motion toggles, gravity-only traffic and calibration-delayed wake resume passed");
+}
 int main(int argc,char **argv){
     if(argc>1&&std::string(argv[1])=="stop-before-install"){
         assert(!nezha_sensors_stop_and_wait(10));NaAdsp late={};late.stage=NaAdspPower;
@@ -77,6 +162,7 @@ int main(int argc,char **argv){
     strcpy(proxAttributes.vendor,"unknown");
     assert(adapter.client.ops.identity(adapter.client.ops.context,QsscProximityKind,&proxAttributes)==QsscIdentity);
     for(unsigned k=0;k<QSSC_SENSOR_COUNT;k++)online_stream(k);
+    if(argc>1&&std::string(argv[1])=="subscription-lifecycle"){subscription_lifecycle(owner);return 0;}
     if(argc>1&&std::string(argv[1])=="parser-error-retirement"){
         auto &c=adapter.client;
         // Retain one already submitted stream request while an attribute event

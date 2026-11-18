@@ -41,8 +41,11 @@ The board supplies ordinary IOHID event services and the defined FastPath
 open/copy/properties/close lifecycle. Real users select rates/batches through
 bounded owner commands. Priming discovers the service using one valid frame;
 after publication the initial demand is released, leaving actual consumers.
-The normal accel/gyro services and fusion users aggregate separately, so a
-fusion client exiting cannot disable raw gyro data requested by another client.
+Raw accel/gyro, diagnostic gravity and game-RV consumers own separate demands.
+The game-RV demand retains its gyro/calibration and gravity dependencies. A raw
+gravity subscriber does not enable game-RV, and turning either raw gyro or
+fusion off cannot cancel the other consumer's required gyro stream. Rebind
+restores the explicit game-RV demands as well as the raw demands.
 
 Rebind accepts only an explicitly owner-established fresh remote session with a
 larger epoch. It restores saved real demands and rediscovers identity/rates and

@@ -22,17 +22,17 @@ static size_t report(uint8_t *out,QsscUid source,uint32_t id,uint64_t ticks,cons
 }
 static size_t ack(uint8_t *p,uint16_t txn){p[0]=2;w16(p+1,txn);w16(p+3,32);w16(p+5,18);p[7]=2;w16(p+8,4);w32(p+10,0);p[14]=16;w16(p+15,8);w64(p+17,55);return 25;}
 static size_t cal(uint8_t *p,const uint32_t *bias){p[0]=10;p[1]=12;for(unsigned i=0;i<3;i++)w32(p+2+4*i,bias[i]);p[14]=32;p[15]=3;return 16;}
-struct Mock {unsigned sends,samples,states,flushes;uint64_t serial;QsscSample last;int send_result;};
+struct Mock {unsigned sends,samples,states,flushes;uint64_t serial,epoch;QsscSample last;int send_result;};
 static int send(void *v,QsscEndpoint ep,uint32_t port,const uint8_t *p,size_t bytes){struct Mock *m=v;assert(ep.node==5&&port==0x4001&&bytes>=7&&p[0]==0);m->sends++;return m->send_result;}
 static int sample(void *v,const QsscSample *s){struct Mock *m=v;m->samples++;m->last=*s;return 0;}
-static int state(void *v,uint32_t kind,uint64_t epoch,bool ready,int error){struct Mock *m=v;(void)kind;(void)ready;(void)error;assert(epoch==1);m->states++;return 0;}
+static int state(void *v,uint32_t kind,uint64_t epoch,bool ready,int error){struct Mock *m=v;(void)kind;(void)ready;(void)error;assert(epoch==m->epoch);m->states++;return 0;}
 static int flush(void *v,uint32_t kind,uint64_t epoch,uint64_t serial){struct Mock *m=v;assert(kind==QsscProximityKind&&epoch==1);m->flushes++;m->serial=serial;return 0;}
 static int identity(void *v,uint32_t kind,const QsscAttributes *a){(void)v;(void)kind;return a->available?0:QsscIdentity;}
 static int physical_proximity(void *v,uint32_t kind,const QsscAttributes *a){
     (void)v;assert(kind==QsscProximityKind);
     return a->available&&!strcmp(a->name,"tcs3760")&&!strcmp(a->api,"sns_proximity.proto")?0:QsscIdentity;
 }
-static void begin(QsscClient *c,struct Mock *m){QsscClock clock={0};assert(!qssc_clock_anchor(&clock,1,19200000,1000000,19200000,19200000,19200000));QsscClientOps ops={m,send,sample,state,flush,identity,false};assert(!qssc_client_begin(c,&ops,(QsscEndpoint){5,17,0x101},0x4001,1,&clock,100));}
+static void begin(QsscClient *c,struct Mock *m){m->epoch=1;QsscClock clock={0};assert(!qssc_clock_anchor(&clock,1,19200000,1000000,19200000,19200000,19200000));QsscClientOps ops={m,send,sample,state,flush,identity,false};assert(!qssc_client_begin(c,&ops,(QsscEndpoint){5,17,0x101},0x4001,1,&clock,100));}
 static void enabled(QsscClient *c,unsigned kind,QsscUid uid){QsscStream *s=&c->stream[kind];s->uid=uid;s->present=true;s->enabled=true;s->lookup_sent=true;s->attributes_seen=true;s->phase=QsscRunning;s->interval_us=s->configured_interval=20000;s->attributes.available=true;}
 static void math(void){
     int64_t x;int32_t y;assert(!qssc_float_q32(0x3f800000,&x)&&x==INT64_C(4294967296));
@@ -84,6 +84,30 @@ static void independent_consumers(void){
     m.send_result=QsscAgain;assert(qssc_client_poll(&c,200)==QsscAgain&&c.queued&&!c.awaiting);
     m.send_result=0;assert(!qssc_client_poll(&c,201)&&c.awaiting);unsigned sent=m.sends;
     assert(qssc_client_poll(&c,202)==QsscAgain&&m.sends==sent);assert(qssc_client_poll(&c,3000201)==QsscTimeout&&m.sends==sent);
+}
+static void motion_dependencies(void){
+    QsscClient c={0};struct Mock m={0};begin(&c,&m);
+    QsscDemand raw={10000,0,true,false},motion={20000,5000,true,false},gravity={50000,0,true,false};
+    assert(!qssc_client_demand(&c,QsscGravity,0,gravity));assert(!c.stream[QsscGameRv].interval_us);
+    assert(!qssc_client_demand(&c,QsscGyro,0,raw));assert(!qssc_client_demand(&c,QsscGameRv,0,motion));
+    assert(c.stream[QsscGyro].interval_us==10000&&c.stream[QsscGravity].interval_us==20000&&c.stream[QsscGameRv].interval_us==20000);
+    raw.active=false;assert(!qssc_client_demand(&c,QsscGyro,0,raw));
+    assert(c.stream[QsscGyro].interval_us==20000&&c.stream[QsscGyroCal].interval_us==1);
+    gravity.active=false;assert(!qssc_client_demand(&c,QsscGravity,0,gravity));
+    assert(c.stream[QsscGravity].interval_us==20000&&c.stream[QsscGameRv].interval_us==20000);
+    gravity.active=true;assert(!qssc_client_demand(&c,QsscGravity,0,gravity));
+    motion.active=false;assert(!qssc_client_demand(&c,QsscGameRv,0,motion));
+    assert(!c.stream[QsscGyro].interval_us&&!c.stream[QsscGyroCal].interval_us&&!c.stream[QsscGameRv].interval_us);
+    assert(c.stream[QsscGravity].interval_us==50000);
+    motion.active=true;assert(!qssc_client_demand(&c,QsscGameRv,0,motion));
+    assert(c.stream[QsscGyro].interval_us==20000&&c.stream[QsscGameRv].interval_us==20000);
+    QsscDemand second={10000,0,true,true};assert(!qssc_client_demand(&c,QsscGameRv,1,second));
+    assert(c.stream[QsscGyro].interval_us==10000&&c.stream[QsscGravity].wakeup&&c.stream[QsscGyroCal].wakeup);
+    second.active=false;assert(!qssc_client_demand(&c,QsscGameRv,1,second));assert(!c.stream[QsscGyro].wakeup);
+    qssc_client_lost(&c,QsscRemote);QsscClock clock=c.clock;clock.epoch=2;m.epoch=2;
+    assert(!qssc_client_rebind(&c,(QsscEndpoint){5,18,0x101},0x4002,2,&clock,200));
+    assert(c.stream[QsscGameRv].demands[0].active&&c.stream[QsscGyro].interval_us==20000&&c.stream[QsscGravity].interval_us==20000);
+    assert(!c.stream[QsscGyro].demands[0].active&&c.stream[QsscGravity].demands[0].active);
 }
 static void early_enable_event(void){
     QsscClient c={0};struct Mock m={0};begin(&c,&m);enabled(&c,QsscProximityKind,(QsscUid){1,2});
@@ -296,4 +320,4 @@ static void optional_absent_accel_cal(void){
     bytes=report(p,(QsscUid){3,4},QsscCalibrationEvent,19202150,payload,n);
     assert(!qssc_client_receive(&c,5,17,p,bytes,110,19206000)&&m.samples==2&&m.last.value[0]==49152);
 }
-int main(void){math();wire();calibration_and_time();independent_consumers();flush_ack_order();early_enable_event();fusion();sleep_and_stop();acknowledged_delayed_suid();retire_decode_failure();retire_pending_enable();retirement_failure_is_not_success();vendor_text_is_not_identity();select_physical_proximity();optional_absent_accel_cal();puts("SSC production codec/client/math/fusion/error retirement, optional absent accel calibration and physical proximity selection scenarios passed");}
+int main(void){math();wire();calibration_and_time();independent_consumers();motion_dependencies();flush_ack_order();early_enable_event();fusion();sleep_and_stop();acknowledged_delayed_suid();retire_decode_failure();retire_pending_enable();retirement_failure_is_not_success();vendor_text_is_not_identity();select_physical_proximity();optional_absent_accel_cal();puts("SSC production codec/client/math/fusion/error retirement, optional absent accel calibration and physical proximity selection scenarios passed");}

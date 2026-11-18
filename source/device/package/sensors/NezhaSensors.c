@@ -29,6 +29,13 @@ static int sample(void *v,const QsscSample *s){
             s->status,s->value[0],s->value[1],s->value[2],s->near,s->raw_adc);
     if(s->kind<QSSC_OUTPUT_COUNT){int r=nezha_sensor_hid_sample(s);if(r)return r;}
     if(s->kind==QsscGyro||s->kind==QsscGravity||s->kind==QsscGameRv){
+        // Raw/diagnostic streams may remain active while fusion is off, or
+        // while its gyro/calibration subscription is being restored. They
+        // must not fill a motion queue waiting for an unavailable source.
+        if(!a->client.stream[QsscGameRv].interval_us||
+           !a->client.stream[QsscGyro].ready||!a->client.stream[QsscGravity].ready){
+            qssc_motion_invalidate(&a->motion);return QsscOkay;
+        }
         int r=qssc_motion_add(&a->motion,s);if(r<0)return r;
         for(unsigned n=0;n<QSSC_MOTION_HISTORY;n++){
             QsscMotionFrame frame;r=qssc_motion_next(&a->motion,&frame);if(r==QsscAgain||r==QsscNoData)break;
@@ -218,8 +225,7 @@ int nezha_sensors_poll(struct nezha_sensor_adapter *a){
         int r;
         if(cmd.operation==1)r=qssc_client_demand(&a->client,cmd.kind,cmd.consumer,cmd.demand);
         else if(cmd.operation==2)r=qssc_client_flush(&a->client,cmd.kind,cmd.serial);
-        else{r=qssc_client_demand(&a->client,QsscGravity,cmd.consumer,cmd.demand);
-            if(!r)r=qssc_client_demand(&a->client,QsscGyro,cmd.consumer,cmd.demand);}
+        else r=qssc_client_demand(&a->client,QsscGameRv,cmd.consumer,cmd.demand);
         if(r){nezha_sensors_lost(a,r);return r;}
     }
     int r=qssc_client_poll(&a->client,a->ops.now_us(a->ops.context));

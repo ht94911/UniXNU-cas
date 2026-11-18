@@ -20,6 +20,7 @@ env=dict(os.environ,ASAN_OPTIONS='detect_leaks=0:halt_on_error=1',UBSAN_OPTIONS=
 r=subprocess.run([str(a.output/'integration')],check=True,env=env,capture_output=True,text=True)
 late=subprocess.run([str(a.output/'integration'),'stop-before-install'],check=True,env=env,capture_output=True,text=True)
 failed=subprocess.run([str(a.output/'integration'),'parser-error-retirement'],check=True,env=env,capture_output=True,text=True)
-(a.output/'run.log').write_text(r.stdout+r.stderr+late.stdout+late.stderr+failed.stdout+failed.stderr);print(r.stdout+late.stdout+failed.stdout,end='')
+lifecycle=subprocess.run([str(a.output/'integration'),'subscription-lifecycle'],check=True,env=env,capture_output=True,text=True)
+(a.output/'run.log').write_text(r.stdout+r.stderr+late.stdout+late.stderr+failed.stdout+failed.stderr+lifecycle.stdout+lifecycle.stderr);print(r.stdout+late.stdout+failed.stdout+lifecycle.stdout,end='')
 sources+=list((D/'package/sensors').glob('*.cpp'))+list((D/'package/sensors').glob('*.h'))+list((D/'tests').glob('sensors*'))
 (a.output/'qualified.json').write_text(json.dumps(dict(passed=True,ASan_UBSan=True,boot_lifetime_retained=True,native_and_hardware_pending=True,commands=commands,source_sha256={str(s):hashlib.sha256(s.read_bytes()).hexdigest() for s in sources}),indent=2)+'\n')

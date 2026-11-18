@@ -85,6 +85,8 @@ int qssc_client_begin(QsscClient *,const QsscClientOps *,QsscEndpoint,uint32_t l
 // Restore actual consumer demands and rediscover SUIDs/attributes/calibration.
 int qssc_client_rebind(QsscClient *,QsscEndpoint,uint32_t local_port,uint64_t epoch,
                        const QsscClock *,uint64_t now_us);
+// Game-RV demands also retain gyro/calibration and gravity. A raw gravity
+// demand is independent; it does not start or retain the game-RV stream.
 int qssc_client_demand(QsscClient *,uint32_t kind,uint32_t consumer,QsscDemand);
 int qssc_client_flush(QsscClient *,uint32_t kind,uint64_t serial);
 int qssc_client_poll(QsscClient *,uint64_t now_us);
