@@ -137,6 +137,7 @@ jobs:
         if: ${{ false }} # This subsystem is unchanged; current multi-level output has separate checks.
         run: device/ci/gpu-userland/logrun heap-copies python3 device/ci/gpu-userland/check-heap-copies.py --unixnu unixnu --logs "$LOGS"
       - name: Check whole slow-command and synchronous-call diagnostic boundaries
+        id: long_latency
         run: device/ci/gpu-userland/logrun long-latency python3 device/ci/gpu-userland/check-long-latency.py --unixnu unixnu --logs "$LOGS"
       - name: Verify the actual signed target and full-chain code selection
         id: full_target
@@ -166,6 +167,7 @@ jobs:
           OUTCOME_PIPELINE_CACHE: ${{ steps.pipeline_cache.outcome }}
           OUTCOME_ICON_LIMITS: ${{ steps.icon_limits.outcome }}
           OUTCOME_EXTERN_FUNCTION: ${{ steps.extern_function.outcome }}
+          OUTCOME_LONG_LATENCY: ${{ steps.long_latency.outcome }}
         run: |
           set -euo pipefail
           export PATH="$(brew --prefix openssl@3)/bin:$PATH"
@@ -212,6 +214,7 @@ jobs:
           PIPELINE_CACHE: ${{ steps.pipeline_cache.outcome }}
           ICON_LIMITS: ${{ steps.icon_limits.outcome }}
           EXTERN_FUNCTION: ${{ steps.extern_function.outcome }}
+          LONG_LATENCY: ${{ steps.long_latency.outcome }}
         run: |
           set -euo pipefail
           test "$TARGETS" = success
@@ -229,6 +232,7 @@ jobs:
           test "$PIPELINE_CACHE" = success
           test "$ICON_LIMITS" = success
           test "$EXTERN_FUNCTION" = success
+          test "$LONG_LATENCY" = success
           test "$BUFFER_RESERVE" = skipped
           test "$VULKAN_OPERATIONS" = skipped
           test "$TILED_WORDS" = skipped
