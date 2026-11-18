@@ -1,5 +1,5 @@
 {
-  "stage": "GPU051017 source prepared: reuse audio072 clock contract for normal UIKit absolute-time events",
+  "stage": "GPU051018 source prepared: exact original AudioToolbox renderer clock correction after017 three public APIs",
   "profile": "GPU051 iPhone14,4 D16 27.0.1/24A446",
   "framework_reference": "9931232fd68b8ae1db0abd957ecba417f1996e52",
   "xnu_reference": "12377.121.6 source; donor xnu13432.2.10",
@@ -79,7 +79,8 @@
   "pending": [
     "Normal UIKit/CoreHaptics nonzero PCM repeatedly drives the motor after late/rest recovery",
     "Same-session electrical playback and PLAY_EN/HPWR stop readback",
-    "Mechanical sensation, sleep/wake, concurrent use and sustained stability"
+    "Mechanical sensation, sleep/wake, concurrent use and sustained stability",
+    "018 native compilation and complete UIKit mechanical feedback"
   ],
   "selected_package": {
     "base_revision": "76c5952683041a6581224135461ab7c21d47f6a5",
@@ -136,6 +137,9 @@
     "task_recipe": "actual osfmk startup.o.json",
     "converter_words": 23,
     "edits": 5,
-    "target_validation_pending": true
+    "target_validation_pending": true,
+    "AudioToolbox_inline_renderer_clock": true,
+    "AudioToolbox_header_and_UUID_checked": true,
+    "actual_render_ARM_replay_passed": true
   }
 }

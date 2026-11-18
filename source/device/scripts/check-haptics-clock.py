@@ -62,7 +62,8 @@ static void reset(){hz=24000000;numer=125;denom=3;refused=0;calls=0;exports=7;cl
     cases = r'''
 int main(){
 reset();assert(!prepareClock(77,625,12)&&calls==1&&clockReady==1&&clockHz==19200000&&clockNanos==1000000000&&clockTicks==19200000);
-assert(!prepareClock(77,625,12)&&calls==1);
+assert(!prepareClock(77,625,12)&&calls==2);
+refused=1;assert(prepareClock(77,625,12)==EPERM&&!clockReady&&calls==3);
 reset();hz=19200000;assert(!prepareClock(77,625,12)&&calls==1);
 reset();refused=1;assert(prepareClock(77,625,12)==EPERM&&!clockReady);
 reset();hz=NAN;assert(prepareClock(77,625,12)==EINVAL&&!calls);

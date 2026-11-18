@@ -73,10 +73,10 @@ int main(void)
     assert(Initialize(&driverPointer,NULL)==0);
     assert(opens==1 && closes==1 && packets==0 && endpoint<0 && !users);
     assert(clock_fixes==1 && clockReady && clockHz==19200000 && clockNanos==1000000000 && clockTicks==19200000);
-    assert(prepareClock(77,625,12)==0 && clock_fixes==1); /* already corrected */
+    assert(prepareClock(77,625,12)==0 && clock_fixes==2); /* verify inlined renderer too */
     clock_fix_error=EPERM;observed_hz=24000000;clock_numer=125;clock_denom=3;
-    assert(prepareClock(77,625,12)==EPERM && clock_fixes==2);
-    clock_fix_error=0;assert(prepareClock(77,625,12)==0 && clock_fixes==3);
+    assert(prepareClock(77,625,12)==EPERM && clock_fixes==3);
+    clock_fix_error=0;assert(prepareClock(77,625,12)==0 && clock_fixes==4);
     AudioObjectPropertyAddress address={kAudioObjectPropertyCustomPropertyInfoList,kAudioObjectPropertyScopeGlobal,0};
     UInt32 size=0;
     assert(GetPropertyDataSize(&driverPointer,kActuator,0,&address,0,NULL,&size)==0);

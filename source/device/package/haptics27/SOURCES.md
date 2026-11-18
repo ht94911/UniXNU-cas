@@ -31,3 +31,5 @@ QQ 使用人类指定 `M:/QQ_History`，本次档案135181条、2026-10-22至11-
 015执行器就绪服务：同本机24A446 AppleHapticsSupportLEAP原AHSFirmwareReadyNotifier(start0xfffffff008becf70，168slot/136B)与AudioToolbox首匹配调用只读核定。复用本包ALS/AES晚构造与IOService正常注册/退休方式，本机只有实际HAP530端点与已安装HAL/预设成功后发布；不复制Apple指令或固件。原FirmwareReadyTimestamp为毫秒，新源码校正，015编译版单位差异单独记录。
 
 017时基复用：nezha独立音频树clock072-device@7c065c861cf1e565095ae50697743ff9edc14a93，package/audio27/os/NezhaAudioClock.cpp与NezhaAudioTask.c（BSD-2-Clause-Patent），改导出名称和去不需要的protocol include，其余函数体逐字节核对；原5个转换指令修正及DSB/ISB和task原布局沿现成实现。HAL沿同源clock_ready核三个实际API，改为本方已独占字符设备的无payload _IO(H,2)入口，精确节点/现有allowed进程与当前task共同约束，无调用者提供的写地址。音频072/后继有目标及模型证据，本方017系统短反馈仍待验。
+
+018复用边界：沿音频072派生的017内存Pin、current_task/osfmk slide、原UUID/arm64e header/完整指令核对、原子CAS/回读补AudioToolbox24A446的实际渲染clock。第二映像UUID addc8d3b7fbe31649fb868b4ac05563c；原RenderProc的5条载入/乘法指令证明其用1/24MHz对本机hostTime换秒，与原队列horizon/绝对事件比较直接相连。原频率24000000与倒数常量均核实际donor，本机只按625/12改成19200000及其倒数；没有绕过正常事件或改波形幅度。原字节与ARM执行证据留本地gpu051-018，源码仅携核身份/协议常量，私有原映像不上传。

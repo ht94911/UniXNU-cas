@@ -51,3 +51,5 @@ GPU051指定后的审查：真实audiomxd UserName mobile/UID501已核，cdev501
 016 最终电脑审查：389d369/Mac44329367469/attempt1/856文件、9原生对象/原168槽/1491最终PAC、严格38组件零缺失和零stub、3原资源、6最终信任/4KiB签页、真实loader/单八核QEMU、本机75r008和183依赖已通过。015已创建原VAD/HapticServer且Core API成功；仅一次360mV/25mA弱驱动与随后断流，不作为完整机械反馈。016原厂限值、STOP和总线保护保持；真机重复播放与触感待验。
 
 017静态审查：新的FIX_HOST_CLOCK仅在当前HAL进程拥有端点、流未启动且原执行器有效时允许；helper要求current_task、原CoreAudio UUID/代码/slide/常量，IOMemoryDescriptor pin与原phys读写和缓存同步复用音频072。独立clock gate不持motor gate做VM工作；原硬件寄存器、队列、限值和STOP不变。实际osfmk startup.o.json用于task accessor，不能只向BSD record追加MACH_KERNEL_PRIVATE。73个原fileglob例外模型、productionprepareClock与原23words/5 edits和绝对事件时基模型通过ASan/UBSan；原同步生产函数MachO目标ISB1/DSB2/DC CVAU/IC IVAU已核。完整native和真机待。
+
+018静态：沿同一无payload专用ioctl/独占音频进程/未启动流条件，新增第二映像header/UUID/slide/pin/原RenderProc5words核对，频率及倒数只允许原值/本机值后CAS/回读。两映像都先核完才改，已改CoreAudio仍需核AudioToolbox，普通应用和硬件链无变化。生产prepare/publish的原值/混合值/已改/24M/UUID/指令/slide/权限错误及回读测试通过；原ARM64 RenderProc和queue-horizon比较重放在284/498/623/1000秒复现20%时间偏差，修正后事件不再推迟；立即0与24MHz旧路保持。目标编译及机械系统验收待。

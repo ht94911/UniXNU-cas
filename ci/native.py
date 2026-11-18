@@ -295,6 +295,8 @@ def collect(framework, work, sealed):
         if path.is_file():add(path,'haptics-ready-host/'+path.name)
     for path in sorted((work / 'haptics-clock-host').glob('*')):
         if path.is_file():add(path,'haptics-clock-host/'+path.name)
+    for path in sorted((work / 'haptics-render-clock-host').glob('*')):
+        if path.is_file():add(path,'haptics-render-clock-host/'+path.name)
     for path in sorted((work / 'haptics-rest-host').glob('*')):
         if path.is_file():add(path,'haptics-rest-host/'+path.name)
     for path in sorted((work / 'haptics-hal-host').rglob('*')):

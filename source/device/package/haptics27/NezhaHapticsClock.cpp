@@ -21,6 +21,17 @@ constexpr uint64_t literalAddress=0x229d1c3d8ULL;
 constexpr uint8_t imageUuid[16]={0x89,0x5a,0x68,0xd2,0x37,0x52,0x3e,0x14,0x90,0x07,0xb0,0x7e,0x70,0x5a,0x21,0x78};
 constexpr uint32_t instructions[3]={0xd0000368,0xfd41ed00,0xd65f03c0};
 constexpr uint64_t appleClock=0x4176e36000000000ULL;
+// The original haptic renderer in AudioToolbox inlines its own host clock.
+// RenderProc compares queued UIKit absolute seconds against host * 1/24MHz;
+// fixing the public CoreAudio functions alone leaves this queue 20% behind.
+constexpr uint64_t hapticImageBase=0x1b1d66000ULL;
+constexpr uint64_t hapticRender=0x1b1fdc9d4ULL;
+constexpr uint64_t hapticFrequency=0x1b20055d0ULL;
+constexpr uint64_t hapticSeconds=0x1b2005718ULL;
+constexpr uint8_t hapticUuid[16]={0xad,0xdc,0x8d,0x3b,0x7f,0xbe,0x31,0x64,0x9f,0xb8,0x68,0xb4,0xac,0x05,0x56,0x3c};
+constexpr uint32_t hapticRenderWords[5]={0xfd400420,0x7e61d800,0xb0000148,0xfd438d01,0x1e610808};
+constexpr uint64_t appleHostSeconds=0x3e665e9f80f29212ULL;
+constexpr uint64_t nezhaHostSeconds=0x3e6bf647612f3696ULL;
 constexpr uint64_t convertersAddress=0x229caef18ULL;
 constexpr uint32_t convertersOriginal[23]={
     0xd503237f,0xa9bf7bfd,0x910003fd,0x52800fa9,0x9b097c08,0x9bc97c01,
@@ -61,6 +72,55 @@ struct Pin {
         prepared=memory->prepare()==kIOReturnSuccess;return prepared;
     }
 };
+static IOReturn prepare_haptic_clock(task_t task,uint32_t slide,uint64_t hz,
+                                    Pin &headerPin,Pin &codePin,Pin &frequencyPin,Pin &secondsPin,
+                                    uint64_t *frequency,uint64_t *seconds) {
+    const uint64_t base=hapticImageBase+slide;
+    if(!headerPin.set(task,base,16384) || !codePin.set(task,hapticRender+slide,sizeof hapticRenderWords) ||
+       !frequencyPin.set(task,hapticFrequency+slide,8) || !secondsPin.set(task,hapticSeconds+slide,8))
+        return kIOReturnNotReadable;
+    struct mach_header_64 header;
+    if(copyin(base,&header,sizeof header) || header.magic!=MH_MAGIC_64 || header.cputype!=CPU_TYPE_ARM64 ||
+       (uint32_t)header.cpusubtype!=0x80000002u || header.ncmds>128 || header.sizeofcmds>16384-sizeof header)
+        return kIOReturnUnsupported;
+    uint32_t at=sizeof header;bool found=false;
+    for(unsigned i=0;i<header.ncmds;++i) {
+        struct load_command command;
+        if(at>sizeof header+header.sizeofcmds || sizeof header+header.sizeofcmds-at<sizeof command ||
+           copyin(base+at,&command,sizeof command) || command.cmdsize<sizeof command ||
+           command.cmdsize>sizeof header+header.sizeofcmds-at)return kIOReturnUnsupported;
+        if(command.cmd==LC_UUID) {
+            struct uuid_command uuid;
+            if(found || command.cmdsize!=sizeof uuid || copyin(base+at,&uuid,sizeof uuid) ||
+               memcmp(uuid.uuid,hapticUuid,16))return kIOReturnUnsupported;
+            found=true;
+        }
+        at+=command.cmdsize;
+    }
+    uint32_t code[5],confirmed=0;
+    if(!found || at!=sizeof header+header.sizeofcmds || !nezha_haptics_current_slide(&confirmed) ||
+       slide!=confirmed || copyin(hapticRender+slide,code,sizeof code) ||
+       memcmp(code,hapticRenderWords,sizeof code))return kIOReturnUnsupported;
+    if(copyin(hapticFrequency+slide,frequency,8) || copyin(hapticSeconds+slide,seconds,8))
+        return kIOReturnNotReadable;
+    const uint64_t wanted=hz==24000000?appleClock:0x41724f8000000000ULL;
+    const uint64_t reciprocal=hz==24000000?appleHostSeconds:nezhaHostSeconds;
+    if((*frequency!=appleClock && *frequency!=wanted) || (*seconds!=appleHostSeconds && *seconds!=reciprocal))
+        return kIOReturnUnsupported;
+    return kIOReturnSuccess;
+}
+static IOReturn publish_haptic_literal(task_t task,uint64_t address,uint64_t seen,uint64_t wanted) {
+    if(seen==wanted)return kIOReturnSuccess;
+    const uint64_t pa=pmap_find_pa(get_task_pmap(task),address);
+    if(!pa || (pa&7))return kIOReturnNotReadable;
+    auto *value=reinterpret_cast<uint64_t *>(phystokv(pa));
+    if(!value)return kIOReturnNotReadable;
+    if(!__atomic_compare_exchange_n(value,&seen,wanted,false,__ATOMIC_SEQ_CST,__ATOMIC_SEQ_CST) && seen!=wanted)
+        return kIOReturnUnsupported;
+    __asm__ volatile("dsb sy":::"memory");
+    uint64_t verify=0;
+    return !copyin(address,&verify,8) && verify==wanted?kIOReturnSuccess:kIOReturnIOError;
+}
 }
 extern "C" IOReturn nezha_haptics_fix_host_clock(task_t task) {
     uint32_t slide=0,confirmed=0;
@@ -100,6 +160,11 @@ extern "C" IOReturn nezha_haptics_fix_host_clock(task_t task) {
     if (copyin(converters,convertCode,sizeof convertCode)) return kIOReturnNotReadable;
     const bool corrected=converters_match(convertCode,hz==19200000);
     if (!corrected && !converters_match(convertCode,false)) return kIOReturnUnsupported;
+    Pin hapticHeader,hapticCode,hapticFrequencyPin,hapticSecondsPin;
+    uint64_t seenFrequency=0,seenSeconds=0;
+    IOReturn hapticResult=prepare_haptic_clock(task,slide,hz,hapticHeader,hapticCode,
+        hapticFrequencyPin,hapticSecondsPin,&seenFrequency,&seenSeconds);
+    if(hapticResult!=kIOReturnSuccess)return hapticResult;
     if (!corrected) {
         const uint64_t convertPa=pmap_find_pa(get_task_pmap(task),converters);
         if (!convertPa || (convertPa&3) || (convertPa&4095)+sizeof convertCode>4096) return kIOReturnNotReadable;
@@ -113,13 +178,10 @@ extern "C" IOReturn nezha_haptics_fix_host_clock(task_t task) {
         synchronize_code(words,sizeof convertCode);
         if (copyin(converters,convertCode,sizeof convertCode) || !converters_match(convertCode,true)) return kIOReturnIOError;
     }
-    if (seen==expectedBits) return kIOReturnSuccess; /* all three APIs already fixed */
-    uint64_t pa=pmap_find_pa(get_task_pmap(task),literal);
-    if (!pa || (pa&7)) return kIOReturnNotReadable;
-    auto *value=reinterpret_cast<uint64_t *>(phystokv(pa));
-    if (!value) return kIOReturnNotReadable;
-    if (!__atomic_compare_exchange_n(value,&seen,expectedBits,false,__ATOMIC_SEQ_CST,__ATOMIC_SEQ_CST) && seen!=expectedBits) return kIOReturnUnsupported;
-    __asm__ volatile("dsb sy" :::"memory");
-    uint64_t verify=0;
-    return !copyin(literal,&verify,8) && verify==expectedBits ? kIOReturnSuccess:kIOReturnIOError;
+    IOReturn result=publish_haptic_literal(task,literal,seen,expectedBits);
+    if(result!=kIOReturnSuccess)return result;
+    result=publish_haptic_literal(task,hapticFrequency+slide,seenFrequency,expectedBits);
+    if(result!=kIOReturnSuccess)return result;
+    return publish_haptic_literal(task,hapticSeconds+slide,seenSeconds,
+        hz==24000000?appleHostSeconds:nezhaHostSeconds);
 }

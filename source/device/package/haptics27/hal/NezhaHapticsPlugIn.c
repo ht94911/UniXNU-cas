@@ -68,7 +68,9 @@ static int prepareClock(int descriptor,uint32_t numer,uint32_t denom) {
     if(!frequency || !toNanos || !toHost)return ENOTSUP;
     Float64 observed=frequency();
     if(!isfinite(observed) || observed<1 || observed>UINT32_MAX || floor(observed)!=observed)return EINVAL;
-    if(observed!=(Float64)expected || toNanos(expected)!=1000000000ULL || toHost(1000000000ULL)!=expected) {
+    // AudioToolbox's RenderProc has its own inlined reciprocal clock even
+    // when another endpoint has already corrected all public CoreAudio APIs.
+    if(expected==19200000 || observed!=(Float64)expected || toNanos(expected)!=1000000000ULL || toHost(1000000000ULL)!=expected) {
         if(ioctl(descriptor,NZ_HAPTICS_FIX_HOST_CLOCK)<0)return errno;
         observed=frequency();
     }
