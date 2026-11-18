@@ -220,11 +220,7 @@ def build(framework, work):
                 '--source', sources[0], '--out', work / 'icon-memory-host'],
                log=logs / 'icon-memory-host.log')
     if code: return code
-    code = run([sys.executable, work / 'device/scripts/build-nezha27-sensors-userland.py',
-                '--source', work / 'device/package/sensors/userland', '--usb', work / 'usb',
-                '--unit', 'app', '--output', work / 'sensors-userland'],
-               log=logs / 'sensors-app008.log')
-    if code: return code
+    # Sensor009 changes only the orientation kernel archive. Reuse signed008 app.
     kernels = {path.resolve() for path in
         (work / 'out/nezha/ios-27.0.1-24A446-iphone14-4').glob('*/kernel/kernel.macho')}
     if len(kernels) != 1: raise ValueError('Select the actual sensor004 Native')
@@ -279,7 +275,7 @@ def collect(framework, work, sealed):
     for path in sorted((work / 'sensors-userland').rglob('*')):
         if path.is_file(): add(path, 'sensors-userland/' + path.relative_to(work / 'sensors-userland').as_posix())
     manifest = json.loads((ROOT / 'inputs.json').read_text())
-    for folder in ('sensors-common-host', 'sensors-board-host'):
+    for folder in ('sensors-common-host', 'sensors-board-host', 'sensors-orientation-host'):
         for path in sorted((work.parent / folder).rglob('*')):
             if path.is_file(): add(path, folder + '/' + path.relative_to(work.parent / folder).as_posix())
     for name in ('keystore-source-selection.json', 'keystore-target-qualification.json',

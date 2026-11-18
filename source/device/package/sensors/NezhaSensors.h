@@ -74,6 +74,12 @@ int nezha_sensor_hid_flushed(uint32_t kind,uint64_t epoch,uint64_t serial);
 void nezha_sensor_hid_stop(void);
 bool nezha_sensor_hid_activate(void);
 bool nezha_sensor_hid_rebind(uint64_t epoch);
+bool nezha_sensor_orientation_prepare(void *provider,const struct nezha_sensor_hid_ops *,uint64_t epoch);
+bool nezha_sensor_orientation_activate(void);
+int nezha_sensor_orientation_sample(const QsscSample *);
+int nezha_sensor_orientation_state(uint64_t epoch,bool ready,int error);
+void nezha_sensor_orientation_stop(void);
+bool nezha_sensor_orientation_rebind(uint64_t epoch);
 #ifdef __cplusplus
 }
 #endif

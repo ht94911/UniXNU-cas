@@ -4,11 +4,14 @@
 #include <cstring>
 #define NEZHA_SENSORS_HID_HOST 1
 #define NEZHA_SENSORS_CALLER_HOST 1
+#define NEZHA_SENSORS_ORIENTATION_HOST 1
 #include "../package/sensors/NezhaSensorHid.cpp"
+#include "../package/sensors/NezhaSensorOrientationHid.cpp"
 #include "../package/sensors/NezhaSensorNativeCaller.cpp"
 extern "C" {
 kmod_info_t g_kernel_kmod_info={"kernel"};
 void nezha_sensor_static_init(){hostStaticInitializers++;}
+void nezha_orientation_static_init(){}
 IOHIDEvent *nezha_sensor_original_accel(uint64_t t,int32_t x,int32_t y,int32_t z,uint32_t,uint32_t,uint32_t,uint32_t){
     auto e=new IOHIDEvent(t,0);e->type=13;e->xyz[0]=x;e->xyz[1]=y;e->xyz[2]=z;return e;
 }

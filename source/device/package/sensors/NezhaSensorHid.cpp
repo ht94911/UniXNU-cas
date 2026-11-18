@@ -361,18 +361,24 @@ extern "C" bool nezha_sensor_hid_prepare(void *provider,const struct nezha_senso
         if(!s->start(static_cast<IOService *>(provider))){s->detach(static_cast<IOService *>(provider));s->release();nezha_sensor_hid_stop();return false;}
         services[index]=s;
     }
-    return true;
+    return nezha_sensor_orientation_prepare(provider,ops,epoch);
 }
-extern "C" int nezha_sensor_hid_sample(const QsscSample *s){return s&&s->kind<QSSC_OUTPUT_COUNT&&services[s->kind]?services[s->kind]->submit(s):QsscArgument;}
+extern "C" int nezha_sensor_hid_sample(const QsscSample *s){
+    if(!s||s->kind>=QSSC_OUTPUT_COUNT||!services[s->kind])return QsscArgument;
+    int result=services[s->kind]->submit(s);if(result)return result;
+    return s->kind==QsscGravity?nezha_sensor_orientation_sample(s):0;
+}
 extern "C" int nezha_sensor_hid_motion(const QsscMotionFrame *f){return f&&services[QSSC_OUTPUT_COUNT]?services[QSSC_OUTPUT_COUNT]->submitMotion(f):QsscArgument;}
 extern "C" int nezha_sensor_hid_state(uint32_t kind,uint64_t epoch,bool ready,int error){
     unsigned index=kind==NEZHA_SENSOR_FUSION_KIND?QSSC_OUTPUT_COUNT:kind;
-    return index<QSSC_OUTPUT_COUNT+1&&services[index]?services[index]->setReady(epoch,ready,error):QsscArgument;
+    if(index>=QSSC_OUTPUT_COUNT+1||!services[index])return QsscArgument;
+    int result=services[index]->setReady(epoch,ready,error);if(result)return result;
+    return kind==QsscGravity?nezha_sensor_orientation_state(epoch,ready,error):0;
 }
 extern "C" int nezha_sensor_hid_flushed(uint32_t kind,uint64_t epoch,uint64_t serial){return kind<QSSC_OUTPUT_COUNT&&services[kind]?services[kind]->flushed(epoch,serial):QsscArgument;}
-extern "C" void nezha_sensor_hid_stop(void){for(auto s:services)if(s)s->shutdown();}
+extern "C" void nezha_sensor_hid_stop(void){for(auto s:services)if(s)s->shutdown();nezha_sensor_orientation_stop();}
 extern "C" bool nezha_sensor_hid_activate(void){
     for(auto s:services)if(!s||!s->beginSampling())return false;
-    return true;
+    return nezha_sensor_orientation_activate();
 }
-extern "C" bool nezha_sensor_hid_rebind(uint64_t epoch){for(auto s:services)if(!s||!s->rebind(epoch))return false;return true;}
+extern "C" bool nezha_sensor_hid_rebind(uint64_t epoch){for(auto s:services)if(!s||!s->rebind(epoch))return false;return nezha_sensor_orientation_rebind(epoch);}

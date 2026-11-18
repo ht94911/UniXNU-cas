@@ -24,6 +24,7 @@ constexpr const char *kIOHIDReportIntervalKey = "ReportInterval";
 inline unsigned hostRegistrations, hostStops, hostDetached, hostStaticInitializers;
 inline uint32_t hostRegisteredUsagePage, hostRegisteredUsage;
 inline uint32_t hostBaseSize = 200;
+inline uint32_t hostDeviceBaseSize = 208;
 inline int32_t hostPostResult;
 inline bool hostLoopFailure, hostStartFailure, hostIntervalPropertyFailure;
 inline std::atomic<bool> hostEventFailure{false};
@@ -34,9 +35,7 @@ struct OSSymbol;
 struct OSMetaClass {
     uint32_t size;
     uint32_t getClassSize() const { return size; }
-    static const OSMetaClass *getMetaClassWithName(const OSSymbol *) {
-        static OSMetaClass meta{200}; meta.size = hostBaseSize; return &meta;
-    }
+    static const OSMetaClass *getMetaClassWithName(const OSSymbol *);
     static void *preModLoad(const char *) { return reinterpret_cast<void *>(1); }
     static int32_t postModLoad(void *) { return hostPostResult; }
 };
@@ -53,9 +52,13 @@ struct OSObject {
     }
 };
 struct OSSymbol : OSObject {
-    static const OSSymbol *withCStringNoCopy(const char *) { return new OSSymbol; }
+    std::string name;
+    static const OSSymbol *withCStringNoCopy(const char *name) { auto s=new OSSymbol;s->name=name;return s; }
     void release() const { const_cast<OSSymbol *>(this)->OSObject::release(); }
 };
+inline const OSMetaClass *OSMetaClass::getMetaClassWithName(const OSSymbol *symbol){
+    static OSMetaClass meta{200};meta.size=symbol->name=="IOHIDDevice"?hostDeviceBaseSize:hostBaseSize;return &meta;
+}
 struct OSBoolean : OSObject { bool value; explicit OSBoolean(bool v) : value(v) {} };
 inline OSBoolean hostTrue{true}, hostFalse{false};
 inline OSBoolean *kOSBooleanTrue = &hostTrue, *kOSBooleanFalse = &hostFalse;

@@ -65,6 +65,7 @@ qrtr=ROOT/'kits/nezha/als-owner/upstream'
 require(sha(qrtr/'QcomQrtr.h')=='665853eacbd6bf293ed16f02bce71f90a656da4feb02c5fe1da1d6eb032b2f5f','single existing owner QRTR header')
 source_dir=D/'package/sensors'
 sources=[source_dir/'NezhaSensorHid.cpp',source_dir/'NezhaSensors.c',source_dir/'NezhaSensorNativeCaller.cpp',
+         source_dir/'NezhaSensorOrientation.c',source_dir/'NezhaSensorOrientationHid.cpp',
          *[COMP/'src'/name for name in ['QcomSscWire.c','QcomSscMath.c','QcomSscClient.c','QcomSscMotion.c']]]
 objects=[];details=[];errors=[]
 for source in sources:
@@ -95,6 +96,29 @@ entries=ns['object_vtable'](raw,symbols,vtable[0],219)
 require(all(entries),'all219 native authenticated slots')
 for i,(_,word) in enumerate(entries):
     require(word>>63 and word>>48&1 and word>>49&3==0 and word>>32&0xffff==int(abi['slots'][i]['diversity'],16),f'sensor PAC slot{i}')
+# Reuse the already qualified original IOHIDDevice source API and bindings
+# from the touch archive for the independent orientation report device.
+orientation_raw=(OUT/'NezhaSensorOrientationHid.o').read_bytes()
+orientation_symbols=ns['object_symbols'](orientation_raw)
+orientation_vtables=[n for n,_,kind in orientation_symbols if n.startswith('__ZTV') and kind!=1 and '9MetaClassE' not in n]
+require(len(orientation_vtables)==1,'one orientation HID device vtable')
+device_abi=json.loads((D/'scripts/hid-device-iphone-24A446.json').read_text())
+require(device_abi['kernelcache_sha256']==fixture['kernelcache_sha256'] and len(device_abi['slots'])==207,'same original207-slot HID device')
+orientation_entries=ns['object_vtable'](orientation_raw,orientation_symbols,orientation_vtables[0],207)
+require(all(orientation_entries),'all207 orientation HID authenticated slots')
+for i,(_,word) in enumerate(orientation_entries):
+    require(word>>63 and word>>48&1 and word>>49&3==0 and word>>32&0xffff==int(device_abi['slots'][i][1],16),f'orientation PAC slot{i}')
+input_bindings={n:int(v,16) for n,v in input_report['bindings'].items()}
+orientation_imports={n for n,_,kind in orientation_symbols if kind==1 and '11IOHIDDevice' in n}
+orientation_slots={name:i for i,(name,word) in enumerate(orientation_entries) if '11IOHIDDevice' in name}
+orientation_bindings={}
+for name in sorted(orientation_imports-input_bindings.keys()):
+    index=orientation_slots.get(name)
+    if index is None:
+        candidates=[i for i,(_,diversity) in enumerate(device_abi['slots']) if int(diversity,16)==ns['discriminator'](name[1:])]
+        require(len(candidates)==1,'unqualified orientation HID base import '+name);index=candidates[0]
+    require(index!=180,'orientation cannot bind the abstract report-descriptor slot')
+    orientation_bindings[name]=int(device_abi['slots'][index][0],16)
 all_bindings={n:int(v,16) for n,v in abi['bindings'].items()}
 for name,row in fixture['constructors'].items():all_bindings[name]=int(row['address'],16)
 base_slots={name:i for i,(name,word) in enumerate(entries) if '17IOHIDEventService' in name}
@@ -107,6 +131,8 @@ for name,_,kind in symbols:
     all_bindings[name]=int(abi['slots'][index]['target'],16)
 needed={n for n,_,kind in symbols if kind==1}
 bindings={n:v for n,v in all_bindings.items() if n in needed and n not in provided_bindings}
+require(not bindings.keys()&orientation_bindings.keys(),'one owner per original sensor/HID binding')
+bindings.update(orientation_bindings)
 for name in needed&provided_bindings.keys():
     require(name not in all_bindings or provided_bindings[name]==all_bindings[name],
             'existing original binding differs: '+name)
@@ -126,7 +152,12 @@ llvm=Path(run(['brew','--prefix','llvm'],text=True).strip())/'bin'
 late=OUT/'NezhaSensorHid.late.o'
 run([llvm/'llvm-objcopy','--remove-section=__DATA,__mod_init_func','--globalize-symbol=__GLOBAL__sub_I_NezhaSensorHid.cpp',frontend,late])
 objects[objects.index(frontend)]=late
+orientation_late=OUT/'NezhaSensorOrientationHid.late.o'
+run([llvm/'llvm-objcopy','--remove-section=__DATA,__mod_init_func','--globalize-symbol=__GLOBAL__sub_I_NezhaSensorOrientationHid.cpp',OUT/'NezhaSensorOrientationHid.o',orientation_late])
+objects[objects.index(OUT/'NezhaSensorOrientationHid.o')]=orientation_late
 archive=OUT/'libNezha27Sensors.a';archive.unlink(missing_ok=True);run(['xcrun','ar','rcs',archive,*objects])
-(OUT/'build-report.json').write_text(json.dumps(dict(sources=details,archive_sha256=sha(archive),compiled_original_PAC_slots=219,
+(OUT/'build-report.json').write_text(json.dumps(dict(sources=details,archive_sha256=sha(archive),compiled_original_PAC_slots=219,orientation_original_PAC_slots=207,
+    orientation_original_bindings_reused_from_input=sorted(orientation_imports&input_bindings.keys()),
+    orientation_additional_original_bindings={n:hex(v) for n,v in orientation_bindings.items()},
     original_bindings={n:hex(v) for n,v in bindings.items()},single_QRTR_owner=True,hardware_qualified=False),indent=2)+'\n')
 print('Sensor source archive compiled; strict prelink and hardware validation remain separate')

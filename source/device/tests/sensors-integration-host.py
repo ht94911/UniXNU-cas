@@ -9,7 +9,7 @@ a.output.mkdir(parents=True,exist_ok=True)
 flags=['-O1','-g','-fsanitize=address,undefined','-fno-omit-frame-pointer','-I'+str(C/'include'),'-I'+str(Q),'-I'+str(D/'tests'),'-I'+str(D/'package/sensors')]
 link_flags=[]
 if sys.platform!='darwin':flags+=['-fno-pie'];link_flags=['-no-pie']
-sources=[D/'package/sensors/NezhaSensors.c',*sorted((C/'src').glob('*.c')),Q/'QcomQrtr.c']
+sources=[D/'package/sensors/NezhaSensors.c',D/'package/sensors/NezhaSensorOrientation.c',*sorted((C/'src').glob('*.c')),Q/'QcomQrtr.c']
 commands=[];objects=[]
 for s in sources:
  o=a.output/(s.stem+'.o');command=['cc','-std=c11',*flags,'-c',str(s),'-o',str(o)]
