@@ -1,7 +1,7 @@
-name: nezha Sensors013 direction report interval
+name: nezha Sensors014 direction sensor time
 on:
   push:
-    branches: [codex/ios27-sensors013-interval-gpu051-native-20261119]
+    branches: [codex/ios27-sensors014-time-gpu051-native-20261119]
   workflow_dispatch:
 permissions:
   contents: read

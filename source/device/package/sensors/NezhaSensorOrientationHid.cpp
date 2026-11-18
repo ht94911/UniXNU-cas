@@ -32,6 +32,7 @@ class NativeNezhaOrientation : public IOHIDDevice {
     struct nezha_sensor_hid_ops backend={};
     struct nezha_orientation_filter filter={};
     uint32_t interval=20000,direction=0;
+    uint64_t reportedTimestamp=0;
     bool ready=false,stopped=false,clearBeforeReport=false,activated=false,published=false;
     bool attachKernelParser(){
         if(kernelParser)return true;
@@ -108,16 +109,17 @@ class NativeNezhaOrientation : public IOHIDDevice {
         // The original parser emits a CMUsage event on a0->1 bit edge.
         // Clear retained input state first when resuming at the same pose.
         if(self->clearBeforeReport){
-            uint8_t clear[2]={1,0};auto buffer=IOBufferMemoryDescriptor::withBytes(clear,sizeof clear,kIODirectionNone);
+            uint8_t clear[NezhaOrientationInputReportBytes];nezha_orientation_report(clear,0,sample->timestamp);
+            auto buffer=IOBufferMemoryDescriptor::withBytes(clear,sizeof clear,kIODirectionNone);
             IOReturn status=buffer?self->handleReportWithTime(sample->timestamp,buffer,kIOHIDReportTypeInput,0):kIOReturnNoMemory;
             if(buffer)buffer->release();if(status!=kIOReturnSuccess){nezha_orientation_invalidate(&self->filter);return status;}
             self->clearBeforeReport=false;
         }
-        uint8_t report[2]={1,(uint8_t)(1u<<direction)};
+        uint8_t report[NezhaOrientationInputReportBytes];nezha_orientation_report(report,(uint8_t)(1u<<direction),sample->timestamp);
         auto buffer=IOBufferMemoryDescriptor::withBytes(report,sizeof report,kIODirectionNone);
         IOReturn status=buffer?self->handleReportWithTime(sample->timestamp,buffer,kIOHIDReportTypeInput,0):kIOReturnNoMemory;
         if(buffer)buffer->release();
-        if(status==kIOReturnSuccess){self->direction=direction;self->ready=true;}
+        if(status==kIOReturnSuccess){self->direction=direction;self->reportedTimestamp=sample->timestamp;self->ready=true;}
         else{self->ready=false;nezha_orientation_invalidate(&self->filter);}
         printf("NEZHA SENSORS ORIENTATION: direction=%u ssc=%llu host=%llu rc=%d\n",direction,
             (unsigned long long)sample->ssc_ticks,(unsigned long long)sample->timestamp,status);
@@ -133,14 +135,14 @@ class NativeNezhaOrientation : public IOHIDDevice {
     static IOReturn rebindAction(OSObject *object,void *value,void *,void *,void *){
         auto self=static_cast<NativeNezhaOrientation *>(object);uint64_t epoch=*static_cast<uint64_t *>(value);
         if(self->stopped||epoch<=self->filter.epoch)return kIOReturnNotReady;
-        self->clearBeforeReport|=self->ready;self->ready=false;self->direction=0;
+        self->clearBeforeReport|=self->ready;self->ready=false;self->direction=0;self->reportedTimestamp=0;
         return nezha_orientation_begin(&self->filter,epoch,19200000)?kIOReturnBadArgument:kIOReturnSuccess;
     }
     static IOReturn shutdownAction(OSObject *object,void *,void *,void *,void *){
         auto self=static_cast<NativeNezhaOrientation *>(object);self->stopped=true;self->ready=false;
         nezha_orientation_invalidate(&self->filter);return kIOReturnSuccess;
     }
-    struct Read {IOHIDReportType type;uint32_t id;uint8_t bytes[5];size_t count;};
+    struct Read {IOHIDReportType type;uint32_t id;uint8_t bytes[NezhaOrientationInputReportBytes];size_t count;};
     static IOReturn readReport(OSObject *object,void *value,void *,void *,void *){
         auto self=static_cast<NativeNezhaOrientation *>(object);auto r=static_cast<Read *>(value);
         if(self->stopped)return kIOReturnNotReady;
@@ -148,7 +150,8 @@ class NativeNezhaOrientation : public IOHIDDevice {
             r->bytes[0]=2;IOLockLock(self->settings);uint32_t interval=self->interval;IOLockUnlock(self->settings);
             for(unsigned n=0;n<4;n++)r->bytes[n+1]=(uint8_t)(interval>>(8*n));r->count=5;
         }else if(r->type==kIOHIDReportTypeInput&&r->id==1){
-            r->bytes[0]=1;r->bytes[1]=self->ready?(uint8_t)(1u<<self->direction):0;r->count=2;
+            nezha_orientation_report(r->bytes,self->ready?(uint8_t)(1u<<self->direction):0,
+                                     self->ready?self->reportedTimestamp:0);r->count=NezhaOrientationInputReportBytes;
         }else return kIOReturnUnsupported;
         return kIOReturnSuccess;
     }

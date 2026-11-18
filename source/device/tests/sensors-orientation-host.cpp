@@ -12,6 +12,11 @@ static int32_t request(void *,uint32_t kind,uint32_t consumer,QsscDemand d){
     assert(kind==QsscGravity&&consumer==1);requested=d;requests++;return 0;
 }
 static void fault(void *,int){assert(false);}
+static uint64_t reportTime(const HostOrientationReport &report){
+    assert(report.bytes.size()==NezhaOrientationInputReportBytes);
+    uint64_t time=0;for(unsigned n=0;n<8;n++)time|=(uint64_t)report.bytes[n+2]<<(8*n);
+    return time;
+}
 static void feed(uint64_t ticks,int32_t x,int32_t y,int32_t z){
     QsscSample s={};s.kind=QsscGravity;s.epoch=1;s.ssc_ticks=ticks;s.timestamp=ticks+42;
     s.value[0]=x;s.value[1]=y;s.value[2]=z;s.valid=true;s.status=3;
@@ -67,8 +72,10 @@ int main(int argc,char **argv){
     for(unsigned n=0;n<6;n++){
         feed(t,vectors[n][0],vectors[n][1],vectors[n][2]);assert(hostOrientationReports.size()==n);
         feed(t+4800000,vectors[n][0],vectors[n][1],vectors[n][2]);
-        assert(hostOrientationReports.size()==n+1&&hostOrientationReports.back().bytes==std::vector<uint8_t>({1,(uint8_t)(1u<<expected[n])}));
+        assert(hostOrientationReports.size()==n+1&&hostOrientationReports.back().bytes[0]==1&&
+               hostOrientationReports.back().bytes[1]==(uint8_t)(1u<<expected[n]));
         assert(hostOrientationReports.back().timestamp==t+4800000+42);t+=9600000;
+        assert(reportTime(hostOrientationReports.back())==hostOrientationReports.back().timestamp);
     }
     auto count=hostOrientationReports.size();feed(t,g*7/10,g*7/10,0);feed(t+4800000,g*7/10,g*7/10,0);
     assert(hostOrientationReports.size()==count);t+=9600000;
@@ -76,9 +83,17 @@ int main(int argc,char **argv){
     feed(t+24000000,g,0,0);assert(hostOrientationReports.size()==count+1);t+=28800000;
     feature(0);assert(!requested.active);feed(t,0,g,0);feed(t+4800000,0,g,0);assert(hostOrientationReports.size()==count+1);
     feature(20000);assert(requested.active);feed(t+9600000,0,g,0);feed(t+14400000,0,g,0);assert(hostOrientationReports.size()==count+3);
-    assert(hostOrientationReports[hostOrientationReports.size()-2].bytes==std::vector<uint8_t>({1,0}));
+    assert(hostOrientationReports[hostOrientationReports.size()-2].bytes[0]==1&&
+           hostOrientationReports[hostOrientationReports.size()-2].bytes[1]==0);
+    assert(reportTime(hostOrientationReports[hostOrientationReports.size()-2])==
+           reportTime(hostOrientationReports.back()));
     assert(!orientation->setReady(1,false,0));feed(t+19200000,0,g,0);feed(t+24000000,0,g,0);assert(hostOrientationReports.size()==count+5);
-    assert(hostOrientationReports[hostOrientationReports.size()-2].bytes==std::vector<uint8_t>({1,0}));
+    assert(hostOrientationReports[hostOrientationReports.size()-2].bytes[0]==1&&
+           hostOrientationReports[hostOrientationReports.size()-2].bytes[1]==0);
+    assert(reportTime(hostOrientationReports.back())==hostOrientationReports.back().timestamp);
+    uint8_t input[NezhaOrientationInputReportBytes]={};auto current=IOBufferMemoryDescriptor::withBytes(input,sizeof input,0);
+    assert(!orientation->getReport(current,kIOHIDReportTypeInput,1));
+    assert(current->bytes==hostOrientationReports.back().bytes);current->release();
     uint8_t bytes[5]={};auto b=IOBufferMemoryDescriptor::withBytes(bytes,5,0);assert(!orientation->getReport(b,kIOHIDReportTypeFeature,2));
     assert(b->bytes==std::vector<uint8_t>({2,0x20,0x4e,0,0}));
     // The system report interval is independent of the physical source
