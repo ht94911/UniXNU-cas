@@ -1,7 +1,7 @@
-name: nezha iPhone27 Camera090E GPU051 imageblock size and heap options
+name: nezha iPhone27 Camera093 GPU051 IOSurface plane identity
 on:
   push:
-    branches: [codex/ios27-camera090e-gpu051-target-20261118]
+    branches: [codex/ios27-camera093-gpu051-plane-20261119]
   workflow_dispatch:
 permissions:
   contents: read
@@ -71,6 +71,9 @@ jobs:
       - name: Exercise actual heap and imageblock Objective-C forwarding
         id: camera_forwarding
         run: device/ci/gpu-userland/logrun camera-forwarding python3 device/ci/gpu-userland/check-camera-forwarding.py --unixnu unixnu --logs "$LOGS"
+      - name: Exercise actual surface constructor and texture view plane identity
+        id: surface_planes
+        run: device/ci/gpu-userland/logrun surface-planes python3 device/ci/gpu-userland/check-surface-plane-forwarding.py --source unixnu/drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm --out "$LOGS/surface-plane-forwarding"
       - name: Check production public parameter metadata before runtime compilation
         id: camera_public
         run: device/ci/gpu-userland/logrun camera-public python3 device/ci/gpu-userland/check-camera-public.py --unixnu unixnu --logs "$LOGS"
@@ -171,6 +174,7 @@ jobs:
           OUTCOME_PIPELINE_CACHE: ${{ steps.pipeline_cache.outcome }}
           OUTCOME_ICON_LIMITS: ${{ steps.icon_limits.outcome }}
           OUTCOME_FUNCTION_CONSTANT: ${{ steps.retained_contracts.outcome }}
+          OUTCOME_SURFACE_PLANES: ${{ steps.surface_planes.outcome }}
           OUTCOME_CAMERA_FORWARDING: ${{ steps.camera_forwarding.outcome }}
           OUTCOME_HEAP_OPTIONS: ${{ steps.retained_contracts.outcome }}
           OUTCOME_CAMERA_PUBLIC: ${{ steps.camera_public.outcome }}
@@ -222,6 +226,7 @@ jobs:
           PIPELINE_CACHE: ${{ steps.pipeline_cache.outcome }}
           ICON_LIMITS: ${{ steps.icon_limits.outcome }}
           FUNCTION_CONSTANT: ${{ steps.retained_contracts.outcome }}
+          SURFACE_PLANES: ${{ steps.surface_planes.outcome }}
           CAMERA_FORWARDING: ${{ steps.camera_forwarding.outcome }}
           HEAP_OPTIONS: ${{ steps.retained_contracts.outcome }}
           CAMERA_PUBLIC: ${{ steps.camera_public.outcome }}
@@ -245,6 +250,7 @@ jobs:
           test "$ICON_LIMITS" = success
           test "$EXTERN_FUNCTION" = success
           test "$FUNCTION_CONSTANT" = success
+          test "$SURFACE_PLANES" = success
           test "$CAMERA_FORWARDING" = success
           test "$HEAP_OPTIONS" = success
           test "$CAMERA_PUBLIC" = success

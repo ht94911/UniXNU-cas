@@ -244,6 +244,26 @@ def verify(binary, map_path):
     assert fixups[message_slot]['auth'] and fixups[message_slot]['key'] == 0
     assert words[4] == 0xf9400230 and words[5] == 0xd71f0a11
 
+    texture_class = symbols['_OBJC_CLASS_$_NBTexture']
+    texture_ro = pointer(texture_class + 32)
+    texture_methods_at = pointer(texture_ro + 32)
+    texture_flags, texture_count = struct.unpack('<II', image.read(texture_methods_at, 8))
+    assert texture_flags == 0x8000000c
+    texture_methods = {}
+    for i in range(texture_count):
+        record = texture_methods_at + 8 + 12*i
+        name_delta, type_delta, imp_delta = struct.unpack('<iii', image.read(record, 12))
+        name = cstring(pointer(record + name_delta))
+        texture_methods[name] = dict(types=cstring(record+4+type_delta), imp=record+8+imp_delta)
+    plane_method = texture_methods['iosurfacePlane']
+    assert plane_method['types'] == 'Q16@0:8'
+    assert plane_method['imp'] == link_address('-[NBTexture iosurfacePlane]')
+    assert plane_method['imp'] in image.function_starts()
+    first, = struct.unpack('<I', image.read(plane_method['imp'], 4))
+    assert first not in (0xd2800000, 0x52800000, 0xaa1f03e0), 'constant-zero plane getter survived'
+    assert texture_methods['surfacePlane']['types'] == 'Q16@0:8'
+    assert texture_methods['setSurfacePlane:']['types'] == 'v24@0:8Q16'
+
     return dict(passed=True,binary_sha256=hashlib.sha256(Path(binary).read_bytes()).hexdigest(),
         actual_method_list_verified=True,actual_message_forwarding_verified=True,
         class_address=hex(class_address),method_list=hex(method_list),method_count=method_count,
@@ -255,7 +275,11 @@ def verify(binary, map_path):
         isRequired_function_constant_IMP=hex(original['imp']),
         required_forwards_to_original_getter=True,
         camera_function_SPI_method_metadata_verified=True,
-        camera_function_methods=camera_methods)
+        camera_function_methods=camera_methods,
+        actual_surface_plane_method_verified=True,
+        surface_plane_method_encoding=plane_method['types'],
+        surface_plane_IMP=hex(plane_method['imp']),
+        surface_plane_constant_zero_getter_absent=True)
 
 if __name__ == '__main__':
     import argparse

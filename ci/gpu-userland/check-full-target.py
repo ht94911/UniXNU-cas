@@ -249,7 +249,8 @@ report.update(collected_target=bool(a.collected),
 report.update(actual_extern_function=extern_function,actual_extern_target=target_extern,actual_multi_level_output=multi_level)
 function_constant = json.loads((a.logs/'function-constant/report.json').read_text())
 assert function_constant['passed'] and function_constant['checks'] == 10
-assert function_constant['source_sha256'] == hashlib.sha256((root/'drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm').read_bytes()).hexdigest()
+assert function_constant['retained_frontend_patch_reversed_exactly']
+assert function_constant['current_frontend_sha256'] == hashlib.sha256((root/'drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm').read_bytes()).hexdigest()
 assert target_extern['required_function_constant_method_list_verified'] and target_extern['required_forwards_to_original_getter']
 report['actual_function_constant'] = function_constant
 camera_function = json.loads((a.logs/'camera-function-spi/report.json').read_text())
@@ -257,10 +258,18 @@ assert camera_function['passed'] and camera_function['checks'] == 37
 assert camera_function['production_stitch_serialization_executed'] and camera_function['system_compiler_stitch_passed']
 assert camera_function['shared_AIR_functions_same_hash']
 assert camera_function['stitch_test_sha256']==hashlib.sha256((root/'drivers/AdrenoMetal/bridge/camera_stitch_host.mm').read_bytes()).hexdigest()
-assert camera_function['source_sha256'] == hashlib.sha256((root/'drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm').read_bytes()).hexdigest()
+assert camera_function['retained_frontend_patch_reversed_exactly']
+assert camera_function['current_frontend_sha256'] == hashlib.sha256((root/'drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm').read_bytes()).hexdigest()
 assert camera_function['metadata_source_sha256'] == hashlib.sha256((root/'drivers/AdrenoMetal/NativeMetalFunctionMetadata.h').read_bytes()).hexdigest()
 assert camera_function['bridge_source_sha256'] == hashlib.sha256((root/'drivers/AdrenoMetal/bridge/NativeMetalObjects.rs').read_bytes()).hexdigest()
 assert target_extern['camera_function_SPI_method_metadata_verified']
 report['actual_camera_function_SPI'] = camera_function
 (a.logs/'full-target-qualified.json').write_text(json.dumps(report,indent=2)+'\n')
 print(json.dumps({k:v for k,v in report.items() if k!='profile'},indent=2))
+
+planes=json.loads((a.logs/'surface-plane-forwarding/report.json').read_text())
+assert planes['passed'] and planes['checks']==15 and planes['actual_ObjectiveC_bodies_executed']
+assert planes['source_sha256']==hashlib.sha256((root/'drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm').read_bytes()).hexdigest()
+assert target_extern['actual_surface_plane_method_verified'] and target_extern['surface_plane_constant_zero_getter_absent']
+report.update(actual_surface_plane_forwarding=planes, actual_surface_plane_target=target_extern['surface_plane_IMP'])
+(a.logs/'full-target-qualified.json').write_text(json.dumps(report,indent=2)+'\n')

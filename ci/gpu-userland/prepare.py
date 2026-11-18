@@ -376,6 +376,11 @@ def main():
     must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', '--check', selected])
     must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', selected])
     record['camera_imageblock_size_patch'] = sha(selected)
+    selected = HERE / 'patches/camera093-surface-plane-plugin.patch'
+    must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', '--check', selected])
+    must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', selected])
+    record['camera_surface_plane_patch'] = sha(selected)
+    shutil.copyfile(HERE / 'fixtures/surface_plane_host.mm', root / 'drivers/AdrenoMetal/bridge/surface_plane_host.mm')
     shutil.copyfile(HERE / 'fixtures/imageblock_frontend_host.mm',
                     root / 'drivers/AdrenoMetal/bridge/imageblock_frontend_host.mm')
     test = HERE / 'fixtures/camera_function_spi_host.mm'

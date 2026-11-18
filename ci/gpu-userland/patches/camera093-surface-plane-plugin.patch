@@ -1,0 +1,39 @@
+diff --git a/NativeBridgeMetalFrontend.mm b/NativeBridgeMetalFrontend.mm
+index 48673ac..1f20164 100644
+--- a/NativeBridgeMetalFrontend.mm
++++ b/NativeBridgeMetalFrontend.mm
+@@ -1201,6 +1201,7 @@ static void waitForResource(id resource);
+ @property(nonatomic) NmbTextureDescriptor descriptor;
+ @property(nonatomic,strong) NBBuffer *buffer;
+ @property(nonatomic) IOSurfaceRef surface;
++@property(nonatomic) NSUInteger surfacePlane;
+ @property(nonatomic) NSUInteger offset,rowBytes;
+ @property(nonatomic,strong) id<MTLTexture> parent;
+ @property(nonatomic,strong) id<MTLHeap> parentHeap;
+@@ -1464,7 +1465,7 @@ static bool textureDescriptor(MTLTextureDescriptor *d,NmbTextureDescriptor *out)
+ - (BOOL)isFramebufferOnly {return _descriptor.framebuffer_only!=0;}
+ - (BOOL)isDrawable {return _descriptor.is_drawable!=0;}
+ - (IOSurfaceRef)iosurface {return _surface;}
+-- (NSUInteger)iosurfacePlane {return 0;}
++- (NSUInteger)iosurfacePlane {return _surfacePlane;}
+ - (id<MTLBuffer>)buffer {return _surface?nil:(id<MTLBuffer>)_buffer;}
+ - (NSUInteger)bufferOffset {return _offset;}
+ - (NSUInteger)bufferBytesPerRow {return _rowBytes;}
+@@ -1480,7 +1481,7 @@ NB_RESOURCE_SPI
+  if(!handle){NBLOG(@"native-metal: texture view refused: %@",lastError());return nil;}
+  NBTexture *view=[NBTexture new];view.handle=handle;NmbTextureDescriptor descriptor;nmb_texture_describe(handle,&descriptor);view.descriptor=descriptor;
+  view.parent=(id<MTLTexture>)self;view.buffer=_buffer;view.offset=_offset;view.rowBytes=_rowBytes;
+- if(_surface){view.surface=(IOSurfaceRef)CFRetain(_surface);[view countUse];}
++ if(_surface){view.surface=(IOSurfaceRef)CFRetain(_surface);view.surfacePlane=_surfacePlane;[view countUse];}
+  return (id<MTLTexture>)view;
+ }
+ - (id<MTLTexture>)newTextureViewWithPixelFormat:(MTLPixelFormat)format {
+@@ -4631,7 +4632,7 @@ static void fillBaseLimits(id device);
+  NBTexture *texture=planes>=2?textureOnSurface(buffer,d,surface,plane,start-(uintptr_t)base,row):textureOnBuffer(buffer,d,start-(uintptr_t)base,row,true);
+  if(!texture){refuseSurface(5,surface,d,plane,start-(uintptr_t)base,row);return nil;}
+  if(gLogTextures)logTexture("iosurface",d,surface,plane,base,start-(uintptr_t)base,row,texture!=nil);
+- gSurfaceTextures++;texture.surface=(IOSurfaceRef)CFRetain(surface);[texture countUse];return (id<MTLTexture>)texture;
++ gSurfaceTextures++;texture.surface=(IOSurfaceRef)CFRetain(surface);texture.surfacePlane=plane;[texture countUse];return (id<MTLTexture>)texture;
+ }
+ - (id<MTLLibrary>)newLibraryWithData:(dispatch_data_t)data error:(NSError **)error {
+  DetailSpan timing(22,(uintptr_t)(__bridge void *)self,(uintptr_t)__func__);

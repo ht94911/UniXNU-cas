@@ -3,6 +3,9 @@
 import argparse
 import hashlib
 import json
+import shutil
+import subprocess
+import tempfile
 from pathlib import Path
 
 parser = argparse.ArgumentParser(description=__doc__)
@@ -11,6 +14,15 @@ parser.add_argument('--logs', type=Path, required=True)
 args = parser.parse_args()
 kit = args.unixnu.resolve() / 'drivers/AdrenoMetal'
 fixtures = Path(__file__).with_name('fixtures') / 'retained-camera-contracts'
+current_frontend_sha = hashlib.sha256((kit / 'NativeBridgeMetalFrontend.mm').read_bytes()).hexdigest()
+args.logs.mkdir(parents=True, exist_ok=True)
+retained_source = tempfile.TemporaryDirectory(prefix='camera093-retained-', dir=args.logs)
+previous = Path(retained_source.name)
+shutil.copyfile(kit / 'NativeBridgeMetalFrontend.mm', previous / 'NativeBridgeMetalFrontend.mm')
+patch = Path(__file__).with_name('patches') / 'camera093-surface-plane-plugin.patch'
+subprocess.run(['git', 'apply', '--reverse', '--check', str(patch)], cwd=previous, check=True)
+subprocess.run(['git', 'apply', '--reverse', str(patch)], cwd=previous, check=True)
+previous_sha = hashlib.sha256((previous / 'NativeBridgeMetalFrontend.mm').read_bytes()).hexdigest()
 source_files = {
     'source_sha256': 'NativeBridgeMetalFrontend.mm',
     'metadata_source_sha256': 'NativeMetalFunctionMetadata.h',
@@ -36,9 +48,15 @@ for name, tests in test_files.items():
     files = {key: path for key, path in source_files.items() if key in report}
     files.update(tests)
     for key, relative in files.items():
-        digest = hashlib.sha256((kit / relative).read_bytes()).hexdigest()
+        path = previous / relative if relative == 'NativeBridgeMetalFrontend.mm' else kit / relative
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
         assert report[key] == digest, name + ': changed source ' + relative
     report['retained_exact_source_evidence'] = True
+    report['previous_frontend_sha256'] = previous_sha
+    report['current_frontend_sha256'] = current_frontend_sha
+    report['retained_frontend_patch_reversed_exactly'] = True
+    report['current_full_frontend_identical'] = False
+    report['surface_plane_change_covered_separately'] = True
     report['current_source_hashes_verified'] = True
     destination = args.logs / name
     destination.mkdir(parents=True, exist_ok=False)
