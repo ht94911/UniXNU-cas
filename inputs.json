@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "GPU057: release the existing GPU gate during closing-client job drain and final VM tail waits; retain real fence, RPTR/RBBM, TTBR and teardown checks. All GPU055 joint components and twelve-GiB bootstrap source retained. GPU056 Metal target is built and qualified separately.",
+  "purpose": "GPU059: raise the exact icon service inactive fatal cap from200 to384MiB for observed263-270MiB footprint, retaining active soft200 pressure notifications and other policies. GPU057 unlocked close/VM drain and alljoint components retained.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -423,7 +423,7 @@
     "source/device/patches/xnu-12377/zzzzzz-nezha-adreno840-start.patch": "d32bb0d5e678e5773786dcce90467e0258d844550b418b438e1548fb32392f79",
     "source/device/patches/xnu-12377/zzzzzz-nezha-gpu-cpu-map-observe.patch": "08bc4c3ac6c2783d00447e699cdee7ebb9d4d905c61c34ca7f53d439cc42c02a",
     "source/device/patches/xnu-12377/zzzzzz-nezha-gpu-external-ipc-scope.patch": "0798c2f7699e5914b041f69779224c3973fe1973173cb19dfe77ccfa388360f3",
-    "source/device/patches/xnu-12377/zzzzzz-nezha-iconservice-memory.patch": "fb96f0e46f8307a52e1f0a686a5d58f70e4f08a7b454cb483c7c603690640952",
+    "source/device/patches/xnu-12377/zzzzzz-nezha-iconservice-memory.patch": "ff71c88c1e440cd91fc540c7968f4be3731266989cd64775c4bf1693397eb934",
     "source/device/patches/xnu-12377/zzzzzz-nezha-input-chain-trace.patch": "c4d05419e7ec3af0de619754bdb6c2deb69b74d714c2219e509360ebfe1b947e",
     "source/device/patches/xnu-12377/zzzzzz-nezha-kernel-class-lock-order.patch": "cd90c61d6838f4e6a7248da81b6180f14db03d00f2f7a64f4bbe4034c0aa8dcb",
     "source/device/patches/xnu-12377/zzzzzz-nezha-sigp-startup-order.patch": "18275910b909d187e459c68f5d937cc09bc01923180141dc155aa7f4ff14aaf9",
@@ -443,7 +443,7 @@
     "source/device/scripts/build-nezha27-wifi.py": "e301b5f4f0acaeff47c4449968ce76901409a29253da2392cc34ed24e1a2d250",
     "source/device/scripts/build-software-aes-iphone.py": "ad408438aca47fcb9e7daae4c53b77fa81c00bd0c9ff34cffca244cb324a08e0",
     "source/device/scripts/check-adreno840-integration.py": "225243ee2a6f45137b62c998743393889c9d9a306015542cb75134f556dcca64",
-    "source/device/scripts/check-iconservice-memory.py": "8e445f674b8120b42f710e49b4522b7ed3f90802ebaa318e0433e5514880e63d",
+    "source/device/scripts/check-iconservice-memory.py": "f60e899b2f8fa5ef937d752ad8595080cacc4c52e7d7e2ac70ed019120aa15d6",
     "source/device/scripts/check-iosurface-plane-27.py": "7aa70c9e3eeafa3b6d3108d88cbcafbe1e4d441eafc757e83184e5155cc2bf6c",
     "source/device/scripts/check-keystore-source.py": "3ca47a3009f5f62c255723ee2d215e0078d15fbb98a0adb27844d25bc7103e7a",
     "source/device/scripts/check-persistent-data.py": "c2a2c50534d564033e967cb34df230ec9d196c341eb1472f7ad10c06c13f72c3",
@@ -944,5 +944,17 @@
     "physical_frame_improvement_verified": false,
     "phone_operations": false,
     "private_inputs_uploaded": false
+  },
+  "gpu059": {
+    "source_revision": "ae985eae02ccdb2d43ded34d7c5531a080adeea2",
+    "base_native048": "ceafee5b5d372dd4ceafa5d3aaee964f9bde962b",
+    "active_soft_MiB": 200,
+    "inactive_fatal_MiB": 384,
+    "exact_original_name_pair_flags_only": true,
+    "actual89setter_ledger_ASanUBSan_cases_passed": true,
+    "host_report_sha256": "a7e32ab9c879235f94132a155c384a5cc66eaa218281d9cfdf369f15198b9c2d",
+    "target_ledger_inspection_required": true,
+    "physical_frame_improvement_verified": false,
+    "phone_operations": false
   }
 }

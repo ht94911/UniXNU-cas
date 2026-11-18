@@ -71,11 +71,11 @@ int main(void) {
   assert(memstat_set_memlimits_locked(&p,200,15,flags)==0);
   const bool change=enabled && name==0 && flags==MEMLIMIT_INACTIVE_FATAL;
   assert(p.p_memstat_memlimit_active==200);
-  assert(p.p_memstat_memlimit_inactive==(change?200:15));
-  assert(p.ledger==(active?200:(change?200:15)));
+  assert(p.p_memstat_memlimit_inactive==(change?384:15));
+  assert(p.ledger==(active?200:(change?384:15)));
   assert(p.ledger_fatal==!!(flags&(active?MEMLIMIT_ACTIVE_FATAL:MEMLIMIT_INACTIVE_FATAL)));
-  /* Finite inactive threshold remains fatal: 201 MiB is still over it. */
-  if(change && !active)assert(p.ledger_fatal && 201>p.ledger && 114<p.ledger);
+  /* Observed275MiB fits; the new finite384MiB boundary remains fatal. */
+  if(change && !active)assert(p.ledger_fatal && 385>p.ledger && 275<p.ledger);
   ++cases;
  }
  const int pairs[][2]={{199,15},{201,15},{200,14},{200,16},{-1,15},{200,-1},{0,0},{256,64},{200,200}};

@@ -1,7 +1,7 @@
-name: nezha GPU057 unlocked close waits - native048
+name: nezha GPU059 exact icon memory budget - native049
 on:
   push:
-    branches: [codex/ios27-gpu57-close-drain-native048-20261119]
+    branches: [codex/ios27-gpu59-icon-budget-native049-20261119]
   workflow_dispatch:
 permissions:
   contents: read
