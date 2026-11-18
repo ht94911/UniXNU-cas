@@ -1,5 +1,5 @@
 diff --git a/NativeBridgeMetalFrontend.mm b/NativeBridgeMetalFrontend.mm
-index 03306d4..b9cce55 100644
+index 03306d4..70db2b1 100644
 --- a/NativeBridgeMetalFrontend.mm
 +++ b/NativeBridgeMetalFrontend.mm
 @@ -1675,6 +1675,7 @@ static MTLType *publicMetadataType(NSDictionary *);
@@ -31,14 +31,47 @@ index 03306d4..b9cce55 100644
     _bitCodeHashData=digest;
    }
    return _bitCodeHashData.bytes;
-@@ -4716,6 +4717,12 @@ static void fillBaseLimits(id device);
-  for(id function in functions) {
-   NSData *bitcode=[function isKindOfClass:[NBFunction class]]?functionBitcode((NBFunction *)function):nil;
-   if(!bitcode){if(error)*error=nbError([NSString stringWithFormat:@"stitched function %@ has no bitcode here",[function name]]);return nil;}
-+  // Original24A446 serializedRequest emits bhas before bitc. The compiler
-+  // uses it to identify shared modules when linking the graph's functions.
+@@ -4698,7 +4699,7 @@ static void fillBaseLimits(id device);
+ }
+ // Function stitching (Core Image makes its kernels so: a DAG of ci_stdlib_stitchable's functions with builtin and buffer nodes) is the
+ // front end's request 14, as Metal's own MTLLibraryBuilder writes it: u32 fourcc tags, 'dag ' and the graphs' DAG text NUL-terminated,
+-// 'numf' and the u32 count of functions, then for each function 'bitc', the u32 size and its wrapped bitcode. The reply is a metallib
++// 'numf' and the u32 count of AIR modules, then each module's 'bhas' identity and 'bitc' wrapped bitcode. The reply is a metallib
+ // with the stitched functions. Metal's own path wants its own function objects (their library data) and refuses these.
+ - (id<MTLLibrary>)newLibraryWithStitchedDescriptor:(MTLStitchedLibraryDescriptor *)d error:(NSError **)error {
+  DetailSpan timing(22,(uintptr_t)(__bridge void *)self,(uintptr_t)__func__);
+@@ -4708,14 +4709,32 @@ static void fillBaseLimits(id device);
+  if(!graphs.count || !functions.count){if(error)*error=nbError(@"a stitched library needs graphs and functions");return nil;}
+  NSString *dag=[(id<NBOriginalStitching>)self newDagStringWithGraphs:graphs];
+  if(!dag.length){if(error)*error=nbError(@"the stitching graphs have no DAG text");return nil;}
++ // A Core Image external library can expose hundreds of functions from the
++ // same AIR module. The compiler reads every bitc into a separate LLVM module;
++ // equal bhas values do not prevent duplicate definitions during linking.
++ // Keep the complete DAG and submit each identical module only once.
++ NSMutableArray<NSData *> *modules=[NSMutableArray array],*hashes=[NSMutableArray array];
++ NSMutableSet<NSData *> *seen=[NSMutableSet set];
++ for(id function in functions) {@autoreleasepool {
++  NSData *bitcode=[function isKindOfClass:[NBFunction class]]?functionBitcode((NBFunction *)function):nil;
++  if(!bitcode){if(error)*error=nbError([NSString stringWithFormat:@"stitched function %@ has no bitcode here",[function name]]);return nil;}
++  if([seen containsObject:bitcode])continue;
 +  const void *hash=[(NBFunction *)function bitCodeHash];
 +  if(!hash){if(error)*error=nbError(@"the stitching function has no AIR module hash");return nil;}
++  [seen addObject:bitcode];[modules addObject:bitcode];
++  [hashes addObject:[NSData dataWithBytes:hash length:CC_SHA256_DIGEST_LENGTH]];
++ }}
+  std::vector<uint8_t> request;
+  auto word=[&](uint32_t v){const uint8_t *b=(const uint8_t *)&v;request.insert(request.end(),b,b+4);};
+  const char *text=dag.UTF8String;
+  word(0x64616720 /* 'dag ' */);request.insert(request.end(),text,text+strlen(text)+1);
+- word(0x6e756d66 /* 'numf' */);word((uint32_t)functions.count);
+- for(id function in functions) {
+-  NSData *bitcode=[function isKindOfClass:[NBFunction class]]?functionBitcode((NBFunction *)function):nil;
+-  if(!bitcode){if(error)*error=nbError([NSString stringWithFormat:@"stitched function %@ has no bitcode here",[function name]]);return nil;}
++ word(0x6e756d66 /* 'numf' */);word((uint32_t)modules.count);
++ for(NSUInteger i=0;i<modules.count;i++) {
++  NSData *bitcode=modules[i];
++  // Preserve the original24A446 bhas tag before each retained bitc.
++  const void *hash=hashes[i].bytes;
 +  word(0x62686173 /* 'bhas' */);
 +  const uint8_t *h=(const uint8_t *)hash;request.insert(request.end(),h,h+CC_SHA256_DIGEST_LENGTH);
    word(0x62697463 /* 'bitc' */);word((uint32_t)bitcode.length);

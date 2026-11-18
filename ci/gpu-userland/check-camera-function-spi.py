@@ -61,6 +61,21 @@ stitch_run=subprocess.run([str(out/'stitch-consumer'),str(out/'shared-functions.
                          timeout=90,env=dict(os.environ,CAMERA_STITCH_OUT=str(out/'stitched.metallib')))
 (out/'stitch-run.log').write_text(stitch_run.stdout+stitch_run.stderr)
 assert stitch_run.returncode==0 and 'PASS Camera shared AIR stitching:' in stitch_run.stdout,stitch_run.stdout+stitch_run.stderr
+# Distinct AIR modules must also retain both functions after deduplication.
+distinct_air=[]
+for name,body in [('sum2','a+b'),('product2','a*b')]:
+    source=out/(name+'.metal')
+    source.write_text('#include <metal_stdlib>\nusing namespace metal;\n'
+        '[[stitchable]] float '+name+'(float a,float b) { return '+body+'; }\n')
+    air=out/(name+'.air')
+    built=subprocess.run(['xcrun','--sdk','macosx','metal','-std=metal3.2','-c',str(source),'-o',str(air)],capture_output=True,text=True)
+    (out/(name+'-build.log')).write_text(built.stdout+built.stderr)
+    assert built.returncode==0,'Distinct public AIR fixture failed: '+name
+    distinct_air.append(air)
+distinct_run=subprocess.run([str(out/'stitch-consumer'),*map(str,distinct_air)],capture_output=True,text=True,
+    timeout=90,env=dict(os.environ,CAMERA_STITCH_OUT=str(out/'stitched-distinct.metallib')))
+(out/'stitch-distinct-run.log').write_text(distinct_run.stdout+distinct_run.stderr)
+assert distinct_run.returncode==0 and 'PASS Camera distinct AIR stitching:' in distinct_run.stdout,distinct_run.stdout+distinct_run.stderr
 sha = lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
 report = dict(passed=True, checks=37, production_cache_selectors_executed=True,
               name_constants_and_error_preserved=True, public_ARGR_cases=14,
@@ -75,8 +90,9 @@ report = dict(passed=True, checks=37, production_cache_selectors_executed=True,
               host_runtime_device_opened=False, native_Metal_device_registered=False,
               GPU_submissions=False, phone_operations=False)
 report.update(production_stitch_serialization_executed=True,system_compiler_stitch_passed=True,
-              shared_AIR_functions_same_hash=True,stitch_test_sha256=sha(stitch_test),
+              shared_AIR_functions_same_hash=True,distinct_AIR_stitch_passed=True,repeated_function_object_stitch_passed=True,stitch_test_sha256=sha(stitch_test),
               stitched_output_sha256=sha(out/'stitched.metallib'),
-              current_compiler_public_fixture=True,current_compiler_fixture_sha256=sha(out/'shared-functions.air'))
+              current_compiler_public_fixture=True,current_compiler_fixture_sha256=sha(out/'shared-functions.air'),
+              distinct_stitched_output_sha256=sha(out/'stitched-distinct.metallib'))
 (out/'report.json').write_text(json.dumps(report, indent=2)+'\n')
 print(json.dumps(report, indent=2))

@@ -24,7 +24,8 @@
 }
 @end
 
-static NSData *sharedLibrary(NSData *air) {
+static NSData *functionLibrary(NSData *sumAir,NSData *productAir) {
+ const bool shared=[sumAir isEqualToData:productAir];
  std::vector<uint8_t> entries;
  for(const char *name:{"sum2","product2"}) {
   std::vector<uint8_t> entry(4);
@@ -33,7 +34,8 @@ static NSData *sharedLibrary(NSData *air) {
    entry.push_back((uint8_t)size);entry.push_back((uint8_t)(size>>8));
    const uint8_t *p=(const uint8_t *)value;entry.insert(entry.end(),p,p+size);
   };
-  const uint8_t type=5;uint64_t size=air.length,offsets[3]={};
+  NSData *air=!strcmp(name,"sum2")?sumAir:productAir;
+  const uint8_t type=5;uint64_t size=air.length,offsets[3]={0,0,shared || air==sumAir?0:(uint64_t)sumAir.length};
   tag("NAME",name,(uint16_t)(strlen(name)+1));tag("TYPE",&type,1);
   tag("MDSZ",&size,sizeof size);tag("OFFT",offsets,sizeof offsets);
   entry.insert(entry.end(),{'E','N','D','T'});
@@ -41,12 +43,13 @@ static NSData *sharedLibrary(NSData *air) {
   entries.insert(entries.end(),entry.begin(),entry.end());
  }
  uint8_t header[88]={};memcpy(header,"MTLB",4);header[10]=1;
- const uint64_t list=88,listSize=entries.size(),bitcode=88+4+listSize,bytes=air.length;
+ const uint64_t list=88,listSize=entries.size(),bitcode=88+4+listSize,bytes=sumAir.length+(shared?0:productAir.length);
  memcpy(header+24,&list,8);memcpy(header+32,&listSize,8);
  memcpy(header+72,&bitcode,8);memcpy(header+80,&bytes,8);
  NSMutableData *data=[NSMutableData dataWithBytes:header length:88];
  const uint32_t count=2;[data appendBytes:&count length:4];
- [data appendBytes:entries.data() length:entries.size()];[data appendData:air];return data;
+ [data appendBytes:entries.data() length:entries.size()];[data appendData:sumAir];
+ if(!shared)[data appendData:productAir];return data;
 }
 
 static MTLFunctionStitchingInputNode *input(NSUInteger index) {
@@ -57,26 +60,30 @@ static MTLFunctionStitchingFunctionNode *node(NSString *name,NSArray *arguments)
 }
 
 int main(int argc,char **argv) {@autoreleasepool {
- assert(argc==2);setvbuf(stdout,nullptr,_IONBF,0);
+ assert(argc==2 || argc==3);setvbuf(stdout,nullptr,_IONBF,0);
  NSData *air=[NSData dataWithContentsOfFile:@(argv[1])];assert(air.length);
- NSData *storage=sharedLibrary(air);NBLibrary *library=[NBLibrary new];library.storage=storage;
+ NSData *productAir=argc==3?[NSData dataWithContentsOfFile:@(argv[2])]:air;assert(productAir.length);
+ const bool shared=[air isEqualToData:productAir];
+ NSData *storage=functionLibrary(air,productAir);NBLibrary *library=[NBLibrary new];library.storage=storage;
  library.bytes=(const uint8_t *)storage.bytes;library.length=storage.length;
  NBFunction *sum=(NBFunction *)[library newExternFunctionWithName:@"sum2"];
  NBFunction *product=(NBFunction *)[library newExternFunctionWithName:@"product2"];
  NBFunction *again=(NBFunction *)[library newExternFunctionWithName:@"sum2"];
  assert(sum && product && again && sum!=again);
- assert([functionBitcode(sum) isEqualToData:functionBitcode(product)]);
- assert(!memcmp(sum.bitCodeHash,product.bitCodeHash,32));
+ assert([functionBitcode(sum) isEqualToData:functionBitcode(product)]==shared);
+ assert((!memcmp(sum.bitCodeHash,product.bitCodeHash,32))==shared);
  assert(!memcmp(sum.bitCodeHash,again.bitCodeHash,32));
  uint8_t digest[32];CC_SHA256(air.bytes,(CC_LONG)air.length,digest);
  assert(!memcmp(sum.bitCodeHash,digest,32));
+ CC_SHA256(productAir.bytes,(CC_LONG)productAir.length,digest);
+ assert(!memcmp(product.bitCodeHash,digest,32));
  MTLFunctionStitchingFunctionNode *add=node(@"sum2",@[input(0),input(1)]);
  MTLFunctionStitchingFunctionNode *multiply=node(@"product2",@[add,input(2)]);
  MTLFunctionStitchingGraph *graph=[[MTLFunctionStitchingGraph alloc] initWithFunctionName:@"fused"
      nodes:@[add] outputNode:multiply attributes:@[]];
  NBStitchTextDevice *device=[NBStitchTextDevice new];
  MTLStitchedLibraryDescriptor *descriptor=[MTLStitchedLibraryDescriptor new];
- descriptor.functionGraphs=@[graph];descriptor.functions=@[(id<MTLFunction>)sum,(id<MTLFunction>)product];
+ descriptor.functionGraphs=@[graph];descriptor.functions=@[(id<MTLFunction>)sum,(id<MTLFunction>)product,(id<MTLFunction>)again];
  NSError *error=nil;
  NBLibrary *made=(NBLibrary *)[(id<MTLDevice>)device newLibraryWithStitchedDescriptor:descriptor error:&error];
  if(!made) {fprintf(stderr,"Compiler rejected shared AIR: %s\n",error.localizedDescription.UTF8String);return 1;}
@@ -91,6 +98,6 @@ int main(int argc,char **argv) {@autoreleasepool {
  bool fused=false;
  assert(forEachLibraryEntry(made,[&](const std::string &name,int) {fused|=name=="fused";return true;}));
  assert(fused);
- printf("PASS Camera shared AIR stitching: identical module hashes; production request; original DAG; compiler output %u functions\n",functions);
+ printf("PASS Camera %s AIR stitching: production request; original DAG; repeated function object; compiler output %u functions\n",shared?"shared":"distinct",functions);
  return 0;
 }}
