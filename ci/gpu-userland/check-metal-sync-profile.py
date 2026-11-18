@@ -27,10 +27,17 @@ prefix=r'''
 #include <cstring>
 #include <ctime>
 #include <iostream>
+#include <string>
 #include <vector>
+#include "NativeLongLatency.h"
 static uint64_t wall=1000,cpu=100000;
 static bool enabled=true,cpu_ok=true;
 static unsigned cpu_queries=0;
+static bool gpu_trace=true;
+static unsigned gFrameTransport=1;
+static std::vector<std::string> latency_records;
+static bool gpuTraceOn(){return gpu_trace;}
+static void latencyText(const char *text){latency_records.emplace_back(text);}
 static bool diagOn(){return enabled;}
 static uint64_t nowUs(){return wall;}
 using mach_msg_type_number_t=unsigned;
@@ -58,7 +65,7 @@ sink='''static std::vector<TraceRec> records;
 static void tracePush(const TraceRec &row){records.push_back(row);}
 '''
 cases=r'''
-static void reset(){records.clear();wall=1000;cpu=100000;enabled=true;cpu_ok=true;cpu_queries=0;assert(tDetailParent==0);}
+static void reset(){records.clear();latency_records.clear();gpu_trace=true;gFrameTransport=1;wall=1000;cpu=100000;enabled=true;cpu_ok=true;cpu_queries=0;assert(tDetailParent==0);}
 static const TraceRec &link(uint64_t id){for(auto &r:records)if(r.type==18 && r.t1==id)return r;assert(false);return records[0];}
 static unsigned details(){unsigned n=0;for(auto &r:records)n+=r.type==17;return n;}
 static int early(){DetailSpan api(22,1,(uintptr_t)"early");wall+=500;cpu+=8000;return 42;}
@@ -103,13 +110,23 @@ int main(int argc,char **argv){
  reset();uint64_t lateBad;
  {DetailSpan failed(22,1,(uintptr_t)"end-query-failed");lateBad=failed.id;wall+=500;cpu_ok=false;}
  assert(link(lateBad).tid==0 && link(lateBad).c==0 && link(lateBad).d==0 && cpu_queries==2);++passed;
+ // The new USB path shares the actual serializer/header. A short span emits
+ // nothing; a slow span keeps its CPU validity and original time bounds.
+ assert(latency_records.empty());
+ reset();{DetailSpan slow(22,1,(uintptr_t)"slow-API");wall+=16000;cpu+=5000;}
+ assert(latency_records.size()==3 && latency_records[0].find("b=1000 e=17000")!=std::string::npos);
+ assert(latency_records[1].find("q=5000 v=1")!=std::string::npos);++passed;
+ reset();gpu_trace=false;{DetailSpan off(22,1,(uintptr_t)"slow-disabled");wall+=16000;}
+ assert(latency_records.empty() && details()==1);++passed;
+ reset();gFrameTransport=0;{DetailSpan off(22,1,(uintptr_t)"slow-no-transport");wall+=16000;}
+ assert(latency_records.empty() && details()==1);++passed;
  std::cout<<"cases="<<passed<<" records="<<sizeof(TraceRec)<<" nested/early/disabled/CPU-validity/legacy passed\n";
 }
 '''
 fixture=a.out/'sync-producer.cpp';fixture.write_text(prefix+record+sink+globals_+producer+cases)
 binary=a.out/'sync-producer'
 command=[a.cxx,'-std=c++17','-O1','-g','-Wall','-Wextra','-Werror','-Wno-unused-function',
-         '-fsanitize=address,undefined',str(fixture),'-o',str(binary)]
+         '-fsanitize=address,undefined','-I'+str(a.source.parent),str(fixture),'-o',str(binary)]
 subprocess.run(command,check=True)
 env=dict(os.environ,ASAN_OPTIONS='detect_leaks=1:halt_on_error=1',UBSAN_OPTIONS='halt_on_error=1')
 run=subprocess.run([str(binary),str(a.out/'actual-producer.trace')],env=env,text=True,capture_output=True,timeout=30)
@@ -155,7 +172,8 @@ if platform.system()=='Darwin':
         actual_helper_sha256=hashlib.sha256(query.encode()).hexdigest())
 report=dict(passed=True,actual_source_sha256=hashlib.sha256(a.source.read_bytes()).hexdigest(),
     producer_sha256=hashlib.sha256((record+globals_+producer).encode()).hexdigest(),
-    fixture_sha256=hashlib.sha256(fixture.read_bytes()).hexdigest(),ASan_UBSan=True,cases=9,
+    fixture_sha256=hashlib.sha256(fixture.read_bytes()).hexdigest(),ASan_UBSan=True,cases=12,
+    actual_long_latency_serializer_bound=True,long_latency_header_sha256=hashlib.sha256(a.source.with_name('NativeLongLatency.h').read_bytes()).hexdigest(),
     command=command,result=run.stdout,actual_producer_to_decoder_checked=decoded,
     mocked_clock_thread_ID_and_trace_sink=True,Metal_calls_not_emulated=True,phone_operations=False,
     CPU_query='thread_info/THREAD_BASIC_INFO',CPU_wire_precision_ns=1000,real_Mach_query=real_mach)

@@ -16,7 +16,7 @@
   "ci/gpu-userland/check-icon-limits.py": "9702e4ae0e9a5124ec89fb3d0496af506cecbcaa19635d2e26d327b76b42b88a",
   "ci/gpu-userland/check-intel-frontend.py": "a02f462f7d82e7a1da9c6b86c9a9340c2ab2cfee3ecace246f2def0f005efa47",
   "ci/gpu-userland/check-long-latency.py": "ac41e804dba2631cf2243efb8dc8f58980d986dc1b6d75760dad7671fbbdb716",
-  "ci/gpu-userland/check-metal-sync-profile.py": "90b3a334dfb0048115361bc8479352ee05732a10f00073a534d9e24b68928d73",
+  "ci/gpu-userland/check-metal-sync-profile.py": "a606074c5945b944e076562a6185e83e2861520a4dd829745449c4df5e27acd2",
   "ci/gpu-userland/check-multi-level-output.py": "999ab89f8b1b742cd4219db81cd078863fd8024b92d5c42c0180592dac72f24e",
   "ci/gpu-userland/check-pipeline-cache.py": "599866af46ef1a5f6991bce60587d3cdfd69318e87deda7e2e09f79c86fe2d90",
   "ci/gpu-userland/check-primer-wait-host.py": "abb8e716fe44704d06503a5316f0d57c5d2a4a93ddc47b74e3c8667d2b2be483",
