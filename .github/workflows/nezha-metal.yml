@@ -1,7 +1,7 @@
 name: nezha iPhone27 Camera093 GPU051 IOSurface plane identity
 on:
   push:
-    branches: [codex/ios27-camera093-gpu051-plane-20261119]
+    branches: [codex/ios27-camera093b-gpu051-plane-20261119]
   workflow_dispatch:
 permissions:
   contents: read

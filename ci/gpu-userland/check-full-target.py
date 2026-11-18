@@ -215,7 +215,8 @@ extern_function=json.loads((a.logs/'extern-function/report.json').read_text())
 assert extern_function['passed'] and extern_function['checks']==12
 assert extern_function['production_ObjectiveC_selector_executed'] and extern_function['previous_missing_selector_reproduced']
 assert extern_function['exact_kernel_bitcode_and_library_lifetime_verified']
-assert extern_function['source_sha256']==hashlib.sha256((root/'drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm').read_bytes()).hexdigest()
+assert extern_function['retained_frontend_patch_reversed_exactly']
+assert extern_function['current_frontend_sha256']==hashlib.sha256((root/'drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm').read_bytes()).hexdigest()
 assert extern_function['test_sha256']==hashlib.sha256((root/'drivers/AdrenoMetal/bridge/extern_function_host.mm').read_bytes()).hexdigest()
 multi_level=json.loads((a.logs/'multi-level-output/report.json').read_text())
 assert multi_level['passed'] and multi_level['exact_runtime_source_verified'] and multi_level['current_Mac_planner_tests_passed']

@@ -57,7 +57,7 @@ for name, tests in test_files.items():
     report['retained_frontend_patch_reversed_exactly'] = True
     report['current_full_frontend_identical'] = False
     report['surface_plane_change_covered_separately'] = True
-    report['current_source_hashes_verified'] = True
+    report['retained_source_hashes_verified'] = True
     destination = args.logs / name
     destination.mkdir(parents=True, exist_ok=False)
     (destination / 'report.json').write_text(json.dumps(report, indent=2) + '\n')
