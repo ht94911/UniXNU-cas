@@ -34,7 +34,7 @@ def main():
              '.cpp':json.loads((base/'iokit/DEVELOPMENT/IOPlatformExpert.cpo.json').read_text().strip().rstrip(','))}
     sources=[soc/'Sm8850SpmiV8.c',component/'HapticsSpmi.c',component/'HapticsCore.c']
     sources += [source/n for n in ['NezhaHapticsBoard.c','NezhaHapticsFactory.c','NezhaHapticsQueue.c',
-                                 'NezhaHapticsRuntime.cpp','NezhaHapticsIOS.cpp']]
+                                 'NezhaHapticsRuntime.cpp','NezhaHapticsIOS.cpp','NezhaHapticsReady.cpp']]
     additions=['-I',str(OUT/'headers/include'),'-idirafter',str(Path(headers['sdk'])/'System/Library/Frameworks/Kernel.framework/Versions/A/Headers'),
                '-I',str(ROOT/'.cache/xnu-work/osfmk'),'-I',str(device/'components'),'-I',str(device/'components/sm8850/kits'),
                '-I',str(source),'-I',str(ROOT/'drivers/QcomXnuUsbDebug/include'),
@@ -53,10 +53,19 @@ def main():
             'private_inputs_included':False,'factory_caps_mv':2000}
     (OUT/'build-report.json').write_text(json.dumps(report,indent=2)+'\n')
     if errors:raise SystemExit('Haptics compile failed: '+','.join(errors))
+    # Register the readiness class only when the working endpoint and iOS
+    # assets are ready, through the existing native ALS late-constructor path.
+    llvm=Path(subprocess.check_output(['brew','--prefix','llvm'],text=True).strip())/'bin'
+    ready=OUT/'NezhaHapticsReady.o';late=OUT/'NezhaHapticsReady.late.o'
+    subprocess.run([llvm/'llvm-objcopy','--remove-section=__DATA,__mod_init_func',
+                    '--globalize-symbol=__GLOBAL__sub_I_NezhaHapticsReady.cpp',ready,late],check=True)
+    objects=[late if obj==ready else obj for obj in objects]
+    report['readiness_late_constructor']=True
+    report['readiness_late_object_sha256']=sha(late)
     archive=OUT/'libNezha27Haptics.a';archive.unlink(missing_ok=True)
     subprocess.run(['xcrun','ar','rcs',str(archive),*map(str,objects)],check=True)
     report['archive_sha256']=sha(archive)
     (OUT/'build-report.json').write_text(json.dumps(report,indent=2)+'\n')
-    print('Built8 haptic objects with the selected iPhone27 XNU ABI')
+    print('Built9 haptic objects with the selected iPhone27 XNU ABI')
 
 if __name__=='__main__':main()

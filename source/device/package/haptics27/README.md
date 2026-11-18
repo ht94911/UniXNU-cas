@@ -1,6 +1,6 @@
 # nezha iOS27 触觉源码候选
 
-**人类已指定 GPU051。007 的直接马达振动、完全停止和正常返回实机通过；010 的普通前台应用已执行，但所有按钮无振动，CoreHaptics engine4099、HAL设备ID0、内核requests/plays0。当前011在独立测试树修复自定义属性传输并核对原HAL加载；系统触觉尚未通过。** 编译与实机证据按包身份绑定，旧失败轮次保留。复用与许可证见 `SOURCES.md`，依赖见 `dependencies.json`。
+**人类已指定 GPU051。007 的直接马达振动、完全停止和正常返回实机通过；013 正常按钮仍无振动。原服务日志已确认 VirtualAudio 初始化完成并发布 Actuator 端口，却因 `DeviceSupportsHaptics` 的默认名称查询看不到运行时节点而跳过触觉 VAD。014 源码补齐默认名称与设备树平面名称，目标构建和正常系统输出验证待完成。** 编译与实机证据按包身份绑定，旧失败轮次保留。复用与许可证见 `SOURCES.md`，依赖见 `dependencies.json`。
 
 真机已确认 PMIH010x / HAP530、SPMI v8 bus1 SID7，CFG/PTN/HBOOST 分别0xf000/0xf100/0xf200，global APID2254/2255/2256；CFG5.1.8.1、PTN5.1.0.0、HBOOST31/01。马达按原厂LRA、160–180Hz范围，名义5555µs；旧安卓日志5723µs，005本轮读取有效5746µs、RC mode4/count0及8064字节FIFO。9Ω为原厂标称阻抗；具体马达商品型号与当前温度尚未确认。
 
@@ -45,3 +45,15 @@ GPU051集成与验证路径：
 012补齐011已观测的Autobox状态ioctl拒绝：原fileglob检查先于vnode检查，按既有原进程/精确devfs节点和唯一只读GET_STATUS恢复访问。原VirtualAudio建立VAD仍待证；请求原011持久日志的Android只读文件窗口，获取后释放，不为该调查重启iOS。
 
 012诊断另记录HAL属性返回进程PID、原VirtualAudio插件和Default VAD查询、原`vain`四字节初始化状态及原VirtualAudio.bundle预检。`vain`只读契约由同24A446的VirtualAudio消费者与MediaExperience核定，不写初始化状态，不改变原路由和固件就绪条件。普通应用读到的HAL副本PID用于与原audiomxd区分。此轮尚未编译或真机验证。
+
+012构建已通过原Mac/CMS流程，native源码`0e7c6ff9912cad29597a52e9c035c7e0dd0ccdb6`。随后原011日志显示audiomxd118在104.527s报`invalid product id '(null)'`；实际GPU051/011的`/product`仅含name，而固定D16 donor有20B product-id及4B acoustic-id。封包复用nezha音频060/063的成熟`audio27-product-prepare.py@825a746`，恢复这两个原属性并逐节点核对其他属性不变。设备源码中的`scripts/prepare-haptics27-system-identity.py`从原工具复用，不包含私有donor值；值来自固定本地profile及donor。原D16 AID8001调音资产沿原根读取，未改Apple二进制或原厂校准。包装提交与已编译native提交分别记录；新身份尚待正常系统链路真机验证。
+
+012实机（boot7de0f063…）：`launchd_cache_loader[24]`因新启动任务缓存cdhash `f3320d98081a1cb5c109c64daf2aaa69a283ffd5`未在最终trust bundle内而panic，系统触觉尚未启动。原照片、USB断点和同次失败保留；人工返回安卓后GPT/map/17同135168/27generation1及23036采集器实际退出/释放通过。封包漏掉了011已完成的系统文件信任追加：缓存、Core测试程序、launcher、普通应用四条。新`scripts/stage-haptics27-system-trust.py`复用既有cache签名验证及UniXNU trust writer，读取最终实际addon代码页和detached CodeDirectory，补齐缺项并核原GPU051文件/729jobs/4trust模块保持。013独立副本沿已编译012内核/HAL，只修正上述封包缺口，不重派Mac CI；正常系统触觉仍待真机。
+
+013实机（2026-11-18）：native源码 `0e7c6ff9912cad29597a52e9c035c7e0dd0ccdb6`、Mac run44124303751/attempt1/headbc864f1，封包源码 `7f4d0ebb0488f43f9057aff0f699af3e4223f83f`；boot `5b25ef72b1634703d8cb6e4393356d9c26c44dfdab345aa97298a3014975b36c`、payload `f460e5adddc74a87ee7620c1947dcc93b126148bd455234bdcae025a6cdf62b3`。新缓存已加载，原 audiomxd114 在116.136s实际 GET_STATUS 成功/error0，确认 fileglob 只读命令修复。普通应用495执行 selection/impact/notification/CoreHaptics 和重复按钮，用户确认全部无振动；StartIO/Write0、kernel requests/plays0、engine4099。应用查询显示 Actuator35、VirtualAudio插件及Default/Actuator VAD0，但诊断 processID=495 是应用自身 HAL 副本，不能将它当作原服务的设备表。原 VirtualAudio bundle preflight成功也不能代替初始化完成。116s电气峰值为残留状态，不是本轮播放证据。一次正常XNU返回、Android/root/GPT/maps/17同135168B/27generation1、4984采集器实际退出与释放通过；自有应用/launcher/Core日志692224B保留于原013 run。
+
+无人值守接续：按用户要求不提问，人工触感、按键和恢复测试后移。原013启动UUID `B0FC16CCF1BF45908606B59088E0407D` 已由保存timesync唯一关联；安卓只读窗口候选 `haptics013-logs-readonly113001` 已完成电脑资格并按113原队列等待，0boot/0write，最多32MiB/150s。只读取原两份Persist日志并核新鲜inode/extents/catalog UUID；实际读者退出、必要后验和释放后离线解析。当前仍需原服务日志确定VAD和固件就绪条件，不把静态条件或应用查询ID0提前认定为根因。
+
+014 根因与修复（2026-11-18）：013 在本机同boot6045E813E837433A96CE5CF5226590BC复现全部按钮无振动。立即返回后取回同boot两Persist/一Special的750286条记录；原audiomxd117在111.291s发布可路由pact/Actuator端口，115.022s完成VirtualAudio初始化，却在115.322s报`Could not find haptics VAD. Aborting Haptic Server initialization`。同24A446 MobileGestalt的DeviceSupportsHaptics回调创建IODeviceTree迭代器，按`IORegistryEntryGetName`默认名称比较`haptics`。旧发布器只有`setName(name,gIODTPlane)`，name属性是OSData，`IORegistryEntry::init`仅从OSString初始化默认名，故默认返回类名`IORegistryEntry`。014按原IODTImportEntry命名方式，在attach前同时调用`setName(name)`和`setName(name,gIODTPlane)`；不改系统二进制或能力查询返回。生产发布器验证重现旧代码查找成功/默认名识别失败，并确认新代码保持ready/plugin/preset门槛和原字节属性。014目标构建及真实VAD/系统PCM/机械输出待验证；固件就绪条件在VAD真实建立后继续沿原接口处理。
+
+015就绪通知适配：固定24A446原`AudioToolbox`在触觉VAD路由后按`IOServiceFirstMatch`等待`AHSFirmwareReadyNotifier`；GPU051/014严格38组件未含该类，原`kern.hv_vmm_present`由缺省`vmm-present`读取0。新`NezhaHapticsReady.cpp`以原168槽/0x88字节IOService子类提供本机执行器就绪通知，复用ALS/AES晚构造方式，只有原厂初始化、实际devfs端点、HAL和D16预设成功后由同一马达worker发布。休眠/退出/错误先同步退休通知；没有修改虚拟机标志或跳过原路由。原类start仅存64位微秒`FirmwareReadyTimestamp`并registerService，通知消费者只检查真实类首匹配。就绪/名称/停止生产宿主用例通过，015目标编译和实机仍待。014固定boot`cbd7d9edbd06`/native1a72da2、Mac44275314321、strict/PAC1323/loader/单八核/六信任与本机75r008入口已通过并文件排队，旧013失效候选撤回；015不会改变014固定镜像。

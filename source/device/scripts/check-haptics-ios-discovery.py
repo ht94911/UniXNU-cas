@@ -67,11 +67,13 @@ struct IORegistryEntry {
 IORegistryEntry *IORegistryEntry::product;
 static uint32_t selectedStage;
 static int runtimeReady;
+static unsigned assetsReadyCalls;
 static bool PE_parse_boot_argn(const char *key,void *p,size_t n){
  assert(!strcmp(key,"nezha-haptics-ios") && n==4);memcpy(p,&selectedStage,4);return true;
 }
 static void IOLog(const char *,...){}
 extern "C" int nezha_haptics_runtime_ready(){return runtimeReady;}
+extern "C" int nezha_haptics_ios_assets_ready(){++assetsReadyCalls;return 0;}
 // Actual original consumer boundary: iterator over thedevice-tree children,
 // then IORegistryEntryGetName(default), comparing the exact string haptics.
 static bool originalSupportsHaptics(const IORegistryEntry &product){
@@ -87,6 +89,7 @@ int main(){
  assert(nezha_haptics_ios_commit(0,1)==ENXIO && !product.child);
  assert(nezha_haptics_ios_commit(1,0)==ENXIO && !product.child);
  assert(nezha_haptics_ios_commit(1,1)==0);
+ assert(assetsReadyCalls==1);
  assert(originalSupportsHaptics(product));
  assert(!strcmp(product.child->getName(gIODTPlane),"haptics"));
  uint32_t value=0;auto &third=product.child->values["supports-3rd-party-haptics"];
@@ -101,6 +104,7 @@ int main(){
  assert(!originalSupportsHaptics(product));
  product.child->setName("haptics");assert(originalSupportsHaptics(product));
  assert(nezha_haptics_ios_commit(1,1)==0);
+ assert(assetsReadyCalls==2);
  delete product.child;
  puts("PASS original default-name discovery: old013 plane-only publication rejected; current production publisher accepted; readiness/preset gates and raw properties preserved");
 }

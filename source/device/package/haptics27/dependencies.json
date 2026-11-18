@@ -1,5 +1,5 @@
 {
-  "stage": "GPU051011 current source after010 real frontend/no-output failure;007 direct motor acceptance passed; system HAL loading and end-to-end pending",
+  "stage": "GPU051015 truthful HAP530 execution readiness notification;014 exactbuild+package ready, actualVAD/system validation pending",
   "profile": "GPU051 iPhone14,4 D16 27.0.1/24A446",
   "framework_reference": "9931232fd68b8ae1db0abd957ecba417f1996e52",
   "xnu_reference": "12377.121.6 source; donor xnu13432.2.10",
@@ -37,7 +37,8 @@
     "NezhaHapticsFactory.c",
     "NezhaHapticsQueue.c",
     "NezhaHapticsRuntime.cpp",
-    "NezhaHapticsIOS.cpp"
+    "NezhaHapticsIOS.cpp",
+    "NezhaHapticsReady.cpp"
   ],
   "component_sources": [
     "HapticsCore.c",
@@ -73,24 +74,44 @@
     "ios17-main.json"
   ],
   "pending": [
-    "Actual011 HAL loader directory, preflight and Initialize endpoint readiness",
-    "NormalUIKit/CoreHaptics request, HAL PCM and actual motor output",
-    "Actual system cancellation/sleep and stability"
+    "Native014 original device-tree default-name publication and ActuatorVAD creation",
+    "Normal UIKit/CoreHaptics -> originalserver -> HAL PCM -> kernel -> motor output and stop",
+    "Original server firmwareReady dependency after actual hapticsVAD and same request mechanical acceptance"
   ],
   "selected_package": {
     "base_revision": "76c5952683041a6581224135461ab7c21d47f6a5",
     "base_boot_sha256": "4e4b785ca1bf7bea18d68248ade4cde09a9d9efb5d557fe65e4eaa975dac849a",
     "framework": "4a157b58d1a18300a6570792236abc4796aa27a2",
-    "compiled_source_revision": "d783970f43f39b29cb6644094791ca89c6b84d7b",
-    "native_run": 44057960588,
-    "native_head": "b1bca697e10df46d903d2e81073a12e0c738d9f8",
-    "native_sha256": "4198f99ce66af5908c5be0aabcfe62e783d3a3fcc4aa27395d9d92ac194fa2a9",
+    "compiled_source_revision": "0e7c6ff9912cad29597a52e9c035c7e0dd0ccdb6",
+    "native_run": 44124303751,
+    "native_head": "bc864f1e2ff3c25985374744e754ae588176d99e",
     "motor_boot_sha256": "31dda3c7ad6d51aa3da2d04c2c1f17294b83a35ac7d07f0495e4448f51359a15",
     "motor_embedded_payload_sha256": "306fb898dd97760d097ea2f013bc05eb5b9180b7c51592b05f2f3015f7271d46",
     "actual_motor_sensation_verified": true,
     "actual_system_haptics_verified": false,
-    "latest_system_test": "010",
+    "latest_system_test": "013-local001",
     "latest_system_engine_error": 4099,
-    "latest_system_plays": 0
+    "latest_system_plays": 0,
+    "packaging_source_revision": "7f4d0ebb0488f43f9057aff0f699af3e4223f83f",
+    "native_attempt": 1,
+    "system_boot_sha256": "5b25ef72b1634703d8cb6e4393356d9c26c44dfdab345aa97298a3014975b36c",
+    "system_embedded_payload_sha256": "f460e5adddc74a87ee7620c1947dcc93b126148bd455234bdcae025a6cdf62b3",
+    "original_audiomxd_GET_STATUS_verified": true,
+    "normal_return_and_protected_release_verified": true,
+    "latest_system_rootcause": "Defaultname omitted from runtime haptics node; MGGetBoolAnswer false; originalVA skipsActuatorVAD",
+    "original_VirtualAudio_initialization_verified": true,
+    "original_Actuator_port_verified": true,
+    "original_haptics_VAD_missing_verified": true
+  },
+  "ready_service": {
+    "source": "NezhaHapticsReady.cpp",
+    "class": "AHSFirmwareReadyNotifier",
+    "original_class_bytes": 136,
+    "original_virtual_slots": 168,
+    "source_method": "existing late ALS/AES native constructor and IOService lifetime",
+    "publish_condition": "genuineHAP530/factory/endpoint andiOSHAL/preset ready",
+    "withdrawal": "worker exit/error/suspend, synchronous service termination",
+    "target_compiled": false,
+    "system_verified": false
   }
 }

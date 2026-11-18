@@ -14,7 +14,7 @@ extern "C" int nezha_haptics_runtime_ready(void);
 extern "C" int nezha_haptics_ios_commit(int plugin_visible,int preset_visible) {
     static bool committed;
     uint32_t stage=0;
-    if(committed)return 0;
+    if(committed)return nezha_haptics_ios_assets_ready();
     if(!PE_parse_boot_argn("nezha-haptics-ios",&stage,sizeof stage) || !stage)return 0;
     if(stage>2 || !plugin_visible || !nezha_haptics_runtime_ready() || (stage==2 && !preset_visible))return ENXIO;
     IORegistryEntry *product=IORegistryEntry::fromPath("/product",gIODTPlane);
@@ -44,5 +44,5 @@ extern "C" int nezha_haptics_ios_commit(int plugin_visible,int preset_visible) {
         stage,plugin_visible,preset_visible,node->getName(),node->getName(gIODTPlane));
     node->release();product->release();if(!ok)return EIO;
     committed=true;
-    return 0;
+    return nezha_haptics_ios_assets_ready();
 }

@@ -41,7 +41,7 @@ unsigned mapped,mode;
 uint32_t sessionCounter,logCount;
 uint64_t cooldownUntil;
 proc_t client;
-bool enabled,exitRequested,exited,suspended;
+bool enabled,exitRequested,exited,suspended,iosAssetsReady;
 int major=-1;
 void *node;
 IONotifier *powerNotice;
@@ -173,8 +173,9 @@ int diagnosticSnapshot(void *,char *out,size_t capacity,size_t *bytes,unsigned *
     NzHapticsStatus s=diagnosticStatus;Electrical electrical=diagnosticElectrical;
     uint32_t phase=stats[0],plays=stats[4],stops=stats[5];
     IOLockUnlock(hapticGate);
-    int n=snprintf(out,capacity,"{\"v\":1,\"cached\":true,\"ready\":%u,\"active\":%u,\"queued\":%u,\"error\":%u,\"requests\":%u,\"completed\":%u,\"cancelled\":%u,\"session\":%u,\"epoch\":%u,\"phase\":%u,\"plays\":%u,\"stops\":%u,\"electrical\":{\"play\":%u,\"power\":%u,\"source\":%u,\"vmax\":%u,\"amplitude\":%u,\"voltage_raw\":%u,\"current_raw\":%u,\"voltage_mv\":%u,\"current_ma\":%u,\"stop_reads\":%u,\"recoveries\":%u,\"vsense_ctl\":%u,\"isense_ctl\":%u,\"visense_enable\":%u,\"frontend_check\":%u,\"valid\":%u,\"sequence\":%u,\"sampled_us\":%llu},\"mechanical_verified\":false}",
+    int n=snprintf(out,capacity,"{\"v\":1,\"cached\":true,\"ready\":%u,\"active\":%u,\"queued\":%u,\"error\":%u,\"requests\":%u,\"completed\":%u,\"cancelled\":%u,\"session\":%u,\"epoch\":%u,\"phase\":%u,\"plays\":%u,\"stops\":%u,\"service_ready\":%u,\"service_error\":%d,\"electrical\":{\"play\":%u,\"power\":%u,\"source\":%u,\"vmax\":%u,\"amplitude\":%u,\"voltage_raw\":%u,\"current_raw\":%u,\"voltage_mv\":%u,\"current_ma\":%u,\"stop_reads\":%u,\"recoveries\":%u,\"vsense_ctl\":%u,\"isense_ctl\":%u,\"visense_enable\":%u,\"frontend_check\":%u,\"valid\":%u,\"sequence\":%u,\"sampled_us\":%llu},\"mechanical_verified\":false}",
         s.ready,s.active,s.queued,s.error,s.requests,s.completed,s.cancelled,s.session,s.epoch,phase,plays,stops,
+        nezha_haptics_ready_state(),nezha_haptics_ready_error(),
         electrical.play,electrical.power,electrical.source,electrical.vmax,electrical.amplitude,electrical.voltage_raw,
         electrical.current_raw,electrical.voltage_mv,electrical.current_ma,electrical.stop_reads,electrical.recoveries,
         electrical.vsense_ctl,electrical.isense_ctl,electrical.visense_enable,electrical.frontend_check,
@@ -290,6 +291,14 @@ void worker(void *,wait_result_t) {
     IOLog("NEZHA HAPTICS: Actuator endpoint ready, factory%uus cap2000mV envelope2ms\n",factory.t_lra_us);
     while(!exitRequested) {
         uint64_t now=nowUs(nullptr);
+        // The motor worker serializes the service lifetime with hardware
+        // readiness. Registry matching never runs while hapticGate is held.
+        const bool serviceReady=iosAssetsReady && !suspended && !queue.error;
+        IOLockUnlock(hapticGate);
+        int serviceError=nezha_haptics_ready_update(serviceReady);
+        IOLockLock(hapticGate);
+        if(serviceError){e=-serviceError;queue.error=(uint32_t)serviceError;break;}
+        if(exitRequested)break;
         if(queue.stopping || suspended) {
             e=stopped(queue.stopping?"cancel":"suspend");queue.stopping=0;IOLockWakeup(hapticGate,&queue,false);
             if(e)break;
@@ -360,6 +369,9 @@ void worker(void *,wait_result_t) {
     }
     enabled=false;IOLockUnlock(hapticGate);
 done:
+    // Withdraw the first-match provider before removing the endpoint. A
+    // failed stop still retains the existing hardware mappings as before.
+    (void)nezha_haptics_ready_update(0);
     if(core.state!=PGH_ST_DRY && core.state!=PGH_ST_OFF) {
         int stop=pgh_core_quiesce(&core);if(stop){e=stop;quiesceError=darwinError(stop);}
     }
@@ -420,6 +432,15 @@ extern "C" int nezha_haptics_runtime_ready(void);
 extern "C" int nezha_haptics_runtime_ready(void) {
     if(!hapticGate)return 0;IOLockLock(hapticGate);int ready=enabled && !exitRequested && mode==NZ_HAPTICS_ON;
     IOLockUnlock(hapticGate);return ready;
+}
+extern "C" int nezha_haptics_ios_assets_ready(void) {
+    if(!hapticGate)return ENXIO;
+    IOLockLock(hapticGate);
+    int error=enabled && !exitRequested && !exited && !suspended && !queue.error &&
+        mode==NZ_HAPTICS_ON?0:ENXIO;
+    if(!error){iosAssetsReady=true;IOLockWakeup(hapticGate,&queue,false);}
+    IOLockUnlock(hapticGate);
+    return error;
 }
 extern "C" boolean_t nezha_haptics_vnode(vfs_context_t ctx,vnode_t vp,struct componentname *name) {
     if(!ctx || !vp || !allowed(vfs_context_proc(ctx)))return FALSE;

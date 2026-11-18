@@ -47,6 +47,10 @@ int nezha_haptics_wait_ready(uint32_t timeout_ms);
 int nezha_haptics_quiesce(void);
 int nezha_haptics_suspended(int suspend);
 int nezha_haptics_ios_commit(int plugin_visible,int preset_visible);
+int nezha_haptics_ios_assets_ready(void);
+int nezha_haptics_ready_update(int ready);
+uint32_t nezha_haptics_ready_state(void);
+int nezha_haptics_ready_error(void);
 #ifdef __cplusplus
 }
 #endif
