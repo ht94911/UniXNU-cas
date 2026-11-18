@@ -533,7 +533,7 @@
     "source/device/package/als-owner/core/AudioRuntime.h": "427057626089238b91ec840d0b5fc0046166fd43c4794c7a01bee04ac2a89641",
     "source/metal/OriginalAcceleratorABI.h": "211e922f9b760ddec2e3453db6584bac57597b3d39e4bf0d013c1b2debd53365",
     "source/device/package/als-owner/platform/NezhaAudioPlatform.h": "e1f7bccb47b1cf815ce0fe449ba0d61d684b99003157ad9ecf2f39e020bcf599",
-    ".github/workflows/nezha-ios27-native.yml": "12a6bd49c6bb016b0259be9aa6680902c0dc0b424aa62fea008a3ac741374ea5",
+    ".github/workflows/nezha-ios27-native.yml": "53a84b14ee9f379d8987c7054b50dfdb0b4e7f4b52ce3d9ed9b93c90de490fc6",
     "source/device/package/boot-progress/BootProgressLifecycle.h": "eaf777e5b71db7b5affaa9a64d0a2806277730b538d9aa96a457f425ccbada6a",
     "source/device/patches/xnu-12377/zzzzzz-nezha-adreno840-start.patch": "d32bb0d5e678e5773786dcce90467e0258d844550b418b438e1548fb32392f79",
     "source/device/package/backlight/OriginalAppleARMBacklightABI.h": "dab34c394c2123ae4cbfd6648980d5e7b024539773abe5852f7d2622f9bf7b8b",
@@ -1121,7 +1121,8 @@
       "source/device/tests/sensors-orientation-host.cpp",
       "source/device/package/sensors/NezhaSensorOrientationDescriptor.h",
       "source/device/package/sensors/NezhaSensorOrientationHid.cpp",
-      "source/device/tests/sensors-orientation-host-shim.h"
+      "source/device/tests/sensors-orientation-host-shim.h",
+      ".github/workflows/nezha-ios27-native.yml"
     ],
     "host_descriptor_and_integration_passed": true,
     "ordinary_app_rebuilt": false,

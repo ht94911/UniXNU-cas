@@ -1,7 +1,7 @@
-name: nezha Sensors011 explicitly attached original orientation parser
+name: nezha Sensors012 standard direction service
 on:
   push:
-    branches: [codex/ios27-sensors011-parser-gpu051-native-20261119]
+    branches: [codex/ios27-sensors012-service-gpu051-native-20261119]
   workflow_dispatch:
 permissions:
   contents: read
