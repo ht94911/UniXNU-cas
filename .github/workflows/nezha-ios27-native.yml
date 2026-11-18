@@ -1,7 +1,7 @@
-name: nezha Camera092B live CCI frames on GPU051 - native
+name: nezha Camera092C live CCI frames on GPU051 - native
 on:
   push:
-    branches: [codex/ios27-camera092b-gpu051-live-controls-20261119]
+    branches: [codex/ios27-camera092c-gpu051-live-controls-20261119]
   workflow_dispatch:
 permissions:
   contents: read
@@ -83,7 +83,10 @@ jobs:
           set -euo pipefail
           src="$RUNNER_TEMP/ios27/work/device"
           soc="$RUNNER_TEMP/ios27/work/soc"
-          NEZHA_CAMERA_SHARED_SOC="$soc" bash "$src/scripts/check-nezha27-camera-continuous.sh" "$RUNNER_TEMP/ios27/cci-live-frames"
+          task_target_cc="$RUNNER_TEMP/ios27/target-camera-clang"
+          printf '#!/bin/bash\nexec xcrun --sdk iphoneos clang -isysroot "$(xcrun --sdk iphoneos --show-sdk-path)" "$@"\n' > "$task_target_cc"
+          chmod +x "$task_target_cc"
+          CAMERA_TARGET_CC="$task_target_cc" NEZHA_CAMERA_SHARED_SOC="$soc" bash "$src/scripts/check-nezha27-camera-continuous.sh" "$RUNNER_TEMP/ios27/cci-live-frames"
       - name: Check grouped exposure wire and original control readback
         run: |
           set -euo pipefail
