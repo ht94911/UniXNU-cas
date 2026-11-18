@@ -1,0 +1,13 @@
+diff --git a/scripts/build-adreno-metal-bridge.py b/scripts/build-adreno-metal-bridge.py
+index 6b4a891..61f4563 100644
+--- a/scripts/build-adreno-metal-bridge.py
++++ b/scripts/build-adreno-metal-bridge.py
+@@ -92,6 +92,8 @@ PATCHES = [ROOT / 'drivers/AdrenoMetal/bridge/patches' / name for name in [
+     '0043-reuse-freed-buffer-backing.patch',
+     # Upstream1c0833c2d: only objects whose last holder was released are collected.
+     '0044-released-pipeline-objects-only.patch',
++    # Timely ordered callbacks and pooled reuse of larger retained backing.
++    '0045-timely-handlers-and-pooled-refill-reuse.patch',
+ ]]
+ 
+ 

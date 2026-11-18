@@ -1,0 +1,1897 @@
+diff --git a/NativeBridgeMetalFrontend.mm b/NativeBridgeMetalFrontend.mm
+index d76da85..84652eb 100644
+--- a/NativeBridgeMetalFrontend.mm
++++ b/NativeBridgeMetalFrontend.mm
+@@ -36,6 +36,7 @@
+ #include <mach-o/loader.h>
+ #include <execinfo.h>
+ #include <mach/mach.h>
++#include <mach/mach_time.h>
+ #include <thread>
+ #include <fcntl.h>
+ #include <unistd.h>
+@@ -54,6 +55,7 @@
+ #include "NativeGpuTrace.h"
+ #include "NativeGpuLatency.h"
+ #include "NativeRenderWaitSample.h"
++#include "NativeLongLatency.h"
+ 
+ extern "C" void sys_dcache_flush(void *start, size_t length);
+ 
+@@ -65,6 +67,27 @@ static std::atomic<uint64_t> gFrameNumber{0};
+ // The kernel trace (sheng-gpu-trace=1) takes only the identities of the render, encode and completion threads, which the kernel's
+ // CPU sampler follows. Everything else of this process goes to the frame trace file.
+ static bool gpuTraceOn(){static const bool on=getenv("SHENG_GPU_TRACE")!=nullptr;return on;}
++static void latencyText(const char *text) {
++ if(!gpuTraceOn() || !gFrameTransport)return;
++ NativeGpuTraceRecord rec{};rec.event=GpuTraceProblem;
++ strlcpy((char *)&rec.value[1],text,sizeof(rec.value)-sizeof(rec.value[0]));
++ (void)gFrameTransport(NativeGpuTraceMethod,&rec,sizeof(rec));
++}
++static void latencyIdentity() {
++ if(!gpuTraceOn() || !gFrameTransport)return;
++ static dispatch_once_t once;
++ dispatch_once(&once,^{
++  char uuid[40]={},text[89];size_t bytes=sizeof uuid;
++  const int error=sysctlbyname("kern.bootsessionuuid",uuid,&bytes,nullptr,0);
++  uint64_t memory=0;bytes=sizeof memory;
++  const int memoryError=sysctlbyname("hw.memsize",&memory,&bytes,nullptr,0);
++  snprintf(text,sizeof text,"li0 pid=%u err=%d uuid=%.36s",(unsigned)getpid(),error,uuid);latencyText(text);
++  mach_timebase_info_data_t tb{};const int kr=mach_timebase_info(&tb);
++  snprintf(text,sizeof text,"li1 pid=%u ram=%llu e=%d",(unsigned)getpid(),
++   (unsigned long long)memory,memoryError);latencyText(text);
++  snprintf(text,sizeof text,"li2 pid=%u tb=%u/%u kr=%d",(unsigned)getpid(),tb.numer,tb.denom,kr);latencyText(text);
++ });
++}
+ static void traceRuntimeWide(uint64_t,uint32_t,uint32_t);
+ static void traceRuntimeLink(uint64_t,uint64_t,uint64_t);
+ static void traceVulkanOperation(uint64_t,uint64_t,uint64_t);
+@@ -529,6 +552,10 @@ struct DetailSpan {
+    // For the added sync kinds, function is a static label, never an executable address.
+    if(kind>=22 && function)detailDefinition(function,(const char *)(uintptr_t)function);
+    detailPoint(id,kind,2,command,object,function,began,parent,0,0,end,valid?cpuEnd-cpuBegan:0,valid);
++   if(kind==22 && gpuTraceOn() && gFrameTransport) {
++    uint64_t tid=0;pthread_threadid_np(nullptr,&tid);
++    nblonglatency::api(id,(uint32_t)tid,began,end,function,valid?cpuEnd-cpuBegan:0,valid,latencyText);
++   }
+   }
+   tDetailParent=parent;
+  }
+@@ -2142,6 +2169,7 @@ static void dumpSurfacesOnce(NSSet *textures,NSSet *owners) {
+  EncodedWork encodedWork;   // the command buffer's single encoder thread, not global counter deltas
+  uint64_t createdUs;
+  uint64_t traceNumber;
++ uint64_t diagnosticScheduledUs,diagnosticCallbackUs;
+  uint32_t createCpu,createTid,commitCpu,commitTid;
+  BOOL earlyEligible;   // made by the render server's thread: its completed handlers may run at submission (see fireEarly)
+  std::vector<WatchedSource> watched;
+@@ -3412,6 +3440,7 @@ static char kUserDictionaryKey;
+ - (void)encodeWaitForEvent:(id<MTLEvent>)event value:(uint64_t)value {[self event:event value:value signal:false];}
+ // The runtime has submitted the work. Deliver scheduling without waiting for GPU completion.
+ - (void)didSchedule {
++ diagnosticScheduledUs=nowUs();
+  {
+   const uint64_t took=nowUs()-self.committedUs;
+   std::lock_guard<std::mutex> lock(gCommitLock);
+@@ -3484,10 +3513,16 @@ static char kUserDictionaryKey;
+  // The runtime reports Vulkan's DeviceLost as Metal's code 11 (see -error).
+  const bool lost=!self.failedLocally && nmb_command_buffer_metal_error_code(_handle)==11;
+  void (^run)(void)=^{
++  const uint64_t handlersBegan=nowUs();
+   frontStage(self->traceNumber,self.commitIndex,12);
+   DetailCommandScope commandScope(self->traceNumber);
+   for(MTLCommandBufferHandler block in completedHandlers){DetailSpan timing(3,(uintptr_t)(__bridge void *)block,blockInvoke(block),true);block((id<MTLCommandBuffer>)self);}
+   frontStage(self->traceNumber,self.commitIndex,13);
++  if(gpuTraceOn() && gFrameTransport) {
++   nblonglatency::command({self->traceNumber,self->createdUs,self.committedUs,self->diagnosticScheduledUs,self->diagnosticCallbackUs,
++    handlersBegan,nowUs(),self->createTid,self->commitTid,self->createCpu,self->commitCpu,
++    self->encodedWork.passes,self->encodedWork.draws},latencyText);
++  }
+   dispatch_group_leave(self->_handlers);
+   if(lost)endRenderServerAfterGpuLoss();
+  };
+@@ -3500,6 +3535,11 @@ static char kUserDictionaryKey;
+  self.committed=YES;
+  self.committedUs=nowUs();
+  commitCpu=threadCpuUs();commitTid=threadIdLow();
++ if(earlyEligible && encodedWork.passes && encodedWork.draws && gpuTraceOn() && gFrameTransport) {
++  static thread_local uint64_t previousRenderCommit;
++  nblonglatency::producerGap(traceNumber,commitTid,previousRenderCommit,createdUs,committedUs,latencyText);
++  previousRenderCommit=committedUs;
++ }
+  {
+   std::lock_guard<std::mutex> lock(gCommitLock);
+   // Assign once under the same lock as publication. A concurrent commit cannot reuse this index.
+@@ -3609,6 +3649,7 @@ static void scheduled(void *context) {[(__bridge NBCommandBuffer *)context didSc
+ static void completed(void *context) {
+  gCompleted++;
+  NBCommandBuffer *commandBuffer=(__bridge_transfer NBCommandBuffer *)context;
++ commandBuffer->diagnosticCallbackUs=nowUs();
+  if(iconMetalTrace() && !commandBuffer.failedLocally &&
+     (commandBuffer->encodedWork.draws || commandBuffer->encodedWork.dispatches)) {
+   static std::atomic<unsigned> sampled{0};
+@@ -3622,7 +3663,7 @@ static void completed(void *context) {
+   }
+  }
+  {
+-  const uint64_t took=nowUs()-commandBuffer.committedUs;
++  const uint64_t took=commandBuffer->diagnosticCallbackUs-commandBuffer.committedUs;
+   {
+    const bool frame=commandBuffer->encodedWork.pixels>=2000000;
+    histAdd(frame?gHistFrameGpu:gHistOtherGpu,took);
+@@ -5006,6 +5047,7 @@ extern "C" id native_bridge_metal_open(const char *loader,const char *cache,uint
+   nmb_gpu_diagnostic_hook(frameRuntime);
+  }
+  if(!gDevice){NBLOG(@"native-metal: device refused: %s",nmb_last_error());return nil;}
++ latencyIdentity();
+  if(clientWaitOn())traceStartWriter();
+  watchImportPressure();
+  logFlowCounts();
+diff --git a/NativeLongLatency.h b/NativeLongLatency.h
+new file mode 100644
+index 0000000..b4cd552
+--- /dev/null
++++ b/NativeLongLatency.h
+@@ -0,0 +1,64 @@
++/* SPDX-License-Identifier: MIT */
++// Slow command boundaries use the existing GPU problem channel. Times are the
++// current process's monotonic microseconds, not console print timestamps.
++#pragma once
++#include <atomic>
++#include <cstdint>
++#include <cstdio>
++
++namespace nblonglatency {
++constexpr uint64_t commandThresholdUs=100000;
++constexpr uint64_t apiThresholdUs=16000;
++
++template<class Emit> inline void producerGap(uint64_t id,uint32_t thread,
++ uint64_t previousCommit,uint64_t created,uint64_t committed,Emit emit) {
++ if(!previousCommit || previousCommit>created || created>committed ||
++    created-previousCommit<commandThresholdUs)return;
++ static std::atomic<unsigned> notes{0};
++ if(notes.fetch_add(1,std::memory_order_relaxed)>=4096)return;
++ char text[89];
++ snprintf(text,sizeof text,"lg0 i=%llu t=%u b=%llu c=%llu",(unsigned long long)id,thread,
++  (unsigned long long)previousCommit,(unsigned long long)created);emit(text);
++ snprintf(text,sizeof text,"lg1 i=%llu m=%llu",(unsigned long long)id,
++  (unsigned long long)committed);emit(text);
++}
++
++struct Command {
++ uint64_t id,created,committed,scheduled,callback,handlersBegan,handlersEnded;
++ uint32_t creator,committer,creatorCpu,commitCpu,passes,draws;
++};
++
++template<class Emit> inline void command(const Command &row,Emit emit) {
++ if(!row.created || row.created>row.committed || row.committed>row.callback ||
++    row.callback>row.handlersBegan || row.handlersBegan>row.handlersEnded ||
++    (row.scheduled && (row.scheduled<row.committed || row.scheduled>row.callback)) ||
++    row.handlersEnded-row.created<commandThresholdUs)return;
++ static std::atomic<unsigned> notes{0};
++ if(notes.fetch_add(1,std::memory_order_relaxed)>=4096)return;
++ char text[89];
++ snprintf(text,sizeof text,"lf0 i=%llu t=%u c=%u u=%llu",
++  (unsigned long long)row.id,row.creator,row.committer,(unsigned long long)row.created);emit(text);
++ snprintf(text,sizeof text,"lf1 i=%llu m=%llu s=%llu",
++  (unsigned long long)row.id,(unsigned long long)row.committed,(unsigned long long)row.scheduled);emit(text);
++ snprintf(text,sizeof text,"lf2 i=%llu g=%llu a=%llu",
++  (unsigned long long)row.id,(unsigned long long)row.callback,(unsigned long long)row.handlersBegan);emit(text);
++ snprintf(text,sizeof text,"lf3 i=%llu z=%llu p=%u d=%u",
++  (unsigned long long)row.id,(unsigned long long)row.handlersEnded,row.passes,row.draws);emit(text);
++ snprintf(text,sizeof text,"lf4 i=%llu x=%u y=%u",
++  (unsigned long long)row.id,row.creatorCpu,row.commitCpu);emit(text);
++}
++
++template<class Emit> inline void api(uint64_t id,uint32_t thread,uint64_t began,
++ uint64_t ended,uint64_t function,uint64_t cpu,bool cpuValid,Emit emit) {
++ if(!began || ended<began || ended-began<apiThresholdUs)return;
++ static std::atomic<unsigned> notes{0};
++ if(notes.fetch_add(1,std::memory_order_relaxed)>=4096)return;
++ char text[89];
++ snprintf(text,sizeof text,"ls0 i=%llu t=%u b=%llu e=%llu",(unsigned long long)id,thread,
++  (unsigned long long)began,(unsigned long long)ended);emit(text);
++ snprintf(text,sizeof text,"ls1 i=%llu f=%llx q=%llu v=%u",(unsigned long long)id,
++  (unsigned long long)function,(unsigned long long)cpu,unsigned(cpuValid));emit(text);
++ snprintf(text,sizeof text,"ls2 i=%llu n=%.54s",(unsigned long long)id,
++  function?reinterpret_cast<const char *>(uintptr_t(function)):"?");emit(text);
++}
++}
+diff --git a/README.md b/README.md
+index 609c41f..7300fa8 100644
+--- a/README.md
++++ b/README.md
+@@ -48,6 +48,18 @@ results.
+ 
+ Unused owned image backing can serve later pooled or dedicated images. Image spares expire after ten seconds and are reclaimed on allocation failure or memory pressure; they have no byte limit. Unused buffer reservations share a separate 64 MiB device budget across memory types. The room worker rechecks demand and reuses a spare of the same pool and memory type before allocating. If foreground completions restore room during allocation, the new owned buffer stays spare with its address object intact. Owned blocks are freed on the runtime's existing free thread; a full 64-item queue releases on the caller. Allocation failure reclaims spares and waits for posted frees before retrying. Imported memory and owner callbacks retain their release ordering.
+ 
++Pooled allocations can reuse a larger spare when the current request would create a smaller
++block. The remainder stays available in the pool. Dedicated allocations retain their original
++fit rule and new buffer contents are still cleared.
++
++With the existing GPU diagnostic switch enabled, commands taking at least 100 ms from creation
++through application completion handlers and synchronous Metal API calls taking at least 16 ms
++also record their original time boundaries in the existing USB problem channel. Gaps of at
++least 100 ms between a rendering thread's previous commit and its next command creation are
++recorded separately; they may include idle time. Boot UUID, timebase and actual OS memory size
++identify the records. These timings distinguish pre-submit work and notification delay from
++GPU execution and do not measure panel FPS.
++
+ The runtime keeps command counts in each open encoder and reuses unchanged resource-residency facts. Merge scratch can be lent to later encoders of the same command buffer, with its original barriers and leases. A shadow may remain current across command buffers only for tracked private memory owned by the runtime; heaps and external memory retain their required copies. `sheng-metal-flow=1` separately enables lowering, direct commit submission and pipeline warming for experiments; it defaults to off, and pipeline waits remain exact.
+ 
+ ## Heap texture copies
+diff --git a/bridge/patches/0045-timely-handlers-and-pooled-refill-reuse.patch b/bridge/patches/0045-timely-handlers-and-pooled-refill-reuse.patch
+new file mode 100644
+index 0000000..25c9599
+--- /dev/null
++++ b/bridge/patches/0045-timely-handlers-and-pooled-refill-reuse.patch
+@@ -0,0 +1,1669 @@
++diff --git a/crates/metal2vulkan-runtime/README.md b/crates/metal2vulkan-runtime/README.md
++index 37ab48ba6..d24245550 100644
++--- a/crates/metal2vulkan-runtime/README.md
+++++ b/crates/metal2vulkan-runtime/README.md
++@@ -392,6 +392,9 @@ Calls Metal does not have, for a consumer that emulates a Metal device:
++   the conformance case `event-wait-behind-a-running-signal`).
++ - `CommandBuffer::add_submission_handler` is called when the runtime takes the command buffer's
++   last batch for its queue (submits it, or holds it for one kernel submission with later ones);
+++  a scheduler pass hands the handlers to the existing handler pool before taking later batches,
+++  in submission order. An early completion keeps its queue place behind a gate while those
+++  handlers run, holding no pool thread. A switch of texture storage forms is settled first.
++   `add_executed_commands_handler` each time an execution's indirect records are read.
++ - `CommandBuffer::add_completion_seen_handler` is called once the command buffer completed, its
++   status, error and GPU times final, on the runtime's thread that saw it complete (its queue's
++@@ -414,8 +417,10 @@ Calls Metal does not have, for a consumer that emulates a Metal device:
++   later commits that wait behind it, as on the scheduler's thread), their submission checks run
++   inside the call just before each submission (unless one waits for a shared event's GPU signal
++   to land, which the scheduler's thread waits for; a plain event's wait goes to the `VkQueue`, as
++-  Metal submits an `MTLEvent` wait at once) and their submission handlers after it, in submission
++-  order with every other command buffer's. What it leaves goes
+++  Metal submits an `MTLEvent` wait at once) and its own submission handlers after it, in submission
+++  order with every other command buffer's. Other buffers' handlers go to the pool while the pass
+++  continues. The pass ends after its own last batch where it has handlers, so they run before
+++  later batches are submitted. What it leaves goes
++   to the scheduler's thread. One wake and one thread hop fewer per command buffer than `commit`,
++   whose submission is the scheduler thread's, as Metal's is its own thread's
++   (`WorkCounts::scheduler_passes_at_commit`, `batches_submitted_at_commit`,
++@@ -719,3 +724,8 @@ Unused runtime-owned buffer backing now joins the existing spare cache. Foregrou
++ Pipeline object maps collect only objects whose last holder was released since
++ the preceding collection. Live modules, samplers, layouts and linked pipeline
++ parts retain their original ownership and destruction order.
+++
+++A pooled placement takes the smallest spare block large enough for its new backing, even when
+++the spare is larger than the current demand-sized block. The remaining bytes stay in the pool
+++for other placements; new resource contents are still cleared. Dedicated placements retain
+++their fit rule, and buffer spares retain the 64 MiB cap and existing age and pressure handling.
++diff --git a/crates/metal2vulkan-runtime/src/command_buffer/completion.rs b/crates/metal2vulkan-runtime/src/command_buffer/completion.rs
++index b402dbbf5..0064a6ade 100644
++--- a/crates/metal2vulkan-runtime/src/command_buffer/completion.rs
+++++ b/crates/metal2vulkan-runtime/src/command_buffer/completion.rs
++@@ -1197,6 +1197,8 @@ fn poll(device: &Device, queue: usize, front: Front) -> Result<u64, CommandBuffe
++             reaches(value)
++         },
++     )?;
+++    #[cfg(all(test, any(m2v_gpu, m2v_cpu_icd)))]
+++    trace::at(trace::Point::Publish);
++     slot.completed(value);
++     // Freed memory that waits for the batches in flight goes once they completed, on a handler
++     // thread (`freed_memory.rs`).
++@@ -1250,6 +1252,7 @@ fn failure(device: &Device, error: vk::Result) -> CommandBufferError {
++ /// (`tests::completion_latency`).
++ #[cfg(all(test, any(m2v_gpu, m2v_cpu_icd)))]
++ pub(crate) mod trace {
+++    use super::super::{CommandBuffer, CommandBufferShared};
++     use std::sync::atomic::{AtomicBool, Ordering};
++     use std::sync::Mutex;
++ 
++@@ -1274,11 +1277,111 @@ pub(crate) mod trace {
++         /// A commit's way to its submission reached step `what`: posted to the scheduler, its
++         /// thread woken, taken in by a pass, the driver's submission called and returned.
++         Submitting { what: &'static str, at: u64 },
+++        /// A batch was submitted or held in the group, followed by a test's pause.
+++        BatchReturn {
+++            buffer: usize,
+++            at: u64,
+++            pause_ended: u64,
+++        },
++     }
++ 
++     static ON: AtomicBool = AtomicBool::new(false);
++     static STEPS: Mutex<Vec<Traced>> = Mutex::new(Vec::new());
++ 
+++    /// A boundary held only in device-test builds to force a scheduling interleaving.
+++    #[derive(Clone, Copy, Debug)]
+++    pub(crate) enum Point {
+++        Publish,
+++        FirstWork,
+++        AfterPass,
+++        AtCommitPass,
+++    }
+++
+++    static POINTS: Mutex<[(bool, bool); 4]> = Mutex::new([(false, false); 4]);
+++    static POINTS_CHANGED: std::sync::Condvar = std::sync::Condvar::new();
+++
+++    pub(crate) fn hold_at(point: Point) {
+++        POINTS.lock().unwrap()[point as usize] = (true, false);
+++    }
+++
+++    pub(crate) fn release(point: Point) {
+++        POINTS.lock().unwrap()[point as usize].0 = false;
+++        POINTS_CHANGED.notify_all();
+++    }
+++
+++    pub(crate) fn reached(point: Point, timeout: std::time::Duration) -> bool {
+++        let points = POINTS.lock().unwrap();
+++        let (points, _) = POINTS_CHANGED
+++            .wait_timeout_while(points, timeout, |points| !points[point as usize].1)
+++            .unwrap();
+++        points[point as usize].1
+++    }
+++
+++    pub(crate) fn at(point: Point) {
+++        let mut points = POINTS.lock().unwrap();
+++        if !points[point as usize].0 {
+++            return;
+++        }
+++        points[point as usize].1 = true;
+++        POINTS_CHANGED.notify_all();
+++        drop(POINTS_CHANGED.wait_while(points, |points| points[point as usize].0));
+++    }
+++
+++    static AFTER_SUBMIT: Mutex<Option<std::time::Duration>> = Mutex::new(None);
+++    static AFTER_PASS_OF: Mutex<Option<usize>> = Mutex::new(None);
+++
+++    pub(crate) fn buffer_id(buffer: &CommandBuffer) -> usize {
+++        std::sync::Arc::as_ptr(&buffer.0).addr()
+++    }
+++
+++    thread_local! {
+++        static HELD_PASS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+++    }
+++
+++    pub(crate) fn pause_after_submit(pause: Option<std::time::Duration>) {
+++        *AFTER_SUBMIT.lock().unwrap() = pause;
+++    }
+++
+++    pub(crate) fn batch_returned(buffer: &std::sync::Arc<CommandBufferShared>) {
+++        let at = crate::gpu_time::host_nanos();
+++        let pause = *AFTER_SUBMIT.lock().unwrap();
+++        if let Some(pause) = pause {
+++            std::thread::sleep(pause);
+++        }
+++        record(|| Traced::BatchReturn {
+++            buffer: std::sync::Arc::as_ptr(buffer).addr(),
+++            at,
+++            pause_ended: crate::gpu_time::host_nanos(),
+++        });
+++    }
+++
+++    pub(crate) fn hold_after_submit(buffer: Option<&CommandBuffer>) {
+++        *AFTER_PASS_OF.lock().unwrap() =
+++            buffer.map(|buffer| std::sync::Arc::as_ptr(&buffer.0).addr());
+++    }
+++
+++    pub(crate) fn batch_taken(buffer: &std::sync::Arc<CommandBufferShared>) {
+++        if *AFTER_PASS_OF.lock().unwrap() == Some(std::sync::Arc::as_ptr(buffer).addr()) {
+++            HELD_PASS.set(true);
+++        }
+++    }
+++
+++    /// Called after the scheduler's pass counted out and released its lock.
+++    pub(crate) fn after_pass() {
+++        if HELD_PASS.replace(false) {
+++            at(Point::AfterPass);
+++        }
+++    }
+++
+++    pub(crate) fn finished_count() -> usize {
+++        STEPS
+++            .lock()
+++            .unwrap()
+++            .iter()
+++            .filter(|step| matches!(step, Traced::Finished { .. }))
+++            .count()
+++    }
+++
++     /// Keep the steps from now on.
++     pub(crate) fn start() {
++         STEPS.lock().unwrap().clear();
++diff --git a/crates/metal2vulkan-runtime/src/command_buffer/mod.rs b/crates/metal2vulkan-runtime/src/command_buffer/mod.rs
++index 4eb91605d..e156fcc9c 100644
++--- a/crates/metal2vulkan-runtime/src/command_buffer/mod.rs
+++++ b/crates/metal2vulkan-runtime/src/command_buffer/mod.rs
++@@ -65,7 +65,7 @@ pub(super) use submit::{BatchLists, Submitting};
++ 
++ use super::apple_only::AppleOnly;
++ use super::compute::EncoderState;
++-use super::contexts::{self, Run};
+++use super::contexts::{self, Contexts, Run};
++ use super::deferred::{Deferred, Prepared, StepInputs};
++ use super::degradation::Degradation;
++ use super::descriptor_arena::DescriptorArena;
++@@ -740,6 +740,11 @@ pub(super) struct State {
++     /// switch of storage forms riding on it to end (`texture/storage_form.rs`): its transition to
++     /// `Scheduled` waits until it did.
++     submitting: bool,
+++    /// Scheduling remains owed while its submission handlers run.
+++    scheduled_owed: bool,
+++    scheduled_deferred: bool,
+++    /// Completion keeps its queue place behind a gate, holding no thread.
+++    finish_gate: Option<u64>,
++     /// Its scheduled handlers ran: `wait_until_scheduled` returns, as Metal's does only once
++     /// they ran.
++     scheduled_ran: bool,
++@@ -2119,6 +2124,9 @@ impl CommandBuffer {
++                 scheduled: VecDeque::new(),
++                 submission: VecDeque::new(),
++                 submitting: false,
+++                scheduled_owed: false,
+++                scheduled_deferred: false,
+++                finish_gate: None,
++                 scheduled_ran: false,
++                 scheduled_work: ScheduledWork::default(),
++                 parked: 0,
++@@ -2553,11 +2561,11 @@ impl CommandBuffer {
++     /// 9, `hang.rs`) runs them as it becomes `Scheduled` before its last batch, which the hang
++     /// holds: once the batch before the hang is taken and Metal's time to read `Scheduled` came.
++     ///
++-    /// - **The thread.** The device's scheduler thread: `commit` returns at once, as Metal's does,
++-    ///   and submits nothing itself. Or the thread that committed it with
++-    ///   [`commit_and_submit`](Self::commit_and_submit), inside that call, where that thread
++-    ///   submitted its last batch; or that of a later such call that submitted it. Whichever it
++-    ///   is, the handlers of every command buffer run in submission order. It runs with no lock
+++    /// - **The thread.** The device's handler pool receives each scheduler pass's handlers as
+++    ///   the pass goes on. A thread in [`commit_and_submit`](Self::commit_and_submit) keeps only
+++    ///   its own command buffer's handlers and runs them inside the call after its last batch;
+++    ///   other buffers' handlers go to the same pool. The handlers of every command buffer run
+++    ///   in submission order. It runs with no lock
++     ///   of the runtime's held, after the submission's call returned. A thread about to block for a command buffer's completion
++     ///   submits what still waits in the scheduler's inbox itself, but never a batch of a command
++     ///   buffer with a handler of any kind, which stays the scheduler thread's to submit: no
++@@ -2573,9 +2581,8 @@ impl CommandBuffer {
++     ///   was held ran them, and fails from `Scheduled` where the group's submission fails. A
++     ///   command buffer committed as failed ([`commit_failed`](Self::commit_failed)) submits its
++     ///   batches and runs them.
++-    /// - **Keep it short.** It holds back its command buffer's scheduling and the device's other
++-    ///   submissions, among them those of a commit made meanwhile, which the thread takes in only
++-    ///   after its handlers (`scheduler/inbox.rs`). A wait in it
+++    /// - **Keep it short.** It holds back its command buffer's scheduling and later submission
+++    ///   handlers. Scheduler passes may continue while the handler runs. A wait in it
++     ///   for a command buffer, or for a slot of a full queue, that has not happened yet is refused
++     ///   (`WaitWouldDeadlock` of [`DeadlockCause::SubmissionHandler`]); it must not wait for GPU
++     ///   work otherwise.
++@@ -2899,7 +2906,7 @@ impl CommandBuffer {
++             return self.commit();
++         }
++         self.commit_as("commit_and_submit", None, Hand::Pass)?;
++-        device.shared().scheduler.submit_at_commit(device);
+++        device.shared().scheduler.submit_at_commit(device, &self.0);
++         Ok(())
++     }
++ 
++@@ -3020,7 +3027,7 @@ impl CommandBuffer {
++             );
++         }
++         if hand == Hand::Pass {
++-            shared.scheduler.submit_at_commit(&self.0.device);
+++            shared.scheduler.submit_at_commit(&self.0.device, &self.0);
++         }
++     }
++ 
++@@ -4814,20 +4821,14 @@ impl CommandBufferShared {
++     fn run_scheduled(self: &Arc<Self>) {
++         {
++             let mut state = lock(&self.state);
++-            while state.submitting {
++-                // The submitting thread runs no more once the process is exiting: what is
++-                // held stays held.
++-                if exit_guard::closed() {
++-                    return;
++-                }
++-                state.parked += 1;
++-                state = self
++-                    .changed
++-                    .wait_timeout(state, exit_guard::WAKE)
++-                    .unwrap_or_else(std::sync::PoisonError::into_inner)
++-                    .0;
++-                state.parked -= 1;
+++            if !state.scheduled_owed {
+++                return;
++             }
+++            state.scheduled_owed = false;
+++            debug_assert!(
+++                !state.submitting,
+++                "a transition to `Scheduled` ran before its submission handlers"
+++            );
++             if !state.scheduled_signals.is_empty() {
++                 // Set without the command buffer's lock: a set wakes the scheduler, whose lock
++                 // comes first.
++@@ -4892,12 +4893,27 @@ impl CommandBufferShared {
++             }
++         }
++         drop(buffer);
++-        let parked = {
+++        let (parked, deferred, gate) = {
++             let mut state = lock(&self.state);
++             state.submitting = false;
++-            state.parked > 0
+++            // Its transition to `Completed` or `Error` that came first, waiting behind a gate in
+++            // its queue's context, goes now and runs the step to `Scheduled` first; else its
+++            // transition to `Scheduled`, held back for them, goes now.
+++            let gate = state.finish_gate.take();
+++            let deferred = state.scheduled_deferred && state.scheduled_owed && gate.is_none();
+++            state.scheduled_deferred = false;
+++            (
+++                state.parked > 0,
+++                deferred.then(|| plain_transition(&state)),
+++                gate,
+++            )
++         };
++         self.wake_parked(parked);
+++        if let Some(gate) = gate {
+++            (self.device.shared().contexts).open(self.queue.id(), gate);
+++        } else if let Some(plain) = deferred {
+++            self.scheduled_now(plain);
+++        }
++     }
++ 
++     /// A batch could not be submitted (the scheduler dropped the rest): the command buffer
++@@ -4979,7 +4995,19 @@ impl CommandBufferShared {
++     /// holds of the command buffer outlive the transition's, so it never lets go of the last one
++     /// here. Counted: `WorkCounts::scheduled_where_submitted`.
++     pub(crate) fn schedule(self: &Arc<Self>) {
++-        let plain = plain_transition(&lock(&self.state));
+++        let plain = {
+++            let mut state = lock(&self.state);
+++            state.scheduled_owed = true;
+++            if state.submitting {
+++                state.scheduled_deferred = true;
+++                return;
+++            }
+++            plain_transition(&state)
+++        };
+++        self.scheduled_now(plain);
+++    }
+++
+++    fn scheduled_now(self: &Arc<Self>, plain: bool) {
++         let shared = self.device.shared();
++         let item = Item::Transition(Transition {
++             buffer: self.hold(),
++@@ -4993,6 +5021,25 @@ impl CommandBufferShared {
++         }
++     }
++ 
+++    fn finish_after_handlers(&self, contexts: &Contexts<Item>, gate: u64) {
+++        let mut state = lock(&self.state);
+++        if state.submitting && state.scheduled_owed && contexts.close(gate) {
+++            state.finish_gate = Some(gate);
+++        }
+++    }
+++
+++    fn gate_for_handlers(&self, contexts: &Contexts<Item>) -> Option<u64> {
+++        let mut state = lock(&self.state);
+++        if !(state.submitting && state.scheduled_owed) {
+++            return None;
+++        }
+++        let gate = contexts.gate();
+++        if contexts.close(gate) {
+++            state.finish_gate = Some(gate);
+++        }
+++        Some(gate)
+++    }
+++
++     /// Whether a thread about to block for the command buffer's completion may submit a batch of
++     /// it itself (`scheduler::plain_ready`): nothing of the program's runs where it is submitted
++     /// and published. Its transition to `Scheduled` is [`plain`](plain_transition), it has no
++@@ -5014,6 +5061,19 @@ impl CommandBufferShared {
++         lock(&self.state).storage_form.is_none()
++     }
++ 
+++    fn post_finished_transition(
+++        contexts: &Contexts<Item>,
+++        buffer: Hold<CommandBufferShared>,
+++        result: Result<(), CommandBufferError>,
+++    ) {
+++        let (gate, queue) = (buffer.gate_for_handlers(contexts), buffer.queue.id());
+++        let item = Item::Transition(Transition::finished(buffer, result));
+++        match gate {
+++            Some(gate) => contexts.post_gated(queue, item, gate),
+++            None => contexts.post(queue, item),
+++        }
+++    }
+++
++     /// The last batch of the command buffer `buffer` holds finished with `result` (or a batch
++     /// failed before): post its transition to `Completed` or `Error` to its queue's context. The
++     /// hold moves into the transition, and the caller keeps no other reference: once the
++@@ -5022,12 +5082,9 @@ impl CommandBufferShared {
++         buffer: Hold<CommandBufferShared>,
++         result: Result<(), CommandBufferError>,
++     ) {
++-        let (contexts, queue) = (buffer.device.shared().contexts.clone(), buffer.queue.id());
+++        let contexts = buffer.device.shared().contexts.clone();
++         let own = (lock(&buffer.state).release.as_ref()).map(|release| Arc::clone(&release.follow));
++-        contexts.post(
++-            queue,
++-            Item::Transition(Transition::finished(buffer, result)),
++-        );
+++        CommandBufferShared::post_finished_transition(&contexts, buffer, result);
++         if let Some(own) = own {
++             own.posted();
++         }
++@@ -5082,6 +5139,7 @@ impl CommandBufferShared {
++             if behind {
++                 (buffer.device.shared().counts).command_buffer_completed_after_another_queue();
++             }
+++            buffer.finish_after_handlers(&contexts, gate);
++             let item = Item::Transition(Transition::finished(buffer, result));
++             contexts.post_behind(queue, item, gate);
++             posted();
++@@ -5095,7 +5153,16 @@ impl CommandBufferShared {
++         // (`Transition::seen_first`): the handlers that may block run on the handler thread, and
++         // those that answer the completion where it is seen run where it is.
++         let serving = exit_guard::serving_completion();
++-        let item = match serving && own.is_none() && seen_first(&lock(&buffer.state)) {
+++        let (first, owed) = {
+++            let state = lock(&buffer.state);
+++            (seen_first(&state), state.scheduled_owed)
+++        };
+++        if owed {
+++            CommandBufferShared::post_finished_transition(&contexts, buffer, result);
+++            posted();
+++            return;
+++        }
+++        let item = match serving && own.is_none() && first {
++             true => Item::Transition(Transition::seen_first(buffer, result)),
++             false => Item::Transition(Transition::finished(buffer, result)),
++         };
++@@ -5548,6 +5615,7 @@ impl Transition {
++                 if !on_handler_thread {
++                     buffer.device.shared().counts.completed_where_seen();
++                 }
+++                buffer.run_scheduled();
++                 buffer.complete(result);
++             }
++             To::Seen(result) => {
++@@ -5614,6 +5682,8 @@ pub(crate) enum Item {
++     /// its own (`Device::let_go_elsewhere`): it holds no command buffer, so nothing waits for it
++     /// and it waits for nothing.
++     Release(Box<dyn Send>),
+++    /// A submission segment from the scheduler, in one ordered handler context.
+++    Submissions(crate::scheduler::Posted),
++ }
++ 
++ impl Item {
++@@ -5646,7 +5716,7 @@ impl Item {
++                 let at = Arc::as_ptr(&transition.buffer) as usize;
++                 matches!(transition.to, To::Finished(_)) && at == buffer
++             }
++-            Item::Release(_) => false,
+++            Item::Release(_) | Item::Submissions(_) => false,
++         }
++     }
++ }
++@@ -5657,6 +5727,10 @@ impl Run for Item {
++     fn run(self) -> Kept {
++         match self {
++             Item::Transition(transition) => transition.run(),
+++            Item::Submissions(posted) => {
+++                posted.run();
+++                Kept::default()
+++            }
++             Item::Release(held) => {
++                 drop(held);
++                 Kept::default()
++@@ -5667,14 +5741,14 @@ impl Run for Item {
++     fn plain(&self) -> bool {
++         match self {
++             Item::Transition(transition) => transition.plain,
++-            Item::Release(_) => false,
+++            Item::Release(_) | Item::Submissions(_) => false,
++         }
++     }
++ 
++     fn runs_where_seen(&self) -> bool {
++         match self {
++             Item::Transition(transition) => transition.where_seen,
++-            Item::Release(_) => false,
+++            Item::Release(_) | Item::Submissions(_) => false,
++         }
++     }
++ }
++diff --git a/crates/metal2vulkan-runtime/src/command_buffer/submit.rs b/crates/metal2vulkan-runtime/src/command_buffer/submit.rs
++index b7af1b5a0..3766ad18e 100644
++--- a/crates/metal2vulkan-runtime/src/command_buffer/submit.rs
+++++ b/crates/metal2vulkan-runtime/src/command_buffer/submit.rs
++@@ -432,6 +432,14 @@ impl CommandBufferShared {
++             Err(_) => 4,
++         };
++         crate::stage_trace::mark(id, crate::stage_trace::Stage::SubmitEnd, outcome);
+++        #[cfg(all(test, any(m2v_gpu, m2v_cpu_icd)))]
+++        if matches!(
+++            &submitted,
+++            Ok(Submitting::Submitted(_) | Submitting::Grouped)
+++        ) {
+++            super::completion::trace::batch_taken(self);
+++            super::completion::trace::batch_returned(self);
+++        }
++         submitted
++     }
++ 
++@@ -482,6 +490,8 @@ impl CommandBufferShared {
++         // Its first submission resolves what its commands reach as Metal's does, before any of
++         // its batches goes to the `VkQueue` (`first_submission.rs`).
++         if !state.submitted {
+++            #[cfg(all(test, any(m2v_gpu, m2v_cpu_icd)))]
+++            super::completion::trace::at(super::completion::trace::Point::FirstWork);
++             let first = state
++                 .first_submission(device, self)
++                 .map_err(|error| recording_error(device, error))?;
++diff --git a/crates/metal2vulkan-runtime/src/contexts/mod.rs b/crates/metal2vulkan-runtime/src/contexts/mod.rs
++index f154b8b7d..d69ac140c 100644
++--- a/crates/metal2vulkan-runtime/src/contexts/mod.rs
+++++ b/crates/metal2vulkan-runtime/src/contexts/mod.rs
++@@ -71,6 +71,11 @@ use std::time::Duration;
++ /// (the module docs).
++ pub(crate) const THREADS: usize = 512;
++ 
+++/// A device test's cap on pools made from now on; zero keeps the device's normal cap.
+++#[cfg(all(test, any(m2v_gpu, m2v_cpu_icd)))]
+++pub(crate) static TEST_LIMIT: std::sync::atomic::AtomicUsize =
+++    std::sync::atomic::AtomicUsize::new(0);
+++
++ /// Each thread's stack, in bytes.
++ pub(crate) const STACK: usize = 512 * 1024;
++ 
++@@ -184,6 +189,11 @@ impl<I: Run> Contexts<I> {
++     /// A pool of at most `limit` threads (the device's: [`THREADS`]), with its first thread;
++     /// refused when the host cannot start it.
++     pub(crate) fn start(limit: usize) -> Result<Contexts<I>, Error> {
+++        #[cfg(all(test, any(m2v_gpu, m2v_cpu_icd)))]
+++        let limit = match TEST_LIMIT.load(Ordering::Relaxed) {
+++            0 => limit,
+++            cap => cap,
+++        };
++         let shared = Arc::new(Shared {
++             state: Mutex::new(State {
++                 lines: Lines::default(),
++@@ -267,6 +277,15 @@ impl<I: Run> Contexts<I> {
++         self.serve(state);
++     }
++ 
+++    /// Append the item behind its gate and open the caller's closing under one lock.
+++    /// Other closings keep the item in place without occupying a handler thread.
+++    pub(crate) fn post_gated(&self, queue: u64, item: I, token: u64) {
+++        let mut state = lock(&self.shared.state);
+++        state.lines.push_behind(queue, item, token);
+++        state.lines.open(queue, token);
+++        self.serve(state);
+++    }
+++
++     /// Close the gate `token` once more, where it is not open yet: whether it was not.
++     pub(crate) fn close(&self, token: u64) -> bool {
++         lock(&self.shared.state).lines.close(token)
++diff --git a/crates/metal2vulkan-runtime/src/memory.rs b/crates/metal2vulkan-runtime/src/memory.rs
++index ee22d265d..45db49699 100644
++--- a/crates/metal2vulkan-runtime/src/memory.rs
+++++ b/crates/metal2vulkan-runtime/src/memory.rs
++@@ -1883,6 +1883,18 @@ impl Memory {
++         Some(self.spare.swap_remove(index).block)
++     }
++ 
+++    /// A pooled placement can use a larger spare in full: its remaining bytes return to the
+++    /// pool's free ranges. A dedicated placement keeps the existing fit limit instead.
+++    fn take_spare_for_pooled(
+++        &mut self,
+++        device: &ash::Device,
+++        pool: (Holds, u32),
+++        size: u64,
+++    ) -> Option<Block> {
+++        self.age_spare(device, Instant::now());
+++        self.take_spare_for_room(pool, size)
+++    }
+++
++     /// The smallest spare block of `pool` of at least `size` bytes, taken out to give the pool
++     /// room ([`keep_room`]): a spare is memory already made, where a new block is a fresh
++     /// allocation that may wait for the system to free pages.
++@@ -2664,9 +2676,11 @@ fn place(
++         // retain their original release and allocation paths.
++         if fit == Fit::Pooled {
++             let mut memory = lock(memory);
++-            if let Some(block) =
++-                memory.take_spare(device, pool, if dedicated { size } else { block_size })
++-            {
+++            let spare = match dedicated {
+++                true => memory.take_spare(device, pool, size),
+++                false => memory.take_spare_for_pooled(device, pool, block_size),
+++            };
+++            if let Some(block) = spare {
++                 let bytes = block.size;
++                 memory.say_block("took spare owned backing", &block);
++                 let index = memory
++@@ -3534,6 +3548,220 @@ mod latency_tests {
++         assert_eq!(FREED.load(Ordering::Relaxed), 3);
++     }
++ 
+++    #[test]
+++    fn a_smaller_foreground_placement_uses_the_larger_refill_and_its_remaining_room() {
+++        let _serial = lock(&SERIAL);
+++        ALLOCATED.store(0, Ordering::Relaxed);
+++        FREED.store(0, Ordering::Relaxed);
+++        let driver = driver();
+++        let mut state = allocator();
+++        state.demand_sized_foreground = true;
+++        state.keep_spare(
+++            &driver,
+++            (Holds::Buffers, 0),
+++            block(19, BLOCK_BYTES),
+++            Instant::now(),
+++        );
+++        let memory = Mutex::new(state);
+++        let request = vk::MemoryRequirements {
+++            size: 24 << 20,
+++            alignment: 4096,
+++            memory_type_bits: 1,
+++        };
+++        let first = allocate(&memory, &driver, &request, MemoryClass::Private).unwrap();
+++        let second = allocate(&memory, &driver, &request, MemoryClass::Private).unwrap();
+++        assert_eq!(first.memory, vk::DeviceMemory::from_raw(19));
+++        assert_eq!(
+++            second.memory, first.memory,
+++            "the remaining bytes of the spare stay usable"
+++        );
+++        assert_eq!((first.offset, second.offset), (0, request.size));
+++        assert_eq!(
+++            ALLOCATED.load(Ordering::Relaxed),
+++            0,
+++            "no new native page preparation"
+++        );
+++        let mut state = lock(&memory);
+++        assert_eq!(
+++            state.pool(Holds::Buffers, 0).room(),
+++            BLOCK_BYTES - 2 * request.size
+++        );
+++        drop(state.release_range(
+++            &driver,
+++            (Holds::Buffers, 0),
+++            first.block.unwrap(),
+++            first.offset,
+++            first.size,
+++            None,
+++        ));
+++        drop(state.release_range(
+++            &driver,
+++            (Holds::Buffers, 0),
+++            second.block.unwrap(),
+++            second.offset,
+++            second.size,
+++            None,
+++        ));
+++        drop(state.destroy(&driver));
+++        assert_eq!(FREED.load(Ordering::Relaxed), 1);
+++    }
+++
+++    #[cfg(any(m2v_gpu, m2v_cpu_icd))]
+++    #[test]
+++    fn pooled_refill_reuse_zeroes_new_contents_and_keeps_adjacent_live_bytes() {
+++        use crate::{Device, DeviceKind, DeviceOptions, ResourceOptions, ShaderCacheOptions};
+++        let cache = std::env::temp_dir().join(format!("m2v-pooled-refill-{}", std::process::id()));
+++        std::fs::create_dir_all(&cache).unwrap();
+++        let device = Device::system_default_with(&DeviceOptions {
+++            kinds: if cfg!(m2v_cpu_icd) {
+++                vec![DeviceKind::Cpu]
+++            } else {
+++                vec![
+++                    DeviceKind::Discrete,
+++                    DeviceKind::Integrated,
+++                    DeviceKind::Virtual,
+++                ]
+++            },
+++            shader_cache: ShaderCacheOptions::in_directory(&cache),
+++            ..DeviceOptions::default()
+++        })
+++        .unwrap();
+++        let shared = device.shared();
+++        let raw = shared.vk();
+++        let ty = lock(&shared.memory)
+++            .types
+++            .iter()
+++            .position(|ty| {
+++                ty.property_flags.contains(
+++                    vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+++                )
+++            })
+++            .expect("a coherent host-visible type on the validation device")
+++            as u32;
+++        let block = lock(&shared.memory)
+++            .maker()
+++            .make(raw, ty, BLOCK_BYTES, None)
+++            .unwrap();
+++        let memory_handle = block.memory;
+++        // SAFETY: the entire owned allocation is mapped and no GPU work uses it.
+++        unsafe {
+++            std::slice::from_raw_parts_mut(block.mapped.unwrap().as_ptr(), BLOCK_BYTES as usize)
+++        }
+++        .fill(0xa7);
+++        {
+++            let mut memory = lock(&shared.memory);
+++            memory.demand_sized_foreground = true;
+++            memory.add_block((Holds::Buffers, ty), block, BLOCK_BYTES, false, 0);
+++            let old = memory.pool(Holds::Buffers, ty).take_kept();
+++            assert_eq!(old.len(), 1);
+++            memory.keep_spare(
+++                raw,
+++                (Holds::Buffers, ty),
+++                old.into_iter().next().unwrap(),
+++                Instant::now(),
+++            );
+++        }
+++        let before = lock(&shared.memory).allocated;
+++        let bytes = 24 << 20;
+++        let mut owned = Vec::new();
+++        for _ in 0..2 {
+++            let info = vk::BufferCreateInfo::default()
+++                .size(bytes)
+++                .usage(vk::BufferUsageFlags::TRANSFER_SRC | vk::BufferUsageFlags::TRANSFER_DST);
+++            // SAFETY: the device is live and this valid buffer belongs only to the test.
+++            let buffer = unsafe { raw.create_buffer(&info, None) }.unwrap();
+++            // SAFETY: this buffer is live and unbound.
+++            let req = unsafe { raw.get_buffer_memory_requirements(buffer) };
+++            let req = vk::MemoryRequirements {
+++                memory_type_bits: 1 << ty,
+++                ..req
+++            };
+++            let placement = allocate(&shared.memory, raw, &req, MemoryClass::Shared).unwrap();
+++            assert_eq!(placement.memory, memory_handle);
+++            // SAFETY: the placement meets the buffer's requirements, with no overlapping binding.
+++            unsafe { raw.bind_buffer_memory(buffer, placement.memory, placement.offset) }.unwrap();
+++            owned.push((buffer, placement));
+++        }
+++        assert_eq!(
+++            lock(&shared.memory).allocated,
+++            before,
+++            "reuse made no new Vulkan allocation"
+++        );
+++        assert_eq!(owned[1].1.offset, owned[0].1.offset + owned[0].1.size);
+++        let first = owned[0].1.mapped.unwrap().as_ptr();
+++        let second = owned[1].1.mapped.unwrap().as_ptr();
+++        // SAFETY: each distinct live placement covers these mapped bytes; no GPU reader exists.
+++        unsafe {
+++            std::slice::from_raw_parts_mut(first, bytes as usize).fill(0);
+++            std::slice::from_raw_parts_mut(second, bytes as usize).fill(0);
+++            std::slice::from_raw_parts_mut(first, bytes as usize).fill(0x53);
+++            std::slice::from_raw_parts_mut(second, bytes as usize).fill(0xc9);
+++        }
+++        let copy = device
+++            .own_buffer(bytes * 2, ResourceOptions::shared())
+++            .unwrap();
+++        let (dst, dst_offset) = copy.at(0);
+++        device
+++            .submit_internal(|raw, command| {
+++                let before = vk::MemoryBarrier::default()
+++                    .src_access_mask(vk::AccessFlags::HOST_WRITE)
+++                    .dst_access_mask(vk::AccessFlags::TRANSFER_READ);
+++                let after = vk::MemoryBarrier::default()
+++                    .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
+++                    .dst_access_mask(vk::AccessFlags::HOST_READ);
+++                // SAFETY: all three buffers are live, the two source bindings are disjoint, and
+++                // submit_internal waits for the transfer and the host visibility barrier.
+++                unsafe {
+++                    raw.cmd_pipeline_barrier(
+++                        command,
+++                        vk::PipelineStageFlags::HOST,
+++                        vk::PipelineStageFlags::TRANSFER,
+++                        vk::DependencyFlags::empty(),
+++                        &[before],
+++                        &[],
+++                        &[],
+++                    );
+++                    for (index, (buffer, _)) in owned.iter().enumerate() {
+++                        raw.cmd_copy_buffer(
+++                            command,
+++                            *buffer,
+++                            dst,
+++                            &[vk::BufferCopy {
+++                                src_offset: 0,
+++                                dst_offset: dst_offset + index as u64 * bytes,
+++                                size: bytes,
+++                            }],
+++                        );
+++                    }
+++                    raw.cmd_pipeline_barrier(
+++                        command,
+++                        vk::PipelineStageFlags::TRANSFER,
+++                        vk::PipelineStageFlags::HOST,
+++                        vk::DependencyFlags::empty(),
+++                        &[after],
+++                        &[],
+++                        &[],
+++                    );
+++                }
+++            })
+++            .unwrap();
+++        // SAFETY: the copy's transfer and host barrier completed.
+++        let copied = unsafe {
+++            std::slice::from_raw_parts(copy.contents().unwrap().as_ptr(), (bytes * 2) as usize)
+++        };
+++        assert!(copied[..bytes as usize].iter().all(|&byte| byte == 0x53));
+++        assert!(copied[bytes as usize..].iter().all(|&byte| byte == 0xc9));
+++        drop(copy);
+++        for (buffer, placement) in owned {
+++            // SAFETY: the completed internal submission has no reader of this buffer.
+++            unsafe { raw.destroy_buffer(buffer, None) };
+++            lock(&shared.memory).free(raw, &placement);
+++        }
+++        device.release_kept_memory();
+++        drop(device);
+++        std::fs::remove_dir_all(cache).unwrap();
+++    }
+++
++     #[test]
++     fn buffer_reserve_budget_does_not_evict_images_and_pressure_releases_everything() {
++         let _serial = lock(&SERIAL);
++diff --git a/crates/metal2vulkan-runtime/src/scheduler/mod.rs b/crates/metal2vulkan-runtime/src/scheduler/mod.rs
++index 3e4936ce9..f829137d6 100644
++--- a/crates/metal2vulkan-runtime/src/scheduler/mod.rs
+++++ b/crates/metal2vulkan-runtime/src/scheduler/mod.rs
++@@ -23,8 +23,9 @@
++ //!   in what the inbox holds and submits, in commit order, the line heads that are ready and need
++ //!   nothing of this thread (no host step, no group, no switch of a storage form, no rebind's
++ //!   encoding) and wait behind no earlier commit, as this thread's own pass picks them
++-//!   ([`Order::next`], [`is_behind`]), up to [`PASS_SUBMISSIONS`]; their submission handlers then
++-//!   run on it, in their turn ([`Turns`]), and their transitions to `Scheduled` run on it where
+++//!   ([`Order::next`], [`is_behind`]), up to [`PASS_SUBMISSIONS`]; other buffers' submission
+++//!   handlers go to the handler pool, and its own run inside the call in their turn ([`Turns`]),
+++//!   before any later batch is submitted. Their transitions to `Scheduled` run on it where
++ //!   plain, else go to their queues' contexts. The first head in commit order ready but for its
++ //!   submission checks, every value it waits for reached on the device or by the host, and behind
++ //!   no earlier commit, has its checks run there too, without the lock, the head marked so this
++@@ -34,9 +35,8 @@
++ //!   goes to this thread, which it wakes, and a pass under way takes the commit in instead. One wake and one thread hop fewer per command
++ //!   buffer, its submission's cost on the committing thread.
++ //! - **Submission handlers run in submission order, whichever thread runs them** ([`Turns`]).
++-//!   Each pass that took batches with submission handlers takes a ticket under the lock, in the
++-//!   order the passes ran; the handlers of a ticket run once those of every earlier one ran, on
++-//!   the thread that made the pass, without the lock.
+++//!   Each segment handed off, or kept by the caller's pass, takes a ticket under the lock in
+++//!   submission order. Its handlers run after every earlier ticket, without that lock.
++ //! - **A thread about to block submits for itself** ([`Scheduler::submit_before_waiting`]).
++ //!   Metal encodes and commits inline on the program's thread, and a thread that commits and then
++ //!   waits for the completion would otherwise wait for a wake and a whole pass before its work
++@@ -76,11 +76,12 @@
++ //!   wait for, whose context holds nothing and runs on no thread, this thread runs itself as it
++ //!   publishes the batch (`CommandBufferShared::schedule`): it sets the status and wakes the
++ //!   command buffer's waiters, and no handler thread is woken for it.
++-//! - **Submission handlers** (a runtime extension). This thread runs a command buffer's
++-//!   submission handlers once it submitted its last batch, or held it in a group (below), in
++-//!   submission order among the command buffers its passes took so, once it let go of the lock
++-//!   and before it lets go of the command buffers, before its next pass, which they hold back.
++-//!   The command buffer's transition to `Scheduled` waits for them.
+++//! - **Submission handlers** (a runtime extension). Before looking for another batch, the pass
+++//!   hands the handlers taken so far to one context of the existing handler pool, with their
+++//!   next ticket. The handlers start in submission order while the scheduler continues. A pass
+++//!   that settled a storage-form switch keeps subsequent handlers until that switch ends.
+++//!   Scheduling remains owed until the handlers ran; an earlier completion waits behind a
+++//!   context gate with its queue place kept and no handler thread occupied.
++ //! - **Host steps**. A batch that executes commands the GPU may write
++ //!   (`CommandBufferShared::needs_host_step`) is held, once otherwise ready, until every
++ //!   `VkQueue` completed what was submitted to it by then (its gate, a snapshot of the queues'
++@@ -189,7 +190,7 @@ use super::command_buffer::gate::Hold;
++ use super::command_buffer::kept_barriers::KeptBarriers;
++ use super::command_buffer::BatchLists;
++ use super::command_buffer::CommandBufferShared;
++-use super::command_buffer::{Group, GroupEnd, Submitting, GROUP_BATCHES};
+++use super::command_buffer::{Group, GroupEnd, Item, Submitting, GROUP_BATCHES};
++ use super::device::functions::Functions;
++ use super::device::lock;
++ use super::device::submit_stalls::{IdleCounts, IdleStalls, IDLE_NANOS};
++@@ -429,7 +430,8 @@ struct SchedulerShared {
++     /// what the thread takes those stalls idle with (the module docs).
++     stalls: OnceLock<IdleStalls>,
++     /// The passes' turns to run their submission handlers (the module docs).
++-    turns: Turns,
+++    turns: Arc<Turns>,
+++    handler_context: OnceLock<u64>,
++     /// The host steps handed to the steps' threads (`steps.rs`).
++     steps: steps::Steps,
++ }
++@@ -495,6 +497,57 @@ impl Turns {
++     }
++ }
++ 
+++struct HandOff<'a> {
+++    turns: &'a Arc<Turns>,
+++    context: &'a OnceLock<u64>,
+++}
+++
+++impl HandOff<'_> {
+++    /// Hand the submission handlers `handlers` holds from `from` on to the device's handler
+++    /// threads, under the scheduler's lock, as one segment with the next ticket ([`Posted`]): they
+++    /// run there in their turn, in submission order, while the pass that took them goes on, each
+++    /// command buffer's transition to `Scheduled` after its own (`CommandBufferShared::schedule`).
+++    /// One context of those threads takes every segment, in the order posted, which is the
+++    /// tickets' (the module docs, **Submission handlers**). Nothing where none is new.
+++    fn post(&self, state: &mut State, handlers: &mut Handlers, from: usize) {
+++        if handlers.len() <= from {
+++            return;
+++        }
+++        let segment: Handlers = handlers.drain(from..).collect();
+++        let ticket = state.handler_ticket();
+++        let contexts = segment[0].device().shared().contexts.clone();
+++        let context = *self.context.get_or_init(|| contexts.fresh());
+++        let posted = Posted {
+++            turns: Arc::clone(self.turns),
+++            ticket,
+++            handlers: segment,
+++        };
+++        contexts.post(context, Item::Submissions(posted));
+++    }
+++}
+++
+++/// A segment of submission handlers a pass of the scheduler's thread handed to the device's
+++/// handler threads ([`HandOff::post`]): it runs there once every earlier ticket's ran
+++/// ([`Turns::run`]), its holds going after the handlers.
+++pub(crate) struct Posted {
+++    turns: Arc<Turns>,
+++    ticket: u64,
+++    handlers: Handlers,
+++}
+++
+++impl Posted {
+++    /// Run the segment's submission handlers on this handler thread in their turn.
+++    pub(crate) fn run(self) {
+++        let Posted {
+++            turns,
+++            ticket,
+++            mut handlers,
+++        } = self;
+++        let mut segments = vec![(handlers.len(), ticket)];
+++        turns.run(&mut handlers, &mut segments);
+++    }
+++}
+++
++ impl SchedulerShared {
++     /// A pass that took in `taken` commits ended, its submissions made and counted, under the
++     /// lock: counted, released after them (`WorkCounts::commits_taken_in`).
++@@ -801,7 +854,8 @@ impl Scheduler {
++             nudge: OnceLock::new(),
++             spare_logs: SpareLogs::default(),
++             stalls: OnceLock::new(),
++-            turns: Turns::default(),
+++            turns: Arc::new(Turns::default()),
+++            handler_context: OnceLock::new(),
++             steps: steps::Steps::default(),
++         });
++         let thread = {
++@@ -916,7 +970,7 @@ impl Scheduler {
++             let taken = take_in(state, commits, &mut spent);
++             let mut none = Handlers::new();
++             let waiting = (Passer::Waiting, &mut none);
++-            submitted = submit_plain_ready(state, &mut spent, waiting, PASS_SUBMISSIONS);
+++            submitted = submit_plain_ready(state, &mut spent, waiting, PASS_SUBMISSIONS, None);
++             debug_assert!(
++                 none.is_empty(),
++                 "a waiting thread took a submission handler"
++@@ -965,13 +1019,19 @@ impl Scheduler {
++     /// It runs the program's code only in the submission checks of the heads it checks and the
++     /// submission handlers of the batches it submitted: a scheduled handler is run on its queue's
++     /// handler thread, as the thread's passes leave it.
++-    pub(crate) fn submit_at_commit(&self, device: &Device) {
+++    pub(crate) fn submit_at_commit(&self, device: &Device, buffer: &CommandBufferShared) {
+++        #[cfg(all(test, any(m2v_gpu, m2v_cpu_icd)))]
+++        trace::at(trace::Point::AtCommitPass);
++         let shared = &*self.shared;
++         let passed = shared.inbox.pass_once_then(
++             |state, commits| {
++                 let mut spent = Spent::new();
++                 let taken = take_in(state, commits, &mut spent);
++-                let pass = AtCommit::pass(state, spent, PASS_SUBMISSIONS);
+++                let hand_off = HandOff {
+++                    turns: &shared.turns,
+++                    context: &shared.handler_context,
+++                };
+++                let pass = AtCommit::pass(state, spent, PASS_SUBMISSIONS, buffer, &hand_off);
++                 shared.took_in(taken);
++                 pass
++             },
++@@ -989,8 +1049,18 @@ impl Scheduler {
++                     }
++                     checked += 1;
++                     let room = PASS_SUBMISSIONS.saturating_sub(submitted);
++-                    pass = (shared.inbox)
++-                        .pass_again(|state| AtCommit::pass(state, Spent::new(), room));
+++                    pass = (shared.inbox).pass_again(|state| {
+++                        AtCommit::pass(
+++                            state,
+++                            Spent::new(),
+++                            room,
+++                            buffer,
+++                            &HandOff {
+++                                turns: &shared.turns,
+++                                context: &shared.handler_context,
+++                            },
+++                        )
+++                    });
++                 }
++             },
++         );
++@@ -1405,7 +1475,17 @@ fn round(shared: &SchedulerShared, left: &mut Left<Work>, passed: &mut Passed) -
++         shared.passes.fetch_add(1, Ordering::Relaxed);
++         crate::stage_trace::mark(0, crate::stage_trace::Stage::PassBegin, 0);
++         let before = passed.spent.len();
++-        let taken = pass(state, commits, (&mut *passed, &mut *left), &shared.awaits);
+++        let hand_off = HandOff {
+++            turns: &shared.turns,
+++            context: &shared.handler_context,
+++        };
+++        let taken = pass(
+++            state,
+++            commits,
+++            (&mut *passed, &mut *left),
+++            &shared.awaits,
+++            &hand_off,
+++        );
++         shared.took_in(taken);
++         let spent = passed.spent.len().saturating_sub(before);
++         crate::stage_trace::mark(
++@@ -1415,6 +1495,8 @@ fn round(shared: &SchedulerShared, left: &mut Left<Work>, passed: &mut Passed) -
++         );
++         !passed.exiting && left.is_empty() && !passed.more
++     });
+++    #[cfg(all(test, any(m2v_gpu, m2v_cpu_icd)))]
+++    trace::after_pass();
++     passed.more = false;
++     if passed.exiting {
++         passed.settled.clear();
++@@ -1506,6 +1588,7 @@ fn pass(
++     commits: &mut Vec<Committed>,
++     (passed, left): (&mut Passed, &mut Left<Work>),
++     awaits: &Awaits,
+++    hand_off: &HandOff<'_>,
++ ) -> usize {
++     let taken = take_in(state, commits, &mut passed.spent);
++     state.dirty = false;
++@@ -1516,11 +1599,16 @@ fn pass(
++         left,
++         &mut passed.handlers,
++         awaits,
+++        hand_off,
++     );
++     // Its submission handlers run in this pass's turn ([`Turns`]).
++     if passed.handlers.len() > before {
++-        let ticket = state.handler_ticket();
++-        passed.turns.push((passed.handlers.len(), ticket));
+++        if passed.settled.is_empty() {
+++            hand_off.post(state, &mut passed.handlers, before);
+++        } else {
+++            let ticket = state.handler_ticket();
+++            passed.turns.push((passed.handlers.len(), ticket));
+++        }
++     }
++     match ready {
++         Ok(More(true)) => {
++@@ -1570,9 +1658,14 @@ fn submit_ready(
++     left: &mut Left<Work>,
++     handlers: &mut Handlers,
++     awaits: &Awaits,
+++    hand_off: &HandOff<'_>,
++ ) -> Result<More, Exiting> {
++     let before = spent.len();
+++    let from = handlers.len();
++     loop {
+++        if settled.is_empty() {
+++            hand_off.post(state, handlers, from);
+++        }
++         if spent.len() - before >= PASS_SUBMISSIONS && state.grouped.is_empty() {
++             return Ok(More(true));
++         }
++@@ -1788,15 +1881,25 @@ impl AtCommit {
++     /// Submit the heads [`plain_ready`] holds for, in commit order, at most `room`
++     /// ([`submit_plain_ready`]); then, with room for one more, take the checks of the first head
++     /// left whose checks the committing thread may run ([`claim_check`]). Its holds go to `spent`.
++-    fn pass(state: &mut State, mut spent: Spent, room: usize) -> AtCommit {
+++    fn pass(
+++        state: &mut State,
+++        mut spent: Spent,
+++        room: usize,
+++        ours: &CommandBufferShared,
+++        hand_off: &HandOff<'_>,
+++    ) -> AtCommit {
++         let mut handlers = Handlers::new();
++         let committing = (Passer::Committing, &mut handlers);
++-        let submitted = submit_plain_ready(state, &mut spent, committing, room);
++         let mut segments = Vec::new();
++-        if !handlers.is_empty() {
++-            segments.push((handlers.len(), state.handler_ticket()));
++-        }
++-        let check = match submitted < room && state.grouped.is_empty() {
+++        let mut ended = false;
+++        let submitted = submit_plain_ready(
+++            state,
+++            &mut spent,
+++            committing,
+++            room,
+++            Some((ours, hand_off, &mut segments, &mut ended)),
+++        );
+++        let check = match !ended && submitted < room && state.grouped.is_empty() {
++             true => claim_check(state),
++             false => None,
++         };
++@@ -1852,6 +1955,12 @@ fn submit_plain_ready(
++     spent: &mut Spent,
++     (passer, handlers): (Passer, &mut Handlers),
++     room: usize,
+++    mut hand_off: Option<(
+++        &CommandBufferShared,
+++        &HandOff<'_>,
+++        &mut Vec<(usize, u64)>,
+++        &mut bool,
+++    )>,
++ ) -> usize {
++     let mut submitted = 0;
++     while submitted < room && state.grouped.is_empty() {
++@@ -1902,6 +2011,21 @@ fn submit_plain_ready(
++                     );
++                     handlers.push(held.buffer.hold());
++                 }
+++                let kept_ours = if submission.runs_handlers() {
+++                    let (ours, handoff, segments, ended) = hand_off
+++                        .as_mut()
+++                        .expect("a committing pass has its own buffer");
+++                    if std::ptr::eq(&**held.buffer, *ours) {
+++                        segments.push((handlers.len(), state.handler_ticket()));
+++                        **ended = true;
+++                        true
+++                    } else {
+++                        handoff.post(state, handlers, handlers.len() - 1);
+++                        false
+++                    }
+++                } else {
+++                    false
+++                };
++                 let Held {
++                     buffer,
++                     binary_needs,
++@@ -1914,6 +2038,9 @@ fn submit_plain_ready(
++                 buffer.publish(submission);
++                 spent.push(buffer);
++                 submitted += 1;
+++                if kept_ours {
+++                    return submitted;
+++                }
++             }
++             // Nothing submitted or changed: a rebind encodes encoders of it again
++             // (`command_buffer/reencode.rs`), or the group held must go first. It goes back at
++diff --git a/crates/metal2vulkan-runtime/src/tests/commit_and_submit.rs b/crates/metal2vulkan-runtime/src/tests/commit_and_submit.rs
++index 8ece94197..240327cd5 100644
++--- a/crates/metal2vulkan-runtime/src/tests/commit_and_submit.rs
+++++ b/crates/metal2vulkan-runtime/src/tests/commit_and_submit.rs
++@@ -16,6 +16,7 @@ use crate::{
++     Buffer, CommandBuffer, CommandBufferError, CommandBufferStatus, CommandQueue, Device,
++     DeviceKind, DeviceOptions, EncoderKind, EventRef, ResourceOptions, Submission,
++ };
+++use metal2vulkan::device::{CompletionPolicy, DevicePolicy};
++ use std::num::NonZeroU64;
++ use std::ops::Range;
++ use std::sync::atomic::{AtomicU64, Ordering};
++@@ -34,7 +35,12 @@ const HANDLER: Duration = Duration::from_micros(30);
++ 
++ /// The device the cfg selects: a CPU device under `m2v_cpu_icd`, else a GPU.
++ fn device() -> Device {
+++    // Caller submission is available for ungrouped queues. Exercise that contract on every
+++    // driver; the default grouped path is covered separately by completion/order tests.
+++    let mut policy = DevicePolicy::default();
+++    policy.completion = CompletionPolicy::Exact;
++     let options = DeviceOptions {
+++        policy,
++         kinds: match cfg!(m2v_cpu_icd) {
++             true => vec![DeviceKind::Cpu],
++             false => vec![
++@@ -565,7 +571,7 @@ fn noting(
++ /// `commit` (the check held until the test lets it go), the heads of two other queues are
++ /// committed with `commit_and_submit`: B's fills A's buffer, so it waits behind A (its footprint
++ /// runs in commit order with A's, which keeps its place, `scheduler/order.rs`) and its check and
++-/// submission handler run on the scheduler's thread once A was submitted; C's fills another, so
+++/// submission handler run off the caller once A was submitted; C's fills another, so
++ /// the committing thread checks and submits it inside the call while A's check still runs
++ /// (`WorkCounts::batches_checked_at_commit`, `batches_submitted_at_commit`), as the scheduler's
++ /// own pass would. Submission handlers keep submission order: C's, A's, then B's. All complete.
++@@ -627,14 +633,20 @@ fn a_head_held_for_its_check_holds_back_only_the_commits_behind_it() {
++         "while A's check ran: C checked and submitted inside its call, B left"
++     );
++     let events = events.lock().unwrap().clone();
+++    let tail = on_caller(&events[while_held.len()..]);
+++    assert_eq!(tail.len(), 3);
+++    assert!(tail.iter().all(|&(_, on_caller)| !on_caller));
++     assert_eq!(
++-        on_caller(&events[while_held.len()..]),
++-        [
++-            ("a submitted", false),
++-            ("b check", false),
++-            ("b submitted", false)
++-        ],
++-        "once A's check returned: A submitted, then B checked and submitted by the scheduler"
+++        tail.iter()
+++            .filter_map(|&(name, _)| name.ends_with("submitted").then_some(name))
+++            .collect::<Vec<_>>(),
+++        ["a submitted", "b submitted"],
+++        "submission handlers keep submission order while the scheduler runs later checks"
+++    );
+++    let at = |name| tail.iter().position(|&(event, _)| event == name).unwrap();
+++    assert!(
+++        at("b check") < at("b submitted"),
+++        "B's check precedes B's handler"
++     );
++     let moved = |field: fn(&crate::WorkCounts) -> u64| field(&after) - field(&before);
++     assert_eq!(
++diff --git a/crates/metal2vulkan-runtime/src/tests/mod.rs b/crates/metal2vulkan-runtime/src/tests/mod.rs
++index c5f23225b..74aa14ae7 100644
++--- a/crates/metal2vulkan-runtime/src/tests/mod.rs
+++++ b/crates/metal2vulkan-runtime/src/tests/mod.rs
++@@ -90,6 +90,8 @@ mod descriptor_arena;
++ mod descriptor_key_at_draw;
++ #[cfg(any(m2v_gpu, m2v_cpu_icd))]
++ mod descriptor_key_once;
+++#[cfg(any(m2v_gpu, m2v_cpu_icd))]
+++mod submission_turns;
++ // A GPU hazard: its kernel spins up to 2^25 loads on a word the GPU may never see raised.
++ #[cfg(any(m2v_cpu_icd, all(m2v_gpu, m2v_gpu_hazards)))]
++ mod detach_lost;
++diff --git a/crates/metal2vulkan-runtime/src/tests/submission_turns.rs b/crates/metal2vulkan-runtime/src/tests/submission_turns.rs
++new file mode 100644
++index 000000000..b21c64546
++--- /dev/null
+++++ b/crates/metal2vulkan-runtime/src/tests/submission_turns.rs
++@@ -0,0 +1,362 @@
+++//! Submission handlers start while the pass continues, and keep their submission order.
+++//! Completions that precede those handlers keep their queue position behind a gate without
+++//! taking a handler thread. A caller's pass runs its own handler before submitting later work.
+++//! Test-only boundaries force the interleavings on a real Vulkan device.
+++
+++use crate::command_buffer::completion::trace;
+++use crate::{
+++    Buffer, CommandBuffer, CommandBufferStatus, CommandQueue, Device, DeviceKind, DeviceOptions,
+++    ResourceOptions,
+++};
+++use metal2vulkan::device::CompletionPolicy;
+++use std::sync::{mpsc, Arc, Mutex};
+++use std::time::{Duration, Instant};
+++
+++const FILL: u64 = 64 << 10;
+++const WAIT: Duration = Duration::from_secs(10);
+++const PAUSE: Duration = Duration::from_millis(200);
+++
+++fn device(completion: CompletionPolicy) -> Device {
+++    let mut options = DeviceOptions {
+++        kinds: if cfg!(m2v_cpu_icd) {
+++            vec![DeviceKind::Cpu]
+++        } else {
+++            vec![
+++                DeviceKind::Discrete,
+++                DeviceKind::Integrated,
+++                DeviceKind::Virtual,
+++            ]
+++        },
+++        ..DeviceOptions::default()
+++    };
+++    options.policy.completion = completion;
+++    Device::system_default_with(&options).unwrap()
+++}
+++
+++fn fill(queue: &CommandQueue, target: &Buffer, value: u8) -> CommandBuffer {
+++    let buffer = queue.command_buffer().unwrap();
+++    let mut blit = buffer.blit_command_encoder().unwrap();
+++    blit.fill_buffer(target, 0..FILL, value).unwrap();
+++    blit.end_encoding().unwrap();
+++    buffer
+++}
+++
+++fn completes(buffer: &CommandBuffer) {
+++    buffer.wait_until_completed_for(WAIT).unwrap();
+++    assert_eq!(buffer.status(), CommandBufferStatus::Completed);
+++}
+++
+++fn warm(queue: &CommandQueue, target: &Buffer) {
+++    let buffer = fill(queue, target, 0);
+++    buffer.commit().unwrap();
+++    completes(&buffer);
+++}
+++
+++fn timely_handoff(completion: CompletionPolicy) {
+++    let device = device(completion);
+++    let first = device.new_command_queue().unwrap();
+++    let second = device.new_command_queue().unwrap();
+++    let targets = [(); 2].map(|()| device.new_buffer(FILL, ResourceOptions::private()).unwrap());
+++    warm(&first, &targets[0]);
+++    warm(&second, &targets[1]);
+++    let held = fill(&first, &targets[0], 1);
+++    trace::hold_at(trace::Point::FirstWork);
+++    held.commit().unwrap();
+++    let reached = trace::reached(trace::Point::FirstWork, WAIT);
+++    let started = Arc::new(Mutex::new(None));
+++    let earlier = fill(&first, &targets[0], 2);
+++    let noted = Arc::clone(&started);
+++    earlier
+++        .add_submission_handler(Box::new(move |_: &CommandBuffer| {
+++            *noted.lock().unwrap() = Some(crate::gpu_time::host_nanos());
+++        }))
+++        .unwrap();
+++    let later = fill(&second, &targets[1], 3);
+++    if reached {
+++        earlier.commit().unwrap();
+++        later.commit().unwrap();
+++        trace::start();
+++        trace::pause_after_submit(Some(PAUSE));
+++    }
+++    trace::release(trace::Point::FirstWork);
+++    assert!(reached, "the scheduler never reached the held submission");
+++    for buffer in [&held, &earlier, &later] {
+++        completes(buffer);
+++    }
+++    trace::pause_after_submit(None);
+++    let records = trace::stop();
+++    let later_id = trace::buffer_id(&later);
+++    let (at, ended) = records
+++        .iter()
+++        .find_map(|record| match record {
+++            trace::Traced::BatchReturn {
+++                buffer,
+++                at,
+++                pause_ended,
+++            } if *buffer == later_id => Some((*at, *pause_ended)),
+++            _ => None,
+++        })
+++        .expect("the later batch was submitted or held, with the test pause");
+++    let started = started
+++        .lock()
+++        .unwrap()
+++        .expect("the earlier submission handler ran");
+++    println!(
+++        "{completion:?}: handler began {} us before the later batch's pause ended; pause {} us",
+++        (ended as i128 - started as i128) / 1000,
+++        (ended - at) / 1000
+++    );
+++    assert!(
+++        started < ended,
+++        "the pass postponed its earlier handler until after the later batch"
+++    );
+++}
+++
+++#[test]
+++fn handlers_start_while_the_pass_continues_exact() {
+++    timely_handoff(CompletionPolicy::Exact);
+++}
+++
+++#[test]
+++fn handlers_start_while_the_pass_continues_grouped() {
+++    timely_handoff(CompletionPolicy::Grouped);
+++}
+++
+++fn earlier_completion(completion: CompletionPolicy) {
+++    let device = device(completion);
+++    let queue = device.new_command_queue().unwrap();
+++    let target = device.new_buffer(FILL, ResourceOptions::private()).unwrap();
+++    warm(&queue, &target);
+++    let first = fill(&queue, &target, 1);
+++    let (done, completed) = mpsc::channel();
+++    first
+++        .add_completed_handler(Box::new(move |_: &CommandBuffer| {
+++            let _ = done.send(());
+++        }))
+++        .unwrap();
+++    trace::hold_at(trace::Point::Publish);
+++    first.commit().unwrap();
+++    let reached = trace::reached(trace::Point::Publish, WAIT);
+++    let second = fill(&queue, &target, 2);
+++    let (started, begins) = mpsc::channel();
+++    let (answered, answers) = mpsc::channel();
+++    second
+++        .add_submission_handler(Box::new(move |_: &CommandBuffer| {
+++            let _ = started.send(());
+++            let _ = answered.send(completed.recv_timeout(WAIT).is_ok());
+++        }))
+++        .unwrap();
+++    if reached {
+++        second.commit().unwrap();
+++    }
+++    let began = reached && begins.recv_timeout(WAIT).is_ok();
+++    trace::release(trace::Point::Publish);
+++    assert!(reached && began, "the two forced transitions did not run");
+++    let answered = answers.recv_timeout(WAIT + WAIT).unwrap();
+++    completes(&first);
+++    completes(&second);
+++    assert!(
+++        answered,
+++        "an earlier completion waited for a later submission handler on its queue"
+++    );
+++}
+++
+++#[test]
+++fn completion_precedes_later_submission_handler_exact() {
+++    earlier_completion(CompletionPolicy::Exact);
+++}
+++
+++#[test]
+++fn completion_precedes_later_submission_handler_grouped() {
+++    earlier_completion(CompletionPolicy::Grouped);
+++}
+++
+++fn gated_pool(completion: CompletionPolicy) {
+++    const QUEUES: usize = 6;
+++    crate::contexts::TEST_LIMIT.store(2, std::sync::atomic::Ordering::Relaxed);
+++    let device = device(completion);
+++    crate::contexts::TEST_LIMIT.store(0, std::sync::atomic::Ordering::Relaxed);
+++    let queues = [(); QUEUES].map(|()| device.new_command_queue().unwrap());
+++    let targets =
+++        [(); QUEUES].map(|()| device.new_buffer(FILL, ResourceOptions::private()).unwrap());
+++    for (queue, target) in queues.iter().zip(&targets) {
+++        warm(queue, target);
+++    }
+++    let (go, release) = mpsc::channel();
+++    let mut release = Some(release);
+++    let buffers = queues
+++        .iter()
+++        .zip(&targets)
+++        .map(|(queue, target)| {
+++            let buffer = fill(queue, target, 1);
+++            let release = release.take();
+++            buffer
+++                .add_submission_handler(Box::new(move |_: &CommandBuffer| {
+++                    if let Some(release) = release {
+++                        let _ = release.recv_timeout(WAIT);
+++                    }
+++                }))
+++                .unwrap();
+++            buffer
+++        })
+++        .collect::<Vec<_>>();
+++    trace::start();
+++    for buffer in &buffers {
+++        buffer.commit().unwrap();
+++    }
+++    let deadline = Instant::now() + WAIT;
+++    while trace::finished_count() < QUEUES && Instant::now() < deadline {
+++        std::thread::sleep(Duration::from_millis(1));
+++    }
+++    let seen = trace::finished_count();
+++    std::thread::sleep(Duration::from_millis(50));
+++    let _ = go.send(());
+++    let completed = buffers
+++        .iter()
+++        .filter(|buffer| {
+++            buffer.wait_until_completed_for(WAIT).is_ok()
+++                && buffer.status() == CommandBufferStatus::Completed
+++        })
+++        .count();
+++    let _ = trace::stop();
+++    println!("{completion:?}: {seen}/{QUEUES} GPU completions seen with the handler held, {completed} final transitions with two handler threads");
+++    assert_eq!(
+++        seen, QUEUES,
+++        "the held submission handler delayed unrelated GPU work"
+++    );
+++    assert_eq!(
+++        completed, QUEUES,
+++        "gated completion transitions consumed the pool's handler threads"
+++    );
+++}
+++
+++#[test]
+++fn early_completions_take_no_handler_thread_exact() {
+++    gated_pool(CompletionPolicy::Exact);
+++}
+++
+++#[test]
+++fn early_completions_take_no_handler_thread_grouped() {
+++    gated_pool(CompletionPolicy::Grouped);
+++}
+++
+++#[test]
+++fn committing_pass_hands_off_other_buffers_handlers() {
+++    let device = device(CompletionPolicy::Exact);
+++    let queues = [(); 3].map(|()| device.new_command_queue().unwrap());
+++    let targets = [(); 3].map(|()| device.new_buffer(FILL, ResourceOptions::private()).unwrap());
+++    for (queue, target) in queues.iter().zip(&targets) {
+++        warm(queue, target);
+++    }
+++    let held = super::waiter_submits::Held::new(&queues[2], &targets[2]);
+++    let ran = Arc::new(Mutex::new(Vec::new()));
+++    let earlier = fill(&queues[0], &targets[0], 1);
+++    let ours = fill(&queues[1], &targets[1], 2);
+++    for (buffer, name) in [(&earlier, "earlier"), (&ours, "ours")] {
+++        let ran = Arc::clone(&ran);
+++        buffer
+++            .add_submission_handler(Box::new(move |_: &CommandBuffer| {
+++                ran.lock().unwrap().push((
+++                    name,
+++                    std::thread::current().id(),
+++                    crate::contexts::on_handler_thread(),
+++                ));
+++            }))
+++            .unwrap();
+++    }
+++    earlier.commit().unwrap();
+++    let before = device.work_counts();
+++    ours.commit_and_submit().unwrap();
+++    let after = device.work_counts();
+++    let at_return = ran.lock().unwrap().clone();
+++    drop(held);
+++    completes(&earlier);
+++    completes(&ours);
+++    let caller = std::thread::current().id();
+++    assert_eq!(
+++        after.batches_submitted_at_commit - before.batches_submitted_at_commit,
+++        2
+++    );
+++    assert_eq!(
+++        at_return.iter().map(|&(name, ..)| name).collect::<Vec<_>>(),
+++        ["earlier", "ours"]
+++    );
+++    assert!(
+++        at_return[0].2,
+++        "the caller ran another command buffer's handler inline"
+++    );
+++    assert_eq!(
+++        at_return[1].1, caller,
+++        "the caller's own handler did not run inside its call"
+++    );
+++}
+++
+++#[test]
+++fn committing_pass_stops_after_its_own_last_batch() {
+++    let device = device(CompletionPolicy::Exact);
+++    let queues = [(); 3].map(|()| device.new_command_queue().unwrap());
+++    let targets = [(); 3].map(|()| device.new_buffer(FILL, ResourceOptions::private()).unwrap());
+++    for (queue, target) in queues.iter().zip(&targets) {
+++        warm(queue, target);
+++    }
+++    let held = super::waiter_submits::Held::new(&queues[2], &targets[2]);
+++    let noted = Arc::new(Mutex::new(Vec::new()));
+++    let ours = fill(&queues[0], &targets[0], 1);
+++    let log = Arc::clone(&noted);
+++    ours.add_submission_handler(Box::new(move |buffer: &CommandBuffer| {
+++        log.lock()
+++            .unwrap()
+++            .push(("ours", buffer.device().work_counts().queue_submissions));
+++    }))
+++    .unwrap();
+++    let before = device.work_counts();
+++    trace::hold_at(trace::Point::AtCommitPass);
+++    let committing = std::thread::spawn(move || ours.commit_and_submit().map(|()| ours));
+++    let reached = trace::reached(trace::Point::AtCommitPass, WAIT);
+++    let later = [
+++        (&queues[1], &targets[1], "other first"),
+++        (&queues[0], &targets[0], "ours next"),
+++        (&queues[1], &targets[1], "other next"),
+++    ]
+++    .map(|(queue, target, name)| {
+++        let buffer = fill(queue, target, 2);
+++        let log = Arc::clone(&noted);
+++        buffer
+++            .add_submission_handler(Box::new(move |buffer: &CommandBuffer| {
+++                log.lock()
+++                    .unwrap()
+++                    .push((name, buffer.device().work_counts().queue_submissions));
+++            }))
+++            .unwrap();
+++        buffer.commit().unwrap();
+++        buffer
+++    });
+++    trace::release(trace::Point::AtCommitPass);
+++    assert!(reached, "the committing caller never reached its pass");
+++    let ours = committing.join().unwrap().unwrap();
+++    let after = device.work_counts();
+++    let at_return = noted.lock().unwrap().clone();
+++    drop(held);
+++    completes(&ours);
+++    for buffer in &later {
+++        completes(buffer);
+++    }
+++    assert_eq!(
+++        after.batches_submitted_at_commit - before.batches_submitted_at_commit,
+++        1
+++    );
+++    assert_eq!(
+++        at_return,
+++        [("ours", before.queue_submissions + 1)],
+++        "the caller submitted later work before running its own handler"
+++    );
+++    assert_eq!(
+++        noted
+++            .lock()
+++            .unwrap()
+++            .iter()
+++            .map(|&(name, _)| name)
+++            .collect::<Vec<_>>(),
+++        ["ours", "other first", "ours next", "other next"]
+++    );
+++}
++diff --git a/crates/metal2vulkan-runtime/src/tests/waiter_submits.rs b/crates/metal2vulkan-runtime/src/tests/waiter_submits.rs
++index f3a759336..66395adff 100644
++--- a/crates/metal2vulkan-runtime/src/tests/waiter_submits.rs
+++++ b/crates/metal2vulkan-runtime/src/tests/waiter_submits.rs
++@@ -16,23 +16,21 @@
++ //!
++ //! Which thread takes a commit in is a race between the waiting thread and the scheduler's,
++ //! which the commit wakes: on a loaded host the woken thread may win every one of them. So each
++-//! round counted for a waiter's own pass holds the scheduler's thread first ([`Held`]), in a
++-//! submission handler of another queue's command buffer, which holds back the thread's passes
++-//! (`CommandBuffer::add_submission_handler`): the waiting thread's pass is then the only one that
+++//! round counted for a waiter's own pass holds the scheduler's thread first ([`Held`]), after a
+++//! pass counted out and released its lock: the waiting thread's pass is then the only one that
++ //! can take its commit in, and each round's pass and submissions are counted, whoever would have
++ //! won.
++ //!
++ //! Device tests: compiled only under the validation crate's GPU safety cfgs (`m2v_gpu`,
++ //! `m2v_cpu_icd`), on the kind of device the cfg selects.
++ 
++-use crate::command_buffer::merges_submissions;
+++use crate::command_buffer::{completion::trace, merges_submissions};
++ use crate::{
++     Buffer, CommandBuffer, CommandQueue, Device, DeviceKind, DeviceOptions, ResourceOptions,
++     ShaderCacheOptions,
++ };
++ use metal2vulkan::device::{CompletionPolicy, DevicePolicy};
++ use std::path::{Path, PathBuf};
++-use std::sync::mpsc;
++ use std::sync::Mutex;
++ use std::thread::ThreadId;
++ use std::time::Duration;
++@@ -82,44 +80,37 @@ fn device(cache: &Path, completion: CompletionPolicy) -> Device {
++     Device::system_default_with(&options).unwrap()
++ }
++ 
++-/// The scheduler's thread held in a submission handler of a command buffer of `side`, which runs
++-/// on that thread once it submitted the command buffer and holds back its next pass, and with it
++-/// every commit made meanwhile (`CommandBuffer::add_submission_handler`). While it is held, a
++-/// commit is taken in only by a thread about to block for it. Dropping it lets the handler return
++-/// and waits until its command buffer completed.
++-struct Held {
+++/// The scheduler's thread held after the pass that took a command buffer of `side`, with its
+++/// lock released and its pass counted out. A waiting or committing thread may pass meanwhile.
+++/// Dropping it releases the scheduler and waits for the side's command buffer.
+++pub(super) struct Held {
++     command_buffer: CommandBuffer,
++-    release: Option<mpsc::Sender<()>>,
++ }
++ 
++ impl Held {
++-    /// Hold the thread: commit a fill of `scratch` on `side` whose submission handler says it
++-    /// began, and then waits until it is let go; return once it began.
++-    fn new(side: &CommandQueue, scratch: &Buffer) -> Held {
+++    /// Commit a fill of `scratch` on `side`, and hold the scheduler after its pass.
+++    pub(super) fn new(side: &CommandQueue, scratch: &Buffer) -> Held {
++         let command_buffer = side.command_buffer().unwrap();
++         let mut blit = command_buffer.blit_command_encoder().unwrap();
++         blit.fill_buffer(scratch, 0..16, 0).unwrap();
++         blit.end_encoding().unwrap();
++-        let (began, began_seen) = mpsc::channel();
++-        let (release, released) = mpsc::channel::<()>();
++-        let handler = Box::new(move |_: &CommandBuffer| {
++-            began.send(()).unwrap();
++-            // Ends once the sender is dropped.
++-            let _ = released.recv();
++-        });
++-        command_buffer.add_submission_handler(handler).unwrap();
+++        trace::hold_at(trace::Point::AfterPass);
+++        trace::hold_after_submit(Some(&command_buffer));
++         command_buffer.commit().unwrap();
++-        began_seen.recv().unwrap();
++-        Held {
++-            command_buffer,
++-            release: Some(release),
+++        let reached = trace::reached(trace::Point::AfterPass, Duration::from_secs(10));
+++        if !reached {
+++            trace::hold_after_submit(None);
+++            trace::release(trace::Point::AfterPass);
++         }
+++        assert!(reached, "the scheduler never counted out its held pass");
+++        Held { command_buffer }
++     }
++ }
++ 
++ impl Drop for Held {
++     fn drop(&mut self) {
++-        drop(self.release.take());
+++        trace::hold_after_submit(None);
+++        trace::release(trace::Point::AfterPass);
++         let _ = self.command_buffer.wait_until_completed();
++     }
++ }

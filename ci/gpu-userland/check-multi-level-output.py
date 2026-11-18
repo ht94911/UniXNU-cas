@@ -21,7 +21,7 @@ assert git("rev-parse", "HEAD").decode().strip() == expected["original_pin"]
 builder = r / "scripts/build-adreno-metal-bridge.py"
 assert sha(builder) == expected["builder_sha256"]
 patches = re.findall(r"'([0-9]{4}[^']+\.patch)'", builder.read_text())
-assert patches == list(expected["patch_hashes"]) and len(patches) == 39
+assert patches == list(expected["patch_hashes"]) and len(patches) == 40
 for name, digest in expected["patch_hashes"].items():
     assert sha(r / "drivers/AdrenoMetal/bridge/patches" / name) == digest, name
 for name, digest in expected["source_hashes"].items():
@@ -48,13 +48,14 @@ with (out / "allocator.log").open("w") as log:
     allocator_result = subprocess.run(allocator_command, cwd=r, env=env,
                                       stdout=log, stderr=subprocess.STDOUT, timeout=1500)
 allocator_text = (out / "allocator.log").read_text()
-assert allocator_result.returncode == 0 and "10 passed; 0 failed" in allocator_text
+assert allocator_result.returncode == 0 and "11 passed; 0 failed" in allocator_text
 for name in (
     "foreground_backing_uses_request_size_and_preserves_room_refill",
     "foreground_backing_preserves_existing_pool_and_other_driver_growth",
     "foreground_backing_keeps_alignment_dedicated_sizes_and_allocation_failure",
     "freed_buffer_backing_is_reused_without_native_allocation",
     "freed_buffer_backing_keeps_address_and_import_release_order",
+    "a_smaller_foreground_placement_uses_the_larger_refill_and_its_remaining_room",
 ):
     assert name + " ... ok" in allocator_text
 map_command = command[:]
@@ -65,7 +66,7 @@ assert map_result.returncode == 0 and "9 passed; 0 failed" in (out / "release-ma
 report = dict(passed=True, runtime_tree=expected["patched_tree"],
               source_manifest_sha256=sha(Path(__file__).parent / "fixtures/multi-level-output-sources.json"),
               exact_runtime_source_verified=True, current_Mac_planner_tests_passed=True,
-              current_Mac_allocator_tests_passed=True, current_Mac_allocator_cases=10, current_Mac_release_map_cases=9, current_Mac_release_map_passed=True,
+              current_Mac_allocator_tests_passed=True, current_Mac_allocator_cases=11, current_Mac_release_map_cases=9, current_Mac_release_map_passed=True,
               allocator_callbacks_are_model=True, current_iOS_policy_hardware_measured=False,
               current_Mac_Vulkan_execution=False, target_A840_performance_verified=False,
               Linux_Vulkan_execution_reference=expected["linux_execution_reference"],

@@ -413,6 +413,14 @@ def main():
         must(['git', '-C', repository, 'apply', '--check', selected])
         must(['git', '-C', repository, 'apply', selected])
         record.setdefault('gpu055_release_queue_patches', {})[name] = sha(selected)
+    for repository, name in [(root, 'gpu056-recipes.patch'),
+                             (root / 'drivers/AdrenoMetal', 'gpu056-plugin.patch')]:
+        selected = HERE / 'patches' / name
+        must(['git', '-C', repository, 'apply', '--check', selected])
+        must(['git', '-C', repository, 'apply', selected])
+        record.setdefault('gpu056_long_latency_patches', {})[name] = sha(selected)
+    bridge_patches = sorted((root / 'drivers/AdrenoMetal/bridge/patches').glob('*.patch'))
+    record['metal2vulkan']['bridge_patches'] = {p.name: sha(p) for p in bridge_patches}
     progress('all pinned sources and patches verified')
     args.record.parent.mkdir(parents=True, exist_ok=True)
     args.record.write_text(json.dumps(record, indent=2) + '\n')

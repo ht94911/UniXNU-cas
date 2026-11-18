@@ -186,7 +186,12 @@ assert extern_function['source_sha256']==hashlib.sha256((root/'drivers/AdrenoMet
 assert extern_function['test_sha256']==hashlib.sha256((root/'drivers/AdrenoMetal/bridge/extern_function_host.mm').read_bytes()).hexdigest()
 multi_level=json.loads((a.logs/'multi-level-output/report.json').read_text())
 assert multi_level['passed'] and multi_level['exact_runtime_source_verified'] and multi_level['current_Mac_planner_tests_passed']
-assert multi_level['current_Mac_allocator_tests_passed'] and multi_level['current_Mac_allocator_cases']==10
+assert multi_level['current_Mac_allocator_tests_passed'] and multi_level['current_Mac_allocator_cases']==11
+long_latency=json.loads((a.logs/'long-latency/report.json').read_text())
+assert long_latency['passed'] and long_latency['actual_serializer_executed']
+assert long_latency['header_sha256']==hashlib.sha256((root/'drivers/AdrenoMetal/NativeLongLatency.h').read_bytes()).hexdigest()
+for marker in [b'lf0 i=',b'lf1 i=',b'lf2 i=',b'lf3 i=',b'lf4 i=',b'ls0 i=',b'ls1 i=',b'ls2 i=',b'lg0 i=',b'lg1 i=',b'li0 pid=',b'li1 pid=',b'li2 pid=']:
+    assert marker in data,marker
 extern_spec=importlib.util.spec_from_file_location('extern_target',Path(__file__).with_name('check-extern-target.py'))
 extern_target=importlib.util.module_from_spec(extern_spec)
 extern_spec.loader.exec_module(extern_target)
