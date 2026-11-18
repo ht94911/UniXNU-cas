@@ -111,6 +111,22 @@ int main(){@autoreleasepool {
  assert(discover(0) && gObservedWindowDisplay==display);++cases;
  resetDiscovery();*(uint64_t *)server=0x1a800000000000ULL|(nbdisplaywait::kAccelServerVtable+8);
  assert(!discover(0) && gDisplayDiscovery.status==nbdisplaywait::CandidateLayoutRejected);++cases;
+ resetDiscovery();*(uint64_t *)server=nbdisplaywait::kServerVtable;
+ *(uint64_t *)cppDisplay=nbdisplaywait::kWirelessDisplayVtable;
+ assert(discover(0) && gObservedWindowDisplay==display);++cases;
+ // A valid IOMFB display after four matching but rejected candidates must
+ // be considered. The original056 list had six objects.
+ resetDiscovery();id rejected=[fixtureDisplayClass new];
+ auto *badImpl=(unsigned char *)calloc(1,0x100);auto *badServer=(unsigned char *)calloc(1,0x620);
+ auto *badDisplay=(unsigned char *)calloc(1,0x100);
+ *(uintptr_t *)((unsigned char *)(__bridge void *)rejected+8)=(uintptr_t)badImpl;
+ *(uintptr_t *)(badImpl+0x40)=(uintptr_t)badServer;*(uint64_t *)badServer=nbdisplaywait::kServerVtable;
+ *(uintptr_t *)(badServer+0x60)=(uintptr_t)badDisplay;*(uint64_t *)badDisplay=nbdisplaywait::kWirelessDisplayVtable+8;
+ *(uint64_t *)cppDisplay=nbdisplaywait::kDisplayVtable;
+ fixtureDisplays=@[rejected,rejected,rejected,rejected,rejected,display];
+ assert(discover(0) && gObservedWindowDisplay==display && gDiscoveryDisplayCount==6);++cases;
+ resetDiscovery();fixtureDisplays=@[rejected];assert(!discover(0));++cases;
+ free(badDisplay);free(badServer);free(badImpl);
  *(uint64_t *)server=nbdisplaywait::kServerVtable;
  assert(noteCount>=2 && noteCount<=16);
  resetDiscovery();fixtureDisplays=nil;*(uintptr_t *)((unsigned char *)(__bridge void *)display+8)=0;
@@ -133,7 +149,7 @@ if platform.system()=='Darwin':
     assert not result.returncode,result.stderr
     result=subprocess.run([str(binary)],capture_output=True,text=True,timeout=20);(a.out/'run.log').write_text(result.stdout+result.stderr)
     assert not result.returncode,result.stdout+result.stderr
-    observed=json.loads(result.stdout);assert observed['cases']==9
+    observed=json.loads(result.stdout);assert observed['cases']==12
     report.update(real_Mac_executed=True,actual_result=observed,command=command)
 report['passed']=True
 (a.out/'report.json').write_text(json.dumps(report,indent=2)+'\n');print(json.dumps(report,indent=2))

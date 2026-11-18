@@ -119,6 +119,10 @@ int main(int argc,char **argv){assert(argc==2);unsigned cases=0;
  assert(s.stop==nbdisplaywait::WrongDisplayVtable && reads==5 && !s.flags);++cases;
  init();put(0x3000,nbdisplaywait::kAccelServerVtable);memory[0x5078][3*8]^=4;s=take();
  assert(s.stop==nbdisplaywait::WrongTimerIdentity && reads==7 && s.flags==7);++cases;
+ init();put(0x4000,uint64_t(0x3a800000000000ULL|nbdisplaywait::kWirelessDisplayVtable));s=take();
+ assert(s.stop==0 && s.flags==31 && reads==9);++cases;
+ init();put(0x3000,nbdisplaywait::kAccelServerVtable);put(0x4000,uint64_t(nbdisplaywait::kWirelessDisplayVtable+8));s=take();
+ assert(s.stop==nbdisplaywait::WrongDisplayVtable && reads==5 && !s.flags);++cases;
  std::cout<<"cases="<<cases<<" actual_observer_reader_and_batch_fields_passed\n";
 }
 '''
@@ -129,8 +133,8 @@ run=subprocess.run(command,capture_output=True,text=True);(a.out/'build.log').wr
 assert run.returncode==0,run.stderr
 run=subprocess.run([str(binary),str(a.out/'observer.trace')],capture_output=True,text=True,timeout=30)
 (a.out/'test.log').write_text(run.stdout+run.stderr);assert run.returncode==0,run.stdout+run.stderr
-assert 'cases=24 actual_observer_reader_and_batch_fields_passed' in run.stdout
-report=dict(passed=True,actual_source_reader_serializer_batch=True,ASan_UBSan=True,cases=24,
+assert 'cases=26 actual_observer_reader_and_batch_fields_passed' in run.stdout
+report=dict(passed=True,actual_source_reader_serializer_batch=True,ASan_UBSan=True,cases=26,
     source_sha256=hashlib.sha256(a.source.read_bytes()).hexdigest(),
     display_state_header_sha256=hashlib.sha256((folder/'NativeDisplayWaitState.h').read_bytes()).hexdigest(),
     observer_include_sha256=hashlib.sha256((folder/'NativeFrameObservers.inc').read_bytes()).hexdigest(),

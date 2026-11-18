@@ -1,0 +1,83 @@
+diff --git a/NativeDisplayWaitState.h b/NativeDisplayWaitState.h
+index 0658321..798ea93 100644
+--- a/NativeDisplayWaitState.h
++++ b/NativeDisplayWaitState.h
+@@ -18,6 +18,10 @@ constexpr uint8_t kQuartzUUID[16]={0x76,0xce,0x2a,0x6e,0xdb,0xa4,0x33,0x5d,0xa5,
+ constexpr uint64_t kServerVtable=0x1e900aec8ULL;
+ constexpr uint64_t kAccelServerVtable=0x1e8fff298ULL;
+ constexpr uint64_t kDisplayVtable=0x1e900dea8ULL;
++// The observed056 AppleWirelessDisplay destructor reaches the original
++// IOMFBDisplay destructor with unadjusted this. This reader only checks the
++// display identity; it reads no fields from the derived display object.
++constexpr uint64_t kWirelessDisplayVtable=0x1e8ffbce8ULL;
+ constexpr uint64_t kTimerCallback=0x1843f05b4ULL;
+ constexpr unsigned kServerTailOffset=0x480,kServerTailBytes=0x1a0;
+ constexpr unsigned kTimerTailOffset=0x78,kTimerTailBytes=0x98;
+@@ -85,6 +89,11 @@ inline bool serverLayoutMatches(uint64_t p,int64_t slide){
+  return address==uint64_t(int64_t(kServerVtable)+slide) ||
+         address==uint64_t(int64_t(kAccelServerVtable)+slide);
+ }
++inline bool displayLayoutMatches(uint64_t p,int64_t slide){
++ const uint64_t address=stripped(p);
++ return address==uint64_t(int64_t(kDisplayVtable)+slide) ||
++        address==uint64_t(int64_t(kWirelessDisplayVtable)+slide);
++}
+ 
+ // Read returns the actual Mach status and rejects short reads. The caller has
+ // already verified the loaded UUID and retained this display object. Samples
+@@ -103,7 +112,7 @@ template<class Read,class Clock> inline void capture(State &s,int64_t slide,Read
+  if(!take(3,s.server+0x60,&s.display,8) || !s.display || !take(4,s.display,&s.displayVtable,8)){
+   finish(ReadFailed);return;
+  }
+- if(stripped(s.displayVtable)!=uint64_t(int64_t(kDisplayVtable)+slide)){finish(WrongDisplayVtable);return;}
++ if(!displayLayoutMatches(s.displayVtable,slide)){finish(WrongDisplayVtable);return;}
+  s.flags|=LayoutMatched;
+  if(!take(5,s.server+kServerTailOffset,s.serverTail,sizeof(s.serverTail))){finish(ReadFailed);return;}
+  s.flags|=ServerRead;s.timer=s.serverTail[(0x4b0-kServerTailOffset)/8];
+diff --git a/NativeFrameObservers.inc b/NativeFrameObservers.inc
+index 3ab147c..083db6e 100644
+--- a/NativeFrameObservers.inc
++++ b/NativeFrameObservers.inc
+@@ -77,7 +77,8 @@ static bool prepareDisplayObserver() {
+  gDiscoveryDisplayCount=[(NSArray *)displays count];
+  if(!gDiscoveryDisplayCount)return discoveryFailed(nbdisplaywait::EmptyDisplayCollection);
+  bool candidateSeen=false;
+- const NSUInteger n=std::min<NSUInteger>(gDiscoveryDisplayCount,4);
++ const NSUInteger n=std::min<NSUInteger>(gDiscoveryDisplayCount,16);
++ id compatibleDisplay=nil;
+  for(NSUInteger i=0;i<n;++i) {
+   id candidate=[(NSArray *)displays objectAtIndex:i];
+   if(![candidate isKindOfClass:displayClass])continue;
+@@ -85,9 +86,15 @@ static bool prepareDisplayObserver() {
+   nbdisplaywait::State state{};state.object=(uintptr_t)(__bridge void *)candidate;
+   nbdisplaywait::capture(state,gObservedQuartzSlide,readObserverMemory,nowUs);
+   if(state.flags&nbdisplaywait::LayoutMatched) {
+-   gObservedWindowDisplay=candidate;gDisplayDiscovery.status=nbdisplaywait::DisplayReady;return true;
++   if(nbdisplaywait::stripped(state.displayVtable)==uint64_t(int64_t(nbdisplaywait::kDisplayVtable)+gObservedQuartzSlide)) {
++    gObservedWindowDisplay=candidate;gDisplayDiscovery.status=nbdisplaywait::DisplayReady;return true;
++   }
++   if(!compatibleDisplay)compatibleDisplay=candidate;
+   }
+  }
++ if(compatibleDisplay) {
++  gObservedWindowDisplay=compatibleDisplay;gDisplayDiscovery.status=nbdisplaywait::DisplayReady;return true;
++ }
+  return discoveryFailed(candidateSeen?nbdisplaywait::CandidateLayoutRejected:nbdisplaywait::NoDisplayClassMatch);
+ #else
+  return discoveryFailed(nbdisplaywait::UnsupportedArchitecture,true);
+diff --git a/README.md b/README.md
+index f1e3275..02a24b6 100644
+--- a/README.md
++++ b/README.md
+@@ -283,3 +283,11 @@ native allocation. Imported resources retain their owner and release ordering.
+ Pipeline object collection processes only objects whose last holder was released
+ since the preceding collection, using the upstream runtime release queue. It
+ retains the exact object keys, destruction order and live shader/layout holds.
++
++The display wait reader accepts only the two verified primary server classes
++and the exact IOMFBDisplay or AppleWirelessDisplay identity in QuartzCore
++76ce2a6e. The latter's original destructor reaches the IOMFBDisplay base without
++adjusting this; the reader accesses no fields of the derived display. Discovery
++checks at most sixteen returned display objects and prefers the exact base
++identity. It retains the selected class in decoded evidence, so an observed
++wireless display is not represented as a physical panel.
