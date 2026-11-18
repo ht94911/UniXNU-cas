@@ -32,9 +32,14 @@ def main():
     base=ROOT/'build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837'
     records={'.c':json.loads((base/'bsd/DEVELOPMENT/bsd_init.o.json').read_text().strip().rstrip(',')),
              '.cpp':json.loads((base/'iokit/DEVELOPMENT/IOPlatformExpert.cpo.json').read_text().strip().rstrip(','))}
+    # Reuse audio072's actual osfmk record for the private task accessor.
+    task_record=json.loads((base/'osfmk/DEVELOPMENT/startup.o.json').read_text().strip().rstrip(','))
+    if 'MACH_KERNEL_PRIVATE' not in task_record['arguments']:
+        raise SystemExit('Haptics clock requires the actual private osfmk task record')
     sources=[soc/'Sm8850SpmiV8.c',component/'HapticsSpmi.c',component/'HapticsCore.c']
     sources += [source/n for n in ['NezhaHapticsBoard.c','NezhaHapticsFactory.c','NezhaHapticsQueue.c',
-                                 'NezhaHapticsRuntime.cpp','NezhaHapticsIOS.cpp','NezhaHapticsReady.cpp']]
+                                 'NezhaHapticsRuntime.cpp','NezhaHapticsIOS.cpp','NezhaHapticsReady.cpp',
+                                 'NezhaHapticsClock.cpp','NezhaHapticsTask.c']]
     additions=['-I',str(OUT/'headers/include'),'-idirafter',str(Path(headers['sdk'])/'System/Library/Frameworks/Kernel.framework/Versions/A/Headers'),
                '-I',str(ROOT/'.cache/xnu-work/osfmk'),'-I',str(device/'components'),'-I',str(device/'components/sm8850/kits'),
                '-I',str(source),'-I',str(ROOT/'drivers/QcomXnuUsbDebug/include'),
@@ -42,6 +47,7 @@ def main():
     rows=[];objects=[];errors=[]
     for path in sources:
         obj=OUT/(path.stem+'.o');record=records[path.suffix]
+        if path.name=='NezhaHapticsTask.c':record=task_record
         command=helper.compile_command(record,path,obj,[],additions)
         (OUT/(path.stem+'-command.json')).write_text(json.dumps(command,indent=2)+'\n')
         cp=subprocess.run(command,cwd=record['directory'],capture_output=True,text=True)
@@ -66,6 +72,6 @@ def main():
     subprocess.run(['xcrun','ar','rcs',str(archive),*map(str,objects)],check=True)
     report['archive_sha256']=sha(archive)
     (OUT/'build-report.json').write_text(json.dumps(report,indent=2)+'\n')
-    print('Built9 haptic objects with the selected iPhone27 XNU ABI')
+    print('Built11 haptic objects with the selected iPhone27 XNU ABI')
 
 if __name__=='__main__':main()

@@ -17,6 +17,7 @@
 #include <unistd.h>
 #include <errno.h>
 #include <sys/ioctl.h>
+#include <dlfcn.h>
 #include "../NezhaHapticsProtocol.h"
 enum { kPlugin=kAudioObjectPlugInObject,kActuator=2,kStream=3,kPeriod=4096,kSafety=512,kClients=32 };
 static AudioServerPlugInHostRef host;
@@ -32,6 +33,7 @@ static struct {uint32_t id,count;} clients[kClients];
 static atomic_uint writes,framesWritten,rejected,lastError;
 static atomic_uint initialized,starts,stops,propertyQueries;
 static atomic_uint lastUnknownObject,lastUnknownSelector;
+static atomic_uint clockReady,clockHz,clockNanos,clockTicks;
 static HRESULT QueryInterface(void *self,REFIID uuid,LPVOID *out) {
     if(!out)return E_POINTER;
     CFUUIDRef requested=CFUUIDCreateFromUUIDBytes(NULL,uuid);if(!requested)return E_NOINTERFACE;
@@ -53,7 +55,32 @@ static int state(NzHapticsStatus *s) {
 static int writePacket(const NzHapticsPacket *p,size_t bytes) {
     ssize_t n=write(endpoint,p,bytes);return n==(ssize_t)bytes?0:n<0?errno:EIO;
 }
+static int prepareClock(int descriptor,uint32_t numer,uint32_t denom) {
+    // Reuse audio072's three real API contract checks. The new ioctl has no
+    // input payload; the kernel derives and validates the original image.
+    atomic_store(&clockReady,0);
+    if(!numer || !denom)return EINVAL;
+    uint64_t expected=1000000000ULL*denom/numer;
+    if(!expected || expected>UINT32_MAX)return ENOTSUP;
+    Float64 (*frequency)(void)=(Float64 (*)(void))dlsym(RTLD_DEFAULT,"AudioGetHostClockFrequency");
+    UInt64 (*toNanos)(UInt64)=(UInt64 (*)(UInt64))dlsym(RTLD_DEFAULT,"AudioConvertHostTimeToNanos");
+    UInt64 (*toHost)(UInt64)=(UInt64 (*)(UInt64))dlsym(RTLD_DEFAULT,"AudioConvertNanosToHostTime");
+    if(!frequency || !toNanos || !toHost)return ENOTSUP;
+    Float64 observed=frequency();
+    if(!isfinite(observed) || observed<1 || observed>UINT32_MAX || floor(observed)!=observed)return EINVAL;
+    if(observed!=(Float64)expected || toNanos(expected)!=1000000000ULL || toHost(1000000000ULL)!=expected) {
+        if(ioctl(descriptor,NZ_HAPTICS_FIX_HOST_CLOCK)<0)return errno;
+        observed=frequency();
+    }
+    uint64_t ns=toNanos(expected),ticks=toHost(1000000000ULL);
+    atomic_store(&clockHz,isfinite(observed) && observed>0 && observed<=UINT32_MAX?(uint32_t)observed:0);
+    atomic_store(&clockNanos,ns<=UINT32_MAX?(uint32_t)ns:0);
+    atomic_store(&clockTicks,ticks<=UINT32_MAX?(uint32_t)ticks:0);
+    if(!isfinite(observed) || observed!=(Float64)expected || ns!=1000000000ULL || ticks!=expected)return EIO;
+    atomic_store(&clockReady,1);return 0;
+}
 static int startEndpoint(void) {
+    if(!atomic_load(&clockReady))return ENXIO;
     if(endpoint<0)endpoint=open(NZ_HAPTICS_DEVICE,O_WRONLY|O_NONBLOCK|O_CLOEXEC);
     if(endpoint<0)return errno;
     NzHapticsStatus s={0};int e=state(&s);
@@ -86,6 +113,7 @@ static OSStatus Initialize(AudioServerPlugInDriverRef d,AudioServerPlugInHostRef
         NzHapticsStatus status={0};
         if(ioctl(descriptor,NZ_HAPTICS_GET_STATUS,&status)<0)error=errno;
         else if(status.version!=NZ_HAPTICS_ABI || !status.ready)error=ENXIO;
+        if(!error)error=prepareClock(descriptor,t.numer,t.denom);
         close(descriptor);
     }
     atomic_store(&lastError,(uint32_t)error);return 0;
@@ -218,10 +246,10 @@ static OSStatus GetPropertyDataSize(AudioServerPlugInDriverRef d,AudioObjectID o
 static CFDictionaryRef diagnostics(void) {
     const void *keys[]={CFSTR("initialized"),CFSTR("starts"),CFSTR("writes"),CFSTR("lastError"),
         CFSTR("stops"),CFSTR("propertyQueries"),CFSTR("lastUnknownObject"),CFSTR("lastUnknownSelector"),
-        CFSTR("processID")};
+        CFSTR("processID"),CFSTR("clockReady"),CFSTR("clockHz"),CFSTR("clockNanos"),CFSTR("clockTicks")};
     uint32_t counters[]={atomic_load(&initialized),atomic_load(&starts),atomic_load(&writes),atomic_load(&lastError),
         atomic_load(&stops),atomic_load(&propertyQueries),atomic_load(&lastUnknownObject),atomic_load(&lastUnknownSelector),
-        (uint32_t)getpid()};
+        (uint32_t)getpid(),atomic_load(&clockReady),atomic_load(&clockHz),atomic_load(&clockNanos),atomic_load(&clockTicks)};
     CFNumberRef values[sizeof(counters)/sizeof(counters[0])]={0};unsigned made=0;
     for(;made<sizeof(values)/sizeof(values[0]);++made) {
         int64_t value=counters[made];values[made]=CFNumberCreate(NULL,kCFNumberSInt64Type,&value);

@@ -24,7 +24,7 @@ struct fileproc {int f_type;vnode_t data;};
 static int queries;
 static void *fp_get_data(struct fileproc *fp) {return fp->data;}
 static int actual_fixture(vfs_context_t ctx,vnode_t vp,unsigned long command) {
- ++queries;return ctx->allowed && vp && vp->ours && command==NZ_HAPTICS_GET_STATUS;
+ ++queries;return ctx->allowed && vp && vp->ours && (command==NZ_HAPTICS_GET_STATUS || command==NZ_HAPTICS_FIX_HOST_CLOCK);
 }
 static int (*nezha_haptics_ioctl)(vfs_context_t,vnode_t,unsigned long)=actual_fixture;
 static int gate(int error,struct fileproc *fp,unsigned long com,struct context context) {
@@ -34,10 +34,10 @@ static int gate(int error,struct fileproc *fp,unsigned long com,struct context c
 int main(void) {
  unsigned cases=0;
  for(unsigned allowed=0;allowed<2;++allowed)for(unsigned ours=0;ours<2;++ours)
- for(unsigned type=0;type<2;++type)for(unsigned exact=0;exact<2;++exact)
+ for(unsigned type=0;type<2;++type)for(unsigned exact=0;exact<3;++exact)
  for(unsigned policy=0;policy<3;++policy) {
   struct vnode vp={ours};struct fileproc fp={type?DTYPE_VNODE:2,&vp};struct context context={allowed};
-  unsigned long command=exact?NZ_HAPTICS_GET_STATUS:NZ_HAPTICS_GET_STATUS^1u;
+  unsigned long command=exact==2?NZ_HAPTICS_FIX_HOST_CLOCK:exact==1?NZ_HAPTICS_GET_STATUS:NZ_HAPTICS_GET_STATUS^1u;
   int original=policy==0?0:policy==1?EPERM:EACCES;
   int expected=original==EPERM && type && allowed && ours && exact?0:original;
   assert(gate(original,&fp,command,context)==expected);++cases;

@@ -24,4 +24,7 @@ typedef struct {
     uint32_t completed,cancelled,requests,underruns;
 } NzHapticsStatus;
 #define NZ_HAPTICS_GET_STATUS _IOR('H',1,NzHapticsStatus)
+/* No payload or caller-supplied address. The kernel validates the current
+ * audio server and exact24A446 CoreAudio image before aligning its clock. */
+#define NZ_HAPTICS_FIX_HOST_CLOCK _IO('H',2)
 #endif

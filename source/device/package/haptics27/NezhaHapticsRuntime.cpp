@@ -11,6 +11,7 @@
 #include <IOKit/pwr_mgt/RootDomain.h>
 #include <kern/clock.h>
 #include <kern/thread.h>
+#include <kern/task.h>
 #include <machine/machine_routines.h>
 #include <pexpert/pexpert.h>
 #include <miscfs/devfs/devfs.h>
@@ -30,8 +31,10 @@ extern "C" vm_offset_t ml_io_map_unmappable(vm_offset_t,vm_size_t,uint32_t);
 extern "C" void ml_io_unmap(vm_offset_t,vm_size_t);
 extern "C" int nezha_spmi_bus_acquire(void);
 extern "C" void nezha_spmi_bus_release(void);
+extern "C" IOReturn nezha_haptics_fix_host_clock(task_t);
 namespace {
 IOLock *hapticGate;
+IOLock *hapticClockGate;
 PghCore core;
 NzHapticsBus bus;
 PghFactoryState factory;
@@ -41,6 +44,7 @@ struct Map {uint64_t physical;vm_offset_t address;} maps[32];
 unsigned mapped,mode;
 uint32_t sessionCounter,logCount;
 uint32_t pcmWrites,pcmFrames,pcmNonzero,pcmPeak,pcmLastError,pcmMaxQueue;
+uint32_t clockCalls,clockError;
 int64_t pcmLeadUs;
 uint64_t cooldownUntil;
 proc_t client;
@@ -160,10 +164,26 @@ int closeDevice(dev_t,int,int,struct proc *) {
     IOLockUnlock(hapticGate);return 0;
 }
 int ioctlDevice(dev_t,u_long command,caddr_t data,int,struct proc *p) {
-    if(command!=NZ_HAPTICS_GET_STATUS || !data)return ENOTTY;
+    if(command!=NZ_HAPTICS_GET_STATUS && command!=NZ_HAPTICS_FIX_HOST_CLOCK)return ENOTTY;
+    if(command==NZ_HAPTICS_GET_STATUS && !data)return EINVAL;
     IOLockLock(hapticGate);int e=client!=p?EACCES:0;
-    if(!e)nz_haptics_status(&queue,(NzHapticsStatus *)data);
-    note("HAL status",0,e);
+    if(command==NZ_HAPTICS_FIX_HOST_CLOCK) {
+        if(!e && (!enabled || exitRequested || suspended || queue.running || queue.stopping))e=EBUSY;
+        IOLockUnlock(hapticGate);
+        if(!e) {
+            // Reuse the audio072 owned-clock gate boundary. VM pinning and
+            // instruction synchronization do not hold the motor request gate.
+            IOLockLock(hapticClockGate);
+            IOReturn result=nezha_haptics_fix_host_clock(current_task());
+            IOLockUnlock(hapticClockGate);
+            e=result==kIOReturnSuccess?0:result==kIOReturnNotPermitted?EPERM:
+                result==kIOReturnUnsupported?ENOTSUP:result==kIOReturnNotReadable?ENXIO:EIO;
+        }
+        IOLockLock(hapticGate);++clockCalls;clockError=(uint32_t)e;note("HAL clock",0,e);
+    } else {
+        if(!e)nz_haptics_status(&queue,(NzHapticsStatus *)data);
+        note("HAL status",0,e);
+    }
     IOLockUnlock(hapticGate);return e;
 }
 uint64_t packetTime(uint64_t host,uint64_t now,int *error) {
@@ -193,12 +213,13 @@ int diagnosticSnapshot(void *,char *out,size_t capacity,size_t *bytes,unsigned *
     NzHapticsStatus s=diagnosticStatus;Electrical electrical=diagnosticElectrical;
     uint32_t phase=stats[0],plays=stats[4],stops=stats[5];
     uint32_t writes=pcmWrites,frames=pcmFrames,nonzero=pcmNonzero,peak=pcmPeak;
-    uint32_t lastError=pcmLastError,maxQueue=pcmMaxQueue;
+    uint32_t lastError=pcmLastError,maxQueue=pcmMaxQueue,clockCount=clockCalls,clockResult=clockError;
     int64_t lead=pcmLeadUs;
     IOLockUnlock(hapticGate);
-    int n=snprintf(out,capacity,"{\"v\":1,\"cached\":true,\"ready\":%u,\"active\":%u,\"queued\":%u,\"error\":%u,\"requests\":%u,\"completed\":%u,\"cancelled\":%u,\"session\":%u,\"epoch\":%u,\"phase\":%u,\"plays\":%u,\"stops\":%u,\"service_ready\":%u,\"service_error\":%d,\"pcm\":{\"writes\":%u,\"frames\":%u,\"nonzero\":%u,\"peak\":%u,\"last_error\":%u,\"lead_us\":%lld,\"max_queue\":%u},\"electrical\":{\"play\":%u,\"power\":%u,\"source\":%u,\"vmax\":%u,\"amplitude\":%u,\"voltage_raw\":%u,\"current_raw\":%u,\"voltage_mv\":%u,\"current_ma\":%u,\"stop_reads\":%u,\"recoveries\":%u,\"vsense_ctl\":%u,\"isense_ctl\":%u,\"visense_enable\":%u,\"frontend_check\":%u,\"valid\":%u,\"sequence\":%u,\"sampled_us\":%llu},\"mechanical_verified\":false}",
+    int n=snprintf(out,capacity,"{\"v\":1,\"cached\":true,\"ready\":%u,\"active\":%u,\"queued\":%u,\"error\":%u,\"requests\":%u,\"completed\":%u,\"cancelled\":%u,\"session\":%u,\"epoch\":%u,\"phase\":%u,\"plays\":%u,\"stops\":%u,\"service_ready\":%u,\"service_error\":%d,\"clock\":{\"calls\":%u,\"error\":%u},\"pcm\":{\"writes\":%u,\"frames\":%u,\"nonzero\":%u,\"peak\":%u,\"last_error\":%u,\"lead_us\":%lld,\"max_queue\":%u},\"electrical\":{\"play\":%u,\"power\":%u,\"source\":%u,\"vmax\":%u,\"amplitude\":%u,\"voltage_raw\":%u,\"current_raw\":%u,\"voltage_mv\":%u,\"current_ma\":%u,\"stop_reads\":%u,\"recoveries\":%u,\"vsense_ctl\":%u,\"isense_ctl\":%u,\"visense_enable\":%u,\"frontend_check\":%u,\"valid\":%u,\"sequence\":%u,\"sampled_us\":%llu},\"mechanical_verified\":false}",
         s.ready,s.active,s.queued,s.error,s.requests,s.completed,s.cancelled,s.session,s.epoch,phase,plays,stops,
         nezha_haptics_ready_state(),nezha_haptics_ready_error(),
+        clockCount,clockResult,
         writes,frames,nonzero,peak,lastError,(long long)lead,maxQueue,
         electrical.play,electrical.power,electrical.source,electrical.vmax,electrical.amplitude,electrical.voltage_raw,
         electrical.current_raw,electrical.voltage_mv,electrical.current_ma,electrical.stop_reads,electrical.recoveries,
@@ -440,7 +461,8 @@ done:
 extern "C" void nezha_haptics_start(void) {
     uint32_t selected=0;
     if(hapticGate || !PE_parse_boot_argn("nezha-haptics",&selected,sizeof selected) || !selected || selected>3)return;
-    hapticGate=IOLockAlloc();if(!hapticGate)return;mode=selected;
+    hapticGate=IOLockAlloc();if(!hapticGate)return;
+    hapticClockGate=IOLockAlloc();if(!hapticClockGate){IOLockFree(hapticGate);hapticGate=nullptr;return;}mode=selected;
     thread_t t;if(kernel_thread_start(worker,nullptr,&t)==KERN_SUCCESS)thread_deallocate(t);
     else {exited=true;queue.error=ENOMEM;}
 }
@@ -492,5 +514,6 @@ extern "C" boolean_t nezha_haptics_vnode(vfs_context_t ctx,vnode_t vp,struct com
     if(actual)vnode_putname(actual);return matched;
 }
 extern "C" boolean_t nezha_haptics_ioctl(vfs_context_t ctx,vnode_t vp,u_long command) {
-    return command==NZ_HAPTICS_GET_STATUS && nezha_haptics_vnode(ctx,vp,nullptr);
+    return (command==NZ_HAPTICS_GET_STATUS || command==NZ_HAPTICS_FIX_HOST_CLOCK) &&
+        nezha_haptics_vnode(ctx,vp,nullptr);
 }

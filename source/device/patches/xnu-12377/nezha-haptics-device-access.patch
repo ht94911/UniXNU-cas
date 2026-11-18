@@ -49,7 +49,7 @@
  
  #if CONFIG_MACF
 +	/* The original fileglob policy precedes the vnode ioctl hook. Permit
-+	 * only the existing read-only haptic status command on our devfs node;
++	 * our status and payload-free exact-donor clock commands on this node;
 +	 * every other file, process and command keeps its policy result. */
 +	extern boolean_t nezha_haptics_ioctl(vfs_context_t, vnode_t, u_long) __attribute__((weak_import));
  	error = mac_file_check_ioctl(context.vc_ucred, fp->fp_glob, com);

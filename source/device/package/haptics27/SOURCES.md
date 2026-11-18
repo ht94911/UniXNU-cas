@@ -29,3 +29,5 @@ QQ 使用人类指定 `M:/QQ_History`，本次档案135181条、2026-10-22至11-
 012状态ioctl核对：011原audiomxd106.033s明确Autobox file-ioctl拒绝，XNU sys_generic::ioctl先调用mac_file_check_ioctl而后才达现有vnode_hook。补齐fileglob层只对EPERM、DTYPE_VNODE、原allowed进程和同一NZ_HAPTICS_GET_STATUS精确节点应用既有nezha_haptics_ioctl predicate；49个实际条件分支ASan/UBSan用例及原XNU补丁应用检查通过。未放宽其他文件/ioctl或普通应用直接驱动权限。
 
 015执行器就绪服务：同本机24A446 AppleHapticsSupportLEAP原AHSFirmwareReadyNotifier(start0xfffffff008becf70，168slot/136B)与AudioToolbox首匹配调用只读核定。复用本包ALS/AES晚构造与IOService正常注册/退休方式，本机只有实际HAP530端点与已安装HAL/预设成功后发布；不复制Apple指令或固件。原FirmwareReadyTimestamp为毫秒，新源码校正，015编译版单位差异单独记录。
+
+017时基复用：nezha独立音频树clock072-device@7c065c861cf1e565095ae50697743ff9edc14a93，package/audio27/os/NezhaAudioClock.cpp与NezhaAudioTask.c（BSD-2-Clause-Patent），改导出名称和去不需要的protocol include，其余函数体逐字节核对；原5个转换指令修正及DSB/ISB和task原布局沿现成实现。HAL沿同源clock_ready核三个实际API，改为本方已独占字符设备的无payload _IO(H,2)入口，精确节点/现有allowed进程与当前task共同约束，无调用者提供的写地址。音频072/后继有目标及模型证据，本方017系统短反馈仍待验。

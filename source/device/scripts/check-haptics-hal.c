@@ -7,10 +7,30 @@
 #include <unistd.h>
 #include <sys/ioctl.h>
 #include <CoreFoundation/CoreFoundation.h>
+#include <mach/mach_time.h>
+#include <errno.h>
+#include <dlfcn.h>
 #include "../package/haptics27/NezhaHapticsProtocol.h"
 static unsigned opens,closes,packets;
 static int write_error;
 static NzHapticsPacket last_packet;
+static unsigned clock_fixes;
+static double observed_hz=24000000;
+static unsigned clock_numer=125,clock_denom=3;
+static int clock_fix_error;
+static double observe_frequency(void) {return observed_hz;}
+static uint64_t observe_to_nanos(uint64_t ticks) {return (uint64_t)((__uint128_t)ticks*clock_numer/clock_denom);}
+static uint64_t observe_to_host(uint64_t nanos) {return (uint64_t)((__uint128_t)nanos*clock_denom/clock_numer);}
+static void *observe_symbol(void *handle,const char *name) {
+    (void)handle;
+    if(!strcmp(name,"AudioGetHostClockFrequency"))return (void *)observe_frequency;
+    if(!strcmp(name,"AudioConvertHostTimeToNanos"))return (void *)observe_to_nanos;
+    if(!strcmp(name,"AudioConvertNanosToHostTime"))return (void *)observe_to_host;
+    return NULL;
+}
+static kern_return_t observe_timebase(mach_timebase_info_t timebase) {
+    timebase->numer=625;timebase->denom=12;return 0;
+}
 static int observe_open(const char *path,int flags,...)
 {
     assert(!strcmp(path,NZ_HAPTICS_DEVICE));assert(flags&O_WRONLY);++opens;return 77;
@@ -18,7 +38,13 @@ static int observe_open(const char *path,int flags,...)
 static int observe_close(int descriptor) {assert(descriptor==77);++closes;return 0;}
 static int observe_ioctl(int descriptor,unsigned long command,...)
 {
-    assert(descriptor==77 && command==NZ_HAPTICS_GET_STATUS);
+    assert(descriptor==77);
+    if(command==NZ_HAPTICS_FIX_HOST_CLOCK) {
+        ++clock_fixes;
+        if(clock_fix_error){errno=clock_fix_error;return -1;}
+        observed_hz=19200000;clock_numer=625;clock_denom=12;return 0;
+    }
+    assert(command==NZ_HAPTICS_GET_STATUS);
     va_list list;va_start(list,command);NzHapticsStatus *state=va_arg(list,NzHapticsStatus *);va_end(list);
     *state=(NzHapticsStatus){.version=NZ_HAPTICS_ABI,.session=1,.epoch=1,.next_sequence=1,.ready=1};return 0;
 }
@@ -33,15 +59,24 @@ static ssize_t observe_write(int descriptor,const void *data,size_t bytes)
 #define close observe_close
 #define ioctl observe_ioctl
 #define write observe_write
+#define dlsym observe_symbol
+#define mach_timebase_info observe_timebase
 #include "../package/haptics27/hal/NezhaHapticsPlugIn.c"
 #undef open
 #undef close
 #undef ioctl
 #undef write
+#undef dlsym
+#undef mach_timebase_info
 int main(void)
 {
     assert(Initialize(&driverPointer,NULL)==0);
     assert(opens==1 && closes==1 && packets==0 && endpoint<0 && !users);
+    assert(clock_fixes==1 && clockReady && clockHz==19200000 && clockNanos==1000000000 && clockTicks==19200000);
+    assert(prepareClock(77,625,12)==0 && clock_fixes==1); /* already corrected */
+    clock_fix_error=EPERM;observed_hz=24000000;clock_numer=125;clock_denom=3;
+    assert(prepareClock(77,625,12)==EPERM && clock_fixes==2);
+    clock_fix_error=0;assert(prepareClock(77,625,12)==0 && clock_fixes==3);
     AudioObjectPropertyAddress address={kAudioObjectPropertyCustomPropertyInfoList,kAudioObjectPropertyScopeGlobal,0};
     UInt32 size=0;
     assert(GetPropertyDataSize(&driverPointer,kActuator,0,&address,0,NULL,&size)==0);
@@ -97,5 +132,6 @@ int main(void)
     assert(StopIO(&driverPointer,kActuator,6)==0);
     puts("PASS production HAL: typed custom property, retained CF dictionary, exact Actuator UID, silent Initialize and StartIO/StopIO lifetime");
     puts("PASS production WriteMix: late/busy/rest preserves stream and sequence; next timely buffer accepted; hard IO fault closes and cancels");
+    puts("PASS production clock: frequency and both nanosecond converters aligned before streaming; original/corrected/denied paths");
     return 0;
 }

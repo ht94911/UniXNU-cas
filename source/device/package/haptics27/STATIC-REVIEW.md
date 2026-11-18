@@ -1,6 +1,6 @@
 # 静态审查与等待点
 
-本文前半部分保留2026-11-16第一阶段静态审查记录。该阶段的独立交付已固定；随后人类明确指定GPU051，构建等待点解除。最新已编译源码c7d3ba749849fc2ab46840d275957c50bfbb914f及007测试状态见文末与README，不能把旧等待记录当作当前授权或验收。
+本文前半部分保留2026-11-16第一阶段静态审查记录。该阶段的独立交付已固定；随后人类明确指定GPU051，构建等待点解除。最新已编译源码389d369b4de4cdafda0582dbfcbd86b4630af725、016电脑资格及015实测边界见文末与README，不能把旧等待记录当作当前授权或验收。
 
 第一阶段当时状态为 **implemented，尚未编译或真机验证**。当时测试包未指定，没有执行编译器、CI、封包、ADB/fastboot/COM或手机队列领取。
 
@@ -20,7 +20,7 @@
 | iOS身份 | 原D16能力属性为OSData字节；plugin/preset/executor可见后才发布，无私有vtable/PAC硬编码 | MobileGestalt启动缓存、实际/Library路径、系统设置/静音、CoreHaptics/通知请求 |
 | 记录/隔离 | 本地三层源码提交，未改活动board/feed/patch series或主包，无Apple/vendor原件进Git | 指定包完整source manifest、archive/init caller、addon/sign/trust及镜像固定SHA |
 
-准备而未执行：组件原 `Test/check-pagani-haptics-host.py`及新增factory生命周期case，公共SPMI `tests/bus1_cases.c`，设备 `tests/queue_cases.c`。用户要求在编译之前等待，因此没有把这些C用例编译执行或声称通过。一次实机取证计划在 README.md。
+第一阶段当时准备而未执行：组件原 `Test/check-pagani-haptics-host.py`及新增factory生命周期case，公共SPMI `tests/bus1_cases.c`，设备 `tests/queue_cases.c`。用户要求在编译之前等待，因此没有把这些C用例编译执行或声称通过。一次实机取证计划在 README.md。
 
 实际尚未确认项：完整iOS request→VAD→HAL→kernel→motor、Apple回调与取消时序、振动感觉、连续/组合sharpness语义、持久稳定性及功耗。源码有精确范围，不能作为最终主包合入结论；当前交付可用于指定包集成审查。
 
@@ -46,4 +46,8 @@ GPU051指定后的审查：真实audiomxd UserName mobile/UID501已核，cdev501
 
 015就绪边界：原类匹配使用IOProviderClass/metaCast，普通IOService的显示名称不满足此条件；新类使用真实OSMetaClass及原168槽IOService，無附加实例字段。生产用例实际执行init/attach/start失败、仅命名拒绝、单次构造、时间单位、重复ready、退休失败保留引用、休眠后再发布。caller只置assetsReady并唤醒原worker，registry注册/退休全程不持hapticGate；原芯片/校准/2V/500ms/STOP路径保持。015目标ABI/晚构造移除/完整服务启动仍待编译及实机。
 
-016生产队列覆盖迟到、部分过期、future队列满/回收、rest保持session和下一序号；实际DIRECT→IDLE回放证保护早停与真正deadline/budget休息分别保持streamready，EBUSY恢复要求coreIDLE/PLAY_EN已清/bus无pending。PCM错误观测按有限计数记录，停止回读原代码保持。HALWriteMix定向模型新增临时错误后同sequence再写与硬IO错误关闭，Mac目标检查待。
+016生产队列覆盖迟到、部分过期、future队列满/回收、rest保持session和下一序号；实际DIRECT→IDLE回放证保护早停与真正deadline/budget休息分别保持streamready，EBUSY恢复要求coreIDLE/PLAY_EN已清/bus无pending。PCM错误观测按有限计数记录，停止回读原代码保持。HALWriteMix定向模型新增临时错误后同sequence再写与硬IO错误关闭，实际Mac目标用例已通过。
+
+016 最终电脑审查：389d369/Mac44329367469/attempt1/856文件、9原生对象/原168槽/1491最终PAC、严格38组件零缺失和零stub、3原资源、6最终信任/4KiB签页、真实loader/单八核QEMU、本机75r008和183依赖已通过。015已创建原VAD/HapticServer且Core API成功；仅一次360mV/25mA弱驱动与随后断流，不作为完整机械反馈。016原厂限值、STOP和总线保护保持；真机重复播放与触感待验。
+
+017静态审查：新的FIX_HOST_CLOCK仅在当前HAL进程拥有端点、流未启动且原执行器有效时允许；helper要求current_task、原CoreAudio UUID/代码/slide/常量，IOMemoryDescriptor pin与原phys读写和缓存同步复用音频072。独立clock gate不持motor gate做VM工作；原硬件寄存器、队列、限值和STOP不变。实际osfmk startup.o.json用于task accessor，不能只向BSD record追加MACH_KERNEL_PRIVATE。73个原fileglob例外模型、productionprepareClock与原23words/5 edits和绝对事件时基模型通过ASan/UBSan；原同步生产函数MachO目标ISB1/DSB2/DC CVAU/IC IVAU已核。完整native和真机待。

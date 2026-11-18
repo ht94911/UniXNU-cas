@@ -1,5 +1,5 @@
 {
-  "stage": "GPU051016 observed late WriteMix and protected-stop/rest source fix; target/device validation pending",
+  "stage": "GPU051017 source prepared: reuse audio072 clock contract for normal UIKit absolute-time events",
   "profile": "GPU051 iPhone14,4 D16 27.0.1/24A446",
   "framework_reference": "9931232fd68b8ae1db0abd957ecba417f1996e52",
   "xnu_reference": "12377.121.6 source; donor xnu13432.2.10",
@@ -38,7 +38,9 @@
     "NezhaHapticsQueue.c",
     "NezhaHapticsRuntime.cpp",
     "NezhaHapticsIOS.cpp",
-    "NezhaHapticsReady.cpp"
+    "NezhaHapticsReady.cpp",
+    "NezhaHapticsClock.cpp",
+    "NezhaHapticsTask.c"
   ],
   "component_sources": [
     "HapticsCore.c",
@@ -57,7 +59,8 @@
     "destination": "/System/Library/Audio/Plug-Ins/HAL/NezhaHaptics27.driver",
     "signing": "reuse selected package owner codesign and trust addon path; 4096-byte code pages",
     "hardware_probe_executable": "NezhaHapticTest",
-    "diagnostic_property": "nhpt: registeredCFPropertyList, read-only counters and lastunknown property"
+    "diagnostic_property": "nhpt: registered CFPropertyList, read-only counters and last unknown property",
+    "clock_contract": "AudioGetHostClockFrequency plus both1second conversions; payload-free exactdonor ioctl before StartIO"
   },
   "private_inputs": [
     "original current Android runtime/calibration and extent references",
@@ -74,37 +77,44 @@
     "ios17-main.json"
   ],
   "pending": [
-    "Native014 original device-tree default-name publication and ActuatorVAD creation",
-    "Normal UIKit/CoreHaptics -> originalserver -> HAL PCM -> kernel -> motor output and stop",
-    "Original server firmwareReady dependency after actual hapticsVAD and same request mechanical acceptance"
+    "Normal UIKit/CoreHaptics nonzero PCM repeatedly drives the motor after late/rest recovery",
+    "Same-session electrical playback and PLAY_EN/HPWR stop readback",
+    "Mechanical sensation, sleep/wake, concurrent use and sustained stability"
   ],
   "selected_package": {
     "base_revision": "76c5952683041a6581224135461ab7c21d47f6a5",
     "base_boot_sha256": "4e4b785ca1bf7bea18d68248ade4cde09a9d9efb5d557fe65e4eaa975dac849a",
     "framework": "4a157b58d1a18300a6570792236abc4796aa27a2",
-    "compiled_source_revision": "0e7c6ff9912cad29597a52e9c035c7e0dd0ccdb6",
-    "native_run": 44124303751,
-    "native_head": "bc864f1e2ff3c25985374744e754ae588176d99e",
+    "compiled_source_revision": "389d369b4de4cdafda0582dbfcbd86b4630af725",
+    "native_run": 44329367469,
+    "native_head": "4be17e4869ac8483c3503e8cc6c9af99a481a6cb",
     "motor_boot_sha256": "31dda3c7ad6d51aa3da2d04c2c1f17294b83a35ac7d07f0495e4448f51359a15",
     "motor_embedded_payload_sha256": "306fb898dd97760d097ea2f013bc05eb5b9180b7c51592b05f2f3015f7271d46",
     "actual_motor_sensation_verified": true,
     "actual_system_haptics_verified": false,
-    "latest_system_test": "013-local001",
-    "latest_system_engine_error": 4099,
-    "latest_system_plays": 0,
+    "latest_system_test": "016-system-local001",
+    "latest_system_engine_error": 0,
+    "latest_system_plays": 55,
     "packaging_source_revision": "7f4d0ebb0488f43f9057aff0f699af3e4223f83f",
     "native_attempt": 1,
-    "system_boot_sha256": "5b25ef72b1634703d8cb6e4393356d9c26c44dfdab345aa97298a3014975b36c",
-    "system_embedded_payload_sha256": "f460e5adddc74a87ee7620c1947dcc93b126148bd455234bdcae025a6cdf62b3",
+    "system_boot_sha256": "cdd80b2785a57712603913e106d7099c47131880c22a1afdc7ffffa95bb67ea8",
+    "system_embedded_payload_sha256": "a8fca5788a03d133a3cc08b602a2981d11d317fc68ec26f1662205d2a746c7b2",
     "original_audiomxd_GET_STATUS_verified": true,
     "normal_return_and_protected_release_verified": true,
-    "latest_system_rootcause": "Defaultname omitted from runtime haptics node; MGGetBoolAnswer false; originalVA skipsActuatorVAD",
+    "latest_system_rootcause": "015 late WriteMix closes HAL endpoint; protected DIRECT-to-IDLE incorrectly treated as permanent cap",
     "original_VirtualAudio_initialization_verified": true,
     "original_Actuator_port_verified": true,
     "original_haptics_VAD_missing_verified": false,
     "system_engine_and_callbacks_verified_on015": true,
     "system_play_count_on015": 1,
-    "remaining_system_issue": "latePCM fatalteardown andearly protectedstop wronglytreatedterminalcap;16 sourceprepared"
+    "remaining_system_issue": "UIKitthree absolute-time events fail; Core immediate continuous works;17clock source pending target/device",
+    "native_conclusion": "success",
+    "latest_tested_system_boot_sha256": "aa45df9f52acb4567e605b50620420e6a0999be395020e653b8fb35e6dda2e40",
+    "original_haptics_VAD_created_verified_on015": true,
+    "latest_tested_system_payload_sha256": "6aada44247272ded0f480702f30ed888fcca8c87e0d5a904acbf07e989a24ceb",
+    "pending_system_test": "016-system-local001",
+    "actual_short_continuous_feedback_verified_on016": true,
+    "latest_system_stops": 55
   },
   "ready_service": {
     "source": "NezhaHapticsReady.cpp",
@@ -114,7 +124,18 @@
     "source_method": "existing late ALS/AES native constructor and IOService lifetime",
     "publish_condition": "genuineHAP530/factory/endpoint andiOSHAL/preset ready",
     "withdrawal": "worker exit/error/suspend, synchronous service termination",
-    "target_compiled": false,
-    "system_verified": false
+    "target_compiled": true,
+    "system_verified": true,
+    "system_verified_on": "015-system-local001",
+    "timestamp_unit": "milliseconds"
+  },
+  "clock_reuse": {
+    "revision": "7c065c861cf1e565095ae50697743ff9edc14a93",
+    "path": "audio27/os/NezhaAudioClock.cpp andNezhaAudioTask.c",
+    "license": "BSD-2-Clause-Patent",
+    "task_recipe": "actual osfmk startup.o.json",
+    "converter_words": 23,
+    "edits": 5,
+    "target_validation_pending": true
   }
 }

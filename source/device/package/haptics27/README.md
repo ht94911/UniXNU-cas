@@ -1,6 +1,6 @@
 # nezha iOS27 触觉源码候选
 
-**人类已指定 GPU051。007 的直接马达振动、完全停止和正常返回实机通过；013 正常按钮仍无振动。原服务日志已确认 VirtualAudio 初始化完成并发布 Actuator 端口，却因 `DeviceSupportsHaptics` 的默认名称查询看不到运行时节点而跳过触觉 VAD。014 源码补齐默认名称与设备树平面名称，目标构建和正常系统输出验证待完成。** 编译与实机证据按包身份绑定，旧失败轮次保留。复用与许可证见 `SOURCES.md`，依赖见 `dependencies.json`。
+**人类已指定 GPU051。007 的直接马达振动、完全停止和正常返回实机通过；015 已创建原触觉 VAD、初始化原 HapticServer，并完成 CoreHaptics 播放/取消/停止回调，但正常 UI 只出现一次微弱驱动输出，完整振动反馈未通过。016 修复迟到 PCM 与保护早停导致的断流，目标编译、签名、严格预链接、QEMU 和本机入口均已通过，等待同一次正常系统请求的真机验证。** 编译与实机证据按包身份绑定，旧失败轮次保留。复用与许可证见 `SOURCES.md`，依赖见 `dependencies.json`。
 
 真机已确认 PMIH010x / HAP530、SPMI v8 bus1 SID7，CFG/PTN/HBOOST 分别0xf000/0xf100/0xf200，global APID2254/2255/2256；CFG5.1.8.1、PTN5.1.0.0、HBOOST31/01。马达按原厂LRA、160–180Hz范围，名义5555µs；旧安卓日志5723µs，005本轮读取有效5746µs、RC mode4/count0及8064字节FIFO。9Ω为原厂标称阻抗；具体马达商品型号与当前温度尚未确认。
 
@@ -13,15 +13,15 @@
 - 007复用原厂HAP530运行态V/I通道恢复、direct自动谐振、2000mV时500mV headroom，以及SWR-aware停止恢复。诊断暴露真实PLAY_EN/HPWR/source、VSENSE/ISENSE原始值和原厂单位换算；这些仅是电气证据，不自动宣称机械振动通过。
 - `/product/haptics`字节能力节点，只有Actuator插件、实际执行器和原D16预设都可见时发布；原iOS用户设置、铃声/通知策略和CoreHaptics合成仍走系统栈。
 
-`nezha-haptics`源码开关：缺省0，1只读probe，2配置/停止后退出而不驱动，3发布执行器；没有启动测试振动。`nezha-haptics-ios`缺省0，1基础触觉能力、2带原D16合成预设。007使用 `nezha-haptics=3 nezha-haptics-ios=0`。旧006系统包基于此前源码，不能作为007代码的系统验证；007马达物理输出及停止通过后再封008系统包。CoreHaptics瞬态/连续与selection/impact/通知接入的源码链存在，实际请求、系统回调与触感未测。
+`nezha-haptics`源码开关：缺省0，1只读probe，2配置/停止后退出而不驱动，3发布执行器；没有启动测试振动。`nezha-haptics-ios`缺省0，1基础触觉能力、2带原D16合成预设。007 使用 `nezha-haptics=3 nezha-haptics-ios=0`；016 使用 `nezha-haptics=3 nezha-haptics-ios=2`。015 已实测 CoreHaptics 瞬态/连续/取消和停止回调，selection/impact/通知的普通请求也已执行；后续重复驱动和实际触感仍待通过。每轮证据绑定准确编译源、镜像和设备会话。
 
 能力限制：包络保留强弱/时长/间隔，sharpness仅对应原厂固定载波，不能称任意频率与Apple闭环效果等价。PWLE频率曲线、SoundWire/ADSP触觉、长铃声与精细组合未验；不对未知寄存器、OTP、NVM、持久校准或原厂保护阈值做写入。元数据属性/queued不能当作系统触觉成功。
 
 GPU051集成与验证路径：
 
 1. 从人类指定的固定源码/镜像创建独立副本。以其framework、SoC、OS、Data与已验模块为基线，应用公共SPMI、组件、设备三个增量。
-2. 将 `Sm8850SpmiV8.c`、组件 `HapticsSpmi.c/HapticsCore.c` 和本目录五个内核源加入现有archive recipe，复用本包XNU compile records、arm64e flags、生成头文件/32线程。组件原v7 glue和OnePlus参数不加入nezha。
-3. 将 `nezha_haptics_start`接到资源就绪的正常线程caller；将 `nezha_haptics_quiesce`接到卸载卷之前的正常关机与设备退出。不能只靠通知queued或PSCI兜底证明马达停止。kernel源无新IOService子类或私有vtable，无自定义静态constructor。
+2. 将 `Sm8850SpmiV8.c`、组件 `HapticsSpmi.c/HapticsCore.c` 和本目录六个内核源加入现有archive recipe，复用本包XNU compile records、arm64e flags、生成头文件/32线程。组件原v7 glue和OnePlus参数不加入nezha。
+3. 将 `nezha_haptics_start`接到资源就绪的正常线程caller；将 `nezha_haptics_quiesce`接到卸载卷之前的正常关机与设备退出。不能只靠通知queued或PSCI兜底证明马达停止。执行器就绪由真实 `AHSFirmwareReadyNotifier : IOService` 类发布，原布局136B/168槽、无新增实例字段；复用已有 ALS/AES 晚构造与正常服务生命周期，最终 PAC 按目标产物核验。
 4. 用现有Mac HAL recipe构建独立 `NezhaHaptics27.driver`，4096页签名/严格trust/预链接；加精确 `/dev/nezha-haptics27`访问权限，不扩大其他设备。原D16/24A446调音资产和VirtualAudio留本地，沿指定包已有addon/union挂载路径。启用能力节点前检查插件、预设、caller真实已装载；具体权限与启动补丁在指定包上导出。
 5. 执行组件原Test、追加factory cases、公共层bus1 cases、本目录queue cases，再做实际目标构建/PAC/KPI/import严格核对。静态语法检查不替代它们。
 6. 真机先probe与50ms/25%短脉冲（显式工具编译命名NezhaHapticTest，避免内核proc_name长度截断），回读停止及原保护；再同次验证六效果、快速重复/取消、UISelection/impact/通知、CoreHaptics瞬态/连续、锁屏唤醒及音频/GPU并发。对齐请求序号、启动、停止、完成与人工触感。数据代际、原根卷和安卓保护均沿当时窗口最新事实。
@@ -30,7 +30,7 @@ GPU051集成与验证路径：
 
 2026-11-17电脑结果：最新Mac原生43933783541/head042e9e7205ce4132042c53ead10ce7da3fa1b193成功；native279496b76bb3d6bc97e6ea11444cc1799429b638da271f6b71de3ddf147a5231。核心98857、SPMI14615检查及ASan/UBSan通过；38组件strict零缺失/零stub，1323原有PAC槽与3原资源区复核；loader真实parser、单核/8核QEMU通过；113部署镜像与75文件r008已核。007 boot31dda3c7ad6d51aa3da2d04c2c1f17294b83a35ac7d07f0495e4448f51359a15，embedded payload306fb898dd97760d097ea2f013bc05eb5b9180b7c51592b05f2f3015f7271d46。原729jobs/56addon/4trust模块保留，007不写手机磁盘payload。
 
-实际轮次：001在SWR_ACCESS判定处拒绝，003在越界period处拒绝；均未驱动。005初始化通过，两个50ms/25%及两个300ms/50%仅命令与停止计数通过，用户明确反馈没有振动；第三300ms脉冲HPWR停止超时，正常USB退出被拒绝。随后人工回安卓，实际root/GPT/maps/17/27前缀后验和自有采集器退出通过并释放。007据此修采样、自动谐振和停止链，尚未启动。该005轮次验收为：总线/身份已测，机械振动失败；后续007实际结果见下段。
+实际轮次：001在SWR_ACCESS判定处拒绝，003在越界period处拒绝；均未驱动。005初始化通过，两个50ms/25%及两个300ms/50%仅命令与停止计数通过，用户明确反馈没有振动；第三300ms脉冲HPWR停止超时，正常USB退出被拒绝。随后人工回安卓，实际root/GPT/maps/17/27前缀后验和自有采集器退出通过并释放。007 据此修采样、自动谐振和停止链，后续实测结果见下一段。该005轮次验收为：总线/身份已测，机械振动失败；后续007实际结果见下段。
 
 007本机实际通过（2026-11-17）：原厂5726µs、FIFO8064；25%/50ms后峰值502mV/38mA，50%/300ms播放中997mV/84mA，全幅300ms播放中1984mV/183mA。人类确认“有震动！我感受到了！”及“已完全停止”。3次100ms重复与6个FIFO效果命令/停止过，六效果实际触感未逐个验。取消有实际stop13/logerror0，但USB电气缓存仍play129/power3；新源在STOP后强制回读、为采样增加valid/sequence/sampledus并在HAL客户端期间采样，生产函数模型ASan/UBSan通过。一次正常XNU返回、Android/root/GPT/map-pin/17同135168/27generation1/52204退出与文件释放通过；未写手机payload。008系统候选在电脑构建，不能沿用旧006验收。
 
@@ -62,4 +62,8 @@ GPU051集成与验证路径：
 
 015实际结果（2026-11-18）：唯一临时bootaa45df9f52ac/sessiona7690af33a7ff8eb，原VAD80/vzzz和HapticServer116.884s真实初始化，Core引擎/瞬态/连续/取消/停止API全通过。普通UI程序514自动及人工按钮调用，真实驱动play1/stop1/360mV25mA，随后283.263s报告EBUSY撤就绪；物理反馈仍未验。原613766条日志/21370匹配全部唯一时钟关联，预热141.352s第一次WriteMix失败后关闭流并连续NotRunning。正常XNU返回/安卓root/原payload/17同135168/27gen1及29640退出通过，704512B本方及14.37MB同boot服务日志完整取回，14:30:59UTC释放。
 
-016按这次证据修PCM退休/休息：过期包只退休序号并丢弃，不补播放迟到效果；队列容量不足或500ms保护休息丢弃当期包而保留同一stream。HAL仅对ERANGE/EBUSY/EAGAIN恢复继续，真实IO错误仍关闭。原core保护停为IDLE不再统一当duration超限；真实cap或已回读停止的EBUSY进入500ms休息，不能以该分支隐藏未清PLAY_EN/未完成bus CMD。增加现有USB快照的PCM接收数/frames/nonzero/peak/lastError/leadUs/maxQueue和有限错误日志。生产队列与STOP/休息用例通过，MacHAL和目标编译/真机待。源码包括已校正的毫秒FirmwareReadyTimestamp。
+016按这次证据修PCM退休/休息：过期包只退休序号并丢弃，不补播放迟到效果；队列容量不足或500ms保护休息丢弃当期包而保留同一stream。HAL仅对ERANGE/EBUSY/EAGAIN恢复继续，真实IO错误仍关闭。原core保护停为IDLE不再统一当duration超限；真实cap或已回读停止的EBUSY进入500ms休息，不能以该分支隐藏未清PLAY_EN/未完成bus CMD。增加现有USB快照的PCM接收数/frames/nonzero/peak/lastError/leadUs/maxQueue和有限错误日志。生产队列与STOP/休息用例、实际Mac HAL及目标编译已通过，真机重复播放待验。源码包括已校正的毫秒FirmwareReadyTimestamp。
+
+016 电脑终态（2026-11-19）：编译源 `389d369b4de4cdafda0582dbfcbd86b4630af725`；唯一 Mac44329367469/attempt1/head4be17e4869ac8483c3503e8cc6c9af99a481a6cb 成功，856项文件已取回解密核验。9触觉对象、就绪168槽、最终1491PAC、严格38组件零缺失/零stub、3原资源、6最终信任和全4KiB签页、实际loader、单八核QEMU、Windows75r008/14入口场景/183依赖全部通过。boot `cdd80b2785a57712603913e106d7099c47131880c22a1afdc7ffffa95bb67ea8`，embedded payload `a8fca5788a03d133a3cc08b602a2981d11d317fc68ec26f1662205d2a746c7b2`。硬件2V/500ms保护和停止保持；源码状态记录的修正不改变这份固定编译产物。016尚未上机，正常重复输出、机械反馈、锁屏唤醒和稳定性不记通过。
+
+017 源码接续：016同一次启动已由用户确认“短连续触觉每次都能振动”，快照plays55/stops55、ready1/error0且流保持；三项UIKit按钮仍无振动。原UIKit按绝对系统运行时间发送事件，随后反馈引擎完成回调延后数十秒；原24A446 CoreAudio三API仍按24MHz换算，实际XNU时基625/12（19.2MHz），形成时基差异。复用nezha音频072@7c065c8的精确donor时钟修正和原osfmk task accessor，HALInitialize在流启动前核频率及两个方向一秒换算，必要时通过无输入数据的专用ioctl修正。十一内核对象/新的HAL目标编译与017真机待；原厂2V/500ms/STOP保持，不用提高幅度隐藏短反馈失败。
