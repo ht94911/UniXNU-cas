@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "GNSS013: existing locationd fault record captures bounded queue fields and nearby waiting peer frames",
+  "purpose": "GNSS016: reuse sheng source-page release before 16KiB sibling reads and record the existing main-thread kernel wait",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,12 +14,12 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "9bd9af69b1292188b2c82120b4110203e2872a20",
+  "device_revision": "2cd24dad449512f85b5c9d98f8c6d8b619d5dcb7",
   "soc_revision": "GPU051 e565439+3435fa5 and GNSS counted IPA plus immutable IPCC append",
   "xcode": "26.6",
   "files": {
     "ci/check-native-userlog.py": "74e7abe9164a853b10d4406a46f55f67670ade42795f066068e84f14b2ebc006",
-    "ci/native.py": "9f3d23cdcba34a35c65537b6d8a76ef185ed2b6cf5d9126001b9ad743028a34d",
+    "ci/native.py": "9d7c1f159a3deec32274b8e5acfd1a7b0bdb78a95141c5f63d1e2f64915c8d6e",
     "ci/test-native-userlog-producer.py": "619bc31f6f41b16d562bcbc83a41588f6ada45a5268e23ef5c4985e5f364e403",
     "ci/test-native-userlog.py": "f64f5aff7c83cbbff7ce9bd15ab276dd7022f5e42d227999157b796afe414f9e",
     "source/adreno/LICENSE": "16fbc0170994a48f60938d9f0d992d3bad113383cf90882f75c206e079c2a2dc",
@@ -158,7 +158,7 @@
     "source/device/package/BootResetCore.h": "9211ed8aa8174a8999829c29b51351fb839807c1473c6239ae09e069e294a5f6",
     "source/device/package/BootUiTraceCore.h": "9404d7be6386f936904e6af34c870d86ec809b4d97161fd892d904d8334f2753",
     "source/device/package/BootUiTraceDetails.h": "b9c0d9afbc80359a08f2aabb87cf6ee94c5227e64212dffb05ea8d9e08a8473e",
-    "source/device/package/BootUiTraceProbe.c": "22a3e64f66a6386e0129dc0673d673c628aa6f52bce72fa7145962312d123dad",
+    "source/device/package/BootUiTraceProbe.c": "fab50ade80ad24932db17f355edd080bcf377d3589536e56fbca849d92cd483a",
     "source/device/package/BootWatchdogPolicy.c": "02087f0b09cdc8a76d799372ba392610614f806b99b1d38cd29bab48b3fb4397",
     "source/device/package/KeyStoreProbe.cpp": "35ff8e97c56fd438158b1fe929c53e52dd027bc18f1b4e0eac8a2fdf662fd933",
     "source/device/package/LegacyDisplayProbe.cpp": "25b92ed49e347237f89533acbd41bcd6179d7103b201042fd127a599dce656b9",
@@ -553,7 +553,7 @@
     "source/device/patches/xnu-12377/nezha-wifi-addon-truncate.patch": "c3b980c547fbc138ac7aedfd735d350cfef85d2a32ff78ec7bef894c4068ce63",
     "source/device/patches/xnu-12377/nezha-wifi-kernel-events.patch": "967cf792a5202711d0063463fe08bda58c554621b690b87f66904c18f81d057f",
     "source/device/patches/xnu-12377/nezha-wifi-mmio-recovery.patch": "89642756f4fe3179d44f076fbfd4786d21d0089ec7786943cb717b3eb78ecbe1",
-    "source/device/patches/xnu-12377/series": "9fc90d675692d1739c685b255ce3f443002e4c5af74406e4e08c919be091eaa3",
+    "source/device/patches/xnu-12377/series": "0c56e1448e4a0d81231c79ce8cf387f598ea01899d0446d5d85d1671a0cd1113",
     "source/device/patches/xnu-12377/source-storage-runtime.patch": "25c377c60db417b15fcc137acf380f0319cbff9d5ba012af1907f3485602b584",
     "source/device/patches/xnu-12377/zzyd-sheng-audio-addon-mount.patch": "b51ed480b34c92452ea984fe056e5fce310bd929992d418f383a7e9268313c51",
     "source/device/patches/xnu-12377/zzye-sheng-cpu-idle.patch": "95f57fb9994796c3de2429fe82b6a521620b9f13b83e29eba12185f5ada4da86",
@@ -574,7 +574,7 @@
     "source/device/patches/xnu-12377/zzzzzz-nezha-input-chain-trace.patch": "c4d05419e7ec3af0de619754bdb6c2deb69b74d714c2219e509360ebfe1b947e",
     "source/device/patches/xnu-12377/zzzzzz-nezha-kernel-class-lock-order.patch": "cd90c61d6838f4e6a7248da81b6180f14db03d00f2f7a64f4bbe4034c0aa8dcb",
     "source/device/patches/xnu-12377/zzzzzz-nezha-sigp-startup-order.patch": "18275910b909d187e459c68f5d937cc09bc01923180141dc155aa7f4ff14aaf9",
-    "source/device/porting.toml": "8372bacc553085f8e7f59fbc4785b05b83c11bb94e7aa393cd16603eeaa9876f",
+    "source/device/porting.toml": "734f8795630a4878f25295d23af4ebc152e51dd778f008a94a37293f8424d06d",
     "source/device/scripts/aes-iphone-24A446.json": "d55ed6d1d65fdff5de46dd602552eaf3309d1f7370fcd3f15eddb391225ffe8a",
     "source/device/scripts/als-event-service-iphone-24A446.json": "34c27f1a58bab3c518570a57c006a23fce315b90a584e691629d61c0850bd4d8",
     "source/device/scripts/backlight-iphone-24A446.json": "446eb5fe6440335bfe9fca75b32f7d815ddcafbb8a3c2d7f697c1e5c3f40f6cb",
@@ -708,11 +708,14 @@
     "source/device/scripts/nezha_macho_late.py": "fc5a2869ef22bd2c06702930fc0c88b0e071ab7ef851824b403234633040fc37",
     "source/device/patches/xnu-12377/nezha-gnss-test-runtime.patch": "68f37196f4777d4cc7721d6c5ab33de3882ae1a826513fd86ef942146e0c55ac",
     "source/device/patches/xnu-12377/nezha-gnss-pac-capture.patch": "433e27a9382331193c32a6a9bbc2a536d63eef6a8247e82979e4b9245a34b0d3",
-    ".github/workflows/nezha-ios27-native.yml": "79b037d39ad109b8ff0036374f6cb693943c7fcc815b4d44c4744ab80a4db864",
+    ".github/workflows/nezha-ios27-native.yml": "3e725daa9ef6819ed45c98dc6e7d1da8ba19834f7efb0672d0b9e5756a0bb5da",
     "source/device/tests/gnss27/launcher_job_test.py": "bad064a06b284103f964c8e02d7ec566fa9b5454b9e564e51b74a6bddfa7c448",
     "source/device/tools/gnss27/launcher_job.py": "55669e81cfa07ea3a4750732a7ab59df0694386118d6fd423615f3b4d7321cf9",
     "source/device/package/gnss27/userland/org.unixnu.nezha.location-launch.plist": "69bee5c36ebedbbd6d686fd108fa9c41ab53eddd380906c472740187b138e49f",
-    "source/device/tests/gnss27/exception_context_test.py": "de69d1acc861f3732b8c63a5781ce1d66d46a91d3d2f6e73451fc7bb7cd8814b"
+    "source/device/tests/gnss27/exception_context_test.py": "de69d1acc861f3732b8c63a5781ce1d66d46a91d3d2f6e73451fc7bb7cd8814b",
+    "source/device/patches/xnu-12377/vmwait-dyld-pager-source-release.patch": "916c930f4b6b2e7515329bafc8d2ab52ba014d4dacbc8c706e8cc5d603ff5a32",
+    "source/device/tests/check-dyld-pager-source-release.py": "8681029e1b691b2231aaff16064f3f3a6a47ca2cc528d8bb5bea2a773537a594",
+    "source/device/tests/dyld-pager-source-release.c": "281848265705d8880dc1cdc5f4372ecbbe3063b629e21299126ae42fcec67708"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
@@ -1090,14 +1093,14 @@
     "diagnostic_provider": 9,
     "provider8_owner": "GPU051 original nezhaaudio",
     "physical_GNSS001_failure": "Inherited provider8 collision prevents MSS worker creation",
-    "current_device_revision": "9bd9af69b1292188b2c82120b4110203e2872a20",
+    "current_device_revision": "2cd24dad449512f85b5c9d98f8c6d8b619d5dcb7",
     "LOC_client_string": "HAL",
     "LOC_registration_packet_bytes": 35,
     "LOC_notification_value": 0,
     "actual_GNSS004_error": 48,
     "coherent_launcher_source": "tools/gnss27/launcher_job.py"
   },
-  "previous_native_run": 44067720727,
+  "previous_native_run": 44247776033,
   "previous_native007": {
     "run": 44066302910,
     "head": "56ba392fa295f8e7b4093976eeb4094da76feb99",
@@ -1105,7 +1108,7 @@
     "target_compile_started": false,
     "error": "uninitialized shared IPCC fixture; explicit zero-init reproducer passes"
   },
-  "previous_native_head": "39832ccbca24467fc9e24da8f330fbd47f7585b2",
+  "previous_native_head": "4b9f6955b338fe5290a2cbe536850d8cad5e94fe",
   "native009_delta": [
     "patches/xnu-12377/nezha-gnss-pac-capture.patch",
     "tests/gnss27/exception_context_test.py",
@@ -1113,5 +1116,21 @@
     "porting.toml"
   ],
   "GNSS012_App_launch_preserved": true,
-  "GNSS012_metadata_fields_preserved_in_local_packaging": true
+  "GNSS012_metadata_fields_preserved_in_local_packaging": true,
+  "native010_delta": [
+    "package/BootUiTraceProbe.c",
+    "patches/xnu-12377/series",
+    "patches/xnu-12377/vmwait-dyld-pager-source-release.patch",
+    "tests/check-dyld-pager-source-release.py",
+    "tests/dyld-pager-source-release.c",
+    "porting.toml"
+  ],
+  "pager_source_release": {
+    "upstream": "UniXNU-sheng",
+    "revision": "0215f34a6d5307dab53e9a81dff9ae0fd047f3be",
+    "patch_sha256": "916c930f4b6b2e7515329bafc8d2ab52ba014d4dacbc8c706e8cc5d603ff5a32",
+    "exact_account_reuse": "6f00cc304fae49ea6cbb3cffa70ad47135c7c5a3",
+    "host_before_after_cases": 88,
+    "runtime_validation_pending": true
+  }
 }

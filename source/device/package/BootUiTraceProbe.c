@@ -173,13 +173,16 @@ void boot_ui_trace_task(task_t task,unsigned index,int pid,const char *name,unsi
     }
    }
    const int64_t trap=(int64_t)samples[i].trap;
-   if(trap<0 && trap!=-31 && trap!=-47) {
+   const int non_message_trap=trap<0 && trap!=-31 && trap!=-47;
+   // Retain the already captured kernel wait for locationd's main thread.
+   // A data-page wait keeps a user PC and need not be inside a Mach trap.
+   if(non_message_trap || (samples[i].index==1 && !strcmp(name,"locationd") && sample_k[i][0])) {
     for(unsigned t=0;t<BT_TRAPPED;++t) {
      struct bt_hotrow *row=&trap_draft[role][t];if(row->tid)continue;
      row->rate=rate?rate:1;row->role=samples[i].role;row->peer=samples[i].peer;row->tid=sample_tid[i];
      row->pc=samples[i].pc;row->lr=samples[i].lr;
      memcpy(row->kernel,sample_k[i],sizeof(row->kernel));row->event=sample_event[i];row->state=sample_state[i];row->hint=sample_hint[i];row->pri=sample_pri[i];
-     row->trap=samples[i].trap;for(unsigned a=0;a<3;++a)row->args[a]=samples[i].regs[a];
+     row->trap=non_message_trap?samples[i].trap:0;for(unsigned a=0;a<3;++a)row->args[a]=samples[i].regs[a];
      {struct bt_entry deep=samples[i];deep.error=0;bt_walk_n(&deep,read_user,map,row->frames,BT_HOT_FRAMES);}
      break;
     }

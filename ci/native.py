@@ -212,6 +212,23 @@ def build(framework, work):
         code = run(command, cwd=framework, log=logs / ('step-' + str(index) + '.log'))
         if code:
             return code
+    pager_sources = list((work / 'out/nezha/ios-27.0.1-24A446-iphone14-4').glob(
+        '*/tree/.cache/xnu-work/osfmk/vm/vm_dyld_pager.c'))
+    if len(pager_sources) != 1:
+        raise ValueError('Select the actual compiled dyld pager source')
+    after = pager_sources[0]
+    before_root = work / 'pager-before'
+    before = before_root / 'osfmk/vm/vm_dyld_pager.c'
+    before.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(after, before)
+    patch = work / 'device/patches/xnu-12377/vmwait-dyld-pager-source-release.patch'
+    run(['git', 'apply', '--reverse', patch], cwd=before_root)
+    code = run([sys.executable, work / 'device/tests/check-dyld-pager-source-release.py',
+                '--before', before, '--after', after,
+                '--out', work / 'dyld-pager-source-qualified.json'],
+               log=logs / 'dyld-pager-source-host.log')
+    if code:
+        return code
     sources = list((work / 'out/nezha/ios-27.0.1-24A446-iphone14-4').glob(
         '*/tree/.cache/xnu-work/bsd/kern/kern_memorystatus.c'))
     if len(sources) != 1:
@@ -351,6 +368,8 @@ def collect(framework, work, sealed):
         add(tree / 'kits/nezha/KeyStoreProbe.cpp', 'keystore-source/KeyStoreProbe.cpp')
         add(tree / 'kits/nezha/keystore013-source-lock.json', 'keystore-source/source-lock.json')
         add(tree / '.cache/xnu-work/bsd/kern/ubc_subr.c', 'text-fixup-source/ubc_subr.c')
+        add(tree / '.cache/xnu-work/osfmk/vm/vm_dyld_pager.c', 'dyld-pager-source/vm_dyld_pager.c')
+        add(work / 'dyld-pager-source-qualified.json', 'dyld-pager-source-qualified.json')
         objects = tree / 'build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837'
         for name in ('link.filelist', 'all-alias.exp'):
             add(objects / name, 'objects/' + name)
@@ -377,7 +396,7 @@ def collect(framework, work, sealed):
             for name in ('inputs.json', 'source-sha256.json', 'lto-command.json', 'lto-build.log'):
                 add(selected / name, 'reference/' + name)
         for stem in ('start', 'pe_kprintf', 'debug', 'printf', 'serial_console', 'serial_general',
-                     'bsd_init', 'subr_prf', 'arm_init', 'startup', 'machine_routines', 'IOUserServer', 'kern_memorystatus', 'ubc_subr'):
+                     'bsd_init', 'subr_prf', 'arm_init', 'startup', 'machine_routines', 'IOUserServer', 'kern_memorystatus', 'ubc_subr', 'vm_dyld_pager'):
             for path in sorted(objects.glob('**/' + stem + '.o*')):
                 if path.suffix in ('.o', '.json'):
                     add(path, 'objects/' + str(path.relative_to(objects)))
