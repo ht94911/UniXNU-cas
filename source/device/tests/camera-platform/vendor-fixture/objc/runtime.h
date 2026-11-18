@@ -12,6 +12,7 @@ Method class_getInstanceMethod(Class,SEL);
 IMP method_getImplementation(Method);
 const char *method_getTypeEncoding(Method);
 IMP method_setImplementation(Method,IMP);
+_Bool class_addMethod(Class,SEL,IMP,const char *);
 Ivar class_getInstanceVariable(Class,const char *);
 Class object_getClass(id);
 __PTRDIFF_TYPE__ ivar_getOffset(Ivar);

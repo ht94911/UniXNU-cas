@@ -79,6 +79,7 @@ Class object_getClass(id value)
  assert(value==&retained_vendor);return (Class)(uintptr_t)(wrong_vendor_class ? 2:1);}
 ptrdiff_t ivar_getOffset(Ivar value) {return value->offset;}
 Class objc_getClass(const char *name) {
+ if (!strcmp(name,"NBFunctionConstant"))return NULL;
  if (!strcmp(name,"BWFigCaptureDeviceVendor"))return class_available ? (Class)1:NULL;
  if (!strcmp(name,"NSBundle"))return bundle_available ? (Class)4:NULL;
  if (!strcmp(name,"FigCaptureSourceBackingsProvider"))return backings_available ? (Class)16:NULL;
@@ -133,6 +134,8 @@ const char *method_getTypeEncoding(Method m)
 {if(m==&source_init_method)return "@36@0:8@16B24B28B32";
  assert(m==&sources_method);return wrong_sources_encoding ? "@32@0:8i16^v20B28":"@56@0:8i16{?=[8I]}20B52";}
 IMP method_setImplementation(Method m,IMP replacement) {IMP old=m->implementation;m->implementation=replacement;++replacements;return old;}
+bool class_addMethod(Class c,SEL s,IMP p,const char *types)
+{(void)c;(void)s;(void)p;(void)types;assert(!"Unmatched plugin must not add a method");return false;}
 CFStringRef nezha_test_cfstr(const char *s) {return (CFStringRef)s;}
 int model_test_access(const char *path,int flags) {assert(!strcmp(path,"/System/Library/MediaCapture/NezhaCameraModel.plist") && flags==R_OK);return model_readable ? 0:-1;}
 /* Real objc_msgSend is an assembly dispatch entry, cast to each method's

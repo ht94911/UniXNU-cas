@@ -1,3 +1,4 @@
+#pragma once
 #include <stdint.h>
 #define MH_MAGIC_64 0xfeedfacf
 #define LC_UUID 0x1b

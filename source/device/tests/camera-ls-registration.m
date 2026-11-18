@@ -5,6 +5,8 @@
 static BOOL fixture_server, fixture_accept, fixture_visible, fixture_info;
 static unsigned calls,resume_calls,accept_calls;
 static id proxy;
+static unsigned query_calls,store_calls,rebuilt_calls;
+static id pending_query,pending_store;
 
 @interface RegistrationFixtureProxy : NSObject
 @property(nonatomic,copy) NSString *identifier;
@@ -60,7 +62,18 @@ static BOOL accept_fixture(id self,SEL selector,id listener,id connection)
 @implementation ListenerFixture
 - (NSString *)serviceName {return self.name;}
 - (int)processIdentifier {return 123;}
+- (id)XPCConnection {return self;}
 @end
+
+static void query_fixture(id self,SEL selector,id queries,BOOL legacy,id completion)
+{
+    assert(self && selector==sel_registerName("resolveQueries:legacySPI:completionHandler:") && [queries isEqual:@[@"native-query"]] && legacy);
+    ++query_calls;pending_query=[completion copy];
+}
+static void store_fixture(id self,SEL selector,id completion)
+{assert(self && selector==sel_registerName("getServerStoreNonBlockingWithCompletionHandler:"));++store_calls;pending_store=[completion copy];}
+static void rebuilt_fixture(id self,SEL selector)
+{assert(self && selector==sel_registerName("sendDatabaseRebuiltNotification"));++rebuilt_calls;}
 
 static bool register_url_fixture(void *context,NSURL *url,uint32_t flags,id installation,NSError **error)
 {
@@ -94,6 +107,32 @@ int main(void)
         assert(!listener_accept(listener,@selector(listener:shouldAcceptNewConnection:),listener,listener) && accept_calls==1);
         fixture_accept=YES;
         assert(listener_accept(listener,@selector(listener:shouldAcceptNewConnection:),listener,listener) && accept_calls==2);
+        original_read_queries=(IMP)query_fixture;original_read_store=(IMP)store_fixture;original_rebuilt=(IMP)rebuilt_fixture;
+        NSDictionary *results=@{@"native-query":@[@"existing-record"]};
+        NSError *native_error=[NSError errorWithDomain:@"LSNativeFixture" code:-10814 userInfo:nil];
+        __block unsigned query_replies=0,store_replies=0;
+        @autoreleasepool {
+            read_queries(listener,sel_registerName("resolveQueries:legacySPI:completionHandler:"),@[@"native-query"],YES,^(id values,NSError *error) {
+                assert(values==results && error==native_error);++query_replies;
+            });
+        }
+        assert(query_calls==1 && query_replies==0 && pending_query);
+        ((void (^)(id,NSError *))pending_query)(results,native_error);
+        assert(query_replies==1);pending_query=nil;
+        read_queries(listener,sel_registerName("resolveQueries:legacySPI:completionHandler:"),@[@"native-query"],YES,nil);
+        assert(query_calls==2 && !pending_query);
+        id store=[NSObject new],catalogue=[NSObject new],endpoint=[NSObject new];
+        @autoreleasepool {
+            read_store(listener,sel_registerName("getServerStoreNonBlockingWithCompletionHandler:"),^(id s,id c,id e,BOOL manual,NSError *error) {
+                assert(s==store && c==catalogue && e==endpoint && manual && error==native_error);++store_replies;
+            });
+        }
+        assert(store_calls==1 && store_replies==0 && pending_store);
+        ((void (^)(id,id,id,BOOL,NSError *))pending_store)(store,catalogue,endpoint,YES,native_error);
+        assert(store_replies==1);pending_store=nil;
+        read_store(listener,sel_registerName("getServerStoreNonBlockingWithCompletionHandler:"),nil);
+        assert(store_calls==2 && !pending_store);
+        database_rebuilt(listener,sel_registerName("sendDatabaseRebuiltNotification"));assert(rebuilt_calls==1);
         char directory[]="/tmp/nezha-camera-ls-XXXXXX";assert(mkdtemp(directory));
         NSURL *root=[NSURL fileURLWithPath:@(directory) isDirectory:YES];
         NSURL *url=[root URLByAppendingPathComponent:@"Camera.app" isDirectory:YES];
@@ -144,7 +183,7 @@ int main(void)
         invoke(url);assert(!calls);
         reset_fixture();assert([files removeItemAtURL:info error:NULL]);invoke(url);assert(!calls);
         assert([files removeItemAtURL:root error:NULL]);
-        puts("Camera LS registration: 23 native consumer cases passed, accepted registration reports database change, native true survives, failed registration stays unchanged, original install info/NSError ABI preserved");
+        puts("Camera LS registration: 28 native consumer cases passed; async original replies retain all arguments and NSError, nil completion stays nil, original rebuilt request runs once");
     }
     return 0;
 }
