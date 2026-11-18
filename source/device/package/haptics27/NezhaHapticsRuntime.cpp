@@ -3,6 +3,7 @@
 // One worker owns all bus operations. Queue decisions use a sleepable hapticGate,
 // released during hardware work. cdev callbacks never access MMIO.
 #include "NezhaHaptics.h"
+#include <PaganiHaptics/HapticsRegs.h>
 #include <IOKit/IOLib.h>
 #include <IOKit/IOLocks.h>
 #include <IOKit/IONotifier.h>
@@ -39,6 +40,8 @@ int stopResult,terminalStopResult;
 struct Map {uint64_t physical;vm_offset_t address;} maps[32];
 unsigned mapped,mode;
 uint32_t sessionCounter,logCount;
+uint32_t pcmWrites,pcmFrames,pcmNonzero,pcmPeak,pcmLastError,pcmMaxQueue;
+int64_t pcmLeadUs;
 uint64_t cooldownUntil;
 proc_t client;
 bool enabled,exitRequested,exited,suspended,iosAssetsReady;
@@ -90,6 +93,23 @@ int darwinError(int e) {
     if(!e)return 0;
     switch(e) {case -16:return EBUSY;case -22:return EINVAL;case -1:case -13:return EACCES;
         case -19:return ENODEV;case -34:return ERANGE;case -110:return ETIMEDOUT;default:return EIO;}
+}
+void restPCM(uint64_t now) {
+    cooldownUntil=now+500000;
+    queue.rest_until_us=cooldownUntil;
+    queue.head=queue.count=0;
+    queue.active_sequence=0;queue.active_until_us=0;queue.on_begin_us=0;
+    // The hardware time/duty cap is a rest interval, not a broken stream.
+    // Silent/catch-up buffers retire normally until the next legal output.
+}
+int playbackResult(int result,uint64_t now) {
+    // An original core budget/protection refusal is recoverable only after
+    // its STOP succeeded and no hardware command remains outstanding.
+    if(result==-EBUSY && core.state==PGH_ST_IDLE &&
+       !(core.last_play_reg&PGH_PLAY_EN) && !bus.bus.pending) {
+        restPCM(now);return 0;
+    }
+    return result;
 }
 void cacheElectrical(bool valid) {
     const uint32_t sequence=diagnosticElectrical.sequence+1;
@@ -172,10 +192,14 @@ int diagnosticSnapshot(void *,char *out,size_t capacity,size_t *bytes,unsigned *
     if(!IOLockTryLock(hapticGate))return QUD_BUSY;
     NzHapticsStatus s=diagnosticStatus;Electrical electrical=diagnosticElectrical;
     uint32_t phase=stats[0],plays=stats[4],stops=stats[5];
+    uint32_t writes=pcmWrites,frames=pcmFrames,nonzero=pcmNonzero,peak=pcmPeak;
+    uint32_t lastError=pcmLastError,maxQueue=pcmMaxQueue;
+    int64_t lead=pcmLeadUs;
     IOLockUnlock(hapticGate);
-    int n=snprintf(out,capacity,"{\"v\":1,\"cached\":true,\"ready\":%u,\"active\":%u,\"queued\":%u,\"error\":%u,\"requests\":%u,\"completed\":%u,\"cancelled\":%u,\"session\":%u,\"epoch\":%u,\"phase\":%u,\"plays\":%u,\"stops\":%u,\"service_ready\":%u,\"service_error\":%d,\"electrical\":{\"play\":%u,\"power\":%u,\"source\":%u,\"vmax\":%u,\"amplitude\":%u,\"voltage_raw\":%u,\"current_raw\":%u,\"voltage_mv\":%u,\"current_ma\":%u,\"stop_reads\":%u,\"recoveries\":%u,\"vsense_ctl\":%u,\"isense_ctl\":%u,\"visense_enable\":%u,\"frontend_check\":%u,\"valid\":%u,\"sequence\":%u,\"sampled_us\":%llu},\"mechanical_verified\":false}",
+    int n=snprintf(out,capacity,"{\"v\":1,\"cached\":true,\"ready\":%u,\"active\":%u,\"queued\":%u,\"error\":%u,\"requests\":%u,\"completed\":%u,\"cancelled\":%u,\"session\":%u,\"epoch\":%u,\"phase\":%u,\"plays\":%u,\"stops\":%u,\"service_ready\":%u,\"service_error\":%d,\"pcm\":{\"writes\":%u,\"frames\":%u,\"nonzero\":%u,\"peak\":%u,\"last_error\":%u,\"lead_us\":%lld,\"max_queue\":%u},\"electrical\":{\"play\":%u,\"power\":%u,\"source\":%u,\"vmax\":%u,\"amplitude\":%u,\"voltage_raw\":%u,\"current_raw\":%u,\"voltage_mv\":%u,\"current_ma\":%u,\"stop_reads\":%u,\"recoveries\":%u,\"vsense_ctl\":%u,\"isense_ctl\":%u,\"visense_enable\":%u,\"frontend_check\":%u,\"valid\":%u,\"sequence\":%u,\"sampled_us\":%llu},\"mechanical_verified\":false}",
         s.ready,s.active,s.queued,s.error,s.requests,s.completed,s.cancelled,s.session,s.epoch,phase,plays,stops,
         nezha_haptics_ready_state(),nezha_haptics_ready_error(),
+        writes,frames,nonzero,peak,lastError,(long long)lead,maxQueue,
         electrical.play,electrical.power,electrical.source,electrical.vmax,electrical.amplitude,electrical.voltage_raw,
         electrical.current_raw,electrical.voltage_mv,electrical.current_ma,electrical.stop_reads,electrical.recoveries,
         electrical.vsense_ctl,electrical.isense_ctl,electrical.visense_enable,electrical.frontend_check,
@@ -242,10 +266,19 @@ int writeDevice(dev_t,struct uio *uio,int) {
             }
         } else if(packet.operation==NzHapticsPCM) {
             uint64_t now=nowUs(nullptr),at=packetTime(packet.host_time,now,&e);
-            if(now<cooldownUntil)e=EBUSY;
+            ++pcmWrites;pcmFrames+=packet.count;
+            pcmLeadUs=at>=now?(int64_t)(at-now):-(int64_t)(now-at);
+            const int16_t *samples=(const int16_t *)(bytes+sizeof packet);
+            for(unsigned i=0;i<packet.count;++i) {
+                int32_t sample=samples[i];if(sample)++pcmNonzero;
+                uint32_t peak=(uint32_t)(sample<0?-sample:sample);if(peak>pcmPeak)pcmPeak=peak;
+            }
+            queue.rest_until_us=cooldownUntil;
             if(!e)e=-nz_haptics_queue_pcm(&queue,&packet,(const int16_t *)(bytes+sizeof packet),now,at);
+            pcmLastError=(uint32_t)e;if(queue.count>pcmMaxQueue)pcmMaxQueue=queue.count;
         } else e=request(&packet,nowUs(nullptr));
-        if(!e){note("queued",packet.sequence,0);IOLockWakeup(hapticGate,&queue,false);}
+        if(!e){if(packet.operation!=NzHapticsPCM || queue.requests<=4)note("queued",packet.sequence,0);IOLockWakeup(hapticGate,&queue,false);}
+        else if(packet.operation==NzHapticsPCM)note("PCM rejected",packet.sequence,e);
         IOLockUnlock(hapticGate);
     }
     IOFree(bytes,(size_t)n);return e;
@@ -309,9 +342,12 @@ void worker(void *,wait_result_t) {
         if(core.state==PGH_ST_FAULT){e=core.fault_rc;queue.error=(uint32_t)darwinError(e);break;}
         if(queue.stopping || exitRequested)continue;
         if(oldState==PGH_ST_DIRECT && core.state==PGH_ST_IDLE) {
-            if(queue.active_operation==NzHapticsPCM || now-core.t_start>=500000 || core.budget_us<=0) {
-                cooldownUntil=now+500000;queue.head=queue.count=0;queue.running=0;
-                queue.error=EBUSY;note("duration cap",queue.active_sequence,-EBUSY);
+            if(now>=core.deadline || core.budget_us<=0) {
+                restPCM(now);note("duration rest",queue.active_sequence,0);
+            } else {
+                // The original core can stop for auto-resonance/HPWR
+                // protection and restore its fallback before becoming idle.
+                note("protected stop",queue.active_sequence,0);
             }
             queue.active_sequence=0;queue.on_begin_us=0;
             ++queue.completed;
@@ -342,6 +378,9 @@ void worker(void *,wait_result_t) {
                 int stop=stopped("cancel during hardware");queue.stopping=0;IOLockWakeup(hapticGate,&queue,false);
                 if(stop){e=stop;break;}continue;
             }
+            int result=playbackResult(e,nowUs(nullptr));
+            if(e && !result)note("output rest",segment.sequence,e);
+            e=result;
             if(e){note("rejected",segment.sequence,e);queue.error=(uint32_t)darwinError(e);queue.stopping=1;
                 queue.head=queue.count=0;queue.running=0;}
             else if(segment.amplitude && core.state!=PGH_ST_IDLE){queue.active_sequence=segment.sequence;

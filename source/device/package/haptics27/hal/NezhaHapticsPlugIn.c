@@ -313,6 +313,11 @@ static OSStatus DoIOOperation(AudioServerPlugInDriverRef d,AudioObjectID o,Audio
     int e=writePacket(&packet.header,sizeof packet.header+n*2);
     atomic_fetch_add(&writes,1);if(!e){++sequence;atomic_fetch_add(&framesWritten,n);}else{
         atomic_fetch_add(&rejected,1);atomic_store(&lastError,(uint32_t)e);
+        // A late cycle or finite queue/rest window consumes no new sequence.
+        // Keep the original IOProc alive so a later timely buffer can play.
+        if(e==ERANGE || e==EBUSY || e==EAGAIN) {
+            pthread_mutex_unlock(&gate);return 0;
+        }
         /* Realtime failure only closes the descriptor. The kernel close queues
          * cancellation; the normal StopIO path may wait for a hardware stop. */
         close(endpoint);endpoint=-1;session=epoch=sequence=0;users=0;memset(clients,0,sizeof clients);

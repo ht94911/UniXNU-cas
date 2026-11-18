@@ -1,5 +1,5 @@
 {
-  "stage": "GPU051015 truthful HAP530 execution readiness notification;014 exactbuild+package ready, actualVAD/system validation pending",
+  "stage": "GPU051016 observed late WriteMix and protected-stop/rest source fix; target/device validation pending",
   "profile": "GPU051 iPhone14,4 D16 27.0.1/24A446",
   "framework_reference": "9931232fd68b8ae1db0abd957ecba417f1996e52",
   "xnu_reference": "12377.121.6 source; donor xnu13432.2.10",
@@ -101,7 +101,10 @@
     "latest_system_rootcause": "Defaultname omitted from runtime haptics node; MGGetBoolAnswer false; originalVA skipsActuatorVAD",
     "original_VirtualAudio_initialization_verified": true,
     "original_Actuator_port_verified": true,
-    "original_haptics_VAD_missing_verified": true
+    "original_haptics_VAD_missing_verified": false,
+    "system_engine_and_callbacks_verified_on015": true,
+    "system_play_count_on015": 1,
+    "remaining_system_issue": "latePCM fatalteardown andearly protectedstop wronglytreatedterminalcap;16 sourceprepared"
   },
   "ready_service": {
     "source": "NezhaHapticsReady.cpp",

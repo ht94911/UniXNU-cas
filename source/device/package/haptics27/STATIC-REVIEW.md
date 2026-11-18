@@ -45,3 +45,5 @@ GPU051指定后的审查：真实audiomxd UserName mobile/UID501已核，cdev501
 014实际根因审查：本机013同boot日志证明原VirtualAudio初始化、Actuator物理端口和AID8001调音图均成功，HapticServerManager因缺少hapticsVAD退出。原MG默认名称消费者与XNU `IORegistryEntry::init/getName`和`is_io_registry_entry_get_name`实现核对：OSData name不会建立默认名，仅plane名可供fromPath查找，默认GetName却回退类名。修复仅在生产发布器attach前补默认名，并记录default/plane两实读名称。`scripts/check-haptics-ios-discovery.py`执行生产函数并复现旧plane-only节点拒绝/新节点识别；保持ready/plugin/preset和原OSData编码，正常系统输出未提前记通过。宿主Clang sanitizer库在维护后缺失的构建失败保留，使用现成GCC ASan/UBSan完成同生产用例。
 
 015就绪边界：原类匹配使用IOProviderClass/metaCast，普通IOService的显示名称不满足此条件；新类使用真实OSMetaClass及原168槽IOService，無附加实例字段。生产用例实际执行init/attach/start失败、仅命名拒绝、单次构造、时间单位、重复ready、退休失败保留引用、休眠后再发布。caller只置assetsReady并唤醒原worker，registry注册/退休全程不持hapticGate；原芯片/校准/2V/500ms/STOP路径保持。015目标ABI/晚构造移除/完整服务启动仍待编译及实机。
+
+016生产队列覆盖迟到、部分过期、future队列满/回收、rest保持session和下一序号；实际DIRECT→IDLE回放证保护早停与真正deadline/budget休息分别保持streamready，EBUSY恢复要求coreIDLE/PLAY_EN已清/bus无pending。PCM错误观测按有限计数记录，停止回读原代码保持。HALWriteMix定向模型新增临时错误后同sequence再写与硬IO错误关闭，Mac目标检查待。

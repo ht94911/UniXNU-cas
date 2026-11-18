@@ -91,10 +91,10 @@ extern "C" int nezha_haptics_ready_update(int ready) {
         return ENXIO;
     }
     service->setName("AHSFirmwareReadyNotifier");
-    // Original start stores uptime in microseconds as a 64-bit OSNumber.
+    // Original start stores uptime in milliseconds as a 64-bit OSNumber.
     uint64_t nanoseconds = 0;
     absolutetime_to_nanoseconds(mach_absolute_time(), &nanoseconds);
-    if (!service->setProperty("FirmwareReadyTimestamp", nanoseconds / 1000, 64) ||
+    if (!service->setProperty("FirmwareReadyTimestamp", nanoseconds / 1000000, 64) ||
         !service->start(provider)) {
         service->detach(provider);
         service->release();

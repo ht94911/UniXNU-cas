@@ -9,6 +9,8 @@
 #include <CoreFoundation/CoreFoundation.h>
 #include "../package/haptics27/NezhaHapticsProtocol.h"
 static unsigned opens,closes,packets;
+static int write_error;
+static NzHapticsPacket last_packet;
 static int observe_open(const char *path,int flags,...)
 {
     assert(!strcmp(path,NZ_HAPTICS_DEVICE));assert(flags&O_WRONLY);++opens;return 77;
@@ -22,7 +24,10 @@ static int observe_ioctl(int descriptor,unsigned long command,...)
 }
 static ssize_t observe_write(int descriptor,const void *data,size_t bytes)
 {
-    assert(descriptor==77 && data && bytes>=sizeof(NzHapticsPacket));++packets;return (ssize_t)bytes;
+    assert(descriptor==77 && data && bytes>=sizeof(NzHapticsPacket));++packets;
+    memcpy(&last_packet,data,sizeof(last_packet));
+    if(write_error){errno=write_error;return -1;}
+    return (ssize_t)bytes;
 }
 #define open observe_open
 #define close observe_close
@@ -64,6 +69,33 @@ int main(void)
     assert(StartIO(&driverPointer,kActuator,5)==0 && endpoint==77 && users==1 && packets==1);
     assert(StopIO(&driverPointer,kActuator,5)==0 && endpoint<0 && users==0 && packets==2);
     assert(opens==2 && closes==2);
+    // Exercise the actual WriteMix path after original CoreAudio submits a
+    // late/catch-up cycle. Transient refusals leave the same live IOProc and
+    // sequence available; the next timely buffer still reaches the driver.
+    assert(StartIO(&driverPointer,kActuator,6)==0);
+    AudioServerPlugInIOCycleInfo cycle={0};
+    cycle.mOutputTime.mFlags=kAudioTimeStampHostTimeValid;
+    cycle.mOutputTime.mHostTime=anchor+32;
+    float buffer[256]={0};buffer[0]=0.5f;
+    UInt32 before_sequence=sequence;unsigned before_closes=closes;
+    for(unsigned index=0;index<3;++index) {
+        const int errors[]={ERANGE,EBUSY,EAGAIN};write_error=errors[index];
+        assert(DoIOOperation(&driverPointer,kActuator,kStream,6,
+            kAudioServerPlugInIOOperationWriteMix,256,&cycle,buffer,NULL)==0);
+        assert(endpoint==77 && users==1 && sequence==before_sequence && closes==before_closes);
+        assert(last_packet.operation==NzHapticsPCM && last_packet.sequence==before_sequence);
+    }
+    write_error=0;
+    assert(DoIOOperation(&driverPointer,kActuator,kStream,6,
+        kAudioServerPlugInIOOperationWriteMix,256,&cycle,buffer,NULL)==0);
+    assert(sequence==before_sequence+1 && endpoint==77 && users==1);
+    write_error=EIO;
+    assert(DoIOOperation(&driverPointer,kActuator,kStream,6,
+        kAudioServerPlugInIOOperationWriteMix,256,&cycle,buffer,NULL)==kAudioHardwareUnspecifiedError);
+    assert(endpoint<0 && users==0 && closes==before_closes+1);
+    write_error=0;
+    assert(StopIO(&driverPointer,kActuator,6)==0);
     puts("PASS production HAL: typed custom property, retained CF dictionary, exact Actuator UID, silent Initialize and StartIO/StopIO lifetime");
+    puts("PASS production WriteMix: late/busy/rest preserves stream and sequence; next timely buffer accepted; hard IO fault closes and cancels");
     return 0;
 }

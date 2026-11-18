@@ -293,6 +293,8 @@ def collect(framework, work, sealed):
         if path.is_file():add(path,'haptics-discovery-host/'+path.name)
     for path in sorted((work / 'haptics-ready-host').glob('*')):
         if path.is_file():add(path,'haptics-ready-host/'+path.name)
+    for path in sorted((work / 'haptics-rest-host').glob('*')):
+        if path.is_file():add(path,'haptics-rest-host/'+path.name)
     for path in sorted((work / 'haptics-hal-host').rglob('*')):
         if path.is_file():add(path,'haptics-hal-host/'+path.relative_to(work/'haptics-hal-host').as_posix())
     for path in sorted((work / 'haptics-hal').rglob('*')):

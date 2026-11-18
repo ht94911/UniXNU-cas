@@ -10,6 +10,8 @@
 | Actuator HAL、2ms 包络 | `FoXLinne/UniXNU_marble@7a0d68fff2557f12be9f8c47f618fd332b7a3e67`，`hal/MarbleHapticsPlugIn.c`、`package/MarbleHapticsRuntime.cpp` | 记录确认一次101ms硬件播放；该记录明确系统桥当时不存在，后续源码不等于实测 | 复用 HAL property / char-device 架构，新增独立 Actuator，不发布其 Speaker/Codec/Hawking；补 session/epoch/seq/取消回执和不续期限幅度更新；BSD-2-Clause-Patent |
 | 系统触觉到波形 | `JopangJovan/hackios-xnu-userland-umi@aa843bae3672a49dafa5b82226fdcb30844fa6ff`，`userland/src/audio_plugin.c`；kernel `4a9f35d998a8217009f6d96fe7288f411fb7f71c`，`hk_haptic.c` | AW8697 路线源码和测试任务；不能用于本机硬件证明 | 用于路径对照，未复制 I²C、GPIO或 AW 参数；用户态 MIT、kernel APSL-2.0 |
 | iOS27 donor | iPhone14,4 / D16 /24A446 原输入 | 原 `/product/haptics` 两能力属性；D16 preset、AID8001 actuator_general、VirtualAudio 原入口与等待代码存在 | 原 byte property 编码；未改 Apple 二进制、arm64e 私有 vtable 或 PAC slot；HAL编译后再核 SDK/PAC/import/sign/trust |
+| GPU051原ADT身份补齐 | nezha `tools/audio27-product-prepare.py@825a746`，音频060/063已用的原ADT读者和UniXNU encoder | 原工具完整核对product-id/AcousticID和所有其他节点；原011 audiomxd有null product-id故障 | `scripts/prepare-haptics27-system-identity.py`复用工具；两属性从本地固定profile/donor取得，包装阶段执行，系统触觉效果仍需真机 |
+| 最终系统文件信任 | 原011系统信任追加、UniXNU `scripts/trust-append-module.py`及nezha音频`record_runtime.py::verify_signature` | 011实际启动任务缓存和普通应用通过；012漏追加失败原证据保留 | `scripts/stage-haptics27-system-trust.py`读取最终实际六项CodeDirectory并核各4KiB代码页，补齐独立工程模块，原签名/AMFI规则保持 |
 | Format2 接入 | `UniXNU/UniXNU@9931232fd68b8ae1db0abd957ecba417f1996e52` 文档/脚本；myron-next `f1a1bfe`；sheng27 `5b7d83c6` | 原框架流程；无现成 nezha HAP530+27端到端验收 | 按 source/SoC/OS/device 所有权交付；archive、caller、addon与封包在指定包后执行 |
 
 pandora 当前 `d2c7089b`、u0er nezha `ed8978ac`、fairlady、cas/umi、myron-next均检索过。pandora fork aogg 的 `89f57e4e5e11eb72b68b0a9e23ff8e627805c804` 只有 HV-Haptics只读调查，bus1写通道与系统桥未完成，不采用其旧板参数。公开 Linux 主线 input/misc 有 pm8xxx-vibrator、cs40l50等，但没有当前所需 HAP530 qcom-hv-haptics；Linux-next直接路径也未提供。lore本轮403，邮件正文未取得。
@@ -25,3 +27,5 @@ QQ 使用人类指定 `M:/QQ_History`，本次档案135181条、2026-10-22至11-
 011接口核对：原24A446 HALS_PlugInManager::LoadPlugIns（CoreAudio UUID895a68d237523e149007b07e705a2178）确实扫描/Library/Audio/Plug-Ins/HAL、/System/Library/Audio/Plug-Ins/HAL及/Library/Apple/Audio/Plug-Ins/HAL，筛.driver。原公开AudioServerPlugInCustomPropertyInfo仅支持None、CFString、CFPropertyList跨进程类型，010未登记的原始u32诊断数组不满足此契约，011改登记CFPropertyList。Initialize探测现有端点和成熟可选属性复用同固定PaganiAudio源；system HAL union复用GPU051及音频已用挂载接口。新静态证据保存在本地service010/loader-and-property011.json；没有移植21H461/J120私有修补。
 
 012状态ioctl核对：011原audiomxd106.033s明确Autobox file-ioctl拒绝，XNU sys_generic::ioctl先调用mac_file_check_ioctl而后才达现有vnode_hook。补齐fileglob层只对EPERM、DTYPE_VNODE、原allowed进程和同一NZ_HAPTICS_GET_STATUS精确节点应用既有nezha_haptics_ioctl predicate；49个实际条件分支ASan/UBSan用例及原XNU补丁应用检查通过。未放宽其他文件/ioctl或普通应用直接驱动权限。
+
+015执行器就绪服务：同本机24A446 AppleHapticsSupportLEAP原AHSFirmwareReadyNotifier(start0xfffffff008becf70，168slot/136B)与AudioToolbox首匹配调用只读核定。复用本包ALS/AES晚构造与IOService正常注册/退休方式，本机只有实际HAP530端点与已安装HAL/预设成功后发布；不复制Apple指令或固件。原FirmwareReadyTimestamp为毫秒，新源码校正，015编译版单位差异单独记录。

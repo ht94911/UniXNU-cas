@@ -34,17 +34,37 @@ int nz_haptics_queue_pcm(NzHapticsQueue *q,const NzHapticsPacket *p,const int16_
        p->sequence!=q->next_sequence)return STALE;
     if(q->next_sequence==UINT32_MAX)return OVERFLOW;
     const unsigned needed=(p->count+NZ_HAPTICS_SEGMENT_FRAMES-1)/NZ_HAPTICS_SEGMENT_FRAMES;
-    if(q->count>NZ_HAPTICS_QUEUE || needed>NZ_HAPTICS_QUEUE-q->count)return BUSY;
+    if(q->count>NZ_HAPTICS_QUEUE)return BUSY;
     const uint64_t length=((uint64_t)p->count*1000000+NZ_HAPTICS_RATE-1)/NZ_HAPTICS_RATE;
-    if(at>UINT64_MAX-length || (at>now && at-now>250000) || at+length<=now ||
+    if(at>UINT64_MAX-length || (at>now && at-now>250000) ||
        (q->last_end_us>at && q->last_end_us-at>42))return RANGE;
+    // CoreAudio may submit a late prewarm/catch-up buffer. Retire its sequence
+    // without playing it late or destroying the live Actuator stream.
+    if(at+length<=now || now<q->rest_until_us) {
+        q->underruns+=needed;
+        q->last_end_us=at+length;++q->next_sequence;++q->requests;
+        return 0;
+    }
+    // Reclaim elapsed envelope slots before deciding whether the finite
+    // queue can accept this buffer. A full future queue drops one buffer;
+    // the next one still belongs to the same stream/session/sequence.
+    while(q->count && q->segments[q->head].end_us<=now) {
+        q->head=(q->head+1)%NZ_HAPTICS_QUEUE;--q->count;++q->underruns;
+    }
+    if(needed>NZ_HAPTICS_QUEUE-q->count) {
+        q->underruns+=needed;
+        q->last_end_us=at+length;++q->next_sequence;++q->requests;
+        return 0;
+    }
     for(unsigned offset=0;offset<p->count;offset+=NZ_HAPTICS_SEGMENT_FRAMES) {
         const unsigned n=p->count-offset<NZ_HAPTICS_SEGMENT_FRAMES?p->count-offset:NZ_HAPTICS_SEGMENT_FRAMES;
+        const uint64_t end=at+((uint64_t)(offset+n)*1000000+NZ_HAPTICS_RATE-1)/NZ_HAPTICS_RATE;
+        if(end<=now){++q->underruns;continue;}
         unsigned peak=0;
         for(unsigned i=0;i<n;++i) {int32_t sample=pcm[offset+i];unsigned v=(unsigned)(sample<0?-sample:sample);if(v>peak)peak=v;}
         NzHapticsSegment *s=&q->segments[(q->head+q->count)%NZ_HAPTICS_QUEUE];
         s->begin_us=at+(uint64_t)offset*1000000/NZ_HAPTICS_RATE;
-        s->end_us=at+((uint64_t)(offset+n)*1000000+NZ_HAPTICS_RATE-1)/NZ_HAPTICS_RATE;
+        s->end_us=end;
         s->epoch=q->epoch;s->sequence=p->sequence;s->operation=NzHapticsPCM;s->effect=0;
         s->amplitude=peak<128?0:(peak*1000u+16384u)/32768u;
         ++q->count;

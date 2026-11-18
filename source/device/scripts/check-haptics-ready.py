@@ -118,7 +118,7 @@ int main(){
  startFails=false;
  assert(nezha_haptics_ready_update(1)==0 && constructorCalls==1);
  auto *first=originalFirstMatch("AHSFirmwareReadyNotifier");assert(first);
- assert(first->values["FirmwareReadyTimestamp"]==3100000);
+ assert(first->values["FirmwareReadyTimestamp"]==3100);
  assert(first->getMetaClass()->getSuperClass()==&IOService::gMetaClass);
  assert(nezha_haptics_ready_state()==1 && !nezha_haptics_ready_error());
  assert(nezha_haptics_ready_update(1)==0 && registrations==1);
@@ -135,7 +135,7 @@ int main(){
  assert(originalFirstMatch("AHSFirmwareReadyNotifier"));
  assert(nezha_haptics_ready_update(0)==0 && terminated==3);
  IOService::registry.clear();
- puts("PASS production ready service: class-based first match, no false-ready on init/attach/start failure, microsecond timestamp, single constructor, stop/wake and retained failed-termination ownership");
+ puts("PASS production ready service: class-based first match, no false-ready on init/attach/start failure, millisecond timestamp, single constructor, stop/wake and retained failed-termination ownership");
 }
 '''
     program = args.out/'ready.cpp'

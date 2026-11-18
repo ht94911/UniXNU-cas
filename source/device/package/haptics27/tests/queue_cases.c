@@ -24,7 +24,20 @@ int main(void) {
     assert(!nz_haptics_queue_pcm(&q,&p,pcm,1000,2000));
     assert(!nz_haptics_queue_next(&q,6001,&s) && q.underruns==2);
     q.count=NZ_HAPTICS_QUEUE;p.sequence=2;
-    assert(nz_haptics_queue_pcm(&q,&p,pcm,1000,7000)==-16);
+    for(unsigned i=0;i<q.count;++i)q.segments[i].end_us=50000;
+    assert(!nz_haptics_queue_pcm(&q,&p,pcm,1000,7000));
+    assert(q.next_sequence==3 && q.count==NZ_HAPTICS_QUEUE && q.underruns==4);
+    /* A future full queue retires the new packet rather than killing the
+     * IOProc. The next packet reclaims elapsed entries and can play. */
+    p.sequence=3;
+    assert(!nz_haptics_queue_pcm(&q,&p,pcm,51000,52000));
+    assert(q.next_sequence==4 && q.count==2 && q.underruns==132);
+    p.sequence=4;
+    assert(!nz_haptics_queue_pcm(&q,&p,pcm,60000,56000));
+    assert(q.next_sequence==5 && q.count==2 && q.underruns==134);
+    q.rest_until_us=70000;p.sequence=5;
+    assert(!nz_haptics_queue_pcm(&q,&p,pcm,61000,62000));
+    assert(q.next_sequence==6 && q.running && q.ready && !q.error && q.underruns==136);
     nz_haptics_queue_close(&q);assert(!q.session && !q.ready);
     nz_haptics_queue_open(&q,8);assert(!nz_haptics_queue_start(&q,8,&epoch));
     assert(nz_haptics_queue_pcm(&q,&p,pcm,1000,7000)==-ESTALE); /* old client */
