@@ -703,7 +703,12 @@
     "source/device/package/camera/NezhaCameraFrameMarker.h": "45924093bef676d4ff249b57bb8e113edafdffd1c6644fb8e669f1679361a2a2",
     "source/device/package/camera/userland/NezhaCameraMetal.h": "d1d34fa5c4e6c7f5f3d543df8e47a582b1649de4743eca8c3a3c0db7f1587997",
     "source/device/tests/camera-native-memory.cpp": "6ef871fcdc69c6d84b374c4a650f5c53997aa9a10306f35e45955918ec5be35c",
-    "source/device/scripts/check-camera-exposure-policy.py": "7e3ca3a93015b226334dab9dfe3c6f82ae1f64a06ee41e2eb0843e17ab452f5f"
+    "source/device/scripts/check-camera-exposure-policy.py": "7e3ca3a93015b226334dab9dfe3c6f82ae1f64a06ee41e2eb0843e17ab452f5f",
+    "source/device/package/gpu/adreno/ArmSmmu4KContext.h": "c842e78f37eab2e7cbba28cb89f4b993d9202503e75fee9e49a871101b936e53",
+    "source/device/package/gpu/adreno/ArmSmmu4KMmio.h": "face552cf67de969e8e741c0195496949f2c62b418d973e4d71a02f18ab83109",
+    "source/device/package/gpu/adreno/ArmSmmu4KStreams.h": "1cfca0b4e3acba420cc829098b52d61c4905ec64d2aa57883dedae9dfb212969",
+    "source/device/package/gpu/adreno/ArmSmmu4KProgram.h": "171900c3ed400b805c3a1587959f66bc4a19db18aedc8111e862651a90bb8d8f",
+    "source/device/package/gpu/adreno/ArmSmmu4K.h": "e25063b9134afc7eb79e7c030bc2858608cf0ade5da714d5dfd600fee5007e8e"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
@@ -1251,7 +1256,9 @@
     "native_CCI_wait_services_RAW": true,
     "native_wait_does_not_sleep_frame_owner": true,
     "queued_frame_consumer_zero_wait": true,
-    "control_frame_errors_stop_once": true
+    "control_frame_errors_stop_once": true,
+    "CCI_wait_host_uses_same_selected_smmu_headers": true,
+    "CCI_wait_host_header_count": 5
   },
   "base_GPU051": {
     "boot_sha256": "4e4b785ca1bf7bea18d68248ade4cde09a9d9efb5d557fe65e4eaa975dac849a",
