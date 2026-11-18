@@ -81,7 +81,19 @@ int main(int argc,char **argv){
     assert(hostOrientationReports[hostOrientationReports.size()-2].bytes==std::vector<uint8_t>({1,0}));
     uint8_t bytes[5]={};auto b=IOBufferMemoryDescriptor::withBytes(bytes,5,0);assert(!orientation->getReport(b,kIOHIDReportTypeFeature,2));
     assert(b->bytes==std::vector<uint8_t>({2,0x20,0x4e,0,0}));
-    b->bytes={2,1,0,0,0};assert(orientation->setReport(b,kIOHIDReportTypeFeature,2)==kIOReturnBadArgument);
+    // The system report interval is independent of the physical source
+    // rate. Preserve all values in the descriptor range and keep source demand in
+    // the measured gravity range;0 remains the normal disable request.
+    for(uint32_t value:{1u,1000u,1999u,2000u,5000u,50000u,1000000u}){
+        feature(value);
+        assert(requested.active&&requested.interval_us>=5000&&requested.interval_us<=50000);
+        assert(!orientation->getReport(b,kIOHIDReportTypeFeature,2));
+        uint32_t reported=0;for(unsigned n=0;n<4;n++)reported|=(uint32_t)b->bytes[n+1]<<(8*n);
+        assert(reported==value);
+    }
+    b->bytes={2,0x41,0x42,0x0f,0};
+    assert(orientation->setReport(b,kIOHIDReportTypeFeature,2)==kIOReturnBadArgument);
+    feature(0);assert(!requested.active);feature(20000);assert(requested.active);
     b->release();
     QsscSample wrong={};wrong.epoch=2;wrong.kind=QsscGravity;wrong.valid=true;assert(nezha_sensor_orientation_sample(&wrong)==QsscConsumer);
     feature(1000000);assert(requested.interval_us==50000);feature(20000);

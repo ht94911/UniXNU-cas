@@ -71,21 +71,25 @@ class NativeNezhaOrientation : public IOHIDDevice {
         return true;
     }
     int32_t demand(uint32_t value){
-        // Keep enough source samples for250ms stability even when a client
-        // requests a long report interval. The original HID layer decimates.
-        QsscDemand d={value>50000?50000:value,0,value!=0,false};
+        // Preserve every interval allowed by the report descriptor. The discrete
+        // classifier uses the measured200Hz gravity source at most, and
+        // needs at least20Hz to evaluate250ms direction stability.
+        uint32_t source=value?(value<5000?5000:value>50000?50000:value):0;
+        QsscDemand d={source,0,value!=0,false};
         return backend.request(backend.context,QsscGravity,1,d);
     }
     static IOReturn control(OSObject *object,void *value,void *,void *,void *){
         auto self=static_cast<NativeNezhaOrientation *>(object);uint32_t next=*static_cast<uint32_t *>(value);
         if(self->stopped)return kIOReturnNotReady;
-        if(next&&(next<2000||next>1000000))return kIOReturnBadArgument;
         // Initial feature probes can run during original IOHIDDevice::start,
         // before the shared board adapter has enabled its command queue.
-        int32_t result=self->activated?self->demand(next):0;if(result)return result;
+        int32_t result=next>1000000?kIOReturnBadArgument:self->activated?self->demand(next):0;
+        printf("NEZHA SENSORS ORIENTATION: interval=%u source=%u rc=%d\n",next,
+            next?(next<5000?5000:next>50000?50000:next):0,result);
+        if(result)return result;
         IOLockLock(self->settings);self->interval=next;IOLockUnlock(self->settings);
         if(!next){self->clearBeforeReport|=self->ready;self->ready=false;nezha_orientation_invalidate(&self->filter);}
-        printf("NEZHA SENSORS ORIENTATION: interval=%u rc=0\n",next);return kIOReturnSuccess;
+        return kIOReturnSuccess;
     }
     static IOReturn activate(OSObject *object,void *,void *,void *,void *){
         auto self=static_cast<NativeNezhaOrientation *>(object);if(self->stopped)return kIOReturnNotReady;

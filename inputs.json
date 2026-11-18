@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "7118437718f4d5047eca12ae8426f45392273874",
+  "device_revision": "3f8bdd1ce1e2e40c7ddc874d21cbbafc0e315ea5",
   "soc_revision": "device-local-composition-e565439+3435fa5",
   "xcode": "26.6",
   "files": {
@@ -81,7 +81,7 @@
     "source/device/package/BootLog.c": "b8a76a03be5b1595c09ab8181acadf6332f88196022c086eb4628addac25acb3",
     "source/device/package/boot-progress/UmiRuntimeTrace.h": "f91cb0cf6a325a57d5a4aecc4bcf9f354e57c26f8198b78030a8b635ca027964",
     "source/device/package/.gitkeep": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
-    "source/device/tests/sensors-orientation-host.cpp": "f6e8671c8967d064d1a3388627511367cff04e7b126e4f6dbd3a56eb89c56765",
+    "source/device/tests/sensors-orientation-host.cpp": "63bfe6e7eaba64cae8b6688c4adfb5b886ae009c5b035e3f4dc735a1b79b8e01",
     "source/device/package/als-owner/upstream/QcomRpmh.c": "679a55467e6ed4c7e75a8191f1d6da48637377088ef5e27879b1c99bc4a62314",
     "source/device/components/QcaBluetooth/include/qbt_firmware.h": "578f8a60097ea45e68b495738c7963d9fa6674c6a0641330856ae4f5a3a6aaa1",
     "source/device/components/QcomSscSensors/ORIGIN.json": "90b3725b48e24df6d8977f2e89e96872d26f0be95dff6a39bea9430a9d682272",
@@ -182,7 +182,7 @@
     "source/device/scripts/build-adreno840.py": "269f32fe2c97d7baf846a148fed7c111a53869486626a87ec8daab7fdfc3ab91",
     "source/soc/src/Sm8850Resources.c": "944379b776f769dd0718492749abb46b52bb74bef6b903dca4f674469d7bae26",
     "source/device/patches/xnu-12377/zzzz-native-root-cwd-ownership.patch": "d3e37aaaff05993250c853eff0dcbbdc5e36e26b0a406742412e580f7e997d36",
-    "source/device/package/sensors/NezhaSensorOrientationHid.cpp": "0582d110b20db125ef00ae5b6a5a1272513df2456447d7314b7be886eb7c0d6d",
+    "source/device/package/sensors/NezhaSensorOrientationHid.cpp": "335fd091d9e39bee1bdf09753424a4308c4bac1e7fae71595a65cfd4f8ec88c0",
     "source/device/scripts/hid-device-iphone-24A446.json": "af4668764ba1d2a4649b9c45d1ddbbabcb69e27659e7c35fbf9899f8f6bdbc7d",
     "source/device/package/als-owner/platform/AudioInputPack.h": "e18ba7bf47aacba3347dd872d9584964b6f143109991707f96271a218de1fd68",
     "source/device/package/als/NezhaAlsBackend.h": "3bbf1b04d0a4a1af2d61c2b05402aaa1a5271c5061684128284417a145b6394c",
@@ -533,7 +533,7 @@
     "source/device/package/als-owner/core/AudioRuntime.h": "427057626089238b91ec840d0b5fc0046166fd43c4794c7a01bee04ac2a89641",
     "source/metal/OriginalAcceleratorABI.h": "211e922f9b760ddec2e3453db6584bac57597b3d39e4bf0d013c1b2debd53365",
     "source/device/package/als-owner/platform/NezhaAudioPlatform.h": "e1f7bccb47b1cf815ce0fe449ba0d61d684b99003157ad9ecf2f39e020bcf599",
-    ".github/workflows/nezha-ios27-native.yml": "53a84b14ee9f379d8987c7054b50dfdb0b4e7f4b52ce3d9ed9b93c90de490fc6",
+    ".github/workflows/nezha-ios27-native.yml": "998a3043ae1278c40afd73d3ae89f9b6073546919523ef444271b35931fc3c02",
     "source/device/package/boot-progress/BootProgressLifecycle.h": "eaf777e5b71db7b5affaa9a64d0a2806277730b538d9aa96a457f425ccbada6a",
     "source/device/patches/xnu-12377/zzzzzz-nezha-adreno840-start.patch": "d32bb0d5e678e5773786dcce90467e0258d844550b418b438e1548fb32392f79",
     "source/device/package/backlight/OriginalAppleARMBacklightABI.h": "dab34c394c2123ae4cbfd6648980d5e7b024539773abe5852f7d2622f9bf7b8b",
@@ -1122,6 +1122,27 @@
       "source/device/package/sensors/NezhaSensorOrientationDescriptor.h",
       "source/device/package/sensors/NezhaSensorOrientationHid.cpp",
       "source/device/tests/sensors-orientation-host-shim.h",
+      ".github/workflows/nezha-ios27-native.yml"
+    ],
+    "host_descriptor_and_integration_passed": true,
+    "ordinary_app_rebuilt": false,
+    "hardware_pending": true
+  },
+  "sensors013": {
+    "device_revision": "3f8bdd1ce1e2e40c7ddc874d21cbbafc0e315ea5",
+    "common_revision": "ddb482f9fb73c8104792cf96a5b324a139974665",
+    "report_interval_range_us": [
+      0,
+      1000000
+    ],
+    "source_interval_range_us": [
+      5000,
+      50000
+    ],
+    "descriptor_unchanged": true,
+    "source_changes": [
+      "source/device/package/sensors/NezhaSensorOrientationHid.cpp",
+      "source/device/tests/sensors-orientation-host.cpp",
       ".github/workflows/nezha-ios27-native.yml"
     ],
     "host_descriptor_and_integration_passed": true,
