@@ -164,6 +164,10 @@ int main() {
 if platform.system() == 'Darwin':
     body = body.replace('#include <objc/Object.h>', '#import <Foundation/Foundation.h>')
     body = body.replace('@interface NBObject : Object', '@interface NBObject : NSObject')
+    # Foundation already forward-declares __IOSurface through CoreGraphics.
+    # Define only the test object's layout under that opaque tag.
+    body = body.replace('struct Surface {', 'struct __IOSurface {')
+    body = body.replace('typedef Surface *IOSurfaceRef;', 'using Surface = __IOSurface;')
     flags = ['xcrun', 'clang++', '-framework', 'Foundation']
 else:
     include = subprocess.check_output(['gcc', '-print-file-name=include'], text=True).strip()
