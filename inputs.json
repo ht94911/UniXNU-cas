@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "GPU054: release closing system BO descriptors outside the global GPU gate, based on the full GPU052 Native045; retain union directory EOF, CPU-map/VM diagnostics, external IPC routing and job stack fix.",
+  "purpose": "GPU055 retain exactGPU054 close-lock/CPU-map/VM/union and all joint drivers; reuse AppSync039/042 tested12GiB RAMbootstrap pool. Only 16->34 native4KiB bootstrap pages; Metal046 release-only pipeline collection already built and qualified separately. Original persistentData1 unchanged.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -406,7 +406,7 @@
     "source/device/patches/xnu-12377/nezha-wifi-addon-truncate.patch": "c3b980c547fbc138ac7aedfd735d350cfef85d2a32ff78ec7bef894c4068ce63",
     "source/device/patches/xnu-12377/nezha-wifi-kernel-events.patch": "967cf792a5202711d0063463fe08bda58c554621b690b87f66904c18f81d057f",
     "source/device/patches/xnu-12377/nezha-wifi-mmio-recovery.patch": "89642756f4fe3179d44f076fbfd4786d21d0089ec7786943cb717b3eb78ecbe1",
-    "source/device/patches/xnu-12377/series": "b1f7a4fed202c23653496d47b894f341972f79e544022710554f4977a2decfb6",
+    "source/device/patches/xnu-12377/series": "81b5ccd2126ef905074da99d1c94d06ce63133bf8d98be65fa160ece8cada0e5",
     "source/device/patches/xnu-12377/source-storage-runtime.patch": "25c377c60db417b15fcc137acf380f0319cbff9d5ba012af1907f3485602b584",
     "source/device/patches/xnu-12377/zzyd-sheng-audio-addon-mount.patch": "b51ed480b34c92452ea984fe056e5fce310bd929992d418f383a7e9268313c51",
     "source/device/patches/xnu-12377/zzye-sheng-cpu-idle.patch": "95f57fb9994796c3de2429fe82b6a521620b9f13b83e29eba12185f5ada4da86",
@@ -502,13 +502,14 @@
     "ci/test-native-userlog.py": "f64f5aff7c83cbbff7ce9bd15ab276dd7022f5e42d227999157b796afe414f9e",
     "ci/check-native-userlog.py": "74e7abe9164a853b10d4406a46f55f67670ade42795f066068e84f14b2ebc006",
     "ci/test-native-userlog-producer.py": "619bc31f6f41b16d562bcbc83a41588f6ada45a5268e23ef5c4985e5f364e403",
-    "ci/native.py": "56c507ccbdc396862c98526215bbc8df5c01b8171db2becc90dc7c3eff52d13e",
+    "ci/native.py": "2e9c890ac6adf3e9ece2bc0feea4600cd50508a453117c6c6c7e6c49419cc3d6",
     "source/device/package/gpu/NezhaGpuBoPhases.h": "6b609e93c766b0f88b569dc1c04177b529f090e23f06a260c4c427afe8dfcbb6",
     "source/device/tests/gpu-bo-phases.cpp": "a7d609b520a3166ca53c24581f89c6d2f02ca53f00b09326749c0356a3fc63e9",
     "source/device/tests/check-gpu-bo-phases.py": "e34cab3913626ff9e80d533e9013791565229a3386fbb1599ed4c71c68afc181",
     "source/device/docs/GPU050-BO-PHASES.md": "9a5d2f357315c7883d9e660a69969f72e7eaa290f09731dd2b39d390123557e4",
     "source/device/patches/xnu-12377/native-union-readdir-eof.patch": "764075e4cb2d9905e6e9488cf1ad9d3bb9c958eca06bd454d7de2afc4354e136",
-    "source/device/docs/GPU052-RESOURCE-ENUMERATION.md": "f8c8e93b0483e8babf441616f2468f83c38462567358109fc6cceb9eca680887"
+    "source/device/docs/GPU052-RESOURCE-ENUMERATION.md": "f8c8e93b0483e8babf441616f2468f83c38462567358109fc6cceb9eca680887",
+    "source/device/patches/xnu-12377/nezha-native-4k-large-ram.patch": "6c1e566d009bf384291487f9d5e242514c78a000ea39995fdae9cacfd816e32d"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
@@ -905,5 +906,24 @@
     "GPU053_fixed": true,
     "phone_operations": false,
     "target_wrapper_required": true
+  },
+  "gpu055_large_ram": {
+    "source": "AppSync ci-ram038@55b22a6 and myron pool",
+    "base_native046_head": "6396f229fc1d47b52a70b158230f060288458ba9",
+    "base_device_revision": "28a3e5f2a6ef20054ce83038d5fe105a175c06e3",
+    "bootstrap_patch": "source/device/patches/xnu-12377/nezha-native-4k-large-ram.patch",
+    "bootstrap_patch_sha256": "6c1e566d009bf384291487f9d5e242514c78a000ea39995fdae9cacfd816e32d",
+    "old_native4KiB_pages": 16,
+    "new_native4KiB_pages": 34,
+    "UEFI_source": "AppSync largeRAMfirmware source0fd4dba3",
+    "UEFI_sha256": "f6e8984ed2caadfc781d28310aaff867ad634801c2771cda0cf22939cc505d40",
+    "requested_owned_bytes": 12884901888,
+    "firmware_ram_start": 37580963840,
+    "firmware_ram_bytes": 13421772800,
+    "compression_pool_pages": 1048576,
+    "actual_AppSync039and042_ram12884901888": true,
+    "no_device_Data_rebuild": true,
+    "phone_operations": false,
+    "private_inputs_uploaded": false
   }
 }

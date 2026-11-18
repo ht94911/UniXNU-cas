@@ -348,6 +348,8 @@ def collect(framework, work, sealed):
         add(tree / 'kits/nezha/keystore013-source-lock.json', 'keystore-source/source-lock.json')
         add(tree / '.cache/xnu-work/bsd/kern/ubc_subr.c', 'text-fixup-source/ubc_subr.c')
         add(tree / '.cache/xnu-work/bsd/vfs/vfs_syscalls.c', 'compiled-source/vfs_syscalls.c')
+        add(tree / '.cache/xnu-work/osfmk/arm/pmap/pmap.h', 'compiled-source/pmap.h')
+        add(tree / '.cache/xnu-work/osfmk/arm64/start.s', 'compiled-source/start.s')
         objects = tree / 'build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837'
         for name in ('link.filelist', 'all-alias.exp'):
             add(objects / name, 'objects/' + name)

@@ -49,3 +49,6 @@ nezha-bluetooth-runtime.patch
 nezha-bluetooth-text-fixup-capacity.patch
 # Continue union resource enumeration until the lower directory also ends.
 native-union-readdir-eof.patch
+
+# AppSync039/042 actual12GiB uses myron native4KiB bootstrap pool.
+nezha-native-4k-large-ram.patch

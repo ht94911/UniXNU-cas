@@ -1,0 +1,16 @@
+diff --git a/osfmk/arm/pmap/pmap.h b/osfmk/arm/pmap/pmap.h
+--- a/osfmk/arm/pmap/pmap.h
++++ b/osfmk/arm/pmap/pmap.h
+@@ -117,9 +117,9 @@
+ #define BOOTSTRAP_TABLE_SIZE (ARM_PGBYTES * 34)
+ #elif !defined(APPLE_ARM64_ARCH_FAMILY) && !__ARM_16K_PG__
+-/* Native 4 KiB: two roots plus up to seven L2 pages per 6 GiB mapping.
+- * The physical and virtual bases may each straddle an extra 1 GiB region.
++/* Match myron's native 4 KiB pool. The physical and virtual views each
++ * need an L2 table for every covered GiB, including partial regions.
+  */
+-#define BOOTSTRAP_TABLE_SIZE (ARM_PGBYTES * 16)
++#define BOOTSTRAP_TABLE_SIZE (ARM_PGBYTES * 34)
+ #else /* defined(ARM_LARGE_MEMORY) */
+ #define BOOTSTRAP_TABLE_SIZE (ARM_PGBYTES * 8)
+ #endif /* defined(ARM_LARGE_MEMORY) */
