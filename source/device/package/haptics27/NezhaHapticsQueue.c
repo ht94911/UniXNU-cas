@@ -6,6 +6,18 @@
 #include <sys/errno.h>
 enum { ARGUMENT=-EINVAL,STALE=-ESTALE,BUSY=-EBUSY,RANGE=-ERANGE,OVERFLOW=-EOVERFLOW };
 static int advance(uint32_t *value) {if(*value==UINT32_MAX)return OVERFLOW;++*value;return 0;}
+static unsigned envelope(unsigned peak) {
+    /* Reuse HakiOS redwood's gain_for policy at f128f1d8: iOS's low-level
+     * Taptic samples are an envelope for the board's native LRA carrier,
+     * rather than a request to drive the motor at that fraction of a volt.
+     * Its normalized range is 5/8..1 of the verified board drive, reaching
+     * full native strength at 1/3 PCM scale. Keep silence silent and the
+     * same 2000mV/500ms executor cap. Only this arithmetic policy is reused;
+     * no AW86927 hardware, waveform, voltage or calibration is imported. */
+    if(peak<128)return 0;
+    if(peak>=32767u/3u)return NZ_HAPTICS_MAX_PERMILLE;
+    return 625u+375u*peak/(32767u/3u);
+}
 void nz_haptics_queue_open(NzHapticsQueue *q,uint32_t session) {
     __builtin_memset(q,0,sizeof *q);q->session=session;q->ready=session!=0;
 }
@@ -66,7 +78,7 @@ int nz_haptics_queue_pcm(NzHapticsQueue *q,const NzHapticsPacket *p,const int16_
         s->begin_us=at+(uint64_t)offset*1000000/NZ_HAPTICS_RATE;
         s->end_us=end;
         s->epoch=q->epoch;s->sequence=p->sequence;s->operation=NzHapticsPCM;s->effect=0;
-        s->amplitude=peak<128?0:(peak*1000u+16384u)/32768u;
+        s->amplitude=envelope(peak);
         ++q->count;
     }
     q->last_end_us=at+length;++q->next_sequence;++q->requests;return 0;

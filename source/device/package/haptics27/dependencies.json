@@ -1,5 +1,5 @@
 {
-  "stage": "GPU051018 source prepared: exact original AudioToolbox renderer clock correction after017 three public APIs",
+  "stage": "GPU051019 native LRA envelope normalization; all4 normal feedback physically verified on018 but weak",
   "profile": "GPU051 iPhone14,4 D16 27.0.1/24A446",
   "framework_reference": "9931232fd68b8ae1db0abd957ecba417f1996e52",
   "xnu_reference": "12377.121.6 source; donor xnu13432.2.10",
@@ -77,10 +77,9 @@
     "ios17-main.json"
   ],
   "pending": [
-    "Normal UIKit/CoreHaptics nonzero PCM repeatedly drives the motor after late/rest recovery",
-    "Same-session electrical playback and PLAY_EN/HPWR stop readback",
-    "Mechanical sensation, sleep/wake, concurrent use and sustained stability",
-    "018 native compilation and complete UIKit mechanical feedback"
+    "019 native target and stronger same normal UIKit/CoreHaptics feedback",
+    "Enhanced feedback stop/cancel and repeated effects on the same session",
+    "Lock/sleep/wake and concurrent stability outside prior measured scope"
   ],
   "selected_package": {
     "base_revision": "76c5952683041a6581224135461ab7c21d47f6a5",
@@ -137,9 +136,24 @@
     "task_recipe": "actual osfmk startup.o.json",
     "converter_words": 23,
     "edits": 5,
-    "target_validation_pending": true,
+    "target_validation_pending": false,
     "AudioToolbox_inline_renderer_clock": true,
     "AudioToolbox_header_and_UUID_checked": true,
     "actual_render_ARM_replay_passed": true
+  },
+  "native_envelope_policy": {
+    "source": "HakiOS redwood kernel/bsd/dev/hakios.haptic.c::gain_for",
+    "revision": "f128f1d8e2ef1f588002787c5efb94ec134ddeac",
+    "source_license": "APSL-2.0",
+    "scope": "normalized mathematical policy reimplemented in BSD queue; no foreign hardware code/values",
+    "silence_threshold_pcm": 128,
+    "normalized_native_drive_permille": [
+      625,
+      1000
+    ],
+    "full_drive_PCM_magnitude": 10922,
+    "motor_cap_mv": 2000,
+    "all_four_physical_feedback_verified_on018": true,
+    "strength_verified": false
   }
 }

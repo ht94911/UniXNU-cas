@@ -53,3 +53,5 @@ GPU051指定后的审查：真实audiomxd UserName mobile/UID501已核，cdev501
 017静态审查：新的FIX_HOST_CLOCK仅在当前HAL进程拥有端点、流未启动且原执行器有效时允许；helper要求current_task、原CoreAudio UUID/代码/slide/常量，IOMemoryDescriptor pin与原phys读写和缓存同步复用音频072。独立clock gate不持motor gate做VM工作；原硬件寄存器、队列、限值和STOP不变。实际osfmk startup.o.json用于task accessor，不能只向BSD record追加MACH_KERNEL_PRIVATE。73个原fileglob例外模型、productionprepareClock与原23words/5 edits和绝对事件时基模型通过ASan/UBSan；原同步生产函数MachO目标ISB1/DSB2/DC CVAU/IC IVAU已核。完整native和真机待。
 
 018静态：沿同一无payload专用ioctl/独占音频进程/未启动流条件，新增第二映像header/UUID/slide/pin/原RenderProc5words核对，频率及倒数只允许原值/本机值后CAS/回读。两映像都先核完才改，已改CoreAudio仍需核AudioToolbox，普通应用和硬件链无变化。生产prepare/publish的原值/混合值/已改/24M/UUID/指令/slide/权限错误及回读测试通过；原ARM64 RenderProc和queue-horizon比较重放在284/498/623/1000秒复现20%时间偏差，修正后事件不再推迟；立即0与24MHz旧路保持。目标编译及机械系统验收待。
+
+019静态与当前范围：018 all4普通触觉的人类纠正确认和78/78启停已保存，强度未过；USB随后失联，用户返回安卓后必要保护/51644退出/实际释放过，未发送USB返回命令。019只更改生产queue的int16绝对峰值→permille包络，不改协议/权限/PAC/时钟修复/马达寄存器/cap/校准。全int16幅度域检查静音阈值、正负对称、单调、max1000、真实低onset样本、同原begin/end/晚包/休息/取消/关闭；2000mV上限和最大500ms仍由既有core执行。来源5/8..1策略只做数学重写；本机实际手感及增强后停止需019实机。

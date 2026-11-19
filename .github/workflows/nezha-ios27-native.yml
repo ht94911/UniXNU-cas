@@ -1,7 +1,7 @@
-name: nezha Haptics018 on fixed GPU051
+name: nezha Haptics019 on fixed GPU051
 on:
   push:
-    branches: [codex/ios27-haptics018-gpu051-native-20261119]
+    branches: [codex/ios27-haptics019-gpu051-native-20261119]
   workflow_dispatch:
 permissions:
   contents: read
@@ -92,6 +92,8 @@ jobs:
           CXX=clang++ python3 "$RUNNER_TEMP/ios27/work/device/scripts/check-haptics-rest.py" --out "$RUNNER_TEMP/ios27/work/haptics-rest-host"
           xcrun clang -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined -fno-sanitize-recover=all -I "$RUNNER_TEMP/ios27/work/device/components" -I "$RUNNER_TEMP/ios27/work/device/components/sm8850/kits" "$RUNNER_TEMP/ios27/work/device/package/haptics27/NezhaHapticsQueue.c" "$RUNNER_TEMP/ios27/work/device/package/haptics27/tests/queue_cases.c" -o "$RUNNER_TEMP/ios27/work/haptics-rest-host/queue-cases"
           "$RUNNER_TEMP/ios27/work/haptics-rest-host/queue-cases"
+      - name: Exercise production native LRA envelope strength and cancellation
+        run: CC=clang python3 "$RUNNER_TEMP/ios27/work/device/scripts/check-haptics-envelope.py" --out "$RUNNER_TEMP/ios27/work/haptics-envelope-host"
       - name: Execute production HAL property marshalling and silent Initialize lifetime
         run: |
           set -euo pipefail
