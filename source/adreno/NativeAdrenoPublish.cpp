@@ -36,6 +36,9 @@ static NativeGpuTextStream gpuTextStream;
 static IOLock *gpuTextLock;
 static NativeAdrenoPollLog gpuPollLog;
 static bool reportRpcResult(uint32_t method,IOReturn result) {
+    if(result==kIOReturnBusy &&
+       (method==NativeAdrenoMethodSubmit || method==NativeAdrenoMethodSubmitBatch))
+        return gpuPollLog.keep(2);
     if(result!=kIOReturnTimeout)return true;
     if(method==NativeAdrenoMethodWaitFence)return gpuPollLog.keep(0);
     // 0x7000 + NGP_METHOD_WAIT_SWAP: the existing display hand-off wait.
@@ -1435,7 +1438,7 @@ extern "C" void native_adreno_perf_calls(uint64_t out[18][4])
 static void nativeAdrenoDiagnosticObserver(void *,wait_result_t)
 {
     uint32_t hashes[48]={};
-    uint64_t lastPolls[2]={};
+    uint64_t lastPolls[3]={};
     uint32_t lastStall=0;
     for(;;) {
         IOSleep(2000);
@@ -1448,10 +1451,10 @@ static void nativeAdrenoDiagnosticObserver(void *,wait_result_t)
         IOLog("NEZHA GPU SNAP: sampled opens %u closes %u busy %u bad %u name_reads %u calls %u method %u status %#x inflight %u since %u marks %u table_status %#x\n",
             d.opens,d.closes,d.busy,d.bad,d.name_reads,d.calls,d.last_selector,d.last_status,
             d.inflight,d.inflight_since_calls,d.marks_total,native_adreno_table_switches[6]);
-        const uint64_t fencePolls=gpuPollLog.count(0),framePolls=gpuPollLog.count(1);
-        if(fencePolls!=lastPolls[0] || framePolls!=lastPolls[1]) {
-            IOLog("NEZHA GPU POLL: sampled fence_timeouts=%llu frame_timeouts=%llu; repeated lines counted\n",fencePolls,framePolls);
-            lastPolls[0]=fencePolls;lastPolls[1]=framePolls;
+        const uint64_t fencePolls=gpuPollLog.count(0),framePolls=gpuPollLog.count(1),submitBusy=gpuPollLog.count(2);
+        if(fencePolls!=lastPolls[0] || framePolls!=lastPolls[1] || submitBusy!=lastPolls[2]) {
+            IOLog("NEZHA GPU POLL: sampled fence_timeouts=%llu frame_timeouts=%llu submit_busy=%llu; repeated lines counted\n",fencePolls,framePolls,submitBusy);
+            lastPolls[0]=fencePolls;lastPolls[1]=framePolls;lastPolls[2]=submitBusy;
         }
         // Problem/notification text is already retained as event 65 by the
         // upstream ABI. Copy at most eight unseen metadata entries, release

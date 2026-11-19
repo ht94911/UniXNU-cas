@@ -1,7 +1,7 @@
 name: nezha GPU060 nonblocking submit VM readiness - native050
 on:
   push:
-    branches: [codex/ios27-gpu60-submit-vm-busy-native050-20261119]
+    branches: [codex/ios27-gpu62-submit-busy-native051-20261119]
   workflow_dispatch:
 permissions:
   contents: read
@@ -73,6 +73,10 @@ jobs:
         env:
           CXX: clang++
         run: python3 "$RUNNER_TEMP/ios27/work/device/tests/check-gpu-bo-phases.py" --native "$RUNNER_TEMP/ios27/work/adreno" --out "$RUNNER_TEMP/ios27/work/bo-phases-host"
+      - name: Check actual Submit and SubmitBatch Busy logging without repeated IOLog
+        env:
+          CXX: clang++
+        run: python3 "$RUNNER_TEMP/ios27/work/adreno/tests/check_submit_busy_log.py" --out "$RUNNER_TEMP/ios27/work/submit-busy-log-host"
       - name: Check the actual guarded waiting-stack sampler
         run: python3 task/source/device/scripts/check-stable-kernel-stack.py
       - name: Qualify compiler and run the standard native build

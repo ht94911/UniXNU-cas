@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "GPU060: nonblocking A840 CPU VM readiness on submission; existing Busy retry releases global GPU gate; retain all original BO/TTBR/fence/A840 tail/recovery/close and Native049 icon384 policy. Metal058 separately retained.",
+  "purpose": "GPU062: retain Native050 A840 zero-wait table readiness and GPU059 icon384; count every Submit/SubmitBatch Busy with sparse existing diagnostics, eliminating observed per-retry IOLog storm. Both statuses and TTBR/RPTR/RBBM guards remain original; KMD room retry separately changed.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -46,10 +46,10 @@
     "source/adreno/NativeAdrenoMemory.cpp": "130928e5d862d61660ad54af25c363e5477fc6c4d41f3386daf3c8b2f4d1040b",
     "source/adreno/NativeAdrenoMemory.h": "8cf705d9896ce44e7fc976a52baff525a4a2b2935e9fb4421adf380bf69f24f4",
     "source/adreno/NativeAdrenoPerf.h": "6e39a2b42cb1e394f171b2ea8361a045bc291d600a5532a3e7cfb722ad48944f",
-    "source/adreno/NativeAdrenoPollLog.h": "8b6519cec2aeade0870f91db08087462f03ffc2a0eabf6e0d6183216e6c35645",
+    "source/adreno/NativeAdrenoPollLog.h": "b4c2b7033f1ec5198d9ce5a44790ce4c182e9f6e63b0bcc659fb92efe7a602f4",
     "source/adreno/NativeAdrenoPreempt.cpp": "59336613d70291a3d16abd0c3a10025fc8dae5ba2796f76ce8e7c60234f328bb",
     "source/adreno/NativeAdrenoPreempt.h": "33b1804ba28d36d5a8aa3c67ec6476f737803e1864c049804bb6fcd3512d91b6",
-    "source/adreno/NativeAdrenoPublish.cpp": "0512a695818b91e378f6d6fbd279c5a1da65f7b125ae7ef7176df41e50f82988",
+    "source/adreno/NativeAdrenoPublish.cpp": "14a0419e5761d3e416bfa708afcdedff6d4b453cd8fd69544786d5c91106e884",
     "source/adreno/NativeAdrenoPwrup.h": "708830fae4f6a5cea765992d44135126d7a034a239adece94f094d862819e889",
     "source/adreno/NativeAdrenoPwrupRegs.h": "8067d9625e922173912eea09e6a504d9c1b31234d4656f8dd4148855882918e1",
     "source/adreno/NativeAdrenoRing.cpp": "c32eefeac0d32960e585f8046be86408c6c6bda6d28b569261f4eb940922ae66",
@@ -502,14 +502,16 @@
     "ci/test-native-userlog.py": "f64f5aff7c83cbbff7ce9bd15ab276dd7022f5e42d227999157b796afe414f9e",
     "ci/check-native-userlog.py": "74e7abe9164a853b10d4406a46f55f67670ade42795f066068e84f14b2ebc006",
     "ci/test-native-userlog-producer.py": "619bc31f6f41b16d562bcbc83a41588f6ada45a5268e23ef5c4985e5f364e403",
-    "ci/native.py": "2e9c890ac6adf3e9ece2bc0feea4600cd50508a453117c6c6c7e6c49419cc3d6",
+    "ci/native.py": "1ed840e5723416a88d4456b87d4c16fb5d9c10c6ab3255f0ba5ffb392b66f24c",
     "source/device/package/gpu/NezhaGpuBoPhases.h": "6b609e93c766b0f88b569dc1c04177b529f090e23f06a260c4c427afe8dfcbb6",
     "source/device/tests/gpu-bo-phases.cpp": "a7d609b520a3166ca53c24581f89c6d2f02ca53f00b09326749c0356a3fc63e9",
     "source/device/tests/check-gpu-bo-phases.py": "e34cab3913626ff9e80d533e9013791565229a3386fbb1599ed4c71c68afc181",
     "source/device/docs/GPU050-BO-PHASES.md": "9a5d2f357315c7883d9e660a69969f72e7eaa290f09731dd2b39d390123557e4",
     "source/device/patches/xnu-12377/native-union-readdir-eof.patch": "764075e4cb2d9905e6e9488cf1ad9d3bb9c958eca06bd454d7de2afc4354e136",
     "source/device/docs/GPU052-RESOURCE-ENUMERATION.md": "f8c8e93b0483e8babf441616f2468f83c38462567358109fc6cceb9eca680887",
-    "source/device/patches/xnu-12377/nezha-native-4k-large-ram.patch": "6c1e566d009bf384291487f9d5e242514c78a000ea39995fdae9cacfd816e32d"
+    "source/device/patches/xnu-12377/nezha-native-4k-large-ram.patch": "6c1e566d009bf384291487f9d5e242514c78a000ea39995fdae9cacfd816e32d",
+    "source/adreno/tests/check_submit_busy_log.py": "945f7616e47ceb6c125c4b0f1e177e437d032ac85095326ea2d17b4264491857",
+    ".github/workflows/nezha-ios27-native.yml": "a1be052cc6a93fe7ddedec74de50dc622c1167c74f96b7120a857662d16e9d36"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
@@ -971,6 +973,21 @@
     "actual140IB_VM_Busy_retries_one_job": true,
     "host_report_sha256": "c89b6b49b16be2b5ecb6ca90fb3b91de63c985b3599ff6664480b4d52a281196",
     "physical_frame_improvement_verified": false,
+    "phone_operations": false
+  },
+  "gpu062_busy_log": {
+    "source_revision": "d04a07a65a4a0f70ce483bf914a409f7d3b1ef69",
+    "base_native050": "00e4b2b6d1e47fab7805450c025bc2572158ce22",
+    "changes": [
+      "NativeAdrenoPublish.cpp",
+      "NativeAdrenoPollLog.h",
+      "tests/check_submit_busy_log.py"
+    ],
+    "host_report_sha256": "3f892628636ab753c3e8a41ca5df78e88945352b9c3fa30fdbfe2c48fb4b962e",
+    "concurrent_returns": 262144,
+    "printed_repeats": 20,
+    "statuses_and_sync_unchanged": true,
+    "physical_gain_verified": false,
     "phone_operations": false
   }
 }

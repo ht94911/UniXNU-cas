@@ -284,6 +284,9 @@ def collect(framework, work, sealed):
         if path.is_file() and path.suffix in ('.json', '.log', '.c'):
             add(path, 'userlog-producer-host/' + path.name)
 
+    for path in sorted((work / 'submit-busy-log-host').glob('*')):
+        if path.is_file():
+            add(path, 'submit-busy-log-host/' + path.name)
     for name in ('source-report.json', 'integration-source-qualified.json', 'compiler-report.json', 'authenticated-null.c',
                  'authenticated-null.o', 'authenticated-null.s'):
         add(work / name, name)
