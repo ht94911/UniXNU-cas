@@ -225,6 +225,12 @@ report=dict(actual_icon_limits_host=icon_limits,actual_pipeline_cache_host=cache
             actual_enum_stack_connection_offset=enum_offset,
             actual_Mac_source_bound_context_tests=contexts,
             real_A840_shader_or_UI_verified=False,phone_operations=False)
+stitch_modules=json.loads((a.logs/'stitch-modules/report.json').read_text())
+assert stitch_modules['passed'] and stitch_modules['actual_production_ObjC_stitching_serializer']
+assert stitch_modules['system_compiler_shared_modules'] and stitch_modules['system_compiler_distinct_modules']
+assert stitch_modules['source_sha256']==hashlib.sha256((root/'drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm').read_bytes()).hexdigest()
+assert stitch_modules['test_sha256']==hashlib.sha256((root/'drivers/AdrenoMetal/bridge/stitch_modules_host.mm').read_bytes()).hexdigest()
+report['actual_stitch_modules']=stitch_modules
 report.update(actual_extern_function=extern_function,actual_extern_target=target_extern,actual_multi_level_output=multi_level,
               actual_codegen_cache=codegen,actual_display_preference=preference)
 (a.logs/'full-target-qualified.json').write_text(json.dumps(report,indent=2)+'\n')

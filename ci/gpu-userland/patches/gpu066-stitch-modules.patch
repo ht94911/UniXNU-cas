@@ -1,0 +1,68 @@
+--- a/NativeBridgeMetalFrontend.mm
++++ b/NativeBridgeMetalFrontend.mm
+@@ -1701,6 +1701,7 @@
+ @property(nonatomic,strong) NSData *bitCodeHashData;
+ @property(nonatomic,strong) MTLFunctionConstantValues *constantValues;   // specialized with (nil: none), for the zero-rest rebuild of a refused pipeline
+ @end
++static NSData *functionBitcode(NBFunction *function);
+ @interface NBFunctionConstant : NSObject
+ @property(nonatomic,copy) NSString *name;
+ @property(nonatomic) MTLDataType type;
+@@ -1725,15 +1726,15 @@
+  return result;
+ }
+ - (void)dealloc {DetailSpan timing(8,(uintptr_t)_handle);if(_handle)nmb_function_release(_handle);}
+-// _MTLFunction's bitCodeHash (32 bytes), read by the stitched-library path (createStitchingScriptHash): a digest naming this function
+-// object, its name and a serial no other function in the process has.
++// The stitcher identifies AIR modules, not function objects. Core Image's
++// external functions share one module; the same bytes must have the same hash.
+ - (const void *)bitCodeHash {
+  @synchronized(self) {
+   if(!_bitCodeHashData) {
+-   static std::atomic<uint64_t> serial;
+-   NSData *text=[[NSString stringWithFormat:@"%@#%llu",_name,(unsigned long long)++serial] dataUsingEncoding:NSUTF8StringEncoding];
++   NSData *bitcode=functionBitcode(self);
++   if(!bitcode)return nullptr;
+    NSMutableData *digest=[NSMutableData dataWithLength:CC_SHA256_DIGEST_LENGTH];
+-   CC_SHA256(text.bytes,(CC_LONG)text.length,(unsigned char *)digest.mutableBytes);
++   CC_SHA256(bitcode.bytes,(CC_LONG)bitcode.length,(unsigned char *)digest.mutableBytes);
+    _bitCodeHashData=digest;
+   }
+   return _bitCodeHashData.bytes;
+@@ -4704,14 +4705,32 @@
+  if(!graphs.count || !functions.count){if(error)*error=nbError(@"a stitched library needs graphs and functions");return nil;}
+  NSString *dag=[(id<NBOriginalStitching>)self newDagStringWithGraphs:graphs];
+  if(!dag.length){if(error)*error=nbError(@"the stitching graphs have no DAG text");return nil;}
++ // A Core Image external library can expose hundreds of functions from the
++ // same AIR module. The compiler reads every bitc into a separate LLVM module;
++ // equal bhas values do not prevent duplicate definitions during linking.
++ // Keep the complete DAG and submit each identical module only once.
++ NSMutableArray<NSData *> *modules=[NSMutableArray array],*hashes=[NSMutableArray array];
++ NSMutableSet<NSData *> *seen=[NSMutableSet set];
++ for(id function in functions) {@autoreleasepool {
++  NSData *bitcode=[function isKindOfClass:[NBFunction class]]?functionBitcode((NBFunction *)function):nil;
++  if(!bitcode){if(error)*error=nbError([NSString stringWithFormat:@"stitched function %@ has no bitcode here",[function name]]);return nil;}
++  if([seen containsObject:bitcode])continue;
++  const void *hash=[(NBFunction *)function bitCodeHash];
++  if(!hash){if(error)*error=nbError(@"the stitching function has no AIR module hash");return nil;}
++  [seen addObject:bitcode];[modules addObject:bitcode];
++  [hashes addObject:[NSData dataWithBytes:hash length:CC_SHA256_DIGEST_LENGTH]];
++ }}
+  std::vector<uint8_t> request;
+  auto word=[&](uint32_t v){const uint8_t *b=(const uint8_t *)&v;request.insert(request.end(),b,b+4);};
+  const char *text=dag.UTF8String;
+  word(0x64616720 /* 'dag ' */);request.insert(request.end(),text,text+strlen(text)+1);
+- word(0x6e756d66 /* 'numf' */);word((uint32_t)functions.count);
+- for(id function in functions) {
+-  NSData *bitcode=[function isKindOfClass:[NBFunction class]]?functionBitcode((NBFunction *)function):nil;
+-  if(!bitcode){if(error)*error=nbError([NSString stringWithFormat:@"stitched function %@ has no bitcode here",[function name]]);return nil;}
++ word(0x6e756d66 /* 'numf' */);word((uint32_t)modules.count);
++ for(NSUInteger i=0;i<modules.count;i++) {
++  NSData *bitcode=modules[i];
++  // Preserve the original24A446 bhas tag before each retained bitc.
++  const void *hash=hashes[i].bytes;
++  word(0x62686173 /* 'bhas' */);
++  const uint8_t *h=(const uint8_t *)hash;request.insert(request.end(),h,h+CC_SHA256_DIGEST_LENGTH);
+   word(0x62697463 /* 'bitc' */);word((uint32_t)bitcode.length);
+   const uint8_t *b=(const uint8_t *)bitcode.bytes;request.insert(request.end(),b,b+bitcode.length);
+  }
