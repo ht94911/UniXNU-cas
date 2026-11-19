@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "064 actual mono imic and max channel metadata, stereo playback/mono capture VAD graphs through original read-only addon union. Preserve061 first real PCM gate, native062 physical routes, original059 ring and GPU024. Source/certificate only; no phone or private inputs.",
+  "purpose": "064 actual mono imic and max channel metadata, stereo playback/mono capture VAD graphs through original read-only addon union. Preserve061 first real PCM gate, native062 physical routes, original059 ring and GPU024. Source/certificate only; no phone or private inputs. BSD mount console uses the declared printf interface; graph/HAL/driver otherwise identical064.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "fa05f44418a01ce6df716261ca0a909908c3b088",
+  "device_revision": "eb4132b41d93f29d02d6ba16654aea0b377e3afc",
   "soc_revision": "703d7b4bb00904b4a6e5d96f9e9bf72eec170f6b",
   "xcode": "26.6",
   "files": {
@@ -471,7 +471,7 @@
     "source/device/patches/xnu-12377/zzzzz-nezha-owner-data-console.patch": "cb29cedb0b5f7d388fcdff028140c6973628d65ea108d7796e23dcb956542828",
     "source/device/patches/xnu-12377/zzzzz-nezha-owner-data-ready.patch": "306414945401c128472d3b0acddd03c88bec57ec47d6988660173d0b432c3e4b",
     "source/device/patches/xnu-12377/zzzzzz-nezha-adreno840-start.patch": "d32bb0d5e678e5773786dcce90467e0258d844550b418b438e1548fb32392f79",
-    "source/device/patches/xnu-12377/zzzzzz-nezha-audio-hal-mount.patch": "1db954fd187007c8e6cda217f5a4119cda52c255fb09d7b5af584107cb1f74e5",
+    "source/device/patches/xnu-12377/zzzzzz-nezha-audio-hal-mount.patch": "cead26a55e7828b0247c2bfa6b91a9ff00fdd8e3abdce920ef03f7aca09e0450",
     "source/device/patches/xnu-12377/zzzzzz-nezha-cellular-addon-size.patch": "5087cd2e214f0fd88f7105a5de56af74e01ab8d6bc75b7c9a65a36ba07245159",
     "source/device/patches/xnu-12377/zzzzzz-nezha-cellular-cached-entry.patch": "f9d023a17fbc05500c1d7b8e4477b9e81632912d5da5f62e78dd9ad1534f12bb",
     "source/device/patches/xnu-12377/zzzzzz-nezha-cellular-launch-identity.patch": "8636bf51136c0d8cf57daaebb3f1d5c101844fd4be26bd51842037972c509dc2",

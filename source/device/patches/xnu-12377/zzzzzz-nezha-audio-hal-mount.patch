@@ -21,6 +21,6 @@
 +		native_gpu_addon_mount(p, scratch, 0xa00, tuning_source, sizeof(tuning_source),
 +		    tuning_point, sizeof(tuning_point), "/Library/Audio/Tunings/AID8001/VAD/speaker_raw.dspg",
 +		    "/Library/Audio/Tunings/AID8001/VAD/nezha_playback.dspg", &tuning_stage, &tuning_status);
-+		IOLog("Nezha audio tunings: stage=%d status=%d\n", tuning_stage, tuning_status);
++		printf("Nezha audio tunings: stage=%d status=%d\n", tuning_stage, tuning_status);
 +	}
  	/* The signed iOS27 service cache owns system launch jobs. Reuse the
