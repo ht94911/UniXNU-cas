@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "GNSS020: preserve64 inherited signed-page entries and add22 deferred region-query entries",
+  "purpose": "GNSS025: retain96 accepted entries plus two original reset-listener completion records",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "ffe4fd8106c462c2ad25332fd50d87306bdfa749",
+  "device_revision": "d2088c905211cf1e586fa422650ad2bc1e96c0f2",
   "soc_revision": "GPU051 e565439+3435fa5 and GNSS counted IPA plus immutable IPCC append",
   "xcode": "26.6",
   "files": {
@@ -549,7 +549,7 @@
     "source/device/package/software-aes/NativeAESBootstrap.cpp": "98ed3f7df7df676d475bdf096409bf588e0d6d4773263878f368f953452d9bbd",
     "source/device/patches/xnu-12377/nezha-bluetooth-exit-diagnostic.patch": "193654ad33bb3de0edd9e62a7bd7cab4f31dbf5a8c1ca996c8b8d2fb48b793e9",
     "source/device/patches/xnu-12377/nezha-bluetooth-runtime.patch": "4d4fd6049250eaf399e6a0d5ff4e34232c148081820148532cf8c0c7119fd57b",
-    "source/device/patches/xnu-12377/nezha-bluetooth-text-fixup-capacity.patch": "6e2807bf0dc95f9937a63581a99237d8c5f438a252d34b94fccf65a6fa8b39fc",
+    "source/device/patches/xnu-12377/nezha-bluetooth-text-fixup-capacity.patch": "046cc2f8d576bcfd82bfd5e2bb9723a5880585c28b17f409c543fc45e07e5c26",
     "source/device/patches/xnu-12377/nezha-wifi-addon-truncate.patch": "c3b980c547fbc138ac7aedfd735d350cfef85d2a32ff78ec7bef894c4068ce63",
     "source/device/patches/xnu-12377/nezha-wifi-kernel-events.patch": "967cf792a5202711d0063463fe08bda58c554621b690b87f66904c18f81d057f",
     "source/device/patches/xnu-12377/nezha-wifi-mmio-recovery.patch": "89642756f4fe3179d44f076fbfd4786d21d0089ec7786943cb717b3eb78ecbe1",
@@ -708,7 +708,7 @@
     "source/device/scripts/nezha_macho_late.py": "fc5a2869ef22bd2c06702930fc0c88b0e071ab7ef851824b403234633040fc37",
     "source/device/patches/xnu-12377/nezha-gnss-test-runtime.patch": "68f37196f4777d4cc7721d6c5ab33de3882ae1a826513fd86ef942146e0c55ac",
     "source/device/patches/xnu-12377/nezha-gnss-pac-capture.patch": "433e27a9382331193c32a6a9bbc2a536d63eef6a8247e82979e4b9245a34b0d3",
-    ".github/workflows/nezha-ios27-native.yml": "297ba4fb0b7d55955dab82d90f041673ed95e75e40bd3003d5eec9d9ea49e35e",
+    ".github/workflows/nezha-ios27-native.yml": "7cbf67dc99a7f8d52ea5290ec7acdd92fa97d64f98ec084ffc4bb9caff51daa2",
     "source/device/tests/gnss27/launcher_job_test.py": "bad064a06b284103f964c8e02d7ec566fa9b5454b9e564e51b74a6bddfa7c448",
     "source/device/tools/gnss27/launcher_job.py": "55669e81cfa07ea3a4750732a7ab59df0694386118d6fd423615f3b4d7321cf9",
     "source/device/package/gnss27/userland/org.unixnu.nezha.location-launch.plist": "69bee5c36ebedbbd6d686fd108fa9c41ab53eddd380906c472740187b138e49f",
@@ -1100,7 +1100,7 @@
     "actual_GNSS004_error": 48,
     "coherent_launcher_source": "tools/gnss27/launcher_job.py"
   },
-  "previous_native_run": 44328000619,
+  "previous_native_run": 44479589077,
   "previous_native007": {
     "run": 44066302910,
     "head": "56ba392fa295f8e7b4093976eeb4094da76feb99",
@@ -1108,7 +1108,7 @@
     "target_compile_started": false,
     "error": "uninitialized shared IPCC fixture; explicit zero-init reproducer passes"
   },
-  "previous_native_head": "92d43ebd42e25a6a1fce742f3a423ce1aa323388",
+  "previous_native_head": "8002b0bc16316ecdd11cdac9219d26af0a7b6d47",
   "native009_delta": [
     "patches/xnu-12377/nezha-gnss-pac-capture.patch",
     "tests/gnss27/exception_context_test.py",
@@ -1141,5 +1141,14 @@
     "after": 96,
     "required_entries": 86
   },
-  "region_query_code_stays_local": true
+  "region_query_code_stays_local": true,
+  "native012_delta": [
+    "source/device/patches/xnu-12377/nezha-bluetooth-text-fixup-capacity.patch"
+  ],
+  "native012_capacity": {
+    "before": 96,
+    "after": 98,
+    "required_entries": 98
+  },
+  "original_callback_code_remains_local": true
 }
