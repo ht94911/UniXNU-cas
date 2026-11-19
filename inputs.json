@@ -1,14 +1,16 @@
 {
   "schema": 1,
-  "purpose": "Camera088 unattended existing Camera.app mobile501/FBSdefaultshell with onevalidprocess callback; noTCC orappfiles changes",
-  "device_revision": "099be6a33fa574c69d270a4527018f959e9daa57",
+  "purpose": "Camera native NV12 known-colour sampling over existing Metal plugin; no capture or permissions UI",
+  "device_revision": "3eb92f502c55a15e78edd0560bf9a6d206065c88",
   "files": {
-    "source/NezhaCameraLaunch.m": "465991c9a1e342eb4d9c81c15215d5b6f69cef33bd3d3b0e27c4da4de68ba8e0",
-    "source/NezhaCameraLaunch.entitlements.plist": "990976e864664ee1a6264c30806d55194650549bbf3f9ee484d80a456230e054",
-    "source/camera-launch-registration.m": "20dc777a778bf656ce47e2a38c939a0f1b4339b3e8d12949373d6a61c5ccc2c0",
-    "source/org.unixnu.nezha.camera-launch.plist": "cc0dc8f26c2a0149c2cd25020274d0b523ce215e7e2667761a4462642ddef3e3",
-    "ci/corelocation.py": "dd26a90a6d42950cba754aff3aca19a6383a17c6e19549a2798d26a787791116",
-    ".github/workflows/nezha-ios27-native.yml": "41515b556859d6b4d8d83d2884c6523ede441b2d002d0ee6ec677a43b6e3ed91"
+    ".github/workflows/nezha-ios27-native.yml": "479a0c08f6802d90f0ba729bc9d7856d0ffd823329fc4b5580c6f09ce2b9e068",
+    "ci/artifact-recipient.pem": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
+    "ci/artifacts.py": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
+    "ci/camera-discovery.py": "587a51920cb25d2ef36af7259ad441dde78ca842a98d865e4a54e98880989065",
+    "ci/corelocation.py": "431354476fe1524b0e8a402811e2ca5ff039bc4911ec20c1c0f86a1ee31e9205",
+    "source/NezhaCameraNv12Probe.metal": "fd239a18df11824e893a2d54b0406caef63e0947ff214944897683f7c96801e8",
+    "source/NezhaCameraNv12Probe.mm": "c97595f245e3cdb090e603e23159cb45ffb4afd247b0cf7e269812aa3a40e061",
+    "source/probe.entitlements.plist": "9e0497471d238acd01c3a6a54a86bf429c576e5660cf1c17cfca8efca69c89f0"
   },
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
   "certificate_sha256": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
