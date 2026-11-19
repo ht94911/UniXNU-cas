@@ -429,6 +429,11 @@ def main():
     record['mesa']['patches'] = {p: sha(root / p) for p in final_pins['patches']}
     record['driver_cpu_profile'] = dict(original_KMD='04591f5a3711d4ea68568ea3f7e993f2f57f2070de14e40d63d223c8c570a65e',
         actual_KMD=sha(mesa / 'src/freedreno/vulkan/tu_knl_darwin.cc'), patch_sha256=sha(profile_patch))
+    # Use the existing texture-log gate to retain the actual display imports.
+    surface_log_patch = HERE / 'patches/camera107-surface-log-plugin.patch'
+    must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', '--check', surface_log_patch])
+    must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', surface_log_patch])
+    record['camera107_surface_log_patch'] = sha(surface_log_patch)
     # Select the runtime only after its final recipe pin has been applied.
     # 3. metal2vulkan at the pin.
     translator = json.loads((root / 'scripts/data/gpu-metal-vulkan-inputs.json').read_text())['translator']

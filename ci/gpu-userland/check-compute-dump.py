@@ -25,7 +25,7 @@ parser.add_argument('--source', type=Path, required=True)
 parser.add_argument('--out', type=Path, required=True)
 args = parser.parse_args()
 text = args.source.read_text()
-source = body(text, 'static NSString *dumpSurfaceCodes(')
+source = body(text, 'static NSString *textureSurfaceCodes(') + body(text, 'static NSString *dumpSurfaceCodes(')
 compute = text[text.index('@implementation NBComputeEncoder\n'):]
 state = body(compute, '- (void)setComputePipelineState:')
 dispatch = body(compute, '- (void)dispatch:(MTLSize)')

@@ -1,7 +1,7 @@
-name: nezha iPhone27 Camera103 GPU051 Gen8 YUV plane descriptors
+name: nezha iPhone27 Camera107 GPU051 preview display imports
 on:
   push:
-    branches: [codex/ios27-camera103-gpu051-yuv-plane-20261119]
+    branches: [codex/ios27-camera107-preview-display-20261120]
   workflow_dispatch:
 permissions:
   contents: read
@@ -74,6 +74,9 @@ jobs:
       - name: Exercise actual surface constructor and texture view plane identity
         id: surface_planes
         run: device/ci/gpu-userland/logrun surface-planes python3 device/ci/gpu-userland/check-surface-plane-forwarding.py --source unixnu/drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm --out "$LOGS/surface-plane-forwarding"
+      - name: Exercise the existing texture log with current NV12 codes and bounded stderr
+        id: surface_log
+        run: device/ci/gpu-userland/logrun surface-log python3 device/ci/gpu-userland/check-surface-log.py --source unixnu/drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm --out "$LOGS/surface-log"
       - name: Exercise actual compute dump forwarding and planar sample bounds
         id: compute_dump
         run: device/ci/gpu-userland/logrun compute-dump python3 device/ci/gpu-userland/check-compute-dump.py --source unixnu/drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm --out "$LOGS/compute-dump"
@@ -159,6 +162,7 @@ jobs:
         if: always()
         env:
           OUTCOME_FRONTEND_TARGETS: ${{ steps.frontend_targets.outcome }}
+          OUTCOME_SURFACE_LOG: ${{ steps.surface_log.outcome }}
           OUTCOME_GEN8_YUV: ${{ steps.gen8_yuv.outcome }}
           OUTCOME_TURNIP_IOS27: ${{ steps.turnip_ios27.outcome }}
           OUTCOME_PLUGIN: ${{ steps.plugin.outcome }}
@@ -216,6 +220,7 @@ jobs:
         if: always()
         env:
           TARGETS: ${{ steps.frontend_targets.outcome }}
+          SURFACE_LOG: ${{ steps.surface_log.outcome }}
           GEN8_YUV: ${{ steps.gen8_yuv.outcome }}
           TURNIP: ${{ steps.turnip_ios27.outcome }}
           PLUGIN: ${{ steps.plugin.outcome }}
@@ -245,6 +250,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$TARGETS" = success
+          test "$SURFACE_LOG" = success
           test "$GEN8_YUV" = success
           test "$TURNIP" = success
           test "$PLUGIN" = success

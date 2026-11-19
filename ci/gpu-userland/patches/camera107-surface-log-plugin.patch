@@ -1,0 +1,76 @@
+diff --git a/NativeBridgeMetalFrontend.mm b/NativeBridgeMetalFrontend.mm
+index 67be89d..affaff1 100644
+--- a/NativeBridgeMetalFrontend.mm
++++ b/NativeBridgeMetalFrontend.mm
+@@ -869,20 +869,41 @@ static const bool gLogTextures=isRenderServer() && access("/private/var/ngpu/deb
+ static std::atomic<uint64_t> gTexturesLogged;
+ // The first 2000 texture-log lines, then every 100th: the uploads run every frame.
+ static bool textureLogTurn() {const uint64_t n=++gTexturesLogged;return n<=2000 || n%100==0;}
++static NSString *textureSurfaceCodes(IOSurfaceRef surface) {
++ const uint32_t format=surface?IOSurfaceGetPixelFormat(surface):0;
++ if(!surface || (format!=0x34323066 && format!=0x34323076) || IOSurfaceGetPlaneCount(surface)!=2)return nil;
++ const size_t width=IOSurfaceGetWidth(surface),height=IOSurfaceGetHeight(surface),allocation=IOSurfaceGetAllocSize(surface);
++ const uintptr_t base=(uintptr_t)IOSurfaceGetBaseAddress(surface);
++ const uintptr_t y=(uintptr_t)IOSurfaceGetBaseAddressOfPlane(surface,0),uv=(uintptr_t)IOSurfaceGetBaseAddressOfPlane(surface,1);
++ const size_t yrow=IOSurfaceGetBytesPerRowOfPlane(surface,0),uvrow=IOSurfaceGetBytesPerRowOfPlane(surface,1);
++ if(width<2 || height<2 || !base || y<base || uv<base || y-base>=allocation || uv-base>=allocation || !yrow || !uvrow)return nil;
++ const size_t x=(width/2)&~size_t(1),row=height/2;
++ if(x>=yrow || x>=uvrow || uvrow-x<2)return nil;
++ if(row>(allocation-(y-base))/yrow || row/2>(allocation-(uv-base))/uvrow)return nil;
++ const size_t ya=(y-base)+row*yrow,ua=(uv-base)+(row/2)*uvrow;
++ if(x>=allocation-ya || x>=allocation-ua || allocation-ua-x<2)return nil;
++ const auto *luma=(const uint8_t *)y,*chroma=(const uint8_t *)uv;
++ return [NSString stringWithFormat:@"surface %u format %08x CPU center %u/%u/%u rows %zu/%zu",
++     IOSurfaceGetID(surface),format,luma[row*yrow+x],chroma[(row/2)*uvrow+x],chroma[(row/2)*uvrow+x+1],yrow,uvrow];
++}
+ static void logTexture(const char *kind,MTLTextureDescriptor *d,IOSurfaceRef surface,NSUInteger plane,const void *bytes,
+                        NSUInteger offset,NSUInteger row,bool made) {
+  if(!textureLogTurn())return;
+  const uint64_t n=gTexturesLogged.load();
++ NSString *line;
+  if(surface)
+-  GLOG(@"native-metal: texture-log %llu %s %s desc %lux%lu fmt %lu rot %lu | surface id %u %zux%zu rows %zu fmt %08x planes %zu "
++  line=[NSString stringWithFormat:@"native-metal: texture-log %llu %s %s desc %lux%lu fmt %lu rot %lu | surface id %u %zux%zu rows %zu fmt %08x planes %zu "
+         @"plane %lu alloc %zu | offset %lu rows %lu",(unsigned long long)n,kind,made?"made":"REFUSED",(unsigned long)d.width,
+         (unsigned long)d.height,(unsigned long)d.pixelFormat,(unsigned long)textureRotation(d),IOSurfaceGetID(surface),
+         IOSurfaceGetWidth(surface),IOSurfaceGetHeight(surface),IOSurfaceGetBytesPerRow(surface),IOSurfaceGetPixelFormat(surface),
+-        IOSurfaceGetPlaneCount(surface),(unsigned long)plane,IOSurfaceGetAllocSize(surface),(unsigned long)offset,(unsigned long)row);
++        IOSurfaceGetPlaneCount(surface),(unsigned long)plane,IOSurfaceGetAllocSize(surface),(unsigned long)offset,(unsigned long)row];
+  else
+-  GLOG(@"native-metal: texture-log %llu %s %s desc %lux%lu fmt %lu | memory %p offset %lu rows %lu",(unsigned long long)n,kind,
++  line=[NSString stringWithFormat:@"native-metal: texture-log %llu %s %s desc %lux%lu fmt %lu | memory %p offset %lu rows %lu",(unsigned long long)n,kind,
+         made?"made":"REFUSED",(unsigned long)d.width,(unsigned long)d.height,(unsigned long)d.pixelFormat,bytes,(unsigned long)offset,
+-        (unsigned long)row);
++        (unsigned long)row];
++ if(NSString *codes=textureSurfaceCodes(surface))line=[line stringByAppendingFormat:@" | %@",codes];
++ GLOG(@"%@",line);
++ if(logToStderr())fprintf(stderr,"%s: %s\n",getprogname(),line.UTF8String?:"?");
+ }
+ // The last refused surface texture: the check that refused it (1 plane, 2 base, 3 plane range, 4 import, 5 texture), the surface's format,
+ // planes, requested plane, plane offset, plane row bytes and allocation, and the descriptor's size and pixel format.
+@@ -2322,23 +2343,9 @@ static bool dumpMatched(NSString *pipeline) {
+ // completion. Its Metal texture can expose converted texels, so keep the two
+ // plane codes separately from the existing GPU readback.
+ static NSString *dumpSurfaceCodes(NBTexture *texture) {
+- IOSurfaceRef surface=texture.surface;
+- const uint32_t format=surface?IOSurfaceGetPixelFormat(surface):0;
+- if(!surface || (format!=0x34323066 && format!=0x34323076) || IOSurfaceGetPlaneCount(surface)!=2)return nil;
+- const size_t width=IOSurfaceGetWidth(surface),height=IOSurfaceGetHeight(surface),allocation=IOSurfaceGetAllocSize(surface);
+- const uintptr_t base=(uintptr_t)IOSurfaceGetBaseAddress(surface);
+- const uintptr_t y=(uintptr_t)IOSurfaceGetBaseAddressOfPlane(surface,0),uv=(uintptr_t)IOSurfaceGetBaseAddressOfPlane(surface,1);
+- const size_t yrow=IOSurfaceGetBytesPerRowOfPlane(surface,0),uvrow=IOSurfaceGetBytesPerRowOfPlane(surface,1);
+- if(width<2 || height<2 || !base || y<base || uv<base || y-base>=allocation || uv-base>=allocation || !yrow || !uvrow)return nil;
+- const size_t x=(width/2)&~size_t(1),row=height/2;
+- if(x>=yrow || x>=uvrow || uvrow-x<2)return nil;
+- if(row>(allocation-(y-base))/yrow || row/2>(allocation-(uv-base))/uvrow)return nil;
+- const size_t ya=(y-base)+row*yrow,ua=(uv-base)+(row/2)*uvrow;
+- if(x>=allocation-ya || x>=allocation-ua || allocation-ua-x<2)return nil;
+- const auto *luma=(const uint8_t *)y,*chroma=(const uint8_t *)uv;
+- return [NSString stringWithFormat:@"surface %u format %08x CPU center %u/%u/%u rows %zu/%zu",
+-     IOSurfaceGetID(surface),format,luma[row*yrow+x],chroma[(row/2)*uvrow+x],chroma[(row/2)*uvrow+x+1],yrow,uvrow];
++ return textureSurfaceCodes(texture.surface);
+ }
++
+ static void dumpNote(NBCommandBuffer *commandBuffer,NSMutableArray *into,id texture,NSUInteger level,NSUInteger slice,NSString *where) {
+  if(!texture || ![texture isKindOfClass:[NBTexture class]])return;
+  for(NSDictionary *seen in commandBuffer.dumpTargets)
