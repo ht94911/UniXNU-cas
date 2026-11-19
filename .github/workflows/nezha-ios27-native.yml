@@ -1,7 +1,7 @@
-name: nezha iPhone27 Camera097 NV12 colour sampler
+name: nezha iPhone27 Camera099 NV12 operation boundaries
 on:
   push:
-    branches: [codex/ios27-camera097c-nv12-sampling-20261119]
+    branches: [codex/ios27-camera099-nv12-boundaries-20261119]
 permissions:
   contents: read
 concurrency:

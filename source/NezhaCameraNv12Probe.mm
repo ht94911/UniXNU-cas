@@ -26,17 +26,28 @@ int main(int argc,char **argv) {
         char boot[128]={};size_t bytes=sizeof boot;
         bool identified=sysctlbyname("kern.bootsessionuuid",boot,&bytes,nullptr,0)==0;
         report(@{@"phase":@"start",@"boot":identified?@(boot):@"unknown",@"pid":@(getpid()),@"uid":@(geteuid()),@"capture_started":@NO});
+        report(@{@"phase":@"device",@"state":@"begin"});
         id<MTLDevice> device=MTLCreateSystemDefaultDevice();
+        report(@{@"phase":@"device",@"state":@"returned",@"present":@(device!=nil)});
         if(!device){report(@{@"phase":@"device",@"passed":@NO});return 3;}
         NSError *error=nil;
+        report(@{@"phase":@"library",@"state":@"begin"});
         id<MTLLibrary> library=[device newLibraryWithURL:[NSURL fileURLWithPath:@(argv[1])] error:&error];
+        report(@{@"phase":@"library",@"state":@"returned",@"present":@(library!=nil),@"error":error.description?:@""});
+        report(@{@"phase":@"function",@"state":@"begin"});
         id<MTLFunction> function=[library newFunctionWithName:@"sample_nv12"];
+        report(@{@"phase":@"function",@"state":@"returned",@"present":@(function!=nil)});
+        report(@{@"phase":@"pipeline",@"state":@"begin"});
         id<MTLComputePipelineState> pipeline=function?[device newComputePipelineStateWithFunction:function error:&error]:nil;
+        report(@{@"phase":@"pipeline",@"state":@"returned",@"present":@(pipeline!=nil),@"error":error.description?:@""});
         if(!pipeline){report(@{@"phase":@"pipeline",@"passed":@NO,@"error":error.description?:@"unavailable"});return 4;}
         NSDictionary *attributes=@{(id)kCVPixelBufferIOSurfacePropertiesKey:@{}};
         CVPixelBufferRef pixel=nullptr;
-        if(CVPixelBufferCreate(kCFAllocatorDefault,64,16,kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
-            (__bridge CFDictionaryRef)attributes,&pixel)!=kCVReturnSuccess)return 5;
+        report(@{@"phase":@"pixel-buffer",@"state":@"begin"});
+        CVReturn created=CVPixelBufferCreate(kCFAllocatorDefault,64,16,kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
+            (__bridge CFDictionaryRef)attributes,&pixel);
+        report(@{@"phase":@"pixel-buffer",@"state":@"returned",@"status":@(created)});
+        if(created!=kCVReturnSuccess)return 5;
         IOSurfaceRef surface=CVPixelBufferGetIOSurface(pixel);
         if(!surface || IOSurfaceGetPlaneCount(surface)!=2 || IOSurfaceLock(surface,0,nullptr))return 6;
         const uint8_t values[4][3]={{128,128,128},{76,85,255},{150,44,21},{29,255,107}};
@@ -47,7 +58,9 @@ int main(int argc,char **argv) {
         if(IOSurfaceUnlock(surface,0,nullptr))return 7;
         auto descriptor=[MTLTextureDescriptor texture2DDescriptorWithPixelFormat:(MTLPixelFormat)500 width:64 height:16 mipmapped:NO];
         descriptor.storageMode=MTLStorageModeShared;descriptor.usage=MTLTextureUsageShaderRead;
+        report(@{@"phase":@"texture-import",@"state":@"begin",@"surface":@(IOSurfaceGetID(surface)),@"yrow":@(yrow),@"uvrow":@(uvrow)});
         id<MTLTexture> texture=[device newTextureWithDescriptor:descriptor iosurface:surface plane:0];
+        report(@{@"phase":@"texture-import",@"state":@"returned",@"present":@(texture!=nil)});
         id<MTLBuffer> output=[device newBufferWithLength:64*16*4*sizeof(float) options:MTLResourceStorageModeShared];
         if(!texture || !output){report(@{@"phase":@"resources",@"passed":@NO});CVPixelBufferRelease(pixel);return 8;}
         std::memset(output.contents,0,output.length);
@@ -55,9 +68,13 @@ int main(int argc,char **argv) {
         id<MTLCommandBuffer> command=[queue commandBuffer];
         id<MTLComputeCommandEncoder> encoder=[command computeCommandEncoder];
         [encoder setComputePipelineState:pipeline];[encoder setTexture:texture atIndex:0];[encoder setBuffer:output offset:0 atIndex:0];
-        [encoder dispatchThreads:MTLSizeMake(64,16,1) threadsPerThreadgroup:MTLSizeMake(8,4,1)];[encoder endEncoding];[command commit];
+        [encoder dispatchThreads:MTLSizeMake(64,16,1) threadsPerThreadgroup:MTLSizeMake(8,4,1)];[encoder endEncoding];
+        report(@{@"phase":@"commit",@"state":@"begin"});
+        [command commit];
+        report(@{@"phase":@"commit",@"state":@"returned",@"status":@(command.status)});
         auto deadline=[NSDate dateWithTimeIntervalSinceNow:15];
         while(command.status!=MTLCommandBufferStatusCompleted && command.status!=MTLCommandBufferStatusError && [deadline timeIntervalSinceNow]>0)usleep(1000);
+        report(@{@"phase":@"completion",@"state":@"returned",@"status":@(command.status)});
         if(command.status!=MTLCommandBufferStatusCompleted || command.error){report(@{@"phase":@"completion",@"passed":@NO,@"status":@(command.status),@"error":command.error.description?:@"timeout"});return 9;}
         const auto *data=(const float *)output.contents;unsigned bad=0;NSMutableArray *samples=[NSMutableArray array];
         for(unsigned r=0;r<16;++r)for(unsigned x=0;x<64;++x){
