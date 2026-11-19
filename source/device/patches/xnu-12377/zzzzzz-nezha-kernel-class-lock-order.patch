@@ -1,0 +1,82 @@
+diff --git a/libkern/c++/OSKext.cpp b/libkern/c++/OSKext.cpp
+--- a/libkern/c++/OSKext.cpp
++++ b/libkern/c++/OSKext.cpp
+@@ -400,5 +400,28 @@
+ 	.stop =            NULL
+ };
+ 
++/* Kernel-owned late class registration can originate outside OSKext. Hold
++ * the existing recursive loader lock before OSMetaClass's stalled lock.
++ * Early kernel bootstrap has no loader lock; other kexts keep their normal
++ * OSRuntime/OSKext locking path. The token is paired, not reread at release. */
++extern "C" void *
++unixnu_kernel_class_load_lock(const char *identifier)
++{
++	if (!sKextLock || !identifier ||
++	    strcmp(identifier, kOSKextKernelIdentifier) != 0) {
++		return NULL;
++	}
++	IORecursiveLockLock(sKextLock);
++	return sKextLock;
++}
++
++extern "C" void
++unixnu_kernel_class_load_unlock(void *token)
++{
++	if (token) {
++		IORecursiveLockUnlock(static_cast<IORecursiveLock *>(token));
++	}
++}
++
+ #if CONFIG_SPTM
+ /* The SPTM and TXM need fake kmod structures just like the kernel. */
+diff --git a/libkern/c++/OSMetaClass.cpp b/libkern/c++/OSMetaClass.cpp
+--- a/libkern/c++/OSMetaClass.cpp
++++ b/libkern/c++/OSMetaClass.cpp
+@@ -106,6 +106,10 @@
+ 	unsigned int   count;
+ 	OSMetaClass ** classes;
++	void         * kernelClassLoadLock;
+ } * sStalled;
+ IOLock * sStalledClassesLock = NULL;
+ 
++extern "C" void *unixnu_kernel_class_load_lock(const char *);
++extern "C" void unixnu_kernel_class_load_unlock(void *);
++
+ struct ExpansionData {
+@@ -780,5 +784,6 @@
+ OSMetaClass::preModLoad(const char * kextIdentifier)
+ {
++	void *kernelClassLoadLock = unixnu_kernel_class_load_lock(kextIdentifier);
+ 	IOLockLock(sStalledClassesLock);
+ 
+ 	assert(sStalled == NULL);
+@@ -789,4 +794,7 @@
+ 	if (!sStalled->classes) {
+ 		kfree_type(StalledData, sStalled);
++		sStalled = NULL;
++		IOLockUnlock(sStalledClassesLock);
++		unixnu_kernel_class_load_unlock(kernelClassLoadLock);
+ 		return NULL;
+ 	}
+@@ -797,5 +805,6 @@
+ 	sStalled->capacity = kKModCapacityIncrement;
+ 	sStalled->count    = 0;
+ 	sStalled->kextIdentifier = kextIdentifier;
++	sStalled->kernelClassLoadLock = kernelClassLoadLock;
+ 
+ 	// keep sStalledClassesLock locked until postModLoad
+@@ -820,5 +829,7 @@
+ 	OSReturn         result     = kOSReturnSuccess;
+ 	OSSymbol       * myKextName = NULL;// must release
+ 	OSKext         * myKext     = NULL;// must release
++	void           * kernelClassLoadLock =
++	    sStalled ? sStalled->kernelClassLoadLock : NULL;
+ 
+ 	if (!sStalled || loadHandle != sStalled) {
+@@ -992,4 +1003,5 @@
+ 	IOLockUnlock(sStalledClassesLock);
++	unixnu_kernel_class_load_unlock(kernelClassLoadLock);
+ 
+ 	return result;
+ }
