@@ -5,8 +5,11 @@
 #import <CoreVideo/CoreVideo.h>
 #import <IOSurface/IOSurfaceRef.h>
 #include <cmath>
+#include <cerrno>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <dlfcn.h>
 #include <sys/sysctl.h>
 #include <time.h>
 #include <unistd.h>
@@ -18,9 +21,36 @@ static void report(NSDictionary *value) {
     if(data){fwrite(data.bytes,1,data.length,stdout);fputc('\n',stdout);fflush(stdout);}
 }
 
+static bool ownMemoryLimit() {
+    // XNU12377 kern_memorystatus.h: commands 7/8 use this 16-byte record.
+    struct Limits {int32_t active;uint32_t activeAttributes;int32_t inactive;uint32_t inactiveAttributes;};
+    static_assert(sizeof(Limits)==16);
+    using Control=int (*)(uint32_t,int32_t,uint32_t,void *,size_t);
+    auto control=(Control)dlsym(RTLD_DEFAULT,"memorystatus_control");
+    const int32_t pid=getpid();
+    if(!control){report(@{@"phase":@"memory-limit",@"passed":@NO,@"error":@"system interface unavailable"});return false;}
+    Limits before={};errno=0;
+    const int queried=control(8,pid,0,&before,sizeof before),queryError=errno;
+    report(@{@"phase":@"memory-limit",@"state":@"before",@"pid":@(pid),@"status":@(queried),@"errno":@(queryError),@"active_MB":@(before.active),@"inactive_MB":@(before.inactive)});
+    if(queried)return false;
+    const Limits wanted={768,1,768,1}; // Finite hard limits, for this test process only.
+    if(std::memcmp(&before,&wanted,sizeof wanted)) {
+        Limits requested=wanted;errno=0;
+        const int changed=control(7,pid,0,&requested,sizeof requested),changeError=errno;
+        report(@{@"phase":@"memory-limit",@"state":@"set",@"pid":@(pid),@"status":@(changed),@"errno":@(changeError)});
+        if(changed)return false;
+    }
+    Limits after={};errno=0;
+    const int checked=control(8,pid,0,&after,sizeof after),checkError=errno;
+    const bool passed=!checked && !std::memcmp(&after,&wanted,sizeof wanted);
+    report(@{@"phase":@"memory-limit",@"state":@"verified",@"pid":@(pid),@"status":@(checked),@"errno":@(checkError),@"active_MB":@(after.active),@"inactive_MB":@(after.inactive),@"active_attributes":@(after.activeAttributes),@"inactive_attributes":@(after.inactiveAttributes),@"passed":@(passed)});
+    return passed;
+}
+
 int main(int argc,char **argv) {
     @autoreleasepool {
         if(argc!=2){report(@{@"phase":@"arguments",@"passed":@NO});return 2;}
+        if(!ownMemoryLimit())return 11;
         // Match the ordinary camera startup without opening a capture device.
         sleep(150);
         char boot[128]={};size_t bytes=sizeof boot;

@@ -10,6 +10,7 @@ def run(name,cmd):
 try:
  for n,d in manifest['files'].items():assert sha(root/n)==d
  assert sha(root/'ci/artifacts.py')==manifest['artifacts_sha256'] and sha(root/'ci/artifact-recipient.pem')==manifest['certificate_sha256'];shutil.copyfile(root/'inputs.json',a.out/'inputs.json')
+ run('own-memory-host',['python3',root/'ci/check-nv12-memory.py','--source',root/'source/NezhaCameraNv12Probe.mm','--out',a.out/'own-memory-host'])
  sdk=run('sdk',['xcrun','--sdk','iphoneos','--show-sdk-path']).decode().strip();exe=a.out/'nezha-camera-nv12-probe'
  run('probe-compile',['xcrun','--sdk','iphoneos','clang++','-target','arm64e-apple-ios27.0','-isysroot',sdk,'-std=c++17','-fobjc-arc','-fblocks','-Wall','-Wextra','-Werror','-O2',root/'source/NezhaCameraNv12Probe.mm','-framework','Foundation','-framework','Metal','-framework','IOSurface','-framework','CoreVideo','-o',exe])
  air=a.out/'nv12.air';metallib=a.out/'nv12-sample.metallib'

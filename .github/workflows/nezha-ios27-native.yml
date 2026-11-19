@@ -1,7 +1,7 @@
-name: nezha iPhone27 Camera099 NV12 operation boundaries
+name: nezha iPhone27 Camera100 native NV12 finite memory limits
 on:
   push:
-    branches: [codex/ios27-camera099-nv12-boundaries-20261119]
+    branches: [codex/ios27-camera100-native-memlimit-20261119]
 permissions:
   contents: read
 concurrency:

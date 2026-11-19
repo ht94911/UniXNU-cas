@@ -1,16 +1,17 @@
 {
   "schema": 1,
-  "purpose": "Camera099 native NV12 sampler operation boundaries; original known colours and completion deadline",
-  "device_revision": "68cee8d21b4a92c3a8761646184f3ac48e860511",
+  "purpose": "Camera100 own finite memory limits with verified syscall readback, original NV12 sample shader",
+  "device_revision": "fad7b14c2084a639ce263f50bd5af5c2d5c38362",
   "files": {
-    ".github/workflows/nezha-ios27-native.yml": "92226cbca0bf6983652cbdff93df8aed36c03da3f8e5e0959e11447e4f30583f",
+    ".github/workflows/nezha-ios27-native.yml": "5468389fb4698626c2d6b6b06d5de728c9f2b5f61679b5adcdb4d4746e8b9f8a",
     "ci/artifact-recipient.pem": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
     "ci/artifacts.py": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
     "ci/camera-discovery.py": "587a51920cb25d2ef36af7259ad441dde78ca842a98d865e4a54e98880989065",
-    "ci/corelocation.py": "431354476fe1524b0e8a402811e2ca5ff039bc4911ec20c1c0f86a1ee31e9205",
+    "ci/corelocation.py": "2dda5cb162f880a04eeb9b4fbbd68b5eaac64b8b8b56a293d7cc655a5be400d3",
     "source/NezhaCameraNv12Probe.metal": "fd239a18df11824e893a2d54b0406caef63e0947ff214944897683f7c96801e8",
-    "source/NezhaCameraNv12Probe.mm": "d93a3d8a318b174376624dbe42a5e7ebe9abe3cc15656e4c84eea816a94ae5de",
-    "source/probe.entitlements.plist": "9e0497471d238acd01c3a6a54a86bf429c576e5660cf1c17cfca8efca69c89f0"
+    "source/NezhaCameraNv12Probe.mm": "bef7006b4af30b8cd6dc42c95565b263191c4ce39256a4affc89af6ab069eb3b",
+    "source/probe.entitlements.plist": "50715d12519024f1e1261d32abdfda28ecf569167fb34d6b17b53b7df28ef8f2",
+    "ci/check-nv12-memory.py": "9ce7296ab1bae0376453b958a8cd11b2cb120d8bd90a88dcdfde095df6dd102f"
   },
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
   "certificate_sha256": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
