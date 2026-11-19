@@ -1,15 +1,15 @@
 {
   "schema": 1,
   "purpose": "Camera native NV12 known-colour sampling over existing Metal plugin; no capture or permissions UI",
-  "device_revision": "3eb92f502c55a15e78edd0560bf9a6d206065c88",
+  "device_revision": "73ac198ac60b9651092f133a3cf3523b913e3653",
   "files": {
-    ".github/workflows/nezha-ios27-native.yml": "e51f51bab4265d33d2f523bb16a936e13f26012ade07809bfed4e0289c72933c",
+    ".github/workflows/nezha-ios27-native.yml": "73117e8ee03dac811aab69628f551829ab3aae2b7ac4d9cbf4b4c0ad94528d06",
     "ci/artifact-recipient.pem": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
     "ci/artifacts.py": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
     "ci/camera-discovery.py": "587a51920cb25d2ef36af7259ad441dde78ca842a98d865e4a54e98880989065",
     "ci/corelocation.py": "431354476fe1524b0e8a402811e2ca5ff039bc4911ec20c1c0f86a1ee31e9205",
     "source/NezhaCameraNv12Probe.metal": "fd239a18df11824e893a2d54b0406caef63e0947ff214944897683f7c96801e8",
-    "source/NezhaCameraNv12Probe.mm": "1c81267cde698189a8325f84abb798725dbb9476dc22e4bd61f085cee1ee9e85",
+    "source/NezhaCameraNv12Probe.mm": "71b673759bc78677d50e2a26de2166cf9c92f19cc4bcde11bfa1e0f7e97acf7e",
     "source/probe.entitlements.plist": "9e0497471d238acd01c3a6a54a86bf429c576e5660cf1c17cfca8efca69c89f0"
   },
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",

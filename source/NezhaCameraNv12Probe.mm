@@ -29,7 +29,7 @@ int main(int argc,char **argv) {
         id<MTLDevice> device=MTLCreateSystemDefaultDevice();
         if(!device){report(@{@"phase":@"device",@"passed":@NO});return 3;}
         NSError *error=nil;
-        id<MTLLibrary> library=[device newLibraryWithFile:@(argv[1]) error:&error];
+        id<MTLLibrary> library=[device newLibraryWithURL:[NSURL fileURLWithPath:@(argv[1])] error:&error];
         id<MTLFunction> function=[library newFunctionWithName:@"sample_nv12"];
         id<MTLComputePipelineState> pipeline=function?[device newComputePipelineStateWithFunction:function error:&error]:nil;
         if(!pipeline){report(@{@"phase":@"pipeline",@"passed":@NO,@"error":error.description?:@"unavailable"});return 4;}

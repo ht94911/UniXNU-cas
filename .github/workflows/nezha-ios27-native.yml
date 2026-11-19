@@ -1,7 +1,7 @@
 name: nezha iPhone27 Camera097 NV12 colour sampler
 on:
   push:
-    branches: [codex/ios27-camera097b-nv12-sampling-20261119]
+    branches: [codex/ios27-camera097c-nv12-sampling-20261119]
 permissions:
   contents: read
 concurrency:
