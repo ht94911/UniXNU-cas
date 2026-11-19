@@ -1,7 +1,7 @@
-name: nezha iPhone27 Camera100 native NV12 finite memory limits
+name: nezha iPhone27 Camera101 native NV12 IOSurface capability
 on:
   push:
-    branches: [codex/ios27-camera100-native-memlimit-20261119]
+    branches: [codex/ios27-camera101-nv12-iosurface-20261119]
 permissions:
   contents: read
 concurrency:
