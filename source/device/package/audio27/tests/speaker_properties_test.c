@@ -39,7 +39,7 @@ static UInt32 scalar(AudioObjectID object, UInt32 selector, UInt32 scope) {
     assert(bytes==sizeof value);return value;
 }
 static void check_port_controls(UInt32 scope,UInt32 element) {
-    AudioObjectID controls[9]={0};UInt32 bytes=0;
+    AudioObjectID controls[10]={0};UInt32 bytes=0;
     AudioObjectPropertyAddress address={kAudioObjectPropertyControlList,scope,0};
     assert(GetPropertyData(NULL,kDevice,0,&address,0,NULL,sizeof controls,&bytes,controls)==0);
     unsigned mute=0,volume=0;
@@ -105,6 +105,35 @@ int main(void) {
     assert(bytes==2*sizeof(AudioObjectID) && streams[0]==kInStream && streams[1]==kReferenceStream);
     assert(scalar(streams[1],kAudioStreamPropertyStartingChannel,kAudioObjectPropertyScopeGlobal)==2);
     check_port_controls(kAudioObjectPropertyScopeInput,0);
+    /* Follow the stock Codec data-source discovery through its control and
+     * direct device properties before using the same mono PCM stream. */
+    address=(AudioObjectPropertyAddress){kAudioDevicePropertyDataSources,kAudioObjectPropertyScopeInput,0};
+    UInt32 source=0;
+    assert(HasProperty(NULL,kDevice,0,&address));
+    assert(GetPropertyDataSize(NULL,kDevice,0,&address,0,NULL,&bytes)==0 && bytes==sizeof source);
+    assert(GetPropertyData(NULL,kDevice,0,&address,0,NULL,sizeof source,&bytes,&source)==0 && source=='imic');
+    address.mSelector=kAudioDevicePropertyDataSource;
+    assert(SetPropertyData(NULL,kDevice,0,&address,0,NULL,sizeof source,&source)==0);
+    UInt32 fake_source='imi4';
+    assert(SetPropertyData(NULL,kDevice,0,&address,0,NULL,sizeof fake_source,&fake_source)==kAudioHardwareIllegalOperationError);
+    assert(scalar(kInputSource,kAudioObjectPropertyClass,kAudioObjectPropertyScopeGlobal)==kAudioDataSourceControlClassID);
+    address=(AudioObjectPropertyAddress){kAudioSelectorControlPropertyItemName,kAudioObjectPropertyScopeGlobal,0};
+    CFStringRef mic_name=NULL;
+    assert(GetPropertyData(NULL,kInputSource,0,&address,sizeof source,&source,sizeof mic_name,&bytes,&mic_name)==0);
+    assert(CFEqual(mic_name,CFSTR("Microphone")));CFRelease(mic_name);
+    address=(AudioObjectPropertyAddress){kAudioDevicePropertyDataSourceNameForIDCFString,kAudioObjectPropertyScopeInput,0};
+    AudioValueTranslation translation={&source,sizeof source,&mic_name,sizeof mic_name};
+    assert(GetPropertyDataSize(NULL,kDevice,0,&address,0,NULL,&bytes)==0 && bytes==sizeof translation);
+    assert(GetPropertyData(NULL,kDevice,0,&address,0,NULL,sizeof translation,&bytes,&translation)==0);
+    assert(CFEqual(mic_name,CFSTR("Microphone")));CFRelease(mic_name);
+    address=(AudioObjectPropertyAddress){'MCCs',kAudioObjectPropertyScopeGlobal,0};
+    CFDictionaryRef counts=NULL;
+    assert(HasProperty(NULL,kDevice,0,&address));
+    assert(GetPropertyData(NULL,kDevice,0,&address,0,NULL,sizeof counts,&bytes,&counts)==0);
+    SInt32 input_count=0,output_count=0;
+    assert(CFNumberGetValue(CFDictionaryGetValue(counts,CFSTR("MaxInputChannelCount")),kCFNumberSInt32Type,&input_count));
+    assert(CFNumberGetValue(CFDictionaryGetValue(counts,CFSTR("MaxOutputChannelCount")),kCFNumberSInt32Type,&output_count));
+    assert(input_count==1 && output_count==2);CFRelease(counts);
     gInputAvailable=0;
     address=(AudioObjectPropertyAddress){'taps',kAudioObjectPropertyScopeGlobal,0};
     UInt32 marker=0;

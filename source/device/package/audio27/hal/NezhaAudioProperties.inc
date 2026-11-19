@@ -13,7 +13,7 @@ static UInt32 objects(AudioObjectID o, AudioObjectPropertyScope scope, AudioObje
             list[n++] = kReceiverMute;list[n++] = kSpeakerMute;
         }
         if (scope != kAudioObjectPropertyScopeOutput && gInputAvailable) {
-            list[n++] = kInputMute;list[n++] = kInputVolume;
+            list[n++] = kInputMute;list[n++] = kInputVolume;list[n++] = kInputSource;
         }
     }
     return n;
@@ -25,17 +25,20 @@ static OSStatus propertyData(AudioObjectID o, const AudioObjectPropertyAddress *
     /* Device_USB_Aspen reads lcID as a CFNumber before constructing ports.
      * This software device has no physical USB location. */
     if (o == kDevice && s == kAudioObjectPropertyCustomPropertyInfoList) {
-        AudioServerPlugInCustomPropertyInfo info = {
-            'lcID', kAudioServerPlugInCustomPropertyDataTypeCFPropertyList,
-            kAudioServerPlugInCustomPropertyDataTypeNone
+        AudioServerPlugInCustomPropertyInfo info[2] = {
+            {'lcID', kAudioServerPlugInCustomPropertyDataTypeCFPropertyList,
+             kAudioServerPlugInCustomPropertyDataTypeNone},
+            {'MCCs', kAudioServerPlugInCustomPropertyDataTypeCFPropertyList,
+             kAudioServerPlugInCustomPropertyDataTypeNone}
         };
-        REPLY(AudioServerPlugInCustomPropertyInfo, info);
+        if (inDataSize<sizeof info) return kAudioHardwareBadPropertySizeError;
+        memcpy(outData,info,sizeof info);*outDataSize=sizeof info;return 0;
     }
     // Lists every object answers, empty here: custom properties ('cust'), and on the plug-in its boxes and clock devices. The audio
     // server's device manager reads them for each new device and drops a device whose answer is an unknown-property error (i525).
     if (o == kReferenceStream && s == 'taps' && a->mScope == kAudioObjectPropertyScopeGlobal && a->mElement == kAudioObjectPropertyElementMain)
         REPLY(UInt32, 1);
-    if (o <= kInputVolume && (s == kAudioObjectPropertyCustomPropertyInfoList || ((s == kAudioPlugInPropertyBoxList ||
+    if (o <= kInputSource && (s == kAudioObjectPropertyCustomPropertyInfoList || ((s == kAudioPlugInPropertyBoxList ||
         s == kAudioPlugInPropertyClockDeviceList) && o == kPlugIn) || ((s == 'taps') && (o == kOutStream || o == kInStream)))) {
         *outDataSize = 0;
         return 0;
@@ -61,6 +64,52 @@ static OSStatus propertyData(AudioObjectID o, const AudioObjectPropertyAddress *
         }
     case kDevice:
         switch (s) {
+        case 'MCCs': {
+            if (a->mScope!=kAudioObjectPropertyScopeGlobal || a->mElement!=0)
+                return kAudioHardwareUnknownPropertyError;
+            if (inDataSize<sizeof(CFDictionaryRef)) return kAudioHardwareBadPropertySizeError;
+            SInt32 out=2,in=gInputAvailable ? 1:0;
+            CFNumberRef output=CFNumberCreate(kCFAllocatorDefault,kCFNumberSInt32Type,&out);
+            CFNumberRef input=CFNumberCreate(kCFAllocatorDefault,kCFNumberSInt32Type,&in);
+            if (!output || !input) {
+                if (output) CFRelease(output);
+                if (input) CFRelease(input);
+                return kAudioHardwareUnspecifiedError;
+            }
+            const void *keys[]={CFSTR("MaxOutputChannelCount"),CFSTR("MaxInputChannelCount")};
+            const void *values[]={output,input};
+            CFDictionaryRef counts=CFDictionaryCreate(kCFAllocatorDefault,keys,values,2,
+                &kCFTypeDictionaryKeyCallBacks,&kCFTypeDictionaryValueCallBacks);
+            CFRelease(output);CFRelease(input);
+            if (!counts) return kAudioHardwareUnspecifiedError;
+            REPLY(CFDictionaryRef,counts);
+        }
+        case kAudioDevicePropertyDataSource:
+        case kAudioDevicePropertyDataSources:
+            if (a->mScope!=kAudioObjectPropertyScopeInput || a->mElement!=0 || !gInputAvailable)
+                return kAudioHardwareUnknownPropertyError;
+            REPLY(UInt32,kMicSource);
+        case kAudioDevicePropertyDataSourceNameForIDCFString:
+        case kAudioDevicePropertyDataSourceKindForID: {
+            if (a->mScope!=kAudioObjectPropertyScopeInput || a->mElement!=0 || !gInputAvailable)
+                return kAudioHardwareUnknownPropertyError;
+            if (inDataSize<sizeof(AudioValueTranslation)) return kAudioHardwareBadPropertySizeError;
+            AudioValueTranslation *translation=outData;
+            if (!translation->mInputData || translation->mInputDataSize!=sizeof(UInt32) ||
+                !translation->mOutputData) return kAudioHardwareIllegalOperationError;
+            UInt32 source;memcpy(&source,translation->mInputData,sizeof source);
+            if (source!=kMicSource) return kAudioHardwareIllegalOperationError;
+            if (s==kAudioDevicePropertyDataSourceNameForIDCFString) {
+                if (translation->mOutputDataSize<sizeof(CFStringRef)) return kAudioHardwareBadPropertySizeError;
+                *(CFStringRef *)translation->mOutputData=(CFStringRef)CFRetain(CFSTR("Microphone"));
+                translation->mOutputDataSize=sizeof(CFStringRef);
+            } else {
+                if (translation->mOutputDataSize<sizeof(UInt32)) return kAudioHardwareBadPropertySizeError;
+                memcpy(translation->mOutputData,&kMicSource,sizeof kMicSource);
+                translation->mOutputDataSize=sizeof(UInt32);
+            }
+            *outDataSize=sizeof *translation;return 0;
+        }
         case 'lcID':
             if (a->mScope != kAudioObjectPropertyScopeGlobal || a->mElement != kAudioObjectPropertyElementMain)
                 return kAudioHardwareUnknownPropertyError;
@@ -154,7 +203,7 @@ static OSStatus propertyData(AudioObjectID o, const AudioObjectPropertyAddress *
         case kAudioObjectPropertyOwnedObjects:
         case kAudioDevicePropertyStreams:
         case kAudioObjectPropertyControlList: {
-            AudioObjectID list[9];
+            AudioObjectID list[10];
             UInt32 n = objects(kDevice, a->mScope, list), out = 0;
             for (UInt32 i = 0; i < n; ++i) {
                 int control=list[i]==kVolume || list[i]>=kReceiverMute;
@@ -230,6 +279,23 @@ static OSStatus propertyData(AudioObjectID o, const AudioObjectPropertyAddress *
         case kAudioControlPropertyScope: REPLY(AudioObjectPropertyScope,o==kInputMute ? kAudioObjectPropertyScopeInput:kAudioObjectPropertyScopeOutput);
         case kAudioControlPropertyElement: REPLY(AudioObjectPropertyElement,o==kReceiverMute ? 3:o==kSpeakerMute ? 4:0);
         case kAudioBooleanControlPropertyValue: REPLY(UInt32,o==kInputMute ? gInputMuted:output_mute(o));
+        default:return kAudioHardwareUnknownPropertyError;
+        }
+    case kInputSource:
+        if (!gInputAvailable) return kAudioHardwareBadObjectError;
+        switch (s) {
+        case kAudioObjectPropertyBaseClass: REPLY(AudioClassID,kAudioSelectorControlClassID);
+        case kAudioObjectPropertyClass: REPLY(AudioClassID,kAudioDataSourceControlClassID);
+        case kAudioObjectPropertyOwner: REPLY(AudioObjectID,kDevice);
+        case kAudioObjectPropertyOwnedObjects: *outDataSize=0;return 0;
+        case kAudioControlPropertyScope: REPLY(AudioObjectPropertyScope,kAudioObjectPropertyScopeInput);
+        case kAudioControlPropertyElement: REPLY(AudioObjectPropertyElement,0);
+        case kAudioSelectorControlPropertyCurrentItem:
+        case kAudioSelectorControlPropertyAvailableItems: REPLY(UInt32,kMicSource);
+        case kAudioSelectorControlPropertyItemName:
+            if (!q || qs!=sizeof(UInt32) || *(const UInt32 *)q!=kMicSource)
+                return kAudioHardwareIllegalOperationError;
+            REPLY(CFStringRef,(CFStringRef)CFRetain(CFSTR("Microphone")));
         default:return kAudioHardwareUnknownPropertyError;
         }
     default:

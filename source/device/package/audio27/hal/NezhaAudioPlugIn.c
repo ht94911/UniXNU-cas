@@ -20,7 +20,10 @@
 #include "AudioClock.h"
 #include "AudioReference.h"
 enum {kPlugIn=kAudioObjectPlugInObject,kDevice=2,kOutStream=3,kInStream=4,kVolume=5,kReferenceStream=6,
-      kReceiverMute=7,kSpeakerMute=8,kInputMute=9,kReceiverVolume=10,kInputVolume=11};
+      kReceiverMute=7,kSpeakerMute=8,kInputMute=9,kReceiverVolume=10,kInputVolume=11,kInputSource=12};
+/* One measured mono capture path. imic names that physical input without
+ * advertising unimplemented front/back microphones or beamforming. */
+static const UInt32 kMicSource='imic';
 /* Original24A446 Codec binds both prec and pspk mute/volume controls. The
  * separate Receiver class has no pspk volume binding. Both acoustic routes
  * share this device's existing TDM output, mic and accepted-PCM tap. */
@@ -125,6 +128,9 @@ static int observed_property(AudioObjectID object,AudioObjectPropertySelector se
     case kAudioDevicePropertyStreams:
     case kAudioObjectPropertyControlList:
     case kAudioDevicePropertyNominalSampleRate:
+    case kAudioDevicePropertyDataSource:
+    case kAudioDevicePropertyDataSources:
+    case 'MCCs':
         return object==kDevice;
     case kAudioStreamPropertyIsActive:
     case kAudioStreamPropertyDirection:
@@ -152,6 +158,8 @@ static uint32_t property_observation_value(AudioObjectID object,const AudioObjec
             if (isfinite(rate) && rate>=0 && rate<=UINT32_MAX) return (uint32_t)rate;
         }
         return bytes;
+    case kAudioDevicePropertyDataSources:
+        return bytes/(uint32_t)sizeof(UInt32);
     case kAudioStreamPropertyVirtualFormat:
     case kAudioStreamPropertyPhysicalFormat:
         if (bytes==sizeof(AudioStreamBasicDescription) && data)
@@ -546,10 +554,16 @@ static OSStatus GetPropertyDataSize(AudioServerPlugInDriverRef d,AudioObjectID o
     if (!size) return kAudioHardwareIllegalOperationError;
     /* HasProperty calls this function. A size probe must not allocate or
      * retain the custom CFNumber that a real data read transfers. */
-    if (o==kDevice && a && a->mSelector=='lcID') {
+    if (o==kDevice && a && (a->mSelector=='lcID' || a->mSelector=='MCCs')) {
         if (a->mScope!=kAudioObjectPropertyScopeGlobal || a->mElement!=kAudioObjectPropertyElementMain)
             return kAudioHardwareUnknownPropertyError;
         *size=sizeof(CFNumberRef);return 0;
+    }
+    if (o==kDevice && a && (a->mSelector==kAudioDevicePropertyDataSourceNameForIDCFString ||
+                           a->mSelector==kAudioDevicePropertyDataSourceKindForID)) {
+        if (a->mScope!=kAudioObjectPropertyScopeInput || a->mElement!=0 || !gInputAvailable)
+            return kAudioHardwareUnknownPropertyError;
+        *size=sizeof(AudioValueTranslation);return 0;
     }
     _Alignas(16) uint8_t scratch[1024]={0};return GetPropertyData(d,o,pid,a,qs,q,sizeof scratch,size,scratch);
 }
@@ -561,7 +575,8 @@ static OSStatus IsPropertySettable(AudioServerPlugInDriverRef d,AudioObjectID o,
         ((o==kOutStream || o==kInStream || o==kReferenceStream) && (a->mSelector==kAudioStreamPropertyIsActive || a->mSelector==kAudioStreamPropertyVirtualFormat || a->mSelector==kAudioStreamPropertyPhysicalFormat)) ||
         (o==kDevice && (a->mSelector==kAudioDevicePropertyNominalSampleRate ||
          a->mSelector==kAudioDevicePropertyMute || a->mSelector==kAudioDevicePropertyVolumeScalar ||
-         a->mSelector==kAudioDevicePropertyVolumeDecibels));
+         a->mSelector==kAudioDevicePropertyVolumeDecibels || a->mSelector==kAudioDevicePropertyDataSource)) ||
+        (o==kInputSource && a->mSelector==kAudioSelectorControlPropertyCurrentItem);
     return HasProperty(d,o,pid,a) ? 0:kAudioHardwareUnknownPropertyError;
 }
 static OSStatus SetPropertyData(AudioServerPlugInDriverRef d,AudioObjectID o,pid_t pid,const AudioObjectPropertyAddress *a,UInt32 qs,const void *q,UInt32 size,const void *data) {
@@ -605,6 +620,15 @@ static OSStatus SetPropertyData(AudioServerPlugInDriverRef d,AudioObjectID o,pid
             if (!value) {if (control==kReceiverMute) gSpeakerSelected=0;else gReceiverSelected=0;}
             if (select_route()!=KERN_SUCCESS) {gReceiverSelected=old_receiver;gSpeakerSelected=old_speaker;result=kAudioHardwareNotRunningError;}
             else {mute_changed=control;result=0;}
+        }
+    } else if ((o==kInputSource && a->mSelector==kAudioSelectorControlPropertyCurrentItem) ||
+               (o==kDevice && a->mSelector==kAudioDevicePropertyDataSource &&
+                a->mScope==kAudioObjectPropertyScopeInput && a->mElement==0)) {
+        UInt32 source=0;
+        if (size!=sizeof source) result=kAudioHardwareBadPropertySizeError;
+        else {
+            memcpy(&source,data,sizeof source);
+            result=gInputAvailable && source==kMicSource ? 0:kAudioHardwareIllegalOperationError;
         }
     } else if ((o==kOutStream || o==kInStream || o==kReferenceStream) && a->mSelector==kAudioStreamPropertyIsActive && size==sizeof(UInt32)) {
         UInt32 active=*(const UInt32 *)data;
