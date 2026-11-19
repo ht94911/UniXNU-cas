@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "GPU059: raise the exact icon service inactive fatal cap from200 to384MiB for observed263-270MiB footprint, retaining active soft200 pressure notifications and other policies. GPU057 unlocked close/VM drain and alljoint components retained.",
+  "purpose": "GPU060: nonblocking A840 CPU VM readiness on submission; existing Busy retry releases global GPU gate; retain all original BO/TTBR/fence/A840 tail/recovery/close and Native049 icon384 policy. Metal058 separately retained.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -62,8 +62,8 @@
     "source/adreno/NativeAdrenoSmmuMemory.h": "ca2d91e3b4d8a4ff1f7da16419761b6588d34f044fdb16bb535276b811de8713",
     "source/adreno/NativeAdrenoSmmuService.h": "6e5a666a4c6b28c9dc3ae6c59ce4c55ccb1ef63ac49901cf56759f0dd5a905df",
     "source/adreno/NativeAdrenoStatus.h": "7305cce3eefbf63176fd08f3d6eb92aa4b874fffb37bda94666fea53d62a2a34",
-    "source/adreno/NativeAdrenoSubmit.cpp": "b89c37a9299dda41a60bfe842e707ad1ed10a8c30634d6c607d088ebfc6e9749",
-    "source/adreno/NativeAdrenoSubmit.h": "665a31cc8f0af83c33dd2fd1c8323277f59fd9414fae52367d5ce94c128d9c96",
+    "source/adreno/NativeAdrenoSubmit.cpp": "4f832a5fcc75e07b1b1f6d67405ac41f12aa5761809476bf8beff7e2f1f0152b",
+    "source/adreno/NativeAdrenoSubmit.h": "fca91e8d92e344c59d329c75624674d6a7bc5013a299a75de519c35e39e32129",
     "source/adreno/NativeAdrenoTimer.cpp": "8f4f2e3c1f774b464e6b284af5ba03679daf797942187550341cf1a513bf229a",
     "source/adreno/NativeAdrenoTimer.h": "7f338cf3c60495f5912a6ad8c83e81bad7883e34a0f6743b11c326b8fea1e364",
     "source/adreno/NativeAdrenoUserClient.cpp": "ffcf8410231794df7c18c73a5aff7956d8ac63396f5fc63e24574397aba43c29",
@@ -954,6 +954,22 @@
     "actual89setter_ledger_ASanUBSan_cases_passed": true,
     "host_report_sha256": "a7e32ab9c879235f94132a155c384a5cc66eaa218281d9cfdf369f15198b9c2d",
     "target_ledger_inspection_required": true,
+    "physical_frame_improvement_verified": false,
+    "phone_operations": false
+  },
+  "gpu060": {
+    "source_revision": "1c1447fce98ca73760abfed22f20eaed8d46b440",
+    "base_native049_head": "25130c73319c50dcc880d0fdab44ec6fd8b08197",
+    "changes": [
+      "source/adreno/NativeAdrenoSubmit.cpp",
+      "source/adreno/NativeAdrenoSubmit.h"
+    ],
+    "existing_Busy_transport_retry": true,
+    "Busy_before_job_refs_and_BO_maintenance": true,
+    "original_recovery_wait_preserved": true,
+    "ASan_UBSan_actual_Submit_Ring_UserClient_passed": true,
+    "actual140IB_VM_Busy_retries_one_job": true,
+    "host_report_sha256": "c89b6b49b16be2b5ecb6ca90fb3b91de63c985b3599ff6664480b4d52a281196",
     "physical_frame_improvement_verified": false,
     "phone_operations": false
   }

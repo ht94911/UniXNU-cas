@@ -1,7 +1,7 @@
-name: nezha GPU059 exact icon memory budget - native049
+name: nezha GPU060 nonblocking submit VM readiness - native050
 on:
   push:
-    branches: [codex/ios27-gpu59-icon-budget-native049-20261119]
+    branches: [codex/ios27-gpu60-submit-vm-busy-native050-20261119]
   workflow_dispatch:
 permissions:
   contents: read

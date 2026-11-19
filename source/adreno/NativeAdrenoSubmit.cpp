@@ -180,20 +180,26 @@ IOReturn NativeAdrenoSubmit::setTableSwitching(unsigned mode,IOReturn (*write)(v
 /* Makes vm the table the GPU runs for the next submission. Mode 1: once every earlier job has finished, the CPU writes TTBR0 (the bank
  * caches translations per ASID, so the switch needs no TLB operation). Mode 2: the ring's next prologue carries the switch, which the CP
  * runs after every earlier submission. */
-IOReturn NativeAdrenoSubmit::useVm(NativeAdrenoVm *vm,const NativeAdrenoRingClock *clock,unsigned index)
+IOReturn NativeAdrenoSubmit::useVm(NativeAdrenoVm *vm,const NativeAdrenoRingClock *clock,unsigned index,uint32_t timeout_us)
 {
     if(!table_mode_)return kIOReturnSuccess;
     if(table_mode_==2) {ring(index)->useTable(vm->ttbr0());table_vm_=vm;return kIOReturnSuccess;}
     if(vm==table_vm_)return kIOReturnSuccess;
     if(!clock)return kIOReturnBadArgument;
-    IOReturn status=waitAll(clock,2000000);
+    /* Every caller serializes submissions with the GPU gate. Waiting here
+     * also blocked another process's import/allocate and completion poll.
+     * Retire what is already complete and return the existing Busy result
+     * until the other VM's work has drained. The caller retries outside the
+     * gate with its original buffers; no new job or table write occurs. */
+    IOReturn status=timeout_us?waitAll(clock,timeout_us):retireCompleted();
     if(status)return status;
+    if(!timeout_us && outstanding())return kIOReturnBusy;
     /* A840's CPU write is outside the CP command stream. A timestamp can
      * already be visible while the trailing THREAD_CONTROL/SET_MARKER still
      * run. Keep the old table installed until both RPTR and RBBM are idle. */
     if(ring(0)->chip()->generation==8) {
-        status=ring(0)->idle(clock,2000000);
-        if(status)return status; // No TTBR write or new job on uncertainty.
+        status=ring(0)->idle(clock,timeout_us);
+        if(status)return !timeout_us && status==kIOReturnTimeout?kIOReturnBusy:status;
     }
     status=write_table_(table_cookie_,vm->ttbr0());
     if(status)return poison();
@@ -500,6 +506,15 @@ IOReturn NativeAdrenoSubmit::submit(NativeAdrenoVm *vm,const NativeAdrenoSubmitB
     }
     IOReturn swept=retireCompleted();
     if(swept)return swept;
+    /* Refuse a still-running VM before taking any new references or doing
+     * whole-BO publication. A Busy retry must not repeat that maintenance. */
+    unsigned index=preemption()?ringForPriority():0;
+    for(const auto &earlier:jobs_)
+        if(earlier.active && earlier.queue==queue) {index=earlier.ring;break;}
+    NativeAdrenoRing *const target=ring(index);
+    target->useContext(ring(0)->context());
+    const IOReturn table_status=useVm(vm,clock,index,0);
+    if(table_status)return table_status;
     Job *job=free();
     if(!job)return kIOReturnNoMemory;
     for(size_t i=0;i<handle_count;++i) {
@@ -580,12 +595,6 @@ IOReturn NativeAdrenoSubmit::submit(NativeAdrenoVm *vm,const NativeAdrenoSubmitB
         return status;
     }
     /* The ring this job goes to (the first ring alone unless the board turned the switch on). */
-    unsigned index=preemption()?ringForPriority():0;
-    /* A priority change cannot overtake this queue's earlier submissions. It moves
-     * rings once its outstanding prefix has completed. Queue IDs are globally scoped. */
-    for(const auto &earlier:jobs_)
-        if(earlier.active && earlier.queue==queue) {index=earlier.ring;break;}
-    NativeAdrenoRing *const target=ring(index);
     {
         const uint32_t slot=native_adreno_ib_log_count&3;uint32_t head[28];
         (void)vm_->peekWords(buffers[0].iova,head,28);
@@ -593,12 +602,6 @@ IOReturn NativeAdrenoSubmit::submit(NativeAdrenoVm *vm,const NativeAdrenoSubmitB
         native_adreno_ib_log[slot][2]=(uint32_t)(buffers[0].iova>>32);native_adreno_ib_log[slot][3]=(uint32_t)buffers[0].bytes;
         for(unsigned i=0;i<28;++i)native_adreno_ib_log[slot][4+i]=head[i];
         native_adreno_ib_log_count=native_adreno_ib_log_count+1;
-    }
-    target->useContext(ring(0)->context());
-    status=useVm(vm,clock,index);
-    if(status) {
-        for(size_t i=0;i<handle_count;++i) {vm_->retireJobAfterCompletion(handles[i]);++stats_.references_retired;}
-        return status;
     }
     /* One numbering for both rings: a fence tells its own ring, and a switch's arrival retires the jobs queued behind it. */
     /* The board's earlier submissions (the CP init and the probes) numbered themselves on the first ring: the next number is above
