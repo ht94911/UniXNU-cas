@@ -13,6 +13,12 @@ Actual runtime/engine/graph/TAS host cases and related runtime, endpoint and
 shutdown suites passed ASan/UBSan. Target compilation and device recovery are
 not yet verified. The phone is released; builds do not own the device.
 
+Native066 compiled all50 audio units and produced the exact accepted061 HAL,
+but its newly enabled host check still expected the abandoned BuiltIn/Speaker
+interface. The066b check instead verifies the accepted USB transport and
+NezhaAudio27Device UID, keeping its stream, tap, PCM and disconnect assertions.
+This correction changes only the host check; the HAL and recovery stay unchanged.
+
 # Audio102 reuse for baseband045
 
 The accepted microphone and speaker implementation comes from audio102

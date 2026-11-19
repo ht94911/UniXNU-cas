@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "066 original061 audio/firstPCM and065 successful browser compatibility; one fully released first no-PCM input timeout can reopen; first error retained and only original DMA/codec resources; no retry on bad reply/cleanup or second failure. No062-064 builtin Codec changes. Mac-only necessary source encrypted output.",
+  "purpose": "066b repairs the host check of the accepted061 USB HAL after original066 failure. The first-input recovery, original061 HAL/runtime settings,065 browser compatibility and existing32 ringing pages remain unchanged. Mac-only necessary source with encrypted outputs.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "a53f5070ff35eb370722d1f3923f5d15cfc20d5a",
+  "device_revision": "7428fbcbec89695d9a13b82ae44eb12f11a5030e",
   "soc_revision": "703d7b4bb00904b4a6e5d96f9e9bf72eec170f6b",
   "xcode": "26.6",
   "files": {
@@ -100,7 +100,7 @@
     "source/device/package/SourceRootPolicies.cpp": "714af8d95b5a8db89058be9f14a7e71a5fc2e97ded4d067c39e04299f0db27d5",
     "source/device/package/SourceStorage.cpp": "d0b8e0433ef71a1761e5d3dd055d8c4a6b709a5b8dabb2da36ab558291c9d2f3",
     "source/device/package/armcpu/darwin-asm-separators.patch": "15893fd689f266184c3273135761d7eff0d71aa0c42e29d1d71666a0abd60e8f",
-    "source/device/package/audio27/SOURCE.md": "c285f41498152118f086639fcdc27461e87fc28d20bd24f28c8b363327c33403",
+    "source/device/package/audio27/SOURCE.md": "0c6e8af4106ecac557fa1ee40b2d91ebc9a668a40f59891b47c18420dda856d2",
     "source/device/package/audio27/core/AudioDriver.c": "3129c2b3d25a764388a9e36e70b93b4b0183cfd65b3a11c0f1172014b906d155",
     "source/device/package/audio27/core/AudioDriver.h": "b2c04b2d6a842e529ce68ef794fe51c79a67a57e863da42af1b198e56e881e63",
     "source/device/package/audio27/core/AudioEngine.c": "1b061efbe4879b5ab6682f6d0d9dea2b372f1f9bad33feeac9aa7928a378b4de",
@@ -236,7 +236,7 @@
     "source/device/package/audio27/tests/runtime_contract_test.c": "72121c3eed3c6513d6809ba8a4c92ed44fd8d1e081ac844e72ae4849e5c74027",
     "source/device/package/audio27/tests/sheng_adsp_test.c": "a212e273ad14f78e8706cc365a911ca14223088e2ac6148c0d12da67ca12cdf4",
     "source/device/package/audio27/tests/speaker_graph_deadline_test.c": "ffebb1cbbcae41033036c7d89773bb93ffa370afd1432c71965d164051abb23b",
-    "source/device/package/audio27/tests/speaker_properties_test.c": "c548aefc5b7fe8827ea9183ca18b11025be2ffaa60555cd084386de8b529a1e3",
+    "source/device/package/audio27/tests/speaker_properties_test.c": "b528da1e2269a0bbf93397b8335ee0396f7cc63a849ceae946e9d020eccae910",
     "source/device/package/audio27/tests/tas_identity_board_test.c": "5f7256c7a5c4de5d86e5fa242e52f28e77e616eb1ea2d2b73d13c40aeacc3141",
     "source/device/package/audio27/tests/tas_identity_test.c": "4da7f7e59d6ea9c21b97a0156f5bd333452b0d899aee846b2accf573b9f04537",
     "source/device/package/audio27/tests/tas_program_test.c": "976a9cbca02269c9d56afee58f73cfe27085d6b837675b2073768db7dfd28e09",

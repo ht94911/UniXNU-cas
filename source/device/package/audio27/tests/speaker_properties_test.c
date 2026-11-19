@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 /* Execute the production HAL with the host Apple SDK, without Initialize or
- * any device connection. The stock24A446 Speaker/tap contract is the oracle. */
+ * any device connection. Check the accepted061 USB device and its PCM tap. */
 #include "../hal/NezhaAudioPlugIn.c"
 #include <assert.h>
 #include <stdio.h>
@@ -30,10 +30,10 @@ int main(void) {
     assert(scalar(streams[0],'taps',kAudioObjectPropertyScopeGlobal)==1);
     assert(scalar(streams[0],kAudioStreamPropertyDirection,kAudioObjectPropertyScopeGlobal)==1);
     assert(scalar(kDevice,kAudioDevicePropertyDeviceCanBeDefaultDevice,kAudioObjectPropertyScopeInput)==0);
-    assert(scalar(kDevice,kAudioDevicePropertyTransportType,kAudioObjectPropertyScopeGlobal)==kAudioDeviceTransportTypeBuiltIn);
+    assert(scalar(kDevice,kAudioDevicePropertyTransportType,kAudioObjectPropertyScopeGlobal)==kAudioDeviceTransportTypeUSB);
     CFStringRef uid=NULL;address=(AudioObjectPropertyAddress){kAudioDevicePropertyDeviceUID,kAudioObjectPropertyScopeGlobal,0};
     assert(propertyData(kDevice,&address,0,NULL,sizeof uid,&bytes,&uid)==0);
-    assert(CFEqual(uid,CFSTR("Speaker")));
+    assert(CFEqual(uid,CFSTR("NezhaAudio27Device")));
     AudioStreamBasicDescription stream_format;
     address=(AudioObjectPropertyAddress){kAudioStreamPropertyVirtualFormat,kAudioObjectPropertyScopeGlobal,0};
     assert(propertyData(kReferenceStream,&address,0,NULL,sizeof stream_format,&bytes,&stream_format)==0);
@@ -70,6 +70,6 @@ int main(void) {
     assert(gCaptureIssued==0);
     disconnect();
     assert(na_reference_read(gReference,100,&left[0],&right[0])==NA_MISSING);
-    puts("production Speaker HAL: UID, tap size/value, input order, format, accepted PCM, no mic request, active state, disconnect PASS");
+    puts("production061 USB HAL: UID, tap size/value, input order, format, accepted PCM, no mic request, active state, disconnect PASS");
     return 0;
 }
