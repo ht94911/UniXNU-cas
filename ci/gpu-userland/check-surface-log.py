@@ -29,7 +29,6 @@ def body(marker):
 code = body('static NSString *textureSurfaceCodes(') + '\n' + body('static void logTexture(')
 prefix = r'''
 #import <Foundation/Foundation.h>
-#import <IOSurface/IOSurfaceRef.h>
 #include <atomic>
 #include <cassert>
 #include <cstdint>

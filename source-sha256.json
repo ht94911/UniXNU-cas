@@ -29,7 +29,7 @@
   "ci/gpu-userland/check-public-frontend.py": "0fa22807e388430d68d09661b774204c3cf159ec809b47b5d68b3fce877d2138",
   "ci/gpu-userland/check-render-wait.py": "09ed6f8a3979521c3a20486cdfe5b480e1d232fef69ec11cda5aff00e0aa0752",
   "ci/gpu-userland/check-retained-camera-contracts.py": "6e9ab5b4746086292591153f14e4979fed02a26231dbc08d24535b414e6aed45",
-  "ci/gpu-userland/check-surface-log.py": "b87d7ef060629d7bfabcc4f7e53c2f2ef09ea215b8c1cd599cbf0c4005fd4741",
+  "ci/gpu-userland/check-surface-log.py": "b25a6dc63b3f16c0629007aaf435ca18ff5cabea1a47ef4a06f37c7782922d55",
   "ci/gpu-userland/check-surface-plane-forwarding.py": "aa86f44e2d49f4503c1a8bec6294650f519ff8f6a9accdd295867deef945eae7",
   "ci/gpu-userland/check-tile-store-error-host.py": "c63d1a32fdd15ff4a3572897ecd41ff2c8a5b8616eb131bcbfe344088afae557",
   "ci/gpu-userland/check-tiled-words.py": "885aac6744fb9710efbe7a8677e9832bc38dab0be934af4e10b623211732910b",
