@@ -1,7 +1,7 @@
-name: nezha iPhone27 baseband audio - HAL063
+name: nezha iPhone27 baseband audio - HAL063b
 on:
   push:
-    branches: [codex/ios27-bb-gpu024-hal063-20261119]
+    branches: [codex/ios27-bb-gpu024-hal063b-20261119]
 permissions:
   contents: read
 concurrency:

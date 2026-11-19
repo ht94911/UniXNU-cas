@@ -8,7 +8,7 @@
     "private_inputs": false
   },
   "files": {
-    ".github/workflows/nezha-ios27-native.yml": "2c8a966a8bfeb4008f9cb3fbaa3174d2b6b9c2a8ca292d56edbcc293a8829365",
+    ".github/workflows/nezha-ios27-native.yml": "51c86030c306b4169f8803e3064634326a651bf0e540dce995c9b9f5807e8f51",
     "ci/hal.py": "7bdc2c8f7b80e1f3302ce95259d390d43119f5e01d72970d59be96020d9c4933",
     "source/device/package/audio27/core/AudioProtocol.h": "cdd0adfdf372cb6efc5a69f3066f7976f47bf3287884c42d5f7f9709856c17ba",
     "source/device/package/audio27/core/AudioRing.c": "1de1d7ec93732e17b71610531d7e51a9e6e7829ecaa330f32692a39483d418d5",
@@ -20,7 +20,9 @@
     "source/device/package/audio27/hal/NezhaAudioPlugIn.c": "3117d748ef253156129d3e8757cff378be5710e5ecee63fbe92454c43ba43ef0",
     "source/device/package/audio27/hal/NezhaAudioProperties.inc": "7266ce30064b99011ddf09d4c47377dd590b5a93f8cd4fc62bff30835f75a790",
     "source/device/package/audio27/os/NezhaAudioAbi.h": "b49334bcffd93bb2bb014f4686fb0317c21037e930da1a1362326cd4da73fa7c",
-    "source/device/package/audio27/tests/speaker_properties_test.c": "68f8c2a5ea5edecf773031bdfe3b8b727898918310dde4242c5b6eccb9bdf208"
+    "source/device/package/audio27/tests/speaker_properties_test.c": "68f8c2a5ea5edecf773031bdfe3b8b727898918310dde4242c5b6eccb9bdf208",
+    "source/device/package/audio27/upstream/ShengGpr.h": "a274dded1f4d1e2709b9f966759bcb1f57d12747ee0f57743dea1fa97d95d23e",
+    "source/device/package/audio27/upstream/ShengAudioReach.h": "b135177a5feb3e24e0d8a6aabb301600e2c37078b970a09ada6e8eb7bb6a5b98"
   },
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
   "certificate_sha256": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
