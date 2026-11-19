@@ -1,13 +1,14 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 /* Execute the production HAL with the host Apple SDK, without Initialize or
- * any device connection. The stock24A446 Receiver/prec/pspk/tap contract is the oracle. */
+ * any device connection. Stock24A446 Codec binds prec/pspk and requires input
+ * vold/inpt/0 to construct the microphone port and its volume command. */
 #define IOConnectCallScalarMethod property_test_scalar
 #include "../hal/NezhaAudioPlugIn.c"
 #undef IOConnectCallScalarMethod
 #include <assert.h>
 #include <stdio.h>
 
-static uint64_t test_output[NA_AUDIO_RING_FRAMES];
+static uint64_t test_output[NA_AUDIO_RING_FRAMES],test_input[NA_AUDIO_RING_FRAMES];
 static unsigned test_routes,test_starts,test_stops,test_inputs;
 static uint32_t test_last_route;
 kern_return_t property_test_scalar(mach_port_t connection,uint32_t selector,const uint64_t *input,
@@ -29,13 +30,37 @@ static void fixture(void) {
         .state=NaAudioOutputReady,.epoch=7,.out_channels=2,.in_channels=0,
         .host_hz=19200000,.ticks_per_frame_q32=(uint64_t)400<<32};
     gControl=&status;gEpoch=7;gIoUsers=1;gOutput=test_output;gConnect=0;
-    gInputAvailable=0;gReferenceSelected=1;gVolume=1;gCaptureIssued=0;
+    gInputAvailable=0;gReferenceSelected=1;gVolume=1;gInputVolume=1;gCaptureIssued=0;
     gSpeakerSelected=1;gReceiverSelected=0;gInputMuted=0;gReceiverVolume=0.5f;
 }
 static UInt32 scalar(AudioObjectID object, UInt32 selector, UInt32 scope) {
     AudioObjectPropertyAddress address={selector,scope,0};UInt32 value=0,bytes=0;
     assert(propertyData(object,&address,0,NULL,sizeof value,&bytes,&value)==0);
     assert(bytes==sizeof value);return value;
+}
+static void check_port_controls(UInt32 scope,UInt32 element) {
+    AudioObjectID controls[9]={0};UInt32 bytes=0;
+    AudioObjectPropertyAddress address={kAudioObjectPropertyControlList,scope,0};
+    assert(GetPropertyData(NULL,kDevice,0,&address,0,NULL,sizeof controls,&bytes,controls)==0);
+    unsigned mute=0,volume=0;
+    for (unsigned i=0;i<bytes/sizeof(AudioObjectID);++i) {
+        if (scalar(controls[i],kAudioControlPropertyScope,kAudioObjectPropertyScopeGlobal)!=scope ||
+            scalar(controls[i],kAudioControlPropertyElement,kAudioObjectPropertyScopeGlobal)!=element) continue;
+        UInt32 kind=scalar(controls[i],kAudioObjectPropertyClass,kAudioObjectPropertyScopeGlobal);
+        if (kind==kAudioMuteControlClassID) ++mute;
+        if (kind==kAudioVolumeControlClassID) ++volume;
+    }
+    assert(mute==1 && volume==1);
+    address=(AudioObjectPropertyAddress){kAudioDevicePropertyVolumeDecibels,scope,element};
+    assert(HasProperty(NULL,kDevice,0,&address));
+    Boolean settable=0;
+    assert(IsPropertySettable(NULL,kDevice,0,&address,&settable)==0 && settable);
+    Float32 db=0;
+    assert(GetPropertyData(NULL,kDevice,0,&address,0,NULL,sizeof db,&bytes,&db)==0 && bytes==sizeof db);
+    address.mSelector=kAudioDevicePropertyVolumeRangeDecibels;
+    AudioValueRange range={0};
+    assert(GetPropertyData(NULL,kDevice,0,&address,0,NULL,sizeof range,&bytes,&range)==0);
+    assert(bytes==sizeof range && range.mMinimum==-36 && range.mMaximum==0);
 }
 int main(void) {
     fixture();
@@ -49,7 +74,9 @@ int main(void) {
     assert(scalar(kDevice,kAudioDevicePropertyTransportType,kAudioObjectPropertyScopeGlobal)==kAudioDeviceTransportTypeBuiltIn);
     CFStringRef uid=NULL;address=(AudioObjectPropertyAddress){kAudioDevicePropertyDeviceUID,kAudioObjectPropertyScopeGlobal,0};
     assert(propertyData(kDevice,&address,0,NULL,sizeof uid,&bytes,&uid)==0);
-    assert(CFEqual(uid,CFSTR("Receiver")));
+    assert(CFEqual(uid,CFSTR("Codec")));
+    check_port_controls(kAudioObjectPropertyScopeOutput,3);
+    check_port_controls(kAudioObjectPropertyScopeOutput,4);
     for (unsigned element=3;element<=4;++element) {
         address=(AudioObjectPropertyAddress){kAudioDevicePropertyMute,kAudioObjectPropertyScopeOutput,element};
         UInt32 mute=9;
@@ -77,6 +104,7 @@ int main(void) {
     assert(propertyData(kDevice,&address,0,NULL,sizeof streams,&bytes,streams)==0);
     assert(bytes==2*sizeof(AudioObjectID) && streams[0]==kInStream && streams[1]==kReferenceStream);
     assert(scalar(streams[1],kAudioStreamPropertyStartingChannel,kAudioObjectPropertyScopeGlobal)==2);
+    check_port_controls(kAudioObjectPropertyScopeInput,0);
     gInputAvailable=0;
     address=(AudioObjectPropertyAddress){'taps',kAudioObjectPropertyScopeGlobal,0};
     UInt32 marker=0;
@@ -95,11 +123,29 @@ int main(void) {
         assert(reference[2*i]==left[i]/32768.0f && reference[2*i+1]==right[i]/32768.0f);
     }
     assert(gCaptureIssued==0 && gConnect==0);
+    /* The real mic path keeps unity PCM at default volume. The input volume
+     * setter scales only this path, never the accepted playback reference. */
+    NaAudioStatus *status=(NaAudioStatus *)(uintptr_t)gControl;
+    status->state|=NaAudioInputReady;status->in_channels=1;status->in_produced=102;
+    gInputAvailable=1;gInput=test_input;gConnect=42;
+    assert(na_ring_capture(test_input,100,8192)==0 && na_ring_capture(test_input,101,-4096)==0);
+    Float32 mic[2]={0};
+    assert(DoIOOperation(NULL,kDevice,kInStream,0,kAudioServerPlugInIOOperationReadInput,2,&cycle,mic,NULL)==0);
+    assert(mic[0]==0.25f && mic[1]==-0.125f && test_inputs==1);
+    Float32 db=-12;
+    address=(AudioObjectPropertyAddress){kAudioDevicePropertyVolumeDecibels,kAudioObjectPropertyScopeInput,0};
+    assert(SetPropertyData(NULL,kDevice,0,&address,0,NULL,sizeof db,&db)==0);
+    assert(DoIOOperation(NULL,kDevice,kInStream,0,kAudioServerPlugInIOOperationReadInput,2,&cycle,mic,NULL)==0);
+    assert(fabsf(mic[0]-0.25f*powf(10.0f,-12.0f/20.0f))<1e-6f && mic[1]<0);
+    assert(gVolume==1 && gReceiverVolume==0.5f);
+    Float32 unity=1;
+    address=(AudioObjectPropertyAddress){kAudioLevelControlPropertyScalarValue,kAudioObjectPropertyScopeGlobal,0};
+    assert(SetPropertyData(NULL,kInputVolume,0,&address,0,NULL,sizeof unity,&unity)==0 && gInputVolume==1);
+    test_inputs=0;gCaptureIssued=0;gConnect=0;gInputAvailable=0;
     /* Real setter queues the native route. Report success to listeners after
      * the worker publishes applied mode; changing output never starts input. */
     gConnect=42;UInt32 unmute=0,mute=1;
     address=(AudioObjectPropertyAddress){kAudioDevicePropertyMute,kAudioObjectPropertyScopeOutput,3};
-    NaAudioStatus *status=(NaAudioStatus *)(uintptr_t)gControl;
     status->route_pending=1;
     assert(SetPropertyData(NULL,kDevice,0,&address,0,NULL,4,&unmute)==0);
     assert(test_routes==1 && test_last_route==NaAudioRouteReceiver && test_starts==1 && !test_inputs);
@@ -123,6 +169,6 @@ int main(void) {
     assert(gCaptureIssued==0);
     disconnect();
     assert(na_reference_read(gReference,100,&left[0],&right[0])==NA_MISSING);
-    puts("production Receiver HAL: prec/pspk property and native request, applied mute, separate volume, tap, accepted PCM, no mic request, disconnect PASS");
+    puts("production Codec HAL: prec/pspk/pmwi mute and volume bindings, input unity/scaling, native route request, applied mute, separate volume, tap, accepted PCM, disconnect PASS");
     return 0;
 }
