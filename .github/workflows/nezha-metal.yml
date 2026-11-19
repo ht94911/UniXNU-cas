@@ -1,7 +1,7 @@
-name: nezha GPU062 Submit room retry - metal050
+name: nezha GPU064 compiler cache and panel observer - metal051
 on:
   push:
-    branches: [codex/ios27-gpu62-submit-room-metal050-20261119]
+    branches: [codex/ios27-gpu64-cache-panel-metal051-20261119]
   workflow_dispatch:
 permissions:
   contents: read
