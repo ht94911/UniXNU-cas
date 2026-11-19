@@ -389,6 +389,17 @@ def main():
     # complete patch set after all frontend patches have been installed.
     bridge_patches = sorted((root / 'drivers/AdrenoMetal/bridge/patches').glob('*.patch'))
     record['metal2vulkan']['bridge_patches'] = {p.name: sha(p) for p in bridge_patches}
+    selected = HERE / 'patches/sensors016-runtime.patch'
+    bridge_patch = root / 'drivers/AdrenoMetal/bridge/patches/0043-ios-rotated-surface-row-pitch.patch'
+    shutil.copyfile(selected, bridge_patch)
+    builder = root / 'scripts/build-adreno-metal-bridge.py'
+    old = "    '0042-ios-foreground-blocks.patch',\n"
+    assert builder.read_text().count(old) == 1
+    builder.write_text(builder.read_text().replace(old, old + "    '0043-ios-rotated-surface-row-pitch.patch',\n"))
+    bridge_patches = sorted((root / 'drivers/AdrenoMetal/bridge/patches').glob('*.patch'))
+    record['metal2vulkan']['bridge_patches'] = {p.name: sha(p) for p in bridge_patches}
+    record['sensors016_rotation'] = dict(patch_sha256=sha(selected), builder_sha256=sha(builder),
+        sensor_kernel_rebuilt=False, baseline='original GPU051', runtime_version=1776)
     record['runtime_policy'] = '963f0e64; retained A840 heap paths; upstream free thread; flow default off; exact pipeline waits'
     record['buffer_reserve_policy'] = 'Reuse same-pool/type unused buffers; separate 64 MiB device budget; preserve address objects, pressure and teardown'
     record['iphone_private_layout_policy'] = 'Explicit --iphone-24a446 excludes all iPad raw QuartzCore layout access; public policy only'

@@ -1,0 +1,528 @@
+diff --git a/crates/metal2vulkan-runtime/README.md b/crates/metal2vulkan-runtime/README.md
+index d4ae31467..e062dcba0 100644
+--- a/crates/metal2vulkan-runtime/README.md
++++ b/crates/metal2vulkan-runtime/README.md
+@@ -269,6 +269,11 @@ the record the pass is making.
+   imported by their pointer in one allocation, so the consumer binds a buffer of its own usage
+   (a video decode's bitstream source) to the same bytes; `None` for copied, dma-buf, read-only or
+   detached pages.
++- Rotated IOSurface textures on iOS validate `bytesPerRow` against the stored frame's width:
++  the descriptor's height for rotations 1, 3 and 4. `IoSurfacePlane::with_stored_rotation_rows`
++  selects the same contract for a consumer on another host. macOS keeps its additional check
++  against the descriptor's width. Rendering and resolve use the existing rotated copies;
++  alignment, buffer range and CPU row addressing keep their existing checks.
+ 
+ ## The memory model
+ 
+diff --git a/crates/metal2vulkan-runtime/src/buffer_texture.rs b/crates/metal2vulkan-runtime/src/buffer_texture.rs
+index 617d35926..04533fab1 100644
+--- a/crates/metal2vulkan-runtime/src/buffer_texture.rs
++++ b/crates/metal2vulkan-runtime/src/buffer_texture.rs
+@@ -221,6 +221,9 @@ pub struct IoSurfacePlane {
+     /// reads plane 1's offset and `bytesPerRow` from them too (`chroma_offset`,
+     /// `chroma_bytes_per_row`). Other formats ignore it.
+     pub ycbcr: Option<IoSurfaceYCbCr>,
++    /// Validate a rotated texture's pitch against its stored plane extent, as iOS does.
++    /// False keeps the macOS requirement that the pitch also cover the texture's row.
++    pub stored_rotation_rows: bool,
+ }
+ 
+ impl IoSurfacePlane {
+@@ -234,9 +237,17 @@ impl IoSurfacePlane {
+             planar,
+             client_direction: None,
+             ycbcr: None,
++            stored_rotation_rows: cfg!(target_os = "ios"),
+         }
+     }
+ 
++    /// Use the iOS pitch rule for rotated IOSurface textures. The GPU stores a quarter
++    /// turn at the descriptor's height wide; CPU access keeps its existing row addressing.
++    pub const fn with_stored_rotation_rows(mut self) -> IoSurfacePlane {
++        self.stored_rotation_rows = true;
++        self
++    }
++
+     /// This plane of a surface made with `kIOSurfaceClientDirection` of `direction`.
+     pub const fn with_client_direction(mut self, direction: u64) -> IoSurfacePlane {
+         self.client_direction = Some(direction);
+@@ -343,7 +354,7 @@ impl Buffer {
+             offset,
+             bytes_per_row,
+             (BufferTextureCall::Texture, Whose::Program),
+-            None,
++            (None, false),
+         )
+     }
+ 
+@@ -364,7 +375,7 @@ impl Buffer {
+             offset,
+             bytes_per_row,
+             (BufferTextureCall::Texture, Whose::Runtime),
+-            None,
++            (None, false),
+         )
+     }
+ 
+@@ -390,7 +401,7 @@ impl Buffer {
+             offset,
+             bytes_per_row,
+             (BufferTextureCall::Linear, Whose::Program),
+-            None,
++            (None, false),
+         )
+     }
+ 
+@@ -413,9 +424,11 @@ impl Buffer {
+     ///   that is one too (Metal asserts on another pitch). The row the pitch covers is the
+     ///   **texture's** own, whatever the plane holds and whatever the rotation: a rotated
+     ///   texture's plane holds the turned frame, and Metal still holds the pitch to the texture's
+-    ///   unturned row (measured on the M3 Max, plain Metal with no validation layer: a 4x8 plane
++    ///   unturned row on macOS. iOS instead checks the stored extent when
++    ///   `plane.stored_rotation_rows` is true (the default when built for iOS).
++    ///   Measured on the M3 Max, plain Metal with no validation layer: a 4x8 plane
+     ///   at its tight stride of 16 behind an 8x4 texture ends the process, "bytesPerRow (16) must
+-    ///   be greater or equal to (32) bytes");
++    ///   be greater or equal to (32) bytes";
+     /// - `get_bytes` and `replace_region` read and write the plane where the surface lays it out:
+     ///   from its offset, rows `bytes_per_row` apart;
+     /// - the GPU's commands read and write it as Metal's GPU does: from the offset rounded down to
+@@ -525,7 +538,7 @@ impl Buffer {
+                 },
+                 Whose::Program,
+             ),
+-            plane.ycbcr,
++            (plane.ycbcr, plane.stored_rotation_rows),
+         )?;
+         // Metal's device takes a sampler ID as it makes a surface's texture, as for a texture of
+         // its own (unlike a buffer's: `resource_ids.rs`).
+@@ -545,11 +558,11 @@ impl Buffer {
+         offset: u64,
+         bytes_per_row: u64,
+         (form, whose): (BufferTextureCall, Whose),
+-        ycbcr_surface: Option<IoSurfaceYCbCr>,
++        surface_facts: (Option<IoSurfaceYCbCr>, bool),
+     ) -> Result<Texture, Error> {
+         let over = (offset, bytes_per_row);
+         let texture =
+-            self.make_texture_over(call, descriptor, over, (form, whose), ycbcr_surface)?;
++            self.make_texture_over(call, descriptor, over, (form, whose), surface_facts)?;
+         if let Some(heap) = self.heap() {
+             heap.hold_texture(&texture);
+         }
+@@ -563,7 +576,7 @@ impl Buffer {
+         descriptor: &TextureDescriptor,
+         (offset, bytes_per_row): (u64, u64),
+         (form, whose): (BufferTextureCall, Whose),
+-        ycbcr_surface: Option<IoSurfaceYCbCr>,
++        (ycbcr_surface, stored_rotation_rows): (Option<IoSurfaceYCbCr>, bool),
+     ) -> Result<Texture, Error> {
+         // A detach waits for none being made over the bytes (`detach.rs`), nor does a rebind of
+         // them while they are detached, so whether they are holds while it is made.
+@@ -738,7 +751,13 @@ impl Buffer {
+         }
+         let rotation = match u8::try_from(descriptor.rotation) {
+             Ok(0) => None,
+-            Ok(rotation) => Some(turned_plane(call, &texture, rotation, &buffer)?),
++            Ok(rotation) => Some(turned_plane(
++                call,
++                &texture,
++                rotation,
++                &buffer,
++                stored_rotation_rows,
++            )?),
+             Err(_) => return Err(internal("a rotation past the descriptor's check")),
+         };
+         if let Some((rotation, stored)) = rotation {
+@@ -814,8 +833,8 @@ impl Buffer {
+ /// The plane of a texture of `rotation` made as `texture` (of a rotated descriptor, over an
+ /// IOSurface plane): `rotation` and where the turned texels lie, checked as Metal checks them, as
+ /// a 2D texture of the extent it stores (`rotated::stored_extent`) at the plane's offset and
+-/// rows, with the pitch held to the texture's own row ([`covers_its_row`]), which the stored
+-/// extent's plan does not hold it to. Refused as that texture is, and
++/// rows. iOS checks the stored width; macOS also holds the pitch to the texture's
++/// own row ([`covers_its_row`]). Refused as that texture is, and
+ /// (`NotImplemented(RotatedTexture)`) for a plane whose offset or `bytesPerRow` is off 16 bytes,
+ /// or a format of a texel size other than 1, 2, 4, 8 or 16 bytes (a 4:2:2 one among them), whose
+ /// rotation is not measured.
+@@ -832,6 +851,7 @@ pub(super) fn turned_plane(
+     texture: &BufferTexture,
+     rotation: u8,
+     buffer: &BufferFacts,
++    stored_rows: bool,
+ ) -> Result<(u8, Placed), Error> {
+     let measured = texture.offset.is_multiple_of(LINEAR_ALIGNMENT)
+         && texture.bytes_per_row.is_multiple_of(LINEAR_ALIGNMENT)
+@@ -840,7 +860,9 @@ pub(super) fn turned_plane(
+     if !measured {
+         return Err(Error::NotImplemented(RuntimeGap::RotatedTexture));
+     }
+-    covers_its_row(texture).map_err(|problem| refusal_error(call, problem.into()))?;
++    if !stored_rows {
++        covers_its_row(texture).map_err(|problem| refusal_error(call, problem.into()))?;
++    }
+     let [width, height, depth] = texture.layout.extent;
+     let [width, height] = rotated::stored_extent(rotation, [width, height]);
+     let stored = BufferTexture {
+@@ -856,7 +878,7 @@ pub(super) fn turned_plane(
+ }
+ 
+ /// Whether `texture`'s `bytesPerRow` covers the **texture's** own packed row, which is Metal's
+-/// rule for a texture over an IOSurface plane whatever the plane holds and whatever the rotation.
++/// macOS rule for a texture over an IOSurface plane whatever its rotation.
+ ///
+ /// Measured on the M3 Max under plain Metal with no validation layer: a 4x8 surface at its own
+ /// tight stride of 16 behind an 8x4 texture ends the process,
+diff --git a/crates/metal2vulkan-runtime/src/device/room.rs b/crates/metal2vulkan-runtime/src/device/room.rs
+index e970e1da4..c7cd887b2 100644
+--- a/crates/metal2vulkan-runtime/src/device/room.rs
++++ b/crates/metal2vulkan-runtime/src/device/room.rs
+@@ -124,6 +124,9 @@ fn run(shared: &Shared, weak: &WeakDevice) {
+         if requested {
+             keep(&device);
+         } else {
++            let Some(_busy) = exit_guard::enter() else {
++                return;
++            };
+             let parts = device.shared();
+             crate::memory::age_spares(&parts.memory, parts.vk());
+         }
+diff --git a/crates/metal2vulkan-runtime/src/tests/buffer_texture.rs b/crates/metal2vulkan-runtime/src/tests/buffer_texture.rs
+index 0718e1040..8481ef408 100644
+--- a/crates/metal2vulkan-runtime/src/tests/buffer_texture.rs
++++ b/crates/metal2vulkan-runtime/src/tests/buffer_texture.rs
+@@ -103,7 +103,7 @@ fn no_rotated_plane_s_gpu_rows_share_bytes() {
+     let refusal = |rotation: u8, width: u32, height: u32, bytes_per_row: u64| {
+         let texture = over_a_plane(width, height, bytes_per_row);
+         let length = bytes_per_row * u64::from(width.max(height)) + 1024;
+-        match turned_plane("t", &texture, rotation, &BufferFacts { length }) {
++        match turned_plane("t", &texture, rotation, &BufferFacts { length }, false) {
+             // A plane whose pitch is a multiple of 16 lies at it, a row apart or further.
+             Ok((_, placed)) => {
+                 assert_eq!(placed.gpu.shared_bytes(), 0, "rotation {rotation}");
+@@ -203,7 +203,7 @@ fn no_texture_over_a_buffer_has_cpu_rows_that_share_bytes() {
+                 for bytes_per_row in [16u64, 20, 32, 48, 64, 256, 272] {
+                     let texture = over_a_plane(width, height, bytes_per_row);
+                     let length = bytes_per_row * u64::from(width.max(height)) + 1024;
+-                    match turned_plane("t", &texture, rotation, &BufferFacts { length }) {
++                    match turned_plane("t", &texture, rotation, &BufferFacts { length }, false) {
+                         Ok((_, placed)) => {
+                             turned_ok += 1;
+                             let rows = rotated_rows(&texture);
+@@ -260,7 +260,7 @@ fn turned(
+ ) -> Result<(), BufferTextureProblem> {
+     let texture = over_a_plane(width, height, bytes_per_row);
+     let length = bytes_per_row * u64::from(width.max(height)) + 1024;
+-    match turned_plane("t", &texture, rotation, &BufferFacts { length }) {
++    match turned_plane("t", &texture, rotation, &BufferFacts { length }, false) {
+         Ok(_) => Ok(()),
+         Err(Error::Invalid(Invalid {
+             problem: Problem::BufferTexture(problem),
+@@ -321,3 +321,56 @@ fn an_iosurface_pitch_below_the_textures_own_row_is_refused_at_every_rotation()
+     // plane's is shorter, which is the 64x16 pair above.
+     assert_eq!(turned(1, 16, 64, 64), below(64, 256));
+ }
++
++/// iOS checks the rotated storage width. The same plane still has to cover every
++/// stored row, fit the buffer, and keep the existing offset and pitch alignment.
++#[test]
++fn ios_rotated_surface_pitch_covers_the_stored_extent() {
++    for (width, height, pitch) in [(64, 16, 64), (2608, 1200, 4864)] {
++        for rotation in [1, 3, 4] {
++            let texture = over_a_plane(width, height, pitch);
++            let length = pitch * u64::from(width);
++            let buffer = BufferFacts { length };
++            let (_, placed) = turned_plane("t", &texture, rotation, &buffer, true).unwrap();
++            assert_eq!(placed.gpu.row_bytes, u64::from(height) * 4);
++            assert_eq!(placed.gpu.rows, u64::from(width));
++            assert_eq!(placed.gpu.row_pitch, pitch);
++            assert!(placed.gpu.end() <= length);
++            assert_eq!(placed.gpu.shared_bytes(), 0);
++            assert!(matches!(
++                turned_plane("t", &texture, rotation, &buffer, false),
++                Err(Error::Invalid(Invalid {
++                    problem: Problem::BufferTexture(BufferTextureProblem::RowPitch { .. }),
++                    ..
++                }))
++            ));
++        }
++    }
++    for (rotation, width, height, pitch) in [(1, 16, 64, 64), (2, 64, 16, 64)] {
++        let texture = over_a_plane(width, height, pitch);
++        assert!(matches!(
++            turned_plane("t", &texture, rotation, &BufferFacts { length: 4096 }, true),
++            Err(Error::Invalid(Invalid {
++                problem: Problem::BufferTexture(BufferTextureProblem::RowPitch { .. }),
++                ..
++            }))
++        ));
++    }
++    let texture = over_a_plane(64, 16, 64);
++    assert!(turned_plane("t", &texture, 1, &BufferFacts { length: 4095 }, true).is_err());
++    for texture in [
++        BufferTexture {
++            bytes_per_row: 63,
++            ..texture
++        },
++        BufferTexture {
++            offset: 1,
++            ..texture
++        },
++    ] {
++        assert_eq!(
++            turned_plane("t", &texture, 1, &BufferFacts { length: 8192 }, true),
++            Err(Error::NotImplemented(RuntimeGap::RotatedTexture))
++        );
++    }
++}
+diff --git a/crates/metal2vulkan-runtime/src/texture/heap.rs b/crates/metal2vulkan-runtime/src/texture/heap.rs
+index 5d615a1a6..4464fa100 100644
+--- a/crates/metal2vulkan-runtime/src/texture/heap.rs
++++ b/crates/metal2vulkan-runtime/src/texture/heap.rs
+@@ -3413,7 +3413,8 @@ fn split_heap_rows(driver: Option<DriverId>, plan: &ImagePlan) -> bool {
+         && !(u64::from(plan.extent[0]) * u64::from(block.size)).is_multiple_of(64)
+ }
+ 
+-#[cfg(all(test, any(m2v_gpu, m2v_cpu_icd)))]
++#[cfg(test)]
++#[cfg(any(m2v_gpu, m2v_cpu_icd))]
+ #[path = "../tests/heap_linear_words.rs"]
+ mod linear_words;
+ 
+diff --git a/crates/metal2vulkan-runtime/src/texture/rotation.rs b/crates/metal2vulkan-runtime/src/texture/rotation.rs
+index ed90a7e79..0940c495d 100644
+--- a/crates/metal2vulkan-runtime/src/texture/rotation.rs
++++ b/crates/metal2vulkan-runtime/src/texture/rotation.rs
+@@ -14,12 +14,15 @@
+ //! - **CPU access and blits** (`getBytes`, `replaceRegion`, blits in and out) address the plane as
+ //!   a 2D texture of the texture's own extent at the plane's offset and rows, turned or not. The
+ //!   texture's texels lie there (`rotated_rows`), their rows a row apart or further: a rotated
+-//!   plane's `bytesPerRow` is a multiple of 16 and covers the texture's own row
++//!   plane's `bytesPerRow` is a multiple of 16 and covers the texture's own row on macOS
+ //!   (`buffer_texture::turned_plane`, `covers_its_row`), so no two of them share a byte
+ //!   (`tests::buffer_texture::no_rotated_plane_s_gpu_rows_share_bytes`). Where those rows run
+ //!   past the buffer, whose bytes Metal reads past the stored frame, the runtime has no bytes,
+ //!   and those uses are refused (`NotImplemented(RotatedTexture)`,
+ //!   [`Texture::check_rotated_reach`]).
++//!   iOS accepts a pitch covering the stored frame's row instead, selected by
++//!   `IoSurfacePlane::stored_rotation_rows`. Its render and resolve copies use that
++//!   stored extent; CPU access retains the existing row addressing and range checks.
+ //! - **Functions** see the stored frame unturned: `get_width()` and `get_height()` answer the
+ //!   extent Metal stores the texture as, `read()` at `(x, y)` (in a fragment, a kernel, or a
+ //!   `read_write` kernel) gives the plane's texel `(x, y)` of that extent, a position past it
+diff --git a/crates/metal2vulkan-validation/runtime-sources.sha256 b/crates/metal2vulkan-validation/runtime-sources.sha256
+index aae669461..35bc65e15 100644
+--- a/crates/metal2vulkan-validation/runtime-sources.sha256
++++ b/crates/metal2vulkan-validation/runtime-sources.sha256
+@@ -1 +1 @@
+-9619c57fb359f9f0971921f343956fc35d11d17dc3b72e95fc58206843a83321
++2859f056ba656c842016074108f05b11cc1cb45466473075b3dbf21f2858dc65
+diff --git a/crates/metal2vulkan-validation/src/runtime_lane/rotated_textures.rs b/crates/metal2vulkan-validation/src/runtime_lane/rotated_textures.rs
+index 6177c1105..ad74c123e 100644
+--- a/crates/metal2vulkan-validation/src/runtime_lane/rotated_textures.rs
++++ b/crates/metal2vulkan-validation/src/runtime_lane/rotated_textures.rs
+@@ -490,6 +490,108 @@ fn passes_store_load_and_resolve_rotated_textures_as_metal_turns_them() {
+     quiet(&messages);
+ }
+ 
++/// A landscape iOS drawable uses the portrait plane's pitch. Exercise the actual
++/// render and resolve copies at that pitch, then read the stored frame through a view.
++#[test]
++fn ios_landscape_surface_stores_and_resolves_at_the_portrait_pitch() {
++    let cache = ScratchCache::new().unwrap();
++    let messages = Messages::default();
++    let device = validated_device(TEST_DEVICE, &messages, cache.path()).unwrap();
++    let lane = Lane::new(&device);
++    let (w, h) = (64, 16);
++    let source = lane.naming(w, h);
++    for rotation in [1, 3, 4] {
++        let bpr = h * TEXEL;
++        let plane = plane(&lane, rotation, (w, h), bpr);
++        let mut descriptor = TextureDescriptor::texture_2d(PF, w, h, false);
++        descriptor.usage = TextureUsage::RENDER_TARGET | TextureUsage::SHADER_READ;
++        descriptor.resource_options = plane.resource_options();
++        descriptor.rotation = rotation;
++        descriptor.framebuffer_only = true;
++        let texture = plane
++            .new_texture_with_iosurface_plane(
++                &descriptor,
++                IoSurfacePlane::new(0, bpr, false).with_stored_rotation_rows(),
++            )
++            .unwrap();
++        for resolve in [false, true] {
++            let before = bytes_of(&plane);
++            lane.pass(&texture, LoadAction::Clear, resolve, &source, (w, h));
++            let want = expected(rotation, (w, h), bpr, (w, h), &before, |_, _| [0; 4]);
++            assert_eq!(
++                bytes_of(&plane),
++                want,
++                "rotation {rotation}, resolve {resolve}"
++            );
++        }
++        let view = texture.new_texture_view(PixelFormat::RGBA8Unorm).unwrap();
++        let mut output = TextureDescriptor::texture_2d(PF, h, w, false);
++        output.usage = TextureUsage::RENDER_TARGET;
++        let output = device.new_texture(&output).unwrap();
++        lane.pass(&output, LoadAction::Clear, false, &view, (h, w));
++        let mut pixels = vec![0; (w * h * TEXEL) as usize];
++        output
++            .get_bytes(&mut pixels, h * TEXEL, 0, Region::new_2d(0, 0, h, w), 0, 0)
++            .unwrap();
++        // Interpreting the BGRA plane as RGBA swaps its red and blue channels.
++        let physical = bytes_of(&plane);
++        for (got, want) in pixels
++            .as_chunks::<4>()
++            .0
++            .iter()
++            .zip(physical.as_chunks::<4>().0)
++        {
++            assert_eq!(
++                got,
++                &[want[2], want[1], want[0], want[3]],
++                "rotation {rotation} view"
++            );
++        }
++        lane.kept(&texture);
++        assert_eq!(bytes_of(&plane), physical, "rotation {rotation} empty pass");
++        eprintln!("IOS-ROTATED-PASS rotation {rotation}: portrait pitch, render, resolve and view readback");
++    }
++    quiet(&messages);
++}
++
++/// The device's 2608x1200 landscape frame fits its 1200x2608 IOSurface at
++/// 4864 bytes per row. Check the actual copied pixel bytes and every padding byte.
++#[test]
++fn ios_phone_landscape_frame_preserves_pixels_and_row_padding() {
++    let cache = ScratchCache::new().unwrap();
++    let messages = Messages::default();
++    let device = validated_device(TEST_DEVICE, &messages, cache.path()).unwrap();
++    let lane = Lane::new(&device);
++    let (w, h, bpr) = (2608, 1200, 4864);
++    let source = lane.naming(w, h);
++    for rotation in [1, 3] {
++        let plane = plane(&lane, rotation, (w, h), bpr);
++        let mut descriptor = TextureDescriptor::texture_2d(PF, w, h, false);
++        descriptor.usage = TextureUsage::RENDER_TARGET | TextureUsage::SHADER_READ;
++        descriptor.resource_options = plane.resource_options();
++        descriptor.rotation = rotation;
++        descriptor.framebuffer_only = true;
++        let texture = plane
++            .new_texture_with_iosurface_plane(
++                &descriptor,
++                IoSurfacePlane::new(0, bpr, false).with_stored_rotation_rows(),
++            )
++            .unwrap();
++        let before = bytes_of(&plane);
++        lane.pass(&texture, LoadAction::Clear, false, &source, (w, h));
++        let want = expected(rotation, (w, h), bpr, (w, h), &before, |_, _| [0; 4]);
++        let got = bytes_of(&plane);
++        if let Some(at) = first_difference(&got, &want, bpr) {
++            panic!("phone rotation {rotation}: {at}");
++        }
++        eprintln!(
++            "IOS-PHONE-ROTATION {rotation}: {} pixel and padding bytes matched",
++            got.len()
++        );
++    }
++    quiet(&messages);
++}
++
+ /// The consumer's frame: a 32x32 texture, one tile, of every rotation, its plane's texels naming
+ /// their stored position. A pass that loads it and draws nothing leaves every byte in place; one
+ /// that loads it and draws its top-left corner leaves, at rotation 4, every other texel mirrored
+diff --git a/crates/metal2vulkan/src/cache/mod.rs b/crates/metal2vulkan/src/cache/mod.rs
+index c36050d7d..c38749c24 100644
+--- a/crates/metal2vulkan/src/cache/mod.rs
++++ b/crates/metal2vulkan/src/cache/mod.rs
+@@ -93,7 +93,7 @@ pub const ARTIFACT_FORMAT_VERSION: u32 = 489;
+ /// changes no behaviour, and then updates that hash alone with the commit saying why, or changes
+ /// behaviour and also bumps this version. The commit that bumps it says what changed; this comment
+ /// keeps no history.
+-pub const RUNTIME_VERSION: u32 = 1775;
++pub const RUNTIME_VERSION: u32 = 1776;
+ 
+ /// The digest of the sources this build of the crate was compiled from: SHA-256, as lowercase hex,
+ /// of the manifest, the build script, and exactly the files the crate roots' module tree compiles
+diff --git a/crates/metal2vulkan/tests/api_signatures.tsv b/crates/metal2vulkan/tests/api_signatures.tsv
+index ccdb27c09..86c44ac58 100644
+--- a/crates/metal2vulkan/tests/api_signatures.tsv
++++ b/crates/metal2vulkan/tests/api_signatures.tsv
+@@ -2191,6 +2191,7 @@ field	metal2vulkan-runtime::IoSurfacePlane.bytes_per_row	pub bytes_per_row: u64
+ field	metal2vulkan-runtime::IoSurfacePlane.client_direction	pub client_direction: Option<u64>
+ field	metal2vulkan-runtime::IoSurfacePlane.offset	pub offset: u64
+ field	metal2vulkan-runtime::IoSurfacePlane.planar	pub planar: bool
++field	metal2vulkan-runtime::IoSurfacePlane.stored_rotation_rows	pub stored_rotation_rows: bool
+ field	metal2vulkan-runtime::IoSurfacePlane.ycbcr	pub ycbcr: Option<IoSurfaceYCbCr>
+ field	metal2vulkan-runtime::IoSurfaceYCbCr.chroma_bytes_per_row	pub chroma_bytes_per_row: u64
+ field	metal2vulkan-runtime::IoSurfaceYCbCr.chroma_offset	pub chroma_offset: u64
+@@ -7292,7 +7293,7 @@ macro-template	metal2vulkan-air::metal_flags!	( $(#[$meta:meta])* $name:ident =
+ macro-template	metal2vulkan-air::vk_bit!	( $(#[$meta:meta])* $name:ident($raw:ty) = $vk:literal in $flags:ident { $($konst:ident = $value:literal, $vkname:literal;)* } aliases { $($alias:literal => $target:ident;)* } ) => { $(#[$meta])* #[repr(transparent)] #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)] #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))] #[cfg_attr(feature = "serde", serde(try_from = "u32", into = "u32"))] pub struct $name($raw); impl $name { $( #[doc = concat!("`", $vkname, "`.")] pub const $konst: $name = $name($value); )* pub const VK_NAME: &'static str = $vk; pub const KNOWN: &'static [$name] = &[$($name::$konst),*]; const NAMES: &'static [($name, &'static str)] = &[$(($name::$konst, $vkname)),*]; const ALIASES: &'static [(&'static str, $name)] = &[$(($alias, $name::$target)),*]; pub const fn from_raw(raw: $raw) -> Option<$name> { let mut i = 0; while i < Self::KNOWN.len() { if Self::KNOWN[i].0 == raw { return Some(Self::KNOWN[i]); } i += 1; } None } pub const fn from_flags(flags: $flags) -> Option<$name> { Self::from_raw(flags.as_raw()) } pub const fn as_raw(self) -> $raw { self.0 } pub const fn flags(self) -> $flags { $flags::from_raw(self.0) } pub fn name(self) -> &'static str { Self::NAMES .iter() .find(|(v, _)| *v == self) .map(|(_, n)| *n) .expect("a single-bit value is always a named bit") } pub fn from_name(name: &str) -> Option<$name> { Self::NAMES .iter() .find(|(_, n)| *n == name) .map(|(v, _)| *v) .or_else(|| Self::ALIASES.iter().find(|(n, _)| *n == name).map(|(_, v)| *v)) } } impl ::std::convert::TryFrom<$raw> for $name { type Error = $raw; fn try_from(raw: $raw) -> Result<$name, $raw> { $name::from_raw(raw).ok_or(raw) } } impl From<$name> for $raw { fn from(bit: $name) -> $raw { bit.0 } } impl From<$name> for $flags { fn from(bit: $name) -> $flags { bit.flags() } } impl ::std::fmt::Debug for $name { fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result { f.write_str(self.name()) } } };
+ macro-template	metal2vulkan-air::vk_enum!	( $(#[$meta:meta])* $name:ident($raw:ty) = $vk:literal { $($konst:ident = $value:literal, $vkname:literal;)* } aliases { $($alias:literal => $target:ident;)* } ) => { $(#[$meta])* #[repr(transparent)] #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)] #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))] #[cfg_attr(feature = "serde", serde(transparent))] pub struct $name($raw); impl $name { $( #[doc = concat!("`", $vkname, "`.")] pub const $konst: $name = $name($value); )* pub const VK_NAME: &'static str = $vk; pub const KNOWN: &'static [$name] = &[$($name::$konst),*]; const NAMES: &'static [($name, &'static str)] = &[$(($name::$konst, $vkname)),*]; const ALIASES: &'static [(&'static str, $name)] = &[$(($alias, $name::$target)),*]; pub const fn from_raw(raw: $raw) -> $name { $name(raw) } pub const fn as_raw(self) -> $raw { self.0 } pub fn name(self) -> Option<&'static str> { Self::NAMES.iter().find(|(v, _)| *v == self).map(|(_, n)| *n) } pub fn is_known(self) -> bool { self.name().is_some() } pub fn from_name(name: &str) -> Option<$name> { Self::NAMES .iter() .find(|(_, n)| *n == name) .map(|(v, _)| *v) .or_else(|| Self::ALIASES.iter().find(|(n, _)| *n == name).map(|(_, v)| *v)) } } impl ::std::fmt::Debug for $name { fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result { match self.name() { Some(name) => f.write_str(name), None => write!(f, "{}({})", $vk, self.0), } } } };
+ macro-template	metal2vulkan-air::vk_flags!	( $(#[$meta:meta])* $name:ident($raw:ty) = $vk:literal { $($konst:ident = $value:literal, $vkname:literal;)* } aliases { $($alias:literal => $target:ident;)* } ) => { $(#[$meta])* #[repr(transparent)] #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)] #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))] #[cfg_attr(feature = "serde", serde(transparent))] pub struct $name($raw); impl $name { $( #[doc = concat!("`", $vkname, "`.")] pub const $konst: $name = $name($value); )* pub const VK_NAME: &'static str = $vk; pub const KNOWN: &'static [($name, &'static str)] = &[$(($name::$konst, $vkname)),*]; const ALIASES: &'static [(&'static str, $name)] = &[$(($alias, $name::$target)),*]; pub const fn empty() -> $name { $name(0) } pub const fn from_raw(raw: $raw) -> $name { $name(raw) } pub const fn as_raw(self) -> $raw { self.0 } pub const fn is_empty(self) -> bool { self.0 == 0 } pub const fn contains(self, other: $name) -> bool { self.0 & other.0 == other.0 } pub const fn intersects(self, other: $name) -> bool { self.0 & other.0 != 0 } pub const fn union(self, other: $name) -> $name { $name(self.0 | other.0) } pub const fn intersection(self, other: $name) -> $name { $name(self.0 & other.0) } pub const fn difference(self, other: $name) -> $name { $name(self.0 & !other.0) } pub const fn known_bits() -> $name { let mut bits: $raw = 0; let mut i = 0; while i < Self::KNOWN.len() { let v = Self::KNOWN[i].0 .0; if v.count_ones() == 1 { bits |= v; } i += 1; } $name(bits) } pub fn name(self) -> Option<&'static str> { Self::KNOWN.iter().find(|(v, _)| *v == self).map(|(_, n)| *n) } pub fn from_name(name: &str) -> Option<$name> { Self::KNOWN .iter() .find(|(_, n)| *n == name) .map(|(v, _)| *v) .or_else(|| Self::ALIASES.iter().find(|(n, _)| *n == name).map(|(_, v)| *v)) } } impl ::std::ops::BitOr for $name { type Output = $name; fn bitor(self, rhs: $name) -> $name { self.union(rhs) } } impl ::std::ops::BitOrAssign for $name { fn bitor_assign(&mut self, rhs: $name) { *self = self.union(rhs); } } impl ::std::ops::BitAnd for $name { type Output = $name; fn bitand(self, rhs: $name) -> $name { self.intersection(rhs) } } impl ::std::ops::BitAndAssign for $name { fn bitand_assign(&mut self, rhs: $name) { *self = self.intersection(rhs); } } impl ::std::fmt::Debug for $name { fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result { if let Some(name) = self.name() { return f.write_str(name); } let mut rest = self.0; let mut first = true; for (v, n) in Self::KNOWN { if v.0.count_ones() == 1 && rest & v.0 != 0 { if !first { f.write_str(" | ")?; } f.write_str(n)?; rest &= !v.0; first = false; } } if rest != 0 || first { if !first { f.write_str(" | ")?; } write!(f, "{:#x}", rest)?; } Ok(()) } } };
+-macro-template	metal2vulkan-runtime::commands!	( v1_0 { $($v0:ident $f0:ident $n0:literal ($($a0:ident: $t0:ty),*) $(-> $r0:ty)?;)* } v1_3 { $($v3:ident $f3:ident $n3:literal ($($a3:ident: $t3:ty),*) $(-> $r3:ty)?;)* } extension { $($ve:ident $fe:ident $ne:literal ($($ae:ident: $te:ty),*) $(-> $re:ty)?;)* } ) => { #[derive(Clone, Copy, PartialEq, Eq, Debug)] pub(crate) enum Command { $($v0,)* $($v3,)* $($ve,)* } impl Command { pub(crate) const ALL: &'static [Command] = &[ $(Command::$v0,)* $(Command::$v3,)* $(Command::$ve,)* ]; pub(crate) const COUNT: usize = Command::ALL.len(); pub(crate) fn name(self) -> &'static CStr { match self { $(Command::$v0 => $n0,)* $(Command::$v3 => $n3,)* $(Command::$ve => $ne,)* } } } #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)] pub struct CommandsRecorded { $( #[doc = concat!("The calls of `", stringify!($v0), "`.")] pub $f0: u64, )* $( #[doc = concat!("The calls of `", stringify!($v3), "`.")] pub $f3: u64, )* $( #[doc = concat!("The calls of `", stringify!($ve), "`.")] pub $fe: u64, )* } impl CommandsRecorded { fn read(shards: &[Shard; SHARDS + 1]) -> CommandsRecorded { let sum = |command: Command| { let counts = shards.iter().map(|shard| &shard.0[command as usize]); counts.map(|count| count.load(Ordering::Relaxed)).sum() }; CommandsRecorded { $($f0: sum(Command::$v0),)* $($f3: sum(Command::$v3),)* $($fe: sum(Command::$ve),)* } } } struct Real { $($f0: [AtomicPtr<c_void>; SLOTS],)* $($f3: [AtomicPtr<c_void>; SLOTS],)* $($fe: [AtomicPtr<c_void>; SLOTS],)* } static REAL: Real = Real { $($f0: [const { AtomicPtr::new(std::ptr::null_mut()) }; SLOTS],)* $($f3: [const { AtomicPtr::new(std::ptr::null_mut()) }; SLOTS],)* $($fe: [const { AtomicPtr::new(std::ptr::null_mut()) }; SLOTS],)* }; commands!(@thunks $($v0 $f0 $n0 ($($a0: $t0),*) $(-> $r0)?;)*); commands!(@thunks $($v3 $f3 $n3 ($($a3: $t3),*) $(-> $r3)?;)*); commands!(@thunks $($ve $fe $ne ($($ae: $te),*) $(-> $re)?;)*); pub(super) fn thunk<const S: usize>(command: Command) -> *const c_void { match command { $(Command::$v0 => $f0::<S> as *const c_void,)* $(Command::$v3 => $f3::<S> as *const c_void,)* $(Command::$ve => $fe::<S> as *const c_void,)* } } pub(super) fn store(index: usize, command: Command, real: *const c_void) { let real = real.cast_mut(); match command { $(Command::$v0 => REAL.$f0[index].store(real, Ordering::Release),)* $(Command::$v3 => REAL.$f3[index].store(real, Ordering::Release),)* $(Command::$ve => REAL.$fe[index].store(real, Ordering::Release),)* } } pub(super) fn clear(index: usize) { $(REAL.$f0[index].store(std::ptr::null_mut(), Ordering::Release);)* $(REAL.$f3[index].store(std::ptr::null_mut(), Ordering::Release);)* $(REAL.$fe[index].store(std::ptr::null_mut(), Ordering::Release);)* } pub(super) fn route_tables<const S: usize>( v1_0: &mut ash::DeviceFnV1_0, v1_3: &mut ash::DeviceFnV1_3, ) { $( store(S, Command::$v0, v1_0.$f0 as *const c_void); v1_0.$f0 = $f0::<S>; )* $( store(S, Command::$v3, v1_3.$f3 as *const c_void); v1_3.$f3 = $f3::<S>; )* } }; (@thunks $($v:ident $f:ident $n:literal ($($a:ident: $t:ty),*) $(-> $r:ty)?;)*) => { $( unsafe extern "system" fn $f<const S: usize>( command_buffer: vk::CommandBuffer, $($a: $t,)* ) $(-> $r)? { let at = held(); crate::shards::add(at, &COUNTS[S][at].0[Command::$v as usize], 1); let real = REAL.$f[S].load(Ordering::Acquire); if real.is_null() { missing($n); } let result = unsafe { let real = std::mem::transmute::< *mut c_void, unsafe extern "system" fn(vk::CommandBuffer, $($t,)*) $(-> $r)?, >(real); real(command_buffer, $($a,)*) }; diagnostic_operation!($v, command_buffer, result; $($a),*); result } )* };
++macro-template	metal2vulkan-runtime::commands!	( v1_0 { $($v0:ident $f0:ident $n0:literal ($($a0:ident: $t0:ty),*) $(-> $r0:ty)?;)* } v1_3 { $($v3:ident $f3:ident $n3:literal ($($a3:ident: $t3:ty),*) $(-> $r3:ty)?;)* } extension { $($ve:ident $fe:ident $ne:literal ($($ae:ident: $te:ty),*) $(-> $re:ty)?;)* } ) => { #[derive(Clone, Copy, PartialEq, Eq, Debug)] pub(crate) enum Command { $($v0,)* $($v3,)* $($ve,)* } impl Command { pub(crate) const ALL: &'static [Command] = &[ $(Command::$v0,)* $(Command::$v3,)* $(Command::$ve,)* ]; pub(crate) const COUNT: usize = Command::ALL.len(); pub(crate) fn name(self) -> &'static CStr { match self { $(Command::$v0 => $n0,)* $(Command::$v3 => $n3,)* $(Command::$ve => $ne,)* } } } #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)] pub struct CommandsRecorded { $( #[doc = concat!("The calls of `", stringify!($v0), "`.")] pub $f0: u64, )* $( #[doc = concat!("The calls of `", stringify!($v3), "`.")] pub $f3: u64, )* $( #[doc = concat!("The calls of `", stringify!($ve), "`.")] pub $fe: u64, )* } impl CommandsRecorded { fn read(shards: &[Shard; SHARDS + 1]) -> CommandsRecorded { let sum = |command: Command| { let counts = shards.iter().map(|shard| &shard.0[command as usize]); counts.map(|count| count.load(Ordering::Relaxed)).sum() }; CommandsRecorded { $($f0: sum(Command::$v0),)* $($f3: sum(Command::$v3),)* $($fe: sum(Command::$ve),)* } } } struct Real { $($f0: [AtomicPtr<c_void>; SLOTS],)* $($f3: [AtomicPtr<c_void>; SLOTS],)* $($fe: [AtomicPtr<c_void>; SLOTS],)* } static REAL: Real = Real { $($f0: [const { AtomicPtr::new(std::ptr::null_mut()) }; SLOTS],)* $($f3: [const { AtomicPtr::new(std::ptr::null_mut()) }; SLOTS],)* $($fe: [const { AtomicPtr::new(std::ptr::null_mut()) }; SLOTS],)* }; commands!(@thunks $($v0 $f0 $n0 ($($a0: $t0),*) $(-> $r0)?;)*); commands!(@thunks $($v3 $f3 $n3 ($($a3: $t3),*) $(-> $r3)?;)*); commands!(@thunks $($ve $fe $ne ($($ae: $te),*) $(-> $re)?;)*); pub(super) fn thunk<const S: usize>(command: Command) -> *const c_void { match command { $(Command::$v0 => $f0::<S> as *const c_void,)* $(Command::$v3 => $f3::<S> as *const c_void,)* $(Command::$ve => $fe::<S> as *const c_void,)* } } pub(super) fn store(index: usize, command: Command, real: *const c_void) { let real = real.cast_mut(); match command { $(Command::$v0 => REAL.$f0[index].store(real, Ordering::Release),)* $(Command::$v3 => REAL.$f3[index].store(real, Ordering::Release),)* $(Command::$ve => REAL.$fe[index].store(real, Ordering::Release),)* } } pub(super) fn clear(index: usize) { $(REAL.$f0[index].store(std::ptr::null_mut(), Ordering::Release);)* $(REAL.$f3[index].store(std::ptr::null_mut(), Ordering::Release);)* $(REAL.$fe[index].store(std::ptr::null_mut(), Ordering::Release);)* } pub(super) fn route_tables<const S: usize>( v1_0: &mut ash::DeviceFnV1_0, v1_3: &mut ash::DeviceFnV1_3, ) { $( store(S, Command::$v0, v1_0.$f0 as *const c_void); v1_0.$f0 = $f0::<S>; )* $( store(S, Command::$v3, v1_3.$f3 as *const c_void); v1_3.$f3 = $f3::<S>; )* } }; (@thunks $($v:ident $f:ident $n:literal ($($a:ident: $t:ty),*) $(-> $r:ty)?;)*) => { $( unsafe extern "system" fn $f<const S: usize>( command_buffer: vk::CommandBuffer, $($a: $t,)* ) $(-> $r)? { let at = held(); crate::shards::add(at, &COUNTS[S][at].0[Command::$v as usize], 1); let real = REAL.$f[S].load(Ordering::Acquire); if real.is_null() { missing($n); } let diagnostic_began = match Command::$v { Command::CmdBeginRenderPass | Command::CmdEndRenderPass => crate::stage_trace::diagnostic_recording_began(), _ => 0, }; let result = unsafe { let real = std::mem::transmute::< *mut c_void, unsafe extern "system" fn(vk::CommandBuffer, $($t,)*) $(-> $r)?, >(real); real(command_buffer, $($a,)*) }; match Command::$v { Command::CmdBeginRenderPass => crate::stage_trace::diagnostic_recording_ended( command_buffer.as_raw(), 3, diagnostic_began), Command::CmdEndRenderPass => crate::stage_trace::diagnostic_recording_ended( command_buffer.as_raw(), 4, diagnostic_began), _ => { diagnostic_operation!($v, command_buffer, result; $($a),*); } } result } )* };
+ macro-template	metal2vulkan-runtime::degradations!	( runtime { $( $(#[doc = $doc:literal])* $kind:ident = $code:literal, $category:ident, $cost:literal; )* } notes { $( $(#[doc = $note_doc:literal])* $note:ident = $note_code:literal; )* } ) => { #[non_exhaustive] #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)] pub enum Degradation { $($(#[doc = $doc])* $kind,)* $( #[doc = concat!( "A pipeline stage records [`PrecisionNote::", stringify!($note), "`]." )] $(#[doc = $note_doc])* $note, )* } impl Degradation { pub const ALL: &'static [Degradation] = &[$(Degradation::$kind,)* $(Degradation::$note,)*]; pub const fn code(self) -> &'static str { match self { $(Degradation::$kind => concat!("metal2vulkan-degrade-", $code),)* $(Degradation::$note => concat!("metal2vulkan-degrade-", $note_code),)* } } pub const fn category(self) -> DegradationCategory { match self { $(Degradation::$kind => DegradationCategory::$category,)* $(Degradation::$note => DegradationCategory::Precision,)* } } pub const fn cost(self) -> &'static str { match self { $(Degradation::$kind => $cost,)* $(Degradation::$note => NOTE_COST,)* } } pub const fn precision_note(self) -> Option<PrecisionNote> { match self { $(Degradation::$kind => None,)* $(Degradation::$note => Some(PrecisionNote::$note),)* } } pub const fn from_precision_note(note: PrecisionNote) -> Degradation { match note { $(PrecisionNote::$note => Degradation::$note,)* } } } };
+ macro-template	metal2vulkan-runtime::exposures!	($($exposure:expr => [$($feature:ident),* $(,)?];)*) => { impl VkFeature { pub const ALL: &'static [VkFeature] = &[$($(VkFeature::$feature),*),*]; pub fn exposure(self) -> Exposure { match self { $($(VkFeature::$feature)|* => $exposure,)* } } } };
+ macro-template	metal2vulkan-runtime::flag_set!	( $(#[$doc:meta])* $name:ident { $($(#[$fdoc:meta])* $flag:ident = $bit:expr),* $(,)? } $(#[$all:meta])* ALL ) => { $(#[$doc])* #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)] pub struct $name(u8); impl $name { pub const NONE: $name = $name(0); $($(#[$fdoc])* pub const $flag: $name = $name($bit);)* $(#[$all])* pub const ALL: &'static [($name, &'static str)] = &[$(($name::$flag, stringify!($flag))),*]; pub const fn union(self, other: $name) -> $name { $name(self.0 | other.0) } pub const fn contains(self, other: $name) -> bool { self.0 & other.0 == other.0 } #[cfg(test)] pub const fn bits(self) -> u8 { self.0 } } };
+@@ -8187,6 +8188,7 @@ method	metal2vulkan-runtime::IndirectRenderCommand::vertex_buffer	pub fn vertex_
+ method	metal2vulkan-runtime::Invalid::new	pub fn new(call: &'static str, problem: Problem) -> Invalid
+ method	metal2vulkan-runtime::IoSurfacePlane::new	pub const fn new(offset: u64, bytes_per_row: u64, planar: bool) -> IoSurfacePlane
+ method	metal2vulkan-runtime::IoSurfacePlane::with_client_direction	pub const fn with_client_direction(mut self, direction: u64) -> IoSurfacePlane
++method	metal2vulkan-runtime::IoSurfacePlane::with_stored_rotation_rows	pub const fn with_stored_rotation_rows(mut self) -> IoSurfacePlane
+ method	metal2vulkan-runtime::IoSurfacePlane::with_ycbcr	pub const fn with_ycbcr(mut self, ycbcr: IoSurfaceYCbCr) -> IoSurfacePlane
+ method	metal2vulkan-runtime::IoSurfaceYCbCr::new	pub const fn new(pixel_format: u32, plane: u64, size: [u64; 2], chroma_offset: u64, chroma_bytes_per_row: u64) -> IoSurfaceYCbCr
+ method	metal2vulkan-runtime::IoSurfaceYCbCr::with_matrix	pub const fn with_matrix(mut self, matrix: SurfaceYCbCrMatrix) -> IoSurfaceYCbCr
+diff --git a/docs/REFUSALS.md b/docs/REFUSALS.md
+index af4ff2a8a..247486442 100644
+--- a/docs/REFUSALS.md
++++ b/docs/REFUSALS.md
+@@ -35,7 +35,7 @@ Columns:
+ | Rate maps the compile layer does not compile | 5 | 5 | 0 | 0 | 4 | 1 | 0 |
+ | The translation deadline | 1 | 1 | 0 | 0 | 0 | 1 | 0 |
+ | What a call did wrong | 65 | 65 | 0 | 0 | 0 | 0 | 0 |
+-| What a call did wrong, in detail | 167 | 150 | 0 | 0 | 0 | 0 | 0 |
++| What a call did wrong, in detail | 168 | 151 | 0 | 0 | 0 | 0 | 0 |
+ 
+ ## Totals by basis
+ 
+@@ -49,7 +49,7 @@ Columns:
+ | Rate maps the compile layer does not compile | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 5 |
+ | The translation deadline | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
+ | What a call did wrong | 21 | 3 | 5 | 0 | 11 | 8 | 17 | 0 |
+-| What a call did wrong, in detail | 59 | 26 | 23 | 0 | 33 | 26 | 0 | 0 |
++| What a call did wrong, in detail | 59 | 26 | 23 | 0 | 34 | 26 | 0 | 0 |
+ 
+ ## 1. Translator and front-end refusals (`Unsupported`: a `Feature` and its `Needs`)
+ 
+@@ -380,7 +380,7 @@ Columns:
+ | `RequiredThreads` | A pipeline's `requiredThreadsPerThreadgroup` that Metal refuses at creation, or a dispatch whose threadgroup size is not it | every device (a public call's own check of its arguments) | `delegated`: RequiredThreadsProblem, section 9 | 1: `crates/metal2vulkan-runtime/src/pipeline/additions.rs (check_kernel)` | `-` |
+ | `BinaryFunctions` | A pipeline's binary functions that Metal refuses | every device (a public call's own check of its arguments) | `delegated`: BinaryFunctionProblem, section 9 | 5: `crates/metal2vulkan-runtime/src/pipeline/additions.rs (added, 2 sites)`, `crates/metal2vulkan-runtime/src/pipeline/additions.rs (check_mesh)` (+2) | `-` |
+ | `DynamicLibraryFunction` | A function made by name from a dynamic library (`newFunctionWithName:` and its forms) | every device (a public call's own check of its arguments) | `metal-measured`: an M3 Max and an M4, plain and under API validation: Metal asserts "type is not a valid MTLFunctionType" | 1: `crates/metal2vulkan-runtime/src/library.rs (function)` | `-` |
+-| `Rebind` | `rebind_bytes_no_copy` of a buffer or heap the runtime cannot rebind as asked (a runtime extension; `rebind.rs`) | every device (a public call's own check of its arguments) | `ours`: a runtime extension: Metal rebinds no bytes under a buffer | 5: `crates/metal2vulkan-runtime/src/buffer_descriptor.rs (rebind_host_pages)`, `crates/metal2vulkan-runtime/src/detach.rs (detach_backing, 2 sites)` (+1) | `-` |
++| `Rebind` | `rebind_bytes_no_copy` of a buffer or heap the runtime cannot rebind as asked (a runtime extension; `rebind.rs`) | every device (a public call's own check of its arguments) | `ours`: a runtime extension: Metal rebinds no bytes under a buffer | 7: `crates/metal2vulkan-runtime/src/buffer_descriptor.rs (rebind_host_pages)`, `crates/metal2vulkan-runtime/src/detach.rs (detach_backing, 2 sites)` (+1) | `-` |
+ | `IndirectCommandsDirectArgument` | `new_render_pipeline_state`, `new_mesh_render_pipeline_state` or `new_compute_pipeline_state` of a descriptor with `supportIndirectCommandBuffers`... | every device (a public call's own check of its arguments) | `metal-measured`: an M3 Max under macOS 26.7 and an M4 under 27.0.1: plain Metal answers nil with an NSError | 1: `crates/metal2vulkan-runtime/src/pipeline/indirect_arguments.rs (refusal)` | `-` |
+ | `UnrasterizedVertexReturn` | `new_render_pipeline_state` of a descriptor with rasterization disabled whose vertex function's return type is not `void` | every device (a public call's own check of its arguments) | `metal-measured`: an M4, macOS 27.0.1: plain Metal answers nil with an NSError | 1: `crates/metal2vulkan-runtime/src/pipeline/unrasterized.rs (check)` | `-` |
+ | `IndirectCommandsDirectArgumentUnproven` | `new_render_pipeline_state` (a render or mesh state) of a descriptor with `supportIndirectCommandBuffers` whose function of `stage`, the first in... | every device (a public call's own check of its arguments) | `unknown`: Metal's answer for a use only this rule keeps is unmeasured, so the state is refused as unproven | 1: `crates/metal2vulkan-runtime/src/pipeline/indirect_arguments.rs (check_render)` | `-` |
+@@ -562,6 +562,7 @@ Columns:
+ | `BinaryFunctionProblem::CompiledStage` | Functions added to a stage the compile layer already compiled (`StageSource::Compiled`), whose linked functions are fixed | every device (a public call's own check of its arguments) | `ours`: this crate's already-compiled stage: Metal's descriptor takes a function, so it has no such call | 1: `crates/metal2vulkan-runtime/src/pipeline/additions.rs (added)` | `-` |
+ | `RebindProblem::NotHostMemory` | The buffer is not a no-copy buffer of its own (a buffer of the runtime's memory, one over the caller's `VkBuffer`, or a heap's buffer, whose heap... | every device (a public call's own check of its arguments) | `ours`: from `Problem::Rebind` | 4: `crates/metal2vulkan-runtime/src/detach.rs (detach_backing, 2 sites)`, `crates/metal2vulkan-runtime/src/rebind.rs (rebind_bytes_no_copy, 2 sites)` | `-` |
+ | `RebindProblem::EncodedUses` | A command buffer that is not yet committed has encoded a use of the buffer or heap, or of a resource placed in it, or has an encoder open that... | every device (a public call's own check of its arguments) | `ours`: from `Problem::Rebind` | 1: `crates/metal2vulkan-runtime/src/buffer_descriptor.rs (rebind_host_pages)` | `-` |
++| `RebindProblem::Refused` | The device refuses every rebind (`Device::refuse_rebinds`) | every device (a public call's own check of its arguments) | `ours`: from `Problem::Rebind` | 2: `crates/metal2vulkan-runtime/src/rebind.rs (rebind_bytes_no_copy, 2 sites)` | `-` |
+ 
+ ## Appendix: every site
+ 
+@@ -857,7 +858,7 @@ Each refusal's sites, with the function that builds it.
+ - `invalid::RequiredThreads`: `crates/metal2vulkan-runtime/src/pipeline/additions.rs (check_kernel)`
+ - `invalid::BinaryFunctions`: `crates/metal2vulkan-runtime/src/pipeline/additions.rs (added, 2 sites)`; `crates/metal2vulkan-runtime/src/pipeline/additions.rs (check_mesh)`; `crates/metal2vulkan-runtime/src/pipeline/additions.rs (new_compute_pipeline_state_with_additional_binary_functions)`; `crates/metal2vulkan-runtime/src/pipeline/additions.rs (not_precompiled)`
+ - `invalid::DynamicLibraryFunction`: `crates/metal2vulkan-runtime/src/library.rs (function)`
+-- `invalid::Rebind`: `crates/metal2vulkan-runtime/src/buffer_descriptor.rs (rebind_host_pages)`; `crates/metal2vulkan-runtime/src/detach.rs (detach_backing, 2 sites)`; `crates/metal2vulkan-runtime/src/rebind.rs (rebind_bytes_no_copy, 2 sites)`
++- `invalid::Rebind`: `crates/metal2vulkan-runtime/src/buffer_descriptor.rs (rebind_host_pages)`; `crates/metal2vulkan-runtime/src/detach.rs (detach_backing, 2 sites)`; `crates/metal2vulkan-runtime/src/rebind.rs (rebind_bytes_no_copy, 4 sites)`
+ - `invalid::IndirectCommandsDirectArgument`: `crates/metal2vulkan-runtime/src/pipeline/indirect_arguments.rs (refusal)`
+ - `invalid::UnrasterizedVertexReturn`: `crates/metal2vulkan-runtime/src/pipeline/unrasterized.rs (check)`
+ - `invalid::IndirectCommandsDirectArgumentUnproven`: `crates/metal2vulkan-runtime/src/pipeline/indirect_arguments.rs (check_render)`
+@@ -1017,4 +1018,5 @@ Each refusal's sites, with the function that builds it.
+ - `subproblem::BinaryFunctionProblem::CompiledStage`: `crates/metal2vulkan-runtime/src/pipeline/additions.rs (added)`
+ - `subproblem::RebindProblem::NotHostMemory`: `crates/metal2vulkan-runtime/src/detach.rs (detach_backing, 2 sites)`; `crates/metal2vulkan-runtime/src/rebind.rs (rebind_bytes_no_copy, 2 sites)`
+ - `subproblem::RebindProblem::EncodedUses`: `crates/metal2vulkan-runtime/src/buffer_descriptor.rs (rebind_host_pages)`
++- `subproblem::RebindProblem::Refused`: `crates/metal2vulkan-runtime/src/rebind.rs (rebind_bytes_no_copy, 2 sites)`
+ 

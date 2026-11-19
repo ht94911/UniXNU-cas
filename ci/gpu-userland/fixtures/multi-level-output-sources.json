@@ -1,7 +1,7 @@
 {
   "original_pin": "963f0e64f103d2e682cd0cc454a8fe50f52c8cbb",
-  "patched_tree": "6949ff1ac37893ddf59674f79085d0ae3b7d6707",
-  "builder_sha256": "2ab66ca0c707295e23090d7d0d3fe18452bde74a4c86f2ccdf627f397a40023d",
+  "patched_tree": "22664b0ea02da48f4c277d27588eca11c90ec49c",
+  "builder_sha256": "3b68d7cc5862cd1f77487ff385d1e160bc4be50897b5ad457f502126635d50c1",
   "patch_hashes": {
     "0002-resource-wait-storage-dependencies.patch": "4536f03ac5a829d0a23d839491837c62af00c1aa884dc75cdae0f195c7953c0c",
     "0003-cache-device-entry-point-priming.patch": "ca1c0e3733bc048d9771fc3a5d061fc4224eee3341dc41d4b64a71e6e9d06408",
@@ -39,7 +39,8 @@
     "0039-render-pass-driver-clocks.patch": "9d9bf7e50fd5fd6eb6cae2ad8d10e2c099218d84aa1614d1518aaaddca7211f1",
     "0040-multi-level-tiled-output.patch": "cf4c65c2e71d21907d55a16becb7824478c253d5f45a456559449f3b1ddbf68d",
     "0041-multi-level-tiled-input.patch": "6424943312a09ac67057357e22b8f5964be12da60178a2598e311fdcf106ba5b",
-    "0042-ios-foreground-blocks.patch": "cab055528569dcd5f513868dd8d33f0ae1e0cc8d714b0d062f6742509032c6b4"
+    "0042-ios-foreground-blocks.patch": "cab055528569dcd5f513868dd8d33f0ae1e0cc8d714b0d062f6742509032c6b4",
+    "0043-ios-rotated-surface-row-pitch.patch": "49f7b9f9e79e573b44cac7dbe77d8f1c8e3378686107768f1108b62a33a716b2"
   },
   "source_hashes": {
     "crates/metal2vulkan-runtime/src/written_commands.rs": "5c1a9ac622de2d0cfc199de4115a087c6ee9550f4b94059513da4339a4207ac2",
@@ -151,7 +152,7 @@
     "crates/metal2vulkan-runtime/src/attachmentless.rs": "2c8d9c2ef4ea3914a698341aa9e33f4bb693d5924c1ce69d4f1ef9ad3ea96f52",
     "crates/metal2vulkan-runtime/src/fill_value.rs": "5720e4e744b26aa55c485a4ee814198ca2e9700e509eae04ebf1bd3f1b79f2c2",
     "crates/metal2vulkan-runtime/src/capabilities.rs": "7b6680a82fa0354cc01ac9efa65ac1dc99a76e468101dfdafec8f36d170d7353",
-    "crates/metal2vulkan-runtime/src/buffer_texture.rs": "dc78be4883d3b70b789382017f1e943fbcba70e62bfab5326daeb98617bc3823",
+    "crates/metal2vulkan-runtime/src/buffer_texture.rs": "24938cc88c351c0d4eff834d9bd44ae6f7acd54b1b4aa5699ac4db9a1964ac69",
     "crates/metal2vulkan-runtime/src/texture_descriptor.rs": "234de16c11a293ada9d0e2c0871538125a45fb59eb8db6234ddc04d76a04cbee",
     "crates/metal2vulkan-runtime/src/interop.rs": "dff2d87d29c3c644ff512f7fbfc71f3a46e5a2bf4d46450326712cc29597c310",
     "crates/metal2vulkan-runtime/src/pixel_format_info.rs": "c0478579e3e62581450217327e04b61389c6319553c933f77dfdcae9c8eb5c50",
@@ -253,7 +254,7 @@
     "crates/metal2vulkan-runtime/src/recorder/mod.rs": "9ee3613f7c67ca44d4357f08e20af9fcefa78c7902b061b30c52dc995a5222db",
     "crates/metal2vulkan-runtime/src/texture/attached_reads.rs": "537efbdc889bb52bf076912ae65d91a1cffd2effa845193685565c9e836fc421",
     "crates/metal2vulkan-runtime/src/texture/first_move_lifetimes.rs": "f31651a582bd7e3798aac7f4564262da6e008041191f8816dbe9bc6912c8a285",
-    "crates/metal2vulkan-runtime/src/texture/heap.rs": "51c9f25ae7c47338772c2899fd21f256e2d260aa03bef0f323e4716e0c258d36",
+    "crates/metal2vulkan-runtime/src/texture/heap.rs": "277a09d7ce724eac595567016ba3c0ab82fea56c8e79cecf9c2571d85e79345d",
     "crates/metal2vulkan-runtime/src/texture/ycbcr_planes.rs": "64b7e8bb4b48211ad0353744754509b70570ed8d6349e550919e37693532c0a2",
     "crates/metal2vulkan-runtime/src/texture/in_place_image.rs": "94597dfb1588bdb1b3b42a4fd90ef77aa65140e6204e6e037cfcf7b7633393dc",
     "crates/metal2vulkan-runtime/src/texture/usage_shadow.rs": "385f4166f40182563e6c59a064a4b4108266f8e1b030eae329ef35353f4c2cd5",
@@ -264,7 +265,7 @@
     "crates/metal2vulkan-runtime/src/texture/stand_in.rs": "37429d0b169c799950fbae2e14f49e24d8a008294e92c4bd5b4feb102eaf2132",
     "crates/metal2vulkan-runtime/src/texture/staging_copy.rs": "cbaf4bda645ff4fa2365b84c6dcbf3275ec30e391bbe90381a48ddada5ada93f",
     "crates/metal2vulkan-runtime/src/texture/first_move.rs": "dee1d6c208375058fc00367614eaaa432b69000ceb39696c400d596d300ffb51",
-    "crates/metal2vulkan-runtime/src/texture/rotation.rs": "e346d2a5a3896cebdd3ea946243ee478378318b5912d11c0b6dfe9748aea6251",
+    "crates/metal2vulkan-runtime/src/texture/rotation.rs": "7e252ec0437226fef07909c48ffef90d949ceddd07b4cd832adff8b0e36f08e4",
     "crates/metal2vulkan-runtime/src/texture/held_depth.rs": "8e3d3d96844a37aeed57bb2685da247f517683206c6dc654ed748a0eaee66970",
     "crates/metal2vulkan-runtime/src/texture/host_shadow.rs": "f572926b8ea1bfd815ffadd8bbeb704dc63f5af934561de6d1d93788d80ab0dd",
     "crates/metal2vulkan-runtime/src/texture/attributes.rs": "fcca3032ec1dfb42be0b7e255f2cd777d037ccf728d2ecc3f8cec340774546c1",
@@ -284,7 +285,7 @@
     "crates/metal2vulkan-runtime/src/device/staging.rs": "c997ea214346914c533bd64e2f59c39e21c352e955add547d9107cc02fd5f099",
     "crates/metal2vulkan-runtime/src/device/keeper.rs": "251dc018af4e02c03f1e7533d3e6bce794668dd6bfa0a181d809c5c07a0dd51c",
     "crates/metal2vulkan-runtime/src/device/holds.rs": "f452c95a38168aaf3e3fbd1fe335b17a3928699d5b53ef6e7b4b8898e0f0b6fb",
-    "crates/metal2vulkan-runtime/src/device/room.rs": "cb73a34762716b40e391b66ecb04c3460b71af7bed2a7277119719798e59cfbe",
+    "crates/metal2vulkan-runtime/src/device/room.rs": "1aa4673e77249c49c8613ba2c7e00b70641150d24ed0c192a7dce1697dc0845f",
     "crates/metal2vulkan-runtime/src/device/create.rs": "050438286bc09cacf36cddbc42032e22a7dc9492cfa5bff025e270065dba4fc6",
     "crates/metal2vulkan-runtime/src/device/submit_stalls.rs": "0f3909a2619f29f2c240257b0047c2e80ba49e73dd0ec8105bbce5c8b13daf0d",
     "crates/metal2vulkan-runtime/src/device/functions.rs": "ca4768bbf060c4392175722799c84c62ef6426044482290ebb3e3fef1d882b63",
@@ -537,7 +538,7 @@
     "crates/metal2vulkan-runtime/src/tests/fill_value.rs": "f460459a2f844d3d176a9c43bea4e92c64c63d9608f2223fa61ce8d9ab731c69",
     "crates/metal2vulkan-runtime/src/tests/capabilities.rs": "297048831c003da8985e4d74efe70200fdc4fd5bc8c0f1767254c02f4b7f55c3",
     "crates/metal2vulkan-runtime/src/tests/host_settable_event_waits.rs": "d007ac4dcf7091d15bd1f8e73a66c6b3ff89e5352d72027809aa387c42db4148",
-    "crates/metal2vulkan-runtime/src/tests/buffer_texture.rs": "ccfdcc5bc4b7ba4e7380f89367850aae7174c9325366edf67f11cdcb8d4a6129",
+    "crates/metal2vulkan-runtime/src/tests/buffer_texture.rs": "cd2df476cc34f791f328f6b6f9021f2bf65a3b07c6c7c7022f59d2e9e0d4460e",
     "crates/metal2vulkan-runtime/src/tests/copied_present_bench.rs": "1347f61ab75c3b802ca4508b1fdd2c70a34be8e77124b3bbde9538f467b1fee5",
     "crates/metal2vulkan-runtime/src/tests/texture_descriptor.rs": "97cf8c70a4e0137dc6e841fd5a1c0b04cd12126544589c8e40ea456b966cc713",
     "crates/metal2vulkan-runtime/src/tests/gate.rs": "f9dabc47803e2cf6e6a7d4d5bfed0eaf8284414ee440cbb0689582513d940edf",
@@ -1081,7 +1082,7 @@
     "crates/metal2vulkan/src/cache/tests.rs": "025ec45d22e3ae0e7c45f0d2683d54fcef15b538b5e5b518d6e2afef35eae7dc",
     "crates/metal2vulkan/src/cache/artifacts.rs": "fe7bd252d7ba05fad1c452bf234c70c136479604d8c06d82af8a62662aa91561",
     "crates/metal2vulkan/src/cache/codec.rs": "60f010086f0829ddd5048150e963adb09b75500632f9bc4be3d8800194d194a5",
-    "crates/metal2vulkan/src/cache/mod.rs": "492abe3e5e08c6df4f243b7bd83a9cc60ef58fa985f5fbe5adda31f2cc92a245",
+    "crates/metal2vulkan/src/cache/mod.rs": "3da361aaa18c26ca9319957ff4bed6570fe98f20425d134b8c0df73e9aaedd00",
     "crates/metal2vulkan/src/cache/digest.rs": "646d3b777b7dd6d14d09c67fed4ad783e5c3432398b89b242a0697000e08423b",
     "crates/metal2vulkan/src/cache/scan.rs": "8be2de8ee6e693c24264414f327e4a86c0ca745d923450272f5c3e0eb3ba48b8",
     "crates/metal2vulkan/src/structurize/testkit/generate.rs": "679ecb0f330e576bfc68b210fdc029d2dd24199d957bca5b16711c5af1c8cd0f",
@@ -1470,7 +1471,11 @@
     "crates/metal2vulkan/src/tests/engine_extended_range/targets.rs": "ef971c3c98f234d4dd2f90c5b991d9ca498a2d5fcdea021d806496d9dfa8717e",
     "crates/metal2vulkan/src/cache/codec/tests.rs": "85916b691f32e27b9b5957e8d1af73979a78664fdd36e5b583270c70f335a922",
     "crates/metal2vulkan/src/cache/digest/tests.rs": "90ae1ab7e016b698aed0fbf638b1d67493270576860d503a9c280e4e280469af",
-    "crates/metal2vulkan-runtime/README.md": "0879c33f5e46e2b99db583cf8fb346c02201c2022b02ded26677ea56403ece50"
+    "crates/metal2vulkan-runtime/README.md": "1df44d0905ec83d24578cfd2558dfc674ff2af869f43570b0d38c553155c4c91",
+    "docs/REFUSALS.md": "244ba271902b1f4347e1b487d1faff70ce2fa98a6ae5e173b63cd7f8ce25d5a5",
+    "crates/metal2vulkan/tests/api_signatures.tsv": "c50263b85777011ea5b6962382dce326c9923baee0130d7e10e8236e0ff49906",
+    "crates/metal2vulkan-validation/src/runtime_lane/rotated_textures.rs": "0064a0ae3f5ea3787ca6c888f9dbdb31f8cb4bf2c4df3930ef0a87735cb77420",
+    "crates/metal2vulkan-validation/runtime-sources.sha256": "77412e5e514163e39aa7bb10b5bae60549317f55762521adddb0eef05fb3b9ca"
   },
   "local_changed_files": [
     "crates/metal2vulkan-air/src/canon/mod.rs",

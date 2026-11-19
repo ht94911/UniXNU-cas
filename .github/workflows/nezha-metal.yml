@@ -1,7 +1,7 @@
-name: nezha iPhone27 tiled mip input and icon program evidence 042
+name: nezha Sensors016 iOS surface rotation on GPU051
 on:
   push:
-    branches: [codex/ios27-gpu51-foreground-metal043-20261116]
+    branches: [codex/ios27-sensors016-rotation-gpu051-metal-20261119]
   workflow_dispatch:
 permissions:
   contents: read
@@ -117,7 +117,7 @@ jobs:
         id: plugin
         working-directory: unixnu
         run: ../device/ci/gpu-userland/logrun plugin python3 scripts/build-adreno-metal-plugin.py --target ios27 --iphone-24a446 --no-replay
-      - name: Bind changed runtime and test multi-level input and output planning
+      - name: Bind runtime and check rotated surface pitch
         id: runtime_source
         run: device/ci/gpu-userland/logrun runtime-source python3 device/ci/gpu-userland/check-multi-level-output.py --unixnu unixnu --logs "$LOGS"
       - name: Test the actual patched allocator and bind its complete source
@@ -136,6 +136,8 @@ jobs:
         id: heap_copies
         if: ${{ false }} # This subsystem is unchanged; current multi-level output has separate checks.
         run: device/ci/gpu-userland/logrun heap-copies python3 device/ci/gpu-userland/check-heap-copies.py --unixnu unixnu --logs "$LOGS"
+      - name: Check stored pitch on the compiled runtime
+        run: device/ci/gpu-userland/logrun rotation-source python3 device/ci/gpu-userland/check-sensors016-rotation.py --unixnu unixnu --logs "$LOGS"
       - name: Verify the actual signed target and full-chain code selection
         id: full_target
         run: device/ci/gpu-userland/logrun full-target python3 device/ci/gpu-userland/check-full-target.py --unixnu unixnu --logs "$LOGS"
