@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "062 native receiver/speaker physical routes with the measured061 first capture, unchangedGPU024/commonMSS lifecycle. StockOEM top voice/RCV0 vs stereo/RCV1, TI3854 ACK, original24A446Receiver ports and applied state; source only, no phone or private inputs. Old062 stopped on missing added route initializer in host lease fixture; only this actual fixture is repaired, production audio unchanged.",
+  "purpose": "064 actual mono imic and max channel metadata, stereo playback/mono capture VAD graphs through original read-only addon union. Preserve061 first real PCM gate, native062 physical routes, original059 ring and GPU024. Source/certificate only; no phone or private inputs.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "607bd55c188ec0ba225bbe26dd6eaeaf15a43340",
+  "device_revision": "fa05f44418a01ce6df716261ca0a909908c3b088",
   "soc_revision": "703d7b4bb00904b4a6e5d96f9e9bf72eec170f6b",
   "xcode": "26.6",
   "files": {
@@ -127,8 +127,8 @@
     "source/device/package/audio27/hal/AudioClock.h": "4c60fefab16eccb005f140652c0535eb967bcf5d74a24b65f9b327c18db1e906",
     "source/device/package/audio27/hal/AudioReference.h": "502c5ba99acfa8061abccc97c5abf31cf0311c193c79f05ba224204fdaf64f78",
     "source/device/package/audio27/hal/Info.plist": "a118cd65480a2396e51c0f71569a663b78a5be6446bbada469442670e94d76b3",
-    "source/device/package/audio27/hal/NezhaAudioPlugIn.c": "f3ac10fea750a58a88b6c921cde7033facaf424e2f8e930bb09617e89c12a62f",
-    "source/device/package/audio27/hal/NezhaAudioProperties.inc": "913a16b90119926d9d5e98f67f3922f9512cfdf2760302b74fb7666dc45c89e5",
+    "source/device/package/audio27/hal/NezhaAudioPlugIn.c": "8ea39802f7414f4db6078034c309041de1d77b25ad27f18adc92f65a5d0c8770",
+    "source/device/package/audio27/hal/NezhaAudioProperties.inc": "57aab675f518ed316222c56547e58ab4a7a9dd311094f0d94cdb8969fcd1912b",
     "source/device/package/audio27/integration/baseband045-reuse.json": "122c55320340f830e031a3dae70987e56bc134adf30efdfb66506d9039f6f07e",
     "source/device/package/audio27/integration/first-duplex061.json": "30f06a669b9bbb28716ff8b9a5b63051fe4c5e93feceeebdc37529f6597eff94",
     "source/device/package/audio27/integration/nezha-scm-audio-pas.patch": "daa7f253b95336951f9787bde926fc90cc8ce2d60bcaadfca301abfd45eb781c",
@@ -236,7 +236,7 @@
     "source/device/package/audio27/tests/runtime_contract_test.c": "72121c3eed3c6513d6809ba8a4c92ed44fd8d1e081ac844e72ae4849e5c74027",
     "source/device/package/audio27/tests/sheng_adsp_test.c": "a212e273ad14f78e8706cc365a911ca14223088e2ac6148c0d12da67ca12cdf4",
     "source/device/package/audio27/tests/speaker_graph_deadline_test.c": "ffebb1cbbcae41033036c7d89773bb93ffa370afd1432c71965d164051abb23b",
-    "source/device/package/audio27/tests/speaker_properties_test.c": "e945d0f25aa3fa691530ab60ea3c87381bc182d07c4430e7fe115d8adf539ab6",
+    "source/device/package/audio27/tests/speaker_properties_test.c": "03dee3a8eb8b70d51298bfd443d5251e38726cb10acb1acde9955e108e2f2b2f",
     "source/device/package/audio27/tests/tas_identity_board_test.c": "bdbbe78fdeb039d1c2b1ce0905700ef541f075cd2e790f775afd3c85c68d1834",
     "source/device/package/audio27/tests/tas_identity_test.c": "878d5207defec014ea364e09746fc6604a17c44345cea050ccf77ce3298c0152",
     "source/device/package/audio27/tests/tas_program_test.c": "976a9cbca02269c9d56afee58f73cfe27085d6b837675b2073768db7dfd28e09",
@@ -245,6 +245,8 @@
     "source/device/package/audio27/tests/topology_calibration_test.c": "bdbf17deea566c23e672d8152dcd71042565b03a2e7977e25d1db653e06873c0",
     "source/device/package/audio27/tools/inspect_acdb.py": "da45525bcd92e3e0ba4b5ff98d824ddf67ad43a19060af26c881a1ba500209f9",
     "source/device/package/audio27/tools/prepare_graph.py": "b593c1b705c2147f29da1624cba922dbc83cf5ca8aed70ca88f65e26f193d77d",
+    "source/device/package/audio27/tunings/nezha_microphone.dspg": "fa5e4a439c6cdba3af1ebb69f09dbb84c6f707a252496a45ff468a4a9c647fd7",
+    "source/device/package/audio27/tunings/nezha_playback.dspg": "1377577b846395919e21bc53db6ed2025202884225158f790bacc2edf530b6cf",
     "source/device/package/audio27/upstream/GeniI2c.c": "d9ff302e5dc5b14fc3fc3ec760652c0116d861b06748ce5a908dfa1a0a377ef7",
     "source/device/package/audio27/upstream/GeniI2c.h": "8028a263a7c7dd24f41ed1e58613442ff4fc9b25812a6e12ff48d2640d8b24a5",
     "source/device/package/audio27/upstream/LICENSE": "5b1d3d911103cb0f41641ec0964c5ac1f7e229f57aa072b6ac38bae913a1307b",
@@ -469,7 +471,7 @@
     "source/device/patches/xnu-12377/zzzzz-nezha-owner-data-console.patch": "cb29cedb0b5f7d388fcdff028140c6973628d65ea108d7796e23dcb956542828",
     "source/device/patches/xnu-12377/zzzzz-nezha-owner-data-ready.patch": "306414945401c128472d3b0acddd03c88bec57ec47d6988660173d0b432c3e4b",
     "source/device/patches/xnu-12377/zzzzzz-nezha-adreno840-start.patch": "d32bb0d5e678e5773786dcce90467e0258d844550b418b438e1548fb32392f79",
-    "source/device/patches/xnu-12377/zzzzzz-nezha-audio-hal-mount.patch": "ce13279e70179bf1b875ba57225c311d49eea43615b84796540d8bac0e056da1",
+    "source/device/patches/xnu-12377/zzzzzz-nezha-audio-hal-mount.patch": "1db954fd187007c8e6cda217f5a4119cda52c255fb09d7b5af584107cb1f74e5",
     "source/device/patches/xnu-12377/zzzzzz-nezha-cellular-addon-size.patch": "5087cd2e214f0fd88f7105a5de56af74e01ab8d6bc75b7c9a65a36ba07245159",
     "source/device/patches/xnu-12377/zzzzzz-nezha-cellular-cached-entry.patch": "f9d023a17fbc05500c1d7b8e4477b9e81632912d5da5f62e78dd9ad1534f12bb",
     "source/device/patches/xnu-12377/zzzzzz-nezha-cellular-launch-identity.patch": "8636bf51136c0d8cf57daaebb3f1d5c101844fd4be26bd51842037972c509dc2",
@@ -504,6 +506,7 @@
     "source/device/scripts/nezha_baseband_build.py": "9e92ecde82bc7c8a4d57139ece368e1d40c078bf4f10323fc8ddfb6e4f8eb308",
     "source/device/scripts/nezha_macho_late.py": "fc5a2869ef22bd2c06702930fc0c88b0e071ab7ef851824b403234633040fc37",
     "source/device/scripts/prepare-nezha27-audio-addon.py": "f161f66015d348ab09b8f34845dff17ea592ceef29e5180c0512af0b297132c8",
+    "source/device/scripts/prepare-nezha27-audio-tunings.py": "669bf62e306e0584ec7da5448c6f0ada9511ba4eea21356c8d8ab5d697ec51b7",
     "source/device/scripts/prepare-nezha27-baseband.py": "84f40cec2d3b48b9d372263a50e563666b025605cd132554497bd87cf93eb499",
     "source/device/scripts/qualify-armcpu-instructions.py": "dae7cb3b9faecaac7b268212bbd324ae172d3dffa0e94b06afc4581c9f4abe9b",
     "source/device/tests/baseband27/audio_shared_ipcc_test.c": "633420df7d1d668501b59436e1576c65ead245ce8a51d6188a18f6cf57bb89be",
@@ -702,6 +705,9 @@
     "receiver_speaker_route": true,
     "first_duplex061_retained": true,
     "old102_HAL_byte_identical": false,
-    "actual_physical_gate_pending": true
+    "actual_physical_gate_pending": true,
+    "builtin_mono_microphone_source": true,
+    "builtin_PCM_graphs": true,
+    "native_TAS_VI_protection_retained": true
   }
 }

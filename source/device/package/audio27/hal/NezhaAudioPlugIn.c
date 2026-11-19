@@ -20,11 +20,14 @@
 #include "AudioClock.h"
 #include "AudioReference.h"
 enum {kPlugIn=kAudioObjectPlugInObject,kDevice=2,kOutStream=3,kInStream=4,kVolume=5,kReferenceStream=6,
-      kReceiverMute=7,kSpeakerMute=8,kInputMute=9,kReceiverVolume=10};
-/* Original24A446 UID factory selects Device_Receiver_Aspen. Its separate
- * mute/outp/3 and mute/outp/4 controls create prec and pspk ports, respectively.
- * Both share this device's single two-slot TDM output and existing tap. */
-#define kDeviceUID "Receiver"
+      kReceiverMute=7,kSpeakerMute=8,kInputMute=9,kReceiverVolume=10,kInputVolume=11,kInputSource=12};
+/* One measured mono capture path. imic names that physical input without
+ * advertising unimplemented front/back microphones or beamforming. */
+static const UInt32 kMicSource='imic';
+/* Original24A446 Codec binds both prec and pspk mute/volume controls. The
+ * separate Receiver class has no pspk volume binding. Both acoustic routes
+ * share this device's existing TDM output, mic and accepted-PCM tap. */
+#define kDeviceUID "Codec"
 #define kModelUID "NezhaAudio27Model"
 static const Float64 kRate=NA_AUDIO_RATE;
 /* CoreAudio requires a timestamp period beyond safety offset + one IO cycle.
@@ -51,7 +54,7 @@ static uint64_t gReference[NA_AUDIO_RING_FRAMES];
 static UInt32 gIoUsers;static int gInputAvailable,gOutputSelected=1,gInputSelected=1,gCaptureIssued;
 static int gReferenceSelected=1;
 static uint64_t gCaptureTouch;
-static Float32 gVolume=1,gReceiverVolume=1; /* Separate system receiver/speaker volume. */
+static Float32 gVolume=1,gReceiverVolume=1,gInputVolume=1;
 static int gReceiverSelected,gSpeakerSelected,gInputMuted;
 static uint32_t gAppliedRoute=UINT32_MAX;
 static CFNumberRef gLogicalLocation;
@@ -125,6 +128,9 @@ static int observed_property(AudioObjectID object,AudioObjectPropertySelector se
     case kAudioDevicePropertyStreams:
     case kAudioObjectPropertyControlList:
     case kAudioDevicePropertyNominalSampleRate:
+    case kAudioDevicePropertyDataSource:
+    case kAudioDevicePropertyDataSources:
+    case 'MCCs':
         return object==kDevice;
     case kAudioStreamPropertyIsActive:
     case kAudioStreamPropertyDirection:
@@ -152,6 +158,8 @@ static uint32_t property_observation_value(AudioObjectID object,const AudioObjec
             if (isfinite(rate) && rate>=0 && rate<=UINT32_MAX) return (uint32_t)rate;
         }
         return bytes;
+    case kAudioDevicePropertyDataSources:
+        return bytes/(uint32_t)sizeof(UInt32);
     case kAudioStreamPropertyVirtualFormat:
     case kAudioStreamPropertyPhysicalFormat:
         if (bytes==sizeof(AudioStreamBasicDescription) && data)
@@ -439,6 +447,9 @@ static Float32 gain(void) {
     Float32 volume=gReceiverSelected ? gReceiverVolume:gVolume;
     return volume<=0 ? 0:powf(10.0f,toDb(volume)/20.0f);
 }
+static Float32 input_gain(void) {
+    return gInputVolume<=0 ? 0:powf(10.0f,toDb(gInputVolume)/20.0f);
+}
 static AudioStreamBasicDescription format(UInt32 channels) {
     AudioStreamBasicDescription f={0};f.mSampleRate=kRate;f.mFormatID=kAudioFormatLinearPCM;
     f.mFormatFlags=kAudioFormatFlagIsFloat|kAudioFormatFlagsNativeEndian|kAudioFormatFlagIsPacked;
@@ -543,39 +554,49 @@ static OSStatus GetPropertyDataSize(AudioServerPlugInDriverRef d,AudioObjectID o
     if (!size) return kAudioHardwareIllegalOperationError;
     /* HasProperty calls this function. A size probe must not allocate or
      * retain the custom CFNumber that a real data read transfers. */
-    if (o==kDevice && a && a->mSelector=='lcID') {
+    if (o==kDevice && a && (a->mSelector=='lcID' || a->mSelector=='MCCs')) {
         if (a->mScope!=kAudioObjectPropertyScopeGlobal || a->mElement!=kAudioObjectPropertyElementMain)
             return kAudioHardwareUnknownPropertyError;
         *size=sizeof(CFNumberRef);return 0;
+    }
+    if (o==kDevice && a && (a->mSelector==kAudioDevicePropertyDataSourceNameForIDCFString ||
+                           a->mSelector==kAudioDevicePropertyDataSourceKindForID)) {
+        if (a->mScope!=kAudioObjectPropertyScopeInput || a->mElement!=0 || !gInputAvailable)
+            return kAudioHardwareUnknownPropertyError;
+        *size=sizeof(AudioValueTranslation);return 0;
     }
     _Alignas(16) uint8_t scratch[1024]={0};return GetPropertyData(d,o,pid,a,qs,q,sizeof scratch,size,scratch);
 }
 static Boolean HasProperty(AudioServerPlugInDriverRef d,AudioObjectID o,pid_t pid,const AudioObjectPropertyAddress *a) {UInt32 size=0;return GetPropertyDataSize(d,o,pid,a,0,NULL,&size)==0;}
 static OSStatus IsPropertySettable(AudioServerPlugInDriverRef d,AudioObjectID o,pid_t pid,const AudioObjectPropertyAddress *a,Boolean *value) {
     if (!a || !value) return kAudioHardwareIllegalOperationError;
-    *value=((o==kVolume || o==kReceiverVolume) && (a->mSelector==kAudioLevelControlPropertyScalarValue || a->mSelector==kAudioLevelControlPropertyDecibelValue)) ||
+    *value=((o==kVolume || o==kReceiverVolume || o==kInputVolume) && (a->mSelector==kAudioLevelControlPropertyScalarValue || a->mSelector==kAudioLevelControlPropertyDecibelValue)) ||
         ((o==kReceiverMute || o==kSpeakerMute || o==kInputMute) && a->mSelector==kAudioBooleanControlPropertyValue) ||
         ((o==kOutStream || o==kInStream || o==kReferenceStream) && (a->mSelector==kAudioStreamPropertyIsActive || a->mSelector==kAudioStreamPropertyVirtualFormat || a->mSelector==kAudioStreamPropertyPhysicalFormat)) ||
         (o==kDevice && (a->mSelector==kAudioDevicePropertyNominalSampleRate ||
          a->mSelector==kAudioDevicePropertyMute || a->mSelector==kAudioDevicePropertyVolumeScalar ||
-         a->mSelector==kAudioDevicePropertyVolumeDecibels));
+         a->mSelector==kAudioDevicePropertyVolumeDecibels || a->mSelector==kAudioDevicePropertyDataSource)) ||
+        (o==kInputSource && a->mSelector==kAudioSelectorControlPropertyCurrentItem);
     return HasProperty(d,o,pid,a) ? 0:kAudioHardwareUnknownPropertyError;
 }
 static OSStatus SetPropertyData(AudioServerPlugInDriverRef d,AudioObjectID o,pid_t pid,const AudioObjectPropertyAddress *a,UInt32 qs,const void *q,UInt32 size,const void *data) {
     (void)d;(void)pid;(void)qs;(void)q;if (!a || !data) return kAudioHardwareIllegalOperationError;
     OSStatus result=kAudioHardwareUnknownPropertyError;AudioObjectID volume_changed=0,mute_changed=0;
     pthread_mutex_lock(&gLock);
-    if (((o==kVolume || o==kReceiverVolume) &&
+    if (((o==kVolume || o==kReceiverVolume || o==kInputVolume) &&
          (a->mSelector==kAudioLevelControlPropertyScalarValue || a->mSelector==kAudioLevelControlPropertyDecibelValue)) ||
-        (o==kDevice && a->mScope==kAudioObjectPropertyScopeOutput && (a->mElement==3 || a->mElement==4) &&
+        (o==kDevice && ((a->mScope==kAudioObjectPropertyScopeOutput && (a->mElement==3 || a->mElement==4)) ||
+                       (a->mScope==kAudioObjectPropertyScopeInput && a->mElement==0 && gInputAvailable)) &&
          (a->mSelector==kAudioDevicePropertyVolumeScalar || a->mSelector==kAudioDevicePropertyVolumeDecibels))) {
         if (size!=sizeof(Float32)) {result=kAudioHardwareBadPropertySizeError;goto finished;}
         Float32 value=*(const Float32 *)data;
         if (!isfinite(value)) result=kAudioHardwareIllegalOperationError;
         else {
             if (a->mSelector==kAudioLevelControlPropertyDecibelValue || a->mSelector==kAudioDevicePropertyVolumeDecibels) value=toScalar(value);
-            volume_changed=o==kReceiverVolume || (o==kDevice && a->mElement==3) ? kReceiverVolume:kVolume;
+            volume_changed=o==kInputVolume || (o==kDevice && a->mScope==kAudioObjectPropertyScopeInput) ? kInputVolume:
+                o==kReceiverVolume || (o==kDevice && a->mElement==3) ? kReceiverVolume:kVolume;
             if (volume_changed==kReceiverVolume) gReceiverVolume=fminf(1,fmaxf(0,value));
+            else if (volume_changed==kInputVolume) gInputVolume=fminf(1,fmaxf(0,value));
             else gVolume=fminf(1,fmaxf(0,value));
             result=0;
         }
@@ -599,6 +620,15 @@ static OSStatus SetPropertyData(AudioServerPlugInDriverRef d,AudioObjectID o,pid
             if (!value) {if (control==kReceiverMute) gSpeakerSelected=0;else gReceiverSelected=0;}
             if (select_route()!=KERN_SUCCESS) {gReceiverSelected=old_receiver;gSpeakerSelected=old_speaker;result=kAudioHardwareNotRunningError;}
             else {mute_changed=control;result=0;}
+        }
+    } else if ((o==kInputSource && a->mSelector==kAudioSelectorControlPropertyCurrentItem) ||
+               (o==kDevice && a->mSelector==kAudioDevicePropertyDataSource &&
+                a->mScope==kAudioObjectPropertyScopeInput && a->mElement==0)) {
+        UInt32 source=0;
+        if (size!=sizeof source) result=kAudioHardwareBadPropertySizeError;
+        else {
+            memcpy(&source,data,sizeof source);
+            result=gInputAvailable && source==kMicSource ? 0:kAudioHardwareIllegalOperationError;
         }
     } else if ((o==kOutStream || o==kInStream || o==kReferenceStream) && a->mSelector==kAudioStreamPropertyIsActive && size==sizeof(UInt32)) {
         UInt32 active=*(const UInt32 *)data;
@@ -755,10 +785,10 @@ static OSStatus DoIOOperation(AudioServerPlugInDriverRef d,AudioObjectID o,Audio
             if (requested!=KERN_SUCCESS) {note_io(1,11,time->mFlags,frames,result,requested);goto out;}
             gCaptureIssued=1;gCaptureTouch=now;
         }
-        Float32 *out=main;
+        Float32 *out=main;Float32 g=input_gain();
         for (unsigned i=0;i<frames;++i) {
             int16_t value=0;
-            if (t+i<s.in_produced && s.in_produced-(t+i)<=NA_AUDIO_RING_FRAMES && !na_ring_read(gInput,t+i,&value)) out[i]=value/32768.0f;
+            if (t+i<s.in_produced && s.in_produced-(t+i)<=NA_AUDIO_RING_FRAMES && !na_ring_read(gInput,t+i,&value)) out[i]=(value/32768.0f)*g;
         }
         result=0;
     } else if (input && gInputMuted) result=0;
