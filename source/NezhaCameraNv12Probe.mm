@@ -86,7 +86,7 @@ int main(int argc,char **argv) {
         for(unsigned r=0;r<16;++r)for(unsigned x=0;x<64;++x)y[r*yrow+x]=values[x/16][0];
         for(unsigned r=0;r<8;++r)for(unsigned x=0;x<64;x+=2){uv[r*uvrow+x]=values[x/16][1];uv[r*uvrow+x+1]=values[x/16][2];}
         if(IOSurfaceUnlock(surface,0,nullptr))return 7;
-        auto descriptor=[MTLTextureDescriptor texture2DDescriptorWithPixelFormat:(MTLPixelFormat)500 width:64 height:16 mipmapped:NO];
+        auto descriptor=[MTLTextureDescriptor texture2DDescriptorWithPixelFormat:(MTLPixelFormat)540 width:64 height:16 mipmapped:NO];
         descriptor.storageMode=MTLStorageModeShared;descriptor.usage=MTLTextureUsageShaderRead;
         report(@{@"phase":@"texture-import",@"state":@"begin",@"surface":@(IOSurfaceGetID(surface)),@"yrow":@(yrow),@"uvrow":@(uvrow)});
         id<MTLTexture> texture=[device newTextureWithDescriptor:descriptor iosurface:surface plane:0];
@@ -108,14 +108,15 @@ int main(int argc,char **argv) {
         if(command.status!=MTLCommandBufferStatusCompleted || command.error){report(@{@"phase":@"completion",@"passed":@NO,@"status":@(command.status),@"error":command.error.description?:@"timeout"});return 9;}
         const auto *data=(const float *)output.contents;unsigned bad=0;NSMutableArray *samples=[NSMutableArray array];
         for(unsigned r=0;r<16;++r)for(unsigned x=0;x<64;++x){
-            const auto *codes=values[x/16];float Y=codes[0]/255.f,U=codes[1]/255.f-0.5f,V=codes[2]/255.f-0.5f;
-            const float expected[4]={Y+1.402f*V,Y-0.344136f*U-0.714136f*V,Y+1.772f*U,1.f};
+            const auto *codes=values[x/16];
+            // RGB8_420_2P reads the codes as Cr, Y, Cb, as VTMTS's half texture does.
+            const float expected[4]={codes[2]/255.f,codes[0]/255.f,codes[1]/255.f,1.f};
             const float *actual=data+(r*64+x)*4;
             // Check centres, away from the two-plane reconstruction at band edges.
-            if(x%16>=4 && x%16<12)for(unsigned c=0;c<4;++c)if(!std::isfinite(actual[c])||std::fabs(actual[c]-expected[c])>0.06f)++bad;
+            if(x%16>=4 && x%16<12)for(unsigned c=0;c<4;++c)if(!std::isfinite(actual[c])||std::fabs(actual[c]-expected[c])>0.006f)++bad;
             if(r==8 && x%16==8)[samples addObject:@[@(x),@(codes[0]),@(codes[1]),@(codes[2]),number(actual[0]),number(actual[1]),number(actual[2]),number(actual[3])]];
         }
-        report(@{@"phase":@"pixels",@"boot":identified?@(boot):@"unknown",@"pid":@(getpid()),@"passed":@(bad==0),@"bad_channels":@(bad),@"samples":samples,@"source_format":@500,@"surface":@(IOSurfaceGetID(surface)),@"yrow":@(yrow),@"uvrow":@(uvrow),@"device":device.name,@"capture_started":@NO});
+        report(@{@"phase":@"pixels",@"boot":identified?@(boot):@"unknown",@"pid":@(getpid()),@"passed":@(bad==0),@"bad_channels":@(bad),@"samples":samples,@"source_format":@540,@"surface":@(IOSurfaceGetID(surface)),@"yrow":@(yrow),@"uvrow":@(uvrow),@"device":device.name,@"capture_started":@NO});
         CVPixelBufferRelease(pixel);return bad?10:0;
     }
 }

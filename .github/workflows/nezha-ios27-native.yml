@@ -1,7 +1,7 @@
-name: nezha iPhone27 Camera101 native NV12 IOSurface capability
+name: nezha iPhone27 Camera102 native NV12 half codes
 on:
   push:
-    branches: [codex/ios27-camera101-nv12-iosurface-20261119]
+    branches: [codex/ios27-camera102-nv12-halfcodes-20261119]
 permissions:
   contents: read
 concurrency:

@@ -1,15 +1,15 @@
 {
   "schema": 1,
-  "purpose": "Camera101 native NV12 sampler own IOSurfaceRootUserClient entitlement for observed100 MACF refusal",
-  "device_revision": "b9ae3424d2690dcb1e7596f22b9c586271c17e05",
+  "purpose": "Camera102 actual f540 half code linear normalized sampling over known NV12 surface; previous101f500passed",
+  "device_revision": "fc8086704675faa3cf6322c0b5be66025fbb1aa1",
   "files": {
-    ".github/workflows/nezha-ios27-native.yml": "5bc08e28474aabe180d68898a0a5fa80f156f260d7b0638dcee07621a6e57c76",
+    ".github/workflows/nezha-ios27-native.yml": "3260cb670793c97f327845cc43f7972b40a27a01c9f03ca6a40e0bded098a4d4",
     "ci/artifact-recipient.pem": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
     "ci/artifacts.py": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
     "ci/camera-discovery.py": "587a51920cb25d2ef36af7259ad441dde78ca842a98d865e4a54e98880989065",
     "ci/corelocation.py": "2dda5cb162f880a04eeb9b4fbbd68b5eaac64b8b8b56a293d7cc655a5be400d3",
-    "source/NezhaCameraNv12Probe.metal": "fd239a18df11824e893a2d54b0406caef63e0947ff214944897683f7c96801e8",
-    "source/NezhaCameraNv12Probe.mm": "bef7006b4af30b8cd6dc42c95565b263191c4ce39256a4affc89af6ab069eb3b",
+    "source/NezhaCameraNv12Probe.metal": "f0caab185fe891349cbc8e515d23162d2f6b93f7b4996454b69cac6ab4ae7722",
+    "source/NezhaCameraNv12Probe.mm": "c02c308d2e0a16db39d40443c2ab59fa8427efe38b5ec5d0095a89b4a961efd6",
     "source/probe.entitlements.plist": "88e1b971f4fb02d04416673b2a7fee641bc9c3dd4aae71efa253c48c661e1c5d",
     "ci/check-nv12-memory.py": "9ce7296ab1bae0376453b958a8cd11b2cb120d8bd90a88dcdfde095df6dd102f"
   },
