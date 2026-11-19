@@ -42,8 +42,7 @@ prefix = r'''
 struct MTLSize {NSUInteger width,height,depth;};
 static MTLSize MTLSizeMake(NSUInteger w,NSUInteger h,NSUInteger d) {return {w,h,d};}
 @protocol MTLComputePipelineState @end
-struct Surface {uint32_t format;size_t planes,width,height,size,offset[2],row[2];uint8_t *base;};
-typedef Surface *IOSurfaceRef;
+struct __IOSurface {uint32_t format;size_t planes,width,height,size,offset[2],row[2];uint8_t *base;};
 static uint32_t IOSurfaceGetID(IOSurfaceRef) {return 7;}
 static uint32_t IOSurfaceGetPixelFormat(IOSurfaceRef s) {return s->format;}
 static size_t IOSurfaceGetPlaneCount(IOSurfaceRef s) {return s->planes;}
@@ -101,7 +100,7 @@ fixture = r'''
 int main(){@autoreleasepool{
  unsigned checks=0;
  std::vector<uint8_t> bytes(8192,0);
- Surface s{0x34323066,2,64,16,bytes.size(),{0,4096},{64,64},bytes.data()};
+ __IOSurface s{0x34323066,2,64,16,bytes.size(),{0,4096},{64,64},bytes.data()};
  NBTexture *texture=[NBTexture new];texture.surface=&s;
  bytes[8*64+32]=55;bytes[4096+4*64+32]=128;bytes[4096+4*64+33]=118;
  assert([dumpSurfaceCodes(texture) containsString:@"center 55/128/118"]);++checks;
