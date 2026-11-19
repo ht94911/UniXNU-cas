@@ -36,7 +36,7 @@ static int read(void *v,uint64_t lease,uint8_t address,uint32_t reg,uint8_t *out
     int r=event(p,(char)('0'+ch));if (!r) *out=(uint8_t)(0x51+ch);return r;
 }
 static NaTasPowerOps ops(Peer *p) {
-    return (NaTasPowerOps){p,claim,power,reset,release,{p,read,0},0,0};
+    return (NaTasPowerOps){p,claim,power,reset,release,{p,read,0},0};
 }
 static int run(NaTasIdentity *d,unsigned start) {
     int r=NA_PENDING;

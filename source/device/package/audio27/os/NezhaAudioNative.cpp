@@ -45,7 +45,7 @@ bool ownedWindow(NaRange r) {
 }
 void run(void *v,wait_result_t) {
     auto *d=static_cast<NaDriver *>(v);thread_set_thread_name(current_thread(),"nezha-audio27");
-    uint32_t lastStage=~0u,lastTasPhase=~0u,lastTasIndex=~0u,lastRoute=~0u,pilQueries=0;uint64_t lastOutput=0,lastInput=0,nextPeriods=0;
+    uint32_t lastStage=~0u,lastTasPhase=~0u,lastTasIndex=~0u,pilQueries=0;uint64_t lastOutput=0,lastInput=0,nextPeriods=0;
     uint32_t lastMicGraph=~0u,lastMicStage=~0u,lastMicIndex=~0u;
     uint32_t lastMicRegisters=0;
     int lastMicError=0,lastMicCleanup=0;
@@ -118,7 +118,10 @@ void run(void *v,wait_result_t) {
         __atomic_store_n(&nezha_audio27_stats[36],(uint64_t)d->stream[1].remote_errors,__ATOMIC_RELAXED);
         __atomic_store_n(&nezha_audio27_stats[37],(uint64_t)d->stream[1].last_remote_status,__ATOMIC_RELAXED);
         __atomic_store_n(&nezha_audio27_stats[38],(uint64_t)d->runtime.engine.activation_completed[1],__ATOMIC_RELAXED);
-        __atomic_store_n(&nezha_audio27_stats[39],(uint64_t)(int64_t)d->graph[1].error,__ATOMIC_RELAXED);
+        // Keep the first input failure in the existing input-flow error even
+        // after the fully reclaimed first-read retry produces real PCM.
+        __atomic_store_n(&nezha_audio27_stats[39],(uint64_t)(int64_t)(d->runtime.input_first_error ?
+            d->runtime.input_first_error:d->graph[1].error),__ATOMIC_RELAXED);
         uint32_t rejected[NA_DONE_REJECTION_WORDS];
         na_stream_rejection_words(&d->stream[1],rejected);
         for (unsigned i=0;i<NA_DONE_REJECTION_WORDS;++i)
@@ -158,14 +161,13 @@ void run(void *v,wait_result_t) {
             lastMicGraph=d->graph[1].stage;lastMicStage=d->microphone.stage;lastMicIndex=d->microphone.index;
             lastMicError=d->graph[1].error;lastMicCleanup=d->graph[1].cleanup_error;
         }
-        uint32_t routeState=d->runtime.status.route | (d->runtime.status.route_pending<<8);
-        if (lastStage!=d->stage || lastError!=r || lastTasPhase!=d->speaker->phase || lastTasIndex!=d->speaker->index || lastRoute!=routeState) {
+        if (lastStage!=d->stage || lastError!=r || lastTasPhase!=d->speaker->phase || lastTasIndex!=d->speaker->index) {
             const uint64_t trace=d->speaker->ops.trace_wait_us ? *d->speaker->ops.trace_wait_us:0;
-            printf("NEZHA AUDIO27: stage=%u error=%d adsp=%u graph=%u/%u prm=%x/%x tas=%u:%u/%u trace_us=%llu deadline_ms=%llu route=%u pending=%u route_error=%d\n",d->stage,r,d->adsp->stage,d->graph[0].stage,d->graph[1].stage,d->prm.held,d->prm.possible,
-                d->speaker->phase,d->speaker->index,d->speaker->route==NaTasReceiver ? d->speaker->receiver_count[d->speaker->phase]:d->speaker->count[d->speaker->phase],
+            printf("NEZHA AUDIO27: stage=%u error=%d adsp=%u graph=%u/%u prm=%x/%x tas=%u:%u/%u trace_us=%llu deadline_ms=%llu\n",d->stage,r,d->adsp->stage,d->graph[0].stage,d->graph[1].stage,d->prm.held,d->prm.possible,
+                d->speaker->phase,d->speaker->index,d->speaker->count[d->speaker->phase],
                 (unsigned long long)(trace>=d->speaker->trace_base_us ? trace-d->speaker->trace_base_us:0),
-                (unsigned long long)d->speaker->deadline,d->runtime.status.route,d->runtime.status.route_pending,(int)d->runtime.status.route_error);
-            lastStage=d->stage;lastError=r;lastTasPhase=d->speaker->phase;lastTasIndex=d->speaker->index;lastRoute=routeState;
+                (unsigned long long)d->speaker->deadline);
+            lastStage=d->stage;lastError=r;lastTasPhase=d->speaker->phase;lastTasIndex=d->speaker->index;
         }
         if (now>=nextPeriods && (lastOutput!=outputPeriods || lastInput!=inputPeriods)) {
             printf("NEZHA AUDIO27 PCM: output=%llu input=%llu underruns=%u overruns=%u faults=%x/%x\n",

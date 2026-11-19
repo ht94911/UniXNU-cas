@@ -47,18 +47,3 @@ int na_ti_calibration_payload(const NaTiCalibration *c,uint32_t instance,uint8_t
     header(out+64,instance,3854,1);wr(out+80,c->driver_mode);
     *bytes=88;return NA_OK;
 }
-int na_ti_route_payload(const NaTiCalibration *c,const NaTasImage *image,uint32_t instance,
-                        const char *profile,uint8_t out[24]) {
-    if (!c || !c->valid || !image || !instance || !profile || !out || c->driver_mode!=3 ||
-        c->iv_width!=12 || c->vbat!=1) return NA_ARGUMENT;
-    uint32_t mode;
-    if (!strcmp(profile,"music_18dB_stereo")) mode=3;
-    else if (!strcmp(profile,"voice")) mode=0x13;
-    else return NA_ARGUMENT;
-    for (unsigned ch=0;ch<2;++ch) {
-        NaTasProfile p;int r=na_tas_profile(image,ch,profile,&p);if (r) return r;
-        if (p.misc!=mode) return NA_MISSING;
-    }
-    /* Same TIPayloadBuilder SET_DRV_OP_MODE3854 used by stock PAL. */
-    memset(out,0,24);header(out,instance,3854,1);wr(out+16,mode);return NA_OK;
-}

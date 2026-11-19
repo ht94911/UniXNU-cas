@@ -115,25 +115,10 @@ static int read_amp(void *v,uint64_t lease,uint8_t address,uint32_t reg,uint8_t 
 static int write_amp(void *v,uint64_t lease,uint8_t address,uint32_t reg,const uint8_t *data,uint32_t n) {
     NaGeniBoard *b=v;int r=na_tas_bus_write(&b->bus,lease,address,reg,data,n);return r ? r:b->error ? NA_IO:NA_OK;
 }
-static int route(void *v,uint64_t lease,int speaker) {
-    NaGeniBoard *b=v;
-    if (!lease || lease!=b->lease || !b->powered || b->identity_only ||
-        (speaker!=0 && speaker!=1)) return NA_OWNERSHIP;
-    /* Canoe rcv_gpio_active is output-high/pull-up; rcv_gpio_sleep is
-     * output-low/bias-disable. Both use the already leased GPIO174, 2mA. */
-    int r=update(b,TLMM+4096*174+4,2,speaker ? 2:0);
-    if (!r) r=update(b,TLMM+4096*174,0x3ff,speaker ? 0x203:0x200);
-    if (!r) {
-        uint32_t value=0;
-        r=read_reg(b,TLMM+4096*174+4,&value);
-        if (!r && (value&2)!=(speaker ? 2u:0u)) {b->error=1;r=NA_IO;}
-    }
-    return r;
-}
 int na_geni_board_init(NaGeniBoard *b,const NaBoardIo *io,NaTasPowerOps *ops) {
     if (!b || !io || !ops || !io->claim || !io->release || !io->read || !io->update || !io->now_us || !io->pause_us) return NA_ARGUMENT;
     memset(b,0,sizeof *b);b->io=*io;
-    *ops=(NaTasPowerOps){b,claim,power,reset,release,{b,read_amp,write_amp},io->trace_wait_us,route};return NA_OK;
+    *ops=(NaTasPowerOps){b,claim,power,reset,release,{b,read_amp,write_amp},io->trace_wait_us};return NA_OK;
 }
 int na_geni_board_init_identity(NaGeniBoard *b,const NaBoardIo *io,NaTasPowerOps *ops) {
     int r=na_geni_board_init(b,io,ops);

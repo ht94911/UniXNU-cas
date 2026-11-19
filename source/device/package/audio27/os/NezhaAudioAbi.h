@@ -4,7 +4,7 @@
 #include <stdint.h>
 #define NA_AUDIO_CLASS "NezhaAudio27"
 #define NA_AUDIO_MAGIC 0x4e415532u
-#define NA_AUDIO_ABI_VERSION 3u
+#define NA_AUDIO_ABI_VERSION 2u
 #define NA_AUDIO_RATE 48000u
 #define NA_AUDIO_RING_FRAMES 65536u
 #define NA_AUDIO_PERIOD_FRAMES 480u
@@ -14,8 +14,6 @@
 enum {NaAudioControlMemory=0,NaAudioOutputMemory=1,NaAudioInputMemory=2};
 enum {NaAudioStartOutput=0,NaAudioStopOutput=1,NaAudioStartInput=2,NaAudioStopInput=3,
       NaAudioFixHostClock=4,NaAudioObserveHAL=5};
-enum {NaAudioRouteSpeaker=6,NaAudioRouteReceiver=7};
-enum {NaAudioSpeaker,NaAudioReceiver};
 /* Bounded HAL observations use the existing owned user client. They carry
  * numeric callback results only and cannot request resources or memory writes. */
 #define NA_HAL_OBSERVATION_VERSION 1u
@@ -44,9 +42,6 @@ typedef struct {
     uint64_t ticks_per_frame_q32,anchor_host,out_consumed,in_produced;
     uint64_t output_periods,input_periods;
     uint32_t underruns,overruns,last_error,clock_result;
-    /* Worker publishes the route only after DSP/RCV/profile acknowledgements.
-     * Requesting a route never turns on capture or discards its shared lease. */
-    uint32_t route,route_ready,route_pending,route_error;
 } NaAudioStatus;
 /* The kernel never trusts mapped status fields for DMA, resource decisions or
  * format sizes. A private worker snapshot owns all such state. */

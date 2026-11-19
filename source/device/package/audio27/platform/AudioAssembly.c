@@ -81,7 +81,6 @@ int na_assembly_init(NaAssembly *a,const NaAssemblyPlan *p,uint64_t now) {
     NaTasPowerOps tas;
     r=na_geni_board_init(&a->speaker_board,&p->board,&tas);if (r) return failed(a,r);
     r=na_tas_endpoint_init(&a->speaker,p->tuning,&p->tas,&tas);if (r) return failed(a,r);
-    r=na_tas_endpoint_receiver(&a->speaker,p->tuning);if (r) return failed(a,r);
     /* Actual nezha ODM mixer and idle hardware control use ADC2 Volume6.
      * WCD939x's stock analog_gain TLV marks index0 as mute. */
     if (p->stream[1].graph) {r=na_mic_board_init(&a->mic_board,&p->capture_board,1,6);if (r) return failed(a,r);}

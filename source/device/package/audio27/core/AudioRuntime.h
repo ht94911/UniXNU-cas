@@ -18,8 +18,6 @@ typedef struct {
     /* Worker-only analog shutdown, with graph/VI and their PRM votes retained.
      * NA_PENDING is polled while silence continues through the running DMA. */
     int (*standby)(void *);
-    /* Worker-only, muted output/VI retained, complete physical mode change. */
-    int (*route)(void *,uint32_t route);
 } NaRuntimeOps;
 enum {NaProbeIdle,NaProbeStarting,NaProbeCollecting,NaProbeDraining,NaProbeComplete,NaProbeFailed};
 #define NA_CAPTURE_PROBE_PCM_FRAMES (2u * NA_AUDIO_RATE)
@@ -39,10 +37,13 @@ typedef struct {
     uint32_t output_held,output_stop_pending,output_idle_ready;
     uint64_t output_stops,output_seen_stop,output_idle_fence;
     uint64_t input_heartbeat,input_seen,input_deadline;
-    uint32_t route_request,route_target;
     uint32_t capture_probe_allowed;
     NaCaptureProbe probe;
     int fault;
+    /* One first-read timeout may reopen only after the input graph has
+     * completed CLOSE/UNMAP/release. Keep its first error for diagnostics. */
+    uint32_t input_recovery_attempted,input_had_pcm;
+    int input_first_error;
 } NaRuntime;
 /* Memory is private kernel staging shared with one HAL connection; DMA uses
  * separate buffers owned by the graph. This initializer never publishes input

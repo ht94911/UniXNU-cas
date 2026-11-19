@@ -178,7 +178,7 @@ public:
         const bool observation=selector==NaAudioObserveHAL;
         if (!args || args->scalarInputCount || args->structureInputDescriptor ||
             args->scalarOutputCount || args->structureOutputSize || args->structureOutputDescriptor ||
-            args->asyncWakePort || selector>NaAudioRouteReceiver ||
+            args->asyncWakePort || selector>NaAudioObserveHAL ||
             (observation ? args->structureInputSize!=sizeof(NaHalObservation) || !args->structureInput:args->structureInputSize!=0)) return kIOReturnBadArgument;
         IOLockLock(gate);
         if (closed || !claimed || owner!=current_task()) {IOLockUnlock(gate);return kIOReturnNotOpen;}
@@ -186,7 +186,11 @@ public:
         if (observation) r=observe(static_cast<const NaHalObservation *>(args->structureInput));
         else if (selector==NaAudioFixHostClock) {increment(ClockCalls);r=nezha_audio_fix_host_clock(owner);store(ClockResult,r);}
         else {
+            // The worker owns input cleanup and recovery. Match closeAudio's
+            // gate order while a client publishes the request against it.
+            nezha_audio_owner_lock();
             r=result(na_runtime_request(runtime,selector));
+            nezha_audio_owner_unlock();
             if (selector==NaAudioStartOutput) {increment(OutputStarts);store(OutputResult,r);}
             if (selector==NaAudioStartInput) {increment(InputStarts);store(InputResult,r);}
         }

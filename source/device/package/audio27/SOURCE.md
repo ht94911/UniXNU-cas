@@ -1,3 +1,18 @@
+# 066 first microphone recovery candidate
+
+The exact061 image succeeded on one boot and failed on another: first four
+input READs timed out, then STOP returned zero-length completions. The input
+CLOSE/UNMAP and codec release completed, but the graph error kept every later
+StartInput from recovering. The66 candidate permits one renewed recording
+request after that first no-PCM timeout, only after all original input DMA and
+endpoint resources are released. It retains the first error in the existing
+input-flow diagnostic. Remote/invalid replies, cleanup failures, a second
+failure, or any failure after real PCM remain terminal. The061 HAL, native
+hardware settings and65 browser compatibility stay in the candidate.
+Actual runtime/engine/graph/TAS host cases and related runtime, endpoint and
+shutdown suites passed ASan/UBSan. Target compilation and device recovery are
+not yet verified. The phone is released; builds do not own the device.
+
 # Audio102 reuse for baseband045
 
 The accepted microphone and speaker implementation comes from audio102
@@ -140,21 +155,3 @@ driver6/ADSP10/error-8，GPR、服务和HAL尚未上线。主卡原AVC初始化�
 健康输出。不改硬件值、HAL或自动启录，不以电脑检查代替普通来电上行。
 实际runtime/engine/graph/TAS测试覆盖铃声Stop→首次双向、真实PCM解锁、
 四READ超时后的输出恢复；旧runtime在新场景失败，新场景和原场景通过。
-
-# 062：贴耳听筒与外放声路
-
-061人类确认来电铃声与上行正常。当前旧声路一直启用双TAS音乐配置，iOS将其
-识别为USB设备，尚未提供贴耳通话。062复用本机原厂handset和speaker配置：
-GPIO174低/无偏置、voice调音、顶部单独出声；高/上拉、music_18dB_stereo、上下
-双功放外放。两者共享已验主TDM时钟、VI、校准和DMA所有权。TI公开PAL3854
-和profile.misc提供DSP模式，切换在静音且旧PCM返回后等待原SET_CFG回执，
-再切GPIO和功放；麦克风图继续运行。保留061首次采集规则。
-
-系统接口来自原24A446 Receiver类，UID Receiver的准确工厂返回1fe4c8，
-初始化4e14b4按mute/outp/3和4创建prec与pspk，input0为内置麦克风静音。
-HAL提供这些实际控制、各自音量和原末尾tap。ABI3发布已应用声路与pending，
-控件通知在完成后更新；这仍需完整arm64e目标和真机按钮/声音验证。
-
-生命周期参考pandora0300/0304；其Cirrus功放配置未复用。TAS程序、RCV引脚
-和校准均来自nezha本机。宿主原runtime与新真实私有调音切换测试通过；DSP
-缺回执/真实错误仍拒发布声路。主包、网络和短信验收保持后续。

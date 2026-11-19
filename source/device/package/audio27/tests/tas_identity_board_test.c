@@ -107,12 +107,6 @@ int main(void) {
     assert(!ops.claim(ops.context,&lease));assert(!ops.reset(ops.context,lease,1));
     assert(!ops.power(ops.context,lease,1));
     assert((cell(&f,TLMM+4096*174)->value&0x3ff)==0x203);
-    assert(!ops.route(ops.context,lease,0));
-    assert((cell(&f,TLMM+4096*174)->value&0x3ff)==0x200);
-    assert((cell(&f,TLMM+4096*174+4)->value&2)==0);
-    assert(!ops.route(ops.context,lease,1));
-    assert((cell(&f,TLMM+4096*174)->value&0x3ff)==0x203);
-    assert((cell(&f,TLMM+4096*174+4)->value&2)==2);
     for (unsigned p=122;p<=125;++p) assert((cell(&f,TLMM+4096*p)->value&0x3ff)==0xc4);
     assert(!ops.reset(ops.context,lease,1));assert(!ops.power(ops.context,lease,0));
     assert(!ops.release(ops.context,lease));restored(&f);

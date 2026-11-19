@@ -28,9 +28,8 @@ static int playback(void *v,uint64_t relative,void *pcm,uint32_t bytes) {
         /* HAL and tagged-ring mixing already saturate to S16. Use their
          * full signal range; factory TAS gain/calibration and running VI
          * retain speaker protection. Idle still discards PCM unconditionally. */
-        int16_t mono=(int16_t)(((int32_t)l+rr)/2);
-        out[2*i]=r->engine.output_idle ? 0:r->status.route==NaAudioReceiver ? mono:l;
-        out[2*i+1]=r->engine.output_idle || r->status.route==NaAudioReceiver ? 0:rr;
+        out[2*i]=r->engine.output_idle ? 0:l;
+        out[2*i+1]=r->engine.output_idle ? 0:rr;
     }
     if (missing && !r->engine.output_idle && r->status.underruns!=UINT32_MAX) ++r->status.underruns;
     r->status.out_consumed=start+bytes/4;
@@ -68,6 +67,7 @@ static int capture(void *v,uint64_t relative,const void *pcm,uint32_t bytes) {
         int16_t amplified=(int16_t)(value>32767 ? 32767:value< -32768 ? -32768:value);
         e=na_ring_capture(r->input,first+i,amplified);if (e) return e;
     }
+    if (bytes) r->input_had_pcm=1;
     r->status.in_produced=first+bytes/2;return NA_OK;
 }
 static int activate(void *v,int direction) {
@@ -91,22 +91,36 @@ int na_runtime_init(NaRuntime *r,NaSession *s,NaRxQueue *rx,NaGraph *out,NaGraph
     r->status=(NaAudioStatus){.magic=NA_AUDIO_MAGIC,.version=NA_AUDIO_ABI_VERSION,.bytes=sizeof(NaAudioStatus),
         .rate=NA_AUDIO_RATE,.ring_frames=NA_AUDIO_RING_FRAMES,.period_frames=NA_AUDIO_PERIOD_FRAMES,.lead_frames=NA_AUDIO_LEAD_FRAMES,
         .epoch=1,.out_channels=2,.in_channels=capture_proven ? 1u:0u,.host_hz=(uint32_t)hz,.ticks_per_frame_q32=q,
-        .anchor_host=ops->host_time(ops->context),.route=NaAudioSpeaker,.route_ready=ops->route!=0};
+        .anchor_host=ops->host_time(ops->context)};
     /* Caller allocates fresh zeroed maps; no epoch reuse of writable mappings. */
     na_audio_status_publish(shared,&r->status);return NA_OK;
 }
+static int first_input_retry_allowed(const NaRuntime *r) {
+    const NaGraph *g=r->engine.graph[1];
+    return r->capture_proven && g && g->error==NA_TIMEOUT && !g->cleanup_error &&
+        r->engine.periods_submitted[1] && !r->input_recovery_attempted && !r->input_had_pcm &&
+        !r->fault && !__atomic_load_n(&r->disabled,__ATOMIC_ACQUIRE) && r->engine.session->online &&
+        !r->engine.rx_faults && !g->stream->bad_done && !g->stream->remote_errors &&
+        r->engine.graph[0] && !r->engine.graph[0]->error && !r->engine.graph[0]->cleanup_error &&
+        (!r->engine.graph[2] || (!r->engine.graph[2]->error && !r->engine.graph[2]->cleanup_error));
+}
+static int input_dma_released(const NaGraph *g) {
+    const NaStream *s=g->stream;
+    if (g->stage!=NaGraphOff || g->token || g->endpoint_owned || g->map_possible ||
+        g->open_possible || g->start_possible || !g->close_ack || !g->unmap_ack ||
+        s->handle || s->running || s->retiring || s->quarantine || s->in_flight ||
+        s->next || s->returned || s->frames || s->generation!=g->session->generation) return 0;
+    for (unsigned i=0;i<NA_DMA_SLOTS;++i) if (s->slot[i].state!=NaBufferFree) return 0;
+    return 1;
+}
 int na_runtime_request(NaRuntime *r,uint32_t selector) {
-    if (r && (selector==NaAudioRouteSpeaker || selector==NaAudioRouteReceiver)) {
-        if (!r->ops.route || r->fault || __atomic_load_n(&r->disabled,__ATOMIC_ACQUIRE)) return NA_ARGUMENT;
-        __atomic_store_n(&r->route_request,selector==NaAudioRouteReceiver ? NaAudioReceiver:NaAudioSpeaker,__ATOMIC_RELEASE);
-        return NA_OK;
-    }
     if (!r || selector>NaAudioStopInput) return NA_ARGUMENT;
     uint32_t bit=selector<2 ? 1:2;int start=!(selector&1);
     uint32_t probe=__atomic_load_n(&r->probe.state,__ATOMIC_ACQUIRE);
     if (start && probe>=NaProbeStarting && probe<=NaProbeDraining) return NA_BUSY;
     if (start && (__atomic_load_n(&r->disabled,__ATOMIC_ACQUIRE) || !__atomic_load_n(&r->service_ready,__ATOMIC_ACQUIRE) || (bit==2 && !r->capture_proven))) return NA_MISSING;
-    if (start && bit==2 && r->engine.graph[1] && r->engine.graph[1]->error)
+    if (start && bit==2 && r->engine.graph[1] && r->engine.graph[1]->error &&
+        !first_input_retry_allowed(r))
         return r->engine.graph[1]->error;
     if (start) {
         if (bit==2) __atomic_fetch_add(&r->input_heartbeat,1,__ATOMIC_ACQ_REL);
@@ -130,7 +144,6 @@ void na_runtime_disable(NaRuntime *r) {
     if (r->engine.graph[1]) r->engine.graph[1]->retain_on_stop=0;
 }
 int na_runtime_quiescent(const NaRuntime *r) {
-    if (r && r->status.route_pending) return 0;
     if (!r || r->prm->possible || r->prm->token) return 0;
     for (unsigned i=0;i<3;++i) if (r->engine.graph[i]) {
         const NaGraph *g=r->engine.graph[i];
@@ -158,7 +171,6 @@ static int cpu_maps_quiet(const NaRuntime *r) {
     return 1;
 }
 int na_runtime_rebind_ready(const NaRuntime *r) {
-    if (r && r->status.route_pending) return 0;
     if (!r || r->fault || __atomic_load_n(&r->disabled,__ATOMIC_ACQUIRE) ||
         __atomic_load_n(&r->request,__ATOMIC_ACQUIRE)) return 0;
     uint32_t probe=__atomic_load_n(&r->probe.state,__ATOMIC_ACQUIRE);
@@ -234,8 +246,21 @@ int na_runtime_poll(NaRuntime *r,uint64_t now) {
     int disabled=__atomic_load_n(&r->disabled,__ATOMIC_ACQUIRE);
     if (disabled) wanted=0;
     NaGraph *out=r->engine.graph[0],*vi=r->engine.graph[2],*in=r->engine.graph[1];
+    if (in && in->error && !r->input_first_error) r->input_first_error=in->error;
+    int retry_input=(wanted&2) && first_input_retry_allowed(r);
+    /* A renewed recording request waits through the original failed-input
+     * shutdown. Only a successful CLOSE/UNMAP and endpoint release permit
+     * the same input to reopen once; its uncertain DMA is never reused. */
+    if (retry_input && input_dma_released(in) && r->output_idle_ready &&
+        out->stage==NaGraphRunning && (!vi || vi->stage==NaGraphRunning)) {
+        r->input_recovery_attempted=1;
+        in->error=0;in->enqueue_deadline=0;in->endpoint_deadline=0;
+        r->origin_set[1]=0;r->input_deadline=now+500;
+        r->engine.active[1]=r->engine.staged[1]=0;r->engine.activation_deadline[1]=0;
+    }
     if (in) in->retain_on_stop=r->capture_proven && !disabled && !r->fault && !in->error && !in->cleanup_error;
     if (in && (in->error || in->cleanup_error)) wanted&=~2u;
+    if (retry_input) wanted&=~1u;
     uint64_t stops=__atomic_load_n(&r->output_stops,__ATOMIC_ACQUIRE);
     if (stops!=r->output_seen_stop) {
         r->output_seen_stop=stops;
@@ -244,21 +269,15 @@ int na_runtime_poll(NaRuntime *r,uint64_t now) {
             r->output_idle_fence=out->stream->next;
         }
     }
-    uint32_t route=__atomic_load_n(&r->route_request,__ATOMIC_ACQUIRE);
-    if (!disabled && !r->fault && r->ops.route && !r->status.route_pending && route!=r->status.route) {
-        r->route_target=route;r->status.route_pending=1;
-        r->output_stop_pending=1;r->output_idle_ready=0;r->output_idle_fence=out->stream->next;
-    }
     /* The first input period uses102's measured input-only startup: retain
      * silent output/VI, settle the microphone, and receive actual PCM before
      * activating playback. This only changes this worker snapshot; the HAL's
      * output request remains queued and resumes after input production, or
      * after the original input error has been published. */
+    if ((wanted&2) && !r->status.in_produced) wanted&=~1u;
     /* A system microphone request needs the same retained output/VI as the
      * finite probe, even when no output stream has ever started. */
-    if (((wanted&3) || r->status.route_pending) && !disabled) r->output_held=1;
-    if ((wanted&2) && !r->status.in_produced) wanted&=~1u;
-    if (r->status.route_pending) wanted&=~1u;
+    if ((wanted&3) && !disabled) r->output_held=1;
     int keep_output=r->output_held && !disabled && !r->fault;
     int idle=!keep_output || !(wanted&1) || r->output_stop_pending;
     na_engine_output_idle(&r->engine,idle);
@@ -269,15 +288,6 @@ int na_runtime_poll(NaRuntime *r,uint64_t now) {
         if (e<0 && !r->fault) {r->fault=e;na_runtime_disable(r);wanted=0;keep_output=0;}
         if (!e && out->stream->returned>=r->output_idle_fence) {
             r->output_stop_pending=0;r->output_idle_ready=1;
-        }
-    }
-    if (r->status.route_pending && r->ops.route &&
-        ((r->output_idle_ready && out->stage==NaGraphRunning && (!vi || vi->stage==NaGraphRunning)) || disabled || r->fault)) {
-        e=r->ops.route(r->ops.context,r->route_target);
-        if (e<0) {r->status.route_error=(uint32_t)e;r->status.route_pending=0;if (!r->fault) r->fault=e;na_runtime_disable(r);}
-        else if (!e) {
-            if (!disabled && !r->fault) r->status.route=r->route_target;
-            r->status.route_pending=0;r->output_idle_ready=0;
         }
     }
     uint32_t probe=__atomic_load_n(&r->probe.state,__ATOMIC_ACQUIRE);
@@ -319,6 +329,7 @@ int na_runtime_poll(NaRuntime *r,uint64_t now) {
     }
     na_prm_request(r->prm,mask);
     e=na_engine_poll(&r->engine,now);
+    if (in && in->error && !r->input_first_error) r->input_first_error=in->error;
     if (in && in->stage==NaGraphPaused && !in->stream->in_flight &&
         in->stream->next==in->stream->returned) r->origin_set[1]=0;
     /* Analog settling now precedes the first READ. Anchor captured frames

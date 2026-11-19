@@ -83,10 +83,6 @@ int na_audio_status_snapshot(const NaAudioStatus *shared,NaAudioStatus *out) {
         out->in_produced=__atomic_load_n(&shared->in_produced,__ATOMIC_RELAXED);
         out->output_periods=__atomic_load_n(&shared->output_periods,__ATOMIC_RELAXED);
         out->input_periods=__atomic_load_n(&shared->input_periods,__ATOMIC_RELAXED);
-        out->route=__atomic_load_n(&shared->route,__ATOMIC_RELAXED);
-        out->route_ready=__atomic_load_n(&shared->route_ready,__ATOMIC_RELAXED);
-        out->route_pending=__atomic_load_n(&shared->route_pending,__ATOMIC_RELAXED);
-        out->route_error=__atomic_load_n(&shared->route_error,__ATOMIC_RELAXED);
         out->sequence=sequence;
         __atomic_thread_fence(__ATOMIC_ACQUIRE);
         if (sequence==__atomic_load_n(&shared->sequence,__ATOMIC_ACQUIRE)) {
@@ -127,9 +123,5 @@ void na_audio_status_publish(NaAudioStatus *shared,const NaAudioStatus *private_
     __atomic_store_n(&shared->in_produced,private_state->in_produced,__ATOMIC_RELAXED);
     __atomic_store_n(&shared->output_periods,private_state->output_periods,__ATOMIC_RELAXED);
     __atomic_store_n(&shared->input_periods,private_state->input_periods,__ATOMIC_RELAXED);
-    __atomic_store_n(&shared->route,private_state->route,__ATOMIC_RELAXED);
-    __atomic_store_n(&shared->route_ready,private_state->route_ready,__ATOMIC_RELAXED);
-    __atomic_store_n(&shared->route_pending,private_state->route_pending,__ATOMIC_RELAXED);
-    __atomic_store_n(&shared->route_error,private_state->route_error,__ATOMIC_RELAXED);
     __atomic_store_n(&shared->sequence,old+2,__ATOMIC_RELEASE);
 }

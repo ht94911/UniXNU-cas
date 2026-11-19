@@ -74,59 +74,6 @@ static int activate(void *v,int direction) {
     return r ? r:na_tas_endpoint_poll(d->speaker,d->now_ms);
 }
 static int standby(void *v) {return mute_endpoint(&((NaDriver *)v)->direction[0]);}
-static int route(void *v,uint32_t target) {
-    NaDriver *d=v;NaGraph *g=&d->graph[0];uint32_t value=0;
-    if (target>NaAudioReceiver || !d->speaker->receiver_ready) return NA_ARGUMENT;
-    if (d->route_token) {
-        int r=na_result(&d->session,d->route_token,&value);
-        if (r==NA_PENDING) return r;
-        d->route_token=0;
-        if (r || value) return r ? r:NA_REMOTE;
-        d->route_stage=2;
-    }
-    if (__atomic_load_n(&d->runtime.disabled,__ATOMIC_ACQUIRE) || d->runtime.fault) {
-        d->route_stage=0;return NA_OK;
-    }
-    if (g->stage!=NaGraphRunning || !g->stream->handle || !d->session.online ||
-        d->graph[2].stage!=NaGraphRunning || d->graph[2].error) return NA_PENDING;
-    if (d->route_stage>=3) {
-        if (target!=d->route_target) return NA_OWNERSHIP;
-        uint32_t wanted=__atomic_load_n(&d->runtime.request,__ATOMIC_ACQUIRE);
-        if (d->route_stage==4) {
-            /* Keep061's first microphone period under muted output, including
-             * a receiver request arriving together with first duplex IO. */
-            NaGraph *input=d->runtime.engine.graph[1];
-            if ((wanted&2) && input && !input->error && !input->cleanup_error &&
-                !d->runtime.status.in_produced) return NA_PENDING;
-            if (!(wanted&1)) {d->route_stage=0;return NA_OK;}
-        }
-        int r=na_tas_endpoint_request(d->speaker,d->route_stage==3 ? NaTasPrepared:NaTasActive);
-        if (!r) r=na_tas_endpoint_poll(d->speaker,d->now_ms);
-        if (r) return r;
-        if (d->route_stage==3) {d->route_stage=4;return NA_PENDING;}
-        d->route_stage=0;return NA_OK;
-    }
-    if (d->speaker->state!=NaTasOff || d->speaker->changing) return NA_PENDING;
-    if (d->route_stage==2) {
-        if (target!=d->route_target) return NA_OWNERSHIP;
-        int r=na_tas_endpoint_route(d->speaker,target==NaAudioReceiver ? NaTasReceiver:NaTasSpeaker);
-        if (!r) d->route_stage=3;
-        return r ? r:NA_PENDING;
-    }
-    NaBlob b=d->route_config[target];uint8_t packet[GPR_MAX_PACKET];
-    if (!b.bytes) return NA_MISSING;
-    int r=g->ops.sync(g->ops.context,b.offset,b.bytes,1);if (r) return r;
-    uint32_t token=na_token(&d->session);if (!token) return NA_OFFLINE;
-    uint32_t n=na_oob_packet(packet,g->stream->port,token,AR_OP_SET_CFG,
-                             g->stream->dsp_base+b.offset,g->stream->handle,b.bytes);
-    if (!n) return NA_ARGUMENT;
-    r=na_expect(&d->session,token,g->stream->port,AR_APM_IID,AR_OP_SET_CFG,
-                GPR_OP_BASIC_RESULT,d->now_ms,2000);
-    if (r) return r;
-    r=g->ops.send(g->ops.context,packet,n);
-    if (r) {na_cancel_unsent(&d->session,token);return r==NA_BUSY ? NA_PENDING:r;}
-    d->route_token=token;d->route_stage=1;d->route_target=target;return NA_PENDING;
-}
 static int health(void *v) {
     NaDriver *d=v;
     int r=d->ops.dma_health(d->ops.context);if (r) return r;
@@ -152,7 +99,7 @@ int na_driver_init(NaDriver *d,NaAdsp *adsp,NaTasEndpoint *speaker,const NaDrive
         if (!i) d->graph[i].endpoint_trace_wait_us=speaker->ops.trace_wait_us;
     }
     int r=na_prm_init(&d->prm,&d->session,resources,count,send_packet,d);if (r) return r;
-    NaRuntimeOps ro={d,host_time,activate,health,standby,speaker->receiver_ready ? route:0};
+    NaRuntimeOps ro={d,host_time,activate,health,standby};
     return na_runtime_init(&d->runtime,&d->session,adsp->rx,&d->graph[0],in ? &d->graph[1]:0,&d->prm,&adsp->transport,
         status,out_ring,in_ring,numer,denom,outvotes,invotes,capture_proven,&ro);
 }
@@ -173,14 +120,7 @@ int na_driver_attach_feedback(NaDriver *d,const NaDriverStream *s,const NaTiCali
     for (unsigned i=0;i<t->configs;++i) {
         uint32_t e=t->config[i].offset+t->config[i].bytes;if (e>end) end=e;
     }
-    uint32_t extra=d->speaker->receiver_ready ? 48:0;
-    if ((end&7) || end>d->stream[0].bytes || n+extra>d->stream[0].bytes-end) return NA_OVERFLOW;
-    uint8_t modes[2][24];
-    if (extra) {
-        r=na_ti_route_payload(calibration,d->speaker->image,ti_instance,"music_18dB_stereo",modes[0]);
-        if (!r) r=na_ti_route_payload(calibration,d->speaker->image,ti_instance,"voice",modes[1]);
-        if (r) return r;
-    }
+    if ((end&7) || end>d->stream[0].bytes || n>d->stream[0].bytes-end) return NA_OVERFLOW;
     d->direction[2]=(NaDriverDirection){d,2};
     r=na_stream_init(&d->stream[2],s->memory,s->dsp_address,s->bytes,1920,4,s->port,s->endpoint,0);if (r) return r;
     NaGraphOps go={&d->direction[2],graph_send,sync_dma,prepare_endpoint,mute_endpoint,release_endpoint};
@@ -188,11 +128,6 @@ int na_driver_attach_feedback(NaDriver *d,const NaDriverStream *s,const NaTiCali
     d->graph[2].endpoint_trace_wait_us=d->speaker->ops.trace_wait_us;
     r=na_engine_attach_control(&d->runtime.engine,&d->graph[2]);if (r) return r;
     memcpy(d->stream[0].memory+end,payload,n);t->config_peer[t->configs]=AR_APM_IID;t->config[t->configs++]=(NaBlob){end,n};
-    for (unsigned i=0;i<(extra ? 2u:0u);++i) {
-        uint32_t offset=end+n+i*24;
-        memcpy(d->stream[0].memory+offset,modes[i],24);
-        d->route_config[i]=(NaBlob){offset,24};
-    }
     d->protection_instance=ti_instance;d->feedback_attached=1;return NA_OK;
 }
 static int fail(NaDriver *d,int error) {

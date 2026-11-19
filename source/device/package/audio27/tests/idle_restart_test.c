@@ -19,6 +19,7 @@ typedef struct {
     uint32_t pcm_peak;
     int health_error;
     unsigned suppress_reads,reads,close_failure,input_opens,input_maps,input_stops,input_closes,input_unmaps;
+    unsigned input_unmap_failure,input_release_failure;
 } Fixture;
 static Fixture f;
 static _Alignas(4096) uint8_t dma[3][65536];
@@ -48,7 +49,7 @@ static int peer_send(void *v,const uint8_t *packet,uint32_t bytes) {
     } else if (p.opcode==AR_OP_READ) {
         ++x->reads;
         assert(x->driver.graph[0].stage==NaGraphRunning && x->driver.graph[2].stage==NaGraphRunning);
-        assert(x->driver.stream[1].returned || !x->driver.runtime.engine.output_idle ||
+        assert(!x->driver.runtime.engine.output_idle ||
             (x->driver.runtime.output_idle_ready && !x->driver.runtime.engine.active[0]));
         if (x->suppress_reads) return NA_OK;
         uint32_t slot=(uint32_t)(x->driver.stream[1].next-1)%NA_DMA_SLOTS;
@@ -71,10 +72,20 @@ static int peer_send(void *v,const uint8_t *packet,uint32_t bytes) {
     } else {
         put(payload,p.opcode);
         if (p.src_port==x->driver.stream[1].port) {
-            if (p.opcode==AR_OP_GRAPH_OPEN) ++x->input_opens;
+            if (p.opcode==AR_OP_GRAPH_OPEN) {
+                ++x->input_opens;
+                if (x->input_opens==2) {
+                    NaRuntime *r=&x->driver.runtime;
+                    assert(r->engine.output_idle && r->output_idle_ready && !r->engine.active[0]);
+                    assert(r->input_first_error==NA_TIMEOUT && !x->driver.graph[1].cleanup_error);
+                }
+            }
             if (p.opcode==AR_OP_GRAPH_STOP) ++x->input_stops;
             if (p.opcode==AR_OP_GRAPH_CLOSE) ++x->input_closes;
-            if (p.opcode==AR_OP_MEM_UNMAP) ++x->input_unmaps;
+            if (p.opcode==AR_OP_MEM_UNMAP) {
+                ++x->input_unmaps;
+                if (x->input_unmap_failure) put(payload+4,x->input_unmap_failure);
+            }
         }
         if (p.opcode==AR_OP_GRAPH_CLOSE) {
             ++x->closes;
@@ -113,6 +124,7 @@ static int graph_release(void *v) {
     ++x->muted;return NA_OK;
 }
 static int nothing(void *v) {(void)v;return NA_OK;}
+static int input_release(void *v) {return ((Fixture *)v)->input_release_failure ? NA_IO:NA_OK;}
 static uint64_t host(void *v) {return ((Fixture *)v)->now*19200;}
 static int dma_health(void *v) {return ((Fixture *)v)->health_error;}
 static int runtime_activate(void *v,int direction) {
@@ -149,12 +161,12 @@ static void initialize_capture(int capture) {
     }
     if (capture) {
         assert(!na_stream_init(&f.driver.stream[1],dma[2],0x110020000ULL,65536,960,2,8,43,1));
-        NaGraphOps go={&f,peer_send,sync_slot,nothing,nothing,nothing};
+        NaGraphOps go={&f,peer_send,sync_slot,nothing,nothing,input_release};
         assert(!na_graph_init(&f.driver.graph[1],&f.driver.session,&f.driver.stream[1],&topology,&go));
     }
     NaPrmResource resources[2]={{.kind=NaPrmClock,.id=0x200,.hz=3072000,.attribute=4},{.kind=NaPrmCore,.id=2}};
     assert(!na_prm_init(&f.driver.prm,&f.driver.session,resources,2,peer_send,&f));
-    NaRuntimeOps ro={&f,host,runtime_activate,runtime_health,runtime_standby,0};
+    NaRuntimeOps ro={&f,host,runtime_activate,runtime_health,runtime_standby};
     assert(!na_runtime_init(&f.driver.runtime,&f.driver.session,&f.rx,&f.driver.graph[0],capture ? &f.driver.graph[1]:NULL,&f.driver.prm,&f.transport,
         &f.status,ring,capture ? fresh_ring:NULL,625,12,1,capture ? 2:0,0,&ro));
     assert(!na_engine_attach_control(&f.driver.runtime.engine,&f.driver.graph[2]));
@@ -368,12 +380,13 @@ static void system_duplex_restart(void) {
 static void system_input_timeout(void) {
     initialize_capture(1);NaRuntime *r=&f.driver.runtime;r->capture_proven=1;r->status.in_channels=1;
     f.suppress_reads=1;assert(!na_runtime_request(r,NaAudioStartInput));
-    for(unsigned i=0;i<350;++i) {
+    for(unsigned i=0;i<650;++i) {
         if (!(i%10) && !f.driver.graph[1].error) assert(!na_runtime_request(r,NaAudioStartInput));
         assert(!step());
     }
     assert(f.driver.graph[1].error==NA_TIMEOUT && !r->fault && !r->disabled);
     assert((r->status.state&NaAudioOutputReady) && !(r->status.state&NaAudioInputReady));
+    assert(r->input_recovery_attempted && r->input_first_error==NA_TIMEOUT);
     assert(na_runtime_request(r,NaAudioStartInput)==NA_TIMEOUT);
     assert(f.driver.graph[0].stage==NaGraphRunning && f.driver.graph[2].stage==NaGraphRunning);
     start();write_next(8000);steps(10);assert(r->engine.active[0]);
@@ -445,14 +458,15 @@ static void first_duplex_timeout(void) {
     f.suppress_reads=1;
     assert(!na_runtime_request(r,NaAudioStartOutput));
     assert(!na_runtime_request(r,NaAudioStartInput));
-    for (unsigned i=0;i<350;++i) {
+    for (unsigned i=0;i<650;++i) {
         if (!(i%10) && !f.driver.graph[1].error)
             assert(!na_runtime_request(r,NaAudioStartInput));
         if (!f.driver.graph[1].error)
             assert(!r->engine.active[0] && f.activated==activations);
         assert(!step());
     }
-    assert(f.reads==4 && f.driver.graph[1].error==NA_TIMEOUT);
+    assert(f.reads==8 && f.driver.graph[1].error==NA_TIMEOUT);
+    assert(r->input_recovery_attempted && r->input_first_error==NA_TIMEOUT);
     assert(!r->status.in_produced && !r->fault);
     assert(r->engine.active[0] && f.activated==activations+1);
     assert((r->request&1) && !(r->status.state&NaAudioInputReady));
@@ -460,7 +474,82 @@ static void first_duplex_timeout(void) {
     for(unsigned i=0;i<80 && !na_runtime_quiescent(r);++i)assert(!step());
     assert(na_runtime_quiescent(r));
 }
+static void first_input_recovery(unsigned keep_suppressed,unsigned fail_after_PCM) {
+    initialize_capture(1);NaRuntime *r=&f.driver.runtime;
+    r->capture_proven=1;r->status.in_channels=1;r->output_held=1;
+    steps(120);start();steps(10);
+    assert(!na_runtime_request(r,NaAudioStopOutput));standby_complete();
+    f.suppress_reads=1;
+    assert(!na_runtime_request(r,NaAudioStartOutput));
+    assert(!na_runtime_request(r,NaAudioStartInput));
+    for (unsigned i=0;i<350 && !f.driver.graph[1].error;++i) {
+        if (!(i%10)) assert(!na_runtime_request(r,NaAudioStartInput));
+        assert(!step());
+    }
+    assert(f.driver.graph[1].error==NA_TIMEOUT && f.reads==4 && !r->fault);
+    unsigned original_maps=f.input_maps;
+    /* A live renewed request is held through the first failed graph's drain;
+     * it never causes another MAP before that graph is completely released. */
+    assert(!na_runtime_request(r,NaAudioStartInput));
+    while (f.driver.graph[1].stage!=NaGraphOff) {
+        assert(!step());assert(f.input_maps==original_maps);
+    }
+    assert(f.input_closes==1 && f.input_unmaps==1 && !f.driver.stream[1].handle);
+    f.suppress_reads=keep_suppressed;
+    for (unsigned i=0;i<350;++i) {
+        if (!(i%10) && (!f.driver.graph[1].error || !r->input_recovery_attempted))
+            assert(!na_runtime_request(r,NaAudioStartInput));
+        assert(!step());
+    }
+    assert(r->input_recovery_attempted==1 && r->input_first_error==NA_TIMEOUT);
+    assert(f.input_maps==2 && f.input_opens==2 && !r->fault && !r->disabled);
+    assert(r->request&1);
+    if (keep_suppressed) {
+        assert(f.driver.graph[1].error==NA_TIMEOUT && f.reads==8 && !r->status.in_produced);
+        assert(na_runtime_request(r,NaAudioStartInput)==NA_TIMEOUT);
+        assert(!(r->status.state&NaAudioInputReady) && r->engine.active[0]);
+    } else {
+        assert(!f.driver.graph[1].error && r->input_had_pcm && r->status.in_produced);
+        assert((r->status.state&NaAudioInputReady) && r->engine.active[0] && r->engine.active[1]);
+        if (fail_after_PCM) {
+            /* Once real PCM has worked, any later timeout remains terminal. */
+            f.driver.graph[1].error=NA_TIMEOUT;
+            assert(na_runtime_request(r,NaAudioStartInput)==NA_TIMEOUT);
+        } else {
+            /* The reopened input then uses the original STOP/Paused path,
+             * without another codec reset or map on ordinary recording. */
+            assert(!na_runtime_request(r,NaAudioStopInput));
+            for(unsigned i=0;i<40 && f.driver.graph[1].stage!=NaGraphPaused;++i)assert(!step());
+            assert(f.driver.graph[1].stage==NaGraphPaused);
+            assert(!na_runtime_request(r,NaAudioStartInput));
+            for(unsigned i=0;i<70;++i) {
+                if(!(i%10))assert(!na_runtime_request(r,NaAudioStartInput));
+                assert(!step());
+            }
+            assert(f.input_maps==2 && f.input_opens==2 && r->engine.active[1]);
+        }
+    }
+    na_runtime_disable(r);
+    for(unsigned i=0;i<120 && !na_runtime_quiescent(r);++i)assert(!step());
+    assert(na_runtime_quiescent(r));
+}
+static void first_input_recovery_cleanup_failure(unsigned which) {
+    initialize_capture(1);NaRuntime *r=&f.driver.runtime;
+    r->capture_proven=1;r->status.in_channels=1;r->output_held=1;steps(120);
+    f.suppress_reads=1;f.close_failure=which==0;f.input_unmap_failure=which==1;f.input_release_failure=which==2;
+    assert(!na_runtime_request(r,NaAudioStartInput));
+    for(unsigned i=0;i<350;++i) {
+        if (!(i%10) && !f.driver.graph[1].error) assert(!na_runtime_request(r,NaAudioStartInput));
+        assert(!step());
+    }
+    assert(f.driver.graph[1].error==NA_TIMEOUT && f.driver.graph[1].cleanup_error);
+    assert(!r->input_recovery_attempted && f.input_maps==1);
+    assert(na_runtime_request(r,NaAudioStartInput)==NA_TIMEOUT);
+    assert((r->status.state&NaAudioOutputReady) && !r->fault);
+}
 int main(void) {
+    first_input_recovery(0,0);first_input_recovery(0,1);first_input_recovery(1,0);
+    for(unsigned i=0;i<3;++i)first_input_recovery_cleanup_failure(i);
     cold_duplex_after_ringtone();
     first_duplex_timeout();
     cold_system_idle();

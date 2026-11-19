@@ -74,12 +74,6 @@
   "shared_sources_relative_to_package_meaning": "historical names only; resolve basenames in exact component selected by integration/shared-component.json",
   "additional_targeted_tests": [
     {
-      "source": "tests/receiver_route_test.c",
-      "arguments": ["<private PANDFW01 file>"],
-      "scope": "Real private voice/stereo TAS tables, original driver/runtime DSP ACK, top-only downmix, continued mic, cold selection, timeout/error; no device",
-      "passed": true
-    },
-    {
       "source": "tests/pil_preflight_test.c",
       "scope": "actual native PIL helper and ADSP lifecycle; synthetic SCM checks query/stop order, once-only behavior and failed-stop DMA gating"
     },

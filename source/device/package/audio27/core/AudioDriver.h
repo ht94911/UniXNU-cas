@@ -32,7 +32,6 @@ struct NaDriver {
     NaDriverOps ops;NaDriverDirection direction[3];
     uint32_t stage,input_enabled,output_votes,input_votes,mic_owned,mic_initialized;
     uint32_t feedback_attached,protection_instance;
-    NaBlob route_config[2];uint32_t route_token,route_stage,route_target;
     uint64_t now_ms;int error;
 };
 /* Hardware/resource/pas/DMA setup is completed by the native board adapter.
