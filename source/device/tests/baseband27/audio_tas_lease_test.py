@@ -79,7 +79,7 @@ static void run(unsigned ipa_resource,bool audio_first,bool legacy) {
     Sm8850Resources common={};NaNativeTasBoard board={};NaTasIdentity identity={};
     Sm8850ResourceIo io={nullptr,lock,unlock,read32,write32,read64,fence};
     assert(!sm8850_resources_init(&common,&io));board.common=&common;
-    NaTasPowerOps ops={&board,identity_claim,power,reset,identity_release,{nullptr,revision,nullptr},nullptr};
+    NaTasPowerOps ops={&board,identity_claim,power,reset,identity_release,{nullptr,revision,nullptr},nullptr,nullptr};
     assert(!na_tas_identity_init(&identity,&ops));
     maps=0;uint64_t ipa=0,adsp=0,mic=0;
     assert(!sm8850_resource_acquire(&common,8,0x4e41,&adsp));

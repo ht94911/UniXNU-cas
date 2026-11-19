@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "062 native receiver/speaker physical routes with the measured061 first capture, unchangedGPU024/commonMSS lifecycle. StockOEM top voice/RCV0 vs stereo/RCV1, TI3854 ACK, original24A446Receiver ports and applied state; source only, no phone or private inputs.",
+  "purpose": "062 native receiver/speaker physical routes with the measured061 first capture, unchangedGPU024/commonMSS lifecycle. StockOEM top voice/RCV0 vs stereo/RCV1, TI3854 ACK, original24A446Receiver ports and applied state; source only, no phone or private inputs. Old062 stopped on missing added route initializer in host lease fixture; only this actual fixture is repaired, production audio unchanged.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "8a93a3bbd842ade0a473d6f63ccbe5ebba3c6b47",
+  "device_revision": "607bd55c188ec0ba225bbe26dd6eaeaf15a43340",
   "soc_revision": "703d7b4bb00904b4a6e5d96f9e9bf72eec170f6b",
   "xcode": "26.6",
   "files": {
@@ -507,7 +507,7 @@
     "source/device/scripts/prepare-nezha27-baseband.py": "84f40cec2d3b48b9d372263a50e563666b025605cd132554497bd87cf93eb499",
     "source/device/scripts/qualify-armcpu-instructions.py": "dae7cb3b9faecaac7b268212bbd324ae172d3dffa0e94b06afc4581c9f4abe9b",
     "source/device/tests/baseband27/audio_shared_ipcc_test.c": "633420df7d1d668501b59436e1576c65ead245ce8a51d6188a18f6cf57bb89be",
-    "source/device/tests/baseband27/audio_tas_lease_test.py": "ab45774bfa439da66f20d5fd94041ea8ee8e7701bb6471f5d3d4bbf6d89e22f6",
+    "source/device/tests/baseband27/audio_tas_lease_test.py": "1d94575a380dd7bb93e08888fe49ca70f2bcd7bf528cdb52b3317eac29b1c2fd",
     "source/device/tests/baseband27/boot_ready_test.c": "415b5a8f68ba7a529d33f2f6905fe8af155fb42f344284a344a98138b4c68965",
     "source/device/tests/baseband27/cellular_launch_test.py": "6eff8a971d7c88c2b305b8f48369909044dc6ff09b1e860d764e63ffba45f144",
     "source/device/tests/baseband27/cellular_network_runtime_test.py": "6668677676a93b6d297a1552eb9ac17ab442d43456ca1cd274ced6d4310d99ec",
