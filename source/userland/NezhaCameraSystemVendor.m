@@ -2,6 +2,10 @@
 #include "NezhaCameraDeviceBackend.h"
 #include "NezhaCameraFactory.h"
 #include "NezhaCameraMetal.h"
+#include "NezhaCameraMemory.h"
+#include <errno.h>
+#include <mach/mach.h>
+#include <mach/task_info.h>
 #include <dlfcn.h>
 #include <mach-o/dyld.h>
 #include <objc/message.h>
@@ -467,5 +471,24 @@ __attribute__((constructor)) static void initialize(void)
 {
     const char *process=getprogname();
     if (!process || strcmp(process,"cameracaptured")) return;
+    /* Establish room before the original service creates translated programs.
+     * This is the original development-kernel self-only dyld operation, not
+     * a replacement entitlement or a cross-process limit setter. */
+    task_vm_info_data_t before={0},after={0};
+    mach_msg_type_number_t before_count=TASK_VM_INFO_COUNT,after_count=TASK_VM_INFO_COUNT;
+    const kern_return_t before_status=task_info(mach_task_self(),TASK_VM_INFO,
+        (task_info_t)&before,&before_count);
+    NezhaCameraMemoryControl control=(NezhaCameraMemoryControl)dlsym(RTLD_DEFAULT,"memorystatus_control");
+    errno=0;
+    const int memory_status=nezha_camera_memory_increase(control,process,getpid());
+    const int memory_error=errno;
+    const kern_return_t after_status=task_info(mach_task_self(),TASK_VM_INFO,
+        (task_info_t)&after,&after_count);
+    fprintf(stderr,"nezha-camera: own memory increase pid=%u command=22 bytes=%u status=%d errno=%d "
+        "before=%d/%u footprint=%llu room=%llu after=%d/%u footprint=%llu room=%llu\n",
+        (unsigned)getpid(),NEZHA_CAMERA_MEMORY_INCREASE_BYTES,memory_status,memory_error,
+        before_status,before_count,(unsigned long long)before.phys_footprint,
+        (unsigned long long)before.limit_bytes_remaining,after_status,after_count,
+        (unsigned long long)after.phys_footprint,(unsigned long long)after.limit_bytes_remaining);
     _dyld_register_func_for_add_image(image_added);
 }

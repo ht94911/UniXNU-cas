@@ -1,7 +1,7 @@
-name: nezha iPhone27 Camera083 exact GPU051 required selector
+name: nezha iPhone27 Camera105 self-only capture memory
 on:
   push:
-    branches: [codex/ios27-camera083b-exact-GPU051-required-20261117]
+    branches: [codex/ios27-camera105-own-memory-20261120]
 permissions:
   contents: read
 concurrency:
@@ -26,7 +26,7 @@ jobs:
           persist-credentials: false
       - name: Prepare the existing encryption tool
         run: brew install openssl@3 > "$RUNNER_TEMP/camera-userland-setup.log" 2>&1
-      - name: Build and sign the Camera083 exact GPU051 required selector helper
+      - name: Build and sign the Camera105 self-only capture memory helper
         run: |
           set -euo pipefail
           export PATH="$(brew --prefix openssl@3)/bin:$PATH"
