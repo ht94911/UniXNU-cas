@@ -1,0 +1,23 @@
+--- a/bsd/kern/kern_exec.c
++++ b/bsd/kern/kern_exec.c
+@@ -9045,10 +9045,18 @@
+ 	char device_path[64] = "/dev/md0";
+ #if defined(XNU_NATIVE_RAM_BLOCK) && XNU_NATIVE_RAM_BLOCK
+ 	/* The typed provider supplies logical seed identity for both dense and
+ 	 * sparse media. A sparse disk has no contiguous logical-byte address. */
+-	if (!native_ram_block_volume_seed(XNU_OWNER_DATA_VOLUME_UUID, &device, device_path,
+-	    sizeof(device_path), &base, &size, native_owner_data_seed_sha256)) { error = ENOENT; goto done; }
++	/* The independent root publisher and RAM disk match asynchronously.
++	 * Wait only for the configured typed Data provider, with a hard bound;
++	 * an absent, ambiguous or invalid seed still fails before mount. */
++	extern void IOSleep(unsigned milliseconds);
++	unsigned data_wait = 0;
++	while (!native_ram_block_volume_seed(XNU_OWNER_DATA_VOLUME_UUID, &device, device_path,
++	    sizeof(device_path), &base, &size, native_owner_data_seed_sha256)) {
++		if (data_wait++ == 100) { error = ENOENT; goto done; }
++		IOSleep(100);
++	}
+ 	/* The typed provider's disk may be far larger than 2 GiB (a persistent Data disk keeps only its seed's nonzero pages). */
+ 	if (!size || size > UINT64_C(0x10000000000) || (size & 4095)) goto done;
+ #else
+ 	device = mdevlookup(0);
