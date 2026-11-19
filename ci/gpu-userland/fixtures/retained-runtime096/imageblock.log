@@ -1,0 +1,40 @@
+ Downloading crates ...
+  Downloaded proc-macro2 v1.0.107
+  Downloaded serde v1.0.229
+  Downloaded quote v1.0.47
+  Downloaded unicode-ident v1.0.27
+  Downloaded serde_derive v1.0.229
+  Downloaded syn v3.0.10
+   Compiling proc-macro2 v1.0.107
+   Compiling unicode-ident v1.0.27
+   Compiling quote v1.0.47
+   Compiling serde_core v1.0.229
+   Compiling serde v1.0.229
+   Compiling ash v0.38.0+1.3.281
+   Compiling metal2vulkan v0.2.0 (/Users/runner/work/UniXNU-cas/UniXNU-cas/unixnu/.cache/gpu-reference/metal2vulkan/crates/metal2vulkan)
+   Compiling syn v3.0.10
+   Compiling serde_json v1.0.154
+   Compiling serde_derive v1.0.229
+   Compiling metal2vulkan-air v0.2.0 (/Users/runner/work/UniXNU-cas/UniXNU-cas/unixnu/.cache/gpu-reference/metal2vulkan/crates/metal2vulkan-air)
+    Finished `release` profile [optimized] target(s) in 10m 30s
+     Running unittests src/lib.rs (build/multi-level-output-host/release/deps/metal2vulkan-5ec8c25b6d11a341)
+
+running 16 tests
+test tests::engine_imageblock::a_formatless_profile_keys_an_integer_slice_type ... ok
+test tests::engine_imageblock::a_narrow_slice_plans_against_any_bound_format ... ok
+test tests::engine_imageblock::a_cell_stride_is_rounded_up_to_the_alignment ... ok
+test tests::engine_imageblock::a_cell_holds_the_widest_access_through_its_pointer ... ok
+test tests::engine_imageblock::a_half_slice_hands_the_device_the_cells_halves ... ok
+test tests::engine_imageblock::a_sized_two_lane_slice_walks_the_cell_stride ... ok
+test tests::engine_imageblock::a_slice_written_by_local_id_zero_after_the_barrier_is_shared ... ok
+test tests::engine_imageblock::an_integer_slice_takes_its_class_from_the_format ... ok
+test tests::engine_imageblock::a_slice_outside_the_shared_shape_keeps_its_writer ... ok
+test tests::engine_imageblock::an_implicit_slice_copies_the_whole_imageblock ... ok
+test tests::engine_imageblock::imageblock_cells_are_shared_across_the_threadgroup ... ok
+test tests::engine_imageblock::imageblock_follows_the_threadgroup_regions ... ok
+test tests::engine_imageblock::one_cell_reads_back_its_store ... ok
+test tests::engine_imageblock::the_binder_specializes_and_charges_the_imageblock ... ok
+test tests::engine_imageblock::the_imageblock_parameter_value_is_refused_where_it_is_read ... ok
+test tests::engine_imageblock::array_slices_land_at_their_layer ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 3317 filtered out; finished in 1.53s

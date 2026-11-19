@@ -1,0 +1,48 @@
+{
+  "passed": true,
+  "runtime_tree": "98490c8ee55b09202c8a8453ac3453fe7b80d3b4",
+  "source_manifest_sha256": "84f2d312792669e3907837411afbee16e7fbe54a7edae1161b16091589a119ec",
+  "current_Mac_imageblock_interpreter_passed": true,
+  "exact_runtime_source_verified": true,
+  "current_Mac_planner_tests_passed": true,
+  "current_Mac_allocator_tests_passed": true,
+  "current_Mac_allocator_cases": 8,
+  "allocator_callbacks_are_model": true,
+  "current_iOS_policy_hardware_measured": false,
+  "current_Mac_Vulkan_execution": false,
+  "target_A840_performance_verified": false,
+  "Linux_Vulkan_execution_reference": {
+    "passed": true,
+    "runtime_tree": "6949ff1ac37893ddf59674f79085d0ae3b7d6707",
+    "source_sha256": "fe5dfdfbc44ac3a9deb2b800edc6662d12c89684bd8bb0036b8aa247977edc6a",
+    "allocator_tests": 9,
+    "model_tests": 8,
+    "real_Vulkan_copy_and_reuse": true,
+    "actual_24MiB_request_allocates32MiB": true,
+    "background_reserve64MiB_retained": true,
+    "sentinel_and_recycled_zero_verified": true,
+    "multi_level_shapes": 60,
+    "multi_level_independent_writer_merges": 24,
+    "each_shape_round_trips": 2,
+    "whole_buffer_pixel_padding_prefix_suffix_verified": true,
+    "cpu_vulkan_device": "llvmpipe LLVM20.1.2",
+    "release_build": true,
+    "clippy_warnings_denied_passed": true,
+    "production_policy_only_ios_turnip_unified": true,
+    "physical_A840_performance_verified": false,
+    "logs_sha256": {
+      "allocator-device.log": "eb345d70656efb6a563134abe1017adb61ab05c2344e415d0a25aa0b32bdc4e5",
+      "tiled.log": "a82407df384ffe5a51ec5f8ef08ce944766cdfadb22bc614eb2421c6cdace6af",
+      "clippy.log": "441faf4e2c686121484751aeb134df9ef70e597f1037cd13919e1b5ec66d2311"
+    }
+  },
+  "old_unrelated_tests_reused": {
+    "original_runtime_tree": "139445c01681140b6ccfb13c7ab160fd0e0f8553",
+    "CI_run": 42657775361,
+    "attempt": 1,
+    "scope": "Unchanged allocator, Vulkan diagnostic routing and original single-level translator source; current changed output runtime is tested separately"
+  },
+  "original_GPU051_runtime_tree": "6949ff1ac37893ddf59674f79085d0ae3b7d6707",
+  "imageblock_semantics_version": 2004,
+  "phone_operations": false
+}

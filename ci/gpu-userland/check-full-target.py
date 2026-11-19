@@ -219,8 +219,8 @@ assert extern_function['retained_frontend_patch_reversed_exactly']
 assert extern_function['current_frontend_sha256']==hashlib.sha256((root/'drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm').read_bytes()).hexdigest()
 assert extern_function['test_sha256']==hashlib.sha256((root/'drivers/AdrenoMetal/bridge/extern_function_host.mm').read_bytes()).hexdigest()
 multi_level=json.loads((a.logs/'multi-level-output/report.json').read_text())
-assert multi_level['passed'] and multi_level['exact_runtime_source_verified'] and multi_level['current_Mac_planner_tests_passed']
-assert multi_level['current_Mac_allocator_tests_passed'] and multi_level['current_Mac_allocator_cases']==8
+assert multi_level['passed'] and multi_level['exact_runtime_source_verified'] and multi_level['prior_Mac_runtime_checks_passed']
+assert multi_level['retained_exact_runtime_sources'] and multi_level['current_Mac_allocator_cases']==8
 extern_spec=importlib.util.spec_from_file_location('extern_target',Path(__file__).with_name('check-extern-target.py'))
 extern_target=importlib.util.module_from_spec(extern_spec)
 extern_spec.loader.exec_module(extern_target)
@@ -269,8 +269,11 @@ report['actual_camera_function_SPI'] = camera_function
 print(json.dumps({k:v for k,v in report.items() if k!='profile'},indent=2))
 
 compute_dump=json.loads((a.logs/'compute-dump/report.json').read_text())
-assert compute_dump['passed'] and compute_dump['checks']==13
+assert compute_dump['passed'] and compute_dump['checks']==20
 assert compute_dump['actual_ObjectiveC_bodies_executed'] and compute_dump['disabled_dispatch_arguments_unchanged']
+assert compute_dump['compute_filter_only_matching_commands'] and compute_dump['compute_filter_budget']==2
+assert compute_dump['repeated_pipeline_does_not_spend_budget'] and compute_dump['readbacks_do_not_spend_budget']
+assert b'NATIVE_METAL_DUMP_COMPUTE_MATCH' in data
 assert compute_dump['source_sha256']==hashlib.sha256((root/'drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm').read_bytes()).hexdigest()
 for marker in (b'kernel %u dispatch %s', b'CPU center %u/%u/%u', b'compute %@ k=%s', b'after %s'):
     assert marker in data, marker

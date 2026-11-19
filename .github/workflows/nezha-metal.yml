@@ -1,7 +1,7 @@
-name: nezha iPhone27 Camera094 GPU051 transfer pixels
+name: nezha iPhone27 Camera096 GPU051 selected preview pixels
 on:
   push:
-    branches: [codex/ios27-camera094b-gpu051-transfer-20261119]
+    branches: [codex/ios27-camera096-gpu051-compute-match-20261119]
   workflow_dispatch:
 permissions:
   contents: read

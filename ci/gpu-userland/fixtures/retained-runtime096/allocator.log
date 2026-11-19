@@ -1,0 +1,14 @@
+    Finished `release` profile [optimized] target(s) in 0.11s
+     Running unittests src/lib.rs (build/multi-level-output-host/release/deps/metal2vulkan_runtime-40b680d8a32a4790)
+
+running 8 tests
+test memory::latency_tests::buffer_reserve_budget_does_not_evict_images_and_pressure_releases_everything ... ok
+test memory::latency_tests::foreground_backing_preserves_existing_pool_and_other_driver_growth ... ok
+test memory::latency_tests::foreground_backing_keeps_alignment_dedicated_sizes_and_allocation_failure ... ok
+test memory::latency_tests::image_spares_age_and_give_room ... ok
+test memory::latency_tests::foreground_backing_uses_request_size_and_preserves_room_refill ... ok
+test memory::latency_tests::unused_buffer_reserve_keeps_its_address_object_and_gives_room ... ok
+test memory::latency_tests::surplus_pooled_image_backing_can_be_reused ... ok
+test memory::latency_tests::superseded_buffer_refill_is_cached_and_next_refill_does_not_allocate ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 1273 filtered out; finished in 0.00s

@@ -1,0 +1,60 @@
+diff --git a/NativeBridgeMetalFrontend.mm b/NativeBridgeMetalFrontend.mm
+index 478b5ec..67be89d 100644
+--- a/NativeBridgeMetalFrontend.mm
++++ b/NativeBridgeMetalFrontend.mm
+@@ -2204,6 +2204,7 @@ static void dumpSurfacesOnce(NSSet *textures,NSSet *owners) {
+ @property(nonatomic,strong) NSMutableArray *dumpTargets,*dumpPending;
+ @property(nonatomic) uint32_t dumpPasses,dumpKernels;
+ @property(nonatomic) BOOL dumpReadback;
++@property(nonatomic) BOOL dumpComputeSelected;
+ @property(nonatomic,strong) NBTexture *wallpaperOutput;
+ @property(nonatomic,strong) NSMutableArray<NSString *> *dumpLog;   // its passes and first draws, as encoded (NBEncoder dumpDraw:)
+ - (void)refuse:(NSString *)what;
+@@ -2257,10 +2258,27 @@ static std::pair<uint32_t,uint32_t> dumpRange() {
+  }();
+  return range;
+ }
++// A compute filter selects the first COUNT matching command buffers, using the
++// same dump range and readback path. Startup work cannot spend that budget.
++static NSString *dumpComputeFilter() {
++ static NSString *const filter=[]{const char *v=getenv("NATIVE_METAL_DUMP_COMPUTE_MATCH");return v?@(v):nil;}();
++ return filter;
++}
++static void dumpSelectCompute(NBCommandBuffer *command,NBComputePipeline *pipeline) {
++ const auto range=dumpRange();NSString *filter=dumpComputeFilter();
++ if(!range.first || !filter.length || command.dumpReadback || command.dumpComputeSelected ||
++    ![pipeline.dumpInfo containsString:filter])return;
++ static std::atomic<uint32_t> selected{0};
++ uint32_t count=selected.load();
++ while(count<range.second) {
++  if(selected.compare_exchange_weak(count,count+1)) {command.dumpComputeSelected=YES;return;}
++ }
++}
+ // Whether a command buffer being encoded now may be one to dump: its number is not known until it commits, and others may commit first.
+ static bool dumpMaybe(NBCommandBuffer *commandBuffer) {
+  const auto range=dumpRange();
+  if(!range.first || commandBuffer.dumpReadback)return false;
++ if(dumpComputeFilter().length)return commandBuffer.dumpComputeSelected;
+  const uint64_t next=gAppCommits.load()+1;
+  return next+16>=range.first && next<(uint64_t)range.first+range.second;
+ }
+@@ -2722,7 +2740,7 @@ static uint64_t encodeCommandOf(id object) {
+ - (MTLDispatchType)dispatchType {return MTLDispatchTypeSerial;}
+ - (void)setComputePipelineState:(id<MTLComputePipelineState>)state {
+  if(![(id)state isKindOfClass:[NBComputePipeline class]]){[self.commandBuffer refuse:@"foreign compute pipeline"];return;}
+- if(dumpRange().first)self.dumpPipeline=state;
++ if(dumpRange().first) {self.dumpPipeline=state;dumpSelectCompute(self.commandBuffer,(NBComputePipeline *)state);}
+  ENCODE([self check:nmb_compute_set_pipeline(self.handle,[(NBComputePipeline *)state handle]) what:"setComputePipelineState"]);
+ }
+ - (void)setBuffer:(id<MTLBuffer>)b offset:(NSUInteger)o atIndex:(NSUInteger)i {[self buffer:b offset:o index:i stage:0];}
+@@ -3621,7 +3639,9 @@ static char kUserDictionaryKey;
+    frontStage(traceNumber,self.commitIndex,7);
+    const auto range=dumpRange();
+    self.submitted=YES;
+-   if(appIndex && range.first && appIndex>=range.first && appIndex<(uint64_t)range.first+range.second)dumpReadback(self,appIndex);
++   const bool selected=dumpComputeFilter().length?self.dumpComputeSelected:
++       range.first && appIndex>=range.first && appIndex<(uint64_t)range.first+range.second;
++   if(appIndex && selected)dumpReadback(self,appIndex);
+    [self fireEarly];return;
+   }
+   (void)CFBridgingRelease(context);   // refused registration/commit cannot call the registered handlers
