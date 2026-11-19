@@ -3952,6 +3952,13 @@ extern bool nezha_cpu27_snapshot_at(int32_t out[20],uint64_t *temperature_us);
 static uint32_t shared_perf_seq,shared_perf_started,shared_perf_mode,shared_perf_failed;
 static uint64_t shared_perf_until,shared_perf_words[16];
 static const uint8_t shared_opp_bw[] = {1,1,1,2,2,2,3,3,3,3,5,5,7,7,9,9,11,11};
+_Static_assert(sizeof(shared_opp_bw)==NGPU-1,"one bandwidth per firmware GPU level");
+static uint32_t shared_level_for(uint64_t hz)
+{
+    uint32_t level=1;
+    while(level<NGPU-1 && gpu_opps[level-1].hz<hz)++level;
+    return level;
+}
 static uint64_t perf_now_us(void) {uint64_t ns=0;absolutetime_to_nanoseconds(mach_absolute_time(),&ns);return ns/1000;}
 static bool shared_busy_read(uint64_t *out)
 {
@@ -3983,12 +3990,13 @@ static void shared_perf_thread(void *arg,wait_result_t result)
     (void)arg;(void)result;
     uint32_t cur=shared_boot_perf,bw=shared_boot_bw,changes=0,failures=0;uint64_t last=perf_now_us(),prev=0;
     uint64_t bandwidth_hold=0;struct nezha_gpu_vote_recovery recovery={0};
+    struct nezha_gpu_perf_dynamic_state dynamic={0};
     nezha_gpu_dcvs_mhz=gpu_opps[cur-1].hz/1000000;
     gmu_wr(0x23b0eu,0xff000000u);
     gmu_wr(0x1fc40u,(gmu_rd(0x1fc40u)&~0xffu)|(1u<<5));
     gmu_wr(0x1fc10u,1);
     bool prev_valid=shared_busy_read(&prev);
-    printf("NEZHA GPU PERF: shared DCVS on; idle222 normal578; leased726/902 require fresh cool sensors; bounded HFI owner/failure down-votes; 19.2MHz counter\n");
+    printf("NEZHA GPU PERF: shared DCVS on; firmware levels1..%u highest%uMHz; idle222 active floor578, load scaling; leased726/902 require fresh cool sensors; thermal/HFI recovery retained; 19.2MHz counter\n",(unsigned)NGPU-1,gpu_opps[NGPU-2].hz/1000000);
     for(;;) {
         gpu_sleep(16);
         if(__atomic_load_n(&system_inshutdown,__ATOMIC_ACQUIRE))break;
@@ -4017,14 +4025,20 @@ static void shared_perf_thread(void *arg,wait_result_t result)
             cpu[8]>=0 && cpu[8]<700 && cpu[9]>=0 && cpu[9]<700 && cpu[10]>=0 && cpu[10]<700;
         const bool probe=sampled_cpu && !recovery.latched &&
             nezha_gpu_perf_probe_allowed(mode,now,temperature_us,cpu,valid,pending,stalled,thermal);
+        const uint64_t needed_hz=(uint64_t)gpu_opps[cur-1].hz*permille*2/1000;
+        const uint32_t dynamic_level=nezha_gpu_perf_dynamic_level(&dynamic,cur,NGPU-1,
+            shared_level_for(needed_hz*11/10),needed_hz,cur>1?gpu_opps[cur-2].hz:0,
+            permille,dt,valid,since_submit,pending);
         const uint32_t wanted=nezha_gpu_perf_thermal_cap(
-            nezha_gpu_perf_level(mode,permille,since_submit,pending,stalled),thermal,probe);
+            nezha_gpu_perf_level(mode,permille,since_submit,pending,stalled,dynamic_level),
+            thermal,mode,NGPU-1,probe);
         if(valid && permille>600 && cool && pending && !stalled)bandwidth_hold=now+80000;
         const uint32_t wanted_bw=nezha_gpu_perf_bandwidth(wanted,shared_opp_bw[wanted-1],mode,
             cool,now<bandwidth_hold && since_submit<80000,thermal);
         if((wanted!=cur || wanted_bw!=bw) && !recovery.latched) {
             uint32_t vote[4]={0,1,wanted,wanted_bw};
             if(hfi_send(HFI_H2F_MSG_GX_BW_PERF_VOTE,vote,4)) {
+                nezha_gpu_perf_dynamic_accepted(&dynamic,cur,wanted);
                 cur=wanted;bw=wanted_bw;++changes;nezha_gpu_dcvs_mhz=gpu_opps[cur-1].hz/1000000;
             } else {
                 ++failures;__atomic_store_n(&shared_perf_failed,1u,__ATOMIC_RELEASE);

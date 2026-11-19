@@ -1,7 +1,7 @@
-name: nezha GPU060 nonblocking submit VM readiness - native050
+name: nezha GPU065 full GPU firmware table - native053
 on:
   push:
-    branches: [codex/ios27-gpu63-cpu-full-table-native052-20261119]
+    branches: [codex/ios27-gpu65-full-gpu-table-native053-20261120]
   workflow_dispatch:
 permissions:
   contents: read
@@ -81,6 +81,10 @@ jobs:
         env:
           CC: clang
         run: python3 "$RUNNER_TEMP/ios27/work/device/scripts/check-cpu27-firmware-levels.py" --out "$RUNNER_TEMP/ios27/work/cpu-firmware-levels-host"
+      - name: Exercise actual iOS27 full firmware GPU governor and thermal recovery
+        env:
+          CC: clang
+        run: python3 "$RUNNER_TEMP/ios27/work/device/scripts/check-gpu27-firmware-levels.py" --out "$RUNNER_TEMP/ios27/work/gpu-firmware-levels-host"
       - name: Check the actual guarded waiting-stack sampler
         run: python3 task/source/device/scripts/check-stable-kernel-stack.py
       - name: Qualify compiler and run the standard native build

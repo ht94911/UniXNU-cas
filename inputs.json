@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "GPU063 user-requested remove fixed iOS27 CPU 1996800/2227200 ceiling and sustained boost-level restriction; full firmware maximum with load scaling and original thermal caps/cooldown recovery; retain Native051 sparseBusy logging and exact GPU/VM/fence/close/384 policy. Metal050 unchanged.",
+  "purpose": "GPU065 use all18 firmware GPU levels up to1200MHz in normal iOS27 load governor; no578MHz ceiling. Reuse18A50-percent demand and hysteresis, preserve dynamic thermal and boundedHFI recovery, fullCPU063 and GPU064Metal. Phone trace-read helper changed locally only.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -371,12 +371,12 @@
     "source/device/package/gpu/NezhaAdreno840.cpp": "503649d5f893cc3735be4173a92c190dbd7a5555a070c04f1319c51f35758b77",
     "source/device/package/gpu/NezhaDpuTiming.h": "5f4d92cb5173c4d583f3f0746c41746abe188c89d82faf34039cb22816d2a31d",
     "source/device/package/gpu/NezhaDpuTimingAdapter.h": "407c6e0b7346d02e7a5316d0c9a9886ef819457b667a3f1bf2d7f26da31167aa",
-    "source/device/package/gpu/NezhaGpu.c": "f72aaa33dc9af922647798fcac6f740bfca893f4c05cc8196b88fe72e17799ff",
+    "source/device/package/gpu/NezhaGpu.c": "ff1f63b8cf706c61638cb37674cb0aa2ccbd1fe0523997e6fa3d7c6c328dea0c",
     "source/device/package/gpu/NezhaGpuCoherence.h": "74198253f4a72d6a4aaeece23b783737db31e38c12dd829577bda6119485556e",
     "source/device/package/gpu/NezhaGpuFirmware.cpp": "6318b3d5cbd478f185dd0669a597440f2a3878d2991fd611fe6741a5d58b3909",
     "source/device/package/gpu/NezhaGpuFirmware.h": "fd75af351256dcbb72d0cf83ceeda4cee524475324edaf086b50ae34093d580e",
     "source/device/package/gpu/NezhaGpuFirmwareSlot.S": "294d44bf227df3db03fe8c9343c7179c8c03962d52a999a564ac99f7d7356d82",
-    "source/device/package/gpu/NezhaGpuPerfPolicy.h": "8d36aaee2c537c93113ecaa29c358b9f460241d3e707b6f4342a08583a1848be",
+    "source/device/package/gpu/NezhaGpuPerfPolicy.h": "b660f2d9e201e4c6a107edb6d53214bdf5fe964919687d885e05a8fea4ebab54",
     "source/device/package/gpu/NezhaGpuPerfUsb.h": "cc6210afa7f5d79080f8837ddad5c5ca49653b27b173cb8bccb972f406a4ac8f",
     "source/device/package/gpu/NezhaGpuPerfVotePolicy.h": "da1885ef10b2f12f6e5cc28aec8ea48823465ceb1ceaf2a840659d61dc5f87dd",
     "source/device/package/gpu/NezhaGpuPlatform.h": "d2a92c5a740640a3e7746ade5306e899a15e408c8aa1bd985d4b55330f7848eb",
@@ -502,7 +502,7 @@
     "ci/test-native-userlog.py": "f64f5aff7c83cbbff7ce9bd15ab276dd7022f5e42d227999157b796afe414f9e",
     "ci/check-native-userlog.py": "74e7abe9164a853b10d4406a46f55f67670ade42795f066068e84f14b2ebc006",
     "ci/test-native-userlog-producer.py": "619bc31f6f41b16d562bcbc83a41588f6ada45a5268e23ef5c4985e5f364e403",
-    "ci/native.py": "b73857d5b718b45dcce68fe37ea564bdba04c57f3f045dd16a821e6faba97f83",
+    "ci/native.py": "6aa3bbdf1f7ef1e836e80fae674fb21177cadc124a65fb91cc22ad00a9d61805",
     "source/device/package/gpu/NezhaGpuBoPhases.h": "6b609e93c766b0f88b569dc1c04177b529f090e23f06a260c4c427afe8dfcbb6",
     "source/device/tests/gpu-bo-phases.cpp": "a7d609b520a3166ca53c24581f89c6d2f02ca53f00b09326749c0356a3fc63e9",
     "source/device/tests/check-gpu-bo-phases.py": "e34cab3913626ff9e80d533e9013791565229a3386fbb1599ed4c71c68afc181",
@@ -511,8 +511,9 @@
     "source/device/docs/GPU052-RESOURCE-ENUMERATION.md": "f8c8e93b0483e8babf441616f2468f83c38462567358109fc6cceb9eca680887",
     "source/device/patches/xnu-12377/nezha-native-4k-large-ram.patch": "6c1e566d009bf384291487f9d5e242514c78a000ea39995fdae9cacfd816e32d",
     "source/adreno/tests/check_submit_busy_log.py": "945f7616e47ceb6c125c4b0f1e177e437d032ac85095326ea2d17b4264491857",
-    ".github/workflows/nezha-ios27-native.yml": "63c2f5298c3bf10bc4ba9ce754f36c2fdfc98870783270f81eaabc0744fed0c6",
-    "source/device/scripts/check-cpu27-firmware-levels.py": "72fc65996664b51733ea45360fb91ceb9a1de561ef2bb63ce0e09b394f149c24"
+    ".github/workflows/nezha-ios27-native.yml": "cca3d4244ed8294bcdc8019b4d67a1c54946e90cc0682a270c043d1e539bfc07",
+    "source/device/scripts/check-cpu27-firmware-levels.py": "72fc65996664b51733ea45360fb91ceb9a1de561ef2bb63ce0e09b394f149c24",
+    "source/device/scripts/check-gpu27-firmware-levels.py": "9fc0331e6c344a665e875ac7f2855952618e28465c6856f776d1a05c587d13a3"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
@@ -1002,5 +1003,21 @@
     "host_report_sha256": "a7f2ac5afb9ceebd57908097124e0b60f1cb8280bfd9598cbd8fd7b2704ca90d",
     "phone_operations": false,
     "actual_frequency_hardware_verified": false
+  },
+  "gpu065_gpu": {
+    "source_revision": "99ba08a23fd5e8ab8b4a8f699f2e8e5e08c6b6a5",
+    "base_native052": "d0656ddbe3896d89f4b733c66eaf290ebf87ec3f",
+    "source_files": [
+      "package/gpu/NezhaGpu.c",
+      "package/gpu/NezhaGpuPerfPolicy.h"
+    ],
+    "actual_policy_cases": 18,
+    "firmware_levels": 18,
+    "highest_MHz": 1200,
+    "host_report_sha256": "d68bddd03825bd41164813f41501e28753ea33d5cd9e1cdd7fccfd713a875034",
+    "existing18A_governor": true,
+    "thermal_recovery_preserved": true,
+    "phone_operations": false,
+    "physical_frame_improvement_verified": false
   }
 }

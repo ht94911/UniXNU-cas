@@ -284,6 +284,9 @@ def collect(framework, work, sealed):
         if path.is_file() and path.suffix in ('.json', '.log', '.c'):
             add(path, 'userlog-producer-host/' + path.name)
 
+    for path in sorted((work / 'gpu-firmware-levels-host').glob('*')):
+        if path.is_file():
+            add(path, 'gpu-firmware-levels-host/' + path.name)
     for path in sorted((work / 'cpu-firmware-levels-host').glob('*')):
         if path.is_file():
             add(path, 'cpu-firmware-levels-host/' + path.name)

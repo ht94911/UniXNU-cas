@@ -1,28 +1,69 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #pragma once
 #include <stdint.h>
-/* A bounded subset of the accepted 18A policy: bootstrap160, idle222,
- * normal active floor/cap578; diagnostic726/902 only after fresh cool telemetry.
- * HFI/BW tables and busy counter come from the existing SM8850 driver.
+/* The existing 18A load governor, using the complete board firmware table.
+ * Active578 is a floor, not a ceiling. Diagnostic fixed726/902 leases keep
+ * their original cool-snapshot gate. Thermal caps apply to every mode.
  */
-static inline uint32_t nezha_gpu_perf_level(uint32_t mode,uint32_t busy_permille,
-    uint64_t since_submit_us,int pending,int stalled)
+struct nezha_gpu_perf_dynamic_state {
+    uint64_t busy_run_us;
+    uint32_t down_windows;
+    uint32_t hold_window;
+};
+static inline uint32_t nezha_gpu_perf_dynamic_level(
+    struct nezha_gpu_perf_dynamic_state *state,uint32_t current,uint32_t top,
+    uint32_t upward_level,uint64_t needed_hz,uint32_t lower_hz,
+    uint32_t busy_permille,uint64_t window_us,int counter_valid,
+    uint64_t since_submit_us,int pending)
 {
+    const int recent=pending || since_submit_us<80000;
+    const int active=pending || (counter_valid && busy_permille);
+    uint32_t wanted=current;
+    if(!counter_valid) {
+        state->busy_run_us=0;state->down_windows=0;
+        wanted=recent?current:3;
+    } else {
+        state->busy_run_us=busy_permille>=950?state->busy_run_us+window_us:0;
+        if(busy_permille>850 || state->busy_run_us>=50000)wanted=top;
+        else if(upward_level>current)wanted=upward_level;
+        else if(active) {
+            if(current>1 && needed_hz*10<=(uint64_t)lower_hz*8) {
+                if(++state->down_windows>=4+state->hold_window)wanted=current-1;
+            } else state->down_windows=0;
+        } else if(!recent)wanted=3;
+    }
+    if(recent && wanted<10)wanted=10;
+    if(wanted>top)wanted=top;
+    return wanted?wanted:1;
+}
+static inline void nezha_gpu_perf_dynamic_accepted(
+    struct nezha_gpu_perf_dynamic_state *state,uint32_t before,uint32_t after)
+{
+    if(before!=after) {
+        state->hold_window=after>before;
+        state->down_windows=0;
+    }
+}
+static inline uint32_t nezha_gpu_perf_level(uint32_t mode,uint32_t busy_permille,
+    uint64_t since_submit_us,int pending,int stalled,uint32_t dynamic_level)
+{
+    (void)busy_permille;(void)since_submit_us;(void)pending;
     if(stalled)return 3;
     if(mode==1)return 1;
     if(mode==4)return 12; /* stock726 MHz */
     if(mode==5)return 14; /* stock902 MHz */
     if(mode==2 || mode==3)return 10;
-    if(pending || since_submit_us<80000 || busy_permille>500)return 10;
-    return 3;
+    return dynamic_level;
 }
 
 /* Keep clock and bandwidth votes independent. Index5 is8,171,875 KB/s;
  * index7 is12,449,218 KB/s in this board's existing DDR table. Additional
  * bandwidth is permitted only with valid cool sensors and no thermal cap. */
-static inline uint32_t nezha_gpu_perf_thermal_cap(uint32_t wanted,uint32_t thermal,int probe_allowed)
+static inline uint32_t nezha_gpu_perf_thermal_cap(uint32_t wanted,uint32_t thermal,
+    uint32_t mode,uint32_t firmware_top,int probe_allowed)
 {
-    const uint32_t top=probe_allowed?14u:10u;
+    uint32_t top=mode==0?firmware_top:probe_allowed?14u:10u;
+    if(top>firmware_top)top=firmware_top;
     if(wanted>top)wanted=top;
     if(thermal && wanted>thermal)wanted=thermal;
     return wanted?wanted:1;
