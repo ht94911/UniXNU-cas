@@ -21,6 +21,7 @@
 @property(nonatomic,copy) NSString *authorizationValue;
 @property(nonatomic,copy) NSString *accuracyValue;
 @property(nonatomic,strong) NSNumber *servicesEnabled;
+@property(nonatomic) BOOL stateQueryInFlight;
 @end
 
 @implementation NezhaLocationController
@@ -46,12 +47,26 @@
     [self.startButton addTarget:self action:@selector(begin) forControlEvents:UIControlEventTouchUpInside];
     self.stopButton=[UIButton buttonWithType:UIButtonTypeSystem];[self.stopButton setTitle:@"停止定位" forState:UIControlStateNormal];
     [self.stopButton addTarget:self action:@selector(end) forControlEvents:UIControlEventTouchUpInside];
-    UIStackView *stack=[[UIStackView alloc]initWithArrangedSubviews:@[self.status,self.position,self.startButton,self.stopButton]];
+    UIButton *locationSettings=[UIButton buttonWithType:UIButtonTypeSystem];
+    [locationSettings setTitle:@"打开定位设置" forState:UIControlStateNormal];
+    [locationSettings addTarget:self action:@selector(openLocationSettings) forControlEvents:UIControlEventTouchUpInside];
+    UIButton *applicationSettings=[UIButton buttonWithType:UIButtonTypeSystem];
+    [applicationSettings setTitle:@"打开应用设置" forState:UIControlStateNormal];
+    [applicationSettings addTarget:self action:@selector(openApplicationSettings) forControlEvents:UIControlEventTouchUpInside];
+    UIStackView *stack=[[UIStackView alloc]initWithArrangedSubviews:@[self.status,self.position,self.startButton,self.stopButton,locationSettings,applicationSettings]];
     stack.axis=UILayoutConstraintAxisVertical;stack.spacing=24;stack.translatesAutoresizingMaskIntoConstraints=NO;
     [self.view addSubview:stack];UILayoutGuide *safe=self.view.safeAreaLayoutGuide;
     [NSLayoutConstraint activateConstraints:@[[stack.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor constant:24],
         [stack.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor constant:-24],
         [stack.topAnchor constraintEqualToAnchor:safe.topAnchor constant:28]]];
+    [self refreshLocationState];
+}
+- (void)refreshLocationState
+{
+    @synchronized(self){
+        if(!self.manager||self.stateQueryInFlight)return;
+        self.stateQueryInFlight=YES;
+    }
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY,0),^{
         [self write:@{@"event":@"services_query_pending"}];
         BOOL enabled=[CLLocationManager locationServicesEnabled];
@@ -66,12 +81,29 @@
         @synchronized(self){self.accuracyValue=accuracy;}
         [self write:@{@"event":@"accuracy_query_returned",@"accuracy_authorization":accuracy}];
         dispatch_async(dispatch_get_main_queue(),^{
+            @synchronized(self){self.stateQueryInFlight=NO;}
             if(self.requested||self.running)return;
             self.status.text=!enabled ? @"系统定位服务关闭，请在设置中打开定位服务。":
                 [authorization isEqualToString:@"denied"] ? @"系统定位服务已开启，请在设置中允许此应用定位。":
                 @"系统定位服务已开启，点击开始定位。";
         });
     });
+}
+- (void)openSettingsURL:(NSURL *)url kind:(NSString *)kind
+{
+    [self write:@{@"event":@"settings_open_pending",@"settings_page":kind}];
+    [UIApplication.sharedApplication openURL:url options:@{} completionHandler:^(BOOL success){
+        [self write:@{@"event":@"settings_open_returned",@"settings_page":kind,@"accepted":@(success)}];
+        if(!success)self.status.text=@"系统未打开此设置页，请使用另一项设置入口。";
+    }];
+}
+- (void)openLocationSettings
+{
+    [self openSettingsURL:[NSURL URLWithString:@"settings-navigation://com.apple.Settings.PrivacyAndSecurity/LOCATION"] kind:@"locationServices"];
+}
+- (void)openApplicationSettings
+{
+    [self openSettingsURL:[NSURL URLWithString:UIApplicationOpenSettingsURLString] kind:@"application"];
 }
 - (NSString *)authorization
 {
@@ -102,7 +134,7 @@
     NSString *documents=NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,NSUserDomainMask,YES).firstObject;
     NSData *body=[NSJSONSerialization dataWithJSONObject:@{@"provider":@"CoreLocation",@"boot_session_uuid":self.bootUUID,
         @"authorization":self.authorizationValue ?: @"unqueried",@"accuracy_authorization":self.accuracyValue ?: @"unqueried",
-        @"services_enabled":self.servicesEnabled ?: (id)NSNull.null,@"diagnostic_version":@10,
+        @"services_enabled":self.servicesEnabled ?: (id)NSNull.null,@"diagnostic_version":@11,
         @"application_session":self.applicationSession,@"process_id":@(NSProcessInfo.processInfo.processIdentifier),
         @"process_began_uptime_ms":@((long long)(self.beganUptime*1000)),@"events":self.records} options:NSJSONWritingPrettyPrinted error:&error];
     if(body&&documents)[body writeToFile:[documents stringByAppendingPathComponent:@"corelocation.json"] options:NSDataWritingAtomic error:&error];
@@ -190,6 +222,11 @@
 {
     (void)scene;UINavigationController *nav=(UINavigationController *)self.window.rootViewController;
     [(NezhaLocationController *)nav.topViewController end];
+}
+- (void)sceneDidBecomeActive:(UIScene *)scene
+{
+    (void)scene;UINavigationController *nav=(UINavigationController *)self.window.rootViewController;
+    [(NezhaLocationController *)nav.topViewController refreshLocationState];
 }
 @end
 int main(int argc,char **argv)
