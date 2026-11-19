@@ -1,7 +1,7 @@
-name: nezha Sensors014 interface rotation observation app
+name: nezha Sensors015 automatic interface app
 on:
   push:
-    branches: [codex/ios27-sensors014-app-gpu051-20261119]
+    branches: [codex/ios27-sensors015-app-gpu051-20261119]
 permissions:
   contents: read
 concurrency:

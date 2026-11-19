@@ -7,6 +7,7 @@
 @property(nonatomic,strong) CMMotionManager *motion;
 @property(nonatomic,strong) NSOperationQueue *queue;
 @property(nonatomic,strong) UITextView *output;
+@property(nonatomic,strong) UILabel *directions;
 @property(nonatomic,strong) NSFileHandle *log;
 @property(nonatomic,strong) NSTimer *timer;
 @property(nonatomic,strong) NSMutableDictionary *samples;
@@ -19,6 +20,7 @@
 @property(nonatomic,copy) NSString *interfaceCheckStatus;
 @property(nonatomic) UIInterfaceOrientation requestedInterface;
 @property(nonatomic) NSTimeInterval interfaceCheckStarted;
+@property(nonatomic) BOOL interfaceCheckRunning;
 @end
 
 @implementation SensorsController
@@ -26,9 +28,28 @@
 {
     return UIInterfaceOrientationMaskPortrait|UIInterfaceOrientationMaskLandscapeLeft|UIInterfaceOrientationMaskLandscapeRight;
 }
+- (BOOL)shouldAutorotate { return YES; }
+- (void)restoreAutomaticInterface
+{
+    UIWindowScene *scene=self.view.window.windowScene;
+    self.interfaceCheckRunning=NO;
+    self.requestedInterface=UIInterfaceOrientationUnknown;
+    if(!scene)return;
+    [self setNeedsUpdateOfSupportedInterfaceOrientations];
+    UIWindowSceneGeometryPreferencesIOS *preferences=[[UIWindowSceneGeometryPreferencesIOS alloc]
+        initWithInterfaceOrientations:self.supportedInterfaceOrientations];
+    __weak SensorsController *weak=self;
+    [scene requestGeometryUpdateWithPreferences:preferences errorHandler:^(NSError *error){
+        [weak record:@{@"interfaceCheck":@"automatic-range-error",@"error":@(error.code),
+            @"domain":error.domain?:@"",@"uptime":@(NSProcessInfo.processInfo.systemUptime)}];
+    }];
+    [self record:@{@"interfaceCheck":@"automatic-range",@"supportedMask":@(self.supportedInterfaceOrientations),
+        @"uptime":@(NSProcessInfo.processInfo.systemUptime)}];
+}
 - (void)checkInterfaceRotation
 {
-    if(!self.lifecycleDone||self.requestedInterface!=UIInterfaceOrientationUnknown)return;
+    if(!self.lifecycleDone||self.interfaceCheckRunning)return;
+    self.interfaceCheckRunning=YES;
     [self record:@{@"interfaceCheck":@"start",@"uptime":@(NSProcessInfo.processInfo.systemUptime),
         @"deviceOrientation":@(UIDevice.currentDevice.orientation),
         @"supportedMask":@(self.supportedInterfaceOrientations)}];
@@ -37,7 +58,7 @@
 - (void)requestInterface:(UIInterfaceOrientation)orientation
 {
     UIWindowScene *scene=self.view.window.windowScene;
-    if(!scene){self.interfaceCheckStatus=@"未完成：窗口不可用";return;}
+    if(!scene){self.interfaceCheckRunning=NO;self.interfaceCheckStatus=@"未完成：窗口不可用";return;}
     self.requestedInterface=orientation;self.interfaceCheckStarted=NSProcessInfo.processInfo.systemUptime;
     self.interfaceCheckStatus=orientation==UIInterfaceOrientationPortrait?@"正在返回竖屏":@"正在检查横屏";
     [self setNeedsUpdateOfSupportedInterfaceOrientations];
@@ -51,6 +72,7 @@
             @"uptime":@(NSProcessInfo.processInfo.systemUptime)}];
         controller.requestedInterface=UIInterfaceOrientationUnknown;
         controller.interfaceCheckStatus=@"未通过：界面请求返回错误";
+        [controller restoreAutomaticInterface];
     }];
 }
 - (void)stepInterfaceCheck
@@ -73,11 +95,15 @@
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(3*NSEC_PER_SEC)),dispatch_get_main_queue(),^{
                 [weak requestInterface:UIInterfaceOrientationPortrait];
             });
-        }else self.interfaceCheckStatus=@"通过：横屏与竖屏均已显示";
+        }else {
+            self.interfaceCheckStatus=@"通过：横屏与竖屏均已显示";
+            [self restoreAutomaticInterface];
+        }
     }else if(elapsed>=8){
         [self record:@{@"interfaceCheck":@"timeout",@"target":@(self.requestedInterface),@"actual":@(actual),
             @"uptime":@(NSProcessInfo.processInfo.systemUptime)}];
         self.requestedInterface=UIInterfaceOrientationUnknown;self.interfaceCheckStatus=@"未通过：方向未改变";
+        [self restoreAutomaticInterface];
     }
 }
 - (void)record:(NSDictionary *)value
@@ -190,18 +216,50 @@
     (void)notification;
     [self record:@{@"kind":@"proximity",@"near":@(UIDevice.currentDevice.proximityState),@"uptime":@(NSProcessInfo.processInfo.systemUptime)}];
 }
+- (void)directionChanged:(NSNotification *)notification
+{
+    (void)notification;
+    [self record:@{@"orientationEvent":@"device",@"deviceOrientation":@(UIDevice.currentDevice.orientation),
+        @"interfaceOrientation":@(self.view.window.windowScene.effectiveGeometry.interfaceOrientation),
+        @"uptime":@(NSProcessInfo.processInfo.systemUptime)}];
+    [self updateDisplay];
+}
+- (void)viewWillTransitionToSize:(CGSize)size withTransitionCoordinator:(id<UIViewControllerTransitionCoordinator>)coordinator
+{
+    [super viewWillTransitionToSize:size withTransitionCoordinator:coordinator];
+    [self record:@{@"orientationEvent":@"transition-begin",@"width":@(size.width),@"height":@(size.height),
+        @"deviceOrientation":@(UIDevice.currentDevice.orientation),@"uptime":@(NSProcessInfo.processInfo.systemUptime)}];
+    __weak SensorsController *weak=self;
+    [coordinator animateAlongsideTransition:nil completion:^(id<UIViewControllerTransitionCoordinatorContext> context){
+        SensorsController *controller=weak;if(!controller)return;
+        [controller record:@{@"orientationEvent":@"transition-end",@"cancelled":@(context.isCancelled),
+            @"deviceOrientation":@(UIDevice.currentDevice.orientation),
+            @"interfaceOrientation":@(controller.view.window.windowScene.effectiveGeometry.interfaceOrientation),
+            @"width":@(controller.view.bounds.size.width),@"height":@(controller.view.bounds.size.height),
+            @"uptime":@(NSProcessInfo.processInfo.systemUptime)}];
+        [controller updateDisplay];
+    }];
+}
 - (void)refresh
 {
     self.refreshCount++;
     [self stepLifecycleCheck];
     [self stepInterfaceCheck];
+    [self updateDisplay];
+}
+- (void)updateDisplay
+{
+    const UIDeviceOrientation device=UIDevice.currentDevice.orientation;
+    const UIInterfaceOrientation interface=self.view.window.windowScene.effectiveGeometry.interfaceOrientation;
+    self.directions.text=[NSString stringWithFormat:@"界面方向：%ld　设备方向：%ld",(long)interface,(long)device];
     [self record:@{@"status":@1,@"refresh":@(self.refreshCount),@"uptime":@(NSProcessInfo.processInfo.systemUptime),
         @"applicationState":@(UIApplication.sharedApplication.applicationState),@"accelAvailable":@(self.motion.accelerometerAvailable),
         @"gyroAvailable":@(self.motion.gyroAvailable),@"motionAvailable":@(self.motion.deviceMotionAvailable),
         @"accelActive":@(self.motion.accelerometerActive),@"gyroActive":@(self.motion.gyroActive),
         @"motionActive":@(self.motion.deviceMotionActive),@"proximityEnabled":@(UIDevice.currentDevice.proximityMonitoringEnabled),
-        @"deviceOrientation":@(UIDevice.currentDevice.orientation),
-        @"interfaceOrientation":@(self.view.window.windowScene.effectiveGeometry.interfaceOrientation),
+        @"deviceOrientation":@(device),@"interfaceOrientation":@(interface),
+        @"displayedDirections":self.directions.text?:@"",
+        @"interfaceCheckRunning":@(self.interfaceCheckRunning),
         @"supportedInterfaceMask":@(self.supportedInterfaceOrientations),
         @"viewWidth":@(self.view.bounds.size.width),@"viewHeight":@(self.view.bounds.size.height),
         @"deviceOrientationNotificationsEnabled":@(UIDevice.currentDevice.generatesDeviceOrientationNotifications),
@@ -211,8 +269,8 @@
         UIDevice.currentDevice.proximityState?@"近":@"远",(unsigned long)self.marker];
     [text appendFormat:@"CoreMotion 状态：加速度 %@／陀螺仪 %@／融合 %@\n界面方向：%ld　设备方向：%ld\n自动启停检查：%@\n\n",
         self.motion.accelerometerActive?@"运行":@"停止",self.motion.gyroActive?@"运行":@"停止",
-        self.motion.deviceMotionActive?@"运行":@"停止",(long)self.view.window.windowScene.effectiveGeometry.interfaceOrientation,
-        (long)UIDevice.currentDevice.orientation,self.lifecycleDone?(self.lifecyclePassed?@"通过":@"未通过或中断"):
+        self.motion.deviceMotionActive?@"运行":@"停止",(long)interface,(long)device,
+        self.lifecycleDone?(self.lifecyclePassed?@"通过":@"未通过或中断"):
         [NSString stringWithFormat:@"第 %lu／7 步，无需移动手机",(unsigned long)self.lifecycleStage+1]];
     @synchronized(self.samples) {
         for(NSString *kind in @[@"accel",@"gyro",@"motion"]) {
@@ -235,10 +293,12 @@
     [NSFileManager.defaultManager createFileAtPath:path contents:[NSData data] attributes:nil];self.log=[NSFileHandle fileHandleForWritingAtPath:path];
     [self record:@{@"start":@1,@"uptime":@(NSProcessInfo.processInfo.systemUptime),@"accelAvailable":@(self.motion.accelerometerAvailable),
         @"gyroAvailable":@(self.motion.gyroAvailable),@"motionAvailable":@(self.motion.deviceMotionAvailable),
-        @"referenceFrames":@([CMMotionManager availableAttitudeReferenceFrames]),@"pid":@(getpid()),@"candidate":@"sensors014"}];
-    UILabel *title=[UILabel new];title.text=@"传感器测试014";title.font=[UIFont preferredFontForTextStyle:UIFontTextStyleTitle1];
-    UILabel *hint=[UILabel new];hint.numberOfLines=0;hint.font=[UIFont preferredFontForTextStyle:UIFontTextStyleFootnote];hint.text=@"自动启停检查完成后，点“界面旋转检查”确认应用能显示横屏，再按提示转动手机。界面检查与随手机转动是两项独立结果；本轮无需标记。姿势只作参考，不用于校准。加速度与重力：g；角速度：rad/s。";
-    NSMutableArray *views=[NSMutableArray arrayWithObjects:title,hint,nil];
+        @"referenceFrames":@([CMMotionManager availableAttitudeReferenceFrames]),@"pid":@(getpid()),@"candidate":@"sensors015"}];
+    UILabel *title=[UILabel new];title.text=@"传感器测试015";title.font=[UIFont preferredFontForTextStyle:UIFontTextStyleTitle1];
+    UILabel *hint=[UILabel new];hint.numberOfLines=0;hint.font=[UIFont preferredFontForTextStyle:UIFontTextStyleFootnote];hint.text=@"自动启停检查完成后，先按提示转动手机。界面旋转检查结束会恢复自动方向范围。无需标记。加速度与重力：g；角速度：rad/s。";
+    self.directions=[UILabel new];self.directions.numberOfLines=0;
+    self.directions.font=[UIFont preferredFontForTextStyle:UIFontTextStyleHeadline];
+    NSMutableArray *views=[NSMutableArray arrayWithObjects:title,hint,self.directions,nil];
     NSArray *names=@[@"原始流开关",@"融合开关",@"标记",@"界面旋转检查"];
     SEL actions[]={@selector(toggleRaw),@selector(toggleMotion),@selector(mark),@selector(checkInterfaceRotation)};
     for(NSUInteger i=0;i<names.count;i++){UIButton *b=[UIButton buttonWithType:UIButtonTypeSystem];[b setTitle:names[i] forState:UIControlStateNormal];[b addTarget:self action:actions[i] forControlEvents:UIControlEventTouchUpInside];[views addObject:b];}
@@ -249,6 +309,7 @@
         [stack.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor constant:-16],[stack.topAnchor constraintEqualToAnchor:safe.topAnchor constant:8],
         [stack.bottomAnchor constraintEqualToAnchor:safe.bottomAnchor constant:-8],[self.output.heightAnchor constraintGreaterThanOrEqualToConstant:80]]];
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(proximity:) name:UIDeviceProximityStateDidChangeNotification object:nil];
+    [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(directionChanged:) name:UIDeviceOrientationDidChangeNotification object:nil];
     [UIDevice.currentDevice beginGeneratingDeviceOrientationNotifications];
     __weak SensorsController *weak=self;
     self.timer=[NSTimer timerWithTimeInterval:1 repeats:YES block:^(NSTimer *timer){(void)timer;[weak refresh];}];
@@ -284,6 +345,7 @@
     [c record:@{@"lifecycle":@"active",@"uptime":@(NSProcessInfo.processInfo.systemUptime)}];
     c.rawEnabled=YES;c.motionEnabled=YES;UIDevice.currentDevice.proximityMonitoringEnabled=YES;
     [c startLifecycleCheck];
+    if(!c.interfaceCheckRunning)[c restoreAutomaticInterface];
 }
 @end
 @interface SensorsAppDelegate : UIResponder <UIApplicationDelegate>

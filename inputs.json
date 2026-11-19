@@ -1,18 +1,18 @@
 {
   "schema": 1,
-  "purpose": "Sensor014 app-only public interface geometry check and actual supported mask/size/orientation records; sensor timestamp kernel built separately",
-  "device_revision": "03b02ea35de322d6ae05fa2883b6c043850bc189",
+  "purpose": "Sensor015 app restores automatic supported interface range after geometry check; immediate public device/scene transition records and fixed direction label; original014 sensor kernel retained",
+  "device_revision": "c415ff949d09207f09841f9781966335a893b3ae",
   "native_source": "03b02ea35de322d6ae05fa2883b6c043850bc189",
-  "native_run": null,
+  "native_run": 44409138356,
   "native_sha256": null,
   "files": {
-    "source/NezhaSensorsApp.m": "0d921722e007ade9dc5361cc3d608e1c26bb5a91c543e58086383ed1e47f910b",
+    "source/NezhaSensorsApp.m": "cb77db5dde2a4a4a224d73cd120d2b8ed77dcd232c0832d66f642b0441b6bb66",
     "source/app.entitlements.plist": "feb1ff10804738f27f888a92395f7da2f5c6e80e7a2a375ae31dedeea06f8728",
-    "source/Info.plist": "670be52b1bad4a82977de83b5bacca01c071188fea0d51aeefb126e320c1dfc9",
+    "source/Info.plist": "ac4102781a31de50a2c88a9b7a0eba4f120d0b1ab0b6db117ab7175f258e4672",
     "ci/artifact-recipient.pem": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
     "ci/artifacts.py": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
-    "ci/app.py": "ed3a93b219753b45a1de5dc823add672cb71b1cf55720434507843c05120cdb1",
-    ".github/workflows/nezha-ios27-native.yml": "9339ef40d87bc510ebe19c3525fd211526a9a74f2b9e6ac26d4801ec597f568a"
+    "ci/app.py": "b945208d0990eba028c7a11b0a4eea2232c12ab39db8ca8b59d0151e33c67599",
+    ".github/workflows/nezha-ios27-native.yml": "e71f5ee63b2c86f88aee196d6bab693ad9840151ebf451bbcb5539b519fbb42e"
   },
   "private_inputs_uploaded": false,
   "phone_operations": false
