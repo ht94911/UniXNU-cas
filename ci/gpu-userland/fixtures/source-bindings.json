@@ -8,7 +8,7 @@
   ".cache/mesa-work/src/freedreno/vulkan/tu_frame_diagnostic.h": "9f70cb5d1c4e9dcf3fb5f81c3da451e778ff4a551fbb70256c787e94b1d29864",
   "drivers/AdrenoMetal/NativeTurnipSwapTest.h": "7b310d527a461f0ad733413d0f4c0be4ab04ce1a0767234e04b1f25752a4230b",
   "drivers/AdrenoMetal/NativeTurnipSmoke.h": "2f48988a76e9259505523b8e02be4ae8444696ab26b57032846a2d955aafe4b1",
-  "drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm": "51d1d577255ef48244ab520f6d1d113efa4b89084e4284a7a2caa8342e2183d0",
+  "drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm": "87cd9486c097df5959ecbee6435d2c4ee975e9fd469adb9043d4cd50787cf030",
   "drivers/AdrenoMetal/NativeGpuTrace.h": "7636d053085adfdc8e15a69241f6f6a3399af2802c4fd93d05eb2a01275d1e65",
   ".cache/mesa-work/src/freedreno/vulkan/tu_cpu_profile.h": "970e8f5571f2d1d381dae766b736aa5bfa1a3d957e116c0581f64eeb06ab6dcf",
   ".cache/mesa-work/src/freedreno/vulkan/tu_cpu_profile.cc": "2b0086e303ac919294aeb94f115b26153add76420303b68ae26d52f78cc44bbc",
@@ -16,6 +16,6 @@
   "drivers/GopFramebuffer/NativeGOPWire.h": "70ed58ac9a2406f6ebd7a1e69261fb62f5075a13440e1bf05f075cbf92d0450c",
   "drivers/GopFramebuffer/NativeGOPTiming.h": "c30ee39fc384ad0a7bb95a098deb614601642764801e6da08e1dc5b9a6a603fc",
   "drivers/AdrenoMetal/NativeRenderWaitSample.h": "dc7a05f0e7b3cd9bd2dd7959a56bf07aab079e721dd1fa0e21bc9776ec0c8d54",
-  "drivers/AdrenoMetal/NativeDisplayWaitState.h": "dd24fb9394d66520867573981eda71322cce81e14650ba67b92a44b07b150360",
-  "drivers/AdrenoMetal/NativeFrameObservers.inc": "d81e5ceb2350d5be46f967945b855a81902973138245dbbd935bd520db25b1d6"
+  "drivers/AdrenoMetal/NativeDisplayWaitState.h": "2fa7b050c56aefbb4503d33b4ff901d297792161ebfebe53c1e71365ee20eb57",
+  "drivers/AdrenoMetal/NativeFrameObservers.inc": "9b841426051a8412edead77fd493a5fbe195ddfbaef1382473bbde1149b63761"
 }

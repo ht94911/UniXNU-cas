@@ -153,11 +153,19 @@ for marker in (b'pthread_main_thread_np',b'ui-main-wait-sample',b'springboard-wa
     assert marker in data,marker
 discovery_profile=json.loads((a.logs/'display-discovery/report.json').read_text())
 assert discovery_profile['passed'] and discovery_profile['real_Mac_executed']
-assert discovery_profile['actual_result']['cases']==12
+assert discovery_profile['actual_result']['cases']==17
 assert discovery_profile['source_sha256']==hashlib.sha256((a.unixnu/'drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm').read_bytes()).hexdigest()
 assert discovery_profile['observer_include_sha256']==hashlib.sha256((a.unixnu/'drivers/AdrenoMetal/NativeFrameObservers.inc').read_bytes()).hexdigest()
 for marker in (b'display-wait discovery=',b'ui-wait begin',b'ui-wait end',b'budget_s=1800 max=90000'):
     assert marker in data,marker
+codegen=json.loads((a.logs/'codegen-cache/report.json').read_text())
+preference=json.loads((a.logs/'display-preference/report.json').read_text())
+assert codegen['passed'] and codegen['actual_cache_compile_critical_section']
+assert (codegen['original_cold_compiles'],codegen['fixed_cold_compiles'])==(8,1)
+assert codegen['source_sha256']==hashlib.sha256((root/'drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm').read_bytes()).hexdigest()
+assert preference['passed'] and preference['actual_reader_and_preference_executed'] and preference['cases']==14
+assert preference['header_sha256']==hashlib.sha256((root/'drivers/AdrenoMetal/NativeDisplayWaitState.h').read_bytes()).hexdigest()
+assert preference['observer_sha256']==hashlib.sha256((root/'drivers/AdrenoMetal/NativeFrameObservers.inc').read_bytes()).hexdigest()
 submit_room=json.loads((a.logs/'submit-room-host/report.json').read_text())
 assert submit_room['passed'] and submit_room['actual_Submit_and_SubmitBatch_functions'] and submit_room['ASan'] and submit_room['UBSan']
 assert submit_room['results'][0]['source_sha256']==hashlib.sha256((root/'.cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc').read_bytes()).hexdigest()
@@ -217,6 +225,7 @@ report=dict(actual_icon_limits_host=icon_limits,actual_pipeline_cache_host=cache
             actual_enum_stack_connection_offset=enum_offset,
             actual_Mac_source_bound_context_tests=contexts,
             real_A840_shader_or_UI_verified=False,phone_operations=False)
-report.update(actual_extern_function=extern_function,actual_extern_target=target_extern,actual_multi_level_output=multi_level)
+report.update(actual_extern_function=extern_function,actual_extern_target=target_extern,actual_multi_level_output=multi_level,
+              actual_codegen_cache=codegen,actual_display_preference=preference)
 (a.logs/'full-target-qualified.json').write_text(json.dumps(report,indent=2)+'\n')
 print(json.dumps({k:v for k,v in report.items() if k!='profile'},indent=2))

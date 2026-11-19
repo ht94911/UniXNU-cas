@@ -1,0 +1,94 @@
+diff --git a/NativeBridgeMetalFrontend.mm b/NativeBridgeMetalFrontend.mm
+index d0d34b6..fb73526 100644
+--- a/NativeBridgeMetalFrontend.mm
++++ b/NativeBridgeMetalFrontend.mm
+@@ -1097,0 +1098,6 @@ static NSData *codeGenRequest(uint32_t type,const std::vector<uint8_t> &request,
++  // Another request may have published this reply while this one waited.
++  if(shaderCacheRead(cached,&kept,&keptWarnings)) {
++   gCompileCached++;
++   *warnings=keptWarnings;*failure=nil;
++   return kept;
++  }
+@@ -1110,0 +1117,3 @@ static NSData *codeGenRequest(uint32_t type,const std::vector<uint8_t> &request,
++  if(!called)message=@"the Metal compiler did not answer";
++  // Publish before the next waiter can recheck the same request.
++  if(!message)shaderCacheWrite(cached,metallib,warned);
+@@ -1112 +1120,0 @@ static NSData *codeGenRequest(uint32_t type,const std::vector<uint8_t> &request,
+- if(!called)message=@"the Metal compiler did not answer";
+@@ -1114 +1121,0 @@ static NSData *codeGenRequest(uint32_t type,const std::vector<uint8_t> &request,
+- if(!message)shaderCacheWrite(cached,metallib,warned);
+diff --git a/NativeDisplayWaitState.h b/NativeDisplayWaitState.h
+index 798ea93..d4d4df8 100644
+--- a/NativeDisplayWaitState.h
++++ b/NativeDisplayWaitState.h
+@@ -24,0 +25,5 @@ constexpr uint64_t kWirelessDisplayVtable=0x1e8ffbce8ULL;
++// The original internal/external destructors also reach IOMFBDisplayD2 with
++// the unadjusted object pointer. Their factory constructors install these
++// exact address points in this QuartzCore image.
++constexpr uint64_t kInternalDisplayVtable=0x1e8ffc790ULL;
++constexpr uint64_t kExternalDisplayVtable=0x1e8ffb200ULL;
+@@ -38 +43,2 @@ enum DiscoveryStatus : int32_t { NotTried=-1,DisplayReady=0,WaitingQuartz=1,
+- NoDisplayClassMatch=10,CandidateLayoutRejected=11,UnsupportedArchitecture=12 };
++ NoDisplayClassMatch=10,CandidateLayoutRejected=11,UnsupportedArchitecture=12,
++ WaitingDisplayTiming=13 };
+@@ -95 +101,13 @@ inline bool displayLayoutMatches(uint64_t p,int64_t slide){
+-        address==uint64_t(int64_t(kWirelessDisplayVtable)+slide);
++        address==uint64_t(int64_t(kWirelessDisplayVtable)+slide) ||
++        address==uint64_t(int64_t(kInternalDisplayVtable)+slide) ||
++        address==uint64_t(int64_t(kExternalDisplayVtable)+slide);
++}
++// A real timer is the useful observation. Among equally complete readers,
++// choose the internal display before a generic or wireless fallback.
++inline unsigned displayPreference(const State &s,int64_t slide){
++ if(!(s.flags&LayoutMatched))return 0;
++ const uint64_t address=stripped(s.displayVtable);
++ unsigned rank=address==uint64_t(int64_t(kInternalDisplayVtable)+slide)?3:
++               address==uint64_t(int64_t(kDisplayVtable)+slide)?2:1;
++ if((s.flags&TimerIdentityMatched) || ((s.flags&ServerRead) && s.serverTail[4]))rank+=4;
++ return rank;
+diff --git a/NativeFrameObservers.inc b/NativeFrameObservers.inc
+index 083db6e..8ebe154 100644
+--- a/NativeFrameObservers.inc
++++ b/NativeFrameObservers.inc
+@@ -81 +81,2 @@ static bool prepareDisplayObserver() {
+- id compatibleDisplay=nil;
++ id preferredDisplay=nil;
++ unsigned preference=0;
+@@ -88,5 +89,3 @@ static bool prepareDisplayObserver() {
+-  if(state.flags&nbdisplaywait::LayoutMatched) {
+-   if(nbdisplaywait::stripped(state.displayVtable)==uint64_t(int64_t(nbdisplaywait::kDisplayVtable)+gObservedQuartzSlide)) {
+-    gObservedWindowDisplay=candidate;gDisplayDiscovery.status=nbdisplaywait::DisplayReady;return true;
+-   }
+-   if(!compatibleDisplay)compatibleDisplay=candidate;
++  const unsigned rank=nbdisplaywait::displayPreference(state,gObservedQuartzSlide);
++  if(rank>preference) {
++   preferredDisplay=candidate;preference=rank;
+@@ -95,2 +94,8 @@ static bool prepareDisplayObserver() {
+- if(compatibleDisplay) {
+-  gObservedWindowDisplay=compatibleDisplay;gDisplayDiscovery.status=nbdisplaywait::DisplayReady;return true;
++ if(preferredDisplay && preference>=5) {
++  gObservedWindowDisplay=preferredDisplay;gDisplayDiscovery.status=nbdisplaywait::DisplayReady;return true;
++ }
++ if(preferredDisplay) {
++  // Keep the readable fallback in diagnostics while later discovery can
++  // still find the display's timer or vsync source.
++  gObservedWindowCandidate=preferredDisplay;
++  return discoveryFailed(nbdisplaywait::WaitingDisplayTiming);
+diff --git a/README.md b/README.md
+index 02a24b6..b487988 100644
+--- a/README.md
++++ b/README.md
+@@ -62,0 +63,13 @@ GPU execution and do not measure panel FPS.
++System compiler requests recheck the existing reply cache after waiting for the
++compiler mutex. Successful replies are published before releasing that mutex,
++so simultaneous requests for the same compiler, type and bytes reuse the first
++reply. Compiler failures remain uncached.
++
++The read-only display observer checks the original internal and external display
++address points as well as the generic and wireless classes. It prefers a display
++with a verified timer, and then the internal display among equally complete
++readers. The bounded discovery and original memory/UUID checks remain in place;
++display selection changes no system display or timer state.
++An object without a timer or vsync source remains a readable candidate while
++discovery continues; its presence alone does not mark timing discovery ready.
++

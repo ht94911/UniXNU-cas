@@ -111,6 +111,11 @@ jobs:
       - name: Exercise delayed display discovery with actual Objective-C and Mach reads
         id: display_discovery
         run: device/ci/gpu-userland/logrun display-discovery python3 device/ci/gpu-userland/check-display-discovery.py --source unixnu/drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm --out "$LOGS/display-discovery"
+      - name: Check concurrent compiler reply reuse and verified panel observer preference
+        id: cache_panel
+        run: |
+          device/ci/gpu-userland/logrun codegen-cache python3 device/ci/gpu-userland/check-codegen-cache.py --source unixnu/drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm --out "$LOGS/codegen-cache"
+          device/ci/gpu-userland/logrun display-preference python3 device/ci/gpu-userland/check-display-preference.py --source unixnu/drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm --out "$LOGS/display-preference"
       - name: Check shader sharing on the actual prepared Turnip source
         id: pipeline_cache
         run: device/ci/gpu-userland/logrun pipeline-cache python3 device/ci/gpu-userland/check-pipeline-cache.py --source unixnu/.cache/mesa-work/src/freedreno/vulkan/tu_pipeline.cc --patch unixnu/patches/mesa/turnip-shaders-shared-across-pipeline-caches.patch --out "$LOGS/pipeline-cache"
@@ -170,6 +175,7 @@ jobs:
           OUTCOME_FRAME_OBSERVERS: ${{ steps.frame_observers.outcome }}
           OUTCOME_UI_MAIN: ${{ steps.ui_main.outcome }}
           OUTCOME_DISPLAY_DISCOVERY: ${{ steps.display_discovery.outcome }}
+          OUTCOME_CACHE_PANEL: ${{ steps.cache_panel.outcome }}
           OUTCOME_PIPELINE_CACHE: ${{ steps.pipeline_cache.outcome }}
           OUTCOME_ICON_LIMITS: ${{ steps.icon_limits.outcome }}
           OUTCOME_EXTERN_FUNCTION: ${{ steps.extern_function.outcome }}
@@ -217,6 +223,7 @@ jobs:
           FRAME_OBSERVERS: ${{ steps.frame_observers.outcome }}
           UI_MAIN: ${{ steps.ui_main.outcome }}
           DISPLAY_DISCOVERY: ${{ steps.display_discovery.outcome }}
+          CACHE_PANEL: ${{ steps.cache_panel.outcome }}
           PIPELINE_CACHE: ${{ steps.pipeline_cache.outcome }}
           ICON_LIMITS: ${{ steps.icon_limits.outcome }}
           EXTERN_FUNCTION: ${{ steps.extern_function.outcome }}
@@ -235,6 +242,7 @@ jobs:
           test "$FRAME_OBSERVERS" = success
           test "$UI_MAIN" = success
           test "$DISPLAY_DISCOVERY" = success
+          test "$CACHE_PANEL" = success
           test "$PIPELINE_CACHE" = success
           test "$ICON_LIMITS" = success
           test "$EXTERN_FUNCTION" = success

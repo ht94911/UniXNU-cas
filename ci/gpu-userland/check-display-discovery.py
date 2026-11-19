@@ -88,6 +88,9 @@ int main(){@autoreleasepool {
  *(uintptr_t *)(impl+0x40)=(uintptr_t)server;
  *(uint64_t *)server=nbdisplaywait::kServerVtable;*(uintptr_t *)(server+0x60)=(uintptr_t)cppDisplay;
  *(uint64_t *)cppDisplay=nbdisplaywait::kDisplayVtable;
+ auto *timer=(unsigned char *)calloc(1,0x110);assert(timer);
+ *(uintptr_t *)(server+0x4b0)=(uintptr_t)timer;
+ *(uint64_t *)(timer+0x90)=nbdisplaywait::kTimerCallback;*(uintptr_t *)(timer+0x98)=(uintptr_t)server;
  fixtureDisplays=@[display];unsigned cases=0;
  for(unsigned i=0;i<12;++i){assert(!discover(i*1000000ull));assert(gDisplayDiscovery.status==nbdisplaywait::WaitingServer);}
  assert(gDisplayDiscovery.attempts==12 && !gObservedQuartzRejected);++cases;
@@ -126,6 +129,29 @@ int main(){@autoreleasepool {
  fixtureDisplays=@[rejected,rejected,rejected,rejected,rejected,display];
  assert(discover(0) && gObservedWindowDisplay==display && gDiscoveryDisplayCount==6);++cases;
  resetDiscovery();fixtureDisplays=@[rejected];assert(!discover(0));++cases;
+ // A primary timer must beat the readable wireless placeholder regardless
+ // of its place in the bounded original display list.
+ auto *internalDisplay=(unsigned char *)calloc(1,0x100);assert(internalDisplay);
+ *(uint64_t *)internalDisplay=nbdisplaywait::kInternalDisplayVtable;
+ *(uintptr_t *)(badServer+0x60)=(uintptr_t)internalDisplay;
+ auto *internalTimer=(unsigned char *)calloc(1,0x110);assert(internalTimer);
+ *(uint64_t *)(internalTimer+0x90)=nbdisplaywait::kTimerCallback;
+ *(uintptr_t *)(internalTimer+0x98)=(uintptr_t)badServer;
+ *(uintptr_t *)(badServer+0x4b0)=(uintptr_t)internalTimer;
+ *(uint64_t *)cppDisplay=nbdisplaywait::kWirelessDisplayVtable;
+ resetDiscovery();fixtureDisplays=@[display,rejected];
+ assert(discover(0) && gObservedWindowDisplay==rejected);++cases;
+ resetDiscovery();fixtureDisplays=@[rejected,display];
+ assert(discover(0) && gObservedWindowDisplay==rejected);++cases;
+ // A readable placeholder without pacing is not a completed discovery.
+ resetDiscovery();fixtureDisplays=@[display];*(uintptr_t *)(server+0x4b0)=0;
+ assert(!discover(0) && gDisplayDiscovery.status==nbdisplaywait::WaitingDisplayTiming);
+ assert(gObservedWindowCandidate==display && !gObservedWindowDisplay);++cases;
+ *(uintptr_t *)(server+0x4b0)=(uintptr_t)timer;
+ assert(discover(1000000) && gObservedWindowDisplay==display);++cases;
+ resetDiscovery();*(uintptr_t *)(server+0x4b0)=0;*(uintptr_t *)(server+0x4a0)=0x123000;
+ assert(discover(0) && gObservedWindowDisplay==display);++cases;
+ free(internalTimer);free(internalDisplay);free(timer);
  free(badDisplay);free(badServer);free(badImpl);
  *(uint64_t *)server=nbdisplaywait::kServerVtable;
  assert(noteCount>=2 && noteCount<=16);
@@ -149,7 +175,7 @@ if platform.system()=='Darwin':
     assert not result.returncode,result.stderr
     result=subprocess.run([str(binary)],capture_output=True,text=True,timeout=20);(a.out/'run.log').write_text(result.stdout+result.stderr)
     assert not result.returncode,result.stdout+result.stderr
-    observed=json.loads(result.stdout);assert observed['cases']==12
+    observed=json.loads(result.stdout);assert observed['cases']==17
     report.update(real_Mac_executed=True,actual_result=observed,command=command)
 report['passed']=True
 (a.out/'report.json').write_text(json.dumps(report,indent=2)+'\n');print(json.dumps(report,indent=2))
