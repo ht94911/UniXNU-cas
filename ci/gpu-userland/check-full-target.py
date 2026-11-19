@@ -143,7 +143,7 @@ for marker in (b'_thread_get_state',b'_mach_vm_read_overwrite',b'_mach_thread_se
     assert marker in data,marker
 observer_profile=json.loads((a.logs/'frame-observers/report.json').read_text())
 client_profile=json.loads((a.logs/'ui-main/report.json').read_text())
-assert observer_profile['passed'] and observer_profile['actual_source_reader_serializer_batch'] and observer_profile['cases']==24
+assert observer_profile['passed'] and observer_profile['actual_source_reader_serializer_batch'] and observer_profile['cases']==26
 assert client_profile['passed'] and client_profile['real_Mac_main_thread']['executed'] and client_profile['real_Mac_main_thread']['passed']
 for report in (observer_profile,client_profile):
     assert report['source_sha256']==hashlib.sha256((a.unixnu/'drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm').read_bytes()).hexdigest()
@@ -153,7 +153,7 @@ for marker in (b'pthread_main_thread_np',b'ui-main-wait-sample',b'springboard-wa
     assert marker in data,marker
 discovery_profile=json.loads((a.logs/'display-discovery/report.json').read_text())
 assert discovery_profile['passed'] and discovery_profile['real_Mac_executed']
-assert discovery_profile['actual_result']['cases']==9
+assert discovery_profile['actual_result']['cases']==12
 assert discovery_profile['source_sha256']==hashlib.sha256((a.unixnu/'drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm').read_bytes()).hexdigest()
 assert discovery_profile['observer_include_sha256']==hashlib.sha256((a.unixnu/'drivers/AdrenoMetal/NativeFrameObservers.inc').read_bytes()).hexdigest()
 for marker in (b'display-wait discovery=',b'ui-wait begin',b'ui-wait end',b'budget_s=1800 max=90000'):

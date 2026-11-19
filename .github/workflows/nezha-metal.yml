@@ -1,7 +1,7 @@
-name: nezha GPU058 exact derived display observer - metal048
+name: nezha GPU061 exact display sampler observer - metal048
 on:
   push:
-    branches: [codex/ios27-gpu58-display-derived-metal048-20261119]
+    branches: [codex/ios27-gpu61-display-sampler-metal049-20261119]
   workflow_dispatch:
 permissions:
   contents: read

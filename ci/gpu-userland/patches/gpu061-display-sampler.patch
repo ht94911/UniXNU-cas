@@ -1,0 +1,31 @@
+diff --git a/NativeBridgeMetalFrontend.mm b/NativeBridgeMetalFrontend.mm
+index 8137438..d0d34b6 100644
+--- a/NativeBridgeMetalFrontend.mm
++++ b/NativeBridgeMetalFrontend.mm
+@@ -446,6 +446,7 @@ static void startRenderWaitSampler() {
+   (void)pthread_set_qos_class_self_np(QOS_CLASS_UTILITY,0);
+   traceRenderWaitImages();traceProcessIdentity(false);
+   uint64_t copy=0,samples=0,states=0;unsigned next=0;
++  bool stackSamplesEnded=false;
+   for(;;) {
+    usleep(4000);
+    const uint64_t latest=gRenderWaitCopyUs.load(std::memory_order_acquire);
+@@ -459,13 +460,17 @@ static void startRenderWaitSampler() {
+    const int due=nbwait::dueThreshold(now,copy,next);if(due<0)continue;
+    next=(unsigned)due+1;
+    if(states<nbwait::kSampleBudget)traceDisplayObserver(++states,copy);
++   if(stackSamplesEnded) {
++    if(states==nbwait::kSampleBudget)return;
++    continue;
++   }
+    for(auto &target:gRenderWaitTargets) {
+     if(gRenderWaitCopyUs.load(std::memory_order_acquire)!=copy)break;
+     if(target.ready.load(std::memory_order_acquire)!=2)continue;
+     if(samples==nbwait::kSampleBudget) {
+      nbwait::Sample end{};end.version=nbwait::kVersion;end.bytes=sizeof(end);
+      end.id=++samples;end.beganUs=end.endedUs=nowUs();end.stop=nbwait::BudgetExhausted;
+-     traceWaitBytes(27,end.id,&end,sizeof(end));return;
++     traceWaitBytes(27,end.id,&end,sizeof(end));stackSamplesEnded=true;break;
+     }
+     nbwait::Sample sample{};sample.id=++samples;sample.tid=target.tid;
+     sample.lastCommand=target.lastCommand.load(std::memory_order_acquire);
