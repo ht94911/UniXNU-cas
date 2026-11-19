@@ -373,9 +373,17 @@ def main():
     cache_first_patch = root / 'patches/mesa/turnip-darwin-sweep-retired-on-cache-miss.patch'
     must(['git', '-C', mesa, 'apply', '--check', cache_first_patch])
     must(['git', '-C', mesa, 'apply', cache_first_patch])
+    selected = HERE / 'patches/gpu062-submit-room-recipes.patch'
+    must(['git', '-C', root, 'apply', '--check', selected])
+    must(['git', '-C', root, 'apply', selected])
+    retry_patch = root / 'patches/mesa/turnip-darwin-submit-room-retry.patch'
+    shutil.copyfile(HERE / 'patches/submit-room-retry.patch', retry_patch)
+    must(['git', '-C', mesa, 'apply', '--check', retry_patch])
+    must(['git', '-C', mesa, 'apply', retry_patch])
+    record['submit_room_retry'] = dict(source_sha256=sha(mesa / 'src/freedreno/vulkan/tu_knl_darwin.cc'), patch_sha256=sha(retry_patch), kernel_idle_TTBR_guard_preserved=True)
     final_pins = json.loads((root / 'scripts/data/adreno-compiler-inputs.json').read_text())
     validate_recorded_patches(root, mesa, final_pins)
-    assert sha(mesa / 'src/freedreno/vulkan/tu_knl_darwin.cc') == 'f3c5caa22daf6573a8f78aed3d1f523ab894eeb7715805c31053fa8a929b96a8'
+    assert sha(mesa / 'src/freedreno/vulkan/tu_knl_darwin.cc') == '95b7650fc4149114f3f2e62d206872dd3e22239132012af809aa9a428f7c59e0'
     record['mesa']['patches'] = {p: sha(root / p) for p in final_pins['patches']}
     record['driver_cpu_profile'] = dict(original_KMD='04591f5a3711d4ea68568ea3f7e993f2f57f2070de14e40d63d223c8c570a65e',
         actual_KMD=sha(mesa / 'src/freedreno/vulkan/tu_knl_darwin.cc'), patch_sha256=sha(profile_patch))

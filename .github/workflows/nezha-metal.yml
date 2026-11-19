@@ -1,7 +1,7 @@
-name: nezha GPU061 exact display sampler observer - metal048
+name: nezha GPU062 Submit room retry - metal050
 on:
   push:
-    branches: [codex/ios27-gpu61-display-sampler-metal049-20261119]
+    branches: [codex/ios27-gpu62-submit-room-metal050-20261119]
   workflow_dispatch:
 permissions:
   contents: read
@@ -76,6 +76,11 @@ jobs:
       - name: Check actual-source real Mesa trees,device lifetimes and swap API guards
         id: device_contexts
         run: device/ci/gpu-userland/logrun device-contexts python3 device/ci/gpu-userland/check-device-context-host.py --unixnu unixnu --logs "$LOGS"
+      - name: Exercise actual Submit and staged SubmitBatch retry while another VM is busy
+        id: submit_room
+        env:
+          CXX: xcrun clang++
+        run: device/ci/gpu-userland/logrun submit-room python3 device/ci/gpu-userland/check-submit-room-retry.py --unixnu unixnu --out "$LOGS/submit-room-host"
       - name: Qualify host syntax and actual iOS ARM signal handlers
         id: frontend_targets
         run: device/ci/gpu-userland/logrun frontend-targets python3 device/ci/gpu-userland/check-intel-frontend.py --unixnu unixnu --report "$LOGS/frontend-target-equality.json"
@@ -148,6 +153,7 @@ jobs:
           OUTCOME_FRONTEND_TARGETS: ${{ steps.frontend_targets.outcome }}
           OUTCOME_TURNIP_IOS27: ${{ steps.turnip_ios27.outcome }}
           OUTCOME_PLUGIN: ${{ steps.plugin.outcome }}
+          OUTCOME_SUBMIT_ROOM: ${{ steps.submit_room.outcome }}
           OUTCOME_FULL_TARGET: ${{ steps.full_target.outcome }}
           OUTCOME_HEAP_COPIES: ${{ steps.heap_copies.outcome }}
           OUTCOME_TILED_WORDS: ${{ steps.tiled_words.outcome }}

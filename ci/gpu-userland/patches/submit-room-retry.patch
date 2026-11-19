@@ -1,0 +1,69 @@
+diff --git a/src/freedreno/vulkan/tu_knl_darwin.cc b/src/freedreno/vulkan/tu_knl_darwin.cc
+--- a/src/freedreno/vulkan/tu_knl_darwin.cc
++++ b/src/freedreno/vulkan/tu_knl_darwin.cc
+@@ -1606,6 +1606,35 @@
+    return n;
+ }
+ 
++/* Busy can mean that a different VM owns the A840 ring. Once this
++ * connection's oldest fence completed it must leave the retry history; polling
++ * that already-retired fence cannot make the other VM drain. Sleep briefly
++ * when no local job remains, without holding the connection or retirement lock.
++ * The kernel still proves real RPTR/RBBM idle before changing TTBR0. */
++static VkResult
++darwin_wait_submit_room(struct tu_device *dev)
++{
++   struct dw_connection &dw = dw_device(dev);
++   pthread_mutex_lock(&dw.lock);
++   const uint32_t oldest = dw.inflight_count ? dw.inflight[0] : 0;
++   pthread_mutex_unlock(&dw.lock);
++   if (!oldest) {
++      usleep(200);
++      return VK_SUCCESS;
++   }
++   VkResult result = dw_wait_fence_locked_free(dev, oldest, UINT64_MAX);
++   if (result != VK_SUCCESS)
++      return result;
++   pthread_mutex_lock(&dw.lock);
++   if (dw.inflight_count && dw.inflight[0] == oldest) {
++      --dw.inflight_count;
++      memmove(dw.inflight, dw.inflight + 1,
++              dw.inflight_count * sizeof(dw.inflight[0]));
++   }
++   pthread_mutex_unlock(&dw.lock);
++   return VK_SUCCESS;
++}
++
+ /* One kernel submission of up to NativeAdrenoAbiMaxBuffers indirect buffers; while the kernel's ring has no room (kIOReturnBusy, as msm
+  * waits for ring space) it waits for this client's oldest job, or yields when none is in flight. */
+ static VkResult
+@@ -1633,13 +1662,8 @@
+          return vk_device_set_lost(&dev->vk, "submit failed: 0x%x", kr);
+       rec->busy++;
+ 
+-      pthread_mutex_lock(&dw.lock);
+-      uint32_t oldest = dw.inflight_count ? dw.inflight[0] : 0;
+-      pthread_mutex_unlock(&dw.lock);
+       const uint64_t waited = tu_trace_clock_ns();
+-      if (!oldest)
+-         sched_yield();
+-      else if (dw_wait_fence_locked_free(dev, oldest, UINT64_MAX) != VK_SUCCESS)
++      if (darwin_wait_submit_room(dev) != VK_SUCCESS)
+          return vk_device_set_lost(&dev->vk, "submit: waiting for ring space failed");
+       rec->space_wait_us += (uint32_t)((tu_trace_clock_ns() - waited) / 1000);
+    }
+@@ -1703,13 +1727,8 @@
+       if (kr != kIOReturnBusy)
+          return vk_device_set_lost(&dev->vk, "atomic submit commit failed: 0x%x", kr);
+       rec->busy++;
+-      pthread_mutex_lock(&dw.lock);
+-      uint32_t oldest = dw.inflight_count ? dw.inflight[0] : 0;
+-      pthread_mutex_unlock(&dw.lock);
+       const uint64_t waited = tu_trace_clock_ns();
+-      if (!oldest)
+-         sched_yield();
+-      else if (dw_wait_fence_locked_free(dev, oldest, UINT64_MAX) != VK_SUCCESS)
++      if (darwin_wait_submit_room(dev) != VK_SUCCESS)
+          return vk_device_set_lost(&dev->vk, "atomic submit: waiting for ring space failed");
+       rec->space_wait_us += (uint32_t)((tu_trace_clock_ns() - waited) / 1000);
+    }

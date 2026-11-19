@@ -158,6 +158,9 @@ assert discovery_profile['source_sha256']==hashlib.sha256((a.unixnu/'drivers/Adr
 assert discovery_profile['observer_include_sha256']==hashlib.sha256((a.unixnu/'drivers/AdrenoMetal/NativeFrameObservers.inc').read_bytes()).hexdigest()
 for marker in (b'display-wait discovery=',b'ui-wait begin',b'ui-wait end',b'budget_s=1800 max=90000'):
     assert marker in data,marker
+submit_room=json.loads((a.logs/'submit-room-host/report.json').read_text())
+assert submit_room['passed'] and submit_room['actual_Submit_and_SubmitBatch_functions'] and submit_room['ASan'] and submit_room['UBSan']
+assert submit_room['results'][0]['source_sha256']==hashlib.sha256((root/'.cache/mesa-work/src/freedreno/vulkan/tu_knl_darwin.cc').read_bytes()).hexdigest()
 cache_profile=json.loads((a.logs/'pipeline-cache/report.json').read_text())
 assert cache_profile['passed'] and cache_profile['actual_Turnip_functions']
 assert cache_profile['actual_prepared_source_sha256']==hashlib.sha256((a.unixnu/'.cache/mesa-work/src/freedreno/vulkan/tu_pipeline.cc').read_bytes()).hexdigest()
