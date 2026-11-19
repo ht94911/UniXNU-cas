@@ -1,0 +1,131 @@
+diff --git a/NativeBridgeMetalFrontend.mm b/NativeBridgeMetalFrontend.mm
+index 1f20164..478b5ec 100644
+--- a/NativeBridgeMetalFrontend.mm
++++ b/NativeBridgeMetalFrontend.mm
+@@ -1999,6 +1999,7 @@ static NBFunction *ciKernelFunction(NBLibrary *library,NSString *name) {
+ }
+ @interface NBComputePipeline : NBObject
+ @property(nonatomic) NmbComputePipeline *handle;
++@property(nonatomic,copy) NSString *dumpInfo;
+ @end
+ @implementation NBComputePipeline
+ - (void)dealloc {DetailSpan timing(10,(uintptr_t)_handle);nmb_compute_pipeline_release(_handle);}
+@@ -2238,6 +2239,7 @@ struct SingleSampleCopy {
+ @property(nonatomic) uint32_t dumpDraws;
+ @property(nonatomic,strong) NSMutableArray *dumpRuns;
+ @property(nonatomic) uint32_t drawIndex;   // this encoder's draws so far, for NATIVE_METAL_SKIP_DRAWS   // [pipeline info, depth info, first draw, count] for each run of draws with one state
++- (void)dumpBindings;
+ - (void)noteState:(uint32_t)kind key:(uint32_t)key object:(const void *)object value:(uint64_t)value;
+ - (void)noteDraw;
+ @end
+@@ -2298,6 +2300,27 @@ static bool dumpMatched(NSString *pipeline) {
+  static NSString *const text=[]{const char *v=getenv("NATIVE_METAL_DUMP_DRAWS_MATCH");return v?@(v):nil;}();
+  return text.length && [pipeline containsString:text];
+ }
++// The current CPU bytes of a planar video surface, before dispatch and after
++// completion. Its Metal texture can expose converted texels, so keep the two
++// plane codes separately from the existing GPU readback.
++static NSString *dumpSurfaceCodes(NBTexture *texture) {
++ IOSurfaceRef surface=texture.surface;
++ const uint32_t format=surface?IOSurfaceGetPixelFormat(surface):0;
++ if(!surface || (format!=0x34323066 && format!=0x34323076) || IOSurfaceGetPlaneCount(surface)!=2)return nil;
++ const size_t width=IOSurfaceGetWidth(surface),height=IOSurfaceGetHeight(surface),allocation=IOSurfaceGetAllocSize(surface);
++ const uintptr_t base=(uintptr_t)IOSurfaceGetBaseAddress(surface);
++ const uintptr_t y=(uintptr_t)IOSurfaceGetBaseAddressOfPlane(surface,0),uv=(uintptr_t)IOSurfaceGetBaseAddressOfPlane(surface,1);
++ const size_t yrow=IOSurfaceGetBytesPerRowOfPlane(surface,0),uvrow=IOSurfaceGetBytesPerRowOfPlane(surface,1);
++ if(width<2 || height<2 || !base || y<base || uv<base || y-base>=allocation || uv-base>=allocation || !yrow || !uvrow)return nil;
++ const size_t x=(width/2)&~size_t(1),row=height/2;
++ if(x>=yrow || x>=uvrow || uvrow-x<2)return nil;
++ if(row>(allocation-(y-base))/yrow || row/2>(allocation-(uv-base))/uvrow)return nil;
++ const size_t ya=(y-base)+row*yrow,ua=(uv-base)+(row/2)*uvrow;
++ if(x>=allocation-ya || x>=allocation-ua || allocation-ua-x<2)return nil;
++ const auto *luma=(const uint8_t *)y,*chroma=(const uint8_t *)uv;
++ return [NSString stringWithFormat:@"surface %u format %08x CPU center %u/%u/%u rows %zu/%zu",
++     IOSurfaceGetID(surface),format,luma[row*yrow+x],chroma[(row/2)*uvrow+x],chroma[(row/2)*uvrow+x+1],yrow,uvrow];
++}
+ static void dumpNote(NBCommandBuffer *commandBuffer,NSMutableArray *into,id texture,NSUInteger level,NSUInteger slice,NSString *where) {
+  if(!texture || ![texture isKindOfClass:[NBTexture class]])return;
+  for(NSDictionary *seen in commandBuffer.dumpTargets)
+@@ -2597,6 +2620,10 @@ static uint64_t encodeCommandOf(id object) {
+  if(!dumpShown(++_dumpDraws) && !dumpMatched(pipeline))return;
+  dumpLine(_commandBuffer,[NSString stringWithFormat:@"pass %u draw %u: %@ | %@ | depth %@",_commandBuffer.dumpPasses,_dumpDraws,what,
+                           [_dumpPipeline dumpInfo]?:@"no pipeline",_dumpDepth?[_dumpDepth dumpInfo]:@"none"]);
++ [self dumpBindings];
++}
++- (void)dumpBindings {
++ if(!dumpMaybe(_commandBuffer))return;
+  for(NSNumber *key in [_dumpBound.allKeys sortedArrayUsingSelector:@selector(compare:)]) {
+   const uint32_t k=key.unsignedIntValue;id value=_dumpBound[key];
+   // Key stage << 8 | index: stages 0-2 buffers and bytes, 4-6 textures, 8-10 samplers (compute, vertex, fragment).
+@@ -2608,6 +2635,10 @@ static uint64_t encodeCommandOf(id object) {
+    dumpLine(_commandBuffer,[NSString stringWithFormat:@"%@: type %llu f%llu %llux%llux%llu array %llu mips %llu%@",where,(unsigned long long)d.type,
+                             (unsigned long long)d.format,(unsigned long long)d.width,(unsigned long long)d.height,(unsigned long long)d.depth,
+                             (unsigned long long)d.array_length,(unsigned long long)d.levels,t.label.length?[@" " stringByAppendingString:t.label]:@""]);
++   if(t.surface)dumpLine(_commandBuffer,[NSString stringWithFormat:@"%@ surface %u format %08x plane %lu offset %lu rows %lu usage %llu",
++       where,IOSurfaceGetID(t.surface),IOSurfaceGetPixelFormat(t.surface),(unsigned long)t.surfacePlane,
++       (unsigned long)t.offset,(unsigned long)t.rowBytes,(unsigned long long)d.usage]);
++   if(NSString *codes=dumpSurfaceCodes(t))dumpLine(_commandBuffer,[where stringByAppendingFormat:@" before %@",codes]);
+   } else if(kind==2 && [value isKindOfClass:[NBSampler class]]) {
+    const NmbSamplerDescriptor d=[(NBSampler *)value descriptor];
+    dumpLine(_commandBuffer,[NSString stringWithFormat:@"%@: min %llu mag %llu mip %llu address %llu,%llu,%llu compare %llu lod %g..%g",where,
+@@ -2636,7 +2667,7 @@ static uint64_t encodeCommandOf(id object) {
+ - (void)texture:(id<MTLTexture>)texture index:(NSUInteger)index stage:(uint32_t)stage {
+  if(texture && ![(id)texture isKindOfClass:[NBTexture class]]){[_commandBuffer refuse:@"foreign texture"];return;}
+  if(gDrawStats)[self noteState:kDSTexture key:stage<<8|(uint32_t)index object:(__bridge const void *)texture value:0];
+- if(texture && stage==0 && (texture.usage&MTLTextureUsageShaderWrite) && dumpMaybe(_commandBuffer)) {
++ if(texture && stage==0 && dumpMaybe(_commandBuffer)) {
+   if(!_dumpEntries)_dumpEntries=[NSMutableArray array];
+   if(!_commandBuffer.dumpTargets)_commandBuffer.dumpTargets=[NSMutableArray array];
+   const NSUInteger before=_commandBuffer.dumpTargets.count;
+@@ -2691,6 +2722,7 @@ static uint64_t encodeCommandOf(id object) {
+ - (MTLDispatchType)dispatchType {return MTLDispatchTypeSerial;}
+ - (void)setComputePipelineState:(id<MTLComputePipelineState>)state {
+  if(![(id)state isKindOfClass:[NBComputePipeline class]]){[self.commandBuffer refuse:@"foreign compute pipeline"];return;}
++ if(dumpRange().first)self.dumpPipeline=state;
+  ENCODE([self check:nmb_compute_set_pipeline(self.handle,[(NBComputePipeline *)state handle]) what:"setComputePipelineState"]);
+ }
+ - (void)setBuffer:(id<MTLBuffer>)b offset:(NSUInteger)o atIndex:(NSUInteger)i {[self buffer:b offset:o index:i stage:0];}
+@@ -2720,6 +2752,13 @@ static uint64_t encodeCommandOf(id object) {
+ - (void)dispatch:(MTLSize)size group:(MTLSize)group threads:(bool)threads {
+  gDispatches++;self.commandBuffer->encodedWork.dispatches++;
+  const std::array<uint64_t,3> s={size.width,size.height,size.depth},g={group.width,group.height,group.depth};
++ if(dumpMaybe(self.commandBuffer)) {
++  dumpLine(self.commandBuffer,[NSString stringWithFormat:@"kernel %u dispatch %s %lux%lux%lu group %lux%lux%lu | %@",
++      self.commandBuffer.dumpKernels,threads?"threads":"groups",(unsigned long)size.width,(unsigned long)size.height,
++      (unsigned long)size.depth,(unsigned long)group.width,(unsigned long)group.height,(unsigned long)group.depth,
++      [self.dumpPipeline dumpInfo]?:@"no pipeline"]);
++  [self dumpBindings];
++ }
+  ENCODE([self check:nmb_compute_dispatch(self.handle,s.data(),g.data(),threads) what:"dispatch"]);
+ }
+ - (void)dispatchThreads:(MTLSize)t threadsPerThreadgroup:(MTLSize)g {[self dispatch:t group:g threads:true];}
+@@ -3111,6 +3150,7 @@ static void dumpPrint(uint64_t appIndex,NSDictionary *read) {
+           [t[@"where"] UTF8String],encoder?" (":"",encoder?encoder.UTF8String:"",encoder?")":"",texture.label.length?texture.label.UTF8String:"-",
+           (unsigned long long)d.width,(unsigned long long)d.height,(unsigned long long)d.format,
+           (unsigned long)[t[@"level"] unsignedIntegerValue],(unsigned long)[t[@"slice"] unsignedIntegerValue]);
++ if(NSString *codes=dumpSurfaceCodes(texture))fprintf(stderr,"%s after %s\n",head,codes.UTF8String);
+  if(read[@"skip"]){fprintf(stderr,"%s: %s\n",head,[read[@"skip"] UTF8String]);return;}
+  const unsigned w=[read[@"w"] unsignedIntValue],rows=[read[@"rows"] unsignedIntValue],bpp=[read[@"bpp"] unsignedIntValue];
+  const uint32_t format=[read[@"format"] unsignedIntValue];
+@@ -4803,7 +4843,9 @@ static void fillBaseLimits(id device);
+   NmbComputePipelineDescriptor p={};p.function=built.handle;p.max_call_stack_depth=1;
+   *reflection=(MTLComputePipelineReflection *)computeReflection(&p);
+  }
+- NBComputePipeline *state=[NBComputePipeline new];state.handle=handle;gPipelines++;if(error)*error=nil;return (id<MTLComputePipelineState>)state;
++ NBComputePipeline *state=[NBComputePipeline new];state.handle=handle;gPipelines++;
++ if(dumpRange().first)state.dumpInfo=[NSString stringWithFormat:@"compute %@ k=%s",built.sourceName?:built.name,built.constantsText.c_str()];
++ if(error)*error=nil;return (id<MTLComputePipelineState>)state;
+ }
+ - (id<MTLComputePipelineState>)newComputePipelineStateWithDescriptor:(MTLComputePipelineDescriptor *)d options:(MTLPipelineOption)options
+                                                        reflection:(MTLAutoreleasedComputePipelineReflection *)reflection error:(NSError **)error {
+@@ -4829,6 +4871,10 @@ static void fillBaseLimits(id device);
+  }
+  if(reflection && wantsReflection(options))*reflection=(MTLComputePipelineReflection *)computeReflection(&p);
+  NBComputePipeline *state=[NBComputePipeline new];state.handle=handle;state.label=d.label;gPipelines++;
++ if(dumpRange().first) {
++  NBFunction *built=(NBFunction *)d.computeFunction;
++  state.dumpInfo=[NSString stringWithFormat:@"compute %@ k=%s",built.sourceName?:built.name,built.constantsText.c_str()];
++ }
+  if(error)*error=nil;return (id<MTLComputePipelineState>)state;
+ }
+ // iPadOS 27's QuartzCore builds its backdrop compute pipelines (Liquid Glass luma, backdrop capture) with this short form: unanswered, the

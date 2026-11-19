@@ -268,6 +268,14 @@ report['actual_camera_function_SPI'] = camera_function
 (a.logs/'full-target-qualified.json').write_text(json.dumps(report,indent=2)+'\n')
 print(json.dumps({k:v for k,v in report.items() if k!='profile'},indent=2))
 
+compute_dump=json.loads((a.logs/'compute-dump/report.json').read_text())
+assert compute_dump['passed'] and compute_dump['checks']==13
+assert compute_dump['actual_ObjectiveC_bodies_executed'] and compute_dump['disabled_dispatch_arguments_unchanged']
+assert compute_dump['source_sha256']==hashlib.sha256((root/'drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm').read_bytes()).hexdigest()
+for marker in (b'kernel %u dispatch %s', b'CPU center %u/%u/%u', b'compute %@ k=%s', b'after %s'):
+    assert marker in data, marker
+report['actual_compute_dump'] = compute_dump
+
 planes=json.loads((a.logs/'surface-plane-forwarding/report.json').read_text())
 assert planes['passed'] and planes['checks']==15 and planes['actual_ObjectiveC_bodies_executed']
 assert planes['source_sha256']==hashlib.sha256((root/'drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm').read_bytes()).hexdigest()

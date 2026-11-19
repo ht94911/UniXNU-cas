@@ -1,7 +1,7 @@
-name: nezha iPhone27 Camera093 GPU051 IOSurface plane identity
+name: nezha iPhone27 Camera094 GPU051 transfer pixels
 on:
   push:
-    branches: [codex/ios27-camera093c-gpu051-plane-20261119]
+    branches: [codex/ios27-camera094-gpu051-transfer-20261119]
   workflow_dispatch:
 permissions:
   contents: read
@@ -74,6 +74,9 @@ jobs:
       - name: Exercise actual surface constructor and texture view plane identity
         id: surface_planes
         run: device/ci/gpu-userland/logrun surface-planes python3 device/ci/gpu-userland/check-surface-plane-forwarding.py --source unixnu/drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm --out "$LOGS/surface-plane-forwarding"
+      - name: Exercise actual compute dump forwarding and planar sample bounds
+        id: compute_dump
+        run: device/ci/gpu-userland/logrun compute-dump python3 device/ci/gpu-userland/check-compute-dump.py --source unixnu/drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm --out "$LOGS/compute-dump"
       - name: Check production public parameter metadata before runtime compilation
         id: camera_public
         run: device/ci/gpu-userland/logrun camera-public python3 device/ci/gpu-userland/check-camera-public.py --unixnu unixnu --logs "$LOGS"
@@ -176,6 +179,7 @@ jobs:
           OUTCOME_FUNCTION_CONSTANT: ${{ steps.retained_contracts.outcome }}
           OUTCOME_SURFACE_PLANES: ${{ steps.surface_planes.outcome }}
           OUTCOME_CAMERA_FORWARDING: ${{ steps.camera_forwarding.outcome }}
+          OUTCOME_COMPUTE_DUMP: ${{ steps.compute_dump.outcome }}
           OUTCOME_HEAP_OPTIONS: ${{ steps.retained_contracts.outcome }}
           OUTCOME_CAMERA_PUBLIC: ${{ steps.camera_public.outcome }}
           OUTCOME_CAMERA_FUNCTION_SPI: ${{ steps.retained_contracts.outcome }}
@@ -228,6 +232,7 @@ jobs:
           FUNCTION_CONSTANT: ${{ steps.retained_contracts.outcome }}
           SURFACE_PLANES: ${{ steps.surface_planes.outcome }}
           CAMERA_FORWARDING: ${{ steps.camera_forwarding.outcome }}
+          COMPUTE_DUMP: ${{ steps.compute_dump.outcome }}
           HEAP_OPTIONS: ${{ steps.retained_contracts.outcome }}
           CAMERA_PUBLIC: ${{ steps.camera_public.outcome }}
           CAMERA_FUNCTION_SPI: ${{ steps.retained_contracts.outcome }}
@@ -252,6 +257,7 @@ jobs:
           test "$FUNCTION_CONSTANT" = success
           test "$SURFACE_PLANES" = success
           test "$CAMERA_FORWARDING" = success
+          test "$COMPUTE_DUMP" = success
           test "$HEAP_OPTIONS" = success
           test "$CAMERA_PUBLIC" = success
           test "$CAMERA_FUNCTION_SPI" = success

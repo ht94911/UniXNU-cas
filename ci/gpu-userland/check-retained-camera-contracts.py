@@ -16,12 +16,13 @@ kit = args.unixnu.resolve() / 'drivers/AdrenoMetal'
 fixtures = Path(__file__).with_name('fixtures') / 'retained-camera-contracts'
 current_frontend_sha = hashlib.sha256((kit / 'NativeBridgeMetalFrontend.mm').read_bytes()).hexdigest()
 args.logs.mkdir(parents=True, exist_ok=True)
-retained_source = tempfile.TemporaryDirectory(prefix='camera093-retained-', dir=args.logs)
+retained_source = tempfile.TemporaryDirectory(prefix='camera094-retained-', dir=args.logs)
 previous = Path(retained_source.name)
 shutil.copyfile(kit / 'NativeBridgeMetalFrontend.mm', previous / 'NativeBridgeMetalFrontend.mm')
-patch = Path(__file__).with_name('patches') / 'camera093-surface-plane-plugin.patch'
-subprocess.run(['git', 'apply', '--reverse', '--check', str(patch)], cwd=previous, check=True)
-subprocess.run(['git', 'apply', '--reverse', str(patch)], cwd=previous, check=True)
+for name in ('camera094-compute-dump-plugin.patch', 'camera093-surface-plane-plugin.patch'):
+    patch = Path(__file__).with_name('patches') / name
+    subprocess.run(['git', 'apply', '--reverse', '--check', str(patch)], cwd=previous, check=True)
+    subprocess.run(['git', 'apply', '--reverse', str(patch)], cwd=previous, check=True)
 previous_sha = hashlib.sha256((previous / 'NativeBridgeMetalFrontend.mm').read_bytes()).hexdigest()
 source_files = {
     'source_sha256': 'NativeBridgeMetalFrontend.mm',
@@ -57,6 +58,7 @@ for name, tests in test_files.items():
     report['retained_frontend_patch_reversed_exactly'] = True
     report['current_full_frontend_identical'] = False
     report['surface_plane_change_covered_separately'] = True
+    report['compute_dump_change_covered_separately'] = True
     report['retained_source_hashes_verified'] = True
     destination = args.logs / name
     destination.mkdir(parents=True, exist_ok=False)
