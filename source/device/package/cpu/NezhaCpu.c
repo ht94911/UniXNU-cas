@@ -53,6 +53,7 @@ extern kern_return_t processor_info(processor_t, processor_flavor_t, host_t *,
 extern kern_return_t thread_terminate(thread_t);
 extern int system_inshutdown;
 static uint32_t nz27_cpu_valid;
+static uint32_t cpu27_available_top(uint32_t d);
 #endif
 
 extern vm_offset_t ml_io_map(vm_offset_t, vm_size_t);
@@ -494,7 +495,8 @@ cpu_try(uint32_t d, uint32_t level, int method, const char *how)
 	struct cpu_domain *dm = &cpu_dom[d];
 	level = lv(d, level);
 #ifdef NEZHA_CPU_IOS27
-    if(level>dm->top)level=dm->top;
+    const uint32_t top=cpu27_available_top(d);
+    if(level>top)level=top;
 #endif
 	const int r = cpu_set_level_via(d, level, method);
 	IOSleep(20);
@@ -511,15 +513,15 @@ static void
 cpu_check_levels(void)
 {
 #ifdef NEZHA_CPU_IOS27
-    /* Preserve firmware limits and other mailboxes. Check only the existing
-     * SCMI and firmware-described fast channel within the selected ceiling. */
+    /* Check the firmware's full table through the existing SCMI and fast
+     * channel. Active thermal stages still constrain each test request. */
     for(uint32_t d=0;d<2;++d) {
         struct cpu_domain *dm=&cpu_dom[d];
-        dm->method=cpu_try(d,dm->top,0,"SCMI capped")?0:-1;
+        dm->method=cpu_try(d,dm->top,0,"SCMI firmware maximum")?0:-1;
         cpu_fast_channel(d,0x7);
         if(dm->fast && !(dm->fast_db_set>>32) && !(dm->fast_db_keep>>32) &&
-            cpu_try(d,dm->top?dm->top-1:0,2,"fast channel capped"))dm->method=2;
-        printf("NEZHA CPU27: domain %u verified method %d cap %u kHz\n",d,dm->method,dm->khz[dm->top]);
+            cpu_try(d,dm->top?dm->top-1:0,2,"fast channel firmware maximum"))dm->method=2;
+        printf("NEZHA CPU27: domain %u verified method %d firmware max %u kHz thermal max %u kHz\n",d,dm->method,dm->khz[dm->top],dm->khz[cpu27_available_top(d)]);
     }
 #else
 	cpu_mbox1 = ml_io_map(PDP1_MBOX_TX_PA, 0x1000);
@@ -859,20 +861,15 @@ tdeg(int32_t t)
 }
 
 #ifdef NEZHA_CPU_IOS27
-/* Keep initial CPU operation within this phone's observed normal-use clocks.
- * Thermal caps may reduce them; no fixed maximum-frequency stress probe. */
-static bool cpu27_limit_levels(void)
+/* Keep the complete firmware table, including its published boost levels.
+ * Dynamic thermal limits constrain requests without shrinking the table's
+ * maximum, so cooling can restore every available level. */
+static uint32_t cpu27_available_top(uint32_t d)
 {
-    const uint32_t caps[2]={1996800,2227200};
-    for(unsigned d=0;d<2;++d)
-        if(!cpu_dom[d].levels || cpu_dom[d].khz[0]>caps[d])return false;
-    for(unsigned d=0;d<2;++d) {
-        uint32_t cap=nz27_cpu_ceiling(cpu_dom[d].khz,cpu_dom[d].levels,caps[d]);
-        if(cap>cpu_tcap[d])cap=cpu_tcap[d];
-        if(cap>cpu_scap[d])cap=cpu_scap[d];
-        if(cpu_dom[d].top>cap)cpu_dom[d].top=cap;
-    }
-    return true;
+    uint32_t top=cpu_dom[d].top;
+    if(cpu_tcap[d]<top)top=cpu_tcap[d];
+    if(cpu_scap[d]<top)top=cpu_scap[d];
+    return top;
 }
 static uint32_t cpu27_busy(unsigned cpu)
 {
@@ -946,10 +943,12 @@ cpu_start_levels(void)
 {
 	for (uint32_t d = 0; d < 2; d++) {
 		struct cpu_domain *dm = &cpu_dom[d];
-		const uint32_t top = cpu_get(d, 0x3, 4);   /* sustained level: boost levels above it are left alone */
+#ifndef NEZHA_CPU_IOS27
+        const uint32_t top = cpu_get(d, 0x3, 4);   /* sustained level: boost levels above it are left alone */
 		if (top != ~0u && top < dm->levels && top < dm->top) {
 			dm->top = top;
 		}
+#endif
 		int fix = -1;
 		(void)PE_parse_boot_argn(d ? "nezha-cpu-fix1" : "nezha-cpu-fix0", &fix, sizeof(fix));
 		dm->fixed = fix >= 0 && (uint32_t)fix < dm->levels ? (uint32_t)fix : ~0u;
@@ -969,7 +968,8 @@ cpu_start_levels(void)
 		}
 		dm->level = dm->fixed != ~0u ? dm->fixed : dm->top;
 #ifdef NEZHA_CPU_IOS27
-        if(dm->level>dm->top)dm->level=dm->top;
+        const uint32_t top=cpu27_available_top(d);
+        if(dm->level>top)dm->level=top;
 #endif
 		const int r = cpu_set_level(d, dm->level);
 #ifdef NEZHA_CPU_IOS27
@@ -1316,9 +1316,6 @@ cpu_thread(__unused void *arg, __unused wait_result_t wr)
                 printf("NEZHA CPU27: temperature source unavailable; retain existing clocks\n");nz_mode=1;goto probe_only;
             }
             cpu_thermal();
-            if(!cpu27_limit_levels()) {
-                printf("NEZHA CPU27: no level within initial ceiling\n");nz_mode=1;goto probe_only;
-            }
 #endif
 			native_cpufreq_stage = 3;
 			cpu_check_levels();

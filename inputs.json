@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "GPU062: retain Native050 A840 zero-wait table readiness and GPU059 icon384; count every Submit/SubmitBatch Busy with sparse existing diagnostics, eliminating observed per-retry IOLog storm. Both statuses and TTBR/RPTR/RBBM guards remain original; KMD room retry separately changed.",
+  "purpose": "GPU063 user-requested remove fixed iOS27 CPU 1996800/2227200 ceiling and sustained boost-level restriction; full firmware maximum with load scaling and original thermal caps/cooldown recovery; retain Native051 sparseBusy logging and exact GPU/VM/fence/close/384 policy. Metal050 unchanged.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -366,7 +366,7 @@
     "source/device/package/boot-progress/UmiUserspaceProbe.c": "ec20306bfc7359cf21c5a20102b459cf7f6a264a60dcb7ee2b00f2a9158d0f60",
     "source/device/package/boot-progress/UmiWaitTrace.h": "b8183c4e9defd5ec9c3ed231451cf89c204629d7285cb125de7e366f9b13858b",
     "source/device/package/boot-progress/upstream.json": "bbcd4cc639b104c9d4619076c8350cfb90483a92347dcd5e39443ba0f8fd8a13",
-    "source/device/package/cpu/NezhaCpu.c": "16084adaa01e1e2052f77af807448173793f71c3a5373fcb816012d46a7f6052",
+    "source/device/package/cpu/NezhaCpu.c": "295ba9c96d42c9bcb83c201ae44bff6bac1e4d6a617648a00102fa8accee9e9b",
     "source/device/package/cpu/NezhaCpu27Policy.h": "14869e171aabc71ea536d26bc79877db1889a29a13c09115557a45b1b8629dc7",
     "source/device/package/gpu/NezhaAdreno840.cpp": "503649d5f893cc3735be4173a92c190dbd7a5555a070c04f1319c51f35758b77",
     "source/device/package/gpu/NezhaDpuTiming.h": "5f4d92cb5173c4d583f3f0746c41746abe188c89d82faf34039cb22816d2a31d",
@@ -502,7 +502,7 @@
     "ci/test-native-userlog.py": "f64f5aff7c83cbbff7ce9bd15ab276dd7022f5e42d227999157b796afe414f9e",
     "ci/check-native-userlog.py": "74e7abe9164a853b10d4406a46f55f67670ade42795f066068e84f14b2ebc006",
     "ci/test-native-userlog-producer.py": "619bc31f6f41b16d562bcbc83a41588f6ada45a5268e23ef5c4985e5f364e403",
-    "ci/native.py": "1ed840e5723416a88d4456b87d4c16fb5d9c10c6ab3255f0ba5ffb392b66f24c",
+    "ci/native.py": "b73857d5b718b45dcce68fe37ea564bdba04c57f3f045dd16a821e6faba97f83",
     "source/device/package/gpu/NezhaGpuBoPhases.h": "6b609e93c766b0f88b569dc1c04177b529f090e23f06a260c4c427afe8dfcbb6",
     "source/device/tests/gpu-bo-phases.cpp": "a7d609b520a3166ca53c24581f89c6d2f02ca53f00b09326749c0356a3fc63e9",
     "source/device/tests/check-gpu-bo-phases.py": "e34cab3913626ff9e80d533e9013791565229a3386fbb1599ed4c71c68afc181",
@@ -511,7 +511,8 @@
     "source/device/docs/GPU052-RESOURCE-ENUMERATION.md": "f8c8e93b0483e8babf441616f2468f83c38462567358109fc6cceb9eca680887",
     "source/device/patches/xnu-12377/nezha-native-4k-large-ram.patch": "6c1e566d009bf384291487f9d5e242514c78a000ea39995fdae9cacfd816e32d",
     "source/adreno/tests/check_submit_busy_log.py": "945f7616e47ceb6c125c4b0f1e177e437d032ac85095326ea2d17b4264491857",
-    ".github/workflows/nezha-ios27-native.yml": "a1be052cc6a93fe7ddedec74de50dc622c1167c74f96b7120a857662d16e9d36"
+    ".github/workflows/nezha-ios27-native.yml": "63c2f5298c3bf10bc4ba9ce754f36c2fdfc98870783270f81eaabc0744fed0c6",
+    "source/device/scripts/check-cpu27-firmware-levels.py": "72fc65996664b51733ea45360fb91ceb9a1de561ef2bb63ce0e09b394f149c24"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
@@ -989,5 +990,17 @@
     "statuses_and_sync_unchanged": true,
     "physical_gain_verified": false,
     "phone_operations": false
+  },
+  "gpu063_cpu": {
+    "source_revision": "4e9518924cb4cf84b11e6ac82e951d3b37f493b3",
+    "base_native051": "bab76dad7e9228d1dc7b45f09cd388becfecaa52",
+    "old_fixed_caps_removed": true,
+    "firmware_all_published_levels": true,
+    "original_thermal_stage_preserved": true,
+    "thermal_cap_does_not_reduce_nominal_top": true,
+    "actual_CPU_start_check_helper_cases": 11,
+    "host_report_sha256": "a7f2ac5afb9ceebd57908097124e0b60f1cb8280bfd9598cbd8fd7b2704ca90d",
+    "phone_operations": false,
+    "actual_frequency_hardware_verified": false
   }
 }
