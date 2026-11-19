@@ -18,6 +18,9 @@
 @property(nonatomic) NSTimeInterval beganUptime;
 @property(nonatomic) BOOL requested;
 @property(nonatomic) BOOL running;
+@property(nonatomic,copy) NSString *authorizationValue;
+@property(nonatomic,copy) NSString *accuracyValue;
+@property(nonatomic,strong) NSNumber *servicesEnabled;
 @end
 
 @implementation NezhaLocationController
@@ -26,15 +29,17 @@
     [super viewDidLoad];
     self.view.backgroundColor=UIColor.systemBackgroundColor;
     self.title=@"卫星定位测试";
-    self.manager=[CLLocationManager new];self.manager.delegate=self;
-    self.manager.desiredAccuracy=kCLLocationAccuracyBest;self.manager.distanceFilter=kCLDistanceFilterNone;
-    self.manager.pausesLocationUpdatesAutomatically=NO;
     self.records=[NSMutableArray array];
     self.applicationSession=NSUUID.UUID.UUIDString;self.beganUptime=NSProcessInfo.processInfo.systemUptime;
     char uuid[128]={0};size_t bytes=sizeof uuid;
     self.bootUUID=sysctlbyname("kern.bootsessionuuid",uuid,&bytes,NULL,0)==0 ? @(uuid):@"unavailable";
+    self.authorizationValue=@"unqueried";self.accuracyValue=@"unqueried";
+    [self write:@{@"event":@"startup"}];
+    self.manager=[CLLocationManager new];self.manager.delegate=self;
+    self.manager.desiredAccuracy=kCLLocationAccuracyBest;self.manager.distanceFilter=kCLDistanceFilterNone;
+    self.manager.pausesLocationUpdatesAutomatically=NO;
     self.status=[UILabel new];self.status.numberOfLines=0;self.status.font=[UIFont preferredFontForTextStyle:UIFontTextStyleHeadline];
-    self.status.text=@"点击开始，按系统提示允许定位。";
+    self.status.text=@"正在读取系统定位状态。";
     self.position=[UILabel new];self.position.numberOfLines=0;self.position.font=[UIFont monospacedSystemFontOfSize:16 weight:UIFontWeightRegular];
     self.position.text=@"等待新的系统位置";
     self.startButton=[UIButton buttonWithType:UIButtonTypeSystem];[self.startButton setTitle:@"开始定位" forState:UIControlStateNormal];
@@ -47,6 +52,26 @@
     [NSLayoutConstraint activateConstraints:@[[stack.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor constant:24],
         [stack.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor constant:-24],
         [stack.topAnchor constraintEqualToAnchor:safe.topAnchor constant:28]]];
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY,0),^{
+        [self write:@{@"event":@"services_query_pending"}];
+        BOOL enabled=[CLLocationManager locationServicesEnabled];
+        @synchronized(self){self.servicesEnabled=@(enabled);}
+        [self write:@{@"event":@"services_query_returned",@"services_enabled":@(enabled)}];
+        [self write:@{@"event":@"authorization_query_pending"}];
+        NSString *authorization=[self authorization];
+        @synchronized(self){self.authorizationValue=authorization;}
+        [self write:@{@"event":@"authorization_query_returned",@"authorization":authorization}];
+        [self write:@{@"event":@"accuracy_query_pending"}];
+        NSString *accuracy=self.manager.accuracyAuthorization==CLAccuracyAuthorizationFullAccuracy ? @"fullAccuracy":@"reducedAccuracy";
+        @synchronized(self){self.accuracyValue=accuracy;}
+        [self write:@{@"event":@"accuracy_query_returned",@"accuracy_authorization":accuracy}];
+        dispatch_async(dispatch_get_main_queue(),^{
+            if(self.requested||self.running)return;
+            self.status.text=!enabled ? @"系统定位服务关闭，请在设置中打开定位服务。":
+                [authorization isEqualToString:@"denied"] ? @"系统定位服务已开启，请在设置中允许此应用定位。":
+                @"系统定位服务已开启，点击开始定位。";
+        });
+    });
 }
 - (NSString *)authorization
 {
@@ -61,18 +86,28 @@
 - (void)save:(NSDictionary *)event
 {
     NSMutableDictionary *row=[event mutableCopy];
-    row[@"authorization"]=[self authorization];
-    row[@"accuracy_authorization"]=self.manager.accuracyAuthorization==CLAccuracyAuthorizationFullAccuracy ? @"fullAccuracy":@"reducedAccuracy";
+    NSString *authorization=[self authorization];
+    NSString *accuracy=self.manager.accuracyAuthorization==CLAccuracyAuthorizationFullAccuracy ? @"fullAccuracy":@"reducedAccuracy";
+    @synchronized(self){self.authorizationValue=authorization;self.accuracyValue=accuracy;}
+    row[@"authorization"]=authorization;row[@"accuracy_authorization"]=accuracy;
+    [self write:row];
+}
+- (void)write:(NSDictionary *)event
+{
+    @synchronized(self){
+    NSMutableDictionary *row=[event mutableCopy];
     row[@"received_uptime_ms"]=@((long long)(NSProcessInfo.processInfo.systemUptime*1000));
     [self.records addObject:row];if(self.records.count>256)[self.records removeObjectAtIndex:0];
     NSError *error=nil;
     NSString *documents=NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,NSUserDomainMask,YES).firstObject;
     NSData *body=[NSJSONSerialization dataWithJSONObject:@{@"provider":@"CoreLocation",@"boot_session_uuid":self.bootUUID,
-        @"authorization":[self authorization],@"accuracy_authorization":self.manager.accuracyAuthorization==CLAccuracyAuthorizationFullAccuracy ? @"fullAccuracy":@"reducedAccuracy",
+        @"authorization":self.authorizationValue ?: @"unqueried",@"accuracy_authorization":self.accuracyValue ?: @"unqueried",
+        @"services_enabled":self.servicesEnabled ?: (id)NSNull.null,@"diagnostic_version":@10,
         @"application_session":self.applicationSession,@"process_id":@(NSProcessInfo.processInfo.processIdentifier),
         @"process_began_uptime_ms":@((long long)(self.beganUptime*1000)),@"events":self.records} options:NSJSONWritingPrettyPrinted error:&error];
     if(body&&documents)[body writeToFile:[documents stringByAppendingPathComponent:@"corelocation.json"] options:NSDataWritingAtomic error:&error];
     if(error)NSLog(@"NezhaLocation evidence write: %@",error);
+    }
 }
 - (void)begin
 {
@@ -96,7 +131,9 @@
 }
 - (void)locationManagerDidChangeAuthorization:(CLLocationManager *)manager
 {
-    (void)manager;if(self.requested&&self.manager.authorizationStatus!=kCLAuthorizationStatusNotDetermined)[self begin];
+    (void)manager;
+    [self save:@{@"event":@"authorization_changed"}];
+    if(self.requested&&self.manager.authorizationStatus!=kCLAuthorizationStatusNotDetermined)[self begin];
 }
 - (void)locationManager:(CLLocationManager *)manager didUpdateLocations:(NSArray<CLLocation *> *)locations
 {

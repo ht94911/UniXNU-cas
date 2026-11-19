@@ -1,19 +1,21 @@
 {
   "schema": 1,
-  "purpose": "GNSS009 original final FBS default-shell ordinary service and actualprocess/error callback after measured10s lsd queue timeout; calleridentity automatic, emptyoptions, one request; retained mobileboot task/registration/normalapp",
-  "device_revision": "2dff6943ace70037fa5655209d5bf52cbca94bc5",
+  "purpose": "GNSS022 ordinary public locationServicesEnabled/authorization/accuracy state query with currentstartup identity and pending/returned journal; no permission changes",
+  "device_revision": "002ea5a8933e4a630efbce5645946d193f445190",
   "files": {
-    "source/NezhaLocation.m": "6a71ef36ae9323341a82d94a4620ca288d313eec1fc71d92e65b8de332685d68",
+    "source/NezhaLocation.m": "03829bf08f14f60e561c860265d8536dc4c9949fcf488bf80dea8289668a321b",
     "source/Info.plist": "d22a8a478357aaf3a42279295f5b7c704415e64c0fc049b3371c9556cabc902e",
     "source/NezhaLocation.entitlements.plist": "3a42773d833db52c8a6113f2ea83cd6e97ed6ffbdd4ecb8f10d506868a037626",
     "source/NezhaLocationLaunch.m": "e25cb2a28a23f352cd0e1acc13d671fd7b5a0bb8098e4a0edf3ddf677b18014c",
     "source/NezhaLocationLaunch.entitlements.plist": "990976e864664ee1a6264c30806d55194650549bbf3f9ee484d80a456230e054",
     "ci/corelocation.py": "69a2ab549e52c1f88775d3597ca6637100ee6578d07f2eb4ac6363c29f0ea1e8",
-    ".github/workflows/nezha-ios27-native.yml": "f4676dfd9638b0651bedb695ea070a6de20ab3330f180fca846929da65169cd7",
+    ".github/workflows/nezha-ios27-native.yml": "3a69fa42764eeaca6d7a9c6b9ca6db3cde6fd35bfc193ed5142ec0cf07c3929b",
     "source/location-launch-registration.m": "ab641a2379b5ff74c9aacda6b5c2b348166de1c4a27848876e4c09dce296d79f",
     "source/org.unixnu.nezha.location-launch.plist": "aab1089eee69522a0567a55c0f08b1e8d192e47780765c0fab6feed7dbbd8e59"
   },
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
   "certificate_sha256": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
-  "phone_operations": false
+  "phone_operations": false,
+  "original_helper_byte_identical": true,
+  "private_inputs_uploaded": false
 }
