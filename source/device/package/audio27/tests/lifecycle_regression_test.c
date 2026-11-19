@@ -97,7 +97,7 @@ static void diagnostic_capture(void) {
     assert(!na_stream_init(&streams[0],out_dma,0x110000000ULL,sizeof out_dma,1920,4,7,42,0));
     assert(!na_stream_init(&streams[1],in_dma,0x110010000ULL,sizeof in_dma,960,2,8,43,1));
     for (unsigned i=0;i<2;++i) assert(!na_graph_init(&graphs[i],&session,&streams[i],&topology,&go));
-    NaRuntimeOps ro={0,host,activate,nothing,nothing};
+    NaRuntimeOps ro={0,host,activate,nothing,nothing,0};
     assert(!na_runtime_init(&r,&session,&queue,&graphs[0],&graphs[1],&prm,&transport,
         &status,old_out,new_out,625,12,1,2,0,&ro));
     r.service_ready=1;

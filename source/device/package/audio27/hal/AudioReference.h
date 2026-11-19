@@ -11,6 +11,17 @@ static inline int na_reference_mix(uint64_t *output, uint64_t *reference,
     int result = na_ring_mix(output, frame, left, right);
     return result ? result : na_ring_mix(reference, frame, left, right);
 }
+static inline int na_reference_route_mix(uint64_t *output,uint64_t *reference,
+                                         uint64_t frame,int16_t left,int16_t right,int receiver) {
+    int result=na_ring_mix(output,frame,left,right);
+    if (result) return result;
+    if (receiver) {
+        uint64_t mixed=__atomic_load_n(output+frame%NA_AUDIO_RING_FRAMES,__ATOMIC_ACQUIRE);
+        left=(int16_t)mixed;right=(int16_t)(mixed>>16);
+        return na_ring_capture(reference,frame,(int16_t)(((int32_t)left+right)/2));
+    }
+    return na_ring_mix(reference,frame,left,right);
+}
 
 static inline int na_reference_read(const uint64_t *reference, uint64_t frame,
                                     int16_t *left, int16_t *right) {

@@ -48,7 +48,7 @@ static int peer_send(void *v,const uint8_t *packet,uint32_t bytes) {
     } else if (p.opcode==AR_OP_READ) {
         ++x->reads;
         assert(x->driver.graph[0].stage==NaGraphRunning && x->driver.graph[2].stage==NaGraphRunning);
-        assert(!x->driver.runtime.engine.output_idle ||
+        assert(x->driver.stream[1].returned || !x->driver.runtime.engine.output_idle ||
             (x->driver.runtime.output_idle_ready && !x->driver.runtime.engine.active[0]));
         if (x->suppress_reads) return NA_OK;
         uint32_t slot=(uint32_t)(x->driver.stream[1].next-1)%NA_DMA_SLOTS;
@@ -154,7 +154,7 @@ static void initialize_capture(int capture) {
     }
     NaPrmResource resources[2]={{.kind=NaPrmClock,.id=0x200,.hz=3072000,.attribute=4},{.kind=NaPrmCore,.id=2}};
     assert(!na_prm_init(&f.driver.prm,&f.driver.session,resources,2,peer_send,&f));
-    NaRuntimeOps ro={&f,host,runtime_activate,runtime_health,runtime_standby};
+    NaRuntimeOps ro={&f,host,runtime_activate,runtime_health,runtime_standby,0};
     assert(!na_runtime_init(&f.driver.runtime,&f.driver.session,&f.rx,&f.driver.graph[0],capture ? &f.driver.graph[1]:NULL,&f.driver.prm,&f.transport,
         &f.status,ring,capture ? fresh_ring:NULL,625,12,1,capture ? 2:0,0,&ro));
     assert(!na_engine_attach_control(&f.driver.runtime.engine,&f.driver.graph[2]));
@@ -399,7 +399,70 @@ static void cold_system_idle(void) {
     assert(na_runtime_quiescent(r)&&f.closes==2&&f.unmaps==2&&f.releases==1);
     assert(!f.reads&&!f.input_maps&&!f.input_opens);
 }
+static void cold_duplex_after_ringtone(void) {
+    initialize_capture(1);NaRuntime *r=&f.driver.runtime;
+    r->capture_proven=1;r->status.in_channels=1;r->output_held=1;
+    steps(120);
+    start();write_next(8000);steps(10);
+    assert(!na_runtime_request(r,NaAudioStopOutput));standby_complete();
+    unsigned activations=f.activated;
+    assert(!na_runtime_request(r,NaAudioStartOutput));
+    assert(!na_runtime_request(r,NaAudioStartInput));
+    unsigned first_input_silent=0;
+    for (unsigned i=0;i<150;++i) {
+        if (!(i%10)) assert(!na_runtime_request(r,NaAudioStartInput));
+        /* First capture must use the measured silent output/VI state even
+         * though the output request stays queued. PCM unlocks playback. */
+        if (!r->status.in_produced)
+            assert(!r->engine.active[0] && f.activated==activations);
+        assert(!step());
+        if (f.reads && !r->status.in_produced) {
+            assert(r->engine.output_idle && r->output_idle_ready);
+            first_input_silent=1;
+        }
+    }
+    assert(first_input_silent && (r->request&1));
+    assert(f.activated==activations+1 && r->engine.active[0] && r->engine.active[1]);
+    assert(f.input_maps==1 && f.input_opens==1 && f.reads && r->status.in_produced);
+    assert(!r->fault && !f.driver.graph[1].error);
+    assert(!na_runtime_request(r,NaAudioStopInput));
+    for(unsigned i=0;i<30 && f.driver.graph[1].stage!=NaGraphPaused;++i)assert(!step());
+    assert(f.driver.graph[1].stage==NaGraphPaused);
+    assert(!na_runtime_request(r,NaAudioStopOutput));standby_complete();
+    assert(!na_runtime_request(r,NaAudioStartInput));
+    for(unsigned i=0;i<80;++i) {if(!(i%10))assert(!na_runtime_request(r,NaAudioStartInput));assert(!step());}
+    assert(r->engine.active[1] && !r->engine.active[0] && f.input_maps==1);
+    na_runtime_disable(r);
+    for(unsigned i=0;i<80 && !na_runtime_quiescent(r);++i)assert(!step());
+    assert(na_runtime_quiescent(r));
+}
+static void first_duplex_timeout(void) {
+    initialize_capture(1);NaRuntime *r=&f.driver.runtime;
+    r->capture_proven=1;r->status.in_channels=1;r->output_held=1;
+    steps(120);start();steps(10);
+    assert(!na_runtime_request(r,NaAudioStopOutput));standby_complete();
+    unsigned activations=f.activated;
+    f.suppress_reads=1;
+    assert(!na_runtime_request(r,NaAudioStartOutput));
+    assert(!na_runtime_request(r,NaAudioStartInput));
+    for (unsigned i=0;i<350;++i) {
+        if (!(i%10) && !f.driver.graph[1].error)
+            assert(!na_runtime_request(r,NaAudioStartInput));
+        if (!f.driver.graph[1].error)
+            assert(!r->engine.active[0] && f.activated==activations);
+        assert(!step());
+    }
+    assert(f.reads==4 && f.driver.graph[1].error==NA_TIMEOUT);
+    assert(!r->status.in_produced && !r->fault);
+    assert(r->engine.active[0] && f.activated==activations+1);
+    assert((r->request&1) && !(r->status.state&NaAudioInputReady));
+    na_runtime_disable(r);
+    for(unsigned i=0;i<80 && !na_runtime_quiescent(r);++i)assert(!step());
+    assert(na_runtime_quiescent(r));
+}
 int main(void) {
+    cold_duplex_after_ringtone();
+    first_duplex_timeout();
     cold_system_idle();
     system_input_only();system_duplex_restart();system_input_timeout();
     repeat_and_rebind();staged_stop();failures();probe_after_playback();full_PCM_range();

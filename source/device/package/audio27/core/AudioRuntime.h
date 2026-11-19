@@ -18,6 +18,8 @@ typedef struct {
     /* Worker-only analog shutdown, with graph/VI and their PRM votes retained.
      * NA_PENDING is polled while silence continues through the running DMA. */
     int (*standby)(void *);
+    /* Worker-only, muted output/VI retained, complete physical mode change. */
+    int (*route)(void *,uint32_t route);
 } NaRuntimeOps;
 enum {NaProbeIdle,NaProbeStarting,NaProbeCollecting,NaProbeDraining,NaProbeComplete,NaProbeFailed};
 #define NA_CAPTURE_PROBE_PCM_FRAMES (2u * NA_AUDIO_RATE)
@@ -37,6 +39,7 @@ typedef struct {
     uint32_t output_held,output_stop_pending,output_idle_ready;
     uint64_t output_stops,output_seen_stop,output_idle_fence;
     uint64_t input_heartbeat,input_seen,input_deadline;
+    uint32_t route_request,route_target;
     uint32_t capture_probe_allowed;
     NaCaptureProbe probe;
     int fault;

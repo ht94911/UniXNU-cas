@@ -80,7 +80,7 @@ static int control(NaTasEndpoint *e,const NaTasImage *image,unsigned phase,unsig
 int na_tas_endpoint_init(NaTasEndpoint *e,const NaTasImage *image,const NaTasSelection *s,const NaTasPowerOps *ops) {
     if (!e || !image || !s || !ops || !ops->claim || !ops->power || !ops->reset || !ops->release || !ops->io.read || !ops->io.write ||
         !s->calibrated || !s->profile || !s->rx_format || !s->tx_format || !s->revision_mask[0] || !s->revision_mask[1]) return NA_MISSING;
-    memset(e,0,sizeof *e);e->ops=*ops;e->selected=*s;
+    memset(e,0,sizeof *e);e->ops=*ops;e->selected=*s;e->image=image;
     const uint32_t starts[8]={0,3,7,11,14,17,20,23},sizes[8]={3,4,4,3,3,3,3,3};
     const char *names[8][2]={{"NOISE_GATE_CTRL_TOP","NOISE_GATE_CTRL_BOTTOM"},{"BOOST_MODE_CTRL_TOP","BOOST_MODE_CTRL_BOTTOM"},
         {"ASI_SWITCH_TOP","ASI_SWITCH_BOTTOM"},{"POWER_ACTIVE_TOP","POWER_ACTIVE_BOTTOM"},{"CALIB_INIT_TOP","CALIB_INIT_BOTTOM"},
@@ -122,6 +122,61 @@ int na_tas_endpoint_init(NaTasEndpoint *e,const NaTasImage *image,const NaTasSel
     }
     return NA_OK;
 }
+static int receiver_append(NaTasEndpoint *e,unsigned phase,unsigned ch,NaTasBytes b,int check) {
+    NaTasProgramInfo info;
+    if (phase>2 || ch>1 || e->receiver_count[phase]>=NA_TAS_STEPS || na_tas_validate(b,&info)) return NA_WIRE;
+    e->receiver_steps[phase][e->receiver_count[phase]++]=(NaTasStep){b,(uint8_t)ch,(uint8_t)check};return NA_OK;
+}
+static int receiver_control(NaTasEndpoint *e,const NaTasImage *image,unsigned phase,unsigned ch,const char *name,const char *value) {
+    NaTasControl c;NaTasBytes b;int r=na_tas_control(image,name,&c);
+    if (r) return r;if (c.channel!=ch) return NA_WIRE;
+    r=na_tas_enum(&c,value,&b);return r ? r:receiver_append(e,phase,ch,b,0);
+}
+int na_tas_endpoint_receiver(NaTasEndpoint *e,const NaTasImage *image) {
+    if (!e || !image || !e->ops.route || e->lease || e->changing ||
+        e->state!=NaTasOff || e->receiver_ready ||
+        !e->selected.profile || strcmp(e->selected.profile,"music_18dB_stereo")) return NA_ARGUMENT;
+    /* Reuse the validated initialization and interface plan. The actual voice
+     * profile carries its own analog coefficients and DSP operation mode19;
+     * bottom pre-up is a mute program, but ASI/POWER must also remain OFF. */
+    /* Initialization and gain programs are identical, and remain in the
+     * endpoint's lifetime storage. Only active/off profile programs differ. */
+    memcpy(e->receiver_steps[0],e->steps[0],sizeof e->steps[0]);
+    e->receiver_count[0]=e->count[0];
+    const char *asi[2]={"ASI_SWITCH_TOP","ASI_SWITCH_BOTTOM"};
+    const char *power[2]={"POWER_ACTIVE_TOP","POWER_ACTIVE_BOTTOM"};
+    for (unsigned ch=0;ch<2;++ch) {
+        NaTasProfile voice;NaTasBytes check;int r=na_tas_profile(image,ch,"voice",&voice);if (r) return r;
+        if (voice.misc!=0x13) return NA_MISSING;
+        const char *enabled=ch ? "OFF":"ON";
+        if ((r=receiver_append(e,1,ch,e->faults[ch].clear,0)) ||
+            (r=receiver_append(e,1,ch,voice.phase[0],0)) ||
+            (r=receiver_control(e,image,1,ch,asi[ch],enabled)) ||
+            (r=receiver_control(e,image,1,ch,power[ch],enabled)) ||
+            (r=receiver_append(e,1,ch,voice.phase[1],0)) ||
+            (r=receiver_append(e,1,ch,(NaTasBytes){e->integers[ch],17},0))) return r;
+        if (!ch) {
+            if ((r=na_tas_block(image,ch,"PWRCK",&check)) ||
+                (r=receiver_append(e,1,ch,check,1)) ||
+                (r=receiver_append(e,1,ch,e->faults[ch].enable,0))) return r;
+        } else if ((r=receiver_append(e,1,ch,e->faults[ch].disable,0))) return r;
+        if ((r=receiver_append(e,2,ch,e->faults[ch].disable,0)) ||
+            (r=receiver_append(e,2,ch,voice.phase[2],0)) ||
+            (r=receiver_append(e,2,ch,voice.phase[3],0)) ||
+            (r=receiver_control(e,image,2,ch,asi[ch],"OFF")) ||
+            (r=receiver_control(e,image,2,ch,power[ch],"OFF"))) return r;
+    }
+    e->receiver_ready=1;return NA_OK;
+}
+int na_tas_endpoint_route(NaTasEndpoint *e,uint32_t route) {
+    if (!e || route>=NaTasRoutes || !e->receiver_ready || !e->ops.route) return NA_ARGUMENT;
+    if (e->error) return e->error;
+    if (e->changing || e->state!=NaTasOff) return NA_BUSY;
+    if (!e->lease || !e->powered) return NA_OWNERSHIP;
+    int r=e->ops.route(e->ops.context,e->lease,route==NaTasSpeaker);
+    if (!r) e->route=route;
+    return r;
+}
 static int emergency(NaTasEndpoint *e,int error) {
     if (!e->error) e->error=error;
     na_tas_abort(&e->run);e->changing=0;e->target=NaTasOff;
@@ -147,7 +202,8 @@ int na_tas_endpoint_poll(NaTasEndpoint *e,uint64_t now) {
     if (!e->changing && e->state==e->target) {
         if (e->state==NaTasActive && now>=e->next_health) {
             for (unsigned ch=0;ch<2;++ch) {
-                uint32_t fatal=0;int r=na_tas_faults(&e->faults[ch],&e->ops.io,e->lease,ch,1,&e->reported_faults[ch]);
+                uint32_t fatal=0;int r=na_tas_faults(&e->faults[ch],&e->ops.io,e->lease,ch,
+                    e->route==NaTasSpeaker || !ch,&e->reported_faults[ch]);
                 if (!r) r=na_tas_fault_severity(&e->faults[ch],ch,e->reported_faults[ch],&fatal);
                 if (r || fatal) return emergency(e,r ? r:NA_IO);
             }
@@ -166,6 +222,10 @@ int na_tas_endpoint_poll(NaTasEndpoint *e,uint64_t now) {
         if (!e->powered && e->target!=NaTasOff) {
             int r=e->ops.reset(e->ops.context,e->lease,1);if (r) return emergency(e,r);e->asserted=1;
             r=e->ops.power(e->ops.context,e->lease,1);if (r) return emergency(e,r);e->powered=1;
+            if (e->receiver_ready) {
+                r=e->ops.route(e->ops.context,e->lease,e->route==NaTasSpeaker);
+                if (r) return emergency(e,r);
+            }
             /* Match the real driver's 20ms reset-low / reset-high settles. */
             e->wait_until=now+20;return NA_PENDING;
         }
@@ -190,8 +250,9 @@ int na_tas_endpoint_poll(NaTasEndpoint *e,uint64_t now) {
         }
         e->identified=1;
     }
-    if (e->index==e->count[e->phase]) {e->state=e->target;e->changing=0;return NA_OK;}
-    NaTasStep *step=&e->steps[e->phase][e->index];int r;
+    uint32_t count=e->route==NaTasReceiver ? e->receiver_count[e->phase]:e->count[e->phase];
+    if (e->index==count) {e->state=e->target;e->changing=0;return NA_OK;}
+    NaTasStep *step=e->route==NaTasReceiver ? &e->receiver_steps[e->phase][e->index]:&e->steps[e->phase][e->index];int r;
     if (step->check) r=na_tas_power_check(step->bytes,&e->ops.io,e->lease,step->channel);
     else {
         if (!e->run.program.data) {

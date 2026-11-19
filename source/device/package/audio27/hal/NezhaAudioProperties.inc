@@ -8,7 +8,11 @@ static UInt32 objects(AudioObjectID o, AudioObjectPropertyScope scope, AudioObje
         if (scope != kAudioObjectPropertyScopeOutput && gInputAvailable) list[n++] = kInStream;
         /* Original24A446 finds the tap at the last input-stream index. */
         if (scope != kAudioObjectPropertyScopeOutput) list[n++] = kReferenceStream;
-        if (scope != kAudioObjectPropertyScopeInput) list[n++] = kVolume;
+        if (scope != kAudioObjectPropertyScopeInput) {
+            list[n++] = kVolume;list[n++] = kReceiverVolume;
+            list[n++] = kReceiverMute;list[n++] = kSpeakerMute;
+        }
+        if (scope != kAudioObjectPropertyScopeOutput && gInputAvailable) list[n++] = kInputMute;
     }
     return n;
 }
@@ -29,7 +33,7 @@ static OSStatus propertyData(AudioObjectID o, const AudioObjectPropertyAddress *
     // server's device manager reads them for each new device and drops a device whose answer is an unknown-property error (i525).
     if (o == kReferenceStream && s == 'taps' && a->mScope == kAudioObjectPropertyScopeGlobal && a->mElement == kAudioObjectPropertyElementMain)
         REPLY(UInt32, 1);
-    if (o <= kReferenceStream && (s == kAudioObjectPropertyCustomPropertyInfoList || ((s == kAudioPlugInPropertyBoxList ||
+    if (o <= kReceiverVolume && (s == kAudioObjectPropertyCustomPropertyInfoList || ((s == kAudioPlugInPropertyBoxList ||
         s == kAudioPlugInPropertyClockDeviceList) && o == kPlugIn) || ((s == 'taps') && (o == kOutStream || o == kInStream)))) {
         *outDataSize = 0;
         return 0;
@@ -69,11 +73,11 @@ static OSStatus propertyData(AudioObjectID o, const AudioObjectPropertyAddress *
         case kAudioObjectPropertyBaseClass: REPLY(AudioClassID, kAudioObjectClassID);
         case kAudioObjectPropertyClass: REPLY(AudioClassID, kAudioDeviceClassID);
         case kAudioObjectPropertyOwner: REPLY(AudioObjectID, kPlugIn);
-        case kAudioObjectPropertyName: REPLY_STR("Speaker");
+        case kAudioObjectPropertyName: REPLY_STR("Receiver");
         case kAudioObjectPropertyManufacturer: REPLY_STR("UniXNU");
         case kAudioDevicePropertyDeviceUID: REPLY_STR(kDeviceUID);
         case kAudioDevicePropertyModelUID: REPLY_STR(kModelUID);
-        case kAudioObjectPropertyModelName: REPLY_STR("Speaker");
+        case kAudioObjectPropertyModelName: REPLY_STR("Receiver");
         case kAudioObjectPropertySerialNumber: REPLY_STR("0001");
         case kAudioObjectPropertyFirmwareVersion: REPLY_STR("1.0");
         case kAudioObjectPropertyIdentify: REPLY(UInt32, 0);
@@ -82,10 +86,25 @@ static OSStatus propertyData(AudioObjectID o, const AudioObjectPropertyAddress *
         case 'auto': REPLY(UInt32, 0);
         case kAudioObjectPropertyElementName: REPLY_STR("");
         case kAudioDevicePropertyConfigurationApplication: REPLY_STR("com.apple.Preferences");
-        /* Use the stock USB output class accepted by the iPhone playback
-         * routes. TAS/AudioReach supply the native speaker protection; this
-         * stereo device does not expose Apple speaker IV telemetry. */
-        case kAudioDevicePropertyTransportType: REPLY(UInt32, kAudioDeviceTransportTypeUSB);
+        /* UID Receiver uses the stock receiver class and its prec/pspk ports.
+         * Native TAS protection/VI remains in the DSP rather than an Apple
+         * speaker-telemetry input stream. */
+        case kAudioDevicePropertyTransportType: REPLY(UInt32, kAudioDeviceTransportTypeBuiltIn);
+        case kAudioDevicePropertyMute:
+            if (a->mScope==kAudioObjectPropertyScopeOutput && a->mElement==3) REPLY(UInt32,output_mute(kReceiverMute));
+            if (a->mScope==kAudioObjectPropertyScopeOutput && a->mElement==4) REPLY(UInt32,output_mute(kSpeakerMute));
+            if (a->mScope==kAudioObjectPropertyScopeInput && a->mElement==0 && gInputAvailable) REPLY(UInt32,gInputMuted);
+            return kAudioHardwareUnknownPropertyError;
+        case kAudioDevicePropertyVolumeScalar:
+            if (a->mScope!=kAudioObjectPropertyScopeOutput) return kAudioHardwareUnknownPropertyError;
+            if (a->mElement==3) REPLY(Float32,gReceiverVolume);
+            if (a->mElement==4) REPLY(Float32,gVolume);
+            return kAudioHardwareUnknownPropertyError;
+        case kAudioDevicePropertyVolumeDecibels:
+            if (a->mScope!=kAudioObjectPropertyScopeOutput) return kAudioHardwareUnknownPropertyError;
+            if (a->mElement==3) REPLY(Float32,toDb(gReceiverVolume));
+            if (a->mElement==4) REPLY(Float32,toDb(gVolume));
+            return kAudioHardwareUnknownPropertyError;
         case kAudioDevicePropertyRelatedDevices: REPLY(AudioObjectID, kDevice);
         case kAudioDevicePropertyClockDomain: REPLY(UInt32, 0);
         case kAudioDevicePropertyDeviceIsAlive: REPLY(UInt32, available());
@@ -126,11 +145,12 @@ static OSStatus propertyData(AudioObjectID o, const AudioObjectPropertyAddress *
         case kAudioObjectPropertyOwnedObjects:
         case kAudioDevicePropertyStreams:
         case kAudioObjectPropertyControlList: {
-            AudioObjectID list[4];
+            AudioObjectID list[9];
             UInt32 n = objects(kDevice, a->mScope, list), out = 0;
             for (UInt32 i = 0; i < n; ++i) {
-                if (s == kAudioDevicePropertyStreams && list[i] == kVolume) continue;
-                if (s == kAudioObjectPropertyControlList && list[i] != kVolume) continue;
+                int control=list[i]==kVolume || list[i]>=kReceiverMute;
+                if (s == kAudioDevicePropertyStreams && control) continue;
+                if (s == kAudioObjectPropertyControlList && !control) continue;
                 if ((out + 1) * sizeof(AudioObjectID) > inDataSize) break;
                 ((AudioObjectID *)outData)[out++] = list[i];
             }
@@ -168,15 +188,16 @@ static OSStatus propertyData(AudioObjectID o, const AudioObjectPropertyAddress *
         }
     }
     case kVolume:
+    case kReceiverVolume:
         switch (s) {
         case kAudioObjectPropertyBaseClass: REPLY(AudioClassID, kAudioLevelControlClassID);
         case kAudioObjectPropertyClass: REPLY(AudioClassID, kAudioVolumeControlClassID);
         case kAudioObjectPropertyOwner: REPLY(AudioObjectID, kDevice);
         case kAudioObjectPropertyOwnedObjects: *outDataSize = 0; return 0;
         case kAudioControlPropertyScope: REPLY(AudioObjectPropertyScope, kAudioObjectPropertyScopeOutput);
-        case kAudioControlPropertyElement: REPLY(AudioObjectPropertyElement, kAudioObjectPropertyElementMain);
-        case kAudioLevelControlPropertyScalarValue: REPLY(Float32, gVolume);
-        case kAudioLevelControlPropertyDecibelValue: REPLY(Float32, toDb(gVolume));
+        case kAudioControlPropertyElement: REPLY(AudioObjectPropertyElement,o==kReceiverVolume ? 3:4);
+        case kAudioLevelControlPropertyScalarValue: REPLY(Float32, o==kReceiverVolume ? gReceiverVolume:gVolume);
+        case kAudioLevelControlPropertyDecibelValue: REPLY(Float32, toDb(o==kReceiverVolume ? gReceiverVolume:gVolume));
         case kAudioLevelControlPropertyDecibelRange: REPLY(AudioValueRange, ((AudioValueRange){kMinDb, 0.0}));
         case kAudioLevelControlPropertyConvertScalarToDecibels:
             if (inDataSize < sizeof(Float32)) return kAudioHardwareBadPropertySizeError;
@@ -185,6 +206,20 @@ static OSStatus propertyData(AudioObjectID o, const AudioObjectPropertyAddress *
             if (inDataSize < sizeof(Float32)) return kAudioHardwareBadPropertySizeError;
             *(Float32 *)outData = toScalar(*(Float32 *)outData); *outDataSize = sizeof(Float32); return 0;
         default: return kAudioHardwareUnknownPropertyError;
+        }
+    case kReceiverMute:
+    case kSpeakerMute:
+    case kInputMute:
+        if (o==kInputMute && !gInputAvailable) return kAudioHardwareBadObjectError;
+        switch (s) {
+        case kAudioObjectPropertyBaseClass: REPLY(AudioClassID,kAudioBooleanControlClassID);
+        case kAudioObjectPropertyClass: REPLY(AudioClassID,kAudioMuteControlClassID);
+        case kAudioObjectPropertyOwner: REPLY(AudioObjectID,kDevice);
+        case kAudioObjectPropertyOwnedObjects: *outDataSize=0;return 0;
+        case kAudioControlPropertyScope: REPLY(AudioObjectPropertyScope,o==kInputMute ? kAudioObjectPropertyScopeInput:kAudioObjectPropertyScopeOutput);
+        case kAudioControlPropertyElement: REPLY(AudioObjectPropertyElement,o==kReceiverMute ? 3:o==kSpeakerMute ? 4:0);
+        case kAudioBooleanControlPropertyValue: REPLY(UInt32,o==kInputMute ? gInputMuted:output_mute(o));
+        default:return kAudioHardwareUnknownPropertyError;
         }
     default:
         return kAudioHardwareBadObjectError;

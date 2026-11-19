@@ -28,8 +28,9 @@ static int playback(void *v,uint64_t relative,void *pcm,uint32_t bytes) {
         /* HAL and tagged-ring mixing already saturate to S16. Use their
          * full signal range; factory TAS gain/calibration and running VI
          * retain speaker protection. Idle still discards PCM unconditionally. */
-        out[2*i]=r->engine.output_idle ? 0:l;
-        out[2*i+1]=r->engine.output_idle ? 0:rr;
+        int16_t mono=(int16_t)(((int32_t)l+rr)/2);
+        out[2*i]=r->engine.output_idle ? 0:r->status.route==NaAudioReceiver ? mono:l;
+        out[2*i+1]=r->engine.output_idle || r->status.route==NaAudioReceiver ? 0:rr;
     }
     if (missing && !r->engine.output_idle && r->status.underruns!=UINT32_MAX) ++r->status.underruns;
     r->status.out_consumed=start+bytes/4;
@@ -90,11 +91,16 @@ int na_runtime_init(NaRuntime *r,NaSession *s,NaRxQueue *rx,NaGraph *out,NaGraph
     r->status=(NaAudioStatus){.magic=NA_AUDIO_MAGIC,.version=NA_AUDIO_ABI_VERSION,.bytes=sizeof(NaAudioStatus),
         .rate=NA_AUDIO_RATE,.ring_frames=NA_AUDIO_RING_FRAMES,.period_frames=NA_AUDIO_PERIOD_FRAMES,.lead_frames=NA_AUDIO_LEAD_FRAMES,
         .epoch=1,.out_channels=2,.in_channels=capture_proven ? 1u:0u,.host_hz=(uint32_t)hz,.ticks_per_frame_q32=q,
-        .anchor_host=ops->host_time(ops->context)};
+        .anchor_host=ops->host_time(ops->context),.route=NaAudioSpeaker,.route_ready=ops->route!=0};
     /* Caller allocates fresh zeroed maps; no epoch reuse of writable mappings. */
     na_audio_status_publish(shared,&r->status);return NA_OK;
 }
 int na_runtime_request(NaRuntime *r,uint32_t selector) {
+    if (r && (selector==NaAudioRouteSpeaker || selector==NaAudioRouteReceiver)) {
+        if (!r->ops.route || r->fault || __atomic_load_n(&r->disabled,__ATOMIC_ACQUIRE)) return NA_ARGUMENT;
+        __atomic_store_n(&r->route_request,selector==NaAudioRouteReceiver ? NaAudioReceiver:NaAudioSpeaker,__ATOMIC_RELEASE);
+        return NA_OK;
+    }
     if (!r || selector>NaAudioStopInput) return NA_ARGUMENT;
     uint32_t bit=selector<2 ? 1:2;int start=!(selector&1);
     uint32_t probe=__atomic_load_n(&r->probe.state,__ATOMIC_ACQUIRE);
@@ -124,6 +130,7 @@ void na_runtime_disable(NaRuntime *r) {
     if (r->engine.graph[1]) r->engine.graph[1]->retain_on_stop=0;
 }
 int na_runtime_quiescent(const NaRuntime *r) {
+    if (r && r->status.route_pending) return 0;
     if (!r || r->prm->possible || r->prm->token) return 0;
     for (unsigned i=0;i<3;++i) if (r->engine.graph[i]) {
         const NaGraph *g=r->engine.graph[i];
@@ -151,6 +158,7 @@ static int cpu_maps_quiet(const NaRuntime *r) {
     return 1;
 }
 int na_runtime_rebind_ready(const NaRuntime *r) {
+    if (r && r->status.route_pending) return 0;
     if (!r || r->fault || __atomic_load_n(&r->disabled,__ATOMIC_ACQUIRE) ||
         __atomic_load_n(&r->request,__ATOMIC_ACQUIRE)) return 0;
     uint32_t probe=__atomic_load_n(&r->probe.state,__ATOMIC_ACQUIRE);
@@ -236,9 +244,21 @@ int na_runtime_poll(NaRuntime *r,uint64_t now) {
             r->output_idle_fence=out->stream->next;
         }
     }
+    uint32_t route=__atomic_load_n(&r->route_request,__ATOMIC_ACQUIRE);
+    if (!disabled && !r->fault && r->ops.route && !r->status.route_pending && route!=r->status.route) {
+        r->route_target=route;r->status.route_pending=1;
+        r->output_stop_pending=1;r->output_idle_ready=0;r->output_idle_fence=out->stream->next;
+    }
+    /* The first input period uses102's measured input-only startup: retain
+     * silent output/VI, settle the microphone, and receive actual PCM before
+     * activating playback. This only changes this worker snapshot; the HAL's
+     * output request remains queued and resumes after input production, or
+     * after the original input error has been published. */
     /* A system microphone request needs the same retained output/VI as the
      * finite probe, even when no output stream has ever started. */
-    if ((wanted&3) && !disabled) r->output_held=1;
+    if (((wanted&3) || r->status.route_pending) && !disabled) r->output_held=1;
+    if ((wanted&2) && !r->status.in_produced) wanted&=~1u;
+    if (r->status.route_pending) wanted&=~1u;
     int keep_output=r->output_held && !disabled && !r->fault;
     int idle=!keep_output || !(wanted&1) || r->output_stop_pending;
     na_engine_output_idle(&r->engine,idle);
@@ -251,6 +271,15 @@ int na_runtime_poll(NaRuntime *r,uint64_t now) {
             r->output_stop_pending=0;r->output_idle_ready=1;
         }
     }
+    if (r->status.route_pending && r->ops.route &&
+        ((r->output_idle_ready && out->stage==NaGraphRunning && (!vi || vi->stage==NaGraphRunning)) || disabled || r->fault)) {
+        e=r->ops.route(r->ops.context,r->route_target);
+        if (e<0) {r->status.route_error=(uint32_t)e;r->status.route_pending=0;if (!r->fault) r->fault=e;na_runtime_disable(r);}
+        else if (!e) {
+            if (!disabled && !r->fault) r->status.route=r->route_target;
+            r->status.route_pending=0;r->output_idle_ready=0;
+        }
+    }
     uint32_t probe=__atomic_load_n(&r->probe.state,__ATOMIC_ACQUIRE);
     if (probe==NaProbeStarting || probe==NaProbeCollecting) {
         if (r->fault || disabled || now>=r->probe.deadline) {
@@ -261,8 +290,8 @@ int na_runtime_poll(NaRuntime *r,uint64_t now) {
                    (r->prm->held&r->votes[0])==r->votes[0]) ||
                    r->engine.graph[1]->stage!=NaGraphOff)) wanted|=2u;
     }
-    /* Open a cold input only after output/VI clocks and the silent endpoint
-     * settle. The shared request stays pending and its heartbeat is retained. */
+    /* First duplex capture now follows the existing silent-output gate.
+     * A later request can use an already running input without restarting it. */
     if ((wanted&2) && r->engine.graph[1] && r->engine.graph[1]->stage==NaGraphOff &&
         (out->stage!=NaGraphRunning || (vi && vi->stage!=NaGraphRunning) ||
          r->prm->error || (r->prm->held&r->votes[0])!=r->votes[0] ||

@@ -29,6 +29,19 @@ def build_hal(source, output):
    hal={'returncode':cp.returncode,'sdk':ios,'header_sdk':mac}
    if cp.returncode:errors.append('HAL')
    else:
+    # Exercise the same public property callbacks against the actual host SDK.
+    # This runs no Initialize, discovery, device connection or physical I/O.
+    host=OUT/'receiver-properties-test'
+    hostcmd=['xcrun','clang','-isysroot',mac,'-I',tmp,'-O1','-g','-Wall','-Wextra','-Werror','-fsanitize=address,undefined',
+             '-framework','CoreFoundation','-framework','IOKit','-framework','CoreAudio',
+             str(SRC/'tests/speaker_properties_test.c'),str(SRC/'hal/AudioClock.c'),str(SRC/'core/AudioRing.c'),'-o',str(host)]
+    (OUT/'HAL-properties-command.json').write_text(json.dumps(hostcmd,indent=2)+'\n')
+    hp=subprocess.run(hostcmd,capture_output=True,text=True);(OUT/'HAL-properties-build.log').write_text(hp.stdout+hp.stderr)
+    hal['properties_host_compile_returncode']=hp.returncode
+    if not hp.returncode:
+     hp=subprocess.run([str(host)],capture_output=True,text=True);(OUT/'HAL-properties-run.log').write_text(hp.stdout+hp.stderr)
+     hal['properties_host_run_returncode']=hp.returncode
+    if hp.returncode:errors.append('HAL-properties')
     shutil.copyfile(SRC/'hal/Info.plist',bundle/'Info.plist')
     run(['codesign','--force','--sign','-','--pagesize','4096','--identifier','org.unixnu.nezha.audio27',bundle]);run(['codesign','--verify','--strict',bundle])
     cp=subprocess.run(['codesign','--display','--verbose=4',bundle],capture_output=True,text=True,check=True);(OUT/'HAL-signature.txt').write_text(cp.stderr)

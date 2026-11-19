@@ -1,0 +1,15 @@
+{
+  "purpose": "First duplex input reuses measured102 input-only startup before enabling playback.",
+  "basis": {
+    "audio102_independent": "runs/2026-11-16-audio27-gpu023-102-113003/native-capture-result.json",
+    "audio109_finite": "runs/2026-11-16-audio27-gpu023-109-local001/system-recording-result.json",
+    "baseband053_two_way": "runs/2026-11-18-baseband27-gpu024-audio102-053-113001/human-ordinary-call-result.json",
+    "baseband060_failed_input": "runs/2026-11-19-baseband27-gpu024-audio102-060-local001/mic-failed-live-snapshot.log"
+  },
+  "first_input_worker_snapshot": "wanted&2 and status.in_produced==0 clears only local output bit; the HAL output request remains queued.",
+  "accepted102_physical_codec_DSP_HAL_unchanged": true,
+  "incoming059_ringtone_fixups_retained": true,
+  "input_heartbeat_and_first_error_retained": true,
+  "no_automatic_recording": true,
+  "hardware_verified": false
+}

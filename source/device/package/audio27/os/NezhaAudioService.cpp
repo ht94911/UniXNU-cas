@@ -178,7 +178,7 @@ public:
         const bool observation=selector==NaAudioObserveHAL;
         if (!args || args->scalarInputCount || args->structureInputDescriptor ||
             args->scalarOutputCount || args->structureOutputSize || args->structureOutputDescriptor ||
-            args->asyncWakePort || selector>NaAudioObserveHAL ||
+            args->asyncWakePort || selector>NaAudioRouteReceiver ||
             (observation ? args->structureInputSize!=sizeof(NaHalObservation) || !args->structureInput:args->structureInputSize!=0)) return kIOReturnBadArgument;
         IOLockLock(gate);
         if (closed || !claimed || owner!=current_task()) {IOLockUnlock(gate);return kIOReturnNotOpen;}
