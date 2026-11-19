@@ -251,6 +251,22 @@ def main():
     record['mesa'] = dict(url=url, commit=pins['mesa']['commit'], tree=tree,
                           patches={p: sha(root / p) for p in pins['patches']})
 
+    # Camera103 keeps the selected Mesa pin and adds only the upstream Gen8 YUV fields.
+    yuv_recipe = HERE / 'patches/camera103-gen8-yuv-recipes.patch'
+    must(['git', '-C', root, 'apply', '--check', yuv_recipe])
+    must(['git', '-C', root, 'apply', yuv_recipe])
+    pins = json.loads((root / 'scripts/data/adreno-compiler-inputs.json').read_text())
+    yuv_patch = root / 'patches/mesa/turnip-gen8-yuv-plane-address.patch'
+    must(['git', '-C', mesa, 'apply', '--check', yuv_patch])
+    must(['git', '-C', mesa, 'apply', yuv_patch])
+    validate_recorded_patches(root, mesa, pins)
+    record['mesa']['patches'][str(yuv_patch.relative_to(root))] = sha(yuv_patch)
+    record['camera103_yuv_recipe_patch'] = sha(yuv_recipe)
+    record['camera103_yuv_source'] = dict(
+        upstream_revision='39ab13b6159fea9831c1b7521f3ac72c3ce4e5e0',
+        prepared_fd6_view_sha256=sha(mesa / 'src/freedreno/fdl/fd6_view.cc'),
+        descriptor_checker_sha256=sha(root / 'scripts/check-turnip-gen8-yuv-plane-address.py'))
+
     # 4. bison and the Python environment of build-turnip-darwin.py.
     progress('bison and Python build tools')
     bison = pins['bison']

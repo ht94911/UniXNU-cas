@@ -1,7 +1,7 @@
-name: nezha iPhone27 Camera096 GPU051 selected preview pixels
+name: nezha iPhone27 Camera103 GPU051 Gen8 YUV plane descriptors
 on:
   push:
-    branches: [codex/ios27-camera096-gpu051-compute-match-20261119]
+    branches: [codex/ios27-camera103-gpu051-yuv-plane-20261119]
   workflow_dispatch:
 permissions:
   contents: read
@@ -122,6 +122,9 @@ jobs:
       - name: Check shader sharing on the actual prepared Turnip source
         id: pipeline_cache
         run: device/ci/gpu-userland/logrun pipeline-cache python3 device/ci/gpu-userland/check-pipeline-cache.py --source unixnu/.cache/mesa-work/src/freedreno/vulkan/tu_pipeline.cc --patch unixnu/patches/mesa/turnip-shaders-shared-across-pipeline-caches.patch --out "$LOGS/pipeline-cache"
+      - name: Execute actual Gen8 YUV descriptor fields and preserve single-plane fields
+        id: gen8_yuv
+        run: device/ci/gpu-userland/logrun gen8-yuv python3 unixnu/scripts/check-turnip-gen8-yuv-plane-address.py --source unixnu/.cache/mesa-work --patch unixnu/patches/mesa/turnip-gen8-yuv-plane-address.patch --out "$LOGS/gen8-yuv"
       - name: Build Turnip for the actual A840 arm64e iOS27 target
         id: turnip_ios27
         working-directory: unixnu
@@ -156,6 +159,7 @@ jobs:
         if: always()
         env:
           OUTCOME_FRONTEND_TARGETS: ${{ steps.frontend_targets.outcome }}
+          OUTCOME_GEN8_YUV: ${{ steps.gen8_yuv.outcome }}
           OUTCOME_TURNIP_IOS27: ${{ steps.turnip_ios27.outcome }}
           OUTCOME_PLUGIN: ${{ steps.plugin.outcome }}
           OUTCOME_FULL_TARGET: ${{ steps.full_target.outcome }}
@@ -212,6 +216,7 @@ jobs:
         if: always()
         env:
           TARGETS: ${{ steps.frontend_targets.outcome }}
+          GEN8_YUV: ${{ steps.gen8_yuv.outcome }}
           TURNIP: ${{ steps.turnip_ios27.outcome }}
           PLUGIN: ${{ steps.plugin.outcome }}
           FULL_TARGET: ${{ steps.full_target.outcome }}
@@ -240,6 +245,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$TARGETS" = success
+          test "$GEN8_YUV" = success
           test "$TURNIP" = success
           test "$PLUGIN" = success
           test "$FULL_TARGET" = success

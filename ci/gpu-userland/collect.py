@@ -103,6 +103,18 @@ if not args.host_only and (PLUGIN / 'NativeAdrenoMetal.bundle/NativeAdrenoMetal'
         problems.append('turnip exports')
 elif not args.host_only:
     problems.append('plugin not built')
+# Keep the changed source and its actual arm64e object beside the normal build profile.
+yuv_source = ROOT / '.cache/mesa-work/src/freedreno/fdl/fd6_view.cc'
+yuv_object = ROOT / 'build/mesa-tu-ios27/src/freedreno/fdl/libfreedreno_layout.a.p/fd6_view.cc.o'
+if yuv_source.is_file():
+    target = OUT / 'gen8-yuv'
+    target.mkdir(exist_ok=True)
+    shutil.copyfile(yuv_source, target / 'fd6_view.cc')
+    if yuv_object.is_file():
+        shutil.copyfile(yuv_object, target / 'fd6_view.cc.o')
+    else:
+        problems.append('Gen8 YUV arm64e descriptor object not retained')
+
 turnip = ROOT / 'build/mesa-tu-ios27/src/freedreno/vulkan/libvulkan_freedreno.dylib'
 if not args.host_only and turnip.is_file():
     (OUT / 'turnip-ios27').mkdir()

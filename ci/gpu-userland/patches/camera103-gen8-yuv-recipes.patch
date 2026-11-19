@@ -1,0 +1,241 @@
+diff --git a/patches/mesa/turnip-gen8-yuv-plane-address.patch b/patches/mesa/turnip-gen8-yuv-plane-address.patch
+new file mode 100644
+--- /dev/null
++++ b/patches/mesa/turnip-gen8-yuv-plane-address.patch
+@@ -0,0 +1,39 @@
++diff --git a/src/freedreno/fdl/fd6_view.cc b/src/freedreno/fdl/fd6_view.cc
++--- a/src/freedreno/fdl/fd6_view.cc
+++++ b/src/freedreno/fdl/fd6_view.cc
++@@ -385,6 +385,14 @@
++             }
++          }
++ 
+++         /* Gen8 combined YUV addresses describe combined UBWC/pixel data
+++          * when compressed, just as the U and V addresses below do. */
+++         descriptor[0] = A8XX_TEX_MEMOBJ_0_BASE_LO(base_addr[0]);
+++         descriptor[1] = A8XX_TEX_MEMOBJ_1_BASE_HI(base_addr[0] >> 32) |
+++                         A8XX_TEX_MEMOBJ_1_TYPE(fdl6_tex_type(args->type, false));
+++         descriptor[6] = A8XX_TEX_MEMOBJ_6_TEX_LINE_OFFSET(pitch * 8) |
+++                         A8XX_TEX_MEMOBJ_6_MIPLVLS(args->level_count - 1);
+++
++          descriptor[4] |= A8XX_TEX_MEMOBJ_4_BASE_U_LO(base_addr[1]);
++          descriptor[5] |= A8XX_TEX_MEMOBJ_5_BASE_U_HI(base_addr[1] >> 32);
++ 
++@@ -393,9 +401,17 @@
++          if (args->chroma_offsets[1] == FDL_CHROMA_LOCATION_MIDPOINT)
++             view->descriptor[7] |= A8XX_TEX_MEMOBJ_7_UV_OFFSET_V(0.25);
++ 
++-         descriptor[8] |= A8XX_TEX_MEMOBJ_8_BASE_V_LO(base_addr[2]);
++-         descriptor[9] |= A8XX_TEX_MEMOBJ_9_BASE_V_HI(base_addr[2] >> 32) |
++-                          A8XX_TEX_MEMOBJ_9_UV_PITCH(fdl_pitch(layouts[1], args->base_miplevel));
+++         /* NV12 interleaves U/V in plane 1. Its unused V address must be
+++          * zero; plane 2 is present only in the three-plane format. */
+++         if (args->format == PIPE_FORMAT_G8_B8_R8_420_UNORM) {
+++            descriptor[8] = A8XX_TEX_MEMOBJ_8_BASE_V_LO(base_addr[2]);
+++            descriptor[9] = A8XX_TEX_MEMOBJ_9_BASE_V_HI(base_addr[2] >> 32);
+++         } else {
+++            descriptor[8] = 0;
+++            descriptor[9] = 0;
+++         }
+++         descriptor[9] |=
+++            A8XX_TEX_MEMOBJ_9_UV_PITCH(fdl_pitch(layouts[1], args->base_miplevel));
++ 
++          return;
++       } else if (args->filter_width) {
+diff --git a/scripts/check-turnip-gen8-yuv-plane-address.py b/scripts/check-turnip-gen8-yuv-plane-address.py
+new file mode 100644
+--- /dev/null
++++ b/scripts/check-turnip-gen8-yuv-plane-address.py
+@@ -0,0 +1,179 @@
++#!/usr/bin/env python3
++"""Execute the prepared Gen8 YUV descriptor fragment with Mesa's register builders."""
++import argparse
++import hashlib
++import json
++from pathlib import Path
++import re
++import subprocess
++import tempfile
++
++p = argparse.ArgumentParser(description=__doc__)
++p.add_argument('--source', type=Path, required=True, help='Prepared Mesa source directory')
++p.add_argument('--patch', type=Path, required=True)
++p.add_argument('--out', type=Path, required=True)
++p.add_argument('--cxx', default='clang++')
++a = p.parse_args()
++a.out.mkdir(parents=True, exist_ok=False)
++relative = Path('src/freedreno/fdl/fd6_view.cc')
++source = a.source / relative
++new = source.read_text()
++with tempfile.TemporaryDirectory(prefix='gen8-yuv-original-', dir=a.out) as temporary:
++    original = Path(temporary) / relative
++    original.parent.mkdir(parents=True)
++    original.write_text(new)
++    subprocess.run(['git', 'apply', '--reverse', '--check', str(a.patch.resolve())], cwd=temporary, check=True)
++    subprocess.run(['git', 'apply', '--reverse', str(a.patch.resolve())], cwd=temporary, check=True)
++    old = original.read_text()
++    subprocess.run(['git', 'apply', str(a.patch.resolve())], cwd=temporary, check=True)
++    assert original.read_text() == new
++
++
++def fragment(text):
++    start = text.index('      uint32_t *descriptor = view->descriptor;', text.index('fdl6_view_init('))
++    end = text.index('      } else if (args->filter_width) {', start)
++    return text[start:end] + '      }\n'
++
++
++before, after = fragment(old), fragment(new)
++registers = a.source / 'src/freedreno/registers'
++header = subprocess.check_output([
++    'python3', str(registers / 'gen_header.py'), '--rnn', str(registers),
++    '--xml', str(registers / 'adreno/a8xx_descriptors.xml'), '--no-validate', 'c-defines'], text=True)
++names = set(re.findall(r'\bA8XX_TEX_MEMOBJ_[A-Z0-9_]+', before + after))
++builders = []
++for name in sorted(names):
++    builders.extend(re.findall(r'^#define ' + re.escape(name) + r'__[A-Z]+[^\n]*\n', header, re.M))
++    match = re.search(r'^static[^\n]*\b' + re.escape(name) + r'\([^\n]*\)\n\{[^}]*\}', header, re.M)
++    if match:
++        builders.append(match[0] + '\n')
++    else:
++        constant = re.search(r'^#define ' + re.escape(name) + r'\s+[^\n]*\n', header, re.M)
++        assert constant, name
++        builders.append(constant[0])
++
++prefix = r'''
++#include <cassert>
++#include <cstdint>
++#include <cstdio>
++#include <cstring>
++#include <initializer_list>
++#define CONSTEXPR constexpr
++#define FD_NO_DEPRECATED_PACK 1
++#define __FD_DEPRECATED
++#define COND(test, value) ((test) ? (value) : 0)
++enum chip { A8XX = 8 };
++enum a6xx_tex_type { A6XX_TEX_2D = 1 };
++enum a3xx_msaa_samples { MSAA_ONE = 0 };
++enum a6xx_format { TEST_FORMAT = 0x21 };
++enum a3xx_color_swap { WZYX = 0 };
++enum a6xx_tile_mode { TILE6_LINEAR = 0, TILE6_3 = 3 };
++enum pipe_format {
++    PIPE_FORMAT_R8_G8B8_420_UNORM, PIPE_FORMAT_G8_B8R8_420_UNORM,
++    PIPE_FORMAT_G8_B8_R8_420_UNORM, PIPE_FORMAT_R8G8B8A8_UNORM
++};
++enum fdl_view_type { FDL_VIEW_TYPE_2D = 1 };
++enum chroma_location { FDL_CHROMA_LOCATION_COSITED_EVEN, FDL_CHROMA_LOCATION_MIDPOINT };
++struct fdl_layout {
++    uint64_t surface, flags;
++    uint32_t pitch, pitchalign = 8, nr_samples = 1;
++    bool tile_all = false;
++};
++struct fdl_view_args {
++    pipe_format format;
++    fdl_view_type type = FDL_VIEW_TYPE_2D;
++    uint64_t iova;
++    unsigned base_miplevel, base_array_layer, level_count = 1, filter_width = 0;
++    chroma_location chroma_offsets[2];
++};
++struct fdl6_view { uint32_t descriptor[12]; };
++static uint64_t fdl_surface_offset(const fdl_layout *l, unsigned mip, unsigned layer) {
++    return l->surface + uint64_t(mip) * 4096 + uint64_t(layer) * 0x400000;
++}
++static uint64_t fdl_ubwc_offset(const fdl_layout *l, unsigned mip, unsigned layer) {
++    return l->flags + uint64_t(mip) * 4096 + uint64_t(layer) * 0x400000;
++}
++static uint32_t fdl_pitch(const fdl_layout *l, unsigned) { return l->pitch; }
++static a6xx_tex_type fdl6_tex_type(fdl_view_type, bool) { return A6XX_TEX_2D; }
++static bool util_format_is_srgb(pipe_format) { return false; }
++static unsigned util_logbase2(unsigned n) { return 31u - __builtin_clz(n); }
++template<chip> static uint32_t fdl6_texswiz(const fdl_view_args *, bool) { return 0; }
++'''
++parameters = '''fdl6_view *view, const fdl_layout **layouts, const fdl_view_args *args,
++bool ubwc_enabled, uint64_t base_addr, uint32_t pitch, uint32_t depth,
++uint32_t width, uint32_t height, bool is_mutable, a6xx_tile_mode tile_mode,
++a6xx_format texture_format, a3xx_color_swap swap, bool has_z24uint_s8uint'''
++functions = '\n'.join('template<chip CHIP> static void ' + name + '(' + parameters + ') {\nconst fdl_layout *layout = layouts[0];\n' + body + '}\n'
++                      for name, body in [('old_descriptor', before), ('new_descriptor', after)])
++test = r'''
++static uint64_t address(const fdl6_view &v, unsigned low, unsigned high) {
++    return uint64_t(v.descriptor[low] & 0xffffffc0u) |
++           (uint64_t(v.descriptor[high] & 0x1ffffu) << 32);
++}
++int main() {
++    unsigned cases = 0, old_mismatches = 0;
++    for (pipe_format format : {PIPE_FORMAT_R8_G8B8_420_UNORM, PIPE_FORMAT_G8_B8R8_420_UNORM,
++                              PIPE_FORMAT_G8_B8_R8_420_UNORM, PIPE_FORMAT_R8G8B8A8_UNORM})
++    for (bool ubwc : {false, true})
++    for (unsigned layer : {0u, 2u})
++    for (unsigned mip : {0u, 1u})
++    for (chroma_location chroma : {FDL_CHROMA_LOCATION_COSITED_EVEN, FDL_CHROMA_LOCATION_MIDPOINT}) {
++        fdl_layout storage[3] = {{0x180000, 0x10000, 1600},
++                                 {0x780000, 0x610000, 1600}, {0xc00000, 0xb10000, 832}};
++        const fdl_layout *layouts[] = {storage, storage + 1, storage + 2};
++        fdl_view_args args{format, FDL_VIEW_TYPE_2D, 0x123456000000ull, mip, layer, 1, 0, {chroma, chroma}};
++        const uint64_t pixel = args.iova + fdl_surface_offset(layouts[0], mip, layer);
++        fdl6_view old{}, current{};
++        auto invoke = [&](auto function, fdl6_view &v) {
++            function(&v, layouts, &args, ubwc, pixel, 1600, 3, 1600, 1200,
++                     true, TILE6_3, TEST_FORMAT, WZYX, false);
++        };
++        invoke(old_descriptor<A8XX>, old);
++        invoke(new_descriptor<A8XX>, current);
++        if (format == PIPE_FORMAT_R8G8B8A8_UNORM) {
++            assert(!memcmp(old.descriptor, current.descriptor, sizeof(old.descriptor)));
++        } else {
++            const uint64_t y = args.iova + (ubwc ? fdl_ubwc_offset(layouts[0], mip, layer)
++                                                 : fdl_surface_offset(layouts[0], mip, layer));
++            const uint64_t u = args.iova + (ubwc ? fdl_ubwc_offset(layouts[1], mip, layer)
++                                                 : fdl_surface_offset(layouts[1], mip, layer));
++            const uint64_t v = format == PIPE_FORMAT_G8_B8_R8_420_UNORM
++                ? args.iova + (ubwc ? fdl_ubwc_offset(layouts[2], mip, layer)
++                                   : fdl_surface_offset(layouts[2], mip, layer)) : 0;
++            assert(address(current, 0, 1) == y);
++            assert(address(current, 4, 5) == u);
++            assert(address(current, 8, 9) == v);
++            assert((current.descriptor[1] & 0xfff00000u) == 0);
++            assert((current.descriptor[6] & 0x0f000000u) == 0);
++            assert((current.descriptor[6] & 0xffffffu) == 1600u * 8);
++            assert((current.descriptor[9] & 0x07fe0000u) == (1600u / 64u) << 17);
++            for (unsigned word : {2u, 3u, 4u, 5u, 7u, 10u, 11u})
++                assert(current.descriptor[word] == old.descriptor[word]);
++            old_mismatches += address(old, 0, 1) != y;
++            old_mismatches += address(old, 8, 9) != v;
++            old_mismatches += (old.descriptor[1] & 0xfff00000u) != 0;
++            old_mismatches += (old.descriptor[6] & 0x0f000000u) != 0;
++        }
++        ++cases;
++    }
++    assert(cases == 64 && old_mismatches > 0);
++    printf("PASS: %u actual Gen8 descriptor fragment cases; %u old field mismatches; Y/U/V addresses, combined fields and single-plane equality\n",
++           cases, old_mismatches);
++}
++'''
++cpp = a.out / 'descriptor.cpp'
++cpp.write_text(prefix + '\n'.join(builders) + '\n' + functions + test)
++subprocess.run([a.cxx, '-std=c++17', '-O1', '-g', '-Werror', '-fsanitize=address,undefined',
++                str(cpp), '-o', str(a.out / 'descriptor')], check=True, timeout=120)
++result = subprocess.run([str(a.out / 'descriptor')], capture_output=True, text=True, timeout=30)
++(a.out / 'execution.log').write_text(result.stdout + result.stderr)
++assert result.returncode == 0, result.stdout + result.stderr
++sha = lambda b: hashlib.sha256(b).hexdigest()
++report = dict(passed=True, descriptor_cases=64, actual_Gen8_fragment_executed=True,
++              old_descriptor_mismatch_reproduced=True, actual_Mesa_register_builders=True,
++              modeled_layout_offsets=True, ASan_UBSan=True, source_sha256=sha(source.read_bytes()),
++              patch_sha256=sha(a.patch.read_bytes()), register_header_sha256=sha(header.encode()),
++              generated_fixture_sha256=sha(cpp.read_bytes()), output=result.stdout.strip(),
++              real_GPU_pixels_verified=False, phone_operations=False)
++(a.out / 'report.json').write_text(json.dumps(report, indent=2) + '\n')
++print(result.stdout, end='')
+diff --git a/scripts/data/adreno-compiler-inputs.json b/scripts/data/adreno-compiler-inputs.json
+--- a/scripts/data/adreno-compiler-inputs.json
++++ b/scripts/data/adreno-compiler-inputs.json
+@@ -68,7 +68,8 @@
+     "patches/mesa/turnip-darwin-cache-trim.patch",
+     "patches/mesa/turnip-darwin-atomic-submit.patch",
+     "patches/mesa/turnip-driver-cpu-profile.patch",
+-    "patches/mesa/turnip-shaders-shared-across-pipeline-caches.patch"
++    "patches/mesa/turnip-shaders-shared-across-pipeline-caches.patch",
++    "patches/mesa/turnip-gen8-yuv-plane-address.patch"
+   ],
+   "integer_fma_reference": {
+     "repository": "https://github.com/ucb-bar/berkeley-softfloat-3",
