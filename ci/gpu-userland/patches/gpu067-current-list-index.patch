@@ -160,14 +160,15 @@ index 0000000..5ef7ef9
 +}
 diff --git a/bridge/icon_library_index_host.mm b/bridge/icon_library_index_host.mm
 new file mode 100644
-index 0000000..0f6d3f8
+index 0000000..ae7c501
 --- /dev/null
 +++ b/bridge/icon_library_index_host.mm
-@@ -0,0 +1,165 @@
+@@ -0,0 +1,166 @@
 +// SPDX-License-Identifier: MIT
 +// Exercise the actual lookup and installation with Objective-C objects.
 +#if defined(__APPLE__)
 +#import <Foundation/Foundation.h>
++#include <objc/runtime.h>
 +#else
 +#include <objc/runtime.h>
 +#include <objc/message.h>
