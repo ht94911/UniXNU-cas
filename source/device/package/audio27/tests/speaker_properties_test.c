@@ -13,6 +13,9 @@
 static uint64_t test_output[NA_AUDIO_RING_FRAMES],test_input[NA_AUDIO_RING_FRAMES];
 static unsigned test_routes,test_starts,test_stops,test_inputs;
 static uint32_t test_last_route;
+static kern_return_t test_route_result;
+static unsigned test_output_notifications;
+static UInt32 test_notified_mute[2];
 static unsigned test_property_notifications;
 static UInt64 test_configuration_action;
 static unsigned test_configuration_requests;
@@ -45,12 +48,24 @@ kern_return_t property_test_scalar(mach_port_t connection,uint32_t selector,cons
                                     uint32_t count,uint64_t *output,uint32_t *out_count) {
     assert(!input && !count && !output && !out_count);
     if (connection!=42) return KERN_FAILURE;
-    if (selector==NaAudioRouteReceiver || selector==NaAudioRouteSpeaker) {++test_routes;test_last_route=selector;}
+    if (selector==NaAudioRouteReceiver || selector==NaAudioRouteSpeaker) {++test_routes;test_last_route=selector;return test_route_result;}
     else if (selector==NaAudioStartOutput) ++test_starts;
     else if (selector==NaAudioStopOutput) ++test_stops;
     else if (selector==NaAudioStartInput) ++test_inputs;
     else assert(selector==NaAudioStopInput);
     return KERN_SUCCESS;
+}
+static OSStatus output_change_callback(AudioServerPlugInHostRef host,AudioObjectID object,
+                                       UInt32 count,const AudioObjectPropertyAddress *addresses) {
+    (void)host;assert(count==1 && addresses[0].mSelector==kAudioBooleanControlPropertyValue);
+    assert(object==kReceiverMute || object==kSpeakerMute);
+    /* This mirrors the original control listener: re-enter the production
+     * getter after PropertiesChanged without a device or Initialize call. */
+    UInt32 value=9,bytes=0;
+    assert(GetPropertyData(NULL,object,0,addresses,0,NULL,sizeof value,&bytes,&value)==0);
+    assert(bytes==sizeof value);++test_output_notifications;
+    test_notified_mute[object==kReceiverMute ? 0:1]=value;
+    return 0;
 }
 static void fixture(void) {
     static NaAudioStatus status;
@@ -321,26 +336,54 @@ int main(void) {
     address=(AudioObjectPropertyAddress){kAudioLevelControlPropertyScalarValue,kAudioObjectPropertyScopeGlobal,0};
     assert(SetPropertyData(NULL,kInputVolume,0,&address,0,NULL,sizeof unity,&unity)==0 && gInputVolume==1);
     test_inputs=0;gCaptureIssued=0;gConnect=0;gInputAvailable=0;
-    /* Real setter queues the native route. Report success to listeners after
-     * the worker publishes applied mode; changing output never starts input. */
+    /* Replay receiver -> speaker while the native worker is still applying
+     * the route. CoreAudio must see the accepted value immediately; physical
+     * output remains gated by the independent mapped route/pending fields. */
     gConnect=42;UInt32 unmute=0,mute=1;
+    static AudioServerPlugInHostInterface route_host={.PropertiesChanged=output_change_callback};
+    gHost=&route_host;test_route_result=KERN_SUCCESS;
     address=(AudioObjectPropertyAddress){kAudioDevicePropertyMute,kAudioObjectPropertyScopeOutput,3};
     status->route_pending=1;
     assert(SetPropertyData(NULL,kDevice,0,&address,0,NULL,4,&unmute)==0);
     assert(test_routes==1 && test_last_route==NaAudioRouteReceiver && test_starts==1 && !test_inputs);
     UInt32 value=9;
-    assert(propertyData(kDevice,&address,0,NULL,4,&bytes,&value)==0 && value==1);
+    assert(propertyData(kDevice,&address,0,NULL,4,&bytes,&value)==0 && value==0);
+    assert(test_output_notifications==2 && test_notified_mute[0]==0 && test_notified_mute[1]==1);
     status->route=NaAudioReceiver;status->route_pending=0;
     assert(propertyData(kDevice,&address,0,NULL,4,&bytes,&value)==0 && value==0);
     address.mElement=4;status->route_pending=1;
     assert(SetPropertyData(NULL,kDevice,0,&address,0,NULL,4,&unmute)==0);
     assert(test_routes==2 && test_last_route==NaAudioRouteSpeaker && test_starts==2 && !test_inputs);
-    status->route=NaAudioSpeaker;status->route_pending=0;
+    assert(propertyData(kDevice,&address,0,NULL,4,&bytes,&value)==0 && value==0);
+    assert(test_output_notifications==4 && test_notified_mute[0]==1 && test_notified_mute[1]==0);
+    /* Pending or the old mapped mode does not revert the logical control,
+     * while output samples and their reference remain muted during the
+     * actual acoustic transition. Existing capture is independent. */
+    unsigned writes=atomic_load(&gWriteCalls);
+    assert(DoIOOperation(NULL,kDevice,kOutStream,0,kAudioServerPlugInIOOperationWriteMix,2,&cycle,source,NULL)==0);
+    assert(atomic_load(&gWriteCalls)==writes && !gCaptureIssued);
+    status->route_pending=0;
+    assert(DoIOOperation(NULL,kDevice,kOutStream,0,kAudioServerPlugInIOOperationWriteMix,2,&cycle,source,NULL)==0);
+    assert(atomic_load(&gWriteCalls)==writes);
+    /* Repeated selections and a late mute of the old port do not restart
+     * output or send another notification to the system state manager. */
+    assert(SetPropertyData(NULL,kDevice,0,&address,0,NULL,4,&unmute)==0);
+    address.mElement=3;
+    assert(SetPropertyData(NULL,kDevice,0,&address,0,NULL,4,&mute)==0);
+    assert(test_routes==2 && test_starts==2 && test_output_notifications==4);
+    /* A rejected native request changes neither logical selection nor the
+     * callback value. Existing active speaker stays selected. */
+    test_route_result=KERN_FAILURE;
+    assert(SetPropertyData(NULL,kDevice,0,&address,0,NULL,4,&unmute)==kAudioHardwareNotRunningError);
+    assert(test_output_notifications==4 && gSpeakerSelected && !gReceiverSelected);
+    test_route_result=KERN_SUCCESS;
+    address.mElement=4;status->route=NaAudioSpeaker;status->route_pending=0;
     assert(propertyData(kDevice,&address,0,NULL,4,&bytes,&value)==0 && value==0);
     assert(SetPropertyData(NULL,kDevice,0,&address,0,NULL,4,&mute)==0 && test_stops==1);
+    assert(test_output_notifications==5 && test_notified_mute[1]==1);
     UInt32 invalid=2;
     assert(SetPropertyData(NULL,kDevice,0,&address,0,NULL,4,&invalid)==kAudioHardwareIllegalOperationError);
-    assert(test_routes==2 && !test_inputs);gConnect=0;
+    assert(test_routes==3 && !test_inputs);gConnect=0;gHost=NULL;
     UInt32 active=0;address=(AudioObjectPropertyAddress){kAudioStreamPropertyIsActive,kAudioObjectPropertyScopeGlobal,0};
     assert(SetPropertyData(NULL,kReferenceStream,0,&address,0,NULL,sizeof active,&active)==0);
     assert(DoIOOperation(NULL,kDevice,kReferenceStream,0,kAudioServerPlugInIOOperationReadInput,2,&cycle,reference,NULL)==kAudioHardwareNotRunningError);
@@ -348,6 +391,6 @@ int main(void) {
     assert(gCaptureIssued==0);
     disconnect();
     assert(na_reference_read(gReference,100,&left[0],&right[0])==NA_MISSING);
-    puts("production Codec HAL: prec/pspk/pmwi mute and volume bindings, input unity/scaling, native route request, applied mute, separate volume, tap, accepted PCM, disconnect PASS");
+    puts("production Codec HAL: prec/pspk/pmwi mute and volume bindings, input unity/scaling, native route request, accepted mute with reentrant notification, applied-PCM gate, separate volume, tap, accepted PCM, disconnect PASS");
     return 0;
 }

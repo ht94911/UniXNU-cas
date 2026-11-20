@@ -77,7 +77,6 @@ static uint64_t gCaptureTouch;
 static Float32 gVolume=1,gReceiverVolume=1,gInputVolume=1;
 static int gReceiverSelected,gSpeakerSelected,gInputMuted;
 static UInt32 gSelectedMicSource='imic';
-static uint32_t gAppliedRoute=UINT32_MAX;
 static CFNumberRef gLogicalLocation;
 static uint64_t gZeroOrigin,gZeroSeed;
 static uint32_t gEpoch;
@@ -198,12 +197,11 @@ static kern_return_t call(uint32_t selector) {
 static kern_return_t stop_output(void);
 static int route_selected(void) {return gReceiverSelected || gSpeakerSelected;}
 static UInt32 output_mute(AudioObjectID control) {
-    int selected=control==kReceiverMute ? gReceiverSelected:gSpeakerSelected;
-    NaAudioStatus status;
-    if (!selected) return 1;
-    if (!gControl || na_audio_status_snapshot(gControl,&status)) return 1;
-    return status.route_pending || status.route_error || status.route!=
-        (control==kReceiverMute ? NaAudioReceiver:NaAudioSpeaker);
+    /* The mute property is the accepted CoreAudio control value. Hardware
+     * route changes finish asynchronously; WriteMix remains silent until
+     * the mapped applied route matches this selection. Returning pending as
+     * mute contradicts the successful selection read by the system. */
+    return !(control==kReceiverMute ? gReceiverSelected:gSpeakerSelected);
 }
 static kern_return_t select_route(void) {
     if (!route_selected()) return stop_output();
@@ -228,7 +226,7 @@ static void disconnect(void) {
     gIoUsers=0;memset(gUsers,0,sizeof gUsers);
     gCaptureIssued=0;gCaptureTouch=0;
     gSelectedMicSource=kMicSource;
-    memset(gReference,0,sizeof gReference);gAppliedRoute=UINT32_MAX;
+    memset(gReference,0,sizeof gReference);
 }
 static int map_type(unsigned type,uint64_t expected) {
     mach_vm_size_t size=0;mach_vm_address_t address=0;
@@ -432,13 +430,6 @@ static void sample_system_route(void) {
 static void retry_service(void *context) {
     (void)context;check_service();sample_system_route();
     pthread_mutex_lock(&gLock);
-    NaAudioStatus route_status;int notify_route=0;
-    if (gControl && !na_audio_status_snapshot(gControl,&route_status) &&
-        !route_status.route_pending) {
-        uint32_t muted=(gReceiverSelected && !route_status.route_error && route_status.route==NaAudioReceiver ? 0u:1u) |
-            (gSpeakerSelected && !route_status.route_error && route_status.route==NaAudioSpeaker ? 0u:2u);
-        if (muted!=gAppliedRoute) {gAppliedRoute=muted;notify_route=1;}
-    }
     if (gConnect && gFlowStartHost && !gFlowReported &&
         mach_absolute_time()-gFlowStartHost>=10ULL*gLastStatus.host_hz) {
         report_hal(NaHalPropertyRead,kOutStream,'wCap',kAudioObjectPropertyScopeOutput,12,0,atomic_load(&gWriteCapabilities));
@@ -456,11 +447,6 @@ static void retry_service(void *context) {
         atomic_store_explicit(&gIoNotes[i].state,3,memory_order_release);
     }
     pthread_mutex_unlock(&gLock);
-    if (notify_route && gHost) {
-        AudioObjectPropertyAddress changed={kAudioBooleanControlPropertyValue,kAudioObjectPropertyScopeGlobal,kAudioObjectPropertyElementMain};
-        gHost->PropertiesChanged(gHost,kReceiverMute,1,&changed);
-        gHost->PropertiesChanged(gHost,kSpeakerMute,1,&changed);
-    }
 }
 static UInt32 latencyFrames(void) {return NA_AUDIO_LEAD_FRAMES;}
 static Float32 toDb(Float32 value) {if (!isfinite(value)) return kMinDb;Float32 r=1.0f-fminf(1,fmaxf(0,value));return kMinDb*r*r;}
@@ -648,7 +634,7 @@ static OSStatus IsPropertySettable(AudioServerPlugInDriverRef d,AudioObjectID o,
 static OSStatus SetPropertyData(AudioServerPlugInDriverRef d,AudioObjectID o,pid_t pid,const AudioObjectPropertyAddress *a,UInt32 qs,const void *q,UInt32 size,const void *data) {
     (void)d;(void)pid;(void)qs;(void)q;if (!a || (size && !data)) return kAudioHardwareIllegalOperationError;
     OSStatus result=kAudioHardwareUnknownPropertyError;AudioObjectID volume_changed=0,mute_changed=0;
-    int source_changed=0,request_reference=0;UInt32 reference_value=0;
+    int source_changed=0,request_reference=0;UInt32 reference_value=0,output_changed=0;
     pthread_mutex_lock(&gLock);
     if (((o==kVolume || o==kReceiverVolume || o==kInputVolume) &&
          (a->mSelector==kAudioLevelControlPropertyScalarValue || a->mSelector==kAudioLevelControlPropertyDecibelValue)) ||
@@ -685,8 +671,12 @@ static OSStatus SetPropertyData(AudioServerPlugInDriverRef d,AudioObjectID o,pid
             /* Unmuting a native port selects its acoustic route, including
              * call→speaker→call while the same HAL IO client remains active. */
             if (!value) {if (control==kReceiverMute) gSpeakerSelected=0;else gReceiverSelected=0;}
-            if (select_route()!=KERN_SUCCESS) {gReceiverSelected=old_receiver;gSpeakerSelected=old_speaker;result=kAudioHardwareNotRunningError;}
-            else {mute_changed=control;result=0;}
+            UInt32 changed=(gReceiverSelected!=old_receiver ? 1u:0u) |
+                (gSpeakerSelected!=old_speaker ? 2u:0u);
+            if (changed && select_route()!=KERN_SUCCESS) {
+                gReceiverSelected=old_receiver;gSpeakerSelected=old_speaker;
+                result=kAudioHardwareNotRunningError;
+            } else {output_changed=changed;mute_changed=control;result=0;}
         }
     } else if (o==kReferenceControl && a->mSelector==kAudioBooleanControlPropertyValue &&
                a->mScope==kAudioObjectPropertyScopeGlobal && a->mElement==0) {
@@ -757,6 +747,15 @@ finished:
     if (volume_changed && gHost) {
         AudioObjectPropertyAddress changed[2]={{kAudioLevelControlPropertyScalarValue,kAudioObjectPropertyScopeGlobal,kAudioObjectPropertyElementMain},{kAudioLevelControlPropertyDecibelValue,kAudioObjectPropertyScopeGlobal,kAudioObjectPropertyElementMain}};
         gHost->PropertiesChanged(gHost,volume_changed,2,changed);
+    }
+    if (output_changed && gHost) {
+        AudioObjectPropertyAddress changed={kAudioBooleanControlPropertyValue,
+            kAudioObjectPropertyScopeGlobal,kAudioObjectPropertyElementMain};
+        /* As with input mute/volume, publish only a successful scalar change
+         * after releasing gLock. Both port values change when selecting the
+         * other acoustic route; repeated or failed writes emit nothing. */
+        if (output_changed&1) gHost->PropertiesChanged(gHost,kReceiverMute,1,&changed);
+        if (output_changed&2) gHost->PropertiesChanged(gHost,kSpeakerMute,1,&changed);
     }
     if (mute_changed==kInputMute && gHost) {
         AudioObjectPropertyAddress changed={kAudioBooleanControlPropertyValue,kAudioObjectPropertyScopeGlobal,kAudioObjectPropertyElementMain};
