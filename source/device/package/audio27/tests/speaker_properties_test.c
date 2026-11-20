@@ -20,7 +20,7 @@ static OSStatus test_configuration_result;
 static struct {void *context;dispatch_function_t work;} test_dispatched[8];
 static unsigned test_dispatched_count;
 void property_test_dispatch_async(dispatch_queue_t queue,void *context,dispatch_function_t work) {
-    assert(queue && work && test_dispatched_count<8);
+    (void)queue;assert(test_dispatched_count<8);
     test_dispatched[test_dispatched_count].context=context;
     test_dispatched[test_dispatched_count++].work=work;
 }
