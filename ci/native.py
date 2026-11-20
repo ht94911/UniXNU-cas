@@ -229,7 +229,7 @@ def build(framework, work):
                log=logs / 'dyld-pager-source-host.log')
     if code:
         return code
-    compiled = after.parents[3]
+    compiled = after.parents[2]
     code = run([sys.executable, work / 'device/tests/check-text-fixup-reclaimed-page.py',
                 '--vm-fault', compiled / 'osfmk/vm/vm_fault.c',
                 '--ubc-subr', compiled / 'bsd/kern/ubc_subr.c',
