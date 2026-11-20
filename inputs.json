@@ -1,17 +1,17 @@
 {
   "schema": 1,
-  "purpose": "Camera114 reproduce actual originalVT1x1 finalzero with explicit16384TG and separated buffer/filter/sampler readers;external original inputs remain local",
-  "device_revision": "fb61b154901a13b49483681ef83fdfbb53b4f644",
+  "purpose": "Camera116 reproduce original115cb27downscaleYzero with exact constants, approximateuniform, source sampler, sameR32packedwrites and GPU-written source;originals local",
+  "device_revision": "bed3fb9994b71097b8bf3578fc8d1d707b19b0f6",
   "files": {
-    "source/NezhaCameraVtReplay.mm": "6e5c88f51c8942d938532903993d82b98c3685e51b499e4d40e5e8126c8095bd",
+    "source/NezhaCameraVtReplay.mm": "afd164647510ace7a7cad8105dc959a77c92835f252b57adb8124d7593aa4e23",
     "source/probe.entitlements.plist": "88e1b971f4fb02d04416673b2a7fee641bc9c3dd4aae71efa253c48c661e1c5d",
-    "source/NezhaCameraVtReplay.metal": "d4d2a1ca686505c8eb3d995f6378ce4f7de1be57f543223d517964a3530d8674",
+    "source/NezhaCameraVtReplay.metal": "830874319e4fac5c2a2ee571ba566f18cd4e714311814a9de5da2e336e8fc06d",
     "ci/camera-discovery.py": "587a51920cb25d2ef36af7259ad441dde78ca842a98d865e4a54e98880989065",
     "ci/artifact-recipient.pem": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
     "ci/check-nv12-memory.py": "7ab7fcf6809e37d38fe9fab864d1e6c2f76ded97e79e0b00d6c6865abf65f019",
-    "ci/corelocation.py": "44aafd29631bc20462fc2ccc1c16bbd8437fd4e10a26921e580e8f060cbfe508",
+    "ci/corelocation.py": "079e4e8995bf713f6cccf353741d0bb8a937296929cf7988112f80027498ba3b",
     "ci/artifacts.py": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
-    ".github/workflows/nezha-ios27-native.yml": "e394e7b05c1f0b6cf378a91e73e6b433e23796b1efc7b87553c403328f1fffc3"
+    ".github/workflows/nezha-ios27-native.yml": "92d24cfd6e0f415386ee10de4e5fa013d5283dd65c3889e6c54bae9e79e22ffc"
   },
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
   "certificate_sha256": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
