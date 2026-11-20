@@ -1,14 +1,14 @@
 {
-  "device_revision": "4e2e96a12485dfe246abb7013f1bcd372714e822",
-  "purpose": "HAL064: publish actual mono imic source/control and max channel metadata for stock24A446 Codec; retain native061 first capture and physical062 receiver/speaker routes.",
+  "device_revision": "898daa58e717f8bd654392d3adfe84d3eb1b4751",
+  "purpose": "HAL068 current selector scci and device ssrc array contract and stock omni kind; preserve native067 and40signed entries,066 firstcapture recovery; actualSDK test of deselection/reselection.",
   "audio": {
-    "source_revision": "4e2e96a12485dfe246abb7013f1bcd372714e822",
+    "source_revision": "898daa58e717f8bd654392d3adfe84d3eb1b4751",
     "HAL_only": true,
     "hardware_enabled": false,
     "private_inputs": false
   },
   "files": {
-    ".github/workflows/nezha-ios27-native.yml": "ca7f1109b6a354e2c2cce704042dde68c1627bd16d5bb7a133f9d0abdf812d4a",
+    ".github/workflows/nezha-ios27-native.yml": "01d34cd80b81f859122973de090ee284e235b3e2d692a8b8923dc19a73254764",
     "ci/hal.py": "7bdc2c8f7b80e1f3302ce95259d390d43119f5e01d72970d59be96020d9c4933",
     "source/device/package/audio27/core/AudioProtocol.h": "cdd0adfdf372cb6efc5a69f3066f7976f47bf3287884c42d5f7f9709856c17ba",
     "source/device/package/audio27/core/AudioRing.c": "1de1d7ec93732e17b71610531d7e51a9e6e7829ecaa330f32692a39483d418d5",
@@ -17,10 +17,10 @@
     "source/device/package/audio27/hal/AudioClock.h": "4c60fefab16eccb005f140652c0535eb967bcf5d74a24b65f9b327c18db1e906",
     "source/device/package/audio27/hal/AudioReference.h": "502c5ba99acfa8061abccc97c5abf31cf0311c193c79f05ba224204fdaf64f78",
     "source/device/package/audio27/hal/Info.plist": "a118cd65480a2396e51c0f71569a663b78a5be6446bbada469442670e94d76b3",
-    "source/device/package/audio27/hal/NezhaAudioPlugIn.c": "8ea39802f7414f4db6078034c309041de1d77b25ad27f18adc92f65a5d0c8770",
-    "source/device/package/audio27/hal/NezhaAudioProperties.inc": "57aab675f518ed316222c56547e58ab4a7a9dd311094f0d94cdb8969fcd1912b",
+    "source/device/package/audio27/hal/NezhaAudioPlugIn.c": "662f015dc657bee19b17069f0bac8f44c1e8fbd4e618ea722e205e8fcf6e10ac",
+    "source/device/package/audio27/hal/NezhaAudioProperties.inc": "a17f548d575d13fc9e66dcffad21f3543499197d86fa3638c807e28eb723f5b9",
     "source/device/package/audio27/os/NezhaAudioAbi.h": "b49334bcffd93bb2bb014f4686fb0317c21037e930da1a1362326cd4da73fa7c",
-    "source/device/package/audio27/tests/speaker_properties_test.c": "651c16af804cd44c5ab1f8213bef143e9f14cfdaa3fb6793fa82884aa8e09249",
+    "source/device/package/audio27/tests/speaker_properties_test.c": "13e270d73747a904d2682526d1097c1f2813add7d1a7a14c3db537fd86651871",
     "source/device/package/audio27/upstream/ShengAudioReach.h": "b135177a5feb3e24e0d8a6aabb301600e2c37078b970a09ada6e8eb7bb6a5b98",
     "source/device/package/audio27/upstream/ShengGpr.h": "a274dded1f4d1e2709b9f966759bcb1f57d12747ee0f57743dea1fa97d95d23e"
   },

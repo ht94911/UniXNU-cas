@@ -24,6 +24,8 @@ enum {kPlugIn=kAudioObjectPlugInObject,kDevice=2,kOutStream=3,kInStream=4,kVolum
 /* One measured mono capture path. imic names that physical input without
  * advertising unimplemented front/back microphones or beamforming. */
 static const UInt32 kMicSource='imic';
+/* Stock Codec default-input selection recognizes the omni item kind. */
+static const UInt32 kMicSourceKind='omni';
 /* Original24A446 Codec binds both prec and pspk mute/volume controls. The
  * separate Receiver class has no pspk volume binding. Both acoustic routes
  * share this device's existing TDM output, mic and accepted-PCM tap. */
@@ -56,6 +58,7 @@ static int gReferenceSelected=1;
 static uint64_t gCaptureTouch;
 static Float32 gVolume=1,gReceiverVolume=1,gInputVolume=1;
 static int gReceiverSelected,gSpeakerSelected,gInputMuted;
+static UInt32 gSelectedMicSource='imic';
 static uint32_t gAppliedRoute=UINT32_MAX;
 static CFNumberRef gLogicalLocation;
 static uint64_t gZeroOrigin,gZeroSeed;
@@ -206,6 +209,7 @@ static void disconnect(void) {
     memset(&gLastStatus,0,sizeof gLastStatus);
     gIoUsers=0;memset(gUsers,0,sizeof gUsers);
     gCaptureIssued=0;gCaptureTouch=0;
+    gSelectedMicSource=kMicSource;
     memset(gReference,0,sizeof gReference);gAppliedRoute=UINT32_MAX;
 }
 static int map_type(unsigned type,uint64_t expected) {
@@ -565,6 +569,13 @@ static OSStatus GetPropertyDataSize(AudioServerPlugInDriverRef d,AudioObjectID o
             return kAudioHardwareUnknownPropertyError;
         *size=sizeof(AudioValueTranslation);return 0;
     }
+    if (o==kInputSource && a && (a->mSelector==kAudioSelectorControlPropertyItemName ||
+                               a->mSelector==kAudioSelectorControlPropertyItemKind)) {
+        if (a->mScope!=kAudioObjectPropertyScopeGlobal || a->mElement!=0 || !gInputAvailable)
+            return kAudioHardwareUnknownPropertyError;
+        *size=a->mSelector==kAudioSelectorControlPropertyItemName ? sizeof(CFStringRef):sizeof(UInt32);
+        return 0;
+    }
     _Alignas(16) uint8_t scratch[1024]={0};return GetPropertyData(d,o,pid,a,qs,q,sizeof scratch,size,scratch);
 }
 static Boolean HasProperty(AudioServerPlugInDriverRef d,AudioObjectID o,pid_t pid,const AudioObjectPropertyAddress *a) {UInt32 size=0;return GetPropertyDataSize(d,o,pid,a,0,NULL,&size)==0;}
@@ -580,8 +591,9 @@ static OSStatus IsPropertySettable(AudioServerPlugInDriverRef d,AudioObjectID o,
     return HasProperty(d,o,pid,a) ? 0:kAudioHardwareUnknownPropertyError;
 }
 static OSStatus SetPropertyData(AudioServerPlugInDriverRef d,AudioObjectID o,pid_t pid,const AudioObjectPropertyAddress *a,UInt32 qs,const void *q,UInt32 size,const void *data) {
-    (void)d;(void)pid;(void)qs;(void)q;if (!a || !data) return kAudioHardwareIllegalOperationError;
+    (void)d;(void)pid;(void)qs;(void)q;if (!a || (size && !data)) return kAudioHardwareIllegalOperationError;
     OSStatus result=kAudioHardwareUnknownPropertyError;AudioObjectID volume_changed=0,mute_changed=0;
+    int source_changed=0;
     pthread_mutex_lock(&gLock);
     if (((o==kVolume || o==kReceiverVolume || o==kInputVolume) &&
          (a->mSelector==kAudioLevelControlPropertyScalarValue || a->mSelector==kAudioLevelControlPropertyDecibelValue)) ||
@@ -621,14 +633,26 @@ static OSStatus SetPropertyData(AudioServerPlugInDriverRef d,AudioObjectID o,pid
             if (select_route()!=KERN_SUCCESS) {gReceiverSelected=old_receiver;gSpeakerSelected=old_speaker;result=kAudioHardwareNotRunningError;}
             else {mute_changed=control;result=0;}
         }
-    } else if ((o==kInputSource && a->mSelector==kAudioSelectorControlPropertyCurrentItem) ||
+    } else if ((o==kInputSource && a->mSelector==kAudioSelectorControlPropertyCurrentItem &&
+                a->mScope==kAudioObjectPropertyScopeGlobal && a->mElement==0) ||
                (o==kDevice && a->mSelector==kAudioDevicePropertyDataSource &&
                 a->mScope==kAudioObjectPropertyScopeInput && a->mElement==0)) {
         UInt32 source=0;
-        if (size!=sizeof source) result=kAudioHardwareBadPropertySizeError;
+        /* Both the device ssrc property and the selector scci property carry
+         * UInt32 arrays. An empty array deselects the one real microphone. */
+        if (size%sizeof source)
+            result=kAudioHardwareBadPropertySizeError;
+        else if (size>sizeof source) result=kAudioHardwareIllegalOperationError;
         else {
-            memcpy(&source,data,sizeof source);
-            result=gInputAvailable && source==kMicSource ? 0:kAudioHardwareIllegalOperationError;
+            if (size) memcpy(&source,data,sizeof source);
+            if (!gInputAvailable || (size && source!=kMicSource)) result=kAudioHardwareIllegalOperationError;
+            else if (!size && gCaptureIssued && call(NaAudioStopInput)!=KERN_SUCCESS)
+                result=kAudioHardwareNotRunningError;
+            else {
+                source_changed=gSelectedMicSource!=source;gSelectedMicSource=source;
+                if (!source) {gCaptureIssued=0;gCaptureTouch=0;}
+                result=0;
+            }
         }
     } else if ((o==kOutStream || o==kInStream || o==kReferenceStream) && a->mSelector==kAudioStreamPropertyIsActive && size==sizeof(UInt32)) {
         UInt32 active=*(const UInt32 *)data;
@@ -658,6 +682,12 @@ finished:
     if (mute_changed==kInputMute && gHost) {
         AudioObjectPropertyAddress changed={kAudioBooleanControlPropertyValue,kAudioObjectPropertyScopeGlobal,kAudioObjectPropertyElementMain};
         gHost->PropertiesChanged(gHost,mute_changed,1,&changed);
+    }
+    if (source_changed && gHost) {
+        AudioObjectPropertyAddress selected={kAudioDevicePropertyDataSource,kAudioObjectPropertyScopeInput,0};
+        AudioObjectPropertyAddress item={kAudioSelectorControlPropertyCurrentItem,kAudioObjectPropertyScopeGlobal,0};
+        gHost->PropertiesChanged(gHost,kDevice,1,&selected);
+        gHost->PropertiesChanged(gHost,kInputSource,1,&item);
     }
     return result;
 }
@@ -776,7 +806,7 @@ static OSStatus DoIOOperation(AudioServerPlugInDriverRef d,AudioObjectID o,Audio
             }
         }
         result=0;
-    } else if (input && gInputAvailable && gInputSelected && !gInputMuted) {
+    } else if (input && gInputAvailable && gInputSelected && !gInputMuted && gSelectedMicSource==kMicSource) {
         uint64_t now=mach_absolute_time();
         if (!gCaptureIssued || now-gCaptureTouch>=s.host_hz/10) {
             /* This selector only updates a kernel request/lease, never waits
@@ -791,7 +821,7 @@ static OSStatus DoIOOperation(AudioServerPlugInDriverRef d,AudioObjectID o,Audio
             if (t+i<s.in_produced && s.in_produced-(t+i)<=NA_AUDIO_RING_FRAMES && !na_ring_read(gInput,t+i,&value)) out[i]=(value/32768.0f)*g;
         }
         result=0;
-    } else if (input && gInputMuted) result=0;
+    } else if (input && (gInputMuted || !gSelectedMicSource)) result=0;
     else note_io(1,10,(gOutputSelected ? 1u:0u)|(gReferenceSelected ? 2u:0u)|
                         (gInputAvailable ? 4u:0u)|(gInputSelected ? 8u:0u),frames,result,stream);
 out:

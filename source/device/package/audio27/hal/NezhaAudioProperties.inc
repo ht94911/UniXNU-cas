@@ -85,6 +85,10 @@ static OSStatus propertyData(AudioObjectID o, const AudioObjectPropertyAddress *
             REPLY(CFDictionaryRef,counts);
         }
         case kAudioDevicePropertyDataSource:
+            if (a->mScope!=kAudioObjectPropertyScopeInput || a->mElement!=0 || !gInputAvailable)
+                return kAudioHardwareUnknownPropertyError;
+            if (!gSelectedMicSource) {*outDataSize=0;return 0;}
+            REPLY(UInt32,gSelectedMicSource);
         case kAudioDevicePropertyDataSources:
             if (a->mScope!=kAudioObjectPropertyScopeInput || a->mElement!=0 || !gInputAvailable)
                 return kAudioHardwareUnknownPropertyError;
@@ -105,7 +109,7 @@ static OSStatus propertyData(AudioObjectID o, const AudioObjectPropertyAddress *
                 translation->mOutputDataSize=sizeof(CFStringRef);
             } else {
                 if (translation->mOutputDataSize<sizeof(UInt32)) return kAudioHardwareBadPropertySizeError;
-                memcpy(translation->mOutputData,&kMicSource,sizeof kMicSource);
+                memcpy(translation->mOutputData,&kMicSourceKind,sizeof kMicSourceKind);
                 translation->mOutputDataSize=sizeof(UInt32);
             }
             *outDataSize=sizeof *translation;return 0;
@@ -291,11 +295,17 @@ static OSStatus propertyData(AudioObjectID o, const AudioObjectPropertyAddress *
         case kAudioControlPropertyScope: REPLY(AudioObjectPropertyScope,kAudioObjectPropertyScopeInput);
         case kAudioControlPropertyElement: REPLY(AudioObjectPropertyElement,0);
         case kAudioSelectorControlPropertyCurrentItem:
+            if (!gSelectedMicSource) {*outDataSize=0;return 0;}
+            REPLY(UInt32,gSelectedMicSource);
         case kAudioSelectorControlPropertyAvailableItems: REPLY(UInt32,kMicSource);
         case kAudioSelectorControlPropertyItemName:
             if (!q || qs!=sizeof(UInt32) || *(const UInt32 *)q!=kMicSource)
                 return kAudioHardwareIllegalOperationError;
             REPLY(CFStringRef,(CFStringRef)CFRetain(CFSTR("Microphone")));
+        case kAudioSelectorControlPropertyItemKind:
+            if (!q || qs!=sizeof(UInt32) || *(const UInt32 *)q!=kMicSource)
+                return kAudioHardwareIllegalOperationError;
+            REPLY(UInt32,kMicSourceKind);
         default:return kAudioHardwareUnknownPropertyError;
         }
     default:
