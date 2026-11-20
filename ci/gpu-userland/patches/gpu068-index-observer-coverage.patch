@@ -129,7 +129,7 @@ index 8ebe154..5f57622 100644
    nbwait::Sample end{};end.version=nbwait::kVersion;end.bytes=sizeof(end);end.id=++samples;end.tid=tid;
    end.beganUs=end.endedUs=nowUs();end.stop=nbwait::BudgetExhausted;traceWaitBytes(27,end.id,&end,sizeof(end),true);
 diff --git a/NativeIconLibraryIndex.h b/NativeIconLibraryIndex.h
-index 5ef7ef9..f2865f2 100644
+index 5ef7ef9..d7f5157 100644
 --- a/NativeIconLibraryIndex.h
 +++ b/NativeIconLibraryIndex.h
 @@ -6,6 +6,7 @@
@@ -172,22 +172,22 @@ index 5ef7ef9..f2865f2 100644
  
  constexpr uint8_t kSpringBoardHomeUUID[16] = {
      0x2c,0xf7,0xa8,0xa1,0xe2,0xe3,0x35,0xb3,
-@@ -65,41 +71,72 @@ static inline bool methodInImage(Method method, const uint8_t *uuid) {
+@@ -65,41 +71,75 @@ static inline bool methodInImage(Method method, const uint8_t *uuid) {
      return false;
  }
  
 -static id iconViewForIcon(id controller, SEL command, id icon) {
 -    if (!pthread_main_np() || !icon) return originalIconViewForIcon(controller, command, icon);
--    id dataSource = [controller dataSource];
++struct CurrentIndex { id path = nil, dataSource = nil, query = nil; };
++static CurrentIndex currentIndexPath(id controller, id icon) {
++    CurrentIndex result;
++    if (!pthread_main_np() || !icon) return result;
+     id dataSource = [controller dataSource];
 -    if (![dataSource isKindOfClass:dataSourceClass]) return originalIconViewForIcon(controller, command, icon);
--    id query = [dataSource queryResult];
++    if (![dataSource isKindOfClass:dataSourceClass]) return result;
+     id query = [dataSource queryResult];
 -    if (![query isKindOfClass:queryClass]) return originalIconViewForIcon(controller, command, icon);
-+static id currentIndexPath(id controller, id icon, id &dataSource, id &query) {
-+    if (!pthread_main_np() || !icon) return nil;
-+    dataSource = [controller dataSource];
-+    if (![dataSource isKindOfClass:dataSourceClass]) return nil;
-+    query = [dataSource queryResult];
-+    if (![query isKindOfClass:queryClass]) return nil;
++    if (![query isKindOfClass:queryClass]) return result;
      id identifier = [query itemIdentifierForIcon:icon];
      if (identifier) {
          id indexPath = [dataSource indexPathForItemIdentifier:identifier];
@@ -197,17 +197,18 @@ index 5ef7ef9..f2865f2 100644
 -            id view = [controller _iconViewAtIndexPath:indexPath];
 -            if ([view isKindOfClass:iconViewClass] && [view icon] == icon &&
 -                [controller dataSource] == dataSource && [dataSource queryResult] == query) return view;
-+            [controller dataSource] == dataSource && [dataSource queryResult] == query) return indexPath;
++            [controller dataSource] == dataSource && [dataSource queryResult] == query)
++            return {indexPath, dataSource, query};
 +    }
-+    return nil;
++    return result;
 +}
 +
 +static id iconViewForIcon(id controller, SEL command, id icon) {
-+    id dataSource = nil, query = nil;
-+    if (id indexPath = currentIndexPath(controller, icon, dataSource, query)) {
-+        id view = [controller _iconViewAtIndexPath:indexPath];
++    CurrentIndex current = currentIndexPath(controller, icon);
++    if (current.path) {
++        id view = [controller _iconViewAtIndexPath:current.path];
 +        if ([view isKindOfClass:iconViewClass] && [view icon] == icon &&
-+            [controller dataSource] == dataSource && [dataSource queryResult] == query) {
++            [controller dataSource] == current.dataSource && [current.dataSource queryResult] == current.query) {
 +            indexedViews.fetch_add(1, std::memory_order_relaxed);
 +            return view;
          }
@@ -221,10 +222,10 @@ index 5ef7ef9..f2865f2 100644
 +        // Preserve the original controller visibility gate and the original
 +        // _isIndexPathVisible: test. Only the intervening index lookup changes.
 +        if (![controller _isViewControllerVisible]) return NO;
-+        id dataSource = nil, query = nil;
-+        if (id indexPath = currentIndexPath(controller, [view icon], dataSource, query)) {
-+            const BOOL visible = [controller _isIndexPathVisible:indexPath];
-+            if ([controller dataSource] == dataSource && [dataSource queryResult] == query) {
++        CurrentIndex current = currentIndexPath(controller, [view icon]);
++        if (current.path) {
++            const BOOL visible = [controller _isIndexPathVisible:current.path];
++            if ([controller dataSource] == current.dataSource && [current.dataSource queryResult] == current.query) {
 +                indexedVisibility.fetch_add(1, std::memory_order_relaxed);
 +                return visible;
 +            }
@@ -257,7 +258,7 @@ index 5ef7ef9..f2865f2 100644
          {dataSource, "queryResult", 2, kSpringBoardHomeUUID},
          {query, "itemIdentifierForIcon:", 3, kSpringBoardHomeUUID},
          {dataSource, "indexPathForItemIdentifier:", 3, kUIKitUUID},
-@@ -111,7 +148,7 @@ static bool install(MethodOrigin origin = methodInImage) {
+@@ -111,7 +151,7 @@ static bool install(MethodOrigin origin = methodInImage) {
          char result[8]{};
          if (!method || method_getNumberOfArguments(method) != entry.arguments || !origin(method, entry.uuid)) return false;
          method_getReturnType(method, result, sizeof(result));
@@ -266,7 +267,7 @@ index 5ef7ef9..f2865f2 100644
          if (entry.arguments == 3) {
              char argument[8]{};
              method_getArgumentType(method, 2, argument, sizeof(argument));
-@@ -123,7 +160,10 @@ static bool install(MethodOrigin origin = methodInImage) {
+@@ -123,7 +163,10 @@ static bool install(MethodOrigin origin = methodInImage) {
      dataSourceClass = dataSource;
      queryClass = query;
      originalIconViewForIcon = (IconViewForIcon)method_getImplementation(method);

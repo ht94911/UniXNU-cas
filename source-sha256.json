@@ -92,6 +92,7 @@
   "ci/gpu-userland/patches/gpu064-cache-panel.patch": "a9c44ef8ef1ddeb2c02dba3772ce061e20b0286521a9315f0e14a6d1c4273d9e",
   "ci/gpu-userland/patches/gpu066-stitch-modules.patch": "8d7f3edab785d66e31f14b905e65050930bdac9fcfbcbea1f3dcfcafed635676",
   "ci/gpu-userland/patches/gpu067-current-list-index.patch": "7c5f998b40f427f76f891ea3aeb533715f2f31f9e07dfe142d10ca32dbc827df",
+  "ci/gpu-userland/patches/gpu068-index-observer-coverage.patch": "40bcaf51d76167796e9ee1d568cc4a3826971ea705bac969843f0d6155db7ac9",
   "ci/gpu-userland/patches/heap-copy-plugin.patch": "d4556117bd17585f623c34c9151810e4f7e9077c6273a4aaea15381e6c310ea6",
   "ci/gpu-userland/patches/heap-copy-recipes.patch": "b28164a7338bbae2d9186300adb012ab268818260c85a4fd90a0942796b44eb9",
   "ci/gpu-userland/patches/intel-host-bridge.patch": "4ca8907888b08bb9218abe7d95a5c0bf8b11443f1d2fb6cbaad067a1c6862c78",
@@ -112,6 +113,5 @@
   "ci/gpu-userland/test-source-manifest.py": "45facca72e7b39766333d7499b1b3a4abd936d2b60c662a80923707534a38759",
   "ci/provenance.json": "1adf7e5b853602c83779db3da03236bed87ead24d79c4ea8c452a946c4828db2",
   "ci/xnu/artifact-recipient.pem": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
-  "ci/xnu/artifacts.py": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
-  "ci/gpu-userland/patches/gpu068-index-observer-coverage.patch": "82177711c830b28ee783050e6144c2a385beb1b26e385f713cfe69cc3612136c"
+  "ci/xnu/artifacts.py": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c"
 }
