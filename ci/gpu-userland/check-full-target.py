@@ -232,10 +232,11 @@ assert stitch_modules['source_sha256']==hashlib.sha256((root/'drivers/AdrenoMeta
 assert stitch_modules['test_sha256']==hashlib.sha256((root/'drivers/AdrenoMetal/bridge/stitch_modules_host.mm').read_bytes()).hexdigest()
 report['actual_stitch_modules']=stitch_modules
 icon_index=json.loads((a.logs/'icon-list-index/report.json').read_text())
-assert icon_index['passed'] and icon_index['actual_Apple_ObjectiveC_runtime'] and icon_index['cases']==16
+assert icon_index['passed'] and icon_index['actual_Apple_ObjectiveC_runtime'] and icon_index['cases']==27
 assert icon_index['arm64e_iPhone_production_header_compiled'] and icon_index['original_fallback_preserved']
 assert icon_index['header_sha256']==hashlib.sha256((root/'drivers/AdrenoMetal/NativeIconLibraryIndex.h').read_bytes()).hexdigest()
 assert b'App Library current item index installed' in data
+assert icon_index['visibility_repetitions']==1000
 report['actual_icon_list_index']=icon_index
 report.update(actual_extern_function=extern_function,actual_extern_target=target_extern,actual_multi_level_output=multi_level,
               actual_codegen_cache=codegen,actual_display_preference=preference)

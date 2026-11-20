@@ -22,7 +22,7 @@ compiled = subprocess.run(command, capture_output=True, text=True, timeout=120)
 assert compiled.returncode == 0, compiled.stderr
 run = subprocess.run([str(out / 'actual')], capture_output=True, text=True, timeout=30)
 (out / 'run.log').write_text(run.stdout + run.stderr)
-assert run.returncode == 0 and 'PASS 16 actual App Library index cases' in run.stdout, run.stdout + run.stderr
+assert run.returncode == 0 and 'PASS 27 actual App Library index cases' in run.stdout, run.stdout + run.stderr
 
 # The iPhone build must compile the same production header under arm64e/PAC.
 sdk = subprocess.check_output(['xcrun', '--sdk', 'iphoneos', '--show-sdk-path'], text=True).strip()
@@ -37,7 +37,7 @@ target = subprocess.run(target_command, capture_output=True, text=True, timeout=
 assert target.returncode == 0, target.stderr
 sha = lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
 report = dict(passed=True, actual_production_lookup_and_install_executed=True,
-              actual_Apple_ObjectiveC_runtime=True, cases=16, indexed_repetitions=1000,
+              actual_Apple_ObjectiveC_runtime=True, cases=27, indexed_repetitions=1000, visibility_repetitions=1000,
               original_fallback_preserved=True, ASan_UBSan=True,
               arm64e_iPhone_production_header_compiled=True,
               header_sha256=sha(header), fixture_sha256=sha(source),

@@ -27,9 +27,12 @@ report=dict(source_sha256=hashlib.sha256(a.source.read_bytes()).hexdigest(),
     observer_include_sha256=hashlib.sha256((folder/'NativeFrameObservers.inc').read_bytes()).hexdigest(),
     display_state_header_sha256=hashlib.sha256((folder/'NativeDisplayWaitState.h').read_bytes()).hexdigest(),
     phone_operations=False,real_Mac_main_thread=dict(executed=False,platform=platform.system()),
-    controlled_host_changes=['getprogname selects SpringBoard in the test process','sample limit8/duration1second','join instead of detach for fixture ownership'],
+    covered_client_processes=['SpringBoard','Preferences','Calculator'],per_app_file_uses_own_cache_and_PID=True,controlled_host_changes=['getprogname selects SpringBoard in the test process','sample limit8/duration1second','join instead of detach for fixture ownership'],
     separate_client_filename='springboard-waits.trace',images_emission_stubbed_in_this_Mach_test=True,production_maximum_samples=90000,production_duration_seconds=1800,required_read_bound_bytes=83886080)
 assert front.count('/m2v/springboard-waits.trace')==2
+assert 'Preferences' in inc and 'Calculator' in inc
+assert 'gClientTraceDirectory' in front and 'getprogname()+"-waits-"+std::to_string(getpid())' in front
+
 assert 'const char *const *paths=render?renderPaths:clientPaths;' in front
 assert 'if(!diagOn() || (!render && !client))return;' in front
 assert 'if(clientWaitOn())traceStartWriter();' in front
@@ -71,7 +74,8 @@ int main(int argc,char **argv){assert(argc==2);startClientWaitSampler();assert(c
  printf("{\"main_tid\":%llu,\"pid\":%d,\"records\":%zu}\n",(unsigned long long)tid,getpid(),records.size());
 }
 '''
-    cpp=a.out/'client-main.cpp';cpp.write_text(prefix+header+'\n'+state.replace('#pragma once\n','',1)+record+helpers+fragment+identity+client+main)
+    cpp=a.out/'client-main.cpp';client=client.replace('#if defined(NATIVE_METAL_IPHONE24A446)','#if 0 /* counters covered by actual index fixture */')
+    cpp.write_text(prefix+header+'\n'+state.replace('#pragma once\n','',1)+record+helpers+fragment+identity+client+main)
     binary=a.out/'client-main';command=[a.cxx,'-std=c++17','-O1','-g','-fno-omit-frame-pointer','-Wall','-Wextra','-Werror',
         '-Wno-unused-function','-Wno-unused-const-variable',str(cpp),'-o',str(binary)]
     run=subprocess.run(command,capture_output=True,text=True);(a.out/'build.log').write_text(run.stdout+run.stderr);assert not run.returncode,run.stderr

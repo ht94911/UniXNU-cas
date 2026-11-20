@@ -1,7 +1,7 @@
-name: nezha GPU067 current list index - metal053
+name: nezha GPU068 visibility index and operation coverage - metal054
 on:
   push:
-    branches: [codex/ios27-gpu67-current-list-index-metal053-20261120]
+    branches: [codex/ios27-gpu68-index-coverage-metal054-20261120]
   workflow_dispatch:
 permissions:
   contents: read
