@@ -1,6 +1,6 @@
 --- a/bsd/kern/kern_exec.c
 +++ b/bsd/kern/kern_exec.c
-@@ -8701,6 +8701,9 @@
+@@ -8701,6 +8701,18 @@
 -	/* The board's audio server plug-in next to the system's (the audio server loads every driver bundle in this directory). */
 -	static const char audio_source[] = "/private/var/ngpu/audio", audio_point[] = "/System/Library/Audio/Plug-Ins/HAL";
 -	native_gpu_addon_mount(p, scratch, 0xa00, audio_source, sizeof(audio_source), audio_point, sizeof(audio_point),
@@ -13,5 +13,14 @@
 +		native_gpu_addon_mount(p, scratch, 0xa00, audio_source, sizeof(audio_source), audio_point, sizeof(audio_point),
 +		    "/System/Library/Audio/Plug-Ins/HAL/BuiltinAudioPlugin.driver", "/System/Library/Audio/Plug-Ins/HAL/NezhaAudio27.driver/Info.plist",
 +		    &native_gpu_addon4_stage, &native_gpu_addon4_status);
++		/* Native TAS owns VI and protection. Its stereo PCM and mono mic
++		 * use the board's graph metadata, without Apple speaker telemetry. */
++		static const char tuning_source[] = "/private/var/ngpu/audio-tunings";
++		static const char tuning_point[] = "/Library/Audio/Tunings/AID8001/VAD";
++		volatile int tuning_stage = 0, tuning_status = -1;
++		native_gpu_addon_mount(p, scratch, 0xa00, tuning_source, sizeof(tuning_source),
++		    tuning_point, sizeof(tuning_point), "/Library/Audio/Tunings/AID8001/VAD/speaker_raw.dspg",
++		    "/Library/Audio/Tunings/AID8001/VAD/nezha_playback.dspg", &tuning_stage, &tuning_status);
++		printf("Nezha audio tunings: stage=%d status=%d\n", tuning_stage, tuning_status);
 +	}
  	/* The signed iOS27 service cache owns system launch jobs. Reuse the

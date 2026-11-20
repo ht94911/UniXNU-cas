@@ -1,3 +1,41 @@
+# 067 receiver and speaker routing on the accepted066 baseline
+
+The066 phone results remain the recording, voice-uplink and ordinary-SMS
+baseline. The067 candidate brings the board's factory receiver/stereo programs
+from8a93a3b onto that first-input recovery implementation. Receiver uses only
+the top amplifier with the factoryvoice profile and RCV0; speaker uses both
+amplifiers with music_18dB_stereo and RCV1. DSP mode acknowledgement, muted
+switching, running VI protection and microphone DMA lifetime stay enforced.
+The current runtime/engine/graph/TAS route suite passes including a first-read
+timeout and complete close/unmap/reopen during receiver selection. The related
+idle/restart, runtime, capture-deadline and shutdown suites pass ASan/UBSan.
+
+The failed064 Codec interface accepted only a scalar for the device'sssrc
+property. The original24A446 caller passes an array, and the public CoreAudio
+contract agrees. The067 interface keeps the available sourceimic independent
+of the selected array, accepts empty deselection, rejects unsupported sources,
+and supplies the actualmoni item kind through both translation and selector
+queries. HasProperty probes no longer require an item qualifier. Mono capture,
+stereo output and the final accepted-PCM reference stream remain explicit.
+
+The original N71 constructor hardcodes its VAD graph map. The064 VAD plist
+could not replace those entries, so speaker_ringtone still loaded the iPhone
+speaker_general graph with its absent four-channel telemetry bus. The067
+compatibility handoff uses the original VAD path builder, CFDictionary parser
+and map move to install the board's stereo/mono entries into that existing map.
+All31 original map keys are retained, including the original actuator graph.
+The32 accepted cellular/ringing entries are retained and the8 config entries
+fit the40-entry native applicator. The104-byte source-assembled handoff occupies
+only exact checked BRK padding in the same24A446 VirtualAudio image; no private
+Apple binary is included in the source export. Target/HAL SDK compilation,
+full packaging and phone acceptance of067 are still pending.
+
+Latest reference fetches: UniXNU8542980, myron-nextf1a1bfe, shengc8f92b2,
+Pagania84204e and fairladyfb06775. No equivalent item/graph handoff was found
+in those trees, cas or umi. The HAL architecture remains sheng4601795; the
+hardware programs are from thisnezha's factory tables and retain the earlier
+Pandora0301 silent-output/VI lifetime design. No foreign calibration is used.
+
 # 066 first microphone recovery candidate
 
 The exact061 image succeeded on one boot and failed on another: first four
@@ -10,14 +48,21 @@ input-flow diagnostic. Remote/invalid replies, cleanup failures, a second
 failure, or any failure after real PCM remain terminal. The061 HAL, native
 hardware settings and65 browser compatibility stay in the candidate.
 Actual runtime/engine/graph/TAS host cases and related runtime, endpoint and
-shutdown suites passed ASan/UBSan. Target compilation and device recovery are
-not yet verified. The phone is released; builds do not own the device.
+shutdown suites passed ASan/UBSan. Native066b target compilation and the actual
+first-input recovery on the phone passed. The phone is released.
 
 Native066 compiled all50 audio units and produced the exact accepted061 HAL,
 but its newly enabled host check still expected the abandoned BuiltIn/Speaker
 interface. The066b check instead verifies the accepted USB transport and
 NezhaAudio27Device UID, keeping its stream, tap, PCM and disconnect assertions.
 This correction changes only the host check; the HAL and recovery stay unchanged.
+
+The066 image passed on the phone: its first input timed out, completed the
+original input/codec shutdown, reopened once and then produced PCM. The user
+confirmed both recordings and voice uplink; ordinary SMS also passed both ways.
+Existing diagnostics retain the first timeout while later input graphs stay
+healthy. The phone returned to Android and passed protection checks before the
+window was released. Receiver/speaker switching remains a separate next change.
 
 # Audio102 reuse for baseband045
 

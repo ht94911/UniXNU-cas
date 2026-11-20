@@ -18,6 +18,9 @@ int na_ti_calibration_parse(NaTiCalibration *,NaCalibrationFile binary,
  * module tag in its graph and match this ABI; no guessed fallback IID. Both
  * graph config acknowledgement and a running VI graph precede amp activation. */
 int na_ti_calibration_payload(const NaTiCalibration *,uint32_t instance,uint8_t out[88],uint32_t *bytes);
+/* Exact OEM profile's DSP mode; calibration/VI buffers remain owned. */
+int na_ti_route_payload(const NaTiCalibration *,const NaTasImage *,uint32_t instance,
+                        const char *profile,uint8_t out[24]);
 #ifdef __cplusplus
 }
 #endif

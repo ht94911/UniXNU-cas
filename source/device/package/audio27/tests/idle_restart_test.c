@@ -49,7 +49,7 @@ static int peer_send(void *v,const uint8_t *packet,uint32_t bytes) {
     } else if (p.opcode==AR_OP_READ) {
         ++x->reads;
         assert(x->driver.graph[0].stage==NaGraphRunning && x->driver.graph[2].stage==NaGraphRunning);
-        assert(!x->driver.runtime.engine.output_idle ||
+        assert(x->driver.stream[1].returned || !x->driver.runtime.engine.output_idle ||
             (x->driver.runtime.output_idle_ready && !x->driver.runtime.engine.active[0]));
         if (x->suppress_reads) return NA_OK;
         uint32_t slot=(uint32_t)(x->driver.stream[1].next-1)%NA_DMA_SLOTS;
@@ -166,7 +166,7 @@ static void initialize_capture(int capture) {
     }
     NaPrmResource resources[2]={{.kind=NaPrmClock,.id=0x200,.hz=3072000,.attribute=4},{.kind=NaPrmCore,.id=2}};
     assert(!na_prm_init(&f.driver.prm,&f.driver.session,resources,2,peer_send,&f));
-    NaRuntimeOps ro={&f,host,runtime_activate,runtime_health,runtime_standby};
+    NaRuntimeOps ro={&f,host,runtime_activate,runtime_health,runtime_standby,0};
     assert(!na_runtime_init(&f.driver.runtime,&f.driver.session,&f.rx,&f.driver.graph[0],capture ? &f.driver.graph[1]:NULL,&f.driver.prm,&f.transport,
         &f.status,ring,capture ? fresh_ring:NULL,625,12,1,capture ? 2:0,0,&ro));
     assert(!na_engine_attach_control(&f.driver.runtime.engine,&f.driver.graph[2]));

@@ -136,7 +136,7 @@ static void original_error(void) {
             65536,i ? 960:1920,i ? 2:4,7+i,42+i,i));
         assert(!na_graph_init(&graphs[i],&session,&streams[i],&topology,&go));
     }
-    NaRuntimeOps ro={NULL,host,runtime_activate,okay,okay};
+    NaRuntimeOps ro={NULL,host,runtime_activate,okay,okay,0};
     assert(!na_runtime_init(&runtime,&session,&queue,&graphs[0],&graphs[1],&prm,&transport,
         &shared,out_ring,in_ring,625,12,1,2,0,&ro));
     runtime.capture_probe_allowed=1;runtime.service_ready=1;

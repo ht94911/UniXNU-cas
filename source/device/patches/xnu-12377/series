@@ -42,3 +42,6 @@ zzzzzz-nezha-cellular-launch-identity.patch
 
 # Accepted audio102 HAL union, after the original cellular addon mounts.
 zzzzzz-nezha-audio-hal-mount.patch
+
+# Retain the32 accepted cellular/ringing entries plus8 audio067 config entries.
+zzzzzz-nezha-audio67-text-capacity.patch

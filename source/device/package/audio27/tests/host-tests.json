@@ -67,7 +67,12 @@
     "tests/runtime_contract_test.c",
     "tests/sheng_adsp_test.c",
     "tests/tas_program_test.c",
-    "tests/topology_calibration_test.c"
+    "tests/topology_calibration_test.c",
+    {
+      "source": "tests/receiver_route_test.c",
+      "scope": "Production driver/runtime/graph/TAS: factory top-only/stereo route switch and066 first-input close/unmap/reopen under receiver; synthetic DSP replies",
+      "hardware": false
+    }
   ],
   "procedure": "After human baseline selection only, compile each test source as a separate executable with common sources and one copy of shared sources. Run in an isolated local output directory. Do not compile OS/HAL translation units into host tests; qualify them separately using selected target SDK/cpo records. This JSON does not execute a compiler.",
   "excluded_from_x86_host": "ArmSmmu4KMmio.c is the AArch64 direct MMIO binding. Host state machines use supplied fake IO callbacks; do not disable its architecture guard.",

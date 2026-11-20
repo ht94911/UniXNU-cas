@@ -26,7 +26,7 @@ static int write_reg(void *v,uint64_t lease,uint8_t address,uint32_t reg,const u
     advance(p);++p->writes;return NA_OK;
 }
 static NaTasPowerOps ops(Peer *p,int timed) {
-    return (NaTasPowerOps){p,claim,power,reset,release,{p,read_reg,write_reg},timed ? &p->trace_us:0};
+    return (NaTasPowerOps){p,claim,power,reset,release,{p,read_reg,write_reg},timed ? &p->trace_us:0,0};
 }
 int main(int argc,char **argv) {
     assert(argc==5);FILE *f=fopen(argv[1],"rb");assert(f);fseek(f,0,SEEK_END);long bytes=ftell(f);assert(bytes>0 && bytes<=0x8000000);rewind(f);

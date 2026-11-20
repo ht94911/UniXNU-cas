@@ -1,0 +1,5 @@
+--- a/bsd/kern/ubc_subr.c
++++ b/bsd/kern/ubc_subr.c
+@@ -1,1 +1,1 @@
+-#define CS_TEXT_FIXUP_MAX 32
++#define CS_TEXT_FIXUP_MAX 40
