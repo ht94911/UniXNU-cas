@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "GPU068 cumulative GPU067 baseline: existing kernel UI observer covers Preferences and Calculator production, existing CA transaction/timer events retained, original Data/normal return/full CPU/GPU tables preserved.",
+  "purpose": "GPU070 cumulative GPU069/GPU068: restore existing cas8ms physical HID owner, remove tail rearm, retain original16ms explicit USB test steps and all CPU/GPU/cache/VM/close optimizations.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "998520eaf546d2a8f3078b0ef197ef4946770ca9",
+  "device_revision": "290ed25c9f969a58526d86dc3ae2fcc4766c197b",
   "soc_revision": "device-local-composition-e565439+3435fa5",
   "xcode": "26.6",
   "files": {
@@ -389,7 +389,7 @@
     "source/device/package/nezha27-input/InputChainProbe.cpp": "7653046c23d9b3e11c2a89dff7312942b4e9fbee9a678da9026300d02903bdc3",
     "source/device/package/nezha27-input/InputChainTrace.h": "809ca4a93ba4f8ab5637db643e82086ab0e9b617bb2aefd5cddb77a071db2b1a",
     "source/device/package/nezha27-input/InputEventBridge.cpp": "52ed3de36616fa7d260d529abdd1003320b8cc1dc3212f0b0fdf956a70ed53b2",
-    "source/device/package/nezha27-input/NativeHidInput.cpp": "392641f18d04b5693ebd63873f551de180005b72fef0c1aeaec137995402e339",
+    "source/device/package/nezha27-input/NativeHidInput.cpp": "f8c5bf3b48e08b4880b13231f9523e2c1c95c81ed8502d7555021efecf18faa9",
     "source/device/package/nezha27-input/NezhaAA27Input.h": "d112cd0663fc3fb84dc6be506fe4efac4ede748d541b48f2cc9c3a25852829a2",
     "source/device/package/nezha27-input/NezhaAA27InputUsb.h": "518bef1aed0bff912d8c97ca036b6c9357a1c49164b074ce8d35fa1861542aa7",
     "source/device/package/nezha27-input/NezhaHidPacing.h": "2be615567252073a62587b41fa7f646f6d9bda4dbae2523cceef14caa300a5a9",
@@ -511,10 +511,11 @@
     "source/device/docs/GPU052-RESOURCE-ENUMERATION.md": "f8c8e93b0483e8babf441616f2468f83c38462567358109fc6cceb9eca680887",
     "source/device/patches/xnu-12377/nezha-native-4k-large-ram.patch": "6c1e566d009bf384291487f9d5e242514c78a000ea39995fdae9cacfd816e32d",
     "source/adreno/tests/check_submit_busy_log.py": "945f7616e47ceb6c125c4b0f1e177e437d032ac85095326ea2d17b4264491857",
-    ".github/workflows/nezha-ios27-native.yml": "cde3e65c355f971f8280dd258fac717c76749325f9f52a649d7e428a65cb1cfa",
+    ".github/workflows/nezha-ios27-native.yml": "8c8a79df0d2fd0ecaa2ecfc4644d41281551acacb353af1abb898a7bbc080ddc",
     "source/device/scripts/check-cpu27-firmware-levels.py": "72fc65996664b51733ea45360fb91ceb9a1de561ef2bb63ce0e09b394f149c24",
     "source/device/scripts/check-gpu27-firmware-levels.py": "9fc0331e6c344a665e875ac7f2855952618e28465c6856f776d1a05c587d13a3",
-    "source/device/scripts/check-ui-main-sampler.py": "da47d09fc97dc79d6f2126c9a8e02dd508508004289c05938b51362cdd8e5eb8"
+    "source/device/scripts/check-ui-main-sampler.py": "da47d09fc97dc79d6f2126c9a8e02dd508508004289c05938b51362cdd8e5eb8",
+    "source/device/scripts/check-hid-owner-pacing.py": "ddb105efded2b8d5cd8160be3f739db62d7b8ebbdc031b37c41040d92cb4dd7e"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",

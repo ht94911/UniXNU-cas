@@ -115,10 +115,15 @@ class NativeHidInput : public IOHIDDevice {
         // dispatch the same report a second time while its result is known.
         if(!self->finishAA27Ack()){source->setTimeoutMS(16);return;}
         if(self->touchFailed)return;
-        source->setTimeoutMS(16);
+        // cas's existing HID owner uses 8 ms. Arm before dispatch so report
+        // processing does not add to that interval; keep ordered contact
+        // edges and the original coalescer rather than creating extra input.
+        source->setTimeoutMS(8);
         bool ready=self->hasEventDriverCached();stamp=nzi_begin(d);nzi_put(d,H_READY,ready);nzi_end(d,stamp);
         if(!ready || !self->touchBuffer)return;
         if(!self->pickTouch())return;
+        // Explicit USB test gestures retain their original 16 ms steps.
+        if(self->aaReplay)source->setTimeoutMS(16);
         stamp=nzi_begin(d);nzi_put(d,H_SEEN,self->touchState.pending.sequence);nzi_time(d,H_COALLO,self->touchState.coalesced);nzi_end(d,stamp);
         if(nezha_hid_same_contacts(&self->touchState.delivered,&self->touchState.pending)) {
             self->acknowledgeAA27(0,false);nezha_hid_commit(&self->touchState);return;
@@ -159,7 +164,6 @@ class NativeHidInput : public IOHIDDevice {
         // handleReport synchronously reads this board buffer;DriverKit owns a
         // separate copied pool buffer (selected IOHIDInterface source). Do not
         // reuse that pool or infer its completion from this return code.
-        source->setTimeoutMS(16);
     }
     // Report 3 from two contact sets: active contacts with tip, lifted ones once with tip clear; 0..32767 on both axes.
     static unsigned touchReport(const nezha_touch_frame *previous,const nezha_touch_frame *next,unsigned char report[62]) {
