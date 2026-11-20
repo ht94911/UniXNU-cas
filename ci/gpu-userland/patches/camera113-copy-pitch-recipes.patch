@@ -122,16 +122,11 @@ index 00000000..5bcc0696
 +(a.out / 'report.json').write_text(json.dumps(report, indent=2) + '\n')
 +print(result.stdout.decode().strip())
 diff --git a/scripts/data/adreno-compiler-inputs.json b/scripts/data/adreno-compiler-inputs.json
-index 1ddcc1df..fbf7f1ad 100644
 --- a/scripts/data/adreno-compiler-inputs.json
 +++ b/scripts/data/adreno-compiler-inputs.json
-@@ -71,7 +71,8 @@
-     "patches/mesa/turnip-shaders-shared-across-pipeline-caches.patch",
-     "patches/mesa/turnip-darwin-sweep-retired-on-cache-miss.patch",
-     "patches/mesa/turnip-darwin-submit-room-retry.patch",
+@@ -73,3 +73,4 @@
 -    "patches/mesa/turnip-gen8-yuv-plane-address.patch"
 +    "patches/mesa/turnip-gen8-yuv-plane-address.patch",
 +    "patches/mesa/turnip-gen8-copy-pitch-units.patch"
    ],
    "integer_fma_reference": {
-     "repository": "https://github.com/ucb-bar/berkeley-softfloat-3",

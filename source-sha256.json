@@ -103,7 +103,7 @@
   "ci/gpu-userland/patches/camera103-gen8-yuv-recipes.patch": "e0aacd7e7ea45834a765e579140d1613783d75e320980b80a77af2ad88328c07",
   "ci/gpu-userland/patches/camera107-surface-log-plugin.patch": "4fb259492b95eafb374288266fddb0a060ef49b28364a22e4ad613645533de16",
   "ci/gpu-userland/patches/camera111-threadgroup-dump-plugin.patch": "a0e5e821ec1bf5fd6406308a8e085139b77b19a4ef7e288ff521cc60b9ce66b6",
-  "ci/gpu-userland/patches/camera113-copy-pitch-recipes.patch": "d90b561ec6e559fe4e2c91fb2587524c4263bf219884e4ffe61019bde5eee35c",
+  "ci/gpu-userland/patches/camera113-copy-pitch-recipes.patch": "1f6eda2556473994d63b2b2bcce5bc1558dcaccd0c1d5233b8cf2de36fc7a8fa",
   "ci/gpu-userland/patches/device-context-plugin.patch": "b9add5f80a54290b79dc2d17e412b01397fd9541e963283d9668f101819634d5",
   "ci/gpu-userland/patches/device-context-recipes.patch": "af1096778a72e2ff9025a75db2bfcf6f7ca3b81786803118e8a4359e24be2022",
   "ci/gpu-userland/patches/display-timing-wire.patch": "0c661c4d0dbd76b05fd1760b00614d4956b8866511bf4e0b4f21b19a73921c94",
