@@ -1,3 +1,49 @@
+# 070 retain N71 microphone IDs on one capture channel
+
+The069 phone could not receive calls or open the dialer. Its original
+106.745649-second error is DeviceSettingsFactory::GetVPMicID(fnt1), followed
+by deferred VirtualAudio initialization failures. The original single-mic
+profile lacks the logical IDs still required by N71 initialization. That
+profile is not retained in070;068 remains the complete source baseline.
+
+Keep the original N71 groups, logical IDs, categories and modes. At the
+original source-specification constructor1f2448, normalize vectors beginning
+with the original built-in microphone source IDs to the measured boardimic
+path. The original GetVPMicID lookup forfnt1/btm1/btm2/bak1 retains availability
+and selects channel0. The source routine preserves original object, metadata,
+return address and other argument registers. USB and empty vectors keep their
+original values. No additional PCM capture streams or physical microphones
+are advertised.
+
+The HAL accepts the original logical selectors as aliases of the same one
+capture path and returns their selected ID through both existing interfaces.
+Its real input callback must still produce PCM for a selectedbtm1; this is
+covered by the existing SDK property/PCM test. The067 receiver and speaker
+programs and the full original VAD path/parser/cleanup handoff stay unchanged.
+The32 ringing records plus8 VAD records plus7 source-map records require47
+records; only the existing applicator capacity changes from40 to48. Target
+compilation and phone acceptance remain pending. The066 first-read recovery,
+ordinary SMS and065 browser compatibility remain the accepted baseline.
+
+# 068 current microphone selector array correction
+
+The067 phone rang, then failed immediately on answer. Its exact original logs
+show the new stereo playback and mono graph definitions were actually loaded.
+The first input-source update still returned !siz, and call activation reported
+could not get input device before a hardware capture request. The device ssrc
+setter had been fixed, but selector scci still rejected empty arrays. The actual
+Apple SDK declares both current-source properties as arrays of UInt32; stock
+ADS::SelectorControl also accepts an empty list. Both now return no items after
+deselection and accept the one actual imic source without enabling capture.
+The existing SDK property test covers that mirrored device/control lifecycle,
+invalid lengths and unsupported source IDs, along with the accepted PCM and
+receiver/speaker paths. The original Codec default-input search uses omni;
+this corrects the previous moni transcription. A single-source fallback makes
+that kind spelling alone insufficient evidence for the phone's call failure.
+Only HAL properties and its existing host test change; the accepted066 input
+recovery,067 native routes,31 VAD definitions and40 RAM entries stay fixed.
+The corrected plugin's SDK build and phone call acceptance are pending.
+
 # 067 receiver and speaker routing on the accepted066 baseline
 
 The066 phone results remain the recording, voice-uplink and ordinary-SMS
@@ -14,7 +60,8 @@ The failed064 Codec interface accepted only a scalar for the device'sssrc
 property. The original24A446 caller passes an array, and the public CoreAudio
 contract agrees. The067 interface keeps the available sourceimic independent
 of the selected array, accepts empty deselection, rejects unsupported sources,
-and supplies the actualmoni item kind through both translation and selector
+and supplies the omni item kind recognized by the original Codec default-input
+lookup through both translation and selector
 queries. HasProperty probes no longer require an item qualifier. Mono capture,
 stereo output and the final accepted-PCM reference stream remain explicit.
 

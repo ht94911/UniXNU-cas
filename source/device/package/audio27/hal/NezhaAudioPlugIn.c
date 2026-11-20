@@ -24,7 +24,17 @@ enum {kPlugIn=kAudioObjectPlugInObject,kDevice=2,kOutStream=3,kInStream=4,kVolum
 /* One measured mono capture path. imic names that physical input without
  * advertising unimplemented front/back microphones or beamforming. */
 static const UInt32 kMicSource='imic';
-static const UInt32 kMicSourceKind='moni';
+/* Original N71 routing selects logical subports. These names select the
+ * same one board PCM path; they do not create additional capture streams. */
+static const UInt32 kMicSources[]={'imic','btm1','btm2','fnt1','bak1','beam','vcrg',
+                                 'all ','ovrd','cmb1','cmb2','cmb3'};
+static int mic_source_valid(UInt32 source) {
+    for (unsigned i=0;i<sizeof kMicSources/sizeof kMicSources[0];++i)
+        if (source==kMicSources[i]) return 1;
+    return 0;
+}
+/* Stock Codec default-input selection recognizes the omni item kind. */
+static const UInt32 kMicSourceKind='omni';
 /* Original24A446 Codec binds both prec and pspk mute/volume controls. The
  * separate Receiver class has no pspk volume binding. Both acoustic routes
  * share this device's existing TDM output, mic and accepted-PCM tap. */
@@ -637,14 +647,14 @@ static OSStatus SetPropertyData(AudioServerPlugInDriverRef d,AudioObjectID o,pid
                (o==kDevice && a->mSelector==kAudioDevicePropertyDataSource &&
                 a->mScope==kAudioObjectPropertyScopeInput && a->mElement==0)) {
         UInt32 source=0;
-        /* Device ssrc is a UInt32 array. The physical selector scci is a
-         * scalar; an empty device array deselects the real microphone. */
-        if (size%sizeof source || (o==kInputSource && size!=sizeof source))
+        /* Both the device ssrc property and the selector scci property carry
+         * UInt32 arrays. An empty array deselects the one real microphone. */
+        if (size%sizeof source)
             result=kAudioHardwareBadPropertySizeError;
         else if (size>sizeof source) result=kAudioHardwareIllegalOperationError;
         else {
             if (size) memcpy(&source,data,sizeof source);
-            if (!gInputAvailable || (size && source!=kMicSource)) result=kAudioHardwareIllegalOperationError;
+            if (!gInputAvailable || (size && !mic_source_valid(source))) result=kAudioHardwareIllegalOperationError;
             else if (!size && gCaptureIssued && call(NaAudioStopInput)!=KERN_SUCCESS)
                 result=kAudioHardwareNotRunningError;
             else {
@@ -805,7 +815,7 @@ static OSStatus DoIOOperation(AudioServerPlugInDriverRef d,AudioObjectID o,Audio
             }
         }
         result=0;
-    } else if (input && gInputAvailable && gInputSelected && !gInputMuted && gSelectedMicSource==kMicSource) {
+    } else if (input && gInputAvailable && gInputSelected && !gInputMuted && mic_source_valid(gSelectedMicSource)) {
         uint64_t now=mach_absolute_time();
         if (!gCaptureIssued || now-gCaptureTouch>=s.host_hz/10) {
             /* This selector only updates a kernel request/lease, never waits

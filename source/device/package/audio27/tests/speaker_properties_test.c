@@ -110,16 +110,19 @@ int main(void) {
      * direct device properties before using the same mono PCM stream. */
     address=(AudioObjectPropertyAddress){kAudioDevicePropertyDataSources,kAudioObjectPropertyScopeInput,0};
     UInt32 mic_source=0;
+    UInt32 source_ids[sizeof kMicSources/sizeof kMicSources[0]]={0};
     assert(HasProperty(NULL,kDevice,0,&address));
-    assert(GetPropertyDataSize(NULL,kDevice,0,&address,0,NULL,&bytes)==0 && bytes==sizeof mic_source);
-    assert(GetPropertyData(NULL,kDevice,0,&address,0,NULL,sizeof mic_source,&bytes,&mic_source)==0 && mic_source=='imic');
+    assert(GetPropertyDataSize(NULL,kDevice,0,&address,0,NULL,&bytes)==0 && bytes==sizeof source_ids);
+    assert(GetPropertyData(NULL,kDevice,0,&address,0,NULL,sizeof source_ids,&bytes,source_ids)==0);
+    assert(bytes==sizeof source_ids && !memcmp(source_ids,kMicSources,sizeof source_ids));
+    mic_source=source_ids[0];assert(mic_source=='imic');
     address.mSelector=kAudioDevicePropertyDataSource;
     assert(SetPropertyData(NULL,kDevice,0,&address,0,NULL,sizeof mic_source,&mic_source)==0);
     assert(SetPropertyData(NULL,kDevice,0,&address,0,NULL,0,NULL)==0);
     assert(GetPropertyDataSize(NULL,kDevice,0,&address,0,NULL,&bytes)==0 && bytes==0);
     assert(GetPropertyData(NULL,kDevice,0,&address,0,NULL,0,&bytes,NULL)==0 && bytes==0);
     address.mSelector=kAudioDevicePropertyDataSources;
-    assert(GetPropertyDataSize(NULL,kDevice,0,&address,0,NULL,&bytes)==0 && bytes==4);
+    assert(GetPropertyDataSize(NULL,kDevice,0,&address,0,NULL,&bytes)==0 && bytes==sizeof source_ids);
     address.mSelector=kAudioDevicePropertyDataSource;
     UInt32 duplicate_sources[2]={'imic','imic'};
     assert(SetPropertyData(NULL,kDevice,0,&address,0,NULL,3,&mic_source)==kAudioHardwareBadPropertySizeError);
@@ -137,11 +140,21 @@ int main(void) {
     address.mSelector=kAudioSelectorControlPropertyItemKind;
     UInt32 mic_kind=0;
     assert(HasProperty(NULL,kInputSource,0,&address));
-    assert(GetPropertyData(NULL,kInputSource,0,&address,sizeof mic_source,&mic_source,sizeof mic_kind,&bytes,&mic_kind)==0 && mic_kind=='moni');
+    assert(GetPropertyData(NULL,kInputSource,0,&address,sizeof mic_source,&mic_source,sizeof mic_kind,&bytes,&mic_kind)==0 && mic_kind=='omni');
     assert(GetPropertyData(NULL,kInputSource,0,&address,sizeof fake_source,&fake_source,sizeof mic_kind,&bytes,&mic_kind)==kAudioHardwareIllegalOperationError);
     address.mSelector=kAudioSelectorControlPropertyCurrentItem;
-    assert(SetPropertyData(NULL,kInputSource,0,&address,0,NULL,0,NULL)==kAudioHardwareBadPropertySizeError);
+    assert(SetPropertyData(NULL,kInputSource,0,&address,0,NULL,0,NULL)==0);
+    assert(GetPropertyDataSize(NULL,kInputSource,0,&address,0,NULL,&bytes)==0 && bytes==0);
+    assert(GetPropertyData(NULL,kInputSource,0,&address,0,NULL,0,&bytes,NULL)==0 && bytes==0);
+    AudioObjectPropertyAddress device_selected={kAudioDevicePropertyDataSource,kAudioObjectPropertyScopeInput,0};
+    assert(GetPropertyDataSize(NULL,kDevice,0,&device_selected,0,NULL,&bytes)==0 && bytes==0);
+    assert(SetPropertyData(NULL,kInputSource,0,&address,0,NULL,3,&mic_source)==kAudioHardwareBadPropertySizeError);
+    assert(SetPropertyData(NULL,kInputSource,0,&address,0,NULL,sizeof duplicate_sources,duplicate_sources)==kAudioHardwareIllegalOperationError);
+    assert(SetPropertyData(NULL,kInputSource,0,&address,0,NULL,sizeof fake_source,&fake_source)==kAudioHardwareIllegalOperationError);
+    assert(GetPropertyDataSize(NULL,kInputSource,0,&address,0,NULL,&bytes)==0 && bytes==0);
+    assert(SetPropertyData(NULL,kInputSource,0,&address,0,NULL,sizeof mic_source,&mic_source)==0);
     assert(scalar(kInputSource,kAudioSelectorControlPropertyCurrentItem,kAudioObjectPropertyScopeGlobal)=='imic');
+    assert(scalar(kDevice,kAudioDevicePropertyDataSource,kAudioObjectPropertyScopeInput)=='imic');
     address=(AudioObjectPropertyAddress){kAudioDevicePropertyDataSourceNameForIDCFString,kAudioObjectPropertyScopeInput,0};
     AudioValueTranslation translation={&mic_source,sizeof mic_source,&mic_name,sizeof mic_name};
     assert(GetPropertyDataSize(NULL,kDevice,0,&address,0,NULL,&bytes)==0 && bytes==sizeof translation);
@@ -149,7 +162,22 @@ int main(void) {
     assert(CFEqual(mic_name,CFSTR("Microphone")));CFRelease(mic_name);
     address.mSelector=kAudioDevicePropertyDataSourceKindForID;
     translation=(AudioValueTranslation){&mic_source,sizeof mic_source,&mic_kind,sizeof mic_kind};
-    assert(GetPropertyData(NULL,kDevice,0,&address,0,NULL,sizeof translation,&bytes,&translation)==0 && mic_kind=='moni');
+    assert(GetPropertyData(NULL,kDevice,0,&address,0,NULL,sizeof translation,&bytes,&translation)==0 && mic_kind=='omni');
+    /* Both APIs select the original logical IDs and read back the same
+     * selection. Every ID still uses the sole real microphone PCM stream. */
+    for (unsigned i=0;i<sizeof source_ids/sizeof source_ids[0];++i) {
+        mic_source=source_ids[i];
+        address=(AudioObjectPropertyAddress){kAudioDevicePropertyDataSource,kAudioObjectPropertyScopeInput,0};
+        assert(SetPropertyData(NULL,kDevice,0,&address,0,NULL,sizeof mic_source,&mic_source)==0);
+        assert(scalar(kInputSource,kAudioSelectorControlPropertyCurrentItem,kAudioObjectPropertyScopeGlobal)==mic_source);
+        address=(AudioObjectPropertyAddress){kAudioSelectorControlPropertyCurrentItem,kAudioObjectPropertyScopeGlobal,0};
+        assert(SetPropertyData(NULL,kInputSource,0,&address,0,NULL,sizeof mic_source,&mic_source)==0);
+        assert(scalar(kDevice,kAudioDevicePropertyDataSource,kAudioObjectPropertyScopeInput)==mic_source);
+        address.mSelector=kAudioSelectorControlPropertyItemName;
+        assert(GetPropertyData(NULL,kInputSource,0,&address,sizeof mic_source,&mic_source,sizeof mic_name,&bytes,&mic_name)==0);
+        assert(CFEqual(mic_name,CFSTR("Microphone")));CFRelease(mic_name);
+    }
+    gSelectedMicSource=kMicSource;
     address=(AudioObjectPropertyAddress){'MCCs',kAudioObjectPropertyScopeGlobal,0};
     CFDictionaryRef counts=NULL;
     assert(HasProperty(NULL,kDevice,0,&address));
@@ -185,6 +213,12 @@ int main(void) {
     Float32 mic[2]={0};
     assert(DoIOOperation(NULL,kDevice,kInStream,0,kAudioServerPlugInIOOperationReadInput,2,&cycle,mic,NULL)==0);
     assert(mic[0]==0.25f && mic[1]==-0.125f && test_inputs==1);
+    /* A selected N71 logical source must reach the same existing capture
+     * callback; a successful property setter alone does not prove this. */
+    gSelectedMicSource='btm1';
+    assert(DoIOOperation(NULL,kDevice,kInStream,0,kAudioServerPlugInIOOperationReadInput,2,&cycle,mic,NULL)==0);
+    assert(mic[0]==0.25f && mic[1]==-0.125f && test_inputs==1);
+    gSelectedMicSource=kMicSource;
     Float32 db=-12;
     address=(AudioObjectPropertyAddress){kAudioDevicePropertyVolumeDecibels,kAudioObjectPropertyScopeInput,0};
     assert(SetPropertyData(NULL,kDevice,0,&address,0,NULL,sizeof db,&db)==0);
