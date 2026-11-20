@@ -1,17 +1,16 @@
 {
   "schema": 1,
-  "purpose": "Camera116 reproduce original115cb27downscaleYzero with exact constants, approximateuniform, source sampler, sameR32packedwrites and GPU-written source;originals local",
-  "device_revision": "bed3fb9994b71097b8bf3578fc8d1d707b19b0f6",
+  "purpose": "Camera117 originalsystem VT parameters fulltransfer with blackbars/knownYUV;no private input",
+  "device_revision": "5f029910ccf48d1a434a56d2ce5608924b90fb23",
   "files": {
-    "source/NezhaCameraVtReplay.mm": "afd164647510ace7a7cad8105dc959a77c92835f252b57adb8124d7593aa4e23",
     "source/probe.entitlements.plist": "88e1b971f4fb02d04416673b2a7fee641bc9c3dd4aae71efa253c48c661e1c5d",
-    "source/NezhaCameraVtReplay.metal": "830874319e4fac5c2a2ee571ba566f18cd4e714311814a9de5da2e336e8fc06d",
     "ci/camera-discovery.py": "587a51920cb25d2ef36af7259ad441dde78ca842a98d865e4a54e98880989065",
     "ci/artifact-recipient.pem": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
     "ci/check-nv12-memory.py": "7ab7fcf6809e37d38fe9fab864d1e6c2f76ded97e79e0b00d6c6865abf65f019",
-    "ci/corelocation.py": "079e4e8995bf713f6cccf353741d0bb8a937296929cf7988112f80027498ba3b",
+    "ci/corelocation.py": "8127868716036023664d6a517557cf52f7b17d9b6e26207f06f904adefb0e13a",
     "ci/artifacts.py": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
-    ".github/workflows/nezha-ios27-native.yml": "92d24cfd6e0f415386ee10de4e5fa013d5283dd65c3889e6c54bae9e79e22ffc"
+    ".github/workflows/nezha-ios27-native.yml": "7c5ecfff92a4448e990b08200376a0858a13c35c5d56b7d0baabbf5f9f3f5800",
+    "source/NezhaCameraVtSession.mm": "05288b32b9deb5da65d397604b77c968d5c5486409b187beb6b1bbb0b09f42a5"
   },
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
   "certificate_sha256": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",

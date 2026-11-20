@@ -1,7 +1,7 @@
-name: nezha iPhone27 Camera116 original downscale replay
+name: nezha iPhone27 Camera117 original system transfer
 on:
   push:
-    branches: [codex/ios27-camera116-downscale-20261121]
+    branches: [codex/ios27-camera117-system-transfer-20261121]
 permissions:
   contents: read
 concurrency:
