@@ -197,8 +197,22 @@ void nb_gnss_request(NbGnss *s, uint32_t i, const uint8_t *data, uint32_t length
         break;
     case NB_PDS_SET_STATE: case NB_PDS_SET_AUTO: case NB_PDS_FORCE_OFF:
         p = nb_gnss_tlv(&m, 1, 1);
-        if (!p || m.length != 4u || *p > 1u) error = NB_QMI_ERR_INVALID_ARG;
-        else if (m.message == NB_PDS_SET_STATE) { after.enabled = *p; change = NbGnssChangeState; }
+        if (m.message == NB_PDS_SET_STATE) {
+            /* The actual24A446 sender adds services TLV0x10/u64 when
+             * enabling GPS. Its legacy disabled request has only TLV1.
+             * Support the real GPS bit; other service bits are not owned
+             * by this LOC adapter and must retain an unsupported result. */
+            uint32_t bytes = 0;
+            const uint8_t *services = nb_qmi_tlv(&m, 0x10, &bytes);
+            if (!p || *p > 1u || (services ? bytes != 8u || m.length != 15u : m.length != 4u))
+                error = NB_QMI_ERR_INVALID_ARG;
+            else if (services && (nb_le64(services) & ~UINT64_C(1)))
+                error = NB_QMI_ERR_NOT_SUPPORTED;
+            else if (services && (!nb_le64(services) || !*p))
+                error = NB_QMI_ERR_INVALID_ARG;
+        } else if (!p || m.length != 4u || *p > 1u) error = NB_QMI_ERR_INVALID_ARG;
+        if (error) break;
+        if (m.message == NB_PDS_SET_STATE) { after.enabled = *p; change = NbGnssChangeState; }
         else if (m.message == NB_PDS_SET_AUTO) { after.automatic = *p; change = NbGnssChangeAuto; }
         else { after.forced_off = *p; change = NbGnssChangeForce; }
         break;

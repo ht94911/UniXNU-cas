@@ -19,6 +19,14 @@ static void request(uint32_t client,uint16_t txn,uint16_t command,uint8_t tag,ui
     if(tag) nb_qmi_u8(&w,tag,value);
     nb_gnss_request(&state,client,raw,nb_qmi_end(&w));
 }
+static void state_request(uint16_t txn,uint8_t enabled,uint8_t services_tag,uint32_t bytes,uint64_t services)
+{
+    uint8_t raw[64],value[8];NbQmiWriter w;nb_put64(value,services);
+    nb_qmi_begin(&w,raw,sizeof raw,NB_QMI_REQUEST,txn,NB_PDS_SET_STATE);
+    nb_qmi_u8(&w,1,enabled);
+    if(services_tag)nb_qmi_put(&w,services_tag,value,bytes);
+    nb_gnss_request(&state,1,raw,nb_qmi_end(&w));
+}
 static void reply(NbGnssPacket *p,uint32_t error,int ind_first)
 {
     uint8_t raw[32];NbQmiWriter w;
@@ -56,8 +64,22 @@ static void setup(void)
 int main(void)
 {
     NbGnssPacket p;setup();
+    /* Actual24A446 enable is header7+TLV1/1+TLV10/8 =22bytes.
+     * This must enable the client before automatictracking reaches realLOC.
+     * Keep other services, malformed widths and flags rejected. */
+    state_request(90,1,0x10,8,1);
+    CHECK(state.count==1&&!state.clients[1].enabled);
+    CHECK(!nb_gnss_next(&state,0,&p)&&state.clients[1].enabled&&!state.running&&last_error==0);
+    state_request(91,0,0,0,0);
+    CHECK(!nb_gnss_next(&state,0,&p)&&!state.clients[1].enabled);
+    state_request(92,1,0x10,8,2);CHECK(last_error==NB_QMI_ERR_NOT_SUPPORTED&&!state.clients[1].enabled&&!state.count);
+    state_request(93,1,0x10,7,1);CHECK(last_error==NB_QMI_ERR_INVALID_ARG&&!state.count);
+    state_request(94,1,0x10,8,0);CHECK(last_error==NB_QMI_ERR_INVALID_ARG&&!state.count);
+    state_request(95,0,0x10,8,1);CHECK(last_error==NB_QMI_ERR_INVALID_ARG&&!state.count);
+    state_request(96,1,0x11,8,1);CHECK(last_error==NB_QMI_ERR_INVALID_ARG&&!state.count);
+    state_request(97,2,0x10,8,1);CHECK(last_error==NB_QMI_ERR_INVALID_ARG&&!state.count);
     /* Queued native requests must merge against the preceding acknowledged state. */
-    request(1,2,NB_PDS_SET_STATE,1,1);request(1,3,NB_PDS_SET_AUTO,1,1);
+    state_request(2,1,0x10,8,1);request(1,3,NB_PDS_SET_AUTO,1,1);
     request(1,4,NB_PDS_REPORT,0x12,1);
     CHECK(!nb_gnss_next(&state,0,&p)&&state.clients[1].enabled);
     CHECK(nb_gnss_next(&state,0,&p)&&p.message==NB_LOC_SET_MODE);CHECK(!state.running);
