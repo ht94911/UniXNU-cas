@@ -1,7 +1,7 @@
-name: nezha iPhone27 Camera105 self-only capture memory
+name: nezha iPhone27 Camera108 BGRA primary preview
 on:
   push:
-    branches: [codex/ios27-camera105-own-memory-20261120]
+    branches: [codex/ios27-camera108-bgra-preview-20261120]
 permissions:
   contents: read
 concurrency:
@@ -26,7 +26,7 @@ jobs:
           persist-credentials: false
       - name: Prepare the existing encryption tool
         run: brew install openssl@3 > "$RUNNER_TEMP/camera-userland-setup.log" 2>&1
-      - name: Build and sign the Camera105 self-only capture memory helper
+      - name: Build and sign the Camera108 BGRA primary preview helper
         run: |
           set -euo pipefail
           export PATH="$(brew --prefix openssl@3)/bin:$PATH"

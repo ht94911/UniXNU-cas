@@ -22,15 +22,20 @@ static CFMutableDictionaryRef dictionary(void)
         &kCFTypeDictionaryValueCallBacks);
 }
 
-static CFDictionaryRef output_format(void)
+static CFDictionaryRef output_format(bool primary_preview)
 {
     CFMutableDictionaryRef d=dictionary();
     if (!d) return NULL;
     const double codes[]={0x42475241,0x34323066,0x34323076};
+    const unsigned count=primary_preview ? 1u:3u;
     CFNumberRef n[3]={NULL,NULL,NULL};
-    for (unsigned i=0;i<3;++i) n[i]=CFNumberCreate(NULL,kCFNumberDoubleType,&codes[i]);
-    CFArrayRef formats=n[0] && n[1] && n[2] ?
-        CFArrayCreate(NULL,(const void **)n,3,&kCFTypeArrayCallBacks) : NULL;
+    bool complete=true;
+    for (unsigned i=0;i<count;++i) {
+        n[i]=CFNumberCreate(NULL,kCFNumberDoubleType,&codes[i]);
+        complete=complete && n[i]!=NULL;
+    }
+    CFArrayRef formats=complete ?
+        CFArrayCreate(NULL,(const void **)n,count,&kCFTypeArrayCallBacks) : NULL;
     for (unsigned i=0;i<3;++i) if (n[i]) CFRelease(n[i]);
     if (!formats) { CFRelease(d);return NULL; }
     CFDictionarySetValue(d,CFSTR("SupportedPixelFormats"),formats);
@@ -50,9 +55,11 @@ CFArrayRef nezha_camera_main_formats(void)
 {
     CFMutableDictionaryRef d=dictionary(),outputs=dictionary();
     CMVideoFormatDescriptionRef description=NULL;
-    CFDictionaryRef output=output_format();
+    /* PrimaryScaler delivers the existing BGRA renderer to the preview
+     * consumer. Auxiliary and still outputs retain their three formats. */
+    CFDictionaryRef primary=output_format(true),output=output_format(false);
     CFArrayRef result=NULL;
-    if (!d || !outputs || !output ||
+    if (!d || !outputs || !primary || !output ||
         CMVideoFormatDescriptionCreate(NULL,0x34323066,4096,3072,NULL,&description) || !description)
         goto done;
     CFDictionarySetValue(d,CFSTR("FormatDescription"),description);
@@ -75,13 +82,14 @@ CFArrayRef nezha_camera_main_formats(void)
         !put_number(d,CFSTR("VideoBinningFactorHorizontal"),2) ||
         !put_number(d,CFSTR("VideoBinningFactorVertical"),2) ||
         !put_number(d,CFSTR("VideoFieldOfView"),72.8)) goto done;
-    CFDictionarySetValue(outputs,CFSTR("PrimaryScaler"),output);
+    CFDictionarySetValue(outputs,CFSTR("PrimaryScaler"),primary);
     CFDictionarySetValue(outputs,CFSTR("SecondaryScaler"),output);
     CFDictionarySetValue(outputs,CFSTR("StillImage"),output);
     CFDictionarySetValue(d,CFSTR("SupportedOutputs"),outputs);
     result=CFArrayCreate(NULL,(const void **)&d,1,&kCFTypeArrayCallBacks);
 done:
     if (description) CFRelease(description);
+    if (primary) CFRelease(primary);
     if (output) CFRelease(output);
     if (outputs) CFRelease(outputs);
     if (d) CFRelease(d);

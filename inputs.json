@@ -1,7 +1,7 @@
 {
   "schema": 1,
-  "purpose": "Camera105 finite self-only originalXNUdevelopment command22 memory room; actual103 GPU code path retained",
-  "device_revision": "b3b051a2320d316f29060e4332e828b02022c5f8",
+  "purpose": "Camera108 existing BGRA PrimaryScaler preview;secondary andstill retainNV12;originalcapture/memory/GPU107 kept",
+  "device_revision": "ce71b29bd6b6e60fa00229f569a77695abfb1682",
   "files": {
     "source/NezhaCameraControl.h": "88e6e5dadd777e10a36f587decb8fb38300d79033b0c826bcd747b1d7867cae2",
     "source/NezhaCameraDiscovery.h": "c2fe0fec08c8b445c9080a845ed0dace057e212094c35f7b734907181ec66338",
@@ -18,7 +18,7 @@
     "source/userland/NezhaCameraFactory.h": "42934d370ccc191eeda6a29e103b86b457d03964af071db973182f731e62f5a8",
     "source/userland/NezhaCameraFigProvider.c": "6df52704992a208cbd3bad1608f4a32db55ebf3ba7948a3faf11cbcf9a94193c",
     "source/userland/NezhaCameraFigProvider.h": "c5f3bcc5169cf052e08d3210b5672231c2704f8f0917444cb0b287a2a5b115bd",
-    "source/userland/NezhaCameraFormats.c": "7074c95abad4fbc9f5e9182dd1bd7d2e73fd889ca949df7b472bd44615ba84c0",
+    "source/userland/NezhaCameraFormats.c": "a5a2b2d4632b1655c033dda0d12d5ad20d0e3cb120994a15aa35f9f957aa95fe",
     "source/userland/NezhaCameraFormats.h": "8e23c3fbafab0b2c3659236b88dc676d3c48415da37d7f3cbd1d0c9fc0ae9e86",
     "source/userland/NezhaCameraGraphOutput.c": "dff3d958307a844e4027ad82b3b6dec0992648d5c1089a87a5a2d4a9ec3d8270",
     "source/userland/NezhaCameraGraphOutput.h": "c1e87f82ab36945a3ea05591281f731fe139483f937bf8553129750dfa67ec3c",
@@ -38,7 +38,7 @@
     "source/userland/NezhaCameraMemory.h": "e18522bf19c549533ccdefb499083f760a89a0f6f1455a1cb100c04db313d4f1",
     "source/camera-memory-self.c": "9caf3474eb524e40c52e672c64c9f8f5acb59bdc465af933f6cf375567de2546"
   },
-  "builder_sha256": "2ad70a02fb0371727259e9d6a52e06d734f32705b2a958314cd7aeda3d551625",
+  "builder_sha256": "b87f033abb2be3141e92dfd65d4e588c392344b5dd1bad29b5dadf0f4a876ceb",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
   "certificate_sha256": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
   "kernel_build_required": false,
