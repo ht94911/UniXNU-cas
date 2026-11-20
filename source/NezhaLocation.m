@@ -152,13 +152,17 @@
        self.manager.authorizationStatus!=kCLAuthorizationStatusAuthorizedAlways){
         self.status.text=@"定位未授权，请在设置中允许此应用定位。";return;
     }
-    if(!self.running){self.running=YES;[self.manager startUpdatingLocation];
+    if(!self.running){self.running=YES;
+        UIApplication.sharedApplication.idleTimerDisabled=YES;
+        [self.manager startUpdatingLocation];
         [self save:@{@"event":@"start",@"received_unix_ms":@((long long)(NSDate.date.timeIntervalSince1970*1000))}];}
     self.status.text=@"定位中，等待新的系统位置。";
 }
 - (void)end
 {
-    self.requested=NO;[self.manager stopUpdatingLocation];self.running=NO;self.status.text=@"定位已停止";
+    self.requested=NO;[self.manager stopUpdatingLocation];self.running=NO;
+    UIApplication.sharedApplication.idleTimerDisabled=NO;
+    self.status.text=@"定位已停止";
     [self save:@{@"event":@"stop",@"received_unix_ms":@((long long)(NSDate.date.timeIntervalSince1970*1000))}];
 }
 - (void)locationManagerDidChangeAuthorization:(CLLocationManager *)manager
