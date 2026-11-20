@@ -290,6 +290,12 @@ assert planes['passed'] and planes['checks']==15 and planes['actual_ObjectiveC_b
 assert planes['source_sha256']==hashlib.sha256((root/'drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm').read_bytes()).hexdigest()
 assert target_extern['actual_surface_plane_method_verified'] and target_extern['surface_plane_constant_zero_getter_absent']
 report.update(actual_surface_plane_forwarding=planes, actual_surface_plane_target=target_extern['surface_plane_IMP'])
+small_yuv=json.loads((a.logs/'small-yuv-layout/report.json').read_text())
+assert small_yuv['passed'] and small_yuv['checks']==300
+assert small_yuv['actual_image_selection_block'] and small_yuv['actual_fdl_fallback_block']
+assert small_yuv['source_sha256']==hashlib.sha256((root/'.cache/mesa-work/src/freedreno/vulkan/tu_image.cc').read_bytes()).hexdigest()
+report['actual_small_yuv_layout']=small_yuv
+
 (a.logs/'full-target-qualified.json').write_text(json.dumps(report,indent=2)+'\n')
 
 print(json.dumps({k:v for k,v in report.items() if k!='profile'},indent=2))

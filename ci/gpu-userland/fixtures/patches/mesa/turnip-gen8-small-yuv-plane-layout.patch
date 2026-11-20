@@ -1,0 +1,33 @@
+diff --git a/src/freedreno/vulkan/tu_image.cc b/src/freedreno/vulkan/tu_image.cc
+--- a/src/freedreno/vulkan/tu_image.cc
++++ b/src/freedreno/vulkan/tu_image.cc
+@@ -708,6 +708,29 @@
+    assert(!(image->vk.create_flags & VK_IMAGE_CREATE_SPARSE_RESIDENCY_BIT) ||
+           tile_mode == TILE6_3);
+ 
++   /* A combined Gen8 descriptor uses the luma tile mode for chroma too.
++    * fdl6_layout_image falls a plane below the 16-texel threshold back to
++    * linear. A 16-wide luma with 8-wide chroma must therefore be linear in
++    * both planes; tiled luma plus linear chroma cannot be sampled together.
++    * An externally specified compressed layout retains its forced UBWC.
++    */
++   if (CHIP >= A8XX && !force_ubwc &&
++       vk_format_get_plane_count(image->vk.format) > 1) {
++      for (uint32_t i = 0; i < vk_format_get_plane_count(image->vk.format); i++) {
++         struct fdl_layout plane = {};
++         plane.format = tu6_plane_format(image->vk.format, i);
++         const uint32_t width = vk_format_get_plane_width(
++            image->vk.format, i, image->vk.extent.width);
++         const uint32_t threshold = fdl_linear_fallback_threshold_texels(
++            &plane, &device->physical_device->dev_info);
++         if (width < threshold) {
++            tile_mode = TILE6_LINEAR;
++            ubwc_enabled = false;
++            break;
++         }
++      }
++   }
++
+    for (uint32_t i = 0; i < tu6_plane_count(image->vk.format); i++) {
+       struct fdl_layout *layout = &image->layout[i];
+       enum pipe_format format = tu6_plane_format(image->vk.format, i);

@@ -434,6 +434,19 @@ def main():
         upstream_revision='39ab13b6159fea9831c1b7521f3ac72c3ce4e5e0',
         prepared_helper_sha256=sha(mesa / 'src/freedreno/vulkan/tu_descriptor_set.h'),
         patch_sha256=sha(copy_patch))
+    # Gen8 combined descriptors require both planes to use the same layout.
+    plane_patch = root / 'patches/mesa/turnip-gen8-small-yuv-plane-layout.patch'
+    shutil.copyfile(HERE / 'fixtures/patches/mesa/turnip-gen8-small-yuv-plane-layout.patch', plane_patch)
+    plane_check = root / 'scripts/check-turnip-gen8-small-yuv-layout.py'
+    shutil.copyfile(HERE / 'fixtures/scripts/check-turnip-gen8-small-yuv-layout.py', plane_check)
+    must(['git', '-C', mesa, 'apply', '--check', plane_patch])
+    must(['git', '-C', mesa, 'apply', plane_patch])
+    pins = json.loads((root / 'scripts/data/adreno-compiler-inputs.json').read_text())
+    pins['patches'].append(str(plane_patch.relative_to(root)))
+    (root / 'scripts/data/adreno-compiler-inputs.json').write_text(json.dumps(pins, indent=2) + '\n')
+    record['camera115_small_yuv_source'] = dict(
+        prepared_tu_image_sha256=sha(mesa / 'src/freedreno/vulkan/tu_image.cc'),
+        patch_sha256=sha(plane_patch), checker_sha256=sha(plane_check))
     final_pins = json.loads((root / 'scripts/data/adreno-compiler-inputs.json').read_text())
     validate_recorded_patches(root, mesa, final_pins)
     assert sha(mesa / 'src/freedreno/vulkan/tu_knl_darwin.cc') == '6f8b09b7ee19eadf3e06df4128f7b3ee016c0528a16506a2b8d637ade9af7242'

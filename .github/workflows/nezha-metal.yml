@@ -1,7 +1,7 @@
-name: nezha iPhone27 Camera113 A8XX copy pitch units
+name: nezha iPhone27 Camera115 consistent small YUV plane layout
 on:
   push:
-    branches: [codex/ios27-camera113-turnip-copy-pitch-20261120]
+    branches: [codex/ios27-camera115-yuv-plane-layout-20261121]
   workflow_dispatch:
 permissions:
   contents: read
@@ -131,6 +131,9 @@ jobs:
       - name: Execute actual copy pitch helper with Mesa register fields
         id: copy_pitch
         run: device/ci/gpu-userland/logrun copy-pitch python3 unixnu/scripts/check-turnip-gen8-copy-pitch.py --source unixnu/.cache/mesa-work --patch unixnu/patches/mesa/turnip-gen8-copy-pitch-units.patch --out "$LOGS/copy-pitch"
+      - name: Execute original Gen8 small YUV plane selection and fallback
+        id: small_yuv_layout
+        run: device/ci/gpu-userland/logrun small-yuv-layout python3 unixnu/scripts/check-turnip-gen8-small-yuv-layout.py --source unixnu/.cache/mesa-work --out "$LOGS/small-yuv-layout"
       - name: Build Turnip for the actual A840 arm64e iOS27 target
         id: turnip_ios27
         working-directory: unixnu
@@ -191,6 +194,7 @@ jobs:
           OUTCOME_SURFACE_PLANES: ${{ steps.surface_planes.outcome }}
           OUTCOME_CAMERA_FORWARDING: ${{ steps.camera_forwarding.outcome }}
           OUTCOME_COMPUTE_DUMP: ${{ steps.compute_dump.outcome }}
+          OUTCOME_SMALL_YUV_LAYOUT: ${{ steps.small_yuv_layout.outcome }}
           OUTCOME_COPY_PITCH: ${{ steps.copy_pitch.outcome }}
           OUTCOME_HEAP_OPTIONS: ${{ steps.retained_contracts.outcome }}
           OUTCOME_CAMERA_PUBLIC: ${{ steps.camera_public.outcome }}
@@ -247,6 +251,7 @@ jobs:
           SURFACE_PLANES: ${{ steps.surface_planes.outcome }}
           CAMERA_FORWARDING: ${{ steps.camera_forwarding.outcome }}
           COMPUTE_DUMP: ${{ steps.compute_dump.outcome }}
+          SMALL_YUV_LAYOUT: ${{ steps.small_yuv_layout.outcome }}
           COPY_PITCH: ${{ steps.copy_pitch.outcome }}
           HEAP_OPTIONS: ${{ steps.retained_contracts.outcome }}
           CAMERA_PUBLIC: ${{ steps.camera_public.outcome }}
@@ -276,6 +281,7 @@ jobs:
           test "$CAMERA_FORWARDING" = success
           test "$COMPUTE_DUMP" = success
           test "$COPY_PITCH" = success
+          test "$SMALL_YUV_LAYOUT" = success
           test "$HEAP_OPTIONS" = success
           test "$CAMERA_PUBLIC" = success
           test "$CAMERA_FUNCTION_SPI" = success

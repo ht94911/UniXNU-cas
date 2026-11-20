@@ -124,6 +124,18 @@ if copy_source.is_file():
     if copy_object.is_file():
         shutil.copyfile(copy_object, target / 'tu_clear_blit.cc.o')
 
+plane_source = ROOT / '.cache/mesa-work/src/freedreno/vulkan/tu_image.cc'
+plane_object = ROOT / 'build/mesa-tu-ios27/src/freedreno/vulkan/libvulkan_freedreno.dylib.p/tu_image.cc.o'
+if plane_source.is_file():
+    target = OUT / 'small-yuv-layout'
+    target.mkdir(exist_ok=True)
+    shutil.copyfile(plane_source, target / 'tu_image.cc')
+    shutil.copyfile(ROOT / '.cache/mesa-work/src/freedreno/fdl/fd6_layout.c', target / 'fd6_layout.c')
+    if plane_object.is_file():
+        shutil.copyfile(plane_object, target / 'tu_image.cc.o')
+    else:
+        problems.append('Gen8 small YUV arm64e image object not retained')
+
 turnip = ROOT / 'build/mesa-tu-ios27/src/freedreno/vulkan/libvulkan_freedreno.dylib'
 if not args.host_only and turnip.is_file():
     (OUT / 'turnip-ios27').mkdir()
