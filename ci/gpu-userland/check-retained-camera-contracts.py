@@ -19,7 +19,7 @@ args.logs.mkdir(parents=True, exist_ok=True)
 retained_source = tempfile.TemporaryDirectory(prefix='camera094-retained-', dir=args.logs)
 previous = Path(retained_source.name)
 shutil.copyfile(kit / 'NativeBridgeMetalFrontend.mm', previous / 'NativeBridgeMetalFrontend.mm')
-for name in ('camera107-surface-log-plugin.patch', 'camera096-compute-match-plugin.patch', 'camera094-compute-dump-plugin.patch', 'camera093-surface-plane-plugin.patch'):
+for name in ('camera111-threadgroup-dump-plugin.patch', 'camera107-surface-log-plugin.patch', 'camera096-compute-match-plugin.patch', 'camera094-compute-dump-plugin.patch', 'camera093-surface-plane-plugin.patch'):
     patch = Path(__file__).with_name('patches') / name
     subprocess.run(['git', 'apply', '--reverse', '--check', str(patch)], cwd=previous, check=True)
     subprocess.run(['git', 'apply', '--reverse', str(patch)], cwd=previous, check=True)

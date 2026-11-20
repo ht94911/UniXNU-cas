@@ -265,19 +265,29 @@ assert camera_function['metadata_source_sha256'] == hashlib.sha256((root/'driver
 assert camera_function['bridge_source_sha256'] == hashlib.sha256((root/'drivers/AdrenoMetal/bridge/NativeMetalObjects.rs').read_bytes()).hexdigest()
 assert target_extern['camera_function_SPI_method_metadata_verified']
 report['actual_camera_function_SPI'] = camera_function
-(a.logs/'full-target-qualified.json').write_text(json.dumps(report,indent=2)+'\n')
-print(json.dumps({k:v for k,v in report.items() if k!='profile'},indent=2))
 
 compute_dump=json.loads((a.logs/'compute-dump/report.json').read_text())
-assert compute_dump['passed'] and compute_dump['checks']==20
+assert compute_dump['passed'] and compute_dump['checks']==28
 assert compute_dump['actual_ObjectiveC_bodies_executed'] and compute_dump['disabled_dispatch_arguments_unchanged']
 assert compute_dump['compute_filter_only_matching_commands'] and compute_dump['compute_filter_budget']==2
 assert compute_dump['repeated_pipeline_does_not_spend_budget'] and compute_dump['readbacks_do_not_spend_budget']
+assert compute_dump['threadgroup_lengths_forwarded_unchanged'] and compute_dump['threadgroup_before_filter_selection_retained']
+assert compute_dump['threadgroup_updates_and_unset_logged']
 assert b'NATIVE_METAL_DUMP_COMPUTE_MATCH' in data
 assert compute_dump['source_sha256']==hashlib.sha256((root/'drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm').read_bytes()).hexdigest()
 for marker in (b'kernel %u dispatch %s', b'CPU center %u/%u/%u', b'compute %@ k=%s', b'after %s'):
     assert marker in data, marker
 report['actual_compute_dump'] = compute_dump
+probe=a.logs/'planar-probe'
+probe_report=json.loads((probe/'qualified.json').read_text())
+assert probe_report['Apple_codesign_strict_passed'] and probe_report['signature_page_bytes']==4096
+assert probe_report['planar_formats']==[13,23] and probe_report['UV_format']=='R16Uint'
+assert probe_report['threadgroup_lengths']==[16384,32768] and probe_report['tested_shapes']==[[64,16],[1200,2608]]
+assert probe_report['camera_capture_started'] is False
+assert hashlib.sha256((probe/'nezha-camera-nv12-probe').read_bytes()).hexdigest()==probe_report['binary_sha256']
+assert hashlib.sha256((probe/'nv12-sample.metallib').read_bytes()).hexdigest()==probe_report['metallib_sha256']
+
+report['native_planar_probe_compiled_signed'] = probe_report
 
 planes=json.loads((a.logs/'surface-plane-forwarding/report.json').read_text())
 assert planes['passed'] and planes['checks']==15 and planes['actual_ObjectiveC_bodies_executed']
@@ -285,3 +295,5 @@ assert planes['source_sha256']==hashlib.sha256((root/'drivers/AdrenoMetal/Native
 assert target_extern['actual_surface_plane_method_verified'] and target_extern['surface_plane_constant_zero_getter_absent']
 report.update(actual_surface_plane_forwarding=planes, actual_surface_plane_target=target_extern['surface_plane_IMP'])
 (a.logs/'full-target-qualified.json').write_text(json.dumps(report,indent=2)+'\n')
+
+print(json.dumps({k:v for k,v in report.items() if k!='profile'},indent=2))

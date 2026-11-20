@@ -434,6 +434,10 @@ def main():
     must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', '--check', surface_log_patch])
     must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', surface_log_patch])
     record['camera107_surface_log_patch'] = sha(surface_log_patch)
+    selected = HERE / 'patches/camera111-threadgroup-dump-plugin.patch'
+    must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', '--check', selected])
+    must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', selected])
+    record['camera111_threadgroup_dump_patch'] = sha(selected)
     # Select the runtime only after its final recipe pin has been applied.
     # 3. metal2vulkan at the pin.
     translator = json.loads((root / 'scripts/data/gpu-metal-vulkan-inputs.json').read_text())['translator']

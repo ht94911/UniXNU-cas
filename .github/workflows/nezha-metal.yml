@@ -1,7 +1,7 @@
 name: nezha iPhone27 Camera107 GPU051 preview display imports
 on:
   push:
-    branches: [codex/ios27-camera107-preview-display-20261120]
+    branches: [codex/ios27-camera111-compute-bindings-20261120]
   workflow_dispatch:
 permissions:
   contents: read
@@ -128,6 +128,12 @@ jobs:
       - name: Execute actual Gen8 YUV descriptor fields and preserve single-plane fields
         id: gen8_yuv
         run: device/ci/gpu-userland/logrun gen8-yuv python3 unixnu/scripts/check-turnip-gen8-yuv-plane-address.py --source unixnu/.cache/mesa-work --patch unixnu/patches/mesa/turnip-gen8-yuv-plane-address.patch --out "$LOGS/gen8-yuv"
+      - name: Build and sign the bounded planar storage and threadgroup consumer
+        id: planar_probe
+        run: |
+          set -euo pipefail
+          export PATH="$(brew --prefix openssl@3)/bin:$PATH"
+          python3 device/ci/gpu-userland/build-planar-probe.py --out "$LOGS/planar-probe" --sealed "$RUNNER_TEMP/probe-sealed"
       - name: Build Turnip for the actual A840 arm64e iOS27 target
         id: turnip_ios27
         working-directory: unixnu
@@ -188,6 +194,7 @@ jobs:
           OUTCOME_SURFACE_PLANES: ${{ steps.surface_planes.outcome }}
           OUTCOME_CAMERA_FORWARDING: ${{ steps.camera_forwarding.outcome }}
           OUTCOME_COMPUTE_DUMP: ${{ steps.compute_dump.outcome }}
+          OUTCOME_PLANAR_PROBE: ${{ steps.planar_probe.outcome }}
           OUTCOME_HEAP_OPTIONS: ${{ steps.retained_contracts.outcome }}
           OUTCOME_CAMERA_PUBLIC: ${{ steps.camera_public.outcome }}
           OUTCOME_CAMERA_FUNCTION_SPI: ${{ steps.retained_contracts.outcome }}
@@ -243,6 +250,7 @@ jobs:
           SURFACE_PLANES: ${{ steps.surface_planes.outcome }}
           CAMERA_FORWARDING: ${{ steps.camera_forwarding.outcome }}
           COMPUTE_DUMP: ${{ steps.compute_dump.outcome }}
+          PLANAR_PROBE: ${{ steps.planar_probe.outcome }}
           HEAP_OPTIONS: ${{ steps.retained_contracts.outcome }}
           CAMERA_PUBLIC: ${{ steps.camera_public.outcome }}
           CAMERA_FUNCTION_SPI: ${{ steps.retained_contracts.outcome }}
@@ -270,6 +278,7 @@ jobs:
           test "$SURFACE_PLANES" = success
           test "$CAMERA_FORWARDING" = success
           test "$COMPUTE_DUMP" = success
+          test "$PLANAR_PROBE" = success
           test "$HEAP_OPTIONS" = success
           test "$CAMERA_PUBLIC" = success
           test "$CAMERA_FUNCTION_SPI" = success

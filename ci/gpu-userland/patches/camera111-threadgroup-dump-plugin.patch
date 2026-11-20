@@ -1,0 +1,35 @@
+diff --git a/NativeBridgeMetalFrontend.mm b/NativeBridgeMetalFrontend.mm
+index affaff1..9b9db7a 100644
+--- a/NativeBridgeMetalFrontend.mm
++++ b/NativeBridgeMetalFrontend.mm
+@@ -2742,6 +2742,7 @@ static uint64_t encodeCommandOf(id object) {
+ @end
+
+ @interface NBComputeEncoder : NBEncoder
++@property(nonatomic,strong) NSMutableDictionary<NSNumber *,NSNumber *> *dumpThreadgroupLengths;
+ @end
+ @implementation NBComputeEncoder
+ - (MTLDispatchType)dispatchType {return MTLDispatchTypeSerial;}
+@@ -2769,6 +2770,10 @@ static uint64_t encodeCommandOf(id object) {
+  for(NSUInteger k=0;k<r.length;k++)[self sampler:s[k] lodMin:a[k] max:b[k] index:r.location+k stage:0];
+ }
+ - (void)setThreadgroupMemoryLength:(NSUInteger)n atIndex:(NSUInteger)i {
++ if(dumpRange().first && !self.commandBuffer.dumpReadback) {
++  if(!_dumpThreadgroupLengths)_dumpThreadgroupLengths=[NSMutableDictionary dictionary];
++  _dumpThreadgroupLengths[@(i)]=@(n);
++ }
+  ENCODE([self check:nmb_compute_set_threadgroup_memory(self.handle,(uint32_t)n,(uint32_t)i) what:"setThreadgroupMemoryLength"]);
+ }
+ - (void)setImageblockWidth:(NSUInteger)width height:(NSUInteger)height {
+@@ -2782,6 +2787,11 @@ static uint64_t encodeCommandOf(id object) {
+       self.commandBuffer.dumpKernels,threads?"threads":"groups",(unsigned long)size.width,(unsigned long)size.height,
+       (unsigned long)size.depth,(unsigned long)group.width,(unsigned long)group.height,(unsigned long)group.depth,
+       [self.dumpPipeline dumpInfo]?:@"no pipeline"]);
++  if(_dumpThreadgroupLengths.count) {
++   for(NSNumber *index in [[_dumpThreadgroupLengths allKeys] sortedArrayUsingSelector:@selector(compare:)])
++    dumpLine(self.commandBuffer,[NSString stringWithFormat:@"kernel %u threadgroup %lu length %lu",
++        self.commandBuffer.dumpKernels,index.unsignedLongValue,_dumpThreadgroupLengths[index].unsignedLongValue]);
++  } else dumpLine(self.commandBuffer,[NSString stringWithFormat:@"kernel %u threadgroup lengths unset",self.commandBuffer.dumpKernels]);
+   [self dumpBindings];
+  }
+  ENCODE([self check:nmb_compute_dispatch(self.handle,s.data(),g.data(),threads) what:"dispatch"]);
