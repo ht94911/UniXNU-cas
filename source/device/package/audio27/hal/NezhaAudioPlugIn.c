@@ -656,7 +656,10 @@ static OSStatus SetPropertyData(AudioServerPlugInDriverRef d,AudioObjectID o,pid
         else {
             memcpy(&value,data,sizeof value);
             if (value>1) result=kAudioHardwareIllegalOperationError;
-            else {gReferenceSelected=value;mute_changed=kReferenceControl;result=0;}
+            /* The host performs its own reference-stream transition while
+             * calling this setter. A synchronous PropertiesChanged for this
+             * same control re-enters that transition before it can return. */
+            else {gReferenceSelected=value;result=0;}
         }
     } else if ((o==kInputSource && a->mSelector==kAudioSelectorControlPropertyCurrentItem &&
                 a->mScope==kAudioObjectPropertyScopeGlobal && a->mElement==0) ||
@@ -711,7 +714,7 @@ finished:
         AudioObjectPropertyAddress changed[2]={{kAudioLevelControlPropertyScalarValue,kAudioObjectPropertyScopeGlobal,kAudioObjectPropertyElementMain},{kAudioLevelControlPropertyDecibelValue,kAudioObjectPropertyScopeGlobal,kAudioObjectPropertyElementMain}};
         gHost->PropertiesChanged(gHost,volume_changed,2,changed);
     }
-    if ((mute_changed==kInputMute || mute_changed==kReferenceControl) && gHost) {
+    if (mute_changed==kInputMute && gHost) {
         AudioObjectPropertyAddress changed={kAudioBooleanControlPropertyValue,kAudioObjectPropertyScopeGlobal,kAudioObjectPropertyElementMain};
         gHost->PropertiesChanged(gHost,mute_changed,1,&changed);
     }

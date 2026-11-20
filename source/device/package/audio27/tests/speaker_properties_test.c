@@ -11,6 +11,13 @@
 static uint64_t test_output[NA_AUDIO_RING_FRAMES],test_input[NA_AUDIO_RING_FRAMES];
 static unsigned test_routes,test_starts,test_stops,test_inputs;
 static uint32_t test_last_route;
+static unsigned test_property_notifications;
+static OSStatus reference_change_callback(AudioServerPlugInHostRef host,AudioObjectID object,
+                                         UInt32 count,const AudioObjectPropertyAddress *addresses) {
+    (void)host;(void)object;(void)count;(void)addresses;
+    ++test_property_notifications;
+    return 0;
+}
 kern_return_t property_test_scalar(mach_port_t connection,uint32_t selector,const uint64_t *input,
                                     uint32_t count,uint64_t *output,uint32_t *out_count) {
     assert(!input && !count && !output && !out_count);
@@ -198,10 +205,15 @@ int main(void) {
     UInt32 reference_off=0,reference_on=1;
     Boolean reference_settable=0;
     assert(IsPropertySettable(NULL,kReferenceControl,0,&address,&reference_settable)==0 && reference_settable);
+    AudioServerPlugInHostInterface reference_host={0};
+    reference_host.PropertiesChanged=reference_change_callback;gHost=&reference_host;
+    test_property_notifications=0;
     assert(SetPropertyData(NULL,kReferenceControl,0,&address,0,NULL,sizeof reference_off,&reference_off)==0);
     assert(scalar(kReferenceStream,kAudioStreamPropertyIsActive,kAudioObjectPropertyScopeGlobal)==0);
     assert(SetPropertyData(NULL,kReferenceControl,0,&address,0,NULL,sizeof reference_on,&reference_on)==0);
     assert(scalar(kReferenceStream,kAudioStreamPropertyIsActive,kAudioObjectPropertyScopeGlobal)==1);
+    assert(SetPropertyData(NULL,kReferenceControl,0,&address,0,NULL,sizeof reference_on,&reference_on)==0);
+    assert(test_property_notifications==0);gHost=NULL;
     gSelectedMicSource=kMicSource;
     address=(AudioObjectPropertyAddress){'MCCs',kAudioObjectPropertyScopeGlobal,0};
     CFDictionaryRef counts=NULL;
