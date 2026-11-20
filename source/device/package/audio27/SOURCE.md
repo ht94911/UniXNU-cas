@@ -27,8 +27,13 @@ All31 original map keys are retained, including the original actuator graph.
 The32 accepted cellular/ringing entries are retained and the8 config entries
 fit the40-entry native applicator. The104-byte source-assembled handoff occupies
 only exact checked BRK padding in the same24A446 VirtualAudio image; no private
-Apple binary is included in the source export. Target/HAL SDK compilation,
-full packaging and phone acceptance of067 are still pending.
+Apple binary is included in the source export. The first Mac run stopped in the existing TAS lease fixture because its
+aggregate initializer omitted the new route callback. The fixture now
+initializes it explicitly; the existing lease scenarios pass ASan/UBSan.
+The40-entry capacity patch now carries source context and applies with the
+actual default git apply, changing only the32-entry limit in public XNU.
+Target/HAL SDK compilation, full packaging and phone acceptance of067 remain
+pending in the corrected067b build.
 
 Latest reference fetches: UniXNU8542980, myron-nextf1a1bfe, shengc8f92b2,
 Pagania84204e and fairladyfb06775. No equivalent item/graph handoff was found

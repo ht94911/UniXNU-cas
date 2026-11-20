@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "067 receiver/speaker on accepted066: real selected-source array, mono item kind, OEM receiver/TAS mode switch and exact original N71 config-map handoff;32prior+8audio entries. Existing microphone full recovery, WebKit65 and baseband/GPU kept. Necessary public source only; no images, firmware, calibration or phone.",
+  "purpose": "067b receiver/speaker on accepted066: real selected-source array, mono item kind, OEM receiver/TAS mode switch and exact original N71 config-map handoff;32prior+8audio entries. Existing microphone full recovery, WebKit65 and baseband/GPU kept. Corrected existing TAS fixture initializer and contextual capacity patch; Necessary public source only; no images, firmware, calibration or phone.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "405107f95f148b8f9e9312ea4cfc717ac1fbf198",
+  "device_revision": "601e3ca805b249855f080e665f321305c9ec8714",
   "soc_revision": "703d7b4bb00904b4a6e5d96f9e9bf72eec170f6b",
   "xcode": "26.6",
   "files": {
@@ -100,7 +100,7 @@
     "source/device/package/SourceRootPolicies.cpp": "714af8d95b5a8db89058be9f14a7e71a5fc2e97ded4d067c39e04299f0db27d5",
     "source/device/package/SourceStorage.cpp": "d0b8e0433ef71a1761e5d3dd055d8c4a6b709a5b8dabb2da36ab558291c9d2f3",
     "source/device/package/armcpu/darwin-asm-separators.patch": "15893fd689f266184c3273135761d7eff0d71aa0c42e29d1d71666a0abd60e8f",
-    "source/device/package/audio27/SOURCE.md": "1d645f987f36c9b8895545f6478b3aa2482b3330718117afa8fcfec02d1565f8",
+    "source/device/package/audio27/SOURCE.md": "83207a704639e02b709c1ada340bf82d672e85a28c4c0c503c8967c00e0951a1",
     "source/device/package/audio27/compat/ReceiverGraphConfig67.S": "1935c7fe6af35b23255dd89ccb6035bb59269b6a92a80e6d7e42cf89ab74caac",
     "source/device/package/audio27/core/AudioDriver.c": "4d429823f12a8ecf29bf9fa7eabfe3ccb62a149da90387cf196f5ee45bc95e16",
     "source/device/package/audio27/core/AudioDriver.h": "c60bc1a14a1ea79f10c6e0886a3486c37b444f3861896ae9e16d4120b37460a5",
@@ -476,7 +476,7 @@
     "source/device/patches/xnu-12377/zzzzz-nezha-owner-data-ready.patch": "306414945401c128472d3b0acddd03c88bec57ec47d6988660173d0b432c3e4b",
     "source/device/patches/xnu-12377/zzzzzz-nezha-adreno840-start.patch": "d32bb0d5e678e5773786dcce90467e0258d844550b418b438e1548fb32392f79",
     "source/device/patches/xnu-12377/zzzzzz-nezha-audio-hal-mount.patch": "cead26a55e7828b0247c2bfa6b91a9ff00fdd8e3abdce920ef03f7aca09e0450",
-    "source/device/patches/xnu-12377/zzzzzz-nezha-audio67-text-capacity.patch": "de017fe1327aa6852fcad3ce452013d256807715081ae0d165e70db4eaf5ac8e",
+    "source/device/patches/xnu-12377/zzzzzz-nezha-audio67-text-capacity.patch": "dfa42ef526a3523ba04c30afe264b3ea4e424827876b682d7de15c22b21cd332",
     "source/device/patches/xnu-12377/zzzzzz-nezha-cellular-addon-size.patch": "5087cd2e214f0fd88f7105a5de56af74e01ab8d6bc75b7c9a65a36ba07245159",
     "source/device/patches/xnu-12377/zzzzzz-nezha-cellular-cached-entry.patch": "f9d023a17fbc05500c1d7b8e4477b9e81632912d5da5f62e78dd9ad1534f12bb",
     "source/device/patches/xnu-12377/zzzzzz-nezha-cellular-launch-identity.patch": "8636bf51136c0d8cf57daaebb3f1d5c101844fd4be26bd51842037972c509dc2",
@@ -515,7 +515,7 @@
     "source/device/scripts/prepare-nezha27-baseband.py": "84f40cec2d3b48b9d372263a50e563666b025605cd132554497bd87cf93eb499",
     "source/device/scripts/qualify-armcpu-instructions.py": "dae7cb3b9faecaac7b268212bbd324ae172d3dffa0e94b06afc4581c9f4abe9b",
     "source/device/tests/baseband27/audio_shared_ipcc_test.c": "633420df7d1d668501b59436e1576c65ead245ce8a51d6188a18f6cf57bb89be",
-    "source/device/tests/baseband27/audio_tas_lease_test.py": "ab45774bfa439da66f20d5fd94041ea8ee8e7701bb6471f5d3d4bbf6d89e22f6",
+    "source/device/tests/baseband27/audio_tas_lease_test.py": "1d94575a380dd7bb93e08888fe49ca70f2bcd7bf528cdb52b3317eac29b1c2fd",
     "source/device/tests/baseband27/boot_ready_test.c": "415b5a8f68ba7a529d33f2f6905fe8af155fb42f344284a344a98138b4c68965",
     "source/device/tests/baseband27/cellular_launch_test.py": "6eff8a971d7c88c2b305b8f48369909044dc6ff09b1e860d764e63ffba45f144",
     "source/device/tests/baseband27/cellular_network_runtime_test.py": "6668677676a93b6d297a1552eb9ac17ab442d43456ca1cd274ced6d4310d99ec",
