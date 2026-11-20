@@ -1,0 +1,137 @@
+diff --git a/patches/mesa/turnip-gen8-copy-pitch-units.patch b/patches/mesa/turnip-gen8-copy-pitch-units.patch
+new file mode 100644
+index 00000000..3712c10d
+--- /dev/null
++++ b/patches/mesa/turnip-gen8-copy-pitch-units.patch
+@@ -0,0 +1,13 @@
++diff --git a/src/freedreno/vulkan/tu_descriptor_set.h b/src/freedreno/vulkan/tu_descriptor_set.h
++--- a/src/freedreno/vulkan/tu_descriptor_set.h
+++++ b/src/freedreno/vulkan/tu_descriptor_set.h
++@@ -426,7 +426,8 @@
++ tu_desc_set_tex_line_offset(uint32_t *desc, uint32_t tex_line_offset)
++ {
++    if (CHIP >= A8XX) {
++-      desc[6] = pkt_field_set(A8XX_TEX_MEMOBJ_6_TEX_LINE_OFFSET, desc[6], tex_line_offset);
+++      /* TEX_LINE_OFFSET is in bits */
+++      desc[6] = pkt_field_set(A8XX_TEX_MEMOBJ_6_TEX_LINE_OFFSET, desc[6], tex_line_offset * 8);
++    } else {
++       desc[2] = pkt_field_set(A6XX_TEX_MEMOBJ_2_PITCH, desc[2], tex_line_offset);
++    }
+diff --git a/scripts/check-turnip-gen8-copy-pitch.py b/scripts/check-turnip-gen8-copy-pitch.py
+new file mode 100644
+index 00000000..5bcc0696
+--- /dev/null
++++ b/scripts/check-turnip-gen8-copy-pitch.py
+@@ -0,0 +1,98 @@
++#!/usr/bin/env python3
++"""Run the actual pitch helper with Mesa's generated register field definitions."""
++import argparse
++import hashlib
++import json
++from pathlib import Path
++import re
++import subprocess
++import tempfile
++
++p = argparse.ArgumentParser(description=__doc__)
++p.add_argument('--source', type=Path, required=True)
++p.add_argument('--patch', type=Path, required=True)
++p.add_argument('--out', type=Path, required=True)
++a = p.parse_args()
++a.out.mkdir(parents=True, exist_ok=False)
++relative = Path('src/freedreno/vulkan/tu_descriptor_set.h')
++new = (a.source / relative).read_text()
++with tempfile.TemporaryDirectory(dir=a.out, prefix='pitch-original-') as temporary:
++    source = Path(temporary) / relative
++    source.parent.mkdir(parents=True)
++    source.write_text(new)
++    subprocess.run(['git', 'apply', '--reverse', '--check', str(a.patch.resolve())], cwd=temporary, check=True)
++    subprocess.run(['git', 'apply', '--reverse', str(a.patch.resolve())], cwd=temporary, check=True)
++    old = source.read_text()
++    subprocess.run(['git', 'apply', str(a.patch.resolve())], cwd=temporary, check=True)
++    assert source.read_text() == new
++
++
++def function(text):
++    at = text.index('tu_desc_set_tex_line_offset(')
++    start = text.rfind('template <chip CHIP>', 0, at)
++    brace, depth = text.index('{', at), 0
++    for i in range(brace, len(text)):
++        depth += (text[i] == '{') - (text[i] == '}')
++        if not depth:
++            return text[start:i + 1]
++    raise ValueError('Incomplete pitch helper')
++
++
++registers = a.source / 'src/freedreno/registers'
++fields = ''
++for xml, name in [('a6xx_descriptors.xml', 'A6XX_TEX_MEMOBJ_2_PITCH'),
++                  ('a8xx_descriptors.xml', 'A8XX_TEX_MEMOBJ_6_TEX_LINE_OFFSET')]:
++    header = subprocess.check_output([
++        'python3', str(registers / 'gen_header.py'), '--rnn', str(registers),
++        '--xml', str(registers / 'adreno' / xml), '--no-validate', 'c-defines'], text=True)
++    for suffix in ['MASK', 'SHIFT']:
++        match = re.search(r'^#define ' + name + '__' + suffix + r'\s+([^\n]+)', header, re.M)
++        assert match, name + suffix
++        fields += match[0] + '\n'
++
++harness = r'''
++#include <cassert>
++#include <cstdint>
++#include <cstdio>
++#include <initializer_list>
++enum chip {A6XX=6,A7XX=7,A8XX=8};
++FIELDS
++#define pkt_field_set(field,word,value) (((word)&~field##__MASK)|(((uint32_t)(value)<<field##__SHIFT)&field##__MASK))
++#define pkt_field_get(field,word) (((word)&field##__MASK)>>field##__SHIFT)
++namespace before { OLD }
++namespace after { NEW }
++int main(){
++ unsigned checks=0;
++ for(uint32_t pitch:{0u,64u,1216u,1280u,8192u,16384u}) {
++  uint32_t a[16],b[16];for(unsigned i=0;i<16;++i)a[i]=b[i]=0xa5000000u+i;
++  const uint32_t kept=b[6]&~A8XX_TEX_MEMOBJ_6_TEX_LINE_OFFSET__MASK;
++  before::tu_desc_set_tex_line_offset<A8XX>(a,pitch);after::tu_desc_set_tex_line_offset<A8XX>(b,pitch);
++  assert(pkt_field_get(A8XX_TEX_MEMOBJ_6_TEX_LINE_OFFSET,b[6])==pitch*8);++checks;
++  assert(pkt_field_get(A8XX_TEX_MEMOBJ_6_TEX_LINE_OFFSET,a[6])==pitch);++checks;
++  assert((b[6]&~A8XX_TEX_MEMOBJ_6_TEX_LINE_OFFSET__MASK)==kept);++checks;
++  for(unsigned i=0;i<16;++i)if(i!=6)assert(a[i]==b[i]);++checks;
++  before::tu_desc_set_tex_line_offset<A6XX>(a,pitch);after::tu_desc_set_tex_line_offset<A6XX>(b,pitch);assert(a[2]==b[2]);++checks;
++  before::tu_desc_set_tex_line_offset<A7XX>(a,pitch);after::tu_desc_set_tex_line_offset<A7XX>(b,pitch);assert(a[2]==b[2]);++checks;
++ }
++ assert(1216/8==152);++checks;
++ printf("PASS actual pitch helper: %u checks; A8XX byte-to-bit conversion, retained fields and A6XX/A7XX equality\n",checks);
++}
++'''.replace('FIELDS', fields).replace('OLD', function(old)).replace('NEW', function(new))
++source, executable = a.out / 'pitch.cc', a.out / 'pitch'
++source.write_text(harness)
++result = subprocess.run(['clang++', '-std=c++17', '-O1', '-g', '-Wall', '-Wextra', '-Werror',
++                         '-Wno-misleading-indentation', '-fsanitize=address,undefined', str(source),
++                         '-o', str(executable)], capture_output=True)
++(a.out / 'build.log').write_bytes(result.stdout + result.stderr)
++assert result.returncode == 0, result.stderr.decode(errors='replace')
++result = subprocess.run([str(executable)], capture_output=True, timeout=15)
++(a.out / 'run.log').write_bytes(result.stdout + result.stderr)
++assert result.returncode == 0, result.stderr.decode(errors='replace')
++report = dict(passed=True, checks=37, actual_Mesa_helper_executed=True,
++              actual_Mesa_register_fields=True, A8XX_pitch_in_bits=True,
++              old_pitch_unit_mismatch_reproduced=True, A6XX_A7XX_unchanged=True,
++              unrelated_fields_preserved=True,
++              source_sha256=hashlib.sha256((a.source / relative).read_bytes()).hexdigest(),
++              patch_sha256=hashlib.sha256(a.patch.read_bytes()).hexdigest(), phone_operations=False)
++(a.out / 'report.json').write_text(json.dumps(report, indent=2) + '\n')
++print(result.stdout.decode().strip())
+diff --git a/scripts/data/adreno-compiler-inputs.json b/scripts/data/adreno-compiler-inputs.json
+index 1ddcc1df..fbf7f1ad 100644
+--- a/scripts/data/adreno-compiler-inputs.json
++++ b/scripts/data/adreno-compiler-inputs.json
+@@ -71,7 +71,8 @@
+     "patches/mesa/turnip-shaders-shared-across-pipeline-caches.patch",
+     "patches/mesa/turnip-darwin-sweep-retired-on-cache-miss.patch",
+     "patches/mesa/turnip-darwin-submit-room-retry.patch",
+-    "patches/mesa/turnip-gen8-yuv-plane-address.patch"
++    "patches/mesa/turnip-gen8-yuv-plane-address.patch",
++    "patches/mesa/turnip-gen8-copy-pitch-units.patch"
+   ],
+   "integer_fma_reference": {
+     "repository": "https://github.com/ucb-bar/berkeley-softfloat-3",

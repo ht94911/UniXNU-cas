@@ -278,16 +278,12 @@ assert compute_dump['source_sha256']==hashlib.sha256((root/'drivers/AdrenoMetal/
 for marker in (b'kernel %u dispatch %s', b'CPU center %u/%u/%u', b'compute %@ k=%s', b'after %s'):
     assert marker in data, marker
 report['actual_compute_dump'] = compute_dump
-probe=a.logs/'planar-probe'
-probe_report=json.loads((probe/'qualified.json').read_text())
-assert probe_report['Apple_codesign_strict_passed'] and probe_report['signature_page_bytes']==4096
-assert probe_report['planar_formats']==[13,23] and probe_report['UV_format']=='R16Uint'
-assert probe_report['threadgroup_lengths']==[16384,32768] and probe_report['tested_shapes']==[[64,16],[1200,2608]]
-assert probe_report['camera_capture_started'] is False
-assert hashlib.sha256((probe/'nezha-camera-nv12-probe').read_bytes()).hexdigest()==probe_report['binary_sha256']
-assert hashlib.sha256((probe/'nv12-sample.metallib').read_bytes()).hexdigest()==probe_report['metallib_sha256']
-
-report['native_planar_probe_compiled_signed'] = probe_report
+copy_pitch=json.loads((a.logs/'copy-pitch/report.json').read_text())
+assert copy_pitch['passed'] and copy_pitch['checks']==37
+assert copy_pitch['actual_Mesa_helper_executed'] and copy_pitch['actual_Mesa_register_fields']
+assert copy_pitch['A8XX_pitch_in_bits'] and copy_pitch['A6XX_A7XX_unchanged']
+assert copy_pitch['source_sha256']==hashlib.sha256((root/'.cache/mesa-work/src/freedreno/vulkan/tu_descriptor_set.h').read_bytes()).hexdigest()
+report['actual_copy_pitch'] = copy_pitch
 
 planes=json.loads((a.logs/'surface-plane-forwarding/report.json').read_text())
 assert planes['passed'] and planes['checks']==15 and planes['actual_ObjectiveC_bodies_executed']

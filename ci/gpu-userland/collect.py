@@ -115,6 +115,15 @@ if yuv_source.is_file():
     else:
         problems.append('Gen8 YUV arm64e descriptor object not retained')
 
+copy_source = ROOT / '.cache/mesa-work/src/freedreno/vulkan/tu_descriptor_set.h'
+copy_object = ROOT / 'build/mesa-tu-ios27/src/freedreno/vulkan/libvulkan_freedreno.dylib.p/tu_clear_blit.cc.o'
+if copy_source.is_file():
+    target = OUT / 'copy-pitch'
+    target.mkdir(exist_ok=True)
+    shutil.copyfile(copy_source, target / 'tu_descriptor_set.h')
+    if copy_object.is_file():
+        shutil.copyfile(copy_object, target / 'tu_clear_blit.cc.o')
+
 turnip = ROOT / 'build/mesa-tu-ios27/src/freedreno/vulkan/libvulkan_freedreno.dylib'
 if not args.host_only and turnip.is_file():
     (OUT / 'turnip-ios27').mkdir()

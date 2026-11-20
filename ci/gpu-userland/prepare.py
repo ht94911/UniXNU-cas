@@ -423,6 +423,17 @@ def main():
         prepared_fd6_view_sha256=sha(mesa / 'src/freedreno/fdl/fd6_view.cc'),
         descriptor_checker_sha256=sha(root / 'scripts/check-turnip-gen8-yuv-plane-address.py'))
 
+    copy_recipe = HERE / 'patches/camera113-copy-pitch-recipes.patch'
+    must(['git', '-C', root, 'apply', '--check', copy_recipe])
+    must(['git', '-C', root, 'apply', copy_recipe])
+    copy_patch = root / 'patches/mesa/turnip-gen8-copy-pitch-units.patch'
+    must(['git', '-C', mesa, 'apply', '--check', copy_patch])
+    must(['git', '-C', mesa, 'apply', copy_patch])
+    record['camera113_copy_pitch_recipe_patch'] = sha(copy_recipe)
+    record['camera113_copy_pitch_source'] = dict(
+        upstream_revision='39ab13b6159fea9831c1b7521f3ac72c3ce4e5e0',
+        prepared_helper_sha256=sha(mesa / 'src/freedreno/vulkan/tu_descriptor_set.h'),
+        patch_sha256=sha(copy_patch))
     final_pins = json.loads((root / 'scripts/data/adreno-compiler-inputs.json').read_text())
     validate_recorded_patches(root, mesa, final_pins)
     assert sha(mesa / 'src/freedreno/vulkan/tu_knl_darwin.cc') == '6f8b09b7ee19eadf3e06df4128f7b3ee016c0528a16506a2b8d637ade9af7242'
