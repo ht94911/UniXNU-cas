@@ -75,7 +75,7 @@
   "ci/gpu-userland/fixtures/retained-runtime096/planner.log": "e6a58e07f724d6ddb3cc645c510cea8e5cb940b1825463b1c02829f7daeb731c",
   "ci/gpu-userland/fixtures/retained-runtime096/report.json": "64c14b9450f9ec811be422b17c9589fe53acdefc49607f0f4cfa43b52ee5f968",
   "ci/gpu-userland/fixtures/snippet-bindings.json": "6e606554b8c27d8d9895b45558b1e9517cfe63ce1ee44d3a90246d7097ca2ee6",
-  "ci/gpu-userland/fixtures/source-bindings.json": "762ad0d995bd6d19c754ab52a081cfb1d7e6263d67a8c10127c92f453a3d971f",
+  "ci/gpu-userland/fixtures/source-bindings.json": "51b1a78cf4d973ba371e0cdcec9d66f7aa3eb050f96837359ee797f44e0d7762",
   "ci/gpu-userland/fixtures/surface_plane_host.mm": "1becd6abdf7cddb7872ce558059320b38ec6fd4dbe73cc62dd438a7070108b80",
   "ci/gpu-userland/fixtures/swap.cpp": "4e440baee494455d42c61b0fd04833ed082272c865babe8221dd8815c50d90ed",
   "ci/gpu-userland/fixtures/tile-store-bindings.json": "33239fdcc1b58b42ff7be3d38a91a95a32b251d8a5f3aec656be644ac12928e8",
