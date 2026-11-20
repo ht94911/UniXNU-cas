@@ -9,14 +9,14 @@ static unsigned checks, failures;
 static NbGnssFix fix;
 static NbGnssSky sky;
 
-static uint32_t reference(NbQmiWriter *w, uint8_t *out, uint8_t source, uint8_t time_type)
+static uint32_t reference(NbQmiWriter *w, uint8_t *out, uint8_t source, uint8_t context)
 {
     nb_qmi_begin(w,out,4096,NB_QMI_REQUEST,9,NB_PDS_INJECT_POSITION);
     nb_qmi_u64(w,0x10,1700000000123ull);nb_qmi_u64(w,0x11,0);nb_qmi_u64(w,0x12,0);
     nb_qmi_u32(w,0x13,0x41a00000); /* 20m, directly supplied reference uncertainty. */
     nb_qmi_u32(w,0x15,0x42b40000);nb_qmi_u32(w,0x16,0x41f00000);
     nb_qmi_u8(w,0x17,68);nb_qmi_u8(w,0x18,68);
-    nb_qmi_u8(w,0x19,source);nb_qmi_u8(w,0x1a,time_type);
+    nb_qmi_u8(w,0x19,source);nb_qmi_u8(w,0x1a,context);
     const uint8_t reliability[]={0,2},altinfo[]={9,2,2};
     nb_qmi_put(w,0x1b,reliability,2);nb_qmi_put(w,0x1c,altinfo,3);
     return nb_qmi_end(w);
@@ -118,8 +118,16 @@ int main(void)
     CHECK(nb_gnss_reference_position(&m,pds,required-1,&encoded)==NB_QMI_ERR_NO_MEMORY&&!encoded);
     n=reference(&w,raw,2,0);CHECK(nb_gnss_message(raw,n,&m));
     CHECK(nb_gnss_reference_position(&m,pds,sizeof pds,&encoded)==NB_QMI_ERR_NOT_SUPPORTED&&!encoded);
-    n=reference(&w,raw,1,1);CHECK(nb_gnss_message(raw,n,&m));
-    CHECK(nb_gnss_reference_position(&m,pds,sizeof pds,&encoded)==NB_QMI_ERR_NOT_SUPPORTED);
+    uint8_t baseline[128];uint32_t baseline_length=0;
+    n=reference(&w,raw,1,0);CHECK(nb_gnss_message(raw,n,&m));
+    CHECK(!nb_gnss_reference_position(&m,baseline,sizeof baseline,&baseline_length));
+    /* The actual builder's context byte varies with its object address.
+     * Every value preserves the independent UTC timestamp and wire fields. */
+    for(unsigned context=0;context<256;context++){
+        n=reference(&w,raw,1,(uint8_t)context);CHECK(nb_gnss_message(raw,n,&m));
+        CHECK(!nb_gnss_reference_position(&m,pds,sizeof pds,&encoded));
+        CHECK(encoded==baseline_length&&!memcmp(pds,baseline,encoded));
+    }
     n=reference(&w,raw,1,0);CHECK(nb_gnss_message(raw,n,&m));
     nb_put64((uint8_t *)nb_gnss_tlv(&m,0x11,8),UINT64_C(0x7ff8000000000000));
     CHECK(nb_gnss_reference_position(&m,pds,sizeof pds,&encoded)==NB_QMI_ERR_INVALID_ARG);

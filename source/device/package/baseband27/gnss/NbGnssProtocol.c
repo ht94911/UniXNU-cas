@@ -112,14 +112,18 @@ uint32_t nb_gnss_reference_position(const NbQmiMessage *m, uint8_t *out, uint32_
     const uint8_t *lat = nb_gnss_tlv(m, 0x11, 8), *lon = nb_gnss_tlv(m, 0x12, 8);
     const uint8_t *horizontal = nb_gnss_tlv(m, 0x13, 4), *vertical = nb_gnss_tlv(m, 0x16, 4);
     const uint8_t *hconf = nb_gnss_tlv(m, 0x17, 1), *vconf = nb_gnss_tlv(m, 0x18, 1);
-    const uint8_t *source = nb_gnss_tlv(m, 0x19, 1), *time = nb_gnss_tlv(m, 0x1a, 1);
+    const uint8_t *source = nb_gnss_tlv(m, 0x19, 1), *context = nb_gnss_tlv(m, 0x1a, 1);
     const uint8_t *reliability = nb_gnss_tlv(m, 0x1b, 2), *altinfo = nb_gnss_tlv(m, 0x1c, 3);
     uint32_t altitude_bytes = 0;
     const uint8_t *altitude = nb_qmi_tlv(m, 0x15, &altitude_bytes);
     if (!utc || !nb_le64(utc) || nb_le64(utc) > UINT64_C(253402300799999) || !lat || !lon || !horizontal || !vertical ||
-        !hconf || !vconf || !source || !time || !reliability || !altinfo ||
+        !hconf || !vconf || !source || !context || !reliability || !altinfo ||
         (altitude && altitude_bytes != 4u)) return NB_QMI_ERR_INVALID_ARG;
-    if (*time) return NB_QMI_ERR_NOT_SUPPORTED; /* This caller's type0 timestamp is UTC ms. */
+    /* The original24A446 builder stores its messenger context's low byte
+     * in TLV0x1a, independently of the timestamp argument in TLV0x10.
+     * Its cached-reference producer converts CF absolute time to UTC ms
+     * using kCFAbsoluteTimeIntervalSince1970 and1000. Do not interpret the
+     * context byte as a timebase or reject the valid supplied timestamp. */
     if (!nb_gnss_degree_valid(nb_le64(lat), UINT64_C(0x4056800000000000)) ||
         !nb_gnss_degree_valid(nb_le64(lon), UINT64_C(0x4066800000000000)) ||
         !nb_gnss_float_valid(nb_le32(horizontal), 1) || !(nb_le32(horizontal) & 0x7fffffffu) ||
@@ -128,7 +132,7 @@ uint32_t nb_gnss_reference_position(const NbQmiMessage *m, uint8_t *out, uint32_
         (altitude && !nb_gnss_float_valid(nb_le32(altitude), 0))) return NB_QMI_ERR_INVALID_ARG;
     /* The measured cached-reference caller has source1, unknown horizontal
      * reliability and other/dependent/full altitude metadata. Keep other
-     * PDS source/time conventions unsupported until their units are known. */
+     * PDS position-source conventions unsupported until their units are known. */
     if (*source != 1u || reliability[0] || reliability[1] > 4u ||
         altinfo[0] != 9u || altinfo[1] != 2u || altinfo[2] != 2u) return NB_QMI_ERR_NOT_SUPPORTED;
     for (uint32_t at = 0; at < m->length; at += 3u + nb_le16(m->tlvs + at + 1)) {
