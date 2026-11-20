@@ -1,6 +1,6 @@
 {
   "device_revision": "c812a6bbd9b29f993c94fcd63a36f88e8096be8b",
-  "purpose": "HAL071: existing accepted-output tap receives the stock24A446 evis control so no second software reference is inserted; publish one imic and normalize logical input selections; original070 kernel and066 recovery/32ring/065browser retained.",
+  "purpose": "HAL071: existing accepted-output tap receives the stock24A446 evis control so no second software reference is inserted; publish one imic and normalize logical input selections; original070 kernel and066 recovery/32ring/065browser retained. Public transitive GPR/AudioReach headers included; production HAL unchanged.",
   "audio": {
     "source_revision": "c812a6bbd9b29f993c94fcd63a36f88e8096be8b",
     "HAL_only": true,
@@ -8,7 +8,7 @@
     "private_inputs": false
   },
   "files": {
-    ".github/workflows/nezha-ios27-native.yml": "67c9c7c183cdbb6fe8e6144f86ca353a5d0e764e3c811156447fb19a48a5e1ed",
+    ".github/workflows/nezha-ios27-native.yml": "b0b96b050956858c28e4cee18d93009ebefeb8b42d771c9d285e6778955da61e",
     "ci/hal.py": "7bdc2c8f7b80e1f3302ce95259d390d43119f5e01d72970d59be96020d9c4933",
     "source/device/package/audio27/core/AudioProtocol.h": "cdd0adfdf372cb6efc5a69f3066f7976f47bf3287884c42d5f7f9709856c17ba",
     "source/device/package/audio27/core/AudioRing.c": "1de1d7ec93732e17b71610531d7e51a9e6e7829ecaa330f32692a39483d418d5",
@@ -20,7 +20,9 @@
     "source/device/package/audio27/hal/NezhaAudioPlugIn.c": "ef0af688351fa4b67d545eb08608fb5a0d762c7772cfb4feb6e87f36d0ef6f07",
     "source/device/package/audio27/hal/NezhaAudioProperties.inc": "25401b41f387ba4ee2650f335b00438dc499eb1917b9b9ad1be7abaffaf73710",
     "source/device/package/audio27/os/NezhaAudioAbi.h": "b49334bcffd93bb2bb014f4686fb0317c21037e930da1a1362326cd4da73fa7c",
-    "source/device/package/audio27/tests/speaker_properties_test.c": "145a1c988dea4636ab41c2f8713d5282441f1f0f5aad84f97197d475c897d88d"
+    "source/device/package/audio27/tests/speaker_properties_test.c": "145a1c988dea4636ab41c2f8713d5282441f1f0f5aad84f97197d475c897d88d",
+    "source/device/package/audio27/upstream/ShengGpr.h": "a274dded1f4d1e2709b9f966759bcb1f57d12747ee0f57743dea1fa97d95d23e",
+    "source/device/package/audio27/upstream/ShengAudioReach.h": "b135177a5feb3e24e0d8a6aabb301600e2c37078b970a09ada6e8eb7bb6a5b98"
   },
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
   "certificate_sha256": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
