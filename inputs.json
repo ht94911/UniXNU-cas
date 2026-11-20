@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "GPU065 use all18 firmware GPU levels up to1200MHz in normal iOS27 load governor; no578MHz ceiling. Reuse18A50-percent demand and hysteresis, preserve dynamic thermal and boundedHFI recovery, fullCPU063 and GPU064Metal. Phone trace-read helper changed locally only.",
+  "purpose": "GPU068 cumulative GPU067 baseline: existing kernel UI observer covers Preferences and Calculator production, existing CA transaction/timer events retained, original Data/normal return/full CPU/GPU tables preserved.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "28a3e5f2a6ef20054ce83038d5fe105a175c06e3",
+  "device_revision": "998520eaf546d2a8f3078b0ef197ef4946770ca9",
   "soc_revision": "device-local-composition-e565439+3435fa5",
   "xcode": "26.6",
   "files": {
@@ -147,13 +147,13 @@
     "source/device/package/.gitkeep": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
     "source/device/package/BootDiagExport.c": "88f65a92490b54444ca68ecf99e887ba1c7f6ee3d5145b8e6eed13bf90c7a92d",
     "source/device/package/BootLog.c": "b8a76a03be5b1595c09ab8181acadf6332f88196022c086eb4628addac25acb3",
-    "source/device/package/BootProcessProbe.c": "7d6ad41f4f92ac73eefc541e267a99c8670d29db03b69545503ff158e4e1f8a2",
-    "source/device/package/BootProcessWorker.c": "3794da8877841cf58869babfa3d0b575993c9c9640fb4d989a619cac0946067e",
+    "source/device/package/BootProcessProbe.c": "023b59e524bf8ade54a1709345c863e5713334e27f19250f1d75d26158fd020d",
+    "source/device/package/BootProcessWorker.c": "d001ea60510cfe591761f7561249c0eb1438a5ddfa000840359052f3a27f14e8",
     "source/device/package/BootReset.c": "c5357752d7fff8c4f16ddcb22685df48e939b0d27184c439366c1cde78adc5a6",
     "source/device/package/BootResetCore.h": "9211ed8aa8174a8999829c29b51351fb839807c1473c6239ae09e069e294a5f6",
     "source/device/package/BootUiTraceCore.h": "9404d7be6386f936904e6af34c870d86ec809b4d97161fd892d904d8334f2753",
     "source/device/package/BootUiTraceDetails.h": "b9c0d9afbc80359a08f2aabb87cf6ee94c5227e64212dffb05ea8d9e08a8473e",
-    "source/device/package/BootUiTraceProbe.c": "22a3e64f66a6386e0129dc0673d673c628aa6f52bce72fa7145962312d123dad",
+    "source/device/package/BootUiTraceProbe.c": "ecb3e958de85bf77062d57c630834e57e669c525bdb8dd4e8007617812af809e",
     "source/device/package/BootWatchdogPolicy.c": "02087f0b09cdc8a76d799372ba392610614f806b99b1d38cd29bab48b3fb4397",
     "source/device/package/KeyStoreProbe.cpp": "35ff8e97c56fd438158b1fe929c53e52dd027bc18f1b4e0eac8a2fdf662fd933",
     "source/device/package/LegacyDisplayProbe.cpp": "25b92ed49e347237f89533acbd41bcd6179d7103b201042fd127a599dce656b9",
@@ -346,7 +346,7 @@
     "source/device/package/bluetooth27/text-fixup-capacity024-source.json": "974d7333c3ced602de8cb91e69f842ea077c837b6a25cfdc7c87ba58ee8cf705",
     "source/device/package/boot-progress/BootFaultProbe.c": "f6b5b8b74aa30b4c163ebc73c5814a50596d62213fd100e8029f7c2fefb116f8",
     "source/device/package/boot-progress/BootProcessProbe.c": "f32a68c701c5bc56848a31760431429ab3d5097406832410ec5f8ff707f102af",
-    "source/device/package/boot-progress/BootProgress.c": "85dcd7c005659c791f9ace44bae55099eba8aa9883c99564a91aed8d5945b64b",
+    "source/device/package/boot-progress/BootProgress.c": "8efc0b3eb31c5a575720128eb175f82da390cc5dc8b8c6214233d48772b0fb48",
     "source/device/package/boot-progress/BootProgressCore.h": "b336397b7aa1e903705ecc78f668f67dd31d7136e8a47acfc801322ada30ee04",
     "source/device/package/boot-progress/BootProgressDisplay.h": "231f580758e4e98592fd7f41203be00ca5670b912508a520bf83fb82d3af10d9",
     "source/device/package/boot-progress/BootProgressLifecycle.h": "eaf777e5b71db7b5affaa9a64d0a2806277730b538d9aa96a457f425ccbada6a",
@@ -387,7 +387,7 @@
     "source/device/package/nezha27-input/HidInputProbe.cpp": "c3e6c59ffb2d8db299a6876599e6117b5d9f529272c6d8a8e2bbbf22326212dc",
     "source/device/package/nezha27-input/InputChainABI.h": "ac72a994d29b1b6097ec7ca440a2bcd7f41b7b4b9b7662393a38c683cbe40006",
     "source/device/package/nezha27-input/InputChainProbe.cpp": "7653046c23d9b3e11c2a89dff7312942b4e9fbee9a678da9026300d02903bdc3",
-    "source/device/package/nezha27-input/InputChainTrace.h": "00a1e23a591f64d7bb8ce99d4787d9371f8b980e0e6c6e3ef364d67a092c31ef",
+    "source/device/package/nezha27-input/InputChainTrace.h": "809ca4a93ba4f8ab5637db643e82086ab0e9b617bb2aefd5cddb77a071db2b1a",
     "source/device/package/nezha27-input/InputEventBridge.cpp": "52ed3de36616fa7d260d529abdd1003320b8cc1dc3212f0b0fdf956a70ed53b2",
     "source/device/package/nezha27-input/NativeHidInput.cpp": "392641f18d04b5693ebd63873f551de180005b72fef0c1aeaec137995402e339",
     "source/device/package/nezha27-input/NezhaAA27Input.h": "d112cd0663fc3fb84dc6be506fe4efac4ede748d541b48f2cc9c3a25852829a2",
@@ -424,7 +424,7 @@
     "source/device/patches/xnu-12377/zzzzzz-nezha-gpu-cpu-map-observe.patch": "08bc4c3ac6c2783d00447e699cdee7ebb9d4d905c61c34ca7f53d439cc42c02a",
     "source/device/patches/xnu-12377/zzzzzz-nezha-gpu-external-ipc-scope.patch": "0798c2f7699e5914b041f69779224c3973fe1973173cb19dfe77ccfa388360f3",
     "source/device/patches/xnu-12377/zzzzzz-nezha-iconservice-memory.patch": "ff71c88c1e440cd91fc540c7968f4be3731266989cd64775c4bf1693397eb934",
-    "source/device/patches/xnu-12377/zzzzzz-nezha-input-chain-trace.patch": "c4d05419e7ec3af0de619754bdb6c2deb69b74d714c2219e509360ebfe1b947e",
+    "source/device/patches/xnu-12377/zzzzzz-nezha-input-chain-trace.patch": "4f19ecf52c9dddd68859b4abd74bb0a00fcf4688a73adf5dccf52a2e6c0c4fc9",
     "source/device/patches/xnu-12377/zzzzzz-nezha-kernel-class-lock-order.patch": "cd90c61d6838f4e6a7248da81b6180f14db03d00f2f7a64f4bbe4034c0aa8dcb",
     "source/device/patches/xnu-12377/zzzzzz-nezha-sigp-startup-order.patch": "18275910b909d187e459c68f5d937cc09bc01923180141dc155aa7f4ff14aaf9",
     "source/device/porting.toml": "c8327b325ba845a46d09242d856b196d032818df0a9f45215c0a081fce20ee3d",
@@ -466,7 +466,7 @@
     "source/device/tests/brightness-trace-budget.py": "4a2b23d79a00543d7d7644f821b9d0bb0d6493fbce14fad2e3b4a4d148914ffe",
     "source/device/tests/cpu27-policy.c": "e1682fcec436a58085ef34ebdf82a536523f933e99a873ea1aacd7d3cd45b61c",
     "source/device/tests/display-dpu-timing.c": "e7ac8e9fbc9e39ae309dea5f3934bdd8ca7ca4bc66601908a2b8d349f9b513c5",
-    "source/device/tests/input-chain-trace.c": "9170cb8675b3ce94e9e1cfd5af0aaa4f322655fb1ef177789aef888a13348669",
+    "source/device/tests/input-chain-trace.c": "8f0e4734a266c0ea6189a0c2955b31fee77dcdafb5818db5091e26d5f78635ab",
     "source/device/tests/input-selftest.c": "df31503c40fbbdc7c8d20757a715987c4133eabdbc32a43cbd1f4e0546f7fd72",
     "source/device/tests/input-telemetry.c": "2af3696ccd9dcfccd4f8864a5f3ffb2144d7acac43b5fc98f34dcb280cf7bd75",
     "source/device/tests/joint047-dma.c": "042a464e2a79eabc7b3af586b03b6007b2ecbf973e24a554966fffe3987a8e5e",
@@ -502,7 +502,7 @@
     "ci/test-native-userlog.py": "f64f5aff7c83cbbff7ce9bd15ab276dd7022f5e42d227999157b796afe414f9e",
     "ci/check-native-userlog.py": "74e7abe9164a853b10d4406a46f55f67670ade42795f066068e84f14b2ebc006",
     "ci/test-native-userlog-producer.py": "619bc31f6f41b16d562bcbc83a41588f6ada45a5268e23ef5c4985e5f364e403",
-    "ci/native.py": "6aa3bbdf1f7ef1e836e80fae674fb21177cadc124a65fb91cc22ad00a9d61805",
+    "ci/native.py": "45f2b3eb57f98c2c7cdfd7a3be4cec3c6429152262d7d7f6ed7f67732f3c2db9",
     "source/device/package/gpu/NezhaGpuBoPhases.h": "6b609e93c766b0f88b569dc1c04177b529f090e23f06a260c4c427afe8dfcbb6",
     "source/device/tests/gpu-bo-phases.cpp": "a7d609b520a3166ca53c24581f89c6d2f02ca53f00b09326749c0356a3fc63e9",
     "source/device/tests/check-gpu-bo-phases.py": "e34cab3913626ff9e80d533e9013791565229a3386fbb1599ed4c71c68afc181",
@@ -511,9 +511,10 @@
     "source/device/docs/GPU052-RESOURCE-ENUMERATION.md": "f8c8e93b0483e8babf441616f2468f83c38462567358109fc6cceb9eca680887",
     "source/device/patches/xnu-12377/nezha-native-4k-large-ram.patch": "6c1e566d009bf384291487f9d5e242514c78a000ea39995fdae9cacfd816e32d",
     "source/adreno/tests/check_submit_busy_log.py": "945f7616e47ceb6c125c4b0f1e177e437d032ac85095326ea2d17b4264491857",
-    ".github/workflows/nezha-ios27-native.yml": "cca3d4244ed8294bcdc8019b4d67a1c54946e90cc0682a270c043d1e539bfc07",
+    ".github/workflows/nezha-ios27-native.yml": "cde3e65c355f971f8280dd258fac717c76749325f9f52a649d7e428a65cb1cfa",
     "source/device/scripts/check-cpu27-firmware-levels.py": "72fc65996664b51733ea45360fb91ceb9a1de561ef2bb63ce0e09b394f149c24",
-    "source/device/scripts/check-gpu27-firmware-levels.py": "9fc0331e6c344a665e875ac7f2855952618e28465c6856f776d1a05c587d13a3"
+    "source/device/scripts/check-gpu27-firmware-levels.py": "9fc0331e6c344a665e875ac7f2855952618e28465c6856f776d1a05c587d13a3",
+    "source/device/scripts/check-ui-main-sampler.py": "da47d09fc97dc79d6f2126c9a8e02dd508508004289c05938b51362cdd8e5eb8"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
@@ -1019,5 +1020,13 @@
     "thermal_recovery_preserved": true,
     "phone_operations": false,
     "physical_frame_improvement_verified": false
+  },
+  "gpu068": {
+    "device_source_revision": "998520eaf546d2a8f3078b0ef197ef4946770ca9",
+    "metal_source_revision": "1a279b5",
+    "scope": "existing UI-main sampler and CA filter only",
+    "previous_native_run": 44590220721,
+    "source_only": true,
+    "phone_operations": false
   }
 }

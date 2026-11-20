@@ -25,6 +25,7 @@ extern void boot_ui_trace_begin(void) __attribute__((weak_import));
 extern void boot_ui_trace_task(task_t,unsigned,int,const char *,unsigned) __attribute__((weak_import));
 extern void boot_ui_trace_publish(void) __attribute__((weak_import));
 extern int boot_ui_trace_role_peer(unsigned) __attribute__((weak_import));
+extern void boot_ui_trace_main_target(task_t,int,const char *) __attribute__((weak_import));
 
 extern uint32_t system_inshutdown;
 volatile unsigned boot_process_passes,boot_process_seen;
@@ -50,6 +51,7 @@ static int followed_slot(proc_t p) {
 static int selected(proc_t p,void *arg) {
  (void)arg;
  const char *name=proc_best_name(p);
+ if(!strcmp(name,"Preferences") || !strcmp(name,"Calculator"))return 1;
  for(unsigned i=0;i<10;++i)if(!strcmp(name,targets[i]))return 1;
  return proc_pid(p)==0 || followed_slot(p)<10;
 }
@@ -57,6 +59,8 @@ static int capture(proc_t p,void *arg) {
  (void)arg;
  const char *name=proc_best_name(p);unsigned index=10;
  for(unsigned i=0;i<10;++i)if(!strcmp(name,targets[i])){index=i;break;}
+ if(boot_ui_trace_main_target && (!strcmp(name,"Preferences") || !strcmp(name,"Calculator")))
+  boot_ui_trace_main_target(proc_task(p),proc_pid(p),name);
  if(proc_pid(p)==0)index=9;
  if(followed_slot(p)<10)index=followed_slot(p);
  // A slot the chain uses belongs to the followed process only (runningboardd/PreBoard would mix their threads into its trace).

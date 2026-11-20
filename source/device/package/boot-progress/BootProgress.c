@@ -96,6 +96,7 @@ extern int boot_kthread_report(const char *,char *,unsigned) __attribute__((weak
 extern volatile unsigned boot_ui_trace_phase __attribute__((weak_import));
 extern volatile unsigned boot_ui_trace_index __attribute__((weak_import));
 extern void boot_process_capture(void) __attribute__((weak_import));
+extern void boot_process_start(void) __attribute__((weak_import));
 extern void boot_process_snapshot(void) __attribute__((weak_import));
 extern char boot_process_rows[10][120] __attribute__((weak_import));
 extern char native_touch_rows[4][120] __attribute__((weak_import));
@@ -1078,9 +1079,17 @@ void boot_progress_start(void) {
   if(kernel_thread_start_priority(pulse_monitor,0,BASEPRI_PREEMPT_HIGH,&thread)==KERN_SUCCESS)thread_deallocate(thread);
   else __atomic_store_n(&pulse_worker_status,3,__ATOMIC_RELEASE);
   if(boot_process_capture && boot_process_snapshot) {
-    __atomic_store_n(&process_worker_status,1,__ATOMIC_RELEASE);
-    if(kernel_thread_start_priority(process_monitor,0,BASEPRI_KERNEL,&thread)==KERN_SUCCESS)thread_deallocate(thread);
-    else __atomic_store_n(&process_worker_status,3,__ATOMIC_RELEASE);
+    unsigned main_trace=0;PE_parse_boot_argn("ndt",&main_trace,sizeof(main_trace));
+    if(main_trace==1 && boot_process_start) {
+      // The retained-task sampler and process discovery share one worker.
+      // BootLog can call the same idempotent start after storage is ready.
+      boot_process_start();
+      __atomic_store_n(&process_worker_status,2,__ATOMIC_RELEASE);
+    } else {
+      __atomic_store_n(&process_worker_status,1,__ATOMIC_RELEASE);
+      if(kernel_thread_start_priority(process_monitor,0,BASEPRI_KERNEL,&thread)==KERN_SUCCESS)thread_deallocate(thread);
+      else __atomic_store_n(&process_worker_status,3,__ATOMIC_RELEASE);
+    }
   }
   if(kernel_thread_start_priority(touch_monitor,0,BASEPRI_KERNEL,&thread)==KERN_SUCCESS)thread_deallocate(thread);
   boot_progress_stage(state.continuous ?

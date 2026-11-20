@@ -280,6 +280,8 @@ def collect(framework, work, sealed):
     add(framework / 'scripts/build-qcom-usb-debug.py', 'userlog-source/build-qcom-usb-debug.py')
     for name in ('report.json', 'build.log', 'execution.log'):
         add(work / 'bo-phases-host' / name, 'bo-phases-host/' + name)
+    for path in sorted((work / 'ui-main-host').glob('*')):
+        if path.is_file(): add(path, 'ui-main-host/' + path.name)
     for path in sorted((work / 'userlog-producer-host').glob('*')):
         if path.is_file() and path.suffix in ('.json', '.log', '.c'):
             add(path, 'userlog-producer-host/' + path.name)

@@ -22,7 +22,7 @@
 +TUNABLE(unsigned int, trace_wrap, "trace_wrap", 1);
  // The filter description to apply to boot tracing.
 -static TUNABLE_STR(trace_typefilter, 256, "trace_typefilter", "");
-+static TUNABLE_STR(trace_typefilter, 256, "trace_typefilter", "S0x2b8a,S0x2b28,S0x0523");
++static TUNABLE_STR(trace_typefilter, 256, "trace_typefilter", "S0x2b8a,S0x2b28,S0x0523,S0x31ca,S0x14ca");
  
  // Turn on wake tracing and set the number of events.
  TUNABLE(unsigned int, wake_nkdbufs, "trace_wake", 0);

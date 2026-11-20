@@ -14,6 +14,19 @@ static int captured_printf(const char *format, ...) {
 int main(void) {
     nezha_input_chain_trace(0x01000000,1,2,3,4,5);
     assert(nezha_chain_head == 0);
+    for(unsigned code=0;code<4;++code) {
+        const uint32_t wanted[]={0x31ca0028,0x31ca0004,0x31ca0210,0x14ca001c};
+        for(unsigned i=0;i<4;++i) {
+            const unsigned prior=nezha_chain_head;
+            nezha_input_chain_trace(wanted[i]|code,1,2,3,4,5);
+            assert(nezha_chain_head==prior+1 && nezha_chain_records[prior%4096].code==(wanted[i]|code));
+            nezha_input_chain_flush();
+        }
+    }
+    unsigned prior=nezha_chain_head;
+    nezha_input_chain_trace(0x31ca0268,1,2,3,4,5);
+    assert(nezha_chain_head==prior);
+    nezha_chain_head=nezha_chain_tail=printed=0;
     nezha_chain_lock=1;
     nezha_input_chain_trace(0x2b8a0258,1,2,3,4,5);
     assert(nezha_chain_drops==1 && nezha_chain_head==0);

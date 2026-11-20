@@ -1,7 +1,7 @@
-name: nezha GPU065 full GPU firmware table - native053
+name: nezha GPU068 foreground UI and CA production - native054
 on:
   push:
-    branches: [codex/ios27-gpu65-full-gpu-table-native053-20261120]
+    branches: [codex/ios27-gpu68-ui-producer-native054-20261120]
   workflow_dispatch:
 permissions:
   contents: read
@@ -45,6 +45,11 @@ jobs:
           printf 'UNIXNU_LLVM_OBJDUMP=%s/bin/llvm-objdump\n' "$(brew --prefix llvm)" >> "$GITHUB_ENV"
       - name: Reconstruct and verify the exact integration source tree
         run: python3 task/ci/native.py prepare --framework unixnu --work "$RUNNER_TEMP/ios27/work"
+      - name: Exercise actual foreground UI sampler lifetime and retained CA events
+        run: |
+          python3 "$RUNNER_TEMP/ios27/work/device/scripts/check-ui-main-sampler.py" --device "$RUNNER_TEMP/ios27/work/device" --out "$RUNNER_TEMP/ios27/work/ui-main-host"
+          clang -std=c11 -O1 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-sanitize-recover=all "$RUNNER_TEMP/ios27/work/device/tests/input-chain-trace.c" -o "$RUNNER_TEMP/ios27/work/ui-main-host/input-events"
+          "$RUNNER_TEMP/ios27/work/ui-main-host/input-events"
       - name: Verify the accepted UserLog producer and actual BSD record routing
         run: |
           python3 task/ci/test-native-userlog.py --wrapper unixnu/scripts/build-qcom-usb-debug.py

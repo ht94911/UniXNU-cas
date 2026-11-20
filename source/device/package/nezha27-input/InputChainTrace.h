@@ -10,8 +10,14 @@ static unsigned nezha_chain_drops;
 
 void nezha_input_chain_trace(uint32_t code, uintptr_t a, uintptr_t b,
                             uintptr_t c, uintptr_t d, uintptr_t tid) {
+    // Reuse CoreAnimation's existing transaction and timer events. The former
+    // filter omitted every CA callback, so no retained callback was not a
+    // negative timer result. Keep only the exact verified event sites.
+    const uint32_t ca_code=code&~3u;
     if ((code >> 16) != 0x2b8a && (code >> 16) != 0x2b28 &&
-        (code >> 16) != 0x0523) return;
+        (code >> 16) != 0x0523 && ca_code!=0x31ca0028 &&
+        ca_code!=0x31ca0004 && ca_code!=0x31ca0210 &&
+        ca_code!=0x14ca001c) return;
     if (__atomic_exchange_n(&nezha_chain_lock, 1, __ATOMIC_ACQUIRE)) {
         __atomic_fetch_add(&nezha_chain_drops, 1, __ATOMIC_RELAXED);
         return;

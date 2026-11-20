@@ -8,6 +8,7 @@
 #include <kern/misc_protos.h>
 #include <machine/machine_routines.h>
 #include <arm/thread.h>
+#include <mach/arm/thread_status.h>
 #include <arm/cpu_data_internal.h>
 #include <arm/cpu_internal.h>
 #include <kern/processor.h>
@@ -18,6 +19,7 @@
 #include <ipc/ipc_space.h>
 #include <ipc/ipc_port.h>
 #include <string.h>
+#include <pexpert/pexpert.h>
 #if defined(__arm64e__)
 #include <ptrauth.h>
 #define BT_USER_ADDRESS_BITS 47
@@ -32,6 +34,7 @@ static struct bt_entry samples[BT_MAX_THREADS];
 // CPU rows: each thread's run time (user and system, xnu's recount) between two snapshots, so the threads that actually burn a frame's time
 // show by name of their stacks, which the interrupt-driven profile cannot weigh (it samples at interrupts, not at a fixed rate).
 extern uint64_t recount_thread_time_mach(struct thread *thread);
+extern kern_return_t thread_get_state(thread_t,int,thread_state_t,mach_msg_type_number_t *);
 static uint64_t sample_tid[BT_MAX_THREADS],sample_cpu[BT_MAX_THREADS];static uint32_t sample_cs[BT_MAX_THREADS];
 struct bt_prev {uint64_t tid,at,cpu;uint32_t cs;};
 #define BT_HOT 4
@@ -92,6 +95,94 @@ static void lookup_peer(struct bt_entry *e,ipc_space_t space) {
  ipc_port_t port=IP_NULL;e->peer_code=4;
  if(ipc_port_translate_send(space,(unsigned)e->regs[3],&port)!=KERN_SUCCESS)return;
  e->peer=ipc_port_get_receiver_task_locked(port,NULL);e->peer_code=(e->regs[1]&1)?0:5;ip_mq_unlock(port);
+}
+
+// The existing process worker discovers these tasks. Retain their main thread
+// and map between its two-second process passes, so Settings is observed even
+// when it never opens the Metal plugin. All reads and console output stay in
+// that same isolated worker; no task or scheduler lock spans a user-memory read.
+struct bt_ui_target {thread_t thread;vm_map_t map;ipc_space_t space;int pid;unsigned slide;uint64_t seq,began;unsigned missed;};
+static struct bt_ui_target ui_main_targets[2];
+static unsigned ui_main_initialized,ui_main_enabled;
+static uint64_t ui_main_began;
+static void bt_ui_drop(struct bt_ui_target *target) {
+ if(target->space)is_release(target->space);
+ if(target->map)vm_map_deallocate(target->map);
+ if(target->thread)thread_deallocate(target->thread);
+ memset(target,0,sizeof(*target));
+}
+void boot_ui_trace_main_target(task_t task,int pid,const char *name) {
+ if(!ui_main_initialized) {
+  PE_parse_boot_argn("ndt",&ui_main_enabled,sizeof(ui_main_enabled));
+  ui_main_began=mach_absolute_time();
+  ui_main_initialized=1;
+ }
+ if(ui_main_enabled!=1)return;
+ unsigned slot=!strcmp(name,"Preferences")?0:!strcmp(name,"Calculator")?1:2;
+ if(slot==2 || !task || !task_lock_try(task))return;
+ thread_t main=THREAD_NULL,candidate;
+ queue_iterate(&task->threads,candidate,thread_t,task_threads) {main=candidate;break;}
+ struct bt_ui_target *target=&ui_main_targets[slot];
+ if(!main || !task->map || target->thread==main) {task_unlock(task);return;}
+ thread_reference(main);
+ vm_map_t map=task->map;vm_map_reference(map);
+ ipc_space_t space=task->itk_space;if(space)is_reference(space);
+ unsigned slide=task->task_shared_region_slide;
+ task_unlock(task);
+ bt_ui_drop(target);
+ *target=(struct bt_ui_target){.thread=main,.map=map,.space=space,.pid=pid,.slide=slide,.began=mach_absolute_time()};
+ printf("NEZHA UI MAIN TARGET: %s pid=%d tid=%llu cache+=%x\n",name,pid,(unsigned long long)main->thread_id,slide);
+}
+unsigned boot_ui_trace_main_active(void) {
+ return ui_main_enabled==1 && ((ui_main_targets[0].thread && ui_main_targets[0].seq<90000) ||
+                              (ui_main_targets[1].thread && ui_main_targets[1].seq<90000));
+}
+void boot_ui_trace_main_sample(void) {
+ if(ui_main_enabled!=1 || !ml_get_interrupts_enabled())return;
+ uint64_t total_age_ns=0;absolutetime_to_nanoseconds(mach_absolute_time()-ui_main_began,&total_age_ns);
+ if(total_age_ns>=UINT64_C(1800000000000)) {
+  bt_ui_drop(&ui_main_targets[0]);bt_ui_drop(&ui_main_targets[1]);ui_main_enabled=2;return;
+ }
+ for(unsigned slot=0;slot<2;++slot) {
+  struct bt_ui_target *target=&ui_main_targets[slot];thread_t thread=target->thread;
+  if(!thread)continue;
+  uint64_t age_ns=0;absolutetime_to_nanoseconds(mach_absolute_time()-target->began,&age_ns);
+  if(target->seq>=90000 || age_ns>=UINT64_C(1800000000000)) {bt_ui_drop(target);continue;}
+  struct bt_entry entry={0};
+  uint64_t began=mach_absolute_time(),info_at=0,cpu=0,tid=0,wait=0,sp=0;
+  unsigned state=0,hint=0;int priority=0;
+  bool irq=ml_set_interrupts_enabled(false);
+  if(!simple_lock_try(&thread->sched_lock,&thread_lck_grp)) {ml_set_interrupts_enabled(irq);++target->missed;continue;}
+  state=(unsigned)thread->state;
+  if(state&(TH_TERMINATE|TH_TERMINATE2)) {thread_unlock(thread);ml_set_interrupts_enabled(irq);bt_ui_drop(target);continue;}
+  tid=thread->thread_id;cpu=recount_thread_time_mach(thread);info_at=mach_absolute_time();
+  wait=thread->wait_event;hint=(unsigned)thread->block_hint;priority=thread->sched_pri;
+  thread_unlock(thread);ml_set_interrupts_enabled(irq);
+  // Use XNU's ordinary getter, as the existing user-space observer does.
+  // Reading upcb alone would show the previous trap on a running thread.
+  arm_thread_state64_t first={0},last={0};mach_msg_type_number_t count=ARM_THREAD_STATE64_COUNT;
+  kern_return_t state_kr=thread_get_state(thread,ARM_THREAD_STATE64,(thread_state_t)&first,&count);
+  if(state_kr==KERN_SUCCESS && count==ARM_THREAD_STATE64_COUNT) {
+   entry.pc=BT_STRIP_USER_PC(first.pc);entry.lr=BT_STRIP_USER_PC(first.lr);entry.fp=first.fp;sp=first.sp;
+   entry.trap=first.x[16];for(unsigned i=0;i<8;++i)entry.regs[i]=first.x[i];
+  } else entry.error=4;
+  if(!entry.error) {lookup_peer(&entry,target->space);bt_walk(&entry,read_user,target->map);}
+  count=ARM_THREAD_STATE64_COUNT;
+  kern_return_t recheck_kr=thread_get_state(thread,ARM_THREAD_STATE64,(thread_state_t)&last,&count);
+  unsigned matched=!entry.error && recheck_kr==KERN_SUCCESS && count==ARM_THREAD_STATE64_COUNT &&
+   entry.pc==BT_STRIP_USER_PC(last.pc) && entry.lr==BT_STRIP_USER_PC(last.lr) && entry.fp==last.fp && sp==last.sp;
+  uint64_t ended=mach_absolute_time(),seq=++target->seq;
+  printf("NEZHA UI MAIN: pid=%d seq=%llu tid=%llu t0=%llu tq=%llu t1=%llu cpu=%llu st=%x pri=%d hint=%u wait=%llx pc=%llx lr=%llx fp=%llx sp=%llx same=%u err=%u peer=%d/%u missed=%u kr=%d/%d\n",
+   target->pid,(unsigned long long)seq,(unsigned long long)tid,(unsigned long long)began,(unsigned long long)info_at,(unsigned long long)ended,
+   (unsigned long long)cpu,state,priority,hint,(unsigned long long)wait,(unsigned long long)entry.pc,(unsigned long long)entry.lr,
+   (unsigned long long)entry.fp,(unsigned long long)sp,matched,entry.error,entry.peer,entry.peer_code,target->missed,state_kr,recheck_kr);
+  for(unsigned part=0;part<3;++part) {
+   const uint64_t *frames=entry.frames+part*6;
+   printf("NEZHA UI MAIN STACK: pid=%d seq=%llu part=%u %llx %llx %llx %llx %llx %llx\n",target->pid,(unsigned long long)seq,part,
+    (unsigned long long)frames[0],(unsigned long long)frames[1],(unsigned long long)frames[2],
+    (unsigned long long)frames[3],(unsigned long long)frames[4],(unsigned long long)frames[5]);
+  }
+ }
 }
 void boot_ui_trace_task(task_t task,unsigned index,int pid,const char *name,unsigned slide) {
  if(!ml_get_interrupts_enabled()){++draft_busy;return;}
