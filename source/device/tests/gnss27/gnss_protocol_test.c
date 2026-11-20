@@ -9,6 +9,19 @@ static unsigned checks, failures;
 static NbGnssFix fix;
 static NbGnssSky sky;
 
+static uint32_t reference(NbQmiWriter *w, uint8_t *out, uint8_t source, uint8_t time_type)
+{
+    nb_qmi_begin(w,out,4096,NB_QMI_REQUEST,9,NB_PDS_INJECT_POSITION);
+    nb_qmi_u64(w,0x10,1700000000123ull);nb_qmi_u64(w,0x11,0);nb_qmi_u64(w,0x12,0);
+    nb_qmi_u32(w,0x13,0x41a00000); /* 20m, directly supplied reference uncertainty. */
+    nb_qmi_u32(w,0x15,0x42b40000);nb_qmi_u32(w,0x16,0x41f00000);
+    nb_qmi_u8(w,0x17,68);nb_qmi_u8(w,0x18,68);
+    nb_qmi_u8(w,0x19,source);nb_qmi_u8(w,0x1a,time_type);
+    const uint8_t reliability[]={0,2},altinfo[]={9,2,2};
+    nb_qmi_put(w,0x1b,reliability,2);nb_qmi_put(w,0x1c,altinfo,3);
+    return nb_qmi_end(w);
+}
+
 static void position(NbQmiWriter *w,uint8_t *out,uint8_t status,uint64_t utc,int usage)
 {
     nb_qmi_begin(w,out,4096,NB_QMI_INDICATION,0,NB_LOC_POSITION);
@@ -72,5 +85,50 @@ int main(void)
     nb_qmi_put(&w,0x11,satellites,sizeof satellites);n=nb_qmi_end(&w);
     CHECK(nb_gnss_message(raw,n,&m)&&nb_gnss_decode_sky(&m,70,&sky));
     CHECK(sky.bds_seen==1&&sky.sv[0].tracking==3&&!sky.signals_present);
+    CHECK(sky.list_present&&!sky.altitude_present);
+    /* The real11-byte LOC report can contain only its mandatory status.
+     * This is fresh unknown-list metadata, not malformed data or BDS proof. */
+    nb_qmi_begin(&w,raw,sizeof raw,NB_QMI_INDICATION,0,NB_LOC_SATELLITES);
+    nb_qmi_u8(&w,1,1);n=nb_qmi_end(&w);CHECK(n==11);
+    CHECK(nb_gnss_message(raw,n,&m)&&nb_gnss_decode_sky(&m,80,&sky));
+    CHECK(!sky.list_present&&sky.altitude_present&&sky.altitude_assumed&&
+          !sky.count&&!sky.bds_seen&&sky.received_ms==80&&!sky.signals_present);
+    const uint8_t no_satellites=0;
+    nb_qmi_put(&w,0x10,&no_satellites,1);n=nb_qmi_end(&w);
+    CHECK(nb_gnss_message(raw,n,&m)&&nb_gnss_decode_sky(&m,81,&sky));
+    CHECK(sky.list_present&&sky.altitude_assumed&&!sky.count&&!sky.bds_seen);
+    nb_qmi_begin(&w,raw,sizeof raw,NB_QMI_INDICATION,0,NB_LOC_SATELLITES);
+    n=nb_qmi_end(&w);CHECK(nb_gnss_message(raw,n,&m)&&!nb_gnss_decode_sky(&m,82,&sky));
+    nb_qmi_u8(&w,1,2);n=nb_qmi_end(&w);
+    CHECK(nb_gnss_message(raw,n,&m)&&!nb_gnss_decode_sky(&m,83,&sky));
+    /* Reference assistance uses the real supplied fields and UTC timestamp.
+     * Its translated packet must never populate the receiver's fix record. */
+    n=reference(&w,raw,1,0);CHECK(n==88);
+    CHECK(nb_gnss_message(raw,n,&m));uint32_t encoded=0;
+    CHECK(!nb_gnss_reference_position(&m,pds,sizeof pds,&encoded));
+    NbQmiMessage loc;CHECK(nb_gnss_message(pds,encoded,&loc)&&loc.message==NB_LOC_INJECT_POSITION);
+    CHECK(nb_le64(nb_gnss_tlv(&loc,0x10,8))==0&&nb_le64(nb_gnss_tlv(&loc,0x11,8))==0);
+    CHECK(nb_le32(nb_gnss_tlv(&loc,0x12,4))==0x41a00000&&*nb_gnss_tlv(&loc,0x13,1)==68);
+    CHECK(nb_le32(nb_gnss_tlv(&loc,0x15,4))==0x42b40000&&nb_le32(nb_gnss_tlv(&loc,0x17,4))==0x41f00000);
+    CHECK(nb_le32(nb_gnss_tlv(&loc,0x19,4))==2);
+    CHECK(nb_le64(nb_gnss_tlv(&loc,0x1b,8))==1700000000123ull&&nb_le32(nb_gnss_tlv(&loc,0x1d,4))==6);
+    const uint8_t *alt=nb_gnss_tlv(&loc,0x1a,12);
+    CHECK(alt&&nb_le32(alt)==9&&nb_le32(alt+4)==2&&nb_le32(alt+8)==2);
+    const uint32_t required=encoded;
+    CHECK(nb_gnss_reference_position(&m,pds,required-1,&encoded)==NB_QMI_ERR_NO_MEMORY&&!encoded);
+    n=reference(&w,raw,2,0);CHECK(nb_gnss_message(raw,n,&m));
+    CHECK(nb_gnss_reference_position(&m,pds,sizeof pds,&encoded)==NB_QMI_ERR_NOT_SUPPORTED&&!encoded);
+    n=reference(&w,raw,1,1);CHECK(nb_gnss_message(raw,n,&m));
+    CHECK(nb_gnss_reference_position(&m,pds,sizeof pds,&encoded)==NB_QMI_ERR_NOT_SUPPORTED);
+    n=reference(&w,raw,1,0);CHECK(nb_gnss_message(raw,n,&m));
+    nb_put64((uint8_t *)nb_gnss_tlv(&m,0x11,8),UINT64_C(0x7ff8000000000000));
+    CHECK(nb_gnss_reference_position(&m,pds,sizeof pds,&encoded)==NB_QMI_ERR_INVALID_ARG);
+    n=reference(&w,raw,1,0);CHECK(nb_gnss_message(raw,n,&m));
+    *(uint8_t *)nb_gnss_tlv(&m,0x17,1)=100;
+    CHECK(!nb_gnss_reference_position(&m,pds,sizeof pds,&encoded));CHECK(nb_gnss_message(pds,encoded,&loc));
+    CHECK(*nb_gnss_tlv(&loc,0x13,1)==99);
+    n=reference(&w,raw,1,0);CHECK(nb_gnss_message(raw,n,&m));
+    nb_put64((uint8_t *)nb_gnss_tlv(&m,0x10,8),UINT64_MAX);
+    CHECK(nb_gnss_reference_position(&m,pds,sizeof pds,&encoded)==NB_QMI_ERR_INVALID_ARG&&!encoded);
     printf("GNSS protocol %u checks, %u failures\n",checks,failures);return failures?1:0;
 }

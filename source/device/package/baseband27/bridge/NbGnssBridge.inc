@@ -93,7 +93,8 @@ extern "C" int nezha_gnss_diagnostic(uint64_t cursor, uint32_t page, char *out,
             "\"fix_deliveries\":%u,\"fix_id_present\":%u,\"fix_id\":%u,\"system_tick_present\":%u,\"system_tick\":%llu,"
             "\"used_present\":%u,\"signals_present\":%u,\"used_count\":%u,\"gps_used\":%u,\"bds_used\":%u,\"bds_signals\":%llu,"
             "\"positions\":%llu,\"published\":%llu,\"rejected\":%llu,\"stale\":%llu,\"errors\":%llu,\"drops\":%llu,\"last_error\":%u,"
-            "\"loc_command\":%u,\"failed_command\":%u,\"waiting\":%u,\"ack_seen\":%u,\"indication_seen\":%u,\"commands\":%llu,\"sky_sequence\":%llu,\"bds_seen\":%u}",
+            "\"loc_command\":%u,\"failed_command\":%u,\"waiting\":%u,\"ack_seen\":%u,\"indication_seen\":%u,\"commands\":%llu,\"sky_sequence\":%llu,\"bds_seen\":%u,"
+            "\"reference_commands\":%llu,\"reference_completed\":%llu,\"reference_errors\":%llu,\"reference_status\":%u}",
             (unsigned long long)identity, s->generation, (unsigned)s->phase, s->session, s->running, s->revision,
             (unsigned long long)s->fix.sequence, (unsigned long long)s->fix.utc_ms, (unsigned long long)s->fix.received_ms,
             s->fix.valid, s->fix.raw_valid, s->fix.status, s->fix.technology,
@@ -105,13 +106,16 @@ extern "C" int nezha_gnss_diagnostic(uint64_t cursor, uint32_t page, char *out,
             (unsigned long long)s->rejected, (unsigned long long)s->stale, (unsigned long long)s->errors,
             (unsigned long long)s->output_drops, s->last_error, s->command, s->failed_command,
             s->waiting, s->ack_seen, s->indication_seen, (unsigned long long)s->commands,
-            (unsigned long long)s->sky.sequence, s->sky.bds_seen);
+            (unsigned long long)s->sky.sequence, s->sky.bds_seen,
+            (unsigned long long)s->reference_commands, (unsigned long long)s->reference_completed,
+            (unsigned long long)s->reference_errors, s->reference_status);
     } else if (sky_page) {
         const uint32_t index = (page & 0xffu) - 1u;
         if (!(page & 0xffu)) {
-            n = snprintf(out, capacity, "{\"cursor\":%llu,\"sequence\":%llu,\"received_ms\":%llu,\"count\":%u,\"bds_seen\":%u,\"signals_present\":%u,\"usage_evidence\":false}",
+            n = snprintf(out, capacity, "{\"cursor\":%llu,\"sequence\":%llu,\"received_ms\":%llu,\"count\":%u,\"bds_seen\":%u,\"signals_present\":%u,\"list_present\":%u,\"altitude_present\":%u,\"altitude_assumed\":%u,\"usage_evidence\":false}",
                 (unsigned long long)identity, (unsigned long long)s->sky.sequence, (unsigned long long)s->sky.received_ms,
-                s->sky.count, s->sky.bds_seen, s->sky.signals_present);
+                s->sky.count, s->sky.bds_seen, s->sky.signals_present,
+                s->sky.list_present, s->sky.altitude_present, s->sky.altitude_assumed);
         } else {
             if (!cursor || index >= s->sky.count) { IOLockUnlock(bb_lock); return 3; }
             const NbGnssSatellite *sv = &s->sky.sv[index];

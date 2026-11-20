@@ -20,14 +20,15 @@ enum {
     NB_LOC_START = 0x22, NB_LOC_STOP = 0x23,
     NB_LOC_POSITION = 0x24, NB_LOC_SATELLITES = 0x25,
     NB_LOC_NMEA = 0x26, NB_LOC_ENGINE = 0x2b, NB_LOC_SESSION = 0x2c,
-    NB_LOC_SERVICE_REVISION = 0x32, NB_LOC_SET_MODE = 0x4a
+    NB_LOC_SERVICE_REVISION = 0x32, NB_LOC_INJECT_POSITION = 0x39,
+    NB_LOC_SET_MODE = 0x4a
 };
 enum {
     NB_PDS_RESET = 0, NB_PDS_REPORT = 1, NB_PDS_GET_STATE = 0x20,
     NB_PDS_SET_STATE = 0x21, NB_PDS_GET_TRACKING = 0x29,
     NB_PDS_SET_TRACKING = 0x2a, NB_PDS_GET_AUTO = 0x30,
     NB_PDS_SET_AUTO = 0x31, NB_PDS_FORCE_OFF = 0x49,
-    NB_PDS_READY = 0x60
+    NB_PDS_READY = 0x60, NB_PDS_INJECT_POSITION = 0x38
 };
 enum {
     NB_GNSS_UTC = 1u << 1, NB_GNSS_LEAP = 1u << 2,
@@ -76,7 +77,7 @@ typedef struct {
 typedef struct {
     uint64_t received_ms, sequence;
     uint16_t count, bds_seen;
-    uint8_t signals_present;
+    uint8_t signals_present, list_present, altitude_present, altitude_assumed;
     NbGnssSatellite sv[NB_GNSS_MAX_SV];
 } NbGnssSky;
 
@@ -150,6 +151,7 @@ extern "C" {
 #endif
 int nb_gnss_decode_fix(const NbQmiMessage *, uint64_t received_ms, NbGnssFix *);
 int nb_gnss_decode_sky(const NbQmiMessage *, uint64_t received_ms, NbGnssSky *);
+uint32_t nb_gnss_reference_position(const NbQmiMessage *, uint8_t *, uint32_t room, uint32_t *length);
 int nb_gnss_fix_usable(const NbGnssFix *);
 uint32_t nb_gnss_pds_fix(const NbGnssFix *, uint8_t *, uint32_t);
 #ifdef __cplusplus

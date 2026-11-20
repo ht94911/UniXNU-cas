@@ -1384,6 +1384,19 @@ extern "C" void coachz_baseband_report(unsigned second)
          second, servers, clients, bb_qmux.dropped, bb_tx_dropped, bb_sahara.state, bb_sahara.executes, bb_sahara.requests, bb_control.calls, bb_control.unsupported,
          bb_data.step, bb_endpoint_fixes, bb_activations);
   printf("COACHZ qmi: %u s: %u trace lines, %u held back by the budget\n", second, bb_trace_lines, bb_trace_held);
+  if (bb_gnss_enabled) {
+    printf("COACHZ GNSS: %u s phase %u running %u session %u commands %llu start %llu stop %llu positions %llu valid %llu published %llu fix %llu utc-ms %llu technology %u deliveries %u sky %llu list %u satellites %u bds-seen %u gps-used %u bds-used %u bds-signals %llx reference %llu/%llu/%llu status %u errors %llu last %u\n",
+           second, (unsigned)bb_gnss.phase, bb_gnss.running, bb_gnss.session,
+           (unsigned long long)bb_gnss.commands, (unsigned long long)bb_gnss.starts, (unsigned long long)bb_gnss.stops,
+           (unsigned long long)bb_gnss.positions, (unsigned long long)bb_gnss.valid_fixes, (unsigned long long)bb_gnss.published,
+           (unsigned long long)bb_gnss.fix.sequence, (unsigned long long)bb_gnss.fix.utc_ms,
+           bb_gnss.fix.technology, bb_gnss.fix.deliveries,
+           (unsigned long long)bb_gnss.sky_reports, bb_gnss.sky.list_present, bb_gnss.sky.count, bb_gnss.sky.bds_seen,
+           bb_gnss.fix.gps_used, bb_gnss.fix.bds_used, (unsigned long long)bb_gnss.fix.bds_signals,
+           (unsigned long long)bb_gnss.reference_commands,
+           (unsigned long long)bb_gnss.reference_completed, (unsigned long long)bb_gnss.reference_errors,
+           bb_gnss.reference_status, (unsigned long long)bb_gnss.errors, bb_gnss.last_error);
+  }
   for (uint32_t c = 0; c < CBH_PUBLISHED; c++) {
     const bb_channel *ch = &bb_ch[c];
     if (ch->opens)

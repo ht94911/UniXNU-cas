@@ -15,11 +15,11 @@
 #define NB_GNSS_ERROR_TIMEOUT 16u
 
 enum NbGnssPhase { NbGnssAbsent, NbGnssQuery, NbGnssInform, NbGnssRegister, NbGnssReady, NbGnssFailed };
-enum NbGnssAction { NbGnssIdle, NbGnssStop, NbGnssMode, NbGnssStart };
+enum NbGnssAction { NbGnssIdle, NbGnssStop, NbGnssMode, NbGnssStart, NbGnssReference };
 enum NbGnssChange {
     NbGnssChangeState = 1, NbGnssChangeAuto = 2, NbGnssChangeForce = 4,
     NbGnssChangeParsed = 8, NbGnssChangeNmea = 16,
-    NbGnssChangeTracking = 32, NbGnssChangeReset = 64
+    NbGnssChangeTracking = 32, NbGnssChangeReset = 64, NbGnssChangeReference = 128
 };
 typedef struct {
     uint8_t used, channel, cid, enabled, automatic, forced_off, parsed_report, nmea_report;
@@ -32,6 +32,7 @@ typedef struct {
     uint16_t transaction, message;
     uint8_t change;
     NbGnssClient after;
+    uint8_t reference_length, reference[128];
 } NbGnssRequest;
 typedef struct {
     uint32_t generation, node, port, local_port, length;
@@ -67,6 +68,8 @@ typedef struct {
     char me_version[128], host_version[128], full_version[256];
     uint64_t positions, valid_fixes, published, rejected, stale, sky_reports;
     uint64_t commands, errors, output_drops, starts, stops;
+    uint64_t reference_commands, reference_completed, reference_errors;
+    uint32_t reference_status;
 } NbGnss;
 
 #ifdef __cplusplus

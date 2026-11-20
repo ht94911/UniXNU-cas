@@ -105,18 +105,78 @@ int nb_gnss_decode_fix(const NbQmiMessage *m, uint64_t received_ms, NbGnssFix *f
     return 1;
 }
 
+uint32_t nb_gnss_reference_position(const NbQmiMessage *m, uint8_t *out, uint32_t room, uint32_t *length)
+{
+    *length = 0;
+    const uint8_t *utc = nb_gnss_tlv(m, 0x10, 8);
+    const uint8_t *lat = nb_gnss_tlv(m, 0x11, 8), *lon = nb_gnss_tlv(m, 0x12, 8);
+    const uint8_t *horizontal = nb_gnss_tlv(m, 0x13, 4), *vertical = nb_gnss_tlv(m, 0x16, 4);
+    const uint8_t *hconf = nb_gnss_tlv(m, 0x17, 1), *vconf = nb_gnss_tlv(m, 0x18, 1);
+    const uint8_t *source = nb_gnss_tlv(m, 0x19, 1), *time = nb_gnss_tlv(m, 0x1a, 1);
+    const uint8_t *reliability = nb_gnss_tlv(m, 0x1b, 2), *altinfo = nb_gnss_tlv(m, 0x1c, 3);
+    uint32_t altitude_bytes = 0;
+    const uint8_t *altitude = nb_qmi_tlv(m, 0x15, &altitude_bytes);
+    if (!utc || !nb_le64(utc) || nb_le64(utc) > UINT64_C(253402300799999) || !lat || !lon || !horizontal || !vertical ||
+        !hconf || !vconf || !source || !time || !reliability || !altinfo ||
+        (altitude && altitude_bytes != 4u)) return NB_QMI_ERR_INVALID_ARG;
+    if (*time) return NB_QMI_ERR_NOT_SUPPORTED; /* This caller's type0 timestamp is UTC ms. */
+    if (!nb_gnss_degree_valid(nb_le64(lat), UINT64_C(0x4056800000000000)) ||
+        !nb_gnss_degree_valid(nb_le64(lon), UINT64_C(0x4066800000000000)) ||
+        !nb_gnss_float_valid(nb_le32(horizontal), 1) || !(nb_le32(horizontal) & 0x7fffffffu) ||
+        !nb_gnss_float_valid(nb_le32(vertical), 1) ||
+        !*hconf || *hconf > 100u || !*vconf || *vconf > 100u ||
+        (altitude && !nb_gnss_float_valid(nb_le32(altitude), 0))) return NB_QMI_ERR_INVALID_ARG;
+    /* The measured cached-reference caller has source1, unknown horizontal
+     * reliability and other/dependent/full altitude metadata. Keep other
+     * PDS source/time conventions unsupported until their units are known. */
+    if (*source != 1u || reliability[0] || reliability[1] > 4u ||
+        altinfo[0] != 9u || altinfo[1] != 2u || altinfo[2] != 2u) return NB_QMI_ERR_NOT_SUPPORTED;
+    for (uint32_t at = 0; at < m->length; at += 3u + nb_le16(m->tlvs + at + 1)) {
+        const uint8_t tag = m->tlvs[at];
+        if (tag < 0x10u || tag > 0x1cu || tag == 0x14u) return NB_QMI_ERR_NOT_SUPPORTED;
+    }
+    NbQmiWriter w;
+    if (nb_qmi_begin(&w, out, room, NB_QMI_REQUEST, 0, NB_LOC_INJECT_POSITION)) return NB_QMI_ERR_NO_MEMORY;
+    nb_qmi_put(&w, 0x10, lat, 8); nb_qmi_put(&w, 0x11, lon, 8);
+    nb_qmi_put(&w, 0x12, horizontal, 4); nb_qmi_u8(&w, 0x13, *hconf == 100u ? 99u : *hconf);
+    if (altitude) nb_qmi_put(&w, 0x15, altitude, 4);
+    nb_qmi_put(&w, 0x17, vertical, 4); nb_qmi_u8(&w, 0x18, *vconf == 100u ? 99u : *vconf);
+    nb_qmi_u32(&w, 0x19, reliability[1]);
+    if (altitude) {
+        uint8_t info[12]; nb_put32(info, 9); nb_put32(info + 4, 2); nb_put32(info + 8, 2);
+        nb_qmi_put(&w, 0x1a, info, sizeof info);
+    }
+    nb_qmi_put(&w, 0x1b, utc, 8);
+    nb_qmi_u32(&w, 0x1d, 6); /* LOC OTHER: the reference is supplied by the OS, not a satellite fix. */
+    *length = nb_qmi_end(&w);
+    return *length ? 0u : NB_QMI_ERR_NO_MEMORY;
+}
+
 int nb_gnss_decode_sky(const NbQmiMessage *m, uint64_t received_ms, NbGnssSky *sky)
 {
     uint32_t bytes = 0, signal_bytes = 0;
+    const uint8_t *altitude = nb_gnss_tlv(m, 1, 1);
     const uint8_t *p = nb_qmi_tlv(m, 0x11, &bytes);
     const unsigned stride = p ? 29u : 28u;
     const unsigned maximum = p ? NB_GNSS_MAX_SV : 80u;
     if (!p) p = nb_qmi_tlv(m, 0x10, &bytes);
-    if (!p || !bytes || p[0] > maximum || bytes != 1u + stride * p[0]) return 0;
     const uint8_t *signals = nb_qmi_tlv(m, 0x12, &signal_bytes);
+    if (!p) {
+        /* LOC permits its mandatory altitudeAssumed field without either
+         * optional satellite list. Retain that fresh status as list absent,
+         * keeping unknown satellites distinct from an explicit empty list. */
+        if (!altitude || *altitude > 1u || signals) return 0;
+        __builtin_memset(sky, 0, sizeof *sky);
+        sky->received_ms = received_ms;
+        sky->altitude_present = 1; sky->altitude_assumed = *altitude;
+        return 1;
+    }
+    if (!bytes || p[0] > maximum || bytes != 1u + stride * p[0] || (altitude && *altitude > 1u)) return 0;
     if (signals && (!signal_bytes || signals[0] != p[0] || signal_bytes != 1u + 8u * signals[0])) return 0;
     __builtin_memset(sky, 0, sizeof *sky);
     sky->received_ms = received_ms; sky->count = p[0]; sky->signals_present = signals != 0;
+    sky->list_present = 1; sky->altitude_present = altitude != 0;
+    if (altitude) sky->altitude_assumed = *altitude;
     for (unsigned i = 0; i < sky->count; ++i) {
         const uint8_t *raw = p + 1u + stride * i;
         NbGnssSatellite *sv = &sky->sv[i];

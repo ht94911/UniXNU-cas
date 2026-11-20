@@ -38,11 +38,22 @@ static void reply(NbGnssPacket *p,uint32_t error,int ind_first)
     }
     nb_qmi_begin(&w,raw,sizeof raw,NB_QMI_RESPONSE,p->transaction,p->message);nb_qmi_result(&w,error?1:0,(uint16_t)error);
     nb_gnss_receive(&state,0,184,raw,nb_qmi_end(&w),102);
-    if(!ind_first&&!error&&(p->message==NB_LOC_SET_MODE||p->message==NB_LOC_SERVICE_REVISION)){
+    if(!ind_first&&!error&&(p->message==NB_LOC_SET_MODE||p->message==NB_LOC_SERVICE_REVISION||p->message==NB_LOC_INJECT_POSITION)){
         CHECK(state.waiting);nb_qmi_begin(&w,raw,sizeof raw,NB_QMI_INDICATION,0,p->message);nb_qmi_u32(&w,1,0);
         if(p->message==NB_LOC_SERVICE_REVISION)nb_qmi_u32(&w,2,134);
         nb_gnss_receive(&state,0,184,raw,nb_qmi_end(&w),103);
     }
+}
+static void reference_request(uint16_t txn)
+{
+    uint8_t raw[128];NbQmiWriter w;
+    nb_qmi_begin(&w,raw,sizeof raw,NB_QMI_REQUEST,txn,NB_PDS_INJECT_POSITION);
+    nb_qmi_u64(&w,0x10,1700000000123ull);nb_qmi_u64(&w,0x11,0);nb_qmi_u64(&w,0x12,0);
+    nb_qmi_u32(&w,0x13,0x41a00000);nb_qmi_u32(&w,0x15,0x42b40000);nb_qmi_u32(&w,0x16,0x41f00000);
+    nb_qmi_u8(&w,0x17,68);nb_qmi_u8(&w,0x18,68);nb_qmi_u8(&w,0x19,1);nb_qmi_u8(&w,0x1a,0);
+    const uint8_t reliability[]={0,2},altinfo[]={9,2,2};
+    nb_qmi_put(&w,0x1b,reliability,2);nb_qmi_put(&w,0x1c,altinfo,3);
+    nb_gnss_request(&state,1,raw,nb_qmi_end(&w));
 }
 static void setup(void)
 {
@@ -150,5 +161,88 @@ int main(void)
         CHECK(nb_gnss_next(&state,0,&p)&&p.message==NB_LOC_START);reply(&p,0,0);
         CHECK(state.running&&!state.clients[1].forced_off&&state.starts==2&&state.stops==1);
     } else CHECK(0&&"explicit native start blocked by earlier initialization off");
+    /* Real reference ACK plus status complete the same queued request.
+     * Assistance never starts a stopped receiver or becomes a GPS fix. */
+    request(1,29,NB_PDS_SET_AUTO,1,0);
+    CHECK(nb_gnss_next(&state,0,&p)&&p.message==NB_LOC_STOP);reply(&p,0,0);
+    CHECK(!state.active&&!state.running&&!state.clients[1].automatic);
+    CHECK(!nb_gnss_next(&state,0,&p)&&!state.running&&!state.active);
+    reference_request(30);
+    CHECK(nb_gnss_next(&state,0,&p)&&p.message==NB_LOC_INJECT_POSITION);
+    const unsigned prior_answers=answers;
+    reply(&p,0,0);CHECK(answers==prior_answers+1&&!state.running&&state.reference_completed==1);
+    CHECK(!state.positions&&!state.fix.deliveries&&!state.inhibited);
+    reference_request(31);CHECK(nb_gnss_next(&state,0,&p)&&p.message==NB_LOC_INJECT_POSITION);
+    reply(&p,0,1);CHECK(state.reference_completed==2&&!state.running);
+    reference_request(32);CHECK(nb_gnss_next(&state,0,&p));
+    reply(&p,NB_QMI_ERR_NOT_SUPPORTED,0);
+    CHECK(last_error==NB_QMI_ERR_NOT_SUPPORTED&&state.reference_errors==1&&state.phase==NbGnssReady&&!state.inhibited);
+    CHECK(!nb_gnss_next(&state,0,&p)&&!state.running);
+    reference_request(33);CHECK(nb_gnss_next(&state,0,&p));nb_gnss_sent(&state,&p,0,1000);
+    CHECK(state.reference_status==UINT32_MAX);
+    nb_gnss_poll(&state,1000+NB_GNSS_WAIT_MS);
+    CHECK(last_error==NB_GNSS_ERROR_TIMEOUT&&state.reference_errors==2&&!state.running);
+    CHECK(!nb_gnss_next(&state,0,&p)&&state.phase==NbGnssReady);
+    /* Keep the LOC status result, and leave ordinary tracking usable after
+     * an optional reference is rejected by the engine. */
+    const uint32_t engine_status[]={2,3,4,6,7,8};
+    const uint32_t pds_error[]={NB_QMI_ERR_NOT_SUPPORTED,NB_QMI_ERR_INVALID_ARG,
+        NB_GNSS_ERROR_BUSY,NB_GNSS_ERROR_TIMEOUT,NB_QMI_ERR_NOT_SUPPORTED,NB_QMI_ERR_NO_MEMORY};
+    for(unsigned i=0;i<sizeof engine_status/sizeof engine_status[0];i++){
+        reference_request((uint16_t)(40+i));CHECK(nb_gnss_next(&state,0,&p));
+        nb_gnss_sent(&state,&p,0,2000);
+        nb_qmi_begin(&ew,ended,sizeof ended,NB_QMI_RESPONSE,p.transaction,p.message);nb_qmi_result(&ew,0,0);
+        nb_gnss_receive(&state,0,184,ended,nb_qmi_end(&ew),2001);CHECK(state.waiting);
+        nb_qmi_begin(&ew,ended,sizeof ended,NB_QMI_INDICATION,0,p.message);nb_qmi_u32(&ew,1,engine_status[i]);
+        nb_gnss_receive(&state,0,184,ended,nb_qmi_end(&ew),2002);
+        CHECK(last_error==pds_error[i]&&state.reference_status==engine_status[i]);
+        CHECK(state.phase==NbGnssReady&&!state.running&&!state.inhibited);
+    }
+    request(1,50,NB_PDS_SET_AUTO,1,1);
+    CHECK(nb_gnss_next(&state,0,&p)&&p.message==NB_LOC_SET_MODE);reply(&p,0,0);
+    CHECK(nb_gnss_next(&state,0,&p)&&p.message==NB_LOC_START);reply(&p,0,0);
+    reference_request(51);CHECK(nb_gnss_next(&state,0,&p)&&p.message==NB_LOC_INJECT_POSITION);
+    nb_gnss_sent(&state,&p,0,3000);
+    nb_qmi_begin(&ew,ended,sizeof ended,NB_QMI_INDICATION,0,NB_LOC_SESSION);
+    nb_qmi_u32(&ew,1,2);nb_qmi_u8(&ew,0x10,state.session);
+    nb_gnss_receive(&state,0,184,ended,nb_qmi_end(&ew),3001);
+    CHECK(!state.running&&state.clients[1].failed&&state.inhibited);
+    reply(&p,0,0);
+    CHECK(state.clients[1].failed&&state.inhibited&&!state.running);
+    CHECK(!nb_gnss_next(&state,0,&p));
+    reference_request(52);CHECK(nb_gnss_next(&state,0,&p)&&p.message==NB_LOC_INJECT_POSITION);
+    reply(&p,0,0);CHECK(state.inhibited&&!nb_gnss_next(&state,0,&p)&&!state.running);
+    /* Retired client generations cannot consume the completion. */
+    reference_request(53);CHECK(nb_gnss_next(&state,0,&p));
+    nb_gnss_retire(&state,1);nb_gnss_attach(&state,1,0,7);
+    const unsigned before_retired_reply=answers;
+    reply(&p,0,0);CHECK(answers==before_retired_reply&&!state.running&&!state.clients[1].enabled);
+    /* A normal stop queued behind assistance still gets its real ACK.
+     * Assistance failures do not inhibit that stop or a subsequent start. */
+    state_request(60,1,0x10,8,1);request(1,61,NB_PDS_SET_AUTO,1,1);
+    CHECK(!nb_gnss_next(&state,0,&p));
+    CHECK(nb_gnss_next(&state,0,&p)&&p.message==NB_LOC_SET_MODE);reply(&p,0,0);
+    CHECK(nb_gnss_next(&state,0,&p)&&p.message==NB_LOC_START);reply(&p,0,0);
+    reference_request(62);CHECK(nb_gnss_next(&state,0,&p)&&p.message==NB_LOC_INJECT_POSITION);
+    request(1,63,NB_PDS_SET_AUTO,1,0);reply(&p,NB_QMI_ERR_NOT_SUPPORTED,0);
+    CHECK(state.running&&!state.inhibited&&!state.active&&state.count==1);
+    CHECK(nb_gnss_next(&state,0,&p)&&p.message==NB_LOC_STOP);reply(&p,0,0);
+    CHECK(!state.running&&!state.active&&!state.clients[1].automatic);
+    /* Updating a live interval must keep its request until the new START
+     * is acknowledged; only a final stop finishes at its STOP ACK. */
+    request(1,64,NB_PDS_SET_AUTO,1,1);
+    CHECK(nb_gnss_next(&state,0,&p)&&p.message==NB_LOC_SET_MODE);reply(&p,0,0);
+    CHECK(nb_gnss_next(&state,0,&p)&&p.message==NB_LOC_START);reply(&p,0,0);
+    uint8_t tracking[32],criteria[10]={0,255};NbQmiWriter tw;
+    nb_put32(criteria+2,2);nb_put32(criteria+6,400);
+    nb_qmi_begin(&tw,tracking,sizeof tracking,NB_QMI_REQUEST,65,NB_PDS_SET_TRACKING);
+    nb_qmi_put(&tw,1,criteria,sizeof criteria);
+    nb_gnss_request(&state,1,tracking,nb_qmi_end(&tw));
+    const unsigned before_tracking=answers;
+    CHECK(nb_gnss_next(&state,0,&p)&&p.message==NB_LOC_STOP);reply(&p,0,0);
+    CHECK(state.active&&answers==before_tracking&&!state.running);
+    CHECK(nb_gnss_next(&state,0,&p)&&p.message==NB_LOC_SET_MODE);reply(&p,0,0);
+    CHECK(nb_gnss_next(&state,0,&p)&&p.message==NB_LOC_START);reply(&p,0,0);
+    CHECK(!state.active&&state.running&&state.applied.interval_seconds==2&&answers==before_tracking+1);
     printf("GNSS lifecycle %u checks, %u failures; %u state indications\n",checks,failures,indications);return failures?1:0;
 }

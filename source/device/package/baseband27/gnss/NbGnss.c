@@ -38,9 +38,10 @@ static void nb_gnss_answer(NbGnss *s, const NbGnssClient *c, uint16_t transactio
 }
 static void nb_gnss_finish(NbGnss *s, uint32_t error)
 {
+    const int reference = s->active && (s->current.change & NbGnssChangeReference);
     if (nb_gnss_current_owned(s)) {
         NbGnssClient *c = &s->clients[s->current.client];
-        if (!error) {
+        if (!error && !reference) {
             s->current.after.last_utc_ms = s->current.change & NbGnssChangeReset ? 0 : c->last_utc_ms;
             *c = s->current.after;
         }
@@ -51,7 +52,8 @@ static void nb_gnss_finish(NbGnss *s, uint32_t error)
             nb_qmi_put(&w, 1, state, sizeof state); nb_gnss_emit(s, c, out, nb_qmi_end(&w));
         }
     }
-    if (error) { s->last_error = error; ++s->errors; s->inhibited = 1; }
+    if (error && reference) { ++s->reference_errors; }
+    else if (error) { s->last_error = error; ++s->errors; s->inhibited = 1; }
     s->active = 0; s->cancelled = 0; s->action = NbGnssIdle;
 }
 static void nb_gnss_pending_error(NbGnss *s, uint32_t error)
@@ -167,6 +169,7 @@ void nb_gnss_request(NbGnss *s, uint32_t i, const uint8_t *data, uint32_t length
         nb_gnss_answer(s, c, m.transaction, m.message, NB_GNSS_ERROR_BUSY, 0, 0, 0); return;
     }
     NbGnssClient after = *c; uint32_t error = 0; uint8_t change = 0;
+    uint8_t reference[128]; uint32_t reference_length = 0;
     const uint8_t *p;
     switch (m.message) {
     case NB_PDS_GET_STATE: case NB_PDS_GET_AUTO: case NB_PDS_GET_TRACKING:
@@ -195,6 +198,10 @@ void nb_gnss_request(NbGnss *s, uint32_t i, const uint8_t *data, uint32_t length
         else if (p[0]) error = NB_QMI_ERR_NOT_SUPPORTED; /* standalone only; no unimplemented SUPL success */
         else { after.mode = p[0]; after.timeout_seconds = p[1]; after.interval_seconds = nb_le32(p + 2); after.accuracy_metres = nb_le32(p + 6); change = NbGnssChangeTracking; }
         break;
+    case NB_PDS_INJECT_POSITION:
+        error = nb_gnss_reference_position(&m, reference, sizeof reference, &reference_length);
+        if (!error) change = NbGnssChangeReference;
+        break;
     case NB_PDS_SET_STATE: case NB_PDS_SET_AUTO: case NB_PDS_FORCE_OFF:
         p = nb_gnss_tlv(&m, 1, 1);
         if (m.message == NB_PDS_SET_STATE) {
@@ -219,13 +226,20 @@ void nb_gnss_request(NbGnss *s, uint32_t i, const uint8_t *data, uint32_t length
     default: error = NB_QMI_ERR_NOT_SUPPORTED; break;
     }
     if (error) { nb_gnss_answer(s, c, m.transaction, m.message, error, 0, 0, 0); return; }
-    s->requests[(s->head + s->count++) % NB_GNSS_REQUESTS] = (NbGnssRequest){i, c->generation, m.transaction, m.message, change, after};
-    s->inhibited = 0;
+    NbGnssRequest request;
+    __builtin_memset(&request, 0, sizeof request);
+    request.client = i; request.generation = c->generation; request.transaction = m.transaction;
+    request.message = m.message; request.change = change; request.after = after;
+    request.reference_length = (uint8_t)reference_length;
+    if (reference_length) __builtin_memcpy(request.reference, reference, reference_length);
+    s->requests[(s->head + s->count++) % NB_GNSS_REQUESTS] = request;
+    if (!(change & NbGnssChangeReference)) s->inhibited = 0;
 }
 
 static void nb_gnss_fail_command(NbGnss *s, uint32_t error)
 {
-    s->waiting = s->sending = 0; s->last_error = error; s->failed_command = s->command;
+    s->waiting = s->sending = 0;
+    if (s->action != NbGnssReference) { s->last_error = error; s->failed_command = s->command; }
     if (s->phase != NbGnssReady || s->action == NbGnssStop) s->phase = NbGnssFailed;
     if (s->active) nb_gnss_finish(s, error);
     else { ++s->errors; s->inhibited = 1; }
@@ -244,11 +258,16 @@ static void nb_gnss_command_done(NbGnss *s)
     case NbGnssStop:
         s->running = 0; ++s->stops; s->action = NbGnssIdle; s->fault_cleanup = 0;
         __builtin_memset(&s->fix, 0, sizeof s->fix);
+        if (s->active && !nb_gnss_criteria(s, 1).interval_seconds) nb_gnss_finish(s, 0);
         break;
     case NbGnssMode: s->action = NbGnssStart; break;
     case NbGnssStart:
         s->running = 1; s->applied = s->desired; ++s->starts;
         s->action = NbGnssIdle;
+        if (s->active) nb_gnss_finish(s, 0);
+        break;
+    case NbGnssReference:
+        ++s->reference_completed; s->action = NbGnssIdle;
         if (s->active) nb_gnss_finish(s, 0);
         break;
     default: break;
@@ -300,6 +319,7 @@ int nb_gnss_next(NbGnss *s, uint64_t now_ms, NbGnssPacket *packet)
         s->desired = nb_gnss_criteria(s, 1);
         if (s->cancelled && !s->waiting) { s->active = 0; s->cancelled = 0; }
         if (s->inhibited && !s->active && s->running != 2u) return 0;
+        if (s->active && (s->current.change & NbGnssChangeReference)) s->action = NbGnssReference;
         if (s->action == NbGnssIdle) {
             if (s->running && (s->running == 2u || !s->desired.interval_seconds || !nb_gnss_same_criteria(s->desired, s->applied))) s->action = NbGnssStop;
             else if (!s->running && s->desired.interval_seconds) s->action = NbGnssMode;
@@ -308,7 +328,8 @@ int nb_gnss_next(NbGnss *s, uint64_t now_ms, NbGnssPacket *packet)
         if (s->action == NbGnssStart && !s->desired.interval_seconds) {
             s->action = NbGnssIdle; if (s->active) nb_gnss_finish(s, 0); return 0;
         }
-        command = s->action == NbGnssStop ? NB_LOC_STOP : s->action == NbGnssMode ? NB_LOC_SET_MODE : NB_LOC_START;
+        command = s->action == NbGnssReference ? NB_LOC_INJECT_POSITION :
+                  s->action == NbGnssStop ? NB_LOC_STOP : s->action == NbGnssMode ? NB_LOC_SET_MODE : NB_LOC_START;
     }
     /* Neither wire transaction nor session id is reused on this live LOC
      * port. Reconnection creates a new source port in the bridge wrapper. */
@@ -348,9 +369,16 @@ int nb_gnss_next(NbGnss *s, uint64_t now_ms, NbGnssPacket *packet)
         nb_qmi_u32(&w, 0x17, (uint32_t)s->desired.timeout_seconds * 1000u);
         break;
     case NB_LOC_STOP: nb_qmi_u8(&w, 1, s->session); break;
+    case NB_LOC_INJECT_POSITION:
+        if (!s->active || !s->current.reference_length) { nb_gnss_fail_command(s, NB_QMI_ERR_INTERNAL); return 0; }
+        s->reference_status = UINT32_MAX;
+        __builtin_memcpy(packet->data, s->current.reference, s->current.reference_length);
+        nb_put16(packet->data + 1, packet->transaction);
+        packet->length = s->current.reference_length;
+        break;
     default: break;
     }
-    packet->length = nb_qmi_end(&w);
+    if (command != NB_LOC_INJECT_POSITION) packet->length = nb_qmi_end(&w);
     if (!packet->length) { nb_gnss_fail_command(s, NB_QMI_ERR_INTERNAL); return 0; }
     s->command = command; s->transaction = packet->transaction;
     s->sending = 1; s->ack_seen = s->indication_seen = 0;
@@ -362,6 +390,7 @@ void nb_gnss_sent(NbGnss *s, const NbGnssPacket *packet, int result, uint64_t no
     s->sending = 0;
     if (result < 0) { nb_gnss_fail_command(s, NB_QMI_ERR_INTERNAL); return; }
     s->waiting = 1; s->sent_ms = now_ms; ++s->commands;
+    if (s->command == NB_LOC_INJECT_POSITION) ++s->reference_commands;
 }
 
 static void nb_gnss_version(char *out, uint32_t room, const NbQmiMessage *m, uint8_t tag)
@@ -430,12 +459,27 @@ void nb_gnss_receive(NbGnss *s, uint32_t node, uint32_t port, const uint8_t *dat
         const uint32_t error = nb_gnss_result(&m);
         if (error) { nb_gnss_fail_command(s, error); return; }
         s->ack_seen = 1;
-        if ((s->command != NB_LOC_SET_MODE && s->command != NB_LOC_SERVICE_REVISION) || s->indication_seen) nb_gnss_command_done(s);
+        if ((s->command != NB_LOC_SET_MODE && s->command != NB_LOC_SERVICE_REVISION &&
+             s->command != NB_LOC_INJECT_POSITION) || s->indication_seen) nb_gnss_command_done(s);
         return;
     }
     if (m.type != NB_QMI_INDICATION) { ++s->rejected; return; }
-    if (s->waiting && m.message == s->command && (m.message == NB_LOC_SET_MODE || m.message == NB_LOC_SERVICE_REVISION)) {
+    if (s->waiting && m.message == s->command && (m.message == NB_LOC_SET_MODE || m.message == NB_LOC_SERVICE_REVISION ||
+                                                m.message == NB_LOC_INJECT_POSITION)) {
         const uint8_t *status = nb_gnss_tlv(&m, 1, 4);
+        if (m.message == NB_LOC_INJECT_POSITION) {
+            s->reference_status = status ? nb_le32(status) : UINT32_MAX;
+            if (!status || s->reference_status) {
+                const uint32_t error = !status ? NB_QMI_ERR_MALFORMED_MSG :
+                    s->reference_status == 2u ? NB_QMI_ERR_NOT_SUPPORTED :
+                    s->reference_status == 3u ? NB_QMI_ERR_INVALID_ARG :
+                    s->reference_status == 4u ? NB_GNSS_ERROR_BUSY :
+                    s->reference_status == 6u ? NB_GNSS_ERROR_TIMEOUT :
+                    s->reference_status == 7u ? NB_QMI_ERR_NOT_SUPPORTED :
+                    s->reference_status == 8u ? NB_QMI_ERR_NO_MEMORY : NB_QMI_ERR_INTERNAL;
+                nb_gnss_fail_command(s, error); return;
+            }
+        }
         if (!status || nb_le32(status)) { nb_gnss_fail_command(s, NB_QMI_ERR_INTERNAL); return; }
         if (m.message == NB_LOC_SERVICE_REVISION) {
             const uint8_t *revision = nb_gnss_tlv(&m, 2, 4);
