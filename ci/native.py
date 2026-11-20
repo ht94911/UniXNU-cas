@@ -229,6 +229,14 @@ def build(framework, work):
                log=logs / 'dyld-pager-source-host.log')
     if code:
         return code
+    compiled = after.parents[3]
+    code = run([sys.executable, work / 'device/tests/check-text-fixup-reclaimed-page.py',
+                '--vm-fault', compiled / 'osfmk/vm/vm_fault.c',
+                '--ubc-subr', compiled / 'bsd/kern/ubc_subr.c',
+                '--out', work / 'text-reclaimed-page-qualified.json'],
+               log=logs / 'text-reclaimed-page-host.log')
+    if code:
+        return code
     sources = list((work / 'out/nezha/ios-27.0.1-24A446-iphone14-4').glob(
         '*/tree/.cache/xnu-work/bsd/kern/kern_memorystatus.c'))
     if len(sources) != 1:
@@ -368,6 +376,8 @@ def collect(framework, work, sealed):
         add(tree / 'kits/nezha/KeyStoreProbe.cpp', 'keystore-source/KeyStoreProbe.cpp')
         add(tree / 'kits/nezha/keystore013-source-lock.json', 'keystore-source/source-lock.json')
         add(tree / '.cache/xnu-work/bsd/kern/ubc_subr.c', 'text-fixup-source/ubc_subr.c')
+        add(tree / '.cache/xnu-work/osfmk/vm/vm_fault.c', 'text-fixup-source/vm_fault.c')
+        add(work / 'text-reclaimed-page-qualified.json', 'text-reclaimed-page-qualified.json')
         add(tree / '.cache/xnu-work/osfmk/vm/vm_dyld_pager.c', 'dyld-pager-source/vm_dyld_pager.c')
         add(work / 'dyld-pager-source-qualified.json', 'dyld-pager-source-qualified.json')
         objects = tree / 'build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837'
@@ -396,7 +406,7 @@ def collect(framework, work, sealed):
             for name in ('inputs.json', 'source-sha256.json', 'lto-command.json', 'lto-build.log'):
                 add(selected / name, 'reference/' + name)
         for stem in ('start', 'pe_kprintf', 'debug', 'printf', 'serial_console', 'serial_general',
-                     'bsd_init', 'subr_prf', 'arm_init', 'startup', 'machine_routines', 'IOUserServer', 'kern_memorystatus', 'ubc_subr', 'vm_dyld_pager'):
+                     'bsd_init', 'subr_prf', 'arm_init', 'startup', 'machine_routines', 'IOUserServer', 'kern_memorystatus', 'ubc_subr', 'vm_dyld_pager', 'vm_fault'):
             for path in sorted(objects.glob('**/' + stem + '.o*')):
                 if path.suffix in ('.o', '.json'):
                     add(path, 'objects/' + str(path.relative_to(objects)))

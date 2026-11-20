@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "GNSS035 real24A446contextbyte independentofUTCms; retain142/display/App012",
+  "purpose": "GNSS036 existing selected text table survives vnode validated page reclamation",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,12 +14,12 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "806f6ef8a8949f9cec7cbf831bdc071f2edef46d",
+  "device_revision": "47781eaa5eb91f34609907ecadb074ddf862f144",
   "soc_revision": "GPU051 e565439+3435fa5 and GNSS counted IPA plus immutable IPCC append",
   "xcode": "26.6",
   "files": {
     "ci/check-native-userlog.py": "74e7abe9164a853b10d4406a46f55f67670ade42795f066068e84f14b2ebc006",
-    "ci/native.py": "9d7c1f159a3deec32274b8e5acfd1a7b0bdb78a95141c5f63d1e2f64915c8d6e",
+    "ci/native.py": "6977df8667f96b2596a92cbd619347e68f7b14414a009b966ec0034310e1a97a",
     "ci/test-native-userlog-producer.py": "619bc31f6f41b16d562bcbc83a41588f6ada45a5268e23ef5c4985e5f364e403",
     "ci/test-native-userlog.py": "f64f5aff7c83cbbff7ce9bd15ab276dd7022f5e42d227999157b796afe414f9e",
     "source/adreno/LICENSE": "16fbc0170994a48f60938d9f0d992d3bad113383cf90882f75c206e079c2a2dc",
@@ -553,7 +553,7 @@
     "source/device/patches/xnu-12377/nezha-wifi-addon-truncate.patch": "c3b980c547fbc138ac7aedfd735d350cfef85d2a32ff78ec7bef894c4068ce63",
     "source/device/patches/xnu-12377/nezha-wifi-kernel-events.patch": "967cf792a5202711d0063463fe08bda58c554621b690b87f66904c18f81d057f",
     "source/device/patches/xnu-12377/nezha-wifi-mmio-recovery.patch": "89642756f4fe3179d44f076fbfd4786d21d0089ec7786943cb717b3eb78ecbe1",
-    "source/device/patches/xnu-12377/series": "0c56e1448e4a0d81231c79ce8cf387f598ea01899d0446d5d85d1671a0cd1113",
+    "source/device/patches/xnu-12377/series": "c69ef60c3892f02dfcd759c7904d2a7b605e6826c0a53808559131e23bac79b1",
     "source/device/patches/xnu-12377/source-storage-runtime.patch": "25c377c60db417b15fcc137acf380f0319cbff9d5ba012af1907f3485602b584",
     "source/device/patches/xnu-12377/zzyd-sheng-audio-addon-mount.patch": "b51ed480b34c92452ea984fe056e5fce310bd929992d418f383a7e9268313c51",
     "source/device/patches/xnu-12377/zzye-sheng-cpu-idle.patch": "95f57fb9994796c3de2429fe82b6a521620b9f13b83e29eba12185f5ada4da86",
@@ -708,14 +708,17 @@
     "source/device/scripts/nezha_macho_late.py": "fc5a2869ef22bd2c06702930fc0c88b0e071ab7ef851824b403234633040fc37",
     "source/device/patches/xnu-12377/nezha-gnss-test-runtime.patch": "68f37196f4777d4cc7721d6c5ab33de3882ae1a826513fd86ef942146e0c55ac",
     "source/device/patches/xnu-12377/nezha-gnss-pac-capture.patch": "433e27a9382331193c32a6a9bbc2a536d63eef6a8247e82979e4b9245a34b0d3",
-    ".github/workflows/nezha-ios27-native.yml": "348ffea5d7ed2f67793f6ea4c59fa4a9e40deb938c7ddf23e79502f3fe01cc6b",
+    ".github/workflows/nezha-ios27-native.yml": "729a8fc713c41dcc8d23a8566d52f673f77866932677b6149ed2f5957bbcddca",
     "source/device/tests/gnss27/launcher_job_test.py": "bad064a06b284103f964c8e02d7ec566fa9b5454b9e564e51b74a6bddfa7c448",
     "source/device/tools/gnss27/launcher_job.py": "55669e81cfa07ea3a4750732a7ab59df0694386118d6fd423615f3b4d7321cf9",
     "source/device/package/gnss27/userland/org.unixnu.nezha.location-launch.plist": "69bee5c36ebedbbd6d686fd108fa9c41ab53eddd380906c472740187b138e49f",
     "source/device/tests/gnss27/exception_context_test.py": "de69d1acc861f3732b8c63a5781ce1d66d46a91d3d2f6e73451fc7bb7cd8814b",
     "source/device/patches/xnu-12377/vmwait-dyld-pager-source-release.patch": "916c930f4b6b2e7515329bafc8d2ab52ba014d4dacbc8c706e8cc5d603ff5a32",
     "source/device/tests/check-dyld-pager-source-release.py": "8681029e1b691b2231aaff16064f3f3a6a47ca2cc528d8bb5bea2a773537a594",
-    "source/device/tests/dyld-pager-source-release.c": "281848265705d8880dc1cdc5f4372ecbbe3063b629e21299126ae42fcec67708"
+    "source/device/tests/dyld-pager-source-release.c": "281848265705d8880dc1cdc5f4372ecbbe3063b629e21299126ae42fcec67708",
+    "source/device/patches/xnu-12377/nezha-text-fixup-reclaimed-page.patch": "544f79242d9760a11aec10b1a1f868e51fbeb32be5d862bb6e8b6c87d74b02a7",
+    "source/device/tests/check-text-fixup-reclaimed-page.py": "e4e6555b868b4e058cdcbab1642da3f86278f32923de4ca0e3c68a6d397ade7e",
+    "source/device/tests/text-fixup-reclaimed-page.c": "a9ba1177874a659ca4a76f83ac518a11d2822c6dcb124dc265eee868b3cb3459"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
@@ -1100,7 +1103,7 @@
     "actual_GNSS004_error": 48,
     "coherent_launcher_source": "tools/gnss27/launcher_job.py"
   },
-  "previous_native_run": 44747926319,
+  "previous_native_run": 44768351599,
   "previous_native007": {
     "run": 44066302910,
     "head": "56ba392fa295f8e7b4093976eeb4094da76feb99",
@@ -1108,7 +1111,7 @@
     "target_compile_started": false,
     "error": "uninitialized shared IPCC fixture; explicit zero-init reproducer passes"
   },
-  "previous_native_head": "3b2e7d24d4338f466fd0a5f7b1c738aeaddcdc37",
+  "previous_native_head": "bffb3ab40472a7efdfd12885d447de471b6e1be9",
   "native009_delta": [
     "patches/xnu-12377/nezha-gnss-pac-capture.patch",
     "tests/gnss27/exception_context_test.py",
@@ -1191,5 +1194,15 @@
     "source/device/package/baseband27/gnss/NbGnssProtocol.c",
     "source/device/tests/gnss27/gnss_protocol_test.c"
   ],
-  "native019_capacity": 142
+  "native019_capacity": 142,
+  "native020_delta": [
+    "source/device/patches/xnu-12377/nezha-text-fixup-reclaimed-page.patch",
+    "source/device/patches/xnu-12377/series",
+    "source/device/tests/check-text-fixup-reclaimed-page.py",
+    "source/device/tests/text-fixup-reclaimed-page.c",
+    "ci/native.py"
+  ],
+  "native020_capacity": 142,
+  "GNSS035_reference_retained": true,
+  "original_validation_bitmap_retained": true
 }

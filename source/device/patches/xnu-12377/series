@@ -54,3 +54,6 @@ nezha-gnss-test-runtime.patch
 
 # Capture the first three locationd PAC faults before original fatal handling.
 nezha-gnss-pac-capture.patch
+
+# Reapply selected original-byte text changes after a validated page is read again.
+nezha-text-fixup-reclaimed-page.patch

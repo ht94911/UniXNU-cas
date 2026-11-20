@@ -1,0 +1,21 @@
+--- a/osfmk/vm/vm_fault.c
++++ b/osfmk/vm/vm_fault.c
+@@ -8886,8 +8886,18 @@
+ 	if (kr == KERN_SUCCESS) {
+ 		page->vmp_cs_validated = VMP_CS_ALL_TRUE;
+ 		page->vmp_cs_tainted = VMP_CS_ALL_FALSE;
+ 		vm_cs_bitmap_validated++;
++#if __arm64__
++		/* A validated vnode bitmap survives page reclamation.  Reapply the
++		 * selected original-byte fixups to this newly read page before it is
++		 * mapped, just as the full validation path does on the first read. */
++		if (cs_text_fixup_page(vnode_pager_lookup_vnode(object->pager),
++		    page->vmp_offset + object->paging_offset,
++		    (void *)phystokv((pmap_paddr_t)VM_PAGE_GET_PHYS_PAGE(page) << PAGE_SHIFT)) != 0) {
++			cache_sync_page(VM_PAGE_GET_PHYS_PAGE(page));
++		}
++#endif
+ 		return TRUE;
+ 	}
+ #endif /* CHECK_CS_VALIDATION_BITMAP */
+ 
