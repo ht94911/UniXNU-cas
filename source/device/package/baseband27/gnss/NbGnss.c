@@ -280,6 +280,12 @@ int nb_gnss_next(NbGnss *s, uint64_t now_ms, NbGnssPacket *packet)
                 if (change & NbGnssChangeState) after->enabled = supplied.enabled;
                 if (change & NbGnssChangeAuto) after->automatic = supplied.automatic;
                 if (change & NbGnssChangeForce) after->forced_off = supplied.forced_off;
+                /* Original Eureka initialization forces the receiver off,
+                 * then later tracking uses service/automatic enable without
+                 * a force-off-clear caller. A newer explicit enable owns the
+                 * next session; queries and disable requests keep it stopped. */
+                if (((change & NbGnssChangeState) && supplied.enabled) ||
+                    ((change & NbGnssChangeAuto) && supplied.automatic)) after->forced_off = 0;
                 if (change & NbGnssChangeParsed) after->parsed_report = supplied.parsed_report;
                 if (change & NbGnssChangeNmea) after->nmea_report = supplied.nmea_report;
                 if (change & NbGnssChangeTracking) {

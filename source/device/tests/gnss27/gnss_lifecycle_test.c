@@ -121,5 +121,34 @@ int main(void)
     CHECK(nb_gnss_next(&state,0,&p)&&p.message==NB_LOC_REGISTER);reply(&p,NB_QMI_ERR_INVALID_ARG,0);
     CHECK(state.phase==NbGnssFailed&&state.failed_command==NB_LOC_REGISTER&&state.last_error==48);
     CHECK(!state.running&&!nb_gnss_next(&state,0,&p));
+    /* GNSS030's original initialization requests force-off=1, service=1,
+     * automatic=0, then service=0. Later the original tracking controller
+     * explicitly enables service and automatic tracking, without a second
+     * force-off request. The earlier off must not suppress this new start. */
+    answers=indications=0;setup();
+    request(1,20,NB_PDS_FORCE_OFF,1,1);
+    CHECK(!nb_gnss_next(&state,0,&p)&&state.clients[1].forced_off&&!state.running);
+    state_request(21,1,0x10,8,1);request(1,22,NB_PDS_SET_AUTO,1,0);
+    state_request(23,0,0,0,0);
+    CHECK(!nb_gnss_next(&state,0,&p));CHECK(!nb_gnss_next(&state,0,&p));
+    CHECK(!nb_gnss_next(&state,0,&p)&&!state.running&&!state.clients[1].enabled);
+    state_request(24,1,0x10,8,1);request(1,25,NB_PDS_SET_AUTO,1,1);
+    CHECK(!nb_gnss_next(&state,0,&p)&&state.clients[1].enabled&&!state.running);
+    if(nb_gnss_next(&state,0,&p)) {
+        CHECK(p.message==NB_LOC_SET_MODE);reply(&p,0,1);
+        CHECK(nb_gnss_next(&state,0,&p)&&p.message==NB_LOC_START);reply(&p,0,0);
+        CHECK(state.running&&state.clients[1].automatic&&!state.clients[1].forced_off);
+        request(1,26,NB_PDS_FORCE_OFF,1,1);
+        CHECK(nb_gnss_next(&state,0,&p)&&p.message==NB_LOC_STOP);reply(&p,0,0);
+        CHECK(!state.running&&!nb_gnss_next(&state,0,&p));
+        /* A new explicit automatic start also supersedes the earlier off;
+         * an intervening query must keep the stopped session stopped. */
+        request(1,27,NB_PDS_GET_STATE,0,0);
+        CHECK(!nb_gnss_next(&state,0,&p)&&!state.running);
+        request(1,28,NB_PDS_SET_AUTO,1,1);
+        CHECK(nb_gnss_next(&state,0,&p)&&p.message==NB_LOC_SET_MODE);reply(&p,0,0);
+        CHECK(nb_gnss_next(&state,0,&p)&&p.message==NB_LOC_START);reply(&p,0,0);
+        CHECK(state.running&&!state.clients[1].forced_off&&state.starts==2&&state.stops==1);
+    } else CHECK(0&&"explicit native start blocked by earlier initialization off");
     printf("GNSS lifecycle %u checks, %u failures; %u state indications\n",checks,failures,indications);return failures?1:0;
 }
