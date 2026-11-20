@@ -64,7 +64,7 @@
   "ci/gpu-userland/fixtures/old.cpp": "37b49814016986ab24ec269aae283eb3d01a4a12e92f685c90b2547b6838fd8e",
   "ci/gpu-userland/fixtures/planar-probe111/NezhaCameraNv12Probe.entitlements.plist": "88e1b971f4fb02d04416673b2a7fee641bc9c3dd4aae71efa253c48c661e1c5d",
   "ci/gpu-userland/fixtures/planar-probe111/NezhaCameraNv12Probe.metal": "ddb9c4a337161c8e2c845c1f4868a0ff8772512d56036b6338aec48fc848957c",
-  "ci/gpu-userland/fixtures/planar-probe111/NezhaCameraNv12Probe.mm": "3d775caeb3f4cd05145691298d8d8c66bc446d28de5a550f4bace8c414e43e26",
+  "ci/gpu-userland/fixtures/planar-probe111/NezhaCameraNv12Probe.mm": "89a8e35695c8e243f97c337fa5663b534b5e3f016e31da2db9c9ce044cb65840",
   "ci/gpu-userland/fixtures/primer-wait-test.cpp.in": "a43dc0cac9541f3b3dbaefb27a169e87fea63878fd6537ff313ce126c7bca71c",
   "ci/gpu-userland/fixtures/retained-camera-contracts/camera-function-spi.json": "db314e7890077963f299f56651846bade05d42f163f102a1a9ed417e178935c8",
   "ci/gpu-userland/fixtures/retained-camera-contracts/extern-function.json": "14156136420b93dacd5d899e5ca5fc409e63a6932c7003660af8e265e2e0e331",

@@ -87,7 +87,7 @@ static bool pixels(IOSurfaceRef surface,unsigned width,unsigned height,bool patt
     }
     const unsigned x=width/2,r=height/2;
     report(@{@"phase":@"pixels",@"case":name,@"width":@(width),@"height":@(height),@"surface":@(IOSurfaceGetID(surface)),
-        @"formats":@[@13,@23],@"UV_format":@"R16Uint",@"rows":@[@(yrow),@(uvrow)],@"offsets":@[@(IOSurfaceGetOffsetOfPlane(surface,0)),@(IOSurfaceGetOffsetOfPlane(surface,1))],
+        @"formats":@[@13,@23],@"UV_format":@"R16Uint",@"rows":@[@(yrow),@(uvrow)],@"offsets":@[@((uintptr_t)y-(uintptr_t)IOSurfaceGetBaseAddress(surface)),@((uintptr_t)uv-(uintptr_t)IOSurfaceGetBaseAddress(surface))],
         @"bad_Y":@(badY),@"bad_UV":@(badUV),@"center":@[@(y[r*yrow+x]),@(uv[(r/2)*uvrow+(x&~1u)]),@(uv[(r/2)*uvrow+(x&~1u)+1])],
         @"checked_Y":@((uint64_t)width*height),@"checked_UV":@((uint64_t)width*height/2),@"passed":@(!badY&&!badUV),@"capture_started":@NO});
     return !IOSurfaceUnlock(surface,kIOSurfaceLockReadOnly,nullptr)&&!badY&&!badUV;
