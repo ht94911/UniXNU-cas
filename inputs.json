@@ -1,14 +1,14 @@
 {
-  "device_revision": "4cdb00ddc0e79c38d0721d57a08cfb7f2a0bafea",
-  "purpose": "HAL074: publish accepted receiver/speaker mute state and outside-lock notifications immediately; avoid repeated route restarts; keep073 reference layout and070 native kernel/066 input recovery/065 browser.",
+  "device_revision": "077d1a7b1e8d71bca0308387ec658364cef778f2",
+  "purpose": "HAL074: publish accepted receiver/speaker mute state and outside-lock notifications immediately; avoid repeated route restarts; keep073 reference layout and070 native kernel/066 input recovery/065 browser. Correct fixture compares output/reference ring bytes; attempted mix counter is diagnostic only. Production HAL unchanged.",
   "audio": {
-    "source_revision": "4cdb00ddc0e79c38d0721d57a08cfb7f2a0bafea",
+    "source_revision": "077d1a7b1e8d71bca0308387ec658364cef778f2",
     "HAL_only": true,
     "hardware_enabled": false,
     "private_inputs": false
   },
   "files": {
-    ".github/workflows/nezha-ios27-native.yml": "f50cde5bb1b5b381ed3f37ffdbec360027c5292f2f2fe64b32bf64d66ccdff37",
+    ".github/workflows/nezha-ios27-native.yml": "047421975e1965898d4fc6f89ac5800262f66fcc606dc340928dc60bd5d272d3",
     "ci/hal.py": "7bdc2c8f7b80e1f3302ce95259d390d43119f5e01d72970d59be96020d9c4933",
     "source/device/package/audio27/core/AudioProtocol.h": "cdd0adfdf372cb6efc5a69f3066f7976f47bf3287884c42d5f7f9709856c17ba",
     "source/device/package/audio27/core/AudioRing.c": "1de1d7ec93732e17b71610531d7e51a9e6e7829ecaa330f32692a39483d418d5",
@@ -20,7 +20,7 @@
     "source/device/package/audio27/hal/NezhaAudioPlugIn.c": "ffb64c3a58d5ae7b6416f4a26a4b52dd00be2ed6699fd51c274f8a4b4e52bc68",
     "source/device/package/audio27/hal/NezhaAudioProperties.inc": "556791d54b8b7552252fa23eea2b848977bf3ca78381a5aa950d3a75ab87646d",
     "source/device/package/audio27/os/NezhaAudioAbi.h": "b49334bcffd93bb2bb014f4686fb0317c21037e930da1a1362326cd4da73fa7c",
-    "source/device/package/audio27/tests/speaker_properties_test.c": "c539f49753a59257e3b741ebc9cc437b516cd63af83e4d3ae6afbd9386c870ad",
+    "source/device/package/audio27/tests/speaker_properties_test.c": "fdf41f82e8c6ec140f1bd240985b54f7564fd270958dfd351b65910c6187c340",
     "source/device/package/audio27/upstream/ShengGpr.h": "a274dded1f4d1e2709b9f966759bcb1f57d12747ee0f57743dea1fa97d95d23e",
     "source/device/package/audio27/upstream/ShengAudioReach.h": "b135177a5feb3e24e0d8a6aabb301600e2c37078b970a09ada6e8eb7bb6a5b98"
   },

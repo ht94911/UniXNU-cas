@@ -359,12 +359,16 @@ int main(void) {
     /* Pending or the old mapped mode does not revert the logical control,
      * while output samples and their reference remain muted during the
      * actual acoustic transition. Existing capture is independent. */
-    unsigned writes=atomic_load(&gWriteCalls);
+    uint64_t output_before[2],reference_before[2];
+    memcpy(output_before,test_output+100,sizeof output_before);
+    memcpy(reference_before,gReference+100,sizeof reference_before);
     assert(DoIOOperation(NULL,kDevice,kOutStream,0,kAudioServerPlugInIOOperationWriteMix,2,&cycle,source,NULL)==0);
-    assert(atomic_load(&gWriteCalls)==writes && !gCaptureIssued);
+    assert(!memcmp(output_before,test_output+100,sizeof output_before));
+    assert(!memcmp(reference_before,gReference+100,sizeof reference_before) && !gCaptureIssued);
     status->route_pending=0;
     assert(DoIOOperation(NULL,kDevice,kOutStream,0,kAudioServerPlugInIOOperationWriteMix,2,&cycle,source,NULL)==0);
-    assert(atomic_load(&gWriteCalls)==writes);
+    assert(!memcmp(output_before,test_output+100,sizeof output_before));
+    assert(!memcmp(reference_before,gReference+100,sizeof reference_before));
     /* Repeated selections and a late mute of the old port do not restart
      * output or send another notification to the system state manager. */
     assert(SetPropertyData(NULL,kDevice,0,&address,0,NULL,4,&unmute)==0);
