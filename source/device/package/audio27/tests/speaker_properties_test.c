@@ -3,8 +3,10 @@
  * any device connection. Stock24A446 Codec binds prec/pspk and requires input
  * vold/inpt/0 to construct the microphone port and its volume command. */
 #define IOConnectCallScalarMethod property_test_scalar
+#define dispatch_async_f property_test_dispatch_async
 #include "../hal/NezhaAudioPlugIn.c"
 #undef IOConnectCallScalarMethod
+#undef dispatch_async_f
 #include <assert.h>
 #include <stdio.h>
 
@@ -12,11 +14,32 @@ static uint64_t test_output[NA_AUDIO_RING_FRAMES],test_input[NA_AUDIO_RING_FRAME
 static unsigned test_routes,test_starts,test_stops,test_inputs;
 static uint32_t test_last_route;
 static unsigned test_property_notifications;
+static UInt64 test_configuration_action;
+static unsigned test_configuration_requests;
+static OSStatus test_configuration_result;
+static struct {void *context;dispatch_function_t work;} test_dispatched[8];
+static unsigned test_dispatched_count;
+void property_test_dispatch_async(dispatch_queue_t queue,void *context,dispatch_function_t work) {
+    assert(queue && work && test_dispatched_count<8);
+    test_dispatched[test_dispatched_count].context=context;
+    test_dispatched[test_dispatched_count++].work=work;
+}
+static void run_queued_configuration_requests(void) {
+    unsigned count=test_dispatched_count;test_dispatched_count=0;
+    for (unsigned i=0;i<count;++i) test_dispatched[i].work(test_dispatched[i].context);
+}
 static OSStatus reference_change_callback(AudioServerPlugInHostRef host,AudioObjectID object,
                                          UInt32 count,const AudioObjectPropertyAddress *addresses) {
     (void)host;(void)object;(void)count;(void)addresses;
     ++test_property_notifications;
     return 0;
+}
+static OSStatus reference_configuration_request(AudioServerPlugInHostRef host,AudioObjectID object,
+                                               UInt64 action,void *info) {
+    (void)host;assert(object==kDevice && !info);
+    pthread_mutex_lock(&gLock);pthread_mutex_unlock(&gLock);
+    test_configuration_action=action;++test_configuration_requests;
+    return test_configuration_result;
 }
 kern_return_t property_test_scalar(mach_port_t connection,uint32_t selector,const uint64_t *input,
                                     uint32_t count,uint64_t *output,uint32_t *out_count) {
@@ -37,7 +60,8 @@ static void fixture(void) {
         .state=NaAudioOutputReady,.epoch=7,.out_channels=2,.in_channels=0,
         .host_hz=19200000,.ticks_per_frame_q32=(uint64_t)400<<32};
     gControl=&status;gEpoch=7;gIoUsers=1;gOutput=test_output;gConnect=0;
-    gInputAvailable=0;gReferenceSelected=1;gVolume=1;gInputVolume=1;gCaptureIssued=0;
+    gInputAvailable=0;gReferenceSelected=gReferenceRequested=1;gReferenceActive=1;
+    gReferenceChangePending=0;gVolume=1;gInputVolume=1;gCaptureIssued=0;
     gSpeakerSelected=1;gReceiverSelected=0;gInputMuted=0;gReceiverVolume=0.5f;
     gSelectedMicSource=kMicSource;
 }
@@ -207,12 +231,43 @@ int main(void) {
     assert(IsPropertySettable(NULL,kReferenceControl,0,&address,&reference_settable)==0 && reference_settable);
     AudioServerPlugInHostInterface reference_host={0};
     reference_host.PropertiesChanged=reference_change_callback;gHost=&reference_host;
+    reference_host.RequestDeviceConfigurationChange=reference_configuration_request;
     test_property_notifications=0;
+    test_configuration_requests=0;test_configuration_result=0;
     assert(SetPropertyData(NULL,kReferenceControl,0,&address,0,NULL,sizeof reference_off,&reference_off)==0);
-    assert(scalar(kReferenceStream,kAudioStreamPropertyIsActive,kAudioObjectPropertyScopeGlobal)==0);
-    assert(SetPropertyData(NULL,kReferenceControl,0,&address,0,NULL,sizeof reference_on,&reference_on)==0);
     assert(scalar(kReferenceStream,kAudioStreamPropertyIsActive,kAudioObjectPropertyScopeGlobal)==1);
+    assert(test_dispatched_count==1);run_queued_configuration_requests();
+    assert(PerformDeviceConfigurationChange(NULL,kDevice,test_configuration_action,NULL)==0);
+    assert(scalar(kReferenceStream,kAudioStreamPropertyIsActive,kAudioObjectPropertyScopeGlobal)==0);
+    AudioObjectPropertyAddress inputs_address={kAudioDevicePropertyStreams,kAudioObjectPropertyScopeInput,0};
+    assert(propertyData(kDevice,&inputs_address,0,NULL,sizeof streams,&bytes,streams)==0);
+    assert(bytes==sizeof(AudioObjectID) && streams[0]==kInStream);
     assert(SetPropertyData(NULL,kReferenceControl,0,&address,0,NULL,sizeof reference_on,&reference_on)==0);
+    assert(scalar(kReferenceStream,kAudioStreamPropertyIsActive,kAudioObjectPropertyScopeGlobal)==0);
+    assert(test_dispatched_count==1);run_queued_configuration_requests();
+    assert(PerformDeviceConfigurationChange(NULL,kDevice,test_configuration_action,NULL)==0);
+    assert(scalar(kReferenceStream,kAudioStreamPropertyIsActive,kAudioObjectPropertyScopeGlobal)==1);
+    assert(propertyData(kDevice,&inputs_address,0,NULL,sizeof streams,&bytes,streams)==0);
+    assert(bytes==2*sizeof(AudioObjectID) && streams[0]==kInStream && streams[1]==kReferenceStream);
+    assert(SetPropertyData(NULL,kReferenceControl,0,&address,0,NULL,sizeof reference_on,&reference_on)==0);
+    assert(!gReferenceChangePending);
+    assert(SetPropertyData(NULL,kReferenceControl,0,&address,0,NULL,sizeof reference_off,&reference_off)==0);
+    run_queued_configuration_requests();
+    assert(AbortDeviceConfigurationChange(NULL,kDevice,NA_REFERENCE_CONFIGURATION,NULL)==0);
+    assert(gReferenceSelected==1 && !gReferenceChangePending);
+    /* A new request while the host is changing the device is applied only
+     * after the original callback returns. The two actual layouts remain
+     * one microphone, then microphone plus one accepted-output reference. */
+    assert(SetPropertyData(NULL,kReferenceControl,0,&address,0,NULL,sizeof reference_off,&reference_off)==0);
+    assert(SetPropertyData(NULL,kReferenceControl,0,&address,0,NULL,sizeof reference_on,&reference_on)==0);
+    run_queued_configuration_requests();
+    assert(PerformDeviceConfigurationChange(NULL,kDevice,test_configuration_action,NULL)==0);
+    assert(!gReferenceSelected && gReferenceChangePending && test_dispatched_count==1);
+    run_queued_configuration_requests();
+    assert(PerformDeviceConfigurationChange(NULL,kDevice,test_configuration_action,NULL)==0);
+    assert(gReferenceSelected==1 && !gReferenceChangePending);
+    assert(propertyData(kDevice,&inputs_address,0,NULL,sizeof streams,&bytes,streams)==0);
+    assert(bytes==2*sizeof(AudioObjectID));
     assert(test_property_notifications==0);gHost=NULL;
     gSelectedMicSource=kMicSource;
     address=(AudioObjectPropertyAddress){'MCCs',kAudioObjectPropertyScopeGlobal,0};

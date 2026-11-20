@@ -69,7 +69,10 @@ static NaAudioStatus gLastStatus;
 static uint64_t *gOutput;static const uint64_t *gInput;
 static uint64_t gReference[NA_AUDIO_RING_FRAMES];
 static UInt32 gIoUsers;static int gInputAvailable,gOutputSelected=1,gInputSelected=1,gCaptureIssued;
-static int gReferenceSelected=1;
+/* The reference stream enters the HAL list only when the system enables
+ * its evis control through a device configuration change. */
+static int gReferenceSelected,gReferenceActive=1,gReferenceRequested,gReferenceChangePending;
+#define NA_REFERENCE_CONFIGURATION UINT64_C(0x4e41524546000000)
 static uint64_t gCaptureTouch;
 static Float32 gVolume=1,gReceiverVolume=1,gInputVolume=1;
 static int gReceiverSelected,gSpeakerSelected,gInputMuted;
@@ -549,8 +552,44 @@ static OSStatus RemoveDeviceClient(AudioServerPlugInDriverRef d,AudioObjectID o,
     observe_once(NaHalDeviceClient,o,1,0,0,0,c->mClientID);
     pthread_mutex_unlock(&gLock);return 0;
 }
-static OSStatus PerformDeviceConfigurationChange(AudioServerPlugInDriverRef d,AudioObjectID o,UInt64 action,void *info) {(void)d;(void)o;(void)action;(void)info;return kAudioHardwareUnsupportedOperationError;}
-static OSStatus AbortDeviceConfigurationChange(AudioServerPlugInDriverRef d,AudioObjectID o,UInt64 action,void *info) {(void)d;(void)o;(void)action;(void)info;return 0;}
+static void request_reference_configuration(void *context) {
+    UInt64 action=NA_REFERENCE_CONFIGURATION|(UInt64)(uintptr_t)context;
+    AudioServerPlugInHostRef host=gHost;
+    OSStatus result=host && host->RequestDeviceConfigurationChange ?
+        host->RequestDeviceConfigurationChange(host,kDevice,action,NULL):kAudioHardwareUnsupportedOperationError;
+    if (result) {
+        pthread_mutex_lock(&gLock);gReferenceChangePending=0;pthread_mutex_unlock(&gLock);
+    }
+}
+static void queue_reference_configuration(UInt32 enabled) {
+    /* The host may defer PerformDeviceConfigurationChange. The request must
+     * not block the HAL setter or the discovery queue that queries the HAL. */
+    dispatch_async_f(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT,0),
+                     (void *)(uintptr_t)enabled,request_reference_configuration);
+}
+static OSStatus PerformDeviceConfigurationChange(AudioServerPlugInDriverRef d,AudioObjectID o,UInt64 action,void *info) {
+    (void)d;(void)info;
+    if (o!=kDevice || (action&~UINT64_C(1))!=NA_REFERENCE_CONFIGURATION)
+        return kAudioHardwareUnsupportedOperationError;
+    pthread_mutex_lock(&gLock);
+    gReferenceSelected=(int)(action&1);gReferenceChangePending=0;
+    int again=gReferenceSelected!=gReferenceRequested;
+    UInt32 requested=(UInt32)gReferenceRequested;
+    if (again) gReferenceChangePending=1;
+    pthread_mutex_unlock(&gLock);
+    /* The host re-enumerates streams and sends the device notifications
+     * after this callback returns, before restarting its existing IO. */
+    if (again) queue_reference_configuration(requested);
+    return 0;
+}
+static OSStatus AbortDeviceConfigurationChange(AudioServerPlugInDriverRef d,AudioObjectID o,UInt64 action,void *info) {
+    (void)d;(void)info;
+    if (o==kDevice && (action&~UINT64_C(1))==NA_REFERENCE_CONFIGURATION) {
+        pthread_mutex_lock(&gLock);gReferenceRequested=gReferenceSelected;
+        gReferenceChangePending=0;pthread_mutex_unlock(&gLock);
+    }
+    return 0;
+}
 static OSStatus GetPropertyData(AudioServerPlugInDriverRef d,AudioObjectID o,pid_t pid,const AudioObjectPropertyAddress *a,UInt32 qs,const void *q,UInt32 size,UInt32 *written,void *out) {
     (void)d;(void)pid;if (!a || !written || (!out && size)) return kAudioHardwareIllegalOperationError;
     pthread_mutex_lock(&gLock);
@@ -609,7 +648,7 @@ static OSStatus IsPropertySettable(AudioServerPlugInDriverRef d,AudioObjectID o,
 static OSStatus SetPropertyData(AudioServerPlugInDriverRef d,AudioObjectID o,pid_t pid,const AudioObjectPropertyAddress *a,UInt32 qs,const void *q,UInt32 size,const void *data) {
     (void)d;(void)pid;(void)qs;(void)q;if (!a || (size && !data)) return kAudioHardwareIllegalOperationError;
     OSStatus result=kAudioHardwareUnknownPropertyError;AudioObjectID volume_changed=0,mute_changed=0;
-    int source_changed=0;
+    int source_changed=0,request_reference=0;UInt32 reference_value=0;
     pthread_mutex_lock(&gLock);
     if (((o==kVolume || o==kReceiverVolume || o==kInputVolume) &&
          (a->mSelector==kAudioLevelControlPropertyScalarValue || a->mSelector==kAudioLevelControlPropertyDecibelValue)) ||
@@ -656,10 +695,14 @@ static OSStatus SetPropertyData(AudioServerPlugInDriverRef d,AudioObjectID o,pid
         else {
             memcpy(&value,data,sizeof value);
             if (value>1) result=kAudioHardwareIllegalOperationError;
-            /* The host performs its own reference-stream transition while
-             * calling this setter. A synchronous PropertiesChanged for this
-             * same control re-enters that transition before it can return. */
-            else {gReferenceSelected=value;result=0;}
+            else if (!gHost || !gHost->RequestDeviceConfigurationChange)
+                result=kAudioHardwareUnsupportedOperationError;
+            else {
+                gReferenceRequested=(int)value;reference_value=value;result=0;
+                if (!gReferenceChangePending && gReferenceSelected!=(int)value) {
+                    gReferenceChangePending=1;request_reference=1;
+                }
+            }
         }
     } else if ((o==kInputSource && a->mSelector==kAudioSelectorControlPropertyCurrentItem &&
                 a->mScope==kAudioObjectPropertyScopeGlobal && a->mElement==0) ||
@@ -692,7 +735,7 @@ static OSStatus SetPropertyData(AudioServerPlugInDriverRef d,AudioObjectID o,pid
     } else if ((o==kOutStream || o==kInStream || o==kReferenceStream) && a->mSelector==kAudioStreamPropertyIsActive && size==sizeof(UInt32)) {
         UInt32 active=*(const UInt32 *)data;
         if (active>1 || (o==kInStream && !gInputAvailable)) result=kAudioHardwareIllegalOperationError;
-        else if (o==kReferenceStream) {gReferenceSelected=active;result=0;}
+        else if (o==kReferenceStream) {gReferenceActive=active;result=0;}
         else {
             uint32_t selector=o==kOutStream ? (active ? NaAudioStartOutput:NaAudioStopOutput):(active ? NaAudioStartInput:NaAudioStopInput);
             if (gIoUsers && (o==kOutStream || !active) &&
@@ -710,6 +753,7 @@ finished:
         observe_once(NaHalPropertyWrite,o,a->mSelector,a->mScope,a->mElement,result,
                      property_observation_value(o,a,size,data));
     pthread_mutex_unlock(&gLock);
+    if (request_reference) queue_reference_configuration(reference_value);
     if (volume_changed && gHost) {
         AudioObjectPropertyAddress changed[2]={{kAudioLevelControlPropertyScalarValue,kAudioObjectPropertyScopeGlobal,kAudioObjectPropertyElementMain},{kAudioLevelControlPropertyDecibelValue,kAudioObjectPropertyScopeGlobal,kAudioObjectPropertyElementMain}};
         gHost->PropertiesChanged(gHost,volume_changed,2,changed);
@@ -832,7 +876,7 @@ static OSStatus DoIOOperation(AudioServerPlugInDriverRef d,AudioObjectID o,Audio
             if (!r) ++written;
         }
         result=0;
-    } else if (reference && gReferenceSelected) {
+    } else if (reference && gReferenceSelected && gReferenceActive) {
         Float32 *out=main;
         for (unsigned i=0;i<frames;++i) {
             int16_t left=0,right=0;

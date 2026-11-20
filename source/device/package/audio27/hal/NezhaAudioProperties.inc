@@ -7,7 +7,7 @@ static UInt32 objects(AudioObjectID o, AudioObjectPropertyScope scope, AudioObje
         if (scope != kAudioObjectPropertyScopeInput) list[n++] = kOutStream;
         if (scope != kAudioObjectPropertyScopeOutput && gInputAvailable) list[n++] = kInStream;
         /* Original24A446 finds the tap at the last input-stream index. */
-        if (scope != kAudioObjectPropertyScopeOutput) list[n++] = kReferenceStream;
+        if (scope != kAudioObjectPropertyScopeOutput && gReferenceSelected) list[n++] = kReferenceStream;
         if (scope != kAudioObjectPropertyScopeInput) {
             list[n++] = kVolume;list[n++] = kReceiverVolume;
             list[n++] = kReceiverMute;list[n++] = kSpeakerMute;
@@ -187,23 +187,28 @@ static OSStatus propertyData(AudioObjectID o, const AudioObjectPropertyAddress *
         // Raw: the zero time stamps are exact (one host clock), so smoothing only delays the audio server's view of them.
         case kAudioDevicePropertyClockAlgorithm: REPLY(UInt32, kAudioDeviceClockAlgorithmRaw);
         case kAudioDevicePropertyPreferredChannelsForStereo: {
+            if (a->mScope==kAudioObjectPropertyScopeInput && !gReferenceSelected)
+                return kAudioHardwareUnknownPropertyError;
             if (inDataSize < 2 * sizeof(UInt32)) return kAudioHardwareBadPropertySizeError;
             UInt32 first = a->mScope == kAudioObjectPropertyScopeInput && gInputAvailable ? 2 : 1;
             ((UInt32 *)outData)[0] = first; ((UInt32 *)outData)[1] = first + 1;
             *outDataSize = 2 * sizeof(UInt32); return 0;
         }
         case kAudioDevicePropertyPreferredChannelLayout: {
-            const UInt32 channels = a->mScope == kAudioObjectPropertyScopeInput && gInputAvailable ? 3 : 2;
+            const UInt32 channels = a->mScope==kAudioObjectPropertyScopeInput ?
+                (gInputAvailable ? 1u:0u)+(gReferenceSelected ? 2u:0u):2u;
             const UInt32 bytes = (UInt32)(offsetof(AudioChannelLayout, mChannelDescriptions) + channels * sizeof(AudioChannelDescription));
             if (inDataSize < bytes) return kAudioHardwareBadPropertySizeError;
             AudioChannelLayout *l = outData;
             memset(l, 0, bytes);
             l->mChannelLayoutTag = kAudioChannelLayoutTag_UseChannelDescriptions;
             l->mNumberChannelDescriptions = channels;
-            UInt32 first = channels == 3 ? 1 : 0;
-            if (first) l->mChannelDescriptions[0].mChannelLabel = kAudioChannelLabel_Mono;
-            l->mChannelDescriptions[first].mChannelLabel = kAudioChannelLabel_Left;
-            l->mChannelDescriptions[first+1].mChannelLabel = kAudioChannelLabel_Right;
+            UInt32 first=a->mScope==kAudioObjectPropertyScopeInput && gInputAvailable ? 1u:0u;
+            if (first) l->mChannelDescriptions[0].mChannelLabel=kAudioChannelLabel_Mono;
+            if (channels-first==2) {
+                l->mChannelDescriptions[first].mChannelLabel=kAudioChannelLabel_Left;
+                l->mChannelDescriptions[first+1].mChannelLabel=kAudioChannelLabel_Right;
+            }
             *outDataSize = bytes; return 0;
         }
         case kAudioObjectPropertyOwnedObjects:
@@ -236,7 +241,7 @@ static OSStatus propertyData(AudioObjectID o, const AudioObjectPropertyAddress *
             if (o == kReferenceStream) REPLY_STR("Speaker Reference");
             REPLY_STR("Microphone");
         case kAudioObjectPropertyOwnedObjects: *outDataSize = 0; return 0;
-        case kAudioStreamPropertyIsActive: REPLY(UInt32, o == kOutStream ? gOutputSelected : o == kReferenceStream ? gReferenceSelected : gInputSelected);
+        case kAudioStreamPropertyIsActive: REPLY(UInt32, o == kOutStream ? gOutputSelected : o == kReferenceStream ? gReferenceSelected && gReferenceActive : gInputSelected);
         case kAudioStreamPropertyDirection: REPLY(UInt32, o != kOutStream);
         case kAudioStreamPropertyTerminalType: REPLY(UInt32, o == kOutStream ? kAudioStreamTerminalTypeSpeaker : o == kReferenceStream ? kAudioStreamTerminalTypeUnknown : kAudioStreamTerminalTypeMicrophone);
         case kAudioStreamPropertyStartingChannel: REPLY(UInt32, o == kReferenceStream && gInputAvailable ? 2 : 1);
