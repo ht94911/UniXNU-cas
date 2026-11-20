@@ -1,7 +1,7 @@
-name: nezha iPhone27 Camera102 native NV12 half codes
+name: nezha iPhone27 Camera112 planar sample and scratch boundary
 on:
   push:
-    branches: [codex/ios27-camera102-nv12-halfcodes-20261119]
+    branches: [codex/ios27-camera112-planar-boundary-20261120]
 permissions:
   contents: read
 concurrency:
