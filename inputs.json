@@ -1,17 +1,17 @@
 {
   "schema": 1,
-  "purpose": "Camera112 original111largepixelmismatch;knownplanarwrite/samplebuffer/constantTG/badXY24;noCamera",
-  "device_revision": "a9353fb849654b07985d8802703f6464b42fe74d",
+  "purpose": "Camera114 reproduce actual originalVT1x1 finalzero with explicit16384TG and separated buffer/filter/sampler readers;external original inputs remain local",
+  "device_revision": "fb61b154901a13b49483681ef83fdfbb53b4f644",
   "files": {
-    ".github/workflows/nezha-ios27-native.yml": "dc157d8a24953267bef99e0aab3d5a09f7a79cad3c7a34d664a9d9de79241041",
-    "ci/artifact-recipient.pem": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
-    "ci/artifacts.py": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
+    "source/NezhaCameraVtReplay.mm": "6e5c88f51c8942d938532903993d82b98c3685e51b499e4d40e5e8126c8095bd",
+    "source/probe.entitlements.plist": "88e1b971f4fb02d04416673b2a7fee641bc9c3dd4aae71efa253c48c661e1c5d",
+    "source/NezhaCameraVtReplay.metal": "d4d2a1ca686505c8eb3d995f6378ce4f7de1be57f543223d517964a3530d8674",
     "ci/camera-discovery.py": "587a51920cb25d2ef36af7259ad441dde78ca842a98d865e4a54e98880989065",
+    "ci/artifact-recipient.pem": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
     "ci/check-nv12-memory.py": "7ab7fcf6809e37d38fe9fab864d1e6c2f76ded97e79e0b00d6c6865abf65f019",
-    "ci/corelocation.py": "21843592c6275b069b1633d794d0a96e6fc24f71a5d20367a8646b250477473c",
-    "source/NezhaCameraNv12Probe.metal": "776838907f0f9dc430e6a68e8b71f7d3ca25cac660a0f9bd3f92cc0c94fef78c",
-    "source/NezhaCameraNv12Probe.mm": "1e587173d7b92239f84c31b86aaae26acaf1742e1e0fe2c3e886655b6c8a7b88",
-    "source/probe.entitlements.plist": "88e1b971f4fb02d04416673b2a7fee641bc9c3dd4aae71efa253c48c661e1c5d"
+    "ci/corelocation.py": "44aafd29631bc20462fc2ccc1c16bbd8437fd4e10a26921e580e8f060cbfe508",
+    "ci/artifacts.py": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
+    ".github/workflows/nezha-ios27-native.yml": "e394e7b05c1f0b6cf378a91e73e6b433e23796b1efc7b87553c403328f1fffc3"
   },
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
   "certificate_sha256": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
