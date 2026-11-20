@@ -40,7 +40,7 @@ static UInt32 scalar(AudioObjectID object, UInt32 selector, UInt32 scope) {
     assert(bytes==sizeof value);return value;
 }
 static void check_port_controls(UInt32 scope,UInt32 element) {
-    AudioObjectID controls[10]={0};UInt32 bytes=0;
+    AudioObjectID controls[11]={0};UInt32 bytes=0;
     AudioObjectPropertyAddress address={kAudioObjectPropertyControlList,scope,0};
     assert(GetPropertyData(NULL,kDevice,0,&address,0,NULL,sizeof controls,&bytes,controls)==0);
     unsigned mute=0,volume=0;
@@ -126,8 +126,8 @@ int main(void) {
     address.mSelector=kAudioDevicePropertyDataSource;
     UInt32 duplicate_sources[2]={'imic','imic'};
     assert(SetPropertyData(NULL,kDevice,0,&address,0,NULL,3,&mic_source)==kAudioHardwareBadPropertySizeError);
-    assert(SetPropertyData(NULL,kDevice,0,&address,0,NULL,sizeof duplicate_sources,duplicate_sources)==kAudioHardwareIllegalOperationError);
-    assert(GetPropertyDataSize(NULL,kDevice,0,&address,0,NULL,&bytes)==0 && bytes==0);
+    assert(SetPropertyData(NULL,kDevice,0,&address,0,NULL,sizeof duplicate_sources,duplicate_sources)==0);
+    assert(scalar(kDevice,kAudioDevicePropertyDataSource,kAudioObjectPropertyScopeInput)=='imic');
     assert(SetPropertyData(NULL,kDevice,0,&address,0,NULL,sizeof mic_source,&mic_source)==0);
     UInt32 fake_source='imi4';
     assert(SetPropertyData(NULL,kDevice,0,&address,0,NULL,sizeof fake_source,&fake_source)==kAudioHardwareIllegalOperationError);
@@ -163,20 +163,45 @@ int main(void) {
     address.mSelector=kAudioDevicePropertyDataSourceKindForID;
     translation=(AudioValueTranslation){&mic_source,sizeof mic_source,&mic_kind,sizeof mic_kind};
     assert(GetPropertyData(NULL,kDevice,0,&address,0,NULL,sizeof translation,&bytes,&translation)==0 && mic_kind=='omni');
-    /* Both APIs select the original logical IDs and read back the same
-     * selection. Every ID still uses the sole real microphone PCM stream. */
-    for (unsigned i=0;i<sizeof source_ids/sizeof source_ids[0];++i) {
-        mic_source=source_ids[i];
+    /* Logical names normalize to the one published physical input. Neither
+     * API advertises additional hardware sources or additional streams. */
+    for (unsigned i=0;i<sizeof kLogicalMicSources/sizeof kLogicalMicSources[0];++i) {
+        mic_source=kLogicalMicSources[i];
         address=(AudioObjectPropertyAddress){kAudioDevicePropertyDataSource,kAudioObjectPropertyScopeInput,0};
         assert(SetPropertyData(NULL,kDevice,0,&address,0,NULL,sizeof mic_source,&mic_source)==0);
-        assert(scalar(kInputSource,kAudioSelectorControlPropertyCurrentItem,kAudioObjectPropertyScopeGlobal)==mic_source);
+        assert(scalar(kInputSource,kAudioSelectorControlPropertyCurrentItem,kAudioObjectPropertyScopeGlobal)=='imic');
         address=(AudioObjectPropertyAddress){kAudioSelectorControlPropertyCurrentItem,kAudioObjectPropertyScopeGlobal,0};
         assert(SetPropertyData(NULL,kInputSource,0,&address,0,NULL,sizeof mic_source,&mic_source)==0);
-        assert(scalar(kDevice,kAudioDevicePropertyDataSource,kAudioObjectPropertyScopeInput)==mic_source);
+        assert(scalar(kDevice,kAudioDevicePropertyDataSource,kAudioObjectPropertyScopeInput)=='imic');
         address.mSelector=kAudioSelectorControlPropertyItemName;
         assert(GetPropertyData(NULL,kInputSource,0,&address,sizeof mic_source,&mic_source,sizeof mic_name,&bytes,&mic_name)==0);
         assert(CFEqual(mic_name,CFSTR("Microphone")));CFRelease(mic_name);
     }
+    UInt32 logical_group[]={'btm1','fnt1','bak1','btm2'};
+    address=(AudioObjectPropertyAddress){kAudioDevicePropertyDataSource,kAudioObjectPropertyScopeInput,0};
+    assert(SetPropertyData(NULL,kDevice,0,&address,0,NULL,sizeof logical_group,logical_group)==0);
+    assert(scalar(kDevice,kAudioDevicePropertyDataSource,kAudioObjectPropertyScopeInput)=='imic');
+    logical_group[2]='Usb0';
+    assert(SetPropertyData(NULL,kDevice,0,&address,0,NULL,sizeof logical_group,logical_group)==kAudioHardwareIllegalOperationError);
+    assert(scalar(kDevice,kAudioDevicePropertyDataSource,kAudioObjectPropertyScopeInput)=='imic');
+    /* The evis control owns the existing accepted-output reference. The
+     * server then retains two input streams rather than generating a third. */
+    address=(AudioObjectPropertyAddress){kAudioObjectPropertyControlList,kAudioObjectPropertyScopeGlobal,0};
+    AudioObjectID all_controls[11]={0};
+    assert(GetPropertyData(NULL,kDevice,0,&address,0,NULL,sizeof all_controls,&bytes,all_controls)==0);
+    unsigned reference_controls=0;
+    for (unsigned i=0;i<bytes/sizeof(AudioObjectID);++i)
+        reference_controls+=scalar(all_controls[i],kAudioObjectPropertyClass,kAudioObjectPropertyScopeGlobal)=='evis';
+    assert(reference_controls==1);
+    assert(scalar(kReferenceControl,kAudioObjectPropertyBaseClass,kAudioObjectPropertyScopeGlobal)==kAudioBooleanControlClassID);
+    address=(AudioObjectPropertyAddress){kAudioBooleanControlPropertyValue,kAudioObjectPropertyScopeGlobal,0};
+    UInt32 reference_off=0,reference_on=1;
+    Boolean reference_settable=0;
+    assert(IsPropertySettable(NULL,kReferenceControl,0,&address,&reference_settable)==0 && reference_settable);
+    assert(SetPropertyData(NULL,kReferenceControl,0,&address,0,NULL,sizeof reference_off,&reference_off)==0);
+    assert(scalar(kReferenceStream,kAudioStreamPropertyIsActive,kAudioObjectPropertyScopeGlobal)==0);
+    assert(SetPropertyData(NULL,kReferenceControl,0,&address,0,NULL,sizeof reference_on,&reference_on)==0);
+    assert(scalar(kReferenceStream,kAudioStreamPropertyIsActive,kAudioObjectPropertyScopeGlobal)==1);
     gSelectedMicSource=kMicSource;
     address=(AudioObjectPropertyAddress){'MCCs',kAudioObjectPropertyScopeGlobal,0};
     CFDictionaryRef counts=NULL;

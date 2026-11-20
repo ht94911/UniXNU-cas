@@ -20,19 +20,25 @@
 #include "AudioClock.h"
 #include "AudioReference.h"
 enum {kPlugIn=kAudioObjectPlugInObject,kDevice=2,kOutStream=3,kInStream=4,kVolume=5,kReferenceStream=6,
-      kReceiverMute=7,kSpeakerMute=8,kInputMute=9,kReceiverVolume=10,kInputVolume=11,kInputSource=12};
+      kReceiverMute=7,kSpeakerMute=8,kInputMute=9,kReceiverVolume=10,kInputVolume=11,kInputSource=12,
+      kReferenceControl=13};
 /* One measured mono capture path. imic names that physical input without
  * advertising unimplemented front/back microphones or beamforming. */
 static const UInt32 kMicSource='imic';
-/* Original N71 routing selects logical subports. These names select the
- * same one board PCM path; they do not create additional capture streams. */
-static const UInt32 kMicSources[]={'imic','btm1','btm2','fnt1','bak1','beam','vcrg',
-                                 'all ','ovrd','cmb1','cmb2','cmb3'};
+/* Source discovery describes the one physical input. N71 logical subports
+ * are accepted by setters and normalized to that same PCM path. */
+static const UInt32 kMicSources[]={'imic'};
+static const UInt32 kLogicalMicSources[]={'imic','btm1','btm2','fnt1','bak1','beam','vcrg',
+                                        'all ','ovrd','cmb1','cmb2','cmb3'};
 static int mic_source_valid(UInt32 source) {
-    for (unsigned i=0;i<sizeof kMicSources/sizeof kMicSources[0];++i)
-        if (source==kMicSources[i]) return 1;
+    for (unsigned i=0;i<sizeof kLogicalMicSources/sizeof kLogicalMicSources[0];++i)
+        if (source==kLogicalMicSources[i]) return 1;
     return 0;
 }
+/* CoreAudio24A446 recognizes this hardware reference-stream control before
+ * considering a generated software tap. The accepted-output tap already
+ * exists as kReferenceStream and must not be accompanied by a second tap. */
+static const AudioClassID kReferenceControlClass='evis';
 /* Stock Codec default-input selection recognizes the omni item kind. */
 static const UInt32 kMicSourceKind='omni';
 /* Original24A446 Codec binds both prec and pspk mute/volume controls. The
@@ -596,7 +602,8 @@ static OSStatus IsPropertySettable(AudioServerPlugInDriverRef d,AudioObjectID o,
         (o==kDevice && (a->mSelector==kAudioDevicePropertyNominalSampleRate ||
          a->mSelector==kAudioDevicePropertyMute || a->mSelector==kAudioDevicePropertyVolumeScalar ||
          a->mSelector==kAudioDevicePropertyVolumeDecibels || a->mSelector==kAudioDevicePropertyDataSource)) ||
-        (o==kInputSource && a->mSelector==kAudioSelectorControlPropertyCurrentItem);
+        (o==kInputSource && a->mSelector==kAudioSelectorControlPropertyCurrentItem) ||
+        (o==kReferenceControl && a->mSelector==kAudioBooleanControlPropertyValue);
     return HasProperty(d,o,pid,a) ? 0:kAudioHardwareUnknownPropertyError;
 }
 static OSStatus SetPropertyData(AudioServerPlugInDriverRef d,AudioObjectID o,pid_t pid,const AudioObjectPropertyAddress *a,UInt32 qs,const void *q,UInt32 size,const void *data) {
@@ -642,22 +649,38 @@ static OSStatus SetPropertyData(AudioServerPlugInDriverRef d,AudioObjectID o,pid
             if (select_route()!=KERN_SUCCESS) {gReceiverSelected=old_receiver;gSpeakerSelected=old_speaker;result=kAudioHardwareNotRunningError;}
             else {mute_changed=control;result=0;}
         }
+    } else if (o==kReferenceControl && a->mSelector==kAudioBooleanControlPropertyValue &&
+               a->mScope==kAudioObjectPropertyScopeGlobal && a->mElement==0) {
+        UInt32 value;
+        if (size!=sizeof value) result=kAudioHardwareBadPropertySizeError;
+        else {
+            memcpy(&value,data,sizeof value);
+            if (value>1) result=kAudioHardwareIllegalOperationError;
+            else {gReferenceSelected=value;mute_changed=kReferenceControl;result=0;}
+        }
     } else if ((o==kInputSource && a->mSelector==kAudioSelectorControlPropertyCurrentItem &&
                 a->mScope==kAudioObjectPropertyScopeGlobal && a->mElement==0) ||
                (o==kDevice && a->mSelector==kAudioDevicePropertyDataSource &&
                 a->mScope==kAudioObjectPropertyScopeInput && a->mElement==0)) {
         UInt32 source=0;
-        /* Both the device ssrc property and the selector scci property carry
-         * UInt32 arrays. An empty array deselects the one real microphone. */
+        /* Device ssrc is a UInt32 array of selected sources. Multiple N71
+         * logical names still select our one physical imic. Selector scci
+         * is a single item. Both APIs permit an empty selection. */
         if (size%sizeof source)
             result=kAudioHardwareBadPropertySizeError;
-        else if (size>sizeof source) result=kAudioHardwareIllegalOperationError;
+        else if ((o==kInputSource && size>sizeof source) || size>sizeof kLogicalMicSources)
+            result=kAudioHardwareIllegalOperationError;
         else {
-            if (size) memcpy(&source,data,sizeof source);
-            if (!gInputAvailable || (size && !mic_source_valid(source))) result=kAudioHardwareIllegalOperationError;
+            int valid=gInputAvailable;
+            for (UInt32 offset=0;valid && offset<size;offset+=sizeof source) {
+                UInt32 logical;memcpy(&logical,(const uint8_t *)data+offset,sizeof logical);
+                valid=mic_source_valid(logical);
+            }
+            if (!valid) result=kAudioHardwareIllegalOperationError;
             else if (!size && gCaptureIssued && call(NaAudioStopInput)!=KERN_SUCCESS)
                 result=kAudioHardwareNotRunningError;
             else {
+                source=size ? kMicSource:0;
                 source_changed=gSelectedMicSource!=source;gSelectedMicSource=source;
                 if (!source) {gCaptureIssued=0;gCaptureTouch=0;}
                 result=0;
@@ -688,7 +711,7 @@ finished:
         AudioObjectPropertyAddress changed[2]={{kAudioLevelControlPropertyScalarValue,kAudioObjectPropertyScopeGlobal,kAudioObjectPropertyElementMain},{kAudioLevelControlPropertyDecibelValue,kAudioObjectPropertyScopeGlobal,kAudioObjectPropertyElementMain}};
         gHost->PropertiesChanged(gHost,volume_changed,2,changed);
     }
-    if (mute_changed==kInputMute && gHost) {
+    if ((mute_changed==kInputMute || mute_changed==kReferenceControl) && gHost) {
         AudioObjectPropertyAddress changed={kAudioBooleanControlPropertyValue,kAudioObjectPropertyScopeGlobal,kAudioObjectPropertyElementMain};
         gHost->PropertiesChanged(gHost,mute_changed,1,&changed);
     }

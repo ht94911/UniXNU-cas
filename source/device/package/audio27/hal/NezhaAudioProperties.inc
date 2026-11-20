@@ -11,6 +11,7 @@ static UInt32 objects(AudioObjectID o, AudioObjectPropertyScope scope, AudioObje
         if (scope != kAudioObjectPropertyScopeInput) {
             list[n++] = kVolume;list[n++] = kReceiverVolume;
             list[n++] = kReceiverMute;list[n++] = kSpeakerMute;
+            list[n++] = kReferenceControl;
         }
         if (scope != kAudioObjectPropertyScopeOutput && gInputAvailable) {
             list[n++] = kInputMute;list[n++] = kInputVolume;list[n++] = kInputSource;
@@ -38,7 +39,7 @@ static OSStatus propertyData(AudioObjectID o, const AudioObjectPropertyAddress *
     // server's device manager reads them for each new device and drops a device whose answer is an unknown-property error (i525).
     if (o == kReferenceStream && s == 'taps' && a->mScope == kAudioObjectPropertyScopeGlobal && a->mElement == kAudioObjectPropertyElementMain)
         REPLY(UInt32, 1);
-    if (o <= kInputSource && (s == kAudioObjectPropertyCustomPropertyInfoList || ((s == kAudioPlugInPropertyBoxList ||
+    if (o <= kReferenceControl && (s == kAudioObjectPropertyCustomPropertyInfoList || ((s == kAudioPlugInPropertyBoxList ||
         s == kAudioPlugInPropertyClockDeviceList) && o == kPlugIn) || ((s == 'taps') && (o == kOutStream || o == kInStream)))) {
         *outDataSize = 0;
         return 0;
@@ -208,7 +209,7 @@ static OSStatus propertyData(AudioObjectID o, const AudioObjectPropertyAddress *
         case kAudioObjectPropertyOwnedObjects:
         case kAudioDevicePropertyStreams:
         case kAudioObjectPropertyControlList: {
-            AudioObjectID list[10];
+            AudioObjectID list[11];
             UInt32 n = objects(kDevice, a->mScope, list), out = 0;
             for (UInt32 i = 0; i < n; ++i) {
                 int control=list[i]==kVolume || list[i]>=kReceiverMute;
@@ -284,6 +285,18 @@ static OSStatus propertyData(AudioObjectID o, const AudioObjectPropertyAddress *
         case kAudioControlPropertyScope: REPLY(AudioObjectPropertyScope,o==kInputMute ? kAudioObjectPropertyScopeInput:kAudioObjectPropertyScopeOutput);
         case kAudioControlPropertyElement: REPLY(AudioObjectPropertyElement,o==kReceiverMute ? 3:o==kSpeakerMute ? 4:0);
         case kAudioBooleanControlPropertyValue: REPLY(UInt32,o==kInputMute ? gInputMuted:output_mute(o));
+        default:return kAudioHardwareUnknownPropertyError;
+        }
+    case kReferenceControl:
+        switch (s) {
+        case kAudioObjectPropertyBaseClass: REPLY(AudioClassID,kAudioBooleanControlClassID);
+        case kAudioObjectPropertyClass: REPLY(AudioClassID,kReferenceControlClass);
+        case kAudioObjectPropertyOwner: REPLY(AudioObjectID,kDevice);
+        case kAudioObjectPropertyName: REPLY_STR("Speaker Reference");
+        case kAudioObjectPropertyOwnedObjects: *outDataSize=0;return 0;
+        case kAudioControlPropertyScope: REPLY(AudioObjectPropertyScope,kAudioObjectPropertyScopeOutput);
+        case kAudioControlPropertyElement: REPLY(AudioObjectPropertyElement,0);
+        case kAudioBooleanControlPropertyValue: REPLY(UInt32,gReferenceSelected);
         default:return kAudioHardwareUnknownPropertyError;
         }
     case kInputSource:
