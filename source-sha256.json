@@ -52,7 +52,7 @@
   "ci/gpu-userland/fixtures/old.cpp": "37b49814016986ab24ec269aae283eb3d01a4a12e92f685c90b2547b6838fd8e",
   "ci/gpu-userland/fixtures/primer-wait-test.cpp.in": "a43dc0cac9541f3b3dbaefb27a169e87fea63878fd6537ff313ce126c7bca71c",
   "ci/gpu-userland/fixtures/snippet-bindings.json": "cce41582cc2ae9bb8a2581324dc0922c8dba902706c53162c7cbdb8f01334c51",
-  "ci/gpu-userland/fixtures/source-bindings.json": "bfe14bc9280b8b3345ef89258224966e6816a5c93fd8a4a11b8d991776d0823f",
+  "ci/gpu-userland/fixtures/source-bindings.json": "63cf2f32281d80ca6511cd59a0dd6d458dd7d46ca8e9df22d26c3ca374724bd5",
   "ci/gpu-userland/fixtures/stitch_modules_host.mm": "2d94ae0545adc1836aa820de6c08db00679b5cf87f3eea5cd7a4af391b1f1f43",
   "ci/gpu-userland/fixtures/swap.cpp": "4e440baee494455d42c61b0fd04833ed082272c865babe8221dd8815c50d90ed",
   "ci/gpu-userland/fixtures/tile-store-bindings.json": "33239fdcc1b58b42ff7be3d38a91a95a32b251d8a5f3aec656be644ac12928e8",

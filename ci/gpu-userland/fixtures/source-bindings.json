@@ -15,10 +15,10 @@
   "drivers/AdrenoMetal/GpuScanoutClient.h": "50f47add181c46c29818d838d1a11f5597ef72a5753ad840f89c5f1cc06b77cc",
   "drivers/GopFramebuffer/NativeGOPWire.h": "70ed58ac9a2406f6ebd7a1e69261fb62f5075a13440e1bf05f075cbf92d0450c",
   "drivers/GopFramebuffer/NativeGOPTiming.h": "c30ee39fc384ad0a7bb95a098deb614601642764801e6da08e1dc5b9a6a603fc",
-  "drivers/AdrenoMetal/NativeRenderWaitSample.h": "dc7a05f0e7b3cd9bd2dd7959a56bf07aab079e721dd1fa0e21bc9776ec0c8d54",
+  "drivers/AdrenoMetal/NativeRenderWaitSample.h": "30a05efe09595e6318870336bd0fe0d1f2db36b4491e03367fe3cd14f8756c38",
   "drivers/AdrenoMetal/NativeDisplayWaitState.h": "2fa7b050c56aefbb4503d33b4ff901d297792161ebfebe53c1e71365ee20eb57",
-  "drivers/AdrenoMetal/NativeFrameObservers.inc": "9b841426051a8412edead77fd493a5fbe195ddfbaef1382473bbde1149b63761",
+  "drivers/AdrenoMetal/NativeFrameObservers.inc": "b4cb26bf2849feb02f30a802986daa7d0105d62c8e6148b387778747fa41eccf",
   "drivers/AdrenoMetal/bridge/stitch_modules_host.mm": "2d94ae0545adc1836aa820de6c08db00679b5cf87f3eea5cd7a4af391b1f1f43",
-  "drivers/AdrenoMetal/NativeIconLibraryIndex.h": "f4b8b00d71fb818312ce6a4547358f7935ace360304be94760c198356cb422f3",
-  "drivers/AdrenoMetal/bridge/icon_library_index_host.mm": "b07f129640e66028d160f15cda13d5ce5688d66fab54231bf0c167fe94279666"
+  "drivers/AdrenoMetal/NativeIconLibraryIndex.h": "2a8efd857b0c6c5d2d2e117fdfceecc811b440dac3089b11b5852bf4630cbee8",
+  "drivers/AdrenoMetal/bridge/icon_library_index_host.mm": "52239d433635a1cb5b6da243e1a7b750dbd22d6ee47180573774a447c497eddf"
 }
