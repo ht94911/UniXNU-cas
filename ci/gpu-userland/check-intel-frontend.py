@@ -88,7 +88,8 @@ with tempfile.TemporaryDirectory(prefix='frontend-target-') as temp:
         hashes, handlers = [], []
         for label, path in (('before', before), ('after', source)):
             output = work / (target + '-' + label + '.o')
-            cmd = ['xcrun', 'clang++', '-target', target, '-isysroot', sdk, *flags,
+            profile = ['-DNATIVE_METAL_IPHONE24A446=1'] if target == 'arm64e-apple-ios27.0' and label == 'after' else []
+            cmd = ['xcrun', 'clang++', '-target', target, '-isysroot', sdk, *flags, *profile,
                    '-ffile-prefix-map=' + str(before.parent) + '=' + str(kit), '-c', str(path), '-o', str(output)]
             subprocess.run(cmd, check=True)
             hashes.append(hashlib.sha256(output.read_bytes()).hexdigest())

@@ -1,0 +1,331 @@
+diff --git a/NativeBridgeMetalFrontend.mm b/NativeBridgeMetalFrontend.mm
+index bde02d8..5fcdc37 100644
+--- a/NativeBridgeMetalFrontend.mm
++++ b/NativeBridgeMetalFrontend.mm
+@@ -438,6 +438,9 @@ static void traceRenderWaitImages(bool client=false) {
+  }
+ }
+ #include "NativeFrameObservers.inc"
++#if defined(NATIVE_METAL_IPHONE24A446)
++#include "NativeIconLibraryIndex.h"
++#endif
+ 
+ static void startRenderWaitSampler() {
+  if(!renderWaitOn())return;
+@@ -5078,6 +5081,10 @@ extern "C" id native_bridge_metal_open(const char *loader,const char *cache,uint
+   nmb_gpu_diagnostic_hook(frameRuntime);
+  }
+  if(!gDevice){NBLOG(@"native-metal: device refused: %s",nmb_last_error());return nil;}
++#if defined(NATIVE_METAL_IPHONE24A446)
++ if(!strcmp(getprogname(),"SpringBoard") && nbiconlibrary::install())
++  native_bridge_metal_note("App Library current item index installed");
++#endif
+  latencyIdentity();
+  if(clientWaitOn())traceStartWriter();
+  watchImportPressure();
+diff --git a/NativeIconLibraryIndex.h b/NativeIconLibraryIndex.h
+new file mode 100644
+index 0000000..5ef7ef9
+--- /dev/null
++++ b/NativeIconLibraryIndex.h
+@@ -0,0 +1,129 @@
++/* SPDX-License-Identifier: MIT */
++#pragma once
++
++#include <dlfcn.h>
++#include <mach-o/loader.h>
++#include <objc/message.h>
++#include <objc/runtime.h>
++#include <pthread.h>
++#include <cstring>
++#if defined(__arm64e__)
++#include <ptrauth.h>
++#endif
++
++// The iPhone 24A446 App Library already has a diffable data source indexed by
++// the query's item identifier. Its original icon-view lookup instead asks the
++// query to collate the icon again and search its section and item arrays. Use
++// the data source's current index for that one lookup; retain the original path
++// when the item is absent or the query changes during the lookup.
++@interface NSObject (NBIconLibraryIndexMethods)
++- (id)dataSource;
++- (id)queryResult;
++- (id)itemIdentifierForIcon:(id)icon;
++- (id)indexPathForItemIdentifier:(id)identifier;
++- (id)itemIdentifierForIndexPath:(id)indexPath;
++- (id)_iconViewAtIndexPath:(id)indexPath;
++- (id)icon;
++@end
++
++namespace nbiconlibrary {
++using IconViewForIcon = id (*)(id, SEL, id);
++using MethodOrigin = bool (*)(Method, const uint8_t *);
++static IconViewForIcon originalIconViewForIcon;
++static Class iconViewClass;
++static Class dataSourceClass;
++static Class queryClass;
++
++constexpr uint8_t kSpringBoardHomeUUID[16] = {
++    0x2c,0xf7,0xa8,0xa1,0xe2,0xe3,0x35,0xb3,
++    0x81,0x25,0xd0,0x7d,0x6f,0x7d,0xd6,0x38
++};
++constexpr uint8_t kUIKitUUID[16] = {
++    0xaa,0xc8,0x4a,0x00,0x13,0xab,0x3b,0x06,
++    0xb6,0x22,0xa4,0xe6,0x76,0x97,0x1e,0xb8
++};
++
++static inline bool methodInImage(Method method, const uint8_t *uuid) {
++    if (!method) return false;
++    IMP implementation = method_getImplementation(method);
++#if defined(__arm64e__)
++    implementation = (IMP)ptrauth_strip(implementation, ptrauth_key_function_pointer);
++#endif
++    Dl_info info{};
++    if (!dladdr((const void *)implementation, &info) || !info.dli_fbase) return false;
++    const auto *header = (const mach_header_64 *)info.dli_fbase;
++    if (header->magic != MH_MAGIC_64) return false;
++    const auto *commands = (const uint8_t *)(header + 1);
++    size_t offset = 0;
++    for (uint32_t i = 0; i < header->ncmds && offset + sizeof(load_command) <= header->sizeofcmds; ++i) {
++        const auto *command = (const load_command *)(commands + offset);
++        if (command->cmdsize < sizeof(load_command) || command->cmdsize > header->sizeofcmds - offset) return false;
++        if (command->cmd == LC_UUID && command->cmdsize >= sizeof(uuid_command))
++            return !std::memcmp(((const uuid_command *)command)->uuid, uuid, 16);
++        offset += command->cmdsize;
++    }
++    return false;
++}
++
++static id iconViewForIcon(id controller, SEL command, id icon) {
++    if (!pthread_main_np() || !icon) return originalIconViewForIcon(controller, command, icon);
++    id dataSource = [controller dataSource];
++    if (![dataSource isKindOfClass:dataSourceClass]) return originalIconViewForIcon(controller, command, icon);
++    id query = [dataSource queryResult];
++    if (![query isKindOfClass:queryClass]) return originalIconViewForIcon(controller, command, icon);
++    id identifier = [query itemIdentifierForIcon:icon];
++    if (identifier) {
++        id indexPath = [dataSource indexPathForItemIdentifier:identifier];
++        id indexedIdentifier = indexPath ? [dataSource itemIdentifierForIndexPath:indexPath] : nil;
++        if (indexPath && (indexedIdentifier == identifier || [indexedIdentifier isEqual:identifier]) &&
++            [dataSource queryResult] == query) {
++            id view = [controller _iconViewAtIndexPath:indexPath];
++            if ([view isKindOfClass:iconViewClass] && [view icon] == icon &&
++                [controller dataSource] == dataSource && [dataSource queryResult] == query) return view;
++        }
++    }
++    return originalIconViewForIcon(controller, command, icon);
++}
++
++// The origin argument is supplied by the production image check. The existing
++// host fixture supplies its own method origins so the same installation and
++// lookup bodies can run with real Objective-C classes on macOS.
++static bool install(MethodOrigin origin = methodInImage) {
++    if (originalIconViewForIcon) return true;
++    Class controller = objc_getClass("SBHIconLibraryTableViewController");
++    Class dataSource = objc_getClass("SBHIconTableViewDiffableDataSource");
++    Class query = objc_getClass("SBHIconLibraryQueryResult");
++    Class view = objc_getClass("SBIconView");
++    if (!controller || !dataSource || !query || !view) return false;
++    struct Required { Class owner; const char *name; unsigned arguments; const uint8_t *uuid; };
++    const Required required[] = {
++        {controller, "_iconViewForIcon:", 3, kSpringBoardHomeUUID},
++        {controller, "dataSource", 2, kSpringBoardHomeUUID},
++        {controller, "_iconViewAtIndexPath:", 3, kSpringBoardHomeUUID},
++        {dataSource, "queryResult", 2, kSpringBoardHomeUUID},
++        {query, "itemIdentifierForIcon:", 3, kSpringBoardHomeUUID},
++        {dataSource, "indexPathForItemIdentifier:", 3, kUIKitUUID},
++        {dataSource, "itemIdentifierForIndexPath:", 3, kUIKitUUID},
++        {view, "icon", 2, kSpringBoardHomeUUID}
++    };
++    for (const auto &entry : required) {
++        Method method = class_getInstanceMethod(entry.owner, sel_registerName(entry.name));
++        char result[8]{};
++        if (!method || method_getNumberOfArguments(method) != entry.arguments || !origin(method, entry.uuid)) return false;
++        method_getReturnType(method, result, sizeof(result));
++        if (result[0] != '@') return false;
++        if (entry.arguments == 3) {
++            char argument[8]{};
++            method_getArgumentType(method, 2, argument, sizeof(argument));
++            if (argument[0] != '@') return false;
++        }
++    }
++    Method method = class_getInstanceMethod(controller, sel_registerName("_iconViewForIcon:"));
++    iconViewClass = view;
++    dataSourceClass = dataSource;
++    queryClass = query;
++    originalIconViewForIcon = (IconViewForIcon)method_getImplementation(method);
++    method_setImplementation(method, (IMP)iconViewForIcon);
++    return true;
++}
++}
+diff --git a/bridge/icon_library_index_host.mm b/bridge/icon_library_index_host.mm
+new file mode 100644
+index 0000000..0f6d3f8
+--- /dev/null
++++ b/bridge/icon_library_index_host.mm
+@@ -0,0 +1,165 @@
++// SPDX-License-Identifier: MIT
++// Exercise the actual lookup and installation with Objective-C objects.
++#if defined(__APPLE__)
++#import <Foundation/Foundation.h>
++#else
++#include <objc/runtime.h>
++#include <objc/message.h>
++#include <pthread.h>
++static pthread_t fixtureMainThread = pthread_self();
++static int pthread_main_np() { return pthread_equal(pthread_self(), fixtureMainThread); }
++__attribute__((objc_root_class))
++@interface NSObject { Class isa; }
+++ (id)new;
++- (BOOL)isKindOfClass:(Class)other;
++- (BOOL)isEqual:(id)other;
++@end
++@implementation NSObject
+++ (id)new { return class_createInstance(self, 0); }
++- (BOOL)isKindOfClass:(Class)other {
++    for (Class c = object_getClass(self); c; c = class_getSuperclass(c)) if (c == other) return 1;
++    return 0;
++}
++- (BOOL)isEqual:(id)other { return self == other; }
++@end
++#endif
++
++#include <cassert>
++#include <cstdio>
++#include <thread>
++#include <unordered_map>
++static unsigned originalCalls, indexedCalls, lookupCalls;
++static bool missingIndex, wrongItem, changeQuery, changeSource;
++
++@interface NBFixtureIdentifier : NSObject { @public unsigned value; }
++@end
++@implementation NBFixtureIdentifier
++- (BOOL)isEqual:(id)other {
++    return [other isKindOfClass:objc_getClass("NBFixtureIdentifier")] &&
++           value == ((NBFixtureIdentifier *)other)->value;
++}
++@end
++
++@interface SBHIconLibraryQueryResult : NSObject { @public id identifier; }
++- (id)itemIdentifierForIcon:(id)icon;
++@end
++@implementation SBHIconLibraryQueryResult
++- (id)itemIdentifierForIcon:(id)icon { return icon ? identifier : nil; }
++@end
++
++@interface SBIconView : NSObject { @public id representedIcon; }
++- (id)icon;
++@end
++@implementation SBIconView
++- (id)icon { return representedIcon; }
++@end
++
++@interface SBHIconTableViewDiffableDataSource : NSObject {
++@public id query, alternateQuery, indexPath, returnedIdentifier;
++    unsigned queryReads;
++}
++- (id)queryResult;
++- (id)indexPathForItemIdentifier:(id)identifier;
++- (id)itemIdentifierForIndexPath:(id)indexPath;
++@end
++@implementation SBHIconTableViewDiffableDataSource
++- (id)queryResult { return changeQuery && ++queryReads > 1 ? alternateQuery : query; }
++- (id)indexPathForItemIdentifier:(id)identifier {
++    (void)identifier; ++lookupCalls; return missingIndex ? nil : indexPath;
++}
++- (id)itemIdentifierForIndexPath:(id)path { (void)path; return wrongItem ? nil : returnedIdentifier; }
++@end
++
++@interface SBHIconLibraryTableViewController : NSObject {
++@public id source, alternateSource, indexedView, originalView;
++    unsigned sourceReads;
++}
++- (id)dataSource;
++- (id)_iconViewForIcon:(id)icon;
++- (id)_iconViewAtIndexPath:(id)indexPath;
++@end
++@implementation SBHIconLibraryTableViewController
++- (id)dataSource { return changeSource && ++sourceReads > 1 ? alternateSource : source; }
++- (id)_iconViewForIcon:(id)icon { (void)icon; ++originalCalls; return originalView; }
++- (id)_iconViewAtIndexPath:(id)path { (void)path; ++indexedCalls; return indexedView; }
++@end
++
++#include "../NativeIconLibraryIndex.h"
++static std::unordered_map<Method, unsigned> origins;
++static bool originMatches(Method method, const uint8_t *uuid) {
++    const auto found = origins.find(method);
++    return found != origins.end() && found->second == uuid[0];
++}
++
++int main() {
++#if defined(__APPLE__)
++    @autoreleasepool {
++#endif
++    unsigned cases = 0;
++    Class controllerClass = objc_getClass("SBHIconLibraryTableViewController");
++    Class dataSourceClass = objc_getClass("SBHIconTableViewDiffableDataSource");
++    Class queryClass = objc_getClass("SBHIconLibraryQueryResult");
++    Class viewClass = objc_getClass("SBIconView");
++    const struct { Class owner; const char *name; unsigned origin; } required[] = {
++        {controllerClass,"_iconViewForIcon:",0x2c}, {controllerClass,"dataSource",0x2c},
++        {controllerClass,"_iconViewAtIndexPath:",0x2c}, {dataSourceClass,"queryResult",0x2c},
++        {queryClass,"itemIdentifierForIcon:",0x2c}, {dataSourceClass,"indexPathForItemIdentifier:",0xaa},
++        {dataSourceClass,"itemIdentifierForIndexPath:",0xaa}, {viewClass,"icon",0x2c}
++    };
++    for (const auto &r : required) origins[class_getInstanceMethod(r.owner,sel_registerName(r.name))] = r.origin;
++    Method target = class_getInstanceMethod(controllerClass,sel_registerName("_iconViewForIcon:"));
++    IMP original = method_getImplementation(target);
++    origins[target] = 0;
++    assert(!nbiconlibrary::install(originMatches) && method_getImplementation(target) == original); ++cases;
++    origins[target] = 0x2c;
++    assert(nbiconlibrary::install(originMatches) && method_getImplementation(target) != original); ++cases;
++    IMP installed = method_getImplementation(target);
++    assert(nbiconlibrary::install(originMatches) && method_getImplementation(target) == installed); ++cases;
++
++    id icon = [NSObject new], path = [NSObject new];
++    auto *identifier = (NBFixtureIdentifier *)[NBFixtureIdentifier new]; identifier->value = 7;
++    auto *equalIdentifier = (NBFixtureIdentifier *)[NBFixtureIdentifier new]; equalIdentifier->value = 7;
++    auto *query = (SBHIconLibraryQueryResult *)[SBHIconLibraryQueryResult new]; query->identifier = identifier;
++    auto *view = (SBIconView *)[SBIconView new]; view->representedIcon = icon;
++    auto *source = (SBHIconTableViewDiffableDataSource *)[SBHIconTableViewDiffableDataSource new];
++    source->query = query; source->alternateQuery = [SBHIconLibraryQueryResult new];
++    source->indexPath = path; source->returnedIdentifier = identifier;
++    auto *controller = (SBHIconLibraryTableViewController *)[SBHIconLibraryTableViewController new];
++    controller->source = source; controller->alternateSource = [SBHIconTableViewDiffableDataSource new];
++    controller->indexedView = view; controller->originalView = [NSObject new];
++    auto reset = [&] {
++        originalCalls = indexedCalls = lookupCalls = 0;
++        missingIndex = wrongItem = changeQuery = changeSource = false;
++        source->queryReads = controller->sourceReads = 0; source->returnedIdentifier = identifier;
++        query->identifier = identifier; view->representedIcon = icon;
++        controller->source = source; controller->indexedView = view;
++    };
++    reset(); assert([controller _iconViewForIcon:icon] == view && !originalCalls && indexedCalls == 1); ++cases;
++    reset(); source->returnedIdentifier = equalIdentifier;
++    assert([controller _iconViewForIcon:icon] == view && !originalCalls); ++cases;
++    reset(); for (unsigned i = 0; i < 1000; ++i) assert([controller _iconViewForIcon:icon] == view);
++    assert(!originalCalls && lookupCalls == 1000); ++cases;
++    reset(); missingIndex = true;
++    assert([controller _iconViewForIcon:icon] == controller->originalView && originalCalls == 1 && !indexedCalls); ++cases;
++    reset(); wrongItem = true;
++    assert([controller _iconViewForIcon:icon] == controller->originalView && originalCalls == 1); ++cases;
++    reset(); changeQuery = true;
++    assert([controller _iconViewForIcon:icon] == controller->originalView && originalCalls == 1); ++cases;
++    reset(); changeSource = true;
++    assert([controller _iconViewForIcon:icon] == controller->originalView && originalCalls == 1); ++cases;
++    reset(); view->representedIcon = [NSObject new];
++    assert([controller _iconViewForIcon:icon] == controller->originalView && originalCalls == 1); ++cases;
++    reset(); controller->indexedView = nil;
++    assert([controller _iconViewForIcon:icon] == controller->originalView && originalCalls == 1); ++cases;
++    reset(); query->identifier = nil;
++    assert([controller _iconViewForIcon:icon] == controller->originalView && originalCalls == 1 && !lookupCalls); ++cases;
++    reset(); controller->source = nil;
++    assert([controller _iconViewForIcon:icon] == controller->originalView && originalCalls == 1); ++cases;
++    reset(); assert([controller _iconViewForIcon:nil] == controller->originalView && originalCalls == 1); ++cases;
++    reset(); std::thread worker([&] { assert([controller _iconViewForIcon:icon] == controller->originalView); });
++    worker.join(); assert(originalCalls == 1 && !lookupCalls); ++cases;
++    printf("PASS %u actual App Library index cases; original fallback preserved; 1000 indexed lookups\n", cases);
++#if defined(__APPLE__)
++    }
++#endif
++}

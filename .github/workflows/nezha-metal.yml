@@ -1,7 +1,7 @@
-name: nezha GPU066 shared AIR stitching - metal052
+name: nezha GPU067 current list index - metal053
 on:
   push:
-    branches: [codex/ios27-gpu66-stitch-modules-metal052-20261120]
+    branches: [codex/ios27-gpu67-current-list-index-metal053-20261120]
   workflow_dispatch:
 permissions:
   contents: read
@@ -73,6 +73,9 @@ jobs:
       - name: Exercise actual external kernel lookup and bounded icon-library evidence
         id: extern_function
         run: device/ci/gpu-userland/logrun extern-function python3 device/ci/gpu-userland/check-extern-function.py --unixnu unixnu --logs "$LOGS"
+      - name: Verify current App Library item index and original fallback
+        id: icon_list_index
+        run: device/ci/gpu-userland/logrun icon-list-index python3 device/ci/gpu-userland/check-icon-list-index.py --unixnu unixnu --logs "$LOGS"
       - name: Check shared and distinct AIR module compiler requests
         id: stitch_modules
         run: device/ci/gpu-userland/logrun stitch-modules python3 device/ci/gpu-userland/check-stitch-modules.py --unixnu unixnu --logs "$LOGS"

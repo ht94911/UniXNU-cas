@@ -451,6 +451,10 @@ def main():
     must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', selected])
     shutil.copyfile(HERE / 'fixtures/stitch_modules_host.mm', root / 'drivers/AdrenoMetal/bridge/stitch_modules_host.mm')
     record['gpu066_stitch_modules_patch'] = sha(selected)
+    selected = HERE / 'patches' / 'gpu067-current-list-index.patch'
+    must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', '--check', selected])
+    must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', selected])
+    record['gpu067_current_list_index_patch'] = sha(selected)
     bridge_patches = sorted((root / 'drivers/AdrenoMetal/bridge/patches').glob('*.patch'))
     record['metal2vulkan']['bridge_patches'] = {p.name: sha(p) for p in bridge_patches}
     progress('all pinned sources and patches verified')
