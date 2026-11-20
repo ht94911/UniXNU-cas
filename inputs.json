@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "GNSS036 existing selected text table survives vnode validated page reclamation",
+  "purpose": "GNSS037 lockstate callback record capacity142to143 with retained020b reclaimedpage source",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "47781eaa5eb91f34609907ecadb074ddf862f144",
+  "device_revision": "ae382ca8117adf960baff1b286dd6e71895bcada",
   "soc_revision": "GPU051 e565439+3435fa5 and GNSS counted IPA plus immutable IPCC append",
   "xcode": "26.6",
   "files": {
@@ -549,7 +549,7 @@
     "source/device/package/software-aes/NativeAESBootstrap.cpp": "98ed3f7df7df676d475bdf096409bf588e0d6d4773263878f368f953452d9bbd",
     "source/device/patches/xnu-12377/nezha-bluetooth-exit-diagnostic.patch": "193654ad33bb3de0edd9e62a7bd7cab4f31dbf5a8c1ca996c8b8d2fb48b793e9",
     "source/device/patches/xnu-12377/nezha-bluetooth-runtime.patch": "4d4fd6049250eaf399e6a0d5ff4e34232c148081820148532cf8c0c7119fd57b",
-    "source/device/patches/xnu-12377/nezha-bluetooth-text-fixup-capacity.patch": "ba1fdba9cf67e43e395418fce7cfbd97fad5411f0353a82f9e4931839e000dbe",
+    "source/device/patches/xnu-12377/nezha-bluetooth-text-fixup-capacity.patch": "daee9b924f8a793aef68f106b0a4b881ff48acf9849d1877d5ed3924a320c851",
     "source/device/patches/xnu-12377/nezha-wifi-addon-truncate.patch": "c3b980c547fbc138ac7aedfd735d350cfef85d2a32ff78ec7bef894c4068ce63",
     "source/device/patches/xnu-12377/nezha-wifi-kernel-events.patch": "967cf792a5202711d0063463fe08bda58c554621b690b87f66904c18f81d057f",
     "source/device/patches/xnu-12377/nezha-wifi-mmio-recovery.patch": "89642756f4fe3179d44f076fbfd4786d21d0089ec7786943cb717b3eb78ecbe1",
@@ -708,7 +708,7 @@
     "source/device/scripts/nezha_macho_late.py": "fc5a2869ef22bd2c06702930fc0c88b0e071ab7ef851824b403234633040fc37",
     "source/device/patches/xnu-12377/nezha-gnss-test-runtime.patch": "68f37196f4777d4cc7721d6c5ab33de3882ae1a826513fd86ef942146e0c55ac",
     "source/device/patches/xnu-12377/nezha-gnss-pac-capture.patch": "433e27a9382331193c32a6a9bbc2a536d63eef6a8247e82979e4b9245a34b0d3",
-    ".github/workflows/nezha-ios27-native.yml": "82ea2852e3c239978a38095368829d51301591a47a4337fbe7ad9cdb281565ee",
+    ".github/workflows/nezha-ios27-native.yml": "0a9981be0ef2ee7b9c327a219e298171fb84762079f5d8a8a114e409b628df7b",
     "source/device/tests/gnss27/launcher_job_test.py": "bad064a06b284103f964c8e02d7ec566fa9b5454b9e564e51b74a6bddfa7c448",
     "source/device/tools/gnss27/launcher_job.py": "55669e81cfa07ea3a4750732a7ab59df0694386118d6fd423615f3b4d7321cf9",
     "source/device/package/gnss27/userland/org.unixnu.nezha.location-launch.plist": "69bee5c36ebedbbd6d686fd108fa9c41ab53eddd380906c472740187b138e49f",
@@ -1103,7 +1103,7 @@
     "actual_GNSS004_error": 48,
     "coherent_launcher_source": "tools/gnss27/launcher_job.py"
   },
-  "previous_native_run": 44768351599,
+  "previous_native_run": 44788138143,
   "previous_native007": {
     "run": 44066302910,
     "head": "56ba392fa295f8e7b4093976eeb4094da76feb99",
@@ -1111,7 +1111,7 @@
     "target_compile_started": false,
     "error": "uninitialized shared IPCC fixture; explicit zero-init reproducer passes"
   },
-  "previous_native_head": "bffb3ab40472a7efdfd12885d447de471b6e1be9",
+  "previous_native_head": "6eaa513793a2192a4cbb6d1aa0ccac15b56e598c",
   "native009_delta": [
     "patches/xnu-12377/nezha-gnss-pac-capture.patch",
     "tests/gnss27/exception_context_test.py",
@@ -1205,5 +1205,10 @@
   "native020_capacity": 142,
   "GNSS035_reference_retained": true,
   "original_validation_bitmap_retained": true,
-  "native020_host_path_correction": "compiled = after.parents[2]"
+  "native020_host_path_correction": "compiled = after.parents[2]",
+  "native021_delta": [
+    "source/device/patches/xnu-12377/nezha-bluetooth-text-fixup-capacity.patch"
+  ],
+  "native021_capacity": 143,
+  "lock_notification_code_remains_local": true
 }
