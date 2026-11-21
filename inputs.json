@@ -1,16 +1,16 @@
 {
   "schema": 1,
-  "purpose": "Camera117 originalsystem VT parameters fulltransfer with blackbars/knownYUV;no private input",
-  "device_revision": "5f029910ccf48d1a434a56d2ce5608924b90fb23",
+  "purpose": "Camera118 original CMImaging controller; native capability getters, black fill and authored NV12 transfer/downsample/expand; no camera permission",
+  "device_revision": "4538527ff04fb271617a0b28f4575525d236cb45",
   "files": {
     "source/probe.entitlements.plist": "88e1b971f4fb02d04416673b2a7fee641bc9c3dd4aae71efa253c48c661e1c5d",
     "ci/camera-discovery.py": "587a51920cb25d2ef36af7259ad441dde78ca842a98d865e4a54e98880989065",
     "ci/artifact-recipient.pem": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
     "ci/check-nv12-memory.py": "7ab7fcf6809e37d38fe9fab864d1e6c2f76ded97e79e0b00d6c6865abf65f019",
-    "ci/corelocation.py": "8127868716036023664d6a517557cf52f7b17d9b6e26207f06f904adefb0e13a",
+    "ci/corelocation.py": "8b19e3284b218539e9cce02a3ae5b7c6729a4fa4b1298c6726f83eac25fd9241",
     "ci/artifacts.py": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
-    ".github/workflows/nezha-ios27-native.yml": "7c5ecfff92a4448e990b08200376a0858a13c35c5d56b7d0baabbf5f9f3f5800",
-    "source/NezhaCameraVtSession.mm": "05288b32b9deb5da65d397604b77c968d5c5486409b187beb6b1bbb0b09f42a5"
+    ".github/workflows/nezha-ios27-native.yml": "a5bbe1b6be8590da942301240e2cc96d4647f3f9bd3d53f623fd0be35edf4b9b",
+    "source/NezhaCameraVtSession.mm": "f0163de9f0266fb35cc7733ef321c04249d2f2c84352b5d8416968d7fc5e2ed5"
   },
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
   "certificate_sha256": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",

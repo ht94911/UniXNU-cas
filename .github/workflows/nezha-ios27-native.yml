@@ -1,7 +1,7 @@
-name: nezha iPhone27 Camera117 original system transfer
+name: nezha iPhone27 Camera118 original controller
 on:
   push:
-    branches: [codex/ios27-camera117-system-transfer-20261121]
+    branches: [codex/ios27-camera118-native-controller-20261121]
 permissions:
   contents: read
 concurrency:
