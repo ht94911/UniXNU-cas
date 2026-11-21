@@ -3,6 +3,7 @@
 #include "NezhaCameraFactory.h"
 #include "NezhaCameraMetal.h"
 #include "NezhaCameraMemory.h"
+#include "NezhaCameraRenderer.h"
 #include <errno.h>
 #include <mach/mach.h>
 #include <mach/task_info.h>
@@ -436,6 +437,7 @@ static bool uuid_matches(const struct mach_header_64 *header)
 
 static void image_added(const struct mach_header *header,intptr_t slide)
 {
+    (void)nezha_camera_renderer_install(header,slide);
     if (!metal_required_installed && nezha_camera_metal_install(header,slide)) {
         metal_required_installed=true;
         fputs("nezha-camera: exact GPU051 function constant required getter installed\n",stderr);

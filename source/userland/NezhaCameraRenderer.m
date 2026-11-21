@@ -1,0 +1,87 @@
+/* SPDX-License-Identifier: MIT */
+/* Choose the original uncompressed transfer path when the M2M scaler has no
+ * usable capabilities. Do not fabricate scaler limits or replace its methods. */
+#include "NezhaCameraRenderer.h"
+#include <mach-o/dyld.h>
+#include <objc/message.h>
+#include <objc/runtime.h>
+#include <ptrauth.h>
+#include <math.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
+typedef struct {double width,height;} RendererSize;
+static IMP original_supports,original_initializer;
+static bool capture_seen,installed;
+static intptr_t capture_slide;
+static const uint8_t uuid[16]={0x99,0x5f,0xc2,0x2b,0x41,0xbd,0x37,0xb4,0x81,0x2f,0x26,0x86,0xb8,0x1c,0x26,0x94};
+static bool scaler_available(Class type)
+{
+    if (!type) return false;
+    SEL up=sel_registerName("maxUpscale"),down=sel_registerName("maxDownscale");
+    Method um=class_getClassMethod(type,up),dm=class_getClassMethod(type,down);
+    if (!um || !dm || strcmp(method_getTypeEncoding(um),"{CGSize=dd}16@0:8") ||
+        strcmp(method_getTypeEncoding(dm),"{CGSize=dd}16@0:8")) return false;
+    RendererSize u=((RendererSize (*)(id,SEL))objc_msgSend)((id)type,up);
+    RendererSize d=((RendererSize (*)(id,SEL))objc_msgSend)((id)type,down);
+    return isfinite(u.width) && isfinite(u.height) && isfinite(d.width) && isfinite(d.height) &&
+        u.width>0 && u.height>0 && d.width>0 && d.height>0;
+}
+static bool supports_accelerated(id self,SEL selector)
+{
+    const bool original=((bool (*)(id,SEL))original_supports)(self,selector);
+    const bool available=scaler_available(objc_getClass("FigM2MController"));
+    static unsigned reports;
+    if (__atomic_fetch_add(&reports,1u,__ATOMIC_RELAXED)<4)
+        fprintf(stderr,"nezha-camera: renderer border support original=%u native_scaler=%u selected=%u\n",
+            (unsigned)original,(unsigned)available,(unsigned)(original && available));
+    return original && available;
+}
+static id initialize_renderer(id self,SEL selector,id pool,bool fractional,bool compressed)
+{
+    const bool selected=compressed && scaler_available(objc_getClass("FigM2MController"));
+    static unsigned reports;
+    if (__atomic_fetch_add(&reports,1u,__ATOMIC_RELAXED)<8)
+        fprintf(stderr,"nezha-camera: renderer setup pool=%u fractional=%u compressed_requested=%u compressed_selected=%u\n",
+            (unsigned)(pool!=NULL),(unsigned)fractional,(unsigned)compressed,(unsigned)selected);
+    return ((id (*)(id,SEL,id,bool,bool))original_initializer)(self,selector,pool,fractional,selected);
+}
+static bool match_uuid(const struct mach_header *header)
+{
+    if (!header || header->magic!=MH_MAGIC_64) return false;
+    const struct mach_header_64 *h=(const void *)header;
+    const uint8_t *at=(const void *)(h+1),*end=at+h->sizeofcmds;
+    for (uint32_t i=0;i<h->ncmds;++i) {
+        if ((size_t)(end-at)<sizeof(struct load_command)) return false;
+        const struct load_command *c=(const void *)at;
+        if (c->cmdsize<sizeof(*c) || c->cmdsize>(size_t)(end-at)) return false;
+        if (c->cmd==LC_UUID) return c->cmdsize>=sizeof(struct uuid_command) &&
+            !memcmp(((const struct uuid_command *)c)->uuid,uuid,16);
+        at+=c->cmdsize;
+    }
+    return false;
+}
+bool nezha_camera_renderer_install(const struct mach_header *header,intptr_t slide)
+{
+    if (installed) return true;
+    if (match_uuid(header)) {capture_seen=true;capture_slide=slide;}
+    if (!capture_seen) return false;
+    Class type=objc_getClass("BWPixelBufferTransferRenderer");
+    Method support=type ? class_getClassMethod(type,sel_registerName("supportsAcceleratedBorderFill")):NULL;
+    Method init=type ? class_getInstanceMethod(type,sel_registerName("initWithIntermediateBufferPool:fractionalSourceRectEnabled:compressedFormatEnabled:")):NULL;
+    IMP sf=support ? method_getImplementation(support):NULL,cf=init ? method_getImplementation(init):NULL;
+    if (!sf || !cf || strcmp(method_getTypeEncoding(support),"B16@0:8") ||
+        strcmp(method_getTypeEncoding(init),"@32@0:8@16B24B28") ||
+        (uintptr_t)ptrauth_strip(sf,ptrauth_key_function_pointer)!=(uintptr_t)(0x1b06fec7cULL+capture_slide) ||
+        (uintptr_t)ptrauth_strip(cf,ptrauth_key_function_pointer)!=(uintptr_t)(0x1b05f3e4cULL+capture_slide)) return false;
+    original_supports=sf;original_initializer=cf;
+    method_setImplementation(support,(IMP)supports_accelerated);
+    method_setImplementation(init,(IMP)initialize_renderer);
+    installed=true;
+    fputs("nezha-camera: original uncompressed renderer fallback installed\n",stderr);
+    return true;
+}
+static void image_added(const struct mach_header *header,intptr_t slide)
+{ (void)nezha_camera_renderer_install(header,slide); }
+void nezha_camera_renderer_observe(void)
+{ _dyld_register_func_for_add_image(image_added); }
