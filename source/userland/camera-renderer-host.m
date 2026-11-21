@@ -71,6 +71,24 @@ int main(void) {@autoreleasepool {
    assert(transfer_calls==1&&received_source==source&&received_destination==destination&&received_fill==(bool)fill);
    assert(!memcmp(&received_src,&src,sizeof(src))&&!memcmp(&received_dst,&dst,sizeof(dst)));++cases;
  }
+ NSDictionary *metadata=@{@"FrameSequence":@7,@"RawSensorWidth":@4096,@"RawSensorHeight":@3072,@"ZoomFactor":@1};
+ CVBufferSetAttachment(source,CFSTR("MetadataDictionary"),(CFDictionaryRef)metadata,kCVAttachmentMode_ShouldPropagate);
+ const RendererRect empty={{801,601},{0,0}},whole={{0,0},{4,6}},target={{0,378},{1200,1602}};
+ transfer_calls=0;transfer_status=-12783;
+ assert(transfer_pixels(renderer,@selector(doPixelRotationTransferWithSession:sourceBuffer:sourceRect:destinationBuffer:destinationRect:blackFillUnalignedEdges:),NULL,source,empty,destination,target,true)==transfer_status);
+ assert(transfer_calls==1&&!memcmp(&received_src,&whole,sizeof(whole))&&!memcmp(&received_dst,&target,sizeof(target))&&received_fill);++cases;
+ transfer_calls=0;
+ assert(transfer_pixels(renderer,@selector(doPixelRotationTransferWithSession:sourceBuffer:sourceRect:destinationBuffer:destinationRect:blackFillUnalignedEdges:),NULL,source,rectangles[1],destination,target,false)==transfer_status);
+ assert(transfer_calls==1&&!memcmp(&received_src,&rectangles[1],sizeof(RendererRect)));++cases;
+ const NSArray *invalid=@[@{@"FrameSequence":@7,@"RawSensorWidth":@4096,@"RawSensorHeight":@3072,@"ZoomFactor":@2},
+    @{@"FrameSequence":@0,@"RawSensorWidth":@4096,@"RawSensorHeight":@3072,@"ZoomFactor":@1},
+    @{@"FrameSequence":@7,@"RawSensorWidth":@4096,@"ZoomFactor":@1}];
+ for(NSDictionary *value in invalid) {
+    CVBufferSetAttachment(source,CFSTR("MetadataDictionary"),(CFDictionaryRef)value,kCVAttachmentMode_ShouldPropagate);
+    transfer_calls=0;
+    assert(transfer_pixels(renderer,@selector(doPixelRotationTransferWithSession:sourceBuffer:sourceRect:destinationBuffer:destinationRect:blackFillUnalignedEdges:),NULL,source,empty,destination,target,false)==transfer_status);
+    assert(transfer_calls==1&&!memcmp(&received_src,&empty,sizeof(empty)));++cases;
+ }
  CFRelease(source);CFRelease(destination);[renderer release];
  [pool release];printf("PASS %u production renderer forwarding cases: original results, pool, flags, capabilities and exact CGRect arguments\n",cases);
 }}

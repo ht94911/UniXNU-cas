@@ -50,11 +50,36 @@ static id initialize_renderer(id self,SEL selector,id pool,bool fractional,bool 
             (unsigned)(pool!=NULL),(unsigned)fractional,(unsigned)compressed,(unsigned)selected);
     return ((id (*)(id,SEL,id,bool,bool))original_initializer)(self,selector,pool,fractional,selected);
 }
+/* The provider has already performed the sole implemented 1x RAW crop
+ * into this graph buffer. An empty upstream rectangle cannot describe
+ * any pixels in that completed output. Keep this repair scoped to the
+ * provider's actual frame metadata; other sources retain the original. */
+static bool own_full_source(CVPixelBufferRef source)
+{
+    if (!source || !CVPixelBufferGetWidth(source) || !CVPixelBufferGetHeight(source)) return false;
+    CFTypeRef metadata=CVBufferCopyAttachment(source,CFSTR("MetadataDictionary"),NULL);
+    if (!metadata) return false;
+    bool matched=CFGetTypeID(metadata)==CFDictionaryGetTypeID();
+    const CFStringRef keys[]={CFSTR("FrameSequence"),CFSTR("RawSensorWidth"),
+        CFSTR("RawSensorHeight"),CFSTR("ZoomFactor")};
+    const double expected[]={0,4096,3072,1};
+    for (unsigned i=0;i<4 && matched;++i) {
+        CFTypeRef field=CFDictionaryGetValue((CFDictionaryRef)metadata,keys[i]);double value=0;
+        matched=field && CFGetTypeID(field)==CFNumberGetTypeID() &&
+            CFNumberGetValue((CFNumberRef)field,kCFNumberDoubleType,&value) && isfinite(value) &&
+            (i ? value==expected[i] : value>0);
+    }
+    CFRelease(metadata);return matched;
+}
 static int transfer_pixels(id self,SEL selector,RendererRotationSession session,
     CVPixelBufferRef source,RendererRect src,CVPixelBufferRef destination,RendererRect dst,bool fill)
 {
+    const bool repaired=src.size.width==0 && src.size.height==0 &&
+        isfinite(src.origin.x) && isfinite(src.origin.y) && own_full_source(source);
+    if (repaired) src=(RendererRect){{0,0},{CVPixelBufferGetWidth(source),CVPixelBufferGetHeight(source)}};
     static unsigned reports;
     const unsigned report=__atomic_fetch_add(&reports,1u,__ATOMIC_RELAXED);
+    if (report<6 && repaired) fputs("nezha-camera: own completed frame empty source crop restored to full buffer\n",stderr);
     if (report<6) fprintf(stderr,"nezha-camera: renderer transfer source=%zux%zu rect=%.9g,%.9g,%.9g,%.9g destination=%zux%zu rect=%.9g,%.9g,%.9g,%.9g fill=%u\n",
         source ? CVPixelBufferGetWidth(source):0,source ? CVPixelBufferGetHeight(source):0,
         src.origin.x,src.origin.y,src.size.width,src.size.height,

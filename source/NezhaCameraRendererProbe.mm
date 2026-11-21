@@ -187,19 +187,24 @@ int main(int argc,char **argv) {@autoreleasepool {
  CVPixelBufferRef source=pixel(1600,1200,true),output=pixel(1200,2608,true);if(!source||!output)return 3;
  if(!fillPattern(source))return 4;
  bool passed=!after;
- for(unsigned rotation=0;rotation<2;++rotation) {
+ for(unsigned rotation=0;rotation<3;++rotation) {
     if(!fill(output,false,0,128,128))return 4;
     VTPixelRotationSessionRef session=nullptr;OSStatus created=VTPixelRotationSessionCreate(kCFAllocatorDefault,&session);
     report(@{@"phase":@"original-rotation-session",@"rotation_case":@(rotation),@"status":@(created),@"present":@(session!=nullptr)});if(created||!session)return 16;
     const OSStatus property=rotation?VTSessionSetProperty((VTSessionRef)session,CFSTR("Rotation"),CFSTR("RotationCW90")):0;
     if(property)return 17;
     const CGRect destinationRect=rotation?CGRectMake(0,504,1200,1600):CGRectMake(0,0,1200,2608);
-    const int status=[renderer doPixelRotationTransferWithSession:session sourceBuffer:source sourceRect:CGRectMake(0,0,1600,1200) destinationBuffer:output destinationRect:destinationRect blackFillUnalignedEdges:false];
+    if(rotation==2) {
+        NSDictionary *metadata=@{@"FrameSequence":@7,@"RawSensorWidth":@4096,@"RawSensorHeight":@3072,@"ZoomFactor":@1};
+        CVBufferSetAttachment(source,CFSTR("MetadataDictionary"),(__bridge CFDictionaryRef)metadata,kCVAttachmentMode_ShouldPropagate);
+    }
+    const CGRect sourceRect=rotation==2?CGRectMake(801,601,0,0):CGRectMake(0,0,1600,1200);
+    const int status=[renderer doPixelRotationTransferWithSession:session sourceBuffer:source sourceRect:sourceRect destinationBuffer:output destinationRect:destinationRect blackFillUnalignedEdges:false];
     report(@{@"phase":@"original-renderer-call",@"rotation_case":@(rotation),@"status":@(status),@"capture_started":@NO});
-    const bool pixels=inspectPattern(output,rotation?@"portrait-CW90-letterbox-pattern":@"unrotated-nonuniform-pattern",destinationRect,rotation!=0);
+    const bool pixels=inspectPattern(output,rotation==2?@"own-empty-crop-CW90-pattern":rotation?@"portrait-CW90-letterbox-pattern":@"unrotated-nonuniform-pattern",destinationRect,rotation!=0);
     passed=passed&&!status&&pixels;
     VTPixelRotationSessionInvalidate(session);CFRelease(session);
  }
  CVPixelBufferRelease(source);CVPixelBufferRelease(output);
- report(@{@"phase":@"result",@"passed":@(passed),@"original_renderer":@YES,@"nonuniform_rotation_cases":@2,@"capture_started":@NO});return passed?0:10;
+ report(@{@"phase":@"result",@"passed":@(passed),@"original_renderer":@YES,@"nonuniform_rotation_cases":@3,@"capture_started":@NO});return passed?0:10;
 }}
