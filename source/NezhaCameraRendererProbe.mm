@@ -130,13 +130,6 @@ static bool inspect(CVPixelBufferRef image,NSString *name,int expectedCenter) {
     return passed;
 }
 
-static bool callResult(NSString *name,int status,CVPixelBufferRef image,int expected) {
-    report(@{@"phase":@"original-controller-call",@"case":name,@"status":@(status),@"capture_started":@NO});
-    const bool pixels=inspect(image,name,status==0?expected:-1);
-    return status==0&&pixels;
-}
-
-
 int main(int argc,char **argv) {@autoreleasepool {
  (void)argc;(void)argv;if(!ownMemoryLimit())return 11;sleep(150);
  char boot[128]={};size_t length=sizeof boot;sysctlbyname("kern.bootsessionuuid",boot,&length,nullptr,0);

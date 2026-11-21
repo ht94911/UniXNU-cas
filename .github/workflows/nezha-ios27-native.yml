@@ -1,7 +1,7 @@
 name: nezha iPhone27 Camera121 native preview delivery
 on:
   push:
-    branches: [codex/ios27-camera121b-renderer-helper-20261121]
+    branches: [codex/ios27-camera121c-renderer-helper-20261121]
 permissions:
   contents: read
 concurrency:
