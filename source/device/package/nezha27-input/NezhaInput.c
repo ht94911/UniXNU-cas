@@ -44,6 +44,7 @@
 #include <sys/errno.h>
 #include <kern/clock.h>
 #include <kern/thread.h>
+#include <kern/sched.h>
 #include <kern/sched_prim.h>
 #include <machine/machine_routines.h>
 #include <pexpert/pexpert.h>

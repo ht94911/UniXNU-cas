@@ -19,12 +19,16 @@ void nezha_input_chain_trace(uint32_t code, uintptr_t a, uintptr_t b,
     // boundary; the per-context encoding and command-stream deferral events
     // distinguish it from actual context work. No callback or request is added.
     const uint32_t ca_code=code&~3u;
+    // Original UIKit scheduled-begin, main-section and scheduled-done sites.
+    // These delimit actual UI callbacks; no update or timer is generated here.
     if ((code >> 16) != 0x2b8a && (code >> 16) != 0x2b28 &&
         (code >> 16) != 0x0523 && ca_code!=0x31ca0028 &&
         ca_code!=0x31ca0004 && ca_code!=0x31ca0210 &&
         ca_code!=0x31ca01dc && ca_code!=0x31ca0214 &&
         ca_code!=0x31ca0218 && ca_code!=0x31ca0260 &&
-        ca_code!=0x31ca0264 && ca_code!=0x14ca001c) return;
+        ca_code!=0x31ca0264 && ca_code!=0x14ca001c &&
+        ca_code!=0x2b8701e4 && ca_code!=0x2b8701e8 &&
+        ca_code!=0x2b870210) return;
     if ((ca_code==0x31ca01dc || ca_code==0x14ca001c) &&
         !__atomic_load_n(&nezha_chain_ca_details, __ATOMIC_RELAXED)) return;
     if (__atomic_exchange_n(&nezha_chain_lock, 1, __ATOMIC_ACQUIRE)) {

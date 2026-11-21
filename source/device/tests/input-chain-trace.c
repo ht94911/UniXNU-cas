@@ -27,6 +27,23 @@ int main(void) {
     assert(sizeof(struct nezha_chain_record)==56);
     nezha_input_chain_trace(0x01000000,1,2,3,4,5);
     assert(nezha_chain_head == 0);
+    const uint32_t ui_sites[]={0x2b8701e4,0x2b8701e8,0x2b870210};
+    for(unsigned detail=0;detail<2;++detail) {
+        nezha_chain_ca_details=detail;
+        for(unsigned flag=0;flag<4;++flag) {
+            for(unsigned i=0;i<sizeof(ui_sites)/sizeof(ui_sites[0]);++i) {
+                const unsigned prior=nezha_chain_head;
+                nezha_input_chain_trace(ui_sites[i]|flag,1,2,3,4,5);
+                assert(nezha_chain_head==prior+1);
+                assert(nezha_chain_records[prior%4096].code==(ui_sites[i]|flag));
+                assert(nezha_input_chain_flush(UINT64_MAX)==1);
+            }
+        }
+        const unsigned prior=nezha_chain_head;
+        nezha_input_chain_trace(0x2b870214,1,2,3,4,5);
+        assert(nezha_chain_head==prior);
+    }
+    nezha_chain_ca_details=0;
     const uint32_t critical[]={0x31ca0028,0x31ca0004,0x31ca0210,
         0x31ca0214,0x31ca0218,0x31ca0260,0x31ca0264,
         0x2b8a0258,0x2b280000,0x05230004};
