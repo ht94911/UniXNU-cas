@@ -592,11 +592,11 @@ static CFDictionaryRef rendered_metadata(const struct Stream *s, CFDictionaryRef
     if (report<2 || (report && report%300==0))
         fprintf(stderr,"nezha-camera: rendered metadata RAW=%ux%u applied_zoom=%.9g sensor_fields_present=%u "
             "sample=%u mean=%.9g/%.9g/%.9g bright=%.9g cells=%u "
-            "seq=%u exposure=%u line_ns=%u gain=%u/%u frame=%u "
+            "seq=%llu exposure=%u line_ns=%u gain=%u/%u frame=%u "
             "digital=%.9g wb=%.9g/%.9g/%.9g pending=%u asked=%u/%u/%u\n",
             frame->width,frame->height,(double)s->preview.processing.zoom,(unsigned)complete,
             report,statistics->mean[0],statistics->mean[1],statistics->mean[2],
-            statistics->bright,statistics->cells,actual->sequence,actual->exposure_lines,
+            statistics->bright,statistics->cells,(unsigned long long)actual->sequence,actual->exposure_lines,
             actual->line_ns,actual->gain,actual->gain_unity,actual->frame_lines,
             (double)s->preview.processing.digital,(double)s->preview.processing.wb[0],
             (double)s->preview.processing.wb[1],(double)s->preview.processing.wb[2],

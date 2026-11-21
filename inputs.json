@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "purpose": "Camera128 existing measured RAW levels, actual exposure and pending request in original bounded delivery logger",
-  "device_revision": "ae02df8cfb7964d65de04d05b292522015b55c9d",
+  "device_revision": "6b181efa9f75d11e5352331353112f9ffd95adb5",
   "files": {
     "ci/build-renderer.py": "b356bfa232351e1d7bf917e41f92205f3ab0137052daf7e15f3c2314ad8bc65f",
     "source/NezhaCameraControl.h": "88e6e5dadd777e10a36f587decb8fb38300d79033b0c826bcd747b1d7867cae2",
@@ -20,7 +20,7 @@
     "source/userland/NezhaCameraDeviceBackend.h": "bd221f90b66840935dad111de76c8a8dc35989b40f42712b2aa201e8245264d1",
     "source/userland/NezhaCameraFactory.c": "a961fc0cb7d95ebc18a49c4eaf0d0a57bee95d85d28eceb1f9c67fcaa443c55a",
     "source/userland/NezhaCameraFactory.h": "42934d370ccc191eeda6a29e103b86b457d03964af071db973182f731e62f5a8",
-    "source/userland/NezhaCameraFigProvider.c": "4c80e51d1ca47aaf8780355e6c6ef4ad340efc0d832f4042fcd956867a521630",
+    "source/userland/NezhaCameraFigProvider.c": "1ec17a4e910a5e8f1cbc8614b3c0e094c625b4fff0b157db0f095a6854d9fb44",
     "source/userland/NezhaCameraFigProvider.h": "c5f3bcc5169cf052e08d3210b5672231c2704f8f0917444cb0b287a2a5b115bd",
     "source/userland/NezhaCameraFormats.c": "6127ffc8e6984752f434fde4a5eabd69a399d99f47754430be1939f7ff606f83",
     "source/userland/NezhaCameraFormats.h": "8e23c3fbafab0b2c3659236b88dc676d3c48415da37d7f3cbd1d0c9fc0ae9e86",
