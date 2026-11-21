@@ -37,6 +37,10 @@ struct NativeAdrenoStallSample {
     uint32_t memory[59];
     uint64_t job[20];
     uint32_t ibs[32];
+    /* source[0]==1 is an untimed first VM fault: detector pid, detector
+     * software TTBR, actual hardware-bank TTBR, its IOReturn, and
+     * FAR's handle in the pending job. Detector and GPU owner may differ. */
+    uint64_t source[6];
 };
 // NATIVE_ADRENO_CACHED_STALL_TYPE_END
 /* One bounded copy attempt. False before a sample or during publication.
@@ -161,7 +165,11 @@ private:
     void driveSwitch(const NativeAdrenoRingClock *clock);
     NativeAdrenoSubmitStats stats_{};
     void noteStall(uint32_t observed,const NativeAdrenoRingClock *clock);   /* the CP's state for a fence that stopped advancing (native_adreno_stall) */
-    bool attached_=false,poisoned_=false;
+    bool attached_=false,poisoned_=false,first_vm_fault_sampled_=false;
+    bool cacheStall(uint32_t observed,uint64_t now,uint64_t pending,
+        uint32_t polls,uint32_t stage,const NativeAdrenoVm *detector=nullptr,
+        const uint32_t *fault=nullptr,uint32_t detector_pid=0,
+        uint64_t hardware_ttbr=0,IOReturn hardware_ttbr_read=kIOReturnNotReady);
     uint32_t audit_tick_=0;   /* submissions since attach; every eighth one audits its IB lines */
     /* submit()'s distinct buffers and ring words: too large for the kernel stack at the supported IB limit (callers serialize every method) */
     uint64_t scratch_handles_[NativeAdrenoSubmitMaxBuffers]{};
@@ -176,6 +184,10 @@ private:
     uint64_t (*clock_now_)(void *)=nullptr;void *clock_cookie_=nullptr;
 public:
     /* The process the next submission comes from, for the timeline (the user client sets it before each submit). */
+    /* Called under the existing gate before quarantine. A840 single-ring
+     * diagnostic only, once; no waiting, replay or recovery. */
+    bool noteVmFault(const NativeAdrenoVm *,const uint32_t *,uint32_t detector_pid,
+        IOReturn (*read_table)(void *,uint64_t *),void *table_cookie);
     void nextOwner(int32_t pid) {next_owner_=pid;}
     /* The Metal GPU priority of the next submission's queue (MTLGPUPriority: 0 high, 1 normal, 2 low, 3 disabled, 4 normal-high,
      * 5 real-time; -1 not given). Only low and disabled (2, 3) go to ring 1; the rest, the unspecified included, stay on ring 0. */

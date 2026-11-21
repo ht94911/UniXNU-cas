@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "GPU071: retain original per-context CA encoding and command-stream deferral events in the existing bounded input bridge; inherit all cumulative GPU070 inputs.",
+  "purpose": "GPU072: preserve the existing CP/IB job snapshot before first VM-fault quarantine; retain GPU071 existing context events and all cumulative inputs.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -49,7 +49,7 @@
     "source/adreno/NativeAdrenoPollLog.h": "b4c2b7033f1ec5198d9ce5a44790ce4c182e9f6e63b0bcc659fb92efe7a602f4",
     "source/adreno/NativeAdrenoPreempt.cpp": "59336613d70291a3d16abd0c3a10025fc8dae5ba2796f76ce8e7c60234f328bb",
     "source/adreno/NativeAdrenoPreempt.h": "33b1804ba28d36d5a8aa3c67ec6476f737803e1864c049804bb6fcd3512d91b6",
-    "source/adreno/NativeAdrenoPublish.cpp": "14a0419e5761d3e416bfa708afcdedff6d4b453cd8fd69544786d5c91106e884",
+    "source/adreno/NativeAdrenoPublish.cpp": "fef6e4a8c4344fec192799cd9864758149f56e6acdeda76f485ac091d970e02c",
     "source/adreno/NativeAdrenoPwrup.h": "708830fae4f6a5cea765992d44135126d7a034a239adece94f094d862819e889",
     "source/adreno/NativeAdrenoPwrupRegs.h": "8067d9625e922173912eea09e6a504d9c1b31234d4656f8dd4148855882918e1",
     "source/adreno/NativeAdrenoRing.cpp": "c32eefeac0d32960e585f8046be86408c6c6bda6d28b569261f4eb940922ae66",
@@ -62,13 +62,13 @@
     "source/adreno/NativeAdrenoSmmuMemory.h": "ca2d91e3b4d8a4ff1f7da16419761b6588d34f044fdb16bb535276b811de8713",
     "source/adreno/NativeAdrenoSmmuService.h": "6e5a666a4c6b28c9dc3ae6c59ce4c55ccb1ef63ac49901cf56759f0dd5a905df",
     "source/adreno/NativeAdrenoStatus.h": "7305cce3eefbf63176fd08f3d6eb92aa4b874fffb37bda94666fea53d62a2a34",
-    "source/adreno/NativeAdrenoSubmit.cpp": "4f832a5fcc75e07b1b1f6d67405ac41f12aa5761809476bf8beff7e2f1f0152b",
-    "source/adreno/NativeAdrenoSubmit.h": "fca91e8d92e344c59d329c75624674d6a7bc5013a299a75de519c35e39e32129",
+    "source/adreno/NativeAdrenoSubmit.cpp": "5dff24c830358d9b17d117e1218a39286d4b2c6dcde957b4123dda817bc49e5c",
+    "source/adreno/NativeAdrenoSubmit.h": "4804ee2ea7f46a133f92c0a3d0ebbb6920c8821c39031dd18e14b2cd760d6fb0",
     "source/adreno/NativeAdrenoTimer.cpp": "8f4f2e3c1f774b464e6b284af5ba03679daf797942187550341cf1a513bf229a",
     "source/adreno/NativeAdrenoTimer.h": "7f338cf3c60495f5912a6ad8c83e81bad7883e34a0f6743b11c326b8fea1e364",
     "source/adreno/NativeAdrenoUserClient.cpp": "ffcf8410231794df7c18c73a5aff7956d8ac63396f5fc63e24574397aba43c29",
     "source/adreno/NativeAdrenoUserClient.h": "c1b2c98933d733fa8b28fcc6a34d88eb1f8450d4833a6da18192713c85717a11",
-    "source/adreno/NativeAdrenoVm.cpp": "117d437e713da51bf939944b427ff7a562344eae168166f55d9c19f300d979b5",
+    "source/adreno/NativeAdrenoVm.cpp": "16e1a25c075a5345b1a3c4bc965ff1e3cb000713b296e26a9ba32a849afb4612",
     "source/adreno/NativeAdrenoVm.h": "af700c87a4353527332391d22f24ad41ca185883cf5de9f2f5af6023c4ad56cb",
     "source/adreno/NativeAdrenoVmAlias.h": "35fe908bd80389a18e395eb3bfdd5a40cb2c133fe6634dbead8d68cf2822eeea",
     "source/adreno/NativeGpuLatency.h": "726edcf2d8647656e4dd4f64b130c0ba8f2f5120b1b407ad712c59d3d3bffbcd",
@@ -511,11 +511,13 @@
     "source/device/docs/GPU052-RESOURCE-ENUMERATION.md": "f8c8e93b0483e8babf441616f2468f83c38462567358109fc6cceb9eca680887",
     "source/device/patches/xnu-12377/nezha-native-4k-large-ram.patch": "6c1e566d009bf384291487f9d5e242514c78a000ea39995fdae9cacfd816e32d",
     "source/adreno/tests/check_submit_busy_log.py": "945f7616e47ceb6c125c4b0f1e177e437d032ac85095326ea2d17b4264491857",
-    ".github/workflows/nezha-ios27-native.yml": "e0eaba025b49a8b9b6abda7d057083eca423568a9543d47e899b439fd8a42a2c",
+    ".github/workflows/nezha-ios27-native.yml": "f72874adb8f13f4cb4c2548d7bef342d9d33f38c3d2ba4b2d2c5ff8d3b75b985",
     "source/device/scripts/check-cpu27-firmware-levels.py": "72fc65996664b51733ea45360fb91ceb9a1de561ef2bb63ce0e09b394f149c24",
     "source/device/scripts/check-gpu27-firmware-levels.py": "9fc0331e6c344a665e875ac7f2855952618e28465c6856f776d1a05c587d13a3",
     "source/device/scripts/check-ui-main-sampler.py": "da47d09fc97dc79d6f2126c9a8e02dd508508004289c05938b51362cdd8e5eb8",
-    "source/device/scripts/check-hid-owner-pacing.py": "ddb105efded2b8d5cd8160be3f739db62d7b8ebbdc031b37c41040d92cb4dd7e"
+    "source/device/scripts/check-hid-owner-pacing.py": "ddb105efded2b8d5cd8160be3f739db62d7b8ebbdc031b37c41040d92cb4dd7e",
+    "source/adreno/tests/check_vm_fault_cache.py": "46d051e7468caf1861fed73103456a203c75806fcf8e8666247c0533285cc7b2",
+    "source/adreno/tests/check_cached_stall_copy.py": "a646cd027c94cef4a6cced194faa287faf43d6b4f0f8c00ddef1c74b5e1f12ec"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
@@ -1047,5 +1049,24 @@
     "hardware_verified": false,
     "source_only": true,
     "phone_operations": false
+  },
+  "gpu072": {
+    "base_native056": "792c21254e3a52af6b065a63fe21a5a5fa9eb285",
+    "source_layer": "NativeAdreno first-fault cached snapshot",
+    "changed_native_files": [
+      "NativeAdrenoPublish.cpp",
+      "NativeAdrenoSubmit.cpp",
+      "NativeAdrenoSubmit.h",
+      "NativeAdrenoVm.cpp"
+    ],
+    "existing_hardware_TTBR_reader": "NativeAdrenoGpuContext::readTtbr0",
+    "fault_case_count": 8,
+    "cached_publication_count": 40000,
+    "adds_new_trace_facility": false,
+    "changes_rendering_or_input_results": false,
+    "adds_reset_or_retry": false,
+    "source_only": true,
+    "private_inputs_uploaded": false,
+    "hardware_verified": false
   }
 }

@@ -1383,6 +1383,8 @@ static void logCachedStall(const NativeAdrenoStallSample &s)
         s.serial,j[19],j[0],j[1],s.state[0],s.state[1],j[14],j[15],j[7],j[3],j[8],j[9],j[11],j[12],j[17],j[13]);
     IOLog("NEZHA GPU STALL VM: sample=%u job_ttbr=%#llx selected_ttbr=%#llx submit_us=%llu next_handle=%llu bos=%llu ib_words=%llu priority=%llu\n",
         s.serial,j[4],j[5],j[2],j[6],j[10],j[16],j[18]);
+    if(s.source[0]==1)IOLog("NEZHA GPU STALL SOURCE: sample=%u kind=1 detector_pid=%llu detector_ttbr=%#llx hardware_ttbr=%#llx hardware_ttbr_read=%#llx far_handle=%llu untimed=1\n",
+        s.serial,s.source[1],s.source[2],s.source[3],s.source[4],s.source[5]);
     logStallWords("cp",s.serial,s.state+2,22);
     logStallWords("memory",s.serial,s.memory,59);
     logStallWords("ibs",s.serial,s.ibs,32);
@@ -1394,6 +1396,19 @@ static void logCachedStall(const NativeAdrenoStallSample &s)
         native_adreno_recovery_fault[1],native_adreno_coherence[4],native_adreno_coherence[0],native_adreno_wc_distrusted);
 }
 
+
+/* Published VM failure calls already hold g.lock. Save the original cached
+ * snapshot before quarantine, with no additional lock or retry. */
+extern "C" void native_adreno_note_vm_failure(NativeAdrenoVm *detector,const uint32_t *fault)
+{
+    if(!g.submit || !detector || !fault)return;
+    const auto read_table=[](void *cookie,uint64_t *out)->IOReturn {
+        return cookie?static_cast<NativeAdrenoGpuContext *>(cookie)->readTtbr0(out):kIOReturnNotReady;
+    };
+    if(!g.submit->noteVmFault(detector,fault,uint32_t(proc_selfpid()),read_table,g.context))return;
+    NativeAdrenoStallSample sample{};
+    if(native_adreno_copy_stall(&sample))logCachedStall(sample);
+}
 
 extern "C" kern_return_t processor_info(processor_t,processor_flavor_t,host_t *,processor_info_t,mach_msg_type_number_t *);
 extern "C" processor_t cpu_to_processor(int);

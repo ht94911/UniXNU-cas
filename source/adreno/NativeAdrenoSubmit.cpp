@@ -51,6 +51,7 @@ static void publishCachedStall(const NativeAdrenoStallSample &sample)
     for(unsigned i=0;i<59;++i)__atomic_store_n(&cachedStall.memory[i],sample.memory[i],__ATOMIC_RELAXED);
     for(unsigned i=0;i<20;++i)__atomic_store_n(&cachedStall.job[i],sample.job[i],__ATOMIC_RELAXED);
     for(unsigned i=0;i<32;++i)__atomic_store_n(&cachedStall.ibs[i],sample.ibs[i],__ATOMIC_RELAXED);
+    for(unsigned i=0;i<6;++i)__atomic_store_n(&cachedStall.source[i],sample.source[i],__ATOMIC_RELAXED);
     __atomic_add_fetch(&cachedStallSequence,1u,__ATOMIC_RELEASE);
 }
 extern "C" bool native_adreno_copy_stall(NativeAdrenoStallSample *sample)
@@ -62,6 +63,7 @@ extern "C" bool native_adreno_copy_stall(NativeAdrenoStallSample *sample)
     for(unsigned i=0;i<59;++i)sample->memory[i]=__atomic_load_n(&cachedStall.memory[i],__ATOMIC_RELAXED);
     for(unsigned i=0;i<20;++i)sample->job[i]=__atomic_load_n(&cachedStall.job[i],__ATOMIC_RELAXED);
     for(unsigned i=0;i<32;++i)sample->ibs[i]=__atomic_load_n(&cachedStall.ibs[i],__ATOMIC_RELAXED);
+    for(unsigned i=0;i<6;++i)sample->source[i]=__atomic_load_n(&cachedStall.source[i],__ATOMIC_RELAXED);
     __atomic_thread_fence(__ATOMIC_ACQUIRE);
     if(__atomic_load_n(&cachedStallSequence,__ATOMIC_RELAXED)!=version)return false;
     sample->serial=version>>1;
@@ -679,6 +681,7 @@ static bool snapshot_due(uint32_t *taken,uint64_t pending)
 }
 void NativeAdrenoSubmit::noteStall(uint32_t observed,const NativeAdrenoRingClock *clock)
 {
+    if(first_vm_fault_sampled_)return;
     const uint32_t next=observed+1;   /* the fence the CP is working on */
     const uint64_t now=clock && clock->now_us?clock->now_us(clock->cookie):0;
     /* The ring that fence's job ran on; the first ring when the fence is not one of this submit object's. */
@@ -733,10 +736,21 @@ void NativeAdrenoSubmit::noteStall(uint32_t observed,const NativeAdrenoRingClock
     }
     ++stall_timeouts;
     if(!now || !snapshot_due(&stall_snapshots,pending))return;
+    if(cacheStall(observed,now,pending,stall_timeouts,stall_stage))
+        log(next,4,pending,native_adreno_stall[10]&0xffff,native_adreno_stall[11]&0xffff);
+}
+/* Reuse the original CP/IB snapshot for both timed and first-fault records. */
+bool NativeAdrenoSubmit::cacheStall(uint32_t observed,uint64_t now,
+    uint64_t pending,uint32_t polls,uint32_t stage,const NativeAdrenoVm *detector,
+    const uint32_t *observed_fault,uint32_t detector_pid,uint64_t hardware_ttbr,IOReturn hardware_ttbr_read)
+{
+    const uint32_t next=observed+1;
+    NativeAdrenoRing *const stalled=ringOfFence(next);
+    if(!now || !stalled || !vm_)return false;
     uint32_t words[NativeAdrenoRingStallWords]={},fault[4]={};
-    if(stalled->stallState(words))return;
-    log(next,4,pending,words[8]&0xffff,words[9]&0xffff);
-    const IOReturn faultStatus=vm_->faultState(fault);
+    if(stalled->stallState(words))return false;
+    const IOReturn faultStatus=observed_fault?kIOReturnSuccess:vm_->faultState(fault);
+    if(observed_fault)for(unsigned i=0;i<4;++i)fault[i]=observed_fault[i];
     for(uint32_t i=0;i<4;++i)native_adreno_stall_mem[i]=fault[i];
     uint64_t ib=0;uint32_t size=0;
     /* The IBs are the stalled job's: read them through its address space (the kernel's maps none of a client's BOs). */
@@ -759,7 +773,7 @@ void NativeAdrenoSubmit::noteStall(uint32_t observed,const NativeAdrenoRingClock
         native_adreno_stall_mem[58]=(uint32_t)space->handleAt((uint64_t)words[21]<<32|words[20]);
     }
     for(uint32_t i=0;i<NativeAdrenoRingStallWords;++i)native_adreno_stall[2+i]=words[i];
-    native_adreno_stall[1]=stall_timeouts;
+    native_adreno_stall[1]=polls;
     native_adreno_stall[0]=next;
 
     // Publish only values this path has already read or owns under its lock.
@@ -772,12 +786,34 @@ void NativeAdrenoSubmit::noteStall(uint32_t observed,const NativeAdrenoRingClock
         space->ttbr0(),table_vm_?table_vm_->ttbr0():0,job?job->vm_next:0,
         job?uint32_t(job->owner):0,job?job->context:0,job?job->ring:0u,
         job?job->count:0,outstanding(),table_mode_,uint32_t(faultStatus),
-        observed,stalled->lastSubmitted(),job?job->word_count:0,stall_stage,
+        observed,stalled->lastSubmitted(),job?job->word_count:0,stage,
         job?uint32_t(job->priority+1):0,stalled->chip()->generation
     };
     for(unsigned i=0;i<20;++i)sample.job[i]=metadata[i];
     if(job)for(unsigned i=0;i<32 && i<job->word_count;++i)sample.ibs[i]=job->words[i];
+    if(detector) {
+        sample.source[0]=1;sample.source[1]=detector_pid;sample.source[2]=detector->ttbr0();
+        sample.source[3]=hardware_ttbr;sample.source[4]=uint32_t(hardware_ttbr_read);
+        sample.source[5]=space->handleAt((uint64_t(fault[2])<<32)|fault[1]);
+    }
     publishCachedStall(sample);
+    return true;
+}
+bool NativeAdrenoSubmit::noteVmFault(const NativeAdrenoVm *detector,const uint32_t *fault,uint32_t detector_pid,
+    IOReturn (*read_table)(void *,uint64_t *),void *table_cookie)
+{
+    if(!detector || !fault || !(fault[0]&0xc00001feu) || first_vm_fault_sampled_ ||
+       !attached_ || poisoned_ || ring_count_!=1 || !ring(0) ||
+       ring(0)->chip()->generation!=8 || !clock_now_)return false;
+    uint32_t observed=0;
+    if(ring(0)->fenceValue(&observed))return false;
+    const uint64_t now=clock_now_(clock_cookie_);
+    uint64_t hardware_ttbr=0;
+    const IOReturn table_read=read_table?read_table(table_cookie,&hardware_ttbr):kIOReturnNotReady;
+    /* There was no timed wait. source[0] keeps zero pending/polls from
+     * becoming a measured zero-duration stall. Retain submit/sample clocks. */
+    first_vm_fault_sampled_=cacheStall(observed,now,0,0,0,detector,fault,detector_pid,hardware_ttbr,table_read);
+    return first_vm_fault_sampled_;
 }
 IOReturn NativeAdrenoSubmit::wait(uint32_t fence,const NativeAdrenoRingClock *clock,
     uint32_t timeout_us)

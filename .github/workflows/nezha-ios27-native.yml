@@ -1,7 +1,7 @@
-name: nezha GPU071 existing CA context events - native056
+name: nezha GPU072 first VM fault cached job - native057
 on:
   push:
-    branches: [codex/ios27-gpu71-ca-context-native056-20261121]
+    branches: [codex/ios27-gpu72-first-vm-fault-native057-20261121]
   workflow_dispatch:
 permissions:
   contents: read
@@ -80,6 +80,12 @@ jobs:
         env:
           CXX: clang++
         run: python3 "$RUNNER_TEMP/ios27/work/device/tests/check-gpu-bo-phases.py" --native "$RUNNER_TEMP/ios27/work/adreno" --out "$RUNNER_TEMP/ios27/work/bo-phases-host"
+      - name: Exercise original cached snapshot and first VM fault before quarantine
+        env:
+          CXX: clang++
+        run: |
+          python3 "$RUNNER_TEMP/ios27/work/adreno/tests/check_cached_stall_copy.py" --out "$RUNNER_TEMP/ios27/work/cached-stall-copy-host"
+          python3 "$RUNNER_TEMP/ios27/work/adreno/tests/check_vm_fault_cache.py" --out "$RUNNER_TEMP/ios27/work/vm-fault-cache-host"
       - name: Check actual Submit and SubmitBatch Busy logging without repeated IOLog
         env:
           CXX: clang++

@@ -1,5 +1,13 @@
 /* SPDX-License-Identifier: MIT */
 #include "NativeAdrenoVm.h"
+/* Published VM calls already hold the submit gate. Retain its cached job
+ * state before the original VM quarantine makes IB reads unavailable. */
+#if defined(__APPLE__)
+extern "C" void native_adreno_note_vm_failure(NativeAdrenoVm *,const uint32_t *) __attribute__((weak_import));
+#else
+extern "C" void native_adreno_note_vm_failure(NativeAdrenoVm *,const uint32_t *) __attribute__((weak));
+#endif
+
 #include "NativeAdrenoVmAlias.h"
 #define NATIVE_GPU_TRACE_OPTIONAL
 #include "NativeGpuTrace.h"
@@ -94,6 +102,8 @@ IOReturn NativeAdrenoVm::fail(ArmSmmu4KStatus status,uint32_t phase,uint64_t iov
     const bool trace=&native_gpu_trace_enabled && native_gpu_trace_enabled();
     uint32_t fault[4]={};
     const IOReturn faultRead=trace?faultState(fault):kIOReturnNotReady;
+    if(trace && faultRead==kIOReturnSuccess && (fault[0]&0xc00001feu) &&
+       &native_adreno_note_vm_failure)native_adreno_note_vm_failure(this,fault);
     poisoned_=true;result_.operation=status;result_.complete=false;
     for(size_t i=0;mappings_ && i<high_;++i)if(mappings_[i].memory)mappings_[i].memory->quarantine();
     for(auto &r:regions_)if(r.arena) {r.tables->quarantine();r.state->poisoned=1;}
