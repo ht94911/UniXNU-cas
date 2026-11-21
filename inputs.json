@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "GPU070 cumulative GPU069/GPU068: restore existing cas8ms physical HID owner, remove tail rearm, retain original16ms explicit USB test steps and all CPU/GPU/cache/VM/close optimizations.",
+  "purpose": "GPU071: retain original per-context CA encoding and command-stream deferral events in the existing bounded input bridge; inherit all cumulative GPU070 inputs.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "290ed25c9f969a58526d86dc3ae2fcc4766c197b",
+  "device_revision": "7988fef862d1e5e3bba4a444da9ac23c989fe930",
   "soc_revision": "device-local-composition-e565439+3435fa5",
   "xcode": "26.6",
   "files": {
@@ -387,7 +387,7 @@
     "source/device/package/nezha27-input/HidInputProbe.cpp": "c3e6c59ffb2d8db299a6876599e6117b5d9f529272c6d8a8e2bbbf22326212dc",
     "source/device/package/nezha27-input/InputChainABI.h": "ac72a994d29b1b6097ec7ca440a2bcd7f41b7b4b9b7662393a38c683cbe40006",
     "source/device/package/nezha27-input/InputChainProbe.cpp": "7653046c23d9b3e11c2a89dff7312942b4e9fbee9a678da9026300d02903bdc3",
-    "source/device/package/nezha27-input/InputChainTrace.h": "809ca4a93ba4f8ab5637db643e82086ab0e9b617bb2aefd5cddb77a071db2b1a",
+    "source/device/package/nezha27-input/InputChainTrace.h": "1e2a4df14a17734536a40fbbfe29caffd21ad081e261ccb9afc8f8ba0441ec62",
     "source/device/package/nezha27-input/InputEventBridge.cpp": "52ed3de36616fa7d260d529abdd1003320b8cc1dc3212f0b0fdf956a70ed53b2",
     "source/device/package/nezha27-input/NativeHidInput.cpp": "f8c5bf3b48e08b4880b13231f9523e2c1c95c81ed8502d7555021efecf18faa9",
     "source/device/package/nezha27-input/NezhaAA27Input.h": "d112cd0663fc3fb84dc6be506fe4efac4ede748d541b48f2cc9c3a25852829a2",
@@ -466,7 +466,7 @@
     "source/device/tests/brightness-trace-budget.py": "4a2b23d79a00543d7d7644f821b9d0bb0d6493fbce14fad2e3b4a4d148914ffe",
     "source/device/tests/cpu27-policy.c": "e1682fcec436a58085ef34ebdf82a536523f933e99a873ea1aacd7d3cd45b61c",
     "source/device/tests/display-dpu-timing.c": "e7ac8e9fbc9e39ae309dea5f3934bdd8ca7ca4bc66601908a2b8d349f9b513c5",
-    "source/device/tests/input-chain-trace.c": "8f0e4734a266c0ea6189a0c2955b31fee77dcdafb5818db5091e26d5f78635ab",
+    "source/device/tests/input-chain-trace.c": "32a2c9421b1f1b8bcde55a5d56e0fb39fa7e83dc90144742f0b6efd9bb6bd304",
     "source/device/tests/input-selftest.c": "df31503c40fbbdc7c8d20757a715987c4133eabdbc32a43cbd1f4e0546f7fd72",
     "source/device/tests/input-telemetry.c": "2af3696ccd9dcfccd4f8864a5f3ffb2144d7acac43b5fc98f34dcb280cf7bd75",
     "source/device/tests/joint047-dma.c": "042a464e2a79eabc7b3af586b03b6007b2ecbf973e24a554966fffe3987a8e5e",
@@ -511,7 +511,7 @@
     "source/device/docs/GPU052-RESOURCE-ENUMERATION.md": "f8c8e93b0483e8babf441616f2468f83c38462567358109fc6cceb9eca680887",
     "source/device/patches/xnu-12377/nezha-native-4k-large-ram.patch": "6c1e566d009bf384291487f9d5e242514c78a000ea39995fdae9cacfd816e32d",
     "source/adreno/tests/check_submit_busy_log.py": "945f7616e47ceb6c125c4b0f1e177e437d032ac85095326ea2d17b4264491857",
-    ".github/workflows/nezha-ios27-native.yml": "8c8a79df0d2fd0ecaa2ecfc4644d41281551acacb353af1abb898a7bbc080ddc",
+    ".github/workflows/nezha-ios27-native.yml": "e0eaba025b49a8b9b6abda7d057083eca423568a9543d47e899b439fd8a42a2c",
     "source/device/scripts/check-cpu27-firmware-levels.py": "72fc65996664b51733ea45360fb91ceb9a1de561ef2bb63ce0e09b394f149c24",
     "source/device/scripts/check-gpu27-firmware-levels.py": "9fc0331e6c344a665e875ac7f2855952618e28465c6856f776d1a05c587d13a3",
     "source/device/scripts/check-ui-main-sampler.py": "da47d09fc97dc79d6f2126c9a8e02dd508508004289c05938b51362cdd8e5eb8",
@@ -1027,6 +1027,24 @@
     "metal_source_revision": "1a279b5",
     "scope": "existing UI-main sampler and CA filter only",
     "previous_native_run": 44590220721,
+    "source_only": true,
+    "phone_operations": false
+  },
+  "gpu071": {
+    "base_native055": "1469e943c199a6c7778be2f9b71666d048ead0c4",
+    "source_revision": "7988fef862d1e5e3bba4a444da9ac23c989fe930",
+    "event_bases": [
+      "0x31ca01dc",
+      "0x31ca0214",
+      "0x31ca0218"
+    ],
+    "actual_existing_event_cases": 28,
+    "adds_new_trace_facility": false,
+    "changes_rendering_or_input_results": false,
+    "retains_GPU070_8ms_HID": true,
+    "retains_CPU_GPU_full_tables": true,
+    "retains_GPU069_WiFi_identity_at_packaging": true,
+    "hardware_verified": false,
     "source_only": true,
     "phone_operations": false
   }
