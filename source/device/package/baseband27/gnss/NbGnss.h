@@ -13,6 +13,7 @@
 #define NB_GNSS_WAIT_MS 30000u
 #define NB_GNSS_ERROR_BUSY 23u
 #define NB_GNSS_ERROR_TIMEOUT 16u
+#define NB_GNSS_MEASUREMENT_BLOCKS 32u
 
 enum NbGnssPhase { NbGnssAbsent, NbGnssQuery, NbGnssInform, NbGnssRegister, NbGnssReady, NbGnssFailed,
                    NbGnssMeasurementConfig };
@@ -69,6 +70,15 @@ typedef struct {
     uint32_t measurement_config_error;
     uint8_t measurement_seen, measurement_configured;
     uint8_t measurement_packet[NB_GNSS_MEASUREMENT_PACKET_BYTES];
+    /* Buffer one complete receiver epoch before translating its numbered
+     * blocks. PDS cannot consume an empty block without a real band. */
+    uint8_t measurement_epoch_active, measurement_epoch_sequence, measurement_epoch_maximum;
+    uint8_t measurement_epoch_count;
+    NbGnssMeasurement measurement_epoch_clock;
+    uint16_t measurement_lengths[NB_GNSS_MEASUREMENT_BLOCKS];
+    uint8_t measurement_blocks[NB_GNSS_MEASUREMENT_BLOCKS][NB_GNSS_MEASUREMENT_PACKET_BYTES];
+    uint64_t measurement_epochs, measurement_empty_slots, measurement_incomplete_epochs;
+    uint8_t measurement_last_blocks;
     /* Diagnostic identity and values stay local, through the existing USB
      * provider. Raw LOC data is never replaced with generated positions. */
     char me_version[128], host_version[128], full_version[256];

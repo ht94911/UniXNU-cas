@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "GNSS039 empty constellation sequence continuity and absent unsupported PDS detection method fields",
+  "purpose": "GNSS040 complete receiver epoch assembly before PDS measurement publication",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "cb0b65be7347a6b657a2dcd8eea5551df2948d5e",
+  "device_revision": "015ff1d180ab51da1b902bc5f76af1fe753c7fee",
   "soc_revision": "GPU051 e565439+3435fa5 and GNSS counted IPA plus immutable IPCC append",
   "xcode": "26.6",
   "files": {
@@ -337,7 +337,7 @@
     "source/device/package/baseband27/SOURCE.md": "177c00393aa63fa4c4da563c85723032b0604d28d3504b32cc8379ac9d298cb0",
     "source/device/package/baseband27/bridge/NbBoot.h": "99eb1dcfd6be4f50bc742237bb39ac6a50ad4930d4d8007e77749d12ce214ae4",
     "source/device/package/baseband27/bridge/NbDeviceIdentity.h": "86dea7c21c2e1dc7f7da4fdfdfa65c9eeb9b9d781a8fc913e7ebd03e737b1e68",
-    "source/device/package/baseband27/bridge/NbGnssBridge.inc": "32764343d54a15daaf0157a328b041cfbd75947dc86cc776927e4f8194551d0c",
+    "source/device/package/baseband27/bridge/NbGnssBridge.inc": "ba7697cb2ce273f0ec92ff6e52e5c135169b40278d5adebfb38ad48fae63b292",
     "source/device/package/baseband27/bridge/NbNasBridge.inc": "1938d656f395cc7ab7a014bc1f66a72e0b4bfbbb41aa7a4284e9ef2252a40d80",
     "source/device/package/baseband27/bridge/NbNasMux.h": "77e1f6caa43e4872f5bb0b671403de4036f3b7055e08c7a4d7531d5c000c3cc6",
     "source/device/package/baseband27/bridge/NbPdpFlow.h": "2ab5ed3b35fe447f291132bc6acb3eeecdb41affa3805524390f71bb997484ab",
@@ -366,9 +366,9 @@
     "source/device/package/baseband27/bridge/upstream/coachz_bb_qmux.h": "ca786da9402bbf11eacfafa47c749aa9e2c13aebfec4a83d7b346947a05da7eb",
     "source/device/package/baseband27/bridge/upstream/coachz_bb_sahara.h": "f333455861e96c1b158a38f0d5e65b671b39d84a860c48b061ee2c9abb828f89",
     "source/device/package/baseband27/bridge/upstream/patches/pdp-mbuf-kpi.patch": "fcd2f0dde5ba44fa7f2773f0a199f2ab3b4aa6058e5a23fdd84e116741cf3160",
-    "source/device/package/baseband27/gnss/NbGnss.c": "86a0f9ef99e4c1a1632f33cd680f4ade7f76401fb1631cedbc5056bc551a32ce",
-    "source/device/package/baseband27/gnss/NbGnss.h": "de18cebf319fe9724e089b5cf33789e849838638a6718e9a5561451d125e0e46",
-    "source/device/package/baseband27/gnss/NbGnssProtocol.c": "5e74869938a9f1a14a002c97e1b79bb20b5dc9e3017eec81cff841bcfa8c0f4c",
+    "source/device/package/baseband27/gnss/NbGnss.c": "2997c584a0b39b5e076a40fdd276a472ae0a7ff4f2cf8fd80eeb3404014f56df",
+    "source/device/package/baseband27/gnss/NbGnss.h": "3ba04fffffb2d56ccafc52874787bf9862f3aee12341bd464ad0a67ea4c395c0",
+    "source/device/package/baseband27/gnss/NbGnssProtocol.c": "dfcc45e4e4410bac80db8aca60fe14c9e6742203dd6b24577791f27391c8f3c6",
     "source/device/package/baseband27/gnss/NbGnssProtocol.h": "70f6e85792e1ebcf6639997f7b0b4f1e21ccf6aac85bb4827198baa99a3c3c6d",
     "source/device/package/baseband27/gnss/README.md": "ef010eb9574b7e5fe1a26d7f8c7bec24288590ac28efca0ddf32c68e64fe06e2",
     "source/device/package/baseband27/gnss/bridge.patch": "c1cc6cc8f943c50ad98df7eb4f0eb50b800bab400a75212b2eefdfd25a2976a2",
@@ -665,7 +665,7 @@
     "source/device/tests/display-dpu-timing.c": "e7ac8e9fbc9e39ae309dea5f3934bdd8ca7ca4bc66601908a2b8d349f9b513c5",
     "source/device/tests/gnss27/check.sh": "433d883c0ed49cc533d00b0fbde24d14a04adf082dabbe1474bb80d3949c78e6",
     "source/device/tests/gnss27/evidence_test.py": "fe2944b4c4692c67ce931569244a45d27c120f11409ccb361e902ee9fc74c0c0",
-    "source/device/tests/gnss27/gnss_lifecycle_test.c": "928d25960f1ed8d57f2bfed51d458edc20ef3bce1bcae9d79bb8c19cb048d706",
+    "source/device/tests/gnss27/gnss_lifecycle_test.c": "f36338007fb5639f802b38104909d6acd67d71d609484e5c1b4aa371377ce0b2",
     "source/device/tests/gnss27/gnss_protocol_test.c": "32061330e0b05b3d050231ba77e175162cb67a9174c0d5624560cf6cbbb51d6f",
     "source/device/tests/gnss27/gnss_qmux_test.c": "4a6e1b3e714bbb3bf6b3a64a5476ddd9de1f20ec052ed0e7548885631128146c",
     "source/device/tests/gnss27/shared_ipcc_test.c": "a44e610e1d551d7a02ef0d58f8b7937b3e7dae9962fc7ef505d092b111e6ebd2",
@@ -708,7 +708,7 @@
     "source/device/scripts/nezha_macho_late.py": "fc5a2869ef22bd2c06702930fc0c88b0e071ab7ef851824b403234633040fc37",
     "source/device/patches/xnu-12377/nezha-gnss-test-runtime.patch": "68f37196f4777d4cc7721d6c5ab33de3882ae1a826513fd86ef942146e0c55ac",
     "source/device/patches/xnu-12377/nezha-gnss-pac-capture.patch": "433e27a9382331193c32a6a9bbc2a536d63eef6a8247e82979e4b9245a34b0d3",
-    ".github/workflows/nezha-ios27-native.yml": "122d9942b9f14b86b23493316853e21140fdadcfc4a296c2ff2b33e965218579",
+    ".github/workflows/nezha-ios27-native.yml": "cf6e3b0aa4fa70cedda677c98cd3d16b057080e01c87528a1c05f12614a1cad0",
     "source/device/tests/gnss27/launcher_job_test.py": "bad064a06b284103f964c8e02d7ec566fa9b5454b9e564e51b74a6bddfa7c448",
     "source/device/tools/gnss27/launcher_job.py": "55669e81cfa07ea3a4750732a7ab59df0694386118d6fd423615f3b4d7321cf9",
     "source/device/package/gnss27/userland/org.unixnu.nezha.location-launch.plist": "69bee5c36ebedbbd6d686fd108fa9c41ab53eddd380906c472740187b138e49f",
@@ -1104,7 +1104,7 @@
     "actual_GNSS004_error": 48,
     "coherent_launcher_source": "tools/gnss27/launcher_job.py"
   },
-  "previous_native_run": 44916678838,
+  "previous_native_run": 44927784537,
   "previous_native007": {
     "run": 44066302910,
     "head": "56ba392fa295f8e7b4093976eeb4094da76feb99",
@@ -1112,7 +1112,7 @@
     "target_compile_started": false,
     "error": "uninitialized shared IPCC fixture; explicit zero-init reproducer passes"
   },
-  "previous_native_head": "076332c22af2208a1ee57de4280797a14f459e35",
+  "previous_native_head": "ed8a2ff98bb4b521e680b1fe2ab87ac3d627882a",
   "native009_delta": [
     "patches/xnu-12377/nezha-gnss-pac-capture.patch",
     "tests/gnss27/exception_context_test.py",
@@ -1227,5 +1227,14 @@
     "empty_zero_band_slots_preserve_receiver_sequence": true,
     "unsupported_detection_method_validity_absent": true,
     "private_runtime_replay_retained_locally": true
+  },
+  "native024_delta": "One bounded original receiver epoch in existing worker; omit empty no-band slots only after complete epoch, preserve all receiver clocks/SV bytes, retain detection correction and original143records",
+  "native024_capacity": 143,
+  "GNSS040_complete_epoch": {
+    "blocks_max": 32,
+    "bytes_max": 131072,
+    "real_receiver_clock_and_measurement_only": true,
+    "original_sequence_and_output_sequence_distinct": true,
+    "ordinary_App_satellite_verified": false
   }
 }

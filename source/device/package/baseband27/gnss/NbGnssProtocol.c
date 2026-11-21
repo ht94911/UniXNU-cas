@@ -318,7 +318,7 @@ uint32_t nb_gnss_pds_measurement(const NbQmiMessage *m, uint8_t *out, uint32_t r
      * or measurement. Nonempty COMPASS and zero-band measurements remain
      * unsupported; an empty block is not evidence of a tracked satellite. */
     if ((decoded.system == 4u && (decoded.count || decoded.signals)) ||
-        (signals && !decoded.signals && decoded.count)) return 0;
+        (!decoded.signals && decoded.count)) return 0;
     /* A sub-segment cannot be mislabeled as a whole PDS segment. The first
      * implementation accepts the unsegmented form; retain unsupported split
      * reports as rejected metadata rather than mixing different epochs. */

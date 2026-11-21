@@ -101,6 +101,7 @@ void nb_gnss_lost(NbGnss *s)
     __builtin_memset(&s->measurement, 0, sizeof s->measurement);
     s->measurement_seen = 0; s->measurement_received_ms = 0;
     s->measurement_configured = 0; s->measurement_config_error = 0;
+    s->measurement_epoch_active = s->measurement_epoch_count = 0;
     __builtin_memset(s->me_version, 0, sizeof s->me_version);
     __builtin_memset(s->host_version, 0, sizeof s->host_version);
     __builtin_memset(s->full_version, 0, sizeof s->full_version);
@@ -275,12 +276,14 @@ static void nb_gnss_command_done(NbGnss *s)
         s->running = 0; ++s->stops; s->action = NbGnssIdle; s->fault_cleanup = 0;
         __builtin_memset(&s->fix, 0, sizeof s->fix);
         s->measurement_seen = 0;
+        s->measurement_epoch_active = s->measurement_epoch_count = 0;
         if (s->active && !nb_gnss_criteria(s, 1).interval_seconds) nb_gnss_finish(s, 0);
         break;
     case NbGnssMode: s->action = NbGnssStart; break;
     case NbGnssStart:
         s->running = 1; s->applied = s->desired; ++s->starts;
         s->measurement_seen = 0;
+        s->measurement_epoch_active = s->measurement_epoch_count = 0;
         s->action = NbGnssIdle;
         if (s->active) nb_gnss_finish(s, 0);
         break;
@@ -481,7 +484,12 @@ static void nb_gnss_publish_measurement(NbGnss *s, const NbQmiMessage *m, uint64
     NbGnssMeasurement info;
     if (s->running != 1u) { ++s->measurement_rejected; return; }
     const uint32_t length = nb_gnss_pds_measurement(m, s->measurement_packet, sizeof s->measurement_packet, &info);
-    if (!length) { ++s->measurement_rejected; return; }
+    if (!length) {
+        ++s->measurement_rejected;
+        if (s->measurement_epoch_active) ++s->measurement_incomplete_epochs;
+        s->measurement_epoch_active = s->measurement_epoch_count = 0;
+        return;
+    }
     if (s->measurement_seen && info.resets_present && s->measurement.resets_present &&
         (int32_t)(info.clock_resets - s->measurement.clock_resets) < 0) {
         ++s->measurement_rejected; return;
@@ -497,14 +505,73 @@ static void nb_gnss_publish_measurement(NbGnss *s, const NbQmiMessage *m, uint64
             ++s->measurement_rejected; return;
         }
     }
+    if (info.maximum > NB_GNSS_MEASUREMENT_BLOCKS) {
+        ++s->measurement_rejected;
+        if (s->measurement_epoch_active) ++s->measurement_incomplete_epochs;
+        s->measurement_epoch_active = s->measurement_epoch_count = 0;
+        return;
+    }
+    if (info.sequence == 1u) {
+        if (s->measurement_epoch_active) ++s->measurement_incomplete_epochs;
+        s->measurement_epoch_active = 1;
+        s->measurement_epoch_sequence = 0;
+        s->measurement_epoch_maximum = info.maximum;
+        s->measurement_epoch_count = 0;
+        s->measurement_epoch_clock = info;
+    } else if (!s->measurement_epoch_active || info.maximum != s->measurement_epoch_maximum ||
+               info.sequence != s->measurement_epoch_sequence + 1u) {
+        ++s->measurement_rejected;
+        if (s->measurement_epoch_active) ++s->measurement_incomplete_epochs;
+        s->measurement_epoch_active = s->measurement_epoch_count = 0;
+        return;
+    }
+    /* Same receiver clock/reset identifies the epoch; no later segment can
+     * complete an earlier clock. Optional clock absence remains absence. */
+    const NbGnssMeasurement *first = &s->measurement_epoch_clock;
+    if (info.tick_present != first->tick_present || info.resets_present != first->resets_present ||
+        (info.tick_present && info.tick != first->tick) ||
+        (info.resets_present && info.clock_resets != first->clock_resets)) {
+        ++s->measurement_rejected; ++s->measurement_incomplete_epochs;
+        s->measurement_epoch_active = s->measurement_epoch_count = 0;
+        return;
+    }
     s->measurement = info; s->measurement_seen = 1; s->measurement_received_ms = now_ms;
+    s->measurement_epoch_sequence = info.sequence;
+    if (info.signal && info.system != 4u) {
+        if (s->measurement_epoch_count == NB_GNSS_MEASUREMENT_BLOCKS) {
+            ++s->measurement_rejected; ++s->measurement_incomplete_epochs;
+            s->measurement_epoch_active = s->measurement_epoch_count = 0;
+            return;
+        }
+        const unsigned at = s->measurement_epoch_count++;
+        s->measurement_lengths[at] = (uint16_t)length;
+        __builtin_memcpy(s->measurement_blocks[at], s->measurement_packet, length);
+    } else {
+        /* No measurements are invented to fill an unsupported empty slot. */
+        ++s->measurement_empty_slots;
+    }
+    if (info.sequence != info.maximum) return;
+    ++s->measurement_epochs;
+    s->measurement_last_blocks = s->measurement_epoch_count;
+    /* Now that all source slots are present, publish one complete PDS epoch
+     * of representable blocks in source order. The clocks and SV bytes stay
+     * unchanged. This is packet numbering, never a position/fix sequence. */
+    for (unsigned at = 0; at < s->measurement_epoch_count; ++at) {
+        uint8_t *packet = s->measurement_blocks[at];
+        packet[10] = (uint8_t)(at + 1u); /* First mandatory TLV: seqNum. */
+        packet[14] = s->measurement_epoch_count; /* Second: maxMessageNum. */
+    }
     for (unsigned i = 0; i < CBQ_MAX_CLIENTS; ++i) {
         NbGnssClient *c = &s->clients[i];
         if (!nb_gnss_wants_fix(c) || !c->parsed_report) continue;
-        const uint64_t dropped = s->output_drops;
-        nb_gnss_emit(s, c, s->measurement_packet, length);
-        if (dropped == s->output_drops) ++s->measurement_published;
+        for (unsigned at = 0; at < s->measurement_epoch_count; ++at) {
+            const uint64_t dropped = s->output_drops;
+            nb_gnss_emit(s, c, s->measurement_blocks[at], s->measurement_lengths[at]);
+            if (dropped != s->output_drops) break;
+            ++s->measurement_published;
+        }
     }
+    s->measurement_epoch_active = s->measurement_epoch_count = 0;
 }
 void nb_gnss_receive(NbGnss *s, uint32_t node, uint32_t port, const uint8_t *data, uint32_t length, uint64_t now_ms)
 {
