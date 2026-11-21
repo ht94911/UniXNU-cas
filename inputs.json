@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "GNSS040 complete receiver epoch assembly before PDS measurement publication",
+  "purpose": "GNSS041 original task reply timeout / 147record capacity; unchanged complete receiver measurement epochs",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "015ff1d180ab51da1b902bc5f76af1fe753c7fee",
+  "device_revision": "394451c9435b13b4aa12f19dcbdb80812e65e57f",
   "soc_revision": "GPU051 e565439+3435fa5 and GNSS counted IPA plus immutable IPCC append",
   "xcode": "26.6",
   "files": {
@@ -549,7 +549,7 @@
     "source/device/package/software-aes/NativeAESBootstrap.cpp": "98ed3f7df7df676d475bdf096409bf588e0d6d4773263878f368f953452d9bbd",
     "source/device/patches/xnu-12377/nezha-bluetooth-exit-diagnostic.patch": "193654ad33bb3de0edd9e62a7bd7cab4f31dbf5a8c1ca996c8b8d2fb48b793e9",
     "source/device/patches/xnu-12377/nezha-bluetooth-runtime.patch": "4d4fd6049250eaf399e6a0d5ff4e34232c148081820148532cf8c0c7119fd57b",
-    "source/device/patches/xnu-12377/nezha-bluetooth-text-fixup-capacity.patch": "daee9b924f8a793aef68f106b0a4b881ff48acf9849d1877d5ed3924a320c851",
+    "source/device/patches/xnu-12377/nezha-bluetooth-text-fixup-capacity.patch": "eb271219710c785714086b8998fa1f940e1bb545a5a9d2ac54e9b73514152ad8",
     "source/device/patches/xnu-12377/nezha-wifi-addon-truncate.patch": "c3b980c547fbc138ac7aedfd735d350cfef85d2a32ff78ec7bef894c4068ce63",
     "source/device/patches/xnu-12377/nezha-wifi-kernel-events.patch": "967cf792a5202711d0063463fe08bda58c554621b690b87f66904c18f81d057f",
     "source/device/patches/xnu-12377/nezha-wifi-mmio-recovery.patch": "89642756f4fe3179d44f076fbfd4786d21d0089ec7786943cb717b3eb78ecbe1",
@@ -708,7 +708,7 @@
     "source/device/scripts/nezha_macho_late.py": "fc5a2869ef22bd2c06702930fc0c88b0e071ab7ef851824b403234633040fc37",
     "source/device/patches/xnu-12377/nezha-gnss-test-runtime.patch": "68f37196f4777d4cc7721d6c5ab33de3882ae1a826513fd86ef942146e0c55ac",
     "source/device/patches/xnu-12377/nezha-gnss-pac-capture.patch": "433e27a9382331193c32a6a9bbc2a536d63eef6a8247e82979e4b9245a34b0d3",
-    ".github/workflows/nezha-ios27-native.yml": "cf6e3b0aa4fa70cedda677c98cd3d16b057080e01c87528a1c05f12614a1cad0",
+    ".github/workflows/nezha-ios27-native.yml": "ddc13dcff3b18a61eb57bd6f1719de061d304a5f5349e47c8c52d19e0b39beaa",
     "source/device/tests/gnss27/launcher_job_test.py": "bad064a06b284103f964c8e02d7ec566fa9b5454b9e564e51b74a6bddfa7c448",
     "source/device/tools/gnss27/launcher_job.py": "55669e81cfa07ea3a4750732a7ab59df0694386118d6fd423615f3b4d7321cf9",
     "source/device/package/gnss27/userland/org.unixnu.nezha.location-launch.plist": "69bee5c36ebedbbd6d686fd108fa9c41ab53eddd380906c472740187b138e49f",
@@ -1104,7 +1104,7 @@
     "actual_GNSS004_error": 48,
     "coherent_launcher_source": "tools/gnss27/launcher_job.py"
   },
-  "previous_native_run": 44927784537,
+  "previous_native_run": 44930935062,
   "previous_native007": {
     "run": 44066302910,
     "head": "56ba392fa295f8e7b4093976eeb4094da76feb99",
@@ -1112,7 +1112,7 @@
     "target_compile_started": false,
     "error": "uninitialized shared IPCC fixture; explicit zero-init reproducer passes"
   },
-  "previous_native_head": "ed8a2ff98bb4b521e680b1fe2ab87ac3d627882a",
+  "previous_native_head": "d51d4a6eae7f1bb24a50f733bbda22e5fa4064f2",
   "native009_delta": [
     "patches/xnu-12377/nezha-gnss-pac-capture.patch",
     "tests/gnss27/exception_context_test.py",
@@ -1236,5 +1236,9 @@
     "real_receiver_clock_and_measurement_only": true,
     "original_sequence_and_output_sequence_distinct": true,
     "ordinary_App_satellite_verified": false
-  }
+  },
+  "native025_capacity": 147,
+  "native025_delta": "only original applicator capacity143->147; all GNSS040 driver/pager/GPU051/firmware sources byte identical",
+  "task_reply_original_code_remains_local": true,
+  "GNSS041_task_reply_model_verified": true
 }
