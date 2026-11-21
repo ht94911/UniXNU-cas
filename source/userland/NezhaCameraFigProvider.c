@@ -561,7 +561,7 @@ static bool frame_controls(CFDictionaryRef metadata, uint64_t completed_time,
 }
 
 static CFDictionaryRef rendered_metadata(const struct Stream *s, CFDictionaryRef original,
-    const struct hakios_camera_frame *actual, bool complete)
+    const struct NezhaCameraPreviewFrame *frame, const struct hakios_camera_frame *actual, bool complete)
 {
     /* HakiOS frame_metadata converts the actual frame's line time and
      * Q8 gains to Apple's seconds, Q8 gains and frames/second. These key
@@ -569,19 +569,37 @@ static CFDictionaryRef rendered_metadata(const struct Stream *s, CFDictionaryRef
      * The native065 header only carries these fields after real eleven-
      * byte readback, the two-frame delay and sensor digital unity. Do not
      * replace transition frames with requested exposure or stable flags. */
+    /* These describe the completed RAW and our actual software crop, even
+     * while sensor exposure is in transition. The original 24A446 source
+     * and transfer node read RawSensorWidth/Height and per-output zoom when
+     * constructing TotalSensorCropRect/PrimaryCaptureRect. Their units are
+     * this binned sensor mode, not the scaled graph buffer's dimensions. */
+    CFMutableDictionaryRef result=CFDictionaryCreateMutableCopy(NULL,0,original);
+    if (!result) return NULL;
+    const CFStringRef geometry_keys[]={CFSTR("RawSensorWidth"),CFSTR("RawSensorHeight"),
+        CFSTR("ZoomFactor"),CFSTR("SecondaryScalerZoomFactor")};
+    const double geometry_values[]={frame->width,frame->height,
+        s->preview.processing.zoom,s->preview.processing.zoom};
+    for (unsigned i=0;i<sizeof(geometry_keys)/sizeof(geometry_keys[0]);++i) {
+        CFNumberRef value=number(geometry_values[i]);
+        if (!value) { CFRelease(result);return NULL; }
+        CFDictionarySetValue(result,geometry_keys[i],value);CFRelease(value);
+    }
+    static unsigned geometry_reports[2];
+    if (__atomic_fetch_add(&geometry_reports[complete?1:0],1u,__ATOMIC_RELAXED)<2)
+        fprintf(stderr,"nezha-camera: rendered metadata RAW=%ux%u applied_zoom=%.9g sensor_fields_present=%u\n",
+            frame->width,frame->height,(double)s->preview.processing.zoom,(unsigned)complete);
     if (!complete || actual->margin!=10 || actual->gain_unity!=256 ||
         actual->gain<256 || actual->gain>actual->gain_max || actual->gain_max>65280 ||
         actual->frame_lines_min<=10 || actual->frame_lines<actual->frame_lines_min ||
         actual->frame_lines_max<actual->frame_lines || actual->frame_lines_max>0xffffff ||
-        actual->exposure_lines>actual->frame_lines-actual->margin) return CFRetain(original);
-    CFMutableDictionaryRef result=CFDictionaryCreateMutableCopy(NULL,0,original);
-    if (!result) return NULL;
+        actual->exposure_lines>actual->frame_lines-actual->margin) return result;
     const CFStringRef keys[]={CFSTR("ExposureTime"),CFSTR("AGC"),CFSTR("sensorDGain"),
-        CFSTR("ispDGain"),CFSTR("CurrentFrameRate"),CFSTR("ZoomFactor")};
+        CFSTR("ispDGain"),CFSTR("CurrentFrameRate")};
     const double values[]={actual->exposure_lines*(double)actual->line_ns/1e9,
         actual->gain*(256.0/actual->gain_unity),256,
         floor(s->preview.processing.digital*256.0+0.5),
-        1e9/(actual->frame_lines*(double)actual->line_ns),s->preview.processing.zoom};
+        1e9/(actual->frame_lines*(double)actual->line_ns)};
     for (unsigned i=0;i<sizeof(keys)/sizeof(keys[0]);++i) {
         CFNumberRef value=number(values[i]);
         if (!value) { CFRelease(result);return NULL; }
@@ -623,7 +641,7 @@ static NezhaFigStatus deliver_stream(struct Stream *s,
                 s->preview.processing.asked_frame_lines=previous.asked_frame_lines;
             }
         }
-        CFDictionaryRef attached=rendered_metadata(s,metadata,&actual,complete);
+        CFDictionaryRef attached=rendered_metadata(s,metadata,frame,&actual,complete);
         if (!attached) { result=Unavailable;return; }
         for (unsigned i=0;i<3 && s->running && s->generation==generation;++i) {
             if (!s->output[i].running || (i==2 && !s->stills)) continue;

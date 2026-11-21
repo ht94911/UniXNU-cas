@@ -71,6 +71,13 @@ static bool fill(CVPixelBufferRef image,bool bars,unsigned yValue,unsigned uValu
 
 
 
+@protocol NezhaBWVideoFormat
+- (void)setWidth:(NSUInteger)width;
+- (void)setHeight:(NSUInteger)height;
+- (void)setExtendedWidth:(NSUInteger)width;
+- (void)setExtendedHeight:(NSUInteger)height;
+- (void)setPixelFormat:(uint32_t)format;
+@end
 @interface NSObject (NativeRenderer121)
 + (bool)supportsAcceleratedBorderFill;
 - (void)setWidth:(NSUInteger)width;
@@ -123,13 +130,38 @@ static bool inspect(CVPixelBufferRef image,NSString *name,int expectedCenter) {
     return passed;
 }
 
-static bool callResult(NSString *name,int status,CVPixelBufferRef image,int expected) {
-    report(@{@"phase":@"original-controller-call",@"case":name,@"status":@(status),@"capture_started":@NO});
-    const bool pixels=inspect(image,name,status==0?expected:-1);
-    return status==0&&pixels;
+static bool fillPattern(CVPixelBufferRef image) {
+    if(!fill(image,false,0,128,128)||CVPixelBufferLockBaseAddress(image,0))return false;
+    auto *y=(uint8_t *)CVPixelBufferGetBaseAddressOfPlane(image,0);
+    const size_t width=CVPixelBufferGetWidth(image),height=CVPixelBufferGetHeight(image);
+    const size_t rowBytes=CVPixelBufferGetBytesPerRowOfPlane(image,0);
+    const uint8_t values[]={51,107,181,219};
+    for(size_t row=0;row<height;++row)for(size_t x=0;x<width;++x)
+        y[row*rowBytes+x]=values[(row>=height/2?2:0)+(x>=width/2?1:0)];
+    return CVPixelBufferUnlockBaseAddress(image,0)==0;
 }
-
-
+static bool inspectPattern(CVPixelBufferRef image,NSString *name,CGRect destinationRect,bool clockwise) {
+    if(!inspect(image,name,-1)||CVPixelBufferLockBaseAddress(image,kCVPixelBufferLock_ReadOnly))return false;
+    const auto *y=(const uint8_t *)CVPixelBufferGetBaseAddressOfPlane(image,0);
+    const size_t rows=CVPixelBufferGetBytesPerRowOfPlane(image,0);
+    const unsigned plain[]={51,107,181,219},rotated[]={181,51,219,107};
+    const unsigned *expected=clockwise?rotated:plain;
+    NSMutableArray *actual=[NSMutableArray array];bool passed=true;
+    for(unsigned quadrant=0;quadrant<4;++quadrant) {
+        const size_t x=(size_t)(destinationRect.origin.x+destinationRect.size.width*(quadrant%2?.75:.25));
+        const size_t row=(size_t)(destinationRect.origin.y+destinationRect.size.height*(quadrant/2?.75:.25));
+        const unsigned value=y[row*rows+x];[actual addObject:@(value)];
+        passed=passed&&std::abs(int(value)-int(expected[quadrant]))<=2;
+    }
+    if(clockwise)passed=passed&&y[0]==0&&y[(CVPixelBufferGetHeight(image)-1)*rows]==0;
+    const CVReturn unlocked=CVPixelBufferUnlockBaseAddress(image,kCVPixelBufferLock_ReadOnly);
+    passed=passed&&!unlocked;
+    report(@{@"phase":@"original-renderer-pattern",@"case":name,@"clockwise_90":@(clockwise),
+        @"actual_quadrants":actual,@"expected_quadrants":@[@(expected[0]),@(expected[1]),@(expected[2]),@(expected[3])],
+        @"destination_rect":@[@(destinationRect.origin.x),@(destinationRect.origin.y),@(destinationRect.size.width),@(destinationRect.size.height)],
+        @"passed":@(passed),@"capture_started":@NO});
+    return passed;
+}
 int main(int argc,char **argv) {@autoreleasepool {
  (void)argc;(void)argv;if(!ownMemoryLimit())return 11;sleep(150);
  char boot[128]={};size_t length=sizeof boot;sysctlbyname("kern.bootsessionuuid",boot,&length,nullptr,0);
@@ -148,17 +180,26 @@ int main(int argc,char **argv) {@autoreleasepool {
  report(@{@"phase":@"fallback-library",@"present":@(library!=nullptr),@"observer":@(observe!=nullptr)});if(!observe)return 14;
  observe();const bool after=[rendererClass supportsAcceleratedBorderFill];
  report(@{@"phase":@"original-renderer-support",@"before":@(before),@"after":@(after)});
- id format=[formatClass new];[format setWidth:1200];[format setHeight:2608];[format setExtendedWidth:1200];[format setExtendedHeight:2608];[format setPixelFormat:kCVPixelFormatType_420YpCbCr8BiPlanarFullRange];
+ id<NezhaBWVideoFormat> format=(id<NezhaBWVideoFormat>)[formatClass new];[format setWidth:1200];[format setHeight:2608];[format setExtendedWidth:1200];[format setExtendedHeight:2608];[format setPixelFormat:kCVPixelFormatType_420YpCbCr8BiPlanarFullRange];
  id pool=[[poolClass alloc] initWithVideoFormat:format capacity:3 name:@"Nezha authored renderer fixture"];
  id renderer=pool?[[rendererClass alloc] initWithIntermediateBufferPool:pool fractionalSourceRectEnabled:false compressedFormatEnabled:true]:nil;
  report(@{@"phase":@"original-renderer-create",@"format":@(format!=nil),@"pool":@(pool!=nil),@"renderer":@(renderer!=nil)});if(!renderer)return 15;
  CVPixelBufferRef source=pixel(1600,1200,true),output=pixel(1200,2608,true);if(!source||!output)return 3;
- if(!fill(source,false,107,128,128)||!fill(output,false,165,165,165))return 4;
- VTPixelRotationSessionRef session=nullptr;OSStatus created=VTPixelRotationSessionCreate(kCFAllocatorDefault,&session);
- report(@{@"phase":@"original-rotation-session",@"status":@(created),@"present":@(session!=nullptr)});if(created||!session)return 16;
- int status=[renderer doPixelRotationTransferWithSession:session sourceBuffer:source sourceRect:CGRectMake(0,0,1600,1200) destinationBuffer:output destinationRect:CGRectMake(0,0,1200,2608) blackFillUnalignedEdges:false];
- report(@{@"phase":@"original-renderer-call",@"status":@(status),@"capture_started":@NO});
- bool pixels=inspect(output,@"original-BWPixelBufferTransferRenderer",status? -1:107);const bool passed=!status&&pixels&&!after;
- VTPixelRotationSessionInvalidate(session);CFRelease(session);CVPixelBufferRelease(source);CVPixelBufferRelease(output);
- report(@{@"phase":@"result",@"passed":@(passed),@"original_renderer":@YES,@"capture_started":@NO});return passed?0:10;
+ if(!fillPattern(source))return 4;
+ bool passed=!after;
+ for(unsigned rotation=0;rotation<2;++rotation) {
+    if(!fill(output,false,0,128,128))return 4;
+    VTPixelRotationSessionRef session=nullptr;OSStatus created=VTPixelRotationSessionCreate(kCFAllocatorDefault,&session);
+    report(@{@"phase":@"original-rotation-session",@"rotation_case":@(rotation),@"status":@(created),@"present":@(session!=nullptr)});if(created||!session)return 16;
+    const OSStatus property=rotation?VTSessionSetProperty((VTSessionRef)session,CFSTR("Rotation"),CFSTR("RotationCW90")):0;
+    if(property)return 17;
+    const CGRect destinationRect=rotation?CGRectMake(0,504,1200,1600):CGRectMake(0,0,1200,2608);
+    const int status=[renderer doPixelRotationTransferWithSession:session sourceBuffer:source sourceRect:CGRectMake(0,0,1600,1200) destinationBuffer:output destinationRect:destinationRect blackFillUnalignedEdges:false];
+    report(@{@"phase":@"original-renderer-call",@"rotation_case":@(rotation),@"status":@(status),@"capture_started":@NO});
+    const bool pixels=inspectPattern(output,rotation?@"portrait-CW90-letterbox-pattern":@"unrotated-nonuniform-pattern",destinationRect,rotation!=0);
+    passed=passed&&!status&&pixels;
+    VTPixelRotationSessionInvalidate(session);CFRelease(session);
+ }
+ CVPixelBufferRelease(source);CVPixelBufferRelease(output);
+ report(@{@"phase":@"result",@"passed":@(passed),@"original_renderer":@YES,@"nonuniform_rotation_cases":@2,@"capture_started":@NO});return passed?0:10;
 }}

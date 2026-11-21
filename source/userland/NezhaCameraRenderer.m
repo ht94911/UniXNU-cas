@@ -2,6 +2,7 @@
 /* Choose the original uncompressed transfer path when the M2M scaler has no
  * usable capabilities. Do not fabricate scaler limits or replace its methods. */
 #include "NezhaCameraRenderer.h"
+#include <CoreVideo/CoreVideo.h>
 #include <mach-o/dyld.h>
 #include <objc/message.h>
 #include <objc/runtime.h>
@@ -11,7 +12,10 @@
 #include <stdio.h>
 #include <string.h>
 typedef struct {double width,height;} RendererSize;
-static IMP original_supports,original_initializer;
+typedef struct {double x,y;} RendererPoint;
+typedef struct {RendererPoint origin;RendererSize size;} RendererRect;
+typedef struct OpaqueVTPixelRotationSession *RendererRotationSession;
+static IMP original_supports,original_initializer,original_transfer;
 static bool capture_seen,installed;
 static intptr_t capture_slide;
 static const uint8_t uuid[16]={0x99,0x5f,0xc2,0x2b,0x41,0xbd,0x37,0xb4,0x81,0x2f,0x26,0x86,0xb8,0x1c,0x26,0x94};
@@ -46,6 +50,21 @@ static id initialize_renderer(id self,SEL selector,id pool,bool fractional,bool 
             (unsigned)(pool!=NULL),(unsigned)fractional,(unsigned)compressed,(unsigned)selected);
     return ((id (*)(id,SEL,id,bool,bool))original_initializer)(self,selector,pool,fractional,selected);
 }
+static int transfer_pixels(id self,SEL selector,RendererRotationSession session,
+    CVPixelBufferRef source,RendererRect src,CVPixelBufferRef destination,RendererRect dst,bool fill)
+{
+    static unsigned reports;
+    const unsigned report=__atomic_fetch_add(&reports,1u,__ATOMIC_RELAXED);
+    if (report<6) fprintf(stderr,"nezha-camera: renderer transfer source=%zux%zu rect=%.9g,%.9g,%.9g,%.9g destination=%zux%zu rect=%.9g,%.9g,%.9g,%.9g fill=%u\n",
+        source ? CVPixelBufferGetWidth(source):0,source ? CVPixelBufferGetHeight(source):0,
+        src.origin.x,src.origin.y,src.size.width,src.size.height,
+        destination ? CVPixelBufferGetWidth(destination):0,destination ? CVPixelBufferGetHeight(destination):0,
+        dst.origin.x,dst.origin.y,dst.size.width,dst.size.height,(unsigned)fill);
+    const int status=((int (*)(id,SEL,RendererRotationSession,CVPixelBufferRef,RendererRect,
+        CVPixelBufferRef,RendererRect,bool))original_transfer)(self,selector,session,source,src,destination,dst,fill);
+    if (report<6) fprintf(stderr,"nezha-camera: renderer transfer returned status=%d\n",status);
+    return status;
+}
 static bool match_uuid(const struct mach_header *header)
 {
     if (!header || header->magic!=MH_MAGIC_64) return false;
@@ -69,14 +88,19 @@ bool nezha_camera_renderer_install(const struct mach_header *header,intptr_t sli
     Class type=objc_getClass("BWPixelBufferTransferRenderer");
     Method support=type ? class_getClassMethod(type,sel_registerName("supportsAcceleratedBorderFill")):NULL;
     Method init=type ? class_getInstanceMethod(type,sel_registerName("initWithIntermediateBufferPool:fractionalSourceRectEnabled:compressedFormatEnabled:")):NULL;
+    Method transfer=type ? class_getInstanceMethod(type,sel_registerName("doPixelRotationTransferWithSession:sourceBuffer:sourceRect:destinationBuffer:destinationRect:blackFillUnalignedEdges:")):NULL;
     IMP sf=support ? method_getImplementation(support):NULL,cf=init ? method_getImplementation(init):NULL;
-    if (!sf || !cf || strcmp(method_getTypeEncoding(support),"B16@0:8") ||
+    IMP tf=transfer ? method_getImplementation(transfer):NULL;
+    if (!sf || !cf || !tf || strcmp(method_getTypeEncoding(support),"B16@0:8") ||
         strcmp(method_getTypeEncoding(init),"@32@0:8@16B24B28") ||
+        strcmp(method_getTypeEncoding(transfer),"i108@0:8^{OpaqueVTPixelRotationSession=}16^{__CVBuffer=}24{CGRect={CGPoint=dd}{CGSize=dd}}32^{__CVBuffer=}64{CGRect={CGPoint=dd}{CGSize=dd}}72B104") ||
+        (uintptr_t)ptrauth_strip(tf,ptrauth_key_function_pointer)!=(uintptr_t)(0x1b0504290ULL+capture_slide) ||
         (uintptr_t)ptrauth_strip(sf,ptrauth_key_function_pointer)!=(uintptr_t)(0x1b06fec7cULL+capture_slide) ||
         (uintptr_t)ptrauth_strip(cf,ptrauth_key_function_pointer)!=(uintptr_t)(0x1b05f3e4cULL+capture_slide)) return false;
-    original_supports=sf;original_initializer=cf;
+    original_supports=sf;original_initializer=cf;original_transfer=tf;
     method_setImplementation(support,(IMP)supports_accelerated);
     method_setImplementation(init,(IMP)initialize_renderer);
+    method_setImplementation(transfer,(IMP)transfer_pixels);
     installed=true;
     fputs("nezha-camera: original uncompressed renderer fallback installed\n",stderr);
     return true;
