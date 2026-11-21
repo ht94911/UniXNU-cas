@@ -1,7 +1,7 @@
-name: nezha GPU072 first VM fault cached job - native057
+name: nezha GPU074 original timing-server intervals - native058
 on:
   push:
-    branches: [codex/ios27-gpu72-first-vm-fault-native057-20261121]
+    branches: [codex/ios27-gpu74-timing-server-native058-20261122]
   workflow_dispatch:
 permissions:
   contents: read

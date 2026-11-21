@@ -18,8 +18,8 @@ void nezha_input_chain_trace(uint32_t code, uintptr_t a, uintptr_t b,
         (code >> 16) != 0x0523 && ca_code!=0x31ca0028 &&
         ca_code!=0x31ca0004 && ca_code!=0x31ca0210 &&
         ca_code!=0x31ca01dc && ca_code!=0x31ca0214 &&
-        ca_code!=0x31ca0218 &&
-        ca_code!=0x14ca001c) return;
+        ca_code!=0x31ca0218 && ca_code!=0x31ca0260 &&
+        ca_code!=0x31ca0264 && ca_code!=0x14ca001c) return;
     if (__atomic_exchange_n(&nezha_chain_lock, 1, __ATOMIC_ACQUIRE)) {
         __atomic_fetch_add(&nezha_chain_drops, 1, __ATOMIC_RELAXED);
         return;
