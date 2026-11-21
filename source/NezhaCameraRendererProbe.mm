@@ -197,6 +197,8 @@ int main(int argc,char **argv) {@autoreleasepool {
     if(rotation==2) {
         NSDictionary *metadata=@{@"FrameSequence":@7,@"RawSensorWidth":@4096,@"RawSensorHeight":@3072,@"ZoomFactor":@1};
         CVBufferSetAttachment(source,CFSTR("MetadataDictionary"),(__bridge CFDictionaryRef)metadata,kCVAttachmentMode_ShouldPropagate);
+        CVBufferSetAttachment(source,CFSTR("NezhaCameraCompletedRaw1x"),kCFBooleanTrue,kCVAttachmentMode_ShouldPropagate);
+        CVBufferRemoveAttachment(source,CFSTR("MetadataDictionary"));
     }
     const CGRect sourceRect=rotation==2?CGRectMake(801,601,0,0):CGRectMake(0,0,1600,1200);
     const int status=[renderer doPixelRotationTransferWithSession:session sourceBuffer:source sourceRect:sourceRect destinationBuffer:output destinationRect:destinationRect blackFillUnalignedEdges:false];

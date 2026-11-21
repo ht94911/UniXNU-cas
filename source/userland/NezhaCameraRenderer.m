@@ -57,19 +57,11 @@ static id initialize_renderer(id self,SEL selector,id pool,bool fractional,bool 
 static bool own_full_source(CVPixelBufferRef source)
 {
     if (!source || !CVPixelBufferGetWidth(source) || !CVPixelBufferGetHeight(source)) return false;
-    CFTypeRef metadata=CVBufferCopyAttachment(source,CFSTR("MetadataDictionary"),NULL);
-    if (!metadata) return false;
-    bool matched=CFGetTypeID(metadata)==CFDictionaryGetTypeID();
-    const CFStringRef keys[]={CFSTR("FrameSequence"),CFSTR("RawSensorWidth"),
-        CFSTR("RawSensorHeight"),CFSTR("ZoomFactor")};
-    const double expected[]={0,4096,3072,1};
-    for (unsigned i=0;i<4 && matched;++i) {
-        CFTypeRef field=CFDictionaryGetValue((CFDictionaryRef)metadata,keys[i]);double value=0;
-        matched=field && CFGetTypeID(field)==CFNumberGetTypeID() &&
-            CFNumberGetValue((CFNumberRef)field,kCFNumberDoubleType,&value) && isfinite(value) &&
-            (i ? value==expected[i] : value>0);
-    }
-    CFRelease(metadata);return matched;
+    CFTypeRef origin=CVBufferCopyAttachment(source,CFSTR("NezhaCameraCompletedRaw1x"),NULL);
+    if (!origin) return false;
+    const bool matched=CFGetTypeID(origin)==CFBooleanGetTypeID() &&
+        CFBooleanGetValue((CFBooleanRef)origin);
+    CFRelease(origin);return matched;
 }
 static int transfer_pixels(id self,SEL selector,RendererRotationSession session,
     CVPixelBufferRef source,RendererRect src,CVPixelBufferRef destination,RendererRect dst,bool fill)

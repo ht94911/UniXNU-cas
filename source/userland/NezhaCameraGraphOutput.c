@@ -80,6 +80,12 @@ CVReturn nezha_camera_graph_output_deliver(struct NezhaCameraGraphOutput *output
         CFRelease(pixel);
         return status;
     }
+    /* The capture source moves MetadataDictionary into its sample buffer.
+     * Keep completed CPU-output ownership on the pixel buffer itself. */
+    const bool own_full = frame->width==4096 && frame->height==3072 &&
+        frame->stride==5120 && raw_bytes==15728640 && preview->processing.zoom==1;
+    CVBufferSetAttachment(pixel, CFSTR("NezhaCameraCompletedRaw1x"),
+        own_full ? kCFBooleanTrue:kCFBooleanFalse, kCVAttachmentMode_ShouldPropagate);
     CFMutableDictionaryRef attached = CFDictionaryCreateMutableCopy(NULL, 0, metadata);
     if (!attached) {
         CFRelease(pixel);

@@ -73,6 +73,8 @@ int main(void) {@autoreleasepool {
  }
  NSDictionary *metadata=@{@"FrameSequence":@7,@"RawSensorWidth":@4096,@"RawSensorHeight":@3072,@"ZoomFactor":@1};
  CVBufferSetAttachment(source,CFSTR("MetadataDictionary"),(CFDictionaryRef)metadata,kCVAttachmentMode_ShouldPropagate);
+ CVBufferSetAttachment(source,CFSTR("NezhaCameraCompletedRaw1x"),kCFBooleanTrue,kCVAttachmentMode_ShouldPropagate);
+ CVBufferRemoveAttachment(source,CFSTR("MetadataDictionary"));
  const RendererRect empty={{801,601},{0,0}},whole={{0,0},{4,6}},target={{0,378},{1200,1602}};
  transfer_calls=0;transfer_status=-12783;
  assert(transfer_pixels(renderer,@selector(doPixelRotationTransferWithSession:sourceBuffer:sourceRect:destinationBuffer:destinationRect:blackFillUnalignedEdges:),NULL,source,empty,destination,target,true)==transfer_status);
@@ -85,6 +87,7 @@ int main(void) {@autoreleasepool {
     @{@"FrameSequence":@7,@"RawSensorWidth":@4096,@"ZoomFactor":@1}];
  for(NSDictionary *value in invalid) {
     CVBufferSetAttachment(source,CFSTR("MetadataDictionary"),(CFDictionaryRef)value,kCVAttachmentMode_ShouldPropagate);
+    CVBufferSetAttachment(source,CFSTR("NezhaCameraCompletedRaw1x"),kCFBooleanFalse,kCVAttachmentMode_ShouldPropagate);
     transfer_calls=0;
     assert(transfer_pixels(renderer,@selector(doPixelRotationTransferWithSession:sourceBuffer:sourceRect:destinationBuffer:destinationRect:blackFillUnalignedEdges:),NULL,source,empty,destination,target,false)==transfer_status);
     assert(transfer_calls==1&&!memcmp(&received_src,&empty,sizeof(empty)));++cases;
