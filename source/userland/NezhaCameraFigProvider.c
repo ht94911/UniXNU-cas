@@ -562,7 +562,8 @@ static bool frame_controls(CFDictionaryRef metadata, uint64_t completed_time,
 }
 
 static CFDictionaryRef rendered_metadata(const struct Stream *s, CFDictionaryRef original,
-    const struct NezhaCameraPreviewFrame *frame, const struct hakios_camera_frame *actual, bool complete)
+    const struct NezhaCameraPreviewFrame *frame, const struct hakios_camera_frame *actual, bool complete,
+    const struct isp_stats *statistics)
 {
     /* HakiOS frame_metadata converts the actual frame's line time and
      * Q8 gains to Apple's seconds, Q8 gains and frames/second. These key
@@ -587,9 +588,20 @@ static CFDictionaryRef rendered_metadata(const struct Stream *s, CFDictionaryRef
         CFDictionarySetValue(result,geometry_keys[i],value);CFRelease(value);
     }
     static unsigned geometry_reports[2];
-    if (__atomic_fetch_add(&geometry_reports[complete?1:0],1u,__ATOMIC_RELAXED)<2)
-        fprintf(stderr,"nezha-camera: rendered metadata RAW=%ux%u applied_zoom=%.9g sensor_fields_present=%u\n",
-            frame->width,frame->height,(double)s->preview.processing.zoom,(unsigned)complete);
+    const unsigned report=__atomic_fetch_add(&geometry_reports[complete?1:0],1u,__ATOMIC_RELAXED);
+    if (report<2 || (report && report%300==0))
+        fprintf(stderr,"nezha-camera: rendered metadata RAW=%ux%u applied_zoom=%.9g sensor_fields_present=%u "
+            "sample=%u mean=%.9g/%.9g/%.9g bright=%.9g cells=%u "
+            "seq=%u exposure=%u line_ns=%u gain=%u/%u frame=%u "
+            "digital=%.9g wb=%.9g/%.9g/%.9g pending=%u asked=%u/%u/%u\n",
+            frame->width,frame->height,(double)s->preview.processing.zoom,(unsigned)complete,
+            report,statistics->mean[0],statistics->mean[1],statistics->mean[2],
+            statistics->bright,statistics->cells,actual->sequence,actual->exposure_lines,
+            actual->line_ns,actual->gain,actual->gain_unity,actual->frame_lines,
+            (double)s->preview.processing.digital,(double)s->preview.processing.wb[0],
+            (double)s->preview.processing.wb[1],(double)s->preview.processing.wb[2],
+            (unsigned)s->preview.processing.asked,s->preview.processing.asked_lines,
+            s->preview.processing.asked_gain,s->preview.processing.asked_frame_lines);
     if (!complete || actual->margin!=10 || actual->gain_unity!=256 ||
         actual->gain<256 || actual->gain>actual->gain_max || actual->gain_max>65280 ||
         actual->frame_lines_min<=10 || actual->frame_lines<actual->frame_lines_min ||
@@ -642,7 +654,7 @@ static NezhaFigStatus deliver_stream(struct Stream *s,
                 s->preview.processing.asked_frame_lines=previous.asked_frame_lines;
             }
         }
-        CFDictionaryRef attached=rendered_metadata(s,metadata,frame,&actual,complete);
+        CFDictionaryRef attached=rendered_metadata(s,metadata,frame,&actual,complete,&statistics);
         if (!attached) { result=Unavailable;return; }
         for (unsigned i=0;i<3 && s->running && s->generation==generation;++i) {
             if (!s->output[i].running || (i==2 && !s->stills)) continue;
