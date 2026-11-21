@@ -98,6 +98,9 @@ void nb_gnss_lost(NbGnss *s)
     s->command = s->failed_command = 0;
     __builtin_memset(&s->fix, 0, sizeof s->fix); __builtin_memset(&s->sky, 0, sizeof s->sky);
     __builtin_memset(&s->incoming, 0, sizeof s->incoming);
+    __builtin_memset(&s->measurement, 0, sizeof s->measurement);
+    s->measurement_seen = 0; s->measurement_received_ms = 0;
+    s->measurement_configured = 0; s->measurement_config_error = 0;
     __builtin_memset(s->me_version, 0, sizeof s->me_version);
     __builtin_memset(s->host_version, 0, sizeof s->host_version);
     __builtin_memset(s->full_version, 0, sizeof s->full_version);
@@ -239,6 +242,15 @@ void nb_gnss_request(NbGnss *s, uint32_t i, const uint8_t *data, uint32_t length
 static void nb_gnss_fail_command(NbGnss *s, uint32_t error)
 {
     s->waiting = s->sending = 0;
+    if (s->phase == NbGnssMeasurementConfig) {
+        s->measurement_config_error = error;
+        /* A peer that explicitly lacks measurement configuration can still
+         * supply the already supported position reports. Preserve that
+         * receiver path, and expose the missing measurement capability. */
+        if (error == NB_QMI_ERR_NOT_SUPPORTED) {
+            s->phase = NbGnssReady; s->measurement_configured = 0; return;
+        }
+    }
     if (s->action != NbGnssReference) { s->last_error = error; s->failed_command = s->command; }
     if (s->phase != NbGnssReady || s->action == NbGnssStop) s->phase = NbGnssFailed;
     if (s->active) nb_gnss_finish(s, error);
@@ -253,16 +265,22 @@ static void nb_gnss_command_done(NbGnss *s)
      * making its acceptance mandatory prevented GNSS002 initialization. */
     if (s->phase == NbGnssQuery) { s->phase = NbGnssRegister; return; }
     if (s->phase == NbGnssInform) { s->phase = NbGnssRegister; return; }
-    if (s->phase == NbGnssRegister) { s->phase = NbGnssReady; return; }
+    if (s->phase == NbGnssRegister) { s->phase = NbGnssMeasurementConfig; return; }
+    if (s->phase == NbGnssMeasurementConfig) {
+        s->measurement_configured = 1; s->measurement_config_error = 0;
+        s->phase = NbGnssReady; return;
+    }
     switch (s->action) {
     case NbGnssStop:
         s->running = 0; ++s->stops; s->action = NbGnssIdle; s->fault_cleanup = 0;
         __builtin_memset(&s->fix, 0, sizeof s->fix);
+        s->measurement_seen = 0;
         if (s->active && !nb_gnss_criteria(s, 1).interval_seconds) nb_gnss_finish(s, 0);
         break;
     case NbGnssMode: s->action = NbGnssStart; break;
     case NbGnssStart:
         s->running = 1; s->applied = s->desired; ++s->starts;
+        s->measurement_seen = 0;
         s->action = NbGnssIdle;
         if (s->active) nb_gnss_finish(s, 0);
         break;
@@ -282,6 +300,7 @@ int nb_gnss_next(NbGnss *s, uint64_t now_ms, NbGnssPacket *packet)
     else if (s->phase == NbGnssQuery) command = NB_LOC_SERVICE_REVISION;
     else if (s->phase == NbGnssInform) command = NB_LOC_REVISION;
     else if (s->phase == NbGnssRegister) command = NB_LOC_REGISTER;
+    else if (s->phase == NbGnssMeasurementConfig) command = NB_LOC_REPORT_CONSTELLATIONS;
     else {
         if (!s->active) while (s->count) {
             s->current = s->requests[s->head]; s->head = (s->head + 1u) % NB_GNSS_REQUESTS; --s->count;
@@ -344,9 +363,10 @@ int nb_gnss_next(NbGnss *s, uint64_t now_ms, NbGnssPacket *packet)
     switch (command) {
     case NB_LOC_REVISION: nb_qmi_u32(&w, 1, s->revision < NB_GNSS_LOC_REVISION ? s->revision : NB_GNSS_LOC_REVISION); break;
     case NB_LOC_REGISTER:
-        /* Position, satellites, NMEA, engine, session. Normal subscription
-         * only; NV, constellation enable masks and factory data are untouched. */
-        nb_qmi_u64(&w, 1, UINT64_C(0x187));
+        /* Position, satellites, NMEA, engine, session and real measurements.
+         * This mask subscribes this client; it does not enable GNSS hardware
+         * or change the receiver's constellation/NV configuration. */
+        nb_qmi_u64(&w, 1, UINT64_C(0x187) | NB_GNSS_MEASUREMENT_EVENT);
         /* Original LOC IDL and the actual minor177 HAL supply client
          * metadata. AFW identifies the normal application framework;
          * requests remain subject to its ordinary location authorization. */
@@ -358,6 +378,12 @@ int nb_gnss_next(NbGnss *s, uint64_t now_ms, NbGnssPacket *packet)
          * A nonzero value is ignored for AFW in the public IDL, but this
          * board's real service rejected the former request. Match its HAL. */
         nb_qmi_u8(&w, 0x12, 0);
+        break;
+    case NB_LOC_REPORT_CONSTELLATIONS:
+        /* Same per-client measurement reporting selection as the stock LOC
+         * client. Polynomial reports are not subscribed by this adapter. */
+        nb_qmi_u64(&w, 0x10, UINT64_C(0x3f));
+        nb_qmi_u64(&w, 0x11, 0); /* stock client explicitly disables its unsubscribed polynomial stream */
         break;
     case NB_LOC_SET_MODE: nb_qmi_u32(&w, 1, 4); break; /* QMI LOC standalone */
     case NB_LOC_START:
@@ -449,6 +475,37 @@ static void nb_gnss_publish_nmea(NbGnss *s, const NbQmiMessage *m)
     for (unsigned i = 0; i < CBQ_MAX_CLIENTS; ++i)
         if (nb_gnss_wants_fix(&s->clients[i]) && s->clients[i].nmea_report) nb_gnss_emit(s, &s->clients[i], out, length);
 }
+static void nb_gnss_publish_measurement(NbGnss *s, const NbQmiMessage *m, uint64_t now_ms)
+{
+    ++s->measurement_reports;
+    NbGnssMeasurement info;
+    if (s->running != 1u) { ++s->measurement_rejected; return; }
+    const uint32_t length = nb_gnss_pds_measurement(m, s->measurement_packet, sizeof s->measurement_packet, &info);
+    if (!length) { ++s->measurement_rejected; return; }
+    if (s->measurement_seen && info.resets_present && s->measurement.resets_present &&
+        (int32_t)(info.clock_resets - s->measurement.clock_resets) < 0) {
+        ++s->measurement_rejected; return;
+    }
+    /* Keep segmented reports distinct even when they share one clock tick.
+     * A duplicate/backward segment cannot refresh the consumer's epoch. */
+    if (s->measurement_seen && info.tick_present && s->measurement.tick_present &&
+        info.resets_present == s->measurement.resets_present &&
+        (!info.resets_present || info.clock_resets == s->measurement.clock_resets)) {
+        const int32_t advance = (int32_t)(info.tick - s->measurement.tick);
+        if (advance < 0 || (!advance && (info.maximum != s->measurement.maximum ||
+                                       info.sequence <= s->measurement.sequence))) {
+            ++s->measurement_rejected; return;
+        }
+    }
+    s->measurement = info; s->measurement_seen = 1; s->measurement_received_ms = now_ms;
+    for (unsigned i = 0; i < CBQ_MAX_CLIENTS; ++i) {
+        NbGnssClient *c = &s->clients[i];
+        if (!nb_gnss_wants_fix(c) || !c->parsed_report) continue;
+        const uint64_t dropped = s->output_drops;
+        nb_gnss_emit(s, c, s->measurement_packet, length);
+        if (dropped == s->output_drops) ++s->measurement_published;
+    }
+}
 void nb_gnss_receive(NbGnss *s, uint32_t node, uint32_t port, const uint8_t *data, uint32_t length, uint64_t now_ms)
 {
     NbQmiMessage m;
@@ -460,12 +517,13 @@ void nb_gnss_receive(NbGnss *s, uint32_t node, uint32_t port, const uint8_t *dat
         if (error) { nb_gnss_fail_command(s, error); return; }
         s->ack_seen = 1;
         if ((s->command != NB_LOC_SET_MODE && s->command != NB_LOC_SERVICE_REVISION &&
-             s->command != NB_LOC_INJECT_POSITION) || s->indication_seen) nb_gnss_command_done(s);
+             s->command != NB_LOC_INJECT_POSITION && s->command != NB_LOC_REPORT_CONSTELLATIONS) || s->indication_seen)
+            nb_gnss_command_done(s);
         return;
     }
     if (m.type != NB_QMI_INDICATION) { ++s->rejected; return; }
     if (s->waiting && m.message == s->command && (m.message == NB_LOC_SET_MODE || m.message == NB_LOC_SERVICE_REVISION ||
-                                                m.message == NB_LOC_INJECT_POSITION)) {
+                                                m.message == NB_LOC_INJECT_POSITION || m.message == NB_LOC_REPORT_CONSTELLATIONS)) {
         const uint8_t *status = nb_gnss_tlv(&m, 1, 4);
         if (m.message == NB_LOC_INJECT_POSITION) {
             s->reference_status = status ? nb_le32(status) : UINT32_MAX;
@@ -480,7 +538,18 @@ void nb_gnss_receive(NbGnss *s, uint32_t node, uint32_t port, const uint8_t *dat
                 nb_gnss_fail_command(s, error); return;
             }
         }
-        if (!status || nb_le32(status)) { nb_gnss_fail_command(s, NB_QMI_ERR_INTERNAL); return; }
+        if (!status || nb_le32(status)) {
+            uint32_t error = !status ? NB_QMI_ERR_MALFORMED_MSG : NB_QMI_ERR_INTERNAL;
+            if (status && m.message == NB_LOC_REPORT_CONSTELLATIONS) switch (nb_le32(status)) {
+            case 2: case 7: error = NB_QMI_ERR_NOT_SUPPORTED; break;
+            case 3: error = NB_QMI_ERR_INVALID_ARG; break;
+            case 4: error = NB_GNSS_ERROR_BUSY; break;
+            case 6: error = NB_GNSS_ERROR_TIMEOUT; break;
+            case 8: error = NB_QMI_ERR_NO_MEMORY; break;
+            default: break;
+            }
+            nb_gnss_fail_command(s, error); return;
+        }
         if (m.message == NB_LOC_SERVICE_REVISION) {
             const uint8_t *revision = nb_gnss_tlv(&m, 2, 4);
             if (!revision || !nb_le32(revision)) { nb_gnss_fail_command(s, NB_QMI_ERR_MALFORMED_MSG); return; }
@@ -497,6 +566,7 @@ void nb_gnss_receive(NbGnss *s, uint32_t node, uint32_t port, const uint8_t *dat
         if (nb_gnss_decode_sky(&m, now_ms, &s->sky)) { s->sky.sequence = ++s->sky_reports; }
         else ++s->rejected;
     } else if (m.message == NB_LOC_NMEA) nb_gnss_publish_nmea(s, &m);
+    else if (m.message == NB_LOC_MEASUREMENT) nb_gnss_publish_measurement(s, &m, now_ms);
     else if (m.message == NB_LOC_SESSION) {
         const uint8_t *state = nb_gnss_tlv(&m, 1, 4), *id = nb_gnss_tlv(&m, 0x10, 1);
         if (state && id && *id == s->session && nb_le32(state) == 2u && s->running == 1u) {

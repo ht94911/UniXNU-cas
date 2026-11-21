@@ -9,7 +9,7 @@ case $(uname -s) in
     Darwin) task_gnss_link_flags= ;;
     *) task_gnss_link_flags='-fno-pie -no-pie' ;;
 esac
-for task_gnss_case in gnss_protocol_test gnss_lifecycle_test gnss_qmux_test; do
+for task_gnss_case in gnss_protocol_test gnss_lifecycle_test gnss_qmux_test gnss_measurement_test; do
     "${CC:-cc}" -std=c11 -Wall -Wextra -Werror -g -fsanitize=address,undefined \
         -fno-omit-frame-pointer $task_gnss_link_flags \
         "$task_gnss_root/tests/gnss27/$task_gnss_case.c" \

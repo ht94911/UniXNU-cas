@@ -94,7 +94,12 @@ extern "C" int nezha_gnss_diagnostic(uint64_t cursor, uint32_t page, char *out,
             "\"used_present\":%u,\"signals_present\":%u,\"used_count\":%u,\"gps_used\":%u,\"bds_used\":%u,\"bds_signals\":%llu,"
             "\"positions\":%llu,\"published\":%llu,\"rejected\":%llu,\"stale\":%llu,\"errors\":%llu,\"drops\":%llu,\"last_error\":%u,"
             "\"loc_command\":%u,\"failed_command\":%u,\"waiting\":%u,\"ack_seen\":%u,\"indication_seen\":%u,\"commands\":%llu,\"sky_sequence\":%llu,\"bds_seen\":%u,"
-            "\"reference_commands\":%llu,\"reference_completed\":%llu,\"reference_errors\":%llu,\"reference_status\":%u}",
+            "\"reference_commands\":%llu,\"reference_completed\":%llu,\"reference_errors\":%llu,\"reference_status\":%u,"
+            "\"measurement_reports\":%llu,\"measurement_published\":%llu,\"measurement_rejected\":%llu,"
+            "\"measurement_configured\":%u,\"measurement_config_error\":%u,"
+            "\"measurement_sequence\":%u,\"measurement_maximum\":%u,\"measurement_system\":%u,"
+            "\"measurement_signals\":%llu,\"measurement_count\":%u,\"measurement_received_ms\":%llu,"
+            "\"measurement_tick_present\":%u,\"measurement_tick\":%u}",
             (unsigned long long)identity, s->generation, (unsigned)s->phase, s->session, s->running, s->revision,
             (unsigned long long)s->fix.sequence, (unsigned long long)s->fix.utc_ms, (unsigned long long)s->fix.received_ms,
             s->fix.valid, s->fix.raw_valid, s->fix.status, s->fix.technology,
@@ -108,7 +113,12 @@ extern "C" int nezha_gnss_diagnostic(uint64_t cursor, uint32_t page, char *out,
             s->waiting, s->ack_seen, s->indication_seen, (unsigned long long)s->commands,
             (unsigned long long)s->sky.sequence, s->sky.bds_seen,
             (unsigned long long)s->reference_commands, (unsigned long long)s->reference_completed,
-            (unsigned long long)s->reference_errors, s->reference_status);
+            (unsigned long long)s->reference_errors, s->reference_status,
+            (unsigned long long)s->measurement_reports, (unsigned long long)s->measurement_published,
+            (unsigned long long)s->measurement_rejected, s->measurement_configured, s->measurement_config_error,
+            s->measurement.sequence, s->measurement.maximum,
+            s->measurement.system, (unsigned long long)s->measurement.signals, s->measurement.count,
+            (unsigned long long)s->measurement_received_ms, s->measurement.tick_present, s->measurement.tick);
     } else if (sky_page) {
         const uint32_t index = (page & 0xffu) - 1u;
         if (!(page & 0xffu)) {

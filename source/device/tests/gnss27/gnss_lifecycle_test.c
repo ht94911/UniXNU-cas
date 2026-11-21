@@ -5,11 +5,18 @@
 #include "../../package/baseband27/gnss/NbGnss.h"
 static NbGnss state;
 static unsigned checks,failures,answers,indications;static uint32_t last_error;
+static unsigned measurement_indications,measurement_drop_cid;
+static uint64_t measurement_channels;
 #define CHECK(x) do{++checks;if(!(x)){++failures;printf("FAIL %u %s\n",__LINE__,#x);}}while(0)
 static int emit(void *context,uint32_t channel,uint32_t cid,const uint8_t *data,uint32_t n)
 {
-    (void)context;(void)channel;(void)cid;NbQmiMessage m;
+    (void)context;NbQmiMessage m;
     CHECK(nb_gnss_message(data,n,&m));
+    if(m.message==NB_PDS_MEASUREMENT){
+        CHECK(m.type==NB_QMI_INDICATION&&channel<CBQ_CHANNELS);
+        if(cid==measurement_drop_cid)return 0;
+        ++measurement_indications;measurement_channels|=UINT64_C(1)<<channel;
+    }
     if(m.type==NB_QMI_RESPONSE){++answers;last_error=nb_gnss_result(&m);}else ++indications;
     return 1;
 }
@@ -38,7 +45,8 @@ static void reply(NbGnssPacket *p,uint32_t error,int ind_first)
     }
     nb_qmi_begin(&w,raw,sizeof raw,NB_QMI_RESPONSE,p->transaction,p->message);nb_qmi_result(&w,error?1:0,(uint16_t)error);
     nb_gnss_receive(&state,0,184,raw,nb_qmi_end(&w),102);
-    if(!ind_first&&!error&&(p->message==NB_LOC_SET_MODE||p->message==NB_LOC_SERVICE_REVISION||p->message==NB_LOC_INJECT_POSITION)){
+    if(!ind_first&&!error&&(p->message==NB_LOC_SET_MODE||p->message==NB_LOC_SERVICE_REVISION||
+                          p->message==NB_LOC_INJECT_POSITION||p->message==NB_LOC_REPORT_CONSTELLATIONS)){
         CHECK(state.waiting);nb_qmi_begin(&w,raw,sizeof raw,NB_QMI_INDICATION,0,p->message);nb_qmi_u32(&w,1,0);
         if(p->message==NB_LOC_SERVICE_REVISION)nb_qmi_u32(&w,2,134);
         nb_gnss_receive(&state,0,184,raw,nb_qmi_end(&w),103);
@@ -69,8 +77,106 @@ static void setup(void)
     CHECK(type&&nb_le32(type)==1&&notify&&*notify==0);
     CHECK(client&&client_length==3&&!memcmp(client,"HAL",3));
     CHECK(p.length==35); /* Header7 + mask11 + identifier6 + type7 + notify4. */
+    const uint8_t *mask=nb_gnss_tlv(&registration,1,8);
+    CHECK(mask&&nb_le64(mask)==(UINT64_C(0x187)|NB_GNSS_MEASUREMENT_EVENT));
     reply(&p,0,0);
-    CHECK(state.phase==NbGnssReady);CHECK(!nb_gnss_next(&state,0,&p)&&answers==1);
+    CHECK(state.phase==NbGnssMeasurementConfig&&!state.running);
+    CHECK(nb_gnss_next(&state,0,&p)&&p.message==NB_LOC_REPORT_CONSTELLATIONS);
+    CHECK(nb_gnss_message(p.data,p.length,&registration));
+    mask=nb_gnss_tlv(&registration,0x10,8);
+    CHECK(mask&&nb_le64(mask)==0x3fu&&registration.length==22u);
+    mask=nb_gnss_tlv(&registration,0x11,8);CHECK(mask&&!nb_le64(mask));
+    reply(&p,0,0);
+    CHECK(state.phase==NbGnssReady&&state.measurement_configured);
+    CHECK(!nb_gnss_next(&state,0,&p)&&answers==1);
+}
+static void measurement(uint32_t tick,uint32_t resets,uint8_t sequence,uint8_t maximum,uint64_t now)
+{
+    uint8_t raw[128],clock[17]={0};NbQmiWriter w;
+    nb_put32(clock,tick);clock[4]=1;nb_put64(clock+5,1700000000000ull);nb_put32(clock+13,7);
+    nb_qmi_begin(&w,raw,sizeof raw,NB_QMI_INDICATION,0,NB_LOC_MEASUREMENT);
+    nb_qmi_u8(&w,1,sequence);nb_qmi_u8(&w,2,maximum);nb_qmi_u32(&w,3,1);
+    nb_qmi_put(&w,0x1a,clock,sizeof clock);nb_qmi_u32(&w,0x1c,resets);
+    nb_gnss_receive(&state,0,184,raw,nb_qmi_end(&w),now);
+}
+static void measurement_configuration_tests(void)
+{
+    NbGnssPacket p;uint8_t raw[32];NbQmiWriter w;
+    const uint32_t statuses[]={0,2,3,4,6,7,8};
+    const uint32_t errors[]={0,NB_QMI_ERR_NOT_SUPPORTED,NB_QMI_ERR_INVALID_ARG,
+        NB_GNSS_ERROR_BUSY,NB_GNSS_ERROR_TIMEOUT,NB_QMI_ERR_NOT_SUPPORTED,NB_QMI_ERR_NO_MEMORY};
+    for(unsigned i=0;i<sizeof statuses/sizeof statuses[0];++i){
+        nb_gnss_init(&state,0x4200,0,emit,0);nb_gnss_endpoint(&state,2,0,184);
+        CHECK(nb_gnss_next(&state,0,&p));reply(&p,0,0);
+        CHECK(nb_gnss_next(&state,0,&p));reply(&p,0,0);
+        CHECK(nb_gnss_next(&state,0,&p)&&p.message==NB_LOC_REPORT_CONSTELLATIONS);
+        nb_gnss_sent(&state,&p,0,4000);
+        nb_qmi_begin(&w,raw,sizeof raw,NB_QMI_INDICATION,0,p.message);nb_qmi_u32(&w,1,statuses[i]);
+        nb_gnss_receive(&state,0,184,raw,nb_qmi_end(&w),4001);
+        if(!statuses[i])CHECK(state.waiting&&!state.measurement_configured);
+        nb_qmi_begin(&w,raw,sizeof raw,NB_QMI_RESPONSE,p.transaction,p.message);nb_qmi_result(&w,0,0);
+        nb_gnss_receive(&state,0,184,raw,nb_qmi_end(&w),4002);
+        CHECK(state.measurement_config_error==errors[i]&&!state.running);
+        CHECK(state.measurement_configured==(statuses[i]==0));
+        CHECK(state.phase==((!statuses[i]||statuses[i]==2||statuses[i]==7)?NbGnssReady:NbGnssFailed));
+    }
+    /* Missing status and missing ACK never establish measurement readiness. */
+    for(unsigned mode=0;mode<3;++mode){
+        nb_gnss_init(&state,0x4200,0,emit,0);nb_gnss_endpoint(&state,2,0,184);
+        CHECK(nb_gnss_next(&state,0,&p));reply(&p,0,0);
+        CHECK(nb_gnss_next(&state,0,&p));reply(&p,0,0);
+        CHECK(nb_gnss_next(&state,0,&p));nb_gnss_sent(&state,&p,0,5000);
+        nb_qmi_begin(&w,raw,sizeof raw,mode==1?NB_QMI_RESPONSE:NB_QMI_INDICATION,
+            mode==1?p.transaction:0,p.message);
+        if(mode==1)nb_qmi_result(&w,0,0);else if(mode==2)nb_qmi_u32(&w,1,0);
+        nb_gnss_receive(&state,0,184,raw,nb_qmi_end(&w),5001);
+        if(mode)CHECK(state.waiting&&!state.measurement_configured);
+        nb_gnss_poll(&state,5000+NB_GNSS_WAIT_MS);
+        CHECK(state.phase==NbGnssFailed&&!state.running&&!state.measurement_configured);
+        CHECK(state.measurement_config_error==(mode?NB_GNSS_ERROR_TIMEOUT:NB_QMI_ERR_MALFORMED_MSG));
+    }
+}
+static void measurement_lifecycle_tests(void)
+{
+    NbGnssPacket p;answers=indications=0;setup();
+    measurement(100,1,1,2,6000);
+    CHECK(state.measurement_reports==1&&state.measurement_rejected==1&&!state.measurement_published);
+    request(1,70,NB_PDS_SET_STATE,1,1);request(1,71,NB_PDS_SET_AUTO,1,1);
+    request(1,72,NB_PDS_REPORT,0x12,1);
+    CHECK(!nb_gnss_next(&state,0,&p));CHECK(nb_gnss_next(&state,0,&p));reply(&p,0,0);
+    CHECK(nb_gnss_next(&state,0,&p));reply(&p,0,0);CHECK(!nb_gnss_next(&state,0,&p));
+    measurement(100,1,1,2,6001);
+    CHECK(state.measurement_published==1&&state.measurement_seen&&state.measurement_received_ms==6001);
+    const uint64_t fix_sequence=state.fix.sequence,positions=state.positions,fix_deliveries=state.published;
+    measurement(100,1,2,2,6002);CHECK(state.measurement_published==2);
+    measurement(100,1,2,2,6003);measurement(99,1,1,2,6004);measurement(100,1,3,3,6005);
+    CHECK(state.measurement_published==2&&state.measurement_rejected==4&&state.measurement_received_ms==6002);
+    measurement(101,1,1,2,6006);CHECK(state.measurement_published==3);
+    measurement(1,2,1,2,6007);CHECK(state.measurement_published==4&&state.measurement.tick==1);
+    measurement(500,1,1,2,6007);CHECK(state.measurement_published==4&&state.measurement.clock_resets==2);
+    CHECK(state.positions==positions&&state.fix.sequence==fix_sequence&&state.published==fix_deliveries);
+    request(2,73,NB_PDS_SET_STATE,1,1);request(2,74,NB_PDS_SET_AUTO,1,1);
+    request(2,75,NB_PDS_REPORT,0x12,1);
+    CHECK(!nb_gnss_next(&state,0,&p));CHECK(!nb_gnss_next(&state,0,&p));CHECK(!nb_gnss_next(&state,0,&p));
+    measurement(2,2,1,2,6008);CHECK(state.measurement_published==6&&measurement_channels==3);
+    measurement_drop_cid=state.clients[2].cid;
+    const uint64_t old_drop=state.output_drops;
+    /* Give the two channels distinct client IDs for the controlled emit failure. */
+    state.clients[2].cid=9;measurement_drop_cid=9;
+    measurement(3,2,1,2,6009);CHECK(state.measurement_published==7&&state.output_drops==old_drop+1);
+    measurement_drop_cid=0;nb_gnss_retire(&state,1);
+    measurement(4,2,1,2,6010);CHECK(state.measurement_published==8);
+    request(2,76,NB_PDS_SET_AUTO,1,0);
+    CHECK(nb_gnss_next(&state,0,&p)&&p.message==NB_LOC_STOP);reply(&p,0,0);
+    CHECK(!state.running&&!state.measurement_seen);
+    measurement(5,2,1,2,6011);CHECK(state.measurement_published==8&&state.measurement_rejected==6);
+    request(2,77,NB_PDS_SET_AUTO,1,1);
+    CHECK(nb_gnss_next(&state,0,&p));reply(&p,0,0);CHECK(nb_gnss_next(&state,0,&p));reply(&p,0,0);
+    measurement(0xfffffff0u,2,1,2,6012);measurement(16,2,1,2,6013);
+    CHECK(state.measurement_published==10&&state.measurement.tick==16);
+    nb_gnss_lost(&state);
+    CHECK(!state.measurement_configured&&!state.measurement_seen&&!state.measurement.tick);
+    measurement(17,2,1,2,6014);CHECK(state.measurement_published==10);
 }
 int main(void)
 {
@@ -244,5 +350,7 @@ int main(void)
     CHECK(nb_gnss_next(&state,0,&p)&&p.message==NB_LOC_SET_MODE);reply(&p,0,0);
     CHECK(nb_gnss_next(&state,0,&p)&&p.message==NB_LOC_START);reply(&p,0,0);
     CHECK(!state.active&&state.running&&state.applied.interval_seconds==2&&answers==before_tracking+1);
+    measurement_configuration_tests();measurement_lifecycle_tests();
+    CHECK(measurement_indications==10);
     printf("GNSS lifecycle %u checks, %u failures; %u state indications\n",checks,failures,indications);return failures?1:0;
 }

@@ -214,3 +214,154 @@ uint32_t nb_gnss_pds_fix(const NbGnssFix *f, uint8_t *out, uint32_t room)
     nb_qmi_put(&w, 0x13, f->parsed, sizeof f->parsed);
     return nb_qmi_end(&w);
 }
+
+/* PDS0x91's original24A446 reader is distinct from parsedPositionData.
+ * It takes a u8 count and101 wire bytes per SvMeasurementAndClockInfo.
+ * LOC0x86 uses90 bytes. Copy only verified fields, preserving IEEE bits.
+ * Integration counts, optional correction fields and unknown validity flags
+ * stay absent; a used-in-fix list is not a substitute for measurements. */
+static int nb_gnss_measurement_sv(const uint8_t *loc, uint8_t system, uint8_t *pds)
+{
+    __builtin_memset(pds, 0, NB_GNSS_PDS_MEASUREMENT_BYTES);
+    const uint16_t valid = nb_le16(loc + 7);
+    const uint16_t id = nb_le16(loc);
+    const uint64_t status_valid = nb_le64(loc + 11);
+    const uint64_t status = nb_le64(loc + 19);
+    /* C/N0 is mandatory in the LOC IDL. These PDS bits are independently
+     * read by the original measurement worker: C/N0 bit10, direction bit9,
+     * GLONASS frequency bit0. Other validity mappings are not guessed. */
+    uint64_t pds_valid = UINT64_C(1) << 10;
+    if (system == 5u && loc[2] >= 1u && loc[2] <= 14u) {
+        pds_valid |= 1u;
+        pds[10] = loc[2];
+    }
+    if ((valid & 0x20u) && nb_gnss_float_valid(nb_le32(loc + 82), 1) &&
+        nb_gnss_float_valid(nb_le32(loc + 86), 0)) pds_valid |= UINT64_C(1) << 9;
+    nb_put16(pds, id);
+    nb_put64(pds + 2, pds_valid);
+    __builtin_memcpy(pds + 17, loc + 27, 2); /* C/N0:0.1dB-Hz, native offset0x18 */
+    /* PDS latency is signed16 ms, LOC is signed32 ms. Refuse wrapping. */
+    const int64_t latency = (int32_t)nb_le32(loc + 31);
+    if (latency < -32768 || latency > 32767) return 0;
+    nb_put16(pds + 19, (uint16_t)latency);
+    __builtin_memcpy(pds + 24, loc + 35, 20); /* satellite ms/subms/uncertainty/Doppler */
+    /* Unknown status cannot be asserted. DONT_USE bits always survive, even
+     * if the source's status-valid mask is inconsistent. */
+    nb_put64(pds + 44, (status & status_valid) | (status & UINT64_C(0xffc0000000000000)));
+    if (valid & 0x10u) __builtin_memcpy(pds + 64, loc + 73, 8);
+    if ((valid & 4u) && nb_gnss_float_valid(nb_le32(loc + 65), 0)) {
+        pds_valid |= 4u;
+        __builtin_memcpy(pds + 76, loc + 65, 4);
+    }
+    if ((valid & 8u) && nb_gnss_float_valid(nb_le32(loc + 69), 1)) {
+        pds_valid |= 8u;
+        __builtin_memcpy(pds + 80, loc + 69, 4);
+    }
+    if (valid & 0x40u) pds[84] = loc[81];
+    if (pds_valid & (UINT64_C(1) << 9)) __builtin_memcpy(pds + 85, loc + 82, 8);
+    nb_put64(pds + 2, pds_valid);
+    return 1;
+}
+
+static int nb_gnss_measurement_optional(const NbQmiMessage *m, uint8_t tag, uint32_t size,
+                                      const uint8_t **value)
+{
+    uint32_t actual = 0;
+    *value = nb_qmi_tlv(m, tag, &actual);
+    return !*value || actual == size;
+}
+
+uint32_t nb_gnss_pds_measurement(const NbQmiMessage *m, uint8_t *out, uint32_t room, NbGnssMeasurement *info)
+{
+    if (!m || !info || m->type != NB_QMI_INDICATION || m->message != NB_LOC_MEASUREMENT) return 0;
+    NbGnssMeasurement decoded = {0};
+    const uint8_t *sequence = nb_gnss_tlv(m, 1, 1), *maximum = nb_gnss_tlv(m, 2, 1);
+    const uint8_t *system = nb_gnss_tlv(m, 3, 4);
+    if (!sequence || !maximum || !system || !*sequence || !*maximum || *sequence > *maximum ||
+        nb_le32(system) < 1u || nb_le32(system) > 8u || nb_le32(system) == 4u) return 0;
+    decoded.sequence = *sequence; decoded.maximum = *maximum; decoded.system = (uint8_t)nb_le32(system);
+    const uint8_t *clock, *frequency, *time, *glo, *signals, *resets;
+    if (!nb_gnss_measurement_optional(m, 0x1a, 17, &clock) ||
+        !nb_gnss_measurement_optional(m, 0x10, 12, &frequency) ||
+        !nb_gnss_measurement_optional(m, 0x18, 18, &time) ||
+        !nb_gnss_measurement_optional(m, 0x19, 19, &glo) ||
+        !nb_gnss_measurement_optional(m, 0x1e, 8, &signals) ||
+        !nb_gnss_measurement_optional(m, 0x1c, 4, &resets)) return 0;
+    if (clock && (clock[4] > 1u || nb_le32(clock + 13) > 18u)) return 0;
+    if (time && (nb_le32(time) != decoded.system || nb_le32(time + 6) >= 604800000u)) return 0;
+    if (frequency && (!nb_gnss_float_valid(nb_le32(frequency), 0) ||
+        !nb_gnss_float_valid(nb_le32(frequency + 4), 1) || nb_le32(frequency + 8) > 3u)) return 0;
+    if (resets) { decoded.resets_present = 1; decoded.clock_resets = nb_le32(resets); }
+    if (clock) { decoded.tick_present = 1; decoded.tick = nb_le32(clock); }
+    /* LOC reports one band per block. No band is inferred from constellation. */
+    if (signals) {
+        decoded.signals = nb_le64(signals);
+        if (!decoded.signals || (decoded.signals & (decoded.signals - 1u)) || decoded.signals >> 20) return 0;
+        for (uint64_t bit = decoded.signals; bit; bit >>= 1) ++decoded.signal;
+        /* PDS inserts B2aQ after B2aI. LOC appended B2aQ after NavIC.
+         * The original PDS band reader independently maps14->B2a,
+         * 15->L1,18->L5 and20->N5. Keep those wire enums distinct. */
+        if (decoded.signal == 20u) decoded.signal = 14u;
+        else if (decoded.signal >= 14u) ++decoded.signal;
+    }
+    uint32_t bytes = 0;
+    const uint8_t *sv = nb_qmi_tlv(m, 0x1b, &bytes);
+    if (sv && (!bytes || sv[0] > 16u || bytes != 1u + (uint32_t)sv[0] * NB_GNSS_LOC_MEASUREMENT_BYTES)) return 0;
+    decoded.count = sv ? sv[0] : 0;
+    uint32_t extra_bytes = 0;
+    const uint8_t *extra = nb_qmi_tlv(m, 0x2e, &extra_bytes);
+    if (extra && (!extra_bytes || extra[0] > 8u ||
+        extra_bytes != 1u + (uint32_t)extra[0] * NB_GNSS_LOC_MEASUREMENT_BYTES)) return 0;
+    decoded.count += extra ? extra[0] : 0;
+    if (decoded.count > NB_GNSS_MEASUREMENT_MAX_SV) return 0;
+    /* A sub-segment cannot be mislabeled as a whole PDS segment. The first
+     * implementation accepts the unsegmented form; retain unsupported split
+     * reports as rejected metadata rather than mixing different epochs. */
+    const uint8_t *subsequence, *submaximum;
+    if (!nb_gnss_measurement_optional(m, 0x36, 1, &subsequence) ||
+        !nb_gnss_measurement_optional(m, 0x37, 1, &submaximum) ||
+        !!subsequence != !!submaximum || (subsequence && (*subsequence != 1u || *submaximum != 1u))) return 0;
+    NbQmiWriter w;
+    if (nb_qmi_begin(&w, out, room, NB_QMI_INDICATION, 0, NB_PDS_MEASUREMENT)) return 0;
+    nb_qmi_u8(&w, 1, decoded.sequence); nb_qmi_u8(&w, 2, decoded.maximum);
+    /* LOC BDS6/QZSS7/NavIC8 are PDS4/6/7. GPS1, Galileo2,
+     * SBAS3 and GLONASS5 retain their values. The actual PDS SV reader
+     * validates BDS201..263 under system4 and QZSS193..197 under6. */
+    const uint8_t pds_system = decoded.system == 6u ? 4u :
+        decoded.system >= 7u ? (uint8_t)(decoded.system - 1u) : decoded.system;
+    nb_qmi_u8(&w, 3, pds_system);
+    if (clock) {
+        uint8_t pds_clock[14];
+        __builtin_memcpy(pds_clock, clock, 13);
+        pds_clock[13] = (uint8_t)nb_le32(clock + 13); /* PDS sourceOfTime is u8 */
+        nb_qmi_put(&w, 0x10, pds_clock, sizeof pds_clock);
+    }
+    if (time) nb_qmi_put(&w, 0x11, time + 4, 14);
+    /* The LOC GLO calendar is not the PDS extended GLO clock contract. */
+    if (frequency) nb_qmi_put(&w, 0x13, frequency, 12);
+    /* The PDS measurement worker requires clock0x10 and reset count0x15
+     * together. This is receiver data, not a host-generated clock. */
+    if (resets) nb_qmi_put(&w, 0x15, resets, 4);
+    if (signals) nb_qmi_u32(&w, 0x1e, decoded.signal);
+    if (sv || extra) {
+        uint8_t *list = nb_qmi_put(&w, 0x1d, 0, 1u + (uint32_t)decoded.count * NB_GNSS_PDS_MEASUREMENT_BYTES);
+        if (!list) return 0;
+        list[0] = decoded.count;
+        unsigned at = 0;
+        const uint8_t *blocks[] = {sv, extra};
+        for (unsigned block = 0; block < 2u; ++block) {
+            if (!blocks[block]) continue;
+            for (unsigned i = 0; i < blocks[block][0]; ++i, ++at) {
+                const uint8_t *raw = blocks[block] + 1u + i * NB_GNSS_LOC_MEASUREMENT_BYTES;
+                if ((nb_gnss_used_system(nb_le16(raw)) != decoded.system &&
+                     !(decoded.system == 5u && nb_le16(raw) == 255u)) ||
+                    nb_le32(raw + 3) < 1u || nb_le32(raw + 3) > 3u)
+                    return 0;
+                if (!nb_gnss_measurement_sv(raw, decoded.system, list + 1u + at * NB_GNSS_PDS_MEASUREMENT_BYTES)) return 0;
+            }
+        }
+    }
+    const uint32_t length = nb_qmi_end(&w);
+    if (length) *info = decoded;
+    return length;
+}

@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "ae382ca8117adf960baff1b286dd6e71895bcada",
+  "device_revision": "5ae4b4e703722ae6f6212c04951d1666a3be9bde",
   "soc_revision": "GPU051 e565439+3435fa5 and GNSS counted IPA plus immutable IPCC append",
   "xcode": "26.6",
   "files": {
@@ -337,7 +337,7 @@
     "source/device/package/baseband27/SOURCE.md": "177c00393aa63fa4c4da563c85723032b0604d28d3504b32cc8379ac9d298cb0",
     "source/device/package/baseband27/bridge/NbBoot.h": "99eb1dcfd6be4f50bc742237bb39ac6a50ad4930d4d8007e77749d12ce214ae4",
     "source/device/package/baseband27/bridge/NbDeviceIdentity.h": "86dea7c21c2e1dc7f7da4fdfdfa65c9eeb9b9d781a8fc913e7ebd03e737b1e68",
-    "source/device/package/baseband27/bridge/NbGnssBridge.inc": "333bb58bb76d0084db145ebe5a4a9523043758b6dbc7ac5cb73fe4b4e2e9cf01",
+    "source/device/package/baseband27/bridge/NbGnssBridge.inc": "32764343d54a15daaf0157a328b041cfbd75947dc86cc776927e4f8194551d0c",
     "source/device/package/baseband27/bridge/NbNasBridge.inc": "1938d656f395cc7ab7a014bc1f66a72e0b4bfbbb41aa7a4284e9ef2252a40d80",
     "source/device/package/baseband27/bridge/NbNasMux.h": "77e1f6caa43e4872f5bb0b671403de4036f3b7055e08c7a4d7531d5c000c3cc6",
     "source/device/package/baseband27/bridge/NbPdpFlow.h": "2ab5ed3b35fe447f291132bc6acb3eeecdb41affa3805524390f71bb997484ab",
@@ -366,10 +366,10 @@
     "source/device/package/baseband27/bridge/upstream/coachz_bb_qmux.h": "ca786da9402bbf11eacfafa47c749aa9e2c13aebfec4a83d7b346947a05da7eb",
     "source/device/package/baseband27/bridge/upstream/coachz_bb_sahara.h": "f333455861e96c1b158a38f0d5e65b671b39d84a860c48b061ee2c9abb828f89",
     "source/device/package/baseband27/bridge/upstream/patches/pdp-mbuf-kpi.patch": "fcd2f0dde5ba44fa7f2773f0a199f2ab3b4aa6058e5a23fdd84e116741cf3160",
-    "source/device/package/baseband27/gnss/NbGnss.c": "f34bf342120edfc8f3d2bf51de1327c03316e92615d07a3801aef962f9442ebf",
-    "source/device/package/baseband27/gnss/NbGnss.h": "1f2a87759d2a7ec454e51b998d8d9c5dc19d3de03e9705b9b66f148c8b09c9b1",
-    "source/device/package/baseband27/gnss/NbGnssProtocol.c": "90b02a1a7d0d4aeefec6ed591403a590545498a74305ad1ea7617c053594980b",
-    "source/device/package/baseband27/gnss/NbGnssProtocol.h": "0acda07a5388396155aea3395fc950db3b0a98a90cbfffa1a97202b38a9d2e09",
+    "source/device/package/baseband27/gnss/NbGnss.c": "86a0f9ef99e4c1a1632f33cd680f4ade7f76401fb1631cedbc5056bc551a32ce",
+    "source/device/package/baseband27/gnss/NbGnss.h": "de18cebf319fe9724e089b5cf33789e849838638a6718e9a5561451d125e0e46",
+    "source/device/package/baseband27/gnss/NbGnssProtocol.c": "427d97f8b463c679ca66cbe8566ed1719a4a92c747756d500be141aa8ca34e56",
+    "source/device/package/baseband27/gnss/NbGnssProtocol.h": "70f6e85792e1ebcf6639997f7b0b4f1e21ccf6aac85bb4827198baa99a3c3c6d",
     "source/device/package/baseband27/gnss/README.md": "ef010eb9574b7e5fe1a26d7f8c7bec24288590ac28efca0ddf32c68e64fe06e2",
     "source/device/package/baseband27/gnss/bridge.patch": "c1cc6cc8f943c50ad98df7eb4f0eb50b800bab400a75212b2eefdfd25a2976a2",
     "source/device/package/baseband27/integration/BootWatchdogPolicy-baseband.patch": "fc53c30d6660634fb3db67ced515951271695b83e51740d9af0557d05804494b",
@@ -663,9 +663,9 @@
     "source/device/tests/check-gpu-bo-phases.py": "e34cab3913626ff9e80d533e9013791565229a3386fbb1599ed4c71c68afc181",
     "source/device/tests/cpu27-policy.c": "e1682fcec436a58085ef34ebdf82a536523f933e99a873ea1aacd7d3cd45b61c",
     "source/device/tests/display-dpu-timing.c": "e7ac8e9fbc9e39ae309dea5f3934bdd8ca7ca4bc66601908a2b8d349f9b513c5",
-    "source/device/tests/gnss27/check.sh": "82e80214e5f11fda00ab0537e4acff273a23cc8fa8e6f36044740e9e47885915",
+    "source/device/tests/gnss27/check.sh": "433d883c0ed49cc533d00b0fbde24d14a04adf082dabbe1474bb80d3949c78e6",
     "source/device/tests/gnss27/evidence_test.py": "fe2944b4c4692c67ce931569244a45d27c120f11409ccb361e902ee9fc74c0c0",
-    "source/device/tests/gnss27/gnss_lifecycle_test.c": "b0fa9b32495dbeb94412227fd86229df173aeb0f889b39fd2522b7d526353b75",
+    "source/device/tests/gnss27/gnss_lifecycle_test.c": "1a084fc657e67d0e85dc98d5a66371e21658386386154d5de51e143d834e1709",
     "source/device/tests/gnss27/gnss_protocol_test.c": "32061330e0b05b3d050231ba77e175162cb67a9174c0d5624560cf6cbbb51d6f",
     "source/device/tests/gnss27/gnss_qmux_test.c": "4a6e1b3e714bbb3bf6b3a64a5476ddd9de1f20ec052ed0e7548885631128146c",
     "source/device/tests/gnss27/shared_ipcc_test.c": "a44e610e1d551d7a02ef0d58f8b7937b3e7dae9962fc7ef505d092b111e6ebd2",
@@ -708,7 +708,7 @@
     "source/device/scripts/nezha_macho_late.py": "fc5a2869ef22bd2c06702930fc0c88b0e071ab7ef851824b403234633040fc37",
     "source/device/patches/xnu-12377/nezha-gnss-test-runtime.patch": "68f37196f4777d4cc7721d6c5ab33de3882ae1a826513fd86ef942146e0c55ac",
     "source/device/patches/xnu-12377/nezha-gnss-pac-capture.patch": "433e27a9382331193c32a6a9bbc2a536d63eef6a8247e82979e4b9245a34b0d3",
-    ".github/workflows/nezha-ios27-native.yml": "0a9981be0ef2ee7b9c327a219e298171fb84762079f5d8a8a114e409b628df7b",
+    ".github/workflows/nezha-ios27-native.yml": "d528fe4e6ad0e4b094ad14ac799f03e4f8263ca0f29acb4852aafa9c15035f9f",
     "source/device/tests/gnss27/launcher_job_test.py": "bad064a06b284103f964c8e02d7ec566fa9b5454b9e564e51b74a6bddfa7c448",
     "source/device/tools/gnss27/launcher_job.py": "55669e81cfa07ea3a4750732a7ab59df0694386118d6fd423615f3b4d7321cf9",
     "source/device/package/gnss27/userland/org.unixnu.nezha.location-launch.plist": "69bee5c36ebedbbd6d686fd108fa9c41ab53eddd380906c472740187b138e49f",
@@ -718,7 +718,8 @@
     "source/device/tests/dyld-pager-source-release.c": "281848265705d8880dc1cdc5f4372ecbbe3063b629e21299126ae42fcec67708",
     "source/device/patches/xnu-12377/nezha-text-fixup-reclaimed-page.patch": "544f79242d9760a11aec10b1a1f868e51fbeb32be5d862bb6e8b6c87d74b02a7",
     "source/device/tests/check-text-fixup-reclaimed-page.py": "e4e6555b868b4e058cdcbab1642da3f86278f32923de4ca0e3c68a6d397ade7e",
-    "source/device/tests/text-fixup-reclaimed-page.c": "a9ba1177874a659ca4a76f83ac518a11d2822c6dcb124dc265eee868b3cb3459"
+    "source/device/tests/text-fixup-reclaimed-page.c": "a9ba1177874a659ca4a76f83ac518a11d2822c6dcb124dc265eee868b3cb3459",
+    "source/device/tests/gnss27/gnss_measurement_test.c": "a60a308fd8919bd5eb7d68327b805ec56b6aaac81017102eadb78120f4f9c7bc"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
@@ -1103,7 +1104,7 @@
     "actual_GNSS004_error": 48,
     "coherent_launcher_source": "tools/gnss27/launcher_job.py"
   },
-  "previous_native_run": 44788138143,
+  "previous_native_run": 44794487439,
   "previous_native007": {
     "run": 44066302910,
     "head": "56ba392fa295f8e7b4093976eeb4094da76feb99",
@@ -1111,7 +1112,7 @@
     "target_compile_started": false,
     "error": "uninitialized shared IPCC fixture; explicit zero-init reproducer passes"
   },
-  "previous_native_head": "6eaa513793a2192a4cbb6d1aa0ccac15b56e598c",
+  "previous_native_head": "f61edff27402453c75b6fd414915da60a1563d54",
   "native009_delta": [
     "patches/xnu-12377/nezha-gnss-pac-capture.patch",
     "tests/gnss27/exception_context_test.py",
@@ -1210,5 +1211,14 @@
     "source/device/patches/xnu-12377/nezha-bluetooth-text-fixup-capacity.patch"
   ],
   "native021_capacity": 143,
-  "lock_notification_code_remains_local": true
+  "lock_notification_code_remains_local": true,
+  "native022_delta": "Real LOC measurement reports to PDS0x91; per-client subscription and configuration; original143records/App012/GPU051 retained",
+  "native022_capacity": 143,
+  "GNSS038_measurement_wire_contract": {
+    "LOC": 134,
+    "PDS": 145,
+    "LOC_stride": 90,
+    "PDS_stride": 101,
+    "receiver_data_only": true
+  }
 }

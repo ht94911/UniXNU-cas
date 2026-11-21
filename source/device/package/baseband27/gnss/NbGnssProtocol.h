@@ -14,6 +14,11 @@
 #define NB_GNSS_MAX_SV 176u
 #define NB_GNSS_PDS_POSITION_BYTES 105u
 #define NB_GNSS_FIX_MAX_DELAY_MS 10000u
+#define NB_GNSS_LOC_MEASUREMENT_BYTES 90u
+#define NB_GNSS_PDS_MEASUREMENT_BYTES 101u
+#define NB_GNSS_MEASUREMENT_MAX_SV 24u
+#define NB_GNSS_MEASUREMENT_PACKET_BYTES 4096u
+#define NB_GNSS_MEASUREMENT_EVENT UINT64_C(0x01000000)
 
 enum {
     NB_LOC_REVISION = 0x20, NB_LOC_REGISTER = 0x21,
@@ -21,14 +26,16 @@ enum {
     NB_LOC_POSITION = 0x24, NB_LOC_SATELLITES = 0x25,
     NB_LOC_NMEA = 0x26, NB_LOC_ENGINE = 0x2b, NB_LOC_SESSION = 0x2c,
     NB_LOC_SERVICE_REVISION = 0x32, NB_LOC_INJECT_POSITION = 0x39,
-    NB_LOC_SET_MODE = 0x4a
+    NB_LOC_SET_MODE = 0x4a, NB_LOC_MEASUREMENT = 0x86,
+    NB_LOC_REPORT_CONSTELLATIONS = 0x88
 };
 enum {
     NB_PDS_RESET = 0, NB_PDS_REPORT = 1, NB_PDS_GET_STATE = 0x20,
     NB_PDS_SET_STATE = 0x21, NB_PDS_GET_TRACKING = 0x29,
     NB_PDS_SET_TRACKING = 0x2a, NB_PDS_GET_AUTO = 0x30,
     NB_PDS_SET_AUTO = 0x31, NB_PDS_FORCE_OFF = 0x49,
-    NB_PDS_READY = 0x60, NB_PDS_INJECT_POSITION = 0x38
+    NB_PDS_READY = 0x60, NB_PDS_INJECT_POSITION = 0x38,
+    NB_PDS_MEASUREMENT = 0x91
 };
 enum {
     NB_GNSS_UTC = 1u << 1, NB_GNSS_LEAP = 1u << 2,
@@ -80,6 +87,15 @@ typedef struct {
     uint8_t signals_present, list_present, altitude_present, altitude_assumed;
     NbGnssSatellite sv[NB_GNSS_MAX_SV];
 } NbGnssSky;
+
+/* A LOC measurement block has its own clock and sequence. It is not a fix
+ * or a used-in-fix list. IEEE fields stay in the receiver's original units. */
+typedef struct {
+    uint8_t sequence, maximum, system, signal, count;
+    uint8_t tick_present, resets_present;
+    uint32_t tick, clock_resets;
+    uint64_t signals;
+} NbGnssMeasurement;
 
 /* Reject incomplete/duplicate TLVs before a successful state transition. */
 static inline int nb_gnss_message(const uint8_t *data, uint32_t length, NbQmiMessage *m)
@@ -154,6 +170,7 @@ int nb_gnss_decode_sky(const NbQmiMessage *, uint64_t received_ms, NbGnssSky *);
 uint32_t nb_gnss_reference_position(const NbQmiMessage *, uint8_t *, uint32_t room, uint32_t *length);
 int nb_gnss_fix_usable(const NbGnssFix *);
 uint32_t nb_gnss_pds_fix(const NbGnssFix *, uint8_t *, uint32_t);
+uint32_t nb_gnss_pds_measurement(const NbQmiMessage *, uint8_t *, uint32_t, NbGnssMeasurement *);
 #ifdef __cplusplus
 }
 #endif

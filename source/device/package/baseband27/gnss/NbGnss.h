@@ -14,7 +14,8 @@
 #define NB_GNSS_ERROR_BUSY 23u
 #define NB_GNSS_ERROR_TIMEOUT 16u
 
-enum NbGnssPhase { NbGnssAbsent, NbGnssQuery, NbGnssInform, NbGnssRegister, NbGnssReady, NbGnssFailed };
+enum NbGnssPhase { NbGnssAbsent, NbGnssQuery, NbGnssInform, NbGnssRegister, NbGnssReady, NbGnssFailed,
+                   NbGnssMeasurementConfig };
 enum NbGnssAction { NbGnssIdle, NbGnssStop, NbGnssMode, NbGnssStart, NbGnssReference };
 enum NbGnssChange {
     NbGnssChangeState = 1, NbGnssChangeAuto = 2, NbGnssChangeForce = 4,
@@ -63,6 +64,11 @@ typedef struct {
     NbGnssFix fix;
     NbGnssFix incoming;
     NbGnssSky sky;
+    NbGnssMeasurement measurement;
+    uint64_t measurement_received_ms, measurement_reports, measurement_published, measurement_rejected;
+    uint32_t measurement_config_error;
+    uint8_t measurement_seen, measurement_configured;
+    uint8_t measurement_packet[NB_GNSS_MEASUREMENT_PACKET_BYTES];
     /* Diagnostic identity and values stay local, through the existing USB
      * provider. Raw LOC data is never replaced with generated positions. */
     char me_version[128], host_version[128], full_version[256];
