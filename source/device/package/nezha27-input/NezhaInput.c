@@ -1346,18 +1346,34 @@ static void nz_publish_raw(void) {
 
 static void nz_trace_thread(void *arg,wait_result_t result) {
     (void)arg;(void)result;
+    uint64_t budget_ticks, summary_ticks, next_summary=0, emitted=0, batches=0, max_batch_ticks=0;
+    nanoseconds_to_absolutetime(NSEC_PER_MSEC,&budget_ticks);
+    nanoseconds_to_absolutetime(NSEC_PER_SEC,&summary_ticks);
+    printf("NEZHA INPUT FLOW PROFILE: ca_details=%u batch=%u period_ms=50 budget_ns=1000000 priority=%d\n",
+        __atomic_load_n(&nezha_chain_ca_details,__ATOMIC_RELAXED),NEZHA_CHAIN_FLUSH_MAX,MINPRI_KERNEL);
     for(;;) {
-        uint32_t r[NZI_WORDS],h[NZI_WORDS];bool rv=nzi_copy(&nezha_raw_input_diag,r),hv=nzi_copy(&nezha_hid_input_diag,h);
-        if(rv)printf("NEZHA INPUT RAW: v=%u st=%d packets=%u ic=%u err=%u frame=%u mask=%x down=%u up=%u q=%u/%u drop=%u id=%u panel=%u,%u thr=%u rawticks=%llu\n",
-            r[R_VERSION],(int32_t)r[R_STAGE],r[R_PACKETS],r[R_IC_REPORTS],r[R_ERRORS],r[R_FRAME],r[R_MASK],r[R_DOWN],r[R_UP],
-            r[R_PRODUCER],r[R_CONSUMER],r[R_DROP],r[R_ID],r[R_X],r[R_Y],r[R_THRESHOLD],(unsigned long long)nzi_u64(r,R_TICKLO));
-        else printf("NEZHA INPUT RAW: snapshot busy\n");
-        if(hv)printf("NEZHA INPUT HID: v=%u tick=%u ready=%u stop=%u in=%u seen=%u frame=%u mask=%x ack=%x down=%u up=%u call=%u ret=%u ok=%u fail=%u id=%u panel=%u,%u wire=%u,%u count=%u result=%d coalesced=%llu ticktime=%llu started=%llu finished=%llu\n",
-            h[H_VERSION],h[H_TICKS],h[H_READY],h[H_STOP],h[H_IN_CALL],h[H_SEEN],h[H_FRAME],h[H_MASK],h[H_ACK_MASK],h[H_DOWN],h[H_UP],
-            h[H_ATTEMPT],h[H_RETURN],h[H_OK],h[H_ERROR],h[H_ID],h[H_X],h[H_Y],h[H_WIRE_X],h[H_WIRE_Y],h[H_CONTACTS],(int32_t)h[H_RESULT],(unsigned long long)nzi_u64(h,H_COALLO),(unsigned long long)nzi_u64(h,H_TICKLO),(unsigned long long)nzi_u64(h,H_STARTLO),(unsigned long long)nzi_u64(h,H_ENDLO));
-        else printf("NEZHA INPUT HID: snapshot busy\n");
-        nezha_input_chain_flush();
-        pt_sleep(1000);
+        const uint64_t now=mach_absolute_time();
+        if(now>=next_summary) {
+            uint32_t r[NZI_WORDS],h[NZI_WORDS];bool rv=nzi_copy(&nezha_raw_input_diag,r),hv=nzi_copy(&nezha_hid_input_diag,h);
+            if(rv)printf("NEZHA INPUT RAW: v=%u st=%d packets=%u ic=%u err=%u frame=%u mask=%x down=%u up=%u q=%u/%u drop=%u id=%u panel=%u,%u thr=%u rawticks=%llu\n",
+                r[R_VERSION],(int32_t)r[R_STAGE],r[R_PACKETS],r[R_IC_REPORTS],r[R_ERRORS],r[R_FRAME],r[R_MASK],r[R_DOWN],r[R_UP],
+                r[R_PRODUCER],r[R_CONSUMER],r[R_DROP],r[R_ID],r[R_X],r[R_Y],r[R_THRESHOLD],(unsigned long long)nzi_u64(r,R_TICKLO));
+            else printf("NEZHA INPUT RAW: snapshot busy\n");
+            if(hv)printf("NEZHA INPUT HID: v=%u tick=%u ready=%u stop=%u in=%u seen=%u frame=%u mask=%x ack=%x down=%u up=%u call=%u ret=%u ok=%u fail=%u id=%u panel=%u,%u wire=%u,%u count=%u result=%d coalesced=%llu ticktime=%llu started=%llu finished=%llu\n",
+                h[H_VERSION],h[H_TICKS],h[H_READY],h[H_STOP],h[H_IN_CALL],h[H_SEEN],h[H_FRAME],h[H_MASK],h[H_ACK_MASK],h[H_DOWN],h[H_UP],
+                h[H_ATTEMPT],h[H_RETURN],h[H_OK],h[H_ERROR],h[H_ID],h[H_X],h[H_Y],h[H_WIRE_X],h[H_WIRE_Y],h[H_CONTACTS],(int32_t)h[H_RESULT],(unsigned long long)nzi_u64(h,H_COALLO),(unsigned long long)nzi_u64(h,H_TICKLO),(unsigned long long)nzi_u64(h,H_STARTLO),(unsigned long long)nzi_u64(h,H_ENDLO));
+            else printf("NEZHA INPUT HID: snapshot busy\n");
+            printf("NEZHA INPUT FLOW DRAIN: emitted=%llu batches=%llu max_batch_ticks=%llu drop=%u\n",
+                (unsigned long long)emitted,(unsigned long long)batches,(unsigned long long)max_batch_ticks,
+                __atomic_load_n(&nezha_chain_drops,__ATOMIC_RELAXED));
+        next_summary=now+summary_ticks;
+        }
+        const uint64_t began=mach_absolute_time();
+        emitted+=nezha_input_chain_flush(began+budget_ticks);
+        const uint64_t elapsed=mach_absolute_time()-began;
+        if(elapsed>max_batch_ticks)max_batch_ticks=elapsed;
+        ++batches;
+        pt_sleep(50);
     }
 }
 
@@ -2124,7 +2140,10 @@ nezha_input_start(void)
 		return;
 	}
 	static bool trace_started;
-	if(!trace_started){thread_t observer;if(kernel_thread_start(nz_trace_thread,NULL,&observer)==KERN_SUCCESS){trace_started=true;thread_deallocate(observer);}}
+	unsigned ca_details=0;
+	(void)PE_parse_boot_argn("nezha-ca-detail",&ca_details,sizeof(ca_details));
+	__atomic_store_n(&nezha_chain_ca_details,ca_details,__ATOMIC_RELAXED);
+	if(!trace_started){thread_t observer;if(kernel_thread_start_priority(nz_trace_thread,NULL,MINPRI_KERNEL,&observer)==KERN_SUCCESS){trace_started=true;thread_deallocate(observer);}}
 	native_touch_stage_req = 1;
 	nz_row();
 	nezha_keys_init();

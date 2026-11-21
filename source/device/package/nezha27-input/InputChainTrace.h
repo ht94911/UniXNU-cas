@@ -7,6 +7,11 @@ struct nezha_chain_record {
 static struct nezha_chain_record nezha_chain_records[4096];
 static unsigned nezha_chain_lock, nezha_chain_head, nezha_chain_tail;
 static unsigned nezha_chain_drops;
+// Keep input delivery, transactions, deferrals and timer callbacks in the
+// normal profile. Per-object encoding and contents are available on demand:
+// their rate crowded input and scheduling events out of the bounded queue.
+static unsigned nezha_chain_ca_details;
+enum { NEZHA_CHAIN_FLUSH_MAX = 256 };
 
 void nezha_input_chain_trace(uint32_t code, uintptr_t a, uintptr_t b,
                             uintptr_t c, uintptr_t d, uintptr_t tid) {
@@ -20,6 +25,8 @@ void nezha_input_chain_trace(uint32_t code, uintptr_t a, uintptr_t b,
         ca_code!=0x31ca01dc && ca_code!=0x31ca0214 &&
         ca_code!=0x31ca0218 && ca_code!=0x31ca0260 &&
         ca_code!=0x31ca0264 && ca_code!=0x14ca001c) return;
+    if ((ca_code==0x31ca01dc || ca_code==0x14ca001c) &&
+        !__atomic_load_n(&nezha_chain_ca_details, __ATOMIC_RELAXED)) return;
     if (__atomic_exchange_n(&nezha_chain_lock, 1, __ATOMIC_ACQUIRE)) {
         __atomic_fetch_add(&nezha_chain_drops, 1, __ATOMIC_RELAXED);
         return;
@@ -40,8 +47,12 @@ void nezha_input_chain_trace(uint32_t code, uintptr_t a, uintptr_t b,
     __atomic_store_n(&nezha_chain_lock, 0, __ATOMIC_RELEASE);
 }
 
-static void nezha_input_chain_flush(void) {
-    for (unsigned i = 0; i < 1024; ++i) {
+// The existing worker drains short batches, with a time budget between records.
+// A slow printf or preemption can exceed it once; it then stops this batch.
+static unsigned nezha_input_chain_flush(uint64_t deadline) {
+    unsigned emitted = 0;
+    for (unsigned i = 0; i < NEZHA_CHAIN_FLUSH_MAX; ++i) {
+        if (mach_absolute_time() >= deadline) break;
         if (__atomic_exchange_n(&nezha_chain_lock, 1, __ATOMIC_ACQUIRE)) break;
         if (nezha_chain_head == nezha_chain_tail) {
             __atomic_store_n(&nezha_chain_lock, 0, __ATOMIC_RELEASE);
@@ -54,5 +65,7 @@ static void nezha_input_chain_flush(void) {
             (unsigned long long)row.argument[0], (unsigned long long)row.argument[1],
             (unsigned long long)row.argument[2], (unsigned long long)row.argument[3],
             __atomic_load_n(&nezha_chain_drops, __ATOMIC_RELAXED));
+        ++emitted;
     }
+    return emitted;
 }
