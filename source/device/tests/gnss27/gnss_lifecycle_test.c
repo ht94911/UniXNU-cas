@@ -418,6 +418,12 @@ int main(int argc,char **argv)
         uint8_t frequency[12]={0};nb_put32(frequency,0x3dcccccd);nb_put32(frequency+4,0x3c23d70a);nb_put32(frequency+8,2);
         nb_qmi_put(&w,0x10,frequency,sizeof frequency);
         nb_qmi_u64(&w,0x1e,i==2u?0:i==1u?1:NB_GNSS_B1I);
+        if(i==2u){
+            uint8_t glo[15]={0};glo[0]=8;nb_put16(glo+1,1000);
+            nb_put32(glo+3,120000);nb_put32(glo+7,0x3e800000u);
+            nb_put32(glo+11,0x3b03126fu);
+            nb_qmi_put(&w,0x19,glo,sizeof glo);
+        }
         if(i!=2u){
             list[0]=1;uint8_t *sv=list+1;nb_put16(sv,i==1u?1:201);nb_put32(sv+3,3);
             nb_put64(sv+11,0x0800001fu);nb_put64(sv+19,0x0800001fu);

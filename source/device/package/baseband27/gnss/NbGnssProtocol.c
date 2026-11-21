@@ -282,7 +282,7 @@ uint32_t nb_gnss_pds_measurement(const NbQmiMessage *m, uint8_t *out, uint32_t r
     if (!nb_gnss_measurement_optional(m, 0x1a, 17, &clock) ||
         !nb_gnss_measurement_optional(m, 0x10, 12, &frequency) ||
         !nb_gnss_measurement_optional(m, 0x18, 18, &time) ||
-        !nb_gnss_measurement_optional(m, 0x19, 19, &glo) ||
+        !nb_gnss_measurement_optional(m, 0x19, 15, &glo) ||
         !nb_gnss_measurement_optional(m, 0x1e, 8, &signals) ||
         !nb_gnss_measurement_optional(m, 0x1c, 4, &resets)) return 0;
     if (clock && (clock[4] > 1u || nb_le32(clock + 13) > 18u)) return 0;
@@ -342,7 +342,9 @@ uint32_t nb_gnss_pds_measurement(const NbQmiMessage *m, uint8_t *out, uint32_t r
         nb_qmi_put(&w, 0x10, pds_clock, sizeof pds_clock);
     }
     if (time && decoded.system != 4u) nb_qmi_put(&w, 0x11, time + 4, 14);
-    /* The LOC GLO calendar is not the PDS extended GLO clock contract. */
+    /* The LOC GLO calendar is 1+2+4+4+4 packed bytes, not the 16-byte
+     * C aggregate or a 19-byte record. Its presence also applies to empty
+     * GLONASS epoch slots. It is not the PDS extended GLO clock contract. */
     if (frequency) nb_qmi_put(&w, 0x13, frequency, 12);
     /* The PDS measurement worker requires clock0x10 and reset count0x15
      * together. This is receiver data, not a host-generated clock. */

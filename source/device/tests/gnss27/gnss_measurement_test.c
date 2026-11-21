@@ -18,6 +18,12 @@ static uint32_t message(uint8_t *out, uint8_t system, unsigned count, int option
         uint8_t time[18]={0};nb_put32(time,system);nb_put16(time+4,2000);
         nb_put32(time+6,120000);nb_put32(time+10,0x3e800000u);nb_put32(time+14,0x3b03126fu);
         nb_qmi_put(&w,0x18,time,sizeof time);
+        if (system==5u) {
+            uint8_t glo[15]={0};glo[0]=8;nb_put16(glo+1,1000);
+            nb_put32(glo+3,120000);nb_put32(glo+7,0x3e800000u);
+            nb_put32(glo+11,0x3b03126fu);
+            nb_qmi_put(&w,0x19,glo,sizeof glo);
+        }
         uint8_t freq[12]={0};nb_put32(freq,0x3dcccccd);nb_put32(freq+4,0x3c23d70a);nb_put32(freq+8,2);
         nb_qmi_put(&w,0x10,freq,sizeof freq);
         nb_qmi_u64(&w,0x1e,system==1?1u:NB_GNSS_B1I);
@@ -170,6 +176,35 @@ int main(int argc,char **argv)
     bytes=nb_gnss_pds_measurement(&loc,out,sizeof out,&info);
     CHECK(bytes&&nb_gnss_message(out,bytes,&pds));
     list=nb_gnss_tlv(&pds,0x1d,102);CHECK(list&&nb_le16(list+1)==255&&list[11]==8);
+    /* The minor177 factory descriptor encodes gloTime as 15 packed bytes.
+     * Its empty constellation slot must complete the receiver epoch too. */
+    n=message(in,5,0,1);CHECK(nb_gnss_message(in,n,&loc));
+    nb_put64((uint8_t*)nb_gnss_tlv(&loc,0x1e,8),0);
+    CHECK(nb_gnss_tlv(&loc,0x19,15)!=0);
+    bytes=nb_gnss_pds_measurement(&loc,out,sizeof out,&info);
+    CHECK(bytes&&info.system==5&&!info.count&&!info.signal&&info.tick==120000);
+    CHECK(nb_gnss_message(out,bytes,&pds)&&!nb_qmi_tlv(&pds,0x12,0));
+    uint8_t *glo=(uint8_t*)nb_gnss_tlv(&loc,0x19,15);
+    CHECK(glo!=0);
+    if(glo){
+        /* Reject truncated/padded fields before any consumer output. */
+        const unsigned glo_at=(unsigned)(glo-in)-3u;
+        uint8_t malformed[4096];
+        memcpy(malformed,in,n);nb_put16(malformed+glo_at+1u,14);
+        memmove(malformed+glo_at+3u+14,malformed+glo_at+3u+15,n-glo_at-18u);
+        nb_put16(malformed+5,n-1u-NB_QMI_HEADER);
+        CHECK(nb_gnss_message(malformed,n-1u,&loc));
+        CHECK(!nb_gnss_pds_measurement(&loc,out,sizeof out,&info));
+        for(unsigned extra_bytes=1;extra_bytes<=4;++extra_bytes){
+            memcpy(malformed,in,glo_at+18u);
+            memset(malformed+glo_at+18u,0,extra_bytes);
+            memcpy(malformed+glo_at+18u+extra_bytes,in+glo_at+18u,n-glo_at-18u);
+            nb_put16(malformed+glo_at+1u,15u+extra_bytes);
+            nb_put16(malformed+5,n+extra_bytes-NB_QMI_HEADER);
+            CHECK(nb_gnss_message(malformed,n+extra_bytes,&loc));
+            CHECK(!nb_gnss_pds_measurement(&loc,out,sizeof out,&info));
+        }
+    }
     /* Real optional extended measurements keep their order and original
      * per-SV fields. Never label a partial sub-sequence as complete. */
     n=message(in,6,16,1);CHECK(nb_gnss_message(in,n,&loc));

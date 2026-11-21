@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "394451c9435b13b4aa12f19dcbdb80812e65e57f",
+  "device_revision": "45a45bd3c13169ed37a58706efe7d3173167bae2",
   "soc_revision": "GPU051 e565439+3435fa5 and GNSS counted IPA plus immutable IPCC append",
   "xcode": "26.6",
   "files": {
@@ -368,7 +368,7 @@
     "source/device/package/baseband27/bridge/upstream/patches/pdp-mbuf-kpi.patch": "fcd2f0dde5ba44fa7f2773f0a199f2ab3b4aa6058e5a23fdd84e116741cf3160",
     "source/device/package/baseband27/gnss/NbGnss.c": "2997c584a0b39b5e076a40fdd276a472ae0a7ff4f2cf8fd80eeb3404014f56df",
     "source/device/package/baseband27/gnss/NbGnss.h": "3ba04fffffb2d56ccafc52874787bf9862f3aee12341bd464ad0a67ea4c395c0",
-    "source/device/package/baseband27/gnss/NbGnssProtocol.c": "dfcc45e4e4410bac80db8aca60fe14c9e6742203dd6b24577791f27391c8f3c6",
+    "source/device/package/baseband27/gnss/NbGnssProtocol.c": "85d65fc1a80108ec676735bce3832f41d0a38f01ffe81da712a0512b8abbdb9a",
     "source/device/package/baseband27/gnss/NbGnssProtocol.h": "70f6e85792e1ebcf6639997f7b0b4f1e21ccf6aac85bb4827198baa99a3c3c6d",
     "source/device/package/baseband27/gnss/README.md": "ef010eb9574b7e5fe1a26d7f8c7bec24288590ac28efca0ddf32c68e64fe06e2",
     "source/device/package/baseband27/gnss/bridge.patch": "c1cc6cc8f943c50ad98df7eb4f0eb50b800bab400a75212b2eefdfd25a2976a2",
@@ -549,7 +549,7 @@
     "source/device/package/software-aes/NativeAESBootstrap.cpp": "98ed3f7df7df676d475bdf096409bf588e0d6d4773263878f368f953452d9bbd",
     "source/device/patches/xnu-12377/nezha-bluetooth-exit-diagnostic.patch": "193654ad33bb3de0edd9e62a7bd7cab4f31dbf5a8c1ca996c8b8d2fb48b793e9",
     "source/device/patches/xnu-12377/nezha-bluetooth-runtime.patch": "4d4fd6049250eaf399e6a0d5ff4e34232c148081820148532cf8c0c7119fd57b",
-    "source/device/patches/xnu-12377/nezha-bluetooth-text-fixup-capacity.patch": "eb271219710c785714086b8998fa1f940e1bb545a5a9d2ac54e9b73514152ad8",
+    "source/device/patches/xnu-12377/nezha-bluetooth-text-fixup-capacity.patch": "1fda33100c8cfcd2b07937ac73fcb8fd78da3eae52ee9e9d72c348df6f619af2",
     "source/device/patches/xnu-12377/nezha-wifi-addon-truncate.patch": "c3b980c547fbc138ac7aedfd735d350cfef85d2a32ff78ec7bef894c4068ce63",
     "source/device/patches/xnu-12377/nezha-wifi-kernel-events.patch": "967cf792a5202711d0063463fe08bda58c554621b690b87f66904c18f81d057f",
     "source/device/patches/xnu-12377/nezha-wifi-mmio-recovery.patch": "89642756f4fe3179d44f076fbfd4786d21d0089ec7786943cb717b3eb78ecbe1",
@@ -665,7 +665,7 @@
     "source/device/tests/display-dpu-timing.c": "e7ac8e9fbc9e39ae309dea5f3934bdd8ca7ca4bc66601908a2b8d349f9b513c5",
     "source/device/tests/gnss27/check.sh": "433d883c0ed49cc533d00b0fbde24d14a04adf082dabbe1474bb80d3949c78e6",
     "source/device/tests/gnss27/evidence_test.py": "fe2944b4c4692c67ce931569244a45d27c120f11409ccb361e902ee9fc74c0c0",
-    "source/device/tests/gnss27/gnss_lifecycle_test.c": "f36338007fb5639f802b38104909d6acd67d71d609484e5c1b4aa371377ce0b2",
+    "source/device/tests/gnss27/gnss_lifecycle_test.c": "49e2da2dd786ae483ba2e03c7c65e9c26024ff4a404e05d48c4ecbd27000ad52",
     "source/device/tests/gnss27/gnss_protocol_test.c": "32061330e0b05b3d050231ba77e175162cb67a9174c0d5624560cf6cbbb51d6f",
     "source/device/tests/gnss27/gnss_qmux_test.c": "4a6e1b3e714bbb3bf6b3a64a5476ddd9de1f20ec052ed0e7548885631128146c",
     "source/device/tests/gnss27/shared_ipcc_test.c": "a44e610e1d551d7a02ef0d58f8b7937b3e7dae9962fc7ef505d092b111e6ebd2",
@@ -708,7 +708,7 @@
     "source/device/scripts/nezha_macho_late.py": "fc5a2869ef22bd2c06702930fc0c88b0e071ab7ef851824b403234633040fc37",
     "source/device/patches/xnu-12377/nezha-gnss-test-runtime.patch": "68f37196f4777d4cc7721d6c5ab33de3882ae1a826513fd86ef942146e0c55ac",
     "source/device/patches/xnu-12377/nezha-gnss-pac-capture.patch": "433e27a9382331193c32a6a9bbc2a536d63eef6a8247e82979e4b9245a34b0d3",
-    ".github/workflows/nezha-ios27-native.yml": "ddc13dcff3b18a61eb57bd6f1719de061d304a5f5349e47c8c52d19e0b39beaa",
+    ".github/workflows/nezha-ios27-native.yml": "fcaa1fe73cd120acf92c80cab9f07146f26cb3ae037a371a514577ae6eaeb779",
     "source/device/tests/gnss27/launcher_job_test.py": "bad064a06b284103f964c8e02d7ec566fa9b5454b9e564e51b74a6bddfa7c448",
     "source/device/tools/gnss27/launcher_job.py": "55669e81cfa07ea3a4750732a7ab59df0694386118d6fd423615f3b4d7321cf9",
     "source/device/package/gnss27/userland/org.unixnu.nezha.location-launch.plist": "69bee5c36ebedbbd6d686fd108fa9c41ab53eddd380906c472740187b138e49f",
@@ -719,7 +719,7 @@
     "source/device/patches/xnu-12377/nezha-text-fixup-reclaimed-page.patch": "544f79242d9760a11aec10b1a1f868e51fbeb32be5d862bb6e8b6c87d74b02a7",
     "source/device/tests/check-text-fixup-reclaimed-page.py": "e4e6555b868b4e058cdcbab1642da3f86278f32923de4ca0e3c68a6d397ade7e",
     "source/device/tests/text-fixup-reclaimed-page.c": "a9ba1177874a659ca4a76f83ac518a11d2822c6dcb124dc265eee868b3cb3459",
-    "source/device/tests/gnss27/gnss_measurement_test.c": "f6c13f77aab425348ef771cb0b34c08cc1eff30d9e5b72d78a244dd17395d521"
+    "source/device/tests/gnss27/gnss_measurement_test.c": "ccaedf3eb7d590893088c389e3de1f05d8c0413d24affc5c8fb0d90d1f4ca3b2"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
@@ -1097,7 +1097,7 @@
     "diagnostic_provider": 9,
     "provider8_owner": "GPU051 original nezhaaudio",
     "physical_GNSS001_failure": "Inherited provider8 collision prevents MSS worker creation",
-    "current_device_revision": "2cd24dad449512f85b5c9d98f8c6d8b619d5dcb7",
+    "current_device_revision": "45a45bd3c13169ed37a58706efe7d3173167bae2",
     "LOC_client_string": "HAL",
     "LOC_registration_packet_bytes": 35,
     "LOC_notification_value": 0,
@@ -1240,5 +1240,9 @@
   "native025_capacity": 147,
   "native025_delta": "only original applicator capacity143->147; all GNSS040 driver/pager/GPU051/firmware sources byte identical",
   "task_reply_original_code_remains_local": true,
-  "GNSS041_task_reply_model_verified": true
+  "GNSS041_task_reply_model_verified": true,
+  "native026_capacity": 148,
+  "native026_delta": "gloTime field19->15 and original applicator capacity147->148; original thermal callback record prepared locally; GNSS041 task and all original measurements retained",
+  "GNSS042_GLO_clock_wire_bytes": 15,
+  "GNSS042_thermal_notification_original_code_remains_local": true
 }
