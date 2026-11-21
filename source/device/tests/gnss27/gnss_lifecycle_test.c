@@ -7,6 +7,7 @@ static NbGnss state;
 static unsigned checks,failures,answers,indications;static uint32_t last_error;
 static unsigned measurement_indications,measurement_drop_cid;
 static uint64_t measurement_channels;
+static uint8_t last_measurement_sequence, last_measurement_maximum;
 #define CHECK(x) do{++checks;if(!(x)){++failures;printf("FAIL %u %s\n",__LINE__,#x);}}while(0)
 static int emit(void *context,uint32_t channel,uint32_t cid,const uint8_t *data,uint32_t n)
 {
@@ -16,6 +17,8 @@ static int emit(void *context,uint32_t channel,uint32_t cid,const uint8_t *data,
         CHECK(m.type==NB_QMI_INDICATION&&channel<CBQ_CHANNELS);
         if(cid==measurement_drop_cid)return 0;
         ++measurement_indications;measurement_channels|=UINT64_C(1)<<channel;
+        last_measurement_sequence=*nb_gnss_tlv(&m,1,1);
+        last_measurement_maximum=*nb_gnss_tlv(&m,2,1);
     }
     if(m.type==NB_QMI_RESPONSE){++answers;last_error=nb_gnss_result(&m);}else ++indications;
     return 1;
@@ -177,6 +180,24 @@ static void measurement_lifecycle_tests(void)
     nb_gnss_lost(&state);
     CHECK(!state.measurement_configured&&!state.measurement_seen&&!state.measurement.tick);
     measurement(17,2,1,2,6014);CHECK(state.measurement_published==10);
+    /* A real zero-band, zero-SV slot must pass through the production
+     * lifecycle between its neighbors, without becoming a position. */
+    answers=indications=0;setup();request(1,80,NB_PDS_SET_STATE,1,1);request(1,81,NB_PDS_SET_AUTO,1,1);
+    request(1,82,NB_PDS_REPORT,0x12,1);
+    CHECK(!nb_gnss_next(&state,0,&p));CHECK(nb_gnss_next(&state,0,&p));reply(&p,0,0);
+    CHECK(nb_gnss_next(&state,0,&p));reply(&p,0,0);CHECK(!nb_gnss_next(&state,0,&p));
+    for(unsigned i=1;i<=10;++i){
+        uint8_t raw[128],clock[17]={0};NbQmiWriter w;
+        nb_put32(clock,100);clock[4]=1;nb_put32(clock+13,7);
+        nb_qmi_begin(&w,raw,sizeof raw,NB_QMI_INDICATION,0,NB_LOC_MEASUREMENT);
+        nb_qmi_u8(&w,1,i);nb_qmi_u8(&w,2,10);nb_qmi_u32(&w,3,i==4u?5u:1u);
+        nb_qmi_put(&w,0x1a,clock,sizeof clock);nb_qmi_u32(&w,0x1c,1);
+        if(i==4u){const uint8_t empty=0;nb_qmi_u64(&w,0x1e,0);nb_qmi_put(&w,0x1b,&empty,1);}
+        nb_gnss_receive(&state,0,184,raw,nb_qmi_end(&w),7000+i);
+        CHECK(state.measurement_published==i&&!state.measurement_rejected);
+        CHECK(last_measurement_sequence==i&&last_measurement_maximum==10);
+    }
+    CHECK(!state.positions&&!state.fix.sequence&&!state.published);
 }
 int main(void)
 {
@@ -351,6 +372,6 @@ int main(void)
     CHECK(nb_gnss_next(&state,0,&p)&&p.message==NB_LOC_START);reply(&p,0,0);
     CHECK(!state.active&&state.running&&state.applied.interval_seconds==2&&answers==before_tracking+1);
     measurement_configuration_tests();measurement_lifecycle_tests();
-    CHECK(measurement_indications==10);
+    CHECK(measurement_indications==20);
     printf("GNSS lifecycle %u checks, %u failures; %u state indications\n",checks,failures,indications);return failures?1:0;
 }

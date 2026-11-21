@@ -43,6 +43,36 @@ static uint32_t message(uint8_t *out, uint8_t system, unsigned count, int option
     return nb_qmi_end(&w);
 }
 
+static void epoch(const char *path, uint32_t tick, uint8_t empty_system)
+{
+    /* Real receiver shape: a zero-band empty constellation block occurs
+     * between otherwise convertible numbered reports. It must reach the
+     * original PDS whole-epoch validator without renumbering any block. */
+    const uint8_t systems[]={1,1,2,5,6,6,6,7,7,8};
+    const uint8_t band_index[]={1,3,7,0,10,11,13,14,16,19};
+    uint8_t in[4096],out[4096];NbQmiMessage loc,pds;NbGnssMeasurement info;
+    FILE *f=path?fopen(path,"wb"):0;
+    if(path)CHECK(f!=0);
+    for(unsigned i=0;i<sizeof systems;++i){
+        const uint8_t system=i==3u?empty_system:systems[i];
+        uint32_t n=message(in,system,i==3u?0u:1u,1);
+        CHECK(nb_gnss_message(in,n,&loc));
+        ((uint8_t*)nb_gnss_tlv(&loc,1,1))[0]=(uint8_t)(i+1u);
+        ((uint8_t*)nb_gnss_tlv(&loc,2,1))[0]=(uint8_t)sizeof systems;
+        nb_put64((uint8_t*)nb_gnss_tlv(&loc,0x1e,8),
+                 band_index[i]?UINT64_C(1)<<(band_index[i]-1u):0);
+        nb_put32((uint8_t*)nb_gnss_tlv(&loc,0x1a,17),tick);
+        uint32_t bytes=nb_gnss_pds_measurement(&loc,out,sizeof out,&info);
+        CHECK(bytes&&nb_gnss_message(out,bytes,&pds));
+        CHECK(info.sequence==i+1u&&info.maximum==sizeof systems&&info.tick==tick);
+        CHECK(*nb_gnss_tlv(&pds,1,1)==i+1u&&*nb_gnss_tlv(&pds,2,1)==sizeof systems);
+        CHECK(info.count==(i==3u?0u:1u));
+        if(f){uint8_t length[4];nb_put32(length,bytes);CHECK(fwrite(length,1,4,f)==4);
+              CHECK(fwrite(out,1,bytes,f)==bytes);}
+    }
+    if(f)CHECK(!fclose(f));
+}
+
 int main(int argc,char **argv)
 {
     uint8_t in[4096],out[4096];NbQmiMessage loc,pds;NbGnssMeasurement info;
@@ -63,12 +93,15 @@ int main(int argc,char **argv)
     CHECK(nb_le16(sv+17)==380&&nb_le16(sv+19)==7);
     CHECK(nb_le32(sv+24)==119925&&nb_le32(sv+28)==0x3f000000&&nb_le32(sv+32)==0x3b03126f);
     CHECK(nb_le64(sv+44)==0x0800003full);
-    CHECK(nb_le64(sv+2)==0x60cu&&sv[84]==9&&nb_le32(sv+76)==0xc1200000);
+    CHECK(nb_le64(sv+2)==0x40cu&&sv[84]==9&&nb_le32(sv+76)==0xc1200000);
     /* Do not copy LOC fields into unrelated PDS fields. */
     CHECK(!sv[11]&&!sv[12]&&!sv[13]&&!nb_le16(sv+14)&&!sv[16]&&!sv[21]&&!nb_le16(sv+22));
     CHECK(!nb_le32(sv+52)&&!nb_le32(sv+56)&&!nb_le32(sv+60)&&!nb_le32(sv+72));
+    /* Detection enums are absent: azimuth/elevation IEEE bits cannot be
+     * relabeled as PDS detection methods or acquire bit9 validity. */
+    CHECK(!(nb_le64(sv+2)&0x200u)&&!nb_le32(sv+85)&&!nb_le32(sv+89));
     CHECK(nb_gnss_pds_measurement(&loc,out,bytes-1,&info)==0);
-    if(argc==2) {
+    if(argc>=2) {
         bytes=nb_gnss_pds_measurement(&loc,out,sizeof out,&info);
         FILE *f=fopen(argv[1],"wb");CHECK(f!=0);if(f){CHECK(fwrite(out,1,bytes,f)==bytes);CHECK(!fclose(f));}
     }
@@ -112,6 +145,26 @@ int main(int argc,char **argv)
         CHECK(bytes&&nb_gnss_message(out,bytes,&pds));
         CHECK(*nb_gnss_tlv(&pds,3,1)==pds_systems[i]&&info.signal==pds_bands[i]);
     }
+    /* Empty constellation slots preserve the receiver's whole-epoch
+     * numbering. Unknown COMPASS never supplies BDS or a fabricated band. */
+    n=message(in,4,0,1);CHECK(nb_gnss_message(in,n,&loc));
+    nb_put64((uint8_t*)nb_gnss_tlv(&loc,0x1e,8),0);
+    ((uint8_t*)nb_gnss_tlv(&loc,1,1))[0]=4;
+    ((uint8_t*)nb_gnss_tlv(&loc,2,1))[0]=10;
+    bytes=nb_gnss_pds_measurement(&loc,out,sizeof out,&info);
+    CHECK(bytes&&nb_gnss_message(out,bytes,&pds));
+    CHECK(info.sequence==4&&info.maximum==10&&info.system==4&&!info.signals&&!info.count);
+    CHECK(*nb_gnss_tlv(&pds,3,1)==0&&!nb_qmi_tlv(&pds,0x1e,0)&&!nb_qmi_tlv(&pds,0x11,0));
+    CHECK(info.tick_present&&info.tick==120000&&info.resets_present&&info.clock_resets==5);
+    /* Empty zero-band blocks of known systems also keep their real clocks;
+     * a nonempty or multi-band block still cannot invent a signal. */
+    ((uint8_t*)nb_gnss_tlv(&loc,3,4))[0]=6;
+    ((uint8_t*)nb_gnss_tlv(&loc,0x18,18))[0]=6;
+    bytes=nb_gnss_pds_measurement(&loc,out,sizeof out,&info);
+    CHECK(bytes&&nb_gnss_message(out,bytes,&pds)&&*nb_gnss_tlv(&pds,3,1)==4&&!info.signal);
+    n=message(in,6,1,1);CHECK(nb_gnss_message(in,n,&loc));
+    nb_put64((uint8_t*)nb_gnss_tlv(&loc,0x1e,8),0);CHECK(!nb_gnss_pds_measurement(&loc,out,sizeof out,&info));
+    ((uint8_t*)nb_gnss_tlv(&loc,3,4))[0]=4;CHECK(!nb_gnss_pds_measurement(&loc,out,sizeof out,&info));
     n=message(in,5,1,1);CHECK(nb_gnss_message(in,n,&loc));
     s=(uint8_t*)nb_gnss_tlv(&loc,0x1b,91)+1;nb_put16(s,255);s[2]=8;
     bytes=nb_gnss_pds_measurement(&loc,out,sizeof out,&info);
@@ -134,5 +187,7 @@ int main(int argc,char **argv)
     CHECK(!nb_gnss_pds_measurement(&loc,out,sizeof out,&info));
     in[n-1]=1;CHECK(nb_gnss_message(in,n,&loc));
     CHECK(nb_gnss_pds_measurement(&loc,out,sizeof out,&info)&&info.count==24);
+    epoch(0,120000,5);epoch(0,121000,4);
+    if(argc==3)epoch(argv[2],120000,5);
     printf("GNSS measurement %u checks, %u failures\n",checks,failures);return failures?1:0;
 }
