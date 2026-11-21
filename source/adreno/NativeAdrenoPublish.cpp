@@ -1379,8 +1379,8 @@ static void logStallWords(const char *kind,uint32_t serial,const uint32_t *words
 static void logCachedStall(const NativeAdrenoStallSample &s)
 {
     const uint64_t *j=s.job;
-    IOLog("NEZHA GPU STALL: cached v=1 sample=%u chip=%llu time_us=%llu pending_us=%llu fence=%u polls=%u observed=%llu issued=%llu pid=%llu queue=%#llx context=%llu ring=%llu jobs=%llu table_mode=%llu action_stage=%llu fault_read=%#llx\n",
-        s.serial,j[19],j[0],j[1],s.state[0],s.state[1],j[14],j[15],j[7],j[3],j[8],j[9],j[11],j[12],j[17],j[13]);
+    IOLog("NEZHA GPU STALL: cached v=1 sample=%u chip=%llu time_us=%llu pending_us=%llu fence=%u polls=%u observed=%llu issued=%llu pid=%llu queue=%#llx context=%llu ring=%llu jobs=%llu table_mode=%llu action_stage=%llu fault_read=%#llx capture_kind=%llu\n",
+        s.serial,j[19],j[0],j[1],s.state[0],s.state[1],j[14],j[15],j[7],j[3],j[8],j[9],j[11],j[12],j[17],j[13],s.source[0]);
     IOLog("NEZHA GPU STALL VM: sample=%u job_ttbr=%#llx selected_ttbr=%#llx submit_us=%llu next_handle=%llu bos=%llu ib_words=%llu priority=%llu\n",
         s.serial,j[4],j[5],j[2],j[6],j[10],j[16],j[18]);
     if(s.source[0]==1)IOLog("NEZHA GPU STALL SOURCE: sample=%u kind=1 detector_pid=%llu detector_ttbr=%#llx hardware_ttbr=%#llx hardware_ttbr_read=%#llx far_handle=%llu untimed=1\n",
