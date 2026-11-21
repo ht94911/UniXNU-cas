@@ -71,6 +71,13 @@ static bool fill(CVPixelBufferRef image,bool bars,unsigned yValue,unsigned uValu
 
 
 
+@protocol NezhaBWVideoFormat
+- (void)setWidth:(NSUInteger)width;
+- (void)setHeight:(NSUInteger)height;
+- (void)setExtendedWidth:(NSUInteger)width;
+- (void)setExtendedHeight:(NSUInteger)height;
+- (void)setPixelFormat:(uint32_t)format;
+@end
 @interface NSObject (NativeRenderer121)
 + (bool)supportsAcceleratedBorderFill;
 - (void)setWidth:(NSUInteger)width;
@@ -148,7 +155,7 @@ int main(int argc,char **argv) {@autoreleasepool {
  report(@{@"phase":@"fallback-library",@"present":@(library!=nullptr),@"observer":@(observe!=nullptr)});if(!observe)return 14;
  observe();const bool after=[rendererClass supportsAcceleratedBorderFill];
  report(@{@"phase":@"original-renderer-support",@"before":@(before),@"after":@(after)});
- id format=[formatClass new];[format setWidth:1200];[format setHeight:2608];[format setExtendedWidth:1200];[format setExtendedHeight:2608];[format setPixelFormat:kCVPixelFormatType_420YpCbCr8BiPlanarFullRange];
+ id<NezhaBWVideoFormat> format=(id<NezhaBWVideoFormat>)[formatClass new];[format setWidth:1200];[format setHeight:2608];[format setExtendedWidth:1200];[format setExtendedHeight:2608];[format setPixelFormat:kCVPixelFormatType_420YpCbCr8BiPlanarFullRange];
  id pool=[[poolClass alloc] initWithVideoFormat:format capacity:3 name:@"Nezha authored renderer fixture"];
  id renderer=pool?[[rendererClass alloc] initWithIntermediateBufferPool:pool fractionalSourceRectEnabled:false compressedFormatEnabled:true]:nil;
  report(@{@"phase":@"original-renderer-create",@"format":@(format!=nil),@"pool":@(pool!=nil),@"renderer":@(renderer!=nil)});if(!renderer)return 15;
