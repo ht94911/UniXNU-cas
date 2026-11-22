@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "9bcfbf649ba5286b898716516743c3ed9840425b",
+  "device_revision": "de3a6bd44ab53ded2f2db7b5246c1de464c79f31",
   "soc_revision": "device-local-GPU051-camera074-bankstreamretirement",
   "xcode": "26.6",
   "files": {
@@ -709,8 +709,13 @@
     "source/device/package/gpu/adreno/ArmSmmu4KStreams.h": "1cfca0b4e3acba420cc829098b52d61c4905ec64d2aa57883dedae9dfb212969",
     "source/device/package/gpu/adreno/ArmSmmu4KProgram.h": "171900c3ed400b805c3a1587959f66bc4a19db18aedc8111e862651a90bb8d8f",
     "source/device/package/gpu/adreno/ArmSmmu4K.h": "e25063b9134afc7eb79e7c030bc2858608cf0ade5da714d5dfd600fee5007e8e",
-    "source/device/scripts/check-nezha27-camera-memory.py": "fa5c06d78f5bbd3e21b92bc9277af7cfdd1727df5ae59e5a6be23e1cf4d5e020",
-    ".github/workflows/nezha-ios27-native.yml": "f72f8269155b43731df3cde4ad10fcab9db2e5754972abf4862a24b82ca02d55"
+    "source/device/scripts/check-nezha27-camera-memory.py": "c3640e976bb9197d4915300314ec05ead8c03f27e8aa9881857008785541ee14",
+    ".github/workflows/nezha-ios27-native.yml": "ec953311215f55910c3d8a2ecf5601967c68c892ed4c6ec918a15ad6e0ce60b0",
+    "source/device/package/gpu/adreno/ArmSmmu4K.c": "0adb19b483e56e723014ed6cfe2c29f9d9735ae2770f62cf0057b22937dbd157",
+    "source/device/package/gpu/adreno/ArmSmmu4KContext.c": "b8e32e32d1f07e71de65f31b12963ab8b01c05755f8c60c2d6f40cb03fe4eca8",
+    "source/device/package/gpu/adreno/ArmSmmu4KProgram.c": "3b1d4911b0a48f90b09c721ffd2eb95dbfc02e96165009b23f8c98841f36e2b0",
+    "source/device/package/gpu/adreno/ArmSmmu4KStreams.c": "359610de6974c1885b4b7bbf72e6b321a013e1cc44200e1a8f566d09722c009a",
+    "ci/native.py": "bf34d218629b4d92bdc1a177a8141135e01160cdf896ef86b862e02aab2bb10b"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",

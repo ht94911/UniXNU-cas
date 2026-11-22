@@ -53,19 +53,29 @@ def main():
                 ("ArmSmmu4K", "ArmSmmu4KContext", "ArmSmmu4KProgram", "ArmSmmu4KStreams")]
 
     def compile_c(source):
+        if not source.is_file():
+            raise ValueError("Missing actual SMMU/camera source: " + str(source))
         obj = out / (source.stem + ".o")
-        with (out / (source.stem + "-build.log")).open("wb") as log:
-            subprocess.run([cc, "-std=c11", *flags, "-c", str(source), "-o", str(obj)],
-                           stdout=log, stderr=log, check=True)
+        log_path = out / (source.stem + "-build.log")
+        with log_path.open("wb") as log:
+            process = subprocess.run([cc, "-std=c11", *flags, "-c", str(source), "-o", str(obj)],
+                                     stdout=log, stderr=log)
+        if process.returncode:
+            print(log_path.read_text(errors="replace"), file=sys.stderr)
+            process.check_returncode()
         return obj
 
     with ThreadPoolExecutor(max_workers=32) as pool:
         objects = list(pool.map(compile_c, sources))
     binary = out / "memory-consumer"
-    with (out / "adapter-build.log").open("wb") as log:
-        subprocess.run([cxx, "-std=c++17", *flags, "-I", str(native), "-I", str(fixture.parent),
-                        str(ROOT / "tests/camera-native-memory.cpp"),
-                        *map(str, objects), "-o", str(binary)], stdout=log, stderr=log, check=True)
+    log_path = out / "adapter-build.log"
+    with log_path.open("wb") as log:
+        process = subprocess.run([cxx, "-std=c++17", *flags, "-I", str(native), "-I", str(fixture.parent),
+                                  str(ROOT / "tests/camera-native-memory.cpp"),
+                                  *map(str, objects), "-o", str(binary)], stdout=log, stderr=log)
+    if process.returncode:
+        print(log_path.read_text(errors="replace"), file=sys.stderr)
+        process.check_returncode()
     results = []
     for mode in MODES:
         with (out / (mode + ".log")).open("wb") as log:

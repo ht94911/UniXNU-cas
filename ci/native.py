@@ -349,6 +349,9 @@ def collect(framework, work, sealed):
         add(work / name, name)
     for name in ('report.json', 'actual-memory-limit.c', 'execution.txt'):
         add(work / 'icon-memory-host' / name, 'icon-memory-host/' + name)
+    for path in sorted((work / 'camera-memory-host').glob('*')):
+        if path.is_file() and path.suffix in ('.json', '.log'):
+            add(path, 'camera-memory-host/' + path.name)
     for path in sorted((work / 'logs').glob('*.log')):
         add(path, 'logs/' + path.name)
     for path in sorted((work / 'camera-userland').glob('*')):

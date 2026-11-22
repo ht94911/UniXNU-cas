@@ -1,7 +1,7 @@
 name: nezha Camera129 fixed RAW pool on GPU051 - native
 on:
   push:
-    branches: [codex/ios27-camera129-gpu051-memory-20261123]
+    branches: [codex/ios27-camera129b-gpu051-memory-20261123]
   workflow_dispatch:
 permissions:
   contents: read
