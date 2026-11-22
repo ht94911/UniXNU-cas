@@ -67,6 +67,9 @@ jobs:
           echo "NMB_HOST_LOADER=$(brew --prefix molten-vk)/lib/libMoltenVK.dylib" >> "$GITHUB_ENV"
       - name: Prepare the exact public source and patch inputs
         run: device/ci/gpu-userland/logrun prepare python3 device/ci/gpu-userland/prepare.py --unixnu unixnu --record "$LOGS/sources.json"
+      - name: Check actual-source real Mesa trees,device lifetimes and swap API guards
+        id: device_contexts
+        run: device/ci/gpu-userland/logrun device-contexts python3 device/ci/gpu-userland/check-device-context-host.py --unixnu unixnu --logs "$LOGS"
       - name: Verify current App Library item index and original fallback
         id: icon_list_index
         run: device/ci/gpu-userland/logrun icon-list-index python3 device/ci/gpu-userland/check-icon-list-index.py --unixnu unixnu --logs "$LOGS"
@@ -79,9 +82,6 @@ jobs:
       - name: Check shared and distinct AIR module compiler requests
         id: stitch_modules
         run: device/ci/gpu-userland/logrun stitch-modules python3 device/ci/gpu-userland/check-stitch-modules.py --unixnu unixnu --logs "$LOGS"
-      - name: Check actual-source real Mesa trees,device lifetimes and swap API guards
-        id: device_contexts
-        run: device/ci/gpu-userland/logrun device-contexts python3 device/ci/gpu-userland/check-device-context-host.py --unixnu unixnu --logs "$LOGS"
       - name: Exercise actual Submit and staged SubmitBatch retry while another VM is busy
         id: submit_room
         env:

@@ -1,5 +1,5 @@
 {
-  ".github/workflows/nezha-metal.yml": "ea90c1292fccb656cc9c3d22e00e29335e1fc8c2084153fbb1498c30764d3ccf",
+  ".github/workflows/nezha-metal.yml": "3e48005e1c12de1e88cd6026493b70837ee5a12c27129acce2155139426792d5",
   ".gitignore": "862263fa1f46c20f0d1e4dac5ffcc75abd55c08211b2c3864c5f8764b9d87793",
   "ci/gpu-userland/check-buffer-reserve.py": "56bef54d15cb6192d25bfd99516369d45d3ddeffbd44805f9f052739d2fdf57a",
   "ci/gpu-userland/check-client-wait.py": "1902f1839cbb499e78ca5d8b5ad13e7fb28b471874aef9923d044b0d266093d9",
@@ -53,7 +53,7 @@
   "ci/gpu-userland/fixtures/old.cpp": "37b49814016986ab24ec269aae283eb3d01a4a12e92f685c90b2547b6838fd8e",
   "ci/gpu-userland/fixtures/primer-wait-test.cpp.in": "a43dc0cac9541f3b3dbaefb27a169e87fea63878fd6537ff313ce126c7bca71c",
   "ci/gpu-userland/fixtures/snippet-bindings.json": "cce41582cc2ae9bb8a2581324dc0922c8dba902706c53162c7cbdb8f01334c51",
-  "ci/gpu-userland/fixtures/source-bindings.json": "0a151b0d933fd2b16b8178cab2d7174b697068dc39b26c58ef5a9f006013bea1",
+  "ci/gpu-userland/fixtures/source-bindings.json": "0191e7e86002c09c69dfb7d618de7971a4ef8317dd76130533697b2c637d1c2d",
   "ci/gpu-userland/fixtures/stitch_modules_host.mm": "2d94ae0545adc1836aa820de6c08db00679b5cf87f3eea5cd7a4af391b1f1f43",
   "ci/gpu-userland/fixtures/swap.cpp": "4e440baee494455d42c61b0fd04833ed082272c865babe8221dd8815c50d90ed",
   "ci/gpu-userland/fixtures/tile-store-bindings.json": "33239fdcc1b58b42ff7be3d38a91a95a32b251d8a5f3aec656be644ac12928e8",
@@ -114,7 +114,7 @@
   "ci/gpu-userland/patches/vulkan-operation-recipes.patch": "4b1dc95d6d811c690f4f1143ad030bb3a8d83237f0aa0cbc69b781221779a2a6",
   "ci/gpu-userland/prepare.py": "9f6519f5dd7b209684f10c0d016b3581ac385af901b64085950f90d134c0c9f9",
   "ci/gpu-userland/test-source-manifest.py": "45facca72e7b39766333d7499b1b3a4abd936d2b60c662a80923707534a38759",
-  "ci/provenance.json": "8a3ed40d22d74f826862039ab9d56736b9e338a410dfac06283f3e47fc3b70f8",
+  "ci/provenance.json": "879011a3ecd54f182abc09bf532335edccaa0e7e0d85e68ae76e31e6dc87884f",
   "ci/xnu/artifact-recipient.pem": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
   "ci/xnu/artifacts.py": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c"
 }

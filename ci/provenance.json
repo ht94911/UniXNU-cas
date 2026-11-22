@@ -60,5 +60,15 @@
     "boot_arguments_change_required": false,
     "phone_operations": false,
     "UTC": "2026-11-22T21:09:21.121692+00:00"
+  },
+  "GPU080_binding_correction": {
+    "previous_run": 45071052189,
+    "previous_head": "c9263466ecd074b5f42332f4359408f456a5299b",
+    "source_commit": "f03c006c45b8d248808a9d2275fceb73e64dad70",
+    "production_unchanged": true,
+    "current_source_bindings": 16,
+    "runtime_bindings_inherited": 7,
+    "previous_actual_Mac_functions": 57,
+    "first_error_retained": true
   }
 }
