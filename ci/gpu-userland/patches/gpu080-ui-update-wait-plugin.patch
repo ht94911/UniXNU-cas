@@ -1,0 +1,307 @@
+diff --git a/NativeFrameObservers.inc b/NativeFrameObservers.inc
+index dade66d..001f8f6 100644
+--- a/NativeFrameObservers.inc
++++ b/NativeFrameObservers.inc
+@@ -2,6 +2,7 @@
+ // Included after the existing wait-sample serializer. All writes below are
+ // diagnostic records in this process's own trace; target memory is read only.
+ #include "NativeDisplayWaitState.h"
++#include "NativeUIUpdateWaitState.h"
+ #include <mach/mach_time.h>
+ #include <errno.h>
+ 
+@@ -133,6 +134,34 @@ static void traceDisplayObserver(uint64_t sampleId,uint64_t copy) {
+   traceWaitBytes(nbdisplaywait::kTimingRecordKind,sampleId,&timing,sizeof(timing));
+  }
+ }
++#if defined(NATIVE_METAL_IPHONE24A446)
++static nbuiwait::Layout prepareUIUpdateObserver() {
++ nbuiwait::Layout layout{};
++#if defined(__arm64e__)
++ for(uint32_t i=0;i<std::min<uint32_t>(_dyld_image_count(),1024);++i) {
++  const char *name=_dyld_get_image_name(i);const mach_header *header=_dyld_get_image_header(i);
++  if(!name || !header || header->magic!=MH_MAGIC_64)continue;
++  const bool ui=!strcmp(name,"/System/Library/PrivateFrameworks/UIKitCore.framework/UIKitCore");
++  const bool uc=!strcmp(name,"/System/Library/PrivateFrameworks/UpdateCycle.framework/UpdateCycle");
++  if(!ui && !uc)continue;
++  const uint8_t *commands=(const uint8_t *)header+sizeof(mach_header_64);size_t at=0;
++  for(uint32_t j=0;j<header->ncmds && at+sizeof(load_command)<=header->sizeofcmds;++j) {
++   const auto *lc=(const load_command *)(commands+at);
++   if(lc->cmdsize<sizeof(load_command) || lc->cmdsize>header->sizeofcmds-at)break;
++   if(lc->cmd==LC_UUID && lc->cmdsize>=sizeof(uuid_command)) {
++    if(nbuiwait::imageUUIDMatches(((const uuid_command *)lc)->uuid,ui)) {
++     if(ui){layout.uiHeader=(uintptr_t)header;layout.uiSlide=_dyld_get_image_vmaddr_slide(i);}
++     else {layout.ucHeader=(uintptr_t)header;layout.ucSlide=_dyld_get_image_vmaddr_slide(i);}
++    }
++    break;
++   }
++   at+=lc->cmdsize;
++  }
++ }
++#endif
++ return layout;
++}
++#endif
+ static void startClientWaitSampler() {
+  if(!clientWaitOn())return;
+  std::thread([] {
+@@ -156,6 +185,11 @@ static void startClientWaitSampler() {
+   }
+   const uint64_t high=(uintptr_t)pthread_get_stackaddr_np(main),size=pthread_get_stacksize_np(main);
+   const uint64_t low=size<=high?high-size:0;
++#if defined(NATIVE_METAL_IPHONE24A446)
++  const bool observeUIUpdate=!strcmp(getprogname(),"SpringBoard");
++  const nbuiwait::Layout uiLayout=observeUIUpdate?prepareUIUpdateObserver():nbuiwait::Layout{};nbuiwait::Binding uiBinding{};
++  if(observeUIUpdate)native_bridge_metal_note(uiLayout.valid()?"ui-wait update deadlines images=1":"ui-wait update deadlines images=0");
++#endif
+   TraceRec name{};name.type=4;name.tid=(uint32_t)tid;
+   pthread_getname_np(main,(char *)&name.t0,24);traceSamplePush(name);
+   // One actual UI main thread, requested20ms cadence, at most30minutes. This is a
+@@ -169,6 +203,16 @@ static void startClientWaitSampler() {
+    nbwait::Sample sample{};sample.id=++samples;sample.tid=tid;sample.stackLow=low;sample.stackHigh=high;
+    nbwait::capture(port,sample,nowUs);traceWaitBytes(27,sample.id,&sample,sizeof(sample),true);
+ #if defined(NATIVE_METAL_IPHONE24A446)
++   if(observeUIUpdate) {
++    nbuiwait::Anchor anchors[nbwait::kFrames]{};
++    const unsigned n=std::min<unsigned>(sample.depth,nbwait::kFrames);
++    for(unsigned i=0;i<n;++i)anchors[i]={sample.frames[i].fp,sample.frames[i].lr,
++     i?sample.frames[i-1].lr:sample.first.pc};
++    nbuiwait::bind(uiBinding,uiLayout,anchors,n,sample.stackLow,sample.stackHigh,sample.beganUs,readObserverMemory);
++    nbuiwait::State state{};state.id=sample.id;
++    nbuiwait::capture(state,uiBinding,uiLayout,readObserverMemory,nowUs,[]{return mach_absolute_time();});
++    traceWaitBytes(nbuiwait::kRecordKind,sample.id,&state,sizeof(state),true);
++   }
+    // Counters describe actual use of the existing index, once per second in
+    // the original record stream. No timing query on each icon lookup.
+    if(!strcmp(getprogname(),"SpringBoard") && !(samples%50)) {
+diff --git a/NativeUIUpdateWaitState.h b/NativeUIUpdateWaitState.h
+new file mode 100644
+index 0000000..0eea361
+--- /dev/null
++++ b/NativeUIUpdateWaitState.h
+@@ -0,0 +1,109 @@
++/* SPDX-License-Identifier: MIT */
++#pragma once
++#include "NativeDisplayWaitState.h"
++
++// The existing UI stack observer identifies the caller's UC::DriverCore.
++// Read its real pending/installed timer state; do not alter the scheduler.
++namespace nbuiwait {
++constexpr uint8_t kUIKitUUID[16]={0xaa,0xc8,0x4a,0x00,0x13,0xab,0x3b,0x06,0xb6,0x22,0xa4,0xe6,0x76,0x97,0x1e,0xb8};
++constexpr uint8_t kUpdateCycleUUID[16]={0x2f,0xc1,0xa9,0xe2,0x8a,0xde,0x35,0x59,0xa1,0x3f,0x0d,0xd8,0xe4,0xdc,0x6e,0x74};
++constexpr uint64_t kUIKitHeader=0x18485a000ULL,kUpdateCycleHeader=0x2b2b0f000ULL;
++constexpr uint64_t kMainSectionBegin=0x1848c38f8ULL,kMainSectionEnd=0x1848c3b00ULL;
++constexpr uint64_t kContinueReturn=0x2b2b0fbc0ULL;
++enum : uint32_t { kRecordKind=35,LayoutMatched=1,AnchorBound=2,CoreRead=4,
++ OwnerMatched=8,RepeatedFieldsMatched=16,ClockOrdered=32 };
++struct Layout {
++ uint64_t uiHeader=0,ucHeader=0;
++ int64_t uiSlide=0,ucSlide=0;
++ bool valid() const {
++  return uiHeader && ucHeader && uiHeader==uint64_t(int64_t(kUIKitHeader)+uiSlide) &&
++   ucHeader==uint64_t(int64_t(kUpdateCycleHeader)+ucSlide);
++ }
++};
++inline bool imageUUIDMatches(const uint8_t *uuid,bool ui) {
++ return !memcmp(uuid,ui?kUIKitUUID:kUpdateCycleUUID,16);
++}
++struct Anchor {uint64_t fp=0,returnPc=0,childPc=0;};
++struct Binding {
++ uint64_t core=0,fp=0,returnPc=0,sourceUs=0;
++ int32_t readStatus=-1;
++};
++struct State {
++ uint32_t version=1,bytes=240;
++ uint64_t id=0,beganUs=0,endedUs=0,beganTicks=0,endedTicks=0;
++ uint64_t core=0,owner=0,anchorFp=0,anchorReturn=0,sourceUs=0;
++ uint64_t uiHeader=0,ucHeader=0;
++ int64_t uiSlide=0,ucSlide=0;
++ uint64_t mask=0,waitingWord=0,requestedDeadline=0,installedDeadline=0;
++ uint64_t defaultModeFunction=0,currentModeFunction=0;
++ uint64_t confirmMask=0,confirmWaitingWord=0,confirmRequestedDeadline=0,confirmInstalledDeadline=0;
++ uint64_t firstOwnerCore=0,confirmOwnerCore=0;
++ int32_t reads[5]={-1,-1,-1,-1,-1};
++ uint32_t flags=0;
++};
++static_assert(sizeof(State)==240,"UI update wait wire size");
++
++template<class Read> inline void bind(Binding &binding,const Layout &layout,
++ const Anchor *anchors,unsigned count,uint64_t stackLow,uint64_t stackHigh,uint64_t sourceUs,Read read) {
++ if(!layout.valid())return;
++ for(unsigned i=0;i<count;++i) {
++  const auto &a=anchors[i];
++  const uint64_t caller=nbdisplaywait::strippedCode(a.returnPc);
++  const uint64_t child=nbdisplaywait::strippedCode(a.childPc);
++  if(caller!=uint64_t(int64_t(kContinueReturn)+layout.ucSlide) ||
++   child<uint64_t(int64_t(kMainSectionBegin)+layout.uiSlide) ||
++   child>=uint64_t(int64_t(kMainSectionEnd)+layout.uiSlide))continue;
++  // The verified main-section prologue saves the caller's x19 at fp-8.
++  // Check against the same stack bounds already used by the existing walk.
++  if((a.fp&7) || a.fp<stackLow || a.fp-stackLow<8 || a.fp>stackHigh || stackHigh-a.fp<16)continue;
++  uint64_t core=0;const int status=read(a.fp-8,&core,sizeof(core));
++  if(status || !core)continue;
++  binding.core=nbdisplaywait::stripped(core);binding.fp=a.fp;
++  binding.returnPc=a.returnPc;binding.sourceUs=sourceUs;binding.readStatus=status;
++  return;
++ }
++}
++
++inline bool modeMatches(uint64_t function,const Layout &layout) {
++ const uint64_t code=nbdisplaywait::strippedCode(function);
++ // These are the selected UIKit image's original scheduler mode functions.
++ return code>=uint64_t(int64_t(0x1848bc000ULL)+layout.uiSlide) &&
++        code<uint64_t(int64_t(0x1848c8190ULL)+layout.uiSlide);
++}
++
++template<class Read,class Clock,class Ticks> inline void capture(State &s,Binding &binding,
++ const Layout &layout,Read read,Clock now,Ticks ticks) {
++ s.beganUs=now();s.beganTicks=ticks();s.uiHeader=layout.uiHeader;s.ucHeader=layout.ucHeader;
++ s.uiSlide=layout.uiSlide;s.ucSlide=layout.ucSlide;
++ auto finish=[&] {s.endedTicks=ticks();s.endedUs=now();
++  if(s.beganTicks<=s.endedTicks && s.beganUs<=s.endedUs)s.flags|=ClockOrdered;};
++ if(!layout.valid()){finish();return;}
++ s.flags|=LayoutMatched;
++ s.core=binding.core;s.anchorFp=binding.fp;s.anchorReturn=binding.returnPc;s.sourceUs=binding.sourceUs;s.reads[0]=binding.readStatus;
++ if(!s.core){finish();return;}
++ s.flags|=AnchorBound;
++ uint64_t first[16]{},second[16]{};
++ s.reads[1]=read(s.core,first,sizeof(first));
++ if(s.reads[1]){binding.core=0;finish();return;}
++ s.flags|=CoreRead;
++ s.mask=first[1];s.waitingWord=first[9];s.requestedDeadline=first[10];s.installedDeadline=first[11];
++ s.defaultModeFunction=first[6];s.currentModeFunction=first[8];
++ // The mode context is the UIKit owner; its verified +0x2c0 field points back
++ // to this UC core. This relationship is rechecked on every observation.
++ s.owner=nbdisplaywait::stripped(first[5]);
++ if(!s.owner || !modeMatches(first[6],layout)){binding.core=0;finish();return;}
++ s.reads[2]=read(s.owner+0x2c0,&s.firstOwnerCore,sizeof(s.firstOwnerCore));
++ if(s.reads[2] || nbdisplaywait::stripped(s.firstOwnerCore)!=s.core){binding.core=0;finish();return;}
++ s.flags|=OwnerMatched;
++ s.reads[3]=read(s.core,second,sizeof(second));
++ if(s.reads[3]){finish();return;}
++ s.confirmMask=second[1];s.confirmWaitingWord=second[9];
++ s.confirmRequestedDeadline=second[10];s.confirmInstalledDeadline=second[11];
++ s.reads[4]=read(s.owner+0x2c0,&s.confirmOwnerCore,sizeof(s.confirmOwnerCore));
++ if(!s.reads[4] && nbdisplaywait::stripped(s.confirmOwnerCore)==s.core &&
++  first[1]==second[1] && first[5]==second[5] && first[6]==second[6] &&
++  first[7]==second[7] && first[8]==second[8] && first[9]==second[9] &&
++  first[10]==second[10] && first[11]==second[11])s.flags|=RepeatedFieldsMatched;
++ finish();
++}
++}
+diff --git a/bridge/ui_update_wait_host.cpp b/bridge/ui_update_wait_host.cpp
+new file mode 100644
+index 0000000..97557cd
+--- /dev/null
++++ b/bridge/ui_update_wait_host.cpp
+@@ -0,0 +1,110 @@
++/* SPDX-License-Identifier: MIT */
++#include "../NativeUIUpdateWaitState.h"
++#include <cassert>
++#include <cstdio>
++#include <vector>
++
++using namespace nbuiwait;
++constexpr uint64_t kCore=0x10000ULL,kOwner=0x20000ULL,kFP=0x3000ULL;
++struct Memory {
++ uint64_t words[16]{},ownerCore=kCore;
++ unsigned coreReads=0,allReads=0;
++ bool change=false,fail=false;
++ Memory() {
++  words[1]=(0x20000000ULL<<32)|0x20000000ULL;
++  words[5]=kOwner;words[6]=kMainSectionBegin+0x5b0000;
++  words[7]=kOwner;words[9]=1;words[10]=1050;words[11]=1050;
++ }
++ int read(uint64_t address,void *out,unsigned bytes) {
++  ++allReads;
++  if(address==kFP-8 && bytes==8){const uint64_t value=kCore;memcpy(out,&value,8);return 0;}
++  if(address==kCore && bytes==sizeof(words)) {
++   if(fail)return 5;
++   if(coreReads++ && change)++words[11];
++   memcpy(out,words,sizeof(words));return 0;
++  }
++  if(address==kOwner+0x2c0 && bytes==8){memcpy(out,&ownerCore,8);return 0;}
++  return 1;
++ }
++};
++static Layout layout() {return {kUIKitHeader+0x5b0000,kUpdateCycleHeader+0x5b0000,0x5b0000,0x5b0000};}
++static Binding bound(Memory &memory) {
++ Binding result{};const Anchor anchor{kFP,kContinueReturn+0x5b0000,0x1848c3928ULL+0x5b0000};
++ bind(result,layout(),&anchor,1,0x2000ULL,0x4000ULL,900,
++  [&](uint64_t a,void *out,unsigned n){return memory.read(a,out,n);});
++ assert(result.core==kCore && result.fp==kFP && result.sourceUs==900);return result;
++}
++static State captured(Memory &memory,Binding &binding,bool reverseClock=false) {
++ State result{};result.id=1;unsigned tickReads=0;
++ capture(result,binding,layout(),[&](uint64_t a,void *out,unsigned n){return memory.read(a,out,n);},
++  []{return uint64_t(1000);},[&]{return reverseClock && tickReads++?uint64_t(999):uint64_t(1000);});
++ return result;
++}
++int main(int argc,char **argv) {
++ unsigned cases=0;std::vector<State> wire;
++ {
++  Memory memory;Binding binding{};State state{};Layout wrong=layout();++wrong.uiHeader;
++  capture(state,binding,wrong,[&](uint64_t a,void *o,unsigned n){return memory.read(a,o,n);},[]{return uint64_t(1);},[]{return uint64_t(1);});
++  assert(!wrong.valid() && state.flags==ClockOrdered && memory.allReads==0);++cases;
++ }
++ {
++  uint8_t wrong[16];memcpy(wrong,kUIKitUUID,16);wrong[0]^=1;
++  assert(imageUUIDMatches(kUIKitUUID,true) && imageUUIDMatches(kUpdateCycleUUID,false));
++  assert(!imageUUIDMatches(wrong,true) && !imageUUIDMatches(kUIKitUUID,false));++cases;
++ }
++ {
++  Memory memory;Binding binding=bound(memory);State state=captured(memory,binding);
++  assert(state.flags==63 && state.core==kCore && state.owner==kOwner && state.mask==memory.words[1]);
++  assert(state.waitingWord==1 && state.requestedDeadline==1050 && state.installedDeadline==1050);
++  assert(state.firstOwnerCore==kCore && state.confirmOwnerCore==kCore && state.confirmInstalledDeadline==1050);
++  for(int status:state.reads)assert(status==0);
++  wire.push_back(state);++cases;
++ }
++ {
++  Memory memory;Binding binding{};Anchor anchor{kFP,kContinueReturn+0x5b0004,0x1848c3928ULL+0x5b0000};
++  auto read=[&](uint64_t a,void *o,unsigned n){return memory.read(a,o,n);};
++  bind(binding,layout(),&anchor,1,0x2000ULL,0x4000ULL,900,read);
++  assert(!binding.core && !memory.allReads);
++  anchor.returnPc=kContinueReturn+0x5b0000;
++  bind(binding,layout(),&anchor,1,kFP,kFP+16,900,read);
++  assert(!binding.core && !memory.allReads);++cases;
++ }
++ {
++  Memory memory;memory.ownerCore=kCore+8;Binding binding=bound(memory);State state=captured(memory,binding);
++  assert(!(state.flags&OwnerMatched) && !binding.core && state.firstOwnerCore==kCore+8);
++  wire.push_back(state);++cases;
++ }
++ {
++  Memory memory;memory.change=true;Binding binding=bound(memory);State state=captured(memory,binding);
++  assert((state.flags&OwnerMatched) && !(state.flags&RepeatedFieldsMatched));
++  assert(state.installedDeadline==1050 && state.confirmInstalledDeadline==1051);
++  wire.push_back(state);++cases;
++ }
++ {
++  Memory memory;Binding binding=bound(memory);memory.fail=true;State state=captured(memory,binding);
++  assert(!(state.flags&CoreRead) && state.reads[1]==5 && !binding.core);
++  wire.push_back(state);++cases;
++ }
++ {
++  Memory memory;memory.words[10]=memory.words[11]=0x7fffffffffffffffULL;Binding binding=bound(memory);State state=captured(memory,binding);
++  assert(state.flags==63 && state.installedDeadline==0x7fffffffffffffffULL);
++  wire.push_back(state);++cases;
++ }
++ {
++  Memory memory;memory.words[10]=memory.words[11]=950;Binding binding=bound(memory);State state=captured(memory,binding);
++  assert(state.flags==63 && state.installedDeadline<state.beganTicks);
++  assert((uint32_t(state.mask)&uint32_t(state.mask>>32))==0x20000000U);
++  wire.push_back(state);++cases;
++ }
++ {
++  Memory memory;Binding binding=bound(memory);State state=captured(memory,binding,true);
++  assert(!(state.flags&ClockOrdered) && state.endedTicks<state.beganTicks);
++  wire.push_back(state);++cases;
++ }
++ if(argc==2) {
++  FILE *file=fopen(argv[1],"wb");assert(file);
++  assert(fwrite(wire.data(),sizeof(State),wire.size(),file)==wire.size());assert(!fclose(file));
++ }
++ assert(cases==10);
++ printf("{\"passed\":true,\"cases\":%u,\"wire_bytes\":%zu,\"records\":%zu}\n",cases,sizeof(State),wire.size());
++}

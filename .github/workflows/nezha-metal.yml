@@ -1,7 +1,7 @@
-name: nezha GPU079 actual display timing source
+name: nezha GPU080 actual UI queue wake state
 on:
   push:
-    branches: [codex/ios27-gpu79-display-timing-metal055-20261122]
+    branches: [codex/ios27-gpu80-ui-wake-metal056-20261123]
   workflow_dispatch:
 permissions:
   contents: read
@@ -114,6 +114,9 @@ jobs:
       - name: Observe the actual Mac main thread using the client sampler
         id: ui_main
         run: device/ci/gpu-userland/logrun ui-main python3 device/ci/gpu-userland/check-client-wait.py --source unixnu/drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm --decoder device/ci/gpu-userland/decode-render-wait.py --out "$LOGS/ui-main"
+      - name: Check actual UI queue fields and iPhone production header
+        id: ui_update_wait
+        run: device/ci/gpu-userland/logrun ui-update-wait python3 device/ci/gpu-userland/check-ui-update-wait.py --source unixnu/drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm --out "$LOGS/ui-update-wait"
       - name: Exercise delayed display discovery with actual Objective-C and Mach reads
         id: display_discovery
         run: device/ci/gpu-userland/logrun display-discovery python3 device/ci/gpu-userland/check-display-discovery.py --source unixnu/drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm --out "$LOGS/display-discovery"
@@ -179,6 +182,7 @@ jobs:
           OUTCOME_DISPLAY_PROFILE: ${{ steps.display_profile.outcome }}
           OUTCOME_RENDER_WAIT: ${{ steps.render_wait.outcome }}
           OUTCOME_FRAME_OBSERVERS: ${{ steps.frame_observers.outcome }}
+          OUTCOME_UI_UPDATE_WAIT: ${{ steps.ui_update_wait.outcome }}
           OUTCOME_UI_MAIN: ${{ steps.ui_main.outcome }}
           OUTCOME_DISPLAY_DISCOVERY: ${{ steps.display_discovery.outcome }}
           OUTCOME_CACHE_PANEL: ${{ steps.cache_panel.outcome }}

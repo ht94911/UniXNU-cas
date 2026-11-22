@@ -27,5 +27,38 @@
   "local_preparation": {
     "source_record_sha256": "651a0cc1c9fd02e14da14e1b543deb064fac9999990cb98e5486cac33a2c0c8d",
     "mesa_patch_count": 14
+  },
+  "GPU080_UI_update_wait": {
+    "passed": true,
+    "source_commit": "f03c006c45b8d248808a9d2275fceb73e64dad70",
+    "source_base": "fe869c48f0080db19d44899fd7abfbaccade2c68",
+    "source_repository": "/home/hua/nezha-work/ios27/gpu27-astra/userland/drivers/AdrenoMetal",
+    "source_delta": [
+      "NativeFrameObservers.inc",
+      "NativeUIUpdateWaitState.h",
+      "bridge/ui_update_wait_host.cpp"
+    ],
+    "production_files": [
+      "NativeFrameObservers.inc",
+      "NativeUIUpdateWaitState.h"
+    ],
+    "source_sha256": {
+      "NativeFrameObservers.inc": "677dd89882264cbaacb3761e61fb8bb685b620e8ae648dcedf5047a9a2e71f45",
+      "NativeUIUpdateWaitState.h": "edecc610e6e29a9ddd0d2a28fd68bbebddd1af0216b5da8f782d7a03597068c0",
+      "bridge/ui_update_wait_host.cpp": "a45529a8651809a7479a09576543029588fb91d6cb2e14d34c9faf8dd83416a2"
+    },
+    "complete_tree_replay_matches_source_commit": true,
+    "replayed_tree": "18f69c505927054730cdf50fcc6987157fb71848",
+    "patch_sha256": "6a0bf5b7fd18d1febd76977bba19d6884a68d5659d547fde9296b18dad79551f",
+    "Cpp_cases": 10,
+    "Cpp_ASan_UBSan_passed": true,
+    "Clang_Werror_syntax_passed": true,
+    "decoder_cases": 14,
+    "legacy_decoder_cases": 19,
+    "legacy_display_cases": 26,
+    "Native061_rebuild_required": false,
+    "boot_arguments_change_required": false,
+    "phone_operations": false,
+    "UTC": "2026-11-22T21:09:21.121692+00:00"
   }
 }

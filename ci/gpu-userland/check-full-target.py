@@ -240,5 +240,13 @@ assert icon_index['visibility_repetitions']==1000
 report['actual_icon_list_index']=icon_index
 report.update(actual_extern_function=extern_function,actual_extern_target=target_extern,actual_multi_level_output=multi_level,
               actual_codegen_cache=codegen,actual_display_preference=preference)
+ui_update_wait=json.loads((a.logs/'ui-update-wait/report.json').read_text())
+assert ui_update_wait['passed'] and ui_update_wait['actual_Cpp_reader_executed'] and ui_update_wait['cases']==10
+assert ui_update_wait['ASan'] and ui_update_wait['UBSan'] and ui_update_wait['arm64e_iPhone_production_header_compiled']
+assert ui_update_wait['header_sha256']==hashlib.sha256((root/'drivers/AdrenoMetal/NativeUIUpdateWaitState.h').read_bytes()).hexdigest()
+assert ui_update_wait['fixture_sha256']==hashlib.sha256((root/'drivers/AdrenoMetal/bridge/ui_update_wait_host.cpp').read_bytes()).hexdigest()
+assert ui_update_wait['observer_include_sha256']==hashlib.sha256((root/'drivers/AdrenoMetal/NativeFrameObservers.inc').read_bytes()).hexdigest()
+assert b'ui-wait update deadlines images=' in data
+report['actual_UI_update_wait']=ui_update_wait
 (a.logs/'full-target-qualified.json').write_text(json.dumps(report,indent=2)+'\n')
 print(json.dumps({k:v for k,v in report.items() if k!='profile'},indent=2))
