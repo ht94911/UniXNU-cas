@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "b445c8e50a245e27de4428fa8607a7d503a02a76",
+  "device_revision": "d5ef77adccd9bb69e670c0c50241448e2d3b7434",
   "soc_revision": "device-local-GPU051-camera074-bankstreamretirement",
   "xcode": "26.6",
   "files": {
@@ -646,9 +646,9 @@
     "source/device/tests/camera-platform/kernel-fixture/kern/thread.h": "15251b621ed7c8fc38ff12625c1efd043653cd07a3d4d7f03f7c6ff358ae75e6",
     "source/device/tests/camera-platform/kernel-fixture/miscfs/devfs/devfs.h": "7c4f5fa6fa0a5f7c1ba44c3be9522d2e1b91f3ecc30ffb7e99b702e0bb35de77",
     "source/device/tests/camera-platform/kernel-fixture/sys/conf.h": "006a2ec08fcb8b5547db0ff3c7e13e1d88314767a771e08c835ea72b542429ab",
-    "source/device/tests/camera-platform/kernel-fixture/sys/errno.h": "6e7de80b970121f1c7092f504ec8b3595924a9b9d6880801950caa7170b6d678",
+    "source/device/tests/camera-platform/kernel-fixture/sys/errno.h": "89a396aa1dcfcdf5315801cd48ff505171d72e3c869fbdfa998e649d1ebe2815",
     "source/device/tests/camera-platform/kernel-fixture/sys/systm.h": "3747a6d440e94058ffe74bbad5c0ae0b32698663ccba25bd70d21ae3b4ac53f0",
-    "source/device/tests/camera-platform/kernel-fixture/sys/uio.h": "37658ae82e16a2c6d563e8c25f26a1387b29b743de30722b424a3d9e639c320b",
+    "source/device/tests/camera-platform/kernel-fixture/sys/uio.h": "adc9f00d3cd8bca0c19c8c76ef28097f705e38ac0dc88df4f5ce9039cef40101",
     "source/device/tests/camera-platform/kernel-fixture/sys/vnode.h": "f337508d14c5df83aff0ab0062672cb7610e8a3a011a283c26eafda83241ebdf",
     "source/device/tests/camera-platform/vendor-fixture/mach-o/dyld.h": "307168f3e4effbd8174e484e6e553ac3c982890efbdad288d37c27ab6e7f9658",
     "source/device/tests/camera-platform/vendor-fixture/mach-o/loader.h": "ea8a20fa20019977f8d376c2972a21f2686f7d4ecfaa92ed37d00a14cccd7ff9",
