@@ -537,7 +537,11 @@ static void nb_gnss_publish_measurement(NbGnss *s, const NbQmiMessage *m, uint64
     }
     s->measurement = info; s->measurement_seen = 1; s->measurement_received_ms = now_ms;
     s->measurement_epoch_sequence = info.sequence;
-    if (info.signal && info.system != 4u) {
+    /* The selected 24A446 PDS worker rejects system7 (LOC NavIC8) when
+     * its optional NavIC capability is absent. Keep that real source slot
+     * in the clock/sequence checks above, but do not feed it to PDS. A
+     * supported prefix is published only after every source slot arrives. */
+    if (info.signal && info.system != 4u && info.system != 8u) {
         if (s->measurement_epoch_count == NB_GNSS_MEASUREMENT_BLOCKS) {
             ++s->measurement_rejected; ++s->measurement_incomplete_epochs;
             s->measurement_epoch_active = s->measurement_epoch_count = 0;
@@ -546,6 +550,8 @@ static void nb_gnss_publish_measurement(NbGnss *s, const NbQmiMessage *m, uint64
         const unsigned at = s->measurement_epoch_count++;
         s->measurement_lengths[at] = (uint16_t)length;
         __builtin_memcpy(s->measurement_blocks[at], s->measurement_packet, length);
+    } else if (info.system == 8u) {
+        ++s->measurement_unsupported_slots;
     } else {
         /* No measurements are invented to fill an unsupported empty slot. */
         ++s->measurement_empty_slots;

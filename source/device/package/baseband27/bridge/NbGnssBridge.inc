@@ -100,7 +100,7 @@ extern "C" int nezha_gnss_diagnostic(uint64_t cursor, uint32_t page, char *out,
             "\"measurement_sequence\":%u,\"measurement_maximum\":%u,\"measurement_system\":%u,"
             "\"measurement_signals\":%llu,\"measurement_count\":%u,\"measurement_received_ms\":%llu,"
             "\"measurement_tick_present\":%u,\"measurement_tick\":%u,"
-            "\"measurement_epochs\":%llu,\"measurement_empty_slots\":%llu,"
+            "\"measurement_epochs\":%llu,\"measurement_empty_slots\":%llu,\"measurement_unsupported_slots\":%llu,"
             "\"measurement_incomplete_epochs\":%llu,\"measurement_output_blocks\":%u}",
             (unsigned long long)identity, s->generation, (unsigned)s->phase, s->session, s->running, s->revision,
             (unsigned long long)s->fix.sequence, (unsigned long long)s->fix.utc_ms, (unsigned long long)s->fix.received_ms,
@@ -122,6 +122,7 @@ extern "C" int nezha_gnss_diagnostic(uint64_t cursor, uint32_t page, char *out,
             s->measurement.system, (unsigned long long)s->measurement.signals, s->measurement.count,
             (unsigned long long)s->measurement_received_ms, s->measurement.tick_present, s->measurement.tick,
             (unsigned long long)s->measurement_epochs, (unsigned long long)s->measurement_empty_slots,
+            (unsigned long long)s->measurement_unsupported_slots,
             (unsigned long long)s->measurement_incomplete_epochs, s->measurement_last_blocks);
     } else if (sky_page) {
         const uint32_t index = (page & 0xffu) - 1u;

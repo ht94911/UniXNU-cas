@@ -78,6 +78,7 @@ typedef struct {
     uint16_t measurement_lengths[NB_GNSS_MEASUREMENT_BLOCKS];
     uint8_t measurement_blocks[NB_GNSS_MEASUREMENT_BLOCKS][NB_GNSS_MEASUREMENT_PACKET_BYTES];
     uint64_t measurement_epochs, measurement_empty_slots, measurement_incomplete_epochs;
+    uint64_t measurement_unsupported_slots;
     uint8_t measurement_last_blocks;
     /* Diagnostic identity and values stay local, through the existing USB
      * provider. Raw LOC data is never replaced with generated positions. */

@@ -16,6 +16,7 @@ static int emit(void *context,uint32_t channel,uint32_t cid,const uint8_t *data,
     CHECK(nb_gnss_message(data,n,&m));
     if(m.message==NB_PDS_MEASUREMENT){
         CHECK(m.type==NB_QMI_INDICATION&&channel<CBQ_CHANNELS);
+        CHECK(*nb_gnss_tlv(&m,3,1)<=6u);
         if(cid==measurement_drop_cid)return 0;
         ++measurement_indications;measurement_channels|=UINT64_C(1)<<channel;
         last_measurement_sequence=*nb_gnss_tlv(&m,1,1);
@@ -437,5 +438,58 @@ int main(int argc,char **argv)
     if(measurement_capture){CHECK(!fclose(measurement_capture));measurement_capture=0;}
     CHECK(state.measurement_epochs==1&&state.measurement_empty_slots==1&&state.measurement_last_blocks==2);
     CHECK(last_measurement_sequence==2&&last_measurement_maximum==2&&!state.positions&&!state.published);
+    /* The receiver's final NavIC block used to reset the selected native
+     * PDS worker. Check full source continuity before omitting that block,
+     * including an empty NavIC band, a tracked SV and a missing final slot. */
+    if(argc==3){measurement_capture=fopen(argv[2],"wb");CHECK(measurement_capture!=0);}
+    for(unsigned test=0;test<7u;++test){
+        answers=indications=0;setup();
+        request(1,100,NB_PDS_SET_STATE,1,1);request(1,101,NB_PDS_SET_AUTO,1,1);
+        request(1,102,NB_PDS_REPORT,0x12,1);
+        CHECK(!nb_gnss_next(&state,0,&p));CHECK(nb_gnss_next(&state,0,&p));reply(&p,0,0);
+        CHECK(nb_gnss_next(&state,0,&p));reply(&p,0,0);CHECK(!nb_gnss_next(&state,0,&p));
+        const unsigned navic=test==2u?1u:3u;
+        const unsigned blocks=test==6u?1u:3u;
+        for(unsigned i=1;i<=blocks;++i){
+            if(test==3u&&i==3u)continue;
+            uint8_t raw[512],clock[17]={0},list[91]={0};NbQmiWriter w;
+            const uint8_t system=(blocks==1u||i==navic)?8u:(i==1u||(navic==1u&&i==2u))?1u:6u;
+            nb_put32(clock,120001u+test);clock[4]=1;nb_put64(clock+5,1700000000000ull);nb_put32(clock+13,7);
+            if(test==4u&&i==navic)nb_put32(clock,120100u+test);
+            nb_qmi_begin(&w,raw,sizeof raw,NB_QMI_INDICATION,0,NB_LOC_MEASUREMENT);
+            nb_qmi_u8(&w,1,i);nb_qmi_u8(&w,2,blocks);nb_qmi_u32(&w,3,system);
+            nb_qmi_put(&w,0x1a,clock,sizeof clock);nb_qmi_u32(&w,0x1c,5);
+            uint8_t frequency[12]={0};nb_put32(frequency,0x3dcccccd);nb_put32(frequency+4,0x3c23d70a);nb_put32(frequency+8,2);
+            nb_qmi_put(&w,0x10,frequency,sizeof frequency);
+            nb_qmi_u64(&w,0x1e,system==8u?UINT64_C(1)<<18:system==1u?1:NB_GNSS_B1I);
+            const int empty=system==8u&&(test==0u||test==6u);
+            if(!empty){
+                list[0]=1;uint8_t *sv=list+1;nb_put16(sv,system==1u?1:system==6u?201:401);nb_put32(sv+3,3);
+                nb_put64(sv+11,0x0800001fu);nb_put64(sv+19,0x0800001fu);
+                nb_put16(sv+27,380);nb_put32(sv+35,119925);nb_put32(sv+39,0x3f000000);
+                nb_put32(sv+43,0x3b03126f);nb_put32(sv+47,0xc1200000);nb_put32(sv+51,0x3e4ccccd);
+            }
+            if(test==5u&&i==navic)list[0]=2; /* Malformed omitted slots still reject the epoch. */
+            nb_qmi_put(&w,0x1b,list,empty?1:sizeof list);
+            nb_gnss_receive(&state,0,184,raw,nb_qmi_end(&w),10000u+test*10u+i);
+            const int complete=i==blocks&&test<3u;
+            CHECK(state.measurement_published==(complete?2u:0u));
+        }
+        if(test<3u){
+            CHECK(state.measurement_epochs==1&&state.measurement_unsupported_slots==1);
+            CHECK(!state.measurement_empty_slots&&!state.measurement_rejected&&state.measurement_last_blocks==2);
+            CHECK(last_measurement_sequence==2&&last_measurement_maximum==2);
+        }else if(test<6u){
+            CHECK(!state.measurement_epochs&&!state.measurement_published);
+            CHECK(state.measurement_unsupported_slots==0);
+            if(test==3u)CHECK(state.measurement_epoch_active&&!state.measurement_rejected);
+            else CHECK(!state.measurement_epoch_active&&state.measurement_rejected==1&&state.measurement_incomplete_epochs==1);
+        }else{
+            CHECK(state.measurement_epochs==1&&state.measurement_unsupported_slots==1&&state.measurement_last_blocks==0);
+            CHECK(!state.measurement_published&&!state.measurement_rejected);
+        }
+        CHECK(!state.positions&&!state.valid_fixes&&!state.published);
+    }
+    if(measurement_capture){CHECK(!fclose(measurement_capture));measurement_capture=0;}
     printf("GNSS lifecycle %u checks, %u failures; %u state indications\n",checks,failures,indications);return failures?1:0;
 }
