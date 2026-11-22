@@ -86,6 +86,54 @@ int main(){unsigned cases=0;
  reset(nbdisplaywait::kInternalDisplayVtable,false);auto vsync=take();vsync.serverTail[4]=0x123000;
  assert(nbdisplaywait::displayPreference(vsync,0)==7);++cases;
  printf("PASS %u actual display reader/preference cases; wireless fallback loses to verified internal timer\n",cases);
+
+ unsigned timingCases=0;
+ auto timingMemory=[] {
+  reset(nbdisplaywait::kInternalDisplayVtable,false);
+  nbdisplaywait::State base=take();base.id=77;
+  const uint64_t shared=0x10000;
+  put(base.display+nbdisplaywait::kTimingSharedOffset,shared);
+  uint64_t words[11]{};words[0]=1;words[6]=uint64_t(2)<<32;words[7]=8;
+  memory[shared]=std::vector<uint8_t>((uint8_t *)words,(uint8_t *)words+sizeof(words));
+  return base;
+ };
+ auto timingSample=[](const nbdisplaywait::State &base,auto reader) {
+  uint64_t absolute=1000;
+  nbdisplaywait::TimingState t{};
+  nbdisplaywait::captureTiming(t,base,0,reader,[]{return ++ticks;},[&]{return absolute++;});
+  return t;
+ };
+ auto base=timingMemory();auto t=timingSample(base,read);
+ assert(t.id==77 && t.flags==31 && t.reads[4]==0 && t.timing==0x10000);
+ assert(t.data[6]==uint64_t(2)<<32 && t.data[7]==8 && t.beganTicks<=t.endedTicks);++timingCases;
+ base=timingMemory();put(base.display+nbdisplaywait::kTimingSharedOffset,uint64_t(0));
+ t=timingSample(base,read);assert(t.timing==0 && !(t.flags&nbdisplaywait::TimingDataRead) && t.reads[2]==-1);++timingCases;
+ base=timingMemory();put(base.display,nbdisplaywait::kExternalDisplayVtable);
+ t=timingSample(base,read);assert(!(t.flags&nbdisplaywait::TimingDisplayMatched) && t.reads[1]==-1);++timingCases;
+ base=timingMemory();base.displayVtable=nbdisplaywait::kWirelessDisplayVtable;
+ unsigned oldReads=readCount;t=timingSample(base,read);
+ assert(readCount==oldReads && !(t.flags&nbdisplaywait::TimingDataRead));++timingCases;
+ base=timingMemory();t=timingSample(base,[](uint64_t at,void *out,unsigned bytes){
+  return at==0x10000?5:read(at,out,bytes);});
+ assert(t.reads[2]==5 && !(t.flags&nbdisplaywait::TimingDataRead));++timingCases;
+ base=timingMemory();unsigned pointerReads=0;
+ t=timingSample(base,[&](uint64_t at,void *out,unsigned bytes){
+  if(at==base.display+nbdisplaywait::kTimingSharedOffset && ++pointerReads==2){uint64_t other=0x11000;std::memcpy(out,&other,8);return 0;}
+  return read(at,out,bytes);});
+ assert(t.timing!=t.confirmTiming && !(t.flags&nbdisplaywait::TimingPointerMatched) && t.reads[4]==-1);++timingCases;
+ base=timingMemory();unsigned dataReads=0;
+ t=timingSample(base,[&](uint64_t at,void *out,unsigned bytes){
+  int result=read(at,out,bytes);
+  if(at==0x10000 && ++dataReads==2)((uint64_t *)out)[6]=uint64_t(4)<<32;
+  return result;});
+ assert((t.flags&nbdisplaywait::TimingPointerMatched) && !(t.flags&nbdisplaywait::TimingFieldsMatched));++timingCases;
+ base=timingMemory();uint64_t clockCalls=0;t={};
+ nbdisplaywait::captureTiming(t,base,0,read,[]{return ++ticks;},[&]{return clockCalls++?999ULL:1000ULL;});
+ assert(t.beganTicks>t.endedTicks && !(t.flags&nbdisplaywait::TimingClockRecorded));++timingCases;
+ base=timingMemory();((uint64_t *)memory[0x10000].data())[0]=2;
+ t=timingSample(base,read);assert(t.flags==31 && (t.data[0]&255)==2);++timingCases;
+ assert(timingCases==9);
+ printf("PASS %u actual timing-reader cases; rejected data is not an interval or a frame rate\n",timingCases);
 }
 '''
 cpp = args.out / 'display.cpp'
@@ -100,6 +148,7 @@ run = subprocess.run([str(binary)], capture_output=True, text=True, timeout=30)
 (args.out / 'run.log').write_text(run.stdout + run.stderr)
 assert run.returncode == 0, run.stdout + run.stderr
 report = dict(passed=True, actual_reader_and_preference_executed=True, cases=14,
+              actual_timing_reader_executed=True, timing_cases=9,
               ASan_UBSan=True, fixture_self_memory=True, command=command, output=run.stdout,
               header_sha256=hashlib.sha256((folder/'NativeDisplayWaitState.h').read_bytes()).hexdigest(),
               observer_sha256=hashlib.sha256((folder/'NativeFrameObservers.inc').read_bytes()).hexdigest(),
