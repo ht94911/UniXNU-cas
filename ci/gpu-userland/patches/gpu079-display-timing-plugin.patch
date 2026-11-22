@@ -1,5 +1,5 @@
 diff --git a/NativeDisplayWaitState.h b/NativeDisplayWaitState.h
-index d4d4df8..aa4505d 100644
+index d4d4df8..8a85bbf 100644
 --- a/NativeDisplayWaitState.h
 +++ b/NativeDisplayWaitState.h
 @@ -146,4 +146,54 @@ template<class Read,class Clock> inline void capture(State &s,int64_t slide,Read
@@ -10,7 +10,7 @@ index d4d4df8..aa4505d 100644
 +// its timing shared memory at+0x6700. That state is outside the server prefix
 +// sampled above. Keep the original808-byte record and reader unchanged.
 +constexpr unsigned kTimingSharedOffset=0x6700,kTimingSharedBytes=0x58;
-+constexpr unsigned kTimingRecordKind=34;
++enum : unsigned { kTimingRecordKind=34 };
 +enum : uint32_t { TimingDisplayMatched=1,TimingDataRead=2,TimingPointerMatched=4,
 +                  TimingFieldsMatched=8,TimingClockRecorded=16 };
 +struct TimingState {
@@ -46,12 +46,12 @@ index d4d4df8..aa4505d 100644
 +    stripped(s.displayVtable)!=stripped(base.displayVtable)){finish();return;}
 + s.flags|=TimingDisplayMatched;
 + if(!take(1,s.display+kTimingSharedOffset,&s.timing,8) || !s.timing ||
-+    !take(2,s.timing,s.data,sizeof(s.data))){finish();return;}
++    !take(2,s.timing,s.data,kTimingSharedBytes)){finish();return;}
 + s.flags|=TimingDataRead;
 + if(!take(3,s.display+kTimingSharedOffset,&s.confirmTiming,8) ||
 +    s.confirmTiming!=s.timing){finish();return;}
 + s.flags|=TimingPointerMatched;
-+ if(!take(4,s.timing,s.confirmData,sizeof(s.confirmData))){finish();return;}
++ if(!take(4,s.timing,s.confirmData,kTimingSharedBytes)){finish();return;}
 + if(!std::memcmp(s.data,s.confirmData,sizeof(s.data)))s.flags|=TimingFieldsMatched;
 + finish();
 +}
