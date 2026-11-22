@@ -15,7 +15,8 @@ enum NezhaCameraNativeMemoryStep {
     NezhaMemoryPool, NezhaMemoryTableAllocate, NezhaMemoryTableSpans,
     NezhaMemoryFrameAllocate, NezhaMemoryFramePublish, NezhaMemoryRanges,
     NezhaMemoryBuildTables, NezhaMemoryTablePublish, NezhaMemoryHold,
-    NezhaMemoryRetire, NezhaMemoryRelease, NezhaMemoryReady
+    NezhaMemoryRetire, NezhaMemoryRelease, NezhaMemoryReady,
+    NezhaMemoryFrameCacheMode
 };
 
 /* The existing capture result/console reports the first failed adapter
@@ -24,7 +25,7 @@ enum NezhaCameraNativeMemoryStep {
 struct NezhaCameraNativeMemoryFailure {
     uint32_t step, object, status, held;
     uint64_t requested_bytes, spans;
-    bool reused;
+    bool reused, raw_write_combined;
 };
 void nezha_camera_native_memory_failure(struct NezhaCameraNativeMemoryFailure *out);
 
@@ -39,9 +40,12 @@ const ArmSmmu4KConfig *nezha_camera_native_memory_config(const struct NezhaCamer
 
 /* Take device references before installing the context. Once BUF_DONE
  * matches a queued buffer, acquire it before CPU access, and republish
- * it before requeue. The consumer is read-only: publication cleans only
- * the stale-frame marker pages, while acquisition invalidates the whole
- * DMA frame. No user mapping is created here. */
+ * it before requeue. RAW pages take the existing owner's write-combined
+ * attribute before their first device reference. The owner still checks
+ * every acquire/publication; explicit device barriers order this sole,
+ * uncached mapping without a per-frame cache-line walk. The four stale
+ * frame marker pages retain their publication boundaries. Tables keep
+ * their normal cache policy. No user mapping is created here. */
 bool nezha_camera_native_memory_hold(struct NezhaCameraNativeMemory *memory);
 const void *nezha_camera_native_memory_acquire(struct NezhaCameraNativeMemory *memory, unsigned index);
 bool nezha_camera_native_memory_publish(struct NezhaCameraNativeMemory *memory, unsigned index);

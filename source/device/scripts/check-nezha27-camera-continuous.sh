@@ -10,7 +10,8 @@ mkdir -p "$1"
 out=$(cd "$1" && pwd)
 cd "$device"
 shared=${NEZHA_CAMERA_SHARED_SOC:?Set the selected SM8850 owner source path}
-mkdir -p "$out/fixture/IOKit" "$out/fixture/machine" "$out/fixture/sys" "$out/target-fixture"
+mkdir -p "$out/fixture/IOKit" "$out/fixture/machine" "$out/fixture/sys" "$out/fixture/kern" "$out/target-fixture"
+printf '#include <stdint.h>\nextern "C" uint64_t mach_absolute_time(void);\n' > "$out/fixture/kern/clock.h"
 printf 'extern "C" int printf(const char *,...);\n' > "$out/fixture/sys/systm.h"
 printf '#include <stddef.h>\nextern "C" void *memcpy(void *,const void *,size_t);\n' > "$out/target-fixture/string.h"
 printf 'typedef unsigned long vm_offset_t;\ntypedef unsigned long vm_size_t;\ntypedef int IOReturn;\n#define kIOReturnSuccess 0\nextern "C" void IOSleep(unsigned);\nextern "C" void IODelay(unsigned);\n' > "$out/fixture/IOKit/IOLib.h"

@@ -100,6 +100,11 @@ static void complete_controls(void *,NezhaCameraCciStatus status,
  if(stop_at_control)nezha_camera_native_capture_request_stop();
 }
 static uint32_t original_bus_cgc;
+extern "C" uint64_t mach_absolute_time(void)
+{
+    static uint64_t ticks;
+    return ++ticks;
+}
 static NezhaCameraRpmh rpmh{};
 static NezhaCameraDmaPlan plan{};
 static ArmSmmu4KContextConfig context{};

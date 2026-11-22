@@ -12,6 +12,15 @@ constexpr size_t MaxFrame = 15 * 1024 * 1024; // 4096x3072 packed RAW10.
 constexpr uint64_t FirstIova = 0x01000000;
 constexpr uint64_t SecondIova = 0x02000000;
 constexpr uint8_t Sentinel = 0xa5;
+
+void device_barrier()
+{
+#if defined(__aarch64__)
+    __asm__ volatile("dsb sy" ::: "memory");
+#else
+    __atomic_thread_fence(__ATOMIC_SEQ_CST);
+#endif
+}
 }
 
 struct NezhaCameraNativeMemory {
@@ -104,6 +113,19 @@ bool nezha_camera_native_memory_prepare(NezhaCameraNativeMemory **out,
             frame.quarantined() || frame.deviceReferences()) {
             return failed(NezhaMemoryPool, i + 1, kIOReturnNotReady, bytes, frame.spanCount());
         }
+        // RAW has one kernel mapping and no user/physical-aperture reader.
+        // The existing owner cleans its old lines and changes all tracked
+        // CPU mappings while no device reference exists. Its per-frame
+        // acquire/publication checks then need no 15 MiB cache-line walk.
+        if (!reused) {
+            operation = frame.makeWriteCombined();
+            if (operation != kIOReturnSuccess) {
+                return failed(NezhaMemoryFrameCacheMode, i + 1, operation, bytes, frame.spanCount());
+            }
+        }
+        if (!frame.writeCombined()) {
+            return failed(NezhaMemoryFrameCacheMode, i + 1, kIOReturnNotReady, bytes, frame.spanCount());
+        }
         memset(frame.mapping(), Sentinel, bytes);
         operation = frame.publishForDevice(0, bytes, true);
         if (operation != kIOReturnSuccess) {
@@ -145,8 +167,10 @@ bool nezha_camera_native_memory_prepare(NezhaCameraNativeMemory **out,
         return failed(NezhaMemoryTablePublish, 0, operation, memory->plan.tables.table_pages * Page,
             memory->tables.spanCount());
     }
+    device_barrier();
     memory->ready = true;
     memory->pool_ready = true;
+    memory_failure.raw_write_combined = true;
     return true;
 }
 
@@ -182,9 +206,11 @@ const void *nezha_camera_native_memory_acquire(NezhaCameraNativeMemory *memory, 
         return nullptr;
     }
     auto &frame = memory->frame[index];
+    if (!frame.writeCombined()) return nullptr;
     if (frame.acquireDeviceWrites(0, memory->frame_bytes, NativeAdrenoPhaseComplete) != kIOReturnSuccess) {
         return nullptr;
     }
+    device_barrier();
     memory->cpu |= 1u << index;
     return frame.mapping();
 }
@@ -194,10 +220,10 @@ bool nezha_camera_native_memory_publish(NezhaCameraNativeMemory *memory, unsigne
     if (!memory || !memory->ready || index > 1 || (memory->cpu & (1u << index)) == 0) {
         return false;
     }
-    /* Acquisition invalidates the entire completed frame before any CPU
-     * read. After its const consumer finishes, only marker pages are dirty.
-     * Keep their positive clean/invalidate before hardware requeue; avoid
-     * maintaining 15 MiB of unchanged CPU lines at every 30fps boundary. */
+    if (!memory->frame[index].writeCombined()) return false;
+    /* Keep the same four marker ranges and owner checks. The exclusive
+     * RAW mapping is uncached; the barrier below completes marker stores
+     * before the caller publishes an address to the VFE write master. */
     for (unsigned row = 0; row < NezhaCameraFrameMarkerRows; ++row) {
         const size_t marker = nezha_camera_frame_marker_offset(&memory->layout, row);
         const size_t begin = marker & ~(Page - 1);
@@ -207,6 +233,7 @@ bool nezha_camera_native_memory_publish(NezhaCameraNativeMemory *memory, unsigne
             return false;
         }
     }
+    device_barrier();
     memory->cpu &= ~(1u << index);
     return true;
 }

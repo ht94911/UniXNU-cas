@@ -74,6 +74,15 @@ enum NezhaCameraNativeCleanupStep {
     NezhaNativeRestorePins, NezhaNativeReleaseResources, NezhaNativeCleanupDone,
 };
 
+/* Bounded wall-clock maxima from the existing worker/callback path.
+ * Completion ticks come from the IRQ owner; no additional IRQ or MMIO
+ * reads are performed. Overlapping waits are not summed as CPU work. */
+struct NezhaCameraNativeFrameWork {
+    uint32_t deliveries, returns;
+    uint64_t queue_max, acquire_max, delivery_max, publish_max;
+    uint64_t completion_to_publish_max, control_write_max, control_read_max;
+};
+
 struct NezhaCameraNativeCaptureResult {
     unsigned step, status;
     enum NezhaCameraNativeCleanupStep cleanup_step;
@@ -113,6 +122,7 @@ struct NezhaCameraNativeCaptureResult {
     uint32_t capture_registers[14];
     uint32_t rpmh_address, rpmh_ack, rpmh_reply;
     struct NezhaCameraNativeMemoryFailure memory_failure;
+    struct NezhaCameraNativeFrameWork work;
 };
 
 /* One normal capture worker. Diagnostic mode stops at 20 frames; a bound

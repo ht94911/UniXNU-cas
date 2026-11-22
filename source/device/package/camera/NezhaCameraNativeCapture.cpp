@@ -8,6 +8,7 @@
 #include "NezhaCameraNativeSmmu.h"
 
 #include <IOKit/IOLib.h>
+#include <kern/clock.h>
 #include <machine/machine_routines.h>
 #include <string.h>
 #include <sys/systm.h>
@@ -44,6 +45,8 @@ struct Capture {
     NezhaCameraFrameStatus control_frame_status{NezhaFramesOk};
     bool used{}, cci_touched{}, dma_touched{}, running{}, cancelled{}, vfe_bus_cgc_owned{};
     unsigned stopped{};
+    uint64_t completed_time{};
+    NezhaCameraNativeFrameWork work{};
 };
 
 Capture state;
@@ -137,14 +140,31 @@ bool restore_vfe_bus(Capture &s)
 uint8_t *frame_acquire(void *cookie, unsigned buffer)
 {
     auto *s = static_cast<Capture *>(cookie);
-    return const_cast<uint8_t *>(static_cast<const uint8_t *>(nezha_camera_native_memory_acquire(s->memory, buffer)));
+    const uint64_t before = mach_absolute_time();
+    if (s->completed_time && before >= s->completed_time && before - s->completed_time > s->work.queue_max)
+        s->work.queue_max = before - s->completed_time;
+    auto *frame = const_cast<uint8_t *>(static_cast<const uint8_t *>(nezha_camera_native_memory_acquire(s->memory, buffer)));
+    const uint64_t after = mach_absolute_time();
+    if (after >= before && after - before > s->work.acquire_max) s->work.acquire_max = after - before;
+    return frame;
 }
 
 bool frame_return(void *cookie, unsigned buffer, bool requeue)
 {
     auto *s = static_cast<Capture *>(cookie);
-    return requeue ? nezha_camera_native_memory_publish(s->memory, buffer) :
+    const uint64_t before = mach_absolute_time();
+    const bool returned = requeue ? nezha_camera_native_memory_publish(s->memory, buffer) :
         nezha_camera_native_memory_drop(s->memory, buffer);
+    const uint64_t after = mach_absolute_time();
+    if (after >= before && after - before > s->work.publish_max) s->work.publish_max = after - before;
+    if (returned) {
+        ++s->work.returns;
+        if (s->completed_time && after >= s->completed_time &&
+            after - s->completed_time > s->work.completion_to_publish_max)
+            s->work.completion_to_publish_max = after - s->completed_time;
+    }
+    s->completed_time = 0;
+    return returned;
 }
 
 uint32_t frame_fault(void *cookie)
@@ -155,7 +175,10 @@ uint32_t frame_fault(void *cookie)
 
 bool frame_next(void *cookie, NezhaCamera1080Events *event)
 {
-    return nezha_camera_native_irq_next(static_cast<Capture *>(cookie)->irq, event);
+    auto *s = static_cast<Capture *>(cookie);
+    const bool next = nezha_camera_native_irq_next(s->irq, event);
+    if (next && event->buffer_done) s->completed_time = event->completed_time;
+    return next;
 }
 
 bool client_continuing(void *cookie)
@@ -169,7 +192,12 @@ bool client_deliver(void *cookie, const NezhaCameraRaw10Layout *layout, const ui
     size_t bytes, uint64_t ticks, uint32_t sequence)
 {
     const auto *request = static_cast<const NezhaCameraNativeCaptureRequest *>(cookie);
-    return request->consumer->deliver(request->consumer->context, layout, frame, bytes, ticks, sequence);
+    const uint64_t before = mach_absolute_time();
+    const bool delivered = request->consumer->deliver(request->consumer->context, layout, frame, bytes, ticks, sequence);
+    const uint64_t after = mach_absolute_time();
+    if (after >= before && after - before > state.work.delivery_max) state.work.delivery_max = after - before;
+    if (delivered) ++state.work.deliveries;
+    return delivered;
 }
 
 void wait_controls(void *, unsigned milliseconds)
@@ -345,6 +373,8 @@ bool nezha_camera_native_capture(const NezhaCameraNativeCaptureRequest *request,
     state.used = true;
     state.stopped = 0;
     state.cancelled = false;
+    state.completed_time = 0;
+    state.work = {};
     if (!checkpoint(*request, *result, NezhaNativeSharedOwners, physical[Camcc], physical[Csid], physical[Vfe])) {
         if (state.cancelled) {
             state.used = false;
@@ -495,7 +525,8 @@ bool nezha_camera_native_capture(const NezhaCameraNativeCaptureRequest *request,
             result->status = result->memory_failure.status;
             break;
         }
-        printf("NEZHA CAMERA: native memory ready reused=%u\n", (unsigned)result->memory_failure.reused);
+        printf("NEZHA CAMERA: native memory ready reused=%u raw-write-combined=%u\n",
+            (unsigned)result->memory_failure.reused, (unsigned)result->memory_failure.raw_write_combined);
         result->status = nezha_camera_native_smmu_bind(state.smmu, state.memory);
         if (result->status != ArmSmmu4KSuccess) break;
         state.capture_io.smmu = nezha_camera_native_smmu_io(state.smmu);
@@ -568,8 +599,12 @@ bool nezha_camera_native_capture(const NezhaCameraNativeCaptureRequest *request,
                     if (!result->control_readback_verified ||
                         (control_waiting && state.capture.completed_frames>=read_controls_after)) {
                         if (result->control_readback_verified || !result->control_readback_before_stream) {
+                            const uint64_t before = mach_absolute_time();
                             result->control_readback_status=nezha_camera_ovx10500u_read_controls(
                                 &state.reg[Cci],&result->control_readback);
+                            const uint64_t after = mach_absolute_time();
+                            if (after >= before && after - before > state.work.control_read_max)
+                                state.work.control_read_max = after - before;
                         }
                         result->control_readback_after=state.capture.completed_frames;
                         if (result->control_readback_status!=NezhaCciOk) {
@@ -599,8 +634,12 @@ bool nezha_camera_native_capture(const NezhaCameraNativeCaptureRequest *request,
                     if (request->controls->take(request->controls->context, &controls)) {
                         result->control_attempted = true;
                         result->control_completed_before = state.capture.completed_frames;
+                        const uint64_t before = mach_absolute_time();
                         result->control_status = nezha_camera_ovx10500u_apply_controls(
                             &state.reg[Cci], &controls, &result->control_result);
+                        const uint64_t after = mach_absolute_time();
+                        if (after >= before && after - before > state.work.control_write_max)
+                            state.work.control_write_max = after - before;
                         request->controls->complete(request->controls->context,
                             result->control_status, &result->control_result, result->control_completed_before);
                         if (result->control_status != NezhaCciOk) {
@@ -657,6 +696,7 @@ bool nezha_camera_native_capture(const NezhaCameraNativeCaptureRequest *request,
     result->rpmh_reply = state.rpmh->last_reply;
     if (state.capture.stage >= NezhaCaptureIdentity && !pattern) result->cci = state.capture.sensor_transfer;
     result->cleaned = cleanup(state, *result, gpio, mclk, rails, profile, okay ? request->raw_sample : nullptr);
+    result->work = state.work;
     if (!result->cleaned && result->cleanup_step == NezhaNativeReleaseMemory)
         nezha_camera_native_memory_failure(&result->memory_failure);
     result->passed = (okay || state.cancelled) && result->cleaned && !result->irq_fault && !result->frames.fault &&

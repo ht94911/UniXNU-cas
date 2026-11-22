@@ -197,6 +197,12 @@ static void worker(void *argument,wait_result_t wait_result)
         result.irq_fault,result.smmu_fault.status,(unsigned)result.cleaned,(unsigned)result.cleanup_step,
         (unsigned)result.irq_stopped,(unsigned)result.resources.cleanup_step,result.resources.cleanup_status,
         result.control_serviced_frames);
+    const struct NezhaCameraNativeFrameWork *work=&result.work;
+    printf("NEZHA CAMERA: native service deliveries=%u returns=%u max-ticks queue=%llu acquire=%llu delivery=%llu publish=%llu completed-to-publish=%llu control-write=%llu control-read=%llu\n",
+        work->deliveries,work->returns,(unsigned long long)work->queue_max,
+        (unsigned long long)work->acquire_max,(unsigned long long)work->delivery_max,
+        (unsigned long long)work->publish_max,(unsigned long long)work->completion_to_publish_max,
+        (unsigned long long)work->control_write_max,(unsigned long long)work->control_read_max);
     if (result.irq_fault) {
         /* The IRQ owner already captured these words before acknowledgement.
          * Report them after teardown; do not read MMIO or log inside the IRQ. */

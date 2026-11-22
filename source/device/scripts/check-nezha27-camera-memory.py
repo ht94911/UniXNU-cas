@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 MODES = (
     "normal", "marker-failure", "table-allocation", "frame0-allocation",
     "frame1-allocation", "hold1-failure", "hold2-failure", "retire-failure",
+    "frame0-cache-mode", "frame1-cache-mode",
 )
 
 

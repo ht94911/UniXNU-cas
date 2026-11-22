@@ -1,7 +1,7 @@
-name: nezha Camera130 initial standby controls on GPU051 - native
+name: nezha Camera131 RAW cache ownership on GPU051 - native
 on:
   push:
-    branches: [codex/ios27-camera130-gpu051-startup-20261123]
+    branches: [codex/ios27-camera131-gpu051-backpressure-20261123]
   workflow_dispatch:
 permissions:
   contents: read

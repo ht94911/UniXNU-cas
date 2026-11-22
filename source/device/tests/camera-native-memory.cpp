@@ -13,6 +13,16 @@ static std::vector<Publication> published;
 static size_t acquired_bytes;
 static unsigned publish_calls,fail_call,allocate_calls,fail_allocate,hold_calls,fail_hold;
 static unsigned retire_calls,fail_retire,release_calls;
+static unsigned cache_mode_calls,fail_cache_mode;
+
+IOReturn NativeAdrenoMemory::makeWriteCombined()
+{
+    assert(prepared_ && mapping_ && !device_references_ && !write_combined_);
+    assert(this!=&memory_storage.tables && bytes_==15728640);
+    ++cache_mode_calls;
+    if(fail_cache_mode && cache_mode_calls==fail_cache_mode)return kIOReturnUnsupported;
+    write_combined_=true;return kIOReturnSuccess;
+}
 
 IOReturn NativeAdrenoMemory::allocate(size_t bytes,unsigned bits,bool,size_t budget)
 {
@@ -35,12 +45,13 @@ IOReturn NativeAdrenoMemory::publishForDevice(size_t begin,size_t bytes,bool wri
 {
     assert(writes || bytes<=32*4096);
     assert(prepared_ && !(begin%4096) && !(bytes%4096) && begin+bytes<=bytes_);
+    assert(this==&memory_storage.tables ? !write_combined_:write_combined_);
     ++publish_calls;
     if(fail_call && publish_calls==fail_call)return kIOReturnNotReady;
     published.push_back({this,begin,bytes});return kIOReturnSuccess;
 }
 IOReturn NativeAdrenoMemory::acquireDeviceWrites(size_t begin,size_t bytes,unsigned)
-{ assert(!begin && bytes==bytes_ && device_references_==1);acquired_bytes=bytes;return kIOReturnSuccess; }
+{ assert(!begin && bytes==bytes_ && device_references_==1 && write_combined_);acquired_bytes=bytes;return kIOReturnSuccess; }
 IOReturn NativeAdrenoMemory::holdForDevice() {
     assert(prepared_ && !device_references_);++hold_calls;
     if(fail_hold && hold_calls==fail_hold)return kIOReturnNotReady;
@@ -52,7 +63,7 @@ IOReturn NativeAdrenoMemory::retireAfterQuiescence() {
     --device_references_;return kIOReturnSuccess;
 }
 IOReturn NativeAdrenoMemory::release()
-{ assert(!device_references_);++release_calls;std::free(mapping_);delete[]spans_;mapping_=nullptr;spans_=nullptr;bytes_=span_count_=0;prepared_=borrowed_=false;return kIOReturnSuccess; }
+{ assert(!device_references_);++release_calls;std::free(mapping_);delete[]spans_;mapping_=nullptr;spans_=nullptr;bytes_=span_count_=0;prepared_=borrowed_=write_combined_=false;return kIOReturnSuccess; }
 static uint64_t translated_page(uint64_t iova)
 {
     const auto *tables=(const uint64_t *)memory_storage.tables.mapping();
@@ -106,6 +117,22 @@ int main(int argc,char **argv)
     if(!strcmp(mode,"table-allocation"))fail_allocate=1;
     if(!strcmp(mode,"frame0-allocation"))fail_allocate=2;
     if(!strcmp(mode,"frame1-allocation"))fail_allocate=3;
+    if(!strcmp(mode,"frame0-cache-mode"))fail_cache_mode=1;
+    if(!strcmp(mode,"frame1-cache-mode"))fail_cache_mode=2;
+    if(fail_cache_mode) {
+        assert(!nezha_camera_native_memory_prepare(&owner,40,4096,3072));
+        failure_is(NezhaMemoryFrameCacheMode,fail_cache_mode,kIOReturnUnsupported);
+        assert(owner && !memory_storage.pool_ready && !memory_storage.held);
+        assert(nezha_camera_native_memory_release(&owner,true) && !owner);
+        assert(release_calls==fail_cache_mode+1);
+        fail_cache_mode=0;
+        assert(nezha_camera_native_memory_prepare(&owner,40,4096,3072));
+        assert(nezha_camera_native_memory_hold(owner));
+        assert(nezha_camera_native_memory_release(&owner,true));
+        dispose_idle_pool();
+        puts("A refused RAW cache-mode transition preserves the actual error and frees only unreferenced backing; next preparation succeeds");
+        return 0;
+    }
     if(fail_allocate) {
         assert(!nezha_camera_native_memory_prepare(&owner,40,4096,3072));
         failure_is(fail_allocate==1 ? NezhaMemoryTableAllocate:NezhaMemoryFrameAllocate,
@@ -124,6 +151,9 @@ int main(int argc,char **argv)
     assert(nezha_camera_native_memory_prepare(&owner,40,4096,3072));
     check_tables();
     assert(allocate_calls==3);
+    assert(cache_mode_calls==2 && memory_failure.raw_write_combined);
+    assert(!memory_storage.tables.writeCombined());
+    for(const auto &raw:memory_storage.frame)assert(raw.writeCombined());
     if(!strcmp(mode,"hold1-failure"))fail_hold=2;
     if(!strcmp(mode,"hold2-failure"))fail_hold=3;
     if(fail_hold) {
@@ -180,6 +210,7 @@ int main(int argc,char **argv)
     for(unsigned session=0;session<4;++session) {
         assert(nezha_camera_native_memory_prepare(&owner,40,4096,3072));
         assert(memory_failure.reused && !memory_failure.step && allocate_calls==3);
+        assert(memory_failure.raw_write_combined && cache_mode_calls==2);
         check_tables();
         assert(memory_storage.tables.mapping()==saved_tables);
         for(unsigned i=0;i<2;++i) {
@@ -193,5 +224,5 @@ int main(int argc,char **argv)
         assert(nezha_camera_native_memory_release(&owner,true) && !owner && !release_calls);
     }
     dispose_idle_pool();
-    puts("Actual camera adapter: full RAW invalidation and four marker publications retained; four detached reopens reuse the same three allocations even when further allocations fail; uncertain teardown retains ownership");
+    puts("Actual camera adapter: both exclusive RAW mappings become write-combined before device holds; tables stay cached and four marker publications retain ownership checks; four detached reopens keep the same mappings and cache mode under allocation refusal; uncertain teardown retains references");
 }
