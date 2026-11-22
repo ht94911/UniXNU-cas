@@ -1,7 +1,7 @@
-name: nezha GPU075 original UIKit update trace - native060
+name: nezha GPU075 original update trace - native061
 on:
   push:
-    branches: [codex/ios27-gpu75-ui-update-native060-20261122]
+    branches: [codex/ios27-gpu75-trace-priority-native061-20261122]
   workflow_dispatch:
 permissions:
   contents: read

@@ -44,7 +44,6 @@
 #include <sys/errno.h>
 #include <kern/clock.h>
 #include <kern/thread.h>
-#include <kern/sched.h>
 #include <kern/sched_prim.h>
 #include <machine/machine_routines.h>
 #include <pexpert/pexpert.h>
@@ -1344,6 +1343,9 @@ static void nz_publish_raw(void) {
     nzi_time(d,R_TICKLO,mach_absolute_time());nzi_put(d,R_STAGE,(uint32_t)nezha_touch_stage);nzi_put(d,R_THRESHOLD,pt.thp_thr);nzi_end(d,stamp);
 }
 #include "InputChainTrace.h"
+// XNU12377's MINPRI_KERNEL. This standalone driver uses the selected kernel's
+// exported headers, so it does not import the full private scheduler header.
+enum { NZ_TRACE_PRIORITY = 80 };
 
 static void nz_trace_thread(void *arg,wait_result_t result) {
     (void)arg;(void)result;
@@ -1351,7 +1353,7 @@ static void nz_trace_thread(void *arg,wait_result_t result) {
     nanoseconds_to_absolutetime(NSEC_PER_MSEC,&budget_ticks);
     nanoseconds_to_absolutetime(NSEC_PER_SEC,&summary_ticks);
     printf("NEZHA INPUT FLOW PROFILE: ca_details=%u batch=%u period_ms=50 budget_ns=1000000 priority=%d\n",
-        __atomic_load_n(&nezha_chain_ca_details,__ATOMIC_RELAXED),NEZHA_CHAIN_FLUSH_MAX,MINPRI_KERNEL);
+        __atomic_load_n(&nezha_chain_ca_details,__ATOMIC_RELAXED),NEZHA_CHAIN_FLUSH_MAX,NZ_TRACE_PRIORITY);
     for(;;) {
         const uint64_t now=mach_absolute_time();
         if(now>=next_summary) {
@@ -2144,7 +2146,7 @@ nezha_input_start(void)
 	unsigned ca_details=0;
 	(void)PE_parse_boot_argn("nezha-ca-detail",&ca_details,sizeof(ca_details));
 	__atomic_store_n(&nezha_chain_ca_details,ca_details,__ATOMIC_RELAXED);
-	if(!trace_started){thread_t observer;if(kernel_thread_start_priority(nz_trace_thread,NULL,MINPRI_KERNEL,&observer)==KERN_SUCCESS){trace_started=true;thread_deallocate(observer);}}
+	if(!trace_started){thread_t observer;if(kernel_thread_start_priority(nz_trace_thread,NULL,NZ_TRACE_PRIORITY,&observer)==KERN_SUCCESS){trace_started=true;thread_deallocate(observer);}}
 	native_touch_stage_req = 1;
 	nz_row();
 	nezha_keys_init();

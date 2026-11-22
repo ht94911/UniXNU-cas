@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "GPU075 combined corrected existing trace: minimum kernel log priority header,256record/1ms-soft-budget50ms drains and optional per-context detail; original UIKit scheduled-begin/main/done event IDs; original ring/clock/input/GPU/VM/renderer retained; no new trace facility or GUI update request.",
+  "purpose": "GPU075 final correction: pinned XNU12377 observer priority80 without incompatible private sched.h; preserve exact Native060 input trace profiles, original UIKit phase IDs, FIFO and timing, GPU/HID/VM/render and all cumulative inputs; no new trace facility.",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -393,7 +393,7 @@
     "source/device/package/nezha27-input/NezhaAA27Input.h": "d112cd0663fc3fb84dc6be506fe4efac4ede748d541b48f2cc9c3a25852829a2",
     "source/device/package/nezha27-input/NezhaAA27InputUsb.h": "518bef1aed0bff912d8c97ca036b6c9357a1c49164b074ce8d35fa1861542aa7",
     "source/device/package/nezha27-input/NezhaHidPacing.h": "2be615567252073a62587b41fa7f646f6d9bda4dbae2523cceef14caa300a5a9",
-    "source/device/package/nezha27-input/NezhaInput.c": "0d0956facb9aa1a07b82a8fb81a03ff4f450e29cb90fb32b6f617f4723e591c6",
+    "source/device/package/nezha27-input/NezhaInput.c": "752ded67fe8216e30ef1581b9f22680c63a3b5227551f626c5690638ea88fa37",
     "source/device/package/nezha27-input/NezhaInput.h": "b1e34b185e3159f2d8eb565cb9e66edbb1e58c0ba087c28e4da55dbf0c8b74f3",
     "source/device/package/nezha27-input/NezhaInputTelemetry.h": "5483fb9b489a0f7517e26102f20cdfa050b7f61214f2a3495b95820e122e0022",
     "source/device/package/nezha27-input/NezhaTouchEdge.h": "d132e77508b3b01d4ac01a13ec8617881ebe816fdd608461de1d7dd34c4b31dd",
@@ -511,7 +511,7 @@
     "source/device/docs/GPU052-RESOURCE-ENUMERATION.md": "f8c8e93b0483e8babf441616f2468f83c38462567358109fc6cceb9eca680887",
     "source/device/patches/xnu-12377/nezha-native-4k-large-ram.patch": "6c1e566d009bf384291487f9d5e242514c78a000ea39995fdae9cacfd816e32d",
     "source/adreno/tests/check_submit_busy_log.py": "945f7616e47ceb6c125c4b0f1e177e437d032ac85095326ea2d17b4264491857",
-    ".github/workflows/nezha-ios27-native.yml": "739bf49e14ef80fc153de5c56f77c1198eade459a39ecb67d7bc3661a58c8f53",
+    ".github/workflows/nezha-ios27-native.yml": "620a52edac5e88cadd9f9c33a343534779366c96125a76fa257b2f41c5e3e5f1",
     "source/device/scripts/check-cpu27-firmware-levels.py": "72fc65996664b51733ea45360fb91ceb9a1de561ef2bb63ce0e09b394f149c24",
     "source/device/scripts/check-gpu27-firmware-levels.py": "9fc0331e6c344a665e875ac7f2855952618e28465c6856f776d1a05c587d13a3",
     "source/device/scripts/check-ui-main-sampler.py": "da47d09fc97dc79d6f2126c9a8e02dd508508004289c05938b51362cdd8e5eb8",
@@ -1070,8 +1070,8 @@
     "hardware_verified": false
   },
   "gpu075_trace": {
-    "device_source_head": "756927f5727324fb865fd59657e8893108bb8484",
-    "device_source_branch": "codex/gpu75-ui-update-events",
+    "device_source_head": "1fd8b5d9e1993f9bccace0042065214fe5078dde",
+    "device_source_branch": "codex/gpu75-trace-compile-fix",
     "default_profile": "critical",
     "detail_boot_argument": "nezha-ca-detail=1",
     "record_layout_unchanged": true,
@@ -1099,9 +1099,16 @@
     "UI_flag_cases_each_profile": 12,
     "UI_flag_cases_both_profiles": 24,
     "missing_sched_header_repaired": true,
-    "header_is_actual_kern_sched_h": true,
+    "header_is_actual_kern_sched_h": false,
     "packaging_typefilter": "trace_typefilter=S0x2b8a,S0x2b28,S0x0523,S0x31ca,S0x14ca,S0x2b87",
     "native_only_CI_board_unchanged": true,
-    "packaging_board_separate": true
+    "packaging_board_separate": true,
+    "priority_value": 80,
+    "private_sched_header_removed": true,
+    "trace_tests_inherited_byte_identical": true,
+    "native059_060_failures_preserved": true,
+    "source_scope_this_fix": [
+      "package/nezha27-input/NezhaInput.c"
+    ]
   }
 }
