@@ -1,0 +1,144 @@
+diff --git a/NativeDisplayWaitState.h b/NativeDisplayWaitState.h
+index d4d4df8..aa4505d 100644
+--- a/NativeDisplayWaitState.h
++++ b/NativeDisplayWaitState.h
+@@ -146,4 +146,54 @@ template<class Read,class Clock> inline void capture(State &s,int64_t slide,Read
+     !std::memcmp(s.confirmTimer,s.timerTail+(0xd0-kTimerTailOffset)/8,sizeof(s.confirmTimer)))s.flags|=RepeatedFieldsMatched;
+  finish(Complete);
+ }
++// IOMFBDisplay::timing_server_frame_interval in the same verified image reads
++// its timing shared memory at+0x6700. That state is outside the server prefix
++// sampled above. Keep the original808-byte record and reader unchanged.
++constexpr unsigned kTimingSharedOffset=0x6700,kTimingSharedBytes=0x58;
++constexpr unsigned kTimingRecordKind=34;
++enum : uint32_t { TimingDisplayMatched=1,TimingDataRead=2,TimingPointerMatched=4,
++                  TimingFieldsMatched=8,TimingClockRecorded=16 };
++struct TimingState {
++ uint32_t version=1,bytes=280;
++ uint64_t id=0,display=0,displayVtable=0,beganUs=0,endedUs=0;
++ uint64_t beganTicks=0,endedTicks=0,timing=0,confirmTiming=0;
++ int32_t reads[5]={-1,-1,-1,-1,-1};
++ uint32_t flags=0;
++ uint64_t data[11]{},confirmData[11]{};
++};
++static_assert(sizeof(TimingState)==280,"display timing wire size");
++inline bool primaryDisplayLayoutMatches(uint64_t p,int64_t slide) {
++ const uint64_t address=stripped(p);
++ return address==uint64_t(int64_t(kDisplayVtable)+slide) ||
++        address==uint64_t(int64_t(kInternalDisplayVtable)+slide);
++}
++// The caller retains the same display object used by capture. Preserve raw
++// current/fallback interval words and the original expiry clock; decoding
++// chooses a branch only when the reads and clock bracket support it.
++// These reads never change a timer, frame request, or rendering state.
++template<class Read,class Clock,class TickClock> inline void captureTiming(
++ TimingState &s,const State &base,int64_t slide,Read read,Clock now,TickClock ticks) {
++ s.id=base.id;s.display=base.display;s.beganUs=now();s.beganTicks=ticks();
++ auto finish=[&]{s.endedTicks=ticks();s.endedUs=now();
++  if(s.endedTicks>=s.beganTicks)s.flags|=TimingClockRecorded;};
++ auto take=[&](unsigned slot,uint64_t address,void *out,unsigned bytes){
++  if(!address || address+bytes<address){s.reads[slot]=-2;return false;}
++  s.reads[slot]=read(address,out,bytes);return s.reads[slot]==0;
++ };
++ if(!(base.flags&LayoutMatched) || !base.display ||
++    !primaryDisplayLayoutMatches(base.displayVtable,slide)){finish();return;}
++ if(!take(0,s.display,&s.displayVtable,8) ||
++    stripped(s.displayVtable)!=stripped(base.displayVtable)){finish();return;}
++ s.flags|=TimingDisplayMatched;
++ if(!take(1,s.display+kTimingSharedOffset,&s.timing,8) || !s.timing ||
++    !take(2,s.timing,s.data,sizeof(s.data))){finish();return;}
++ s.flags|=TimingDataRead;
++ if(!take(3,s.display+kTimingSharedOffset,&s.confirmTiming,8) ||
++    s.confirmTiming!=s.timing){finish();return;}
++ s.flags|=TimingPointerMatched;
++ if(!take(4,s.timing,s.confirmData,sizeof(s.confirmData))){finish();return;}
++ if(!std::memcmp(s.data,s.confirmData,sizeof(s.data)))s.flags|=TimingFieldsMatched;
++ finish();
++}
++
+ }
+diff --git a/NativeFrameObservers.inc b/NativeFrameObservers.inc
+index 5f57622..dade66d 100644
+--- a/NativeFrameObservers.inc
++++ b/NativeFrameObservers.inc
+@@ -125,6 +125,13 @@ static void traceDisplayObserver(uint64_t sampleId,uint64_t copy) {
+  state.reads[9]=gDisplayDiscovery.status;
+  if(gRenderWaitCopyUs.load(std::memory_order_acquire)==copy)state.flags|=nbdisplaywait::SameCopyAtEnd;
+  traceWaitBytes(29,sampleId,&state,sizeof(state));
++ if((state.flags&nbdisplaywait::LayoutMatched) &&
++    nbdisplaywait::primaryDisplayLayoutMatches(state.displayVtable,gObservedQuartzSlide)) {
++  nbdisplaywait::TimingState timing{};
++  nbdisplaywait::captureTiming(timing,state,gObservedQuartzSlide,readObserverMemory,nowUs,
++   []{return mach_absolute_time();});
++  traceWaitBytes(nbdisplaywait::kTimingRecordKind,sampleId,&timing,sizeof(timing));
++ }
+ }
+ static void startClientWaitSampler() {
+  if(!clientWaitOn())return;
+diff --git a/tools/check-display-preference.py b/tools/check-display-preference.py
+index ae7b5cf..c5cc87a 100644
+--- a/tools/check-display-preference.py
++++ b/tools/check-display-preference.py
+@@ -86,6 +86,54 @@ int main(){unsigned cases=0;
+  reset(nbdisplaywait::kInternalDisplayVtable,false);auto vsync=take();vsync.serverTail[4]=0x123000;
+  assert(nbdisplaywait::displayPreference(vsync,0)==7);++cases;
+  printf("PASS %u actual display reader/preference cases; wireless fallback loses to verified internal timer\n",cases);
++
++ unsigned timingCases=0;
++ auto timingMemory=[] {
++  reset(nbdisplaywait::kInternalDisplayVtable,false);
++  nbdisplaywait::State base=take();base.id=77;
++  const uint64_t shared=0x10000;
++  put(base.display+nbdisplaywait::kTimingSharedOffset,shared);
++  uint64_t words[11]{};words[0]=1;words[6]=uint64_t(2)<<32;words[7]=8;
++  memory[shared]=std::vector<uint8_t>((uint8_t *)words,(uint8_t *)words+sizeof(words));
++  return base;
++ };
++ auto timingSample=[](const nbdisplaywait::State &base,auto reader) {
++  uint64_t absolute=1000;
++  nbdisplaywait::TimingState t{};
++  nbdisplaywait::captureTiming(t,base,0,reader,[]{return ++ticks;},[&]{return absolute++;});
++  return t;
++ };
++ auto base=timingMemory();auto t=timingSample(base,read);
++ assert(t.id==77 && t.flags==31 && t.reads[4]==0 && t.timing==0x10000);
++ assert(t.data[6]==uint64_t(2)<<32 && t.data[7]==8 && t.beganTicks<=t.endedTicks);++timingCases;
++ base=timingMemory();put(base.display+nbdisplaywait::kTimingSharedOffset,uint64_t(0));
++ t=timingSample(base,read);assert(t.timing==0 && !(t.flags&nbdisplaywait::TimingDataRead) && t.reads[2]==-1);++timingCases;
++ base=timingMemory();put(base.display,nbdisplaywait::kExternalDisplayVtable);
++ t=timingSample(base,read);assert(!(t.flags&nbdisplaywait::TimingDisplayMatched) && t.reads[1]==-1);++timingCases;
++ base=timingMemory();base.displayVtable=nbdisplaywait::kWirelessDisplayVtable;
++ unsigned oldReads=readCount;t=timingSample(base,read);
++ assert(readCount==oldReads && !(t.flags&nbdisplaywait::TimingDataRead));++timingCases;
++ base=timingMemory();t=timingSample(base,[](uint64_t at,void *out,unsigned bytes){
++  return at==0x10000?5:read(at,out,bytes);});
++ assert(t.reads[2]==5 && !(t.flags&nbdisplaywait::TimingDataRead));++timingCases;
++ base=timingMemory();unsigned pointerReads=0;
++ t=timingSample(base,[&](uint64_t at,void *out,unsigned bytes){
++  if(at==base.display+nbdisplaywait::kTimingSharedOffset && ++pointerReads==2){uint64_t other=0x11000;std::memcpy(out,&other,8);return 0;}
++  return read(at,out,bytes);});
++ assert(t.timing!=t.confirmTiming && !(t.flags&nbdisplaywait::TimingPointerMatched) && t.reads[4]==-1);++timingCases;
++ base=timingMemory();unsigned dataReads=0;
++ t=timingSample(base,[&](uint64_t at,void *out,unsigned bytes){
++  int result=read(at,out,bytes);
++  if(at==0x10000 && ++dataReads==2)((uint64_t *)out)[6]=uint64_t(4)<<32;
++  return result;});
++ assert((t.flags&nbdisplaywait::TimingPointerMatched) && !(t.flags&nbdisplaywait::TimingFieldsMatched));++timingCases;
++ base=timingMemory();uint64_t clockCalls=0;t={};
++ nbdisplaywait::captureTiming(t,base,0,read,[]{return ++ticks;},[&]{return clockCalls++?999ULL:1000ULL;});
++ assert(t.beganTicks>t.endedTicks && !(t.flags&nbdisplaywait::TimingClockRecorded));++timingCases;
++ base=timingMemory();((uint64_t *)memory[0x10000].data())[0]=2;
++ t=timingSample(base,read);assert(t.flags==31 && (t.data[0]&255)==2);++timingCases;
++ assert(timingCases==9);
++ printf("PASS %u actual timing-reader cases; rejected data is not an interval or a frame rate\n",timingCases);
+ }
+ '''
+ cpp = args.out / 'display.cpp'
+@@ -100,6 +148,7 @@ run = subprocess.run([str(binary)], capture_output=True, text=True, timeout=30)
+ (args.out / 'run.log').write_text(run.stdout + run.stderr)
+ assert run.returncode == 0, run.stdout + run.stderr
+ report = dict(passed=True, actual_reader_and_preference_executed=True, cases=14,
++              actual_timing_reader_executed=True, timing_cases=9,
+               ASan_UBSan=True, fixture_self_memory=True, command=command, output=run.stdout,
+               header_sha256=hashlib.sha256((folder/'NativeDisplayWaitState.h').read_bytes()).hexdigest(),
+               observer_sha256=hashlib.sha256((folder/'NativeFrameObservers.inc').read_bytes()).hexdigest(),
