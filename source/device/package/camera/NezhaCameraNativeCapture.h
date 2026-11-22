@@ -108,6 +108,7 @@ struct NezhaCameraNativeCaptureResult {
     uint32_t stream_start_readback_status, stream_start_readback;
     uint32_t capture_registers[14];
     uint32_t rpmh_address, rpmh_ack, rpmh_reply;
+    struct NezhaCameraNativeMemoryFailure memory_failure;
 };
 
 /* One normal capture worker. Diagnostic mode stops at 20 frames; a bound

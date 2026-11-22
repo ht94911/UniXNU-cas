@@ -10,6 +10,24 @@ extern "C" {
 
 struct NezhaCameraNativeMemory;
 
+enum NezhaCameraNativeMemoryStep {
+    NezhaMemoryIdle, NezhaMemoryArguments, NezhaMemoryLayout,
+    NezhaMemoryPool, NezhaMemoryTableAllocate, NezhaMemoryTableSpans,
+    NezhaMemoryFrameAllocate, NezhaMemoryFramePublish, NezhaMemoryRanges,
+    NezhaMemoryBuildTables, NezhaMemoryTablePublish, NezhaMemoryHold,
+    NezhaMemoryRetire, NezhaMemoryRelease, NezhaMemoryReady
+};
+
+/* The existing capture result/console reports the first failed adapter
+ * operation, including its actual IOReturn or ArmSmmu4KStatus. No DMA or
+ * allocation is performed by this snapshot. */
+struct NezhaCameraNativeMemoryFailure {
+    uint32_t step, object, status, held;
+    uint64_t requested_bytes, spans;
+    bool reused;
+};
+void nezha_camera_native_memory_failure(struct NezhaCameraNativeMemoryFailure *out);
+
 /* Normal camera worker only. The existing NativeAdrenoMemory component
  * owns the wired pages and cache operations; the camera owns its IOVAs.
  * Even an unsuccessful allocation can return an object that still owns
@@ -30,8 +48,11 @@ bool nezha_camera_native_memory_publish(struct NezhaCameraNativeMemory *memory, 
 /* A synchronous CPU reader can drop its claim without requeuing the frame. */
 bool nezha_camera_native_memory_drop(struct NezhaCameraNativeMemory *memory, unsigned index);
 
-/* No backing may be freed before CPAS drain and SMMU detach/TLBSYNC.
- * An uncertain teardown keeps the object and its device references. */
+/* After CPAS drain and SMMU detach/TLBSYNC, retire this session's device
+ * references. A completely prepared pool stays wired for the next session,
+ * bounded to two 15 MiB RAW frames and 128 KiB of tables. Partial preparation
+ * frees only backing whose release succeeds. Uncertain teardown never
+ * recycles the pool or drops its device references. */
 bool nezha_camera_native_memory_release(struct NezhaCameraNativeMemory **memory, bool dma_detached);
 
 #ifdef __cplusplus

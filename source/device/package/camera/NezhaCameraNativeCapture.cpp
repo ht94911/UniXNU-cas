@@ -487,9 +487,15 @@ bool nezha_camera_native_capture(const NezhaCameraNativeCaptureRequest *request,
         result->status = nezha_camera_native_smmu_prepare(&state.smmu, request->slot, request->bank,
             request->asid, &physical_bits);
         if (result->status != ArmSmmu4KSuccess) break;
-        if (!checkpoint(*request, *result, NezhaNativeMemory, physical_bits, width, height) ||
-            !nezha_camera_native_memory_prepare(&state.memory, physical_bits, width, height) ||
-            !nezha_camera_native_memory_hold(state.memory)) break;
+        if (!checkpoint(*request, *result, NezhaNativeMemory, physical_bits, width, height)) break;
+        const bool prepared = nezha_camera_native_memory_prepare(&state.memory, physical_bits, width, height);
+        const bool held = prepared && nezha_camera_native_memory_hold(state.memory);
+        nezha_camera_native_memory_failure(&result->memory_failure);
+        if (!held) {
+            result->status = result->memory_failure.status;
+            break;
+        }
+        printf("NEZHA CAMERA: native memory ready reused=%u\n", (unsigned)result->memory_failure.reused);
         result->status = nezha_camera_native_smmu_bind(state.smmu, state.memory);
         if (result->status != ArmSmmu4KSuccess) break;
         state.capture_io.smmu = nezha_camera_native_smmu_io(state.smmu);
@@ -634,6 +640,8 @@ bool nezha_camera_native_capture(const NezhaCameraNativeCaptureRequest *request,
     result->rpmh_reply = state.rpmh->last_reply;
     if (state.capture.stage >= NezhaCaptureIdentity && !pattern) result->cci = state.capture.sensor_transfer;
     result->cleaned = cleanup(state, *result, gpio, mclk, rails, profile, okay ? request->raw_sample : nullptr);
+    if (!result->cleaned && result->cleanup_step == NezhaNativeReleaseMemory)
+        nezha_camera_native_memory_failure(&result->memory_failure);
     result->passed = (okay || state.cancelled) && result->cleaned && !result->irq_fault && !result->frames.fault &&
         (!request->raw_sample || result->raw_sample_bytes == sample_bytes);
     __atomic_store_n(&state.running, false, __ATOMIC_RELEASE);

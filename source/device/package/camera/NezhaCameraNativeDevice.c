@@ -206,6 +206,10 @@ static void worker(void *argument,wait_result_t wait_result)
             event->consumed_address,(unsigned long long)event->completed_time);
     }
     if (!okay) {
+        const struct NezhaCameraNativeMemoryFailure *memory=&result.memory_failure;
+        printf("NEZHA CAMERA: native memory failure step=%u object=%u status=%#x bytes=%llu spans=%llu held=%#x reused=%u\n",
+            memory->step,memory->object,memory->status,(unsigned long long)memory->requested_bytes,
+            (unsigned long long)memory->spans,memory->held,(unsigned)memory->reused);
         const struct NezhaCameraCpas *cpas=&result.resources.cpas;
         printf("NEZHA CAMERA: native CPAS failure offset=%#x control=%#x status=%#x expected=%#x touched=%u stop-requested=%u drained=%u\n",
             cpas->failed_offset,cpas->failed_control,cpas->failed_status,cpas->failed_expected,

@@ -30,6 +30,7 @@ static bool waiting_control_write;
 static bool stop_wait_controls,fault_wait_controls;
 static unsigned control_pending_frames,control_poll_frames,control_waits;
 static unsigned AF_eeprom_calls,AF_position_calls;
+static bool memory_prepare_failure,memory_hold_failure;
 static NezhaCameraCciStatus AF_eeprom_failure=NezhaCciOk,AF_position_failure=NezhaCciOk;
 extern "C" NezhaCameraCciStatus nezha_camera_eeprom_read_af(const NezhaCameraRegisterIo *io,NezhaCameraEepromAfRead *r)
 {
@@ -152,8 +153,18 @@ extern "C" bool nezha_camera_native_irq_next(NezhaCameraNativeIrq *,NezhaCamera1
 extern "C" ArmSmmu4KStatus nezha_camera_native_smmu_prepare(NezhaCameraNativeSmmu **out,unsigned,unsigned,unsigned,unsigned *bits)
 { assert(!*out && !smmu_active);*out=(NezhaCameraNativeSmmu *)1;*bits=40;smmu_active=true;return ArmSmmu4KSuccess; }
 extern "C" bool nezha_camera_native_memory_prepare(NezhaCameraNativeMemory **out,unsigned,uint32_t,uint32_t)
-{ assert(!*out && !memory_active);*out=(NezhaCameraNativeMemory *)1;memory_active=true;return true; }
-extern "C" bool nezha_camera_native_memory_hold(NezhaCameraNativeMemory *) { return true; }
+{ assert(!*out && !memory_active);*out=(NezhaCameraNativeMemory *)1;memory_active=true;return !memory_prepare_failure; }
+extern "C" bool nezha_camera_native_memory_hold(NezhaCameraNativeMemory *) { return !memory_hold_failure; }
+extern "C" void nezha_camera_native_memory_failure(NezhaCameraNativeMemoryFailure *out)
+{
+ *out={};
+ if(memory_prepare_failure || memory_hold_failure) {
+  out->step=memory_prepare_failure ? NezhaMemoryFrameAllocate:NezhaMemoryHold;
+  out->object=memory_prepare_failure ? 1:2;
+  out->status=0xe00002bd;
+  out->requested_bytes=15728640;
+ }
+}
 extern "C" const NezhaCameraDmaPlan *nezha_camera_native_memory_plan(const NezhaCameraNativeMemory *) { return &plan; }
 extern "C" const ArmSmmu4KConfig *nezha_camera_native_memory_config(const NezhaCameraNativeMemory *) { return nullptr; }
 extern "C" const void *nezha_camera_native_memory_acquire(NezhaCameraNativeMemory *,unsigned) { return camcc; }
@@ -262,6 +273,19 @@ int main(int argc,char **argv)
     request.profile=&profile;request.profile_bytes=NezhaCameraProfileCapacity;
     request.command_database=&database;request.database_bytes=0x20000;request.cci_queue_words=NezhaCameraCciCanoeQueue0Words;request.consumer=&consumer;
     NezhaCameraNativeCaptureResult result{};
+    if(argc==2 && (!strcmp(argv[1],"memory-prepare-failure") || !strcmp(argv[1],"memory-hold-failure"))) {
+        keep_running=true;
+        memory_prepare_failure=!strcmp(argv[1],"memory-prepare-failure");
+        memory_hold_failure=!strcmp(argv[1],"memory-hold-failure");
+        assert(!nezha_camera_native_capture(&request,&result));
+        assert(result.step==NezhaNativeMemory && result.status==0xe00002bd);
+        assert(result.memory_failure.step==(memory_prepare_failure ? NezhaMemoryFrameAllocate:NezhaMemoryHold));
+        assert(result.cleaned && !result.frames.frames && !stream_active && !memory_active && !smmu_active);
+        const unsigned before=starts;
+        assert(!nezha_camera_native_capture(&request,&result) && starts==before);
+        puts("Native memory failure retains actual adapter status, completes pre-DMA teardown and preserves the failed-session gate");
+        return 0;
+    }
     if(argc==2 && !strcmp(argv[1],"drain-failure")) {
         keep_running=true;drain_failure=true;
         assert(!nezha_camera_native_capture(&request,&result));

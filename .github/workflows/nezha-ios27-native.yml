@@ -1,7 +1,7 @@
-name: nezha Camera092E live CCI frames on GPU051 - native
+name: nezha Camera129 fixed RAW pool on GPU051 - native
 on:
   push:
-    branches: [codex/ios27-camera092e-gpu051-live-controls-20261119]
+    branches: [codex/ios27-camera129-gpu051-memory-20261123]
   workflow_dispatch:
 permissions:
   contents: read
@@ -108,6 +108,8 @@ jobs:
         run: python3 "$RUNNER_TEMP/ios27/work/device/tests/check-gpu-bo-phases.py" --native "$RUNNER_TEMP/ios27/work/adreno" --out "$RUNNER_TEMP/ios27/work/bo-phases-host"
       - name: Check the actual guarded waiting-stack sampler
         run: python3 task/source/device/scripts/check-stable-kernel-stack.py
+      - name: Check actual camera pool and scatter-backed SMMU tables
+        run: python3 "$RUNNER_TEMP/ios27/work/device/scripts/check-nezha27-camera-memory.py" --native "$RUNNER_TEMP/ios27/work/adreno" --out "$RUNNER_TEMP/ios27/work/camera-memory-host"
       - name: Qualify compiler and run the standard native build
         env:
           GITHUB_TOKEN: ${{ github.token }}
