@@ -11,6 +11,7 @@ static char operations[16];
 static unsigned operation_count;
 static bool fail_attach, fail_stop;
 static bool dma_locked, fail_lock;
+static enum NezhaCameraCciStatus controls_status;
 
 static bool enter_dma(void *unused)
 {
@@ -65,6 +66,25 @@ enum NezhaCameraCciStatus nezha_camera_ovx10500u_set_stream(
     event(running ? 's' : 'x');
     *transfer = (struct NezhaCameraCciObservation){.needs_recovery = !running && fail_stop};
     return transfer->needs_recovery ? NezhaCciTimeout : NezhaCciOk;
+}
+
+enum NezhaCameraCciStatus nezha_camera_ovx10500u_read_controls(
+    const struct NezhaCameraRegisterIo *cci, struct NezhaCameraOvxControlReadback *sample)
+{
+    assert(cci != NULL && !dma_locked);
+    event('c');
+    *sample = (struct NezhaCameraOvxControlReadback){0};
+    if (controls_status != NezhaCciOk) {
+        sample->bytes_read = 3;
+        sample->transfer.needs_recovery = true;
+        return controls_status;
+    }
+    sample->bytes_read = 11;
+    sample->exposure_lines = 320;
+    sample->frame_lines = 4000;
+    sample->analog_gain_q8 = 544;
+    sample->digital_gain_q10 = 1024;
+    return NezhaCciOk;
 }
 
 ArmSmmu4KStatus nezha_camera_attach_ife_dma(const ArmSmmu4KIo *io,
@@ -211,6 +231,32 @@ int main(void)
     assert(capture.dma.context_active);
     assert(nezha_camera_main_capture_finish_stop(&io, &context, 100, &capture, true));
     assert(strcmp(operations, "imarsqxxtd") == 0 && capture.stage == NezhaCaptureIdle);
+
+    /* The complete mode precedes the real initial register read. A
+     * partial NACK/timeout never arms DMA/RDI or starts the sensor. */
+    struct NezhaCameraStandbyControls initial = {0};
+    struct NezhaCameraMainCaptureIo initial_io = io;
+    initial_io.standby_controls = &initial;
+    for (unsigned error = 0; error < 2; ++error) {
+        controls_status = error ? NezhaCciTimeout : NezhaCciNack;
+        operation_count = 0;
+        assert(!nezha_camera_main_capture_start(&initial_io, &mode, &plan, &context, 2, 1, 100, &capture));
+        assert(strcmp(operations, "imc") == 0 && initial.attempted && initial.status == controls_status);
+        assert(initial.sample.bytes_read == 3 && !capture.rdi_started && !capture.dma.context_active &&
+            !capture.stream_may_be_on && capture.sensor_status == controls_status &&
+            capture.sensor_transfer.needs_recovery);
+        assert(!nezha_camera_main_capture_finish_stop(&initial_io, &context, 100, &capture, false));
+        capture.sensor_transfer.needs_recovery = false;
+        assert(nezha_camera_main_capture_finish_stop(&initial_io, &context, 100, &capture, false));
+    }
+    controls_status = NezhaCciOk;
+    operation_count = 0;
+    assert(nezha_camera_main_capture_start(&initial_io, &mode, &plan, &context, 2, 1, 100, &capture));
+    assert(strcmp(operations, "imcars") == 0 && initial.status == NezhaCciOk &&
+        initial.sample.bytes_read == 11 && initial.sample.exposure_lines == 320);
+    assert(nezha_camera_main_capture_request_stop(&initial_io, &capture));
+    assert(nezha_camera_main_capture_finish_stop(&initial_io, &context, 100, &capture, true));
+    assert(strcmp(operations, "imcarsxtd") == 0 && capture.stage == NezhaCaptureIdle);
 
     operation_count = 0;
     struct NezhaCameraMainCaptureIo pattern_io = io;

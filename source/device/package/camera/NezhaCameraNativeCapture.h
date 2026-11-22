@@ -23,8 +23,11 @@ struct NezhaCameraNativeControlConsumer {
     bool (*take)(void *, struct NezhaCameraOvxControls *);
     void (*complete)(void *, enum NezhaCameraCciStatus,
         const struct NezhaCameraOvxControlResult *, uint32_t completed_before);
+    /* A standby snapshot is qualified at the first completed frame;
+     * subsequent snapshots use the actual completed-frame read boundary.
+     * The frame adapter still waits two more boundaries before publishing. */
     void (*readback)(void *, const struct NezhaCameraOvxControlReadback *,
-        uint32_t sampled_after);
+        uint32_t qualified_after);
 };
 
 struct NezhaCameraNativeCaptureRequest {
@@ -98,6 +101,7 @@ struct NezhaCameraNativeCaptureResult {
     uint32_t control_readback_after;
     enum NezhaCameraCciStatus control_readback_status;
     bool control_readback_verified;
+    bool control_readback_before_stream;
     bool AF_readonly_attempted;
     enum NezhaCameraCciStatus AF_eeprom_status, AF_position_status;
     struct NezhaCameraEepromAfRead AF_eeprom;

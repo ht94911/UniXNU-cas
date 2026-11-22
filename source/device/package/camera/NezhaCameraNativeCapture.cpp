@@ -512,9 +512,22 @@ bool nezha_camera_native_capture(const NezhaCameraNativeCaptureRequest *request,
             NezhaCamera1080Input{NezhaCamera1080Cphy, 0, 3, {0, 1, 2, 0}, state.profile.epd_mode};
         const NezhaCameraMainMode mode{NezhaCameraOvx10500uId, width, height,
             state.writes, writes, input};
-        if (!nezha_camera_main_capture_start(&state.capture_io, &mode,
+        NezhaCameraStandbyControls initial{};
+        state.capture_io.standby_controls = request->controls ? &initial : nullptr;
+        const bool started = nezha_camera_main_capture_start(&state.capture_io, &mode,
             nezha_camera_native_memory_plan(state.memory), nezha_camera_native_smmu_context(state.smmu),
-            request->slot, request->bank, 100, &state.capture)) break;
+            request->slot, request->bank, 100, &state.capture);
+        state.capture_io.standby_controls = nullptr;
+        if (initial.attempted) {
+            result->control_readback = initial.sample;
+            result->control_readback_status = initial.status;
+            result->control_readback_before_stream = true;
+            printf("NEZHA CAMERA: native initial controls before-stream=1 status=%u bytes=%u actual=%u/%u/%u/%u\n",
+                (unsigned)initial.status, initial.sample.bytes_read, initial.sample.exposure_lines,
+                initial.sample.frame_lines, initial.sample.analog_gain_q8, initial.sample.digital_gain_q10);
+            if (initial.status != NezhaCciOk) result->status = NezhaFramesIo;
+        }
+        if (!started) break;
         if (!pattern) {
             uint8_t running = 0;
             NezhaCameraCciObservation observed{};
@@ -546,14 +559,18 @@ bool nezha_camera_native_capture(const NezhaCameraNativeCaptureRequest *request,
                     &state.reg[Csid], &memory, &client, 1000);
                 if (result->status != NezhaFramesOk) break;
                 if (request->controls && client_continuing(client.context)) {
-                    /* Read initial settings after one actual frame. A new
-                     * group gets two complete-frame boundaries to settle,
-                     * following HakiOS's queued-control lifecycle. Report
-                     * register sampling, not a guessed RAW setting epoch. */
+                    /* Initial settings were actually read after loading
+                     * the mode, while DMA and the sensor were stopped.
+                     * Qualify that unchanged snapshot only after a real
+                     * frame; keep the adapter's two additional boundaries.
+                     * A new group still gets two completed-frame boundaries
+                     * before its real register read, as before. */
                     if (!result->control_readback_verified ||
                         (control_waiting && state.capture.completed_frames>=read_controls_after)) {
-                        result->control_readback_status=nezha_camera_ovx10500u_read_controls(
-                            &state.reg[Cci],&result->control_readback);
+                        if (result->control_readback_verified || !result->control_readback_before_stream) {
+                            result->control_readback_status=nezha_camera_ovx10500u_read_controls(
+                                &state.reg[Cci],&result->control_readback);
+                        }
                         result->control_readback_after=state.capture.completed_frames;
                         if (result->control_readback_status!=NezhaCciOk) {
                             state.capture.sensor_transfer=result->control_readback.transfer;

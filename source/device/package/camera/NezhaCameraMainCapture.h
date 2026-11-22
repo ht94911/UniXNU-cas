@@ -10,6 +10,12 @@
 extern "C" {
 #endif
 
+struct NezhaCameraStandbyControls {
+    struct NezhaCameraOvxControlReadback sample;
+    enum NezhaCameraCciStatus status;
+    bool attempted;
+};
+
 struct NezhaCameraMainCaptureIo {
     const struct NezhaCameraRegisterIo *cci;
     const struct NezhaCamera1080Io *camss;
@@ -21,6 +27,10 @@ struct NezhaCameraMainCaptureIo {
     bool (*dma_enter)(void *owner);
     void (*dma_leave)(void *owner);
     const struct NezhaCameraRegisterIo *tpg;
+    /* Optional initial register snapshot after the complete sensor mode
+     * is applied, before the receiver or sensor streams. Later queued
+     * controls keep their actual in-stream readback and frame delay. */
+    struct NezhaCameraStandbyControls *standby_controls;
 };
 
 struct NezhaCameraMainMode {

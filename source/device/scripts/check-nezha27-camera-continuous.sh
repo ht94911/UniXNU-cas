@@ -44,6 +44,9 @@ g++ "${flags[@]}" "$out/NativeCapture-host.cpp" tests/camera-native-capture.cpp 
 "$out/test-capture" AF-position-fail
 "$out/test-capture" memory-prepare-failure
 "$out/test-capture" memory-hold-failure
+"$out/test-capture" initial-controls
+"$out/test-capture" initial-controls-nack
+"$out/test-capture" initial-controls-timeout
 g++ "${flags[@]}" package/camera/NezhaCameraNativeSmmu.cpp tests/camera-native-smmu.cpp -o "$out/test-smmu"
 "$out/test-smmu"
 for unit in NativeCapture NativeSmmu; do

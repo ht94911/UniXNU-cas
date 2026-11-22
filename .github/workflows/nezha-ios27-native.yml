@@ -1,7 +1,7 @@
 name: nezha Camera129 fixed RAW pool on GPU051 - native
 on:
   push:
-    branches: [codex/ios27-camera129b-gpu051-memory-20261123]
+    branches: [codex/ios27-camera130-gpu051-startup-20261123]
   workflow_dispatch:
 permissions:
   contents: read
@@ -108,6 +108,15 @@ jobs:
         run: python3 "$RUNNER_TEMP/ios27/work/device/tests/check-gpu-bo-phases.py" --native "$RUNNER_TEMP/ios27/work/adreno" --out "$RUNNER_TEMP/ios27/work/bo-phases-host"
       - name: Check the actual guarded waiting-stack sampler
         run: python3 task/source/device/scripts/check-stable-kernel-stack.py
+      - name: Check initial control sampling before DMA and sensor streaming
+        run: |
+          set -euo pipefail
+          src="$RUNNER_TEMP/ios27/work/device"
+          out="$RUNNER_TEMP/ios27/work/camera-startup-host"
+          mkdir -p "$out"
+          clang -std=c11 -Wall -Wextra -Werror -g -fsanitize=address,undefined -fno-sanitize-recover=all -I "$src/package/camera" -I "$src/package/gpu/adreno" "$src/package/camera/NezhaCameraMainCapture.c" "$src/package/camera/NezhaCameraRdi1080.c" "$src/tests/camera-main-capture.c" -o "$out/main-capture"
+          "$out/main-capture"
+          NEZHA_CAMERA_SHARED_SOC="$src/components/sm8850" CAMERA_TARGET_CC=clang bash "$src/scripts/check-nezha27-camera-continuous.sh" "$out/continuous"
       - name: Check actual camera pool and scatter-backed SMMU tables
         run: python3 "$RUNNER_TEMP/ios27/work/device/scripts/check-nezha27-camera-memory.py" --native "$RUNNER_TEMP/ios27/work/adreno" --out "$RUNNER_TEMP/ios27/work/camera-memory-host"
       - name: Qualify compiler and run the standard native build

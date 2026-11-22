@@ -331,6 +331,9 @@ def collect(framework, work, sealed):
         names.append(name)
 
     add(ROOT / 'inputs.json', 'inputs.json')
+    for path in sorted((work / 'camera-startup-host').rglob('*')):
+        if path.is_file() and path.suffix in ('.json', '.log'):
+            add(path, 'camera-startup-host/' + str(path.relative_to(work / 'camera-startup-host')))
     manifest = json.loads((ROOT / 'inputs.json').read_text())
     for name in ('keystore-source-selection.json', 'keystore-target-qualification.json',
                  'userlog-source-selection.json', 'userlog-target-qualification.json', 'camera-native-link-qualified.json'):

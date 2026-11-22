@@ -45,6 +45,16 @@ bool nezha_camera_main_capture_start(const struct NezhaCameraMainCaptureIo *io,
         if (capture->sensor_status != NezhaCciOk) {
             return false;
         }
+        if (io->standby_controls != NULL) {
+            struct NezhaCameraStandbyControls *initial = io->standby_controls;
+            initial->attempted = true;
+            initial->status = nezha_camera_ovx10500u_read_controls(io->cci, &initial->sample);
+            capture->sensor_status = initial->status;
+            capture->sensor_transfer = initial->sample.transfer;
+            if (initial->status != NezhaCciOk) {
+                return false;
+            }
+        }
     }
 
     capture->stage = NezhaCaptureDma;

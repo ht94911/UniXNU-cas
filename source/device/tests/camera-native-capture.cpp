@@ -28,6 +28,8 @@ static bool longer_control_session;
 static bool delayed_controls,waiting_controls;
 static bool waiting_control_write;
 static bool stop_wait_controls,fault_wait_controls;
+static NezhaCameraCciStatus initial_controls_failure;
+static unsigned standby_readbacks, stream_control_readbacks;
 static unsigned control_pending_frames,control_poll_frames,control_waits;
 static unsigned AF_eeprom_calls,AF_position_calls;
 static bool memory_prepare_failure,memory_hold_failure;
@@ -49,14 +51,21 @@ extern "C" NezhaCameraCciStatus nezha_camera_ak7316_read_position(const NezhaCam
 extern "C" NezhaCameraCciStatus nezha_camera_ovx10500u_read_controls(
  const NezhaCameraRegisterIo *io,NezhaCameraOvxControlReadback *r)
 {
- assert(io && stream_active && smmu_active && irq_active);++control_readbacks;
- if(delayed_controls) {
+ assert(io && smmu_active && irq_active);++control_readbacks;
+ if (!stream_active) {
+  ++standby_readbacks;
+  if (initial_controls_failure!=NezhaCciOk) {
+   *r={};r->bytes_read=3;r->transfer.needs_recovery=true;
+   return initial_controls_failure;
+  }
+ } else ++stream_control_readbacks;
+ if(delayed_controls && stream_active) {
   waiting_controls=true;control_pending_frames=2;
   io->wait_ms(io->context,1);++control_waits;
   assert(control_pending_frames==0 || fault_wait_controls);
   waiting_controls=false;
  }
- *r={};r->bytes_read=11;r->exposure_lines=readback_mismatch ? 321:320;
+ *r={};r->bytes_read=11;r->exposure_lines=readback_mismatch && stream_active ? 321:320;
  r->frame_lines=4000;r->analog_gain_q8=544;r->digital_gain_q10=1024;return NezhaCciOk;
 }
 static void controls_readback(void *,const NezhaCameraOvxControlReadback *r,uint32_t after)
@@ -182,9 +191,15 @@ extern "C" bool nezha_camera_native_smmu_release(NezhaCameraNativeSmmu **out,boo
 { assert(detached);*out=nullptr;smmu_active=false;return true; }
 extern "C" uint32_t nezha_camera_native_smmu_fault(const NezhaCameraNativeSmmu *) { return 0; }
 extern "C" void nezha_camera_native_smmu_fault_info(const NezhaCameraNativeSmmu *,NezhaCameraNativeSmmuFault *f) { *f={}; }
-extern "C" bool nezha_camera_main_capture_start(const NezhaCameraMainCaptureIo *,const NezhaCameraMainMode *mode,const NezhaCameraDmaPlan *,const ArmSmmu4KContextConfig *,unsigned,unsigned,unsigned,NezhaCameraMainCapture *c)
+extern "C" bool nezha_camera_main_capture_start(const NezhaCameraMainCaptureIo *io,const NezhaCameraMainMode *mode,const NezhaCameraDmaPlan *,const ArmSmmu4KContextConfig *,unsigned,unsigned,unsigned,NezhaCameraMainCapture *c)
 { assert(!stream_active && !c->rdi_started && mode->input.epd_mode==selected_epd);
   assert(vfe[0x1008/4]==(original_bus_cgc|0x07ffffff));
+  if(io->standby_controls) {
+   auto *initial=io->standby_controls;initial->attempted=true;
+   initial->status=nezha_camera_ovx10500u_read_controls(io->cci,&initial->sample);
+   c->sensor_status=initial->status;c->sensor_transfer=initial->sample.transfer;
+   if(initial->status!=NezhaCciOk)return false;
+  }
   c->rdi_started=true;c->stream_may_be_on=true;stream_active=true;return true; }
 extern "C" bool nezha_camera_main_capture_request_stop(const NezhaCameraMainCaptureIo *,NezhaCameraMainCapture *c) { c->stream_may_be_on=false;stream_active=false;return true; }
 extern "C" bool nezha_camera_main_capture_finish_stop(const NezhaCameraMainCaptureIo *,const ArmSmmu4KContextConfig *,unsigned,NezhaCameraMainCapture *,bool quiet) { assert(quiet);return true; }
@@ -236,10 +251,12 @@ int main(int argc,char **argv)
         NezhaCameraNativeCaptureResult result{};
         const bool okay=nezha_camera_native_capture(&request,&result);
         assert(result.cleaned && control_waits>=1);
-        if(fault_wait_controls)assert(!okay && result.status==NezhaFramesIo && !control_commits);
-        else if(stop_wait_controls)assert(okay && result.control_serviced_frames>=3 && control_completions==1);
-        else assert(okay && control_commits==1 && control_completions==1 && control_poll_frames>=6 &&
-            result.control_serviced_frames==control_poll_frames && result.control_readback_after>=8);
+        assert(standby_readbacks==1 && result.control_readback_before_stream);
+        if(fault_wait_controls)assert(!okay && result.status==NezhaFramesIo && control_commits==1);
+        else if(stop_wait_controls)assert(okay && result.control_serviced_frames>=1 && control_completions==1);
+        else assert(okay && control_commits==1 && control_completions==1 && control_poll_frames>=4 &&
+            stream_control_readbacks==1 && result.control_serviced_frames==control_poll_frames &&
+            result.control_readback_after>=6);
         puts("Native CCI waits service queued RAW frames, keep ACK/readback separate, and honor Stop/first frame error");
         return 0;
     }
@@ -273,6 +290,25 @@ int main(int argc,char **argv)
     request.profile=&profile;request.profile_bytes=NezhaCameraProfileCapacity;
     request.command_database=&database;request.database_bytes=0x20000;request.cci_queue_words=NezhaCameraCciCanoeQueue0Words;request.consumer=&consumer;
     NezhaCameraNativeCaptureResult result{};
+    if(argc==2 && (!strcmp(argv[1],"initial-controls") || !strcmp(argv[1],"initial-controls-nack") ||
+        !strcmp(argv[1],"initial-controls-timeout"))) {
+        keep_running=true;
+        NezhaCameraNativeControlConsumer control{NULL,take_controls,complete_controls,controls_readback};
+        request.controls=&control;
+        if(!strcmp(argv[1],"initial-controls-nack"))initial_controls_failure=NezhaCciNack;
+        if(!strcmp(argv[1],"initial-controls-timeout"))initial_controls_failure=NezhaCciTimeout;
+        const bool success=initial_controls_failure==NezhaCciOk;
+        assert(nezha_camera_native_capture(&request,&result)==success && result.cleaned);
+        assert(standby_readbacks==1 && !stream_control_readbacks && result.control_readback_before_stream);
+        assert(!control_commits && !control_completions);
+        if(success)assert(result.frames.frames==3 && result.control_readback_verified && result.control_readback_after==1);
+        else {
+            assert(!result.frames.frames && !copies && !stream_readbacks && !result.control_readback_verified);
+            assert(result.control_readback_status==initial_controls_failure && result.control_readback.bytes_read==3);
+        }
+        puts("Native initial controls use real standby bytes, qualify after the first frame, and stop partial failures before streaming");
+        return 0;
+    }
     if(argc==2 && (!strcmp(argv[1],"memory-prepare-failure") || !strcmp(argv[1],"memory-hold-failure"))) {
         keep_running=true;
         memory_prepare_failure=!strcmp(argv[1],"memory-prepare-failure");
