@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "purpose": "Camera138 exact final BWImageQueueSinkNode sample, read-only25 pixel grid/first8 frames;retain original137 kernel/RAW staging/border/GPU115/Data128; no repeated automatic scaling trial",
-  "device_revision": "08670392d273d5cde52a04585fd495b5f5f4f934",
+  "device_revision": "a21123aa21cf64d5f89174bc287a7c71083961f0",
   "files": {
     "source/NezhaFigCapture24A446.h": "d31d3abe7761aa99f92eaab45357716c6d4c4372e5425658d2a7af80f3894212",
     "source/NezhaCameraDiscovery.m": "e2ede8f37f0eb067e0277a49d137d27495652de652a6166d7af2d8b50297773b",
@@ -17,7 +17,7 @@
     "source/NezhaCameraRendererProbe.mm": "f387d54ef050b5222f64128868b4997f1a78f070a84d1b5d3e0ffe1203b715a5",
     "ci/build-renderer.py": "8d72bfe48f08b76955be214b5e31b5f9fbda0b812af6d14fd59477f8fffa12a2",
     "source/userland/NezhaCameraRenderer.h": "4d46894937a612bc59e95f8b4c109a7dd15c73dbdaaeec028b5aceb021301dd5",
-    "source/userland/NezhaCameraRenderer.m": "7884f2ad485983b23257e8b6692c3fbafd9c03bb0f563314019da80fcd2d672b",
+    "source/userland/NezhaCameraRenderer.m": "beabb63f31e005704ff9c1e7de91a864df6540bcfbe9012f2f73fb4f72dc7fa4",
     "source/userland/NezhaFigCapture24A446.h": "d31d3abe7761aa99f92eaab45357716c6d4c4372e5425658d2a7af80f3894212",
     "source/userland/NezhaCameraFormats.c": "6127ffc8e6984752f434fde4a5eabd69a399d99f47754430be1939f7ff606f83",
     "source/userland/NezhaCameraDeviceBackend.c": "0ab259eca1a6ad30ef2763ba5a6a4701a1504be2e29874ff2e194d025cb8791a",
@@ -43,7 +43,7 @@
     "source/userland/upstream/hakios/hakios.camera.h": "97f80aa60adb7d2a43d93f3edfde294ba0c447586069cb81fa9ac58c789d6444",
     "source/userland/upstream/hakios/camera_isp.h": "311a1fae76f71d05c767915b5d6ba52c498381ae49621307dcc085fe14c29875",
     "source/userland/upstream/hakios/LICENSE": "26289124703e5931e099f915c784296b0c0fcf0485c743214365a3a82a514f05",
-    ".github/workflows/nezha-ios27-native.yml": "f608d2ba88370073cbdb5faabf294da5690c0cba6196b76ac07ab08b6e97e926"
+    ".github/workflows/nezha-ios27-native.yml": "539b18f1ffc23dd447413ebde9906ad85a4f56007842b1e7b3032bebf2183e43"
   },
   "builder_sha256": "8d72bfe48f08b76955be214b5e31b5f9fbda0b812af6d14fd59477f8fffa12a2",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
@@ -60,5 +60,7 @@
   "helper079_reused": true,
   "final_preview_observation_only": true,
   "helper_disabled_and_previous_binary_reused": true,
-  "helper136_qualified_run": 45163718326
+  "helper136_qualified_run": 45163718326,
+  "preceding_failed_CI_run": 45191564088,
+  "header_source": "existing signed136 renderer probe uses IOSurface/IOSurfaceRef.h on same iPhone SDK"
 }

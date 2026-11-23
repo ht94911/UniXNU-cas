@@ -1,7 +1,7 @@
 name: nezha iPhone27 Camera138 native preview delivery
 on:
   push:
-    branches: [codex/ios27-camera138-final-preview-20261123]
+    branches: [codex/ios27-camera138b-final-preview-20261123]
 permissions:
   contents: read
 concurrency:

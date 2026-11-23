@@ -4,7 +4,7 @@
 #include "NezhaCameraRenderer.h"
 #include <CoreMedia/CoreMedia.h>
 #include <CoreVideo/CoreVideo.h>
-#include <IOSurface/IOSurface.h>
+#include <IOSurface/IOSurfaceRef.h>
 #include <mach/mach_time.h>
 #include <mach-o/dyld.h>
 #include <objc/message.h>
