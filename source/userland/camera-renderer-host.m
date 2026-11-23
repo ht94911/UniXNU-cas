@@ -14,6 +14,10 @@ static unsigned transfer_calls;
 static int transfer_status;
 static CVPixelBufferRef received_source,received_destination;
 static CGRect received_src,received_dst;
+static unsigned border_calls;
+static int border_status;
+static CVPixelBufferRef received_border_buffer;
+static CGRect received_border_rect;
 struct OpaqueVTPixelRotationSession;
 
 @interface FigM2MController : NSObject
@@ -28,6 +32,7 @@ struct OpaqueVTPixelRotationSession;
 + (bool)supportsAcceleratedBorderFill;
 - (id)initWithIntermediateBufferPool:(id)pool fractionalSourceRectEnabled:(bool)fractional compressedFormatEnabled:(bool)compressed;
 - (int)doPixelRotationTransferWithSession:(struct OpaqueVTPixelRotationSession *)session sourceBuffer:(CVPixelBufferRef)source sourceRect:(CGRect)src destinationBuffer:(CVPixelBufferRef)destination destinationRect:(CGRect)dst blackFillUnalignedEdges:(bool)fill;
+- (int)borderBlackFillPixelBuffer:(CVPixelBufferRef)buffer validRect:(CGRect)rect;
 @end
 @implementation TestRenderer
 + (bool)supportsAcceleratedBorderFill {++support_calls;return original_flag;}
@@ -37,6 +42,9 @@ struct OpaqueVTPixelRotationSession;
 - (int)doPixelRotationTransferWithSession:(struct OpaqueVTPixelRotationSession *)session sourceBuffer:(CVPixelBufferRef)source sourceRect:(CGRect)src destinationBuffer:(CVPixelBufferRef)destination destinationRect:(CGRect)dst blackFillUnalignedEdges:(bool)fill {
  assert(!session);++transfer_calls;received_source=source;received_destination=destination;
  received_src=src;received_dst=dst;received_fill=fill;return transfer_status;
+}
+- (int)borderBlackFillPixelBuffer:(CVPixelBufferRef)buffer validRect:(CGRect)rect {
+ ++border_calls;assert(transfer_calls==1);received_border_buffer=buffer;received_border_rect=rect;return border_status;
 }
 @end
 #include "NezhaCameraRenderer.m"
@@ -59,6 +67,7 @@ int main(void) {@autoreleasepool {
   }
  }
  original_transfer=method_getImplementation(class_getInstanceMethod([TestRenderer class],@selector(doPixelRotationTransferWithSession:sourceBuffer:sourceRect:destinationBuffer:destinationRect:blackFillUnalignedEdges:)));
+ original_border=method_getImplementation(class_getInstanceMethod([TestRenderer class],@selector(borderBlackFillPixelBuffer:validRect:)));
  TestRenderer *renderer=[TestRenderer alloc];
  CVPixelBufferRef source=NULL,destination=NULL;
  assert(!CVPixelBufferCreate(NULL,4,6,kCVPixelFormatType_32BGRA,NULL,&source));
@@ -92,6 +101,35 @@ int main(void) {@autoreleasepool {
     assert(transfer_pixels(renderer,@selector(doPixelRotationTransferWithSession:sourceBuffer:sourceRect:destinationBuffer:destinationRect:blackFillUnalignedEdges:),NULL,source,empty,destination,target,false)==transfer_status);
     assert(transfer_calls==1&&!memcmp(&received_src,&empty,sizeof(empty)));++cases;
  }
+ CVPixelBufferRef portrait=NULL;
+ assert(!CVPixelBufferCreate(NULL,12,26,kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,NULL,&portrait));
+ const RendererRect active={{0,4},{12,16}},full={{0,0},{12,26}};
+ CVBufferSetAttachment(source,CFSTR("NezhaCameraCompletedRaw1x"),kCFBooleanTrue,kCVAttachmentMode_ShouldPropagate);
+ up_limit=down_limit=CGSizeMake(0,0);
+ for(unsigned failure=0;failure<2;++failure) {
+   transfer_calls=border_calls=0;transfer_status=0;border_status=failure?-12783:0;
+   assert(transfer_pixels(renderer,@selector(doPixelRotationTransferWithSession:sourceBuffer:sourceRect:destinationBuffer:destinationRect:blackFillUnalignedEdges:),NULL,source,empty,portrait,active,true)==border_status);
+   assert(transfer_calls==1&&border_calls==1&&received_border_buffer==portrait&&
+       !memcmp(&received_border_rect,&active,sizeof(active))&&!memcmp(&received_src,&whole,sizeof(whole)));++cases;
+ }
+ transfer_calls=border_calls=0;transfer_status=-12784;border_status=0;
+ assert(transfer_pixels(renderer,@selector(doPixelRotationTransferWithSession:sourceBuffer:sourceRect:destinationBuffer:destinationRect:blackFillUnalignedEdges:),NULL,source,whole,portrait,active,true)==-12784);
+ assert(transfer_calls==1&&!border_calls);++cases;
+ const RendererRect excluded[]={full,{{0,4},{0,16}},{{0,4},{12,24}},{{0,3},{12,16}},{{0,4},{11,16}},{{0,NAN},{12,16}}};
+ transfer_status=0;
+ for(unsigned i=0;i<sizeof(excluded)/sizeof(excluded[0]);++i) {
+   transfer_calls=border_calls=0;
+   assert(!transfer_pixels(renderer,@selector(doPixelRotationTransferWithSession:sourceBuffer:sourceRect:destinationBuffer:destinationRect:blackFillUnalignedEdges:),NULL,source,whole,portrait,excluded[i],true));
+   assert(transfer_calls==1&&!border_calls);++cases;
+ }
+ for(unsigned reason=0;reason<3;++reason) {
+   CVBufferSetAttachment(source,CFSTR("NezhaCameraCompletedRaw1x"),reason==0?kCFBooleanFalse:kCFBooleanTrue,kCVAttachmentMode_ShouldPropagate);
+   up_limit=down_limit=CGSizeMake(reason==1?8:0,reason==1?8:0);
+   transfer_calls=border_calls=0;
+   assert(!transfer_pixels(renderer,@selector(doPixelRotationTransferWithSession:sourceBuffer:sourceRect:destinationBuffer:destinationRect:blackFillUnalignedEdges:),NULL,source,whole,portrait,active,reason!=2));
+   assert(transfer_calls==1&&!border_calls);++cases;
+ }
+ CFRelease(portrait);
  CFRelease(source);CFRelease(destination);[renderer release];
  [pool release];printf("PASS %u production renderer forwarding cases: original results, pool, flags, capabilities and exact CGRect arguments\n",cases);
 }}

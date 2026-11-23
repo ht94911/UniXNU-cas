@@ -15,7 +15,7 @@ typedef struct {double width,height;} RendererSize;
 typedef struct {double x,y;} RendererPoint;
 typedef struct {RendererPoint origin;RendererSize size;} RendererRect;
 typedef struct OpaqueVTPixelRotationSession *RendererRotationSession;
-static IMP original_supports,original_initializer,original_transfer;
+static IMP original_supports,original_initializer,original_transfer,original_border;
 static bool capture_seen,installed;
 static intptr_t capture_slide;
 static const uint8_t uuid[16]={0x99,0x5f,0xc2,0x2b,0x41,0xbd,0x37,0xb4,0x81,0x2f,0x26,0x86,0xb8,0x1c,0x26,0x94};
@@ -63,6 +63,22 @@ static bool own_full_source(CVPixelBufferRef source)
         CFBooleanGetValue((CFBooleanRef)origin);
     CFRelease(origin);return matched;
 }
+static bool own_uncompressed_border(CVPixelBufferRef source,CVPixelBufferRef destination,
+    RendererRect rect,bool fill)
+{
+    if (!fill || !own_full_source(source) || !destination ||
+        scaler_available(objc_getClass("FigM2MController"))) return false;
+    const uint32_t format=CVPixelBufferGetPixelFormatType(destination);
+    if (format!=kCVPixelFormatType_420YpCbCr8BiPlanarFullRange &&
+        format!=kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange) return false;
+    const double width=CVPixelBufferGetWidth(destination),height=CVPixelBufferGetHeight(destination);
+    const double x=rect.origin.x,y=rect.origin.y,w=rect.size.width,h=rect.size.height;
+    if (!isfinite(x) || !isfinite(y) || !isfinite(w) || !isfinite(h) ||
+        x<0 || y<0 || w<=0 || h<=0 || x>width || y>height ||
+        w>width-x || h>height-y || fmod(x,2)!=0 || fmod(y,2)!=0 ||
+        fmod(w,2)!=0 || fmod(h,2)!=0) return false;
+    return x!=0 || y!=0 || w!=width || h!=height;
+}
 static int transfer_pixels(id self,SEL selector,RendererRotationSession session,
     CVPixelBufferRef source,RendererRect src,CVPixelBufferRef destination,RendererRect dst,bool fill)
 {
@@ -77,8 +93,17 @@ static int transfer_pixels(id self,SEL selector,RendererRotationSession session,
         src.origin.x,src.origin.y,src.size.width,src.size.height,
         destination ? CVPixelBufferGetWidth(destination):0,destination ? CVPixelBufferGetHeight(destination):0,
         dst.origin.x,dst.origin.y,dst.size.width,dst.size.height,(unsigned)fill);
-    const int status=((int (*)(id,SEL,RendererRotationSession,CVPixelBufferRef,RendererRect,
+    int status=((int (*)(id,SEL,RendererRotationSession,CVPixelBufferRef,RendererRect,
         CVPixelBufferRef,RendererRect,bool))original_transfer)(self,selector,session,source,src,destination,dst,fill);
+    /* Camera132 proved the successful uncompressed rotation leaves the
+     * requested outer border unchanged. Its original standalone border
+     * method fills those pixels correctly and preserves the valid image.
+     * Reuse it only for our completed NV12 frame and integral chroma bounds. */
+    if (!status && own_uncompressed_border(source,destination,dst,fill)) {
+        status=((int (*)(id,SEL,CVPixelBufferRef,RendererRect))original_border)(self,
+            sel_registerName("borderBlackFillPixelBuffer:validRect:"),destination,dst);
+        if (report<6) fprintf(stderr,"nezha-camera: own uncompressed rotation border returned status=%d\n",status);
+    }
     if (report<6) fprintf(stderr,"nezha-camera: renderer transfer returned status=%d\n",status);
     return status;
 }
@@ -106,15 +131,19 @@ bool nezha_camera_renderer_install(const struct mach_header *header,intptr_t sli
     Method support=type ? class_getClassMethod(type,sel_registerName("supportsAcceleratedBorderFill")):NULL;
     Method init=type ? class_getInstanceMethod(type,sel_registerName("initWithIntermediateBufferPool:fractionalSourceRectEnabled:compressedFormatEnabled:")):NULL;
     Method transfer=type ? class_getInstanceMethod(type,sel_registerName("doPixelRotationTransferWithSession:sourceBuffer:sourceRect:destinationBuffer:destinationRect:blackFillUnalignedEdges:")):NULL;
+    Method border=type ? class_getInstanceMethod(type,sel_registerName("borderBlackFillPixelBuffer:validRect:")):NULL;
     IMP sf=support ? method_getImplementation(support):NULL,cf=init ? method_getImplementation(init):NULL;
     IMP tf=transfer ? method_getImplementation(transfer):NULL;
-    if (!sf || !cf || !tf || strcmp(method_getTypeEncoding(support),"B16@0:8") ||
+    IMP bf=border ? method_getImplementation(border):NULL;
+    if (!sf || !cf || !tf || !bf || strcmp(method_getTypeEncoding(support),"B16@0:8") ||
         strcmp(method_getTypeEncoding(init),"@32@0:8@16B24B28") ||
         strcmp(method_getTypeEncoding(transfer),"i108@0:8^{OpaqueVTPixelRotationSession=}16^{__CVBuffer=}24{CGRect={CGPoint=dd}{CGSize=dd}}32^{__CVBuffer=}64{CGRect={CGPoint=dd}{CGSize=dd}}72B104") ||
+        strcmp(method_getTypeEncoding(border),"i56@0:8^{__CVBuffer=}16{CGRect={CGPoint=dd}{CGSize=dd}}24") ||
+        (uintptr_t)ptrauth_strip(bf,ptrauth_key_function_pointer)!=(uintptr_t)(0x1b0502be4ULL+capture_slide) ||
         (uintptr_t)ptrauth_strip(tf,ptrauth_key_function_pointer)!=(uintptr_t)(0x1b0504290ULL+capture_slide) ||
         (uintptr_t)ptrauth_strip(sf,ptrauth_key_function_pointer)!=(uintptr_t)(0x1b06fec7cULL+capture_slide) ||
         (uintptr_t)ptrauth_strip(cf,ptrauth_key_function_pointer)!=(uintptr_t)(0x1b05f3e4cULL+capture_slide)) return false;
-    original_supports=sf;original_initializer=cf;original_transfer=tf;
+    original_supports=sf;original_initializer=cf;original_transfer=tf;original_border=bf;
     method_setImplementation(support,(IMP)supports_accelerated);
     method_setImplementation(init,(IMP)initialize_renderer);
     method_setImplementation(transfer,(IMP)transfer_pixels);

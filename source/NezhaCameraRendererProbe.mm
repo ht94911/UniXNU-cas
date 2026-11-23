@@ -88,6 +88,7 @@ static bool fill(CVPixelBufferRef image,bool bars,unsigned yValue,unsigned uValu
 - (instancetype)initWithVideoFormat:(id)format capacity:(NSUInteger)capacity name:(NSString *)name;
 - (instancetype)initWithIntermediateBufferPool:(id)pool fractionalSourceRectEnabled:(bool)fractional compressedFormatEnabled:(bool)compressed;
 - (int)doPixelRotationTransferWithSession:(VTPixelRotationSessionRef)session sourceBuffer:(CVPixelBufferRef)source sourceRect:(CGRect)src destinationBuffer:(CVPixelBufferRef)destination destinationRect:(CGRect)dst blackFillUnalignedEdges:(bool)fill;
+- (int)borderBlackFillPixelBuffer:(CVPixelBufferRef)buffer validRect:(CGRect)rect;
 @end
 static bool methodABI(Class cls,bool classMethod,const char *selector,const char *expected) {
  Method method=classMethod?class_getClassMethod(cls,sel_registerName(selector)):class_getInstanceMethod(cls,sel_registerName(selector));
@@ -140,7 +141,7 @@ static bool fillPattern(CVPixelBufferRef image) {
         y[row*rowBytes+x]=values[(row>=height/2?2:0)+(x>=width/2?1:0)];
     return CVPixelBufferUnlockBaseAddress(image,0)==0;
 }
-static bool inspectPattern(CVPixelBufferRef image,NSString *name,CGRect destinationRect,bool clockwise) {
+static bool inspectPattern(CVPixelBufferRef image,NSString *name,CGRect destinationRect,bool clockwise,bool checkOutside=true) {
     if(!inspect(image,name,-1)||CVPixelBufferLockBaseAddress(image,kCVPixelBufferLock_ReadOnly))return false;
     const auto *y=(const uint8_t *)CVPixelBufferGetBaseAddressOfPlane(image,0);
     const size_t rows=CVPixelBufferGetBytesPerRowOfPlane(image,0);
@@ -153,7 +154,7 @@ static bool inspectPattern(CVPixelBufferRef image,NSString *name,CGRect destinat
         const unsigned value=y[row*rows+x];[actual addObject:@(value)];
         passed=passed&&std::abs(int(value)-int(expected[quadrant]))<=2;
     }
-    if(clockwise)passed=passed&&y[0]==0&&y[(CVPixelBufferGetHeight(image)-1)*rows]==0;
+    if(clockwise&&checkOutside)passed=passed&&y[0]==0&&y[(CVPixelBufferGetHeight(image)-1)*rows]==0;
     const CVReturn unlocked=CVPixelBufferUnlockBaseAddress(image,kCVPixelBufferLock_ReadOnly);
     passed=passed&&!unlocked;
     report(@{@"phase":@"original-renderer-pattern",@"case":name,@"clockwise_90":@(clockwise),
@@ -161,6 +162,29 @@ static bool inspectPattern(CVPixelBufferRef image,NSString *name,CGRect destinat
         @"destination_rect":@[@(destinationRect.origin.x),@(destinationRect.origin.y),@(destinationRect.size.width),@(destinationRect.size.height)],
         @"passed":@(passed),@"capture_started":@NO});
     return passed;
+}
+static bool inspectBorder(CVPixelBufferRef image,NSString *name,CGRect rect,unsigned expectedY=0,unsigned expectedUV=128) {
+    if(CVPixelBufferLockBaseAddress(image,kCVPixelBufferLock_ReadOnly))return false;
+    const size_t width=CVPixelBufferGetWidth(image),height=CVPixelBufferGetHeight(image);
+    const size_t left=(size_t)rect.origin.x,top=(size_t)rect.origin.y;
+    const size_t right=left+(size_t)rect.size.width,bottom=top+(size_t)rect.size.height;
+    const auto *y=(const uint8_t *)CVPixelBufferGetBaseAddressOfPlane(image,0);
+    const auto *uv=(const uint8_t *)CVPixelBufferGetBaseAddressOfPlane(image,1);
+    const size_t yr=CVPixelBufferGetBytesPerRowOfPlane(image,0),ur=CVPixelBufferGetBytesPerRowOfPlane(image,1);
+    uint64_t outside=0,badY=0,badUV=0,unchanged=0;
+    for(size_t row=0;row<height;++row)for(size_t x=0;x<width;++x) {
+        if(row<top||row>=bottom||x<left||x>=right){++outside;badY+=y[row*yr+x]!=expectedY;}
+        unchanged+=y[row*yr+x]==165;
+    }
+    for(size_t row=0;row<height/2;++row)for(size_t x=0;x<width;x+=2)
+        if(row*2+1<top||row*2>=bottom||x+1<left||x>=right)
+            badUV+=uv[row*ur+x]!=expectedUV||uv[row*ur+x+1]!=expectedUV;
+    const CVReturn unlocked=CVPixelBufferUnlockBaseAddress(image,kCVPixelBufferLock_ReadOnly);
+    const bool passed=outside>0&&!badY&&!badUV&&!unlocked;
+    report(@{@"phase":@"original-renderer-border",@"case":name,@"outside_Y":@(outside),
+        @"bad_outside_Y":@(badY),@"bad_outside_UV_pairs":@(badUV),@"unchanged_Y":@(unchanged),
+        @"expected_outside_Y":@(expectedY),@"expected_outside_UV":@(expectedUV),
+        @"passed":@(passed),@"capture_started":@NO});return passed;
 }
 int main(int argc,char **argv) {@autoreleasepool {
  (void)argc;(void)argv;if(!ownMemoryLimit())return 11;sleep(150);
@@ -173,6 +197,7 @@ int main(int argc,char **argv) {@autoreleasepool {
  if(!methodABI(rendererClass,true,"supportsAcceleratedBorderFill","B16@0:8")||
     !methodABI(rendererClass,false,"initWithIntermediateBufferPool:fractionalSourceRectEnabled:compressedFormatEnabled:","@32@0:8@16B24B28")||
     !methodABI(rendererClass,false,"doPixelRotationTransferWithSession:sourceBuffer:sourceRect:destinationBuffer:destinationRect:blackFillUnalignedEdges:","i108@0:8^{OpaqueVTPixelRotationSession=}16^{__CVBuffer=}24{CGRect={CGPoint=dd}{CGSize=dd}}32^{__CVBuffer=}64{CGRect={CGPoint=dd}{CGSize=dd}}72B104")||
+    !methodABI(rendererClass,false,"borderBlackFillPixelBuffer:validRect:","i56@0:8^{__CVBuffer=}16{CGRect={CGPoint=dd}{CGSize=dd}}24")||
     !methodABI(poolClass,false,"initWithVideoFormat:capacity:name:","@40@0:8@16Q24@32"))return 13;
  const bool before=[rendererClass supportsAcceleratedBorderFill];
  void *library=dlopen("/System/Library/MediaCapture/libNezhaCamera27.dylib",RTLD_NOW|RTLD_LOCAL);
@@ -187,26 +212,62 @@ int main(int argc,char **argv) {@autoreleasepool {
  CVPixelBufferRef source=pixel(1600,1200,true),output=pixel(1200,2608,true);if(!source||!output)return 3;
  if(!fillPattern(source))return 4;
  bool passed=!after;
- for(unsigned rotation=0;rotation<3;++rotation) {
-    if(!fill(output,false,0,128,128))return 4;
+ // Camera130 used this asymmetric, chroma-aligned destination and fill=true.
+ // The previous three pattern cases all used fill=false and remain archived.
+ const CGRect destinationRect=CGRectMake(0,378,1200,1602);
+ for(unsigned rotation=0;rotation<2;++rotation) {
+    if(!fill(output,false,165,165,165))return 4;
     VTPixelRotationSessionRef session=nullptr;OSStatus created=VTPixelRotationSessionCreate(kCFAllocatorDefault,&session);
     report(@{@"phase":@"original-rotation-session",@"rotation_case":@(rotation),@"status":@(created),@"present":@(session!=nullptr)});if(created||!session)return 16;
-    const OSStatus property=rotation?VTSessionSetProperty((VTSessionRef)session,CFSTR("Rotation"),CFSTR("RotationCW90")):0;
+    const OSStatus property=VTSessionSetProperty((VTSessionRef)session,CFSTR("Rotation"),CFSTR("RotationCW90"));
     if(property)return 17;
-    const CGRect destinationRect=rotation?CGRectMake(0,504,1200,1600):CGRectMake(0,0,1200,2608);
-    if(rotation==2) {
+    if(rotation==1) {
         NSDictionary *metadata=@{@"FrameSequence":@7,@"RawSensorWidth":@4096,@"RawSensorHeight":@3072,@"ZoomFactor":@1};
         CVBufferSetAttachment(source,CFSTR("MetadataDictionary"),(__bridge CFDictionaryRef)metadata,kCVAttachmentMode_ShouldPropagate);
         CVBufferSetAttachment(source,CFSTR("NezhaCameraCompletedRaw1x"),kCFBooleanTrue,kCVAttachmentMode_ShouldPropagate);
         CVBufferRemoveAttachment(source,CFSTR("MetadataDictionary"));
     }
-    const CGRect sourceRect=rotation==2?CGRectMake(801,601,0,0):CGRectMake(0,0,1600,1200);
-    const int status=[renderer doPixelRotationTransferWithSession:session sourceBuffer:source sourceRect:sourceRect destinationBuffer:output destinationRect:destinationRect blackFillUnalignedEdges:false];
-    report(@{@"phase":@"original-renderer-call",@"rotation_case":@(rotation),@"status":@(status),@"capture_started":@NO});
-    const bool pixels=inspectPattern(output,rotation==2?@"own-empty-crop-CW90-pattern":rotation?@"portrait-CW90-letterbox-pattern":@"unrotated-nonuniform-pattern",destinationRect,rotation!=0);
-    passed=passed&&!status&&pixels;
+    const CGRect sourceRect=rotation==1?CGRectMake(801,601,0,0):CGRectMake(0,0,1600,1200);
+    NSString *name=rotation?@"filled-own-empty-crop-CW90-pattern":@"filled-asymmetric-CW90-pattern";
+    report(@{@"phase":@"original-renderer-call-begin",@"case":name,@"black_fill_unaligned_edges":@YES,
+        @"source_rect":@[@(sourceRect.origin.x),@(sourceRect.origin.y),@(sourceRect.size.width),@(sourceRect.size.height)],
+        @"destination_rect":@[@0,@378,@1200,@1602],@"capture_started":@NO});
+    const int status=[renderer doPixelRotationTransferWithSession:session sourceBuffer:source sourceRect:sourceRect destinationBuffer:output destinationRect:destinationRect blackFillUnalignedEdges:true];
+    report(@{@"phase":@"original-renderer-call",@"case":name,@"status":@(status),@"capture_started":@NO});
+    // Preserve Camera132's unmarked source behavior, and require black
+    // outside pixels for the provider-owned completed-frame source.
+    const bool pixels=inspectPattern(output,name,destinationRect,true,rotation==1);
+    const bool border=inspectBorder(output,name,destinationRect,rotation==0?165:0,rotation==0?165:128);
+    passed=passed&&!status&&pixels&&border;
+    if(rotation==1) {
+        // Follow the corrected original rotation with the system's exact
+        // downscale API, so conversion parameters come from VideoToolbox.
+        CVPixelBufferRef small=pixel(16,16,true);
+        if(!small||!fill(small,false,165,165,165))return 18;
+        VTPixelTransferSessionRef transfer=nullptr;
+        OSStatus scaled=VTPixelTransferSessionCreate(kCFAllocatorDefault,&transfer);
+        if(!scaled&&transfer)scaled=VTSessionSetProperty((VTSessionRef)transfer,
+            kVTPixelTransferPropertyKey_ScalingMode,kVTScalingMode_Normal);
+        if(!scaled&&transfer)scaled=VTPixelTransferSessionTransferImage(transfer,output,small);
+        report(@{@"phase":@"original-system-downscale",@"status":@(scaled),
+            @"source_size":@[@1200,@2608],@"destination_size":@[@16,@16],
+            @"system_generates_parameters":@YES,@"capture_started":@NO});
+        const CGRect smallRect=CGRectMake(0,378.0*16/2608,16,1602.0*16/2608);
+        const bool smallPixels=inspectPattern(small,@"owned-filled-rotation-system-downscale",smallRect,true);
+        passed=passed&&!scaled&&transfer&&smallPixels;
+        if(transfer){VTPixelTransferSessionInvalidate(transfer);CFRelease(transfer);}
+        CVPixelBufferRelease(small);
+    }
     VTPixelRotationSessionInvalidate(session);CFRelease(session);
  }
+ if(!fillPattern(output))return 4;
+ const int borderStatus=[renderer borderBlackFillPixelBuffer:output validRect:destinationRect];
+ report(@{@"phase":@"standalone-original-border-fill",@"status":@(borderStatus),@"capture_started":@NO});
+ const bool border=inspectBorder(output,@"standalone-authored-nonuniform-border",destinationRect);
+ const bool inside=inspectPattern(output,@"standalone-authored-nonuniform-border",CGRectMake(0,0,1200,2608),false);
+ passed=passed&&!borderStatus&&border&&inside;
  CVPixelBufferRelease(source);CVPixelBufferRelease(output);
- report(@{@"phase":@"result",@"passed":@(passed),@"original_renderer":@YES,@"nonuniform_rotation_cases":@3,@"capture_started":@NO});return passed?0:10;
+ report(@{@"phase":@"result",@"passed":@(passed),@"original_renderer":@YES,@"nonuniform_rotation_cases":@2,
+    @"black_fill_enabled":@YES,@"standalone_border_case":@YES,@"system_downscale_case":@YES,
+    @"capture_started":@NO});return passed?0:10;
 }}
