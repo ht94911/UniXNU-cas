@@ -14,6 +14,7 @@ static unsigned transfer_calls;
 static int transfer_status;
 static CVPixelBufferRef received_source,received_destination;
 static CGRect received_src,received_dst;
+static int received_orientation;
 static unsigned border_calls;
 static int border_status;
 static CVPixelBufferRef received_border_buffer;
@@ -33,6 +34,8 @@ struct OpaqueVTPixelRotationSession;
 - (id)initWithIntermediateBufferPool:(id)pool fractionalSourceRectEnabled:(bool)fractional compressedFormatEnabled:(bool)compressed;
 - (int)doPixelRotationTransferWithSession:(struct OpaqueVTPixelRotationSession *)session sourceBuffer:(CVPixelBufferRef)source sourceRect:(CGRect)src destinationBuffer:(CVPixelBufferRef)destination destinationRect:(CGRect)dst blackFillUnalignedEdges:(bool)fill;
 - (int)borderBlackFillPixelBuffer:(CVPixelBufferRef)buffer validRect:(CGRect)rect;
+- (int)scalePixelBuffer:(CVPixelBufferRef)source rect:(CGRect)src intoPixelBuffer:(CVPixelBufferRef)destination rect:(CGRect)dst;
+- (int)scalePixelBuffer:(CVPixelBufferRef)source rect:(CGRect)src exifOrientation:(int)orientation intoPixelBuffer:(CVPixelBufferRef)destination rect:(CGRect)dst;
 @end
 @implementation TestRenderer
 + (bool)supportsAcceleratedBorderFill {++support_calls;return original_flag;}
@@ -45,6 +48,14 @@ struct OpaqueVTPixelRotationSession;
 }
 - (int)borderBlackFillPixelBuffer:(CVPixelBufferRef)buffer validRect:(CGRect)rect {
  ++border_calls;assert(transfer_calls==1);received_border_buffer=buffer;received_border_rect=rect;return border_status;
+}
+- (int)scalePixelBuffer:(CVPixelBufferRef)source rect:(CGRect)src intoPixelBuffer:(CVPixelBufferRef)destination rect:(CGRect)dst {
+ ++transfer_calls;received_source=source;received_destination=destination;
+ received_src=src;received_dst=dst;return transfer_status;
+}
+- (int)scalePixelBuffer:(CVPixelBufferRef)source rect:(CGRect)src exifOrientation:(int)orientation intoPixelBuffer:(CVPixelBufferRef)destination rect:(CGRect)dst {
+ received_orientation=orientation;
+ return [self scalePixelBuffer:source rect:src intoPixelBuffer:destination rect:dst];
 }
 @end
 #include "NezhaCameraRenderer.m"
@@ -128,6 +139,20 @@ int main(void) {@autoreleasepool {
    transfer_calls=border_calls=0;
    assert(!transfer_pixels(renderer,@selector(doPixelRotationTransferWithSession:sourceBuffer:sourceRect:destinationBuffer:destinationRect:blackFillUnalignedEdges:),NULL,source,whole,portrait,active,reason!=2));
    assert(transfer_calls==1&&!border_calls);++cases;
+ }
+ original_scale=method_getImplementation(class_getInstanceMethod([TestRenderer class],@selector(scalePixelBuffer:rect:intoPixelBuffer:rect:)));
+ original_oriented_scale=method_getImplementation(class_getInstanceMethod([TestRenderer class],@selector(scalePixelBuffer:rect:exifOrientation:intoPixelBuffer:rect:)));
+ /* Actual empty/fractional rectangles, null buffers and failures must
+  * remain unchanged across the native Objective-C ABI boundary. */
+ for(unsigned i=0;i<3;++i)for(unsigned oriented=0;oriented<2;++oriented) {
+   RendererRect src=rectangles[i],dst=rectangles[(i+1)%3];
+   transfer_calls=0;transfer_status=i?-12783:0;received_orientation=0;
+   CVPixelBufferRef input=i==2?NULL:source,output=i==1?NULL:portrait;
+   int status=oriented ? scale_oriented_pixels(renderer,@selector(scalePixelBuffer:rect:exifOrientation:intoPixelBuffer:rect:),input,src,6,output,dst) :
+     scale_pixels(renderer,@selector(scalePixelBuffer:rect:intoPixelBuffer:rect:),input,src,output,dst);
+   assert(status==transfer_status&&transfer_calls==1&&received_source==input&&received_destination==output);
+   assert(!memcmp(&received_src,&src,sizeof src)&&!memcmp(&received_dst,&dst,sizeof dst));
+   assert(received_orientation==(oriented?6:0));++cases;
  }
  CFRelease(portrait);
  CFRelease(source);CFRelease(destination);[renderer release];

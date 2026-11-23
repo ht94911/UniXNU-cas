@@ -16,6 +16,7 @@ typedef struct {double x,y;} RendererPoint;
 typedef struct {RendererPoint origin;RendererSize size;} RendererRect;
 typedef struct OpaqueVTPixelRotationSession *RendererRotationSession;
 static IMP original_supports,original_initializer,original_transfer,original_border;
+static IMP original_scale,original_oriented_scale;
 static bool capture_seen,installed;
 static intptr_t capture_slide;
 static const uint8_t uuid[16]={0x99,0x5f,0xc2,0x2b,0x41,0xbd,0x37,0xb4,0x81,0x2f,0x26,0x86,0xb8,0x1c,0x26,0x94};
@@ -107,6 +108,41 @@ static int transfer_pixels(id self,SEL selector,RendererRotationSession session,
     if (report<6) fprintf(stderr,"nezha-camera: renderer transfer returned status=%d\n",status);
     return status;
 }
+/* Reuse the renderer's bounded stderr to distinguish its real scaling
+ * requests from a shader replay with an approximate uniform buffer. The
+ * original session owns every buffer, crop, orientation and return value. */
+static void report_scale(unsigned report,const char *operation,CVPixelBufferRef source,
+    RendererRect src,CVPixelBufferRef destination,RendererRect dst,int orientation)
+{
+    if (report>=8) return;
+    fprintf(stderr,"nezha-camera: original %s source=%zux%zu rect=%.17g,%.17g,%.17g,%.17g destination=%zux%zu rect=%.17g,%.17g,%.17g,%.17g orientation=%d\n",
+        operation,source ? CVPixelBufferGetWidth(source):0,source ? CVPixelBufferGetHeight(source):0,
+        src.origin.x,src.origin.y,src.size.width,src.size.height,
+        destination ? CVPixelBufferGetWidth(destination):0,destination ? CVPixelBufferGetHeight(destination):0,
+        dst.origin.x,dst.origin.y,dst.size.width,dst.size.height,orientation);
+}
+static int scale_pixels(id self,SEL selector,CVPixelBufferRef source,RendererRect src,
+    CVPixelBufferRef destination,RendererRect dst)
+{
+    static unsigned reports;
+    const unsigned report=__atomic_fetch_add(&reports,1u,__ATOMIC_RELAXED);
+    report_scale(report,"BWScalingSession",source,src,destination,dst,0);
+    const int status=((int (*)(id,SEL,CVPixelBufferRef,RendererRect,CVPixelBufferRef,RendererRect))
+        original_scale)(self,selector,source,src,destination,dst);
+    if (report<8) fprintf(stderr,"nezha-camera: original BWScalingSession returned status=%d\n",status);
+    return status;
+}
+static int scale_oriented_pixels(id self,SEL selector,CVPixelBufferRef source,RendererRect src,
+    int orientation,CVPixelBufferRef destination,RendererRect dst)
+{
+    static unsigned reports;
+    const unsigned report=__atomic_fetch_add(&reports,1u,__ATOMIC_RELAXED);
+    report_scale(report,"BWScalingSession oriented",source,src,destination,dst,orientation);
+    const int status=((int (*)(id,SEL,CVPixelBufferRef,RendererRect,int,CVPixelBufferRef,RendererRect))
+        original_oriented_scale)(self,selector,source,src,orientation,destination,dst);
+    if (report<8) fprintf(stderr,"nezha-camera: original BWScalingSession oriented returned status=%d\n",status);
+    return status;
+}
 static bool match_uuid(const struct mach_header *header)
 {
     if (!header || header->magic!=MH_MAGIC_64) return false;
@@ -147,6 +183,23 @@ bool nezha_camera_renderer_install(const struct mach_header *header,intptr_t sli
     method_setImplementation(support,(IMP)supports_accelerated);
     method_setImplementation(init,(IMP)initialize_renderer);
     method_setImplementation(transfer,(IMP)transfer_pixels);
+    Class scaling=objc_getClass("BWScalingSession");
+    Method scale=scaling ? class_getInstanceMethod(scaling,
+        sel_registerName("scalePixelBuffer:rect:intoPixelBuffer:rect:")):NULL;
+    Method oriented=scaling ? class_getInstanceMethod(scaling,
+        sel_registerName("scalePixelBuffer:rect:exifOrientation:intoPixelBuffer:rect:")):NULL;
+    IMP sc=scale ? method_getImplementation(scale):NULL;
+    IMP oc=oriented ? method_getImplementation(oriented):NULL;
+    if (sc && oc &&
+        !strcmp(method_getTypeEncoding(scale),"i96@0:8^{__CVBuffer=}16{CGRect={CGPoint=dd}{CGSize=dd}}24^{__CVBuffer=}56{CGRect={CGPoint=dd}{CGSize=dd}}64") &&
+        !strcmp(method_getTypeEncoding(oriented),"i100@0:8^{__CVBuffer=}16{CGRect={CGPoint=dd}{CGSize=dd}}24i56^{__CVBuffer=}60{CGRect={CGPoint=dd}{CGSize=dd}}68") &&
+        (uintptr_t)ptrauth_strip(sc,ptrauth_key_function_pointer)==(uintptr_t)(0x1b0814da0ULL+capture_slide) &&
+        (uintptr_t)ptrauth_strip(oc,ptrauth_key_function_pointer)==(uintptr_t)(0x1b0815248ULL+capture_slide)) {
+        original_scale=sc;original_oriented_scale=oc;
+        method_setImplementation(scale,(IMP)scale_pixels);
+        method_setImplementation(oriented,(IMP)scale_oriented_pixels);
+        fputs("nezha-camera: original scaling rectangle observers installed\n",stderr);
+    }
     installed=true;
     fputs("nezha-camera: original uncompressed renderer fallback installed\n",stderr);
     return true;
