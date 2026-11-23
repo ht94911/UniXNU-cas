@@ -237,6 +237,13 @@ def build(framework, work):
                log=logs / 'text-reclaimed-page-host.log')
     if code:
         return code
+    code = run([sys.executable, work / 'device/tests/gnss27/exception_context_test.py',
+                '--exception-source', compiled / 'osfmk/kern/exception.c',
+                '--event-source', compiled / 'bsd/kern/kern_event.c',
+                '--out', work / 'gnss-waiter-source-qualified.json'],
+               log=logs / 'gnss-waiter-source-host.log')
+    if code:
+        return code
     sources = list((work / 'out/nezha/ios-27.0.1-24A446-iphone14-4').glob(
         '*/tree/.cache/xnu-work/bsd/kern/kern_memorystatus.c'))
     if len(sources) != 1:
@@ -384,6 +391,12 @@ def collect(framework, work, sealed):
         for name in ('link.filelist', 'all-alias.exp'):
             add(objects / name, 'objects/' + name)
         add(tree / 'build/xnu/owner-data-volume.h', 'build/owner-data-volume.h')
+        add(work / 'gnss-waiter-source-qualified.json', 'gnss-waiter-source-qualified.json')
+        add(tree / '.cache/xnu-work/osfmk/kern/exception.c', 'compiled-source/exception.c')
+        add(tree / '.cache/xnu-work/bsd/kern/kern_event.c', 'compiled-source/kern_event.c')
+        add(tree / '.cache/libpthread-work/kern/kern_support.c', 'compiled-source/libpthread-kern_support.c')
+        add(tree / 'build/libpthread-kernel/report.json', 'compiled-source/libpthread-report.json')
+        add(tree / 'build/libpthread-kernel/namespace.h', 'compiled-source/libpthread-namespace.h')
         for name in ('kern_memorystatus.c', 'kern_exec.c'):
             add(tree / '.cache/xnu-work/bsd/kern' / name, 'compiled-source/' + name)
         reference = tree / 'build/xnu/fileset-reference'

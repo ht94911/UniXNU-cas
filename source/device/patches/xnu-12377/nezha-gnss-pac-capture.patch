@@ -9,7 +9,7 @@
  #endif
  
  #include <os/log.h>
-@@ -822,6 +824,199 @@
+@@ -822,6 +824,258 @@
  }
  
  #if __has_feature(ptrauth_calls)
@@ -18,7 +18,11 @@
 +#if __arm64__
 +struct sheng_gnss_object_peer {
 +	uint64_t tid, pc, lr, sp, fp, x19, x20;
-+	unsigned state;
++	uint64_t tsd, wait_event, waitq, continuation, parameter;
++	uint64_t x21, x22, x23, x24, x25, x26, x27, x28;
++	uint64_t bsd[32];
++	int wait_result;
++	unsigned state, block_hint;
 +};
 +
 +static bool
@@ -45,6 +49,10 @@
 +	}
 +}
 +
++#ifdef MACH_BSD
++extern void sheng_gnss_waiter_snapshot(thread_t, uint64_t [32]);
++#endif
++
 +static void
 +sheng_gnss_object_context(task_t task, arm_saved_state_t *fault)
 +{
@@ -60,6 +68,8 @@
 +	}
 +	sheng_gnss_object_words("item", object);
 +	sheng_gnss_object_words("lane", lane);
++	sheng_gnss_object_words("next", get_saved_state_reg(fault, 26));
++	sheng_gnss_object_words("tail", get_saved_state_reg(fault, 1));
 +	if (!task_lock_try(task)) {
 +		printf("NEZHA GNSS OBJECT: task snapshot busy\n");
 +		__atomic_store_n(&busy, 0u, __ATOMIC_RELEASE);
@@ -77,7 +87,7 @@
 +			continue;
 +		}
 +		arm_saved_state_t *state = peer->machine.upcb;
-+		if ((peer->state & (TH_WAIT | TH_RUN)) == TH_WAIT &&
++		if ((peer->state & (TH_WAIT | TH_RUN | TH_TERMINATE | TH_TERMINATE2)) == TH_WAIT &&
 +		    state != NULL && is_saved_state64(state)) {
 +			uint64_t sp = get_saved_state_sp(state);
 +			bool near = sheng_gnss_user_range(sp, 16) &&
@@ -91,14 +101,34 @@
 +					.sp = sp, .fp = get_saved_state_fp(state),
 +					.x19 = get_saved_state_reg(state, 19),
 +					.x20 = get_saved_state_reg(state, 20),
++					.x21 = get_saved_state_reg(state, 21),
++					.x22 = get_saved_state_reg(state, 22),
++					.x23 = get_saved_state_reg(state, 23),
++					.x24 = get_saved_state_reg(state, 24),
++					.x25 = get_saved_state_reg(state, 25),
++					.x26 = get_saved_state_reg(state, 26),
++					.x27 = get_saved_state_reg(state, 27),
++					.x28 = get_saved_state_reg(state, 28),
++					.tsd = peer->machine.cthread_self,
++					.wait_event = peer->wait_event,
++					.waitq = (uint64_t)peer->waitq,
++					.wait_result = peer->wait_result,
++					.block_hint = peer->block_hint,
++					.continuation = (uint64_t)peer->continuation,
++					.parameter = (uint64_t)peer->parameter,
 +				};
++#ifdef MACH_BSD
++				sheng_gnss_waiter_snapshot(peer, sample->bsd);
++#endif
 +			}
 +		}
 +		thread_unlock(peer);
 +		ml_set_interrupts_enabled(irq);
 +	}
 +	unsigned slide = task->task_shared_region_slide;
++	uint64_t images = task->all_image_info_addr;
 +	task_unlock(task);
++	sheng_gnss_object_words("dyld-images", images);
 +	printf("NEZHA GNSS OBJECT: peers=%u visited=%u skipped=%u cache_slide=0x%x sampled=1\n",
 +	    count, visited > 64 ? 64 : visited, skipped, slide);
 +	for (unsigned i = 0; i < count; ++i) {
@@ -107,7 +137,36 @@
 +		printf("NEZHA GNSS PEER: tid=%llx state=0x%x pc=%llx lr=%llx sp=%llx fp=%llx x19=%llx x20=%llx\n",
 +		    sample->tid, sample->state, sample->pc, sample->lr, sample->sp,
 +		    fp, sample->x19, sample->x20);
++		printf("NEZHA GNSS WAIT: tid=%llx event=%llx waitq=%llx result=%d hint=%u continuation=%llx parameter=%llx tsd=%llx sampled=1\n",
++		    sample->tid, sample->wait_event, sample->waitq, sample->wait_result,
++		    sample->block_hint, sample->continuation, sample->parameter, sample->tsd);
++		printf("NEZHA GNSS PEER REGS: tid=%llx x21=%llx x22=%llx x23=%llx x24=%llx x25=%llx x26=%llx x27=%llx x28=%llx\n",
++		    sample->tid, sample->x21, sample->x22, sample->x23, sample->x24,
++		    sample->x25, sample->x26, sample->x27, sample->x28);
++		for (unsigned word = 0; word < 32; word += 4) {
++			printf("NEZHA GNSS BSD: tid=%llx word=%u %llx %llx %llx %llx\n",
++			    sample->tid, word, sample->bsd[word], sample->bsd[word + 1],
++			    sample->bsd[word + 2], sample->bsd[word + 3]);
++		}
++		if (sheng_gnss_user_range(sample->tsd, 0x400)) {
++			uint64_t dsc = 0, after = 0;
++			int error = copyin((user_addr_t)(sample->tsd + 0x3c8), &dsc, sizeof(dsc));
++			sheng_gnss_object_words("dispatch-tsd", sample->tsd + 0x3c0);
++			/* Original libdispatch stores its current sync context in this TSD slot.
++			 * Reads are samples after unlocking; do not treat pointer stability as
++			 * proof that another thread has not changed the context contents. */
++			if (!error && !(dsc & 15) && sheng_gnss_user_range(dsc, 128) &&
++			    dsc >= sample->sp && dsc - sample->sp <= 65536) {
++				sheng_gnss_object_words("current-dsc", dsc);
++			}
++			int repeat = copyin((user_addr_t)(sample->tsd + 0x3c8), &after, sizeof(after));
++			printf("NEZHA GNSS DSC: tid=%llx pointer=%llx after=%llx error=%d repeat=%d sampled=1\n",
++			    sample->tid, dsc, after, error, repeat);
++		}
 +		for (unsigned frame = 0; frame < 18 && fp; ++frame) {
++			if (frame < 4 && fp >= 0x70 && !(fp & 15)) {
++				sheng_gnss_object_words("frame-state", fp - 0x70);
++			}
 +			uint64_t pair[2] = {};
 +			if (!sheng_gnss_user_range(fp, sizeof(pair)) || (fp & 15) ||
 +			    copyin((user_addr_t)fp, pair, sizeof(pair))) {
@@ -217,3 +276,49 @@
  			os_log_error(OS_LOG_DEFAULT, "%s: process %s[%d] hit a pac violation\n",
  			    __func__, proc_name, pid);
  
+
+--- a/bsd/kern/kern_event.c
++++ b/bsd/kern/kern_event.c
+@@ -2602,4 +2602,42 @@
++
++#if __arm64__
++/* The existing fatal recorder calls this while holding a waiting thread's
++ * scheduler lock and its task lock. Copy scalars only; never copy user memory,
++ * acquire another lock, or dereference the wait-event knote here. */
++void sheng_gnss_waiter_snapshot(thread_t, uint64_t [32]);
++
++void
++sheng_gnss_waiter_snapshot(thread_t thread, uint64_t words[32])
++{
++	struct uthread *uth = get_bsdthread_info(thread);
++	memset(words, 0, 32 * sizeof(*words));
++	if (uth == NULL) {
++		return;
++	}
++	words[0] = uth->syscall_code;
++	words[1] = uth->uu_workq_flags;
++	words[2] = uth->uu_workq_stackaddr;
++	words[3] = uth->uu_workq_thport;
++	words[4] = (uint32_t)uth->uu_rval[0] | ((uint64_t)(uint32_t)uth->uu_rval[1] << 32);
++	memcpy(&words[5], uth->uu_arg, sizeof(uth->uu_arg));
++	/* uu_save is a union: only interpret the original wait continuation's
++	 * storage when both its pointer and typed continuation match. */
++	if (uth->syscall_code == SYS_kevent_id &&
++	    thread->block_hint == kThreadWaitWorkloopSyncWait &&
++	    thread->continuation == filt_wlwait_continue &&
++	    thread->parameter == &uth->uu_save.uus_kevent_register) {
++		struct _kevent_register *args = &uth->uu_save.uus_kevent_register;
++		_Static_assert(sizeof(args->kev) == 9 * sizeof(*words), "kevent scalar layout");
++		words[13] = 1;
++		memcpy(&words[14], &args->kev, sizeof(args->kev));
++		words[23] = (uint64_t)args->handoff_thread;
++		words[24] = (uint64_t)args->kqwl;
++		words[25] = (uint32_t)args->eventout;
++		words[26] = args->ueventlist;
++	}
++}
++#endif /* __arm64__ */
+ 
+ /* called in stackshot context to report the thread responsible for blocking this thread */
+ void
+ kdp_workloop_sync_wait_find_owner(__assert_only thread_t thread,
