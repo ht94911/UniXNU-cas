@@ -23,6 +23,14 @@ static CGRect received_border_rect;
 static unsigned preview_calls;
 static CMSampleBufferRef received_sample;
 static id received_input;
+static unsigned geometry_calls;
+static bool received_outside,received_ignore,received_final;
+static float received_scale;
+typedef struct {int32_t width,height;} TestDimensions;
+static TestDimensions received_dimensions;
+static CGPoint received_shift;
+static bool geometry_override;
+static CGRect geometry_result;
 struct OpaqueVTPixelRotationSession;
 
 @interface FigM2MController : NSObject
@@ -60,6 +68,17 @@ struct OpaqueVTPixelRotationSession;
 - (int)scalePixelBuffer:(CVPixelBufferRef)source rect:(CGRect)src exifOrientation:(int)orientation intoPixelBuffer:(CVPixelBufferRef)destination rect:(CGRect)dst {
  received_orientation=orientation;
  return [self scalePixelBuffer:source rect:src intoPixelBuffer:destination rect:dst];
+}
+@end
+@interface TestStitcher : NSObject
+- (void)getInputRect:(CGRect *)input outputRect:(CGRect *)output inputShiftAppliedInOutputRect:(CGPoint *)appliedShift toTransferPixelBuffer:(CVPixelBufferRef)source rect:(CGRect)src intoPixelBufferDimensions:(TestDimensions)dimensions rect:(CGRect)dst withInputShift:(CGPoint)shift shiftOutsideBoundingRectAllowed:(bool)outside ignoreBounds:(bool)ignore scale:(float)scale forFinalOutput:(bool)final;
+@end
+@implementation TestStitcher
+- (void)getInputRect:(CGRect *)input outputRect:(CGRect *)output inputShiftAppliedInOutputRect:(CGPoint *)appliedShift toTransferPixelBuffer:(CVPixelBufferRef)source rect:(CGRect)src intoPixelBufferDimensions:(TestDimensions)dimensions rect:(CGRect)dst withInputShift:(CGPoint)shift shiftOutsideBoundingRectAllowed:(bool)outside ignoreBounds:(bool)ignore scale:(float)scale forFinalOutput:(bool)final {
+ ++geometry_calls;received_source=source;received_src=src;received_dst=dst;
+ received_dimensions=dimensions;received_shift=shift;received_outside=outside;
+ received_ignore=ignore;received_scale=scale;received_final=final;
+ if(input)*input=geometry_override?geometry_result:src;if(output)*output=dst;if(appliedShift)*appliedShift=shift;
 }
 @end
 @interface TestPreviewSink : NSObject
@@ -108,6 +127,43 @@ int main(void) {@autoreleasepool {
  CVBufferSetAttachment(source,CFSTR("NezhaCameraCompletedRaw1x"),kCFBooleanTrue,kCVAttachmentMode_ShouldPropagate);
  CVBufferRemoveAttachment(source,CFSTR("MetadataDictionary"));
  const RendererRect empty={{801,601},{0,0}},whole={{0,0},{4,6}},target={{0,378},{1200,1602}};
+ original_input_rect=method_getImplementation(class_getInstanceMethod([TestStitcher class],@selector(getInputRect:outputRect:inputShiftAppliedInOutputRect:toTransferPixelBuffer:rect:intoPixelBufferDimensions:rect:withInputShift:shiftOutsideBoundingRectAllowed:ignoreBounds:scale:forFinalOutput:)));
+ TestStitcher *stitcher=[TestStitcher new];
+ const RendererDimensions dimensions={1200,2608};
+ const RendererPoint shift={.125,-.25};
+ const RendererRect geometry_rects[]={empty,whole,{{.5,-.25},{1.5,2.25}},
+     {{NAN,601},{0,0}},{{801,INFINITY},{0,0}},{{801,601},{0,2}},{{801,601},{2,0}}};
+ for(unsigned i=0;i<sizeof geometry_rects/sizeof geometry_rects[0];++i)for(unsigned own=0;own<2;++own) {
+   CVBufferSetAttachment(source,CFSTR("NezhaCameraCompletedRaw1x"),own?kCFBooleanTrue:kCFBooleanFalse,kCVAttachmentMode_ShouldPropagate);
+   const RendererRect src=geometry_rects[i],expected=i==0&&own?whole:src;
+   struct GuardedRect {uint64_t before;RendererRect value;uint64_t after;} input={31,{{0,0},{0,0}},37},output={41,{{0,0},{0,0}},43};
+   RendererPoint applied={0};geometry_calls=0;
+   get_input_rect(stitcher,@selector(getInputRect:outputRect:inputShiftAppliedInOutputRect:toTransferPixelBuffer:rect:intoPixelBufferDimensions:rect:withInputShift:shiftOutsideBoundingRectAllowed:ignoreBounds:scale:forFinalOutput:),&input.value,&output.value,&applied,source,src,dimensions,target,shift,own!=0,i!=0,.625f,own==0);
+   assert(geometry_calls==1&&received_source==source&&input.before==31&&input.after==37&&output.before==41&&output.after==43);
+   assert(!memcmp(&received_src,&src,sizeof src)&&!memcmp(&input.value,&expected,sizeof expected));
+   assert(!memcmp(&received_dst,&target,sizeof target)&&!memcmp(&output.value,&target,sizeof target));
+   assert(received_dimensions.width==1200&&received_dimensions.height==2608&&received_scale==.625f);
+   assert(received_outside==(own!=0)&&received_ignore==(i!=0)&&received_final==(own==0));
+   assert(!memcmp(&received_shift,&shift,sizeof shift)&&!memcmp(&applied,&shift,sizeof shift));++cases;
+ }
+ geometry_calls=0;
+ get_input_rect(stitcher,@selector(getInputRect:outputRect:inputShiftAppliedInOutputRect:toTransferPixelBuffer:rect:intoPixelBufferDimensions:rect:withInputShift:shiftOutsideBoundingRectAllowed:ignoreBounds:scale:forFinalOutput:),NULL,NULL,NULL,NULL,empty,dimensions,target,shift,false,false,1,true);
+ assert(geometry_calls==1&&!received_source&&!memcmp(&received_src,&empty,sizeof empty));++cases;
+ /* In Camera139 the stitcher received a usable frame, but computed an
+  * empty input rectangle. Forward its original positive request once and
+  * repair the returned crop without changing destination or shift. */
+ geometry_override=true;geometry_result=CGRectMake(801,601,0,0);
+ for(unsigned own=0;own<2;++own) {
+   CVBufferSetAttachment(source,CFSTR("NezhaCameraCompletedRaw1x"),own?kCFBooleanTrue:kCFBooleanFalse,kCVAttachmentMode_ShouldPropagate);
+   RendererRect input={0},output={0};RendererPoint applied={0};geometry_calls=0;
+   get_input_rect(stitcher,@selector(getInputRect:outputRect:inputShiftAppliedInOutputRect:toTransferPixelBuffer:rect:intoPixelBufferDimensions:rect:withInputShift:shiftOutsideBoundingRectAllowed:ignoreBounds:scale:forFinalOutput:),&input,&output,&applied,source,whole,dimensions,target,shift,false,false,1,true);
+   const RendererRect expected=own?whole:empty;
+   assert(geometry_calls==1&&!memcmp(&received_src,&whole,sizeof whole)&&!memcmp(&input,&expected,sizeof expected));
+   assert(!memcmp(&output,&target,sizeof target)&&!memcmp(&applied,&shift,sizeof shift));++cases;
+ }
+ geometry_override=false;
+ [stitcher release];
+ CVBufferSetAttachment(source,CFSTR("NezhaCameraCompletedRaw1x"),kCFBooleanTrue,kCVAttachmentMode_ShouldPropagate);
  transfer_calls=0;transfer_status=-12783;
  assert(transfer_pixels(renderer,@selector(doPixelRotationTransferWithSession:sourceBuffer:sourceRect:destinationBuffer:destinationRect:blackFillUnalignedEdges:),NULL,source,empty,destination,target,true)==transfer_status);
  assert(transfer_calls==1&&!memcmp(&received_src,&whole,sizeof(whole))&&!memcmp(&received_dst,&target,sizeof(target))&&received_fill);++cases;

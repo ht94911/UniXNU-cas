@@ -17,11 +17,13 @@
 typedef struct {double width,height;} RendererSize;
 typedef struct {double x,y;} RendererPoint;
 typedef struct {RendererPoint origin;RendererSize size;} RendererRect;
+typedef struct {int32_t width,height;} RendererDimensions;
 typedef struct OpaqueVTPixelRotationSession *RendererRotationSession;
 static IMP original_supports,original_initializer,original_transfer,original_border;
 static IMP original_scale,original_oriented_scale;
 static IMP original_preview_sink;
-static bool capture_seen,installed,preview_sink_installed;
+static IMP original_input_rect;
+static bool capture_seen,installed,preview_sink_installed,input_rect_installed;
 static intptr_t capture_slide;
 static const uint8_t uuid[16]={0x99,0x5f,0xc2,0x2b,0x41,0xbd,0x37,0xb4,0x81,0x2f,0x26,0x86,0xb8,0x1c,0x26,0x94};
 /* The existing renderer stderr records only the first eight final inputs.
@@ -184,6 +186,55 @@ static bool own_full_source(CVPixelBufferRef source)
         CFBooleanGetValue((CFBooleanRef)origin);
     CFRelease(origin);return matched;
 }
+/* The stitcher exports its computed input rectangle to its caller before
+ * invoking the rotation renderer. Apply the same completed-frame repair to
+ * that exported rectangle, so it describes the pixels already supplied by
+ * the rotation renderer. Keep the original destination and applied shift. */
+static void get_input_rect(id self,SEL selector,RendererRect *input,RendererRect *output,
+    RendererPoint *applied_shift,CVPixelBufferRef source,RendererRect src,
+    RendererDimensions dimensions,RendererRect dst,RendererPoint shift,
+    bool outside_allowed,bool ignore_bounds,float scale,bool final)
+{
+    ((void (*)(id,SEL,RendererRect *,RendererRect *,RendererPoint *,CVPixelBufferRef,
+        RendererRect,RendererDimensions,RendererRect,RendererPoint,bool,bool,float,bool))
+        original_input_rect)(self,selector,input,output,applied_shift,source,src,
+            dimensions,dst,shift,outside_allowed,ignore_bounds,scale,final);
+    const RendererRect requested=input?*input:(RendererRect){0};
+    const bool repaired=input && requested.size.width==0 && requested.size.height==0 &&
+        isfinite(requested.origin.x) && isfinite(requested.origin.y) && own_full_source(source);
+    if (repaired) *input=(RendererRect){{0,0},{CVPixelBufferGetWidth(source),CVPixelBufferGetHeight(source)}};
+    static unsigned reports;
+    const unsigned report=__atomic_fetch_add(&reports,1u,__ATOMIC_RELAXED);
+    if (report<8) {
+        const RendererRect actual_input=input?*input:(RendererRect){0};
+        const RendererRect actual_output=output?*output:(RendererRect){0};
+        const RendererPoint actual_shift=applied_shift?*applied_shift:(RendererPoint){0};
+        fprintf(stderr,"nezha-camera: stitcher geometry input=%u repaired=%u source=%zux%zu original_input=%.9g,%.9g,%.9g,%.9g requested=%.9g,%.9g,%.9g,%.9g destination=%dx%d rect=%.9g,%.9g,%.9g,%.9g shift=%.9g,%.9g outside=%u ignore=%u scale=%.9g final=%u outputs=%u/%u/%u source_rect=%.9g,%.9g,%.9g,%.9g destination_rect=%.9g,%.9g,%.9g,%.9g applied_shift=%.9g,%.9g\n",
+            report,(unsigned)repaired,source?CVPixelBufferGetWidth(source):0,
+            source?CVPixelBufferGetHeight(source):0,
+            requested.origin.x,requested.origin.y,requested.size.width,requested.size.height,
+            src.origin.x,src.origin.y,src.size.width,src.size.height,dimensions.width,dimensions.height,
+            dst.origin.x,dst.origin.y,dst.size.width,dst.size.height,shift.x,shift.y,
+            (unsigned)outside_allowed,(unsigned)ignore_bounds,(double)scale,(unsigned)final,
+            (unsigned)(input!=NULL),(unsigned)(output!=NULL),(unsigned)(applied_shift!=NULL),
+            actual_input.origin.x,actual_input.origin.y,actual_input.size.width,actual_input.size.height,
+            actual_output.origin.x,actual_output.origin.y,actual_output.size.width,actual_output.size.height,
+            actual_shift.x,actual_shift.y);
+    }
+}
+static void install_input_rect(void)
+{
+    if (input_rect_installed) return;
+    Class type=objc_getClass("BWPreviewStitcherRenderer");
+    Method method=type?class_getInstanceMethod(type,sel_registerName("_getInputRect:outputRect:inputShiftAppliedInOutputRect:toTransferPixelBuffer:rect:intoPixelBufferDimensions:rect:withInputShift:shiftOutsideBoundingRectAllowed:ignoreBounds:scale:forFinalOutput:")):NULL;
+    IMP original=method?method_getImplementation(method):NULL;
+    if (!original || strcmp(method_getTypeEncoding(method),"v152@0:8^{CGRect={CGPoint=dd}{CGSize=dd}}16^{CGRect={CGPoint=dd}{CGSize=dd}}24^{CGPoint=dd}32^{__CVBuffer=}40{CGRect={CGPoint=dd}{CGSize=dd}}48{?=ii}80{CGRect={CGPoint=dd}{CGSize=dd}}88{CGPoint=dd}120B136B140f144B148") ||
+        (uintptr_t)ptrauth_strip(original,ptrauth_key_function_pointer)!=(uintptr_t)(0x1b04cd674ULL+capture_slide)) return;
+    original_input_rect=original;
+    method_setImplementation(method,(IMP)get_input_rect);
+    input_rect_installed=true;
+    fputs("nezha-camera: original stitcher completed-frame geometry repair installed\n",stderr);
+}
 static bool own_uncompressed_border(CVPixelBufferRef source,CVPixelBufferRef destination,
     RendererRect rect,bool fill)
 {
@@ -283,6 +334,7 @@ bool nezha_camera_renderer_install(const struct mach_header *header,intptr_t sli
     if (match_uuid(header)) {capture_seen=true;capture_slide=slide;}
     if (!capture_seen) return false;
     install_preview_sink();
+    install_input_rect();
     if (installed) return true;
     Class type=objc_getClass("BWPixelBufferTransferRenderer");
     Method support=type ? class_getClassMethod(type,sel_registerName("supportsAcceleratedBorderFill")):NULL;
