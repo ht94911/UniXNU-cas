@@ -165,10 +165,23 @@ static bool delivered(void *context,const struct NezhaCameraRaw10Layout *layout,
     } else if (opened) ++staging_skipped;
     lck_mtx_unlock(&camera_mutex);
     if (copy) {
-        memcpy(staging,frame,bytes);
+        /* Keep the original source CPU-owned and copy only for pending
+         * reads. A whole 15 MiB delivery occupied the frame worker for
+         * 44.100 ms in 137. Drain ACKed completions between 64 KiB chunks
+         * so the other two buffers keep feeding hardware during this copy.
+         * No client mutex, extra thread, allocation or MMIO polling here. */
+        bool complete=true;
+        for (size_t offset=0;offset<bytes;offset+=65536u) {
+            const size_t count=bytes-offset<65536u ? bytes-offset:65536u;
+            memcpy(staging+offset,frame+offset,count);
+            if (offset+count<bytes && !nezha_camera_native_capture_service_copy(frame)) {
+                complete=false;break;
+            }
+        }
         lck_mtx_lock(&camera_mutex);
-        if (opened) { header=completed;frame_ready=true;read_wanted=false;++staging_copies; }
+        if (opened && complete) { header=completed;frame_ready=true;read_wanted=false;++staging_copies; }
         lck_mtx_unlock(&camera_mutex);
+        if (!complete) return !continuing(NULL);
     }
     wakeup(&frame_ready);
     if (sequence==1)
@@ -206,13 +219,14 @@ static void worker(void *argument,wait_result_t wait_result)
     lck_mtx_lock(&camera_mutex);
     const unsigned copied=staging_copies,skipped=staging_skipped,reads=completed_reads;
     lck_mtx_unlock(&camera_mutex);
-    printf("NEZHA CAMERA: native service deliveries=%u returns=%u max-ticks queue=%llu acquire=%llu delivery=%llu publish=%llu completed-to-publish=%llu control-write=%llu control-read=%llu replacements=%u completed-to-address=%llu staging-copies=%u staging-skipped=%u completed-reads=%u\n",
+    printf("NEZHA CAMERA: native service deliveries=%u returns=%u max-ticks queue=%llu acquire=%llu delivery=%llu publish=%llu completed-to-publish=%llu control-write=%llu control-read=%llu replacements=%u completed-to-address=%llu staging-copies=%u staging-skipped=%u completed-reads=%u copy-service-calls=%u copy-recycled=%u copy-service-max=%llu\n",
         work->deliveries,work->returns,(unsigned long long)work->queue_max,
         (unsigned long long)work->acquire_max,(unsigned long long)work->delivery_max,
         (unsigned long long)work->publish_max,(unsigned long long)work->completion_to_publish_max,
         (unsigned long long)work->control_write_max,(unsigned long long)work->control_read_max,
         work->replacements,(unsigned long long)work->completion_to_address_max,
-        copied,skipped,reads);
+        copied,skipped,reads,work->copy_service_calls,work->copy_recycled_frames,
+        (unsigned long long)work->copy_service_max);
     if (result.irq_fault) {
         /* The IRQ owner already captured these words before acknowledgement.
          * Report them after teardown; do not read MMIO or log inside the IRQ. */

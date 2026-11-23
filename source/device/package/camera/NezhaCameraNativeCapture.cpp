@@ -48,6 +48,10 @@ struct Capture {
     uint64_t completed_time{};
     uint64_t replacement_time{};
     bool replacement_pending{};
+    const uint8_t *delivery_frame{};
+    unsigned delivery_index{};
+    bool delivery_active{};
+    NezhaCameraFrameStatus copy_service_status{NezhaFramesOk};
     NezhaCameraNativeFrameWork work{};
 };
 
@@ -209,12 +213,23 @@ bool client_deliver(void *cookie, const NezhaCameraRaw10Layout *layout, const ui
     size_t bytes, uint64_t ticks, uint32_t sequence)
 {
     const auto *request = static_cast<const NezhaCameraNativeCaptureRequest *>(cookie);
+    const unsigned owned = state.capture.cpu_frames;
+    if (state.delivery_active || !owned || (owned & (owned - 1u))) return false;
+    unsigned index = 0;
+    while (index < NezhaCameraRdi1080MaxFrames && owned != (1u << index)) ++index;
+    if (index == NezhaCameraRdi1080MaxFrames) return false;
+    state.delivery_frame = frame;
+    state.delivery_index = index;
+    state.delivery_active = true;
+    state.copy_service_status = NezhaFramesOk;
     const uint64_t before = mach_absolute_time();
     const bool delivered = request->consumer->deliver(request->consumer->context, layout, frame, bytes, ticks, sequence);
     const uint64_t after = mach_absolute_time();
     if (after >= before && after - before > state.work.delivery_max) state.work.delivery_max = after - before;
     if (delivered) ++state.work.deliveries;
-    return delivered;
+    state.delivery_active = false;
+    state.delivery_frame = nullptr;
+    return delivered && state.copy_service_status == NezhaFramesOk;
 }
 
 void wait_controls(void *, unsigned milliseconds)
@@ -393,6 +408,9 @@ bool nezha_camera_native_capture(const NezhaCameraNativeCaptureRequest *request,
     state.completed_time = 0;
     state.replacement_time = 0;
     state.replacement_pending = false;
+    state.delivery_frame = nullptr;
+    state.delivery_active = false;
+    state.copy_service_status = NezhaFramesOk;
     state.work = {};
     if (!checkpoint(*request, *result, NezhaNativeSharedOwners, physical[Camcc], physical[Csid], physical[Vfe])) {
         if (state.cancelled) {
@@ -607,7 +625,10 @@ bool nezha_camera_native_capture(const NezhaCameraNativeCaptureRequest *request,
             while (client_continuing(client.context)) {
                 result->status = nezha_camera_frame_consume(&state.capture_io, &state.capture,
                     &state.reg[Csid], &memory, &client, 1000);
-                if (result->status != NezhaFramesOk) break;
+                if (result->status != NezhaFramesOk) {
+                    if (state.copy_service_status != NezhaFramesOk) result->status = state.copy_service_status;
+                    break;
+                }
                 if (request->controls && client_continuing(client.context)) {
                     /* Initial settings were actually read after loading
                      * the mode, while DMA and the sensor were stopped.
@@ -738,6 +759,30 @@ void nezha_camera_native_capture_request_stop(void)
      * only close its gate. A callback can request this without waiting
      * for the worker that is currently delivering its frame. */
     __atomic_store_n(&state.stopped, 1u, __ATOMIC_RELEASE);
+}
+
+bool nezha_camera_native_capture_service_copy(const uint8_t *completed_frame)
+{
+    if (!state.delivery_active || !completed_frame || state.delivery_frame != completed_frame ||
+        state.copy_service_status != NezhaFramesOk || !state.control_request ||
+        __atomic_load_n(&state.stopped, __ATOMIC_ACQUIRE)) return false;
+    /* Reuse exactly the original worker's completed-frame/cache/return
+     * logic. This cannot recursively call the image consumer or CCI. */
+    const uint64_t outer_time = state.completed_time;
+    const NezhaCameraFrameMemoryIo memory{&state, frame_acquire, frame_return, frame_fault, frame_next};
+    const NezhaCameraFrameConsumer consumer{const_cast<NezhaCameraNativeCaptureRequest *>(state.control_request),
+        client_continuing, nullptr};
+    unsigned recycled = 0;
+    const uint64_t before = mach_absolute_time();
+    state.copy_service_status = nezha_camera_frame_recycle_during_copy(&state.capture_io, &state.capture,
+        &memory, &consumer, state.delivery_index, &recycled);
+    const uint64_t after = mach_absolute_time();
+    state.completed_time = outer_time;
+    ++state.work.copy_service_calls;
+    state.work.copy_recycled_frames += recycled;
+    if (after >= before && after - before > state.work.copy_service_max)
+        state.work.copy_service_max = after - before;
+    return state.copy_service_status == NezhaFramesOk && client_continuing(consumer.context);
 }
 
 bool nezha_camera_native_capture_running(void)

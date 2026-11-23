@@ -179,6 +179,24 @@ bool nezha_camera_main_capture_release_frame(const struct NezhaCameraMainCapture
     return true;
 }
 
+bool nezha_camera_main_capture_recycle_while_copying(const struct NezhaCameraMainCaptureIo *io,
+    struct NezhaCameraMainCapture *capture, unsigned buffer, unsigned held_buffer)
+{
+    if (!io || !capture || frame_count(capture) != NezhaCameraRdi1080MaxFrames ||
+        buffer >= NezhaCameraRdi1080MaxFrames || held_buffer >= NezhaCameraRdi1080MaxFrames ||
+        buffer == held_buffer || !capture->rdi_started || !capture->stream_may_be_on ||
+        !capture->dma.context_active || capture->ready_frames || capture->queued_count != 1 ||
+        capture->cpu_frames != ((1u << buffer) | (1u << held_buffer)) ||
+        capture->queued[0] >= NezhaCameraRdi1080MaxFrames ||
+        capture->queued[0] == buffer || capture->queued[0] == held_buffer) return false;
+    /* The older source remains CPU-owned. Only this newly completed,
+     * sampled and republished mapping fills the address queue again. */
+    if (!nezha_camera1080_requeue_rdi0(io->camss, &capture->layout, buffer)) return false;
+    capture->queued[capture->queued_count++] = (uint8_t)buffer;
+    capture->cpu_frames &= ~(1u << buffer);
+    return true;
+}
+
 bool nezha_camera_main_capture_request_stop(const struct NezhaCameraMainCaptureIo *io,
     struct NezhaCameraMainCapture *capture)
 {

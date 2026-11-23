@@ -33,6 +33,8 @@ static unsigned standby_readbacks, stream_control_readbacks;
 static unsigned control_pending_frames,control_poll_frames,control_waits;
 static unsigned AF_eeprom_calls,AF_position_calls;
 static bool memory_prepare_failure,memory_hold_failure;
+static bool copy_service_test,copy_service_fault,copy_service_stop;
+static unsigned copy_service_tests;
 static NezhaCameraCciStatus AF_eeprom_failure=NezhaCciOk,AF_position_failure=NezhaCciOk;
 extern "C" NezhaCameraCciStatus nezha_camera_eeprom_read_af(const NezhaCameraRegisterIo *io,NezhaCameraEepromAfRead *r)
 {
@@ -224,13 +226,35 @@ extern "C" NezhaCameraFrameStatus nezha_camera_frame_consume(const NezhaCameraMa
     if (frame_timeout) return NezhaFramesTimeout;
     const NezhaCameraRaw10Layout layout{4096,3072,5120,5120,15728640};
     uint8_t frame=0x5a;
-    assert(consumer->deliver(consumer->context,&layout,&frame,layout.frame_bytes,100+capture->completed_frames,capture->completed_frames));
-    return NezhaFramesOk;
+    capture->cpu_frames=1;
+    const bool accepted=consumer->deliver(consumer->context,&layout,&frame,layout.frame_bytes,
+        100+capture->completed_frames,capture->completed_frames);
+    capture->cpu_frames=0;
+    if(!copy_service_test)assert(accepted);
+    return accepted?NezhaFramesOk:NezhaFramesIo;
+}
+extern "C" NezhaCameraFrameStatus nezha_camera_frame_recycle_during_copy(
+ const NezhaCameraMainCaptureIo *,NezhaCameraMainCapture *capture,const NezhaCameraFrameMemoryIo *memory,
+ const NezhaCameraFrameConsumer *consumer,unsigned held,unsigned *frames)
+{
+ assert(copy_service_test && held==0 && frames && capture->cpu_frames==1 && memory->next_event && !consumer->deliver);
+ ++copy_service_tests;*frames=0;
+ if(copy_service_fault)return NezhaFramesSequence;
+ if(copy_service_stop)nezha_camera_native_capture_request_stop();
+ else {*frames=2;capture->completed_frames+=2;}
+ return NezhaFramesOk;
 }
 static bool continuing(void *) { return keep_running; }
-static bool delivered(void *,const NezhaCameraRaw10Layout *,const uint8_t *,size_t,uint64_t,uint32_t sequence)
+static bool delivered(void *,const NezhaCameraRaw10Layout *,const uint8_t *frame,size_t,uint64_t,uint32_t sequence)
 {
  ++copies;
+ if(copy_service_test) {
+  assert(!nezha_camera_native_capture_service_copy(frame+1));
+  const bool serviced=nezha_camera_native_capture_service_copy(frame);
+  assert(serviced==(!copy_service_fault && !copy_service_stop));
+  if(serviced)nezha_camera_native_capture_request_stop();
+  return serviced || copy_service_stop;
+ }
  if(delayed_controls) {
   if((stop_wait_controls && waiting_control_write) || (!waiting_controls && sequence>=10))
    nezha_camera_native_capture_request_stop();
@@ -295,6 +319,24 @@ int main(int argc,char **argv)
     request.profile=&profile;request.profile_bytes=NezhaCameraProfileCapacity;
     request.command_database=&database;request.database_bytes=0x20000;request.cci_queue_words=NezhaCameraCciCanoeQueue0Words;request.consumer=&consumer;
     NezhaCameraNativeCaptureResult result{};
+    if(argc==2 && (!strcmp(argv[1],"copy-service") || !strcmp(argv[1],"copy-service-fault") ||
+        !strcmp(argv[1],"copy-service-stop"))) {
+        keep_running=true;copy_service_test=true;
+        copy_service_fault=!strcmp(argv[1],"copy-service-fault");
+        copy_service_stop=!strcmp(argv[1],"copy-service-stop");
+        NezhaCameraNativeControlConsumer control{NULL,take_controls,complete_controls,controls_readback};
+        request.controls=&control;
+        uint8_t unrelated=0;
+        assert(!nezha_camera_native_capture_service_copy(&unrelated));
+        assert(nezha_camera_native_capture(&request,&result)==!copy_service_fault && result.cleaned);
+        assert(copy_service_tests==1 && result.work.copy_service_calls==1 && copies==1);
+        assert(result.work.copy_recycled_frames==(!copy_service_fault && !copy_service_stop?2u:0u));
+        assert(!nezha_camera_native_capture_service_copy(&unrelated) && !control_commits);
+        if(copy_service_fault)assert(result.status==NezhaFramesSequence);
+        else assert(result.status==NezhaFramesOk && result.frames.frames==(copy_service_stop?1u:3u));
+        puts("Native copy service: sole synchronous source, no recursive delivery or CCI, exact frame counts, first fault and Stop retained");
+        return 0;
+    }
     if(argc==2 && (!strcmp(argv[1],"initial-controls") || !strcmp(argv[1],"initial-controls-nack") ||
         !strcmp(argv[1],"initial-controls-timeout"))) {
         keep_running=true;

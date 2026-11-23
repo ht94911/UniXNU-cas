@@ -1,7 +1,7 @@
-name: nezha Camera137 drain queued IRQ and requested RAW staging on GPU051 - native
+name: nezha Camera139 recycle completed RAW during requested staging on GPU051 - native
 on:
   push:
-    branches: [codex/ios27-camera137-drain-staging-20261123]
+    branches: [codex/ios27-camera139-copy-recycle-20261124]
   workflow_dispatch:
 permissions:
   contents: read

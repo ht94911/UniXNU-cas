@@ -83,6 +83,8 @@ struct NezhaCameraNativeFrameWork {
     uint64_t completion_to_publish_max, control_write_max, control_read_max;
     uint32_t replacements;
     uint64_t completion_to_address_max;
+    uint32_t copy_service_calls, copy_recycled_frames;
+    uint64_t copy_service_max;
 };
 
 struct NezhaCameraNativeCaptureResult {
@@ -139,6 +141,10 @@ bool nezha_camera_native_capture(const struct NezhaCameraNativeCaptureRequest *r
  * destroying the client's context or starting another session. */
 void nezha_camera_native_capture_request_stop(void);
 bool nezha_camera_native_capture_running(void);
+/* Only the synchronous consumer of the current completed frame may call
+ * this, between its copy chunks and after releasing its own client mutex.
+ * The original capture worker alone drains its already ACKed IRQ queue. */
+bool nezha_camera_native_capture_service_copy(const uint8_t *completed_frame);
 
 #ifdef __cplusplus
 }

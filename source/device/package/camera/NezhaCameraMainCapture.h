@@ -99,6 +99,12 @@ bool nezha_camera_main_capture_queue_spare(const struct NezhaCameraMainCaptureIo
 bool nezha_camera_main_capture_release_frame(const struct NezhaCameraMainCaptureIo *io,
     struct NezhaCameraMainCapture *capture, unsigned buffer, bool requeue);
 
+/* The sole worker may recycle an additional completed frame between chunks
+ * of a slow copy. Keep the older, CPU-owned frame out of both hardware slots.
+ * Call only after the new completion's CPU/cache claim has been republished. */
+bool nezha_camera_main_capture_recycle_while_copying(const struct NezhaCameraMainCaptureIo *io,
+    struct NezhaCameraMainCapture *capture, unsigned buffer, unsigned held_buffer);
+
 /* On a CCI failure retain the current mapping. Once the platform has
  * recovered that master, clear its recovery flag and retry stopping. */
 bool nezha_camera_main_capture_request_stop(const struct NezhaCameraMainCaptureIo *io,

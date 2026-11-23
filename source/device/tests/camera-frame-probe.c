@@ -206,6 +206,125 @@ static bool spare_return(void *cookie,unsigned index,bool requeue)
     }
     return !m->publication_failure;
 }
+struct CopyModel {
+    uint8_t buffer[3][256];
+    struct NezhaCameraMainCapture capture;
+    unsigned pending,notices,recycled,writes,acquired,returned;
+    unsigned current,held;
+    bool endless,wrong,unwritten,acquire_failure,publication_failure,queue_failure,smmu_failure;
+    bool stopped,stop_after_acquire,stop_after_publish;
+};
+static bool copy_event(void *context,struct NezhaCamera1080Events *event)
+{
+    struct CopyModel *m=context;
+    *event=(struct NezhaCamera1080Events){0};
+    if(m->queue_failure)return false;
+    if(m->notices||m->endless) {
+        if(m->notices)--m->notices;
+        event->rdi0_irq=1u<<8;return true;
+    }
+    if(!m->pending)return true;
+    --m->pending;
+    assert(m->capture.cpu_frames==(1u<<m->held) && m->capture.queued_count==2 && !m->capture.ready_frames);
+    m->current=m->capture.queued[0];
+    if(!m->unwritten)memset(m->buffer[m->current],0x60+(int)m->recycled,256);
+    *event=(struct NezhaCamera1080Events){.buffer_done=true,
+        .consumed_address=m->capture.layout.image_address[m->wrong?m->held:m->current],
+        .completed_time=200+m->recycled};
+    return true;
+}
+static uint8_t *copy_acquire(void *context,unsigned index)
+{
+    struct CopyModel *m=context;
+    assert(index==m->current && index!=m->held && m->capture.cpu_frames==((1u<<index)|(1u<<m->held)));
+    if(m->stop_after_acquire)m->stopped=true;
+    ++m->acquired;return m->acquire_failure?NULL:m->buffer[index];
+}
+static bool copy_return(void *context,unsigned index,bool requeue)
+{
+    struct CopyModel *m=context;
+    assert(index==m->current && index!=m->held && m->capture.cpu_frames==((1u<<index)|(1u<<m->held)));
+    if(requeue)for(unsigned i=0;i<256;++i)assert(m->buffer[index][i]==0xa5);
+    ++m->returned;
+    if(m->stop_after_publish)m->stopped=true;
+    return !m->publication_failure;
+}
+static bool copy_continuing(void *context) {return !((struct CopyModel *)context)->stopped;}
+static uint32_t copy_fault(void *context) {return ((struct CopyModel *)context)->smmu_failure?1:0;}
+static void copy_write_csid(void *context,uint32_t offset,uint32_t value)
+{
+    (void)context;
+    assert((offset==0x118&&value==256)||(offset==0x114&&value==256)||(offset==0x11c&&value==1));
+}
+static void copy_write_vfe(void *context,uint32_t offset,uint32_t value)
+{
+    struct CopyModel *m=context;
+    assert(offset==0x2c04 && m->capture.cpu_frames==((1u<<m->current)|(1u<<m->held)) &&
+        m->capture.queued_count==1 && !m->capture.ready_frames);
+    assert(value==m->capture.layout.image_address[m->current] &&
+        m->returned==m->acquired && m->current!=m->held);
+    for(unsigned i=0;i<256;++i)assert(m->buffer[m->held][i]==0x55 && m->buffer[m->current][i]==0xa5);
+    ++m->writes;++m->recycled;
+}
+static struct CopyModel copy_model(void)
+{
+    struct CopyModel m={.capture={.rdi_started=true,.stream_may_be_on=true,
+        .dma.context_active=true,.layout={.layout={48,4,64,64,256},.frame_increment=1,
+        .image_address={0x10000,0x20000,0x30000},.frame_count=3},.queued={1,2},
+        .queued_count=2,.cpu_frames=1}};
+    memset(m.buffer,0xa5,sizeof(m.buffer));memset(m.buffer[0],0x55,256);return m;
+}
+static void check_copy_recycle(void)
+{
+    struct CopyModel m=copy_model();
+    const struct NezhaCamera1080Io camss={&m,copy_write_csid,copy_write_vfe};
+    const struct NezhaCameraMainCaptureIo io={.camss=&camss};
+    const struct NezhaCameraFrameMemoryIo memory={&m,copy_acquire,copy_return,copy_fault,copy_event};
+    const struct NezhaCameraFrameConsumer consumer={&m,copy_continuing,NULL};
+    m.pending=20;m.notices=20;
+    unsigned recycled=99;
+    assert(nezha_camera_frame_recycle_during_copy(&io,&m.capture,&memory,&consumer,0,&recycled)==NezhaFramesOk);
+    assert(recycled==12 && m.recycled==12 && m.pending==8);
+    assert(nezha_camera_frame_recycle_during_copy(&io,&m.capture,&memory,&consumer,0,&recycled)==NezhaFramesOk);
+    assert(recycled==8 && m.recycled==20 && m.capture.cpu_frames==1 && m.capture.queued_count==2);
+    const unsigned writes=m.writes;
+    assert(nezha_camera_frame_recycle_during_copy(&io,&m.capture,&memory,&consumer,0,&recycled)==NezhaFramesOk && !recycled && writes==m.writes);
+    m.endless=true;
+    assert(nezha_camera_frame_recycle_during_copy(&io,&m.capture,&memory,&consumer,0,&recycled)==NezhaFramesOk && !recycled && writes==m.writes);
+    for(unsigned mode=0;mode<6;++mode) {
+        m=copy_model();m.pending=1;
+        m.wrong=mode==0;m.unwritten=mode==1;m.acquire_failure=mode==2;
+        m.publication_failure=mode==3;m.queue_failure=mode==4;m.smmu_failure=mode==5;
+        const enum NezhaCameraFrameStatus expected=mode==0?NezhaFramesSequence:mode==1?NezhaFramesUnwritten:
+            mode==2||mode==3?NezhaFramesCache:mode==4?NezhaFramesIo:NezhaFramesSmmu;
+        assert(nezha_camera_frame_recycle_during_copy(&io,&m.capture,&memory,&consumer,0,&recycled)==expected && !m.writes);
+        assert(m.capture.cpu_frames&1u);
+        for(unsigned i=0;i<256;++i)assert(m.buffer[0][i]==0x55);
+    }
+    for(unsigned held=1;held<4;++held) {
+        m=copy_model();
+        assert(nezha_camera_frame_recycle_during_copy(&io,&m.capture,&memory,&consumer,held,&recycled)==NezhaFramesInvalid && !m.writes);
+    }
+    for(unsigned held=1;held<3;++held) {
+        m=copy_model();m.held=held;m.capture.cpu_frames=1u<<held;
+        m.capture.queued[0]=(held+1)%3;m.capture.queued[1]=(held+2)%3;m.pending=20;
+        memset(m.buffer,0xa5,sizeof(m.buffer));memset(m.buffer[held],0x55,256);
+        assert(nezha_camera_frame_recycle_during_copy(&io,&m.capture,&memory,&consumer,held,&recycled)==NezhaFramesOk && recycled==20);
+        assert(m.capture.cpu_frames==(1u<<held) && m.capture.queued_count==2);
+    }
+    for(unsigned mode=0;mode<3;++mode) {
+        m=copy_model();m.pending=1;
+        m.stopped=mode==0;m.stop_after_acquire=mode==1;m.stop_after_publish=mode==2;
+        assert(nezha_camera_frame_recycle_during_copy(&io,&m.capture,&memory,&consumer,0,&recycled)==NezhaFramesOk && !recycled && !m.writes);
+        assert(m.capture.cpu_frames==1 && m.acquired==(mode!=0) && m.returned==m.acquired);
+    }
+    for(unsigned mode=0;mode<2;++mode) {
+        m=copy_model();m.capture.queued[1]=mode?3:m.capture.queued[0];
+        assert(nezha_camera_frame_recycle_during_copy(&io,&m.capture,&memory,&consumer,0,&recycled)==NezhaFramesInvalid && !m.writes);
+    }
+    puts("RAW copy recycling:32-event bound,20 newer frames,held-source unchanged,no recursive delivery,faults retain ownership");
+}
+
 static void check_spare_pool(void)
 {
     struct SpareModel m={.capture={.rdi_started=true,.stream_may_be_on=true,
@@ -226,6 +345,7 @@ static void check_spare_pool(void)
         ++m.completed;
     }
     assert(m.delivered==18 && m.published==18);
+    check_copy_recycle();
     for (unsigned mode=0;mode<9;++mode) {
         m=initial;memset(m.buffer,0xa5,sizeof(m.buffer));
         m.stop_in_callback=mode==0;m.delivery_failure=mode==1;

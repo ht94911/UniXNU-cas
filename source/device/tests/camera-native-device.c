@@ -25,15 +25,27 @@ static unsigned copy_read_probes;
 static bool frame_during_read;
 static uint8_t *capture_raw;
 static const struct NezhaCameraFrameConsumer *capture_consumer;
+static const uint8_t *copy_source;
+static unsigned copy_chunks,copy_service_calls;
+static bool copy_service_failure;
+bool nezha_camera_native_capture_service_copy(const uint8_t *source)
+{
+ assert(source==copy_source && copy_chunks%240);
+ ++copy_service_calls;
+ return !(copy_service_failure && copy_chunks==3);
+}
 void *nezha_camera_test_memcpy(void *destination,const void *source,size_t bytes)
 {
- if(bytes==15728640) {
+ if(bytes==65536) {
+  if(!copy_source)copy_source=source;
+  assert(source==copy_source+(copy_chunks%240)*65536u);
   /* A reader entering while the production worker copies staging must
    * see no completed frame and must acquire the mutex without waiting
    * for the 15 MiB copy. Never expose the partially copied frame. */
   struct uio probe={NULL,sizeof(struct hakios_camera_frame)+15728640,0};
   assert(methods && methods->d_read(0,&probe,IO_NDELAY)==EAGAIN);
-  ++copy_read_probes;
+  if(copy_chunks%240==0)++copy_read_probes;
+  ++copy_chunks;
  }
  return memcpy(destination,source,bytes);
 }
@@ -106,8 +118,14 @@ bool nezha_camera_native_capture(const struct NezhaCameraNativeCaptureRequest *r
  assert(!request->controls->take(NULL,&control));
  struct NezhaCameraRaw10Layout layout={4096,3072,5120,5120,15728640};
  uint8_t *raw=malloc(layout.frame_bytes);assert(raw);memset(raw,0x5a,layout.frame_bytes);
+ copy_source=raw;copy_chunks=0;
  const unsigned copies=copy_read_probes;
- assert(request->consumer->deliver(NULL,&layout,raw,layout.frame_bytes,75,2));
+ const bool first_delivered=request->consumer->deliver(NULL,&layout,raw,layout.frame_bytes,75,2);
+ if(copy_service_failure) {
+  assert(!first_delivered && copy_chunks==3 && copy_service_calls==3);
+  capture_raw=raw;result->cleaned=true;return false;
+ }
+ assert(first_delivered);
  memset(raw,0x6b,layout.frame_bytes);
  assert(request->consumer->deliver(NULL,&layout,raw,layout.frame_bytes,76,3));
  assert(request->consumer->deliver(NULL,&layout,raw,layout.frame_bytes,77,4));
@@ -147,8 +165,20 @@ int main(int argc,char **argv)
 {
  uint8_t profile=0,database=0;
  expected_AF_readonly=argc==2 && !strcmp(argv[1],"AF-readonly");
+ copy_service_failure=argc==2 && !strcmp(argv[1],"copy-service-failure");
  assert(nezha_camera_native_device_init(&profile,NezhaCameraProfileCapacity,&database,0x20000,expected_AF_readonly));
  assert(methods && !runs);
+ if(copy_service_failure) {
+  assert(methods->d_open(0,0,0,NULL)==0);
+  uint8_t *bytes=malloc(sizeof(struct hakios_camera_frame)+15728640);assert(bytes);
+  struct uio probe={bytes,sizeof(struct hakios_camera_frame)+15728640,0};
+  assert(methods->d_read(0,&probe,IO_NDELAY)==EAGAIN);
+  assert(methods->d_read(0,&probe,0)==EIO && !probe.offset && copy_read_probes==1);
+  assert(methods->d_close(0,0,0,NULL)==0 && methods->d_open(0,0,0,NULL)==EIO);
+  free(capture_raw);free(bytes);
+  puts("Native camera copy fault: partial staging stays unpublished, first service error stops delivery and refuses restart");
+  return 0;
+ }
  struct vnode own={1,VT_DEVFS,makedev(1,0)},other={1,VT_DEVFS,makedev(2,0)};
  assert(nezha_camera_native_node(&own) && !nezha_camera_native_node(&other) && !nezha_camera_native_node(NULL));
  own.character=0;assert(!nezha_camera_native_node(&own));own.character=1;
@@ -191,6 +221,7 @@ int main(int argc,char **argv)
  assert(methods->d_close(0,0,0,NULL)==0);
  assert(methods->d_open(0,0,0,NULL)==EIO);
  assert(copy_read_probes==5);
+ assert(copy_service_calls==5*239);
  free(buffer);
  puts("Native camera device: requested-only staging, preserved unread pixels, copy/read exclusion, exposure delay, bounded close and fault restart gate passed");
 }

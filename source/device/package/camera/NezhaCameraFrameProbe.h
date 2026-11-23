@@ -52,6 +52,16 @@ enum NezhaCameraFrameStatus nezha_camera_frame_consume(
     const struct NezhaCameraRegisterIo *csid, const struct NezhaCameraFrameMemoryIo *memory,
     const struct NezhaCameraFrameConsumer *consumer, unsigned budget_ms);
 
+/* Between bounded chunks of the sole worker's copy, drain at most 32
+ * already ACKed events. Drop/recycle newer completed frames without a second
+ * image delivery, keeping held_buffer CPU-owned and absent from DMA slots.
+ * No MMIO polling, sleeping or second IRQ consumer is introduced. */
+enum NezhaCameraFrameStatus nezha_camera_frame_recycle_during_copy(
+    const struct NezhaCameraMainCaptureIo *io, struct NezhaCameraMainCapture *capture,
+    const struct NezhaCameraFrameMemoryIo *memory, const struct NezhaCameraFrameConsumer *consumer,
+    unsigned held_buffer,
+    unsigned *recycled_frames);
+
 /* Collect up to 20 completed frames from the already streaming RDI0.
  * A completion must name the expected queue head. Sample several rows
  * after cache acquisition to detect an untouched sentinel or an empty

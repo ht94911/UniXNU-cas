@@ -48,6 +48,9 @@ g++ "${flags[@]}" "$out/NativeCapture-host.cpp" tests/camera-native-capture.cpp 
 "$out/test-capture" initial-controls
 "$out/test-capture" initial-controls-nack
 "$out/test-capture" initial-controls-timeout
+"$out/test-capture" copy-service
+"$out/test-capture" copy-service-fault
+"$out/test-capture" copy-service-stop
 g++ "${flags[@]}" package/camera/NezhaCameraNativeSmmu.cpp tests/camera-native-smmu.cpp -o "$out/test-smmu"
 "$out/test-smmu"
 for unit in NativeCapture NativeSmmu; do
@@ -68,6 +71,7 @@ gcc -std=gnu11 -Wall -Wextra -Werror -g -fsanitize=address,undefined \
     tests/camera-native-device.c -pthread -o "$out/test-device"
 "$out/test-device"
 "$out/test-device" AF-readonly
+"$out/test-device" copy-service-failure
 gcc -std=c11 -Wall -Wextra -Werror -g -fsanitize=address,undefined -Ipackage/camera \
     package/camera/NezhaCameraOvx10500u.c tests/camera-ovx-readback.c -o "$out/test-ovx-readback"
 "$out/test-ovx-readback"
