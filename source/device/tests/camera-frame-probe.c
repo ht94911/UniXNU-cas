@@ -10,6 +10,8 @@ struct FrameModel {
     unsigned step, returned, acquired, published, delivered;
     uint32_t addresses[2];
     bool no_second_write, wrong_address, stopped, no_timestamp, no_event, stop_in_callback, deliver_failed, publish_failed;
+    unsigned pending_notices;
+    bool endless_notices;
 };
 
 static uint32_t csid_read(void *cookie, uint32_t offset)
@@ -79,6 +81,11 @@ static bool next_event(void *cookie,struct NezhaCamera1080Events *event)
 {
     struct FrameModel *m=cookie;
     *event=(struct NezhaCamera1080Events){0};
+    if (m->pending_notices || m->endless_notices) {
+        if (m->pending_notices) --m->pending_notices;
+        event->rdi0_irq=1u<<8;
+        return true;
+    }
     if (!m->no_event) *event=(struct NezhaCamera1080Events){
         .buffer_done=true,.consumed_address=m->addresses[(m->step+(m->wrong_address ? 1u:0u))%2],
         .completed_time=m->no_timestamp ? 0u:100u+m->step};
@@ -300,6 +307,22 @@ int main(void)
     const unsigned step_before_poll=model.step;
     assert(nezha_camera_frame_consume(&io,&capture,&csid,&memory,&consumer,0)==NezhaFramesOk);
     assert(capture.completed_frames==before_poll && model.step==step_before_poll);
+
+    /* An already queued RUP notice does not consume a millisecond of
+     * DMA replacement time or hide the completion behind it. */
+    for (unsigned budget=0;budget<2;++budget) {
+        model=original;capture=streaming(&model);model.pending_notices=20;
+        assert(nezha_camera_frame_consume(&io,&capture,&csid,&memory,&consumer,budget?10:0)==NezhaFramesOk);
+        assert(!model.pending_notices && model.step==0 && model.delivered==1 &&
+               model.published==1 && capture.completed_frames==1);
+    }
+    /* An unending notice producer still reaches the caller's finite
+     * wait budget; none of its notices can fabricate a completed frame. */
+    model=original;capture=streaming(&model);model.endless_notices=true;
+    assert(nezha_camera_frame_consume(&io,&capture,&csid,&memory,&consumer,0)==NezhaFramesOk);
+    assert(model.step==0 && !model.acquired && !capture.completed_frames);
+    assert(nezha_camera_frame_consume(&io,&capture,&csid,&memory,&consumer,3)==NezhaFramesTimeout);
+    assert(model.step==3 && !model.acquired && !capture.completed_frames);
 
     model=original;capture=streaming(&model);model.stop_in_callback=true;
     assert(nezha_camera_frame_consume(&io,&capture,&csid,&memory,&consumer,10)==NezhaFramesOk);

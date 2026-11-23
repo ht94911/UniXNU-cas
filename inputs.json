@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Camera135 publishes ready spare RAW before CPU delivery;45MiB pool/128KiB tables;original134 RUP,131 WC,130 initial controls and133 provider retained",
+  "purpose": "Camera137 drains bounded original IRQ queue before sleep and stages RAW only for pending reads;retain native135 three RAW/WC/standby,source136 renderer/GPU115/Data128",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "0ad343c399432706fb5bee1c7b0974d4aa4ae998",
+  "device_revision": "330a6508e968dde177c28b058812e0cbae897043",
   "soc_revision": "device-local-GPU051-camera074-bankstreamretirement",
   "xcode": "26.6",
   "files": {
@@ -395,7 +395,7 @@
     "source/device/package/camera/NezhaCameraEepromAf.c": "08417a42e6abe94ddd8b41b9805f6a24fc0be5b15b053d535770a043cbc9e8df",
     "source/device/package/camera/NezhaCameraEepromAf.h": "1d589912d8f071b4c8065bda3354297a0b705c7f988ba9d22778275a853b148f",
     "source/device/package/camera/NezhaCameraFrameExposure.h": "7c32a3eafbd63fd5c70017d1d4c7761d031b22dc5eec46a3d4d02a908671fa3f",
-    "source/device/package/camera/NezhaCameraFrameProbe.c": "c8d612e84c0fa873eb026cc4e13715ac7eac3862948021733577eb9ac88281d1",
+    "source/device/package/camera/NezhaCameraFrameProbe.c": "ac9c30d42e85ab717ac5409b4b86ef005ed7d7370ecee113f7074fc0dd4cefff",
     "source/device/package/camera/NezhaCameraFrameProbe.h": "1693301b13eac83927d3b36730af1883f037d418361ea7a3790b61f160c62755",
     "source/device/package/camera/NezhaCameraIfeBandwidth.c": "7d7a4ff7a0d7614b2741b7c52315d9e9bd01dc34da16746a6767009141b92507",
     "source/device/package/camera/NezhaCameraIfeBandwidth.h": "0bbc9947fa564abbde053fcdf05d6eb0205242a3ecf21e8d4c82d9bdff4ecf97",
@@ -411,7 +411,7 @@
     "source/device/package/camera/NezhaCameraMainPins.h": "bb88d9555c96c5a70a003a956ed660d14329e781ae023ef02e265f402e6d4a4a",
     "source/device/package/camera/NezhaCameraNativeCapture.cpp": "d6de5a0bedb308de9bf2accbf94660901094f416520ec18ef935c723c012e015",
     "source/device/package/camera/NezhaCameraNativeCapture.h": "48f9857aac492d6a93dd35bba042e28c33c78523c9fbc692122a60802f9ba7ea",
-    "source/device/package/camera/NezhaCameraNativeDevice.c": "16ce2b71fbec12e9f50ea41ec73e57ba4513df114d9d7395aad8b5dd961a6b50",
+    "source/device/package/camera/NezhaCameraNativeDevice.c": "b330b7444030968e2fd073fb589d70885519c50af0c90994c865c880bee72bcb",
     "source/device/package/camera/NezhaCameraNativeDevice.h": "a99bad6aecc579433ac7e01bcca45b021ea3a488698907bb2caae8081abd85b4",
     "source/device/package/camera/NezhaCameraNativeGcc.cpp": "b247ae6e76717ec76ab3be5dc93f4946ac14988e7227ecdb917312e95f731cfb",
     "source/device/package/camera/NezhaCameraNativeGcc.h": "2e2838a7eb929e3c970da7dfb4e038635c5da7700860ed41466b07e47a624208",
@@ -620,7 +620,7 @@
     "source/device/tests/camera-eeprom-af.c": "31ced0cee651dc0e969e01fc5e3dab511cac06e3435ccf20880857063b89c922",
     "source/device/tests/camera-fig-api.c": "718a85f2ad62eaadbb8a8413eebbbd14ace8c297517a802af90fd9599f342404",
     "source/device/tests/camera-fig-provider.c": "e150d81814a9cc1fe7b28968626e81f6344a1cffbdbb39a76d50e144e8928844",
-    "source/device/tests/camera-frame-probe.c": "e746abe71ef4967def1819012c64937a73d38c668ca921a9523529fbd826b2e3",
+    "source/device/tests/camera-frame-probe.c": "a7390f19e879ef5dde23149469f81bdcf48c619f5ff6b6034214e94dda4703f2",
     "source/device/tests/camera-graph-output.c": "f96831d9c7c256fe8f9d80fd410c1abbf368b459d4db205b7fad0f6fdffd13b0",
     "source/device/tests/camera-ife-bandwidth.c": "42985b5945450d5c9916e78d783361df50de8ed97f65912cc7152d9925a56c01",
     "source/device/tests/camera-ife-rsc.c": "30252295f5f4dd0578dd8a56c73efc612aa2eb3cc386debea27f29cf347d1118",
@@ -630,7 +630,7 @@
     "source/device/tests/camera-main-capture.c": "3c32f3bf904ad30dfb9f0e33618327ac4e325231e748ce7fe002331b9726a4de",
     "source/device/tests/camera-main-pins.c": "ffab1b051044cba4eab2624d72b18b4ebd8f8f7440a864486e055f476d91fda1",
     "source/device/tests/camera-native-capture.cpp": "e529957a699a50b41e1fadc91a391f1f3167300e1c6586bad7dbeeb2f4b3b9f6",
-    "source/device/tests/camera-native-device.c": "6527a5a5117ed499966680664f879077f4441096158ab3457b6874dd2be152e6",
+    "source/device/tests/camera-native-device.c": "37b50aa39615c31bdc7785e2acab0358bb7e72b8b3a61dc72c84cc758c7f67e5",
     "source/device/tests/camera-native-irq.cpp": "77f144b79bf79bb31402b3e75232069c04e37bb96f31dc9f896a31dcbbb07f42",
     "source/device/tests/camera-native-rpmh.cpp": "58c4dd7bc3bee5d2ff8ae1c758c286f5e69e51e7e8ddc29ed91e0ac1ca83d9a9",
     "source/device/tests/camera-native-smmu.cpp": "cacf3dc0b4b04446c447fe3960e6b89b3cac2ca403dfd113d1d73b726616961a",
@@ -710,12 +710,12 @@
     "source/device/package/gpu/adreno/ArmSmmu4KProgram.h": "171900c3ed400b805c3a1587959f66bc4a19db18aedc8111e862651a90bb8d8f",
     "source/device/package/gpu/adreno/ArmSmmu4K.h": "e25063b9134afc7eb79e7c030bc2858608cf0ade5da714d5dfd600fee5007e8e",
     "source/device/scripts/check-nezha27-camera-memory.py": "938a8576abf9bedfb092a10581e204fe9a1d4425e0b93acf201aca8fd2fb9ba2",
-    ".github/workflows/nezha-ios27-native.yml": "084971bd8331589e45d74f10f151ee55ff7ce823da04e9448d2d1839853e5545",
+    ".github/workflows/nezha-ios27-native.yml": "a4101c1eb038fae21489de307259ab65482767cf700d6dc1fe02c76d6545f261",
     "source/device/package/gpu/adreno/ArmSmmu4K.c": "0adb19b483e56e723014ed6cfe2c29f9d9735ae2770f62cf0057b22937dbd157",
     "source/device/package/gpu/adreno/ArmSmmu4KContext.c": "b8e32e32d1f07e71de65f31b12963ab8b01c05755f8c60c2d6f40cb03fe4eca8",
     "source/device/package/gpu/adreno/ArmSmmu4KProgram.c": "3b1d4911b0a48f90b09c721ffd2eb95dbfc02e96165009b23f8c98841f36e2b0",
     "source/device/package/gpu/adreno/ArmSmmu4KStreams.c": "359610de6974c1885b4b7bbf72e6b321a013e1cc44200e1a8f566d09722c009a",
-    "ci/native.py": "14d738487eea8ae2c7672a45666410e4f61d13d8fc78cb1d88c1a59c14929dd3"
+    "ci/native.py": "659dc1124c249d4ad3724d2b6e9a83d4baff554f028f8860028d199bd3026204"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
@@ -1310,11 +1310,11 @@
     "Metal_run": 43807847110,
     "Metal_head": "59282c1dd681f80746443bad9d1e45835dcf38d6"
   },
-  "ci_native_sha256": "14d738487eea8ae2c7672a45666410e4f61d13d8fc78cb1d88c1a59c14929dd3",
+  "ci_native_sha256": "659dc1124c249d4ad3724d2b6e9a83d4baff554f028f8860028d199bd3026204",
   "ci_host_log_directory_fix": true,
   "source_parent_kernel": "ba64d637a7a64abd6a0d6a265631810fd9155dab",
   "userland_built_separately": true,
-  "builder_sha256": "156d2a840ffbbfa07ab3a3d3e461955594905470ec05f37bf03b8ffca9ff5bab",
+  "builder_sha256": "659dc1124c249d4ad3724d2b6e9a83d4baff554f028f8860028d199bd3026204",
   "camera079_launcher_cdhash": "6f4575d581997dccad3061d6e288e1ca02a68cb6",
   "library_source_revision": "266baca8e3e8bb9927605598877a412bda683935"
 }

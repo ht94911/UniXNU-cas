@@ -22,6 +22,9 @@ static unsigned controls_taken;
 static bool control_requested;
 static bool expected_AF_readonly;
 static unsigned copy_read_probes;
+static bool frame_during_read;
+static uint8_t *capture_raw;
+static const struct NezhaCameraFrameConsumer *capture_consumer;
 void *nezha_camera_test_memcpy(void *destination,const void *source,size_t bytes)
 {
  if(bytes==15728640) {
@@ -68,6 +71,13 @@ int uiomove(caddr_t source,int bytes,struct uio *uio)
 {
  if (copy_failure) return EFAULT;
  assert(bytes>0 && (size_t)bytes<=uio->capacity-uio->offset);
+ if (bytes==15728640 && frame_during_read) {
+  frame_during_read=false;
+  struct NezhaCameraRaw10Layout layout={4096,3072,5120,5120,15728640};
+  const unsigned copies=copy_read_probes;
+  assert(capture_consumer->deliver(NULL,&layout,capture_raw,layout.frame_bytes,79,6));
+  assert(copy_read_probes==copies); /* active uiomove owns staging */
+ }
  memcpy(uio->bytes+uio->offset,source,(size_t)bytes);uio->offset+=(size_t)bytes;return 0;
 }
 bool nezha_camera_profile_open(const uint8_t *bytes,size_t capacity,struct NezhaCameraProfile *p)
@@ -76,6 +86,7 @@ void nezha_camera_native_capture_request_stop(void) { ++stops; }
 bool nezha_camera_native_capture(const struct NezhaCameraNativeCaptureRequest *request,struct NezhaCameraNativeCaptureResult *result)
 {
  ++runs;assert(request->consumer && request->consumer->continuing(NULL));
+ capture_consumer=request->consumer;
  assert(request->AF_readonly_probe==expected_AF_readonly);
  assert(request->controls && request->controls->take && request->controls->complete && request->controls->readback);
  struct NezhaCameraOvxControls control;
@@ -95,9 +106,41 @@ bool nezha_camera_native_capture(const struct NezhaCameraNativeCaptureRequest *r
  assert(!request->controls->take(NULL,&control));
  struct NezhaCameraRaw10Layout layout={4096,3072,5120,5120,15728640};
  uint8_t *raw=malloc(layout.frame_bytes);assert(raw);memset(raw,0x5a,layout.frame_bytes);
- assert(request->consumer->deliver(NULL,&layout,raw,layout.frame_bytes,75,1));
- assert(request->consumer->deliver(NULL,&layout,raw,layout.frame_bytes,76,2));
- assert(request->consumer->deliver(NULL,&layout,raw,layout.frame_bytes,77,3));free(raw);
+ const unsigned copies=copy_read_probes;
+ assert(request->consumer->deliver(NULL,&layout,raw,layout.frame_bytes,75,2));
+ memset(raw,0x6b,layout.frame_bytes);
+ assert(request->consumer->deliver(NULL,&layout,raw,layout.frame_bytes,76,3));
+ assert(request->consumer->deliver(NULL,&layout,raw,layout.frame_bytes,77,4));
+ /* No new read: preserve the first completed result and recycle these
+  * newer DMA frames without any second staging copy. */
+ assert(copy_read_probes==copies+1);
+ capture_raw=raw;
+ if (runs==1) {
+  uint8_t *bytes=malloc(sizeof(struct hakios_camera_frame)+layout.frame_bytes);assert(bytes);
+  struct uio probe={bytes,sizeof(struct hakios_camera_frame)+layout.frame_bytes,0};
+  assert(methods->d_read(0,&probe,IO_NDELAY)==0);
+  const struct hakios_camera_frame *first=(const void *)bytes;
+  assert(first->sequence==2 && first->time==75 && !first->exposure_lines &&
+         first->reserved[0]==0x4f565852u && first->reserved[1]==320 && first->reserved[4]==1);
+  for (unsigned i=0;i<layout.frame_bytes;++i)assert(bytes[sizeof(*first)+i]==0x5a);
+  assert(request->consumer->deliver(NULL,&layout,raw,layout.frame_bytes,78,5));
+  assert(copy_read_probes==copies+1); /* no next read yet */
+  probe.offset=0;
+  assert(methods->d_read(0,&probe,IO_NDELAY)==EAGAIN);
+  assert(request->consumer->deliver(NULL,&layout,raw,layout.frame_bytes,78,5));
+  assert(copy_read_probes==copies+2);
+  frame_during_read=true;
+  assert(methods->d_read(0,&probe,IO_NDELAY)==0 && !frame_during_read);
+  assert(first->sequence==5 && first->time==78 && first->exposure_lines==320 &&
+         first->gain==544 && first->line_ns==14841 && first->frame_lines==4000);
+  for (unsigned i=0;i<layout.frame_bytes;++i)assert(bytes[sizeof(*first)+i]==0x6b);
+  assert(copy_read_probes==copies+2);
+  probe.offset=0;
+  assert(methods->d_read(0,&probe,IO_NDELAY)==EAGAIN);
+  assert(request->consumer->deliver(NULL,&layout,raw,layout.frame_bytes,80,7));
+  assert(copy_read_probes==copies+3);
+  free(bytes);
+ }
  result->cleaned=true;return !stream_failure;
 }
 int main(int argc,char **argv)
@@ -127,14 +170,16 @@ int main(int argc,char **argv)
  assert(methods->d_read(0,&uio,IO_NDELAY)==EAGAIN && runs==0);
  assert(methods->d_read(0,&uio,0)==0 && !uio_resid(&uio) && runs==1);
  struct hakios_camera_frame *h=(void *)buffer;
- assert(!memcmp(h->magic,"RWFRAME1",8) && h->sequence==3 && h->time==77 && h->width==4096 && h->stride==5120);
+ assert(!memcmp(h->magic,"RWFRAME1",8) && h->sequence==7 && h->time==80 && h->width==4096 && h->stride==5120);
  assert(h->exposure_lines==320 && h->gain==544 && h->line_ns==14841 && h->frame_lines==4000 &&
   h->gain_unity==256 && h->frame_lines_min==2246 && h->margin==10 && h->reserved[4]==1);
- for (unsigned i=0;i<15728640;++i) assert(buffer[sizeof(*h)+i]==0x5a);
+ for (unsigned i=0;i<15728640;++i) assert(buffer[sizeof(*h)+i]==0x6b);
+ free(capture_raw);capture_raw=NULL;
  assert(methods->d_close(0,0,0,NULL)==0 && stops==1 && controls_taken==1);
  assert(methods->d_open(0,0,0,NULL)==0);
  copy_failure=true;uio.offset=0;
  assert(methods->d_read(0,&uio,0)==EFAULT);copy_failure=false;
+ free(capture_raw);capture_raw=NULL;
  assert(methods->d_close(0,0,0,NULL)==0);
  assert(methods->d_open(0,0,0,NULL)==0);
  const unsigned prior_runs=runs;
@@ -142,9 +187,10 @@ int main(int argc,char **argv)
  stream_failure=true;
  assert(methods->d_open(0,0,0,NULL)==0);uio.offset=0;
  assert(methods->d_read(0,&uio,0)==0); /* queued completed frame remains valid before terminal fault */
+ free(capture_raw);capture_raw=NULL;
  assert(methods->d_close(0,0,0,NULL)==0);
  assert(methods->d_open(0,0,0,NULL)==EIO);
- assert(copy_read_probes>=6);
+ assert(copy_read_probes==5);
  free(buffer);
- puts("Native camera device: full header/RAW read, exclusive opens, bounded worker close, copy fault and no failed-session restart passed");
+ puts("Native camera device: requested-only staging, preserved unread pixels, copy/read exclusion, exposure delay, bounded close and fault restart gate passed");
 }

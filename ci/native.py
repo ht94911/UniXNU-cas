@@ -419,6 +419,10 @@ def collect(framework, work, sealed):
         add(tree / '.cache/xnu-work/security/mac_process.c', 'compiled-source/mac_process.c')
         for name in ('mac_file.c', 'mac_vfs.c'):
             add(tree / '.cache/xnu-work/security' / name, 'compiled-source/' + name)
+        for directory in ('camera-startup-host', 'camera-spare-host'):
+            for path in sorted((work / directory).rglob('*')):
+                if path.is_file() and path.suffix in ('.log', '.o', '.json', '.c', '.cpp', '.h'):
+                    add(path, directory + '/' + path.relative_to(work / directory).as_posix())
         for path in sorted((work / 'camera-exposure-policy').glob('*')):
             if path.is_file():
                 add(path, 'camera-exposure-policy/' + path.name)

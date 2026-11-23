@@ -39,6 +39,7 @@ enum NezhaCameraFrameStatus nezha_camera_frame_consume(
         !memory->return_frame || !memory->fault || !consumer || !consumer->continuing ||
         !consumer->deliver || budget_ms > 3000) return NezhaFramesInvalid;
     const unsigned attempts=budget_ms ? budget_ms+1u:NezhaCameraIrqSlots;
+    unsigned drained=0;
     for (unsigned ms=0;ms<attempts;++ms) {
         if (!consumer->continuing(consumer->context)) return NezhaFramesOk;
         if (memory->fault(memory->context)) return NezhaFramesSmmu;
@@ -75,10 +76,21 @@ enum NezhaCameraFrameStatus nezha_camera_frame_consume(
             if (!nezha_camera_main_capture_release_frame(io,capture,index,requeue)) return NezhaFramesSequence;
             return !changed ? NezhaFramesUnwritten : !delivered ? NezhaFramesIo : NezhaFramesOk;
         }
+        const bool queued=event.top_irq || event.rx_irq || event.rdi0_irq || event.buffer_irq ||
+            event.updated || event.start_of_frame || event.end_of_frame;
         if (!budget_ms) {
-            if (!event.updated && !event.start_of_frame && !event.end_of_frame)
+            if (!queued)
                 return NezhaFramesOk;
-        } else if (ms<budget_ms) csid->wait_ms(csid->context,1);
+        } else if (queued && ++drained<NezhaCameraIrqSlots) {
+            /* These events were already read and ACKed by the sole IRQ
+             * owner. Drain its bounded queue before sleeping; a SOF/RUP
+             * notice cannot postpone an already queued BUF_DONE. An
+             * endless producer still consumes the caller's wait budget. */
+            --ms;
+        } else {
+            drained=0;
+            if (ms<budget_ms) csid->wait_ms(csid->context,1);
+        }
     }
     return budget_ms ? NezhaFramesTimeout:NezhaFramesOk;
 }

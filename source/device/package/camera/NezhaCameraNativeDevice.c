@@ -18,9 +18,10 @@
 /* HakiOS f128f1d camdev_read supplies the header + CPU RAW and bounded
  * reader sleep sequence. Hardware, DMA/cache ownership and Stop use this
  * port's continuous controller. A reading user buffer is never DMA-backed.
- * One staging frame replaces older unconsumed frames without waiting for
- * a client while two RAW buffers are queued and a third ready buffer
- * replaces each completion before the staging copy starts. */
+ * One staging frame satisfies an actual pending read while two RAW
+ * buffers are queued and a third ready buffer replaces each completion
+ * before the requested staging copy starts. Other frames return without
+ * replacing the published result or waiting for a client. */
 static LCK_GRP_DECLARE(camera_group,"nezha-camera");
 static LCK_MTX_DECLARE(camera_mutex,&camera_group);
 enum { FrameBytes=4096*3072*5/4, MobileUid=501, MobileGid=501 };
@@ -28,7 +29,8 @@ static uint8_t *staging;
 static struct hakios_camera_frame header;
 static struct NezhaCameraNativeCaptureRequest request;
 static struct NezhaCameraNativeCaptureResult result;
-static bool made,opened,worker_active,reading,frame_ready;
+static bool made,opened,worker_active,reading,frame_ready,read_wanted;
+static unsigned staging_copies,staging_skipped,completed_reads;
 static int failure;
 static dev_t camera_dev;
 static uint64_t last_read;
@@ -134,12 +136,14 @@ static bool delivered(void *context,const struct NezhaCameraRaw10Layout *layout,
     if (!frame || bytes!=FrameBytes || !ticks || layout->width!=4096 ||
         layout->height!=3072 || layout->stride!=5120) return false;
     lck_mtx_lock(&camera_mutex);
-    const bool copy=opened && !reading;
+    const bool copy=opened && !reading && read_wanted;
     struct hakios_camera_frame completed={0};
     if (copy) {
-        /* Reserve the sole staging buffer. A read already moving this
-         * buffer wins; otherwise clear readiness before leaving the lock.
-         * Close joins this worker before a new session may reuse storage. */
+        /* Copy only for an actual pending read. Preserve an already
+         * published frame until its reader consumes it; while the ISP
+         * holds its user buffer, DMA can return frames without another
+         * 15 MiB staging overwrite. A read during this copy remains a
+         * request for this same result. Close still joins the worker. */
         frame_ready=false;
         memcpy(completed.magic,HAKIOS_CAMERA_MAGIC,8);
         completed.header_bytes=sizeof(completed);
@@ -158,12 +162,12 @@ static bool delivered(void *context,const struct NezhaCameraRaw10Layout *layout,
                 (void)nezha_camera_frame_exposure(&completed,&observed_controls,
                     controls_observed_after,sequence);
         }
-    }
+    } else if (opened) ++staging_skipped;
     lck_mtx_unlock(&camera_mutex);
     if (copy) {
         memcpy(staging,frame,bytes);
         lck_mtx_lock(&camera_mutex);
-        if (opened) { header=completed;frame_ready=true; }
+        if (opened) { header=completed;frame_ready=true;read_wanted=false;++staging_copies; }
         lck_mtx_unlock(&camera_mutex);
     }
     wakeup(&frame_ready);
@@ -199,12 +203,16 @@ static void worker(void *argument,wait_result_t wait_result)
         (unsigned)result.irq_stopped,(unsigned)result.resources.cleanup_step,result.resources.cleanup_status,
         result.control_serviced_frames);
     const struct NezhaCameraNativeFrameWork *work=&result.work;
-    printf("NEZHA CAMERA: native service deliveries=%u returns=%u max-ticks queue=%llu acquire=%llu delivery=%llu publish=%llu completed-to-publish=%llu control-write=%llu control-read=%llu replacements=%u completed-to-address=%llu\n",
+    lck_mtx_lock(&camera_mutex);
+    const unsigned copied=staging_copies,skipped=staging_skipped,reads=completed_reads;
+    lck_mtx_unlock(&camera_mutex);
+    printf("NEZHA CAMERA: native service deliveries=%u returns=%u max-ticks queue=%llu acquire=%llu delivery=%llu publish=%llu completed-to-publish=%llu control-write=%llu control-read=%llu replacements=%u completed-to-address=%llu staging-copies=%u staging-skipped=%u completed-reads=%u\n",
         work->deliveries,work->returns,(unsigned long long)work->queue_max,
         (unsigned long long)work->acquire_max,(unsigned long long)work->delivery_max,
         (unsigned long long)work->publish_max,(unsigned long long)work->completion_to_publish_max,
         (unsigned long long)work->control_write_max,(unsigned long long)work->control_read_max,
-        work->replacements,(unsigned long long)work->completion_to_address_max);
+        work->replacements,(unsigned long long)work->completion_to_address_max,
+        copied,skipped,reads);
     if (result.irq_fault) {
         /* The IRQ owner already captured these words before acknowledgement.
          * Report them after teardown; do not read MMIO or log inside the IRQ. */
@@ -256,7 +264,8 @@ static int device_open(dev_t dev,int flags,int type,struct proc *process)
         const int error=failure==EIO ? EIO:EBUSY;
         lck_mtx_unlock(&camera_mutex);return error;
     }
-    opened=worker_active=true;frame_ready=false;failure=0;
+    opened=worker_active=true;frame_ready=read_wanted=false;failure=0;
+    staging_copies=staging_skipped=completed_reads=0;
     control_pending=control_inflight=false;
     controls_observed=false;controls_observed_after=0;
     bzero(&header,sizeof(header));last_read=mach_absolute_time();
@@ -274,7 +283,7 @@ static int device_open(dev_t dev,int flags,int type,struct proc *process)
 static int device_close(dev_t dev,int flags,int type,struct proc *process)
 {
     (void)dev;(void)flags;(void)type;(void)process;
-    lck_mtx_lock(&camera_mutex);opened=false;frame_ready=false;control_pending=false;lck_mtx_unlock(&camera_mutex);
+    lck_mtx_lock(&camera_mutex);opened=false;frame_ready=read_wanted=false;control_pending=false;lck_mtx_unlock(&camera_mutex);
     nezha_camera_native_capture_request_stop();wakeup(&frame_ready);
     const uint64_t start=mach_absolute_time();
     lck_mtx_lock(&camera_mutex);
@@ -292,6 +301,7 @@ static int device_read(dev_t dev,struct uio *uio,int flags)
     if (uio_resid(uio)!=(user_ssize_t)(sizeof(header)+FrameBytes)) return EINVAL;
     const uint64_t start=mach_absolute_time();
     lck_mtx_lock(&camera_mutex);last_read=start;
+    if (!frame_ready && !reading && opened && !failure && worker_active) read_wanted=true;
     while (!frame_ready) {
         if (!opened || failure || !worker_active) {
             const int error=failure ? failure:ENXIO;
@@ -309,7 +319,9 @@ static int device_read(dev_t dev,struct uio *uio,int flags)
     lck_mtx_unlock(&camera_mutex);
     int error=uiomove((caddr_t)&complete,(int)sizeof(complete),uio);
     if (!error) error=uiomove((caddr_t)staging,FrameBytes,uio);
-    lck_mtx_lock(&camera_mutex);reading=false;last_read=mach_absolute_time();lck_mtx_unlock(&camera_mutex);
+    lck_mtx_lock(&camera_mutex);reading=false;last_read=mach_absolute_time();
+    if (!error) ++completed_reads;
+    lck_mtx_unlock(&camera_mutex);
     return error;
 }
 
