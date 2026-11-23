@@ -11,6 +11,9 @@ constexpr size_t TablePages = 32;
 constexpr size_t MaxFrame = 15 * 1024 * 1024; // 4096x3072 packed RAW10.
 constexpr uint64_t FirstIova = 0x01000000;
 constexpr uint64_t SecondIova = 0x02000000;
+constexpr uint64_t ThirdIova = 0x03000000;
+constexpr unsigned Frames = NezhaCameraRdi1080MaxFrames;
+constexpr unsigned AllHeld = (1u << (Frames + 1u)) - 1u;
 constexpr uint8_t Sentinel = 0xa5;
 
 void device_barrier()
@@ -24,7 +27,7 @@ void device_barrier()
 }
 
 struct NezhaCameraNativeMemory {
-    NativeAdrenoMemory frame[2], tables;
+    NativeAdrenoMemory frame[Frames], tables;
     NezhaCameraDmaPlan plan{};
     ArmSmmu4KConfig config{};
     size_t frame_bytes{};
@@ -66,9 +69,10 @@ bool nezha_camera_native_memory_prepare(NezhaCameraNativeMemory **out,
     if (!out || *out || memory_in_use || (physical_bits != 36 && physical_bits != 40)) {
         return failed(NezhaMemoryArguments, 0, kIOReturnBadArgument);
     }
-    const NezhaCameraFrameMapping allowed[] = {{FirstIova, MaxFrame}, {SecondIova, MaxFrame}};
+    const NezhaCameraFrameMapping allowed[] = {
+        {FirstIova, MaxFrame}, {SecondIova, MaxFrame}, {ThirdIova, MaxFrame}};
     NezhaCameraRdi1080 layout{};
-    if (!nezha_camera_rdi1080_layout(width, height, allowed, &layout) ||
+    if (!nezha_camera_rdi1080_pool_layout(width, height, allowed, Frames, &layout) ||
         layout.layout.frame_bytes > MaxFrame) {
         return failed(NezhaMemoryLayout, 0, kIOReturnBadArgument);
     }
@@ -101,7 +105,7 @@ bool nezha_camera_native_memory_prepare(NezhaCameraNativeMemory **out,
         return failed(NezhaMemoryTableSpans, 0, kIOReturnUnsupported, TablePages * Page,
             memory->tables.spanCount());
     }
-    for (unsigned i = 0; i < 2; ++i) {
+    for (unsigned i = 0; i < Frames; ++i) {
         auto &frame = memory->frame[i];
         if (!reused) {
             operation = frame.allocate(bytes, physical_bits, false, MaxFrame);
@@ -133,17 +137,19 @@ bool nezha_camera_native_memory_prepare(NezhaCameraNativeMemory **out,
         }
     }
     if (!reused) {
-        const size_t count = memory->frame[0].spanCount() + memory->frame[1].spanCount();
-        if (!count || count > (2 * MaxFrame / Page)) {
+        size_t count = 0;
+        for (const auto &frame : memory->frame) count += frame.spanCount();
+        if (!count || count > (Frames * MaxFrame / Page)) {
             return failed(NezhaMemoryRanges, 0, kIOReturnNoResources, count * sizeof(ArmSmmu4KRange), count);
         }
         auto *ranges = IONewData(ArmSmmu4KRange, count);
         if (!ranges) {
             return failed(NezhaMemoryRanges, 0, kIOReturnNoMemory, count * sizeof(ArmSmmu4KRange), count);
         }
-        const NezhaCameraFrameMapping frames[] = {{FirstIova, bytes}, {SecondIova, bytes}};
+        const NezhaCameraFrameMapping frames[] = {
+            {FirstIova, bytes}, {SecondIova, bytes}, {ThirdIova, bytes}};
         size_t cursor = 0;
-        for (unsigned i = 0; i < 2; ++i) {
+        for (unsigned i = 0; i < Frames; ++i) {
             const auto &frame = memory->frame[i];
             for (size_t j = 0; j < frame.spanCount(); ++j) {
                 const auto &span = frame.spans()[j];
@@ -151,8 +157,8 @@ bool nezha_camera_native_memory_prepare(NezhaCameraNativeMemory **out,
                     ArmSmmu4KRead | ArmSmmu4KWrite, 0, 2};
             }
         }
-        memory->config = {32, physical_bits, memory->tables.spans()[0].physical, 2 * bytes / Page};
-        const auto status = nezha_camera_build_frame_span_tables(&memory->config, frames, width, height,
+        memory->config = {32, physical_bits, memory->tables.spans()[0].physical, Frames * bytes / Page};
+        const auto status = nezha_camera_build_frame_pool_span_tables(&memory->config, frames, Frames, width, height,
             ranges, count, static_cast<uint64_t *>(memory->tables.mapping()), TablePages, &memory->plan);
         IODeleteData(ranges, ArmSmmu4KRange, count);
         if (status != ArmSmmu4KSuccess) {
@@ -189,8 +195,8 @@ bool nezha_camera_native_memory_hold(NezhaCameraNativeMemory *memory)
     if (!memory || !memory->ready || memory->held != 0) {
         return failed(NezhaMemoryHold, 0, kIOReturnNotReady);
     }
-    NativeAdrenoMemory *owned[] = {&memory->tables, &memory->frame[0], &memory->frame[1]};
-    for (unsigned i = 0; i < 3; ++i) {
+    NativeAdrenoMemory *owned[] = {&memory->tables, &memory->frame[0], &memory->frame[1], &memory->frame[2]};
+    for (unsigned i = 0; i < Frames + 1u; ++i) {
         const IOReturn operation = owned[i]->holdForDevice();
         if (operation != kIOReturnSuccess) {
             return failed(NezhaMemoryHold, i, operation, owned[i]->bytes(), owned[i]->spanCount());
@@ -202,7 +208,7 @@ bool nezha_camera_native_memory_hold(NezhaCameraNativeMemory *memory)
 
 const void *nezha_camera_native_memory_acquire(NezhaCameraNativeMemory *memory, unsigned index)
 {
-    if (!memory || !memory->ready || memory->held != 7 || index > 1 || (memory->cpu & (1u << index))) {
+    if (!memory || !memory->ready || memory->held != AllHeld || index >= Frames || (memory->cpu & (1u << index))) {
         return nullptr;
     }
     auto &frame = memory->frame[index];
@@ -217,7 +223,7 @@ const void *nezha_camera_native_memory_acquire(NezhaCameraNativeMemory *memory, 
 
 bool nezha_camera_native_memory_publish(NezhaCameraNativeMemory *memory, unsigned index)
 {
-    if (!memory || !memory->ready || index > 1 || (memory->cpu & (1u << index)) == 0) {
+    if (!memory || !memory->ready || index >= Frames || (memory->cpu & (1u << index)) == 0) {
         return false;
     }
     if (!memory->frame[index].writeCombined()) return false;
@@ -240,7 +246,7 @@ bool nezha_camera_native_memory_publish(NezhaCameraNativeMemory *memory, unsigne
 
 bool nezha_camera_native_memory_drop(NezhaCameraNativeMemory *memory, unsigned index)
 {
-    if (!memory || !memory->ready || index > 1 || (memory->cpu & (1u << index)) == 0) {
+    if (!memory || !memory->ready || index >= Frames || (memory->cpu & (1u << index)) == 0) {
         return false;
     }
     memory->cpu &= ~(1u << index);
@@ -257,8 +263,8 @@ bool nezha_camera_native_memory_release(NezhaCameraNativeMemory **out, bool dma_
         return failed(NezhaMemoryRelease, 0, kIOReturnBusy);
     }
     memory->ready = false;
-    NativeAdrenoMemory *owned[] = {&memory->tables, &memory->frame[0], &memory->frame[1]};
-    for (unsigned i = 3; i != 0; --i) {
+    NativeAdrenoMemory *owned[] = {&memory->tables, &memory->frame[0], &memory->frame[1], &memory->frame[2]};
+    for (unsigned i = Frames + 1u; i != 0; --i) {
         const unsigned index = i - 1, bit = 1u << index;
         if (memory->held & bit) {
             const IOReturn operation = owned[index]->retireAfterQuiescence();

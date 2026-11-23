@@ -34,7 +34,9 @@ IOReturn NativeAdrenoMemory::allocate(size_t bytes,unsigned bits,bool,size_t bud
         spans_=new NativeAdrenoPhysicalSpan[1]{{0,0x40000000,bytes}};
         span_count_=1;
     } else {
-        const uint64_t start=this==&memory_storage.frame[0] ? 0x50000000:0x52000000;
+        const size_t index=size_t(this-&memory_storage.frame[0]);
+        assert(index<Frames);
+        const uint64_t start=0x50000000+index*0x02000000;
         spans_=new NativeAdrenoPhysicalSpan[2]{{0,start,bytes/2},{bytes/2,start+0x1000000,bytes/2}};
         span_count_=2;
     }
@@ -83,9 +85,9 @@ static uint64_t translated_page(uint64_t iova)
 }
 static void check_tables()
 {
-    assert(memory_storage.plan.tables.leaf_pages==7680);
+    assert(memory_storage.plan.tables.leaf_pages==11520);
     assert(memory_storage.plan.tables.table_pages<=32);
-    for(unsigned frame=0;frame<2;++frame) {
+    for(unsigned frame=0;frame<Frames;++frame) {
         const auto &plan=memory_storage.plan.frames[frame];
         const auto &part=memory_storage.frame[frame];
         for(size_t i=0;i<part.spanCount();++i) {
@@ -100,7 +102,7 @@ static void check_tables()
 static void dispose_idle_pool()
 {
     assert(!memory_in_use && !memory_storage.held && !memory_storage.cpu);
-    for(auto *part:{&memory_storage.tables,&memory_storage.frame[0],&memory_storage.frame[1]})
+    for(auto *part:{&memory_storage.tables,&memory_storage.frame[0],&memory_storage.frame[1],&memory_storage.frame[2]})
         if(part->backed())assert(part->release()==kIOReturnSuccess);
     memory_storage.pool_ready=false;
 }
@@ -117,8 +119,10 @@ int main(int argc,char **argv)
     if(!strcmp(mode,"table-allocation"))fail_allocate=1;
     if(!strcmp(mode,"frame0-allocation"))fail_allocate=2;
     if(!strcmp(mode,"frame1-allocation"))fail_allocate=3;
+    if(!strcmp(mode,"frame2-allocation"))fail_allocate=4;
     if(!strcmp(mode,"frame0-cache-mode"))fail_cache_mode=1;
     if(!strcmp(mode,"frame1-cache-mode"))fail_cache_mode=2;
+    if(!strcmp(mode,"frame2-cache-mode"))fail_cache_mode=3;
     if(fail_cache_mode) {
         assert(!nezha_camera_native_memory_prepare(&owner,40,4096,3072));
         failure_is(NezhaMemoryFrameCacheMode,fail_cache_mode,kIOReturnUnsupported);
@@ -150,12 +154,13 @@ int main(int argc,char **argv)
     }
     assert(nezha_camera_native_memory_prepare(&owner,40,4096,3072));
     check_tables();
-    assert(allocate_calls==3);
-    assert(cache_mode_calls==2 && memory_failure.raw_write_combined);
+    assert(allocate_calls==4);
+    assert(cache_mode_calls==3 && memory_failure.raw_write_combined);
     assert(!memory_storage.tables.writeCombined());
     for(const auto &raw:memory_storage.frame)assert(raw.writeCombined());
     if(!strcmp(mode,"hold1-failure"))fail_hold=2;
     if(!strcmp(mode,"hold2-failure"))fail_hold=3;
+    if(!strcmp(mode,"hold3-failure"))fail_hold=4;
     if(fail_hold) {
         assert(!nezha_camera_native_memory_hold(owner));
         failure_is(NezhaMemoryHold,fail_hold-1,kIOReturnNotReady);
@@ -165,7 +170,7 @@ int main(int argc,char **argv)
         assert(retire_calls==fail_hold-1 && release_calls==0);
         fail_hold=0;
         assert(nezha_camera_native_memory_prepare(&owner,40,4096,3072));
-        assert(allocate_calls==3 && memory_failure.reused);
+        assert(allocate_calls==4 && memory_failure.reused);
         assert(nezha_camera_native_memory_hold(owner));
         assert(nezha_camera_native_memory_release(&owner,true));
         dispose_idle_pool();
@@ -198,31 +203,31 @@ int main(int argc,char **argv)
     if(!strcmp(mode,"retire-failure")) {
         fail_retire=1;
         assert(!nezha_camera_native_memory_release(&owner,true) && owner);
-        assert(memory_storage.held==7 && !release_calls);
+        assert(memory_storage.held==15 && !release_calls);
         fail_retire=0;
     }
     assert(nezha_camera_native_memory_release(&owner,true) && !owner);
     assert(!release_calls && !memory_storage.held && memory_storage.pool_ready);
-    const void *saved_frames[]={memory_storage.frame[0].mapping(),memory_storage.frame[1].mapping()};
+    const void *saved_frames[]={memory_storage.frame[0].mapping(),memory_storage.frame[1].mapping(),memory_storage.frame[2].mapping()};
     const auto saved_tables=memory_storage.tables.mapping();
     fail_allocate=allocate_calls+1; // Allocator now refuses any fresh request.
     fail_call=0;
     for(unsigned session=0;session<4;++session) {
         assert(nezha_camera_native_memory_prepare(&owner,40,4096,3072));
-        assert(memory_failure.reused && !memory_failure.step && allocate_calls==3);
-        assert(memory_failure.raw_write_combined && cache_mode_calls==2);
+        assert(memory_failure.reused && !memory_failure.step && allocate_calls==4);
+        assert(memory_failure.raw_write_combined && cache_mode_calls==3);
         check_tables();
         assert(memory_storage.tables.mapping()==saved_tables);
-        for(unsigned i=0;i<2;++i) {
+        for(unsigned i=0;i<Frames;++i) {
             const auto *bytes=(const uint8_t *)memory_storage.frame[i].mapping();
             assert(bytes==saved_frames[i] && bytes[0]==0xa5 && bytes[15728639]==0xa5);
         }
         assert(nezha_camera_native_memory_hold(owner));
-        assert(nezha_camera_native_memory_acquire(owner,session%2));
+        assert(nezha_camera_native_memory_acquire(owner,session%Frames));
         assert(!nezha_camera_native_memory_release(&owner,true) && owner);
-        assert(nezha_camera_native_memory_drop(owner,session%2));
+        assert(nezha_camera_native_memory_drop(owner,session%Frames));
         assert(nezha_camera_native_memory_release(&owner,true) && !owner && !release_calls);
     }
     dispose_idle_pool();
-    puts("Actual camera adapter: both exclusive RAW mappings become write-combined before device holds; tables stay cached and four marker publications retain ownership checks; four detached reopens keep the same mappings and cache mode under allocation refusal; uncertain teardown retains references");
+    puts("Actual camera adapter: three exclusive RAW mappings become write-combined before device holds; tables stay cached and four marker publications retain ownership checks; four detached reopens keep the same mappings and cache mode under allocation refusal; uncertain teardown retains references");
 }

@@ -46,6 +46,8 @@ struct Capture {
     bool used{}, cci_touched{}, dma_touched{}, running{}, cancelled{}, vfe_bus_cgc_owned{};
     unsigned stopped{};
     uint64_t completed_time{};
+    uint64_t replacement_time{};
+    bool replacement_pending{};
     NezhaCameraNativeFrameWork work{};
 };
 
@@ -103,12 +105,27 @@ void write_csid(void *cookie, uint32_t offset, uint32_t value)
 {
     auto *s = static_cast<Capture *>(cookie);
     write(&s->window[Csid], offset, value);
+    if (offset == 0x11c && value == 1 && s->replacement_pending) {
+        /* The existing register write includes its device barrier. Record
+         * the address-update submission, not a hardware acceptance or FPS.
+         * No extra MMIO, IRQ logging or worker is introduced. */
+        const uint64_t after = mach_absolute_time();
+        if (s->replacement_time && after >= s->replacement_time &&
+            after - s->replacement_time > s->work.completion_to_address_max)
+            s->work.completion_to_address_max = after - s->replacement_time;
+        ++s->work.replacements;
+        s->replacement_pending = false;
+    }
 }
 
 void write_vfe(void *cookie, uint32_t offset, uint32_t value)
 {
     auto *s = static_cast<Capture *>(cookie);
     write(&s->window[Vfe], offset, value);
+    if (offset == 0x2c04 && s->completed_time) {
+        s->replacement_time = s->completed_time;
+        s->replacement_pending = true;
+    }
 }
 
 bool acquire_vfe_bus(Capture &s)
@@ -307,7 +324,7 @@ bool cleanup(Capture &s, NezhaCameraNativeCaptureResult &result,
     }
     // If cache publication failed, the sole CPU worker still owns this
     // frame. Drop its claim after drain without returning it to hardware.
-    for (unsigned i = 0; i < 2; ++i) {
+    for (unsigned i = 0; i < NezhaCameraRdi1080MaxFrames; ++i) {
         if (!(s.capture.cpu_frames & (1u << i))) continue;
         if (!nezha_camera_native_memory_drop(s.memory, i) ||
             !nezha_camera_main_capture_release_frame(&s.capture_io, &s.capture, i, false)) return false;
@@ -374,6 +391,8 @@ bool nezha_camera_native_capture(const NezhaCameraNativeCaptureRequest *request,
     state.stopped = 0;
     state.cancelled = false;
     state.completed_time = 0;
+    state.replacement_time = 0;
+    state.replacement_pending = false;
     state.work = {};
     if (!checkpoint(*request, *result, NezhaNativeSharedOwners, physical[Camcc], physical[Csid], physical[Vfe])) {
         if (state.cancelled) {

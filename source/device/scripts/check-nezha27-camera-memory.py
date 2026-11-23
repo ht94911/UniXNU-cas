@@ -16,6 +16,7 @@ MODES = (
     "normal", "marker-failure", "table-allocation", "frame0-allocation",
     "frame1-allocation", "hold1-failure", "hold2-failure", "retire-failure",
     "frame0-cache-mode", "frame1-cache-mode",
+    "frame2-allocation", "frame2-cache-mode", "hold3-failure",
 )
 
 
@@ -86,7 +87,7 @@ def main():
                        ROOT / "tests/camera-native-memory.cpp", native / "NativeAdrenoMemory.h"]
     result = dict(passed=True, cases=results, compiler=cc, cxx=cxx,
                   sanitizer="address,undefined", actual_camera_adapter=True,
-                  actual_SMMU_builder=True, RAW_pages_checked=7680,
+                  actual_SMMU_builder=True, RAW_pages_checked=11520,
                   reopened_sessions=4, allocator_is_fixture=True, hardware_verified=False,
                   source_sha256={str(p): hashlib.sha256(p.read_bytes()).hexdigest() for p in bound})
     (out / "qualified.json").write_text(json.dumps(result, indent=2) + "\n")

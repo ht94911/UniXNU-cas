@@ -108,7 +108,7 @@ jobs:
         run: python3 "$RUNNER_TEMP/ios27/work/device/tests/check-gpu-bo-phases.py" --native "$RUNNER_TEMP/ios27/work/adreno" --out "$RUNNER_TEMP/ios27/work/bo-phases-host"
       - name: Check the actual guarded waiting-stack sampler
         run: python3 task/source/device/scripts/check-stable-kernel-stack.py
-      - name: Check initial control sampling before DMA and sensor streaming
+      - name: Check spare RAW replacement and initial sampling before DMA
         run: |
           set -euo pipefail
           src="$RUNNER_TEMP/ios27/work/device"
@@ -119,6 +119,16 @@ jobs:
           clang -std=c11 -Wall -Wextra -Werror -g -fsanitize=address,undefined -fno-sanitize-recover=all -I "$src/package/camera" -I "$src/package/gpu/adreno" "$src/package/camera/NezhaCameraMainCapture.c" "$src/package/camera/NezhaCameraRdi1080.c" "$src/tests/camera-main-capture.c" -o "$out/main-capture"
           "$out/main-capture" > "$out/main-capture.log" 2>&1
           NEZHA_CAMERA_SHARED_SOC="$RUNNER_TEMP/ios27/work/soc" CAMERA_TARGET_CC="$out/target-clang" bash "$src/scripts/check-nezha27-camera-continuous.sh" "$out/continuous" > "$out/continuous.log" 2>&1
+      - name: Check actual spare address submission before frame delivery
+        run: |
+          set -euo pipefail
+          src="$RUNNER_TEMP/ios27/work/device"
+          out="$RUNNER_TEMP/ios27/work/camera-spare-host"
+          mkdir -p "$out"
+          camera="$src/package/camera"
+          smmu="$src/package/gpu/adreno"
+          clang -std=c11 -Wall -Wextra -Werror -g -fsanitize=address,undefined -fno-sanitize-recover=all -I "$camera" -I "$smmu" "$camera/NezhaCameraFrameProbe.c" "$camera/NezhaCameraMainCapture.c" "$camera/NezhaCameraCamss1080.c" "$camera/NezhaCameraRdi1080.c" "$camera/NezhaCameraOvx10500u.c" "$camera/NezhaCameraCci.c" "$camera/NezhaCameraDma.c" "$smmu/ArmSmmu4K.c" "$smmu/ArmSmmu4KContext.c" "$smmu/ArmSmmu4KProgram.c" "$smmu/ArmSmmu4KStreams.c" "$src/tests/camera-frame-probe.c" -o "$out/consumer"
+          "$out/consumer" > "$out/consumer.log" 2>&1
       - name: Check actual RUP notice and retained fatal IRQ paths
         run: |
           set -euo pipefail

@@ -145,7 +145,8 @@ void nezha_camera1080_request_rdi0_stop(const struct NezhaCamera1080Io *io)
 bool nezha_camera1080_requeue_rdi0(const struct NezhaCamera1080Io *io,
     const struct NezhaCameraRdi1080 *layout, unsigned buffer)
 {
-    assert(io != NULL && layout->image_address[0] == 0x2000 && buffer == 0);
+    assert(io != NULL && layout->image_address[0] == 0x2000 &&
+        (buffer == 0 || (layout->frame_count == 3 && buffer == 2 && layout->image_address[2] == 0x4000)));
     event('q');
     return true;
 }
@@ -257,6 +258,35 @@ int main(void)
     assert(nezha_camera_main_capture_request_stop(&initial_io, &capture));
     assert(nezha_camera_main_capture_finish_stop(&initial_io, &context, 100, &capture, true));
     assert(strcmp(operations, "imcarsxtd") == 0 && capture.stage == NezhaCaptureIdle);
+
+    /* The ready third mapping is not submitted at startup. It replaces
+     * one matched completion before that completed mapping is returned. */
+    struct NezhaCameraDmaPlan pool = plan;
+    pool.frames[2] = (struct NezhaCameraFrameMapping){0x400000,0x60000};
+    pool.frame_count = 3;
+    const ArmSmmu4KContextConfig pool_context = {.lower_tables=&pool.tables};
+    operation_count=0;
+    assert(nezha_camera_main_capture_start(&io,&mode,&pool,&pool_context,2,1,100,&capture));
+    assert(capture.layout.frame_count==3 && capture.layout.image_address[2]==0x4000 &&
+        capture.ready_frames==4 && capture.queued_count==2);
+    events.consumed_address=0x2000;
+    assert(nezha_camera_main_capture_complete_frame(&capture,&events,&buffer) && buffer==0);
+    assert(nezha_camera_main_capture_queue_spare(&io,&capture));
+    assert(capture.queued[0]==1 && capture.queued[1]==2 && capture.queued_count==2 &&
+        capture.cpu_frames==1 && !capture.ready_frames);
+    assert(nezha_camera_main_capture_release_frame(&io,&capture,0,true) && capture.ready_frames==1);
+    assert(!nezha_camera_main_capture_queue_spare(&io,&capture));
+    assert(nezha_camera_main_capture_request_stop(&io,&capture));
+    assert(!nezha_camera_main_capture_queue_spare(&io,&capture));
+    assert(nezha_camera_main_capture_finish_stop(&io,&pool_context,100,&capture,true));
+    assert(!capture.ready_frames && !capture.queued_count && !capture.cpu_frames);
+
+    pool.frames[2]=pool.frames[0];operation_count=0;
+    assert(!nezha_camera_main_capture_start(&io,&mode,&pool,&pool_context,2,1,100,&capture));
+    assert(!operation_count && capture.stage==NezhaCaptureIdle);
+    pool.frame_count=4;
+    assert(!nezha_camera_main_capture_start(&io,&mode,&pool,&pool_context,2,1,100,&capture));
+    assert(!operation_count && capture.stage==NezhaCaptureIdle);
 
     operation_count = 0;
     struct NezhaCameraMainCaptureIo pattern_io = io;

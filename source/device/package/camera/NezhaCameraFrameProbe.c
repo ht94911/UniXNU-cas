@@ -48,6 +48,13 @@ enum NezhaCameraFrameStatus nezha_camera_frame_consume(
             if (!event.completed_time || capture->completed_frames==UINT32_MAX) return NezhaFramesSequence;
             unsigned index;
             if (!nezha_camera_main_capture_complete_frame(capture,&event,&index)) return NezhaFramesSequence;
+            if (capture->layout.frame_count == NezhaCameraRdi1080MaxFrames &&
+                !nezha_camera_main_capture_queue_spare(io,capture)) {
+                /* No CPU/cache acquisition happened. The original teardown
+                 * must still stop and drain the remaining queued mappings. */
+                (void)nezha_camera_main_capture_release_frame(io,capture,index,false);
+                return NezhaFramesSequence;
+            }
             uint8_t *frame=memory->acquire(memory->context,index);
             if (!frame) {
                 (void)nezha_camera_main_capture_release_frame(io,capture,index,false);
@@ -110,6 +117,11 @@ enum NezhaCameraFrameStatus nezha_camera_frame_probe(
             result->last_address = events.consumed_address;
             unsigned buffer;
             if (!nezha_camera_main_capture_complete_frame(capture, &events, &buffer)) {
+                return NezhaFramesSequence;
+            }
+            if (capture->layout.frame_count == NezhaCameraRdi1080MaxFrames &&
+                !nezha_camera_main_capture_queue_spare(io,capture)) {
+                (void)nezha_camera_main_capture_release_frame(io,capture,buffer,false);
                 return NezhaFramesSequence;
             }
             uint8_t *frame = memory->acquire(memory->context, buffer);

@@ -6,6 +6,11 @@ static bool valid_dma_owner(const struct NezhaCameraMainCaptureIo *io)
     return (io->dma_enter == NULL) == (io->dma_leave == NULL);
 }
 
+static unsigned frame_count(const struct NezhaCameraMainCapture *capture)
+{
+    return capture->layout.frame_count ? capture->layout.frame_count : NezhaCameraRdi1080QueuedFrames;
+}
+
 bool nezha_camera_main_capture_start(const struct NezhaCameraMainCaptureIo *io,
     const struct NezhaCameraMainMode *mode, const struct NezhaCameraDmaPlan *buffers,
     const ArmSmmu4KContextConfig *context, unsigned slot, unsigned bank,
@@ -16,7 +21,8 @@ bool nezha_camera_main_capture_start(const struct NezhaCameraMainCaptureIo *io,
         mode == NULL || buffers == NULL ||
         context == NULL || context->lower_tables != &buffers->tables || capture == NULL ||
         capture->stage != NezhaCaptureIdle ||
-        !nezha_camera_rdi1080_layout(mode->width, mode->height, buffers->frames, &layout)) {
+        !nezha_camera_rdi1080_pool_layout(mode->width, mode->height, buffers->frames,
+            buffers->frame_count ? buffers->frame_count : NezhaCameraRdi1080QueuedFrames, &layout)) {
         return false;
     }
 
@@ -84,6 +90,7 @@ bool nezha_camera_main_capture_start(const struct NezhaCameraMainCaptureIo *io,
     capture->queued_count = 2;
     capture->completed_frames = 0;
     capture->cpu_frames = 0;
+    capture->ready_frames = layout.frame_count == NezhaCameraRdi1080MaxFrames ? 1u << 2 : 0;
 
     capture->stage = NezhaCaptureStreamRequest;
     capture->stream_may_be_on = true;
@@ -104,7 +111,8 @@ bool nezha_camera_main_capture_complete_frame(struct NezhaCameraMainCapture *cap
     const unsigned index = capture->queued[0];
     /* An interrupt can coalesce multiple completions. Do not infer that
      * the queue head completed if hardware reports a different address. */
-    if (index > 1 || (capture->cpu_frames & (1u << index)) != 0 ||
+    if (frame_count(capture) > NezhaCameraRdi1080MaxFrames || index >= frame_count(capture) ||
+        ((capture->cpu_frames | capture->ready_frames) & (1u << index)) != 0 ||
         events->consumed_address != capture->layout.image_address[index]) {
         return false;
     }
@@ -116,19 +124,56 @@ bool nezha_camera_main_capture_complete_frame(struct NezhaCameraMainCapture *cap
     return true;
 }
 
+bool nezha_camera_main_capture_queue_spare(const struct NezhaCameraMainCaptureIo *io,
+    struct NezhaCameraMainCapture *capture)
+{
+    if (io == NULL || capture == NULL || frame_count(capture) != NezhaCameraRdi1080MaxFrames ||
+        !capture->rdi_started || !capture->stream_may_be_on || !capture->dma.context_active ||
+        capture->queued_count != NezhaCameraRdi1080QueuedFrames - 1u || !capture->ready_frames ||
+        (capture->ready_frames & (capture->ready_frames - 1u)) != 0 || !capture->cpu_frames ||
+        (capture->cpu_frames & (capture->cpu_frames - 1u)) != 0 ||
+        (capture->ready_frames & capture->cpu_frames) != 0 ||
+        (capture->ready_frames >> NezhaCameraRdi1080MaxFrames) != 0 ||
+        (capture->cpu_frames >> NezhaCameraRdi1080MaxFrames) != 0 ||
+        capture->queued[0] >= NezhaCameraRdi1080MaxFrames ||
+        ((capture->cpu_frames | capture->ready_frames) & (1u << capture->queued[0])) != 0) return false;
+    for (unsigned i = 0; i < NezhaCameraRdi1080MaxFrames; ++i) {
+        if (!(capture->ready_frames & (1u << i))) continue;
+        for (unsigned j = 0; j < capture->queued_count; ++j)
+            if (capture->queued[j] == i) return false;
+        if (!nezha_camera1080_requeue_rdi0(io->camss, &capture->layout, i)) return false;
+        capture->queued[capture->queued_count++] = (uint8_t)i;
+        capture->ready_frames &= ~(1u << i);
+        return true;
+    }
+    return false;
+}
+
 bool nezha_camera_main_capture_release_frame(const struct NezhaCameraMainCaptureIo *io,
     struct NezhaCameraMainCapture *capture, unsigned buffer, bool requeue)
 {
-    if (capture == NULL || buffer > 1 || (capture->cpu_frames & (1u << buffer)) == 0) {
+    if (capture == NULL || frame_count(capture) > NezhaCameraRdi1080MaxFrames ||
+        buffer >= frame_count(capture) || (capture->cpu_frames & (1u << buffer)) == 0) {
         return false;
     }
     if (requeue) {
         if (io == NULL || !capture->rdi_started || !capture->stream_may_be_on ||
-            !capture->dma.context_active || capture->queued_count >= 2 ||
-            !nezha_camera1080_requeue_rdi0(io->camss, &capture->layout, buffer)) {
+            !capture->dma.context_active || capture->queued_count > NezhaCameraRdi1080QueuedFrames) {
             return false;
         }
-        capture->queued[capture->queued_count++] = (uint8_t)buffer;
+        if (frame_count(capture) == NezhaCameraRdi1080MaxFrames) {
+            /* The spare filled the address queue before this CPU read.
+             * Mark this published buffer idle; never submit a third address. */
+            if (capture->queued_count != NezhaCameraRdi1080QueuedFrames || capture->ready_frames ||
+                capture->queued[0] >= frame_count(capture) || capture->queued[1] >= frame_count(capture) ||
+                capture->queued[0] == capture->queued[1] || capture->queued[0] == buffer ||
+                capture->queued[1] == buffer) return false;
+            capture->ready_frames |= 1u << buffer;
+        } else {
+            if (capture->queued_count >= NezhaCameraRdi1080QueuedFrames ||
+                !nezha_camera1080_requeue_rdi0(io->camss, &capture->layout, buffer)) return false;
+            capture->queued[capture->queued_count++] = (uint8_t)buffer;
+        }
     }
     capture->cpu_frames &= ~(1u << buffer);
     return true;
@@ -178,6 +223,7 @@ bool nezha_camera_main_capture_finish_stop(const struct NezhaCameraMainCaptureIo
         return false;
     }
     capture->queued_count = 0;
+    capture->ready_frames = 0;
     if (capture->dma.context_active || capture->dma.needs_hardware_recovery) {
         if (io->dma_enter != NULL && !io->dma_enter(io->dma_owner)) {
             capture->dma_status = ArmSmmu4KBusy;

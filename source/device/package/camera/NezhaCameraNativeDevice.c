@@ -19,7 +19,8 @@
  * reader sleep sequence. Hardware, DMA/cache ownership and Stop use this
  * port's continuous controller. A reading user buffer is never DMA-backed.
  * One staging frame replaces older unconsumed frames without waiting for
- * a client while the hardware owns its two RAW buffers. */
+ * a client while two RAW buffers are queued and a third ready buffer
+ * replaces each completion before the staging copy starts. */
 static LCK_GRP_DECLARE(camera_group,"nezha-camera");
 static LCK_MTX_DECLARE(camera_mutex,&camera_group);
 enum { FrameBytes=4096*3072*5/4, MobileUid=501, MobileGid=501 };
@@ -198,11 +199,12 @@ static void worker(void *argument,wait_result_t wait_result)
         (unsigned)result.irq_stopped,(unsigned)result.resources.cleanup_step,result.resources.cleanup_status,
         result.control_serviced_frames);
     const struct NezhaCameraNativeFrameWork *work=&result.work;
-    printf("NEZHA CAMERA: native service deliveries=%u returns=%u max-ticks queue=%llu acquire=%llu delivery=%llu publish=%llu completed-to-publish=%llu control-write=%llu control-read=%llu\n",
+    printf("NEZHA CAMERA: native service deliveries=%u returns=%u max-ticks queue=%llu acquire=%llu delivery=%llu publish=%llu completed-to-publish=%llu control-write=%llu control-read=%llu replacements=%u completed-to-address=%llu\n",
         work->deliveries,work->returns,(unsigned long long)work->queue_max,
         (unsigned long long)work->acquire_max,(unsigned long long)work->delivery_max,
         (unsigned long long)work->publish_max,(unsigned long long)work->completion_to_publish_max,
-        (unsigned long long)work->control_write_max,(unsigned long long)work->control_read_max);
+        (unsigned long long)work->control_write_max,(unsigned long long)work->control_read_max,
+        work->replacements,(unsigned long long)work->completion_to_address_max);
     if (result.irq_fault) {
         /* The IRQ owner already captured these words before acknowledgement.
          * Report them after teardown; do not read MMIO or log inside the IRQ. */

@@ -64,6 +64,8 @@ struct NezhaCameraMainCapture {
     uint8_t queued[2];
     unsigned queued_count;
     unsigned cpu_frames;
+    /* Published idle mappings, disjoint from both CPU and queued frames. */
+    unsigned ready_frames;
     size_t applied_writes;
     bool rdi_started;
     bool stream_may_be_on;
@@ -85,8 +87,15 @@ bool nezha_camera_main_capture_start(const struct NezhaCameraMainCaptureIo *io,
 bool nezha_camera_main_capture_complete_frame(struct NezhaCameraMainCapture *capture,
     const struct NezhaCamera1080Events *events, unsigned *buffer);
 
-/* Drop the CPU's claim after copying/processing. Requeue only while the
- * receiver and DMA are active, after synchronizing for device access. */
+/* Replace the consumed address with an already published idle mapping.
+ * Do this before reading/delivering a completed three-buffer pool frame.
+ * The completed frame keeps its CPU claim and cannot be the replacement. */
+bool nezha_camera_main_capture_queue_spare(const struct NezhaCameraMainCaptureIo *io,
+    struct NezhaCameraMainCapture *capture);
+
+/* Drop the CPU's claim after copying/processing and publication. A returned
+ * third-pool frame becomes the next spare when two addresses are queued.
+ * Two-buffer callers keep their original immediate requeue sequence. */
 bool nezha_camera_main_capture_release_frame(const struct NezhaCameraMainCaptureIo *io,
     struct NezhaCameraMainCapture *capture, unsigned buffer, bool requeue);
 

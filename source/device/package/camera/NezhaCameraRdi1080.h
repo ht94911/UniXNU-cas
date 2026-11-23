@@ -22,16 +22,28 @@ struct NezhaCameraFrameMapping {
     uint64_t mapped_bytes;
 };
 
+enum {
+    NezhaCameraRdi1080QueuedFrames = 2,
+    NezhaCameraRdi1080MaxFrames = 3,
+};
+
 struct NezhaCameraRdi1080 {
     struct NezhaCameraRaw10Layout layout;
     uint32_t frame_increment;
-    uint32_t image_address[2];
+    uint32_t image_address[NezhaCameraRdi1080MaxFrames];
+    /* Zero retains the original two-buffer callers. Only two addresses
+     * are in flight; a third mapping can be the worker's ready spare. */
+    unsigned frame_count;
 };
 
 /* First capture uses two disjoint, camera-owned, 32-bit IOVA mappings.
  * These values describe the full VFE1080 RDI0 write master. */
 bool nezha_camera_rdi1080_layout(uint32_t width, uint32_t height,
     const struct NezhaCameraFrameMapping buffers[2], struct NezhaCameraRdi1080 *out);
+
+bool nezha_camera_rdi1080_pool_layout(uint32_t width, uint32_t height,
+    const struct NezhaCameraFrameMapping *buffers, unsigned count,
+    struct NezhaCameraRdi1080 *out);
 
 /* Program the geometry of full VFE1080 RDI0. The caller must hold a
  * verified, powered VFE instance and an exclusive, stopped write master.

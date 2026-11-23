@@ -40,7 +40,7 @@ const ArmSmmu4KConfig *nezha_camera_native_memory_config(const struct NezhaCamer
 
 /* Take device references before installing the context. Once BUF_DONE
  * matches a queued buffer, acquire it before CPU access, and republish
- * it before requeue. RAW pages take the existing owner's write-combined
+ * it before reuse as the next spare. RAW pages take the existing owner's write-combined
  * attribute before their first device reference. The owner still checks
  * every acquire/publication; explicit device barriers order this sole,
  * uncached mapping without a per-frame cache-line walk. The four stale
@@ -54,7 +54,8 @@ bool nezha_camera_native_memory_drop(struct NezhaCameraNativeMemory *memory, uns
 
 /* After CPAS drain and SMMU detach/TLBSYNC, retire this session's device
  * references. A completely prepared pool stays wired for the next session,
- * bounded to two 15 MiB RAW frames and 128 KiB of tables. Partial preparation
+ * bounded to three 15 MiB RAW frames and 128 KiB of tables. Only two of these
+ * are queued to hardware; the third replaces a completion before delivery. Partial preparation
  * frees only backing whose release succeeds. Uncertain teardown never
  * recycles the pool or drops its device references. */
 bool nezha_camera_native_memory_release(struct NezhaCameraNativeMemory **memory, bool dma_detached);

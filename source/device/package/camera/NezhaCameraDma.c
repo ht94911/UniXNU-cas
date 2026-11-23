@@ -12,6 +12,16 @@ ArmSmmu4KStatus nezha_camera_build_frame_span_tables(const ArmSmmu4KConfig *conf
     const ArmSmmu4KRange *ranges, size_t range_count,
     uint64_t *tables, size_t capacity_pages, struct NezhaCameraDmaPlan *out)
 {
+    return nezha_camera_build_frame_pool_span_tables(config, frames,
+        NezhaCameraRdi1080QueuedFrames, width, height, ranges, range_count,
+        tables, capacity_pages, out);
+}
+
+ArmSmmu4KStatus nezha_camera_build_frame_pool_span_tables(const ArmSmmu4KConfig *config,
+    const struct NezhaCameraFrameMapping *frames, unsigned frame_count,
+    uint32_t width, uint32_t height, const ArmSmmu4KRange *ranges, size_t range_count,
+    uint64_t *tables, size_t capacity_pages, struct NezhaCameraDmaPlan *out)
+{
     if (out == NULL) {
         return ArmSmmu4KArgument;
     }
@@ -22,13 +32,13 @@ ArmSmmu4KStatus nezha_camera_build_frame_span_tables(const ArmSmmu4KConfig *conf
     }
 
     struct NezhaCameraRdi1080 layout;
-    if (!nezha_camera_rdi1080_layout(width, height, frames, &layout)) {
+    if (!nezha_camera_rdi1080_pool_layout(width, height, frames, frame_count, &layout)) {
         return ArmSmmu4KBadRange;
     }
     const uint64_t page_mask = TablePageBytes - 1u;
     const uint64_t bytes = ((uint64_t)layout.layout.frame_bytes + page_mask) & ~page_mask;
     size_t cursor = 0;
-    for (unsigned frame = 0; frame < 2; ++frame) {
+    for (unsigned frame = 0; frame < frame_count; ++frame) {
         const uint64_t start = frames[frame].iova;
         if (start < CameraFirstIova || (start & page_mask) != 0 ||
             frames[frame].mapped_bytes < bytes || start > UINT64_MAX - bytes) {
@@ -70,9 +80,10 @@ ArmSmmu4KStatus nezha_camera_build_frame_span_tables(const ArmSmmu4KConfig *conf
     if (status != ArmSmmu4KSuccess) {
         return status;
     }
-    out->frames[0] = (struct NezhaCameraFrameMapping){frames[0].iova, bytes};
-    out->frames[1] = (struct NezhaCameraFrameMapping){frames[1].iova, bytes};
+    for (unsigned i = 0; i < frame_count; ++i)
+        out->frames[i] = (struct NezhaCameraFrameMapping){frames[i].iova, bytes};
     out->tables = result;
+    out->frame_count = frame_count;
     return ArmSmmu4KSuccess;
 }
 

@@ -246,7 +246,9 @@ bool nezha_camera1080_requeue_rdi0(const struct NezhaCamera1080Io *io,
     const struct NezhaCameraRdi1080 *layout, unsigned buffer)
 {
     if (io == NULL || io->write_csid == NULL || io->write_vfe == NULL || layout == NULL ||
-        buffer > 1 || layout->image_address[buffer] == 0) {
+        layout->frame_count > NezhaCameraRdi1080MaxFrames ||
+        buffer >= (layout->frame_count ? layout->frame_count : NezhaCameraRdi1080QueuedFrames) ||
+        layout->image_address[buffer] == 0) {
         return false;
     }
     io->write_vfe(io->context, VfeRdi0ImageAddress, layout->image_address[buffer]);

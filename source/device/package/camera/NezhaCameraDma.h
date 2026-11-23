@@ -19,8 +19,9 @@ struct NezhaCameraDmaBacking {
 };
 
 struct NezhaCameraDmaPlan {
-    struct NezhaCameraFrameMapping frames[2];
+    struct NezhaCameraFrameMapping frames[NezhaCameraRdi1080MaxFrames];
     ArmSmmu4KResult tables;
+    unsigned frame_count;
 };
 
 /* The same two contiguous IOVA frames backed by the allocator's real
@@ -32,6 +33,13 @@ struct NezhaCameraDmaPlan {
 ArmSmmu4KStatus nezha_camera_build_frame_span_tables(const ArmSmmu4KConfig *config,
     const struct NezhaCameraFrameMapping frames[2], uint32_t width, uint32_t height,
     const ArmSmmu4KRange *ranges, size_t range_count,
+    uint64_t *tables, size_t capacity_pages, struct NezhaCameraDmaPlan *out);
+
+/* The same range and physical-alias checks cover the optional third
+ * spare. The receiver still starts with just the first two addresses. */
+ArmSmmu4KStatus nezha_camera_build_frame_pool_span_tables(const ArmSmmu4KConfig *config,
+    const struct NezhaCameraFrameMapping *frames, unsigned frame_count,
+    uint32_t width, uint32_t height, const ArmSmmu4KRange *ranges, size_t range_count,
     uint64_t *tables, size_t capacity_pages, struct NezhaCameraDmaPlan *out);
 
 /* Build inactive stage-1 tables for two independently owned frame buffers.

@@ -81,6 +81,8 @@ struct NezhaCameraNativeFrameWork {
     uint32_t deliveries, returns;
     uint64_t queue_max, acquire_max, delivery_max, publish_max;
     uint64_t completion_to_publish_max, control_write_max, control_read_max;
+    uint32_t replacements;
+    uint64_t completion_to_address_max;
 };
 
 struct NezhaCameraNativeCaptureResult {

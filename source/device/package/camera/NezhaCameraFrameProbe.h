@@ -27,13 +27,14 @@ struct NezhaCameraFrameResult {
     unsigned frames, updated, sof, eof;
     unsigned final_buffer;
     uint32_t last_rx, last_rdi, last_buffer, last_address, fault;
-    uint32_t sample_digest[2];
-    bool sampled[2];
+    uint32_t sample_digest[NezhaCameraRdi1080MaxFrames];
+    bool sampled[NezhaCameraRdi1080MaxFrames];
 };
 
-/* Continuous worker's CPU reader. Deliver finishes before this exact DMA
- * buffer is republished. It returns false on consumer failure. Continue
- * also gates callback-triggered Stop before any requeue. */
+/* Continuous worker's CPU reader. A published spare replaces the completed
+ * address before delivery in a three-buffer pool. This exact DMA buffer
+ * stays CPU-owned until delivery finishes. Continue gates callback-triggered
+ * Stop before returning it as a future spare. Consumer failure returns false. */
 struct NezhaCameraFrameConsumer {
     void *context;
     bool (*continuing)(void *);
