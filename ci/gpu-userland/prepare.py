@@ -468,6 +468,13 @@ def main():
     must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', '--check', selected])
     must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', selected])
     record['gpu080_ui_update_wait_patch'] = sha(selected)
+    for repository, name in [(root, 'gpu081-ios-clock-recipes.patch'),
+                             (root / 'drivers/AdrenoMetal', 'gpu081-ios-clock-plugin.patch')]:
+        selected = HERE / 'patches' / name
+        must(['git', '-C', repository, 'apply', '--check', selected])
+        must(['git', '-C', repository, 'apply', selected])
+        record.setdefault('gpu081_ios_clock_patches', {})[name] = sha(selected)
+    record['gpu_clock_policy'] = 'macOS and iOS use CLOCK_UPTIME_RAW, matching Metal Mach uptime; other platforms unchanged'
     bridge_patches = sorted((root / 'drivers/AdrenoMetal/bridge/patches').glob('*.patch'))
     record['metal2vulkan']['bridge_patches'] = {p.name: sha(p) for p in bridge_patches}
     progress('all pinned sources and patches verified')

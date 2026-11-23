@@ -1,7 +1,7 @@
-name: nezha GPU080 actual UI queue wake state
+name: nezha GPU081 correct iOS GPU clock
 on:
   push:
-    branches: [codex/ios27-gpu80-ui-wake-metal056-20261123]
+    branches: [codex/ios27-gpu81-ios-clock-metal057-20261123]
   workflow_dispatch:
 permissions:
   contents: read
@@ -138,7 +138,9 @@ jobs:
         run: ../device/ci/gpu-userland/logrun plugin python3 scripts/build-adreno-metal-plugin.py --target ios27 --iphone-24a446 --no-replay
       - name: Bind changed runtime and test multi-level input and output planning
         id: runtime_source
-        run: device/ci/gpu-userland/logrun runtime-source python3 device/ci/gpu-userland/check-multi-level-output.py --unixnu unixnu --logs "$LOGS"
+        run: |
+          device/ci/gpu-userland/logrun runtime-source python3 device/ci/gpu-userland/check-multi-level-output.py --unixnu unixnu --logs "$LOGS"
+          device/ci/gpu-userland/logrun ios-gpu-clock python3 device/ci/gpu-userland/check-ios-gpu-clock.py --unixnu unixnu --logs "$LOGS"
       - name: Test the actual patched allocator and bind its complete source
         id: buffer_reserve
         if: ${{ false }} # This subsystem is unchanged; current multi-level output has separate checks.

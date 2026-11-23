@@ -1,7 +1,7 @@
 {
   "original_pin": "963f0e64f103d2e682cd0cc454a8fe50f52c8cbb",
-  "patched_tree": "540a44d13800623a4e2a91f24b89813388600a83",
-  "builder_sha256": "32dfbd94908ad1df87038d82c1c4838d25fed81c470da61ab0bcd19c7d21f1f7",
+  "patched_tree": "841c93bc22aeaec181f78783f3702fd42bc9a1a3",
+  "builder_sha256": "78a1cb18652c412996fc8738d598786aeb7aeddf0c4cdf4134f88e4d6e7d660d",
   "patch_hashes": {
     "0002-resource-wait-storage-dependencies.patch": "4536f03ac5a829d0a23d839491837c62af00c1aa884dc75cdae0f195c7953c0c",
     "0003-cache-device-entry-point-priming.patch": "ca1c0e3733bc048d9771fc3a5d061fc4224eee3341dc41d4b64a71e6e9d06408",
@@ -42,7 +42,8 @@
     "0042-ios-foreground-blocks.patch": "cab055528569dcd5f513868dd8d33f0ae1e0cc8d714b0d062f6742509032c6b4",
     "0043-reuse-freed-buffer-backing.patch": "bbf7c746cb28265a79ee3aa1da06f1de6c16dfc48d6794e53a27360800052608",
     "0044-released-pipeline-objects-only.patch": "f3ba376629ff5f1c18f78f3a4ab442d740487c2e2dc6e2c3418701fc0760e035",
-    "0045-timely-handlers-and-pooled-refill-reuse.patch": "666b885485937aa4d058155bd23f63a12e7ee0ad83a91919bc4e2c198a11cd49"
+    "0045-timely-handlers-and-pooled-refill-reuse.patch": "666b885485937aa4d058155bd23f63a12e7ee0ad83a91919bc4e2c198a11cd49",
+    "0046-ios-gpu-time-uptime.patch": "5cdf8ddc533361be968d58874732868d36a40571cf2e6878fb6542f040fe18c5"
   },
   "source_hashes": {
     "crates/metal2vulkan-runtime/src/written_commands.rs": "5c1a9ac622de2d0cfc199de4115a087c6ee9550f4b94059513da4339a4207ac2",
@@ -68,7 +69,7 @@
     "crates/metal2vulkan-runtime/src/tracker.rs": "6362e63e97040464d5751f522c89d6effbd07f219fe5671c92a0b7a4b51ff65b",
     "crates/metal2vulkan-runtime/src/argument_table.rs": "daa07163b962e6d825ec473388909f71c53f3ff0fc323cd571a20585cb8dddfa",
     "crates/metal2vulkan-runtime/src/dma_buf.rs": "f2878a2e70ca7a61bdf74ef13c3c482a831655290cf12c22b081ffc59fbf389d",
-    "crates/metal2vulkan-runtime/src/gpu_time.rs": "56618f03fb0949ef587b3f04a0cb0472914a4a2775ac9a4ffa24a922fd53e6ae",
+    "crates/metal2vulkan-runtime/src/gpu_time.rs": "d0b6d8310280a9abe32933823226bed5fd16a55b7f0e784d88880da998b6617f",
     "crates/metal2vulkan-runtime/src/row_copies.rs": "fd640772d95fc84fe05b93a99884cf45a3823a2ce1c7d8ce267d03fe6d92f2ee",
     "crates/metal2vulkan-runtime/src/host_shared_pointers.rs": "e13e382240b2d5b584d18db9d15575c89b3e330994c889121955368a4985c403",
     "crates/metal2vulkan-runtime/src/copied.rs": "4231631dff7f756aa400da36a7291771a00bbe484848d765c1ea71bfe645a289",
@@ -1564,5 +1565,11 @@
       "isolated8stage_CoreImage_descriptor"
     ],
     "release_only_collection": true
+  },
+  "GPU081_iOS_uptime_clock_fix": {
+    "previous_tree": "540a44d13800623a4e2a91f24b89813388600a83",
+    "changed_file": "crates/metal2vulkan-runtime/src/gpu_time.rs",
+    "same_Metal_clock_as_CACurrentMediaTime": true,
+    "other_runtime_files_retained": true
   }
 }

@@ -1,0 +1,12 @@
+diff --git a/scripts/build-adreno-metal-bridge.py b/scripts/build-adreno-metal-bridge.py
+index 61f4563..43bd60d 100644
+--- a/scripts/build-adreno-metal-bridge.py
++++ b/scripts/build-adreno-metal-bridge.py
+@@ -94,6 +94,7 @@ PATCHES = [ROOT / 'drivers/AdrenoMetal/bridge/patches' / name for name in [
+     '0044-released-pipeline-objects-only.patch',
+     # Timely ordered callbacks and pooled reuse of larger retained backing.
+     '0045-timely-handlers-and-pooled-refill-reuse.patch',
++    '0046-ios-gpu-time-uptime.patch',
+ ]]
+ 
+ 

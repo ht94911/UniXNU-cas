@@ -1,0 +1,62 @@
+diff --git a/bridge/patches/0046-ios-gpu-time-uptime.patch b/bridge/patches/0046-ios-gpu-time-uptime.patch
+new file mode 100644
+--- /dev/null
++++ b/bridge/patches/0046-ios-gpu-time-uptime.patch
+@@ -0,0 +1,57 @@
++diff --git a/crates/metal2vulkan-runtime/src/gpu_time.rs b/crates/metal2vulkan-runtime/src/gpu_time.rs
++index 1a3958ba2..aca2c3b89 100644
++--- a/crates/metal2vulkan-runtime/src/gpu_time.rs
+++++ b/crates/metal2vulkan-runtime/src/gpu_time.rs
++@@ -2,7 +2,7 @@
++ //! and `kernelEndTime`, in seconds of the host's clock ([`host_time`]), as Metal gives them in the
++ //! host's time base.
++ //!
++-//! - **The host's clock.** `CLOCK_UPTIME_RAW` on macOS, the clock of `mach_absolute_time` and so
+++//! - **The host's clock.** `CLOCK_UPTIME_RAW` on macOS and iOS, the clock of `mach_absolute_time` and so
++ //!   of Metal's times and `CACurrentMediaTime`; `CLOCK_MONOTONIC_RAW` elsewhere on Unix, its
++ //!   counterpart (monotonic, never slewed, stopped while the system sleeps). Other platforms count
++ //!   the runtime's own monotonic clock, which no device can calibrate against.
++@@ -218,7 +218,7 @@ const SAMPLE_BUFFER_TIMESTAMPS: u32 = 4096;
++ const _: () = assert!(PLAIN * SLOTS <= SAMPLE_BUFFER_TIMESTAMPS);
++ 
++ /// The host time now, in seconds of the clock the runtime's GPU and kernel times count (the
++-/// module documentation): `CLOCK_UPTIME_RAW` on macOS, which `mach_absolute_time` and
+++/// module documentation): `CLOCK_UPTIME_RAW` on macOS and iOS, which `mach_absolute_time` and
++ /// `CACurrentMediaTime` count, and `CLOCK_MONOTONIC_RAW` elsewhere on Unix.
++ pub fn host_time() -> f64 {
++     host_nanos() as f64 / 1e9
++@@ -240,9 +240,9 @@ pub(crate) fn host_nanos() -> u64 {
++ }
++ 
++ /// The host's clock.
++-#[cfg(target_os = "macos")]
+++#[cfg(any(target_os = "macos", target_os = "ios"))]
++ const BASE: libc::clockid_t = libc::CLOCK_UPTIME_RAW;
++-#[cfg(all(unix, not(target_os = "macos")))]
+++#[cfg(all(unix, not(any(target_os = "macos", target_os = "ios"))))]
++ const BASE: libc::clockid_t = libc::CLOCK_MONOTONIC_RAW;
++ 
++ /// `clock` now, in nanoseconds.
++@@ -1036,3 +1036,22 @@ pub(crate) enum Stamped {
++ pub(crate) fn seconds(nanos: u64) -> f64 {
++     nanos as f64 / 1e9
++ }
+++
+++
+++#[cfg(all(test, unix))]
+++mod platform_clock_tests {
+++    use super::{read_clock, BASE};
+++
+++    #[test]
+++    fn gpu_host_clock_matches_the_platform_uptime_contract() {
+++        #[cfg(any(target_os = "macos", target_os = "ios"))]
+++        let expected = libc::CLOCK_UPTIME_RAW;
+++        #[cfg(not(any(target_os = "macos", target_os = "ios")))]
+++        let expected = libc::CLOCK_MONOTONIC_RAW;
+++        assert_eq!(BASE, expected);
+++        let before = read_clock(expected).expect("platform clock available");
+++        let actual = read_clock(BASE).expect("selected GPU clock available");
+++        let after = read_clock(expected).expect("platform clock available");
+++        assert!(before <= actual && actual <= after);
+++    }
+++}
