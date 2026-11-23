@@ -95,6 +95,52 @@ bool nezha_camera1080_prepare_csid(const struct NezhaCameraRegisterIo *csid,
     return false;
 }
 
+bool nezha_camera1080_reset_stopped_paths(const struct NezhaCameraRegisterIo *csid,
+    uint32_t *reset_status)
+{
+    if (csid == NULL || csid->read == NULL || csid->write == NULL ||
+        csid->wait_ms == NULL || reset_status == NULL) {
+        return false;
+    }
+    *reset_status = csid->read(csid->context, CsidTopIrqStatus);
+    if (*reset_status == UINT32_MAX) {
+        return false;
+    }
+    /* Clear only a previous reset receipt. Child clear registers are
+     * sticky: neutralize them before committing the TOP acknowledgement.
+     * Pending frame/error status is not a new reset completion. */
+    csid->write(csid->context, CsidTopIrqClear, *reset_status & CsidResetDone);
+    csid->write(csid->context, CsidBufferIrqClear, 0);
+    csid->write(csid->context, CsidRxIrqClear, 0);
+    csid->write(csid->context, CsidRdi0IrqClear, 0);
+    csid->write(csid->context, CsidIrqCommand, 1);
+    *reset_status = csid->read(csid->context, CsidTopIrqStatus);
+    if (*reset_status == UINT32_MAX || (*reset_status & CsidResetDone) != 0) {
+        return false;
+    }
+    /* Stock cam_ife_csid_ver2_stop uses RESET_PATH: path-only location0,
+     * immediate halt1 and HW reset command1. Keep the IRQ controller and
+     * receiver configuration; a complete/global reset has wider scope. */
+    csid->write(csid->context, CsidResetConfig, 1);
+    csid->write(csid->context, CsidResetCommand, 1);
+    for (unsigned ms = 0; ms <= 100; ++ms) {
+        *reset_status = csid->read(csid->context, CsidTopIrqStatus);
+        if (*reset_status == UINT32_MAX) {
+            return false;
+        }
+        if (*reset_status & CsidResetDone) {
+            csid->write(csid->context, CsidTopIrqClear, CsidResetDone);
+            csid->write(csid->context, CsidIrqCommand, 1);
+            const uint32_t after = csid->read(csid->context, CsidTopIrqStatus);
+            return after != UINT32_MAX && (after & CsidResetDone) == 0;
+        }
+        if (ms != 100) {
+            csid->wait_ms(csid->context, 1);
+        }
+    }
+    return false;
+}
+
 static const uint32_t raw10_vc0 =
     (0x2bu << 16) | (0xfu << 12) | (1u << 8) | (1u << 6) | (1u << 5);
 

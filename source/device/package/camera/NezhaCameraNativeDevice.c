@@ -227,6 +227,9 @@ static void worker(void *argument,wait_result_t wait_result)
         work->replacements,(unsigned long long)work->completion_to_address_max,
         copied,skipped,reads,work->copy_service_calls,work->copy_recycled_frames,
         (unsigned long long)work->copy_service_max);
+    if (result.csid_stop_attempted)
+        printf("NEZHA CAMERA: native CSID stop acknowledged=%u reset-status=%#x\n",
+            (unsigned)result.csid_stop_acknowledged,result.csid_stop_reset_status);
     if (result.irq_fault) {
         /* The IRQ owner already captured these words before acknowledgement.
          * Report them after teardown; do not read MMIO or log inside the IRQ. */

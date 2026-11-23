@@ -317,19 +317,8 @@ bool cleanup(Capture &s, NezhaCameraNativeCaptureResult &result,
         if (nezha_camera_cci_recover_master(&s.reg[Cci], 1, 37500000, &recovery) != NezhaCciOk) return false;
         s.capture.sensor_transfer.needs_recovery = false;
     }
+    const bool paths_started = s.capture.rdi_started;
     if (!nezha_camera_main_capture_request_stop(&s.capture_io, &s.capture)) return false;
-    result.cleanup_step = NezhaNativeDrain;
-    if (!nezha_camera_capture_resources_drain(&s.resources_io, &result.resources, true)) {
-        /* Producers have stopped, but the failed CPAS drain retains every
-         * DMA mapping and resource lease. Quiesce only our IRQ callback so
-         * its preserved first fault is readable even on this early return. */
-        if (s.irq && nezha_camera_native_irq_stop(s.irq)) {
-            result.irq_stopped = true;
-            result.irq_fault = nezha_camera_native_irq_fault(s.irq);
-            (void)nezha_camera_native_irq_failure(s.irq, &result.irq_failure);
-        }
-        return false;
-    }
     result.cleanup_step = NezhaNativeStopIrq;
     if (s.irq && !nezha_camera_native_irq_stop(s.irq)) return false;
     if (s.irq) {
@@ -337,6 +326,18 @@ bool cleanup(Capture &s, NezhaCameraNativeCaptureResult &result,
         result.irq_fault = nezha_camera_native_irq_fault(s.irq);
         (void)nezha_camera_native_irq_failure(s.irq, &result.irq_failure);
     }
+    if (paths_started) {
+        result.cleanup_step = NezhaNativeStopCsid;
+        result.csid_stop_attempted = true;
+        /* The callback is joined before the worker reads/clears reset
+         * status. A timeout retains the mappings and all resource leases;
+         * neither a submitted stop nor reset-done proves CPAS drained. */
+        if (!nezha_camera1080_reset_stopped_paths(&s.reg[Csid],
+                &result.csid_stop_reset_status)) return false;
+        result.csid_stop_acknowledged = true;
+    }
+    result.cleanup_step = NezhaNativeDrain;
+    if (!nezha_camera_capture_resources_drain(&s.resources_io, &result.resources, true)) return false;
     // If cache publication failed, the sole CPU worker still owns this
     // frame. Drop its claim after drain without returning it to hardware.
     for (unsigned i = 0; i < NezhaCameraRdi1080MaxFrames; ++i) {

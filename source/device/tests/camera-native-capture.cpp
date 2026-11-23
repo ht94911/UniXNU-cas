@@ -16,6 +16,8 @@ static unsigned maps, starts, stops, reads, copies;
 static bool resources_active, irq_active, smmu_active, memory_active, stream_active, keep_running, source_fail;
 static bool frame_timeout;
 static bool drain_failure;
+static bool csid_stop_failure, irq_stop_failure, csid_stop_done;
+static unsigned csid_stop_calls, drain_calls;
 static uint32_t irq_fault;
 static bool selected_epd;
 static unsigned stream_readbacks;
@@ -141,7 +143,8 @@ extern "C" bool nezha_camera_ife_bandwidth_checked(const uint8_t *,size_t,uint32
 extern "C" bool nezha_camera_capture_resources_start(const NezhaCameraCaptureResourceIo *,const NezhaCameraIfeBandwidth *,const NezhaCameraCsiphy24Profile *,NezhaCameraCaptureResources *r)
 { assert(!resources_active && r->step==NezhaResourcesIdle);r->step=NezhaResourcesReady;resources_active=true;++starts;return !source_fail; }
 extern "C" bool nezha_camera_capture_resources_drain(const NezhaCameraCaptureResourceIo *,NezhaCameraCaptureResources *r,bool quiet)
-{ assert(quiet && !stream_active && resources_active);
+{ assert(quiet && !stream_active && !irq_active && resources_active); ++drain_calls;
+  assert(!memory_active || !smmu_active || csid_stop_done || initial_controls_failure!=NezhaCciOk || memory_prepare_failure || memory_hold_failure);
   if(drain_failure) {r->cleanup_status=NezhaCameraCpasTimeout;r->detail=r->cpas.failed_offset=0xf0;
     r->cpas.failed_control=0;r->cpas.failed_status=1;r->cpas.failed_expected=0;return false;}
   return true; }
@@ -159,9 +162,13 @@ extern "C" NezhaCameraCciStatus nezha_camera_ovx10500u_read_identity(const Nezha
 extern "C" NezhaCameraCciStatus nezha_camera_ovx10500u_read_revision(const NezhaCameraRegisterIo *,NezhaCameraOvxRevision *r)
 { r->vendor=3;r->version=0x42;return NezhaCciOk; }
 extern "C" bool nezha_camera1080_prepare_csid(const NezhaCameraRegisterIo *,uint32_t *r) { *r=1;return true; }
+extern "C" bool nezha_camera1080_reset_stopped_paths(const NezhaCameraRegisterIo *io,uint32_t *r)
+{ assert(io && !irq_active && !stream_active && resources_active && memory_active && smmu_active);
+  ++csid_stop_calls;*r=csid_stop_failure ? 0x10000:0x10001;
+  return csid_stop_done=!csid_stop_failure; }
 extern "C" bool nezha_camera_native_irq_open(NezhaCameraNativeIrq **out,const NezhaCameraRegisterIo *,const NezhaCameraRegisterIo *,NezhaCameraNativeIrqSetup *)
 { assert(!*out && !irq_active);*out=(NezhaCameraNativeIrq *)1;irq_active=true;return true; }
-extern "C" bool nezha_camera_native_irq_stop(NezhaCameraNativeIrq *) { irq_active=false;return true; }
+extern "C" bool nezha_camera_native_irq_stop(NezhaCameraNativeIrq *) { if(irq_stop_failure)return false;irq_active=false;return true; }
 extern "C" uint32_t nezha_camera_native_irq_fault(const NezhaCameraNativeIrq *) { assert(!irq_active);return irq_fault; }
 extern "C" bool nezha_camera_native_irq_failure(const NezhaCameraNativeIrq *,NezhaCamera1080Events *event)
 { assert(!irq_active);if(!irq_fault)return false;*event={};event->rx_irq=1u<<12;return true; }
@@ -200,6 +207,7 @@ extern "C" uint32_t nezha_camera_native_smmu_fault(const NezhaCameraNativeSmmu *
 extern "C" void nezha_camera_native_smmu_fault_info(const NezhaCameraNativeSmmu *,NezhaCameraNativeSmmuFault *f) { *f={}; }
 extern "C" bool nezha_camera_main_capture_start(const NezhaCameraMainCaptureIo *io,const NezhaCameraMainMode *mode,const NezhaCameraDmaPlan *,const ArmSmmu4KContextConfig *,unsigned,unsigned,unsigned,NezhaCameraMainCapture *c)
 { assert(!stream_active && !c->rdi_started && mode->input.epd_mode==selected_epd);
+  csid_stop_done=false;
   assert(vfe[0x1008/4]==(original_bus_cgc|0x07ffffff));
   if(io->standby_controls) {
    auto *initial=io->standby_controls;initial->attempted=true;
@@ -208,7 +216,7 @@ extern "C" bool nezha_camera_main_capture_start(const NezhaCameraMainCaptureIo *
    if(initial->status!=NezhaCciOk)return false;
   }
   c->rdi_started=true;c->stream_may_be_on=true;stream_active=true;return true; }
-extern "C" bool nezha_camera_main_capture_request_stop(const NezhaCameraMainCaptureIo *,NezhaCameraMainCapture *c) { c->stream_may_be_on=false;stream_active=false;return true; }
+extern "C" bool nezha_camera_main_capture_request_stop(const NezhaCameraMainCaptureIo *,NezhaCameraMainCapture *c) { c->stream_may_be_on=false;c->rdi_started=false;stream_active=false;return true; }
 extern "C" bool nezha_camera_main_capture_finish_stop(const NezhaCameraMainCaptureIo *,const ArmSmmu4KContextConfig *,unsigned,NezhaCameraMainCapture *,bool quiet) { assert(quiet);return true; }
 extern "C" bool nezha_camera_main_capture_release_frame(const NezhaCameraMainCaptureIo *,NezhaCameraMainCapture *,unsigned,bool) { return true; }
 extern "C" NezhaCameraFrameStatus nezha_camera_frame_probe(const NezhaCameraMainCaptureIo *,NezhaCameraMainCapture *,const NezhaCameraRegisterIo *,const NezhaCameraRegisterIo *,const NezhaCameraFrameMemoryIo *,unsigned,unsigned,NezhaCameraFrameResult *)
@@ -319,6 +327,21 @@ int main(int argc,char **argv)
     request.profile=&profile;request.profile_bytes=NezhaCameraProfileCapacity;
     request.command_database=&database;request.database_bytes=0x20000;request.cci_queue_words=NezhaCameraCciCanoeQueue0Words;request.consumer=&consumer;
     NezhaCameraNativeCaptureResult result{};
+    if(argc==2 && (!strcmp(argv[1],"csid-stop-timeout") || !strcmp(argv[1],"irq-stop-timeout"))) {
+        keep_running=true;
+        csid_stop_failure=!strcmp(argv[1],"csid-stop-timeout");
+        irq_stop_failure=!strcmp(argv[1],"irq-stop-timeout");
+        assert(!nezha_camera_native_capture(&request,&result) && !result.cleaned);
+        assert(result.cleanup_step==(csid_stop_failure ? NezhaNativeStopCsid:NezhaNativeStopIrq));
+        assert(result.csid_stop_attempted==csid_stop_failure && !result.csid_stop_acknowledged);
+        assert(csid_stop_calls==(csid_stop_failure ? 1u:0u) && drain_calls==0);
+        assert(!stream_active && resources_active && smmu_active && memory_active && !stops);
+        assert(result.irq_stopped==csid_stop_failure && irq_active==irq_stop_failure);
+        const unsigned first_starts=starts;
+        assert(!nezha_camera_native_capture(&request,&result) && starts==first_starts);
+        puts("Native stop timeout retains DMA/backing/resource owners and forbids drain or restart");
+        return 0;
+    }
     if(argc==2 && (!strcmp(argv[1],"copy-service") || !strcmp(argv[1],"copy-service-fault") ||
         !strcmp(argv[1],"copy-service-stop"))) {
         keep_running=true;copy_service_test=true;

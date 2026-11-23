@@ -1,7 +1,7 @@
-name: nezha Camera139 recycle completed RAW during requested staging on GPU051 - native
+name: nezha Camera140 wait for stopped CSID path reset before drain - native
 on:
   push:
-    branches: [codex/ios27-camera139-copy-recycle-20261124]
+    branches: [codex/ios27-camera140-stop-20261124]
   workflow_dispatch:
 permissions:
   contents: read
@@ -119,6 +119,14 @@ jobs:
           clang -std=c11 -Wall -Wextra -Werror -g -fsanitize=address,undefined -fno-sanitize-recover=all -I "$src/package/camera" -I "$src/package/gpu/adreno" "$src/package/camera/NezhaCameraMainCapture.c" "$src/package/camera/NezhaCameraRdi1080.c" "$src/tests/camera-main-capture.c" -o "$out/main-capture"
           "$out/main-capture" > "$out/main-capture.log" 2>&1
           NEZHA_CAMERA_SHARED_SOC="$RUNNER_TEMP/ios27/work/soc" CAMERA_TARGET_CC="$out/target-clang" bash "$src/scripts/check-nezha27-camera-continuous.sh" "$out/continuous" > "$out/continuous.log" 2>&1
+      - name: Check the fresh stopped CSID reset receipt and timeout gate
+        run: |
+          set -euo pipefail
+          src="$RUNNER_TEMP/ios27/work/device"
+          out="$RUNNER_TEMP/ios27/work/camera-stop-host"
+          mkdir -p "$out"
+          clang -std=c11 -Wall -Wextra -Werror -g -fsanitize=address,undefined -fno-sanitize-recover=all -I "$src/package/camera" -I "$src/package/gpu/adreno" "$src/package/camera/NezhaCameraCamss1080.c" "$src/package/camera/NezhaCameraRdi1080.c" "$src/tests/camera-camss1080.c" -o "$out/consumer"
+          "$out/consumer" > "$out/consumer.log" 2>&1
       - name: Check actual bounded IRQ drain and spare address before frame delivery
         run: |
           set -euo pipefail

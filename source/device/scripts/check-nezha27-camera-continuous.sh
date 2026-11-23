@@ -40,6 +40,8 @@ g++ "${flags[@]}" "$out/NativeCapture-host.cpp" tests/camera-native-capture.cpp 
 "$out/test-capture" control-wait-stop
 "$out/test-capture" control-wait-fault
 "$out/test-capture" drain-failure
+"$out/test-capture" csid-stop-timeout
+"$out/test-capture" irq-stop-timeout
 "$out/test-capture" AF-readonly
 "$out/test-capture" AF-eeprom-fail
 "$out/test-capture" AF-position-fail

@@ -35,6 +35,12 @@ struct NezhaCamera1080Io {
 bool nezha_camera1080_prepare_csid(const struct NezhaCameraRegisterIo *csid,
     uint32_t *reset_status);
 
+/* After stopping the source and joining its IRQ callback, halt and reset
+ * the exclusively owned CSID paths. Require a fresh reset acknowledgement
+ * before CPAS drain; this does not establish DMA quiescence on its own. */
+bool nezha_camera1080_reset_stopped_paths(const struct NezhaCameraRegisterIo *csid,
+    uint32_t *reset_status);
+
 /* Queue VC0 RAW10 on full CSID1080 + full VFE1080 RDI0. The caller owns
  * both stopped blocks, their reset and clock domains, the configured input,
  * the DMA mappings, and IRQ setup. Success means the register sequence was

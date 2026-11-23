@@ -65,6 +65,94 @@ struct IrqSession {
     bool fail_reset;
 };
 
+/* Model sticky interrupt clear registers and an asynchronous reset receipt.
+ * A stale TOP bit or unrelated frame/error event must not permit teardown. */
+struct StopSession {
+    uint32_t top, buffers, rx, rdi0;
+    uint32_t clear[4], reset_config;
+    unsigned commands, waits, reads, writes, acknowledge_after;
+    unsigned invalid_read_at;
+    bool ignore_clear, fail_final_read, receipt_set;
+};
+
+static uint32_t stop_read(void *context, uint32_t offset)
+{
+    struct StopSession *s = context;
+    assert(offset == 0x180);
+    ++s->reads;
+    if (s->reads == s->invalid_read_at || (s->fail_final_read && s->receipt_set && !(s->top & 1u)))
+        return UINT32_MAX;
+    if (s->commands && !s->receipt_set && s->waits == s->acknowledge_after) {
+        s->top |= 1;
+        s->receipt_set = true;
+    }
+    return s->top;
+}
+
+static void stop_write(void *context, uint32_t offset, uint32_t value)
+{
+    struct StopSession *s = context;
+    ++s->writes;
+    switch (offset) {
+    case 0x188: s->clear[0] = value; break;
+    case 0x1a8: s->clear[1] = value; break;
+    case 0x1b8: s->clear[2] = value; break;
+    case 0x22c: s->clear[3] = value; break;
+    case 0x110:
+        assert(value == 1);
+        if (!s->ignore_clear) {
+            s->top &= ~s->clear[0]; s->buffers &= ~s->clear[1];
+            s->rx &= ~s->clear[2]; s->rdi0 &= ~s->clear[3];
+        }
+        break;
+    case 0x108: assert(value == 1); s->reset_config = value; break;
+    case 0x10c:
+        assert(value == 1 && s->reset_config == 1 && !(s->top & 1u));
+        ++s->commands;
+        break;
+    default: assert(0);
+    }
+}
+
+static void stop_wait(void *context, unsigned milliseconds)
+{
+    struct StopSession *s = context;
+    assert(milliseconds == 1 && s->commands == 1);
+    ++s->waits;
+}
+
+static void stopped_paths(void)
+{
+    struct StopSession s = {0};
+    struct NezhaCameraRegisterIo io = {&s, stop_read, stop_write, stop_wait};
+    uint32_t status = 99;
+    assert(!nezha_camera1080_reset_stopped_paths(NULL, &status));
+    assert(!nezha_camera1080_reset_stopped_paths(&io, NULL));
+    io.wait_ms = NULL;
+    assert(!nezha_camera1080_reset_stopped_paths(&io, &status) && !s.reads && !s.writes);
+    io.wait_ms = stop_wait;
+    for (unsigned delay = 0; delay <= 100; delay += 50) {
+        s = (struct StopSession){.top = 0x10001, .buffers = 0x30000, .rx = 0x77,
+            .rdi0 = 0x680c04, .clear = {0x10000, 0x30000, 0x77, 0x680c04},
+            .acknowledge_after = delay};
+        assert(nezha_camera1080_reset_stopped_paths(&io, &status));
+        assert(status == 0x10001 && s.waits == delay && s.commands == 1 && s.top == 0x10000);
+        assert(s.buffers == 0x30000 && s.rx == 0x77 && s.rdi0 == 0x680c04);
+    }
+    s = (struct StopSession){.top = 0x10000, .acknowledge_after = 101};
+    assert(!nezha_camera1080_reset_stopped_paths(&io, &status));
+    assert(status == 0x10000 && s.waits == 100 && s.commands == 1);
+    s = (struct StopSession){.top = 1, .ignore_clear = true};
+    assert(!nezha_camera1080_reset_stopped_paths(&io, &status) && !s.commands && !s.waits);
+    for (unsigned read = 1; read <= 4; ++read) {
+        s = (struct StopSession){.invalid_read_at = read, .acknowledge_after = 0};
+        assert(!nezha_camera1080_reset_stopped_paths(&io, &status));
+        assert(s.commands == (read >= 3 ? 1u : 0u));
+    }
+    s = (struct StopSession){.fail_final_read = true};
+    assert(!nezha_camera1080_reset_stopped_paths(&io, &status) && s.commands == 1);
+}
+
 static uint32_t read_consumed(void *context, uint32_t offset)
 {
     struct IrqSession *session = context;
@@ -154,6 +242,7 @@ static void tpg_wait(void *context, unsigned ms)
 
 int main(void)
 {
+    stopped_paths();
     struct Session session = {0};
     const struct NezhaCamera1080Io io = {&session, write_csid, write_vfe};
     const struct NezhaCameraFrameMapping buffers[2] = {

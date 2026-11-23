@@ -72,6 +72,8 @@ enum NezhaCameraNativeCleanupStep {
     NezhaNativeCleanupIdle, NezhaNativeStopSensor, NezhaNativeDrain,
     NezhaNativeStopIrq, NezhaNativeDetach, NezhaNativeReleaseMemory,
     NezhaNativeRestorePins, NezhaNativeReleaseResources, NezhaNativeCleanupDone,
+    /* Keep the existing cleanup values used by retained run decoders. */
+    NezhaNativeStopCsid,
 };
 
 /* Bounded wall-clock maxima from the existing worker/callback path.
@@ -97,6 +99,8 @@ struct NezhaCameraNativeCaptureResult {
     size_t raw_sample_bytes;
     uint32_t irq_fault;
     bool irq_stopped;
+    bool csid_stop_attempted, csid_stop_acknowledged;
+    uint32_t csid_stop_reset_status;
     struct NezhaCameraNativeIrqSetup irq_setup;
     struct NezhaCamera1080Events irq_failure;
     struct NezhaCameraNativeSmmuFault smmu_fault;

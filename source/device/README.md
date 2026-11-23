@@ -1,3 +1,101 @@
+Camera140 joins the stopped stream's IRQ callback before issuing the stock
+CSID path-only immediate halt/reset and requiring a fresh reset receipt.
+CPAS drain follows that acknowledgement; either timeout retains DMA mappings,
+backing and resource ownership and forbids a restart. Existing cleanup codes
+and first frame faults remain intact. Local sanitizer and ARM64e checks cover
+stale receipts, delayed reset completion, failed MMIO and retained ownership.
+Actual stop/drain recovery, continuous preview and photographs remain pending.
+
+Camera137 drains up to32 already queued IRQ notices before the existing
+completion wait and treats queued RUP/SOF events separately from an empty
+queue. RAW staging copies run only for a pending cdev reader; unread frames
+remain valid and active reads exclude copying. The original two-frame control
+delay,45 MiB spare pool,cache policy and stop/fault ownership stay intact.
+The current Mac target changes only FrameProbe and NativeDevice objects.
+Camera136 native rectangle observations remain, while its four completed
+once-only consumers are disabled for physical preview trials. Preview and
+photographs still need device validation.
+
+Camera135 keeps three owned RAW mappings with only two hardware addresses
+queued. After a matched completion the worker submits its already published
+spare before acquiring or copying the completed frame. That frame remains
+CPU-owned through delivery and publication, then becomes the next spare.
+The pool is bounded to45 MiB plus128 KiB of tables and is reused only after
+drain and detach. Existing work counters record the address-update submission
+separately from CPU publication; neither claims hardware acceptance or FPS.
+This follows Qualcomm CAMSS's replacement-before-consumer order and retains
+the134 RUP warning,131 cache policy,133 border fix and128 GiB Data. Native
+preview, sustained capture and photographs still require device verification.
+
+Camera134 follows the stock common-v1 and ISP-context handling of RUP_MISS:
+preserve the observed warning and acknowledge it, then continue processing
+real completions. Camera131's first terminal word0x11110 contained only this
+bit in the port's extra error mask. Overflow, illegal DT, illegal batch,
+queue overflow and failed MMIO still stop and retain the first fault.
+This is separate from Camera133's owned border repair and needs hardware
+verification of sustained capture, native preview and photos.
+
+Camera133 repairs the completed-frame uncompressed rotation's missing outer
+border through the original system border method. Camera132 verified correct
+rotated quadrants, unchanged requested border pixels, and correct standalone
+border fill. The repair applies only to owned NV12 frames with integral chroma
+bounds after a successful rotation; original errors propagate. The original
+system downscale consumer checks the resulting16x16 image. Physical preview
+and photographs remain pending.
+
+Camera131 uses the existing NativeAdrenoMemory cache-mode transition for the
+two exclusive kernel RAW mappings before their first device reference. The
+30 MiB pool and immutable SMMU tables remain; tables stay cached. Explicit
+device barriers and the original acquire/publication ownership checks replace
+each frame's whole-RAW cache-line walk. Cache-mode failures stop before DMA
+and preserve their actual return. Ten real adapter cases, including failed
+transitions and detached reuse, pass with ASan/UBSan. Camera130 delivered27
+RAW frames and verified exposure readback before RDI bit19 backpressure;
+physical preview, sustained capture and photographs remain unverified.
+
+Camera130 reads the initial eleven exposure register bytes after the complete mode is applied and before DMA, RDI or sensor streaming. The first completed frame qualifies that actual standby snapshot; the existing two-frame metadata delay and later queued-control readback stay intact. Initial NACK/timeout stops before streaming. This removes the five synchronous initial reads from the live two-buffer path; physical preview and photographs still need device verification.
+
+Camera129 retains the successfully prepared two-frame RAW pool and its immutable SMMU table plan across fully drained, detached close/open cycles. The fixed budget remains 30 MiB of RAW backing plus128 KiB of tables. Real allocation, publication and device-hold errors are copied to the existing capture result and console. Eight actual adapter cases,7680 scatter-backed page translations, four reopens under forced allocator refusal and existing capture/control/Stop tests pass with ASan/UBSan; physical preview and photos remain pending.
+
+Camera127 selects the existing 128 GiB AppSync Data seed and pinned file. Its fixed typed volume UUID input is changed in the original kernel string; all executable bytes, bounded provider wait, GPU115 and Camera126 provider stay byte-identical. The actual 4,363 Data and 9,006 protected extents fit the original 16,384-entry mapper. ASan/UBSan covers those real maps and the sparse seed; the current kernel and packed input reached the eight-CPU QEMU display/HID checkpoint. That VM does not start persistent Data. Physical mount, runtime logs, native preview and photos require device evidence.
+
+Camera122 retains the verified Camera121 original renderer fallback and disables its completed authored-pixel helper. This candidate holds the native Camera scene for physical preview, shutter and photo review. Its renderer provider, GPU115 and kernel092 are byte-identical to Camera121.
+
+Camera121 chooses the original uncompressed renderer when FigM2MController reports no positive scale capabilities. The original renderer methods keep the same pool, fractional rectangle setting and call count; existing native scaler limits are not changed. Camera120 verified zero limits and a nil controller on nezha. Native Camera preview and photos remain unverified.
+
+Camera119 sends the unchanged Camera118 original-controller probe output to /dev/console so a full iOS Data volume does not prevent launchd from opening its new log file. GPU115 and kernel092 remain byte-identical. The current Data generation is preserved.
+
+Camera118 reads the original FigM2MController scale capabilities and uses its native black fill, centred transfer, downsample and expansion methods on authored NV12 images. The system generates conversion parameters. Runtime method encodings are checked against retained24A446 metadata; no camera is opened. Camera115 GPU fixes and kernel092 remain the hardware baseline. Native preview and photos are unverified.
+
+Camera117 calls the original VTPixelTransferSession API for uniform and
+letterboxed NV12 inputs. The system selects its transfer implementation and
+generates all conversion parameters. Four normal and letterbox transfers keep
+the centre luminance and report output rows, with no camera or permission
+request. This follows Camera116's verified known-pixel downscale and keeps
+physical Camera preview and photo acceptance separate.
+
+Camera116 replays the original VideoToolbox downscale from a 1200×2608 NV12
+surface into a 16×16 surface, using the constants from Camera115 command27.
+Independent checks read the source, sample it on the GPU, and write the same
+packed R32Uint plane views. Three known colour inputs include one written by
+the GPU before sampling. Original system shaders, filter tables and approximate
+uniform bytes are supplied only from the local fixture directory. The helper
+opens no camera and requests no user permissions; preview and photos remain
+separate device acceptance.
+
+Camera108 negotiates the existing BGRA renderer for PrimaryScaler preview.
+SecondaryScaler and StillImage retain BGRA and both NV12 ranges. The measured
+RAW geometry, frame timing and capture lifecycle stay the same. Host checks
+cover the advertised output formats and real pool callbacks; native Camera
+preview and photos require device validation.
+
+Camera107 uses the existing texture-log switch and stderr to observe the render
+server's IOSurface imports, with its original executable and Mach services.
+The current host entry reads its package directly from I:/Code/UniXNU-nezha;
+the Ubuntu source and build directories are hosted by the I-drive VHDX.
+Camera106's filter coefficients are retained, so the raw coefficient dump ends.
+Physical preview and photos remain unverified.
+
 Camera091 groups the original mode1 fourteen exposure/gain writes into one locked CCI queue submission with one completion REPORT. Separate register messages, original byte order, sensor group brackets, two-frame setting delay and readback remain. A failed group has an unknown applied prefix and retains its group state for the original teardown. Continuous host/arm64e checks pass; reduced RDI backpressure remains a hardware check.
 
 Camera089: the original cameracaptured exposure ioctl now passes both file and vnode checks for the existing exact signed-reader/native-node predicate. GPU051, MMU prefetch and the mobile launcher are retained. The full source consumer checks both stages and refusal cases; main preview and photos require hardware verification.
@@ -77,3 +175,18 @@ framework calls pass, including three slides and the nil callback cycle.
 The native signed-page parser/apply checks pass twenty cases. Native042,
 Metal045, the PNG043 fixup and Data generation 1 are retained. Device response
 and icon-service stability remain pending.
+
+Camera105 prepares a finite 718MiB self-only increase for cameracaptured through
+XNU12377 development command22, the original dyld root-image interface. Existing
+active/inactive fatal attributes stay in the kernel. The injected provider logs
+the command result and task footprint/remaining-limit observations once at load.
+The exact process/pid/command/error consumer passes ten ASan/UBSan cases; native
+compilation and actual service lifetime still require validation.
+
+Camera111 uses the existing once-only Metal helper to check imported R8Uint and
+R16Uint writes over 64 by 16 and 1200 by 2608 NV12 surfaces. Integer patterns
+check every Y and UV byte. A separate combined half sampler passes float4
+values through another lane's threadgroup memory at 16 KiB and 32 KiB before
+writing both planes. The helper opens no camera, requests no permission and
+records completion separately from pixel comparison. Physical Camera preview
+and photo acceptance remain pending.
