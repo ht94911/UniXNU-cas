@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "GNSS048 on selected GPU051: extend existing locationd sampled rows with queue waiter/enqueuer fields; keep actual176 callbacks and accepted GNSS043 satellite chain",
+  "purpose": "GNSS049 on GPU051: correct both scheduler snapshot runq getters, exercise the actual XNU lock contract, retain original176 records and accepted satellite App chain",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,12 +14,12 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "62f92afba8c5dbb3b1967b4ca9df795f525f6c9b",
+  "device_revision": "347be3d05a451a94f4c5029dc6fc8bea1fe1358b",
   "soc_revision": "GPU051 e565439+3435fa5 and GNSS counted IPA plus immutable IPCC append",
   "xcode": "26.6",
   "files": {
     "ci/check-native-userlog.py": "74e7abe9164a853b10d4406a46f55f67670ade42795f066068e84f14b2ebc006",
-    "ci/native.py": "08964927b7cd1a80e6e7706abb941f7418e1ae3210d0c4c3babbe3aba0f46445",
+    "ci/native.py": "a26299a36b6ead1825bc46061083ebe1260ad01b2fd54cac711dd3d6d61e69d2",
     "ci/test-native-userlog-producer.py": "619bc31f6f41b16d562bcbc83a41588f6ada45a5268e23ef5c4985e5f364e403",
     "ci/test-native-userlog.py": "f64f5aff7c83cbbff7ce9bd15ab276dd7022f5e42d227999157b796afe414f9e",
     "source/adreno/LICENSE": "16fbc0170994a48f60938d9f0d992d3bad113383cf90882f75c206e079c2a2dc",
@@ -158,7 +158,7 @@
     "source/device/package/BootResetCore.h": "9211ed8aa8174a8999829c29b51351fb839807c1473c6239ae09e069e294a5f6",
     "source/device/package/BootUiTraceCore.h": "9404d7be6386f936904e6af34c870d86ec809b4d97161fd892d904d8334f2753",
     "source/device/package/BootUiTraceDetails.h": "b9c0d9afbc80359a08f2aabb87cf6ee94c5227e64212dffb05ea8d9e08a8473e",
-    "source/device/package/BootUiTraceProbe.c": "938e30d47cf41aed5f0b35b66ba0e5b943a17346f0f05eb473d3d79bc05dd5d2",
+    "source/device/package/BootUiTraceProbe.c": "dbd5bdf1c4cb53574176ac8ad72650c59b4fd091eb8f6194a3aa5726be2377a0",
     "source/device/package/BootWatchdogPolicy.c": "02087f0b09cdc8a76d799372ba392610614f806b99b1d38cd29bab48b3fb4397",
     "source/device/package/KeyStoreProbe.cpp": "35ff8e97c56fd438158b1fe929c53e52dd027bc18f1b4e0eac8a2fdf662fd933",
     "source/device/package/LegacyDisplayProbe.cpp": "25b92ed49e347237f89533acbd41bcd6179d7103b201042fd127a599dce656b9",
@@ -708,7 +708,7 @@
     "source/device/scripts/nezha_macho_late.py": "fc5a2869ef22bd2c06702930fc0c88b0e071ab7ef851824b403234633040fc37",
     "source/device/patches/xnu-12377/nezha-gnss-test-runtime.patch": "68f37196f4777d4cc7721d6c5ab33de3882ae1a826513fd86ef942146e0c55ac",
     "source/device/patches/xnu-12377/nezha-gnss-pac-capture.patch": "0b1113a80a4af9a695a1c0e12ccab8f432b10017f9530fd0bb3608579c7bf002",
-    ".github/workflows/nezha-ios27-native.yml": "4ade0c6db0a8dd91625bb957ff8779e448d239fb5d51e44960ea9bc906b1c786",
+    ".github/workflows/nezha-ios27-native.yml": "7250dbe3a3d4e86467e593d3208e1749510440ff785221e36a76e0858891d5a4",
     "source/device/tests/gnss27/launcher_job_test.py": "bad064a06b284103f964c8e02d7ec566fa9b5454b9e564e51b74a6bddfa7c448",
     "source/device/tools/gnss27/launcher_job.py": "55669e81cfa07ea3a4750732a7ab59df0694386118d6fd423615f3b4d7321cf9",
     "source/device/package/gnss27/userland/org.unixnu.nezha.location-launch.plist": "69bee5c36ebedbbd6d686fd108fa9c41ab53eddd380906c472740187b138e49f",
@@ -722,7 +722,7 @@
     "source/device/tests/gnss27/gnss_measurement_test.c": "ccaedf3eb7d590893088c389e3de1f05d8c0413d24affc5c8fb0d90d1f4ca3b2",
     "source/device/package/BootUiTraceQueue.h": "8dc3b9abc51ed89d91216db1b86e6d908eddaa8344dfa282a61c9b6b06411391",
     "source/device/tests/gnss27/queue_snapshot_test.c": "0efc01d3decd1183e1d5c3dcfa63e7e43fc07252b6149506942d185e3c69d081",
-    "source/device/tests/gnss27/queue_snapshot_test.py": "3610882a98b2ccc379142fd92dd2b254d30170b687d63b34c6f33fde41f0167d"
+    "source/device/tests/gnss27/queue_snapshot_test.py": "737cff4df48b466c1b73bc846d9105127b7279ccc38455e19ad17d19bdce2530"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
@@ -1107,7 +1107,7 @@
     "actual_GNSS004_error": 48,
     "coherent_launcher_source": "tools/gnss27/launcher_job.py"
   },
-  "previous_native_run": 45125865858,
+  "previous_native_run": 45159570279,
   "previous_native007": {
     "run": 44066302910,
     "head": "56ba392fa295f8e7b4093976eeb4094da76feb99",
@@ -1115,7 +1115,7 @@
     "target_compile_started": false,
     "error": "uninitialized shared IPCC fixture; explicit zero-init reproducer passes"
   },
-  "previous_native_head": "9839b29c58e5d45b8707c68348ef04bb7810a17e",
+  "previous_native_head": "6541ecf29f7ab6468e59cf393147898918f4f823",
   "native009_delta": [
     "patches/xnu-12377/nezha-gnss-pac-capture.patch",
     "tests/gnss27/exception_context_test.py",
@@ -1291,5 +1291,23 @@
     "host_actual_reader_ASan_UBSan": true,
     "first_wait_root_cause_fixed": false,
     "actual_hardware_not_yet_verified": true
+  },
+  "native033_delta": {
+    "source_revision": "347be3d05a451a94f4c5029dc6fc8bea1fe1358b",
+    "only_two_runq_getters_corrected": true,
+    "thread_sched_lock_required": true,
+    "processor_set_lock_not_held_by_sampler": true,
+    "actual_XNU_getter_host_regression": true,
+    "original176_unchanged": true,
+    "accepted_GNSS043_App012_GPU051_retained": true,
+    "no_new_worker_or_timer": true,
+    "hardware_panic_fix_pending": true,
+    "first_wait_root_cause_fixed": false,
+    "only_changed_source_inputs": [
+      "ci/native.py",
+      "source/device/package/BootUiTraceProbe.c",
+      ".github/workflows/nezha-ios27-native.yml",
+      "source/device/tests/gnss27/queue_snapshot_test.py"
+    ]
   }
 }

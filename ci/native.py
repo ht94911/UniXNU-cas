@@ -250,6 +250,7 @@ def build(framework, work):
     code = run([sys.executable, work / 'device/tests/gnss27/queue_snapshot_test.py',
                 '--compiled-source', targets[0],
                 '--compiled-header', targets[0].with_name('BootUiTraceQueue.h'),
+                '--thread-source', compiled / 'osfmk/kern/thread.c',
                 '--out', work / 'queue-snapshot-target-source-host'],
                log=logs / 'queue-snapshot-target-source-host.log')
     if code:
@@ -409,6 +410,7 @@ def collect(framework, work, sealed):
         add(tree / 'build/xnu/owner-data-volume.h', 'build/owner-data-volume.h')
         add(work / 'gnss-waiter-source-qualified.json', 'gnss-waiter-source-qualified.json')
         add(tree / '.cache/xnu-work/osfmk/kern/exception.c', 'compiled-source/exception.c')
+        add(tree / '.cache/xnu-work/osfmk/kern/thread.c', 'compiled-source/thread.c')
         add(tree / '.cache/xnu-work/bsd/kern/kern_event.c', 'compiled-source/kern_event.c')
         add(tree / '.cache/libpthread-work/kern/kern_support.c', 'compiled-source/libpthread-kern_support.c')
         add(tree / 'build/libpthread-kernel/report.json', 'compiled-source/libpthread-report.json')

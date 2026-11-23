@@ -135,7 +135,9 @@ void boot_ui_trace_task(task_t task,unsigned index,int pid,const char *name,unsi
     q->x19=get_saved_state_reg(state,19);q->x20=get_saved_state_reg(state,20);q->x21=get_saved_state_reg(state,21);
     q->x1=e->regs[1];q->x8=get_saved_state_reg(state,8);q->x9=get_saved_state_reg(state,9);q->x10=get_saved_state_reg(state,10);
     q->state=thread->state;q->hint=thread->block_hint;q->pri=thread->sched_pri;
-    processor_t runq=thread_get_runq_locked(thread);q->runq=runq?runq->cpu_id:-1;
+    // This snapshot holds sched_lock, not the processor-set lock. The
+    // thread-only getter provides the acquire fence for a sampled runq.
+    processor_t runq=thread_get_runq(thread);q->runq=runq?runq->cpu_id:-1;
     q->last=thread->last_processor?thread->last_processor->cpu_id:-1;
     q->bound=thread->bound_processor?thread->bound_processor->cpu_id:-1;
     q->chosen=thread->chosen_processor?thread->chosen_processor->cpu_id:-1;
@@ -375,7 +377,7 @@ int boot_kthread_report(const char *name,char *out,unsigned size) {
   bool irq=ml_set_interrupts_enabled(false);
   if(simple_lock_try(&thread->sched_lock,&thread_lck_grp)) {
    bt_kernel_stack(thread,frames);state=(unsigned)thread->state;hint=(unsigned)thread->block_hint;pri=thread->sched_pri;event=(uint64_t)thread->wait_event;
-   processor_t q=thread_get_runq_locked(thread);if(q)runq=q->cpu_id;
+   processor_t q=thread_get_runq(thread);if(q)runq=q->cpu_id;
    if(thread->last_processor)last=thread->last_processor->cpu_id;
    if(thread->bound_processor)bound=thread->bound_processor->cpu_id;
    if(thread->chosen_processor)chosen=thread->chosen_processor->cpu_id;
