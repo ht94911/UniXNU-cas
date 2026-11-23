@@ -244,6 +244,16 @@ def build(framework, work):
                log=logs / 'gnss-waiter-source-host.log')
     if code:
         return code
+    targets = list((work / 'out/nezha/ios-27.0.1-24A446-iphone14-4').glob('*/tree/kits/nezha/BootUiTraceProbe.c'))
+    if len(targets) != 1:
+        raise ValueError('select exactly one compiled locationd queue sampler')
+    code = run([sys.executable, work / 'device/tests/gnss27/queue_snapshot_test.py',
+                '--compiled-source', targets[0],
+                '--compiled-header', targets[0].with_name('BootUiTraceQueue.h'),
+                '--out', work / 'queue-snapshot-target-source-host'],
+               log=logs / 'queue-snapshot-target-source-host.log')
+    if code:
+        return code
     sources = list((work / 'out/nezha/ios-27.0.1-24A446-iphone14-4').glob(
         '*/tree/.cache/xnu-work/bsd/kern/kern_memorystatus.c'))
     if len(sources) != 1:
@@ -303,6 +313,12 @@ def collect(framework, work, sealed):
         names.append(name)
 
     add(ROOT / 'inputs.json', 'inputs.json')
+    for name in ('queue-snapshot-host', 'queue-snapshot-target-source-host'):
+        for path in sorted((work / name).glob('*')):
+            if path.is_file() and path.suffix in ('.json', '.txt', '.log'):
+                add(path, name + '/' + path.name)
+    for name in ('BootUiTraceProbe.c', 'BootUiTraceQueue.h'):
+        add(work / 'device/package' / name, 'queue-snapshot-source/' + name)
     manifest = json.loads((ROOT / 'inputs.json').read_text())
     for name in ('keystore-source-selection.json', 'keystore-target-qualification.json',
                  'userlog-source-selection.json', 'userlog-target-qualification.json'):

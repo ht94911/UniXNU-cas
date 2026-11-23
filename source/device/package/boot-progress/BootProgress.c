@@ -1020,8 +1020,8 @@ static void monitor(void *arg, wait_result_t result) {
           for(unsigned i=0;i<count && i<64;++i)printf("NEZHA STACK SNAP: %.119s\n",stacks[i]);
         }
         if(boot_ui_trace_hot_rows) {
-          unsigned count=boot_ui_trace_hot_rows(stacks,32);
-          for(unsigned i=0;i<count && i<32;++i)printf("NEZHA HOT SNAP: %.119s\n",stacks[i]);
+          unsigned count=boot_ui_trace_hot_rows(stacks,64);
+          for(unsigned i=0;i<count && i<64;++i)printf("NEZHA HOT SNAP: %.119s\n",stacks[i]);
         }
       }
     }

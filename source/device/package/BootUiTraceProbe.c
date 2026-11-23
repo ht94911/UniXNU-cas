@@ -24,6 +24,7 @@
 #define BT_STRIP_USER_PC(value) ((uint64_t)ptrauth_strip((void *)(uintptr_t)(value), ptrauth_key_return_address))
 #endif
 #include "BootUiTraceCore.h"
+#include "BootUiTraceQueue.h"
 extern void proc_name(int pid, char *buf, int size);   // bsd/sys/proc.h; the header itself clashes with the Mach types used here
 #include "BootUiTraceDetails.h"
 static struct bt_entry samples[BT_MAX_THREADS];
@@ -42,6 +43,12 @@ struct bt_prev {uint64_t tid,at,cpu;uint32_t cs;};
 struct bt_hotrow {unsigned rate,cpu;char role;int peer;uint64_t tid,pc,lr,frames[BT_HOT_FRAMES],kernel[BT_KFRAMES];unsigned state,hint;int pri;uint64_t event,trap,args[3];};
 static uint64_t sample_k[BT_MAX_THREADS][BT_KFRAMES],sample_event[BT_MAX_THREADS];
 static unsigned sample_state[BT_MAX_THREADS],sample_hint[BT_MAX_THREADS];static int sample_pri[BT_MAX_THREADS];
+// Extend the existing sampled locationd rows; no new task, timer or trace ring.
+#define BT_QUEUE_LIMIT 8
+static struct btq_thread sample_queue[BT_MAX_THREADS];
+static struct btq_record queue_draft[BT_QUEUE_LIMIT],queue_published[BT_QUEUE_LIMIT];
+static unsigned queue_count,queue_published_count,queue_examined,queue_published_examined;
+static unsigned queue_failed,queue_published_failed,queue_omitted,queue_published_omitted,queue_pid,queue_published_pid;
 // All callers hold sched_lock. Switch-out can detach the stack before it takes
 // that lock and clears TH_RUN, even after the thread has set TH_WAIT.
 static void bt_kernel_stack(thread_t thread,uint64_t *out) {
@@ -80,6 +87,7 @@ void boot_ui_trace_begin(void) {
  memset(&draft,0,sizeof(draft));memset(draft_pid,0,sizeof(draft_pid));
  memset(draft_slide,0,sizeof(draft_slide));memset(draft_names,0,sizeof(draft_names));
  draft_busy=0;draft_omitted=0;boot_ui_trace_phase=1;
+ queue_count=0;queue_examined=0;queue_failed=0;queue_omitted=0;queue_pid=0;
 }
 static int read_user(void *context,uint64_t address,void *bytes,unsigned size) {
  return vm_map_read_user((vm_map_t)context,address,bytes,size)!=KERN_SUCCESS;
@@ -97,6 +105,7 @@ void boot_ui_trace_task(task_t task,unsigned index,int pid,const char *name,unsi
  if(!ml_get_interrupts_enabled()){++draft_busy;return;}
  if(index<1 || index>BT_ROLES)return;
  unsigned role=index-1;
+ const bool sample_location_queue=!strcmp(name,"locationd");
  draft_pid[role]=(unsigned)pid;draft_slide[role]=slide;
  strlcpy(draft_names[role],name,sizeof(draft_names[role]));
  if(!task_lock_try(task)){++draft_busy;return;}
@@ -112,12 +121,25 @@ void boot_ui_trace_task(task_t task,unsigned index,int pid,const char *name,unsi
   if(!simple_lock_try(&thread->sched_lock,&thread_lck_grp)){++draft_busy;ml_set_interrupts_enabled(irq);continue;}
   arm_saved_state_t *state=thread->machine.upcb;
   if(state && is_saved_state64(state)) {
+   const unsigned at=count;
    struct bt_entry *e=&samples[count];memset(e,0,sizeof(*e));sample_tid[count]=thread->thread_id;sample_cs[count]=thread->c_switch;sample_cpu[count]=recount_thread_time_mach(thread);bt_kernel_stack(thread,sample_k[count]);sample_event[count]=(uint64_t)thread->wait_event;sample_state[count]=(unsigned)thread->state;sample_hint[count]=(unsigned)thread->block_hint;sample_pri[count]=thread->sched_pri;++count;
    e->index=visited;e->role=role?"BSTU"[role&3]:(!strcmp(name,"chronod")?'C':(!strcmp(name,"liveactivitiesd")?'L':'B'));
    e->pc=BT_STRIP_USER_PC((uint64_t)get_saved_state_pc(state));e->lr=BT_STRIP_USER_PC((uint64_t)get_saved_state_lr(state));
    e->fp=(uint64_t)get_saved_state_fp(state);
    e->trap=(uint64_t)get_saved_state_reg(state,16);
    for(unsigned reg=0;reg<8;++reg)e->regs[reg]=(uint64_t)get_saved_state_reg(state,reg);
+   if(sample_location_queue) {
+    struct btq_thread *q=&sample_queue[at];memset(q,0,sizeof(*q));
+    q->tid=thread->thread_id;q->tsd=thread->machine.cthread_self;
+    q->sp=get_saved_state_sp(state);q->fp=e->fp;q->pc=e->pc;q->lr=e->lr;
+    q->x19=get_saved_state_reg(state,19);q->x20=get_saved_state_reg(state,20);q->x21=get_saved_state_reg(state,21);
+    q->x1=e->regs[1];q->x8=get_saved_state_reg(state,8);q->x9=get_saved_state_reg(state,9);q->x10=get_saved_state_reg(state,10);
+    q->state=thread->state;q->hint=thread->block_hint;q->pri=thread->sched_pri;
+    processor_t runq=thread_get_runq_locked(thread);q->runq=runq?runq->cpu_id:-1;
+    q->last=thread->last_processor?thread->last_processor->cpu_id:-1;
+    q->bound=thread->bound_processor?thread->bound_processor->cpu_id:-1;
+    q->chosen=thread->chosen_processor?thread->chosen_processor->cpu_id:-1;
+   }
    if((e->pc && !bt_user(e->pc,4)) || (e->lr && !bt_user(e->lr,4)))e->error=2;
   }
   thread_unlock(thread);ml_set_interrupts_enabled(irq);
@@ -142,6 +164,17 @@ void boot_ui_trace_task(task_t task,unsigned index,int pid,const char *name,unsi
   }
   if(!samples[i].error)bt_walk(&samples[i],read_user,map);
   bt_add(&draft,&samples[i]);
+  if(sample_location_queue) {
+   struct btq_record record;const uint64_t ticks=mach_absolute_time();
+   const int captured=btq_capture(&record,&sample_queue[i],&samples[i],slide,read_user,map);
+   ++queue_examined;queue_pid=(unsigned)pid;
+   if((record.valid&(BTQ_QUEUE|BTQ_TSD))!=(BTQ_QUEUE|BTQ_TSD))++queue_failed;
+   if(captured) {
+    record.ticks=ticks;record.finished=mach_absolute_time();
+    if(queue_count<BT_QUEUE_LIMIT)queue_draft[queue_count++]=record;
+    else ++queue_omitted;
+   }
+  }
  }
  {
   // Rates against the previous snapshot of the same thread; the four hottest of the role are kept with their stacks.
@@ -213,6 +246,9 @@ void boot_ui_trace_publish(void) {
   published=draft;memcpy(published_main,draft_main,sizeof(draft_main));memcpy(hot_published,hot_draft,sizeof(hot_draft));memcpy(trap_published,trap_draft,sizeof(trap_draft));memcpy(cpu_published,cpu_draft,sizeof(cpu_draft));memcpy(published_pid,draft_pid,sizeof(draft_pid));
   memcpy(published_slide,draft_slide,sizeof(draft_slide));memcpy(published_names,draft_names,sizeof(draft_names));
   published_busy=draft_busy;published_omitted=draft_omitted;
+  memcpy(queue_published,queue_draft,queue_count*sizeof(*queue_draft));queue_published_count=queue_count;
+  queue_published_examined=queue_examined;queue_published_failed=queue_failed;
+  queue_published_omitted=queue_omitted;queue_published_pid=queue_pid;
   __atomic_store_n(&trace_lock,0,__ATOMIC_RELEASE);
  }
  boot_ui_trace_phase=0;
@@ -288,6 +324,10 @@ unsigned boot_ui_trace_hot_rows(char rows[][120],unsigned max) {
   for(unsigned h=0;h<BT_HOT && n<max;++h)if(hot_published[role][h].rate)n=hot_row(&hot_published[role][h],published_pid[role],rows,n,max);
  for(unsigned role=0;role<BT_ROLES;++role)
   for(unsigned h=0;h<BT_CPU && n<max;++h)if(cpu_published[role][h].cpu)n=hot_row(&cpu_published[role][h],published_pid[role],rows,n,max);
+ if(queue_published_examined && n<max)
+  snprintf(rows[n++],120,"QSUM p%u examined=%u records=%u tls_failed=%u omitted=%u limit=%u sampled=1",queue_published_pid,queue_published_examined,queue_published_count,queue_published_failed,queue_published_omitted,BT_QUEUE_LIMIT);
+ for(unsigned i=0;i<queue_published_count && n<max;++i)
+  n=btq_rows(&queue_published[i],queue_published_pid,rows,n,max);
  __atomic_store_n(&trace_lock,0,__ATOMIC_RELEASE);
  return n;
 }

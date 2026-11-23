@@ -1,7 +1,7 @@
-name: nezha GPU051 GNSS GPS BeiDou - native031b
+name: nezha GPU051 GNSS GPS BeiDou - native032
 on:
   push:
-    branches: [codex/ios27-gnss-gpu051-native031b-20261123]
+    branches: [codex/ios27-gnss-gpu051-native032-20261123]
   workflow_dispatch:
 permissions:
   contents: read
@@ -75,6 +75,10 @@ jobs:
         run: python3 "$RUNNER_TEMP/ios27/work/device/tests/check-gpu-bo-phases.py" --native "$RUNNER_TEMP/ios27/work/adreno" --out "$RUNNER_TEMP/ios27/work/bo-phases-host"
       - name: Check the actual guarded waiting-stack sampler
         run: python3 task/source/device/scripts/check-stable-kernel-stack.py
+      - name: Exercise the existing locationd queue snapshot
+        env:
+          CC: clang
+        run: python3 task/source/device/tests/gnss27/queue_snapshot_test.py --out "$RUNNER_TEMP/ios27/work/queue-snapshot-host"
       - name: Exercise GPS BeiDou protocol and location sessions
         env:
           CC: clang
