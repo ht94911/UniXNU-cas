@@ -710,7 +710,7 @@
     "source/device/package/gpu/adreno/ArmSmmu4KProgram.h": "171900c3ed400b805c3a1587959f66bc4a19db18aedc8111e862651a90bb8d8f",
     "source/device/package/gpu/adreno/ArmSmmu4K.h": "e25063b9134afc7eb79e7c030bc2858608cf0ade5da714d5dfd600fee5007e8e",
     "source/device/scripts/check-nezha27-camera-memory.py": "938a8576abf9bedfb092a10581e204fe9a1d4425e0b93acf201aca8fd2fb9ba2",
-    ".github/workflows/nezha-ios27-native.yml": "aad223f367b69d997da0575d420bd629f550aacc765f6f030071f0b90f5acaea",
+    ".github/workflows/nezha-ios27-native.yml": "2ff6f9165fc9815a2df35fd14db2ff477b409fbc336d1cf5838b5298647a962b",
     "source/device/package/gpu/adreno/ArmSmmu4K.c": "0adb19b483e56e723014ed6cfe2c29f9d9735ae2770f62cf0057b22937dbd157",
     "source/device/package/gpu/adreno/ArmSmmu4KContext.c": "b8e32e32d1f07e71de65f31b12963ab8b01c05755f8c60c2d6f40cb03fe4eca8",
     "source/device/package/gpu/adreno/ArmSmmu4KProgram.c": "3b1d4911b0a48f90b09c721ffd2eb95dbfc02e96165009b23f8c98841f36e2b0",
