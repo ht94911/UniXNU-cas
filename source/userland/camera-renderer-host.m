@@ -2,6 +2,7 @@
 #import <Foundation/Foundation.h>
 #import <CoreGraphics/CoreGraphics.h>
 #import <CoreVideo/CoreVideo.h>
+#import <CoreMedia/CoreMedia.h>
 #include <assert.h>
 #include <math.h>
 #include <stdio.h>
@@ -19,6 +20,9 @@ static unsigned border_calls;
 static int border_status;
 static CVPixelBufferRef received_border_buffer;
 static CGRect received_border_rect;
+static unsigned preview_calls;
+static CMSampleBufferRef received_sample;
+static id received_input;
 struct OpaqueVTPixelRotationSession;
 
 @interface FigM2MController : NSObject
@@ -56,6 +60,14 @@ struct OpaqueVTPixelRotationSession;
 - (int)scalePixelBuffer:(CVPixelBufferRef)source rect:(CGRect)src exifOrientation:(int)orientation intoPixelBuffer:(CVPixelBufferRef)destination rect:(CGRect)dst {
  received_orientation=orientation;
  return [self scalePixelBuffer:source rect:src intoPixelBuffer:destination rect:dst];
+}
+@end
+@interface TestPreviewSink : NSObject
+- (void)renderSampleBuffer:(CMSampleBufferRef)sample forInput:(id)input;
+@end
+@implementation TestPreviewSink
+- (void)renderSampleBuffer:(CMSampleBufferRef)sample forInput:(id)input {
+ ++preview_calls;received_sample=sample;received_input=input;
 }
 @end
 #include "NezhaCameraRenderer.m"
@@ -155,6 +167,63 @@ int main(void) {@autoreleasepool {
    assert(received_orientation==(oriented?6:0));++cases;
  }
  CFRelease(portrait);
+ /* The final observer must forward null and real samples once, preserve
+  * timestamps/attachments, and read only active pixels of padded planes. */
+ original_preview_sink=method_getImplementation(class_getInstanceMethod([TestPreviewSink class],@selector(renderSampleBuffer:forInput:)));
+ TestPreviewSink *sink=[TestPreviewSink new];
+ const uint32_t formats[]={kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
+     kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,kCVPixelFormatType_32BGRA};
+ for(unsigned f=0;f<3;++f) {
+   CVPixelBufferRef pixel=NULL;
+   assert(!CVPixelBufferCreate(NULL,12,26,formats[f],NULL,&pixel));
+   assert(!CVPixelBufferLockBaseAddress(pixel,0));
+   const bool planar=CVPixelBufferIsPlanar(pixel);
+   uint8_t *base=planar?CVPixelBufferGetBaseAddressOfPlane(pixel,0):CVPixelBufferGetBaseAddress(pixel);
+   size_t row=planar?CVPixelBufferGetBytesPerRowOfPlane(pixel,0):CVPixelBufferGetBytesPerRow(pixel);
+   memset(base,165,row*26);
+   for(size_t y=0;y<26;++y)for(size_t x=0;x<12;++x) {
+     if(planar)base[y*row+x]=(uint8_t)(x+3*y);
+     else {uint8_t *at=base+y*row+x*4;at[0]=at[1]=at[2]=(uint8_t)(x+3*y);at[3]=255;}
+   }
+   if(planar) {
+     uint8_t *uv=CVPixelBufferGetBaseAddressOfPlane(pixel,1);
+     size_t uvrow=CVPixelBufferGetBytesPerRowOfPlane(pixel,1);
+     memset(uv,165,uvrow*13);
+     for(size_t y=0;y<13;++y)for(size_t x=0;x<6;++x) {uv[y*uvrow+2*x]=91;uv[y*uvrow+2*x+1]=173;}
+   }
+   assert(!CVPixelBufferUnlockBaseAddress(pixel,0));
+   struct PreviewPixels observed=preview_pixels(pixel);
+   assert(!observed.lock_status&&!observed.unlock_status&&observed.count==25&&observed.nonzero==24&&
+       observed.minimum==0&&observed.maximum==86);
+   for(unsigned gy=0;gy<5;++gy)for(unsigned gx=0;gx<5;++gx)
+     assert(observed.luma[5*gy+gx]==(11*gx/4)+3*(25*gy/4));
+   if(planar)assert(observed.u==91&&observed.v==173);
+   ++cases;
+   CMVideoFormatDescriptionRef description=NULL;
+   assert(!CMVideoFormatDescriptionCreateForImageBuffer(NULL,pixel,&description));
+   CMSampleTimingInfo timing={.duration=CMTimeMake(1,30),.presentationTimeStamp=CMTimeMake(7,30),.decodeTimeStamp=kCMTimeInvalid};
+   CMSampleBufferRef sample=NULL;
+   assert(!CMSampleBufferCreateReadyWithImageBuffer(NULL,pixel,description,&timing,&sample));
+   CMSetAttachment(sample,CFSTR("FrameIsBlackened"),kCFBooleanTrue,kCMAttachmentMode_ShouldPropagate);
+   NSDictionary *info=@{@"FrameSequence":@7};
+   CMSetAttachment(sample,CFSTR("MetadataDictionary"),(CFDictionaryRef)info,kCMAttachmentMode_ShouldPropagate);
+   CVBufferSetAttachment(pixel,CFSTR("NezhaCameraCompletedRaw1x"),kCFBooleanTrue,kCVAttachmentMode_ShouldPropagate);
+   preview_calls=0;
+   render_preview_sample(sink,@selector(renderSampleBuffer:forInput:),sample,pool);
+   assert(preview_calls==1&&received_sample==sample&&received_input==pool);
+   assert(CMTimeCompare(CMSampleBufferGetPresentationTimeStamp(sample),timing.presentationTimeStamp)==0);
+   assert(CMGetAttachment(sample,CFSTR("FrameIsBlackened"),NULL)==kCFBooleanTrue);
+   assert(CMGetAttachment(sample,CFSTR("MetadataDictionary"),NULL)==(CFDictionaryRef)info);
+   struct PreviewPixels after=preview_pixels(pixel);
+   assert(!memcmp(observed.luma,after.luma,sizeof observed.luma));++cases;
+   CFRelease(sample);CFRelease(description);CFRelease(pixel);
+ }
+ for(unsigned i=0;i<10;++i) {
+   preview_calls=0;
+   render_preview_sample(sink,@selector(renderSampleBuffer:forInput:),NULL,i?pool:nil);
+   assert(preview_calls==1&&received_sample==NULL&&received_input==(i?pool:nil));++cases;
+ }
+ [sink release];
  CFRelease(source);CFRelease(destination);[renderer release];
  [pool release];printf("PASS %u production renderer forwarding cases: original results, pool, flags, capabilities and exact CGRect arguments\n",cases);
 }}
