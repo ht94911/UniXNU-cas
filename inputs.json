@@ -15,7 +15,7 @@
     "source/camera-memory-self.c": "9caf3474eb524e40c52e672c64c9f8f5acb59bdc465af933f6cf375567de2546",
     "source/camera-discovery.m": "5e7db9096f8d7621c0e48efc1369a4d14ece6ce0655ad5030f0a2268bd785e85",
     "source/NezhaCameraRendererProbe.mm": "f387d54ef050b5222f64128868b4997f1a78f070a84d1b5d3e0ffe1203b715a5",
-    "ci/build-renderer.py": "83c33f9b0a1df653fffc0b4829b9a33bc767a55518d14f3f2ee75d169bc08ab5",
+    "ci/build-renderer.py": "4bbda914d5a9f17326c494c295027d37aec6290f5a59f3fb2d10cc2755c0b691",
     "source/userland/NezhaCameraRenderer.h": "4d46894937a612bc59e95f8b4c109a7dd15c73dbdaaeec028b5aceb021301dd5",
     "source/userland/NezhaCameraRenderer.m": "f0b0033b52a9851fa290106d01ab8bf5b3a782b84908f7d9643ea80fa2beb78e",
     "source/userland/NezhaFigCapture24A446.h": "d31d3abe7761aa99f92eaab45357716c6d4c4372e5425658d2a7af80f3894212",
@@ -43,9 +43,9 @@
     "source/userland/upstream/hakios/hakios.camera.h": "97f80aa60adb7d2a43d93f3edfde294ba0c447586069cb81fa9ac58c789d6444",
     "source/userland/upstream/hakios/camera_isp.h": "311a1fae76f71d05c767915b5d6ba52c498381ae49621307dcc085fe14c29875",
     "source/userland/upstream/hakios/LICENSE": "26289124703e5931e099f915c784296b0c0fcf0485c743214365a3a82a514f05",
-    ".github/workflows/nezha-ios27-native.yml": "97803c528ba2ff7b75c3266c450a40530cea084f9d502db85486af20464348f1"
+    ".github/workflows/nezha-ios27-native.yml": "a38d94cd6c3a2fc87cd0edbef2cbb5ea7666cc37815e701d3314b990a9b12728"
   },
-  "builder_sha256": "83c33f9b0a1df653fffc0b4829b9a33bc767a55518d14f3f2ee75d169bc08ab5",
+  "builder_sha256": "4bbda914d5a9f17326c494c295027d37aec6290f5a59f3fb2d10cc2755c0b691",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
   "certificate_sha256": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
   "kernel_build_required": false,
@@ -56,6 +56,6 @@
   "original_LaunchServices_registration_verified": true,
   "original_sources_method": "copySourcesWithType:clientAuditToken:clientIsBincompat: original @56@0:8i16{?=[8I]}20B52",
   "preceding_failed_phone_boot": "2864ec9f11f25ba50d87aaf6f615105fd94b4dd0b8b760452031fc93e00c4f94",
-  "preceding_CI_run": 44062721689,
+  "preceding_CI_run": 45161904622,
   "helper079_reused": true
 }

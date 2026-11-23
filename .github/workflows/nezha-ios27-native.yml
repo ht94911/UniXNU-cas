@@ -1,7 +1,7 @@
 name: nezha iPhone27 Camera136 native preview delivery
 on:
   push:
-    branches: [codex/ios27-camera136-scaling-rects-20261123]
+    branches: [codex/ios27-camera136b-scaling-rects-20261123]
 permissions:
   contents: read
 concurrency:
