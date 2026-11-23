@@ -46,6 +46,7 @@ int main(void) {
     nezha_chain_ca_details=0;
     const uint32_t critical[]={0x31ca0028,0x31ca0004,0x31ca0210,
         0x31ca0214,0x31ca0218,0x31ca0260,0x31ca0264,
+        0x31ca0270,0x31ca0224,
         0x2b8a0258,0x2b280000,0x05230004};
     for(unsigned flag=0;flag<4;++flag) {
         for(unsigned i=0;i<sizeof(critical)/sizeof(critical[0]);++i) {
@@ -62,7 +63,8 @@ int main(void) {
     nezha_chain_ca_details=1;
     for(unsigned code=0;code<4;++code) {
         const uint32_t wanted[]={0x31ca0028,0x31ca0004,0x31ca0210,0x14ca001c,
-            0x31ca01dc,0x31ca0214,0x31ca0218,0x31ca0260,0x31ca0264};
+            0x31ca01dc,0x31ca0214,0x31ca0218,0x31ca0260,0x31ca0264,
+            0x31ca0270,0x31ca0224};
         for(unsigned i=0;i<sizeof(wanted)/sizeof(wanted[0]);++i) {
             const unsigned prior=nezha_chain_head;
             nezha_input_chain_trace(wanted[i]|code,1,2,3,4,5);

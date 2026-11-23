@@ -26,7 +26,8 @@ void nezha_input_chain_trace(uint32_t code, uintptr_t a, uintptr_t b,
         ca_code!=0x31ca0004 && ca_code!=0x31ca0210 &&
         ca_code!=0x31ca01dc && ca_code!=0x31ca0214 &&
         ca_code!=0x31ca0218 && ca_code!=0x31ca0260 &&
-        ca_code!=0x31ca0264 && ca_code!=0x14ca001c &&
+        ca_code!=0x31ca0264 && ca_code!=0x31ca0270 &&
+        ca_code!=0x31ca0224 && ca_code!=0x14ca001c &&
         ca_code!=0x2b8701e4 && ca_code!=0x2b8701e8 &&
         ca_code!=0x2b870210) return;
     if ((ca_code==0x31ca01dc || ca_code==0x14ca001c) &&
