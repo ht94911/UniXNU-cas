@@ -95,6 +95,14 @@ static bool fill(CVPixelBufferRef image,bool bars,unsigned yValue,unsigned uValu
 - (instancetype)initWithCameraInfo:(id)info;
 - (instancetype)initWithCameraInfoArray:(id)info multiCameraStitchingEnabled:(bool)multi fractionalSourceRectEnabled:(bool)fractional inputBuffersHaveHorizontalOverscanOnly:(bool)overscan superWideSensorCenterOffsetEnabled:(bool)offset parallaxMitigationBasedOnZoomFactorEnabled:(bool)parallax;
 - (void)_getInputRect:(CGRect *)input outputRect:(CGRect *)output inputShiftAppliedInOutputRect:(CGPoint *)applied toTransferPixelBuffer:(CVPixelBufferRef)source rect:(CGRect)src intoPixelBufferDimensions:(ProbeDimensions)dimensions rect:(CGRect)dst withInputShift:(CGPoint)shift shiftOutsideBoundingRectAllowed:(bool)outside ignoreBounds:(bool)ignore scale:(float)scale forFinalOutput:(bool)final;
+- (void)prepareWithBWNodeOutput:(id)output transitionCoordinator:(id)coordinator rotationDegrees:(int)degrees flipHorizontal:(bool)horizontal flipVertical:(bool)vertical generatesHistogram:(bool)histogram inputIsHDR:(bool)hdr;
+- (CGRect)_transferPixelBuffer:(CVPixelBufferRef)source rect:(CGRect)src intoPixelBuffer:(CVPixelBufferRef)destination rect:(CGRect)dst isFinalOutput:(bool)final withInputShift:(CGPoint)shift scale:(float)scale excludeOutputRect:(CGRect)exclude outputAlignment:(ProbeDimensions)alignment inputSourceRectOut:(CGRect *)input blackFillUnalignedEdges:(bool)fill;
+@end
+@protocol NezhaBWNodeOutput <NSObject>
+- (instancetype)initWithMediaType:(uint32_t)type node:(id)node;
+- (void)setFormat:(id)format;
+- (id)videoFormat;
+- (id)livePixelBufferPool;
 @end
 static bool methodABI(Class cls,bool classMethod,const char *selector,const char *expected) {
  Method method=classMethod?class_getClassMethod(cls,sel_registerName(selector)):class_getInstanceMethod(cls,sel_registerName(selector));
@@ -148,6 +156,14 @@ static bool fillPattern(CVPixelBufferRef image) {
     return CVPixelBufferUnlockBaseAddress(image,0)==0;
 }
 static bool inspectPattern(CVPixelBufferRef image,NSString *name,CGRect destinationRect,bool clockwise,bool checkOutside=true) {
+    const double width=CVPixelBufferGetWidth(image),height=CVPixelBufferGetHeight(image);
+    if(!std::isfinite(destinationRect.origin.x)||!std::isfinite(destinationRect.origin.y)||
+       !std::isfinite(destinationRect.size.width)||!std::isfinite(destinationRect.size.height)||
+       destinationRect.origin.x<0||destinationRect.origin.y<0||
+       destinationRect.size.width<=0||destinationRect.size.height<=0||
+       CGRectGetMaxX(destinationRect)>width||CGRectGetMaxY(destinationRect)>height) {
+        report(@{@"phase":@"original-renderer-pattern",@"case":name,@"passed":@NO,@"error":@"output rectangle outside image"});return false;
+    }
     if(!inspect(image,name,-1)||CVPixelBufferLockBaseAddress(image,kCVPixelBufferLock_ReadOnly))return false;
     const auto *y=(const uint8_t *)CVPixelBufferGetBaseAddressOfPlane(image,0);
     const size_t rows=CVPixelBufferGetBytesPerRowOfPlane(image,0);
@@ -170,6 +186,12 @@ static bool inspectPattern(CVPixelBufferRef image,NSString *name,CGRect destinat
     return passed;
 }
 static bool inspectBorder(CVPixelBufferRef image,NSString *name,CGRect rect,unsigned expectedY=0,unsigned expectedUV=128) {
+    if(!std::isfinite(rect.origin.x)||!std::isfinite(rect.origin.y)||
+       !std::isfinite(rect.size.width)||!std::isfinite(rect.size.height)||
+       rect.origin.x<0||rect.origin.y<0||rect.size.width<=0||rect.size.height<=0||
+       CGRectGetMaxX(rect)>CVPixelBufferGetWidth(image)||CGRectGetMaxY(rect)>CVPixelBufferGetHeight(image)) {
+        report(@{@"phase":@"original-renderer-border",@"case":name,@"passed":@NO,@"error":@"output rectangle outside image"});return false;
+    }
     if(CVPixelBufferLockBaseAddress(image,kCVPixelBufferLock_ReadOnly))return false;
     const size_t width=CVPixelBufferGetWidth(image),height=CVPixelBufferGetHeight(image);
     const size_t left=(size_t)rect.origin.x,top=(size_t)rect.origin.y;
@@ -199,12 +221,19 @@ static int stitcherGeometry() {
     Class stitcherClass=capture?objc_getClass("BWPreviewStitcherRenderer"):Nil;
     Class infoClass=capture?objc_getClass("BWPreviewStitcherCameraInfo"):Nil;
     Class rendererClass=capture?objc_getClass("BWPixelBufferTransferRenderer"):Nil;
-    if(!stitcherClass||!infoClass||!rendererClass)return 12;
+    Class outputClass=capture?objc_getClass("BWNodeOutput"):Nil;
+    Class formatClass=capture?objc_getClass("BWVideoFormat"):Nil;
+    if(!stitcherClass||!infoClass||!rendererClass||!outputClass||!formatClass)return 12;
     const char *geometry="_getInputRect:outputRect:inputShiftAppliedInOutputRect:toTransferPixelBuffer:rect:intoPixelBufferDimensions:rect:withInputShift:shiftOutsideBoundingRectAllowed:ignoreBounds:scale:forFinalOutput:";
     if(!methodABI(stitcherClass,false,geometry,"v152@0:8^{CGRect={CGPoint=dd}{CGSize=dd}}16^{CGRect={CGPoint=dd}{CGSize=dd}}24^{CGPoint=dd}32^{__CVBuffer=}40{CGRect={CGPoint=dd}{CGSize=dd}}48{?=ii}80{CGRect={CGPoint=dd}{CGSize=dd}}88{CGPoint=dd}120B136B140f144B148") ||
        !methodABI(stitcherClass,false,"initWithCameraInfoArray:multiCameraStitchingEnabled:fractionalSourceRectEnabled:inputBuffersHaveHorizontalOverscanOnly:superWideSensorCenterOffsetEnabled:parallaxMitigationBasedOnZoomFactorEnabled:","@44@0:8@16B24B28B32B36B40") ||
        !methodABI(infoClass,false,"initWithCameraInfo:","@24@0:8@16") ||
-       !methodABI(rendererClass,false,"initWithIntermediateBufferPool:fractionalSourceRectEnabled:compressedFormatEnabled:","@32@0:8@16B24B28"))return 13;
+       !methodABI(rendererClass,false,"initWithIntermediateBufferPool:fractionalSourceRectEnabled:compressedFormatEnabled:","@32@0:8@16B24B28") ||
+       !methodABI(stitcherClass,false,"prepareWithBWNodeOutput:transitionCoordinator:rotationDegrees:flipHorizontal:flipVertical:generatesHistogram:inputIsHDR:","v52@0:8@16@24i32B36B40B44B48") ||
+       !methodABI(stitcherClass,false,"_transferPixelBuffer:rect:intoPixelBuffer:rect:isFinalOutput:withInputShift:scale:excludeOutputRect:outputAlignment:inputSourceRectOut:blackFillUnalignedEdges:","{CGRect={CGPoint=dd}{CGSize=dd}}172@0:8^{__CVBuffer=}16{CGRect={CGPoint=dd}{CGSize=dd}}24^{__CVBuffer=}56{CGRect={CGPoint=dd}{CGSize=dd}}64B96{CGPoint=dd}100f116{CGRect={CGPoint=dd}{CGSize=dd}}120{?=ii}152^{CGRect={CGPoint=dd}{CGSize=dd}}160B168") ||
+       !methodABI(outputClass,false,"initWithMediaType:node:","@28@0:8I16@20") ||
+       !methodABI(outputClass,false,"setFormat:","v24@0:8@16") ||
+       !methodABI(formatClass,false,"setPixelFormat:","v20@0:8I16"))return 13;
     const SEL selector=sel_registerName(geometry);
     const IMP original=method_getImplementation(class_getInstanceMethod(stitcherClass,selector));
     NSDictionary *cameraInfo=@{@"BaseZoomFactor":@1,@"BaseZoomFactorAfterGDC":@1};
@@ -213,8 +242,13 @@ static int stitcherGeometry() {
     id info2=[[infoClass alloc] initWithCameraInfo:cameraInfo];
     if(!info0||!info1||!info2)return 15;
     id<NezhaBWStitcher> stitcher=[[stitcherClass alloc] initWithCameraInfoArray:@[info0,info1,info2] multiCameraStitchingEnabled:false fractionalSourceRectEnabled:false inputBuffersHaveHorizontalOverscanOnly:false superWideSensorCenterOffsetEnabled:false parallaxMitigationBasedOnZoomFactorEnabled:false];
-    id renderer=[[rendererClass alloc] initWithIntermediateBufferPool:nil fractionalSourceRectEnabled:false compressedFormatEnabled:false];
-    if(!stitcher||!renderer)return 15;
+    id<NezhaBWVideoFormat> format=[formatClass new];
+    [format setWidth:1200];[format setHeight:2608];
+    [format setExtendedWidth:1200];[format setExtendedHeight:2608];
+    [format setPixelFormat:kCVPixelFormatType_420YpCbCr8BiPlanarFullRange];
+    id<NezhaBWNodeOutput> nodeOutput=[[outputClass alloc] initWithMediaType:kCMMediaType_Video node:nil];
+    [nodeOutput setFormat:format];
+    if(!stitcher||!format||!nodeOutput||[nodeOutput videoFormat]!=format||[nodeOutput livePixelBufferPool])return 15;
     void *library=dlopen("/System/Library/MediaCapture/libNezhaCamera27.dylib",RTLD_NOW|RTLD_LOCAL);
     auto observe=library?(void (*)(void))dlsym(library,"nezha_camera_renderer_observe"):nullptr;
     if(!observe)return 14;
@@ -222,36 +256,42 @@ static int stitcherGeometry() {
     const bool installed=method_getImplementation(class_getInstanceMethod(stitcherClass,selector))!=original;
     report(@{@"phase":@"stitcher-repair-installed",@"passed":@(installed),@"capture_started":@NO});
     if(!installed)return 19;
+    [stitcher prepareWithBWNodeOutput:nodeOutput transitionCoordinator:nil rotationDegrees:90 flipHorizontal:false flipVertical:false generatesHistogram:false inputIsHDR:false];
+    report(@{@"phase":@"stitcher-prepared",@"original_prepare":@YES,@"original_node_output":@YES,@"rotation_degrees":@90,@"pool_present":@NO,@"output_dimensions":@[@1200,@2608],@"capture_started":@NO});
     CVPixelBufferRef source=pixel(1600,1200,true),output=pixel(1200,2608,true);
     if(!source||!output||!fillPattern(source))return 3;
     CVBufferSetAttachment(source,CFSTR("NezhaCameraCompletedRaw1x"),kCFBooleanTrue,kCVAttachmentMode_ShouldPropagate);
-    const CGRect target=CGRectMake(0,378,1200,1602);
-    const ProbeDimensions dimensions={1200,2608};
+    // The original final-output caller works in the unrotated destination
+    // coordinates, then applies the transform configured by prepare above.
+    const ProbeDimensions dimensions={2608,1200};
+    const CGRect unrotatedTarget=CGRectMake(378,0,1602,1200);
+    CGRect fullInput={},fullOutput={};CGPoint fullShift={};
+    using GetRect=void (*)(id,SEL,CGRect *,CGRect *,CGPoint *,CVPixelBufferRef,CGRect,ProbeDimensions,CGRect,CGPoint,bool,bool,float,bool);
+    ((GetRect)original)(stitcher,selector,&fullInput,&fullOutput,&fullShift,source,CGRectMake(0,0,1600,1200),dimensions,unrotatedTarget,CGPointZero,true,false,1,true);
     bool passed=true;
     for(unsigned empty=0;empty<2;++empty) {
         const CGRect requested=empty?CGRectMake(801,601,0,0):CGRectMake(0,0,1600,1200);
         CGRect beforeInput={},beforeOutput={},selectedInput={},selectedOutput={};
         CGPoint beforeShift={},selectedShift={};
-        using GetRect=void (*)(id,SEL,CGRect *,CGRect *,CGPoint *,CVPixelBufferRef,CGRect,ProbeDimensions,CGRect,CGPoint,bool,bool,float,bool);
-        ((GetRect)original)(stitcher,selector,&beforeInput,&beforeOutput,&beforeShift,source,requested,dimensions,target,CGPointZero,false,true,1,false);
-        [stitcher _getInputRect:&selectedInput outputRect:&selectedOutput inputShiftAppliedInOutputRect:&selectedShift toTransferPixelBuffer:source rect:requested intoPixelBufferDimensions:dimensions rect:target withInputShift:CGPointZero shiftOutsideBoundingRectAllowed:false ignoreBounds:true scale:1 forFinalOutput:false];
+        ((GetRect)original)(stitcher,selector,&beforeInput,&beforeOutput,&beforeShift,source,requested,dimensions,unrotatedTarget,CGPointZero,true,false,1,true);
+        [stitcher _getInputRect:&selectedInput outputRect:&selectedOutput inputShiftAppliedInOutputRect:&selectedShift toTransferPixelBuffer:source rect:requested intoPixelBufferDimensions:dimensions rect:unrotatedTarget withInputShift:CGPointZero shiftOutsideBoundingRectAllowed:true ignoreBounds:false scale:1 forFinalOutput:true];
         const bool changed=beforeInput.size.width==0&&beforeInput.size.height==0&&std::isfinite(beforeInput.origin.x)&&std::isfinite(beforeInput.origin.y);
         const bool valid=selectedInput.size.width>0&&selectedInput.size.height>0&&
             std::isfinite(selectedInput.origin.x)&&std::isfinite(selectedInput.origin.y)&&
-            !std::memcmp(&beforeOutput,&selectedOutput,sizeof beforeOutput)&&!std::memcmp(&beforeShift,&selectedShift,sizeof beforeShift);
+            selectedOutput.size.width>0&&selectedOutput.size.height>0&&
+            !std::memcmp(&fullInput,&selectedInput,sizeof fullInput)&&
+            !std::memcmp(&fullOutput,&selectedOutput,sizeof fullOutput)&&!std::memcmp(&fullShift,&selectedShift,sizeof fullShift);
         NSString *name=empty?@"stitcher-owned-empty-input":@"stitcher-owned-full-input";
-        report(@{@"phase":@"stitcher-geometry",@"case":name,@"original_input":@[@(beforeInput.origin.x),@(beforeInput.origin.y),@(beforeInput.size.width),@(beforeInput.size.height)],@"selected_input":@[@(selectedInput.origin.x),@(selectedInput.origin.y),@(selectedInput.size.width),@(selectedInput.size.height)],@"selected_output":@[@(selectedOutput.origin.x),@(selectedOutput.origin.y),@(selectedOutput.size.width),@(selectedOutput.size.height)],@"original_empty":@(changed),@"passed":@(valid),@"capture_started":@NO});
+        report(@{@"phase":@"stitcher-geometry",@"case":name,@"original_input":@[@(beforeInput.origin.x),@(beforeInput.origin.y),@(beforeInput.size.width),@(beforeInput.size.height)],@"original_output":@[@(beforeOutput.origin.x),@(beforeOutput.origin.y),@(beforeOutput.size.width),@(beforeOutput.size.height)],@"selected_input":@[@(selectedInput.origin.x),@(selectedInput.origin.y),@(selectedInput.size.width),@(selectedInput.size.height)],@"selected_output":@[@(selectedOutput.origin.x),@(selectedOutput.origin.y),@(selectedOutput.size.width),@(selectedOutput.size.height)],@"selected_shift":@[@(selectedShift.x),@(selectedShift.y)],@"same_as_original_full_input":@(valid),@"original_empty":@(changed),@"passed":@(valid),@"capture_started":@NO});
         if(!valid){passed=false;continue;}
-        VTPixelRotationSessionRef session=nullptr;
-        OSStatus status=VTPixelRotationSessionCreate(kCFAllocatorDefault,&session);
-        if(!status&&session)status=VTSessionSetProperty((VTSessionRef)session,CFSTR("Rotation"),CFSTR("RotationCW90"));
-        if(!status&&session&&!fill(output,false,165,165,165))status=-1;
-        if(!status&&session)status=[renderer doPixelRotationTransferWithSession:session sourceBuffer:source sourceRect:selectedInput destinationBuffer:output destinationRect:selectedOutput blackFillUnalignedEdges:true];
-        report(@{@"phase":@"stitcher-rotation",@"case":name,@"status":@(status),@"pool_present":@NO,@"compressed_requested":@NO,@"capture_started":@NO});
-        const bool pixels=!status&&inspectPattern(output,name,selectedOutput,true,true);
-        const bool border=!status&&inspectBorder(output,name,selectedOutput);
-        passed=passed&&pixels&&border&&(!empty||changed);
-        if(session){VTPixelRotationSessionInvalidate(session);CFRelease(session);}
+        if(!fill(output,false,165,165,165))return 3;
+        CGRect actualInput={};
+        const CGRect actualOutput=[stitcher _transferPixelBuffer:source rect:requested intoPixelBuffer:output rect:unrotatedTarget isFinalOutput:true withInputShift:CGPointZero scale:1 excludeOutputRect:CGRectNull outputAlignment:(ProbeDimensions){2,2} inputSourceRectOut:&actualInput blackFillUnalignedEdges:true];
+        const bool inputConsistent=!std::memcmp(&actualInput,&selectedInput,sizeof actualInput);
+        report(@{@"phase":@"stitcher-rotation",@"case":name,@"original_transfer_caller":@YES,@"input_consistent":@(inputConsistent),@"returned_output":@[@(actualOutput.origin.x),@(actualOutput.origin.y),@(actualOutput.size.width),@(actualOutput.size.height)],@"pool_present":@NO,@"compressed_requested":@NO,@"capture_started":@NO});
+        const bool pixels=inspectPattern(output,name,actualOutput,true,true);
+        const bool border=inspectBorder(output,name,actualOutput);
+        passed=passed&&pixels&&border&&inputConsistent&&(!empty||changed);
     }
     CVPixelBufferRelease(source);CVPixelBufferRelease(output);
     report(@{@"phase":@"result",@"passed":@(passed),@"original_geometry_consumer":@YES,@"nil_intermediate_pool":@YES,@"owned_source_crop_export_consistent":@(passed),@"geometry_cases":@2,@"capture_started":@NO});

@@ -186,31 +186,51 @@ static bool own_full_source(CVPixelBufferRef source)
         CFBooleanGetValue((CFBooleanRef)origin);
     CFRelease(origin);return matched;
 }
-/* The stitcher exports its computed input rectangle to its caller before
- * invoking the rotation renderer. Apply the same completed-frame repair to
- * that exported rectangle, so it describes the pixels already supplied by
- * the rotation renderer. Keep the original destination and applied shift. */
+/* Camera141 verified that repairing the returned input alone leaves the
+ * original output rectangle empty and submits a zero-sized GPU dispatch.
+ * Normalize our completed 1x frame before the original calculation, so
+ * input, output and applied shift are computed together. Foreign, partial
+ * and invalid rectangles still take the original path once. */
 static void get_input_rect(id self,SEL selector,RendererRect *input,RendererRect *output,
     RendererPoint *applied_shift,CVPixelBufferRef source,RendererRect src,
     RendererDimensions dimensions,RendererRect dst,RendererPoint shift,
     bool outside_allowed,bool ignore_bounds,float scale,bool final)
 {
+    const RendererRect requested=src;
+    const bool valid_request=dimensions.width>0 && dimensions.height>0 &&
+        isfinite(dst.origin.x) && isfinite(dst.origin.y) &&
+        isfinite(dst.size.width) && isfinite(dst.size.height) &&
+        dst.size.width>0 && dst.size.height>0 &&
+        isfinite(shift.x) && isfinite(shift.y) && isfinite(scale) && scale>0;
+    const bool owned=valid_request && own_full_source(source);
+    const bool repaired=owned && src.size.width==0 && src.size.height==0 &&
+        isfinite(src.origin.x) && isfinite(src.origin.y);
+    if (repaired) src=(RendererRect){{0,0},{CVPixelBufferGetWidth(source),CVPixelBufferGetHeight(source)}};
     ((void (*)(id,SEL,RendererRect *,RendererRect *,RendererPoint *,CVPixelBufferRef,
         RendererRect,RendererDimensions,RendererRect,RendererPoint,bool,bool,float,bool))
         original_input_rect)(self,selector,input,output,applied_shift,source,src,
             dimensions,dst,shift,outside_allowed,ignore_bounds,scale,final);
-    const RendererRect requested=input?*input:(RendererRect){0};
-    const bool repaired=input && requested.size.width==0 && requested.size.height==0 &&
-        isfinite(requested.origin.x) && isfinite(requested.origin.y) && own_full_source(source);
-    if (repaired) *input=(RendererRect){{0,0},{CVPixelBufferGetWidth(source),CVPixelBufferGetHeight(source)}};
+    /* Preserve141's caller export repair when the original computed a
+     * valid destination but clipped our completed source to empty. Do not
+     * turn an empty destination into apparent success by changing input. */
+    const bool complete_request=owned && src.origin.x==0 && src.origin.y==0 &&
+        src.size.width==CVPixelBufferGetWidth(source) &&
+        src.size.height==CVPixelBufferGetHeight(source);
+    const bool repaired_export=!repaired && complete_request && input && output &&
+        input->size.width==0 && input->size.height==0 &&
+        isfinite(input->origin.x) && isfinite(input->origin.y) &&
+        isfinite(output->origin.x) && isfinite(output->origin.y) &&
+        isfinite(output->size.width) && isfinite(output->size.height) &&
+        output->size.width>0 && output->size.height>0;
+    if (repaired_export) *input=(RendererRect){{0,0},{CVPixelBufferGetWidth(source),CVPixelBufferGetHeight(source)}};
     static unsigned reports;
     const unsigned report=__atomic_fetch_add(&reports,1u,__ATOMIC_RELAXED);
     if (report<8) {
         const RendererRect actual_input=input?*input:(RendererRect){0};
         const RendererRect actual_output=output?*output:(RendererRect){0};
         const RendererPoint actual_shift=applied_shift?*applied_shift:(RendererPoint){0};
-        fprintf(stderr,"nezha-camera: stitcher geometry input=%u repaired=%u source=%zux%zu original_input=%.9g,%.9g,%.9g,%.9g requested=%.9g,%.9g,%.9g,%.9g destination=%dx%d rect=%.9g,%.9g,%.9g,%.9g shift=%.9g,%.9g outside=%u ignore=%u scale=%.9g final=%u outputs=%u/%u/%u source_rect=%.9g,%.9g,%.9g,%.9g destination_rect=%.9g,%.9g,%.9g,%.9g applied_shift=%.9g,%.9g\n",
-            report,(unsigned)repaired,source?CVPixelBufferGetWidth(source):0,
+        fprintf(stderr,"nezha-camera: stitcher geometry input=%u repaired-before=%u repaired-export=%u source=%zux%zu requested=%.9g,%.9g,%.9g,%.9g selected_request=%.9g,%.9g,%.9g,%.9g destination=%dx%d rect=%.9g,%.9g,%.9g,%.9g shift=%.9g,%.9g outside=%u ignore=%u scale=%.9g final=%u outputs=%u/%u/%u source_rect=%.9g,%.9g,%.9g,%.9g destination_rect=%.9g,%.9g,%.9g,%.9g applied_shift=%.9g,%.9g\n",
+            report,(unsigned)repaired,(unsigned)repaired_export,source?CVPixelBufferGetWidth(source):0,
             source?CVPixelBufferGetHeight(source):0,
             requested.origin.x,requested.origin.y,requested.size.width,requested.size.height,
             src.origin.x,src.origin.y,src.size.width,src.size.height,dimensions.width,dimensions.height,
