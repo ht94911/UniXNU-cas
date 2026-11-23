@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "GNSS051 on GPU051: original restrictions notice deferred locally; capacity176 to177; GNSS050 compiled owner and GNSS049 runq fix retained",
+  "purpose": "GNSS052 on GPU051: locationd-only owned silo submission kept local; original177 entries plus11 new records; native capacity188 and public real-dispatch lifetime test",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "786838e02a78973bab6bffc2286826fabbb24a2b",
+  "device_revision": "210d479007d688ca59b2d8e530a16fa89d74bdb4",
   "soc_revision": "GPU051 e565439+3435fa5 and GNSS counted IPA plus immutable IPCC append",
   "xcode": "26.6",
   "files": {
@@ -549,7 +549,7 @@
     "source/device/package/software-aes/NativeAESBootstrap.cpp": "98ed3f7df7df676d475bdf096409bf588e0d6d4773263878f368f953452d9bbd",
     "source/device/patches/xnu-12377/nezha-bluetooth-exit-diagnostic.patch": "193654ad33bb3de0edd9e62a7bd7cab4f31dbf5a8c1ca996c8b8d2fb48b793e9",
     "source/device/patches/xnu-12377/nezha-bluetooth-runtime.patch": "4d4fd6049250eaf399e6a0d5ff4e34232c148081820148532cf8c0c7119fd57b",
-    "source/device/patches/xnu-12377/nezha-bluetooth-text-fixup-capacity.patch": "36d8e236d4020a5c9db08e538f57f01a5d696aa187d0bf27baa28f72d3ac912e",
+    "source/device/patches/xnu-12377/nezha-bluetooth-text-fixup-capacity.patch": "99b2af07602ed9dd7fa905bea884f6037a176902e6ae0c49a364962d1e9b1148",
     "source/device/patches/xnu-12377/nezha-wifi-addon-truncate.patch": "c3b980c547fbc138ac7aedfd735d350cfef85d2a32ff78ec7bef894c4068ce63",
     "source/device/patches/xnu-12377/nezha-wifi-kernel-events.patch": "967cf792a5202711d0063463fe08bda58c554621b690b87f66904c18f81d057f",
     "source/device/patches/xnu-12377/nezha-wifi-mmio-recovery.patch": "89642756f4fe3179d44f076fbfd4786d21d0089ec7786943cb717b3eb78ecbe1",
@@ -708,7 +708,7 @@
     "source/device/scripts/nezha_macho_late.py": "fc5a2869ef22bd2c06702930fc0c88b0e071ab7ef851824b403234633040fc37",
     "source/device/patches/xnu-12377/nezha-gnss-test-runtime.patch": "68f37196f4777d4cc7721d6c5ab33de3882ae1a826513fd86ef942146e0c55ac",
     "source/device/patches/xnu-12377/nezha-gnss-pac-capture.patch": "0b1113a80a4af9a695a1c0e12ccab8f432b10017f9530fd0bb3608579c7bf002",
-    ".github/workflows/nezha-ios27-native.yml": "ef760860d21bc0686623a35875d3967fe88ccfd3cfa08cb217d18a37a3275f08",
+    ".github/workflows/nezha-ios27-native.yml": "a3cfe9c9d371197d29ac01178b21224ec36a39950b005948d00da0c97fc896f6",
     "source/device/tests/gnss27/launcher_job_test.py": "bad064a06b284103f964c8e02d7ec566fa9b5454b9e564e51b74a6bddfa7c448",
     "source/device/tools/gnss27/launcher_job.py": "55669e81cfa07ea3a4750732a7ab59df0694386118d6fd423615f3b4d7321cf9",
     "source/device/package/gnss27/userland/org.unixnu.nezha.location-launch.plist": "69bee5c36ebedbbd6d686fd108fa9c41ab53eddd380906c472740187b138e49f",
@@ -722,7 +722,8 @@
     "source/device/tests/gnss27/gnss_measurement_test.c": "ccaedf3eb7d590893088c389e3de1f05d8c0413d24affc5c8fb0d90d1f4ca3b2",
     "source/device/package/BootUiTraceQueue.h": "a392f1077dd105940506d331689a64598b48a3490a5d7246e7241ead6bcf2718",
     "source/device/tests/gnss27/queue_snapshot_test.c": "76b922b2de9c6efaf054a12f325687678307982f4f577c329c15b7c1ce506d9d",
-    "source/device/tests/gnss27/queue_snapshot_test.py": "3553b564a7d6a87bcfea8b9a1fd8d84f6c9bf04748ab34c46c53008e62b9c5e0"
+    "source/device/tests/gnss27/queue_snapshot_test.py": "3553b564a7d6a87bcfea8b9a1fd8d84f6c9bf04748ab34c46c53008e62b9c5e0",
+    "source/device/tests/gnss27/silo_sync_group.c": "6ff2e22096aef223e9a110ab0c02659026b3bb6ea4c82cb402e33128c7273d1b"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",

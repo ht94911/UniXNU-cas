@@ -1,7 +1,7 @@
-name: nezha GPU051 GNSS GPS BeiDou - native035
+name: nezha GPU051 GNSS GPS BeiDou - native036
 on:
   push:
-    branches: [codex/ios27-gnss-gpu051-native035-20261123]
+    branches: [codex/ios27-gnss-gpu051-native036-20261124]
   workflow_dispatch:
 permissions:
   contents: read
@@ -79,6 +79,11 @@ jobs:
         env:
           CC: clang
         run: python3 task/source/device/tests/gnss27/queue_snapshot_test.py --out "$RUNNER_TEMP/ios27/work/queue-snapshot-host"
+      - name: Exercise real libdispatch owned submission lifetime
+        run: |
+          mkdir -p "$RUNNER_TEMP/ios27/work/silo-sync-host"
+          clang -std=gnu11 -O1 -g -fblocks -Wall -Wextra -Werror -fsanitize=address,undefined -fno-sanitize-recover=all task/source/device/tests/gnss27/silo_sync_group.c -o "$RUNNER_TEMP/ios27/work/silo-sync-host/real-dispatch"
+          "$RUNNER_TEMP/ios27/work/silo-sync-host/real-dispatch"
       - name: Exercise GPS BeiDou protocol and location sessions
         env:
           CC: clang
