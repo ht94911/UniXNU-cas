@@ -1,7 +1,7 @@
-name: nezha GPU075 original update trace - native061
+name: nezha GPU081 original frame selection - native062
 on:
   push:
-    branches: [codex/ios27-gpu75-trace-priority-native061-20261122]
+    branches: [codex/ios27-gpu81-frame-selection-native062-20261123]
   workflow_dispatch:
 permissions:
   contents: read
