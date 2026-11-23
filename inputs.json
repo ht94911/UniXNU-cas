@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "GNSS047: same176 callback records and receiver; extend existing fatal capture with guarded current waiter/typed kernel continuation",
+  "purpose": "GNSS047 corrected target types: waitq union member; pass locked scalars to opaque BSD helper; same176 callback records and receiver",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "0bc08fa642564feb465bcd4e8f81f4c553f734de",
+  "device_revision": "c1296d19358c649936d223c6063deebec5007eb1",
   "soc_revision": "GPU051 e565439+3435fa5 and GNSS counted IPA plus immutable IPCC append",
   "xcode": "26.6",
   "files": {
@@ -370,7 +370,7 @@
     "source/device/package/baseband27/gnss/NbGnss.h": "f4c1042dbfd55c4e43389b96a241c48e8b4455a52bf18d4827e4a1af4994fb58",
     "source/device/package/baseband27/gnss/NbGnssProtocol.c": "85d65fc1a80108ec676735bce3832f41d0a38f01ffe81da712a0512b8abbdb9a",
     "source/device/package/baseband27/gnss/NbGnssProtocol.h": "70f6e85792e1ebcf6639997f7b0b4f1e21ccf6aac85bb4827198baa99a3c3c6d",
-    "source/device/package/baseband27/gnss/README.md": "ef010eb9574b7e5fe1a26d7f8c7bec24288590ac28efca0ddf32c68e64fe06e2",
+    "source/device/package/baseband27/gnss/README.md": "e00ce88ff055704f2657db1dd9be1fea76131d98ab1b011b4a908ad8c5eedb42",
     "source/device/package/baseband27/gnss/bridge.patch": "c1cc6cc8f943c50ad98df7eb4f0eb50b800bab400a75212b2eefdfd25a2976a2",
     "source/device/package/baseband27/integration/BootWatchdogPolicy-baseband.patch": "fc53c30d6660634fb3db67ced515951271695b83e51740d9af0557d05804494b",
     "source/device/package/baseband27/integration/NbBasebandStart.c": "472dd6d438734945f4d0158d03d4516adf1f43f78a09a25b4f3810d331f244f2",
@@ -707,12 +707,12 @@
     "source/usb.bundle": "c11677e274e735ce3ca849dde0e1654404eafb23538cadb0b25d0e6d2c98a5f4",
     "source/device/scripts/nezha_macho_late.py": "fc5a2869ef22bd2c06702930fc0c88b0e071ab7ef851824b403234633040fc37",
     "source/device/patches/xnu-12377/nezha-gnss-test-runtime.patch": "68f37196f4777d4cc7721d6c5ab33de3882ae1a826513fd86ef942146e0c55ac",
-    "source/device/patches/xnu-12377/nezha-gnss-pac-capture.patch": "1cd1f3317dc389d9ac6d36d524227b01162ea54f0be29e6f589779d070a2d786",
-    ".github/workflows/nezha-ios27-native.yml": "2f1f82355f9d6fd269df90e917a522d19a50a8d57a7931be709612a639b56638",
+    "source/device/patches/xnu-12377/nezha-gnss-pac-capture.patch": "0b1113a80a4af9a695a1c0e12ccab8f432b10017f9530fd0bb3608579c7bf002",
+    ".github/workflows/nezha-ios27-native.yml": "c6a07f28015809447968e7ab175e5eeed6d250118fff1ef4563530e7a9e588de",
     "source/device/tests/gnss27/launcher_job_test.py": "bad064a06b284103f964c8e02d7ec566fa9b5454b9e564e51b74a6bddfa7c448",
     "source/device/tools/gnss27/launcher_job.py": "55669e81cfa07ea3a4750732a7ab59df0694386118d6fd423615f3b4d7321cf9",
     "source/device/package/gnss27/userland/org.unixnu.nezha.location-launch.plist": "69bee5c36ebedbbd6d686fd108fa9c41ab53eddd380906c472740187b138e49f",
-    "source/device/tests/gnss27/exception_context_test.py": "d3b23ff3db92fffd51d0698ff33248f2bfe88733f61318c0cf321d305e6af302",
+    "source/device/tests/gnss27/exception_context_test.py": "078b29eccf8f4a55838b237ea15647f45164369f13154cd465cb4a5882ff5db9",
     "source/device/patches/xnu-12377/vmwait-dyld-pager-source-release.patch": "916c930f4b6b2e7515329bafc8d2ab52ba014d4dacbc8c706e8cc5d603ff5a32",
     "source/device/tests/check-dyld-pager-source-release.py": "8681029e1b691b2231aaff16064f3f3a6a47ca2cc528d8bb5bea2a773537a594",
     "source/device/tests/dyld-pager-source-release.c": "281848265705d8880dc1cdc5f4372ecbbe3063b629e21299126ae42fcec67708",

@@ -9,7 +9,7 @@
  #endif
  
  #include <os/log.h>
-@@ -822,6 +824,258 @@
+@@ -822,6 +824,260 @@
  }
  
  #if __has_feature(ptrauth_calls)
@@ -50,7 +50,8 @@
 +}
 +
 +#ifdef MACH_BSD
-+extern void sheng_gnss_waiter_snapshot(thread_t, uint64_t [32]);
++extern void sheng_gnss_waiter_snapshot(thread_t, unsigned, thread_continue_t,
++    void *, uint64_t [32]);
 +#endif
 +
 +static void
@@ -111,14 +112,15 @@
 +					.x28 = get_saved_state_reg(state, 28),
 +					.tsd = peer->machine.cthread_self,
 +					.wait_event = peer->wait_event,
-+					.waitq = (uint64_t)peer->waitq,
++					.waitq = (uint64_t)peer->waitq.wq_q,
 +					.wait_result = peer->wait_result,
 +					.block_hint = peer->block_hint,
 +					.continuation = (uint64_t)peer->continuation,
 +					.parameter = (uint64_t)peer->parameter,
 +				};
 +#ifdef MACH_BSD
-+				sheng_gnss_waiter_snapshot(peer, sample->bsd);
++				sheng_gnss_waiter_snapshot(peer, sample->block_hint,
++				    peer->continuation, peer->parameter, sample->bsd);
 +#endif
 +			}
 +		}
@@ -268,7 +270,7 @@
  static void
  pac_exception_triage(
  	exception_type_t        exception,
-@@ -839,6 +1034,7 @@
+@@ -839,6 +1095,7 @@
  		proc_name = proc_name_address(proc);
  
  		if (task_is_pac_exception_fatal(task) && !is_address_space_debugged(proc)) {
@@ -279,16 +281,18 @@
 
 --- a/bsd/kern/kern_event.c
 +++ b/bsd/kern/kern_event.c
-@@ -2602,4 +2602,42 @@
+@@ -2602,4 +2602,44 @@
 +
 +#if __arm64__
 +/* The existing fatal recorder calls this while holding a waiting thread's
 + * scheduler lock and its task lock. Copy scalars only; never copy user memory,
 + * acquire another lock, or dereference the wait-event knote here. */
-+void sheng_gnss_waiter_snapshot(thread_t, uint64_t [32]);
++void sheng_gnss_waiter_snapshot(thread_t, unsigned, thread_continue_t,
++    void *, uint64_t [32]);
 +
 +void
-+sheng_gnss_waiter_snapshot(thread_t thread, uint64_t words[32])
++sheng_gnss_waiter_snapshot(thread_t thread, unsigned block_hint,
++    thread_continue_t continuation, void *parameter, uint64_t words[32])
 +{
 +	struct uthread *uth = get_bsdthread_info(thread);
 +	memset(words, 0, 32 * sizeof(*words));
@@ -304,9 +308,9 @@
 +	/* uu_save is a union: only interpret the original wait continuation's
 +	 * storage when both its pointer and typed continuation match. */
 +	if (uth->syscall_code == SYS_kevent_id &&
-+	    thread->block_hint == kThreadWaitWorkloopSyncWait &&
-+	    thread->continuation == filt_wlwait_continue &&
-+	    thread->parameter == &uth->uu_save.uus_kevent_register) {
++	    block_hint == kThreadWaitWorkloopSyncWait &&
++	    continuation == filt_wlwait_continue &&
++	    parameter == &uth->uu_save.uus_kevent_register) {
 +		struct _kevent_register *args = &uth->uu_save.uus_kevent_register;
 +		_Static_assert(sizeof(args->kev) == 9 * sizeof(*words), "kevent scalar layout");
 +		words[13] = 1;

@@ -22,7 +22,8 @@ added = ''.join(line[1:] for line in
 start = added.index('struct sheng_gnss_object_peer {')
 end = added.index('#endif /* __arm64__ */', start)
 actual = added[start:end]
-helper_start = added.index('void\nsheng_gnss_waiter_snapshot(thread_t thread, uint64_t words[32])')
+helper_signature = 'void\nsheng_gnss_waiter_snapshot(thread_t thread, unsigned block_hint,'
+helper_start = added.index(helper_signature)
 helper_end = added.index('#endif /* __arm64__ */', helper_start)
 helper = added[helper_start:helper_end]
 if args.exception_source:
@@ -33,7 +34,7 @@ if args.exception_source:
     actual_start = exception.index('struct sheng_gnss_object_peer {')
     actual_end = exception.index('#endif /* __arm64__ */', actual_start)
     actual = exception[actual_start:actual_end]
-    helper_begin = event.index('void\nsheng_gnss_waiter_snapshot(thread_t thread, uint64_t words[32])')
+    helper_begin = event.index(helper_signature)
     helper_finish = event.index('#endif /* __arm64__ */', helper_begin)
     helper = event[helper_begin:helper_finish]
 prefix = r'''
@@ -52,6 +53,12 @@ prefix = r'''
 #define MACH_BSD 1
 #define SYS_kevent_id 375
 #define kThreadWaitWorkloopSyncWait 0x10
+typedef void (*thread_continue_t)(void *, int);
+typedef union {
+ struct waitq *wq_q;
+ struct waitq_set *wqs_set;
+ struct select_set *wqs_sel;
+} waitq_t;
 struct kevent_qos_s {
  uint64_t ident; int16_t filter; uint16_t flags; uint32_t qos;
  uint64_t udata; uint32_t fflags,xflags; uint64_t data,ext[4];
@@ -70,7 +77,7 @@ typedef struct {uint64_t x[29],pc,lr,sp,fp;int valid;} arm_saved_state_t;
 struct thread {
  struct thread *next;
  struct {arm_saved_state_t *upcb;uint64_t cthread_self;} machine;
- uint64_t wait_event; void *waitq;
+ uint64_t wait_event; waitq_t waitq;
  int wait_result; unsigned block_hint;
  void (*continuation)(void *,int);void *parameter;
  struct uthread *uth;
@@ -118,6 +125,32 @@ static int captured_printf(const char *format,...){
 }
 #define printf captured_printf
 '''
+# BSD sees thread_t as an opaque Mach type. Compile its helper separately so
+# the host fixture cannot hide accesses to the private thread structure.
+bsd_prefix = r'''
+#include <stddef.h>
+#include <stdint.h>
+#include <string.h>
+#define SYS_kevent_id 375
+#define kThreadWaitWorkloopSyncWait 0x10
+typedef void (*thread_continue_t)(void *, int);
+struct thread;
+typedef struct thread *thread_t;
+struct kevent_qos_s {
+ uint64_t ident; int16_t filter; uint16_t flags; uint32_t qos;
+ uint64_t udata; uint32_t fflags,xflags; uint64_t data,ext[4];
+};
+struct uthread {
+ uint64_t uu_arg[8]; int uu_rval[2]; unsigned syscall_code,uu_workq_flags;
+ uint64_t uu_workq_stackaddr,uu_workq_thport;
+ union {struct _kevent_register {
+  struct kevent_qos_s kev; void *handoff_thread,*kqwl;
+  int eventout; uint64_t ueventlist;
+ } uus_kevent_register; uint64_t alternate[32];} uu_save;
+};
+struct uthread *get_bsdthread_info(thread_t);
+static void filt_wlwait_continue(void *parameter,int result){(void)parameter;(void)result;}
+'''
 cases = r'''
 #undef printf
 static void clear_output(void){output[0]=0;output_length=reads=0;assert(!locked&&!scheduler_locked);}
@@ -146,7 +179,7 @@ int main(void){
 
  clear_output();task.threads.first=&peer;struct uthread uth={.syscall_code=SYS_kevent_id,.uu_workq_flags=0x21,.uu_workq_stackaddr=0x40000,.uu_workq_thport=0x501};
  peer.uth=&uth;peer.block_hint=kThreadWaitWorkloopSyncWait;peer.continuation=filt_wlwait_continue;
- peer.parameter=&uth.uu_save.uus_kevent_register;peer.wait_result=7;peer.wait_event=0xabcdef;peer.waitq=(void*)0x55660;
+ peer.parameter=&uth.uu_save.uus_kevent_register;peer.wait_result=7;peer.wait_event=0xabcdef;peer.waitq.wq_q=(void*)0x55660;
  peer.machine.cthread_self=0x13000;task.all_image_info_addr=0x14000;
  uth.uu_rval[0]=-1;uth.uu_rval[1]=2;for(unsigned i=0;i<8;i++)uth.uu_arg[i]=0x50000+i;
  uth.uu_save.uus_kevent_register.kev=(struct kevent_qos_s){.ident=19,.filter=-17,.flags=9,.fflags=4,.udata=0x30000};
@@ -156,13 +189,13 @@ int main(void){
  assert(strstr(output,"hint=16")&&strstr(output,"event=abcdef")&&strstr(output,"parameter="));
  assert(strstr(output,"current-dsc address=0x16000")&&strstr(output,"dyld-images address=0x14000"));
  assert(strstr(output,"pointer=16000 after=16000 error=0 repeat=0"));
- uint64_t words[32];locked=scheduler_locked=1;irq=0;sheng_gnss_waiter_snapshot(&peer,words);locked=scheduler_locked=0;irq=1;
+ uint64_t words[32];locked=scheduler_locked=1;irq=0;sheng_gnss_waiter_snapshot(&peer,peer.block_hint,peer.continuation,peer.parameter,words);locked=scheduler_locked=0;irq=1;
  assert(words[0]==375&&words[13]==1&&words[14]==19&&words[24]==0x556600&&words[26]==0x15000);
  assert(words[4]==0x2ffffffffULL&&words[5]==0x50000&&words[12]==0x50007);
  for(unsigned reason=0;reason<4;reason++){
   uth.syscall_code=reason==0?0:375;peer.block_hint=reason==1?0:16;
   peer.continuation=reason==2?NULL:filt_wlwait_continue;peer.parameter=reason==3?NULL:&uth.uu_save.uus_kevent_register;
-  memset(words,0xff,sizeof(words));locked=scheduler_locked=1;irq=0;sheng_gnss_waiter_snapshot(&peer,words);locked=scheduler_locked=0;irq=1;
+  memset(words,0xff,sizeof(words));locked=scheduler_locked=1;irq=0;sheng_gnss_waiter_snapshot(&peer,peer.block_hint,peer.continuation,peer.parameter,words);locked=scheduler_locked=0;irq=1;
   for(unsigned i=13;i<32;i++)assert(!words[i]);
  }
  peer.parameter=&uth.uu_save.uus_kevent_register;uth.syscall_code=375;peer.block_hint=16;
@@ -195,12 +228,17 @@ with tempfile.TemporaryDirectory(prefix='gnss-object-context-') as temp:
     subprocess.run(command, check=True)
     execution = subprocess.check_output([str(binary)], text=True)
     print(execution, end='')
+    bsd_source = work / 'bsd-helper.c'
+    bsd_source.write_text(bsd_prefix + helper)
+    subprocess.run(['cc', '-std=gnu11', '-Wall', '-Wextra', '-Werror', '-c',
+                    str(bsd_source), '-o', str(work / 'bsd-helper.o')], check=True)
 if args.out:
     result = dict(passed=True, actual_compiled_sources=bool(args.exception_source),
                   sampler_sha256=hashlib.sha256(actual.encode()).hexdigest(),
                   helper_sha256=hashlib.sha256(helper.encode()).hexdigest(),
                   thread_states=256, ASan_UBSan=True,
                   waiting_stable_only=True, typed_syscall_and_continuation_gate=True,
+                  opaque_BSD_thread_type_compiled=True, actual_waitq_union_used=True,
                   no_user_read_or_printf_under_locks=True, reentrancy_guard=True,
                   physical_runtime_verified=False, phone_operations=False,
                   output=execution)
