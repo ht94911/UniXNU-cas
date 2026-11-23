@@ -1,7 +1,7 @@
-name: nezha Camera134 RUP miss notice on GPU051 - native
+name: nezha Camera135 spare RAW before delivery on GPU051 - native
 on:
   push:
-    branches: [codex/ios27-camera134-rupmiss-20261123]
+    branches: [codex/ios27-camera135-spare-20261123]
   workflow_dispatch:
 permissions:
   contents: read
