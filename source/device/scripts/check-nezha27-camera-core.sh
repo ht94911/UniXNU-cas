@@ -65,5 +65,7 @@ done
     "$camera/NezhaCameraNativeIrq.cpp" tests/camera-native-irq.cpp \
     "$out/irq-IrqQueue.o" "$out/irq-Camss1080.o" "$out/irq-Rdi1080.o" -o "$out/test-camera-native-irq"
 "$out/test-camera-native-irq"
+"$out/test-camera-native-irq" overflow
+"$out/test-camera-native-irq" illegal-dt
 
 python3 "$device/scripts/build-nezha27-camera-core.py" --out "$out"

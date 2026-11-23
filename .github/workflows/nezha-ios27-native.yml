@@ -1,7 +1,7 @@
-name: nezha Camera131 RAW cache ownership on GPU051 - native
+name: nezha Camera134 RUP miss notice on GPU051 - native
 on:
   push:
-    branches: [codex/ios27-camera131-gpu051-backpressure-20261123]
+    branches: [codex/ios27-camera134-rupmiss-20261123]
   workflow_dispatch:
 permissions:
   contents: read
@@ -119,6 +119,21 @@ jobs:
           clang -std=c11 -Wall -Wextra -Werror -g -fsanitize=address,undefined -fno-sanitize-recover=all -I "$src/package/camera" -I "$src/package/gpu/adreno" "$src/package/camera/NezhaCameraMainCapture.c" "$src/package/camera/NezhaCameraRdi1080.c" "$src/tests/camera-main-capture.c" -o "$out/main-capture"
           "$out/main-capture" > "$out/main-capture.log" 2>&1
           NEZHA_CAMERA_SHARED_SOC="$RUNNER_TEMP/ios27/work/soc" CAMERA_TARGET_CC="$out/target-clang" bash "$src/scripts/check-nezha27-camera-continuous.sh" "$out/continuous" > "$out/continuous.log" 2>&1
+      - name: Check actual RUP notice and retained fatal IRQ paths
+        run: |
+          set -euo pipefail
+          src="$RUNNER_TEMP/ios27/work/device"
+          out="$RUNNER_TEMP/ios27/work/camera-rupmiss-host"
+          mkdir -p "$out/IOKit" "$out/kern"
+          printf 'typedef int IOReturn;\n#define kIOReturnSuccess 0\nextern "C" void IOSleep(unsigned);\n' > "$out/IOKit/IOLib.h"
+          printf '#include <stdint.h>\nextern "C" uint64_t mach_absolute_time(void);\n' > "$out/kern/clock.h"
+          for unit in IrqQueue Camss1080 Rdi1080; do
+            clang -std=c11 -Wall -Wextra -Werror -g -fsanitize=address,undefined -fno-sanitize-recover=all -I "$src/package/camera" -I "$src/package/gpu/adreno" -c "$src/package/camera/NezhaCamera$unit.c" -o "$out/$unit.o"
+          done
+          clang++ -std=c++17 -Wall -Wextra -Werror -g -fsanitize=address,undefined -fno-sanitize-recover=all -I "$src/package/camera" -I "$out" "$src/package/camera/NezhaCameraNativeIrq.cpp" "$src/tests/camera-native-irq.cpp" "$out/IrqQueue.o" "$out/Camss1080.o" "$out/Rdi1080.o" -o "$out/consumer"
+          for mode in normal overflow illegal-dt; do
+            "$out/consumer" "$mode" > "$RUNNER_TEMP/ios27/work/logs/camera-rupmiss-$mode.log" 2>&1
+          done
       - name: Check actual camera pool and scatter-backed SMMU tables
         run: python3 "$RUNNER_TEMP/ios27/work/device/scripts/check-nezha27-camera-memory.py" --native "$RUNNER_TEMP/ios27/work/adreno" --out "$RUNNER_TEMP/ios27/work/camera-memory-host"
       - name: Qualify compiler and run the standard native build

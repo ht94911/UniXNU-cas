@@ -10,11 +10,16 @@ extern "C" IOReturn armcpu_spi_attach(uint32_t, bool, void (*)(void *),
 namespace {
 constexpr uint32_t TopMask = 0x184, BufferMask = 0x1a4, RxMask = 0x1b4, RdiMask = 0x228;
 constexpr uint32_t TopEvents = (1u << 2) | (1u << 3) | (1u << 16);
-constexpr uint32_t RdiEvents = (1u << 23) | (1u << 12) | (1u << 9) | (1u << 4) | (1u << 3);
+constexpr uint32_t RdiRupMiss = 1u << 8;
+constexpr uint32_t RdiEvents = (1u << 23) | (1u << 12) | (1u << 9) | (1u << 4) | (1u << 3) | RdiRupMiss;
 // The stock 1080 common v1 table also exposes informational lane and
 // line events. Those status bits can be set during a valid capture.
 constexpr uint32_t RxErrors = 0x25fff000u | 0x08000000u;
-constexpr uint32_t RdiErrors = 0x2c1c6001u | 0x12000000u | 0x180u | (1u << 24);
+// Stock common v1 keeps RUP_MISS separate from the fatal/nonfatal masks.
+// Its ISP context warns and returns without stopping or reapplying the
+// stream. Camera131 stopped only because our extra0x180 classified bit8
+// as fatal. Keep ILLEGAL_DT_SWITCH bit7 and ILLEGAL_BATCH_ID bit24 fatal.
+constexpr uint32_t RdiErrors = 0x2c1c6001u | 0x12000000u | (1u << 7) | (1u << 24);
 constexpr uint32_t masks[] = {TopMask, BufferMask, RxMask, RdiMask};
 constexpr uint32_t ResetDone = 1;
 }
@@ -47,7 +52,8 @@ static void interrupt(void *cookie)
         const bool read = nezha_camera1080_take_rdi0_events(&owner->csid, &owner->vfe, &event);
         if (read && event.buffer_done) event.completed_time = mach_absolute_time();
         const bool failed = (event.rx_irq & RxErrors) || (event.rdi0_irq & RdiErrors);
-        const bool frame_event = event.updated || event.start_of_frame || event.end_of_frame || event.buffer_done;
+        const bool frame_event = event.updated || event.start_of_frame || event.end_of_frame ||
+            event.buffer_done || (event.rdi0_irq & RdiRupMiss);
         if (!read || failed || (frame_event && !nezha_camera_irq_push(&owner->queue, &event))) {
             owner->failure = event;
             __atomic_store_n(&owner->fault, !read ? 1u : failed ? 2u : 3u, __ATOMIC_RELEASE);

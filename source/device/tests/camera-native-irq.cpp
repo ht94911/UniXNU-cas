@@ -3,6 +3,7 @@
 
 #include <cassert>
 #include <cstdio>
+#include <cstring>
 
 static void (*handler)(void *);
 static void *irq_context;
@@ -68,7 +69,7 @@ static void write(void *cookie, uint32_t offset, uint32_t value)
     }
 }
 
-int main()
+int main(int argc, char **argv)
 {
     Model model;
     const NezhaCameraRegisterIo io = {&model, read, write, nullptr};
@@ -84,6 +85,21 @@ int main()
            model.masks[1] == (1u << 16));
     NezhaCamera1080Events event{};
     assert(nezha_camera_native_irq_next(owner, &event) && !event.buffer_done);
+    // Exact Camera131 child word: RUP miss and informational SOF/VC-DT
+    // state, without BUF_DONE. This must preserve the warning, clear the
+    // interrupt and allow later completions without inventing one here.
+    model.top = 1u << 16;
+    model.rdi = 0x11110;
+    handler(irq_context);
+    assert(!nezha_camera_native_irq_fault(owner) && !model.top && !model.rdi);
+    assert(nezha_camera_native_irq_next(owner, &event) && event.rdi0_irq == 0x11110);
+    assert(event.start_of_frame && !event.updated && !event.buffer_done && !event.completed_time);
+    model.top = 1u << 16;
+    model.rdi = 1u << 8; // Standalone notice is preserved, with no frame.
+    handler(irq_context);
+    assert(!nezha_camera_native_irq_fault(owner) && !model.top && !model.rdi);
+    assert(nezha_camera_native_irq_next(owner, &event) && event.rdi0_irq == (1u << 8));
+    assert(!event.start_of_frame && !event.end_of_frame && !event.buffer_done && !event.updated);
     for (unsigned i = 0; i < 2; ++i) {
         model.top = 1u << 16 | 1u << 3 | 1u << 2;
         model.rx = 1u << 4; // Informational lane start.
@@ -115,18 +131,21 @@ int main()
     reopened=nullptr;
     assert(nezha_camera_native_irq_open(&reopened,&io,&io,&setup) && reopened==owner && attaches==1);
     assert(nezha_camera_native_irq_next(owner,&event) && !event.buffer_done);
-    model.rx = 1u << 12; // Lost EOT on lane 0.
-    model.rdi = 1u << 24; // Illegal batch ID must remain a fatal event.
+    uint32_t fatal_rx = 1u << 12, fatal_rdi = 1u << 24;
+    if (argc == 2 && !std::strcmp(argv[1], "overflow")) { fatal_rx = 0; fatal_rdi = 1u << 19; }
+    if (argc == 2 && !std::strcmp(argv[1], "illegal-dt")) { fatal_rx = 0; fatal_rdi = 1u << 7; }
+    model.rx = fatal_rx;
+    model.rdi = fatal_rdi;
     model.top = 1u << 16 | 1u << 2;
     handler(irq_context);
     assert(nezha_camera_native_irq_fault(owner) == 2 && !nezha_camera_native_irq_next(owner, &event));
     assert(nezha_camera_native_irq_stop(owner));
-    assert(nezha_camera_native_irq_failure(owner, &event) && event.rx_irq == (1u << 12) &&
-        event.rdi0_irq == (1u << 24) && !model.top && !model.rx && !model.rdi);
+    assert(nezha_camera_native_irq_failure(owner, &event) && event.rx_irq == fatal_rx &&
+        event.rdi0_irq == fatal_rdi && !model.top && !model.rx && !model.rdi);
     reopened=nullptr;
     assert(!nezha_camera_native_irq_open(&reopened,&io,&io,&setup) && !reopened && attaches==1);
     const unsigned reads = model.reads, writes = model.writes;
     handler(irq_context);
     assert(model.reads == reads && model.writes == writes);
-    puts("Native CSID IRQ delivers ordered completion addresses and does not touch MMIO after stop");
+    puts("Native CSID IRQ preserves RUP miss without stopping; ordered completions, real fatal errors and stopped MMIO remain protected");
 }
