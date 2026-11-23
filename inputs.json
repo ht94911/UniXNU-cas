@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "GNSS049 on GPU051: correct both scheduler snapshot runq getters, exercise the actual XNU lock contract, retain original176 records and accepted satellite App chain",
+  "purpose": "GNSS050 on GPU051: complete pending queue node and match its original blocked owner; retain GNSS049 runq repair and176 entries",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "347be3d05a451a94f4c5029dc6fc8bea1fe1358b",
+  "device_revision": "c7d18e319638290b74a66e0fc4ac176959fc8bf2",
   "soc_revision": "GPU051 e565439+3435fa5 and GNSS counted IPA plus immutable IPCC append",
   "xcode": "26.6",
   "files": {
@@ -158,7 +158,7 @@
     "source/device/package/BootResetCore.h": "9211ed8aa8174a8999829c29b51351fb839807c1473c6239ae09e069e294a5f6",
     "source/device/package/BootUiTraceCore.h": "9404d7be6386f936904e6af34c870d86ec809b4d97161fd892d904d8334f2753",
     "source/device/package/BootUiTraceDetails.h": "b9c0d9afbc80359a08f2aabb87cf6ee94c5227e64212dffb05ea8d9e08a8473e",
-    "source/device/package/BootUiTraceProbe.c": "dbd5bdf1c4cb53574176ac8ad72650c59b4fd091eb8f6194a3aa5726be2377a0",
+    "source/device/package/BootUiTraceProbe.c": "f2ad4289530e35ad1b9c6db990d3e07b8cf01e4152e7f49897bb51fb01436c06",
     "source/device/package/BootWatchdogPolicy.c": "02087f0b09cdc8a76d799372ba392610614f806b99b1d38cd29bab48b3fb4397",
     "source/device/package/KeyStoreProbe.cpp": "35ff8e97c56fd438158b1fe929c53e52dd027bc18f1b4e0eac8a2fdf662fd933",
     "source/device/package/LegacyDisplayProbe.cpp": "25b92ed49e347237f89533acbd41bcd6179d7103b201042fd127a599dce656b9",
@@ -708,7 +708,7 @@
     "source/device/scripts/nezha_macho_late.py": "fc5a2869ef22bd2c06702930fc0c88b0e071ab7ef851824b403234633040fc37",
     "source/device/patches/xnu-12377/nezha-gnss-test-runtime.patch": "68f37196f4777d4cc7721d6c5ab33de3882ae1a826513fd86ef942146e0c55ac",
     "source/device/patches/xnu-12377/nezha-gnss-pac-capture.patch": "0b1113a80a4af9a695a1c0e12ccab8f432b10017f9530fd0bb3608579c7bf002",
-    ".github/workflows/nezha-ios27-native.yml": "7250dbe3a3d4e86467e593d3208e1749510440ff785221e36a76e0858891d5a4",
+    ".github/workflows/nezha-ios27-native.yml": "63dea4391a7ace7aea1472804c0a410059727a8989c6b4c64f69214f286d16ac",
     "source/device/tests/gnss27/launcher_job_test.py": "bad064a06b284103f964c8e02d7ec566fa9b5454b9e564e51b74a6bddfa7c448",
     "source/device/tools/gnss27/launcher_job.py": "55669e81cfa07ea3a4750732a7ab59df0694386118d6fd423615f3b4d7321cf9",
     "source/device/package/gnss27/userland/org.unixnu.nezha.location-launch.plist": "69bee5c36ebedbbd6d686fd108fa9c41ab53eddd380906c472740187b138e49f",
@@ -720,9 +720,9 @@
     "source/device/tests/check-text-fixup-reclaimed-page.py": "e4e6555b868b4e058cdcbab1642da3f86278f32923de4ca0e3c68a6d397ade7e",
     "source/device/tests/text-fixup-reclaimed-page.c": "a9ba1177874a659ca4a76f83ac518a11d2822c6dcb124dc265eee868b3cb3459",
     "source/device/tests/gnss27/gnss_measurement_test.c": "ccaedf3eb7d590893088c389e3de1f05d8c0413d24affc5c8fb0d90d1f4ca3b2",
-    "source/device/package/BootUiTraceQueue.h": "8dc3b9abc51ed89d91216db1b86e6d908eddaa8344dfa282a61c9b6b06411391",
-    "source/device/tests/gnss27/queue_snapshot_test.c": "0efc01d3decd1183e1d5c3dcfa63e7e43fc07252b6149506942d185e3c69d081",
-    "source/device/tests/gnss27/queue_snapshot_test.py": "737cff4df48b466c1b73bc846d9105127b7279ccc38455e19ad17d19bdce2530"
+    "source/device/package/BootUiTraceQueue.h": "a392f1077dd105940506d331689a64598b48a3490a5d7246e7241ead6bcf2718",
+    "source/device/tests/gnss27/queue_snapshot_test.c": "76b922b2de9c6efaf054a12f325687678307982f4f577c329c15b7c1ce506d9d",
+    "source/device/tests/gnss27/queue_snapshot_test.py": "3553b564a7d6a87bcfea8b9a1fd8d84f6c9bf04748ab34c46c53008e62b9c5e0"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
@@ -1309,5 +1309,22 @@
       ".github/workflows/nezha-ios27-native.yml",
       "source/device/tests/gnss27/queue_snapshot_test.py"
     ]
+  },
+  "native034_delta": {
+    "purpose": "GNSS050: retain complete128B pending node, blocked owner port/stack and current DSC; correct lane label +0x48",
+    "parent_native033": 45175417098,
+    "parent_head": "004a3c1cadf77b2860dcdecee48ebdd003ad0c5d",
+    "changed_inputs": [
+      ".github/workflows/nezha-ios27-native.yml",
+      "source/device/package/BootUiTraceProbe.c",
+      "source/device/package/BootUiTraceQueue.h",
+      "source/device/tests/gnss27/queue_snapshot_test.c",
+      "source/device/tests/gnss27/queue_snapshot_test.py"
+    ],
+    "queue_first_start_fixed": false,
+    "GNSS049_runq_repair_preserved": true,
+    "original_GNSS043_GNSS045_App_satellite_baseline_preserved": true,
+    "phone_operations": false,
+    "private_inputs_uploaded": false
   }
 }

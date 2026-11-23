@@ -25,6 +25,8 @@
 #endif
 #include "BootUiTraceCore.h"
 #include "BootUiTraceQueue.h"
+extern void sheng_gnss_waiter_snapshot(thread_t, unsigned, thread_continue_t,
+                                     void *, uint64_t [32]);
 extern void proc_name(int pid, char *buf, int size);   // bsd/sys/proc.h; the header itself clashes with the Mach types used here
 #include "BootUiTraceDetails.h"
 static struct bt_entry samples[BT_MAX_THREADS];
@@ -135,6 +137,8 @@ void boot_ui_trace_task(task_t task,unsigned index,int pid,const char *name,unsi
     q->x19=get_saved_state_reg(state,19);q->x20=get_saved_state_reg(state,20);q->x21=get_saved_state_reg(state,21);
     q->x1=e->regs[1];q->x8=get_saved_state_reg(state,8);q->x9=get_saved_state_reg(state,9);q->x10=get_saved_state_reg(state,10);
     q->state=thread->state;q->hint=thread->block_hint;q->pri=thread->sched_pri;
+    if((q->state&(TH_WAIT|TH_RUN|TH_TERMINATE|TH_TERMINATE2))==TH_WAIT)
+     sheng_gnss_waiter_snapshot(thread,q->hint,thread->continuation,thread->parameter,q->bsd);
     // This snapshot holds sched_lock, not the processor-set lock. The
     // thread-only getter provides the acquire fence for a sampled runq.
     processor_t runq=thread_get_runq(thread);q->runq=runq?runq->cpu_id:-1;
@@ -166,12 +170,17 @@ void boot_ui_trace_task(task_t task,unsigned index,int pid,const char *name,unsi
   }
   if(!samples[i].error)bt_walk(&samples[i],read_user,map);
   bt_add(&draft,&samples[i]);
-  if(sample_location_queue) {
+ }
+ // Every copied peer frame is walked before matching a queue node to its
+ // owner; a later thread in task order must not lose its caller frames.
+ if(sample_location_queue) {
+  for(unsigned i=0;i<count;++i) {
    struct btq_record record;const uint64_t ticks=mach_absolute_time();
    const int captured=btq_capture(&record,&sample_queue[i],&samples[i],slide,read_user,map);
    ++queue_examined;queue_pid=(unsigned)pid;
    if((record.valid&(BTQ_QUEUE|BTQ_TSD))!=(BTQ_QUEUE|BTQ_TSD))++queue_failed;
    if(captured) {
+    btq_capture_peers(&record,sample_queue,samples,count,read_user,map);
     record.ticks=ticks;record.finished=mach_absolute_time();
     if(queue_count<BT_QUEUE_LIMIT)queue_draft[queue_count++]=record;
     else ++queue_omitted;

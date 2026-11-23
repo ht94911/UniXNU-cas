@@ -17,19 +17,20 @@
 #pragma GCC diagnostic pop
 #endif
 #include "../../package/BootUiTraceQueue.h"
-static unsigned reads,writes,fail_read,change_read;
+static unsigned reads,writes,fail_read,change_read,change_peer_read;
 static unsigned char memory[0x10000];
 static void put(uint64_t at,uint64_t value) {assert(at+8<=sizeof(memory));memcpy(memory+at,&value,8);}
 static int reader(void *context,uint64_t at,void *out,unsigned size) {
  (void)context;++reads;
  if(reads==fail_read || at>sizeof(memory) || size>sizeof(memory)-at)return 1;
  if(reads==change_read) {put(0x23c8,0x6000);put(0x23d0,0x5030);put(0x4040,0x8000);}
+ if(reads==change_peer_read)put(0xa3c8,0x6300);
  memcpy(out,memory+at,size);return 0;
 }
 static void reset(void) {
- memset(memory,0,sizeof(memory));reads=writes=fail_read=change_read=0;
+ memset(memory,0,sizeof(memory));reads=writes=fail_read=change_read=change_peer_read=0;
  put(0x20a0,0x4000);put(0x23c8,0x9000);put(0x23d0,0);
- put(0x4030,0x7000);put(0x4068,0);put(0x4060,0x4800);
+ put(0x4030,0x7000);put(0x4068,0);put(0x4048,0x4800);put(0x4060,2);
  memcpy(memory+0x4800,"CLSuggestedActionManagerSilo",29);
  put(0x4038,0x1234);put(0x4000,0x10000000);
  put(0x4030,0x7000);
@@ -85,12 +86,67 @@ int main(void) {
  assert(btq_capture(&r,&t,&e,0,reader,0));assert(r.failed&BTQ_VALUE);
  // Row truncation is explicit, and every complete row is terminated within
  // the existing 120-byte buffer even at maximum-width pointer values.
- char rows[16][120];memset(rows,0xa5,sizeof(rows));
+ char rows[48][120];memset(rows,0xa5,sizeof(rows));
  r.ticks=UINT64_MAX;r.finished=UINT64_MAX;
  unsigned n=btq_rows(&r,259,rows,0,1);assert(n==1 && !strncmp(rows[0],"QMISS ",6));
- n=btq_rows(&r,259,rows,0,16);assert(n==12);
+ n=btq_rows(&r,259,rows,0,48);assert(n==16);
  for(unsigned i=0;i<n;++i)assert(memchr(rows[i],0,120));
+ // A blocked sync owner has an older node on its stack and a different
+ // current sync context. Preserve both, keyed by its real port and range.
+ struct btq_thread peers[3]={thread(),thread(),thread()};
+ struct bt_entry peer_entries[3]={{0}};
+ reset();e.pc=BTQ_WAIT_RETURN;t=thread();
+ assert(btq_capture(&r,&t,&e,0,reader,0));
+ assert(r.lane_words[12]==2 && !strcmp(r.label,"CLSuggestedActionManagerSilo"));
+ r.node=0x6500;r.node_words[12]=UINT64_C(0x4403)<<32;
+ peers[0].state=4;peers[0].bsd[13]=1;
+ peers[1].tid=0x345;peers[1].state=0x41;peers[1].tsd=0xa000;peers[1].sp=0x6100;
+ peers[1].bsd[0]=375;peers[1].bsd[2]=0x6000;peers[1].bsd[3]=0x4403;peers[1].bsd[13]=1;
+ peers[2]=peers[1];peers[2].state=5;
+ put(0xa3c8,0x6200);put(0x6200,0x13);peer_entries[1].frames[0]=BTQ_WAIT_RETURN;
+ reads=0;btq_capture_peers(&r,peers,peer_entries,3,reader,0);
+ assert(r.peer_candidates==1 && r.peer_count==1 && !r.peer_omitted);
+ assert(r.peers[0].thread.tid==0x345 && r.peers[0].match==3 && r.peers[0].valid==7);
+ assert(r.peers[0].words[0]==0x13 && r.peers[0].dsc==0x6200 && r.peers[0].dsc!=r.node);
+ assert(r.peers[0].frames[0]==BTQ_WAIT_RETURN && reads==3 && writes==0);
+ n=btq_rows(&r,246,rows,0,48);assert(n==28);
+ assert(strstr(rows[15],"candidates=1") && strstr(rows[16],"waiter=345"));
+ for(unsigned i=0;i<n;++i)assert(memchr(rows[i],0,120));
+ // An owner returned to an idle wait still has a port and stack. Its BSD
+ // helper leaves the typed continuation/kevent fields explicitly invalid.
+ r.peer_candidates=r.peer_count=r.peer_omitted=0;peers[1].bsd[13]=0;reads=0;
+ btq_capture_peers(&r,peers,peer_entries,3,reader,0);
+ assert(r.peer_count==1 && !r.peers[0].thread.bsd[13] && !r.peers[0].thread.bsd[14]);
+ n=btq_rows(&r,246,rows,0,48);assert(n==28 && strstr(rows[24],"typed=0"));
+ // A terminated or still runnable thread never supplies an owner sample.
+ r.peer_candidates=r.peer_count=r.peer_omitted=0;peers[1].state=0x51;reads=0;
+ btq_capture_peers(&r,peers,peer_entries,3,reader,0);
+ assert(!r.peer_candidates && !reads);peers[1].state=0x41;
+ peers[1].bsd[13]=1;r.peer_candidates=r.peer_count=r.peer_omitted=0;
+ reads=0;change_peer_read=3;
+ btq_capture_peers(&r,peers,peer_entries,3,reader,0);
+ assert(r.peers[0].dsc==0x6200 && r.peers[0].dsc_after==0x6300 && r.peers[0].valid==7);
+ change_peer_read=0;put(0xa3c8,0x6200);
+ // Port-only evidence remains distinct from stack-range evidence. An old
+ // context outside the active stack cannot be treated as the current one.
+ peers[1].bsd[13]=1;peers[1].bsd[2]=0x7000;
+ r.peer_candidates=r.peer_count=r.peer_omitted=0;reads=0;
+ btq_capture_peers(&r,peers,peer_entries,3,reader,0);
+ assert(r.peers[0].match==1 && r.peers[0].valid==5 && (r.peers[0].failed&2) && reads==2);
+ // Missing and changing TSD reads are retained as explicit incomplete data.
+ for(unsigned bad=1;bad<=3;++bad) {
+  r.peer_candidates=r.peer_count=r.peer_omitted=0;peers[1].bsd[2]=0x6000;
+  reads=0;fail_read=bad;memset(r.peers,0,sizeof(r.peers));
+  btq_capture_peers(&r,peers,peer_entries,3,reader,0);
+  assert(r.peer_count==1 && r.peers[0].failed && reads<=3);
+ }
+ fail_read=0;r.peer_candidates=r.peer_count=r.peer_omitted=0;
+ peers[0]=peers[1];peers[2]=peers[1];
+ btq_capture_peers(&r,peers,peer_entries,3,reader,0);
+ assert(r.peer_candidates==3 && r.peer_count==2 && r.peer_omitted==1);
+ assert(btq_rows(&r,246,rows,0,39)==1 && !strncmp(rows[0],"QMISS ",6));
+ assert(btq_rows(&r,246,rows,0,48)==40);
  assert(!writes);
- puts("PASS: original waiter frame, producer TSD, concurrent changes, failed reads, bounded complete rows");
+ puts("PASS: original waiter frame, complete node, matching blocked owner, typed wait union, producer TSD, bounded rows");
  return 0;
 }

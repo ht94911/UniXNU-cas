@@ -32,6 +32,10 @@ unlocked = body.index('task_unlock(task);\n // No thread pointers')
 sampled = body.index('btq_capture(')
 if not copied < unlocked < sampled:
     raise SystemExit('user queue reads must follow task and scheduler unlock')
+bsd_sample = body.index('sheng_gnss_waiter_snapshot(thread,q->hint')
+peer_sample = body.index('btq_capture_peers(')
+if not copied < bsd_sample < unlocked < sampled < peer_sample:
+    raise SystemExit('wait scalars must be locked; peer user reads must be unlocked')
 if 'const bool sample_location_queue=!strcmp(name,"locationd")' not in body:
     raise SystemExit('queue reads must stay scoped to the existing locationd role')
 if re.search(r'\bthread_get_runq_locked\s*\(', body):
@@ -112,6 +116,9 @@ int main(void) {
                   ASan_UBSan=True, user_reads_after_locks=True, bounded_records=8,
                   missing_reads_preserved=True, repeated_values_not_atomic=True,
                   original_waiter_return_frame_required=True, nonproducer_marker_rejected=True,
+                  complete_node_128_bytes=True, blocked_owner_port_and_stack_evidence=True,
+                  typed_wait_union_only=True, current_context_distinct_from_old_node=True,
+                  original_label_at_0x48=True, peer_limit=2,
                   actual_target_execution=False, phone_operations=False,
                   actual_XNU_runq_getters_executed=runq_verified,
                   old_missing_pset_lock_rejected=runq_verified,

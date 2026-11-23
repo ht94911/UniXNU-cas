@@ -23,7 +23,17 @@ enum {
 };
 struct btq_thread {
  uint64_t tid,tsd,sp,fp,pc,lr,x19,x20,x21,x1,x8,x9,x10;
+ uint64_t bsd[32];
  unsigned state,hint;int pri,runq,last,bound,chosen;
+};
+// Reuse scalar BSD wait data copied by the existing fatal snapshot helper.
+// The old node may be outside its owner's current sync frame, so a current
+// TSD pointer alone cannot identify who created the pending stack node.
+enum {BTQ_PEER_PORT=1u,BTQ_PEER_STACK=2u};
+struct btq_peer {
+ struct btq_thread thread;
+ uint64_t dsc,dsc_after,words[16],frames[8];
+ unsigned match,valid,failed;
 };
 struct btq_record {
  struct btq_thread thread;
@@ -31,7 +41,9 @@ struct btq_record {
  unsigned kind,valid,failed;
  uint64_t queue,queue_after,dsc,dsc_after,enqueuer,enqueuer_after;
  uint64_t slot,tail_slot,anchor,value,tail_value,value_after,tail_after;
- uint64_t lane,lane_words[16],node,node_words[10];
+ uint64_t lane,lane_words[16],node,node_words[16];
+ struct btq_peer peers[2];
+ unsigned peer_count,peer_candidates,peer_omitted;
  char label[49];
 };
 static int btq_read(struct btq_record *r,unsigned bit,bt_reader read,void *context,
@@ -99,7 +111,8 @@ static int btq_capture(struct btq_record *r,const struct btq_thread *thread,
   if(r->enqueuer>=0x30)r->lane=r->enqueuer-0x30;
  }
  if(btq_read(r,BTQ_LANE,read,context,r->lane,r->lane_words,sizeof(r->lane_words))) {
-  const uint64_t label=r->lane_words[12];
+  // The inspected LP64 lane label is at +0x48; +0x60 is sref count.
+  const uint64_t label=r->lane_words[9];
   if(bt_user(label,48) && !read(context,label,r->label,48))r->valid|=BTQ_LABEL;
   else r->failed|=BTQ_LABEL;
   r->label[48]=0;
@@ -123,11 +136,50 @@ static int btq_capture(struct btq_record *r,const struct btq_thread *thread,
  } else r->failed|=BTQ_QUEUE_REPEAT|BTQ_TSD_REPEAT;
  return 1;
 }
+static void btq_capture_peers(struct btq_record *r,const struct btq_thread *threads,
+                             const struct bt_entry *entries,unsigned count,
+                             bt_reader read,void *context) {
+ if(!(r->kind&BTQ_WAIT) || !(r->valid&BTQ_NODE))return;
+ const unsigned port=(unsigned)(r->node_words[12]>>32);
+ for(unsigned i=0;i<count && i<BT_MAX_THREADS;++i) {
+  const struct btq_thread *t=&threads[i];
+  // BSD copied port/stack scalars for every stable waiting thread. Its
+  // uu_save fields remain gated by bsd[13]: an owner may already have
+  // returned to an idle wait while the old node is still queued.
+  if((t->state&0x35u)!=1u)continue;
+  const uint64_t base=t->bsd[2];
+  unsigned match=0;
+  if(port && port==(unsigned)t->bsd[3])match|=BTQ_PEER_PORT;
+  if(base && r->node>=base && bt_user(t->tsd,8) &&
+     r->node<t->tsd && t->tsd-r->node>=sizeof(r->node_words))match|=BTQ_PEER_STACK;
+  if(!match)continue;
+  ++r->peer_candidates;
+  if(r->peer_count>=2) {++r->peer_omitted;continue;}
+  struct btq_peer *p=&r->peers[r->peer_count++];
+  memset(p,0,sizeof(*p));
+  p->thread=*t;p->match=match;
+  memcpy(p->frames,entries[i].frames,sizeof(p->frames));
+  // These reads follow the scheduler/task unlock, just like the lane read.
+  // Preserve changed pointers and failed reads instead of joining samples.
+  if(bt_user(t->tsd,0x3d0) && !(t->tsd&7)) {
+   if(!read(context,t->tsd+0x3c8,&p->dsc,8))p->valid|=1u;
+   else p->failed|=1u;
+   if((p->valid&1u) && !(p->dsc&15) && p->dsc>=t->sp &&
+      p->dsc>=base && p->dsc<t->tsd && t->tsd-p->dsc>=sizeof(p->words) &&
+      bt_user(p->dsc,sizeof(p->words))) {
+    if(!read(context,p->dsc,p->words,sizeof(p->words)))p->valid|=2u;
+    else p->failed|=2u;
+   } else p->failed|=2u;
+   if(!read(context,t->tsd+0x3c8,&p->dsc_after,8))p->valid|=4u;
+   else p->failed|=4u;
+  } else p->failed|=7u;
+ }
+}
 static unsigned btq_rows(const struct btq_record *r,unsigned pid,char rows[][120],unsigned n,unsigned max) {
  const struct btq_thread *t=&r->thread;
  // Reserve a complete record. Partial fields must not masquerade as a
  // successful read or crowd out the existing CPU/wait records.
- const unsigned needed=10+((r->kind&BTQ_WAIT)?2:0)+((r->kind&BTQ_ENQUEUE)?1:0);
+ const unsigned needed=10+((r->kind&BTQ_WAIT)?6:0)+((r->kind&BTQ_ENQUEUE)?1:0)+12*r->peer_count;
  if(max-n<needed) {
   if(n<max)snprintf(rows[n++],120,"QMISS p%u tid=%llx kind=%u rows=%u sampled=1",pid,t->tid,r->kind,needed);
   return n;
@@ -139,15 +191,31 @@ static unsigned btq_rows(const struct btq_record *r,unsigned pid,char rows[][120
  snprintf(rows[n++],120,"QTSD tid=%llx tsd=%llx q=%llx dsc=%llx enq=%llx",t->tid,t->tsd,r->queue,r->dsc,r->enqueuer);
  snprintf(rows[n++],120,"QREP tid=%llx q=%llx dsc=%llx enq=%llx",t->tid,r->queue_after,r->dsc_after,r->enqueuer_after);
  snprintf(rows[n++],120,"QLANE tid=%llx base=%llx tail=%llx head=%llx state=%llx",t->tid,r->lane,r->lane_words[6],r->lane_words[13],r->lane_words[7]);
- snprintf(rows[n++],120,"QOWNER tid=%llx flags=%llx target=%llx label=%llx",t->tid,r->lane_words[10],r->lane_words[3],r->lane_words[12]);
+ snprintf(rows[n++],120,"QOWNER tid=%llx flags=%llx target=%llx label=%llx",t->tid,r->lane_words[10],r->lane_words[3],r->lane_words[9]);
  snprintf(rows[n++],120,"QLABEL tid=%llx %.48s",t->tid,r->label);
  snprintf(rows[n++],120,"QNODE tid=%llx base=%llx flags=%llx next=%llx context=%llx owner=%llx",t->tid,r->node,r->node_words[0],r->node_words[2],r->node_words[4],r->node_words[7]);
  if(r->kind&BTQ_WAIT) {
   snprintf(rows[n++],120,"QWAIT tid=%llx slot=%llx tail_slot=%llx anchor=%llx",t->tid,r->slot,r->tail_slot,r->anchor);
   snprintf(rows[n++],120,"QVALUE tid=%llx before=%llx/%llx after=%llx/%llx",t->tid,r->value,r->tail_value,r->value_after,r->tail_after);
+  for(unsigned w=4;w<16;w+=4)
+   snprintf(rows[n++],120,"QNRAW tid=%llx word=%u %llx %llx %llx %llx",t->tid,w,r->node_words[w],r->node_words[w+1],r->node_words[w+2],r->node_words[w+3]);
+  snprintf(rows[n++],120,"QPEERS tid=%llx port=%x candidates=%u kept=%u omitted=%u sampled=1",t->tid,(unsigned)(r->node_words[12]>>32),r->peer_candidates,r->peer_count,r->peer_omitted);
  }
  if(r->kind&BTQ_ENQUEUE)
   snprintf(rows[n++],120,"QPUSH tid=%llx x1=%llx x8=%llx x9=%llx x10=%llx",t->tid,t->x1,t->x8,t->x9,t->x10);
+ for(unsigned i=0;i<r->peer_count;++i) {
+  const struct btq_peer *p=&r->peers[i];const struct btq_thread *q=&p->thread;
+  snprintf(rows[n++],120,"QPEER tid=%llx waiter=%llx match=%u st=%x hint=%u syscall=%llu",t->tid,q->tid,p->match,q->state,q->hint,q->bsd[0]);
+  snprintf(rows[n++],120,"QPSTACK tid=%llx base=%llx port=%llx tsd=%llx",q->tid,q->bsd[2],q->bsd[3],q->tsd);
+  snprintf(rows[n++],120,"QPSP tid=%llx sp=%llx fp=%llx pc=%llx lr=%llx",q->tid,q->sp,q->fp,q->pc,q->lr);
+  snprintf(rows[n++],120,"QPDSC tid=%llx before=%llx after=%llx valid=%x failed=%x",q->tid,p->dsc,p->dsc_after,p->valid,p->failed);
+  for(unsigned w=0;w<16;w+=4)
+   snprintf(rows[n++],120,"QDRAW tid=%llx word=%u %llx %llx %llx %llx",q->tid,w,p->words[w],p->words[w+1],p->words[w+2],p->words[w+3]);
+  snprintf(rows[n++],120,"QPBSD tid=%llx typed=%llu event=%llx flags=%llx lane=%llx fflags=%llx",q->tid,q->bsd[13],q->bsd[14],q->bsd[15],q->bsd[16],q->bsd[17]);
+  snprintf(rows[n++],120,"QPBSDX tid=%llx addr=%llx mask=%llx value=%llx output=%llx",q->tid,q->bsd[20],q->bsd[21],q->bsd[22],q->bsd[26]);
+  for(unsigned w=0;w<8;w+=4)
+   snprintf(rows[n++],120,"QPFRAME tid=%llx word=%u %llx %llx %llx %llx",q->tid,w,p->frames[w],p->frames[w+1],p->frames[w+2],p->frames[w+3]);
+ }
  return n;
 }
 #endif
