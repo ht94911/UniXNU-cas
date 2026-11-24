@@ -1,7 +1,7 @@
 {
   "schema": 1,
-  "purpose": "Camera142 normalize owned completed-frame empty request before original geometry; actual BWNodeOutput/prepare90/final transfer caller; full-vs-empty rectangles plus actual pixels; retain Native140,GPU115,Data128 and all prior changes",
-  "device_revision": "7bf09622a84285d5a92196efc408d006bd70ca10",
+  "purpose": "Camera144 normalize the consumed owned empty crop on a sample copy before real BWPixelTransferNode input dimensions and transfer; original node state, pixels, PTS and nonempty/foreign/invalid paths retained; Native140 GPU115 Data128 unchanged",
+  "device_revision": "f7bed36bead7337ba922902ca3a92ec89255de9e",
   "files": {
     "source/NezhaFigCapture24A446.h": "d31d3abe7761aa99f92eaab45357716c6d4c4372e5425658d2a7af80f3894212",
     "source/NezhaCameraDiscovery.m": "e2ede8f37f0eb067e0277a49d137d27495652de652a6166d7af2d8b50297773b",
@@ -15,9 +15,9 @@
     "source/camera-memory-self.c": "9caf3474eb524e40c52e672c64c9f8f5acb59bdc465af933f6cf375567de2546",
     "source/camera-discovery.m": "5e7db9096f8d7621c0e48efc1369a4d14ece6ce0655ad5030f0a2268bd785e85",
     "source/NezhaCameraRendererProbe.mm": "7123279d120ba36b2ca12c136c093f28d5999b2d61e7caebbe1019b1cfaf0316",
-    "ci/build-renderer.py": "fcaf99b2ff6b4bd44cc4c89084454b845858eba3a94a5e150b0b342e9db8182a",
+    "ci/build-renderer.py": "85888c9ff5a6d9ace4a0d458bbf5cc9798891a4b58821a53bd0dc3eb86bc98a7",
     "source/userland/NezhaCameraRenderer.h": "4d46894937a612bc59e95f8b4c109a7dd15c73dbdaaeec028b5aceb021301dd5",
-    "source/userland/NezhaCameraRenderer.m": "1e17d6100a5a4f878edad58569c88bf85dfa210d6a47102a1fda91b8e6521c6f",
+    "source/userland/NezhaCameraRenderer.m": "8e565311a95e6f26708e7f4bcd694fd56372b8609f1efab1128d2a32f503a527",
     "source/userland/NezhaFigCapture24A446.h": "d31d3abe7761aa99f92eaab45357716c6d4c4372e5425658d2a7af80f3894212",
     "source/userland/NezhaCameraFormats.c": "6127ffc8e6984752f434fde4a5eabd69a399d99f47754430be1939f7ff606f83",
     "source/userland/NezhaCameraDeviceBackend.c": "0ab259eca1a6ad30ef2763ba5a6a4701a1504be2e29874ff2e194d025cb8791a",
@@ -36,14 +36,14 @@
     "source/userland/NezhaCameraFigProvider.h": "c5f3bcc5169cf052e08d3210b5672231c2704f8f0917444cb0b287a2a5b115bd",
     "source/userland/NezhaCameraGraphOutput.h": "c1e87f82ab36945a3ea05591281f731fe139483f937bf8553129750dfa67ec3c",
     "source/userland/NezhaCameraPixelBuffer.h": "9d76ab5819a877a5e4964139a63f990c2bbcdd69f793422dd2a49423c31649cc",
-    "source/userland/camera-renderer-host.m": "049ea5478d30a49a06df779b83354fb1f09ec537153583f41215b845163c4e1a",
+    "source/userland/camera-renderer-host.m": "877fd78e82e30ced7bf5404fde1f05cf1345eff85339ee02c9cccd7c6d811995",
     "source/userland/NezhaCameraPixelBuffer.c": "622f75ca84ad6b478472193e276b00a0b8ae702bb4753d0ce9121c4cc435ef6e",
     "source/userland/upstream/hakios/ORIGIN.json": "98dd0460144db96a036213230e97d94a924e858651beaf89ad525121d97307c9",
     "source/userland/upstream/hakios/camera_isp.c": "f1a8671f256101c62dc57d916923f6e9d559fce193715b85192bf59d330f51d5",
     "source/userland/upstream/hakios/hakios.camera.h": "97f80aa60adb7d2a43d93f3edfde294ba0c447586069cb81fa9ac58c789d6444",
     "source/userland/upstream/hakios/camera_isp.h": "311a1fae76f71d05c767915b5d6ba52c498381ae49621307dcc085fe14c29875",
     "source/userland/upstream/hakios/LICENSE": "26289124703e5931e099f915c784296b0c0fcf0485c743214365a3a82a514f05",
-    ".github/workflows/nezha-ios27-native.yml": "ec0379814f7248d63416ce36bdb0073d1f7f0b61de75ec8b6662394cd5884249"
+    ".github/workflows/nezha-ios27-native.yml": "4514071dfa22ee36249dea9fcef771a2a2a857d2dac709c05f6c0207c6212157"
   },
   "builder_sha256": "8d72bfe48f08b76955be214b5e31b5f9fbda0b812af6d14fd59477f8fffa12a2",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",

@@ -32,6 +32,8 @@ static CGPoint received_shift;
 static bool geometry_depends_on_input;
 static bool geometry_empty_export;
 static bool geometry_empty_output;
+static unsigned node_calls;
+static CMSampleBufferRef received_node_sample;
 struct OpaqueVTPixelRotationSession;
 
 @interface FigM2MController : NSObject
@@ -91,6 +93,27 @@ struct OpaqueVTPixelRotationSession;
 @implementation TestPreviewSink
 - (void)renderSampleBuffer:(CMSampleBufferRef)sample forInput:(id)input {
  ++preview_calls;received_sample=sample;received_input=input;
+}
+@end
+@interface TestPixelTransferNode : NSObject {
+@public
+ unsigned char _padding[120];
+ int _cropMode,_liveCropMode;
+ CGRect _inputCropRect,_liveInputCropRect;
+ bool _haveLiveInputCropRect;
+ unsigned char _padding2[199];
+ bool _makeCurrentConfigurationLiveOnNextRenderCallback;
+ unsigned char _padding3[17];
+ bool _appliesPrimaryCaptureRect;
+ unsigned char _padding4[48];
+}
+- (void)renderSampleBuffer:(CMSampleBufferRef)sample forInput:(id)input;
+@end
+@implementation TestPixelTransferNode
+- (void)renderSampleBuffer:(CMSampleBufferRef)sample forInput:(id)input {
+ ++node_calls;received_input=input;
+ if(received_node_sample)CFRelease(received_node_sample);
+ received_node_sample=sample?(CMSampleBufferRef)CFRetain(sample):NULL;
 }
 @end
 #include "NezhaCameraRenderer.m"
@@ -311,6 +334,65 @@ int main(void) {@autoreleasepool {
    assert(CMGetAttachment(sample,CFSTR("MetadataDictionary"),NULL)==(CFDictionaryRef)info);
    struct PreviewPixels after=preview_pixels(pixel);
    assert(!memcmp(observed.luma,after.luma,sizeof observed.luma));++cases;
+   TestPixelTransferNode *node=[TestPixelTransferNode new];
+   const char *field_names[]={"_cropMode","_liveCropMode","_inputCropRect","_liveInputCropRect",
+     "_makeCurrentConfigurationLiveOnNextRenderCallback","_appliesPrimaryCaptureRect"};
+   const ptrdiff_t field_offsets[]={128,132,136,168,400,418};
+   for(unsigned i=0;i<6;++i)assert(ivar_getOffset(class_getInstanceVariable([TestPixelTransferNode class],field_names[i]))==field_offsets[i]);
+   assert(class_getInstanceSize([TestPixelTransferNode class])>=467);
+   pixel_transfer_node_class=[TestPixelTransferNode class];
+   original_pixel_transfer_node=method_getImplementation(class_getInstanceMethod(pixel_transfer_node_class,@selector(renderSampleBuffer:forInput:)));
+   const CGRect requests[]={CGRectMake(801,601,0,0),CGRectMake(0,0,1,1),
+      CGRectMake(.25,.125,.5,.75),CGRectMake(NAN,601,0,0),
+      CGRectMake(801,INFINITY,0,0),CGRectMake(0,0,0,1),CGRectMake(0,0,-1,0)};
+   for(unsigned mode=0;mode<4;++mode)for(unsigned request=0;request<7;++request)
+   for(unsigned own=0;own<2;++own)for(unsigned pending=0;pending<2;++pending) {
+     CFDictionaryRef crop=CGRectCreateDictionaryRepresentation(requests[request]);
+     NSDictionary *metadata=@{@"FrameSequence":@7,@"DigitalZoomRatio":@1,
+       @"FinalCropRect":(NSDictionary *)crop,@"ValidBufferRect":(NSDictionary *)crop};
+     CMSetAttachment(sample,CFSTR("PrimaryCaptureRect"),crop,kCMAttachmentMode_ShouldNotPropagate);
+     CMSetAttachment(sample,CFSTR("MetadataDictionary"),(CFDictionaryRef)metadata,kCMAttachmentMode_ShouldPropagate);
+     CVBufferSetAttachment(pixel,CFSTR("NezhaCameraCompletedRaw1x"),own?kCFBooleanTrue:kCFBooleanFalse,kCVAttachmentMode_ShouldPropagate);
+     node->_cropMode=node->_liveCropMode=(int)mode;
+     node->_appliesPrimaryCaptureRect=true;
+     node->_makeCurrentConfigurationLiveOnNextRenderCallback=pending;
+     node_calls=0;render_pixel_transfer_sample(node,@selector(renderSampleBuffer:forInput:),sample,pool);
+     const bool repaired=own&&request==0;
+     assert(node_calls==1&&received_input==pool&&received_node_sample);
+     assert((received_node_sample!=sample)==repaired);
+     assert(CMSampleBufferGetImageBuffer(received_node_sample)==pixel);
+     assert(CMTimeCompare(CMSampleBufferGetPresentationTimeStamp(received_node_sample),timing.presentationTimeStamp)==0);
+     assert(CMGetAttachment(sample,CFSTR("PrimaryCaptureRect"),NULL)==crop);
+     assert(CMGetAttachment(sample,CFSTR("MetadataDictionary"),NULL)==(CFDictionaryRef)metadata);
+     assert(CMGetAttachment(received_node_sample,CFSTR("FrameIsBlackened"),NULL)==kCFBooleanTrue);
+     if(repaired) {
+       const bool primary=mode==0||mode==2;
+       CMAttachmentMode selected_mode=kCMAttachmentMode_ShouldPropagate;
+       CFDictionaryRef selected_metadata=primary?NULL:(CFDictionaryRef)CMGetAttachment(received_node_sample,CFSTR("MetadataDictionary"),NULL);
+       CFDictionaryRef selected_crop=primary?(CFDictionaryRef)CMGetAttachment(received_node_sample,CFSTR("PrimaryCaptureRect"),&selected_mode):
+         CFDictionaryGetValue(selected_metadata,mode==1?CFSTR("FinalCropRect"):CFSTR("ValidBufferRect"));
+       CGRect selected_rect;assert(CGRectMakeWithDictionaryRepresentation(selected_crop,&selected_rect));
+       const CGRect expected=CGRectMake(0,0,mode==3?12:1,mode==3?26:1);
+       assert(CGRectEqualToRect(selected_rect,expected));
+       if(primary)assert(selected_mode==kCMAttachmentMode_ShouldNotPropagate);
+       else assert(CFEqual(CFDictionaryGetValue(selected_metadata,CFSTR("FrameSequence")),(CFTypeRef)@7));
+       assert(node->_cropMode==(int)mode&&node->_liveCropMode==(int)mode&&node->_makeCurrentConfigurationLiveOnNextRenderCallback==pending);
+     }
+     struct PreviewPixels transferred=preview_pixels(pixel);
+     assert(!memcmp(observed.luma,transferred.luma,sizeof observed.luma));
+     CFRelease(crop);++cases;
+   }
+   CMRemoveAttachment(sample,CFSTR("PrimaryCaptureRect"));
+   CMRemoveAttachment(sample,CFSTR("MetadataDictionary"));
+   CVBufferSetAttachment(pixel,CFSTR("NezhaCameraCompletedRaw1x"),kCFBooleanTrue,kCVAttachmentMode_ShouldPropagate);
+   for(int mode=-1;mode<5;++mode) {
+     node->_cropMode=node->_liveCropMode=mode;node_calls=0;
+     render_pixel_transfer_sample(node,@selector(renderSampleBuffer:forInput:),sample,pool);
+     assert(node_calls==1&&received_node_sample==sample);++cases;
+   }
+   node_calls=0;render_pixel_transfer_sample(node,@selector(renderSampleBuffer:forInput:),NULL,pool);
+   assert(node_calls==1&&received_node_sample==NULL);++cases;
+   [node release];
    CFRelease(sample);CFRelease(description);CFRelease(pixel);
  }
  for(unsigned i=0;i<10;++i) {

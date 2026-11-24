@@ -4,6 +4,7 @@
 #include "NezhaCameraRenderer.h"
 #include <CoreMedia/CoreMedia.h>
 #include <CoreVideo/CoreVideo.h>
+#include <CoreGraphics/CGGeometry.h>
 #include <IOSurface/IOSurfaceRef.h>
 #include <mach/mach_time.h>
 #include <mach-o/dyld.h>
@@ -23,7 +24,10 @@ static IMP original_supports,original_initializer,original_transfer,original_bor
 static IMP original_scale,original_oriented_scale;
 static IMP original_preview_sink;
 static IMP original_input_rect;
+static IMP original_pixel_transfer_node;
 static bool capture_seen,installed,preview_sink_installed,input_rect_installed;
+static bool pixel_transfer_node_installed;
+static Class pixel_transfer_node_class;
 static intptr_t capture_slide;
 static const uint8_t uuid[16]={0x99,0x5f,0xc2,0x2b,0x41,0xbd,0x37,0xb4,0x81,0x2f,0x26,0x86,0xb8,0x1c,0x26,0x94};
 /* The existing renderer stderr records only the first eight final inputs.
@@ -185,6 +189,109 @@ static bool own_full_source(CVPixelBufferRef source)
     const bool matched=CFGetTypeID(origin)==CFBooleanGetTypeID() &&
         CFBooleanGetValue((CFBooleanRef)origin);
     CFRelease(origin);return matched;
+}
+/* The real preview's downstream BWPixelTransferNode reads crop attachments
+ * before computing both its input dimensions and its transfer rectangles.
+ * A completed 1x image with an empty crop cannot be repaired only at the
+ * renderer's by-value rotation call: the node still calculates a 0x0 input.
+ * Normalize only the crop consumed by this node, on a sample copy. Its
+ * original configuration, pixels and timestamp remain owned by the system. */
+static bool empty_finite_rect(CFTypeRef value,RendererRect *rect)
+{
+    CGRect decoded;
+    if (!value || CFGetTypeID(value)!=CFDictionaryGetTypeID() ||
+        !CGRectMakeWithDictionaryRepresentation((CFDictionaryRef)value,&decoded)) return false;
+    *rect=(RendererRect){{decoded.origin.x,decoded.origin.y},
+        {decoded.size.width,decoded.size.height}};
+    return isfinite(rect->origin.x) && isfinite(rect->origin.y) &&
+        rect->size.width==0 && rect->size.height==0;
+}
+static CMSampleBufferRef transfer_sample(CMSampleBufferRef sample,CVPixelBufferRef image,
+    int crop_mode,bool applies_primary,unsigned *repaired,OSStatus *error,RendererRect *requested)
+{
+    *repaired=0;*error=0;*requested=(RendererRect){0};
+    if (!sample || !own_full_source(image)) return sample;
+    const bool primary=crop_mode==2 || (crop_mode==0 && applies_primary);
+    CFStringRef key=primary?CFSTR("PrimaryCaptureRect"):
+        crop_mode==1?CFSTR("FinalCropRect"):crop_mode==3?CFSTR("ValidBufferRect"):NULL;
+    if (!key) return sample;
+    CMAttachmentMode mode=kCMAttachmentMode_ShouldPropagate;
+    CFTypeRef metadata=primary?NULL:CMGetAttachment(sample,CFSTR("MetadataDictionary"),&mode);
+    if (!primary && (!metadata || CFGetTypeID(metadata)!=CFDictionaryGetTypeID())) return sample;
+    CFTypeRef value=primary?CMGetAttachment(sample,key,&mode):
+        CFDictionaryGetValue((CFDictionaryRef)metadata,key);
+    if (!empty_finite_rect(value,requested)) return sample;
+    const CGRect full=CGRectMake(0,0,crop_mode==3?CVPixelBufferGetWidth(image):1,
+        crop_mode==3?CVPixelBufferGetHeight(image):1);
+    CFDictionaryRef rectangle=CGRectCreateDictionaryRepresentation(full);
+    CFMutableDictionaryRef selected=metadata?CFDictionaryCreateMutableCopy(NULL,0,
+        (CFDictionaryRef)metadata):NULL;
+    CMSampleBufferRef copy=NULL;
+    if (!rectangle || (metadata && !selected)) *error=kCVReturnAllocationFailed;
+    else *error=CMSampleBufferCreateCopy(NULL,sample,&copy);
+    if (!*error && copy) {
+        if (primary) CMSetAttachment(copy,key,rectangle,mode);
+        else {
+            CFDictionarySetValue(selected,key,rectangle);
+            CMSetAttachment(copy,CFSTR("MetadataDictionary"),selected,mode);
+        }
+        *repaired=primary?1:crop_mode==1?2:4;
+    } else {
+        if (copy) CFRelease(copy);
+        copy=NULL;
+        if (!*error) *error=kCVReturnAllocationFailed;
+    }
+    if (rectangle) CFRelease(rectangle);
+    if (selected) CFRelease(selected);
+    return copy?copy:sample;
+}
+static void render_pixel_transfer_sample(id self,SEL selector,CMSampleBufferRef sample,id input)
+{
+    CVPixelBufferRef image=sample?CMSampleBufferGetImageBuffer(sample):NULL;
+    int crop_mode=-1;bool applies_primary=false,pending=false;
+    RendererRect live={0};
+    const bool owned=own_full_source(image);
+    if (owned && self && object_getClass(self)==pixel_transfer_node_class) {
+        const uint8_t *bytes=(const void *)self;
+        pending=bytes[400]!=0;
+        memcpy(&crop_mode,bytes+(pending?128:132),sizeof crop_mode);
+        memcpy(&live,bytes+(pending?136:168),sizeof live);
+        applies_primary=bytes[418]!=0;
+    }
+    unsigned repaired=0;OSStatus error=0;RendererRect requested={0};
+    CMSampleBufferRef selected=transfer_sample(sample,image,crop_mode,applies_primary,
+        &repaired,&error,&requested);
+    static unsigned reports;
+    if (owned && __atomic_fetch_add(&reports,1u,__ATOMIC_RELAXED)<8)
+        fprintf(stderr,"nezha-camera: pixel transfer node=%p sample=%p selected=%p source=%zux%zu crop_mode=%d pending=%u primary=%u configured_crop=%.9g,%.9g,%.9g,%.9g requested=%.9g,%.9g,%.9g,%.9g repaired=%u error=%d\n",
+            (void *)self,(void *)sample,(void *)selected,CVPixelBufferGetWidth(image),
+            CVPixelBufferGetHeight(image),crop_mode,(unsigned)pending,(unsigned)applies_primary,
+            live.origin.x,live.origin.y,live.size.width,live.size.height,
+            requested.origin.x,requested.origin.y,requested.size.width,requested.size.height,
+            repaired,(int)error);
+    ((void (*)(id,SEL,CMSampleBufferRef,id))original_pixel_transfer_node)(self,selector,selected,input);
+    if (selected!=sample) CFRelease(selected);
+}
+static void install_pixel_transfer_node(void)
+{
+    if (pixel_transfer_node_installed) return;
+    Class type=objc_getClass("BWPixelTransferNode");
+    Method method=type?class_getInstanceMethod(type,sel_registerName("renderSampleBuffer:forInput:")):NULL;
+    IMP original=method?method_getImplementation(method):NULL;
+    if (!original || strcmp(method_getTypeEncoding(method),"v32@0:8^{opaqueCMSampleBuffer=}16@24") ||
+        (uintptr_t)ptrauth_strip(original,ptrauth_key_function_pointer)!=(uintptr_t)(0x1b04ae89cULL+capture_slide) ||
+        class_getInstanceSize(type)<467) return;
+    const char *names[]={"_cropMode","_liveCropMode","_inputCropRect","_liveInputCropRect",
+        "_makeCurrentConfigurationLiveOnNextRenderCallback","_appliesPrimaryCaptureRect"};
+    const ptrdiff_t offsets[]={128,132,136,168,400,418};
+    for (unsigned i=0;i<sizeof offsets/sizeof offsets[0];++i) {
+        Ivar ivar=class_getInstanceVariable(type,names[i]);
+        if (!ivar || ivar_getOffset(ivar)!=offsets[i]) return;
+    }
+    pixel_transfer_node_class=type;original_pixel_transfer_node=original;
+    method_setImplementation(method,(IMP)render_pixel_transfer_sample);
+    pixel_transfer_node_installed=true;
+    fputs("nezha-camera: original pixel transfer completed-frame crop repair installed readonly-node=1\n",stderr);
 }
 /* Camera141 verified that repairing the returned input alone leaves the
  * original output rectangle empty and submits a zero-sized GPU dispatch.
@@ -355,6 +462,7 @@ bool nezha_camera_renderer_install(const struct mach_header *header,intptr_t sli
     if (!capture_seen) return false;
     install_preview_sink();
     install_input_rect();
+    install_pixel_transfer_node();
     if (installed) return true;
     Class type=objc_getClass("BWPixelBufferTransferRenderer");
     Method support=type ? class_getClassMethod(type,sel_registerName("supportsAcceleratedBorderFill")):NULL;
