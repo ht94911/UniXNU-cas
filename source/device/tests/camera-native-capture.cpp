@@ -179,6 +179,9 @@ extern "C" uint32_t nezha_camera_native_irq_fault(const NezhaCameraNativeIrq *) 
 extern "C" bool nezha_camera_native_irq_failure(const NezhaCameraNativeIrq *,NezhaCamera1080Events *event)
 { assert(!irq_active);if(!irq_fault)return false;*event={};event->rx_irq=1u<<12;return true; }
 extern "C" bool nezha_camera_native_irq_next(NezhaCameraNativeIrq *,NezhaCamera1080Events *) { return true; }
+extern "C" void nezha_camera_native_irq_wait(NezhaCameraNativeIrq *,unsigned milliseconds)
+{ assert(irq_active && milliseconds==1); }
+extern "C" void nezha_camera_native_irq_wake(void) {}
 extern "C" ArmSmmu4KStatus nezha_camera_native_smmu_prepare(NezhaCameraNativeSmmu **out,unsigned,unsigned,unsigned,unsigned *bits)
 { assert(!*out && !smmu_active);*out=(NezhaCameraNativeSmmu *)1;*bits=40;smmu_active=true;return ArmSmmu4KSuccess; }
 extern "C" bool nezha_camera_native_memory_prepare(NezhaCameraNativeMemory **out,unsigned,uint32_t,uint32_t)

@@ -298,8 +298,13 @@ bool nezha_camera1080_requeue_rdi0(const struct NezhaCamera1080Io *io,
         return false;
     }
     io->write_vfe(io->context, VfeRdi0ImageAddress, layout->image_address[buffer]);
-    apply_rdi0_update(io, CsidAddressUpdate);
-    apply_rdi0_update(io, CsidRegUpdate);
+    /* The stock split-RUP/AUP path writes both masks, then commits SET
+     * once (cam_ife_csid_ver2_get_mc_reg_val_pair). AUP and RUP describe
+     * this same replacement; two SETs can latch the address separately
+     * from its register update. Preserve the 256-byte address units. */
+    io->write_csid(io->context, CsidRegUpdate, CsidUpdateRdi0);
+    io->write_csid(io->context, CsidAddressUpdate, CsidUpdateRdi0);
+    io->write_csid(io->context, CsidApplyUpdate, 1);
     return true;
 }
 

@@ -3,6 +3,8 @@
 
 #include <IOKit/IOLib.h>
 #include <kern/clock.h>
+#include <kern/sched_prim.h>
+#include <kern/thread.h>
 
 extern "C" IOReturn armcpu_spi_attach(uint32_t, bool, void (*)(void *),
     void *, uint32_t *, uint64_t *);
@@ -29,12 +31,27 @@ struct NezhaCameraNativeIrq {
     NezhaCameraIrqQueue queue{};
     NezhaCamera1080Events failure{};
     uint32_t fault{}, handlers{}, spi_readback{};
+    uint32_t wake_generation{};
     uint64_t spi_route{};
     uint32_t mask_before[4]{};
     bool used{}, armed{}, stopped{}, retired{};
 };
 
 static NezhaCameraNativeIrq irq;
+
+static void notify(NezhaCameraNativeIrq *owner)
+{
+    __atomic_add_fetch(&owner->wake_generation, 1u, __ATOMIC_RELEASE);
+    thread_wakeup((event_t)&owner->wake_generation);
+}
+
+static bool pending(const NezhaCameraNativeIrq *owner)
+{
+    return __atomic_load_n(&owner->fault, __ATOMIC_ACQUIRE) ||
+        !__atomic_load_n(&owner->armed, __ATOMIC_SEQ_CST) ||
+        __atomic_load_n(&owner->queue.produced, __ATOMIC_ACQUIRE) !=
+        __atomic_load_n(&owner->queue.consumed, __ATOMIC_ACQUIRE);
+}
 
 static void stop_sources(NezhaCameraNativeIrq *owner)
 {
@@ -60,6 +77,9 @@ static void interrupt(void *cookie)
             stop_sources(owner);
             __atomic_store_n(&owner->armed, false, __ATOMIC_SEQ_CST);
         }
+        // Match Qualcomm's interrupt-driven completion delivery. Only
+        // the normal worker acquires CPU frames and submits replacements.
+        if (frame_event || __atomic_load_n(&owner->fault, __ATOMIC_ACQUIRE)) notify(owner);
     }
     __atomic_sub_fetch(&owner->handlers, 1u, __ATOMIC_SEQ_CST);
 }
@@ -134,6 +154,28 @@ bool nezha_camera_native_irq_next(NezhaCameraNativeIrq *owner, NezhaCamera1080Ev
     return true;
 }
 
+void nezha_camera_native_irq_wait(NezhaCameraNativeIrq *owner, unsigned milliseconds)
+{
+    if (owner != &irq || !milliseconds || milliseconds > 1000) return;
+    const uint32_t generation = __atomic_load_n(&owner->wake_generation, __ATOMIC_ACQUIRE);
+    if (pending(owner)) return;
+    const wait_result_t armed = assert_wait_timeout((event_t)&owner->wake_generation,
+        THREAD_UNINT, milliseconds, NSEC_PER_MSEC);
+    if (armed != THREAD_WAITING) return;
+    /* IRQ or Close can arrive before or after assert_wait_timeout. A
+     * changed generation or a newly queued event clears the registered
+     * wait; a later wake is retained by the scheduler before thread_block.
+     * Reuse the display/GPU owner's existing XNU wait/clear/block pattern. */
+    if (pending(owner) || generation != __atomic_load_n(&owner->wake_generation, __ATOMIC_ACQUIRE))
+        clear_wait(current_thread(), THREAD_AWAKENED);
+    thread_block(THREAD_CONTINUE_NULL);
+}
+
+void nezha_camera_native_irq_wake(void)
+{
+    notify(&irq);
+}
+
 uint32_t nezha_camera_native_irq_fault(const NezhaCameraNativeIrq *owner)
 {
     return owner == &irq ? __atomic_load_n(&owner->fault, __ATOMIC_ACQUIRE) : UINT32_MAX;
@@ -151,6 +193,7 @@ bool nezha_camera_native_irq_stop(NezhaCameraNativeIrq *owner)
     if (owner != &irq || !owner->used) return false;
     stop_sources(owner);
     __atomic_store_n(&owner->armed, false, __ATOMIC_SEQ_CST);
+    notify(owner);
     for (unsigned ms = 0; ms <= 100; ++ms) {
         if (__atomic_load_n(&owner->handlers, __ATOMIC_SEQ_CST) == 0) {
             for (unsigned i = 0; i < 4; ++i)

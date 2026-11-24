@@ -201,10 +201,10 @@ static void reset_wait(void *context, unsigned milliseconds)
 
 static void record_requeue(void *context, uint32_t offset, uint32_t value)
 {
-    static const uint32_t registers[] = {0x2c04, 0x118, 0x11c, 0x114, 0x11c};
-    static const uint32_t values[] = {0x210000, 0x100, 1, 0x100, 1};
+    static const uint32_t registers[] = {0x2c04, 0x114, 0x118, 0x11c};
+    static const uint32_t values[] = {0x210000, 0x100, 0x100, 1};
     unsigned *step = context;
-    assert(*step < 5 && registers[*step] == offset && values[*step] == value);
+    assert(*step < 4 && registers[*step] == offset && values[*step] == value);
     ++*step;
 }
 
@@ -309,7 +309,7 @@ int main(void)
     struct NezhaCameraRdi1080 layout;
     assert(nezha_camera_rdi1080_layout(640, 480, buffers, &layout));
     const struct NezhaCamera1080Io requeue = {&step, record_requeue, record_requeue};
-    assert(nezha_camera1080_requeue_rdi0(&requeue, &layout, 1) && step == 5);
+    assert(nezha_camera1080_requeue_rdi0(&requeue, &layout, 1) && step == 4);
 
     session = (struct Session){0};
     struct TestPattern tpg = {.receiver = &session, .registers = {0x20040000}, .ignore_type = true};

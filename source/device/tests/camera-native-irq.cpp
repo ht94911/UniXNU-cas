@@ -1,5 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 #include "NezhaCameraNativeIrq.h"
+#include <kern/sched_prim.h>
+#include <kern/clock.h>
 
 #include <cassert>
 #include <cstdio>
@@ -8,6 +10,53 @@
 static void (*handler)(void *);
 static void *irq_context;
 static unsigned attaches;
+static unsigned wait_arms, wait_blocks, wait_clears, wake_calls, wait_timeouts;
+static unsigned inject_stage;
+static event_t wait_channel;
+static bool wait_registered, wait_notified, wait_refused;
+static void inject_completion(void);
+
+extern "C" thread_t current_thread(void) { return reinterpret_cast<thread_t>(1); }
+extern "C" wait_result_t assert_wait_timeout(event_t event, int mode, uint32_t interval, uint32_t scale)
+{
+    assert(event && mode == THREAD_UNINT && interval == 1 && scale == NSEC_PER_MSEC);
+    assert(!wait_registered);
+    ++wait_arms;
+    if (wait_refused) return THREAD_AWAKENED;
+    // The producer can run after the empty check but before wait registration.
+    if (inject_stage == 1) inject_completion();
+    wait_channel = event;
+    wait_registered = true;
+    wait_notified = false;
+    // It can also run after registration, before the worker's final recheck.
+    if (inject_stage == 2) inject_completion();
+    if (inject_stage == 4) nezha_camera_native_irq_wake();
+    return THREAD_WAITING;
+}
+extern "C" int clear_wait(thread_t thread, wait_result_t result)
+{
+    assert(thread == current_thread() && result == THREAD_AWAKENED && wait_registered);
+    ++wait_clears;
+    wait_notified = true;
+    return 0;
+}
+extern "C" int thread_wakeup_prim(event_t event, bool one, wait_result_t result)
+{
+    assert(event && !one && result == THREAD_AWAKENED);
+    ++wake_calls;
+    if (wait_registered && wait_channel == event) wait_notified = true;
+    return 0;
+}
+extern "C" wait_result_t thread_block(thread_continue_t continuation)
+{
+    assert(continuation == THREAD_CONTINUE_NULL && wait_registered);
+    ++wait_blocks;
+    // Producer after final recheck, immediately before the actual scheduler block.
+    if (inject_stage == 3) inject_completion();
+    if (!wait_notified) ++wait_timeouts;
+    wait_registered = false;
+    return wait_notified ? THREAD_AWAKENED : 2;
+}
 
 extern "C" int armcpu_spi_attach(uint32_t id, bool edge, void (*callback)(void *), void *cookie,
     uint32_t *readback, uint64_t *route)
@@ -31,6 +80,16 @@ struct Model {
     unsigned reads{}, writes{};
     uint32_t refused_mask{};
 };
+static Model *active_model;
+static void inject_completion(void)
+{
+    assert(active_model);
+    active_model->top = 1u << 16 | 1u << 3;
+    active_model->rdi = 1u << 23;
+    active_model->buffer = 1u << 16;
+    active_model->address = 0x123400;
+    handler(irq_context);
+}
 
 static uint32_t read(void *cookie, uint32_t offset)
 {
@@ -72,6 +131,7 @@ static void write(void *cookie, uint32_t offset, uint32_t value)
 int main(int argc, char **argv)
 {
     Model model;
+    active_model = &model;
     const NezhaCameraRegisterIo io = {&model, read, write, nullptr};
     NezhaCameraNativeIrq *owner = nullptr;
     NezhaCameraNativeIrqSetup setup{};
@@ -118,9 +178,48 @@ int main(int argc, char **argv)
         assert(event.completed_time == i+1);
     }
     assert(nezha_camera_native_irq_next(owner, &event) && !event.buffer_done);
+    for (unsigned boundary = 1; boundary <= 3; ++boundary) {
+        const unsigned timeouts_before = wait_timeouts;
+        inject_stage = boundary;
+        nezha_camera_native_irq_wait(owner, 1);
+        assert(wait_timeouts == timeouts_before && !wait_registered);
+        assert(nezha_camera_native_irq_next(owner, &event) && event.buffer_done &&
+            event.consumed_address == 0x123400);
+        assert(nezha_camera_native_irq_next(owner, &event) && !event.buffer_done);
+    }
+    inject_stage = 0;
+    inject_completion();
+    const unsigned pending_arms = wait_arms, ready_reads = model.reads, ready_writes = model.writes;
+    nezha_camera_native_irq_wait(owner, 1);
+    assert(wait_arms == pending_arms && model.reads == ready_reads && model.writes == ready_writes);
+    assert(nezha_camera_native_irq_next(owner, &event) && event.buffer_done);
+    inject_stage = 4;
+    const unsigned cancel_timeouts = wait_timeouts;
+    nezha_camera_native_irq_wait(owner, 1);
+    assert(wait_timeouts == cancel_timeouts && !wait_registered);
+    assert(nezha_camera_native_irq_next(owner, &event) && !event.buffer_done);
+    inject_stage = 0;
+    const unsigned empty_reads = model.reads, empty_writes = model.writes;
+    nezha_camera_native_irq_wait(owner, 1);
+    assert(wait_timeouts == 1 && model.reads == empty_reads && model.writes == empty_writes);
+    wait_refused = true;
+    const unsigned blocks = wait_blocks;
+    nezha_camera_native_irq_wait(owner, 1);
+    assert(wait_blocks == blocks && !wait_registered);
+    wait_refused = false;
+    const unsigned valid_arms = wait_arms;
+    nezha_camera_native_irq_wait(nullptr, 1);
+    nezha_camera_native_irq_wait(owner, 0);
+    nezha_camera_native_irq_wait(owner, 1001);
+    assert(wait_arms == valid_arms);
+    assert(wait_clears >= 3 && wake_calls >= 8);
+    puts("Native camera IRQ wait: queued completion, three sleep boundaries, Close wake, timeout and refused wait passed");
     assert(nezha_camera_native_irq_stop(owner));
     assert(model.masks[0] == 1 && model.masks[1] == 0 && model.masks[2] == 0 && model.masks[3] == 0);
     const unsigned stopped_reads=model.reads, stopped_writes=model.writes;
+    const unsigned stopped_arms=wait_arms;
+    nezha_camera_native_irq_wait(owner,1);
+    assert(wait_arms==stopped_arms);
     handler(irq_context);
     assert(model.reads==stopped_reads && model.writes==stopped_writes);
     NezhaCameraNativeIrq *reopened=nullptr;
@@ -141,6 +240,9 @@ int main(int argc, char **argv)
     model.top = 1u << 16 | 1u << 2;
     handler(irq_context);
     assert(nezha_camera_native_irq_fault(owner) == 2 && !nezha_camera_native_irq_next(owner, &event));
+    const unsigned fault_arms=wait_arms;
+    nezha_camera_native_irq_wait(owner,1);
+    assert(wait_arms==fault_arms);
     assert(nezha_camera_native_irq_stop(owner));
     assert(nezha_camera_native_irq_failure(owner, &event) && event.rx_irq == fatal_rx &&
         event.rdi0_irq == fatal_rdi && !model.top && !model.rx && !model.rdi);

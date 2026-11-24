@@ -1,7 +1,7 @@
-name: nezha Camera146c BSD scheduler ABI - native
+name: nezha Camera151 IRQ completion and RUP AUP latch - native
 on:
   push:
-    branches: [codex/ios27-camera146c-reopen-bsd-abi-20261124]
+    branches: [codex/ios27-camera151-completion-20261125]
   workflow_dispatch:
 permissions:
   contents: read
@@ -144,7 +144,7 @@ jobs:
           out="$RUNNER_TEMP/ios27/work/camera-rupmiss-host"
           mkdir -p "$out/IOKit" "$out/kern"
           printf 'typedef int IOReturn;\n#define kIOReturnSuccess 0\nextern "C" void IOSleep(unsigned);\n' > "$out/IOKit/IOLib.h"
-          printf '#include <stdint.h>\nextern "C" uint64_t mach_absolute_time(void);\n' > "$out/kern/clock.h"
+          cp "$src/tests/camera-platform/irq-fixture/kern/"*.h "$out/kern/"
           for unit in IrqQueue Camss1080 Rdi1080; do
             clang -std=c11 -Wall -Wextra -Werror -g -fsanitize=address,undefined -fno-sanitize-recover=all -I "$src/package/camera" -I "$src/package/gpu/adreno" -c "$src/package/camera/NezhaCamera$unit.c" -o "$out/$unit.o"
           done

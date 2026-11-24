@@ -26,6 +26,13 @@ bool nezha_camera_native_irq_open(struct NezhaCameraNativeIrq **owner,
     struct NezhaCameraNativeIrqSetup *setup);
 bool nezha_camera_native_irq_next(struct NezhaCameraNativeIrq *owner,
     struct NezhaCamera1080Events *event);
+/* Sleep only while this owner's acknowledged event queue is empty.
+ * The IRQ wakes the existing worker; arm/recheck closes the sleep race.
+ * Timeout is still bounded, and this never reads or writes hardware. */
+void nezha_camera_native_irq_wait(struct NezhaCameraNativeIrq *owner, unsigned milliseconds);
+/* Close can wake the boot-long channel without dereferencing a changing
+ * capture-owner pointer. The normal worker still performs all teardown. */
+void nezha_camera_native_irq_wake(void);
 uint32_t nezha_camera_native_irq_fault(const struct NezhaCameraNativeIrq *owner);
 /* Read the preserved terminal event after the handler has been stopped. */
 bool nezha_camera_native_irq_failure(const struct NezhaCameraNativeIrq *owner,

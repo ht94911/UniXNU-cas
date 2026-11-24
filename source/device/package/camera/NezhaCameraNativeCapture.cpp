@@ -87,6 +87,7 @@ void write(void *cookie, uint32_t offset, uint32_t value)
 }
 
 void wait(void *, unsigned ms) { IOSleep(ms); }
+void wait_frames(void *, unsigned ms) { nezha_camera_native_irq_wait(state.irq, ms); }
 void wait_us(void *, unsigned us) { IODelay(us); }
 
 /* Four samples distinguish loss during the first APPS request from loss
@@ -623,9 +624,11 @@ bool nezha_camera_native_capture(const NezhaCameraNativeCaptureRequest *request,
             state.control_request=request;
             state.control_frames=0;
             state.control_frame_status=NezhaFramesOk;
+            NezhaCameraRegisterIo frame_wait = state.reg[Csid];
+            frame_wait.wait_ms = wait_frames;
             while (client_continuing(client.context)) {
                 result->status = nezha_camera_frame_consume(&state.capture_io, &state.capture,
-                    &state.reg[Csid], &memory, &client, 1000);
+                    &frame_wait, &memory, &client, 1000);
                 if (result->status != NezhaFramesOk) {
                     if (state.copy_service_status != NezhaFramesOk) result->status = state.copy_service_status;
                     break;
@@ -762,6 +765,7 @@ void nezha_camera_native_capture_request_stop(void)
      * only close its gate. A callback can request this without waiting
      * for the worker that is currently delivering its frame. */
     __atomic_store_n(&state.stopped, 1u, __ATOMIC_RELEASE);
+    nezha_camera_native_irq_wake();
 }
 
 bool nezha_camera_native_capture_service_copy(const uint8_t *completed_frame)
