@@ -30,6 +30,8 @@ struct NezhaCameraNativeIrq {
     NezhaCameraRegisterIo csid{}, vfe{};
     NezhaCameraIrqQueue queue{};
     NezhaCamera1080Events failure{};
+    NezhaCamera1080Events last_completed{};
+    NezhaCameraNativeIrqFailureSnapshot failure_snapshot{};
     uint32_t fault{}, handlers{}, spi_readback{};
     uint32_t wake_generation{};
     uint64_t spi_route{};
@@ -60,6 +62,30 @@ static void stop_sources(NezhaCameraNativeIrq *owner)
         owner->csid.write(owner->csid.context, masks[i], owner->mask_before[i]);
 }
 
+static void capture_failure(NezhaCameraNativeIrq *owner)
+{
+    auto &snapshot = owner->failure_snapshot;
+    snapshot.fault_ticks = mach_absolute_time();
+    snapshot.last_completed = owner->last_completed;
+    snapshot.produced = __atomic_load_n(&owner->queue.produced, __ATOMIC_ACQUIRE);
+    snapshot.consumed = __atomic_load_n(&owner->queue.consumed, __ATOMIC_ACQUIRE);
+    /* Full tfe1080 bus_wr_base0x1000/client23 and common_reg_v1.
+     * Match Qualcomm print_wm_info's current-context readback; never
+     * change context selectors or clear the bus's error words. */
+    constexpr uint32_t vfe_offsets[] = {
+        0x2c00, 0x2c04, 0x2c08, 0x2c90, 0x2c94, 0x2c98, 0x2c9c,
+        0x2c1c, 0x1064, 0x1068,
+    };
+    constexpr uint32_t csid_offsets[] = {0x114, 0x118, 0x11c};
+    for (unsigned i = 0; i < NezhaCameraNativeIrqFaultWords; ++i) {
+        const uint32_t value = i < 10 ?
+            owner->vfe.read(owner->vfe.context, vfe_offsets[i]) :
+            owner->csid.read(owner->csid.context, csid_offsets[i - 10]);
+        snapshot.words[i] = value;
+        if (value != UINT32_MAX) snapshot.valid_words |= 1u << i;
+    }
+}
+
 static void interrupt(void *cookie)
 {
     auto *owner = static_cast<NezhaCameraNativeIrq *>(cookie);
@@ -67,12 +93,16 @@ static void interrupt(void *cookie)
     if (__atomic_load_n(&owner->armed, __ATOMIC_SEQ_CST)) {
         NezhaCamera1080Events event{};
         const bool read = nezha_camera1080_take_rdi0_events(&owner->csid, &owner->vfe, &event);
-        if (read && event.buffer_done) event.completed_time = mach_absolute_time();
         const bool failed = (event.rx_irq & RxErrors) || (event.rdi0_irq & RdiErrors);
+        if (read && event.buffer_done) {
+            event.completed_time = mach_absolute_time();
+            if (!failed) owner->last_completed = event;
+        }
         const bool frame_event = event.updated || event.start_of_frame || event.end_of_frame ||
             event.buffer_done || (event.rdi0_irq & RdiRupMiss);
         if (!read || failed || (frame_event && !nezha_camera_irq_push(&owner->queue, &event))) {
             owner->failure = event;
+            capture_failure(owner);
             __atomic_store_n(&owner->fault, !read ? 1u : failed ? 2u : 3u, __ATOMIC_RELEASE);
             stop_sources(owner);
             __atomic_store_n(&owner->armed, false, __ATOMIC_SEQ_CST);
@@ -112,6 +142,8 @@ bool nezha_camera_native_irq_open(NezhaCameraNativeIrq **out,
     __atomic_store_n(&irq.fault, 0u, __ATOMIC_RELEASE);
     irq.queue = {};
     irq.failure = {};
+    irq.last_completed = {};
+    irq.failure_snapshot = {};
     irq.csid = *csid;
     irq.vfe = *vfe;
     for (unsigned i = 0; i < 4; ++i) irq.mask_before[i] = before[i];
@@ -185,6 +217,16 @@ bool nezha_camera_native_irq_failure(const NezhaCameraNativeIrq *owner, NezhaCam
 {
     if (owner != &irq || !event || !nezha_camera_native_irq_fault(owner)) return false;
     *event = owner->failure;
+    return true;
+}
+
+bool nezha_camera_native_irq_failure_snapshot(const NezhaCameraNativeIrq *owner,
+    NezhaCameraNativeIrqFailureSnapshot *snapshot)
+{
+    if (owner != &irq || !snapshot || !owner->stopped ||
+        __atomic_load_n(&owner->handlers, __ATOMIC_SEQ_CST) ||
+        !nezha_camera_native_irq_fault(owner)) return false;
+    *snapshot = owner->failure_snapshot;
     return true;
 }
 

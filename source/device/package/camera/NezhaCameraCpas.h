@@ -26,6 +26,15 @@ struct NezhaCameraCpas {
     bool acquired, ready, drained;
 };
 
+enum { NezhaCameraCpasRt0QosWords = 5 };
+struct NezhaCameraCpasRt0Qos {
+    uint32_t before[NezhaCameraCpasRt0QosWords];
+    uint32_t programmed[NezhaCameraCpasRt0QosWords];
+    uint32_t failed_offset, failed_observed, failed_expected;
+    unsigned touched, changed;
+    bool prepared, applied, restored;
+};
+
 /* CPAS top at 0x900b000, with the camera domains, interconnect and all
  * three Q-channels exclusively owned and clocked by the caller. Only the
  * identified Titan 1080 / CPAS 1.0.0 handshake is implemented here. Observe
@@ -44,6 +53,21 @@ enum NezhaCameraCpasStatus nezha_camera_cpas_drain(
  * does not release the surrounding CAMCC, GCC or interconnect leases. */
 enum NezhaCameraCpasStatus nezha_camera_cpas_restore(
     const struct NezhaCameraRegisterIo *top, struct NezhaCameraCpas *state);
+
+/* The full TFE0 RDI uses CAMNOC RT0. Apply only the five static priority,
+ * urgency and safe/danger words from this phone's v1080_100 table, after
+ * all Q-channels are awake and before any producer or DMA is enabled.
+ * Other NIUs, smart-QoS, secure registers and error latches are untouched. */
+enum NezhaCameraCpasStatus nezha_camera_cpas_rt0_qos_start(
+    const struct NezhaCameraRegisterIo *rt, const struct NezhaCameraCpas *cpas,
+    struct NezhaCameraCpasRt0Qos *state);
+
+/* Restore this lease only after CPAS has drained and DMA has detached,
+ * while the surrounding camera clocks and the RT register map remain on.
+ * Any failed read/write retains the changed words for cleanup. */
+enum NezhaCameraCpasStatus nezha_camera_cpas_rt0_qos_restore(
+    const struct NezhaCameraRegisterIo *rt, const struct NezhaCameraCpas *cpas,
+    bool dma_detached, struct NezhaCameraCpasRt0Qos *state);
 
 #ifdef __cplusplus
 }

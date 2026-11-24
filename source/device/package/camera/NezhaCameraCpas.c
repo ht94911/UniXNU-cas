@@ -161,3 +161,91 @@ enum NezhaCameraCpasStatus nezha_camera_cpas_restore(
     };
     return NezhaCameraCpasOk;
 }
+
+/* These enabled READ_WRITE entries are also present in the retained
+ * nezha camera.ko's cam_cpas_v1080_100_camnoc_rt_niu. Qualcomm's
+ * cam_cpastop_curr_camnoc_poweron programs them at every power-on. */
+static const struct {
+    uint32_t offset, value;
+} rt0_qos[NezhaCameraCpasRt0QosWords] = {
+    {0x2c30, 0x66655554}, {0x2c34, 0x66666666}, {0x2c38, 0x00001e40},
+    {0x2c40, 0xffffff00}, {0x2c48, 0x0000000f},
+};
+
+static enum NezhaCameraCpasStatus qos_failure(struct NezhaCameraCpasRt0Qos *state,
+    unsigned index, uint32_t observed, uint32_t expected, enum NezhaCameraCpasStatus status)
+{
+    if (!state->failed_offset) {
+        state->failed_offset = rt0_qos[index].offset;
+        state->failed_observed = observed;
+        state->failed_expected = expected;
+    }
+    return status;
+}
+
+enum NezhaCameraCpasStatus nezha_camera_cpas_rt0_qos_start(
+    const struct NezhaCameraRegisterIo *rt, const struct NezhaCameraCpas *cpas,
+    struct NezhaCameraCpasRt0Qos *state)
+{
+    if (!rt || !rt->read || !rt->write || !cpas || !state)
+        return NezhaCameraCpasInvalid;
+    if (!cpas->acquired || !cpas->ready || cpas->drained || state->prepared || state->touched)
+        return NezhaCameraCpasBusy;
+    *state = (struct NezhaCameraCpasRt0Qos){0};
+    /* Save every inherited value before changing any word. A bad map
+     * cannot create a partial lease from an incomplete snapshot. */
+    for (unsigned i = 0; i < NezhaCameraCpasRt0QosWords; ++i) {
+        const uint32_t before = rt->read(rt->context, rt0_qos[i].offset);
+        if (before == UINT32_MAX)
+            return qos_failure(state, i, before, rt0_qos[i].value, NezhaCameraCpasReadback);
+        state->before[i] = state->programmed[i] = before;
+    }
+    state->prepared = true;
+    for (unsigned i = 0; i < NezhaCameraCpasRt0QosWords; ++i) {
+        const uint32_t expected = rt0_qos[i].value;
+        if (state->before[i] != expected) {
+            state->touched |= 1u << i;
+            state->changed |= 1u << i;
+            rt->write(rt->context, rt0_qos[i].offset, expected);
+        }
+        const uint32_t observed = rt->read(rt->context, rt0_qos[i].offset);
+        state->programmed[i] = observed;
+        if (observed != expected)
+            return qos_failure(state, i, observed, expected, NezhaCameraCpasReadback);
+    }
+    state->applied = true;
+    return NezhaCameraCpasOk;
+}
+
+enum NezhaCameraCpasStatus nezha_camera_cpas_rt0_qos_restore(
+    const struct NezhaCameraRegisterIo *rt, const struct NezhaCameraCpas *cpas,
+    bool dma_detached, struct NezhaCameraCpasRt0Qos *state)
+{
+    if (!rt || !rt->read || !rt->write || !cpas || !state)
+        return NezhaCameraCpasInvalid;
+    if (!cpas->acquired || !cpas->drained || !dma_detached)
+        return NezhaCameraCpasBusy;
+    if (!state->prepared)
+        return state->touched ? NezhaCameraCpasBusy : NezhaCameraCpasOk;
+    for (unsigned remaining = NezhaCameraCpasRt0QosWords; remaining; --remaining) {
+        const unsigned i = remaining - 1, bit = 1u << i;
+        if (!(state->touched & bit)) continue;
+        const uint32_t observed = rt->read(rt->context, rt0_qos[i].offset);
+        if (observed == UINT32_MAX)
+            return qos_failure(state, i, observed, state->before[i], NezhaCameraCpasReadback);
+        if (observed != state->before[i]) {
+            /* Preserve a value changed outside this lease. Do not undo
+             * another owner merely because our original write failed. */
+            if (observed != state->programmed[i] && observed != rt0_qos[i].value)
+                return qos_failure(state, i, observed, state->programmed[i], NezhaCameraCpasBusy);
+            rt->write(rt->context, rt0_qos[i].offset, state->before[i]);
+            const uint32_t after = rt->read(rt->context, rt0_qos[i].offset);
+            if (after != state->before[i])
+                return qos_failure(state, i, after, state->before[i], NezhaCameraCpasReadback);
+        }
+        state->touched &= ~bit;
+    }
+    state->prepared = false;
+    state->restored = true;
+    return NezhaCameraCpasOk;
+}

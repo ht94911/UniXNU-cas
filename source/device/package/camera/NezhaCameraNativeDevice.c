@@ -243,6 +243,14 @@ static void worker(void *argument,wait_result_t wait_result)
     if (result.csid_stop_attempted)
         printf("NEZHA CAMERA: native CSID stop acknowledged=%u reset-status=%#x\n",
             (unsigned)result.csid_stop_acknowledged,result.csid_stop_reset_status);
+    const struct NezhaCameraCpasRt0Qos *qos=&result.rt0_qos;
+    if (qos->applied || qos->prepared || qos->failed_offset)
+        printf("NEZHA CAMERA: native RT0 QoS applied=%u restored=%u changed=%#x held=%#x "
+            "before=%#x/%#x/%#x/%#x/%#x programmed=%#x/%#x/%#x/%#x/%#x failure=%#x/%#x/%#x\n",
+            (unsigned)qos->applied,(unsigned)qos->restored,qos->changed,qos->touched,
+            qos->before[0],qos->before[1],qos->before[2],qos->before[3],qos->before[4],
+            qos->programmed[0],qos->programmed[1],qos->programmed[2],qos->programmed[3],qos->programmed[4],
+            qos->failed_offset,qos->failed_observed,qos->failed_expected);
     if (result.irq_fault) {
         /* The IRQ owner already captured these words before acknowledgement.
          * Report them after teardown; do not read MMIO or log inside the IRQ. */
@@ -250,6 +258,15 @@ static void worker(void *argument,wait_result_t wait_result)
         printf("NEZHA CAMERA: native IRQ failure top=%#x rx=%#x rdi=%#x buffer=%#x consumed=%#x ticks=%llu\n",
             event->top_irq,event->rx_irq,event->rdi0_irq,event->buffer_irq,
             event->consumed_address,(unsigned long long)event->completed_time);
+        const struct NezhaCameraNativeIrqFailureSnapshot *snapshot=&result.irq_failure_snapshot;
+        const uint32_t *words=snapshot->words;
+        printf("NEZHA CAMERA: native IRQ first-fault ticks=%llu valid=%#x queue=%u/%u "
+            "last-done=%#x/%llu WM=%#x/%#x/%#x addresses=%#x/%#x/%#x/%#x limiter=%#x "
+            "bus-errors=%#x/%#x updates=%#x/%#x/%#x\n",
+            (unsigned long long)snapshot->fault_ticks,snapshot->valid_words,snapshot->produced,snapshot->consumed,
+            snapshot->last_completed.consumed_address,(unsigned long long)snapshot->last_completed.completed_time,
+            words[0],words[1],words[2],words[3],words[4],words[5],words[6],words[7],
+            words[8],words[9],words[10],words[11],words[12]);
     }
     if (!okay) {
         const struct NezhaCameraNativeMemoryFailure *memory=&result.memory_failure;

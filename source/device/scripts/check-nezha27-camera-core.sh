@@ -40,6 +40,7 @@ check dma "$camera/NezhaCameraRdi1080.c" "$camera/NezhaCameraDma.c" \
 check camcc "$camera/NezhaCameraCamcc.c"
 check crm "$camera/NezhaCameraCrm.c"
 check cpas "$camera/NezhaCameraCpas.c"
+check cpas-qos "$camera/NezhaCameraCpas.c"
 check profile "$camera/NezhaCameraProfile.c"
 check main-capture "$camera/NezhaCameraMainCapture.c" "$camera/NezhaCameraRdi1080.c"
 check main-pins "$camera/NezhaCameraMainPins.c"

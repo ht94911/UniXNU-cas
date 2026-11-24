@@ -22,9 +22,9 @@ struct RegisterWindow {
 };
 
 struct Capture {
-    RegisterWindow window[11]{};
+    RegisterWindow window[12]{};
     RegisterWindow gpio_window{}, mclk_window{};
-    NezhaCameraRegisterIo reg[11]{};
+    NezhaCameraRegisterIo reg[12]{};
     NezhaCameraGccIo gcc{};
     NezhaCameraCsiphy24Io phy{};
     NezhaCameraCaptureResourceIo resources_io{};
@@ -32,6 +32,7 @@ struct Capture {
     NezhaCameraOvxModeWrite writes[2048]{};
     NezhaCameraMainPins pins{};
     NezhaCameraIfeBandwidth bandwidth{}, clear{};
+    NezhaCameraCpasRt0Qos rt0_qos{};
     NezhaCameraRpmh *rpmh{};
     NezhaCameraNativeSmmu *smmu{};
     NezhaCameraNativeMemory *memory{};
@@ -57,11 +58,11 @@ struct Capture {
 
 Capture state;
 RegisterWindow display_observer[2];
-enum { Camcc, Crm, Crmc, CrmCommon, IfeRsc, Cpas, Phy, Cci, Csid, Vfe, Tpg };
+enum { Camcc, Crm, Crmc, CrmCommon, IfeRsc, Cpas, Phy, Cci, Csid, Vfe, Tpg, CamnocRt };
 constexpr uint32_t physical[] = {0x956d000, 0x9548000, 0x954a000, 0x954c000,
-    0x9545000, 0x900b000, 0x9523000, 0x941b000, 0x9253000, 0x9151000, 0x93ff000};
+    0x9545000, 0x900b000, 0x9523000, 0x941b000, 0x9253000, 0x9151000, 0x93ff000, 0x9405000};
 constexpr uint32_t sizes[] = {0x80000, 0x2000, 0x3000, 0x1000, 0x1000,
-    0x1000, 0x2000, 0x1000, 0x6000, 0x20000, 0x1000};
+    0x1000, 0x2000, 0x1000, 0x6000, 0x20000, 0x1000, 0x10000};
 constexpr uint32_t cci_master_irqs = 0x60ee6000u | (1u << 12) | (1u << 16) |
     (1u << 20) | (1u << 24) | (1u << 26);
 // Qualcomm CAMSS v24 vfe_wm_start disables input clock gating before
@@ -326,6 +327,7 @@ bool cleanup(Capture &s, NezhaCameraNativeCaptureResult &result,
         result.irq_stopped = true;
         result.irq_fault = nezha_camera_native_irq_fault(s.irq);
         (void)nezha_camera_native_irq_failure(s.irq, &result.irq_failure);
+        (void)nezha_camera_native_irq_failure_snapshot(s.irq, &result.irq_failure_snapshot);
     }
     if (paths_started) {
         result.cleanup_step = NezhaNativeStopCsid;
@@ -368,6 +370,15 @@ bool cleanup(Capture &s, NezhaCameraNativeCaptureResult &result,
         }
     }
     if (s.memory && !nezha_camera_native_memory_release(&s.memory, true)) return false;
+    /* QoS governs the active DMA path. Restore its owned words only
+     * after the existing source/IRQ/reset/drain/detach sequence, before
+     * releasing the surrounding CAMNOC clocks or CPAS lease. */
+    if (s.rt0_qos.prepared || s.rt0_qos.touched) {
+        result.cleanup_step = NezhaNativeRestoreRt0Qos;
+        const auto qos_status = nezha_camera_cpas_rt0_qos_restore(&s.reg[CamnocRt],
+            &result.resources.cpas, true, &s.rt0_qos);
+        if (qos_status != NezhaCameraCpasOk) return false;
+    }
     // Restore the bus clock bits only after producers, IRQ and DMA have
     // stopped. Capture resources still keep the VFE register page powered.
     if (!restore_vfe_bus(s)) return false;
@@ -414,6 +425,7 @@ bool nezha_camera_native_capture(const NezhaCameraNativeCaptureRequest *request,
     state.delivery_active = false;
     state.copy_service_status = NezhaFramesOk;
     state.work = {};
+    state.rt0_qos = {};
     if (!checkpoint(*request, *result, NezhaNativeSharedOwners, physical[Camcc], physical[Csid], physical[Vfe])) {
         if (state.cancelled) {
             __atomic_store_n(&state.used, false, __ATOMIC_RELEASE);
@@ -493,6 +505,13 @@ bool nezha_camera_native_capture(const NezhaCameraNativeCaptureRequest *request,
         }
         if (!checkpoint(*request, *result, NezhaNativeResources, physical[Crm], physical[IfeRsc], physical[Cpas]) ||
             !nezha_camera_capture_resources_start(&state.resources_io, &state.bandwidth, profile, &result->resources)) break;
+        const auto qos_status = nezha_camera_cpas_rt0_qos_start(&state.reg[CamnocRt],
+            &result->resources.cpas, &state.rt0_qos);
+        if (qos_status != NezhaCameraCpasOk) {
+            result->status = qos_status;
+            break;
+        }
+        result->rt0_qos = state.rt0_qos;
         if (!pattern) {
             if (!checkpoint(*request, *result, NezhaNativePins, NezhaCameraGpioPhysical, 0x1764000, 0) ||
                 !nezha_camera_main_hold_reset(&gpio, &state.pins) ||
@@ -740,6 +759,7 @@ bool nezha_camera_native_capture(const NezhaCameraNativeCaptureRequest *request,
     result->rpmh_reply = state.rpmh->last_reply;
     if (state.capture.stage >= NezhaCaptureIdentity && !pattern) result->cci = state.capture.sensor_transfer;
     result->cleaned = cleanup(state, *result, gpio, mclk, rails, profile, okay ? request->raw_sample : nullptr);
+    result->rt0_qos = state.rt0_qos;
     result->work = state.work;
     if (!result->cleaned && result->cleanup_step == NezhaNativeReleaseMemory)
         nezha_camera_native_memory_failure(&result->memory_failure);

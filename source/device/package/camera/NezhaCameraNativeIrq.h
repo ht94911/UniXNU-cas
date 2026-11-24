@@ -18,6 +18,17 @@ struct NezhaCameraNativeIrqSetup {
     uint32_t offset, observed, expected;
 };
 
+enum { NezhaCameraNativeIrqFaultWords = 13 };
+struct NezhaCameraNativeIrqFailureSnapshot {
+    /* WM cfg/image/frame increment, consumed/last/fifo/current address,
+     * limiter, bus CCIF/overflow, and CSID RUP/AUP/SET respectively.
+     * Values are raw, not a decoded queue depth or hardware ACK. */
+    uint32_t words[NezhaCameraNativeIrqFaultWords], valid_words;
+    uint32_t produced, consumed;
+    uint64_t fault_ticks;
+    struct NezhaCamera1080Events last_completed;
+};
+
 /* Call after the owned CSID reset has completed, before RDI0 starts.
  * The supplied MMIO contexts remain valid for the callback's boot-long
  * lifetime, matching the selected ArmCpu SPI interface. */
@@ -37,6 +48,11 @@ uint32_t nezha_camera_native_irq_fault(const struct NezhaCameraNativeIrq *owner)
 /* Read the preserved terminal event after the handler has been stopped. */
 bool nezha_camera_native_irq_failure(const struct NezhaCameraNativeIrq *owner,
     struct NezhaCamera1080Events *event);
+/* One fault-only readback, after IRQ status acknowledgement and before
+ * source masking, while both maps are still powered. No normal-frame
+ * polling, context selection, recovery or extra worker is introduced. */
+bool nezha_camera_native_irq_failure_snapshot(const struct NezhaCameraNativeIrq *owner,
+    struct NezhaCameraNativeIrqFailureSnapshot *snapshot);
 
 /* Mask this stream's sources, then wait for the callback to leave MMIO.
  * The retained callback becomes inert; this does not detach the SPI. */

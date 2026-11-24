@@ -79,6 +79,8 @@ struct Model {
     uint32_t masks[4]{};
     unsigned reads{}, writes{};
     uint32_t refused_mask{};
+    bool invalidate_fifo{};
+    unsigned snapshot_reads{};
 };
 static Model *active_model;
 static void inject_completion(void)
@@ -105,6 +107,11 @@ static uint32_t read(void *cookie, uint32_t offset)
     case 0x1b4: return m.masks[2];
     case 0x228: return m.masks[3];
     case 0x2c90: return m.address;
+    case 0x2c00: case 0x2c04: case 0x2c08:
+    case 0x2c94: case 0x2c98: case 0x2c9c: case 0x2c1c:
+    case 0x1064: case 0x1068: case 0x114: case 0x118: case 0x11c:
+        ++m.snapshot_reads;
+        return offset==0x2c98 && m.invalidate_fifo ? UINT32_MAX : offset ^ 0x550000;
     default: assert(false); return UINT32_MAX;
     }
 }
@@ -232,18 +239,35 @@ int main(int argc, char **argv)
     reopened=nullptr;
     assert(nezha_camera_native_irq_open(&reopened,&io,&io,&setup) && reopened==owner && attaches==1);
     assert(nezha_camera_native_irq_next(owner,&event) && !event.buffer_done);
+    inject_completion();
+    assert(nezha_camera_native_irq_next(owner,&event) && event.buffer_done);
+    const uint64_t last_done_ticks=event.completed_time;
+    assert(model.snapshot_reads==0); // No added MMIO for any normal completion.
     uint32_t fatal_rx = 1u << 12, fatal_rdi = 1u << 24;
     if (argc == 2 && !std::strcmp(argv[1], "overflow")) { fatal_rx = 0; fatal_rdi = 1u << 19; }
     if (argc == 2 && !std::strcmp(argv[1], "illegal-dt")) { fatal_rx = 0; fatal_rdi = 1u << 7; }
+    model.invalidate_fifo=argc==2 && !std::strcmp(argv[1],"overflow");
     model.rx = fatal_rx;
     model.rdi = fatal_rdi;
     model.top = 1u << 16 | 1u << 2;
+    NezhaCameraNativeIrqFailureSnapshot snapshot{};
+    assert(!nezha_camera_native_irq_failure_snapshot(owner,&snapshot));
     handler(irq_context);
+    assert(model.snapshot_reads==12);
+    assert(!nezha_camera_native_irq_failure_snapshot(owner,&snapshot));
     assert(nezha_camera_native_irq_fault(owner) == 2 && !nezha_camera_native_irq_next(owner, &event));
     const unsigned fault_arms=wait_arms;
     nezha_camera_native_irq_wait(owner,1);
     assert(wait_arms==fault_arms);
     assert(nezha_camera_native_irq_stop(owner));
+    const unsigned fault_reads=model.reads;
+    assert(nezha_camera_native_irq_failure_snapshot(owner,&snapshot));
+    assert(snapshot.last_completed.consumed_address==0x123400 &&
+        snapshot.last_completed.completed_time==last_done_ticks && snapshot.fault_ticks>last_done_ticks);
+    assert(snapshot.words[3]==0x123400 && snapshot.words[4]==(0x2c94^0x550000));
+    assert(snapshot.valid_words==(model.invalidate_fifo ? 0x1fdfu:0x1fffu));
+    assert(snapshot.words[5]==(model.invalidate_fifo ? UINT32_MAX:(0x2c98^0x550000)));
+    assert(model.reads==fault_reads); // Accessor never rereads the faulted hardware.
     assert(nezha_camera_native_irq_failure(owner, &event) && event.rx_irq == fatal_rx &&
         event.rdi0_irq == fatal_rdi && !model.top && !model.rx && !model.rdi);
     reopened=nullptr;
@@ -251,6 +275,9 @@ int main(int argc, char **argv)
     const unsigned reads = model.reads, writes = model.writes;
     handler(irq_context);
     assert(model.reads == reads && model.writes == writes);
+    NezhaCameraNativeIrqFailureSnapshot retained{};
+    assert(nezha_camera_native_irq_failure_snapshot(owner,&retained) &&
+        !std::memcmp(&retained,&snapshot,sizeof(snapshot)));
     assert(nezha_camera_native_irq_retire(&owner) && !owner);
     assert(model.reads == reads && model.writes == writes);
     assert(nezha_camera_native_irq_failure(static_cast<NezhaCameraNativeIrq *>(irq_context), &event));
@@ -262,6 +289,7 @@ int main(int argc, char **argv)
     model.masks[2]=0;
     assert(nezha_camera_native_irq_open(&reopened,&io,&io,&setup) && attaches==1);
     assert(!nezha_camera_native_irq_fault(reopened));
+    assert(!nezha_camera_native_irq_failure_snapshot(reopened,&snapshot));
     assert(nezha_camera_native_irq_next(reopened,&event) && !event.buffer_done);
     model.top=(1u<<16)|(1u<<3);
     model.rdi=1u<<12;model.buffer=1u<<16;model.address=0x30000;

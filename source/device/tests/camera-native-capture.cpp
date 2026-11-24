@@ -11,8 +11,10 @@
 #include <cstdlib>
 #include <cstring>
 
-static uint32_t camcc[0x80000/4],crm[0x2000/4],crmc[0x3000/4],crmcommon[0x1000/4],ife[0x1000/4],cpas[0x1000/4],phy[0x2000/4],cci[0x1000/4],csid[0x6000/4],vfe[0x20000/4],gpio[NezhaCameraGpioBytes/4],mclk[0x1000/4];
+static uint32_t camcc[0x80000/4],crm[0x2000/4],crmc[0x3000/4],crmcommon[0x1000/4],ife[0x1000/4],cpas[0x1000/4],phy[0x2000/4],cci[0x1000/4],csid[0x6000/4],vfe[0x20000/4],gpio[NezhaCameraGpioBytes/4],mclk[0x1000/4],camnoc[0x10000/4];
 static unsigned maps, starts, stops, reads, copies;
+static unsigned qos_starts,qos_restores;
+static bool qos_start_failure,qos_restore_failure;
 static bool resources_active, irq_active, smmu_active, memory_active, stream_active, keep_running, source_fail;
 static bool frame_timeout;
 static bool drain_failure;
@@ -123,6 +125,7 @@ extern "C" unsigned long ml_io_map(unsigned long physical,unsigned long) {
     case 0x9545000:return (unsigned long)ife;case 0x900b000:return (unsigned long)cpas;
     case 0x9523000:return (unsigned long)phy;case 0x941b000:return (unsigned long)cci;
     case 0x9253000:return (unsigned long)csid;case 0x9151000:return (unsigned long)vfe;
+    case 0x9405000:return (unsigned long)camnoc;
     case NezhaCameraGpioPhysical:return (unsigned long)gpio;case 0x1764000:return (unsigned long)mclk;
     case 0x09800000:return (unsigned long)display[0];case 0x09ac0000:return (unsigned long)display[1];
     default:assert(false);return 0;
@@ -143,16 +146,29 @@ extern "C" bool nezha_camera_rpmh_acquire(void *,NezhaCameraMainRail,unsigned) {
 extern "C" bool nezha_camera_rpmh_release(void *,NezhaCameraMainRail) { return true; }
 extern "C" bool nezha_camera_ife_bandwidth_checked(const uint8_t *,size_t,uint32_t,uint32_t,uint32_t,uint32_t,NezhaCameraIfeBandwidth *,NezhaCameraIfeBcmFailure *) { return true; }
 extern "C" bool nezha_camera_capture_resources_start(const NezhaCameraCaptureResourceIo *,const NezhaCameraIfeBandwidth *,const NezhaCameraCsiphy24Profile *,NezhaCameraCaptureResources *r)
-{ assert(!resources_active && r->step==NezhaResourcesIdle);r->step=NezhaResourcesReady;resources_active=true;++starts;return !source_fail; }
+{ assert(!resources_active && r->step==NezhaResourcesIdle);r->step=NezhaResourcesReady;resources_active=true;
+  r->cpas.acquired=r->cpas.ready=true;++starts;return !source_fail; }
 extern "C" bool nezha_camera_capture_resources_drain(const NezhaCameraCaptureResourceIo *,NezhaCameraCaptureResources *r,bool quiet)
 { assert(quiet && !stream_active && !irq_active && resources_active); ++drain_calls;
   assert(!memory_active || !smmu_active || csid_stop_done || initial_controls_failure!=NezhaCciOk || memory_prepare_failure || memory_hold_failure);
   if(drain_failure) {r->cleanup_status=NezhaCameraCpasTimeout;r->detail=r->cpas.failed_offset=0xf0;
     r->cpas.failed_control=0;r->cpas.failed_status=1;r->cpas.failed_expected=0;return false;}
-  return true; }
+  r->cpas.drained=true;return true; }
 extern "C" bool nezha_camera_capture_resources_stop(const NezhaCameraCaptureResourceIo *,const NezhaCameraIfeBandwidth *,const NezhaCameraCsiphy24Profile *,NezhaCameraCaptureResources *,bool quiet,bool detached)
 { assert(quiet && detached && !memory_active && !smmu_active && !irq_active);
+  assert(qos_restores==qos_starts || source_fail);
   assert(vfe[0x1008/4]==original_bus_cgc);resources_active=false;++stops;return true; }
+extern "C" NezhaCameraCpasStatus nezha_camera_cpas_rt0_qos_start(const NezhaCameraRegisterIo *rt,
+ const NezhaCameraCpas *cpas_state,NezhaCameraCpasRt0Qos *qos)
+{ assert(rt && cpas_state->ready && resources_active && !stream_active && !memory_active && !smmu_active && !irq_active);
+  ++qos_starts;*qos={};qos->prepared=true;qos->touched=qos->changed=1;
+  if(qos_start_failure){qos->failed_offset=0x2c30;return NezhaCameraCpasReadback;}
+  qos->applied=true;return NezhaCameraCpasOk; }
+extern "C" NezhaCameraCpasStatus nezha_camera_cpas_rt0_qos_restore(const NezhaCameraRegisterIo *rt,
+ const NezhaCameraCpas *cpas_state,bool detached,NezhaCameraCpasRt0Qos *qos)
+{ assert(rt && cpas_state->drained && detached && resources_active && !stream_active && !irq_active && !smmu_active && !memory_active);
+  if(qos_restore_failure){qos->failed_offset=0x2c30;return NezhaCameraCpasReadback;}
+  ++qos_restores;qos->touched=0;qos->restored=true;qos->prepared=false;return NezhaCameraCpasOk; }
 extern "C" bool nezha_camera_main_hold_reset(const NezhaCameraRegisterIo *,NezhaCameraMainPins *p) { p->reset_held=true;return true; }
 extern "C" bool nezha_camera_main_start_pins(const NezhaCameraRegisterIo *,const NezhaCameraRegisterIo *,const NezhaCameraMainRailIo *,NezhaCameraMainPins *) { return true; }
 extern "C" bool nezha_camera_main_restore_pins(const NezhaCameraRegisterIo *,const NezhaCameraRegisterIo *,const NezhaCameraMainRailIo *,NezhaCameraMainPins *p) { p->reset_held=false;return true; }
@@ -178,6 +194,8 @@ extern "C" bool nezha_camera_native_irq_stop(NezhaCameraNativeIrq *) { if(irq_st
 extern "C" uint32_t nezha_camera_native_irq_fault(const NezhaCameraNativeIrq *) { assert(!irq_active);return irq_fault; }
 extern "C" bool nezha_camera_native_irq_failure(const NezhaCameraNativeIrq *,NezhaCamera1080Events *event)
 { assert(!irq_active);if(!irq_fault)return false;*event={};event->rx_irq=1u<<12;return true; }
+extern "C" bool nezha_camera_native_irq_failure_snapshot(const NezhaCameraNativeIrq *,NezhaCameraNativeIrqFailureSnapshot *snapshot)
+{ assert(!irq_active);if(!irq_fault)return false;*snapshot={};snapshot->fault_ticks=88;snapshot->valid_words=1;return true; }
 extern "C" bool nezha_camera_native_irq_next(NezhaCameraNativeIrq *,NezhaCamera1080Events *) { return true; }
 extern "C" void nezha_camera_native_irq_wait(NezhaCameraNativeIrq *,unsigned milliseconds)
 { assert(irq_active && milliseconds==1); }
@@ -338,6 +356,26 @@ int main(int argc,char **argv)
     request.profile=&profile;request.profile_bytes=NezhaCameraProfileCapacity;
     request.command_database=&database;request.database_bytes=0x20000;request.cci_queue_words=NezhaCameraCciCanoeQueue0Words;request.consumer=&consumer;
     NezhaCameraNativeCaptureResult result{};
+    if(argc==2 && (!strcmp(argv[1],"qos-start-failure") || !strcmp(argv[1],"qos-restore-failure"))) {
+        keep_running=true;
+        qos_start_failure=!strcmp(argv[1],"qos-start-failure");
+        qos_restore_failure=!strcmp(argv[1],"qos-restore-failure");
+        assert(!nezha_camera_native_capture(&request,&result));
+        assert(result.rt0_qos.failed_offset==0x2c30 && qos_starts==1);
+        if(qos_start_failure) {
+            assert(result.cleaned && result.status==NezhaCameraCpasReadback && !result.frames.frames && !copies);
+            assert(qos_restores==1 && result.rt0_qos.restored && nezha_camera_native_capture_can_reopen());
+            qos_start_failure=false;keep_running=true;
+            assert(nezha_camera_native_capture(&request,&result) && result.cleaned && result.frames.frames==3);
+        } else {
+            assert(!result.cleaned && result.cleanup_step==NezhaNativeRestoreRt0Qos &&
+                result.rt0_qos.touched && !qos_restores && !stops && resources_active);
+            assert(!nezha_camera_native_capture_can_reopen());
+            assert(!nezha_camera_native_capture(&request,&result));
+        }
+        puts("Native RT0 QoS precedes producers; full detach/drain precedes restore; failed restore retains resources and refuses reopen");
+        return 0;
+    }
     if(argc==2 && (!strcmp(argv[1],"csid-stop-timeout") || !strcmp(argv[1],"irq-stop-timeout"))) {
         keep_running=true;
         csid_stop_failure=!strcmp(argv[1],"csid-stop-timeout");
@@ -369,7 +407,7 @@ int main(int argc,char **argv)
             assert(nezha_camera_native_capture_can_reopen());
             frame_timeout=false;irq_fault=0;keep_running=true;
             assert(nezha_camera_native_capture(&request,&result) && result.cleaned && result.frames.frames==3);
-            assert(starts==2 && stops==2 && maps==14 && irq_retire_calls==2);
+            assert(starts==2 && stops==2 && maps==15 && irq_retire_calls==2);
             assert(nezha_camera_native_capture_can_reopen());
         }
         assert(!first.passed && first.cleaned && first.irq_fault==2 && first.status==NezhaFramesTimeout);
@@ -451,7 +489,7 @@ int main(int argc,char **argv)
         assert(result.cleaned && result.frames.frames==3 && starts==turn+1 && stops==turn+1);
         assert(!nezha_camera_native_capture_running() && !resources_active && !memory_active && !smmu_active && !irq_active);
         assert(vfe[0x1008/4]==original_bus_cgc);
-        assert(maps==14); /* Includes two retained read-only display observers; no second-run leak. */
+        assert(maps==15); /* Includes RT0 and two retained display maps; no second-run leak. */
     }
     assert(copies==6 && reads==6 && stream_readbacks==2);
     if(test_controls) {
