@@ -31,7 +31,7 @@ struct NezhaCameraNativeIrq {
     uint32_t fault{}, handlers{}, spi_readback{};
     uint64_t spi_route{};
     uint32_t mask_before[4]{};
-    bool used{}, armed{}, stopped{};
+    bool used{}, armed{}, stopped{}, retired{};
 };
 
 static NezhaCameraNativeIrq irq;
@@ -71,7 +71,7 @@ bool nezha_camera_native_irq_open(NezhaCameraNativeIrq **out,
     if (!setup) return false;
     *setup = {NezhaIrqSetupInvalid, 0, 0, 0};
     if (!out || *out || !csid || !csid->read || !csid->write || !vfe || !vfe->read ||
-        (irq.used && (!irq.stopped || irq.fault || irq.handlers))) {
+        (irq.used && (!irq.stopped || irq.armed || irq.handlers || (irq.fault && !irq.retired)))) {
         return false;
     }
     uint32_t before[4];
@@ -88,6 +88,8 @@ bool nezha_camera_native_irq_open(NezhaCameraNativeIrq **out,
     const bool attached = irq.used;
     irq.used = true;
     irq.stopped = false;
+    irq.retired = false;
+    __atomic_store_n(&irq.fault, 0u, __ATOMIC_RELEASE);
     irq.queue = {};
     irq.failure = {};
     irq.csid = *csid;
@@ -159,4 +161,16 @@ bool nezha_camera_native_irq_stop(NezhaCameraNativeIrq *owner)
         if (ms < 100) IOSleep(1);
     }
     return false;
+}
+
+bool nezha_camera_native_irq_retire(NezhaCameraNativeIrq **owner)
+{
+    if (!owner || *owner != &irq || !irq.used || !irq.stopped ||
+        __atomic_load_n(&irq.armed, __ATOMIC_SEQ_CST) ||
+        __atomic_load_n(&irq.handlers, __ATOMIC_SEQ_CST)) return false;
+    // No MMIO after resource release. The saved failure has already been
+    // copied into the capture result; retain it here until the next open.
+    irq.retired = true;
+    *owner = nullptr;
+    return true;
 }

@@ -6,5 +6,6 @@ typedef int kern_return_t;
 thread_t current_thread(void);
 void thread_set_thread_name(thread_t,const char *);
 kern_return_t kernel_thread_start(void (*)(void *,wait_result_t),void *,thread_t *);
+kern_return_t kernel_thread_start_priority(void (*)(void *,wait_result_t),void *,int,thread_t *);
 void thread_deallocate(thread_t);
 void thread_terminate_self(void);

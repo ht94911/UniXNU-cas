@@ -1,7 +1,7 @@
-name: nezha Camera140 wait for stopped CSID path reset before drain - native
+name: nezha Camera146 permit fully cleaned fault reopen and prioritize capture - native
 on:
   push:
-    branches: [codex/ios27-camera140-stop-20261124]
+    branches: [codex/ios27-camera146-reopen-20261124]
   workflow_dispatch:
 permissions:
   contents: read

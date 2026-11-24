@@ -1,3 +1,32 @@
+Camera146 permits a new reservation after a failed stream only when the
+existing source stop, IRQ join, fresh CSID reset, CPAS drain, DMA detach and
+all owner releases have completed. The failed read and saved error remain;
+there is no automatic restart. Uncertain cleanup and unretired IRQ faults
+still refuse a new open. The same sole worker uses XNU's normal preempting
+kernel priority, following Qualcomm's dedicated camera work queue. Camera145
+actually displayed a brief live preview and eight nonzero final frames before
+RDI overflow; its crop repair and all previous changes remain enabled.
+SMMU faults retain their original quarantine gate. Continuous preview,
+reopening and photographs need device verification.
+
+Camera145 adds the measured Camera144 all-NaN normalized FinalCropRect to
+its completed 1x sample-copy repair. Only mode1, owned completed output and
+four NaN components select the full normalized rectangle. Finite nonempty,
+partial, mixed nonfinite, infinite and foreign crops retain the original call.
+Camera144 actually entered this node eight times with that undefined crop,
+performed no repair and delivered eight black final samples; its normal
+Android/root return and protection checks passed. Continuous RAW still ends
+with RDI bit19. The new repair, preview and photographs need device validation.
+
+Camera142 normalizes an owned completed-frame empty crop before the original
+preview-stitcher calculation. Camera141's native empty-request case proved
+that repairing only its returned input leaves a zero-sized destination and
+an actual zero-sized dispatch. The original method now computes input, output
+and shift together from the completed frame, once. Valid, partial, foreign
+and invalid requests retain their original path. The native pixel consumer
+checks both rectangles and sentinel replacement; actual Camera preview and
+continuous RAW capture remain unverified.
+
 Camera140 joins the stopped stream's IRQ callback before issuing the stock
 CSID path-only immediate halt/reset and requiring a fresh reset receipt.
 CPAS drain follows that acknowledgement; either timeout retains DMA mappings,

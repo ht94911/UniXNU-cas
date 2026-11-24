@@ -387,7 +387,7 @@ bool cleanup(Capture &s, NezhaCameraNativeCaptureResult &result,
 bool nezha_camera_native_capture(const NezhaCameraNativeCaptureRequest *request,
     NezhaCameraNativeCaptureResult *result)
 {
-    if (!request || !result || state.used ||
+    if (!request || !result || __atomic_load_n(&state.used, __ATOMIC_ACQUIRE) ||
         !request->command_database || request->database_bytes != 0x20000) return false;
     if (request->consumer && (request->test_pattern || request->raw_sample ||
         !request->consumer->continuing || !request->consumer->deliver)) return false;
@@ -403,7 +403,7 @@ bool nezha_camera_native_capture(const NezhaCameraNativeCaptureRequest *request,
     const uint32_t height = pattern ? 480 : state.profile.height;
     const size_t sample_bytes = size_t(width) * height * 5 / 4;
     if (request->raw_sample && request->raw_sample_capacity < sample_bytes) return false;
-    state.used = true;
+    __atomic_store_n(&state.used, true, __ATOMIC_RELEASE);
     state.stopped = 0;
     state.cancelled = false;
     state.completed_time = 0;
@@ -415,7 +415,7 @@ bool nezha_camera_native_capture(const NezhaCameraNativeCaptureRequest *request,
     state.work = {};
     if (!checkpoint(*request, *result, NezhaNativeSharedOwners, physical[Camcc], physical[Csid], physical[Vfe])) {
         if (state.cancelled) {
-            state.used = false;
+            __atomic_store_n(&state.used, false, __ATOMIC_RELEASE);
             result->passed = result->cleaned = true;
             result->cleanup_step = NezhaNativeCleanupDone;
         }
@@ -743,13 +743,15 @@ bool nezha_camera_native_capture(const NezhaCameraNativeCaptureRequest *request,
     result->passed = (okay || state.cancelled) && result->cleaned && !result->irq_fault && !result->frames.fault &&
         (!request->raw_sample || result->raw_sample_bytes == sample_bytes);
     __atomic_store_n(&state.running, false, __ATOMIC_RELEASE);
-    if (request->consumer && result->passed) {
+    if (request->consumer && result->cleaned && !result->frames.fault &&
+        (!state.irq || nezha_camera_native_irq_retire(&state.irq))) {
         state.capture = {};
         state.pins = {};
         state.irq = nullptr;
         state.dma_touched = false;
         state.cci_touched = false;
-        state.used = false;
+        state.control_request = nullptr;
+        __atomic_store_n(&state.used, false, __ATOMIC_RELEASE);
     }
     return result->passed;
 }
@@ -789,4 +791,10 @@ bool nezha_camera_native_capture_service_copy(const uint8_t *completed_frame)
 bool nezha_camera_native_capture_running(void)
 {
     return __atomic_load_n(&state.running, __ATOMIC_ACQUIRE);
+}
+
+bool nezha_camera_native_capture_can_reopen(void)
+{
+    return !__atomic_load_n(&state.used, __ATOMIC_ACQUIRE) &&
+        !__atomic_load_n(&state.running, __ATOMIC_ACQUIRE);
 }

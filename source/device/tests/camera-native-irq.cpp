@@ -81,6 +81,8 @@ int main(int argc, char **argv)
     model.masks[2] = 0;
     model.masks[0] = 1; // Stock stopped TOP retains the reset-done subscription.
     assert(nezha_camera_native_irq_open(&owner, &io, &io, &setup));
+    NezhaCameraNativeIrq *active=owner;
+    assert(!nezha_camera_native_irq_retire(&active) && active==owner);
     assert(attaches == 1 && model.masks[0] == ((1u << 16) | (1u << 3) | (1u << 2) | 1) &&
            model.masks[1] == (1u << 16));
     NezhaCamera1080Events event{};
@@ -147,5 +149,23 @@ int main(int argc, char **argv)
     const unsigned reads = model.reads, writes = model.writes;
     handler(irq_context);
     assert(model.reads == reads && model.writes == writes);
+    assert(nezha_camera_native_irq_retire(&owner) && !owner);
+    assert(model.reads == reads && model.writes == writes);
+    assert(nezha_camera_native_irq_failure(static_cast<NezhaCameraNativeIrq *>(irq_context), &event));
+    assert(event.rx_irq == fatal_rx && event.rdi0_irq == fatal_rdi);
+    reopened=nullptr;
+    model.masks[2]=1;
+    assert(!nezha_camera_native_irq_open(&reopened,&io,&io,&setup) && !reopened);
+    assert(setup.status==NezhaIrqSetupBusyMask);
+    model.masks[2]=0;
+    assert(nezha_camera_native_irq_open(&reopened,&io,&io,&setup) && attaches==1);
+    assert(!nezha_camera_native_irq_fault(reopened));
+    assert(nezha_camera_native_irq_next(reopened,&event) && !event.buffer_done);
+    model.top=(1u<<16)|(1u<<3);
+    model.rdi=1u<<12;model.buffer=1u<<16;model.address=0x30000;
+    handler(irq_context);
+    assert(nezha_camera_native_irq_next(reopened,&event) && event.buffer_done && event.consumed_address==0x30000);
+    assert(nezha_camera_native_irq_stop(reopened));
     puts("Native CSID IRQ preserves RUP miss without stopping; ordered completions, real fatal errors and stopped MMIO remain protected");
+    puts("Native retired IRQ permits a fresh reservation after caller's full teardown; unretired fault and busy masks still refuse");
 }

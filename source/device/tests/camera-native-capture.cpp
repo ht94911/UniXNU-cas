@@ -17,6 +17,8 @@ static bool resources_active, irq_active, smmu_active, memory_active, stream_act
 static bool frame_timeout;
 static bool drain_failure;
 static bool csid_stop_failure, irq_stop_failure, csid_stop_done;
+static bool irq_retire_failure;
+static unsigned irq_retire_calls;
 static unsigned csid_stop_calls, drain_calls;
 static uint32_t irq_fault;
 static bool selected_epd;
@@ -168,6 +170,10 @@ extern "C" bool nezha_camera1080_reset_stopped_paths(const NezhaCameraRegisterIo
   return csid_stop_done=!csid_stop_failure; }
 extern "C" bool nezha_camera_native_irq_open(NezhaCameraNativeIrq **out,const NezhaCameraRegisterIo *,const NezhaCameraRegisterIo *,NezhaCameraNativeIrqSetup *)
 { assert(!*out && !irq_active);*out=(NezhaCameraNativeIrq *)1;irq_active=true;return true; }
+extern "C" bool nezha_camera_native_irq_retire(NezhaCameraNativeIrq **out)
+{ assert(*out==(NezhaCameraNativeIrq *)1 && !irq_active && !stream_active &&
+    !resources_active && !memory_active && !smmu_active);
+  ++irq_retire_calls;if(irq_retire_failure)return false;*out=nullptr;return true; }
 extern "C" bool nezha_camera_native_irq_stop(NezhaCameraNativeIrq *) { if(irq_stop_failure)return false;irq_active=false;return true; }
 extern "C" uint32_t nezha_camera_native_irq_fault(const NezhaCameraNativeIrq *) { assert(!irq_active);return irq_fault; }
 extern "C" bool nezha_camera_native_irq_failure(const NezhaCameraNativeIrq *,NezhaCamera1080Events *event)
@@ -313,11 +319,13 @@ int main(int argc,char **argv)
         assert(result.cleaned && result.AF_readonly_attempted && AF_eeprom_calls==1);
         assert(AF_position_calls==(AF_eeprom_failure==NezhaCciOk ? 1u:0u));
         if(!success) {
-            const unsigned attempts=AF_eeprom_calls+AF_position_calls;
-            assert(!nezha_camera_native_capture(&request,&result));
-            assert(AF_eeprom_calls+AF_position_calls==attempts);
+            const NezhaCameraNativeCaptureResult first=result;
+            assert(nezha_camera_native_capture_can_reopen());
+            AF_eeprom_failure=AF_position_failure=NezhaCciOk;keep_running=true;
+            assert(nezha_camera_native_capture(&request,&result) && result.frames.frames==3);
+            assert(!first.passed && first.cleaned);
         }
-        puts("Native AF read-only phase runs before DMA and retains first fault without retry");
+        puts("Native AF read-only phase runs before DMA; first error retained and fully cleaned new reservation succeeds");
         return 0;
     }
     cci[0]=NezhaCameraCciCanoeVersion;
@@ -337,9 +345,32 @@ int main(int argc,char **argv)
         assert(csid_stop_calls==(csid_stop_failure ? 1u:0u) && drain_calls==0);
         assert(!stream_active && resources_active && smmu_active && memory_active && !stops);
         assert(result.irq_stopped==csid_stop_failure && irq_active==irq_stop_failure);
+        assert(!nezha_camera_native_capture_can_reopen() && !irq_retire_calls);
         const unsigned first_starts=starts;
         assert(!nezha_camera_native_capture(&request,&result) && starts==first_starts);
         puts("Native stop timeout retains DMA/backing/resource owners and forbids drain or restart");
+        return 0;
+    }
+    if(argc==2 && (!strcmp(argv[1],"fault-reopen") || !strcmp(argv[1],"irq-retire-failure"))) {
+        keep_running=true;frame_timeout=true;irq_fault=2;
+        irq_retire_failure=!strcmp(argv[1],"irq-retire-failure");
+        assert(!nezha_camera_native_capture(&request,&result) && result.cleaned);
+        assert(result.irq_fault==2 && result.status==NezhaFramesTimeout && irq_retire_calls==1);
+        assert(!resources_active && !stream_active && !memory_active && !smmu_active && !irq_active);
+        const NezhaCameraNativeCaptureResult first=result;
+        if(irq_retire_failure) {
+            assert(!nezha_camera_native_capture_can_reopen());
+            const unsigned before=starts;
+            assert(!nezha_camera_native_capture(&request,&result) && starts==before);
+        } else {
+            assert(nezha_camera_native_capture_can_reopen());
+            frame_timeout=false;irq_fault=0;keep_running=true;
+            assert(nezha_camera_native_capture(&request,&result) && result.cleaned && result.frames.frames==3);
+            assert(starts==2 && stops==2 && maps==14 && irq_retire_calls==2);
+            assert(nezha_camera_native_capture_can_reopen());
+        }
+        assert(!first.passed && first.cleaned && first.irq_fault==2 && first.status==NezhaFramesTimeout);
+        puts("Native failed stream remains failed; only fully released owners and retired IRQ permit a new capture");
         return 0;
     }
     if(argc==2 && (!strcmp(argv[1],"copy-service") || !strcmp(argv[1],"copy-service-fault") ||
@@ -387,9 +418,10 @@ int main(int argc,char **argv)
         assert(result.step==NezhaNativeMemory && result.status==0xe00002bd);
         assert(result.memory_failure.step==(memory_prepare_failure ? NezhaMemoryFrameAllocate:NezhaMemoryHold));
         assert(result.cleaned && !result.frames.frames && !stream_active && !memory_active && !smmu_active);
-        const unsigned before=starts;
-        assert(!nezha_camera_native_capture(&request,&result) && starts==before);
-        puts("Native memory failure retains actual adapter status, completes pre-DMA teardown and preserves the failed-session gate");
+        assert(nezha_camera_native_capture_can_reopen());
+        memory_prepare_failure=memory_hold_failure=false;keep_running=true;
+        assert(nezha_camera_native_capture(&request,&result) && result.frames.frames==3 && result.cleaned);
+        puts("Native memory failure retains actual adapter status; complete pre-DMA teardown permits a fresh capture");
         return 0;
     }
     if(argc==2 && !strcmp(argv[1],"drain-failure")) {
@@ -401,6 +433,7 @@ int main(int argc,char **argv)
         assert(resources_active && memory_active && smmu_active && !irq_active && !stream_active && !stops);
         const unsigned before=starts;
         assert(!nezha_camera_native_capture(&request,&result) && starts==before);
+        assert(!nezha_camera_native_capture_can_reopen() && !irq_retire_calls);
         puts("Native failed CPAS drain retains DMA/resources and observes the quiesced original IRQ fault without reopening");
         return 0;
     }
@@ -478,6 +511,10 @@ int main(int argc,char **argv)
         result.capture_registers[13]==(original_bus_cgc|0x07ffffff));
     assert(vfe[0x1008/4]==original_bus_cgc);
     const unsigned failed_starts=starts;
-    assert(!nezha_camera_native_capture(&request,&result) && starts==failed_starts);
+    assert(nezha_camera_native_capture_can_reopen());
+    const NezhaCameraNativeCaptureResult failed=result;
+    frame_timeout=false;keep_running=true;
+    assert(nezha_camera_native_capture(&request,&result) && starts==failed_starts+1 && result.frames.frames==3);
+    assert(!failed.passed && failed.status==NezhaFramesTimeout && failed.cleaned);
     puts("Native continuous camera: two three-frame sessions, callback Stop, permanent maps and ordered resource release passed");
 }

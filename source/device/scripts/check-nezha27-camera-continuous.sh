@@ -42,6 +42,8 @@ g++ "${flags[@]}" "$out/NativeCapture-host.cpp" tests/camera-native-capture.cpp 
 "$out/test-capture" drain-failure
 "$out/test-capture" csid-stop-timeout
 "$out/test-capture" irq-stop-timeout
+"$out/test-capture" fault-reopen
+"$out/test-capture" irq-retire-failure
 "$out/test-capture" AF-readonly
 "$out/test-capture" AF-eeprom-fail
 "$out/test-capture" AF-position-fail
@@ -74,6 +76,7 @@ gcc -std=gnu11 -Wall -Wextra -Werror -g -fsanitize=address,undefined \
 "$out/test-device"
 "$out/test-device" AF-readonly
 "$out/test-device" copy-service-failure
+"$out/test-device" copy-service-reopen
 gcc -std=c11 -Wall -Wextra -Werror -g -fsanitize=address,undefined -Ipackage/camera \
     package/camera/NezhaCameraOvx10500u.c tests/camera-ovx-readback.c -o "$out/test-ovx-readback"
 "$out/test-ovx-readback"

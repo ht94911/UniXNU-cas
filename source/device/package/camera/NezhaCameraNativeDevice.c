@@ -7,6 +7,7 @@
 #include <IOKit/IOLib.h>
 #include <kern/clock.h>
 #include <kern/locks.h>
+#include <kern/sched.h>
 #include <kern/thread.h>
 #include <sys/conf.h>
 #include <sys/errno.h>
@@ -30,6 +31,7 @@ static struct hakios_camera_frame header;
 static struct NezhaCameraNativeCaptureRequest request;
 static struct NezhaCameraNativeCaptureResult result;
 static bool made,opened,worker_active,reading,frame_ready,read_wanted;
+static bool restart_blocked;
 static unsigned staging_copies,staging_skipped,completed_reads;
 static int failure;
 static dev_t camera_dev;
@@ -267,6 +269,7 @@ static void worker(void *argument,wait_result_t wait_result)
     lck_mtx_lock(&camera_mutex);
     if (!okay) failure=EIO;
     else if (opened) failure=EAGAIN; /* idle client must close before reopening */
+    restart_blocked=!nezha_camera_native_capture_can_reopen();
     worker_active=false;
     lck_mtx_unlock(&camera_mutex);
     wakeup(&worker_active);wakeup(&frame_ready);
@@ -277,18 +280,24 @@ static int device_open(dev_t dev,int flags,int type,struct proc *process)
 {
     (void)dev;(void)flags;(void)type;(void)process;
     lck_mtx_lock(&camera_mutex);
-    if (!made || opened || worker_active || reading || failure==EIO) {
-        const int error=failure==EIO ? EIO:EBUSY;
-        lck_mtx_unlock(&camera_mutex);return error;
+    if (!made || opened || worker_active || reading) {
+        lck_mtx_unlock(&camera_mutex);return EBUSY;
+    }
+    if (restart_blocked) {
+        lck_mtx_unlock(&camera_mutex);return EIO;
     }
     opened=worker_active=true;frame_ready=read_wanted=false;failure=0;
     staging_copies=staging_skipped=completed_reads=0;
     control_pending=control_inflight=false;
     controls_observed=false;controls_observed_after=0;
+    bzero(&result,sizeof(result));
     bzero(&header,sizeof(header));last_read=mach_absolute_time();
     lck_mtx_unlock(&camera_mutex);
     thread_t thread=THREAD_NULL;
-    const kern_return_t started=kernel_thread_start(worker,NULL,&thread);
+    /* Qualcomm's camera work queue uses a dedicated high-priority owner.
+     * Keep this sole XNU worker ahead of general background kernel work;
+     * existing bounded copies, waits and the Stop gate stay unchanged. */
+    const kern_return_t started=kernel_thread_start_priority(worker,NULL,BASEPRI_PREEMPT,&thread);
     if (started!=KERN_SUCCESS) {
         lck_mtx_lock(&camera_mutex);opened=worker_active=false;lck_mtx_unlock(&camera_mutex);
         return EIO;

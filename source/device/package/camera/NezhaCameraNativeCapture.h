@@ -136,7 +136,8 @@ struct NezhaCameraNativeCaptureResult {
 /* One normal capture worker. Diagnostic mode stops at 20 frames; a bound
  * consumer runs until its Stop gate closes and can restart only after
  * complete successful teardown. IRQ contexts remain mapped for the boot
- * lifetime. Indeterminate cleanup or a fault retains the original state. */
+ * lifetime. An error remains in the result and current read; only complete
+ * teardown permits a new reservation. Indeterminate cleanup retains state. */
 bool nezha_camera_native_capture(const struct NezhaCameraNativeCaptureRequest *request,
     struct NezhaCameraNativeCaptureResult *result);
 
@@ -145,6 +146,9 @@ bool nezha_camera_native_capture(const struct NezhaCameraNativeCaptureRequest *r
  * destroying the client's context or starting another session. */
 void nezha_camera_native_capture_request_stop(void);
 bool nezha_camera_native_capture_running(void);
+/* A completed cleanup releases every owner even when the stream failed.
+ * This does not clear the caller's error or restart the current session. */
+bool nezha_camera_native_capture_can_reopen(void);
 /* Only the synchronous consumer of the current completed frame may call
  * this, between its copy chunks and after releasing its own client mutex.
  * The original capture worker alone drains its already ACKed IRQ queue. */

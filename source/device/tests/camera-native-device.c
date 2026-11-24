@@ -4,6 +4,7 @@
 #include "NezhaCameraControl.h"
 #include "userland/upstream/hakios/hakios.camera.h"
 #include <kern/thread.h>
+#include <kern/sched.h>
 #include <sys/conf.h>
 #include <sys/systm.h>
 #include <sys/uio.h>
@@ -17,7 +18,7 @@ static const struct cdevsw *methods;
 static void (*queued_worker)(void *,wait_result_t);
 static unsigned runs,stops;
 static uint64_t ticks;
-static bool stream_failure,copy_failure;
+static bool stream_failure,copy_failure,restart_allowed=true;
 static unsigned controls_taken;
 static bool control_requested;
 static bool expected_AF_readonly;
@@ -65,6 +66,8 @@ thread_t current_thread(void) { return NULL; }
 void thread_set_thread_name(thread_t t,const char *name) { (void)t;assert(name); }
 int kernel_thread_start(void (*fn)(void *,wait_result_t),void *p,thread_t *out)
 { assert(!p && !queued_worker);queued_worker=fn;*out=(void *)1;return 0; }
+int kernel_thread_start_priority(void (*fn)(void *,wait_result_t),void *p,int priority,thread_t *out)
+{ assert(priority==BASEPRI_PREEMPT);return kernel_thread_start(fn,p,out); }
 void thread_deallocate(thread_t t) { assert(t==(void *)1); }
 void thread_terminate_self(void) { }
 int cdevsw_add(int wanted,const struct cdevsw *table) { assert(wanted==-1);methods=table;return 1; }
@@ -95,6 +98,7 @@ int uiomove(caddr_t source,int bytes,struct uio *uio)
 bool nezha_camera_profile_open(const uint8_t *bytes,size_t capacity,struct NezhaCameraProfile *p)
 { assert(bytes && capacity==NezhaCameraProfileCapacity);p->vendor=3;p->width=4096;p->height=3072;return true; }
 void nezha_camera_native_capture_request_stop(void) { ++stops; }
+bool nezha_camera_native_capture_can_reopen(void) { return restart_allowed; }
 bool nezha_camera_native_capture(const struct NezhaCameraNativeCaptureRequest *request,struct NezhaCameraNativeCaptureResult *result)
 {
  ++runs;assert(request->consumer && request->consumer->continuing(NULL));
@@ -123,7 +127,7 @@ bool nezha_camera_native_capture(const struct NezhaCameraNativeCaptureRequest *r
  const bool first_delivered=request->consumer->deliver(NULL,&layout,raw,layout.frame_bytes,75,2);
  if(copy_service_failure) {
   assert(!first_delivered && copy_chunks==3 && copy_service_calls==3);
-  capture_raw=raw;result->cleaned=true;return false;
+  capture_raw=raw;result->cleaned=restart_allowed;return false;
  }
  assert(first_delivered);
  memset(raw,0x6b,layout.frame_bytes);
@@ -159,13 +163,14 @@ bool nezha_camera_native_capture(const struct NezhaCameraNativeCaptureRequest *r
   assert(copy_read_probes==copies+3);
   free(bytes);
  }
- result->cleaned=true;return !stream_failure;
+ result->cleaned=restart_allowed;return !stream_failure;
 }
 int main(int argc,char **argv)
 {
  uint8_t profile=0,database=0;
  expected_AF_readonly=argc==2 && !strcmp(argv[1],"AF-readonly");
- copy_service_failure=argc==2 && !strcmp(argv[1],"copy-service-failure");
+ copy_service_failure=argc==2 && (!strcmp(argv[1],"copy-service-failure") || !strcmp(argv[1],"copy-service-reopen"));
+ if(copy_service_failure)restart_allowed=!strcmp(argv[1],"copy-service-reopen");
  assert(nezha_camera_native_device_init(&profile,NezhaCameraProfileCapacity,&database,0x20000,expected_AF_readonly));
  assert(methods && !runs);
  if(copy_service_failure) {
@@ -174,9 +179,19 @@ int main(int argc,char **argv)
   struct uio probe={bytes,sizeof(struct hakios_camera_frame)+15728640,0};
   assert(methods->d_read(0,&probe,IO_NDELAY)==EAGAIN);
   assert(methods->d_read(0,&probe,0)==EIO && !probe.offset && copy_read_probes==1);
-  assert(methods->d_close(0,0,0,NULL)==0 && methods->d_open(0,0,0,NULL)==EIO);
-  free(capture_raw);free(bytes);
-  puts("Native camera copy fault: partial staging stays unpublished, first service error stops delivery and refuses restart");
+  assert(methods->d_open(0,0,0,NULL)==EBUSY);
+  assert(methods->d_close(0,0,0,NULL)==0);
+  assert(methods->d_open(0,0,0,NULL)==(restart_allowed ? 0:EIO));
+  free(capture_raw);capture_raw=NULL;
+  if(restart_allowed) {
+   copy_service_failure=false;probe.offset=0;
+   assert(methods->d_read(0,&probe,IO_NDELAY)==EAGAIN);
+   assert(methods->d_read(0,&probe,0)==0 && ((struct hakios_camera_frame *)bytes)->sequence==2);
+   free(capture_raw);capture_raw=NULL;
+   assert(methods->d_close(0,0,0,NULL)==0);
+  }
+  free(bytes);
+  puts("Native camera copy fault: partial staging stays unpublished; full teardown permits new read, uncertain cleanup refuses restart");
   return 0;
  }
  struct vnode own={1,VT_DEVFS,makedev(1,0)},other={1,VT_DEVFS,makedev(2,0)};
@@ -219,9 +234,20 @@ int main(int argc,char **argv)
  assert(methods->d_read(0,&uio,0)==0); /* queued completed frame remains valid before terminal fault */
  free(capture_raw);capture_raw=NULL;
  assert(methods->d_close(0,0,0,NULL)==0);
+ assert(methods->d_open(0,0,0,NULL)==0);
+ stream_failure=false;uio.offset=0;
+ assert(methods->d_read(0,&uio,IO_NDELAY)==EAGAIN);
+ assert(methods->d_read(0,&uio,0)==0 && h->sequence==2);
+ free(capture_raw);capture_raw=NULL;
+ assert(methods->d_close(0,0,0,NULL)==0);
+ restart_allowed=false;stream_failure=true;
+ assert(methods->d_open(0,0,0,NULL)==0);uio.offset=0;
+ assert(methods->d_read(0,&uio,0)==0);
+ free(capture_raw);capture_raw=NULL;
+ assert(methods->d_close(0,0,0,NULL)==0);
  assert(methods->d_open(0,0,0,NULL)==EIO);
- assert(copy_read_probes==5);
- assert(copy_service_calls==5*239);
+ assert(copy_read_probes==7);
+ assert(copy_service_calls==7*239);
  free(buffer);
  puts("Native camera device: requested-only staging, preserved unread pixels, copy/read exclusion, exposure delay, bounded close and fault restart gate passed");
 }

@@ -35,6 +35,11 @@ bool nezha_camera_native_irq_failure(const struct NezhaCameraNativeIrq *owner,
  * The retained callback becomes inert; this does not detach the SPI. */
 bool nezha_camera_native_irq_stop(struct NezhaCameraNativeIrq *owner);
 
+/* The capture worker calls this only after source reset, CPAS drain,
+ * DMA detach and all resource releases have succeeded. Preserve the old
+ * terminal event until the next open; the boot-long callback stays inert. */
+bool nezha_camera_native_irq_retire(struct NezhaCameraNativeIrq **owner);
+
 #ifdef __cplusplus
 }
 #endif
