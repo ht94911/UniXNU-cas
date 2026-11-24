@@ -29,6 +29,7 @@ static IMP original_pixel_transfer_node;
 static IMP original_preview_stitcher;
 static IMP original_node_output;
 static IMP original_pool_pixel,original_dropped_output;
+static IMP original_drop_reason,original_drop_pts;
 static bool capture_seen,installed,preview_sink_installed,input_rect_installed;
 static bool pixel_transfer_node_installed;
 static bool preview_stitcher_installed;
@@ -388,11 +389,11 @@ static void emit_dropped_output(id self,SEL selector,id dropped)
             __atomic_fetch_add(&reports,1u,__ATOMIC_RELAXED)<16) {
             char reason[96]="unavailable";CMTime pts={0};
             if (dropped && dropped_sample_class && object_getClass(dropped)==dropped_sample_class) {
-                id value=((id (*)(id,SEL))objc_msgSend)(dropped,sel_registerName("reason"));
+                id value=((id (*)(id,SEL))original_drop_reason)(dropped,sel_registerName("reason"));
                 if (value && CFGetTypeID((CFTypeRef)value)==CFStringGetTypeID())
                     (void)CFStringGetCString((CFStringRef)value,reason,sizeof reason,kCFStringEncodingUTF8);
                 reason[sizeof reason-1]=0;
-                pts=((CMTime (*)(id,SEL))objc_msgSend)(dropped,sel_registerName("pts"));
+                pts=((CMTime (*)(id,SEL))original_drop_pts)(dropped,sel_registerName("pts"));
             }
             const bool same=current_transfer && current_transfer->node==node;
             fprintf(stderr,"nezha-camera: original transfer dropped count=%llu reason=%s pts=%lld/%d/%u/%lld seq=%llu generation=%llu thread-scope=%u\n",
@@ -434,6 +435,8 @@ static void install_transfer_outputs(void)
             (uintptr_t)ptrauth_strip(method_getImplementation(reason),ptrauth_key_function_pointer)==(uintptr_t)(0x1b0857cdcULL+capture_slide) &&
             (uintptr_t)ptrauth_strip(method_getImplementation(pts),ptrauth_key_function_pointer)==(uintptr_t)(0x1b068b238ULL+capture_slide)) {
             original_dropped_output=original;dropped_sample_class=sample;
+            original_drop_reason=method_getImplementation(reason);
+            original_drop_pts=method_getImplementation(pts);
             method_setImplementation(method,(IMP)emit_dropped_output);drop_observer_installed=true;
             fputs("nezha-camera: original transfer dropped-frame reason observer installed readonly=1\n",stderr);
         }

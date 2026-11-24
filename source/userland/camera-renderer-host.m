@@ -535,6 +535,8 @@ int main(void) {@autoreleasepool {
  scope.node=transfer_node;current_transfer=&scope;
  original_dropped_output=method_getImplementation(class_getInstanceMethod([TestNodeOutput class],@selector(emitDroppedSample:)));
  dropped_sample_class=[TestDroppedSample class];
+ original_drop_reason=method_getImplementation(class_getInstanceMethod(dropped_sample_class,@selector(reason)));
+ original_drop_pts=method_getImplementation(class_getInstanceMethod(dropped_sample_class,@selector(pts)));
  TestDroppedSample *dropped=[TestDroppedSample new];out->_node=transfer_node;
  dropped_output_calls=0;
  emit_dropped_output(out,@selector(emitDroppedSample:),dropped);
