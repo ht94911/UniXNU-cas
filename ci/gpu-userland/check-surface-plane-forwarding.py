@@ -134,14 +134,14 @@ int main() {
   NBTexture *texture=(NBTexture *)[device newTextureWithDescriptor:descriptor iosurface:&planar plane:p];
   assert(texture && [texture iosurface]==&planar && [texture iosurfacePlane]==p);
   assert(askedPlanar && askedPlane==p && askedOffset==planar.offset[p] && askedRow==64);
-  assert(imports==beforeImports+1 && retains==beforeRetains+1 && uses==beforeUses+1);++checks;
+  assert(imports==beforeImports+1 && retains==beforeRetains+1 && uses==beforeUses);++checks;
   NBTexture *view=(NBTexture *)[texture view:&nativeTexture];
   NBTexture *nested=(NBTexture *)[view view:&nativeTexture];
   assert([view iosurface]==&planar && [nested iosurface]==&planar);
   assert([view iosurfacePlane]==p && [nested iosurfacePlane]==p);
   assert(view.parent==(id<MTLTexture>)texture && nested.parent==(id<MTLTexture>)view);
   assert(nested.offset==planar.offset[p] && nested.rowBytes==64 && nested.buffer==nativeBuffer);
-  assert(retains==beforeRetains+3 && uses==beforeUses+3);checks+=2;
+  assert(retains==beforeRetains+3 && uses==beforeUses);checks+=2;
   unsigned before=retains;assert(![texture view:nullptr] && retains==before);++checks;
  }
  NBTexture *texture=(NBTexture *)[device newTextureWithDescriptor:descriptor iosurface:&plain plane:0];

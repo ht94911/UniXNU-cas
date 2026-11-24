@@ -462,6 +462,11 @@ def main():
     must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', '--check', selected])
     must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', selected])
     record['camera111_threadgroup_dump_patch'] = sha(selected)
+    selected = HERE / 'patches/camera150-surface-use-plugin.patch'
+    must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', '--check', selected])
+    must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', selected])
+    record['camera150_surface_use_patch'] = sha(selected)
+    shutil.copyfile(HERE / 'fixtures/surface_pool_host.mm', root / 'drivers/AdrenoMetal/bridge/surface_pool_host.mm')
     # Select the runtime only after its final recipe pin has been applied.
     # 3. metal2vulkan at the pin.
     translator = json.loads((root / 'scripts/data/gpu-metal-vulkan-inputs.json').read_text())['translator']

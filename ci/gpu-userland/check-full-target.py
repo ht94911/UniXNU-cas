@@ -288,6 +288,10 @@ report['actual_copy_pitch'] = copy_pitch
 planes=json.loads((a.logs/'surface-plane-forwarding/report.json').read_text())
 assert planes['passed'] and planes['checks']==15 and planes['actual_ObjectiveC_bodies_executed']
 assert planes['source_sha256']==hashlib.sha256((root/'drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm').read_bytes()).hexdigest()
+surface_pool=json.loads((a.logs/'surface-pool/report.json').read_text())
+assert surface_pool['passed'] and surface_pool['real_CoreVideo_pool'] and surface_pool['real_GPU_reads']
+assert surface_pool['source_sha256']==hashlib.sha256((root/'drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm').read_bytes()).hexdigest()
+report['actual_surface_pool_reuse']=surface_pool
 assert target_extern['actual_surface_plane_method_verified'] and target_extern['surface_plane_constant_zero_getter_absent']
 report.update(actual_surface_plane_forwarding=planes, actual_surface_plane_target=target_extern['surface_plane_IMP'])
 small_yuv=json.loads((a.logs/'small-yuv-layout/report.json').read_text())
