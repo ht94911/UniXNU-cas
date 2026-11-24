@@ -1,0 +1,55 @@
+name: nezha Camera150 original CoreVideo pool lifetime check
+on:
+  push:
+    branches: [codex/ios27-camera150-corevideo-20261125]
+permissions:
+  contents: read
+concurrency:
+  group: nezha-camera150-corevideo-${{ github.ref }}
+  cancel-in-progress: false
+defaults:
+  run:
+    shell: bash
+jobs:
+  verify:
+    runs-on: macos-26-intel
+    timeout-minutes: 12
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Verify exact source input hashes
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import json,hashlib
+          for name,digest in json.loads(Path('source-sha256.json').read_text()).items():
+              path=Path(name);assert path.is_file() and not path.is_symlink() and hashlib.sha256(path.read_bytes()).hexdigest()==digest,name
+          PY
+      - name: Exercise real CoreVideo and IOSurface ownership
+        id: corevideo
+        run: python3 ci/check-corevideo-pool.py
+      - name: Seal actual source and all diagnostics
+        if: always()
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import os,sys
+          root=Path(os.environ['RUNNER_TEMP'])/'corevideo-results'
+          root.mkdir(exist_ok=True)
+          sys.path.insert(0,str(Path('ci/xnu').resolve()))
+          import artifacts
+          names=sorted(p.relative_to(root).as_posix() for p in root.rglob('*') if p.is_file())
+          assert names
+          artifacts.seal(root,names,Path('ci/xnu/artifact-recipient.pem'),Path(os.environ['RUNNER_TEMP'])/'sealed')
+          PY
+      - name: Upload CMS outputs only
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: nezha-gpu27-metal-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/sealed
+          if-no-files-found: error
+          retention-days: 14
