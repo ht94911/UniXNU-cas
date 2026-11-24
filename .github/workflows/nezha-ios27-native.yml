@@ -1,7 +1,7 @@
-name: nezha Camera146 permit fully cleaned fault reopen and prioritize capture - native
+name: nezha Camera146b private scheduler header path - native
 on:
   push:
-    branches: [codex/ios27-camera146-reopen-20261124]
+    branches: [codex/ios27-camera146b-reopen-headers-20261124]
   workflow_dispatch:
 permissions:
   contents: read

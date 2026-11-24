@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "Camera146 Native140/GPU115 base: fully cleaned failure reopen and sole preempting capture worker; separate retained145 renderer",
+  "purpose": "Camera146b: fix source-private scheduler header path for native cdev; retain Camera146 fully-cleaned fault reopen, sole preempting worker and Camera145 nonzero preview renderer",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -14,7 +14,7 @@
       "reason": "native-only CI; actual prelink runs locally with reviewed matcher"
     }
   },
-  "device_revision": "c6352f088cf6a106d510286e0d4cbe11efc0ca98",
+  "device_revision": "4c706708dce90425a1bb8b182af7aa8e68ead890",
   "soc_revision": "device-local-GPU051-camera074-bankstreamretirement",
   "xcode": "26.6",
   "files": {
@@ -557,7 +557,7 @@
     "source/device/scripts/build-nezha27-als-owner.py": "fc9b83797765f8d4ed94284e7c1a1deda53059784c8c7ca9d21a52c979b61cb2",
     "source/device/scripts/build-nezha27-als.py": "1f6b777019220dca8c86839b5d55757dd7638b10add047e6dd4678be2eeaf541",
     "source/device/scripts/build-nezha27-bluetooth.py": "91d540e33f87ecdb1aa9684b09d5a2ccc1c7bbc438f34e7539176cd4ac89dc0e",
-    "source/device/scripts/build-nezha27-camera-core.py": "daa1f3ae2ad51d1df07e06d0c3ffc7ac368cc05da9e1c64134b9878340ee66e9",
+    "source/device/scripts/build-nezha27-camera-core.py": "dfa2d295122fd6e4e31ccb82f327b2c835c5ef44ad496664501bf81ab26ab1d9",
     "source/device/scripts/build-nezha27-input.py": "21e546f0d8f68f60d9d5c56f75693df4a2d728bce5bafdd41b6c866f931d292d",
     "source/device/scripts/build-nezha27-usb-control.py": "a2cd48a8e07a1cc43cc54488d7492c45f63aaa21121ea85667e34752b83d4971",
     "source/device/scripts/build-nezha27-wifi.py": "e301b5f4f0acaeff47c4449968ce76901409a29253da2392cc34ed24e1a2d250",
@@ -710,7 +710,7 @@
     "source/device/package/gpu/adreno/ArmSmmu4KProgram.h": "171900c3ed400b805c3a1587959f66bc4a19db18aedc8111e862651a90bb8d8f",
     "source/device/package/gpu/adreno/ArmSmmu4K.h": "e25063b9134afc7eb79e7c030bc2858608cf0ade5da714d5dfd600fee5007e8e",
     "source/device/scripts/check-nezha27-camera-memory.py": "938a8576abf9bedfb092a10581e204fe9a1d4425e0b93acf201aca8fd2fb9ba2",
-    ".github/workflows/nezha-ios27-native.yml": "77ef61adbd4c878ed8a4d017b5e63f47adae065a9e5f9b9e19a9879dbba4faee",
+    ".github/workflows/nezha-ios27-native.yml": "2c4a1d051170c91f479f8bd1bd30cb6369ef3354f547b780f5c36027129617c7",
     "source/device/package/gpu/adreno/ArmSmmu4K.c": "0adb19b483e56e723014ed6cfe2c29f9d9735ae2770f62cf0057b22937dbd157",
     "source/device/package/gpu/adreno/ArmSmmu4KContext.c": "b8e32e32d1f07e71de65f31b12963ab8b01c05755f8c60c2d6f40cb03fe4eca8",
     "source/device/package/gpu/adreno/ArmSmmu4KProgram.c": "3b1d4911b0a48f90b09c721ffd2eb95dbfc02e96165009b23f8c98841f36e2b0",
@@ -1082,14 +1082,14 @@
   },
   "userland_revision": "e68b0ff6c04dd560f94dad3a8a558179408d029a",
   "camera": {
-    "source_revision": "c6352f088cf6a106d510286e0d4cbe11efc0ca98",
+    "source_revision": "4c706708dce90425a1bb8b182af7aa8e68ead890",
     "device_base": "7435e49e46705d2bfcabe09487ff80a4821fd577",
     "mode_default": "disabled",
     "host_core_tests": 18,
     "private_camera_modes_uploaded": false,
     "failed_predecessor_run": 43298685064,
     "stock_module_bytes_uploaded": false,
-    "previous_native_run": 45245848590,
+    "previous_native_run": 45372279560,
     "optional_probe_mode": 5,
     "full_stock_profiles_uploaded": false,
     "local_profile_host_roundtrips": 4,
@@ -1332,7 +1332,9 @@
     "native_current_error_not_hidden": true,
     "native_automatic_restart": false,
     "camera145_first_preview_verified": true,
-    "physical_reopen_verified": false
+    "physical_reopen_verified": false,
+    "previous_native_head": "58af350fdb5d77ff4ab58443d018cab03a5ccdc9",
+    "private_scheduler_C_header_path": true
   },
   "base_GPU051": {
     "boot_sha256": "4e4b785ca1bf7bea18d68248ade4cde09a9d9efb5d557fe65e4eaa975dac849a",

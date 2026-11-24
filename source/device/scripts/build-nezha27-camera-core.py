@@ -82,6 +82,9 @@ def main():
                     includes += ["-DNEZHA_CAMERA_NATIVE_CAPTURE=1"]
             if source.suffix == ".cpp":
                 includes += ["-I", str(ROOT / "refer/Adreno740"), "-I", str(ROOT / ".cache/xnu-work/osfmk")]
+            if name == "NezhaCameraNativeDevice":
+                # Its BSD C recipe omits source-private scheduler headers.
+                includes += ["-I", str(ROOT / ".cache/xnu-work/osfmk")]
             if args.shared_soc is not None and name in ("NezhaCameraNativeSmmu", "NezhaCameraNativeRpmh",
                     "NezhaCameraNativeGcc", "Sm8850Resources", "Sm8850ResourcesNative"):
                 includes += ["-I", str(shared / "include")]
