@@ -587,6 +587,10 @@ static CFDictionaryRef rendered_metadata(const struct Stream *s, CFDictionaryRef
         if (!value) { CFRelease(result);return NULL; }
         CFDictionarySetValue(result,geometry_keys[i],value);CFRelease(value);
     }
+    CFNumberRef generation=number(s->generation);
+    if (!generation) { CFRelease(result);return NULL; }
+    CFDictionarySetValue(result,CFSTR("NezhaCameraGraphGeneration"),generation);
+    CFRelease(generation);
     static unsigned geometry_reports[2];
     const unsigned report=__atomic_fetch_add(&geometry_reports[complete?1:0],1u,__ATOMIC_RELAXED);
     if (report<2 || (report && report%300==0))
@@ -596,7 +600,7 @@ static CFDictionaryRef rendered_metadata(const struct Stream *s, CFDictionaryRef
             "digital=%.9g wb=%.9g/%.9g/%.9g pending=%u asked=%u/%u/%u\n",
             frame->width,frame->height,(double)s->preview.processing.zoom,(unsigned)complete,
             report,statistics->mean[0],statistics->mean[1],statistics->mean[2],
-            statistics->bright,statistics->cells,(unsigned long long)actual->sequence,actual->exposure_lines,
+            statistics->bright,statistics->cells,(unsigned long long)s->preview.completed_sequence,actual->exposure_lines,
             actual->line_ns,actual->gain,actual->gain_unity,actual->frame_lines,
             (double)s->preview.processing.digital,(double)s->preview.processing.wb[0],
             (double)s->preview.processing.wb[1],(double)s->preview.processing.wb[2],
@@ -632,6 +636,12 @@ static NezhaFigStatus deliver_stream(struct Stream *s,
     serial(s,^{
         if (!s->running || s->invalid) return;
         const unsigned generation=s->generation;
+        s->preview.graph_generation=generation;
+        CFTypeRef frame_sequence=CFDictionaryGetValue(metadata,CFSTR("FrameSequence"));
+        double sequence=0;
+        s->preview.completed_sequence=frame_sequence && CFGetTypeID(frame_sequence)==CFNumberGetTypeID() &&
+            CFNumberGetValue(frame_sequence,kCFNumberDoubleType,&sequence) && isfinite(sequence) &&
+            sequence>=1 && sequence<=UINT32_MAX ? (uint32_t)sequence:0;
         bool attempted=false;
         bool enabled=false;
         for (unsigned i=0;i<3;++i)

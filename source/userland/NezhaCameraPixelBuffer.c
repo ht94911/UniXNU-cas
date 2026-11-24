@@ -22,10 +22,13 @@ static bool plane_capacity(size_t stride, size_t rows, size_t *capacity)
 /* The first few actual graph buffers distinguish malformed Y/UV content
  * from a later display import. Read only after all row groups complete,
  * while the existing CoreVideo write lock is still held. */
-static void observe_output(const struct NezhaCameraPreviewOutput *output)
+static void observe_output(const struct NezhaCameraPreview *preview,
+    const struct NezhaCameraPreviewOutput *output)
 {
-    static unsigned reports;
-    if (__atomic_fetch_add(&reports,1u,__ATOMIC_RELAXED)>=4) return;
+    static unsigned frames,reports;
+    const unsigned frame=__atomic_fetch_add(&frames,1u,__ATOMIC_RELAXED);
+    if (frame>=4 && preview->completed_sequence>=24 && frame%300!=0) return;
+    if (__atomic_fetch_add(&reports,1u,__ATOMIC_RELAXED)>=64) return;
     const size_t x=(output->width/2)&~(size_t)1, y=output->height/2;
     const size_t bytes=output->format==NezhaCameraPreviewBgra ? 4u:1u;
     const uint8_t *first=output->plane[0]+y*output->stride[0]+x*bytes;
@@ -45,10 +48,11 @@ static void observe_output(const struct NezhaCameraPreviewOutput *output)
             if(v>high)high=v;
         }
     }
-    fprintf(stderr,"nezha-camera: rendered pixel format=%u size=%ux%u stride=%llu/%llu center=%u/%u/%u/%u first-plane=%u..%u\n",
+    fprintf(stderr,"nezha-camera: rendered pixel format=%u size=%ux%u stride=%llu/%llu center=%u/%u/%u/%u first-plane=%u..%u seq=%llu generation=%u\n",
         (unsigned)output->format,output->width,output->height,
         (unsigned long long)output->stride[0],(unsigned long long)output->stride[1],
-        values[0],values[1],values[2],values[3],low,high);
+        values[0],values[1],values[2],values[3],low,high,
+        (unsigned long long)preview->completed_sequence,preview->graph_generation);
 }
 
 /* HakiOS f128f1d camera_device.c render_piece/deliver uses eight
@@ -135,7 +139,7 @@ static CVReturn pixel_buffer(const struct NezhaCameraPreview *preview,
     const bool rendered = valid && (still ?
         nezha_camera_still_render(preview, frame, raw, raw_bytes, &output) :
         render_preview(preview, frame, raw, raw_bytes, &output));
-    if (rendered) observe_output(&output);
+    if (rendered) observe_output(preview,&output);
     status = CVPixelBufferUnlockBaseAddress(pixel, 0);
     if (!rendered) return kCVReturnInvalidArgument;
     if (status != kCVReturnSuccess) return status;

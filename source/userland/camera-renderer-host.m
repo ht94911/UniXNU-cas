@@ -289,6 +289,17 @@ int main(void) {@autoreleasepool {
   * timestamps/attachments, and read only active pixels of padded planes. */
  original_preview_sink=method_getImplementation(class_getInstanceMethod([TestPreviewSink class],@selector(renderSampleBuffer:forInput:)));
  TestPreviewSink *sink=[TestPreviewSink new];
+ /* Exercise the actual bounded sampling schedule: the first stream does
+  * not consume the second stream's early or periodic observations. */
+ unsigned observed_reports=0;
+ for(unsigned i=0;i<8;++i) {assert(preview_report(i,i+1,&observed_reports));++cases;}
+ assert(!preview_report(8,24,&observed_reports)&&observed_reports==8);++cases;
+ assert(preview_report(40,1,&observed_reports)&&observed_reports==9);++cases;
+ assert(preview_report(300,313,&observed_reports)&&observed_reports==10);++cases;
+ assert(!preview_report(301,314,&observed_reports)&&observed_reports==10);++cases;
+ for(unsigned i=10;i<64;++i)assert(preview_report(600,613,&observed_reports));
+ assert(!preview_report(900,913,&observed_reports));++cases;
+ assert(!preview_report(901,1,&observed_reports));++cases;
  const uint32_t formats[]={kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
      kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,kCVPixelFormatType_32BGRA};
  for(unsigned f=0;f<3;++f) {
@@ -326,6 +337,8 @@ int main(void) {@autoreleasepool {
    NSDictionary *info=@{@"FrameSequence":@7};
    CMSetAttachment(sample,CFSTR("MetadataDictionary"),(CFDictionaryRef)info,kCMAttachmentMode_ShouldPropagate);
    CVBufferSetAttachment(pixel,CFSTR("NezhaCameraCompletedRaw1x"),kCFBooleanTrue,kCVAttachmentMode_ShouldPropagate);
+   assert(sample_metadata_number(sample,CFSTR("FrameSequence"))==7);++cases;
+   assert(sample_metadata_number(sample,CFSTR("NezhaCameraGraphGeneration"))==-1);++cases;
    preview_calls=0;
    render_preview_sample(sink,@selector(renderSampleBuffer:forInput:),sample,pool);
    assert(preview_calls==1&&received_sample==sample&&received_input==pool);

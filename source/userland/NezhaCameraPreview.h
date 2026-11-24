@@ -28,6 +28,8 @@ struct NezhaCameraPreviewOutput {
 
 struct NezhaCameraPreview {
     struct isp processing;
+    uint64_t completed_sequence;
+    uint32_t graph_generation;
 };
 
 void nezha_camera_preview_init(struct NezhaCameraPreview *preview);

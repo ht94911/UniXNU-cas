@@ -30,10 +30,10 @@ static bool pixel_transfer_node_installed;
 static Class pixel_transfer_node_class;
 static intptr_t capture_slide;
 static const uint8_t uuid[16]={0x99,0x5f,0xc2,0x2b,0x41,0xbd,0x37,0xb4,0x81,0x2f,0x26,0x86,0xb8,0x1c,0x26,0x94};
-/* The existing renderer stderr records only the first eight final inputs.
- * A successful intermediate transfer does not show which image reaches the
- * original display queue. Observe that queue's actual sample without changing
- * its attachments, pixels, timestamp or delivery. No full-frame readback. */
+/* Keep the existing final-input stderr bounded, including restarted streams
+ * and late inputs. Camera146 exhausted its first8 before the second stream.
+ * These 25 active pixels and the original call's duration are observations;
+ * they do not change attachments, pixels, timestamps or delivery. */
 struct PreviewPixels {
     CVReturn lock_status,unlock_status;
     unsigned count,nonzero,minimum,maximum;
@@ -96,12 +96,30 @@ static int attachment_boolean(CFTypeRef value)
     return type==CFNumberGetTypeID() && CFNumberGetValue((CFNumberRef)value,kCFNumberDoubleType,&number) &&
         isfinite(number) ? (number!=0):-2;
 }
+static double sample_metadata_number(CMSampleBufferRef sample,CFStringRef key)
+{
+    CFTypeRef metadata=sample?CMGetAttachment(sample,CFSTR("MetadataDictionary"),NULL):NULL;
+    if (!metadata || CFGetTypeID(metadata)!=CFDictionaryGetTypeID()) return -1;
+    CFTypeRef value=CFDictionaryGetValue((CFDictionaryRef)metadata,key);
+    double number=-1;
+    return value && CFGetTypeID(value)==CFNumberGetTypeID() &&
+        CFNumberGetValue((CFNumberRef)value,kCFNumberDoubleType,&number) && isfinite(number) ? number:-1;
+}
+static bool preview_report(unsigned input,double sequence,unsigned *reports)
+{
+    const bool early=sequence>=1 && sequence<24;
+    return (input<8 || early || input%300==0) &&
+        __atomic_fetch_add(reports,1u,__ATOMIC_RELAXED)<64;
+}
 static void render_preview_sample(id self,SEL selector,CMSampleBufferRef sample,id input)
 {
-    static unsigned reports;
-    const unsigned report=__atomic_fetch_add(&reports,1u,__ATOMIC_RELAXED);
+    static unsigned inputs,reports;
+    const unsigned report=__atomic_fetch_add(&inputs,1u,__ATOMIC_RELAXED);
+    const double sequence=sample_metadata_number(sample,CFSTR("FrameSequence"));
+    const double generation=sample_metadata_number(sample,CFSTR("NezhaCameraGraphGeneration"));
+    const bool observe=preview_report(report,sequence,&reports);
     uint64_t before=0;
-    if (report<8) {
+    if (observe) {
         const uint64_t started=mach_absolute_time();
         CVPixelBufferRef image=sample?CMSampleBufferGetImageBuffer(sample):NULL;
         IOSurfaceRef surface=image?CVPixelBufferGetIOSurface(image):NULL;
@@ -110,13 +128,6 @@ static void render_preview_sample(id self,SEL selector,CMSampleBufferRef sample,
         CFTypeRef marker=image?CVBufferCopyAttachment(image,CFSTR("NezhaCameraCompletedRaw1x"),NULL):NULL;
         const int own=attachment_boolean(marker);
         if (marker) CFRelease(marker);
-        CFTypeRef metadata=sample?CMGetAttachment(sample,CFSTR("MetadataDictionary"),NULL):NULL;
-        double sequence=-1;
-        if (metadata && CFGetTypeID(metadata)==CFDictionaryGetTypeID()) {
-            CFTypeRef value=CFDictionaryGetValue((CFDictionaryRef)metadata,CFSTR("FrameSequence"));
-            if (value && CFGetTypeID(value)==CFNumberGetTypeID())
-                (void)CFNumberGetValue((CFNumberRef)value,kCFNumberDoubleType,&sequence);
-        }
         const struct PreviewPixels pixels=preview_pixels(image);
         fprintf(stderr,"nezha-camera: final preview input=%u sample=%p image=%p surface=%u size=%zux%zu format=%08x pts=%lld/%d/%u/%lld sequence=%.0f black=%d own=%d lock=%d unlock=%d luma=%u/%u/%u/%u uv=%u/%u grid=",
             report,(void *)sample,(void *)image,surface?IOSurfaceGetID(surface):0,
@@ -127,11 +138,12 @@ static void render_preview_sample(id self,SEL selector,CMSampleBufferRef sample,
             pixels.u,pixels.v);
         for (unsigned i=0;i<pixels.count;++i) fprintf(stderr,"%s%u",i?",":"",pixels.luma[i]);
         before=mach_absolute_time();
-        fprintf(stderr," observe-ticks=%llu\n",(unsigned long long)(before-started));
+        fprintf(stderr," observe-ticks=%llu generation=%.0f sink=%p\n",
+            (unsigned long long)(before-started),generation,(void *)self);
     }
     ((void (*)(id,SEL,CMSampleBufferRef,id))original_preview_sink)(self,selector,sample,input);
-    if (report<8) fprintf(stderr,"nezha-camera: final preview original returned input=%u ticks=%llu\n",
-        report,(unsigned long long)(mach_absolute_time()-before));
+    if (observe) fprintf(stderr,"nezha-camera: final preview original returned input=%u ticks=%llu sequence=%.0f generation=%.0f\n",
+        report,(unsigned long long)(mach_absolute_time()-before),sequence,generation);
 }
 static void install_preview_sink(void)
 {
@@ -144,7 +156,7 @@ static void install_preview_sink(void)
     original_preview_sink=original;
     method_setImplementation(method,(IMP)render_preview_sample);
     preview_sink_installed=true;
-    fputs("nezha-camera: original final preview sample observer installed limit=8 grid=25 readonly=1\n",stderr);
+    fputs("nezha-camera: original final preview sample observer installed limit=64 first=8 early-sequence=24 interval=300 grid=25 readonly=1\n",stderr);
 }
 static bool scaler_available(Class type)
 {

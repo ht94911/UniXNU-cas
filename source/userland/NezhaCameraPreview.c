@@ -5,7 +5,10 @@
 
 void nezha_camera_preview_init(struct NezhaCameraPreview *preview)
 {
-    if (preview != NULL) isp_init(&preview->processing);
+    if (preview != NULL) {
+        memset(preview,0,sizeof(*preview));
+        isp_init(&preview->processing);
+    }
 }
 
 static bool fits(size_t stride, size_t rows, size_t bytes, size_t capacity)
@@ -60,12 +63,27 @@ bool nezha_camera_preview_auto_exposure(struct NezhaCameraPreview *preview,
     const uint32_t normal_max=2u*f->frame_lines_min;
     preview->processing.max_frame_lines=f->frame_lines_max<normal_max ?
         f->frame_lines_max:normal_max;
+    if (preview->processing.asked &&
+        (f->exposure_lines!=preview->processing.asked_lines ||
+         f->gain!=preview->processing.asked_gain ||
+         f->frame_lines!=preview->processing.asked_frame_lines)) return false;
     if (!isp_ae(&preview->processing,f,statistics,command)) return false;
     command->b=nezha_camera_control_gain_q8(command->b);
     if(!command->c)command->c=f->frame_lines_min;
     if(command->c<command->a+f->margin)command->c=command->a+f->margin;
     preview->processing.asked_gain=command->b;
     preview->processing.asked_frame_lines=command->c;
+    /* Camera146 reached 4482/65280/4492 and digital4, yet the reference
+     * AE kept requesting those same three hardware values. Each accepted
+     * group temporarily removes valid frame metadata and occupies CCI.
+     * Keep a software digital-gain update, but do not requeue unchanged
+     * quantized controls or pretend that another hardware ACK is pending. */
+    if (command->a==f->exposure_lines && command->b==f->gain &&
+        command->c==f->frame_lines) {
+        preview->processing.asked=false;
+        memset(command,0,sizeof(*command));
+        return false;
+    }
     return true;
 }
 
