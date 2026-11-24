@@ -58,7 +58,26 @@ int main(void) {
         const unsigned prior=nezha_chain_head, drops=nezha_chain_drops;
         nezha_input_chain_trace(0x31ca01dc|flag,1,2,3,4,5);
         nezha_input_chain_trace(0x14ca001c|flag,1,2,3,4,5);
-        assert(nezha_chain_head==prior && nezha_chain_drops==drops);
+        const unsigned expected=flag==1 || flag==2;
+        assert(nezha_chain_head==prior+expected && nezha_chain_drops==drops);
+        if(expected)assert(nezha_input_chain_flush(UINT64_MAX)==1);
+    }
+    // Keep only the two original send boundaries in either profile. No
+    // event is generated here; the original sender's debug guard is unchanged.
+    for(unsigned detail=0;detail<2;++detail) {
+        nezha_chain_ca_details=detail;
+        for(unsigned flag=0;flag<4;++flag) {
+            const unsigned prior=nezha_chain_head, drops=nezha_chain_drops;
+            nezha_input_chain_trace(0x31ca00bc|flag,0x1234567812345678ULL,2,3,4,5);
+            const unsigned expected=flag==1 || flag==2;
+            assert(nezha_chain_head==prior+expected && nezha_chain_drops==drops);
+            if(expected) {
+                const struct nezha_chain_record *r=&nezha_chain_records[prior%4096];
+                assert(r->code==(0x31ca00bc|flag) && r->tid==5);
+                assert(r->argument[0]==0x1234567812345678ULL && r->argument[1]==2 && r->argument[2]==3 && r->argument[3]==4);
+                assert(nezha_input_chain_flush(UINT64_MAX)==1);
+            }
+        }
     }
     nezha_chain_ca_details=1;
     for(unsigned code=0;code<4;++code) {

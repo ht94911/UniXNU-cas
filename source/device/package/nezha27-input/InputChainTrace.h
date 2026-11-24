@@ -24,13 +24,17 @@ void nezha_input_chain_trace(uint32_t code, uintptr_t a, uintptr_t b,
     if ((code >> 16) != 0x2b8a && (code >> 16) != 0x2b28 &&
         (code >> 16) != 0x0523 && ca_code!=0x31ca0028 &&
         ca_code!=0x31ca0004 && ca_code!=0x31ca0210 &&
+        code!=0x31ca00bd && code!=0x31ca00be &&
         ca_code!=0x31ca01dc && ca_code!=0x31ca0214 &&
         ca_code!=0x31ca0218 && ca_code!=0x31ca0260 &&
         ca_code!=0x31ca0264 && ca_code!=0x31ca0270 &&
         ca_code!=0x31ca0224 && ca_code!=0x14ca001c &&
         ca_code!=0x2b8701e4 && ca_code!=0x2b8701e8 &&
         ca_code!=0x2b870210) return;
-    if ((ca_code==0x31ca01dc || ca_code==0x14ca001c) &&
+    // These two original Context encoding boundaries are low-volume:
+    // one pair per encoding path. Keep them without enabling layer contents.
+    const unsigned context_boundary=code==0x31ca01dd || code==0x31ca01de;
+    if (((ca_code==0x31ca01dc && !context_boundary) || ca_code==0x14ca001c) &&
         !__atomic_load_n(&nezha_chain_ca_details, __ATOMIC_RELAXED)) return;
     if (__atomic_exchange_n(&nezha_chain_lock, 1, __ATOMIC_ACQUIRE)) {
         __atomic_fetch_add(&nezha_chain_drops, 1, __ATOMIC_RELAXED);
