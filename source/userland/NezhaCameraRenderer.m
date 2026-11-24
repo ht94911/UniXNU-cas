@@ -7,6 +7,7 @@
 #include <CoreGraphics/CGGeometry.h>
 #include <IOSurface/IOSurfaceRef.h>
 #include <mach/mach_time.h>
+#include <mach-o/loader.h>
 #include <mach-o/dyld.h>
 #include <objc/message.h>
 #include <objc/runtime.h>
@@ -25,9 +26,15 @@ static IMP original_scale,original_oriented_scale;
 static IMP original_preview_sink;
 static IMP original_input_rect;
 static IMP original_pixel_transfer_node;
+static IMP original_preview_stitcher;
+static IMP original_node_output;
 static bool capture_seen,installed,preview_sink_installed,input_rect_installed;
 static bool pixel_transfer_node_installed;
+static bool preview_stitcher_installed;
+static bool node_output_installed;
 static Class pixel_transfer_node_class;
+static Class preview_sink_class,preview_stitcher_class;
+static Class camera_source_class;
 static intptr_t capture_slide;
 static const uint8_t uuid[16]={0x99,0x5f,0xc2,0x2b,0x41,0xbd,0x37,0xb4,0x81,0x2f,0x26,0x86,0xb8,0x1c,0x26,0x94};
 /* Keep the existing final-input stderr bounded, including restarted streams
@@ -105,14 +112,115 @@ static double sample_metadata_number(CMSampleBufferRef sample,CFStringRef key)
     return value && CFGetTypeID(value)==CFNumberGetTypeID() &&
         CFNumberGetValue((CFNumberRef)value,kCFNumberDoubleType,&number) && isfinite(number) ? number:-1;
 }
+/* The old ROT-import statistic counts texture construction, including cached
+ * textures. These counters instead bracket the original calls. Snapshots use
+ * only atomics and retain no node, sample, surface or semaphore. They are
+ * sampled by the provider's existing output report; no extra worker/timer. */
+enum FlowStage { FlowSource,FlowStitcher,FlowRotation,FlowTransfer,FlowSink,FlowStageCount };
+struct PreviewFlow {
+    uint64_t entered,returned,enter_ticks,return_ticks,sequence,generation;
+    uintptr_t node,semaphore;
+    uint64_t sink_received,sink_contexts;
+    uint32_t sink_slot,sink_first,sink_fence;
+};
+static struct PreviewFlow preview_flow[FlowStageCount];
+static const char *const flow_names[]={"source","stitcher","rotation","transfer","sink"};
+static uint64_t flow_number(double value)
+{ return value>=0 && value<=UINT32_MAX ? (uint64_t)value:0; }
+static void flow_enter_values(enum FlowStage stage,id self,uint64_t sequence,uint64_t generation,uintptr_t semaphore)
+{
+    struct PreviewFlow *flow=&preview_flow[stage];
+    __atomic_store_n(&flow->node,(uintptr_t)self,__ATOMIC_RELAXED);
+    __atomic_store_n(&flow->semaphore,semaphore,__ATOMIC_RELAXED);
+    __atomic_store_n(&flow->sequence,sequence,__ATOMIC_RELAXED);
+    __atomic_store_n(&flow->generation,generation,__ATOMIC_RELAXED);
+    __atomic_store_n(&flow->enter_ticks,mach_absolute_time(),__ATOMIC_RELAXED);
+    __atomic_add_fetch(&flow->entered,1u,__ATOMIC_RELEASE);
+}
+static void flow_enter(enum FlowStage stage,id self,CMSampleBufferRef sample,uintptr_t semaphore)
+{
+    flow_enter_values(stage,self,
+        flow_number(sample_metadata_number(sample,CFSTR("FrameSequence"))),
+        flow_number(sample_metadata_number(sample,CFSTR("NezhaCameraGraphGeneration"))),semaphore);
+}
+static void flow_enter_rotation(id self,CVPixelBufferRef image)
+{
+    CFTypeRef metadata=image?CVBufferCopyAttachment(image,CFSTR("MetadataDictionary"),NULL):NULL;
+    uint64_t sequence=0,generation=0;
+    if (metadata && CFGetTypeID(metadata)==CFDictionaryGetTypeID()) {
+        const CFStringRef keys[]={CFSTR("FrameSequence"),CFSTR("NezhaCameraGraphGeneration")};
+        uint64_t *const values[]={&sequence,&generation};
+        for (unsigned i=0;i<2;++i) {
+            CFTypeRef value=CFDictionaryGetValue((CFDictionaryRef)metadata,keys[i]);
+            double number=-1;
+            if (value && CFGetTypeID(value)==CFNumberGetTypeID() &&
+                CFNumberGetValue((CFNumberRef)value,kCFNumberDoubleType,&number)) *values[i]=flow_number(number);
+        }
+    }
+    if (metadata) CFRelease(metadata);
+    flow_enter_values(FlowRotation,self,sequence,generation,0);
+}
+static void flow_return(enum FlowStage stage)
+{
+    __atomic_store_n(&preview_flow[stage].return_ticks,mach_absolute_time(),__ATOMIC_RELAXED);
+    __atomic_add_fetch(&preview_flow[stage].returned,1u,__ATOMIC_RELEASE);
+}
+static uintptr_t node_semaphore(id self,Class type,size_t offset)
+{
+    uintptr_t value=0;
+    if (self && type && object_getClass(self)==type && class_getInstanceSize(type)>=offset+sizeof value)
+        memcpy(&value,(const uint8_t *)(const void *)self+offset,sizeof value);
+    return value;
+}
+static void sink_state(id self)
+{
+    if (!self || !preview_sink_class || object_getClass(self)!=preview_sink_class) return;
+    const uint8_t *bytes=(const void *)self;
+    struct PreviewFlow *flow=&preview_flow[FlowSink];
+    uint64_t received=0,contexts=0;
+    uint32_t slot=0;
+    memcpy(&received,bytes+400,sizeof received);
+    memcpy(&contexts,bytes+496,sizeof contexts);
+    memcpy(&slot,bytes+232,sizeof slot);
+    __atomic_store_n(&flow->sink_received,received,__ATOMIC_RELAXED);
+    __atomic_store_n(&flow->sink_contexts,contexts,__ATOMIC_RELAXED);
+    __atomic_store_n(&flow->sink_slot,slot,__ATOMIC_RELAXED);
+    __atomic_store_n(&flow->sink_first,(uint32_t)bytes[568]|((uint32_t)bytes[592]<<8)|((uint32_t)bytes[569]<<16),__ATOMIC_RELAXED);
+    __atomic_store_n(&flow->sink_fence,(uint32_t)bytes[666]|((uint32_t)bytes[667]<<8),__ATOMIC_RELAXED);
+}
+void nezha_camera_renderer_report_flow(uint64_t sequence,uint64_t ticks,unsigned generation)
+{
+    static unsigned reports;
+    if (__atomic_fetch_add(&reports,1u,__ATOMIC_RELAXED)>=40) return;
+    const uint64_t observed=mach_absolute_time();
+    for (unsigned stage=0;stage<FlowStageCount;++stage) {
+        const struct PreviewFlow *flow=&preview_flow[stage];
+        const uint64_t entered=__atomic_load_n(&flow->entered,__ATOMIC_ACQUIRE);
+        const uint64_t returned=__atomic_load_n(&flow->returned,__ATOMIC_ACQUIRE);
+        fprintf(stderr,"nezha-camera: preview flow stage=%s entered=%llu returned=%llu last-seq=%llu last-generation=%llu enter-ticks=%llu return-ticks=%llu node=%p semaphore=%p provider-seq=%llu provider-generation=%u provider-ticks=%llu observed-ticks=%llu received=%llu contexts=%llu slot=%u first=%x fence=%x snapshot=independent-atomics\n",
+            flow_names[stage],(unsigned long long)entered,(unsigned long long)returned,
+            (unsigned long long)__atomic_load_n(&flow->sequence,__ATOMIC_RELAXED),
+            (unsigned long long)__atomic_load_n(&flow->generation,__ATOMIC_RELAXED),
+            (unsigned long long)__atomic_load_n(&flow->enter_ticks,__ATOMIC_RELAXED),
+            (unsigned long long)__atomic_load_n(&flow->return_ticks,__ATOMIC_RELAXED),
+            (void *)__atomic_load_n(&flow->node,__ATOMIC_RELAXED),(void *)__atomic_load_n(&flow->semaphore,__ATOMIC_RELAXED),
+            (unsigned long long)sequence,generation,(unsigned long long)ticks,(unsigned long long)observed,
+            (unsigned long long)__atomic_load_n(&flow->sink_received,__ATOMIC_RELAXED),
+            (unsigned long long)__atomic_load_n(&flow->sink_contexts,__ATOMIC_RELAXED),
+            __atomic_load_n(&flow->sink_slot,__ATOMIC_RELAXED),
+            __atomic_load_n(&flow->sink_first,__ATOMIC_RELAXED),__atomic_load_n(&flow->sink_fence,__ATOMIC_RELAXED));
+    }
+}
 static bool preview_report(unsigned input,double sequence,unsigned *reports)
 {
     const bool early=sequence>=1 && sequence<24;
-    return (input<8 || early || input%300==0) &&
+    return (input<8 || early || input==31 || input==63 || input==127 || input%300==0) &&
         __atomic_fetch_add(reports,1u,__ATOMIC_RELAXED)<64;
 }
 static void render_preview_sample(id self,SEL selector,CMSampleBufferRef sample,id input)
 {
+    flow_enter(FlowSink,self,sample,0);
+    sink_state(self);
     static unsigned inputs,reports;
     const unsigned report=__atomic_fetch_add(&inputs,1u,__ATOMIC_RELAXED);
     const double sequence=sample_metadata_number(sample,CFSTR("FrameSequence"));
@@ -142,6 +250,8 @@ static void render_preview_sample(id self,SEL selector,CMSampleBufferRef sample,
             (unsigned long long)(before-started),generation,(void *)self);
     }
     ((void (*)(id,SEL,CMSampleBufferRef,id))original_preview_sink)(self,selector,sample,input);
+    sink_state(self);
+    flow_return(FlowSink);
     if (observe) fprintf(stderr,"nezha-camera: final preview original returned input=%u ticks=%llu sequence=%.0f generation=%.0f\n",
         report,(unsigned long long)(mach_absolute_time()-before),sequence,generation);
 }
@@ -154,9 +264,69 @@ static void install_preview_sink(void)
     if (!original || strcmp(method_getTypeEncoding(method),"v32@0:8^{opaqueCMSampleBuffer=}16@24") ||
         (uintptr_t)ptrauth_strip(original,ptrauth_key_function_pointer)!=(uintptr_t)(0x1b04a34c0ULL+capture_slide)) return;
     original_preview_sink=original;
+    const char *fields[]={"_imageQueueSlot","_numFramesReceivedForCurrentConfiguration",
+        "_enqueuedBufferContextCount","_didCallFirstFrameAtHostTimeCallback",
+        "_didCallFirstFrameForCurrentConfiguration","_didCallFirstFrameCallback",
+        "_fenceSupportEnabled","_fencePortGenerationIDWillChange"};
+    const ptrdiff_t offsets[]={232,400,496,568,592,569,666,667};
+    bool state_ok=class_getInstanceSize(type)>=668;
+    for (unsigned i=0;i<sizeof offsets/sizeof offsets[0];++i) {
+        Ivar ivar=class_getInstanceVariable(type,fields[i]);
+        state_ok &= ivar && ivar_getOffset(ivar)==offsets[i];
+    }
+    if (state_ok) preview_sink_class=type;
     method_setImplementation(method,(IMP)render_preview_sample);
     preview_sink_installed=true;
-    fputs("nezha-camera: original final preview sample observer installed limit=64 first=8 early-sequence=24 interval=300 grid=25 readonly=1\n",stderr);
+    fprintf(stderr,"nezha-camera: original final preview sample observer installed limit=64 first=8 early-sequence=24 interval=300 grid=25 readonly=1 flow=1 sink-state=%u\n",(unsigned)state_ok);
+}
+static void render_preview_stitcher(id self,SEL selector,CMSampleBufferRef sample,id input)
+{
+    flow_enter(FlowStitcher,self,sample,node_semaphore(self,preview_stitcher_class,208));
+    ((void (*)(id,SEL,CMSampleBufferRef,id))original_preview_stitcher)(self,selector,sample,input);
+    flow_return(FlowStitcher);
+}
+static void install_preview_stitcher(void)
+{
+    if (preview_stitcher_installed) return;
+    Class type=objc_getClass("BWPreviewStitcherNode");
+    Method method=type?class_getInstanceMethod(type,sel_registerName("renderSampleBuffer:forInput:")):NULL;
+    IMP original=method?method_getImplementation(method):NULL;
+    Ivar semaphore=type?class_getInstanceVariable(type,"_emitSampleBufferSemaphore"):NULL;
+    if (!original || strcmp(method_getTypeEncoding(method),"v32@0:8^{opaqueCMSampleBuffer=}16@24") ||
+        (uintptr_t)ptrauth_strip(original,ptrauth_key_function_pointer)!=(uintptr_t)(0x1b04d0c5cULL+capture_slide) ||
+        !semaphore || ivar_getOffset(semaphore)!=208 || class_getInstanceSize(type)<216) return;
+    original_preview_stitcher=original;preview_stitcher_class=type;
+    method_setImplementation(method,(IMP)render_preview_stitcher);
+    preview_stitcher_installed=true;
+    fputs("nezha-camera: original preview stitcher call counters installed readonly=1\n",stderr);
+}
+static void emit_node_output(id self,SEL selector,CMSampleBufferRef sample)
+{
+    /* The original getter loads its existing weak node. A source handler
+     * returns before this servicing-thread emit, so count the emit itself. */
+    id node=((id (*)(id,SEL))objc_msgSend)(self,sel_registerName("node"));
+    const bool source=node && camera_source_class && object_getClass(node)==camera_source_class;
+    if (source) flow_enter(FlowSource,node,sample,0);
+    ((void (*)(id,SEL,CMSampleBufferRef))original_node_output)(self,selector,sample);
+    if (source) flow_return(FlowSource);
+}
+static void install_node_output(void)
+{
+    if (node_output_installed) return;
+    Class type=objc_getClass("BWNodeOutput");
+    Method method=type?class_getInstanceMethod(type,sel_registerName("emitSampleBuffer:")):NULL;
+    Method getter=type?class_getInstanceMethod(type,sel_registerName("node")):NULL;
+    IMP original=method?method_getImplementation(method):NULL;
+    IMP node=getter?method_getImplementation(getter):NULL;
+    Class source=objc_getClass("BWMultiStreamCameraSourceNode");
+    if (!source || !original || !node || strcmp(method_getTypeEncoding(method),"v24@0:8^{opaqueCMSampleBuffer=}16") ||
+        strcmp(method_getTypeEncoding(getter),"@16@0:8") ||
+        (uintptr_t)ptrauth_strip(original,ptrauth_key_function_pointer)!=(uintptr_t)(0x1b0525eecULL+capture_slide) ||
+        (uintptr_t)ptrauth_strip(node,ptrauth_key_function_pointer)!=(uintptr_t)(0x1b0487becULL+capture_slide)) return;
+    original_node_output=original;camera_source_class=source;
+    method_setImplementation(method,(IMP)emit_node_output);
+    node_output_installed=true;
+    fputs("nezha-camera: original source output call counters installed readonly=1\n",stderr);
 }
 static bool scaler_available(Class type)
 {
@@ -266,6 +436,7 @@ static CMSampleBufferRef transfer_sample(CMSampleBufferRef sample,CVPixelBufferR
 }
 static void render_pixel_transfer_sample(id self,SEL selector,CMSampleBufferRef sample,id input)
 {
+    flow_enter(FlowTransfer,self,sample,node_semaphore(self,pixel_transfer_node_class,408));
     CVPixelBufferRef image=sample?CMSampleBufferGetImageBuffer(sample):NULL;
     int crop_mode=-1;bool applies_primary=false,pending=false;
     RendererRect live={0};
@@ -290,6 +461,7 @@ static void render_pixel_transfer_sample(id self,SEL selector,CMSampleBufferRef 
             repaired,(int)error);
     ((void (*)(id,SEL,CMSampleBufferRef,id))original_pixel_transfer_node)(self,selector,selected,input);
     if (selected!=sample) CFRelease(selected);
+    flow_return(FlowTransfer);
 }
 static void install_pixel_transfer_node(void)
 {
@@ -301,8 +473,9 @@ static void install_pixel_transfer_node(void)
         (uintptr_t)ptrauth_strip(original,ptrauth_key_function_pointer)!=(uintptr_t)(0x1b04ae89cULL+capture_slide) ||
         class_getInstanceSize(type)<467) return;
     const char *names[]={"_cropMode","_liveCropMode","_inputCropRect","_liveInputCropRect",
-        "_makeCurrentConfigurationLiveOnNextRenderCallback","_appliesPrimaryCaptureRect"};
-    const ptrdiff_t offsets[]={128,132,136,168,400,418};
+        "_makeCurrentConfigurationLiveOnNextRenderCallback","_appliesPrimaryCaptureRect",
+        "_emitSampleBufferSemaphore"};
+    const ptrdiff_t offsets[]={128,132,136,168,400,418,408};
     for (unsigned i=0;i<sizeof offsets/sizeof offsets[0];++i) {
         Ivar ivar=class_getInstanceVariable(type,names[i]);
         if (!ivar || ivar_getOffset(ivar)!=offsets[i]) return;
@@ -400,6 +573,7 @@ static bool own_uncompressed_border(CVPixelBufferRef source,CVPixelBufferRef des
 static int transfer_pixels(id self,SEL selector,RendererRotationSession session,
     CVPixelBufferRef source,RendererRect src,CVPixelBufferRef destination,RendererRect dst,bool fill)
 {
+    flow_enter_rotation(self,source);
     const bool repaired=src.size.width==0 && src.size.height==0 &&
         isfinite(src.origin.x) && isfinite(src.origin.y) && own_full_source(source);
     if (repaired) src=(RendererRect){{0,0},{CVPixelBufferGetWidth(source),CVPixelBufferGetHeight(source)}};
@@ -423,6 +597,7 @@ static int transfer_pixels(id self,SEL selector,RendererRotationSession session,
         if (report<6) fprintf(stderr,"nezha-camera: own uncompressed rotation border returned status=%d\n",status);
     }
     if (report<6) fprintf(stderr,"nezha-camera: renderer transfer returned status=%d\n",status);
+    flow_return(FlowRotation);
     return status;
 }
 /* Reuse the renderer's bounded stderr to distinguish its real scaling
@@ -480,6 +655,8 @@ bool nezha_camera_renderer_install(const struct mach_header *header,intptr_t sli
     if (match_uuid(header)) {capture_seen=true;capture_slide=slide;}
     if (!capture_seen) return false;
     install_preview_sink();
+    install_preview_stitcher();
+    install_node_output();
     install_input_rect();
     install_pixel_transfer_node();
     if (installed) return true;

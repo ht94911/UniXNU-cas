@@ -34,6 +34,9 @@ static bool geometry_empty_export;
 static bool geometry_empty_output;
 static unsigned node_calls;
 static CMSampleBufferRef received_node_sample;
+static unsigned stitcher_calls;
+static unsigned output_calls;
+static void check_pending_stitcher(void);
 struct OpaqueVTPixelRotationSession;
 
 @interface FigM2MController : NSObject
@@ -116,7 +119,40 @@ struct OpaqueVTPixelRotationSession;
  received_node_sample=sample?(CMSampleBufferRef)CFRetain(sample):NULL;
 }
 @end
+@interface TestPreviewStitcherNode : NSObject {
+@public
+ unsigned char _padding[200];
+ id _emitSampleBufferSemaphore;
+}
+- (void)renderSampleBuffer:(CMSampleBufferRef)sample forInput:(id)input;
+@end
+@implementation TestPreviewStitcherNode
+- (void)renderSampleBuffer:(CMSampleBufferRef)sample forInput:(id)input {
+ ++stitcher_calls;received_sample=sample;received_input=input;
+ check_pending_stitcher();
+}
+@end
+@interface TestNodeOutput : NSObject {
+@public
+ id _node;
+}
+- (id)node;
+- (void)emitSampleBuffer:(CMSampleBufferRef)sample;
+@end
+@implementation TestNodeOutput
+- (id)node { return _node; }
+- (void)emitSampleBuffer:(CMSampleBufferRef)sample {++output_calls;received_sample=sample;}
+@end
 #include "NezhaCameraRenderer.m"
+static void check_pending_stitcher(void)
+{
+ assert(__atomic_load_n(&preview_flow[FlowStitcher].entered,__ATOMIC_ACQUIRE)==1);
+ assert(__atomic_load_n(&preview_flow[FlowStitcher].returned,__ATOMIC_ACQUIRE)==0);
+ /* Observe a currently active original callback without consuming its
+  * semaphore, retaining the node, or waiting for that callback to return. */
+ nezha_camera_renderer_report_flow(77,1234,9);
+ assert(__atomic_load_n(&preview_flow[FlowStitcher].returned,__ATOMIC_ACQUIRE)==0);
+}
 int main(void) {@autoreleasepool {
  original_supports=method_getImplementation(class_getClassMethod([TestRenderer class],@selector(supportsAcceleratedBorderFill)));
  original_initializer=method_getImplementation(class_getInstanceMethod([TestRenderer class],@selector(initWithIntermediateBufferPool:fractionalSourceRectEnabled:compressedFormatEnabled:)));
@@ -300,6 +336,9 @@ int main(void) {@autoreleasepool {
  for(unsigned i=10;i<64;++i)assert(preview_report(600,613,&observed_reports));
  assert(!preview_report(900,913,&observed_reports));++cases;
  assert(!preview_report(901,1,&observed_reports));++cases;
+ for(unsigned input=31;input<=127;input=input*2+1) {
+   unsigned reports=0;assert(preview_report(input,1000,&reports)&&reports==1);++cases;
+ }
  const uint32_t formats[]={kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
      kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,kCVPixelFormatType_32BGRA};
  for(unsigned f=0;f<3;++f) {
@@ -416,6 +455,30 @@ int main(void) {@autoreleasepool {
    assert(preview_calls==1&&received_sample==NULL&&received_input==(i?pool:nil));++cases;
  }
  [sink release];
+ memset(preview_flow,0,sizeof preview_flow);
+ TestPreviewStitcherNode *stage=[TestPreviewStitcherNode new];
+ stage->_emitSampleBufferSemaphore=pool;
+ preview_stitcher_class=[TestPreviewStitcherNode class];
+ original_preview_stitcher=method_getImplementation(class_getInstanceMethod(preview_stitcher_class,@selector(renderSampleBuffer:forInput:)));
+ assert(ivar_getOffset(class_getInstanceVariable(preview_stitcher_class,"_emitSampleBufferSemaphore"))==208);++cases;
+ assert(node_semaphore(stage,preview_stitcher_class,208)==(uintptr_t)pool);++cases;
+ assert(node_semaphore(pool,preview_stitcher_class,208)==0);++cases;
+ stitcher_calls=0;
+ render_preview_stitcher(stage,@selector(renderSampleBuffer:forInput:),NULL,pool);
+ assert(stitcher_calls==1&&received_sample==NULL&&received_input==pool);++cases;
+ assert(preview_flow[FlowStitcher].entered==1&&preview_flow[FlowStitcher].returned==1&&
+   preview_flow[FlowStitcher].semaphore==(uintptr_t)pool&&preview_flow[FlowStitcher].return_ticks>=preview_flow[FlowStitcher].enter_ticks);++cases;
+ TestNodeOutput *out=[TestNodeOutput new];
+ camera_source_class=preview_stitcher_class;
+ original_node_output=method_getImplementation(class_getInstanceMethod([TestNodeOutput class],@selector(emitSampleBuffer:)));
+ out->_node=stage;output_calls=0;
+ emit_node_output(out,@selector(emitSampleBuffer:),NULL);
+ assert(output_calls==1&&received_sample==NULL&&preview_flow[FlowSource].entered==1&&preview_flow[FlowSource].returned==1);++cases;
+ out->_node=pool;
+ emit_node_output(out,@selector(emitSampleBuffer:),NULL);
+ assert(output_calls==2&&preview_flow[FlowSource].entered==1&&preview_flow[FlowSource].returned==1);++cases;
+ [out release];
+ [stage release];
  CFRelease(source);CFRelease(destination);[renderer release];
  [pool release];printf("PASS %u production renderer forwarding cases: original results, pool, flags, capabilities and exact CGRect arguments\n",cases);
 }}

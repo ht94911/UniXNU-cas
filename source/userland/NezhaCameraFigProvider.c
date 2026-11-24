@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 #include "NezhaCameraFigProvider.h"
+#include "NezhaCameraRenderer.h"
 #include <Block.h>
 #include <dispatch/dispatch.h>
 #include <stdio.h>
@@ -45,10 +46,12 @@ static void report_lifecycle(const char *operation, const struct Stream *s, Nezh
 static void report_output(const struct Stream *s, unsigned index)
 {
     static unsigned reports;
-    if (!s->delivered[index] || __atomic_fetch_add(&reports,1u,__ATOMIC_RELAXED)>=24) return;
+    if (!s->delivered[index] || __atomic_fetch_add(&reports,1u,__ATOMIC_RELAXED)>=40) return;
     fprintf(stderr,"nezha-camera: output=%s callbacks=%llu first_ticks=%llu last_ticks=%llu generation=%u\n",
         output_names[index],(unsigned long long)s->delivered[index],
         (unsigned long long)s->first_time[index],(unsigned long long)s->last_time[index],s->generation);
+    if (index==0 && nezha_camera_renderer_report_flow)
+        nezha_camera_renderer_report_flow(s->preview.completed_sequence,s->last_time[index],s->generation);
 }
 
 static void serial(struct Stream *stream, dispatch_block_t work)
@@ -677,7 +680,8 @@ static NezhaFigStatus deliver_stream(struct Stream *s,
             if (!status && s->running && s->generation==generation) {
                 s->last_time[i]=completed_time;
                 if (!s->delivered[i]++) s->first_time[i]=completed_time;
-                if (s->delivered[i]==1 || s->delivered[i]%300==0) report_output(s,i);
+                if (s->delivered[i]==1 || s->delivered[i]==32 || s->delivered[i]==64 ||
+                    s->delivered[i]==128 || s->delivered[i]%300==0) report_output(s,i);
             }
             if (!attempted || (status && !result)) result=status;
             attempted=true;
