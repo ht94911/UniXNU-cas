@@ -28,13 +28,16 @@ static IMP original_input_rect;
 static IMP original_pixel_transfer_node;
 static IMP original_preview_stitcher;
 static IMP original_node_output;
+static IMP original_pool_pixel,original_dropped_output;
 static bool capture_seen,installed,preview_sink_installed,input_rect_installed;
 static bool pixel_transfer_node_installed;
 static bool preview_stitcher_installed;
 static bool node_output_installed;
+static bool pool_observer_installed,drop_observer_installed;
 static Class pixel_transfer_node_class;
 static Class preview_sink_class,preview_stitcher_class;
 static Class camera_source_class;
+static Class pixel_pool_class,dropped_sample_class;
 static intptr_t capture_slide;
 static const uint8_t uuid[16]={0x99,0x5f,0xc2,0x2b,0x41,0xbd,0x37,0xb4,0x81,0x2f,0x26,0x86,0xb8,0x1c,0x26,0x94};
 /* Keep the existing final-input stderr bounded, including restarted streams
@@ -125,6 +128,21 @@ struct PreviewFlow {
 };
 static struct PreviewFlow preview_flow[FlowStageCount];
 static const char *const flow_names[]={"source","stitcher","rotation","transfer","sink"};
+/* Camera148 proved that the original transfer call still returns while its
+ * sink stops receiving. Count the actual output and the original pool result,
+ * rather than treating an allocated context-array length as outstanding work.
+ * The thread-local scope owns no object and follows only this original call. */
+struct TransferObservation {
+    id node;
+    uint64_t sequence,generation;
+};
+static __thread const struct TransferObservation *current_transfer;
+struct TransferOutputObservation {
+    uint64_t emitted,dropped,pool_calls,pool_nil,sequence,generation,pool_capacity;
+    uint32_t pool_create_error;
+    uintptr_t pool;
+};
+static struct TransferOutputObservation transfer_output;
 static uint64_t flow_number(double value)
 { return value>=0 && value<=UINT32_MAX ? (uint64_t)value:0; }
 static void flow_enter_values(enum FlowStage stage,id self,uint64_t sequence,uint64_t generation,uintptr_t semaphore)
@@ -210,6 +228,17 @@ void nezha_camera_renderer_report_flow(uint64_t sequence,uint64_t ticks,unsigned
             __atomic_load_n(&flow->sink_slot,__ATOMIC_RELAXED),
             __atomic_load_n(&flow->sink_first,__ATOMIC_RELAXED),__atomic_load_n(&flow->sink_fence,__ATOMIC_RELAXED));
     }
+    fprintf(stderr,"nezha-camera: transfer output emitted=%llu dropped=%llu pool-calls=%llu pool-nil=%llu pool=%p capacity=%llu pool-create-error=%d last-seq=%llu last-generation=%llu provider-seq=%llu provider-generation=%u snapshot=independent-atomics\n",
+        (unsigned long long)__atomic_load_n(&transfer_output.emitted,__ATOMIC_RELAXED),
+        (unsigned long long)__atomic_load_n(&transfer_output.dropped,__ATOMIC_RELAXED),
+        (unsigned long long)__atomic_load_n(&transfer_output.pool_calls,__ATOMIC_RELAXED),
+        (unsigned long long)__atomic_load_n(&transfer_output.pool_nil,__ATOMIC_RELAXED),
+        (void *)__atomic_load_n(&transfer_output.pool,__ATOMIC_RELAXED),
+        (unsigned long long)__atomic_load_n(&transfer_output.pool_capacity,__ATOMIC_RELAXED),
+        (int32_t)__atomic_load_n(&transfer_output.pool_create_error,__ATOMIC_RELAXED),
+        (unsigned long long)__atomic_load_n(&transfer_output.sequence,__ATOMIC_RELAXED),
+        (unsigned long long)__atomic_load_n(&transfer_output.generation,__ATOMIC_RELAXED),
+        (unsigned long long)sequence,generation);
 }
 static bool preview_report(unsigned input,double sequence,unsigned *reports)
 {
@@ -307,6 +336,11 @@ static void emit_node_output(id self,SEL selector,CMSampleBufferRef sample)
     id node=((id (*)(id,SEL))objc_msgSend)(self,sel_registerName("node"));
     const bool source=node && camera_source_class && object_getClass(node)==camera_source_class;
     if (source) flow_enter(FlowSource,node,sample,0);
+    if (node && pixel_transfer_node_class && object_getClass(node)==pixel_transfer_node_class) {
+        __atomic_store_n(&transfer_output.sequence,flow_number(sample_metadata_number(sample,CFSTR("FrameSequence"))),__ATOMIC_RELAXED);
+        __atomic_store_n(&transfer_output.generation,flow_number(sample_metadata_number(sample,CFSTR("NezhaCameraGraphGeneration"))),__ATOMIC_RELAXED);
+        __atomic_add_fetch(&transfer_output.emitted,1u,__ATOMIC_RELAXED);
+    }
     ((void (*)(id,SEL,CMSampleBufferRef))original_node_output)(self,selector,sample);
     if (source) flow_return(FlowSource);
 }
@@ -327,6 +361,83 @@ static void install_node_output(void)
     method_setImplementation(method,(IMP)emit_node_output);
     node_output_installed=true;
     fputs("nezha-camera: original source output call counters installed readonly=1\n",stderr);
+}
+static CVPixelBufferRef new_pool_pixel(id self,SEL selector)
+{
+    CVPixelBufferRef pixel=((CVPixelBufferRef (*)(id,SEL))original_pool_pixel)(self,selector);
+    if (current_transfer && pixel_pool_class && object_getClass(self)==pixel_pool_class) {
+        uint64_t capacity=0;int32_t error=0;
+        memcpy(&capacity,(const uint8_t *)(const void *)self+16,sizeof capacity);
+        memcpy(&error,(const uint8_t *)(const void *)self+80,sizeof error);
+        __atomic_store_n(&transfer_output.pool,(uintptr_t)self,__ATOMIC_RELAXED);
+        __atomic_store_n(&transfer_output.pool_capacity,capacity,__ATOMIC_RELAXED);
+        __atomic_store_n(&transfer_output.pool_create_error,(uint32_t)error,__ATOMIC_RELAXED);
+        __atomic_add_fetch(&transfer_output.pool_calls,1u,__ATOMIC_RELAXED);
+        if (!pixel) __atomic_add_fetch(&transfer_output.pool_nil,1u,__ATOMIC_RELAXED);
+    }
+    /* A newPixelBuffer result is still the caller's +1 reference. */
+    return pixel;
+}
+static void emit_dropped_output(id self,SEL selector,id dropped)
+{
+    id node=((id (*)(id,SEL))objc_msgSend)(self,sel_registerName("node"));
+    if (node && pixel_transfer_node_class && object_getClass(node)==pixel_transfer_node_class) {
+        const uint64_t count=__atomic_add_fetch(&transfer_output.dropped,1u,__ATOMIC_RELAXED);
+        static unsigned reports;
+        if ((count<=2 || count==32 || count==64 || count==128 || count%300==0) &&
+            __atomic_fetch_add(&reports,1u,__ATOMIC_RELAXED)<16) {
+            char reason[96]="unavailable";CMTime pts={0};
+            if (dropped && dropped_sample_class && object_getClass(dropped)==dropped_sample_class) {
+                id value=((id (*)(id,SEL))objc_msgSend)(dropped,sel_registerName("reason"));
+                if (value && CFGetTypeID((CFTypeRef)value)==CFStringGetTypeID())
+                    (void)CFStringGetCString((CFStringRef)value,reason,sizeof reason,kCFStringEncodingUTF8);
+                reason[sizeof reason-1]=0;
+                pts=((CMTime (*)(id,SEL))objc_msgSend)(dropped,sel_registerName("pts"));
+            }
+            const bool same=current_transfer && current_transfer->node==node;
+            fprintf(stderr,"nezha-camera: original transfer dropped count=%llu reason=%s pts=%lld/%d/%u/%lld seq=%llu generation=%llu thread-scope=%u\n",
+                (unsigned long long)count,reason,(long long)pts.value,pts.timescale,pts.flags,(long long)pts.epoch,
+                (unsigned long long)(same?current_transfer->sequence:0),
+                (unsigned long long)(same?current_transfer->generation:0),(unsigned)same);
+        }
+    }
+    ((void (*)(id,SEL,id))original_dropped_output)(self,selector,dropped);
+}
+static void install_transfer_outputs(void)
+{
+    if (!pool_observer_installed) {
+        Class type=objc_getClass("BWPixelBufferPool");
+        Method method=type?class_getInstanceMethod(type,sel_registerName("newPixelBuffer")):NULL;
+        IMP original=method?method_getImplementation(method):NULL;
+        Ivar capacity=type?class_getInstanceVariable(type,"_capacity"):NULL;
+        Ivar error=type?class_getInstanceVariable(type,"_pixelBufferPoolCreateError"):NULL;
+        if (original && !strcmp(method_getTypeEncoding(method),"^{__CVBuffer=}16@0:8") &&
+            (uintptr_t)ptrauth_strip(original,ptrauth_key_function_pointer)==(uintptr_t)(0x1b05250a0ULL+capture_slide) &&
+            capacity && error && ivar_getOffset(capacity)==16 && ivar_getOffset(error)==80 &&
+            class_getInstanceSize(type)>=120) {
+            original_pool_pixel=original;pixel_pool_class=type;
+            method_setImplementation(method,(IMP)new_pool_pixel);pool_observer_installed=true;
+            fputs("nezha-camera: original transfer pool result observer installed readonly=1\n",stderr);
+        }
+    }
+    if (!drop_observer_installed) {
+        Class output=objc_getClass("BWNodeOutput"),sample=objc_getClass("BWDroppedSample");
+        Method method=output?class_getInstanceMethod(output,sel_registerName("emitDroppedSample:")):NULL;
+        Method reason=sample?class_getInstanceMethod(sample,sel_registerName("reason")):NULL;
+        Method pts=sample?class_getInstanceMethod(sample,sel_registerName("pts")):NULL;
+        IMP original=method?method_getImplementation(method):NULL;
+        if (node_output_installed && original && reason && pts &&
+            !strcmp(method_getTypeEncoding(method),"v24@0:8@16") &&
+            !strcmp(method_getTypeEncoding(reason),"@16@0:8") &&
+            !strcmp(method_getTypeEncoding(pts),"{?=qiIq}16@0:8") &&
+            (uintptr_t)ptrauth_strip(original,ptrauth_key_function_pointer)==(uintptr_t)(0x1b06a49d4ULL+capture_slide) &&
+            (uintptr_t)ptrauth_strip(method_getImplementation(reason),ptrauth_key_function_pointer)==(uintptr_t)(0x1b0857cdcULL+capture_slide) &&
+            (uintptr_t)ptrauth_strip(method_getImplementation(pts),ptrauth_key_function_pointer)==(uintptr_t)(0x1b068b238ULL+capture_slide)) {
+            original_dropped_output=original;dropped_sample_class=sample;
+            method_setImplementation(method,(IMP)emit_dropped_output);drop_observer_installed=true;
+            fputs("nezha-camera: original transfer dropped-frame reason observer installed readonly=1\n",stderr);
+        }
+    }
 }
 static bool scaler_available(Class type)
 {
@@ -459,7 +570,13 @@ static void render_pixel_transfer_sample(id self,SEL selector,CMSampleBufferRef 
             live.origin.x,live.origin.y,live.size.width,live.size.height,
             requested.origin.x,requested.origin.y,requested.size.width,requested.size.height,
             repaired,(int)error);
+    const struct TransferObservation scope={self,
+        flow_number(sample_metadata_number(selected,CFSTR("FrameSequence"))),
+        flow_number(sample_metadata_number(selected,CFSTR("NezhaCameraGraphGeneration")))};
+    const struct TransferObservation *previous=current_transfer;
+    current_transfer=&scope;
     ((void (*)(id,SEL,CMSampleBufferRef,id))original_pixel_transfer_node)(self,selector,selected,input);
+    current_transfer=previous;
     if (selected!=sample) CFRelease(selected);
     flow_return(FlowTransfer);
 }
@@ -659,6 +776,7 @@ bool nezha_camera_renderer_install(const struct mach_header *header,intptr_t sli
     install_node_output();
     install_input_rect();
     install_pixel_transfer_node();
+    install_transfer_outputs();
     if (installed) return true;
     Class type=objc_getClass("BWPixelBufferTransferRenderer");
     Method support=type ? class_getClassMethod(type,sel_registerName("supportsAcceleratedBorderFill")):NULL;

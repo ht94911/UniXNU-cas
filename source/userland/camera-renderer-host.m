@@ -34,6 +34,8 @@ static bool geometry_empty_export;
 static bool geometry_empty_output;
 static unsigned node_calls;
 static CMSampleBufferRef received_node_sample;
+static unsigned pixel_pool_calls,dropped_output_calls;
+static CVPixelBufferRef pool_result;
 static unsigned stitcher_calls;
 static unsigned output_calls;
 static void check_pending_stitcher(void);
@@ -142,6 +144,31 @@ struct OpaqueVTPixelRotationSession;
 @implementation TestNodeOutput
 - (id)node { return _node; }
 - (void)emitSampleBuffer:(CMSampleBufferRef)sample {++output_calls;received_sample=sample;}
+- (void)emitDroppedSample:(id)sample {++dropped_output_calls;received_input=sample;}
+@end
+@interface TestPixelPool : NSObject {
+@public
+ unsigned char _padding[8];
+ uint64_t _capacity;
+ unsigned char _padding2[56];
+ int32_t _pixelBufferPoolCreateError;
+ unsigned char _padding3[36];
+}
+- (CVPixelBufferRef)newPixelBuffer;
+@end
+@implementation TestPixelPool
+- (CVPixelBufferRef)newPixelBuffer {
+ ++pixel_pool_calls;
+ return pool_result?(CVPixelBufferRef)CFRetain(pool_result):NULL;
+}
+@end
+@interface TestDroppedSample : NSObject
+- (id)reason;
+- (CMTime)pts;
+@end
+@implementation TestDroppedSample
+- (id)reason {return @"PixelTransferFailure";}
+- (CMTime)pts {return CMTimeMake(77,30);}
 @end
 #include "NezhaCameraRenderer.m"
 static void check_pending_stitcher(void)
@@ -477,6 +504,49 @@ int main(void) {@autoreleasepool {
  out->_node=pool;
  emit_node_output(out,@selector(emitSampleBuffer:),NULL);
  assert(output_calls==2&&preview_flow[FlowSource].entered==1&&preview_flow[FlowSource].returned==1);++cases;
+ /* Pool result observation must not consume the caller's +1 or turn a
+  * real nil result into an allocation. Nested calls restore the prior scope. */
+ TestPixelPool *actual_pool=[TestPixelPool new];
+ pixel_pool_class=[TestPixelPool class];
+ assert(ivar_getOffset(class_getInstanceVariable(pixel_pool_class,"_capacity"))==16);
+ assert(ivar_getOffset(class_getInstanceVariable(pixel_pool_class,"_pixelBufferPoolCreateError"))==80);
+ original_pool_pixel=method_getImplementation(class_getInstanceMethod(pixel_pool_class,@selector(newPixelBuffer)));
+ actual_pool->_capacity=5;actual_pool->_pixelBufferPoolCreateError=-6662;
+ struct TransferObservation scope={stage,77,9};
+ current_transfer=&scope;
+ memset(&transfer_output,0,sizeof transfer_output);
+ pool_result=NULL;pixel_pool_calls=0;
+ assert(new_pool_pixel(actual_pool,@selector(newPixelBuffer))==NULL&&pixel_pool_calls==1);
+ assert(transfer_output.pool_calls==1&&transfer_output.pool_nil==1&&transfer_output.pool_capacity==5&&
+     (int32_t)transfer_output.pool_create_error==-6662);++cases;
+ assert(!CVPixelBufferCreate(NULL,12,26,kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,NULL,&pool_result));
+ CFIndex before_count=CFGetRetainCount(pool_result);
+ CVPixelBufferRef returned=new_pool_pixel(actual_pool,@selector(newPixelBuffer));
+ assert(returned==pool_result&&pixel_pool_calls==2&&CFGetRetainCount(pool_result)==before_count+1);
+ assert(transfer_output.pool_calls==2&&transfer_output.pool_nil==1);CFRelease(returned);++cases;
+ assert(CFGetRetainCount(pool_result)==before_count);++cases;
+ current_transfer=NULL;returned=new_pool_pixel(actual_pool,@selector(newPixelBuffer));
+ assert(returned==pool_result&&pixel_pool_calls==3&&transfer_output.pool_calls==2);CFRelease(returned);++cases;
+ CFRelease(pool_result);pool_result=NULL;
+ /* Dropped messages keep their original identity and are forwarded once;
+  * observing a late or foreign message cannot fabricate a frame sequence. */
+ TestPixelTransferNode *transfer_node=[TestPixelTransferNode new];
+ pixel_transfer_node_class=[TestPixelTransferNode class];
+ scope.node=transfer_node;current_transfer=&scope;
+ original_dropped_output=method_getImplementation(class_getInstanceMethod([TestNodeOutput class],@selector(emitDroppedSample:)));
+ dropped_sample_class=[TestDroppedSample class];
+ TestDroppedSample *dropped=[TestDroppedSample new];out->_node=transfer_node;
+ dropped_output_calls=0;
+ emit_dropped_output(out,@selector(emitDroppedSample:),dropped);
+ assert(dropped_output_calls==1&&received_input==dropped&&transfer_output.dropped==1);++cases;
+ assert(CMTimeCompare([dropped pts],CMTimeMake(77,30))==0&&[[dropped reason]isEqual:@"PixelTransferFailure"]);++cases;
+ out->_node=pool;emit_dropped_output(out,@selector(emitDroppedSample:),dropped);
+ assert(dropped_output_calls==2&&transfer_output.dropped==1);++cases;
+ out->_node=transfer_node;current_transfer=NULL;emit_dropped_output(out,@selector(emitDroppedSample:),nil);
+ assert(dropped_output_calls==3&&received_input==nil&&transfer_output.dropped==2);++cases;
+ emit_node_output(out,@selector(emitSampleBuffer:),NULL);
+ assert(transfer_output.emitted==1&&preview_flow[FlowSource].entered==1);++cases;
+ [dropped release];[transfer_node release];[actual_pool release];
  [out release];
  [stage release];
  CFRelease(source);CFRelease(destination);[renderer release];
