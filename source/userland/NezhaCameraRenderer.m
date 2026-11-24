@@ -196,15 +196,22 @@ static bool own_full_source(CVPixelBufferRef source)
  * renderer's by-value rotation call: the node still calculates a 0x0 input.
  * Normalize only the crop consumed by this node, on a sample copy. Its
  * original configuration, pixels and timestamp remain owned by the system. */
-static bool empty_finite_rect(CFTypeRef value,RendererRect *rect)
+static bool repairable_node_rect(CFTypeRef value,bool normalized_final_crop,RendererRect *rect)
 {
     CGRect decoded;
     if (!value || CFGetTypeID(value)!=CFDictionaryGetTypeID() ||
         !CGRectMakeWithDictionaryRepresentation((CFDictionaryRef)value,&decoded)) return false;
     *rect=(RendererRect){{decoded.origin.x,decoded.origin.y},
         {decoded.size.width,decoded.size.height}};
-    return isfinite(rect->origin.x) && isfinite(rect->origin.y) &&
+    const bool finite_empty=isfinite(rect->origin.x) && isfinite(rect->origin.y) &&
         rect->size.width==0 && rect->size.height==0;
+    /* The actual Camera144 mode1 consumer received an all-NaN FinalCropRect
+     * on completed 1x frames. It has no usable crop; the original dimension
+     * conversion becomes 0x0 and selects the 16x16 intermediate. Do not
+     * normalize partial, mixed nonfinite or absolute-rectangle requests. */
+    const bool undefined_final=normalized_final_crop && isnan(rect->origin.x) &&
+        isnan(rect->origin.y) && isnan(rect->size.width) && isnan(rect->size.height);
+    return finite_empty || undefined_final;
 }
 static CMSampleBufferRef transfer_sample(CMSampleBufferRef sample,CVPixelBufferRef image,
     int crop_mode,bool applies_primary,unsigned *repaired,OSStatus *error,RendererRect *requested)
@@ -220,7 +227,7 @@ static CMSampleBufferRef transfer_sample(CMSampleBufferRef sample,CVPixelBufferR
     if (!primary && (!metadata || CFGetTypeID(metadata)!=CFDictionaryGetTypeID())) return sample;
     CFTypeRef value=primary?CMGetAttachment(sample,key,&mode):
         CFDictionaryGetValue((CFDictionaryRef)metadata,key);
-    if (!empty_finite_rect(value,requested)) return sample;
+    if (!repairable_node_rect(value,crop_mode==1 && !primary,requested)) return sample;
     const CGRect full=CGRectMake(0,0,crop_mode==3?CVPixelBufferGetWidth(image):1,
         crop_mode==3?CVPixelBufferGetHeight(image):1);
     CFDictionaryRef rectangle=CGRectCreateDictionaryRepresentation(full);

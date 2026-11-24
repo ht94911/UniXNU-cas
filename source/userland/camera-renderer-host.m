@@ -344,8 +344,10 @@ int main(void) {@autoreleasepool {
    original_pixel_transfer_node=method_getImplementation(class_getInstanceMethod(pixel_transfer_node_class,@selector(renderSampleBuffer:forInput:)));
    const CGRect requests[]={CGRectMake(801,601,0,0),CGRectMake(0,0,1,1),
       CGRectMake(.25,.125,.5,.75),CGRectMake(NAN,601,0,0),
-      CGRectMake(801,INFINITY,0,0),CGRectMake(0,0,0,1),CGRectMake(0,0,-1,0)};
-   for(unsigned mode=0;mode<4;++mode)for(unsigned request=0;request<7;++request)
+      CGRectMake(801,INFINITY,0,0),CGRectMake(0,0,0,1),CGRectMake(0,0,-1,0),
+      CGRectMake(NAN,NAN,NAN,NAN),CGRectMake(NAN,NAN,1,1),
+      CGRectMake(0,0,NAN,NAN),CGRectMake(INFINITY,INFINITY,INFINITY,INFINITY)};
+   for(unsigned mode=0;mode<4;++mode)for(unsigned request=0;request<sizeof requests/sizeof requests[0];++request)
    for(unsigned own=0;own<2;++own)for(unsigned pending=0;pending<2;++pending) {
      CFDictionaryRef crop=CGRectCreateDictionaryRepresentation(requests[request]);
      NSDictionary *metadata=@{@"FrameSequence":@7,@"DigitalZoomRatio":@1,
@@ -357,7 +359,7 @@ int main(void) {@autoreleasepool {
      node->_appliesPrimaryCaptureRect=true;
      node->_makeCurrentConfigurationLiveOnNextRenderCallback=pending;
      node_calls=0;render_pixel_transfer_sample(node,@selector(renderSampleBuffer:forInput:),sample,pool);
-     const bool repaired=own&&request==0;
+     const bool repaired=own && (request==0 || (mode==1 && request==7));
      assert(node_calls==1&&received_input==pool&&received_node_sample);
      assert((received_node_sample!=sample)==repaired);
      assert(CMSampleBufferGetImageBuffer(received_node_sample)==pixel);
