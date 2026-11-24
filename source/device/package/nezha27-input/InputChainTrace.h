@@ -3,6 +3,7 @@
 struct nezha_chain_record {
     uint64_t tick, tid, argument[4];
     uint32_t code;
+    uint32_t loss_generation; // Admission generation, in the existing tail padding.
 };
 static struct nezha_chain_record nezha_chain_records[4096];
 static unsigned nezha_chain_lock, nezha_chain_head, nezha_chain_tail;
@@ -104,6 +105,7 @@ void nezha_input_chain_trace(uint32_t code, uintptr_t a, uintptr_t b,
         row->tick = mach_absolute_time();
         row->tid = tid;
         row->code = code;
+        row->loss_generation = drops;
         row->argument[0] = a;
         row->argument[1] = b;
         row->argument[2] = c;
@@ -137,7 +139,7 @@ static unsigned nezha_input_chain_flush(uint64_t deadline) {
             row.code, (unsigned long long)row.tid, (unsigned long long)row.tick,
             (unsigned long long)row.argument[0], (unsigned long long)row.argument[1],
             (unsigned long long)row.argument[2], (unsigned long long)row.argument[3],
-            __atomic_load_n(&nezha_chain_drops, __ATOMIC_RELAXED));
+            row.loss_generation);
         ++emitted;
     }
     return emitted;

@@ -8,6 +8,7 @@ static unsigned printed;
 static uint32_t printed_codes[16384];
 static uint64_t printed_tids[16384];
 static uint64_t printed_arguments[16384], printed_ticks[16384];
+static unsigned printed_drops[16384];
 static void (*clock_interruption)(void);
 static uint64_t mach_absolute_time(void) {
     if(clock_interruption) {
@@ -26,6 +27,8 @@ static int captured_printf(const char *format, ...) {
     printed_tids[printed]=va_arg(args,unsigned long long);
     printed_ticks[printed]=va_arg(args,unsigned long long);
     printed_arguments[printed]=va_arg(args,unsigned long long);
+    for(unsigned i=0;i<3;++i)(void)va_arg(args,unsigned long long);
+    printed_drops[printed]=va_arg(args,unsigned);
     va_end(args);
     ++printed;
     now+=print_ticks;
@@ -198,6 +201,32 @@ static void render_message_contract(void) {
     puts("render message ids, Mach returns, combined calls and loss invalidation passed");
 }
 
+static void loss_generation_output_contract(void) {
+    drain_ring();
+    const unsigned drops=nezha_chain_drops;
+    nezha_input_chain_trace(0x0120000c,0x1234,2,40002,4,950);
+    nezha_chain_lock=1;
+    nezha_input_chain_trace(0x05230004,1,2,3,4,951);
+    nezha_chain_lock=0;
+    assert(nezha_chain_drops==drops+1);
+    nezha_input_chain_trace(0x05230004,5,6,7,8,952);
+    assert(nezha_input_chain_flush(UINT64_MAX)==2);
+    // A later loss must not repaint both queued records with the flush's
+    // current generation. This is what hid loss inside old message pairs.
+    assert(printed_drops[0]==drops && printed_drops[1]==drops+1);
+    expect_ignored_end(0x010c00be,950);
+    drain_ring();
+    const unsigned head=nezha_chain_head, interrupted_drops=nezha_chain_drops;
+    clock_interruption=lose_record_during_admission;
+    nezha_input_chain_trace(0x0120000c,0x5678,2,40002,4,953);
+    assert(nezha_chain_records[head%4096].loss_generation==interrupted_drops);
+    assert(nezha_input_chain_flush(UINT64_MAX)==1);
+    assert(printed_drops[0]==interrupted_drops && nezha_chain_drops==interrupted_drops+1);
+    expect_ignored_end(0x010c00be,953);
+    drain_ring();
+    puts("admission loss generations remain distinct through delayed output");
+}
+
 int main(void) {
     assert(sizeof(struct nezha_chain_record)==56);
     nezha_input_chain_trace(0x01000000,1,2,3,4,5);
@@ -318,4 +347,5 @@ int main(void) {
     puts("input-chain profiles, FIFO, overflow and timed flush passed");
     drain_ring();
     render_message_contract();
+    loss_generation_output_contract();
 }

@@ -1,7 +1,7 @@
-name: nezha GPU084 actual render messages and returns - native064
+name: nezha GPU085 admission loss generations - native065
 on:
   push:
-    branches: [codex/ios27-gpu84-render-msg-native064-20261124]
+    branches: [codex/ios27-gpu85-admission-native065-20261125]
   workflow_dispatch:
 permissions:
   contents: read
