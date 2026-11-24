@@ -4,7 +4,6 @@
 #include "NezhaCameraControl.h"
 #include "userland/upstream/hakios/hakios.camera.h"
 #include <kern/thread.h>
-#include <kern/sched.h>
 #include <sys/conf.h>
 #include <sys/systm.h>
 #include <sys/uio.h>
@@ -67,7 +66,7 @@ void thread_set_thread_name(thread_t t,const char *name) { (void)t;assert(name);
 int kernel_thread_start(void (*fn)(void *,wait_result_t),void *p,thread_t *out)
 { assert(!p && !queued_worker);queued_worker=fn;*out=(void *)1;return 0; }
 int kernel_thread_start_priority(void (*fn)(void *,wait_result_t),void *p,int priority,thread_t *out)
-{ assert(priority==BASEPRI_PREEMPT);return kernel_thread_start(fn,p,out); }
+{ assert(priority==92);return kernel_thread_start(fn,p,out); }
 void thread_deallocate(thread_t t) { assert(t==(void *)1); }
 void thread_terminate_self(void) { }
 int cdevsw_add(int wanted,const struct cdevsw *table) { assert(wanted==-1);methods=table;return 1; }

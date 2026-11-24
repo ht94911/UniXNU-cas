@@ -1,5 +1,7 @@
 #pragma once
 #include <sys/types.h>
+/* XNU vnode.h includes BSD param.h, whose priority macro is numeric. */
+#define MAXPRI 127
 struct vnode {int character,tag;dev_t device;};
 typedef struct vnode *vnode_t;
 enum {VT_DEVFS=17};

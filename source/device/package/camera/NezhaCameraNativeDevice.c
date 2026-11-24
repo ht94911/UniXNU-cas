@@ -7,7 +7,6 @@
 #include <IOKit/IOLib.h>
 #include <kern/clock.h>
 #include <kern/locks.h>
-#include <kern/sched.h>
 #include <kern/thread.h>
 #include <sys/conf.h>
 #include <sys/errno.h>
@@ -15,6 +14,18 @@
 #include <sys/systm.h>
 #include <sys/uio.h>
 #include <miscfs/devfs/devfs.h>
+
+/* BSD param.h and the scheduler use different spellings of MAXPRI=127.
+ * Import the actual scheduler priority without changing the BSD macro. */
+#pragma push_macro("MAXPRI")
+#undef MAXPRI
+#include <kern/sched.h>
+#pragma pop_macro("MAXPRI")
+
+/* The BSD recipe omits MACH_KERNEL_PRIVATE, as does NativeHidInput.
+ * Use the same typed declaration from the selected XNU thread.h. */
+extern kern_return_t kernel_thread_start_priority(thread_continue_t continuation,
+    void *parameter, integer_t priority, thread_t *new_thread);
 
 /* HakiOS f128f1d camdev_read supplies the header + CPU RAW and bounded
  * reader sleep sequence. Hardware, DMA/cache ownership and Stop use this

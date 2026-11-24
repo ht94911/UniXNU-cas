@@ -1,7 +1,7 @@
-name: nezha Camera146b private scheduler header path - native
+name: nezha Camera146c BSD scheduler ABI - native
 on:
   push:
-    branches: [codex/ios27-camera146b-reopen-headers-20261124]
+    branches: [codex/ios27-camera146c-reopen-bsd-abi-20261124]
   workflow_dispatch:
 permissions:
   contents: read
