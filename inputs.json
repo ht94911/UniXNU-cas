@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "purpose": "GPU083 diagnostic only: retain original low-volume Context encoding01dd/01de and conditional Encoder message00bd/00be; all prior500 native inputs retained except exact2 files; originalGPU082 Metal/runtime and078arguments used later; no draw, timing, reset or phone operation",
+  "purpose": "GPU084 unchanged rendering with actual render-message send/receive, associated Mach returns and original render_for_time boundaries",
   "framework": {
     "upstream_repository": "UniXNU/UniXNU",
     "upstream_revision": "88604d01c191727bf4b4113269b3a9518bb730d3",
@@ -387,7 +387,7 @@
     "source/device/package/nezha27-input/HidInputProbe.cpp": "c3e6c59ffb2d8db299a6876599e6117b5d9f529272c6d8a8e2bbbf22326212dc",
     "source/device/package/nezha27-input/InputChainABI.h": "ac72a994d29b1b6097ec7ca440a2bcd7f41b7b4b9b7662393a38c683cbe40006",
     "source/device/package/nezha27-input/InputChainProbe.cpp": "7653046c23d9b3e11c2a89dff7312942b4e9fbee9a678da9026300d02903bdc3",
-    "source/device/package/nezha27-input/InputChainTrace.h": "da806a2158d16edccca431f56c553f387a052b8e0c6723e471b37601f64df189",
+    "source/device/package/nezha27-input/InputChainTrace.h": "352ecbbe02fbd03f28d1d36ad6f43f8f82d0aea192f9dbddc6a8d9692401a235",
     "source/device/package/nezha27-input/InputEventBridge.cpp": "52ed3de36616fa7d260d529abdd1003320b8cc1dc3212f0b0fdf956a70ed53b2",
     "source/device/package/nezha27-input/NativeHidInput.cpp": "f8c5bf3b48e08b4880b13231f9523e2c1c95c81ed8502d7555021efecf18faa9",
     "source/device/package/nezha27-input/NezhaAA27Input.h": "d112cd0663fc3fb84dc6be506fe4efac4ede748d541b48f2cc9c3a25852829a2",
@@ -466,7 +466,7 @@
     "source/device/tests/brightness-trace-budget.py": "4a2b23d79a00543d7d7644f821b9d0bb0d6493fbce14fad2e3b4a4d148914ffe",
     "source/device/tests/cpu27-policy.c": "e1682fcec436a58085ef34ebdf82a536523f933e99a873ea1aacd7d3cd45b61c",
     "source/device/tests/display-dpu-timing.c": "e7ac8e9fbc9e39ae309dea5f3934bdd8ca7ca4bc66601908a2b8d349f9b513c5",
-    "source/device/tests/input-chain-trace.c": "250fe12e0163662c340624f6a4a66cfc2e4eaa616cb71498da127f9a004cb9fe",
+    "source/device/tests/input-chain-trace.c": "37e1900c268fc206f15cbd1c10a8e77ace9e3b5606ef8a67b540cee6e27a6b2b",
     "source/device/tests/input-selftest.c": "df31503c40fbbdc7c8d20757a715987c4133eabdbc32a43cbd1f4e0546f7fd72",
     "source/device/tests/input-telemetry.c": "2af3696ccd9dcfccd4f8864a5f3ffb2144d7acac43b5fc98f34dcb280cf7bd75",
     "source/device/tests/joint047-dma.c": "042a464e2a79eabc7b3af586b03b6007b2ecbf973e24a554966fffe3987a8e5e",
@@ -511,7 +511,7 @@
     "source/device/docs/GPU052-RESOURCE-ENUMERATION.md": "f8c8e93b0483e8babf441616f2468f83c38462567358109fc6cceb9eca680887",
     "source/device/patches/xnu-12377/nezha-native-4k-large-ram.patch": "6c1e566d009bf384291487f9d5e242514c78a000ea39995fdae9cacfd816e32d",
     "source/adreno/tests/check_submit_busy_log.py": "945f7616e47ceb6c125c4b0f1e177e437d032ac85095326ea2d17b4264491857",
-    ".github/workflows/nezha-ios27-native.yml": "dcafe14d9c07254f62065dd947abeeb9830feb401cbfee4c57bb563bbb233567",
+    ".github/workflows/nezha-ios27-native.yml": "1ec0768c99fd0c831ab144662e8273152aefe40c804b22ec30f9d9329dde3081",
     "source/device/scripts/check-cpu27-firmware-levels.py": "72fc65996664b51733ea45360fb91ceb9a1de561ef2bb63ce0e09b394f149c24",
     "source/device/scripts/check-gpu27-firmware-levels.py": "9fc0331e6c344a665e875ac7f2855952618e28465c6856f776d1a05c587d13a3",
     "source/device/scripts/check-ui-main-sampler.py": "da47d09fc97dc79d6f2126c9a8e02dd508508004289c05938b51362cdd8e5eb8",
@@ -1111,7 +1111,7 @@
       "package/nezha27-input/NezhaInput.c"
     ]
   },
-  "device_patch_revision": "7642f0243a356867e6064f4ea4145f489e41b6a8",
+  "device_patch_revision": "7cf1fa88bf76ec44e415377091ce29bb329f990c",
   "device_patch_scope": [
     "package/nezha27-input/InputChainTrace.h",
     "tests/input-chain-trace.c"
@@ -1131,5 +1131,37 @@
     "no_new_tracepoint_or_reader_or_record_layout": true,
     "contents_details_remain_off": true,
     "hardware_improvement_verified": false
+  },
+  "base_native063": "2be591c330e9a04f923dea88676363314bc21b12",
+  "gpu084": {
+    "render_message_ids": [
+      40002,
+      40003,
+      40004,
+      40005
+    ],
+    "native_IPC_sites": [
+      "0x0120000c",
+      "0x01200010",
+      "0x01200014"
+    ],
+    "native_return_sites": [
+      "0x010c007e",
+      "0x010c0082",
+      "0x010c00be"
+    ],
+    "original_render_sites": [
+      "0x31ca000d",
+      "0x31ca000e",
+      "0x31ca023a"
+    ],
+    "pending_tid_slots": 32,
+    "normal_context_encoding_requires_details": true,
+    "no_new_thread_allocation_or_record_protocol": true,
+    "source_revision": "7cf1fa88bf76ec44e415377091ce29bb329f990c",
+    "source_base": "7642f0243a356867e6064f4ea4145f489e41b6a8",
+    "physical_improvement_verified": false,
+    "only_existing_native_tracepoints": true,
+    "context_details_normal_disabled": true
   }
 }
