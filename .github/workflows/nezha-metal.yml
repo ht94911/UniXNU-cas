@@ -1,7 +1,7 @@
 name: nezha Camera150 original CoreVideo pool lifetime check
 on:
   push:
-    branches: [codex/ios27-camera150-corevideo-20261125]
+    branches: [codex/ios27-camera150-corevideo-counts-20261125]
 permissions:
   contents: read
 concurrency:

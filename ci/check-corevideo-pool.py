@@ -83,11 +83,11 @@ int main(int argc,char **argv){assert(argc==2);@autoreleasepool{
  for(;frame<600;++frame){@autoreleasepool{
   CVPixelBufferRef p=nullptr;CVReturn status=take(pool,13,&p);
   if(status!=kCVReturnSuccess){assert(old && frame==13 && status==kCVReturnWouldExceedAllocationThreshold && !p);break;}
-  IOSurfaceRef surface=CVPixelBufferGetIOSurface(p);NSNumber *key=@(IOSurfaceGetID(surface));NBTexture *t=cache[key];
+  IOSurfaceRef surface=CVPixelBufferGetIOSurface(p);const uint32_t producerUse=IOSurfaceGetUseCount(surface);assert(producerUse>0);NSNumber *key=@(IOSurfaceGetID(surface));NBTexture *t=cache[key];
   if(!t){t=texture(surface);cache[key]=t;}
   if(!old){
-   assert(!IOSurfaceIsInUse(surface));NBCommandBuffer *c=[NBCommandBuffer new];[c retainResource:t];
-   assert(IOSurfaceGetUseCount(surface)==1);[c finish];assert(!IOSurfaceIsInUse(surface));
+   assert(IOSurfaceGetUseCount(surface)==producerUse);NBCommandBuffer *c=[NBCommandBuffer new];[c retainResource:t];
+   assert(IOSurfaceGetUseCount(surface)==producerUse+1);[c finish];assert(IOSurfaceGetUseCount(surface)==producerUse);
   }else assert(IOSurfaceIsInUse(surface));
   CVPixelBufferRelease(p);
  }}
@@ -95,11 +95,11 @@ int main(int argc,char **argv){assert(argc==2);@autoreleasepool{
  assert(frame==600 && cache.count<=13);[cache removeAllObjects];CFRelease(pool);
  pool=makePool(1);CVPixelBufferRef p=nullptr;assert(take(pool,1,&p)==kCVReturnSuccess);
  IOSurfaceRef surface=CVPixelBufferGetIOSurface(p);NBTexture *root=texture(surface),*view=texture(surface),*nested=texture(surface);view.parent=root;nested.parent=view;
- NBBuffer *buffer=[NBBuffer new];buffer.importedSurface=surface;assert(!IOSurfaceIsInUse(surface));
+ NBBuffer *buffer=[NBBuffer new];buffer.importedSurface=surface;const uint32_t producerUse=IOSurfaceGetUseCount(surface);assert(producerUse>0);
  NBCommandBuffer *a=[NBCommandBuffer new],*b=[NBCommandBuffer new];
  for(unsigned i=0;i<1000;++i){[a retainResource:root];[a retainResource:view];[a retainResource:nested];[a retainResource:buffer];}
- assert(IOSurfaceGetUseCount(surface)==1);[b retainResource:nested];assert(IOSurfaceGetUseCount(surface)==2);
- CVPixelBufferRelease(p);blocked(pool);[a finish];assert(IOSurfaceGetUseCount(surface)==1);blocked(pool);
+ assert(IOSurfaceGetUseCount(surface)==producerUse+1);[b retainResource:nested];assert(IOSurfaceGetUseCount(surface)==producerUse+2);
+ CVPixelBufferRelease(p);assert(IOSurfaceGetUseCount(surface)==2);blocked(pool);[a finish];assert(IOSurfaceGetUseCount(surface)==1);blocked(pool);
  [b finish];assert(!IOSurfaceIsInUse(surface));assert(take(pool,1,&p)==kCVReturnSuccess);CVPixelBufferRelease(p);
  // These are controlled lifecycle transitions, not simulated GPU callbacks.
  @autoreleasepool{NBCommandBuffer *discard=[NBCommandBuffer new];[discard retainResource:nested];blocked(pool);discard=nil;}
