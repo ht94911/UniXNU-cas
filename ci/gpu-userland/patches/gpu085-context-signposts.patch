@@ -1,0 +1,63 @@
+diff --git a/NativeBridgeMetalFrontend.mm b/NativeBridgeMetalFrontend.mm
+index f5c2a84..ae30be4 100644
+--- a/NativeBridgeMetalFrontend.mm
++++ b/NativeBridgeMetalFrontend.mm
+@@ -449,6 +449,7 @@ static void startRenderWaitSampler() {
+   pthread_setname_np("render-wait-sample");
+   (void)pthread_set_qos_class_self_np(QOS_CLASS_UTILITY,0);
+   traceRenderWaitImages();traceProcessIdentity(false);
++  enableOriginalContextSignposts();
+   uint64_t copy=0,samples=0,states=0;unsigned next=0;
+   const uint64_t began=nowUs();
+   nbwait::WindowBudget stackBudget,stateBudget;
+diff --git a/NativeFrameObservers.inc b/NativeFrameObservers.inc
+index 001f8f6..b62c2f8 100644
+--- a/NativeFrameObservers.inc
++++ b/NativeFrameObservers.inc
+@@ -1,6 +1,7 @@
+ /* SPDX-License-Identifier: MIT */
+ // Included after the existing wait-sample serializer. All writes below are
+-// diagnostic records in this process's own trace; target memory is read only.
++// diagnostic records in this process's own trace. Observers read target memory;
++// diagnostic workers can opt into the original CoreAnimation signposts.
+ #include "NativeDisplayWaitState.h"
+ #include "NativeUIUpdateWaitState.h"
+ #include <mach/mach_time.h>
+@@ -28,6 +29,29 @@ static int readObserverMemory(uint64_t address,void *out,unsigned bytes) {
+  return kr==KERN_SUCCESS && copied!=bytes?KERN_INVALID_ARGUMENT:kr;
+ }
+ extern "C" void native_bridge_metal_note(const char *what);
++// Original24A446 option76 is CA_EMIT_DEBUG_SIGNPOSTS. Its env-name getter
++// verifies the option before the stock API is used. Run once on the existing
++// diagnostic sampler, outside rendering and device-initialization locks.
++static void enableOriginalContextSignposts() {
++#if defined(NATIVE_METAL_IPHONE24A446)
++ if(!diagOn() || !NBTraceSwapTimingOn() ||
++    (strcmp(getprogname(),"SpringBoard") && strcmp(getprogname(),"backboardd")))return;
++ using OptionName=const char *(*)(unsigned);
++ using GetOption=bool (*)(unsigned);
++ using SetOption=void (*)(unsigned,bool);
++ const auto name=(OptionName)dlsym(RTLD_DEFAULT,"CAGetDebugOptionEnvVariableName");
++ const auto get=(GetOption)dlsym(RTLD_DEFAULT,"CAGetDebugOption");
++ const auto set=(SetOption)dlsym(RTLD_DEFAULT,"CASetDebugOption");
++ const char *option=name?name(76):nullptr;
++ if(!option || strcmp(option,"CA_EMIT_DEBUG_SIGNPOSTS") || !get || !set) {
++  native_bridge_metal_note("context-signposts original option unavailable");return;
++ }
++ const bool previous=get(76);
++ if(!previous)set(76,true);
++ char note[112];snprintf(note,sizeof(note),"context-signposts option=76 previous=%u enabled=%u",
++  (unsigned)previous,(unsigned)get(76));native_bridge_metal_note(note);
++#endif
++}
+ static id gObservedWindowDisplay;
+ static id gObservedWindowCandidate;
+ static int64_t gObservedQuartzSlide=0;
+@@ -187,6 +211,7 @@ static void startClientWaitSampler() {
+   const uint64_t low=size<=high?high-size:0;
+ #if defined(NATIVE_METAL_IPHONE24A446)
+   const bool observeUIUpdate=!strcmp(getprogname(),"SpringBoard");
++  if(observeUIUpdate)enableOriginalContextSignposts();
+   const nbuiwait::Layout uiLayout=observeUIUpdate?prepareUIUpdateObserver():nbuiwait::Layout{};nbuiwait::Binding uiBinding{};
+   if(observeUIUpdate)native_bridge_metal_note(uiLayout.valid()?"ui-wait update deadlines images=1":"ui-wait update deadlines images=0");
+ #endif

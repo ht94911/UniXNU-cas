@@ -1,7 +1,7 @@
-name: nezha GPU080 actual UI queue wake state
+name: nezha GPU085 original context signposts - metal058
 on:
   push:
-    branches: [codex/ios27-gpu80-ui-wake-metal056-20261123]
+    branches: [codex/ios27-gpu85-context-signposts-metal058-20261125]
   workflow_dispatch:
 permissions:
   contents: read
