@@ -1,7 +1,7 @@
-name: nezha GPU085 original context signposts - metal058
+name: nezha GPU087 native Context queue state - metal059
 on:
   push:
-    branches: [codex/ios27-gpu85-context-signposts-metal058-20261125]
+    branches: [codex/ios27-gpu87-context-queues-metal059-20261125]
   workflow_dispatch:
 permissions:
   contents: read

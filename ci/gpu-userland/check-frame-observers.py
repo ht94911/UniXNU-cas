@@ -65,6 +65,17 @@ int main(int argc,char **argv){assert(argc==2);unsigned cases=0;
  output.clear();renderRecords=clientRecords=0;traceWaitBytes(29,12,&s,sizeof(s));assert(output.size()==17 && renderRecords==17 && clientRecords==0);
  nbdisplaywait::Identity identity{};identity.pid=116;identity.role=2;std::strcpy(identity.bootUUID,"12345678-1234-1234-1234-123456789abc");
  traceWaitBytes(30,2,&identity,sizeof(identity),true);assert(output.size()==19 && clientRecords==2);
+ nbcontextwait::Summary registry{};registry.id=99;registry.visited=1;registry.contextIds[0]=17;
+ nbcontextwait::State pending{};pending.id=(99ull<<6)|1;pending.parent=99;pending.contextId=17;
+ unsigned before=output.size();traceWaitBytes(37,99,&registry,sizeof(registry));
+ assert(output.size()==before+24);traceWaitBytes(36,pending.id,&pending,sizeof(pending));assert(output.size()==before+28);
+ std::vector<uint8_t> registryBytes,pendingBytes;
+ for(unsigned i=before;i<output.size();++i){auto &bytes=output[i].type==37?registryBytes:pendingBytes;
+  auto *p=(const uint8_t *)&output[i].t1;bytes.insert(bytes.end(),p,p+24);
+  p=(const uint8_t *)&output[i].c;bytes.insert(bytes.end(),p,p+24);}
+ assert(registryBytes.size()==1152 && !memcmp(registryBytes.data(),&registry,sizeof(registry)));
+ assert(pendingBytes.size()==192 && !memcmp(pendingBytes.data(),&pending,sizeof(pending)));
+ for(unsigned i=sizeof(pending);i<pendingBytes.size();++i)assert(!pendingBytes[i]);
  FILE *f=std::fopen(argv[1],"wb");assert(f);assert(std::fwrite(output.data(),72,output.size(),f)==output.size());std::fclose(f);++cases;
  init();put(0x3000,uint64_t(nbdisplaywait::kServerVtable+8));s=take();assert(s.stop==nbdisplaywait::WrongServerVtable && reads==3 && !s.flags);++cases;
  init();put(0x4000,uint64_t(nbdisplaywait::kDisplayVtable+8));s=take();assert(s.stop==nbdisplaywait::WrongDisplayVtable && reads==5 && !s.flags);++cases;
@@ -126,7 +137,7 @@ int main(int argc,char **argv){assert(argc==2);unsigned cases=0;
  std::cout<<"cases="<<cases<<" actual_observer_reader_and_batch_fields_passed\n";
 }
 '''
-cpp=a.out/'observer-test.cpp';cpp.write_text(prefix+header.replace('#pragma once\n','',1)+record+reader+sink+fragment+batch+cases)
+cpp=a.out/'observer-test.cpp';cpp.write_text(prefix+'#include '+json.dumps(str(folder/'NativeContextWaitState.h'))+'\n'+record+reader+sink+fragment+batch+cases)
 binary=a.out/'observer-test';command=[a.cxx,'-std=c++17','-O1','-g','-Wall','-Wextra','-Werror','-Wno-unused-function',
     '-fsanitize=address,undefined',str(cpp),'-o',str(binary)]
 run=subprocess.run(command,capture_output=True,text=True);(a.out/'build.log').write_text(run.stdout+run.stderr)
@@ -140,3 +151,9 @@ report=dict(passed=True,actual_source_reader_serializer_batch=True,ASan_UBSan=Tr
     observer_include_sha256=hashlib.sha256((folder/'NativeFrameObservers.inc').read_bytes()).hexdigest(),
     command=command,phone_operations=False,hardware_verified=False)
 (a.out/'report.json').write_text(json.dumps(report,indent=2)+'\n');print(json.dumps(report,indent=2))
+
+context_command=[a.cxx,'-std=c++17','-O1','-g','-Wall','-Wextra','-Werror','-fsanitize=address,undefined',str(folder/'bridge/context_wait_host.cpp'),'-o',str(a.out/'context-wait-test')]
+run=subprocess.run(context_command,capture_output=True,text=True);(a.out/'context-build.log').write_text(run.stdout+run.stderr);assert run.returncode==0,run.stderr
+run=subprocess.run([str(a.out/'context-wait-test')],capture_output=True,text=True,timeout=30);(a.out/'context-test.log').write_text(run.stdout+run.stderr);assert run.returncode==0,run.stdout+run.stderr
+assert 'context_wait_native_layout_cases=16 summary_bytes=1152 state_bytes=176' in run.stdout
+(a.out/'context-report.json').write_text(json.dumps(dict(passed=True,cases=16,actual_reader_serializer=True,header_sha256=hashlib.sha256((folder/'NativeContextWaitState.h').read_bytes()).hexdigest(),test_sha256=hashlib.sha256((folder/'bridge/context_wait_host.cpp').read_bytes()).hexdigest(),phone_operations=False),indent=2)+'\n')

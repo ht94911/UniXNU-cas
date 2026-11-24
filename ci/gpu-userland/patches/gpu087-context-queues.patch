@@ -1,0 +1,313 @@
+diff --git a/NativeContextWaitState.h b/NativeContextWaitState.h
+new file mode 100644
+index 0000000..6160a78
+--- /dev/null
++++ b/NativeContextWaitState.h
+@@ -0,0 +1,146 @@
++/* SPDX-License-Identifier: MIT */
++#pragma once
++#include "NativeDisplayWaitState.h"
++
++// Original24A446 Render::Context registry and drain_deferred fields. Read the
++// existing objects; never retain, drain, signal, or call the native registry.
++// The existing sampler checks a one-millisecond budget between contexts;
++// one slow Mach read or preemption can overrun it. Repeated reads are not atomic.
++namespace nbcontextwait {
++constexpr uint64_t kRegistrySlot=0x1e3fda440ULL,kContextVtable=0x1e9000b40ULL;
++constexpr unsigned kSummaryKind=37,kContextKind=36;
++constexpr unsigned kMaxContexts=256,kMaxPending=32,kMaxBuckets=1024,kBudgetUs=1000;
++enum Status:uint32_t { Complete=0,NoRegistry=1,ReadFailed=2,WrongContext=3,
++                       Changed=4,ScopeLimit=5,Budget=6 };
++enum SummaryFlags:uint32_t { RegistryRead=1,BucketsRead=2,WalkComplete=4,
++                             RegistryRepeated=8,SameCopyAtEnd=16 };
++enum ContextFlags:uint32_t { ContextRead=1,HeadRead=2,DependenciesRead=4,
++                             HeadRepeated=8,DependenciesRepeated=16,ContextRepeated=32 };
++struct Summary {
++ uint32_t version=1,bytes=1152;
++ uint64_t id=0,beganUs=0,endedUs=0,slot=0,registry=0,buckets=0,confirmRegistry=0;
++ uint32_t exponent=0,expected=0,visited=0,selected=0,emitted=0,flags=0,status=Complete;
++ int32_t readKR=-1;
++ uint32_t contextIds[kMaxContexts]{};
++ uint32_t selectedBits[kMaxContexts/32]{};
++};
++struct State {
++ uint32_t version=1,bytes=176;
++ uint64_t id=0,parent=0,beganUs=0,endedUs=0,context=0,vtable=0,head=0,dependencies=0,stream=0;
++ uint64_t targetTimeBits=0,drainedTimeBits=0,dependencyCount=0,confirmHead=0,confirmStream=0,confirmCount=0;
++ uint32_t contextId=0,contextFlags=0,referenceCount=0,flags=0,status=Complete;
++ int32_t readKR=-1;
++ uint32_t confirmContextId=0,reserved=0;
++ // needs_defer_update_locked separately tests [Context+0x2e0] and traverses
++ // [Context+0x1e0]. An empty command head does not exclude that path.
++ uint64_t localDeferredCount=0,linkedContexts=0;
++};
++static_assert(sizeof(Summary)==1152,"context registry summary wire size");
++static_assert(sizeof(State)==176,"deferred Context state wire size");
++struct Snapshot { Summary summary{};State states[kMaxPending]{}; };
++inline uint32_t word32(const uint64_t *data,unsigned offset) {
++ uint32_t value=0;std::memcpy(&value,(const unsigned char *)data+offset,sizeof(value));return value;
++}
++inline uint64_t word64(const uint64_t *data,unsigned offset) {
++ uint64_t value=0;std::memcpy(&value,(const unsigned char *)data+offset,sizeof(value));return value;
++}
++template<class Read,class Clock> inline void captureState(State &s,const uint64_t *core,
++                                                         int64_t slide,Read read,Clock now) {
++ s.beganUs=now();s.flags=ContextRead;
++ s.vtable=core[0];s.contextId=word32(core,0x10);s.referenceCount=word32(core,8);
++ s.contextFlags=word32(core,0xc);s.head=word64(core,0x2f8);s.drainedTimeBits=word64(core,0x328);
++ s.localDeferredCount=word64(core,0x2e0);s.linkedContexts=word64(core,0x1e0);
++ uint64_t head[4]{},confirm[4]{},again[0x330/8]{};
++ if(s.head) {
++  s.readKR=read(s.head,head,sizeof(head));
++  if(s.readKR){s.status=ReadFailed;s.endedUs=now();return;}
++ }
++ s.flags|=HeadRead;s.dependencies=head[1];s.targetTimeBits=head[2];s.stream=head[3];
++ if(s.dependencies) {
++  s.readKR=read(s.dependencies+0x18,&s.dependencyCount,sizeof(s.dependencyCount));
++  if(s.readKR){s.status=ReadFailed;s.endedUs=now();return;}
++ }
++ s.flags|=DependenciesRead;
++ if(s.head) {
++  s.readKR=read(s.head,confirm,sizeof(confirm));
++  if(s.readKR){s.status=ReadFailed;s.endedUs=now();return;}
++ }
++ s.confirmStream=confirm[3];
++ if(confirm[1]==head[1] && confirm[2]==head[2] && confirm[3]==head[3])s.flags|=HeadRepeated;
++ if(s.dependencies) {
++  s.readKR=read(s.dependencies+0x18,&s.confirmCount,sizeof(s.confirmCount));
++  if(s.readKR){s.status=ReadFailed;s.endedUs=now();return;}
++ }
++ if(s.dependencyCount==s.confirmCount)s.flags|=DependenciesRepeated;
++ s.readKR=read(s.context,again,sizeof(again));
++ if(s.readKR){s.status=ReadFailed;s.endedUs=now();return;}
++ s.confirmHead=word64(again,0x2f8);s.confirmContextId=word32(again,0x10);
++ if(nbdisplaywait::stripped(again[0])==uint64_t(int64_t(kContextVtable)+slide) &&
++    s.confirmContextId==s.contextId && word32(again,8) &&
++    word32(again,0xc)==s.contextFlags && s.confirmHead==s.head &&
++    word64(again,0x328)==s.drainedTimeBits && word64(again,0x2e0)==s.localDeferredCount &&
++    word64(again,0x1e0)==s.linkedContexts)
++  s.flags|=ContextRepeated;
++ if(s.flags!=63)s.status=Changed;
++ s.endedUs=now();
++}
++template<class Read,class Clock> inline void capture(Snapshot &out,uint64_t id,int64_t slide,
++                                                     Read read,Clock now) {
++ Summary &s=out.summary;s.id=id;s.beganUs=now();s.slot=uint64_t(int64_t(kRegistrySlot)+slide);
++ s.readKR=read(s.slot,&s.registry,sizeof(s.registry));
++ if(s.readKR){s.status=ReadFailed;s.endedUs=now();return;}
++ if(!s.registry){s.status=NoRegistry;s.endedUs=now();return;}
++ uint64_t registry[4]{},confirm[4]{},buckets[kMaxBuckets]{},nodes[kMaxContexts]{};
++ s.readKR=read(s.registry,registry,sizeof(registry));
++ if(s.readKR){s.status=ReadFailed;s.endedUs=now();return;}
++ s.flags|=RegistryRead;s.exponent=word32(registry,0);s.buckets=registry[2];
++ if(s.exponent>10 || registry[3]>UINT32_MAX){s.status=ScopeLimit;s.endedUs=now();return;}
++ s.expected=(uint32_t)registry[3];const unsigned bucketCount=1u<<s.exponent;
++ if(s.expected) {
++  s.readKR=read(s.buckets,buckets,bucketCount*sizeof(uint64_t));
++  if(s.readKR){s.status=ReadFailed;s.endedUs=now();return;}
++ }
++ s.flags|=BucketsRead;bool walked=true;
++ for(unsigned b=0;b<bucketCount && walked;++b) {
++  uint64_t node=buckets[b];
++  while(node) {
++   if(now()-s.beganUs>=kBudgetUs){s.status=Budget;walked=false;break;}
++   if(s.visited>=kMaxContexts){s.status=ScopeLimit;walked=false;break;}
++   bool duplicate=false;
++   for(unsigned n=0;n<s.visited;++n)if(nodes[n]==node){duplicate=true;break;}
++   if(duplicate){s.status=Changed;walked=false;break;}
++   uint64_t entry[4]{},core[0x330/8]{};
++   s.readKR=read(node,entry,sizeof(entry));
++   if(s.readKR){s.status=ReadFailed;walked=false;break;}
++   nodes[s.visited]=node;
++   s.readKR=read(entry[3],core,sizeof(core));
++   if(s.readKR){s.status=ReadFailed;walked=false;break;}
++   const uint32_t cid=word32(core,0x10);
++   if(!cid || entry[2]!=cid || !word32(core,8) ||
++      nbdisplaywait::stripped(core[0])!=uint64_t(int64_t(kContextVtable)+slide)) {
++    s.status=WrongContext;walked=false;break;
++   }
++   const unsigned at=s.visited++;s.contextIds[at]=cid;
++   if(word64(core,0x2f8) || word64(core,0x2e0) || word64(core,0x1e0) || (word32(core,0xc)&0x400)) {
++    s.selectedBits[at/32]|=1u<<(at%32);++s.selected;
++    if(s.emitted<kMaxPending) {
++     State &state=out.states[s.emitted++];state.parent=id;state.id=(id<<6)|s.emitted;state.context=entry[3];
++     captureState(state,core,slide,read,now);
++    } else s.status=ScopeLimit;
++   }
++   node=entry[0];
++  }
++ }
++ if(walked && s.visited==s.expected)s.flags|=WalkComplete;
++ else if(s.status==Complete)s.status=Changed;
++ s.readKR=read(s.slot,&s.confirmRegistry,sizeof(s.confirmRegistry));
++ if(!s.readKR && s.confirmRegistry==s.registry) {
++  s.readKR=read(s.registry,confirm,sizeof(confirm));
++  if(!s.readKR && confirm[0]==registry[0] && confirm[2]==registry[2] && confirm[3]==registry[3])
++   s.flags|=RegistryRepeated;
++ }
++ if(s.readKR && s.status==Complete)s.status=ReadFailed;
++ if(!(s.flags&RegistryRepeated) && s.status==Complete)s.status=Changed;
++ s.endedUs=now();
++}
++} // namespace nbcontextwait
+diff --git a/NativeFrameObservers.inc b/NativeFrameObservers.inc
+index b62c2f8..872610d 100644
+--- a/NativeFrameObservers.inc
++++ b/NativeFrameObservers.inc
+@@ -4,6 +4,7 @@
+ // diagnostic workers can opt into the original CoreAnimation signposts.
+ #include "NativeDisplayWaitState.h"
+ #include "NativeUIUpdateWaitState.h"
++#include "NativeContextWaitState.h"
+ #include <mach/mach_time.h>
+ #include <errno.h>
+ 
+@@ -156,6 +157,14 @@ static void traceDisplayObserver(uint64_t sampleId,uint64_t copy) {
+   nbdisplaywait::captureTiming(timing,state,gObservedQuartzSlide,readObserverMemory,nowUs,
+    []{return mach_absolute_time();});
+   traceWaitBytes(nbdisplaywait::kTimingRecordKind,sampleId,&timing,sizeof(timing));
++#if defined(NATIVE_METAL_IPHONE24A446) && defined(__arm64e__)
++  nbcontextwait::Snapshot contexts{};
++  nbcontextwait::capture(contexts,sampleId,gObservedQuartzSlide,readObserverMemory,nowUs);
++  if(gRenderWaitCopyUs.load(std::memory_order_acquire)==copy)contexts.summary.flags|=nbcontextwait::SameCopyAtEnd;
++  traceWaitBytes(nbcontextwait::kSummaryKind,sampleId,&contexts.summary,sizeof(contexts.summary));
++  for(unsigned i=0;i<contexts.summary.emitted;++i)
++   traceWaitBytes(nbcontextwait::kContextKind,contexts.states[i].id,&contexts.states[i],sizeof(contexts.states[i]));
++#endif
+  }
+ }
+ #if defined(NATIVE_METAL_IPHONE24A446)
+diff --git a/README.md b/README.md
+index 754650d..0680d01 100644
+--- a/README.md
++++ b/README.md
+@@ -88,6 +88,12 @@ display selection changes no system display or timer state.
+ An object without a timer or vsync source remains a readable candidate while
+ discovery continues; its presence alone does not mark timing discovery ready.
+ 
++For iPhone 24A446 diagnostics, that same observer reads the original render
++Context registry, deferred-head time and dependency count, local deferral count,
++and linked-context pointer. Its one-millisecond sampling budget and repeated
++field checks report incomplete or changing reads explicitly. Context IDs let
++the retained messages and physical frame holds be compared to these states.
++
+ The runtime keeps command counts in each open encoder and reuses unchanged resource-residency facts. Merge scratch can be lent to later encoders of the same command buffer, with its original barriers and leases. A shadow may remain current across command buffers only for tracked private memory owned by the runtime; heaps and external memory retain their required copies. `sheng-metal-flow=1` separately enables lowering, direct commit submission and pipeline warming for experiments; it defaults to off, and pipeline waits remain exact.
+ 
+ ## Heap texture copies
+diff --git a/bridge/context_wait_host.cpp b/bridge/context_wait_host.cpp
+new file mode 100644
+index 0000000..50ca366
+--- /dev/null
++++ b/bridge/context_wait_host.cpp
+@@ -0,0 +1,111 @@
++/* SPDX-License-Identifier: MIT */
++#include "../NativeContextWaitState.h"
++#include <cassert>
++#include <cstdio>
++#include <vector>
++
++// Native registry bytes, not replacement Context methods. The fixtures use
++// the registry walk, constructor stores and drain_deferred loads verified from
++// the original image, including a nullable dependency set.
++struct Region { uint64_t address;std::vector<unsigned char> bytes; };
++struct Memory {
++ std::vector<Region> regions;
++ unsigned calls=0,depReads=0,contextReads=0;
++ uint64_t time=100000000,step=1;
++ bool changeRegistry=false,changeHead=false,changeCount=false;
++ uint64_t slot=nbcontextwait::kRegistrySlot,map=0x100000000,buckets=0x100001000;
++ uint64_t entry=0x100002000,context=0x100003000,head=0x100004000,set=0x100005000;
++ void area(uint64_t a,unsigned n){regions.push_back({a,std::vector<unsigned char>(n)});}
++ void put(uint64_t a,uint64_t value,unsigned n=8) {
++  for(auto &r:regions)if(a>=r.address && a-r.address+n<=r.bytes.size()) {
++   std::memcpy(r.bytes.data()+a-r.address,&value,n);return;
++  }
++  assert(false);
++ }
++ int read(uint64_t a,void *out,unsigned n) {
++  ++calls;
++  if(changeRegistry && a==slot && calls>1)put(slot,map+0x100000);
++  if(a==context && ++contextReads>1 && changeHead)put(context+0x2f8,head+0x1000);
++  if(changeCount && a==set+0x18 && ++depReads>1)put(set+0x18,4);
++  for(const auto &r:regions)if(a>=r.address && a-r.address+n<=r.bytes.size()) {
++   std::memcpy(out,r.bytes.data()+a-r.address,n);return 0;
++  }
++  return 1;
++ }
++ uint64_t now(){time+=step;return time;}
++ Memory(bool pending=true,bool dependencies=true) {
++  area(slot,8);area(map,32);area(buckets,16);area(entry,32);area(context,0x330);area(head,32);area(set,32);
++  put(slot,map);put(map,1,4);put(map+0x10,buckets);put(map+0x18,1);
++  put(buckets,entry);put(entry+0x10,17);put(entry+0x18,context);
++  put(context,nbcontextwait::kContextVtable);put(context+8,2,4);put(context+0x10,17,4);
++  if(pending)put(context+0x2f8,head);
++  const double target=99.0,drained=98.0;uint64_t bits=0;
++  std::memcpy(&bits,&target,8);put(head+0x10,bits);
++  std::memcpy(&bits,&drained,8);put(context+0x328,bits);
++  put(head+0x18,0x100006000);
++  if(dependencies){put(head+8,set);put(set+0x18,3);}
++ }
++ nbcontextwait::Snapshot capture() {
++  nbcontextwait::Snapshot out{};
++  nbcontextwait::capture(out,123,0,[this](uint64_t a,void *p,unsigned n){return read(a,p,n);},[this]{return now();});
++  return out;
++ }
++};
++int main() {
++ unsigned cases=0;
++ {
++  Memory m;auto s=m.capture();
++  assert(s.summary.flags==15 && s.summary.status==0 && s.summary.expected==1 && s.summary.visited==1);
++  assert(s.summary.contextIds[0]==17 && s.summary.selectedBits[0]==1 && s.summary.selected==1 && s.summary.emitted==1);
++  assert(s.states[0].flags==63 && s.states[0].status==0 && s.states[0].dependencyCount==3);
++  assert(s.states[0].parent==123 && s.states[0].id==((123ULL<<6)|1));++cases;
++ }
++ {
++  Memory m(true,false);auto s=m.capture();assert(s.states[0].flags==63 && !s.states[0].dependencyCount);++cases;
++ }
++ {
++  Memory m(false);auto s=m.capture();assert(s.summary.flags==15 && s.summary.visited==1 && !s.summary.selected && !s.summary.emitted);++cases;
++ }
++ {
++  Memory m(false);m.put(m.context+0x2e0,1);auto s=m.capture();
++  assert(s.summary.selected==1 && s.states[0].flags==63 && !s.states[0].head && s.states[0].localDeferredCount==1);++cases;
++ }
++ {
++  Memory m(false);m.put(m.context+0x1e0,0x100007000);auto s=m.capture();
++  assert(s.summary.selected==1 && s.states[0].flags==63 && !s.states[0].head && s.states[0].linkedContexts==0x100007000);++cases;
++ }
++ {
++  Memory m;m.put(m.slot,0);auto s=m.capture();assert(s.summary.status==nbcontextwait::NoRegistry && !(s.summary.flags&nbcontextwait::WalkComplete));++cases;
++ }
++ {
++  Memory m;m.put(m.context+0x10,18,4);auto s=m.capture();assert(s.summary.status==nbcontextwait::WrongContext && !s.summary.visited);++cases;
++ }
++ {
++  Memory m;m.put(m.context,nbcontextwait::kContextVtable+8);auto s=m.capture();assert(s.summary.status==nbcontextwait::WrongContext);++cases;
++ }
++ {
++  Memory m;m.put(m.context,nbcontextwait::kContextVtable|0x800000000000ULL);auto s=m.capture();assert(s.states[0].flags==63);++cases;
++ }
++ {
++  Memory m;m.changeRegistry=true;auto s=m.capture();assert(s.summary.status==nbcontextwait::Changed && !(s.summary.flags&nbcontextwait::RegistryRepeated));++cases;
++ }
++ {
++  Memory m;m.changeHead=true;auto s=m.capture();assert(s.states[0].status==nbcontextwait::Changed && !(s.states[0].flags&nbcontextwait::ContextRepeated));++cases;
++ }
++ {
++  Memory m;m.changeCount=true;auto s=m.capture();assert(s.states[0].status==nbcontextwait::Changed && !(s.states[0].flags&nbcontextwait::DependenciesRepeated));++cases;
++ }
++ {
++  Memory m;m.put(m.head+8,0x900000000);auto s=m.capture();assert(s.summary.selected==1 && s.states[0].status==nbcontextwait::ReadFailed && s.states[0].readKR==1);++cases;
++ }
++ {
++  Memory m;m.put(m.entry,m.entry);auto s=m.capture();assert(s.summary.status==nbcontextwait::Changed && !(s.summary.flags&nbcontextwait::WalkComplete));++cases;
++ }
++ {
++  Memory m;m.put(m.map,11,4);auto s=m.capture();assert(s.summary.status==nbcontextwait::ScopeLimit && !(s.summary.flags&nbcontextwait::WalkComplete));++cases;
++ }
++ {
++  Memory m;m.step=1001;auto s=m.capture();assert(s.summary.status==nbcontextwait::Budget && !(s.summary.flags&nbcontextwait::WalkComplete));++cases;
++ }
++ std::printf("context_wait_native_layout_cases=%u summary_bytes=%zu state_bytes=%zu\n",cases,sizeof(nbcontextwait::Summary),sizeof(nbcontextwait::State));
++}

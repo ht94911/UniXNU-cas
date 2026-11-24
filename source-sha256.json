@@ -1,5 +1,5 @@
 {
-  ".github/workflows/nezha-metal.yml": "f6c0bf3206c8ddbf41d0c43c9c58ea0a4f6aa2ca6ba83d1f557ba8bed86e4f8c",
+  ".github/workflows/nezha-metal.yml": "941deae052fd57df29586b56d1c9a6a7d9c1c3954113c9da13c5f71f8d1049bb",
   ".gitignore": "862263fa1f46c20f0d1e4dac5ffcc75abd55c08211b2c3864c5f8764b9d87793",
   "ci/gpu-userland/check-buffer-reserve.py": "56bef54d15cb6192d25bfd99516369d45d3ddeffbd44805f9f052739d2fdf57a",
   "ci/gpu-userland/check-client-wait.py": "1902f1839cbb499e78ca5d8b5ad13e7fb28b471874aef9923d044b0d266093d9",
@@ -11,7 +11,7 @@
   "ci/gpu-userland/check-driver-profile-host.py": "a7905b53fcfffca758a60d5062c61e4e206914ffc5f377cd7fe88a9848146838",
   "ci/gpu-userland/check-extern-function.py": "a77d163465dca735afdec3d96390dcdab170af31bb37e25bfbaccf60747233b6",
   "ci/gpu-userland/check-extern-target.py": "5a4604ce87674d00b3554b29de5fde32e4dfadd3f66af43202ee841979949b2b",
-  "ci/gpu-userland/check-frame-observers.py": "84d148d4a35aefc903b635e65fb4dccdf07a7c82789a171288794478cf9ae6bd",
+  "ci/gpu-userland/check-frame-observers.py": "1b34e4bb70a8310324cbba1e4c8086ade9475a246bfd3f01d298f4bf6673aec5",
   "ci/gpu-userland/check-full-target.py": "3a377637b13b1b38866784a30149b8a0d26404b6a56b4607b8b7f5ffccdfacf1",
   "ci/gpu-userland/check-heap-copies.py": "cf9c33f9e56fa0ee3d3080721892ee5b347c8f9eb02bd3764964b252c8b17472",
   "ci/gpu-userland/check-host-driver.py": "c935dabcea4c13ce15138eb03d983ad7f335d4e06d5cf718427dd267d8e3ffc0",
@@ -53,7 +53,7 @@
   "ci/gpu-userland/fixtures/old.cpp": "37b49814016986ab24ec269aae283eb3d01a4a12e92f685c90b2547b6838fd8e",
   "ci/gpu-userland/fixtures/primer-wait-test.cpp.in": "a43dc0cac9541f3b3dbaefb27a169e87fea63878fd6537ff313ce126c7bca71c",
   "ci/gpu-userland/fixtures/snippet-bindings.json": "cce41582cc2ae9bb8a2581324dc0922c8dba902706c53162c7cbdb8f01334c51",
-  "ci/gpu-userland/fixtures/source-bindings.json": "1c93b25e1d1c902fec2535f10ec177815293bcf199d20988f977c8e858a13d45",
+  "ci/gpu-userland/fixtures/source-bindings.json": "9763a7beda8fd75e200ca5b1e92320b79e769e9b43fc7b6909a5751560882259",
   "ci/gpu-userland/fixtures/stitch_modules_host.mm": "2d94ae0545adc1836aa820de6c08db00679b5cf87f3eea5cd7a4af391b1f1f43",
   "ci/gpu-userland/fixtures/swap.cpp": "4e440baee494455d42c61b0fd04833ed082272c865babe8221dd8815c50d90ed",
   "ci/gpu-userland/fixtures/tile-store-bindings.json": "33239fdcc1b58b42ff7be3d38a91a95a32b251d8a5f3aec656be644ac12928e8",
@@ -112,10 +112,11 @@
   "ci/gpu-userland/patches/upstream-gpu-recipes.patch": "aaf2ee0653456c4b218e95407a5a7eb2823f6e4f1481a5f6aaaa6ab581148d38",
   "ci/gpu-userland/patches/vulkan-operation-plugin.patch": "13dd58514c04ed08c62ce521e4171c15fd0922f84dee308667be1c2cb430c728",
   "ci/gpu-userland/patches/vulkan-operation-recipes.patch": "4b1dc95d6d811c690f4f1143ad030bb3a8d83237f0aa0cbc69b781221779a2a6",
-  "ci/gpu-userland/prepare.py": "004ba5aeee3f0c836bc6f882c9277fdf4ab837af5ab0ff9ebf67406ccf9f5d32",
+  "ci/gpu-userland/prepare.py": "108a125868205fe819234a82479b237fab27f8ba2d4e1d4f438884bac8370f97",
   "ci/gpu-userland/test-source-manifest.py": "45facca72e7b39766333d7499b1b3a4abd936d2b60c662a80923707534a38759",
   "ci/provenance.json": "879011a3ecd54f182abc09bf532335edccaa0e7e0d85e68ae76e31e6dc87884f",
   "ci/xnu/artifact-recipient.pem": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
   "ci/xnu/artifacts.py": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
-  "ci/gpu-userland/patches/gpu085-context-signposts.patch": "159cb589f7757492250a80ecfb129bd08de00481c7a5b52e35ad854ceda4cb66"
+  "ci/gpu-userland/patches/gpu085-context-signposts.patch": "159cb589f7757492250a80ecfb129bd08de00481c7a5b52e35ad854ceda4cb66",
+  "ci/gpu-userland/patches/gpu087-context-queues.patch": "959ce1e336e5c486883481594d20d4a3658ca1dbae1e442eae72141be8f0b2e9"
 }

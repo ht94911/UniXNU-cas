@@ -472,6 +472,10 @@ def main():
     must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', '--check', selected])
     must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', selected])
     record['gpu085_context_signposts_patch'] = sha(selected)
+    selected = HERE / 'patches' / 'gpu087-context-queues.patch'
+    must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', '--check', selected])
+    must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', selected])
+    record['gpu087_context_queues_patch'] = sha(selected)
     bridge_patches = sorted((root / 'drivers/AdrenoMetal/bridge/patches').glob('*.patch'))
     record['metal2vulkan']['bridge_patches'] = {p.name: sha(p) for p in bridge_patches}
     progress('all pinned sources and patches verified')
