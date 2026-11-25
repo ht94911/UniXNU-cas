@@ -73,6 +73,7 @@ static ptrdiff_t ivar_getOffset(Ivar i) {return i->offset;}
 static uint8_t *objc_msgSend(id obj,SEL) {return limitsPresent?(uint8_t *)obj+baseOffset:nullptr;}
 static bool fixtureKind(id,Class) {return compatible;}
 #define NBLOG(...) do{++notes;(void)filled;}while(0)
+#define GLOG(...) NBLOG(__VA_ARGS__)
 template<typename T> static T get(id obj,size_t offset) {
  T v;memcpy(&v,(uint8_t *)obj+baseOffset+offset,sizeof v);return v;
 }
@@ -171,6 +172,7 @@ static std::unordered_map<SEL,uint64_t> gAnswers;
 static unsigned notes=0;
 static id fixtureDeviceLifetime;
 #define NBLOG(...) do{++notes;(void)filled;}while(0)
+#define GLOG(...) NBLOG(__VA_ARGS__)
 static NSUInteger answer(id,SEL sel){return gAnswers.at(sel);}
 """
     metal_main = r"""

@@ -168,7 +168,7 @@ def main():
     selections = {
         'drivers/Adreno740': ('https://github.com/UniXNU/Adreno740.git', EXPECT['adreno740']),
         'drivers/AdrenoMetal': ('https://github.com/UniXNU/AdrenoMetal.git', 'b25e48e51dfdf4b3889ede6e701ab7dd59929a03'),
-        'drivers/GopFramebuffer': ('https://github.com/UniXNU/GopFramebuffer.git', '4cc8cb33f86baf4903c89f01a33872fb769d2457'),
+        'drivers/GopFramebuffer': ('https://github.com/UniXNU/GopFramebuffer.git', 'b0d812d578efa2acb005b66f73168891719af09a'),
     }
     for path in ['kits/AdrenoPM4', 'kits/ArmSmmu4K']:
         commit = out(['git', '-C', root, 'ls-tree', 'HEAD', path]).split()[2]
