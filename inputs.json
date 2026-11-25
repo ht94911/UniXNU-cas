@@ -475,7 +475,7 @@
     "source/device/tests/touch-edge.c": "655348775d0389381a10b1f2bbc85b47586b3742a0dcd544a33e92a22e51b496",
     "source/device/unixnu.lock": "20bddaafe9eabe0874d433fd101156d0db2b3e5786681062de46afe971639daf",
     "source/framework.patch": "f512d59876db84a36cfdbddc639a8c12f1e8337d4cb9e2abc2c5a1dceac05c8d",
-    "source/gop.bundle": "cc47af3fc361f402270a25efa63677106eb9994599880632f8c5537612d2b5e7",
+    "source/gop.bundle": "e4ce716ae3269e315e4780a15b53f43bbedec9c4c3ef3089f8a03e69d2690cc3",
     "source/metal/LICENSE": "c51a32dfc2140d3d56f796a3a7010e574f2e3649b97c42e010303ad57f848265",
     "source/metal/OriginalAcceleratorABI.h": "211e922f9b760ddec2e3453db6584bac57597b3d39e4bf0d013c1b2debd53365",
     "source/native017-userlog.patch": "30be3f9567f08ea396b1ecd9230f3c584182dd7047b48120115d0a02e4eb4625",
@@ -549,10 +549,10 @@
     "history": "single shallow reviewed explicit4GiB volatile support and actual identity tests"
   },
   "gop": {
-    "source_revision": "589f861bd845c30f0c19944c6138ada3ea57061b",
-    "source_tree": "a5c0e48e51dba5d85c5b4f61780ebb7163e21f09",
+    "source_revision": "294379dc2f2974b652078f9ca08c807ade3ff025",
+    "source_tree": "132443dda41cca742252211573916bda67473a58",
     "repository": "https://github.com/UniXNU/GopFramebuffer.git",
-    "history": "Single reviewed current tree; GPU035 source identity and read-only display timing; no parent history"
+    "history": "Exact cumulative Native065 plus full upstream b0d812d main tree in one reviewed public source snapshot; local canonical commit preserved separately"
   },
   "integration_base": {
     "version": "078",
@@ -1204,7 +1204,8 @@
       "source/adreno/NativeGpuPerfCounters.h",
       "source/adreno/NativeGpuTrace.h",
       "source/device/scripts/build-adreno840.py",
-      ".github/workflows/nezha-ios27-native.yml"
+      ".github/workflows/nezha-ios27-native.yml",
+      "source/gop.bundle"
     ],
     "source_added": [
       "source/adreno/NativeAdrenoPool.cpp",
@@ -1247,7 +1248,20 @@
       "Exercise the existing BoAlloc phase adapter and trace storage"
     ],
     "native066c_failed_run": 45694392572,
-    "accelerator_adapter": "Upstream selectable base retains the already-qualified IOAcceleratorES default for the local native builder; no original base/vtable is replaced."
+    "accelerator_adapter": "Upstream selectable base retains the already-qualified IOAcceleratorES default for the local native builder; no original base/vtable is replaced.",
+    "display_full_main_integration": {
+      "upstream_main": "b0d812d578efa2acb005b66f73168891719af09a",
+      "actual_cumulative_source": "d9b4c8de39f255530f5c7333858c269d4692017a",
+      "actual_native065_source": "589f861bd845c30f0c19944c6138ada3ea57061b",
+      "thin_public_bundle_revision": "294379dc2f2974b652078f9ca08c807ade3ff025",
+      "source_tree": "132443dda41cca742252211573916bda67473a58",
+      "original_plane_view_GPU_publication_gate_wire_timing_retained": true,
+      "new_and_legacy_boot_args_retained": 18,
+      "actual_fence_and_plane_ASan_UBSan_tests_passed": true,
+      "Metal060b_wire_and_timing_preprocessed_interfaces_identical": true,
+      "physical_GPU_effect_verified": false,
+      "phone_operations": false
+    }
   },
   "gpu088_lifecycle_followup": {
     "prior_actual_failure": 45700934031,
