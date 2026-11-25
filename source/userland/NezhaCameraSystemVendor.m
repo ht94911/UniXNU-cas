@@ -3,6 +3,7 @@
 #include "NezhaCameraFactory.h"
 #include "NezhaCameraMetal.h"
 #include "NezhaCameraMemory.h"
+#include "NezhaCameraPhotoCodec.h"
 #include "NezhaCameraRenderer.h"
 #include <errno.h>
 #include <mach/mach.h>
@@ -66,6 +67,26 @@ typedef NezhaFigStatus (*CameraCreate)(NezhaFigAllocator,NezhaFigString,NezhaFig
 typedef struct {uint32_t val[8];} CameraAuditToken;
 
 #include "NezhaCameraStillObservers.h"
+#include "NezhaCameraPhotoObservers.h"
+
+static void register_software_hevc_encoder(void)
+{
+    /* Keep both handles: VideoToolbox retains the codec's create callback.
+     * This runs once in the camera daemon constructor, before graph setup. */
+    void *codec = dlopen("/System/Library/VideoCodecs/VCPHEVC.videocodec", RTLD_NOW | RTLD_LOCAL);
+    void *vt = dlopen("/System/Library/Frameworks/VideoToolbox.framework/VideoToolbox", RTLD_NOW | RTLD_LOCAL);
+    void *create = codec ? dlsym(codec, "HEVCVideoEncoder_CreateInstance") : NULL;
+    NezhaCameraRegisterEncoder registration = vt ?
+        (NezhaCameraRegisterEncoder)dlsym(vt, "VTRegisterVideoEncoderWithInfo") : NULL;
+    const CFStringRef *identifier = vt ? dlsym(vt, "kVTVideoEncoderList_EncoderID") : NULL;
+    const CFStringRef *name = vt ? dlsym(vt, "kVTVideoEncoderList_EncoderName") : NULL;
+    const CFStringRef *hardware = vt ? dlsym(vt, "kVTVideoEncoderList_IsHardwareAccelerated") : NULL;
+    const int32_t status = nezha_camera_photo_codec_register(registration, create,
+        identifier ? *identifier : NULL, name ? *name : NULL, hardware ? *hardware : NULL);
+    fprintf(stderr,"nezha-camera: software HEVC registration codec=%u vt=%u create=%u register=%u keys=%u/%u/%u status=%d\n",
+        (unsigned)(codec!=NULL),(unsigned)(vt!=NULL),(unsigned)(create!=NULL),(unsigned)(registration!=NULL),
+        (unsigned)(identifier && *identifier),(unsigned)(name && *name),(unsigned)(hardware && *hardware),status);
+}
 
 static bool single_main_backing(id array)
 {
@@ -447,12 +468,13 @@ static void image_added(const struct mach_header *header,intptr_t slide)
         metal_required_installed=true;
         fputs("nezha-camera: exact GPU051 function constant required getter installed\n",stderr);
     }
-    if (installed && model_installed && device_ids_installed && publishing_installed && stream_request_installed && backings_init_installed && backings_list_installed && sources_installed && source_init_installed && still_observers_installed) return;
+    if (installed && model_installed && device_ids_installed && publishing_installed && stream_request_installed && backings_init_installed && backings_list_installed && sources_installed && source_init_installed && still_observers_installed && photo_observers_installed) return;
     if (uuid_matches((const struct mach_header_64 *)header)) {
         capture_present=true;capture_slide=slide;
     }
     if (!capture_present) return;
     install_still_observers();
+    install_photo_observers();
     if (!source_vtable)
         source_vtable=(const struct NezhaFigDeviceVTable *(*)(NezhaFigObject))dlsym(RTLD_DEFAULT,"CMBaseObjectGetVTable");
     install_model_resource();
@@ -498,5 +520,6 @@ __attribute__((constructor)) static void initialize(void)
         before_status,before_count,(unsigned long long)before.phys_footprint,
         (unsigned long long)before.limit_bytes_remaining,after_status,after_count,
         (unsigned long long)after.phys_footprint,(unsigned long long)after.limit_bytes_remaining);
+    register_software_hevc_encoder();
     _dyld_register_func_for_add_image(image_added);
 }

@@ -1,12 +1,12 @@
 {
   "schema": 1,
-  "purpose": "Camera154 accepts original24A446 command without payload; retains153 increment updates and152 stable kernel/150 Metal",
-  "device_revision": "3ea08fd65f8436235504a36292fc465953ce1c1c",
+  "purpose": "Camera155 registers the existing original software VCPHEVC encoder and observes photo emission/encoding/sink; retain154 NULL still contract,152 stable kernel/150 Metal",
+  "device_revision": "2c0d1d7ca27d1e7cdb9fec8a7360471156284d62",
   "files": {
-    ".github/workflows/nezha-ios27-native.yml": "a1e60f0075b3511e8b02408c34b6efe7822b026e8d9ad8ff91fe72902b17d583",
+    ".github/workflows/nezha-ios27-native.yml": "bcf5f928d6e56d78671126b37d2f13ed6e5e60a6c961f4472d124bb3ed70082f",
     "ci/artifact-recipient.pem": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
     "ci/artifacts.py": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
-    "ci/build-renderer.py": "43d637c1947bd0a5156bde3b2f5c2b5b78fc041ec4c0d192273d6cccfd617184",
+    "ci/build-renderer.py": "657e19357c444041b6e625192ac7808b8825ad75bace2d91c71ea205e9b5e866",
     "ci/camera-discovery.py": "f4f017901dc2c78b4a6056b2fec6d2b97b1a8b6a432e48b7d8a671c7d2503e8a",
     "source/NezhaCameraControl.h": "88e6e5dadd777e10a36f587decb8fb38300d79033b0c826bcd747b1d7867cae2",
     "source/NezhaCameraDiscovery.h": "c2fe0fec08c8b445c9080a845ed0dace057e212094c35f7b734907181ec66338",
@@ -67,7 +67,7 @@
     "source/userland/NezhaCameraRenderer.h": "266b19db6559751dc68927deda78c2c5b373f1e0786a396362f96f3a70454f61",
     "source/userland/NezhaCameraRenderer.m": "f2ff1100bdee66154f29c2eade495db10fd75691ec9a1c6c0b9d11e6c1f8fdfd",
     "source/userland/NezhaCameraStillObservers.h": "fe0409ed7902b711576ddc1cc0f8c445dc18a1749916d918ff61a2ed47489fec",
-    "source/userland/NezhaCameraSystemVendor.m": "d9fea55d73e6cd6f3b989a03f9f250afaf1b12989caf41570d9d5950640ecc48",
+    "source/userland/NezhaCameraSystemVendor.m": "50db2db02b7173815464036fec76edf20196a505e718d255f7823315e8ef136e",
     "source/userland/NezhaFigCapture24A446.c": "35db683c0466feaa171cc0906a91940d2140319ed20d3af0cdb13936f9b1342c",
     "source/userland/NezhaFigCapture24A446.h": "d31d3abe7761aa99f92eaab45357716c6d4c4372e5425658d2a7af80f3894212",
     "source/userland/camera-renderer-host.m": "64f64e68d50fcfd1e06778ee9f774d76f47940fe6cf584ddfdabdea5d8e650e1",
@@ -75,9 +75,13 @@
     "source/userland/upstream/hakios/ORIGIN.json": "98dd0460144db96a036213230e97d94a924e858651beaf89ad525121d97307c9",
     "source/userland/upstream/hakios/camera_isp.c": "f1a8671f256101c62dc57d916923f6e9d559fce193715b85192bf59d330f51d5",
     "source/userland/upstream/hakios/camera_isp.h": "311a1fae76f71d05c767915b5d6ba52c498381ae49621307dcc085fe14c29875",
-    "source/userland/upstream/hakios/hakios.camera.h": "97f80aa60adb7d2a43d93f3edfde294ba0c447586069cb81fa9ac58c789d6444"
+    "source/userland/upstream/hakios/hakios.camera.h": "97f80aa60adb7d2a43d93f3edfde294ba0c447586069cb81fa9ac58c789d6444",
+    "source/userland/NezhaCameraPhotoCodec.h": "8c1ee8e74195494be39e83bdaf8cc00f919a4ebff6fa20c0e47d3f9edd7fc6dd",
+    "source/userland/NezhaCameraPhotoObservers.h": "64762f9ceb7443cff71b0698c1888708784d16eb046969e587ea5851aa3ca6e8",
+    "source/tests/camera-photo-codec.c": "129099db6388dbf1601eee16c51af31eeca264139bdf17dc5ae8a2be200ee5c2",
+    "source/tests/camera-photo-observers.c": "8dfac9dfbe8f76e9e776c4ad06406663fef354baececa3375195a3c26b04efcf"
   },
-  "builder_sha256": "43d637c1947bd0a5156bde3b2f5c2b5b78fc041ec4c0d192273d6cccfd617184",
+  "builder_sha256": "657e19357c444041b6e625192ac7808b8825ad75bace2d91c71ea205e9b5e866",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
   "certificate_sha256": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
   "kernel_build_required": false,
@@ -101,7 +105,9 @@
   "host_graph_darwin_flow_callback": true,
   "discovery_fixture_exact_source_include": true,
   "C_fixture_ObjC_IMP_warning_scoped": true,
-  "preceding_successful_CI_run": 45578393014,
-  "preceding_successful_CI_head": "8e28ea4b50741a8bb097348928e665707bc74439",
-  "payload_free_still_command": true
+  "preceding_successful_CI_run": 45585025620,
+  "preceding_successful_CI_head": "095d1902061f1d5d860f8bb76118da48176c441c",
+  "payload_free_still_command": true,
+  "software_hevc_registration": true,
+  "photo_delivery_observers": true
 }
