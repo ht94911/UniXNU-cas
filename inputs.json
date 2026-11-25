@@ -49,7 +49,7 @@
     "source/adreno/NativeAdrenoPollLog.h": "b4c2b7033f1ec5198d9ce5a44790ce4c182e9f6e63b0bcc659fb92efe7a602f4",
     "source/adreno/NativeAdrenoPreempt.cpp": "59336613d70291a3d16abd0c3a10025fc8dae5ba2796f76ce8e7c60234f328bb",
     "source/adreno/NativeAdrenoPreempt.h": "cef0d92d9836452a23c64fd6d4dc2ffeceff5b32d1de0ad4e6480d567c184b7f",
-    "source/adreno/NativeAdrenoPublish.cpp": "6702aa3fe2da68c10bfe66d046f80003524eebcb80126ea02766a895d5ff771c",
+    "source/adreno/NativeAdrenoPublish.cpp": "08d57fb3335d7323294e1801a31aca1c0976e578db396c72203636eedc1982e5",
     "source/adreno/NativeAdrenoPwrup.h": "708830fae4f6a5cea765992d44135126d7a034a239adece94f094d862819e889",
     "source/adreno/NativeAdrenoPwrupRegs.h": "8067d9625e922173912eea09e6a504d9c1b31234d4656f8dd4148855882918e1",
     "source/adreno/NativeAdrenoRing.cpp": "ce17c79ada349a3e40df1f6756f556765de1ac62200f88bf9a024b07c8b22529",
@@ -431,7 +431,7 @@
     "source/device/scripts/aes-iphone-24A446.json": "d55ed6d1d65fdff5de46dd602552eaf3309d1f7370fcd3f15eddb391225ffe8a",
     "source/device/scripts/als-event-service-iphone-24A446.json": "34c27f1a58bab3c518570a57c006a23fce315b90a584e691629d61c0850bd4d8",
     "source/device/scripts/backlight-iphone-24A446.json": "446eb5fe6440335bfe9fca75b32f7d815ddcafbb8a3c2d7f697c1e5c3f40f6cb",
-    "source/device/scripts/build-adreno840.py": "aa388b90dc2c199101db3324e6afa3fe516c9cdbed26fc660c357b447c9a92f6",
+    "source/device/scripts/build-adreno840.py": "4db0f0e5da8211b22b1cc966ecc8d82b749ca8bdb7b134681795ae130df4be79",
     "source/device/scripts/build-boot-progress.py": "a210eb1f0443574eb1506932aa9e8181d5c73aecf99397d8cc731568bd3210ba",
     "source/device/scripts/build-gop-legacy-display-27.py": "4078d533855d4040ab0979135ab6fa2a4f3e4fbfb54e19c529dc6f3e8f4e4480",
     "source/device/scripts/build-ios27-pmgr.py": "f88a0596937cbf0504922751a3194e3a33bba609f683a415262887d2b64241e4",
@@ -1180,7 +1180,7 @@
   },
   "gpu088": {
     "upstream_adreno": "2962e289c9690aeb668072c170679e6fb28bf8de",
-    "native_source": "68002d4616b2bc6c263e51a284544f04c8e9321e",
+    "native_source": "3c461a08d8c7a89c5c897721c84ab02f1d7505bd",
     "base_native065": "ff13d5e98bb7e9503984413e78ea48a967ff54d8",
     "all_non_GPU_inputs_retained": true,
     "clock_frequency_atomic_submit_and_VM_ownership_retained": true,
@@ -1248,5 +1248,15 @@
     ],
     "native066c_failed_run": 45694392572,
     "accelerator_adapter": "Upstream selectable base retains the already-qualified IOAcceleratorES default for the local native builder; no original base/vtable is replaced."
+  },
+  "gpu088_lifecycle_followup": {
+    "prior_actual_failure": 45700934031,
+    "upstream_callback_is_weak_optional": true,
+    "exact_optional_callback_name": "_iokit_physical_descriptor_close_notify",
+    "callback_original_provider_absent_in_current_XNU": true,
+    "typed_absence_retains_upstream_untracked_view_fallback": true,
+    "callback_not_synthesized": true,
+    "local_optimizations_removed": false,
+    "phone_operations": false
   }
 }

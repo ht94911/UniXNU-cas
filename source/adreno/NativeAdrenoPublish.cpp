@@ -456,7 +456,7 @@ NativeAdrenoPoolView *NativeAdrenoPoolView::make(NativeAdrenoPoolGrant *grant)
     if(view) {
         NativeAdrenoPoolRetain(grant);
         /* Before anything can map the view: from here on the reference belongs to the kernel's report, which comes exactly once. */
-        const bool hook=&iokit_physical_descriptor_close_notify!=nullptr;
+        const bool hook=iokit_physical_descriptor_close_notify!=nullptr;
         native_adreno_pool_views[4]=hook?1:0;
         view->tracked_=hook && iokit_physical_descriptor_close_notify(view,NativeAdrenoPoolViewClosed,grant)==KERN_SUCCESS;
         NativeAdrenoPoolNoteView(grant,view->tracked_);   /* a client can map the pages from here on */

@@ -170,6 +170,9 @@ def main():
         weak.update(re.findall(r'\(undefined\) weak external (_\w+)', nm))
     missing = weak - defined
     optional = {
+        '_iokit_physical_descriptor_close_notify': ('NativeAdrenoPublish.cpp',
+            r'extern "C" kern_return_t iokit_physical_descriptor_close_notify\((.*?)\) __attribute__\(\(weak_import\)\);',
+            r'static kern_return_t (*const iokit_physical_descriptor_close_notify)(\1)=nullptr;'),
         '_boot_log_export_put': ('NativeAdrenoPublish.cpp',
             r'extern "C" int boot_log_export_put\((.*?)\) __attribute__\(\(weak_import\)\);',
             r'static int (*const boot_log_export_put)(\1)=nullptr;'),
