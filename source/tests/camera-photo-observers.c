@@ -10,7 +10,7 @@
 #include <ptrauth.h>
 static intptr_t capture_slide;
 uint64_t mach_absolute_time(void);
-#include "../package/camera/userland/NezhaCameraPhotoObservers.h"
+#include "NezhaCameraPhotoObservers.h"
 
 static unsigned emit_calls,render_calls,encode_calls,sink_calls,replacements;
 static unsigned unavailable,wrong_type,wrong_address;

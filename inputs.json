@@ -1,12 +1,12 @@
 {
   "schema": 1,
   "purpose": "Camera155 registers the existing original software VCPHEVC encoder and observes photo emission/encoding/sink; retain154 NULL still contract,152 stable kernel/150 Metal",
-  "device_revision": "8db184c27e417443a85dab08c7599aba29002451",
+  "device_revision": "6e0a28c88ecc94f5203ffd96b6260caae60e6099",
   "files": {
-    ".github/workflows/nezha-ios27-native.yml": "4aad8080bab3ab1ea06b521379bcaa6f7b79397a02ddc9d212cd57348a79625d",
+    ".github/workflows/nezha-ios27-native.yml": "6f60a9e8f8b2b385b83908bc8e81a4d9d908d46dd7d5f9774c027e1e3319a900",
     "ci/artifact-recipient.pem": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
     "ci/artifacts.py": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
-    "ci/build-renderer.py": "657e19357c444041b6e625192ac7808b8825ad75bace2d91c71ea205e9b5e866",
+    "ci/build-renderer.py": "4b69d992d07075cd0c8f33904a3a11105bd680d3db7b47ce24ab05183f64a603",
     "ci/camera-discovery.py": "f4f017901dc2c78b4a6056b2fec6d2b97b1a8b6a432e48b7d8a671c7d2503e8a",
     "source/NezhaCameraControl.h": "88e6e5dadd777e10a36f587decb8fb38300d79033b0c826bcd747b1d7867cae2",
     "source/NezhaCameraDiscovery.h": "c2fe0fec08c8b445c9080a845ed0dace057e212094c35f7b734907181ec66338",
@@ -67,7 +67,7 @@
     "source/userland/NezhaCameraRenderer.h": "266b19db6559751dc68927deda78c2c5b373f1e0786a396362f96f3a70454f61",
     "source/userland/NezhaCameraRenderer.m": "f2ff1100bdee66154f29c2eade495db10fd75691ec9a1c6c0b9d11e6c1f8fdfd",
     "source/userland/NezhaCameraStillObservers.h": "fe0409ed7902b711576ddc1cc0f8c445dc18a1749916d918ff61a2ed47489fec",
-    "source/userland/NezhaCameraSystemVendor.m": "50db2db02b7173815464036fec76edf20196a505e718d255f7823315e8ef136e",
+    "source/userland/NezhaCameraSystemVendor.m": "dcd1ad30a47df4ce14e844e7eb8292fbdb056023b1a738c4ebfe49d572db3774",
     "source/userland/NezhaFigCapture24A446.c": "35db683c0466feaa171cc0906a91940d2140319ed20d3af0cdb13936f9b1342c",
     "source/userland/NezhaFigCapture24A446.h": "d31d3abe7761aa99f92eaab45357716c6d4c4372e5425658d2a7af80f3894212",
     "source/userland/camera-renderer-host.m": "64f64e68d50fcfd1e06778ee9f774d76f47940fe6cf584ddfdabdea5d8e650e1",
@@ -78,10 +78,10 @@
     "source/userland/upstream/hakios/hakios.camera.h": "97f80aa60adb7d2a43d93f3edfde294ba0c447586069cb81fa9ac58c789d6444",
     "source/userland/NezhaCameraPhotoCodec.h": "8c1ee8e74195494be39e83bdaf8cc00f919a4ebff6fa20c0e47d3f9edd7fc6dd",
     "source/userland/NezhaCameraPhotoObservers.h": "64762f9ceb7443cff71b0698c1888708784d16eb046969e587ea5851aa3ca6e8",
-    "source/tests/camera-photo-codec.c": "9b28c63c3cb038ad580d1a7b1205a7d42c090bb5491f1fab69c1defc3516d7c6",
-    "source/tests/camera-photo-observers.c": "8dfac9dfbe8f76e9e776c4ad06406663fef354baececa3375195a3c26b04efcf"
+    "source/tests/camera-photo-codec.c": "0991f3914072a5883167897061e5f886c31bdee5629900f64f80e14d8f56a73e",
+    "source/tests/camera-photo-observers.c": "2ff318ad66d6d00fa67c5544988316bccf6b2e61460441d5e25d6b206844ab35"
   },
-  "builder_sha256": "657e19357c444041b6e625192ac7808b8825ad75bace2d91c71ea205e9b5e866",
+  "builder_sha256": "4b69d992d07075cd0c8f33904a3a11105bd680d3db7b47ce24ab05183f64a603",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
   "certificate_sha256": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
   "kernel_build_required": false,
@@ -97,11 +97,11 @@
   "final_preview_observation_only": true,
   "helper_disabled_and_previous_binary_reused": true,
   "helper136_qualified_run": 45163718326,
-  "preceding_failed_CI_run": 45577247640,
+  "preceding_failed_CI_run": 45597567635,
   "header_source": "existing signed136 renderer probe uses IOSurface/IOSurfaceRef.h on same iPhone SDK",
   "device_source_sha256": "2468fe065c24f53d5b946e68fa245e1827f8a74c",
   "build_sha256": "0d3f3280247d9e6c5d0d8bee2011c67687f1946ee5b90790a793db5a04ffcecb",
-  "preceding_failed_CI_head": "25c58a1dfb5b0aba6f8c486cfcc72dd5f327918f",
+  "preceding_failed_CI_head": "6afa81c4cd606504b168b4c1a1519a98d59e8824",
   "host_graph_darwin_flow_callback": true,
   "discovery_fixture_exact_source_include": true,
   "C_fixture_ObjC_IMP_warning_scoped": true,
@@ -109,5 +109,6 @@
   "preceding_successful_CI_head": "095d1902061f1d5d860f8bb76118da48176c441c",
   "payload_free_still_command": true,
   "software_hevc_registration": true,
-  "photo_delivery_observers": true
+  "photo_delivery_observers": true,
+  "photo_fixtures_relocatable_includes": true
 }

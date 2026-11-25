@@ -28,10 +28,10 @@ try:
  run('still-observer-host-build',['xcrun','clang','-std=gnu11','-Wall','-Wextra','-Werror','-Wno-cast-function-type-mismatch','-fblocks','-fsanitize=address,undefined','-fno-sanitize-recover=all','-O1','-g','-I',fixture/'vendor-fixture','-I',fixture,root/'source/tests/camera-still-observers.c','-o',still_host])
  still_output=run('still-observer-host-run',[still_host]);assert b'96 original forwards' in still_output
  photo_codec_host=a.out/'photo-codec-host'
- run('photo-codec-host-build',['xcrun','clang','-std=gnu11','-Wall','-Wextra','-Werror','-fsanitize=address,undefined','-fno-sanitize-recover=all','-O1','-g',root/'source/tests/camera-photo-codec.c','-framework','CoreFoundation','-o',photo_codec_host])
+ run('photo-codec-host-build',['xcrun','clang','-std=gnu11','-Wall','-Wextra','-Werror','-fsanitize=address,undefined','-fno-sanitize-recover=all','-O1','-g','-I',user,root/'source/tests/camera-photo-codec.c','-framework','CoreFoundation','-o',photo_codec_host])
  photo_codec_output=run('photo-codec-host-run',[photo_codec_host]);assert b'4 registration outcomes preserved' in photo_codec_output
  photo_host=a.out/'photo-observer-host'
- run('photo-observer-host-build',['xcrun','clang','-std=gnu11','-Wall','-Wextra','-Werror','-Wno-cast-function-type-mismatch','-fblocks','-fsanitize=address,undefined','-fno-sanitize-recover=all','-O1','-g','-I',fixture/'vendor-fixture','-I',fixture,root/'source/tests/camera-photo-observers.c','-o',photo_host])
+ run('photo-observer-host-build',['xcrun','clang','-std=gnu11','-Wall','-Wextra','-Werror','-Wno-cast-function-type-mismatch','-fblocks','-fsanitize=address,undefined','-fno-sanitize-recover=all','-O1','-g','-I',fixture/'vendor-fixture','-I',fixture,'-I',user,root/'source/tests/camera-photo-observers.c','-o',photo_host])
  photo_output=run('photo-observer-host-run',[photo_host]);assert b'96 original forwards' in photo_output
  discovery_host=a.out/'discovery-host'
  discovery_fixture=a.out/'discovery-fixture.m'

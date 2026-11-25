@@ -1,7 +1,7 @@
 name: nezha iPhone27 Camera155 software HEVC registration and photo delivery
 on:
   push:
-    branches: [codex/ios27-camera155-software-hevc-20261125]
+    branches: [codex/ios27-camera155b-software-hevc-20261125]
 permissions:
   contents: read
 concurrency:

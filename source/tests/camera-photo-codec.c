@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: MIT */
-#include "../package/camera/userland/NezhaCameraPhotoCodec.h"
+#include "NezhaCameraPhotoCodec.h"
 #include <assert.h>
 #include <stdbool.h>
 #include <stdio.h>

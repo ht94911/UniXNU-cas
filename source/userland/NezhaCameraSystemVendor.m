@@ -74,7 +74,7 @@ static void register_software_hevc_encoder(void)
     /* Keep both handles: VideoToolbox retains the codec's create callback.
      * This runs once in the camera daemon constructor, before graph setup. */
     void *codec = dlopen("/System/Library/VideoCodecs/VCPHEVC.videocodec", RTLD_NOW | RTLD_LOCAL);
-    void *vt = dlopen("/System/Library/Frameworks/VideoToolbox.framework/VideoToolbox", RTLD_NOW | RTLD_LOCAL);
+    void *vt = dlopen("/System/Library/Frameworks/VideoToolbox.framework/VideoToolbox", RTLD_NOW | RTLD_GLOBAL);
     void *create = codec ? dlsym(codec, "HEVCVideoEncoder_CreateInstance") : NULL;
     NezhaCameraRegisterEncoder registration = vt ?
         (NezhaCameraRegisterEncoder)dlsym(vt, "VTRegisterVideoEncoderWithInfo") : NULL;
