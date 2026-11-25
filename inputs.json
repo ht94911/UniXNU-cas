@@ -502,7 +502,7 @@
     "ci/test-native-userlog.py": "f64f5aff7c83cbbff7ce9bd15ab276dd7022f5e42d227999157b796afe414f9e",
     "ci/check-native-userlog.py": "74e7abe9164a853b10d4406a46f55f67670ade42795f066068e84f14b2ebc006",
     "ci/test-native-userlog-producer.py": "619bc31f6f41b16d562bcbc83a41588f6ada45a5268e23ef5c4985e5f364e403",
-    "ci/native.py": "45f2b3eb57f98c2c7cdfd7a3be4cec3c6429152262d7d7f6ed7f67732f3c2db9",
+    "ci/native.py": "b174f43ffc3d5df87ca4a62a4116561bd50ea7b98e79b613c860bcbcbdb4151b",
     "source/device/package/gpu/NezhaGpuBoPhases.h": "6b609e93c766b0f88b569dc1c04177b529f090e23f06a260c4c427afe8dfcbb6",
     "source/device/tests/gpu-bo-phases.cpp": "a7d609b520a3166ca53c24581f89c6d2f02ca53f00b09326749c0356a3fc63e9",
     "source/device/tests/check-gpu-bo-phases.py": "e34cab3913626ff9e80d533e9013791565229a3386fbb1599ed4c71c68afc181",
@@ -520,7 +520,8 @@
     "source/adreno/tests/check_cached_stall_copy.py": "a646cd027c94cef4a6cced194faa287faf43d6b4f0f8c00ddef1c74b5e1f12ec",
     "source/adreno/NativeAdrenoPool.cpp": "818436f213f64b6e4835ef1854525c71862d476674d98de9d49f1e0da20fad94",
     "source/adreno/NativeAdrenoPool.h": "4dc1559b6ae3ed44c900ebbaaa6d78e1f1c30e58fc3aa7b14338e93e3699963a",
-    "source/adreno/NativeAdrenoSubmitDiagnostic.h": "5e1a16cc0cd6613f20b3223fdb12820ec0b71127f4902f73f5c9d96ef64c41c5"
+    "source/adreno/NativeAdrenoSubmitDiagnostic.h": "5e1a16cc0cd6613f20b3223fdb12820ec0b71127f4902f73f5c9d96ef64c41c5",
+    "source/gpu088-addon-writer.patch": "b1e079f19facb76d84abcdf24b3e91b3506a8167ffafbf98caea0eaaa82585fa"
   },
   "artifacts_source": "ht94911/UniXNU-cas@tmp/nezha-metal-plugin-018-20261028:ci/xnu/artifacts.py",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
@@ -579,7 +580,7 @@
       "scripts/build.py"
     ],
     "framework_base_tree": "87bb1c5c70a736b7e2ac2b1bdada1cf8a80c3beb",
-    "framework_tree": "091abd45bf6d85f19b49a3aea6619b653bd1850a",
+    "framework_tree": "708818edfa0cf27e5c9e835057c300ea69a42b1c",
     "usb_base_revision": "b80705648032ee04df08e492b3127ee6c20b1bd6",
     "usb_base_tree": "2e1661856cfefd8b8e0d1900d6c171c25852afdd",
     "usb_tree": "2e1661856cfefd8b8e0d1900d6c171c25852afdd",
@@ -1272,5 +1273,24 @@
     "callback_not_synthesized": true,
     "local_optimizations_removed": false,
     "phone_operations": false
+  },
+  "gpu088_addon_writer": {
+    "patch": "source/gpu088-addon-writer.patch",
+    "source_tree_after_framework_overlay": "cd66720f30ca6e2b36cf5214dcce5f70d35cc3b7",
+    "source_files": [
+      "patches/xnu-12377/zzy-native-gpu-addon-mount.patch",
+      "patches/xnu-12377/zzy-staged-system-apps.patch",
+      "patches/xnu-12377/zzyc-owner-skip-launch-constraints.patch",
+      "patches/xnu/zzy-native-gpu-addon-mount.patch",
+      "patches/xnu/zzy-staged-system-apps.patch",
+      "patches/xnu/zzyc-owner-skip-launch-constraints.patch"
+    ],
+    "upstream": "23d316bb addon replacement size; all three current/legacy kernel boot argument interfaces",
+    "old_native_source_tree": "87bb1c5c70a736b7e2ac2b1bdada1cf8a80c3beb",
+    "old_userlog_tree": "091abd45bf6d85f19b49a3aea6619b653bd1850a",
+    "physical_verified": false,
+    "phone_operations": false,
+    "both_patch_variant_syntax_checked": true,
+    "actual_upstream_vnode_replacement_ASan_UBSan_passed": true
   }
 }

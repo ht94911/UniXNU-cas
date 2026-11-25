@@ -1,0 +1,108 @@
+diff --git a/patches/xnu-12377/zzy-native-gpu-addon-mount.patch b/patches/xnu-12377/zzy-native-gpu-addon-mount.patch
+--- a/patches/xnu-12377/zzy-native-gpu-addon-mount.patch
++++ b/patches/xnu-12377/zzy-native-gpu-addon-mount.patch
+@@ -2,7 +2,7 @@
+ index 9969eb6f..166272c7 100644
+ --- a/bsd/kern/kern_exec.c
+ +++ b/bsd/kern/kern_exec.c
+-@@ -8123,6 +8123,321 @@ uint64_t native_owner_data_seed_base, native_owner_data_seed_size;
++@@ -8123,6 +8123,323 @@ uint64_t native_owner_data_seed_base, native_owner_data_seed_size;
+  uint8_t native_owner_data_seed_sha256[32];
+  char native_owner_data_device_path[64];
+  
+@@ -169,6 +169,8 @@
+ +		struct vnode_attr va;
+ +		VATTR_INIT(&va);
+ +		VATTR_SET(&va, va_mode, mode);
+++		/* Kernel vnode_open does not finish O_TRUNC on the non-compound path. */
+++		VATTR_SET(&va, va_data_size, size);
+ +		error = vnode_setattr(vp, &va, ctx);
+ +	}
+ +	if (!error) {
+@@ -296,7 +298,7 @@
+ +native_gpu_addon_prepare(proc_t p, user_addr_t scratch)
+ +{
+ +	uint32_t enabled = 0;
+-+	if (!PE_parse_boot_argn("sheng-gpu-addon", &enabled, sizeof(enabled)) || enabled != 1) {
+++	if (!(PE_parse_boot_argn("gpu-addon", &enabled, sizeof(enabled)) || PE_parse_boot_argn("sheng-gpu-addon", &enabled, sizeof(enabled))) || enabled != 1) {
+ +		return;
+ +	}
+ +	native_gpu_addon_install(p, scratch);
+diff --git a/patches/xnu-12377/zzy-staged-system-apps.patch b/patches/xnu-12377/zzy-staged-system-apps.patch
+--- a/patches/xnu-12377/zzy-staged-system-apps.patch
++++ b/patches/xnu-12377/zzy-staged-system-apps.patch
+@@ -253,7 +253,7 @@
+ +native_staged_apps_prepare(proc_t p, user_addr_t scratch, mount_t data_mount)
+ +{
+ +	uint32_t enabled = 0;
+-+	if (!PE_parse_boot_argn("sheng-staged-apps", &enabled, sizeof(enabled)) || enabled != 1) {
+++	if (!(PE_parse_boot_argn("staged-apps", &enabled, sizeof(enabled)) || PE_parse_boot_argn("sheng-staged-apps", &enabled, sizeof(enabled))) || enabled != 1) {
+ +		return;
+ +	}
+ +	vfs_context_t ctx = vfs_context_current();
+diff --git a/patches/xnu-12377/zzyc-owner-skip-launch-constraints.patch b/patches/xnu-12377/zzyc-owner-skip-launch-constraints.patch
+--- a/patches/xnu-12377/zzyc-owner-skip-launch-constraints.patch
++++ b/patches/xnu-12377/zzyc-owner-skip-launch-constraints.patch
+@@ -23,7 +23,7 @@
+  mac_proc_check_launch_constraints(proc_t curp, struct image_params *imgp, os_reason_t *reasonp)
+  {
+ +	uint32_t skip = 0;
+-+	if (PE_parse_boot_argn("sheng-no-lc", &skip, sizeof(skip)) && skip != 0) {
+++	if ((PE_parse_boot_argn("no-lc", &skip, sizeof(skip)) || PE_parse_boot_argn("sheng-no-lc", &skip, sizeof(skip))) && skip != 0) {
+ +		return 0;
+ +	}
+  	char *fatal_failure_desc = NULL;
+diff --git a/patches/xnu/zzy-native-gpu-addon-mount.patch b/patches/xnu/zzy-native-gpu-addon-mount.patch
+--- a/patches/xnu/zzy-native-gpu-addon-mount.patch
++++ b/patches/xnu/zzy-native-gpu-addon-mount.patch
+@@ -2,7 +2,7 @@
+ index a5ff474..4704203 100644
+ --- a/bsd/kern/kern_exec.c
+ +++ b/bsd/kern/kern_exec.c
+-@@ -7193,6 +7193,321 @@ uint64_t native_owner_data_seed_base, native_owner_data_seed_size;
++@@ -7193,6 +7193,323 @@ uint64_t native_owner_data_seed_base, native_owner_data_seed_size;
+  uint8_t native_owner_data_seed_sha256[32];
+  char native_owner_data_device_path[64];
+  
+@@ -169,6 +169,8 @@
+ +		struct vnode_attr va;
+ +		VATTR_INIT(&va);
+ +		VATTR_SET(&va, va_mode, mode);
+++		/* Kernel vnode_open does not finish O_TRUNC on the non-compound path. */
+++		VATTR_SET(&va, va_data_size, size);
+ +		error = vnode_setattr(vp, &va, ctx);
+ +	}
+ +	if (!error) {
+@@ -296,7 +298,7 @@
+ +native_gpu_addon_prepare(proc_t p, user_addr_t scratch)
+ +{
+ +	uint32_t enabled = 0;
+-+	if (!PE_parse_boot_argn("sheng-gpu-addon", &enabled, sizeof(enabled)) || enabled != 1) {
+++	if (!(PE_parse_boot_argn("gpu-addon", &enabled, sizeof(enabled)) || PE_parse_boot_argn("sheng-gpu-addon", &enabled, sizeof(enabled))) || enabled != 1) {
+ +		return;
+ +	}
+ +	native_gpu_addon_install(p, scratch);
+diff --git a/patches/xnu/zzy-staged-system-apps.patch b/patches/xnu/zzy-staged-system-apps.patch
+--- a/patches/xnu/zzy-staged-system-apps.patch
++++ b/patches/xnu/zzy-staged-system-apps.patch
+@@ -253,7 +253,7 @@
+ +native_staged_apps_prepare(proc_t p, user_addr_t scratch, mount_t data_mount)
+ +{
+ +	uint32_t enabled = 0;
+-+	if (!PE_parse_boot_argn("sheng-staged-apps", &enabled, sizeof(enabled)) || enabled != 1) {
+++	if (!(PE_parse_boot_argn("staged-apps", &enabled, sizeof(enabled)) || PE_parse_boot_argn("sheng-staged-apps", &enabled, sizeof(enabled))) || enabled != 1) {
+ +		return;
+ +	}
+ +	vfs_context_t ctx = vfs_context_current();
+diff --git a/patches/xnu/zzyc-owner-skip-launch-constraints.patch b/patches/xnu/zzyc-owner-skip-launch-constraints.patch
+--- a/patches/xnu/zzyc-owner-skip-launch-constraints.patch
++++ b/patches/xnu/zzyc-owner-skip-launch-constraints.patch
+@@ -23,7 +23,7 @@
+  mac_proc_check_launch_constraints(proc_t curp, struct image_params *imgp, os_reason_t *reasonp)
+  {
+ +	uint32_t skip = 0;
+-+	if (PE_parse_boot_argn("sheng-no-lc", &skip, sizeof(skip)) && skip != 0) {
+++	if ((PE_parse_boot_argn("no-lc", &skip, sizeof(skip)) || PE_parse_boot_argn("sheng-no-lc", &skip, sizeof(skip))) && skip != 0) {
+ +		return 0;
+ +	}
+  	char *fatal_failure_desc = NULL;

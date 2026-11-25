@@ -79,6 +79,13 @@ def prepare(framework, work):
     tree = run(['git', 'write-tree'], cwd=framework)
     if tree != manifest['framework']['source_tree']:
         raise ValueError('reconstructed framework tree differs from integration tree')
+    addon_writer = manifest.get('gpu088_addon_writer')
+    if addon_writer:
+        run(['git', 'apply', '--check', '--index', ROOT / addon_writer['patch']], cwd=framework)
+        run(['git', 'apply', '--index', ROOT / addon_writer['patch']], cwd=framework)
+        tree = run(['git', 'write-tree'], cwd=framework)
+        if tree != addon_writer['source_tree_after_framework_overlay']:
+            raise ValueError('Cumulative upstream addon writer tree differs')
     base_tree = tree
     userlog = manifest['userlog_target']
     overlay = ROOT / userlog['source_overlay']
