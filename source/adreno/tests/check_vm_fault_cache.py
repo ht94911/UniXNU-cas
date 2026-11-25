@@ -32,6 +32,7 @@ constexpr IOReturn kIOReturnSuccess=0,kIOReturnBadArgument=1,kIOReturnNotReady=2
 enum ArmSmmu4KStatus { ArmSmmu4KSuccess,ArmSmmu4KFault };
 constexpr unsigned GpuTraceVmFailure=81,NativeAdrenoRingStallWords=22;
 static bool traceOn=true;
+extern "C" {uint32_t native_adreno_vm_fail[4]={};}
 static unsigned callbacks,traceEvents;
 static std::vector<unsigned> order;
 extern "C" bool native_gpu_trace_enabled(void) __attribute__((weak));
@@ -56,7 +57,7 @@ static int read64(void *cookie,size_t offset,uint64_t *out){
  *out=h.table;return 0;
 }
 struct Io {void *cookie;int(*read32)(void *,size_t,uint32_t *);int(*read64)(void *,size_t,uint64_t *);};
-struct State {uint64_t context_offset=0x10000;unsigned poisoned=0;};
+struct State {uint64_t context_offset=0x10000;unsigned poisoned=0;bool detached=false;};
 struct Tables {unsigned quarantines=0;void quarantine(){++quarantines;order.push_back(3);}};
 struct Arena {};
 struct Region {Tables *tables;Arena *arena;State *state;};
@@ -83,7 +84,7 @@ struct NativeAdrenoVm {
  explicit NativeAdrenoVm(Hardware &h):io_{&h,read32,read64}{}
  uint64_t ttbr0()const{return table_;}
  IOReturn faultState(uint32_t out[4])const;
- IOReturn fail(ArmSmmu4KStatus,uint32_t,uint64_t,uint64_t);
+ IOReturn failAt(unsigned,ArmSmmu4KStatus,uint32_t,uint64_t,uint64_t);
  IOReturn peekWordsUncached(uint64_t start,uint32_t *out,size_t count)const{
   assert(!poisoned_ && !memory.quarantines && count==16);
   ++peeks;for(size_t i=0;i<count;++i)out[i]=uint32_t(start/4+i);return 0;
@@ -109,6 +110,8 @@ struct Ring {
  }
  int ibBefore(uint32_t,uint64_t *ib,uint32_t *size){*ib=0x140000000ull;*size=16;return 0;}
  uint32_t lastSubmitted()const{return 101;}
+ uint32_t readPointer()const{assert(false);return 0;}
+ uint32_t writePointer()const{assert(false);return 0;}
 };
 using NativeAdrenoRing=Ring;
 static IOReturn readTable(void *cookie,uint64_t *out){return read64(cookie,0x10020,out)?kIOReturnIOError:kIOReturnSuccess;}
@@ -117,15 +120,19 @@ struct NativeAdrenoSubmit {
  struct Job {
   uint32_t fence=101;size_t count=1;uint64_t queue=9;
   uint64_t vm_next=40;NativeAdrenoVm *vm=nullptr;
-  uint32_t context=7;uint64_t submit_us=1000;
+  uint64_t handles[1]={33};bool active=true;uint32_t context=7;uint64_t submit_us=1000;
   int32_t owner=88;size_t word_count=4;
   uint32_t words[4]={0x70bf8003,0x40000000,1,16};
   unsigned ring=0;int32_t priority=1;
  } job;
  bool attached_=true,poisoned_=false,first_vm_fault_sampled_=false;
- unsigned ring_count_=1,table_mode_=1;
+ unsigned ring_count_=1,table_mode_=1,stall_timeouts=0;
+ struct {unsigned loaded()const{return 0;}bool inFlight()const{return false;}} preempt_;
+ bool preemption()const{return false;}
  NativeAdrenoVm *vm_,*table_vm_;
  Ring target;
+ Ring *rings_[2]={&target,nullptr};
+ Job jobs_[1];
  uint64_t now=100001;
  uint64_t(*clock_now_)(void *)=clockNow;void *clock_cookie_=&now;
  NativeAdrenoSubmit(NativeAdrenoVm &kernel,NativeAdrenoVm &owner):vm_(&kernel),table_vm_(&owner){job.vm=&owner;}
@@ -133,10 +140,15 @@ struct NativeAdrenoSubmit {
  Ring *ringOfFence(uint32_t fence){assert(fence==101);return &target;}
  Job *find(uint32_t fence){return fence==job.fence?&job:nullptr;}
  unsigned outstanding()const{return 1;}
- bool cacheStall(uint32_t,uint64_t,uint64_t,uint32_t,uint32_t,const NativeAdrenoVm *,const uint32_t *,uint32_t,uint64_t,IOReturn);
+ bool cacheStall(uint32_t,uint64_t,uint64_t,uint32_t,uint32_t,const NativeAdrenoVm *,const uint32_t *,uint32_t,uint64_t,IOReturn,uint32_t=0,NativeAdrenoRing * = nullptr);
  bool noteVmFault(const NativeAdrenoVm *,const uint32_t *,uint32_t,IOReturn(*)(void *,uint64_t *),void *);
 };
 static uint32_t native_adreno_stall[24],native_adreno_stall_mem[59];
+static uint32_t native_adreno_stall_hang,native_adreno_stall_capture_status,native_adreno_stall_log_count,native_adreno_stall_fault[32],native_adreno_stall_ring[10];
+static uint64_t native_adreno_stall_log[32][8];
+static void findIb2(const NativeAdrenoVm *,const uint32_t *,size_t,uint32_t){assert(false);}
+static void findFault(const NativeAdrenoVm *,const uint32_t *,size_t,uint32_t){assert(false);}
+
 static NativeAdrenoSubmit *published;
 '''
 callbacks_code=r'''
@@ -160,7 +172,7 @@ struct Test {
 int main(){
  {
   Test t;
-  const auto status=t.detector.fail(ArmSmmu4KFault,1,0x180000000ull,8192);
+  const auto status=t.detector.failAt(123,ArmSmmu4KFault,1,0x180000000ull,8192);
   assert(status==kIOReturnIOError && callbacks==1 && traceEvents==1);
   assert(t.detector.poisoned_ && t.detector.memory.quarantines==1 && t.detector.tables.quarantines==1);
   assert(order.front()==1 && order.back()==4);
@@ -175,36 +187,36 @@ int main(){
   assert(s.memory[0]==0x80000402u && s.memory[1]==0x60000000u);
   assert(t.kh.read64s==1 && t.dh.read64s==0 && t.owner.peeks==3 && t.detector.peeks==0);
   NativeAdrenoVm another(t.dh);
-  (void)another.fail(ArmSmmu4KFault,1,0x180002000ull,8192);
+  (void)another.failAt(123,ArmSmmu4KFault,1,0x180002000ull,8192);
   assert(native_adreno_copy_stall(&s) && s.serial==1);
   assert(t.kh.read64s==1);
  }
  {
   Test t;t.dh.fault[0]=0x400; // AArch64 format, not a latched fault.
-  assert(t.detector.fail(ArmSmmu4KFault,1,0x180000000ull,8192)==kIOReturnIOError);
+  assert(t.detector.failAt(123,ArmSmmu4KFault,1,0x180000000ull,8192)==kIOReturnIOError);
   assert(callbacks==0 && traceEvents==1 && t.detector.poisoned_);
   NativeAdrenoStallSample s{};assert(!native_adreno_copy_stall(&s));
   assert(t.kh.read64s==0 && t.submit.target.fenceReads==0);
  }
  {
   Test t;t.dh.bad32=true;
-  (void)t.detector.fail(ArmSmmu4KFault,1,0x180000000ull,8192);
+  (void)t.detector.failAt(123,ArmSmmu4KFault,1,0x180000000ull,8192);
   assert(callbacks==0 && traceEvents==1 && t.detector.poisoned_ && t.kh.read64s==0);
  }
  {
   Test t;traceOn=false;
-  (void)t.detector.fail(ArmSmmu4KFault,1,0x180000000ull,8192);
+  (void)t.detector.failAt(123,ArmSmmu4KFault,1,0x180000000ull,8192);
   assert(callbacks==0 && traceEvents==0 && t.detector.poisoned_ && t.dh.read32s==0);
  }
  {
   Test t;t.kh.bad64=true;
-  (void)t.detector.fail(ArmSmmu4KFault,1,0x180000000ull,8192);
+  (void)t.detector.failAt(123,ArmSmmu4KFault,1,0x180000000ull,8192);
   NativeAdrenoStallSample s{};assert(native_adreno_copy_stall(&s));
   assert(s.source[4]==kIOReturnIOError && t.detector.poisoned_);
  }
  {
   Test t;t.submit.target.badState=true;
-  (void)t.detector.fail(ArmSmmu4KFault,1,0x180000000ull,8192);
+  (void)t.detector.failAt(123,ArmSmmu4KFault,1,0x180000000ull,8192);
   NativeAdrenoStallSample s{};assert(!native_adreno_copy_stall(&s));
   assert(t.detector.poisoned_ && traceEvents==1 && !t.submit.first_vm_fault_sampled_);
  }
@@ -226,7 +238,7 @@ int main(){
 source=prefix
 source+=section(r/'NativeAdrenoSubmit.h','NATIVE_ADRENO_CACHED_STALL_TYPE')
 source+=section(r/'NativeAdrenoSubmit.cpp','NATIVE_ADRENO_CACHED_STALL_COPY')
-for marker in ('IOReturn NativeAdrenoVm::faultState(', 'IOReturn NativeAdrenoVm::fail('):
+for marker in ('IOReturn NativeAdrenoVm::faultState(', 'IOReturn NativeAdrenoVm::failAt('):
  source+=body(r/'NativeAdrenoVm.cpp',marker)
 for marker in ('static bool activeJobIb(', 'static void peekIb(', 'static void peekFetch(', 'bool NativeAdrenoSubmit::cacheStall(', 'bool NativeAdrenoSubmit::noteVmFault('):
  source+=body(r/'NativeAdrenoSubmit.cpp',marker)

@@ -1039,12 +1039,12 @@ bool NativeAdrenoSubmit::cacheStall(uint32_t observed,uint64_t now,
     uint32_t words[NativeAdrenoRingStallWords]={},fault[4]={};
     if(native_adreno_stall_hang)return false;
     /* A failed register read must not expose the previous hang's CP words. */
-    native_adreno_stall[0]=next;native_adreno_stall[1]=stall_timeouts;
+    native_adreno_stall[0]=next;native_adreno_stall[1]=polls;
     for(unsigned i=0;i<NativeAdrenoRingStallWords;++i)native_adreno_stall[2+i]=0;
     const IOReturn captured=stalled->stallState(words);
     native_adreno_stall_capture_status=uint32_t(captured);
     if(captured)return false;
-    {
+    if(!detector && waited) {
         const uint32_t n=native_adreno_stall_log_count;volatile uint64_t *slot=native_adreno_stall_log[n&31];
         const Job *owner=find(next);
         slot[0]=now;slot[1]=next;slot[2]=4u|(uint64_t)stall_timeouts<<8;slot[3]=pending;
@@ -1069,16 +1069,16 @@ bool NativeAdrenoSubmit::cacheStall(uint32_t observed,uint64_t now,
         activeBv=ib;peekIb(space,ib,size,words[18],&native_adreno_stall_mem[4+17]);
     } else peekFetch(space,activeBv,&native_adreno_stall_mem[4+17]);
     peekFetch(space,(uint64_t)words[21]<<32|words[20],&native_adreno_stall_mem[4+34]);
-    if(job && job->word_count)findIb2(space,job->words,job->word_count,words[13]);
+    if(!detector && waited && job && job->word_count)findIb2(space,job->words,job->word_count,words[13]);
     for(unsigned i=0;i<32;++i)native_adreno_stall_fault[i]=0;
-    if(job && job->word_count && fault[0] && !fault[2] && fault[1])findFault(space,job->words,job->word_count,fault[1]);
+    if(!detector && waited && job && job->word_count && fault[0] && !fault[2] && fault[1])findFault(space,job->words,job->word_count,fault[1]);
     {
         native_adreno_stall_mem[55]=job?(uint32_t)job->vm_next:0;
         native_adreno_stall_mem[56]=(uint32_t)space->handleAt(activeBr);
         native_adreno_stall_mem[57]=(uint32_t)space->handleAt(activeBv);
         native_adreno_stall_mem[58]=(uint32_t)space->handleAt((uint64_t)words[21]<<32|words[20]);
     }
-    {
+    if(!detector && waited) {
         const Job *const asked=find(waited);
         NativeAdrenoRing *const asked_ring=asked?ring(asked->ring):ringOfFence(waited);
         uint32_t done[2]={},unfinished[2]={};
