@@ -7,7 +7,9 @@
 #include <string.h>
 
 static unsigned calls, allocations, releases;
+#ifndef __APPLE__
 static bool fail_allocation;
+#endif
 static int32_t expected_status;
 static void *expected_create;
 static CFStringRef identifier_key, name_key, hardware_key;

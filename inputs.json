@@ -1,9 +1,9 @@
 {
   "schema": 1,
   "purpose": "Camera155 registers the existing original software VCPHEVC encoder and observes photo emission/encoding/sink; retain154 NULL still contract,152 stable kernel/150 Metal",
-  "device_revision": "2c0d1d7ca27d1e7cdb9fec8a7360471156284d62",
+  "device_revision": "8db184c27e417443a85dab08c7599aba29002451",
   "files": {
-    ".github/workflows/nezha-ios27-native.yml": "bcf5f928d6e56d78671126b37d2f13ed6e5e60a6c961f4472d124bb3ed70082f",
+    ".github/workflows/nezha-ios27-native.yml": "4aad8080bab3ab1ea06b521379bcaa6f7b79397a02ddc9d212cd57348a79625d",
     "ci/artifact-recipient.pem": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
     "ci/artifacts.py": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
     "ci/build-renderer.py": "657e19357c444041b6e625192ac7808b8825ad75bace2d91c71ea205e9b5e866",
@@ -78,7 +78,7 @@
     "source/userland/upstream/hakios/hakios.camera.h": "97f80aa60adb7d2a43d93f3edfde294ba0c447586069cb81fa9ac58c789d6444",
     "source/userland/NezhaCameraPhotoCodec.h": "8c1ee8e74195494be39e83bdaf8cc00f919a4ebff6fa20c0e47d3f9edd7fc6dd",
     "source/userland/NezhaCameraPhotoObservers.h": "64762f9ceb7443cff71b0698c1888708784d16eb046969e587ea5851aa3ca6e8",
-    "source/tests/camera-photo-codec.c": "129099db6388dbf1601eee16c51af31eeca264139bdf17dc5ae8a2be200ee5c2",
+    "source/tests/camera-photo-codec.c": "9b28c63c3cb038ad580d1a7b1205a7d42c090bb5491f1fab69c1defc3516d7c6",
     "source/tests/camera-photo-observers.c": "8dfac9dfbe8f76e9e776c4ad06406663fef354baececa3375195a3c26b04efcf"
   },
   "builder_sha256": "657e19357c444041b6e625192ac7808b8825ad75bace2d91c71ea205e9b5e866",
