@@ -407,10 +407,18 @@ static NezhaFigStatus stream_set(NezhaFigObject o,NezhaFigString key,const void 
             return;
         }
         if (key_is(key,"StillImageCaptureNow")) {
-            if (!value || CFGetTypeID(value)!=CFDictionaryGetTypeID()) result=Invalid;
+            /* Original24A446 discards an empty options dictionary before
+             * sending this command. NULL requests one ordinary photograph;
+             * the device/stream still attaches its own capture settings. */
+            if (value && CFGetTypeID(value)!=CFDictionaryGetTypeID()) result=Invalid;
             else if (!s->running || !s->output[2].running) result=Unavailable;
             else if (s->stills) result=-12781;
             else { s->stills=1;result=0; }
+            static unsigned requests;
+            if (__atomic_fetch_add(&requests,1u,__ATOMIC_RELAXED)<16)
+                fprintf(stderr,"nezha-camera: still request payload=%s status=%d sequence=%llu generation=%u pending=%u\n",
+                    !value ? "none" : CFGetTypeID(value)==CFDictionaryGetTypeID() ? "dictionary" : "other",
+                    result,(unsigned long long)s->preview.completed_sequence,s->generation,s->stills);
             report_output_state(s,"StillImageCaptureNow",result);
             return;
         }

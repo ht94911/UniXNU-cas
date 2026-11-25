@@ -398,6 +398,7 @@ int main(int argc,char **argv)
     assert(st->stream->start(stream)==0 && begins==1);
     assert(nezha_camera_fig_provider_deliver(device,&frame,raw,15728640,77,metadata)==-12783 && !allocations);
     assert(st->base->set_property(stream,CFSTR("StillImageCaptureNow"),metadata)==-12783);
+    assert(st->base->set_property(stream,CFSTR("StillImageCaptureNow"),NULL)==-12783);
     assert(st->stream->stop(stream)==0 && ends==1);
     assert(st->stream->stop(stream)==0 && ends==1);
     begin_fail=true;
@@ -520,20 +521,27 @@ int main(int argc,char **argv)
         CFDictionaryGetValue(updated_still,CFSTR("RetainedBufferCount"))==n);
     assert(CFDictionaryGetValue(value,CFSTR("PrimaryScaler"))==CFDictionaryGetValue(configs,CFSTR("PrimaryScaler")));
     CFRelease(value);CFRelease(n);assert(live_pixels==held_before_update);
-    assert(st->base->set_property(stream,CFSTR("StillImageCaptureNow"),metadata)==0);
+    /* Stock24A446 converts an empty options dictionary to NULL. Keep its
+     * one-frame command valid, while rejecting other CF kinds and preserving
+     * the outstanding request through allocation failure and later retry. */
+    assert(st->base->set_property(stream,CFSTR("StillImageCaptureNow"),kCFBooleanTrue)==-12780);
+    assert(st->base->set_property(stream,CFSTR("StillImageCaptureNow"),NULL)==0);
+    assert(st->base->set_property(stream,CFSTR("StillImageCaptureNow"),NULL)==-12781);
     assert(st->base->set_property(stream,CFSTR("StillImageCaptureNow"),metadata)==-12781);
     still_pool->fail=true;
     assert(nezha_camera_fig_provider_deliver(device,&frame,raw,15728640,77,metadata)==-9 && !stills);
     still_pool->fail=false;
     assert(nezha_camera_fig_provider_deliver(device,&frame,raw,15728640,77,metadata)==0 && stills==1);
     assert(nezha_camera_fig_provider_deliver(device,&frame,raw,15728640,77,metadata)==0 && stills==1 && secondary==3);
+    assert(st->base->set_property(stream,CFSTR("StillImageCaptureNow"),metadata)==0);
+    assert(nezha_camera_fig_provider_deliver(device,&frame,raw,15728640,77,metadata)==0 && stills==2 && secondary==4);
 
     struct QueuedRelease released={.completed=dispatch_semaphore_create(0)};
     struct QueuedRelease *release_context=&released;
     unsigned queued_previews=previews,queued_secondary=secondary;
     assert(nezha_camera_fig_stream_enqueue(stream,&frame,raw,15728640,77,metadata,queued_release,&released)==0);
     assert(dispatch_semaphore_wait(released.completed,dispatch_time(DISPATCH_TIME_NOW,2000000000))==0);
-    assert(released.count==1 && previews==queued_previews+1 && secondary==queued_secondary+1 && stills==1);
+    assert(released.count==1 && previews==queued_previews+1 && secondary==queued_secondary+1 && stills==2);
 
     /* A graph handler may synchronously Stop/Start on the same queue.
      * Its current frame belongs to the old generation, including scalers
@@ -565,10 +573,11 @@ int main(int argc,char **argv)
     assert(st->base->invalidate(stream)==0 && ends==5);
     assert(st->stream->start(stream)==-12783 && begins==5);
     assert(st->base->set_property(stream,CFSTR("StillImageCaptureNow"),metadata)==-12783);
+    assert(st->base->set_property(stream,CFSTR("StillImageCaptureNow"),NULL)==-12783);
     CFRelease(all_configs);CFRelease(all_handlers);CFRelease(all_enabled);
     CFRelease(configs);CFRelease(handlers);CFRelease(enabled);CFRelease(pool);CFRelease(still_pool);
     CFRelease(metadata);CFRelease(streams);
     free(raw);assert(!live_objects && !live_pixels);
-    puts("camera Fig provider: ready-only factory, measured format, real RAW-to-pool callbacks, still retry, restart and complete release passed");
+    puts("camera Fig provider: ready-only factory, measured format, real RAW-to-pool callbacks, still retry, restart and complete release passed; payload-free and dictionary still requests preserve busy/invalid/stopped gates");
     return 0;
 }
