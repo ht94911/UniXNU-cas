@@ -20,6 +20,9 @@ assert "- (void)initLimits {fillBaseLimits(self);}" in source
 pressure_start = source.index("static void watchImportPressure() {")
 pressure_end = source.index("\n// The entry records", pressure_start)
 pressure = source[pressure_start:pressure_end]
+relief_start = source.index('extern "C" uint64_t native_bridge_metal_relieve_memory(void) {')
+relief_end = source.index('\n}', relief_start) + 2
+relief = source[relief_start:relief_end]
 assert pressure.count("static dispatch_source_t source;") == 1
 assert "dispatch_source_t source=dispatch_source_create" not in pressure
 
@@ -233,6 +236,7 @@ int main() {@autoreleasepool {
 @property(copy) void (^handler)(void);
 @end
 static std::atomic<unsigned> destroyed{0},created{0},trimmed{0},released{0};
+static std::atomic<unsigned> purged{0};
 @implementation PressureSource
 - (void)dealloc {destroyed++;}
 @end
@@ -246,15 +250,19 @@ static __weak PressureSource *observed;
 static void *gDevice=(void *)1;
 static const int DISPATCH_SOURCE_TYPE_MEMORYPRESSURE=1,DISPATCH_MEMORYPRESSURE_WARN=2,
  DISPATCH_MEMORYPRESSURE_CRITICAL=4,QOS_CLASS_UTILITY=1;
+static std::atomic<uint64_t> gPressureEvents[3];
+static unsigned pressureKind=DISPATCH_MEMORYPRESSURE_WARN;
 static void dispatch_once(dispatch_once_t *once,void (^f)(void)){if(!*once){*once=true;f();}}
 static void *dispatch_get_global_queue(int,int){return nullptr;}
 static dispatch_source_t dispatch_source_create(int,int,int,void *) {
  PressureSource *source=[PressureSource new];created++;observed=source;return source;
 }
 static void dispatch_source_set_event_handler(dispatch_source_t s,void (^f)(void)){s.handler=f;}
+[[maybe_unused]] static unsigned dispatch_source_get_data(dispatch_source_t s){assert(s==observed);return pressureKind;}
 static void dispatch_activate(dispatch_source_t) {}
 static void trimHeldImports(bool all){assert(all);trimmed++;}
 static unsigned nmb_device_release_kept_memory(void *){released++;return 1;}
+static uint64_t native_bridge_metal_purge(uint32_t cause,uint64_t idleMs){assert(cause==0 && idleMs==0);purged++;return 4096;}
 """
     arc_main = r"""
 }
@@ -264,14 +272,19 @@ int main() {
   assert(created==1 && destroyed==0 && retained::observed);
   retained::watchImportPressure();assert(created==1);
   retained::observed.handler();
-  assert(trimmed==1 && released==1);
+  assert(trimmed==1 && released==1 && purged==1);
+  assert(retained::gPressureEvents[0]==1 && retained::gPressureEvents[1]==0 && retained::gPressureEvents[2]==1);
+  retained::pressureKind=retained::DISPATCH_MEMORYPRESSURE_CRITICAL;
+  retained::observed.handler();
+  assert(trimmed==2 && released==2 && purged==2);
+  assert(retained::gPressureEvents[0]==1 && retained::gPressureEvents[1]==1 && retained::gPressureEvents[2]==2);
  }
  assert(destroyed==0);
  puts("{\"real_ARC\":true,\"source_survives_initialization\":true,\"one_source\":true,\"warning_releases_resources\":true}");
 }
 """
     arc = args.out / "actual-pressure.mm"
-    arc.write_text(arc_prefix + pressure + arc_main)
+    arc.write_text(arc_prefix + relief + '\n' + pressure + arc_main)
     arc_binary = args.out / "actual-pressure"
     subprocess.run([args.cxx, "-std=c++17", "-fobjc-arc", "-fblocks", "-O1", "-g",
                     "-Wall", "-Wextra", "-Werror", "-fsanitize=address,undefined",
@@ -282,6 +295,9 @@ int main() {
     report.update(real_ARC_pressure_lifetime_test=True, pressure_result=json.loads(result.stdout),
                   real_system_memory_pressure_delivered=False)
     old_pressure = pressure.replace(" static dispatch_source_t source;\n", "")
+    # The original unretained handler did not reference its source; retain that
+    # negative lifetime case when current telemetry reads the source's data.
+    old_pressure = old_pressure.replace('   gPressureEvents[dispatch_source_get_data(source)&DISPATCH_MEMORYPRESSURE_CRITICAL?1:0]++;\n', '')
     old_pressure = old_pressure.replace("  source=dispatch_source_create",
                                         "  dispatch_source_t source=dispatch_source_create")
     old_main = r"""
@@ -294,7 +310,7 @@ int main() {
 }
 """
     old = args.out / "old-pressure.mm"
-    old.write_text(arc_prefix + old_pressure + old_main)
+    old.write_text(arc_prefix + relief + '\n' + old_pressure + old_main)
     old_binary = args.out / "old-pressure"
     subprocess.run([args.cxx, "-std=c++17", "-fobjc-arc", "-fblocks", "-O1", "-g",
                     "-Wall", "-Wextra", "-Werror", "-fsanitize=address,undefined",

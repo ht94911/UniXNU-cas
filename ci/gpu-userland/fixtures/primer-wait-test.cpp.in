@@ -4,6 +4,7 @@
 #include <cstdio>
 static uint64_t fake_now;
 static unsigned script;
+static constexpr unsigned kQuietCommits = @QUIET_COMMITS@;
 static volatile uint32_t native_prime_rate, native_prime_compiling;
 static uint64_t nowMs() { return fake_now; }
 static unsigned native_bridge_metal_recent_commits(uint64_t window) {

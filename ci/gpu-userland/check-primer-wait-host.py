@@ -3,6 +3,7 @@ from pathlib import Path
 import argparse
 import hashlib
 import json
+import re
 import shutil
 import subprocess
 
@@ -14,7 +15,7 @@ args = parser.parse_args()
 source = args.unixnu / 'drivers/AdrenoMetal/PrimeShaders.h'
 raw = source.read_bytes()
 digest = hashlib.sha256(raw).hexdigest()
-assert digest == 'eeaf7259480eb84d4117481fa0f025fa9120aeaf4b8a79b73ccbee8af3526f68'
+assert digest == 'b1d91ae3cd18733debcd5b09d13dc3def6bb795778f41d1d6d6648bc7cf974e5'
 text = raw.decode()
 begin = text.index('static uint64_t waitForQuiet() {')
 end = text.index('\n}\n', begin) + 3
@@ -23,6 +24,9 @@ fixture_path = Path(__file__).with_name('fixtures') / 'primer-wait-test.cpp.in'
 fixture = fixture_path.read_text()
 assert fixture.count('@SELECTED_WAIT_FUNCTION@') == 1
 test = fixture.replace('@SELECTED_WAIT_FUNCTION@', function)
+quiet = re.search(r'(?m)^static constexpr unsigned kQuietCommits = (\d+);', text)
+assert quiet, 'actual primer activity threshold changed'
+test = test.replace('@QUIET_COMMITS@', quiet.group(1))
 out = args.logs / 'primer-policy'
 out.mkdir(parents=True, exist_ok=False)
 test_path, executable = out / 'actual-wait.cpp', out / 'actual-wait'

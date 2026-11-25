@@ -13,7 +13,7 @@ parser.add_argument('--cxx', default='clang++')
 args = parser.parse_args()
 args.out.mkdir(parents=True, exist_ok=False)
 source = args.source.read_text()
-begin = source.index(' NSString *cached=shaderCachePath(compilerUuid,type,request);')
+begin = source.index(' NSString *cachedName=shaderCacheName(compilerUuid,type,request);')
 end = source.index('\n}\n// Metal source, request 13:', begin)
 tail = source[begin:end]
 compile_begin = tail.index('  const uint64_t compileBegan=nowUs();')
@@ -52,10 +52,12 @@ static bool writes=true,callback=true,refusal=false,available=true;
 static thread_local unsigned reads=0;
 struct Timed {void add(uint64_t){}};
 static Timed gTimeCompile;
-static NSString *shaderCachePath(const unsigned char *,uint32_t,const std::vector<uint8_t> &request){
- return available?(request[0]==1?&fixtureKey: &warning):nullptr;
+static NSString *shaderCacheName(const unsigned char *,uint32_t,const std::vector<uint8_t> &request){
+ return request[0]==1?&fixtureKey: &warning;
 }
-static bool shaderCacheRead(NSString *path,NSData **bytes,NSString **warnings){
+static NSString *shaderCachePath(NSString *name){return available?name:nullptr;}
+static bool shaderCacheRead(NSString *path,NSString *name,NSData **bytes,NSString **warnings){
+ assert(name && (!path || path==name));
  bool hit=false;
  {std::lock_guard<std::mutex> g(storeLock);
   if(path){auto i=store.find(*path);if(i!=store.end()){*bytes=i->second;*warnings=&warning;hit=true;}}
@@ -113,7 +115,7 @@ int main(){unsigned cases=0;
 }
 '''
 recheck = '''  // Another request may have published this reply while this one waited.
-  if(shaderCacheRead(cached,&kept,&keptWarnings)) {
+  if(shaderCacheRead(cached,cachedName,&kept,&keptWarnings)) {
    gCompileCached++;
    *warnings=keptWarnings;*failure=nil;
    return kept;
