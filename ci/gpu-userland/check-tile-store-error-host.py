@@ -1,6 +1,6 @@
 """Compile the actual selected tile-store error path with host API peers."""
 from pathlib import Path
-import argparse,hashlib,json,os,re,subprocess
+import argparse,hashlib,json,os,re,shlex,subprocess
 p=argparse.ArgumentParser();p.add_argument('--unixnu',type=Path,required=True);p.add_argument('--logs',type=Path,required=True);a=p.parse_args()
 here=Path(__file__).resolve().parent;root=a.unixnu.resolve();a.logs.mkdir(parents=True,exist_ok=True)
 source=root/'.cache/mesa-work/src/freedreno/vulkan/tu_cmd_buffer.cc'
@@ -15,9 +15,10 @@ def extract(name):
         depth+=(lex[i]=='{')-(lex[i]=='}')
         if not depth:return text[start:i+1]+'\n'
     raise ValueError(name)
+candidate=fixture.read_text().split('namespace candidate {',1)[1]
 for row in bindings['functions']:
-    actual=extract(row['function']);assert hashlib.sha256(actual.encode()).hexdigest()==row['sha256'];assert actual in fixture.read_text()
-command=['clang++','-std=c++23','-O1','-g','-Wall','-Wextra','-Werror','-Wno-unused-function','-Wno-misleading-indentation',
+    actual=extract(row['function']);assert hashlib.sha256(actual.encode()).hexdigest()==row['sha256'];assert actual in candidate
+command=[*shlex.split(os.environ.get('CXX','clang++')),'-std=c++23','-O1','-g','-Wall','-Wextra','-Werror','-Wno-unused-function','-Wno-misleading-indentation',
          '-fsanitize=address,undefined',str(fixture),'-o',str(a.logs/'tile-store-error-host')]
 subprocess.run(command,check=True)
 env=dict(os.environ,ASAN_OPTIONS='detect_leaks=1:halt_on_error=1',UBSAN_OPTIONS='halt_on_error=1')

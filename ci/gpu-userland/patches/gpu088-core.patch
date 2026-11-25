@@ -1913,10 +1913,10 @@ index 00000000..2947ba44
 +       /* The ring grows, its records in order from the head. */
 diff --git a/patches/mesa/turnip-gpu088-cumulative.patch b/patches/mesa/turnip-gpu088-cumulative.patch
 new file mode 100644
-index 00000000..8fbb147d
+index 00000000..9cb02076
 --- /dev/null
 +++ b/patches/mesa/turnip-gpu088-cumulative.patch
-@@ -0,0 +1,5349 @@
+@@ -0,0 +1,5350 @@
 +diff --git a/meson.build b/meson.build
 +index 3aed8ca..6a2a30c 100644
 +--- a/meson.build
@@ -4423,10 +4423,10 @@ index 00000000..8fbb147d
 +                    void *_submit,
 +diff --git a/src/freedreno/vulkan/tu_knl_darwin.cc b/src/freedreno/vulkan/tu_knl_darwin.cc
 +new file mode 100644
-+index 0000000..ea9a536
++index 0000000..0e3d977
 +--- /dev/null
 ++++ b/src/freedreno/vulkan/tu_knl_darwin.cc
-+@@ -0,0 +1,2497 @@
++@@ -0,0 +1,2498 @@
 ++#include "tu_cpu_profile.h"
 ++#include "tu_frame_diagnostic.h"
 ++/*
@@ -4563,6 +4563,7 @@ index 00000000..8fbb147d
 ++   uint64_t cache_bytes, cache_stamp, cache_cleaned_s;
 ++   uint32_t pressure_seen;
 ++   struct darwin_bo_cache_stats cache_stats;
+++   struct darwin_va va;
 ++   /* Timeline WAIT_ANY support (protected by dev->submit_mutex): avoids Mesa's busy-spin fallback
 ++    * when waiting on GPU timeline fences alongside host-signaled wake semaphores. */
 ++   uint64_t timeline_seq;
@@ -6625,10 +6626,10 @@ index 00000000..8fbb147d
 ++      return result;
 ++   }
 ++   if (pthread_cond_init(&retire->fence_watcher_cond, NULL)) {
-++      pthread_mutex_destroy(&retire->lock);
-++      vk_free(&dev->vk.alloc, retire);
 ++      dw_close_connection(retire->connection);
 ++      pthread_mutex_destroy(&retire->connection.lock);
+++      pthread_mutex_destroy(&retire->lock);
+++      vk_free(&dev->vk.alloc, retire);
 ++      return vk_error(dev, VK_ERROR_INITIALIZATION_FAILED);
 ++   }
 ++   retire->fence_watcher_dev = dev;

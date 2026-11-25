@@ -37,12 +37,14 @@ for row in snippets:
     assert code in (fixtures/row['fixture']).read_text(),row
 out=a.logs/'device-context-host';out.mkdir(parents=True,exist_ok=False)
 mesa=root/'.cache/mesa-work'
-subprocess.run(['xcrun','clang','-O1','-g','-fsanitize=address,undefined','-I',str(mesa/'src/util'),
+c_compiler=['xcrun','clang'] if platform.system()=='Darwin' else ['gcc']
+cxx_compiler=['xcrun','clang++'] if platform.system()=='Darwin' else ['g++']
+subprocess.run([*c_compiler,'-O1','-g','-fsanitize=address,undefined','-I',str(mesa/'src/util'),
                 '-c',str(mesa/'src/util/rb_tree.c'),'-o',str(out/'rb_tree.o')],check=True,timeout=120)
 results={}
 for name in ['old','new','guards','va-old','va-new','swap','cache-release']:
     binary=out/name
-    command=['xcrun','clang++','-std=c++17','-O1','-g','-Wall','-Wextra','-Werror',
+    command=[*cxx_compiler,'-std=c++17','-O1','-g','-Wall','-Wextra','-Werror',
              '-Wno-unused-function','-Wno-unused-parameter','-Wno-missing-field-initializers','-Wno-misleading-indentation',
              '-fsanitize=address,undefined','-pthread','-I',str(root/'drivers/Adreno740'),
              '-I',str(mesa/'src/util'),'-I',str(mesa/'include'),
@@ -63,6 +65,7 @@ for name in ['old','new','guards','va-old','va-new','swap','cache-release']:
     print(run.stdout,end='')
     results[name]=dict(exit_code=run.returncode,source_sha256=hashlib.sha256((fixtures/(name+'.cpp')).read_bytes()).hexdigest())
 report=dict(actual_prepared_sources_match=True,ASan_UBSan=True,old_lifetime_error_reproduced=True,
+            c_compiler=c_compiler,cxx_compiler=cxx_compiler,
             new_ownership_and_guard_cases_passed=True,host=platform.machine(),bindings=bindings,results=results,
             mock_IOKit_only=True,real_A840_hardware_verified=False,phone_operations=False,
             actual_function_bindings_checked=len(snippets),real_Mesa_RB_used=True,

@@ -66,7 +66,11 @@ a = p.parse_args()
 root = a.unixnu.resolve()
 kit = root / 'drivers/AdrenoMetal'
 source = kit / 'NativeBridgeMetalFrontend.mm'
-original = subprocess.check_output(['git', '-C', str(kit), 'show', '816022307852de7e1741ac05ae9111982318763f:NativeBridgeMetalFrontend.mm'])
+baseline = Path(__file__).with_name('fixtures') / 'frontend816'
+original = (baseline / 'NativeBridgeMetalFrontend.mm').read_bytes()
+original_header = (baseline / 'bridge/NativeMetalObjects.h').read_bytes()
+assert hashlib.sha256(original).hexdigest() == '114f5735941de84cac233c0bfa72579415fe53266ae9592e1272eb09ec488aa8'
+assert hashlib.sha256(original_header).hexdigest() == '9013d1ff7cb381d8a3956e87e07bec351191ad7e1ab8e91f1c66bb289e737e43'
 flags = ['-std=c++17', '-fobjc-arc', '-O2', '-g0', '-fstack-protector-strong',
          '-Wall', '-Wextra', '-Werror', '-Wno-unused-parameter', '-Wno-deprecated-declarations',
          '-I', str(kit), '-I', str(root / 'drivers/Adreno740'), '-I', str(root / '.cache/mesa-work/include')]
@@ -82,8 +86,7 @@ with tempfile.TemporaryDirectory(prefix='frontend-target-') as temp:
     # The baseline frontend used the baseline descriptor layout. Its headers
     # must accompany it when current fields are added across the bridge ABI.
     (before.parent / 'bridge').mkdir()
-    (before.parent / 'bridge/NativeMetalObjects.h').write_bytes(subprocess.check_output([
-        'git', '-C', str(kit), 'show', '816022307852de7e1741ac05ae9111982318763f:bridge/NativeMetalObjects.h']))
+    (before.parent / 'bridge/NativeMetalObjects.h').write_bytes(original_header)
     for target in ('arm64-apple-ios17.0', 'arm64e-apple-ios27.0'):
         hashes, handlers = [], []
         for label, path in (('before', before), ('after', source)):

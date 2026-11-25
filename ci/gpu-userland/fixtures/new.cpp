@@ -21,8 +21,8 @@ using VkResult=int;
 template<typename... A> static void mesa_loge(const char*,A...){}
 struct tu_instance{};
 struct tu_physical_device {tu_instance *instance;struct {uint32_t chip_id;} dev_id;uint64_t va_start,va_size;};
-struct tu_device {int fd=0;void *darwin_retire=nullptr;struct {int alloc=0;} vk;tu_physical_device *physical_device;};
-static std::atomic<int> fail_kind{0},mutex_fail_countdown{0},allocations{0};
+struct tu_device {int fd=0;void *darwin_retire=nullptr;struct {int alloc=0;} vk;tu_physical_device *physical_device;pthread_mutex_t submit_mutex=PTHREAD_MUTEX_INITIALIZER;};
+static std::atomic<int> fail_kind{0},mutex_fail_countdown{0},condition_fail_countdown{0},allocations{0};
 static std::mutex mock_lock;
 struct MockPort {uint64_t next_bo=1;std::map<uint64_t,uint64_t> maps;NativeAdrenoAbiPriority priority{};};
 static std::map<uint32_t,MockPort> ports;static uint32_t next_port=100;
@@ -70,6 +70,10 @@ static int tested_mutex_init(pthread_mutex_t *m,const pthread_mutexattr_t *a){
  int n=mutex_fail_countdown.load();if(n>0 && --mutex_fail_countdown==0)return 12;return pthread_mutex_init(m,a);
 }
 #define pthread_mutex_init tested_mutex_init
+static int tested_condition_init(pthread_cond_t *condition,const pthread_condattr_t *attr){
+ int n=condition_fail_countdown.load();if(n>0 && --condition_fail_countdown==0)return 12;return pthread_cond_init(condition,attr);
+}
+#define pthread_cond_init tested_condition_init
 #define p_atomic_read(p) __atomic_load_n(p,__ATOMIC_RELAXED)
 struct dw_connection {
    io_connect_t conn;
@@ -129,6 +133,18 @@ struct darwin_retire_state {
    uint32_t pressure_seen;
    struct darwin_bo_cache_stats cache_stats;
    struct darwin_va va;
+   /* Timeline WAIT_ANY support (protected by dev->submit_mutex): avoids Mesa's busy-spin fallback
+    * when waiting on GPU timeline fences alongside host-signaled wake semaphores. */
+   uint64_t timeline_seq;
+   bool fence_watcher_started;
+   bool fence_watcher_stop;
+   bool fence_watcher_has_done;
+   VkResult fence_watcher_error;
+   uint32_t fence_watcher_target;
+   uint32_t fence_watcher_done;
+   pthread_t fence_watcher_thread;
+   pthread_cond_t fence_watcher_cond;
+   struct tu_device *fence_watcher_dev;
 };
 static void darwin_cache_log(darwin_retire_state*){}
 static volatile uint32_t darwin_memory_pressure;   /* bumped by the memory-pressure source; each device flushes once per change */
@@ -506,6 +522,14 @@ darwin_device_init(struct tu_device *dev)
       vk_free(&dev->vk.alloc, retire);
       return result;
    }
+   if (pthread_cond_init(&retire->fence_watcher_cond, NULL)) {
+      dw_close_connection(retire->connection);
+      pthread_mutex_destroy(&retire->connection.lock);
+      pthread_mutex_destroy(&retire->lock);
+      vk_free(&dev->vk.alloc, retire);
+      return vk_error(dev, VK_ERROR_INITIALIZATION_FAILED);
+   }
+   retire->fence_watcher_dev = dev;
    dev->darwin_retire = retire;
    pthread_mutex_lock(&dw_registry_lock);
    struct darwin_retire_state **tail = &darwin_states;
@@ -525,6 +549,17 @@ static void
 darwin_device_finish(struct tu_device *dev)
 {
    struct darwin_retire_state *retire = (struct darwin_retire_state *)dev->darwin_retire;
+   if (retire) {
+      pthread_mutex_lock(&dev->submit_mutex);
+      bool join_watcher = retire->fence_watcher_started;
+      retire->fence_watcher_stop = true;
+      pthread_cond_broadcast(&retire->fence_watcher_cond);
+      pthread_mutex_unlock(&dev->submit_mutex);
+      if (join_watcher)
+         pthread_join(retire->fence_watcher_thread, NULL);
+      pthread_cond_destroy(&retire->fence_watcher_cond);
+   }
+   /* Closing the connection makes the kernel drain the GPU and free every object this client created. */
    if (retire) {
       /* First withdraw from callbacks; no callback can keep a dangling port or
        * stats pointer. Only this VkDevice's kernel client is then drained. */
@@ -593,6 +628,10 @@ int main(){
  darwin_device_finish(&secondary);assert(live()==1 && dw_device(&primary).last_fence==111);query(primary);
  for(int kind=1;kind<=7;++kind){fail_kind=kind;auto bad=make_device();assert(darwin_device_init(&bad)!=0);assert(!bad.darwin_retire && live()==1);fail_kind=0;query(primary);}
  for(int n:{1,2}){mutex_fail_countdown=n;auto bad=make_device();assert(darwin_device_init(&bad)!=0);assert(!bad.darwin_retire && live()==1);mutex_fail_countdown=0;query(primary);}
+ condition_fail_countdown=1;auto bad_condition=make_device();auto active_allocations=allocations.load();
+ assert(darwin_device_init(&bad_condition)==VK_ERROR_INITIALIZATION_FAILED);
+ assert(!bad_condition.darwin_retire && live()==1 && allocations==active_allocations);
+ condition_fail_countdown=0;query(primary);
  std::atomic<bool> stop{false};
  std::thread telemetry([&]{uint64_t stats[8];uint32_t word=7;char row[120]{};
   while(!stop){tu_darwin_bo_cache_stats(stats);tu_darwin_note(1,&word,1);tu_darwin_frame_diagnostic(0x7102,row,120);tu_darwin_set_priority(1,2);}
@@ -606,5 +645,5 @@ int main(){
  for(auto &thread:workers)thread.join();stop=true;telemetry.join();
  query(primary);assert(live()==1);darwin_device_finish(&primary);assert(live()==0 && allocations==0 && !darwin_states);
  assert(!tu_darwin_note(1,nullptr,0));uint64_t stats[8];tu_darwin_bo_cache_stats(stats);for(auto n:stats)assert(n==0);
- puts("PASS: per-device ports/VA/fences,probe isolation,secondary teardown,9 init failures,900 concurrent lifecycles with telemetry/priority,no leaked ports or allocations");
+ puts("PASS: per-device ports/VA/fences,probe isolation,secondary teardown,10 init failures including timeline condition cleanup,900 concurrent lifecycles with telemetry/priority,no leaked ports or allocations");
 }

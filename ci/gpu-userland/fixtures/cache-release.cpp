@@ -70,6 +70,18 @@ struct darwin_retire_state {
    uint32_t pressure_seen;
    struct darwin_bo_cache_stats cache_stats;
    struct darwin_va va;
+   /* Timeline WAIT_ANY support (protected by dev->submit_mutex): avoids Mesa's busy-spin fallback
+    * when waiting on GPU timeline fences alongside host-signaled wake semaphores. */
+   uint64_t timeline_seq;
+   bool fence_watcher_started;
+   bool fence_watcher_stop;
+   bool fence_watcher_has_done;
+   VkResult fence_watcher_error;
+   uint32_t fence_watcher_target;
+   uint32_t fence_watcher_done;
+   pthread_t fence_watcher_thread;
+   pthread_cond_t fence_watcher_cond;
+   struct tu_device *fence_watcher_dev;
 };
 
 struct PeerBo {

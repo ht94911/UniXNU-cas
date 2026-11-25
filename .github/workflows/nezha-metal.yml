@@ -19,7 +19,7 @@ env:
   PROFILE_CHIP_ID: "0x44050a31"
   PROFILE_GMEM_BYTES: "0x1200000"
   PROFILE_GMEM_BASE: "0x4000000"
-  RUST_TOOLCHAIN: 1.98.0
+  RUST_TOOLCHAIN: "1.98.0"
   CARGO_BUILD_JOBS: 3
   HOMEBREW_NO_AUTO_UPDATE: 1
   HOMEBREW_NO_INSTALL_CLEANUP: 1
@@ -143,19 +143,19 @@ jobs:
           device/ci/gpu-userland/logrun runtime-source python3 device/ci/gpu-userland/check-runtime-v2-retention.py --unixnu unixnu --logs "$LOGS"
       - name: Test the actual patched allocator and bind its complete source
         id: buffer_reserve
-        if: ${{ false }} # This subsystem is unchanged; current multi-level output has separate checks.
+        if: ${{ false }} # Legacy runtime-v1-only check; the selected source is runtime-v2.
         run: device/ci/gpu-userland/logrun buffer-reserve python3 device/ci/gpu-userland/check-buffer-reserve.py --unixnu unixnu --logs "$LOGS"
       - name: Check actual Vulkan recorder arguments and diagnostic links
         id: vulkan_operations
-        if: ${{ false }} # This subsystem is unchanged; current multi-level output has separate checks.
+        if: ${{ false }} # Legacy runtime-v1-only check; the selected source is runtime-v2.
         run: device/ci/gpu-userland/logrun vulkan-operations python3 device/ci/gpu-userland/check-vulkan-operations.py --unixnu unixnu --logs "$LOGS"
       - name: Check exact tiled bytes, edge padding and dispatch limits
         id: tiled_words
-        if: ${{ false }} # This subsystem is unchanged; current multi-level output has separate checks.
+        if: ${{ false }} # Legacy runtime-v1-only check; the selected source is runtime-v2.
         run: device/ci/gpu-userland/logrun tiled-words python3 device/ci/gpu-userland/check-tiled-words.py --unixnu unixnu --logs "$LOGS"
       - name: Check the retained edge preservation planner and byte oracle
         id: heap_copies
-        if: ${{ false }} # This subsystem is unchanged; current multi-level output has separate checks.
+        if: ${{ false }} # Legacy runtime-v1-only check; the selected source is runtime-v2.
         run: device/ci/gpu-userland/logrun heap-copies python3 device/ci/gpu-userland/check-heap-copies.py --unixnu unixnu --logs "$LOGS"
       - name: Check whole slow-command and synchronous-call diagnostic boundaries
         id: long_latency

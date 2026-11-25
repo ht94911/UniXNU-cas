@@ -24,16 +24,18 @@ sha = lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
 subprocess.run([sys.executable, root / "scripts/build-adreno-metal-bridge.py",
                 "--target", "host"], cwd=root, check=True)
 archive = root / "build/adreno-metal-bridge/host/libadreno_metal_bridge.a"
+bridge_identity = json.loads(archive.with_suffix('.a.json').read_text())['identity']
 bridge_tests = subprocess.run([
     "cargo", "+1.98.0", "test", "--release", "--manifest-path",
     str(root / "build/adreno-metal-bridge/Cargo.toml"),
     "--target", "x86_64-apple-darwin" if platform.machine() == "x86_64" else "aarch64-apple-darwin",
     "--target-dir", str(root / "build/m2v-target"), "--lib", "texture_descriptor_tests::",
     "--", "--nocapture"], cwd=root, capture_output=True, text=True,
-    env=dict(os.environ, NMB_RUNTIME_ID=hashlib.sha256((json.loads((Path(__file__).parent / "fixtures/multi-level-output-sources.json").read_text())["original_pin"] + "\n" + json.loads((Path(__file__).parent / "fixtures/multi-level-output-sources.json").read_text())["patched_tree"]).encode()).hexdigest()[:32],
+    env=dict(os.environ, NMB_RUNTIME_ID=bridge_identity['runtime'], NMB_COMPONENT_ID=bridge_identity['component'],
         NMB_FIXTURE_AIR=str(root / "build/adreno-metal-bridge/runtime_examples.air"),
         NMB_FC_AIR=str(root / "build/adreno-metal-bridge/function_constant.air"),
-        NMB_SCANOUT_AIR=str(root / "build/adreno-metal-bridge/scanout_convert.air")),
+        NMB_SCANOUT_AIR=str(root / "build/adreno-metal-bridge/scanout_convert.air"),
+        NMB_YCBCR_AIR=str(root / "build/adreno-metal-bridge/ycbcr_convert.air")),
     timeout=1500)
 (out / "descriptor-Rust-tests.log").write_text(bridge_tests.stdout + bridge_tests.stderr)
 assert bridge_tests.returncode == 0 and "1 passed; 0 failed" in bridge_tests.stdout

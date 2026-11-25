@@ -9,6 +9,7 @@ import argparse
 import ast
 import hashlib
 import json
+import sys
 from pathlib import Path
 
 p = argparse.ArgumentParser(description=__doc__)
@@ -18,7 +19,7 @@ root = a.unixnu.resolve()
 source = root / 'scripts/check-native-metal-frontend-host.py'
 raw = source.read_bytes()
 digest = hashlib.sha256(raw).hexdigest()
-if digest != '218aac4214e78e3ec89dbf14d9b739e445ed35a857c3efe6686ef59706fcd176':
+if digest != '1d8538b21bdf67632e207a829edd9d1ab7a5f89254195d684702144023c85809':
     raise SystemExit('review the changed upstream frontend phase before selecting it')
 tree = ast.parse(raw, str(source))
 boundary = [n for n in tree.body if isinstance(n, ast.Assign) and
@@ -35,9 +36,12 @@ record = {'source_sha256': digest, 'last_selected_line': last_line,
                           'the subsequent CoreImage host phase', 'real iPhone/A840 execution']}
 out = root / 'build/adreno-metal-frontend-host'
 out.mkdir(parents=True, exist_ok=True)
+previous_argv = sys.argv
+sys.argv = [str(source), '--translator-source', str(root / '.cache/gpu-reference/metal2vulkan')]
 try:
     exec(compile(selected, str(source), 'exec'), {'__file__': str(source), '__name__': '__main__'})
     record['public_vulkan_phase_completed'] = True
 finally:
+    sys.argv = previous_argv
     (out / 'public-phase.json').write_text(json.dumps(record, indent=2) + '\n')
 print('PASS: unchanged public-Vulkan frontend phase; later/private-fixture phases explicitly untested')

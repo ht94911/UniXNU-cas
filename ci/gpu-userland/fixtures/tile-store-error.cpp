@@ -106,6 +106,8 @@ static void vk_free(int*,void*){++counts.freed;}
 static void tu_reset_render_pass(tu_cmd_buffer *cmd){++counts.resets;cmd->state.pass=nullptr;cmd->state.attachments=nullptr;}
 #define free host_free
 
+static void tu_clip_render_area_by_scissors(tu_cmd_buffer*){}
+
 namespace old {
 template <chip CHIP>
 static void
@@ -531,6 +533,8 @@ tu_cmd_render_tiles(struct tu_cmd_buffer *cmd,
                      continue;
                } else {
                   tu_calc_bin_visibility(cmd, tile, fdm_offsets);
+                  if (!tile->visible_views)
+                     continue;
                   tu_identity_frag_area(cmd, tile);
                }
 
@@ -579,6 +583,8 @@ tu_cmd_render(struct tu_cmd_buffer *cmd_buffer,
       return;
    if (cmd_buffer->state.rp.has_tess)
       tu6_lazy_emit_tessfactor_addr<CHIP>(cmd_buffer);
+
+   tu_clip_render_area_by_scissors(cmd_buffer);
 
    tu_autotune::rp_key_opt rp_key = cmd_buffer->device->autotune->emit_preempt_latency_tracking_rp_hash(cmd_buffer);
 
