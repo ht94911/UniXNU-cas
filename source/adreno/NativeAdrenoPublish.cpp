@@ -7,7 +7,8 @@
  * everything it created and frees its address space. The board's kernel connection uses the kernel table. A GPU hang is found by msm's
  * hangcheck and restarted through the board's hook; only the client whose submission hung sees its device lost. This is not the Metal
  * or Turnip ABI; it carries NativeAdrenoABI.h unchanged.
- * BO CPU mappings are handed out as uncached physical-range mappings to match the GPU's non-cacheable PTEs.
+ * BO CPU mappings are handed out as uncached physical-range mappings to match the GPU's non-cacheable PTEs; a system BO's view maps
+ * its own descriptor, and a pool BO's view its physical runs, write-combined (NativeAdrenoPoolView).
  * The connection class is named AGXDeviceUserClient on purpose: the original sandbox profiles of the processes that use Metal
  * allow IOServiceOpen for that user-client class name, and nothing else in this system can create one (the Apple AGX kext is
  * never loaded without an Apple GPU), so the name only decides whether the Adreno Metal plugin may open its own driver. */
@@ -24,9 +25,13 @@
 #include <kern/host.h>
 #include <mach/processor_info.h>
 #include "NativeAdrenoPerf.h"
+#include <kern/thread_call.h>
+#include <kern/clock.h>
 #include "NativeAdrenoUserClient.h"
 #include "NativeAdrenoCpuMapProfile.h"
+#include "NativeAdrenoSubmitDiagnostic.h"
 #include "NativeAdrenoGpuContext.h"
+#include "NativeAdrenoPool.h"
 #include "NativeGpuTrace.inc"
 #include "NativeGpuTextStream.h"
 #include "NativeAdrenoPollLog.h"
@@ -48,6 +53,37 @@ static bool reportRpcResult(uint32_t method,IOReturn result) {
 extern "C" int proc_selfpid(void);
 
 extern "C" void proc_selfname(char *, int);
+extern "C" int proc_selfpid(void);
+/* Submission callers hold g.lock. Keep the first failures outside the rolling
+ * trace so a later snapshot still identifies the rejected IB. */
+extern "C" {
+volatile uint64_t native_adreno_submit_rejections[16][12];
+volatile uint32_t native_adreno_submit_rejection_count;
+}
+extern "C" void native_adreno_submit_rejected(uint32_t stage,uint32_t index,
+    uint32_t status,uint64_t handle,uint64_t iova,uint64_t bytes,
+    uint64_t mapped_iova,uint64_t mapped_bytes,uint64_t detail)
+{
+    const uint32_t slot=native_adreno_submit_rejection_count;
+    if(slot>=16)return;
+    const uint32_t pid=uint32_t(proc_selfpid());
+    const uint64_t words[12]={pid,stage,index,status,handle,iova,bytes,mapped_iova,mapped_bytes,detail};
+    for(unsigned i=0;i<12;++i)native_adreno_submit_rejections[slot][i]=words[i];
+    __atomic_store_n(&native_adreno_submit_rejection_count,slot+1,__ATOMIC_RELEASE);
+    IOLog("[gpu submit rejected] pid=%u stage=%u ib=%u status=0x%x handle=%llx iova=%llx bytes=%llx mapped=%llx+%llx detail=%llx\n",
+        pid,stage,index,status,(unsigned long long)handle,(unsigned long long)iova,
+        (unsigned long long)bytes,(unsigned long long)mapped_iova,
+        (unsigned long long)mapped_bytes,(unsigned long long)detail);
+    gpuTraceEvent(GpuTraceSubmitRejected,pid,stage,index,status,handle,iova,bytes,mapped_iova,mapped_bytes,detail);
+}
+/* The system's render server, the process that composes the display: backboardd on iPadOS, WindowServer on macOS. It gets the
+ * reserved row 0 and its mailbox page, the cache export and its own report line. */
+#if defined(XNU_TARGET_OS_OSX) && XNU_TARGET_OS_OSX
+static constexpr char kRenderServer[]="WindowServer";
+#else
+static constexpr char kRenderServer[]="backboardd";
+#endif
+static bool isRenderServer(const char *name,size_t size) {return !strncmp(name,kRenderServer,size);}
 extern "C" volatile uint32_t native_adreno_table_switches[8];
 /* The plugin's telemetry table (rows of text the Metal bridge keeps), sent as markers: 0xC000|row starts a row, 0x8000|(a<<7)|b appends two characters. */
 extern "C" {char native_adreno_metal_rows[48][96];volatile uint32_t native_adreno_metal_rows_seq;}
@@ -67,12 +103,17 @@ struct NativeAdrenoMetalDiag {
 /* BO CPU views (clientMemoryForType for a BO token): [0] calls, [1] new descriptors, [2] served from the view cache, [3] refused (not a BO / out of
  * resources), [4] last refusal's IOReturn, [5] threads inside now. int-115 showed a backboardd thread in IOConnectMapMemory64 ~650 times a second. */
 extern "C" {volatile uint32_t native_adreno_view_diag[6],native_adreno_view_kept;}   /* kept: BoCpuUnmap calls that left the view for another lease */
+/* The BO views each process holds, as native_adreno_bo_owners holds the BOs: {pid, live KiB, live views, peak KiB}. A view is an IOKit
+ * mapping of the BO's memory in the client, and the VM bills such a mapping to the task that maps it by its whole size (vm_map_enter's
+ * iokit_acct entries: the iokit_mapped ledger, which is part of the footprint the memory limits judge). A BO no process views is billed
+ * to none. A view mapped twice is billed twice and counted once here. */
+volatile uint32_t native_adreno_view_owners[24][4];
 }
 
 /* The open type the Adreno plugin passes to IOServiceOpen ('AG'); it lets the driver tell the plugin from the original IOGPU library
  * (type 1 plus an API value) and from any other client of the accelerator. */
 enum : UInt32 {NativeAdrenoPluginOpenType=0x4147,NativeAdrenoTunnelMagic=0x4e544e4c /* 'NTNL' */};
-/* The display hand-off (boot-arg sheng-fb-gpu=1, drivers/GopFramebuffer) reaches the plugin through this already admitted connection: the
+/* The display hand-off (boot-arg fb-gpu=1, drivers/GopFramebuffer) reaches the plugin through this already admitted connection: the
  * original sandbox profiles admit this class but not the presenter's own service. Methods 0x7000 + the presenter's NGP_METHOD numbers (mode,
  * wait for a frame, complete it) are forwarded unchanged, without the GPU lock (a wait sleeps); memory type NativeAdrenoScanoutType is the
  * writable scanout. Nothing here touches the GPU. */
@@ -98,6 +139,9 @@ namespace {
 IOBufferMemoryDescriptor *gMailbox=nullptr;
 volatile uint32_t *gMailboxWords=nullptr;
 volatile bool gPollerStarted=false;
+/* True while the owner's task holds a mapping of the mailbox page: only then can a request appear. Written under g.lock; the poller
+ * reads it once without the lock as a hint and again under it. Its address is the poller's sleep event. */
+bool gMailboxMapped=false;
 }
 class AGXDeviceUserClient;
 /* The render server's connection serves the mailbox; it is retained while set (under g.lock), so the poller never runs on a freed object. */
@@ -118,7 +162,8 @@ static void unlockTimed(uint64_t *clock);
 /* A large BoAlloc's phases for the boot export (kernel.boalloc.bin, the board fills it with the caller's user stack): microseconds waiting
  * for the lock before the client's limit was read, making the descriptor, wiring its pages, cleaning them, waiting for the lock again,
  * the allocation under the lock, and giving back pages it did not take. flags: 1 write-combined, 2 the prepared pages were taken, 4 they
- * were cleaned outside the lock, 8 prepared at all. spans: the BO's physical runs. Only BOs of 256 KiB and more, once the board sets the
+ * were cleaned outside the lock, 8 prepared at all, 16 the pages are pool pages (their taking and zero fill is the time of making the
+ * descriptor; nothing is wired or cleaned). spans: the BO's physical runs. Only BOs of 256 KiB and more, once the board sets the
  * hook. */
 struct NativeAdrenoBoTrace {uint64_t entered;uint32_t kib,flags,limit_us,create_us,wire_us,clean_us,lock_us,dispatch_us,discard_us,spans;
     int32_t status;uint32_t reserved;};
@@ -164,21 +209,29 @@ extern "C" {volatile uint32_t native_adreno_cp_aperture[4];
 /* The CP switch check: the bank's image (NativeAdrenoGpuContext::observeContext) before the switch [0..7] and after it [8..15], and the
  * kit status of each [16], [17]; a fault the switch left latched: FAR lo, hi, FSYNR0 [18..20] and the status after clearing it [21]. */
 volatile uint32_t native_adreno_cp_image[22];
-/* The newest 8 GPU restarts: [0] sequence, [1..2] time (us), [3] the fence it hung on, [4] status, [5] jobs replayed, [6] stranded << 0 | guilty << 1,
+/* The newest 8 GPU restarts: [0] sequence, [1..2] time (us), [3] the fence it hung on, [4] status, [5] jobs replayed, [6] stranded << 0 | guilty << 1 | SMMU fault << 2,
  * [7] why the second ring was given up (0 not). */
 volatile uint32_t native_adreno_recover_log[8][12];volatile uint32_t native_adreno_recover_log_count;
 /* checkCpSwitch's step results: createVm, probeBuffer, submit, waitAll, readTtbr0 (each 0 when it passed, ffffffff when not reached). */
 volatile uint32_t native_adreno_cp_check[6]={0xffffffffu,0xffffffffu,0xffffffffu,0xffffffffu,0xffffffffu,0xffffffffu};}
 /* Table switching (NativeAdrenoSubmit): 2 the CP switches in the ring (the default once the board opened the CP's SMMU aperture), 1 the
- * CPU writes TTBR0 with the GPU idle. sheng-gpu-ttbr=1 or 2 forces one. */
+ * CPU writes TTBR0 with the GPU idle. gpu-ttbr=1 or 2 forces one. */
 static unsigned tableMode()
 {
     unsigned mode=native_adreno_cp_aperture[0] && !(native_adreno_cp_aperture[0]>>31) && !native_adreno_cp_aperture[1]?2:1;
-    PE_parse_boot_argn("sheng-gpu-ttbr",&mode,sizeof mode);
+    PE_parse_boot_argn("gpu-ttbr",&mode,sizeof mode);
     return mode==2?2:1;
 }
 
+/* The fence waiters' wake path (runCore's WaitFence): [0] GPU interrupts the board delivered (native_adreno_gpu_interrupt), [1] those
+ * with the CP's fence bit, [2] completion passes run, [3] waiters a pass woke, [4] waits that slept, [5] sleeps that ended at the caller's
+ * deadline, [6] waiters the periodic pass woke (their interrupt never came or came before they slept), [7] ring switches the passes
+ * triggered or completed. */
+extern "C" {volatile uint64_t native_adreno_fence_wake[8];}
 namespace {
+/* A thread waiting for a fence, on its own stack and in g.waiters while it waits. armed: it has not seen its fence complete and may be
+ * asleep on its own address; the completion pass disarms and wakes it. */
+struct FenceWaiter {uint32_t fence;bool armed;FenceWaiter *next,*prev;};
 void shiftName(char names[3][17]) {
     memcpy(names[2], names[1], 17);
     memcpy(names[1], names[0], 17);
@@ -204,7 +257,50 @@ struct Published {
     NativeAdrenoStatus status;
     NativeAdrenoRestart restart=nullptr;
     void *restart_cookie=nullptr;
+    /* The fence waiters and the completion pass that wakes them. wake_lock guards the list and every waiter's armed flag. It is a
+     * leaf: the pass takes it while it holds `lock`, a waiter takes it alone, and nothing takes `lock` while holding it. */
+    IOLock *wake_lock=nullptr;
+    FenceWaiter *waiters=nullptr;
+    thread_call_t fence_call=nullptr;
+    /* The board hands its GPU interrupts to native_adreno_gpu_interrupt (seen once one asked for a pass); until then, or with
+     * gpu-fence-wake=0, a waiter pauses on the board's clock instead. */
+    volatile bool interrupts=false;
+    bool wake_by_interrupt=true;
 } g;
+/* The completion pass: what msm does on every CP_CACHE_FLUSH_TS interrupt (a6xx_irq: msm_gpu_retire, then a6xx_preempt_trigger) and
+ * once per hang check period for an interrupt that never came (hangcheck_handler). Finished jobs are retired, which lets go of their
+ * buffers and looks at the switch between the two rings again: a ring that went idle leaves the CP to the other ring's queued work, and
+ * a switch the CP finished is completed here even when its own handler found the lock busy. Then every waiter whose fence the CP has
+ * written is woken. Runs on a thread (it takes the driver's lock), never in the interrupt. */
+void fencePass(bool periodic)
+{
+    if(!g.published || !g.submit || !g.wake_lock)return;
+    uint32_t woken=0;
+    IOLockLock(g.lock);
+    const NativeAdrenoPreemptStats before=g.submit->preemptStats();
+    (void)g.submit->retireCompleted();
+    const NativeAdrenoPreemptStats after=g.submit->preemptStats();
+    IOLockLock(g.wake_lock);
+    for(FenceWaiter *w=g.waiters;w;w=w->next)
+        if(w->armed && !g.submit->fencePending(w->fence)) {w->armed=false;++woken;IOLockWakeup(g.wake_lock,w,false);}
+    native_adreno_fence_wake[2]=native_adreno_fence_wake[2]+1;
+    native_adreno_fence_wake[periodic?6:3]=native_adreno_fence_wake[periodic?6:3]+woken;
+    native_adreno_fence_wake[7]=native_adreno_fence_wake[7]+(after.triggers-before.triggers)+(after.completed-before.completed);
+    IOLockUnlock(g.wake_lock);
+    IOLockUnlock(g.lock);
+}
+void fenceCall(thread_call_param_t,thread_call_param_t) {fencePass(false);}
+}
+/* The board's GPU interrupt handler calls this with the RBBM_INT_0_STATUS word it read and cleared, in interrupt context. A fence the
+ * CP wrote (CP_CACHE_FLUSH_TS, bit 20) or a finished ring switch (CP_SW, bit 8) asks for the completion pass; nothing else is done
+ * here, and nothing here blocks. */
+extern "C" void native_adreno_gpu_interrupt(uint32_t status)
+{
+    native_adreno_fence_wake[0]=native_adreno_fence_wake[0]+1;
+    if(status&(1u<<20))native_adreno_fence_wake[1]=native_adreno_fence_wake[1]+1;
+    if(!(status&((1u<<20)|(1u<<8))) || !g.fence_call)return;
+    g.interrupts=true;
+    (void)thread_call_enter(g.fence_call);
 }
 /* GPU hangs (msm hangcheck, NativeAdrenoSubmit::hangCheck) and restarts: [0] hangs, [1] restarts, [2] failed restarts, [3] the last hung
  * fence, [4] the last restart's IOReturn, [5] submissions replayed so far, [6] hangs with a guilty job, [7] hangs of the kernel's own VM. */
@@ -212,6 +308,17 @@ extern "C" {volatile uint32_t native_adreno_recovery[8];}
 /* SMMU context faults ended before a restart (NativeAdrenoGpuContext::endFault): [0] how many, then the last one's FSR, FAR lo, FAR hi,
  * FSYNR0. A latched FSR fails every later table operation's proof of the bank, so a restart that left it would poison the tables. */
 extern "C" {volatile uint32_t native_adreno_recovery_fault[5];}
+extern "C" volatile uint32_t native_adreno_stall[2+NativeAdrenoRingStallWords];
+extern "C" volatile uint32_t native_adreno_stall_capture_status;
+/* The first recoveries retain their pre-reset state in the persistent GPU
+ * metadata as well as the kernel log. Never issue GPU work from this path. */
+static void recoveryLine(const char *text)
+{
+    IOLog("[adreno recovery] %s\n",text);
+    uint64_t values[12]={};
+    strlcpy(reinterpret_cast<char *>(&values[1]),text,sizeof(values)-sizeof(values[0]));
+    native_gpu_trace_record(GpuTraceProblem,0,values,12);
+}
 /* The board's GPU restart (a6xx_recover's reset and hw_init), installed before or after publication. */
 extern "C" void native_adreno_set_restart(NativeAdrenoRestart restart,void *cookie)
 {
@@ -227,16 +334,55 @@ static void nativeAdrenoHangcheck(void *,wait_result_t)
         IOSleep(500);
         IOLockLock(g.lock);
         bool hung=false;
-        if(g.submit && !g.submit->hangCheck(&hung) && hung) {
+        const IOReturn checked=g.submit?g.submit->hangCheck(&hung):kIOReturnSuccess;
+        static IOReturn last_check=0;
+        if(checked && checked!=last_check) {
+            char text[88];
+            snprintf(text,sizeof text,"hangcheck failed st=%x reason=%u",uint32_t(checked),g.submit->deadReason());
+            recoveryLine(text);
+        }
+        last_check=checked;
+        if(g.submit && !checked && hung) {
             native_adreno_recovery[0]=native_adreno_recovery[0]+1;
+            const uint32_t recovery=native_adreno_recovery[0];
+            const bool record=recovery<=16;
+            if(record) {
+                char text[88];
+                const uint64_t now=g.clock.now_us?g.clock.now_us(g.clock.cookie):0;
+                snprintf(text,sizeof text,"hang #%u us=%llu fence=%u reason=%u cp-st=%x hook=%u",
+                         recovery,now,native_adreno_stall[0],g.submit->deadReason(),native_adreno_stall_capture_status,g.restart?1:0);
+                recoveryLine(text);
+                for(unsigned at=0;at<NativeAdrenoRingStallWords;at+=6) {
+                    const unsigned count=NativeAdrenoRingStallWords-at;
+                    uint32_t words[6]={};
+                    for(unsigned i=0;i<6 && i<count;++i)words[i]=native_adreno_stall[2+at+i];
+                    snprintf(text,sizeof text,"hang #%u cp[%u] %x %x %x %x %x %x",recovery,at,
+                             words[0],words[1],words[2],words[3],words[4],words[5]);
+                    recoveryLine(text);
+                }
+            }
             if(g.restart) {
-                uint32_t fault[4]={};
-                if(g.context && !g.context->endFault(fault) && fault[0]) {
+                uint32_t fault[4]={};uint64_t fault_table=0;
+                if(g.context)(void)g.context->readTtbr0(&fault_table);
+                const IOReturn fault_status=g.context?g.context->endFault(fault):kIOReturnNotReady;
+                if(!fault_status && fault[0]) {
                     native_adreno_recovery_fault[0]=native_adreno_recovery_fault[0]+1;
                     for(unsigned i=0;i<4;++i)native_adreno_recovery_fault[1+i]=fault[i];
                 }
+                if(record) {
+                    char text[88];
+                    snprintf(text,sizeof text,"hang #%u smmu st=%x fsr=%x far=%x:%x fsynr=%x",recovery,
+                             uint32_t(fault_status),fault[0],fault[2],fault[1],fault[3]);
+                    recoveryLine(text);
+                }
                 NativeAdrenoRecovery result{};
-                const IOReturn status=g.submit->recover(g.restart,g.restart_cookie,&g.clock,&result);
+                const IOReturn status=g.submit->recover(g.restart,g.restart_cookie,&g.clock,&result,fault[0]);
+                if(record) {
+                    char text[88];
+                    snprintf(text,sizeof text,"hang #%u end st=%x restart=%x fence=%u replay=%u guilty=%u",
+                             recovery,uint32_t(status),uint32_t(result.status),result.fence,result.replayed,result.guilty?1:0);
+                    recoveryLine(text);
+                }
                 native_adreno_recovery[3]=result.fence;native_adreno_recovery[4]=uint32_t(status?status:result.status);
                 native_adreno_recovery[5]=native_adreno_recovery[5]+result.replayed;
                 if(result.guilty)native_adreno_recovery[6]=native_adreno_recovery[6]+1;
@@ -248,15 +394,21 @@ static void nativeAdrenoHangcheck(void *,wait_result_t)
                     const uint32_t n=native_adreno_recover_log_count;volatile uint32_t *row=native_adreno_recover_log[n&7];
                     const uint64_t now=g.clock.now_us?g.clock.now_us(g.clock.cookie):0;
                     row[0]=n+1;row[1]=uint32_t(now);row[2]=uint32_t(now>>32);row[3]=result.fence;row[4]=uint32_t(status?status:result.status);
-                    row[5]=result.replayed;row[6]=(g.submit->lastRecoveryStranded()?1u:0u)|(result.guilty?2u:0u);row[7]=g.submit->deadReason();
+                    row[5]=result.replayed;row[6]=(g.submit->lastRecoveryStranded()?1u:0u)|(result.guilty?2u:0u)|(result.fault_status?4u:0u);row[7]=g.submit->deadReason();
                     for(unsigned i=0;i<4;++i)row[8+i]=g.submit->recoveryInfo(i);
                     native_adreno_recover_log_count=n+1;
+                    gpuTraceEvent(GpuTraceRecovery,0,result.fence,result.completed,result.replayed,row[6],row[7],
+                        row[8],row[11],uint32_t(status?status:result.status),result.fault_status,
+                        uint64_t(fault[2])<<32|fault[1],fault[3],fault_table);
                 }
                 if(status)g.status.noteFault();
                 if(!status)g.status.noteSuspend();
             }
         }
         IOLockUnlock(g.lock);
+        /* msm's hangcheck_handler retires here too ("workaround for missing irq"): a fence whose interrupt was lost still wakes its
+         * waiters and moves the rings within one period. */
+        fencePass(true);
     }
 }
 
@@ -268,6 +420,61 @@ public:
 };
 OSDefineMetaClassAndStructors(NativeAdrenoGpuPublished,IOService)
 
+/* A client's view of a pool BO (NativeAdrenoPool.h): a descriptor of the grant's physical runs whose mappings are write-combined
+ * unless the client asks IOKit for another mode. Pool pages have no VM object that keeps them alive for a mapping, so the view
+ * does: it holds a reference to the grant from its making until its own free, and IOKit frees a descriptor only after every
+ * IOMemoryMap made from it, in whatever task, is gone. A BO freed while a client still maps it therefore leaves its pages out of
+ * the pool, as a view of a descriptor BO keeps that BO's VM object.
+ * A mapping IOKit does not know of is the other way to keep the pages mapped: the client can copy its mapping in the VM
+ * (mach_vm_remap, a memory entry), which holds the VM object of this descriptor's device pager, not the descriptor. Where the kernel
+ * reports the pager's close (iokit_physical_descriptor_close_notify), the view's reference goes only then, when no map entry, memory
+ * entry or copy refers to that VM object any more, and the pages return to the pool. Without that report the pool does not reuse
+ * the pages of a grant that had a view unless the board set gpu-pool=2 (NativeAdrenoPool.h). */
+extern "C" kern_return_t iokit_physical_descriptor_close_notify(IOMemoryDescriptor *,void (*)(void *),void *) __attribute__((weak_import));
+class NativeAdrenoPoolView : public IOGeneralMemoryDescriptor {
+    OSDeclareDefaultStructors(NativeAdrenoPoolView)
+    NativeAdrenoPoolGrant *grant_=nullptr;
+    bool tracked_=false;   /* the kernel drops the grant's reference at the pager's close (NativeAdrenoPoolViewClosed), not free() */
+public:
+    static NativeAdrenoPoolView *make(NativeAdrenoPoolGrant *grant);
+    void free() APPLE_KEXT_OVERRIDE;
+};
+OSDefineMetaClassAndStructors(NativeAdrenoPoolView,IOGeneralMemoryDescriptor)
+NativeAdrenoPoolView *NativeAdrenoPoolView::make(NativeAdrenoPoolGrant *grant)
+{
+    if(!grant || !grant->count)return nullptr;
+    IOAddressRange *ranges=IONewData(IOAddressRange,grant->count);
+    if(!ranges)return nullptr;
+    for(uint32_t i=0;i<grant->count;++i)ranges[i]={grant->runs[i].physical,grant->runs[i].bytes};
+    NativeAdrenoPoolView *view=new NativeAdrenoPoolView;
+    /* The descriptor copies the ranges. Its own cache mode is what a mapping that names none gets. */
+    if(view && !view->initWithOptions(ranges,grant->count,0,nullptr,static_cast<IOOptionBits>(kIODirectionInOut)|
+        static_cast<IOOptionBits>(kIOMemoryTypePhysical64)|(static_cast<IOOptionBits>(kIOWriteCombineCache)<<kIOMemoryBufferCacheShift),nullptr)) {
+        view->release();view=nullptr;
+    }
+    IODeleteData(ranges,IOAddressRange,grant->count);
+    if(view) {
+        NativeAdrenoPoolRetain(grant);
+        /* Before anything can map the view: from here on the reference belongs to the kernel's report, which comes exactly once. */
+        const bool hook=&iokit_physical_descriptor_close_notify!=nullptr;
+        native_adreno_pool_views[4]=hook?1:0;
+        view->tracked_=hook && iokit_physical_descriptor_close_notify(view,NativeAdrenoPoolViewClosed,grant)==KERN_SUCCESS;
+        NativeAdrenoPoolNoteView(grant,view->tracked_);   /* a client can map the pages from here on */
+        view->grant_=grant;
+    }
+    return view;
+}
+void NativeAdrenoPoolView::free()
+{
+    /* Every IOMemoryMap of this descriptor is gone: each held a reference to it. */
+    NativeAdrenoPoolGrant *const grant=grant_;
+    const bool tracked=tracked_;
+    grant_=nullptr;
+    /* A tracked view's reference goes with the kernel's report, from this free (never mapped) or from the VM's last unmap later. */
+    IOGeneralMemoryDescriptor::free();
+    if(!tracked)NativeAdrenoPoolRelease(grant);
+}
+
 class AGXDeviceUserClient : public IOUserClient {
     OSDeclareDefaultStructors(AGXDeviceUserClient)
     bool live_=false;
@@ -277,12 +484,13 @@ class AGXDeviceUserClient : public IOUserClient {
     bool closing_=false; // Blocks this connection while detached system pages are freed without g.lock.
     NativeAdrenoProcessVm *space_=nullptr;   /* a user connection's own address space */
     unsigned row_=4;
+    int32_t pid_=0;   /* the process that opened it, for the views' table */
     char name_[20]{};
     /* One user-view descriptor per BO token, reused by every clientMemoryForType call. IOConnectUnmapMemory64 asks clientMemoryForType for
      * the descriptor again and unmaps only a mapping that belongs to THAT descriptor (kIOMapReference); a fresh descriptor per call made the
      * unmap a silent no-op, the user PTEs outlived BoCpuUnmap, and BoFree handed pages with a live user mapping to the VM:
      * pmap_assert_free panicked the freeing core and the panic screen parked it (the "BoFree hang", dead touch). */
-    struct View {uint32_t token;IOMemoryDescriptor *descriptor;};
+    struct View {uint32_t token;IOMemoryDescriptor *descriptor;uint64_t bytes;};
     /* One view per live BO token. The cache holds every BO the client has (it grows with the tokens): a BO whose view is not cached makes
      * IOConnectUnmapMemory64 (which asks clientMemoryForType again) a no-op, the user mapping outlives BoFree and the freed pages panic
      * pmap_assert_free. A cache of 64 held until the render server's hundreds of mapped BOs (int-087). */
@@ -312,9 +520,15 @@ OSDefineMetaClassAndStructors(AGXDeviceUserClient,IOUserClient)
 
 void nativeAdrenoMailboxPoller(void *,wait_result_t)
 {
-    thread_set_thread_name(current_thread(),"sheng-gpu-mailbox");
+    thread_set_thread_name(current_thread(),"gpu-mailbox");
     uint32_t last=0;
     for(;;) {
+        /* A request is a store into the shared page, so nothing can signal it; the page being mapped can. */
+        if(!gMailboxMapped) {
+            IOLockLock(g.lock);
+            while(!gMailboxMapped)IOLockSleep(g.lock,&gMailboxMapped,THREAD_UNINT);
+            IOLockUnlock(g.lock);
+        }
         IOSleep(1);
         if(!gMailboxOwner || !gMailboxWords)continue;
         const uint32_t request=gMailboxWords[1];
@@ -353,11 +567,12 @@ static NativeAdrenoClientRecord *clientRecord(const char *name)
 bool AGXDeviceUserClient::mount(bool kernel)
 {
     proc_selfname(name_,sizeof name_);
+    pid_=proc_selfpid();
     NativeAdrenoUserClient *core=new NativeAdrenoUserClient;
     if(!core)return false;
     IOLockLock(g.lock);
     bool ok=false;
-    const bool server=!kernel && !strncmp(name_,"backboardd",sizeof name_);
+    const bool server=!kernel && isRenderServer(name_,sizeof name_);
     NativeAdrenoProcessVm *space=nullptr;
     IOReturn opened=kIOReturnSuccess;
     if(kernel)opened=g.kernel_client?kIOReturnBusy:kIOReturnSuccess;
@@ -411,7 +626,7 @@ bool AGXDeviceUserClient::mount(bool kernel)
             }
         }
         if(gMailboxOwner)gMailboxOwner->release();
-        retain();gMailboxOwner=this;
+        retain();gMailboxOwner=this;gMailboxMapped=false;
     }
     IOLockUnlock(g.lock);
     if(core)delete core;
@@ -424,12 +639,20 @@ void AGXDeviceUserClient::dropViews(uint32_t token)
     for(;;) {
         IOMemoryDescriptor *view=nullptr;
         IOLockLock(g.lock);
-        if(token) {View *v=viewSlot(token);if(v && v->descriptor && v->token==token) {view=v->descriptor;v->descriptor=nullptr;v->token=0;}}
-        else if(views_)for(size_t i=0;i<view_capacity_;++i) {View &v=views_[i];if(v.descriptor) {view=v.descriptor;v.descriptor=nullptr;v.token=0;break;}}
+        uint64_t bytes=0;
+        if(token) {View *v=viewSlot(token);if(v && v->descriptor && v->token==token) {view=v->descriptor;bytes=v->bytes;v->descriptor=nullptr;v->token=0;v->bytes=0;}}
+        else if(views_)for(size_t i=0;i<view_capacity_;++i) {View &v=views_[i];if(v.descriptor) {view=v.descriptor;bytes=v.bytes;v.descriptor=nullptr;v.token=0;v.bytes=0;break;}}
+        if(view)NativeAdrenoNoteHolder(native_adreno_view_owners,pid_,-int64_t(bytes));
         IOLockUnlock(g.lock);
         if(!view)return;
         /* The returned reference is the last one outside the descriptor's own list: dropping it frees the map, which unmaps the user range. */
-        while(removeMappingForDescriptor(view))native_adreno_metal_diag.forced_unmaps=native_adreno_metal_diag.forced_unmaps+1;
+        /* A pool view's mappings are dropped here for certain: a mapping left behind would keep the view, and with it the grant's
+         * pages, out of the pool for as long as the connection lives. */
+        const bool pool=OSDynamicCast(NativeAdrenoPoolView,view)!=nullptr;
+        while(IOMemoryMap *map=removeMappingForDescriptor(view)) {
+            native_adreno_metal_diag.forced_unmaps=native_adreno_metal_diag.forced_unmaps+1;
+            if(pool)map->release();
+        }
         view->release();
     }
 }
@@ -507,7 +730,7 @@ IOReturn AGXDeviceUserClient::clientClose()
     IOLockLock(g.lock);
     IOReturn status=kIOReturnSuccess;
     AGXDeviceUserClient *mailbox=nullptr;
-    if(gMailboxOwner==this) {mailbox=gMailboxOwner;gMailboxOwner=nullptr;}
+    if(gMailboxOwner==this) {mailbox=gMailboxOwner;gMailboxOwner=nullptr;gMailboxMapped=false;}
     if(live_) {
         const uint64_t peak=core_->windowPeak();
         status=drainClosingJobs(core_,2000000);
@@ -632,6 +855,9 @@ IOReturn AGXDeviceUserClient::clientMemoryForType(UInt32 type,IOOptionBits *opti
             *memory=gMailbox;
             *options=kIOMapAnywhere;   /* ordinary cached memory: both sides are CPUs, so it is coherent */
             native_adreno_metal_diag.mb_maps=native_adreno_metal_diag.mb_maps+1;
+            IOLockLock(g.lock);
+            if(gMailboxOwner==this) {gMailboxMapped=true;IOLockWakeup(g.lock,&gMailboxMapped,false);}
+            IOLockUnlock(g.lock);
             return kIOReturnSuccess;
         }
         return kIOReturnNotReady;
@@ -652,7 +878,8 @@ IOReturn AGXDeviceUserClient::clientMemoryForType(UInt32 type,IOOptionBits *opti
     if(!growViews(type)) {note(kIOReturnNoMemory,0);IOLockUnlock(g.lock);return kIOReturnNoMemory;}
     View *v=viewSlot(type);
     if(v && v->descriptor && v->token==type) {
-        v->descriptor->retain();*memory=v->descriptor;*options=kIOMapAnywhere|kIOMapInhibitCache;
+        v->descriptor->retain();*memory=v->descriptor;
+        *options=kIOMapAnywhere|(OSDynamicCast(NativeAdrenoPoolView,v->descriptor)?kIOMapWriteCombineCache:kIOMapInhibitCache);
         native_adreno_view_diag[2]=native_adreno_view_diag[2]+1;
         note(kIOReturnSuccess,2);
         IOLockUnlock(g.lock);
@@ -663,11 +890,26 @@ IOReturn AGXDeviceUserClient::clientMemoryForType(UInt32 type,IOOptionBits *opti
         /* System memory: the view maps the BO's own descriptor, its VM object, as Metal's resources are mapped into their process. The
          * pages keep the object's attribute (no device-pager view sets them back, int-160) and live while the view does. */
         IOMemoryDescriptor *descriptor=backing->descriptor();
-        descriptor->retain();v->token=type;v->descriptor=descriptor;
+        descriptor->retain();v->token=type;v->descriptor=descriptor;v->bytes=backing->bytes();
+        NativeAdrenoNoteHolder(native_adreno_view_owners,pid_,int64_t(v->bytes));
         descriptor->retain();*memory=descriptor;
         *options=kIOMapAnywhere;
         native_adreno_view_diag[1]=native_adreno_view_diag[1]+1;
         status=kIOReturnSuccess;
+    }
+    else if(backing && backing->poolGrant()) {
+        /* Pool pages: the view describes the grant's physical runs, write-combined as the client's view of any system BO is (the
+         * GPU maps them non-cacheable), and holds the grant until IOKit frees it (NativeAdrenoPoolView). */
+        NativeAdrenoPoolView *descriptor=v && !v->descriptor?NativeAdrenoPoolView::make(backing->poolGrant()):nullptr;
+        if(!descriptor)status=v && !v->descriptor?kIOReturnNoMemory:kIOReturnNoResources;
+        else {
+            v->token=type;v->descriptor=descriptor;v->bytes=backing->bytes();   /* the cache keeps make()'s reference */
+            NativeAdrenoNoteHolder(native_adreno_view_owners,pid_,int64_t(v->bytes));
+            descriptor->retain();*memory=descriptor;
+            *options=kIOMapAnywhere|kIOMapWriteCombineCache;
+            native_adreno_view_diag[1]=native_adreno_view_diag[1]+1;
+            status=kIOReturnSuccess;
+        }
     }
     else if(backing) {
         /* The BO's pages are cached in the kernel and the GPU's PTEs are non-cacheable, so the client needs an uncached
@@ -690,7 +932,10 @@ IOReturn AGXDeviceUserClient::clientMemoryForType(UInt32 type,IOOptionBits *opti
                 if(!descriptor)status=kIOReturnNoMemory;
                 else {
                     bool cached=false;
-                    if(v && !v->descriptor) {v->token=type;v->descriptor=descriptor;descriptor->retain();cached=true;}
+                    if(v && !v->descriptor) {
+                        v->token=type;v->descriptor=descriptor;v->bytes=backing->bytes();descriptor->retain();cached=true;
+                        NativeAdrenoNoteHolder(native_adreno_view_owners,pid_,int64_t(v->bytes));
+                    }
                     if(!cached) {
                         /* Never hand out a view that cannot be torn down again. */
                         descriptor->release();
@@ -735,14 +980,16 @@ static uint32_t microseconds(uint64_t from,uint64_t to)
     if(to>from)absolutetime_to_nanoseconds(to-from,&ns);
     return uint32_t(ns/1000>UINT32_MAX?UINT32_MAX:ns/1000);
 }
-/* Whether the CP has not reached fence yet, read without the lock (the ring's fence word and its newest number, as the display reads
- * them). False when the answer needs the locked path: the fence is not one handed out, the ring is poisoned or not published. */
-extern "C" bool native_adreno_fences(uint32_t *submitted,uint32_t *retired);
+/* Whether the CP has not reached fence yet on the ring that issued it (NativeAdrenoSubmit::fencePending), read when the lock is free.
+ * False when the answer needs the locked path: the lock is busy, the fence is not one a job holds, or the submit object is poisoned.
+ * The display's prefix (native_adreno_fences) is not the measure here: it stays below a finished fence of the high ring for as long
+ * as an older fence of the low ring is pending, and a waiter that trusted it slept until its deadline with its own fence written. */
 static bool fencePending(uint64_t fence)
 {
-    uint32_t submitted=0,retired=0;
-    if(!fence || fence>UINT32_MAX || !native_adreno_fences(&submitted,&retired) || g.ring->poisoned())return false;
-    return fence<=submitted && retired<fence;
+    if(!fence || fence>UINT32_MAX || !g.submit || !IOLockTryLock(g.lock))return false;
+    const bool pending=g.submit->fencePending(uint32_t(fence));
+    IOLockUnlock(g.lock);
+    return pending;
 }
 static IOReturn runCore(AGXDeviceUserClient *connection,uint32_t method,const void *input,size_t input_size,void *output,size_t output_size,uint64_t *lockWait)
 {
@@ -761,22 +1008,33 @@ static IOReturn runCore(AGXDeviceUserClient *connection,uint32_t method,const vo
     native_adreno_metal_diag.inflight=method+1;
     native_adreno_metal_diag.inflight_since_calls=native_adreno_metal_diag.calls;
     IOReturn status;
-    if(method==NativeAdrenoMethodWaitFence && input && input_size==sizeof(NativeAdrenoAbiWaitFence) && g.clock.now_us) {
-        /* int-147: a fence wait pauses outside the lock. int-146 slept inside the lock (up to the caller's 1 ms slice per call), so every
-         * other thread's submit, map or allocation waited for the GPU to finish unrelated work. i55eb173a6: the polls still took the lock
-         * every 100 us or less, and with several processes waiting (the render server, the poster extension) a poll waited up to 46 ms for
-         * it. While the CP has not reached the fence the poll now reads the ring's fence word without the lock; the core's own zero-timeout
-         * wait (retirement, statistics, the stall handler) runs under the lock once the fence has passed and when the time is up. The pause
-         * is the board's (until the next GPU interrupt, at most 100 us). */
+    if(method==NativeAdrenoMethodWaitFence && connection->live_ && !connection->closing_ && input && input_size==sizeof(NativeAdrenoAbiWaitFence) && g.clock.now_us) {
+        /* A fence wait sleeps outside the lock: under it every other thread's submit, map or allocation would wait for the GPU to
+         * finish unrelated work. While the CP has not reached the fence the check reads the ring's fence word when the lock is free;
+         * the core's own zero-timeout wait (retirement, statistics, the stall handler) runs under the lock once the fence has passed
+         * and when the time is up.
+         * With the board's interrupts (native_adreno_gpu_interrupt) the waiter sleeps on its own record until the completion pass
+         * finds its fence written, and the only timeout is the caller's deadline. It arms itself before it looks at the fence, so a
+         * completion between the look and the sleep is not lost: the pass that follows that completion disarms it, and a disarmed
+         * waiter does not sleep. Without them the pause is the board's (until the next GPU interrupt, at most its pause time). */
         NativeAdrenoAbiWaitFence poll{};
         memcpy(&poll,input,sizeof(poll));
         const uint64_t timeout_us=poll.timeout_ns/1000,began=g.clock.now_us(g.clock.cookie);
         poll.timeout_ns=0;
         uint64_t waited=0;
         status=kIOReturnTimeout;
+        FenceWaiter self{uint32_t(poll.fence),false,nullptr,nullptr};
+        const bool wake=timeout_us && g.interrupts && g.wake_by_interrupt && g.wake_lock;
+        bool slept=false;
+        if(wake) {
+            IOLockLock(g.wake_lock);
+            self.next=g.waiters;if(g.waiters)g.waiters->prev=&self;g.waiters=&self;
+            IOLockUnlock(g.wake_lock);
+        }
         for(;;) {
             waited=g.clock.now_us(g.clock.cookie)-began;
             bool polled=false;
+            if(wake) {IOLockLock(g.wake_lock);self.armed=true;IOLockUnlock(g.wake_lock);}
             if(waited>=timeout_us || !fencePending(poll.fence)) {
                 /* The connection's own core while it is live; a close that ran between two polls ends the wait. */
                 lockTimed(lockWait);
@@ -787,6 +1045,19 @@ static IOReturn runCore(AGXDeviceUserClient *connection,uint32_t method,const vo
                 if(status!=kIOReturnTimeout || waited>=timeout_us)break;
             } else native_adreno_wait_outer[4]=native_adreno_wait_outer[4]+1;
             native_adreno_wait_outer[2]=native_adreno_wait_outer[2]+1;
+            if(wake) {
+                const uint64_t left=timeout_us-waited;
+                uint64_t deadline=0;
+                clock_interval_to_deadline(left>UINT32_MAX?UINT32_MAX:uint32_t(left),NSEC_PER_USEC,&deadline);
+                IOLockLock(g.wake_lock);
+                if(self.armed) {
+                    slept=true;
+                    if(IOLockSleepDeadline(g.wake_lock,&self,deadline,THREAD_UNINT)==THREAD_TIMED_OUT)
+                        native_adreno_fence_wake[5]=native_adreno_fence_wake[5]+1;
+                }
+                IOLockUnlock(g.wake_lock);
+                continue;
+            }
             if(!g.clock.idle || g.clock.idle(g.clock.cookie)) {
                 if(!polled) {
                     lockTimed(lockWait);
@@ -796,6 +1067,13 @@ static IOReturn runCore(AGXDeviceUserClient *connection,uint32_t method,const vo
                 }
                 break;
             }
+        }
+        if(wake) {
+            IOLockLock(g.wake_lock);
+            if(self.prev)self.prev->next=self.next;else g.waiters=self.next;
+            if(self.next)self.next->prev=self.prev;
+            if(slept)native_adreno_fence_wake[4]=native_adreno_fence_wake[4]+1;
+            IOLockUnlock(g.wake_lock);
         }
         native_adreno_wait_outer[0]=native_adreno_wait_outer[0]+1;native_adreno_wait_outer[1]=native_adreno_wait_outer[1]+waited;
         if(waited>native_adreno_wait_outer[3])native_adreno_wait_outer[3]=waited;
@@ -808,17 +1086,19 @@ static IOReturn runCore(AGXDeviceUserClient *connection,uint32_t method,const vo
         NativeAdrenoAbiBoAlloc request{};
         uint64_t began=0,limited=0,made=0,wired=0,prepared=0,locked=0,dispatched=0;
         uint32_t spans=0;
-        bool offered=false,cleaned=false;
+        bool offered=false,cleaned=false,pooled=false;
         if(alloc) {
             memcpy(&request,input,sizeof(request));
             began=mach_absolute_time();
             lockTimed(lockWait);
             const uint64_t limit=(connection->live_ && !connection->closing_)?connection->core_->boLimit():0;
+            const unsigned bits=(connection->live_ && !connection->closing_)?connection->core_->outputBits():0;
             unlockTimed(lockWait);
             limited=mach_absolute_time();
+            /* Pool pages when the board registered some (zero-filled here), else the VM's. */
             if(!request.contiguous && request.bytes && !(request.bytes&4095) && request.bytes<=limit)
-                (void)NativeAdrenoMemory::prepareSystem((size_t)request.bytes,NativeAdrenoUserClient::systemWriteCombined(),&pages);
-            offered=pages.descriptor!=nullptr;made=pages.made;wired=pages.wired;cleaned=pages.cleaned;
+                (void)NativeAdrenoMemory::prepareSystem((size_t)request.bytes,NativeAdrenoUserClient::systemWriteCombined(),&pages,bits);
+            offered=pages.held();pooled=pages.grant!=nullptr;made=pages.made;wired=pages.wired;cleaned=pages.cleaned;
             prepared=mach_absolute_time();
         }
         /* i e38a0b1eb: a BoFree held the lock up to 38 ms, unwiring and freeing a large BO's pages; they now go after the lock. */
@@ -827,10 +1107,11 @@ static IOReturn runCore(AGXDeviceUserClient *connection,uint32_t method,const vo
         lockTimed(lockWait);
         locked=mach_absolute_time();
         spans=native_adreno_bo_memory[1];
-        if(connection->live_ && !connection->closing_)connection->core_->offerSystemPages(pages.descriptor?&pages:nullptr);
+        /* Offered for every BoAlloc, held or not: allocateSystem then knows it runs under the lock and leaves the pool alone. */
+        if((connection->live_ && !connection->closing_))connection->core_->offerSystemPages(alloc?&pages:nullptr);
         if((connection->live_ && !connection->closing_) && freeing)connection->core_->collectFreedPages(&freed);
         status=(connection->live_ && !connection->closing_)?connection->core_->dispatch(method,input,input_size,output,output_size,&g.clock):kIOReturnNotReady;
-        if(connection->live_ && !connection->closing_)connection->core_->offerSystemPages(nullptr);
+        if((connection->live_ && !connection->closing_))connection->core_->offerSystemPages(nullptr);
         if((connection->live_ && !connection->closing_) && freeing)connection->core_->collectFreedPages(nullptr);
         if(method==NativeAdrenoMethodBoMap && !status && (connection->live_ && !connection->closing_) && !connection->kernel_)
             if(NativeAdrenoClientRecord *record=clientRecord(connection->name_))
@@ -844,14 +1125,14 @@ static IOReturn runCore(AGXDeviceUserClient *connection,uint32_t method,const vo
                 g.clock.now_us(g.clock.cookie),mapped->bytes);
         }
         unlockTimed(lockWait);
-        const bool taken=offered && !pages.descriptor;
+        const bool taken=offered && !pages.held();
         NativeAdrenoMemory::discardSystem(&pages);
-        if(freed.descriptor) {native_adreno_freed_outside=native_adreno_freed_outside+1;NativeAdrenoMemory::discardSystem(&freed);}
+        if(freed.held()) {native_adreno_freed_outside=native_adreno_freed_outside+1;NativeAdrenoMemory::discardSystem(&freed);}
         if(alloc && request.bytes>=(UINT64_C(256)<<10))
             if(void (*hook)(const NativeAdrenoBoTrace *)=native_adreno_bo_hook) {
                 NativeAdrenoBoTrace trace{};
                 trace.entered=began;trace.kib=uint32_t(request.bytes>>10);
-                trace.flags=(NativeAdrenoUserClient::systemWriteCombined()?1u:0u)|(taken?2u:0u)|(cleaned?4u:0u)|(offered?8u:0u);
+                trace.flags=(NativeAdrenoUserClient::systemWriteCombined()?1u:0u)|(taken?2u:0u)|(cleaned?4u:0u)|(offered?8u:0u)|(pooled?16u:0u);
                 trace.limit_us=microseconds(began,limited);
                 trace.create_us=microseconds(limited,offered?made:prepared);
                 trace.wire_us=offered?microseconds(made,wired):0;
@@ -925,7 +1206,7 @@ IOReturn AGXDeviceUserClient::runTimed(uint32_t method,const void *input,size_t 
         Piece piece{};
         if(input && input_size>=sizeof(piece))memcpy(&piece,input,sizeof(piece));
         const bool valid=!output_size && input && input_size>=sizeof(piece) && piece.bytes && piece.bytes<=NativeAdrenoExportMaxPiece &&
-            input_size==sizeof(piece)+piece.bytes && !strncmp(caller,"backboardd",sizeof caller);
+            input_size==sizeof(piece)+piece.bytes && isRenderServer(caller,sizeof caller);
         const int stored=valid && boot_log_export_put?boot_log_export_put(piece.generation,piece.total,piece.offset,
             static_cast<const uint8_t *>(input)+sizeof(piece),piece.bytes):-1;
         if(stored) {native_adreno_export_stats[1]=native_adreno_export_stats[1]+1;return kIOReturnBadArgument;}
@@ -1117,7 +1398,7 @@ extern "C" IOReturn native_adreno_new_user_client(IOService *provider,task_t own
                  * rewrites report2 every ten seconds, so the reason another process's device failed would be gone from it. */
                 char who[20]={};
                 proc_selfname(who,sizeof who);
-                if(value==0x7fff && strncmp(who,"backboardd",sizeof who)) {
+                if(value==0x7fff && !isRenderServer(who,sizeof who)) {
                     for(auto &entry:native_adreno_client_text) {
                         if(!entry.name[0]) strlcpy(entry.name,who,sizeof entry.name);
                         if(!strncmp(entry.name,who,sizeof entry.name)) {line=entry.text;break;}
@@ -1200,7 +1481,7 @@ extern "C" IOReturn native_adreno_new_user_client(IOService *provider,task_t own
         connection->setProperty("NativeSandboxGrant",kOSBooleanTrue);
         native_adreno_metal_diag.grants=native_adreno_metal_diag.grants+1;
     }
-    /* limit (boot-arg sheng-gpu-metal-opens, default 0 = none) caps the connections granted to each process name. No cap by default: a
+    /* limit (boot-arg gpu-metal-opens, default 0 = none) caps the connections granted to each process name. No cap by default: a
      * client that crashed and restarts (iconservicesagent, i-39b429634) must get the GPU again, or it is left without one for the boot. */
     const unsigned cap=limit;
     IOLockLock(g.lock);
@@ -1506,6 +1787,15 @@ extern "C" IOReturn native_adreno_publish(NativeAdrenoVm *vm,NativeAdrenoSubmit 
     if(!g.lock || !service || !service->init() || !service->attach(IOService::getPlatform())) {
         if(service)service->release();
         return kIOReturnNoMemory;
+    }
+    /* The fence waiters' wake path. Without its lock or its thread call the waiters keep the board's pause. gpu-fence-wake=0 keeps
+     * that pause too, for a comparison on the same image. */
+    {
+        unsigned by_interrupt=1;
+        PE_parse_boot_argn("gpu-fence-wake",&by_interrupt,sizeof by_interrupt);
+        g.wake_by_interrupt=by_interrupt!=0;
+        g.wake_lock=IOLockAlloc();
+        g.fence_call=g.wake_lock?thread_call_allocate(fenceCall,nullptr):nullptr;
     }
     g.vm=vm;g.submit=submit;g.ring=ring;g.clock=*clock;g.timer=timer;g.info=info;g.input_bits=input_bits;g.output_bits=output_bits;
     /* Per-process address spaces: without table switching every user connection would be refused (createVm needs it). */

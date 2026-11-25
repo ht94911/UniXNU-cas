@@ -25,7 +25,7 @@ METAL = ROOT / 'refer/AdrenoMetal'
 OBJ = ROOT / 'build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837'
 CORE = ['Memory', 'Cpu', 'SmmuMemory', 'SmmuContext', 'Vm', 'GpuContext',
         'Ring', 'Preempt', 'Submit', 'UserClient', 'Timer', 'Publish',
-        'Client', 'CpInit', 'Irq', 'Sha256']
+        'Client', 'CpInit', 'Irq', 'Sha256', 'Pool']
 TRACE_ID = None
 
 

@@ -16,7 +16,7 @@ static inline bool native_gpu_latency_stage(uint32_t stage) {
 static inline bool native_gpu_latency_event(uint32_t event,const uint64_t *,uint32_t count) {
     switch(event) {
     case 80:case 81:return count==12;   /* trusted kernel map timing / VM failure */
-    case 1:case 3:case 10:case 11:case 20:case 21:case 22:case 23:case 36:case 37:case 44:case 63:case 65:return true;
+    case 1:case 3:case 10:case 11:case 20:case 21:case 22:case 23:case 36:case 37:case 44:case 63:case 65:case 66:case 70:return true;
     default:return false;
     }
 }

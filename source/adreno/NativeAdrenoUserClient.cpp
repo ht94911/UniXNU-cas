@@ -2,11 +2,12 @@
 #include "NativeGpuTrace.h"
 /* SPDX-License-Identifier: MIT */
 #include "NativeAdrenoUserClient.h"
+#include "NativeAdrenoSubmitDiagnostic.h"
 #include <kern/task.h>
 #include <sys/resource_private.h>   /* PRIO_DARWIN_GPU_*: the process's GPU role, set by the system */
 extern "C" volatile uint32_t native_adreno_trace_stage;
-/* 0 keeps user BOs cacheable and maintained before every submission (int-070..097); the board sets it from the sheng-gpu-wc boot argument. */
-/* sheng-gpu-owned-coherent=1: the GPU's own BOs use the IO-coherent path (CPU write-back view, GPU write-back inner-shareable mapping) instead of
+/* 0 keeps user BOs cacheable and maintained before every submission (int-070..097); the board sets it from the gpu-wc boot argument. */
+/* gpu-owned-coherent=1: the GPU's own BOs use the IO-coherent path (CPU write-back view, GPU write-back inner-shareable mapping) instead of
  * write-combine: no write-combined audit and no cache maintenance per submission. Effective only once the board proved IO coherence. */
 extern "C" {volatile uint32_t native_adreno_wc_enabled=1,native_adreno_owned_coherent=0;extern volatile uint32_t native_adreno_io_coherent;}
 static bool ownedCoherent() {return native_adreno_owned_coherent && native_adreno_io_coherent;}
@@ -28,7 +29,9 @@ static void noteImportState(uint64_t handle,uint64_t state)
 }
 extern "C" volatile uint32_t native_adreno_io_coherent;
 /* Per kernel method: [method][0] calls, [1] calls that returned non-zero, [2] last status, [3] total time (us, 32-bit). Method numbers are the ABI's (1..16). */
-extern "C" {extern uint64_t (*native_adreno_vm_now_us)(void);volatile uint32_t native_adreno_method_stats[20][4];volatile uint32_t native_adreno_map_fail[7][2];}
+extern "C" {extern uint64_t (*native_adreno_vm_now_us)(void);volatile uint32_t native_adreno_method_stats[20][4];volatile uint32_t native_adreno_map_fail[7][2];
+/* The last failed map: the bytes asked, and the mapping it met (address, bytes, handle, jobs, kind | imported 0x100 | upper 0x1000). */
+volatile uint64_t native_adreno_map_met[7];}
 static void noteImport(IOReturn status,uint32_t stage,uint64_t bytes,uint64_t address)
 {
     if(!status)return;
@@ -384,8 +387,8 @@ IOReturn NativeAdrenoUserClient::freeBo(const NativeAdrenoAbiBoFree *request)
     clear(*entry);
     return kIOReturnSuccess;
 }
-/* The GPU priority this process's next submission takes: its queues' foreground value while it renders visible UI (any GPU role above
- * background), their background value otherwise. A process that never told us keeps the daemon's default (no ring choice). */
+/* The GPU priority this process's next submission takes: its queues' foreground value while it renders visible UI (a GPU role above
+ * utility, or an unmanaged task), their background value for the denied, background and utility roles. A process that never told us keeps the daemon's default (no ring choice). */
 /* Which processes told the driver what (the newest 32): pid, foreground priority, background priority, the GPU role then, the time (ms of
  * the submission clock when the board gave one, else 0) and how many times this connection had told it before (0 the runtime's first call
  * at device open, later ones the process's own setGPUPriority:/setBackgroundGPUPriority: through the frontend). */
@@ -395,7 +398,8 @@ int32_t NativeAdrenoUserClient::submitPriority() const
 {
     if(priority_foreground_<0 && priority_background_<0)return -1;
     const int32_t role=task_get_gpu_role(current_task());
-    const bool background=role==PRIO_DARWIN_GPU_BACKGROUND || role==PRIO_DARWIN_GPU_UTILITY;
+    /* A task RunningBoard denies the GPU renders nothing visible either: where it still submits it takes the background value. */
+    const bool background=role==PRIO_DARWIN_GPU_DENY || role==PRIO_DARWIN_GPU_BACKGROUND || role==PRIO_DARWIN_GPU_UTILITY;
     return background?(priority_background_>=0?priority_background_:priority_foreground_)
                      :(priority_foreground_>=0?priority_foreground_:priority_background_);
 }
@@ -421,17 +425,20 @@ IOReturn NativeAdrenoUserClient::submit(const NativeAdrenoAbiSubmit *request,
     if(!request || !reply)return kIOReturnBadArgument;reply->fence=0;
     if(!open_)return kIOReturnNotReady;
     if(!request->buffer_count || request->buffer_count>NativeAdrenoAbiMaxBuffers ||
-        request->reserved)return kIOReturnBadArgument;
+        request->reserved)return nativeAdrenoSubmitRejected(kIOReturnBadArgument,NativeAdrenoSubmitRequest,
+            UINT32_MAX,0,0,request->buffer_count,0,0,request->reserved);
     if(batch_id_)return kIOReturnBusy;
     if(request->queue>=queue_capacity_ || !queues_[request->queue].active)
-        return kIOReturnBadArgument;
+        return nativeAdrenoSubmitRejected(kIOReturnBadArgument,NativeAdrenoSubmitQueue,
+            UINT32_MAX,0,0,request->buffer_count,0,queue_capacity_,request->queue);
     if(request->wait_fence) {
         if(!clock)return kIOReturnBadArgument;
         const uint32_t wait_us=request->wait_timeout_ns==0?0:
             (request->wait_timeout_ns>UINT64_C(0xffffffff)*1000u?0xffffffffu:
             (uint32_t)(request->wait_timeout_ns/1000));
         const IOReturn waited=submit_->observeFence((uint32_t)request->wait_fence,clock,wait_us);
-        if(waited)return waited;
+        if(waited)return nativeAdrenoSubmitRejected(waited,NativeAdrenoSubmitDependency,
+            UINT32_MAX,0,0,0,0,request->wait_timeout_ns,request->wait_fence);
     }
     return submitList(request->buffers,request->buffer_count,request->queue,reply,clock);
 }
@@ -443,9 +450,11 @@ IOReturn NativeAdrenoUserClient::submitList(const NativeAdrenoAbiSubmitBuffer *w
     NativeAdrenoSubmitBuffer *buffers=submit_buffers_;
     for(size_t i=0;i<count;++i) {
         const NativeAdrenoAbiSubmitBuffer &wire=wire_buffers[i];
-        if(!wire.bytes || (wire.bytes&3))return kIOReturnBadArgument;
+        if(!wire.bytes || (wire.bytes&3))return nativeAdrenoSubmitRejected(kIOReturnBadArgument,NativeAdrenoSubmitWireSize,uint32_t(i),wire.handle,wire.iova,wire.bytes);
         Entry *entry=find(wire.handle);
-        if(!entry || !entry->mapped_state)return kIOReturnBadArgument;
+        if(!entry || !entry->mapped_state)return nativeAdrenoSubmitRejected(kIOReturnBadArgument,
+            NativeAdrenoSubmitHandle,i,wire.handle,wire.iova,wire.bytes,
+            entry?entry->iova:0,entry?entry->memory.bytes():0,entry?1:0);
         buffers[i]={entry->mapped,wire.iova,(size_t)wire.bytes};
     }
     uint32_t fence=0;
@@ -456,7 +465,7 @@ IOReturn NativeAdrenoUserClient::submitList(const NativeAdrenoAbiSubmitBuffer *w
     submit_->nextRole(task_get_gpu_role(current_task()));
     const IOReturn status=submit_->submit(vm_,buffers,count,
         queue_base_+queue,&fence,clock);
-    if(status)return status;
+    if(status)return nativeAdrenoSubmitRejected(status,NativeAdrenoSubmitBackend,UINT32_MAX,0,0,count,0,0,queue_base_+queue);
     reply->fence=fence;
     return kIOReturnSuccess;
 }
@@ -623,7 +632,12 @@ IOReturn NativeAdrenoUserClient::dispatch(uint32_t method,const void *input,
     Tally tally(method,&tally_result,clock);
     const size_t expected_in=inputSize(method),expected_out=outputSize(method);
     if(expected_in==SIZE_MAX || expected_out==SIZE_MAX)return kIOReturnUnsupported;
-    if(input_size!=expected_in || output_size!=expected_out)return kIOReturnBadArgument;
+    if(input_size!=expected_in || output_size!=expected_out) {
+        if(method==NativeAdrenoMethodSubmit)
+            return nativeAdrenoSubmitRejected(kIOReturnBadArgument,NativeAdrenoSubmitTransport,
+                UINT32_MAX,0,0,input_size,expected_in,expected_out,output_size);
+        return kIOReturnBadArgument;
+    }
     if((expected_in && !input) || (expected_out && !output))return kIOReturnBadArgument;
     IOReturn status=kIOReturnSuccess;
     switch(method) {
@@ -655,8 +669,19 @@ IOReturn NativeAdrenoUserClient::dispatch(uint32_t method,const void *input,
              * held and the failed request asked for the last time. */
             unsigned at=0;while(at<5 && native_adreno_map_fail[at][0] && native_adreno_map_fail[at][0]!=(uint32_t)status)++at;
             native_adreno_map_fail[at][0]=(uint32_t)status;native_adreno_map_fail[at][1]=native_adreno_map_fail[at][1]+1;
-            native_adreno_map_fail[5][0]=(uint32_t)vm_->spanCount();native_adreno_map_fail[5][1]=(uint32_t)vm_->objectCount();
+            /* A connection whose address space recovery took away (or never had one) answers kIOReturnNotReady with vm_ null;
+             * reading through it here panicked (far 0x298). */
+            native_adreno_map_fail[5][0]=vm_?(uint32_t)vm_->spanCount():0;native_adreno_map_fail[5][1]=vm_?(uint32_t)vm_->objectCount():0;
             native_adreno_map_fail[6][0]=(uint32_t)(request.iova>>12);native_adreno_map_fail[6][1]=(uint32_t)(request.handle);
+            {
+                uint64_t met[5]={};
+                const bool found=vm_ && vm_->occupant(request.iova,met);
+                Entry *asked=find(request.handle);
+                /* The bytes asked, with bit 63 where the handle itself was already mapped (the other source of this status). */
+                native_adreno_map_met[0]=request.iova;
+                native_adreno_map_met[1]=(asked?asked->memory.bytes():0)|(asked && asked->mapped_state?UINT64_C(1)<<63:0);
+                for(unsigned k=0;k<5;++k)native_adreno_map_met[2+k]=found?met[k]:~UINT64_C(0);
+            }
         }
         break;
     }

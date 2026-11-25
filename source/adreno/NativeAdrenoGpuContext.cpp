@@ -38,6 +38,8 @@ IOReturn NativeAdrenoGpuContext::bringUp(const ArmSmmu4KIo *io,unsigned bank,uns
     for(unsigned i=0;!status && i<plan_.buffer_count;++i) {
         const size_t bytes=i?kBytes[i]:plan_.sqe_bytes;
         status=buffers_[i].allocate(bytes,report->output_bits,true,bytes);
+        if(!status)status=buffers_[i].declareSynchronized();
+        buffers_[i].declareShared();
     }
     if(!status) {
         step(Prepare);
@@ -192,11 +194,20 @@ IOReturn NativeAdrenoGpuContext::clearFault(uint32_t fsr,uint32_t far[3])
     if(io->write32(io->cookie,(size_t)offset+0x58,fsr) || io->barrier(io->cookie))return kIOReturnIOError;
     return kIOReturnSuccess;
 }
+extern "C" {extern volatile uint32_t native_adreno_global_fault[4];}
 IOReturn NativeAdrenoGpuContext::endFault(uint32_t out[4])
 {
     if(!out || !ready_)return kIOReturnBadArgument;
     out[0]=out[1]=out[2]=out[3]=0;
     const ArmSmmu4KIo *io=smmu_.ioHandle();
+    {   /* The global fault status the GPU's faulting access left (sGFSR, write one to clear): cleared with the context's, or every
+         * later look at the SMMU reads it. Its last value is kept. */
+        uint32_t global=0;
+        if(!io->read32(io->cookie,0x48,&global) && global) {
+            native_adreno_global_fault[2]=native_adreno_global_fault[2]+1;native_adreno_global_fault[3]=global;
+            (void)io->write32(io->cookie,0x48,global);
+        }
+    }
     const uint64_t offset=smmu_.stateHandle()->context_offset;
     if(!offset)return kIOReturnNotReady;
     if(io->read32(io->cookie,(size_t)offset+0x58,&out[0]))return kIOReturnIOError;
@@ -228,6 +239,9 @@ IOReturn NativeAdrenoGpuContext::probeBuffer(NativeAdrenoProcessVm *p,uint64_t *
     uint32_t nop=0;
     if(AdrenoPM4Type7(0x10,0,&nop)!=AdrenoPM4Success)return kIOReturnInternalError;   /* CP_NOP */
     scratch[0xF00/4]=nop;
+    /* The store went through the kernel's own mapping of the page, which may cache: written back before the CP reads it. */
+    const IOReturn cleaned=buffers_[4].publishForDevice(0,GpuPageBytes,false,true,NativeAdrenoPhaseWrite);
+    if(cleaned)return cleaned;
     *handle=p->handles_[4];*iova=GpuScratchIova+0xF00;*bytes=4;
     return kIOReturnSuccess;
 }

@@ -47,11 +47,32 @@ struct NativeAdrenoStallSample {
  * The caller must discard a failed copy; no GPU lock or MMIO is taken. */
 extern "C" bool native_adreno_copy_stall(NativeAdrenoStallSample *);
 
+/* gpu-audit (NativeAdrenoSubmit.cpp): 0 the submissions run no line audit, 1 they do, ~0 the boot argument is not read yet. */
+extern "C" volatile uint32_t native_adreno_audit_mode;
+/* The jobs' GPU time, kept for every job at its retirement (NativeAdrenoSubmit::noteJobTime), with or without diag=1.
+ * native_adreno_job_time: [0] jobs timed, [1] of them by the CP's stamps (gpu-timeline=1 or diag=1), [2] over 8 ms (one frame at
+ * 120 Hz), [3] over 16 ms, [4] over 33 ms, [5] over 100 ms, [6] the longest (us), [7] rows written to native_adreno_slow_jobs.
+ * A row of native_adreno_long_jobs (the 8 longest since boot, unordered) and of native_adreno_slow_jobs (the newest 16 over 8 ms, at
+ * [n & 15]): [0] fence | IBs << 32 | ring << 40 | (priority + 1) << 44 | source << 52 (1 the CP's stamps: from after the prologue's
+ * idle wait to after the job's IBs; 2 the driver's clock: from the later of its submission and the previous retirement seen on its
+ * ring to its own, an upper bound) | replays << 56, [1] duration (us), [2] IB bytes, [3] pid | GPU role << 32 | GPU level at
+ * submission << 40, [4] queue, [5] submission time (us), [6] submission to retirement seen (us), [7] the job's number in [0]. */
+extern "C" volatile uint32_t native_adreno_job_time[8];
+extern "C" volatile uint64_t native_adreno_long_jobs[8][8],native_adreno_slow_jobs[16][8];
+/* The first stage of a stall (write pointer given again, translations dropped) and what the CP did before it: [0] the fence, [1] us
+ * it had been pending, [2..7] the CP's progress (NativeAdrenoRing::progressState: IB1 base lo/hi, IB2 base lo/hi, IB1 and IB2 dwords
+ * left) at the fence's first timed-out wait, [8..13] at the stage, [14..19] 500 us later, just before the stage acts, [20] bit 0: the
+ * CP moved between the first wait and the stage, bit 1: it moved in the 500 us, bits 2 and 3: the same for the BV thread alone (its
+ * read pointer, IB bases and dwords left: BR can stand still at a wait for BV while the visibility pass runs), [21] us from the stage to the job's retirement seen
+ * (0: not yet), [22] the job's pid, [23] its IBs | ring << 16 | (priority + 1) << 24, [24] its IB bytes, [25] stages recorded. */
+extern "C" volatile uint32_t native_adreno_stall_kick[26];
 /* A GPU restart after a hang (NativeAdrenoSubmit::recover): the board resets the GPU and brings the CP up again on the same ring (a6xx_recover
  * and hw_init), calling NativeAdrenoRing::restart(completed) between the reset and its CP init. Nonzero: the GPU could not be restarted. */
 typedef IOReturn (*NativeAdrenoRestart)(void *cookie,NativeAdrenoRing *ring,uint32_t completed);
 struct NativeAdrenoRecovery {
     uint32_t fence;            /* the fence the GPU hung on */
+    uint32_t completed;        /* completed prefix installed before replay */
+    uint32_t fault_status;     /* SMMU fault status captured before reset */
     uint32_t replayed;         /* submissions given to the ring again after the restart */
     NativeAdrenoVm *guilty;    /* the VM of the hung submission, null when no job held that fence */
     IOReturn status;
@@ -108,6 +129,7 @@ private:
         uint8_t loaded=0,flight=0;    /* the ring the CP ran when it was submitted, and whether a switch was in flight then */
         uint8_t replays=0;            /* how many GPU restarts replayed it */
         uint64_t replay_us=0;         /* when it was last given to the ring again (0: never) */
+        uint32_t ib_bytes=0;          /* the bytes of its IBs (UINT32_MAX at most) */
     };
     /* The jobs, grown on demand; a job never moves. Iterates as Job &. */
     struct JobList {
@@ -116,8 +138,9 @@ private:
         It begin() const {return {items};}
         It end() const {return {items+count};}
     } jobs_;
-    /* msm hangcheck state: the fence seen at the last check, the progress retries spent on it and the CP state then (a6xx_progress). */
-    uint32_t hang_fence_=0,progress_retries_=0,last_cp_[6]{};
+    /* msm hangcheck state: the fence seen at the last check, the progress retries spent on it and the CP state then (a6xx_progress),
+     * with the BV thread's (NativeAdrenoRing::bvProgressState): a visibility pass that BR waits for is progress too. */
+    uint32_t hang_fence_=0,progress_retries_=0,last_cp_[6]{},last_bv_[5]{};
     bool madeProgress();
     NativeAdrenoVm *vm_=nullptr;   /* the default VM: the kernel's table, installed at bring-up */
     /* Page table switching between processes: mode 0 none (one table for everything), 1 the CPU writes TTBR0 while the GPU is idle,
@@ -152,6 +175,7 @@ private:
     bool preempt_dead_=false,stranded_=false,aging_grant_=false;
     uint64_t low_service_us_=0,low_slice_until_=0;
     uint32_t dead_reason_=0,rescues_=0;
+    uint32_t dropped_jobs_=0;   /* jobs ended without retiring: their process's address space was out of use */
     void markPreemptDead(uint32_t reason);
     NativeAdrenoRing *ringOfFence(uint32_t fence) const;
     unsigned ringForPriority() const;
@@ -163,13 +187,24 @@ private:
      * through it. */
     NativeAdrenoRing *ring(unsigned index=0) {return index<ring_count_?rings_[index]:ring_;}
     void driveSwitch(const NativeAdrenoRingClock *clock);
+    /* The ring's wait for wait(): held, a fence a job holds (NativeAdrenoRing::wait), otherwise an earlier one (observeFence). With
+     * two rings a wait that pauses drives the switch between them after every pause. */
+    NativeAdrenoRingFence waitOnRing(NativeAdrenoRing *r,bool held,uint32_t fence,const NativeAdrenoRingClock *clock,
+        uint32_t timeout_us,uint32_t *observed);
     NativeAdrenoSubmitStats stats_{};
-    void noteStall(uint32_t observed,const NativeAdrenoRingClock *clock);   /* the CP's state for a fence that stopped advancing (native_adreno_stall) */
+    void noteStall(uint32_t observed,const NativeAdrenoRingClock *clock,uint32_t waited);   /* the CP's state for a fence that stopped advancing (native_adreno_stall) */
     bool attached_=false,poisoned_=false,first_vm_fault_sampled_=false;
     bool cacheStall(uint32_t observed,uint64_t now,uint64_t pending,
         uint32_t polls,uint32_t stage,const NativeAdrenoVm *detector=nullptr,
         const uint32_t *fault=nullptr,uint32_t detector_pid=0,
-        uint64_t hardware_ttbr=0,IOReturn hardware_ttbr_read=kIOReturnNotReady);
+        uint64_t hardware_ttbr=0,IOReturn hardware_ttbr_read=kIOReturnNotReady,uint32_t waited=0,NativeAdrenoRing *captured_ring=nullptr);
+    /* A retired job's GPU time into native_adreno_job_time and the two job tables (stamped: NativeAdrenoRing::timeline's status). */
+    void noteJobTime(const Job &job,uint32_t stamped,uint64_t start,uint64_t end);
+    /* noteStall's CP snapshot (native_adreno_stall, _stall_mem, _stall_ring), taken before the first stage acts. */
+    void snapshot(uint32_t next,uint32_t waited,uint64_t now,uint64_t pending,NativeAdrenoRing *stalled);
+    uint32_t stall_begin_cp_[6]{};   /* the CP's progress at the stalled fence's first timed-out wait */
+    uint32_t stall_begin_bv_[5]{};   /* and the BV thread's */
+    uint64_t ring_retired_us_[2]{};uint32_t ring_retired_fence_[2]{};   /* the newest retirement seen on each ring */
     uint32_t audit_tick_=0;   /* submissions since attach; every eighth one audits its IB lines */
     /* submit()'s distinct buffers and ring words: too large for the kernel stack at the supported IB limit (callers serialize every method) */
     uint64_t scratch_handles_[NativeAdrenoSubmitMaxBuffers]{};
@@ -207,6 +242,11 @@ public:
     bool preemptIrq();
     /* Global completed prefix for scanout: later completions on another ring cannot skip pending work. */
     bool fenceProgress(uint32_t *submitted,uint32_t *retired,uint32_t *rings=nullptr);
+    /* Whether the CP has still to write fence on the ring that issued it: true only for a fence a job holds (or, with one ring, one
+     * that ring handed out) whose ring's fence word is below it. A fence of the other ring that is still pending does not count, unlike
+     * the scanout's prefix. False for everything else (a retired or unknown fence, a poisoned object), where wait() has the answer.
+     * No side effect: the check of a waiter before it sleeps and of the completion pass that wakes it. */
+    bool fencePending(uint32_t fence);
     /* The switch counters, the ring the CP runs, whether a switch is in flight and the control register as the hardware holds it. */
     /* A word of ring `index`'s preemption record as the CPU sees it now (the CP saves the read pointer, info and errno there). */
     uint32_t recordWord(unsigned index,uint32_t byte_offset) const
@@ -265,10 +305,10 @@ public:
      * since the last check while work is pending and the CP made no progress either (a6xx_progress: IB1/IB2 base and remaining words, at
      * most DRM_MSM_HANGCHECK_PROGRESS_RETRIES (3) checks in a row on one fence). */
     IOReturn hangCheck(bool *hung);
-    /* msm's recover_worker: the job on the hung fence is the guilty one (its VM is marked, NativeAdrenoVm::noteHang), the ring fence
-     * moves past it, restart resets the GPU, the guilty job is retired, then every later job is submitted again with its own fence
-     * (a job of an unusable VM without its buffers). Callers serialize this with every other method. A failed restart poisons. */
-    IOReturn recover(NativeAdrenoRestart restart,void *cookie,const NativeAdrenoRingClock *,NativeAdrenoRecovery *);
+    /* A fault or hang retires the guilty fence and replays later jobs. A scheduling rescue replays every unfinished job from
+     * oldest onward. fault_status selects fault recovery even when a ring switch stranded pending work. The guilty VM receives
+     * noteHang; an unusable VM gets empty commands on replay. Callers serialize this with every other method. */
+    IOReturn recover(NativeAdrenoRestart restart,void *cookie,const NativeAdrenoRingClock *,NativeAdrenoRecovery *,uint32_t fault_status=0);
     bool poisoned() const {return poisoned_;}
     size_t outstanding() const;
     NativeAdrenoSubmitStats stats() const {return stats_;}

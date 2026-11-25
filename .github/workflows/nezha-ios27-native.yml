@@ -1,7 +1,7 @@
-name: nezha GPU085 admission loss generations - native065
+name: nezha GPU088 cumulative upstream native GPU - native066
 on:
   push:
-    branches: [codex/ios27-gpu85-admission-native065-20261125]
+    branches: [codex/ios27-gpu88-upstream-cumulative-native066-20261126]
   workflow_dispatch:
 permissions:
   contents: read
