@@ -137,7 +137,7 @@ int main(int argc,char **argv){assert(argc==2);unsigned cases=0;
  std::cout<<"cases="<<cases<<" actual_observer_reader_and_batch_fields_passed\n";
 }
 '''
-cpp=a.out/'observer-test.cpp';cpp.write_text(prefix+'#include '+json.dumps(str(folder/'NativeContextWaitState.h'))+'\n'+record+reader+sink+fragment+batch+cases)
+cpp=a.out/'observer-test.cpp';cpp.write_text(prefix+'#include '+json.dumps(str((folder/'NativeContextWaitState.h').resolve()))+'\n'+record+reader+sink+fragment+batch+cases)
 binary=a.out/'observer-test';command=[a.cxx,'-std=c++17','-O1','-g','-Wall','-Wextra','-Werror','-Wno-unused-function',
     '-fsanitize=address,undefined',str(cpp),'-o',str(binary)]
 run=subprocess.run(command,capture_output=True,text=True);(a.out/'build.log').write_text(run.stdout+run.stderr)

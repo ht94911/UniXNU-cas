@@ -1,5 +1,5 @@
 {
-  ".github/workflows/nezha-metal.yml": "941deae052fd57df29586b56d1c9a6a7d9c1c3954113c9da13c5f71f8d1049bb",
+  ".github/workflows/nezha-metal.yml": "452751b1e0fb6b4ecbe3b205db7b98ddea95cd955b5ce53365269239f2e49f1d",
   ".gitignore": "862263fa1f46c20f0d1e4dac5ffcc75abd55c08211b2c3864c5f8764b9d87793",
   "ci/gpu-userland/check-buffer-reserve.py": "56bef54d15cb6192d25bfd99516369d45d3ddeffbd44805f9f052739d2fdf57a",
   "ci/gpu-userland/check-client-wait.py": "1902f1839cbb499e78ca5d8b5ad13e7fb28b471874aef9923d044b0d266093d9",
@@ -11,7 +11,7 @@
   "ci/gpu-userland/check-driver-profile-host.py": "a7905b53fcfffca758a60d5062c61e4e206914ffc5f377cd7fe88a9848146838",
   "ci/gpu-userland/check-extern-function.py": "a77d163465dca735afdec3d96390dcdab170af31bb37e25bfbaccf60747233b6",
   "ci/gpu-userland/check-extern-target.py": "5a4604ce87674d00b3554b29de5fde32e4dfadd3f66af43202ee841979949b2b",
-  "ci/gpu-userland/check-frame-observers.py": "1b34e4bb70a8310324cbba1e4c8086ade9475a246bfd3f01d298f4bf6673aec5",
+  "ci/gpu-userland/check-frame-observers.py": "acbff51b002426bc104a70f65bc935c913dcd87565698f7402938d4d165b741b",
   "ci/gpu-userland/check-full-target.py": "3a377637b13b1b38866784a30149b8a0d26404b6a56b4607b8b7f5ffccdfacf1",
   "ci/gpu-userland/check-heap-copies.py": "cf9c33f9e56fa0ee3d3080721892ee5b347c8f9eb02bd3764964b252c8b17472",
   "ci/gpu-userland/check-host-driver.py": "c935dabcea4c13ce15138eb03d983ad7f335d4e06d5cf718427dd267d8e3ffc0",
@@ -96,6 +96,8 @@
   "ci/gpu-userland/patches/gpu068-index-observer-coverage.patch": "40bcaf51d76167796e9ee1d568cc4a3826971ea705bac969843f0d6155db7ac9",
   "ci/gpu-userland/patches/gpu079-display-timing-plugin.patch": "5668abf625874b01c0e59408b9cbad963c4fe9b30a678a4823ef97bf9b4a800b",
   "ci/gpu-userland/patches/gpu080-ui-update-wait-plugin.patch": "6a0bf5b7fd18d1febd76977bba19d6884a68d5659d547fde9296b18dad79551f",
+  "ci/gpu-userland/patches/gpu085-context-signposts.patch": "159cb589f7757492250a80ecfb129bd08de00481c7a5b52e35ad854ceda4cb66",
+  "ci/gpu-userland/patches/gpu087-context-queues.patch": "959ce1e336e5c486883481594d20d4a3658ca1dbae1e442eae72141be8f0b2e9",
   "ci/gpu-userland/patches/heap-copy-plugin.patch": "d4556117bd17585f623c34c9151810e4f7e9077c6273a4aaea15381e6c310ea6",
   "ci/gpu-userland/patches/heap-copy-recipes.patch": "b28164a7338bbae2d9186300adb012ab268818260c85a4fd90a0942796b44eb9",
   "ci/gpu-userland/patches/intel-host-bridge.patch": "4ca8907888b08bb9218abe7d95a5c0bf8b11443f1d2fb6cbaad067a1c6862c78",
@@ -116,7 +118,5 @@
   "ci/gpu-userland/test-source-manifest.py": "45facca72e7b39766333d7499b1b3a4abd936d2b60c662a80923707534a38759",
   "ci/provenance.json": "879011a3ecd54f182abc09bf532335edccaa0e7e0d85e68ae76e31e6dc87884f",
   "ci/xnu/artifact-recipient.pem": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
-  "ci/xnu/artifacts.py": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
-  "ci/gpu-userland/patches/gpu085-context-signposts.patch": "159cb589f7757492250a80ecfb129bd08de00481c7a5b52e35ad854ceda4cb66",
-  "ci/gpu-userland/patches/gpu087-context-queues.patch": "959ce1e336e5c486883481594d20d4a3658ca1dbae1e442eae72141be8f0b2e9"
+  "ci/xnu/artifacts.py": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c"
 }
