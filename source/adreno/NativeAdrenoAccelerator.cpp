@@ -7,6 +7,9 @@
 // parent metaclass does not exist before that. The class is named after the Apple accelerator class on purpose, so original
 // sandbox profiles that name the service class accept the Adreno plugin's open; the Apple AGX kext is never loaded here.
 #include "../AdrenoMetal/OriginalAcceleratorABI.h"
+#ifndef NATIVE_ACCELERATOR_BASE
+#define NATIVE_ACCELERATOR_BASE IOAcceleratorES
+#endif
 #include <IOKit/IOUserClient.h>
 
 extern "C" IOReturn native_adreno_new_user_client(IOService *,task_t,void *,UInt32,OSDictionary *,IOUserClient **,unsigned);

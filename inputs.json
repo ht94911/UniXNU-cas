@@ -21,7 +21,7 @@
     "source/adreno/LICENSE": "16fbc0170994a48f60938d9f0d992d3bad113383cf90882f75c206e079c2a2dc",
     "source/adreno/NativeAdrenoA740HwInit.h": "4b6a7f357b9bb8b99a2b5f4f503696c1f7f2e8ce1c55cd0b6d0d74c6f126ba19",
     "source/adreno/NativeAdrenoABI.h": "24b6d71df96a4849137ad6869c0bceea7e87602066df37b12c57f0cfa17c87a7",
-    "source/adreno/NativeAdrenoAccelerator.cpp": "0a581941e6c4fbcb0c14df1049e9a3d2e833a2112562bbec5f7600c263408799",
+    "source/adreno/NativeAdrenoAccelerator.cpp": "1a0f58ff52e89b1e73041dda0d2dfa9c58634bd87c53062f7eef0a3c4b288c68",
     "source/adreno/NativeAdrenoBoard.h": "648fefb774118d174bf5ef42ab89579edaf781c4f4f08bce393ee7100e54e19b",
     "source/adreno/NativeAdrenoChip.h": "68ad101253424c4a0c612e9bd7e390850b50485ac2f5f7e1d47036b37e27247e",
     "source/adreno/NativeAdrenoClient.cpp": "6af4f1c66d1c6cac8057b951762eb380ed43d3b639bf1aa5d4b60e149ce7ecee",
@@ -1245,6 +1245,8 @@
       "Exercise actual 8 ms physical HID owner and retained 16 ms test gestures",
       "Exercise the reused bounded HID input and original pacer",
       "Exercise the existing BoAlloc phase adapter and trace storage"
-    ]
+    ],
+    "native066c_failed_run": 45694392572,
+    "accelerator_adapter": "Upstream selectable base retains the already-qualified IOAcceleratorES default for the local native builder; no original base/vtable is replaced."
   }
 }
