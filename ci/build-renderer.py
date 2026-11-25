@@ -21,7 +21,11 @@ try:
  graph_output=run('graph-host-run',[graph_host]);assert b'complete release passed' in graph_output
  run('graph-AE-host-run',[graph_host,'ae'])
  still_host=a.out/'still-observer-host'
- run('still-observer-host-build',['xcrun','clang','-std=gnu11','-Wall','-Wextra','-Werror','-fblocks','-fsanitize=address,undefined','-fno-sanitize-recover=all','-O1','-g','-I',fixture/'vendor-fixture','-I',fixture,root/'source/tests/camera-still-observers.c','-o',still_host])
+ # This C-only ObjC fixture uses the required generic IMP conversions.
+ # Exact runtime encodings and96 calls validate their typed ABI. Apple
+ # Clang21 warns on the C shim; production.m and all other warnings retain
+ # their original flags. No original call or signature gate is bypassed.
+ run('still-observer-host-build',['xcrun','clang','-std=gnu11','-Wall','-Wextra','-Werror','-Wno-cast-function-type-mismatch','-fblocks','-fsanitize=address,undefined','-fno-sanitize-recover=all','-O1','-g','-I',fixture/'vendor-fixture','-I',fixture,root/'source/tests/camera-still-observers.c','-o',still_host])
  still_output=run('still-observer-host-run',[still_host]);assert b'96 original forwards' in still_output
  discovery_host=a.out/'discovery-host'
  discovery_fixture=a.out/'discovery-fixture.m'

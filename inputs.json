@@ -3,10 +3,10 @@
   "purpose": "Camera153 retains per-output graph pools across exact24A446 still configuration deltas; original photo request and completion forwarding; unchanged152 native kernel and150 Metal",
   "device_revision": "905c69eee6429cef48cfe89293820fba2d4f9265",
   "files": {
-    ".github/workflows/nezha-ios27-native.yml": "4e382648b40955a54ca9ba9b598bc4e2048e9738336bfb8e0e487fbe6fb4fb38",
+    ".github/workflows/nezha-ios27-native.yml": "f67aaba8b054da86c1388a6e5bb741c6296c8c1d832791019a1e8b45d6804ec9",
     "ci/artifact-recipient.pem": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
     "ci/artifacts.py": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
-    "ci/build-renderer.py": "c961876803913becdad1fd76d93fac4f48bbca9571df2bf185d287deaec3d08e",
+    "ci/build-renderer.py": "66a7296e59a4f8dbf2d273e8f2851581d8cb048caa858ec1330dd9cc9bb539a5",
     "ci/camera-discovery.py": "f4f017901dc2c78b4a6056b2fec6d2b97b1a8b6a432e48b7d8a671c7d2503e8a",
     "source/NezhaCameraControl.h": "88e6e5dadd777e10a36f587decb8fb38300d79033b0c826bcd747b1d7867cae2",
     "source/NezhaCameraDiscovery.h": "c2fe0fec08c8b445c9080a845ed0dace057e212094c35f7b734907181ec66338",
@@ -77,7 +77,7 @@
     "source/userland/upstream/hakios/camera_isp.h": "311a1fae76f71d05c767915b5d6ba52c498381ae49621307dcc085fe14c29875",
     "source/userland/upstream/hakios/hakios.camera.h": "97f80aa60adb7d2a43d93f3edfde294ba0c447586069cb81fa9ac58c789d6444"
   },
-  "builder_sha256": "c961876803913becdad1fd76d93fac4f48bbca9571df2bf185d287deaec3d08e",
+  "builder_sha256": "66a7296e59a4f8dbf2d273e8f2851581d8cb048caa858ec1330dd9cc9bb539a5",
   "artifacts_sha256": "288a7dceb2397abf69a4ff66d4828982652aa34f50641d6442fd74a9f455bd0c",
   "certificate_sha256": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
   "kernel_build_required": false,
@@ -93,11 +93,12 @@
   "final_preview_observation_only": true,
   "helper_disabled_and_previous_binary_reused": true,
   "helper136_qualified_run": 45163718326,
-  "preceding_failed_CI_run": 45575624790,
+  "preceding_failed_CI_run": 45577247640,
   "header_source": "existing signed136 renderer probe uses IOSurface/IOSurfaceRef.h on same iPhone SDK",
   "device_source_sha256": "2468fe065c24f53d5b946e68fa245e1827f8a74c",
   "build_sha256": "0d3f3280247d9e6c5d0d8bee2011c67687f1946ee5b90790a793db5a04ffcecb",
-  "preceding_failed_CI_head": "a9bdead9194ecca7d772b479bfeb2662ff87fba0",
+  "preceding_failed_CI_head": "25c58a1dfb5b0aba6f8c486cfcc72dd5f327918f",
   "host_graph_darwin_flow_callback": true,
-  "discovery_fixture_exact_source_include": true
+  "discovery_fixture_exact_source_include": true,
+  "C_fixture_ObjC_IMP_warning_scoped": true
 }

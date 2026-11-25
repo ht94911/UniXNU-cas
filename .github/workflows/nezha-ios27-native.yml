@@ -1,7 +1,7 @@
 name: nezha iPhone27 Camera153 retained still configuration and request delivery
 on:
   push:
-    branches: [codex/ios27-camera153b-still-20261125]
+    branches: [codex/ios27-camera153c-still-20261125]
 permissions:
   contents: read
 concurrency:
