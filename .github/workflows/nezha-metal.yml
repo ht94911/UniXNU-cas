@@ -1,7 +1,7 @@
-name: nezha GPU087 native Context queue state - metal059
+name: nezha GPU088 cumulative upstream runtime-v2 - metal060
 on:
   push:
-    branches: [codex/ios27-gpu87-context-queues-metal059b-20261125]
+    branches: [codex/ios27-gpu88-upstream-cumulative-metal060-20261126]
   workflow_dispatch:
 permissions:
   contents: read
@@ -13,8 +13,8 @@ defaults:
     shell: bash
 env:
   MVK_CONFIG_USE_METAL_ARGUMENT_BUFFERS: "0"
-  UNIXNU_COMMIT: a3faa4a43cadcd288fbe9cee3794d5a120629742
-  ADRENO740_COMMIT: 1030485546ef7ebb9abbfb7c17fbca93cca40971
+  UNIXNU_COMMIT: e7bddb9a7eecdcf81f36da9fa38bd9d4d3f155c2
+  ADRENO740_COMMIT: 2962e289c9690aeb668072c170679e6fb28bf8de
   ABI_SHA256: d1c8a27d6e61787073c2c56a779ff4d5c43d86f2d23ac0c0fba0368af8dcdeae
   PROFILE_CHIP_ID: "0x44050a31"
   PROFILE_GMEM_BYTES: "0x1200000"
@@ -39,7 +39,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: UniXNU/UniXNU
-          ref: a3faa4a43cadcd288fbe9cee3794d5a120629742
+          ref: e7bddb9a7eecdcf81f36da9fa38bd9d4d3f155c2
           path: unixnu
           persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
@@ -136,9 +136,11 @@ jobs:
         id: plugin
         working-directory: unixnu
         run: ../device/ci/gpu-userland/logrun plugin python3 scripts/build-adreno-metal-plugin.py --target ios27 --iphone-24a446 --no-replay
-      - name: Bind changed runtime and test multi-level input and output planning
+      - name: Exercise the actual runtime-v2 frontend resource, heap, callback and pixel regressions
         id: runtime_source
-        run: device/ci/gpu-userland/logrun runtime-source python3 device/ci/gpu-userland/check-multi-level-output.py --unixnu unixnu --logs "$LOGS"
+        run: |
+          device/ci/gpu-userland/logrun runtime-v2-host python3 unixnu/scripts/check-native-metal-frontend-host.py --translator-source unixnu/.cache/gpu-reference/metal2vulkan
+          device/ci/gpu-userland/logrun runtime-source python3 device/ci/gpu-userland/check-runtime-v2-retention.py --unixnu unixnu --logs "$LOGS"
       - name: Test the actual patched allocator and bind its complete source
         id: buffer_reserve
         if: ${{ false }} # This subsystem is unchanged; current multi-level output has separate checks.

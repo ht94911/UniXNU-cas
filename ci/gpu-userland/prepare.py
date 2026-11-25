@@ -23,8 +23,8 @@ import urllib.parse
 
 HERE = Path(__file__).resolve().parent
 EXPECT = {
-    'unixnu': os.environ.get('UNIXNU_COMMIT', 'a3faa4a43cadcd288fbe9cee3794d5a120629742'),
-    'adreno740': os.environ.get('ADRENO740_COMMIT', '1030485546ef7ebb9abbfb7c17fbca93cca40971'),
+    'unixnu': os.environ.get('UNIXNU_COMMIT', 'e7bddb9a7eecdcf81f36da9fa38bd9d4d3f155c2'),
+    'adreno740': os.environ.get('ADRENO740_COMMIT', '2962e289c9690aeb668072c170679e6fb28bf8de'),
     'abi_sha256': os.environ.get('ABI_SHA256', 'd1c8a27d6e61787073c2c56a779ff4d5c43d86f2d23ac0c0fba0368af8dcdeae'),
 }
 SUBMODULES = ['drivers/Adreno740', 'drivers/AdrenoMetal', 'drivers/GopFramebuffer', 'kits/AdrenoPM4', 'kits/ArmSmmu4K']
@@ -121,33 +121,35 @@ def verify_ci_sources(ci_root):
 
 
 def fetch_commit(dest, urls, commit, sparse=None):
-    """Shallow fetch of exactly `commit` into a fresh repository at dest (first URL that serves it), then a detached checkout."""
-    dest.mkdir(parents=True)
+    """Fetch one exact public source revision; reuse an unchanged existing source checkout."""
+    dest = Path(dest)
+    if (dest / '.git').exists():
+        if out(['git', '-C', dest, 'rev-parse', 'HEAD']) == commit:
+            return urls[0]
+        raise ValueError('Existing source checkout has a different revision: ' + str(dest))
+    dest.mkdir(parents=True, exist_ok=True)
     must(['git', 'init', '-q', dest])
     if sparse:
         must(['git', '-C', dest, 'sparse-checkout', 'init', '--cone'])
         must(['git', '-C', dest, 'sparse-checkout', 'set', *sparse])
+    failures = []
     for url in urls:
-        run(['git', '-C', dest, 'remote', 'remove', 'origin'], quiet=True)
-        must(['git', '-C', dest, 'remote', 'add', 'origin', url])
-        fetch = ['git', '-c', 'http.lowSpeedLimit=1024', '-c', 'http.lowSpeedTime=45',
-                 '-C', dest, 'fetch', '-q', '--depth', '1',
-                 *(['--filter=blob:none'] if sparse else []), 'origin', commit]
-        label = dest.name + ' from ' + urllib.parse.urlparse(url).hostname
-        if run(fetch, timeout=300, label='fetch ' + label):
-            # A partial clone may fetch blobs during checkout as well.
-            if not run(['git', '-c', 'http.lowSpeedLimit=1024', '-c', 'http.lowSpeedTime=45',
-                        '-C', dest, 'checkout', '-q', 'FETCH_HEAD'],
-                       timeout=300, label='checkout ' + label):
-                continue
+        try:
+            must(['git', '-c', 'http.lowSpeedLimit=1024', '-c', 'http.lowSpeedTime=45',
+                  '-C', dest, 'fetch', '-q', '--depth', '1',
+                  *(['--filter=blob:none'] if sparse else []), url, commit], timeout=300)
+            must(['git', '-C', dest, 'checkout', '-q', '--detach', 'FETCH_HEAD'], timeout=300)
             if out(['git', '-C', dest, 'rev-parse', 'HEAD']) != commit:
-                sys.exit(f'{dest}: HEAD is not {commit}')
+                raise ValueError('Source revision mismatch')
             return url
-    sys.exit(f'{dest}: no mirror served {commit}')
+        except Exception as error:
+            failures.append(str(error))
+    raise ValueError('No public mirror served the pinned source: ' + str(dest) + ' ' + '; '.join(failures))
+
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--unixnu', type=Path)
     parser.add_argument('--record', type=Path)
     parser.add_argument('--check-sources-only', action='store_true')
@@ -155,102 +157,59 @@ def main():
     ci_root = HERE.parents[1]
     declared = verify_ci_sources(ci_root)
     if args.check_sources_only:
-        print(json.dumps({'passed': True, 'tracked_inputs': len(declared),
-                          'network_access': False, 'phone_operations': False}))
+        print(json.dumps({'passed': True, 'tracked_inputs': len(declared), 'network_access': False, 'phone_operations': False}))
         return
     if args.unixnu is None or args.record is None:
-        parser.error('--unixnu and --record are required unless --check-sources-only')
+        parser.error('--unixnu and --record are required')
     root = args.unixnu.resolve()
-    record = dict(expect=EXPECT)
-    record['ci_source_sha256'] = declared
-
-    # 1. UniXNU, its submodules and the user-client ABI header.
-    head = out(['git', '-C', root, 'rev-parse', 'HEAD'])
-    if head != EXPECT['unixnu']:
-        sys.exit(f'UniXNU checkout is {head}, expected {EXPECT["unixnu"]}')
-    must(['git', '-c', 'http.lowSpeedLimit=1024', '-c', 'http.lowSpeedTime=45', '-C', root, 'submodule', 'update', '--init', '--depth', '1', *SUBMODULES], retries=2, timeout=300, label='framework submodules')
+    if out(['git', '-C', root, 'rev-parse', 'HEAD']) != EXPECT['unixnu']:
+        raise ValueError('framework base differs from frozen upstream revision')
     modules = {}
-    for path in SUBMODULES:
-        pinned = out(['git', '-C', root, 'ls-tree', 'HEAD', path]).split()[2]
-        actual = out(['git', '-C', root / path, 'rev-parse', 'HEAD'])
-        if pinned != actual:
-            sys.exit(f'{path} is {actual}, UniXNU pins {pinned}')
-        modules[path] = actual
-    if modules['drivers/Adreno740'] != EXPECT['adreno740']:
-        sys.exit(f'drivers/Adreno740 is {modules["drivers/Adreno740"]}, expected {EXPECT["adreno740"]}')
+    selections = {
+        'drivers/Adreno740': ('https://github.com/UniXNU/Adreno740.git', EXPECT['adreno740']),
+        'drivers/AdrenoMetal': ('https://github.com/UniXNU/AdrenoMetal.git', 'b25e48e51dfdf4b3889ede6e701ab7dd59929a03'),
+        'drivers/GopFramebuffer': ('https://github.com/UniXNU/GopFramebuffer.git', '4cc8cb33f86baf4903c89f01a33872fb769d2457'),
+    }
+    for path in ['kits/AdrenoPM4', 'kits/ArmSmmu4K']:
+        commit = out(['git', '-C', root, 'ls-tree', 'HEAD', path]).split()[2]
+        selections[path] = ('https://github.com/UniXNU/' + path.split('/')[-1] + '.git', commit)
+    for path, (url, commit) in selections.items():
+        fetch_commit(root / path, [url], commit)
+        modules[path] = out(['git', '-C', root / path, 'rev-parse', 'HEAD'])
+        if modules[path] != commit:
+            raise ValueError('component base mismatch: ' + path)
     abi = root / 'drivers/Adreno740/NativeAdrenoABI.h'
     if sha(abi) != EXPECT['abi_sha256']:
-        sys.exit(f'NativeAdrenoABI.h sha256 {sha(abi)} differs from {EXPECT["abi_sha256"]}')
-    record.update(unixnu=head, submodules=modules,
-                  abi=dict(path='drivers/Adreno740/NativeAdrenoABI.h', sha256=sha(abi), adreno740_commit=modules['drivers/Adreno740']))
-    record['metal_source_policy'] = 'Current pinned upstream; no old17 frontend patch applied.'
-    host_context = HERE / 'patches/intel-signal-context.patch'
-    must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', '--check', host_context])
-    must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', host_context])
-    record['host_signal_context_patch'] = sha(host_context)
-    record['metal_source_policy'] = 'Pinned upstream plus Intel signal-context diagnostics; actual ARM signal-handler equality and both iOS target compilations are required. ENCODE source-line constants are not claimed byte-identical.'
+        raise ValueError('upstream ABI header mismatch')
+    record = dict(expect=EXPECT, unixnu=EXPECT['unixnu'], submodules=modules, ci_source_sha256=declared)
+    for repository, name in [(root, 'gpu088-core.patch'),
+                             (root / 'drivers/Adreno740', 'gpu088-native-abi.patch'),
+                             (root / 'drivers/AdrenoMetal', 'gpu088-metal.patch'),
+                             (root / 'drivers/GopFramebuffer', 'gpu088-gop.patch')]:
+        patch = HERE / 'patches' / name
+        must(['git', '-C', repository, 'apply', '--check', patch])
+        must(['git', '-C', repository, 'apply', patch])
+        record.setdefault('cumulative_patches', {})[name] = sha(patch)
+    if sha(abi) != '24b6d71df96a4849137ad6869c0bceea7e87602066df37b12c57f0cfa17c87a7':
+        raise ValueError('paired local 1024IB ABI differs from Native066')
+    record['abi'] = dict(path='drivers/Adreno740/NativeAdrenoABI.h', sha256=sha(abi), upstream_sha256=EXPECT['abi_sha256'], paired_native='Native066')
     alias = root / 'drivers/NativeMobileDisplay'
-    if not alias.exists():
-        alias.symlink_to('GopFramebuffer', target_is_directory=True)
-    timing_wire_patch = HERE / 'patches/display-timing-wire.patch'
-    must(['git', '-C', root / 'drivers/GopFramebuffer', 'apply', '--check', timing_wire_patch])
-    must(['git', '-C', root / 'drivers/GopFramebuffer', 'apply', timing_wire_patch])
-    record['display_timing_wire'] = dict(patch_sha256=sha(timing_wire_patch),
-        header_sha256=sha(root / 'drivers/GopFramebuffer/NativeGOPTiming.h'), hardware_verified=False)
-    wire = root / 'drivers/GopFramebuffer/NativeGOPWire.h'
-    record['display_wire'] = dict(path='drivers/GopFramebuffer/NativeGOPWire.h', sha256=sha(wire),
-                                  gop_framebuffer_commit=modules['drivers/GopFramebuffer'], alias='drivers/NativeMobileDisplay')
-
-    # 2. Mesa at the pin with the recorded patches.
-    # Explicit new-file metadata makes this upstream patch portable to the
-    # Intel runner's git. The added header and all executable changes are
-    # unchanged; the existing full reverse reconstruction stays mandatory.
-    metadata_patch = HERE / 'patches/mesa-new-file-mode.patch'
-    must(['git', '-C', root, 'apply', '--check', metadata_patch])
-    must(['git', '-C', root, 'apply', metadata_patch])
-    record['mesa_patch_metadata_fix'] = sha(metadata_patch)
-    context_recipe = HERE / 'patches/device-context-recipes.patch'
-    must(['git', '-C', root, 'apply', '--check', context_recipe])
-    must(['git', '-C', root, 'apply', context_recipe])
-    record['device_context_recipe_patch'] = sha(context_recipe)
-    upstream_recipe = HERE / 'patches/upstream-gpu-recipes.patch'
-    must(['git', '-C', root, 'apply', '--check', upstream_recipe])
-    must(['git', '-C', root, 'apply', upstream_recipe])
-    record['reviewed_upstream_GPU_recipe_patch'] = sha(upstream_recipe)
-    for repository, name in [(root, 'atomic-submit-recipes.patch'),
-                             (root / 'drivers/Adreno740', 'atomic-submit-driver.patch')]:
-        selected = HERE / 'patches' / name
-        must(['git', '-C', repository, 'apply', '--check', selected])
-        must(['git', '-C', repository, 'apply', selected])
-        record.setdefault('atomic_submit_patches', {})[name] = sha(selected)
-    assert sha(abi) == '24b6d71df96a4849137ad6869c0bceea7e87602066df37b12c57f0cfa17c87a7', 'Atomic submission wire header differs'
-    driver = root / 'drivers/Adreno740'
-    with tempfile.TemporaryDirectory(prefix='atomic-driver-') as temporary:
-        env = dict(os.environ, GIT_INDEX_FILE=str(Path(temporary) / 'index'))
-        def index(*words):
-            return subprocess.check_output(['git', '-C', str(driver), *words], env=env, text=True).strip()
-        index('read-tree', 'HEAD')
-        index('add', '-A')
-        assert index('write-tree') == '0e46e88101d3c24bd91abcc479a3eb8eee775af8', 'Atomic driver tree differs'
-    record['abi']['upstream_sha256'] = record['abi']['sha256']
-    record['abi']['sha256'] = sha(abi)
-    record['atomic_submit'] = dict(driver_revision='e0e559acdaaaf97d46903ea80904c6ea6eb541d8', driver_tree='0e46e88101d3c24bd91abcc479a3eb8eee775af8',
-        max_buffers=1024, wire_bytes=3104, actual_KMD_sha256='04591f5a3711d4ea68568ea3f7e993f2f57f2070de14e40d63d223c8c570a65e', hardware_verified=False)
+    if not alias.exists(): alias.symlink_to('GopFramebuffer', target_is_directory=True)
+    record['display_wire'] = dict(path='drivers/GopFramebuffer/NativeGOPWire.h', sha256=sha(root / 'drivers/GopFramebuffer/NativeGOPWire.h'))
+    record['display_timing_wire'] = dict(header_sha256=sha(root / 'drivers/GopFramebuffer/NativeGOPTiming.h'), hardware_verified=False)
     pins = json.loads((root / 'scripts/data/adreno-compiler-inputs.json').read_text())
     mesa = root / '.cache/mesa-work'
     url = fetch_commit(mesa, MESA_MIRRORS, pins['mesa']['commit'], pins['mesa']['sparse_directories'])
     tree = out(['git', '-C', mesa, 'rev-parse', 'HEAD^{tree}'])
-    if tree != pins['mesa']['tree']:
-        sys.exit(f'Mesa tree {tree} differs from the pin {pins["mesa"]["tree"]}')
-    for patch in pins['patches']:
-        must(['git', '-C', mesa, 'apply', '--whitespace=nowarn', root / patch])
+    if tree != pins['mesa']['tree']: raise ValueError('Mesa base tree differs')
+    for name in pins['patches']:
+        must(['git', '-C', mesa, 'apply', '--whitespace=nowarn', root / name])
     sys.path.insert(0, str(root / 'scripts'))
     from mesa_patch_identity import validate_recorded_patches
     validate_recorded_patches(root, mesa, pins)
-    assert sha(mesa / 'src/freedreno/vulkan/tu_knl_darwin.cc') == '04591f5a3711d4ea68568ea3f7e993f2f57f2070de14e40d63d223c8c570a65e', 'Compiled KMD source differs'
-    record['mesa'] = dict(url=url, commit=pins['mesa']['commit'], tree=tree,
-                          patches={p: sha(root / p) for p in pins['patches']})
-
+    record['mesa'] = dict(url=url, commit=pins['mesa']['commit'], tree=tree, patches={name: sha(root / name) for name in pins['patches']})
+    record['driver_cpu_profile'] = dict(actual_KMD=sha(mesa / 'src/freedreno/vulkan/tu_knl_darwin.cc'))
+    record['pipeline_cache_sharing'] = dict(source_sha256=sha(mesa / 'src/freedreno/vulkan/tu_pipeline.cc'))
     # 4. bison and the Python environment of build-turnip-darwin.py.
     progress('bison and Python build tools')
     bison = pins['bison']
@@ -287,205 +246,22 @@ def main():
     record['tools'] = dict(bison=bison_version, bison_sha256=bison['sha256'],
                            python_packages=out([venv / 'bin/pip', 'freeze', '--disable-pip-version-check']).splitlines())
 
-    # One reviewed host-architecture adaptation; iOS27 remains arm64e.
-    patch = HERE / 'patches/intel-host-bridge.patch'
-    must(['git', '-C', root, 'apply', '--check', patch])
-    must(['git', '-C', root, 'apply', patch])
-    record['recipe_patches'] = {patch.name: sha(patch)}
-    for repository, name in [(root, 'full-iphone-recipes.patch'),
-                             (root / 'drivers/AdrenoMetal', 'full-iphone-plugin.patch'),
-                             (root / 'drivers/AdrenoMetal', 'device-context-plugin.patch')]:
-        selected = HERE / 'patches' / name
-        must(['git', '-C', repository, 'apply', '--check', selected])
-        must(['git', '-C', repository, 'apply', selected])
-        record.setdefault('full_chain_patches', {})[name] = sha(selected)
-    selected = HERE / 'patches/upstream-gpu-plugin.patch'
-    must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', '--check', selected])
-    must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', selected])
-    record['reviewed_upstream_GPU_plugin_patch'] = sha(selected)
-    for repository, name in [(root, 'buffer-reserve-recipes.patch'),
-                             (root / 'drivers/AdrenoMetal', 'buffer-reserve-plugin.patch')]:
-        selected = HERE / 'patches' / name
-        must(['git', '-C', repository, 'apply', '--check', selected])
-        must(['git', '-C', repository, 'apply', selected])
-        record.setdefault('buffer_reserve_patches', {})[name] = sha(selected)
-    for repository, name in [(root, 'vulkan-operation-recipes.patch'),
-                             (root / 'drivers/AdrenoMetal', 'vulkan-operation-plugin.patch')]:
-        selected = HERE / 'patches' / name
-        must(['git', '-C', repository, 'apply', '--check', selected])
-        must(['git', '-C', repository, 'apply', selected])
-        record.setdefault('vulkan_operation_patches', {})[name] = sha(selected)
-    for repository, name in [(root, 'tiled-words-recipes.patch'),
-                             (root / 'drivers/AdrenoMetal', 'tiled-words-plugin.patch')]:
-        selected = HERE / 'patches' / name
-        must(['git', '-C', repository, 'apply', '--check', selected])
-        must(['git', '-C', repository, 'apply', selected])
-        record.setdefault('tiled_word_patches', {})[name] = sha(selected)
-    for repository, name in [(root, 'heap-copy-recipes.patch'),
-                             (root / 'drivers/AdrenoMetal', 'heap-copy-plugin.patch')]:
-        selected = HERE / 'patches' / name
-        must(['git', '-C', repository, 'apply', '--check', selected])
-        must(['git', '-C', repository, 'apply', selected])
-        record.setdefault('heap_copy_patches', {})[name] = sha(selected)
-    for repository, name in [(root, 'aligned-copy-recipes.patch'),
-                             (root / 'drivers/AdrenoMetal', 'aligned-copy-plugin.patch')]:
-        selected = HERE / 'patches' / name
-        must(['git', '-C', repository, 'apply', '--check', selected])
-        must(['git', '-C', repository, 'apply', selected])
-        record.setdefault('aligned_copy_patches', {})[name] = sha(selected)
-    for repository, name in [(root, 'linear-heap-recipes.patch'),
-                             (root / 'drivers/AdrenoMetal', 'linear-heap-plugin.patch')]:
-        selected = HERE / 'patches' / name
-        must(['git', '-C', repository, 'apply', '--check', selected])
-        must(['git', '-C', repository, 'apply', selected])
-        record.setdefault('linear_heap_patches', {})[name] = sha(selected)
-    for repository, name in [(root, 'runtime-963f-recipes.patch'),
-                             (root / 'drivers/AdrenoMetal', 'runtime-963f-plugin.patch')]:
-        selected = HERE / 'patches' / name
-        must(['git', '-C', repository, 'apply', '--check', selected])
-        must(['git', '-C', repository, 'apply', selected])
-        record.setdefault('runtime_963f_patches', {})[name] = sha(selected)
-    for repository, name in [(root, 'gpu048-recipes.patch'),
-                             (root / 'drivers/AdrenoMetal', 'gpu048-plugin.patch'),
-                             (root, 'gpu049-recipes.patch'),
-                             (root / 'drivers/AdrenoMetal', 'gpu049-plugin.patch'),
-                             (root, 'gpu051-recipes.patch'),
-                             (root / 'drivers/AdrenoMetal', 'gpu051-plugin.patch'),
-                             (root / 'drivers/AdrenoMetal', 'gpu052-plugin.patch'),
-                             (root, 'gpu053-recipes.patch'),
-                             (root / 'drivers/AdrenoMetal', 'gpu053-plugin.patch')]:
-        selected = HERE / 'patches' / name
-        must(['git', '-C', repository, 'apply', '--check', selected])
-        must(['git', '-C', repository, 'apply', selected])
-        record.setdefault('gpu048_patches', {})[name] = sha(selected)
-    # Apply only this three-file addition after the already qualified cumulative plugin.
-    selected = HERE / 'patches/gpu079-display-timing-plugin.patch'
-    must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', '--check', selected])
-    must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', selected])
-    record['display_timing_source_patch'] = sha(selected)
-    # The profile patch is introduced by the late runtime recipe. Keep the
-    # original KMD check above, then apply and check this distinct final source.
-    profile_patch = root / 'patches/mesa/turnip-driver-cpu-profile.patch'
-    must(['git', '-C', mesa, 'apply', '--check', profile_patch])
-    must(['git', '-C', mesa, 'apply', profile_patch])
-    # The cache-sharing patch is introduced by the same late recipe.
-    shared_cache_patch = root / 'patches/mesa/turnip-shaders-shared-across-pipeline-caches.patch'
-    must(['git', '-C', mesa, 'apply', '--check', shared_cache_patch])
-    must(['git', '-C', mesa, 'apply', shared_cache_patch])
-    record['pipeline_cache_sharing'] = dict(patch_sha256=sha(shared_cache_patch),
-        source_sha256=sha(mesa / 'src/freedreno/vulkan/tu_pipeline.cc'),
-        upstream='c34f018aafd6befd5dc93c05a8dccd5bdce6724b')
-    cache_first_patch = root / 'patches/mesa/turnip-darwin-sweep-retired-on-cache-miss.patch'
-    must(['git', '-C', mesa, 'apply', '--check', cache_first_patch])
-    must(['git', '-C', mesa, 'apply', cache_first_patch])
-    selected = HERE / 'patches/gpu062-submit-room-recipes.patch'
-    must(['git', '-C', root, 'apply', '--check', selected])
-    must(['git', '-C', root, 'apply', selected])
-    retry_patch = root / 'patches/mesa/turnip-darwin-submit-room-retry.patch'
-    shutil.copyfile(HERE / 'patches/submit-room-retry.patch', retry_patch)
-    must(['git', '-C', mesa, 'apply', '--check', retry_patch])
-    must(['git', '-C', mesa, 'apply', retry_patch])
-    record['submit_room_retry'] = dict(source_sha256=sha(mesa / 'src/freedreno/vulkan/tu_knl_darwin.cc'), patch_sha256=sha(retry_patch), kernel_idle_TTBR_guard_preserved=True)
-    final_pins = json.loads((root / 'scripts/data/adreno-compiler-inputs.json').read_text())
-    validate_recorded_patches(root, mesa, final_pins)
-    assert sha(mesa / 'src/freedreno/vulkan/tu_knl_darwin.cc') == '95b7650fc4149114f3f2e62d206872dd3e22239132012af809aa9a428f7c59e0'
-    record['mesa']['patches'] = {p: sha(root / p) for p in final_pins['patches']}
-    record['driver_cpu_profile'] = dict(original_KMD='04591f5a3711d4ea68568ea3f7e993f2f57f2070de14e40d63d223c8c570a65e',
-        actual_KMD=sha(mesa / 'src/freedreno/vulkan/tu_knl_darwin.cc'), patch_sha256=sha(profile_patch))
-    # Select the runtime only after its final recipe pin has been applied.
-    # 3. metal2vulkan at the pin.
     translator = json.loads((root / 'scripts/data/gpu-metal-vulkan-inputs.json').read_text())['translator']
     source = root / '.cache/gpu-reference/metal2vulkan'
     fetch_commit(source, [translator['repository']], translator['commit'])
     for name, digest in translator['files'].items():
-        if sha(source / name) != digest:
-            sys.exit(f'metal2vulkan {name} differs from its pinned hash')
+        if sha(source / name) != digest: raise ValueError('runtime pin file differs: ' + name)
     bridge_patches = sorted((root / 'drivers/AdrenoMetal/bridge/patches').glob('*.patch'))
-    record['metal2vulkan'] = dict(repository=translator['repository'], commit=translator['commit'],
-                                  bridge_patches={p.name: sha(p) for p in bridge_patches})
-
-    # The final bridge recipe applies these at plugin-build time. Record the
-    # complete patch set after all frontend patches have been installed.
-    bridge_patches = sorted((root / 'drivers/AdrenoMetal/bridge/patches').glob('*.patch'))
-    record['metal2vulkan']['bridge_patches'] = {p.name: sha(p) for p in bridge_patches}
-    record['runtime_policy'] = '963f0e64; retained A840 heap paths; upstream free thread; flow default off; exact pipeline waits'
-    record['buffer_reserve_policy'] = 'Reuse same-pool/type unused buffers; separate 64 MiB device budget; preserve address objects, pressure and teardown'
-    record['iphone_private_layout_policy'] = 'Explicit --iphone-24a446 excludes all iPad raw QuartzCore layout access; public policy only'
-    record['integrated_fulltest'] = 'One optional backboardd worker runs existing raw/Turnip/Metal checks alongside normal publication,without duplicate scanout'
-    record['device_context_policy'] = 'Each VkDevice has one connection,VA/cache/fence state;ordinary cache release outside retirement lock;enumeration does not touch live ports;CS startup failures return before writes'
-    record['fulltest_cache_policy'] = 'Reuse the writable published runtime directory and release the test frontend device owner reference'
-    record['GMEM_policy'] = 'Reviewed upstream memory-side colour/lazy-transient fixes;thread-local colour checks and race-free cached boot mode;device and imported host pixels verified only on hardware'
-    record['VA_teardown_policy'] = 'Remove both actual Mesa RB indices before freeing;actual-source real-RB and fake-Vulkan regression fixtures are mandatory'
-    record['quartzcore_fixture'] = 'not supplied: real iPhone metallibs remain local'
-    record['replay'] = 'disabled by the current upstream --no-replay option'
-    record['target'] = 'arm64e-apple-ios27.0'
-
-    for repository, name in [(root, 'gpu055-recipes.patch'),
-                             (root / 'drivers/AdrenoMetal', 'gpu055-plugin.patch')]:
-        selected = HERE / 'patches' / name
-        must(['git', '-C', repository, 'apply', '--check', selected])
-        must(['git', '-C', repository, 'apply', selected])
-        record.setdefault('gpu055_release_queue_patches', {})[name] = sha(selected)
-    for repository, name in [(root, 'gpu056-recipes.patch'),
-                             (root / 'drivers/AdrenoMetal', 'gpu056-plugin.patch')]:
-        selected = HERE / 'patches' / name
-        must(['git', '-C', repository, 'apply', '--check', selected])
-        must(['git', '-C', repository, 'apply', selected])
-        record.setdefault('gpu056_long_latency_patches', {})[name] = sha(selected)
-    # The original056 build failed at its producer-gap property access. This
-    # source-only follow-up also accepts the verified AccelServer primary prefix
-    # in the existing reader; the runtime40-patch tree stays unchanged.
-    selected = HERE / 'patches' / 'gpu056-observer-repair.patch'
-    must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', '--check', selected])
-    must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', selected])
-    record['gpu056_observer_repair_patch'] = sha(selected)
-    selected = HERE / 'patches' / 'gpu058-display-reader.patch'
-    must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', '--check', selected])
-    must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', selected])
-    record['gpu058_display_reader_patch'] = sha(selected)
-    selected = HERE / 'patches' / 'gpu061-display-sampler.patch'
-    must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', '--check', selected])
-    must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', selected])
-    record['gpu061_display_sampler_patch'] = sha(selected)
-    selected = HERE / 'patches' / 'gpu064-cache-panel.patch'
-    must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', '--unidiff-zero', '--check', selected])
-    must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', '--unidiff-zero', selected])
-    record['gpu064_cache_panel_patch'] = sha(selected)
-    selected = HERE / 'patches' / 'gpu066-stitch-modules.patch'
-    must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', '--check', selected])
-    must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', selected])
-    shutil.copyfile(HERE / 'fixtures/stitch_modules_host.mm', root / 'drivers/AdrenoMetal/bridge/stitch_modules_host.mm')
-    record['gpu066_stitch_modules_patch'] = sha(selected)
-    selected = HERE / 'patches' / 'gpu067-current-list-index.patch'
-    must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', '--check', selected])
-    must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', selected])
-    record['gpu067_current_list_index_patch'] = sha(selected)
-    selected = HERE / 'patches' / 'gpu068-index-observer-coverage.patch'
-    must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', '--check', selected])
-    must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', selected])
-    record['gpu068_index_observer_coverage_patch'] = sha(selected)
-    selected = HERE / 'patches' / 'gpu080-ui-update-wait-plugin.patch'
-    must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', '--check', selected])
-    must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', selected])
-    record['gpu080_ui_update_wait_patch'] = sha(selected)
-    selected = HERE / 'patches' / 'gpu085-context-signposts.patch'
-    must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', '--check', selected])
-    must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', selected])
-    record['gpu085_context_signposts_patch'] = sha(selected)
-    selected = HERE / 'patches' / 'gpu087-context-queues.patch'
-    must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', '--check', selected])
-    must(['git', '-C', root / 'drivers/AdrenoMetal', 'apply', selected])
-    record['gpu087_context_queues_patch'] = sha(selected)
-    bridge_patches = sorted((root / 'drivers/AdrenoMetal/bridge/patches').glob('*.patch'))
-    record['metal2vulkan']['bridge_patches'] = {p.name: sha(p) for p in bridge_patches}
-    progress('all pinned sources and patches verified')
+    if [p.name for p in bridge_patches] != ['0088-runtime-v2-local-retained.patch']:
+        raise ValueError('runtime-v2 active cumulative patch set differs')
+    record['metal2vulkan'] = dict(repository=translator['repository'], commit=translator['commit'], bridge_patches={p.name:sha(p) for p in bridge_patches})
+    record['runtime_policy'] = 'complete upstream runtime-v2 plus retained resource/heap wait identity, iOS QoS, Mach running-time clock and foreground demand backing'
+    record['iphone_private_layout_policy'] = 'iPhone24A446 guards retained; no iPad raw offset access'
+    record['device_context_policy'] = 'per-VkDevice native connection and VA; atomic1024IB, outside-lock release and cache-miss retirement retained'
+    record['replay'] = 'disabled'; record['target'] = 'arm64e-apple-ios27.0'
     args.record.parent.mkdir(parents=True, exist_ok=True)
     args.record.write_text(json.dumps(record, indent=2) + '\n')
-    print(json.dumps(record, indent=2))
-
+    progress('complete upstream and local source inputs verified')
 
 if __name__ == '__main__':
-    def interrupted(signum, frame):
-        raise KeyboardInterrupt('source preparation interrupted')
-    signal.signal(signal.SIGTERM, interrupted)
     main()
