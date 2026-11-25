@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: MIT */
-#include "NezhaCameraDiscovery.m"
+#include "../package/camera/userland/NezhaCameraDiscovery.m"
 #include <assert.h>
 #include <limits.h>
 
@@ -19,6 +19,14 @@ static unsigned preview_native_slot;
 static double preview_native_rotation;
 static CGSize preview_native_size;
 static CMFormatDescriptionRef preview_native_format;
+static unsigned photo_capture_calls;
+static id expected_photo_settings,expected_photo_delegate;
+static void photo_capture_fixture(id self,SEL selector,id settings,id delegate)
+{
+    assert(self==returned_device && selector==sel_registerName("capturePhotoWithSettings:delegate:") &&
+        settings==expected_photo_settings && delegate==expected_photo_delegate);
+    ++photo_capture_calls;
+}
 
 @interface NSObject (DiscoveryTestSelectors)
 + (CFArrayRef)_newFigCaptureSources;
@@ -277,6 +285,14 @@ int main(void)
         preview_first(returned_device,sel_registerName("_previewMonitorDidDisplayFirstPreviewFrame"));
         preview_timeout(returned_device,sel_registerName("_previewMonitorTimeout"));
         assert(preview_first_calls==1 && preview_timeout_calls==1);
+        original_photo_capture=(IMP)photo_capture_fixture;
+        expected_photo_settings=@"native-photo-settings";
+        expected_photo_delegate=@"native-photo-delegate";
+        for (unsigned i=0;i<24;++i)
+            photo_capture(returned_device,sel_registerName("capturePhotoWithSettings:delegate:"),
+                expected_photo_settings,expected_photo_delegate);
+        assert(photo_capture_calls==24);
+        puts("Camera photo observer:24 original calls preserve settings/delegate beyond the report limit");
         [returned_device release];returned_device=nil;
         Class constants=[MissingConstantFixture class];
         assert(!class_getInstanceMethod(constants,sel_registerName("required")));

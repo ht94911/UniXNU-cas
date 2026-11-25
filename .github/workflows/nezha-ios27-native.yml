@@ -1,7 +1,7 @@
-name: nezha iPhone27 Camera149b actual transfer drops and pixel pool results
+name: nezha iPhone27 Camera153 retained still configuration and request delivery
 on:
   push:
-    branches: [codex/ios27-camera149b-drop-20261125]
+    branches: [codex/ios27-camera153-still-20261125]
 permissions:
   contents: read
 concurrency:
@@ -26,7 +26,7 @@ jobs:
           persist-credentials: false
       - name: Prepare the existing encryption tool
         run: brew install openssl@3 > "$RUNNER_TEMP/camera-userland-setup.log" 2>&1
-      - name: Build and sign the Camera149b actual transfer drops and pixel pool results helper
+      - name: Build and sign the Camera153 retained still configuration and request delivery helper
         run: |
           set -euo pipefail
           export PATH="$(brew --prefix openssl@3)/bin:$PATH"

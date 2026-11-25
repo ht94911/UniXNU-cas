@@ -147,6 +147,58 @@ static void replace(CFDictionaryRef *where, CFDictionaryRef value)
     *where=value;
 }
 
+static void update_entry(const void *key,const void *value,void *context)
+{
+    CFDictionarySetValue((CFMutableDictionaryRef)context,key,value);
+}
+
+struct OutputUpdate { CFMutableDictionaryRef merged; bool nested,failed; };
+static void mark_entry(const void *key,const void *value,void *context)
+{
+    (void)key;(void)value;*(bool *)context=true;
+}
+
+static void update_output(const void *key,const void *value,void *context)
+{
+    struct OutputUpdate *update=context;
+    if (update->failed) return;
+    CFTypeRef current=CFDictionaryGetValue(update->merged,key);
+    bool nonempty=false;
+    if (update->nested && CFGetTypeID(value)==CFDictionaryGetTypeID())
+        CFDictionaryApplyFunction(value,mark_entry,&nonempty);
+    if (nonempty && current && CFGetTypeID(current)==CFDictionaryGetTypeID()) {
+        CFMutableDictionaryRef fields=CFDictionaryCreateMutableCopy(NULL,0,current);
+        if (!fields) { update->failed=true;return; }
+        CFDictionaryApplyFunction(value,update_entry,fields);
+        CFDictionarySetValue(update->merged,key,fields);CFRelease(fields);
+    } else CFDictionarySetValue(update->merged,key,value);
+}
+
+/* HakiOS updates each named output independently. The original24A446
+ * prepareForStillImageCapture path likewise sets a dictionary containing
+ * only StillImage when changing its retained-buffer count. Omitted outputs
+ * keep their existing pool, handler and enabled state. */
+static CFMutableDictionaryRef updated_outputs(CFDictionaryRef current,CFDictionaryRef value,bool nested)
+{
+    struct OutputUpdate update={CFDictionaryCreateMutableCopy(NULL,0,current),nested,false};
+    if (!update.merged) return NULL;
+    CFDictionaryApplyFunction(value,update_output,&update);
+    if (update.failed) { CFRelease(update.merged);return NULL; }
+    return update.merged;
+}
+
+static void report_output_state(const struct Stream *s,const char *operation,NezhaFigStatus status)
+{
+    static unsigned reports;
+    if (__atomic_fetch_add(&reports,1u,__ATOMIC_RELAXED)>=48) return;
+    fprintf(stderr,"nezha-camera: output-update %s status=%d sequence=%llu generation=%u running=%u "
+        "primary=%u/%u/%u secondary=%u/%u/%u still=%u/%u/%u pending=%u\n",operation,status,
+        (unsigned long long)s->preview.completed_sequence,s->generation,(unsigned)s->running,
+        (unsigned)(s->output[0].pool!=NULL),(unsigned)(s->output[0].handler!=NULL),(unsigned)s->output[0].running,
+        (unsigned)(s->output[1].pool!=NULL),(unsigned)(s->output[1].handler!=NULL),(unsigned)s->output[1].running,
+        (unsigned)(s->output[2].pool!=NULL),(unsigned)(s->output[2].handler!=NULL),(unsigned)s->output[2].running,s->stills);
+}
+
 static NezhaFigStatus validate_outputs(CFDictionaryRef configurations,
     CFDictionaryRef handlers, CFDictionaryRef enabled)
 {
@@ -337,10 +389,12 @@ static NezhaFigStatus stream_set(NezhaFigObject o,NezhaFigString key,const void 
             CFDictionaryRef *where=key_is(key,"VideoOutputConfigurations") ? &s->configurations :
                 key_is(key,"VideoOutputsEnabled") ? &s->enabled :
                 key_is(key,"VideoOutputHandlers") ? &s->handlers : &s->colors;
-            result=validate_outputs(where==&s->configurations ? value : s->configurations,
-                where==&s->handlers ? value : s->handlers, where==&s->enabled ? value : s->enabled);
-            if (result) return;
-            replace(where,value);
+            CFMutableDictionaryRef merged=updated_outputs(*where,value,where==&s->configurations);
+            if (!merged) { result=Unavailable;return; }
+            result=validate_outputs(where==&s->configurations ? merged : s->configurations,
+                where==&s->handlers ? merged : s->handlers, where==&s->enabled ? merged : s->enabled);
+            if (result) { CFRelease(merged);return; }
+            replace(where,merged);CFRelease(merged);
             if (where==&s->colors) { result=0;return; }
             __atomic_add_fetch(&s->generation,1u,__ATOMIC_RELEASE);
             result=refresh_outputs(s);
@@ -348,6 +402,8 @@ static NezhaFigStatus stream_set(NezhaFigObject o,NezhaFigString key,const void 
                 s->running=false;
                 for (unsigned i=0;i<3;++i) nezha_camera_graph_output_stop(&s->output[i]);
             }
+            report_output_state(s,where==&s->configurations ? "configurations" :
+                where==&s->handlers ? "handlers" : "enabled",result);
             return;
         }
         if (key_is(key,"StillImageCaptureNow")) {
@@ -355,6 +411,7 @@ static NezhaFigStatus stream_set(NezhaFigObject o,NezhaFigString key,const void 
             else if (!s->running || !s->output[2].running) result=Unavailable;
             else if (s->stills) result=-12781;
             else { s->stills=1;result=0; }
+            report_output_state(s,"StillImageCaptureNow",result);
             return;
         }
         if (key_is(key,"DeferAdditionOfAttachments")) {

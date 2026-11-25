@@ -26,12 +26,14 @@ static IMP original_input_init,original_session_start,original_session_commit,or
 static IMP original_capabilities_init,original_preferred_device,original_engine_init,original_engine_device,original_engine_input,original_engine_start,original_capture_available;
 static IMP original_capabilities_get;
 static IMP original_preview_queue,original_preview_format,original_preview_first,original_preview_timeout;
+static IMP original_photo_capture;
 static const struct NezhaFigDeviceVTable *(*source_vtable)(NezhaFigObject);
 static FILE *observations;
 static intptr_t av_slide,camera_ui_slide;
 static bool av_present,observers_installed,connection_observer_installed,session_observers_installed;
 static bool camera_ui_present,camera_ui_observers_installed,original_camera_client;
 static bool preview_observers_installed;
+static bool photo_observer_installed;
 static bool metal_required_installed;
 static const uint8_t av_uuid[16]={0xf2,0x7f,0x14,0xdb,0xc4,0xd4,0x3d,0xff,
     0x85,0x2b,0x2f,0x19,0x61,0xc9,0x44,0x35};
@@ -117,6 +119,17 @@ static void preview_timeout(id self,SEL selector)
         fprintf(observations,"nezha-camera-discovery: preview timeout ticks=%llu\n",
             (unsigned long long)mach_absolute_time());
     ((void (*)(id,SEL))original_preview_timeout)(self,selector);
+}
+
+static void photo_capture(id self,SEL selector,id settings,id delegate)
+{
+    static unsigned reported;
+    const bool report=__atomic_fetch_add(&reported,1u,__ATOMIC_RELAXED)<16;
+    if (report) fprintf(observations,"nezha-camera-discovery: original photo request entered ticks=%llu settings=%u delegate=%u\n",
+        (unsigned long long)mach_absolute_time(),(unsigned)(settings!=nil),(unsigned)(delegate!=nil));
+    ((void (*)(id,SEL,id,id))original_photo_capture)(self,selector,settings,delegate);
+    if (report) fprintf(observations,"nezha-camera-discovery: original photo request returned ticks=%llu\n",
+        (unsigned long long)mach_absolute_time());
 }
 
 static void session_commit(id self,SEL selector)
@@ -445,6 +458,20 @@ static void install_preview_observers(void)
     fputs("nezha-camera-discovery: original preview queue/format/first-display observers installed\n",observations);
 }
 
+static void install_photo_observer(void)
+{
+    if (!original_camera_client || !av_present || photo_observer_installed) return;
+    Class type=objc_getClass("AVCapturePhotoOutput");
+    Method method=type ? class_getInstanceMethod(type,sel_registerName("capturePhotoWithSettings:delegate:")):NULL;
+    IMP current=method ? method_getImplementation(method):NULL;
+    const char *encoding=method ? method_getTypeEncoding(method):NULL;
+    if (!current || !encoding || strcmp(encoding,"v32@0:8@16@24") ||
+        (uintptr_t)ptrauth_strip(current,ptrauth_key_function_pointer)!=(uintptr_t)(0x1ad962144ULL+av_slide)) return;
+    original_photo_capture=current;method_setImplementation(method,(IMP)photo_capture);
+    photo_observer_installed=true;
+    fputs("nezha-camera-discovery: original photo request observer installed\n",observations);
+}
+
 static void install_camera_ui_observers(void)
 {
     if (!original_camera_client || !camera_ui_present || camera_ui_observers_installed) return;
@@ -489,12 +516,13 @@ static void image_arrived(const struct mach_header *header,intptr_t slide)
         fputs("nezha-camera-discovery: exact GPU051 function constant required getter installed\n",observations);
     }
     if (observers_installed && connection_observer_installed &&
-        (!original_camera_client || (session_observers_installed && camera_ui_observers_installed && preview_observers_installed))) return;
+        (!original_camera_client || (session_observers_installed && camera_ui_observers_installed && preview_observers_installed && photo_observer_installed))) return;
     if (matches_uuid((const struct mach_header_64 *)header,av_uuid)) {av_present=true;av_slide=slide;}
     if (matches_uuid((const struct mach_header_64 *)header,camera_ui_uuid)) {camera_ui_present=true;camera_ui_slide=slide;}
     install_camera_ui_observers();
     install_session_observers();
     install_preview_observers();
+    install_photo_observer();
     if (!av_present) return;
     if (!connection_observer_installed) {
         Class connection=objc_getClass("NSXPCConnection");

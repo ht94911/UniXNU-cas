@@ -7,6 +7,7 @@
 #include <errno.h>
 #include <mach/mach.h>
 #include <mach/task_info.h>
+#include <mach/mach_time.h>
 #include <dlfcn.h>
 #include <mach-o/dyld.h>
 #include <objc/message.h>
@@ -34,6 +35,7 @@ static bool sources_installed;
 static bool source_init_installed;
 static bool publishing_installed;
 static bool stream_request_installed;
+static bool still_observers_installed;
 static intptr_t capture_slide;
 static IMP original;
 static IMP original_model_resource;
@@ -45,6 +47,7 @@ static pthread_mutex_t main_backings_lock=PTHREAD_MUTEX_INITIALIZER;
 static CFArrayRef main_backings;
 static IMP original_publishing;
 static IMP original_stream_request;
+static IMP original_still_capture,original_still_initiate,original_still_prepare,original_still_complete;
 static const struct NezhaFigDeviceVTable *(*source_vtable)(NezhaFigObject);
 static const char selector_name[]="sharedCaptureDeviceVendorWithDefaultDeviceCreateFunction:";
 static const char model_selector_name[]="URLForResource:withExtension:subdirectory:";
@@ -61,6 +64,8 @@ typedef NezhaFigStatus (*CameraCreate)(NezhaFigAllocator,NezhaFigString,NezhaFig
 /* Original @56@0:8i16{?=[8I]}20B52. ARM64 passes this 32-byte value
  * indirectly in x3, but its C/ObjC contract is a by-value audit token. */
 typedef struct {uint32_t val[8];} CameraAuditToken;
+
+#include "NezhaCameraStillObservers.h"
 
 static bool single_main_backing(id array)
 {
@@ -442,11 +447,12 @@ static void image_added(const struct mach_header *header,intptr_t slide)
         metal_required_installed=true;
         fputs("nezha-camera: exact GPU051 function constant required getter installed\n",stderr);
     }
-    if (installed && model_installed && device_ids_installed && publishing_installed && stream_request_installed && backings_init_installed && backings_list_installed && sources_installed && source_init_installed) return;
+    if (installed && model_installed && device_ids_installed && publishing_installed && stream_request_installed && backings_init_installed && backings_list_installed && sources_installed && source_init_installed && still_observers_installed) return;
     if (uuid_matches((const struct mach_header_64 *)header)) {
         capture_present=true;capture_slide=slide;
     }
     if (!capture_present) return;
+    install_still_observers();
     if (!source_vtable)
         source_vtable=(const struct NezhaFigDeviceVTable *(*)(NezhaFigObject))dlsym(RTLD_DEFAULT,"CMBaseObjectGetVTable");
     install_model_resource();
