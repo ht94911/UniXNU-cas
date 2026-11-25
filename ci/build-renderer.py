@@ -24,7 +24,12 @@ try:
  run('still-observer-host-build',['xcrun','clang','-std=gnu11','-Wall','-Wextra','-Werror','-fblocks','-fsanitize=address,undefined','-fno-sanitize-recover=all','-O1','-g','-I',fixture/'vendor-fixture','-I',fixture,root/'source/tests/camera-still-observers.c','-o',still_host])
  still_output=run('still-observer-host-run',[still_host]);assert b'96 original forwards' in still_output
  discovery_host=a.out/'discovery-host'
- run('discovery-host-build',['xcrun','clang','-fno-objc-arc','-fblocks','-Wall','-Wextra','-Werror','-Wno-unused-function','-fsanitize=address,undefined','-g','-O1',root/'source/camera-discovery.m','-framework','Foundation','-framework','CoreMedia','-o',discovery_host])
+ discovery_fixture=a.out/'discovery-fixture.m'
+ fixture_text=(root/'source/camera-discovery.m').read_text()
+ old_include='#include "../package/camera/userland/NezhaCameraDiscovery.m"'
+ assert fixture_text.count(old_include)==1
+ discovery_fixture.write_text(fixture_text.replace(old_include,'#include "'+(root/'source/NezhaCameraDiscovery.m').as_posix()+'"'))
+ run('discovery-host-build',['xcrun','clang','-fno-objc-arc','-fblocks','-Wall','-Wextra','-Werror','-Wno-unused-function','-fsanitize=address,undefined','-g','-O1',discovery_fixture,'-framework','Foundation','-framework','CoreMedia','-o',discovery_host])
  discovery_output=run('discovery-host-run',[discovery_host]);assert b'24 original calls' in discovery_output
  sdk=run('sdk',['xcrun','--sdk','iphoneos','--show-sdk-path']).decode().strip();out=a.out/'camera-userland';out.mkdir()
  units=['NezhaCameraPreview.c','NezhaCameraPixelBuffer.c','NezhaCameraGraphOutput.c','NezhaFigCapture24A446.c','NezhaCameraFigProvider.c','NezhaCameraFormats.c','NezhaCameraFactory.c','NezhaCameraDeviceBackend.c','NezhaCameraSystemVendor.m','NezhaCameraRenderer.m','upstream/hakios/camera_isp.c']

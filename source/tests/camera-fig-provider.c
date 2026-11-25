@@ -4,6 +4,7 @@
 #include "NezhaCameraFigProvider.h"
 #include "NezhaCameraFormats.h"
 #include "NezhaCameraFactory.h"
+#include "NezhaCameraRenderer.h"
 #include <Block.h>
 #include <dispatch/dispatch.h>
 #include <assert.h>
@@ -38,6 +39,11 @@ static bool backend_available;
 static bool ae_reject;
 static unsigned ae_requests;
 static bool metadata_controls_expected;
+/* The production renderer supplies this diagnostic callback. Darwin's
+ * linker requires a definition even for the weak declaration; the graph
+ * fixture validates the arguments without installing a system renderer. */
+void nezha_camera_renderer_report_flow(uint64_t sequence,uint64_t ticks,unsigned generation)
+{ assert(sequence && ticks && generation); }
 static struct hakios_camera_command ae_command;
 static NezhaFigStatus backend_exposure(void *p,const struct hakios_camera_command *c)
 { assert(p==&begins && c && c->command==HAKIOS_CAMERA_EXPOSURE && c->c>=3200);++ae_requests;ae_command=*c;return ae_reject ? -12781:0; }
