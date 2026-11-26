@@ -1,0 +1,17 @@
+predicate	category	owner_lane	target_phase	status	description
+raw:unimplemented.global	router	L3	Phase2	open	Default fallback before DualPathRouter enables any native category
+raw:blit.unsupported_format	blit	L3	Phase2	open	Blit pixel format not yet in Adreno840Caps.h or converter
+raw:blit.3d_or_compressed	blit	L3	Phase3	open	3D texture or UBWC/ASTC blit path pending Phase 3
+raw:compute.uncompiled_kernel	compute	L2	Phase2	open	Compute shader failed native adreno_compile or missing threadgroup specialization
+raw:compute.indirect_dispatch	compute	L3	Phase4	open	Indirect compute dispatch or ICB compute pending Phase 4
+raw:render.gmem_required	render	L3	Phase3	open	RenderPass needs TBDR GMEM (memoryless/fbfetch/MSAA resolve) before Phase 3 GMEM engine
+raw:render.ubwc_attachment	render	L3	Phase3	open	UBWC compressed render target or IOSurface pending Phase 3
+raw:render.ycbcr_or_xr10	render	L3	Phase3	open	Multi-plane YCbCr or BGR10_XR/BGRA10_XR stand-in pending Phase 3
+raw:render.fbfetch_blend	render	L2	Phase3	open	Framebuffer fetch / programmable blending shader lowering pending Phase 3
+raw:render.tess_or_amplify	render	L3	Phase4	open	Tessellation or vertex amplification pending Phase 4
+raw:render.indirect_or_icb	render	L3	Phase4	open	Indirect draw or Indirect Command Buffer pending Phase 4
+raw:render.msaa_resolve	render	L3	Phase4	open	Multisample render/resolve pass pending Phase 4
+raw:resource.heap_aliasing	resource	L3	Phase4	open	Placement heap aliasing with UBWC/tiling transitions pending Phase 4
+raw:resource.sparse_texture	resource	L1	Phase4	open	Sparse VA mapping (VmBindSparse) pending Phase 4
+raw:compiler.daemon_unavailable	compiler	L2	Phase4	open	Out-of-process NezhaShaderCompiler not yet active; cold compile falls back
+raw:sync.shared_event_cross_proc	sync	L1	Phase3	open	Cross-process shared event or writer promise pending ABI v3

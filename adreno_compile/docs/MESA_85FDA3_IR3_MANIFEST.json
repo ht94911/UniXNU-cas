@@ -1,0 +1,1786 @@
+{
+  "mesa_commit": "85fda3b36405bcaea8bffc64aa4f2651dc90770d",
+  "source_basis": "Pinned Git tree and Meson blobs",
+  "configuration": {
+    "with_nir_headers_only": false,
+    "with_tests": false,
+    "with_freedreno_vk": false
+  },
+  "excluded_source_prefixes": [
+    "src/freedreno/vulkan"
+  ],
+  "components": {
+    "nir": {
+      "directory": "src/compiler/nir",
+      "file_count": 314,
+      "meson_build": [
+        "src/compiler/nir/meson.build"
+      ],
+      "files": [
+        "src/compiler/nir/.clang-format",
+        "src/compiler/nir/README",
+        "src/compiler/nir/meson.build",
+        "src/compiler/nir/nir.c",
+        "src/compiler/nir/nir.h",
+        "src/compiler/nir/nir_algebraic.py",
+        "src/compiler/nir/nir_blend_equation_advanced_helper.h",
+        "src/compiler/nir/nir_builder.c",
+        "src/compiler/nir/nir_builder.h",
+        "src/compiler/nir/nir_builder_opcodes_h.py",
+        "src/compiler/nir/nir_builtin_builder.c",
+        "src/compiler/nir/nir_builtin_builder.h",
+        "src/compiler/nir/nir_clip_cull_distance_io_utils.c",
+        "src/compiler/nir/nir_clone.c",
+        "src/compiler/nir/nir_constant_expressions.h",
+        "src/compiler/nir/nir_constant_expressions.py",
+        "src/compiler/nir/nir_control_flow.c",
+        "src/compiler/nir/nir_control_flow.h",
+        "src/compiler/nir/nir_control_flow_private.h",
+        "src/compiler/nir/nir_conversion_builder.h",
+        "src/compiler/nir/nir_defines.h",
+        "src/compiler/nir/nir_deref.c",
+        "src/compiler/nir/nir_deref.h",
+        "src/compiler/nir/nir_divergence_analysis.c",
+        "src/compiler/nir/nir_dominance.c",
+        "src/compiler/nir/nir_dominance_lca.c",
+        "src/compiler/nir/nir_downgrade_pls_vars.c",
+        "src/compiler/nir/nir_fixup_is_exported.c",
+        "src/compiler/nir/nir_format_convert.c",
+        "src/compiler/nir/nir_format_convert.h",
+        "src/compiler/nir/nir_from_ssa.c",
+        "src/compiler/nir/nir_functions.c",
+        "src/compiler/nir/nir_gather_info.c",
+        "src/compiler/nir/nir_gather_output_deps.c",
+        "src/compiler/nir/nir_gather_tcs_info.c",
+        "src/compiler/nir/nir_gather_types.c",
+        "src/compiler/nir/nir_gather_xfb_info.c",
+        "src/compiler/nir/nir_gs_count_vertices.c",
+        "src/compiler/nir/nir_inline_helpers.h",
+        "src/compiler/nir/nir_inline_sysval.c",
+        "src/compiler/nir/nir_inline_uniforms.c",
+        "src/compiler/nir/nir_instr_set.c",
+        "src/compiler/nir/nir_instr_set.h",
+        "src/compiler/nir/nir_intrinsics.py",
+        "src/compiler/nir/nir_intrinsics_c.py",
+        "src/compiler/nir/nir_intrinsics_h.py",
+        "src/compiler/nir/nir_intrinsics_indices_h.py",
+        "src/compiler/nir/nir_io_add_xfb_info.c",
+        "src/compiler/nir/nir_legacy.c",
+        "src/compiler/nir/nir_legacy.h",
+        "src/compiler/nir/nir_linking_helpers.c",
+        "src/compiler/nir/nir_liveness.c",
+        "src/compiler/nir/nir_loop_analyze.c",
+        "src/compiler/nir/nir_loop_analyze.h",
+        "src/compiler/nir/nir_lower_abort.c",
+        "src/compiler/nir/nir_lower_alpha.c",
+        "src/compiler/nir/nir_lower_alu.c",
+        "src/compiler/nir/nir_lower_alu_width.c",
+        "src/compiler/nir/nir_lower_amul.c",
+        "src/compiler/nir/nir_lower_array_deref_of_vec.c",
+        "src/compiler/nir/nir_lower_atomics.c",
+        "src/compiler/nir/nir_lower_atomics_to_ssbo.c",
+        "src/compiler/nir/nir_lower_bit_size.c",
+        "src/compiler/nir/nir_lower_bitmap.c",
+        "src/compiler/nir/nir_lower_blend.c",
+        "src/compiler/nir/nir_lower_blend.h",
+        "src/compiler/nir/nir_lower_bool_to_float.c",
+        "src/compiler/nir/nir_lower_bool_to_int32.c",
+        "src/compiler/nir/nir_lower_calls_to_builtins.c",
+        "src/compiler/nir/nir_lower_cl_images.c",
+        "src/compiler/nir/nir_lower_clamp_color_outputs.c",
+        "src/compiler/nir/nir_lower_clip.c",
+        "src/compiler/nir/nir_lower_clip_disable.c",
+        "src/compiler/nir/nir_lower_clip_halfz.c",
+        "src/compiler/nir/nir_lower_const_arrays_to_uniforms.c",
+        "src/compiler/nir/nir_lower_continue_constructs.c",
+        "src/compiler/nir/nir_lower_convert_alu_types.c",
+        "src/compiler/nir/nir_lower_cooperative_matrix.c",
+        "src/compiler/nir/nir_lower_discard_if.c",
+        "src/compiler/nir/nir_lower_double_ops.c",
+        "src/compiler/nir/nir_lower_explicit_io.c",
+        "src/compiler/nir/nir_lower_fb_read.c",
+        "src/compiler/nir/nir_lower_flatshade.c",
+        "src/compiler/nir/nir_lower_floats.c",
+        "src/compiler/nir/nir_lower_flrp.c",
+        "src/compiler/nir/nir_lower_fp16_conv.c",
+        "src/compiler/nir/nir_lower_frag_coord_to_pixel_coord.c",
+        "src/compiler/nir/nir_lower_fragcolor.c",
+        "src/compiler/nir/nir_lower_fragcoord_wtrans.c",
+        "src/compiler/nir/nir_lower_frexp.c",
+        "src/compiler/nir/nir_lower_global_vars_to_local.c",
+        "src/compiler/nir/nir_lower_goto_ifs.c",
+        "src/compiler/nir/nir_lower_gs_intrinsics.c",
+        "src/compiler/nir/nir_lower_halt_to_return.c",
+        "src/compiler/nir/nir_lower_helper_writes.c",
+        "src/compiler/nir/nir_lower_idiv.c",
+        "src/compiler/nir/nir_lower_image.c",
+        "src/compiler/nir/nir_lower_image_atomics_to_global.c",
+        "src/compiler/nir/nir_lower_indirect_derefs_to_if_else_trees.c",
+        "src/compiler/nir/nir_lower_input_attachments.c",
+        "src/compiler/nir/nir_lower_int64.c",
+        "src/compiler/nir/nir_lower_int_to_float.c",
+        "src/compiler/nir/nir_lower_interpolation.c",
+        "src/compiler/nir/nir_lower_io.c",
+        "src/compiler/nir/nir_lower_io_array_vars_to_elements.c",
+        "src/compiler/nir/nir_lower_io_indirect_loads.c",
+        "src/compiler/nir/nir_lower_io_to_scalar.c",
+        "src/compiler/nir/nir_lower_io_vars_to_scalar.c",
+        "src/compiler/nir/nir_lower_io_vars_to_temporaries.c",
+        "src/compiler/nir/nir_lower_is_helper_invocation.c",
+        "src/compiler/nir/nir_lower_load_const_to_scalar.c",
+        "src/compiler/nir/nir_lower_locals_to_regs.c",
+        "src/compiler/nir/nir_lower_mediump.c",
+        "src/compiler/nir/nir_lower_mem_access_bit_sizes.c",
+        "src/compiler/nir/nir_lower_memcpy.c",
+        "src/compiler/nir/nir_lower_memory_model.c",
+        "src/compiler/nir/nir_lower_multiview.c",
+        "src/compiler/nir/nir_lower_non_uniform_access.c",
+        "src/compiler/nir/nir_lower_packing.c",
+        "src/compiler/nir/nir_lower_passthrough_edgeflags.c",
+        "src/compiler/nir/nir_lower_patch_vertices.c",
+        "src/compiler/nir/nir_lower_phis_to_scalar.c",
+        "src/compiler/nir/nir_lower_pntc_ytransform.c",
+        "src/compiler/nir/nir_lower_point_size.c",
+        "src/compiler/nir/nir_lower_point_smooth.c",
+        "src/compiler/nir/nir_lower_poly_line_smooth.c",
+        "src/compiler/nir/nir_lower_printf.c",
+        "src/compiler/nir/nir_lower_readonly_images_to_tex.c",
+        "src/compiler/nir/nir_lower_reg_intrinsics_to_ssa.c",
+        "src/compiler/nir/nir_lower_returns.c",
+        "src/compiler/nir/nir_lower_robust_access.c",
+        "src/compiler/nir/nir_lower_sample_shading.c",
+        "src/compiler/nir/nir_lower_samplers.c",
+        "src/compiler/nir/nir_lower_scratch.c",
+        "src/compiler/nir/nir_lower_scratch_to_var.c",
+        "src/compiler/nir/nir_lower_shader_calls.c",
+        "src/compiler/nir/nir_lower_single_sampled.c",
+        "src/compiler/nir/nir_lower_ssbo.c",
+        "src/compiler/nir/nir_lower_subgroups.c",
+        "src/compiler/nir/nir_lower_system_values.c",
+        "src/compiler/nir/nir_lower_sysvals_to_varyings.c",
+        "src/compiler/nir/nir_lower_task_shader.c",
+        "src/compiler/nir/nir_lower_terminate_to_demote.c",
+        "src/compiler/nir/nir_lower_tess_coord_z.c",
+        "src/compiler/nir/nir_lower_tex.c",
+        "src/compiler/nir/nir_lower_tex_shadow.c",
+        "src/compiler/nir/nir_lower_texcoord_replace.c",
+        "src/compiler/nir/nir_lower_texcoord_replace_late.c",
+        "src/compiler/nir/nir_lower_two_sided_color.c",
+        "src/compiler/nir/nir_lower_ubo_vec4.c",
+        "src/compiler/nir/nir_lower_undef_to_zero.c",
+        "src/compiler/nir/nir_lower_uniforms_to_ubo.c",
+        "src/compiler/nir/nir_lower_var_copies.c",
+        "src/compiler/nir/nir_lower_variable_initializers.c",
+        "src/compiler/nir/nir_lower_vars_to_ssa.c",
+        "src/compiler/nir/nir_lower_vec3_to_vec4.c",
+        "src/compiler/nir/nir_lower_vec_to_regs.c",
+        "src/compiler/nir/nir_lower_view_index_to_device_index.c",
+        "src/compiler/nir/nir_lower_viewport_transform.c",
+        "src/compiler/nir/nir_lower_workgroup_size.c",
+        "src/compiler/nir/nir_lower_wpos_center.c",
+        "src/compiler/nir/nir_lower_wpos_ytransform.c",
+        "src/compiler/nir/nir_lower_wrmasks.c",
+        "src/compiler/nir/nir_metadata.c",
+        "src/compiler/nir/nir_mod_analysis.c",
+        "src/compiler/nir/nir_move_output_stores_to_end.c",
+        "src/compiler/nir/nir_move_vec_src_uses_to_dest.c",
+        "src/compiler/nir/nir_normalize_cubemap_coords.c",
+        "src/compiler/nir/nir_normalize_sin_cos.c",
+        "src/compiler/nir/nir_opcodes.py",
+        "src/compiler/nir/nir_opcodes_c.py",
+        "src/compiler/nir/nir_opcodes_h.py",
+        "src/compiler/nir/nir_opt_access.c",
+        "src/compiler/nir/nir_opt_algebraic.py",
+        "src/compiler/nir/nir_opt_barriers.c",
+        "src/compiler/nir/nir_opt_barycentric.c",
+        "src/compiler/nir/nir_opt_call.c",
+        "src/compiler/nir/nir_opt_clip_cull_const.c",
+        "src/compiler/nir/nir_opt_combine_stores.c",
+        "src/compiler/nir/nir_opt_comparison_pre.c",
+        "src/compiler/nir/nir_opt_constant_folding.c",
+        "src/compiler/nir/nir_opt_copy_prop_vars.c",
+        "src/compiler/nir/nir_opt_copy_propagate.c",
+        "src/compiler/nir/nir_opt_cse.c",
+        "src/compiler/nir/nir_opt_dce.c",
+        "src/compiler/nir/nir_opt_dead_cf.c",
+        "src/compiler/nir/nir_opt_dead_write_vars.c",
+        "src/compiler/nir/nir_opt_find_array_copies.c",
+        "src/compiler/nir/nir_opt_fp_math_ctrl.c",
+        "src/compiler/nir/nir_opt_frag_coord_to_pixel_coord.c",
+        "src/compiler/nir/nir_opt_fragdepth.c",
+        "src/compiler/nir/nir_opt_gcm.c",
+        "src/compiler/nir/nir_opt_generate_bfi.c",
+        "src/compiler/nir/nir_opt_group_loads.c",
+        "src/compiler/nir/nir_opt_idiv_const.c",
+        "src/compiler/nir/nir_opt_if.c",
+        "src/compiler/nir/nir_opt_intrinsics.c",
+        "src/compiler/nir/nir_opt_large_constants.c",
+        "src/compiler/nir/nir_opt_licm.c",
+        "src/compiler/nir/nir_opt_load_skip_helpers.c",
+        "src/compiler/nir/nir_opt_load_store_vectorize.c",
+        "src/compiler/nir/nir_opt_loop.c",
+        "src/compiler/nir/nir_opt_loop_unroll.c",
+        "src/compiler/nir/nir_opt_memcpy.c",
+        "src/compiler/nir/nir_opt_move.c",
+        "src/compiler/nir/nir_opt_move_discards_to_top.c",
+        "src/compiler/nir/nir_opt_move_to_top.c",
+        "src/compiler/nir/nir_opt_mqsad.c",
+        "src/compiler/nir/nir_opt_non_uniform_access.c",
+        "src/compiler/nir/nir_opt_offsets.c",
+        "src/compiler/nir/nir_opt_peephole_select.c",
+        "src/compiler/nir/nir_opt_phi_precision.c",
+        "src/compiler/nir/nir_opt_phi_to_bool.c",
+        "src/compiler/nir/nir_opt_preamble.c",
+        "src/compiler/nir/nir_opt_ray_queries.c",
+        "src/compiler/nir/nir_opt_reassociate.c",
+        "src/compiler/nir/nir_opt_reassociate_bfi.c",
+        "src/compiler/nir/nir_opt_rematerialize_compares.c",
+        "src/compiler/nir/nir_opt_remove_phis.c",
+        "src/compiler/nir/nir_opt_shrink_stores.c",
+        "src/compiler/nir/nir_opt_shrink_vectors.c",
+        "src/compiler/nir/nir_opt_sink.c",
+        "src/compiler/nir/nir_opt_undef.c",
+        "src/compiler/nir/nir_opt_uniform_atomics.c",
+        "src/compiler/nir/nir_opt_uniform_subgroup.c",
+        "src/compiler/nir/nir_opt_uub.c",
+        "src/compiler/nir/nir_opt_varyings.c",
+        "src/compiler/nir/nir_opt_vectorize.c",
+        "src/compiler/nir/nir_opt_vectorize_io.c",
+        "src/compiler/nir/nir_opt_vectorize_io_vars.c",
+        "src/compiler/nir/nir_passthrough_gs.c",
+        "src/compiler/nir/nir_passthrough_tcs.c",
+        "src/compiler/nir/nir_phi_builder.c",
+        "src/compiler/nir/nir_phi_builder.h",
+        "src/compiler/nir/nir_precompiled.h",
+        "src/compiler/nir/nir_print.c",
+        "src/compiler/nir/nir_propagate_invariant.c",
+        "src/compiler/nir/nir_range_analysis.c",
+        "src/compiler/nir/nir_range_analysis.h",
+        "src/compiler/nir/nir_recompute_io_bases.c",
+        "src/compiler/nir/nir_remove_dead_variables.c",
+        "src/compiler/nir/nir_remove_outputs.c",
+        "src/compiler/nir/nir_remove_tex_shadow.c",
+        "src/compiler/nir/nir_repair_ssa.c",
+        "src/compiler/nir/nir_scale_fdiv.c",
+        "src/compiler/nir/nir_schedule.c",
+        "src/compiler/nir/nir_schedule.h",
+        "src/compiler/nir/nir_search.c",
+        "src/compiler/nir/nir_search.h",
+        "src/compiler/nir/nir_search_helpers.h",
+        "src/compiler/nir/nir_separate_merged_clip_cull_io.c",
+        "src/compiler/nir/nir_serialize.c",
+        "src/compiler/nir/nir_serialize.h",
+        "src/compiler/nir/nir_shader_bisect.c",
+        "src/compiler/nir/nir_shader_bisect.py",
+        "src/compiler/nir/nir_shader_compiler_options.h",
+        "src/compiler/nir/nir_softfloat.h",
+        "src/compiler/nir/nir_split_64bit_vec3_and_vec4.c",
+        "src/compiler/nir/nir_split_conversions.c",
+        "src/compiler/nir/nir_split_per_member_structs.c",
+        "src/compiler/nir/nir_split_var_copies.c",
+        "src/compiler/nir/nir_split_vars.c",
+        "src/compiler/nir/nir_stub.c",
+        "src/compiler/nir/nir_sweep.c",
+        "src/compiler/nir/nir_tcs_info.h",
+        "src/compiler/nir/nir_to_lcssa.c",
+        "src/compiler/nir/nir_trivialize_registers.c",
+        "src/compiler/nir/nir_unlower_io_to_vars.c",
+        "src/compiler/nir/nir_use_dominance.c",
+        "src/compiler/nir/nir_validate.c",
+        "src/compiler/nir/nir_vla.h",
+        "src/compiler/nir/nir_worklist.c",
+        "src/compiler/nir/nir_worklist.h",
+        "src/compiler/nir/nir_xfb_info.h",
+        "src/compiler/nir/tests/algebraic_parser_test.py",
+        "src/compiler/nir/tests/algebraic_tests.cpp",
+        "src/compiler/nir/tests/builder_tests.cpp",
+        "src/compiler/nir/tests/comparison_pre_tests.cpp",
+        "src/compiler/nir/tests/control_flow_tests.cpp",
+        "src/compiler/nir/tests/core_tests.cpp",
+        "src/compiler/nir/tests/dce_tests.cpp",
+        "src/compiler/nir/tests/format_convert_tests.cpp",
+        "src/compiler/nir/tests/fp_class_tests.cpp",
+        "src/compiler/nir/tests/load_store_vectorizer_tests.cpp",
+        "src/compiler/nir/tests/loop_analyze_tests.cpp",
+        "src/compiler/nir/tests/loop_unroll_tests.cpp",
+        "src/compiler/nir/tests/lower_alu_width_tests.cpp",
+        "src/compiler/nir/tests/lower_discard_if_tests.cpp",
+        "src/compiler/nir/tests/minimize_call_live_states_test.cpp",
+        "src/compiler/nir/tests/mod_analysis_tests.cpp",
+        "src/compiler/nir/tests/negative_equal_tests.cpp",
+        "src/compiler/nir/tests/nir_algebraic_pattern_test.cpp",
+        "src/compiler/nir/tests/nir_algebraic_pattern_test.h",
+        "src/compiler/nir/tests/nir_opt_varyings_test.h",
+        "src/compiler/nir/tests/nir_test.h",
+        "src/compiler/nir/tests/opt_if_tests.cpp",
+        "src/compiler/nir/tests/opt_large_constants_tests.cpp",
+        "src/compiler/nir/tests/opt_licm_tests.cpp",
+        "src/compiler/nir/tests/opt_loop_tests.cpp",
+        "src/compiler/nir/tests/opt_peephole_select.cpp",
+        "src/compiler/nir/tests/opt_shrink_vectors_tests.cpp",
+        "src/compiler/nir/tests/opt_varyings_tests_bicm_binary_alu.cpp",
+        "src/compiler/nir/tests/opt_varyings_tests_bicm_sysval.cpp",
+        "src/compiler/nir/tests/opt_varyings_tests_dead_input.cpp",
+        "src/compiler/nir/tests/opt_varyings_tests_dead_output.cpp",
+        "src/compiler/nir/tests/opt_varyings_tests_dedup.cpp",
+        "src/compiler/nir/tests/opt_varyings_tests_dedup_multiple.cpp",
+        "src/compiler/nir/tests/opt_varyings_tests_prop_const.cpp",
+        "src/compiler/nir/tests/opt_varyings_tests_prop_ubo.cpp",
+        "src/compiler/nir/tests/opt_varyings_tests_prop_uniform.cpp",
+        "src/compiler/nir/tests/opt_varyings_tests_prop_uniform_expr.cpp",
+        "src/compiler/nir/tests/range_analysis_tests.cpp",
+        "src/compiler/nir/tests/serialize_tests.cpp",
+        "src/compiler/nir/tests/vars_tests.cpp"
+      ]
+    },
+    "spirv": {
+      "directory": "src/compiler/spirv",
+      "file_count": 36,
+      "meson_build": [
+        "src/compiler/spirv/meson.build"
+      ],
+      "files": [
+        "src/compiler/spirv/GLSL.ext.AMD.h",
+        "src/compiler/spirv/GLSL.std.450.h",
+        "src/compiler/spirv/NonSemanticShaderDebugInfo100.h",
+        "src/compiler/spirv/OpenCL.std.h",
+        "src/compiler/spirv/gl_spirv.c",
+        "src/compiler/spirv/meson.build",
+        "src/compiler/spirv/nir_spirv.h",
+        "src/compiler/spirv/spir-v.xml",
+        "src/compiler/spirv/spirv.core.grammar.json",
+        "src/compiler/spirv/spirv.h",
+        "src/compiler/spirv/spirv2nir.c",
+        "src/compiler/spirv/spirv_info_gen.py",
+        "src/compiler/spirv/spirv_internal_exts.h",
+        "src/compiler/spirv/spirv_to_nir.c",
+        "src/compiler/spirv/tests/avail_vis.cpp",
+        "src/compiler/spirv/tests/cmat.cpp",
+        "src/compiler/spirv/tests/control_flow_tests.cpp",
+        "src/compiler/spirv/tests/helpers.h",
+        "src/compiler/spirv/tests/non_semantic.cpp",
+        "src/compiler/spirv/tests/spirv-to-c-array.py",
+        "src/compiler/spirv/tests/volatile.cpp",
+        "src/compiler/spirv/tests/workarounds.cpp",
+        "src/compiler/spirv/vtn_alu.c",
+        "src/compiler/spirv/vtn_amd.c",
+        "src/compiler/spirv/vtn_bindgen2.c",
+        "src/compiler/spirv/vtn_cfg.c",
+        "src/compiler/spirv/vtn_cmat.c",
+        "src/compiler/spirv/vtn_debug.c",
+        "src/compiler/spirv/vtn_gather_types_c.py",
+        "src/compiler/spirv/vtn_generator_ids_h.py",
+        "src/compiler/spirv/vtn_glsl450.c",
+        "src/compiler/spirv/vtn_opencl.c",
+        "src/compiler/spirv/vtn_private.h",
+        "src/compiler/spirv/vtn_structured_cfg.c",
+        "src/compiler/spirv/vtn_subgroup.c",
+        "src/compiler/spirv/vtn_variables.c"
+      ]
+    },
+    "ir3": {
+      "directory": "src/freedreno/ir3",
+      "file_count": 79,
+      "meson_build": [
+        "src/freedreno/ir3/meson.build"
+      ],
+      "files": [
+        "src/freedreno/ir3/.dir-locals.el",
+        "src/freedreno/ir3/.editorconfig",
+        "src/freedreno/ir3/disasm-a3xx.c",
+        "src/freedreno/ir3/instr-a3xx.h",
+        "src/freedreno/ir3/ir3.c",
+        "src/freedreno/ir3/ir3.h",
+        "src/freedreno/ir3/ir3_a4xx.c",
+        "src/freedreno/ir3/ir3_a6xx.c",
+        "src/freedreno/ir3/ir3_alias.c",
+        "src/freedreno/ir3/ir3_array_to_ssa.c",
+        "src/freedreno/ir3/ir3_assembler.c",
+        "src/freedreno/ir3/ir3_assembler.h",
+        "src/freedreno/ir3/ir3_cf.c",
+        "src/freedreno/ir3/ir3_compiler.c",
+        "src/freedreno/ir3/ir3_compiler.h",
+        "src/freedreno/ir3/ir3_compiler_nir.c",
+        "src/freedreno/ir3/ir3_context.c",
+        "src/freedreno/ir3/ir3_context.h",
+        "src/freedreno/ir3/ir3_cp.c",
+        "src/freedreno/ir3/ir3_cse.c",
+        "src/freedreno/ir3/ir3_dce.c",
+        "src/freedreno/ir3/ir3_delay.c",
+        "src/freedreno/ir3/ir3_disk_cache.c",
+        "src/freedreno/ir3/ir3_dominance.c",
+        "src/freedreno/ir3/ir3_image.c",
+        "src/freedreno/ir3/ir3_image.h",
+        "src/freedreno/ir3/ir3_legalize.c",
+        "src/freedreno/ir3/ir3_legalize_relative.c",
+        "src/freedreno/ir3/ir3_lexer.l",
+        "src/freedreno/ir3/ir3_liveness.c",
+        "src/freedreno/ir3/ir3_lower_parallelcopy.c",
+        "src/freedreno/ir3/ir3_lower_shared_phi.c",
+        "src/freedreno/ir3/ir3_lower_spill.c",
+        "src/freedreno/ir3/ir3_lower_subgroups.c",
+        "src/freedreno/ir3/ir3_merge_regs.c",
+        "src/freedreno/ir3/ir3_nir.c",
+        "src/freedreno/ir3/ir3_nir.h",
+        "src/freedreno/ir3/ir3_nir_analyze_ubo_ranges.c",
+        "src/freedreno/ir3/ir3_nir_branch_and_or_not.py",
+        "src/freedreno/ir3/ir3_nir_imul.py",
+        "src/freedreno/ir3/ir3_nir_lower_64b.c",
+        "src/freedreno/ir3/ir3_nir_lower_driver_params_to_ubo.c",
+        "src/freedreno/ir3/ir3_nir_lower_io_offsets.c",
+        "src/freedreno/ir3/ir3_nir_lower_layer_id.c",
+        "src/freedreno/ir3/ir3_nir_lower_load_barycentric_at_offset.c",
+        "src/freedreno/ir3/ir3_nir_lower_load_sample_pos.c",
+        "src/freedreno/ir3/ir3_nir_lower_push_consts_to_preamble.c",
+        "src/freedreno/ir3/ir3_nir_lower_shading_rate.c",
+        "src/freedreno/ir3/ir3_nir_lower_tess.c",
+        "src/freedreno/ir3/ir3_nir_lower_tex_prefetch.c",
+        "src/freedreno/ir3/ir3_nir_move_varying_inputs.c",
+        "src/freedreno/ir3/ir3_nir_opt_preamble.c",
+        "src/freedreno/ir3/ir3_nir_trig.py",
+        "src/freedreno/ir3/ir3_nir_triop_bitwise.py",
+        "src/freedreno/ir3/ir3_opt_predicates.c",
+        "src/freedreno/ir3/ir3_parser.y",
+        "src/freedreno/ir3/ir3_parser_support.c",
+        "src/freedreno/ir3/ir3_postsched.c",
+        "src/freedreno/ir3/ir3_preamble.c",
+        "src/freedreno/ir3/ir3_print.c",
+        "src/freedreno/ir3/ir3_ra.c",
+        "src/freedreno/ir3/ir3_ra.h",
+        "src/freedreno/ir3/ir3_ra_predicates.c",
+        "src/freedreno/ir3/ir3_ra_validate.c",
+        "src/freedreno/ir3/ir3_reconvergence.c",
+        "src/freedreno/ir3/ir3_remove_unreachable.c",
+        "src/freedreno/ir3/ir3_rpt.c",
+        "src/freedreno/ir3/ir3_sched.c",
+        "src/freedreno/ir3/ir3_shader.c",
+        "src/freedreno/ir3/ir3_shader.h",
+        "src/freedreno/ir3/ir3_shader_bisect.c",
+        "src/freedreno/ir3/ir3_shader_bisect.py",
+        "src/freedreno/ir3/ir3_shared_folding.c",
+        "src/freedreno/ir3/ir3_shared_ra.c",
+        "src/freedreno/ir3/ir3_spill.c",
+        "src/freedreno/ir3/ir3_validate.c",
+        "src/freedreno/ir3/meson.build",
+        "src/freedreno/ir3/tests/delay.c",
+        "src/freedreno/ir3/tests/disasm.c"
+      ]
+    },
+    "fdl": {
+      "directory": "src/freedreno/fdl",
+      "file_count": 15,
+      "meson_build": [
+        "src/freedreno/fdl/meson.build"
+      ],
+      "files": [
+        "src/freedreno/fdl/fd5_layout.c",
+        "src/freedreno/fdl/fd5_layout_test.c",
+        "src/freedreno/fdl/fd6_format_table.c",
+        "src/freedreno/fdl/fd6_format_table.h",
+        "src/freedreno/fdl/fd6_layout.c",
+        "src/freedreno/fdl/fd6_layout_test.c",
+        "src/freedreno/fdl/fd6_tiled_memcpy.cc",
+        "src/freedreno/fdl/fd6_view.cc",
+        "src/freedreno/fdl/fd_layout_test.c",
+        "src/freedreno/fdl/fd_layout_test.h",
+        "src/freedreno/fdl/freedreno_layout.c",
+        "src/freedreno/fdl/freedreno_layout.h",
+        "src/freedreno/fdl/freedreno_lrz_layout.c",
+        "src/freedreno/fdl/freedreno_lrz_layout.h",
+        "src/freedreno/fdl/meson.build"
+      ]
+    },
+    "common": {
+      "directory": "src/freedreno/common",
+      "file_count": 29,
+      "meson_build": [
+        "src/freedreno/common/meson.build"
+      ],
+      "files": [
+        "src/freedreno/common/README.rst",
+        "src/freedreno/common/disasm.h",
+        "src/freedreno/common/fd2_hw.h",
+        "src/freedreno/common/fd3_hw.h",
+        "src/freedreno/common/fd4_hw.h",
+        "src/freedreno/common/fd5_hw.h",
+        "src/freedreno/common/fd6_gmem_cache.h",
+        "src/freedreno/common/fd6_hw.h",
+        "src/freedreno/common/fd6_pack.h",
+        "src/freedreno/common/fd_hw_common.h",
+        "src/freedreno/common/freedreno_common.h",
+        "src/freedreno/common/freedreno_dev_info.c",
+        "src/freedreno/common/freedreno_dev_info.h",
+        "src/freedreno/common/freedreno_dev_info.py",
+        "src/freedreno/common/freedreno_devices.py",
+        "src/freedreno/common/freedreno_gpu_event.h",
+        "src/freedreno/common/freedreno_guardband.h",
+        "src/freedreno/common/freedreno_lrz.h",
+        "src/freedreno/common/freedreno_pm4.h",
+        "src/freedreno/common/freedreno_rd_output.c",
+        "src/freedreno/common/freedreno_rd_output.h",
+        "src/freedreno/common/freedreno_stompable_regs.h",
+        "src/freedreno/common/freedreno_ubwc.h",
+        "src/freedreno/common/freedreno_uuid.c",
+        "src/freedreno/common/freedreno_uuid.h",
+        "src/freedreno/common/freedreno_vrs.h",
+        "src/freedreno/common/meson.build",
+        "src/freedreno/common/msm_proto.h",
+        "src/freedreno/common/redump.h"
+      ]
+    },
+    "registers": {
+      "directory": "src/freedreno/registers",
+      "file_count": 33,
+      "meson_build": [
+        "src/freedreno/registers/adreno/meson.build",
+        "src/freedreno/registers/meson.build"
+      ],
+      "files": [
+        "src/freedreno/registers/.gitignore",
+        "src/freedreno/registers/adreno.xml",
+        "src/freedreno/registers/adreno/a2xx.xml",
+        "src/freedreno/registers/adreno/a2xx_perfcntrs.json",
+        "src/freedreno/registers/adreno/a3xx.xml",
+        "src/freedreno/registers/adreno/a4xx.xml",
+        "src/freedreno/registers/adreno/a5xx.xml",
+        "src/freedreno/registers/adreno/a5xx_perfcntrs.json",
+        "src/freedreno/registers/adreno/a6xx.xml",
+        "src/freedreno/registers/adreno/a6xx_descriptors.xml",
+        "src/freedreno/registers/adreno/a6xx_enums.xml",
+        "src/freedreno/registers/adreno/a6xx_gmu.xml",
+        "src/freedreno/registers/adreno/a6xx_perfcntrs.json",
+        "src/freedreno/registers/adreno/a6xx_perfcntrs.xml",
+        "src/freedreno/registers/adreno/a7xx_enums.xml",
+        "src/freedreno/registers/adreno/a7xx_perfcntrs.json",
+        "src/freedreno/registers/adreno/a7xx_perfcntrs.xml",
+        "src/freedreno/registers/adreno/a8xx_descriptors.xml",
+        "src/freedreno/registers/adreno/a8xx_enums.xml",
+        "src/freedreno/registers/adreno/a8xx_perfcntrs.json",
+        "src/freedreno/registers/adreno/a8xx_perfcntrs.xml",
+        "src/freedreno/registers/adreno/adreno_common.xml",
+        "src/freedreno/registers/adreno/adreno_control_regs.xml",
+        "src/freedreno/registers/adreno/adreno_pipe_regs.xml",
+        "src/freedreno/registers/adreno/adreno_pm4.xml",
+        "src/freedreno/registers/adreno/meson.build",
+        "src/freedreno/registers/adreno/ocmem.xml",
+        "src/freedreno/registers/freedreno_copyright.xml",
+        "src/freedreno/registers/gen_header.py",
+        "src/freedreno/registers/meson.build",
+        "src/freedreno/registers/rules-fd.txt",
+        "src/freedreno/registers/rules-fd.xsd",
+        "src/freedreno/registers/text-format.txt"
+      ]
+    }
+  },
+  "libraries": {
+    "nir": {
+      "meson_build": "src/compiler/nir/meson.build",
+      "meson_target": "_libnir",
+      "sources": [
+        "src/compiler/nir/nir.c",
+        "src/compiler/nir/nir_builder.c",
+        "src/compiler/nir/nir_builtin_builder.c",
+        "src/compiler/nir/nir_clip_cull_distance_io_utils.c",
+        "src/compiler/nir/nir_clone.c",
+        "src/compiler/nir/nir_control_flow.c",
+        "src/compiler/nir/nir_deref.c",
+        "src/compiler/nir/nir_divergence_analysis.c",
+        "src/compiler/nir/nir_dominance.c",
+        "src/compiler/nir/nir_dominance_lca.c",
+        "src/compiler/nir/nir_downgrade_pls_vars.c",
+        "src/compiler/nir/nir_fixup_is_exported.c",
+        "src/compiler/nir/nir_format_convert.c",
+        "src/compiler/nir/nir_from_ssa.c",
+        "src/compiler/nir/nir_functions.c",
+        "src/compiler/nir/nir_gather_info.c",
+        "src/compiler/nir/nir_gather_output_deps.c",
+        "src/compiler/nir/nir_gather_tcs_info.c",
+        "src/compiler/nir/nir_gather_types.c",
+        "src/compiler/nir/nir_gather_xfb_info.c",
+        "src/compiler/nir/nir_opt_group_loads.c",
+        "src/compiler/nir/nir_gs_count_vertices.c",
+        "src/compiler/nir/nir_inline_sysval.c",
+        "src/compiler/nir/nir_inline_uniforms.c",
+        "src/compiler/nir/nir_instr_set.c",
+        "src/compiler/nir/nir_io_add_xfb_info.c",
+        "src/compiler/nir/nir_legacy.c",
+        "src/compiler/nir/nir_linking_helpers.c",
+        "src/compiler/nir/nir_liveness.c",
+        "src/compiler/nir/nir_loop_analyze.c",
+        "src/compiler/nir/nir_lower_abort.c",
+        "src/compiler/nir/nir_lower_alu.c",
+        "src/compiler/nir/nir_lower_alu_width.c",
+        "src/compiler/nir/nir_lower_alpha.c",
+        "src/compiler/nir/nir_lower_amul.c",
+        "src/compiler/nir/nir_lower_array_deref_of_vec.c",
+        "src/compiler/nir/nir_lower_atomics_to_ssbo.c",
+        "src/compiler/nir/nir_lower_bitmap.c",
+        "src/compiler/nir/nir_lower_blend.c",
+        "src/compiler/nir/nir_lower_bool_to_float.c",
+        "src/compiler/nir/nir_lower_bool_to_int32.c",
+        "src/compiler/nir/nir_lower_calls_to_builtins.c",
+        "src/compiler/nir/nir_lower_cl_images.c",
+        "src/compiler/nir/nir_lower_clamp_color_outputs.c",
+        "src/compiler/nir/nir_lower_clip.c",
+        "src/compiler/nir/nir_lower_clip_disable.c",
+        "src/compiler/nir/nir_lower_clip_halfz.c",
+        "src/compiler/nir/nir_lower_const_arrays_to_uniforms.c",
+        "src/compiler/nir/nir_lower_continue_constructs.c",
+        "src/compiler/nir/nir_lower_convert_alu_types.c",
+        "src/compiler/nir/nir_lower_cooperative_matrix.c",
+        "src/compiler/nir/nir_lower_variable_initializers.c",
+        "src/compiler/nir/nir_lower_discard_if.c",
+        "src/compiler/nir/nir_lower_double_ops.c",
+        "src/compiler/nir/nir_lower_explicit_io.c",
+        "src/compiler/nir/nir_lower_fb_read.c",
+        "src/compiler/nir/nir_lower_flatshade.c",
+        "src/compiler/nir/nir_lower_floats.c",
+        "src/compiler/nir/nir_lower_flrp.c",
+        "src/compiler/nir/nir_lower_fp16_conv.c",
+        "src/compiler/nir/nir_lower_fragcoord_wtrans.c",
+        "src/compiler/nir/nir_lower_frag_coord_to_pixel_coord.c",
+        "src/compiler/nir/nir_lower_fragcolor.c",
+        "src/compiler/nir/nir_lower_frexp.c",
+        "src/compiler/nir/nir_lower_global_vars_to_local.c",
+        "src/compiler/nir/nir_lower_goto_ifs.c",
+        "src/compiler/nir/nir_lower_gs_intrinsics.c",
+        "src/compiler/nir/nir_lower_halt_to_return.c",
+        "src/compiler/nir/nir_lower_helper_writes.c",
+        "src/compiler/nir/nir_lower_load_const_to_scalar.c",
+        "src/compiler/nir/nir_lower_locals_to_regs.c",
+        "src/compiler/nir/nir_lower_idiv.c",
+        "src/compiler/nir/nir_lower_image.c",
+        "src/compiler/nir/nir_lower_image_atomics_to_global.c",
+        "src/compiler/nir/nir_lower_indirect_derefs_to_if_else_trees.c",
+        "src/compiler/nir/nir_lower_input_attachments.c",
+        "src/compiler/nir/nir_lower_int64.c",
+        "src/compiler/nir/nir_lower_interpolation.c",
+        "src/compiler/nir/nir_lower_int_to_float.c",
+        "src/compiler/nir/nir_lower_io.c",
+        "src/compiler/nir/nir_lower_io_array_vars_to_elements.c",
+        "src/compiler/nir/nir_lower_io_indirect_loads.c",
+        "src/compiler/nir/nir_lower_io_vars_to_temporaries.c",
+        "src/compiler/nir/nir_lower_io_to_scalar.c",
+        "src/compiler/nir/nir_lower_io_vars_to_scalar.c",
+        "src/compiler/nir/nir_lower_is_helper_invocation.c",
+        "src/compiler/nir/nir_lower_multiview.c",
+        "src/compiler/nir/nir_lower_mediump.c",
+        "src/compiler/nir/nir_lower_mem_access_bit_sizes.c",
+        "src/compiler/nir/nir_lower_memcpy.c",
+        "src/compiler/nir/nir_lower_memory_model.c",
+        "src/compiler/nir/nir_lower_non_uniform_access.c",
+        "src/compiler/nir/nir_lower_packing.c",
+        "src/compiler/nir/nir_lower_passthrough_edgeflags.c",
+        "src/compiler/nir/nir_lower_patch_vertices.c",
+        "src/compiler/nir/nir_lower_phis_to_scalar.c",
+        "src/compiler/nir/nir_lower_pntc_ytransform.c",
+        "src/compiler/nir/nir_lower_point_size.c",
+        "src/compiler/nir/nir_lower_point_smooth.c",
+        "src/compiler/nir/nir_lower_poly_line_smooth.c",
+        "src/compiler/nir/nir_lower_printf.c",
+        "src/compiler/nir/nir_lower_reg_intrinsics_to_ssa.c",
+        "src/compiler/nir/nir_lower_readonly_images_to_tex.c",
+        "src/compiler/nir/nir_lower_returns.c",
+        "src/compiler/nir/nir_lower_robust_access.c",
+        "src/compiler/nir/nir_lower_samplers.c",
+        "src/compiler/nir/nir_lower_sample_shading.c",
+        "src/compiler/nir/nir_lower_scratch.c",
+        "src/compiler/nir/nir_lower_scratch_to_var.c",
+        "src/compiler/nir/nir_lower_shader_calls.c",
+        "src/compiler/nir/nir_lower_single_sampled.c",
+        "src/compiler/nir/nir_lower_ssbo.c",
+        "src/compiler/nir/nir_lower_subgroups.c",
+        "src/compiler/nir/nir_lower_system_values.c",
+        "src/compiler/nir/nir_lower_task_shader.c",
+        "src/compiler/nir/nir_lower_terminate_to_demote.c",
+        "src/compiler/nir/nir_lower_tess_coord_z.c",
+        "src/compiler/nir/nir_lower_tex_shadow.c",
+        "src/compiler/nir/nir_lower_tex.c",
+        "src/compiler/nir/nir_lower_texcoord_replace.c",
+        "src/compiler/nir/nir_lower_texcoord_replace_late.c",
+        "src/compiler/nir/nir_lower_two_sided_color.c",
+        "src/compiler/nir/nir_lower_undef_to_zero.c",
+        "src/compiler/nir/nir_lower_vars_to_ssa.c",
+        "src/compiler/nir/nir_lower_var_copies.c",
+        "src/compiler/nir/nir_lower_vec_to_regs.c",
+        "src/compiler/nir/nir_lower_vec3_to_vec4.c",
+        "src/compiler/nir/nir_lower_view_index_to_device_index.c",
+        "src/compiler/nir/nir_lower_viewport_transform.c",
+        "src/compiler/nir/nir_lower_wpos_center.c",
+        "src/compiler/nir/nir_lower_wpos_ytransform.c",
+        "src/compiler/nir/nir_lower_wrmasks.c",
+        "src/compiler/nir/nir_lower_bit_size.c",
+        "src/compiler/nir/nir_lower_ubo_vec4.c",
+        "src/compiler/nir/nir_lower_uniforms_to_ubo.c",
+        "src/compiler/nir/nir_lower_workgroup_size.c",
+        "src/compiler/nir/nir_lower_sysvals_to_varyings.c",
+        "src/compiler/nir/nir_metadata.c",
+        "src/compiler/nir/nir_mod_analysis.c",
+        "src/compiler/nir/nir_move_output_stores_to_end.c",
+        "src/compiler/nir/nir_move_vec_src_uses_to_dest.c",
+        "src/compiler/nir/nir_normalize_cubemap_coords.c",
+        "src/compiler/nir/nir_normalize_sin_cos.c",
+        "src/compiler/nir/nir_opt_access.c",
+        "src/compiler/nir/nir_opt_barriers.c",
+        "src/compiler/nir/nir_opt_barycentric.c",
+        "src/compiler/nir/nir_opt_call.c",
+        "src/compiler/nir/nir_opt_clip_cull_const.c",
+        "src/compiler/nir/nir_opt_combine_stores.c",
+        "src/compiler/nir/nir_opt_comparison_pre.c",
+        "src/compiler/nir/nir_opt_constant_folding.c",
+        "src/compiler/nir/nir_opt_copy_prop_vars.c",
+        "src/compiler/nir/nir_opt_copy_propagate.c",
+        "src/compiler/nir/nir_opt_cse.c",
+        "src/compiler/nir/nir_opt_dce.c",
+        "src/compiler/nir/nir_opt_dead_cf.c",
+        "src/compiler/nir/nir_opt_dead_write_vars.c",
+        "src/compiler/nir/nir_opt_find_array_copies.c",
+        "src/compiler/nir/nir_opt_fp_math_ctrl.c",
+        "src/compiler/nir/nir_opt_frag_coord_to_pixel_coord.c",
+        "src/compiler/nir/nir_opt_fragdepth.c",
+        "src/compiler/nir/nir_opt_gcm.c",
+        "src/compiler/nir/nir_opt_generate_bfi.c",
+        "src/compiler/nir/nir_opt_idiv_const.c",
+        "src/compiler/nir/nir_opt_if.c",
+        "src/compiler/nir/nir_opt_intrinsics.c",
+        "src/compiler/nir/nir_opt_large_constants.c",
+        "src/compiler/nir/nir_opt_licm.c",
+        "src/compiler/nir/nir_opt_load_skip_helpers.c",
+        "src/compiler/nir/nir_opt_load_store_vectorize.c",
+        "src/compiler/nir/nir_opt_loop.c",
+        "src/compiler/nir/nir_opt_loop_unroll.c",
+        "src/compiler/nir/nir_opt_memcpy.c",
+        "src/compiler/nir/nir_opt_move.c",
+        "src/compiler/nir/nir_opt_move_discards_to_top.c",
+        "src/compiler/nir/nir_opt_move_to_top.c",
+        "src/compiler/nir/nir_opt_mqsad.c",
+        "src/compiler/nir/nir_opt_non_uniform_access.c",
+        "src/compiler/nir/nir_opt_offsets.c",
+        "src/compiler/nir/nir_opt_peephole_select.c",
+        "src/compiler/nir/nir_opt_phi_precision.c",
+        "src/compiler/nir/nir_opt_phi_to_bool.c",
+        "src/compiler/nir/nir_opt_preamble.c",
+        "src/compiler/nir/nir_opt_ray_queries.c",
+        "src/compiler/nir/nir_opt_reassociate.c",
+        "src/compiler/nir/nir_opt_reassociate_bfi.c",
+        "src/compiler/nir/nir_opt_rematerialize_compares.c",
+        "src/compiler/nir/nir_opt_remove_phis.c",
+        "src/compiler/nir/nir_opt_shrink_stores.c",
+        "src/compiler/nir/nir_opt_shrink_vectors.c",
+        "src/compiler/nir/nir_opt_sink.c",
+        "src/compiler/nir/nir_opt_undef.c",
+        "src/compiler/nir/nir_opt_uniform_atomics.c",
+        "src/compiler/nir/nir_opt_uniform_subgroup.c",
+        "src/compiler/nir/nir_opt_uub.c",
+        "src/compiler/nir/nir_opt_varyings.c",
+        "src/compiler/nir/nir_opt_vectorize.c",
+        "src/compiler/nir/nir_opt_vectorize_io.c",
+        "src/compiler/nir/nir_opt_vectorize_io_vars.c",
+        "src/compiler/nir/nir_passthrough_gs.c",
+        "src/compiler/nir/nir_passthrough_tcs.c",
+        "src/compiler/nir/nir_phi_builder.c",
+        "src/compiler/nir/nir_print.c",
+        "src/compiler/nir/nir_propagate_invariant.c",
+        "src/compiler/nir/nir_range_analysis.c",
+        "src/compiler/nir/nir_recompute_io_bases.c",
+        "src/compiler/nir/nir_remove_dead_variables.c",
+        "src/compiler/nir/nir_remove_outputs.c",
+        "src/compiler/nir/nir_remove_tex_shadow.c",
+        "src/compiler/nir/nir_repair_ssa.c",
+        "src/compiler/nir/nir_scale_fdiv.c",
+        "src/compiler/nir/nir_schedule.c",
+        "src/compiler/nir/nir_search.c",
+        "src/compiler/nir/nir_separate_merged_clip_cull_io.c",
+        "src/compiler/nir/nir_serialize.c",
+        "src/compiler/nir/nir_shader_bisect.c",
+        "src/compiler/nir/nir_split_64bit_vec3_and_vec4.c",
+        "src/compiler/nir/nir_split_conversions.c",
+        "src/compiler/nir/nir_split_per_member_structs.c",
+        "src/compiler/nir/nir_split_var_copies.c",
+        "src/compiler/nir/nir_split_vars.c",
+        "src/compiler/nir/nir_sweep.c",
+        "src/compiler/nir/nir_to_lcssa.c",
+        "src/compiler/nir/nir_trivialize_registers.c",
+        "src/compiler/nir/nir_unlower_io_to_vars.c",
+        "src/compiler/nir/nir_use_dominance.c",
+        "src/compiler/nir/nir_validate.c",
+        "src/compiler/nir/nir_worklist.c",
+        "src/compiler/nir/nir_lower_atomics.c"
+      ],
+      "headers": [
+        "src/compiler/nir/nir.h",
+        "src/compiler/nir/nir_builder.h",
+        "src/compiler/nir/nir_builtin_builder.h",
+        "src/compiler/nir/nir_conversion_builder.h",
+        "src/compiler/nir/nir_constant_expressions.h",
+        "src/compiler/nir/nir_control_flow.h",
+        "src/compiler/nir/nir_control_flow_private.h",
+        "src/compiler/nir/nir_deref.h",
+        "src/compiler/nir/nir_format_convert.h",
+        "src/compiler/nir/nir_instr_set.h",
+        "src/compiler/nir/nir_legacy.h",
+        "src/compiler/nir/nir_loop_analyze.h",
+        "src/compiler/nir/nir_phi_builder.h",
+        "src/compiler/nir/nir_range_analysis.h",
+        "src/compiler/nir/nir_schedule.h",
+        "src/compiler/nir/nir_search.h",
+        "src/compiler/nir/nir_search_helpers.h",
+        "src/compiler/nir/nir_serialize.h",
+        "src/compiler/nir/nir_shader_compiler_options.h",
+        "src/compiler/nir/nir_softfloat.h",
+        "src/compiler/nir/nir_tcs_info.h",
+        "src/compiler/nir/nir_vla.h",
+        "src/compiler/nir/nir_worklist.h",
+        "src/compiler/nir/nir_xfb_info.h"
+      ],
+      "generators": [
+        "nir_builder_opcodes_h",
+        "nir_constant_expressions_c",
+        "nir_opcodes_h",
+        "nir_opcodes_c",
+        "nir_opt_algebraic",
+        "nir_intrinsics_h",
+        "nir_intrinsics_indices_h",
+        "nir_intrinsics_c"
+      ],
+      "meson_dependencies": [
+        "idep_compiler",
+        "dep_valgrind",
+        "idep_mesautil"
+      ]
+    },
+    "vtn": {
+      "meson_build": "src/compiler/spirv/meson.build",
+      "meson_target": "libvtn",
+      "sources": [
+        "src/compiler/spirv/gl_spirv.c",
+        "src/compiler/spirv/spirv_to_nir.c",
+        "src/compiler/spirv/vtn_alu.c",
+        "src/compiler/spirv/vtn_amd.c",
+        "src/compiler/spirv/vtn_cfg.c",
+        "src/compiler/spirv/vtn_cmat.c",
+        "src/compiler/spirv/vtn_debug.c",
+        "src/compiler/spirv/vtn_glsl450.c",
+        "src/compiler/spirv/vtn_opencl.c",
+        "src/compiler/spirv/vtn_structured_cfg.c",
+        "src/compiler/spirv/vtn_subgroup.c",
+        "src/compiler/spirv/vtn_variables.c"
+      ],
+      "headers": [
+        "src/compiler/spirv/GLSL.ext.AMD.h",
+        "src/compiler/spirv/GLSL.std.450.h",
+        "src/compiler/spirv/OpenCL.std.h",
+        "src/compiler/spirv/nir_spirv.h",
+        "src/compiler/spirv/spirv.h",
+        "src/compiler/spirv/vtn_private.h"
+      ],
+      "generators": [
+        "vtn_gather_types_c",
+        "spirv_info",
+        "vtn_generator_ids_h"
+      ],
+      "meson_dependencies": [
+        "dep_spirv_tools",
+        "idep_nir",
+        "dep_valgrind"
+      ]
+    },
+    "freedreno_ir3": {
+      "meson_build": "src/freedreno/ir3/meson.build",
+      "meson_target": "libfreedreno_ir3",
+      "sources": [
+        "src/freedreno/ir3/disasm-a3xx.c",
+        "src/freedreno/ir3/ir3.c",
+        "src/freedreno/ir3/ir3_a4xx.c",
+        "src/freedreno/ir3/ir3_a6xx.c",
+        "src/freedreno/ir3/ir3_alias.c",
+        "src/freedreno/ir3/ir3_array_to_ssa.c",
+        "src/freedreno/ir3/ir3_assembler.c",
+        "src/freedreno/ir3/ir3_compiler_nir.c",
+        "src/freedreno/ir3/ir3_compiler.c",
+        "src/freedreno/ir3/ir3_context.c",
+        "src/freedreno/ir3/ir3_cf.c",
+        "src/freedreno/ir3/ir3_cp.c",
+        "src/freedreno/ir3/ir3_cse.c",
+        "src/freedreno/ir3/ir3_dce.c",
+        "src/freedreno/ir3/ir3_delay.c",
+        "src/freedreno/ir3/ir3_dominance.c",
+        "src/freedreno/ir3/ir3_disk_cache.c",
+        "src/freedreno/ir3/ir3_image.c",
+        "src/freedreno/ir3/ir3_legalize.c",
+        "src/freedreno/ir3/ir3_legalize_relative.c",
+        "src/freedreno/ir3/ir3_liveness.c",
+        "src/freedreno/ir3/ir3_lower_parallelcopy.c",
+        "src/freedreno/ir3/ir3_lower_shared_phi.c",
+        "src/freedreno/ir3/ir3_lower_spill.c",
+        "src/freedreno/ir3/ir3_lower_subgroups.c",
+        "src/freedreno/ir3/ir3_merge_regs.c",
+        "src/freedreno/ir3/ir3_nir.c",
+        "src/freedreno/ir3/ir3_nir_analyze_ubo_ranges.c",
+        "src/freedreno/ir3/ir3_nir_lower_64b.c",
+        "src/freedreno/ir3/ir3_nir_lower_driver_params_to_ubo.c",
+        "src/freedreno/ir3/ir3_nir_lower_load_barycentric_at_offset.c",
+        "src/freedreno/ir3/ir3_nir_lower_load_sample_pos.c",
+        "src/freedreno/ir3/ir3_nir_lower_push_consts_to_preamble.c",
+        "src/freedreno/ir3/ir3_nir_lower_shading_rate.c",
+        "src/freedreno/ir3/ir3_nir_lower_io_offsets.c",
+        "src/freedreno/ir3/ir3_nir_lower_tess.c",
+        "src/freedreno/ir3/ir3_nir_lower_tex_prefetch.c",
+        "src/freedreno/ir3/ir3_nir_move_varying_inputs.c",
+        "src/freedreno/ir3/ir3_nir_lower_layer_id.c",
+        "src/freedreno/ir3/ir3_nir_opt_preamble.c",
+        "src/freedreno/ir3/ir3_opt_predicates.c",
+        "src/freedreno/ir3/ir3_postsched.c",
+        "src/freedreno/ir3/ir3_preamble.c",
+        "src/freedreno/ir3/ir3_print.c",
+        "src/freedreno/ir3/ir3_ra.c",
+        "src/freedreno/ir3/ir3_ra_predicates.c",
+        "src/freedreno/ir3/ir3_ra_validate.c",
+        "src/freedreno/ir3/ir3_reconvergence.c",
+        "src/freedreno/ir3/ir3_remove_unreachable.c",
+        "src/freedreno/ir3/ir3_rpt.c",
+        "src/freedreno/ir3/ir3_sched.c",
+        "src/freedreno/ir3/ir3_shader.c",
+        "src/freedreno/ir3/ir3_shader_bisect.c",
+        "src/freedreno/ir3/ir3_shared_folding.c",
+        "src/freedreno/ir3/ir3_shared_ra.c",
+        "src/freedreno/ir3/ir3_spill.c",
+        "src/freedreno/ir3/ir3_validate.c"
+      ],
+      "headers": [
+        "src/freedreno/ir3/instr-a3xx.h",
+        "src/freedreno/ir3/ir3_assembler.h",
+        "src/freedreno/ir3/ir3_compiler.h",
+        "src/freedreno/ir3/ir3_context.h",
+        "src/freedreno/ir3/ir3_image.h",
+        "src/freedreno/ir3/ir3.h",
+        "src/freedreno/ir3/ir3_nir.h",
+        "src/freedreno/ir3/ir3_ra.h",
+        "src/freedreno/ir3/ir3_shader.h"
+      ],
+      "generators": [
+        "ir3_nir_trig_c",
+        "ir3_nir_imul_c",
+        "ir3_nir_branch_and_or_not_c",
+        "ir3_nir_triop_bitwise_c",
+        "ir3_parser",
+        "ir3_lexer"
+      ],
+      "meson_dependencies": [
+        "libir3encode",
+        "libfreedreno_common",
+        "idep_libir3decode",
+        "idep_nir_headers",
+        "dep_dl",
+        "idep_mesautil"
+      ]
+    },
+    "freedreno_layout": {
+      "meson_build": "src/freedreno/fdl/meson.build",
+      "meson_target": "libfreedreno_layout",
+      "sources": [
+        "src/freedreno/fdl/fd5_layout.c",
+        "src/freedreno/fdl/fd6_format_table.c",
+        "src/freedreno/fdl/fd6_layout.c",
+        "src/freedreno/fdl/fd6_tiled_memcpy.cc",
+        "src/freedreno/fdl/fd6_view.cc",
+        "src/freedreno/fdl/freedreno_layout.c",
+        "src/freedreno/fdl/freedreno_lrz_layout.c"
+      ],
+      "headers": [],
+      "generators": [
+        "register_c_defines",
+        "register_pm4_headers",
+        "register_c_pack_structs",
+        "register_perfcntrs"
+      ],
+      "meson_dependencies": [
+        "idep_nir_headers",
+        "idep_mesautil",
+        "idep_libfreedreno_common"
+      ]
+    },
+    "freedreno_common": {
+      "meson_build": "src/freedreno/common/meson.build",
+      "meson_target": "libfreedreno_common",
+      "sources": [
+        "src/freedreno/common/freedreno_dev_info.c",
+        "src/freedreno/common/freedreno_rd_output.c",
+        "src/freedreno/common/freedreno_uuid.c"
+      ],
+      "headers": [
+        "src/freedreno/common/disasm.h",
+        "src/freedreno/common/fd6_pack.h",
+        "src/freedreno/common/freedreno_dev_info.h",
+        "src/freedreno/common/freedreno_pm4.h",
+        "src/freedreno/common/freedreno_rd_output.h",
+        "src/freedreno/common/freedreno_uuid.h",
+        "src/freedreno/common/freedreno_guardband.h",
+        "src/freedreno/common/freedreno_vrs.h",
+        "src/freedreno/common/redump.h"
+      ],
+      "generators": [
+        "freedreno_devices_h",
+        "register_pm4_headers",
+        "git_sha1_h"
+      ],
+      "meson_dependencies": [
+        "idep_mesautil"
+      ]
+    },
+    "compiler": {
+      "meson_build": "src/compiler/meson.build",
+      "meson_target": "libcompiler",
+      "sources": [
+        "src/compiler/glsl_types.c",
+        "src/compiler/shader_enums.c"
+      ],
+      "headers": [
+        "src/compiler/glsl_types.h",
+        "src/compiler/list.h",
+        "src/compiler/shader_enums.h",
+        "src/compiler/shader_info.h"
+      ],
+      "generators": [
+        "builtin_types_h",
+        "builtin_types_c",
+        "ir_expression_operation_h"
+      ],
+      "meson_dependencies": [
+        "dep_valgrind"
+      ]
+    },
+    "ir3encode": {
+      "meson_build": "src/freedreno/isa/meson.build",
+      "meson_target": "libir3encode",
+      "sources": [
+        "src/freedreno/isa/encode.c"
+      ],
+      "headers": [
+        "src/freedreno/isa/isa.h"
+      ],
+      "generators": [
+        "encode_h"
+      ],
+      "meson_dependencies": [
+        "idep_mesautil",
+        "idep_nir"
+      ]
+    },
+    "ir3decode": {
+      "meson_build": "src/freedreno/isa/meson.build",
+      "meson_target": "_libir3decode",
+      "sources": [],
+      "headers": [
+        "src/freedreno/isa/isa.h"
+      ],
+      "generators": [
+        "ir3_isa"
+      ],
+      "meson_dependencies": [
+        "idep_mesautil",
+        "idep_isaspec_decode",
+        "libisaspec"
+      ]
+    },
+    "isaspec": {
+      "meson_build": "src/compiler/isaspec/meson.build",
+      "meson_target": "libisaspec",
+      "sources": [
+        "src/compiler/isaspec/isaspec.c"
+      ],
+      "headers": [],
+      "generators": [],
+      "meson_dependencies": [
+        "idep_mesautil"
+      ]
+    }
+  },
+  "generators": {
+    "nir_builder_opcodes_h": {
+      "meson_build": [
+        "src/compiler/nir/meson.build"
+      ],
+      "tool": "python3",
+      "source_inputs": [
+        "src/compiler/nir/nir_builder_opcodes_h.py",
+        "src/compiler/nir/nir_opcodes.py",
+        "src/compiler/nir/nir_intrinsics.py"
+      ],
+      "outputs": [
+        "src/compiler/nir/nir_builder_opcodes.h"
+      ]
+    },
+    "nir_constant_expressions_c": {
+      "meson_build": [
+        "src/compiler/nir/meson.build"
+      ],
+      "tool": "python3",
+      "source_inputs": [
+        "src/compiler/nir/nir_constant_expressions.py",
+        "src/compiler/nir/nir_opcodes.py",
+        "src/compiler/nir/nir_intrinsics.py"
+      ],
+      "outputs": [
+        "src/compiler/nir/nir_constant_expressions.c"
+      ]
+    },
+    "nir_opcodes_h": {
+      "meson_build": [
+        "src/compiler/nir/meson.build"
+      ],
+      "tool": "python3",
+      "source_inputs": [
+        "src/compiler/nir/nir_opcodes_h.py",
+        "src/compiler/nir/nir_opcodes.py",
+        "src/compiler/nir/nir_intrinsics.py"
+      ],
+      "outputs": [
+        "src/compiler/nir/nir_opcodes.h"
+      ]
+    },
+    "nir_opcodes_c": {
+      "meson_build": [
+        "src/compiler/nir/meson.build"
+      ],
+      "tool": "python3",
+      "source_inputs": [
+        "src/compiler/nir/nir_opcodes_c.py",
+        "src/compiler/nir/nir_opcodes.py",
+        "src/compiler/nir/nir_intrinsics.py"
+      ],
+      "outputs": [
+        "src/compiler/nir/nir_opcodes.c"
+      ]
+    },
+    "nir_opt_algebraic": {
+      "meson_build": [
+        "src/compiler/nir/meson.build"
+      ],
+      "tool": "python3",
+      "source_inputs": [
+        "src/compiler/nir/nir_opt_algebraic.py",
+        "src/compiler/nir/nir_opcodes.py",
+        "src/compiler/nir/nir_algebraic.py"
+      ],
+      "outputs": [
+        "src/compiler/nir/nir_opt_algebraic.c"
+      ]
+    },
+    "nir_intrinsics_h": {
+      "meson_build": [
+        "src/compiler/nir/meson.build"
+      ],
+      "tool": "python3",
+      "source_inputs": [
+        "src/compiler/nir/nir_intrinsics_h.py",
+        "src/compiler/nir/nir_intrinsics.py"
+      ],
+      "outputs": [
+        "src/compiler/nir/nir_intrinsics.h"
+      ]
+    },
+    "nir_intrinsics_indices_h": {
+      "meson_build": [
+        "src/compiler/nir/meson.build"
+      ],
+      "tool": "python3",
+      "source_inputs": [
+        "src/compiler/nir/nir_intrinsics_indices_h.py",
+        "src/compiler/nir/nir_intrinsics.py"
+      ],
+      "outputs": [
+        "src/compiler/nir/nir_intrinsics_indices.h"
+      ]
+    },
+    "nir_intrinsics_c": {
+      "meson_build": [
+        "src/compiler/nir/meson.build"
+      ],
+      "tool": "python3",
+      "source_inputs": [
+        "src/compiler/nir/nir_intrinsics_c.py",
+        "src/compiler/nir/nir_intrinsics.py"
+      ],
+      "outputs": [
+        "src/compiler/nir/nir_intrinsics.c"
+      ]
+    },
+    "vtn_gather_types_c": {
+      "meson_build": [
+        "src/compiler/spirv/meson.build"
+      ],
+      "tool": "python3",
+      "source_inputs": [
+        "src/compiler/spirv/vtn_gather_types_c.py",
+        "src/compiler/spirv/spirv.core.grammar.json"
+      ],
+      "outputs": [
+        "src/compiler/spirv/vtn_gather_types.c"
+      ]
+    },
+    "spirv_info": {
+      "meson_build": [
+        "src/compiler/spirv/meson.build"
+      ],
+      "tool": "python3",
+      "source_inputs": [
+        "src/compiler/spirv/spirv_info_gen.py",
+        "src/compiler/spirv/spirv.core.grammar.json"
+      ],
+      "outputs": [
+        "src/compiler/spirv/spirv_info.h",
+        "src/compiler/spirv/spirv_info.c"
+      ]
+    },
+    "vtn_generator_ids_h": {
+      "meson_build": [
+        "src/compiler/spirv/meson.build"
+      ],
+      "tool": "python3",
+      "source_inputs": [
+        "src/compiler/spirv/vtn_generator_ids_h.py",
+        "src/compiler/spirv/spir-v.xml"
+      ],
+      "outputs": [
+        "src/compiler/spirv/vtn_generator_ids.h"
+      ]
+    },
+    "ir3_nir_trig_c": {
+      "meson_build": [
+        "src/freedreno/ir3/meson.build"
+      ],
+      "tool": "python3",
+      "source_inputs": [
+        "src/freedreno/ir3/ir3_nir_trig.py",
+        "src/compiler/nir/nir_opcodes.py",
+        "src/compiler/nir/nir_algebraic.py"
+      ],
+      "outputs": [
+        "src/freedreno/ir3/ir3_nir_trig.c"
+      ]
+    },
+    "ir3_nir_imul_c": {
+      "meson_build": [
+        "src/freedreno/ir3/meson.build"
+      ],
+      "tool": "python3",
+      "source_inputs": [
+        "src/freedreno/ir3/ir3_nir_imul.py",
+        "src/compiler/nir/nir_opcodes.py",
+        "src/compiler/nir/nir_algebraic.py"
+      ],
+      "outputs": [
+        "src/freedreno/ir3/ir3_nir_imul.c"
+      ]
+    },
+    "ir3_nir_branch_and_or_not_c": {
+      "meson_build": [
+        "src/freedreno/ir3/meson.build"
+      ],
+      "tool": "python3",
+      "source_inputs": [
+        "src/freedreno/ir3/ir3_nir_branch_and_or_not.py",
+        "src/compiler/nir/nir_opcodes.py",
+        "src/compiler/nir/nir_algebraic.py"
+      ],
+      "outputs": [
+        "src/freedreno/ir3/ir3_nir_branch_and_or_not.c"
+      ]
+    },
+    "ir3_nir_triop_bitwise_c": {
+      "meson_build": [
+        "src/freedreno/ir3/meson.build"
+      ],
+      "tool": "python3",
+      "source_inputs": [
+        "src/freedreno/ir3/ir3_nir_triop_bitwise.py",
+        "src/compiler/nir/nir_opcodes.py",
+        "src/compiler/nir/nir_algebraic.py"
+      ],
+      "outputs": [
+        "src/freedreno/ir3/ir3_nir_triop_bitwise.c"
+      ]
+    },
+    "ir3_parser": {
+      "meson_build": [
+        "src/freedreno/ir3/meson.build"
+      ],
+      "tool": "bison",
+      "source_inputs": [
+        "src/freedreno/ir3/ir3_parser.y"
+      ],
+      "outputs": [
+        "src/freedreno/ir3/ir3_parser.c",
+        "src/freedreno/ir3/ir3_parser.h"
+      ]
+    },
+    "ir3_lexer": {
+      "meson_build": [
+        "src/freedreno/ir3/meson.build"
+      ],
+      "tool": "flex",
+      "source_inputs": [
+        "src/freedreno/ir3/ir3_lexer.l"
+      ],
+      "outputs": [
+        "src/freedreno/ir3/ir3_lexer.c"
+      ]
+    },
+    "register_c_defines": {
+      "meson_build": [
+        "src/freedreno/registers/meson.build",
+        "src/freedreno/registers/adreno/meson.build"
+      ],
+      "tool": "python3",
+      "source_inputs": [
+        "src/freedreno/registers/gen_header.py",
+        "src/freedreno/registers/rules-fd.xsd",
+        "src/freedreno/registers/freedreno_copyright.xml",
+        "src/freedreno/registers/adreno.xml",
+        "src/freedreno/registers/adreno/a2xx.xml",
+        "src/freedreno/registers/adreno/a3xx.xml",
+        "src/freedreno/registers/adreno/a4xx.xml",
+        "src/freedreno/registers/adreno/a5xx.xml",
+        "src/freedreno/registers/adreno/a6xx.xml",
+        "src/freedreno/registers/adreno/a6xx_enums.xml",
+        "src/freedreno/registers/adreno/a6xx_descriptors.xml",
+        "src/freedreno/registers/adreno/a6xx_perfcntrs.xml",
+        "src/freedreno/registers/adreno/a7xx_enums.xml",
+        "src/freedreno/registers/adreno/a7xx_perfcntrs.xml",
+        "src/freedreno/registers/adreno/a8xx_enums.xml",
+        "src/freedreno/registers/adreno/a8xx_descriptors.xml",
+        "src/freedreno/registers/adreno/a8xx_perfcntrs.xml",
+        "src/freedreno/registers/adreno/a6xx_gmu.xml",
+        "src/freedreno/registers/adreno/ocmem.xml",
+        "src/freedreno/registers/adreno/adreno_control_regs.xml",
+        "src/freedreno/registers/adreno/adreno_pipe_regs.xml",
+        "src/freedreno/registers/adreno/adreno_common.xml",
+        "src/freedreno/registers/adreno/adreno_pm4.xml"
+      ],
+      "outputs": [
+        "src/freedreno/registers/adreno.xml.h",
+        "src/freedreno/registers/adreno/a2xx.xml.h",
+        "src/freedreno/registers/adreno/a3xx.xml.h",
+        "src/freedreno/registers/adreno/a4xx.xml.h",
+        "src/freedreno/registers/adreno/a5xx.xml.h",
+        "src/freedreno/registers/adreno/a6xx.xml.h",
+        "src/freedreno/registers/adreno/a6xx_enums.xml.h",
+        "src/freedreno/registers/adreno/a6xx_descriptors.xml.h",
+        "src/freedreno/registers/adreno/a6xx_perfcntrs.xml.h",
+        "src/freedreno/registers/adreno/a7xx_enums.xml.h",
+        "src/freedreno/registers/adreno/a7xx_perfcntrs.xml.h",
+        "src/freedreno/registers/adreno/a8xx_enums.xml.h",
+        "src/freedreno/registers/adreno/a8xx_descriptors.xml.h",
+        "src/freedreno/registers/adreno/a8xx_perfcntrs.xml.h",
+        "src/freedreno/registers/adreno/a6xx_gmu.xml.h",
+        "src/freedreno/registers/adreno/ocmem.xml.h",
+        "src/freedreno/registers/adreno/adreno_control_regs.xml.h",
+        "src/freedreno/registers/adreno/adreno_pipe_regs.xml.h",
+        "src/freedreno/registers/adreno/adreno_common.xml.h"
+      ]
+    },
+    "register_pm4_headers": {
+      "meson_build": [
+        "src/freedreno/registers/adreno/meson.build"
+      ],
+      "tool": "python3",
+      "source_inputs": [
+        "src/freedreno/registers/gen_header.py",
+        "src/freedreno/registers/rules-fd.xsd",
+        "src/freedreno/registers/freedreno_copyright.xml",
+        "src/freedreno/registers/adreno.xml",
+        "src/freedreno/registers/adreno/a2xx.xml",
+        "src/freedreno/registers/adreno/a3xx.xml",
+        "src/freedreno/registers/adreno/a4xx.xml",
+        "src/freedreno/registers/adreno/a5xx.xml",
+        "src/freedreno/registers/adreno/a6xx.xml",
+        "src/freedreno/registers/adreno/a6xx_enums.xml",
+        "src/freedreno/registers/adreno/a6xx_descriptors.xml",
+        "src/freedreno/registers/adreno/a6xx_perfcntrs.xml",
+        "src/freedreno/registers/adreno/a7xx_enums.xml",
+        "src/freedreno/registers/adreno/a7xx_perfcntrs.xml",
+        "src/freedreno/registers/adreno/a8xx_enums.xml",
+        "src/freedreno/registers/adreno/a8xx_descriptors.xml",
+        "src/freedreno/registers/adreno/a8xx_perfcntrs.xml",
+        "src/freedreno/registers/adreno/a6xx_gmu.xml",
+        "src/freedreno/registers/adreno/ocmem.xml",
+        "src/freedreno/registers/adreno/adreno_control_regs.xml",
+        "src/freedreno/registers/adreno/adreno_pipe_regs.xml",
+        "src/freedreno/registers/adreno/adreno_common.xml",
+        "src/freedreno/registers/adreno/adreno_pm4.xml"
+      ],
+      "outputs": [
+        "src/freedreno/registers/adreno/adreno_pm4.xml.h",
+        "src/freedreno/registers/adreno/adreno-pm4-pack.xml.h"
+      ]
+    },
+    "register_c_pack_structs": {
+      "meson_build": [
+        "src/freedreno/registers/adreno/meson.build"
+      ],
+      "tool": "python3",
+      "source_inputs": [
+        "src/freedreno/registers/gen_header.py",
+        "src/freedreno/registers/rules-fd.xsd",
+        "src/freedreno/registers/freedreno_copyright.xml",
+        "src/freedreno/registers/adreno.xml",
+        "src/freedreno/registers/adreno/a2xx.xml",
+        "src/freedreno/registers/adreno/a3xx.xml",
+        "src/freedreno/registers/adreno/a4xx.xml",
+        "src/freedreno/registers/adreno/a5xx.xml",
+        "src/freedreno/registers/adreno/a6xx.xml",
+        "src/freedreno/registers/adreno/a6xx_enums.xml",
+        "src/freedreno/registers/adreno/a6xx_descriptors.xml",
+        "src/freedreno/registers/adreno/a6xx_perfcntrs.xml",
+        "src/freedreno/registers/adreno/a7xx_enums.xml",
+        "src/freedreno/registers/adreno/a7xx_perfcntrs.xml",
+        "src/freedreno/registers/adreno/a8xx_enums.xml",
+        "src/freedreno/registers/adreno/a8xx_descriptors.xml",
+        "src/freedreno/registers/adreno/a8xx_perfcntrs.xml",
+        "src/freedreno/registers/adreno/a6xx_gmu.xml",
+        "src/freedreno/registers/adreno/ocmem.xml",
+        "src/freedreno/registers/adreno/adreno_control_regs.xml",
+        "src/freedreno/registers/adreno/adreno_pipe_regs.xml",
+        "src/freedreno/registers/adreno/adreno_common.xml",
+        "src/freedreno/registers/adreno/adreno_pm4.xml"
+      ],
+      "outputs": [
+        "src/freedreno/registers/adreno/a6xx-pack.xml.h"
+      ]
+    },
+    "register_perfcntrs": {
+      "meson_build": [
+        "src/freedreno/registers/meson.build",
+        "src/freedreno/registers/adreno/meson.build"
+      ],
+      "tool": "python3",
+      "source_inputs": [
+        "src/freedreno/registers/gen_header.py",
+        "src/freedreno/registers/rules-fd.xsd",
+        "src/freedreno/registers/freedreno_copyright.xml",
+        "src/freedreno/registers/adreno.xml",
+        "src/freedreno/registers/adreno/a2xx.xml",
+        "src/freedreno/registers/adreno/a3xx.xml",
+        "src/freedreno/registers/adreno/a4xx.xml",
+        "src/freedreno/registers/adreno/a5xx.xml",
+        "src/freedreno/registers/adreno/a6xx.xml",
+        "src/freedreno/registers/adreno/a6xx_enums.xml",
+        "src/freedreno/registers/adreno/a6xx_descriptors.xml",
+        "src/freedreno/registers/adreno/a6xx_perfcntrs.xml",
+        "src/freedreno/registers/adreno/a7xx_enums.xml",
+        "src/freedreno/registers/adreno/a7xx_perfcntrs.xml",
+        "src/freedreno/registers/adreno/a8xx_enums.xml",
+        "src/freedreno/registers/adreno/a8xx_descriptors.xml",
+        "src/freedreno/registers/adreno/a8xx_perfcntrs.xml",
+        "src/freedreno/registers/adreno/a6xx_gmu.xml",
+        "src/freedreno/registers/adreno/ocmem.xml",
+        "src/freedreno/registers/adreno/adreno_control_regs.xml",
+        "src/freedreno/registers/adreno/adreno_pipe_regs.xml",
+        "src/freedreno/registers/adreno/adreno_common.xml",
+        "src/freedreno/registers/adreno/adreno_pm4.xml",
+        "src/freedreno/registers/adreno/a2xx_perfcntrs.json",
+        "src/freedreno/registers/adreno/a5xx_perfcntrs.json",
+        "src/freedreno/registers/adreno/a6xx_perfcntrs.json",
+        "src/freedreno/registers/adreno/a7xx_perfcntrs.json",
+        "src/freedreno/registers/adreno/a8xx_perfcntrs.json"
+      ],
+      "outputs": [
+        "src/freedreno/registers/adreno/a2xx_perfcntrs.json.h",
+        "src/freedreno/registers/adreno/a5xx_perfcntrs.json.h",
+        "src/freedreno/registers/adreno/a6xx_perfcntrs.json.h",
+        "src/freedreno/registers/adreno/a7xx_perfcntrs.json.h",
+        "src/freedreno/registers/adreno/a8xx_perfcntrs.json.h"
+      ],
+      "xml_json_pairs": [
+        [
+          "src/freedreno/registers/adreno/a2xx.xml",
+          "src/freedreno/registers/adreno/a2xx_perfcntrs.json"
+        ],
+        [
+          "src/freedreno/registers/adreno/a5xx.xml",
+          "src/freedreno/registers/adreno/a5xx_perfcntrs.json"
+        ],
+        [
+          "src/freedreno/registers/adreno/a6xx.xml",
+          "src/freedreno/registers/adreno/a6xx_perfcntrs.json"
+        ],
+        [
+          "src/freedreno/registers/adreno/a6xx.xml",
+          "src/freedreno/registers/adreno/a7xx_perfcntrs.json"
+        ],
+        [
+          "src/freedreno/registers/adreno/a6xx.xml",
+          "src/freedreno/registers/adreno/a8xx_perfcntrs.json"
+        ]
+      ]
+    },
+    "register_py_defines": {
+      "meson_build": [
+        "src/freedreno/registers/meson.build",
+        "src/freedreno/registers/adreno/meson.build"
+      ],
+      "tool": "python3",
+      "source_inputs": [
+        "src/freedreno/registers/gen_header.py",
+        "src/freedreno/registers/rules-fd.xsd",
+        "src/freedreno/registers/freedreno_copyright.xml",
+        "src/freedreno/registers/adreno.xml",
+        "src/freedreno/registers/adreno/a2xx.xml",
+        "src/freedreno/registers/adreno/a3xx.xml",
+        "src/freedreno/registers/adreno/a4xx.xml",
+        "src/freedreno/registers/adreno/a5xx.xml",
+        "src/freedreno/registers/adreno/a6xx.xml",
+        "src/freedreno/registers/adreno/a6xx_enums.xml",
+        "src/freedreno/registers/adreno/a6xx_descriptors.xml",
+        "src/freedreno/registers/adreno/a6xx_perfcntrs.xml",
+        "src/freedreno/registers/adreno/a7xx_enums.xml",
+        "src/freedreno/registers/adreno/a7xx_perfcntrs.xml",
+        "src/freedreno/registers/adreno/a8xx_enums.xml",
+        "src/freedreno/registers/adreno/a8xx_descriptors.xml",
+        "src/freedreno/registers/adreno/a8xx_perfcntrs.xml",
+        "src/freedreno/registers/adreno/a6xx_gmu.xml",
+        "src/freedreno/registers/adreno/ocmem.xml",
+        "src/freedreno/registers/adreno/adreno_control_regs.xml",
+        "src/freedreno/registers/adreno/adreno_pipe_regs.xml",
+        "src/freedreno/registers/adreno/adreno_common.xml",
+        "src/freedreno/registers/adreno/adreno_pm4.xml"
+      ],
+      "outputs": [
+        "src/freedreno/registers/adreno/a2xx.py",
+        "src/freedreno/registers/adreno/a3xx.py",
+        "src/freedreno/registers/adreno/a4xx.py",
+        "src/freedreno/registers/adreno/a5xx.py",
+        "src/freedreno/registers/adreno/a6xx.py",
+        "src/freedreno/registers/adreno/a6xx_enums.py",
+        "src/freedreno/registers/adreno/a6xx_descriptors.py",
+        "src/freedreno/registers/adreno/a6xx_perfcntrs.py",
+        "src/freedreno/registers/adreno/a7xx_enums.py",
+        "src/freedreno/registers/adreno/a7xx_perfcntrs.py",
+        "src/freedreno/registers/adreno/a8xx_enums.py",
+        "src/freedreno/registers/adreno/a8xx_descriptors.py",
+        "src/freedreno/registers/adreno/a8xx_perfcntrs.py"
+      ]
+    },
+    "freedreno_devices_h": {
+      "meson_build": [
+        "src/freedreno/common/meson.build"
+      ],
+      "tool": "python3",
+      "source_inputs": [
+        "src/freedreno/common/freedreno_devices.py",
+        "src/freedreno/common/freedreno_dev_info.py"
+      ],
+      "outputs": [
+        "src/freedreno/common/freedreno_devices.h"
+      ],
+      "generated_inputs": [
+        "src/freedreno/registers/adreno/a2xx.py",
+        "src/freedreno/registers/adreno/a3xx.py",
+        "src/freedreno/registers/adreno/a4xx.py",
+        "src/freedreno/registers/adreno/a5xx.py",
+        "src/freedreno/registers/adreno/a6xx.py",
+        "src/freedreno/registers/adreno/a6xx_enums.py",
+        "src/freedreno/registers/adreno/a6xx_descriptors.py",
+        "src/freedreno/registers/adreno/a6xx_perfcntrs.py",
+        "src/freedreno/registers/adreno/a7xx_enums.py",
+        "src/freedreno/registers/adreno/a7xx_perfcntrs.py",
+        "src/freedreno/registers/adreno/a8xx_enums.py",
+        "src/freedreno/registers/adreno/a8xx_descriptors.py",
+        "src/freedreno/registers/adreno/a8xx_perfcntrs.py"
+      ]
+    },
+    "ir3_isa": {
+      "meson_build": [
+        "src/freedreno/isa/meson.build"
+      ],
+      "tool": "python3",
+      "source_inputs": [
+        "src/freedreno/isa/ir3.xml",
+        "src/compiler/isaspec/decode.py",
+        "src/freedreno/isa/ir3-common.xml",
+        "src/freedreno/isa/ir3-cat0.xml",
+        "src/freedreno/isa/ir3-cat1.xml",
+        "src/freedreno/isa/ir3-cat2.xml",
+        "src/freedreno/isa/ir3-cat3.xml",
+        "src/freedreno/isa/ir3-cat4.xml",
+        "src/freedreno/isa/ir3-cat5.xml",
+        "src/freedreno/isa/ir3-cat6.xml",
+        "src/freedreno/isa/ir3-cat7.xml",
+        "src/compiler/isaspec/isa.py"
+      ],
+      "outputs": [
+        "src/freedreno/isa/ir3-isa.c",
+        "src/freedreno/isa/ir3-isa.h"
+      ]
+    },
+    "encode_h": {
+      "meson_build": [
+        "src/freedreno/isa/meson.build"
+      ],
+      "tool": "python3",
+      "source_inputs": [
+        "src/freedreno/isa/ir3.xml",
+        "src/compiler/isaspec/encode.py",
+        "src/freedreno/isa/ir3-common.xml",
+        "src/freedreno/isa/ir3-cat0.xml",
+        "src/freedreno/isa/ir3-cat1.xml",
+        "src/freedreno/isa/ir3-cat2.xml",
+        "src/freedreno/isa/ir3-cat3.xml",
+        "src/freedreno/isa/ir3-cat4.xml",
+        "src/freedreno/isa/ir3-cat5.xml",
+        "src/freedreno/isa/ir3-cat6.xml",
+        "src/freedreno/isa/ir3-cat7.xml",
+        "src/compiler/isaspec/isa.py"
+      ],
+      "outputs": [
+        "src/freedreno/isa/encode.h"
+      ]
+    },
+    "builtin_types_h": {
+      "meson_build": [
+        "src/compiler/meson.build"
+      ],
+      "tool": "python3",
+      "source_inputs": [
+        "src/compiler/builtin_types_h.py",
+        "src/compiler/builtin_types.py"
+      ],
+      "outputs": [
+        "src/compiler/builtin_types.h"
+      ],
+      "generated_inputs": [
+        "src/util/format/u_format_gen.h"
+      ]
+    },
+    "builtin_types_c": {
+      "meson_build": [
+        "src/compiler/meson.build"
+      ],
+      "tool": "python3",
+      "source_inputs": [
+        "src/compiler/builtin_types_c.py",
+        "src/compiler/builtin_types.py"
+      ],
+      "outputs": [
+        "src/compiler/builtin_types.c"
+      ]
+    },
+    "ir_expression_operation_h": {
+      "meson_build": [
+        "src/compiler/meson.build"
+      ],
+      "tool": "python3",
+      "source_inputs": [
+        "src/compiler/glsl/ir_expression_operation.py"
+      ],
+      "outputs": [
+        "src/compiler/ir_expression_operation.h"
+      ]
+    },
+    "u_format_gen_h": {
+      "meson_build": [
+        "src/util/format/meson.build"
+      ],
+      "tool": "python3",
+      "source_inputs": [
+        "src/util/format/u_format_table.py",
+        "src/util/format/u_format.yaml",
+        "src/util/format/u_format_pack.py",
+        "src/util/format/u_format_parse.py"
+      ],
+      "outputs": [
+        "src/util/format/u_format_gen.h"
+      ]
+    },
+    "u_format_pack_h": {
+      "meson_build": [
+        "src/util/format/meson.build"
+      ],
+      "tool": "python3",
+      "source_inputs": [
+        "src/util/format/u_format_table.py",
+        "src/util/format/u_format.yaml",
+        "src/util/format/u_format_pack.py",
+        "src/util/format/u_format_parse.py"
+      ],
+      "outputs": [
+        "src/util/format/u_format_pack.h"
+      ]
+    },
+    "u_format_table_c": {
+      "meson_build": [
+        "src/util/format/meson.build"
+      ],
+      "tool": "python3",
+      "source_inputs": [
+        "src/util/format/u_format_table.py",
+        "src/util/format/u_format.yaml",
+        "src/util/format/u_format_pack.py",
+        "src/util/format/u_format_parse.py"
+      ],
+      "outputs": [
+        "src/util/format/u_format_table.c"
+      ]
+    },
+    "git_sha1_h": {
+      "meson_build": [
+        "src/meson.build",
+        "bin/meson.build"
+      ],
+      "tool": "python3",
+      "source_inputs": [
+        "bin/git_sha1_gen.py"
+      ],
+      "outputs": [
+        "src/git_sha1.h"
+      ]
+    },
+    "format_srgb": {
+      "meson_build": [
+        "src/util/meson.build"
+      ],
+      "tool": "python3",
+      "source_inputs": [
+        "src/util/format_srgb.py"
+      ],
+      "outputs": [
+        "src/util/format_srgb.c"
+      ]
+    },
+    "shader_stats_h": {
+      "meson_build": [
+        "src/util/meson.build"
+      ],
+      "tool": "python3",
+      "source_inputs": [
+        "src/util/process_shader_stats.py",
+        "src/util/shader_stats.rnc",
+        "src/util/shader_stats.xml"
+      ],
+      "outputs": [
+        "src/util/shader_stats.h"
+      ]
+    }
+  },
+  "support_meson": {
+    "meson_root": "meson.build",
+    "compiler_subdirs": "src/meson.build",
+    "freedreno_subdirs": "src/freedreno/meson.build",
+    "idep_mesautil": "src/util/meson.build",
+    "idep_mesautilformat": "src/util/format/meson.build",
+    "idep_blake3": "src/util/blake3/meson.build",
+    "idep_mesautilc11": "src/c11/impl/meson.build"
+  },
+  "generator_host_requirements": {
+    "tools": [
+      "python3",
+      "bison",
+      "flex"
+    ],
+    "python_modules": [
+      "Mako >= 0.8.0",
+      "PyYAML"
+    ]
+  }
+}

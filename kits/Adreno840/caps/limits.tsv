@@ -1,0 +1,55 @@
+# SPDX-License-Identifier: MIT
+# Mesa commit: 85fda3b36405bcaea8bffc64aa4f2651dc90770d
+# Mesa citations below are path:line in the pinned Git commit, not patched working files.
+# All grade=source; hwtest_id=- means not run on the phone. Host table tests do not promote grade.
+limit_id	value	bound_kind	citation	notes
+chip_gen	8	exact	kits/Adreno840/chip_facts_a840.c:9	exact chip profile field; fact=chip_gen
+chip_id	1141180977	exact	kits/Adreno840/chip_facts_a840.c:6	exact chip profile field; fact=chip_id
+cs_shared_mem_size	32768	max	kits/Adreno840/chip_facts_a840.c:27	bytes; fact=cs_shared_mem_size
+features	1023	exact	kits/Adreno840/chip_facts_a840.c:43	exact chip profile field; fact=features
+fibers_per_sp	4096	exact	kits/Adreno840/chip_facts_a840.c:28	exact chip profile field; fact=fibers_per_sp
+gmem_align_h	4	exact	kits/Adreno840/chip_facts_a840.c:15	exact chip profile field; fact=gmem_align_h
+gmem_align_w	16	exact	kits/Adreno840/chip_facts_a840.c:14	exact chip profile field; fact=gmem_align_w
+gmem_bytes	18874368	exact	kits/Adreno840/chip_facts_a840.c:13	bytes; fact=gmem_bytes
+gmem_bytes_alignment	4096	exact	kits/Adreno840/chip_facts_a840.h:26	W00 runtime API granularity, not GMEM_PROTECT encoding
+gmem_per_ccu_color_cache_size	16384	exact	kits/Adreno840/chip_facts_a840.c:39	bytes; fact=gmem_per_ccu_color_cache_size
+gmem_per_ccu_depth_cache_size	262144	exact	kits/Adreno840/chip_facts_a840.c:40	bytes; fact=gmem_per_ccu_depth_cache_size
+gmem_range_min	67108864	exact	kits/Adreno840/chip_facts_a840.c:7	exact chip profile field; fact=gmem_range_min
+gmem_vpc_attr_buf_size	49152	exact	kits/Adreno840/chip_facts_a840.c:42	bytes; fact=gmem_vpc_attr_buf_size
+highest_bank_bit	16	exact	kits/Adreno840/chip_facts_a840.c:22	exact chip profile field; fact=highest_bank_bit
+instr_cache_size	127	max	kits/Adreno840/chip_facts_a840.c:33	bytes; fact=instr_cache_size
+macrotile_mode	1	exact	kits/Adreno840/chip_facts_a840.c:24	exact chip profile field; fact=macrotile_mode
+max_array_layers	2048	max	src/freedreno/vulkan/tu_formats.cc:597	pinned image-property limit
+max_draw_states	64	max	kits/Adreno840/chip_facts_a840.c:34	exact chip profile field; fact=max_draw_states
+max_mip_levels_2d	15	max	src/freedreno/vulkan/tu_formats.cc:596	pinned image-property limit
+max_mip_levels_3d	12	max	src/freedreno/vulkan/tu_formats.cc:610	pinned image-property limit
+max_samples	4	max	src/freedreno/vulkan/tu_device.cc:967	conservative global advertised limit; per-image 8x rule is not promoted
+max_sets	8	max	kits/Adreno840/chip_facts_a840.c:36	exact chip profile field; fact=max_sets
+max_texture_size	16384	max	src/freedreno/vulkan/tu_device.cc:1152	source device image dimension in texels; distinct from bin tile_max_w
+max_texture_size_1d	16384	max	src/freedreno/vulkan/tu_device.cc:1151	source device image dimension in texels; distinct from bin tile_max_w
+max_texture_size_3d	2048	max	src/freedreno/vulkan/tu_device.cc:1153	source device image dimension in texels; distinct from bin tile_max_w
+max_texture_size_cube	16384	max	src/freedreno/vulkan/tu_device.cc:1154	source device image dimension in texels; distinct from bin tile_max_w
+max_waves	16	max	kits/Adreno840/chip_facts_a840.c:30	exact chip profile field; fact=max_waves
+mesa_highest_bank_bit	15	exact	kits/Adreno840/chip_facts_a840.h:23	Mesa static value; Kaanapali default highest_bank_bit stays 16
+num_ccu	6	exact	kits/Adreno840/chip_facts_a840.c:11	exact chip profile field; fact=num_ccu
+num_slices	3	exact	kits/Adreno840/chip_facts_a840.c:10	exact chip profile field; fact=num_slices
+num_sp_cores	6	exact	kits/Adreno840/chip_facts_a840.c:12	exact chip profile field; fact=num_sp_cores
+num_vsc_pipes	32	exact	kits/Adreno840/chip_facts_a840.c:20	exact chip profile field; fact=num_vsc_pipes
+reg_size_vec4	128	exact	kits/Adreno840/chip_facts_a840.c:32	exact chip profile field; fact=reg_size_vec4
+sds_slots	64	exact	kits/Adreno840/chip_facts_a840.c:34	alias of max_draw_states
+smmu_page_shift	12	exact	kits/Adreno840/chip_facts_a840.c:44	exact chip profile field; fact=smmu_page_shift
+sysmem_per_ccu_color_cache_size	131072	exact	kits/Adreno840/chip_facts_a840.c:37	bytes; fact=sysmem_per_ccu_color_cache_size
+sysmem_per_ccu_depth_cache_size	196608	exact	kits/Adreno840/chip_facts_a840.c:38	bytes; fact=sysmem_per_ccu_depth_cache_size
+sysmem_vpc_attr_buf_size	131072	exact	kits/Adreno840/chip_facts_a840.c:41	bytes; fact=sysmem_vpc_attr_buf_size
+threadsize_base	64	exact	kits/Adreno840/chip_facts_a840.c:29	exact chip profile field; fact=threadsize_base
+tile_align_h	32	exact	kits/Adreno840/chip_facts_a840.c:17	exact chip profile field; fact=tile_align_h
+tile_align_w	96	exact	kits/Adreno840/chip_facts_a840.c:16	exact chip profile field; fact=tile_align_w
+tile_max_h	16384	max	kits/Adreno840/chip_facts_a840.c:19	exact chip profile field; fact=tile_max_h
+tile_max_w	16416	max	kits/Adreno840/chip_facts_a840.c:18	exact chip profile field; fact=tile_max_w
+ubwc_flags	23	exact	kits/Adreno840/chip_facts_a840.c:26	exact chip profile field; fact=ubwc_flags
+ubwc_swizzle	6	exact	kits/Adreno840/chip_facts_a840.c:23	exact chip profile field; fact=ubwc_swizzle
+ubwc_version	6	exact	kits/Adreno840/chip_facts_a840.c:21	exact chip profile field; fact=ubwc_version
+ubwc_version_tag	5	exact	kits/Adreno840/chip_facts_a840.c:25	exact chip profile field; fact=ubwc_version_tag
+uche_trap_base	562949953417216	exact	kits/Adreno840/chip_facts_a840.c:8	exact chip profile field; fact=uche_trap_base
+vs_max_inputs_count	32	max	kits/Adreno840/chip_facts_a840.c:35	exact chip profile field; fact=vs_max_inputs_count
+wave_granularity	2	exact	kits/Adreno840/chip_facts_a840.c:31	exact chip profile field; fact=wave_granularity
