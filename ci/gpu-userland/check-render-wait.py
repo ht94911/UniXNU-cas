@@ -90,7 +90,12 @@ int main(int argc,char **argv){assert(argc==2);assert(nbwait::kSampleBudget==614
 '''
 assert header.count('#if defined(__APPLE__)')==1
 controlled_header=header.replace('#if defined(__APPLE__)','#if 0',1)  # mock Mach declarations only
-fixture=a.out/'capture-controlled.cpp';fixture.write_text(prefix+controlled_header+record+sink+fragment+cases)
+# The first fixture intentionally uses x86 register semantics on every build host;
+# the existing second fixture independently exercises the complete ARM64 branch.
+intel_header=controlled_header.replace('#if defined(__arm64__) || defined(__aarch64__)',
+    '#if 0 /* controlled x86 state */',1).replace('#elif defined(__x86_64__)',
+    '#elif 1 /* controlled x86 state */',1)
+fixture=a.out/'capture-controlled.cpp';fixture.write_text(prefix+intel_header+record+sink+fragment+cases)
 binary=a.out/'capture-controlled';command=[a.cxx,'-std=c++17','-O1','-g','-Wall','-Wextra','-Werror',
  '-Wno-unused-function','-fsanitize=address,undefined',str(fixture),'-o',str(binary)]
 subprocess.run(command,check=True)

@@ -142,7 +142,8 @@ def verify(binary, map_path):
     method_list = pointer(class_ro + 32)
     assert method_list == link_address("__OBJC_$_INSTANCE_METHODS_NBLibrary")
     flags, method_count = struct.unpack("<II", image.read(method_list, 8))
-    assert flags == 0x8000000c and method_count == 21
+    # The selected runtime-v2 frontend adds two primer methods to NBLibrary.
+    assert flags == 0x8000000c and method_count == 23
     methods = {}
     for i in range(method_count):
         record = method_list + 8 + 12 * i
