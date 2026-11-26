@@ -1,0 +1,11 @@
+[package]
+name = "native_metal_translate"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["staticlib", "rlib"]
+
+[dependencies]
+metal2vulkan = { path = "/home/hua/nezha-work/ios27/adreno840-native/.cache/refs/metal2vulkan-v2/crates/metal2vulkan", default-features = false }
