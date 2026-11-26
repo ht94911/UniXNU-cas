@@ -39,7 +39,7 @@
   "ci/gpu-userland/decode-driver-profile.py": "5e74ae9604e48173e3418c66bd861b04ea385d56a4b936c8fed9da434215e737",
   "ci/gpu-userland/decode-render-wait.py": "7565895719a056e3f386b116dcf4875394b4d223d6967b2a7eaec99da07aaf37",
   "ci/gpu-userland/decode-sync-frames.py": "cf406b5bd20a978f1e645eb5fa4b3999cfe068c5a8016df603c2c2bd7826d1f0",
-  "ci/gpu-userland/diagnose-host.py": "e25be66e0df78d26d5f323b9eee205f9cf692783129cd11a7cea08a28a02c39c",
+  "ci/gpu-userland/diagnose-host.py": "d509a91e4506875cbf6970c40783d2b6f3fa106437502eb941d6f2c332546944",
   "ci/gpu-userland/fixtures/bo-trim-new.cpp": "13ac09299601a8370635f035ba358ff3a11fbc2016fa520b097d599304bc9990",
   "ci/gpu-userland/fixtures/bo-trim-old.cpp": "14faa7c262df240935a28101ab6fc58f78491890ace0c2166a16f6aa0371158c",
   "ci/gpu-userland/fixtures/buffer-reserve-sources.json": "f73b0ce1e1c34125e729b8a4249b8f98fd7dae2c48e63c23d2470b2a9f0f4aa7",

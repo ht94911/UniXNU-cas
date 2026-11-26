@@ -37,6 +37,15 @@ if run('compile-devices', ['xcrun', 'clang++', '-std=c++17', '-fobjc-arc', str(s
                           '-framework', 'Foundation', '-framework', 'Metal', '-o', str(devices)]) == 0:
     run('metal-devices', [str(devices)])
 test = root / 'build/adreno-metal-frontend-host/frontend_host'
+extra_args = ['']
+# The base frontend can pass while a later independent interface run aborts.
+# Diagnose the actual failed program using the same existing debugger controls.
+interfaces = test.parent / 'interfaces_host'
+for mode in ['normal', 'single', 'default']:
+    log = test.parent / ('interfaces-' + mode + '.log')
+    if interfaces.is_file() and log.is_file() and 'PASS:' not in log.read_text(errors='replace'):
+        test, extra_args = interfaces, [mode]
+        break
 loader = os.environ.get('NMB_HOST_LOADER', '')
 if test.is_file() and loader:
     for label, use_nsobject in [('host-private-base', False), ('host-nsobject-base', True)]:
@@ -48,7 +57,7 @@ if test.is_file() and loader:
         cache.mkdir(exist_ok=True)
         run(label, ['xcrun', 'lldb', '-b', '-o', 'run', '-k', 'thread backtrace all',
                     '-k', 'register read',
-                    '-o', 'thread backtrace all', '-o', 'register read', '-o', 'quit', '--', str(test), loader, str(cache), ''], env, timeout=180)
+                    '-o', 'thread backtrace all', '-o', 'register read', '-o', 'quit', '--', str(test), loader, str(cache), *extra_args], env, timeout=180)
     saved = root / 'build/host-debug'
     saved.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(test, saved / 'frontend_host')
@@ -57,7 +66,7 @@ if test.is_file() and loader:
         shutil.copyfile(bridge, saved / bridge.name)
 reports = Path.home() / 'Library/Logs/DiagnosticReports'
 if reports.is_dir():
-    for path in reports.glob('frontend_host*'):
+    for path in reports.glob(test.name+'*'):
         if path.is_file() and path.stat().st_size <= 8 * 1024 * 1024:
             shutil.copyfile(path, out / path.name)
 (out / 'diagnostics.json').write_text(json.dumps({'records': records, 'phone_operations': False,
