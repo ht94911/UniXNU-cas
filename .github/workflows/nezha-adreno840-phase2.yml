@@ -1,7 +1,7 @@
 name: nezha iPhone27 Adreno840Metal Phase 2 Native arm64e Build
 on:
   push:
-    branches: [codex/ios27-adreno840-phase2-mac-ci-013-20261126]
+    branches: [codex/ios27-adreno840-phase2-mac-ci-014-20261126]
   workflow_dispatch:
 permissions:
   contents: read

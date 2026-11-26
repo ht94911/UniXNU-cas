@@ -23,15 +23,34 @@
 #include <stdexcept>
 #include <string>
 #include <utility>
+#include <fcntl.h>
+#include <unistd.h>
 
 extern "C" const char *a840_hwtest_path_for_command_buffer(void *) __attribute__((weak_import));
 extern "C" id<MTLDevice> a840_metal_create_direct_device(NSError **error) __attribute__((weak_import));
 
 using namespace nezha_gpu_test;
 namespace {
+void emit_console_line(const std::string &line) {
+    const int fd = ::open("/dev/console", O_WRONLY | O_NONBLOCK);
+    if (fd < 0) return;
+    const std::string framed = "[NezhaGpuTest] " + line + "\n";
+    (void)::write(fd, framed.data(), framed.size());
+    ::close(fd);
+}
+std::string format_nserror(NSError *err) {
+    if (!err) return "nil";
+    const char *dom = err.domain ? err.domain.UTF8String : "?";
+    const char *desc = err.localizedDescription ? err.localizedDescription.UTF8String : "";
+    return std::string(dom ? dom : "?") + ":" + std::to_string((long long)err.code) + " (" + (desc ? desc : "") + ")";
+}
 void need(bool condition, const char *message) { if (!condition) throw std::runtime_error(message); }
 void command_ok(id<MTLCommandBuffer> command) {
-    need(command.status == MTLCommandBufferStatusCompleted && command.error == nil, "Metal command failed");
+    if (command.status != MTLCommandBufferStatusCompleted || command.error != nil) {
+        const std::string msg = "Metal command failed status=" + std::to_string((unsigned long long)command.status) +
+            " err=" + format_nserror(command.error);
+        throw std::runtime_error(msg);
+    }
 }
 
 class MetalHarness {
@@ -44,16 +63,24 @@ public:
     explicit MetalHarness(const char *metallib) {
         const char *directEnv = std::getenv("A840_DIRECT_IOKIT");
         const bool preferDirect = directEnv && directEnv[0] == '1';
-        if (preferDirect && a840_metal_create_direct_device) {
+        if (preferDirect) {
+            need(a840_metal_create_direct_device != nullptr, "direct-iokit requested but a840_metal_create_direct_device missing");
             NSError *devErr = nil;
             device = a840_metal_create_direct_device(&devErr);
+            if (!device) {
+                const std::string msg = "direct-iokit device creation failed: " + format_nserror(devErr);
+                emit_console_line(msg);
+                throw std::runtime_error(msg);
+            }
+            emit_console_line(std::string("direct-iokit device opened: ") + (device.name ? device.name.UTF8String : "unknown"));
+        } else {
+            device = MTLCreateSystemDefaultDevice();
+            if (!device && a840_metal_create_direct_device) {
+                NSError *devErr = nil;
+                device = a840_metal_create_direct_device(&devErr);
+            }
+            need(device != nil, "no MTLDevice");
         }
-        if (!device) device = MTLCreateSystemDefaultDevice();
-        if (!device && a840_metal_create_direct_device) {
-            NSError *devErr = nil;
-            device = a840_metal_create_direct_device(&devErr);
-        }
-        need(device != nil, "no MTLDevice");
         queue = [device newCommandQueue]; need(queue != nil, "no command queue");
         NSError *error = nil;
         if (metallib) library = [device newLibraryWithURL:[NSURL fileURLWithPath:[NSString stringWithUTF8String:metallib]] error:&error];
@@ -320,6 +347,7 @@ extern "C" int NezhaGpuTestRun(const char *suite, const char *selected, const ch
                 } catch (const std::exception &error) {
                     result.shape_equal = false; result.mismatched_px = 1; note = "metal_error";
                     std::fprintf(stderr, "%s: %s\n", phase2_cases[i], error.what());
+                    emit_console_line(std::string("ERR ") + phase2_cases[i] + ": " + error.what());
                 }
                 if (harness.route.empty()) harness.route = "fallback:raw:unimplemented.global";
                 if (harness.route == "fallback:raw:unimplemented.global") note = "route_evidence_missing";
@@ -327,6 +355,7 @@ extern "C" int NezhaGpuTestRun(const char *suite, const char *selected, const ch
                     std::chrono::steady_clock::now() - started).count());
                 const auto line = hwtest_line(phase2_cases[i], result, time, harness.route, note);
                 std::printf("%s\n", line.c_str()); std::fflush(stdout);
+                emit_console_line(line);
                 all_pixels = all_pixels && result.passed(); all_raw = all_raw && harness.route == "raw";
                 [records addObject:@{@"case": [NSString stringWithUTF8String:phase2_cases[i]], @"status": result.passed() ? @"PASS" : @"FAIL",
                                      @"path": [NSString stringWithUTF8String:harness.route.c_str()], @"max_err": @(result.max_err),
@@ -338,7 +367,12 @@ extern "C" int NezhaGpuTestRun(const char *suite, const char *selected, const ch
                     @"pixels_pass": @(all_pixels), @"all_raw": @(all_raw), @"hardware_acceptance": @NO} options:NSJSONWritingPrettyPrinted error:&error];
                 need(data != nil && [data writeToFile:[NSString stringWithUTF8String:json_out] options:NSDataWritingAtomic error:&error], "cannot write JSON output");
             }
-        } catch (const std::exception &error) { std::fprintf(stderr, "NezhaGpuTest: %s\n", error.what()); return 1; }
+        } catch (const std::exception &error) {
+            std::fprintf(stderr, "NezhaGpuTest: %s\n", error.what());
+            emit_console_line(std::string("FATAL: ") + error.what());
+            return 1;
+        }
+        emit_console_line(std::string("SUMMARY pixels_pass=") + (all_pixels ? "1" : "0") + " all_raw=" + (all_raw ? "1" : "0"));
         return all_pixels && all_raw ? 0 : 1;
     }
 }

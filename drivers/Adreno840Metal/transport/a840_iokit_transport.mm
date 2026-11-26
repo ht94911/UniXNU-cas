@@ -33,6 +33,8 @@ struct IokitSymbols {
 };
 
 constexpr uint32_t kMapAnywhere = 1u;
+constexpr uint32_t kMapCopybackCache = 768u;       /* kIOMapCopybackCache (0x300) */
+constexpr uint32_t kMapWriteCombineCache = 1024u;  /* kIOMapWriteCombineCache (0x400) */
 constexpr uint32_t kNativeOpenType = 16711u;       /* 'AG' */
 constexpr uint32_t kTunnelMagic = 1314147916u;     /* 'NTNL' */
 constexpr uint32_t kTunnelProbe = UINT32_MAX;
@@ -90,7 +92,7 @@ static A840TransportStatus transportStatus(kern_return_t error)
 @interface A840IokitTransport ()
 - (A840TransportStatus)call:(uint32_t)method input:(const void *)input size:(size_t)inBytes
                      output:(void *)output size:(size_t)outBytes;
-- (A840TransportStatus)map:(uint32_t)token bytes:(uint64_t)bytes address:(void **)out;
+- (A840TransportStatus)map:(uint32_t)token bytes:(uint64_t)bytes coherent:(BOOL)coherent address:(void **)out;
 - (A840TransportStatus)unmap:(uint32_t)token;
 @end
 
@@ -104,8 +106,7 @@ static A840TransportStatus callMethod(void *cookie, uint32_t method,
 static A840TransportStatus mapMemory(void *cookie, uint32_t token, uint64_t bytes,
     bool coherent, void **out)
 {
-    (void)coherent;
-    return [(__bridge A840IokitTransport *)cookie map:token bytes:bytes address:out];
+    return [(__bridge A840IokitTransport *)cookie map:token bytes:bytes coherent:(coherent ? YES : NO) address:out];
 }
 
 static A840TransportStatus unmapMemory(void *cookie, uint32_t token)
@@ -263,7 +264,21 @@ static A840TransportStatus unmapMemory(void *cookie, uint32_t token)
 - (A840TransportStatus)call:(uint32_t)method input:(const void *)input size:(size_t)inBytes
                      output:(void *)output size:(size_t)outBytes
 {
-    if (_mailbox) return [self callMailbox:method input:input size:inBytes output:output size:outBytes];
+#if defined(__aarch64__)
+    if (method == A840_WIRE_SUBMIT || method == A840_WIRE_SUBMIT_BATCH) {
+        __asm__ volatile("dsb sy" ::: "memory");
+    }
+#endif
+    if (_mailbox) {
+        const auto mstatus = [self callMailbox:method input:input size:inBytes output:output size:outBytes];
+#if defined(__aarch64__)
+        if (mstatus == A840_TRANSPORT_OK &&
+            (method == A840_WIRE_WAIT_FENCE || method == NativeAdrenoMethodWaitAnyV3)) {
+            __asm__ volatile("dmb oshld" ::: "memory");
+        }
+#endif
+        return mstatus;
+    }
     if (!_syms) return A840_TRANSPORT_STATE_ERROR;
     size_t actual = outBytes;
     kern_return_t kr = KERN_FAILURE;
@@ -282,18 +297,25 @@ static A840TransportStatus unmapMemory(void *cookie, uint32_t token)
     const auto status = transportStatus(kr);
     if (status == A840_TRANSPORT_OK && outBytes && actual != outBytes)
         return A840_TRANSPORT_STATE_ERROR;
+#if defined(__aarch64__)
+    if (status == A840_TRANSPORT_OK &&
+        (method == A840_WIRE_WAIT_FENCE || method == NativeAdrenoMethodWaitAnyV3)) {
+        __asm__ volatile("dmb oshld" ::: "memory");
+    }
+#endif
     return status;
 }
 
-- (A840TransportStatus)map:(uint32_t)token bytes:(uint64_t)bytes address:(void **)out
+- (A840TransportStatus)map:(uint32_t)token bytes:(uint64_t)bytes coherent:(BOOL)coherent address:(void **)out
 {
     if (!_syms) return A840_TRANSPORT_STATE_ERROR;
     @synchronized (_views) {
         if (_views[@(token)]) return A840_TRANSPORT_BUSY;
         mach_vm_address_t address = 0;
         mach_vm_size_t size = 0;
+        const uint32_t options = kMapAnywhere | (coherent ? kMapCopybackCache : kMapWriteCombineCache);
         const auto status = transportStatus(
-            _syms->mapMemory(_connection, token, mach_task_self(), &address, &size, kMapAnywhere));
+            _syms->mapMemory(_connection, token, mach_task_self(), &address, &size, options));
         if (status != A840_TRANSPORT_OK) return status;
         if (!address || size < bytes) {
             if (address) (void)_syms->unmapMemory(_connection, token, mach_task_self(), address);

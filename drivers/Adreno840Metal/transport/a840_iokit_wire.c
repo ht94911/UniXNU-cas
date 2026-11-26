@@ -315,9 +315,12 @@ static A840TransportStatus bo_map(void *ctx, const A840BoMapDesc *desc, A840BoMa
     }
     if (gpu) {
         const bool coherent = (wire->caps.abi_flags & NativeAdrenoParamsV2OwnedCoherent) != 0;
+        const uint32_t share = coherent
+            ? (desc->shareability ? desc->shareability : A840_BO_SHARE_OUTER)
+            : A840_BO_SHARE_OUTER;
         const A840WireBoMap request = {
             desc->handle, desc->gpu_va, desc->permissions, coherent ? desc->writeback : 0,
-            desc->shareability ? desc->shareability : A840_BO_SHARE_OUTER, 0,
+            share, 0,
         };
         A840WireBoMapReply mapping = {0};
         const A840TransportStatus status = a840_wire_call(wire, A840_WIRE_BO_MAP,
