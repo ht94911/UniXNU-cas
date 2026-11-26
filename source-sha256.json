@@ -1,6 +1,7 @@
 {
-  ".github/workflows/nezha-metal.yml": "f0bf2bc8e8d3457d2f596593fedc999232ec11ec3cc1338d238986e09d8ec3a4",
+  ".github/workflows/nezha-metal.yml": "263f4b5b41aa025c9ddc7cf4f8f12c745bf30abbdada9a31c7cfb83b679613b6",
   ".gitignore": "862263fa1f46c20f0d1e4dac5ffcc75abd55c08211b2c3864c5f8764b9d87793",
+  "ci/gpu-userland/build-lavapipe-host.py": "2f34b8578c459e8f61fb8b37b04bb179936fdfb3d2fcd871d8b62ac43ea5fd9b",
   "ci/gpu-userland/check-buffer-reserve.py": "56bef54d15cb6192d25bfd99516369d45d3ddeffbd44805f9f052739d2fdf57a",
   "ci/gpu-userland/check-client-wait.py": "1902f1839cbb499e78ca5d8b5ad13e7fb28b471874aef9923d044b0d266093d9",
   "ci/gpu-userland/check-codegen-cache.py": "f0fdcb026b0ccf268ae3f1c0bd17858ea2a4a8305d54e89a3610be1b64a22201",
@@ -25,7 +26,7 @@
   "ci/gpu-userland/check-primer-wait-host.py": "bed2634933d8fa9465fb12a4ef1a99b04960d67fdc1acd33d7342460563731be",
   "ci/gpu-userland/check-public-frontend.py": "9f6d0d84bbdf714b48f7d767f09cca544c6a6d1d6f284f761885895f9c707ee2",
   "ci/gpu-userland/check-render-wait.py": "544c1a4112a2fe8e1cc19249010d85fd2e1c86f12fbb5d378f254e629a18c1d7",
-  "ci/gpu-userland/check-runtime-v2-retention.py": "422f3cd532526b397591fbd79263f5e4ee12cb7823883077fd02d294bb9aa44c",
+  "ci/gpu-userland/check-runtime-v2-retention.py": "1cc10c70269ad9d2a57544dd9e512ae1c662d11b7d7bdfd0524199aef226ee6c",
   "ci/gpu-userland/check-stitch-modules.py": "29b29c19be9f835574e5732fda98794ddeb33ede540acd4bf0c47ee912ccccd8",
   "ci/gpu-userland/check-submit-room-retry.py": "46be4adc76ff8efb554e335e6cb2fb3329fc5e3245d2367189372a17a0522acd",
   "ci/gpu-userland/check-tile-store-error-host.py": "b87f06f86de5f5ebbfc327dc890cc2ef944d2e322510424d925c9482ed63f0d1",

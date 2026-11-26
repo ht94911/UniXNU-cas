@@ -12,7 +12,6 @@ defaults:
   run:
     shell: bash
 env:
-  MVK_CONFIG_USE_METAL_ARGUMENT_BUFFERS: "1"
   UNIXNU_COMMIT: e7bddb9a7eecdcf81f36da9fa38bd9d4d3f155c2
   ADRENO740_COMMIT: 2962e289c9690aeb668072c170679e6fb28bf8de
   ABI_SHA256: d1c8a27d6e61787073c2c56a779ff4d5c43d86f2d23ac0c0fba0368af8dcdeae
@@ -54,7 +53,7 @@ jobs:
           set -euo pipefail
           echo "LOGS=$RUNNER_TEMP/logs" >> "$GITHUB_ENV"
           mkdir -p "$RUNNER_TEMP/logs"
-          brew install glslang shaderc spirv-tools molten-vk vulkan-headers llvm ninja openssl@3 > "$RUNNER_TEMP/logs/brew.log" 2>&1
+          brew install glslang shaderc spirv-tools vulkan-loader vulkan-headers llvm ninja pkgconf openssl@3 > "$RUNNER_TEMP/logs/brew.log" 2>&1
           echo "$(brew --prefix llvm)/bin" >> "$GITHUB_PATH"
           export PATH="$(brew --prefix llvm)/bin:$HOME/.cargo/bin:$PATH"
           if ! command -v rustup > /dev/null; then
@@ -64,13 +63,17 @@ jobs:
           rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --component rust-src --target aarch64-apple-ios > "$RUNNER_TEMP/logs/rustup.log" 2>&1
           { sw_vers; xcodebuild -version; xcrun --sdk iphoneos --show-sdk-version; rustc "+$RUST_TOOLCHAIN" -vV;
             llvm-as --version; glslangValidator --version; glslc --version; spirv-val --version; } > "$RUNNER_TEMP/logs/tools.log" 2>&1
-          echo "NMB_HOST_LOADER=$(brew --prefix molten-vk)/lib/libMoltenVK.dylib" >> "$GITHUB_ENV"
+          echo "NMB_HOST_LOADER=$(brew --prefix vulkan-loader)/lib/libvulkan.dylib" >> "$GITHUB_ENV"
       - name: Prepare the exact public source and patch inputs
         id: prepare
         run: device/ci/gpu-userland/logrun prepare python3 device/ci/gpu-userland/prepare.py --unixnu unixnu --record "$LOGS/sources.json"
+      - name: Build the existing Mesa CPU ICD for source-bound host regressions
+        id: host_cpu_icd
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
+        run: device/ci/gpu-userland/logrun host-cpu-icd python3 device/ci/gpu-userland/build-lavapipe-host.py --unixnu unixnu --logs "$LOGS"
       - name: Exercise the actual runtime-v2 frontend resource, heap, callback and pixel regressions
         id: runtime_source
-        if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' && steps.host_cpu_icd.outcome == 'success' }}
         env:
           RUST_BACKTRACE: full
           NSUnbufferedIO: "YES"

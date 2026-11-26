@@ -9,5 +9,8 @@ for name,markers in required.items():
 frontend=(root/'drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm').read_text();assert 'NBSurfaceUse' in frontend and 'surfaceUses.clear()' in frontend and 'countUse;' not in frontend
 for file in ['frontend_host.log','resource_wait_host.log']:
     text=(host/file).read_text();assert 'PASS' in text and 'FAIL' not in text,file
+cpu=json.loads((a.logs/'lavapipe-host/report.json').read_text())
+assert cpu['passed'] and cpu['existing_Mesa_CPU_ICD_built'] and cpu['source_runtime_floor_unchanged']
+assert 'llvmpipe' in (host/'frontend_host.log').read_text().lower(), 'host regression did not use the selected CPU ICD'
 sources={name:hashlib.sha256((runtime/name).read_bytes()).hexdigest() for name in required}
 out=a.logs/'runtime-v2';out.mkdir(exist_ok=True);(out/'report.json').write_text(json.dumps({'passed':True,'actual_runtime_source':sources,'actual_frontend_source_sha256':hashlib.sha256((root/'drivers/AdrenoMetal/NativeBridgeMetalFrontend.mm').read_bytes()).hexdigest(),'actual_host_frontend_and_resource_wait_regressions_passed':True,'local_allocator_QoS_clock_alias_wait_and_surface_lifecycle_retained':True,'hardware_verified':False,'phone_operations':False},indent=2)+'\n')
