@@ -1,0 +1,43 @@
+diff --git a/src/gallium/frontends/lavapipe/lvp_device.c b/src/gallium/frontends/lavapipe/lvp_device.c
+--- a/src/gallium/frontends/lavapipe/lvp_device.c
++++ b/src/gallium/frontends/lavapipe/lvp_device.c
+@@ -2893,6 +2893,7 @@
+ static const VkTimeDomainEXT lvp_time_domains[] = {
+         VK_TIME_DOMAIN_DEVICE_EXT,
+         VK_TIME_DOMAIN_CLOCK_MONOTONIC_EXT,
++        VK_TIME_DOMAIN_CLOCK_MONOTONIC_RAW_EXT,
+ };
+ 
+ VKAPI_ATTR VkResult VKAPI_CALL lvp_GetPhysicalDeviceCalibrateableTimeDomainsEXT(
+@@ -2943,12 +2944,26 @@
+    uint64_t *pTimestamps,
+    uint64_t *pMaxDeviation)
+ {
+-   *pMaxDeviation = 1;
+-
+-   uint64_t now = os_time_get_nano();
++   uint64_t begin, end;
++   VkResult result = vk_device_get_timestamp(NULL,
++      VK_TIME_DOMAIN_CLOCK_MONOTONIC_RAW_EXT, &begin);
++   if (result != VK_SUCCESS)
++      return result;
+    for (unsigned i = 0; i < timestampCount; i++) {
+-      pTimestamps[i] = now;
+-   }
++      if (pTimestampInfos[i].timeDomain == VK_TIME_DOMAIN_DEVICE_EXT)
++         pTimestamps[i] = os_time_get_nano();
++      else {
++         result = vk_device_get_timestamp(NULL, pTimestampInfos[i].timeDomain,
++                                           &pTimestamps[i]);
++         if (result != VK_SUCCESS)
++            return result;
++      }
++   }
++   result = vk_device_get_timestamp(NULL,
++      VK_TIME_DOMAIN_CLOCK_MONOTONIC_RAW_EXT, &end);
++   if (result != VK_SUCCESS)
++      return result;
++   *pMaxDeviation = vk_time_max_deviation(begin, end, 1);
+    return VK_SUCCESS;
+ }
+ 

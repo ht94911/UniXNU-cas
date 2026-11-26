@@ -1,7 +1,7 @@
 {
   ".github/workflows/nezha-metal.yml": "263f4b5b41aa025c9ddc7cf4f8f12c745bf30abbdada9a31c7cfb83b679613b6",
   ".gitignore": "862263fa1f46c20f0d1e4dac5ffcc75abd55c08211b2c3864c5f8764b9d87793",
-  "ci/gpu-userland/build-lavapipe-host.py": "b8f0550628ed1f9f6e4bedbbfbee69364dcde4f92260691b6ff98d9642616169",
+  "ci/gpu-userland/build-lavapipe-host.py": "fda2824bd9d264a0c5c72b8a802d04963377fbea360766381768c40d6743ed4d",
   "ci/gpu-userland/check-buffer-reserve.py": "56bef54d15cb6192d25bfd99516369d45d3ddeffbd44805f9f052739d2fdf57a",
   "ci/gpu-userland/check-client-wait.py": "1902f1839cbb499e78ca5d8b5ad13e7fb28b471874aef9923d044b0d266093d9",
   "ci/gpu-userland/check-codegen-cache.py": "f0fdcb026b0ccf268ae3f1c0bd17858ea2a4a8305d54e89a3610be1b64a22201",
@@ -111,6 +111,7 @@
   "ci/gpu-userland/patches/heap-copy-recipes.patch": "b28164a7338bbae2d9186300adb012ab268818260c85a4fd90a0942796b44eb9",
   "ci/gpu-userland/patches/intel-host-bridge.patch": "4ca8907888b08bb9218abe7d95a5c0bf8b11443f1d2fb6cbaad067a1c6862c78",
   "ci/gpu-userland/patches/intel-signal-context.patch": "605c60d9d800809539ce359a79706c63531cd70641b036255f4eee385c034335",
+  "ci/gpu-userland/patches/lavapipe-host-clock.patch": "f257478c859296581a59f8ee4fd6ba280492c3d45f65172587056aaffc9870e8",
   "ci/gpu-userland/patches/linear-heap-plugin.patch": "c9edd080c2d5188f925373c6380008fee584fd4998947a6c3044ed8540c310c9",
   "ci/gpu-userland/patches/linear-heap-recipes.patch": "e692d393e9118ad69924ad97407276c1d3a2fa3c76512487a8594f7cceb2a5dd",
   "ci/gpu-userland/patches/mesa-new-file-mode.patch": "e032d6f8d2bd8d03a21f24f2bf2237fc0f3fce12a7354fd0be85cd59cc710744",
