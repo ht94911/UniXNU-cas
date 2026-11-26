@@ -103,7 +103,7 @@
   "ci/gpu-userland/patches/gpu080-ui-update-wait-plugin.patch": "6a0bf5b7fd18d1febd76977bba19d6884a68d5659d547fde9296b18dad79551f",
   "ci/gpu-userland/patches/gpu085-context-signposts.patch": "159cb589f7757492250a80ecfb129bd08de00481c7a5b52e35ad854ceda4cb66",
   "ci/gpu-userland/patches/gpu087-context-queues.patch": "959ce1e336e5c486883481594d20d4a3658ca1dbae1e442eae72141be8f0b2e9",
-  "ci/gpu-userland/patches/gpu088-core.patch": "8495cea4250e11aab7488918700fb3c72412f00914aacd70e47e843f64d43e55",
+  "ci/gpu-userland/patches/gpu088-core.patch": "58f823ece5844bded3243595e96ad2f946ca94d2a09362b4ad97335b7ef4b4de",
   "ci/gpu-userland/patches/gpu088-gop.patch": "e3489fc30f0fcc9308b5f0b0b7c595c0a7dbfcdf984b2614154e33a313bf4da9",
   "ci/gpu-userland/patches/gpu088-metal.patch": "7eb444def4dd961bfc1ae2fd5b7e317b8aa393599c18cb10b82b12cfdba1f03e",
   "ci/gpu-userland/patches/gpu088-native-abi.patch": "263edd82ccd6955a5da40bfe193e12e8b95a71d4381bb78bd6e1a0fe0bfa0d50",
