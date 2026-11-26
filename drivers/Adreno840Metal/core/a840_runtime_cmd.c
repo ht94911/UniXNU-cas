@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "Adreno840Regs.h"
 #include "gen/a840_bitfields.h"
 
 typedef struct CmdCallbackEntry {
@@ -1373,8 +1374,26 @@ static A840RtStatus compute_dispatch_common(A840RtComputeEncoder *enc,
     emit_desc.size[1] = y;
     emit_desc.size[2] = z;
 
-    est = a840_emit_compute_dispatch(&cb->cs, &emit_desc);
-    return a840_rt_status_from_emit(est);
+    {
+        size_t saved_words = cb->cs.used_dwords;
+        size_t saved_relocs = cb->cs.reloc_count;
+        est = a840_emit_compute_dispatch(&cb->cs, &emit_desc);
+        if (est != A840_EMIT_OK) {
+            return a840_rt_status_from_emit(est);
+        }
+        /* Serial Metal compute encoders order back-to-back dispatches and
+         * subsequent passes on the same command buffer. */
+        est = a840_emit_wfi(&cb->cs);
+        if (est == A840_EMIT_OK) {
+            est = a840_emit_cache_flush_inv(&cb->cs, A840_CACHE_UCHE_INV);
+        }
+        if (est != A840_EMIT_OK) {
+            cb->cs.used_dwords = saved_words;
+            cb->cs.reloc_count = saved_relocs;
+            return a840_rt_status_from_emit(est);
+        }
+    }
+    return A840_RT_OK;
 }
 
 A840RtStatus a840_rt_compute_dispatch_threadgroups(A840RtComputeEncoder *enc,
@@ -1459,6 +1478,79 @@ void a840_rt_compute_destroy(A840RtComputeEncoder *enc)
 }
 
 /* ---------- Basic Sysmem 3D Render Encoder ---------- */
+
+static A840RtStatus emit_sysmem_render_begin(A840CmdStream *cs,
+                                             uint32_t fb_w,
+                                             uint32_t fb_h)
+{
+    /* Match Mesa tu6_sysmem_render_begin<A8XX> (tu_cmd_buffer.cc:3281-3320):
+     * Direct-to-sysmem rendering requires window scissor, zero window offsets,
+     * A8XX bin size = 0 / FORCE_LRZ_WRITE_DIS, RB_BUFFER_CNTL = all sysmem,
+     * RB_CLEAR_TARGET = SYSMEM, CP_SET_MARKER(DIRECT_RENDER),
+     * CP_SKIP_IB2_ENABLE_GLOBAL(0), CP_SET_VISIBILITY_OVERRIDE(1), CP_SET_MODE(0).
+     */
+    const uint32_t w = fb_w ? fb_w : 1u;
+    const uint32_t h = fb_h ? fb_h : 1u;
+    const uint32_t br = ((w - 1u) & 0x3fffu) | (((h - 1u) & 0x3fffu) << 16);
+    const uint32_t scissor[2] = { 0u, br };
+    const uint32_t zero = 0u;
+    const uint32_t zero8[8] = { 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u };
+    const uint32_t bin_cntl = UINT32_C(1) << 31; /* RENDERING_PASS | FORCE_LRZ_WRITE_DIS */
+    const uint32_t sysmem_mask = UINT32_C(0x3ff); /* Z|S|RT0..RT7 in sysmem */
+    const uint32_t direct_mode = A840_MODE_DIRECT_RENDER;
+    const uint32_t vis_override = 1u;
+    A840EmitStatus est;
+
+    est = a840_cs_emit_pkt4(cs, A840_REG_GRAS_SC_WINDOW_SCISSOR_TL, scissor, 2u);
+    if (est != A840_EMIT_OK) return a840_rt_status_from_emit(est);
+    est = a840_cs_emit_pkt4(cs, A840_REG_GRAS_A2D_SCISSOR_TL, scissor, 2u);
+    if (est != A840_EMIT_OK) return a840_rt_status_from_emit(est);
+
+    est = a840_cs_emit_pkt4(cs, A840_REG_RB_WINDOW_OFFSET, &zero, 1u);
+    if (est != A840_EMIT_OK) return a840_rt_status_from_emit(est);
+    est = a840_cs_emit_pkt4(cs, A840_REG_RB_RESOLVE_WINDOW_OFFSET, &zero, 1u);
+    if (est != A840_EMIT_OK) return a840_rt_status_from_emit(est);
+    est = a840_cs_emit_pkt4(cs, A840_REG_SP_WINDOW_OFFSET, &zero, 1u);
+    if (est != A840_EMIT_OK) return a840_rt_status_from_emit(est);
+    est = a840_cs_emit_pkt4(cs, A840_REG_TPL1_WINDOW_OFFSET, &zero, 1u);
+    if (est != A840_EMIT_OK) return a840_rt_status_from_emit(est);
+    est = a840_cs_emit_pkt4(cs, A840_REG_TPL1_A2D_WINDOW_OFFSET, &zero, 1u);
+    if (est != A840_EMIT_OK) return a840_rt_status_from_emit(est);
+
+    est = a840_cs_emit_pkt4(cs, A840_REG_GRAS_SC_BIN_CNTL, &bin_cntl, 1u);
+    if (est != A840_EMIT_OK) return a840_rt_status_from_emit(est);
+    est = a840_cs_emit_pkt4(cs, A840_REG_RB_CNTL, &bin_cntl, 1u);
+    if (est != A840_EMIT_OK) return a840_rt_status_from_emit(est);
+    est = a840_cs_emit_pkt4(cs, A840_REG_TPL1_BIN_SIZE, &zero, 1u);
+    if (est != A840_EMIT_OK) return a840_rt_status_from_emit(est);
+    est = a840_cs_emit_pkt4(cs, A840_REG_TPL1_A2D_BIN_SIZE, &zero, 1u);
+    if (est != A840_EMIT_OK) return a840_rt_status_from_emit(est);
+    est = a840_cs_emit_pkt4(cs, A840_REG_SP_BIN_SIZE, &zero, 1u);
+    if (est != A840_EMIT_OK) return a840_rt_status_from_emit(est);
+    est = a840_cs_emit_pkt4(cs, A840_REG_RB_MRT_GMEM_DIMENSION_0_REG, zero8, 8u);
+    if (est != A840_EMIT_OK) return a840_rt_status_from_emit(est);
+    est = a840_cs_emit_pkt4(cs, A840_REG_RB_DEPTH_GMEM_DIMENSION, &zero, 1u);
+    if (est != A840_EMIT_OK) return a840_rt_status_from_emit(est);
+
+    est = a840_cs_emit_pkt4(cs, A840_REG_RB_BUFFER_CNTL, &sysmem_mask, 1u);
+    if (est != A840_EMIT_OK) return a840_rt_status_from_emit(est);
+    est = a840_cs_emit_pkt4(cs, A840_REG_RB_CLEAR_TARGET, &zero, 1u);
+    if (est != A840_EMIT_OK) return a840_rt_status_from_emit(est);
+
+    est = a840_cs_emit_pkt7(cs, A840_CP_SET_MARKER, &direct_mode, 1u);
+    if (est != A840_EMIT_OK) return a840_rt_status_from_emit(est);
+    est = a840_cs_emit_pkt7(cs, A840_CP_SKIP_IB2_ENABLE_GLOBAL, &zero, 1u);
+    if (est != A840_EMIT_OK) return a840_rt_status_from_emit(est);
+    est = a840_cs_emit_pkt7(cs, A840_CP_SET_VISIBILITY_OVERRIDE, &vis_override, 1u);
+    if (est != A840_EMIT_OK) return a840_rt_status_from_emit(est);
+    est = a840_cs_emit_pkt7(cs, A840_CP_SET_MODE, &zero, 1u);
+    if (est != A840_EMIT_OK) return a840_rt_status_from_emit(est);
+    est = a840_cs_emit_pkt4(cs, A840_REG_GRAS_BIN_FOVEAT, &zero, 1u);
+    if (est != A840_EMIT_OK) return a840_rt_status_from_emit(est);
+    est = a840_cs_emit_pkt4(cs, A840_REG_RB_BIN_FOVEAT, &zero, 1u);
+    if (est != A840_EMIT_OK) return a840_rt_status_from_emit(est);
+    return A840_RT_OK;
+}
 
 static A840RtStatus check_render_active(const A840RtRenderEncoder *enc)
 {
@@ -1607,6 +1699,32 @@ A840RtStatus a840_rt_cb_begin_render_pass(A840RtCmdBuffer *cb,
         st = emit_barrier_tx(&cb->cs,
                              A840_CACHE_CCU_FLUSH_COLOR | A840_CACHE_CCU_INV_COLOR | A840_CACHE_UCHE_INV,
                              true, true);
+        if (st != A840_RT_OK) {
+            cb->cs.used_dwords = saved_words;
+            cb->cs.reloc_count = saved_relocs;
+            free(enc);
+            return st;
+        }
+    }
+
+    {
+        uint32_t fb_w = 0u, fb_h = 0u;
+        for (i = 0; i < pass->color_count; ++i) {
+            if (pass->color_targets[i] != NULL) {
+                fb_w = pass->color_targets[i]->width;
+                fb_h = pass->color_targets[i]->height;
+                break;
+            }
+        }
+        if (fb_w == 0u && pass->depth_target != NULL) {
+            fb_w = pass->depth_target->width;
+            fb_h = pass->depth_target->height;
+        }
+        if (fb_w == 0u && pass->stencil_target != NULL) {
+            fb_w = pass->stencil_target->width;
+            fb_h = pass->stencil_target->height;
+        }
+        st = emit_sysmem_render_begin(&cb->cs, fb_w, fb_h);
         if (st != A840_RT_OK) {
             cb->cs.used_dwords = saved_words;
             cb->cs.reloc_count = saved_relocs;

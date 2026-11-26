@@ -649,7 +649,10 @@ static A840TransportStatus queue_submit(void *ctx, const A840SubmitDesc *desc, A
     }
 
     (void)pthread_mutex_lock(&wire->submit_lock);
-    const bool prefix = wire->context_bo && !wire->submitted;
+    /* NativeAdrenoRing::emitPrologue resets CP_THREAD_CONTROL to BOTH before
+     * every submission and emits CP_RESET_CONTEXT_STATE(ALL) on context switch.
+     * Prepend the pre-encoded context IB on every submission (matching tu_init_hw). */
+    const bool prefix = wire->context_bo != NULL;
     const uint32_t count = desc->ib_count + (uint32_t)prefix;
     uint64_t fence = 0;
     A840TransportStatus status;

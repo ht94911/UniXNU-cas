@@ -4,7 +4,7 @@
 #import "A840MTLEncoders.h"
 #include "../transport/a840_hwtest_hook.h"
 
-static constexpr uint64_t fenceWaitNanoseconds = UINT64_C(30) * 1000000000;
+static constexpr uint64_t fenceWaitNanoseconds = UINT64_C(15) * 1000000000;
 
 @interface A840MTLCommandQueue ()
 - (void)reserve:(A840MTLCommandBuffer *)command;
@@ -357,9 +357,7 @@ static constexpr uint64_t fenceWaitNanoseconds = UINT64_C(30) * 1000000000;
     if (status != A840_RT_OK) return a840_metal_error(status, @"Raw command buffer submission failed");
     a840_hwtest_record_command_buffer((__bridge void *)self, A840_PRED_NONE);
     [self publishScheduled];
-    do {
-        @synchronized (_owner) { status = a840_rt_cb_wait_until_completed(_native, fenceWaitNanoseconds); }
-    } while (status == A840_RT_TIMEOUT);
+    @synchronized (_owner) { status = a840_rt_cb_wait_until_completed(_native, fenceWaitNanoseconds); }
     return status == A840_RT_OK ? nil : a840_metal_error(status, @"Raw command buffer wait failed");
 }
 

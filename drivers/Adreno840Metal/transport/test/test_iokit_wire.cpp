@@ -615,23 +615,24 @@ static void test_submit()
     CHECK(reply.fence == 999 && f.mock.publishes == 0);
     f.mock.fail_method = 0;
 
-    scenario("first submit prepends context IB, then never re-inserts it");
+    scenario("every submit prepends context IB while context is attached");
     CHECK(ops->queue_submit(f.wire, &submit, &reply) == A840_TRANSPORT_OK && reply.fence != 0);
     CHECK(f.mock.last_ibs.size() == 2 && f.mock.last_ibs[0].bytes == A840_CTX_INIT_MAX_DWORDS * 4);
     CHECK(f.mock.last_ibs[1].handle == code->bo_handle);
     CHECK(ops->queue_submit(f.wire, &submit, &reply) == A840_TRANSPORT_OK);
-    CHECK(f.mock.last_ibs.size() == 1 && f.mock.last_ibs[0].handle == code->bo_handle);
+    CHECK(f.mock.last_ibs.size() == 2 && f.mock.last_ibs[0].bytes == A840_CTX_INIT_MAX_DWORDS * 4);
+    CHECK(f.mock.last_ibs[1].handle == code->bo_handle);
     CHECK(a840_wire_attach_context(f.wire, f.device) == A840_TRANSPORT_STATE_ERROR);
 
-    scenario("128 IBs stay in Method 5");
-    submit.ib_count = 128;
+    scenario("127 body IBs plus context IB (128 total) stay in Method 5");
+    submit.ib_count = 127;
     CHECK(ops->queue_submit(f.wire, &submit, &reply) == A840_TRANSPORT_OK);
     CHECK(f.mock.count(A840_WIRE_SUBMIT_BATCH) == 0 && f.mock.last_ibs.size() == 128);
 
-    scenario("150 IBs in 128 plus 22 are one published job");
+    scenario("149 body IBs plus context IB (150 total) in 128 plus 22 are one published job");
     const auto start = f.mock.calls.size();
     const unsigned before = f.mock.publishes;
-    submit.ib_count = 150;
+    submit.ib_count = 149;
     CHECK(ops->queue_submit(f.wire, &submit, &reply) == A840_TRANSPORT_OK);
     CHECK(f.mock.publishes == before + 1 && f.mock.last_ibs.size() == 150);
     CHECK(f.mock.calls.size() == start + 4);
@@ -676,12 +677,14 @@ static void test_submit()
           f.mock.count(A840_WIRE_SUBMIT_BATCH, A840_WIRE_BATCH_COMMIT) == commits + 1);
     f.mock.fail_method = 0;
 
-    scenario("1024 maximum IBs map to eight APPEND records");
-    submit.ib_count = 1024;
+    scenario("1023 body IBs plus context IB (1024 max) map to eight APPEND records");
+    submit.ib_count = 1023;
     const size_t appends = f.mock.count(A840_WIRE_SUBMIT_BATCH, A840_WIRE_BATCH_APPEND);
     CHECK(ops->queue_submit(f.wire, &submit, &reply) == A840_TRANSPORT_OK);
     CHECK(f.mock.last_ibs.size() == 1024);
     CHECK(f.mock.count(A840_WIRE_SUBMIT_BATCH, A840_WIRE_BATCH_APPEND) == appends + 8);
+    submit.ib_count = 1024;
+    CHECK(ops->queue_submit(f.wire, &submit, &reply) == A840_TRANSPORT_OUT_OF_BOUNDS);
 
     scenario("invalid lengths and reloc input rejected without a call");
     const size_t count = f.mock.calls.size();

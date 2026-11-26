@@ -1,10 +1,10 @@
 {
-  "branch": "codex/ios27-adreno840-phase2-mac-ci-015-20261126",
+  "branch": "codex/ios27-adreno840-phase2-mac-ci-016-20261126",
   "file_count": 138,
   "files": {
     ".github/workflows/nezha-adreno840-phase2.yml": {
       "bytes": 5467,
-      "sha256": "1fccb385216caa5215d128f2ad1dadd2d262f934cdec7b35e5f937d5781672b8"
+      "sha256": "2a4fc71e1674b1ade61c2ee678f1e630324156d3595ca0fcc1ca1e9f4d2d9a38"
     },
     "adreno_compile/cache/a840_record_io.c": {
       "bytes": 28406,
@@ -116,7 +116,7 @@
     },
     "ci/phase2_public_manifest.json": {
       "bytes": 31305,
-      "sha256": "458b180dd705336e9f313a3dae24c93fd25c84ff2371d637f8f1821faa3471da"
+      "sha256": "2b91f3ad48c2e48c80a59ec60e8952e5becc5fb8476938963f215e923cb3ee54"
     },
     "ci/seal_phase2_outputs.py": {
       "bytes": 1657,
@@ -227,8 +227,8 @@
       "sha256": "1f1e17e9b25f06a3b01876afef6dbca5714d6c341c9d6e1a3f6113b9741a7590"
     },
     "drivers/Adreno840Metal/core/a840_runtime_cmd.c": {
-      "bytes": 59429,
-      "sha256": "89ab04d6b0f8481f8ee09e67444e71b31709e887f04b2cc7c6362b11c921b2ec"
+      "bytes": 65286,
+      "sha256": "7312dc000a99ca1d43b83e8c405c2efb5ca70cadcb485376f8f152090204fc7c"
     },
     "drivers/Adreno840Metal/core/a840_runtime_cmd.h": {
       "bytes": 12005,
@@ -255,8 +255,8 @@
       "sha256": "8e7b9f622debe3072ea77a7231bb70b7c2fd98f18c45de6bca8c99dea29a59f1"
     },
     "drivers/Adreno840Metal/objc/A840MTLCommand.mm": {
-      "bytes": 13988,
-      "sha256": "46332bb5aa41486275e0292326d70f11550a4e71087245133b0416e8ce6eaae9"
+      "bytes": 13934,
+      "sha256": "b8fa74fcbd06b10c95ef1b3d873287b4d923bf6193eae1feef13475a2a6dae21"
     },
     "drivers/Adreno840Metal/objc/A840MTLDevice.h": {
       "bytes": 2819,
@@ -319,16 +319,16 @@
       "sha256": "0d7960a5da6365df8f3c6d66229d83e377b846182ae1462b649dc913be881c30"
     },
     "drivers/Adreno840Metal/transport/a840_iokit_wire.c": {
-      "bytes": 32954,
-      "sha256": "ddfd5a67103db7089bb911ef4a0bf0c467da67a6d9e913b0baac2f131e2a03ca"
+      "bytes": 33189,
+      "sha256": "cd6f41716c572ac605f80e7e6bc3c2c651be610ecc62be7edf4141b71851b276"
     },
     "drivers/Adreno840Metal/transport/a840_iokit_wire.h": {
       "bytes": 9711,
       "sha256": "0ae3a09b362e333c74b83401eed5bd66cb3faef9d500a968daeccea5e62a4513"
     },
     "drivers/Adreno840Metal/transport/test/test_iokit_wire.cpp": {
-      "bytes": 44663,
-      "sha256": "415fb9e0a6bef088e566d7912b47fe5c777e59a5e69855a690a4e68a3c270631"
+      "bytes": 44937,
+      "sha256": "a093a1c087fc44873f48192342f42bae648bd341b7fa8578ce6673a9d578bfd2"
     },
     "kits/Adreno840/A840_HARDWARE_AUDIT.md": {
       "bytes": 16749,
@@ -555,9 +555,9 @@
       "sha256": "56b4d79410446433400a2919f33fe38256b7e239079bfc2b059aa064156ec4f3"
     }
   },
-  "public_manifest_sha256": "8938c759e591911da9a243ba2f0c3879c961f75b1bdfcebb06ef49241a8d760b",
+  "public_manifest_sha256": "2b91f3ad48c2e48c80a59ec60e8952e5becc5fb8476938963f215e923cb3ee54",
   "recipient_cert_sha256": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
   "schema_version": 1,
   "stack_key_hex": "0x771f226ada6da93d",
-  "total_bytes": 2868143
+  "total_bytes": 2877259
 }
