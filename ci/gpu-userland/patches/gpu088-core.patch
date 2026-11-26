@@ -7623,6 +7623,233 @@ index 62e2e0b7..f99c8868 100644
      if not candidate or not Path(candidate).is_file():
          continue
      version = re.search(r'\b(\d+)\.(\d+)', read([candidate, '--version']))
+diff --git a/scripts/check-native-metal-frontend-host.py b/scripts/check-native-metal-frontend-host.py
+index b5bf1a53..5af57c26 100644
+--- a/scripts/check-native-metal-frontend-host.py
++++ b/scripts/check-native-metal-frontend-host.py
+@@ -44,6 +44,18 @@ lines = [l for l in result.stdout.splitlines() if l.startswith(('PASS', 'FAIL',
+ print('\n'.join(lines))
+ if result.returncode or not any(l.startswith('PASS') for l in lines):
+     sys.exit('native Metal frontend host check failed (exit %d); see %s' % (result.returncode, OUT / 'frontend_host.log'))
++failures = []
++
++def fail(message):
++    failures.append(str(message))
++    print('FAIL: '+str(message), flush=True)
++
++def show_pass(stdout):
++    for line in stdout.splitlines():
++        if line.startswith('PASS'):
++            print(line)
++            break
++
+ priority_test = OUT / 'queue_priority_host'
+ subprocess.run(['xcrun', 'clang++', '-std=c++17', '-Wall', '-Wextra', '-Werror',
+                 KIT / 'bridge/queue_priority_host.cpp', '-o', priority_test], check=True)
+@@ -60,14 +72,15 @@ for mode in ['normal', 'single', 'default']:
+         log = OUT / ('interfaces-' + mode + '.log')
+         log.write_text(run.stdout + run.stderr)
+         if run.returncode or not any(line.startswith('PASS:') for line in run.stdout.splitlines()):
+-            sys.exit('Metal interfaces %s failed; see %s' % (mode, log))
++            fail('Metal interfaces %s failed; see %s' % (mode, log))
+         print(run.stdout, end='')
+ # Qualify compatible original UI descriptors, actual repeated blur pixels and
+ # independent cold archive versus driver-cache provisioning.
+ if QUARTZCORE.is_file():
+     subprocess.run([sys.executable, ROOT / 'scripts/check-quartzcore-blur-host.py'], check=True,
+                    env=dict(os.environ, NMB_HOST_LOADER=loader), timeout=660)
+-subprocess.run([sys.executable, ROOT / 'scripts/check-wallpaper-freeze-host.py', '--reuse-bridge'], check=True)
++wallpaper = subprocess.run([sys.executable, ROOT / 'scripts/check-wallpaper-freeze-host.py', '--reuse-bridge'])
++if wallpaper.returncode: fail('wallpaper pixel/callback check failed')
+ # A nil resource in a blit call fails the command buffer; it must not raise (an exception escaping the plugin's worker thread aborted SpringBoard).
+ nilargs = OUT / 'nil_args_host'
+ subprocess.run(['xcrun', 'clang++', *flags, KIT / 'NativeBridgeMetalFrontend.mm', KIT / 'bridge/nil_args_host.mm',
+@@ -76,8 +89,8 @@ subprocess.run(['xcrun', 'clang++', *flags, KIT / 'NativeBridgeMetalFrontend.mm'
+ run = subprocess.run([str(nilargs), loader, str(cache)], capture_output=True, text=True, timeout=600)
+ (OUT / 'nil_args_host.log').write_text(run.stdout + run.stderr)
+ if run.returncode or not any(l.startswith('PASS') for l in run.stdout.splitlines()):
+-    sys.exit('the nil-resource blit check failed; see %s' % (OUT / 'nil_args_host.log'))
+-print([l for l in run.stdout.splitlines() if l.startswith('PASS')][0])
++    fail('the nil-resource blit check failed; see %s' % (OUT / 'nil_args_host.log'))
++show_pass(run.stdout)
+ # The GPU scanout: half-float frames converted by the compute kernel store the display driver's bytes; BGRA still copies.
+ scanout = OUT / 'scanout_host'
+ subprocess.run(['xcrun', 'clang++', *flags, KIT / 'NativeBridgeMetalFrontend.mm', KIT / 'bridge/scanout_host.mm',
+@@ -86,8 +99,8 @@ subprocess.run(['xcrun', 'clang++', *flags, KIT / 'NativeBridgeMetalFrontend.mm'
+ run = subprocess.run([str(scanout), loader, str(cache)], capture_output=True, text=True, timeout=600)
+ (OUT / 'scanout_host.log').write_text(run.stdout + run.stderr)
+ if run.returncode or not any(l.startswith('PASS') for l in run.stdout.splitlines()):
+-    sys.exit('the GPU scanout check failed; see %s' % (OUT / 'scanout_host.log'))
+-print([l for l in run.stdout.splitlines() if l.startswith('PASS')][0])
++    fail('the GPU scanout check failed; see %s' % (OUT / 'scanout_host.log'))
++show_pass(run.stdout)
+ # Interleaved encoding must be attributed to its own command buffer, regardless of commit order.
+ telemetry = OUT / 'telemetry_host'
+ subprocess.run(['xcrun', 'clang++', *flags, '-Wno-unused-function', KIT / 'NativeBridgeMetalFrontend.mm', KIT / 'bridge/telemetry_host.mm',
+@@ -96,8 +109,8 @@ subprocess.run(['xcrun', 'clang++', *flags, '-Wno-unused-function', KIT / 'Nativ
+ run = subprocess.run([str(telemetry), loader, str(cache)], capture_output=True, text=True, timeout=60)
+ (OUT / 'telemetry_host.log').write_text(run.stdout + run.stderr)
+ if run.returncode or not any(l.startswith('PASS') for l in run.stdout.splitlines()):
+-    sys.exit('per-buffer telemetry failed; see %s' % (OUT / 'telemetry_host.log'))
+-print([l for l in run.stdout.splitlines() if l.startswith('PASS')][0])
++    fail('per-buffer telemetry failed; see %s' % (OUT / 'telemetry_host.log'))
++show_pass(run.stdout)
+ # Render descriptors must consume binaryArchives and the strict-miss option. Use separate
+ # processes and initially empty caches to keep a producer's memo/disk cache out of the consumer.
+ archive_test = OUT / 'archive_host'
+@@ -113,8 +126,8 @@ with tempfile.TemporaryDirectory(prefix='render-archive-', dir=OUT) as temporary
+         archive_log += run.stdout + run.stderr
+         (OUT / 'archive_host.log').write_text(archive_log)
+         if run.returncode or not any(l.startswith('PASS') for l in run.stdout.splitlines()):
+-            sys.exit('render archive %s failed; see %s' % (mode, OUT / 'archive_host.log'))
+-        print([l for l in run.stdout.splitlines() if l.startswith('PASS')][0])
++            fail('render archive %s failed; see %s' % (mode, OUT / 'archive_host.log'))
++        show_pass(run.stdout)
+ # Compute creation must keep options and the same descriptor used for archive population.
+ compute_archive = OUT / 'compute_archive_host'
+ subprocess.run(['xcrun', 'clang++', *flags, KIT / 'NativeBridgeMetalFrontend.mm', KIT / 'bridge/compute_archive_host.mm',
+@@ -129,8 +142,8 @@ with tempfile.TemporaryDirectory(prefix='compute-archive-', dir=OUT) as temporar
+         archive_log += run.stdout + run.stderr
+         (OUT / 'compute_archive_host.log').write_text(archive_log)
+         if run.returncode or not any(l.startswith('PASS') for l in run.stdout.splitlines()):
+-            sys.exit('compute archive %s failed; see %s' % (mode, OUT / 'compute_archive_host.log'))
+-        print([l for l in run.stdout.splitlines() if l.startswith('PASS')][0])
++            fail('compute archive %s failed; see %s' % (mode, OUT / 'compute_archive_host.log'))
++        show_pass(run.stdout)
+ # Scheduling must allow the caller to proceed before completed handlers return. A blocked handler
+ # makes the old waitUntilScheduled -> waitUntilCompleted alias fail deterministically, with bounded waits.
+ scheduled = OUT / 'scheduled_host'
+@@ -140,8 +153,8 @@ subprocess.run(['xcrun', 'clang++', *flags, KIT / 'NativeBridgeMetalFrontend.mm'
+ run = subprocess.run([str(scheduled), loader, str(cache)], capture_output=True, text=True, timeout=30)
+ (OUT / 'scheduled_host.log').write_text(run.stdout + run.stderr)
+ if run.returncode or not any(l.startswith('PASS') for l in run.stdout.splitlines()):
+-    sys.exit('scheduling/completion separation failed; see %s' % (OUT / 'scheduled_host.log'))
+-print([l for l in run.stdout.splitlines() if l.startswith('PASS')][0])
++    fail('scheduling/completion separation failed; see %s' % (OUT / 'scheduled_host.log'))
++show_pass(run.stdout)
+ resource_wait = OUT / 'resource_wait_host'
+ subprocess.run(['xcrun', 'clang++', *flags, KIT / 'NativeBridgeMetalFrontend.mm', KIT / 'bridge/resource_wait_host.mm',
+                 ROOT / 'build/adreno-metal-bridge/host/libadreno_metal_bridge.a', '-framework', 'Foundation', '-framework', 'Metal',
+@@ -149,8 +162,8 @@ subprocess.run(['xcrun', 'clang++', *flags, KIT / 'NativeBridgeMetalFrontend.mm'
+ run = subprocess.run([str(resource_wait), loader, str(cache)], capture_output=True, text=True, timeout=60)
+ (OUT / 'resource_wait_host.log').write_text(run.stdout + run.stderr)
+ if run.returncode or not any(l.startswith('PASS') for l in run.stdout.splitlines()):
+-    sys.exit('storage-specific resource waits failed; see %s' % (OUT / 'resource_wait_host.log'))
+-print([l for l in run.stdout.splitlines() if l.startswith('PASS')][0])
++    fail('storage-specific resource waits failed; see %s' % (OUT / 'resource_wait_host.log'))
++show_pass(run.stdout)
+ # No-copy owners and texture ancestry must survive all actual pending uses,
+ # then release on completion/refusal/discard even if the command is retained.
+ resource_lifetime = OUT / 'resource_lifetime_host'
+@@ -160,8 +173,8 @@ subprocess.run(['xcrun', 'clang++', *flags, KIT / 'NativeBridgeMetalFrontend.mm'
+ run = subprocess.run([str(resource_lifetime), loader, str(cache)], capture_output=True, text=True, timeout=30)
+ (OUT / 'resource_lifetime_host.log').write_text(run.stdout + run.stderr)
+ if run.returncode or not any(l.startswith('PASS') for l in run.stdout.splitlines()):
+-    sys.exit('no-copy owner lifetime failed; see %s' % (OUT / 'resource_lifetime_host.log'))
+-print([l for l in run.stdout.splitlines() if l.startswith('PASS')][0])
++    fail('no-copy owner lifetime failed; see %s' % (OUT / 'resource_lifetime_host.log'))
++show_pass(run.stdout)
+ # Independent IOSurface imports and views must not repeat the same CPU cache
+ # range in one phase. The instrument forwards every real cache operation.
+ surface_flush = OUT / 'surface_flush_host'
+@@ -171,8 +184,8 @@ subprocess.run(['xcrun', 'clang++', *flags, KIT / 'NativeBridgeMetalFrontend.mm'
+ run = subprocess.run([str(surface_flush), loader, str(cache)], capture_output=True, text=True, timeout=30)
+ (OUT / 'surface_flush_host.log').write_text(run.stdout + run.stderr)
+ if run.returncode or not any(l.startswith('PASS') for l in run.stdout.splitlines()):
+-    sys.exit('surface cache maintenance deduplication failed; see %s' % (OUT / 'surface_flush_host.log'))
+-print([l for l in run.stdout.splitlines() if l.startswith('PASS')][0])
++    fail('surface cache maintenance deduplication failed; see %s' % (OUT / 'surface_flush_host.log'))
++show_pass(run.stdout)
+ # Forward every real no-copy import/release through a counting wrapper. The
+ # production bridge is unchanged; independently check weak reuse, GPU bytes,
+ # parallel creation and release after real pending completion.
+@@ -192,8 +205,8 @@ import_environment = dict(os.environ, NMB_TEST_REAL_VULKAN_LOADER=loader)
+ run = subprocess.run([str(surface_import), str(count_loader), str(cache)], env=import_environment, capture_output=True, text=True, timeout=30)
+ (OUT / 'surface_import_host.log').write_text(run.stdout + run.stderr)
+ if run.returncode or not any(l.startswith('PASS') for l in run.stdout.splitlines()):
+-    sys.exit('live IOSurface import reuse failed; see %s' % (OUT / 'surface_import_host.log'))
+-print([l for l in run.stdout.splitlines() if l.startswith('PASS')][0])
++    fail('live IOSurface import reuse failed; see %s' % (OUT / 'surface_import_host.log'))
++show_pass(run.stdout)
+ no_copy_import = OUT / 'no_copy_import_host'
+ subprocess.run(['xcrun', 'clang++', *flags, KIT / 'NativeBridgeMetalFrontend.mm', KIT / 'bridge/no_copy_import_host.mm',
+                 ROOT / 'build/adreno-metal-bridge/host/libadreno_metal_bridge.a', '-framework', 'Foundation', '-framework', 'Metal',
+@@ -206,8 +219,8 @@ for mode in ('raw', 'mixed', 'reentry'):
+                          capture_output=True, text=True, timeout=30)
+     (OUT / ('no_copy_import_host-' + mode + '.log')).write_text(run.stdout + run.stderr)
+     if run.returncode or not any(l.startswith('PASS') for l in run.stdout.splitlines()):
+-        sys.exit('native no-copy import ' + mode + ' failed; see ' + str(OUT / ('no_copy_import_host-' + mode + '.log')))
+-    print([l for l in run.stdout.splitlines() if l.startswith('PASS')][0])
++        fail('native no-copy import ' + mode + ' failed; see ' + str(OUT / ('no_copy_import_host-' + mode + '.log')))
++    show_pass(run.stdout)
+ # The system's own registration (MTLAddDevice, as the target's discovery calls it for a plugin's device) accepts the device and lists it.
+ registered = OUT / 'register_host'
+ subprocess.run(['xcrun', 'clang++', *flags, KIT / 'NativeBridgeMetalFrontend.mm', KIT / 'bridge/register_host.mm',
+@@ -217,8 +230,8 @@ run = subprocess.run([str(registered), loader, str(cache)], capture_output=True,
+ (OUT / 'register_host.log').write_text(run.stdout + run.stderr)
+ verdict = [l for l in run.stdout.splitlines() if l.startswith(('PASS', 'SKIP'))]
+ if run.returncode or not verdict:
+-    sys.exit('the system device registration rejected the frontend device; see %s' % (OUT / 'register_host.log'))
+-print(verdict[0])
++    fail('the system device registration rejected the frontend device; see %s' % (OUT / 'register_host.log'))
++if verdict: print(verdict[0])
+ # Every Metal method the target's QuartzCore references (scripts/audit-quartzcore-metal-calls.py writes the list from the unchanged target) is answered by
+ # the frontend's objects. Skipped when that audit has not been run on this machine (it needs the target's dyld cache, which is not in Git).
+ CALLS = ROOT / 'build/gpu-analysis/quartzcore-metal-calls.json'
+@@ -232,7 +245,7 @@ if CALLS.is_file():
+     verdict = [l for l in run.stdout.splitlines() if l.startswith(('PASS', 'GAPS'))]
+     print(verdict[0] if verdict else 'selector coverage: no verdict')
+     if run.returncode or not verdict or not verdict[0].startswith('PASS'):
+-        sys.exit('the frontend lacks Metal methods the target QuartzCore references; see %s' % (OUT / 'selector_coverage_host.log'))
++        fail('the frontend lacks Metal methods the target QuartzCore references; see %s' % (OUT / 'selector_coverage_host.log'))
+ # The GPU scanout presenter (GpuScanoutPresenter.h): the GPU copies a frame into scanout stand-in pages, every pixel compared, on the native frontend.
+ presenter = OUT / 'present_host'
+ subprocess.run(['xcrun', 'clang++', *flags, KIT / 'NativeBridgeMetalFrontend.mm', KIT / 'bridge/present_host.mm',
+@@ -241,8 +254,11 @@ subprocess.run(['xcrun', 'clang++', *flags, KIT / 'NativeBridgeMetalFrontend.mm'
+ run = subprocess.run([str(presenter), loader, str(cache)], capture_output=True, text=True, timeout=600)
+ (OUT / 'present_host.log').write_text(run.stdout + run.stderr)
+ if run.returncode or not any(l.startswith('PASS') for l in run.stdout.splitlines()):
+-    sys.exit('the GPU scanout presenter host check failed; see %s' % (OUT / 'present_host.log'))
+-print('PASS: GPU scanout presenter over the native frontend: ' + ', '.join(l.split(' ', 1)[1] for l in run.stdout.splitlines() if l.startswith('ok')))
++    fail('the GPU scanout presenter host check failed; see %s' % (OUT / 'present_host.log'))
++if not run.returncode and any(l.startswith('PASS') for l in run.stdout.splitlines()):
++    print('PASS: GPU scanout presenter over the native frontend: ' + ', '.join(l.split(' ', 1)[1] for l in run.stdout.splitlines() if l.startswith('ok')))
++if failures:
++    sys.exit('Independent native frontend regressions failed: '+'; '.join(failures))
+ # The plugin's bridge phase in order over the host simulation (scripts/check-turnip-darwin-host.py builds it): self-test, then the frontend on
+ # a second Turnip device. Results are not checked there (the software CP executes nothing); every step must run and retire.
+ HOSTSIM = ROOT / 'build/turnip-darwin-host/libhostiokit.dylib'
+diff --git a/scripts/check-wallpaper-freeze-host.py b/scripts/check-wallpaper-freeze-host.py
+index 8e0d6a93..29a5ebd7 100644
+--- a/scripts/check-wallpaper-freeze-host.py
++++ b/scripts/check-wallpaper-freeze-host.py
+@@ -1,6 +1,7 @@
+ #!/usr/bin/env python3
+ """Verify first-frame wallpaper freeze with GPU pixels and real callback state."""
+ import argparse
++import os
+ from pathlib import Path
+ import subprocess
+ import sys
+@@ -9,6 +10,9 @@ ROOT = Path(__file__).resolve().parents[1]
+ parser = argparse.ArgumentParser(description=__doc__)
+ parser.add_argument('--reuse-bridge', action='store_true', help='use the already built, matching host bridge')
+ args = parser.parse_args()
++loader = os.environ.get('NMB_HOST_LOADER') or '/opt/homebrew/lib/libMoltenVK.dylib'
++if not Path(loader).is_file():
++    raise SystemExit('The selected host Vulkan loader is missing: '+loader)
+ if not args.reuse_bridge:
+     subprocess.run([sys.executable, ROOT / 'scripts/build-adreno-metal-bridge.py', '--target', 'host'], check=True)
+ kit = ROOT / 'drivers/AdrenoMetal'
+@@ -27,7 +31,7 @@ for name, mode in [('MercuryPosterExtension', 'freeze'), ('MercuryPosterExtensio
+         program.symlink_to(exe)
+     cache = out / (name + '-' + mode)
+     cache.mkdir(exist_ok=True)
+-    result = subprocess.run([program, '/opt/homebrew/lib/libMoltenVK.dylib', cache, mode],
++    result = subprocess.run([program, loader, cache, mode],
+                             capture_output=True, text=True, timeout=45)
+     (out / (name + '-' + mode + '.log')).write_text(result.stdout + result.stderr)
+     print(result.stdout, end='', flush=True)
 diff --git a/scripts/data/adreno-compiler-inputs.json b/scripts/data/adreno-compiler-inputs.json
 index b9211a66..4eba8dc3 100644
 --- a/scripts/data/adreno-compiler-inputs.json

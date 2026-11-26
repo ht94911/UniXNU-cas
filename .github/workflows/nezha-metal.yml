@@ -71,9 +71,18 @@ jobs:
         id: host_cpu_icd
         if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
         run: device/ci/gpu-userland/logrun host-cpu-icd python3 device/ci/gpu-userland/build-lavapipe-host.py --unixnu unixnu --logs "$LOGS"
+      - name: Build the current Turnip host dependency for the original kernel-model cases
+        id: turnip_host
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
+        working-directory: unixnu
+        run: ../device/ci/gpu-userland/logrun turnip-host python3 scripts/build-turnip-darwin.py --target host
+      - name: Qualify the existing current native kernel model before frontend transport cases
+        id: kernel_model
+        if: ${{ !cancelled() && steps.turnip_host.outcome == 'success' }}
+        run: device/ci/gpu-userland/logrun kernel-model python3 unixnu/scripts/check-turnip-darwin-host.py
       - name: Exercise the actual runtime-v2 frontend resource, heap, callback and pixel regressions
         id: runtime_source
-        if: ${{ !cancelled() && steps.prepare.outcome == 'success' && steps.host_cpu_icd.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' && steps.host_cpu_icd.outcome == 'success' && steps.kernel_model.outcome == 'success' }}
         env:
           RUST_BACKTRACE: full
           NSUnbufferedIO: "YES"
@@ -218,6 +227,7 @@ jobs:
           OUTCOME_PRIMER_POLICY: ${{ steps.primer_policy.outcome }}
           OUTCOME_RUNTIME_SOURCE: ${{ steps.runtime_source.outcome }}
           OUTCOME_RUNTIME_METADATA: ${{ steps.runtime_metadata.outcome }}
+          OUTCOME_KERNEL_MODEL: ${{ steps.kernel_model.outcome }}
           OUTCOME_DRIVER_PROFILE: ${{ steps.driver_profile.outcome }}
           OUTCOME_TILE_STORE_ERRORS: ${{ steps.tile_store_errors.outcome }}
           OUTCOME_SYNC_PROFILE: ${{ steps.sync_profile.outcome }}
@@ -271,6 +281,7 @@ jobs:
           DEVICE_CONTEXTS: ${{ steps.device_contexts.outcome }}
           RUNTIME_SOURCE: ${{ steps.runtime_source.outcome }}
           RUNTIME_METADATA: ${{ steps.runtime_metadata.outcome }}
+          KERNEL_MODEL: ${{ steps.kernel_model.outcome }}
           SYNC_PROFILE: ${{ steps.sync_profile.outcome }}
           DISPLAY_PROFILE: ${{ steps.display_profile.outcome }}
           RENDER_WAIT: ${{ steps.render_wait.outcome }}
@@ -292,6 +303,7 @@ jobs:
           test "$DEVICE_CONTEXTS" = success
           test "$RUNTIME_SOURCE" = success
           test "$RUNTIME_METADATA" = success
+          test "$KERNEL_MODEL" = success
           test "$SYNC_PROFILE" = success
           test "$DISPLAY_PROFILE" = success
           test "$RENDER_WAIT" = success

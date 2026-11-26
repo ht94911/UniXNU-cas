@@ -74,6 +74,20 @@ index 48d7280..02b778e 100644
  static_assert(sizeof(NativeAdrenoAbiBoCpuMap) == 8, "ABI cpu map layout");
  static_assert(sizeof(NativeAdrenoAbiBoCpuMapReply) == 16, "ABI cpu map reply layout");
  static_assert(sizeof(NativeAdrenoAbiBoCpuUnmap) == 16, "ABI cpu unmap layout");
+diff --git a/NativeAdrenoAccelerator.cpp b/NativeAdrenoAccelerator.cpp
+index efe695e..e15d316 100644
+--- a/NativeAdrenoAccelerator.cpp
++++ b/NativeAdrenoAccelerator.cpp
+@@ -7,6 +7,9 @@
+ // parent metaclass does not exist before that. The class is named after the Apple accelerator class on purpose, so original
+ // sandbox profiles that name the service class accept the Adreno plugin's open; the Apple AGX kext is never loaded here.
+ #include "../AdrenoMetal/OriginalAcceleratorABI.h"
++#ifndef NATIVE_ACCELERATOR_BASE
++#define NATIVE_ACCELERATOR_BASE IOAcceleratorES
++#endif
+ #include <IOKit/IOUserClient.h>
+ 
+ extern "C" IOReturn native_adreno_new_user_client(IOService *,task_t,void *,UInt32,OSDictionary *,IOUserClient **,unsigned);
 diff --git a/NativeAdrenoChip.h b/NativeAdrenoChip.h
 new file mode 100644
 index 0000000..5d4e721
@@ -671,7 +685,7 @@ index e8169ed..a442d05 100644
          const uint8_t *rec=rings_.record_cpu[r];
          row[first+r*4+0]=recordWord(rec,20);row[first+r*4+1]=recordWord(rec,24);
 diff --git a/NativeAdrenoPublish.cpp b/NativeAdrenoPublish.cpp
-index 1e9e1ea..e4d2d14 100644
+index 1e9e1ea..b362940 100644
 --- a/NativeAdrenoPublish.cpp
 +++ b/NativeAdrenoPublish.cpp
 @@ -21,13 +21,36 @@
@@ -720,6 +734,15 @@ index 1e9e1ea..e4d2d14 100644
                 NativeAdrenoHandoffOpenType=0x4148};
  /* Open type 0x4148 is a connection that serves only the hand-off: it does not mount a GPU core, so it does not need (or take) a
   * GPU connection slot (the Vulkan driver holds one for as long as the Metal device lives). Same class, so the same sandbox admission. */
+@@ -433,7 +456,7 @@ NativeAdrenoPoolView *NativeAdrenoPoolView::make(NativeAdrenoPoolGrant *grant)
+     if(view) {
+         NativeAdrenoPoolRetain(grant);
+         /* Before anything can map the view: from here on the reference belongs to the kernel's report, which comes exactly once. */
+-        const bool hook=&iokit_physical_descriptor_close_notify!=nullptr;
++        const bool hook=iokit_physical_descriptor_close_notify!=nullptr;
+         native_adreno_pool_views[4]=hook?1:0;
+         view->tracked_=hook && iokit_physical_descriptor_close_notify(view,NativeAdrenoPoolViewClosed,grant)==KERN_SUCCESS;
+         NativeAdrenoPoolNoteView(grant,view->tracked_);   /* a client can map the pages from here on */
 @@ -458,6 +481,7 @@ class AGXDeviceUserClient : public IOUserClient {
      bool handoffOnly_=false;
      bool kernel_=false;
@@ -1638,7 +1661,7 @@ index ed8fbaa..98e007e 100644
          return 0;
      }
 diff --git a/NativeAdrenoSubmit.cpp b/NativeAdrenoSubmit.cpp
-index 3fb08a2..33a22ca 100644
+index 3fb08a2..dd57d85 100644
 --- a/NativeAdrenoSubmit.cpp
 +++ b/NativeAdrenoSubmit.cpp
 @@ -2,6 +2,12 @@
@@ -1910,7 +1933,7 @@ index 3fb08a2..33a22ca 100644
      const uint32_t next=observed+1;   /* the fence the CP is working on */
      const uint64_t now=clock && clock->now_us?clock->now_us(clock->cookie):0;
      /* The ring that fence's job ran on; the first ring when the fence is not one of this submit object's. */
-@@ -911,18 +1023,27 @@ void NativeAdrenoSubmit::noteStall(uint32_t observed,const NativeAdrenoRingClock
+@@ -911,19 +1023,28 @@ void NativeAdrenoSubmit::noteStall(uint32_t observed,const NativeAdrenoRingClock
          native_adreno_unstick[5]=ack[0];native_adreno_unstick[6]=ack[1];
          log(stall_fence,3,pending,r0&0xffff,w0);
      }
@@ -1933,16 +1956,19 @@ index 3fb08a2..33a22ca 100644
 -    if(native_adreno_stall_hang)return;
 +    if(native_adreno_stall_hang)return false;
      /* A failed register read must not expose the previous hang's CP words. */
-     native_adreno_stall[0]=next;native_adreno_stall[1]=stall_timeouts;
+-    native_adreno_stall[0]=next;native_adreno_stall[1]=stall_timeouts;
++    native_adreno_stall[0]=next;native_adreno_stall[1]=polls;
      for(unsigned i=0;i<NativeAdrenoRingStallWords;++i)native_adreno_stall[2+i]=0;
      const IOReturn captured=stalled->stallState(words);
      native_adreno_stall_capture_status=uint32_t(captured);
 -    if(captured)return;
+-    {
 +    if(captured)return false;
-     {
++    if(!detector && waited) {
          const uint32_t n=native_adreno_stall_log_count;volatile uint64_t *slot=native_adreno_stall_log[n&31];
          const Job *owner=find(next);
-@@ -931,27 +1052,30 @@ void NativeAdrenoSubmit::snapshot(uint32_t next,uint32_t waited,uint64_t now,uin
+         slot[0]=now;slot[1]=next;slot[2]=4u|(uint64_t)stall_timeouts<<8;slot[3]=pending;
+@@ -931,30 +1052,33 @@ void NativeAdrenoSubmit::snapshot(uint32_t next,uint32_t waited,uint64_t now,uin
          slot[5]=owner?owner->queue:0;slot[6]=owner?(owner->handles[0]&0xffffffffffffull)|(uint64_t)owner->count<<48:0;slot[7]=n;
          native_adreno_stall_log_count=n+1;
      }
@@ -1968,9 +1994,11 @@ index 3fb08a2..33a22ca 100644
 +        activeBv=ib;peekIb(space,ib,size,words[18],&native_adreno_stall_mem[4+17]);
 +    } else peekFetch(space,activeBv,&native_adreno_stall_mem[4+17]);
      peekFetch(space,(uint64_t)words[21]<<32|words[20],&native_adreno_stall_mem[4+34]);
-     if(job && job->word_count)findIb2(space,job->words,job->word_count,words[13]);
+-    if(job && job->word_count)findIb2(space,job->words,job->word_count,words[13]);
++    if(!detector && waited && job && job->word_count)findIb2(space,job->words,job->word_count,words[13]);
      for(unsigned i=0;i<32;++i)native_adreno_stall_fault[i]=0;
-     if(job && job->word_count && fault[0] && !fault[2] && fault[1])findFault(space,job->words,job->word_count,fault[1]);
+-    if(job && job->word_count && fault[0] && !fault[2] && fault[1])findFault(space,job->words,job->word_count,fault[1]);
++    if(!detector && waited && job && job->word_count && fault[0] && !fault[2] && fault[1])findFault(space,job->words,job->word_count,fault[1]);
      {
 -        uint64_t brIb=(uint64_t)words[11]<<32|words[10],bvIb=(uint64_t)words[11]<<32|words[17];
 -        if(!stalled->ibBefore(words[8],&ib,&size))brIb=ib;
@@ -1982,7 +2010,11 @@ index 3fb08a2..33a22ca 100644
 +        native_adreno_stall_mem[57]=(uint32_t)space->handleAt(activeBv);
          native_adreno_stall_mem[58]=(uint32_t)space->handleAt((uint64_t)words[21]<<32|words[20]);
      }
-     {
+-    {
++    if(!detector && waited) {
+         const Job *const asked=find(waited);
+         NativeAdrenoRing *const asked_ring=asked?ring(asked->ring):ringOfFence(waited);
+         uint32_t done[2]={},unfinished[2]={};
 @@ -972,8 +1096,51 @@ void NativeAdrenoSubmit::snapshot(uint32_t next,uint32_t waited,uint64_t now,uin
          native_adreno_stall_ring[0]=next;
      }
