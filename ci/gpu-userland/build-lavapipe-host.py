@@ -10,10 +10,11 @@ source, out = root/'.cache/mesa-work', root/'build/lavapipe-host'
 logs = a.logs.resolve()/'lavapipe-host'; logs.mkdir(parents=True,exist_ok=True)
 assert sys.platform == 'darwin' and not out.exists()
 assert (source/'src/gallium/frontends/lavapipe/lvp_device.c').is_file()
-# The existing checkout is sparse for Turnip. Expand only the CPU driver's
-# LLVM, target and software winsys inputs at the same pinned Mesa commit.
-subprocess.run(['git','-C',str(source),'sparse-checkout','add',
-                'src/amd/llvm','src/gallium','src/mesa'], check=True)
+# The CPU driver also uses cross-tree GLAPI inputs. Use the complete existing
+# pinned checkout for this host dependency and preserve every applied GPU patch.
+before = subprocess.check_output(['git','-C',str(source),'diff','HEAD','--binary'])
+subprocess.run(['git','-C',str(source),'sparse-checkout','disable'], check=True)
+assert subprocess.check_output(['git','-C',str(source),'diff','HEAD','--binary']) == before
 meson = root/'.cache/mesa-venv/bin/meson'
 env = dict(os.environ)
 env['PATH'] = str(root/'.cache/mesa-tools/bin')+':'+str(root/'.cache/mesa-venv/bin')+':'+env['PATH']
