@@ -1,10 +1,10 @@
 {
-  "branch": "codex/ios27-adreno840-phase2-mac-ci-013-20261126",
+  "branch": "codex/ios27-adreno840-phase2-mac-ci-015-20261126",
   "file_count": 138,
   "files": {
     ".github/workflows/nezha-adreno840-phase2.yml": {
       "bytes": 5467,
-      "sha256": "d88c554e142c31b74336e5a0015f720fdb4e4c5c1785f78860f817ef36003236"
+      "sha256": "1fccb385216caa5215d128f2ad1dadd2d262f934cdec7b35e5f937d5781672b8"
     },
     "adreno_compile/cache/a840_record_io.c": {
       "bytes": 28406,
@@ -83,8 +83,8 @@
       "sha256": "5da2496be4ea267f2bec301c4cf80735be0a5fa5a7554f1530a6eb34e09f4958"
     },
     "apps/NezhaGpuTest/ios/NezhaGpuTestRunner.mm": {
-      "bytes": 23032,
-      "sha256": "fad2706a5cbe400d481f7c446e3da4bacb71084bb0bf945285fb0f25f3ff7824"
+      "bytes": 24747,
+      "sha256": "757b59481bdabf58976a4692e104b4a6b6106927c6724eeef4d32e5d341574b2"
     },
     "apps/NezhaGpuTest/ios/main.mm": {
       "bytes": 1555,
@@ -116,7 +116,7 @@
     },
     "ci/phase2_public_manifest.json": {
       "bytes": 31305,
-      "sha256": "25d7824d241f44987642155b1c5eb064a178684f88a29e847a27ac4c892c3ccf"
+      "sha256": "458b180dd705336e9f313a3dae24c93fd25c84ff2371d637f8f1821faa3471da"
     },
     "ci/seal_phase2_outputs.py": {
       "bytes": 1657,
@@ -315,12 +315,12 @@
       "sha256": "b20ba7060b2a362a13252654bcf88160fd2efc0665283ebc57c40b15f817e6eb"
     },
     "drivers/Adreno840Metal/transport/a840_iokit_transport.mm": {
-      "bytes": 13564,
-      "sha256": "df1787dfd94e6960430bda99d6c9afbd702626ecc543c5574104428f6e87965d"
+      "bytes": 14556,
+      "sha256": "0d7960a5da6365df8f3c6d66229d83e377b846182ae1462b649dc913be881c30"
     },
     "drivers/Adreno840Metal/transport/a840_iokit_wire.c": {
-      "bytes": 32857,
-      "sha256": "3a5a439764f6f5b8a04701cdfe5e1c0a8198243baeb0027163a982438fcfe6de"
+      "bytes": 32954,
+      "sha256": "ddfd5a67103db7089bb911ef4a0bf0c467da67a6d9e913b0baac2f131e2a03ca"
     },
     "drivers/Adreno840Metal/transport/a840_iokit_wire.h": {
       "bytes": 9711,
