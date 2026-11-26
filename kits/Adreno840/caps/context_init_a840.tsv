@@ -1,0 +1,75 @@
+# SPDX-License-Identifier: MIT
+# Mesa commit: 85fda3b36405bcaea8bffc64aa4f2651dc90770d
+# Order is source emission order, including repeated writes; C static table is derived from this TSV.
+# Runtime VA placeholders and mode-specific values are explicit in notes.
+# VPC cache allocation uses num_ccu * buffer_size (fd6_gmem_cache.h A8XX); do not use W00 audit no-multiplier wording.
+reg_macro	reg_offset_hex	value_hex	scope	source_ref	note
+A840_REG_GRAS_BIN_FOVEAT_XY_FDM_0_OFFSET	0x08228	0x00000000	static_ctx	src/freedreno/common/freedreno_devices.py:1258	a8xx_base_raw_magic_regs entry 0; preserve source order
+A840_REG_GRAS_BIN_FOVEAT_XY_FDM_1_OFFSET	0x08229	0x00000000	static_ctx	src/freedreno/common/freedreno_devices.py:1259	a8xx_base_raw_magic_regs entry 1; preserve source order
+A840_REG_GRAS_BIN_FOVEAT_XY_FDM_2_OFFSET	0x0822a	0x00000000	static_ctx	src/freedreno/common/freedreno_devices.py:1260	a8xx_base_raw_magic_regs entry 2; preserve source order
+A840_REG_GRAS_BIN_FOVEAT_XY_FDM_3_OFFSET	0x0822b	0x00000000	static_ctx	src/freedreno/common/freedreno_devices.py:1261	a8xx_base_raw_magic_regs entry 3; preserve source order
+A840_REG_GRAS_BIN_FOVEAT_XY_FDM_4_OFFSET	0x0822c	0x00000000	static_ctx	src/freedreno/common/freedreno_devices.py:1262	a8xx_base_raw_magic_regs entry 4; preserve source order
+A840_REG_GRAS_BIN_FOVEAT_XY_FDM_5_OFFSET	0x0822d	0x00000000	static_ctx	src/freedreno/common/freedreno_devices.py:1263	a8xx_base_raw_magic_regs entry 5; preserve source order
+A840_REG_RB_UNKNOWN_8818	0x08818	0x00000000	static_ctx	src/freedreno/common/freedreno_devices.py:1265	a8xx_base_raw_magic_regs entry 6; preserve source order
+A840_REG_RB_UNKNOWN_8819	0x08819	0x00000000	static_ctx	src/freedreno/common/freedreno_devices.py:1266	a8xx_base_raw_magic_regs entry 7; preserve source order
+A840_REG_RB_UNKNOWN_881A	0x0881a	0x00000000	static_ctx	src/freedreno/common/freedreno_devices.py:1267	a8xx_base_raw_magic_regs entry 8; preserve source order
+A840_REG_RB_UNKNOWN_881B	0x0881b	0x00000000	static_ctx	src/freedreno/common/freedreno_devices.py:1268	a8xx_base_raw_magic_regs entry 9; preserve source order
+A840_REG_RB_UNKNOWN_881C	0x0881c	0x00000000	static_ctx	src/freedreno/common/freedreno_devices.py:1269	a8xx_base_raw_magic_regs entry 10; preserve source order
+A840_REG_RB_UNKNOWN_881D	0x0881d	0x00000000	static_ctx	src/freedreno/common/freedreno_devices.py:1270	a8xx_base_raw_magic_regs entry 11; preserve source order
+A840_REG_RB_UNKNOWN_881E	0x0881e	0x00000000	static_ctx	src/freedreno/common/freedreno_devices.py:1271	a8xx_base_raw_magic_regs entry 12; preserve source order
+A840_REG_RB_LRZ_CNTL2	0x08899	0x00000000	static_ctx	src/freedreno/common/freedreno_devices.py:1272	a8xx_base_raw_magic_regs entry 13; preserve source order
+A840_REG_RB_RESOLVE_CNTL_5	0x088f1	0x00000001	static_ctx	src/freedreno/common/freedreno_devices.py:1273	a8xx_base_raw_magic_regs entry 14; preserve source order
+A840_REG_SP_UNKNOWN_AB01	0x0ab01	0x00000000	static_ctx	src/freedreno/common/freedreno_devices.py:1275	a8xx_base_raw_magic_regs entry 15; preserve source order
+A840_REG_SP_HLSQ_MODE_CNTL	0x0ab02	0x00000000	static_ctx	src/freedreno/common/freedreno_devices.py:1276	a8xx_base_raw_magic_regs entry 16; preserve source order
+A840_REG_SP_UNKNOWN_AB23	0x0ab23	0x00000000	static_ctx	src/freedreno/common/freedreno_devices.py:1277	a8xx_base_raw_magic_regs entry 17; preserve source order
+A840_REG_TPL1_PS_ROTATION_CNTL	0x0b182	0x00000004	static_ctx	src/freedreno/common/freedreno_devices.py:1279	a8xx_base_raw_magic_regs entry 18; preserve source order
+A840_REG_TPL1_PS_SWIZZLE_CNTL	0x0b183	0x00000000	static_ctx	src/freedreno/common/freedreno_devices.py:1280	a8xx_base_raw_magic_regs entry 19; preserve source order
+A840_REG_PC_UNKNOWN_980B	0x0980b	0x00800280	static_ctx	src/freedreno/common/freedreno_devices.py:1282	a8xx_base_raw_magic_regs entry 20; preserve source order
+A840_REG_PC_MODE_CNTL	0x09b00	0x00003f00	static_ctx	src/freedreno/common/freedreno_devices.py:1283	a8xx_base_raw_magic_regs entry 21; preserve source order
+A840_REG_GRAS_LRZ_QUALITY_LOOKUP_TABLE_0	0x08130	0x09510840	static_ctx	src/freedreno/vulkan/tu_cmd_buffer.cc:2190	fd_gras_shading_rate_lut(0); src/freedreno/common/freedreno_vrs.h:35-104
+A840_REG_GRAS_LRZ_QUALITY_LOOKUP_TABLE_1	0x08131	0x00000a62	static_ctx	src/freedreno/vulkan/tu_cmd_buffer.cc:2192	fd_gras_shading_rate_lut(1); src/freedreno/common/freedreno_vrs.h:35-104
+A840_REG_SP_PERFCTR_SHADER_MASK	0x0ae0f	0x0000003f	static_ctx	src/freedreno/vulkan/tu_cmd_buffer.cc:2199	tu6_init_static_regs<A8XX>
+A840_REG_SP_GFX_USIZE	0x0ab09	0x00000000	static_ctx	src/freedreno/vulkan/tu_cmd_buffer.cc:2207	tu6_init_static_regs<A8XX>
+A840_REG_TPL1_PS_ROTATION_CNTL	0x0b182	0x00000000	static_ctx	src/freedreno/vulkan/tu_cmd_buffer.cc:2208	source reset after raw-magic value 4
+A840_REG_SP_UNKNOWN_A9A8	0x0a9a8	0x00000000	static_ctx	src/freedreno/vulkan/tu_cmd_buffer.cc:2211	tu6_init_static_regs<A8XX>
+A840_REG_SP_MODE_CNTL	0x0ab00	0x00000005	static_ctx	src/freedreno/vulkan/tu_cmd_buffer.cc:2212	tu6_init_static_regs<A8XX>
+A840_REG_VFD_MODE_CNTL	0x0a009	0x00000003	static_ctx	src/freedreno/vulkan/tu_cmd_buffer.cc:2216	tu6_init_static_regs<A8XX>
+A840_REG_RB_MODE_CNTL	0x08811	0x00000010	static_ctx	src/freedreno/vulkan/tu_cmd_buffer.cc:2217	tu6_init_static_regs<A8XX>
+A840_REG_GRAS_MODE_CNTL	0x08213	0x00000002	static_ctx	src/freedreno/vulkan/tu_cmd_buffer.cc:2219	tu6_init_static_regs<A8XX>
+A840_REG_RB_UNKNOWN_8818	0x08818	0x00000000	static_ctx	src/freedreno/vulkan/tu_cmd_buffer.cc:2221	tu6_init_static_regs<A8XX>
+A840_REG_VPC_REPLACE_MODE_CNTL	0x09310	0x00000000	static_ctx	src/freedreno/vulkan/tu_cmd_buffer.cc:2234	tu6_init_static_regs<A8XX>
+A840_REG_VPC_ROTATION_CNTL	0x09312	0x00000000	static_ctx	src/freedreno/vulkan/tu_cmd_buffer.cc:2235	tu6_init_static_regs<A8XX>
+A840_REG_VPC_SO_OVERRIDE	0x09305	0x00000001	static_ctx	src/freedreno/vulkan/tu_cmd_buffer.cc:2237	tu6_init_static_regs<A8XX>
+A840_REG_TPL1_PS_SWIZZLE_CNTL	0x0b183	0x00000000	static_ctx	src/freedreno/vulkan/tu_cmd_buffer.cc:2239	tu6_init_static_regs<A8XX>
+A840_REG_GRAS_SC_SCREEN_SCISSOR_CNTL	0x08234	0x00000000	static_ctx	src/freedreno/vulkan/tu_cmd_buffer.cc:2241	tu6_init_static_regs<A8XX>
+A840_REG_TPL1_MODE_CNTL	0x0b309	0x000010a2	static_ctx	src/freedreno/vulkan/tu_cmd_buffer.cc:2255	base truncate; params.use_tex_coord_nearest_even changes XML TEXCOORDROUNDMODE bit2
+A840_REG_SP_REG_PROG_ID_3	0x0a9cb	0x000000fc	static_ctx	src/freedreno/vulkan/tu_cmd_buffer.cc:2262	tu6_init_static_regs<A8XX>
+A840_REG_VFD_RENDER_MODE	0x0a007	0x00000000	static_ctx	src/freedreno/vulkan/tu_cmd_buffer.cc:2264	tu6_init_static_regs<A8XX>
+A840_REG_RB_ALPHA_TEST_CNTL	0x08864	0x00000000	static_ctx	src/freedreno/vulkan/tu_cmd_buffer.cc:2266	tu6_init_static_regs<A8XX>
+A840_REG_SP_ALPHA_TEST_CNTL	0x0aa0c	0x00000000	static_ctx	src/freedreno/vulkan/tu_cmd_buffer.cc:2268	tu6_init_static_regs<A8XX>
+A840_REG_TPL1_GFX_BORDER_COLOR_BASE	0x0b302	0x00000000	static_ctx	src/freedreno/vulkan/tu_cmd_buffer.cc:2270	runtime border_color_gpu_va, 128-byte aligned; value column is placeholder, emits two dwords
+A840_REG_TPL1_CS_BORDER_COLOR_BASE	0x0b180	0x00000000	static_ctx	src/freedreno/vulkan/tu_cmd_buffer.cc:2271	runtime border_color_gpu_va, 128-byte aligned; value column is placeholder, emits two dwords
+A840_REG_PC_HS_BUFFER_SIZE	0x09814	0x00040000	static_ctx	src/freedreno/vulkan/tu_cmd_buffer.cc:2299	TU_TESS<A8XX>::PARAM_SIZE, src/freedreno/vulkan/tu_device.h:507-510
+A840_REG_PC_TF_BUFFER_SIZE	0x09815	0x00004040	static_ctx	src/freedreno/vulkan/tu_cmd_buffer.cc:2304	TU_TESS<A8XX>::FACTOR_SIZE, src/freedreno/vulkan/tu_device.h:507-510
+A840_REG_SP_PS_CNTL_0	0x0a980	0x00000000	static_ctx	src/freedreno/vulkan/tu_cmd_buffer.cc:2323	conditionally enabled reset: params.enable_early_preamble_reset
+A840_REG_SP_VS_CONST_CONFIG	0x0a827	0x00000102	static_ctx	src/freedreno/vulkan/tu_cmd_buffer.cc:2330	CONSTLEN 8 uses XML shr=2; ENABLED=1
+A840_REG_VPC_UNKNOWN_CNTL	0x09313	0x00000000	rp_init	src/freedreno/vulkan/tu_cmd_buffer.cc:2417	tu_init_hw_rp<A8XX>
+A840_REG_RB_A2D_DEST_BUFFER_ARRAY_PITCH	0x08c34	0x00000000	rp_init	src/freedreno/vulkan/tu_cmd_buffer.cc:2418	tu_init_hw_rp<A8XX>
+A840_REG_RB_CCU_CACHE_CNTL	0x088e5	0xced00ff0	rp_init	src/freedreno/vulkan/tu_cmd_buffer.cc:660	fd6_calc_gmem_cache_offsets A8XX uses num_ccu=6 times each cache/VPC size; sysmem value here, bin_gmem_value=0xfccd14c; src/freedreno/common/fd6_gmem_cache.h:39-98
+A840_REG_VPC_ATTR_BUF_GMEM_SIZE	0x09314	0x00020000	rp_init	src/freedreno/vulkan/tu_cmd_buffer.cc:606	fd6_calc_gmem_cache_offsets A8XX uses num_ccu=6 times each cache/VPC size; sysmem value here, bin_gmem_value=0xc000; per-device default profile from frozen chip and pinned a8xx_gen2
+A840_REG_VPC_ATTR_BUF_GMEM_BASE	0x09315	0x01110000	rp_init	src/freedreno/vulkan/tu_cmd_buffer.cc:607	fd6_calc_gmem_cache_offsets A8XX uses num_ccu=6 times each cache/VPC size; sysmem value here, bin_gmem_value=0x1188000; per-device default profile from frozen chip and pinned a8xx_gen2
+A840_REG_PC_ATTR_BUF_GMEM_SIZE	0x09b16	0x00020000	rp_init	src/freedreno/vulkan/tu_cmd_buffer.cc:608	fd6_calc_gmem_cache_offsets A8XX uses num_ccu=6 times each cache/VPC size; sysmem value here, bin_gmem_value=0xc000; per-device default profile from frozen chip and pinned a8xx_gen2
+A840_REG_VPC_POS_BUF_GMEM_SIZE	0x09316	0x00010000	rp_init	src/freedreno/vulkan/tu_cmd_buffer.cc:611	fd6_calc_gmem_cache_offsets A8XX uses num_ccu=6 times each cache/VPC size; sysmem value here, bin_gmem_value=0x6000; per-device default profile from frozen chip and pinned a8xx_gen2
+A840_REG_VPC_POS_BUF_GMEM_BASE	0x09317	0x010b0000	rp_init	src/freedreno/vulkan/tu_cmd_buffer.cc:612	fd6_calc_gmem_cache_offsets A8XX uses num_ccu=6 times each cache/VPC size; sysmem value here, bin_gmem_value=0x1164000; per-device default profile from frozen chip and pinned a8xx_gen2
+A840_REG_PC_POS_BUF_GMEM_SIZE	0x09b17	0x00010000	rp_init	src/freedreno/vulkan/tu_cmd_buffer.cc:613	fd6_calc_gmem_cache_offsets A8XX uses num_ccu=6 times each cache/VPC size; sysmem value here, bin_gmem_value=0x6000; per-device default profile from frozen chip and pinned a8xx_gen2
+A840_REG_VPC_BV_POS_BUF_GMEM_BASE	0x09319	0x011d0000	rp_init	src/freedreno/vulkan/tu_cmd_buffer.cc:614	fd6_calc_gmem_cache_offsets A8XX uses num_ccu=6 times each cache/VPC size; sysmem value here, bin_gmem_value=0x11d0000; per-device default profile from frozen chip and pinned a8xx_gen2
+A840_REG_VPC_BV_POS_BUF_GMEM_SIZE	0x09318	0x00008000	rp_init	src/freedreno/vulkan/tu_cmd_buffer.cc:615	fd6_calc_gmem_cache_offsets A8XX uses num_ccu=6 times each cache/VPC size; sysmem value here, bin_gmem_value=0x8000; per-device default profile from frozen chip and pinned a8xx_gen2
+A840_REG_PC_BV_POS_BUF_GMEM_SIZE	0x09b18	0x00008000	rp_init	src/freedreno/vulkan/tu_cmd_buffer.cc:616	fd6_calc_gmem_cache_offsets A8XX uses num_ccu=6 times each cache/VPC size; sysmem value here, bin_gmem_value=0x8000; per-device default profile from frozen chip and pinned a8xx_gen2
+A840_REG_RB_BUFFER_CNTL	0x08812	0x00000000	rp_init	src/freedreno/vulkan/tu_cmd_buffer.cc:1531	bin BR-only tile begin, skipped by context_init
+A840_REG_RB_CLEAR_TARGET	0x088e4	0x00000001	rp_init	src/freedreno/vulkan/tu_cmd_buffer.cc:1532	bin BR-only GMEM clear mode, skipped by context_init
+A840_REG_RB_DBG_ECO_CNTL	0x08e04	0x00000000	umd_blocked_a8xx	src/freedreno/vulkan/tu_cmd_buffer.cc:2279	Gen8 KMD-only RB_DBG_ECO_CNTL (CHIP < A8XX branch only); value is not emitted
+A840_REG_RB_RBP_CNTL	0x08e01	0x00000000	umd_blocked_a8xx	src/freedreno/vulkan/tu_cmd_buffer.cc:2281	Gen8 KMD-only RB_RBP_CNTL (CHIP < A8XX branch only); value is not emitted
+A840_REG_RB_GC_GMEM_PROTECT	0x08e09	0x00000000	umd_blocked_a8xx	src/freedreno/vulkan/tu_cmd_buffer.cc:2284	legacy RB_UNKNOWN_8E09 shares this address; value7 only Gen7, never UMD Gen8; value is not emitted
+A840_REG_SP_NC_MODE_CNTL_2	0x0ae04	0x00000000	umd_blocked_a8xx	src/freedreno/vulkan/tu_cmd_buffer.cc:2197	CHIP < A8XX only; no Gen8 UMD programming; value is not emitted
+A840_REG_VPC_LB_MODE_CNTL	0x09740	0x00000000	umd_blocked_a8xx	src/freedreno/vulkan/tu_cmd_buffer.cc:2251	CHIP < A8XX only; no Gen8 UMD programming; value is not emitted
+A840_REG_PC_CONTEXT_SWITCH_GFX_PREEMPTION_MODE	0x09e63	0x00000000	umd_blocked_a8xx	src/freedreno/vulkan/tu_cmd_buffer.cc:2252	CHIP < A8XX only; no Gen8 UMD programming; value is not emitted
