@@ -3909,12 +3909,34 @@ index 0000000..77baade
 +    }
 +    return 0;
 +}
+diff --git a/bridge/interface_regressions_host.mm b/bridge/interface_regressions_host.mm
+index 75c734a..0a1d05e 100644
+--- a/bridge/interface_regressions_host.mm
++++ b/bridge/interface_regressions_host.mm
+@@ -160,12 +160,15 @@ int main(int argc,char **argv) {@autoreleasepool {
+   for(unsigned y=0;y<8;y++)for(unsigned x=0;x<8;x++)CHECK(((const uint32_t *)pixels.contents)[y*8+x]==(x>=4 && y>=2 && y<6?0xff0000ffu:0));
+  }
+  // A zero-length compressed input infers its layout size and retains the deallocator.
+- auto compressed=[MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatASTC_4x4_LDR width:4 height:4 mipmapped:NO];
++ // BC3 is sampled by the selected CPU ICD; this case checks its 16-byte block
++  // layout and zero-length/deallocator contract independently of optional ASTC.
++  auto compressed=[MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBC3_RGBA width:4 height:4 mipmapped:NO];
+  compressed.storageMode=MTLStorageModeShared;compressed.usage=MTLTextureUsageShaderRead;
+  __block bool released=false;uint8_t block[16]={};const void *blockAddress=block;
+  @autoreleasepool {
+   id<MTLTexture> input=[(id)dev newTextureWithBytesNoCopy:block length:0 descriptor:compressed deallocator:^(void *bytes,NSUInteger n){released=bytes==blockAddress && n==16;}];
+-  CHECK(input);uint8_t copied[16]={};[input getBytes:copied bytesPerRow:16 fromRegion:MTLRegionMake2D(0,0,4,4) mipmapLevel:0];CHECK(!memcmp(block,copied,16));input=nil;
++  if(!input)fprintf(stderr,"compressed texture refused: %s\n",nmb_last_error());
++   CHECK(input);uint8_t copied[16]={};[input getBytes:copied bytesPerRow:16 fromRegion:MTLRegionMake2D(0,0,4,4) mipmapLevel:0];CHECK(!memcmp(block,copied,16));input=nil;
+  }
+  CHECK(released);
+  // Range copies use the requested source/destination mip and slice, including array layers.
 diff --git a/bridge/patches/0088-runtime-v2-local-retained.patch b/bridge/patches/0088-runtime-v2-local-retained.patch
 new file mode 100644
-index 0000000..fdec167
+index 0000000..3707d16
 --- /dev/null
 +++ b/bridge/patches/0088-runtime-v2-local-retained.patch
-@@ -0,0 +1,2900 @@
+@@ -0,0 +1,3044 @@
 +diff --git a/crates/metal2vulkan-runtime/src/blit.rs b/crates/metal2vulkan-runtime/src/blit.rs
 +index 297a2e22d..d4f50e208 100644
 +--- a/crates/metal2vulkan-runtime/src/blit.rs
@@ -6815,6 +6837,150 @@ index 0000000..fdec167
 +     }
 + }
 + 
++diff --git a/crates/metal2vulkan/tests/api_signatures.tsv b/crates/metal2vulkan/tests/api_signatures.tsv
++index 55cc3a541..666273083 100644
++--- a/crates/metal2vulkan/tests/api_signatures.tsv
+++++ b/crates/metal2vulkan/tests/api_signatures.tsv
++@@ -336,8 +336,8 @@ const	metal2vulkan-air::tensor_ops::DESCRIPTOR_BYTES	pub const DESCRIPTOR_BYTES:
++ const	metal2vulkan-air::tensor_ops::PREFIX	pub const PREFIX: &[u8]
++ const	metal2vulkan-air::tensor_ops::RESERVED_INDEX	pub const RESERVED_INDEX: u16
++ const	metal2vulkan-air::tensor_ops::SECTION	pub const SECTION: &[u8]
++-const	metal2vulkan-runtime::HOST_DOMAIN	#[cfg(all(unix, not(target_os = "macos")))] pub const HOST_DOMAIN: vk::TimeDomainKHR
++-const	metal2vulkan-runtime::HOST_DOMAIN	#[cfg(target_os = "macos")] pub const HOST_DOMAIN: vk::TimeDomainKHR
+++const	metal2vulkan-runtime::HOST_DOMAIN	#[cfg(all(unix, not(any(target_os = "macos", target_os = "ios"))))] pub const HOST_DOMAIN: vk::TimeDomainKHR
+++const	metal2vulkan-runtime::HOST_DOMAIN	#[cfg(any(target_os = "macos", target_os = "ios"))] pub const HOST_DOMAIN: vk::TimeDomainKHR
++ const	metal2vulkan-runtime::HOST_DOMAIN	#[cfg(windows)] pub const HOST_DOMAIN: vk::TimeDomainKHR
++ const	metal2vulkan-runtime::MAX_BUFFER_LENGTH	pub const MAX_BUFFER_LENGTH: u64
++ const	metal2vulkan-runtime::MAX_COLOR_ATTACHMENTS	pub const MAX_COLOR_ATTACHMENTS: usize
++@@ -5918,6 +5918,7 @@ method	metal2vulkan-runtime::Buffer::block	pub fn block(&self) -> BlockId
++ method	metal2vulkan-runtime::Buffer::contents	pub fn contents(&self) -> Option<NonNull<u8>>
++ method	metal2vulkan-runtime::Buffer::did_modify_range	pub fn did_modify_range(&self, start: u64, length: u64) -> Result<(), Error>
++ method	metal2vulkan-runtime::Buffer::gpu_address	pub fn gpu_address(&self) -> u64
+++method	metal2vulkan-runtime::Buffer::is_read_only	pub fn is_read_only(&self) -> bool
++ method	metal2vulkan-runtime::Buffer::length	pub fn length(&self) -> u64
++ method	metal2vulkan-runtime::Buffer::new_texture	pub fn new_texture(&self, descriptor: &TextureDescriptor, index: Option<u32>, offset: u64, bytes_per_row: u64) -> Result<Texture, Error>
++ method	metal2vulkan-runtime::Buffer::offset	pub fn offset(&self) -> u64
++@@ -5938,7 +5939,10 @@ method	metal2vulkan-runtime::CommandBuffer::gpu_start_time	pub fn gpu_start_time
++ method	metal2vulkan-runtime::CommandBuffer::kernel_end_time	pub fn kernel_end_time(&self) -> u64
++ method	metal2vulkan-runtime::CommandBuffer::kernel_start_time	pub fn kernel_start_time(&self) -> u64
++ method	metal2vulkan-runtime::CommandBuffer::present_drawable	pub unsafe fn present_drawable(&self, drawable: &Texture, ready: vk::Semaphore) -> Result<(), Error>
+++method	metal2vulkan-runtime::CommandBuffer::references_buffer	pub fn references_buffer(&self, buffer: &Buffer) -> bool
+++method	metal2vulkan-runtime::CommandBuffer::references_texture	pub fn references_texture(&self, texture: &Texture) -> bool
++ method	metal2vulkan-runtime::CommandBuffer::render_command_encoder	pub fn render_command_encoder(&self, descriptor: &RenderPassDescriptor) -> Result<RenderCommandEncoder, Error>
+++method	metal2vulkan-runtime::CommandBuffer::schedule_native_presentation	pub fn schedule_native_presentation(&self) -> Result<(), Error>
++ method	metal2vulkan-runtime::CommandBuffer::status	pub fn status(&self) -> CommandBufferStatus
++ method	metal2vulkan-runtime::CommandBuffer::wait_until_completed	pub fn wait_until_completed(&self) -> Result<(), Error>
++ method	metal2vulkan-runtime::CommandBuffer::wait_until_scheduled	pub fn wait_until_scheduled(&self) -> Result<(), Error>
++@@ -6006,6 +6010,7 @@ method	metal2vulkan-runtime::Device::import_d3d11_surface	pub fn import_d3d11_su
++ method	metal2vulkan-runtime::Device::import_dma_buf	#[cfg(unix)] pub fn import_dma_buf(&self, fd: std::os::fd::OwnedFd, len: u64, release: Option<Box<dyn FnOnce() + Send>>) -> Result<(Block, u32), Error>
++ method	metal2vulkan-runtime::Device::import_dma_bufs	#[cfg(unix)] pub fn import_dma_bufs(&self, chunks: Vec<(std::os::fd::OwnedFd, u64)>, release: Option<Box<dyn FnOnce() + Send>>) -> Result<(Block, u32), Error>
++ method	metal2vulkan-runtime::Device::import_host_memory	pub unsafe fn import_host_memory(&self, pointer: NonNull<u8>, len: u64, release: Option<Box<dyn FnOnce() + Send>>) -> Result<(Block, u32), Error>
+++method	metal2vulkan-runtime::Device::import_read_only_host_memory	pub unsafe fn import_read_only_host_memory(&self, pointer: NonNull<u8>, len: u64, release: Option<Box<dyn FnOnce() + Send>>) -> Result<(Block, u32), Error>
++ method	metal2vulkan-runtime::Device::loss	pub fn loss(&self) -> Option<DeviceLoss>
++ method	metal2vulkan-runtime::Device::max_threadgroup_memory_length	pub fn max_threadgroup_memory_length(&self) -> u32
++ method	metal2vulkan-runtime::Device::memory_types	pub fn memory_types(&self) -> floor::MemoryTypes
++@@ -6071,6 +6076,7 @@ method	metal2vulkan-runtime::Instance::physical_devices	pub fn physical_devices(
++ method	metal2vulkan-runtime::Instance::raw	pub fn raw(&self) -> (&ash::Entry, &ash::Instance)
++ method	metal2vulkan-runtime::Instance::wait_until_devices_torn_down	pub fn wait_until_devices_torn_down(&self, timeout: Duration) -> bool
++ method	metal2vulkan-runtime::Instance::with_drivers	pub unsafe fn with_drivers(loader: Option<&Path>, extensions: &[&CStr], drivers: &[vk::PFN_vkGetInstanceProcAddr]) -> Result<Instance, Error>
+++method	metal2vulkan-runtime::Instance::without_presentation	pub unsafe fn without_presentation(loader: Option<&Path>, extensions: &[&CStr], drivers: &[vk::PFN_vkGetInstanceProcAddr]) -> Result<Instance, Error>
++ method	metal2vulkan-runtime::Library::bytes	pub fn bytes(&self) -> &[u8]
++ method	metal2vulkan-runtime::Library::content_hash	pub fn content_hash(&self) -> &Hash256
++ method	metal2vulkan-runtime::Library::dependencies	pub fn dependencies(&self) -> impl Iterator<Item = &str>
++@@ -8649,6 +8655,7 @@ variant	metal2vulkan-runtime::Refusal::NotExported	NotExported { block: BlockId
++ variant	metal2vulkan-runtime::Refusal::OtherDevice	OtherDevice
++ variant	metal2vulkan-runtime::Refusal::PatchDraw	PatchDraw
++ variant	metal2vulkan-runtime::Refusal::PointSizeTopology	PointSizeTopology { class: PrimitiveTopologyClass }
+++variant	metal2vulkan-runtime::Refusal::ReadOnlyBuffer	ReadOnlyBuffer
++ variant	metal2vulkan-runtime::Refusal::ResolveFormat	ResolveFormat { pixel_format: PixelFormat }
++ variant	metal2vulkan-runtime::Refusal::ResolveTexture	ResolveTexture
++ variant	metal2vulkan-runtime::Refusal::SamplerArgumentIndex	SamplerArgumentIndex { index: u32 }
++diff --git a/docs/REFUSALS.md b/docs/REFUSALS.md
++index 842f6e8d3..42574c373 100644
++--- a/docs/REFUSALS.md
+++++ b/docs/REFUSALS.md
++@@ -31,7 +31,7 @@ Columns:
++ | Rate maps the compile layer does not compile | 5 | 5 | 0 | 0 | 4 | 1 | 0 |
++ | The translation deadline | 1 | 1 | 0 | 0 | 0 | 1 | 0 |
++ | Devices below the runtime's floor | 8 | 8 | 0 | 0 | 0 | 0 | 0 |
++-| The runtime's `Refusal` | 86 | 86 | 0 | 0 | 0 | 0 | 0 |
+++| The runtime's `Refusal` | 87 | 87 | 0 | 0 | 0 | 0 | 0 |
++ | The runtime's `Limit` | 19 | 19 | 0 | 0 | 0 | 0 | 0 |
++ | The runtime's `Gap` | 31 | 31 | 0 | 0 | 0 | 0 | 0 |
++ 
++@@ -44,7 +44,7 @@ Columns:
++ | Rate maps the compile layer does not compile | 0 | 0 | 0 | 0 | 5 | 0 | 0 | 0 |
++ | The translation deadline | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
++ | Devices below the runtime's floor | 0 | 0 | 0 | 8 | 0 | 0 | 0 | 0 |
++-| The runtime's `Refusal` | 23 | 25 | 0 | 0 | 38 | 0 | 0 | 0 |
+++| The runtime's `Refusal` | 23 | 25 | 0 | 0 | 39 | 0 | 0 | 0 |
++ | The runtime's `Limit` | 0 | 0 | 0 | 13 | 6 | 0 | 0 | 0 |
++ | The runtime's `Gap` | 0 | 0 | 0 | 3 | 28 | 0 | 0 | 0 |
++ 
++@@ -214,13 +214,13 @@ Columns:
++ 
++ | Variant | What it blocks | Where | Basis | Sites | Reach |
++ |---|---|---|---|---|---|
++-| `Version` | The device's Vulkan version (`apiVersion`) is below 1.3 | devices below the floor, at device creation | `device` | 1: `crates/metal2vulkan-runtime/src/floor.rs (decide)` | `-` |
++-| `Extension` | A device extension | devices below the floor, at device creation | `device` | 1: `crates/metal2vulkan-runtime/src/floor.rs (decide)` | `-` |
++-| `Feature` | A feature | devices below the floor, at device creation | `device` | 1: `crates/metal2vulkan-runtime/src/floor.rs (decide)` | `-` |
++-| `Limit` | A limit below what the runtime uses | devices below the floor, at device creation | `device` | 2: `crates/metal2vulkan-runtime/src/floor.rs (decide, 2 sites)` | `-` |
++-| `QueueFamily` | A queue family with both `VK_QUEUE_GRAPHICS_BIT` and `VK_QUEUE_COMPUTE_BIT` | devices below the floor, at device creation | `device` | 1: `crates/metal2vulkan-runtime/src/floor.rs (decide)` | `-` |
+++| `Version` | The device's Vulkan version (`apiVersion`) is below 1.3 | devices below the floor, at device creation | `device` | 1: `crates/metal2vulkan-runtime/src/floor.rs (decide_for)` | `-` |
+++| `Extension` | A device extension | devices below the floor, at device creation | `device` | 1: `crates/metal2vulkan-runtime/src/floor.rs (decide_for)` | `-` |
+++| `Feature` | A feature | devices below the floor, at device creation | `device` | 1: `crates/metal2vulkan-runtime/src/floor.rs (decide_for)` | `-` |
+++| `Limit` | A limit below what the runtime uses | devices below the floor, at device creation | `device` | 2: `crates/metal2vulkan-runtime/src/floor.rs (decide_for, 2 sites)` | `-` |
+++| `QueueFamily` | A queue family with both `VK_QUEUE_GRAPHICS_BIT` and `VK_QUEUE_COMPUTE_BIT` | devices below the floor, at device creation | `device` | 1: `crates/metal2vulkan-runtime/src/floor.rs (decide_for)` | `-` |
++ | `MemoryType` | A memory type with these property flags, as Vulkan names them, for buffers of every usage the runtime gives them | devices below the floor, at device creation | `device` | 1: `crates/metal2vulkan-runtime/src/floor.rs (choose)` | `-` |
++-| `TimeDomain` | A time domain of [`TIME_DOMAINS`] the device does not calibrate (`vkGetPhysicalDeviceCalibrateableTimeDomainsEXT`), as Vulkan names it | devices below the floor, at device creation | `device` | 1: `crates/metal2vulkan-runtime/src/floor.rs (decide)` | `-` |
+++| `TimeDomain` | A time domain of [`TIME_DOMAINS`] the device does not calibrate (`vkGetPhysicalDeviceCalibrateableTimeDomainsEXT`), as Vulkan names it | devices below the floor, at device creation | `device` | 1: `crates/metal2vulkan-runtime/src/floor.rs (decide_for)` | `-` |
++ | `SetLayout` | The layout of one of the runtime's descriptor sets, `set` 0 (empty) or 1 (the texture and sampler arrays), which `vkGetDescriptorSetLayoutSupport`... | devices below the floor, at device creation | `device` | 1: `crates/metal2vulkan-runtime/src/arrays.rs (supported)` | `-` |
++ 
++ ## 6. The runtime's `Refusal` (`Error::Refused(Refusal)`)
++@@ -228,6 +228,7 @@ Columns:
++ | Variant | What it blocks | Where | Basis | Sites | Reach |
++ |---|---|---|---|---|---|
++ | `EmptyBuffer` | A buffer of no bytes (`Device::new_buffer` with a length of 0) | every device (a public call's own check of its arguments) | `metal-measured`: an Apple M3 Max: newBufferWithLength:0 answers nil | 2: `crates/metal2vulkan-runtime/src/buffer.rs (new_managed_buffer)`, `crates/metal2vulkan-runtime/src/buffer.rs (placed_buffer)` | `-` |
+++| `ReadOnlyBuffer` | A write, zero, or writable view requested on a block or buffer imported via `Device::import_read_only_host_memory` | every device (a public call's own check of its arguments) | `ours`: read-only host pages cannot be written through runtime write paths | 16: `crates/metal2vulkan-runtime/src/blit.rs (buffer_copy)`, `crates/metal2vulkan-runtime/src/blit.rs (copy_from_buffer_to_buffer)` (+12) | `-` |
++ | `BufferTooLong` | A buffer longer than `MAX_BUFFER_LENGTH` (`Device::new_buffer`), or a visible-function table whose words are... | every device (a public call's own check of its arguments) | `ours`: this crate's cap: a buffer's every byte lies within 2^31 bytes of each bind address in it | 3: `crates/metal2vulkan-runtime/src/buffer.rs (new_managed_buffer)`, `crates/metal2vulkan-runtime/src/buffer.rs (placed_buffer)` (+1) | `-` |
++ | `BufferPastBlock` | A buffer whose range leaves its block (`Device::new_buffer`) | every device (a public call's own check of its arguments) | `metal-measured`: an Apple M3 Max, macOS 27.0.1: a placement heap of 1 MiB answers nil for a 4096-byte buffer at offset 1,047,552 | 1: `crates/metal2vulkan-runtime/src/buffer.rs (placed)` | `-` |
++ | `HeapBufferPlace` | A heap buffer whose range leaves its heap (`Device::new_heap_buffer`) | every device (a public call's own check of its arguments) | `metal-measured`: an Apple M3 Max, macOS 27.0.1: a placement heap of 1 MiB answers nil for a 4096-byte buffer at offset 1,047,552 | 1: `crates/metal2vulkan-runtime/src/buffer.rs (new_heap_buffer)` | `-` |
++@@ -515,15 +516,16 @@ Each refusal's sites, with the function that builds it.
++ - `ratemap::SampleOutOfRange`: `crates/metal2vulkan/src/bind/rate_map.rs (new)`
++ - `ratemap::SampleCount`: `crates/metal2vulkan/src/bind/rate_map.rs (new)`
++ - `budget::Time`: `crates/metal2vulkan-air/src/budget/mod.rs (counted)`
++-- `floor::Version`: `crates/metal2vulkan-runtime/src/floor.rs (decide)`
++-- `floor::Extension`: `crates/metal2vulkan-runtime/src/floor.rs (decide)`
++-- `floor::Feature`: `crates/metal2vulkan-runtime/src/floor.rs (decide)`
++-- `floor::Limit`: `crates/metal2vulkan-runtime/src/floor.rs (decide, 2 sites)`
++-- `floor::QueueFamily`: `crates/metal2vulkan-runtime/src/floor.rs (decide)`
+++- `floor::Version`: `crates/metal2vulkan-runtime/src/floor.rs (decide_for)`
+++- `floor::Extension`: `crates/metal2vulkan-runtime/src/floor.rs (decide_for)`
+++- `floor::Feature`: `crates/metal2vulkan-runtime/src/floor.rs (decide_for)`
+++- `floor::Limit`: `crates/metal2vulkan-runtime/src/floor.rs (decide_for, 2 sites)`
+++- `floor::QueueFamily`: `crates/metal2vulkan-runtime/src/floor.rs (decide_for)`
++ - `floor::MemoryType`: `crates/metal2vulkan-runtime/src/floor.rs (choose)`
++-- `floor::TimeDomain`: `crates/metal2vulkan-runtime/src/floor.rs (decide)`
+++- `floor::TimeDomain`: `crates/metal2vulkan-runtime/src/floor.rs (decide_for)`
++ - `floor::SetLayout`: `crates/metal2vulkan-runtime/src/arrays.rs (supported)`
++ - `rt:Refusal::EmptyBuffer`: `crates/metal2vulkan-runtime/src/buffer.rs (new_managed_buffer)`; `crates/metal2vulkan-runtime/src/buffer.rs (placed_buffer)`
+++- `rt:Refusal::ReadOnlyBuffer`: `crates/metal2vulkan-runtime/src/blit.rs (buffer_copy)`; `crates/metal2vulkan-runtime/src/blit.rs (copy_from_buffer_to_buffer)`; `crates/metal2vulkan-runtime/src/blit.rs (copy_from_texture)`; `crates/metal2vulkan-runtime/src/blit.rs (fill_buffer)`; `crates/metal2vulkan-runtime/src/blit.rs (generate_mipmaps)`; `crates/metal2vulkan-runtime/src/buffer.rs (did_modify_range)`; `crates/metal2vulkan-runtime/src/buffer.rs (new_managed_buffer)`; `crates/metal2vulkan-runtime/src/buffer.rs (placed_buffer)`; `crates/metal2vulkan-runtime/src/buffer.rs (zero_block_range)`; `crates/metal2vulkan-runtime/src/encoder.rs (use_resource, 2 sites)`; `crates/metal2vulkan-runtime/src/render_encoder.rs (begin)`; `crates/metal2vulkan-runtime/src/render_encoder.rs (use_resource, 2 sites)`; `crates/metal2vulkan-runtime/src/texture.rs (replace_region)`; `crates/metal2vulkan-runtime/src/texture.rs (texture_over)`
++ - `rt:Refusal::BufferTooLong`: `crates/metal2vulkan-runtime/src/buffer.rs (new_managed_buffer)`; `crates/metal2vulkan-runtime/src/buffer.rs (placed_buffer)`; `crates/metal2vulkan-runtime/src/function_table.rs (new_visible_function_table)`
++ - `rt:Refusal::BufferPastBlock`: `crates/metal2vulkan-runtime/src/buffer.rs (placed)`
++ - `rt:Refusal::HeapBufferPlace`: `crates/metal2vulkan-runtime/src/buffer.rs (new_heap_buffer)`
++@@ -621,9 +623,9 @@ Each refusal's sites, with the function that builds it.
++ - `rt:Limit::LevelElements`: `crates/metal2vulkan-runtime/src/arrays.rs (place_levels)`; `crates/metal2vulkan-runtime/src/texture.rs (hold_levels)`
++ - `rt:Limit::MemoryAllocations`: `crates/metal2vulkan-runtime/src/memory.rs (allocate)`
++ - `rt:Limit::AllocationNotMapped`: `crates/metal2vulkan-runtime/src/memory.rs (own)`
++-- `rt:Limit::NoImport`: `crates/metal2vulkan-runtime/src/d3d11.rs (d3d11_plane_form)`; `crates/metal2vulkan-runtime/src/d3d11.rs (d3d11_plane_texture)`; `crates/metal2vulkan-runtime/src/d3d11.rs (import_d3d11_surface)`; `crates/metal2vulkan-runtime/src/import.rs (import_dma_buf)`; `crates/metal2vulkan-runtime/src/import.rs (import_dma_bufs)`; `crates/metal2vulkan-runtime/src/import.rs (import_host_memory)`; `crates/metal2vulkan-runtime/src/import.rs (surface_import)`
++-- `rt:Limit::ImportType`: `crates/metal2vulkan-runtime/src/d3d11.rs (d3d11_plane_texture)`; `crates/metal2vulkan-runtime/src/import.rs (import_dma_buf)`; `crates/metal2vulkan-runtime/src/import.rs (import_dma_bufs)`; `crates/metal2vulkan-runtime/src/import.rs (import_host_memory)`
++-- `rt:Limit::ImportAlignment`: `crates/metal2vulkan-runtime/src/import.rs (check_len)`; `crates/metal2vulkan-runtime/src/import.rs (check_size)`; `crates/metal2vulkan-runtime/src/import.rs (import_dma_bufs)`; `crates/metal2vulkan-runtime/src/import.rs (import_host_memory)`
+++- `rt:Limit::NoImport`: `crates/metal2vulkan-runtime/src/d3d11.rs (d3d11_plane_form)`; `crates/metal2vulkan-runtime/src/d3d11.rs (d3d11_plane_texture)`; `crates/metal2vulkan-runtime/src/d3d11.rs (import_d3d11_surface)`; `crates/metal2vulkan-runtime/src/import.rs (import_dma_buf)`; `crates/metal2vulkan-runtime/src/import.rs (import_dma_bufs)`; `crates/metal2vulkan-runtime/src/import.rs (import_host_memory_inner)`; `crates/metal2vulkan-runtime/src/import.rs (surface_import)`
+++- `rt:Limit::ImportType`: `crates/metal2vulkan-runtime/src/d3d11.rs (d3d11_plane_texture)`; `crates/metal2vulkan-runtime/src/import.rs (import_dma_buf)`; `crates/metal2vulkan-runtime/src/import.rs (import_dma_bufs)`; `crates/metal2vulkan-runtime/src/import.rs (import_host_memory_inner)`
+++- `rt:Limit::ImportAlignment`: `crates/metal2vulkan-runtime/src/import.rs (check_len)`; `crates/metal2vulkan-runtime/src/import.rs (check_size)`; `crates/metal2vulkan-runtime/src/import.rs (import_dma_bufs)`; `crates/metal2vulkan-runtime/src/import.rs (import_host_memory_inner)`
++ - `rt:Limit::SparseAddressSpace`: `crates/metal2vulkan-runtime/src/import.rs (reserve)`
++ - `rt:Limit::NoExport`: `crates/metal2vulkan-runtime/src/export.rs (handle, 2 sites)`; `crates/metal2vulkan-runtime/src/export.rs (new_exported_block)`; `crates/metal2vulkan-runtime/src/surface.rs (dma_buf_in_place)`; `crates/metal2vulkan-runtime/src/surface.rs (new_exported_surface)`
++ - `rt:Limit::ExportType`: `crates/metal2vulkan-runtime/src/export.rs (new_exported_block)`; `crates/metal2vulkan-runtime/src/import.rs (surface_import)`; `crates/metal2vulkan-runtime/src/memory.rs (export)`; `crates/metal2vulkan-runtime/src/memory.rs (surface_view)`; `crates/metal2vulkan-runtime/src/surface.rs (dma_buf_in_place)`; `crates/metal2vulkan-runtime/src/surface.rs (new_exported_surface)`
 diff --git a/bridge/stitch_modules_host.mm b/bridge/stitch_modules_host.mm
 new file mode 100644
 index 0000000..2d44997
