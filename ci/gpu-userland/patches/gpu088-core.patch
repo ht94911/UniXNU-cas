@@ -7612,6 +7612,19 @@ index 0443894b..dfe5ef33 100644
  VULKAN_INCLUDE = ROOT / '.cache/mesa-work/include'
  TURNIP = ROOT / 'build' / ('mesa-tu-' + args.target) / 'src/freedreno/vulkan/libvulkan_freedreno.dylib'
  turnip_profile = TURNIP.parents[3] / 'builtin-build-profile.json'
+diff --git a/scripts/build-turnip-darwin.py b/scripts/build-turnip-darwin.py
+index 62e2e0b7..f99c8868 100644
+--- a/scripts/build-turnip-darwin.py
++++ b/scripts/build-turnip-darwin.py
+@@ -40,7 +40,7 @@ if not shutil.which('glslangValidator'):
+ env = {k: v for k, v in os.environ.items() if not k.startswith(('IR3_', 'FD_MESA_', 'NIR_', 'MESA_SHADER_', 'TU_'))}
+ tools = ROOT / '.cache/mesa-tools/bin'
+ tools.mkdir(parents=True, exist_ok=True)
+-for candidate in (shutil.which('bison'), '/opt/homebrew/opt/bison/bin/bison', '/usr/local/opt/bison/bin/bison'):
++for candidate in (str(tools / 'bison'), shutil.which('bison'), '/opt/homebrew/opt/bison/bin/bison', '/usr/local/opt/bison/bin/bison'):
+     if not candidate or not Path(candidate).is_file():
+         continue
+     version = re.search(r'\b(\d+)\.(\d+)', read([candidate, '--version']))
 diff --git a/scripts/data/adreno-compiler-inputs.json b/scripts/data/adreno-compiler-inputs.json
 index b9211a66..4eba8dc3 100644
 --- a/scripts/data/adreno-compiler-inputs.json

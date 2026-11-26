@@ -185,7 +185,7 @@ index 2ed55dd..1345e89 100644
  }
  
 diff --git a/NativeBridgeMetalFrontend.mm b/NativeBridgeMetalFrontend.mm
-index f98bb57..3f9ac89 100644
+index f98bb57..e3a49fd 100644
 --- a/NativeBridgeMetalFrontend.mm
 +++ b/NativeBridgeMetalFrontend.mm
 @@ -1,3 +1,4 @@
@@ -989,7 +989,17 @@ index f98bb57..3f9ac89 100644
   encodeDrain();   // every committed command buffer's uses recorded
   const uint64_t began=nowUs();
   NSArray *pending;@synchronized(gInFlight){pending=gInFlight.allObjects;}
-@@ -3437,11 +3794,15 @@ static char kUserDictionaryKey;
+@@ -2603,7 +2960,8 @@ static uint64_t encodeCommandOf(id object) {
+ }
+ - (void)memoryBarrierWithScope:(MTLBarrierScope)scope {[self memoryBarrierWithScope:scope afterStages:0 beforeStages:0];}
+ - (void)memoryBarrierWithScope:(MTLBarrierScope)scope afterStages:(MTLRenderStages)after beforeStages:(MTLRenderStages)before {
+- if(scope&~(MTLBarrierScopeBuffers|MTLBarrierScopeTextures|MTLBarrierScopeRenderTargets)) {
++ // The shared encoder uses raw render-target scope bit 2; the SDK names it only for macOS.
++ if(scope&~(MTLBarrierScopeBuffers|MTLBarrierScopeTextures|static_cast<MTLBarrierScope>(1u << 2))) {
+   [self.commandBuffer refuse:@"invalid barrier scope"];return;
+  }
+  [self barrierAfter:after before:before];
+@@ -3437,11 +3795,15 @@ static char kUserDictionaryKey;
  - (void)setResponsibleTaskIDs:(const void *)ids count:(NSUInteger)count {(void)ids;(void)count;}
  - (instancetype)init {
   if((self=[super init])){_scheduledHandlers=[NSMutableArray array];_completedHandlers=[NSMutableArray array];_surfaces=[NSMutableSet set];_resourceOwners=[NSMutableSet set];_handlers=dispatch_group_create();_schedulingHandlers=dispatch_group_create();}
@@ -1006,7 +1016,7 @@ index f98bb57..3f9ac89 100644
   const NSUInteger before=_resourceOwners.count;
   [_resourceOwners addObject:resource];
   if(_resourceOwners.count!=before) {
-@@ -3453,6 +3814,7 @@ static char kUserDictionaryKey;
+@@ -3453,6 +3815,7 @@ static char kUserDictionaryKey;
  - (void)disown {
   for(NBObject *resource in _resourceOwners)[resource purgeHold:NO];
   [_resourceOwners removeAllObjects];
@@ -1014,7 +1024,7 @@ index f98bb57..3f9ac89 100644
  }
  - (void)watchTexture:(NBTexture *)texture {
   const uint8_t *bytes=texture.surface?(const uint8_t *)IOSurfaceGetBaseAddress(texture.surface):(const uint8_t *)texture.buffer.wrapped;
-@@ -3697,6 +4059,7 @@ static char kUserDictionaryKey;
+@@ -3697,6 +4060,7 @@ static char kUserDictionaryKey;
  - (void)encodeWaitForEvent:(id<MTLEvent>)event value:(uint64_t)value {[self event:event value:value signal:false];}
  // The runtime has submitted the work. Deliver scheduling without waiting for GPU completion.
  - (void)didSchedule {
@@ -1022,7 +1032,7 @@ index f98bb57..3f9ac89 100644
   {
    const uint64_t took=nowUs()-self.committedUs;
    std::lock_guard<std::mutex> lock(gCommitLock);
-@@ -3774,10 +4137,16 @@ static char kUserDictionaryKey;
+@@ -3774,10 +4138,16 @@ static char kUserDictionaryKey;
   // The runtime reports Vulkan's DeviceLost as Metal's code 11 (see -error).
   const bool lost=!self.failedLocally && nmb_command_buffer_metal_error_code(_handle)==11;
   void (^run)(void)=^{
@@ -1039,7 +1049,7 @@ index f98bb57..3f9ac89 100644
    dispatch_group_leave(self->_handlers);
    if(lost)endRenderServerAfterGpuLoss();
   };
-@@ -3790,6 +4159,11 @@ static char kUserDictionaryKey;
+@@ -3790,6 +4160,11 @@ static char kUserDictionaryKey;
   self.committed=YES;
   self.committedUs=nowUs();
   commitCpu=threadCpuUs();commitTid=threadIdLow();
@@ -1051,7 +1061,7 @@ index f98bb57..3f9ac89 100644
   {
    std::lock_guard<std::mutex> lock(gCommitLock);
    // Assign once under the same lock as publication. A concurrent commit cannot reuse this index.
-@@ -3903,6 +4277,7 @@ static void scheduled(void *context) {[(__bridge NBCommandBuffer *)context didSc
+@@ -3903,6 +4278,7 @@ static void scheduled(void *context) {[(__bridge NBCommandBuffer *)context didSc
  static void completed(void *context) {
   gCompleted++;
   NBCommandBuffer *commandBuffer=(__bridge_transfer NBCommandBuffer *)context;
@@ -1059,7 +1069,7 @@ index f98bb57..3f9ac89 100644
   if(iconMetalTrace() && !commandBuffer.failedLocally &&
      (commandBuffer->encodedWork.draws || commandBuffer->encodedWork.dispatches)) {
    static std::atomic<unsigned> sampled{0};
-@@ -3916,7 +4291,7 @@ static void completed(void *context) {
+@@ -3916,7 +4292,7 @@ static void completed(void *context) {
    }
   }
   {
@@ -1068,7 +1078,7 @@ index f98bb57..3f9ac89 100644
    {
     const bool frame=commandBuffer->encodedWork.pixels>=2000000;
     histAdd(frame?gHistFrameGpu:gHistOtherGpu,took);
-@@ -4109,6 +4484,7 @@ static void journalRenderPipeline(MTLRenderPipelineDescriptor *d,uint64_t began,
+@@ -4109,6 +4485,7 @@ static void journalRenderPipeline(MTLRenderPipelineDescriptor *d,uint64_t began,
  struct NBRenderDescriptor : NmbRenderPipelineDescriptor {std::vector<NmbFunction *> linked[4];};
  static bool linkedHandles(NSArray<id<MTLFunction>> *functions,std::vector<NmbFunction *> &out);
  static bool renderDescriptor(MTLRenderPipelineDescriptor *d,NBRenderDescriptor *p,NSError **error) {
@@ -1076,7 +1086,7 @@ index f98bb57..3f9ac89 100644
   if(![(id)d.vertexFunction isKindOfClass:[NBFunction class]] || (d.fragmentFunction && ![(id)d.fragmentFunction isKindOfClass:[NBFunction class]])) {
    if(error)*error=nbError(@"foreign function");return false;
   }
-@@ -4358,6 +4734,7 @@ static NSArray *reflectionArguments(NSArray *bindings) {
+@@ -4358,6 +4735,7 @@ static NSArray *reflectionArguments(NSArray *bindings) {
  // Metal answers a reflection where the options ask for argument or buffer type information.
  static bool wantsReflection(MTLPipelineOption options) {return options&(MTLPipelineOptionArgumentInfo|MTLPipelineOptionBufferTypeInfo);}
  static id renderReflection(const NmbRenderPipelineDescriptor *p) {
@@ -1084,7 +1094,7 @@ index f98bb57..3f9ac89 100644
   NSDictionary *json=reflectionJSON(nmb_render_pipeline_reflection(p),"render pipeline");
   if(!json)return nil;
   NBRenderPipelineReflection *reflection=[NBRenderPipelineReflection new];
-@@ -4365,6 +4742,7 @@ static id renderReflection(const NmbRenderPipelineDescriptor *p) {
+@@ -4365,6 +4743,7 @@ static id renderReflection(const NmbRenderPipelineDescriptor *p) {
   return reflection;
  }
  static id computeReflection(const NmbComputePipelineDescriptor *p) {
@@ -1092,7 +1102,7 @@ index f98bb57..3f9ac89 100644
   NSDictionary *json=reflectionJSON(nmb_compute_pipeline_reflection(p),"compute pipeline");
   if(!json)return nil;
   NBComputePipelineReflection *reflection=[NBComputePipelineReflection new];reflection.argumentList=reflectionArguments(json[@"bindings"]);
-@@ -4517,7 +4895,8 @@ static char dvmMemoryReleaseKey;
+@@ -4517,7 +4896,8 @@ static char dvmMemoryReleaseKey;
   return notePurgeable(2,nmb_heap_set_purgeable_state(_handle,state),state,[self size],_purgeCounted,"heap");
  }
  - (id<MTLBuffer>)bufferWithLength:(NSUInteger)length options:(MTLResourceOptions)options offset:(uint64_t)offset {
@@ -1102,7 +1112,7 @@ index f98bb57..3f9ac89 100644
   if(!handle){NBLOG(@"native-metal: heap buffer refused: %@",lastError());return nil;}
   NBBuffer *buffer=[NBBuffer new];buffer.handle=handle;buffer.options=options;buffer.parentHeap=(id<MTLHeap>)self;
   buffer.heapOffset=offset==UINT64_MAX?0:offset;return (id<MTLBuffer>)buffer;
-@@ -4527,8 +4906,9 @@ static char dvmMemoryReleaseKey;
+@@ -4527,8 +4907,9 @@ static char dvmMemoryReleaseKey;
   return [self bufferWithLength:length options:options offset:offset];
  }
  - (id<MTLTexture>)textureWithDescriptor:(MTLTextureDescriptor *)d offset:(uint64_t)offset {
@@ -1113,7 +1123,7 @@ index f98bb57..3f9ac89 100644
   // An automatic heap promises its textures no shared memory, only a place: one the heap cannot take is made on its own, so the caller
   // (Core Image's intermediate images, iconservicesagent, i-33765e1ad) gets a texture instead of nil, which it dereferenced. A placement
   // heap's texture aliases the memory at its offset; that one stays refused.
-@@ -4544,7 +4924,7 @@ static char dvmMemoryReleaseKey;
+@@ -4544,7 +4925,7 @@ static char dvmMemoryReleaseKey;
          (unsigned long)nmb_heap_used_size(_handle),(unsigned long)nmb_heap_max_available_size(_handle,answer[1]?answer[1]:1),
          (unsigned long)d.usage,(unsigned long)d.resourceOptions,(int)d.allowGPUOptimizedContents,d);
    if(offset!=UINT64_MAX)return nil;
@@ -1122,7 +1132,7 @@ index f98bb57..3f9ac89 100644
    if(!handle){NBLOG(@"native-metal: texture (fmt %lu %lux%lu, %lu levels) refused: %@",(unsigned long)d.pixelFormat,(unsigned long)d.width,(unsigned long)d.height,(unsigned long)d.mipmapLevelCount,lastError());return nil;}
   }
   NBTexture *texture=[NBTexture new];texture.handle=handle;nmb_texture_describe(handle,&descriptor);texture.descriptor=descriptor;
-@@ -4587,6 +4967,7 @@ static NBFunction *zeroRestFunction(NBFunction *f) {
+@@ -4587,6 +4968,7 @@ static NBFunction *zeroRestFunction(NBFunction *f) {
  // The handles `p` points at live in `linked` and `privateLinked`, which outlive its use.
  static bool computeDescriptor(MTLComputePipelineDescriptor *d,NmbComputePipelineDescriptor *p,std::vector<NmbFunction *> &linkedStore,
                                std::vector<NmbFunction *> &privateStore,NSError **error) {
@@ -1130,7 +1140,7 @@ index f98bb57..3f9ac89 100644
   if(!d || ![(id)d.computeFunction isKindOfClass:[NBFunction class]] || ![(NBFunction *)d.computeFunction handle]){if(error)*error=nbError(@"foreign compute function");return false;}
   // Metal may materialize empty stage/linked descriptors on access. Preserve the
   // default meaning while refusing state this frontend cannot yet represent.
-@@ -4695,10 +5076,8 @@ static void fillBaseLimits(id device);
+@@ -4695,10 +5077,8 @@ static void fillBaseLimits(id device);
  }
  // The original discovery (_MTLAddDevice) runs these four on every device it registers. The target's own versions fill the base class's limits
  // and feature tables from a hardware profile (`featureProfile`, `indirectArgumentBufferCapabilities`, a table of Apple GPUs) that this device
@@ -1143,7 +1153,7 @@ index f98bb57..3f9ac89 100644
  - (void)initLimits {fillBaseLimits(self);}
  - (void)initFeatureQueries {}
  - (void)initGPUFamilySupport {}
-@@ -4741,8 +5120,9 @@ static void fillBaseLimits(id device);
+@@ -4741,8 +5121,9 @@ static void fillBaseLimits(id device);
   NBQueue *queue=[NBQueue new];queue.handle=handle;return (id<MTLCommandQueue>)queue;
  }
  - (id<MTLHeap>)newHeapWithDescriptor:(MTLHeapDescriptor *)d {
@@ -1154,7 +1164,7 @@ index f98bb57..3f9ac89 100644
   if(!handle){NBLOG(@"native-metal: heap refused: %@",lastError());return nil;}
   NBHeap *heap=[NBHeap new];heap.handle=handle;heap.options=d.resourceOptions;heap.heapType=d.type;return (id<MTLHeap>)heap;
  }
-@@ -4803,20 +5183,23 @@ static void fillBaseLimits(id device);
+@@ -4803,20 +5184,23 @@ static void fillBaseLimits(id device);
   NBQueue *queue=[NBQueue new];queue.handle=handle;return (id<MTLCommandQueue>)queue;
  }
  - (id<MTLBuffer>)newBufferWithLength:(NSUInteger)length options:(MTLResourceOptions)options {
@@ -1181,7 +1191,7 @@ index f98bb57..3f9ac89 100644
   if(!handle) {
    if(context)(void)(__bridge_transfer id)context;
    NBLOG(@"native-metal: no-copy buffer refused: %@",lastError());return nil;
-@@ -4826,8 +5209,9 @@ static void fillBaseLimits(id device);
+@@ -4826,8 +5210,9 @@ static void fillBaseLimits(id device);
   return (id<MTLBuffer>)buffer;
  }
  - (id<MTLTexture>)newTextureWithDescriptor:(MTLTextureDescriptor *)d {
@@ -1192,7 +1202,7 @@ index f98bb57..3f9ac89 100644
   if(gLogTextures && textureLogTurn())
    GLOG(@"native-metal: texture-log %llu texture %llux%llu fmt %llu type %llu levels %llu usage %llx options %llx %s",
          (unsigned long long)gTexturesLogged.load(),(unsigned long long)descriptor.width,(unsigned long long)descriptor.height,
-@@ -4841,6 +5225,7 @@ static void fillBaseLimits(id device);
+@@ -4841,6 +5226,7 @@ static void fillBaseLimits(id device);
  // The surface's pages are the texels: its mapping in this process is imported without a copy (pinned by the kernel, mapped into the GPU's
  // 4 KiB context by Turnip), so every process that imports the surface renders and samples the same memory.
  - (id<MTLTexture>)newTextureWithDescriptor:(MTLTextureDescriptor *)d iosurface:(IOSurfaceRef)surface plane:(NSUInteger)plane {
@@ -1200,7 +1210,7 @@ index f98bb57..3f9ac89 100644
   // A planar surface (Apple's lossless-compressed BGRA spelling has one plane, video formats two) is imported whole; the texture starts at
   // the plane's own address and rows. Only a plain surface has no planes, and then only plane 0 exists.
   const size_t planes=surface?IOSurfaceGetPlaneCount(surface):0;
-@@ -4859,14 +5244,22 @@ static void fillBaseLimits(id device);
+@@ -4859,14 +5245,22 @@ static void fillBaseLimits(id device);
   NBTexture *texture=planes>=2?textureOnSurface(buffer,d,surface,plane,start-(uintptr_t)base,row):textureOnBuffer(buffer,d,start-(uintptr_t)base,row,true);
   if(!texture){refuseSurface(5,surface,d,plane,start-(uintptr_t)base,row);return nil;}
   if(gLogTextures)logTexture("iosurface",d,surface,plane,base,start-(uintptr_t)base,row,texture!=nil);
@@ -1226,7 +1236,7 @@ index f98bb57..3f9ac89 100644
   if(error)*error=nil;return (id<MTLLibrary>)library;
  }
  // A library file that cannot be read (macOS run36: QuartzCore's default.metallib failed with NSCocoaErrorDomain 260 on a fresh Data
-@@ -4886,12 +5279,24 @@ static void reportUnreadableLibrary(NSString *path) {
+@@ -4886,12 +5280,24 @@ static void reportUnreadableLibrary(NSString *path) {
   os_log(OS_LOG_DEFAULT,"NativeAdrenoMetal library unreadable: %{public}s open errno %d:%{public}s",full,openErrno,walk.c_str());
  }
  - (id<MTLLibrary>)newLibraryWithFile:(NSString *)path error:(NSError **)error {
@@ -1254,7 +1264,7 @@ index f98bb57..3f9ac89 100644
   if(error)*error=nil;return (id<MTLLibrary>)library;
  }
  - (id<MTLLibrary>)newLibraryWithURL:(NSURL *)url error:(NSError **)error {
-@@ -4905,6 +5310,7 @@ static void reportUnreadableLibrary(NSString *path) {
+@@ -4905,6 +5311,7 @@ static void reportUnreadableLibrary(NSString *path) {
  }
  - (id<MTLLibrary>)newDefaultLibrary {return [(id<MTLDevice>)self newDefaultLibraryWithBundle:[NSBundle mainBundle] error:nil];}
  - (id<MTLLibrary>)newLibraryWithSource:(NSString *)source options:(MTLCompileOptions *)options error:(NSError **)error {
@@ -1262,7 +1272,7 @@ index f98bb57..3f9ac89 100644
   if(!source){if(error)*error=nbError(@"no source");return nil;}
   if(options && options.libraryType==MTLLibraryTypeDynamic) {
    if(error)*error=[NSError errorWithDomain:MTLLibraryErrorDomain code:MTLLibraryErrorUnsupported
-@@ -4937,18 +5343,39 @@ static void reportUnreadableLibrary(NSString *path) {
+@@ -4937,18 +5344,39 @@ static void reportUnreadableLibrary(NSString *path) {
  // 'numf' and the u32 count of functions, then for each function 'bitc', the u32 size and its wrapped bitcode. The reply is a metallib
  // with the stitched functions. Metal's own path wants its own function objects (their library data) and refuses these.
  - (id<MTLLibrary>)newLibraryWithStitchedDescriptor:(MTLStitchedLibraryDescriptor *)d error:(NSError **)error {
@@ -1306,7 +1316,7 @@ index f98bb57..3f9ac89 100644
    word(0x62697463 /* 'bitc' */);word((uint32_t)bitcode.length);
    const uint8_t *b=(const uint8_t *)bitcode.bytes;request.insert(request.end(),b,b+bitcode.length);
   }
-@@ -4984,14 +5411,15 @@ static void reportUnreadableLibrary(NSString *path) {
+@@ -4984,14 +5412,15 @@ static void reportUnreadableLibrary(NSString *path) {
  }
  - (id<MTLComputePipelineState>)newComputePipelineStateWithFunction:(id<MTLFunction>)function options:(MTLPipelineOption)options
                                                           reflection:(MTLAutoreleasedComputePipelineReflection *)reflection error:(NSError **)error {
@@ -1324,7 +1334,7 @@ index f98bb57..3f9ac89 100644
   }
   gTimePipeline.add(pipelineBegan);
   if(!handle) {
-@@ -5007,6 +5435,7 @@ static void reportUnreadableLibrary(NSString *path) {
+@@ -5007,6 +5436,7 @@ static void reportUnreadableLibrary(NSString *path) {
  }
  - (id<MTLComputePipelineState>)newComputePipelineStateWithDescriptor:(MTLComputePipelineDescriptor *)d options:(MTLPipelineOption)options
                                                         reflection:(MTLAutoreleasedComputePipelineReflection *)reflection error:(NSError **)error {
@@ -1332,7 +1342,7 @@ index f98bb57..3f9ac89 100644
   if(reflection)*reflection=nil;
   NmbComputePipelineDescriptor p={};std::vector<NmbFunction *> linked,privateLinked;
   if(!computeDescriptor(d,&p,linked,privateLinked,error))return nil;
-@@ -5014,11 +5443,11 @@ static void reportUnreadableLibrary(NSString *path) {
+@@ -5014,11 +5444,11 @@ static void reportUnreadableLibrary(NSString *path) {
   if(!pipelineArchives(d.binaryArchives,archives,error))return nil;
   const NmbPipelineOptions creation={(uint64_t)options,archives.data(),archives.size()};
   const uint64_t pipelineBegan=nowUs();
@@ -1346,7 +1356,7 @@ index f98bb57..3f9ac89 100644
   }
   gTimePipeline.add(pipelineBegan);
   if(!handle) {
-@@ -5051,6 +5480,7 @@ static void reportUnreadableLibrary(NSString *path) {
+@@ -5051,6 +5481,7 @@ static void reportUnreadableLibrary(NSString *path) {
  }
  - (id<MTLRenderPipelineState>)newRenderPipelineStateWithDescriptor:(MTLRenderPipelineDescriptor *)d options:(MTLPipelineOption)options
                                                          reflection:(MTLAutoreleasedRenderPipelineReflection *)reflection error:(NSError **)error {
@@ -1354,7 +1364,7 @@ index f98bb57..3f9ac89 100644
   if(reflection)*reflection=nil;
   auto *p=new NBRenderDescriptor();
   if(!renderDescriptor(d,p,error)) {
-@@ -5062,9 +5492,9 @@ static void reportUnreadableLibrary(NSString *path) {
+@@ -5062,9 +5493,9 @@ static void reportUnreadableLibrary(NSString *path) {
   std::vector<NmbBinaryArchive *> archives;
   if(!pipelineArchives(d.binaryArchives,archives,error)){delete p;return nil;}
   const NmbPipelineOptions creation={(uint64_t)options,archives.data(),archives.size()};
@@ -1366,7 +1376,7 @@ index f98bb57..3f9ac89 100644
   // With diagnostics on: which Metal functions the program Turnip just built for this pipeline belongs to (tu_darwin_last_program gives
   // the vertex and fragment shader hashes of the last program this thread built; the pass records of the frame trace name a pass's
   // heaviest fragment shader by the same hash). One line per fragment hash, at most 512.
-@@ -5436,6 +5866,13 @@ extern "C" id native_bridge_metal_open(const char *loader,const char *cache,uint
+@@ -5436,6 +5867,13 @@ extern "C" id native_bridge_metal_open(const char *loader,const char *cache,uint
    nmb_gpu_diagnostic_hook(frameRuntime);
   }
   if(!gDevice){NBLOG(@"native-metal: device refused: %s",nmb_last_error());return nil;}
@@ -1380,7 +1390,7 @@ index f98bb57..3f9ac89 100644
   watchImportPressure();
   logFlowCounts();
   logClientWork();
-@@ -5503,7 +5940,7 @@ extern "C" id native_bridge_metal_open(const char *loader,const char *cache,uint
+@@ -5503,7 +5941,7 @@ extern "C" id native_bridge_metal_open(const char *loader,const char *cache,uint
  
  // Bare AIR bitcode (no metallib wrapper), which Metal itself refuses: for the bridge's own fixtures only.
  extern "C" id native_bridge_metal_library_with_air(const void *bytes,size_t length) {
