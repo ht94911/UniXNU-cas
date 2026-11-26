@@ -13,7 +13,7 @@ assert (source/'src/gallium/frontends/lavapipe/lvp_device.c').is_file()
 # The existing checkout is sparse for Turnip. Expand only the CPU driver's
 # LLVM, target and software winsys inputs at the same pinned Mesa commit.
 subprocess.run(['git','-C',str(source),'sparse-checkout','add',
-                'src/amd/llvm','src/gallium/targets','src/gallium/winsys','src/mapi'], check=True)
+                'src/amd/llvm','src/gallium','src/mesa'], check=True)
 meson = root/'.cache/mesa-venv/bin/meson'
 env = dict(os.environ)
 env['PATH'] = str(root/'.cache/mesa-tools/bin')+':'+str(root/'.cache/mesa-venv/bin')+':'+env['PATH']
