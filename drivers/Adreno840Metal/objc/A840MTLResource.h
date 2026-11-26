@@ -32,6 +32,7 @@
 @interface A840MTLSamplerState : NSObject <MTLSamplerState>
 - (instancetype)initWithOwner:(A840MTLDevice *)owner descriptor:(MTLSamplerDescriptor *)descriptor;
 @property(nonatomic, readonly) const uint32_t *descriptorWords;
+@property(nonatomic, readonly) MTLSamplerDescriptor *descriptor;
 - (id<MTLSamplerState>)fallbackSampler;
 @end
 

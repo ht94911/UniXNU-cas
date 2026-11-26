@@ -24,6 +24,11 @@ typedef id<MTLDevice> (^A840MTLFallbackFactory)(void);
 - (A840RtStatus)bindRender:(A840RtRenderEncoder *)encoder plan:(id)plan
             vertexBindings:(A840MTLBindings *)vertex fragmentBindings:(A840MTLBindings *)fragment;
 @optional
+- (A840RtStatus)bindCompute:(A840RtComputeEncoder *)encoder plan:(id)plan
+                    bindings:(A840MTLBindings *)bindings
+                    gridSize:(MTLSize)grid
+             threadgroupSize:(MTLSize)local
+                  nonuniform:(BOOL)nonuniform;
 - (id<MTLLibrary>)defaultLibraryForDevice:(A840MTLDevice *)device;
 - (id<MTLLibrary>)libraryWithURL:(NSURL *)url forDevice:(A840MTLDevice *)device error:(NSError **)error;
 - (id)prepareComputeVariantForPlan:(id)plan localSize:(MTLSize)localSize

@@ -153,6 +153,50 @@ NmbSpirvResult *nmb_compile_compute_spirv_ex(const NmbDevice *dev, const NmbLibr
 bool nmb_spirv_push_constant_range(const NmbSpirvResult *res, uint32_t stage_index,
                                    NmbSpirvPushConstantRange *out);
 
+/* Additive identity-domain push-constant placement reflection & handle-word helpers. */
+enum {
+    NMB_PUSH_NONE = 0,
+    NMB_PUSH_BUFFER_ADDRESS = 1,
+    NMB_PUSH_BUFFER_BOUNDS = 2,
+    NMB_PUSH_ZERO_ADDRESS = 3,
+    NMB_PUSH_TEXTURE_ID = 4,
+    NMB_PUSH_SAMPLER_ID = 5,
+    NMB_PUSH_DISPATCH_REGION = 6,
+    NMB_PUSH_STAGE_IN_REGION = 7,
+    NMB_PUSH_TEXTURE_LEVELS = 8,
+    NMB_PUSH_TEXTURE_LEVEL_BASE = 9,
+    NMB_PUSH_INTEGER_CHANNELS = 10,
+    NMB_PUSH_ARGUMENT_TABLE_ADDRESS = 11,
+    NMB_PUSH_RENDER_TARGET_ARRAY_LENGTH = 12,
+    NMB_PUSH_VIEWPORT_COUNT = 13,
+    NMB_PUSH_VERTICES_PER_PRIMITIVE = 14,
+    NMB_PUSH_TAIL_WORD = 15,
+    NMB_PUSH_ZERO_U32 = 16,
+    NMB_PUSH_ZERO_U64 = 17
+};
+
+typedef struct NmbSpirvPushField {
+    uint32_t kind;         /* NMB_PUSH_* */
+    uint32_t in_arg_table; /* 0 = push window, 1 = argument table BO */
+    uint32_t offset_bytes;
+    uint32_t size_bytes;
+    uint32_t stage_mask;   /* NMB_STAGE_*_BIT */
+    uint32_t metal_slot;   /* Metal buffer/texture/sampler index, or UINT32_MAX */
+    uint32_t extra;        /* Reserved / auxiliary metadata */
+} NmbSpirvPushField;
+
+size_t nmb_spirv_push_field_count(const NmbSpirvResult *res, uint32_t stage_index);
+bool nmb_spirv_push_field(const NmbSpirvResult *res, uint32_t stage_index,
+                          size_t index, NmbSpirvPushField *out);
+uint32_t nmb_spirv_arg_table_bytes(const NmbSpirvResult *res, uint32_t stage_index);
+uint32_t nmb_encode_sampler_word(bool normalized_coordinates,
+                                 uint32_t min_filter, uint32_t mag_filter,
+                                 uint32_t mip_filter,
+                                 uint32_t s_address_mode, uint32_t t_address_mode,
+                                 uint32_t r_address_mode,
+                                 uint32_t border_color, uint32_t compare_function);
+uint32_t nmb_encode_texture_word(uint32_t mtl_pixel_format);
+
 #ifdef __cplusplus
 }
 #endif

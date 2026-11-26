@@ -215,6 +215,7 @@ static uint32_t addressMode(MTLSamplerAddressMode mode)
 - (NSString *)label { return _descriptor.label; }
 - (MTLResourceID)gpuResourceID { return MTLResourceID{}; }
 - (const uint32_t *)descriptorWords { return _words; }
+- (MTLSamplerDescriptor *)descriptor { return _descriptor; }
 - (id<MTLSamplerState>)fallbackSampler
 {
     if (!_mirror) _mirror = [_owner.fallbackDevice newSamplerStateWithDescriptor:_descriptor];

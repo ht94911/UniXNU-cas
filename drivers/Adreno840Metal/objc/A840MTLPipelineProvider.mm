@@ -26,10 +26,62 @@
 
 namespace {
 
+constexpr uint32_t kDescTypeSampler = 0u;
+constexpr uint32_t kDescTypeSampledImage = 2u;
+constexpr uint32_t kDescTypeStorageImage = 3u;
 constexpr uint32_t kDescTypeUniformBuffer = 6u;
 constexpr uint32_t kDescTypeStorageBuffer = 7u;
 constexpr uint32_t kDescTypeUniformBufferDynamic = 8u;
 constexpr uint64_t kKaanapaliChipId = UINT64_C(1141180977); /* 0x44050a31 */
+constexpr uint64_t kIdentityAddressBias = UINT64_C(0x80000000);
+constexpr size_t kIdentityBindlessSlotBytes = 64u;
+constexpr size_t kIdentityMaxPushBytes = 256u;
+
+static uint32_t packNominalLocalSize(MTLSize local)
+{
+    const uint32_t lx = (local.width >= 1u && local.width <= 1024u) ? static_cast<uint32_t>(local.width) : 1u;
+    const uint32_t ly = (local.height >= 1u && local.height <= 1024u) ? static_cast<uint32_t>(local.height) : 1u;
+    const uint32_t lz = (local.depth >= 1u && local.depth <= 1024u) ? static_cast<uint32_t>(local.depth) : 1u;
+    return (lx - 1u) | ((ly - 1u) << 10u) | ((lz - 1u) << 20u);
+}
+
+static void writeFieldBytes(uint8_t *pushBuf, size_t pushCap,
+                            uint8_t *argBuf, size_t argCap,
+                            const NmbSpirvPushField &pf,
+                            const void *src, size_t srcBytes)
+{
+    uint8_t *dst = pf.in_arg_table ? argBuf : pushBuf;
+    const size_t cap = pf.in_arg_table ? argCap : pushCap;
+    if (!dst || !src || pf.size_bytes == 0u) return;
+    const size_t n = srcBytes < pf.size_bytes ? srcBytes : static_cast<size_t>(pf.size_bytes);
+    if (static_cast<size_t>(pf.offset_bytes) + n > cap) return;
+    std::memcpy(dst + pf.offset_bytes, src, n);
+}
+
+static A840RtBuffer *allocZeroPageBuffer(A840RtDevice *rt)
+{
+    if (!rt) return nullptr;
+    A840RtBufferDesc desc{};
+    desc.size_bytes = 4096u;
+    desc.alignment = 4096u;
+    desc.usage_flags = A840_BUF_USAGE_READ | A840_BUF_USAGE_CPU_VISIBLE;
+    A840RtBuffer *bo = nullptr;
+    if (a840_rt_buffer_create(rt, &desc, &bo) != A840_RT_OK || !bo || !bo->cpu_ptr) {
+        if (bo) a840_rt_buffer_release(bo);
+        return nullptr;
+    }
+    std::memset(bo->cpu_ptr, 0, 4096u);
+    return bo;
+}
+
+struct A840IdentityBindState {
+    A840RtBuffer *descBo = nullptr;
+    uint64_t setOffsets[ADRENO_COMPILE_MAX_BIND_SETS] = {};
+    bool setActive[ADRENO_COMPILE_MAX_BIND_SETS] = {};
+    uint32_t activeSetCount = 0u;
+    uint8_t pushBuf[2][kIdentityMaxPushBytes] = {};
+    uint32_t pushVec4Count[2] = {};
+};
 
 static A840CompileTarget makeKaanapaliTarget()
 {
@@ -201,6 +253,13 @@ static const A840BindingLocation *findBindingLocation(const A840BindingPlan *pla
     A840RtBuffer *codeBuffers[2];
     A840RtBuffer *privateBuffers[2];
     A840BindingPlan bindingPlan;
+    std::vector<NmbSpirvPushField> pushFields[2];
+    uint32_t argTableBytes[2];
+    NmbSpirvPushConstantRange pushRanges[2];
+    int32_t sampledImageSet;
+    int32_t storageImageSet;
+    int32_t samplerSet;
+    A840RtBuffer *zeroPageBo;
     NSMutableArray<NSValue *> *transientBuffers;
     A840MTLFunction *computeFunction;
     A840RtComputePipelineDesc computeDesc;
@@ -212,6 +271,14 @@ static const A840BindingLocation *findBindingLocation(const A840BindingPlan *pla
 - (instancetype)init
 {
     if ((self = [super init])) {
+        argTableBytes[0] = 0u;
+        argTableBytes[1] = 0u;
+        pushRanges[0] = {};
+        pushRanges[1] = {};
+        sampledImageSet = -1;
+        storageImageSet = -1;
+        samplerSet = -1;
+        zeroPageBo = nullptr;
         transientBuffers = [NSMutableArray new];
         computeVariants = [NSMutableDictionary new];
     }
@@ -219,6 +286,7 @@ static const A840BindingLocation *findBindingLocation(const A840BindingPlan *pla
 }
 - (void)dealloc
 {
+    if (zeroPageBo) a840_rt_buffer_release(zeroPageBo);
     for (NSValue *val in transientBuffers) {
         auto *bo = static_cast<A840RtBuffer *>(val.pointerValue);
         if (bo) a840_rt_buffer_release(bo);
@@ -270,6 +338,397 @@ static const A840BindingLocation *findBindingLocation(const A840BindingPlan *pla
     NSData *data = [NSData dataWithContentsOfURL:url options:0 error:error];
     if (!data) return nil;
     return [[A840MTLLibrary alloc] initWithDevice:device data:data error:error];
+}
+
+- (BOOL)captureIdentityReflection:(const NmbSpirvResult *)spv
+                         intoPlan:(A840MTLCompiledPlan *)plan
+                       stageCount:(uint32_t)stageCount
+{
+    if (!spv || !plan || stageCount == 0u || stageCount > 2u) return NO;
+    bool needsZeroPage = false;
+    for (uint32_t s = 0u; s < stageCount; ++s) {
+        plan->pushFields[s].clear();
+        plan->argTableBytes[s] = nmb_spirv_arg_table_bytes(spv, s);
+        nmb_spirv_push_constant_range(spv, s, &plan->pushRanges[s]);
+        const size_t pfCount = nmb_spirv_push_field_count(spv, s);
+        plan->pushFields[s].reserve(pfCount);
+        for (size_t i = 0u; i < pfCount; ++i) {
+            NmbSpirvPushField pf{};
+            if (nmb_spirv_push_field(spv, s, i, &pf)) {
+                if (pf.kind == NMB_PUSH_ZERO_ADDRESS || pf.kind == NMB_PUSH_BUFFER_ADDRESS) {
+                    needsZeroPage = true;
+                }
+                plan->pushFields[s].push_back(pf);
+            }
+        }
+    }
+    const size_t bCount = nmb_spirv_binding_count(spv);
+    for (size_t i = 0u; i < bCount; ++i) {
+        NmbSpirvBinding b{};
+        if (!nmb_spirv_binding(spv, i, &b)) continue;
+        if (b.descriptor_set >= ADRENO_COMPILE_MAX_BIND_SETS) continue;
+        if (b.binding == 0u && b.descriptor_type == kDescTypeSampledImage && b.texture_index == UINT32_MAX) {
+            plan->sampledImageSet = static_cast<int32_t>(b.descriptor_set);
+        } else if (b.binding == 0u && b.descriptor_type == kDescTypeStorageImage && b.texture_index == UINT32_MAX) {
+            plan->storageImageSet = static_cast<int32_t>(b.descriptor_set);
+        } else if (b.binding == 0u && b.descriptor_type == kDescTypeSampler && b.sampler_index == UINT32_MAX) {
+            plan->samplerSet = static_cast<int32_t>(b.descriptor_set);
+        }
+    }
+    if (needsZeroPage && !plan->zeroPageBo) {
+        plan->zeroPageBo = allocZeroPageBuffer(plan->rtDevice);
+        if (!plan->zeroPageBo) return NO;
+    }
+    return YES;
+}
+
+- (BOOL)planUsesIdentityPush:(A840MTLCompiledPlan *)plan
+{
+    return plan && (!plan->pushFields[0].empty() || !plan->pushFields[1].empty());
+}
+
+- (BOOL)buildIdentityBindStateForPlan:(A840MTLCompiledPlan *)plan
+                        stageBindings:(A840MTLBindings *const *)stageBindings
+                           stageCount:(uint32_t)stageCount
+                             gridSize:(MTLSize)grid
+                      threadgroupSize:(MTLSize)local
+                           nonuniform:(BOOL)nonuniform
+                               outRes:(A840IdentityBindState *)outRes
+{
+    if (!plan || !outRes || stageCount == 0u || stageCount > 2u) return NO;
+    *outRes = A840IdentityBindState{};
+
+    /* 1. Assign 1-based global bindless slots (slot 0 is reserved null/zeroed). */
+    NSMutableArray<A840MTLTexture *> *uniqueTextures = [NSMutableArray new];
+    NSMutableArray<A840MTLSamplerState *> *uniqueSamplers = [NSMutableArray new];
+    NSMutableDictionary<NSString *, NSNumber *> *texSlotMap = [NSMutableDictionary new];
+    NSMutableDictionary<NSString *, NSNumber *> *sampSlotMap = [NSMutableDictionary new];
+
+    for (uint32_t s = 0u; s < stageCount; ++s) {
+        A840MTLBindings *b = stageBindings[s];
+        if (!b) continue;
+        NSArray<NSNumber *> *texKeys = [b.textures.allKeys sortedArrayUsingSelector:@selector(compare:)];
+        for (NSNumber *key in texKeys) {
+            id<MTLTexture> rawTex = b.textures[key];
+            if (![rawTex isKindOfClass:[A840MTLTexture class]]) continue;
+            auto *tex = static_cast<A840MTLTexture *>(rawTex);
+            if (!tex.native) continue;
+            uint32_t slotIdx = 0u;
+            for (NSUInteger i = 0u; i < uniqueTextures.count; ++i) {
+                if (uniqueTextures[i] == tex) {
+                    slotIdx = static_cast<uint32_t>(i + 1u);
+                    break;
+                }
+            }
+            if (slotIdx == 0u) {
+                [uniqueTextures addObject:tex];
+                slotIdx = static_cast<uint32_t>(uniqueTextures.count);
+            }
+            NSString *tag = [NSString stringWithFormat:@"%u:%u", s, key.unsignedIntValue];
+            texSlotMap[tag] = @(slotIdx);
+        }
+        NSArray<NSNumber *> *sampKeys = [b.samplers.allKeys sortedArrayUsingSelector:@selector(compare:)];
+        for (NSNumber *key in sampKeys) {
+            id<MTLSamplerState> rawSamp = b.samplers[key];
+            if (![rawSamp isKindOfClass:[A840MTLSamplerState class]]) continue;
+            auto *samp = static_cast<A840MTLSamplerState *>(rawSamp);
+            if (!samp.descriptorWords) continue;
+            uint32_t slotIdx = 0u;
+            for (NSUInteger i = 0u; i < uniqueSamplers.count; ++i) {
+                if (uniqueSamplers[i] == samp) {
+                    slotIdx = static_cast<uint32_t>(i + 1u);
+                    break;
+                }
+            }
+            if (slotIdx == 0u) {
+                [uniqueSamplers addObject:samp];
+                slotIdx = static_cast<uint32_t>(uniqueSamplers.count);
+            }
+            NSString *tag = [NSString stringWithFormat:@"%u:%u", s, key.unsignedIntValue];
+            sampSlotMap[tag] = @(slotIdx);
+        }
+    }
+
+    /* 2. Lay out single 64B-aligned transient BO: bindless sets + inline setBytes + arg tables. */
+    size_t cursor = 0u;
+    if (plan->sampledImageSet >= 0 && uniqueTextures.count > 0u) {
+        const size_t setIdx = static_cast<size_t>(plan->sampledImageSet);
+        outRes->setOffsets[setIdx] = cursor;
+        outRes->setActive[setIdx] = true;
+        if (static_cast<uint32_t>(setIdx + 1u) > outRes->activeSetCount) {
+            outRes->activeSetCount = static_cast<uint32_t>(setIdx + 1u);
+        }
+        cursor += (1u + uniqueTextures.count) * kIdentityBindlessSlotBytes;
+    }
+    if (plan->storageImageSet >= 0 && uniqueTextures.count > 0u) {
+        const size_t setIdx = static_cast<size_t>(plan->storageImageSet);
+        outRes->setOffsets[setIdx] = cursor;
+        outRes->setActive[setIdx] = true;
+        if (static_cast<uint32_t>(setIdx + 1u) > outRes->activeSetCount) {
+            outRes->activeSetCount = static_cast<uint32_t>(setIdx + 1u);
+        }
+        cursor += (1u + uniqueTextures.count) * kIdentityBindlessSlotBytes;
+    }
+    if (plan->samplerSet >= 0 && uniqueSamplers.count > 0u) {
+        const size_t setIdx = static_cast<size_t>(plan->samplerSet);
+        outRes->setOffsets[setIdx] = cursor;
+        outRes->setActive[setIdx] = true;
+        if (static_cast<uint32_t>(setIdx + 1u) > outRes->activeSetCount) {
+            outRes->activeSetCount = static_cast<uint32_t>(setIdx + 1u);
+        }
+        cursor += (1u + uniqueSamplers.count) * kIdentityBindlessSlotBytes;
+    }
+
+    const size_t inlineStart = cursor;
+    size_t inlineSlabBytes = 0u;
+    for (uint32_t s = 0u; s < stageCount; ++s) {
+        A840MTLBindings *b = stageBindings[s];
+        if (!b) continue;
+        for (NSNumber *key in b.inlineBytes) {
+            NSData *d = b.inlineBytes[key];
+            if (d.length > 0u) inlineSlabBytes += alignUp(d.length, 64u);
+        }
+    }
+    cursor += inlineSlabBytes;
+
+    size_t argTableOff[2] = {0u, 0u};
+    for (uint32_t s = 0u; s < stageCount; ++s) {
+        if (plan->argTableBytes[s] > 0u) {
+            argTableOff[s] = cursor;
+            cursor += alignUp(plan->argTableBytes[s], 64u);
+        }
+    }
+
+    const size_t totalBytes = alignUp(cursor ? cursor : 64u, 256u);
+    A840RtBufferDesc desc{};
+    desc.size_bytes = totalBytes;
+    desc.alignment = 4096u;
+    desc.usage_flags = A840_BUF_USAGE_READ | A840_BUF_USAGE_CPU_VISIBLE;
+    A840RtBuffer *bo = nullptr;
+    if (a840_rt_buffer_create(plan->rtDevice, &desc, &bo) != A840_RT_OK || !bo || !bo->cpu_ptr) {
+        if (bo) a840_rt_buffer_release(bo);
+        return NO;
+    }
+    auto *baseCpu = static_cast<uint8_t *>(bo->cpu_ptr);
+    std::memset(baseCpu, 0, totalBytes);
+    [plan->transientBuffers addObject:[NSValue valueWithPointer:bo]];
+    outRes->descBo = bo;
+
+    /* 3. Write 64B A8XX hardware descriptors into bindless sets. */
+    for (NSUInteger i = 0u; i < uniqueTextures.count; ++i) {
+        const size_t slotOff = (i + 1u) * kIdentityBindlessSlotBytes;
+        A840RtTexture *rtTex = uniqueTextures[i].native;
+        if (plan->sampledImageSet >= 0) {
+            const size_t setIdx = static_cast<size_t>(plan->sampledImageSet);
+            if (outRes->setActive[setIdx]) {
+                std::memcpy(baseCpu + outRes->setOffsets[setIdx] + slotOff,
+                            rtTex->tex_const, sizeof(rtTex->tex_const));
+            }
+        }
+        if (plan->storageImageSet >= 0) {
+            const size_t setIdx = static_cast<size_t>(plan->storageImageSet);
+            if (outRes->setActive[setIdx]) {
+                std::memcpy(baseCpu + outRes->setOffsets[setIdx] + slotOff,
+                            rtTex->tex_const, sizeof(rtTex->tex_const));
+            }
+        }
+    }
+    for (NSUInteger i = 0u; i < uniqueSamplers.count; ++i) {
+        const size_t slotOff = (i + 1u) * kIdentityBindlessSlotBytes;
+        const uint32_t *words = uniqueSamplers[i].descriptorWords;
+        if (plan->samplerSet >= 0) {
+            const size_t setIdx = static_cast<size_t>(plan->samplerSet);
+            if (outRes->setActive[setIdx]) {
+                std::memcpy(baseCpu + outRes->setOffsets[setIdx] + slotOff,
+                            words, A840_SAMP_CONST_DWORDS * sizeof(uint32_t));
+            }
+        }
+    }
+
+    /* 4. Copy inline setBytes data into transient BO and record GPU VAs. */
+    NSMutableDictionary<NSString *, NSNumber *> *inlineVaMap = [NSMutableDictionary new];
+    NSMutableDictionary<NSString *, NSNumber *> *inlineLenMap = [NSMutableDictionary new];
+    size_t inlineCur = inlineStart;
+    for (uint32_t s = 0u; s < stageCount; ++s) {
+        A840MTLBindings *b = stageBindings[s];
+        if (!b) continue;
+        for (NSNumber *key in b.inlineBytes) {
+            NSData *d = b.inlineBytes[key];
+            if (!d || d.length == 0u) continue;
+            std::memcpy(baseCpu + inlineCur, d.bytes, d.length);
+            NSString *tag = [NSString stringWithFormat:@"%u:%u", s, key.unsignedIntValue];
+            inlineVaMap[tag] = @(bo->gpu_va + inlineCur);
+            inlineLenMap[tag] = @(d.length);
+            inlineCur += alignUp(d.length, 64u);
+        }
+    }
+
+    /* 5. Pack metal2vulkan-v2 identity-domain push constants & optional argument table. */
+    const uint64_t zeroVa = plan->zeroPageBo ? plan->zeroPageBo->gpu_va : bo->gpu_va;
+    const uint32_t lx = local.width ? static_cast<uint32_t>(local.width) : 1u;
+    const uint32_t ly = local.height ? static_cast<uint32_t>(local.height) : 1u;
+    const uint32_t lz = local.depth ? static_cast<uint32_t>(local.depth) : 1u;
+    const uint32_t tx = nonuniform ? static_cast<uint32_t>(grid.width) : static_cast<uint32_t>(grid.width) * lx;
+    const uint32_t ty = nonuniform ? static_cast<uint32_t>(grid.height) : static_cast<uint32_t>(grid.height) * ly;
+    const uint32_t tz = nonuniform ? static_cast<uint32_t>(grid.depth) : static_cast<uint32_t>(grid.depth) * lz;
+    const uint32_t ragged = (nonuniform && ((tx % lx) != 0u || (ty % ly) != 0u || (tz % lz) != 0u)) ? 1u : 0u;
+
+    for (uint32_t s = 0u; s < stageCount; ++s) {
+        A840MTLBindings *b = stageBindings[s];
+        uint8_t *argCpu = plan->argTableBytes[s] > 0u ? (baseCpu + argTableOff[s]) : nullptr;
+        const size_t argCap = plan->argTableBytes[s];
+        uint32_t maxEndBytes = plan->pushRanges[s].offset_bytes + plan->pushRanges[s].size_bytes;
+
+        for (const NmbSpirvPushField &pf : plan->pushFields[s]) {
+            if (!pf.in_arg_table && pf.offset_bytes + pf.size_bytes > maxEndBytes) {
+                maxEndBytes = pf.offset_bytes + pf.size_bytes;
+            }
+            switch (pf.kind) {
+            case NMB_PUSH_BUFFER_ADDRESS: {
+                uint64_t va = zeroVa;
+                if (b) {
+                    id<MTLBuffer> rawBuf = b.buffers[@(pf.metal_slot)];
+                    if ([rawBuf isKindOfClass:[A840MTLBuffer class]]) {
+                        auto *nativeBuf = static_cast<A840MTLBuffer *>(rawBuf).native;
+                        const uint64_t off = b.bufferOffsets[@(pf.metal_slot)].unsignedLongLongValue;
+                        if (nativeBuf && off <= nativeBuf->size_bytes) {
+                            va = nativeBuf->gpu_va + off;
+                        }
+                    } else {
+                        NSString *tag = [NSString stringWithFormat:@"%u:%u", s, pf.metal_slot];
+                        NSNumber *vaNum = inlineVaMap[tag];
+                        if (vaNum) va = vaNum.unsignedLongLongValue;
+                    }
+                }
+                const uint64_t biased = va - kIdentityAddressBias;
+                writeFieldBytes(outRes->pushBuf[s], kIdentityMaxPushBytes, argCpu, argCap, pf, &biased, sizeof(biased));
+                break;
+            }
+            case NMB_PUSH_BUFFER_BOUNDS: {
+                uint32_t bounds[2] = {0u, 0u};
+                if (b) {
+                    id<MTLBuffer> rawBuf = b.buffers[@(pf.metal_slot)];
+                    if ([rawBuf isKindOfClass:[A840MTLBuffer class]]) {
+                        auto *nativeBuf = static_cast<A840MTLBuffer *>(rawBuf).native;
+                        const uint64_t off = b.bufferOffsets[@(pf.metal_slot)].unsignedLongLongValue;
+                        if (nativeBuf) {
+                            bounds[0] = static_cast<uint32_t>(off);
+                            bounds[1] = static_cast<uint32_t>(nativeBuf->size_bytes);
+                        }
+                    } else {
+                        NSString *tag = [NSString stringWithFormat:@"%u:%u", s, pf.metal_slot];
+                        NSNumber *lenNum = inlineLenMap[tag];
+                        if (lenNum) {
+                            bounds[0] = 0u;
+                            bounds[1] = lenNum.unsignedIntValue;
+                        }
+                    }
+                }
+                writeFieldBytes(outRes->pushBuf[s], kIdentityMaxPushBytes, argCpu, argCap, pf, bounds, sizeof(bounds));
+                break;
+            }
+            case NMB_PUSH_ZERO_ADDRESS: {
+                writeFieldBytes(outRes->pushBuf[s], kIdentityMaxPushBytes, argCpu, argCap, pf, &zeroVa, sizeof(zeroVa));
+                break;
+            }
+            case NMB_PUSH_TEXTURE_ID: {
+                uint64_t handle = 0u;
+                NSString *tag = [NSString stringWithFormat:@"%u:%u", s, pf.metal_slot];
+                NSNumber *slotNum = texSlotMap[tag];
+                if (slotNum && slotNum.unsignedIntValue > 0u) {
+                    const uint32_t slotIdx = slotNum.unsignedIntValue;
+                    A840MTLTexture *tex = uniqueTextures[slotIdx - 1u];
+                    const uint32_t word = nmb_encode_texture_word(static_cast<uint32_t>(tex.pixelFormat));
+                    handle = static_cast<uint64_t>(slotIdx) | (static_cast<uint64_t>(word) << 32u);
+                }
+                writeFieldBytes(outRes->pushBuf[s], kIdentityMaxPushBytes, argCpu, argCap, pf, &handle, sizeof(handle));
+                break;
+            }
+            case NMB_PUSH_SAMPLER_ID: {
+                uint64_t handle = 0u;
+                NSString *tag = [NSString stringWithFormat:@"%u:%u", s, pf.metal_slot];
+                NSNumber *slotNum = sampSlotMap[tag];
+                if (slotNum && slotNum.unsignedIntValue > 0u) {
+                    const uint32_t slotIdx = slotNum.unsignedIntValue;
+                    A840MTLSamplerState *samp = uniqueSamplers[slotIdx - 1u];
+                    MTLSamplerDescriptor *d = samp.descriptor;
+                    const uint32_t borderVal = d ? static_cast<uint32_t>(d.borderColor) : 0u;
+                    const uint32_t word = d ? nmb_encode_sampler_word(
+                        d.normalizedCoordinates ? true : false,
+                        static_cast<uint32_t>(d.minFilter),
+                        static_cast<uint32_t>(d.magFilter),
+                        static_cast<uint32_t>(d.mipFilter),
+                        static_cast<uint32_t>(d.sAddressMode),
+                        static_cast<uint32_t>(d.tAddressMode),
+                        static_cast<uint32_t>(d.rAddressMode),
+                        borderVal,
+                        static_cast<uint32_t>(d.compareFunction)) : 0u;
+                    handle = static_cast<uint64_t>(slotIdx) | (static_cast<uint64_t>(word) << 32u);
+                }
+                writeFieldBytes(outRes->pushBuf[s], kIdentityMaxPushBytes, argCpu, argCap, pf, &handle, sizeof(handle));
+                break;
+            }
+            case NMB_PUSH_DISPATCH_REGION: {
+                const uint32_t region[8] = {
+                    0u, 0u, 0u, packNominalLocalSize(local),
+                    tx, ty, tz, ragged,
+                };
+                writeFieldBytes(outRes->pushBuf[s], kIdentityMaxPushBytes, argCpu, argCap, pf, region, sizeof(region));
+                break;
+            }
+            case NMB_PUSH_TEXTURE_LEVELS: {
+                uint32_t lvls = 0u;
+                NSString *tag = [NSString stringWithFormat:@"%u:%u", s, pf.metal_slot];
+                NSNumber *slotNum = texSlotMap[tag];
+                if (slotNum && slotNum.unsignedIntValue > 0u) {
+                    lvls = static_cast<uint32_t>(uniqueTextures[slotNum.unsignedIntValue - 1u].mipmapLevelCount);
+                }
+                writeFieldBytes(outRes->pushBuf[s], kIdentityMaxPushBytes, argCpu, argCap, pf, &lvls, sizeof(lvls));
+                break;
+            }
+            case NMB_PUSH_TEXTURE_LEVEL_BASE: {
+                uint32_t baseSlot = 0u;
+                NSString *tag = [NSString stringWithFormat:@"%u:%u", s, pf.metal_slot];
+                NSNumber *slotNum = texSlotMap[tag];
+                if (slotNum) baseSlot = slotNum.unsignedIntValue;
+                writeFieldBytes(outRes->pushBuf[s], kIdentityMaxPushBytes, argCpu, argCap, pf, &baseSlot, sizeof(baseSlot));
+                break;
+            }
+            case NMB_PUSH_ARGUMENT_TABLE_ADDRESS: {
+                const uint64_t argVa = plan->argTableBytes[s] > 0u ? (bo->gpu_va + argTableOff[s]) : zeroVa;
+                writeFieldBytes(outRes->pushBuf[s], kIdentityMaxPushBytes, argCpu, argCap, pf, &argVa, sizeof(argVa));
+                break;
+            }
+            case NMB_PUSH_RENDER_TARGET_ARRAY_LENGTH:
+            case NMB_PUSH_VIEWPORT_COUNT: {
+                const uint32_t one = 1u;
+                writeFieldBytes(outRes->pushBuf[s], kIdentityMaxPushBytes, argCpu, argCap, pf, &one, sizeof(one));
+                break;
+            }
+            case NMB_PUSH_VERTICES_PER_PRIMITIVE: {
+                const uint32_t three = 3u;
+                writeFieldBytes(outRes->pushBuf[s], kIdentityMaxPushBytes, argCpu, argCap, pf, &three, sizeof(three));
+                break;
+            }
+            case NMB_PUSH_TAIL_WORD:
+            case NMB_PUSH_INTEGER_CHANNELS:
+            case NMB_PUSH_STAGE_IN_REGION:
+            case NMB_PUSH_ZERO_U32:
+            case NMB_PUSH_ZERO_U64:
+            default:
+                /* Buffer already zero-initialized. */
+                break;
+            }
+        }
+
+        if (maxEndBytes > 0u && plan->stages[s].constlen_vec4 > 0u) {
+            if (maxEndBytes > kIdentityMaxPushBytes) maxEndBytes = static_cast<uint32_t>(kIdentityMaxPushBytes);
+            uint32_t vec4s = (maxEndBytes + 15u) / 16u;
+            if (vec4s > plan->stages[s].constlen_vec4) vec4s = plan->stages[s].constlen_vec4;
+            outRes->pushVec4Count[s] = vec4s;
+        }
+    }
+    return YES;
 }
 
 - (A840MTLCompiledPlan *)compileComputeFunction:(A840MTLFunction *)fn
@@ -336,6 +795,10 @@ static const A840BindingLocation *findBindingLocation(const A840BindingPlan *pla
         (void)nmb_spirv_binding(spv, i, &bindings[i]);
     NmbSpirvPushConstantRange pushRange{};
     (void)nmb_spirv_push_constant_range(spv, 0u, &pushRange);
+    if (![self captureIdentityReflection:spv intoPlan:plan stageCount:1u]) {
+        nmb_spirv_result_free(spv);
+        return nil;
+    }
     nmb_spirv_result_free(spv);
 
     const auto bpst = a840_binding_plan_build(bindings.empty() ? nullptr : bindings.data(),
@@ -491,6 +954,10 @@ static const A840BindingLocation *findBindingLocation(const A840BindingPlan *pla
     NmbSpirvPushConstantRange pushRanges[2]{};
     (void)nmb_spirv_push_constant_range(spv, 0u, &pushRanges[0]);
     (void)nmb_spirv_push_constant_range(spv, 1u, &pushRanges[1]);
+    if (![self captureIdentityReflection:spv intoPlan:plan stageCount:2u]) {
+        nmb_spirv_result_free(spv);
+        return nil;
+    }
     nmb_spirv_result_free(spv);
 
     const auto bpst = a840_binding_plan_build(bindings.empty() ? nullptr : bindings.data(),
@@ -734,9 +1201,67 @@ static const A840BindingLocation *findBindingLocation(const A840BindingPlan *pla
 - (A840RtStatus)bindCompute:(A840RtComputeEncoder *)encoder plan:(id)planObj
                     bindings:(A840MTLBindings *)bindings
 {
+    MTLSize defaultLocal = MTLSizeMake(1, 1, 1);
+    if ([planObj isKindOfClass:[A840MTLCompiledPlan class]]) {
+        auto *p = static_cast<A840MTLCompiledPlan *>(planObj);
+        defaultLocal = MTLSizeMake(p->stages[0].local_size[0] ? p->stages[0].local_size[0] : 1u,
+                                   p->stages[0].local_size[1] ? p->stages[0].local_size[1] : 1u,
+                                   p->stages[0].local_size[2] ? p->stages[0].local_size[2] : 1u);
+    }
+    return [self bindCompute:encoder plan:planObj bindings:bindings
+                    gridSize:MTLSizeMake(1, 1, 1) threadgroupSize:defaultLocal nonuniform:NO];
+}
+
+- (A840RtStatus)bindCompute:(A840RtComputeEncoder *)encoder plan:(id)planObj
+                    bindings:(A840MTLBindings *)bindings
+                    gridSize:(MTLSize)grid
+             threadgroupSize:(MTLSize)local
+                  nonuniform:(BOOL)nonuniform
+{
     if (!encoder || ![planObj isKindOfClass:[A840MTLCompiledPlan class]]) return A840_RT_INVALID_ARG;
     auto *plan = static_cast<A840MTLCompiledPlan *>(planObj);
     if (!plan->isCompute) return A840_RT_INVALID_ARG;
+
+    if ([self planUsesIdentityPush:plan]) {
+        A840MTLBindings *stageBindings[1] = {bindings};
+        A840IdentityBindState idRes{};
+        if (![self buildIdentityBindStateForPlan:plan stageBindings:stageBindings stageCount:1u
+                                        gridSize:grid threadgroupSize:local nonuniform:nonuniform
+                                          outRes:&idRes]) {
+            return A840_RT_OOM;
+        }
+        if (idRes.activeSetCount > 0u) {
+            A840RtBuffer *setBos[ADRENO_COMPILE_MAX_BIND_SETS] = {};
+            uint64_t setOffsets[ADRENO_COMPILE_MAX_BIND_SETS] = {};
+            for (uint32_t s = 0u; s < idRes.activeSetCount; ++s) {
+                if (idRes.setActive[s]) {
+                    setBos[s] = idRes.descBo;
+                    setOffsets[s] = idRes.setOffsets[s];
+                }
+            }
+            const auto st = a840_rt_compute_set_bindless(encoder, idRes.activeSetCount, setBos, setOffsets);
+            if (st != A840_RT_OK) return st;
+        }
+        const A840CompiledStage &stage = plan->stages[0];
+        if (idRes.pushVec4Count[0] > 0u) {
+            const auto st = a840_rt_compute_set_consts_direct(
+                encoder, 0u, idRes.pushVec4Count[0], stage.constlen_vec4,
+                reinterpret_cast<const uint32_t *>(idRes.pushBuf[0]));
+            if (st != A840_RT_OK) return st;
+        }
+        const A840Ir3StageIoInfo &io = plan->ioInfo[0];
+        if (stage.const_data_words && stage.const_data_dwords > 0u && io.imm_offset_vec4 != UINT32_MAX) {
+            const uint32_t countVec4 = (stage.const_data_dwords + 3u) / 4u;
+            if (io.imm_offset_vec4 + countVec4 <= stage.constlen_vec4) {
+                std::vector<uint32_t> padded(countVec4 * 4u, 0u);
+                std::memcpy(padded.data(), stage.const_data_words, stage.const_data_dwords * sizeof(uint32_t));
+                const auto st = a840_rt_compute_set_consts_direct(encoder, io.imm_offset_vec4, countVec4,
+                                                                  stage.constlen_vec4, padded.data());
+                if (st != A840_RT_OK) return st;
+            }
+        }
+        return A840_RT_OK;
+    }
 
     const uint32_t stageKind = A840_STAGE_COMPUTE;
     A840MTLBindings *stageBindings[1] = {bindings};
@@ -805,14 +1330,81 @@ static const A840BindingLocation *findBindingLocation(const A840BindingPlan *pla
 
     const uint32_t stageKinds[2] = {A840_STAGE_VERTEX, A840_STAGE_FRAGMENT};
     A840MTLBindings *stageBindings[2] = {vertex, fragment};
-    A840RtBuffer *descBo = [self buildDescriptorTableForPlan:plan stageBindings:stageBindings
-                                                  stageKinds:stageKinds stageCount:2u];
-    if (!descBo) return A840_RT_OOM;
 
     uint32_t sdsWords[512];
     A840CmdStream sdsCs{};
     if (a840_cs_init(&sdsCs, sdsWords, 512u, nullptr, 0u) != A840_EMIT_OK)
         return A840_RT_STATE_ERROR;
+
+    if ([self planUsesIdentityPush:plan]) {
+        A840IdentityBindState idRes{};
+        if (![self buildIdentityBindStateForPlan:plan stageBindings:stageBindings stageCount:2u
+                                        gridSize:MTLSizeMake(1, 1, 1) threadgroupSize:MTLSizeMake(1, 1, 1)
+                                      nonuniform:NO outRes:&idRes]) {
+            return A840_RT_OOM;
+        }
+        if (idRes.activeSetCount > 0u) {
+            uint64_t setVas[ADRENO_COMPILE_MAX_BIND_SETS] = {};
+            for (uint32_t s = 0u; s < idRes.activeSetCount; ++s) {
+                if (idRes.setActive[s]) setVas[s] = idRes.descBo->gpu_va + idRes.setOffsets[s];
+            }
+            const auto est = a840_gfx_sds_emit_bindless(&sdsCs, idRes.activeSetCount, setVas);
+            if (est != A840_EMIT_OK) return a840_rt_status_from_emit(est);
+        }
+        for (uint32_t s = 0u; s < 2u; ++s) {
+            const A840CompiledStage &stage = plan->stages[s];
+            if (idRes.pushVec4Count[s] > 0u && stage.constlen_vec4 > 0u) {
+                A840GfxConstUpload up{};
+                up.stage = stageKinds[s];
+                up.dst_vec4 = 0u;
+                up.count_vec4 = idRes.pushVec4Count[s];
+                up.constlen_vec4 = stage.constlen_vec4;
+                up.words = reinterpret_cast<const uint32_t *>(idRes.pushBuf[s]);
+                const auto est = a840_gfx_sds_emit_consts(&sdsCs, &up);
+                if (est != A840_EMIT_OK) return a840_rt_status_from_emit(est);
+            }
+            const A840Ir3StageIoInfo &io = plan->ioInfo[s];
+            if (stage.const_data_words && stage.const_data_dwords > 0u && io.imm_offset_vec4 != UINT32_MAX) {
+                const uint32_t countVec4 = (stage.const_data_dwords + 3u) / 4u;
+                if (io.imm_offset_vec4 + countVec4 <= stage.constlen_vec4) {
+                    std::vector<uint32_t> padded(countVec4 * 4u, 0u);
+                    std::memcpy(padded.data(), stage.const_data_words, stage.const_data_dwords * sizeof(uint32_t));
+                    A840GfxConstUpload up{};
+                    up.stage = stageKinds[s];
+                    up.dst_vec4 = io.imm_offset_vec4;
+                    up.count_vec4 = countVec4;
+                    up.constlen_vec4 = stage.constlen_vec4;
+                    up.words = padded.data();
+                    const auto est = a840_gfx_sds_emit_consts(&sdsCs, &up);
+                    if (est != A840_EMIT_OK) return a840_rt_status_from_emit(est);
+                }
+            }
+        }
+        if (sdsCs.used_dwords == 0u) return A840_RT_OK;
+        A840RtBufferDesc sdsBoDesc{};
+        sdsBoDesc.size_bytes = alignUp(sdsCs.used_dwords * sizeof(uint32_t), 256u);
+        sdsBoDesc.alignment = 4096u;
+        sdsBoDesc.usage_flags = A840_BUF_USAGE_READ | A840_BUF_USAGE_CPU_VISIBLE;
+        A840RtBuffer *sdsBo = nullptr;
+        if (a840_rt_buffer_create(plan->rtDevice, &sdsBoDesc, &sdsBo) != A840_RT_OK || !sdsBo || !sdsBo->cpu_ptr) {
+            if (sdsBo) a840_rt_buffer_release(sdsBo);
+            return A840_RT_OOM;
+        }
+        std::memcpy(sdsBo->cpu_ptr, sdsWords, sdsCs.used_dwords * sizeof(uint32_t));
+        [plan->transientBuffers addObject:[NSValue valueWithPointer:sdsBo]];
+
+        A840RtSdsGroupDesc grp{};
+        grp.group_id = 0u;
+        grp.enable_mask = A840_SDS_SYSMEM | A840_SDS_GMEM;
+        grp.state_dwords = static_cast<uint32_t>(sdsCs.used_dwords);
+        grp.state_buffer = sdsBo;
+        grp.state_offset = 0u;
+        return a840_rt_render_set_sds(encoder, &grp, 1u);
+    }
+
+    A840RtBuffer *descBo = [self buildDescriptorTableForPlan:plan stageBindings:stageBindings
+                                                  stageKinds:stageKinds stageCount:2u];
+    if (!descBo) return A840_RT_OOM;
 
     const A840BindingPlan &bp = plan->bindingPlan;
     uint64_t setVas[ADRENO_COMPILE_MAX_BIND_SETS] = {};

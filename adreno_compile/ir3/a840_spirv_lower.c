@@ -774,7 +774,7 @@ a840_ir3_spirv_to_lowered_nir(struct ir3_compiler *compiler,
                nir_address_format_32bit_offset);
 
       const struct nir_lower_compute_system_values_options cs_sysval_opts = {
-         .has_base_workgroup_id = true,
+         .has_base_workgroup_id = false,
       };
       NIR_PASS(_, nir, nir_lower_compute_system_values, &cs_sysval_opts);
    }

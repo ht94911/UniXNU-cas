@@ -17,12 +17,19 @@ use metal2vulkan::error::{
     ContainerError, DescriptorError, Error, InputErrorKind, Location, MetalAnswer,
 };
 use metal2vulkan::library::{Function, FunctionStage, Library};
-use metal2vulkan::metal::{self, DataType, PixelFormat, VertexFormat, VertexStepFunction};
+use metal2vulkan::metal::resource_word::TextureWord;
+use metal2vulkan::bind::SamplerDescriptor;
+use metal2vulkan::metal::sampler::SamplerWord;
+use metal2vulkan::metal::{
+    self, CompareFunction, DataType, PixelFormat, SamplerAddressMode, SamplerBorderColor,
+    SamplerMinMagFilter, SamplerMipFilter, TextureSwizzleChannels, VertexFormat,
+    VertexStepFunction,
+};
 use metal2vulkan::pipeline::{
     threadgroup_constants, BindingSource, ColorAttachmentDescriptor, ComputePipelineDescriptor,
-    FunctionDescriptor, PipelineLayout, RenderPipeline, RenderPipelineDescriptor, SamplerRef,
-    StageEntries, StageModule, StageSource, VertexAttributeDescriptor,
-    VertexBufferLayoutDescriptor, VertexDescriptor,
+    FunctionDescriptor, PipelineInterface, PipelineLayout, PushField, PushLoc, RenderPipeline,
+    RenderPipelineDescriptor, SamplerRef, SlotClass, Stage, StageEntries, StageModule, StageSource,
+    VertexAttributeDescriptor, VertexBufferLayoutDescriptor, VertexDescriptor,
 };
 use metal2vulkan::{vk, Budget};
 
@@ -371,6 +378,24 @@ pub struct NmbSpirvBinding {
     sampler_index: u32,
 }
 
+const NMB_PUSH_BUFFER_ADDRESS: u32 = 1;
+const NMB_PUSH_BUFFER_BOUNDS: u32 = 2;
+const NMB_PUSH_ZERO_ADDRESS: u32 = 3;
+const NMB_PUSH_TEXTURE_ID: u32 = 4;
+const NMB_PUSH_SAMPLER_ID: u32 = 5;
+const NMB_PUSH_DISPATCH_REGION: u32 = 6;
+const NMB_PUSH_STAGE_IN_REGION: u32 = 7;
+const NMB_PUSH_TEXTURE_LEVELS: u32 = 8;
+const NMB_PUSH_TEXTURE_LEVEL_BASE: u32 = 9;
+const NMB_PUSH_INTEGER_CHANNELS: u32 = 10;
+const NMB_PUSH_ARGUMENT_TABLE_ADDRESS: u32 = 11;
+const NMB_PUSH_RENDER_TARGET_ARRAY_LENGTH: u32 = 12;
+const NMB_PUSH_VIEWPORT_COUNT: u32 = 13;
+const NMB_PUSH_VERTICES_PER_PRIMITIVE: u32 = 14;
+const NMB_PUSH_TAIL_WORD: u32 = 15;
+const NMB_PUSH_ZERO_U32: u32 = 16;
+const NMB_PUSH_ZERO_U64: u32 = 17;
+
 #[repr(C)]
 #[derive(Clone, Copy, Default)]
 pub struct NmbSpirvPushConstantRange {
@@ -378,16 +403,31 @@ pub struct NmbSpirvPushConstantRange {
     size_bytes: u32,
 }
 
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+pub struct NmbSpirvPushField {
+    kind: u32,
+    in_arg_table: u32,
+    offset_bytes: u32,
+    size_bytes: u32,
+    stage_mask: u32,
+    metal_slot: u32,
+    extra: u32,
+}
+
 pub struct NmbSpirvResult {
     stages: Vec<SpirvStage>,
     bindings: Vec<NmbSpirvBinding>,
     push_constants: [NmbSpirvPushConstantRange; 2],
+    push_fields: [Vec<NmbSpirvPushField>; 2],
+    arg_table_bytes: [u32; 2],
 }
 
 impl NmbSpirvResult {
     fn new(
         stages: impl IntoIterator<Item = StageModule>,
         layout: PipelineLayout,
+        interface: &PipelineInterface,
     ) -> FfiResult<Self> {
         let stages = stages
             .into_iter()
@@ -470,10 +510,90 @@ impl NmbSpirvResult {
                     }
                 })
         });
+        let is_compute = stages.len() == 1;
+        let mut push_fields: [Vec<NmbSpirvPushField>; 2] = [Vec::new(), Vec::new()];
+        let mut arg_table_bytes = [0u32; 2];
+        for placement in &interface.push {
+            let Some((stage_idx, stage_mask)) = (match (is_compute, placement.stage) {
+                (true, Stage::Kernel) => Some((0usize, NMB_STAGE_COMPUTE_BIT)),
+                (false, Stage::Vertex) => Some((0usize, NMB_STAGE_VERTEX_BIT)),
+                (false, Stage::Fragment) => Some((1usize, NMB_STAGE_FRAGMENT_BIT)),
+                _ => None,
+            }) else {
+                continue;
+            };
+            arg_table_bytes[stage_idx] = placement.argument_table_size;
+            for placed in &placement.fields {
+                let (in_arg_table, offset_bytes) = match placed.loc {
+                    PushLoc::Push { offset } => (0u32, offset),
+                    PushLoc::ArgumentTable { offset } => (1u32, offset),
+                    _ => continue,
+                };
+                let (kind, metal_slot, extra) = match placed.field {
+                    PushField::SlotGuestBase(slot) => match slot.class {
+                        SlotClass::Buffer => (NMB_PUSH_BUFFER_ADDRESS, slot.index, 0u32),
+                        SlotClass::Texture => (NMB_PUSH_TEXTURE_ID, slot.index, 0u32),
+                        SlotClass::Sampler => (NMB_PUSH_SAMPLER_ID, slot.index, 0u32),
+                    },
+                    PushField::SlotBounds(slot) => (NMB_PUSH_BUFFER_BOUNDS, slot.index, 0u32),
+                    PushField::ZeroAddress => (NMB_PUSH_ZERO_ADDRESS, NO_SLOT, 0u32),
+                    PushField::DispatchRegion => (NMB_PUSH_DISPATCH_REGION, NO_SLOT, 0u32),
+                    PushField::StageInRegion => (NMB_PUSH_STAGE_IN_REGION, NO_SLOT, 0u32),
+                    PushField::TextureLevels(slot) => (NMB_PUSH_TEXTURE_LEVELS, slot.index, 0u32),
+                    PushField::TextureLevelBase(slot) => {
+                        (NMB_PUSH_TEXTURE_LEVEL_BASE, slot.index, 0u32)
+                    }
+                    PushField::TextureIntegerChannels(slot) => {
+                        (NMB_PUSH_INTEGER_CHANNELS, slot.index, 0u32)
+                    }
+                    PushField::ArgumentTableAddress => {
+                        (NMB_PUSH_ARGUMENT_TABLE_ADDRESS, NO_SLOT, 0u32)
+                    }
+                    PushField::RenderTargetArrayLength => {
+                        (NMB_PUSH_RENDER_TARGET_ARRAY_LENGTH, NO_SLOT, 0u32)
+                    }
+                    PushField::ViewportCount => (NMB_PUSH_VIEWPORT_COUNT, NO_SLOT, 0u32),
+                    PushField::VerticesPerPrimitive => {
+                        (NMB_PUSH_VERTICES_PER_PRIMITIVE, NO_SLOT, 0u32)
+                    }
+                    PushField::TailWord => (NMB_PUSH_TAIL_WORD, NO_SLOT, 0u32),
+                    _ => {
+                        let fallback = if placed.size == 8 {
+                            NMB_PUSH_ZERO_U64
+                        } else {
+                            NMB_PUSH_ZERO_U32
+                        };
+                        (fallback, NO_SLOT, 0u32)
+                    }
+                };
+                push_fields[stage_idx].push(NmbSpirvPushField {
+                    kind,
+                    in_arg_table,
+                    offset_bytes,
+                    size_bytes: placed.size,
+                    stage_mask,
+                    metal_slot,
+                    extra,
+                });
+            }
+            if let Some(tail_offset) = placement.tail_word {
+                push_fields[stage_idx].push(NmbSpirvPushField {
+                    kind: NMB_PUSH_TAIL_WORD,
+                    in_arg_table: 0,
+                    offset_bytes: tail_offset,
+                    size_bytes: 4,
+                    stage_mask,
+                    metal_slot: NO_SLOT,
+                    extra: 0,
+                });
+            }
+        }
         Ok(Self {
             stages,
             bindings,
             push_constants,
+            push_fields,
+            arg_table_bytes,
         })
     }
 
@@ -663,7 +783,7 @@ pub unsafe extern "C" fn nmb_compile_compute_spirv(
             .translator
             .compile_compute_pipeline(&desc, &Budget::default())
             .map_err(message)?;
-        let result = NmbSpirvResult::new([pipeline.stage], pipeline.layout)?;
+        let result = NmbSpirvResult::new([pipeline.stage], pipeline.layout, &pipeline.interface)?;
         Ok(Box::into_raw(Box::new(result)))
     })
 }
@@ -776,7 +896,7 @@ fn render_result(pipeline: RenderPipeline) -> FfiResult<NmbSpirvResult> {
     {
         return Err(c"render pipeline must emit one vertex and one fragment stage".into());
     }
-    NmbSpirvResult::new(pipeline.stages, pipeline.layout)
+    NmbSpirvResult::new(pipeline.stages, pipeline.layout, &pipeline.interface)
 }
 
 fn attachment_format(raw: u32) -> FfiResult<Option<PixelFormat>> {
@@ -1129,6 +1249,113 @@ pub unsafe extern "C" fn nmb_spirv_push_constant_range(
         }
         unsafe { out.write(res.push_constants[index as usize]) };
         Ok(true)
+    })
+}
+
+/// # Safety
+/// The result handle must stay valid for this call.
+#[no_mangle]
+pub unsafe extern "C" fn nmb_spirv_push_field_count(
+    res: *const NmbSpirvResult,
+    stage_index: u32,
+) -> usize {
+    ffi(0, || {
+        let res = unsafe { borrowed(res, c"SPIR-V result is required") }?;
+        res.stage(stage_index)?;
+        Ok(res.push_fields[stage_index as usize].len())
+    })
+}
+
+/// # Safety
+/// The result handle and writable output must stay valid for this call.
+#[no_mangle]
+pub unsafe extern "C" fn nmb_spirv_push_field(
+    res: *const NmbSpirvResult,
+    stage_index: u32,
+    index: usize,
+    out: *mut NmbSpirvPushField,
+) -> bool {
+    ffi(false, || {
+        let res = unsafe { borrowed(res, c"SPIR-V result is required") }?;
+        res.stage(stage_index)?;
+        if out.is_null() {
+            return Err(c"push field output is required".into());
+        }
+        let field = res.push_fields[stage_index as usize]
+            .get(index)
+            .copied()
+            .ok_or_else(|| c"push field index is out of range")?;
+        unsafe { out.write(field) };
+        Ok(true)
+    })
+}
+
+/// # Safety
+/// The result handle must stay valid for this call.
+#[no_mangle]
+pub unsafe extern "C" fn nmb_spirv_arg_table_bytes(
+    res: *const NmbSpirvResult,
+    stage_index: u32,
+) -> u32 {
+    ffi(0, || {
+        let res = unsafe { borrowed(res, c"SPIR-V result is required") }?;
+        res.stage(stage_index)?;
+        Ok(res.arg_table_bytes[stage_index as usize])
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn nmb_encode_sampler_word(
+    normalized_coordinates: bool,
+    min_filter: u32,
+    mag_filter: u32,
+    mip_filter: u32,
+    s_address_mode: u32,
+    t_address_mode: u32,
+    r_address_mode: u32,
+    border_color: u32,
+    compare_function: u32,
+) -> u32 {
+    catch_ffi(0, || {
+        let mut desc = SamplerDescriptor::default();
+        desc.normalized_coordinates = normalized_coordinates;
+        if let Ok(v) = SamplerMinMagFilter::try_from(min_filter) {
+            desc.min_filter = v;
+        }
+        if let Ok(v) = SamplerMinMagFilter::try_from(mag_filter) {
+            desc.mag_filter = v;
+        }
+        if let Ok(v) = SamplerMipFilter::try_from(mip_filter) {
+            desc.mip_filter = v;
+        }
+        if let Ok(v) = SamplerAddressMode::try_from(s_address_mode) {
+            desc.s_address_mode = v;
+        }
+        if let Ok(v) = SamplerAddressMode::try_from(t_address_mode) {
+            desc.t_address_mode = v;
+        }
+        if let Ok(v) = SamplerAddressMode::try_from(r_address_mode) {
+            desc.r_address_mode = v;
+        }
+        if let Ok(v) = SamplerBorderColor::try_from(border_color) {
+            desc.border_color = v;
+        }
+        if let Ok(v) = CompareFunction::try_from(compare_function) {
+            desc.compare_function = v;
+        }
+        SamplerWord::of(&desc).0
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn nmb_encode_texture_word(mtl_pixel_format: u32) -> u32 {
+    catch_ffi(0, || {
+        let Ok(pf) = PixelFormat::try_from(mtl_pixel_format) else {
+            return 0;
+        };
+        TextureWord::of(pf, TextureSwizzleChannels::DEFAULT)
+            .map(|w| w.0)
+            .unwrap_or(0)
     })
 }
 
@@ -1593,7 +1820,7 @@ pub unsafe extern "C" fn nmb_compile_compute_spirv_ex(
         {
             pipeline.stage.spirv = words.into();
         }
-        let mut result = NmbSpirvResult::new([pipeline.stage], pipeline.layout)?;
+        let mut result = NmbSpirvResult::new([pipeline.stage], pipeline.layout, &pipeline.interface)?;
         result.pack_bindless()?;
         Ok(Box::into_raw(Box::new(result)))
     })

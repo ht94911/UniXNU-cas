@@ -404,8 +404,14 @@ typedef id<MTLCommandEncoder> (^EncoderFactory)(id<MTLCommandBuffer>);
             _boundPipeline = state;
             _boundVariantPlan = activePlan;
         }
-        if (![cb acceptStatus:[cb.owner.pipelineProvider bindCompute:_native plan:activePlan bindings:_bindings]
-                     fallback:A840_PRED_COMPUTE_UNCOMPILED_KERNEL]) return;
+        A840RtStatus bindStatus = A840_RT_OK;
+        if ([cb.owner.pipelineProvider respondsToSelector:@selector(bindCompute:plan:bindings:gridSize:threadgroupSize:nonuniform:)]) {
+            bindStatus = [cb.owner.pipelineProvider bindCompute:_native plan:activePlan bindings:_bindings
+                                                       gridSize:grid threadgroupSize:local nonuniform:nonuniform];
+        } else {
+            bindStatus = [cb.owner.pipelineProvider bindCompute:_native plan:activePlan bindings:_bindings];
+        }
+        if (![cb acceptStatus:bindStatus fallback:A840_PRED_COMPUTE_UNCOMPILED_KERNEL]) return;
         const uint32_t x = (uint32_t)grid.width, y = (uint32_t)grid.height, z = (uint32_t)grid.depth;
         const auto status = nonuniform ? a840_rt_compute_dispatch_threads(_native, x, y, z) :
             a840_rt_compute_dispatch_threadgroups(_native, x, y, z);
