@@ -7661,6 +7661,34 @@ index b9211a66..4eba8dc3 100644
    ],
    "integer_fma_reference": {
      "repository": "https://github.com/ucb-bar/berkeley-softfloat-3",
+diff --git a/scripts/data/gpu-metal-vulkan-inputs.json b/scripts/data/gpu-metal-vulkan-inputs.json
+index 46924351..9e86f0ac 100644
+--- a/scripts/data/gpu-metal-vulkan-inputs.json
++++ b/scripts/data/gpu-metal-vulkan-inputs.json
+@@ -10,17 +10,17 @@
+     }
+   },
+   "translator": {
+-    "repository": "https://github.com/UniXNU/metal2vulkan",
+-    "commit": "87a869f7fc4b73265d4812c40d8cccb6a83c7b17",
++    "repository": "https://github.com/steelbrain/metal2vulkan",
++    "commit": "34fcb1ef08223e5bc708547fef99fb5f02920b0e",
+     "branch": "development",
+     "clone": "depth 1, blob filter, checked out source",
+     "files": {
+       "README.md": "3a55bba6073a8e4f04aae8f9d5af3c0b6d52ca424c44614c63bd969fc411ca37",
+       "Cargo.toml": "090d2566d14917532391d8b3c614825d4a38b4b8f86ec7bd0877072faadfccbd",
+-      "crates/metal2vulkan-runtime/Cargo.toml": "1c7c553501e6db8a1ce26c965b33423a1719aedd377a10b108b5a6f1d852bd6e",
+-      "crates/metal2vulkan-runtime/src/lib.rs": "7564a30f402dad0ea3592459d653e41ab929d5c5f33348b0e1d2a89a1d99ef62",
+-      "crates/metal2vulkan-runtime/src/device.rs": "9c798e192934999942023cdf4bd3cd8eaead9418fb7b0069ec74de98691c1af2",
+-      "crates/metal2vulkan-runtime/src/counters.rs": "ba8b7f556989bfe017f77649edb8dc9b19d5db727cd646f9f522f6ab578fd513"
++      "crates/metal2vulkan-runtime/Cargo.toml": "c3036a75d13c2b115b83533f02e0e816da14cbd7b8f3c2196357d831cbc063f2",
++      "crates/metal2vulkan-runtime/src/lib.rs": "e129bdbf3ae40589fbd80ef0a1537aa3b54f6fc92952276af6447660e1a6c577",
++      "crates/metal2vulkan-runtime/src/device.rs": "fe40a6d2cee32240cb8f8dd23a52744cc064f51de83afdc9af1b8056faa3c350",
++      "crates/metal2vulkan-runtime/src/counters.rs": "9dfe5bc84fc4037c3b8008f050f3489750968739335e0053caecabfe5df5b7cd"
+     }
+   },
+   "mesa": {
 diff --git a/scripts/make-gpu-addon.py b/scripts/make-gpu-addon.py
 index c153dafe..28e1e87c 100644
 --- a/scripts/make-gpu-addon.py

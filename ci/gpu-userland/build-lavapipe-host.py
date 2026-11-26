@@ -35,7 +35,11 @@ meson = root/'.cache/mesa-venv/bin/meson'
 env = dict(os.environ)
 env['PATH'] = str(root/'.cache/mesa-tools/bin')+':'+str(root/'.cache/mesa-venv/bin')+':'+env['PATH']
 env['CC'], env['CXX'] = 'xcrun clang', 'xcrun clang++'
-options = ['-Dc_args=-DCLOCK_MONOTONIC_RAW=CLOCK_MONOTONIC_RAW', '-Dgallium-drivers=llvmpipe', '-Dvulkan-drivers=swrast', '-Dplatforms=',
+zstd_lib = Path(subprocess.check_output(['pkg-config','--variable=libdir','libzstd'], text=True).strip())
+assert zstd_lib.is_dir(), 'installed LLVM system dependency libzstd is missing'
+options = ['-Dc_args=-DCLOCK_MONOTONIC_RAW=CLOCK_MONOTONIC_RAW',
+    '-Dc_link_args=-L'+str(zstd_lib), '-Dcpp_link_args=-L'+str(zstd_lib),
+    '-Dgallium-drivers=llvmpipe', '-Dvulkan-drivers=swrast', '-Dplatforms=',
     '-Dglx=disabled', '-Degl=disabled', '-Dgbm=disabled', '-Dopengl=false',
     '-Dgles1=disabled', '-Dgles2=disabled', '-Dllvm=enabled', '-Dshared-llvm=disabled',
     '-Dshared-glapi=disabled', '-Dxmlconfig=disabled', '-Dshader-cache=enabled',

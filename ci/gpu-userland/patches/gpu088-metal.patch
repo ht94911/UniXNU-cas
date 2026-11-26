@@ -3911,42 +3911,175 @@ index 0000000..77baade
 +}
 diff --git a/bridge/patches/0088-runtime-v2-local-retained.patch b/bridge/patches/0088-runtime-v2-local-retained.patch
 new file mode 100644
-index 0000000..6bcd3a3
+index 0000000..fdec167
 --- /dev/null
 +++ b/bridge/patches/0088-runtime-v2-local-retained.patch
-@@ -0,0 +1,328 @@
+@@ -0,0 +1,2900 @@
++diff --git a/crates/metal2vulkan-runtime/src/blit.rs b/crates/metal2vulkan-runtime/src/blit.rs
++index 297a2e22d..d4f50e208 100644
++--- a/crates/metal2vulkan-runtime/src/blit.rs
+++++ b/crates/metal2vulkan-runtime/src/blit.rs
++@@ -205,6 +205,9 @@ impl BlitCommandEncoder {
++         if !source.is_of(core) || !destination.is_of(core) {
++             return Err(Error::Refused(Refusal::OtherDevice));
++         }
+++        if destination.is_over_read_only_buffer() {
+++            return Err(Error::Refused(Refusal::ReadOnlyBuffer));
+++        }
++         // A texture buffer's texels are its buffer's bytes, which no image copy reaches.
++         if source.texels() || destination.texels() {
++             return Err(Error::Unsupported(Gap::TextureCopy {
++@@ -448,6 +451,9 @@ impl BlitCommandEncoder {
++         if !source.is_of(core) || !destination.is_of(core) {
++             return Err(Error::Refused(Refusal::OtherDevice));
++         }
+++        if destination.is_read_only() {
+++            return Err(Error::Refused(Refusal::ReadOnlyBuffer));
+++        }
++         // A Managed buffer's GPU side is its device copy, where it has one.
++         let span = |buffer: &Buffer| {
++             let (buffer_of, base) = buffer.device_range();
++@@ -534,6 +540,11 @@ impl BlitCommandEncoder {
++         if !texture.is_of(&self.core) || !buffer.is_of(&self.core) {
++             return Err(Error::Refused(Refusal::OtherDevice));
++         }
+++        if (!into_image && buffer.is_read_only())
+++            || (into_image && texture.is_over_read_only_buffer())
+++        {
+++            return Err(Error::Refused(Refusal::ReadOnlyBuffer));
+++        }
++         // A texture buffer's texels are its buffer's bytes, which no image copy reaches.
++         if texture.texels() {
++             return Err(Error::Unsupported(Gap::TextureBytes {
++@@ -723,6 +734,9 @@ impl BlitCommandEncoder {
++         if !buffer.is_of(core) {
++             return Err(Error::Refused(Refusal::OtherDevice));
++         }
+++        if buffer.is_read_only() {
+++            return Err(Error::Refused(Refusal::ReadOnlyBuffer));
+++        }
++         let (vk_buffer, base) = buffer.device_range();
++         let (offset, length) = fill_range(base, buffer.length(), range)?;
++         building.keep(buffer);
++@@ -867,6 +881,9 @@ impl BlitCommandEncoder {
++         if !texture.is_of(core) {
++             return Err(Error::Refused(Refusal::OtherDevice));
++         }
+++        if texture.is_over_read_only_buffer() {
+++            return Err(Error::Refused(Refusal::ReadOnlyBuffer));
+++        }
++         let d = *texture.descriptor();
++         let pixel_format = d.pixel_format;
++         if d.mipmap_level_count < 2 {
 +diff --git a/crates/metal2vulkan-runtime/src/buffer.rs b/crates/metal2vulkan-runtime/src/buffer.rs
-+index f98dd9116..de93ab07c 100644
++index c75edca3a..56d2a7ff3 100644
 +--- a/crates/metal2vulkan-runtime/src/buffer.rs
 ++++ b/crates/metal2vulkan-runtime/src/buffer.rs
-+@@ -696,6 +696,12 @@ pub(crate) trait BufferObject {
++@@ -252,6 +252,9 @@ impl Device {
++             }));
++         }
++         let block = self.placed(block, offset, length)?;
+++        if block.memory.read_only && zero_from.is_some_and(|from| from < length) {
+++            return Err(Error::Refused(Refusal::ReadOnlyBuffer));
+++        }
++         // A block the host does not map (Private, or an imported dma-buf) is zeroed by a GPU fill.
++         if block.memory.mapping.is_none() && zero_from.is_some_and(|from| from < length) {
++             crate::command::not_in_scheduled_handler()?;
++@@ -346,6 +349,9 @@ impl Device {
++         }
++         let (block, offset) = bytes;
++         let block = self.placed(block, offset, length)?;
+++        if block.memory.read_only {
+++            return Err(Error::Refused(Refusal::ReadOnlyBuffer));
+++        }
++         if block.memory.class == MemoryClass::Private {
++             return Err(Error::Refused(Refusal::ManagedBlockPrivate {
++                 block: block.memory.id,
++@@ -435,6 +441,9 @@ impl Device {
++                 length,
++                 block_len,
++             }))?;
+++        if block.memory.read_only && length > 0 {
+++            return Err(Error::Refused(Refusal::ReadOnlyBuffer));
+++        }
++         if block.memory.class != MemoryClass::Private {
++             return Err(Error::Refused(Refusal::ZeroRangeShared {
++                 block: block.memory.id,
++@@ -572,6 +581,11 @@ impl Buffer {
++         BufferObject::contents(self)
++     }
++ 
+++    /// Whether the buffer lies in a read-only imported host-memory block.
+++    pub fn is_read_only(&self) -> bool {
+++        BufferObject::is_read_only(self)
+++    }
+++
++     /// No Metal counterpart: the block the buffer is in.
++     pub fn block(&self) -> BlockId {
++         self.inner.block.memory.id
++@@ -622,6 +636,9 @@ pub(crate) trait BufferObject {
++     /// [`Buffer::did_modify_range`].
++     fn did_modify_range(&self, start: u64, length: u64) -> Result<(), Error> {
++         let inner = self.object();
+++        if inner.block.memory.read_only {
+++            return Err(Error::Refused(Refusal::ReadOnlyBuffer));
+++        }
++         let end = (start.checked_add(length))
++             .filter(|&end| end <= inner.length)
++             .ok_or(Error::Refused(Refusal::ModifiedRange {
++@@ -645,6 +662,11 @@ pub(crate) trait BufferObject {
++         self.object().contents.map(Mapping::get)
++     }
++ 
+++    /// Whether the buffer lies in a read-only imported host-memory block.
+++    fn is_read_only(&self) -> bool {
+++        self.object().block.memory.read_only
+++    }
+++
++     /// The bytes commands reach in it where they are Shared memory the runtime maps, widened to
++     /// whole atoms of `atom` bytes: what the flushes and invalidates of Shared memory name
++     /// (`crate::coherence`). `None` in Private memory, an import or an export, and for a Managed
++@@ -699,6 +721,18 @@ pub(crate) trait BufferObject {
 +         }
 +     }
 + 
-++    fn reference_device(&self) -> usize { Arc::as_ptr(&self.object().core) as usize }
+++    fn reference_device(&self) -> usize {
+++        Arc::as_ptr(&self.object().core) as usize
+++    }
 ++    fn in_declared_heap(&self, heaps: &std::collections::HashSet<crate::BlockId>) -> bool {
 ++        let inner = self.object();
-++        inner.heap.as_ref().and_then(|heap| heap.block()).is_some_and(|id| heaps.contains(&id))
+++        inner
+++            .heap
+++            .as_ref()
+++            .and_then(|heap| heap.block())
+++            .is_some_and(|id| heaps.contains(&id))
 ++    }
 ++
 +     /// Its own resource id, whatever heap it is in.
 +     fn id(&self) -> u32 {
 +         self.object().id
 +diff --git a/crates/metal2vulkan-runtime/src/command.rs b/crates/metal2vulkan-runtime/src/command.rs
-+index 93a9b4438..49c34c64a 100644
++index 9579c5ad2..3f59df8c8 100644
 +--- a/crates/metal2vulkan-runtime/src/command.rs
 ++++ b/crates/metal2vulkan-runtime/src/command.rs
-+@@ -12,7 +12,8 @@ use crate::fault::DeviceFault;
++@@ -13,7 +13,7 @@ use crate::fault::DeviceFault;
 + use crate::fence::Fences;
 + use crate::hazard::{Access, Hazards};
 + use crate::kept::{Lent, Objects};
 +-use crate::memory::Block;
 ++use crate::memory::{Block, BlockId};
-++use std::collections::HashSet;
 + use crate::over::{self, Overs, Reached};
-+ use crate::pipeline::{ComputePipelineState, Listed};
++ use crate::pipeline::{Compiled, ComputePipelineState, Listed};
 + use crate::queue::QueueInner;
-+@@ -178,6 +179,10 @@ struct CbState {
++@@ -25,6 +25,7 @@ use crate::texture::{Image, OverCopy, Texture, TextureInner, TextureObject};
++ use crate::times::{self, Pair, Times};
++ use crate::visibility::{Queries, Query};
++ use ash::vk;
+++use std::collections::HashSet;
++ use std::sync::atomic::Ordering;
++ use std::sync::atomic::Ordering::Relaxed;
++ use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
++@@ -179,6 +180,10 @@ struct CbState {
 +     encoding: bool,
 +     /// From its commit until it retires: its pair of timestamp queries, where it took one.
 +     stamps: Option<Pair>,
@@ -3954,36 +4087,49 @@ index 0000000..6bcd3a3
 ++    resource_heaps: HashSet<BlockId>,
 ++    resources_unknown: bool,
 ++    resource_device: usize,
-+ }
-+ 
-+ impl CbState {
-+@@ -268,6 +273,8 @@ impl Pushed {
++     /// The threads waiting on `changed` ([`CommandBuffer::wait`]): its enqueue and commit wake
++     /// them only where one waits, each wake a system call whether or not one does.
++     waiters: usize,
++@@ -308,6 +313,9 @@ impl Pushed {
++ /// What the GPU uses: the recorder, the segments, and the blocks kept until retirement.
 + pub(crate) struct Gpu {
 +     pub(crate) recorder: Option<Recorder>,
-+     pub(crate) native_presentation: bool,
+++    pub(crate) native_presentation: bool,
 ++    pub(crate) unknown_resources: bool,
 ++    pub(crate) heap_refs: Vec<BlockId>,
 +     pub(crate) segments: Vec<Segment>,
 +     /// Each heap's block the commands use (`useHeap:`), once: a block released meanwhile is
 +     /// reused only after the command buffer retires.
-+@@ -401,6 +408,7 @@ impl CommandBuffer {
++@@ -368,6 +376,10 @@ impl Gpu {
++     pub(crate) fn presents(&self) -> bool {
++         (self.segments.last()).is_some_and(|segment| !segment.binary.is_empty())
++     }
+++
+++    pub(crate) fn schedules_after_submit(&self) -> bool {
+++        self.native_presentation || self.presents()
+++    }
++ }
++ 
++ /// One submission's part of a command buffer: its waits, its commands and its signals.
++@@ -450,6 +462,7 @@ impl CommandBuffer {
 +     /// A new command buffer of `queue`, which counted it live, keeping its objects in `kept`,
 +     /// empty, the lists of a retired one where the queue had them.
 +     pub(crate) fn new(queue: Arc<QueueInner>, device: Device, kept: Objects) -> CommandBuffer {
 ++        let resource_device = Arc::as_ptr(device.core()) as usize;
++         let coherence = (device.core().coherence.as_ref()).map(coherence::Coherence::recording);
 +         CommandBuffer {
 +             inner: Arc::new(CbInner {
-+                 queue,
-+@@ -414,6 +422,8 @@ impl CommandBuffer {
++@@ -463,6 +476,9 @@ impl CommandBuffer {
++                         device,
 +                         gpu: Gpu {
 +                             recorder: None,
-+                             native_presentation: false,
+++                            native_presentation: false,
 ++                            unknown_resources: false,
 ++                            heap_refs: Vec::new(),
 +                             segments: vec![Segment::default()],
 +                             blocks: Vec::new(),
 +                             kept,
-+@@ -446,6 +456,10 @@ impl CommandBuffer {
++@@ -498,6 +514,10 @@ impl CommandBuffer {
 +                     times: Times::default(),
 +                     encoding: false,
 +                     stamps: None,
@@ -3991,35 +4137,55 @@ index 0000000..6bcd3a3
 ++                    resource_heaps: HashSet::new(),
 ++                    resources_unknown: false,
 ++                    resource_device,
++                     waiters: 0,
 +                 }),
 +                 changed: Condvar::new(),
-+             }),
-+@@ -456,6 +470,24 @@ impl CommandBuffer {
++@@ -509,6 +529,44 @@ impl CommandBuffer {
 +         lock(&self.inner.state)
 +     }
 + 
 ++    /// Reads existing retained resource identities; never signals or waits for completion.
 ++    pub fn references_buffer(&self, buffer: &Buffer) -> bool {
 ++        let state = self.state();
-++        if state.finished || state.status == CommandBufferStatus::Completed ||
-++           state.resource_device != buffer.reference_device() { return false; }
-++        state.resources_unknown || state.resources.contains(&buffer.tracked_id()) ||
-++            buffer.in_declared_heap(&state.resource_heaps)
+++        if state.finished
+++            || state.status == CommandBufferStatus::Completed
+++            || state.resource_device != buffer.reference_device()
+++        {
+++            return false;
+++        }
+++        state.resources_unknown
+++            || state.resources.contains(&buffer.tracked_id())
+++            || buffer.in_declared_heap(&state.resource_heaps)
 ++    }
 ++
 ++    /// Texture views, in-place buffer aliases and heap resources keep their common identity.
 ++    pub fn references_texture(&self, texture: &Texture) -> bool {
 ++        let state = self.state();
-++        if state.finished || state.status == CommandBufferStatus::Completed ||
-++           state.resource_device != texture.reference_device() { return false; }
-++        state.resources_unknown || state.resources.contains(&texture.tracked_id()) ||
-++            texture.in_declared_heap(&state.resource_heaps)
+++        if state.finished
+++            || state.status == CommandBufferStatus::Completed
+++            || state.resource_device != texture.reference_device()
+++        {
+++            return false;
+++        }
+++        state.resources_unknown
+++            || state.resources.contains(&texture.tracked_id())
+++            || texture.in_declared_heap(&state.resource_heaps)
 ++    }
 ++
-+     /// Delay scheduling until the final native display write has reached the driver.
-+     /// The consumer presents outside Vulkan and captures the driver's submitted fence
-+     /// from its scheduled handler or after `wait_until_scheduled` returns.
-+@@ -489,6 +521,7 @@ impl CommandBuffer {
+++    /// Delay scheduling until the final native display write has reached the driver.
+++    /// The consumer presents outside Vulkan and captures the driver's submitted fence
+++    /// from its scheduled handler or after `wait_until_scheduled` returns.
+++    pub fn schedule_native_presentation(&self) -> Result<(), Error> {
+++        self.building(|building| {
+++            building.gpu.native_presentation = true;
+++            Ok(())
+++        })
+++    }
+++
++     /// Runs `f` on what is being recorded. Err: [`Refusal::Committed`];
++     /// [`Refusal::EncoderOpen`].
++     fn building<R>(&self, f: impl FnOnce(&mut Building) -> Result<R, Error>) -> Result<R, Error> {
++@@ -532,6 +590,7 @@ impl CommandBuffer {
 +     /// once an encoder, so that no command it recorded wrote a counter the device's threads share.
 +     pub(crate) fn close_encoder(&self, mut building: Building) {
 +         (building.device.core().counters).add(&mut building.tally);
@@ -4027,45 +4193,64 @@ index 0000000..6bcd3a3
 +         let mut state = self.state();
 +         state.building = Some(building);
 +         state.encoding = false;
-+@@ -695,6 +728,10 @@ impl CommandBuffer {
++@@ -753,6 +812,24 @@ impl CommandBuffer {
 +             return Err(error);
 +         }
 +         (building.device.core().counters).add(&mut building.tally);
-++        state.resources = building.gpu.kept.buffers.iter().map(BufferObject::tracked_id)
-++            .chain(building.gpu.kept.textures.iter().map(TextureObject::tracked_id)).collect();
+++        state.resources = building
+++            .gpu
+++            .kept
+++            .buffers
+++            .iter()
+++            .map(BufferObject::tracked_id)
+++            .chain(
+++                building
+++                    .gpu
+++                    .kept
+++                    .textures
+++                    .iter()
+++                    .map(TextureObject::tracked_id),
+++            )
+++            .collect();
 ++        state.resource_heaps = building.gpu.heap_refs.iter().copied().collect();
-++        state.resources_unknown = building.gpu.unknown_resources || !building.gpu.executed.is_empty();
+++        state.resources_unknown =
+++            building.gpu.unknown_resources || !building.gpu.executed.is_empty();
 +         let Building {
 +             device,
 +             gpu,
-+@@ -1424,6 +1461,13 @@ impl Building {
++@@ -1570,6 +1647,17 @@ impl Building {
 +     }
 + 
 +     /// Keeps `block` until the command buffer retires.
-++    pub(crate) fn mark_unbound_resources(&mut self, unknown: bool) { self.gpu.unknown_resources |= unknown; }
+++    pub(crate) fn mark_unbound_resources(&mut self, unknown: bool) {
+++        self.gpu.unknown_resources |= unknown;
+++    }
 ++
 ++    pub(crate) fn keep_heap(&mut self, id: BlockId, block: &Arc<Block>) {
 ++        self.keep_block(block);
-++        if !self.gpu.heap_refs.contains(&id) { self.gpu.heap_refs.push(id); }
+++        if !self.gpu.heap_refs.contains(&id) {
+++            self.gpu.heap_refs.push(id);
+++        }
 ++    }
 ++
 +     pub(crate) fn keep_block(&mut self, block: &Arc<Block>) {
 +         let blocks = &mut self.gpu.blocks;
 +         if !blocks.iter().rev().any(|kept| Arc::ptr_eq(kept, block)) {
-+@@ -1817,6 +1861,8 @@ pub(crate) fn retire(
++@@ -1990,6 +2078,9 @@ pub(crate) fn retire(
++         fences,
 +         executed,
 +         queries,
-+         native_presentation: _,
+++        native_presentation: _,
 ++        unknown_resources: _,
 ++        heap_refs: _,
++         sets,
++         coherence: _,
 +     } = gpu;
-+     if let Some(recorder) = recorder {
-+         core.recorders.give_back(core, recorder);
 +diff --git a/crates/metal2vulkan-runtime/src/device.rs b/crates/metal2vulkan-runtime/src/device.rs
-+index 11cdfaff3..1fac70d1c 100644
++index 647c1c564..d6bdec5e2 100644
 +--- a/crates/metal2vulkan-runtime/src/device.rs
 ++++ b/crates/metal2vulkan-runtime/src/device.rs
-+@@ -1222,6 +1222,19 @@ fn spawn(name: &str, core: &Arc<Core>, role: Role, body: fn(Arc<Core>)) -> Resul
++@@ -1268,6 +1268,19 @@ fn spawn(name: &str, core: &Arc<Core>, role: Role, body: fn(Arc<Core>)) -> Resul
 +     let handle = start(name, &counters, move || {
 +         let _ending = ending;
 +         SERVES.set((Arc::as_ptr(&core) as usize, role));
@@ -4086,10 +4271,37 @@ index 0000000..6bcd3a3
 +     })
 +     .map_err(Error::Thread)?;
 +diff --git a/crates/metal2vulkan-runtime/src/encoder.rs b/crates/metal2vulkan-runtime/src/encoder.rs
-+index c9ede4559..abbfe7113 100644
++index 8956eb18f..84126a36a 100644
 +--- a/crates/metal2vulkan-runtime/src/encoder.rs
 ++++ b/crates/metal2vulkan-runtime/src/encoder.rs
-+@@ -913,7 +913,7 @@ impl ComputeCommandEncoder {
++@@ -840,12 +840,16 @@ impl ComputeCommandEncoder {
++         resource: Resource<'_>,
++         usage: ResourceUsage,
++     ) -> Result<(), Error> {
+++        let writes = usage.access().is_some_and(Access::writes);
++         let building = self.building();
++         let (id, shared, unstored, texture, span, place) = match resource {
++             Resource::Buffer(buffer) => {
++                 if !buffer.is_of(building.device.core()) {
++                     return Err(Error::Refused(Refusal::OtherDevice));
++                 }
+++                if writes && buffer.is_read_only() {
+++                    return Err(Error::Refused(Refusal::ReadOnlyBuffer));
+++                }
++                 building.keep(buffer);
++                 (
++                     [buffer.id(), buffer.tracked_id()],
++@@ -860,6 +864,9 @@ impl ComputeCommandEncoder {
++                 if !texture.is_of(building.device.core()) {
++                     return Err(Error::Refused(Refusal::OtherDevice));
++                 }
+++                if writes && texture.is_over_read_only_buffer() {
+++                    return Err(Error::Refused(Refusal::ReadOnlyBuffer));
+++                }
++                 // SAFETY: the encoder's declarations hold the borrow, and they end before its
++                 // command buffer commits.
++                 let lent = unsafe { building.lend_texture(texture) };
++@@ -928,7 +935,7 @@ impl ComputeCommandEncoder {
 +     pub fn use_heap(&mut self, heap: BlockId) -> Result<(), Error> {
 +         let building = self.building();
 +         let block = building.device.block(heap)?;
@@ -4098,7 +4310,7 @@ index 0000000..6bcd3a3
 +         Ok(())
 +     }
 + 
-+@@ -1239,6 +1239,7 @@ impl ComputeCommandEncoder {
++@@ -1310,6 +1317,7 @@ impl ComputeCommandEncoder {
 +             // memory outside its resources, or such an image is ahead of its buffer, and among
 +             // the buffers it reaches only in the last two.
 +             let unbound = interface.reads_unbound || interface.writes_unbound;
@@ -4106,11 +4318,120 @@ index 0000000..6bcd3a3
 +             let ahead = building.overs_ahead();
 +             if building.copies_over() && (unbound || self.copied > 0 || ahead) {
 +                 let reached = accesses.overs(interface, unbound || ahead, false);
++diff --git a/crates/metal2vulkan-runtime/src/error.rs b/crates/metal2vulkan-runtime/src/error.rs
++index 6e57cd325..bbbbd7731 100644
++--- a/crates/metal2vulkan-runtime/src/error.rs
+++++ b/crates/metal2vulkan-runtime/src/error.rs
++@@ -102,6 +102,11 @@ pub enum Refusal {
++     ///
++     /// Basis: metal-measured (an Apple M3 Max: newBufferWithLength:0 answers nil).
++     EmptyBuffer,
+++    /// A write, zero, or writable view requested on a block or buffer imported via
+++    /// [`Device::import_read_only_host_memory`](crate::Device::import_read_only_host_memory).
+++    ///
+++    /// Basis: ours (read-only host pages cannot be written through runtime write paths).
+++    ReadOnlyBuffer,
++     /// A buffer longer than [`MAX_BUFFER_LENGTH`](crate::MAX_BUFFER_LENGTH)
++     /// ([`Device::new_buffer`](crate::Device::new_buffer)), or a visible-function table whose
++     /// words are
++@@ -2448,6 +2453,7 @@ impl fmt::Display for Refusal {
++     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
++         match self {
++             Refusal::EmptyBuffer => f.write_str("Metal makes no buffer of length 0"),
+++            Refusal::ReadOnlyBuffer => f.write_str("cannot write to a read-only host-memory buffer"),
++             Refusal::BufferTooLong { length, max } => {
++                 write!(f, "a buffer of {length} bytes is longer than {max}")
++             }
++diff --git a/crates/metal2vulkan-runtime/src/error/basis.rs b/crates/metal2vulkan-runtime/src/error/basis.rs
++index bc96ebbf9..374aeea42 100644
++--- a/crates/metal2vulkan-runtime/src/error/basis.rs
+++++ b/crates/metal2vulkan-runtime/src/error/basis.rs
++@@ -9,6 +9,7 @@ impl Refusal {
++     pub fn basis(self) -> RefusalBasis {
++         match self {
++             Refusal::EmptyBuffer => RefusalBasis::MetalMeasured,
+++            Refusal::ReadOnlyBuffer => RefusalBasis::Ours,
++             Refusal::BufferTooLong { .. } => RefusalBasis::Ours,
++             Refusal::BufferPastBlock { .. } => RefusalBasis::MetalMeasured,
++             Refusal::HeapBufferPlace { .. } => RefusalBasis::MetalMeasured,
++diff --git a/crates/metal2vulkan-runtime/src/floor.rs b/crates/metal2vulkan-runtime/src/floor.rs
++index 0e165934f..ef449fa02 100644
++--- a/crates/metal2vulkan-runtime/src/floor.rs
+++++ b/crates/metal2vulkan-runtime/src/floor.rs
++@@ -1156,20 +1156,36 @@ pub struct MemoryTypes {
++ ///
++ /// `physical` is a physical device `instance` enumerated, and `instance` was created with an
++ /// `apiVersion` of [`VERSION`] or later.
+++#[cfg(all(test, any(m2v_gpu, m2v_cpu_icd)))]
++ pub(crate) unsafe fn check(
++     entry: &ash::Entry,
++     instance: &ash::Instance,
++     physical: vk::PhysicalDevice,
+++) -> Result<Capabilities, BelowFloor> {
+++    // SAFETY: the caller provides the same physical device and instance contract.
+++    unsafe { check_for(entry, instance, physical, true) }
+++}
+++
+++pub(crate) unsafe fn check_for(
+++    entry: &ash::Entry,
+++    instance: &ash::Instance,
+++    physical: vk::PhysicalDevice,
+++    presentation: bool,
++ ) -> Result<Capabilities, BelowFloor> {
++     // SAFETY: the caller's contract.
++-    decide(&unsafe { query(entry, instance, physical) })
+++    let queried = unsafe { query(entry, instance, physical) };
+++    if presentation {
+++        decide(&queried)
+++    } else {
+++        decide_for(&queried, false)
+++    }
++ }
++ 
++ /// Reads what [`decide`] needs. A device below Vulkan 1.3 gets its version read alone.
++ ///
++ /// # Safety
++ ///
++-/// As [`check`].
+++/// As [`check_for`].
++ unsafe fn query(
++     entry: &ash::Entry,
++     instance: &ash::Instance,
++@@ -1356,13 +1372,20 @@ unsafe fn query(
++ 
++ /// Decides from what [`query`] read.
++ pub(crate) fn decide(device: &Queried) -> Result<Capabilities, BelowFloor> {
+++    decide_for(device, true)
+++}
+++
+++pub(crate) fn decide_for(device: &Queried, presentation: bool) -> Result<Capabilities, BelowFloor> {
++     if device.version < VERSION {
++         return Err(BelowFloor {
++             missing: vec![Missing::Version(device.version)],
++         });
++     }
++     let mut missing = Vec::new();
++-    for &extension in DEVICE_EXTENSIONS {
+++    for &extension in DEVICE_EXTENSIONS
+++        .iter()
+++        .filter(|&&extension| presentation || extension != ash::khr::swapchain::NAME)
+++    {
++         if !device
++             .extensions
++             .iter()
++@@ -1494,6 +1517,7 @@ pub(crate) fn decide(device: &Queried) -> Result<Capabilities, BelowFloor> {
++         features,
++         extensions: DEVICE_EXTENSIONS
++             .iter()
+++            .filter(|&&extension| presentation || extension != ash::khr::swapchain::NAME)
++             .chain(
++                 OPTIONAL_EXTENSIONS
++                     .iter()
 +diff --git a/crates/metal2vulkan-runtime/src/hazard.rs b/crates/metal2vulkan-runtime/src/hazard.rs
-+index be567a35f..326057e72 100644
++index bab097f5f..8c8d1c1f6 100644
 +--- a/crates/metal2vulkan-runtime/src/hazard.rs
 ++++ b/crates/metal2vulkan-runtime/src/hazard.rs
-+@@ -170,6 +170,7 @@ impl Ids {
++@@ -213,6 +213,7 @@ impl Ids {
 + /// use of any other, whether or not their bytes meet. An exported surface's planes in place and
 + /// its buffer take one alike ([`HeapId::unit`]). Its id goes back once no resource holds it.
 + pub(crate) struct HeapId {
@@ -4118,7 +4439,7 @@ index 0000000..6bcd3a3
 +     core: Arc<Core>,
 +     id: u32,
 +     /// Its resources' live placements, whose bytes meeting link them (`crate::alias`).
-+@@ -181,6 +182,7 @@ impl HeapId {
++@@ -224,6 +225,7 @@ impl HeapId {
 +     /// place and its buffer ([`crate::Surface::buffer`]).
 +     pub(crate) fn unit(core: &Arc<Core>) -> Arc<HeapId> {
 +         Arc::new(HeapId {
@@ -4126,28 +4447,220 @@ index 0000000..6bcd3a3
 +             core: Arc::clone(core),
 +             id: core.ids.take(),
 +             places: Mutex::new(Places::default()),
-+@@ -192,6 +194,8 @@ impl HeapId {
++@@ -235,6 +237,10 @@ impl HeapId {
 +         self.id
 +     }
 + 
-++    pub(crate) fn block(&self) -> Option<BlockId> { self.block }
+++    pub(crate) fn block(&self) -> Option<BlockId> {
+++        self.block
+++    }
 ++
 +     /// Its resources' placements.
 +     pub(crate) fn places(&self) -> &Mutex<Places> {
 +         &self.places
-+@@ -251,6 +255,7 @@ impl HeapIds {
++@@ -294,6 +300,7 @@ impl HeapIds {
 +             state.prune_at = state.heaps.len() * 2;
 +         }
 +         let id = Arc::new(HeapId {
-++                block: Some(block),
+++            block: Some(block),
 +             core: Arc::clone(core),
 +             id: core.ids.take(),
 +             places: Mutex::new(Places::default()),
++diff --git a/crates/metal2vulkan-runtime/src/import.rs b/crates/metal2vulkan-runtime/src/import.rs
++index 4f43da917..000f1136a 100644
++--- a/crates/metal2vulkan-runtime/src/import.rs
+++++ b/crates/metal2vulkan-runtime/src/import.rs
++@@ -517,7 +517,7 @@ impl Device {
++             handle,
++             memory_type: index,
++         };
++-        match unsafe { memory::import(core, &info, handle.vk(), None, own) } {
+++        match unsafe { memory::import(core, &info, handle.vk(), None, false, own) } {
++             Ok(memory) => Ok((claim(core, memory, release), index)),
++             Err(ImportFailed::Before(error)) => {
++                 // Nothing was imported, so the fd is still ours: closed, where it is still the
++@@ -803,6 +803,40 @@ impl Device {
++         pointer: NonNull<u8>,
++         len: u64,
++         release: Option<Box<dyn FnOnce() + Send>>,
+++    ) -> Result<(Block, u32), Error> {
+++        // SAFETY: the caller guarantees `pointer` is mapped readable and writable until `release` runs.
+++        unsafe { self.import_host_memory_inner(pointer, len, false, release) }
+++    }
+++
+++    /// Like [`Device::import_host_memory`], for host pages that are mapped readable only.
+++    ///
+++    /// The returned block carries no runtime host mapping (`Buffer::contents` returns `None`),
+++    /// and runtime write paths (zeroing, Managed placement, `did_modify_range`, blit writes,
+++    /// writable textures over the buffer, visibility result writes, and encoder `WRITE` usage)
+++    /// refuse the block with [`Refusal::ReadOnlyBuffer`](crate::Refusal::ReadOnlyBuffer).
+++    ///
+++    /// # Safety
+++    ///
+++    /// The `len` bytes at `pointer` are host memory mapped readable (they need not be writable),
+++    /// and stay mapped, and not mapped anew, until `release` runs; where the call returns `Err`,
+++    /// they are the consumer's again at once. Shaders bound to buffers placed in this block
+++    /// must only read from it.
+++    pub unsafe fn import_read_only_host_memory(
+++        &self,
+++        pointer: NonNull<u8>,
+++        len: u64,
+++        release: Option<Box<dyn FnOnce() + Send>>,
+++    ) -> Result<(Block, u32), Error> {
+++        // SAFETY: the caller guarantees `pointer` is mapped readable until `release` runs.
+++        unsafe { self.import_host_memory_inner(pointer, len, true, release) }
+++    }
+++
+++    unsafe fn import_host_memory_inner(
+++        &self,
+++        pointer: NonNull<u8>,
+++        len: u64,
+++        read_only: bool,
+++        release: Option<Box<dyn FnOnce() + Send>>,
++     ) -> Result<(Block, u32), Error> {
++         let core = self.core();
++         let handle = ImportHandle::HostMemory;
++@@ -856,12 +890,14 @@ impl Device {
++             .push_next(&mut flags);
++         // SAFETY: an import of the caller's memory, at the device's alignment, into a type its
++         // query offered and its buffers can use.
+++        let mapping = (!read_only).then(|| Mapping::new(pointer));
++         let memory = unsafe {
++             memory::import(
++                 core,
++                 &info,
++                 handle.vk(),
++-                Some(Mapping::new(pointer)),
+++                mapping,
+++                read_only,
++                 Own::Import {
++                     handle,
++                     memory_type: index,
++@@ -925,7 +961,7 @@ pub(crate) fn surface_import(
++     let own = Own::Surface { import: true };
++     // SAFETY: an import of the dma-buf into a type its query offered, its buffers list and its
++     // planes' imports took, of at least the buffer's size.
++-    match unsafe { memory::import(core, &info, handle.vk(), None, own) } {
+++    match unsafe { memory::import(core, &info, handle.vk(), None, false, own) } {
++         Ok(memory) => Ok(memory::Block::new(memory, Arc::clone(core))),
++         Err(ImportFailed::Before(error)) => {
++             // Nothing was imported, so the duplicate is still ours: closed, where it is still
++diff --git a/crates/metal2vulkan-runtime/src/instance.rs b/crates/metal2vulkan-runtime/src/instance.rs
++index 86ea85bb8..9dd320a88 100644
++--- a/crates/metal2vulkan-runtime/src/instance.rs
+++++ b/crates/metal2vulkan-runtime/src/instance.rs
++@@ -30,6 +30,7 @@ pub(crate) struct Shared {
++     entry: ash::Entry,
++     instance: ash::Instance,
++     extensions: Vec<CString>,
+++    presentation: bool,
++     /// Its devices not yet torn down, which each device's core counts itself among.
++     teardowns: Arc<Teardowns>,
++ }
++@@ -84,6 +85,32 @@ impl Instance {
++         loader: Option<&Path>,
++         extensions: &[&CStr],
++         drivers: &[vk::PFN_vkGetInstanceProcAddr],
+++    ) -> Result<Instance, Error> {
+++        // SAFETY: the caller provides the loader and driver contracts below.
+++        unsafe { Self::create(loader, extensions, drivers, true) }
+++    }
+++
+++    /// Create an instance for a consumer that presents outside Vulkan, such as a native
+++    /// display driver importing completed images. Surface and swapchain extensions are
+++    /// neither required nor enabled implicitly. All rendering and memory checks remain.
+++    ///
+++    /// # Safety
+++    /// As for [`Instance::with_drivers`]. The consumer must not issue presentation commands
+++    /// through the raw handles unless it explicitly enables every extension they require.
+++    pub unsafe fn without_presentation(
+++        loader: Option<&Path>,
+++        extensions: &[&CStr],
+++        drivers: &[vk::PFN_vkGetInstanceProcAddr],
+++    ) -> Result<Instance, Error> {
+++        // SAFETY: the caller's loader and driver contract is unchanged.
+++        unsafe { Self::create(loader, extensions, drivers, false) }
+++    }
+++
+++    unsafe fn create(
+++        loader: Option<&Path>,
+++        extensions: &[&CStr],
+++        drivers: &[vk::PFN_vkGetInstanceProcAddr],
+++        presentation: bool,
++     ) -> Result<Instance, Error> {
++         // SAFETY: the loader at the caller's path is one, by the caller.
++         let entry = unsafe { load(loader) }.map_err(Error::Loader)?;
++@@ -103,7 +130,11 @@ impl Instance {
++                 own.enumerate_instance_extension_properties(None)
++             })?);
++         }
++-        let names = enabled(&loader, &offered, extensions, !drivers.is_empty())?;
+++        let names = if presentation {
+++            enabled(&loader, &offered, extensions, !drivers.is_empty())
+++        } else {
+++            enabled_for(&loader, &offered, extensions, !drivers.is_empty(), false)
+++        }?;
++         let pointers: Vec<*const c_char> = names.iter().map(|name| name.as_ptr()).collect();
++         let application = vk::ApplicationInfo::default().api_version(floor::VERSION);
++         // Where the loader offers the listing of portability devices, they are listed too.
++@@ -137,6 +168,7 @@ impl Instance {
++                 entry,
++                 instance,
++                 extensions: names,
+++                presentation,
++                 teardowns: Arc::default(),
++             }),
++         })
++@@ -251,8 +283,19 @@ pub(crate) fn enabled(
++     drivers: &[CString],
++     extensions: &[&CStr],
++     direct: bool,
+++) -> Result<Vec<CString>, Error> {
+++    enabled_for(loader, drivers, extensions, direct, true)
+++}
+++
+++pub(crate) fn enabled_for(
+++    loader: &[CString],
+++    drivers: &[CString],
+++    extensions: &[&CStr],
+++    direct: bool,
+++    presentation: bool,
++ ) -> Result<Vec<CString>, Error> {
++     let mut names: Vec<CString> = (floor::INSTANCE_EXTENSIONS.iter())
+++        .filter(|&&name| presentation || name != ash::khr::surface::NAME)
++         .map(|&name| name.to_owned())
++         .collect();
++     let lists =
++@@ -308,7 +351,7 @@ impl PhysicalDevice {
++     pub fn check(&self) -> Result<floor::Capabilities, floor::BelowFloor> {
++         let (entry, instance) = self.instance.raw();
++         // SAFETY: the instance listed the device, and was created at the floor's version.
++-        unsafe { floor::check(entry, instance, self.raw) }
+++        unsafe { floor::check_for(entry, instance, self.raw, self.instance.shared.presentation) }
++     }
++ 
++     /// The instance that listed it.
 +diff --git a/crates/metal2vulkan-runtime/src/memory.rs b/crates/metal2vulkan-runtime/src/memory.rs
-+index 0d1bdc84e..0249c83db 100644
++index d79b33cf7..3563f9a81 100644
 +--- a/crates/metal2vulkan-runtime/src/memory.rs
 ++++ b/crates/metal2vulkan-runtime/src/memory.rs
-+@@ -1194,7 +1194,12 @@ impl Pool {
++@@ -353,6 +353,7 @@ pub(crate) struct Memory {
++     /// The device address of the block's first byte.
++     pub(crate) address: u64,
++     pub(crate) mapping: Option<Mapping>,
+++    pub(crate) read_only: bool,
++     /// Its memory type is device-local.
++     device_local: bool,
++     /// A Private block in another memory type than the Private one, which was out of memory.
++@@ -911,6 +912,7 @@ impl Carve {
++             buffer: self.buffer,
++             address: self.address,
++             mapping: self.mapping,
+++            read_only: false,
++             device_local: self.device_local,
++             spilled: self.spilled,
++             own: None,
++@@ -1203,7 +1205,18 @@ impl Pool {
 +         site: Site,
 +     ) -> Result<Memory, Error> {
 +         let started = crate::host_time();
@@ -4155,17 +4668,204 @@ index 0000000..6bcd3a3
 ++        // Retain the local iOS foreground miss policy: existing/spare space is tried first;
 ++        // a miss wires only the demand-sized backing, while the ahead maker keeps its unit reserve.
 ++        let allocation_len = if cfg!(target_os = "ios") {
-++            len.max((4u64 << 20).max(len.checked_next_power_of_two().unwrap_or(len)).min(ALLOCATION_LEN))
-++        } else { len.max(ALLOCATION_LEN) };
+++            len.max(
+++                (4u64 << 20)
+++                    .max(len.checked_next_power_of_two().unwrap_or(len))
+++                    .min(ALLOCATION_LEN),
+++            )
+++        } else {
+++            len.max(ALLOCATION_LEN)
+++        };
 ++        let mut allocation = make_allocation(core, class, allocation_len, Some(site))?;
 +         let made = crate::host_time();
 +         allocation.made = (started, made.saturating_sub(started));
 +         let bytes = allocation.len;
++@@ -2181,6 +2194,7 @@ pub(crate) unsafe fn import(
++     info: &vk::MemoryAllocateInfo<'_>,
++     handle: vk::ExternalMemoryHandleTypeFlags,
++     mapping: Option<Mapping>,
+++    read_only: bool,
++     own: Own,
++ ) -> Result<Memory, ImportFailed> {
++     let device = &core.device;
++@@ -2251,6 +2265,7 @@ pub(crate) unsafe fn import(
++         buffer,
++         address,
++         mapping,
+++        read_only,
++         device_local: core.device_local & (1 << info.memory_type_index) != 0,
++         spilled: false,
++         own: Some(own),
++@@ -2378,6 +2393,7 @@ pub(crate) fn sparse_block(
++             buffer,
++             address,
++             mapping: None,
+++            read_only: false,
++             device_local,
++             spilled: false,
++             own: Some(own),
++@@ -2508,6 +2524,7 @@ pub(crate) unsafe fn export(
++         buffer,
++         address,
++         mapping: None,
+++        read_only: false,
++         device_local: core.device_local & (1 << index) != 0,
++         spilled: false,
++         own: Some(Own::Export {
++@@ -2575,6 +2592,7 @@ pub(crate) unsafe fn export_surface(
++         buffer: vk::Buffer::null(),
++         address: 0,
++         mapping: None,
+++        read_only: false,
++         device_local: core.device_local & (1 << index) != 0,
++         spilled: false,
++         own: Some(Own::Export { handle, bytes: len }),
++@@ -2666,6 +2684,7 @@ pub(crate) unsafe fn surface_view(
++         buffer,
++         address,
++         mapping: None,
+++        read_only: false,
++         device_local: under.memory.device_local,
++         spilled: false,
++         own: Some(Own::Surface { import: false }),
 +diff --git a/crates/metal2vulkan-runtime/src/render_encoder.rs b/crates/metal2vulkan-runtime/src/render_encoder.rs
-+index f4c584b60..2a58f0707 100644
++index 4081f6a27..038c558be 100644
 +--- a/crates/metal2vulkan-runtime/src/render_encoder.rs
 ++++ b/crates/metal2vulkan-runtime/src/render_encoder.rs
-+@@ -2066,7 +2066,7 @@ impl RenderCommandEncoder {
++@@ -238,6 +238,9 @@ struct Shadowed {
++     rendered: (u32, u32),
++     layout: vk::ImageLayout,
++     home: vk::ImageLayout,
+++    /// The layout copies read `image` in (`Image::copy_layout`: `GENERAL` for in-place buffer
+++    /// aliases and exported surface planes, `TRANSFER_SRC_OPTIMAL` elsewhere).
+++    copy_source: vk::ImageLayout,
++     /// The bytes of a texel.
++     texel: u64,
++     held: Held,
++@@ -845,6 +848,18 @@ fn begin(
++     descriptor: &RenderPassDescriptor,
++ ) -> Result<(Pass, vk::CommandBuffer, Option<Visibility>), Error> {
++     let pass = Pass::check(core, descriptor)?;
+++    if descriptor
+++        .visibility_result_buffer
+++        .as_ref()
+++        .is_some_and(|b| b.is_read_only())
+++        || pass.targets().any(|t| t.texture.is_over_read_only_buffer())
+++        || (pass.resolving
+++            && pass
+++                .resolves()
+++                .any(|r| r.texture.is_over_read_only_buffer()))
+++    {
+++        return Err(Error::Refused(Refusal::ReadOnlyBuffer));
+++    }
++     // The attachments, and where the pass resolves the resolve textures, which the pass writes:
++     // a pass that resolves nothing walks no resolve.
++     let resolves = || {
++@@ -1846,6 +1861,9 @@ impl RenderCommandEncoder {
++                         rendered: (a.level, a.layer),
++                         layout: target.layout,
++                         home: a.home,
+++                        copy_source: target
+++                            .texture
+++                            .copy_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL),
++                         texel: target.texture.texel_bytes(),
++                         held: Held::default(),
++                         cleared: target.clear_color().filter(|_| same),
++@@ -1863,10 +1881,7 @@ impl RenderCommandEncoder {
++         if planned.iter().all(Vec::is_empty) {
++             return Ok(());
++         }
++-        let (source, destination) = (
++-            vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
++-            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
++-        );
+++        let destination = vk::ImageLayout::TRANSFER_DST_OPTIMAL;
++         let read_only = vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL;
++         let (mut away, mut back, mut copies) = (Vec::new(), Vec::new(), Vec::new());
++         let mut clears = Vec::new();
++@@ -1900,14 +1915,17 @@ impl RenderCommandEncoder {
++             };
++             let sources = shadow::ranges(&copied);
++             let (rendered, rest) = shadow::parted(&sources, s.rendered);
++-            if rendered {
+++            let source = s.copy_source;
+++            if rendered && s.layout != source {
++                 let at = range((level, [layer, layer + 1]));
++                 away.push(layout_barrier(s.image, at, s.layout, source));
++                 back.push(layout_barrier(s.image, at, source, s.layout));
++             }
++-            for at in rest.into_iter().map(range) {
++-                away.push(layout_barrier(s.image, at, s.home, source));
++-                back.push(layout_barrier(s.image, at, source, s.home));
+++            if s.home != source {
+++                for at in rest.into_iter().map(range) {
+++                    away.push(layout_barrier(s.image, at, s.home, source));
+++                    back.push(layout_barrier(s.image, at, source, s.home));
+++                }
++             }
++             for at in shadow::ranges(areas).into_iter().map(range) {
++                 away.push(layout_barrier(s.shadow, at, read_only, destination));
++@@ -1923,7 +1941,7 @@ impl RenderCommandEncoder {
++             bytes += (copied.iter())
++                 .map(|area| area.texels() * s.texel)
++                 .sum::<u64>();
++-            copies.push((s.image, s.shadow, regions));
+++            copies.push((s.image, source, s.shadow, regions));
++         }
++         self.interrupt(|building, core| {
++             let command = building.ordered_command()?;
++@@ -1933,9 +1951,9 @@ impl RenderCommandEncoder {
++             // it retires (its pass's attachment texture holds it, and it its shadow); each range
++             // is in the layout it moves from: the rendered level and layer in the one the pass
++             // renders it in, the rest of the image and the shadow at home; each region lies in
++-            // both images, in their transfer layouts between the barriers; each cleared range is
++-            // a colour level and layer of its shadow, in the transfer destination layout, which
++-            // no region of the copies reaches.
+++            // both images, in their transfer (or general) layouts between the barriers; each
+++            // cleared range is a colour level and layer of its shadow, in the transfer destination
+++            // layout, which no region of the copies reaches.
++             unsafe {
++                 device.cmd_pipeline_barrier2(
++                     command,
++@@ -1946,8 +1964,8 @@ impl RenderCommandEncoder {
++                 for (shadow, color, range) in &clears {
++                     device.cmd_clear_color_image(command, *shadow, destination, color, &[*range]);
++                 }
++-                for (image, shadow, regions) in &copies {
++-                    device.cmd_copy_image(command, *image, source, *shadow, destination, regions);
+++                for (image, source, shadow, regions) in &copies {
+++                    device.cmd_copy_image(command, *image, *source, *shadow, destination, regions);
++                 }
++                 device.cmd_pipeline_barrier2(
++                     command,
++@@ -1990,12 +2008,16 @@ impl RenderCommandEncoder {
++         resource: Resource<'_>,
++         usage: ResourceUsage,
++     ) -> Result<(), Error> {
+++        let writes = usage.access().is_some_and(Access::writes);
++         let building = self.building();
++         let (id, host, unstored, texture, span, place) = match resource {
++             Resource::Buffer(buffer) => {
++                 if !buffer.is_of(building.device.core()) {
++                     return Err(Error::Refused(Refusal::OtherDevice));
++                 }
+++                if writes && buffer.is_read_only() {
+++                    return Err(Error::Refused(Refusal::ReadOnlyBuffer));
+++                }
++                 building.keep(buffer);
++                 let id = [buffer.id(), buffer.tracked_id()];
++                 let place = BufferObject::object(buffer).placement().cloned();
++@@ -2012,6 +2034,9 @@ impl RenderCommandEncoder {
++                 if !texture.is_of(building.device.core()) {
++                     return Err(Error::Refused(Refusal::OtherDevice));
++                 }
+++                if writes && texture.is_over_read_only_buffer() {
+++                    return Err(Error::Refused(Refusal::ReadOnlyBuffer));
+++                }
++                 // SAFETY: the encoder's declarations hold the borrow, and they end before its
++                 // command buffer commits.
++                 let lent = unsafe { building.lend_texture(texture) };
++@@ -2083,7 +2108,7 @@ impl RenderCommandEncoder {
 +     pub fn use_heap(&mut self, heap: BlockId) -> Result<(), Error> {
 +         let building = self.building();
 +         let block = building.device.block(heap)?;
@@ -4174,36 +4874,1500 @@ index 0000000..6bcd3a3
 +         if !self.declared.heaps.contains(&heap) {
 +             self.declared.heaps.push(heap);
 +             // An attachment in the heap that the pass holds out of its home layout.
-+@@ -2591,8 +2591,11 @@ impl RenderCommandEncoder {
++@@ -2628,8 +2653,14 @@ impl RenderCommandEncoder {
 +             && (commands
 +                 || (self.pipeline.as_ref())
 +                     .is_some_and(|state| state.inner.compiled.draws.reads_unbound));
-++        let unknown_resources = commands || self.pipeline.as_ref().is_some_and(|state|
-++            state.inner.compiled.draws.reads_unbound || state.inner.compiled.draws.writes_unbound);
+++        let unknown_resources = commands
+++            || self.pipeline.as_ref().is_some_and(|state| {
+++                state.inner.compiled.draws.reads_unbound
+++                    || state.inner.compiled.draws.writes_unbound
+++            });
 +         let building = (self.building.as_mut())
 +             .expect("an encoder holds its command buffer's recording until it ends");
 ++        building.mark_unbound_resources(unknown_resources);
 +         if unslotted {
 +             building.count(Metric::UnslottedAttachmentReads);
 +         }
++diff --git a/crates/metal2vulkan-runtime/src/submit.rs b/crates/metal2vulkan-runtime/src/submit.rs
++index 183b1fe72..32b919bba 100644
++--- a/crates/metal2vulkan-runtime/src/submit.rs
+++++ b/crates/metal2vulkan-runtime/src/submit.rs
++@@ -1750,7 +1750,7 @@ impl WorkState {
++             return;
++         };
++         let empty = pending.gpu.is_empty() && !captured.waits_for(pending.seq);
++-        if entry.error.is_some() || empty || pending.gpu.presents() {
+++        if entry.error.is_some() || empty || pending.gpu.schedules_after_submit() {
++             fifo.send_through = fifo.send_through.max(entry.place);
++             return;
++         }
++@@ -2010,7 +2010,8 @@ impl WorkState {
++         else {
++             return Step::Staged;
++         };
++-        if held.is_none() && !pending.gpu.presents() {
+++        let native_presentation = pending.gpu.native_presentation;
+++        if held.is_none() && !pending.gpu.schedules_after_submit() {
++             let scheduled = std::mem::take(&mut pending.handlers.scheduled);
++             cb.scheduled(now, !scheduled.is_empty());
++             if !scheduled.is_empty() {
++@@ -2024,7 +2025,7 @@ impl WorkState {
++         // A command buffer held for room behind it joins it or, not taken, sends it first: with
++         // room the two would have been staged together.
++         let held_behind = (fifo.entries.front()).is_some_and(|entry| entry.held.is_some());
++-        match signals || (fifo.goes(stop) && !held_behind) {
+++        match signals || native_presentation || (fifo.goes(stop) && !held_behind) {
++             true => Step::Goes(index),
++             false => Step::Staged,
++         }
++@@ -2848,7 +2849,7 @@ fn submit(core: &Core, value: u64, uploads: Vec<Upload>, batch: Batch) {
++             // retires.
++             let now = times::host_time();
++             for (cb, pending, error) in &mut finished {
++-                if error.is_none() && pending.gpu.presents() {
+++                if error.is_none() && pending.gpu.schedules_after_submit() {
++                     let scheduled = std::mem::take(&mut pending.handlers.scheduled);
++                     cb.scheduled(now, !scheduled.is_empty());
++                     if !scheduled.is_empty() {
++diff --git a/crates/metal2vulkan-runtime/src/tests/fetch.rs b/crates/metal2vulkan-runtime/src/tests/fetch.rs
++index a77caf19d..6e5e1b235 100644
++--- a/crates/metal2vulkan-runtime/src/tests/fetch.rs
+++++ b/crates/metal2vulkan-runtime/src/tests/fetch.rs
++@@ -718,4 +718,104 @@ mod on_device {
++             }
++         });
++     }
+++
+++    /// Programmable blending (`[[color(0)]]`) on a colour render target over imported host memory
+++    /// (both `RenderTarget`-only and `RenderTarget | ShaderRead`): succeeds without
+++    /// `DrawKind::FetchedAttachment` on every device with attachment reads, writes exact texels to
+++    /// the host pages, and runs zero-copy when the device places host-import images in place.
+++    #[test]
+++    fn every_device_fetches_an_attachment_over_imported_host_memory() {
+++        use crate::tests::import::on_device::{free, host_memory, releasing, wait_until};
+++        use std::sync::atomic::Ordering;
+++
+++        let Some(d) = fetching(
+++            "exf_fetch_count",
+++            "exf_fetch_count",
+++            PixelFormat::RGBA32Uint,
+++        ) else {
+++            return;
+++        };
+++        each_device("fetch_host_import", |name, _, device| {
+++            let Some((_, alignment)) = device.core().imports.host.as_ref() else {
+++                println!("fetch-host: {name}: imports no host memory");
+++                return;
+++            };
+++            let alignment = *alignment;
+++            let reads = device.core().attachment_reads;
+++            let state = state(name, &device, &d);
+++            let queue = device.new_command_queue(4).expect("a queue");
+++            let clear = ClearColor {
+++                red: 0.0,
+++                green: 0.0,
+++                blue: 0.0,
+++                alpha: 1.0,
+++            };
+++            let row = u64::from(SIDE) * 16;
+++            let answer = (device.minimum_linear_texture_alignment(PixelFormat::RGBA32Uint))
+++                .unwrap_or_else(|error| panic!("{name}: {error}"));
+++            let pitch = row.next_multiple_of(answer);
+++            let len = (pitch * u64::from(SIDE)).next_multiple_of(alignment);
+++            (device.grant_indices(IndexClass::Texture, 4096, 2))
+++                .unwrap_or_else(|error| panic!("{name}: {error}"));
+++            for (slot, usage) in [
+++                TextureUsage::RENDER_TARGET,
+++                TextureUsage::RENDER_TARGET | TextureUsage::SHADER_READ,
+++            ]
+++            .into_iter()
+++            .enumerate()
+++            {
+++                let (pointer, mapping) = host_memory(len, alignment);
+++                let (release, released) = releasing();
+++                // SAFETY: the allocation stays mapped until `released` fires.
+++                let (import, _) = unsafe { device.import_host_memory(pointer, len, release) }
+++                    .unwrap_or_else(|error| panic!("{name}: import: {error}"));
+++                let buffer = (device.new_buffer(import.id, 0, len, None)).expect("a buffer");
+++                let mut td = TextureDescriptor::new(
+++                    TextureType::Type2D,
+++                    PixelFormat::RGBA32Uint,
+++                    SIDE,
+++                    SIDE,
+++                );
+++                td.usage = usage;
+++                let color = (buffer.new_texture(&td, Some(4096 + slot as u32), 0, pitch))
+++                    .unwrap_or_else(|error| panic!("{name}: texture: {error}"));
+++                let draws = DRAWS[1];
+++                let (drew, counted) =
+++                    pass_of((name, &device, &queue), &state, &color, clear, draws);
+++                if !reads {
+++                    assert_eq!(
+++                        format!("{drew:?}"),
+++                        format!(
+++                            "{:?}",
+++                            Err::<(), _>(Error::Unsupported(Gap::Draw {
+++                                kind: DrawKind::FetchedAttachment
+++                            }))
+++                        ),
+++                        "{name}: device without attachment reads"
+++                    );
+++                } else {
+++                    drew.unwrap_or_else(|error| panic!("{name}: {draws} draws: {error}"));
+++                    let three = 3u32.pow(draws);
+++                    let want: Vec<u8> = (0..SIDE * SIDE)
+++                        .flat_map(|_| {
+++                            [0u32, 0, 0, 1]
+++                                .into_iter()
+++                                .enumerate()
+++                                .map(move |(k, c)| c * three + (k as u32 + 1) * (three - 1) / 2)
+++                        })
+++                        .flat_map(u32::to_le_bytes)
+++                        .collect();
+++                    assert_eq!(read(&color, 16), want, "{name}: {usage:?}: every texel");
+++                    println!(
+++                        "fetch-host: {name} {usage:?}: in_place={} {:?}",
+++                        color.copied_over().is_none(),
+++                        counted
+++                    );
+++                }
+++                drop((color, buffer, import));
+++                wait_until(&device, "the release", || released.load(Ordering::SeqCst));
+++                free(mapping);
+++            }
+++        });
+++    }
++ }
++diff --git a/crates/metal2vulkan-runtime/src/tests/floor.rs b/crates/metal2vulkan-runtime/src/tests/floor.rs
++index c20a5b6e9..bed54e212 100644
++--- a/crates/metal2vulkan-runtime/src/tests/floor.rs
+++++ b/crates/metal2vulkan-runtime/src/tests/floor.rs
++@@ -2541,3 +2541,26 @@ fn a_device_that_does_not_calibrate_the_host_clock_is_below_the_floor() {
++     );
++     assert!(TIME_DOMAINS[1] == crate::HOST_DOMAIN);
++ }
+++
+++#[test]
+++fn nonpresenting_keeps_all_rendering_requirements_without_surface_or_swapchain() {
+++    use crate::floor::decide_for;
+++    use crate::instance::enabled_for;
+++    let mut device = at_the_floor();
+++    device
+++        .extensions
+++        .retain(|name| name.as_c_str() != ash::khr::swapchain::NAME);
+++    assert!(decide(&device).is_err());
+++    let capabilities = decide_for(&device, false).expect("rendering floor is met");
+++    assert!(!capabilities.extensions.contains(&ash::khr::swapchain::NAME));
+++    let extensions = enabled_for(&[], &[], &[], false, false).unwrap();
+++    assert!(!extensions
+++        .iter()
+++        .any(|name| name.as_c_str() == ash::khr::surface::NAME));
+++    assert!(crate::instance::enabled(&[], &[], &[], false)
+++        .unwrap()
+++        .iter()
+++        .any(|name| name.as_c_str() == ash::khr::surface::NAME));
+++    device.features.vulkan12.buffer_device_address = vk::FALSE;
+++    assert!(decide_for(&device, false).is_err());
+++}
++diff --git a/crates/metal2vulkan-runtime/src/tests/import.rs b/crates/metal2vulkan-runtime/src/tests/import.rs
++index f9f4f896a..1c61db0c0 100644
++--- a/crates/metal2vulkan-runtime/src/tests/import.rs
+++++ b/crates/metal2vulkan-runtime/src/tests/import.rs
++@@ -518,7 +518,7 @@ pub(crate) mod on_device {
++                 StorageMode::Shared,
++                 "{name}"
++             );
++-            assert!(texture.copied_over().is_some(), "{name}: copied");
+++            let copied = texture.copied_over().is_some();
++             let copies = || device.counters().metrics().over_copies;
++             let start = device.counters().metrics();
++             let before = copies();
++@@ -571,7 +571,11 @@ pub(crate) mod on_device {
++                 "{name}: the image read the host's bytes"
++             );
++             let copied_in = copies();
++-            assert!(copied_in > before, "{name}: the bytes copied in, counted");
+++            if copied {
+++                assert!(copied_in > before, "{name}: the bytes copied in, counted");
+++            } else {
+++                assert_eq!(copied_in, before, "{name}: in-place read copies nothing");
+++            }
++ 
++             // Write: a blit from a plain texture reaches the host's memory.
++             let mut plain_d = d;
++@@ -605,10 +609,14 @@ pub(crate) mod on_device {
++                 packed(&host) == source,
++                 "{name}: the write reached the host"
++             );
++-            assert!(
++-                copies() > copied_in,
++-                "{name}: the image copied back, counted"
++-            );
+++            if copied {
+++                assert!(
+++                    copies() > copied_in,
+++                    "{name}: the image copied back, counted"
+++                );
+++            } else {
+++                assert_eq!(copies(), copied_in, "{name}: in-place write copies nothing");
+++            }
++             let counted = copies() - before;
++             // Each copy is over the imported block: counted on the imported side too, each of
++             // the texture's texels.
++@@ -633,9 +641,10 @@ pub(crate) mod on_device {
++             ));
++             wait_until(&device, "the release", || released.load(Ordering::SeqCst));
++             free(mapping);
+++            let form = if copied { "copied" } else { "in place" };
++             println!(
++                 "import: {name}: a texture over imported host memory (type {memory_type}), \
++-                 copied ({counted} copies counted), read and written"
+++                 {form} ({counted} copies counted), read and written"
++             );
++         });
++     }
++diff --git a/crates/metal2vulkan-runtime/src/tests/imported_aliases.rs b/crates/metal2vulkan-runtime/src/tests/imported_aliases.rs
++index b47c88117..bb4bdf665 100644
++--- a/crates/metal2vulkan-runtime/src/tests/imported_aliases.rs
+++++ b/crates/metal2vulkan-runtime/src/tests/imported_aliases.rs
++@@ -303,10 +303,7 @@ mod on_device {
++         d.usage = TextureUsage::SHADER_READ | TextureUsage::RENDER_TARGET;
++         let t1 = (b1.new_texture(&d, Some(first), 0, pitch))
++             .unwrap_or_else(|error| panic!("{name}: T1: {error}"));
++-        assert!(
++-            t1.copied_over().is_some() && t2.copied_over().is_some(),
++-            "{name}: host memory's import takes images of their own"
++-        );
+++        let _ = (t1.copied_over(), t2.copied_over());
++         let texels = u64::from(WIDTH) * u64::from(HEIGHT);
++         let out_block = (device.take_block(MemoryClass::Shared, 16 * texels))
++             .unwrap_or_else(|error| panic!("{name}: {error}"));
++@@ -487,10 +484,7 @@ mod on_device {
++         let drawn = (drawer.new_texture(&d, Some(first + 4), 0, pitch))
++             .unwrap_or_else(|error| panic!("{name}: T11: {error}"));
++         let drawn_id = live.enter(name, &drawn);
++-        assert!(
++-            read.copied_over().is_some() && drawn.copied_over().is_some(),
++-            "{name}: host memory's import takes images of their own"
++-        );
+++        let _ = (read.copied_over(), drawn.copied_over());
++         let library = examples().expect("the draw's library, which llvm-as assembled");
++         let reading = state(
++             name,
++diff --git a/crates/metal2vulkan-runtime/src/tests/over_causes.rs b/crates/metal2vulkan-runtime/src/tests/over_causes.rs
++index 56a22dd12..8bb570925 100644
++--- a/crates/metal2vulkan-runtime/src/tests/over_causes.rs
+++++ b/crates/metal2vulkan-runtime/src/tests/over_causes.rs
++@@ -400,7 +400,19 @@ mod on_device {
++                     &texture,
++                     (height, true, MemoryClass::Shared),
++                 );
++-                assert_eq!(cause, Some(OverCause::HostMemory), "{name}: host memory");
+++                assert!(
+++                    matches!(
+++                        cause,
+++                        None | Some(
+++                            OverCause::HostMemory
+++                                | OverCause::LinearFeatures
+++                                | OverCause::Pitch
+++                                | OverCause::Alignment
+++                                | OverCause::ImageMemory
+++                        )
+++                    ),
+++                    "{name}: host memory: unexpected cause {cause:?}"
+++                );
++                 found.push(("host memory", cause));
++                 drop((texture, imported, import));
++                 wait_until(&device, "the release", || released.load(Ordering::SeqCst));
++diff --git a/crates/metal2vulkan-runtime/src/tests/texture.rs b/crates/metal2vulkan-runtime/src/tests/texture.rs
++index 3da5b978b..8cd8788ba 100644
++--- a/crates/metal2vulkan-runtime/src/tests/texture.rs
+++++ b/crates/metal2vulkan-runtime/src/tests/texture.rs
++@@ -294,6 +294,250 @@ fn a_views_swizzle_reads_its_parents_swizzled_channels() {
++     );
++ }
++ 
+++#[test]
+++fn host_memory_in_place_selection_prefers_explicit_modifier_and_falls_back_cleanly() {
+++    use crate::counters::OverCause;
+++    use crate::texture::{
+++        homing_host_dependency, in_place_attachment_reads, in_place_create_error,
+++        in_place_pitch_fits, in_place_subresource_aspect, keeps_home_on_copy, linear_image_usage,
+++        select_host_laid, select_host_plan, Laid,
+++    };
+++
+++    // Modifier extension available and passes extent+features -> explicit DRM_FORMAT_MOD_LINEAR.
+++    assert_eq!(
+++        select_host_laid(0, Some((true, true, true)), (false, false, false)),
+++        Ok(Laid::HostMemory {
+++            memory_type: 0,
+++            explicit_modifier: true,
+++            feedback: true,
+++        })
+++    );
+++    assert_eq!(
+++        select_host_laid(0, Some((true, true, false)), (true, true, true)),
+++        Ok(Laid::HostMemory {
+++            memory_type: 0,
+++            explicit_modifier: true,
+++            feedback: false,
+++        })
+++    );
+++    // Modifier unsupported for format/extent, plain LINEAR passes -> plain LINEAR.
+++    assert_eq!(
+++        select_host_laid(1, Some((false, false, false)), (true, true, true)),
+++        Ok(Laid::HostMemory {
+++            memory_type: 1,
+++            explicit_modifier: false,
+++            feedback: true,
+++        })
+++    );
+++    assert_eq!(
+++        select_host_laid(1, Some((true, false, false)), (true, true, false)),
+++        Ok(Laid::HostMemory {
+++            memory_type: 1,
+++            explicit_modifier: false,
+++            feedback: false,
+++        })
+++    );
+++    // Modifier extension absent, plain LINEAR passes -> plain LINEAR.
+++    assert_eq!(
+++        select_host_laid(2, None, (true, true, true)),
+++        Ok(Laid::HostMemory {
+++            memory_type: 2,
+++            explicit_modifier: false,
+++            feedback: true,
+++        })
+++    );
+++    // Extent passes on at least one tiling, features fail on both -> LinearFeatures.
+++    assert_eq!(
+++        select_host_laid(0, Some((true, false, false)), (false, false, false)),
+++        Err(OverCause::LinearFeatures)
+++    );
+++    assert_eq!(
+++        select_host_laid(0, None, (true, false, false)),
+++        Err(OverCause::LinearFeatures)
+++    );
+++    // Neither tiling accepts HOST_ALLOCATION_EXT -> HostMemory.
+++    assert_eq!(
+++        select_host_laid(0, Some((false, false, false)), (false, false, false)),
+++        Err(OverCause::HostMemory)
+++    );
+++    assert_eq!(
+++        select_host_laid(0, None, (false, false, false)),
+++        Err(OverCause::HostMemory)
+++    );
+++
+++    // Linear image usage preserves SAMPLED | ATTACHMENT_FEEDBACK_LOOP_EXT for in-place
+++    // framebuffer fetch / self-sampling when feedback is accepted, strips them otherwise,
+++    // and keeps upstream COLOR_ATTACHMENT when linear_resolves is set.
+++    type U = vk::ImageUsageFlags;
+++    let transfer = U::TRANSFER_SRC | U::TRANSFER_DST;
+++    let rt_feedback = transfer | U::COLOR_ATTACHMENT | U::SAMPLED | U::ATTACHMENT_FEEDBACK_LOOP_EXT;
+++    assert_eq!(
+++        linear_image_usage(rt_feedback, false, false, true).as_raw(),
+++        rt_feedback.as_raw()
+++    );
+++    assert_eq!(
+++        linear_image_usage(rt_feedback, false, false, false).as_raw(),
+++        (transfer | U::COLOR_ATTACHMENT).as_raw()
+++    );
+++    assert_eq!(
+++        linear_image_usage(rt_feedback, true, false, false).as_raw(),
+++        (transfer | U::COLOR_ATTACHMENT | U::SAMPLED).as_raw()
+++    );
+++    // Without ATTACHMENT_FEEDBACK_LOOP_EXT in the plan (shadow-only device), feedback=true must
+++    // not keep SAMPLED on a RENDER_TARGET-only image.
+++    let rt_shadow_only = transfer | U::COLOR_ATTACHMENT | U::SAMPLED;
+++    assert_eq!(
+++        linear_image_usage(rt_shadow_only, false, false, true).as_raw(),
+++        (transfer | U::COLOR_ATTACHMENT).as_raw()
+++    );
+++    // ShaderRead-only texture gains COLOR_ATTACHMENT only when linear_resolves is true.
+++    let read_only = transfer | U::SAMPLED;
+++    assert_eq!(
+++        linear_image_usage(read_only, true, false, true).as_raw(),
+++        read_only.as_raw()
+++    );
+++    assert_eq!(
+++        linear_image_usage(read_only, true, true, false).as_raw(),
+++        (read_only | U::COLOR_ATTACHMENT).as_raw()
+++    );
+++
+++    // In-place attachment reads require either feedback loop or shadow fallback.
+++    assert!(in_place_attachment_reads(true, true, false));
+++    assert!(in_place_attachment_reads(true, false, true));
+++    assert!(!in_place_attachment_reads(true, false, false));
+++    assert!(!in_place_attachment_reads(false, true, true));
+++
+++    // Explicit modifier pitch overflow and driver rejection map to Pitch fallback, not hard Vulkan error.
+++    assert!(in_place_pitch_fits(12_224, true));
+++    assert!(in_place_pitch_fits(u64::from(u32::MAX), true));
+++    assert!(!in_place_pitch_fits(u64::from(u32::MAX) + 64, true));
+++    assert!(in_place_pitch_fits(u64::from(u32::MAX) + 64, false));
+++
+++    assert_eq!(
+++        in_place_create_error(
+++            vk::Result::ERROR_INVALID_DRM_FORMAT_MODIFIER_PLANE_LAYOUT_EXT,
+++            true
+++        ),
+++        Some(OverCause::Pitch)
+++    );
+++    assert_eq!(
+++        in_place_create_error(
+++            vk::Result::ERROR_INVALID_DRM_FORMAT_MODIFIER_PLANE_LAYOUT_EXT,
+++            false
+++        ),
+++        None
+++    );
+++    assert_eq!(
+++        in_place_create_error(vk::Result::ERROR_OUT_OF_DEVICE_MEMORY, true),
+++        None
+++    );
+++
+++    // Subresource layout queries must name MEMORY_PLANE_0_EXT for modifier tiling and COLOR otherwise.
+++    assert_eq!(
+++        in_place_subresource_aspect(true).as_raw(),
+++        vk::ImageAspectFlags::MEMORY_PLANE_0_EXT.as_raw()
+++    );
+++    assert_eq!(
+++        in_place_subresource_aspect(false).as_raw(),
+++        vk::ImageAspectFlags::COLOR.as_raw()
+++    );
+++
+++    // Host-import in-place images start UNDEFINED, home with HOST_WRITE, and stay GENERAL on copies.
+++    let raw_dep = |(stage, access): (vk::PipelineStageFlags2, vk::AccessFlags2)| {
+++        (stage.as_raw(), access.as_raw())
+++    };
+++    assert_eq!(
+++        raw_dep(homing_host_dependency(vk::ImageLayout::UNDEFINED, true)),
+++        raw_dep((vk::PipelineStageFlags2::HOST, vk::AccessFlags2::HOST_WRITE,))
+++    );
+++    assert_eq!(
+++        raw_dep(homing_host_dependency(vk::ImageLayout::UNDEFINED, false)),
+++        raw_dep((vk::PipelineStageFlags2::NONE, vk::AccessFlags2::NONE))
+++    );
+++    assert_eq!(
+++        raw_dep(homing_host_dependency(
+++            vk::ImageLayout::PREINITIALIZED,
+++            true
+++        )),
+++        raw_dep((vk::PipelineStageFlags2::NONE, vk::AccessFlags2::NONE))
+++    );
+++    assert!(keeps_home_on_copy(vk::ImageLayout::UNDEFINED, true, false));
+++    assert!(keeps_home_on_copy(
+++        vk::ImageLayout::PREINITIALIZED,
+++        false,
+++        false
+++    ));
+++    assert!(keeps_home_on_copy(vk::ImageLayout::UNDEFINED, false, true));
+++    assert!(!keeps_home_on_copy(
+++        vk::ImageLayout::UNDEFINED,
+++        false,
+++        false
+++    ));
+++
+++    // Unextended DRM_FORMAT_MOD_LINEAR wins over extended plain LINEAR so custom pitches bind.
+++    assert_eq!(
+++        select_host_plan(
+++            2,
+++            Some((false, false, false)),
+++            Some((true, true, true)),
+++            (true, true, true),
+++            Some((true, true, false)),
+++        ),
+++        (
+++            Ok(Laid::HostMemory {
+++                memory_type: 2,
+++                explicit_modifier: true,
+++                feedback: true,
+++            }),
+++            true,
+++        )
+++    );
+++    assert_eq!(
+++        select_host_plan(
+++            2,
+++            Some((false, false, false)),
+++            Some((false, false, false)),
+++            (true, true, false),
+++            Some((true, true, true)),
+++        ),
+++        (
+++            Ok(Laid::HostMemory {
+++                memory_type: 2,
+++                explicit_modifier: false,
+++                feedback: false,
+++            }),
+++            false,
+++        )
+++    );
+++    assert_eq!(
+++        select_host_plan(
+++            2,
+++            Some((false, false, false)),
+++            Some((true, false, false)),
+++            (false, false, false),
+++            Some((true, true, true)),
+++        ),
+++        (
+++            Ok(Laid::HostMemory {
+++                memory_type: 2,
+++                explicit_modifier: false,
+++                feedback: true,
+++            }),
+++            true,
+++        )
+++    );
+++    assert_eq!(
+++        select_host_plan(
+++            2,
+++            Some((false, false, false)),
+++            Some((true, false, false)),
+++            (false, false, false),
+++            Some((false, false, false)),
+++        ),
+++        (Err(OverCause::LinearFeatures), false)
+++    );
+++}
+++
++ #[cfg(any(m2v_gpu, m2v_cpu_icd))]
++ mod on_device {
++     use super::refused;
 +diff --git a/crates/metal2vulkan-runtime/src/texture.rs b/crates/metal2vulkan-runtime/src/texture.rs
-+index f0f2cf02a..299e59cbb 100644
++index b472c3f37..9ce42520b 100644
 +--- a/crates/metal2vulkan-runtime/src/texture.rs
 ++++ b/crates/metal2vulkan-runtime/src/texture.rs
-+@@ -5262,6 +5262,13 @@ pub(crate) trait TextureObject {
++@@ -797,13 +797,14 @@ impl Image {
++             .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
++             .image(self.image)
++             .subresource_range(whole(self.aspects));
++-        // Placed over another resource's bytes, after every earlier command's writes.
+++        // Placed over another resource's bytes, after every earlier command's writes; over a
+++        // host-memory import starting from UNDEFINED, after prior host writes.
++         let (stages, written) = match self.over {
++             true => (
++                 vk::PipelineStageFlags2::ALL_COMMANDS,
++                 vk::AccessFlags2::MEMORY_WRITE,
++             ),
++-            false => (vk::PipelineStageFlags2::NONE, vk::AccessFlags2::NONE),
+++            false => homing_host_dependency(first, self.over_buffer()),
++         };
++         let Some(zero) = self.zero else {
++             let first = barrier
++@@ -890,12 +891,18 @@ impl Image {
++     /// that it and the buffer are aliases that interpret their bytes alike (Vulkan's memory
++     /// aliasing); `transfer` for any other image.
++     pub(crate) fn copy_layout(&self, transfer: vk::ImageLayout) -> vk::ImageLayout {
++-        match self.first == vk::ImageLayout::PREINITIALIZED || self.surface() {
+++        match keeps_home_on_copy(self.first, self.over_buffer(), self.surface()) {
++             true => self.home,
++             false => transfer,
++         }
++     }
++ 
+++    /// Whether the image lies in place over a buffer ([`Buffer::new_texture`]), which stays in
+++    /// the general layout through every copy so it and its buffer alias linearly.
+++    pub(crate) fn over_buffer(&self) -> bool {
+++        matches!(self._under, Some(Under::Buffer { .. }))
+++    }
+++
++     /// Whether the image is a surface plane's in place ([`Device::new_exported_surface`]), which
++     /// stays in the general layout through every copy, as the other API reads its bytes linearly.
++     pub(crate) fn surface(&self) -> bool {
++@@ -1624,6 +1631,7 @@ impl Device {
++         // In place, where its linear image takes the attachment usage for resolves, the bytes
++         // from its first texel a resolve into it may reach (`render_reach`).
++         let mut resolve_reach = None;
+++        let in_place_usage = plan.linear_usage(laid.is_some_and(Laid::feedback));
++         let (bind, mut block) = match source {
++             Source::Plain | Source::Managed(..) => (Bind::Pooled, None),
++             Source::Heap(block, heap, offset) => {
++@@ -1650,18 +1658,30 @@ impl Device {
++                     (_, Some(copy)) => (copy.memory(), MemoryClass::Private, copy.offset()),
++                     (block, None) => (&block.memory, block.memory.class, buffer.offset()),
++                 };
++-                // The host reaches the image's memory too: general, from preinitialized, the
++-                // layout of bytes the host wrote; over a dma-buf's import, by its acquire
++-                // (`Image::homing`).
++-                first = vk::ImageLayout::PREINITIALIZED;
+++                // The host reaches the image's memory too: general, from preinitialized for the
+++                // runtime's own memory, by foreign acquire for a dma-buf, or from undefined with
+++                // a host-write dependency for host-memory imports (`Image::homing`).
++                 home = vk::ImageLayout::GENERAL;
++-                let (memory_type, handle) = match laid {
++-                    Some(Laid::DmaBuf { memory_type }) => {
+++                let (memory_type, handle, explicit_modifier) = match laid {
+++                    Some(Laid::DmaBuf { memory_type, .. }) => {
+++                        first = vk::ImageLayout::PREINITIALIZED;
++                         acquired = Some(memory.range(at + offset));
++                         let handle = vk::ExternalMemoryHandleTypeFlags::DMA_BUF_EXT;
++-                        (memory_type, Some(handle))
+++                        (memory_type, Some(handle), false)
+++                    }
+++                    Some(Laid::HostMemory {
+++                        memory_type,
+++                        explicit_modifier,
+++                        ..
+++                    }) => {
+++                        first = vk::ImageLayout::UNDEFINED;
+++                        let handle = vk::ExternalMemoryHandleTypeFlags::HOST_ALLOCATION_EXT;
+++                        (memory_type, Some(handle), explicit_modifier)
+++                    }
+++                    _ => {
+++                        first = vk::ImageLayout::PREINITIALIZED;
+++                        (core.memory_type(class), None, false)
++                     }
++-                    _ => (core.memory_type(class), None),
++                 };
++                 let rows = u64::from(d.height) * bytes_per_row;
++                 let reach = (usage.contains(TextureUsage::RENDER_TARGET))
++@@ -1673,6 +1693,8 @@ impl Device {
++                     base: memory.base(),
++                     memory_type,
++                     handle,
+++                    explicit_modifier,
+++                    usage: in_place_usage,
++                     block_len: memory.len,
++                     at: at + offset,
++                     bytes_per_row,
++@@ -1703,36 +1725,54 @@ impl Device {
++         core.counters.rise(Gauge::Textures);
++         // A clear zeroes it in its move home.
++         let zero = placed.then(|| Zero::of(&plan, d.mipmap_level_count, &shape));
++-        // An image in place over a buffer is the buffer's linear image, of no feedback usage
++-        // (`Plan::linear_usage`); any other keeps its home, shader-read-only or general, which a
++-        // pass moves it from to the feedback layout and back.
+++        // An image in place over a buffer keeps `ATTACHMENT_FEEDBACK_LOOP_EXT` when the linear
+++        // query accepted it, so framebuffer fetch and same-pass sampling run in place without
+++        // copies; otherwise a colour render target falls back to its shadow when offered.
++         let laid_over = named.as_ref().is_some_and(|n| n.form == Form::InPlace);
++         // A pass resolves into a linear image in place where its subresource lies within its
++         // own rows and the buffer, as a resolve may write back any byte of it (Vulkan's
++         // multisample resolve operations); else it takes no attachment use, and stays in place.
++         let resolved = laid_over
++             && resolve_reach.is_some_and(|reach| {
++-                let color = vk::ImageSubresource {
++-                    aspect_mask: vk::ImageAspectFlags::COLOR,
+++                let explicit = matches!(
+++                    laid,
+++                    Some(Laid::HostMemory {
+++                        explicit_modifier: true,
+++                        ..
+++                    })
+++                );
+++                let subresource = vk::ImageSubresource {
+++                    aspect_mask: in_place_subresource_aspect(explicit),
++                     mip_level: 0,
++                     array_layer: 0,
++                 };
++-                // SAFETY: the image is the device's, linear, of one level and layer of a colour
++-                // format.
++-                let layout = unsafe { core.device.get_image_subresource_layout(image, color) };
+++                // SAFETY: the image is the device's, linear (or single-plane
+++                // DRM_FORMAT_MOD_LINEAR), of one level and layer of a colour format.
+++                let layout =
+++                    unsafe { core.device.get_image_subresource_layout(image, subresource) };
++                 in_reach(layout.size, Some(reach))
++             });
++-        let attachment_reads = plan.attachment_reads && !laid_over;
++-        // On a device without the feedback loop, a draw reads such an image through its shadow.
++-        let shadowing = (attachment_reads && !core.feedback_loop).then(|| {
++-            Box::new(Shadowing {
++-                made: (d, shape, plan.shadow()),
++-                shadow: Mutex::new(None),
++-            })
++-        });
+++        let image_usage = match laid_over {
+++            true if plan.linear_resolves && !resolved => {
+++                in_place_usage & !vk::ImageUsageFlags::COLOR_ATTACHMENT
+++            }
+++            true => in_place_usage,
+++            false => plan.image_usage(),
+++        };
+++        let looped = image_usage.contains(vk::ImageUsageFlags::ATTACHMENT_FEEDBACK_LOOP_EXT);
+++        let shadowing =
+++            (plan.attachment_reads && !looped && (!laid_over || plan.shadow_offered(core, &shape)))
+++                .then(|| {
+++                    Box::new(Shadowing {
+++                        made: (d, shape, plan.shadow()),
+++                        shadow: Mutex::new(None),
+++                    })
+++                });
+++        let attachment_reads =
+++            in_place_attachment_reads(plan.attachment_reads, looped, shadowing.is_some());
++         // In place in the runtime's own memory with no attachment usage, where the plan's optimal
++         // image takes it, a pass resolves into such an image and copies it into the bytes.
++-        let own = laid_over && matches!(laid, Some(Laid::Own));
+++        let own = laid_over && matches!(laid, Some(Laid::Own { .. }));
++         let resolving = (own && !resolved && plan.resolves).then(|| {
++             Box::new(Resolving {
++                 made: (d, shape, plan.resolved()),
++@@ -1763,13 +1803,10 @@ impl Device {
++             resolving,
++             aspects: plan.aspects,
++             format: plan.format,
++-            // A linear image in place takes the attachment usage for its resolves where they stay
++-            // within reach.
++-            usage: match (laid_over, resolved) {
++-                (true, true) => plan.usage | vk::ImageUsageFlags::COLOR_ATTACHMENT,
++-                (true, false) => plan.usage,
++-                (false, _) => plan.image_usage(),
++-            },
+++            // Record the exact usage the VkImage was made with (keeping attachment usage for
+++            // linear resolves only where they stay within reach, and feedback usage only when
+++            // accepted).
+++            usage: image_usage,
++             view_formats: plan.view_formats.clone(),
++             cube: plan.cube,
++             linear_attachment: false,
++@@ -1945,20 +1982,15 @@ impl Plan {
++         }
++     }
++ 
++-    /// The usage of a linear image of the plan, over a buffer in place: without the feedback
++-    /// usage, as no pass moves it to the feedback layout, and without the sampled usage where
++-    /// shaders do not read the texture, as a colour render target takes it for attachment reads
++-    /// alone; with the colour attachment usage where a pass resolves into it
++-    /// (`linear_resolves`).
++-    fn linear_usage(&self) -> vk::ImageUsageFlags {
++-        let mut usage = self.usage & !vk::ImageUsageFlags::ATTACHMENT_FEEDBACK_LOOP_EXT;
++-        if !self.read {
++-            usage &= !vk::ImageUsageFlags::SAMPLED;
++-        }
++-        if self.linear_resolves {
++-            usage |= vk::ImageUsageFlags::COLOR_ATTACHMENT;
++-        }
++-        usage
+++    /// The usage of a linear image of the plan, over a buffer in place.
+++    ///
+++    /// When `feedback` is true and the plan carries `ATTACHMENT_FEEDBACK_LOOP_EXT`, keeps both
+++    /// `SAMPLED` and `ATTACHMENT_FEEDBACK_LOOP_EXT` so a render pass can fetch or sample the
+++    /// attachment in place through the feedback loop. Otherwise strips feedback usage (and
+++    /// `SAMPLED` where shaders do not read the texture directly); keeps `COLOR_ATTACHMENT` where
+++    /// a pass resolves into it (`linear_resolves`).
+++    fn linear_usage(&self, feedback: bool) -> vk::ImageUsageFlags {
+++        linear_image_usage(self.usage, self.read, self.linear_resolves, feedback)
++     }
++ 
++     /// Whether a draw may read an attachment of its own pass through a texture of the plan, where
++@@ -2211,77 +2243,373 @@ fn check_over(
++     let (block, copy) = buffer.held();
++     // An image bound in imported memory is made for the import's handle
++     // (VUID-vkBindImageMemory-memory-02989), so in the undefined layout
++-    // (VUID-VkImageCreateInfo-pNext-01443), whose move keeps no bytes. Over a dma-buf's one
++-    // import, in place: the move home acquires the bytes from the foreign queue family, which
++-    // Vulkan's external resource sharing keeps ("To make the contents of the underlying memory
++-    // accessible in the destination instance or API, applications must ... Acquire exclusive
++-    // ownership"). Over host memory, the copy: Vulkan shares that memory's ownership with the host
++-    // ("Importing memory from a host pointer shares ownership of the memory between the host and
++-    // the Vulkan implementation"), whose accesses are host accesses, never a release that an
++-    // acquire could match. Over several dma-bufs, the copy: the block's buffer is sparse, bound to
++-    // many imports. Over an exported block, the copy too: its memory is dedicated to its buffer,
++-    // and no image is bound in it (VUID-vkBindImageMemory-memory-10926).
++-    let laid = match (copy, block.memory.own) {
++-        (Some(_), _) | (None, None) => Laid::Own,
+++    // (VUID-VkImageCreateInfo-pNext-01443). Over a dma-buf's one import, in place: the move home
+++    // acquires the bytes from the foreign queue family. Over host memory, in place where the
+++    // device supports non-dedicated `HOST_ALLOCATION_EXT` linear images (preferring explicit
+++    // `DRM_FORMAT_MOD_LINEAR` so driver-accepted row pitches bind directly, falling back to plain
+++    // `LINEAR`): the image stays in `GENERAL` through copies and orders prior host writes on move
+++    // home (`HOST_WRITE -> ALL_COMMANDS`). Over several dma-bufs or an exported block, the copy:
+++    // sparse or dedicated-to-buffer memory cannot bind an image.
+++    let spilled = copy.is_none() && block.memory.spilled();
+++    let fits = |max: Option<vk::Extent3D>| {
+++        max.is_some_and(|max| d.width <= max.width && d.height <= max.height)
+++    };
+++    let probe = |plan: &Plan,
+++                 handle: Option<vk::ExternalMemoryHandleTypeFlags>,
+++                 explicit_modifier: bool| {
+++        let wants_feedback = plan.attachment_reads
+++            && plan
+++                .usage
+++                .contains(vk::ImageUsageFlags::ATTACHMENT_FEEDBACK_LOOP_EXT);
+++        let check_one = |feedback: bool| {
+++            let usage = plan.linear_usage(feedback);
+++            let extent = fits(linear_extent(
+++                core,
+++                shape,
+++                plan,
+++                usage,
+++                handle,
+++                explicit_modifier,
+++            ));
+++            let features = extent
+++                && if explicit_modifier {
+++                    drm_linear_plan_features(core, plan, usage)
+++                } else {
+++                    let (linear, optimal) = core.format_features(plan.format);
+++                    let stored = !plan.extended
+++                        || (plan.view_formats.iter()).all(|&format| {
+++                            let (linear, optimal) = core.format_features(format);
+++                            linear.contains(optimal & kept_features(vk::ImageUsageFlags::STORAGE))
+++                        });
+++                    linear.contains(optimal & kept_features(usage)) && stored
+++                };
+++            (extent, features)
+++        };
+++        if wants_feedback {
+++            let (extent, features) = check_one(true);
+++            if extent && features {
+++                return (true, true, true);
+++            }
+++        }
+++        let (extent, features) = check_one(false);
+++        (extent, features, false)
+++    };
+++    let (base_laid, handle) = match (copy, block.memory.own) {
+++        (Some(_), _) | (None, None) => (Laid::Own { feedback: false }, None),
++         (
++             None,
++             Some(Own::Import {
++                 handle: ImportHandle::DmaBuf,
++                 memory_type,
++             }),
++-        ) if core.exports.foreign => Laid::DmaBuf { memory_type },
+++        ) if core.exports.foreign => (
+++            Laid::DmaBuf {
+++                memory_type,
+++                feedback: false,
+++            },
+++            Some(vk::ExternalMemoryHandleTypeFlags::DMA_BUF_EXT),
+++        ),
+++        (
+++            None,
+++            Some(Own::Import {
+++                handle: ImportHandle::HostMemory,
+++                memory_type,
+++            }),
+++        ) => {
+++            if spilled {
+++                return Ok(Err(OverCause::Spilled));
+++            }
+++            let handle = Some(vk::ExternalMemoryHandleTypeFlags::HOST_ALLOCATION_EXT);
+++            let modifier = core.exports.modifiers.then(|| probe(plan, handle, true));
+++            if let Some((true, true, feedback)) = modifier {
+++                return Ok(Ok(Laid::HostMemory {
+++                    memory_type,
+++                    explicit_modifier: true,
+++                    feedback,
+++                }));
+++            }
+++            let plain = plan.extended.then(|| plan.unextended());
+++            let plain_mod = plain
+++                .as_ref()
+++                .and_then(|plain| core.exports.modifiers.then(|| probe(plain, handle, true)));
+++            if let Some((true, true, feedback)) = plain_mod {
+++                *plan = plain.unwrap();
+++                return Ok(Ok(Laid::HostMemory {
+++                    memory_type,
+++                    explicit_modifier: true,
+++                    feedback,
+++                }));
+++            }
+++            let linear = probe(plan, handle, false);
+++            if let (true, true, feedback) = linear {
+++                return Ok(Ok(Laid::HostMemory {
+++                    memory_type,
+++                    explicit_modifier: false,
+++                    feedback,
+++                }));
+++            }
+++            let plain_lin = plain.as_ref().map(|plain| probe(plain, handle, false));
+++            if let Some((true, true, feedback)) = plain_lin {
+++                *plan = plain.unwrap();
+++                return Ok(Ok(Laid::HostMemory {
+++                    memory_type,
+++                    explicit_modifier: false,
+++                    feedback,
+++                }));
+++            }
+++            return Ok(select_host_plan(memory_type, modifier, plain_mod, linear, plain_lin).0);
+++        }
++         (None, Some(own)) => return Ok(Err(memory_cause(own))),
++     };
++-    let spilled = copy.is_none() && block.memory.spilled();
++-    let fits = |max: Option<vk::Extent3D>| {
++-        max.is_some_and(|max| d.width <= max.width && d.height <= max.height)
++-    };
++-    let (linear, optimal) = core.format_features(plan.format);
++-    // Its linear image's query, and its linear tiling's features of each use its optimal tiling
++-    // holds: its format's, and an extended plan's other formats' storage (`Plan::extended`).
++-    let held = |plan: &Plan| {
++-        let extent = fits(linear_extent(core, shape, plan, laid.handle()));
++-        let stored = !plan.extended
++-            || (plan.view_formats.iter()).all(|&format| {
++-                let (linear, optimal) = core.format_features(format);
++-                linear.contains(optimal & kept_features(vk::ImageUsageFlags::STORAGE))
++-            });
++-        let features = linear.contains(optimal & kept_features(plan.usage)) && stored;
++-        (extent, features)
++-    };
++-    let (mut extent, mut features) = held(plan);
+++    if spilled {
+++        return Ok(Err(OverCause::Spilled));
+++    }
+++    let (mut extent, mut features, mut feedback) = probe(plan, handle, false);
++     // A linear image the device makes plain but not extended is made plain, in place: its views
++     // of another format have no storage element, and no copy is made for them.
++     if plan.extended && !(extent && features) {
++         let plain = plan.unextended();
++-        if held(&plain) == (true, true) {
++-            (extent, features) = (true, true);
+++        let (plain_extent, plain_features, plain_feedback) = probe(&plain, handle, false);
+++        if plain_extent && plain_features {
+++            (extent, features, feedback) = (true, true, plain_feedback);
++             *plan = plain;
++         }
++     }
++     // In place in a block of the runtime's own, its linear image takes the colour attachment
++     // usage where the plan resolves, its tiling's features hold the attachment and the query
++     // makes the image with it; else it is made without it, and stays in place.
+++    let (linear, _) = core.format_features(plan.format);
++     let attached = linear.contains(vk::FormatFeatureFlags2::COLOR_ATTACHMENT);
++-    if !spilled && extent && features && plan.resolves && attached && matches!(laid, Laid::Own) {
+++    if extent && features && plan.resolves && attached && matches!(base_laid, Laid::Own { .. }) {
++         plan.linear_resolves = true;
++-        plan.linear_resolves = fits(linear_extent(core, shape, plan, None));
+++        let resolve_usage = plan.linear_usage(false);
+++        plan.linear_resolves = fits(linear_extent(core, shape, plan, resolve_usage, None, false));
++     }
++-    Ok(if spilled {
++-        Err(OverCause::Spilled)
++-    } else if !extent {
+++    Ok(if !extent {
++         // A dma-buf's linear image is asked of its external query for the handle.
++-        Err(match laid {
+++        Err(match base_laid {
++             Laid::DmaBuf { .. } => OverCause::DmaBuf,
++-            Laid::Own => OverCause::Linear,
+++            Laid::HostMemory { .. } => OverCause::HostMemory,
+++            Laid::Own { .. } => OverCause::Linear,
++         })
++     } else if !features {
++         Err(OverCause::LinearFeatures)
++     } else {
++-        Ok(laid)
+++        Ok(base_laid.with_feedback(feedback))
++     })
++ }
++ 
+++/// `DRM_FORMAT_MOD_LINEAR`.
+++const MOD_LINEAR: u64 = 0;
+++
+++/// Computes the `VkImageUsageFlags` for a linear in-place image over a buffer.
+++///
+++/// Preserves `SAMPLED | ATTACHMENT_FEEDBACK_LOOP_EXT` when `feedback` is true and `plan_usage`
+++/// carries `ATTACHMENT_FEEDBACK_LOOP_EXT`; otherwise strips `ATTACHMENT_FEEDBACK_LOOP_EXT` (and
+++/// `SAMPLED` when shaders do not read the texture directly). Adds `COLOR_ATTACHMENT` when
+++/// `linear_resolves` is set.
+++pub(crate) fn linear_image_usage(
+++    plan_usage: vk::ImageUsageFlags,
+++    read: bool,
+++    linear_resolves: bool,
+++    feedback: bool,
+++) -> vk::ImageUsageFlags {
+++    let mut usage =
+++        if feedback && plan_usage.contains(vk::ImageUsageFlags::ATTACHMENT_FEEDBACK_LOOP_EXT) {
+++            plan_usage
+++        } else {
+++            let mut usage = plan_usage & !vk::ImageUsageFlags::ATTACHMENT_FEEDBACK_LOOP_EXT;
+++            if !read {
+++                usage &= !vk::ImageUsageFlags::SAMPLED;
+++            }
+++            usage
+++        };
+++    if linear_resolves {
+++        usage |= vk::ImageUsageFlags::COLOR_ATTACHMENT;
+++    }
+++    usage
+++}
+++
+++/// Whether an image supports in-pass attachment reads (`[[color(n)]]` fetch and same-pass
+++/// sampling): enabled whenever the plan asks for attachment reads and either the image carries
+++/// `ATTACHMENT_FEEDBACK_LOOP_EXT` (`looped`) or a shadow image was configured (`has_shadow`).
+++pub(crate) fn in_place_attachment_reads(plan_reads: bool, looped: bool, has_shadow: bool) -> bool {
+++    plan_reads && (looped || has_shadow)
+++}
+++
+++/// Source stage and access mask for an unzeroed image's move home: an in-place image over a
+++/// buffer starting from `UNDEFINED` (a host-memory import, whose external handle bars
+++/// `PREINITIALIZED` under `VUID-VkImageCreateInfo-pNext-01443`) makes prior host writes visible
+++/// to all commands; any other unzeroed homing starts from `NONE`.
+++pub(crate) fn homing_host_dependency(
+++    first: vk::ImageLayout,
+++    over_buffer: bool,
+++) -> (vk::PipelineStageFlags2, vk::AccessFlags2) {
+++    match first {
+++        vk::ImageLayout::UNDEFINED if over_buffer => {
+++            (vk::PipelineStageFlags2::HOST, vk::AccessFlags2::HOST_WRITE)
+++        }
+++        _ => (vk::PipelineStageFlags2::NONE, vk::AccessFlags2::NONE),
+++    }
+++}
+++
+++/// Whether copies keep an image in its home (`GENERAL`) layout instead of transitioning to
+++/// `TRANSFER_{SRC,DST}_OPTIMAL`: images starting `PREINITIALIZED`, in-place buffer aliases
+++/// (including host-memory imports starting `UNDEFINED`), and exported surface planes.
+++pub(crate) fn keeps_home_on_copy(first: vk::ImageLayout, over_buffer: bool, surface: bool) -> bool {
+++    first == vk::ImageLayout::PREINITIALIZED || over_buffer || surface
+++}
+++
+++/// Selects the in-place layout for a host-memory import from the explicit `DRM_FORMAT_MOD_LINEAR`
+++/// probe (`modifier`: `Some((extent_ok, features_ok, feedback))` when
+++/// `VK_EXT_image_drm_format_modifier` is enabled) and the plain `LINEAR` probe
+++/// (`linear`: `(extent_ok, features_ok, feedback)`).
+++/// Selects the in-place layout and whether to drop extended storage view usage for a host-memory
+++/// import, probing explicit `DRM_FORMAT_MOD_LINEAR` (extended, then unextended) ahead of plain
+++/// `LINEAR` (extended, then unextended) so driver-accepted row pitches bind directly before
+++/// falling back to strict plain linear pitch limits.
+++pub(crate) fn select_host_plan(
+++    memory_type: u32,
+++    modifier: Option<(bool, bool, bool)>,
+++    plain_modifier: Option<(bool, bool, bool)>,
+++    linear: (bool, bool, bool),
+++    plain_linear: Option<(bool, bool, bool)>,
+++) -> (Result<Laid, OverCause>, bool) {
+++    if let Some((true, true, feedback)) = modifier {
+++        (
+++            Ok(Laid::HostMemory {
+++                memory_type,
+++                explicit_modifier: true,
+++                feedback,
+++            }),
+++            false,
+++        )
+++    } else if let Some((true, true, feedback)) = plain_modifier {
+++        (
+++            Ok(Laid::HostMemory {
+++                memory_type,
+++                explicit_modifier: true,
+++                feedback,
+++            }),
+++            true,
+++        )
+++    } else if let (true, true, feedback) = linear {
+++        (
+++            Ok(Laid::HostMemory {
+++                memory_type,
+++                explicit_modifier: false,
+++                feedback,
+++            }),
+++            false,
+++        )
+++    } else if let Some((true, true, feedback)) = plain_linear {
+++        (
+++            Ok(Laid::HostMemory {
+++                memory_type,
+++                explicit_modifier: false,
+++                feedback,
+++            }),
+++            true,
+++        )
+++    } else if modifier.is_some_and(|(extent, _, _)| extent)
+++        || plain_modifier.is_some_and(|(extent, _, _)| extent)
+++        || linear.0
+++        || plain_linear.is_some_and(|(extent, _, _)| extent)
+++    {
+++        (Err(OverCause::LinearFeatures), false)
+++    } else {
+++        (Err(OverCause::HostMemory), false)
+++    }
+++}
+++
+++#[cfg(test)]
+++pub(crate) fn select_host_laid(
+++    memory_type: u32,
+++    modifier: Option<(bool, bool, bool)>,
+++    linear: (bool, bool, bool),
+++) -> Result<Laid, OverCause> {
+++    select_host_plan(memory_type, modifier, None, linear, None).0
+++}
+++
+++/// Whether `bytes_per_row` fits an explicit DRM modifier plane layout without 32-bit truncation.
+++pub(crate) fn in_place_pitch_fits(bytes_per_row: u64, explicit_modifier: bool) -> bool {
+++    !explicit_modifier || u32::try_from(bytes_per_row).is_ok()
+++}
+++
+++/// Maps a `vkCreateImage` error on an in-place explicit-modifier image to a fallback copy cause.
+++pub(crate) fn in_place_create_error(
+++    result: vk::Result,
+++    explicit_modifier: bool,
+++) -> Option<OverCause> {
+++    (explicit_modifier && result == vk::Result::ERROR_INVALID_DRM_FORMAT_MODIFIER_PLANE_LAYOUT_EXT)
+++        .then_some(OverCause::Pitch)
+++}
+++
+++/// Aspect mask for `vkGetImageSubresourceLayout` on an in-place linear image: single-plane DRM
+++/// modifier images require `MEMORY_PLANE_0_EXT` (`VUID-vkGetImageSubresourceLayout-image-02270`).
+++pub(crate) fn in_place_subresource_aspect(explicit_modifier: bool) -> vk::ImageAspectFlags {
+++    if explicit_modifier {
+++        vk::ImageAspectFlags::MEMORY_PLANE_0_EXT
+++    } else {
+++        vk::ImageAspectFlags::COLOR
+++    }
+++}
+++
+++/// The format features of `format` under single-plane `DRM_FORMAT_MOD_LINEAR`
+++/// (`VK_EXT_image_drm_format_modifier`), or empty where no single-plane linear modifier is listed.
+++fn drm_linear_features(core: &Core, format: vk::Format) -> vk::FormatFeatureFlags2 {
+++    let mut list = vk::DrmFormatModifierPropertiesList2EXT::default();
+++    let mut properties = vk::FormatProperties2::default().push_next(&mut list);
+++    // SAFETY: `core.physical` is `core.instance`'s, which is Vulkan 1.3, and the caller gates this
+++    // on `core.exports.modifiers`.
+++    unsafe {
+++        (core.instance.vk()).get_physical_device_format_properties2(
+++            core.physical,
+++            format,
+++            &mut properties,
+++        )
+++    };
+++    let count = list.drm_format_modifier_count as usize;
+++    if count == 0 {
+++        return vk::FormatFeatureFlags2::empty();
+++    }
+++    let mut entries = vec![vk::DrmFormatModifierProperties2EXT::default(); count];
+++    let mut list = vk::DrmFormatModifierPropertiesList2EXT::default()
+++        .drm_format_modifier_properties(&mut entries);
+++    let mut properties = vk::FormatProperties2::default().push_next(&mut list);
+++    // SAFETY: as above; `entries` holds the count the device answered.
+++    unsafe {
+++        (core.instance.vk()).get_physical_device_format_properties2(
+++            core.physical,
+++            format,
+++            &mut properties,
+++        )
+++    };
+++    let written = (list.drm_format_modifier_count as usize).min(entries.len());
+++    entries[..written]
+++        .iter()
+++        .find(|entry| {
+++            entry.drm_format_modifier == MOD_LINEAR && entry.drm_format_modifier_plane_count == 1
+++        })
+++        .map_or(vk::FormatFeatureFlags2::empty(), |entry| {
+++            entry.drm_format_modifier_tiling_features
+++        })
+++}
+++
+++/// Whether single-plane `DRM_FORMAT_MOD_LINEAR` holds every feature `usage` needs from optimal
+++/// tiling, for both `plan.format` and any mutable view formats in `plan.view_formats`.
+++fn drm_linear_plan_features(core: &Core, plan: &Plan, usage: vk::ImageUsageFlags) -> bool {
+++    let kept = kept_features(usage);
+++    let check = |format: vk::Format| {
+++        let (_, optimal) = core.format_features(format);
+++        drm_linear_features(core, format).contains(optimal & kept)
+++    };
+++    check(plan.format)
+++        && (plan.view_formats.iter().copied())
+++            .filter(|&vf| vf != plan.format)
+++            .all(check)
+++}
+++
++ /// Why a texture over a buffer in `own`'s memory, which no in-place image takes
++ /// ([`check_over`]), is the counted copy: the import's or export's kind.
++ fn memory_cause(own: Own) -> OverCause {
++@@ -2302,23 +2630,52 @@ fn memory_cause(own: Own) -> OverCause {
++ }
++ 
++ /// The memory a texture over a buffer in place lies in ([`check_over`]).
++-#[derive(Clone, Copy)]
++-enum Laid {
+++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+++pub(crate) enum Laid {
++     /// A block of the runtime's own, or a Managed buffer's device copy: the image is made
++     /// preinitialized, and its move home keeps the bytes.
++-    Own,
+++    Own { feedback: bool },
++     /// A dma-buf's one import (`Device::import_dma_buf`, on Unix), in its memory type: the image
++     /// is made for the dma-buf, undefined, and its move home acquires the bytes from the foreign
++     /// queue family, preinitialized ([`Image::homing`]).
++-    DmaBuf { memory_type: u32 },
+++    DmaBuf { memory_type: u32, feedback: bool },
+++    /// A host-memory import (`VK_EXT_external_memory_host`), in `memory_type`: the image is made
+++    /// undefined for `HOST_ALLOCATION_EXT` and moves home to `GENERAL` with a `HOST_WRITE`
+++    /// dependency. When `explicit_modifier` is true it uses `DRM_FORMAT_MOD_LINEAR` with explicit
+++    /// row pitch; otherwise plain `LINEAR`.
+++    HostMemory {
+++        memory_type: u32,
+++        explicit_modifier: bool,
+++        feedback: bool,
+++    },
++ }
++ 
++ impl Laid {
++-    /// The handle of the import the image is made for.
++-    fn handle(self) -> Option<vk::ExternalMemoryHandleTypeFlags> {
+++    /// Whether the linear image takes `ATTACHMENT_FEEDBACK_LOOP_EXT` for in-pass attachment reads.
+++    fn feedback(self) -> bool {
++         match self {
++-            Laid::Own => None,
++-            Laid::DmaBuf { .. } => Some(vk::ExternalMemoryHandleTypeFlags::DMA_BUF_EXT),
+++            Laid::Own { feedback }
+++            | Laid::DmaBuf { feedback, .. }
+++            | Laid::HostMemory { feedback, .. } => feedback,
+++        }
+++    }
+++
+++    fn with_feedback(self, feedback: bool) -> Laid {
+++        match self {
+++            Laid::Own { .. } => Laid::Own { feedback },
+++            Laid::DmaBuf { memory_type, .. } => Laid::DmaBuf {
+++                memory_type,
+++                feedback,
+++            },
+++            Laid::HostMemory {
+++                memory_type,
+++                explicit_modifier,
+++                ..
+++            } => Laid::HostMemory {
+++                memory_type,
+++                explicit_modifier,
+++                feedback,
+++            },
++         }
++     }
++ }
++@@ -2375,18 +2732,30 @@ fn linear_extent(
++     core: &Core,
++     shape: &Shape,
++     plan: &Plan,
+++    usage: vk::ImageUsageFlags,
++     handle: Option<vk::ExternalMemoryHandleTypeFlags>,
+++    explicit_modifier: bool,
++ ) -> Option<vk::Extent3D> {
++     let mut list = plan.format_list();
+++    let mut modifier = vk::PhysicalDeviceImageDrmFormatModifierInfoEXT::default()
+++        .drm_format_modifier(MOD_LINEAR)
+++        .sharing_mode(vk::SharingMode::EXCLUSIVE);
++     let mut linear = vk::PhysicalDeviceImageFormatInfo2::default()
++         .format(plan.format)
++         .ty(shape.image_type)
++-        .tiling(vk::ImageTiling::LINEAR)
++-        .usage(plan.linear_usage())
+++        .tiling(if explicit_modifier {
+++            vk::ImageTiling::DRM_FORMAT_MODIFIER_EXT
+++        } else {
+++            vk::ImageTiling::LINEAR
+++        })
+++        .usage(usage)
++         .flags(plan.flags(shape));
++     if !plan.view_formats.is_empty() {
++         linear = linear.push_next(&mut list);
++     }
+++    if explicit_modifier {
+++        linear = linear.push_next(&mut modifier);
+++    }
++     let Some(handle) = handle else {
++         return core
++             .image_format_properties(&linear)
++@@ -2452,14 +2821,15 @@ fn linear_layout(
++     shape: &Shape,
++     plan: &Plan,
++ ) -> Option<(u64, u64, u64)> {
++-    let max = linear_extent(core, shape, plan, None)?;
+++    let usage = plan.linear_usage(false);
+++    let max = linear_extent(core, shape, plan, usage, None, false)?;
++     if d.width > max.width || d.height > max.height {
++         return None;
++     }
++     let mut list = plan.format_list();
++     let info = image_info(d, shape, plan, &mut list)
++         .tiling(vk::ImageTiling::LINEAR)
++-        .usage(plan.linear_usage())
+++        .usage(usage)
++         .initial_layout(vk::ImageLayout::PREINITIALIZED);
++     let device = &core.device;
++     // SAFETY: the device is live, and makes a linear image of the format, usage and extent.
++@@ -3227,6 +3597,8 @@ enum Bind {
++         base: u64,
++         memory_type: u32,
++         handle: Option<vk::ExternalMemoryHandleTypeFlags>,
+++        explicit_modifier: bool,
+++        usage: vk::ImageUsageFlags,
++         block_len: u64,
++         at: u64,
++         bytes_per_row: u64,
++@@ -3323,12 +3695,45 @@ impl Made {
++         let mut list = plan.format_list();
++         let info = image_info(d, shape, plan, &mut list);
++         let mut external = vk::ExternalMemoryImageCreateInfo::default();
+++        let plane_layout = match bind {
+++            Bind::InPlace { bytes_per_row, .. } => vk::SubresourceLayout {
+++                offset: 0,
+++                size: 0,
+++                row_pitch: bytes_per_row,
+++                array_pitch: 0,
+++                depth_pitch: 0,
+++            },
+++            Bind::Pooled | Bind::Heap { .. } => vk::SubresourceLayout::default(),
+++        };
+++        let mut explicit = vk::ImageDrmFormatModifierExplicitCreateInfoEXT::default()
+++            .drm_format_modifier(MOD_LINEAR)
+++            .plane_layouts(std::slice::from_ref(&plane_layout));
+++        let explicit_modifier = matches!(
+++            bind,
+++            Bind::InPlace {
+++                explicit_modifier: true,
+++                ..
+++            }
+++        );
++         let info = match bind {
++-            Bind::InPlace { handle, .. } => {
+++            Bind::InPlace {
+++                handle,
+++                usage,
+++                bytes_per_row,
+++                explicit_modifier,
+++                ..
+++            } => {
+++                if !in_place_pitch_fits(bytes_per_row, explicit_modifier) {
+++                    return Err(Unmade::Unfit(OverCause::Pitch));
+++                }
++                 let info = info
++-                    .tiling(vk::ImageTiling::LINEAR)
++-                    .usage(plan.linear_usage());
++-                match handle {
+++                    .tiling(if explicit_modifier {
+++                        vk::ImageTiling::DRM_FORMAT_MODIFIER_EXT
+++                    } else {
+++                        vk::ImageTiling::LINEAR
+++                    })
+++                    .usage(usage);
+++                let info = match handle {
++                     // Made for the import's handle (`VUID-vkBindImageMemory-memory-02989`), so
++                     // undefined (`VUID-VkImageCreateInfo-pNext-01443`).
++                     Some(handle) => {
++@@ -3337,14 +3742,24 @@ impl Made {
++                             .push_next(&mut external)
++                     }
++                     None => info.initial_layout(vk::ImageLayout::PREINITIALIZED),
+++                };
+++                if explicit_modifier {
+++                    info.push_next(&mut explicit)
+++                } else {
+++                    info
++                 }
++             }
++             Bind::Pooled | Bind::Heap { .. } => info,
++         };
++         let started = crate::host_time();
++         // SAFETY: the caller's contract: the device makes such an image.
++-        let image =
++-            unsafe { device.create_image(&info, None) }.map_err(Error::vulkan("vkCreateImage"))?;
+++        let image = match unsafe { device.create_image(&info, None) } {
+++            Ok(image) => image,
+++            Err(result) => match in_place_create_error(result, explicit_modifier) {
+++                Some(cause) => return Err(Unmade::Unfit(cause)),
+++                None => return Err(Error::vulkan("vkCreateImage")(result).into()),
+++            },
+++        };
++         let created = crate::host_time() - started;
++         self.image = Some(image);
++         let mut dedicated = vk::MemoryDedicatedRequirements::default();
++@@ -3374,19 +3789,22 @@ impl Made {
++             base,
++             memory_type,
++             handle: _,
+++            explicit_modifier,
+++            usage: _,
++             block_len,
++             at,
++             bytes_per_row,
++             reach,
++         } = bind
++         {
++-            let color = vk::ImageSubresource {
++-                aspect_mask: vk::ImageAspectFlags::COLOR,
+++            let subresource = vk::ImageSubresource {
+++                aspect_mask: in_place_subresource_aspect(explicit_modifier),
++                 mip_level: 0,
++                 array_layer: 0,
++             };
++-            // SAFETY: the image is the device's, linear, of one level and layer of a color format.
++-            let layout = unsafe { device.get_image_subresource_layout(image, color) };
+++            // SAFETY: the image is the device's, linear (or single-plane DRM_FORMAT_MOD_LINEAR),
+++            // of one level and layer of a color format.
+++            let layout = unsafe { device.get_image_subresource_layout(image, subresource) };
++             let memory_fits = dedicated.requires_dedicated_allocation == vk::FALSE
++                 && bits & (1 << memory_type) != 0
++                 && at
++@@ -4238,6 +4656,10 @@ impl Texture {
++         self.view(pixel_format, texture_type, levels, slices, None, index)
++     }
++ 
+++    pub(crate) fn is_over_read_only_buffer(&self) -> bool {
+++        self.inner.over().is_some_and(|b| b.is_read_only())
+++    }
+++
++     /// `newTextureViewWithPixelFormat:textureType:levels:slices:swizzle:`: the view
++     /// [`Texture::new_texture_view`] makes, its texels sampled and read through `swizzle`
++     /// combined with this texture's own, as Metal combines them: each channel the view takes from
++@@ -4679,6 +5101,9 @@ impl Texture {
++         bytes_per_image: u64,
++     ) -> Result<(), Error> {
++         crate::command::not_in_scheduled_handler()?;
+++        if self.is_over_read_only_buffer() {
+++            return Err(Error::Refused(Refusal::ReadOnlyBuffer));
+++        }
++         let inner = &self.inner;
++         let len = bytes.len() as u64;
++         let Some(copy) = inner.copy(region, level, slice, len, bytes_per_row, bytes_per_image)?
++@@ -4950,6 +5375,22 @@ pub(crate) trait TextureObject {
 +     /// The texture itself.
 +     fn object(&self) -> &Arc<TextureInner>;
 + 
-++    fn reference_device(&self) -> usize { Arc::as_ptr(&self.object().core) as usize }
+++    fn reference_device(&self) -> usize {
+++        Arc::as_ptr(&self.object().core) as usize
+++    }
 ++    fn in_declared_heap(&self, heaps: &std::collections::HashSet<crate::BlockId>) -> bool {
 ++        let inner = self.object();
-++        inner.heap.as_ref().and_then(|heap| heap.block()).is_some_and(|block| heaps.contains(&block)) ||
-++            inner.named.as_ref().is_some_and(|named| named.buffer.in_declared_heap(heaps))
+++        inner
+++            .heap
+++            .as_ref()
+++            .and_then(|heap| heap.block())
+++            .is_some_and(|block| heaps.contains(&block))
+++            || inner
+++                .named
+++                .as_ref()
+++                .is_some_and(|named| named.buffer.in_declared_heap(heaps))
 ++    }
 ++
 +     /// Its resource id in the encoders' hazard sets: a view's is its parent's, so the hazards
 +     /// between them are one texture's.
 +     fn id(&self) -> u32 {
++@@ -5987,6 +6428,13 @@ impl Buffer {
++         offset: u64,
++         bytes_per_row: u64,
++     ) -> Result<Texture, Error> {
+++        if self.is_read_only()
+++            && descriptor
+++                .usage
+++                .intersects(TextureUsage::SHADER_WRITE | TextureUsage::RENDER_TARGET)
+++        {
+++            return Err(Error::Refused(Refusal::ReadOnlyBuffer));
+++        }
++         let mut d = *descriptor;
++         d.storage_mode = match self.held() {
++             (_, Some(_)) => StorageMode::Managed,
++@@ -6389,7 +6837,7 @@ impl Device {
++         let texel = over_texel(d, &plan)?;
++         Ok(crate::surface::PlanePlan {
++             format: plan.format,
++-            usage: plan.linear_usage(),
+++            usage: plan.linear_usage(false),
++             looped: plan.reads_attachments(self.core()) && self.core().feedback_loop,
++             view_formats: plan.view_formats.clone(),
++             texel,
++@@ -6422,7 +6870,7 @@ impl Device {
++             }
++             // The plane's image is made by the surface's rule ([`Device::plane_plan`]).
++             let plan = plan.unextended();
++-            let missing = plan.linear_usage() & !made.usage;
+++            let missing = plan.linear_usage(false) & !made.usage;
++             if !missing.is_empty() {
++                 return Err(Error::Unsupported(Gap::SurfaceUsage {
++                     pixel_format: d.pixel_format,
 +diff --git a/crates/metal2vulkan-runtime/src/times.rs b/crates/metal2vulkan-runtime/src/times.rs
 +index 2d703c9cd..10b73c1c8 100644
 +--- a/crates/metal2vulkan-runtime/src/times.rs
@@ -4243,6 +6407,414 @@ index 0000000..6bcd3a3
 + pub const HOST_DOMAIN: vk::TimeDomainKHR = vk::TimeDomainKHR::CLOCK_MONOTONIC_RAW;
 + /// The host time domain of [`host_time`]'s clock, which the floor requires the device to
 + /// calibrate with its own (`VK_TIME_DOMAIN_DEVICE_EXT`).
++diff --git a/crates/metal2vulkan-validation/tests/integration/main.rs b/crates/metal2vulkan-validation/tests/integration/main.rs
++index 68ae59913..9a09cdc57 100644
++--- a/crates/metal2vulkan-validation/tests/integration/main.rs
+++++ b/crates/metal2vulkan-validation/tests/integration/main.rs
++@@ -16,7 +16,10 @@ macro_rules! bin_exe {
++     ($name:literal) => {
++         std::env::var_os(concat!("NEXTEST_BIN_EXE_", $name))
++             .map(std::path::PathBuf::from)
++-            .unwrap_or_else(|| std::path::PathBuf::from(env!(concat!("CARGO_BIN_EXE_", $name))))
+++            .unwrap_or_else(|| match option_env!(concat!("CARGO_BIN_EXE_", $name)) {
+++                Some(path) => std::path::PathBuf::from(path),
+++                None => panic!("Cargo did not provide the built binary path for {}", $name),
+++            })
++     };
++ }
++ 
++diff --git a/crates/metal2vulkan/src/cache/mod.rs b/crates/metal2vulkan/src/cache/mod.rs
++index d64c5572c..807c912ae 100644
++--- a/crates/metal2vulkan/src/cache/mod.rs
+++++ b/crates/metal2vulkan/src/cache/mod.rs
++@@ -60,7 +60,7 @@ mod tests;
++ /// unchanged version, and its bless records the version. Independent of the crate's version and of
++ /// [`ARTIFACT_FORMAT_VERSION`]. The commit that bumps it says what changed; this comment keeps no
++ /// history.
++-pub const SEMANTICS_VERSION: u32 = 2305;
+++pub const SEMANTICS_VERSION: u32 = 2306;
++ 
++ /// The byte-layout version of encoded artifacts (`CompiledFunction::to_bytes` and the
++ /// [`PipelineArtifact`] encodings). Every encoded artifact carries it, and a decode under another
++diff --git a/crates/metal2vulkan/src/lower/emit.rs b/crates/metal2vulkan/src/lower/emit.rs
++index a526d00f7..766709f7a 100644
++--- a/crates/metal2vulkan/src/lower/emit.rs
+++++ b/crates/metal2vulkan/src/lower/emit.rs
++@@ -185,8 +185,9 @@ pub struct EmitCx<'a> {
++     entry_block: Option<SBlockId>,
++     /// The block the entry hooks end in, where the walk of the body starts: it dominates every
++     /// block of the body, so its memo entries outlive the block that emitted them too. It is the
++-    /// entry block but where a hook closed a construct there: a dispatch past its grid
++-    /// (`dispatch::emit_entry`) returns from an arm, and the hooks after it, the sink's address
+++    /// entry block but where a hook closed a construct there: the floor's tail guard
+++    /// (`EmitCx::emit_tail_guard`) or a dispatch past its grid (`dispatch::emit_entry`) returns
+++    /// from an arm, and the hooks after it, the sink's address
++     /// among them (`access::dynamic::emit_entry`), run in its merge.
++     hooks_block: Option<SBlockId>,
++     /// While a workgroup synchronization of a predicated walk is emitted, the calling invocation's
++@@ -513,46 +514,29 @@ impl<'a> EmitCx<'a> {
++     /// load, so a read that canonicalization deletes cannot make the others load it again; a placed
++     /// field no instruction reads leaves with the other unused values (`spirv::dead`).
++     ///
++-    /// The fields read from their push members load first, then the tail folds into them
++-    /// ([`EmitCx::fold_tail`]), then the spilled fields and those the function derives, which may
++-    /// read through the folded values (the parameter block's address, a slot table's).
+++    /// Loads each placed field in placement order, then emits the entry-return floor tail guard
+++    /// ([`EmitCx::emit_tail_guard`]) instead of per-field `OpSelect` folding.
++     fn load_push_fields(&mut self, fb: &mut FunctionBuilder<'_>) -> BResult<()> {
++         let plan: &Plan = self.plan;
++-        let member = |s: &Self, field: PushField| {
++-            !s.derives(field) && s.decl.push.iter().any(|m| m.field == field)
++-        };
++-        for read in [true, false] {
++-            for placed in &plan.push.fields {
++-                if member(self, placed.field) != read {
++-                    continue;
+++        for placed in &plan.push.fields {
+++            match placed.field {
+++                PushField::SlotBounds(slot) => {
+++                    self.slot_bounds(fb, slot)?;
++                 }
++-                match placed.field {
++-                    PushField::SlotBounds(slot) => {
++-                        self.slot_bounds(fb, slot)?;
++-                    }
++-                    field => {
++-                        self.push_field(fb, field)?;
++-                    }
+++                field => {
+++                    self.push_field(fb, field)?;
++                 }
++             }
++-            if read {
++-                self.fold_tail(fb)?;
++-            }
++         }
++-        Ok(())
+++        self.emit_tail_guard(fb)
++     }
++ 
++     /// Where the plan's placement ends with a tail (`lower::push::tail`): read it from the push
++     /// block, test whether it holds the value the consumer never pushes there
++-    /// ([`crate::lower::push::tail_never_pushed`]), and make each other field read from its push
++-    /// member, as the function's every use recalls it, the member's value where the test fails and
++-    /// the null of its type where it holds ([`crate::lower::push::fold_never_pushed`]): the tail's
++-    /// read lives while any other push read does, and no branch makes the body depend on it. A
++-    /// tail field the function reads from its member is the load [`EmitCx::load_push_fields`] made
++-    /// in this block, so the member is loaded once; the tail word, and a field the function
++-    /// derives elsewhere, are loaded here. A tail field of the function's own folds into the
++-    /// others alone: its own uses need no select to read it.
++-    fn fold_tail(&mut self, fb: &mut FunctionBuilder<'_>) -> BResult<()> {
+++    /// ([`crate::lower::push::tail_never_pushed`]), and return from the function where it holds
+++    /// ([`crate::lower::push::return_never_pushed`]). The branch is never taken; everything after
+++    /// it depends on the tail's read without introducing per-field selects over pushed pointers.
+++    fn emit_tail_guard(&mut self, fb: &mut FunctionBuilder<'_>) -> BResult<()> {
++         let Some(field) = crate::lower::push::tail(&self.plan.push) else {
++             return Ok(());
++         };
++@@ -564,35 +548,10 @@ impl<'a> EmitCx<'a> {
++             true => self.push_field(fb, field)?,
++             false => Self::load_member(fb, push, member.index)?,
++         };
++-        let Some(never) = crate::lower::push::tail_never_pushed(fb, value, field)? else {
++-            return Ok(());
++-        };
++-        let plan: &Plan = self.plan;
++-        for placed in &plan.push.fields {
++-            let other = placed.field;
++-            if other == field
++-                || self.derives(other)
++-                || !self.decl.push.iter().any(|m| m.field == other)
++-            {
++-                continue;
++-            }
++-            let keys = match other {
++-                PushField::SlotBounds(slot) => vec![
++-                    Invariant::Push(other),
++-                    Invariant::Bounds(slot, false),
++-                    Invariant::Bounds(slot, true),
++-                ],
++-                _ => vec![Invariant::Push(other)],
++-            };
++-            for key in keys {
++-                let Some(v) = self.recall(fb, key) else {
++-                    return Err(self.fail("a pushed field not loaded before the tail folds"));
++-                };
++-                let folded = crate::lower::push::fold_never_pushed(fb, never, v)?;
++-                self.remember(fb, key, folded);
++-            }
+++        match crate::lower::push::tail_never_pushed(fb, value, field)? {
+++            Some(never) => crate::lower::push::return_never_pushed(fb, never),
+++            None => Ok(()),
++         }
++-        Ok(())
++     }
++ 
++     /// Checked slot `slot`'s bounds (`PushField::SlotBounds`), split: its buffer's bytes before
++@@ -1623,7 +1582,7 @@ pub fn emit_module(e: &Entry, plan: &Plan, m: &mut Meter) -> Result<Emitted, Err
++             let r = em
++                 .cx
++                 .begin_hooks(&fb)
++-                // The push fields, the floor's tail folded into them (`EmitCx::fold_tail`).
+++                // The push fields and the floor's entry-return tail guard (`EmitCx::emit_tail_guard`).
++                 .and_then(|()| em.cx.load_push_fields(&mut fb))
++                 .and_then(|()| dispatch::emit_entry(&mut em.cx, &mut fb))
++                 // What the invocation draws (a merged draw's command and its slot tables) before
++diff --git a/crates/metal2vulkan/src/lower/push.rs b/crates/metal2vulkan/src/lower/push.rs
++index 4a531d183..c46a9c70c 100644
++--- a/crates/metal2vulkan/src/lower/push.rs
+++++ b/crates/metal2vulkan/src/lower/push.rs
++@@ -474,10 +474,27 @@ pub(crate) fn tail_never_pushed(
++     Ok(Some(set))
++ }
++ 
+++/// A stage's tail test `never` ([`tail_never_pushed`]): return from the function where it holds.
+++/// The branch is never taken; the return keeps the read from any optimizer, as everything the
+++/// function does after it depends on it.
+++pub(crate) fn return_never_pushed(
+++    fb: &mut crate::spirv::builder::FunctionBuilder<'_>,
+++    never: crate::spirv::ids::Value,
+++) -> crate::spirv::error::BResult<()> {
+++    use crate::spirv::builder::constructs::{ArmEnd, ArmFn};
+++    let leave: ArmFn<'_, ()> = Box::new(|fb, _| {
+++        fb.ret(None)?;
+++        Ok(ArmEnd::Exits)
+++    });
+++    fb.if_(&mut (), never, leave, None)?;
+++    Ok(())
+++}
+++
++ /// `value`, a pushed field's value as its member was read, where the stage's tail does not hold
++ /// the value the consumer never pushes there (`never`, [`tail_never_pushed`]), else the null of
++ /// its type: the value the consumer's push gives, through a select whose condition is the tail's
++ /// test, so the field's every use reads the tail too.
+++#[allow(dead_code)]
++ pub(crate) fn fold_never_pushed(
++     fb: &mut crate::spirv::builder::FunctionBuilder<'_>,
++     never: crate::spirv::ids::Value,
++diff --git a/crates/metal2vulkan/src/tests/engine_identity.rs b/crates/metal2vulkan/src/tests/engine_identity.rs
++index af70dfd31..fba7dc570 100644
++--- a/crates/metal2vulkan/src/tests/engine_identity.rs
+++++ b/crates/metal2vulkan/src/tests/engine_identity.rs
++@@ -2674,14 +2674,21 @@ const READS: u32 = 20;
++ /// A kernel reading one `uint` from each of `reads` buffers and storing their ordered fold
++ /// (`s · 3 + v`, so two swapped addresses change it) to the next buffer.
++ fn many_of(reads: u32) -> String {
+++    many_in(false, reads)
+++}
+++
+++/// [`many_of`]`s kernel, or where `fragment`, a fragment function reading the same `reads`
+++/// buffers, with no output buffer, and returning the fold's bits as its color's `x`.
+++fn many_in(fragment: bool, reads: u32) -> String {
++     let mut params = Vec::new();
++     let mut body = String::new();
++     let mut meta = Vec::new();
++-    for k in 0..=reads {
+++    let slots = reads + u32::from(!fragment);
+++    for k in 0..slots {
++         params.push(format!(
++             "ptr addrspace(1) noundef \"air-buffer-no-alias\" %{k}"
++         ));
++-        let (access, name) = match k == reads {
+++        let (access, name) = match !fragment && k == reads {
++             true => ("air.read_write", "out".to_string()),
++             false => ("air.read", format!("b{k}")),
++         };
++@@ -2698,13 +2705,27 @@ fn many_of(reads: u32) -> String {
++         ));
++     }
++     let last = reads - 1;
++-    let args: Vec<String> = (0..=reads).map(|k| format!("!{}", 100 + k)).collect();
+++    let args: Vec<String> = (0..slots).map(|k| format!("!{}", 100 + k)).collect();
+++    let (ty, end, stage, returned) = match fragment {
+++        true => (
+++            "<4 x float>",
+++            format!("  %f = bitcast i32 %s{last} to float\n  %c = insertelement <4 x float> zeroinitializer, float %f, i64 0\n  ret <4 x float> %c\n"),
+++            "fragment",
+++            "!12}\n!12 = !{!\"air.render_target\", i32 0, i32 0, !\"air.arg_type_name\", !\"float4\"",
+++        ),
+++        false => (
+++            "void",
+++            format!("  store i32 %s{last}, ptr addrspace(1) %{reads}, align 4\n  ret void\n"),
+++            "kernel",
+++            "",
+++        ),
+++    };
++     format!(
++         "target datalayout = \"e-p:64:64:64-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-f32:32:32-f64:64:64-v16:16:16-v24:32:32-v32:32:32-v48:64:64-v64:64:64-v96:128:128-v128:128:128-v192:256:256-v256:256:256-v512:512:512-v1024:1024:1024-n8:16:32\"\n\
++ target triple = \"air64_v28-apple-macosx26.0.0\"\n\n\
++-define void @many({}) {{\nentry:\n{body}  store i32 %s{last}, ptr addrspace(1) %{reads}, align 4\n  ret void\n}}\n\n\
++-!air.kernel = !{{!9}}\n!air.version = !{{!17}}\n!air.language_version = !{{!18}}\n\
++-!9 = !{{ptr @many, !10, !11}}\n!10 = !{{}}\n!11 = !{{{}}}\n{}\n\
+++define {ty} @many({}) {{\nentry:\n{body}{end}}}\n\n\
+++!air.{stage} = !{{!9}}\n!air.version = !{{!17}}\n!air.language_version = !{{!18}}\n\
+++!9 = !{{ptr @many, !10, !11}}\n!10 = !{{{returned}}}\n!11 = !{{{}}}\n{}\n\
++ !17 = !{{i32 2, i32 8, i32 0}}\n!18 = !{{!\"Metal\", i32 4, i32 0, i32 0}}\n",
++         params.join(", "),
++         args.join(", "),
++@@ -2838,77 +2859,93 @@ fn the_window_pushes_a_kernel_s_slot_addresses_below_its_tail_word() {
++     }
++ }
++ 
++-/// On `PROFILES` and in `runtime-floor`'s window, [`many_of`]`(3)` pushes its 4 slot addresses
++-/// below its tail word, and its straight-line module returns once: the tail's test, a compare of
++-/// the word's load, is the condition of one select per other pushed field and of no branch
++-/// (`EmitCx::fold_tail`), so the body depends on the tail through those values alone. AMD's open
++-/// driver (2025.Q2.1) dies making a fragment stage whose body runs under a never-taken return
++-/// there and holds a loop of convergent instructions under `MaximallyReconvergesKHR`.
++-#[test]
++-fn the_floor_s_tail_folds_into_the_other_pushed_fields_with_no_branch() {
+++/// What [`many_in`]`(fragment, reads)` compiles to on `stem`'s `Device::from_queries` profile
+++/// under the identity domains: its pushed fields, which a tail word ends, and the uses of the
+++/// tail's test, a compare of the word's load that a select or a branch takes as its condition:
+++/// the selects and the branches whose condition it is, and the module's returns.
+++fn tail_test_uses(stem: &str, fragment: bool, reads: u32) -> Option<(usize, usize, usize, usize)> {
++     use crate::spirv::ir::{BinOp, Inst, Terminator, Type};
++-    let reads = 3;
++-    let Some(bc) = assemble_text("many", &many_of(reads)) else {
++-        return;
++-    };
++-    for stem in PROFILES.iter().copied().chain(["runtime-floor"]) {
++-        let desc = crate::pipeline::testing::description(stem).unwrap_or_else(|e| panic!("{e}"));
++-        let device = Device::from_queries(desc, identity()).unwrap_or_else(|e| panic!("{e}"));
++-        let p = device.profile();
++-        let (a, plan, m) = compile_kept(&bc, "many", p).unwrap_or_else(|e| panic!("{stem}: {e}"));
++-        link_and_validate(&a, p).unwrap_or_else(|e| panic!("{stem}: L3: {e}"));
++-        assert!(plan.push.tail_word.is_some(), "{stem}: no tail word");
++-        let pushed = (plan.push.fields.iter())
++-            .filter(|f| matches!(f.loc, PushLoc::Push { .. }))
++-            .count();
++-        assert_eq!(pushed, (reads + 1) as usize, "{stem}");
++-        let insts: Vec<_> = m.blocks().iter().flat_map(|b| &b.insts).collect();
++-        let push_load = |v: crate::spirv::ids::Value| {
++-            insts.iter().any(|n| match (&n.inst, n.result) {
++-                (Inst::Load { ptr, .. }, Some(r)) if r == v => {
++-                    matches!(
++-                        m.value(*ptr).and_then(|d| m.types().get(d.ty)),
++-                        Ok(Type::Pointer {
++-                            class: crate::spirv::ir::StorageClass::PushConstant,
++-                            ..
++-                        })
++-                    )
++-                }
++-                _ => false,
++-            })
++-        };
++-        // The tail's tests: a compare of a push load that some select takes as its condition.
++-        let tests: Vec<_> = (insts.iter())
++-            .filter_map(|n| match (&n.inst, n.result) {
++-                (
++-                    Inst::Binary {
++-                        op: BinOp::INotEqual,
++-                        a,
+++    let bc = assemble_text("many", &many_in(fragment, reads))?;
+++    let desc = crate::pipeline::testing::description(stem).unwrap_or_else(|e| panic!("{e}"));
+++    let device = Device::from_queries(desc, identity()).unwrap_or_else(|e| panic!("{e}"));
+++    let p = device.profile();
+++    let (a, plan, m) = compile_kept(&bc, "many", p).unwrap_or_else(|e| panic!("{stem}: {e}"));
+++    link_and_validate(&a, p).unwrap_or_else(|e| panic!("{stem}: L3: {e}"));
+++    assert!(plan.push.tail_word.is_some(), "{stem}: no tail word");
+++    let pushed = (plan.push.fields.iter())
+++        .filter(|f| matches!(f.loc, PushLoc::Push { .. }))
+++        .count();
+++    let insts: Vec<_> = m.blocks().iter().flat_map(|b| &b.insts).collect();
+++    let push_load = |v: crate::spirv::ids::Value| {
+++        insts.iter().any(|n| match (&n.inst, n.result) {
+++            (Inst::Load { ptr, .. }, Some(r)) if r == v => {
+++                matches!(
+++                    m.value(*ptr).and_then(|d| m.types().get(d.ty)),
+++                    Ok(Type::Pointer {
+++                        class: crate::spirv::ir::StorageClass::PushConstant,
++                         ..
++-                    },
++-                    Some(r),
++-                ) if push_load(*a) => Some(r),
++-                _ => None,
++-            })
++-            .filter(|c| {
++-                (insts.iter()).any(|n| matches!(n.inst, Inst::Select { cond, .. } if cond == *c))
++-            })
++-            .collect();
++-        assert_eq!(tests.len(), 1, "{stem}: the tail's tests");
++-        let test = tests[0];
++-        let selects = (insts.iter())
++-            .filter(|n| matches!(n.inst, Inst::Select { cond, .. } if cond == test))
++-            .count();
++-        assert_eq!(selects, pushed, "{stem}: one select per other pushed field");
++-        let branches = (m.blocks().iter())
++-            .filter(|b| matches!(b.term, Terminator::CondBranch { cond, .. } if cond == test))
++-            .count();
++-        assert_eq!(branches, 0, "{stem}: a branch on the tail");
++-        let returns = (m.blocks().iter())
++-            .filter(|b| matches!(b.term, Terminator::Return))
++-            .count();
++-        assert_eq!(returns, 1, "{stem}: the module's returns");
++-        println!("{stem}: the tail folds into {selects} pushed fields; one return");
+++                    })
+++                )
+++            }
+++            _ => false,
+++        })
+++    };
+++    let selects = |c: crate::spirv::ids::Value| {
+++        (insts.iter())
+++            .filter(|n| matches!(n.inst, Inst::Select { cond, .. } if cond == c))
+++            .count()
+++    };
+++    let branches = |c: crate::spirv::ids::Value| {
+++        (m.blocks().iter())
+++            .filter(|b| matches!(b.term, Terminator::CondBranch { cond, .. } if cond == c))
+++            .count()
+++    };
+++    let tests: Vec<_> = (insts.iter())
+++        .filter_map(|n| match (&n.inst, n.result) {
+++            (
+++                Inst::Binary {
+++                    op: BinOp::INotEqual,
+++                    a,
+++                    ..
+++                },
+++                Some(r),
+++            ) if push_load(*a) => Some(r),
+++            _ => None,
+++        })
+++        .filter(|&c| selects(c) + branches(c) > 0)
+++        .collect();
+++    assert_eq!(tests.len(), 1, "{stem}: the tail's tests");
+++    let returns = (m.blocks().iter())
+++        .filter(|b| matches!(b.term, Terminator::Return))
+++        .count();
+++    Some((pushed, selects(tests[0]), branches(tests[0]), returns))
+++}
+++
+++/// On `PROFILES` and in `runtime-floor`'s window, both render (fragment) and compute (kernel)
+++/// stages return at entry where their floor tail holds what the consumer never pushes, with no
+++/// per-field selects over pushed fields (`EmitCx::emit_tail_guard`).
+++#[test]
+++fn the_floor_s_tail_returns_at_entry_without_per_field_selects() {
+++    for (fragment, expected_pushed) in [(true, 3usize), (false, 4usize)] {
+++        for stem in PROFILES.iter().copied().chain(["runtime-floor"]) {
+++            let Some((pushed, selects, branches, returns)) = tail_test_uses(stem, fragment, 3)
+++            else {
+++                return;
+++            };
+++            assert_eq!(pushed, expected_pushed, "{stem} fragment={fragment}");
+++            assert_eq!(
+++                selects, 0,
+++                "{stem} fragment={fragment}: a select on the tail"
+++            );
+++            assert_eq!(
+++                branches, 1,
+++                "{stem} fragment={fragment}: the branch on the tail"
+++            );
+++            assert_eq!(
+++                returns, 2,
+++                "{stem} fragment={fragment}: the module's returns"
+++            );
+++        }
++     }
++ }
++ 
 diff --git a/bridge/stitch_modules_host.mm b/bridge/stitch_modules_host.mm
 new file mode 100644
 index 0000000..2d44997
