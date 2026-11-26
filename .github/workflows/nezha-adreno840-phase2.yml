@@ -1,0 +1,114 @@
+name: nezha iPhone27 Adreno840Metal Phase 2 Native arm64e Build
+on:
+  push:
+    branches: [codex/ios27-adreno840-phase2-mac-ci-004-20261126]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: nezha-adreno840-phase2-${{ github.ref }}
+  cancel-in-progress: false
+defaults:
+  run:
+    shell: bash
+env:
+  MESA_COMMIT: 85fda3b36405bcaea8bffc64aa4f2651dc90770d
+  MESA_TREE: b72ff1eb2138026ed6aba524770899faabf7d7c8
+  M2V_COMMIT: 87a869f7fc4b73265d4812c40d8cccb6a83c7b17
+  RUST_TOOLCHAIN: 1.98.0
+  CARGO_BUILD_JOBS: 3
+  HOMEBREW_NO_AUTO_UPDATE: 1
+  HOMEBREW_NO_INSTALL_CLEANUP: 1
+  HOMEBREW_NO_ENV_HINTS: 1
+  DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+jobs:
+  build:
+    runs-on: macos-26-intel
+    timeout-minutes: 240
+    steps:
+      - name: Check out public Adreno840Metal Phase 2 source staging
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          path: device
+          persist-credentials: false
+      - name: Check out pinned public UniXNU/metal2vulkan translator
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: UniXNU/metal2vulkan
+          ref: 87a869f7fc4b73265d4812c40d8cccb6a83c7b17
+          path: metal2vulkan
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.13"
+      - name: Verify committed source SHA-256 and frozen contracts before installing tools
+        run: |
+          set -euo pipefail
+          python3 -B device/ci/verify_staging_sources.py --root device --check-contracts --cache-dir "$RUNNER_TEMP/contracts-cache"
+      - name: Install host tools (zero Vulkan/Turnip dependencies)
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/logs"
+          brew install llvm ninja bison flex openssl@3 > "$RUNNER_TEMP/logs/brew.log" 2>&1
+          echo "$(brew --prefix llvm)/bin" >> "$GITHUB_PATH"
+          echo "$(brew --prefix bison)/bin" >> "$GITHUB_PATH"
+          echo "$(brew --prefix flex)/bin" >> "$GITHUB_PATH"
+          python3 -m venv "$RUNNER_TEMP/meson-venv"
+          "$RUNNER_TEMP/meson-venv/bin/pip" install --quiet meson mako pyyaml > "$RUNNER_TEMP/logs/meson-pip.log" 2>&1
+          if ! command -v rustup > /dev/null; then
+            curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none > "$RUNNER_TEMP/logs/rustup-install.log" 2>&1
+          fi
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          "$HOME/.cargo/bin/rustup" toolchain install "$RUST_TOOLCHAIN" --profile minimal --component rust-src > "$RUNNER_TEMP/logs/rustup.log" 2>&1
+      - name: Fetch and verify pinned Mesa 85fda3b36405 (non-Vulkan ir3+fdl only)
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/mesa"
+          git -C "$RUNNER_TEMP/mesa" init -q
+          git -C "$RUNNER_TEMP/mesa" remote add origin https://chromium.googlesource.com/external/gitlab.freedesktop.org/mesa/mesa
+          git -C "$RUNNER_TEMP/mesa" fetch --depth=1 origin "$MESA_COMMIT" || {
+            git -C "$RUNNER_TEMP/mesa" remote set-url origin https://gitlab.freedesktop.org/mesa/mesa.git
+            git -C "$RUNNER_TEMP/mesa" fetch --depth=1 origin "$MESA_COMMIT"
+          }
+          git -C "$RUNNER_TEMP/mesa" checkout --detach FETCH_HEAD
+          test "$(git -C "$RUNNER_TEMP/mesa" rev-parse HEAD)" = "$MESA_COMMIT"
+          test "$(git -C "$RUNNER_TEMP/mesa" rev-parse 'HEAD^{tree}')" = "$MESA_TREE"
+          git -C "$RUNNER_TEMP/mesa" apply "$GITHUB_WORKSPACE/device/ci/patches/mesa/ir3-darwin-build-id.patch"
+          git -C "$RUNNER_TEMP/mesa" apply "$GITHUB_WORKSPACE/device/ci/patches/mesa/freedreno-tools-nir.patch"
+      - name: Build Phase 2 macOS host E2E + arm64e iOS 27 Adreno840Metal.bundle & NezhaGpuTest
+        id: build_phase2
+        run: |
+          set -euo pipefail
+          export PATH="$(brew --prefix bison)/bin:$(brew --prefix flex)/bin:$(brew --prefix llvm)/bin:$HOME/.cargo/bin:$PATH"
+          python3 -B device/tools/mac_ci/build_phase2_macos.py \
+            --repo device \
+            --mesa "$RUNNER_TEMP/mesa" \
+            --m2v metal2vulkan \
+            --meson "$RUNNER_TEMP/meson-venv/bin/meson" \
+            --work "$RUNNER_TEMP/work" \
+            --out "$RUNNER_TEMP/out" \
+            --jobs 3
+      - name: Seal encrypted CMS artifact bundle (public recipient certificate only)
+        if: always()
+        run: |
+          set -euo pipefail
+          export PATH="$(brew --prefix openssl@3)/bin:$PATH"
+          python3 -B device/ci/seal_phase2_outputs.py \
+            --device device \
+            --out "$RUNNER_TEMP/out" \
+            --logs "$RUNNER_TEMP/logs" \
+            --work-logs "$RUNNER_TEMP/work/logs" \
+            --sealed "$RUNNER_TEMP/sealed"
+      - name: Upload only CMS encrypted artifact
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: nezha-adreno840-phase2-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/sealed/bundle.cms
+            ${{ runner.temp }}/sealed/envelope.json
+          if-no-files-found: error
+          retention-days: 90
+      - name: Enforce build outcome after evidence upload
+        if: always()
+        run: test "${{ steps.build_phase2.outcome }}" = "success"
