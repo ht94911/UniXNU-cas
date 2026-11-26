@@ -3577,6 +3577,19 @@ index 0000000..44b5ee3
 +    }
 +    return 0;
 +}
+diff --git a/bridge/frontend_host.mm b/bridge/frontend_host.mm
+index 39f0414..469d362 100644
+--- a/bridge/frontend_host.mm
++++ b/bridge/frontend_host.mm
+@@ -14,7 +14,7 @@ int main(int argc, char **argv) {
+     @autoreleasepool {
+         if (argc < 3) return 2;
+         id<MTLDevice> device = native_bridge_metal_open(argv[1], argv[2], 0x6e6d62, onMissing);
+-        if (!device) {std::printf("FAIL device\n"); return 1;}
++        if (!device) {std::printf("FAIL device: %s\n", nmb_last_error()); return 1;}
+         size_t bytes = 0;
+         const void *air = nmb_fixture_air(&bytes);
+         id<MTLLibrary> library = native_bridge_metal_library_with_air(air, bytes);
 diff --git a/bridge/function_constant_selector_host.mm b/bridge/function_constant_selector_host.mm
 new file mode 100644
 index 0000000..ce363e5

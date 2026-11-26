@@ -1913,10 +1913,10 @@ index 00000000..2947ba44
 +       /* The ring grows, its records in order from the head. */
 diff --git a/patches/mesa/turnip-gpu088-cumulative.patch b/patches/mesa/turnip-gpu088-cumulative.patch
 new file mode 100644
-index 00000000..9cb02076
+index 00000000..5f0b9f2b
 --- /dev/null
 +++ b/patches/mesa/turnip-gpu088-cumulative.patch
-@@ -0,0 +1,5350 @@
+@@ -0,0 +1,5348 @@
 +diff --git a/meson.build b/meson.build
 +index 3aed8ca..6a2a30c 100644
 +--- a/meson.build
@@ -4423,10 +4423,10 @@ index 00000000..9cb02076
 +                    void *_submit,
 +diff --git a/src/freedreno/vulkan/tu_knl_darwin.cc b/src/freedreno/vulkan/tu_knl_darwin.cc
 +new file mode 100644
-+index 0000000..0e3d977
++index 0000000..60a25a8
 +--- /dev/null
 ++++ b/src/freedreno/vulkan/tu_knl_darwin.cc
-+@@ -0,0 +1,2498 @@
++@@ -0,0 +1,2496 @@
 ++#include "tu_cpu_profile.h"
 ++#include "tu_frame_diagnostic.h"
 ++/*
@@ -6563,8 +6563,6 @@ index 00000000..9cb02076
 ++      tu_frame_event(38,(uintptr_t)submit,fence,0,total,rec.busy,rec.space_wait_us,wait_count,signal_count);
 ++      p_atomic_set(&queue->fence, fence);
 ++      rec.buffers = MIN2(total, 255u);
-++      if (inside)
-++         rec.chunks |= 0x80;   /* a cut inside a command stream */
 ++   } else {
 ++      /* Nothing to run: the signals resolve with the last earlier submission. */
 ++      fence = p_atomic_read(&queue->fence) > 0 ? (uint32_t)p_atomic_read(&queue->fence) : 0;
