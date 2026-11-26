@@ -3119,15 +3119,19 @@ index 9cbaf3d..0de9548 100644
 +switch attempts. Hardware read errors still poison the ring, and the original
 +fence, RPTR, RBBM and page-table checks remain required before a switch.
 diff --git a/tests/HostKernelHooks.cpp b/tests/HostKernelHooks.cpp
-index be94936..c1e16e0 100644
+index be94936..801642e 100644
 --- a/tests/HostKernelHooks.cpp
 +++ b/tests/HostKernelHooks.cpp
-@@ -43,3 +43,5 @@ __attribute__((weak)) IOReturn NativeAdrenoPoolAllocate(size_t,uint64_t,bool,Nat
+@@ -43,3 +43,9 @@ __attribute__((weak)) IOReturn NativeAdrenoPoolAllocate(size_t,uint64_t,bool,Nat
  }
  __attribute__((weak)) void NativeAdrenoPoolRelease(NativeAdrenoPoolGrant *) {}
  __attribute__((weak)) bool NativeAdrenoPoolContains(uint64_t,uint64_t) {return false;}
 +
 +extern "C" __attribute__((weak)) int native_gpu_trace_enabled() {return 0;}
++
++// The optional board VM observer is absent in the authored host model.
++class NativeAdrenoVm;
++extern "C" __attribute__((weak)) void native_adreno_note_vm_failure(NativeAdrenoVm *,const uint32_t *) {}
 diff --git a/tests/check_close_drain.py b/tests/check_close_drain.py
 new file mode 100644
 index 0000000..0a9a006
