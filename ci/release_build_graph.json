@@ -1,0 +1,93 @@
+{
+  "audit_only": true,
+  "device_verified": false,
+  "forbidden_targets": [
+    "libvulkan_freedreno",
+    "turnip-darwin-kmd.patch",
+    "metal2vulkan-runtime",
+    "NativeBridgeMetalFrontend",
+    "src/freedreno/vulkan"
+  ],
+  "hardware_acceptance": false,
+  "m2v_public_commit": "87a869f7fc4b73265d4812c40d8cccb6a83c7b17",
+  "mesa_commit": "85fda3b36405bcaea8bffc64aa4f2651dc90770d",
+  "mesa_tree": "b72ff1eb2138026ed6aba524770899faabf7d7c8",
+  "pending_sibling_sources": [],
+  "required_targets": [
+    "NativeMetalTranslate",
+    "adreno_compile",
+    "Adreno840Emit",
+    "Adreno840Metal.bundle",
+    "NezhaShaderCompiler",
+    "NezhaGpuTest"
+  ],
+  "scanned_source_count": 97,
+  "schema_version": 1,
+  "status": "PASS",
+  "strict_merged": true,
+  "target_triple": "arm64e-apple-ios27.0",
+  "targets": {
+    "Adreno840Emit": {
+      "active_source_count": 14,
+      "deps": [],
+      "kind": "c_staticlib",
+      "missing_sources": [],
+      "pending_sibling_sources": [],
+      "zero_fallback": true
+    },
+    "Adreno840Metal.bundle": {
+      "active_source_count": 29,
+      "deps": [
+        "NativeMetalTranslate",
+        "adreno_compile",
+        "Adreno840Emit"
+      ],
+      "kind": "ios_bundle",
+      "missing_sources": [],
+      "pending_sibling_sources": [],
+      "zero_fallback": true
+    },
+    "NativeMetalTranslate": {
+      "active_source_count": 4,
+      "deps": [],
+      "kind": "rust_staticlib",
+      "missing_sources": [],
+      "pending_sibling_sources": [],
+      "zero_fallback": true
+    },
+    "NezhaGpuTest": {
+      "active_source_count": 16,
+      "deps": [
+        "NativeMetalTranslate",
+        "adreno_compile",
+        "Adreno840Emit"
+      ],
+      "kind": "ios_probe",
+      "missing_sources": [],
+      "pending_sibling_sources": [],
+      "zero_fallback": true
+    },
+    "NezhaShaderCompiler": {
+      "active_source_count": 2,
+      "deps": [
+        "NativeMetalTranslate",
+        "adreno_compile"
+      ],
+      "kind": "ios_daemon",
+      "missing_sources": [],
+      "pending_sibling_sources": [],
+      "zero_fallback": true
+    },
+    "adreno_compile": {
+      "active_source_count": 16,
+      "deps": [],
+      "kind": "c_staticlib",
+      "missing_sources": [],
+      "pending_sibling_sources": [],
+      "zero_fallback": true
+    }
+  },
+  "violations": [],
+  "zero_fallback_verified": true,
+  "zero_turnip_verified": true
+}
