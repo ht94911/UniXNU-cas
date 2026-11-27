@@ -102,6 +102,23 @@ NSError *a840_metal_error(A840RtStatus status, NSString *operation)
                             userInfo:@{NSLocalizedDescriptionKey: operation}];
 }
 
+uint32_t a840_canonical_backing_pixel_format(uint32_t mtl_pixel_format)
+{
+    switch (mtl_pixel_format) {
+    case 550u: /* MTLPixelFormatRGB10A8_2P_XR10 ('b3a8' plane 0 = 4 B/px) */
+    case 554u: /* MTLPixelFormatBGR10_XR */
+        return (uint32_t)MTLPixelFormatBGRA8Unorm;
+    case 551u: /* MTLPixelFormatRGB10A8_2P_XR10_sRGB */
+    case 555u: /* MTLPixelFormatBGR10_XR_sRGB */
+        return (uint32_t)MTLPixelFormatBGRA8Unorm_sRGB;
+    case 552u: /* MTLPixelFormatBGRA10_XR (8 B/px) */
+    case 553u: /* MTLPixelFormatBGRA10_XR_sRGB (8 B/px) */
+        return (uint32_t)MTLPixelFormatRGBA16Float;
+    default:
+        return mtl_pixel_format;
+    }
+}
+
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wprotocol"
 #pragma clang diagnostic ignored "-Wobjc-protocol-property-synthesis"
@@ -321,8 +338,9 @@ NSError *a840_metal_error(A840RtStatus status, NSString *operation)
     if (!a840_sys_supports_sample_count((uint32_t)(descriptor.sampleCount ? descriptor.sampleCount : 1u))) {
         return nil;
     }
-    const A840FormatCaps *format = descriptor.pixelFormat <= UINT32_MAX ?
-        a840_format_caps_lookup((uint32_t)descriptor.pixelFormat) : nullptr;
+    if (descriptor.pixelFormat > UINT32_MAX) return nil;
+    const uint32_t backingFmt = a840_canonical_backing_pixel_format((uint32_t)descriptor.pixelFormat);
+    const A840FormatCaps *format = a840_format_caps_lookup(backingFmt);
     if (!format) return nil;
 
     const BOOL isMemoryless = (descriptor.storageMode == MTLStorageModeMemoryless);
@@ -331,7 +349,7 @@ NSError *a840_metal_error(A840RtStatus status, NSString *operation)
         A840UbwcTextureDesc mdesc{};
         mdesc.kind = A840_P3_TEX_MEMORYLESS;
         mdesc.storage_mode = A840_STORAGE_MEMORYLESS;
-        mdesc.mtl_pixel_format = (uint32_t)descriptor.pixelFormat;
+        mdesc.mtl_pixel_format = backingFmt;
         mdesc.width = (uint32_t)descriptor.width;
         mdesc.height = (uint32_t)descriptor.height;
         mdesc.array_layers = (uint32_t)(descriptor.arrayLength ? descriptor.arrayLength : 1u);
@@ -339,14 +357,30 @@ NSError *a840_metal_error(A840RtStatus status, NSString *operation)
         mdesc.tile_mode = A840_TILE_TILED;
         mdesc.usage_flags = A840_TEX_USAGE_RENDER_TARGET;
         A840UbwcTexture *memTex = nullptr;
+        A840RtTexture *sysmemBacking = nullptr;
+        A840RtTextureDesc rdesc{};
+        rdesc.mtl_pixel_format = backingFmt;
+        rdesc.tex_type = A840_TEX_2D;
+        rdesc.width = mdesc.width;
+        rdesc.height = mdesc.height;
+        rdesc.depth = 1u;
+        rdesc.array_layers = mdesc.array_layers;
+        rdesc.mip_levels = 1u;
+        rdesc.samples = mdesc.samples;
+        rdesc.tile_mode = (isDepthStencil || rdesc.samples > 1u) ? A840_TILE_TILED : A840_TILE_LINEAR;
+        rdesc.usage_flags = A840_TEX_USAGE_RENDER_TARGET | A840_TEX_USAGE_SHADER_READ;
         @synchronized (self) {
             if (a840_ubwc_texture_create(_runtime, &mdesc, &memTex) != A840_RT_OK) return nil;
+            if (a840_rt_texture_create(_runtime, &rdesc, &sysmemBacking) != A840_RT_OK) {
+                sysmemBacking = nullptr;
+            }
         }
-        return [[A840MTLTexture alloc] initWithOwner:self memorylessUbwc:memTex descriptor:descriptor];
+        return [[A840MTLTexture alloc] initWithOwner:self native:sysmemBacking
+                                      memorylessUbwc:memTex descriptor:descriptor];
     }
 
     A840RtTextureDesc desc{};
-    desc.mtl_pixel_format = (uint32_t)descriptor.pixelFormat;
+    desc.mtl_pixel_format = backingFmt;
     switch (descriptor.textureType) {
     case MTLTextureType1D:
     case MTLTextureType1DArray: desc.tex_type = A840_TEX_1D; break;
@@ -428,6 +462,24 @@ NSError *a840_metal_error(A840RtStatus status, NSString *operation)
     if (reflection) *reflection = nil;
     if (!descriptor || !descriptor.computeFunction) {
         if (error) *error = a840_metal_error(A840_RT_INVALID_ARG, @"Compute descriptor missing function");
+        return nil;
+    }
+    if ([_pipelineProvider respondsToSelector:@selector(prepareComputeWithDescriptor:forDevice:descriptor:)]) {
+        A840RtComputePipelineDesc desc{};
+        id plan;
+        @synchronized (self) {
+            plan = [_pipelineProvider prepareComputeWithDescriptor:descriptor forDevice:self descriptor:&desc];
+        }
+        A840MTLComputePipelineState *pipeline = [[A840MTLComputePipelineState alloc]
+            initWithOwner:self function:descriptor.computeFunction descriptor:&desc plan:plan];
+        if (pipeline.nativeDescriptor) return pipeline;
+        if (plan) {
+            char msg[128] = {};
+            snprintf(msg, sizeof(msg), "A840PIPE cs-nodesc %.40s",
+                     descriptor.computeFunction.name.UTF8String ?: "?");
+            a840diag::reportText(msg);
+        }
+        if (error) *error = a840_metal_error(A840_RT_UNSUPPORTED, @"Native compute pipeline compilation failed");
         return nil;
     }
     return [self newComputePipelineStateWithFunction:descriptor.computeFunction error:error];

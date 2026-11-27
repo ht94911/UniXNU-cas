@@ -21,15 +21,16 @@ use metal2vulkan::metal::resource_word::TextureWord;
 use metal2vulkan::bind::SamplerDescriptor;
 use metal2vulkan::metal::sampler::SamplerWord;
 use metal2vulkan::metal::{
-    self, CompareFunction, DataType, PixelFormat, SamplerAddressMode, SamplerBorderColor,
-    SamplerMinMagFilter, SamplerMipFilter, TextureSwizzleChannels, VertexFormat,
-    VertexStepFunction,
+    self, BlendFactor, BlendOperation, ColorWriteMask, CompareFunction, DataType, PixelFormat,
+    PrimitiveTopologyClass, SamplerAddressMode, SamplerBorderColor, SamplerMinMagFilter,
+    SamplerMipFilter, TextureSwizzleChannels, VertexFormat, VertexStepFunction,
 };
 use metal2vulkan::pipeline::{
     threadgroup_constants, BindingSource, ColorAttachmentDescriptor, ComputePipelineDescriptor,
-    FunctionDescriptor, PipelineInterface, PipelineLayout, PushField, PushLoc, RenderPipeline,
-    RenderPipelineDescriptor, SamplerRef, SlotClass, Stage, StageEntries, StageModule, StageSource,
-    VertexAttributeDescriptor, VertexBufferLayoutDescriptor, VertexDescriptor,
+    FunctionDescriptor, LinkedFunction, LinkedFunctions, PipelineInterface, PipelineLayout,
+    PushField, PushLoc, RenderPipeline, RenderPipelineDescriptor, SamplerRef, SlotClass, Stage,
+    StageEntries, StageModule, StageSource, VertexAttributeDescriptor,
+    VertexBufferLayoutDescriptor, VertexDescriptor,
 };
 use metal2vulkan::{vk, Budget};
 
@@ -333,6 +334,15 @@ impl NmbLibrary {
             .iter()
             .find(|lib| has_function(lib, name, stage))
             .ok_or_else(|| message(format_args!("no {stage:?} function named {name:?}")))?;
+        library.function(name).map_err(message)
+    }
+
+    fn function_any_stage(&self, name: &str) -> FfiResult<Function> {
+        let library = self
+            .libraries
+            .iter()
+            .find(|lib| lib.functions().any(|info| info.name == name))
+            .ok_or_else(|| message(format_args!("no function named {name:?}")))?;
         library.function(name).map_err(message)
     }
 
@@ -901,8 +911,24 @@ fn render_result(pipeline: RenderPipeline) -> FfiResult<NmbSpirvResult> {
     NmbSpirvResult::new(pipeline.stages, pipeline.layout, &pipeline.interface)
 }
 
+/// Canonical Adreno 840 hardware backing format for Apple extended-range XR10 formats.
+/// Adreno 840 has no native hardware bit-packed XR10 render/blend/fetch unit, and
+/// metal2vulkan-v2 refuses framebuffer fetch & blending on Apple XR10 forms (`codes_round_the_tile`
+/// and identity-domain `FetchedColor`). Backing 550/554 -> BGRA8Unorm (80, 4 B/px zero-copy in
+/// 'b3a8' plane 0 with full 8-bit alpha), 551/555 -> BGRA8Unorm_sRGB (81), and 552/553 ->
+/// RGBA16Float (115, 8 B/px signed half-float) keeps shader lowering, RB hardware blending,
+/// framebuffer fetch, and IOSurface storage 100% coherent across processes.
+pub(crate) fn canonical_xr10_format(raw: u32) -> u32 {
+    match raw {
+        550 | 554 => PixelFormat::BGRA8Unorm.as_raw(),
+        551 | 555 => PixelFormat::BGRA8UnormSRGB.as_raw(),
+        552 | 553 => PixelFormat::RGBA16Float.as_raw(),
+        _ => raw,
+    }
+}
+
 fn attachment_format(raw: u32) -> FfiResult<Option<PixelFormat>> {
-    let pixel = PixelFormat::try_from(raw).map_err(message)?;
+    let pixel = PixelFormat::try_from(canonical_xr10_format(raw)).map_err(message)?;
     Ok((pixel != PixelFormat::Invalid).then_some(pixel))
 }
 
@@ -1353,7 +1379,7 @@ pub extern "C" fn nmb_encode_sampler_word(
 #[no_mangle]
 pub extern "C" fn nmb_encode_texture_word(mtl_pixel_format: u32) -> u32 {
     catch_ffi(0, || {
-        let Ok(pf) = PixelFormat::try_from(mtl_pixel_format) else {
+        let Ok(pf) = PixelFormat::try_from(canonical_xr10_format(mtl_pixel_format)) else {
             return 0;
         };
         TextureWord::of(pf, TextureSwizzleChannels::DEFAULT)
@@ -1992,6 +2018,269 @@ pub unsafe extern "C" fn nmb_compile_render_spirv_v2(
     })
 }
 
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct NmbLinkedFunction {
+    library: *const NmbLibrary,
+    name: *const c_char,
+    specialized_name: *const c_char,
+    constants: *const NmbFunctionConstant,
+    constant_count: usize,
+    is_private: u32,
+    specialized: u32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+pub struct NmbColorAttachmentDesc {
+    pixel_format: u32,
+    write_mask: u32,
+    blending_enabled: u32,
+    src_rgb_factor: u32,
+    dst_rgb_factor: u32,
+    rgb_blend_op: u32,
+    src_alpha_factor: u32,
+    dst_alpha_factor: u32,
+    alpha_blend_op: u32,
+}
+
+#[repr(C)]
+pub struct NmbRenderPipelineDescV3 {
+    base: NmbRenderPipelineDesc,
+    has_color_states: u32,
+    color_states: [NmbColorAttachmentDesc; MAX_COLORS],
+    rasterization_enabled: u32,
+    alpha_to_coverage_enabled: u32,
+    alpha_to_one_enabled: u32,
+    input_primitive_topology: u32,
+    vs_linked: *const NmbLinkedFunction,
+    vs_linked_count: usize,
+    fs_linked: *const NmbLinkedFunction,
+    fs_linked_count: usize,
+    vs_specialized: u32,
+    fs_specialized: u32,
+}
+
+unsafe fn parse_linked_functions(
+    entries: *const NmbLinkedFunction,
+    count: usize,
+) -> FfiResult<LinkedFunctions> {
+    let mut linked = LinkedFunctions::new();
+    if count == 0 {
+        return Ok(linked);
+    }
+    if entries.is_null() {
+        return Err(c"linked functions pointer is required when count > 0".into());
+    }
+    if count > 256 {
+        return Err(c"linked function count exceeds 256".into());
+    }
+    let slice = unsafe { std::slice::from_raw_parts(entries, count) };
+    for item in slice {
+        let lib = unsafe { borrowed(item.library, c"linked function library is required") }?;
+        let fn_name = unsafe { name_arg(item.name) }?;
+        let func = lib.function_any_stage(fn_name)?;
+        let mut lf = LinkedFunction::new(func);
+        if item.constant_count > 0 {
+            let consts = unsafe { parse_function_constants(item.constants, item.constant_count) }?;
+            lf = lf.with_constants(consts);
+        } else if item.specialized != 0 {
+            lf = lf.with_specialized(true);
+        }
+        if !item.specialized_name.is_null() {
+            let sname = unsafe { name_arg(item.specialized_name) }?;
+            lf = lf.with_specialized_name(sname);
+        }
+        if item.is_private != 0 {
+            linked = linked.with_private_function(lf);
+        } else {
+            linked = linked.with_function(lf);
+        }
+    }
+    Ok(linked)
+}
+
+fn apply_color_states(
+    desc: &mut RenderPipelineDescriptor,
+    v3: &NmbRenderPipelineDescV3,
+) -> FfiResult<()> {
+    if v3.has_color_states == 0 {
+        return Ok(());
+    }
+    let count = (v3.base.color_attachment_count as usize).min(MAX_COLORS);
+    for (slot, cs) in desc.color_attachments[..count]
+        .iter_mut()
+        .zip(&v3.color_states[..count])
+    {
+        let raw_fmt = if cs.pixel_format != 0 {
+            cs.pixel_format
+        } else {
+            slot.map_or(0, |a| a.pixel_format.as_raw())
+        };
+        let Some(pf) = attachment_format(raw_fmt)? else {
+            *slot = None;
+            continue;
+        };
+        let mut att = ColorAttachmentDescriptor::new(pf);
+        att.write_mask = ColorWriteMask::try_from(cs.write_mask & 0xf).map_err(message)?;
+        att.blending_enabled = cs.blending_enabled != 0;
+        if att.blending_enabled {
+            att.source_rgb_blend_factor =
+                BlendFactor::try_from(cs.src_rgb_factor).map_err(message)?;
+            att.destination_rgb_blend_factor =
+                BlendFactor::try_from(cs.dst_rgb_factor).map_err(message)?;
+            att.rgb_blend_operation =
+                BlendOperation::try_from(cs.rgb_blend_op).map_err(message)?;
+            att.source_alpha_blend_factor =
+                BlendFactor::try_from(cs.src_alpha_factor).map_err(message)?;
+            att.destination_alpha_blend_factor =
+                BlendFactor::try_from(cs.dst_alpha_factor).map_err(message)?;
+            att.alpha_blend_operation =
+                BlendOperation::try_from(cs.alpha_blend_op).map_err(message)?;
+        }
+        *slot = Some(att);
+    }
+    Ok(())
+}
+
+/// # Safety
+/// Handles, names, linked functions, constants and descriptor must stay valid during this call.
+#[no_mangle]
+pub unsafe extern "C" fn nmb_compile_compute_spirv_v3(
+    dev: *const NmbDevice,
+    lib: *const NmbLibrary,
+    fn_name: *const c_char,
+    constants: *const NmbFunctionConstant,
+    constant_count: usize,
+    linked: *const NmbLinkedFunction,
+    linked_count: usize,
+    specialized: u32,
+    input: *const NmbComputePipelineDesc,
+) -> *mut NmbSpirvResult {
+    ffi(ptr::null_mut(), || {
+        let dev = unsafe { borrowed(dev, c"device is required") }?;
+        let lib = unsafe { borrowed(lib, c"library is required") }?;
+        let input = unsafe { borrowed(input, c"compute descriptor is required") }?;
+        let name = unsafe { name_arg(fn_name) }?;
+        if input.zeroed_threadgroup_memory > 1 {
+            return Err(c"zeroed_threadgroup_memory must be 0 or 1".into());
+        }
+        let local_size = (input.local_size != [0; 3]).then_some(input.local_size);
+        let threads = input
+            .local_size
+            .into_iter()
+            .try_fold(1_u32, u32::checked_mul);
+        if local_size.is_some() && !matches!(threads, Some(1..=a840_profile::MAX_WORKGROUP_THREADS))
+        {
+            return Err(c"local_size must be all zero or a positive A840 workgroup size".into());
+        }
+        let func = lib.function(name, FunctionStage::Kernel)?;
+        let mut fdesc = FunctionDescriptor::new(func);
+        fdesc.constants = unsafe { parse_function_constants(constants, constant_count) }?;
+        fdesc.specialized = specialized != 0 || constant_count > 0;
+        fdesc.linked = unsafe { parse_linked_functions(linked, linked_count) }?;
+        let mut desc = ComputePipelineDescriptor::new(StageSource::Function(fdesc));
+        desc.required_threads_per_threadgroup = local_size;
+        let mut pipeline = dev
+            .extended()?
+            .compile_compute_pipeline(&desc, &Budget::default())
+            .map_err(message)?;
+        if let Some(size) = local_size {
+            if threads.unwrap_or_default() > pipeline.metal_info.max_total_threads_per_threadgroup {
+                return Err(c"local_size exceeds the kernel's threadgroup limit".into());
+            }
+            set_workgroup_defaults(&mut pipeline.stage, size)?;
+        }
+        if let Some(words) =
+            lower_zeroed_workgroup(&pipeline.stage.spirv, input.zeroed_threadgroup_memory != 0)?
+        {
+            pipeline.stage.spirv = words.into();
+        }
+        let mut result = NmbSpirvResult::new([pipeline.stage], pipeline.layout, &pipeline.interface)?;
+        result.pack_bindless()?;
+        Ok(Box::into_raw(Box::new(result)))
+    })
+}
+
+/// # Safety
+/// Handles, names, linked functions, constants and descriptor must stay valid during this call.
+#[no_mangle]
+pub unsafe extern "C" fn nmb_compile_render_spirv_v3(
+    dev: *const NmbDevice,
+    vs_lib: *const NmbLibrary,
+    vertex_fn: *const c_char,
+    vs_constants: *const NmbFunctionConstant,
+    vs_constant_count: usize,
+    fs_lib: *const NmbLibrary,
+    fragment_fn: *const c_char,
+    fs_constants: *const NmbFunctionConstant,
+    fs_constant_count: usize,
+    input: *const NmbRenderPipelineDescV3,
+) -> *mut NmbSpirvResult {
+    ffi(ptr::null_mut(), || {
+        let dev = unsafe { borrowed(dev, c"device is required") }?;
+        let vs_lib = unsafe { borrowed(vs_lib, c"vertex library is required") }?;
+        let input = unsafe { borrowed(input, c"render descriptor v3 is required") }?;
+        let vertex = vs_lib.function(unsafe { name_arg(vertex_fn) }?, FunctionStage::Vertex)?;
+        let mut vs_desc = FunctionDescriptor::new(vertex);
+        vs_desc.constants = unsafe { parse_function_constants(vs_constants, vs_constant_count) }?;
+        vs_desc.specialized = input.vs_specialized != 0 || vs_constant_count > 0;
+        vs_desc.linked = unsafe { parse_linked_functions(input.vs_linked, input.vs_linked_count) }?;
+
+        let mut desc = RenderPipelineDescriptor::new(StageSource::Function(vs_desc));
+        let has_fragment = !fragment_fn.is_null();
+        if has_fragment {
+            let fs_lib_ref = if fs_lib.is_null() {
+                vs_lib
+            } else {
+                unsafe { borrowed(fs_lib, c"fragment library is required") }?
+            };
+            let fragment =
+                fs_lib_ref.function(unsafe { name_arg(fragment_fn) }?, FunctionStage::Fragment)?;
+            let mut fs_desc = FunctionDescriptor::new(fragment);
+            fs_desc.constants =
+                unsafe { parse_function_constants(fs_constants, fs_constant_count) }?;
+            fs_desc.specialized = input.fs_specialized != 0 || fs_constant_count > 0;
+            fs_desc.linked =
+                unsafe { parse_linked_functions(input.fs_linked, input.fs_linked_count) }?;
+            desc.fragment = Some(StageSource::Function(fs_desc));
+        }
+
+        let translator = dev.extended()?;
+        set_render_desc(translator, &mut desc, &input.base)?;
+        apply_color_states(&mut desc, input)?;
+        desc.rasterization_enabled = input.rasterization_enabled != 0;
+        desc.alpha_to_coverage = input.alpha_to_coverage_enabled != 0;
+        desc.alpha_to_one = input.alpha_to_one_enabled != 0;
+        if let Ok(topo) = PrimitiveTopologyClass::try_from(input.input_primitive_topology) {
+            desc.input_primitive_topology = topo;
+        }
+
+        let budget = Budget::default();
+        if has_fragment
+            && desc
+                .fragment_writes_depth_unattached(&budget, &StageEntries::new())
+                .map_err(message)?
+        {
+            return Err(c"fragment writes depth but the depth attachment is unbound".into());
+        }
+        let pipeline = translator
+            .compile_render_pipeline(&desc, &budget)
+            .map_err(message)?;
+        let mut result = if has_fragment {
+            render_result(pipeline)?
+        } else {
+            if !matches!(&pipeline.stages[..], [vertex] if vertex.stage == vk::ShaderStage::VERTEX)
+            {
+                return Err(c"vertex-only render pipeline must emit one vertex stage".into());
+            }
+            NmbSpirvResult::new(pipeline.stages, pipeline.layout, &pipeline.interface)?
+        };
+        result.pack_bindless()?;
+        Ok(Box::into_raw(Box::new(result)))
+    })
+}
+
 /// # Safety
 /// The result handle must stay live and a non-null out_bytes must be writable.
 #[no_mangle]
@@ -2177,6 +2466,23 @@ mod tests {
         );
         assert_eq!(ffi(0, || Ok(1)), 1);
         assert_eq!(unsafe { CStr::from_ptr(nmb_last_error()) }, c"");
+    }
+
+    #[test]
+    fn canonical_xr10_mapping_is_coherent() {
+        assert_eq!(canonical_xr10_format(550), PixelFormat::BGRA8Unorm.as_raw());
+        assert_eq!(canonical_xr10_format(551), PixelFormat::BGRA8UnormSRGB.as_raw());
+        assert_eq!(canonical_xr10_format(552), PixelFormat::RGBA16Float.as_raw());
+        assert_eq!(canonical_xr10_format(553), PixelFormat::RGBA16Float.as_raw());
+        assert_eq!(canonical_xr10_format(554), PixelFormat::BGRA8Unorm.as_raw());
+        assert_eq!(canonical_xr10_format(555), PixelFormat::BGRA8UnormSRGB.as_raw());
+        assert_eq!(canonical_xr10_format(80), 80);
+        assert_eq!(canonical_xr10_format(115), 115);
+        assert_eq!(attachment_format(550), Ok(Some(PixelFormat::BGRA8Unorm)));
+        assert_eq!(attachment_format(551), Ok(Some(PixelFormat::BGRA8UnormSRGB)));
+        assert_eq!(attachment_format(552), Ok(Some(PixelFormat::RGBA16Float)));
+        assert_eq!(nmb_encode_texture_word(550), nmb_encode_texture_word(80));
+        assert_eq!(nmb_encode_texture_word(552), nmb_encode_texture_word(115));
     }
 
     #[test]

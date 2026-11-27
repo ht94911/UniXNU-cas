@@ -225,6 +225,67 @@ NmbSpirvResult *nmb_compile_render_spirv_v2(const NmbDevice *dev,
                                             size_t fs_constant_count,
                                             const NmbRenderPipelineDesc *desc);
 
+/* Additive v3 pipeline API: linked functions (MTLLinkedFunctions) + full
+ * per-attachment blend/writeMask + rasterization/topology render state. */
+typedef struct NmbLinkedFunction {
+    const NmbLibrary *library;
+    const char *name;
+    const char *specialized_name; /* NULL uses library function name */
+    const NmbFunctionConstant *constants;
+    size_t constant_count;
+    uint32_t is_private;          /* 0 = functions, 1 = privateFunctions */
+    uint32_t specialized;         /* 1 if created via constantValues/descriptor */
+} NmbLinkedFunction;
+
+typedef struct NmbColorAttachmentDesc {
+    uint32_t pixel_format;
+    uint32_t write_mask;          /* MTLColorWriteMask bitmask (0..15) */
+    uint32_t blending_enabled;    /* 0 or 1 */
+    uint32_t src_rgb_factor;      /* MTLBlendFactor */
+    uint32_t dst_rgb_factor;      /* MTLBlendFactor */
+    uint32_t rgb_blend_op;        /* MTLBlendOperation */
+    uint32_t src_alpha_factor;    /* MTLBlendFactor */
+    uint32_t dst_alpha_factor;    /* MTLBlendFactor */
+    uint32_t alpha_blend_op;      /* MTLBlendOperation */
+} NmbColorAttachmentDesc;
+
+typedef struct NmbRenderPipelineDescV3 {
+    NmbRenderPipelineDesc base;
+    uint32_t has_color_states;        /* 1 = apply color_states[0..base.color_attachment_count] */
+    NmbColorAttachmentDesc color_states[NMB_MAX_COLORS];
+    uint32_t rasterization_enabled;   /* 0 or 1 */
+    uint32_t alpha_to_coverage_enabled;
+    uint32_t alpha_to_one_enabled;
+    uint32_t input_primitive_topology; /* MTLPrimitiveTopologyClass */
+    const NmbLinkedFunction *vs_linked;
+    size_t vs_linked_count;
+    const NmbLinkedFunction *fs_linked;
+    size_t fs_linked_count;
+    uint32_t vs_specialized;
+    uint32_t fs_specialized;
+} NmbRenderPipelineDescV3;
+
+NmbSpirvResult *nmb_compile_compute_spirv_v3(const NmbDevice *dev,
+                                             const NmbLibrary *lib,
+                                             const char *fn_name,
+                                             const NmbFunctionConstant *constants,
+                                             size_t constant_count,
+                                             const NmbLinkedFunction *linked,
+                                             size_t linked_count,
+                                             uint32_t specialized,
+                                             const NmbComputePipelineDesc *desc);
+
+NmbSpirvResult *nmb_compile_render_spirv_v3(const NmbDevice *dev,
+                                            const NmbLibrary *vs_lib,
+                                            const char *vertex_fn,
+                                            const NmbFunctionConstant *vs_constants,
+                                            size_t vs_constant_count,
+                                            const NmbLibrary *fs_lib,
+                                            const char *fragment_fn,
+                                            const NmbFunctionConstant *fs_constants,
+                                            size_t fs_constant_count,
+                                            const NmbRenderPipelineDescV3 *desc);
+
 #ifdef __cplusplus
 }
 #endif

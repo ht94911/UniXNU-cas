@@ -1234,6 +1234,137 @@ A840RtStatus a840_rt_texture_create_on_buffer(A840RtDevice *device,
     return A840_RT_OK;
 }
 
+A840RtStatus a840_rt_texture_create_view(A840RtDevice *device,
+                                         A840RtTexture *parent,
+                                         uint32_t mtl_pixel_format,
+                                         uint32_t tex_type,
+                                         uint32_t base_level,
+                                         uint32_t level_count,
+                                         uint32_t base_slice,
+                                         uint32_t slice_count,
+                                         bool custom_swizzle,
+                                         const uint32_t swizzle[4],
+                                         A840RtTexture **out_texture)
+{
+    const A840FormatCaps *caps;
+    A840TexDescInput tex_in;
+    uint32_t tex_const[A840_TEX_CONST_DWORDS];
+    A840EmitStatus est;
+    A840RtTexture *view;
+    uint64_t slice_offset;
+    uint32_t parent_slices;
+    uint32_t i;
+
+    if (!out_texture) {
+        return A840_RT_INVALID_ARG;
+    }
+    *out_texture = NULL;
+    if (!device || !parent || parent->device != device || parent->device_id != device->device_id) {
+        return A840_RT_WRONG_DEVICE;
+    }
+    if (level_count == 0u || slice_count == 0u ||
+        base_level >= parent->mip_levels || level_count > parent->mip_levels - base_level) {
+        return A840_RT_RANGE_ERROR;
+    }
+    parent_slices = (parent->tex_type == A840_TEX_3D) ? parent->depth : parent->array_layers;
+    if (parent_slices == 0u) {
+        parent_slices = 1u;
+    }
+    if (base_slice >= parent_slices || slice_count > parent_slices - base_slice) {
+        return A840_RT_RANGE_ERROR;
+    }
+    if (tex_type > A840_TEX_3D) {
+        return A840_RT_INVALID_ARG;
+    }
+    caps = a840_format_caps_lookup(mtl_pixel_format);
+    if (!caps || (caps->flags & A840_FORMAT_REQUIRES_XR_CODEC) != 0u) {
+        return A840_RT_UNSUPPORTED;
+    }
+
+    slice_offset = (uint64_t)base_slice * parent->slice_stride_bytes;
+    if (slice_offset > parent->alloc_bytes) {
+        return A840_RT_RANGE_ERROR;
+    }
+
+    memset(&tex_in, 0, sizeof(tex_in));
+    tex_in.format_id = (parent->tile_mode == A840_TILE_LINEAR) ? caps->a840_fmt_id : caps->tiled_fmt_id;
+    tex_in.swap = (parent->tile_mode == A840_TILE_LINEAR) ? caps->swap : caps->tiled_swap;
+    tex_in.type = tex_type;
+    tex_in.width = (parent->width >> base_level) ? (parent->width >> base_level) : 1u;
+    tex_in.height = (parent->height >> base_level) ? (parent->height >> base_level) : 1u;
+    tex_in.depth = slice_count;
+    tex_in.mip_levels = level_count;
+    tex_in.samples = parent->samples ? parent->samples : 1u;
+    tex_in.pitch = parent->pitch_bytes;
+    tex_in.slice_stride = parent->slice_stride_bytes;
+    tex_in.gpu_va = parent->gpu_va + slice_offset;
+    tex_in.tile_mode = parent->tile_mode;
+    tex_in.highest_bank_bit = device->chip_facts.highest_bank_bit;
+    tex_in.srgb = (caps->flags & A840_FORMAT_SRGB) ? 1u : 0u;
+    tex_in.pitch_align_log2 = parent->pitch_align_log2;
+    if (tex_type == A840_TEX_3D) {
+        tex_in.min_slice_stride = (level_count == 1u) ? parent->slice_stride_bytes : A840_RT_PAGE_BYTES;
+    }
+    if (custom_swizzle && swizzle != NULL) {
+        for (i = 0u; i < 4u; ++i) {
+            tex_in.swizzle[i] = swizzle[i];
+        }
+    } else {
+        for (i = 0u; i < 4u; ++i) {
+            tex_in.swizzle[i] = parent->swizzle[i];
+        }
+    }
+
+    est = a840_encode_tex_const(&tex_in, tex_const);
+    if (est != A840_EMIT_OK) {
+        return a840_rt_status_from_emit(est);
+    }
+
+    view = (A840RtTexture *)calloc(1u, sizeof(*view));
+    if (!view) {
+        return A840_RT_OOM;
+    }
+    a840_rt_texture_retain(parent);
+    view->device = device;
+    view->device_id = device->device_id;
+    view->refcount = 1u;
+    view->bo_handle = parent->bo_handle;
+    view->gpu_va = parent->gpu_va + slice_offset;
+    view->alloc_bytes = parent->alloc_bytes - slice_offset;
+    view->cpu_ptr = parent->cpu_ptr ? (void *)((uint8_t *)parent->cpu_ptr + (size_t)slice_offset) : NULL;
+    view->cpu_token = 0u;
+    view->cpu_mapped = false;
+    view->backing_buffer = NULL;
+    view->backing_offset = 0u;
+    view->parent_texture = parent;
+    view->mtl_pixel_format = mtl_pixel_format;
+    view->format_caps = caps;
+    view->tex_type = tex_type;
+    view->width = tex_in.width;
+    view->height = tex_in.height;
+    view->depth = (tex_type == A840_TEX_3D) ? slice_count : 1u;
+    view->array_layers = (tex_type == A840_TEX_3D) ? 1u : slice_count;
+    view->mip_levels = level_count;
+    view->samples = tex_in.samples;
+    view->tile_mode = parent->tile_mode;
+    view->pitch_bytes = parent->pitch_bytes;
+    view->pitch_align_log2 = parent->pitch_align_log2;
+    view->slice_stride_bytes = parent->slice_stride_bytes;
+    view->usage_flags = parent->usage_flags;
+    view->format_id = tex_in.format_id;
+    view->swap = tex_in.swap;
+    view->color_format_id = caps->color_fmt_id;
+    view->color_swap = (parent->tile_mode == A840_TILE_LINEAR) ? caps->color_swap : A840_WZYX;
+    view->srgb = tex_in.srgb != 0u;
+    for (i = 0u; i < 4u; ++i) {
+        view->swizzle[i] = tex_in.swizzle[i];
+    }
+    memcpy(view->tex_const, tex_const, sizeof(tex_const));
+    device->live_textures++;
+    *out_texture = view;
+    return A840_RT_OK;
+}
+
 void a840_rt_texture_retain(A840RtTexture *texture)
 {
     if (texture && texture->refcount > 0u) {
@@ -1255,7 +1386,9 @@ void a840_rt_texture_release(A840RtTexture *texture)
     }
 
     dev = texture->device;
-    if (texture->backing_buffer != NULL) {
+    if (texture->parent_texture != NULL) {
+        a840_rt_texture_release(texture->parent_texture);
+    } else if (texture->backing_buffer != NULL) {
         a840_rt_buffer_release(texture->backing_buffer);
     } else {
         memset(&unmap, 0, sizeof(unmap));

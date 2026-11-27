@@ -32,6 +32,9 @@
                   nonuniform:(BOOL)nonuniform;
 - (id<MTLLibrary>)defaultLibraryForDevice:(A840MTLDevice *)device;
 - (id<MTLLibrary>)libraryWithURL:(NSURL *)url forDevice:(A840MTLDevice *)device error:(NSError **)error;
+- (id)prepareComputeWithDescriptor:(MTLComputePipelineDescriptor *)pipelineDescriptor
+                         forDevice:(A840MTLDevice *)device
+                        descriptor:(A840RtComputePipelineDesc *)descriptor;
 - (id)prepareComputeVariantForPlan:(id)plan localSize:(MTLSize)localSize
                          forDevice:(A840MTLDevice *)device
                         descriptor:(A840RtComputePipelineDesc *)descriptor;
@@ -83,5 +86,6 @@ id<MTLDevice> a840_metal_create_device(mach_port_t connection, BOOL ownsConnecti
 #endif
 
 NSError *a840_metal_error(A840RtStatus status, NSString *operation);
+uint32_t a840_canonical_backing_pixel_format(uint32_t mtl_pixel_format);
 
 #endif /* A840_MTL_DEVICE_H */

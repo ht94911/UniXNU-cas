@@ -19,15 +19,51 @@
 #pragma clang diagnostic ignored "-Wobjc-protocol-property-synthesis"
 #pragma clang diagnostic ignored "-Wobjc-protocol-method-implementation"
 
+static bool isB3a8Surface(IOSurfaceRef surface)
+{
+    return surface && IOSurfaceGetPixelFormat(surface) == 0x62336138u /* 'b3a8' */;
+}
+
+static bool computeB3a8Planes(IOSurfaceRef surface, size_t allocSize, size_t planes[4])
+{
+    if (!isB3a8Surface(surface) || IOSurfaceGetPlaneCount(surface) != 2u) return false;
+    if (IOSurfaceGetBytesPerRowOfPlane(surface, 0u) && IOSurfaceGetBytesPerRowOfPlane(surface, 1u)) {
+        return false;
+    }
+    const size_t w = IOSurfaceGetWidth(surface);
+    const size_t h = IOSurfaceGetHeight(surface);
+    const size_t row0 = (w * 4u + 63u) & ~(size_t)63u;
+    const size_t row1 = (w + 63u) & ~(size_t)63u;
+    if (!w || !h || row0 * h + row1 * h > allocSize) return false;
+    planes[0] = 0u;
+    planes[1] = row0;
+    planes[2] = row0 * h;
+    planes[3] = row1;
+    return true;
+}
+
 static A840YcbcrFormat detectIOSurfaceYcbcr(IOSurfaceRef surface, MTLPixelFormat requestedFormat)
 {
     if (!surface) return A840_YCBCR_NONE;
+    const uint32_t rawFmt = (uint32_t)requestedFormat;
+    /* Two-plane 'b3a8' (RGB10A8_2P_XR10, 550/551) is extended-range RGB+A, NOT YCbCr. */
+    if (isB3a8Surface(surface) || (rawFmt >= 550u && rawFmt <= 555u)) {
+        return A840_YCBCR_NONE;
+    }
     const size_t planes = IOSurfaceGetPlaneCount(surface);
     if (planes < 2u) return A840_YCBCR_NONE;
-    if (requestedFormat == MTLPixelFormatR16Unorm || requestedFormat == MTLPixelFormatRG16Unorm) {
+    const uint32_t fourcc = IOSurfaceGetPixelFormat(surface);
+    if (fourcc == 0x78343230u /* 'x420' */ || fourcc == 0x78663230u /* 'xf20' */ ||
+        fourcc == 0x70343230u /* 'p420' */ ||
+        requestedFormat == MTLPixelFormatR16Unorm || requestedFormat == MTLPixelFormatRG16Unorm) {
         return A840_YCBCR_P010;
     }
-    return A840_YCBCR_NV12;
+    if (fourcc == 0x34323076u /* '420v' */ || fourcc == 0x34323066u /* '420f' */ ||
+        fourcc == 0x79343230u /* 'y420' */ ||
+        requestedFormat == MTLPixelFormatR8Unorm || requestedFormat == MTLPixelFormatRG8Unorm) {
+        return A840_YCBCR_NV12;
+    }
+    return A840_YCBCR_NONE;
 }
 
 @implementation A840MTLDevice (A840MTLSystemSPI)
@@ -217,14 +253,22 @@ static A840YcbcrFormat detectIOSurfaceYcbcr(IOSurfaceRef surface, MTLPixelFormat
     sdesc.height = (uint32_t)(planeCount > 0u ? IOSurfaceGetHeightOfPlane(iosurface, plane) : IOSurfaceGetHeight(iosurface));
     if (sdesc.width == 0u) sdesc.width = (uint32_t)descriptor.width;
     if (sdesc.height == 0u) sdesc.height = (uint32_t)descriptor.height;
+    const size_t iosAllocSize = IOSurfaceGetAllocSize(iosurface);
+    size_t b3a8Layout[4] = {};
+    const bool hasB3a8Layout = computeB3a8Planes(iosurface, iosAllocSize, b3a8Layout);
+    const uint32_t backingFmt = a840_canonical_backing_pixel_format(sdesc.mtl_pixel_format);
+
     sdesc.bytes_per_row = (uint32_t)(planeCount > 0u ? IOSurfaceGetBytesPerRowOfPlane(iosurface, plane)
                                                      : IOSurfaceGetBytesPerRow(iosurface));
+    if (sdesc.bytes_per_row == 0u && hasB3a8Layout && plane < 2u) {
+        sdesc.bytes_per_row = (uint32_t)b3a8Layout[plane == 0u ? 1u : 3u];
+    }
     if (sdesc.bytes_per_row == 0u && sdesc.width > 0u) {
-        const A840FormatCaps *fc = a840_format_caps_lookup(sdesc.mtl_pixel_format);
+        const A840FormatCaps *fc = a840_format_caps_lookup(backingFmt);
         const uint32_t bpp = (fc && fc->block_bits >= 8u) ? (fc->block_bits / 8u) : ((plane == 0u) ? 4u : 1u);
         sdesc.bytes_per_row = ((sdesc.width * bpp) + 63u) & ~63u;
     }
-    sdesc.alloc_size = (uint64_t)IOSurfaceGetAllocSize(iosurface);
+    sdesc.alloc_size = (uint64_t)iosAllocSize;
     sdesc.usage_flags = A840_TEX_USAGE_SHADER_READ | A840_TEX_USAGE_CPU_VISIBLE;
     if (descriptor.usage & MTLTextureUsageShaderWrite) sdesc.usage_flags |= A840_TEX_USAGE_SHADER_WRITE;
     if (descriptor.usage & MTLTextureUsageRenderTarget) sdesc.usage_flags |= A840_TEX_USAGE_RENDER_TARGET;
@@ -248,7 +292,7 @@ static A840YcbcrFormat detectIOSurfaceYcbcr(IOSurfaceRef surface, MTLPixelFormat
     }
 
     A840RtTextureDesc rtdesc{};
-    rtdesc.mtl_pixel_format = (uint32_t)descriptor.pixelFormat;
+    rtdesc.mtl_pixel_format = backingFmt;
     rtdesc.tex_type = A840_TEX_2D;
     rtdesc.width = sdesc.width;
     rtdesc.height = sdesc.height;
@@ -262,12 +306,15 @@ static A840YcbcrFormat detectIOSurfaceYcbcr(IOSurfaceRef surface, MTLPixelFormat
 
     A840RtTexture *rtTex = nullptr;
     void *basePtr = IOSurfaceGetBaseAddress(iosurface);
-    const size_t allocSize = IOSurfaceGetAllocSize(iosurface);
+    const size_t allocSize = iosAllocSize;
     const size_t pageBytes = A840_RT_PAGE_BYTES;
+    const uintptr_t baseAddr = reinterpret_cast<uintptr_t>(basePtr);
     uintptr_t planePtr = planeCount > 0u
         ? reinterpret_cast<uintptr_t>(IOSurfaceGetBaseAddressOfPlane(iosurface, plane))
-        : reinterpret_cast<uintptr_t>(basePtr);
-    const uintptr_t baseAddr = reinterpret_cast<uintptr_t>(basePtr);
+        : baseAddr;
+    if (hasB3a8Layout && plane < 2u && (planePtr < baseAddr || (planePtr - baseAddr) >= allocSize)) {
+        planePtr = baseAddr + b3a8Layout[plane == 0u ? 0u : 2u];
+    }
     const bool canImportZeroCopy =
         basePtr != nullptr &&
         (baseAddr & (pageBytes - 1u)) == 0u &&
@@ -399,12 +446,7 @@ static A840YcbcrFormat detectIOSurfaceYcbcr(IOSurfaceRef surface, MTLPixelFormat
 - (id<MTLBinaryArchive>)newBinaryArchiveWithDescriptor:(MTLBinaryArchiveDescriptor *)descriptor
                                                  error:(NSError **)error
 {
-    A840MTLBinaryArchive *arch = [[A840MTLBinaryArchive alloc] initWithOwner:self descriptor:descriptor error:error];
-    if (!arch && descriptor && descriptor.url) {
-        MTLBinaryArchiveDescriptor *emptyDesc = [MTLBinaryArchiveDescriptor new];
-        arch = [[A840MTLBinaryArchive alloc] initWithOwner:self descriptor:emptyDesc error:error];
-    }
-    return arch;
+    return [[A840MTLBinaryArchive alloc] initWithOwner:self descriptor:descriptor error:error];
 }
 
 - (id<MTLLibrary>)newLibraryWithData:(dispatch_data_t)data error:(NSError **)error

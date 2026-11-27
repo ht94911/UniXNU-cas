@@ -49,6 +49,10 @@
                memorylessUbwc:(A840UbwcTexture *)memoryless
                    descriptor:(MTLTextureDescriptor *)descriptor;
 - (instancetype)initWithOwner:(A840MTLDevice *)owner
+                       native:(A840RtTexture *)texture
+               memorylessUbwc:(A840UbwcTexture *)memoryless
+                   descriptor:(MTLTextureDescriptor *)descriptor;
+- (instancetype)initWithOwner:(A840MTLDevice *)owner
                          heap:(A840MTLHeap *)heap
                      subAlloc:(A840HeapSubAlloc *)subAlloc
                    descriptor:(MTLTextureDescriptor *)descriptor;

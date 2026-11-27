@@ -93,6 +93,7 @@
     (void)identity;
     return 46; /* KERN_NOT_SUPPORTED */
 }
+- (void)setResponsibleProcess:(int)pid { (void)pid; }
 - (void)waitUntilComplete {}
 - (void)doesNotRecognizeSelector:(SEL)selector
 {
@@ -184,7 +185,7 @@
         return nil;
     }
     A840RtTextureDesc rtdesc{};
-    rtdesc.mtl_pixel_format = (uint32_t)descriptor.pixelFormat;
+    rtdesc.mtl_pixel_format = a840_canonical_backing_pixel_format((uint32_t)descriptor.pixelFormat);
     rtdesc.tex_type = A840_TEX_2D;
     rtdesc.width = (uint32_t)descriptor.width;
     rtdesc.height = (uint32_t)descriptor.height;
@@ -271,7 +272,16 @@
                memorylessUbwc:(A840UbwcTexture *)memoryless
                    descriptor:(MTLTextureDescriptor *)descriptor
 {
+    return [self initWithOwner:owner native:nullptr memorylessUbwc:memoryless descriptor:descriptor];
+}
+
+- (instancetype)initWithOwner:(A840MTLDevice *)owner
+                       native:(A840RtTexture *)texture
+               memorylessUbwc:(A840UbwcTexture *)memoryless
+                   descriptor:(MTLTextureDescriptor *)descriptor
+{
     if ((self = [super initWithOwner:owner options:descriptor.resourceOptions])) {
+        _native = texture;
         _memorylessNative = memoryless;
         _descriptor = [descriptor copy];
         _viewPixelFormat = descriptor.pixelFormat;
@@ -315,6 +325,31 @@
     return self;
 }
 
+static uint32_t a840MapSwizzleChannel(MTLTextureSwizzle ch, uint32_t fallback)
+{
+    switch (ch) {
+    case MTLTextureSwizzleZero: return A840_SWIZZLE_ZERO;
+    case MTLTextureSwizzleOne: return A840_SWIZZLE_ONE;
+    case MTLTextureSwizzleRed: return A840_SWIZZLE_R;
+    case MTLTextureSwizzleGreen: return A840_SWIZZLE_G;
+    case MTLTextureSwizzleBlue: return A840_SWIZZLE_B;
+    case MTLTextureSwizzleAlpha: return A840_SWIZZLE_A;
+    default: return fallback;
+    }
+}
+
+static uint32_t a840MapTextureType(MTLTextureType t)
+{
+    switch (t) {
+    case MTLTextureType1D:
+    case MTLTextureType1DArray: return A840_TEX_1D;
+    case MTLTextureTypeCube:
+    case MTLTextureTypeCubeArray: return A840_TEX_CUBE;
+    case MTLTextureType3D: return A840_TEX_3D;
+    default: return A840_TEX_2D;
+    }
+}
+
 - (instancetype)initViewOfParent:(A840MTLTexture *)parent
                      pixelFormat:(MTLPixelFormat)pixelFormat
                      textureType:(MTLTextureType)textureType
@@ -324,9 +359,29 @@
 {
     if (!(self = [super initWithOwner:parent.owner options:parent.resourceOptions])) return nil;
     _parentTexture = parent;
-    _native = parent.native;
-    if (_native) {
-        @synchronized (self.owner) { a840_rt_texture_retain(_native); }
+    if (parent.native) {
+        const uint32_t backingFmt = a840_canonical_backing_pixel_format((uint32_t)pixelFormat);
+        const uint32_t a840Type = a840MapTextureType(textureType);
+        const uint32_t swz[4] = {
+            a840MapSwizzleChannel(swizzle.red, A840_SWIZZLE_R),
+            a840MapSwizzleChannel(swizzle.green, A840_SWIZZLE_G),
+            a840MapSwizzleChannel(swizzle.blue, A840_SWIZZLE_B),
+            a840MapSwizzleChannel(swizzle.alpha, A840_SWIZZLE_A),
+        };
+        const bool isDefaultSwz = (swz[0] == A840_SWIZZLE_R && swz[1] == A840_SWIZZLE_G &&
+                                   swz[2] == A840_SWIZZLE_B && swz[3] == A840_SWIZZLE_A);
+        A840RtTexture *viewTex = nullptr;
+        @synchronized (self.owner) {
+            if (a840_rt_texture_create_view(self.owner.runtime, parent.native, backingFmt, a840Type,
+                                            (uint32_t)levelRange.location, (uint32_t)(levelRange.length ?: 1u),
+                                            (uint32_t)sliceRange.location, (uint32_t)(sliceRange.length ?: 1u),
+                                            !isDefaultSwz, swz, &viewTex) == A840_RT_OK && viewTex) {
+                _native = viewTex;
+            } else {
+                _native = parent.native;
+                a840_rt_texture_retain(_native);
+            }
+        }
     }
     _descriptor = [parent->_descriptor copy];
     _iosurface = parent.iosurface ? (IOSurfaceRef)CFRetain(parent.iosurface) : nullptr;

@@ -155,6 +155,7 @@ typedef struct A840RtTexture {
     bool cpu_mapped;
     A840RtBuffer *backing_buffer;
     uint64_t backing_offset;
+    struct A840RtTexture *parent_texture;
 
     uint32_t mtl_pixel_format;
     const A840FormatCaps *format_caps;
@@ -230,6 +231,17 @@ A840RtStatus a840_rt_texture_create_on_buffer(A840RtDevice *device,
                                               uint64_t backing_offset,
                                               const A840RtTextureDesc *desc,
                                               A840RtTexture **out_texture);
+A840RtStatus a840_rt_texture_create_view(A840RtDevice *device,
+                                         A840RtTexture *parent,
+                                         uint32_t mtl_pixel_format,
+                                         uint32_t tex_type,
+                                         uint32_t base_level,
+                                         uint32_t level_count,
+                                         uint32_t base_slice,
+                                         uint32_t slice_count,
+                                         bool custom_swizzle,
+                                         const uint32_t swizzle[4],
+                                         A840RtTexture **out_texture);
 void a840_rt_texture_retain(A840RtTexture *texture);
 void a840_rt_texture_release(A840RtTexture *texture);
 

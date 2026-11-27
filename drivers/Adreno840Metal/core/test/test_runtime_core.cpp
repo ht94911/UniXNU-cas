@@ -2456,7 +2456,57 @@ int main(int argc, char **argv)
     test_group_d_cmd_and_negative();
     test_group_e_e2e_and_dump(dump_path);
 
-    CHECK(g_cases >= 55u);
+    /* Group F (sys007 offline regressions): self-blit scratch bounce + texture view re-encoding */
+    {
+        begin_case("blit_2d_self_blit_and_view_alias_bounce");
+        A840MockTransportConfig cfg{};
+        a840_mock_transport_default_config(&cfg);
+        A840MockTransport *mock = nullptr;
+        CHECK(a840_mock_transport_create(&cfg, &mock) == A840_TRANSPORT_OK);
+        auto tr = a840_mock_transport_interface(mock);
+        A840RtDevice *dev = nullptr;
+        CHECK(a840_rt_device_create(&tr, A840_ROUTE_PHASE2_ALL, &dev) == A840_RT_OK);
+        A840RtQueue *q = nullptr;
+        CHECK(a840_rt_queue_create(dev, A840_QUEUE_PRIORITY_NORMAL, &q) == A840_RT_OK);
+        A840RtCmdBuffer *cb = nullptr;
+        CHECK(a840_rt_cb_create(q, nullptr, &cb) == A840_RT_OK);
+
+        /* Exact QuartzCore warmup_shaders shape: 776x24 texA (0,0,8x8) -> (8,8,8x8). */
+        A840RtTexture *texA = create_tex2d(dev, 80u, 776u, 24u, A840_TILE_LINEAR);
+        CHECK(texA != nullptr);
+        A840RtTexture *viewSrgb = nullptr;
+        const uint32_t swz[4] = {A840_SWIZZLE_B, A840_SWIZZLE_G, A840_SWIZZLE_R, A840_SWIZZLE_ONE};
+        CHECK(a840_rt_texture_create_view(dev, texA, 81u, A840_TEX_2D, 0u, 1u, 0u, 1u, true, swz, &viewSrgb) == A840_RT_OK);
+        CHECK(viewSrgb != nullptr);
+        CHECK(viewSrgb->srgb);
+        CHECK(viewSrgb->gpu_va == texA->gpu_va);
+        CHECK(viewSrgb->parent_texture == texA);
+        CHECK(std::memcmp(viewSrgb->tex_const, texA->tex_const, sizeof(texA->tex_const)) != 0);
+
+        A840RtBlitEncoder *be = nullptr;
+        CHECK(a840_rt_cb_begin_blit(cb, &be) == A840_RT_OK);
+        A840Rect2D r0{0u, 0u, 8u, 8u};
+        A840Rect2D r1{8u, 8u, 8u, 8u};
+        CHECK(a840_rt_blit_2d(be, texA, &r0, texA, &r1, A840_FILTER_NEAREST) == A840_RT_OK);
+        CHECK(a840_rt_blit_2d(be, texA, &r0, texA, &r0, A840_FILTER_NEAREST) == A840_RT_OK);
+        CHECK(a840_rt_blit_2d(be, texA, &r0, viewSrgb, &r1, A840_FILTER_NEAREST) == A840_RT_OK);
+        CHECK(a840_rt_blit_end(be) == A840_RT_OK);
+        a840_rt_blit_destroy(be);
+
+        CHECK(a840_rt_cb_commit(cb) == A840_RT_OK);
+        CHECK(a840_rt_cb_wait_until_completed(cb, UINT64_C(1000000000)) == A840_RT_OK);
+        /* Release parent BEFORE view and CB to verify refcount lifetime safety under ASan. */
+        a840_rt_texture_release(texA);
+        a840_rt_texture_release(viewSrgb);
+        a840_rt_cb_release(cb);
+        CHECK(dev->live_textures == 0u);
+        a840_rt_queue_destroy(q);
+        a840_rt_device_destroy(dev);
+        CHECK(a840_mock_transport_live_bo_count(mock) == 0u);
+        a840_mock_transport_destroy(mock);
+    }
+
+    CHECK(g_cases >= 56u);
     std::printf("PASS: W03-L3 runtime core: %u independent cases, %u assertions\n",
                 g_cases, g_checks);
     return 0;

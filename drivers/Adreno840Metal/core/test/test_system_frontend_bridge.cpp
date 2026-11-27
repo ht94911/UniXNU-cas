@@ -280,6 +280,8 @@ void run_group_b(A840RtDevice *rt)
     CHECK(a840_sys_supports_pixel_format(A840_MTL_FMT_BGRA8_UNORM_SRGB));
     CHECK(a840_sys_supports_pixel_format(115u)); /* RGBA16Float */
     CHECK(a840_sys_supports_pixel_format(90u));  /* RGB10A2Unorm */
+    CHECK(a840_sys_supports_pixel_format(A840_MTL_FMT_RGB10A8_2P_XR10));
+    CHECK(a840_sys_supports_pixel_format(A840_MTL_FMT_RGB10A8_2P_XR10_SRGB));
     CHECK(a840_sys_supports_pixel_format(A840_MTL_FMT_BGRA10_XR));
     CHECK(a840_sys_supports_pixel_format(A840_MTL_FMT_DEPTH32_FLOAT));
     CHECK(!a840_sys_supports_pixel_format(0u));

@@ -217,24 +217,85 @@ static A840RtTexture *nativeTexture(id<MTLTexture> texture, A840MTLDevice *owner
     if (!cb.wantsRaw || !sourceSize.width || !sourceSize.height) return;
     auto *sb = nativeBuffer(sourceBuffer, cb.owner);
     auto *dt = nativeTexture(destinationTexture, cb.owner);
-    if (!sb || !dt || !sb->cpu_ptr || !dt->cpu_ptr || destinationSlice || destinationLevel ||
-        !dt->format_caps || sourceOffset > sb->size_bytes) {
-        [cb recordFailure:A840_RT_UNSUPPORTED];
+    if (!sb || !dt || destinationSlice || destinationLevel || !dt->format_caps ||
+        sourceOffset > sb->size_bytes ||
+        sourceSize.width > UINT32_MAX || sourceSize.height > UINT32_MAX ||
+        destinationOrigin.x > UINT32_MAX || destinationOrigin.y > UINT32_MAX) {
+        [cb recordFailure:A840_RT_UNSUPPORTED reason:@"buf2tex_arg"];
         return;
     }
     const NSUInteger bpp = dt->format_caps->block_bits / 8u;
+    if (bpp == 0u) {
+        [cb recordFailure:A840_RT_UNSUPPORTED reason:@"buf2tex_bpp"];
+        return;
+    }
     const NSUInteger rowBytes = sourceSize.width * bpp;
-    auto *srcPtr = static_cast<const uint8_t *>(sb->cpu_ptr) + sourceOffset;
-    auto *dstPtr = static_cast<uint8_t *>(dt->cpu_ptr) +
-                   destinationOrigin.y * dt->pitch_bytes + destinationOrigin.x * bpp;
-    for (NSUInteger row = 0u; row < sourceSize.height; ++row) {
-        std::memcpy(dstPtr, srcPtr, rowBytes);
-        srcPtr += sourceBytesPerRow;
-        dstPtr += dt->pitch_bytes;
+    const NSUInteger effSrcRow = sourceBytesPerRow ? sourceBytesPerRow : rowBytes;
+    if (effSrcRow < rowBytes) {
+        [cb recordFailure:A840_RT_RANGE_ERROR reason:@"buf2tex_row"];
+        return;
     }
+    const A840Rect2D srcRect{0u, 0u, (uint32_t)sourceSize.width, (uint32_t)sourceSize.height};
+    const A840Rect2D dstRect{(uint32_t)destinationOrigin.x, (uint32_t)destinationOrigin.y,
+                             (uint32_t)sourceSize.width, (uint32_t)sourceSize.height};
+
     @synchronized (cb.owner) {
-        (void)a840_rt_blit_barrier(_native, A840_CACHE_UCHE_INV, true, false);
+        /* 1. Fast zero-copy GPU-ordered 2D blit when buffer offset & pitch are 64B aligned. */
+        if ((sourceOffset % 64u) == 0u && (effSrcRow % 64u) == 0u && effSrcRow <= UINT32_MAX) {
+            A840RtTextureDesc viewDesc{};
+            viewDesc.mtl_pixel_format = dt->mtl_pixel_format;
+            viewDesc.tex_type = A840_TEX_2D;
+            viewDesc.width = (uint32_t)sourceSize.width;
+            viewDesc.height = (uint32_t)sourceSize.height;
+            viewDesc.depth = 1u;
+            viewDesc.array_layers = 1u;
+            viewDesc.mip_levels = 1u;
+            viewDesc.samples = 1u;
+            viewDesc.tile_mode = A840_TILE_LINEAR;
+            viewDesc.pitch_bytes = (uint32_t)effSrcRow;
+            viewDesc.usage_flags = A840_TEX_USAGE_SHADER_READ;
+            A840RtTexture *bufView = nullptr;
+            if (a840_rt_texture_create_on_buffer(cb.owner.runtime, sb, (uint64_t)sourceOffset,
+                                                 &viewDesc, &bufView) == A840_RT_OK && bufView) {
+                const A840RtStatus st = a840_rt_blit_2d(_native, bufView, &srcRect, dt, &dstRect, A840_FILTER_NEAREST);
+                a840_rt_texture_release(bufView);
+                if (st == A840_RT_OK) return;
+            }
+        }
+        /* 2. Unaligned bytesPerRow/offset: stage into fresh 64B-aligned transient texture + GPU blit
+         *    (works for BOTH Private and Shared destination textures in strict GPU command order). */
+        if (sb->cpu_ptr) {
+            A840RtTextureDesc stageDesc{};
+            stageDesc.mtl_pixel_format = dt->mtl_pixel_format;
+            stageDesc.tex_type = A840_TEX_2D;
+            stageDesc.width = (uint32_t)sourceSize.width;
+            stageDesc.height = (uint32_t)sourceSize.height;
+            stageDesc.depth = 1u;
+            stageDesc.array_layers = 1u;
+            stageDesc.mip_levels = 1u;
+            stageDesc.samples = 1u;
+            stageDesc.tile_mode = A840_TILE_LINEAR;
+            stageDesc.usage_flags = A840_TEX_USAGE_SHADER_READ | A840_TEX_USAGE_CPU_VISIBLE;
+            A840RtTexture *stageTex = nullptr;
+            if (a840_rt_texture_create(cb.owner.runtime, &stageDesc, &stageTex) == A840_RT_OK &&
+                stageTex && stageTex->cpu_ptr) {
+                const auto *srcPtr = static_cast<const uint8_t *>(sb->cpu_ptr) + sourceOffset;
+                auto *dstPtr = static_cast<uint8_t *>(stageTex->cpu_ptr);
+                for (NSUInteger row = 0u; row < sourceSize.height; ++row) {
+                    std::memcpy(dstPtr, srcPtr, rowBytes);
+                    srcPtr += effSrcRow;
+                    dstPtr += stageTex->pitch_bytes;
+                }
+                const A840RtStatus st = a840_rt_blit_2d(_native, stageTex, &srcRect, dt, &dstRect, A840_FILTER_NEAREST);
+                a840_rt_texture_release(stageTex);
+                if (st == A840_RT_OK) return;
+                [cb recordFailure:st reason:@"buf2tex_stage_blit"];
+                return;
+            }
+            if (stageTex) a840_rt_texture_release(stageTex);
+        }
     }
+    [cb recordFailure:A840_RT_UNSUPPORTED reason:@"buf2tex_fail"];
 }
 - (void)copyFromTexture:(id<MTLTexture>)sourceTexture
             sourceSlice:(NSUInteger)sourceSlice
@@ -254,20 +315,67 @@ destinationBytesPerImage:(NSUInteger)destinationBytesPerImage
     if (!cb.wantsRaw || !sourceSize.width || !sourceSize.height) return;
     auto *st = nativeTexture(sourceTexture, cb.owner);
     auto *db = nativeBuffer(destinationBuffer, cb.owner);
-    if (!st || !db || !st->cpu_ptr || !db->cpu_ptr || sourceSlice || sourceLevel ||
-        !st->format_caps || destinationOffset > db->size_bytes) {
-        [cb recordFailure:A840_RT_UNSUPPORTED];
+    if (!st || !db || sourceSlice || sourceLevel || !st->format_caps ||
+        destinationOffset > db->size_bytes ||
+        sourceSize.width > UINT32_MAX || sourceSize.height > UINT32_MAX ||
+        sourceOrigin.x > UINT32_MAX || sourceOrigin.y > UINT32_MAX) {
+        [cb recordFailure:A840_RT_UNSUPPORTED reason:@"tex2buf_arg"];
         return;
     }
     const NSUInteger bpp = st->format_caps->block_bits / 8u;
+    if (bpp == 0u) {
+        [cb recordFailure:A840_RT_UNSUPPORTED reason:@"tex2buf_bpp"];
+        return;
+    }
     const NSUInteger rowBytes = sourceSize.width * bpp;
-    auto *srcPtr = static_cast<const uint8_t *>(st->cpu_ptr) +
-                   sourceOrigin.y * st->pitch_bytes + sourceOrigin.x * bpp;
+    const NSUInteger effDstRow = destinationBytesPerRow ? destinationBytesPerRow : rowBytes;
+    if (effDstRow < rowBytes) {
+        [cb recordFailure:A840_RT_RANGE_ERROR reason:@"tex2buf_row"];
+        return;
+    }
+    const A840Rect2D srcRect{(uint32_t)sourceOrigin.x, (uint32_t)sourceOrigin.y,
+                             (uint32_t)sourceSize.width, (uint32_t)sourceSize.height};
+    const A840Rect2D dstRect{0u, 0u, (uint32_t)sourceSize.width, (uint32_t)sourceSize.height};
+
+    /* 1. GPU-ordered 2D blit into buffer when 64B-aligned (works on Private & Shared textures). */
+    if ((destinationOffset % 64u) == 0u && (effDstRow % 64u) == 0u && effDstRow <= UINT32_MAX) {
+        @synchronized (cb.owner) {
+            A840RtTextureDesc viewDesc{};
+            viewDesc.mtl_pixel_format = st->mtl_pixel_format;
+            viewDesc.tex_type = A840_TEX_2D;
+            viewDesc.width = (uint32_t)sourceSize.width;
+            viewDesc.height = (uint32_t)sourceSize.height;
+            viewDesc.depth = 1u;
+            viewDesc.array_layers = 1u;
+            viewDesc.mip_levels = 1u;
+            viewDesc.samples = 1u;
+            viewDesc.tile_mode = A840_TILE_LINEAR;
+            viewDesc.pitch_bytes = (uint32_t)effDstRow;
+            viewDesc.usage_flags = A840_TEX_USAGE_RENDER_TARGET;
+            A840RtTexture *bufView = nullptr;
+            if (a840_rt_texture_create_on_buffer(cb.owner.runtime, db, (uint64_t)destinationOffset,
+                                                 &viewDesc, &bufView) == A840_RT_OK && bufView) {
+                const A840RtStatus bst = a840_rt_blit_2d(_native, st, &srcRect, bufView, &dstRect, A840_FILTER_NEAREST);
+                a840_rt_texture_release(bufView);
+                if (bst == A840_RT_OK) {
+                    (void)a840_rt_blit_barrier(_native, A840_CACHE_CCU_FLUSH_COLOR | A840_CACHE_UCHE_INV, true, false);
+                    return;
+                }
+            }
+        }
+    }
+    /* 2. Unaligned linear Shared texture fallback. */
+    if (!st->cpu_ptr || !db->cpu_ptr) {
+        [cb recordFailure:A840_RT_UNSUPPORTED reason:@"tex2buf_unaligned_private"];
+        return;
+    }
+    const auto *srcPtr = static_cast<const uint8_t *>(st->cpu_ptr) +
+                         sourceOrigin.y * st->pitch_bytes + sourceOrigin.x * bpp;
     auto *dstPtr = static_cast<uint8_t *>(db->cpu_ptr) + destinationOffset;
     for (NSUInteger row = 0u; row < sourceSize.height; ++row) {
         std::memcpy(dstPtr, srcPtr, rowBytes);
         srcPtr += st->pitch_bytes;
-        dstPtr += destinationBytesPerRow;
+        dstPtr += effDstRow;
     }
     @synchronized (cb.owner) {
         (void)a840_rt_blit_barrier(_native, A840_CACHE_CCU_FLUSH_COLOR | A840_CACHE_UCHE_INV, true, false);
@@ -779,14 +887,14 @@ static uint16_t floatToHalfBits(float f)
 static BOOL convertClear(id<MTLTexture> texture, MTLClearColor color, uint32_t output[4])
 {
     if (!texture) return NO;
-    const uint32_t rawFmt = (uint32_t)texture.pixelFormat;
+    const uint32_t rawFmt = a840_canonical_backing_pixel_format((uint32_t)texture.pixelFormat);
     const A840FormatCaps *caps = a840_format_caps_lookup(rawFmt);
     if (!caps || !caps->renderable) return NO;
     const double components[4] = {color.red, color.green, color.blue, color.alpha};
     for (unsigned i = 0u; i < 4u; ++i) {
         if (!std::isfinite(components[i])) return NO;
     }
-    switch (texture.pixelFormat) {
+    switch ((MTLPixelFormat)rawFmt) {
     case MTLPixelFormatR16Float:
     case MTLPixelFormatRG16Float:
     case MTLPixelFormatRGBA16Float:

@@ -370,7 +370,9 @@ bool a840_sys_supports_pixel_format(uint32_t mtl_pixel_format)
     if (caps != NULL) {
         return true;
     }
-    return mtl_pixel_format == A840_MTL_FMT_BGRA10_XR ||
+    return mtl_pixel_format == A840_MTL_FMT_RGB10A8_2P_XR10 ||
+           mtl_pixel_format == A840_MTL_FMT_RGB10A8_2P_XR10_SRGB ||
+           mtl_pixel_format == A840_MTL_FMT_BGRA10_XR ||
            mtl_pixel_format == A840_MTL_FMT_BGRA10_XR_SRGB ||
            mtl_pixel_format == A840_MTL_FMT_BGR10_XR ||
            mtl_pixel_format == A840_MTL_FMT_BGR10_XR_SRGB;
@@ -704,6 +706,15 @@ A840SysStatus a840_sys_bind_iosurface(A840SysFrontend *fe,
         tdesc.mtl_pixel_format = (desc->ycbcr_format == A840_YCBCR_NV12)
                                      ? A840_MTL_FMT_R8_UNORM
                                      : A840_MTL_FMT_R16_UNORM;
+        tdesc.tile_mode = A840_TILE_LINEAR;
+    } else if (desc->mtl_pixel_format == A840_MTL_FMT_RGB10A8_2P_XR10 ||
+               desc->mtl_pixel_format == A840_MTL_FMT_RGB10A8_2P_XR10_SRGB) {
+        /* 2-plane 'b3a8' XR10 IOSurface: back in linear BGRA8 (4 B/px, matching plane 0). */
+        tdesc.kind = A840_P3_TEX_UBWC6;
+        tdesc.storage_mode = A840_STORAGE_SHARED;
+        tdesc.mtl_pixel_format = (desc->mtl_pixel_format == A840_MTL_FMT_RGB10A8_2P_XR10_SRGB)
+                                     ? A840_MTL_FMT_BGRA8_UNORM_SRGB
+                                     : A840_MTL_FMT_BGRA8_UNORM;
         tdesc.tile_mode = A840_TILE_LINEAR;
     } else if (desc->mtl_pixel_format == A840_MTL_FMT_BGRA10_XR ||
                desc->mtl_pixel_format == A840_MTL_FMT_BGRA10_XR_SRGB ||

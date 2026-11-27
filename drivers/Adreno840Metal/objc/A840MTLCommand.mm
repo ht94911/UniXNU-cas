@@ -584,6 +584,10 @@ static thread_local bool gInCompletionCallback = false;
 {
     (void)tag; (void)groups; (void)count;
 }
+- (void)setResponsibleTaskIDs:(const uint32_t *)ids count:(unsigned int)count
+{
+    (void)ids; (void)count;
+}
 - (void)commitAndWaitUntilSubmitted
 {
     [self commit];

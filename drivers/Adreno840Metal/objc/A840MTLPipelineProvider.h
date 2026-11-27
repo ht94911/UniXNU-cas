@@ -17,7 +17,19 @@
                    functionType:(MTLFunctionType)functionType
                  constantValues:(MTLFunctionConstantValues *)constantValues
                           error:(NSError **)error;
+- (instancetype)initWithLibrary:(A840MTLLibrary *)library
+                     sourceName:(NSString *)sourceName
+                specializedName:(NSString *)specializedName
+                   functionType:(MTLFunctionType)functionType
+                 constantValues:(MTLFunctionConstantValues *)constantValues
+                    specialized:(BOOL)specialized
+                          error:(NSError **)error;
 @property(nonatomic, strong, readonly) A840MTLLibrary *ownerLibrary;
+@property(nonatomic, copy, readonly) NSString *sourceName;
+@property(nonatomic, copy, readonly) NSString *specializedName;
+@property(nonatomic, readonly) BOOL isSpecialized;
+- (NSData *)extractBitcodeData;
+- (const void *)bitCodeHash;
 @end
 
 @interface A840MTLNativePipelineProvider : NSObject <A840MTLPipelineProvider>

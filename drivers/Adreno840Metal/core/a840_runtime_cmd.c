@@ -1033,6 +1033,116 @@ A840RtStatus a840_rt_blit_2d(A840RtBlitEncoder *enc,
         return A840_RT_FALLBACK_REQUIRED;
     }
 
+    /* Check whether src and dst share overlapping VA storage (same texture or
+     * aliased views). Metal allows same-texture blits (e.g. QuartzCore warmup_shaders
+     * copying (0,0,8x8) -> (8,8,8x8) within one 776x24 texture), whereas the raw
+     * hardware 2D emitter strictly rejects overlapping storage (A840_EMIT_ALIAS). */
+    {
+        const uint64_t src_end = src_texture->gpu_va + src_texture->alloc_bytes;
+        const uint64_t dst_end = dst_texture->gpu_va + dst_texture->alloc_bytes;
+        const bool aliased = (src_texture == dst_texture) ||
+                             (src_texture->alloc_bytes > 0u && dst_texture->alloc_bytes > 0u &&
+                              src_texture->gpu_va < dst_end && dst_texture->gpu_va < src_end);
+        if (aliased) {
+            A840RtTextureDesc scratch_desc;
+            A840RtTexture *scratch = NULL;
+            A840Rect2D scratch_rect;
+            A840Blit2DDesc step1, step2;
+            size_t saved_words, saved_relocs;
+
+            if (src_rect->width == 0u || src_rect->height == 0u ||
+                dst_rect->width == 0u || dst_rect->height == 0u ||
+                src_rect->x > src_texture->width || src_rect->width > src_texture->width - src_rect->x ||
+                src_rect->y > src_texture->height || src_rect->height > src_texture->height - src_rect->y ||
+                dst_rect->x > dst_texture->width || dst_rect->width > dst_texture->width - dst_rect->x ||
+                dst_rect->y > dst_texture->height || dst_rect->height > dst_texture->height - dst_rect->y) {
+                return A840_RT_RANGE_ERROR;
+            }
+            if (src_texture == dst_texture &&
+                src_rect->x == dst_rect->x && src_rect->y == dst_rect->y &&
+                src_rect->width == dst_rect->width && src_rect->height == dst_rect->height) {
+                st = pre_reserve_textures(cb, 1u);
+                if (st != A840_RT_OK) {
+                    return st;
+                }
+                retain_texture_reserved(cb, src_texture);
+                return A840_RT_OK;
+            }
+
+            memset(&scratch_desc, 0, sizeof(scratch_desc));
+            scratch_desc.mtl_pixel_format = dst_texture->mtl_pixel_format;
+            scratch_desc.tex_type = A840_TEX_2D;
+            scratch_desc.width = dst_rect->width;
+            scratch_desc.height = dst_rect->height;
+            scratch_desc.depth = 1u;
+            scratch_desc.array_layers = 1u;
+            scratch_desc.mip_levels = 1u;
+            scratch_desc.samples = 1u;
+            scratch_desc.tile_mode = A840_TILE_LINEAR;
+            scratch_desc.usage_flags = A840_TEX_USAGE_SHADER_READ | A840_TEX_USAGE_RENDER_TARGET;
+
+            st = a840_rt_texture_create(cb->device, &scratch_desc, &scratch);
+            if (st != A840_RT_OK) {
+                return st;
+            }
+            st = pre_reserve_textures(cb, 3u);
+            if (st != A840_RT_OK) {
+                a840_rt_texture_release(scratch);
+                return st;
+            }
+
+            scratch_rect.x = 0u;
+            scratch_rect.y = 0u;
+            scratch_rect.width = dst_rect->width;
+            scratch_rect.height = dst_rect->height;
+
+            memset(&step1, 0, sizeof(step1));
+            a840_rt_texture_as_surface2d(src_texture, &step1.src);
+            a840_rt_texture_as_surface2d(scratch, &step1.dst);
+            step1.src_rect = *src_rect;
+            step1.dst_rect = scratch_rect;
+            step1.filter = filter;
+
+            memset(&step2, 0, sizeof(step2));
+            a840_rt_texture_as_surface2d(scratch, &step2.src);
+            a840_rt_texture_as_surface2d(dst_texture, &step2.dst);
+            step2.src_rect = scratch_rect;
+            step2.dst_rect = *dst_rect;
+            step2.filter = A840_FILTER_NEAREST;
+
+            saved_words = cb->cs.used_dwords;
+            saved_relocs = cb->cs.reloc_count;
+            est = a840_emit_2d_blit(&cb->cs, &step1);
+            if (est != A840_EMIT_OK) {
+                cb->cs.used_dwords = saved_words;
+                cb->cs.reloc_count = saved_relocs;
+                a840_rt_texture_release(scratch);
+                return a840_rt_status_from_emit(est);
+            }
+            st = emit_barrier_tx(&cb->cs,
+                                 A840_CACHE_CCU_FLUSH_COLOR | A840_CACHE_CCU_INV_COLOR | A840_CACHE_UCHE_INV,
+                                 true, true);
+            if (st != A840_RT_OK) {
+                cb->cs.used_dwords = saved_words;
+                cb->cs.reloc_count = saved_relocs;
+                a840_rt_texture_release(scratch);
+                return st;
+            }
+            est = a840_emit_2d_blit(&cb->cs, &step2);
+            if (est != A840_EMIT_OK) {
+                cb->cs.used_dwords = saved_words;
+                cb->cs.reloc_count = saved_relocs;
+                a840_rt_texture_release(scratch);
+                return a840_rt_status_from_emit(est);
+            }
+            retain_texture_reserved(cb, src_texture);
+            retain_texture_reserved(cb, dst_texture);
+            retain_texture_reserved(cb, scratch);
+            a840_rt_texture_release(scratch);
+            return A840_RT_OK;
+        }
+    }
+
     st = pre_reserve_textures(cb, 2u);
     if (st != A840_RT_OK) {
         return st;

@@ -16,7 +16,9 @@
 #include "a840_ir3_io_info.h"
 #include "gen/a840_bitfields.h"
 
+#import <CommonCrypto/CommonDigest.h>
 #include <algorithm>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <string>
@@ -277,18 +279,77 @@ static void a840MarshalConstants(const std::vector<A840OwnedConstant> &owned,
 - (const std::vector<A840OwnedConstant> &)ownedConstants;
 @end
 
+static NSData *a840ExtractMtlbBitcode(NSData *libData, const char *wantedName)
+{
+    if (!libData || !wantedName || !wantedName[0]) return nil;
+    const uint8_t *raw = static_cast<const uint8_t *>(libData.bytes);
+    const size_t rawLen = libData.length;
+    size_t airOff = 0u, airLen = 0u;
+    if (!nmb_extract_air_slice(raw, rawLen, &airOff, &airLen)) return nil;
+    if (airLen < 88u || airOff > rawLen || airLen > rawLen - airOff) return nil;
+    const uint8_t *file = raw + airOff;
+    if (std::memcmp(file, "MTLB", 4u) != 0) return nil;
+
+    uint64_t listAt = 0u, bitcodeAt = 0u, bitcodeSize = 0u;
+    std::memcpy(&listAt, file + 24u, 8u);
+    std::memcpy(&bitcodeAt, file + 72u, 8u);
+    std::memcpy(&bitcodeSize, file + 80u, 8u);
+    if (listAt > airLen - 4u || bitcodeAt > airLen || bitcodeSize > airLen - bitcodeAt) return nil;
+
+    uint32_t count = 0u;
+    std::memcpy(&count, file + listAt, 4u);
+    size_t at = static_cast<size_t>(listAt) + 4u;
+    for (uint32_t i = 0u; i < count; ++i) {
+        if (at > airLen - 4u) return nil;
+        uint32_t entrySize = 0u;
+        std::memcpy(&entrySize, file + at, 4u);
+        if (entrySize < 8u || entrySize > airLen - at) return nil;
+        const size_t end = at + entrySize;
+        std::string entryName;
+        uint64_t mdSize = 0u, bcOff = 0u;
+        bool hasSize = false, hasOff = false;
+        for (size_t t = at + 4u; t + 4u <= end && std::memcmp(file + t, "ENDT", 4u) != 0;) {
+            if (t + 6u > end) return nil;
+            uint16_t n = 0u;
+            std::memcpy(&n, file + t + 4u, 2u);
+            const uint8_t *v = file + t + 6u;
+            if (n > end - (t + 6u)) return nil;
+            if (std::memcmp(file + t, "NAME", 4u) == 0) {
+                entryName.assign(reinterpret_cast<const char *>(v), strnlen(reinterpret_cast<const char *>(v), n));
+            } else if (std::memcmp(file + t, "MDSZ", 4u) == 0 && n >= 8u) {
+                std::memcpy(&mdSize, v, 8u);
+                hasSize = true;
+            } else if (std::memcmp(file + t, "OFFT", 4u) == 0 && n >= 24u) {
+                std::memcpy(&bcOff, v + 16u, 8u);
+                hasOff = true;
+            }
+            t += 6u + n;
+        }
+        if (entryName == wantedName) {
+            if (!hasSize || !hasOff || bcOff > bitcodeSize || mdSize > bitcodeSize - bcOff) return nil;
+            return [NSData dataWithBytes:file + bitcodeAt + bcOff length:static_cast<NSUInteger>(mdSize)];
+        }
+        at = end;
+    }
+    return nil;
+}
+
 @implementation A840MTLFunction {
-    NSString *_name;
+    NSString *_sourceName;
+    NSString *_specializedName;
     MTLFunctionType _type;
+    BOOL _specialized;
     std::vector<A840OwnedConstant> _constants;
     uint8_t _bitCodeHash[32];
+    BOOL _bitCodeHashReady;
 }
 @synthesize label = _label;
 
 - (instancetype)initWithLibrary:(A840MTLLibrary *)library name:(NSString *)name
                    functionType:(MTLFunctionType)functionType
 {
-    return [self initWithLibrary:library name:name functionType:functionType constantValues:nil error:nil];
+    return [self initWithLibrary:library sourceName:name specializedName:nil
+                    functionType:functionType constantValues:nil specialized:NO error:nil];
 }
 
 - (instancetype)initWithLibrary:(A840MTLLibrary *)library name:(NSString *)name
@@ -296,35 +357,55 @@ static void a840MarshalConstants(const std::vector<A840OwnedConstant> &owned,
                  constantValues:(MTLFunctionConstantValues *)constantValues
                           error:(NSError **)error
 {
+    return [self initWithLibrary:library sourceName:name specializedName:nil
+                    functionType:functionType constantValues:constantValues
+                     specialized:(constantValues != nil) error:error];
+}
+
+- (instancetype)initWithLibrary:(A840MTLLibrary *)library
+                     sourceName:(NSString *)sourceName
+                specializedName:(NSString *)specializedName
+                   functionType:(MTLFunctionType)functionType
+                 constantValues:(MTLFunctionConstantValues *)constantValues
+                    specialized:(BOOL)specialized
+                          error:(NSError **)error
+{
     if (!(self = [super init])) return nil;
     if (constantValues && !a840ExtractConstantValues(constantValues, _constants, error)) {
         return nil;
     }
     _ownerLibrary = library;
-    _name = [name copy];
+    _sourceName = [sourceName copy];
+    _specializedName = specializedName.length ? [specializedName copy] : nil;
     _type = functionType;
+    _specialized = specialized || !_constants.empty();
     return self;
 }
 - (const std::vector<A840OwnedConstant> &)ownedConstants { return _constants; }
 - (id<MTLDevice>)device { return _ownerLibrary.device; }
-- (NSString *)name { return _name; }
+- (NSString *)name { return _specializedName ?: _sourceName; }
+- (NSString *)sourceName { return _sourceName; }
+- (NSString *)specializedName { return _specializedName; }
+- (BOOL)isSpecialized { return _specialized; }
 - (MTLFunctionType)functionType { return _type; }
 - (MTLPatchType)patchType { return MTLPatchTypeNone; }
 - (NSInteger)patchControlPointCount { return 0; }
+- (NSData *)extractBitcodeData
+{
+    return a840ExtractMtlbBitcode(_ownerLibrary.metallibData, _sourceName.UTF8String);
+}
 - (const void *)bitCodeHash
 {
-    uint64_t h1 = 14695981039346656037ULL;
-    uint64_t h2 = 1099511628211ULL;
-    const char *s = _name.UTF8String ?: "";
-    for (const unsigned char *p = reinterpret_cast<const unsigned char *>(s); *p; ++p) {
-        h1 ^= *p; h1 *= 1099511628211ULL;
-        h2 = (h2 * 1315423911ULL) ^ *p;
+    if (!_bitCodeHashReady) {
+        NSData *bc = [self extractBitcodeData];
+        if (bc && bc.length > 0u) {
+            CC_SHA256(bc.bytes, static_cast<CC_LONG>(bc.length), _bitCodeHash);
+        } else {
+            const char *s = _sourceName.UTF8String ?: "";
+            CC_SHA256(s, static_cast<CC_LONG>(std::strlen(s)), _bitCodeHash);
+        }
+        _bitCodeHashReady = YES;
     }
-    const uintptr_t libPtr = reinterpret_cast<uintptr_t>((__bridge void *)_ownerLibrary);
-    std::memcpy(_bitCodeHash + 0, &h1, 8u);
-    std::memcpy(_bitCodeHash + 8, &h2, 8u);
-    std::memcpy(_bitCodeHash + 16, &libPtr, sizeof(libPtr));
-    std::memcpy(_bitCodeHash + 24, &_type, sizeof(uint64_t));
     return _bitCodeHash;
 }
 - (NSArray<MTLVertexAttribute *> *)vertexAttributes { return nil; }
@@ -426,15 +507,19 @@ static void a840MarshalConstants(const std::vector<A840OwnedConstant> &owned,
     NSNumber *kind = name ? _functions[name] : nil;
     if (!kind) {
         if (error) {
-            *error = a840_metal_error(A840_RT_INVALID_ARG,
-                                      [NSString stringWithFormat:@"Function not found: %@", name ?: @""]);
+            *error = [NSError errorWithDomain:MTLLibraryErrorDomain
+                                         code:MTLLibraryErrorFunctionNotFound
+                                     userInfo:@{NSLocalizedDescriptionKey:
+                                                    [NSString stringWithFormat:@"Function not found: %@", name ?: @""]}];
         }
         return nil;
     }
     id<MTLFunction> fn = [[A840MTLFunction alloc] initWithLibrary:self
-                                                             name:name
+                                                       sourceName:name
+                                                  specializedName:nil
                                                      functionType:static_cast<MTLFunctionType>(kind.unsignedIntegerValue)
                                                    constantValues:constantValues
+                                                      specialized:YES
                                                             error:error];
     if (fn && error) *error = nil;
     return fn;
@@ -462,7 +547,26 @@ static void a840MarshalConstants(const std::vector<A840OwnedConstant> &owned,
         if (error) *error = a840_metal_error(A840_RT_INVALID_ARG, @"Function descriptor name required");
         return nil;
     }
-    return [self newFunctionWithName:descriptor.name constantValues:descriptor.constantValues error:error];
+    NSNumber *kind = _functions[descriptor.name];
+    if (!kind) {
+        if (error) {
+            *error = [NSError errorWithDomain:MTLLibraryErrorDomain
+                                         code:MTLLibraryErrorFunctionNotFound
+                                     userInfo:@{NSLocalizedDescriptionKey:
+                                                    [NSString stringWithFormat:@"Function not found: %@", descriptor.name]}];
+        }
+        return nil;
+    }
+    NSString *specName = descriptor.specializedName;
+    id<MTLFunction> fn = [[A840MTLFunction alloc] initWithLibrary:self
+                                                       sourceName:descriptor.name
+                                                  specializedName:specName
+                                                     functionType:static_cast<MTLFunctionType>(kind.unsignedIntegerValue)
+                                                   constantValues:descriptor.constantValues
+                                                      specialized:YES
+                                                            error:error];
+    if (fn && error) *error = nil;
+    return fn;
 }
 - (void)newFunctionWithDescriptor:(MTLFunctionDescriptor *)descriptor
                 completionHandler:(void (^)(id<MTLFunction>, NSError *))completionHandler
@@ -498,6 +602,7 @@ static void a840MarshalConstants(const std::vector<A840OwnedConstant> &owned,
     A840RtBuffer *zeroPageBo;
     NSMutableArray<NSValue *> *transientBuffers;
     A840MTLFunction *computeFunction;
+    MTLLinkedFunctions *computeLinkedFunctions;
     A840RtComputePipelineDesc computeDesc;
     NSMutableDictionary<NSString *, A840MTLCompiledPlan *> *computeVariants;
 }
@@ -1003,7 +1108,60 @@ static void a840MarshalConstants(const std::vector<A840OwnedConstant> &owned,
     return YES;
 }
 
+struct A840MarshaledLinked {
+    std::vector<NmbLinkedFunction> entries;
+    std::vector<std::vector<NmbFunctionConstant>> constStorage;
+};
+
+static bool a840MarshalLinkedFunctions(MTLLinkedFunctions *linked, A840MarshaledLinked &out)
+{
+    out.entries.clear();
+    out.constStorage.clear();
+    if (!linked) return true;
+    NSArray<id<MTLFunction>> *groups[2] = {linked.functions, linked.privateFunctions};
+    size_t total = 0u;
+    for (unsigned g = 0u; g < 2u; ++g) total += groups[g].count;
+    out.entries.reserve(total);
+    out.constStorage.reserve(total);
+    for (unsigned g = 0u; g < 2u; ++g) {
+        for (id<MTLFunction> rawFn in groups[g]) {
+            if (![(id)rawFn isKindOfClass:[A840MTLFunction class]]) return false;
+            auto *fn = static_cast<A840MTLFunction *>(rawFn);
+            auto *lib = static_cast<NmbLibrary *>(fn.ownerLibrary.parsedNmbLibrary);
+            const char *srcName = (fn.sourceName ?: fn.name).UTF8String;
+            if (!lib || !srcName || !srcName[0]) return false;
+            out.constStorage.emplace_back();
+            a840MarshalConstants([fn ownedConstants], out.constStorage.back());
+            NmbLinkedFunction lf{};
+            lf.library = lib;
+            lf.name = srcName;
+            lf.specialized_name = fn.specializedName.length ? fn.specializedName.UTF8String : nullptr;
+            lf.constants = out.constStorage.back().empty() ? nullptr : out.constStorage.back().data();
+            lf.constant_count = out.constStorage.back().size();
+            lf.is_private = (g == 1u) ? 1u : 0u;
+            lf.specialized = fn.isSpecialized ? 1u : 0u;
+            out.entries.push_back(lf);
+        }
+    }
+    return true;
+}
+
+static uint32_t a840AlignConstlenForPush(uint32_t rawConstlenVec4, const NmbSpirvPushConstantRange &push)
+{
+    uint32_t aligned = (rawConstlenVec4 + 3u) & ~3u;
+    if (push.size_bytes > 0u) {
+        const uint32_t mask = A840_BINDING_PLAN_SLOT_BYTES - 1u;
+        const uint32_t src = push.offset_bytes & ~mask;
+        const uint32_t end = (push.offset_bytes + push.size_bytes + mask) & ~mask;
+        const uint32_t minVec4 = (end - src) / 16u;
+        if (aligned < minVec4) aligned = minVec4;
+    }
+    if (aligned > A840_BINDING_PLAN_MAX_CONST_VEC4) aligned = A840_BINDING_PLAN_MAX_CONST_VEC4;
+    return aligned;
+}
+
 - (A840MTLCompiledPlan *)compileComputeFunction:(A840MTLFunction *)fn
+                                linkedFunctions:(MTLLinkedFunctions *)linkedFunctions
                                       localSize:(MTLSize)localSize
                                       forDevice:(A840MTLDevice *)device
                                      descriptor:(A840RtComputePipelineDesc *)descriptor
@@ -1012,7 +1170,7 @@ static void a840MarshalConstants(const std::vector<A840OwnedConstant> &owned,
     if (localSize.width == 0u || localSize.height == 0u || localSize.depth == 0u ||
         localSize.width > UINT32_MAX || localSize.height > UINT32_MAX || localSize.depth > UINT32_MAX)
         return nil;
-    const char *entry = fn.name.UTF8String;
+    const char *entry = (fn.sourceName ?: fn.name).UTF8String;
     auto *lib = static_cast<NmbLibrary *>(fn.ownerLibrary.parsedNmbLibrary);
     if (!lib || !entry) {
         char msg[128] = {};
@@ -1023,15 +1181,22 @@ static void a840MarshalConstants(const std::vector<A840OwnedConstant> &owned,
 
     std::vector<NmbFunctionConstant> ffiConsts;
     a840MarshalConstants([fn ownedConstants], ffiConsts);
+    A840MarshaledLinked ffiLinked{};
+    if (!a840MarshalLinkedFunctions(linkedFunctions, ffiLinked)) {
+        a840diag::reportText("A840PIPE cs-linked-foreign");
+        return nil;
+    }
 
     NmbComputePipelineDesc cdesc{};
     cdesc.local_size[0] = static_cast<uint32_t>(localSize.width);
     cdesc.local_size[1] = static_cast<uint32_t>(localSize.height);
     cdesc.local_size[2] = static_cast<uint32_t>(localSize.depth);
     cdesc.zeroed_threadgroup_memory = 1u;
-    NmbSpirvResult *spv = nmb_compile_compute_spirv_v2(
+    NmbSpirvResult *spv = nmb_compile_compute_spirv_v3(
         _translator, lib, entry,
         ffiConsts.empty() ? nullptr : ffiConsts.data(), ffiConsts.size(),
+        ffiLinked.entries.empty() ? nullptr : ffiLinked.entries.data(), ffiLinked.entries.size(),
+        fn.isSpecialized ? 1u : 0u,
         &cdesc);
     if (!spv) {
         char msg[128] = {};
@@ -1056,6 +1221,7 @@ static void a840MarshalConstants(const std::vector<A840OwnedConstant> &owned,
     plan->rtDevice = device.runtime;
     plan->stageCount = 1u;
     plan->computeFunction = fn;
+    plan->computeLinkedFunctions = [linkedFunctions copy];
 
     const A840CompileTarget target = makeKaanapaliTarget();
     A840StageInput stageIn{};
@@ -1079,14 +1245,13 @@ static void a840MarshalConstants(const std::vector<A840OwnedConstant> &owned,
         nmb_spirv_result_free(spv);
         return nil;
     }
-    plan->stages[0].constlen_vec4 = (plan->stages[0].constlen_vec4 + 3u) & ~3u;
-
     const size_t bcount = nmb_spirv_binding_count(spv);
     std::vector<NmbSpirvBinding> bindings(bcount);
     for (size_t i = 0u; i < bcount; ++i)
         (void)nmb_spirv_binding(spv, i, &bindings[i]);
     NmbSpirvPushConstantRange pushRange{};
     (void)nmb_spirv_push_constant_range(spv, 0u, &pushRange);
+    plan->stages[0].constlen_vec4 = a840AlignConstlenForPush(plan->stages[0].constlen_vec4, pushRange);
     if (![self captureIdentityReflection:spv intoPlan:plan stageCount:1u]) {
         char msg[128] = {};
         snprintf(msg, sizeof(msg), "A840PIPE cs-refl %.40s", entry);
@@ -1146,7 +1311,21 @@ static void a840MarshalConstants(const std::vector<A840OwnedConstant> &owned,
 {
     if (![function isKindOfClass:[A840MTLFunction class]] || !device || !descriptor) return nil;
     auto *fn = static_cast<A840MTLFunction *>(function);
-    return [self compileComputeFunction:fn localSize:MTLSizeMake(1, 1, 1)
+    return [self compileComputeFunction:fn linkedFunctions:nil localSize:MTLSizeMake(1, 1, 1)
+                              forDevice:device descriptor:descriptor];
+}
+
+- (id)prepareComputeWithDescriptor:(MTLComputePipelineDescriptor *)pipelineDescriptor
+                         forDevice:(A840MTLDevice *)device
+                        descriptor:(A840RtComputePipelineDesc *)descriptor
+{
+    if (!pipelineDescriptor || ![pipelineDescriptor.computeFunction isKindOfClass:[A840MTLFunction class]] ||
+        !device || !descriptor) {
+        return nil;
+    }
+    auto *fn = static_cast<A840MTLFunction *>(pipelineDescriptor.computeFunction);
+    return [self compileComputeFunction:fn linkedFunctions:pipelineDescriptor.linkedFunctions
+                              localSize:MTLSizeMake(1, 1, 1)
                               forDevice:device descriptor:descriptor];
 }
 
@@ -1172,7 +1351,9 @@ static void a840MarshalConstants(const std::vector<A840OwnedConstant> &owned,
         *descriptor = cached->computeDesc;
         return cached;
     }
-    A840MTLCompiledPlan *variant = [self compileComputeFunction:base->computeFunction localSize:localSize
+    A840MTLCompiledPlan *variant = [self compileComputeFunction:base->computeFunction
+                                                linkedFunctions:base->computeLinkedFunctions
+                                                      localSize:localSize
                                                       forDevice:device descriptor:descriptor];
     if (!variant) return nil;
     base->computeVariants[key] = variant;
@@ -1198,8 +1379,8 @@ static void a840MarshalConstants(const std::vector<A840OwnedConstant> &owned,
     auto *fsFn = static_cast<A840MTLFunction *>(pipeline.fragmentFunction);
     auto *vsLib = static_cast<NmbLibrary *>(vsFn.ownerLibrary.parsedNmbLibrary);
     auto *fsLib = static_cast<NmbLibrary *>(fsFn.ownerLibrary.parsedNmbLibrary);
-    const char *vsName = vsFn.name.UTF8String;
-    const char *fsName = fsFn.name.UTF8String;
+    const char *vsName = (vsFn.sourceName ?: vsFn.name).UTF8String;
+    const char *fsName = (fsFn.sourceName ?: fsFn.name).UTF8String;
     if (!vsLib || !fsLib || !vsName || !fsName) {
         char msg[128] = {};
         snprintf(msg, sizeof(msg), "A840PIPE rp-nolib %.24s/%.24s", vsName ?: "?", fsName ?: "?");
@@ -1207,17 +1388,34 @@ static void a840MarshalConstants(const std::vector<A840OwnedConstant> &owned,
         return nil;
     }
 
-    NmbRenderPipelineDesc rdesc{};
+    NmbRenderPipelineDescV3 rdescV3{};
+    NmbRenderPipelineDesc &rdesc = rdescV3.base;
     rdesc.sample_count = pipeline.rasterSampleCount ? static_cast<uint32_t>(pipeline.rasterSampleCount) : 1u;
     rdesc.depth_mtl_format = static_cast<uint32_t>(pipeline.depthAttachmentPixelFormat);
     rdesc.stencil_mtl_format = static_cast<uint32_t>(pipeline.stencilAttachmentPixelFormat);
+    rdescV3.has_color_states = 1u;
+    rdescV3.rasterization_enabled = pipeline.isRasterizationEnabled ? 1u : 0u;
+    rdescV3.alpha_to_coverage_enabled = pipeline.isAlphaToCoverageEnabled ? 1u : 0u;
+    rdescV3.alpha_to_one_enabled = pipeline.isAlphaToOneEnabled ? 1u : 0u;
+    rdescV3.input_primitive_topology = static_cast<uint32_t>(pipeline.inputPrimitiveTopology);
     uint32_t colorMask = 0u;
     for (uint32_t i = 0u; i < NMB_MAX_COLORS; ++i) {
-        const uint32_t fmt = static_cast<uint32_t>(pipeline.colorAttachments[i].pixelFormat);
+        MTLRenderPipelineColorAttachmentDescriptor *att = pipeline.colorAttachments[i];
+        const uint32_t fmt = static_cast<uint32_t>(att.pixelFormat);
         rdesc.color_mtl_formats[i] = fmt;
         if (fmt != 0u) {
             rdesc.color_attachment_count = i + 1u;
             colorMask |= (1u << i);
+            NmbColorAttachmentDesc &cs = rdescV3.color_states[i];
+            cs.pixel_format = fmt;
+            cs.write_mask = static_cast<uint32_t>(att.writeMask) & 0xfu;
+            cs.blending_enabled = att.isBlendingEnabled ? 1u : 0u;
+            cs.src_rgb_factor = static_cast<uint32_t>(att.sourceRGBBlendFactor);
+            cs.dst_rgb_factor = static_cast<uint32_t>(att.destinationRGBBlendFactor);
+            cs.rgb_blend_op = static_cast<uint32_t>(att.rgbBlendOperation);
+            cs.src_alpha_factor = static_cast<uint32_t>(att.sourceAlphaBlendFactor);
+            cs.dst_alpha_factor = static_cast<uint32_t>(att.destinationAlphaBlendFactor);
+            cs.alpha_blend_op = static_cast<uint32_t>(att.alphaBlendOperation);
         }
     }
     if (rdesc.color_attachment_count == 0u &&
@@ -1225,6 +1423,8 @@ static void a840MarshalConstants(const std::vector<A840OwnedConstant> &owned,
         rdesc.stencil_mtl_format == 0u) {
         rdesc.color_attachment_count = 1u;
         rdesc.color_mtl_formats[0] = static_cast<uint32_t>(MTLPixelFormatBGRA8Unorm);
+        rdescV3.color_states[0].pixel_format = static_cast<uint32_t>(MTLPixelFormatBGRA8Unorm);
+        rdescV3.color_states[0].write_mask = 0xfu;
         colorMask = 1u;
     }
 
@@ -1262,11 +1462,26 @@ static void a840MarshalConstants(const std::vector<A840OwnedConstant> &owned,
     a840MarshalConstants([vsFn ownedConstants], vsConsts);
     a840MarshalConstants([fsFn ownedConstants], fsConsts);
 
-    NmbSpirvResult *spv = nmb_compile_render_spirv_v2(
+    A840MarshaledLinked vsLinked{}, fsLinked{};
+    if (!a840MarshalLinkedFunctions(pipeline.vertexLinkedFunctions, vsLinked) ||
+        !a840MarshalLinkedFunctions(pipeline.fragmentLinkedFunctions, fsLinked)) {
+        char msg[128] = {};
+        snprintf(msg, sizeof(msg), "A840PIPE rp-linked %.22s/%.22s", vsName, fsName);
+        a840diag::reportText(msg);
+        return nil;
+    }
+    rdescV3.vs_linked = vsLinked.entries.empty() ? nullptr : vsLinked.entries.data();
+    rdescV3.vs_linked_count = vsLinked.entries.size();
+    rdescV3.fs_linked = fsLinked.entries.empty() ? nullptr : fsLinked.entries.data();
+    rdescV3.fs_linked_count = fsLinked.entries.size();
+    rdescV3.vs_specialized = vsFn.isSpecialized ? 1u : 0u;
+    rdescV3.fs_specialized = fsFn.isSpecialized ? 1u : 0u;
+
+    NmbSpirvResult *spv = nmb_compile_render_spirv_v3(
         _translator,
         vsLib, vsName, vsConsts.empty() ? nullptr : vsConsts.data(), vsConsts.size(),
         fsLib, fsName, fsConsts.empty() ? nullptr : fsConsts.data(), fsConsts.size(),
-        &rdesc);
+        &rdescV3);
     if (!spv || nmb_spirv_stage_count(spv) < 2u) {
         char msg[128] = {};
         snprintf(msg, sizeof(msg), "A840PIPE rp %.18s/%.18s f=%u,%u d=%u %.38s",
@@ -1315,7 +1530,6 @@ static void a840MarshalConstants(const std::vector<A840OwnedConstant> &owned,
             nmb_spirv_result_free(spv);
             return nil;
         }
-        plan->stages[s].constlen_vec4 = (plan->stages[s].constlen_vec4 + 3u) & ~3u;
     }
 
     const size_t bcount = nmb_spirv_binding_count(spv);
@@ -1325,6 +1539,9 @@ static void a840MarshalConstants(const std::vector<A840OwnedConstant> &owned,
     NmbSpirvPushConstantRange pushRanges[2]{};
     (void)nmb_spirv_push_constant_range(spv, 0u, &pushRanges[0]);
     (void)nmb_spirv_push_constant_range(spv, 1u, &pushRanges[1]);
+    for (uint32_t s = 0u; s < 2u; ++s) {
+        plan->stages[s].constlen_vec4 = a840AlignConstlenForPush(plan->stages[s].constlen_vec4, pushRanges[s]);
+    }
     if (![self captureIdentityReflection:spv intoPlan:plan stageCount:2u]) {
         char msg[128] = {};
         snprintf(msg, sizeof(msg), "A840PIPE rp-refl %.24s/%.24s", vsName, fsName);

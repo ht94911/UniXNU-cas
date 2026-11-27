@@ -243,6 +243,7 @@ static void *a840GopScanoutThreadMain(void *rawArg)
 
         NSMutableDictionary<NSNumber *, id<MTLBuffer>> *srcCache = [NSMutableDictionary new];
         NSMutableDictionary<NSNumber *, NSNumber *> *srcAddrMap = [NSMutableDictionary new];
+        NSMutableDictionary<NSNumber *, NSNumber *> *srcBytesMap = [NSMutableDictionary new];
         uint64_t frames = 0u, failures = 0u;
 
         for (;;) {
@@ -261,14 +262,20 @@ static void *a840GopScanoutThreadMain(void *rawArg)
                 }
                 a840diag::markPort(port, 0x6730u);
                 bool ok = false;
-                if (swap.address && swap.bytes >= swap.stride * swap.height &&
+                /* Strictly require 8-bit BGRX8888 (kNgpBgrx8888) for raw blit into BGRX8888 scanout;
+                 * non-BGRX formats (e.g. RGBA16F) return 0xe00002bc so XNU NativeLegacyDisplay runs
+                 * its half-float scanout converter instead of corrupting the framebuffer. */
+                if (swap.format == kNgpBgrx8888 &&
+                    swap.address && swap.bytes >= swap.stride * swap.height &&
                     swap.width <= mode.width && swap.height <= mode.height && swap.stride >= swap.width * 4u) {
                     const size_t alignedSrcBytes = ((size_t)swap.bytes + page - 1u) & ~(page - 1u);
                     id<MTLBuffer> srcBuf = nil;
                     if (swap.reserved != 0u) {
                         NSNumber *key = @(swap.reserved);
                         NSNumber *prevAddr = srcAddrMap[key];
-                        if (prevAddr && prevAddr.unsignedLongLongValue == swap.address) {
+                        NSNumber *prevBytes = srcBytesMap[key];
+                        if (prevAddr && prevAddr.unsignedLongLongValue == swap.address &&
+                            prevBytes && prevBytes.unsignedLongLongValue == swap.bytes) {
                             srcBuf = srcCache[key];
                         }
                     }
@@ -281,10 +288,12 @@ static void *a840GopScanoutThreadMain(void *rawArg)
                             if (srcCache.count >= 16u) {
                                 [srcCache removeAllObjects];
                                 [srcAddrMap removeAllObjects];
+                                [srcBytesMap removeAllObjects];
                             }
                             NSNumber *key = @(swap.reserved);
                             srcCache[key] = srcBuf;
                             srcAddrMap[key] = @(swap.address);
+                            srcBytesMap[key] = @(swap.bytes);
                         }
                     }
                     if (srcBuf) {
