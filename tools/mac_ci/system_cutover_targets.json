@@ -1,0 +1,98 @@
+{
+  "schema_version": 1,
+  "wave": 12,
+  "target_triple": "arm64e-apple-ios27.0",
+  "targets": {
+    "NativeAdrenoKMDv3": {
+      "kind": "xnu_integration",
+      "link_into": "NativeAdreno",
+      "new_sources": [
+        "drivers/Adreno840Kernel/xnu/a840_xnu_system_bridge.cpp"
+      ],
+      "updated_sources": [
+        "drivers/Adreno840Kernel/xnu/NativeAdrenoV3Glue.cpp"
+      ]
+    },
+    "NativeAdrenoMetal.bundle": {
+      "kind": "metal_plugin",
+      "build_artifact": "NativeAdrenoMetal.bundle",
+      "phase6_artifact": "Adreno840Metal.bundle",
+      "install_path": "/System/Library/Extensions/NativeAdrenoMetal.bundle",
+      "gpuaddon_path": "addons/NativeAdrenoMetal.bundle",
+      "discovery": {
+        "MetalPluginName": "NativeAdrenoMetal",
+        "MetalPluginClassName": "NativeAdrenoMetalDevice"
+      },
+      "info_plist": {
+        "CFBundleIdentifier": "org.nezha.Adreno840Metal",
+        "CFBundleExecutable": "Adreno840Metal",
+        "CFBundlePackageType": "BNDL",
+        "NSPrincipalClass": "NativeAdrenoMetalDevice",
+        "MinimumOSVersion": "27.0"
+      },
+      "publish_marker": {
+        "gpuaddon_path": "addons/NativeAdrenoMetal.publish",
+        "install_path": "/System/Library/Extensions/NativeAdrenoMetal.publish"
+      },
+      "new_sources": [
+        "drivers/Adreno840Metal/objc/A840MTLSystemSPI.mm",
+        "drivers/Adreno840Metal/objc/A840MTLHeapAndEvents.mm",
+        "drivers/Adreno840Metal/objc/A840MTLLibraryAndArchive.mm",
+        "drivers/Adreno840Metal/objc/A840MTLScanoutBridge.mm",
+        "drivers/Adreno840Metal/core/a840_system_frontend_core.c"
+      ],
+      "updated_sources": [
+        "drivers/Adreno840Metal/objc/A840MTLBundleEntry.mm",
+        "drivers/Adreno840Metal/objc/A840MTLDevice.mm",
+        "drivers/Adreno840Metal/objc/A840MTLResource.mm",
+        "drivers/Adreno840Metal/objc/A840MTLCommand.mm",
+        "drivers/Adreno840Metal/objc/A840MTLEncoders.mm",
+        "drivers/Adreno840Metal/transport/a840_hwtest_hook.c"
+      ]
+    },
+    "NezhaShaderCompiler": {
+      "kind": "launch_daemon",
+      "install_path": "/usr/sbin/NezhaShaderCompiler",
+      "gpuaddon_path": "bluetooth-bin/NezhaShaderCompiler",
+      "launch_daemon": {
+        "source": "daemon/NezhaShaderCompiler/org.unixnu.nezha.shader-compiler.plist",
+        "install_path": "/System/Library/LaunchDaemons/org.unixnu.nezha.shader-compiler.plist",
+        "gpuaddon_path": "daemons/org.unixnu.nezha.shader-compiler.plist",
+        "label": "org.unixnu.nezha.shader-compiler",
+        "HardResourceLimits": {
+          "MemoryLimit": 262144
+        },
+        "memory_limit_unit": "KiB"
+      },
+      "new_sources": [
+        "adreno_compile/service/a840_system_cache_store.c"
+      ],
+      "updated_sources": [
+        "daemon/NezhaShaderCompiler/main.c"
+      ]
+    },
+    "pack.bin": {
+      "kind": "offline_shader_pack",
+      "producer": "NezhaShaderCompiler --build-system-pack",
+      "install_path": "/System/Library/Extensions/NativeAdrenoMetal.pack.bin",
+      "gpuaddon_path": "addons/NativeAdrenoMetal.pack.bin",
+      "mode": "0444",
+      "new_sources": [
+        "adreno_compile/pack/a840_system_pack_builder.c"
+      ],
+      "source_launchd_pack_arg": "/usr/share/nezha/adreno840-system-pack.bin"
+    },
+    "NezhaGpuTest": {
+      "kind": "device_test",
+      "install_path": "/usr/sbin/NezhaGpuTest",
+      "gpuaddon_path": "bluetooth-bin/NezhaGpuTest",
+      "companion_artifact": "NezhaGpuTest.metallib"
+    }
+  },
+  "host_test_sources": [
+    "drivers/Adreno840Kernel/test/test_xnu_system_integration.cpp",
+    "adreno_compile/service/test/test_system_daemon_and_pack.cpp",
+    "drivers/Adreno840Metal/core/test/test_system_frontend_bridge.cpp"
+  ],
+  "code_signature_page_bytes": 4096
+}

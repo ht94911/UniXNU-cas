@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>org.unixnu.nezha.shader-compiler</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/usr/sbin/NezhaShaderCompiler</string>
+		<string>--socket</string>
+		<string>/var/run/org.unixnu.nezha.shader-compiler.sock</string>
+		<string>--pack</string>
+		<string>/usr/share/nezha/adreno840-system-pack.bin</string>
+		<string>--cache-dir</string>
+		<string>/var/mobile/Library/Caches/org.unixnu.nezha.shader-cache</string>
+		<string>--workers</string>
+		<string>4</string>
+		<string>--max-cache-mb</string>
+		<string>128</string>
+	</array>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<true/>
+	<key>ProcessType</key>
+	<string>Adaptive</string>
+	<key>HardResourceLimits</key>
+	<dict>
+		<key>MemoryLimit</key>
+		<integer>262144</integer>
+	</dict>
+	<key>SoftResourceLimits</key>
+	<dict>
+		<key>MemoryLimit</key>
+		<integer>262144</integer>
+	</dict>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>NEZHA_A840_NATIVE_COMPILER</key>
+		<string>1</string>
+		<key>NEZHA_A840_CACHE_MAX_MB</key>
+		<string>128</string>
+	</dict>
+	<key>ThrottleInterval</key>
+	<integer>2</integer>
+	<key>ExitTimeOut</key>
+	<integer>10</integer>
+</dict>
+</plist>
