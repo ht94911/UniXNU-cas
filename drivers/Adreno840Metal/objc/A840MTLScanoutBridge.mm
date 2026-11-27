@@ -317,8 +317,16 @@ static void *a840GopScanoutThreadMain(void *rawArg)
                                                &done, sizeof(done), nullptr, 0u);
                 if (ok) ++frames; else ++failures;
                 if (frames == 1u || (frames % 10u) == 0u || (!ok && failures <= 3u)) {
-                    char msg[64] = {};
-                    snprintf(msg, sizeof(msg), "PF %llu/%llu", (unsigned long long)frames, (unsigned long long)failures);
+                    char msg[96] = {};
+                    if (ok) {
+                        snprintf(msg, sizeof(msg), "PF %llu/%llu", (unsigned long long)frames, (unsigned long long)failures);
+                    } else {
+                        snprintf(msg, sizeof(msg), "PF %llu/%llu fail %ux%u s=%llu/%llu f=%u",
+                                 (unsigned long long)frames, (unsigned long long)failures,
+                                 swap.width, swap.height,
+                                 (unsigned long long)swap.stride, (unsigned long long)mode.stride,
+                                 swap.format);
+                    }
                     a840diag::reportText(msg);
                 }
                 if (compRc != 0) break;

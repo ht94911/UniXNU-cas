@@ -12,6 +12,7 @@
 
 #include <mutex>
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
 
 
@@ -49,6 +50,7 @@ static void a840FillBaseLimits(id device)
         "maxTextureDimensionCube", "maxTextureLayers", "maxTotalComputeThreadsPerThreadgroup",
         "maxViewportCount", "maxColorAttachments", "maxVertexAttributes",
         "maxVertexAmplificationCount", "maxBufferLength", "maxThreadgroupMemoryLength",
+        "minConstantBufferAlignmentBytes",
         nullptr
     };
     Class ownCls = object_getClass(device);
@@ -212,6 +214,13 @@ NSError *a840_metal_error(A840RtStatus status, NSString *operation)
 - (void)initFeatureQueries {}
 - (void)initGPUFamilySupport {}
 - (void)initWorkarounds {}
+
+- (BOOL)respondsToSelector:(SEL)selector
+{
+    /* Inherited _MTLDevice targetDeviceInfo is NULL without Apple IOGPU. */
+    if (selector == sel_registerName("targetDeviceInfo")) return NO;
+    return [super respondsToSelector:selector];
+}
 
 - (NSString *)name { return @"Adreno 840"; }
 - (NSString *)productName { return @"Adreno 840"; }
@@ -401,6 +410,11 @@ NSError *a840_metal_error(A840RtStatus status, NSString *operation)
     A840MTLComputePipelineState *pipeline = [[A840MTLComputePipelineState alloc]
         initWithOwner:self function:function descriptor:&desc plan:plan];
     if (pipeline.nativeDescriptor) return pipeline;
+    if (plan) {
+        char msg[128] = {};
+        snprintf(msg, sizeof(msg), "A840PIPE cs-nodesc %.40s", function.name.UTF8String ?: "?");
+        a840diag::reportText(msg);
+    }
     if (error) *error = a840_metal_error(A840_RT_UNSUPPORTED, @"Native compute pipeline compilation failed");
     return nil;
 }
@@ -417,6 +431,38 @@ NSError *a840_metal_error(A840RtStatus status, NSString *operation)
         return nil;
     }
     return [self newComputePipelineStateWithFunction:descriptor.computeFunction error:error];
+}
+
+- (id<MTLComputePipelineState>)newComputePipelineStateWithDescriptor:(MTLComputePipelineDescriptor *)descriptor
+                                                               error:(NSError **)error
+{
+    return [self newComputePipelineStateWithDescriptor:descriptor
+                                               options:MTLPipelineOptionNone
+                                            reflection:nil
+                                                 error:error];
+}
+
+- (void)newComputePipelineStateWithDescriptor:(MTLComputePipelineDescriptor *)descriptor
+                            completionHandler:(MTLNewComputePipelineStateCompletionHandler)completionHandler
+{
+    if (!completionHandler) return;
+    NSError *err = nil;
+    id<MTLComputePipelineState> pso = [self newComputePipelineStateWithDescriptor:descriptor error:&err];
+    completionHandler(pso, err);
+}
+
+- (void)newComputePipelineStateWithDescriptor:(MTLComputePipelineDescriptor *)descriptor
+                                      options:(MTLPipelineOption)options
+                            completionHandler:(MTLNewComputePipelineStateWithReflectionCompletionHandler)completionHandler
+{
+    if (!completionHandler) return;
+    NSError *err = nil;
+    MTLAutoreleasedComputePipelineReflection refl = nil;
+    id<MTLComputePipelineState> pso = [self newComputePipelineStateWithDescriptor:descriptor
+                                                                          options:options
+                                                                       reflection:&refl
+                                                                            error:&err];
+    completionHandler(pso, refl, err);
 }
 
 - (id<MTLRenderPipelineState>)newRenderPipelineStateWithDescriptor:(MTLRenderPipelineDescriptor *)configuration
@@ -510,8 +556,10 @@ NSError *a840_metal_error(A840RtStatus status, NSString *operation)
                                                             reflection:(MTLAutoreleasedRenderPipelineReflection *)reflection
                                                                  error:(NSError **)error
 {
-    (void)descriptor;
     (void)options;
+    char msg[128] = {};
+    snprintf(msg, sizeof(msg), "A840PIPE tile %.40s", descriptor.tileFunction.name.UTF8String ?: "?");
+    a840diag::reportText(msg);
     if (reflection) *reflection = nil;
     if (error) *error = a840_metal_error(A840_RT_UNSUPPORTED, @"Tile render pipelines not yet supported on Adreno 840");
     return nil;

@@ -136,7 +136,7 @@ static A840RtTexture *nativeTexture(id<MTLTexture> texture, A840MTLDevice *owner
     @synchronized (command.owner) {
         if (command.wantsRaw) {
             const A840RtStatus st = a840_rt_cb_begin_blit(command.native, &_native);
-            if (st != A840_RT_OK) [command recordFailure:st];
+            if (st != A840_RT_OK) [command recordFailure:st reason:@"blit_begin"];
         }
     }
     return self;
@@ -151,7 +151,7 @@ static A840RtTexture *nativeTexture(id<MTLTexture> texture, A840MTLDevice *owner
         if (_native) {
             if (self.command.wantsRaw) {
                 const A840RtStatus st = a840_rt_blit_end(_native);
-                if (st != A840_RT_OK) [self.command recordFailure:st];
+                if (st != A840_RT_OK) [self.command recordFailure:st reason:@"blit_end"];
             }
             a840_rt_blit_destroy(_native);
             _native = nullptr;
@@ -173,7 +173,7 @@ static A840RtTexture *nativeTexture(id<MTLTexture> texture, A840MTLDevice *owner
             return;
         }
         const A840RtStatus st = a840_rt_blit_copy_buffer(_native, s, sourceOffset, d, destinationOffset, (uint32_t)size);
-        if (st != A840_RT_OK) [cb recordFailure:st];
+        if (st != A840_RT_OK) [cb recordFailure:st reason:@"blit_copy_buf"];
     }
 }
 - (void)copyFromTexture:(id<MTLTexture>)src sourceSlice:(NSUInteger)ss sourceLevel:(NSUInteger)sl
@@ -196,7 +196,7 @@ static A840RtTexture *nativeTexture(id<MTLTexture> texture, A840MTLDevice *owner
         const A840Rect2D source{(uint32_t)so.x, (uint32_t)so.y, (uint32_t)size.width, (uint32_t)size.height};
         const A840Rect2D dest{(uint32_t)dsto.x, (uint32_t)dsto.y, (uint32_t)size.width, (uint32_t)size.height};
         const A840RtStatus st = a840_rt_blit_2d(_native, s, &source, d, &dest, A840_FILTER_NEAREST);
-        if (st != A840_RT_OK) [cb recordFailure:st];
+        if (st != A840_RT_OK) [cb recordFailure:st reason:@"blit_2d"];
     }
 }
 - (void)copyFromBuffer:(id<MTLBuffer>)sourceBuffer
@@ -423,7 +423,7 @@ destinationBytesPerImage:(NSUInteger)destinationBytesPerImage
     @synchronized (command.owner) {
         if (command.wantsRaw) {
             const A840RtStatus st = a840_rt_cb_begin_compute(command.native, &_native);
-            if (st != A840_RT_OK) [command recordFailure:st];
+            if (st != A840_RT_OK) [command recordFailure:st reason:@"cs_begin"];
         }
     }
     return self;
@@ -438,7 +438,7 @@ destinationBytesPerImage:(NSUInteger)destinationBytesPerImage
         if (_native) {
             if (self.command.wantsRaw) {
                 const A840RtStatus st = a840_rt_compute_end(_native);
-                if (st != A840_RT_OK) [self.command recordFailure:st];
+                if (st != A840_RT_OK) [self.command recordFailure:st reason:@"cs_end"];
             }
             a840_rt_compute_destroy(_native);
             _native = nullptr;
@@ -505,7 +505,7 @@ destinationBytesPerImage:(NSUInteger)destinationBytesPerImage
 }
 - (void)setBytes:(const void *)bytes length:(NSUInteger)length atIndex:(NSUInteger)index
 {
-    if (!bytes && length) { [self.command recordFailure:A840_RT_INVALID_ARG]; return; }
+    if (!bytes && length) { [self.command recordFailure:A840_RT_INVALID_ARG reason:@"cs_setbytes_null"]; return; }
     if (![self checkActive]) return;
     NSData *data = [NSData dataWithBytes:bytes length:length];
     [_bindings setData:data index:index];
@@ -548,7 +548,7 @@ destinationBytesPerImage:(NSUInteger)destinationBytesPerImage
         if (self.command.wantsRaw) {
             const A840RtStatus st = a840_rt_compute_barrier(_native,
                 A840_CACHE_CCU_FLUSH_COLOR | A840_CACHE_UCHE_INV, true, false);
-            if (st != A840_RT_OK) [self.command recordFailure:st];
+            if (st != A840_RT_OK) [self.command recordFailure:st reason:@"cs_barrier"];
         }
     }
 }
@@ -572,7 +572,7 @@ destinationBytesPerImage:(NSUInteger)destinationBytesPerImage
 {
     if (![self checkActive]) return;
     A840MTLCommandBuffer *cb = self.command;
-    if (!cb.wantsRaw) return;
+    if (!cb.wantsRaw || !grid.width || !grid.height || !grid.depth) return;
     A840MTLComputePipelineState *state = [(id)_pipeline isKindOfClass:A840MTLComputePipelineState.class] ?
         (A840MTLComputePipelineState *)_pipeline : nil;
     const A840RtComputePipelineDesc *desc = state.nativeDescriptor;
@@ -603,7 +603,7 @@ destinationBytesPerImage:(NSUInteger)destinationBytesPerImage
     @synchronized (cb.owner) {
         if (_boundPipeline != state || _boundVariantPlan != activePlan) {
             const A840RtStatus st = a840_rt_compute_set_pipeline(_native, desc);
-            if (st != A840_RT_OK) { [cb recordFailure:st]; return; }
+            if (st != A840_RT_OK) { [cb recordFailure:st reason:@"cs_setpipe"]; return; }
             _boundPipeline = state;
             _boundVariantPlan = activePlan;
         }
@@ -614,12 +614,12 @@ destinationBytesPerImage:(NSUInteger)destinationBytesPerImage
         } else {
             bindStatus = [cb.owner.pipelineProvider bindCompute:_native plan:activePlan bindings:_bindings];
         }
-        if (bindStatus != A840_RT_OK) { [cb recordFailure:bindStatus]; return; }
+        if (bindStatus != A840_RT_OK) { [cb recordFailure:bindStatus reason:@"cs_bind"]; return; }
         const uint32_t x = (uint32_t)grid.width, y = (uint32_t)grid.height, z = (uint32_t)grid.depth;
         const auto status = nonuniform ? a840_rt_compute_dispatch_threads(_native, x, y, z) :
             a840_rt_compute_dispatch_threadgroups(_native, x, y, z);
         if (status != A840_RT_OK) {
-            [cb recordFailure:status];
+            [cb recordFailure:status reason:@"cs_dispatch"];
             return;
         }
         char scope[A840_HWTEST_SCOPE_MAX_BYTES];
@@ -656,14 +656,14 @@ destinationBytesPerImage:(NSUInteger)destinationBytesPerImage
     @synchronized (cb.owner) {
         if (_boundPipeline != state) {
             const A840RtStatus st = a840_rt_compute_set_pipeline(_native, desc);
-            if (st != A840_RT_OK) { [cb recordFailure:st]; return; }
+            if (st != A840_RT_OK) { [cb recordFailure:st reason:@"cs_ind_pipe"]; return; }
             _boundPipeline = state;
             _boundVariantPlan = state.plan;
         }
         const A840RtStatus bindSt = [cb.owner.pipelineProvider bindCompute:_native plan:state.plan bindings:_bindings];
-        if (bindSt != A840_RT_OK) { [cb recordFailure:bindSt]; return; }
+        if (bindSt != A840_RT_OK) { [cb recordFailure:bindSt reason:@"cs_ind_bind"]; return; }
         const A840RtStatus dispSt = a840_rt_compute_dispatch_indirect(_native, indBuf, offset);
-        if (dispSt != A840_RT_OK) [cb recordFailure:dispSt];
+        if (dispSt != A840_RT_OK) [cb recordFailure:dispSt reason:@"cs_ind_disp"];
     }
 }
 - (void)fence:(id<MTLFence>)fence update:(BOOL)update
@@ -679,7 +679,7 @@ destinationBytesPerImage:(NSUInteger)destinationBytesPerImage
     @synchronized (cb.owner) {
         const A840RtStatus st = a840_rt_compute_barrier(_native,
             A840_CACHE_CCU_FLUSH_COLOR | A840_CACHE_UCHE_INV, true, true);
-        if (st != A840_RT_OK) [cb recordFailure:st];
+        if (st != A840_RT_OK) [cb recordFailure:st reason:@"cs_fence"];
     }
 }
 - (void)updateFence:(id<MTLFence>)fence { [self fence:fence update:YES]; }
@@ -973,7 +973,7 @@ static BOOL convertClear(id<MTLTexture> texture, MTLClearColor color, uint32_t o
         if (_native) {
             if (self.command.wantsRaw) {
                 const A840RtStatus st = a840_rt_render_end_pass(_native);
-                if (st != A840_RT_OK) [self.command recordFailure:st];
+                if (st != A840_RT_OK) [self.command recordFailure:st reason:@"rp_end"];
             }
             a840_rt_render_destroy(_native);
             _native = nullptr;
@@ -1260,7 +1260,7 @@ static BOOL convertClear(id<MTLTexture> texture, MTLClearColor color, uint32_t o
 }
 - (void)setBytes:(const void *)bytes length:(NSUInteger)length index:(NSUInteger)index fragment:(BOOL)fragment
 {
-    if (!bytes && length) { [self.command recordFailure:A840_RT_INVALID_ARG]; return; }
+    if (!bytes && length) { [self.command recordFailure:A840_RT_INVALID_ARG reason:@"rp_setbytes_null"]; return; }
     if (![self checkActive]) return;
     NSData *data = [NSData dataWithBytes:bytes length:length];
     [(fragment ? _fragmentBindings : _vertexBindings) setData:data index:index];

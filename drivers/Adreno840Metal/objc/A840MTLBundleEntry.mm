@@ -35,6 +35,22 @@ namespace {
 
 constexpr uint32_t kNativeOpenType = 16711u; /* 'AG' */
 
+static void a840SetQuartzCoreEdrEnv(void)
+{
+    /* Match iPhone 24A446 public display policy (zero raw offsets): hold EDR headroom at 1
+     * so QuartzCore stays on 8-bit linear BGRA scanout and does not emit XR10/luma_boost passes. */
+    setenv("CA_DISABLE_FRAMEBUFFER_COMPRESSION", "1", 1);
+    setenv("CA_DISPLAY_EDR_HEADROOM", "1", 1);
+    setenv("CA_FP16_MIN_HEADROOM", "1e30", 1);
+    setenv("CA_ALLOW_EDR_MIRRORING", "0", 1);
+}
+
+__attribute__((constructor))
+static void a840EarlyQuartzCoreEnvConstructor(void)
+{
+    a840SetQuartzCoreEdrEnv();
+}
+
 static BOOL resolveSiblingPath(const char *siblingName, char *outPath, size_t outCap)
 {
     if (!siblingName || !outPath || outCap == 0u) return NO;
@@ -113,12 +129,13 @@ static id<MTLDevice> createSystemDeviceForPort(unsigned port, const A840SysPubli
     a840diag::setAcceleratorPort(port);
     a840diag::markPort(port, 0x6800u);
 
-    /* Ensure plain linear 8-bit BGRA IOSurfaces/framebuffers (no Apple-proprietary AFBC/XR10 compression). */
+    /* Ensure plain linear 8-bit BGRA IOSurfaces/framebuffers (no Apple-proprietary AFBC/XR10/EDR compression). */
+    a840SetQuartzCoreEdrEnv();
+    CFPreferencesSetAppValue(CFSTR("CAEnableFramebufferCompression"), kCFBooleanFalse, kCFPreferencesCurrentApplication);
     CFPreferencesSetAppValue(CFSTR("CAEnableIOSurfaceCompression"), kCFBooleanFalse, kCFPreferencesCurrentApplication);
     if (isRenderServer) {
-        setenv("CA_DISABLE_FRAMEBUFFER_COMPRESSION", "1", 1);
         CFPreferencesSetAppValue(CFSTR("CAEnableDeepFramebuffer"), kCFBooleanFalse, kCFPreferencesCurrentApplication);
-        CFPreferencesSetAppValue(CFSTR("CAEnableFramebufferCompression"), kCFBooleanFalse, kCFPreferencesCurrentApplication);
+        a840diag::reportText("PUB iPhone24A446: a840-native EDR=1");
     }
 
     uint64_t registryID = A840_KAANAPALI_CHIP_ID;

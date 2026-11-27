@@ -1014,7 +1014,12 @@ static void a840MarshalConstants(const std::vector<A840OwnedConstant> &owned,
         return nil;
     const char *entry = fn.name.UTF8String;
     auto *lib = static_cast<NmbLibrary *>(fn.ownerLibrary.parsedNmbLibrary);
-    if (!lib || !entry) return nil;
+    if (!lib || !entry) {
+        char msg[128] = {};
+        snprintf(msg, sizeof(msg), "A840PIPE cs-nolib %.40s", entry ?: "?");
+        a840diag::reportText(msg);
+        return nil;
+    }
 
     std::vector<NmbFunctionConstant> ffiConsts;
     a840MarshalConstants([fn ownedConstants], ffiConsts);
@@ -1039,6 +1044,9 @@ static void a840MarshalConstants(const std::vector<A840OwnedConstant> &owned,
     const uint32_t *spvWords = nmb_spirv_words(spv, 0u, &spvBytes);
     const char *spvEntry = nmb_spirv_entry_point(spv, 0u);
     if (!spvWords || spvBytes == 0u || !spvEntry) {
+        char msg[128] = {};
+        snprintf(msg, sizeof(msg), "A840PIPE cs-nospv %.40s", entry);
+        a840diag::reportText(msg);
         nmb_spirv_result_free(spv);
         return nil;
     }
@@ -1065,6 +1073,9 @@ static void a840MarshalConstants(const std::vector<A840OwnedConstant> &owned,
     char errBuf[256] = {};
     const auto cst = a840_compile_stage(&target, &stageIn, &plan->stages[0], errBuf, sizeof(errBuf));
     if (cst != A840_COMPILE_OK || !a840_ir3_get_stage_io_info(&plan->stages[0], &plan->ioInfo[0])) {
+        char msg[128] = {};
+        snprintf(msg, sizeof(msg), "A840PIPE cs-ir3 %.28s st=%d %.36s", entry, (int)cst, errBuf[0] ? errBuf : "io");
+        a840diag::reportText(msg);
         nmb_spirv_result_free(spv);
         return nil;
     }
@@ -1077,6 +1088,9 @@ static void a840MarshalConstants(const std::vector<A840OwnedConstant> &owned,
     NmbSpirvPushConstantRange pushRange{};
     (void)nmb_spirv_push_constant_range(spv, 0u, &pushRange);
     if (![self captureIdentityReflection:spv intoPlan:plan stageCount:1u]) {
+        char msg[128] = {};
+        snprintf(msg, sizeof(msg), "A840PIPE cs-refl %.40s", entry);
+        a840diag::reportText(msg);
         nmb_spirv_result_free(spv);
         return nil;
     }
@@ -1085,14 +1099,29 @@ static void a840MarshalConstants(const std::vector<A840OwnedConstant> &owned,
     const auto bpst = a840_binding_plan_build(bindings.empty() ? nullptr : bindings.data(),
                                               bindings.size(), &plan->stages[0], 1u,
                                               &pushRange, &plan->bindingPlan);
-    if (bpst != A840_BINDING_PLAN_OK) return nil;
+    if (bpst != A840_BINDING_PLAN_OK) {
+        char msg[128] = {};
+        snprintf(msg, sizeof(msg), "A840PIPE cs-bp %.36s st=%d", entry, (int)bpst);
+        a840diag::reportText(msg);
+        return nil;
+    }
 
     plan->codeBuffers[0] = uploadIsaBuffer(device.runtime, plan->stages[0].isa_words,
                                            plan->stages[0].isa_dwords);
-    if (!plan->codeBuffers[0]) return nil;
+    if (!plan->codeBuffers[0]) {
+        char msg[128] = {};
+        snprintf(msg, sizeof(msg), "A840PIPE cs-isa %.40s", entry);
+        a840diag::reportText(msg);
+        return nil;
+    }
     if (plan->stages[0].private_mem_bytes > 0u) {
         plan->privateBuffers[0] = allocPrivateScratch(device.runtime, plan->stages[0].private_mem_bytes);
-        if (!plan->privateBuffers[0]) return nil;
+        if (!plan->privateBuffers[0]) {
+            char msg[128] = {};
+            snprintf(msg, sizeof(msg), "A840PIPE cs-pvt %.40s", entry);
+            a840diag::reportText(msg);
+            return nil;
+        }
     }
 
     std::memset(descriptor, 0, sizeof(*descriptor));
@@ -1171,7 +1200,12 @@ static void a840MarshalConstants(const std::vector<A840OwnedConstant> &owned,
     auto *fsLib = static_cast<NmbLibrary *>(fsFn.ownerLibrary.parsedNmbLibrary);
     const char *vsName = vsFn.name.UTF8String;
     const char *fsName = fsFn.name.UTF8String;
-    if (!vsLib || !fsLib || !vsName || !fsName) return nil;
+    if (!vsLib || !fsLib || !vsName || !fsName) {
+        char msg[128] = {};
+        snprintf(msg, sizeof(msg), "A840PIPE rp-nolib %.24s/%.24s", vsName ?: "?", fsName ?: "?");
+        a840diag::reportText(msg);
+        return nil;
+    }
 
     NmbRenderPipelineDesc rdesc{};
     rdesc.sample_count = pipeline.rasterSampleCount ? static_cast<uint32_t>(pipeline.rasterSampleCount) : 1u;
@@ -1255,6 +1289,9 @@ static void a840MarshalConstants(const std::vector<A840OwnedConstant> &owned,
         const uint32_t *spvWords = nmb_spirv_words(spv, s, &spvBytes);
         const char *spvEntry = nmb_spirv_entry_point(spv, s);
         if (!spvWords || spvBytes == 0u || !spvEntry) {
+            char msg[128] = {};
+            snprintf(msg, sizeof(msg), "A840PIPE rp-nospv s=%u %.22s/%.22s", s, vsName, fsName);
+            a840diag::reportText(msg);
             nmb_spirv_result_free(spv);
             return nil;
         }
@@ -1289,6 +1326,9 @@ static void a840MarshalConstants(const std::vector<A840OwnedConstant> &owned,
     (void)nmb_spirv_push_constant_range(spv, 0u, &pushRanges[0]);
     (void)nmb_spirv_push_constant_range(spv, 1u, &pushRanges[1]);
     if (![self captureIdentityReflection:spv intoPlan:plan stageCount:2u]) {
+        char msg[128] = {};
+        snprintf(msg, sizeof(msg), "A840PIPE rp-refl %.24s/%.24s", vsName, fsName);
+        a840diag::reportText(msg);
         nmb_spirv_result_free(spv);
         return nil;
     }
@@ -1307,10 +1347,20 @@ static void a840MarshalConstants(const std::vector<A840OwnedConstant> &owned,
     for (uint32_t s = 0u; s < 2u; ++s) {
         plan->codeBuffers[s] = uploadIsaBuffer(device.runtime, plan->stages[s].isa_words,
                                                plan->stages[s].isa_dwords);
-        if (!plan->codeBuffers[s]) return nil;
+        if (!plan->codeBuffers[s]) {
+            char msg[128] = {};
+            snprintf(msg, sizeof(msg), "A840PIPE rp-isa s=%u %.22s/%.22s", s, vsName, fsName);
+            a840diag::reportText(msg);
+            return nil;
+        }
         if (plan->stages[s].private_mem_bytes > 0u) {
             plan->privateBuffers[s] = allocPrivateScratch(device.runtime, plan->stages[s].private_mem_bytes);
-            if (!plan->privateBuffers[s]) return nil;
+            if (!plan->privateBuffers[s]) {
+                char msg[128] = {};
+                snprintf(msg, sizeof(msg), "A840PIPE rp-pvt s=%u %.22s/%.22s", s, vsName, fsName);
+                a840diag::reportText(msg);
+                return nil;
+            }
         }
     }
 

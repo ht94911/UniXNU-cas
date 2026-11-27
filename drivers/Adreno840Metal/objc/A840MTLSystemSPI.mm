@@ -7,6 +7,8 @@
 #import "A840MTLLibraryAndArchive.h"
 #import "A840MTLResource.h"
 #import "A840MTLPipelineProvider.h"
+#import "A840MTLDiagnostics.h"
+#include <stdio.h>
 
 #include "../core/a840_system_frontend_core.h"
 #include <dlfcn.h>
@@ -80,7 +82,7 @@ static A840YcbcrFormat detectIOSurfaceYcbcr(IOSurfaceRef surface, MTLPixelFormat
 - (BOOL)hasUnifiedMemory { return self.systemCaps.has_unified_memory ? YES : NO; }
 - (BOOL)isLowPower { return NO; }
 /* Private iOS 27 Metal SPI limits & flags (aligned with iOS 27 system capability contract). */
-- (NSUInteger)gpuCoreCount { return 12u; }
+- (NSUInteger)gpuCoreCount { return 8u; }
 - (NSUInteger)maxVertexAmplificationCount { return 1u; }
 - (NSUInteger)minConstantBufferAlignmentBytes { return 4u; }
 - (NSUInteger)deviceLinearReadOnlyTextureAlignmentBytes { return A840_SYS_IOSURFACE_RO_ALIGN; }
@@ -235,7 +237,13 @@ static A840YcbcrFormat detectIOSurfaceYcbcr(IOSurfaceRef surface, MTLPixelFormat
 
     A840SysSurfaceHandle surfHandle = A840_SYS_INVALID_HANDLE;
     A840SysSurfaceInfo surfInfo{};
-    if (a840_sys_bind_iosurface(self.systemFrontend, &sdesc, &surfHandle, &surfInfo) != A840_SYS_OK) {
+    const A840SysStatus bindSt = a840_sys_bind_iosurface(self.systemFrontend, &sdesc, &surfHandle, &surfInfo);
+    if (bindSt != A840_SYS_OK) {
+        char msg[128] = {};
+        snprintf(msg, sizeof(msg), "A840SURF bind st=%d f=%u %ux%u p=%u/%zu r=%u",
+                 (int)bindSt, sdesc.mtl_pixel_format, sdesc.width, sdesc.height,
+                 sdesc.plane_index, planeCount, sdesc.bytes_per_row);
+        a840diag::reportText(msg);
         return nil;
     }
 
@@ -287,7 +295,12 @@ static A840YcbcrFormat detectIOSurfaceYcbcr(IOSurfaceRef surface, MTLPixelFormat
             }
         }
         if (!rtTex) {
-            if (a840_rt_texture_create(self.runtime, &rtdesc, &rtTex) != A840_RT_OK) {
+            const A840RtStatus texSt = a840_rt_texture_create(self.runtime, &rtdesc, &rtTex);
+            if (texSt != A840_RT_OK) {
+                char msg[128] = {};
+                snprintf(msg, sizeof(msg), "A840SURF tex st=%d f=%u %ux%u r=%u",
+                         (int)texSt, rtdesc.mtl_pixel_format, rtdesc.width, rtdesc.height, rtdesc.pitch_bytes);
+                a840diag::reportText(msg);
                 (void)a840_sys_unbind_iosurface(self.systemFrontend, surfHandle);
                 return nil;
             }
