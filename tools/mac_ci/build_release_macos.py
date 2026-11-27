@@ -617,11 +617,20 @@ def sha256_file(path: Path) -> str:
 
 
 def run(cmd: list[str | Path], *, cwd: Path | None = None, env: dict[str, str] | None = None,
-        log: Path | None = None) -> str:
+        log: Path | None = None, timeout: int | None = None) -> str:
     argv = [str(c) for c in cmd]
     print(f"$ {shlex.join(argv)}", flush=True)
-    res = subprocess.run(argv, cwd=cwd, env=env, stdout=subprocess.PIPE,
-                         stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace")
+    try:
+        res = subprocess.run(argv, cwd=cwd, env=env, stdout=subprocess.PIPE,
+                             stderr=subprocess.STDOUT, text=True, encoding="utf-8",
+                             errors="replace", timeout=timeout)
+    except subprocess.TimeoutExpired as exc:
+        partial = exc.stdout if isinstance(exc.stdout, str) else (exc.stdout.decode("utf-8", "replace") if exc.stdout else "")
+        if log is not None:
+            log.parent.mkdir(parents=True, exist_ok=True)
+            log.write_text(partial + f"\nTIMEOUT after {timeout}s\n", encoding="utf-8")
+        tail = "\n".join(partial.splitlines()[-300:])
+        raise RuntimeError(f"timeout after {timeout}s: {shlex.join(argv)}\n{tail}") from exc
     if log is not None:
         log.parent.mkdir(parents=True, exist_ok=True)
         log.write_text(res.stdout, encoding="utf-8")
@@ -1006,7 +1015,7 @@ def run_macos_host_selftest(repo: Path, mesa: Path, m2v: Path, meson: Path,
         run(["xcrun", "--sdk", "iphoneos", "metallib", air_m, "-o", out_m])
 
     log_path = work / "logs/macos-metal-selftest.log"
-    run([exe, mlib_a, mlib_b], log=log_path)
+    run([exe, mlib_a, mlib_b], log=log_path, timeout=60)
     out_text = log_path.read_text(encoding="utf-8", errors="replace")
     print(out_text, flush=True)
     return {"status": "PASS", "log_bytes": len(out_text)}

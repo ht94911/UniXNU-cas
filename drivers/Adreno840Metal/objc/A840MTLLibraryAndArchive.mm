@@ -177,7 +177,15 @@ static A840PipelineKey hashStringToPipelineKey(NSString *tag)
     for (id<MTLFunction> fn in descriptor.functions) {
         if ([(id)fn isKindOfClass:A840MTLFunction.class]) {
             A840MTLLibrary *ownerLib = [(A840MTLFunction *)fn ownerLibrary];
-            if (ownerLib) return ownerLib;
+            if (!ownerLib) continue;
+            BOOL allGraphsPresent = YES;
+            for (MTLFunctionStitchingGraph *g in descriptor.functionGraphs) {
+                if (g.functionName.length && ![ownerLib.functionNames containsObject:g.functionName]) {
+                    allGraphsPresent = NO;
+                    break;
+                }
+            }
+            if (allGraphsPresent) return ownerLib;
         }
     }
     if (error) {

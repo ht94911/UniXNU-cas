@@ -25,6 +25,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <signal.h>
+#include <unistd.h>
 
 static int gFailures = 0;
 
@@ -196,8 +198,20 @@ static void runSelectorCompletenessAudit(void)
     logProtocolReflection(A840MTLBuffer.class, "A840MTLBuffer", "MTLBufferSPI");
 }
 
+static void selftestTimeoutHandler(int sig)
+{
+    (void)sig;
+    static const char msg[] = "SELFTEST_TIMEOUT_45S: hung inside selftest\n";
+    (void)write(2, msg, sizeof(msg) - 1u);
+    _exit(124);
+}
+
 int main(int argc, const char **argv)
 {
+    setvbuf(stdout, nullptr, _IONBF, 0);
+    setvbuf(stderr, nullptr, _IONBF, 0);
+    signal(SIGALRM, selftestTimeoutHandler);
+    alarm(45u);
     A840MockTransport *mock = nullptr;
     @autoreleasepool {
         if (argc < 3) {
@@ -370,18 +384,22 @@ int main(int argc, const char **argv)
 
         std::printf("=== 5. Real Apple CoreImage CIContext Exercise ===\n");
         @try {
+            std::printf("STEP 5a: creating CIContext...\n");
+            id<MTLCommandQueue> ciQ = [dev newCommandQueue];
             CIContext *ciCtx = [CIContext contextWithMTLDevice:dev
                                                        options:@{kCIContextUseSoftwareRenderer: @NO}];
             REQUIRE(ciCtx != nil, "CIContext contextWithMTLDevice: succeeded without throwing SPI exception");
-            if (ciCtx) {
+            std::printf("STEP 5b: CIContext created=%d, rendering solid...\n", ciCtx != nil);
+            if (ciCtx && ciQ) {
                 CGColorSpaceRef cs = CGColorSpaceCreateDeviceRGB();
                 CIImage *solid = [CIImage imageWithColor:[CIColor colorWithRed:0.25 green:0.5 blue:0.75 alpha:1.0]];
-                id<MTLCommandBuffer> cicb = [q commandBuffer];
+                id<MTLCommandBuffer> cicb = [ciQ commandBuffer];
                 [ciCtx render:solid
                     toMTLTexture:surfTex
                    commandBuffer:cicb
                           bounds:CGRectMake(0, 0, 64, 64)
                       colorSpace:cs];
+                std::printf("STEP 5c: committing solid cicb (status=%lu)...\n", (unsigned long)cicb.status);
                 [cicb commit];
                 [cicb waitUntilCompleted];
                 std::printf("COREIMAGE_SOLID_STATUS: status=%lu err=%s\n",
@@ -390,15 +408,17 @@ int main(int argc, const char **argv)
 
                 CIFilter *blur = [CIFilter filterWithName:@"CIGaussianBlur"];
                 if (blur) {
+                    std::printf("STEP 5d: rendering CIGaussianBlur...\n");
                     [blur setValue:[solid imageByCroppingToRect:CGRectMake(0, 0, 64, 64)] forKey:kCIInputImageKey];
                     [blur setValue:@(4.0) forKey:kCIInputRadiusKey];
                     CIImage *blurred = blur.outputImage;
-                    id<MTLCommandBuffer> bcb = [q commandBuffer];
+                    id<MTLCommandBuffer> bcb = [ciQ commandBuffer];
                     [ciCtx render:blurred
                         toMTLTexture:surfTex
                        commandBuffer:bcb
                               bounds:CGRectMake(0, 0, 64, 64)
                           colorSpace:cs];
+                    std::printf("STEP 5e: committing blur bcb (status=%lu)...\n", (unsigned long)bcb.status);
                     [bcb commit];
                     [bcb waitUntilCompleted];
                     std::printf("COREIMAGE_BLUR_STATUS: status=%lu err=%s\n",
@@ -408,6 +428,7 @@ int main(int argc, const char **argv)
                 CGColorSpaceRelease(cs);
             }
             ciCtx = nil;
+            ciQ = nil;
         } @catch (NSException *ex) {
             std::fprintf(stderr, "COREIMAGE_EXCEPTION: %s | %s\n",
                          ex.name.UTF8String ?: "?",
