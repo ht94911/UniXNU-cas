@@ -281,6 +281,7 @@ static void a840MarshalConstants(const std::vector<A840OwnedConstant> &owned,
     NSString *_name;
     MTLFunctionType _type;
     std::vector<A840OwnedConstant> _constants;
+    uint8_t _bitCodeHash[32];
 }
 @synthesize label = _label;
 
@@ -309,7 +310,23 @@ static void a840MarshalConstants(const std::vector<A840OwnedConstant> &owned,
 - (NSString *)name { return _name; }
 - (MTLFunctionType)functionType { return _type; }
 - (MTLPatchType)patchType { return MTLPatchTypeNone; }
-- (NSInteger)patchControlPointCount { return -1; }
+- (NSInteger)patchControlPointCount { return 0; }
+- (const void *)bitCodeHash
+{
+    uint64_t h1 = 14695981039346656037ULL;
+    uint64_t h2 = 1099511628211ULL;
+    const char *s = _name.UTF8String ?: "";
+    for (const unsigned char *p = reinterpret_cast<const unsigned char *>(s); *p; ++p) {
+        h1 ^= *p; h1 *= 1099511628211ULL;
+        h2 = (h2 * 1315423911ULL) ^ *p;
+    }
+    const uintptr_t libPtr = reinterpret_cast<uintptr_t>((__bridge void *)_ownerLibrary);
+    std::memcpy(_bitCodeHash + 0, &h1, 8u);
+    std::memcpy(_bitCodeHash + 8, &h2, 8u);
+    std::memcpy(_bitCodeHash + 16, &libPtr, sizeof(libPtr));
+    std::memcpy(_bitCodeHash + 24, &_type, sizeof(uint64_t));
+    return _bitCodeHash;
+}
 - (NSArray<MTLVertexAttribute *> *)vertexAttributes { return nil; }
 - (NSArray<MTLAttribute *> *)stageInputAttributes { return nil; }
 - (NSDictionary<NSString *, MTLFunctionConstant *> *)functionConstantsDictionary { return @{}; }
@@ -324,6 +341,9 @@ static void a840MarshalConstants(const std::vector<A840OwnedConstant> &owned,
 @implementation A840MTLLibrary {
     __weak A840MTLDevice *_device;
     NSDictionary<NSString *, NSNumber *> *_functions;
+    NSArray<NSString *> *_externNames;
+    NSString *_overrideTriple;
+    BOOL _shaderValidationEnabled;
     NmbDevice *_parseDevice;
     NmbLibrary *_parsedLib;
 }
@@ -356,6 +376,7 @@ static void a840MarshalConstants(const std::vector<A840OwnedConstant> &owned,
     }
 
     NSMutableDictionary<NSString *, NSNumber *> *map = [NSMutableDictionary new];
+    NSMutableArray<NSString *> *externs = [NSMutableArray new];
     const size_t count = nmb_library_function_count(_parsedLib);
     char nameBuf[512];
     for (size_t i = 0u; i < count; ++i) {
@@ -370,9 +391,13 @@ static void a840MarshalConstants(const std::vector<A840OwnedConstant> &owned,
         else if (kind == NMB_FUNCTION_MESH) ftype = (MTLFunctionType)7;
         else if (kind == NMB_FUNCTION_OBJECT) ftype = (MTLFunctionType)8;
         NSString *fnName = [NSString stringWithUTF8String:nameBuf];
-        if (fnName) map[fnName] = @(ftype);
+        if (fnName) {
+            map[fnName] = @(ftype);
+            if (kind == NMB_FUNCTION_EXTERN) [externs addObject:fnName];
+        }
     }
     _functions = [map copy];
+    _externNames = [externs copy];
     return self;
 }
 
@@ -423,6 +448,14 @@ static void a840MarshalConstants(const std::vector<A840OwnedConstant> &owned,
     id<MTLFunction> fn = [self newFunctionWithName:name constantValues:constantValues error:&err];
     completionHandler(fn, err);
 }
+- (NSArray<NSString *> *)externFunctionNames { return _externNames ?: @[]; }
+- (id<MTLFunction>)newExternFunctionWithName:(NSString *)name { return [self newFunctionWithName:name]; }
+- (NSString *)overrideTriple { return _overrideTriple; }
+- (void)setOverrideTriple:(NSString *)triple { _overrideTriple = [triple copy]; }
+- (BOOL)shaderValidationEnabled { return _shaderValidationEnabled; }
+- (void)setShaderValidationEnabled:(BOOL)enabled { _shaderValidationEnabled = enabled; }
+- (NSString *)installName { return nil; }
+- (NSUUID *)libraryIdentifier { return nil; }
 - (id<MTLFunction>)newFunctionWithDescriptor:(MTLFunctionDescriptor *)descriptor error:(NSError **)error
 {
     if (!descriptor || !descriptor.name.length) {
@@ -430,6 +463,14 @@ static void a840MarshalConstants(const std::vector<A840OwnedConstant> &owned,
         return nil;
     }
     return [self newFunctionWithName:descriptor.name constantValues:descriptor.constantValues error:error];
+}
+- (void)newFunctionWithDescriptor:(MTLFunctionDescriptor *)descriptor
+                completionHandler:(void (^)(id<MTLFunction>, NSError *))completionHandler
+{
+    if (!completionHandler) return;
+    NSError *err = nil;
+    id<MTLFunction> fn = [self newFunctionWithDescriptor:descriptor error:&err];
+    completionHandler(fn, err);
 }
 - (void)doesNotRecognizeSelector:(SEL)selector
 {
@@ -991,6 +1032,7 @@ static void a840MarshalConstants(const std::vector<A840OwnedConstant> &owned,
         nmb_spirv_result_free(spv);
         return nil;
     }
+    plan->stages[0].constlen_vec4 = (plan->stages[0].constlen_vec4 + 3u) & ~3u;
 
     const size_t bcount = nmb_spirv_binding_count(spv);
     std::vector<NmbSpirvBinding> bindings(bcount);
@@ -1187,6 +1229,7 @@ static void a840MarshalConstants(const std::vector<A840OwnedConstant> &owned,
             nmb_spirv_result_free(spv);
             return nil;
         }
+        plan->stages[s].constlen_vec4 = (plan->stages[s].constlen_vec4 + 3u) & ~3u;
     }
 
     const size_t bcount = nmb_spirv_binding_count(spv);
@@ -1242,7 +1285,8 @@ static void a840MarshalConstants(const std::vector<A840OwnedConstant> &owned,
     ed.point_size = vsIo.vs_psize_regid;
 
     for (uint32_t i = 0u; i < vsIo.input_count && ed.vertex_input_count < A840_MAX_VERTEX_INPUTS; ++i) {
-        if (vsIo.inputs[i].sysval) continue;
+        if (vsIo.inputs[i].sysval || vsIo.inputs[i].compmask == 0u ||
+            vsIo.inputs[i].regid >= A840_IR3_REGID_UNUSED) continue;
         ed.vertex_inputs[ed.vertex_input_count].regid = vsIo.inputs[i].regid;
         ed.vertex_inputs[ed.vertex_input_count].component_mask = vsIo.inputs[i].compmask;
         ++ed.vertex_input_count;

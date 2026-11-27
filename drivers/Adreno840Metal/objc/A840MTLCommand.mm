@@ -310,12 +310,16 @@ static thread_local bool gInCompletionCallback = false;
     [_changed unlock];
 }
 
-- (void)recordFailure:(A840RtStatus)status
+- (void)recordFailure:(A840RtStatus)status reason:(NSString *)reason
 {
     [_changed lock];
     if (_status < MTLCommandBufferStatusCommitted && !_recordingError)
-        _recordingError = a840_metal_error(status, @"Could not encode the native Metal operation");
+        _recordingError = a840_metal_error(status, reason ?: @"Could not encode the native Metal operation");
     [_changed unlock];
+}
+- (void)recordFailure:(A840RtStatus)status
+{
+    [self recordFailure:status reason:@"Could not encode the native Metal operation"];
 }
 
 - (void)encodeSignalEvent:(id<MTLEvent>)event value:(uint64_t)value

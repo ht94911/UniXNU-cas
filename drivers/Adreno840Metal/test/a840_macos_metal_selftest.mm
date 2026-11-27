@@ -151,6 +151,9 @@ static void runSelectorCompletenessAudit(void)
         "newFunctionWithName:constantValues:error:",
         "newFunctionWithName:constantValues:completionHandler:",
         "newFunctionWithDescriptor:error:",
+        "newFunctionWithDescriptor:completionHandler:",
+        "externFunctionNames", "newExternFunctionWithName:",
+        "overrideTriple", "setOverrideTriple:", "shaderValidationEnabled", "setShaderValidationEnabled:",
         nullptr
     };
     static const char *const kFuncSels[] = {
@@ -187,6 +190,10 @@ static void runSelectorCompletenessAudit(void)
     logProtocolReflection(A840MTLDevice.class, "A840MTLDevice", "MTLDeviceSPI");
     logProtocolReflection(A840MTLCommandQueue.class, "A840MTLCommandQueue", "MTLCommandQueueSPI");
     logProtocolReflection(A840MTLCommandBuffer.class, "A840MTLCommandBuffer", "MTLCommandBufferSPI");
+    logProtocolReflection(A840MTLLibrary.class, "A840MTLLibrary", "MTLLibrarySPI");
+    logProtocolReflection(A840MTLFunction.class, "A840MTLFunction", "MTLFunctionSPI");
+    logProtocolReflection(A840MTLTexture.class, "A840MTLTexture", "MTLTextureSPI");
+    logProtocolReflection(A840MTLBuffer.class, "A840MTLBuffer", "MTLBufferSPI");
 }
 
 int main(int argc, const char **argv)
@@ -333,8 +340,33 @@ int main(int argc, const char **argv)
         [renc endEncoding];
         [rcb commit];
         [rcb waitUntilCompleted];
+        if (rcb.status != MTLCommandBufferStatusCompleted || rcb.error != nil) {
+            std::fprintf(stderr, "RCB_DIAG: status=%lu code=%ld err=%s subsBefore=%llu subsAfter=%llu\n",
+                         (unsigned long)rcb.status, (long)rcb.error.code,
+                         rcb.error ? rcb.error.localizedDescription.UTF8String : "none",
+                         (unsigned long long)subsBefore,
+                         (unsigned long long)a840_mock_transport_submission_count(mock));
+        }
         REQUIRE(rcb.status == MTLCommandBufferStatusCompleted && rcb.error == nil, "cross-library render pass completed");
         REQUIRE(a840_mock_transport_submission_count(mock) > subsBefore, "real A8XX PM4 submission emitted");
+
+        /* Also exercise real compute dispatch with function constant specialization! */
+        const uint64_t subsCompBefore = a840_mock_transport_submission_count(mock);
+        id<MTLCommandBuffer> ccb = [q commandBuffer];
+        id<MTLComputeCommandEncoder> cenc = [ccb computeCommandEncoder];
+        [cenc setComputePipelineState:cpso];
+        [cenc setBuffer:b1 offset:0u atIndex:0u];
+        [cenc dispatchThreadgroups:MTLSizeMake(1u, 1u, 1u) threadsPerThreadgroup:MTLSizeMake(16u, 1u, 1u)];
+        [cenc endEncoding];
+        [ccb commit];
+        [ccb waitUntilCompleted];
+        if (ccb.status != MTLCommandBufferStatusCompleted || ccb.error != nil) {
+            std::fprintf(stderr, "CCB_DIAG: status=%lu code=%ld err=%s\n",
+                         (unsigned long)ccb.status, (long)ccb.error.code,
+                         ccb.error ? ccb.error.localizedDescription.UTF8String : "none");
+        }
+        REQUIRE(ccb.status == MTLCommandBufferStatusCompleted && ccb.error == nil, "specialized compute dispatch completed");
+        REQUIRE(a840_mock_transport_submission_count(mock) > subsCompBefore, "real A8XX compute PM4 emitted");
 
         std::printf("=== 5. Real Apple CoreImage CIContext Exercise ===\n");
         @try {

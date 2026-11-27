@@ -388,10 +388,37 @@ static A840YcbcrFormat detectIOSurfaceYcbcr(IOSurfaceRef surface, MTLPixelFormat
     return [A840MTLStitchedLibraryLoader libraryWithSource:source options:options device:self error:error];
 }
 
+- (void)newLibraryWithSource:(NSString *)source
+                     options:(MTLCompileOptions *)options
+           completionHandler:(MTLNewLibraryCompletionHandler)completionHandler
+{
+    if (!completionHandler) return;
+    NSError *err = nil;
+    id<MTLLibrary> lib = [self newLibraryWithSource:source options:options error:&err];
+    completionHandler(lib, err);
+}
+
 - (id<MTLLibrary>)newLibraryWithStitchedDescriptor:(MTLStitchedLibraryDescriptor *)descriptor
                                              error:(NSError **)error
 {
     return [A840MTLStitchedLibraryLoader libraryWithStitchedDescriptor:descriptor device:self error:error];
+}
+
+- (id<MTLLibrary>)newLibraryWithStitchedDescriptor:(MTLStitchedLibraryDescriptor *)descriptor
+                          destinationBinaryArchive:(id<MTLBinaryArchive>)archive
+                                             error:(NSError **)error
+{
+    (void)archive;
+    return [self newLibraryWithStitchedDescriptor:descriptor error:error];
+}
+
+- (void)newLibraryWithStitchedDescriptor:(MTLStitchedLibraryDescriptor *)descriptor
+                       completionHandler:(MTLNewLibraryCompletionHandler)completionHandler
+{
+    if (!completionHandler) return;
+    NSError *err = nil;
+    id<MTLLibrary> lib = [self newLibraryWithStitchedDescriptor:descriptor error:&err];
+    completionHandler(lib, err);
 }
 
 - (id<MTLLibrary>)newDefaultLibraryWithBundle:(NSBundle *)bundle error:(NSError **)error

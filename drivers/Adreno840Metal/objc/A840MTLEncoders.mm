@@ -881,14 +881,14 @@ static BOOL convertClear(id<MTLTexture> texture, MTLClearColor color, uint32_t o
         const A840ProdDecision route = a840_prod_route_render(command.owner.productionRouter, &prodQuery);
         if (route.status != A840_PROD_OK || route.target != A840_PROD_ROUTE_NATIVE ||
             !nativeAttachments || !first || first.width > UINT32_MAX || first.height > UINT32_MAX) {
-            [command recordFailure:A840_RT_UNSUPPORTED];
+            [command recordFailure:A840_RT_UNSUPPORTED reason:@"render pass route/attachment unsupported"];
         } else {
             A840RtRenderPassDesc sysmemDesc = descriptor;
             sysmemDesc.has_memoryless_attachment = false;
             sysmemDesc.has_msaa_resolve = false;
             if (sysmemDesc.sample_count > 1u) sysmemDesc.sample_count = 1u;
             const A840RtStatus st = a840_rt_cb_begin_render_pass(command.native, &sysmemDesc, &_native);
-            if (st != A840_RT_OK) [command recordFailure:st == A840_RT_FALLBACK_REQUIRED ? A840_RT_UNSUPPORTED : st];
+            if (st != A840_RT_OK) [command recordFailure:(st == A840_RT_FALLBACK_REQUIRED ? A840_RT_UNSUPPORTED : st) reason:[NSString stringWithFormat:@"begin_render_pass failed st=%d", (int)st]];
         }
     }
     return self;
@@ -1299,21 +1299,21 @@ static BOOL convertClear(id<MTLTexture> texture, MTLClearColor color, uint32_t o
                 return;
             }
             const A840RtStatus st = a840_rt_render_set_program(_native, desc);
-            if (st != A840_RT_OK) { [cb recordFailure:st]; return; }
+            if (st != A840_RT_OK) { [cb recordFailure:st reason:[NSString stringWithFormat:@"render_set_program failed st=%d vsConst=%u fsConst=%u vsPos=%u", (int)st, desc->emit_desc.vs.stage->constlen_vec4, desc->emit_desc.fs.stage->constlen_vec4, (unsigned)desc->emit_desc.position]]; return; }
             _boundPipeline = state;
             _stateDirty = YES;
         }
         if (_stateDirty) {
             const A840RtStatus st = a840_rt_render_set_state(_native, &_state);
-            if (st != A840_RT_OK) { [cb recordFailure:st]; return; }
+            if (st != A840_RT_OK) { [cb recordFailure:st reason:[NSString stringWithFormat:@"render_set_state failed st=%d", (int)st]]; return; }
             _stateDirty = NO;
         }
         const A840RtStatus bindSt = [cb.owner.pipelineProvider bindRender:_native plan:state.plan
             vertexBindings:_vertexBindings fragmentBindings:_fragmentBindings];
-        if (bindSt != A840_RT_OK) { [cb recordFailure:bindSt]; return; }
+        if (bindSt != A840_RT_OK) { [cb recordFailure:bindSt reason:[NSString stringWithFormat:@"bindRender failed st=%d", (int)bindSt]]; return; }
         const A840RtStatus drawSt = a840_rt_render_draw(_native, &draw);
         if (drawSt != A840_RT_OK) {
-            [cb recordFailure:drawSt];
+            [cb recordFailure:drawSt reason:[NSString stringWithFormat:@"render_draw failed st=%d", (int)drawSt]];
             return;
         }
         _drawCount++;

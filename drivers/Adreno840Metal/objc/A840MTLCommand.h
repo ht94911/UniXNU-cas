@@ -32,6 +32,7 @@
 - (void)useResource:(id<MTLResource>)resource;
 - (void)useHeap:(id<MTLHeap>)heap;
 - (void)recordFailure:(A840RtStatus)status;
+- (void)recordFailure:(A840RtStatus)status reason:(NSString *)reason;
 - (void)encodeSignalEvent:(id<MTLEvent>)event value:(uint64_t)value;
 - (void)encodeWaitForEvent:(id<MTLEvent>)event value:(uint64_t)value;
 - (void)presentDrawable:(id<MTLDrawable>)drawable;
