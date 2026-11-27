@@ -1325,8 +1325,12 @@ static void a840MarshalConstants(const std::vector<A840OwnedConstant> &owned,
     ed.fs_inputs.linear_centroid = fsIo.fs_linear_centroid_regid;
     ed.fs_inputs.persp_sample = fsIo.fs_persp_sample_regid;
     ed.fs_inputs.linear_sample = fsIo.fs_linear_sample_regid;
-    ed.fs_inputs.frag_coord = fsIo.fs_frag_coord_regid;
-    ed.fs_inputs.frag_coord_mask = fsIo.fs_frag_coord_mask;
+    ed.fs_inputs.frag_coord = (fsIo.fs_frag_coord_regid <= A840_REGID_UNUSED - 4u)
+                                  ? fsIo.fs_frag_coord_regid
+                                  : A840_REGID_UNUSED;
+    ed.fs_inputs.frag_coord_mask = (ed.fs_inputs.frag_coord < A840_REGID_UNUSED)
+                                       ? (fsIo.fs_frag_coord_mask ? (fsIo.fs_frag_coord_mask & 0xfu) : 0xfu)
+                                       : 0u;
     ed.fs_inputs.shading_rate = fsIo.fs_shading_rate_regid;
     ed.depth_output = fsIo.fs_depth_out_regid;
     ed.stencil_output = fsIo.fs_stencil_out_regid;
@@ -1335,8 +1339,11 @@ static void a840MarshalConstants(const std::vector<A840OwnedConstant> &owned,
     ed.full_quad = fsIo.fs_full_quad != 0u;
     ed.fs_thread128 = fsIo.fs_thread128 != 0u;
     for (uint32_t i = 0u; i < A840_MAX_COLOR_TARGETS; ++i) {
-        ed.colors[i].regid = fsIo.fs_colors[i].regid;
-        ed.colors[i].component_mask = fsIo.fs_colors[i].compmask;
+        const uint8_t reg = (fsIo.fs_colors[i].regid < A840_REGID_UNUSED)
+                                ? fsIo.fs_colors[i].regid
+                                : A840_REGID_UNUSED;
+        ed.colors[i].regid = reg;
+        ed.colors[i].component_mask = (reg < A840_REGID_UNUSED) ? (fsIo.fs_colors[i].compmask & 0xfu) : 0u;
         ed.colors[i].half_precision = fsIo.fs_colors[i].half_precision != 0u;
     }
 

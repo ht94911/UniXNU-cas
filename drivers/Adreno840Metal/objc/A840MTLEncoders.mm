@@ -1299,7 +1299,7 @@ static BOOL convertClear(id<MTLTexture> texture, MTLClearColor color, uint32_t o
                 return;
             }
             const A840RtStatus st = a840_rt_render_set_program(_native, desc);
-            if (st != A840_RT_OK) { [cb recordFailure:st reason:[NSString stringWithFormat:@"render_set_program failed st=%d vsConst=%u fsConst=%u vsPos=%u", (int)st, desc->emit_desc.vs.stage->constlen_vec4, desc->emit_desc.fs.stage->constlen_vec4, (unsigned)desc->emit_desc.position]]; return; }
+            if (st != A840_RT_OK) { const auto &ed = desc->emit_desc; [cb recordFailure:st reason:[NSString stringWithFormat:@"render_set_program st=%d vs(c=%u ig=%u dw=%u fr=%d hr=%d pvt=%u) fs(c=%u ig=%u dw=%u fr=%d hr=%d pvt=%u) vid=%u pos=%u vinc=%u varc=%u c0=%u/%u fc=%u/%u", (int)st, ed.vs.stage->constlen_vec4, ed.vs.stage->instruction_groups, ed.vs.stage->isa_dwords, ed.vs.stage->max_full_reg, ed.vs.stage->max_half_reg, ed.vs.stage->private_mem_bytes, ed.fs.stage->constlen_vec4, ed.fs.stage->instruction_groups, ed.fs.stage->isa_dwords, ed.fs.stage->max_full_reg, ed.fs.stage->max_half_reg, ed.fs.stage->private_mem_bytes, (unsigned)ed.vertex_id, (unsigned)ed.position, ed.vertex_input_count, ed.varying_count, (unsigned)ed.colors[0].regid, (unsigned)ed.colors[0].component_mask, (unsigned)ed.fs_inputs.frag_coord, (unsigned)ed.fs_inputs.frag_coord_mask]]; return; }
             _boundPipeline = state;
             _stateDirty = YES;
         }
