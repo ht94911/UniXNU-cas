@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: MIT
+# Mesa commit: 85fda3b36405bcaea8bffc64aa4f2651dc90770d
+# Mesa citations below are path:line in the pinned Git commit, not patched working files.
+# All grade=source; hwtest_id=- means not run on the phone. Host table tests do not promote grade.
+feature_id	mechanism	supported	grade	citation	hwtest_id
+astc_hdr	has_astc_hdr	1	source	src/freedreno/common/freedreno_devices.py:752	-
+cubic_filter	has_tex_filter_cubic	1	source	src/freedreno/common/freedreno_devices.py:772	-
+dual_wave_dispatch	has_dual_wave_dispatch	1	source	src/freedreno/common/freedreno_devices.py:1248	-
+generic_clear	has_generic_clear	1	source	src/freedreno/common/freedreno_devices.py:845	-
+has_coherent_ubwc_flag_caches	frozen chip feature bit 2	1	source	kits/Adreno840/chip_facts_a840.c:43;src/freedreno/common/freedreno_devices.py:788	-
+has_early_preamble	frozen chip feature bit 0	1	source	kits/Adreno840/chip_facts_a840.c:43;src/freedreno/common/freedreno_devices.py:791	-
+has_gmem_fast_clear	frozen chip feature bit 1	1	source	kits/Adreno840/chip_facts_a840.c:43;src/freedreno/common/freedreno_devices.py:748	-
+has_gmem_save_restore	frozen chip feature bit 9	1	source	kits/Adreno840/chip_facts_a840.c:43	-
+has_salu_int_narrowing_quirk	frozen chip feature bit 8	1	source	kits/Adreno840/chip_facts_a840.c:43;src/freedreno/common/freedreno_devices.py:1324	-
+image_64b_atomics	has_64b_image_atomics	1	source	src/freedreno/common/freedreno_devices.py:863	-
+lrz_direction_tracking	has_lrz_dir_tracking	1	source	src/freedreno/common/freedreno_devices.py:781	-
+lrz_fast_clear	enable_lrz_fast_clear	1	source	src/freedreno/common/freedreno_devices.py:780	-
+lrz_feedback	has_lrz_feedback	1	source	src/freedreno/common/freedreno_devices.py:782	-
+prede_nop_quirk	frozen chip feature bit 6	1	source	kits/Adreno840/chip_facts_a840.c:43;src/freedreno/common/freedreno_devices.py:795	-
+predtf_nop_quirk	frozen chip feature bit 7	1	source	kits/Adreno840/chip_facts_a840.c:43;src/freedreno/common/freedreno_devices.py:796	-
+r8g8_faulty_fast_clear_quirk	frozen chip feature bit 5	1	source	kits/Adreno840/chip_facts_a840.c:43;src/freedreno/common/freedreno_devices.py:846	-
+sds_64_slots	CP_SET_DRAW_STATE / 64 state groups	1	source	kits/Adreno840/chip_facts_a840.c:34	-
+ssbo_64b_atomics	has_64b_ssbo_atomics	1	source	src/freedreno/common/freedreno_devices.py:852	-
+supports_uav_ubwc	frozen chip feature bit 3	1	source	kits/Adreno840/chip_facts_a840.c:43;src/freedreno/common/freedreno_devices.py:844	-
+tbdr_gmem	GMEM tile rendering; source profile, not Metal tile-shader qualification	1	source	kits/Adreno840/chip_facts_a840.c:13	-
+ubwc_6_0	UBWC encoder version 6 (version tag is independently 5)	1	source	kits/Adreno840/chip_facts_a840.c:21	-
+ubwc_coherency_quirk	frozen chip feature bit 4	1	source	kits/Adreno840/chip_facts_a840.c:43;src/freedreno/common/freedreno_devices.py:850	-
