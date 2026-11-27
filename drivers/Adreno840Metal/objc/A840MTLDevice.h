@@ -35,6 +35,10 @@
 - (id)prepareComputeVariantForPlan:(id)plan localSize:(MTLSize)localSize
                          forDevice:(A840MTLDevice *)device
                         descriptor:(A840RtComputePipelineDesc *)descriptor;
+- (A840RtStatus)bindRender:(A840RtRenderEncoder *)encoder plan:(id)plan
+            vertexBindings:(A840MTLBindings *)vertex fragmentBindings:(A840MTLBindings *)fragment
+              colorTargets:(id<MTLTexture> const __unsafe_unretained *)colorTargets
+          colorTargetCount:(uint32_t)colorTargetCount;
 @end
 
 #if !TARGET_OS_OSX

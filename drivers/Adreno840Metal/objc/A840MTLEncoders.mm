@@ -764,19 +764,85 @@ static BOOL pipelineBlend(MTLRenderPipelineDescriptor *configuration, A840RtRend
     return YES;
 }
 
+static uint16_t floatToHalfBits(float f)
+{
+    uint32_t x = 0u;
+    std::memcpy(&x, &f, sizeof(x));
+    const uint32_t sign = (x >> 16u) & 0x8000u;
+    const int32_t exp = (int32_t)((x >> 23u) & 0xffu) - 127 + 15;
+    const uint32_t mant = x & 0x7fffffu;
+    if (exp <= 0) return (uint16_t)sign;
+    if (exp >= 31) return (uint16_t)(sign | 0x7c00u);
+    return (uint16_t)(sign | ((uint32_t)exp << 10u) | (mant >> 13u));
+}
+
 static BOOL convertClear(id<MTLTexture> texture, MTLClearColor color, uint32_t output[4])
 {
-    const MTLPixelFormat fmt = texture.pixelFormat;
-    if (fmt != MTLPixelFormatBGRA8Unorm && fmt != MTLPixelFormatRGBA8Unorm &&
-        fmt != MTLPixelFormatBGRA8Unorm_sRGB && fmt != MTLPixelFormatRGBA8Unorm_sRGB &&
-        fmt != MTLPixelFormatRGBA16Float && fmt != MTLPixelFormatRGB10A2Unorm)
-        return NO;
+    if (!texture) return NO;
+    const uint32_t rawFmt = (uint32_t)texture.pixelFormat;
+    const A840FormatCaps *caps = a840_format_caps_lookup(rawFmt);
+    if (!caps || !caps->renderable) return NO;
     const double components[4] = {color.red, color.green, color.blue, color.alpha};
-    for (unsigned i = 0; i < 4; ++i) {
+    for (unsigned i = 0u; i < 4u; ++i) {
         if (!std::isfinite(components[i])) return NO;
-        output[i] = (uint32_t)std::lround(std::fmax(0.0, std::fmin(1.0, components[i])) * 255.0);
     }
-    return YES;
+    switch (texture.pixelFormat) {
+    case MTLPixelFormatR16Float:
+    case MTLPixelFormatRG16Float:
+    case MTLPixelFormatRGBA16Float:
+        for (unsigned i = 0u; i < 4u; ++i) output[i] = floatToHalfBits((float)components[i]);
+        return YES;
+    case MTLPixelFormatR32Float:
+    case MTLPixelFormatRG32Float:
+    case MTLPixelFormatRGBA32Float:
+        for (unsigned i = 0u; i < 4u; ++i) {
+            const float f = (float)components[i];
+            std::memcpy(&output[i], &f, sizeof(uint32_t));
+        }
+        return YES;
+    case MTLPixelFormatR16Unorm:
+    case MTLPixelFormatRG16Unorm:
+    case MTLPixelFormatRGBA16Unorm:
+        for (unsigned i = 0u; i < 4u; ++i)
+            output[i] = (uint32_t)std::lround(std::fmax(0.0, std::fmin(1.0, components[i])) * 65535.0);
+        return YES;
+    case MTLPixelFormatRGB10A2Unorm:
+    case MTLPixelFormatBGR10A2Unorm:
+        for (unsigned i = 0u; i < 3u; ++i)
+            output[i] = (uint32_t)std::lround(std::fmax(0.0, std::fmin(1.0, components[i])) * 1023.0);
+        output[3] = (uint32_t)std::lround(std::fmax(0.0, std::fmin(1.0, components[3])) * 3.0);
+        return YES;
+    case MTLPixelFormatR8Uint:
+    case MTLPixelFormatRG8Uint:
+    case MTLPixelFormatRGBA8Uint:
+    case MTLPixelFormatR16Uint:
+    case MTLPixelFormatRG16Uint:
+    case MTLPixelFormatRGBA16Uint:
+    case MTLPixelFormatR32Uint:
+    case MTLPixelFormatRG32Uint:
+    case MTLPixelFormatRGBA32Uint:
+    case MTLPixelFormatRGB10A2Uint:
+        for (unsigned i = 0u; i < 4u; ++i) output[i] = (uint32_t)std::fmax(0.0, components[i]);
+        return YES;
+    case MTLPixelFormatR8Sint:
+    case MTLPixelFormatRG8Sint:
+    case MTLPixelFormatRGBA8Sint:
+    case MTLPixelFormatR16Sint:
+    case MTLPixelFormatRG16Sint:
+    case MTLPixelFormatRGBA16Sint:
+    case MTLPixelFormatR32Sint:
+    case MTLPixelFormatRG32Sint:
+    case MTLPixelFormatRGBA32Sint:
+        for (unsigned i = 0u; i < 4u; ++i) {
+            const int32_t v = (int32_t)std::llround(components[i]);
+            std::memcpy(&output[i], &v, sizeof(uint32_t));
+        }
+        return YES;
+    default:
+        for (unsigned i = 0u; i < 4u; ++i)
+            output[i] = (uint32_t)std::lround(std::fmax(0.0, std::fmin(1.0, components[i])) * 255.0);
+        return YES;
+    }
 }
 
 @implementation A840MTLRenderEncoder {
@@ -784,6 +850,8 @@ static BOOL convertClear(id<MTLTexture> texture, MTLClearColor color, uint32_t o
     id<MTLRenderPipelineState> _pipeline, _boundPipeline;
     A840MTLDepthStencilState *_depthStencilState;
     A840MTLBindings *_vertexBindings, *_fragmentBindings;
+    id<MTLTexture> _colorTextures[A840_MAX_COLOR_TARGETS];
+    uint32_t _colorTextureCount;
     A840RtRenderStateDesc _state;
     BOOL _stateDirty;
     BOOL _useGmemScope;
@@ -818,6 +886,8 @@ static BOOL convertClear(id<MTLTexture> texture, MTLClearColor color, uint32_t o
         if (!texture) continue;
         if (!first) first = texture;
         descriptor.color_count = i + 1;
+        _colorTextures[i] = texture;
+        _colorTextureCount = i + 1u;
         descriptor.color_targets[i] = nativeTexture(texture, command.owner);
         if (texture.storageMode == MTLStorageModeMemoryless) descriptor.has_memoryless_attachment = true;
         if (texture.sampleCount > descriptor.sample_count) descriptor.sample_count = (uint32_t)texture.sampleCount;
@@ -1308,8 +1378,18 @@ static BOOL convertClear(id<MTLTexture> texture, MTLClearColor color, uint32_t o
             if (st != A840_RT_OK) { [cb recordFailure:st reason:[NSString stringWithFormat:@"render_set_state failed st=%d", (int)st]]; return; }
             _stateDirty = NO;
         }
-        const A840RtStatus bindSt = [cb.owner.pipelineProvider bindRender:_native plan:state.plan
-            vertexBindings:_vertexBindings fragmentBindings:_fragmentBindings];
+        A840RtStatus bindSt = A840_RT_OK;
+        if ([cb.owner.pipelineProvider respondsToSelector:@selector(bindRender:plan:vertexBindings:fragmentBindings:colorTargets:colorTargetCount:)]) {
+            __unsafe_unretained id<MTLTexture> rawColors[A840_MAX_COLOR_TARGETS] = {};
+            const uint32_t colorLim = _colorTextureCount < A840_MAX_COLOR_TARGETS ? _colorTextureCount : A840_MAX_COLOR_TARGETS;
+            for (uint32_t ci = 0u; ci < colorLim; ++ci) rawColors[ci] = _colorTextures[ci];
+            bindSt = [cb.owner.pipelineProvider bindRender:_native plan:state.plan
+                vertexBindings:_vertexBindings fragmentBindings:_fragmentBindings
+                  colorTargets:rawColors colorTargetCount:colorLim];
+        } else {
+            bindSt = [cb.owner.pipelineProvider bindRender:_native plan:state.plan
+                vertexBindings:_vertexBindings fragmentBindings:_fragmentBindings];
+        }
         if (bindSt != A840_RT_OK) { [cb recordFailure:bindSt reason:[NSString stringWithFormat:@"bindRender failed st=%d", (int)bindSt]]; return; }
         const A840RtStatus drawSt = a840_rt_render_draw(_native, &draw);
         if (drawSt != A840_RT_OK) {

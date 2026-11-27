@@ -626,6 +626,8 @@ static void a840MarshalConstants(const std::vector<A840OwnedConstant> &owned,
 - (BOOL)buildIdentityBindStateForPlan:(A840MTLCompiledPlan *)plan
                         stageBindings:(A840MTLBindings *const *)stageBindings
                            stageCount:(uint32_t)stageCount
+                         colorTargets:(id<MTLTexture> const __unsafe_unretained *)colorTargets
+                     colorTargetCount:(uint32_t)colorTargetCount
                              gridSize:(MTLSize)grid
                       threadgroupSize:(MTLSize)local
                            nonuniform:(BOOL)nonuniform
@@ -639,6 +641,7 @@ static void a840MarshalConstants(const std::vector<A840OwnedConstant> &owned,
     NSMutableArray<A840MTLSamplerState *> *uniqueSamplers = [NSMutableArray new];
     NSMutableDictionary<NSString *, NSNumber *> *texSlotMap = [NSMutableDictionary new];
     NSMutableDictionary<NSString *, NSNumber *> *sampSlotMap = [NSMutableDictionary new];
+    uint32_t fetchedColorSlots[A840_MAX_COLOR_TARGETS] = {};
 
     for (uint32_t s = 0u; s < stageCount; ++s) {
         A840MTLBindings *b = stageBindings[s];
@@ -682,6 +685,28 @@ static void a840MarshalConstants(const std::vector<A840OwnedConstant> &owned,
             }
             NSString *tag = [NSString stringWithFormat:@"%u:%u", s, key.unsignedIntValue];
             sampSlotMap[tag] = @(slotIdx);
+        }
+    }
+
+    if (colorTargets && colorTargetCount > 0u) {
+        const uint32_t lim = colorTargetCount > A840_MAX_COLOR_TARGETS ? A840_MAX_COLOR_TARGETS : colorTargetCount;
+        for (uint32_t c = 0u; c < lim; ++c) {
+            id<MTLTexture> rawTex = colorTargets[c];
+            if (![rawTex isKindOfClass:[A840MTLTexture class]]) continue;
+            auto *tex = static_cast<A840MTLTexture *>(rawTex);
+            if (!tex.native) continue;
+            uint32_t slotIdx = 0u;
+            for (NSUInteger i = 0u; i < uniqueTextures.count; ++i) {
+                if (uniqueTextures[i] == tex) {
+                    slotIdx = static_cast<uint32_t>(i + 1u);
+                    break;
+                }
+            }
+            if (slotIdx == 0u) {
+                [uniqueTextures addObject:tex];
+                slotIdx = static_cast<uint32_t>(uniqueTextures.count);
+            }
+            fetchedColorSlots[c] = slotIdx;
         }
     }
 
@@ -946,6 +971,17 @@ static void a840MarshalConstants(const std::vector<A840OwnedConstant> &owned,
                 writeFieldBytes(outRes->pushBuf[s], kIdentityMaxPushBytes, argCpu, argCap, pf, &three, sizeof(three));
                 break;
             }
+            case NMB_PUSH_FETCHED_COLOR: {
+                uint64_t handle = 0u;
+                if (pf.metal_slot < A840_MAX_COLOR_TARGETS && fetchedColorSlots[pf.metal_slot] > 0u) {
+                    const uint32_t slotIdx = fetchedColorSlots[pf.metal_slot];
+                    A840MTLTexture *tex = uniqueTextures[slotIdx - 1u];
+                    const uint32_t word = nmb_encode_texture_word(static_cast<uint32_t>(tex.pixelFormat));
+                    handle = static_cast<uint64_t>(slotIdx) | (static_cast<uint64_t>(word) << 32u);
+                }
+                writeFieldBytes(outRes->pushBuf[s], kIdentityMaxPushBytes, argCpu, argCap, pf, &handle, sizeof(handle));
+                break;
+            }
             case NMB_PUSH_TAIL_WORD:
             case NMB_PUSH_INTEGER_CHANNELS:
             case NMB_PUSH_STAGE_IN_REGION:
@@ -1192,7 +1228,9 @@ static void a840MarshalConstants(const std::vector<A840OwnedConstant> &owned,
         &rdesc);
     if (!spv || nmb_spirv_stage_count(spv) < 2u) {
         char msg[128] = {};
-        snprintf(msg, sizeof(msg), "A840PIPE rp %.24s/%.24s %.50s", vsName, fsName, nmb_last_error() ?: "err");
+        snprintf(msg, sizeof(msg), "A840PIPE rp %.18s/%.18s f=%u,%u d=%u %.38s",
+                 vsName, fsName, rdesc.color_mtl_formats[0], rdesc.color_mtl_formats[1],
+                 rdesc.depth_mtl_format, nmb_last_error() ?: "err");
         a840diag::reportText(msg);
         nmb_spirv_result_free(spv);
         return nil;
@@ -1226,6 +1264,10 @@ static void a840MarshalConstants(const std::vector<A840OwnedConstant> &owned,
         char errBuf[256] = {};
         const auto cst = a840_compile_stage(&target, &stageIn, &plan->stages[s], errBuf, sizeof(errBuf));
         if (cst != A840_COMPILE_OK || !a840_ir3_get_stage_io_info(&plan->stages[s], &plan->ioInfo[s])) {
+            char msg[128] = {};
+            snprintf(msg, sizeof(msg), "A840PIPE ir3 s=%u %.18s/%.18s st=%d %.36s",
+                     s, vsName, fsName, (int)cst, errBuf[0] ? errBuf : "io");
+            a840diag::reportText(msg);
             nmb_spirv_result_free(spv);
             return nil;
         }
@@ -1248,7 +1290,12 @@ static void a840MarshalConstants(const std::vector<A840OwnedConstant> &owned,
     const auto bpst = a840_binding_plan_build(bindings.empty() ? nullptr : bindings.data(),
                                               bindings.size(), plan->stages, 2u,
                                               pushRanges, &plan->bindingPlan);
-    if (bpst != A840_BINDING_PLAN_OK) return nil;
+    if (bpst != A840_BINDING_PLAN_OK) {
+        char msg[128] = {};
+        snprintf(msg, sizeof(msg), "A840PIPE bp %.22s/%.22s st=%d", vsName, fsName, (int)bpst);
+        a840diag::reportText(msg);
+        return nil;
+    }
 
     for (uint32_t s = 0u; s < 2u; ++s) {
         plan->codeBuffers[s] = uploadIsaBuffer(device.runtime, plan->stages[s].isa_words,
@@ -1308,7 +1355,12 @@ static void a840MarshalConstants(const std::vector<A840OwnedConstant> &owned,
                 break;
             }
         }
-        if (vsReg >= A840_IR3_REGID_UNUSED) return nil;
+        if (vsReg >= A840_IR3_REGID_UNUSED) {
+            char msg[128] = {};
+            snprintf(msg, sizeof(msg), "A840PIPE var %.20s/%.20s slot=%u", vsName, fsName, (unsigned)fin->slot);
+            a840diag::reportText(msg);
+            return nil;
+        }
         ed.varyings[ed.varying_count].vs_regid = vsReg;
         ed.varyings[ed.varying_count].component_mask = fin->compmask;
         ed.varyings[ed.varying_count].flat = fin->flat != 0u;
@@ -1519,6 +1571,7 @@ static void a840MarshalConstants(const std::vector<A840OwnedConstant> &owned,
         A840MTLBindings *stageBindings[1] = {bindings};
         A840IdentityBindState idRes{};
         if (![self buildIdentityBindStateForPlan:plan stageBindings:stageBindings stageCount:1u
+                                    colorTargets:nullptr colorTargetCount:0u
                                         gridSize:grid threadgroupSize:local nonuniform:nonuniform
                                           outRes:&idRes]) {
             return A840_RT_OOM;
@@ -1617,9 +1670,18 @@ static void a840MarshalConstants(const std::vector<A840OwnedConstant> &owned,
 - (A840RtStatus)bindRender:(A840RtRenderEncoder *)encoder plan:(id)planObj
             vertexBindings:(A840MTLBindings *)vertex fragmentBindings:(A840MTLBindings *)fragment
 {
+    return [self bindRender:encoder plan:planObj vertexBindings:vertex fragmentBindings:fragment
+               colorTargets:nullptr colorTargetCount:0u];
+}
+
+- (A840RtStatus)bindRender:(A840RtRenderEncoder *)encoder plan:(id)planObj
+            vertexBindings:(A840MTLBindings *)vertex fragmentBindings:(A840MTLBindings *)fragment
+              colorTargets:(id<MTLTexture> const __unsafe_unretained *)colorTargets
+          colorTargetCount:(uint32_t)colorTargetCount
+{
     if (!encoder || ![planObj isKindOfClass:[A840MTLCompiledPlan class]]) return A840_RT_INVALID_ARG;
     auto *plan = static_cast<A840MTLCompiledPlan *>(planObj);
-    if (plan->isCompute || plan->stageCount != 2u) return A840_RT_INVALID_ARG;
+    if (plan->isCompute || plan->stageCount == 0u || plan->stageCount > 2u) return A840_RT_INVALID_ARG;
 
     const uint32_t stageKinds[2] = {A840_STAGE_VERTEX, A840_STAGE_FRAGMENT};
     A840MTLBindings *stageBindings[2] = {vertex, fragment};
@@ -1631,7 +1693,8 @@ static void a840MarshalConstants(const std::vector<A840OwnedConstant> &owned,
 
     if ([self planUsesIdentityPush:plan]) {
         A840IdentityBindState idRes{};
-        if (![self buildIdentityBindStateForPlan:plan stageBindings:stageBindings stageCount:2u
+        if (![self buildIdentityBindStateForPlan:plan stageBindings:stageBindings stageCount:plan->stageCount
+                                    colorTargets:colorTargets colorTargetCount:colorTargetCount
                                         gridSize:MTLSizeMake(1, 1, 1) threadgroupSize:MTLSizeMake(1, 1, 1)
                                       nonuniform:NO outRes:&idRes]) {
             return A840_RT_OOM;

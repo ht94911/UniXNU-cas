@@ -14,6 +14,19 @@
 - (BOOL)supportsFeatureSet:(MTLFeatureSet)featureSet;
 - (BOOL)supportsTextureSampleCount:(NSUInteger)sampleCount;
 - (BOOL)supportsVertexAmplificationCount:(NSUInteger)count;
+- (BOOL)supportsTextureWriteRoundingMode:(NSUInteger)mode;
+- (BOOL)supportsRasterizationRateMapWithLayerCount:(NSUInteger)layerCount;
+- (BOOL)isFramebufferReadSupported;
+- (BOOL)isLargeMRTSupported;
+- (BOOL)supportsExtendedXR10Formats;
+- (BOOL)supportsMemorylessRenderTargets;
+- (BOOL)supportsYCBCRFormats12;
+- (BOOL)supportsYCBCRPackedFormats12;
+- (BOOL)supportsRasterOrderGroups;
+- (BOOL)supportsSIMDGroup;
+- (BOOL)supportsSamplerReductionMode;
+- (NSUInteger)minConstantBufferAlignmentBytes;
+- (NSUInteger)deviceLinearReadOnlyTextureAlignmentBytes;
 
 @property(nonatomic, readonly) BOOL hasUnifiedMemory;
 @property(nonatomic, readonly, getter=isLowPower) BOOL lowPower;

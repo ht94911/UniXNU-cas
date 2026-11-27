@@ -395,6 +395,7 @@ const NMB_PUSH_VERTICES_PER_PRIMITIVE: u32 = 14;
 const NMB_PUSH_TAIL_WORD: u32 = 15;
 const NMB_PUSH_ZERO_U32: u32 = 16;
 const NMB_PUSH_ZERO_U64: u32 = 17;
+const NMB_PUSH_FETCHED_COLOR: u32 = 18;
 
 #[repr(C)]
 #[derive(Clone, Copy, Default)]
@@ -557,6 +558,7 @@ impl NmbSpirvResult {
                         (NMB_PUSH_VERTICES_PER_PRIMITIVE, NO_SLOT, 0u32)
                     }
                     PushField::TailWord => (NMB_PUSH_TAIL_WORD, NO_SLOT, 0u32),
+                    PushField::FetchedColor { color, .. } => (NMB_PUSH_FETCHED_COLOR, color, 0u32),
                     _ => {
                         let fallback = if placed.size == 8 {
                             NMB_PUSH_ZERO_U64

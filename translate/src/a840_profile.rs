@@ -156,11 +156,30 @@ pub(crate) fn create(extended: bool) -> Result<Device, Error> {
         desc.extensions.extend([
             VkExtension::KhrZeroInitializeWorkgroupMemory,
             VkExtension::KhrVertexAttributeDivisor,
+            VkExtension::KhrDynamicRendering,
+            VkExtension::KhrMaintenance5,
+            VkExtension::ExtShaderDemoteToHelperInvocation,
         ]);
         desc.features.extend([
             ShaderZeroInitializeWorkgroupMemory,
             VertexAttributeInstanceRateDivisor,
             IndependentBlend,
+            SampleRateShading,
+            DepthClamp,
+            ShaderClipDistance,
+            ShaderOutputLayer,
+            ShaderOutputViewportIndex,
+            FragmentStoresAndAtomics,
+            VertexPipelineStoresAndAtomics,
+            ImageCubeArray,
+            SamplerFilterMinmax,
+            ShaderDemoteToHelperInvocation,
+            ShaderInt8,
+            StorageBuffer8BitAccess,
+            UniformAndStorageBuffer8BitAccess,
+            UniformAndStorageBuffer16BitAccess,
+            ShaderSubgroupExtendedTypes,
+            NullDescriptor,
         ]);
         desc.limits.max_vertex_attrib_divisor = u32::MAX;
         desc.limits.supports_non_zero_first_instance = true;
@@ -182,23 +201,64 @@ fn describe_extended_formats(desc: &mut DeviceDescription) {
         props.color_attachment_sample_counts = samples;
     }
 
-    // Attachment support and sample counts come from kits/Adreno840/caps/formats.tsv.
+    let color_blend_sample = FormatFlags::COLOR_ATTACHMENT
+        | FormatFlags::COLOR_ATTACHMENT_BLEND
+        | FormatFlags::SAMPLED_IMAGE
+        | FormatFlags::SAMPLED_IMAGE_FILTER_LINEAR;
+    let storage = FormatFlags::STORAGE_IMAGE;
+
+    // Full Adreno 840 hardware color+blend+sample+storage formats (kits/Adreno840/caps/formats.tsv).
     for format in [
+        F::R8_UNORM,
+        F::R8_SNORM,
         F::R8G8_UNORM,
+        F::R8G8_SNORM,
+        F::R8G8B8A8_UNORM,
+        F::R8G8B8A8_SNORM,
+        F::B8G8R8A8_UNORM,
         F::R16_UNORM,
+        F::R16_SNORM,
+        F::R16_SFLOAT,
         F::R16G16_UNORM,
+        F::R16G16_SNORM,
         F::R16G16_SFLOAT,
+        F::R16G16B16A16_UNORM,
+        F::R16G16B16A16_SNORM,
+        F::R16G16B16A16_SFLOAT,
         F::R32_SFLOAT,
         F::R32G32_SFLOAT,
         F::R32G32B32A32_SFLOAT,
+        F::A2B10G10R10_UNORM_PACK32,
+        F::A2R10G10B10_UNORM_PACK32,
+        F::B10G11R11_UFLOAT_PACK32,
     ] {
         let props = desc.formats.formats.entry(format).or_default();
-        props.optimal_tiling |= FormatFlags::COLOR_ATTACHMENT
-            | FormatFlags::COLOR_ATTACHMENT_BLEND
-            | FormatFlags::SAMPLED_IMAGE
-            | FormatFlags::SAMPLED_IMAGE_FILTER_LINEAR;
+        props.optimal_tiling |= color_blend_sample | storage;
         props.color_attachment_sample_counts = samples;
     }
+
+    // Color+blend+sample formats (sRGB, A8_UNORM via KHR_maintenance5, packed 16-bit).
+    for format in [
+        F::A8_UNORM,
+        F::R8_SRGB,
+        F::R8G8_SRGB,
+        F::R8G8B8A8_SRGB,
+        F::B8G8R8A8_SRGB,
+        F::R5G6B5_UNORM_PACK16,
+        F::B5G6R5_UNORM_PACK16,
+        F::R5G5B5A1_UNORM_PACK16,
+        F::B5G5R5A1_UNORM_PACK16,
+        F::A1R5G5B5_UNORM_PACK16,
+        F::R4G4B4A4_UNORM_PACK16,
+        F::B4G4R4A4_UNORM_PACK16,
+        F::E5B9G9R9_UFLOAT_PACK32,
+    ] {
+        let props = desc.formats.formats.entry(format).or_default();
+        props.optimal_tiling |= color_blend_sample;
+        props.color_attachment_sample_counts = samples;
+    }
+
+    // Integer color+sample+storage formats (including R16G16B16A16_UINT/SINT & A2B10G10R10_UINT).
     for format in [
         F::R8_UINT,
         F::R8_SINT,
@@ -210,29 +270,77 @@ fn describe_extended_formats(desc: &mut DeviceDescription) {
         F::R16_SINT,
         F::R16G16_UINT,
         F::R16G16_SINT,
+        F::R16G16B16A16_UINT,
+        F::R16G16B16A16_SINT,
         F::R32_UINT,
         F::R32_SINT,
         F::R32G32_UINT,
         F::R32G32_SINT,
         F::R32G32B32A32_UINT,
         F::R32G32B32A32_SINT,
+        F::A2B10G10R10_UINT_PACK32,
+        F::A2R10G10B10_UINT_PACK32,
     ] {
         let props = desc.formats.formats.entry(format).or_default();
-        props.optimal_tiling |= FormatFlags::COLOR_ATTACHMENT | FormatFlags::SAMPLED_IMAGE;
+        props.optimal_tiling |= FormatFlags::COLOR_ATTACHMENT | FormatFlags::SAMPLED_IMAGE | storage;
         props.color_attachment_sample_counts = samples;
     }
+
+    // Sampled ASTC LDR + sRGB formats.
+    for format in [
+        F::ASTC_4X4_UNORM_BLOCK,
+        F::ASTC_4X4_SRGB_BLOCK,
+        F::ASTC_5X4_UNORM_BLOCK,
+        F::ASTC_5X4_SRGB_BLOCK,
+        F::ASTC_5X5_UNORM_BLOCK,
+        F::ASTC_5X5_SRGB_BLOCK,
+        F::ASTC_6X5_UNORM_BLOCK,
+        F::ASTC_6X5_SRGB_BLOCK,
+        F::ASTC_6X6_UNORM_BLOCK,
+        F::ASTC_6X6_SRGB_BLOCK,
+        F::ASTC_8X5_UNORM_BLOCK,
+        F::ASTC_8X5_SRGB_BLOCK,
+        F::ASTC_8X6_UNORM_BLOCK,
+        F::ASTC_8X6_SRGB_BLOCK,
+        F::ASTC_8X8_UNORM_BLOCK,
+        F::ASTC_8X8_SRGB_BLOCK,
+        F::ASTC_10X5_UNORM_BLOCK,
+        F::ASTC_10X5_SRGB_BLOCK,
+        F::ASTC_10X6_UNORM_BLOCK,
+        F::ASTC_10X6_SRGB_BLOCK,
+        F::ASTC_10X8_UNORM_BLOCK,
+        F::ASTC_10X8_SRGB_BLOCK,
+        F::ASTC_10X10_UNORM_BLOCK,
+        F::ASTC_10X10_SRGB_BLOCK,
+        F::ASTC_12X10_UNORM_BLOCK,
+        F::ASTC_12X10_SRGB_BLOCK,
+        F::ASTC_12X12_UNORM_BLOCK,
+        F::ASTC_12X12_SRGB_BLOCK,
+    ] {
+        desc.formats.formats.entry(format).or_default().optimal_tiling |=
+            FormatFlags::SAMPLED_IMAGE | FormatFlags::SAMPLED_IMAGE_FILTER_LINEAR;
+    }
+
+    // Depth and stencil attachments (with sampling support).
     for format in [
         F::D16_UNORM,
         F::D32_SFLOAT,
-        F::S8_UINT,
         F::D32_SFLOAT_S8_UINT,
+        F::D24_UNORM_S8_UINT,
     ] {
         desc.formats
             .formats
             .entry(format)
             .or_default()
-            .optimal_tiling |= FormatFlags::DEPTH_STENCIL_ATTACHMENT;
+            .optimal_tiling |= FormatFlags::DEPTH_STENCIL_ATTACHMENT
+            | FormatFlags::SAMPLED_IMAGE
+            | FormatFlags::SAMPLED_IMAGE_FILTER_LINEAR;
     }
+    desc.formats
+        .formats
+        .entry(F::S8_UINT)
+        .or_default()
+        .optimal_tiling |= FormatFlags::DEPTH_STENCIL_ATTACHMENT | FormatFlags::SAMPLED_IMAGE;
 
     // These Metal fetch formats map to native vertex pipe formats in the pinned
     // Mesa fd6 format table. Metal FloatRGB9E5 has no exact fixed-function fetch.

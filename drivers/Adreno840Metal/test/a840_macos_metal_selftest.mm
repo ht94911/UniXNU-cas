@@ -78,7 +78,11 @@ static void runSelectorCompletenessAudit(void)
         "dedicatedMemorySize", "sharedMemorySize", "recommendedMaxWorkingSetSize",
         "supportsFamily:", "supportsFeatureSet:", "supportsTextureSampleCount:",
         "supportsPrimitiveType:", "supportsExtendedXR10Formats", "supportsConditionalLoadStore",
-        "isLargeMRTSupported", "supportsComputeCompressedTextureWrite",
+        "supportsYCBCRFormats12", "supportsYCBCRPackedFormats12", "supportsMemorylessRenderTargets",
+        "supportsRasterOrderGroups", "supportsSIMDGroup", "supportsSamplerReductionMode",
+        "supportsTextureWriteRoundingMode:", "supportsRasterizationRateMapWithLayerCount:",
+        "minConstantBufferAlignmentBytes", "deviceLinearReadOnlyTextureAlignmentBytes",
+        "isFramebufferReadSupported", "isLargeMRTSupported", "supportsComputeCompressedTextureWrite",
         "gpuCoreCount", "maxVertexAmplificationCount", "deviceLinearTextureAlignmentBytes",
         "linearTextureAlignmentBytes", "iosurfaceTextureAlignmentBytes",
         "iosurfaceReadOnlyTextureAlignmentBytes",
@@ -229,6 +233,15 @@ int main(int argc, const char **argv)
         id<MTLDevice> dev = a840_metal_create_mock_device(backend, &err);
         REQUIRE(dev != nil && err == nil, "a840_metal_create_mock_device");
         if (!dev) return 1;
+        REQUIRE([dev supportsFamily:(MTLGPUFamily)1003], "supportsFamily:Apple3");
+        REQUIRE(![dev supportsFamily:(MTLGPUFamily)1004], "supportsFamily:Apple4 must be NO");
+        REQUIRE([dev supportsFeatureSet:(MTLFeatureSet)0], "supportsFeatureSet:0");
+        REQUIRE([(id)dev isFramebufferReadSupported], "isFramebufferReadSupported");
+        REQUIRE([(id)dev isLargeMRTSupported], "isLargeMRTSupported");
+        REQUIRE(![(id)dev supportsExtendedXR10Formats], "supportsExtendedXR10Formats NO");
+        REQUIRE(![(id)dev supportsYCBCRFormats12], "supportsYCBCRFormats12 NO");
+        REQUIRE(![(id)dev supportsYCBCRPackedFormats12], "supportsYCBCRPackedFormats12 NO");
+        REQUIRE(![(id)dev supportsMemorylessRenderTargets], "supportsMemorylessRenderTargets NO");
 
         id<MTLCommandQueue> q = [dev newCommandQueue];
         REQUIRE(q != nil, "newCommandQueue");

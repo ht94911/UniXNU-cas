@@ -172,7 +172,8 @@ enum {
     NMB_PUSH_VERTICES_PER_PRIMITIVE = 14,
     NMB_PUSH_TAIL_WORD = 15,
     NMB_PUSH_ZERO_U32 = 16,
-    NMB_PUSH_ZERO_U64 = 17
+    NMB_PUSH_ZERO_U64 = 17,
+    NMB_PUSH_FETCHED_COLOR = 18
 };
 
 typedef struct NmbSpirvPushField {

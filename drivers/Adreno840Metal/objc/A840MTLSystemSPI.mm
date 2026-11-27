@@ -32,14 +32,17 @@ static A840YcbcrFormat detectIOSurfaceYcbcr(IOSurfaceRef surface, MTLPixelFormat
 
 - (BOOL)supportsFamily:(MTLGPUFamily)gpuFamily
 {
-    if ((NSInteger)gpuFamily >= 1003 && (NSInteger)gpuFamily < 2000) {
+    const NSInteger fam = (NSInteger)gpuFamily;
+    if (fam >= 1003 && fam < 2000) {
         Dl_info caller{};
         if (dladdr(__builtin_return_address(0), &caller) &&
             caller.dli_fname && strstr(caller.dli_fname, "/RenderBox.framework/")) {
             return NO;
         }
     }
-    return a840_sys_supports_gpu_family((uint32_t)gpuFamily) ? YES : NO;
+    /* Match proven iOS 27 QuartzCore/SpringBoard compatibility set (Apple1..3, Common1..2).
+     * Advertising Apple4+ causes QuartzCore to select XR10/YCbCr12/tile paths unsupported on 8-bit GOP scanout. */
+    return (fam == 1001 || fam == 1002 || fam == 1003 || fam == 3001 || fam == 3002) ? YES : NO;
 }
 
 - (BOOL)supportsFeatureSet:(MTLFeatureSet)featureSet
@@ -60,33 +63,46 @@ static A840YcbcrFormat detectIOSurfaceYcbcr(IOSurfaceRef surface, MTLPixelFormat
 
 - (BOOL)supportsVertexAmplificationCount:(NSUInteger)count
 {
-    return count >= 1u && count <= A840_VERTEX_AMP_MAX_VIEWS;
+    return count == 1u;
+}
+
+- (BOOL)supportsTextureWriteRoundingMode:(NSUInteger)mode
+{
+    return mode <= 2u;
+}
+
+- (BOOL)supportsRasterizationRateMapWithLayerCount:(NSUInteger)layerCount
+{
+    (void)layerCount;
+    return NO;
 }
 
 - (BOOL)hasUnifiedMemory { return self.systemCaps.has_unified_memory ? YES : NO; }
 - (BOOL)isLowPower { return NO; }
-/* Private iOS 27 Metal SPI limits & flags (required when initLimits is empty). */
+/* Private iOS 27 Metal SPI limits & flags (aligned with iOS 27 system capability contract). */
 - (NSUInteger)gpuCoreCount { return 12u; }
-- (NSUInteger)maxVertexAmplificationCount { return A840_VERTEX_AMP_MAX_VIEWS; }
+- (NSUInteger)maxVertexAmplificationCount { return 1u; }
+- (NSUInteger)minConstantBufferAlignmentBytes { return 4u; }
+- (NSUInteger)deviceLinearReadOnlyTextureAlignmentBytes { return A840_SYS_IOSURFACE_RO_ALIGN; }
 - (NSUInteger)deviceLinearTextureAlignmentBytes { return A840_SYS_IOSURFACE_RO_ALIGN; }
 - (NSUInteger)linearTextureAlignmentBytes { return A840_SYS_IOSURFACE_RO_ALIGN; }
 - (NSUInteger)maxVertexBuffers { return 31u; }
 - (NSUInteger)maxFragmentBuffers { return 31u; }
 - (NSUInteger)maxComputeBuffers { return 31u; }
-- (NSUInteger)maxTileBuffers { return 31u; }
+- (NSUInteger)maxTileBuffers { return 0u; }
 - (NSUInteger)maxVertexTextures { return 128u; }
 - (NSUInteger)maxFragmentTextures { return 128u; }
 - (NSUInteger)maxComputeTextures { return 128u; }
-- (NSUInteger)maxTileTextures { return 128u; }
+- (NSUInteger)maxTileTextures { return 0u; }
 - (NSUInteger)maxVertexSamplers { return 16u; }
 - (NSUInteger)maxFragmentSamplers { return 16u; }
 - (NSUInteger)maxComputeSamplers { return 16u; }
-- (NSUInteger)maxTileSamplers { return 16u; }
+- (NSUInteger)maxTileSamplers { return 0u; }
 - (NSUInteger)maxComputeLocalMemorySizes { return 31u; }
 - (NSUInteger)maxComputeThreadgroupMemory { return (NSUInteger)self.systemCaps.max_threadgroup_memory_bytes; }
 - (NSUInteger)maxComputeThreadgroupMemoryAlignmentBytes { return 16u; }
 - (NSUInteger)maxPredicatedNestingDepth { return 0u; }
-- (NSUInteger)maxRasterizationRateLayerCount { return 1u; }
+- (NSUInteger)maxRasterizationRateLayerCount { return 0u; }
 - (NSUInteger)maxTextureWidth1D { return 16384u; }
 - (NSUInteger)maxTextureWidth2D { return 16384u; }
 - (NSUInteger)maxTextureHeight2D { return 16384u; }
@@ -97,27 +113,32 @@ static A840YcbcrFormat detectIOSurfaceYcbcr(IOSurfaceRef surface, MTLPixelFormat
 - (NSUInteger)maxTextureLayers { return 2048u; }
 - (NSUInteger)maxTotalComputeThreadsPerThreadgroup { return A840_LIMIT_THREADSIZE_BASE * A840_LIMIT_MAX_WAVES; }
 - (NSUInteger)maxViewportCount { return 16u; }
-- (BOOL)isFramebufferReadSupported { return NO; }
-- (BOOL)isLargeMRTSupported { return NO; }
+- (BOOL)isFramebufferReadSupported { return YES; }
+- (BOOL)isLargeMRTSupported { return YES; }
 - (BOOL)isRGB10A2GammaSupported { return NO; }
 - (BOOL)supportsBufferWithAddressRanges { return NO; }
 - (BOOL)supportsBufferWithIOSurface { return NO; }
 - (BOOL)supportsCommandBufferJump { return NO; }
 - (BOOL)supportsComputeCompressedTextureWrite { return NO; }
 - (BOOL)supportsConditionalLoadStore { return NO; }
-- (BOOL)supportsDynamicAttributeStride { return YES; }
+- (BOOL)supportsDynamicAttributeStride { return NO; }
 - (BOOL)supportsExtendedXR10Formats { return NO; }
-- (BOOL)supportsFloat16BCubicFiltering { return YES; }
+- (BOOL)supportsYCBCRFormats12 { return NO; }
+- (BOOL)supportsYCBCRPackedFormats12 { return NO; }
+- (BOOL)supportsMemorylessRenderTargets { return NO; }
+- (BOOL)supportsFloat16BCubicFiltering { return NO; }
 - (BOOL)supportsHeapWithAddressRanges { return NO; }
 - (BOOL)supportsImageBlocks { return NO; }
-- (BOOL)supportsMemoryOrderAtomics { return YES; }
+- (BOOL)supportsMemoryOrderAtomics { return NO; }
 - (BOOL)supportsNativeHardwareFP16 { return YES; }
 - (BOOL)supportsNonSquareTileShaders { return NO; }
-- (BOOL)supportsProgrammableSamplePositions { return self.systemCaps.supports_programmable_sample_positions ? YES : NO; }
+- (BOOL)supportsProgrammableSamplePositions { return NO; }
 - (BOOL)supportsResourceDetachBacking { return NO; }
-- (BOOL)supportsSharedTextureHandles { return YES; }
+- (BOOL)supportsSharedTextureHandles { return NO; }
+- (BOOL)supportsSIMDGroup { return YES; }
 - (BOOL)supportsSIMDReduction { return YES; }
 - (BOOL)supportsSIMDShuffleAndFill { return YES; }
+- (BOOL)supportsSamplerReductionMode { return YES; }
 - (BOOL)supportsTexture2DMultisampleArray { return YES; }
 - (BOOL)supportsTileShaders { return NO; }
 - (BOOL)isHeadless { return NO; }
@@ -127,15 +148,16 @@ static A840YcbcrFormat detectIOSurfaceYcbcr(IOSurfaceRef surface, MTLPixelFormat
 - (BOOL)supports32BitMSAA { return self.systemCaps.supports_32bit_msaa ? YES : NO; }
 - (BOOL)supportsQueryTextureLOD { return self.systemCaps.supports_query_texture_lod ? YES : NO; }
 - (BOOL)supportsBCTextureCompression { return NO; }
-- (BOOL)supportsPullModelInterpolation { return YES; }
+- (BOOL)supportsPullModelInterpolation { return NO; }
 - (BOOL)supportsDynamicLibraries { return NO; }
 - (BOOL)supportsRenderDynamicLibraries { return NO; }
 - (BOOL)supportsRaytracing { return NO; }
 - (BOOL)supportsPrimitiveMotionBlur { return NO; }
 - (BOOL)supportsFunctionPointers { return NO; }
 - (BOOL)supportsShaderBarycentricCoordinates { return NO; }
-- (BOOL)areProgrammableSamplePositionsSupported { return self.systemCaps.supports_programmable_sample_positions ? YES : NO; }
-- (BOOL)areRasterOrderGroupsSupported { return self.systemCaps.supports_raster_order_groups ? YES : NO; }
+- (BOOL)areProgrammableSamplePositionsSupported { return NO; }
+- (BOOL)areRasterOrderGroupsSupported { return NO; }
+- (BOOL)supportsRasterOrderGroups { return NO; }
 - (BOOL)areBarycentricCoordsSupported { return NO; }
 
 - (MTLArgumentBuffersTier)argumentBuffersSupport { return MTLArgumentBuffersTier2; }
