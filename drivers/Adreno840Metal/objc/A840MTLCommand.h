@@ -13,6 +13,12 @@
 @property(nonatomic, readonly) A840RtQueue *native;
 @property(nonatomic, readonly) NSUInteger maxCommandBufferCount;
 @property(atomic, strong) dispatch_queue_t completionQueue;
+- (NSUInteger)getGPUPriority;
+- (BOOL)setGPUPriority:(NSUInteger)priority;
+- (BOOL)setGPUPriority:(NSUInteger)priority offset:(unsigned short)offset;
+- (NSUInteger)getBackgroundGPUPriority;
+- (BOOL)setBackgroundGPUPriority:(NSUInteger)priority;
+- (BOOL)setBackgroundGPUPriority:(NSUInteger)priority offset:(unsigned short)offset;
 @end
 
 @interface A840MTLCommandBuffer : NSObject <MTLCommandBuffer>

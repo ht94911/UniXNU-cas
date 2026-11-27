@@ -228,13 +228,15 @@ int main(int argc, const char **argv)
 
         std::atomic<bool> schedOnCustom{false};
         std::atomic<bool> compOnCustom{false};
+        std::atomic<bool> *schedPtr = &schedOnCustom;
+        std::atomic<bool> *compPtr = &compOnCustom;
         id<MTLCommandBuffer> cb = [q commandBuffer];
         [cb addScheduledHandler:^(id<MTLCommandBuffer> c) {
             (void)c;
-            if (dispatch_get_specific(&qKey) == (void *)0x1234) schedOnCustom.store(true);
+            if (dispatch_get_specific(&qKey) == (void *)0x1234) schedPtr->store(true);
         }];
         [cb addCompletedHandler:^(id<MTLCommandBuffer> c) {
-            if (dispatch_get_specific(&qKey) == (void *)0x1234) compOnCustom.store(true);
+            if (dispatch_get_specific(&qKey) == (void *)0x1234) compPtr->store(true);
             /* Must NOT deadlock when waitUntilCompleted is called inside completionQueue! */
             [c waitUntilCompleted];
         }];

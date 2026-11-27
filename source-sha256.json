@@ -748,8 +748,8 @@
       "sha256": "805083103d1a71f59b4925d8124b8398f8110f5cfb8d3229132eeaf972c6ffd2"
     },
     "drivers/Adreno840Metal/objc/A840MTLCommand.h": {
-      "bytes": 1747,
-      "sha256": "1726f680aa3a745d0f1d2f8f168825dfa421424e58a0d4a37175b3cdb5d996f9"
+      "bytes": 2077,
+      "sha256": "f110e0205b4934c57220c029002aff558690925118267d1972ae28bc51806a7f"
     },
     "drivers/Adreno840Metal/objc/A840MTLCommand.mm": {
       "bytes": 22703,
@@ -824,8 +824,8 @@
       "sha256": "609f7655f60f2aeac8b2abfb8ba3df14a8276a43ae549587ce674bb89268384a"
     },
     "drivers/Adreno840Metal/test/a840_macos_metal_selftest.mm": {
-      "bytes": 22187,
-      "sha256": "39e7deb2390e1e3847dcd89bfde16354c8f7d3bc448ceef25c1b3404ba7e86cf"
+      "bytes": 22285,
+      "sha256": "638844c0bddc94801a1b88cf86cd1778c2a239502d0de99edc2a4ee336cbc8ff"
     },
     "drivers/Adreno840Metal/transport/A840RustPacBoundary.c": {
       "bytes": 2703,
@@ -1253,7 +1253,7 @@
   ],
   "hardware_acceptance": false,
   "kind": "PHASE6_RELEASE_PUBLIC_STAGING",
-  "manifest_sha256": "e1b66bf548788ec1b7929b2e28066ab41f7be4cdbad2e069db249bef7f448582",
+  "manifest_sha256": "ef8653e1220501dd968be5440f0dc597d5b8a929958c7be4ab8cdd4b312d4414",
   "recipient_cert_sha256": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
   "required_targets": [
     "NativeMetalTranslate",
@@ -1264,6 +1264,6 @@
     "NezhaGpuTest"
   ],
   "schema_version": 1,
-  "total_bytes": 7491285,
+  "total_bytes": 7491713,
   "zero_turnip_verified": true
 }
