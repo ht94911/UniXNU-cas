@@ -110,7 +110,7 @@ static A840RtGraphicsProgramDesc make_graphics_prog(const A840CompiledStage &vs,
     prog.emit_desc.position = 0;
     prog.emit_desc.point_size = A840_REGID_UNUSED;
     prog.emit_desc.varying_count = 1u;
-    prog.emit_desc.varyings[0] = {4, 0x0f, false};
+    prog.emit_desc.varyings[0] = {4, 0x0f, false, 0u, A840_VARYING_NORMAL, false};
     prog.emit_desc.fs_inputs = {
         A840_REGID_UNUSED, A840_REGID_UNUSED, A840_REGID_UNUSED, A840_REGID_UNUSED,
         0, A840_REGID_UNUSED, A840_REGID_UNUSED, A840_REGID_UNUSED,

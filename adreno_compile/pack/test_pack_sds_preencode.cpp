@@ -139,8 +139,8 @@ A840GraphicsProgramDesc make_graphics_desc(const StageFixture &vs_fix,
     d.point_size = A840_REGID_UNUSED;
 
     d.varying_count = 2u;
-    d.varyings[0] = {12u, 0x3u, false};
-    d.varyings[1] = {16u, 0xfu, true};
+    d.varyings[0] = {12u, 0x3u, false, 0u, A840_VARYING_NORMAL, false};
+    d.varyings[1] = {16u, 0xfu, true, 0u, A840_VARYING_NORMAL, false};
 
     d.fs_inputs.face = A840_REGID_UNUSED;
     d.fs_inputs.sample_id = A840_REGID_UNUSED;

@@ -313,8 +313,12 @@ static thread_local bool gInCompletionCallback = false;
 - (void)recordFailure:(A840RtStatus)status reason:(NSString *)reason
 {
     [_changed lock];
-    if (_status < MTLCommandBufferStatusCommitted && !_recordingError)
+    if (_status < MTLCommandBufferStatusCommitted && !_recordingError) {
         _recordingError = a840_metal_error(status, reason ?: @"Could not encode the native Metal operation");
+        char msg[128] = {};
+        snprintf(msg, sizeof(msg), "A840ENC st=%d %.70s", (int)status, reason ? reason.UTF8String : "enc");
+        a840diag::reportText(msg);
+    }
     [_changed unlock];
 }
 - (void)recordFailure:(A840RtStatus)status

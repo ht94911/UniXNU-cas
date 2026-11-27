@@ -172,6 +172,7 @@ NSError *a840_metal_error(A840RtStatus status, NSString *operation)
     _callbackQueue = dispatch_queue_create("org.unixnu.adreno840.callbacks", DISPATCH_QUEUE_SERIAL);
     dispatch_queue_set_specific(_callbackQueue, &callbackKey, (__bridge void *)self, nullptr);
     _scanoutBridge = [[A840MTLScanoutBridge alloc] initWithDevice:self];
+    a840FillBaseLimits(self);
     return self;
 }
 
@@ -221,7 +222,7 @@ NSError *a840_metal_error(A840RtStatus status, NSString *operation)
     [super doesNotRecognizeSelector:selector];
 }
 - (uint64_t)registryID { return _systemRegistryID ? _systemRegistryID : (_runtime ? _runtime->device_id : 0u); }
-- (NSUInteger)maxBufferLength { return (NSUInteger)_runtime->transport_caps.max_bo_bytes; }
+- (NSUInteger)maxBufferLength { return _runtime ? (NSUInteger)_runtime->transport_caps.max_bo_bytes : (256u * 1024u * 1024u); }
 - (MTLSize)maxThreadsPerThreadgroup
 {
     const NSUInteger limit = A840_LIMIT_THREADSIZE_BASE * A840_LIMIT_MAX_WAVES;
@@ -431,6 +432,9 @@ NSError *a840_metal_error(A840RtStatus status, NSString *operation)
     A840MTLRenderPipelineState *pipeline = [[A840MTLRenderPipelineState alloc]
         initWithOwner:self configuration:configuration descriptor:&desc plan:plan];
     if (pipeline.nativeDescriptor) return pipeline;
+    if (plan) {
+        a840diag::reportText("A840PIPE rps-nodesc");
+    }
     if (error) *error = a840_metal_error(A840_RT_UNSUPPORTED, @"Native render pipeline compilation failed");
     return nil;
 }

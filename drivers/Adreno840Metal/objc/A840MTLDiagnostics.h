@@ -14,6 +14,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <atomic>
+#include <mutex>
+#include <string>
+#include <unordered_set>
 
 namespace a840diag {
 
@@ -70,6 +73,14 @@ inline void reportText(const char *text)
     if (!text || !text[0]) return;
     const unsigned port = gAccelPort.load(std::memory_order_acquire);
     if (!port) return;
+    static std::mutex sDedupLock;
+    static std::unordered_set<std::string> sSeen;
+    {
+        std::lock_guard<std::mutex> hold(sDedupLock);
+        if (sSeen.size() < 64u && !sSeen.insert(std::string(text, strnlen(text, 88u))).second) {
+            return;
+        }
+    }
     const unsigned row = gTextRow.fetch_add(1u, std::memory_order_relaxed) % 32u;
     reportTableRow(port, row, text);
 }

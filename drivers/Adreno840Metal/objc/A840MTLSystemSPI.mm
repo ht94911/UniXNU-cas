@@ -217,6 +217,11 @@ static A840YcbcrFormat detectIOSurfaceYcbcr(IOSurfaceRef surface, MTLPixelFormat
     if (sdesc.height == 0u) sdesc.height = (uint32_t)descriptor.height;
     sdesc.bytes_per_row = (uint32_t)(planeCount > 0u ? IOSurfaceGetBytesPerRowOfPlane(iosurface, plane)
                                                      : IOSurfaceGetBytesPerRow(iosurface));
+    if (sdesc.bytes_per_row == 0u && sdesc.width > 0u) {
+        const A840FormatCaps *fc = a840_format_caps_lookup(sdesc.mtl_pixel_format);
+        const uint32_t bpp = (fc && fc->block_bits >= 8u) ? (fc->block_bits / 8u) : ((plane == 0u) ? 4u : 1u);
+        sdesc.bytes_per_row = ((sdesc.width * bpp) + 63u) & ~63u;
+    }
     sdesc.alloc_size = (uint64_t)IOSurfaceGetAllocSize(iosurface);
     sdesc.usage_flags = A840_TEX_USAGE_SHADER_READ | A840_TEX_USAGE_CPU_VISIBLE;
     if (descriptor.usage & MTLTextureUsageShaderWrite) sdesc.usage_flags |= A840_TEX_USAGE_SHADER_WRITE;

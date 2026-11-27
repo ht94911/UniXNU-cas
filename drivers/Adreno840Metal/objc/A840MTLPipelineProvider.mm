@@ -1154,9 +1154,16 @@ static void a840MarshalConstants(const std::vector<A840OwnedConstant> &owned,
          descriptor:(A840RtGraphicsProgramDesc *)descriptor
 {
     if (!pipeline || !device || !descriptor) return nil;
-    if (![pipeline.vertexFunction isKindOfClass:[A840MTLFunction class]] ||
-        ![pipeline.fragmentFunction isKindOfClass:[A840MTLFunction class]])
+    if (![pipeline.vertexFunction isKindOfClass:[A840MTLFunction class]]) {
+        a840diag::reportText("A840PIPE rp-novs");
         return nil;
+    }
+    if (![pipeline.fragmentFunction isKindOfClass:[A840MTLFunction class]]) {
+        char msg[128] = {};
+        snprintf(msg, sizeof(msg), "A840PIPE rp-nofs %.40s", pipeline.vertexFunction.name.UTF8String ?: "?");
+        a840diag::reportText(msg);
+        return nil;
+    }
 
     auto *vsFn = static_cast<A840MTLFunction *>(pipeline.vertexFunction);
     auto *fsFn = static_cast<A840MTLFunction *>(pipeline.fragmentFunction);
@@ -1355,15 +1362,20 @@ static void a840MarshalConstants(const std::vector<A840OwnedConstant> &owned,
                 break;
             }
         }
+        uint8_t varMode = A840_VARYING_NORMAL;
         if (vsReg >= A840_IR3_REGID_UNUSED) {
-            char msg[128] = {};
-            snprintf(msg, sizeof(msg), "A840PIPE var %.20s/%.20s slot=%u", vsName, fsName, (unsigned)fin->slot);
-            a840diag::reportText(msg);
-            return nil;
+            /* Match Mesa ir3_link_shaders (pack_vs_out=true -> regid(63,0)) + tu_pipeline.cc:690-718:
+             * FS-only/unwritten slots (VARYING_SLOT_PNTC=25 gl_PointCoord, unwritten LAYER/VIEWPORT,
+             * dead varyings) reserve VPC locations + replace/zero mode without emitting a bogus VS output. */
+            vsReg = A840_REGID_UNUSED;
+            varMode = (fin->slot == 25u) ? A840_VARYING_POINT_COORD : A840_VARYING_ZERO;
         }
         ed.varyings[ed.varying_count].vs_regid = vsReg;
         ed.varyings[ed.varying_count].component_mask = fin->compmask;
         ed.varyings[ed.varying_count].flat = fin->flat != 0u;
+        ed.varyings[ed.varying_count].fs_inloc = fin->inloc;
+        ed.varyings[ed.varying_count].mode = varMode;
+        ed.varyings[ed.varying_count].explicit_inloc = true;
         ++ed.varying_count;
     }
 

@@ -73,30 +73,63 @@ static A840EmitStatus emit_vpc(A840CmdStream *batch, const A840GraphicsProgramDe
         desc->point_size > A840_REGID_UNUSED)
         return A840_EMIT_RANGE_ERROR;
 
+    /* Exact Mesa a6xx.xml:3036-3047 enum values for VPC_VARYING_INTERP_MODE / REPLACE_MODE. */
+    enum {
+        A840_VPC_INTERP_ZERO = 2u,
+        A840_VPC_INTERP_ONE = 3u,
+        A840_VPC_PS_REPL_S = 1u,
+        A840_VPC_PS_REPL_T = 2u
+    };
     uint32_t components = 0;
+    uint32_t linked_varyings = 0;
     for (uint32_t i = 0; i < count; ++i) {
         const A840VaryingDesc *varying = &desc->varyings[i];
         const uint32_t mask = varying->component_mask;
-        if (!assigned(varying->vs_regid) || !mask || mask > A840_VS_OUT_MASK_MAX)
+        const bool vs_emitted = assigned(varying->vs_regid);
+        if ((!vs_emitted && varying->mode == A840_VARYING_NORMAL) ||
+            varying->vs_regid > A840_REGID_UNUSED ||
+            !mask || mask > A840_VS_OUT_MASK_MAX ||
+            varying->mode > A840_VARYING_ZERO)
             return A840_EMIT_RANGE_ERROR;
-        link_output(outputs, locations, i, varying->vs_regid, mask, components);
+        uint32_t loc = varying->explicit_inloc ? (uint32_t)varying->fs_inloc : components;
+        if (loc >= VPC_COMPONENTS) return A840_EMIT_RANGE_ERROR;
+        /* Match Mesa ir3_shader.h:1361 (ir3_link_add): only emit SP_VS_OUTPUT_REG/VPC_DEST
+         * when VS actually writes a register (regid != regid(63,0)). FS-only slots like
+         * VARYING_SLOT_PNTC still reserve VPC locations, LM transfer bits, and replace modes. */
+        if (vs_emitted) {
+            link_output(outputs, locations, linked_varyings, varying->vs_regid, mask, loc);
+            ++linked_varyings;
+        }
         for (uint32_t c = 0; c < 4; ++c) {
             if (!(mask & (1u << c))) continue;
-            if (varying->flat)
-                interpolation[components / 16] |= A840_INTERP_FLAT << (2u * (components % 16));
-            disabled[components / 32] &= ~(UINT32_C(1) << (components % 32));
-            ++components;
+            if (loc >= VPC_COMPONENTS) return A840_EMIT_RANGE_ERROR;
+            const uint32_t reg_idx = loc / 16u;
+            const uint32_t bit_shift = 2u * (loc % 16u);
+            if (varying->mode == A840_VARYING_POINT_COORD) {
+                /* Exact Mesa tu_pipeline.cc:690-706 VARYING_SLOT_PNTC replacement. */
+                if (c == 0u) replacement[reg_idx] |= A840_VPC_PS_REPL_S << bit_shift;
+                else if (c == 1u) replacement[reg_idx] |= A840_VPC_PS_REPL_T << bit_shift;
+                else if (c == 2u) interpolation[reg_idx] |= A840_VPC_INTERP_ZERO << bit_shift;
+                else interpolation[reg_idx] |= A840_VPC_INTERP_ONE << bit_shift;
+            } else if (varying->mode == A840_VARYING_ZERO) {
+                interpolation[reg_idx] |= A840_VPC_INTERP_ZERO << bit_shift;
+            } else if (varying->flat) {
+                interpolation[reg_idx] |= A840_INTERP_FLAT << bit_shift;
+            }
+            disabled[loc / 32u] &= ~(UINT32_C(1) << (loc % 32u));
+            ++loc;
         }
+        if (loc > components) components = loc;
     }
 
     /* Position and optional point size are the last outputs consumed by VPC. */
     const uint32_t position = components;
     const uint32_t psize = point_size ? position + 4u : VPC_LOCATION_UNUSED;
     const uint32_t stride = position + 4u + (uint32_t)point_size;
-    const uint32_t linked = count + 1u + (uint32_t)point_size;
+    const uint32_t linked = linked_varyings + 1u + (uint32_t)point_size;
     if (stride > VPC_COMPONENTS) return A840_EMIT_RANGE_ERROR;
-    link_output(outputs, locations, count, desc->position, A840_VS_OUT_MASK_MAX, position);
-    if (point_size) link_output(outputs, locations, count + 1u, desc->point_size, 1u, psize);
+    link_output(outputs, locations, linked_varyings, desc->position, A840_VS_OUT_MASK_MAX, position);
+    if (point_size) link_output(outputs, locations, linked_varyings + 1u, desc->point_size, 1u, psize);
 
     A840_OPS_TRY(a840_cs_emit_pkt4(batch, A840_REG_SP_VS_OUTPUT_0_REG, outputs, (linked + 1u) / 2u));
     A840_OPS_TRY(a840_cs_emit_pkt4(batch, A840_REG_SP_VS_VPC_DEST_0_REG, locations, (linked + 3u) / 4u));

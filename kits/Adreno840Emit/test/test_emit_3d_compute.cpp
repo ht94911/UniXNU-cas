@@ -425,8 +425,8 @@ static A840GraphicsProgramDesc graphics_program(const A840CompiledStage &vs, con
     desc.vertex_inputs[1] = {4, 3};
     desc.vertex_inputs[2] = {A840_REGID_UNUSED, 0};
     desc.varying_count = 2;
-    desc.varyings[0] = {4, 11, true};
-    desc.varyings[1] = {8, 3, false};
+    desc.varyings[0] = {4, 11, true, 0u, A840_VARYING_NORMAL, false};
+    desc.varyings[1] = {8, 3, false, 0u, A840_VARYING_NORMAL, false};
     const uint8_t unused = A840_REGID_UNUSED;
     desc.fs_inputs = {unused, unused, unused, unused,
         0, unused, unused, unused, unused, unused, 8, unused, 15};
@@ -495,7 +495,7 @@ static void test_program()
         input = {4, 15};
     desc.varying_count = 31;
     for (auto &varying : desc.varyings)
-        varying = {8, 15, false};
+        varying = {8, 15, false, 0u, A840_VARYING_NORMAL, false};
     exact_capacity("maximum VS input and VPC link", A840_EMIT_3D_PROGRAM_MAX_DWORDS, 4, emit);
 
     Stream unchanged_program(true);

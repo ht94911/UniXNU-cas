@@ -21,9 +21,18 @@ typedef struct A840VertexInputDesc {
 
 /* Ordinary VS -> FS link, in packed FS input order. The caller supplies
  * compiler/linker IO which is not carried by A840CompiledStage v1. */
+typedef enum A840VaryingMode {
+    A840_VARYING_NORMAL = 0u,
+    A840_VARYING_POINT_COORD = 1u, /* VARYING_SLOT_PNTC: VPC_VARYING_REPLACE_MODE PS_REPL_S/T */
+    A840_VARYING_ZERO = 2u         /* Unmatched FS varying: VPC_VARYING_INTERP_MODE INTERP_ZERO */
+} A840VaryingMode;
+
 typedef struct A840VaryingDesc {
     uint8_t vs_regid, component_mask;
     bool flat;
+    uint8_t fs_inloc;    /* Used when explicit_inloc is true (exact ir3 fs->inputs[i].inloc) */
+    uint8_t mode;        /* A840VaryingMode */
+    bool explicit_inloc;
 } A840VaryingDesc;
 
 typedef struct A840FragmentInputs {
