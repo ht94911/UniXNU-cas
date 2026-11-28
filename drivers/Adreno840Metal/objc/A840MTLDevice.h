@@ -86,6 +86,7 @@
 @property(nonatomic, strong, readonly) id<A840MTLPipelineProvider> pipelineProvider;
 @property(nonatomic, strong, readonly) dispatch_queue_t workQueue;
 @property(nonatomic, strong, readonly) dispatch_queue_t callbackQueue;
+@property(nonatomic, strong, readonly) NSMapTable<NSValue *, id> *surfaceBoCache;
 - (BOOL)isCallbackThread;
 @end
 

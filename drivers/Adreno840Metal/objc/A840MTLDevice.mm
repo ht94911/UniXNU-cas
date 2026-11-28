@@ -191,6 +191,7 @@ uint32_t a840_canonical_backing_pixel_format(uint32_t mtl_pixel_format)
     _workQueue = dispatch_queue_create("org.unixnu.adreno840.submit", DISPATCH_QUEUE_SERIAL);
     _callbackQueue = dispatch_queue_create("org.unixnu.adreno840.callbacks", DISPATCH_QUEUE_SERIAL);
     dispatch_queue_set_specific(_callbackQueue, &callbackKey, (__bridge void *)self, nullptr);
+    _surfaceBoCache = [NSMapTable strongToWeakObjectsMapTable];
     _scanoutBridge = [[A840MTLScanoutBridge alloc] initWithDevice:self];
     a840FillBaseLimits(self);
     return self;

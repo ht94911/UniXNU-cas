@@ -958,8 +958,16 @@ destinationBytesPerImage:(NSUInteger)destinationBytesPerImage
         }
         if (bindStatus != A840_RT_OK) { [cb recordFailure:bindStatus reason:@"cs_bind"]; return; }
         const uint32_t x = (uint32_t)grid.width, y = (uint32_t)grid.height, z = (uint32_t)grid.depth;
-        const auto status = nonuniform ? a840_rt_compute_dispatch_threads(_native, x, y, z) :
-            a840_rt_compute_dispatch_threadgroups(_native, x, y, z);
+        const uint32_t lx = local.width ? (uint32_t)local.width : 1u;
+        const uint32_t ly = local.height ? (uint32_t)local.height : 1u;
+        const uint32_t lz = local.depth ? (uint32_t)local.depth : 1u;
+        /* metal2vulkan-v2 lowers dispatchThreads: with DispatchRegion (nonuniform=YES) over
+         * full ceil(grid/local) Vulkan workgroups (vkCmdDispatch); do not shrink edge groups
+         * via OpenCL SP_CS_NDRANGE_7. */
+        const uint32_t gx = nonuniform ? (uint32_t)(((uint64_t)x + lx - 1u) / lx) : x;
+        const uint32_t gy = nonuniform ? (uint32_t)(((uint64_t)y + ly - 1u) / ly) : y;
+        const uint32_t gz = nonuniform ? (uint32_t)(((uint64_t)z + lz - 1u) / lz) : z;
+        const auto status = a840_rt_compute_dispatch_threadgroups(_native, gx, gy, gz);
         if (status != A840_RT_OK) {
             [cb recordFailure:status reason:@"cs_dispatch"];
             return;

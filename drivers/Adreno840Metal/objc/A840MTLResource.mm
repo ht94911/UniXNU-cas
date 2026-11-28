@@ -502,10 +502,6 @@ static uint32_t a840MapTextureType(MTLTextureType t)
         (void)a840_sys_unbind_iosurface(self.owner.systemFrontend, _surfaceHandle);
         _surfaceHandle = A840_SYS_INVALID_HANDLE;
     }
-    if (_iosurface) {
-        CFRelease(_iosurface);
-        _iosurface = nullptr;
-    }
     if (_memorylessNative) {
         @synchronized (self.owner) { a840_ubwc_texture_destroy(_memorylessNative); }
         _memorylessNative = nullptr;
@@ -519,6 +515,11 @@ static uint32_t a840MapTextureType(MTLTextureType t)
     }
     if (orig) {
         @synchronized (self.owner) { a840_rt_texture_release(orig); }
+    }
+    _surfaceBoBox = nil;
+    if (_iosurface) {
+        CFRelease(_iosurface);
+        _iosurface = nullptr;
     }
 }
 
@@ -832,6 +833,25 @@ static uint32_t clampAnisoPow2(NSUInteger raw)
                               ? ((uint32_t)descriptor.magFilter >= A840_FILTER_LINEAR
                                      ? A840_FILTER_LINEAR : A840_FILTER_NEAREST)
                               : minF;
+    /* Map MTLSamplerBorderColor to Mesa bcolor_builtin index + A8XX FASTBORDERCOLOR
+     * (a6xx_enums.xml: 0=0_0_0_0, 1=0_0_0_1, 3=1_1_1_1; tu_sampler.cc:64-113). */
+    uint32_t bcolorIdx = 0u;
+    uint32_t fastBorder = 0u;
+    switch (descriptor.borderColor) {
+    case MTLSamplerBorderColorOpaqueBlack:
+        bcolorIdx = 2u;
+        fastBorder = 1u;
+        break;
+    case MTLSamplerBorderColorOpaqueWhite:
+        bcolorIdx = 4u;
+        fastBorder = 3u;
+        break;
+    case MTLSamplerBorderColorTransparentBlack:
+    default:
+        bcolorIdx = 0u;
+        fastBorder = 0u;
+        break;
+    }
     const A840SampDescInput input{
         minF,
         magF,
@@ -840,9 +860,11 @@ static uint32_t clampAnisoPow2(NSUInteger raw)
         maxAniso, minLod, maxLod, 0.0f, cmpFunc,
         /* metal2vulkan-v2 scales pixel-coordinate dynamic samplers in SPIR-V using
          * SamplerWord bit 0; keep TPL1 hardware sampler normalized to avoid double-scaling. */
-        0, 0u,
+        bcolorIdx, 0u,
     };
     if (a840_encode_samp_const(&input, _words) != A840_EMIT_OK) return nil;
+    /* A8XX_TEX_SAMP_2: bit 0 = FASTBORDERCOLOREN, bits 1..2 = FASTBORDERCOLOR. */
+    _words[2] |= 1u | ((fastBorder & 3u) << 1u);
     _owner = owner;
     MTLSamplerDescriptor *stored = [descriptor copy];
     if (stored) {

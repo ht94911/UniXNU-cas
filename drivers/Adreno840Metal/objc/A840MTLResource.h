@@ -81,6 +81,7 @@
 @property(nonatomic, readonly) IOSurfaceRef iosurface;
 @property(nonatomic, readonly) NSUInteger iosurfacePlane;
 @property(nonatomic, readonly) BOOL isB3a8Plane0;
+@property(nonatomic, strong) id surfaceBoBox;
 - (void)configureB3a8Plane0Offset:(size_t)plane0Offset
                         plane0Row:(size_t)plane0Row
                      plane1Offset:(size_t)plane1Offset

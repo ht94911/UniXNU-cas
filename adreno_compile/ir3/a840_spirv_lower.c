@@ -1117,10 +1117,19 @@ a840_ir3_spirv_to_lowered_nir(struct ir3_compiler *compiler,
    NIR_PASS(_, nir, nir_recompute_io_bases,
             nir_var_shader_in | nir_var_shader_out);
 
-   /* Prepare ir3_shader_options and evaluate Wave 9 robustness safety policy. */
+   /* Prepare ir3_shader_options and evaluate Wave 9 robustness safety policy.
+    * Match Mesa Turnip tu_shader_key_subgroup_size() (tu_shader.cc:3761):
+    * Adreno 840 (gen80200) has supports_double_threadsize = false (dual-wave
+    * dispatch replaces THREAD128) and executes 64-lane waves across VS/FS/CS.
+    * Never compile IR3_SINGLE_OR_DOUBLE on targets lacking double threadsize. */
    memset(out_shader_opts, 0, sizeof(*out_shader_opts));
-   out_shader_opts->api_wavesize = IR3_SINGLE_OR_DOUBLE;
-   out_shader_opts->real_wavesize = IR3_SINGLE_OR_DOUBLE;
+   const enum ir3_wavesize_option wavesize_opt =
+      (compiler != NULL && compiler->info != NULL &&
+       compiler->info->props.supports_double_threadsize)
+         ? IR3_SINGLE_OR_DOUBLE
+         : IR3_SINGLE_ONLY;
+   out_shader_opts->api_wavesize = wavesize_opt;
+   out_shader_opts->real_wavesize = wavesize_opt;
 
    struct a840_robust_scan robust_scan;
    memset(&robust_scan, 0, sizeof(robust_scan));

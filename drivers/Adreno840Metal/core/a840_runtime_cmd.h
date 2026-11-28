@@ -285,6 +285,8 @@ A840RtStatus a840_rt_compute_dispatch_indirect(A840RtComputeEncoder *enc,
                                                uint64_t offset);
 A840RtStatus a840_rt_compute_retain_buffer(A840RtComputeEncoder *enc,
                                            A840RtBuffer *buffer);
+A840RtStatus a840_rt_compute_retain_texture(A840RtComputeEncoder *enc,
+                                            A840RtTexture *texture);
 A840RtStatus a840_rt_compute_alloc_transient(A840RtComputeEncoder *enc,
                                              size_t size_bytes,
                                              size_t alignment,
@@ -328,6 +330,8 @@ A840RtStatus a840_rt_render_alloc_transient(A840RtRenderEncoder *enc,
                                             uint64_t *out_gpu_va);
 A840RtStatus a840_rt_render_retain_buffer(A840RtRenderEncoder *enc,
                                           A840RtBuffer *buffer);
+A840RtStatus a840_rt_render_retain_texture(A840RtRenderEncoder *enc,
+                                           A840RtTexture *texture);
 A840RtStatus a840_rt_render_set_sds(A840RtRenderEncoder *enc,
                                     const A840RtSdsGroupDesc *groups,
                                     size_t count);

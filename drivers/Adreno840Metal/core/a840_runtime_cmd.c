@@ -1801,6 +1801,19 @@ A840RtStatus a840_rt_compute_retain_buffer(A840RtComputeEncoder *enc,
     return A840_RT_OK;
 }
 
+A840RtStatus a840_rt_compute_retain_texture(A840RtComputeEncoder *enc,
+                                            A840RtTexture *texture)
+{
+    A840RtStatus st = check_compute_active(enc);
+    if (st != A840_RT_OK) return st;
+    if (!texture) return A840_RT_INVALID_ARG;
+    if (!a840_rt_device_owns_texture(enc->cb->device, texture)) return A840_RT_WRONG_DEVICE;
+    st = pre_reserve_textures(enc->cb, 1u);
+    if (st != A840_RT_OK) return st;
+    retain_texture_reserved(enc->cb, texture);
+    return A840_RT_OK;
+}
+
 A840RtStatus a840_rt_compute_set_consts_direct(A840RtComputeEncoder *enc,
                                                uint32_t dst_vec4,
                                                uint32_t count_vec4,
@@ -3314,6 +3327,19 @@ A840RtStatus a840_rt_render_retain_buffer(A840RtRenderEncoder *enc,
     st = pre_reserve_buffers(enc->cb, 1u);
     if (st != A840_RT_OK) return st;
     retain_buffer_reserved(enc->cb, buffer);
+    return A840_RT_OK;
+}
+
+A840RtStatus a840_rt_render_retain_texture(A840RtRenderEncoder *enc,
+                                           A840RtTexture *texture)
+{
+    A840RtStatus st = check_render_active(enc);
+    if (st != A840_RT_OK) return st;
+    if (!texture) return A840_RT_INVALID_ARG;
+    if (!a840_rt_device_owns_texture(enc->cb->device, texture)) return A840_RT_WRONG_DEVICE;
+    st = pre_reserve_textures(enc->cb, 1u);
+    if (st != A840_RT_OK) return st;
+    retain_texture_reserved(enc->cb, texture);
     return A840_RT_OK;
 }
 

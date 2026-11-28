@@ -115,12 +115,45 @@ static void encodeDefaultConstexprSampler(uint32_t outWords[A840_SAMP_CONST_DWOR
     };
     if (a840_encode_samp_const(&in, outWords) != A840_EMIT_OK) {
         std::memset(outWords, 0, A840_SAMP_CONST_DWORDS * sizeof(uint32_t));
+    } else {
+        outWords[2] |= 1u; /* FASTBORDERCOLOREN | A6XX_BORDER_COLOR_0_0_0_0 */
     }
+}
+
+static uint32_t clampConstexprAnisoPow2(uint32_t raw)
+{
+    if (raw >= 16u) return 16u;
+    if (raw >= 8u) return 8u;
+    if (raw >= 4u) return 4u;
+    if (raw >= 2u) return 2u;
+    return 1u;
 }
 
 static void encodeReflectedConstexprSampler(const NmbSpirvConstexprSampler &cs,
                                             uint32_t outWords[A840_SAMP_CONST_DWORDS])
 {
+    const float kMaxLod = 4095.0f / 256.0f;
+    float minLod = (cs.min_lod >= 0.0f) ? cs.min_lod : 0.0f;
+    if (minLod > kMaxLod) minLod = kMaxLod;
+    float maxLod = (cs.max_lod >= minLod) ? cs.max_lod : minLod;
+    if (maxLod > kMaxLod) maxLod = kMaxLod;
+    float lodBias = cs.lod_bias;
+    if (!(lodBias >= -16.0f)) lodBias = -16.0f;
+    if (lodBias > kMaxLod) lodBias = kMaxLod;
+
+    /* VkBorderColor raw 0..5 -> Mesa bcolor_builtin index + A8XX FASTBORDERCOLOR. */
+    uint32_t bcolorIdx = 0u;
+    uint32_t fastBorder = 0u;
+    switch (cs.border_color) {
+    case 0u: bcolorIdx = 0u; fastBorder = 0u; break; /* FLOAT_TRANSPARENT_BLACK */
+    case 1u: bcolorIdx = 1u; fastBorder = 0u; break; /* INT_TRANSPARENT_BLACK */
+    case 2u: bcolorIdx = 2u; fastBorder = 1u; break; /* FLOAT_OPAQUE_BLACK */
+    case 3u: bcolorIdx = 3u; fastBorder = 1u; break; /* INT_OPAQUE_BLACK */
+    case 4u: bcolorIdx = 4u; fastBorder = 3u; break; /* FLOAT_OPAQUE_WHITE */
+    case 5u: bcolorIdx = 5u; fastBorder = 3u; break; /* INT_OPAQUE_WHITE */
+    default: bcolorIdx = 0u; fastBorder = 0u; break;
+    }
+
     const A840SampDescInput in{
         cs.min_filter ? A840_FILTER_LINEAR : A840_FILTER_NEAREST,
         cs.mag_filter ? A840_FILTER_LINEAR : A840_FILTER_NEAREST,
@@ -128,16 +161,20 @@ static void encodeReflectedConstexprSampler(const NmbSpirvConstexprSampler &cs,
         cs.address_u <= A840_ADDRESS_MIRROR_CLAMP ? cs.address_u : A840_ADDRESS_CLAMP_TO_EDGE,
         cs.address_v <= A840_ADDRESS_MIRROR_CLAMP ? cs.address_v : A840_ADDRESS_CLAMP_TO_EDGE,
         cs.address_w <= A840_ADDRESS_MIRROR_CLAMP ? cs.address_w : A840_ADDRESS_CLAMP_TO_EDGE,
-        cs.max_aniso ? cs.max_aniso : 1u,
-        cs.min_lod,
-        cs.max_lod,
-        cs.lod_bias,
+        clampConstexprAnisoPow2(cs.max_aniso),
+        minLod,
+        maxLod,
+        lodBias,
         cs.compare_op <= A840_COMPARE_DISABLED ? cs.compare_op : A840_COMPARE_DISABLED,
+        bcolorIdx,
+        /* metal2vulkan-v2 (convert.rs:127,151) never uses Vulkan unnormalized samplers;
+         * pixel-coordinate samplers are normalized in SPIR-V. Keep hardware unnorm=0. */
         0u,
-        cs.unnormalized ? 1u : 0u,
     };
     if (a840_encode_samp_const(&in, outWords) != A840_EMIT_OK) {
         encodeDefaultConstexprSampler(outWords);
+    } else {
+        outWords[2] |= 1u | ((fastBorder & 3u) << 1u);
     }
 }
 
@@ -1087,10 +1124,13 @@ static NSData *a840ExtractMtlbBitcode(NSData *libData, const char *wantedName)
     outRes->descBo = bo;
     outRes->descOffset = boOff;
 
-    /* 3. Write 64B A8XX hardware descriptors into bindless sets. */
+    /* 3. Write 64B A8XX hardware descriptors into bindless sets and retain each
+     * referenced texture on the active command buffer so its BO stays mapped until completion. */
     for (NSUInteger i = 0u; i < uniqueTextures.count; ++i) {
         const size_t slotOff = (i + 1u) * kIdentityBindlessSlotBytes;
         A840RtTexture *rtTex = uniqueTexNatives[i];
+        if (renderEnc) (void)a840_rt_render_retain_texture(renderEnc, rtTex);
+        else if (computeEnc) (void)a840_rt_compute_retain_texture(computeEnc, rtTex);
         if (plan->sampledImageSet >= 0) {
             const size_t setIdx = static_cast<size_t>(plan->sampledImageSet);
             if (outRes->setActive[setIdx]) {
@@ -2140,7 +2180,9 @@ static uint32_t a840AlignConstlenForPush(uint32_t rawConstlenVec4, const NmbSpir
     ed.sample_mask_output = fsIo.fs_sample_mask_out_regid;
     ed.pixel_lod = fsIo.fs_pixel_lod != 0u;
     ed.full_quad = fsIo.fs_full_quad != 0u;
-    ed.fs_thread128 = fsIo.fs_thread128 != 0u;
+    /* Adreno 840 (gen80200) has supports_double_threadsize = false (dual-wave dispatch);
+     * keep SP_PS_CNTL_0.THREADSIZE = THREAD64 alongside ir3 IR3_SINGLE_ONLY. */
+    ed.fs_thread128 = false;
     for (uint32_t i = 0u; i < A840_MAX_COLOR_TARGETS; ++i) {
         const uint8_t reg = (fsIo.fs_colors[i].regid < A840_REGID_UNUSED)
                                 ? fsIo.fs_colors[i].regid

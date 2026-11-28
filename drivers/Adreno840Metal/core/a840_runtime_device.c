@@ -481,6 +481,73 @@ A840RtStatus a840_rt_device_create(const A840BackendTransport *transport,
     dev->border_color_bytes = A840_RT_BORDER_COLOR_BYTES;
     dev->border_color_cpu = map_reply.cpu_ptr;
     dev->border_color_cpu_token = map_reply.cpu_token;
+    if (dev->border_color_cpu != NULL) {
+        /* Zero the entire 64 KiB border color table and populate Mesa's 6 built-in
+         * 128-byte bcolor_entry records (tu_util.h:400-470, tu_device.cc:3076-3080):
+         *   0 = FLOAT_TRANSPARENT_BLACK (0,0,0,0)
+         *   1 = INT_TRANSPARENT_BLACK   (0,0,0,0)
+         *   2 = FLOAT_OPAQUE_BLACK      (0,0,0,1)
+         *   3 = INT_OPAQUE_BLACK        (0,0,0,1)
+         *   4 = FLOAT_OPAQUE_WHITE      (1,1,1,1)
+         *   5 = INT_OPAQUE_WHITE        (1,1,1,1)
+         * Uninitialized border_color_bo DRAM corrupts CLAMP_TO_BORDER samples. */
+        typedef struct A840BcolorEntry {
+            uint32_t fp32[4];
+            uint64_t ui16;
+            uint64_t si16;
+            uint64_t fp16;
+            uint16_t rgb565;
+            uint16_t rgb5a1;
+            uint16_t rgba4;
+            uint8_t  pad0[2];
+            uint32_t ui8;
+            uint32_t si8;
+            uint32_t rgb10a2;
+            uint32_t z24;
+            uint64_t srgb;
+            uint8_t  pad1[56];
+        } A840BcolorEntry;
+        _Static_assert(sizeof(A840BcolorEntry) == 128u, "A840BcolorEntry must be 128 bytes");
+        A840BcolorEntry *bc = (A840BcolorEntry *)dev->border_color_cpu;
+        memset(dev->border_color_cpu, 0, A840_RT_BORDER_COLOR_BYTES);
+        /* Entry 2: FLOAT_OPAQUE_BLACK (0.0, 0.0, 0.0, 1.0) */
+        bc[2].fp32[3] = 0x3f800000u;
+        bc[2].ui16    = UINT64_C(0xffff000000000000);
+        bc[2].si16    = UINT64_C(0x7fff000000000000);
+        bc[2].fp16    = UINT64_C(0x3c00000000000000);
+        bc[2].rgb5a1  = 0x8000u;
+        bc[2].rgba4   = 0xf000u;
+        bc[2].ui8     = 0xff000000u;
+        bc[2].si8     = 0x7f000000u;
+        bc[2].rgb10a2 = 0xc0000000u;
+        bc[2].srgb    = UINT64_C(0x3c00000000000000);
+        /* Entry 3: INT_OPAQUE_BLACK (0, 0, 0, 1) */
+        bc[3].fp32[3] = 1u;
+        bc[3].fp16    = UINT64_C(0x0001000000000000);
+        /* Entry 4: FLOAT_OPAQUE_WHITE (1.0, 1.0, 1.0, 1.0) */
+        bc[4].fp32[0] = 0x3f800000u;
+        bc[4].fp32[1] = 0x3f800000u;
+        bc[4].fp32[2] = 0x3f800000u;
+        bc[4].fp32[3] = 0x3f800000u;
+        bc[4].ui16    = UINT64_C(0xffffffffffffffff);
+        bc[4].si16    = UINT64_C(0x7fff7fff7fff7fff);
+        bc[4].fp16    = UINT64_C(0x3c003c003c003c00);
+        bc[4].rgb565  = 0xffffu;
+        bc[4].rgb5a1  = 0xffffu;
+        bc[4].rgba4   = 0xffffu;
+        bc[4].ui8     = 0xffffffffu;
+        bc[4].si8     = 0x7f7f7f7fu;
+        bc[4].rgb10a2 = 0xffffffffu;
+        bc[4].z24     = 0x00ffffffu;
+        bc[4].srgb    = UINT64_C(0x3c003c003c003c00);
+        /* Entry 5: INT_OPAQUE_WHITE (1, 1, 1, 1) */
+        bc[5].fp32[0] = 1u;
+        bc[5].fp32[1] = 1u;
+        bc[5].fp32[2] = 1u;
+        bc[5].fp32[3] = 1u;
+        bc[5].fp16    = UINT64_C(0x0001000100010001);
+        __atomic_thread_fence(__ATOMIC_SEQ_CST);
+    }
 
     dev->device_id = ++g_next_device_id;
     *out_device = dev;

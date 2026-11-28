@@ -19,6 +19,58 @@
 #pragma clang diagnostic ignored "-Wobjc-protocol-property-synthesis"
 #pragma clang diagnostic ignored "-Wobjc-protocol-method-implementation"
 
+@interface A840MTLSurfaceBoBox : NSObject
+@property(nonatomic, readonly) A840RtBuffer *native;
+@property(nonatomic, readonly) BOOL writable;
+- (instancetype)initWithOwner:(A840MTLDevice *)owner
+                       native:(A840RtBuffer *)buffer
+                    iosurface:(IOSurfaceRef)iosurface
+                     writable:(BOOL)writable;
+@end
+
+@implementation A840MTLSurfaceBoBox {
+    A840MTLDevice *_owner;
+    A840RtBuffer *_native;
+    IOSurfaceRef _iosurface;
+    BOOL _writable;
+}
+- (instancetype)initWithOwner:(A840MTLDevice *)owner
+                       native:(A840RtBuffer *)buffer
+                    iosurface:(IOSurfaceRef)iosurface
+                     writable:(BOOL)writable
+{
+    if ((self = [super init])) {
+        _owner = owner;
+        _native = buffer;
+        _iosurface = iosurface ? (IOSurfaceRef)CFRetain(iosurface) : nullptr;
+        _writable = writable;
+    }
+    return self;
+}
+- (void)dealloc
+{
+    if (_native) {
+        A840MTLDevice *dev = _owner;
+        if (dev) {
+            @synchronized (dev) { a840_rt_buffer_release(_native); }
+        } else {
+            a840_rt_buffer_release(_native);
+        }
+        _native = nullptr;
+    }
+    if (_iosurface) {
+        CFRelease(_iosurface);
+        _iosurface = nullptr;
+    }
+}
+@end
+
+typedef struct A840SurfaceBoKey {
+    uint64_t surfaceId;
+    uint64_t baseAddr;
+    uint64_t alignedAlloc;
+} A840SurfaceBoKey;
+
 static bool isB3a8Surface(IOSurfaceRef surface)
 {
     return surface && IOSurfaceGetPixelFormat(surface) == 0x62336138u /* 'b3a8' */;
@@ -324,35 +376,73 @@ static A840YcbcrFormat detectIOSurfaceYcbcr(IOSurfaceRef surface, MTLPixelFormat
     rtdesc.usage_flags = sdesc.usage_flags;
 
     A840RtTexture *rtTex = nullptr;
+    A840MTLSurfaceBoBox *surfBoBox = nil;
 
     @synchronized (self) {
         A840RtStatus importBoSt = A840_RT_UNSUPPORTED;
         A840RtStatus importTexSt = A840_RT_UNSUPPORTED;
         if (canImportZeroCopy) {
             const uint64_t alignedAlloc = ((uint64_t)allocSize + pageBytes - 1u) & ~(uint64_t)(pageBytes - 1u);
-            A840RtBufferDesc bdesc{};
-            bdesc.size_bytes = alignedAlloc;
-            bdesc.alignment = pageBytes;
-            /* Kernel NativeAdrenoUserClient::mapBo maps imported BOs hardware IO-coherent
-             * (IOMMU_CACHE WB inner-shareable) ONLY when !(permissions & 2) (read-only).
-             * Since iOS 27 sys_dcache_flush() is a no-op (dsb ish; ret), keeping GPU-read-only
-             * CPU-drawn IOSurfaces (icons/glyphs/text) read-only eliminates 64B cache-line streaks. */
             const MTLTextureUsage texUsage = descriptor.usage;
-            const BOOL gpuWritable = (texUsage == MTLTextureUsageUnknown) ||
+            const BOOL explicitGpuWrite =
                 ((texUsage & (MTLTextureUsageRenderTarget | MTLTextureUsageShaderWrite)) != 0u);
-            bdesc.usage_flags = A840_BUF_USAGE_READ | A840_BUF_USAGE_CPU_VISIBLE |
-                (gpuWritable ? A840_BUF_USAGE_WRITE : 0u);
-            bdesc.host_import = true;
-            bdesc.host_ptr = basePtr;
-            A840RtBuffer *surfBo = nullptr;
-            importBoSt = a840_rt_buffer_create(self.runtime, &bdesc, &surfBo);
-            if (importBoSt == A840_RT_OK && surfBo) {
+            const BOOL gpuWritable = (texUsage == MTLTextureUsageUnknown) || explicitGpuWrite;
+            const uint32_t surfId = IOSurfaceGetID(iosurface);
+            NSValue *cacheKey = nil;
+            if (surfId != 0u && self.surfaceBoCache) {
+                const A840SurfaceBoKey k{(uint64_t)surfId, (uint64_t)baseAddr, alignedAlloc};
+                cacheKey = [NSValue valueWithBytes:&k objCType:@encode(A840SurfaceBoKey)];
+                A840MTLSurfaceBoBox *cached = [self.surfaceBoCache objectForKey:cacheKey];
+                if (cached && cached.native && (cached.writable || !explicitGpuWrite)) {
+                    surfBoBox = cached;
+                    importBoSt = A840_RT_OK;
+                }
+            }
+            if (!surfBoBox) {
+                /* Kernel NativeAdrenoUserClient::mapBo maps imported BOs hardware IO-coherent
+                 * (IOMMU_CACHE WB inner-shareable) ONLY when !(permissions & 2) (read-only).
+                 * Keep pure CPU-drawn RO IOSurfaces read-only to eliminate 64B cache-line streaks.
+                 * However, NativeAdrenoVm::map rejects physical-page aliasClass mismatches
+                 * (0xe00002c2) across RO coherent vs RW non-coherent mappings of the same
+                 * IOSurface pages (e.g. RenderBox f=115 icon/widget targets): retry with
+                 * WRITE when RO fails, or without WRITE when MTLTextureUsageUnknown fails. */
+                A840RtBufferDesc bdesc{};
+                bdesc.size_bytes = alignedAlloc;
+                bdesc.alignment = pageBytes;
+                BOOL actualWritable = gpuWritable;
+                bdesc.usage_flags = A840_BUF_USAGE_READ | A840_BUF_USAGE_CPU_VISIBLE |
+                    (actualWritable ? A840_BUF_USAGE_WRITE : 0u);
+                bdesc.host_import = true;
+                bdesc.host_ptr = basePtr;
+                A840RtBuffer *surfBo = nullptr;
+                importBoSt = a840_rt_buffer_create(self.runtime, &bdesc, &surfBo);
+                if (importBoSt != A840_RT_OK && !actualWritable) {
+                    actualWritable = YES;
+                    bdesc.usage_flags = A840_BUF_USAGE_READ | A840_BUF_USAGE_CPU_VISIBLE |
+                        A840_BUF_USAGE_WRITE;
+                    importBoSt = a840_rt_buffer_create(self.runtime, &bdesc, &surfBo);
+                } else if (importBoSt != A840_RT_OK && actualWritable && !explicitGpuWrite) {
+                    actualWritable = NO;
+                    bdesc.usage_flags = A840_BUF_USAGE_READ | A840_BUF_USAGE_CPU_VISIBLE;
+                    importBoSt = a840_rt_buffer_create(self.runtime, &bdesc, &surfBo);
+                }
+                if (importBoSt == A840_RT_OK && surfBo) {
+                    surfBoBox = [[A840MTLSurfaceBoBox alloc] initWithOwner:self
+                                                                    native:surfBo
+                                                                 iosurface:iosurface
+                                                                  writable:actualWritable];
+                    if (cacheKey && self.surfaceBoCache) {
+                        [self.surfaceBoCache setObject:surfBoBox forKey:cacheKey];
+                    }
+                }
+            }
+            if (surfBoBox && surfBoBox.native) {
                 const uint64_t planeOff = (uint64_t)(planePtr - baseAddr);
-                importTexSt = a840_rt_texture_create_on_buffer(self.runtime, surfBo, planeOff, &rtdesc, &rtTex);
+                importTexSt = a840_rt_texture_create_on_buffer(self.runtime, surfBoBox.native, planeOff, &rtdesc, &rtTex);
                 if (importTexSt != A840_RT_OK) {
                     rtTex = nullptr;
+                    surfBoBox = nil;
                 }
-                a840_rt_buffer_release(surfBo);
             }
         }
         if (!rtTex) {
@@ -379,6 +469,9 @@ static A840YcbcrFormat detectIOSurfaceYcbcr(IOSurfaceRef surface, MTLPixelFormat
                                                       iosurface:iosurface
                                                           plane:plane
                                                   surfaceHandle:surfHandle];
+    if (tex && surfBoBox) {
+        tex.surfaceBoBox = surfBoBox;
+    }
     if (tex && plane == 0u && isB3a8Surface(iosurface) &&
         (sdesc.mtl_pixel_format == 550u || sdesc.mtl_pixel_format == 551u) &&
         canImportZeroCopy) {
