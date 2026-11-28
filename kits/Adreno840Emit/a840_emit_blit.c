@@ -129,8 +129,11 @@ static A840EmitStatus common_setup(A840OpsBatch *batch, const A840Surface2D *dst
     uint32_t ifmt = dst->srgb ? A840_R2D_UNORM8_SRGB : format->ifmt;
     uint32_t control = (dst->format_id << A840_2D_FORMAT_SHIFT) |
         (UINT32_C(15) << A840_2D_MASK_SHIFT) | (ifmt << A840_2D_IFMT_SHIFT);
+    /* Mesa tu_clear_blit.cc:680: SP_A2D_OUTPUT_INFO uses FP16 for 10_10_10_2_UNORM_DEST. */
+    uint32_t sp_fmt = (dst->format_id == A840_FMT6_10_10_10_2_UNORM_DEST)
+        ? A840_FMT6_16_16_16_16_FLOAT : dst->format_id;
     uint32_t output = (format->output_type << A840_2D_SP_TYPE_SHIFT) |
-        (dst->format_id << A840_2D_SP_FORMAT_SHIFT) |
+        (sp_fmt << A840_2D_SP_FORMAT_SHIFT) |
         (UINT32_C(15) << A840_2D_SP_MASK_SHIFT);
     if (clear) control |= A840_2D_SOLID_COLOR;
     if (src_format->half) output |= A840_2D_SP_HALF_PRECISION;
@@ -178,7 +181,10 @@ static A840EmitStatus destination_setup(A840OpsBatch *batch, const A840Surface2D
 static A840EmitStatus source_setup(A840OpsBatch *batch, const A840Surface2D *surface,
     uint32_t filter)
 {
-    uint32_t info = surface->format_id | (surface->swap << A840_2D_SRC_SWAP_SHIFT) |
+    /* TPL1 source uses 10_10_10_2_UNORM (0x36), never _UNORM_DEST (0x37). */
+    uint32_t src_fmt = (surface->format_id == A840_FMT6_10_10_10_2_UNORM_DEST)
+        ? A840_FMT6_10_10_10_2_UNORM : surface->format_id;
+    uint32_t info = src_fmt | (surface->swap << A840_2D_SRC_SWAP_SHIFT) |
         A840_2D_SRC_UNK20 | A840_2D_SRC_UNK22;
     uint32_t payload[5], flags[3] = {0};
     size_t start;

@@ -230,6 +230,7 @@ static thread_local bool gInCompletionCallback = false;
 - (void)dealloc
 {
     if (_status == MTLCommandBufferStatusEnqueued) [_queue discardReservation:(__bridge void *)self];
+    [self releaseCommandSurfaces];
     a840_hwtest_forget_command_buffer((__bridge void *)self);
     @synchronized (_owner) { a840_rt_cb_release(_native); }
 }
@@ -298,6 +299,9 @@ static thread_local bool gInCompletionCallback = false;
     if (_status < MTLCommandBufferStatusCommitted) {
         if (![_resources containsObject:resource]) {
             [_resources addObject:resource];
+            if ([(id)resource isKindOfClass:A840MTLAllocation.class]) {
+                [(A840MTLAllocation *)resource retainInFlightUse];
+            }
             if ([(id)resource isKindOfClass:A840MTLTexture.class]) {
                 A840MTLTexture *tex = (A840MTLTexture *)resource;
                 if (tex.surfaceHandle != A840_SYS_INVALID_HANDLE && _owner.systemFrontend) {
@@ -312,6 +316,9 @@ static thread_local bool gInCompletionCallback = false;
 - (void)useWrittenResource:(id<MTLResource>)resource
 {
     if (!resource) return;
+    if ([(id)resource isKindOfClass:A840MTLTexture.class]) {
+        [(A840MTLTexture *)resource markB3a8GpuWriteTarget];
+    }
     [self useResource:resource];
     [_changed lock];
     if (_status < MTLCommandBufferStatusCommitted) {
@@ -788,6 +795,9 @@ static thread_local bool gInCompletionCallback = false;
 - (void)releaseCommandSurfaces
 {
     for (id<MTLResource> res in _resources) {
+        if ([(id)res isKindOfClass:A840MTLAllocation.class]) {
+            [(A840MTLAllocation *)res releaseInFlightUse];
+        }
         if ([(id)res isKindOfClass:A840MTLTexture.class]) {
             A840MTLTexture *tex = (A840MTLTexture *)res;
             if (tex.surfaceHandle != A840_SYS_INVALID_HANDLE && _owner.systemFrontend) {

@@ -19,6 +19,8 @@
 @property(nonatomic, strong, readonly) A840MTLDevice *owner;
 @property(nonatomic, strong, readonly) A840MTLHeap *owningHeap;
 @property(nonatomic, readonly) A840HeapSubAlloc *heapSubAlloc;
+- (void)retainInFlightUse;
+- (void)releaseInFlightUse;
 @end
 
 @interface A840MTLBuffer : A840MTLAllocation <MTLBuffer>
@@ -78,6 +80,13 @@
 @property(nonatomic, readonly) A840SysSurfaceHandle surfaceHandle;
 @property(nonatomic, readonly) IOSurfaceRef iosurface;
 @property(nonatomic, readonly) NSUInteger iosurfacePlane;
+@property(nonatomic, readonly) BOOL isB3a8Plane0;
+- (void)configureB3a8Plane0Offset:(size_t)plane0Offset
+                        plane0Row:(size_t)plane0Row
+                     plane1Offset:(size_t)plane1Offset
+                        plane1Row:(size_t)plane1Row;
+- (void)syncB3a8CpuContentIfNeeded;
+- (void)markB3a8GpuWriteTarget;
 @end
 
 @interface A840MTLSamplerState : NSObject <MTLSamplerState>

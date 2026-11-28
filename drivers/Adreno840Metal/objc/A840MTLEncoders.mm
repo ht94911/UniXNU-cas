@@ -193,6 +193,9 @@ static A840RtTexture *nativeTexture(id<MTLTexture> texture, A840MTLDevice *owner
     [cb useResource:src];
     [cb useWrittenResource:dst];
     if (!cb.wantsRaw || !size.width || !size.height) return;
+    if ([(id)src isKindOfClass:A840MTLTexture.class] && ((A840MTLTexture *)src).isB3a8Plane0) {
+        [(A840MTLTexture *)src syncB3a8CpuContentIfNeeded];
+    }
     @synchronized (cb.owner) {
         auto *s = nativeTexture(src, cb.owner), *d = nativeTexture(dst, cb.owner);
         if (so.z || dsto.z || size.depth != 1 ||
@@ -322,7 +325,8 @@ static A840RtTexture *nativeTexture(id<MTLTexture> texture, A840MTLDevice *owner
     if (!cb.wantsRaw || !sourceSize.width || !sourceSize.height) return;
     auto *sb = nativeBuffer(sourceBuffer, cb.owner);
     auto *dt = nativeTexture(destinationTexture, cb.owner);
-    if (!sb || !dt || destinationSlice || destinationLevel || !dt->format_caps ||
+    if (!sb || !dt || !dt->format_caps ||
+        destinationLevel >= dt->mip_levels || destinationSlice >= dt->array_layers ||
         sourceOffset > sb->size_bytes ||
         sourceSize.width > UINT32_MAX || sourceSize.height > UINT32_MAX ||
         destinationOrigin.x > UINT32_MAX || destinationOrigin.y > UINT32_MAX) {
@@ -345,10 +349,21 @@ static A840RtTexture *nativeTexture(id<MTLTexture> texture, A840MTLDevice *owner
                              (uint32_t)sourceSize.width, (uint32_t)sourceSize.height};
 
     @synchronized (cb.owner) {
+        A840RtTexture *dstView = nullptr;
+        A840RtTexture *effDst = dt;
+        if (destinationLevel > 0u || destinationSlice > 0u) {
+            if (a840_rt_texture_create_view(cb.owner.runtime, dt, dt->mtl_pixel_format, A840_TEX_2D,
+                                            (uint32_t)destinationLevel, 1u, (uint32_t)destinationSlice, 1u,
+                                            false, nullptr, &dstView) != A840_RT_OK || !dstView) {
+                [cb recordFailure:A840_RT_UNSUPPORTED reason:@"buf2tex_view"];
+                return;
+            }
+            effDst = dstView;
+        }
         /* 1. Fast zero-copy GPU-ordered 2D blit when buffer offset & pitch are 64B aligned. */
         if ((sourceOffset % 64u) == 0u && (effSrcRow % 64u) == 0u && effSrcRow <= UINT32_MAX) {
             A840RtTextureDesc viewDesc{};
-            viewDesc.mtl_pixel_format = dt->mtl_pixel_format;
+            viewDesc.mtl_pixel_format = effDst->mtl_pixel_format;
             viewDesc.tex_type = A840_TEX_2D;
             viewDesc.width = (uint32_t)sourceSize.width;
             viewDesc.height = (uint32_t)sourceSize.height;
@@ -362,16 +377,23 @@ static A840RtTexture *nativeTexture(id<MTLTexture> texture, A840MTLDevice *owner
             A840RtTexture *bufView = nullptr;
             if (a840_rt_texture_create_on_buffer(cb.owner.runtime, sb, (uint64_t)sourceOffset,
                                                  &viewDesc, &bufView) == A840_RT_OK && bufView) {
-                const A840RtStatus st = a840_rt_blit_2d(_native, bufView, &srcRect, dt, &dstRect, A840_FILTER_NEAREST);
+                const A840RtStatus st = a840_rt_blit_2d(_native, bufView, &srcRect, effDst, &dstRect, A840_FILTER_NEAREST);
                 a840_rt_texture_release(bufView);
+                if (dstView) a840_rt_texture_release(dstView);
                 if (st == A840_RT_OK) return;
+                dstView = nullptr;
             }
         }
-        /* 2. Unaligned bytesPerRow/offset: stage into fresh 64B-aligned transient texture + GPU blit
-         *    (works for BOTH Private and Shared destination textures in strict GPU command order). */
+        /* 2. Unaligned bytesPerRow/offset: stage into fresh 64B-aligned transient texture + GPU blit. */
         if (sb->cpu_ptr) {
+            if (!dstView && (destinationLevel > 0u || destinationSlice > 0u)) {
+                (void)a840_rt_texture_create_view(cb.owner.runtime, dt, dt->mtl_pixel_format, A840_TEX_2D,
+                                                  (uint32_t)destinationLevel, 1u, (uint32_t)destinationSlice, 1u,
+                                                  false, nullptr, &dstView);
+                effDst = dstView ? dstView : dt;
+            }
             A840RtTextureDesc stageDesc{};
-            stageDesc.mtl_pixel_format = dt->mtl_pixel_format;
+            stageDesc.mtl_pixel_format = effDst->mtl_pixel_format;
             stageDesc.tex_type = A840_TEX_2D;
             stageDesc.width = (uint32_t)sourceSize.width;
             stageDesc.height = (uint32_t)sourceSize.height;
@@ -391,14 +413,16 @@ static A840RtTexture *nativeTexture(id<MTLTexture> texture, A840MTLDevice *owner
                     srcPtr += effSrcRow;
                     dstPtr += stageTex->pitch_bytes;
                 }
-                const A840RtStatus st = a840_rt_blit_2d(_native, stageTex, &srcRect, dt, &dstRect, A840_FILTER_NEAREST);
+                const A840RtStatus st = a840_rt_blit_2d(_native, stageTex, &srcRect, effDst, &dstRect, A840_FILTER_NEAREST);
                 a840_rt_texture_release(stageTex);
+                if (dstView) a840_rt_texture_release(dstView);
                 if (st == A840_RT_OK) return;
                 [cb recordFailure:st reason:@"buf2tex_stage_blit"];
                 return;
             }
             if (stageTex) a840_rt_texture_release(stageTex);
         }
+        if (dstView) a840_rt_texture_release(dstView);
     }
     [cb recordFailure:A840_RT_UNSUPPORTED reason:@"buf2tex_fail"];
 }
@@ -418,9 +442,12 @@ destinationBytesPerImage:(NSUInteger)destinationBytesPerImage
     [cb useResource:sourceTexture];
     [cb useWrittenResource:destinationBuffer];
     if (!cb.wantsRaw || !sourceSize.width || !sourceSize.height) return;
+    if ([(id)sourceTexture isKindOfClass:A840MTLTexture.class] && ((A840MTLTexture *)sourceTexture).isB3a8Plane0) {
+        [(A840MTLTexture *)sourceTexture syncB3a8CpuContentIfNeeded];
+    }
     auto *st = nativeTexture(sourceTexture, cb.owner);
     auto *db = nativeBuffer(destinationBuffer, cb.owner);
-    if (!st || !db || sourceSlice || sourceLevel || !st->format_caps ||
+    if (!st || !db || sourceLevel >= st->mip_levels || sourceSlice >= st->array_layers || !st->format_caps ||
         destinationOffset > db->size_bytes ||
         sourceSize.width > UINT32_MAX || sourceSize.height > UINT32_MAX ||
         sourceOrigin.x > UINT32_MAX || sourceOrigin.y > UINT32_MAX) {
@@ -445,8 +472,17 @@ destinationBytesPerImage:(NSUInteger)destinationBytesPerImage
     /* 1. GPU-ordered 2D blit into buffer when 64B-aligned (works on Private & Shared textures). */
     if ((destinationOffset % 64u) == 0u && (effDstRow % 64u) == 0u && effDstRow <= UINT32_MAX) {
         @synchronized (cb.owner) {
+            A840RtTexture *srcView = nullptr;
+            A840RtTexture *effSrc = st;
+            if (sourceLevel > 0u || sourceSlice > 0u) {
+                if (a840_rt_texture_create_view(cb.owner.runtime, st, st->mtl_pixel_format, A840_TEX_2D,
+                                                (uint32_t)sourceLevel, 1u, (uint32_t)sourceSlice, 1u,
+                                                false, nullptr, &srcView) == A840_RT_OK && srcView) {
+                    effSrc = srcView;
+                }
+            }
             A840RtTextureDesc viewDesc{};
-            viewDesc.mtl_pixel_format = st->mtl_pixel_format;
+            viewDesc.mtl_pixel_format = effSrc->mtl_pixel_format;
             viewDesc.tex_type = A840_TEX_2D;
             viewDesc.width = (uint32_t)sourceSize.width;
             viewDesc.height = (uint32_t)sourceSize.height;
@@ -458,28 +494,36 @@ destinationBytesPerImage:(NSUInteger)destinationBytesPerImage
             viewDesc.pitch_bytes = (uint32_t)effDstRow;
             viewDesc.usage_flags = A840_TEX_USAGE_RENDER_TARGET;
             A840RtTexture *bufView = nullptr;
-            if (a840_rt_texture_create_on_buffer(cb.owner.runtime, db, (uint64_t)destinationOffset,
+            if ((!sourceLevel && !sourceSlice || srcView) &&
+                a840_rt_texture_create_on_buffer(cb.owner.runtime, db, (uint64_t)destinationOffset,
                                                  &viewDesc, &bufView) == A840_RT_OK && bufView) {
-                const A840RtStatus bst = a840_rt_blit_2d(_native, st, &srcRect, bufView, &dstRect, A840_FILTER_NEAREST);
+                const A840RtStatus bst = a840_rt_blit_2d(_native, effSrc, &srcRect, bufView, &dstRect, A840_FILTER_NEAREST);
                 a840_rt_texture_release(bufView);
+                if (srcView) a840_rt_texture_release(srcView);
                 if (bst == A840_RT_OK) {
                     (void)a840_rt_blit_barrier(_native, A840_CACHE_CCU_FLUSH_COLOR | A840_CACHE_UCHE_INV, true, false);
                     return;
                 }
+                srcView = nullptr;
             }
+            if (srcView) a840_rt_texture_release(srcView);
         }
     }
     /* 2. Unaligned linear Shared texture fallback. */
-    if (!st->cpu_ptr || !db->cpu_ptr) {
+    uint64_t subOff = 0u;
+    uint32_t subPitch = 0u, subW = 0u, subH = 0u;
+    if (!st->cpu_ptr || !db->cpu_ptr ||
+        a840_rt_texture_get_subresource_layout(st, (uint32_t)sourceLevel, (uint32_t)sourceSlice,
+                                               &subOff, &subPitch, &subW, &subH) != A840_RT_OK) {
         [cb recordFailure:A840_RT_UNSUPPORTED reason:@"tex2buf_unaligned_private"];
         return;
     }
-    const auto *srcPtr = static_cast<const uint8_t *>(st->cpu_ptr) +
-                         sourceOrigin.y * st->pitch_bytes + sourceOrigin.x * bpp;
+    const auto *srcPtr = static_cast<const uint8_t *>(st->cpu_ptr) + (size_t)subOff +
+                         sourceOrigin.y * subPitch + sourceOrigin.x * bpp;
     auto *dstPtr = static_cast<uint8_t *>(db->cpu_ptr) + destinationOffset;
     for (NSUInteger row = 0u; row < sourceSize.height; ++row) {
         std::memcpy(dstPtr, srcPtr, rowBytes);
-        srcPtr += st->pitch_bytes;
+        srcPtr += subPitch;
         dstPtr += effDstRow;
     }
     @synchronized (cb.owner) {
@@ -498,6 +542,9 @@ destinationBytesPerImage:(NSUInteger)destinationBytesPerImage
         return;
     }
     std::memset(static_cast<uint8_t *>(b->cpu_ptr) + range.location, value, range.length);
+    @synchronized (cb.owner) {
+        (void)a840_rt_blit_barrier(_native, A840_CACHE_CCU_FLUSH_COLOR | A840_RT_CACHE_UCHE_CLEAN | A840_CACHE_UCHE_INV, true, true);
+    }
 }
 - (void)synchronizeResource:(id<MTLResource>)resource
 {
@@ -512,7 +559,42 @@ destinationBytesPerImage:(NSUInteger)destinationBytesPerImage
 - (void)generateMipmapsForTexture:(id<MTLTexture>)texture
 {
     if (![self checkActive]) return;
-    [self.command useResource:texture];
+    A840MTLCommandBuffer *cb = self.command;
+    [cb useWrittenResource:texture];
+    if (!cb.wantsRaw) return;
+    auto *tex = nativeTexture(texture, cb.owner);
+    if (!tex || tex->mip_levels <= 1u) return;
+    @synchronized (cb.owner) {
+        for (uint32_t sl = 0u; sl < tex->array_layers; ++sl) {
+            for (uint32_t lvl = 0u; lvl + 1u < tex->mip_levels; ++lvl) {
+                A840RtTexture *srcView = nullptr;
+                A840RtTexture *dstView = nullptr;
+                if (a840_rt_texture_create_view(cb.owner.runtime, tex, tex->mtl_pixel_format,
+                                                A840_TEX_2D, lvl, 1u, sl, 1u,
+                                                false, nullptr, &srcView) != A840_RT_OK || !srcView) {
+                    break;
+                }
+                if (a840_rt_texture_create_view(cb.owner.runtime, tex, tex->mtl_pixel_format,
+                                                A840_TEX_2D, lvl + 1u, 1u, sl, 1u,
+                                                false, nullptr, &dstView) != A840_RT_OK || !dstView) {
+                    a840_rt_texture_release(srcView);
+                    break;
+                }
+                const A840Rect2D srcRect{0u, 0u, srcView->width, srcView->height};
+                const A840Rect2D dstRect{0u, 0u, dstView->width, dstView->height};
+                const A840RtStatus st = a840_rt_blit_2d(_native, srcView, &srcRect, dstView, &dstRect, A840_FILTER_LINEAR);
+                a840_rt_texture_release(srcView);
+                a840_rt_texture_release(dstView);
+                if (st != A840_RT_OK) {
+                    [cb recordFailure:st reason:@"gen_mips_blit"];
+                    return;
+                }
+                (void)a840_rt_blit_barrier(_native,
+                    A840_CACHE_CCU_FLUSH_COLOR | A840_RT_CACHE_UCHE_CLEAN |
+                    A840_CACHE_CCU_INV_COLOR | A840_CACHE_UCHE_INV, true, true);
+            }
+        }
+    }
 }
 - (void)resetCommandsInBuffer:(id<MTLIndirectCommandBuffer>)buffer withRange:(NSRange)range
 {
@@ -689,6 +771,9 @@ destinationBytesPerImage:(NSUInteger)destinationBytesPerImage
 }
 - (void)setTexture:(id<MTLTexture>)texture atIndex:(NSUInteger)index
 {
+    if ([(id)texture isKindOfClass:A840MTLTexture.class] && ((A840MTLTexture *)texture).isB3a8Plane0) {
+        [(A840MTLTexture *)texture syncB3a8CpuContentIfNeeded];
+    }
     if (![self checkActive]) return;
     [_bindings setTexture:texture index:index];
     [self.command useWrittenResource:texture];
@@ -993,7 +1078,15 @@ static uint16_t floatToHalfBits(float f)
     return (uint16_t)(sign | ((uint32_t)exp << 10u) | (mant >> 13u));
 }
 
-static BOOL convertClear(id<MTLTexture> texture, MTLClearColor color, uint32_t output[4])
+static double linearToSrgbChannel(double c)
+{
+    if (c <= 0.0) return 0.0;
+    if (c >= 1.0) return 1.0;
+    return (c <= 0.0031308) ? (c * 12.92) : (1.055 * std::pow(c, 1.0 / 2.4) - 0.055);
+}
+
+static BOOL convertClear(id<MTLTexture> texture, MTLClearColor color,
+                         uint32_t output[4], float outF32[4], bool *outIsF32)
 {
     if (!texture) return NO;
     const uint32_t rawFmt = a840_canonical_backing_pixel_format((uint32_t)texture.pixelFormat);
@@ -1002,12 +1095,25 @@ static BOOL convertClear(id<MTLTexture> texture, MTLClearColor color, uint32_t o
     const double components[4] = {color.red, color.green, color.blue, color.alpha};
     for (unsigned i = 0u; i < 4u; ++i) {
         if (!std::isfinite(components[i])) return NO;
+        if (outF32) outF32[i] = (float)components[i];
     }
+    if (outIsF32) *outIsF32 = true;
+    /* Encode RB_A2D_SRC_SOLID_C0..3 according to A8XX R2D intermediate format (Mesa tu_clear_blit.cc:348). */
     switch ((MTLPixelFormat)rawFmt) {
     case MTLPixelFormatR16Float:
     case MTLPixelFormatRG16Float:
     case MTLPixelFormatRGBA16Float:
-        for (unsigned i = 0u; i < 4u; ++i) output[i] = floatToHalfBits((float)components[i]);
+    case MTLPixelFormatRGB10A2Unorm:
+    case MTLPixelFormatBGR10A2Unorm:
+    case MTLPixelFormatRG11B10Float:
+    case MTLPixelFormatRGB9E5Float:
+        for (unsigned i = 0u; i < 4u; ++i) {
+            double v = components[i];
+            if (rawFmt == (uint32_t)MTLPixelFormatRGB10A2Unorm || rawFmt == (uint32_t)MTLPixelFormatBGR10A2Unorm) {
+                v = std::fmax(0.0, std::fmin(1.0, v));
+            }
+            output[i] = floatToHalfBits((float)v);
+        }
         return YES;
     case MTLPixelFormatR32Float:
     case MTLPixelFormatRG32Float:
@@ -1020,14 +1126,18 @@ static BOOL convertClear(id<MTLTexture> texture, MTLClearColor color, uint32_t o
     case MTLPixelFormatR16Unorm:
     case MTLPixelFormatRG16Unorm:
     case MTLPixelFormatRGBA16Unorm:
-        for (unsigned i = 0u; i < 4u; ++i)
-            output[i] = (uint32_t)std::lround(std::fmax(0.0, std::fmin(1.0, components[i])) * 65535.0);
+        for (unsigned i = 0u; i < 4u; ++i) {
+            const float f = (float)(std::lround(std::fmax(0.0, std::fmin(1.0, components[i])) * 65535.0) / 65535.0);
+            std::memcpy(&output[i], &f, sizeof(uint32_t));
+        }
         return YES;
-    case MTLPixelFormatRGB10A2Unorm:
-    case MTLPixelFormatBGR10A2Unorm:
-        for (unsigned i = 0u; i < 3u; ++i)
-            output[i] = (uint32_t)std::lround(std::fmax(0.0, std::fmin(1.0, components[i])) * 1023.0);
-        output[3] = (uint32_t)std::lround(std::fmax(0.0, std::fmin(1.0, components[3])) * 3.0);
+    case MTLPixelFormatR16Snorm:
+    case MTLPixelFormatRG16Snorm:
+    case MTLPixelFormatRGBA16Snorm:
+        for (unsigned i = 0u; i < 4u; ++i) {
+            const float f = (float)std::fmax(-1.0, std::fmin(1.0, components[i]));
+            std::memcpy(&output[i], &f, sizeof(uint32_t));
+        }
         return YES;
     case MTLPixelFormatR8Uint:
     case MTLPixelFormatRG8Uint:
@@ -1039,6 +1149,7 @@ static BOOL convertClear(id<MTLTexture> texture, MTLClearColor color, uint32_t o
     case MTLPixelFormatRG32Uint:
     case MTLPixelFormatRGBA32Uint:
     case MTLPixelFormatRGB10A2Uint:
+        if (outIsF32) *outIsF32 = false;
         for (unsigned i = 0u; i < 4u; ++i) output[i] = (uint32_t)std::fmax(0.0, components[i]);
         return YES;
     case MTLPixelFormatR8Sint:
@@ -1050,15 +1161,20 @@ static BOOL convertClear(id<MTLTexture> texture, MTLClearColor color, uint32_t o
     case MTLPixelFormatR32Sint:
     case MTLPixelFormatRG32Sint:
     case MTLPixelFormatRGBA32Sint:
+        if (outIsF32) *outIsF32 = false;
         for (unsigned i = 0u; i < 4u; ++i) {
             const int32_t v = (int32_t)std::llround(components[i]);
             std::memcpy(&output[i], &v, sizeof(uint32_t));
         }
         return YES;
-    default:
-        for (unsigned i = 0u; i < 4u; ++i)
-            output[i] = (uint32_t)std::lround(std::fmax(0.0, std::fmin(1.0, components[i])) * 255.0);
+    default: {
+        const bool isSrgb = (caps->flags & A840_FORMAT_SRGB) != 0u;
+        for (unsigned i = 0u; i < 4u; ++i) {
+            const double c = (isSrgb && i < 3u) ? linearToSrgbChannel(components[i]) : components[i];
+            output[i] = (uint32_t)std::lround(std::fmax(0.0, std::fmin(1.0, c)) * 255.0);
+        }
         return YES;
+    }
     }
 }
 
@@ -1163,7 +1279,8 @@ static BOOL convertClear(id<MTLTexture> texture, MTLClearColor color, uint32_t o
         }
         if (attachment.loadAction == MTLLoadActionClear) {
             descriptor.color_clear[i] = true;
-            if (!convertClear(texture, attachment.clearColor, descriptor.color_clear_values[i])) {
+            if (!convertClear(texture, attachment.clearColor, descriptor.color_clear_values[i],
+                              descriptor.color_clear_rgba_f32[i], &descriptor.color_clear_is_f32[i])) {
                 nativeAttachments = NO; naFlags |= 4u; badFmt = (uint32_t)texture.pixelFormat;
             }
         }
@@ -1246,6 +1363,27 @@ static BOOL convertClear(id<MTLTexture> texture, MTLClearColor color, uint32_t o
             A840RtRenderPassDesc sysmemDesc = descriptor;
             sysmemDesc.has_memoryless_attachment = false;
             const A840RtStatus st = a840_rt_cb_begin_render_pass(command.native, &sysmemDesc, &_native);
+            if (st == A840_RT_OK && _native) {
+                BOOL anyHeapAttachment = NO;
+                for (uint32_t hi = 0u; hi < _colorTextureCount; ++hi) {
+                    if ([(id)_colorTextures[hi] isKindOfClass:A840MTLAllocation.class] &&
+                        ((A840MTLAllocation *)_colorTextures[hi]).heapSubAlloc != nullptr) {
+                        anyHeapAttachment = YES;
+                        break;
+                    }
+                }
+                if (!anyHeapAttachment && depth.texture &&
+                    [(id)depth.texture isKindOfClass:A840MTLAllocation.class] &&
+                    ((A840MTLAllocation *)depth.texture).heapSubAlloc != nullptr) {
+                    anyHeapAttachment = YES;
+                }
+                if (anyHeapAttachment) {
+                    (void)a840_rt_render_barrier(_native,
+                        A840_CACHE_CCU_FLUSH_COLOR | A840_CACHE_CCU_FLUSH_DEPTH |
+                        A840_RT_CACHE_UCHE_CLEAN | A840_CACHE_CCU_INV_COLOR |
+                        A840_RT_CACHE_CCU_INV_DEPTH | A840_CACHE_UCHE_INV, true, true);
+                }
+            }
             if (st != A840_RT_OK) {
                 A840RtTexture *c0 = sysmemDesc.color_count ? sysmemDesc.color_targets[0] : nullptr;
                 [command recordFailure:(st == A840_RT_FALLBACK_REQUIRED ? A840_RT_UNSUPPORTED : st)
@@ -1419,13 +1557,18 @@ static BOOL convertClear(id<MTLTexture> texture, MTLClearColor color, uint32_t o
     _depthStencilState = (A840MTLDepthStencilState *)state;
     const A840DepthStencilVariantDesc *ds = _depthStencilState.nativeDesc;
     if (ds) {
+        const uint8_t prevFrontRef = _state.front.reference;
+        const uint8_t prevBackRef = _state.back.reference;
+        const bool prevDepthClamp = _state.depth_clamp;
         _state.depth_test = ds->depth_test;
         _state.depth_write = ds->depth_write;
-        _state.depth_clamp = ds->depth_clamp;
+        _state.depth_clamp = prevDepthClamp || ds->depth_clamp;
         _state.depth_compare = ds->depth_compare;
         _state.stencil_test = ds->stencil_test;
         _state.front = ds->front;
         _state.back = ds->back;
+        _state.front.reference = prevFrontRef;
+        _state.back.reference = prevBackRef;
         _stateDirty = YES;
     }
 }
@@ -1624,6 +1767,9 @@ static BOOL convertClear(id<MTLTexture> texture, MTLClearColor color, uint32_t o
 }
 - (void)setVertexTexture:(id<MTLTexture>)texture atIndex:(NSUInteger)index
 {
+    if ([(id)texture isKindOfClass:A840MTLTexture.class] && ((A840MTLTexture *)texture).isB3a8Plane0) {
+        [(A840MTLTexture *)texture syncB3a8CpuContentIfNeeded];
+    }
     [self setTexture:texture index:index fragment:NO];
 }
 - (void)setVertexTextures:(const id<MTLTexture> __unsafe_unretained [])textures withRange:(NSRange)range
@@ -1652,6 +1798,9 @@ static BOOL convertClear(id<MTLTexture> texture, MTLClearColor color, uint32_t o
 - (void)dispatchThreadsPerTile:(MTLSize)threadsPerTile inRegion:(MTLRegion)region withRenderTargetArrayIndex:(NSUInteger)index { (void)threadsPerTile; (void)region; (void)index; }
 - (void)setFragmentTexture:(id<MTLTexture>)texture atIndex:(NSUInteger)index
 {
+    if ([(id)texture isKindOfClass:A840MTLTexture.class] && ((A840MTLTexture *)texture).isB3a8Plane0) {
+        [(A840MTLTexture *)texture syncB3a8CpuContentIfNeeded];
+    }
     [self setTexture:texture index:index fragment:YES];
 }
 - (void)setFragmentTextures:(const id<MTLTexture> __unsafe_unretained [])textures withRange:(NSRange)range
@@ -1766,6 +1915,42 @@ static BOOL convertClear(id<MTLTexture> texture, MTLClearColor color, uint32_t o
                 vertexBindings:_vertexBindings fragmentBindings:_fragmentBindings];
         }
         if (bindSt != A840_RT_OK) { [cb recordFailure:bindSt reason:[NSString stringWithFormat:@"bindRender failed st=%d", (int)bindSt]]; return; }
+        /* Adreno 840 Color CCU is not coherent with TPL1/UCHE. Flush Color CCU + clean UCHE
+         * and invalidate CCU/UCHE before every FetchedColor ([[color(N)]]) or self-sampling
+         * draw so TPL1 never reads unwritten CCU-resident rows (fixes y=96 half-icons & snow). */
+        BOOL needsCcuBarrier = NO;
+        if ([cb.owner.pipelineProvider respondsToSelector:@selector(planUsesFetchedColor:)] &&
+            [cb.owner.pipelineProvider planUsesFetchedColor:state.plan]) {
+            needsCcuBarrier = YES;
+            _usesFbfetch = YES;
+        }
+        if (!needsCcuBarrier && _colorTextureCount > 0u) {
+            A840MTLBindings *bArr[2] = {_vertexBindings, _fragmentBindings};
+            for (uint32_t ci = 0u; ci < _colorTextureCount && !needsCcuBarrier; ++ci) {
+                A840RtTexture *ct = nativeTexture(_colorTextures[ci], cb.owner);
+                if (!ct) continue;
+                for (int bi = 0; bi < 2 && !needsCcuBarrier; ++bi) {
+                    for (id<MTLTexture> bt in bArr[bi].textures.allValues) {
+                        A840RtTexture *rt = nativeTexture(bt, cb.owner);
+                        if (rt && rt->bo_handle == ct->bo_handle) {
+                            needsCcuBarrier = YES;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        if (needsCcuBarrier) {
+            const A840RtStatus bst = a840_rt_render_barrier(
+                _native,
+                A840_CACHE_CCU_FLUSH_COLOR | A840_RT_CACHE_UCHE_CLEAN |
+                A840_CACHE_CCU_INV_COLOR | A840_CACHE_UCHE_INV,
+                true, true);
+            if (bst != A840_RT_OK) {
+                [cb recordFailure:bst reason:[NSString stringWithFormat:@"render_ccu_barrier st=%d", (int)bst]];
+                return;
+            }
+        }
         const A840RtStatus drawSt = a840_rt_render_draw(_native, &draw);
         if (drawSt != A840_RT_OK) {
             [cb recordFailure:drawSt reason:[NSString stringWithFormat:@"render_draw failed st=%d", (int)drawSt]];

@@ -68,6 +68,13 @@ typedef struct SysSurfaceSlot {
     uint64_t surface_generation;
     bool is_cross_process;
     bool framebuffer_only;
+    bool external_backing;
+    uint32_t ext_mtl_pixel_format;
+    A840YcbcrFormat ext_ycbcr_format;
+    uint32_t ext_width;
+    uint32_t ext_height;
+    uint32_t ext_pitch_bytes;
+    bool ext_for_scanout;
     A840UbwcTexture *ubwc_tex;
 } SysSurfaceSlot;
 
@@ -635,6 +642,23 @@ static void fill_surface_info_locked(const SysSurfaceSlot *slot, uint32_t idx, A
     out->handle = make_handle(slot->generation, idx);
     out->iosurface_id = slot->iosurface_id;
     out->plane_index = slot->plane_index;
+    if (!tex) {
+        out->mtl_pixel_format = slot->ext_mtl_pixel_format;
+        out->ycbcr_format = slot->ext_ycbcr_format;
+        out->width = slot->ext_width;
+        out->height = slot->ext_height;
+        out->pitch_bytes = slot->ext_pitch_bytes;
+        out->plane_count = 1u;
+        out->tile_mode = A840_TILE_LINEAR;
+        out->generation = slot->surface_generation;
+        out->active_use_count = slot->active_use_count;
+        out->is_cross_process = slot->is_cross_process;
+        out->for_scanout = slot->ext_for_scanout;
+        out->scanout_eligible = true;
+        out->ubwc_enabled = false;
+        out->fallback_linear_required = true;
+        return;
+    }
     out->mtl_pixel_format = tex->mtl_pixel_format;
     out->ycbcr_format = tex->ycbcr_format;
     out->width = tex->width;
@@ -745,10 +769,12 @@ A840SysStatus a840_sys_bind_iosurface(A840SysFrontend *fe,
         return A840_SYS_ERR_CAPACITY;
     }
 
-    st = a840_ubwc_texture_create(fe->rt_device, &tdesc, &tex);
-    if (st != A840_RT_OK || !tex) {
-        (void)pthread_mutex_unlock(&fe->lock);
-        return A840_SYS_ERR_RUNTIME_FAILED;
+    if (!desc->external_backing) {
+        st = a840_ubwc_texture_create(fe->rt_device, &tdesc, &tex);
+        if (st != A840_RT_OK || !tex) {
+            (void)pthread_mutex_unlock(&fe->lock);
+            return A840_SYS_ERR_RUNTIME_FAILED;
+        }
     }
 
     fe->surfaces[free_idx].active = true;
@@ -758,6 +784,13 @@ A840SysStatus a840_sys_bind_iosurface(A840SysFrontend *fe,
     fe->surfaces[free_idx].surface_generation = 1u;
     fe->surfaces[free_idx].is_cross_process = desc->is_cross_process;
     fe->surfaces[free_idx].framebuffer_only = desc->framebuffer_only;
+    fe->surfaces[free_idx].external_backing = desc->external_backing;
+    fe->surfaces[free_idx].ext_mtl_pixel_format = desc->mtl_pixel_format;
+    fe->surfaces[free_idx].ext_ycbcr_format = desc->ycbcr_format;
+    fe->surfaces[free_idx].ext_width = desc->width;
+    fe->surfaces[free_idx].ext_height = desc->height;
+    fe->surfaces[free_idx].ext_pitch_bytes = desc->bytes_per_row;
+    fe->surfaces[free_idx].ext_for_scanout = desc->for_scanout;
     fe->surfaces[free_idx].ubwc_tex = tex;
     fe->stats.surfaces_bound++;
 

@@ -91,6 +91,8 @@ typedef struct A840RtRenderPassDesc {
     A840RtTexture *color_resolve_targets[A840_MAX_COLOR_TARGETS]; /* Optional 1x resolve dst */
     bool color_clear[A840_MAX_COLOR_TARGETS];
     uint32_t color_clear_values[A840_MAX_COLOR_TARGETS][4];
+    float color_clear_rgba_f32[A840_MAX_COLOR_TARGETS][4];
+    bool color_clear_is_f32[A840_MAX_COLOR_TARGETS];
     A840RtTexture *depth_target;   /* Optional; must be tiled */
     A840RtTexture *stencil_target; /* Optional; must be tiled S8 or D32S8/D24S8 */
     uint32_t sample_count;         /* 1, 2, or 4 */

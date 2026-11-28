@@ -42,6 +42,7 @@
             vertexBindings:(A840MTLBindings *)vertex fragmentBindings:(A840MTLBindings *)fragment
               colorTargets:(id<MTLTexture> const __unsafe_unretained *)colorTargets
           colorTargetCount:(uint32_t)colorTargetCount;
+- (BOOL)planUsesFetchedColor:(id)plan;
 @end
 
 #if !TARGET_OS_OSX

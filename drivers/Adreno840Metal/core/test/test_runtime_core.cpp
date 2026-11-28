@@ -363,7 +363,10 @@ static void test_group_a_router()
         q.dst_mtl_format = 252u; /* Depth32Float */
         CHECK(a840_router_eval_blit(&r, &q).predicate_id == A840_PRED_BLIT_UNSUPPORTED_FORMAT);
 
-        q.dst_mtl_format = 90u; /* RGB10A2Unorm (not in R2D color_formats) */
+        q.dst_mtl_format = 90u; /* RGB10A2Unorm now supported via R2D 55->98/54 (sys014) */
+        CHECK(a840_router_eval_blit(&r, &q).path == A840_ROUTE_PATH_RAW);
+
+        q.dst_mtl_format = 253u; /* Stencil8 (not in R2D color_formats) */
         CHECK(a840_router_eval_blit(&r, &q).predicate_id == A840_PRED_BLIT_UNSUPPORTED_FORMAT);
 
         q.is_clear = false;

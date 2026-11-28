@@ -803,12 +803,36 @@ A840RtStatus a840_heap_alloc_texture(A840Heap *heap,
                 }
             }
         } else {
+            /* Match a840_runtime_device.c:compute_tiled_alignment (Mesa fd6_layout.c). */
+            uint32_t elem_b = ((caps->flags & A840_FORMAT_SEPARATE_DEPTH_STENCIL_PLANES) != 0u)
+                                  ? 4u : (caps->block_bits / 8u);
+            uint32_t eff_cpp = elem_b * samples;
+            uint32_t t_log2 = 8u;
+            uint64_t t_row_align = 16u;
+            if ((caps->flags & A840_FORMAT_COMPRESSED) != 0u) {
+                t_log2 = 8u;
+                t_row_align = 16u;
+            } else if (eff_cpp <= 1u ||
+                       (samples == 1u && (caps->flags & A840_FORMAT_R8G8_FAULTY_FAST_CLEAR_QUIRK) != 0u)) {
+                t_log2 = 7u;
+                t_row_align = 32u;
+            } else if (eff_cpp == 2u) {
+                t_log2 = 8u;
+                t_row_align = 16u;
+            } else {
+                uint32_t fl = 0u;
+                uint32_t tmp = eff_cpp;
+                while (tmp > 1u) { tmp >>= 1u; fl++; }
+                t_log2 = 6u + fl;
+                t_row_align = 16u;
+            }
+            uint64_t t_pitch_align = UINT64_C(1) << t_log2;
             min_align = A840_RT_PAGE_BYTES;
-            if (!align_up_u64(row_bytes, 256u, &aligned_pitch) || aligned_pitch > UINT32_MAX) {
+            if (!align_up_u64(row_bytes, t_pitch_align, &aligned_pitch) || aligned_pitch > UINT32_MAX) {
                 return A840_RT_RANGE_ERROR;
             }
             pitch = (uint32_t)aligned_pitch;
-            pitch_align_log2 = 8u;
+            pitch_align_log2 = t_log2;
             {
                 uint64_t chain_bytes = 0u;
                 uint32_t lvl;
@@ -817,10 +841,10 @@ A840RtStatus a840_heap_alloc_texture(A840Heap *heap,
                     uint64_t lpitch_raw = (aligned_pitch >> lvl) ? (aligned_pitch >> lvl) : 1u;
                     uint64_t lpitch = 0u;
                     uint64_t lrows = 0u;
-                    if (!align_up_u64(lpitch_raw, 256u, &lpitch) || lpitch > UINT32_MAX) {
+                    if (!align_up_u64(lpitch_raw, t_pitch_align, &lpitch) || lpitch > UINT32_MAX) {
                         return A840_RT_RANGE_ERROR;
                     }
-                    if (!align_up_u64(lh, 16u, &lrows) ||
+                    if (!align_up_u64(lh, t_row_align, &lrows) ||
                         lrows > UINT64_MAX / lpitch ||
                         lpitch * lrows > UINT64_MAX - chain_bytes) {
                         return A840_RT_RANGE_ERROR;

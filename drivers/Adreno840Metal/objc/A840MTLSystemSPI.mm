@@ -279,6 +279,25 @@ static A840YcbcrFormat detectIOSurfaceYcbcr(IOSurfaceRef surface, MTLPixelFormat
                           (descriptor.storageMode == MTLStorageModePrivate);
     sdesc.framebuffer_only = false;
 
+    void *basePtr = IOSurfaceGetBaseAddress(iosurface);
+    const size_t allocSize = iosAllocSize;
+    const size_t pageBytes = A840_RT_PAGE_BYTES;
+    const uintptr_t baseAddr = reinterpret_cast<uintptr_t>(basePtr);
+    uintptr_t planePtr = planeCount > 0u
+        ? reinterpret_cast<uintptr_t>(IOSurfaceGetBaseAddressOfPlane(iosurface, plane))
+        : baseAddr;
+    if (hasB3a8Layout && plane < 2u && (planePtr < baseAddr || (planePtr - baseAddr) >= allocSize)) {
+        planePtr = baseAddr + b3a8Layout[plane == 0u ? 0u : 2u];
+    }
+    const bool canImportZeroCopy =
+        basePtr != nullptr &&
+        (baseAddr & (pageBytes - 1u)) == 0u &&
+        allocSize > 0u &&
+        planePtr >= baseAddr &&
+        (planePtr - baseAddr) < allocSize &&
+        ((planePtr - baseAddr) % 64u) == 0u;
+    sdesc.external_backing = canImportZeroCopy;
+
     A840SysSurfaceHandle surfHandle = A840_SYS_INVALID_HANDLE;
     A840SysSurfaceInfo surfInfo{};
     const A840SysStatus bindSt = a840_sys_bind_iosurface(self.systemFrontend, &sdesc, &surfHandle, &surfInfo);
@@ -305,23 +324,6 @@ static A840YcbcrFormat detectIOSurfaceYcbcr(IOSurfaceRef surface, MTLPixelFormat
     rtdesc.usage_flags = sdesc.usage_flags;
 
     A840RtTexture *rtTex = nullptr;
-    void *basePtr = IOSurfaceGetBaseAddress(iosurface);
-    const size_t allocSize = iosAllocSize;
-    const size_t pageBytes = A840_RT_PAGE_BYTES;
-    const uintptr_t baseAddr = reinterpret_cast<uintptr_t>(basePtr);
-    uintptr_t planePtr = planeCount > 0u
-        ? reinterpret_cast<uintptr_t>(IOSurfaceGetBaseAddressOfPlane(iosurface, plane))
-        : baseAddr;
-    if (hasB3a8Layout && plane < 2u && (planePtr < baseAddr || (planePtr - baseAddr) >= allocSize)) {
-        planePtr = baseAddr + b3a8Layout[plane == 0u ? 0u : 2u];
-    }
-    const bool canImportZeroCopy =
-        basePtr != nullptr &&
-        (baseAddr & (pageBytes - 1u)) == 0u &&
-        allocSize > 0u &&
-        planePtr >= baseAddr &&
-        (planePtr - baseAddr) < allocSize &&
-        ((planePtr - baseAddr) % 64u) == 0u;
 
     @synchronized (self) {
         A840RtStatus importBoSt = A840_RT_UNSUPPORTED;
@@ -363,12 +365,32 @@ static A840YcbcrFormat detectIOSurfaceYcbcr(IOSurfaceRef surface, MTLPixelFormat
         }
     }
 
-    return [[A840MTLTexture alloc] initWithOwner:self
-                                          native:rtTex
-                                      descriptor:descriptor
-                                       iosurface:iosurface
-                                           plane:plane
-                                   surfaceHandle:surfHandle];
+    A840MTLTexture *tex = [[A840MTLTexture alloc] initWithOwner:self
+                                                         native:rtTex
+                                                     descriptor:descriptor
+                                                      iosurface:iosurface
+                                                          plane:plane
+                                                  surfaceHandle:surfHandle];
+    if (tex && plane == 0u && isB3a8Surface(iosurface) &&
+        (sdesc.mtl_pixel_format == 550u || sdesc.mtl_pixel_format == 551u) &&
+        canImportZeroCopy) {
+        size_t p1Row = planeCount >= 2u ? IOSurfaceGetBytesPerRowOfPlane(iosurface, 1u) : 0u;
+        uintptr_t p1Ptr = planeCount >= 2u
+            ? reinterpret_cast<uintptr_t>(IOSurfaceGetBaseAddressOfPlane(iosurface, 1u))
+            : 0u;
+        size_t p1Off = (p1Ptr >= baseAddr && (p1Ptr - baseAddr) < allocSize) ? (size_t)(p1Ptr - baseAddr) : 0u;
+        if (hasB3a8Layout) {
+            if (p1Off == 0u) p1Off = b3a8Layout[2];
+            if (p1Row == 0u) p1Row = b3a8Layout[3];
+        }
+        if (p1Off > 0u && p1Row > 0u) {
+            [tex configureB3a8Plane0Offset:(size_t)(planePtr - baseAddr)
+                                 plane0Row:sdesc.bytes_per_row
+                              plane1Offset:p1Off
+                                 plane1Row:p1Row];
+        }
+    }
+    return tex;
 }
 
 - (id<MTLDepthStencilState>)newDepthStencilStateWithDescriptor:(MTLDepthStencilDescriptor *)descriptor
@@ -404,18 +426,57 @@ static A840YcbcrFormat detectIOSurfaceYcbcr(IOSurfaceRef surface, MTLPixelFormat
 
 - (MTLSizeAndAlign)heapTextureSizeAndAlignWithDescriptor:(MTLTextureDescriptor *)desc
 {
-    if (!desc) return MTLSizeAndAlign{0u, A840_RT_PAGE_BYTES};
-    A840UbwcLayout layout{};
-    if (a840_ubwc_compute_layout((uint32_t)desc.pixelFormat,
-                                 (uint32_t)desc.width,
-                                 (uint32_t)desc.height,
-                                 (uint32_t)(desc.arrayLength ? desc.arrayLength : 1u),
-                                 (uint32_t)(desc.sampleCount ? desc.sampleCount : 1u),
-                                 &layout) == A840_RT_OK && layout.total_bytes > 0u) {
-        return MTLSizeAndAlign{(NSUInteger)layout.total_bytes, A840_RT_PAGE_BYTES};
+    if (!desc || !desc.width || !desc.height) return MTLSizeAndAlign{0u, A840_RT_PAGE_BYTES};
+    const uint32_t backingFmt = a840_canonical_backing_pixel_format((uint32_t)desc.pixelFormat);
+    const A840FormatCaps *caps = a840_format_caps_lookup(backingFmt);
+    const uint32_t samples = (uint32_t)(desc.sampleCount ? desc.sampleCount : 1u);
+    const uint32_t mips = (uint32_t)(desc.mipmapLevelCount ? desc.mipmapLevelCount : 1u);
+    const uint32_t depth = (uint32_t)(desc.depth ? desc.depth : 1u);
+    uint32_t layers = (uint32_t)(desc.arrayLength ? desc.arrayLength : 1u);
+    if (desc.textureType == MTLTextureTypeCube || desc.textureType == MTLTextureTypeCubeArray) layers *= 6u;
+    const uint32_t slices = (desc.textureType == MTLTextureType3D) ? depth : layers;
+    const bool isDs = caps && ((caps->flags & (A840_FORMAT_DEPTH | A840_FORMAT_STENCIL)) != 0u);
+    const bool tiled = isDs || samples > 1u;
+    const uint32_t bw = (caps && caps->block_width) ? caps->block_width : 1u;
+    const uint32_t bh = (caps && caps->block_height) ? caps->block_height : 1u;
+    const uint32_t elemB = caps ? (((caps->flags & A840_FORMAT_SEPARATE_DEPTH_STENCIL_PLANES) != 0u)
+                                       ? 4u : (caps->block_bits / 8u)) : 4u;
+    uint64_t pAlign = 64u, rAlign = 1u;
+    if (tiled) {
+        const uint32_t effCpp = elemB * samples;
+        if (caps && (caps->flags & A840_FORMAT_COMPRESSED) != 0u) { pAlign = 256u; rAlign = 16u; }
+        else if (effCpp <= 1u || (samples == 1u && caps && (caps->flags & A840_FORMAT_R8G8_FAULTY_FAST_CLEAR_QUIRK) != 0u)) { pAlign = 128u; rAlign = 32u; }
+        else if (effCpp == 2u) { pAlign = 256u; rAlign = 16u; }
+        else { uint32_t fl = 0u, t = effCpp; while (t > 1u) { t >>= 1u; fl++; } pAlign = UINT64_C(1) << (6u + fl); rAlign = 16u; }
     }
-    const NSUInteger approx = desc.width * desc.height * 4u;
-    const NSUInteger aligned = (approx + A840_RT_PAGE_BYTES - 1u) & ~(NSUInteger)(A840_RT_PAGE_BYTES - 1u);
+    const uint64_t bx0 = ((uint64_t)desc.width + bw - 1u) / bw;
+    const uint64_t pitch0 = ((bx0 * elemB * samples) + pAlign - 1u) & ~(pAlign - 1u);
+    uint64_t chain = 0u;
+    for (uint32_t l = 0u; l < mips; ++l) {
+        const uint64_t lh = ((uint64_t)desc.height >> l) ? ((uint64_t)desc.height >> l) : 1u;
+        const uint64_t by = (lh + bh - 1u) / bh;
+        const uint64_t pr = (pitch0 >> l) ? (pitch0 >> l) : 1u;
+        const uint64_t lp = (pr + pAlign - 1u) & ~(pAlign - 1u);
+        uint64_t lr = tiled ? ((by + rAlign - 1u) & ~(rAlign - 1u)) : by;
+        if (!tiled && mips > 1u && l == mips - 1u) lr = (lr + 3u) & ~UINT64_C(3);
+        chain += lp * lr;
+    }
+    uint64_t total = ((chain + A840_RT_PAGE_BYTES - 1u) & ~(uint64_t)(A840_RT_PAGE_BYTES - 1u)) * slices;
+    if (caps && (caps->flags & A840_FORMAT_SEPARATE_DEPTH_STENCIL_PLANES) != 0u) {
+        const uint64_t spAlign = (samples <= 1u) ? 128u : 256u;
+        const uint64_t srAlign = (samples <= 1u) ? 32u : 16u;
+        const uint64_t sp0 = (((uint64_t)desc.width * samples) + spAlign - 1u) & ~(spAlign - 1u);
+        uint64_t sChain = 0u;
+        for (uint32_t l = 0u; l < mips; ++l) {
+            const uint64_t lh = ((uint64_t)desc.height >> l) ? ((uint64_t)desc.height >> l) : 1u;
+            const uint64_t pr = (sp0 >> l) ? (sp0 >> l) : 1u;
+            const uint64_t lp = (pr + spAlign - 1u) & ~(spAlign - 1u);
+            const uint64_t lr = (lh + srAlign - 1u) & ~(srAlign - 1u);
+            sChain += lp * lr;
+        }
+        total += ((sChain + A840_RT_PAGE_BYTES - 1u) & ~(uint64_t)(A840_RT_PAGE_BYTES - 1u)) * slices;
+    }
+    const NSUInteger aligned = (NSUInteger)((total + A840_RT_PAGE_BYTES - 1u) & ~(uint64_t)(A840_RT_PAGE_BYTES - 1u));
     return MTLSizeAndAlign{aligned ? aligned : A840_RT_PAGE_BYTES, A840_RT_PAGE_BYTES};
 }
 

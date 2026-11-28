@@ -82,7 +82,15 @@ static bool is_supported_2d_blit_color_fmt(uint32_t fmt_id, uint32_t *out_class)
     case A840_FMT6_16_FLOAT:
     case A840_FMT6_8_8_8_8_UNORM:
     case A840_FMT6_8_8_8_X8_UNORM:
+    case A840_FMT6_4_4_4_4_UNORM:
+    case A840_FMT6_5_5_5_1_UNORM:
+    case A840_FMT6_1_5_5_5_UNORM:
+    case A840_FMT6_5_6_5_UNORM:
     case A840_FMT6_8_8_8_8_SNORM:
+    case A840_FMT6_9_9_9_E5_FLOAT:
+    case A840_FMT6_10_10_10_2_UNORM:
+    case A840_FMT6_10_10_10_2_UNORM_DEST:
+    case A840_FMT6_11_11_10_FLOAT:
     case A840_FMT6_16_16_UNORM:
     case A840_FMT6_16_16_SNORM:
     case A840_FMT6_16_16_FLOAT:
@@ -100,6 +108,7 @@ static bool is_supported_2d_blit_color_fmt(uint32_t fmt_id, uint32_t *out_class)
     case A840_FMT6_8_8_UINT:
     case A840_FMT6_16_UINT:
     case A840_FMT6_8_8_8_8_UINT:
+    case A840_FMT6_10_10_10_2_UINT:
     case A840_FMT6_16_16_UINT:
     case A840_FMT6_32_UINT:
     case A840_FMT6_16_16_16_16_UINT:

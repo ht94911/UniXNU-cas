@@ -62,6 +62,22 @@ static void writeFieldBytes(uint8_t *pushBuf, size_t pushCap,
     std::memcpy(dst + pf.offset_bytes, src, n);
 }
 
+/* Minimal valid SPIR-V 1.0 empty Fragment shader (`void main() {}`) for
+ * vertex-only depth/stencil-only Metal render pipelines (fragmentFunction == nil). */
+static const uint32_t kEmptyFragmentSpirv[] = {
+    0x07230203u, 0x00010000u, 0x00000000u, 6u, 0u,
+    (2u << 16) | 17u, 1u,
+    (3u << 16) | 14u, 0u, 1u,
+    (5u << 16) | 15u, 4u, 4u, 0x6e69616du, 0u,
+    (3u << 16) | 16u, 4u, 7u,
+    (2u << 16) | 19u, 1u,
+    (3u << 16) | 33u, 2u, 1u,
+    (5u << 16) | 54u, 1u, 4u, 0u, 2u,
+    (2u << 16) | 248u, 5u,
+    (1u << 16) | 253u,
+    (1u << 16) | 56u,
+};
+
 static A840RtBuffer *allocZeroPageBuffer(A840RtDevice *rt)
 {
     if (!rt) return nullptr;
@@ -671,6 +687,7 @@ static NSData *a840ExtractMtlbBitcode(NSData *libData, const char *wantedName)
     int32_t sampledImageSet;
     int32_t storageImageSet;
     int32_t samplerSet;
+    BOOL usesFetchedColor;
     A840RtBuffer *zeroPageBo;
     NSMutableArray<NSValue *> *transientBuffers;
     A840MTLFunction *computeFunction;
@@ -700,6 +717,7 @@ static NSData *a840ExtractMtlbBitcode(NSData *libData, const char *wantedName)
         sampledImageSet = -1;
         storageImageSet = -1;
         samplerSet = -1;
+        usesFetchedColor = NO;
         zeroPageBo = nullptr;
         transientBuffers = [NSMutableArray new];
         computeVariants = [NSMutableDictionary new];
@@ -771,8 +789,13 @@ static NSData *a840ExtractMtlbBitcode(NSData *libData, const char *wantedName)
 {
     if (!spv || !plan || stageCount == 0u || stageCount > 2u) return NO;
     bool needsZeroPage = false;
-    for (uint32_t s = 0u; s < stageCount; ++s) {
+    plan->usesFetchedColor = NO;
+    for (uint32_t s = 0u; s < 2u; ++s) {
         plan->pushFields[s].clear();
+        plan->argTableBytes[s] = 0u;
+        plan->pushRanges[s] = {};
+    }
+    for (uint32_t s = 0u; s < stageCount; ++s) {
         plan->argTableBytes[s] = nmb_spirv_arg_table_bytes(spv, s);
         nmb_spirv_push_constant_range(spv, s, &plan->pushRanges[s]);
         const size_t pfCount = nmb_spirv_push_field_count(spv, s);
@@ -780,8 +803,14 @@ static NSData *a840ExtractMtlbBitcode(NSData *libData, const char *wantedName)
         for (size_t i = 0u; i < pfCount; ++i) {
             NmbSpirvPushField pf{};
             if (nmb_spirv_push_field(spv, s, i, &pf)) {
-                if (pf.kind == NMB_PUSH_ZERO_ADDRESS || pf.kind == NMB_PUSH_BUFFER_ADDRESS) {
+                if (pf.kind == NMB_PUSH_ZERO_ADDRESS ||
+                    pf.kind == NMB_PUSH_BUFFER_ADDRESS ||
+                    pf.kind == NMB_PUSH_ARGUMENT_TABLE_ADDRESS ||
+                    pf.kind == NMB_PUSH_BUFFER_BOUNDS) {
                     needsZeroPage = true;
+                }
+                if (pf.kind == NMB_PUSH_FETCHED_COLOR) {
+                    plan->usesFetchedColor = YES;
                 }
                 plan->pushFields[s].push_back(pf);
             }
@@ -824,6 +853,12 @@ static NSData *a840ExtractMtlbBitcode(NSData *libData, const char *wantedName)
 - (BOOL)planUsesIdentityPush:(A840MTLCompiledPlan *)plan
 {
     return plan && (!plan->pushFields[0].empty() || !plan->pushFields[1].empty());
+}
+
+- (BOOL)planUsesFetchedColor:(id)planObj
+{
+    if (![planObj isKindOfClass:[A840MTLCompiledPlan class]]) return NO;
+    return static_cast<A840MTLCompiledPlan *>(planObj)->usesFetchedColor;
 }
 
 - (BOOL)buildIdentityBindStateForPlan:(A840MTLCompiledPlan *)plan
@@ -918,9 +953,11 @@ static NSData *a840ExtractMtlbBitcode(NSData *libData, const char *wantedName)
         }
     }
 
-    /* 2. Lay out single 64B-aligned transient BO: bindless sets + inline setBytes + arg tables. */
+    /* 2. Lay out single 64B-aligned transient BO: bindless sets + inline setBytes + arg tables.
+     * Always bind slot-0 zeroed null descriptors whenever a sampled/storage image set exists
+     * so SP_GFX_BINDLESS_BASE_N is never left at 0x0 (prevents TPL1 SMMU fault on null slot). */
     size_t cursor = 0u;
-    if (plan->sampledImageSet >= 0 && uniqueTextures.count > 0u) {
+    if (plan->sampledImageSet >= 0) {
         const size_t setIdx = static_cast<size_t>(plan->sampledImageSet);
         outRes->setOffsets[setIdx] = cursor;
         outRes->setActive[setIdx] = true;
@@ -929,7 +966,7 @@ static NSData *a840ExtractMtlbBitcode(NSData *libData, const char *wantedName)
         }
         cursor += (1u + uniqueTextures.count) * kIdentityBindlessSlotBytes;
     }
-    if (plan->storageImageSet >= 0 && uniqueTextures.count > 0u) {
+    if (plan->storageImageSet >= 0) {
         const size_t setIdx = static_cast<size_t>(plan->storageImageSet);
         outRes->setOffsets[setIdx] = cursor;
         outRes->setActive[setIdx] = true;
@@ -1499,22 +1536,24 @@ static uint32_t a840AlignConstlenForPush(uint32_t rawConstlenVec4, const NmbSpir
         a840diag::reportText("A840PIPE rp-novs");
         return nil;
     }
-    if (![pipeline.fragmentFunction isKindOfClass:[A840MTLFunction class]]) {
+    if (pipeline.fragmentFunction != nil && ![pipeline.fragmentFunction isKindOfClass:[A840MTLFunction class]]) {
         char msg[128] = {};
-        snprintf(msg, sizeof(msg), "A840PIPE rp-nofs %.40s", pipeline.vertexFunction.name.UTF8String ?: "?");
+        snprintf(msg, sizeof(msg), "A840PIPE rp-badfs %.40s", pipeline.vertexFunction.name.UTF8String ?: "?");
         a840diag::reportText(msg);
         return nil;
     }
 
+    const BOOL hasFs = (pipeline.fragmentFunction != nil);
     auto *vsFn = static_cast<A840MTLFunction *>(pipeline.vertexFunction);
-    auto *fsFn = static_cast<A840MTLFunction *>(pipeline.fragmentFunction);
+    auto *fsFn = hasFs ? static_cast<A840MTLFunction *>(pipeline.fragmentFunction) : nil;
     auto *vsLib = static_cast<NmbLibrary *>(vsFn.ownerLibrary.parsedNmbLibrary);
-    auto *fsLib = static_cast<NmbLibrary *>(fsFn.ownerLibrary.parsedNmbLibrary);
+    auto *fsLib = hasFs ? static_cast<NmbLibrary *>(fsFn.ownerLibrary.parsedNmbLibrary) : nullptr;
     const char *vsName = (vsFn.sourceName ?: vsFn.name).UTF8String;
-    const char *fsName = (fsFn.sourceName ?: fsFn.name).UTF8String;
-    if (!vsLib || !fsLib || !vsName || !fsName) {
+    const char *fsName = hasFs ? (fsFn.sourceName ?: fsFn.name).UTF8String : nullptr;
+    const char *fsLabel = fsName ? fsName : "<empty>";
+    if (!vsLib || !vsName || (hasFs && (!fsLib || !fsName))) {
         char msg[128] = {};
-        snprintf(msg, sizeof(msg), "A840PIPE rp-nolib %.24s/%.24s", vsName ?: "?", fsName ?: "?");
+        snprintf(msg, sizeof(msg), "A840PIPE rp-nolib %.24s/%.24s", vsName ?: "?", fsLabel);
         a840diag::reportText(msg);
         return nil;
     }
@@ -1591,13 +1630,13 @@ static uint32_t a840AlignConstlenForPush(uint32_t rawConstlenVec4, const NmbSpir
 
     std::vector<NmbFunctionConstant> vsConsts, fsConsts;
     a840MarshalConstants([vsFn ownedConstants], vsConsts);
-    a840MarshalConstants([fsFn ownedConstants], fsConsts);
+    if (hasFs) a840MarshalConstants([fsFn ownedConstants], fsConsts);
 
     A840MarshaledLinked vsLinked{}, fsLinked{};
     if (!a840MarshalLinkedFunctions(pipeline.vertexLinkedFunctions, vsLinked) ||
-        !a840MarshalLinkedFunctions(pipeline.fragmentLinkedFunctions, fsLinked)) {
+        (hasFs && !a840MarshalLinkedFunctions(pipeline.fragmentLinkedFunctions, fsLinked))) {
         char msg[128] = {};
-        snprintf(msg, sizeof(msg), "A840PIPE rp-linked %.22s/%.22s", vsName, fsName);
+        snprintf(msg, sizeof(msg), "A840PIPE rp-linked %.22s/%.22s", vsName, fsLabel);
         a840diag::reportText(msg);
         return nil;
     }
@@ -1606,17 +1645,18 @@ static uint32_t a840AlignConstlenForPush(uint32_t rawConstlenVec4, const NmbSpir
     rdescV3.fs_linked = fsLinked.entries.empty() ? nullptr : fsLinked.entries.data();
     rdescV3.fs_linked_count = fsLinked.entries.size();
     rdescV3.vs_specialized = vsFn.isSpecialized ? 1u : 0u;
-    rdescV3.fs_specialized = fsFn.isSpecialized ? 1u : 0u;
+    rdescV3.fs_specialized = (hasFs && fsFn.isSpecialized) ? 1u : 0u;
 
     NmbSpirvResult *spv = nmb_compile_render_spirv_v3(
         _translator,
         vsLib, vsName, vsConsts.empty() ? nullptr : vsConsts.data(), vsConsts.size(),
         fsLib, fsName, fsConsts.empty() ? nullptr : fsConsts.data(), fsConsts.size(),
         &rdescV3);
-    if (!spv || nmb_spirv_stage_count(spv) < 2u) {
+    const uint32_t spvStages = spv ? static_cast<uint32_t>(nmb_spirv_stage_count(spv)) : 0u;
+    if (!spv || spvStages < (hasFs ? 2u : 1u)) {
         char msg[128] = {};
         snprintf(msg, sizeof(msg), "A840PIPE rp %.18s/%.18s f=%u,%u d=%u %.38s",
-                 vsName, fsName, rdesc.color_mtl_formats[0], rdesc.color_mtl_formats[1],
+                 vsName, fsLabel, rdesc.color_mtl_formats[0], rdesc.color_mtl_formats[1],
                  rdesc.depth_mtl_format, nmb_last_error() ?: "err");
         a840diag::reportText(msg);
         nmb_spirv_result_free(spv);
@@ -1632,11 +1672,19 @@ static uint32_t a840AlignConstlenForPush(uint32_t rawConstlenVec4, const NmbSpir
     const uint32_t stageKinds[2] = {A840_STAGE_VERTEX, A840_STAGE_FRAGMENT};
     for (uint32_t s = 0u; s < 2u; ++s) {
         size_t spvBytes = 0u;
-        const uint32_t *spvWords = nmb_spirv_words(spv, s, &spvBytes);
-        const char *spvEntry = nmb_spirv_entry_point(spv, s);
+        const uint32_t *spvWords = nullptr;
+        const char *spvEntry = nullptr;
+        if (s == 1u && (!hasFs || spvStages < 2u)) {
+            spvWords = kEmptyFragmentSpirv;
+            spvBytes = sizeof(kEmptyFragmentSpirv);
+            spvEntry = "main";
+        } else {
+            spvWords = nmb_spirv_words(spv, s, &spvBytes);
+            spvEntry = nmb_spirv_entry_point(spv, s);
+        }
         if (!spvWords || spvBytes == 0u || !spvEntry) {
             char msg[128] = {};
-            snprintf(msg, sizeof(msg), "A840PIPE rp-nospv s=%u %.22s/%.22s", s, vsName, fsName);
+            snprintf(msg, sizeof(msg), "A840PIPE rp-nospv s=%u %.22s/%.22s", s, vsName, fsLabel);
             a840diag::reportText(msg);
             nmb_spirv_result_free(spv);
             return nil;
@@ -1647,7 +1695,7 @@ static uint32_t a840AlignConstlenForPush(uint32_t rawConstlenVec4, const NmbSpir
         stageIn.spirv_words = spvWords;
         stageIn.spirv_bytes = spvBytes;
         stageIn.entry_point = spvEntry;
-        stageIn.color_rt_mask = (s == 1u) ? colorMask : 0u;
+        stageIn.color_rt_mask = (s == 1u && hasFs) ? colorMask : 0u;
         stageIn.sample_count = rdesc.sample_count;
         stageIn.flags = target.flags;
 
@@ -1656,7 +1704,7 @@ static uint32_t a840AlignConstlenForPush(uint32_t rawConstlenVec4, const NmbSpir
         if (cst != A840_COMPILE_OK || !a840_ir3_get_stage_io_info(&plan->stages[s], &plan->ioInfo[s])) {
             char msg[128] = {};
             snprintf(msg, sizeof(msg), "A840PIPE ir3 s=%u %.18s/%.18s st=%d %.36s",
-                     s, vsName, fsName, (int)cst, errBuf[0] ? errBuf : "io");
+                     s, vsName, fsLabel, (int)cst, errBuf[0] ? errBuf : "io");
             a840diag::reportText(msg);
             nmb_spirv_result_free(spv);
             return nil;
@@ -1669,13 +1717,14 @@ static uint32_t a840AlignConstlenForPush(uint32_t rawConstlenVec4, const NmbSpir
         (void)nmb_spirv_binding(spv, i, &bindings[i]);
     NmbSpirvPushConstantRange pushRanges[2]{};
     (void)nmb_spirv_push_constant_range(spv, 0u, &pushRanges[0]);
-    (void)nmb_spirv_push_constant_range(spv, 1u, &pushRanges[1]);
+    if (spvStages >= 2u) (void)nmb_spirv_push_constant_range(spv, 1u, &pushRanges[1]);
     for (uint32_t s = 0u; s < 2u; ++s) {
         plan->stages[s].constlen_vec4 = a840AlignConstlenForPush(plan->stages[s].constlen_vec4, pushRanges[s]);
     }
-    if (![self captureIdentityReflection:spv intoPlan:plan stageCount:2u]) {
+    const uint32_t reflStages = spvStages >= 2u ? 2u : 1u;
+    if (![self captureIdentityReflection:spv intoPlan:plan stageCount:reflStages]) {
         char msg[128] = {};
-        snprintf(msg, sizeof(msg), "A840PIPE rp-refl %.24s/%.24s", vsName, fsName);
+        snprintf(msg, sizeof(msg), "A840PIPE rp-refl %.24s/%.24s", vsName, fsLabel);
         a840diag::reportText(msg);
         nmb_spirv_result_free(spv);
         return nil;
@@ -1687,7 +1736,7 @@ static uint32_t a840AlignConstlenForPush(uint32_t rawConstlenVec4, const NmbSpir
                                               pushRanges, &plan->bindingPlan);
     if (bpst != A840_BINDING_PLAN_OK) {
         char msg[128] = {};
-        snprintf(msg, sizeof(msg), "A840PIPE bp %.22s/%.22s st=%d", vsName, fsName, (int)bpst);
+        snprintf(msg, sizeof(msg), "A840PIPE bp %.22s/%.22s st=%d", vsName, fsLabel, (int)bpst);
         a840diag::reportText(msg);
         return nil;
     }
@@ -1697,7 +1746,7 @@ static uint32_t a840AlignConstlenForPush(uint32_t rawConstlenVec4, const NmbSpir
                                                plan->stages[s].isa_dwords);
         if (!plan->codeBuffers[s]) {
             char msg[128] = {};
-            snprintf(msg, sizeof(msg), "A840PIPE rp-isa s=%u %.22s/%.22s", s, vsName, fsName);
+            snprintf(msg, sizeof(msg), "A840PIPE rp-isa s=%u %.22s/%.22s", s, vsName, fsLabel);
             a840diag::reportText(msg);
             return nil;
         }
@@ -1705,7 +1754,7 @@ static uint32_t a840AlignConstlenForPush(uint32_t rawConstlenVec4, const NmbSpir
             plan->privateBuffers[s] = allocPrivateScratch(device.runtime, plan->stages[s].private_mem_bytes);
             if (!plan->privateBuffers[s]) {
                 char msg[128] = {};
-                snprintf(msg, sizeof(msg), "A840PIPE rp-pvt s=%u %.22s/%.22s", s, vsName, fsName);
+                snprintf(msg, sizeof(msg), "A840PIPE rp-pvt s=%u %.22s/%.22s", s, vsName, fsLabel);
                 a840diag::reportText(msg);
                 return nil;
             }

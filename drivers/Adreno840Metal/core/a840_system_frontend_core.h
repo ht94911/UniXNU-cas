@@ -179,6 +179,7 @@ typedef struct A840SysIOSurfaceDesc {
     bool for_scanout;
     bool request_ubwc6;
     bool framebuffer_only;
+    bool external_backing;
     void *cpu_base;
     const A840MdssScanoutCaps *mdss_caps;
 } A840SysIOSurfaceDesc;

@@ -6,7 +6,29 @@
 #import "A840MTLHeapAndEvents.h"
 #import "A840MTLDiagnostics.h"
 
+#include <cmath>
 #include <cstring>
+#include "NativeMetalTranslate.h"
+
+extern "C" void sys_dcache_flush(void *start, size_t length);
+
+static const uint8_t *a840B3a8Xr10Lut()
+{
+    static uint8_t lut[1024];
+    static bool ready = false;
+    if (!ready) {
+        for (int c = 0; c < 1024; ++c) {
+            int v = ((c - 384) * 255 + 255) / 510;
+            if (c <= 384) v = 0;
+            else if (c >= 894) v = 255;
+            if (v < 0) v = 0;
+            if (v > 255) v = 255;
+            lut[c] = static_cast<uint8_t>(v);
+        }
+        ready = true;
+    }
+    return lut;
+}
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wprotocol"
@@ -15,6 +37,8 @@
 @implementation A840MTLAllocation {
     MTLResourceOptions _options;
     MTLPurgeableState _purgeableState;
+    int32_t _inFlightCount;
+    BOOL _pendingAliasable;
 }
 @synthesize label = _label;
 
@@ -66,13 +90,43 @@
 }
 - (id<MTLHeap>)heap { return _owningHeap; }
 - (NSUInteger)heapOffset { return _heapSubAlloc ? (NSUInteger)_heapSubAlloc->offset : 0u; }
-- (BOOL)isAliasable { return _heapSubAlloc ? (a840_heap_suballoc_is_aliasable(_heapSubAlloc) ? YES : NO) : NO; }
+- (BOOL)isAliasable
+{
+    if (!_heapSubAlloc) return NO;
+    @synchronized (_owner) {
+        return (_pendingAliasable || a840_heap_suballoc_is_aliasable(_heapSubAlloc)) ? YES : NO;
+    }
+}
+
+- (void)retainInFlightUse
+{
+    if (!_heapSubAlloc) return;
+    @synchronized (_owner) {
+        _inFlightCount++;
+    }
+}
+
+- (void)releaseInFlightUse
+{
+    if (!_heapSubAlloc) return;
+    @synchronized (_owner) {
+        if (_inFlightCount > 0) _inFlightCount--;
+        if (_inFlightCount == 0 && _pendingAliasable) {
+            _pendingAliasable = NO;
+            (void)a840_heap_suballoc_make_aliasable(_heapSubAlloc);
+        }
+    }
+}
 
 - (void)makeAliasable
 {
     if (!_heapSubAlloc) return;
     @synchronized (_owner) {
-        (void)a840_heap_suballoc_make_aliasable(_heapSubAlloc);
+        if (_inFlightCount > 0) {
+            _pendingAliasable = YES;
+        } else {
+            (void)a840_heap_suballoc_make_aliasable(_heapSubAlloc);
+        }
     }
 }
 
@@ -250,6 +304,15 @@
     A840MTLBuffer *_backingBuffer;
     NSUInteger _bufferOffset;
     NSUInteger _bufferBytesPerRow;
+    A840RtTexture *_iosurfaceNative;
+    A840RtTexture *_b3a8Shadow;
+    BOOL _isB3a8Plane0;
+    size_t _b3a8Plane0Offset;
+    size_t _b3a8Plane0Row;
+    size_t _b3a8Plane1Offset;
+    size_t _b3a8Plane1Row;
+    uint32_t _lastB3a8Seed;
+    BOOL _hasB3a8Seed;
 }
 
 - (instancetype)initWithOwner:(A840MTLDevice *)owner native:(A840RtTexture *)texture
@@ -268,6 +331,7 @@
 {
     if ((self = [super initWithOwner:owner options:descriptor.resourceOptions])) {
         _native = texture;
+        _iosurfaceNative = texture;
         _descriptor = [descriptor copy];
         _surfaceHandle = surfaceHandle;
         _iosurface = iosurface ? (IOSurfaceRef)CFRetain(iosurface) : nullptr;
@@ -382,6 +446,9 @@ static uint32_t a840MapTextureType(MTLTextureType t)
 {
     if (!(self = [super initWithOwner:parent.owner options:parent.resourceOptions])) return nil;
     _parentTexture = parent;
+    if (parent.isB3a8Plane0) {
+        [parent syncB3a8CpuContentIfNeeded];
+    }
     if (parent.native) {
         const uint32_t backingFmt = a840_canonical_backing_pixel_format((uint32_t)pixelFormat);
         const uint32_t a840Type = a840MapTextureType(textureType);
@@ -434,14 +501,125 @@ static uint32_t a840MapTextureType(MTLTextureType t)
         @synchronized (self.owner) { a840_ubwc_texture_destroy(_memorylessNative); }
         _memorylessNative = nullptr;
     }
-    if (_native) {
-        @synchronized (self.owner) { a840_rt_texture_release(_native); }
-        _native = nullptr;
+    A840RtTexture *orig = _iosurfaceNative ? _iosurfaceNative : _native;
+    _native = nullptr;
+    _iosurfaceNative = nullptr;
+    if (_b3a8Shadow) {
+        @synchronized (self.owner) { a840_rt_texture_release(_b3a8Shadow); }
+        _b3a8Shadow = nullptr;
+    }
+    if (orig) {
+        @synchronized (self.owner) { a840_rt_texture_release(orig); }
     }
 }
 
 - (IOSurfaceRef)iosurface { return _iosurface; }
 - (NSUInteger)iosurfacePlane { return _iosurfacePlane; }
+- (BOOL)isB3a8Plane0 { return _isB3a8Plane0; }
+
+- (void)configureB3a8Plane0Offset:(size_t)plane0Offset
+                        plane0Row:(size_t)plane0Row
+                     plane1Offset:(size_t)plane1Offset
+                        plane1Row:(size_t)plane1Row
+{
+    _isB3a8Plane0 = YES;
+    _b3a8Plane0Offset = plane0Offset;
+    _b3a8Plane0Row = plane0Row;
+    _b3a8Plane1Offset = plane1Offset;
+    _b3a8Plane1Row = plane1Row;
+    _hasB3a8Seed = NO;
+    [self syncB3a8CpuContentIfNeeded];
+}
+
+- (void)markB3a8GpuWriteTarget
+{
+    if (!_isB3a8Plane0 || !_iosurfaceNative) return;
+    @synchronized (self.owner) {
+        _native = _iosurfaceNative;
+        if (_iosurface) {
+            _lastB3a8Seed = IOSurfaceGetSeed(_iosurface);
+            _hasB3a8Seed = YES;
+        }
+    }
+}
+
+- (void)syncB3a8CpuContentIfNeeded
+{
+    if (!_isB3a8Plane0 || !_iosurface || !_iosurfaceNative) return;
+    const uint32_t seed = IOSurfaceGetSeed(_iosurface);
+    if (_hasB3a8Seed && seed == _lastB3a8Seed) return;
+    void *basePtr = IOSurfaceGetBaseAddress(_iosurface);
+    const size_t allocSize = IOSurfaceGetAllocSize(_iosurface);
+    const uint32_t w = _iosurfaceNative->width;
+    const uint32_t h = _iosurfaceNative->height;
+    if (!basePtr || !w || !h ||
+        _b3a8Plane0Offset + (size_t)h * _b3a8Plane0Row > allocSize ||
+        _b3a8Plane1Offset + (size_t)h * _b3a8Plane1Row > allocSize) {
+        return;
+    }
+    sys_dcache_flush(basePtr, allocSize);
+    const auto *p0Base = static_cast<const uint8_t *>(basePtr) + _b3a8Plane0Offset;
+    const auto *p1Base = static_cast<const uint8_t *>(basePtr) + _b3a8Plane1Offset;
+    /* Distinguish CPU/CoreGraphics 10-bit BGR10_XR + A8 (Plane 1 non-zero AND Plane 0
+     * bits 30..31 always 0) from Metal GPU-rendered BGRA8 (Plane 1 untouched = all 0). */
+    uint32_t p1NonZero = 0u;
+    uint32_t p0HighBits = 0u;
+    const uint32_t stepY = h > 16u ? (h / 16u) : 1u;
+    const uint32_t stepX = w > 16u ? (w / 16u) : 1u;
+    for (uint32_t y = 0u; y < h; y += stepY) {
+        const auto *row0 = reinterpret_cast<const uint32_t *>(p0Base + (size_t)y * _b3a8Plane0Row);
+        const uint8_t *row1 = p1Base + (size_t)y * _b3a8Plane1Row;
+        for (uint32_t x = 0u; x < w; x += stepX) {
+            if (row1[x] != 0u) p1NonZero++;
+            if ((row0[x] & 0xc0000000u) != 0u) p0HighBits++;
+        }
+    }
+    @synchronized (self.owner) {
+        if (p1NonZero == 0u || p0HighBits > 0u) {
+            _native = _iosurfaceNative;
+            _lastB3a8Seed = seed;
+            _hasB3a8Seed = YES;
+            return;
+        }
+        if (!_b3a8Shadow) {
+            A840RtTextureDesc sdesc{};
+            sdesc.mtl_pixel_format = _iosurfaceNative->mtl_pixel_format;
+            sdesc.tex_type = A840_TEX_2D;
+            sdesc.width = w;
+            sdesc.height = h;
+            sdesc.depth = 1u;
+            sdesc.array_layers = 1u;
+            sdesc.mip_levels = 1u;
+            sdesc.samples = 1u;
+            sdesc.tile_mode = A840_TILE_LINEAR;
+            sdesc.usage_flags = A840_TEX_USAGE_SHADER_READ | A840_TEX_USAGE_CPU_VISIBLE;
+            if (a840_rt_texture_create(self.owner.runtime, &sdesc, &_b3a8Shadow) != A840_RT_OK ||
+                !_b3a8Shadow || !_b3a8Shadow->cpu_ptr) {
+                if (_b3a8Shadow) { a840_rt_texture_release(_b3a8Shadow); _b3a8Shadow = nullptr; }
+                return;
+            }
+        }
+        const uint8_t *lut = a840B3a8Xr10Lut();
+        auto *dstBase = static_cast<uint8_t *>(_b3a8Shadow->cpu_ptr);
+        const uint32_t dstPitch = _b3a8Shadow->pitch_bytes;
+        for (uint32_t y = 0u; y < h; ++y) {
+            const auto *src0 = reinterpret_cast<const uint32_t *>(p0Base + (size_t)y * _b3a8Plane0Row);
+            const uint8_t *src1 = p1Base + (size_t)y * _b3a8Plane1Row;
+            auto *dst = reinterpret_cast<uint32_t *>(dstBase + (size_t)y * dstPitch);
+            for (uint32_t x = 0u; x < w; ++x) {
+                const uint32_t p = src0[x];
+                const uint32_t b = lut[p & 0x3ffu];
+                const uint32_t g = lut[(p >> 10u) & 0x3ffu];
+                const uint32_t r = lut[(p >> 20u) & 0x3ffu];
+                const uint32_t a = src1[x];
+                dst[x] = b | (g << 8u) | (r << 16u) | (a << 24u);
+            }
+        }
+        _native = _b3a8Shadow;
+        _lastB3a8Seed = seed;
+        _hasB3a8Seed = YES;
+    }
+}
 - (MTLTextureType)textureType { return _viewTextureType; }
 - (MTLPixelFormat)pixelFormat { return _viewPixelFormat; }
 - (NSUInteger)width
@@ -471,9 +649,10 @@ static uint32_t a840MapTextureType(MTLTextureType t)
 - (MTLTextureSwizzleChannels)swizzle { return _swizzle; }
 - (MTLResourceID)gpuResourceID
 {
-    if (_native) return MTLResourceID{_native->gpu_va};
-    if (self.heapSubAlloc) return MTLResourceID{self.heapSubAlloc->gpu_va};
-    return MTLResourceID{0u};
+    /* Encode metal2vulkan-v2 TextureWord in high 32 bits with safe null bindless index 0
+     * in low 32 bits — never return a raw GPU VA that would index past descriptor tables. */
+    const uint32_t word = nmb_encode_texture_word(static_cast<uint32_t>(_viewPixelFormat));
+    return MTLResourceID{static_cast<uint64_t>(word) << 32u};
 }
 - (id<MTLTexture>)parentTexture { return _parentTexture; }
 - (NSUInteger)parentRelativeLevel { return _parentRelativeLevel; }
@@ -534,24 +713,36 @@ static uint32_t a840MapTextureType(MTLTextureType t)
     const auto width = region.size.width, height = region.size.height;
     if (!_native || !_native->format_caps)
         [NSException raise:NSInvalidArgumentException format:@"Invalid native 2-D texture transfer"];
-    const NSUInteger pixelBytes = _native->format_caps->block_bits / 8u;
+    const NSUInteger bw = _native->format_caps->block_width ? _native->format_caps->block_width : 1u;
+    const NSUInteger bh = _native->format_caps->block_height ? _native->format_caps->block_height : 1u;
+    const NSUInteger blockBytes = _native->format_caps->block_bits / 8u;
     uint64_t subOffset = 0u;
     uint32_t subPitch = 0u, subW = 0u, subH = 0u;
-    if (region.origin.z || region.size.depth != 1 || !bytes || !_native->cpu_ptr ||
+    if (region.origin.z || region.size.depth != 1 || !bytes || !_native->cpu_ptr || blockBytes == 0u ||
         a840_rt_texture_get_subresource_layout(_native, (uint32_t)level, (uint32_t)slice,
                                                &subOffset, &subPitch, &subW, &subH) != A840_RT_OK ||
-        x > subW || width > subW - x || y > subH || height > subH - y ||
-        width * pixelBytes > rowBytes || (height && rowBytes > NSUIntegerMax / height))
+        x > subW || width > subW - x || y > subH || height > subH - y)
         [NSException raise:NSInvalidArgumentException format:@"Invalid native 2-D texture transfer"];
     if (!width || !height) return;
-    auto *surface = static_cast<uint8_t *>(_native->cpu_ptr) + (size_t)subOffset +
-                    y * (size_t)subPitch + x * pixelBytes;
+    const NSUInteger bx = x / bw;
+    const NSUInteger by = y / bh;
+    const NSUInteger blocksX = (width + bw - 1u) / bw;
+    const NSUInteger blocksY = (height + bh - 1u) / bh;
+    const NSUInteger copyBytes = blocksX * blockBytes;
+    if (copyBytes > rowBytes || (blocksY && rowBytes > NSUIntegerMax / blocksY))
+        [NSException raise:NSInvalidArgumentException format:@"Invalid native 2-D texture transfer"];
+    auto *surfaceStart = static_cast<uint8_t *>(_native->cpu_ptr) + (size_t)subOffset +
+                         by * (size_t)subPitch + bx * blockBytes;
+    auto *surface = surfaceStart;
     auto *user = static_cast<uint8_t *>(bytes);
-    for (NSUInteger row = 0; row < height; ++row) {
-        if (write) std::memcpy(surface, user, width * pixelBytes);
-        else std::memcpy(user, surface, width * pixelBytes);
+    for (NSUInteger row = 0; row < blocksY; ++row) {
+        if (write) std::memcpy(surface, user, copyBytes);
+        else std::memcpy(user, surface, copyBytes);
         surface += subPitch;
         user += rowBytes;
+    }
+    if (write && _iosurface) {
+        sys_dcache_flush(surfaceStart, blocksY * (size_t)subPitch);
     }
 }
 
@@ -629,7 +820,9 @@ static uint32_t clampAnisoPow2(NSUInteger raw)
         mipFilter,
         addressMode(descriptor.sAddressMode), addressMode(descriptor.tAddressMode), addressMode(descriptor.rAddressMode),
         maxAniso, minLod, maxLod, 0.0f, cmpFunc,
-        0, norm ? 0u : 1u,
+        /* metal2vulkan-v2 scales pixel-coordinate dynamic samplers in SPIR-V using
+         * SamplerWord bit 0; keep TPL1 hardware sampler normalized to avoid double-scaling. */
+        0, 0u,
     };
     if (a840_encode_samp_const(&input, _words) != A840_EMIT_OK) return nil;
     _owner = owner;
@@ -638,7 +831,20 @@ static uint32_t clampAnisoPow2(NSUInteger raw)
 }
 - (id<MTLDevice>)device { return _owner; }
 - (NSString *)label { return _descriptor.label; }
-- (MTLResourceID)gpuResourceID { return MTLResourceID{(uint64_t)(uintptr_t)(__bridge void *)self}; }
+- (MTLResourceID)gpuResourceID
+{
+    const uint32_t word = _descriptor ? nmb_encode_sampler_word(
+        _descriptor.normalizedCoordinates ? true : false,
+        static_cast<uint32_t>(_descriptor.minFilter),
+        static_cast<uint32_t>(_descriptor.magFilter),
+        static_cast<uint32_t>(_descriptor.mipFilter),
+        static_cast<uint32_t>(_descriptor.sAddressMode),
+        static_cast<uint32_t>(_descriptor.tAddressMode),
+        static_cast<uint32_t>(_descriptor.rAddressMode),
+        static_cast<uint32_t>(_descriptor.borderColor),
+        static_cast<uint32_t>(_descriptor.compareFunction)) : 0u;
+    return MTLResourceID{static_cast<uint64_t>(word) << 32u};
+}
 - (const uint32_t *)descriptorWords { return _words; }
 - (MTLSamplerDescriptor *)descriptor { return _descriptor; }
 - (NSUInteger)pixelFormat { return MTLPixelFormatInvalid; }

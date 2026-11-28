@@ -108,6 +108,9 @@ struct A840RtRenderEncoder {
     bool ended;
     bool has_program;
     bool has_state;
+    bool prim_restart_known;
+    bool prim_restart_enabled;
+    uint32_t restart_index_cached;
     uint32_t sample_count;
     uint32_t fs_flags_out;
     uint32_t color_count;
@@ -2178,6 +2181,14 @@ static uint32_t float32_to_unorm(float f, uint32_t max_val)
     return (uint32_t)(f * (float)max_val + 0.5f);
 }
 
+static float linear_to_srgb_f32(float c)
+{
+    if (!isfinite(c) || c <= 0.0f) return 0.0f;
+    if (c >= 1.0f) return 1.0f;
+    if (c <= 0.0031308f) return c * 12.92f;
+    return 1.055f * powf(c, 1.0f / 2.4f) - 0.055f;
+}
+
 static uint32_t float32_to_snorm8(float f)
 {
     int32_t v;
@@ -2219,6 +2230,7 @@ static bool rt_a2d_format_params(uint32_t fmt_id,
     case A840_FMT6_16_16_FLOAT:
     case A840_FMT6_16_16_16_16_FLOAT:
     case A840_FMT6_10_10_10_2_UNORM:
+    case A840_FMT6_10_10_10_2_UNORM_DEST:
     case A840_FMT6_11_11_10_FLOAT:
     case A840_FMT6_9_9_9_E5_FLOAT:
         *out_ifmt = A840_R2D_FLOAT16; *out_type = A840_OUTPUT_IFMT_2D_FLOAT; *out_half = 1u; return true;
@@ -2255,6 +2267,9 @@ static bool rt_a2d_format_params(uint32_t fmt_id,
 }
 
 static void pack_generic_clear_color(uint32_t fmt_id,
+                                     bool srgb,
+                                     bool is_f32,
+                                     const float clear_f32[4],
                                      const uint32_t clear_words[4],
                                      uint32_t out_dw[4])
 {
@@ -2262,7 +2277,14 @@ static void pack_generic_clear_color(uint32_t fmt_id,
     unsigned i;
     out_dw[0] = out_dw[1] = out_dw[2] = out_dw[3] = 0u;
     for (i = 0u; i < 4u; ++i) {
-        memcpy(&f[i], &clear_words[i], sizeof(float));
+        if (is_f32 && clear_f32) {
+            f[i] = clear_f32[i];
+        } else {
+            memcpy(&f[i], &clear_words[i], sizeof(float));
+        }
+        if (srgb && i < 3u) {
+            f[i] = linear_to_srgb_f32(f[i]);
+        }
     }
     switch (fmt_id) {
     case A840_FMT6_A8_UNORM:
@@ -2294,6 +2316,7 @@ static void pack_generic_clear_color(uint32_t fmt_id,
                     (float32_to_snorm8(f[3]) << 24);
         break;
     case A840_FMT6_10_10_10_2_UNORM:
+    case A840_FMT6_10_10_10_2_UNORM_DEST:
         out_dw[0] = float32_to_unorm(f[0], 1023u) |
                     (float32_to_unorm(f[1], 1023u) << 10) |
                     (float32_to_unorm(f[2], 1023u) << 20) |
@@ -2459,11 +2482,16 @@ static A840RtStatus emit_sysmem_msaa_resolve_2d(A840CmdStream *cs,
     blt_cntl = (dst->color_format_id << A840_2D_FORMAT_SHIFT) |
                (UINT32_C(15) << A840_2D_MASK_SHIFT) |
                (eff_ifmt << A840_2D_IFMT_SHIFT);
-    sp_out = (out_type << A840_2D_SP_TYPE_SHIFT) |
-             (dst->color_format_id << A840_2D_SP_FORMAT_SHIFT) |
-             (UINT32_C(15) << A840_2D_SP_MASK_SHIFT) |
-             (src_half ? A840_2D_SP_HALF_PRECISION : 0u) |
-             (dst->srgb ? A840_2D_SP_SRGB : 0u);
+    {
+        uint32_t sp_fmt = (dst->color_format_id == A840_FMT6_10_10_10_2_UNORM_DEST)
+                              ? A840_FMT6_16_16_16_16_FLOAT
+                              : dst->color_format_id;
+        sp_out = (out_type << A840_2D_SP_TYPE_SHIFT) |
+                 (sp_fmt << A840_2D_SP_FORMAT_SHIFT) |
+                 (UINT32_C(15) << A840_2D_SP_MASK_SHIFT) |
+                 (src_half ? A840_2D_SP_HALF_PRECISION : 0u) |
+                 (dst->srgb ? A840_2D_SP_SRGB : 0u);
+    }
 
     st = emit_a2d_scissor_for_rect(cs, 0u, 0u, w, h);
     if (st != A840_RT_OK) return st;
@@ -2509,7 +2537,9 @@ static A840RtStatus emit_sysmem_msaa_resolve_2d(A840CmdStream *cs,
 
     hw_samples = msaa_samples_hw_code(src->samples);
     src_tile = (src->tile_mode == A840_TILE_LINEAR) ? A840_TILE6_LINEAR : A840_TILE6_3;
-    src_info = src->color_format_id |
+    src_info = ((src->color_format_id == A840_FMT6_10_10_10_2_UNORM_DEST)
+                    ? A840_FMT6_10_10_10_2_UNORM
+                    : src->color_format_id) |
                (src_tile << A840_2D_SRC_TILE_SHIFT) |
                (src->color_swap << A840_2D_SRC_SWAP_SHIFT) |
                (src->srgb ? A840_2D_SRC_SRGB : 0u) |
@@ -2637,18 +2667,43 @@ A840RtStatus a840_rt_cb_begin_render_pass(A840RtCmdBuffer *cb,
     }
 
     st = ensure_cb_headroom(cb,
-                            ((size_t)pass->color_count + 3u) * (A840_EMIT_2D_CLEAR_MAX_DWORDS + 32u) + 128u,
+                            ((size_t)pass->color_count + 3u) * (A840_EMIT_2D_CLEAR_MAX_DWORDS + 32u) + 192u,
                             ((size_t)pass->color_count + 3u) * 2u + 4u);
     if (st != A840_RT_OK) {
         free(enc);
         return st;
     }
 
-    /* Transactionally emit optional sysmem 2D color/depth/stencil clears on pass entry.
-     * Always program GRAS_A2D_SCISSOR_TL/BR before every 2D clear so no smaller prior
-     * pass scissor can clip a larger target clear. */
+    /* Transactionally emit A8XX sysmem render begin FIRST (programming RB_CLEAR_TARGET=SYSMEM,
+     * RB_RESOLVE_WINDOW_OFFSET=0, RB_BUFFER_CNTL=0x3ff, GRAS_SC_WINDOW_SCISSOR, and
+     * CP_SET_MARKER(DIRECT_RENDER)), then emit optional sysmem generic/2D clears. */
     saved_words = cb->cs.used_dwords;
     saved_relocs = cb->cs.reloc_count;
+    {
+        uint32_t fb_w = 0u, fb_h = 0u;
+        for (i = 0; i < pass->color_count; ++i) {
+            if (pass->color_targets[i] != NULL) {
+                fb_w = pass->color_targets[i]->width;
+                fb_h = pass->color_targets[i]->height;
+                break;
+            }
+        }
+        if (fb_w == 0u && pass->depth_target != NULL) {
+            fb_w = pass->depth_target->width;
+            fb_h = pass->depth_target->height;
+        }
+        if (fb_w == 0u && pass->stencil_target != NULL) {
+            fb_w = pass->stencil_target->width;
+            fb_h = pass->stencil_target->height;
+        }
+        st = emit_sysmem_render_begin(&cb->cs, fb_w, fb_h);
+        if (st != A840_RT_OK) {
+            cb->cs.used_dwords = saved_words;
+            cb->cs.reloc_count = saved_relocs;
+            free(enc);
+            return st;
+        }
+    }
     {
         bool did_color_clear = false;
         bool did_ds_clear = false;
@@ -2661,7 +2716,10 @@ A840RtStatus a840_rt_cb_begin_render_pass(A840RtCmdBuffer *cb,
                     uint32_t ifmt = 0u, otype = 0u, half = 0u;
                     bool is_int = rt_a2d_format_params(ct->color_format_id, &ifmt, &otype, &half) &&
                                   (otype != A840_OUTPUT_IFMT_2D_FLOAT);
-                    pack_generic_clear_color(ct->color_format_id, pass->color_clear_values[i], packed);
+                    pack_generic_clear_color(ct->color_format_id, ct->srgb != 0u,
+                                             pass->color_clear_is_f32[i],
+                                             pass->color_clear_rgba_f32[i],
+                                             pass->color_clear_values[i], packed);
                     st = emit_generic_sysmem_clear(&cb->cs, ct->width, ct->height, ct->samples,
                                                    ct->color_format_id, ct->color_swap, ct->tile_mode,
                                                    ct->bo_handle, ct->gpu_va, ct->pitch_bytes,
@@ -2877,32 +2935,6 @@ A840RtStatus a840_rt_cb_begin_render_pass(A840RtCmdBuffer *cb,
         }
     }
 
-    {
-        uint32_t fb_w = 0u, fb_h = 0u;
-        for (i = 0; i < pass->color_count; ++i) {
-            if (pass->color_targets[i] != NULL) {
-                fb_w = pass->color_targets[i]->width;
-                fb_h = pass->color_targets[i]->height;
-                break;
-            }
-        }
-        if (fb_w == 0u && pass->depth_target != NULL) {
-            fb_w = pass->depth_target->width;
-            fb_h = pass->depth_target->height;
-        }
-        if (fb_w == 0u && pass->stencil_target != NULL) {
-            fb_w = pass->stencil_target->width;
-            fb_h = pass->stencil_target->height;
-        }
-        st = emit_sysmem_render_begin(&cb->cs, fb_w, fb_h);
-        if (st != A840_RT_OK) {
-            cb->cs.used_dwords = saved_words;
-            cb->cs.reloc_count = saved_relocs;
-            free(enc);
-            return st;
-        }
-    }
-
     enc->cb = cb;
     enc->sample_count = rq.sample_count;
     enc->color_count = pass->color_count;
@@ -3089,7 +3121,7 @@ A840RtStatus a840_rt_render_set_state(A840RtRenderEncoder *enc,
     }
 
     st = ensure_cb_headroom(cb,
-                            A840_EMIT_3D_RENDER_STATE_MAX_DWORDS + A840_EMIT_MSAA_STATE_MAX_DWORDS + 8u,
+                            A840_EMIT_3D_RENDER_STATE_MAX_DWORDS + A840_EMIT_MSAA_STATE_MAX_DWORDS + 20u,
                             20u);
     if (st != A840_RT_OK) {
         return st;
@@ -3112,7 +3144,16 @@ A840RtStatus a840_rt_render_set_state(A840RtRenderEncoder *enc,
             if (est != A840_EMIT_OK) return a840_rt_status_from_emit(est);
         }
     }
-    /* Program real A8XX 2x/4x hardware MSAA raster/dest/TPL1/sample-pos state. */
+    /* Synchronize VPC_PC_CNTL with PC_CNTL=0 emitted by a840_emit_3d_render_state. */
+    {
+        uint32_t zero = 0u;
+        est = a840_cs_emit_pkt4(&cb->cs, A840_REG_VPC_PC_CNTL, &zero, 1u);
+        if (est != A840_EMIT_OK) return a840_rt_status_from_emit(est);
+        enc->prim_restart_known = true;
+        enc->prim_restart_enabled = false;
+    }
+    /* Program real A8XX 2x/4x hardware MSAA state, or explicitly clear per-sample
+     * frequency registers when transitioning back to 1x so prior 4x state never leaks. */
     if (enc->sample_count > 1u) {
         A840MsaaStateDesc msaa_desc;
         memset(&msaa_desc, 0, sizeof(msaa_desc));
@@ -3121,6 +3162,12 @@ A840RtStatus a840_rt_render_set_state(A840RtRenderEncoder *enc,
         if (est != A840_EMIT_OK) {
             return a840_rt_status_from_emit(est);
         }
+    } else {
+        uint32_t zero = 0u;
+        est = a840_cs_emit_pkt4(&cb->cs, A840_REG_RB_PS_SAMPLEFREQ_CNTL, &zero, 1u);
+        if (est != A840_EMIT_OK) return a840_rt_status_from_emit(est);
+        est = a840_cs_emit_pkt4(&cb->cs, A840_REG_GRAS_LRZ_PS_SAMPLEFREQ_CNTL, &zero, 1u);
+        if (est != A840_EMIT_OK) return a840_rt_status_from_emit(est);
     }
     enc->has_state = true;
     return A840_RT_OK;
@@ -3372,9 +3419,35 @@ A840RtStatus a840_rt_render_draw(A840RtRenderEncoder *enc,
         emit_desc.index_buffer.gpu_va = desc->index_buffer->gpu_va + desc->index_offset;
     }
 
-    st = ensure_cb_headroom(cb, A840_EMIT_3D_DRAW_MAX_DWORDS, 1u);
+    st = ensure_cb_headroom(cb, A840_EMIT_3D_DRAW_MAX_DWORDS + 8u, 1u);
     if (st != A840_RT_OK) {
         return st;
+    }
+    /* Metal always enables primitive restart (0xFFFF / 0xFFFFFFFF) for indexed strip draws.
+     * Emit PC_RESTART_INDEX + PC_CNTL + VPC_PC_CNTL (Mesa a6xx.xml PRIMITIVE_RESTART bit 0). */
+    {
+        bool want_restart = (desc->index_type != A840_INDEX_NONE) &&
+                            (desc->primitive == A840_PRIM_LINE_STRIP ||
+                             desc->primitive == A840_PRIM_TRIANGLE_STRIP);
+        if (want_restart) {
+            uint32_t want_idx = (desc->index_type == A840_INDEX_UINT16)
+                                    ? UINT32_C(0xffff)
+                                    : UINT32_C(0xffffffff);
+            if (enc->restart_index_cached != want_idx) {
+                est = a840_cs_emit_pkt4(&cb->cs, A840_REG_PC_RESTART_INDEX, &want_idx, 1u);
+                if (est != A840_EMIT_OK) return a840_rt_status_from_emit(est);
+                enc->restart_index_cached = want_idx;
+            }
+        }
+        if (!enc->prim_restart_known || enc->prim_restart_enabled != want_restart) {
+            uint32_t pc_cntl = want_restart ? 1u : 0u;
+            est = a840_cs_emit_pkt4(&cb->cs, A840_REG_PC_CNTL, &pc_cntl, 1u);
+            if (est != A840_EMIT_OK) return a840_rt_status_from_emit(est);
+            est = a840_cs_emit_pkt4(&cb->cs, A840_REG_VPC_PC_CNTL, &pc_cntl, 1u);
+            if (est != A840_EMIT_OK) return a840_rt_status_from_emit(est);
+            enc->prim_restart_known = true;
+            enc->prim_restart_enabled = want_restart;
+        }
     }
     est = a840_emit_3d_draw(&cb->cs, &emit_desc);
     if (est != A840_EMIT_OK) {
