@@ -494,7 +494,7 @@ destinationBytesPerImage:(NSUInteger)destinationBytesPerImage
             viewDesc.pitch_bytes = (uint32_t)effDstRow;
             viewDesc.usage_flags = A840_TEX_USAGE_RENDER_TARGET;
             A840RtTexture *bufView = nullptr;
-            if ((!sourceLevel && !sourceSlice || srcView) &&
+            if (((!sourceLevel && !sourceSlice) || srcView) &&
                 a840_rt_texture_create_on_buffer(cb.owner.runtime, db, (uint64_t)destinationOffset,
                                                  &viewDesc, &bufView) == A840_RT_OK && bufView) {
                 const A840RtStatus bst = a840_rt_blit_2d(_native, effSrc, &srcRect, bufView, &dstRect, A840_FILTER_NEAREST);
