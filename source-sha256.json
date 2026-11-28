@@ -752,8 +752,8 @@
       "sha256": "8a18b2d0956f9970eddaab42dbc77757fdc806c153a0d2b7106ddd9fa7a89337"
     },
     "drivers/Adreno840Metal/objc/A840MTLCommand.mm": {
-      "bytes": 29735,
-      "sha256": "602e10d000bae26b649b98b6bd5764b331f328b647b5207190c29cbe1d367537"
+      "bytes": 29753,
+      "sha256": "5465027252d6c59ac3c0fc6b4082fe05da7550762cb861d06a3880d45e974a0a"
     },
     "drivers/Adreno840Metal/objc/A840MTLDevice.h": {
       "bytes": 4532,
@@ -1253,7 +1253,7 @@
   ],
   "hardware_acceptance": false,
   "kind": "PHASE6_RELEASE_PUBLIC_STAGING",
-  "manifest_sha256": "b20fd26a11ebffdf2870cc1fc5a81224ab01ffd5974f7a3e6b55df05e982436d",
+  "manifest_sha256": "91de6ae8fbb224f95ddf92fceffb9c5fa4bb186748393fa3bc818cbce77af207",
   "recipient_cert_sha256": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
   "required_targets": [
     "NativeMetalTranslate",
@@ -1264,6 +1264,6 @@
     "NezhaGpuTest"
   ],
   "schema_version": 1,
-  "total_bytes": 7726221,
+  "total_bytes": 7726239,
   "zero_turnip_verified": true
 }

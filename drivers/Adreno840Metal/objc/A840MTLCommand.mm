@@ -660,7 +660,7 @@ static thread_local bool gInCompletionCallback = false;
             bool satisfied = true;
             if ([(id)op.event isKindOfClass:A840MTLEvent.class]) {
                 if (_owner.systemFrontend &&
-                    a840_sys_event_query(_owner.systemFrontend, ((A840MTLEvent *)op.event).eventHandle, &cur) == A840_SYS_OK) {
+                    a840_sys_event_query(_owner.systemFrontend, ((A840MTLEvent *)op.event).eventHandle, &cur, nullptr, nullptr) == A840_SYS_OK) {
                     satisfied = (cur >= op.value);
                 }
             } else if ([(id)op.event respondsToSelector:@selector(signaledValue)]) {
