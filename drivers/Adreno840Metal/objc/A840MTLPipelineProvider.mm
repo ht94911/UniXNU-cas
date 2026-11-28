@@ -79,7 +79,8 @@ static A840RtBuffer *allocZeroPageBuffer(A840RtDevice *rt)
 }
 
 struct A840IdentityBindState {
-    A840RtBuffer *descBo = nullptr; /* Caller-owned +1 ref; retain on CB then release. */
+    A840RtBuffer *descBo = nullptr; /* CB-owned transient slab (no release by caller). */
+    uint64_t descOffset = 0u;
     uint64_t setOffsets[ADRENO_COMPILE_MAX_BIND_SETS] = {};
     bool setActive[ADRENO_COMPILE_MAX_BIND_SETS] = {};
     uint32_t activeSetCount = 0u;
@@ -826,6 +827,8 @@ static NSData *a840ExtractMtlbBitcode(NSData *libData, const char *wantedName)
 }
 
 - (BOOL)buildIdentityBindStateForPlan:(A840MTLCompiledPlan *)plan
+                        renderEncoder:(A840RtRenderEncoder *)renderEnc
+                       computeEncoder:(A840RtComputeEncoder *)computeEnc
                         stageBindings:(A840MTLBindings *const *)stageBindings
                            stageCount:(uint32_t)stageCount
                          colorTargets:(id<MTLTexture> const __unsafe_unretained *)colorTargets
@@ -966,19 +969,21 @@ static NSData *a840ExtractMtlbBitcode(NSData *libData, const char *wantedName)
         }
     }
 
-    const size_t totalBytes = alignUp(cursor ? cursor : 64u, 256u);
-    A840RtBufferDesc desc{};
-    desc.size_bytes = totalBytes;
-    desc.alignment = 4096u;
-    desc.usage_flags = A840_BUF_USAGE_READ | A840_BUF_USAGE_CPU_VISIBLE;
+    const size_t totalBytes = alignUp(cursor ? cursor : 64u, 64u);
     A840RtBuffer *bo = nullptr;
-    if (a840_rt_buffer_create(plan->rtDevice, &desc, &bo) != A840_RT_OK || !bo || !bo->cpu_ptr) {
-        if (bo) a840_rt_buffer_release(bo);
+    uint64_t boOff = 0u;
+    void *rawCpu = nullptr;
+    uint64_t baseVa = 0u;
+    const A840RtStatus allocSt = renderEnc
+        ? a840_rt_render_alloc_transient(renderEnc, totalBytes, 64u, &bo, &boOff, &rawCpu, &baseVa)
+        : a840_rt_compute_alloc_transient(computeEnc, totalBytes, 64u, &bo, &boOff, &rawCpu, &baseVa);
+    if (allocSt != A840_RT_OK || !bo || !rawCpu) {
         return NO;
     }
-    auto *baseCpu = static_cast<uint8_t *>(bo->cpu_ptr);
+    auto *baseCpu = static_cast<uint8_t *>(rawCpu);
     std::memset(baseCpu, 0, totalBytes);
     outRes->descBo = bo;
+    outRes->descOffset = boOff;
 
     /* 3. Write 64B A8XX hardware descriptors into bindless sets. */
     for (NSUInteger i = 0u; i < uniqueTextures.count; ++i) {
@@ -1037,10 +1042,10 @@ static NSData *a840ExtractMtlbBitcode(NSData *libData, const char *wantedName)
             std::memcpy(baseCpu + inlineCur, d.bytes, d.length);
             const uint32_t slotKey = key.unsignedIntValue;
             NSString *tag = [NSString stringWithFormat:@"%u:%u", s, slotKey];
-            inlineVaMap[tag] = @(bo->gpu_va + inlineCur);
+            inlineVaMap[tag] = @(baseVa + inlineCur);
             inlineLenMap[tag] = @(d.length);
             if (s == 0u && slotKey < 32u) {
-                outRes->vertexInlineVa[slotKey] = bo->gpu_va + inlineCur;
+                outRes->vertexInlineVa[slotKey] = baseVa + inlineCur;
                 outRes->vertexInlineLen[slotKey] = static_cast<uint32_t>(d.length);
             }
             inlineCur += alignUp(d.length, 64u);
@@ -1048,7 +1053,7 @@ static NSData *a840ExtractMtlbBitcode(NSData *libData, const char *wantedName)
     }
 
     /* 5. Pack metal2vulkan-v2 identity-domain push constants & optional argument table. */
-    const uint64_t zeroVa = plan->zeroPageBo ? plan->zeroPageBo->gpu_va : bo->gpu_va;
+    const uint64_t zeroVa = plan->zeroPageBo ? plan->zeroPageBo->gpu_va : baseVa;
     const uint32_t lx = local.width ? static_cast<uint32_t>(local.width) : 1u;
     const uint32_t ly = local.height ? static_cast<uint32_t>(local.height) : 1u;
     const uint32_t lz = local.depth ? static_cast<uint32_t>(local.depth) : 1u;
@@ -1179,7 +1184,7 @@ static NSData *a840ExtractMtlbBitcode(NSData *libData, const char *wantedName)
                 break;
             }
             case NMB_PUSH_ARGUMENT_TABLE_ADDRESS: {
-                const uint64_t argVa = plan->argTableBytes[s] > 0u ? (bo->gpu_va + argTableOff[s]) : zeroVa;
+                const uint64_t argVa = plan->argTableBytes[s] > 0u ? (baseVa + argTableOff[s]) : zeroVa;
                 writeFieldBytes(outRes->pushBuf[s], kIdentityMaxPushBytes, argCpu, argCap, pf, &argVa, sizeof(argVa));
                 break;
             }
@@ -1227,6 +1232,9 @@ static NSData *a840ExtractMtlbBitcode(NSData *libData, const char *wantedName)
             if (vec4s > plan->stages[s].constlen_vec4) vec4s = plan->stages[s].constlen_vec4;
             outRes->pushVec4Count[s] = vec4s;
         }
+    }
+    for (uint32_t s = 0u; s < outRes->activeSetCount; ++s) {
+        if (outRes->setActive[s]) outRes->setOffsets[s] += boOff;
     }
     return YES;
 }
@@ -1832,9 +1840,12 @@ static uint32_t a840AlignConstlenForPush(uint32_t rawConstlenVec4, const NmbSpir
 }
 
 - (A840RtBuffer *)buildDescriptorTableForPlan:(A840MTLCompiledPlan *)plan
+                               renderEncoder:(A840RtRenderEncoder *)renderEnc
+                              computeEncoder:(A840RtComputeEncoder *)computeEnc
                                stageBindings:(A840MTLBindings *const *)stageBindings
                                   stageKinds:(const uint32_t *)stageKinds
                                   stageCount:(uint32_t)stageCount
+                                   outOffset:(uint64_t *)outOffset
 {
     const A840BindingPlan &bp = plan->bindingPlan;
     size_t tableBytes = alignUp(bp.total_table_bytes, 64u);
@@ -1847,17 +1858,19 @@ static uint32_t a840AlignConstlenForPush(uint32_t rawConstlenVec4, const NmbSpir
             if (d.length > 0u) inlineSlabBytes += alignUp(d.length, 64u);
         }
     }
-    const size_t totalBytes = alignUp((tableBytes + inlineSlabBytes) ? (tableBytes + inlineSlabBytes) : 64u, 256u);
-    A840RtBufferDesc desc{};
-    desc.size_bytes = totalBytes;
-    desc.alignment = 4096u;
-    desc.usage_flags = A840_BUF_USAGE_READ | A840_BUF_USAGE_CPU_VISIBLE;
+    const size_t totalBytes = alignUp((tableBytes + inlineSlabBytes) ? (tableBytes + inlineSlabBytes) : 64u, 64u);
     A840RtBuffer *bo = nullptr;
-    if (a840_rt_buffer_create(plan->rtDevice, &desc, &bo) != A840_RT_OK || !bo || !bo->cpu_ptr) {
-        if (bo) a840_rt_buffer_release(bo);
+    uint64_t boOff = 0u;
+    void *rawCpu = nullptr;
+    uint64_t baseVa = 0u;
+    const A840RtStatus allocSt = renderEnc
+        ? a840_rt_render_alloc_transient(renderEnc, totalBytes, 64u, &bo, &boOff, &rawCpu, &baseVa)
+        : a840_rt_compute_alloc_transient(computeEnc, totalBytes, 64u, &bo, &boOff, &rawCpu, &baseVa);
+    if (allocSt != A840_RT_OK || !bo || !rawCpu) {
         return nullptr;
     }
-    auto *baseCpu = static_cast<uint8_t *>(bo->cpu_ptr);
+    if (outOffset) *outOffset = boOff;
+    auto *baseCpu = static_cast<uint8_t *>(rawCpu);
     std::memset(baseCpu, 0, totalBytes);
 
     NSMutableDictionary<NSString *, NSNumber *> *inlineVaMap = [NSMutableDictionary new];
@@ -1871,7 +1884,7 @@ static uint32_t a840AlignConstlenForPush(uint32_t rawConstlenVec4, const NmbSpir
             if (!d || d.length == 0u) continue;
             std::memcpy(baseCpu + cursor, d.bytes, d.length);
             NSString *tag = [NSString stringWithFormat:@"%u:%u", stageKinds[s], key.unsignedIntValue];
-            inlineVaMap[tag] = @(bo->gpu_va + cursor);
+            inlineVaMap[tag] = @(baseVa + cursor);
             inlineLenMap[tag] = @(d.length);
             cursor += alignUp(d.length, 64u);
         }
@@ -2107,7 +2120,8 @@ static uint32_t a840AlignConstlenForPush(uint32_t rawConstlenVec4, const NmbSpir
     if ([self planUsesIdentityPush:plan]) {
         A840MTLBindings *stageBindings[1] = {bindings};
         A840IdentityBindState idRes{};
-        if (![self buildIdentityBindStateForPlan:plan stageBindings:stageBindings stageCount:1u
+        if (![self buildIdentityBindStateForPlan:plan renderEncoder:nullptr computeEncoder:encoder
+                                   stageBindings:stageBindings stageCount:1u
                                     colorTargets:nullptr colorTargetCount:0u
                                         gridSize:grid threadgroupSize:local nonuniform:nonuniform
                                           outRes:&idRes]) {
@@ -2123,12 +2137,7 @@ static uint32_t a840AlignConstlenForPush(uint32_t rawConstlenVec4, const NmbSpir
                 }
             }
             const auto st = a840_rt_compute_set_bindless(encoder, idRes.activeSetCount, setBos, setOffsets);
-            if (st != A840_RT_OK) { a840_rt_buffer_release(idRes.descBo); return st; }
-        }
-        if (idRes.descBo) {
-            const auto retSt = a840_rt_compute_retain_buffer(encoder, idRes.descBo);
-            a840_rt_buffer_release(idRes.descBo);
-            if (retSt != A840_RT_OK) return retSt;
+            if (st != A840_RT_OK) return st;
         }
         const A840CompiledStage &stage = plan->stages[0];
         const A840Ir3StageIoInfo &io = plan->ioInfo[0];
@@ -2155,8 +2164,10 @@ static uint32_t a840AlignConstlenForPush(uint32_t rawConstlenVec4, const NmbSpir
 
     const uint32_t stageKind = A840_STAGE_COMPUTE;
     A840MTLBindings *stageBindings[1] = {bindings};
-    A840RtBuffer *descBo = [self buildDescriptorTableForPlan:plan stageBindings:stageBindings
-                                                  stageKinds:&stageKind stageCount:1u];
+    uint64_t descOff = 0u;
+    A840RtBuffer *descBo = [self buildDescriptorTableForPlan:plan renderEncoder:nullptr computeEncoder:encoder
+                                               stageBindings:stageBindings stageKinds:&stageKind
+                                                  stageCount:1u outOffset:&descOff];
     if (!descBo) return A840_RT_OOM;
 
     const A840BindingPlan &bp = plan->bindingPlan;
@@ -2166,17 +2177,14 @@ static uint32_t a840AlignConstlenForPush(uint32_t rawConstlenVec4, const NmbSpir
     for (uint32_t s = 0u; s < ADRENO_COMPILE_MAX_BIND_SETS; ++s) {
         if (bp.sets[s].table_bytes > 0u) {
             setBos[s] = descBo;
-            setOffsets[s] = bp.sets[s].base_offset_bytes;
+            setOffsets[s] = descOff + bp.sets[s].base_offset_bytes;
             activeSets = s + 1u;
         }
     }
     if (activeSets > 0u) {
         const auto st = a840_rt_compute_set_bindless(encoder, activeSets, setBos, setOffsets);
-        if (st != A840_RT_OK) { a840_rt_buffer_release(descBo); return st; }
+        if (st != A840_RT_OK) return st;
     }
-    const auto retDescSt = a840_rt_compute_retain_buffer(encoder, descBo);
-    a840_rt_buffer_release(descBo);
-    if (retDescSt != A840_RT_OK) return retDescSt;
 
     const A840CompiledStage &stage = plan->stages[0];
     const A840Ir3StageIoInfo &io = plan->ioInfo[0];
@@ -2240,15 +2248,12 @@ static uint32_t a840AlignConstlenForPush(uint32_t rawConstlenVec4, const NmbSpir
 
     if ([self planUsesIdentityPush:plan]) {
         A840IdentityBindState idRes{};
-        if (![self buildIdentityBindStateForPlan:plan stageBindings:stageBindings stageCount:plan->stageCount
+        if (![self buildIdentityBindStateForPlan:plan renderEncoder:encoder computeEncoder:nullptr
+                                   stageBindings:stageBindings stageCount:plan->stageCount
                                     colorTargets:colorTargets colorTargetCount:colorTargetCount
                                         gridSize:MTLSizeMake(1, 1, 1) threadgroupSize:MTLSizeMake(1, 1, 1)
                                       nonuniform:NO outRes:&idRes]) {
             return A840_RT_OOM;
-        }
-        if (idRes.descBo) {
-            const auto retSt = a840_rt_render_retain_buffer(encoder, idRes.descBo);
-            if (retSt != A840_RT_OK) { a840_rt_buffer_release(idRes.descBo); return retSt; }
         }
         if (idRes.activeSetCount > 0u) {
             uint64_t setVas[ADRENO_COMPILE_MAX_BIND_SETS] = {};
@@ -2256,17 +2261,13 @@ static uint32_t a840AlignConstlenForPush(uint32_t rawConstlenVec4, const NmbSpir
                 if (idRes.setActive[s]) setVas[s] = idRes.descBo->gpu_va + idRes.setOffsets[s];
             }
             const auto est = a840_gfx_sds_emit_bindless(&sdsCs, idRes.activeSetCount, setVas);
-            if (est != A840_EMIT_OK) { a840_rt_buffer_release(idRes.descBo); return a840_rt_status_from_emit(est); }
+            if (est != A840_EMIT_OK) return a840_rt_status_from_emit(est);
         }
         if (plan->vfdInputCount > 0u) {
             const auto vfdSt = [self emitVfdForPlan:plan encoder:encoder vertexBindings:vertex
                                      inlineVertexVa:idRes.vertexInlineVa inlineVertexLen:idRes.vertexInlineLen
                                          fallbackBo:idRes.descBo intoCs:&sdsCs];
-            if (vfdSt != A840_RT_OK) { a840_rt_buffer_release(idRes.descBo); return vfdSt; }
-        }
-        if (idRes.descBo) {
-            a840_rt_buffer_release(idRes.descBo);
-            idRes.descBo = nullptr;
+            if (vfdSt != A840_RT_OK) return vfdSt;
         }
         for (uint32_t s = 0u; s < 2u; ++s) {
             const A840CompiledStage &stage = plan->stages[s];
@@ -2301,30 +2302,28 @@ static uint32_t a840AlignConstlenForPush(uint32_t rawConstlenVec4, const NmbSpir
             }
         }
         if (sdsCs.used_dwords == 0u) return A840_RT_OK;
-        A840RtBufferDesc sdsBoDesc{};
-        sdsBoDesc.size_bytes = alignUp(sdsCs.used_dwords * sizeof(uint32_t), 256u);
-        sdsBoDesc.alignment = 4096u;
-        sdsBoDesc.usage_flags = A840_BUF_USAGE_READ | A840_BUF_USAGE_CPU_VISIBLE;
+        const size_t sdsBytes = alignUp(sdsCs.used_dwords * sizeof(uint32_t), 64u);
         A840RtBuffer *sdsBo = nullptr;
-        if (a840_rt_buffer_create(plan->rtDevice, &sdsBoDesc, &sdsBo) != A840_RT_OK || !sdsBo || !sdsBo->cpu_ptr) {
-            if (sdsBo) a840_rt_buffer_release(sdsBo);
-            return A840_RT_OOM;
-        }
-        std::memcpy(sdsBo->cpu_ptr, sdsWords, sdsCs.used_dwords * sizeof(uint32_t));
+        uint64_t sdsOff = 0u;
+        void *sdsCpu = nullptr;
+        uint64_t sdsVa = 0u;
+        const auto sdsAllocSt = a840_rt_render_alloc_transient(encoder, sdsBytes, 64u, &sdsBo, &sdsOff, &sdsCpu, &sdsVa);
+        if (sdsAllocSt != A840_RT_OK || !sdsBo || !sdsCpu) return A840_RT_OOM;
+        std::memcpy(sdsCpu, sdsWords, sdsCs.used_dwords * sizeof(uint32_t));
 
         A840RtSdsGroupDesc grp{};
         grp.group_id = 0u;
         grp.enable_mask = A840_SDS_SYSMEM | A840_SDS_GMEM;
         grp.state_dwords = static_cast<uint32_t>(sdsCs.used_dwords);
         grp.state_buffer = sdsBo;
-        grp.state_offset = 0u;
-        const auto sdsSt = a840_rt_render_set_sds(encoder, &grp, 1u);
-        a840_rt_buffer_release(sdsBo);
-        return sdsSt;
+        grp.state_offset = sdsOff;
+        return a840_rt_render_set_sds(encoder, &grp, 1u);
     }
 
-    A840RtBuffer *descBo = [self buildDescriptorTableForPlan:plan stageBindings:stageBindings
-                                                  stageKinds:stageKinds stageCount:2u];
+    uint64_t descOff = 0u;
+    A840RtBuffer *descBo = [self buildDescriptorTableForPlan:plan renderEncoder:encoder computeEncoder:nullptr
+                                               stageBindings:stageBindings stageKinds:stageKinds
+                                                  stageCount:2u outOffset:&descOff];
     if (!descBo) return A840_RT_OOM;
 
     const A840BindingPlan &bp = plan->bindingPlan;
@@ -2332,26 +2331,20 @@ static uint32_t a840AlignConstlenForPush(uint32_t rawConstlenVec4, const NmbSpir
     uint32_t activeSets = 0u;
     for (uint32_t s = 0u; s < ADRENO_COMPILE_MAX_BIND_SETS; ++s) {
         if (bp.sets[s].table_bytes > 0u) {
-            setVas[s] = descBo->gpu_va + bp.sets[s].base_offset_bytes;
+            setVas[s] = descBo->gpu_va + descOff + bp.sets[s].base_offset_bytes;
             activeSets = s + 1u;
         }
     }
-    {
-        const auto retDescSt = a840_rt_render_retain_buffer(encoder, descBo);
-        if (retDescSt != A840_RT_OK) { a840_rt_buffer_release(descBo); return retDescSt; }
-    }
     if (activeSets > 0u) {
         const auto est = a840_gfx_sds_emit_bindless(&sdsCs, activeSets, setVas);
-        if (est != A840_EMIT_OK) { a840_rt_buffer_release(descBo); return a840_rt_status_from_emit(est); }
+        if (est != A840_EMIT_OK) return a840_rt_status_from_emit(est);
     }
     if (plan->vfdInputCount > 0u) {
         const auto vfdSt = [self emitVfdForPlan:plan encoder:encoder vertexBindings:vertex
                                  inlineVertexVa:nullptr inlineVertexLen:nullptr
                                      fallbackBo:descBo intoCs:&sdsCs];
-        if (vfdSt != A840_RT_OK) { a840_rt_buffer_release(descBo); return vfdSt; }
+        if (vfdSt != A840_RT_OK) return vfdSt;
     }
-    a840_rt_buffer_release(descBo);
-    descBo = nullptr;
 
     for (uint32_t s = 0u; s < 2u; ++s) {
         const A840CompiledStage &stage = plan->stages[s];
@@ -2399,26 +2392,22 @@ static uint32_t a840AlignConstlenForPush(uint32_t rawConstlenVec4, const NmbSpir
     }
 
     if (sdsCs.used_dwords == 0u) return A840_RT_OK;
-    A840RtBufferDesc sdsBoDesc{};
-    sdsBoDesc.size_bytes = alignUp(sdsCs.used_dwords * sizeof(uint32_t), 256u);
-    sdsBoDesc.alignment = 4096u;
-    sdsBoDesc.usage_flags = A840_BUF_USAGE_READ | A840_BUF_USAGE_CPU_VISIBLE;
+    const size_t sdsBytes = alignUp(sdsCs.used_dwords * sizeof(uint32_t), 64u);
     A840RtBuffer *sdsBo = nullptr;
-    if (a840_rt_buffer_create(plan->rtDevice, &sdsBoDesc, &sdsBo) != A840_RT_OK || !sdsBo || !sdsBo->cpu_ptr) {
-        if (sdsBo) a840_rt_buffer_release(sdsBo);
-        return A840_RT_OOM;
-    }
-    std::memcpy(sdsBo->cpu_ptr, sdsWords, sdsCs.used_dwords * sizeof(uint32_t));
+    uint64_t sdsOff = 0u;
+    void *sdsCpu = nullptr;
+    uint64_t sdsVa = 0u;
+    const auto sdsAllocSt = a840_rt_render_alloc_transient(encoder, sdsBytes, 64u, &sdsBo, &sdsOff, &sdsCpu, &sdsVa);
+    if (sdsAllocSt != A840_RT_OK || !sdsBo || !sdsCpu) return A840_RT_OOM;
+    std::memcpy(sdsCpu, sdsWords, sdsCs.used_dwords * sizeof(uint32_t));
 
     A840RtSdsGroupDesc grp{};
     grp.group_id = 0u;
     grp.enable_mask = A840_SDS_SYSMEM | A840_SDS_GMEM;
     grp.state_dwords = static_cast<uint32_t>(sdsCs.used_dwords);
     grp.state_buffer = sdsBo;
-    grp.state_offset = 0u;
-    const auto sdsSt = a840_rt_render_set_sds(encoder, &grp, 1u);
-    a840_rt_buffer_release(sdsBo);
-    return sdsSt;
+    grp.state_offset = sdsOff;
+    return a840_rt_render_set_sds(encoder, &grp, 1u);
 }
 @end
 

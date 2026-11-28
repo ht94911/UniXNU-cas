@@ -8,6 +8,7 @@
 #import "A840MTLEncoders.h"
 #import "A840MTLDiagnostics.h"
 #include <time.h>
+#include <unistd.h>
 #import "A840MTLHeapAndEvents.h"
 #import "A840MTLScanoutBridge.h"
 #include "../core/a840_production_router.h"
@@ -185,7 +186,9 @@ static thread_local bool gInCompletionCallback = false;
     NSError *_recordingError;
     BOOL _activeEncoder, _scheduled, _callbacksDone;
     NSMutableOrderedSet<id<MTLResource>> *_resources;
+    NSMutableOrderedSet<id<MTLResource>> *_writtenResources;
     NSMutableOrderedSet<id<MTLHeap>> *_heaps;
+    NSMutableArray<A840PendingSignalOp *> *_waitOps;
     NSMutableArray<A840PendingSignalOp *> *_signalOps;
     NSMutableArray<id<MTLDrawable>> *_drawables;
     NSMutableArray<MTLCommandBufferHandler> *_scheduledHandlers, *_completedHandlers;
@@ -206,7 +209,9 @@ static thread_local bool gInCompletionCallback = false;
     _owner = queue.owner;
     _changed = [NSCondition new];
     _resources = [NSMutableOrderedSet new];
+    _writtenResources = [NSMutableOrderedSet new];
     _heaps = [NSMutableOrderedSet new];
+    _waitOps = [NSMutableArray new];
     _signalOps = [NSMutableArray new];
     _drawables = [NSMutableArray new];
     _scheduledHandlers = [NSMutableArray new];
@@ -304,6 +309,17 @@ static thread_local bool gInCompletionCallback = false;
     [_changed unlock];
 }
 
+- (void)useWrittenResource:(id<MTLResource>)resource
+{
+    if (!resource) return;
+    [self useResource:resource];
+    [_changed lock];
+    if (_status < MTLCommandBufferStatusCommitted) {
+        [_writtenResources addObject:resource];
+    }
+    [_changed unlock];
+}
+
 - (void)useHeap:(id<MTLHeap>)heap
 {
     if (!heap) return;
@@ -358,13 +374,20 @@ static thread_local bool gInCompletionCallback = false;
 
 - (void)encodeWaitForEvent:(id<MTLEvent>)event value:(uint64_t)value
 {
-    (void)value;
     const BOOL isNative = event && [(id)event isKindOfClass:A840MTLEvent.class];
     const BOOL isExternalShared = event && !isNative && [(id)event respondsToSelector:@selector(signaledValue)];
     if (!isNative && !isExternalShared) {
         [self recordFailure:A840_RT_WRONG_DEVICE reason:@"waitEvt_dev"];
         return;
     }
+    A840PendingSignalOp *op = [A840PendingSignalOp new];
+    op.event = event;
+    op.value = value;
+    [_changed lock];
+    if (_status < MTLCommandBufferStatusCommitted) {
+        [_waitOps addObject:op];
+    }
+    [_changed unlock];
     @synchronized (_owner) {
         if (self.wantsRaw) {
             (void)a840_rt_cb_encode_barrier(_native, A840_CACHE_UCHE_INV, true, true);
@@ -616,16 +639,58 @@ static thread_local bool gInCompletionCallback = false;
     [_changed unlock];
 }
 
-- (void)flushImportedHostMemory
+- (void)waitForPendingEvents
+{
+    NSArray<A840PendingSignalOp *> *waits = nil;
+    [_changed lock];
+    if (_waitOps.count > 0u) waits = [_waitOps copy];
+    [_changed unlock];
+    if (!waits.count) return;
+
+    struct timespec startTs{};
+    (void)clock_gettime(CLOCK_MONOTONIC, &startTs);
+    const uint64_t startNs = static_cast<uint64_t>(startTs.tv_sec) * UINT64_C(1000000000) +
+                             static_cast<uint64_t>(startTs.tv_nsec);
+    static constexpr uint64_t kMaxWaitNs = UINT64_C(2000000000); /* 2s safety bound */
+
+    for (A840PendingSignalOp *op in waits) {
+        useconds_t sleepUs = 50u;
+        for (;;) {
+            uint64_t cur = 0u;
+            bool satisfied = true;
+            if ([(id)op.event isKindOfClass:A840MTLEvent.class]) {
+                if (_owner.systemFrontend &&
+                    a840_sys_event_query(_owner.systemFrontend, ((A840MTLEvent *)op.event).eventHandle, &cur) == A840_SYS_OK) {
+                    satisfied = (cur >= op.value);
+                }
+            } else if ([(id)op.event respondsToSelector:@selector(signaledValue)]) {
+                cur = [(id<MTLSharedEvent>)op.event signaledValue];
+                satisfied = (cur >= op.value);
+            }
+            if (satisfied) break;
+            struct timespec nowTs{};
+            (void)clock_gettime(CLOCK_MONOTONIC, &nowTs);
+            const uint64_t nowNs = static_cast<uint64_t>(nowTs.tv_sec) * UINT64_C(1000000000) +
+                                   static_cast<uint64_t>(nowTs.tv_nsec);
+            if (nowNs >= startNs && (nowNs - startNs) >= kMaxWaitNs) break;
+            usleep(sleepUs);
+            if (sleepUs < 500u) sleepUs *= 2u;
+        }
+    }
+}
+
+- (void)flushImportedHostMemoryWrittenOnly:(BOOL)writtenOnly
 {
     /* NativeAdreno ABI maps RW-imported IOSurfaces and host no-copy buffers non-cacheable
      * on the GPU while keeping the caller's cacheable CPU mapping. Clean CPU D-cache lines
-     * before submission (so GPU sees CPU/CoreGraphics pixels) and clean+invalidate after
-     * completion (so CPU/UIKit/Scanout reads GPU output instead of stale prefetched lines). */
+     * for all bound resources before submission (so GPU sees CPU/CoreGraphics pixels), and
+     * clean+invalidate ONLY GPU-written resources after completion (skipping read-only
+     * imported icons/glyphs and the 12.6 MB scanout source buffer). */
     std::vector<std::pair<uintptr_t, size_t>> ranges;
     [_changed lock];
-    ranges.reserve(_resources.count);
-    for (id<MTLResource> res in _resources) {
+    NSMutableOrderedSet<id<MTLResource>> *set = writtenOnly ? _writtenResources : _resources;
+    ranges.reserve(set.count);
+    for (id<MTLResource> res in set) {
         if ([(id)res isKindOfClass:A840MTLTexture.class]) {
             for (A840MTLTexture *t = (A840MTLTexture *)res; t; t = [(id)t.parentTexture isKindOfClass:A840MTLTexture.class] ? (A840MTLTexture *)t.parentTexture : nil) {
                 if (t.iosurface) {
@@ -659,14 +724,19 @@ static thread_local bool gInCompletionCallback = false;
 
 - (NSError *)executeRaw
 {
-    [self flushImportedHostMemory];
+    [self waitForPendingEvents];
+    [self flushImportedHostMemoryWrittenOnly:NO];
     A840RtStatus status;
     uint64_t fence = 0u;
+    A840RtWaitInfo waitInfo{};
     @synchronized (_owner) {
         status = a840_rt_cb_used_dwords(_native) ? A840_RT_OK :
             a840_rt_cb_encode_barrier(_native, 0, false, true);
         if (status == A840_RT_OK) status = a840_rt_cb_commit(_native);
-        if (status == A840_RT_OK) fence = a840_rt_cb_submit_fence(_native);
+        if (status == A840_RT_OK) {
+            fence = a840_rt_cb_submit_fence(_native);
+            status = a840_rt_cb_get_wait_info(_native, &waitInfo);
+        }
     }
     if (status != A840_RT_OK) return a840_metal_error(status, @"Raw command buffer submission failed");
     a840_hwtest_record_command_buffer((__bridge void *)self, A840_PRED_NONE);
@@ -682,8 +752,20 @@ static thread_local bool gInCompletionCallback = false;
                                                 earlyPromise:YES];
     }
 
-    @synchronized (_owner) { status = a840_rt_cb_wait_until_completed(_native, fenceWaitNanoseconds); }
-    [self flushImportedHostMemory];
+    /* Execute blocking kernel fence wait OUTSIDE @synchronized(_owner) so other threads
+     * (encoding, surface import, scanout presentation) never stall behind GPU execution. */
+    if (!waitInfo.already_completed) {
+        uint64_t ticks = 0u;
+        const A840TransportStatus tst = waitInfo.transport.ops->fence_wait(
+            waitInfo.transport.ctx, waitInfo.queue_handle, waitInfo.submit_fence,
+            fenceWaitNanoseconds, &ticks);
+        if (tst == A840_TRANSPORT_TIMEOUT) status = A840_RT_TIMEOUT;
+        else if (tst != A840_TRANSPORT_OK) status = A840_RT_TRANSPORT_ERROR;
+        else {
+            @synchronized (_owner) { status = a840_rt_cb_complete_waited(_native); }
+        }
+    }
+    [self flushImportedHostMemoryWrittenOnly:YES];
     if (status != A840_RT_OK) {
         return a840_metal_error(status, @"Raw command buffer wait failed");
     }
@@ -714,7 +796,9 @@ static thread_local bool gInCompletionCallback = false;
         }
     }
     [_resources removeAllObjects];
+    [_writtenResources removeAllObjects];
     [_heaps removeAllObjects];
+    [_waitOps removeAllObjects];
     [_signalOps removeAllObjects];
     [_drawables removeAllObjects];
 }

@@ -487,6 +487,93 @@ A840RtStatus a840_rt_device_create(const A840BackendTransport *transport,
     return A840_RT_OK;
 }
 
+static void drain_bo_pools(A840RtDevice *device)
+{
+    size_t i;
+    if (!device) {
+        return;
+    }
+    for (i = 0u; i < device->ib_pool_count; ++i) {
+        a840_rt_buffer_release(device->ib_pool[i]);
+        device->ib_pool[i] = NULL;
+    }
+    device->ib_pool_count = 0u;
+    for (i = 0u; i < device->slab_pool_count; ++i) {
+        a840_rt_buffer_release(device->slab_pool[i]);
+        device->slab_pool[i] = NULL;
+    }
+    device->slab_pool_count = 0u;
+}
+
+void a840_rt_device_set_bo_pool_enabled(A840RtDevice *device, bool enabled)
+{
+    if (!device) {
+        return;
+    }
+    device->bo_pool_enabled = enabled;
+    if (!enabled) {
+        drain_bo_pools(device);
+    }
+}
+
+bool a840_rt_device_bo_pool_enabled(const A840RtDevice *device)
+{
+    return device ? device->bo_pool_enabled : false;
+}
+
+A840RtStatus a840_rt_device_acquire_pooled_bo(A840RtDevice *device,
+                                              uint64_t size_bytes,
+                                              bool is_slab,
+                                              A840RtBuffer **out_buffer)
+{
+    A840RtBufferDesc desc;
+    if (!device || !out_buffer || size_bytes == 0u) {
+        return A840_RT_INVALID_ARG;
+    }
+    *out_buffer = NULL;
+    if (device->bo_pool_enabled) {
+        if (is_slab && size_bytes == A840_RT_SLAB_BYTES && device->slab_pool_count > 0u) {
+            *out_buffer = device->slab_pool[--device->slab_pool_count];
+            device->slab_pool[device->slab_pool_count] = NULL;
+            return A840_RT_OK;
+        }
+        if (!is_slab && size_bytes == A840_RT_POOLED_IB_BYTES && device->ib_pool_count > 0u) {
+            *out_buffer = device->ib_pool[--device->ib_pool_count];
+            device->ib_pool[device->ib_pool_count] = NULL;
+            return A840_RT_OK;
+        }
+    }
+    memset(&desc, 0, sizeof(desc));
+    desc.size_bytes = size_bytes;
+    desc.alignment = A840_RT_PAGE_BYTES;
+    desc.usage_flags = A840_BUF_USAGE_READ | A840_BUF_USAGE_CPU_VISIBLE;
+    return a840_rt_buffer_create(device, &desc, out_buffer);
+}
+
+void a840_rt_device_recycle_pooled_bo(A840RtDevice *device,
+                                      A840RtBuffer *buffer,
+                                      bool is_slab)
+{
+    if (!buffer) {
+        return;
+    }
+    if (device && device->bo_pool_enabled &&
+        buffer->device == device && buffer->device_id == device->device_id &&
+        buffer->refcount == 1u && !buffer->imported && !buffer->parent_buffer) {
+        if (is_slab && buffer->size_bytes == A840_RT_SLAB_BYTES &&
+            device->slab_pool_count < A840_RT_SLAB_POOL_MAX) {
+            device->slab_pool[device->slab_pool_count++] = buffer;
+            return;
+        }
+        if (!is_slab && buffer->size_bytes == A840_RT_POOLED_IB_BYTES &&
+            device->ib_pool_count < A840_RT_IB_POOL_MAX) {
+            device->ib_pool[device->ib_pool_count++] = buffer;
+            return;
+        }
+    }
+    a840_rt_buffer_release(buffer);
+}
+
 void a840_rt_device_destroy(A840RtDevice *device)
 {
     A840BoUnmapDesc unmap;
@@ -494,6 +581,7 @@ void a840_rt_device_destroy(A840RtDevice *device)
     if (!device) {
         return;
     }
+    drain_bo_pools(device);
     if (device->border_color_bo) {
         memset(&unmap, 0, sizeof(unmap));
         unmap.handle = device->border_color_bo;

@@ -73,10 +73,13 @@ static BOOL isProcessAllowedByClientsFile(const char *procName)
     if (!procName || !procName[0]) return NO;
     char clientsPath[1024] = {};
     if (!resolveSiblingPath("NativeAdrenoMetal.clients", clientsPath, sizeof(clientsPath))) {
-        return NO;
+        return YES;
     }
+    /* Match working NativeAdrenoMetalPlugin.mm: when no explicit .clients allowlist
+     * is deployed, allow all client processes (PosterBoard, CollectionsPoster,
+     * UnityPoster, SBRendererService, SpringBoard, Apps) to open native Adreno Metal. */
     FILE *f = fopen(clientsPath, "r");
-    if (!f) return NO;
+    if (!f) return YES;
     char text[1024] = {};
     const size_t n = fread(text, 1u, sizeof(text) - 1u, f);
     fclose(f);
@@ -127,7 +130,7 @@ static id<MTLDevice> createSystemDeviceForPort(unsigned port, const A840SysPubli
     /* Retain accelerator port for progress markers and backboardd GOP scanout loop. */
     if (retainFn) retainFn(port);
     a840diag::setAcceleratorPort(port);
-    a840diag::markPort(port, 0x6800u);
+    if (isRenderServer || isHwTest) a840diag::markPort(port, 0x6800u);
 
     /* Ensure plain linear 8-bit BGRA IOSurfaces/framebuffers (no Apple-proprietary AFBC/XR10/EDR compression). */
     a840SetQuartzCoreEdrEnv();
@@ -172,12 +175,12 @@ static id<MTLDevice> createSystemDeviceForPort(unsigned port, const A840SysPubli
         return nil;
     }
     a840_mtl_install_phase3_hwtest_adapters();
-    a840diag::markPort(port, 0x6802u);
+    if (isRenderServer || isHwTest) a840diag::markPort(port, 0x6802u);
 
     if (isRenderServer) {
         [device.scanoutBridge startGopScanoutLoopWithAcceleratorPort:port];
     }
-    a840diag::markPort(port, 0x6803u);
+    if (isRenderServer || isHwTest) a840diag::markPort(port, 0x6803u);
     return device;
 }
 

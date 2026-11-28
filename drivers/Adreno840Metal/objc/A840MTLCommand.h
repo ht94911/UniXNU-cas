@@ -30,6 +30,7 @@
 - (void)finishEncoder;
 - (void)abandonEncoder;
 - (void)useResource:(id<MTLResource>)resource;
+- (void)useWrittenResource:(id<MTLResource>)resource;
 - (void)useHeap:(id<MTLHeap>)heap;
 - (void)recordFailure:(A840RtStatus)status;
 - (void)recordFailure:(A840RtStatus)status reason:(NSString *)reason;

@@ -23,6 +23,20 @@ enum {
     A840_RT_MAX_AUTO_RELOC_CAPACITY = 32768u
 };
 
+/* Extended A8XX runtime barrier flags layered above frozen A840_CACHE_* (a840_emit_ops.h). */
+enum {
+    A840_RT_CACHE_CCU_INV_DEPTH     = 1u << 8,
+    A840_RT_CACHE_CCU_RESOLVE_CLEAN = 1u << 9,
+    A840_RT_CACHE_UCHE_CLEAN        = 1u << 10
+};
+
+typedef struct A840RtWaitInfo {
+    A840BackendTransport transport;
+    uint64_t queue_handle;
+    uint64_t submit_fence;
+    bool already_completed;
+} A840RtWaitInfo;
+
 typedef enum A840CmdBufferState {
     A840_CB_RECORDING = 0,
     A840_CB_COMMITTED = 1,
@@ -88,6 +102,10 @@ typedef struct A840RtRenderPassDesc {
     bool uses_indirect_draw;
     bool uses_icb;
     bool has_ycbcr_attachment;
+    bool depth_clear;
+    float depth_clear_value;
+    bool stencil_clear;
+    uint32_t stencil_clear_value;
 } A840RtRenderPassDesc;
 
 typedef struct A840RtGraphicsProgramDesc {
@@ -197,6 +215,15 @@ A840RtStatus a840_rt_cb_encode_timestamp(A840RtCmdBuffer *cb,
 /* Commit (auto-appends RB_DONE_TS + validates reloc BOs + FIFO callbacks) & Wait. */
 A840RtStatus a840_rt_cb_commit(A840RtCmdBuffer *cb);
 A840RtStatus a840_rt_cb_wait_until_completed(A840RtCmdBuffer *cb, uint64_t timeout_ns);
+A840RtStatus a840_rt_cb_get_wait_info(const A840RtCmdBuffer *cb, A840RtWaitInfo *out_info);
+A840RtStatus a840_rt_cb_complete_waited(A840RtCmdBuffer *cb);
+A840RtStatus a840_rt_cb_alloc_transient(A840RtCmdBuffer *cb,
+                                        size_t size_bytes,
+                                        size_t alignment,
+                                        A840RtBuffer **out_buffer,
+                                        uint64_t *out_offset,
+                                        void **out_cpu_ptr,
+                                        uint64_t *out_gpu_va);
 
 /* Blit Encoder API. */
 A840RtStatus a840_rt_cb_begin_blit(A840RtCmdBuffer *cb, A840RtBlitEncoder **out_enc);
@@ -255,6 +282,13 @@ A840RtStatus a840_rt_compute_dispatch_indirect(A840RtComputeEncoder *enc,
                                                uint64_t offset);
 A840RtStatus a840_rt_compute_retain_buffer(A840RtComputeEncoder *enc,
                                            A840RtBuffer *buffer);
+A840RtStatus a840_rt_compute_alloc_transient(A840RtComputeEncoder *enc,
+                                             size_t size_bytes,
+                                             size_t alignment,
+                                             A840RtBuffer **out_buffer,
+                                             uint64_t *out_offset,
+                                             void **out_cpu_ptr,
+                                             uint64_t *out_gpu_va);
 A840RtStatus a840_rt_compute_barrier(A840RtComputeEncoder *enc,
                                      uint32_t cache_mask,
                                      bool wait_mem_writes,
@@ -270,6 +304,25 @@ A840RtStatus a840_rt_render_set_program(A840RtRenderEncoder *enc,
                                         const A840RtGraphicsProgramDesc *desc);
 A840RtStatus a840_rt_render_set_state(A840RtRenderEncoder *enc,
                                       const A840RtRenderStateDesc *desc);
+A840RtStatus a840_rt_render_set_scissors(A840RtRenderEncoder *enc,
+                                         const A840Rect2D *scissors,
+                                         uint32_t count);
+A840RtStatus a840_rt_render_set_blend_color(A840RtRenderEncoder *enc,
+                                            const float rgba[4]);
+A840RtStatus a840_rt_render_set_stencil_ref(A840RtRenderEncoder *enc,
+                                            uint8_t front_ref,
+                                            uint8_t back_ref);
+A840RtStatus a840_rt_render_barrier(A840RtRenderEncoder *enc,
+                                    uint32_t cache_mask,
+                                    bool wait_mem_writes,
+                                    bool wfi);
+A840RtStatus a840_rt_render_alloc_transient(A840RtRenderEncoder *enc,
+                                            size_t size_bytes,
+                                            size_t alignment,
+                                            A840RtBuffer **out_buffer,
+                                            uint64_t *out_offset,
+                                            void **out_cpu_ptr,
+                                            uint64_t *out_gpu_va);
 A840RtStatus a840_rt_render_retain_buffer(A840RtRenderEncoder *enc,
                                           A840RtBuffer *buffer);
 A840RtStatus a840_rt_render_set_sds(A840RtRenderEncoder *enc,

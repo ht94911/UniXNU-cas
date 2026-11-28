@@ -1,8 +1,16 @@
 /* SPDX-License-Identifier: MIT */
 #include "a840_runtime_cmd.h"
 
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
+
+/* Mesa adreno_pm4.xml:142-154 A7XX/A8XX event IDs beyond frozen a840_bitfields.h. */
+enum {
+    A840_RT_EVENT_CCU_INVALIDATE_DEPTH = UINT32_C(0x18),
+    A840_RT_EVENT_CCU_RESOLVE_CLEAN    = UINT32_C(0x1a),
+    A840_RT_EVENT_CACHE_CLEAN          = UINT32_C(0x31)
+};
 
 #include "Adreno840Regs.h"
 #include "gen/a840_bitfields.h"
@@ -58,6 +66,11 @@ struct A840RtCmdBuffer {
     size_t retained_texture_count;
     size_t retained_texture_cap;
 
+    A840RtBuffer **transient_slabs;
+    size_t transient_slab_count;
+    size_t transient_slab_cap;
+    uint64_t transient_cursor;
+
     CmdCallbackEntry *scheduled_handlers;
     size_t scheduled_count;
     size_t scheduled_cap;
@@ -73,6 +86,7 @@ struct A840RtCmdBuffer {
 struct A840RtBlitEncoder {
     A840RtCmdBuffer *cb;
     bool ended;
+    bool did_2d_op;
 };
 
 struct A840RtComputeEncoder {
@@ -190,6 +204,13 @@ static void release_all_retained(A840RtCmdBuffer *cb)
         a840_rt_texture_release(cb->retained_textures[i]);
     }
     cb->retained_texture_count = 0u;
+    /* Recycle transient slabs AFTER retained_buffers releases any secondary refs. */
+    for (i = 0; i < cb->transient_slab_count; ++i) {
+        a840_rt_device_recycle_pooled_bo(cb->device, cb->transient_slabs[i], true);
+        cb->transient_slabs[i] = NULL;
+    }
+    cb->transient_slab_count = 0u;
+    cb->transient_cursor = 0u;
 }
 
 static A840RtStatus check_buffer_range(const A840RtDevice *dev,
@@ -268,18 +289,17 @@ static A840RtStatus ensure_cb_headroom(A840RtCmdBuffer *cb,
                           ? (new_cap * 2u)
                           : A840_RT_MAX_AUTO_IB_DWORDS;
         }
-        memset(&ib_desc, 0, sizeof(ib_desc));
-        ib_desc.size_bytes = (uint64_t)new_cap * sizeof(uint32_t);
-        ib_desc.alignment = A840_RT_PAGE_BYTES;
-        ib_desc.usage_flags = A840_BUF_USAGE_READ | A840_BUF_USAGE_CPU_VISIBLE;
-        st = a840_rt_buffer_create(cb->device, &ib_desc, &new_ib);
+        (void)ib_desc;
+        st = a840_rt_device_acquire_pooled_bo(cb->device,
+                                              (uint64_t)new_cap * sizeof(uint32_t),
+                                              false, &new_ib);
         if (st != A840_RT_OK) {
             return st;
         }
         if (cb->cs.used_dwords > 0u) {
             memcpy(new_ib->cpu_ptr, cb->ib_buffer->cpu_ptr, cb->cs.used_dwords * sizeof(uint32_t));
         }
-        a840_rt_buffer_release(cb->ib_buffer);
+        a840_rt_device_recycle_pooled_bo(cb->device, cb->ib_buffer, false);
         cb->ib_buffer = new_ib;
         cb->ib_capacity_dwords = new_cap;
         cb->cs.words = (uint32_t *)new_ib->cpu_ptr;
@@ -312,22 +332,80 @@ static A840RtStatus ensure_cb_headroom(A840RtCmdBuffer *cb,
     return A840_RT_OK;
 }
 
+static A840EmitStatus emit_rt_cache_events(A840CmdStream *cs, uint32_t mask)
+{
+    static const uint32_t flags[] = {
+        A840_RT_CACHE_CCU_RESOLVE_CLEAN,
+        A840_CACHE_CCU_FLUSH_COLOR,
+        A840_CACHE_CCU_FLUSH_DEPTH,
+        A840_RT_CACHE_UCHE_CLEAN,
+        A840_CACHE_CCU_INV_COLOR,
+        A840_RT_CACHE_CCU_INV_DEPTH,
+        A840_CACHE_UCHE_INV
+    };
+    static const uint32_t events[] = {
+        A840_RT_EVENT_CCU_RESOLVE_CLEAN,
+        A840_EVENT_CCU_FLUSH_COLOR,
+        A840_EVENT_CCU_FLUSH_DEPTH,
+        A840_RT_EVENT_CACHE_CLEAN,
+        A840_EVENT_CCU_INVALIDATE_COLOR,
+        A840_RT_EVENT_CCU_INVALIDATE_DEPTH,
+        A840_EVENT_CACHE_INVALIDATE7
+    };
+    size_t i;
+    for (i = 0u; i < sizeof(flags) / sizeof(flags[0]); ++i) {
+        if ((mask & flags[i]) != 0u) {
+            const uint32_t ev = events[i];
+            const A840EmitStatus est = a840_cs_emit_pkt7(cs, A840_CP_EVENT_WRITE7, &ev, 1u);
+            if (est != A840_EMIT_OK) {
+                return est;
+            }
+        }
+    }
+    return A840_EMIT_OK;
+}
+
+static A840RtStatus emit_a2d_scissor_for_rect(A840CmdStream *cs,
+                                              uint32_t x, uint32_t y,
+                                              uint32_t width, uint32_t height)
+{
+    const uint32_t x1 = (width > 0u) ? (x + width - 1u) : x;
+    const uint32_t y1 = (height > 0u) ? (y + height - 1u) : y;
+    const uint32_t scissor[2] = {
+        (x & 0x3fffu) | ((y & 0x3fffu) << 16),
+        (x1 & 0x3fffu) | ((y1 & 0x3fffu) << 16)
+    };
+    return a840_rt_status_from_emit(
+        a840_cs_emit_pkt4(cs, A840_REG_GRAS_A2D_SCISSOR_TL, scissor, 2u));
+}
+
 static A840RtStatus emit_barrier_tx(A840CmdStream *cs,
                                     uint32_t cache_mask,
                                     bool wait_mem_writes,
                                     bool wfi)
 {
+    static const uint32_t valid_mask =
+        A840_CACHE_UCHE_INV | A840_CACHE_CCU_FLUSH_COLOR | A840_CACHE_CCU_FLUSH_DEPTH |
+        A840_CACHE_CCU_INV_COLOR | A840_RT_CACHE_CCU_INV_DEPTH |
+        A840_RT_CACHE_CCU_RESOLVE_CLEAN | A840_RT_CACHE_UCHE_CLEAN;
     size_t saved_words = cs->used_dwords;
     size_t saved_relocs = cs->reloc_count;
-    const uint32_t flush_bits = cache_mask & (A840_CACHE_CCU_FLUSH_COLOR | A840_CACHE_CCU_FLUSH_DEPTH);
-    const uint32_t inv_bits = cache_mask & (A840_CACHE_CCU_INV_COLOR | A840_CACHE_UCHE_INV);
+    const uint32_t flush_bits = cache_mask &
+        (A840_RT_CACHE_CCU_RESOLVE_CLEAN | A840_CACHE_CCU_FLUSH_COLOR |
+         A840_CACHE_CCU_FLUSH_DEPTH | A840_RT_CACHE_UCHE_CLEAN);
+    const uint32_t inv_bits = cache_mask &
+        (A840_CACHE_CCU_INV_COLOR | A840_RT_CACHE_CCU_INV_DEPTH | A840_CACHE_UCHE_INV);
     A840EmitStatus est;
 
-    /* On Adreno 840, when both CCU flush and CCU/UCHE invalidate are requested,
-     * flush writes must drain (WAIT_MEM_WRITES + WFI) BEFORE invalidate executes
-     * so TPL1/UCHE never refetches stale pre-flush lines. */
+    if ((cache_mask & ~valid_mask) != 0u) {
+        return A840_RT_RANGE_ERROR;
+    }
+
+    /* On Adreno 840 (Mesa tu_cmd_buffer.cc:391-395), clean/flush events
+     * (CCU_RESOLVE_CLEAN / CCU_FLUSH_* / CACHE_CLEAN) MUST drain via
+     * WAIT_MEM_WRITES + WFI BEFORE CCU/UCHE invalidations execute. */
     if (flush_bits != 0u && inv_bits != 0u) {
-        est = a840_emit_cache_flush_inv(cs, flush_bits);
+        est = emit_rt_cache_events(cs, flush_bits);
         if (est == A840_EMIT_OK) {
             est = a840_emit_wait_mem_writes(cs);
         }
@@ -335,7 +413,7 @@ static A840RtStatus emit_barrier_tx(A840CmdStream *cs,
             est = a840_emit_wfi(cs);
         }
         if (est == A840_EMIT_OK) {
-            est = a840_emit_cache_flush_inv(cs, inv_bits);
+            est = emit_rt_cache_events(cs, inv_bits);
         }
         if (est == A840_EMIT_OK && wfi) {
             est = a840_emit_wfi(cs);
@@ -349,7 +427,7 @@ static A840RtStatus emit_barrier_tx(A840CmdStream *cs,
     }
 
     if (cache_mask != 0u) {
-        est = a840_emit_cache_flush_inv(cs, cache_mask);
+        est = emit_rt_cache_events(cs, cache_mask);
         if (est != A840_EMIT_OK) {
             cs->used_dwords = saved_words;
             cs->reloc_count = saved_relocs;
@@ -572,11 +650,10 @@ A840RtStatus a840_rt_cb_create(A840RtQueue *queue,
         return A840_RT_OOM;
     }
 
-    memset(&ib_desc, 0, sizeof(ib_desc));
-    ib_desc.size_bytes = (uint64_t)ib_dwords * sizeof(uint32_t);
-    ib_desc.alignment = A840_RT_PAGE_BYTES;
-    ib_desc.usage_flags = A840_BUF_USAGE_READ | A840_BUF_USAGE_CPU_VISIBLE;
-    st = a840_rt_buffer_create(queue->device, &ib_desc, &cb->ib_buffer);
+    (void)ib_desc;
+    st = a840_rt_device_acquire_pooled_bo(queue->device,
+                                          (uint64_t)ib_dwords * sizeof(uint32_t),
+                                          false, &cb->ib_buffer);
     if (st != A840_RT_OK) {
         free(cb->relocs);
         free(cb);
@@ -626,9 +703,10 @@ void a840_rt_cb_release(A840RtCmdBuffer *cb)
     release_all_retained(cb);
     free(cb->retained_buffers);
     free(cb->retained_textures);
+    free(cb->transient_slabs);
     free(cb->scheduled_handlers);
     free(cb->completed_handlers);
-    a840_rt_buffer_release(cb->ib_buffer);
+    a840_rt_device_recycle_pooled_bo(cb->device, cb->ib_buffer, false);
     free(cb->relocs);
     free(cb);
 }
@@ -737,10 +815,82 @@ A840RtStatus a840_rt_cb_encode_barrier(A840RtCmdBuffer *cb,
         return A840_RT_STATE_ERROR;
     }
     {
-        A840RtStatus hst = ensure_cb_headroom(cb, 16u, 0u);
+        A840RtStatus hst = ensure_cb_headroom(cb, 24u, 0u);
         if (hst != A840_RT_OK) return hst;
     }
     return emit_barrier_tx(&cb->cs, cache_mask, wait_mem_writes, wfi);
+}
+
+A840RtStatus a840_rt_cb_alloc_transient(A840RtCmdBuffer *cb,
+                                        size_t size_bytes,
+                                        size_t alignment,
+                                        A840RtBuffer **out_buffer,
+                                        uint64_t *out_offset,
+                                        void **out_cpu_ptr,
+                                        uint64_t *out_gpu_va)
+{
+    size_t eff_align = alignment ? alignment : 64u;
+    uint64_t aligned_off = 0u;
+    A840RtBuffer *slab = NULL;
+    A840RtStatus st;
+
+    if (!cb || size_bytes == 0u || !out_buffer || !out_offset || !out_cpu_ptr || !out_gpu_va) {
+        return A840_RT_INVALID_ARG;
+    }
+    if (cb->state != A840_CB_RECORDING) {
+        return A840_RT_STATE_ERROR;
+    }
+    if ((eff_align & (eff_align - 1u)) != 0u) {
+        return A840_RT_ALIGNMENT;
+    }
+    if (eff_align < 64u) {
+        eff_align = 64u;
+    }
+
+    if (cb->transient_slab_count > 0u) {
+        A840RtBuffer *cur = cb->transient_slabs[cb->transient_slab_count - 1u];
+        const uint64_t mask = (uint64_t)eff_align - 1u;
+        if (cb->transient_cursor <= UINT64_MAX - mask) {
+            const uint64_t off = (cb->transient_cursor + mask) & ~mask;
+            if (off <= cur->size_bytes && (uint64_t)size_bytes <= cur->size_bytes - off) {
+                slab = cur;
+                aligned_off = off;
+                cb->transient_cursor = off + (uint64_t)size_bytes;
+            }
+        }
+    }
+
+    if (!slab) {
+        uint64_t alloc_bytes = A840_RT_SLAB_BYTES;
+        void *ptr;
+        if ((uint64_t)size_bytes > alloc_bytes) {
+            alloc_bytes = ((uint64_t)size_bytes + (A840_RT_PAGE_BYTES - 1u)) &
+                          ~((uint64_t)A840_RT_PAGE_BYTES - 1u);
+        }
+        ptr = cb->transient_slabs;
+        st = ensure_ptr_cap(&ptr, &cb->transient_slab_cap,
+                            sizeof(A840RtBuffer *), cb->transient_slab_count + 1u);
+        cb->transient_slabs = (A840RtBuffer **)ptr;
+        if (st != A840_RT_OK) {
+            return st;
+        }
+        st = a840_rt_device_acquire_pooled_bo(cb->device, alloc_bytes, true, &slab);
+        if (st != A840_RT_OK || !slab || !slab->cpu_ptr) {
+            if (slab) {
+                a840_rt_buffer_release(slab);
+            }
+            return (st != A840_RT_OK) ? st : A840_RT_OOM;
+        }
+        cb->transient_slabs[cb->transient_slab_count++] = slab;
+        aligned_off = 0u;
+        cb->transient_cursor = (uint64_t)size_bytes;
+    }
+
+    *out_buffer = slab;
+    *out_offset = aligned_off;
+    *out_cpu_ptr = (uint8_t *)slab->cpu_ptr + aligned_off;
+    *out_gpu_va = slab->gpu_va + aligned_off;
+    return A840_RT_OK;
 }
 
 A840RtStatus a840_rt_cb_encode_mem_write64(A840RtCmdBuffer *cb,
@@ -916,8 +1066,46 @@ A840RtStatus a840_rt_cb_commit(A840RtCmdBuffer *cb)
     cb->state = A840_CB_SCHEDULED;
     fire_callbacks(cb, cb->scheduled_handlers, cb->scheduled_count);
 
-    /* Immediately advance FIFO completions if backend already finished the fence. */
-    a840_rt_queue_poll_completions(q);
+    /* Only poll earlier backlog when >1 CB is pending; avoids a guaranteed
+     * fence_wait(0) kernel trap/timeout on the CB we just submitted. */
+    if (q->pending_count > 1u) {
+        a840_rt_queue_poll_completions(q);
+    }
+    return A840_RT_OK;
+}
+
+A840RtStatus a840_rt_cb_get_wait_info(const A840RtCmdBuffer *cb, A840RtWaitInfo *out_info)
+{
+    if (!cb || !out_info) {
+        return A840_RT_INVALID_ARG;
+    }
+    memset(out_info, 0, sizeof(*out_info));
+    if (cb->state == A840_CB_COMPLETED) {
+        out_info->already_completed = true;
+        return A840_RT_OK;
+    }
+    if (cb->state != A840_CB_SCHEDULED) {
+        return A840_RT_STATE_ERROR;
+    }
+    out_info->transport = cb->device->transport;
+    out_info->queue_handle = cb->queue->queue_handle;
+    out_info->submit_fence = cb->submit_fence;
+    out_info->already_completed = false;
+    return A840_RT_OK;
+}
+
+A840RtStatus a840_rt_cb_complete_waited(A840RtCmdBuffer *cb)
+{
+    if (!cb) {
+        return A840_RT_INVALID_ARG;
+    }
+    if (cb->state == A840_CB_COMPLETED) {
+        return A840_RT_OK;
+    }
+    if (cb->state != A840_CB_SCHEDULED) {
+        return A840_RT_STATE_ERROR;
+    }
+    drain_queue_up_to_fence(cb->queue, cb->submit_fence);
     return A840_RT_OK;
 }
 
@@ -1096,14 +1284,27 @@ A840RtStatus a840_rt_blit_clear_2d(A840RtBlitEncoder *enc,
     clear_desc.rect = *rect;
     memcpy(clear_desc.color, color, sizeof(clear_desc.color));
 
-    st = ensure_cb_headroom(cb, A840_EMIT_2D_CLEAR_MAX_DWORDS, 2u);
+    st = ensure_cb_headroom(cb, A840_EMIT_2D_CLEAR_MAX_DWORDS + 3u, 2u);
     if (st != A840_RT_OK) {
         return st;
     }
-    est = a840_emit_2d_clear(&cb->cs, &clear_desc);
-    if (est != A840_EMIT_OK) {
-        return a840_rt_status_from_emit(est);
+    {
+        const size_t saved_words = cb->cs.used_dwords;
+        const size_t saved_relocs = cb->cs.reloc_count;
+        st = emit_a2d_scissor_for_rect(&cb->cs, rect->x, rect->y, rect->width, rect->height);
+        if (st != A840_RT_OK) {
+            cb->cs.used_dwords = saved_words;
+            cb->cs.reloc_count = saved_relocs;
+            return st;
+        }
+        est = a840_emit_2d_clear(&cb->cs, &clear_desc);
+        if (est != A840_EMIT_OK) {
+            cb->cs.used_dwords = saved_words;
+            cb->cs.reloc_count = saved_relocs;
+            return a840_rt_status_from_emit(est);
+        }
     }
+    enc->did_2d_op = true;
     retain_texture_reserved(cb, dst_texture);
     return A840_RT_OK;
 }
@@ -1232,13 +1433,20 @@ A840RtStatus a840_rt_blit_2d(A840RtBlitEncoder *enc,
             step2.dst_rect = *dst_rect;
             step2.filter = A840_FILTER_NEAREST;
 
-            st = ensure_cb_headroom(cb, 2u * A840_EMIT_2D_BLIT_MAX_DWORDS + 16u, 8u);
+            st = ensure_cb_headroom(cb, 2u * (A840_EMIT_2D_BLIT_MAX_DWORDS + 3u) + 24u, 8u);
             if (st != A840_RT_OK) {
                 a840_rt_texture_release(scratch);
                 return st;
             }
             saved_words = cb->cs.used_dwords;
             saved_relocs = cb->cs.reloc_count;
+            st = emit_a2d_scissor_for_rect(&cb->cs, 0u, 0u, scratch_rect.width, scratch_rect.height);
+            if (st != A840_RT_OK) {
+                cb->cs.used_dwords = saved_words;
+                cb->cs.reloc_count = saved_relocs;
+                a840_rt_texture_release(scratch);
+                return st;
+            }
             est = a840_emit_2d_blit(&cb->cs, &step1);
             if (est != A840_EMIT_OK) {
                 cb->cs.used_dwords = saved_words;
@@ -1247,8 +1455,16 @@ A840RtStatus a840_rt_blit_2d(A840RtBlitEncoder *enc,
                 return a840_rt_status_from_emit(est);
             }
             st = emit_barrier_tx(&cb->cs,
-                                 A840_CACHE_CCU_FLUSH_COLOR | A840_CACHE_CCU_INV_COLOR | A840_CACHE_UCHE_INV,
+                                 A840_RT_CACHE_CCU_RESOLVE_CLEAN | A840_CACHE_CCU_FLUSH_COLOR |
+                                 A840_CACHE_CCU_INV_COLOR | A840_CACHE_UCHE_INV,
                                  true, true);
+            if (st != A840_RT_OK) {
+                cb->cs.used_dwords = saved_words;
+                cb->cs.reloc_count = saved_relocs;
+                a840_rt_texture_release(scratch);
+                return st;
+            }
+            st = emit_a2d_scissor_for_rect(&cb->cs, dst_rect->x, dst_rect->y, dst_rect->width, dst_rect->height);
             if (st != A840_RT_OK) {
                 cb->cs.used_dwords = saved_words;
                 cb->cs.reloc_count = saved_relocs;
@@ -1262,6 +1478,7 @@ A840RtStatus a840_rt_blit_2d(A840RtBlitEncoder *enc,
                 a840_rt_texture_release(scratch);
                 return a840_rt_status_from_emit(est);
             }
+            enc->did_2d_op = true;
             retain_texture_reserved(cb, src_texture);
             retain_texture_reserved(cb, dst_texture);
             retain_texture_reserved(cb, scratch);
@@ -1282,14 +1499,27 @@ A840RtStatus a840_rt_blit_2d(A840RtBlitEncoder *enc,
     blit_desc.dst_rect = *dst_rect;
     blit_desc.filter = filter;
 
-    st = ensure_cb_headroom(cb, A840_EMIT_2D_BLIT_MAX_DWORDS, 4u);
+    st = ensure_cb_headroom(cb, A840_EMIT_2D_BLIT_MAX_DWORDS + 3u, 4u);
     if (st != A840_RT_OK) {
         return st;
     }
-    est = a840_emit_2d_blit(&cb->cs, &blit_desc);
-    if (est != A840_EMIT_OK) {
-        return a840_rt_status_from_emit(est);
+    {
+        const size_t saved_words = cb->cs.used_dwords;
+        const size_t saved_relocs = cb->cs.reloc_count;
+        st = emit_a2d_scissor_for_rect(&cb->cs, dst_rect->x, dst_rect->y, dst_rect->width, dst_rect->height);
+        if (st != A840_RT_OK) {
+            cb->cs.used_dwords = saved_words;
+            cb->cs.reloc_count = saved_relocs;
+            return st;
+        }
+        est = a840_emit_2d_blit(&cb->cs, &blit_desc);
+        if (est != A840_EMIT_OK) {
+            cb->cs.used_dwords = saved_words;
+            cb->cs.reloc_count = saved_relocs;
+            return a840_rt_status_from_emit(est);
+        }
     }
+    enc->did_2d_op = true;
     retain_texture_reserved(cb, src_texture);
     retain_texture_reserved(cb, dst_texture);
     return A840_RT_OK;
@@ -1304,11 +1534,17 @@ A840RtStatus a840_rt_blit_barrier(A840RtBlitEncoder *enc,
     if (st != A840_RT_OK) {
         return st;
     }
-    st = ensure_cb_headroom(enc->cb, 16u, 0u);
+    st = ensure_cb_headroom(enc->cb, 24u, 0u);
     if (st != A840_RT_OK) {
         return st;
     }
-    return emit_barrier_tx(&enc->cb->cs, cache_mask, wait_mem_writes, wfi);
+    st = emit_barrier_tx(&enc->cb->cs, cache_mask, wait_mem_writes, wfi);
+    if (st == A840_RT_OK &&
+        (cache_mask & (A840_RT_CACHE_CCU_RESOLVE_CLEAN | A840_CACHE_CCU_FLUSH_COLOR)) != 0u &&
+        (cache_mask & A840_CACHE_UCHE_INV) != 0u) {
+        enc->did_2d_op = false;
+    }
+    return st;
 }
 
 A840RtStatus a840_rt_blit_end(A840RtBlitEncoder *enc)
@@ -1316,6 +1552,23 @@ A840RtStatus a840_rt_blit_end(A840RtBlitEncoder *enc)
     A840RtStatus st = check_blit_active(enc);
     if (st != A840_RT_OK) {
         return st;
+    }
+    /* Flush A8XX 2D blit cache + CCU and invalidate UCHE/TPL1 before any
+     * subsequent render/compute/scanout pass reads the blitted texture. */
+    if (enc->did_2d_op) {
+        st = ensure_cb_headroom(enc->cb, 24u, 0u);
+        if (st != A840_RT_OK) {
+            return st;
+        }
+        st = emit_barrier_tx(&enc->cb->cs,
+                             A840_RT_CACHE_CCU_RESOLVE_CLEAN | A840_CACHE_CCU_FLUSH_COLOR |
+                             A840_RT_CACHE_UCHE_CLEAN | A840_CACHE_CCU_INV_COLOR |
+                             A840_CACHE_UCHE_INV,
+                             true, true);
+        if (st != A840_RT_OK) {
+            return st;
+        }
+        enc->did_2d_op = false;
     }
     enc->ended = true;
     enc->cb->active_encoder = A840_ENCODER_NONE;
@@ -1648,7 +1901,7 @@ static A840RtStatus compute_dispatch_common(A840RtComputeEncoder *enc,
     emit_desc.size[1] = y;
     emit_desc.size[2] = z;
 
-    st = ensure_cb_headroom(cb, A840_EMIT_COMPUTE_DISPATCH_MAX_DWORDS + 8u, 1u);
+    st = ensure_cb_headroom(cb, A840_EMIT_COMPUTE_DISPATCH_MAX_DWORDS + 24u, 1u);
     if (st != A840_RT_OK) {
         return st;
     }
@@ -1659,16 +1912,16 @@ static A840RtStatus compute_dispatch_common(A840RtComputeEncoder *enc,
         if (est != A840_EMIT_OK) {
             return a840_rt_status_from_emit(est);
         }
-        /* Serial Metal compute encoders order back-to-back dispatches and
-         * subsequent passes on the same command buffer. */
-        est = a840_emit_wfi(&cb->cs);
-        if (est == A840_EMIT_OK) {
-            est = a840_emit_cache_flush_inv(&cb->cs, A840_CACHE_UCHE_INV);
-        }
-        if (est != A840_EMIT_OK) {
+        /* Serial Metal compute encoders: clean UCHE UAV writes to DRAM before
+         * invalidating CCU/UCHE for subsequent passes or dispatches. */
+        st = emit_barrier_tx(&cb->cs,
+                             A840_RT_CACHE_UCHE_CLEAN | A840_CACHE_CCU_INV_COLOR |
+                             A840_CACHE_UCHE_INV,
+                             true, true);
+        if (st != A840_RT_OK) {
             cb->cs.used_dwords = saved_words;
             cb->cs.reloc_count = saved_relocs;
-            return a840_rt_status_from_emit(est);
+            return st;
         }
     }
     return A840_RT_OK;
@@ -1719,6 +1972,22 @@ A840RtStatus a840_rt_compute_dispatch_indirect(A840RtComputeEncoder *enc,
     return A840_RT_FALLBACK_REQUIRED;
 }
 
+A840RtStatus a840_rt_compute_alloc_transient(A840RtComputeEncoder *enc,
+                                             size_t size_bytes,
+                                             size_t alignment,
+                                             A840RtBuffer **out_buffer,
+                                             uint64_t *out_offset,
+                                             void **out_cpu_ptr,
+                                             uint64_t *out_gpu_va)
+{
+    A840RtStatus st = check_compute_active(enc);
+    if (st != A840_RT_OK) {
+        return st;
+    }
+    return a840_rt_cb_alloc_transient(enc->cb, size_bytes, alignment,
+                                      out_buffer, out_offset, out_cpu_ptr, out_gpu_va);
+}
+
 A840RtStatus a840_rt_compute_barrier(A840RtComputeEncoder *enc,
                                      uint32_t cache_mask,
                                      bool wait_mem_writes,
@@ -1728,7 +1997,7 @@ A840RtStatus a840_rt_compute_barrier(A840RtComputeEncoder *enc,
     if (st != A840_RT_OK) {
         return st;
     }
-    st = ensure_cb_headroom(enc->cb, 16u, 0u);
+    st = ensure_cb_headroom(enc->cb, 24u, 0u);
     if (st != A840_RT_OK) {
         return st;
     }
@@ -1952,28 +2221,132 @@ A840RtStatus a840_rt_cb_begin_render_pass(A840RtCmdBuffer *cb,
         return A840_RT_OOM;
     }
 
-    st = ensure_cb_headroom(cb, (size_t)pass->color_count * A840_EMIT_2D_CLEAR_MAX_DWORDS + 96u,
-                            (size_t)pass->color_count * 2u + 4u);
+    st = ensure_cb_headroom(cb,
+                            ((size_t)pass->color_count + 2u) * (A840_EMIT_2D_CLEAR_MAX_DWORDS + 3u) + 128u,
+                            ((size_t)pass->color_count + 2u) * 2u + 4u);
     if (st != A840_RT_OK) {
         free(enc);
         return st;
     }
 
-    /* Transactionally emit optional sysmem 2D color clears on pass entry. */
+    /* Transactionally emit optional sysmem 2D color/depth/stencil clears on pass entry.
+     * Always program GRAS_A2D_SCISSOR_TL/BR before every 2D clear so no smaller prior
+     * pass scissor can clip a larger target clear. */
     saved_words = cb->cs.used_dwords;
     saved_relocs = cb->cs.reloc_count;
-    for (i = 0; i < pass->color_count; ++i) {
-        A840RtTexture *ct = pass->color_targets[i];
-        if (ct != NULL && pass->color_clear[i]) {
+    {
+        bool did_color_clear = false;
+        bool did_ds_clear = false;
+        for (i = 0; i < pass->color_count; ++i) {
+            A840RtTexture *ct = pass->color_targets[i];
+            if (ct != NULL && pass->color_clear[i]) {
+                A840Clear2DDesc cdesc;
+                A840EmitStatus est;
+                memset(&cdesc, 0, sizeof(cdesc));
+                a840_rt_texture_as_surface2d(ct, &cdesc.dst);
+                cdesc.rect.x = 0u;
+                cdesc.rect.y = 0u;
+                cdesc.rect.width = ct->width;
+                cdesc.rect.height = ct->height;
+                memcpy(cdesc.color, pass->color_clear_values[i], sizeof(cdesc.color));
+                st = emit_a2d_scissor_for_rect(&cb->cs, 0u, 0u, ct->width, ct->height);
+                if (st != A840_RT_OK) {
+                    cb->cs.used_dwords = saved_words;
+                    cb->cs.reloc_count = saved_relocs;
+                    free(enc);
+                    return st;
+                }
+                est = a840_emit_2d_clear(&cb->cs, &cdesc);
+                if (est != A840_EMIT_OK) {
+                    cb->cs.used_dwords = saved_words;
+                    cb->cs.reloc_count = saved_relocs;
+                    free(enc);
+                    return a840_rt_status_from_emit(est);
+                }
+                did_color_clear = true;
+            }
+        }
+        if (pass->depth_target != NULL && pass->depth_clear) {
+            A840RtTexture *dt = pass->depth_target;
+            uint32_t d_fmt = 0u;
+            uint32_t d_col[4] = {0u, 0u, 0u, 0u};
+            if (dt->mtl_pixel_format == 252u || dt->mtl_pixel_format == 260u) {
+                float clamped = pass->depth_clear_value;
+                if (!isfinite(clamped)) clamped = 1.0f;
+                d_fmt = A840_FMT6_32_FLOAT;
+                memcpy(&d_col[0], &clamped, sizeof(float));
+            } else if (dt->mtl_pixel_format == 250u) {
+                float clamped = pass->depth_clear_value;
+                if (!isfinite(clamped) || clamped < 0.0f) clamped = 0.0f;
+                else if (clamped > 1.0f) clamped = 1.0f;
+                d_fmt = A840_FMT6_16_UNORM;
+                memcpy(&d_col[0], &clamped, sizeof(float));
+            } else if (dt->mtl_pixel_format == 255u) {
+                float clamped = pass->depth_clear_value;
+                uint32_t z24;
+                if (!isfinite(clamped) || clamped < 0.0f) clamped = 0.0f;
+                else if (clamped > 1.0f) clamped = 1.0f;
+                z24 = (uint32_t)(clamped * 16777215.0f + 0.5f);
+                if (z24 > 0xffffffu) z24 = 0xffffffu;
+                d_fmt = A840_FMT6_8_8_8_8_UNORM;
+                d_col[0] = z24 & 0xffu;
+                d_col[1] = (z24 >> 8) & 0xffu;
+                d_col[2] = (z24 >> 16) & 0xffu;
+                d_col[3] = pass->stencil_clear ? (pass->stencil_clear_value & 0xffu) : 0u;
+            }
+            if (d_fmt != 0u) {
+                A840Clear2DDesc cdesc;
+                A840EmitStatus est;
+                memset(&cdesc, 0, sizeof(cdesc));
+                a840_rt_texture_as_surface2d(dt, &cdesc.dst);
+                cdesc.dst.format_id = d_fmt;
+                cdesc.dst.swap = A840_WZYX;
+                cdesc.dst.srgb = 0u;
+                cdesc.rect.x = 0u;
+                cdesc.rect.y = 0u;
+                cdesc.rect.width = dt->width;
+                cdesc.rect.height = dt->height;
+                memcpy(cdesc.color, d_col, sizeof(d_col));
+                st = emit_a2d_scissor_for_rect(&cb->cs, 0u, 0u, dt->width, dt->height);
+                if (st != A840_RT_OK) {
+                    cb->cs.used_dwords = saved_words;
+                    cb->cs.reloc_count = saved_relocs;
+                    free(enc);
+                    return st;
+                }
+                est = a840_emit_2d_clear(&cb->cs, &cdesc);
+                if (est != A840_EMIT_OK) {
+                    cb->cs.used_dwords = saved_words;
+                    cb->cs.reloc_count = saved_relocs;
+                    free(enc);
+                    return a840_rt_status_from_emit(est);
+                }
+                did_ds_clear = true;
+            }
+        }
+        if (pass->stencil_target != NULL && pass->stencil_clear &&
+            pass->stencil_target != pass->depth_target &&
+            pass->stencil_target->mtl_pixel_format == 253u) {
+            A840RtTexture *stex = pass->stencil_target;
             A840Clear2DDesc cdesc;
             A840EmitStatus est;
             memset(&cdesc, 0, sizeof(cdesc));
-            a840_rt_texture_as_surface2d(ct, &cdesc.dst);
+            a840_rt_texture_as_surface2d(stex, &cdesc.dst);
+            cdesc.dst.format_id = A840_FMT6_8_UINT;
+            cdesc.dst.swap = A840_WZYX;
+            cdesc.dst.srgb = 0u;
             cdesc.rect.x = 0u;
             cdesc.rect.y = 0u;
-            cdesc.rect.width = ct->width;
-            cdesc.rect.height = ct->height;
-            memcpy(cdesc.color, pass->color_clear_values[i], sizeof(cdesc.color));
+            cdesc.rect.width = stex->width;
+            cdesc.rect.height = stex->height;
+            cdesc.color[0] = pass->stencil_clear_value & 0xffu;
+            st = emit_a2d_scissor_for_rect(&cb->cs, 0u, 0u, stex->width, stex->height);
+            if (st != A840_RT_OK) {
+                cb->cs.used_dwords = saved_words;
+                cb->cs.reloc_count = saved_relocs;
+                free(enc);
+                return st;
+            }
             est = a840_emit_2d_clear(&cb->cs, &cdesc);
             if (est != A840_EMIT_OK) {
                 cb->cs.used_dwords = saved_words;
@@ -1981,18 +2354,24 @@ A840RtStatus a840_rt_cb_begin_render_pass(A840RtCmdBuffer *cb,
                 free(enc);
                 return a840_rt_status_from_emit(est);
             }
-            did_clear = true;
+            did_ds_clear = true;
         }
-    }
-    if (did_clear) {
-        st = emit_barrier_tx(&cb->cs,
-                             A840_CACHE_CCU_FLUSH_COLOR | A840_CACHE_CCU_INV_COLOR | A840_CACHE_UCHE_INV,
-                             true, true);
-        if (st != A840_RT_OK) {
-            cb->cs.used_dwords = saved_words;
-            cb->cs.reloc_count = saved_relocs;
-            free(enc);
-            return st;
+        did_clear = did_color_clear || did_ds_clear;
+        if (did_clear) {
+            uint32_t clear_mask = A840_RT_CACHE_CCU_RESOLVE_CLEAN | A840_CACHE_UCHE_INV;
+            if (did_color_clear) {
+                clear_mask |= A840_CACHE_CCU_FLUSH_COLOR | A840_CACHE_CCU_INV_COLOR;
+            }
+            if (did_ds_clear) {
+                clear_mask |= A840_CACHE_CCU_FLUSH_DEPTH | A840_RT_CACHE_CCU_INV_DEPTH;
+            }
+            st = emit_barrier_tx(&cb->cs, clear_mask, true, true);
+            if (st != A840_RT_OK) {
+                cb->cs.used_dwords = saved_words;
+                cb->cs.reloc_count = saved_relocs;
+                free(enc);
+                return st;
+            }
         }
     }
 
@@ -2212,6 +2591,137 @@ A840RtStatus a840_rt_render_set_state(A840RtRenderEncoder *enc,
     return A840_RT_OK;
 }
 
+A840RtStatus a840_rt_render_set_scissors(A840RtRenderEncoder *enc,
+                                         const A840Rect2D *scissors,
+                                         uint32_t count)
+{
+    uint32_t regs[2u * A840_MAX_VIEWPORTS];
+    uint32_t i;
+    A840RtStatus st;
+    A840EmitStatus est;
+
+    st = check_render_active(enc);
+    if (st != A840_RT_OK) {
+        return st;
+    }
+    if (!scissors || count == 0u || count > A840_MAX_VIEWPORTS) {
+        return A840_RT_RANGE_ERROR;
+    }
+    if (!enc->has_state) {
+        return A840_RT_STATE_ERROR;
+    }
+    for (i = 0u; i < count; ++i) {
+        const A840Rect2D *r = &scissors[i];
+        uint32_t *pair = &regs[2u * i];
+        if (!r->width || !r->height) {
+            pair[0] = (1u & 0xffffu) | ((1u & 0xffffu) << 16);
+            pair[1] = 0u;
+            continue;
+        }
+        if (r->x > INT16_MAX || r->y > INT16_MAX ||
+            r->width - 1u > (uint32_t)INT16_MAX - r->x ||
+            r->height - 1u > (uint32_t)INT16_MAX - r->y) {
+            return A840_RT_RANGE_ERROR;
+        }
+        pair[0] = (r->x & 0xffffu) | ((r->y & 0xffffu) << 16);
+        pair[1] = ((r->x + r->width - 1u) & 0xffffu) | (((r->y + r->height - 1u) & 0xffffu) << 16);
+    }
+    st = ensure_cb_headroom(enc->cb, 1u + 2u * count, 0u);
+    if (st != A840_RT_OK) {
+        return st;
+    }
+    est = a840_cs_emit_pkt4(&enc->cb->cs, A840_REG_GRAS_SC_SCREEN_SCISSOR_0_TL, regs, 2u * count);
+    return a840_rt_status_from_emit(est);
+}
+
+A840RtStatus a840_rt_render_set_blend_color(A840RtRenderEncoder *enc,
+                                            const float rgba[4])
+{
+    uint32_t words[4];
+    unsigned i;
+    A840RtStatus st;
+    A840EmitStatus est;
+
+    st = check_render_active(enc);
+    if (st != A840_RT_OK) {
+        return st;
+    }
+    if (!rgba) {
+        return A840_RT_INVALID_ARG;
+    }
+    if (!enc->has_state) {
+        return A840_RT_STATE_ERROR;
+    }
+    for (i = 0u; i < 4u; ++i) {
+        if (!isfinite(rgba[i])) {
+            return A840_RT_RANGE_ERROR;
+        }
+        memcpy(&words[i], &rgba[i], sizeof(uint32_t));
+    }
+    st = ensure_cb_headroom(enc->cb, 5u, 0u);
+    if (st != A840_RT_OK) {
+        return st;
+    }
+    est = a840_cs_emit_pkt4(&enc->cb->cs, A840_REG_RB_BLEND_CONSTANT_RED_FP32, words, 4u);
+    return a840_rt_status_from_emit(est);
+}
+
+A840RtStatus a840_rt_render_set_stencil_ref(A840RtRenderEncoder *enc,
+                                            uint8_t front_ref,
+                                            uint8_t back_ref)
+{
+    uint32_t word;
+    A840RtStatus st;
+    A840EmitStatus est;
+
+    st = check_render_active(enc);
+    if (st != A840_RT_OK) {
+        return st;
+    }
+    if (!enc->has_state) {
+        return A840_RT_STATE_ERROR;
+    }
+    word = (uint32_t)front_ref | ((uint32_t)back_ref << A840_STENCIL_BACK_BYTE_SHIFT);
+    st = ensure_cb_headroom(enc->cb, 2u, 0u);
+    if (st != A840_RT_OK) {
+        return st;
+    }
+    est = a840_cs_emit_pkt4(&enc->cb->cs, A840_REG_RB_STENCIL_REF_CNTL, &word, 1u);
+    return a840_rt_status_from_emit(est);
+}
+
+A840RtStatus a840_rt_render_barrier(A840RtRenderEncoder *enc,
+                                    uint32_t cache_mask,
+                                    bool wait_mem_writes,
+                                    bool wfi)
+{
+    A840RtStatus st = check_render_active(enc);
+    if (st != A840_RT_OK) {
+        return st;
+    }
+    st = ensure_cb_headroom(enc->cb, 24u, 0u);
+    if (st != A840_RT_OK) {
+        return st;
+    }
+    return emit_barrier_tx(&enc->cb->cs, cache_mask, wait_mem_writes, wfi);
+}
+
+A840RtStatus a840_rt_render_alloc_transient(A840RtRenderEncoder *enc,
+                                            size_t size_bytes,
+                                            size_t alignment,
+                                            A840RtBuffer **out_buffer,
+                                            uint64_t *out_offset,
+                                            void **out_cpu_ptr,
+                                            uint64_t *out_gpu_va)
+{
+    A840RtStatus st = check_render_active(enc);
+    if (st != A840_RT_OK) {
+        return st;
+    }
+    return a840_rt_cb_alloc_transient(enc->cb, size_bytes, alignment,
+                                      out_buffer, out_offset, out_cpu_ptr, out_gpu_va);
+}
+
 A840RtStatus a840_rt_render_retain_buffer(A840RtRenderEncoder *enc,
                                           A840RtBuffer *buffer)
 {
@@ -2354,15 +2864,17 @@ A840RtStatus a840_rt_render_end_pass(A840RtRenderEncoder *enc)
 
     for (i = 0; i < enc->color_count; ++i) {
         if (enc->color_targets[i] != NULL) {
-            flush_mask |= A840_CACHE_CCU_FLUSH_COLOR | A840_CACHE_CCU_INV_COLOR | A840_CACHE_UCHE_INV;
+            flush_mask |= A840_CACHE_CCU_FLUSH_COLOR | A840_RT_CACHE_UCHE_CLEAN |
+                          A840_CACHE_CCU_INV_COLOR | A840_CACHE_UCHE_INV;
             break;
         }
     }
     if (enc->depth_target != NULL || enc->stencil_target != NULL) {
-        flush_mask |= A840_CACHE_CCU_FLUSH_DEPTH | A840_CACHE_UCHE_INV;
+        flush_mask |= A840_CACHE_CCU_FLUSH_DEPTH | A840_RT_CACHE_UCHE_CLEAN |
+                      A840_RT_CACHE_CCU_INV_DEPTH | A840_CACHE_UCHE_INV;
     }
 
-    st = ensure_cb_headroom(enc->cb, 16u, 0u);
+    st = ensure_cb_headroom(enc->cb, 24u, 0u);
     if (st != A840_RT_OK) {
         return st;
     }

@@ -179,6 +179,7 @@ uint32_t a840_canonical_backing_pixel_format(uint32_t mtl_pixel_format)
         if (error) *error = a840_metal_error(status, @"Could not initialize the NativeAdreno connection");
         return nil;
     }
+    a840_rt_device_set_bo_pool_enabled(_runtime, true);
     a840_sys_query_caps(_runtime, &_systemCaps);
     A840SysFrontendConfig feCfg{};
     a840_sys_frontend_default_config(&feCfg, processRole);

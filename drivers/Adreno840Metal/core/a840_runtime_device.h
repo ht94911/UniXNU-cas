@@ -21,8 +21,14 @@ enum {
     A840_RT_PAGE_BYTES = 4096u,
     A840_RT_LARGE_ALIGN_BYTES = 65536u,
     A840_RT_BORDER_COLOR_BYTES = 65536u,
-    A840_RT_VA_BITS = 48u
+    A840_RT_VA_BITS = 48u,
+    A840_RT_IB_POOL_MAX = 16u,
+    A840_RT_SLAB_POOL_MAX = 16u,
+    A840_RT_SLAB_BYTES = 262144u,
+    A840_RT_POOLED_IB_BYTES = 65536u
 };
+
+struct A840RtBuffer;
 
 typedef enum A840RtStatus {
     A840_RT_OK = 0,
@@ -98,6 +104,13 @@ typedef struct A840RtDevice {
     uint64_t live_buffers;
     uint64_t live_textures;
     uint64_t live_queues;
+
+    /* Opt-in BO pools for IB and 256 KiB transient descriptor/SDS slabs (sys012). */
+    bool bo_pool_enabled;
+    struct A840RtBuffer *ib_pool[A840_RT_IB_POOL_MAX];
+    size_t ib_pool_count;
+    struct A840RtBuffer *slab_pool[A840_RT_SLAB_POOL_MAX];
+    size_t slab_pool_count;
 } A840RtDevice;
 
 typedef struct A840RtBufferDesc {
@@ -209,6 +222,15 @@ A840DualPathRouter *a840_rt_device_router(A840RtDevice *device);
 uint64_t a840_rt_device_zero_page_va(const A840RtDevice *device);
 uint64_t a840_rt_device_border_color_va(const A840RtDevice *device);
 uint64_t a840_rt_device_border_color_bo(const A840RtDevice *device);
+void a840_rt_device_set_bo_pool_enabled(A840RtDevice *device, bool enabled);
+bool a840_rt_device_bo_pool_enabled(const A840RtDevice *device);
+A840RtStatus a840_rt_device_acquire_pooled_bo(A840RtDevice *device,
+                                              uint64_t size_bytes,
+                                              bool is_slab,
+                                              A840RtBuffer **out_buffer);
+void a840_rt_device_recycle_pooled_bo(A840RtDevice *device,
+                                      A840RtBuffer *buffer,
+                                      bool is_slab);
 
 bool a840_rt_device_owns_buffer(const A840RtDevice *device, const A840RtBuffer *buffer);
 bool a840_rt_device_owns_texture(const A840RtDevice *device, const A840RtTexture *texture);
