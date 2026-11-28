@@ -796,8 +796,8 @@
       "sha256": "4627a677e1ae85a6ae30795e9bfaed163c7cd0618074d2bf03053f8a4c71ffb7"
     },
     "drivers/Adreno840Metal/objc/A840MTLPipelineProvider.mm": {
-      "bytes": 117076,
-      "sha256": "a80e4aa8b6067eb7d715bb3ff8f320e26574a345a0859ea8c1eb185b69499921"
+      "bytes": 117953,
+      "sha256": "88b83bd0f3ca4aa4adfb8e6b1a8e20aa499dfd76fcf88bc6edfa63828448a539"
     },
     "drivers/Adreno840Metal/objc/A840MTLResource.h": {
       "bytes": 5838,
@@ -1228,8 +1228,8 @@
       "sha256": "27254c12e1abfc27e3b9cbefb104f928d9753ed81a3d52c330ee7a1b9e168289"
     },
     "translate/src/lib.rs": {
-      "bytes": 102902,
-      "sha256": "0fee89bdb226b229fbcd4715a02ed868cdba457534440c7d894af902ffe4b8df"
+      "bytes": 103580,
+      "sha256": "fcb4be9ed4191adab44fc4ddc1f12139e298cf4b769d7405cc9ca67c69f37c48"
     },
     "translate/tests/test_real_metallib.c": {
       "bytes": 8828,
@@ -1253,7 +1253,7 @@
   ],
   "hardware_acceptance": false,
   "kind": "PHASE6_RELEASE_PUBLIC_STAGING",
-  "manifest_sha256": "6893c5df7e72cb6e06198c753378dd9d08a8642296e4057915a970a635727a15",
+  "manifest_sha256": "881cedefad4246149241092206e704fa2728a7b1097c50d217da7d43a19c75d9",
   "recipient_cert_sha256": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
   "required_targets": [
     "NativeMetalTranslate",
@@ -1264,6 +1264,6 @@
     "NezhaGpuTest"
   ],
   "schema_version": 1,
-  "total_bytes": 7800766,
+  "total_bytes": 7802321,
   "zero_turnip_verified": true
 }

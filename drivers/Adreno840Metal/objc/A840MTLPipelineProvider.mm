@@ -843,7 +843,7 @@ static NSData *a840ExtractMtlbBitcode(NSData *libData, const char *wantedName)
         NmbSpirvConstexprSampler cs{};
         if (nmb_spirv_constexpr_sampler(spv, i, &cs)) plan->constexprSamplers.push_back(cs);
     }
-    if (needsZeroPage && !plan->zeroPageBo) {
+    if (needsZeroPage && (!plan->rtDevice || plan->rtDevice->zero_page_va == 0u) && !plan->zeroPageBo) {
         plan->zeroPageBo = allocZeroPageBuffer(plan->rtDevice);
         if (!plan->zeroPageBo) return NO;
     }
@@ -1089,8 +1089,12 @@ static NSData *a840ExtractMtlbBitcode(NSData *libData, const char *wantedName)
         }
     }
 
-    /* 5. Pack metal2vulkan-v2 identity-domain push constants & optional argument table. */
-    const uint64_t zeroVa = plan->zeroPageBo ? plan->zeroPageBo->gpu_va : baseVa;
+    /* 5. Pack metal2vulkan-v2 identity-domain push constants & optional argument table.
+     * Prefer the device's permanent 64 KiB zero_page_va (matching metal2vulkan Ring::nil = 64 KiB,
+     * device-lifetime mapped RO) so unbound buffers never fault past 4 KiB or across pipeline release. */
+    const uint64_t zeroVa = (plan->rtDevice && plan->rtDevice->zero_page_va != 0u)
+                                ? plan->rtDevice->zero_page_va
+                                : (plan->zeroPageBo ? plan->zeroPageBo->gpu_va : baseVa);
     const uint32_t lx = local.width ? static_cast<uint32_t>(local.width) : 1u;
     const uint32_t ly = local.height ? static_cast<uint32_t>(local.height) : 1u;
     const uint32_t lz = local.depth ? static_cast<uint32_t>(local.depth) : 1u;
@@ -1117,8 +1121,10 @@ static NSData *a840ExtractMtlbBitcode(NSData *libData, const char *wantedName)
                     if ([rawBuf isKindOfClass:[A840MTLBuffer class]]) {
                         auto *nativeBuf = static_cast<A840MTLBuffer *>(rawBuf).native;
                         const uint64_t off = b.bufferOffsets[@(pf.metal_slot)].unsignedLongLongValue;
-                        if (nativeBuf && off <= nativeBuf->size_bytes) {
+                        if (nativeBuf && off < nativeBuf->size_bytes) {
                             va = nativeBuf->gpu_va + off;
+                            if (renderEnc) (void)a840_rt_render_retain_buffer(renderEnc, nativeBuf);
+                            else if (computeEnc) (void)a840_rt_compute_retain_buffer(computeEnc, nativeBuf);
                         }
                     } else {
                         NSString *tag = [NSString stringWithFormat:@"%u:%u", s, pf.metal_slot];
@@ -1137,7 +1143,7 @@ static NSData *a840ExtractMtlbBitcode(NSData *libData, const char *wantedName)
                     if ([rawBuf isKindOfClass:[A840MTLBuffer class]]) {
                         auto *nativeBuf = static_cast<A840MTLBuffer *>(rawBuf).native;
                         const uint64_t off = b.bufferOffsets[@(pf.metal_slot)].unsignedLongLongValue;
-                        if (nativeBuf) {
+                        if (nativeBuf && off < nativeBuf->size_bytes) {
                             bounds[0] = static_cast<uint32_t>(off);
                             bounds[1] = static_cast<uint32_t>(nativeBuf->size_bytes);
                         }
@@ -1808,7 +1814,7 @@ static uint32_t a840AlignConstlenForPush(uint32_t rawConstlenVec4, const NmbSpir
             (slot >= kNirVertAttribGeneric0) ? (slot - kNirVertAttribGeneric0) : slot;
         ++ed.vertex_input_count;
     }
-    if (plan->vfdInputCount > 0u && !plan->zeroPageBo) {
+    if (plan->vfdInputCount > 0u && (!plan->rtDevice || plan->rtDevice->zero_page_va == 0u) && !plan->zeroPageBo) {
         plan->zeroPageBo = allocZeroPageBuffer(plan->rtDevice);
     }
 
@@ -2052,8 +2058,10 @@ static uint32_t a840AlignConstlenForPush(uint32_t rawConstlenVec4, const NmbSpir
     uint32_t vbMetalIdx[A840_MAX_VERTEX_INPUTS] = {};
     uint32_t vbCount = 0u;
     A840GfxVfdAttr attrs[A840_MAX_VERTEX_INPUTS] = {};
-    const uint64_t zeroVa = plan->zeroPageBo ? plan->zeroPageBo->gpu_va
-                                             : (fallbackBo ? fallbackBo->gpu_va : 0u);
+    const uint64_t zeroVa = (plan->rtDevice && plan->rtDevice->zero_page_va != 0u)
+                                ? plan->rtDevice->zero_page_va
+                                : (plan->zeroPageBo ? plan->zeroPageBo->gpu_va
+                                                    : (fallbackBo ? fallbackBo->gpu_va : 0u));
 
     for (uint32_t i = 0u; i < plan->vfdInputCount; ++i) {
         const uint32_t loc = plan->vfdInputAttrLocations[i];

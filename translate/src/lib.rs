@@ -611,7 +611,10 @@ impl NmbSpirvResult {
         profile: &DeviceProfile,
         vertex_input: Option<&VertexInputState>,
     ) -> FfiResult<Self> {
-        let stages = stages
+        let raw_stages: Vec<StageModule> = stages.into_iter().collect();
+        let is_compute =
+            raw_stages.len() == 1 && raw_stages[0].stage == vk::ShaderStage::COMPUTE;
+        let stages = raw_stages
             .into_iter()
             .map(|stage| {
                 Ok(SpirvStage {
@@ -620,8 +623,10 @@ impl NmbSpirvResult {
                 })
             })
             .collect::<FfiResult<Vec<_>>>()?;
-        let active_stages = if stages.len() == 1 {
+        let active_stages = if is_compute {
             NMB_STAGE_COMPUTE_BIT
+        } else if stages.len() == 1 {
+            NMB_STAGE_VERTEX_BIT
         } else {
             NMB_STAGE_VERTEX_BIT | NMB_STAGE_FRAGMENT_BIT
         };
@@ -669,7 +674,7 @@ impl NmbSpirvResult {
                 bindings.push(reflected);
             }
         }
-        let stage_bits = if stages.len() == 1 {
+        let stage_bits = if is_compute {
             [vk::ShaderStageFlags::COMPUTE, vk::ShaderStageFlags::empty()]
         } else {
             [vk::ShaderStageFlags::VERTEX, vk::ShaderStageFlags::FRAGMENT]
@@ -692,7 +697,6 @@ impl NmbSpirvResult {
                     }
                 })
         });
-        let is_compute = stages.len() == 1;
         let mut push_fields: [Vec<NmbSpirvPushField>; 2] = [Vec::new(), Vec::new()];
         let mut arg_table_bytes = [0u32; 2];
         let mut constexpr_samplers: Vec<NmbSpirvConstexprSampler> = Vec::new();
@@ -719,7 +723,16 @@ impl NmbSpirvResult {
                         SlotClass::Sampler => (NMB_PUSH_SAMPLER_ID, slot.index, 0u32),
                     },
                     PushField::SlotBounds(slot) => (NMB_PUSH_BUFFER_BOUNDS, slot.index, 0u32),
-                    PushField::ZeroAddress => (NMB_PUSH_ZERO_ADDRESS, NO_SLOT, 0u32),
+                    PushField::ZeroAddress
+                    | PushField::IndirectRange
+                    | PushField::PrivateArenaAddress
+                    | PushField::TessellationFactorAddress
+                    | PushField::RootTableAddress
+                    | PushField::ExecutionStatusAddress
+                    | PushField::CaptureIndexAddress
+                    | PushField::MergedDrawAddress
+                    | PushField::ReplayRegionAddress
+                    | PushField::CommandRecordsAddress => (NMB_PUSH_ZERO_ADDRESS, NO_SLOT, 0u32),
                     PushField::DispatchRegion => (NMB_PUSH_DISPATCH_REGION, NO_SLOT, 0u32),
                     PushField::StageInRegion => (NMB_PUSH_STAGE_IN_REGION, NO_SLOT, 0u32),
                     PushField::TextureLevels(slot) => (NMB_PUSH_TEXTURE_LEVELS, slot.index, 0u32),
