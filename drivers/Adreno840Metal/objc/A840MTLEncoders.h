@@ -19,6 +19,12 @@
 
 @interface A840MTLBlitEncoder : A840MTLEncoder <MTLBlitCommandEncoder>
 - (instancetype)initWithCommand:(A840MTLCommandBuffer *)command;
+- (BOOL)encodeLinearScanoutBlitFromBuffer:(id<MTLBuffer>)sourceBuffer
+                             sourceStride:(uint32_t)sourceStride
+                                 toBuffer:(id<MTLBuffer>)destinationBuffer
+                        destinationStride:(uint32_t)destinationStride
+                                    width:(uint32_t)width
+                                   height:(uint32_t)height;
 @end
 
 @interface A840MTLComputeEncoder : A840MTLEncoder <MTLComputeCommandEncoder>

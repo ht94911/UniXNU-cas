@@ -736,8 +736,8 @@
       "sha256": "e91a429ab5db7793c8c749a4d6ad9e4b13deacee9268d6159908d72d2c0eb250"
     },
     "drivers/Adreno840Metal/core/test/test_runtime_core.cpp": {
-      "bytes": 112599,
-      "sha256": "765d5b1706f3f8644fb1e621b299941f125b2dc567ab881428ac0177e52007e0"
+      "bytes": 115859,
+      "sha256": "d4175fd99f53697a661c0d5df1e94f2576878a391d5147afee7d2dbf2b29b8c0"
     },
     "drivers/Adreno840Metal/core/test/test_system_frontend_bridge.cpp": {
       "bytes": 57777,
@@ -752,8 +752,8 @@
       "sha256": "bd91854fb3b6ce4cdc0718003ba482cd3730499681ac7539aa405456e7d231e3"
     },
     "drivers/Adreno840Metal/objc/A840MTLCommand.mm": {
-      "bytes": 23162,
-      "sha256": "52ea00739061fca6719c133aef76bd9ceb3c56424bbf20bcbe848c9c8a63342b"
+      "bytes": 23831,
+      "sha256": "f047b000d139292a6a46e643c7cbb055735f69c85bcf4054df8e486d598c7732"
     },
     "drivers/Adreno840Metal/objc/A840MTLDevice.h": {
       "bytes": 4532,
@@ -768,12 +768,12 @@
       "sha256": "36e8851b1dd88c4f2a5a745c74293b5ec58c883f5ef283e96dcc8043b3254e25"
     },
     "drivers/Adreno840Metal/objc/A840MTLEncoders.h": {
-      "bytes": 1349,
-      "sha256": "fa90516e0d846fdf07c527b94b6327fbbcbe875b5e46c3464ce06b59c55798be"
+      "bytes": 1747,
+      "sha256": "6d72ddcff5edebe4e747a3549f295cb9539b0aa13fd6e500cc435a6704f7b2d6"
     },
     "drivers/Adreno840Metal/objc/A840MTLEncoders.mm": {
-      "bytes": 73162,
-      "sha256": "41f624d50017a8671d43d9c5fda0d98904599918b1e1b93f801ec7984c457f83"
+      "bytes": 76697,
+      "sha256": "53a7f8a40e774d625fab26ab522ba84da347732ddcb0a15df8053194e66bab1a"
     },
     "drivers/Adreno840Metal/objc/A840MTLHeapAndEvents.h": {
       "bytes": 2145,
@@ -812,8 +812,8 @@
       "sha256": "93058ea1327ff9423fc2b6a495ede23de3ab766e288cf2075bb482e099cd293a"
     },
     "drivers/Adreno840Metal/objc/A840MTLScanoutBridge.mm": {
-      "bytes": 20121,
-      "sha256": "884febc40bbe10daa31204c800138698831bca06c21581c152e630c57bd4b375"
+      "bytes": 22650,
+      "sha256": "19c0a90148d72f30908054a2b03ac902929c2012e291750aef1bfd6ab62a2166"
     },
     "drivers/Adreno840Metal/objc/A840MTLSystemSPI.h": {
       "bytes": 5980,
@@ -1249,7 +1249,7 @@
   ],
   "hardware_acceptance": false,
   "kind": "PHASE6_RELEASE_PUBLIC_STAGING",
-  "manifest_sha256": "806213833be32852dd4de24062d0f14df8ed0051b09b134f262833b1d1b85f86",
+  "manifest_sha256": "609762104a58dc3e605335eb52a98619dd4697a3a635fc88f96d1cbd184cc06f",
   "recipient_cert_sha256": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
   "required_targets": [
     "NativeMetalTranslate",
@@ -1260,6 +1260,6 @@
     "NezhaGpuTest"
   ],
   "schema_version": 1,
-  "total_bytes": 7592698,
+  "total_bytes": 7603089,
   "zero_turnip_verified": true
 }

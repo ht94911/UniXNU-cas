@@ -297,26 +297,59 @@ static void *a840GopScanoutThreadMain(void *rawArg)
                         }
                     }
                     if (srcBuf) {
-                        id<MTLCommandBuffer> cb = [queue commandBuffer];
-                        id<MTLBlitCommandEncoder> blit = [cb blitCommandEncoder];
-                        if (cb && blit) {
-                            if (swap.stride == mode.stride && swap.width == mode.width) {
+                        if (swap.stride == mode.stride && swap.width == mode.width) {
+                            id<MTLCommandBuffer> cb = [queue commandBuffer];
+                            id<MTLBlitCommandEncoder> blit = [cb blitCommandEncoder];
+                            if (cb && blit) {
                                 const NSUInteger copyBytes = (NSUInteger)(swap.stride * swap.height) & ~(NSUInteger)3u;
                                 [blit copyFromBuffer:srcBuf sourceOffset:0u
                                             toBuffer:targetBuf destinationOffset:0u
                                                 size:copyBytes];
-                            } else {
-                                const NSUInteger rowCopy = ((NSUInteger)swap.width * 4u) & ~(NSUInteger)3u;
-                                for (uint32_t y = 0u; y < swap.height; ++y) {
+                                [blit endEncoding];
+                                [cb commit];
+                                [cb waitUntilCompleted];
+                                ok = (cb.status == MTLCommandBufferStatusCompleted && cb.error == nil);
+                            }
+                        } else if ((swap.stride % 64u) == 0u && (mode.stride % 64u) == 0u &&
+                                   swap.stride <= UINT32_MAX && mode.stride <= UINT32_MAX) {
+                            /* Native single-packet Adreno 840 2D hardware blit for unequal 64B-aligned
+                             * strides (e.g. 1200x2608 IOSurface stride 4864 -> GOP scanout stride 4800). */
+                            id<MTLCommandBuffer> cb = [queue commandBuffer];
+                            id<MTLBlitCommandEncoder> blit = [cb blitCommandEncoder];
+                            if (cb && blit && [(id)blit isKindOfClass:A840MTLBlitEncoder.class]) {
+                                const BOOL encoded = [(A840MTLBlitEncoder *)blit
+                                    encodeLinearScanoutBlitFromBuffer:srcBuf
+                                                         sourceStride:(uint32_t)swap.stride
+                                                             toBuffer:targetBuf
+                                                    destinationStride:(uint32_t)mode.stride
+                                                                width:swap.width
+                                                               height:swap.height];
+                                [blit endEncoding];
+                                if (encoded) {
+                                    [cb commit];
+                                    [cb waitUntilCompleted];
+                                    ok = (cb.status == MTLCommandBufferStatusCompleted && cb.error == nil);
+                                }
+                            }
+                        } else {
+                            /* Unaligned-stride fallback: chunk rows (<= 128 per CB) so CB capacity is never exceeded. */
+                            const NSUInteger rowCopy = ((NSUInteger)swap.width * 4u) & ~(NSUInteger)3u;
+                            ok = true;
+                            for (uint32_t y0 = 0u; y0 < swap.height && ok; y0 += 128u) {
+                                const uint32_t yEnd = (y0 + 128u < swap.height) ? (y0 + 128u) : swap.height;
+                                id<MTLCommandBuffer> cb = [queue commandBuffer];
+                                id<MTLBlitCommandEncoder> blit = [cb blitCommandEncoder];
+                                if (!cb || !blit) { ok = false; break; }
+                                for (uint32_t y = y0; y < yEnd; ++y) {
                                     [blit copyFromBuffer:srcBuf sourceOffset:(NSUInteger)(y * swap.stride)
                                                 toBuffer:targetBuf destinationOffset:(NSUInteger)(y * mode.stride)
                                                     size:rowCopy];
                                 }
+                                [blit endEncoding];
+                                [cb commit];
+                                [cb waitUntilCompleted];
+                                ok = (cb.status == MTLCommandBufferStatusCompleted && cb.error == nil);
                             }
-                            [blit endEncoding];
-                            [cb commit];
-                            [cb waitUntilCompleted];
-                            ok = (cb.status == MTLCommandBufferStatusCompleted && cb.error == nil);
                         }
                     }
                 }

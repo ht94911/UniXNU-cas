@@ -29,7 +29,7 @@ static thread_local bool gInCompletionCallback = false;
 @end
 
 @interface A840PendingSignalOp : NSObject
-@property(nonatomic, strong) A840MTLEvent *event;
+@property(nonatomic, strong) id<MTLEvent> event;
 @property(nonatomic, assign) uint64_t value;
 @end
 @implementation A840PendingSignalOp
@@ -280,7 +280,7 @@ static thread_local bool gInCompletionCallback = false;
     if (!resource) return;
     if ([(id)resource isKindOfClass:A840MTLAllocation.class] &&
         [(A840MTLAllocation *)resource owner] != _owner) {
-        [self recordFailure:A840_RT_WRONG_DEVICE];
+        [self recordFailure:A840_RT_WRONG_DEVICE reason:@"useRes_dev"];
         return;
     }
     [_changed lock];
@@ -302,7 +302,7 @@ static thread_local bool gInCompletionCallback = false;
 {
     if (!heap) return;
     if ([(id)heap isKindOfClass:A840MTLHeap.class] && [(A840MTLHeap *)heap owner] != _owner) {
-        [self recordFailure:A840_RT_WRONG_DEVICE];
+        [self recordFailure:A840_RT_WRONG_DEVICE reason:@"useHeap_dev"];
         return;
     }
     [_changed lock];
@@ -328,12 +328,14 @@ static thread_local bool gInCompletionCallback = false;
 
 - (void)encodeSignalEvent:(id<MTLEvent>)event value:(uint64_t)value
 {
-    if (!event || ![(id)event isKindOfClass:A840MTLEvent.class]) {
-        [self recordFailure:A840_RT_WRONG_DEVICE];
+    const BOOL isNative = event && [(id)event isKindOfClass:A840MTLEvent.class];
+    const BOOL isExternalShared = event && !isNative && [(id)event respondsToSelector:@selector(setSignaledValue:)];
+    if (!isNative && !isExternalShared) {
+        [self recordFailure:A840_RT_WRONG_DEVICE reason:@"sigEvt_dev"];
         return;
     }
     A840PendingSignalOp *op = [A840PendingSignalOp new];
-    op.event = (A840MTLEvent *)event;
+    op.event = event;
     op.value = value;
     [_changed lock];
     if (_status < MTLCommandBufferStatusCommitted) {
@@ -351,8 +353,10 @@ static thread_local bool gInCompletionCallback = false;
 - (void)encodeWaitForEvent:(id<MTLEvent>)event value:(uint64_t)value
 {
     (void)value;
-    if (!event || ![(id)event isKindOfClass:A840MTLEvent.class]) {
-        [self recordFailure:A840_RT_WRONG_DEVICE];
+    const BOOL isNative = event && [(id)event isKindOfClass:A840MTLEvent.class];
+    const BOOL isExternalShared = event && !isNative && [(id)event respondsToSelector:@selector(signaledValue)];
+    if (!isNative && !isExternalShared) {
+        [self recordFailure:A840_RT_WRONG_DEVICE reason:@"waitEvt_dev"];
         return;
     }
     @synchronized (_owner) {
@@ -636,8 +640,12 @@ static thread_local bool gInCompletionCallback = false;
     }
 
     for (A840PendingSignalOp *op in _signalOps) {
-        if (_owner.systemFrontend) {
-            (void)a840_sys_event_signal(_owner.systemFrontend, op.event.eventHandle, op.value);
+        if ([(id)op.event isKindOfClass:A840MTLEvent.class]) {
+            if (_owner.systemFrontend) {
+                (void)a840_sys_event_signal(_owner.systemFrontend, ((A840MTLEvent *)op.event).eventHandle, op.value);
+            }
+        } else if ([(id)op.event respondsToSelector:@selector(setSignaledValue:)]) {
+            [(id<MTLSharedEvent>)op.event setSignaledValue:op.value];
         }
     }
     for (id<MTLDrawable> drawable in _drawables) {

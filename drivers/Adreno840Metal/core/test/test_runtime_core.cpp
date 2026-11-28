@@ -2506,6 +2506,76 @@ int main(int argc, char **argv)
         a840_mock_transport_destroy(mock);
     }
 
+    /* Group F2 (sys008 offline regression): 1200x2608 unequal-stride (4864 -> 4800)
+     * single-packet native Adreno 840 2D scanout blit on buffer views. */
+    {
+        begin_case("scanout_2d_blit_1200x2608_4864_to_4800");
+        A840MockTransportConfig cfg{};
+        a840_mock_transport_default_config(&cfg);
+        A840MockTransport *mock = nullptr;
+        CHECK(a840_mock_transport_create(&cfg, &mock) == A840_TRANSPORT_OK);
+        auto tr = a840_mock_transport_interface(mock);
+        A840RtDevice *dev = nullptr;
+        CHECK(a840_rt_device_create(&tr, A840_ROUTE_PHASE2_ALL, &dev) == A840_RT_OK);
+        A840RtQueue *q = nullptr;
+        CHECK(a840_rt_queue_create(dev, A840_QUEUE_PRIORITY_HIGH, &q) == A840_RT_OK);
+
+        const uint32_t w = 1200u, h = 2608u, srcStride = 4864u, dstStride = 4800u;
+        A840RtBuffer *srcBuf = create_buf(dev, (uint64_t)srcStride * h, 4096u);
+        A840RtBuffer *dstBuf = create_buf(dev, (uint64_t)dstStride * h, 4096u);
+
+        A840RtTextureDesc sdesc{};
+        sdesc.mtl_pixel_format = 80u; /* BGRA8Unorm */
+        sdesc.tex_type = A840_TEX_2D;
+        sdesc.width = w;
+        sdesc.height = h;
+        sdesc.depth = 1u;
+        sdesc.array_layers = 1u;
+        sdesc.mip_levels = 1u;
+        sdesc.samples = 1u;
+        sdesc.tile_mode = A840_TILE_LINEAR;
+        sdesc.pitch_bytes = srcStride;
+        sdesc.usage_flags = A840_TEX_USAGE_SHADER_READ;
+
+        A840RtTextureDesc ddesc = sdesc;
+        ddesc.pitch_bytes = dstStride;
+        ddesc.usage_flags = A840_TEX_USAGE_RENDER_TARGET;
+
+        A840RtTexture *srcView = nullptr;
+        A840RtTexture *dstView = nullptr;
+        CHECK(a840_rt_texture_create_on_buffer(dev, srcBuf, 0u, &sdesc, &srcView) == A840_RT_OK);
+        CHECK(a840_rt_texture_create_on_buffer(dev, dstBuf, 0u, &ddesc, &dstView) == A840_RT_OK);
+
+        /* Pass tight 128-dword IB capacity to prove single-packet 2D blit + barrier + TS fits
+         * strictly within 128 dwords (vs 15,648 dwords for the old 2608-row copy loop!). */
+        A840RtCmdBufferDesc cbDesc{};
+        cbDesc.ib_capacity_dwords = 128u;
+        cbDesc.reloc_capacity = 32u;
+        A840RtCmdBuffer *cb = nullptr;
+        CHECK(a840_rt_cb_create(q, &cbDesc, &cb) == A840_RT_OK);
+        A840RtBlitEncoder *be = nullptr;
+        CHECK(a840_rt_cb_begin_blit(cb, &be) == A840_RT_OK);
+        const A840Rect2D rect{0u, 0u, w, h};
+        CHECK(a840_rt_blit_2d(be, srcView, &rect, dstView, &rect, A840_FILTER_NEAREST) == A840_RT_OK);
+        CHECK(a840_rt_blit_barrier(be, A840_CACHE_CCU_FLUSH_COLOR | A840_CACHE_UCHE_INV, true, true) == A840_RT_OK);
+        CHECK(a840_rt_blit_end(be) == A840_RT_OK);
+        a840_rt_blit_destroy(be);
+
+        CHECK(a840_rt_cb_commit(cb) == A840_RT_OK);
+        CHECK(a840_rt_cb_wait_until_completed(cb, UINT64_C(1000000000)) == A840_RT_OK);
+
+        a840_rt_texture_release(srcView);
+        a840_rt_texture_release(dstView);
+        a840_rt_buffer_release(srcBuf);
+        a840_rt_buffer_release(dstBuf);
+        a840_rt_cb_release(cb);
+        CHECK(dev->live_textures == 0u);
+        a840_rt_queue_destroy(q);
+        a840_rt_device_destroy(dev);
+        CHECK(a840_mock_transport_live_bo_count(mock) == 0u);
+        a840_mock_transport_destroy(mock);
+    }
+
     CHECK(g_cases >= 56u);
     std::printf("PASS: W03-L3 runtime core: %u independent cases, %u assertions\n",
                 g_cases, g_checks);

@@ -190,13 +190,85 @@ static A840RtTexture *nativeTexture(id<MTLTexture> texture, A840MTLDevice *owner
         if (ss || sl || ds || dl || so.z || dsto.z || size.depth != 1 ||
             !s || !d || so.x > UINT32_MAX || so.y > UINT32_MAX || dsto.x > UINT32_MAX ||
             dsto.y > UINT32_MAX || size.width > UINT32_MAX || size.height > UINT32_MAX) {
-            [cb recordFailure:A840_RT_UNSUPPORTED];
+            [cb recordFailure:A840_RT_UNSUPPORTED
+                       reason:[NSString stringWithFormat:@"blit_2d_arg ss=%lu sl=%lu ds=%lu dl=%lu d=%lu",
+                               (unsigned long)ss, (unsigned long)sl, (unsigned long)ds, (unsigned long)dl,
+                               (unsigned long)size.depth]];
             return;
         }
         const A840Rect2D source{(uint32_t)so.x, (uint32_t)so.y, (uint32_t)size.width, (uint32_t)size.height};
         const A840Rect2D dest{(uint32_t)dsto.x, (uint32_t)dsto.y, (uint32_t)size.width, (uint32_t)size.height};
         const A840RtStatus st = a840_rt_blit_2d(_native, s, &source, d, &dest, A840_FILTER_NEAREST);
-        if (st != A840_RT_OK) [cb recordFailure:st reason:@"blit_2d"];
+        if (st != A840_RT_OK) {
+            [cb recordFailure:st
+                       reason:[NSString stringWithFormat:@"blit_2d s=%u/%u d=%u/%u %ux%u",
+                               s->mtl_pixel_format, s->tile_mode,
+                               d->mtl_pixel_format, d->tile_mode,
+                               source.width, source.height]];
+        }
+    }
+}
+- (BOOL)encodeLinearScanoutBlitFromBuffer:(id<MTLBuffer>)sourceBuffer
+                             sourceStride:(uint32_t)sourceStride
+                                 toBuffer:(id<MTLBuffer>)destinationBuffer
+                        destinationStride:(uint32_t)destinationStride
+                                    width:(uint32_t)width
+                                   height:(uint32_t)height
+{
+    if (![self checkActive] || !sourceBuffer || !destinationBuffer || !width || !height) return NO;
+    if ((sourceStride % 64u) != 0u || (destinationStride % 64u) != 0u ||
+        sourceStride < width * 4u || destinationStride < width * 4u) {
+        return NO;
+    }
+    A840MTLCommandBuffer *cb = self.command;
+    [cb useResource:sourceBuffer];
+    [cb useResource:destinationBuffer];
+    if (!cb.wantsRaw) return YES;
+    @synchronized (cb.owner) {
+        auto *sb = nativeBuffer(sourceBuffer, cb.owner);
+        auto *db = nativeBuffer(destinationBuffer, cb.owner);
+        if (!sb || !db) return NO;
+
+        A840RtTextureDesc srcDesc{};
+        srcDesc.mtl_pixel_format = (uint32_t)MTLPixelFormatBGRA8Unorm;
+        srcDesc.tex_type = A840_TEX_2D;
+        srcDesc.width = width;
+        srcDesc.height = height;
+        srcDesc.depth = 1u;
+        srcDesc.array_layers = 1u;
+        srcDesc.mip_levels = 1u;
+        srcDesc.samples = 1u;
+        srcDesc.tile_mode = A840_TILE_LINEAR;
+        srcDesc.pitch_bytes = sourceStride;
+        srcDesc.usage_flags = A840_TEX_USAGE_SHADER_READ;
+
+        A840RtTextureDesc dstDesc = srcDesc;
+        dstDesc.pitch_bytes = destinationStride;
+        dstDesc.usage_flags = A840_TEX_USAGE_RENDER_TARGET;
+
+        A840RtTexture *srcView = nullptr;
+        A840RtTexture *dstView = nullptr;
+        A840RtStatus st = a840_rt_texture_create_on_buffer(cb.owner.runtime, sb, 0u, &srcDesc, &srcView);
+        if (st != A840_RT_OK || !srcView) {
+            [cb recordFailure:st reason:[NSString stringWithFormat:@"scanout_src %ux%u s=%u", width, height, sourceStride]];
+            return NO;
+        }
+        st = a840_rt_texture_create_on_buffer(cb.owner.runtime, db, 0u, &dstDesc, &dstView);
+        if (st != A840_RT_OK || !dstView) {
+            a840_rt_texture_release(srcView);
+            [cb recordFailure:st reason:[NSString stringWithFormat:@"scanout_dst %ux%u s=%u", width, height, destinationStride]];
+            return NO;
+        }
+        const A840Rect2D rect{0u, 0u, width, height};
+        st = a840_rt_blit_2d(_native, srcView, &rect, dstView, &rect, A840_FILTER_NEAREST);
+        if (st == A840_RT_OK) {
+            (void)a840_rt_blit_barrier(_native, A840_CACHE_CCU_FLUSH_COLOR | A840_CACHE_UCHE_INV, true, true);
+        } else {
+            [cb recordFailure:st reason:[NSString stringWithFormat:@"scanout_2d %ux%u %u->%u", width, height, sourceStride, destinationStride]];
+        }
+        a840_rt_texture_release(srcView);
+        a840_rt_texture_release(dstView);
+        return st == A840_RT_OK;
     }
 }
 - (void)copyFromBuffer:(id<MTLBuffer>)sourceBuffer
