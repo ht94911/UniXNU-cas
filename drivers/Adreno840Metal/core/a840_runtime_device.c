@@ -890,6 +890,67 @@ static uint32_t texture_element_bytes(const A840FormatCaps *caps)
     return caps->block_bits / 8u;
 }
 
+static A840RtStatus compute_separate_stencil_layout(uint32_t width,
+                                                    uint32_t height,
+                                                    uint32_t mips,
+                                                    uint32_t samples,
+                                                    uint32_t total_slices,
+                                                    uint32_t *out_pitch_bytes,
+                                                    uint64_t *out_slice_stride,
+                                                    uint64_t *out_total_bytes)
+{
+    uint32_t eff_cpp = samples ? samples : 1u;
+    uint32_t pitch_align_log2;
+    uint32_t row_align;
+    uint64_t pitch_align;
+    uint64_t min_row;
+    uint64_t pitch0 = 0u;
+    uint64_t chain_bytes = 0u;
+    uint64_t slice_stride = 0u;
+    uint32_t lvl;
+
+    /* Mesa fd6_layout.c:79-91 tiled S8 (1 Bpp * samples) alignment rules. */
+    if (eff_cpp == 1u) {
+        pitch_align_log2 = 7u;
+        row_align = 32u;
+    } else if (eff_cpp == 2u) {
+        pitch_align_log2 = 8u;
+        row_align = 16u;
+    } else {
+        pitch_align_log2 = 6u + log2_floor_u64((uint64_t)eff_cpp);
+        row_align = 16u;
+    }
+    pitch_align = UINT64_C(1) << pitch_align_log2;
+    min_row = (uint64_t)width * (uint64_t)eff_cpp;
+    if (!align_up_u64(min_row, pitch_align, &pitch0) || pitch0 > UINT32_MAX) {
+        return A840_RT_RANGE_ERROR;
+    }
+    for (lvl = 0u; lvl < mips; ++lvl) {
+        uint32_t lh = (height >> lvl) ? (height >> lvl) : 1u;
+        uint64_t lpitch_raw = (pitch0 >> lvl) ? (pitch0 >> lvl) : 1u;
+        uint64_t lpitch = 0u;
+        uint64_t lrows;
+        if (!align_up_u64(lpitch_raw, pitch_align, &lpitch) || lpitch > UINT32_MAX) {
+            return A840_RT_RANGE_ERROR;
+        }
+        lrows = ((uint64_t)lh + (uint64_t)row_align - 1u) / (uint64_t)row_align * (uint64_t)row_align;
+        if (lrows > UINT64_MAX / lpitch || lpitch * lrows > UINT64_MAX - chain_bytes) {
+            return A840_RT_RANGE_ERROR;
+        }
+        chain_bytes += lpitch * lrows;
+    }
+    if (!align_up_u64(chain_bytes, A840_RT_PAGE_BYTES, &slice_stride)) {
+        return A840_RT_RANGE_ERROR;
+    }
+    if ((uint64_t)total_slices > UINT64_MAX / slice_stride) {
+        return A840_RT_RANGE_ERROR;
+    }
+    *out_pitch_bytes = (uint32_t)pitch0;
+    *out_slice_stride = slice_stride;
+    *out_total_bytes = slice_stride * (uint64_t)total_slices;
+    return A840_RT_OK;
+}
+
 static void compute_tiled_alignment(const A840FormatCaps *caps,
                                     uint32_t samples,
                                     uint32_t *out_pitch_align_log2,
@@ -939,6 +1000,9 @@ A840RtStatus a840_rt_texture_create(A840RtDevice *device,
     uint64_t slice_stride;
     uint32_t total_slices;
     uint64_t alloc_bytes;
+    uint64_t stencil_plane_offset = 0u;
+    uint32_t stencil_pitch_bytes = 0u;
+    uint64_t stencil_slice_stride = 0u;
     uint64_t gpu_va = 0u;
     uint64_t bo_handle = 0u;
     A840TexDescInput tex_in;
@@ -1117,6 +1181,19 @@ A840RtStatus a840_rt_texture_create(A840RtDevice *device,
         return A840_RT_RANGE_ERROR;
     }
     alloc_bytes = slice_stride * (uint64_t)total_slices;
+    if ((caps->flags & A840_FORMAT_SEPARATE_DEPTH_STENCIL_PLANES) != 0u) {
+        uint64_t stencil_total_bytes = 0u;
+        st = compute_separate_stencil_layout(desc->width, desc->height, mips, samples, total_slices,
+                                             &stencil_pitch_bytes, &stencil_slice_stride, &stencil_total_bytes);
+        if (st != A840_RT_OK) {
+            return st;
+        }
+        if (!align_up_u64(alloc_bytes, A840_RT_PAGE_BYTES, &stencil_plane_offset) ||
+            stencil_total_bytes > UINT64_MAX - stencil_plane_offset) {
+            return A840_RT_RANGE_ERROR;
+        }
+        alloc_bytes = stencil_plane_offset + stencil_total_bytes;
+    }
     if (alloc_bytes > device->transport_caps.max_bo_bytes) {
         return A840_RT_RANGE_ERROR;
     }
@@ -1234,6 +1311,9 @@ A840RtStatus a840_rt_texture_create(A840RtDevice *device,
     tex->pitch_bytes = (uint32_t)pitch_bytes;
     tex->pitch_align_log2 = pitch_align_log2;
     tex->slice_stride_bytes = slice_stride;
+    tex->stencil_plane_offset = stencil_plane_offset;
+    tex->stencil_pitch_bytes = stencil_pitch_bytes;
+    tex->stencil_slice_stride_bytes = stencil_slice_stride;
     tex->usage_flags = desc->usage_flags;
     tex->format_id = tex_in.format_id;
     tex->swap = tex_in.swap;
@@ -1274,6 +1354,9 @@ A840RtStatus a840_rt_texture_create_on_buffer(A840RtDevice *device,
     uint64_t chain_bytes;
     uint64_t needed_bytes;
     uint64_t slice_stride;
+    uint64_t stencil_plane_offset = 0u;
+    uint32_t stencil_pitch_bytes = 0u;
+    uint64_t stencil_slice_stride = 0u;
     A840TexDescInput tex_in;
     uint32_t tex_const[A840_TEX_CONST_DWORDS];
     A840EmitStatus est;
@@ -1374,6 +1457,20 @@ A840RtStatus a840_rt_texture_create_on_buffer(A840RtDevice *device,
     } else {
         needed_bytes = chain_bytes;
     }
+    if ((caps->flags & A840_FORMAT_SEPARATE_DEPTH_STENCIL_PLANES) != 0u) {
+        uint64_t depth_total = slice_stride * (uint64_t)total_slices;
+        uint64_t stencil_total = 0u;
+        A840RtStatus sst = compute_separate_stencil_layout(desc->width, desc->height, mips, samples, total_slices,
+                                                           &stencil_pitch_bytes, &stencil_slice_stride, &stencil_total);
+        if (sst != A840_RT_OK) {
+            return sst;
+        }
+        if (!align_up_u64(depth_total, A840_RT_PAGE_BYTES, &stencil_plane_offset) ||
+            stencil_total > UINT64_MAX - stencil_plane_offset) {
+            return A840_RT_RANGE_ERROR;
+        }
+        needed_bytes = stencil_plane_offset + stencil_total;
+    }
     if (backing_offset > backing_buffer->alloc_bytes ||
         needed_bytes > backing_buffer->alloc_bytes - backing_offset) {
         return A840_RT_RANGE_ERROR;
@@ -1444,6 +1541,9 @@ A840RtStatus a840_rt_texture_create_on_buffer(A840RtDevice *device,
     tex->pitch_bytes = (uint32_t)pitch_bytes;
     tex->pitch_align_log2 = pitch_align_log2;
     tex->slice_stride_bytes = slice_stride;
+    tex->stencil_plane_offset = stencil_plane_offset;
+    tex->stencil_pitch_bytes = stencil_pitch_bytes;
+    tex->stencil_slice_stride_bytes = stencil_slice_stride;
     tex->usage_flags = desc->usage_flags;
     tex->format_id = tex_in.format_id;
     tex->swap = tex_in.swap;
@@ -1617,6 +1717,42 @@ A840RtStatus a840_rt_texture_create_view(A840RtDevice *device,
     view->pitch_bytes = level_pitch;
     view->pitch_align_log2 = parent->pitch_align_log2;
     view->slice_stride_bytes = view_slice_stride;
+    if (parent->stencil_plane_offset > 0u && parent->stencil_pitch_bytes > 0u) {
+        uint32_t eff_cpp = parent->samples ? parent->samples : 1u;
+        uint32_t sp_align_log2 = (eff_cpp == 1u) ? 7u : (eff_cpp == 2u ? 8u : (6u + log2_floor_u64((uint64_t)eff_cpp)));
+        uint32_t sp_row_align = (eff_cpp == 1u) ? 32u : 16u;
+        uint64_t sp_pitch_align = UINT64_C(1) << sp_align_log2;
+        uint64_t sp_lvl_off = 0u;
+        uint32_t sp_lvl_pitch = parent->stencil_pitch_bytes;
+        uint64_t sp_tail = 0u;
+        uint64_t sp_abs;
+        for (i = 0u; i < base_level + level_count; ++i) {
+            uint32_t lh = (parent->height >> i) ? (parent->height >> i) : 1u;
+            uint64_t lpr = ((uint64_t)parent->stencil_pitch_bytes >> i) ? ((uint64_t)parent->stencil_pitch_bytes >> i) : 1u;
+            uint64_t lp = 0u;
+            uint64_t lr = ((uint64_t)lh + (uint64_t)sp_row_align - 1u) / (uint64_t)sp_row_align * (uint64_t)sp_row_align;
+            if (!align_up_u64(lpr, sp_pitch_align, &lp)) lp = sp_pitch_align;
+            if (i < base_level) sp_lvl_off += lp * lr;
+            else {
+                if (i == base_level) sp_lvl_pitch = (uint32_t)lp;
+                sp_tail += lp * lr;
+            }
+        }
+        sp_abs = parent->stencil_plane_offset +
+                 (uint64_t)base_slice * parent->stencil_slice_stride_bytes + sp_lvl_off;
+        if (sp_abs > slice_offset) {
+            view->stencil_plane_offset = sp_abs - slice_offset;
+            view->stencil_pitch_bytes = sp_lvl_pitch;
+            if (slice_count == 1u && base_level > 0u) {
+                uint64_t aligned_sp_tail = 0u;
+                view->stencil_slice_stride_bytes = align_up_u64(sp_tail, A840_RT_PAGE_BYTES, &aligned_sp_tail)
+                                                       ? aligned_sp_tail
+                                                       : parent->stencil_slice_stride_bytes;
+            } else {
+                view->stencil_slice_stride_bytes = parent->stencil_slice_stride_bytes;
+            }
+        }
+    }
     view->usage_flags = parent->usage_flags;
     view->format_id = tex_in.format_id;
     view->swap = tex_in.swap;
@@ -1704,6 +1840,26 @@ A840RtStatus a840_rt_texture_as_attachment(const A840RtTexture *texture,
     out_storage->layer_stride_bytes = texture->slice_stride_bytes;
     out_storage->tile_mode = texture->tile_mode;
     return A840_RT_OK;
+}
+
+A840RtStatus a840_rt_texture_as_stencil_attachment(const A840RtTexture *texture,
+                                                   A840AttachmentStorage *out_storage)
+{
+    if (!texture || !out_storage) {
+        return A840_RT_INVALID_ARG;
+    }
+    if (texture->stencil_plane_offset > 0u &&
+        texture->stencil_pitch_bytes > 0u &&
+        texture->stencil_slice_stride_bytes > 0u) {
+        memset(out_storage, 0, sizeof(*out_storage));
+        out_storage->data.bo_handle = texture->bo_handle;
+        out_storage->data.gpu_va = texture->gpu_va + texture->stencil_plane_offset;
+        out_storage->pitch_bytes = texture->stencil_pitch_bytes;
+        out_storage->layer_stride_bytes = texture->stencil_slice_stride_bytes;
+        out_storage->tile_mode = texture->tile_mode;
+        return A840_RT_OK;
+    }
+    return a840_rt_texture_as_attachment(texture, out_storage);
 }
 
 A840RtStatus a840_rt_texture_get_subresource_layout(const A840RtTexture *texture,

@@ -9,11 +9,18 @@
 enum {
     A840_RT_EVENT_CCU_INVALIDATE_DEPTH = UINT32_C(0x18),
     A840_RT_EVENT_CCU_RESOLVE_CLEAN    = UINT32_C(0x1a),
-    A840_RT_EVENT_CACHE_CLEAN          = UINT32_C(0x31)
+    A840_RT_EVENT_CCU_RESOLVE          = UINT32_C(0x1e),
+    A840_RT_EVENT_CCU_END_RESOLVE_GRP  = UINT32_C(0x1f),
+    A840_RT_EVENT_CACHE_CLEAN          = UINT32_C(0x31),
+    A840_RT_ZMODE_LATE_Z               = UINT32_C(1),
+    A840_RT_BLIT_EVENT_CLEAR           = UINT32_C(2),
+    A840_RT_A2D_SRC_SAMPLES_SHIFT      = 14u,
+    A840_RT_A2D_SRC_SAMPLES_AVERAGE    = UINT32_C(1) << 18u
 };
 
 #include "Adreno840Regs.h"
 #include "gen/a840_bitfields.h"
+#include "a840_emit_msaa_tess_vis.h"
 
 typedef struct CmdCallbackEntry {
     A840RtCmdCallback fn;
@@ -101,8 +108,11 @@ struct A840RtRenderEncoder {
     bool ended;
     bool has_program;
     bool has_state;
+    uint32_t sample_count;
+    uint32_t fs_flags_out;
     uint32_t color_count;
     A840RtTexture *color_targets[A840_MAX_COLOR_TARGETS];
+    A840RtTexture *color_resolve_targets[A840_MAX_COLOR_TARGETS];
     A840RtTexture *depth_target;
     A840RtTexture *stencil_target;
 };
@@ -2124,9 +2134,403 @@ static uint32_t depth_format_from_mtl(uint32_t mtl_pixel_format)
     case 252u: /* Depth32Float */
     case 260u: /* Depth32Float_Stencil8 (separate depth plane) */
         return A840_DEPTH_32;
+    case 255u: /* Depth24Unorm_Stencil8 (packed 24_8) */
+        return A840_DEPTH_24_8;
     default:
         return A840_DEPTH_NONE;
     }
+}
+
+static uint32_t msaa_samples_hw_code(uint32_t samples)
+{
+    if (samples == 4u) return 2u;
+    if (samples == 2u) return 1u;
+    return 0u;
+}
+
+static uint16_t float32_to_fp16(float f)
+{
+    uint32_t u = 0u;
+    uint32_t sign, exp, mant;
+    memcpy(&u, &f, sizeof(u));
+    sign = (u >> 16) & 0x8000u;
+    exp = (u >> 23) & 0xffu;
+    mant = u & 0x7fffffu;
+    if (exp == 0xffu) {
+        return (uint16_t)(sign | 0x7c00u | (mant ? 0x0200u : 0u));
+    }
+    if (exp < 113u) {
+        if (exp < 103u) return (uint16_t)sign;
+        mant |= 0x800000u;
+        mant >>= (126u - exp);
+        return (uint16_t)(sign | (mant >> 13));
+    }
+    if (exp > 142u) {
+        return (uint16_t)(sign | 0x7c00u);
+    }
+    return (uint16_t)(sign | ((exp - 112u) << 10) | ((mant + 0x1000u) >> 13));
+}
+
+static uint32_t float32_to_unorm(float f, uint32_t max_val)
+{
+    if (!isfinite(f) || f <= 0.0f) return 0u;
+    if (f >= 1.0f) return max_val;
+    return (uint32_t)(f * (float)max_val + 0.5f);
+}
+
+static uint32_t float32_to_snorm8(float f)
+{
+    int32_t v;
+    if (!isfinite(f)) return 0u;
+    if (f < -1.0f) f = -1.0f;
+    if (f > 1.0f) f = 1.0f;
+    v = (int32_t)(f * 127.0f + (f >= 0.0f ? 0.5f : -0.5f));
+    return (uint32_t)(v & 0xff);
+}
+
+static bool rt_a2d_format_params(uint32_t fmt_id,
+                                 uint32_t *out_ifmt,
+                                 uint32_t *out_type,
+                                 uint32_t *out_half)
+{
+    switch (fmt_id) {
+    case A840_FMT6_A8_UNORM:
+    case A840_FMT6_8_UNORM:
+    case A840_FMT6_8_SNORM:
+    case A840_FMT6_4_4_4_4_UNORM:
+    case A840_FMT6_5_5_5_1_UNORM:
+    case A840_FMT6_1_5_5_5_UNORM:
+    case A840_FMT6_5_6_5_UNORM:
+    case A840_FMT6_8_8_UNORM:
+    case A840_FMT6_8_8_SNORM:
+    case A840_FMT6_8_8_8_8_UNORM:
+    case A840_FMT6_8_8_8_X8_UNORM:
+    case A840_FMT6_8_8_8_8_SNORM:
+        *out_ifmt = A840_R2D_UNORM8; *out_type = A840_OUTPUT_IFMT_2D_FLOAT; *out_half = 0u; return true;
+    case A840_FMT6_8_UINT:
+    case A840_FMT6_8_8_UINT:
+    case A840_FMT6_8_8_8_8_UINT:
+        *out_ifmt = A840_R2D_INT8; *out_type = A840_OUTPUT_IFMT_2D_UINT; *out_half = 0u; return true;
+    case A840_FMT6_8_SINT:
+    case A840_FMT6_8_8_SINT:
+    case A840_FMT6_8_8_8_8_SINT:
+        *out_ifmt = A840_R2D_INT8; *out_type = A840_OUTPUT_IFMT_2D_SINT; *out_half = 0u; return true;
+    case A840_FMT6_16_FLOAT:
+    case A840_FMT6_16_16_FLOAT:
+    case A840_FMT6_16_16_16_16_FLOAT:
+    case A840_FMT6_10_10_10_2_UNORM:
+    case A840_FMT6_11_11_10_FLOAT:
+    case A840_FMT6_9_9_9_E5_FLOAT:
+        *out_ifmt = A840_R2D_FLOAT16; *out_type = A840_OUTPUT_IFMT_2D_FLOAT; *out_half = 1u; return true;
+    case A840_FMT6_16_UINT:
+    case A840_FMT6_16_16_UINT:
+    case A840_FMT6_16_16_16_16_UINT:
+    case A840_FMT6_10_10_10_2_UINT:
+        *out_ifmt = A840_R2D_INT16; *out_type = A840_OUTPUT_IFMT_2D_UINT; *out_half = 0u; return true;
+    case A840_FMT6_16_SINT:
+    case A840_FMT6_16_16_SINT:
+    case A840_FMT6_16_16_16_16_SINT:
+        *out_ifmt = A840_R2D_INT16; *out_type = A840_OUTPUT_IFMT_2D_SINT; *out_half = 0u; return true;
+    case A840_FMT6_16_UNORM:
+    case A840_FMT6_16_SNORM:
+    case A840_FMT6_16_16_UNORM:
+    case A840_FMT6_16_16_SNORM:
+    case A840_FMT6_16_16_16_16_UNORM:
+    case A840_FMT6_16_16_16_16_SNORM:
+    case A840_FMT6_32_FLOAT:
+    case A840_FMT6_32_32_FLOAT:
+    case A840_FMT6_32_32_32_32_FLOAT:
+        *out_ifmt = A840_R2D_FLOAT32; *out_type = A840_OUTPUT_IFMT_2D_FLOAT; *out_half = 0u; return true;
+    case A840_FMT6_32_UINT:
+    case A840_FMT6_32_32_UINT:
+    case A840_FMT6_32_32_32_32_UINT:
+        *out_ifmt = A840_R2D_INT32; *out_type = A840_OUTPUT_IFMT_2D_UINT; *out_half = 0u; return true;
+    case A840_FMT6_32_SINT:
+    case A840_FMT6_32_32_SINT:
+    case A840_FMT6_32_32_32_32_SINT:
+        *out_ifmt = A840_R2D_INT32; *out_type = A840_OUTPUT_IFMT_2D_SINT; *out_half = 0u; return true;
+    default:
+        return false;
+    }
+}
+
+static void pack_generic_clear_color(uint32_t fmt_id,
+                                     const uint32_t clear_words[4],
+                                     uint32_t out_dw[4])
+{
+    float f[4];
+    unsigned i;
+    out_dw[0] = out_dw[1] = out_dw[2] = out_dw[3] = 0u;
+    for (i = 0u; i < 4u; ++i) {
+        memcpy(&f[i], &clear_words[i], sizeof(float));
+    }
+    switch (fmt_id) {
+    case A840_FMT6_A8_UNORM:
+        out_dw[0] = float32_to_unorm(f[3], 255u);
+        break;
+    case A840_FMT6_8_UNORM:
+        out_dw[0] = float32_to_unorm(f[0], 255u);
+        break;
+    case A840_FMT6_8_SNORM:
+        out_dw[0] = float32_to_snorm8(f[0]);
+        break;
+    case A840_FMT6_8_8_UNORM:
+        out_dw[0] = float32_to_unorm(f[0], 255u) | (float32_to_unorm(f[1], 255u) << 8);
+        break;
+    case A840_FMT6_8_8_SNORM:
+        out_dw[0] = float32_to_snorm8(f[0]) | (float32_to_snorm8(f[1]) << 8);
+        break;
+    case A840_FMT6_8_8_8_8_UNORM:
+    case A840_FMT6_8_8_8_X8_UNORM:
+        out_dw[0] = float32_to_unorm(f[0], 255u) |
+                    (float32_to_unorm(f[1], 255u) << 8) |
+                    (float32_to_unorm(f[2], 255u) << 16) |
+                    (float32_to_unorm(f[3], 255u) << 24);
+        break;
+    case A840_FMT6_8_8_8_8_SNORM:
+        out_dw[0] = float32_to_snorm8(f[0]) |
+                    (float32_to_snorm8(f[1]) << 8) |
+                    (float32_to_snorm8(f[2]) << 16) |
+                    (float32_to_snorm8(f[3]) << 24);
+        break;
+    case A840_FMT6_10_10_10_2_UNORM:
+        out_dw[0] = float32_to_unorm(f[0], 1023u) |
+                    (float32_to_unorm(f[1], 1023u) << 10) |
+                    (float32_to_unorm(f[2], 1023u) << 20) |
+                    (float32_to_unorm(f[3], 3u) << 30);
+        break;
+    case A840_FMT6_16_UNORM:
+        out_dw[0] = float32_to_unorm(f[0], 65535u);
+        break;
+    case A840_FMT6_16_16_UNORM:
+        out_dw[0] = float32_to_unorm(f[0], 65535u) | (float32_to_unorm(f[1], 65535u) << 16);
+        break;
+    case A840_FMT6_16_16_16_16_UNORM:
+        out_dw[0] = float32_to_unorm(f[0], 65535u) | (float32_to_unorm(f[1], 65535u) << 16);
+        out_dw[1] = float32_to_unorm(f[2], 65535u) | (float32_to_unorm(f[3], 65535u) << 16);
+        break;
+    case A840_FMT6_16_FLOAT:
+        out_dw[0] = (uint32_t)float32_to_fp16(f[0]);
+        break;
+    case A840_FMT6_16_16_FLOAT:
+        out_dw[0] = (uint32_t)float32_to_fp16(f[0]) | ((uint32_t)float32_to_fp16(f[1]) << 16);
+        break;
+    case A840_FMT6_16_16_16_16_FLOAT:
+        out_dw[0] = (uint32_t)float32_to_fp16(f[0]) | ((uint32_t)float32_to_fp16(f[1]) << 16);
+        out_dw[1] = (uint32_t)float32_to_fp16(f[2]) | ((uint32_t)float32_to_fp16(f[3]) << 16);
+        break;
+    case A840_FMT6_8_UINT:
+    case A840_FMT6_8_SINT:
+        out_dw[0] = clear_words[0] & 0xffu;
+        break;
+    case A840_FMT6_8_8_UINT:
+    case A840_FMT6_8_8_SINT:
+        out_dw[0] = (clear_words[0] & 0xffu) | ((clear_words[1] & 0xffu) << 8);
+        break;
+    case A840_FMT6_8_8_8_8_UINT:
+    case A840_FMT6_8_8_8_8_SINT:
+        out_dw[0] = (clear_words[0] & 0xffu) | ((clear_words[1] & 0xffu) << 8) |
+                    ((clear_words[2] & 0xffu) << 16) | ((clear_words[3] & 0xffu) << 24);
+        break;
+    case A840_FMT6_16_UINT:
+    case A840_FMT6_16_SINT:
+        out_dw[0] = clear_words[0] & 0xffffu;
+        break;
+    case A840_FMT6_16_16_UINT:
+    case A840_FMT6_16_16_SINT:
+        out_dw[0] = (clear_words[0] & 0xffffu) | ((clear_words[1] & 0xffffu) << 16);
+        break;
+    case A840_FMT6_16_16_16_16_UINT:
+    case A840_FMT6_16_16_16_16_SINT:
+        out_dw[0] = (clear_words[0] & 0xffffu) | ((clear_words[1] & 0xffffu) << 16);
+        out_dw[1] = (clear_words[2] & 0xffffu) | ((clear_words[3] & 0xffffu) << 16);
+        break;
+    default:
+        memcpy(out_dw, clear_words, 4u * sizeof(uint32_t));
+        break;
+    }
+}
+
+/* Mesa tu_clear_blit.cc:2270-2398 A7XX/A8XX generic BLIT_EVENT_CLEAR for tiled
+ * sysmem surfaces (supports 1x/2x/4x MSAA color, depth, and separate stencil). */
+static A840RtStatus emit_generic_sysmem_clear(A840CmdStream *cs,
+                                              uint32_t width,
+                                              uint32_t height,
+                                              uint32_t samples,
+                                              uint32_t fmt_id,
+                                              uint32_t swap,
+                                              uint32_t tile_mode,
+                                              uint64_t bo_handle,
+                                              uint64_t gpu_va,
+                                              uint32_t pitch_bytes,
+                                              bool is_depth_or_stencil,
+                                              bool sample_0,
+                                              uint32_t clear_mask,
+                                              uint32_t buffer_id,
+                                              const uint32_t packed_clear[4])
+{
+    uint32_t hw_samples = msaa_samples_hw_code(samples);
+    uint32_t hw_tile = (tile_mode == A840_TILE_LINEAR) ? A840_TILE6_LINEAR : A840_TILE6_3;
+    uint32_t zero = 0u;
+    uint32_t rect_words[2];
+    uint32_t gmem_info = hw_samples << 3u;
+    uint32_t op = A840_RT_BLIT_EVENT_CLEAR |
+                  (sample_0 ? (UINT32_C(1) << 2u) : 0u) |
+                  (is_depth_or_stencil ? (UINT32_C(1) << 3u) : 0u) |
+                  ((clear_mask & 0xfu) << 4u) |
+                  ((buffer_id & 0xfu) << 12u);
+    uint32_t sys_info = hw_tile |
+                        (hw_samples << 3u) |
+                        ((swap & 3u) << 5u) |
+                        ((fmt_id & 0xffu) << 7u);
+    uint32_t pitch_reg = pitch_bytes >> A840_MRT_PITCH_SHR;
+    uint32_t zero3[3] = {0u, 0u, 0u};
+    uint32_t ev_resolve = A840_RT_EVENT_CCU_RESOLVE;
+    A840EmitStatus est;
+
+    if (!width || !height || (pitch_bytes & 63u) != 0u) {
+        return A840_RT_RANGE_ERROR;
+    }
+    rect_words[0] = 0u;
+    rect_words[1] = ((width - 1u) & A840_2D_COORD_MAX) |
+                    (((height - 1u) & A840_2D_COORD_MAX) << A840_2D_COORD_Y_SHIFT);
+
+    est = a840_cs_emit_pkt4(cs, A840_REG_RB_RESOLVE_CNTL_1, rect_words, 2u);
+    if (est != A840_EMIT_OK) return a840_rt_status_from_emit(est);
+    est = a840_cs_emit_pkt4(cs, A840_REG_RB_RESOLVE_CLEAR_COLOR_DW0, packed_clear, 4u);
+    if (est != A840_EMIT_OK) return a840_rt_status_from_emit(est);
+    est = a840_cs_emit_pkt4(cs, A840_REG_RB_RESOLVE_GMEM_BUFFER_INFO, &gmem_info, 1u);
+    if (est != A840_EMIT_OK) return a840_rt_status_from_emit(est);
+    est = a840_cs_emit_pkt4(cs, A840_REG_RB_RESOLVE_CNTL_0, &zero, 1u);
+    if (est != A840_EMIT_OK) return a840_rt_status_from_emit(est);
+    est = a840_cs_emit_pkt4(cs, A840_REG_RB_RESOLVE_OPERATION, &op, 1u);
+    if (est != A840_EMIT_OK) return a840_rt_status_from_emit(est);
+    est = a840_cs_emit_pkt4(cs, A840_REG_RB_RESOLVE_SYSTEM_BUFFER_INFO, &sys_info, 1u);
+    if (est != A840_EMIT_OK) return a840_rt_status_from_emit(est);
+    est = a840_cs_emit_reg64_va(cs, A840_REG_RB_RESOLVE_SYSTEM_BUFFER_BASE,
+                                bo_handle, gpu_va, A840_RELOC_WRITE);
+    if (est != A840_EMIT_OK) return a840_rt_status_from_emit(est);
+    est = a840_cs_emit_pkt4(cs, A840_REG_RB_RESOLVE_SYSTEM_BUFFER_PITCH, &pitch_reg, 1u);
+    if (est != A840_EMIT_OK) return a840_rt_status_from_emit(est);
+    est = a840_cs_emit_pkt4(cs, A840_REG_RB_RESOLVE_SYSTEM_FLAG_BUFFER_BASE, zero3, 3u);
+    if (est != A840_EMIT_OK) return a840_rt_status_from_emit(est);
+    est = a840_cs_emit_pkt4(cs, A840_REG_RB_RESOLVE_GMEM_BUFFER_BASE, &zero, 1u);
+    if (est != A840_EMIT_OK) return a840_rt_status_from_emit(est);
+    est = a840_cs_emit_pkt7(cs, A840_CP_EVENT_WRITE7, &ev_resolve, 1u);
+    return a840_rt_status_from_emit(est);
+}
+
+/* Mesa tu_clear_blit.cc:3948-4015 A8XX sysmem 2D MSAA resolve (2x/4x tiled -> 1x dst). */
+static A840RtStatus emit_sysmem_msaa_resolve_2d(A840CmdStream *cs,
+                                                const A840RtTexture *src,
+                                                const A840RtTexture *dst)
+{
+    uint32_t w, h;
+    uint32_t ifmt = 0u, out_type = 0u, half = 0u;
+    uint32_t src_ifmt = 0u, src_type = 0u, src_half = 0u;
+    uint32_t eff_ifmt;
+    uint32_t blt_cntl;
+    uint32_t tpl1_blt = A840_A6XX_TEX_2D << A840_2D_TPL1_TYPE_SHIFT;
+    uint32_t sp_out;
+    uint32_t zero = 0u;
+    uint32_t zero3[3] = {0u, 0u, 0u};
+    uint32_t dst_rect[2];
+    uint32_t src_coords[4];
+    uint32_t dst_tile, dst_info, dst_pitch;
+    uint32_t src_tile, src_info, src_size, src_pitch;
+    uint32_t hw_samples;
+    uint32_t blit_op = A840_BLIT_OP_SCALE;
+    A840EmitStatus est;
+    A840RtStatus st;
+
+    if (!cs || !src || !dst || src->samples <= 1u || dst->samples > 1u) {
+        return A840_RT_INVALID_ARG;
+    }
+    w = src->width < dst->width ? src->width : dst->width;
+    h = src->height < dst->height ? src->height : dst->height;
+    if (!w || !h || w > A840_2D_COORD_MAX + 1u || h > A840_2D_COORD_MAX + 1u) {
+        return A840_RT_RANGE_ERROR;
+    }
+    if (!rt_a2d_format_params(dst->color_format_id, &ifmt, &out_type, &half) ||
+        !rt_a2d_format_params(src->color_format_id, &src_ifmt, &src_type, &src_half)) {
+        return A840_RT_UNSUPPORTED;
+    }
+    eff_ifmt = dst->srgb ? A840_R2D_UNORM8_SRGB : ifmt;
+    blt_cntl = (dst->color_format_id << A840_2D_FORMAT_SHIFT) |
+               (UINT32_C(15) << A840_2D_MASK_SHIFT) |
+               (eff_ifmt << A840_2D_IFMT_SHIFT);
+    sp_out = (out_type << A840_2D_SP_TYPE_SHIFT) |
+             (dst->color_format_id << A840_2D_SP_FORMAT_SHIFT) |
+             (UINT32_C(15) << A840_2D_SP_MASK_SHIFT) |
+             (src_half ? A840_2D_SP_HALF_PRECISION : 0u) |
+             (dst->srgb ? A840_2D_SP_SRGB : 0u);
+
+    st = emit_a2d_scissor_for_rect(cs, 0u, 0u, w, h);
+    if (st != A840_RT_OK) return st;
+
+    est = a840_cs_emit_pkt4(cs, A840_REG_RB_A2D_PIXEL_CNTL, &zero, 1u);
+    if (est != A840_EMIT_OK) return a840_rt_status_from_emit(est);
+    est = a840_cs_emit_pkt4(cs, A840_REG_RB_A2D_BLT_CNTL, &blt_cntl, 1u);
+    if (est != A840_EMIT_OK) return a840_rt_status_from_emit(est);
+    est = a840_cs_emit_pkt4(cs, A840_REG_GRAS_A2D_BLT_CNTL, &blt_cntl, 1u);
+    if (est != A840_EMIT_OK) return a840_rt_status_from_emit(est);
+    est = a840_cs_emit_pkt4(cs, A840_REG_TPL1_A2D_BLT_CNTL, &tpl1_blt, 1u);
+    if (est != A840_EMIT_OK) return a840_rt_status_from_emit(est);
+    est = a840_cs_emit_pkt4(cs, A840_REG_SP_A2D_OUTPUT_INFO, &sp_out, 1u);
+    if (est != A840_EMIT_OK) return a840_rt_status_from_emit(est);
+
+    dst_rect[0] = 0u;
+    dst_rect[1] = (w - 1u) | ((h - 1u) << A840_2D_COORD_Y_SHIFT);
+    est = a840_cs_emit_pkt4(cs, A840_REG_GRAS_A2D_DEST_TL, dst_rect, 2u);
+    if (est != A840_EMIT_OK) return a840_rt_status_from_emit(est);
+
+    src_coords[0] = 0u;
+    src_coords[1] = (w - 1u) << A840_2D_SRC_COORD_SHIFT;
+    src_coords[2] = 0u;
+    src_coords[3] = (h - 1u) << A840_2D_SRC_COORD_SHIFT;
+    est = a840_cs_emit_pkt4(cs, A840_REG_GRAS_A2D_SRC_XMIN, src_coords, 4u);
+    if (est != A840_EMIT_OK) return a840_rt_status_from_emit(est);
+
+    dst_tile = (dst->tile_mode == A840_TILE_LINEAR) ? A840_TILE6_LINEAR : A840_TILE6_3;
+    dst_info = dst->color_format_id |
+               (dst_tile << A840_2D_DST_TILE_SHIFT) |
+               (dst->color_swap << A840_2D_DST_SWAP_SHIFT) |
+               (dst->srgb ? A840_2D_DST_SRGB : 0u);
+    dst_pitch = dst->pitch_bytes >> A840_2D_DST_PITCH_SHR;
+    est = a840_cs_emit_pkt4(cs, A840_REG_RB_A2D_DEST_BUFFER_INFO, &dst_info, 1u);
+    if (est != A840_EMIT_OK) return a840_rt_status_from_emit(est);
+    est = a840_cs_emit_reg64_va(cs, A840_REG_RB_A2D_DEST_BUFFER_BASE,
+                                dst->bo_handle, dst->gpu_va, A840_RELOC_WRITE);
+    if (est != A840_EMIT_OK) return a840_rt_status_from_emit(est);
+    est = a840_cs_emit_pkt4(cs, A840_REG_RB_A2D_DEST_BUFFER_PITCH, &dst_pitch, 1u);
+    if (est != A840_EMIT_OK) return a840_rt_status_from_emit(est);
+    est = a840_cs_emit_pkt4(cs, A840_REG_RB_A2D_DEST_FLAG_BUFFER_BASE, zero3, 3u);
+    if (est != A840_EMIT_OK) return a840_rt_status_from_emit(est);
+
+    hw_samples = msaa_samples_hw_code(src->samples);
+    src_tile = (src->tile_mode == A840_TILE_LINEAR) ? A840_TILE6_LINEAR : A840_TILE6_3;
+    src_info = src->color_format_id |
+               (src_tile << A840_2D_SRC_TILE_SHIFT) |
+               (src->color_swap << A840_2D_SRC_SWAP_SHIFT) |
+               (src->srgb ? A840_2D_SRC_SRGB : 0u) |
+               (hw_samples << A840_RT_A2D_SRC_SAMPLES_SHIFT) |
+               (out_type == A840_OUTPUT_IFMT_2D_FLOAT ? A840_RT_A2D_SRC_SAMPLES_AVERAGE : 0u) |
+               A840_2D_SRC_UNK20 | A840_2D_SRC_UNK22;
+    src_size = src->width | (src->height << A840_2D_SRC_HEIGHT_SHIFT);
+    src_pitch = src->pitch_bytes << A840_2D_SRC_PITCH_SHIFT;
+    est = a840_cs_emit_pkt4(cs, A840_REG_TPL1_A2D_SRC_TEXTURE_INFO, &src_info, 1u);
+    if (est != A840_EMIT_OK) return a840_rt_status_from_emit(est);
+    est = a840_cs_emit_pkt4(cs, A840_REG_TPL1_A2D_SRC_TEXTURE_SIZE, &src_size, 1u);
+    if (est != A840_EMIT_OK) return a840_rt_status_from_emit(est);
+    est = a840_cs_emit_reg64_va(cs, A840_REG_TPL1_A2D_SRC_TEXTURE_BASE,
+                                src->bo_handle, src->gpu_va, A840_RELOC_READ);
+    if (est != A840_EMIT_OK) return a840_rt_status_from_emit(est);
+    est = a840_cs_emit_pkt4(cs, A840_REG_TPL1_A2D_SRC_TEXTURE_PITCH, &src_pitch, 1u);
+    if (est != A840_EMIT_OK) return a840_rt_status_from_emit(est);
+    est = a840_cs_emit_pkt4(cs, A840_REG_TPL1_A2D_SRC_TEXTURE_FLAG_BASE, zero3, 3u);
+    if (est != A840_EMIT_OK) return a840_rt_status_from_emit(est);
+    est = a840_cs_emit_pkt7(cs, A840_CP_BLIT, &blit_op, 1u);
+    return a840_rt_status_from_emit(est);
 }
 
 A840RtStatus a840_rt_cb_begin_render_pass(A840RtCmdBuffer *cb,
@@ -2171,6 +2575,7 @@ A840RtStatus a840_rt_cb_begin_render_pass(A840RtCmdBuffer *cb,
 
     for (i = 0; i < pass->color_count; ++i) {
         A840RtTexture *ct = pass->color_targets[i];
+        A840RtTexture *rt = pass->color_resolve_targets[i];
         if (ct != NULL) {
             st = check_texture_owner(cb->device, ct);
             if (st != A840_RT_OK) {
@@ -2181,6 +2586,16 @@ A840RtStatus a840_rt_cb_begin_render_pass(A840RtCmdBuffer *cb,
             if (ct->samples > rq.sample_count) {
                 rq.sample_count = ct->samples;
             }
+        }
+        if (rt != NULL) {
+            st = check_texture_owner(cb->device, rt);
+            if (st != A840_RT_OK) {
+                return st;
+            }
+            if (rt->samples > 1u) {
+                return A840_RT_UNSUPPORTED;
+            }
+            rq.has_msaa_resolve = true;
         }
     }
     if (pass->depth_target != NULL) {
@@ -2211,7 +2626,7 @@ A840RtStatus a840_rt_cb_begin_render_pass(A840RtCmdBuffer *cb,
         return A840_RT_FALLBACK_REQUIRED;
     }
 
-    st = pre_reserve_textures(cb, (size_t)pass->color_count + 2u);
+    st = pre_reserve_textures(cb, (size_t)pass->color_count * 2u + 2u);
     if (st != A840_RT_OK) {
         return st;
     }
@@ -2222,8 +2637,8 @@ A840RtStatus a840_rt_cb_begin_render_pass(A840RtCmdBuffer *cb,
     }
 
     st = ensure_cb_headroom(cb,
-                            ((size_t)pass->color_count + 2u) * (A840_EMIT_2D_CLEAR_MAX_DWORDS + 3u) + 128u,
-                            ((size_t)pass->color_count + 2u) * 2u + 4u);
+                            ((size_t)pass->color_count + 3u) * (A840_EMIT_2D_CLEAR_MAX_DWORDS + 32u) + 128u,
+                            ((size_t)pass->color_count + 3u) * 2u + 4u);
     if (st != A840_RT_OK) {
         free(enc);
         return st;
@@ -2237,31 +2652,51 @@ A840RtStatus a840_rt_cb_begin_render_pass(A840RtCmdBuffer *cb,
     {
         bool did_color_clear = false;
         bool did_ds_clear = false;
+        bool did_generic_clear = false;
         for (i = 0; i < pass->color_count; ++i) {
             A840RtTexture *ct = pass->color_targets[i];
             if (ct != NULL && pass->color_clear[i]) {
-                A840Clear2DDesc cdesc;
-                A840EmitStatus est;
-                memset(&cdesc, 0, sizeof(cdesc));
-                a840_rt_texture_as_surface2d(ct, &cdesc.dst);
-                cdesc.rect.x = 0u;
-                cdesc.rect.y = 0u;
-                cdesc.rect.width = ct->width;
-                cdesc.rect.height = ct->height;
-                memcpy(cdesc.color, pass->color_clear_values[i], sizeof(cdesc.color));
-                st = emit_a2d_scissor_for_rect(&cb->cs, 0u, 0u, ct->width, ct->height);
-                if (st != A840_RT_OK) {
-                    cb->cs.used_dwords = saved_words;
-                    cb->cs.reloc_count = saved_relocs;
-                    free(enc);
-                    return st;
-                }
-                est = a840_emit_2d_clear(&cb->cs, &cdesc);
-                if (est != A840_EMIT_OK) {
-                    cb->cs.used_dwords = saved_words;
-                    cb->cs.reloc_count = saved_relocs;
-                    free(enc);
-                    return a840_rt_status_from_emit(est);
+                if (ct->samples > 1u) {
+                    uint32_t packed[4];
+                    uint32_t ifmt = 0u, otype = 0u, half = 0u;
+                    bool is_int = rt_a2d_format_params(ct->color_format_id, &ifmt, &otype, &half) &&
+                                  (otype != A840_OUTPUT_IFMT_2D_FLOAT);
+                    pack_generic_clear_color(ct->color_format_id, pass->color_clear_values[i], packed);
+                    st = emit_generic_sysmem_clear(&cb->cs, ct->width, ct->height, ct->samples,
+                                                   ct->color_format_id, ct->color_swap, ct->tile_mode,
+                                                   ct->bo_handle, ct->gpu_va, ct->pitch_bytes,
+                                                   false, is_int, 0xfu, i & 7u, packed);
+                    if (st != A840_RT_OK) {
+                        cb->cs.used_dwords = saved_words;
+                        cb->cs.reloc_count = saved_relocs;
+                        free(enc);
+                        return st;
+                    }
+                    did_generic_clear = true;
+                } else {
+                    A840Clear2DDesc cdesc;
+                    A840EmitStatus est;
+                    memset(&cdesc, 0, sizeof(cdesc));
+                    a840_rt_texture_as_surface2d(ct, &cdesc.dst);
+                    cdesc.rect.x = 0u;
+                    cdesc.rect.y = 0u;
+                    cdesc.rect.width = ct->width;
+                    cdesc.rect.height = ct->height;
+                    memcpy(cdesc.color, pass->color_clear_values[i], sizeof(cdesc.color));
+                    st = emit_a2d_scissor_for_rect(&cb->cs, 0u, 0u, ct->width, ct->height);
+                    if (st != A840_RT_OK) {
+                        cb->cs.used_dwords = saved_words;
+                        cb->cs.reloc_count = saved_relocs;
+                        free(enc);
+                        return st;
+                    }
+                    est = a840_emit_2d_clear(&cb->cs, &cdesc);
+                    if (est != A840_EMIT_OK) {
+                        cb->cs.used_dwords = saved_words;
+                        cb->cs.reloc_count = saved_relocs;
+                        free(enc);
+                        return a840_rt_status_from_emit(est);
+                    }
                 }
                 did_color_clear = true;
             }
@@ -2270,17 +2705,21 @@ A840RtStatus a840_rt_cb_begin_render_pass(A840RtCmdBuffer *cb,
             A840RtTexture *dt = pass->depth_target;
             uint32_t d_fmt = 0u;
             uint32_t d_col[4] = {0u, 0u, 0u, 0u};
+            uint32_t d_packed[4] = {0u, 0u, 0u, 0u};
+            uint32_t d_cmask = 1u;
             if (dt->mtl_pixel_format == 252u || dt->mtl_pixel_format == 260u) {
                 float clamped = pass->depth_clear_value;
                 if (!isfinite(clamped)) clamped = 1.0f;
                 d_fmt = A840_FMT6_32_FLOAT;
                 memcpy(&d_col[0], &clamped, sizeof(float));
+                d_packed[0] = d_col[0];
             } else if (dt->mtl_pixel_format == 250u) {
                 float clamped = pass->depth_clear_value;
                 if (!isfinite(clamped) || clamped < 0.0f) clamped = 0.0f;
                 else if (clamped > 1.0f) clamped = 1.0f;
                 d_fmt = A840_FMT6_16_UNORM;
                 memcpy(&d_col[0], &clamped, sizeof(float));
+                d_packed[0] = float32_to_unorm(clamped, 65535u);
             } else if (dt->mtl_pixel_format == 255u) {
                 float clamped = pass->depth_clear_value;
                 uint32_t z24;
@@ -2293,68 +2732,131 @@ A840RtStatus a840_rt_cb_begin_render_pass(A840RtCmdBuffer *cb,
                 d_col[1] = (z24 >> 8) & 0xffu;
                 d_col[2] = (z24 >> 16) & 0xffu;
                 d_col[3] = pass->stencil_clear ? (pass->stencil_clear_value & 0xffu) : 0u;
+                d_packed[0] = (z24 & 0xffffffu) | ((d_col[3] & 0xffu) << 24u);
+                d_cmask = pass->stencil_clear ? 3u : 1u;
             }
             if (d_fmt != 0u) {
-                A840Clear2DDesc cdesc;
-                A840EmitStatus est;
-                memset(&cdesc, 0, sizeof(cdesc));
-                a840_rt_texture_as_surface2d(dt, &cdesc.dst);
-                cdesc.dst.format_id = d_fmt;
-                cdesc.dst.swap = A840_WZYX;
-                cdesc.dst.srgb = 0u;
-                cdesc.rect.x = 0u;
-                cdesc.rect.y = 0u;
-                cdesc.rect.width = dt->width;
-                cdesc.rect.height = dt->height;
-                memcpy(cdesc.color, d_col, sizeof(d_col));
-                st = emit_a2d_scissor_for_rect(&cb->cs, 0u, 0u, dt->width, dt->height);
+                if (dt->samples > 1u || (dt->mtl_pixel_format == 255u && !pass->stencil_clear)) {
+                    st = emit_generic_sysmem_clear(&cb->cs, dt->width, dt->height, dt->samples,
+                                                   d_fmt, A840_WZYX, dt->tile_mode,
+                                                   dt->bo_handle, dt->gpu_va, dt->pitch_bytes,
+                                                   true, true, d_cmask, 8u, d_packed);
+                    if (st != A840_RT_OK) {
+                        cb->cs.used_dwords = saved_words;
+                        cb->cs.reloc_count = saved_relocs;
+                        free(enc);
+                        return st;
+                    }
+                    did_generic_clear = true;
+                } else {
+                    A840Clear2DDesc cdesc;
+                    A840EmitStatus est;
+                    memset(&cdesc, 0, sizeof(cdesc));
+                    a840_rt_texture_as_surface2d(dt, &cdesc.dst);
+                    cdesc.dst.format_id = d_fmt;
+                    cdesc.dst.swap = A840_WZYX;
+                    cdesc.dst.srgb = 0u;
+                    cdesc.rect.x = 0u;
+                    cdesc.rect.y = 0u;
+                    cdesc.rect.width = dt->width;
+                    cdesc.rect.height = dt->height;
+                    memcpy(cdesc.color, d_col, sizeof(d_col));
+                    st = emit_a2d_scissor_for_rect(&cb->cs, 0u, 0u, dt->width, dt->height);
+                    if (st != A840_RT_OK) {
+                        cb->cs.used_dwords = saved_words;
+                        cb->cs.reloc_count = saved_relocs;
+                        free(enc);
+                        return st;
+                    }
+                    est = a840_emit_2d_clear(&cb->cs, &cdesc);
+                    if (est != A840_EMIT_OK) {
+                        cb->cs.used_dwords = saved_words;
+                        cb->cs.reloc_count = saved_relocs;
+                        free(enc);
+                        return a840_rt_status_from_emit(est);
+                    }
+                }
+                did_ds_clear = true;
+            }
+        }
+        if (pass->stencil_target != NULL && pass->stencil_clear) {
+            A840RtTexture *stex = pass->stencil_target;
+            if (stex->mtl_pixel_format == 253u || stex->mtl_pixel_format == 260u) {
+                /* Always clear separate S8 plane (including D32S8 Plane 1 when stencil_target == depth_target). */
+                uint64_t s_va = stex->gpu_va + stex->stencil_plane_offset;
+                uint32_t s_pitch = (stex->stencil_plane_offset > 0u && stex->stencil_pitch_bytes > 0u)
+                                       ? stex->stencil_pitch_bytes
+                                       : stex->pitch_bytes;
+                if (stex->samples > 1u) {
+                    uint32_t s_packed[4] = {pass->stencil_clear_value & 0xffu, 0u, 0u, 0u};
+                    st = emit_generic_sysmem_clear(&cb->cs, stex->width, stex->height, stex->samples,
+                                                   A840_FMT6_8_UINT, A840_WZYX, stex->tile_mode,
+                                                   stex->bo_handle, s_va, s_pitch,
+                                                   true, true, 2u, 9u, s_packed);
+                    if (st != A840_RT_OK) {
+                        cb->cs.used_dwords = saved_words;
+                        cb->cs.reloc_count = saved_relocs;
+                        free(enc);
+                        return st;
+                    }
+                    did_generic_clear = true;
+                } else {
+                    A840Clear2DDesc cdesc;
+                    A840EmitStatus est;
+                    memset(&cdesc, 0, sizeof(cdesc));
+                    a840_rt_texture_as_surface2d(stex, &cdesc.dst);
+                    cdesc.dst.gpu_va = s_va;
+                    cdesc.dst.pitch = s_pitch;
+                    cdesc.dst.format_id = A840_FMT6_8_UINT;
+                    cdesc.dst.swap = A840_WZYX;
+                    cdesc.dst.srgb = 0u;
+                    cdesc.rect.x = 0u;
+                    cdesc.rect.y = 0u;
+                    cdesc.rect.width = stex->width;
+                    cdesc.rect.height = stex->height;
+                    cdesc.color[0] = pass->stencil_clear_value & 0xffu;
+                    st = emit_a2d_scissor_for_rect(&cb->cs, 0u, 0u, stex->width, stex->height);
+                    if (st != A840_RT_OK) {
+                        cb->cs.used_dwords = saved_words;
+                        cb->cs.reloc_count = saved_relocs;
+                        free(enc);
+                        return st;
+                    }
+                    est = a840_emit_2d_clear(&cb->cs, &cdesc);
+                    if (est != A840_EMIT_OK) {
+                        cb->cs.used_dwords = saved_words;
+                        cb->cs.reloc_count = saved_relocs;
+                        free(enc);
+                        return a840_rt_status_from_emit(est);
+                    }
+                }
+                did_ds_clear = true;
+            } else if (stex->mtl_pixel_format == 255u &&
+                       !(pass->depth_target == stex && pass->depth_clear)) {
+                uint32_t s_packed[4] = {(pass->stencil_clear_value & 0xffu) << 24u, 0u, 0u, 0u};
+                st = emit_generic_sysmem_clear(&cb->cs, stex->width, stex->height, stex->samples,
+                                               A840_FMT6_8_8_8_8_UNORM, A840_WZYX, stex->tile_mode,
+                                               stex->bo_handle, stex->gpu_va, stex->pitch_bytes,
+                                               true, true, 2u, 8u, s_packed);
                 if (st != A840_RT_OK) {
                     cb->cs.used_dwords = saved_words;
                     cb->cs.reloc_count = saved_relocs;
                     free(enc);
                     return st;
                 }
-                est = a840_emit_2d_clear(&cb->cs, &cdesc);
-                if (est != A840_EMIT_OK) {
-                    cb->cs.used_dwords = saved_words;
-                    cb->cs.reloc_count = saved_relocs;
-                    free(enc);
-                    return a840_rt_status_from_emit(est);
-                }
+                did_generic_clear = true;
                 did_ds_clear = true;
             }
         }
-        if (pass->stencil_target != NULL && pass->stencil_clear &&
-            pass->stencil_target != pass->depth_target &&
-            pass->stencil_target->mtl_pixel_format == 253u) {
-            A840RtTexture *stex = pass->stencil_target;
-            A840Clear2DDesc cdesc;
-            A840EmitStatus est;
-            memset(&cdesc, 0, sizeof(cdesc));
-            a840_rt_texture_as_surface2d(stex, &cdesc.dst);
-            cdesc.dst.format_id = A840_FMT6_8_UINT;
-            cdesc.dst.swap = A840_WZYX;
-            cdesc.dst.srgb = 0u;
-            cdesc.rect.x = 0u;
-            cdesc.rect.y = 0u;
-            cdesc.rect.width = stex->width;
-            cdesc.rect.height = stex->height;
-            cdesc.color[0] = pass->stencil_clear_value & 0xffu;
-            st = emit_a2d_scissor_for_rect(&cb->cs, 0u, 0u, stex->width, stex->height);
-            if (st != A840_RT_OK) {
-                cb->cs.used_dwords = saved_words;
-                cb->cs.reloc_count = saved_relocs;
-                free(enc);
-                return st;
-            }
-            est = a840_emit_2d_clear(&cb->cs, &cdesc);
+        if (did_generic_clear) {
+            uint32_t ev_end = A840_RT_EVENT_CCU_END_RESOLVE_GRP;
+            A840EmitStatus est = a840_cs_emit_pkt7(&cb->cs, A840_CP_EVENT_WRITE7, &ev_end, 1u);
             if (est != A840_EMIT_OK) {
                 cb->cs.used_dwords = saved_words;
                 cb->cs.reloc_count = saved_relocs;
                 free(enc);
                 return a840_rt_status_from_emit(est);
             }
-            did_ds_clear = true;
         }
         did_clear = did_color_clear || did_ds_clear;
         if (did_clear) {
@@ -2402,11 +2904,16 @@ A840RtStatus a840_rt_cb_begin_render_pass(A840RtCmdBuffer *cb,
     }
 
     enc->cb = cb;
+    enc->sample_count = rq.sample_count;
     enc->color_count = pass->color_count;
     for (i = 0; i < pass->color_count; ++i) {
         enc->color_targets[i] = pass->color_targets[i];
         if (pass->color_targets[i] != NULL) {
             retain_texture_reserved(cb, pass->color_targets[i]);
+        }
+        enc->color_resolve_targets[i] = pass->color_resolve_targets[i];
+        if (pass->color_resolve_targets[i] != NULL) {
+            retain_texture_reserved(cb, pass->color_resolve_targets[i]);
         }
     }
     enc->depth_target = pass->depth_target;
@@ -2512,6 +3019,7 @@ A840RtStatus a840_rt_render_set_program(A840RtRenderEncoder *enc,
     if (desc->fs_private_buffer != NULL) {
         retain_buffer_reserved(cb, desc->fs_private_buffer);
     }
+    enc->fs_flags_out = desc->emit_desc.fs.stage->flags_out;
     enc->has_program = true;
     return A840_RT_OK;
 }
@@ -2575,17 +3083,44 @@ A840RtStatus a840_rt_render_set_state(A840RtRenderEncoder *enc,
         emit_desc.depth_format = A840_DEPTH_NONE;
     }
 
-    if (enc->stencil_target != NULL) {
-        a840_rt_texture_as_attachment(enc->stencil_target, &emit_desc.stencil);
+    if (enc->stencil_target != NULL &&
+        !(enc->depth_target == enc->stencil_target && enc->stencil_target->mtl_pixel_format == 255u)) {
+        a840_rt_texture_as_stencil_attachment(enc->stencil_target, &emit_desc.stencil);
     }
 
-    st = ensure_cb_headroom(cb, A840_EMIT_3D_RENDER_STATE_MAX_DWORDS, 20u);
+    st = ensure_cb_headroom(cb,
+                            A840_EMIT_3D_RENDER_STATE_MAX_DWORDS + A840_EMIT_MSAA_STATE_MAX_DWORDS + 8u,
+                            20u);
     if (st != A840_RT_OK) {
         return st;
     }
     est = a840_emit_3d_render_state(&cb->cs, &emit_desc);
     if (est != A840_EMIT_OK) {
         return a840_rt_status_from_emit(est);
+    }
+    /* Mesa tu_cmd_buffer.cc:7975-8020: force LATE_Z when stencil-only (no depth target)
+     * or when FS discards/writes depth while depth/stencil writes are active. */
+    {
+        bool need_late_z = (desc->stencil_test && enc->depth_target == NULL) ||
+                           ((desc->depth_write || desc->stencil_test) && enc->has_program &&
+                            (((enc->fs_flags_out & 1u) == 0u) || ((enc->fs_flags_out & 2u) != 0u)));
+        if (need_late_z) {
+            uint32_t late_z = A840_RT_ZMODE_LATE_Z;
+            est = a840_cs_emit_pkt4(&cb->cs, A840_REG_GRAS_SU_DEPTH_PLANE_CNTL, &late_z, 1u);
+            if (est != A840_EMIT_OK) return a840_rt_status_from_emit(est);
+            est = a840_cs_emit_pkt4(&cb->cs, A840_REG_RB_DEPTH_PLANE_CNTL, &late_z, 1u);
+            if (est != A840_EMIT_OK) return a840_rt_status_from_emit(est);
+        }
+    }
+    /* Program real A8XX 2x/4x hardware MSAA raster/dest/TPL1/sample-pos state. */
+    if (enc->sample_count > 1u) {
+        A840MsaaStateDesc msaa_desc;
+        memset(&msaa_desc, 0, sizeof(msaa_desc));
+        msaa_desc.sample_count = enc->sample_count;
+        est = a840_emit_msaa_state(&cb->cs, &msaa_desc);
+        if (est != A840_EMIT_OK) {
+            return a840_rt_status_from_emit(est);
+        }
     }
     enc->has_state = true;
     return A840_RT_OK;
@@ -2874,13 +3409,43 @@ A840RtStatus a840_rt_render_end_pass(A840RtRenderEncoder *enc)
                       A840_RT_CACHE_CCU_INV_DEPTH | A840_CACHE_UCHE_INV;
     }
 
-    st = ensure_cb_headroom(enc->cb, 24u, 0u);
-    if (st != A840_RT_OK) {
-        return st;
-    }
-    st = emit_barrier_tx(&enc->cb->cs, flush_mask, true, true);
-    if (st != A840_RT_OK) {
-        return st;
+    {
+        uint32_t resolve_count = 0u;
+        for (i = 0; i < enc->color_count; ++i) {
+            if (enc->color_targets[i] != NULL &&
+                enc->color_resolve_targets[i] != NULL &&
+                enc->color_targets[i]->samples > 1u) {
+                resolve_count++;
+            }
+        }
+        st = ensure_cb_headroom(enc->cb, 48u + (size_t)resolve_count * 64u, (size_t)resolve_count * 2u);
+        if (st != A840_RT_OK) {
+            return st;
+        }
+        st = emit_barrier_tx(&enc->cb->cs, flush_mask, true, true);
+        if (st != A840_RT_OK) {
+            return st;
+        }
+        if (resolve_count > 0u) {
+            for (i = 0; i < enc->color_count; ++i) {
+                A840RtTexture *src = enc->color_targets[i];
+                A840RtTexture *dst = enc->color_resolve_targets[i];
+                if (src != NULL && dst != NULL && src->samples > 1u) {
+                    st = emit_sysmem_msaa_resolve_2d(&enc->cb->cs, src, dst);
+                    if (st != A840_RT_OK) {
+                        return st;
+                    }
+                }
+            }
+            st = emit_barrier_tx(&enc->cb->cs,
+                                 A840_RT_CACHE_CCU_RESOLVE_CLEAN | A840_CACHE_CCU_FLUSH_COLOR |
+                                 A840_RT_CACHE_UCHE_CLEAN | A840_CACHE_CCU_INV_COLOR |
+                                 A840_CACHE_UCHE_INV,
+                                 true, true);
+            if (st != A840_RT_OK) {
+                return st;
+            }
+        }
     }
 
     enc->ended = true;

@@ -88,11 +88,12 @@ typedef struct A840RtComputePipelineDesc {
 typedef struct A840RtRenderPassDesc {
     uint32_t color_count; /* 0..A840_MAX_COLOR_TARGETS */
     A840RtTexture *color_targets[A840_MAX_COLOR_TARGETS];
+    A840RtTexture *color_resolve_targets[A840_MAX_COLOR_TARGETS]; /* Optional 1x resolve dst */
     bool color_clear[A840_MAX_COLOR_TARGETS];
     uint32_t color_clear_values[A840_MAX_COLOR_TARGETS][4];
     A840RtTexture *depth_target;   /* Optional; must be tiled */
-    A840RtTexture *stencil_target; /* Optional; must be tiled S8 */
-    uint32_t sample_count;         /* 0 or 1 for Phase 2 sysmem */
+    A840RtTexture *stencil_target; /* Optional; must be tiled S8 or D32S8/D24S8 */
+    uint32_t sample_count;         /* 1, 2, or 4 */
     bool has_memoryless_attachment;
     bool has_msaa_resolve;
     bool uses_fbfetch;

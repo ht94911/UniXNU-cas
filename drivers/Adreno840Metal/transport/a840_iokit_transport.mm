@@ -8,6 +8,8 @@
 #include <dlfcn.h>
 #include <mach/error.h>
 #include <mach/vm_types.h>
+#include <sched.h>
+#include <time.h>
 #include <unistd.h>
 
 #include <cstring>
@@ -261,23 +263,11 @@ static A840TransportStatus unmapMemory(void *cookie, uint32_t token)
     }
 }
 
-- (A840TransportStatus)call:(uint32_t)method input:(const void *)input size:(size_t)inBytes
-                     output:(void *)output size:(size_t)outBytes
+- (A840TransportStatus)callOnce:(uint32_t)method input:(const void *)input size:(size_t)inBytes
+                         output:(void *)output size:(size_t)outBytes
 {
-#if defined(__aarch64__)
-    if (method == A840_WIRE_SUBMIT || method == A840_WIRE_SUBMIT_BATCH) {
-        __asm__ volatile("dsb sy" ::: "memory");
-    }
-#endif
     if (_mailbox) {
-        const auto mstatus = [self callMailbox:method input:input size:inBytes output:output size:outBytes];
-#if defined(__aarch64__)
-        if (mstatus == A840_TRANSPORT_OK &&
-            (method == A840_WIRE_WAIT_FENCE || method == NativeAdrenoMethodWaitAnyV3)) {
-            __asm__ volatile("dmb oshld" ::: "memory");
-        }
-#endif
-        return mstatus;
+        return [self callMailbox:method input:input size:inBytes output:output size:outBytes];
     }
     if (!_syms) return A840_TRANSPORT_STATE_ERROR;
     size_t actual = outBytes;
@@ -297,6 +287,43 @@ static A840TransportStatus unmapMemory(void *cookie, uint32_t token)
     const auto status = transportStatus(kr);
     if (status == A840_TRANSPORT_OK && outBytes && actual != outBytes)
         return A840_TRANSPORT_STATE_ERROR;
+    return status;
+}
+
+- (A840TransportStatus)call:(uint32_t)method input:(const void *)input size:(size_t)inBytes
+                     output:(void *)output size:(size_t)outBytes
+{
+    const bool isSubmit = (method == A840_WIRE_SUBMIT || method == A840_WIRE_SUBMIT_BATCH);
+#if defined(__aarch64__)
+    if (isSubmit) {
+        __asm__ volatile("dsb sy" ::: "memory");
+    }
+#endif
+    A840TransportStatus status = [self callOnce:method input:input size:inBytes output:output size:outBytes];
+    if (status == A840_TRANSPORT_BUSY && isSubmit) {
+        /* Multi-client VM switch on single ring returns kIOReturnBusy (0xe00002d5)
+         * while another process's job drains; retry cleanly with a bounded 5s deadline. */
+        struct timespec startTs{};
+        clock_gettime(CLOCK_MONOTONIC, &startTs);
+        const uint64_t startNs = static_cast<uint64_t>(startTs.tv_sec) * 1000000000ull +
+                                 static_cast<uint64_t>(startTs.tv_nsec);
+        constexpr uint64_t kBusyDeadlineNs = 5000000000ull;
+        for (uint32_t attempt = 0u; status == A840_TRANSPORT_BUSY; ++attempt) {
+            if (attempt < 32u) {
+                sched_yield();
+            } else {
+                struct timespec nowTs{};
+                clock_gettime(CLOCK_MONOTONIC, &nowTs);
+                const uint64_t nowNs = static_cast<uint64_t>(nowTs.tv_sec) * 1000000000ull +
+                                       static_cast<uint64_t>(nowTs.tv_nsec);
+                if (nowNs >= startNs && (nowNs - startNs) >= kBusyDeadlineNs) {
+                    break;
+                }
+                usleep(100);
+            }
+            status = [self callOnce:method input:input size:inBytes output:output size:outBytes];
+        }
+    }
 #if defined(__aarch64__)
     if (status == A840_TRANSPORT_OK &&
         (method == A840_WIRE_WAIT_FENCE || method == NativeAdrenoMethodWaitAnyV3)) {

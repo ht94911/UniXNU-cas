@@ -185,6 +185,10 @@ typedef struct A840RtTexture {
     uint32_t pitch_bytes;
     uint32_t pitch_align_log2;
     uint64_t slice_stride_bytes;
+    /* Separate tiled S8 plane for MTLPixelFormatDepth32Float_Stencil8 (260). */
+    uint64_t stencil_plane_offset;
+    uint32_t stencil_pitch_bytes;
+    uint64_t stencil_slice_stride_bytes;
     uint32_t usage_flags;
 
     uint32_t format_id;
@@ -278,6 +282,10 @@ A840RtStatus a840_rt_texture_as_surface2d(const A840RtTexture *texture,
                                           A840Surface2D *out_surface);
 A840RtStatus a840_rt_texture_as_attachment(const A840RtTexture *texture,
                                            A840AttachmentStorage *out_storage);
+A840RtStatus a840_rt_texture_as_stencil_attachment(const A840RtTexture *texture,
+                                                   A840AttachmentStorage *out_storage);
+A840RtStatus a840_rt_texture_as_stencil_attachment(const A840RtTexture *texture,
+                                                   A840AttachmentStorage *out_storage);
 A840RtStatus a840_rt_texture_get_subresource_layout(const A840RtTexture *texture,
                                                     uint32_t level,
                                                     uint32_t slice,

@@ -673,6 +673,10 @@ static uint32_t format_cpp_from_caps(const A840FormatCaps *caps)
     if ((caps->flags & A840_FORMAT_COMPRESSED) != 0u) {
         return 0u;
     }
+    if ((caps->flags & A840_FORMAT_SEPARATE_DEPTH_STENCIL_PLANES) != 0u) {
+        /* Plane 0 is 4-byte Z32F; Plane 1 S8 is appended below. */
+        return 4u;
+    }
     return caps->block_bits / 8u;
 }
 
@@ -833,6 +837,37 @@ A840RtStatus a840_heap_alloc_texture(A840Heap *heap,
             return A840_RT_RANGE_ERROR;
         }
         total_bytes = slice_stride * total_slices;
+        if ((caps->flags & A840_FORMAT_SEPARATE_DEPTH_STENCIL_PLANES) != 0u) {
+            uint64_t sp_pitch_align = (samples <= 1u) ? 128u : 256u;
+            uint64_t sp_row_align = (samples <= 1u) ? 32u : 16u;
+            uint64_t sp_pitch0 = 0u;
+            uint64_t sp_chain = 0u;
+            uint64_t sp_slice = 0u;
+            uint64_t sp_off = 0u;
+            uint32_t lvl;
+            if (!align_up_u64((uint64_t)desc->width * (uint64_t)samples, sp_pitch_align, &sp_pitch0)) {
+                return A840_RT_RANGE_ERROR;
+            }
+            for (lvl = 0u; lvl < mips; ++lvl) {
+                uint32_t lh = (desc->height >> lvl) ? (desc->height >> lvl) : 1u;
+                uint64_t lpr = (sp_pitch0 >> lvl) ? (sp_pitch0 >> lvl) : 1u;
+                uint64_t lp = 0u;
+                uint64_t lr = 0u;
+                if (!align_up_u64(lpr, sp_pitch_align, &lp) ||
+                    !align_up_u64((uint64_t)lh, sp_row_align, &lr) ||
+                    lr > UINT64_MAX / lp || lp * lr > UINT64_MAX - sp_chain) {
+                    return A840_RT_RANGE_ERROR;
+                }
+                sp_chain += lp * lr;
+            }
+            if (!align_up_u64(sp_chain, A840_RT_PAGE_BYTES, &sp_slice) ||
+                total_slices > UINT64_MAX / sp_slice ||
+                !align_up_u64(total_bytes, A840_RT_PAGE_BYTES, &sp_off) ||
+                sp_slice * total_slices > UINT64_MAX - sp_off) {
+                return A840_RT_RANGE_ERROR;
+            }
+            total_bytes = sp_off + sp_slice * total_slices;
+        }
         data_offset_rel = 0u;
     }
 

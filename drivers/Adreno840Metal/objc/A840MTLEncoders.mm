@@ -195,25 +195,49 @@ static A840RtTexture *nativeTexture(id<MTLTexture> texture, A840MTLDevice *owner
     if (!cb.wantsRaw || !size.width || !size.height) return;
     @synchronized (cb.owner) {
         auto *s = nativeTexture(src, cb.owner), *d = nativeTexture(dst, cb.owner);
-        if (ss || sl || ds || dl || so.z || dsto.z || size.depth != 1 ||
+        if (so.z || dsto.z || size.depth != 1 ||
             !s || !d || so.x > UINT32_MAX || so.y > UINT32_MAX || dsto.x > UINT32_MAX ||
-            dsto.y > UINT32_MAX || size.width > UINT32_MAX || size.height > UINT32_MAX) {
+            dsto.y > UINT32_MAX || size.width > UINT32_MAX || size.height > UINT32_MAX ||
+            ss > UINT32_MAX || sl > UINT32_MAX || ds > UINT32_MAX || dl > UINT32_MAX) {
             [cb recordFailure:A840_RT_UNSUPPORTED
                        reason:[NSString stringWithFormat:@"blit_2d_arg ss=%lu sl=%lu ds=%lu dl=%lu d=%lu",
                                (unsigned long)ss, (unsigned long)sl, (unsigned long)ds, (unsigned long)dl,
                                (unsigned long)size.depth]];
             return;
         }
+        A840RtTexture *sView = nullptr, *dView = nullptr;
+        A840RtTexture *effS = s, *effD = d;
+        if (ss || sl) {
+            if (a840_rt_texture_create_view(cb.owner.runtime, s, s->mtl_pixel_format, A840_TEX_2D,
+                                            (uint32_t)sl, 1u, (uint32_t)ss, 1u, false, nullptr, &sView) != A840_RT_OK || !sView) {
+                [cb recordFailure:A840_RT_UNSUPPORTED
+                           reason:[NSString stringWithFormat:@"blit_2d_sview ss=%lu sl=%lu", (unsigned long)ss, (unsigned long)sl]];
+                return;
+            }
+            effS = sView;
+        }
+        if (ds || dl) {
+            if (a840_rt_texture_create_view(cb.owner.runtime, d, d->mtl_pixel_format, A840_TEX_2D,
+                                            (uint32_t)dl, 1u, (uint32_t)ds, 1u, false, nullptr, &dView) != A840_RT_OK || !dView) {
+                if (sView) a840_rt_texture_release(sView);
+                [cb recordFailure:A840_RT_UNSUPPORTED
+                           reason:[NSString stringWithFormat:@"blit_2d_dview ds=%lu dl=%lu", (unsigned long)ds, (unsigned long)dl]];
+                return;
+            }
+            effD = dView;
+        }
         const A840Rect2D source{(uint32_t)so.x, (uint32_t)so.y, (uint32_t)size.width, (uint32_t)size.height};
         const A840Rect2D dest{(uint32_t)dsto.x, (uint32_t)dsto.y, (uint32_t)size.width, (uint32_t)size.height};
-        const A840RtStatus st = a840_rt_blit_2d(_native, s, &source, d, &dest, A840_FILTER_NEAREST);
+        const A840RtStatus st = a840_rt_blit_2d(_native, effS, &source, effD, &dest, A840_FILTER_NEAREST);
         if (st != A840_RT_OK) {
             [cb recordFailure:st
                        reason:[NSString stringWithFormat:@"blit_2d s=%u/%u d=%u/%u %ux%u",
-                               s->mtl_pixel_format, s->tile_mode,
-                               d->mtl_pixel_format, d->tile_mode,
+                               effS->mtl_pixel_format, effS->tile_mode,
+                               effD->mtl_pixel_format, effD->tile_mode,
                                source.width, source.height]];
         }
+        if (sView) a840_rt_texture_release(sView);
+        if (dView) a840_rt_texture_release(dView);
     }
 }
 - (BOOL)encodeLinearScanoutBlitFromBuffer:(id<MTLBuffer>)sourceBuffer
@@ -1045,7 +1069,7 @@ static BOOL convertClear(id<MTLTexture> texture, MTLClearColor color, uint32_t o
     A840MTLBindings *_vertexBindings, *_fragmentBindings;
     id<MTLTexture> _colorTextures[A840_MAX_COLOR_TARGETS];
     uint32_t _colorTextureCount;
-    A840RtTexture *_transientAttachmentViews[A840_MAX_COLOR_TARGETS + 2u];
+    A840RtTexture *_transientAttachmentViews[2u * A840_MAX_COLOR_TARGETS + 4u];
     uint32_t _transientAttachmentViewCount;
     A840RtRenderStateDesc _state;
     BOOL _stateEmitted;
@@ -1055,6 +1079,9 @@ static BOOL convertClear(id<MTLTexture> texture, MTLClearColor color, uint32_t o
     BOOL _stencilRefDirty;
     BOOL _useGmemScope;
     BOOL _hasMemorylessDepth;
+    BOOL _hasDepthTarget;
+    BOOL _hasStencilTarget;
+    BOOL _hasCombinedDepth24Stencil8;
     uint32_t _passWidth;
     uint32_t _passHeight;
     uint32_t _drawCount;
@@ -1087,7 +1114,22 @@ static BOOL convertClear(id<MTLTexture> texture, MTLClearColor color, uint32_t o
             if (a840_rt_texture_create_view(command.owner.runtime, base, base->mtl_pixel_format,
                                             A840_TEX_2D, (uint32_t)att.level, 1u,
                                             (uint32_t)att.slice, 1u, false, nullptr, &viewTex) == A840_RT_OK && viewTex) {
-                if (_transientAttachmentViewCount < A840_MAX_COLOR_TARGETS + 2u) {
+                if (_transientAttachmentViewCount < 2u * A840_MAX_COLOR_TARGETS + 4u) {
+                    _transientAttachmentViews[_transientAttachmentViewCount++] = viewTex;
+                }
+                return viewTex;
+            }
+        }
+        return nullptr;
+    };
+    auto resolveResolveTarget = [&](MTLRenderPassAttachmentDescriptor *att, A840RtTexture *base) -> A840RtTexture * {
+        if (!base || (att.resolveLevel == 0u && att.resolveSlice == 0u)) return base;
+        A840RtTexture *viewTex = nullptr;
+        @synchronized (command.owner) {
+            if (a840_rt_texture_create_view(command.owner.runtime, base, base->mtl_pixel_format,
+                                            A840_TEX_2D, (uint32_t)att.resolveLevel, 1u,
+                                            (uint32_t)att.resolveSlice, 1u, false, nullptr, &viewTex) == A840_RT_OK && viewTex) {
+                if (_transientAttachmentViewCount < 2u * A840_MAX_COLOR_TARGETS + 4u) {
                     _transientAttachmentViews[_transientAttachmentViewCount++] = viewTex;
                 }
                 return viewTex;
@@ -1112,6 +1154,13 @@ static BOOL convertClear(id<MTLTexture> texture, MTLClearColor color, uint32_t o
         if (!attachmentShape(attachment)) { nativeAttachments = NO; naFlags |= 2u; badLvl = (uint32_t)attachment.level; badSlc = (uint32_t)attachment.slice; }
         else { descriptor.color_targets[i] = resolveAttachmentTarget(attachment, baseTex); }
         if (!descriptor.color_targets[i]) { nativeAttachments = NO; naFlags |= 1u; badFmt = (uint32_t)texture.pixelFormat; badLvl = (uint32_t)attachment.level; badSlc = (uint32_t)attachment.slice; }
+        if (attachment.resolveTexture) {
+            A840RtTexture *resBase = nativeTexture(attachment.resolveTexture, command.owner);
+            descriptor.color_resolve_targets[i] = resolveResolveTarget(attachment, resBase);
+            if (!descriptor.color_resolve_targets[i]) {
+                nativeAttachments = NO; naFlags |= 32u; badFmt = (uint32_t)attachment.resolveTexture.pixelFormat;
+            }
+        }
         if (attachment.loadAction == MTLLoadActionClear) {
             descriptor.color_clear[i] = true;
             if (!convertClear(texture, attachment.clearColor, descriptor.color_clear_values[i])) {
@@ -1140,6 +1189,9 @@ static BOOL convertClear(id<MTLTexture> texture, MTLClearColor color, uint32_t o
     }
     descriptor.depth_target = (depth && attachmentShape(depth)) ? resolveAttachmentTarget(depth, nativeTexture(depth.texture, command.owner)) : nullptr;
     descriptor.stencil_target = (stencil && attachmentShape(stencil)) ? resolveAttachmentTarget(stencil, nativeTexture(stencil.texture, command.owner)) : nullptr;
+    _hasDepthTarget = (descriptor.depth_target != nullptr);
+    _hasStencilTarget = (descriptor.stencil_target != nullptr);
+    _hasCombinedDepth24Stencil8 = (descriptor.depth_target != nullptr && descriptor.depth_target->mtl_pixel_format == 255u);
     if (original.depthAttachment && descriptor.depth_target &&
         original.depthAttachment.loadAction == MTLLoadActionClear) {
         descriptor.depth_clear = true;
@@ -1193,10 +1245,19 @@ static BOOL convertClear(id<MTLTexture> texture, MTLClearColor color, uint32_t o
         } else {
             A840RtRenderPassDesc sysmemDesc = descriptor;
             sysmemDesc.has_memoryless_attachment = false;
-            sysmemDesc.has_msaa_resolve = false;
-            if (sysmemDesc.sample_count > 1u) sysmemDesc.sample_count = 1u;
             const A840RtStatus st = a840_rt_cb_begin_render_pass(command.native, &sysmemDesc, &_native);
-            if (st != A840_RT_OK) [command recordFailure:(st == A840_RT_FALLBACK_REQUIRED ? A840_RT_UNSUPPORTED : st) reason:[NSString stringWithFormat:@"begin_render_pass failed st=%d", (int)st]];
+            if (st != A840_RT_OK) {
+                A840RtTexture *c0 = sysmemDesc.color_count ? sysmemDesc.color_targets[0] : nullptr;
+                [command recordFailure:(st == A840_RT_FALLBACK_REQUIRED ? A840_RT_UNSUPPORTED : st)
+                                reason:[NSString stringWithFormat:@"begin_render_pass st=%d cf0=%u/%u df=%u/%u sf=%u/%u sc=%u res=%d",
+                                        (int)st,
+                                        c0 ? c0->mtl_pixel_format : 0u, c0 ? c0->tile_mode : 0u,
+                                        sysmemDesc.depth_target ? sysmemDesc.depth_target->mtl_pixel_format : 0u,
+                                        sysmemDesc.depth_target ? sysmemDesc.depth_target->tile_mode : 0u,
+                                        sysmemDesc.stencil_target ? sysmemDesc.stencil_target->mtl_pixel_format : 0u,
+                                        sysmemDesc.stencil_target ? sysmemDesc.stencil_target->tile_mode : 0u,
+                                        sysmemDesc.sample_count, sysmemDesc.has_msaa_resolve ? 1 : 0]];
+            }
         }
     }
     return self;
@@ -1654,8 +1715,22 @@ static BOOL convertClear(id<MTLTexture> texture, MTLClearColor color, uint32_t o
             _stateDirty = YES;
         }
         if (!_stateEmitted || _stateDirty) {
-            const A840RtStatus st = a840_rt_render_set_state(_native, &_state);
-            if (st != A840_RT_OK) { [cb recordFailure:st reason:[NSString stringWithFormat:@"render_set_state failed st=%d", (int)st]]; return; }
+            A840RtRenderStateDesc effectiveState = _state;
+            if (!_hasDepthTarget) {
+                effectiveState.depth_test = false;
+                effectiveState.depth_write = false;
+            }
+            if (!_hasStencilTarget && !_hasCombinedDepth24Stencil8) {
+                effectiveState.stencil_test = false;
+            }
+            const A840RtStatus st = a840_rt_render_set_state(_native, &effectiveState);
+            if (st != A840_RT_OK) {
+                [cb recordFailure:st reason:[NSString stringWithFormat:@"render_set_state st=%d hd=%d hs=%d dt=%d dw=%d stn=%d",
+                                             (int)st, _hasDepthTarget ? 1 : 0, _hasStencilTarget ? 1 : 0,
+                                             effectiveState.depth_test ? 1 : 0, effectiveState.depth_write ? 1 : 0,
+                                             effectiveState.stencil_test ? 1 : 0]];
+                return;
+            }
             _stateEmitted = YES;
             _stateDirty = NO;
             _scissorDirty = NO;
