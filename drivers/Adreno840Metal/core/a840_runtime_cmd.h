@@ -251,6 +251,8 @@ A840RtStatus a840_rt_compute_dispatch_threads(A840RtComputeEncoder *enc,
 A840RtStatus a840_rt_compute_dispatch_indirect(A840RtComputeEncoder *enc,
                                                A840RtBuffer *indirect_buffer,
                                                uint64_t offset);
+A840RtStatus a840_rt_compute_retain_buffer(A840RtComputeEncoder *enc,
+                                           A840RtBuffer *buffer);
 A840RtStatus a840_rt_compute_barrier(A840RtComputeEncoder *enc,
                                      uint32_t cache_mask,
                                      bool wait_mem_writes,
@@ -266,6 +268,8 @@ A840RtStatus a840_rt_render_set_program(A840RtRenderEncoder *enc,
                                         const A840RtGraphicsProgramDesc *desc);
 A840RtStatus a840_rt_render_set_state(A840RtRenderEncoder *enc,
                                       const A840RtRenderStateDesc *desc);
+A840RtStatus a840_rt_render_retain_buffer(A840RtRenderEncoder *enc,
+                                          A840RtBuffer *buffer);
 A840RtStatus a840_rt_render_set_sds(A840RtRenderEncoder *enc,
                                     const A840RtSdsGroupDesc *groups,
                                     size_t count);

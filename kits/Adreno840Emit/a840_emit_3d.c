@@ -459,14 +459,59 @@ static A840EmitStatus emit_raster_depth_stencil(A840CmdStream *batch, const A840
         front->read_mask | (uint32_t)back->read_mask << A840_STENCIL_BACK_BYTE_SHIFT,
         front->write_mask | (uint32_t)back->write_mask << A840_STENCIL_BACK_BYTE_SHIFT,
     };
-    const uint32_t gras[] = {
+    /* Mandatory A8XX raster/clip/MSAA/LRZ controls (Mesa tu_pipeline.cc:3527-3621,
+     * tu_cmd_buffer.cc:1283-1302,8291-8292). On cold A840 reset POLYMODE is 0 (not
+     * POLYMODE6_TRIANGLES=3), GRAS_CL_CNTL is 0, and DEST_MSAA_CNTL lacks MSAA_DISABLE. */
+    enum {
+        A840_CL_ZNEAR_CLIP_DISABLE = UINT32_C(1) << 1,
+        A840_CL_ZFAR_CLIP_DISABLE = UINT32_C(1) << 2,
+        A840_CL_Z_CLAMP_ENABLE = UINT32_C(1) << 5,
+        A840_CL_ZERO_GB_SCALE_Z = UINT32_C(1) << 6,
+        A840_CL_VP_CLIP_CODE_IGNORE = UINT32_C(1) << 7,
+        A840_POLYMODE6_TRIANGLES = UINT32_C(3),
+        A840_DEST_MSAA_DISABLE = UINT32_C(1) << 2,
+        /* 12.4 ufixed: min=1/16 (1), max=4092.0 (65472); default point size=1.0 (16). */
+        A840_POINT_MINMAX_DEFAULT = UINT32_C(1) | (UINT32_C(65472) << 16),
+        A840_POINT_SIZE_DEFAULT = UINT32_C(16),
+    };
+    const uint32_t gras_cl_cntl =
+        (desc->depth_clamp ? (A840_CL_ZNEAR_CLIP_DISABLE | A840_CL_ZFAR_CLIP_DISABLE) : 0u) |
+        A840_CL_Z_CLAMP_ENABLE | A840_CL_ZERO_GB_SCALE_Z | A840_CL_VP_CLIP_CODE_IGNORE;
+    const uint32_t gras_su_aux[4] = {
+        A840_POINT_MINMAX_DEFAULT, A840_POINT_SIZE_DEFAULT, 0u, 0u,
+    };
+    const uint32_t gras_rast_lrz[2] = { A840_POLYMODE6_TRIANGLES, 0u };
+    const uint32_t gras_depth_block[4] = {
         has_depth && desc->depth_test ? A840_GRAS_DEPTH_TEST : 0u,
         desc->stencil_test ? A840_GRAS_STENCIL_TEST : 0u,
+        0u, /* GRAS_SU_RENDER_CNTL: fs_disable=0 */
+        0u, /* GRAS_SU_DEPTH_PLANE_CNTL: EARLY_Z */
     };
+    const uint32_t gras_msaa[2] = { 0u, A840_DEST_MSAA_DISABLE };
+    const uint32_t rb_render_msaa[4] = { 0u, 0u, A840_DEST_MSAA_DISABLE, 0u };
+    const uint32_t vpc_rast[3] = { 0u, A840_POLYMODE6_TRIANGLES, 0u };
+    const uint32_t tpl1_msaa[2] = { 0u, A840_DEST_MSAA_DISABLE };
+
+    A840_OPS_TRY(a840_emit_reg(batch, A840_REG_GRAS_CL_CNTL, gras_cl_cntl));
     A840_OPS_TRY(a840_emit_reg(batch, A840_REG_GRAS_SU_CNTL, raster));
+    A840_OPS_TRY(a840_cs_emit_pkt4(batch, A840_REG_GRAS_SU_POINT_MINMAX, gras_su_aux, 4));
+    A840_OPS_TRY(a840_cs_emit_pkt4(batch, A840_REG_GRAS_RAST_CNTL, gras_rast_lrz, 2));
+    A840_OPS_TRY(a840_emit_reg(batch, A840_REG_GRAS_SC_CNTL, 0u));
+    A840_OPS_TRY(a840_cs_emit_pkt4(batch, A840_REG_GRAS_SC_RAS_MSAA_CNTL, gras_msaa, 2));
+    A840_OPS_TRY(a840_emit_reg(batch, A840_REG_GRAS_SC_MSAA_SAMPLE_POS_CNTL, 0u));
+    A840_OPS_TRY(a840_cs_emit_pkt4(batch, A840_REG_RB_RENDER_CNTL, rb_render_msaa, 4));
+    A840_OPS_TRY(a840_emit_reg(batch, A840_REG_RB_DEPTH_PLANE_CNTL, 0u));
+    A840_OPS_TRY(a840_emit_reg(batch, A840_REG_RB_LRZ_CNTL, 0u));
+    A840_OPS_TRY(a840_emit_reg(batch, A840_REG_VPC_PS_RAST_CNTL, A840_POLYMODE6_TRIANGLES));
+    A840_OPS_TRY(a840_cs_emit_pkt4(batch, A840_REG_VPC_RAST_STREAM_CNTL, vpc_rast, 3));
+    A840_OPS_TRY(a840_emit_reg(batch, A840_REG_PC_DGEN_RAST_CNTL, A840_POLYMODE6_TRIANGLES));
+    A840_OPS_TRY(a840_emit_reg(batch, A840_REG_PC_CNTL, 0u));
+    A840_OPS_TRY(a840_emit_reg(batch, A840_REG_PC_DGEN_SU_CONSERVATIVE_RAS_CNTL, 0u));
+    A840_OPS_TRY(a840_emit_reg(batch, A840_REG_SP_RENDER_CNTL, 0u));
+    A840_OPS_TRY(a840_cs_emit_pkt4(batch, A840_REG_TPL1_RAS_MSAA_CNTL, tpl1_msaa, 2));
     A840_OPS_TRY(a840_emit_reg(batch, A840_REG_RB_DEPTH_CNTL, depth));
     A840_OPS_TRY(a840_emit_reg(batch, A840_REG_RB_STENCIL_CNTL, stencil));
-    A840_OPS_TRY(a840_cs_emit_pkt4(batch, A840_REG_GRAS_SU_DEPTH_CNTL, gras, 2));
+    A840_OPS_TRY(a840_cs_emit_pkt4(batch, A840_REG_GRAS_SU_DEPTH_CNTL, gras_depth_block, 4));
     return a840_cs_emit_pkt4(batch, A840_REG_RB_STENCIL_REF_CNTL, refs, 3);
 }
 

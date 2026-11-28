@@ -297,23 +297,10 @@ static void *a840GopScanoutThreadMain(void *rawArg)
                         }
                     }
                     if (srcBuf) {
-                        if (swap.stride == mode.stride && swap.width == mode.width) {
-                            id<MTLCommandBuffer> cb = [queue commandBuffer];
-                            id<MTLBlitCommandEncoder> blit = [cb blitCommandEncoder];
-                            if (cb && blit) {
-                                const NSUInteger copyBytes = (NSUInteger)(swap.stride * swap.height) & ~(NSUInteger)3u;
-                                [blit copyFromBuffer:srcBuf sourceOffset:0u
-                                            toBuffer:targetBuf destinationOffset:0u
-                                                size:copyBytes];
-                                [blit endEncoding];
-                                [cb commit];
-                                [cb waitUntilCompleted];
-                                ok = (cb.status == MTLCommandBufferStatusCompleted && cb.error == nil);
-                            }
-                        } else if ((swap.stride % 64u) == 0u && (mode.stride % 64u) == 0u &&
-                                   swap.stride <= UINT32_MAX && mode.stride <= UINT32_MAX) {
-                            /* Native single-packet Adreno 840 2D hardware blit for unequal 64B-aligned
-                             * strides (e.g. 1200x2608 IOSurface stride 4864 -> GOP scanout stride 4800). */
+                        if ((swap.stride % 64u) == 0u && (mode.stride % 64u) == 0u &&
+                            swap.stride <= UINT32_MAX && mode.stride <= UINT32_MAX) {
+                            /* Native single-packet Adreno 840 2D hardware blit for ALL 64B-aligned
+                             * strides (equal or unequal): converts BGRX->BGRA with opaque alpha=0xff. */
                             id<MTLCommandBuffer> cb = [queue commandBuffer];
                             id<MTLBlitCommandEncoder> blit = [cb blitCommandEncoder];
                             if (cb && blit && [(id)blit isKindOfClass:A840MTLBlitEncoder.class]) {
@@ -361,7 +348,29 @@ static void *a840GopScanoutThreadMain(void *rawArg)
                 if (frames == 1u || (frames % 10u) == 0u || (!ok && failures <= 3u)) {
                     char msg[96] = {};
                     if (ok) {
-                        snprintf(msg, sizeof(msg), "PF %llu/%llu", (unsigned long long)frames, (unsigned long long)failures);
+                        if (frames == 1u || frames == 10u || frames == 50u) {
+                            const uint32_t rgbMask = (UINT32_C(1) << 24) - 1u;
+                            uint32_t sNz = 0u, dNz = 0u, sHex = 0u, dHex = 0u;
+                            const uint8_t *sBase = reinterpret_cast<const uint8_t *>(static_cast<uintptr_t>(swap.address));
+                            const uint8_t *dBase = reinterpret_cast<const uint8_t *>(static_cast<uintptr_t>(scanoutAddr));
+                            for (uint32_t gy = 0u; gy < 8u; ++gy) {
+                                const uint32_t py = (uint32_t)(((uint64_t)(gy * 2u + 1u) * swap.height) / 16u);
+                                for (uint32_t gx = 0u; gx < 8u; ++gx) {
+                                    const uint32_t px = (uint32_t)(((uint64_t)(gx * 2u + 1u) * swap.width) / 16u);
+                                    const uint32_t sv = *reinterpret_cast<const volatile uint32_t *>(sBase + (size_t)py * (size_t)swap.stride + (size_t)px * 4u);
+                                    const uint32_t dv = *reinterpret_cast<const volatile uint32_t *>(dBase + (size_t)py * (size_t)mode.stride + (size_t)px * 4u);
+                                    if ((sv & rgbMask) != 0u) { ++sNz; if (!sHex) sHex = sv; }
+                                    if ((dv & rgbMask) != 0u) { ++dNz; if (!dHex) dHex = dv; }
+                                    if (!sHex && sv != 0u) sHex = sv;
+                                    if (!dHex && dv != 0u) dHex = dv;
+                                }
+                            }
+                            snprintf(msg, sizeof(msg), "PF %llu/%llu s=%u/%08x d=%u/%08x",
+                                     (unsigned long long)frames, (unsigned long long)failures,
+                                     sNz, sHex, dNz, dHex);
+                        } else {
+                            snprintf(msg, sizeof(msg), "PF %llu/%llu", (unsigned long long)frames, (unsigned long long)failures);
+                        }
                     } else {
                         snprintf(msg, sizeof(msg), "PF %llu/%llu fail %ux%u s=%llu/%llu f=%u",
                                  (unsigned long long)frames, (unsigned long long)failures,

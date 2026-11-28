@@ -30,6 +30,35 @@ A840EmitStatus a840_gfx_sds_emit_bindless(A840CmdStream *cs,
 A840EmitStatus a840_gfx_sds_emit_consts(A840CmdStream *cs,
                                         const A840GfxConstUpload *upload);
 
+typedef struct A840GfxVfdBuffer {
+    uint64_t gpu_va;
+    uint32_t size_bytes;
+    uint32_t stride_bytes;
+} A840GfxVfdBuffer;
+
+typedef struct A840GfxVfdAttr {
+    uint32_t vb_slot;       /* 0..31 index into buffers[] */
+    uint32_t offset_bytes;  /* 0..4095 byte offset into vertex buffer */
+    uint32_t format_id;     /* A840_FMT6_* */
+    uint32_t swap;          /* A840_WZYX / A840_WXYZ */
+    uint32_t step_rate;     /* instance divisor (0 for per-vertex / constant) */
+    uint8_t instanced;      /* 1 for per-instance, 0 for per-vertex */
+    uint8_t is_float;       /* 1 for float/unorm/snorm, 0 for pure uint/sint */
+} A840GfxVfdAttr;
+
+/* Map Apple MTLVertexFormat enum value to A8XX VFD format/swap/float flags. */
+int a840_vfd_map_mtl_vertex_format(uint32_t mtl_vertex_format,
+                                   uint32_t *out_format_id,
+                                   uint32_t *out_swap,
+                                   uint8_t *out_is_float);
+
+/* Emit VFD_VERTEX_BUFFER_0..N and VFD_FETCH_INSTR_0..M into SDS command stream. */
+A840EmitStatus a840_gfx_sds_emit_vfd(A840CmdStream *cs,
+                                     uint32_t buffer_count,
+                                     const A840GfxVfdBuffer *buffers,
+                                     uint32_t attr_count,
+                                     const A840GfxVfdAttr *attrs);
+
 #ifdef __cplusplus
 }
 #endif

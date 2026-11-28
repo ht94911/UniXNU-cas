@@ -13,6 +13,7 @@
 #include "../core/a840_production_router.h"
 #include "../transport/a840_hwtest_hook.h"
 #include "gen/a840_bitfields.h"
+#import <objc/runtime.h>
 
 #include <cmath>
 #include <cstring>
@@ -104,7 +105,7 @@ static A840RtTexture *nativeTexture(id<MTLTexture> texture, A840MTLDevice *owner
 - (BOOL)checkActive
 {
     if (_ended) {
-        [_command recordFailure:A840_RT_STATE_ERROR];
+        [_command recordFailure:A840_RT_STATE_ERROR reason:@"enc_ended"];
         return NO;
     }
     return YES;
@@ -169,7 +170,7 @@ static A840RtTexture *nativeTexture(id<MTLTexture> texture, A840MTLDevice *owner
     @synchronized (cb.owner) {
         auto *s = nativeBuffer(src, cb.owner), *d = nativeBuffer(dst, cb.owner);
         if (!s || !d || size > UINT32_MAX || (sourceOffset | destinationOffset | size) % 4) {
-            [cb recordFailure:A840_RT_UNSUPPORTED];
+            [cb recordFailure:A840_RT_UNSUPPORTED reason:@"blit_copy_buf_arg"];
             return;
         }
         const A840RtStatus st = a840_rt_blit_copy_buffer(_native, s, sourceOffset, d, destinationOffset, (uint32_t)size);
@@ -259,6 +260,9 @@ static A840RtTexture *nativeTexture(id<MTLTexture> texture, A840MTLDevice *owner
             [cb recordFailure:st reason:[NSString stringWithFormat:@"scanout_dst %ux%u s=%u", width, height, destinationStride]];
             return NO;
         }
+        /* Force opaque 0xff alpha on BGRX->BGRA scanout: Adreno TPL1 FMT6_8_8_8_X8_UNORM
+         * samples alpha=1.0 (a6xx_enums.xml:45) so MDSS SSPP never blends 0-alpha to black. */
+        srcView->color_format_id = A840_FMT6_8_8_8_X8_UNORM;
         const A840Rect2D rect{0u, 0u, width, height};
         st = a840_rt_blit_2d(_native, srcView, &rect, dstView, &rect, A840_FILTER_NEAREST);
         if (st == A840_RT_OK) {
@@ -496,7 +500,7 @@ destinationBytesPerImage:(NSUInteger)destinationBytesPerImage
     if (![self checkActive]) return;
     if (![(id)source isKindOfClass:A840MTLIndirectCommandBuffer.class] ||
         ![(id)destination isKindOfClass:A840MTLIndirectCommandBuffer.class]) {
-        [self.command recordFailure:A840_RT_WRONG_DEVICE];
+        [self.command recordFailure:A840_RT_WRONG_DEVICE reason:@"wrong_dev_1"];
         return;
     }
     auto *s = [(A840MTLIndirectCommandBuffer *)source nativeIcb];
@@ -629,7 +633,7 @@ destinationBytesPerImage:(NSUInteger)destinationBytesPerImage
 {
     if (![self checkActive]) return;
     if ([(id)pipeline isKindOfClass:A840MTLComputePipelineState.class] && pipeline.device != self.device)
-        [self.command recordFailure:A840_RT_WRONG_DEVICE];
+        [self.command recordFailure:A840_RT_WRONG_DEVICE reason:@"wrong_dev_2"];
     _pipeline = pipeline;
 }
 - (void)setBuffer:(id<MTLBuffer>)buffer offset:(NSUInteger)offset atIndex:(NSUInteger)index
@@ -639,7 +643,7 @@ destinationBytesPerImage:(NSUInteger)destinationBytesPerImage
     [self.command useResource:buffer];
     if (buffer && !nativeBuffer(buffer, self.command.owner) &&
         !([(id)buffer isKindOfClass:A840MTLBuffer.class] && [(A840MTLBuffer *)buffer heapSubAlloc]))
-        [self.command recordFailure:A840_RT_WRONG_DEVICE];
+        [self.command recordFailure:A840_RT_WRONG_DEVICE reason:@"wrong_dev_3"];
 }
 - (void)setBuffers:(const id<MTLBuffer> __unsafe_unretained [])buffers offsets:(const NSUInteger [])offsets withRange:(NSRange)range
 {
@@ -660,7 +664,7 @@ destinationBytesPerImage:(NSUInteger)destinationBytesPerImage
     [_bindings setTexture:texture index:index];
     [self.command useResource:texture];
     if (texture && !nativeTexture(texture, self.command.owner))
-        [self.command recordFailure:A840_RT_WRONG_DEVICE];
+        [self.command recordFailure:A840_RT_WRONG_DEVICE reason:@"wrong_dev_4"];
 }
 - (void)setTextures:(const id<MTLTexture> __unsafe_unretained [])textures withRange:(NSRange)range
 {
@@ -674,7 +678,7 @@ destinationBytesPerImage:(NSUInteger)destinationBytesPerImage
     if (![self checkActive]) return;
     [_bindings setSampler:sampler index:index];
     if (sampler && (![(id)sampler isKindOfClass:A840MTLSamplerState.class] || sampler.device != self.device))
-        [self.command recordFailure:A840_RT_WRONG_DEVICE];
+        [self.command recordFailure:A840_RT_WRONG_DEVICE reason:@"wrong_dev_5"];
 }
 - (void)setSamplerStates:(const id<MTLSamplerState> __unsafe_unretained [])samplers withRange:(NSRange)range
 {
@@ -738,7 +742,7 @@ destinationBytesPerImage:(NSUInteger)destinationBytesPerImage
     A840MTLCommandBuffer *cb = self.command;
     [cb useResource:indirectCommandBuffer];
     if (![(id)indirectCommandBuffer isKindOfClass:A840MTLIndirectCommandBuffer.class]) {
-        [cb recordFailure:A840_RT_WRONG_DEVICE];
+        [cb recordFailure:A840_RT_WRONG_DEVICE reason:@"wrong_dev_6"];
         return;
     }
     (void)executionRange;
@@ -853,7 +857,7 @@ destinationBytesPerImage:(NSUInteger)destinationBytesPerImage
     A840MTLCommandBuffer *cb = self.command;
     if (!cb.wantsRaw) return;
     if (![(id)fence isKindOfClass:A840MTLFence.class] || fence.device != cb.owner) {
-        [cb recordFailure:A840_RT_WRONG_DEVICE];
+        [cb recordFailure:A840_RT_WRONG_DEVICE reason:@"wrong_dev_7"];
         return;
     }
     @synchronized (cb.owner) {
@@ -1051,11 +1055,14 @@ static BOOL convertClear(id<MTLTexture> texture, MTLClearColor color, uint32_t o
     _stateDirty = YES;
     _state.viewport_count = _state.scissor_count = 1;
     _state.line_width = 1;
+    _state.front_clockwise = true; /* Metal default frontFacingWinding is MTLWindingClockwise. */
     _state.sample_mask = UINT16_MAX;
 
     A840RtRenderPassDesc descriptor{};
     descriptor.sample_count = 1;
     BOOL nativeAttachments = YES;
+    uint32_t naFlags = 0u;
+    uint32_t badFmt = 0u, badLvl = 0u, badSlc = 0u;
     id<MTLTexture> first = nil;
     for (unsigned i = 0; i < A840_MAX_COLOR_TARGETS; ++i) {
         MTLRenderPassColorAttachmentDescriptor *attachment = original.colorAttachments[i];
@@ -1071,11 +1078,13 @@ static BOOL convertClear(id<MTLTexture> texture, MTLClearColor color, uint32_t o
         descriptor.color_targets[i] = nativeTexture(texture, command.owner);
         if (texture.storageMode == MTLStorageModeMemoryless) descriptor.has_memoryless_attachment = true;
         if (texture.sampleCount > descriptor.sample_count) descriptor.sample_count = (uint32_t)texture.sampleCount;
-        if (!descriptor.color_targets[i] || !attachmentShape(attachment)) nativeAttachments = NO;
+        if (!descriptor.color_targets[i]) { nativeAttachments = NO; naFlags |= 1u; badFmt = (uint32_t)texture.pixelFormat; }
+        if (!attachmentShape(attachment)) { nativeAttachments = NO; naFlags |= 2u; badLvl = (uint32_t)attachment.level; badSlc = (uint32_t)attachment.slice; }
         if (attachment.loadAction == MTLLoadActionClear) {
             descriptor.color_clear[i] = true;
-            if (!convertClear(texture, attachment.clearColor, descriptor.color_clear_values[i]))
-                nativeAttachments = NO;
+            if (!convertClear(texture, attachment.clearColor, descriptor.color_clear_values[i])) {
+                nativeAttachments = NO; naFlags |= 4u; badFmt = (uint32_t)texture.pixelFormat;
+            }
         }
     }
 
@@ -1095,13 +1104,15 @@ static BOOL convertClear(id<MTLTexture> texture, MTLClearColor color, uint32_t o
         }
         if (attachment.texture.sampleCount > descriptor.sample_count)
             descriptor.sample_count = (uint32_t)attachment.texture.sampleCount;
-        if (!attachmentShape(attachment)) nativeAttachments = NO;
+        if (!attachmentShape(attachment)) { nativeAttachments = NO; naFlags |= 8u; badLvl = (uint32_t)attachment.level; badSlc = (uint32_t)attachment.slice; }
     }
     descriptor.depth_target = nativeTexture(depth.texture, command.owner);
     descriptor.stencil_target = nativeTexture(stencil.texture, command.owner);
     if ((depth.texture && !descriptor.depth_target && depth.texture.storageMode != MTLStorageModeMemoryless) ||
-        (stencil.texture && !descriptor.stencil_target && stencil.texture.storageMode != MTLStorageModeMemoryless))
-        nativeAttachments = NO;
+        (stencil.texture && !descriptor.stencil_target && stencil.texture.storageMode != MTLStorageModeMemoryless)) {
+        nativeAttachments = NO; naFlags |= 16u;
+        badFmt = (uint32_t)(depth.texture ? depth.texture.pixelFormat : stencil.texture.pixelFormat);
+    }
 
     if (first) {
         _passWidth = (uint32_t)first.width;
@@ -1131,7 +1142,10 @@ static BOOL convertClear(id<MTLTexture> texture, MTLClearColor color, uint32_t o
         const A840ProdDecision route = a840_prod_route_render(command.owner.productionRouter, &prodQuery);
         if (route.status != A840_PROD_OK || route.target != A840_PROD_ROUTE_NATIVE ||
             !nativeAttachments || !first || first.width > UINT32_MAX || first.height > UINT32_MAX) {
-            [command recordFailure:A840_RT_UNSUPPORTED reason:@"render pass route/attachment unsupported"];
+            [command recordFailure:A840_RT_UNSUPPORTED
+                            reason:[NSString stringWithFormat:@"rp_unsup rs=%d rt=%d na=%u f=%u l=%u s=%u cc=%u sc=%u first=%d",
+                                    (int)route.status, (int)route.target, naFlags, badFmt, badLvl, badSlc,
+                                    descriptor.color_count, descriptor.sample_count, first ? 1 : 0]];
         } else {
             A840RtRenderPassDesc sysmemDesc = descriptor;
             sysmemDesc.has_memoryless_attachment = false;
@@ -1174,7 +1188,7 @@ static BOOL convertClear(id<MTLTexture> texture, MTLClearColor color, uint32_t o
 {
     if (![self checkActive]) return;
     if ([(id)pipeline isKindOfClass:A840MTLRenderPipelineState.class] && pipeline.device != self.device)
-        [self.command recordFailure:A840_RT_WRONG_DEVICE];
+        [self.command recordFailure:A840_RT_WRONG_DEVICE reason:@"rp_pipe_dev"];
     _pipeline = pipeline;
     _stateDirty = YES;
 }
@@ -1277,7 +1291,7 @@ static BOOL convertClear(id<MTLTexture> texture, MTLClearColor color, uint32_t o
         return;
     }
     if (![(id)state isKindOfClass:A840MTLDepthStencilState.class] || state.device != self.device) {
-        [self.command recordFailure:A840_RT_WRONG_DEVICE];
+        [self.command recordFailure:A840_RT_WRONG_DEVICE reason:@"rp_ds_dev"];
         return;
     }
     _depthStencilState = (A840MTLDepthStencilState *)state;
@@ -1394,7 +1408,7 @@ static BOOL convertClear(id<MTLTexture> texture, MTLClearColor color, uint32_t o
     A840MTLCommandBuffer *cb = self.command;
     [cb useResource:indirectCommandBuffer];
     if (![(id)indirectCommandBuffer isKindOfClass:A840MTLIndirectCommandBuffer.class]) {
-        [cb recordFailure:A840_RT_WRONG_DEVICE];
+        [cb recordFailure:A840_RT_WRONG_DEVICE reason:@"wrong_dev_8"];
         return;
     }
     (void)executionRange;
@@ -1406,7 +1420,7 @@ static BOOL convertClear(id<MTLTexture> texture, MTLClearColor color, uint32_t o
     [self.command useResource:buffer];
     if (buffer && !nativeBuffer(buffer, self.command.owner) &&
         !([(id)buffer isKindOfClass:A840MTLBuffer.class] && [(A840MTLBuffer *)buffer heapSubAlloc]))
-        [self.command recordFailure:A840_RT_WRONG_DEVICE];
+        [self.command recordFailure:A840_RT_WRONG_DEVICE reason:[NSString stringWithFormat:@"rp_buf_dev f=%d i=%lu %s", fragment ? 1 : 0, (unsigned long)index, object_getClassName(buffer)]];
 }
 - (void)setVertexBuffer:(id<MTLBuffer>)buffer offset:(NSUInteger)offset atIndex:(NSUInteger)index
 {
@@ -1459,7 +1473,7 @@ static BOOL convertClear(id<MTLTexture> texture, MTLClearColor color, uint32_t o
     [(fragment ? _fragmentBindings : _vertexBindings) setTexture:texture index:index];
     [self.command useResource:texture];
     if (texture && !nativeTexture(texture, self.command.owner))
-        [self.command recordFailure:A840_RT_WRONG_DEVICE];
+        [self.command recordFailure:A840_RT_WRONG_DEVICE reason:[NSString stringWithFormat:@"rp_tex_dev f=%d i=%lu %s", fragment ? 1 : 0, (unsigned long)index, object_getClassName(texture)]];
 }
 - (void)setVertexTexture:(id<MTLTexture>)texture atIndex:(NSUInteger)index
 {
@@ -1503,7 +1517,7 @@ static BOOL convertClear(id<MTLTexture> texture, MTLClearColor color, uint32_t o
     if (![self checkActive]) return;
     [(fragment ? _fragmentBindings : _vertexBindings) setSampler:sampler index:index];
     if (sampler && (![(id)sampler isKindOfClass:A840MTLSamplerState.class] || sampler.device != self.device))
-        [self.command recordFailure:A840_RT_WRONG_DEVICE];
+        [self.command recordFailure:A840_RT_WRONG_DEVICE reason:[NSString stringWithFormat:@"rp_samp_dev f=%d i=%lu %s", fragment ? 1 : 0, (unsigned long)index, object_getClassName(sampler)]];
 }
 - (void)setVertexSamplerState:(id<MTLSamplerState>)sampler atIndex:(NSUInteger)index
 {
@@ -1529,13 +1543,13 @@ static BOOL convertClear(id<MTLTexture> texture, MTLClearColor color, uint32_t o
     if (!cb.wantsRaw) return;
     A840MTLRenderPipelineState *state = [(id)_pipeline isKindOfClass:A840MTLRenderPipelineState.class] ?
         (A840MTLRenderPipelineState *)_pipeline : nil;
-    if (state && state.device != cb.owner) { [cb recordFailure:A840_RT_WRONG_DEVICE]; return; }
+    if (state && state.device != cb.owner) { [cb recordFailure:A840_RT_WRONG_DEVICE reason:@"rp_draw_pipe_dev"]; return; }
     const A840RtGraphicsProgramDesc *desc = state.nativeDescriptor;
     MTLRenderPipelineDescriptor *configuration = state.configuration;
     if (!desc || !configuration.isRasterizationEnabled || draw.primitive == UINT32_MAX ||
         configuration.maxVertexAmplificationCount > A840_VERTEX_AMP_MAX_VIEWS ||
         !a840_sys_supports_sample_count((uint32_t)(configuration.rasterSampleCount ?: 1u))) {
-        [cb recordFailure:A840_RT_UNSUPPORTED];
+        [cb recordFailure:A840_RT_UNSUPPORTED reason:@"rp_draw_cfg"];
         return;
     }
     if (configuration.fragmentFunction.name &&
@@ -1545,7 +1559,7 @@ static BOOL convertClear(id<MTLTexture> texture, MTLClearColor color, uint32_t o
     @synchronized (cb.owner) {
         if (_boundPipeline != state) {
             if (!pipelineBlend(configuration, &_state)) {
-                [cb recordFailure:A840_RT_UNSUPPORTED];
+                [cb recordFailure:A840_RT_UNSUPPORTED reason:@"rp_blend_unsup"];
                 return;
             }
             const A840RtStatus st = a840_rt_render_set_program(_native, desc);

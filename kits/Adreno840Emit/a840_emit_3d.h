@@ -11,7 +11,7 @@
 #define A840_MAX_COLOR_TARGETS 8u
 #define A840_EMIT_3D_PROGRAM_MAX_DWORDS (2u * A840_EMIT_SHADER_BIND_DWORDS + 161u)
 /* Marker, transforms/clamps/scissors, raster/depth/stencil, attachments and blend. */
-#define A840_EMIT_3D_RENDER_STATE_MAX_DWORDS (452u)
+#define A840_EMIT_3D_RENDER_STATE_MAX_DWORDS (497u)
 #define A840_EMIT_3D_DRAW_MAX_DWORDS 11u
 #define A840_EMIT_SDS_GROUP_MAX_DWORDS (4u * ADRENO840_MAX_SDS_SLOTS)
 

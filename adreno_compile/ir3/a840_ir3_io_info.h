@@ -47,6 +47,10 @@ typedef struct A840Ir3StageIoInfo {
     uint32_t driver_params_offset_vec4;
     uint32_t ubo_ptrs_offset_vec4;
     uint32_t const_data_is_immediates;
+    /* Rebased push-constant window actually read by this stage's ir3 ISA. */
+    uint32_t push_const_base_bytes;
+    uint32_t push_const_dst_vec4;
+    uint32_t push_const_size_vec4;
 
     /* Compute system values (A840_IR3_REGID_UNUSED when unused). */
     uint8_t cs_local_id_regid;

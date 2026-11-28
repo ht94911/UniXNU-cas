@@ -583,6 +583,18 @@ static void test_render_state()
     CHECK(p.reg(A840_REG_GRAS_SC_SCREEN_SCISSOR_15_TL) == (15u | 2u << 16));
     CHECK(p.reg(A840_REG_GRAS_SC_SCREEN_SCISSOR_15_BR) == (110u | 41u << 16));
     CHECK(p.reg(A840_REG_GRAS_SU_CNTL) == 22);
+    CHECK(p.reg(A840_REG_GRAS_CL_CNTL) == ((1u << 1) | (1u << 2) | (1u << 5) | (1u << 6) | (1u << 7)));
+    CHECK(p.reg(A840_REG_VPC_RAST_CNTL) == 3u);
+    CHECK(p.reg(A840_REG_VPC_PS_RAST_CNTL) == 3u);
+    CHECK(p.reg(A840_REG_PC_DGEN_RAST_CNTL) == 3u);
+    CHECK(p.reg(A840_REG_GRAS_RAST_CNTL) == 3u);
+    CHECK(p.reg(A840_REG_VPC_RAST_STREAM_CNTL) == 0u);
+    CHECK(p.reg(A840_REG_RB_RENDER_CNTL) == 0u);
+    CHECK(p.reg(A840_REG_GRAS_SU_RENDER_CNTL) == 0u);
+    CHECK(p.reg(A840_REG_SP_RENDER_CNTL) == 0u);
+    CHECK(p.reg(A840_REG_GRAS_SC_DEST_MSAA_CNTL) == 4u);
+    CHECK(p.reg(A840_REG_RB_DEST_MSAA_CNTL) == 4u);
+    CHECK(p.reg(A840_REG_TPL1_DEST_MSAA_CNTL) == 4u);
     CHECK(p.reg(A840_REG_RB_DEPTH_CNTL) == 359);
     CHECK(p.reg(A840_REG_RB_STENCIL_CNTL) ==
           (7u | 3u << 8 | 1u << 11 | 2u << 14 | 3u << 17 |

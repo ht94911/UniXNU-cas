@@ -67,6 +67,7 @@ clamp_regid(unsigned r)
 
 static void
 populate_stage_io_info(const struct ir3_shader_variant *v,
+                       const struct ir3_shader_options *shader_opts,
                        uint32_t stage,
                        bool const_is_immediates,
                        A840Ir3StageIoInfo *io)
@@ -86,6 +87,9 @@ populate_stage_io_info(const struct ir3_shader_variant *v,
    io->driver_params_offset_vec4 = UINT32_MAX;
    io->ubo_ptrs_offset_vec4 = UINT32_MAX;
    io->const_data_is_immediates = const_is_immediates ? 1u : 0u;
+   io->push_const_base_bytes = 0u;
+   io->push_const_dst_vec4 = UINT32_MAX;
+   io->push_const_size_vec4 = 0u;
 
    const struct ir3_const_state *cs = ir3_const_state(v);
    if (cs != NULL) {
@@ -93,6 +97,13 @@ populate_stage_io_info(const struct ir3_shader_variant *v,
          io->driver_params_offset_vec4 = cs->allocs.consts[IR3_CONST_ALLOC_DRIVER_PARAMS].offset_vec4;
       if (cs->allocs.consts[IR3_CONST_ALLOC_UBO_PTRS].size_vec4 > 0u)
          io->ubo_ptrs_offset_vec4 = cs->allocs.consts[IR3_CONST_ALLOC_UBO_PTRS].offset_vec4;
+      if (shader_opts != NULL &&
+          shader_opts->push_consts_type == IR3_PUSH_CONSTS_PER_STAGE &&
+          cs->allocs.consts[IR3_CONST_ALLOC_PUSH_CONSTS].size_vec4 > 0u) {
+         io->push_const_base_bytes = shader_opts->push_consts_base * 4u;
+         io->push_const_dst_vec4 = cs->allocs.consts[IR3_CONST_ALLOC_PUSH_CONSTS].offset_vec4;
+         io->push_const_size_vec4 = cs->allocs.consts[IR3_CONST_ALLOC_PUSH_CONSTS].size_vec4;
+      }
    }
 
    io->cs_local_id_regid = A840_IR3_REGID_UNUSED;
@@ -477,7 +488,7 @@ a840_compile_stage(const A840CompileTarget *target,
    result.reg_fills = v->info.ldp_count;
    result.max_waves = v->info.max_waves > 0 ? (uint32_t)v->info.max_waves : 0u;
    owner->magic = A840_STAGE_OWNER_MAGIC;
-   populate_stage_io_info(v, input->stage,
+   populate_stage_io_info(v, &shader_opts, input->stage,
                           !(v->constant_data_size > 0u && v->info.constant_data_offset > 0u) &&
                              (v->imm_state.size > 0u && v->imm_state.values != NULL),
                           &owner->io_info);

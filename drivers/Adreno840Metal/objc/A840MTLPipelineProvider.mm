@@ -79,13 +79,63 @@ static A840RtBuffer *allocZeroPageBuffer(A840RtDevice *rt)
 }
 
 struct A840IdentityBindState {
-    A840RtBuffer *descBo = nullptr;
+    A840RtBuffer *descBo = nullptr; /* Caller-owned +1 ref; retain on CB then release. */
     uint64_t setOffsets[ADRENO_COMPILE_MAX_BIND_SETS] = {};
     bool setActive[ADRENO_COMPILE_MAX_BIND_SETS] = {};
     uint32_t activeSetCount = 0u;
     uint8_t pushBuf[2][kIdentityMaxPushBytes] = {};
     uint32_t pushVec4Count[2] = {};
+    uint64_t vertexInlineVa[32] = {};
+    uint32_t vertexInlineLen[32] = {};
 };
+
+static void encodeDefaultConstexprSampler(uint32_t outWords[A840_SAMP_CONST_DWORDS])
+{
+    /* Normalized linear clamp-to-edge sampler for Metal constexpr samplers mapped to
+     * samplerSet slot 0 (translate/src/lib.rs PushField::ConstexprSampler -> 0). */
+    const A840SampDescInput in{
+        A840_FILTER_LINEAR, A840_FILTER_LINEAR, A840_MIP_NONE,
+        A840_ADDRESS_CLAMP_TO_EDGE, A840_ADDRESS_CLAMP_TO_EDGE, A840_ADDRESS_CLAMP_TO_EDGE,
+        1u, 0.0f, 4095.0f / 256.0f, 0.0f, A840_COMPARE_DISABLED, 0u, 0u,
+    };
+    if (a840_encode_samp_const(&in, outWords) != A840_EMIT_OK) {
+        std::memset(outWords, 0, A840_SAMP_CONST_DWORDS * sizeof(uint32_t));
+    }
+}
+
+static bool stagePushWindow(const A840CompiledStage &stage,
+                            const A840Ir3StageIoInfo &io,
+                            const uint8_t pushBuf[kIdentityMaxPushBytes],
+                            uint32_t fallbackVec4Count,
+                            uint32_t *outDstVec4,
+                            uint32_t *outCountVec4,
+                            uint32_t outWords[kIdentityMaxPushBytes / 4u])
+{
+    if (stage.constlen_vec4 == 0u) return false;
+    uint32_t baseBytes = 0u;
+    uint32_t dstVec4 = 0u;
+    uint32_t countVec4 = 0u;
+    if (io.push_const_size_vec4 > 0u && io.push_const_dst_vec4 < stage.constlen_vec4) {
+        baseBytes = io.push_const_base_bytes;
+        dstVec4 = io.push_const_dst_vec4;
+        const uint32_t avail = stage.constlen_vec4 - dstVec4;
+        countVec4 = io.push_const_size_vec4 < avail ? io.push_const_size_vec4 : avail;
+    } else if (fallbackVec4Count > 0u) {
+        countVec4 = fallbackVec4Count < stage.constlen_vec4 ? fallbackVec4Count : stage.constlen_vec4;
+    }
+    if (countVec4 == 0u) return false;
+    const uint32_t maxVec4 = static_cast<uint32_t>(kIdentityMaxPushBytes / 16u);
+    if (countVec4 > maxVec4) countVec4 = maxVec4;
+    std::memset(outWords, 0, static_cast<size_t>(countVec4) * 16u);
+    if (baseBytes < kIdentityMaxPushBytes) {
+        const size_t availBytes = kIdentityMaxPushBytes - baseBytes;
+        const size_t copyBytes = static_cast<size_t>(countVec4) * 16u;
+        std::memcpy(outWords, pushBuf + baseBytes, availBytes < copyBytes ? availBytes : copyBytes);
+    }
+    *outDstVec4 = dstVec4;
+    *outCountVec4 = countVec4;
+    return true;
+}
 
 static A840CompileTarget makeKaanapaliTarget()
 {
@@ -605,6 +655,13 @@ static NSData *a840ExtractMtlbBitcode(NSData *libData, const char *wantedName)
     MTLLinkedFunctions *computeLinkedFunctions;
     A840RtComputePipelineDesc computeDesc;
     NSMutableDictionary<NSString *, A840MTLCompiledPlan *> *computeVariants;
+    /* Hardware VFD vertex fetch metadata (packed 1:1 with VFD_DEST_CNTL_0..N-1). */
+    uint32_t vfdInputCount;
+    uint32_t vfdInputAttrLocations[A840_MAX_VERTEX_INPUTS];
+    uint32_t vertexAttributeCount;
+    NmbVertexAttribute vertexAttributes[NMB_MAX_VERTEX_ATTRIBUTES];
+    uint32_t vertexLayoutCount;
+    NmbVertexLayout vertexLayouts[NMB_MAX_VERTEX_LAYOUTS];
 }
 @end
 
@@ -622,6 +679,9 @@ static NSData *a840ExtractMtlbBitcode(NSData *libData, const char *wantedName)
         zeroPageBo = nullptr;
         transientBuffers = [NSMutableArray new];
         computeVariants = [NSMutableDictionary new];
+        vfdInputCount = 0u;
+        vertexAttributeCount = 0u;
+        vertexLayoutCount = 0u;
     }
     return self;
 }
@@ -835,7 +895,8 @@ static NSData *a840ExtractMtlbBitcode(NSData *libData, const char *wantedName)
         }
         cursor += (1u + uniqueTextures.count) * kIdentityBindlessSlotBytes;
     }
-    if (plan->samplerSet >= 0 && uniqueSamplers.count > 0u) {
+    /* Always bind samplerSet when present and populate slot 0 for constexpr samplers. */
+    if (plan->samplerSet >= 0) {
         const size_t setIdx = static_cast<size_t>(plan->samplerSet);
         outRes->setOffsets[setIdx] = cursor;
         outRes->setActive[setIdx] = true;
@@ -877,7 +938,6 @@ static NSData *a840ExtractMtlbBitcode(NSData *libData, const char *wantedName)
     }
     auto *baseCpu = static_cast<uint8_t *>(bo->cpu_ptr);
     std::memset(baseCpu, 0, totalBytes);
-    [plan->transientBuffers addObject:[NSValue valueWithPointer:bo]];
     outRes->descBo = bo;
 
     /* 3. Write 64B A8XX hardware descriptors into bindless sets. */
@@ -899,12 +959,16 @@ static NSData *a840ExtractMtlbBitcode(NSData *libData, const char *wantedName)
             }
         }
     }
-    for (NSUInteger i = 0u; i < uniqueSamplers.count; ++i) {
-        const size_t slotOff = (i + 1u) * kIdentityBindlessSlotBytes;
-        const uint32_t *words = uniqueSamplers[i].descriptorWords;
-        if (plan->samplerSet >= 0) {
-            const size_t setIdx = static_cast<size_t>(plan->samplerSet);
-            if (outRes->setActive[setIdx]) {
+    if (plan->samplerSet >= 0) {
+        const size_t setIdx = static_cast<size_t>(plan->samplerSet);
+        if (outRes->setActive[setIdx]) {
+            uint32_t defaultSamp[A840_SAMP_CONST_DWORDS] = {};
+            encodeDefaultConstexprSampler(defaultSamp);
+            std::memcpy(baseCpu + outRes->setOffsets[setIdx],
+                        defaultSamp, A840_SAMP_CONST_DWORDS * sizeof(uint32_t));
+            for (NSUInteger i = 0u; i < uniqueSamplers.count; ++i) {
+                const size_t slotOff = (i + 1u) * kIdentityBindlessSlotBytes;
+                const uint32_t *words = uniqueSamplers[i].descriptorWords;
                 std::memcpy(baseCpu + outRes->setOffsets[setIdx] + slotOff,
                             words, A840_SAMP_CONST_DWORDS * sizeof(uint32_t));
             }
@@ -922,9 +986,14 @@ static NSData *a840ExtractMtlbBitcode(NSData *libData, const char *wantedName)
             NSData *d = b.inlineBytes[key];
             if (!d || d.length == 0u) continue;
             std::memcpy(baseCpu + inlineCur, d.bytes, d.length);
-            NSString *tag = [NSString stringWithFormat:@"%u:%u", s, key.unsignedIntValue];
+            const uint32_t slotKey = key.unsignedIntValue;
+            NSString *tag = [NSString stringWithFormat:@"%u:%u", s, slotKey];
             inlineVaMap[tag] = @(bo->gpu_va + inlineCur);
             inlineLenMap[tag] = @(d.length);
+            if (s == 0u && slotKey < 32u) {
+                outRes->vertexInlineVa[slotKey] = bo->gpu_va + inlineCur;
+                outRes->vertexInlineLen[slotKey] = static_cast<uint32_t>(d.length);
+            }
             inlineCur += alignUp(d.length, 64u);
         }
     }
@@ -1605,12 +1674,31 @@ static uint32_t a840AlignConstlenForPush(uint32_t rawConstlenVec4, const NmbSpir
     ed.position = vsIo.vs_pos_regid;
     ed.point_size = vsIo.vs_psize_regid;
 
+    plan->vertexAttributeCount = rdesc.vertex_attribute_count;
+    if (rdesc.vertex_attribute_count > 0u) {
+        std::memcpy(plan->vertexAttributes, rdesc.vertex_attributes,
+                    rdesc.vertex_attribute_count * sizeof(NmbVertexAttribute));
+    }
+    plan->vertexLayoutCount = rdesc.vertex_layout_count;
+    if (rdesc.vertex_layout_count > 0u) {
+        std::memcpy(plan->vertexLayouts, rdesc.vertex_layouts,
+                    rdesc.vertex_layout_count * sizeof(NmbVertexLayout));
+    }
+    /* Mesa NIR VERT_ATTRIB_GENERIC0 == 15; slot - 15 equals Metal [[attribute(N)]]. */
+    constexpr uint32_t kNirVertAttribGeneric0 = 15u;
+    plan->vfdInputCount = 0u;
     for (uint32_t i = 0u; i < vsIo.input_count && ed.vertex_input_count < A840_MAX_VERTEX_INPUTS; ++i) {
         if (vsIo.inputs[i].sysval || vsIo.inputs[i].compmask == 0u ||
             vsIo.inputs[i].regid >= A840_IR3_REGID_UNUSED) continue;
         ed.vertex_inputs[ed.vertex_input_count].regid = vsIo.inputs[i].regid;
         ed.vertex_inputs[ed.vertex_input_count].component_mask = vsIo.inputs[i].compmask;
+        const uint32_t slot = vsIo.inputs[i].slot;
+        plan->vfdInputAttrLocations[plan->vfdInputCount++] =
+            (slot >= kNirVertAttribGeneric0) ? (slot - kNirVertAttribGeneric0) : slot;
         ++ed.vertex_input_count;
+    }
+    if (plan->vfdInputCount > 0u && !plan->zeroPageBo) {
+        plan->zeroPageBo = allocZeroPageBuffer(plan->rtDevice);
     }
 
     std::vector<const A840Ir3InputSlot *> baryInputs;
@@ -1787,7 +1875,6 @@ static uint32_t a840AlignConstlenForPush(uint32_t rawConstlenVec4, const NmbSpir
         }
     }
 
-    [plan->transientBuffers addObject:[NSValue valueWithPointer:bo]];
     return bo;
 }
 
@@ -1836,6 +1923,99 @@ static uint32_t a840AlignConstlenForPush(uint32_t rawConstlenVec4, const NmbSpir
                     gridSize:MTLSizeMake(1, 1, 1) threadgroupSize:defaultLocal nonuniform:NO];
 }
 
+- (A840RtStatus)emitVfdForPlan:(A840MTLCompiledPlan *)plan
+                       encoder:(A840RtRenderEncoder *)encoder
+                vertexBindings:(A840MTLBindings *)vertex
+                inlineVertexVa:(const uint64_t *)inlineVa
+               inlineVertexLen:(const uint32_t *)inlineLen
+                    fallbackBo:(A840RtBuffer *)fallbackBo
+                        intoCs:(A840CmdStream *)sdsCs
+{
+    if (!plan || plan->vfdInputCount == 0u) return A840_RT_OK;
+    A840GfxVfdBuffer vbs[A840_MAX_VERTEX_INPUTS] = {};
+    uint32_t vbMetalIdx[A840_MAX_VERTEX_INPUTS] = {};
+    uint32_t vbCount = 0u;
+    A840GfxVfdAttr attrs[A840_MAX_VERTEX_INPUTS] = {};
+    const uint64_t zeroVa = plan->zeroPageBo ? plan->zeroPageBo->gpu_va
+                                             : (fallbackBo ? fallbackBo->gpu_va : 0u);
+
+    for (uint32_t i = 0u; i < plan->vfdInputCount; ++i) {
+        const uint32_t loc = plan->vfdInputAttrLocations[i];
+        const NmbVertexAttribute *attr = nullptr;
+        for (uint32_t a = 0u; a < plan->vertexAttributeCount; ++a) {
+            if (plan->vertexAttributes[a].attribute_index == loc) {
+                attr = &plan->vertexAttributes[a];
+                break;
+            }
+        }
+        uint32_t metalBufIdx = attr ? attr->buffer_index : 0u;
+        const NmbVertexLayout *layout = nullptr;
+        if (attr) {
+            for (uint32_t l = 0u; l < plan->vertexLayoutCount; ++l) {
+                if (plan->vertexLayouts[l].buffer_index == metalBufIdx) {
+                    layout = &plan->vertexLayouts[l];
+                    break;
+                }
+            }
+        }
+
+        uint32_t vbSlot = UINT32_MAX;
+        for (uint32_t b = 0u; b < vbCount; ++b) {
+            if (vbMetalIdx[b] == metalBufIdx) {
+                vbSlot = b;
+                break;
+            }
+        }
+        if (vbSlot == UINT32_MAX && vbCount < A840_MAX_VERTEX_INPUTS) {
+            vbSlot = vbCount++;
+            vbMetalIdx[vbSlot] = metalBufIdx;
+            uint64_t va = zeroVa;
+            uint32_t sizeBytes = 4096u;
+            if (vertex) {
+                id<MTLBuffer> rawBuf = vertex.buffers[@(metalBufIdx)];
+                if ([(id)rawBuf isKindOfClass:[A840MTLBuffer class]]) {
+                    auto *nativeBuf = ((A840MTLBuffer *)rawBuf).native;
+                    const uint64_t off = vertex.bufferOffsets[@(metalBufIdx)].unsignedLongLongValue;
+                    if (nativeBuf && off < nativeBuf->size_bytes) {
+                        va = nativeBuf->gpu_va + off;
+                        const uint64_t rem = nativeBuf->size_bytes - off;
+                        sizeBytes = rem > UINT32_MAX ? UINT32_MAX : static_cast<uint32_t>(rem);
+                        const auto retSt = a840_rt_render_retain_buffer(encoder, nativeBuf);
+                        if (retSt != A840_RT_OK) return retSt;
+                    }
+                } else if (inlineVa && inlineLen && metalBufIdx < 32u && inlineVa[metalBufIdx] != 0u) {
+                    va = inlineVa[metalBufIdx];
+                    sizeBytes = inlineLen[metalBufIdx];
+                }
+            }
+            const bool isConstStep = (layout && layout->step_function == 0u);
+            uint32_t stride = (layout && !isConstStep && layout->stride != UINT32_MAX) ? layout->stride : 0u;
+            if (stride > 4095u) stride = 4095u;
+            vbs[vbSlot].gpu_va = va;
+            vbs[vbSlot].size_bytes = sizeBytes;
+            vbs[vbSlot].stride_bytes = stride;
+        }
+
+        uint32_t fmtId = A840_FMT6_32_32_32_32_FLOAT;
+        uint32_t swap = A840_WZYX;
+        uint8_t isFloat = 1u;
+        if (attr) {
+            (void)a840_vfd_map_mtl_vertex_format(attr->mtl_vertex_format, &fmtId, &swap, &isFloat);
+        }
+        const bool isInstanced = (layout && layout->step_function == 2u); /* MTLVertexStepFunctionPerInstance */
+        attrs[i].vb_slot = (vbSlot < A840_MAX_VERTEX_INPUTS) ? vbSlot : 0u;
+        attrs[i].offset_bytes = (attr && attr->offset <= 4095u) ? attr->offset : 0u;
+        attrs[i].format_id = fmtId;
+        attrs[i].swap = swap;
+        attrs[i].instanced = isInstanced ? 1u : 0u;
+        attrs[i].step_rate = isInstanced ? (layout->step_rate ? layout->step_rate : 1u) : 0u;
+        attrs[i].is_float = isFloat;
+    }
+
+    const auto est = a840_gfx_sds_emit_vfd(sdsCs, vbCount, vbs, plan->vfdInputCount, attrs);
+    return a840_rt_status_from_emit(est);
+}
+
 - (A840RtStatus)bindCompute:(A840RtComputeEncoder *)encoder plan:(id)planObj
                     bindings:(A840MTLBindings *)bindings
                     gridSize:(MTLSize)grid
@@ -1865,16 +2045,23 @@ static uint32_t a840AlignConstlenForPush(uint32_t rawConstlenVec4, const NmbSpir
                 }
             }
             const auto st = a840_rt_compute_set_bindless(encoder, idRes.activeSetCount, setBos, setOffsets);
-            if (st != A840_RT_OK) return st;
+            if (st != A840_RT_OK) { a840_rt_buffer_release(idRes.descBo); return st; }
+        }
+        if (idRes.descBo) {
+            const auto retSt = a840_rt_compute_retain_buffer(encoder, idRes.descBo);
+            a840_rt_buffer_release(idRes.descBo);
+            if (retSt != A840_RT_OK) return retSt;
         }
         const A840CompiledStage &stage = plan->stages[0];
-        if (idRes.pushVec4Count[0] > 0u) {
+        const A840Ir3StageIoInfo &io = plan->ioInfo[0];
+        uint32_t pushDstVec4 = 0u, pushCountVec4 = 0u;
+        uint32_t pushWords[kIdentityMaxPushBytes / 4u] = {};
+        if (stagePushWindow(stage, io, idRes.pushBuf[0], idRes.pushVec4Count[0],
+                            &pushDstVec4, &pushCountVec4, pushWords)) {
             const auto st = a840_rt_compute_set_consts_direct(
-                encoder, 0u, idRes.pushVec4Count[0], stage.constlen_vec4,
-                reinterpret_cast<const uint32_t *>(idRes.pushBuf[0]));
+                encoder, pushDstVec4, pushCountVec4, stage.constlen_vec4, pushWords);
             if (st != A840_RT_OK) return st;
         }
-        const A840Ir3StageIoInfo &io = plan->ioInfo[0];
         if (stage.const_data_words && stage.const_data_dwords > 0u && io.imm_offset_vec4 != UINT32_MAX) {
             const uint32_t countVec4 = (stage.const_data_dwords + 3u) / 4u;
             if (io.imm_offset_vec4 + countVec4 <= stage.constlen_vec4) {
@@ -1907,8 +2094,11 @@ static uint32_t a840AlignConstlenForPush(uint32_t rawConstlenVec4, const NmbSpir
     }
     if (activeSets > 0u) {
         const auto st = a840_rt_compute_set_bindless(encoder, activeSets, setBos, setOffsets);
-        if (st != A840_RT_OK) return st;
+        if (st != A840_RT_OK) { a840_rt_buffer_release(descBo); return st; }
     }
+    const auto retDescSt = a840_rt_compute_retain_buffer(encoder, descBo);
+    a840_rt_buffer_release(descBo);
+    if (retDescSt != A840_RT_OK) return retDescSt;
 
     const A840CompiledStage &stage = plan->stages[0];
     const A840Ir3StageIoInfo &io = plan->ioInfo[0];
@@ -1965,9 +2155,9 @@ static uint32_t a840AlignConstlenForPush(uint32_t rawConstlenVec4, const NmbSpir
     const uint32_t stageKinds[2] = {A840_STAGE_VERTEX, A840_STAGE_FRAGMENT};
     A840MTLBindings *stageBindings[2] = {vertex, fragment};
 
-    uint32_t sdsWords[512];
+    uint32_t sdsWords[1024];
     A840CmdStream sdsCs{};
-    if (a840_cs_init(&sdsCs, sdsWords, 512u, nullptr, 0u) != A840_EMIT_OK)
+    if (a840_cs_init(&sdsCs, sdsWords, 1024u, nullptr, 0u) != A840_EMIT_OK)
         return A840_RT_STATE_ERROR;
 
     if ([self planUsesIdentityPush:plan]) {
@@ -1978,27 +2168,44 @@ static uint32_t a840AlignConstlenForPush(uint32_t rawConstlenVec4, const NmbSpir
                                       nonuniform:NO outRes:&idRes]) {
             return A840_RT_OOM;
         }
+        if (idRes.descBo) {
+            const auto retSt = a840_rt_render_retain_buffer(encoder, idRes.descBo);
+            if (retSt != A840_RT_OK) { a840_rt_buffer_release(idRes.descBo); return retSt; }
+        }
         if (idRes.activeSetCount > 0u) {
             uint64_t setVas[ADRENO_COMPILE_MAX_BIND_SETS] = {};
             for (uint32_t s = 0u; s < idRes.activeSetCount; ++s) {
                 if (idRes.setActive[s]) setVas[s] = idRes.descBo->gpu_va + idRes.setOffsets[s];
             }
             const auto est = a840_gfx_sds_emit_bindless(&sdsCs, idRes.activeSetCount, setVas);
-            if (est != A840_EMIT_OK) return a840_rt_status_from_emit(est);
+            if (est != A840_EMIT_OK) { a840_rt_buffer_release(idRes.descBo); return a840_rt_status_from_emit(est); }
+        }
+        if (plan->vfdInputCount > 0u) {
+            const auto vfdSt = [self emitVfdForPlan:plan encoder:encoder vertexBindings:vertex
+                                     inlineVertexVa:idRes.vertexInlineVa inlineVertexLen:idRes.vertexInlineLen
+                                         fallbackBo:idRes.descBo intoCs:&sdsCs];
+            if (vfdSt != A840_RT_OK) { a840_rt_buffer_release(idRes.descBo); return vfdSt; }
+        }
+        if (idRes.descBo) {
+            a840_rt_buffer_release(idRes.descBo);
+            idRes.descBo = nullptr;
         }
         for (uint32_t s = 0u; s < 2u; ++s) {
             const A840CompiledStage &stage = plan->stages[s];
-            if (idRes.pushVec4Count[s] > 0u && stage.constlen_vec4 > 0u) {
+            const A840Ir3StageIoInfo &io = plan->ioInfo[s];
+            uint32_t pushDstVec4 = 0u, pushCountVec4 = 0u;
+            uint32_t pushWords[kIdentityMaxPushBytes / 4u] = {};
+            if (stagePushWindow(stage, io, idRes.pushBuf[s], idRes.pushVec4Count[s],
+                                &pushDstVec4, &pushCountVec4, pushWords)) {
                 A840GfxConstUpload up{};
                 up.stage = stageKinds[s];
-                up.dst_vec4 = 0u;
-                up.count_vec4 = idRes.pushVec4Count[s];
+                up.dst_vec4 = pushDstVec4;
+                up.count_vec4 = pushCountVec4;
                 up.constlen_vec4 = stage.constlen_vec4;
-                up.words = reinterpret_cast<const uint32_t *>(idRes.pushBuf[s]);
+                up.words = pushWords;
                 const auto est = a840_gfx_sds_emit_consts(&sdsCs, &up);
                 if (est != A840_EMIT_OK) return a840_rt_status_from_emit(est);
             }
-            const A840Ir3StageIoInfo &io = plan->ioInfo[s];
             if (stage.const_data_words && stage.const_data_dwords > 0u && io.imm_offset_vec4 != UINT32_MAX) {
                 const uint32_t countVec4 = (stage.const_data_dwords + 3u) / 4u;
                 if (io.imm_offset_vec4 + countVec4 <= stage.constlen_vec4) {
@@ -2026,7 +2233,6 @@ static uint32_t a840AlignConstlenForPush(uint32_t rawConstlenVec4, const NmbSpir
             return A840_RT_OOM;
         }
         std::memcpy(sdsBo->cpu_ptr, sdsWords, sdsCs.used_dwords * sizeof(uint32_t));
-        [plan->transientBuffers addObject:[NSValue valueWithPointer:sdsBo]];
 
         A840RtSdsGroupDesc grp{};
         grp.group_id = 0u;
@@ -2034,7 +2240,9 @@ static uint32_t a840AlignConstlenForPush(uint32_t rawConstlenVec4, const NmbSpir
         grp.state_dwords = static_cast<uint32_t>(sdsCs.used_dwords);
         grp.state_buffer = sdsBo;
         grp.state_offset = 0u;
-        return a840_rt_render_set_sds(encoder, &grp, 1u);
+        const auto sdsSt = a840_rt_render_set_sds(encoder, &grp, 1u);
+        a840_rt_buffer_release(sdsBo);
+        return sdsSt;
     }
 
     A840RtBuffer *descBo = [self buildDescriptorTableForPlan:plan stageBindings:stageBindings
@@ -2050,10 +2258,22 @@ static uint32_t a840AlignConstlenForPush(uint32_t rawConstlenVec4, const NmbSpir
             activeSets = s + 1u;
         }
     }
+    {
+        const auto retDescSt = a840_rt_render_retain_buffer(encoder, descBo);
+        if (retDescSt != A840_RT_OK) { a840_rt_buffer_release(descBo); return retDescSt; }
+    }
     if (activeSets > 0u) {
         const auto est = a840_gfx_sds_emit_bindless(&sdsCs, activeSets, setVas);
-        if (est != A840_EMIT_OK) return a840_rt_status_from_emit(est);
+        if (est != A840_EMIT_OK) { a840_rt_buffer_release(descBo); return a840_rt_status_from_emit(est); }
     }
+    if (plan->vfdInputCount > 0u) {
+        const auto vfdSt = [self emitVfdForPlan:plan encoder:encoder vertexBindings:vertex
+                                 inlineVertexVa:nullptr inlineVertexLen:nullptr
+                                     fallbackBo:descBo intoCs:&sdsCs];
+        if (vfdSt != A840_RT_OK) { a840_rt_buffer_release(descBo); return vfdSt; }
+    }
+    a840_rt_buffer_release(descBo);
+    descBo = nullptr;
 
     for (uint32_t s = 0u; s < 2u; ++s) {
         const A840CompiledStage &stage = plan->stages[s];
@@ -2111,7 +2331,6 @@ static uint32_t a840AlignConstlenForPush(uint32_t rawConstlenVec4, const NmbSpir
         return A840_RT_OOM;
     }
     std::memcpy(sdsBo->cpu_ptr, sdsWords, sdsCs.used_dwords * sizeof(uint32_t));
-    [plan->transientBuffers addObject:[NSValue valueWithPointer:sdsBo]];
 
     A840RtSdsGroupDesc grp{};
     grp.group_id = 0u;
@@ -2119,7 +2338,9 @@ static uint32_t a840AlignConstlenForPush(uint32_t rawConstlenVec4, const NmbSpir
     grp.state_dwords = static_cast<uint32_t>(sdsCs.used_dwords);
     grp.state_buffer = sdsBo;
     grp.state_offset = 0u;
-    return a840_rt_render_set_sds(encoder, &grp, 1u);
+    const auto sdsSt = a840_rt_render_set_sds(encoder, &grp, 1u);
+    a840_rt_buffer_release(sdsBo);
+    return sdsSt;
 }
 @end
 

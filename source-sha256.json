@@ -32,8 +32,8 @@
       "sha256": "8991925788ea9b2a722d153d03c5b233296506f39e8f2420b7454bf8d201e13f"
     },
     "adreno_compile/ir3/a840_ir3_io_info.h": {
-      "bytes": 3491,
-      "sha256": "2d7ebaa5c6021aac7c498c6c168f152fb1a72d8630f4f31f8be0c4a80d9bb3c4"
+      "bytes": 3674,
+      "sha256": "d1d6f246bfc1b311dc5e09233aee274f323803ab7a9e3a8374045c10eb3ac7eb"
     },
     "adreno_compile/ir3/a840_ir3_stats.c": {
       "bytes": 9938,
@@ -60,12 +60,12 @@
       "sha256": "61893484776c1f031ad386a7bb7dbcac176cc439a8034ef10b893d58f49aaabc"
     },
     "adreno_compile/ir3/a840_spirv_lower.c": {
-      "bytes": 45058,
-      "sha256": "a7ae25c449e1aed8b9b50617459e96298e61218f5340153bb21c1f5e933c8f90"
+      "bytes": 45725,
+      "sha256": "06016be2379cdc53b04c95dbeb94a7982ead217083a306cce635f57dbfce2377"
     },
     "adreno_compile/ir3/adreno_compile_ir3.c": {
-      "bytes": 25218,
-      "sha256": "6de55675bd93eadd34fd58c5678a651fcb9d9ceebdee6d3c1c0ce7b87c2f9a1e"
+      "bytes": 25861,
+      "sha256": "4b00040a19dc7a2997b83b77c6ab9d10fe0aacaa9f1e4d9ef8c8637d3eb38c18"
     },
     "adreno_compile/ir3/test_ir3_e2e.c": {
       "bytes": 21687,
@@ -676,12 +676,12 @@
       "sha256": "119e4a8b3458a7e6438966e6756af8d9f6f171a949b25d6007307ea712e944b0"
     },
     "drivers/Adreno840Metal/core/a840_runtime_cmd.c": {
-      "bytes": 70460,
-      "sha256": "d5fcddb069b4c42cdcff4a3b7ffe5cd311b59b292705a06a4a55aa042779e86f"
+      "bytes": 71476,
+      "sha256": "4818fa27acfa615a91b89612e53e654b1b1255607923b01e2dd548dcf30607cb"
     },
     "drivers/Adreno840Metal/core/a840_runtime_cmd.h": {
-      "bytes": 12005,
-      "sha256": "680528929f6029da802040081eac5d14b6b0eeab04c85fd94a9344b95d61fde1"
+      "bytes": 12274,
+      "sha256": "06d184f52760c18354643c28658da1d114c2b2c9a62721717563511153fcb81e"
     },
     "drivers/Adreno840Metal/core/a840_runtime_device.c": {
       "bytes": 50133,
@@ -772,8 +772,8 @@
       "sha256": "6d72ddcff5edebe4e747a3549f295cb9539b0aa13fd6e500cc435a6704f7b2d6"
     },
     "drivers/Adreno840Metal/objc/A840MTLEncoders.mm": {
-      "bytes": 76697,
-      "sha256": "53a7f8a40e774d625fab26ab522ba84da347732ddcb0a15df8053194e66bab1a"
+      "bytes": 78646,
+      "sha256": "cc8eb29499715a04c55da80aae383bc339c50b6e01afb28f63a11208638b84ec"
     },
     "drivers/Adreno840Metal/objc/A840MTLHeapAndEvents.h": {
       "bytes": 2145,
@@ -796,8 +796,8 @@
       "sha256": "4627a677e1ae85a6ae30795e9bfaed163c7cd0618074d2bf03053f8a4c71ffb7"
     },
     "drivers/Adreno840Metal/objc/A840MTLPipelineProvider.mm": {
-      "bytes": 100237,
-      "sha256": "e106991521eee295432717bff1eb14504af936a328a998b764c4b8f09eeb6b6c"
+      "bytes": 111260,
+      "sha256": "3f085190356f093d1fa9cc5ed41ff1f7c4d7540ea69a36171ae864fbeb859c8c"
     },
     "drivers/Adreno840Metal/objc/A840MTLResource.h": {
       "bytes": 4841,
@@ -812,16 +812,16 @@
       "sha256": "93058ea1327ff9423fc2b6a495ede23de3ab766e288cf2075bb482e099cd293a"
     },
     "drivers/Adreno840Metal/objc/A840MTLScanoutBridge.mm": {
-      "bytes": 22650,
-      "sha256": "19c0a90148d72f30908054a2b03ac902929c2012e291750aef1bfd6ab62a2166"
+      "bytes": 23578,
+      "sha256": "34236ee37b891a4a6be9da623539c4c7a651dcc3285b5b2ef33b5fea4290d87d"
     },
     "drivers/Adreno840Metal/objc/A840MTLSystemSPI.h": {
       "bytes": 5980,
       "sha256": "1d888a05085a6a6afce870afd59e27a0237565ec7daa0124bd86f698ae62b82b"
     },
     "drivers/Adreno840Metal/objc/A840MTLSystemSPI.mm": {
-      "bytes": 24562,
-      "sha256": "f17ce82b91ea590c297deef832472cb95e7f1573082d2a5fe2719caee9ddfba6"
+      "bytes": 25098,
+      "sha256": "f289464ab92f50cba572019732f9fe42e3092b826786d731791ad37da7d6e3fa"
     },
     "drivers/Adreno840Metal/test/a840_macos_metal_selftest.mm": {
       "bytes": 26617,
@@ -832,12 +832,12 @@
       "sha256": "7e89c526d6926440e74d73d4786d39534e14b700161382c271149d361073e57d"
     },
     "drivers/Adreno840Metal/transport/a840_gfx_bind_sds.c": {
-      "bytes": 2941,
-      "sha256": "6e18a9cd045f61707b4d88bb4f3924c454db89ee68be19b33f17a3770103e5c6"
+      "bytes": 11103,
+      "sha256": "bfd0d4ec1b4166ef79b91addd62dec303a2337f48913d55f5e7ed53dfb605539"
     },
     "drivers/Adreno840Metal/transport/a840_gfx_bind_sds.h": {
-      "bytes": 1118,
-      "sha256": "6c8a5fe85797b3d86c1384565bbd7d8ceb661122125ad4f0dc257b1c008515c8"
+      "bytes": 2479,
+      "sha256": "88f27dd3a255e5fa5605001a423cbd8f24b7f947fbb380199ac162ef674acee7"
     },
     "drivers/Adreno840Metal/transport/a840_hwtest_hook.c": {
       "bytes": 6778,
@@ -944,16 +944,16 @@
       "sha256": "d80ee34778c455604539a3f01f3cf00fff386a5ad15a879a70972ccbeee77520"
     },
     "kits/Adreno840Emit/a840_descriptors.c": {
-      "bytes": 20460,
-      "sha256": "1dec3f2674650b145e2b265e2a830b7eb755ed052ff7d83f04a1659206fd59d8"
+      "bytes": 21114,
+      "sha256": "511fa4a1a27a967509c9423cc770c4c15ef7335a38f2e443219ed798ae295edf"
     },
     "kits/Adreno840Emit/a840_emit_3d.c": {
-      "bytes": 40220,
-      "sha256": "5bb9186827fc10418d689aec6c188a499ce965afd9aeff2ddd40e91e34d80cae"
+      "bytes": 43194,
+      "sha256": "e5b6de6a944b315cf8301936d33c3dff67899cffe8a68db9e4dfcf316b2f6270"
     },
     "kits/Adreno840Emit/a840_emit_3d.h": {
       "bytes": 5720,
-      "sha256": "e530d06bcbd6ee3f8f644bff563677a2a82fe4a1770bd9bc77d50d75a0d55f1c"
+      "sha256": "540d702b8d4a17a03ee7a825d178339e0eea4a2c55ba5ac608a18a3980dbdb0f"
     },
     "kits/Adreno840Emit/a840_emit_blit.c": {
       "bytes": 14147,
@@ -1028,8 +1028,8 @@
       "sha256": "e47b8a7f4a853220b951933032c703782d846acb0b12f41ae7f583d1b1630553"
     },
     "kits/Adreno840Emit/test/test_emit_3d_compute.cpp": {
-      "bytes": 37962,
-      "sha256": "d8d868237b7c3fe73f678e3d3998031b12102b5823c38204fad0e31d99cb916e"
+      "bytes": 38636,
+      "sha256": "9893d83687858306097f8b7f621147f66f2afdebc90baa4871f47e5df9a334d9"
     },
     "kits/Adreno840Emit/test/test_emit_gmem.cpp": {
       "bytes": 15972,
@@ -1249,7 +1249,7 @@
   ],
   "hardware_acceptance": false,
   "kind": "PHASE6_RELEASE_PUBLIC_STAGING",
-  "manifest_sha256": "609762104a58dc3e605335eb52a98619dd4697a3a635fc88f96d1cbd184cc06f",
+  "manifest_sha256": "5c1b535f1e5e3b57a1596d9c759b7151a49c2cebb9a63be4e72a55afe5453548",
   "recipient_cert_sha256": "6302bf5f0b65f5c47eada0bee438d633a741b315ac035026254664282f9f33e7",
   "required_targets": [
     "NativeMetalTranslate",
@@ -1260,6 +1260,6 @@
     "NezhaGpuTest"
   ],
   "schema_version": 1,
-  "total_bytes": 7603089,
+  "total_bytes": 7634128,
   "zero_turnip_verified": true
 }

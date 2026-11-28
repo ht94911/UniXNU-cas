@@ -1379,6 +1379,19 @@ A840RtStatus a840_rt_compute_set_bindless(A840RtComputeEncoder *enc,
     return A840_RT_OK;
 }
 
+A840RtStatus a840_rt_compute_retain_buffer(A840RtComputeEncoder *enc,
+                                           A840RtBuffer *buffer)
+{
+    A840RtStatus st = check_compute_active(enc);
+    if (st != A840_RT_OK) return st;
+    if (!buffer) return A840_RT_INVALID_ARG;
+    if (!a840_rt_device_owns_buffer(enc->cb->device, buffer)) return A840_RT_WRONG_DEVICE;
+    st = pre_reserve_buffers(enc->cb, 1u);
+    if (st != A840_RT_OK) return st;
+    retain_buffer_reserved(enc->cb, buffer);
+    return A840_RT_OK;
+}
+
 A840RtStatus a840_rt_compute_set_consts_direct(A840RtComputeEncoder *enc,
                                                uint32_t dst_vec4,
                                                uint32_t count_vec4,
@@ -2022,6 +2035,19 @@ A840RtStatus a840_rt_render_set_state(A840RtRenderEncoder *enc,
         return a840_rt_status_from_emit(est);
     }
     enc->has_state = true;
+    return A840_RT_OK;
+}
+
+A840RtStatus a840_rt_render_retain_buffer(A840RtRenderEncoder *enc,
+                                          A840RtBuffer *buffer)
+{
+    A840RtStatus st = check_render_active(enc);
+    if (st != A840_RT_OK) return st;
+    if (!buffer) return A840_RT_INVALID_ARG;
+    if (!a840_rt_device_owns_buffer(enc->cb->device, buffer)) return A840_RT_WRONG_DEVICE;
+    st = pre_reserve_buffers(enc->cb, 1u);
+    if (st != A840_RT_OK) return st;
+    retain_buffer_reserved(enc->cb, buffer);
     return A840_RT_OK;
 }
 

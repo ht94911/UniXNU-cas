@@ -324,6 +324,8 @@ static A840YcbcrFormat detectIOSurfaceYcbcr(IOSurfaceRef surface, MTLPixelFormat
         ((planePtr - baseAddr) % 64u) == 0u;
 
     @synchronized (self) {
+        A840RtStatus importBoSt = A840_RT_UNSUPPORTED;
+        A840RtStatus importTexSt = A840_RT_UNSUPPORTED;
         if (canImportZeroCopy) {
             const uint64_t alignedAlloc = ((uint64_t)allocSize + pageBytes - 1u) & ~(uint64_t)(pageBytes - 1u);
             A840RtBufferDesc bdesc{};
@@ -333,15 +335,22 @@ static A840YcbcrFormat detectIOSurfaceYcbcr(IOSurfaceRef surface, MTLPixelFormat
             bdesc.host_import = true;
             bdesc.host_ptr = basePtr;
             A840RtBuffer *surfBo = nullptr;
-            if (a840_rt_buffer_create(self.runtime, &bdesc, &surfBo) == A840_RT_OK && surfBo) {
+            importBoSt = a840_rt_buffer_create(self.runtime, &bdesc, &surfBo);
+            if (importBoSt == A840_RT_OK && surfBo) {
                 const uint64_t planeOff = (uint64_t)(planePtr - baseAddr);
-                if (a840_rt_texture_create_on_buffer(self.runtime, surfBo, planeOff, &rtdesc, &rtTex) != A840_RT_OK) {
+                importTexSt = a840_rt_texture_create_on_buffer(self.runtime, surfBo, planeOff, &rtdesc, &rtTex);
+                if (importTexSt != A840_RT_OK) {
                     rtTex = nullptr;
                 }
                 a840_rt_buffer_release(surfBo);
             }
         }
         if (!rtTex) {
+            char nmsg[128] = {};
+            snprintf(nmsg, sizeof(nmsg), "A840SURF nocopy c=%d bo=%d tx=%d f=%u %ux%u r=%u",
+                     canImportZeroCopy ? 1 : 0, (int)importBoSt, (int)importTexSt,
+                     rtdesc.mtl_pixel_format, rtdesc.width, rtdesc.height, rtdesc.pitch_bytes);
+            a840diag::reportText(nmsg);
             const A840RtStatus texSt = a840_rt_texture_create(self.runtime, &rtdesc, &rtTex);
             if (texSt != A840_RT_OK) {
                 char msg[128] = {};

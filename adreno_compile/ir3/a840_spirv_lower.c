@@ -265,9 +265,24 @@ lower_load_push_constant_a840(nir_builder *b, nir_intrinsic_instr *intr,
    }
 
    uint32_t base = nir_intrinsic_base(intr);
-   uint32_t rel_dwords = (base - st->push_const_lo_bytes) / 4u;
-   uint32_t dst_base = st->push_const_dst_dwords + rel_dwords;
-   nir_def *word_off = nir_ushr_imm(b, intr->src[0].ssa, 2);
+   uint32_t dst_base = st->push_const_dst_dwords;
+   nir_def *word_off = NULL;
+   if (nir_src_is_const(intr->src[0])) {
+      /* Fold base + const_offset before subtracting push_const_lo_bytes so
+       * SPIR-V push loads with base=0, offset=64 never unsigned-underflow. */
+      uint32_t byte_off = base + nir_src_as_uint(intr->src[0]);
+      uint32_t rel_bytes = (byte_off >= st->push_const_lo_bytes)
+                              ? (byte_off - st->push_const_lo_bytes)
+                              : 0u;
+      dst_base += rel_bytes / 4u;
+      word_off = nir_imm_int(b, 0);
+   } else {
+      int32_t delta = (int32_t)base - (int32_t)st->push_const_lo_bytes;
+      nir_def *adj = (delta != 0)
+                        ? nir_iadd_imm(b, intr->src[0].ssa, delta)
+                        : intr->src[0].ssa;
+      word_off = nir_ushr_imm(b, adj, 2);
+   }
    nir_def *load = nir_load_const_ir3(b, intr->num_components,
                                       intr->def.bit_size, word_off,
                                       .base = dst_base);
