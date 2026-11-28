@@ -13,7 +13,13 @@
 #include "../core/a840_production_router.h"
 #include "../transport/a840_hwtest_hook.h"
 
+#import <IOSurface/IOSurfaceRef.h>
+#include <algorithm>
 #include <cstring>
+#include <utility>
+#include <vector>
+
+extern "C" void sys_dcache_flush(void *start, size_t length);
 
 static constexpr uint64_t fenceWaitNanoseconds = UINT64_C(15) * 1000000000;
 static thread_local bool gInCompletionCallback = false;
@@ -610,8 +616,50 @@ static thread_local bool gInCompletionCallback = false;
     [_changed unlock];
 }
 
+- (void)flushImportedHostMemory
+{
+    /* NativeAdreno ABI maps RW-imported IOSurfaces and host no-copy buffers non-cacheable
+     * on the GPU while keeping the caller's cacheable CPU mapping. Clean CPU D-cache lines
+     * before submission (so GPU sees CPU/CoreGraphics pixels) and clean+invalidate after
+     * completion (so CPU/UIKit/Scanout reads GPU output instead of stale prefetched lines). */
+    std::vector<std::pair<uintptr_t, size_t>> ranges;
+    [_changed lock];
+    ranges.reserve(_resources.count);
+    for (id<MTLResource> res in _resources) {
+        if ([(id)res isKindOfClass:A840MTLTexture.class]) {
+            for (A840MTLTexture *t = (A840MTLTexture *)res; t; t = [(id)t.parentTexture isKindOfClass:A840MTLTexture.class] ? (A840MTLTexture *)t.parentTexture : nil) {
+                if (t.iosurface) {
+                    const uintptr_t base = reinterpret_cast<uintptr_t>(IOSurfaceGetBaseAddress(t.iosurface));
+                    const size_t bytes = IOSurfaceGetAllocSize(t.iosurface);
+                    if (base && bytes) ranges.emplace_back(base, bytes);
+                }
+                id<MTLBuffer> backing = t.buffer;
+                if ([(id)backing isKindOfClass:A840MTLBuffer.class]) {
+                    A840MTLBuffer *bb = (A840MTLBuffer *)backing;
+                    if (bb.noCopyPointer && bb.length && bb.cpuCacheMode == MTLCPUCacheModeDefaultCache) {
+                        ranges.emplace_back(reinterpret_cast<uintptr_t>(bb.noCopyPointer), (size_t)bb.length);
+                    }
+                }
+            }
+        } else if ([(id)res isKindOfClass:A840MTLBuffer.class]) {
+            A840MTLBuffer *buf = (A840MTLBuffer *)res;
+            if (buf.noCopyPointer && buf.length && buf.cpuCacheMode == MTLCPUCacheModeDefaultCache) {
+                ranges.emplace_back(reinterpret_cast<uintptr_t>(buf.noCopyPointer), (size_t)buf.length);
+            }
+        }
+    }
+    [_changed unlock];
+    if (ranges.empty()) return;
+    std::sort(ranges.begin(), ranges.end());
+    const auto last = std::unique(ranges.begin(), ranges.end());
+    for (auto it = ranges.begin(); it != last; ++it) {
+        sys_dcache_flush(reinterpret_cast<void *>(it->first), it->second);
+    }
+}
+
 - (NSError *)executeRaw
 {
+    [self flushImportedHostMemory];
     A840RtStatus status;
     uint64_t fence = 0u;
     @synchronized (_owner) {
@@ -635,6 +683,7 @@ static thread_local bool gInCompletionCallback = false;
     }
 
     @synchronized (_owner) { status = a840_rt_cb_wait_until_completed(_native, fenceWaitNanoseconds); }
+    [self flushImportedHostMemory];
     if (status != A840_RT_OK) {
         return a840_metal_error(status, @"Raw command buffer wait failed");
     }

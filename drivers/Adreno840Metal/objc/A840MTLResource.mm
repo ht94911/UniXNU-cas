@@ -178,6 +178,7 @@
     if (self.heapSubAlloc) return self.heapSubAlloc->gpu_va;
     return 0u;
 }
+- (void *)noCopyPointer { return _noCopyPointer; }
 - (void *)contents
 {
     if (_native) return _native->cpu_ptr;

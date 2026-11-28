@@ -1229,9 +1229,12 @@ static BOOL convertClear(id<MTLTexture> texture, MTLClearColor color, uint32_t o
 - (void)setViewport:(MTLViewport)viewport
 {
     if (![self checkActive]) return;
-    _state.viewport_count = 1;
-    _state.viewports[0] = {(float)viewport.originX, (float)(viewport.originY + viewport.height),
+    const A840Viewport next = {(float)viewport.originX, (float)(viewport.originY + viewport.height),
         (float)viewport.width, -(float)viewport.height, (float)viewport.znear, (float)viewport.zfar};
+    if (_state.viewport_count == 1u &&
+        std::memcmp(&_state.viewports[0], &next, sizeof(next)) == 0) return;
+    _state.viewport_count = 1;
+    _state.viewports[0] = next;
     _stateDirty = YES;
 }
 - (void)setViewports:(const MTLViewport [])viewports count:(NSUInteger)count
@@ -1256,8 +1259,11 @@ static BOOL convertClear(id<MTLTexture> texture, MTLClearColor color, uint32_t o
         [self.command recordFailure:A840_RT_RANGE_ERROR];
         return;
     }
+    const A840Rect2D next = {(uint32_t)rect.x, (uint32_t)rect.y, (uint32_t)rect.width, (uint32_t)rect.height};
+    if (_state.scissor_count == 1u &&
+        std::memcmp(&_state.scissors[0], &next, sizeof(next)) == 0) return;
     _state.scissor_count = 1;
-    _state.scissors[0] = {(uint32_t)rect.x, (uint32_t)rect.y, (uint32_t)rect.width, (uint32_t)rect.height};
+    _state.scissors[0] = next;
     _stateDirty = YES;
 }
 - (void)setScissorRects:(const MTLScissorRect [])scissorRects count:(NSUInteger)count

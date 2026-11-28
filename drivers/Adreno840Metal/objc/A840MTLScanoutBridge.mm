@@ -224,7 +224,7 @@ static void *a840GopScanoutThreadMain(void *rawArg)
         id<MTLCommandQueue> queue = [device newCommandQueue];
         id<MTLBuffer> targetBuf = [device newBufferWithBytesNoCopy:(void *)(uintptr_t)scanoutAddr
                                                             length:alignedScanoutBytes
-                                                           options:MTLResourceStorageModeShared
+                                                           options:(MTLResourceStorageModeShared | MTLResourceCPUCacheModeWriteCombined)
                                                        deallocator:nil];
         if (!queue || !targetBuf) {
             a840diag::reportText("P3 no-target-buf");
@@ -348,7 +348,7 @@ static void *a840GopScanoutThreadMain(void *rawArg)
                 if (frames == 1u || (frames % 10u) == 0u || (!ok && failures <= 3u)) {
                     char msg[96] = {};
                     if (ok) {
-                        if (frames == 1u || frames == 10u || frames == 50u || frames == 120u) {
+                        if (frames == 1u || frames == 10u || frames == 50u || frames == 120u || frames == 240u) {
                             const uint32_t rgbMask = (UINT32_C(1) << 24) - 1u;
                             uint32_t sNz = 0u, dNz = 0u, sHex = 0u, dHex = 0u;
                             uint32_t dSeen[64] = {};

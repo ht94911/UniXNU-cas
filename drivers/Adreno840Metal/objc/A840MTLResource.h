@@ -39,6 +39,7 @@
                        native:(A840RtBuffer *)buffer
                       options:(MTLResourceOptions)options;
 @property(nonatomic, readonly) A840RtBuffer *native;
+@property(nonatomic, readonly) void *noCopyPointer;
 @end
 
 @interface A840MTLTexture : A840MTLAllocation <MTLTexture>
