@@ -348,9 +348,11 @@ static void *a840GopScanoutThreadMain(void *rawArg)
                 if (frames == 1u || (frames % 10u) == 0u || (!ok && failures <= 3u)) {
                     char msg[96] = {};
                     if (ok) {
-                        if (frames == 1u || frames == 10u || frames == 50u) {
+                        if (frames == 1u || frames == 10u || frames == 50u || frames == 120u) {
                             const uint32_t rgbMask = (UINT32_C(1) << 24) - 1u;
                             uint32_t sNz = 0u, dNz = 0u, sHex = 0u, dHex = 0u;
+                            uint32_t dSeen[64] = {};
+                            uint32_t dUniq = 0u;
                             const uint8_t *sBase = reinterpret_cast<const uint8_t *>(static_cast<uintptr_t>(swap.address));
                             const uint8_t *dBase = reinterpret_cast<const uint8_t *>(static_cast<uintptr_t>(scanoutAddr));
                             for (uint32_t gy = 0u; gy < 8u; ++gy) {
@@ -363,11 +365,15 @@ static void *a840GopScanoutThreadMain(void *rawArg)
                                     if ((dv & rgbMask) != 0u) { ++dNz; if (!dHex) dHex = dv; }
                                     if (!sHex && sv != 0u) sHex = sv;
                                     if (!dHex && dv != 0u) dHex = dv;
+                                    uint32_t drgb = dv & rgbMask;
+                                    bool dup = false;
+                                    for (uint32_t u = 0u; u < dUniq; ++u) { if (dSeen[u] == drgb) { dup = true; break; } }
+                                    if (!dup && dUniq < 64u) dSeen[dUniq++] = drgb;
                                 }
                             }
-                            snprintf(msg, sizeof(msg), "PF %llu/%llu s=%u/%08x d=%u/%08x",
+                            snprintf(msg, sizeof(msg), "PF %llu/%llu s=%u/%08x d=%u/%08x u=%u",
                                      (unsigned long long)frames, (unsigned long long)failures,
-                                     sNz, sHex, dNz, dHex);
+                                     sNz, sHex, dNz, dHex, dUniq);
                         } else {
                             snprintf(msg, sizeof(msg), "PF %llu/%llu", (unsigned long long)frames, (unsigned long long)failures);
                         }

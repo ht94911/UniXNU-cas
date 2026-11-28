@@ -124,6 +124,8 @@ typedef struct A840RtBuffer {
     uint32_t cpu_token;
     bool cpu_mapped;
     bool imported;
+    struct A840RtBuffer *parent_buffer;
+    uint64_t parent_offset;
 } A840RtBuffer;
 
 typedef struct A840RtTextureDesc {
@@ -215,6 +217,11 @@ bool a840_rt_device_owns_texture(const A840RtDevice *device, const A840RtTexture
 A840RtStatus a840_rt_buffer_create(A840RtDevice *device,
                                    const A840RtBufferDesc *desc,
                                    A840RtBuffer **out_buffer);
+A840RtStatus a840_rt_buffer_create_subview(A840RtDevice *device,
+                                           A840RtBuffer *parent,
+                                           uint64_t offset,
+                                           uint64_t size_bytes,
+                                           A840RtBuffer **out_buffer);
 void a840_rt_buffer_retain(A840RtBuffer *buffer);
 void a840_rt_buffer_release(A840RtBuffer *buffer);
 A840RtStatus a840_rt_buffer_write(A840RtBuffer *buffer,
@@ -249,6 +256,13 @@ A840RtStatus a840_rt_texture_as_surface2d(const A840RtTexture *texture,
                                           A840Surface2D *out_surface);
 A840RtStatus a840_rt_texture_as_attachment(const A840RtTexture *texture,
                                            A840AttachmentStorage *out_storage);
+A840RtStatus a840_rt_texture_get_subresource_layout(const A840RtTexture *texture,
+                                                    uint32_t level,
+                                                    uint32_t slice,
+                                                    uint64_t *out_offset,
+                                                    uint32_t *out_pitch_bytes,
+                                                    uint32_t *out_width,
+                                                    uint32_t *out_height);
 
 /* Utility status mapping from emit layer. */
 A840RtStatus a840_rt_status_from_emit(A840EmitStatus st);

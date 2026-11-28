@@ -91,8 +91,6 @@ struct A840IdentityBindState {
 
 static void encodeDefaultConstexprSampler(uint32_t outWords[A840_SAMP_CONST_DWORDS])
 {
-    /* Normalized linear clamp-to-edge sampler for Metal constexpr samplers mapped to
-     * samplerSet slot 0 (translate/src/lib.rs PushField::ConstexprSampler -> 0). */
     const A840SampDescInput in{
         A840_FILTER_LINEAR, A840_FILTER_LINEAR, A840_MIP_NONE,
         A840_ADDRESS_CLAMP_TO_EDGE, A840_ADDRESS_CLAMP_TO_EDGE, A840_ADDRESS_CLAMP_TO_EDGE,
@@ -100,6 +98,29 @@ static void encodeDefaultConstexprSampler(uint32_t outWords[A840_SAMP_CONST_DWOR
     };
     if (a840_encode_samp_const(&in, outWords) != A840_EMIT_OK) {
         std::memset(outWords, 0, A840_SAMP_CONST_DWORDS * sizeof(uint32_t));
+    }
+}
+
+static void encodeReflectedConstexprSampler(const NmbSpirvConstexprSampler &cs,
+                                            uint32_t outWords[A840_SAMP_CONST_DWORDS])
+{
+    const A840SampDescInput in{
+        cs.min_filter ? A840_FILTER_LINEAR : A840_FILTER_NEAREST,
+        cs.mag_filter ? A840_FILTER_LINEAR : A840_FILTER_NEAREST,
+        cs.mip_filter <= A840_MIP_LINEAR ? cs.mip_filter : A840_MIP_NONE,
+        cs.address_u <= A840_ADDRESS_MIRROR_CLAMP ? cs.address_u : A840_ADDRESS_CLAMP_TO_EDGE,
+        cs.address_v <= A840_ADDRESS_MIRROR_CLAMP ? cs.address_v : A840_ADDRESS_CLAMP_TO_EDGE,
+        cs.address_w <= A840_ADDRESS_MIRROR_CLAMP ? cs.address_w : A840_ADDRESS_CLAMP_TO_EDGE,
+        cs.max_aniso ? cs.max_aniso : 1u,
+        cs.min_lod,
+        cs.max_lod,
+        cs.lod_bias,
+        cs.compare_op <= A840_COMPARE_DISABLED ? cs.compare_op : A840_COMPARE_DISABLED,
+        0u,
+        cs.unnormalized ? 1u : 0u,
+    };
+    if (a840_encode_samp_const(&in, outWords) != A840_EMIT_OK) {
+        encodeDefaultConstexprSampler(outWords);
     }
 }
 
@@ -658,6 +679,8 @@ static NSData *a840ExtractMtlbBitcode(NSData *libData, const char *wantedName)
     /* Hardware VFD vertex fetch metadata (packed 1:1 with VFD_DEST_CNTL_0..N-1). */
     uint32_t vfdInputCount;
     uint32_t vfdInputAttrLocations[A840_MAX_VERTEX_INPUTS];
+    std::vector<NmbSpirvVertexInput> reflectedVertexInputs;
+    std::vector<NmbSpirvConstexprSampler> constexprSamplers;
     uint32_t vertexAttributeCount;
     NmbVertexAttribute vertexAttributes[NMB_MAX_VERTEX_ATTRIBUTES];
     uint32_t vertexLayoutCount;
@@ -776,6 +799,20 @@ static NSData *a840ExtractMtlbBitcode(NSData *libData, const char *wantedName)
             plan->samplerSet = static_cast<int32_t>(b.descriptor_set);
         }
     }
+    plan->reflectedVertexInputs.clear();
+    const size_t viCount = nmb_spirv_vertex_input_count(spv);
+    plan->reflectedVertexInputs.reserve(viCount);
+    for (size_t i = 0u; i < viCount; ++i) {
+        NmbSpirvVertexInput vi{};
+        if (nmb_spirv_vertex_input(spv, i, &vi)) plan->reflectedVertexInputs.push_back(vi);
+    }
+    plan->constexprSamplers.clear();
+    const size_t csSampCount = nmb_spirv_constexpr_sampler_count(spv);
+    plan->constexprSamplers.reserve(csSampCount);
+    for (size_t i = 0u; i < csSampCount; ++i) {
+        NmbSpirvConstexprSampler cs{};
+        if (nmb_spirv_constexpr_sampler(spv, i, &cs)) plan->constexprSamplers.push_back(cs);
+    }
     if (needsZeroPage && !plan->zeroPageBo) {
         plan->zeroPageBo = allocZeroPageBuffer(plan->rtDevice);
         if (!plan->zeroPageBo) return NO;
@@ -807,6 +844,9 @@ static NSData *a840ExtractMtlbBitcode(NSData *libData, const char *wantedName)
     NSMutableDictionary<NSString *, NSNumber *> *texSlotMap = [NSMutableDictionary new];
     NSMutableDictionary<NSString *, NSNumber *> *sampSlotMap = [NSMutableDictionary new];
     uint32_t fetchedColorSlots[A840_MAX_COLOR_TARGETS] = {};
+    const uint32_t constexprSamplerSlots = plan->constexprSamplers.empty()
+                                               ? 1u
+                                               : static_cast<uint32_t>(plan->constexprSamplers.size());
 
     for (uint32_t s = 0u; s < stageCount; ++s) {
         A840MTLBindings *b = stageBindings[s];
@@ -840,13 +880,13 @@ static NSData *a840ExtractMtlbBitcode(NSData *libData, const char *wantedName)
             uint32_t slotIdx = 0u;
             for (NSUInteger i = 0u; i < uniqueSamplers.count; ++i) {
                 if (uniqueSamplers[i] == samp) {
-                    slotIdx = static_cast<uint32_t>(i + 1u);
+                    slotIdx = constexprSamplerSlots + static_cast<uint32_t>(i);
                     break;
                 }
             }
             if (slotIdx == 0u) {
                 [uniqueSamplers addObject:samp];
-                slotIdx = static_cast<uint32_t>(uniqueSamplers.count);
+                slotIdx = constexprSamplerSlots + static_cast<uint32_t>(uniqueSamplers.count - 1u);
             }
             NSString *tag = [NSString stringWithFormat:@"%u:%u", s, key.unsignedIntValue];
             sampSlotMap[tag] = @(slotIdx);
@@ -903,7 +943,7 @@ static NSData *a840ExtractMtlbBitcode(NSData *libData, const char *wantedName)
         if (static_cast<uint32_t>(setIdx + 1u) > outRes->activeSetCount) {
             outRes->activeSetCount = static_cast<uint32_t>(setIdx + 1u);
         }
-        cursor += (1u + uniqueSamplers.count) * kIdentityBindlessSlotBytes;
+        cursor += (static_cast<size_t>(constexprSamplerSlots) + uniqueSamplers.count) * kIdentityBindlessSlotBytes;
     }
 
     const size_t inlineStart = cursor;
@@ -962,14 +1002,23 @@ static NSData *a840ExtractMtlbBitcode(NSData *libData, const char *wantedName)
     if (plan->samplerSet >= 0) {
         const size_t setIdx = static_cast<size_t>(plan->samplerSet);
         if (outRes->setActive[setIdx]) {
-            uint32_t defaultSamp[A840_SAMP_CONST_DWORDS] = {};
-            encodeDefaultConstexprSampler(defaultSamp);
-            std::memcpy(baseCpu + outRes->setOffsets[setIdx],
-                        defaultSamp, A840_SAMP_CONST_DWORDS * sizeof(uint32_t));
+            uint8_t *sampBase = baseCpu + outRes->setOffsets[setIdx];
+            if (plan->constexprSamplers.empty()) {
+                uint32_t defaultSamp[A840_SAMP_CONST_DWORDS] = {};
+                encodeDefaultConstexprSampler(defaultSamp);
+                std::memcpy(sampBase, defaultSamp, A840_SAMP_CONST_DWORDS * sizeof(uint32_t));
+            } else {
+                for (size_t ci = 0u; ci < plan->constexprSamplers.size(); ++ci) {
+                    uint32_t csWords[A840_SAMP_CONST_DWORDS] = {};
+                    encodeReflectedConstexprSampler(plan->constexprSamplers[ci], csWords);
+                    std::memcpy(sampBase + ci * kIdentityBindlessSlotBytes,
+                                csWords, A840_SAMP_CONST_DWORDS * sizeof(uint32_t));
+                }
+            }
             for (NSUInteger i = 0u; i < uniqueSamplers.count; ++i) {
-                const size_t slotOff = (i + 1u) * kIdentityBindlessSlotBytes;
+                const size_t slotOff = (static_cast<size_t>(constexprSamplerSlots) + i) * kIdentityBindlessSlotBytes;
                 const uint32_t *words = uniqueSamplers[i].descriptorWords;
-                std::memcpy(baseCpu + outRes->setOffsets[setIdx] + slotOff,
+                std::memcpy(sampBase + slotOff,
                             words, A840_SAMP_CONST_DWORDS * sizeof(uint32_t));
             }
         }
@@ -1083,9 +1132,9 @@ static NSData *a840ExtractMtlbBitcode(NSData *libData, const char *wantedName)
                 uint64_t handle = 0u;
                 NSString *tag = [NSString stringWithFormat:@"%u:%u", s, pf.metal_slot];
                 NSNumber *slotNum = sampSlotMap[tag];
-                if (slotNum && slotNum.unsignedIntValue > 0u) {
+                if (slotNum && slotNum.unsignedIntValue >= constexprSamplerSlots) {
                     const uint32_t slotIdx = slotNum.unsignedIntValue;
-                    A840MTLSamplerState *samp = uniqueSamplers[slotIdx - 1u];
+                    A840MTLSamplerState *samp = uniqueSamplers[slotIdx - constexprSamplerSlots];
                     MTLSamplerDescriptor *d = samp.descriptor;
                     const uint32_t borderVal = d ? static_cast<uint32_t>(d.borderColor) : 0u;
                     const uint32_t word = d ? nmb_encode_sampler_word(
@@ -1154,6 +1203,11 @@ static NSData *a840ExtractMtlbBitcode(NSData *libData, const char *wantedName)
                     handle = static_cast<uint64_t>(slotIdx) | (static_cast<uint64_t>(word) << 32u);
                 }
                 writeFieldBytes(outRes->pushBuf[s], kIdentityMaxPushBytes, argCpu, argCap, pf, &handle, sizeof(handle));
+                break;
+            }
+            case NMB_PUSH_CONSTEXPR_SAMPLER: {
+                const uint32_t cidx = pf.extra < constexprSamplerSlots ? pf.extra : 0u;
+                writeFieldBytes(outRes->pushBuf[s], kIdentityMaxPushBytes, argCpu, argCap, pf, &cidx, sizeof(cidx));
                 break;
             }
             case NMB_PUSH_TAIL_WORD:
@@ -1941,27 +1995,51 @@ static uint32_t a840AlignConstlenForPush(uint32_t rawConstlenVec4, const NmbSpir
 
     for (uint32_t i = 0u; i < plan->vfdInputCount; ++i) {
         const uint32_t loc = plan->vfdInputAttrLocations[i];
-        const NmbVertexAttribute *attr = nullptr;
-        for (uint32_t a = 0u; a < plan->vertexAttributeCount; ++a) {
-            if (plan->vertexAttributes[a].attribute_index == loc) {
-                attr = &plan->vertexAttributes[a];
+        const NmbSpirvVertexInput *refVi = nullptr;
+        for (const NmbSpirvVertexInput &vi : plan->reflectedVertexInputs) {
+            if (vi.location == loc) {
+                refVi = &vi;
                 break;
             }
         }
-        uint32_t metalBufIdx = attr ? attr->buffer_index : 0u;
+        const NmbVertexAttribute *attr = nullptr;
         const NmbVertexLayout *layout = nullptr;
-        if (attr) {
-            for (uint32_t l = 0u; l < plan->vertexLayoutCount; ++l) {
-                if (plan->vertexLayouts[l].buffer_index == metalBufIdx) {
-                    layout = &plan->vertexLayouts[l];
+        if (!refVi) {
+            for (uint32_t a = 0u; a < plan->vertexAttributeCount; ++a) {
+                if (plan->vertexAttributes[a].attribute_index == loc) {
+                    attr = &plan->vertexAttributes[a];
                     break;
                 }
+            }
+            if (attr) {
+                for (uint32_t l = 0u; l < plan->vertexLayoutCount; ++l) {
+                    if (plan->vertexLayouts[l].buffer_index == attr->buffer_index) {
+                        layout = &plan->vertexLayouts[l];
+                        break;
+                    }
+                }
+            }
+        }
+        const uint32_t metalBufIdx = refVi ? refVi->metal_buffer_index : (attr ? attr->buffer_index : 0u);
+        const uint32_t attrOffset = refVi ? refVi->offset : (attr ? attr->offset : 0u);
+        const bool isConstStep = refVi ? (refVi->stride == 0u || (refVi->input_rate == 1u && refVi->divisor == 0u))
+                                       : (layout && layout->step_function == 0u);
+        const bool isInstanced = refVi ? (refVi->input_rate == 1u)
+                                       : (layout && layout->step_function == 2u);
+        const uint32_t stepRate = refVi ? (isInstanced ? refVi->divisor : 0u)
+                                        : (isInstanced ? (layout->step_rate ? layout->step_rate : 1u) : 0u);
+        uint32_t resolvedStride = 0u;
+        if (!isConstStep) {
+            if (refVi) {
+                resolvedStride = (refVi->stride != UINT32_MAX) ? refVi->stride : 0u;
+            } else if (layout && layout->stride != UINT32_MAX) {
+                resolvedStride = layout->stride;
             }
         }
 
         uint32_t vbSlot = UINT32_MAX;
         for (uint32_t b = 0u; b < vbCount; ++b) {
-            if (vbMetalIdx[b] == metalBufIdx) {
+            if (vbMetalIdx[b] == metalBufIdx && vbs[b].stride_bytes == (resolvedStride > 4095u ? 4095u : resolvedStride)) {
                 vbSlot = b;
                 break;
             }
@@ -1988,8 +2066,7 @@ static uint32_t a840AlignConstlenForPush(uint32_t rawConstlenVec4, const NmbSpir
                     sizeBytes = inlineLen[metalBufIdx];
                 }
             }
-            const bool isConstStep = (layout && layout->step_function == 0u);
-            uint32_t stride = (layout && !isConstStep && layout->stride != UINT32_MAX) ? layout->stride : 0u;
+            uint32_t stride = resolvedStride;
             if (stride > 4095u) stride = 4095u;
             vbs[vbSlot].gpu_va = va;
             vbs[vbSlot].size_bytes = sizeBytes;
@@ -1999,16 +2076,17 @@ static uint32_t a840AlignConstlenForPush(uint32_t rawConstlenVec4, const NmbSpir
         uint32_t fmtId = A840_FMT6_32_32_32_32_FLOAT;
         uint32_t swap = A840_WZYX;
         uint8_t isFloat = 1u;
-        if (attr) {
+        if (refVi) {
+            (void)a840_vfd_map_vk_vertex_format(refVi->vk_format, &fmtId, &swap, &isFloat);
+        } else if (attr) {
             (void)a840_vfd_map_mtl_vertex_format(attr->mtl_vertex_format, &fmtId, &swap, &isFloat);
         }
-        const bool isInstanced = (layout && layout->step_function == 2u); /* MTLVertexStepFunctionPerInstance */
         attrs[i].vb_slot = (vbSlot < A840_MAX_VERTEX_INPUTS) ? vbSlot : 0u;
-        attrs[i].offset_bytes = (attr && attr->offset <= 4095u) ? attr->offset : 0u;
+        attrs[i].offset_bytes = (attrOffset <= 4095u) ? attrOffset : 0u;
         attrs[i].format_id = fmtId;
         attrs[i].swap = swap;
         attrs[i].instanced = isInstanced ? 1u : 0u;
-        attrs[i].step_rate = isInstanced ? (layout->step_rate ? layout->step_rate : 1u) : 0u;
+        attrs[i].step_rate = stepRate;
         attrs[i].is_float = isFloat;
     }
 

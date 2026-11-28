@@ -12,7 +12,7 @@ use std::ptr;
 use std::slice;
 use std::sync::{Arc, OnceLock};
 
-use metal2vulkan::device::{Device, FormatUsage};
+use metal2vulkan::device::{Device, DeviceProfile, FormatUsage};
 use metal2vulkan::error::{
     ContainerError, DescriptorError, Error, InputErrorKind, Location, MetalAnswer,
 };
@@ -30,7 +30,7 @@ use metal2vulkan::pipeline::{
     FunctionDescriptor, LinkedFunction, LinkedFunctions, PipelineInterface, PipelineLayout,
     PushField, PushLoc, RenderPipeline, RenderPipelineDescriptor, SamplerRef, SlotClass, Stage,
     StageEntries, StageModule, StageSource, VertexAttributeDescriptor,
-    VertexBufferLayoutDescriptor, VertexDescriptor,
+    VertexBufferLayoutDescriptor, VertexDescriptor, VertexInputState, VertexStride,
 };
 use metal2vulkan::{vk, Budget};
 
@@ -406,6 +406,7 @@ const NMB_PUSH_TAIL_WORD: u32 = 15;
 const NMB_PUSH_ZERO_U32: u32 = 16;
 const NMB_PUSH_ZERO_U64: u32 = 17;
 const NMB_PUSH_FETCHED_COLOR: u32 = 18;
+const NMB_PUSH_CONSTEXPR_SAMPLER: u32 = 19;
 
 #[repr(C)]
 #[derive(Clone, Copy, Default)]
@@ -426,12 +427,180 @@ pub struct NmbSpirvPushField {
     extra: u32,
 }
 
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct NmbSpirvVertexInput {
+    location: u32,
+    binding: u32,
+    metal_buffer_index: u32,
+    offset: u32,
+    vk_format: u32,
+    stride: u32,
+    input_rate: u32,
+    divisor: u32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct NmbSpirvConstexprSampler {
+    min_filter: u32,
+    mag_filter: u32,
+    mip_filter: u32,
+    address_u: u32,
+    address_v: u32,
+    address_w: u32,
+    max_aniso: u32,
+    compare_op: u32,
+    border_color: u32,
+    unnormalized: u32,
+    is_compare: u32,
+    is_integer: u32,
+    min_lod: f32,
+    max_lod: f32,
+    lod_bias: f32,
+}
+
+fn map_vk_address_to_a840(mode: vk::SamplerAddressMode) -> u32 {
+    match mode {
+        vk::SamplerAddressMode::REPEAT => 0,
+        vk::SamplerAddressMode::CLAMP_TO_EDGE => 1,
+        vk::SamplerAddressMode::MIRRORED_REPEAT => 2,
+        vk::SamplerAddressMode::CLAMP_TO_BORDER => 3,
+        vk::SamplerAddressMode::MIRROR_CLAMP_TO_EDGE => 4,
+        _ => 1,
+    }
+}
+
+fn constexpr_sampler_eq(a: &NmbSpirvConstexprSampler, b: &NmbSpirvConstexprSampler) -> bool {
+    a.min_filter == b.min_filter
+        && a.mag_filter == b.mag_filter
+        && a.mip_filter == b.mip_filter
+        && a.address_u == b.address_u
+        && a.address_v == b.address_v
+        && a.address_w == b.address_w
+        && a.max_aniso == b.max_aniso
+        && a.compare_op == b.compare_op
+        && a.border_color == b.border_color
+        && a.unnormalized == b.unnormalized
+        && a.is_compare == b.is_compare
+        && a.is_integer == b.is_integer
+        && a.min_lod.to_bits() == b.min_lod.to_bits()
+        && a.max_lod.to_bits() == b.max_lod.to_bits()
+        && a.lod_bias.to_bits() == b.lod_bias.to_bits()
+}
+
+fn default_constexpr_sampler(compare: bool, integer: bool) -> NmbSpirvConstexprSampler {
+    NmbSpirvConstexprSampler {
+        min_filter: 1,
+        mag_filter: 1,
+        mip_filter: 0,
+        address_u: 1,
+        address_v: 1,
+        address_w: 1,
+        max_aniso: 1,
+        compare_op: 8,
+        border_color: 0,
+        unnormalized: 0,
+        is_compare: u32::from(compare),
+        is_integer: u32::from(integer),
+        min_lod: 0.0,
+        max_lod: 4095.0 / 256.0,
+        lod_bias: 0.0,
+    }
+}
+
+fn constexpr_sampler_from_vk(
+    desc: &vk::SamplerDesc,
+    compare: bool,
+    integer: bool,
+) -> NmbSpirvConstexprSampler {
+    let max_lod_limit = 4095.0_f32 / 256.0_f32;
+    let min_lod = if desc.unnormalized {
+        0.0
+    } else {
+        desc.min_lod.clamp(0.0, max_lod_limit)
+    };
+    let max_lod = if desc.unnormalized {
+        0.0
+    } else {
+        desc.max_lod.clamp(min_lod, max_lod_limit)
+    };
+    let lod_bias = if desc.unnormalized {
+        0.0
+    } else {
+        desc.mip_lod_bias.clamp(-16.0, 2047.0 / 256.0)
+    };
+    let mip_filter = if desc.unnormalized {
+        0
+    } else if desc.mipmap_mode == vk::SamplerMipmapMode::LINEAR {
+        2
+    } else if min_lod == 0.0 && max_lod <= 0.25 {
+        0
+    } else {
+        1
+    };
+    let raw_aniso = if desc.unnormalized {
+        1
+    } else {
+        desc.max_anisotropy
+            .map(|a| (a.round() as u32).clamp(1, 16))
+            .unwrap_or(1)
+    };
+    let max_aniso = match raw_aniso {
+        16.. => 16,
+        8..=15 => 8,
+        4..=7 => 4,
+        2..=3 => 2,
+        _ => 1,
+    };
+    let min_filter = u32::from(desc.min_filter == vk::Filter::LINEAR);
+    let mag_filter = if desc.unnormalized {
+        min_filter
+    } else {
+        u32::from(desc.mag_filter == vk::Filter::LINEAR)
+    };
+    let mut addr_u = map_vk_address_to_a840(desc.address_mode_u);
+    let mut addr_v = map_vk_address_to_a840(desc.address_mode_v);
+    let mut addr_w = map_vk_address_to_a840(desc.address_mode_w);
+    if desc.unnormalized {
+        for a in [&mut addr_u, &mut addr_v, &mut addr_w] {
+            if *a != 1 && *a != 3 {
+                *a = 1;
+            }
+        }
+    }
+    let compare_op = if desc.unnormalized {
+        8
+    } else {
+        desc.compare.map(|op| op.as_raw() as u32).unwrap_or(8)
+    };
+    NmbSpirvConstexprSampler {
+        min_filter,
+        mag_filter,
+        mip_filter,
+        address_u: addr_u,
+        address_v: addr_v,
+        address_w: addr_w,
+        max_aniso,
+        compare_op,
+        border_color: desc.border_color.as_raw() as u32,
+        unnormalized: u32::from(desc.unnormalized),
+        is_compare: u32::from(compare),
+        is_integer: u32::from(integer),
+        min_lod,
+        max_lod,
+        lod_bias,
+    }
+}
+
 pub struct NmbSpirvResult {
     stages: Vec<SpirvStage>,
     bindings: Vec<NmbSpirvBinding>,
     push_constants: [NmbSpirvPushConstantRange; 2],
     push_fields: [Vec<NmbSpirvPushField>; 2],
     arg_table_bytes: [u32; 2],
+    vertex_inputs: Vec<NmbSpirvVertexInput>,
+    constexpr_samplers: Vec<NmbSpirvConstexprSampler>,
 }
 
 impl NmbSpirvResult {
@@ -439,6 +608,8 @@ impl NmbSpirvResult {
         stages: impl IntoIterator<Item = StageModule>,
         layout: PipelineLayout,
         interface: &PipelineInterface,
+        profile: &DeviceProfile,
+        vertex_input: Option<&VertexInputState>,
     ) -> FfiResult<Self> {
         let stages = stages
             .into_iter()
@@ -524,6 +695,7 @@ impl NmbSpirvResult {
         let is_compute = stages.len() == 1;
         let mut push_fields: [Vec<NmbSpirvPushField>; 2] = [Vec::new(), Vec::new()];
         let mut arg_table_bytes = [0u32; 2];
+        let mut constexpr_samplers: Vec<NmbSpirvConstexprSampler> = Vec::new();
         for placement in &interface.push {
             let Some((stage_idx, stage_mask)) = (match (is_compute, placement.stage) {
                 (true, Stage::Kernel) => Some((0usize, NMB_STAGE_COMPUTE_BIT)),
@@ -569,6 +741,21 @@ impl NmbSpirvResult {
                     }
                     PushField::TailWord => (NMB_PUSH_TAIL_WORD, NO_SLOT, 0u32),
                     PushField::FetchedColor { color, .. } => (NMB_PUSH_FETCHED_COLOR, color, 0u32),
+                    PushField::ConstexprSampler(cs) => {
+                        let desc = match cs.constexpr_sampler(profile) {
+                            Ok(Some(vk_desc)) => constexpr_sampler_from_vk(&vk_desc, cs.compare, cs.integer),
+                            _ => default_constexpr_sampler(cs.compare, cs.integer),
+                        };
+                        let idx = constexpr_samplers
+                            .iter()
+                            .position(|existing| constexpr_sampler_eq(existing, &desc))
+                            .unwrap_or_else(|| {
+                                let pos = constexpr_samplers.len();
+                                constexpr_samplers.push(desc);
+                                pos
+                            });
+                        (NMB_PUSH_CONSTEXPR_SAMPLER, NO_SLOT, idx as u32)
+                    }
                     _ => {
                         let fallback = if placed.size == 8 {
                             NMB_PUSH_ZERO_U64
@@ -600,12 +787,42 @@ impl NmbSpirvResult {
                 });
             }
         }
+        let mut vertex_inputs = Vec::new();
+        if let Some(vi) = vertex_input {
+            for attr in &vi.attributes {
+                let binding = vi.bindings.iter().find(|b| b.binding == attr.binding);
+                let (metal_buffer_index, stride, input_rate, divisor) = match binding {
+                    Some(b) => {
+                        let s = match b.stride {
+                            VertexStride::Static(n) => n,
+                            VertexStride::PerBind => u32::MAX,
+                        };
+                        let rate = u32::from(b.input_rate == vk::VertexInputRate::INSTANCE);
+                        (b.buffer_index, s, rate, b.divisor)
+                    }
+                    None => (attr.binding, u32::MAX, 0, 1),
+                };
+                vertex_inputs.push(NmbSpirvVertexInput {
+                    location: attr.location,
+                    binding: attr.binding,
+                    metal_buffer_index,
+                    offset: attr.offset,
+                    vk_format: attr.format.as_raw() as u32,
+                    stride,
+                    input_rate,
+                    divisor,
+                });
+            }
+            vertex_inputs.sort_by_key(|v| v.location);
+        }
         Ok(Self {
             stages,
             bindings,
             push_constants,
             push_fields,
             arg_table_bytes,
+            vertex_inputs,
+            constexpr_samplers,
         })
     }
 
@@ -795,7 +1012,13 @@ pub unsafe extern "C" fn nmb_compile_compute_spirv(
             .translator
             .compile_compute_pipeline(&desc, &Budget::default())
             .map_err(message)?;
-        let result = NmbSpirvResult::new([pipeline.stage], pipeline.layout, &pipeline.interface)?;
+        let result = NmbSpirvResult::new(
+            [pipeline.stage],
+            pipeline.layout,
+            &pipeline.interface,
+            dev.translator.profile(),
+            None,
+        )?;
         Ok(Box::into_raw(Box::new(result)))
     })
 }
@@ -828,7 +1051,7 @@ pub unsafe extern "C" fn nmb_compile_render_spirv(
             .translator
             .compile_render_pipeline(&desc, &Budget::default())
             .map_err(message)?;
-        Ok(Box::into_raw(Box::new(render_result(pipeline)?)))
+        Ok(Box::into_raw(Box::new(render_result(pipeline, dev.translator.profile())?)))
     })
 }
 
@@ -902,13 +1125,19 @@ fn render_descriptor(vertex: Function, fragment: Function) -> RenderPipelineDesc
     desc
 }
 
-fn render_result(pipeline: RenderPipeline) -> FfiResult<NmbSpirvResult> {
+fn render_result(pipeline: RenderPipeline, profile: &DeviceProfile) -> FfiResult<NmbSpirvResult> {
     if !matches!(&pipeline.stages[..], [vertex, fragment]
         if vertex.stage == vk::ShaderStage::VERTEX && fragment.stage == vk::ShaderStage::FRAGMENT)
     {
         return Err(c"render pipeline must emit one vertex and one fragment stage".into());
     }
-    NmbSpirvResult::new(pipeline.stages, pipeline.layout, &pipeline.interface)
+    NmbSpirvResult::new(
+        pipeline.stages,
+        pipeline.layout,
+        &pipeline.interface,
+        profile,
+        Some(&pipeline.vertex_input),
+    )
 }
 
 /// Canonical Adreno 840 hardware backing format for Apple extended-range XR10 formats.
@@ -1255,7 +1484,7 @@ pub unsafe extern "C" fn nmb_compile_render_spirv_ex(
         let pipeline = translator
             .compile_render_pipeline(&desc, &budget)
             .map_err(message)?;
-        let mut result = render_result(pipeline)?;
+        let mut result = render_result(pipeline, translator.profile())?;
         result.pack_bindless()?;
         Ok(Box::into_raw(Box::new(result)))
     })
@@ -1314,6 +1543,76 @@ pub unsafe extern "C" fn nmb_spirv_push_field(
             .copied()
             .ok_or(c"push field index is out of range")?;
         unsafe { out.write(field) };
+        Ok(true)
+    })
+}
+
+/// # Safety
+/// The result handle must stay valid for this call.
+#[no_mangle]
+pub unsafe extern "C" fn nmb_spirv_vertex_input_count(
+    res: *const NmbSpirvResult,
+) -> usize {
+    ffi(0, || {
+        let res = unsafe { borrowed(res, c"SPIR-V result is required") }?;
+        Ok(res.vertex_inputs.len())
+    })
+}
+
+/// # Safety
+/// The result handle and writable output must stay valid for this call.
+#[no_mangle]
+pub unsafe extern "C" fn nmb_spirv_vertex_input(
+    res: *const NmbSpirvResult,
+    index: usize,
+    out: *mut NmbSpirvVertexInput,
+) -> bool {
+    ffi(false, || {
+        let res = unsafe { borrowed(res, c"SPIR-V result is required") }?;
+        if out.is_null() {
+            return Err(c"vertex input output is required".into());
+        }
+        let entry = res
+            .vertex_inputs
+            .get(index)
+            .copied()
+            .ok_or(c"vertex input index is out of range")?;
+        unsafe { out.write(entry) };
+        Ok(true)
+    })
+}
+
+/// # Safety
+/// The result handle must stay valid for this call.
+#[no_mangle]
+pub unsafe extern "C" fn nmb_spirv_constexpr_sampler_count(
+    res: *const NmbSpirvResult,
+) -> usize {
+    ffi(0, || {
+        let res = unsafe { borrowed(res, c"SPIR-V result is required") }?;
+        Ok(res.constexpr_samplers.len())
+    })
+}
+
+/// # Safety
+/// The result handle and writable output must stay valid for this call.
+#[no_mangle]
+pub unsafe extern "C" fn nmb_spirv_constexpr_sampler(
+    res: *const NmbSpirvResult,
+    index: usize,
+    out: *mut NmbSpirvConstexprSampler,
+) -> bool {
+    ffi(false, || {
+        let res = unsafe { borrowed(res, c"SPIR-V result is required") }?;
+        if out.is_null() {
+            return Err(c"constexpr sampler output is required".into());
+        }
+        let entry = res
+            .constexpr_samplers
+            .get(index)
+            .copied()
+            .ok_or(c"constexpr sampler index is out of range")?;
+        unsafe { out.write(entry) };
         Ok(true)
     })
 }
@@ -1849,7 +2148,13 @@ pub unsafe extern "C" fn nmb_compile_compute_spirv_ex(
         {
             pipeline.stage.spirv = words.into();
         }
-        let mut result = NmbSpirvResult::new([pipeline.stage], pipeline.layout, &pipeline.interface)?;
+        let mut result = NmbSpirvResult::new(
+            [pipeline.stage],
+            pipeline.layout,
+            &pipeline.interface,
+            dev.extended()?.profile(),
+            None,
+        )?;
         result.pack_bindless()?;
         Ok(Box::into_raw(Box::new(result)))
     })
@@ -1946,7 +2251,13 @@ pub unsafe extern "C" fn nmb_compile_compute_spirv_v2(
         {
             pipeline.stage.spirv = words.into();
         }
-        let mut result = NmbSpirvResult::new([pipeline.stage], pipeline.layout, &pipeline.interface)?;
+        let mut result = NmbSpirvResult::new(
+            [pipeline.stage],
+            pipeline.layout,
+            &pipeline.interface,
+            dev.extended()?.profile(),
+            None,
+        )?;
         result.pack_bindless()?;
         Ok(Box::into_raw(Box::new(result)))
     })
@@ -2005,13 +2316,19 @@ pub unsafe extern "C" fn nmb_compile_render_spirv_v2(
             .compile_render_pipeline(&desc, &budget)
             .map_err(message)?;
         let mut result = if has_fragment {
-            render_result(pipeline)?
+            render_result(pipeline, translator.profile())?
         } else {
             if !matches!(&pipeline.stages[..], [vertex] if vertex.stage == vk::ShaderStage::VERTEX)
             {
                 return Err(c"vertex-only render pipeline must emit one vertex stage".into());
             }
-            NmbSpirvResult::new(pipeline.stages, pipeline.layout, &pipeline.interface)?
+            NmbSpirvResult::new(
+                pipeline.stages,
+                pipeline.layout,
+                &pipeline.interface,
+                translator.profile(),
+                Some(&pipeline.vertex_input),
+            )?
         };
         result.pack_bindless()?;
         Ok(Box::into_raw(Box::new(result)))
@@ -2196,7 +2513,13 @@ pub unsafe extern "C" fn nmb_compile_compute_spirv_v3(
         {
             pipeline.stage.spirv = words.into();
         }
-        let mut result = NmbSpirvResult::new([pipeline.stage], pipeline.layout, &pipeline.interface)?;
+        let mut result = NmbSpirvResult::new(
+            [pipeline.stage],
+            pipeline.layout,
+            &pipeline.interface,
+            dev.extended()?.profile(),
+            None,
+        )?;
         result.pack_bindless()?;
         Ok(Box::into_raw(Box::new(result)))
     })
@@ -2268,13 +2591,19 @@ pub unsafe extern "C" fn nmb_compile_render_spirv_v3(
             .compile_render_pipeline(&desc, &budget)
             .map_err(message)?;
         let mut result = if has_fragment {
-            render_result(pipeline)?
+            render_result(pipeline, translator.profile())?
         } else {
             if !matches!(&pipeline.stages[..], [vertex] if vertex.stage == vk::ShaderStage::VERTEX)
             {
                 return Err(c"vertex-only render pipeline must emit one vertex stage".into());
             }
-            NmbSpirvResult::new(pipeline.stages, pipeline.layout, &pipeline.interface)?
+            NmbSpirvResult::new(
+                pipeline.stages,
+                pipeline.layout,
+                &pipeline.interface,
+                translator.profile(),
+                Some(&pipeline.vertex_input),
+            )?
         };
         result.pack_bindless()?;
         Ok(Box::into_raw(Box::new(result)))

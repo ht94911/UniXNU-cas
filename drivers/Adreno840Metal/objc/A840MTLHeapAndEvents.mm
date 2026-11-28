@@ -145,10 +145,16 @@ static A840StencilFace convertStencilFace(MTLStencilDescriptor *desc)
     bdesc.placement_offset = offset;
     bdesc.usage_flags = A840_BUF_USAGE_READ | A840_BUF_USAGE_WRITE | A840_BUF_USAGE_SHADER;
     A840HeapSubAlloc *sub = nullptr;
+    A840RtBuffer *subBuf = nullptr;
     @synchronized (_owner) {
         if (a840_heap_alloc_buffer(h, &bdesc, &sub) != A840_RT_OK || !sub) return nil;
+        if (a840_rt_buffer_create_subview(_owner.runtime, h->backing_bo, sub->offset,
+                                          (uint64_t)length, &subBuf) != A840_RT_OK || !subBuf) {
+            a840_heap_suballoc_release(sub);
+            return nil;
+        }
     }
-    return [[A840MTLBuffer alloc] initWithOwner:_owner heap:self subAlloc:sub options:options];
+    return [[A840MTLBuffer alloc] initWithOwner:_owner heap:self subAlloc:sub native:subBuf options:options];
 }
 
 - (id<MTLTexture>)newTextureWithDescriptor:(MTLTextureDescriptor *)desc
@@ -160,24 +166,60 @@ static A840StencilFace convertStencilFace(MTLStencilDescriptor *desc)
 {
     A840Heap *h = self.nativeHeap;
     if (!h || !desc || !desc.width || !desc.height) return nil;
+    const uint32_t backingFmt = a840_canonical_backing_pixel_format((uint32_t)desc.pixelFormat);
+    const A840FormatCaps *caps = a840_format_caps_lookup(backingFmt);
+    if (!caps) return nil;
+    const BOOL isDepthStencil = ((caps->flags & (A840_FORMAT_DEPTH | A840_FORMAT_STENCIL)) != 0u);
+    uint32_t texType = A840_TEX_2D;
+    switch (desc.textureType) {
+    case MTLTextureType1D:
+    case MTLTextureType1DArray: texType = A840_TEX_1D; break;
+    case MTLTextureTypeCube:
+    case MTLTextureTypeCubeArray: texType = A840_TEX_CUBE; break;
+    case MTLTextureType3D: texType = A840_TEX_3D; break;
+    default: texType = A840_TEX_2D; break;
+    }
+    const uint32_t samples = (uint32_t)(desc.sampleCount ? desc.sampleCount : 1u);
+    const uint32_t tileMode = (isDepthStencil || samples > 1u) ? A840_TILE_TILED : A840_TILE_LINEAR;
+    uint32_t layers = (uint32_t)(desc.arrayLength ? desc.arrayLength : 1u);
+    if (texType == A840_TEX_CUBE) layers *= 6u;
     A840HeapTextureDesc tdesc{};
-    tdesc.mtl_pixel_format = (uint32_t)desc.pixelFormat;
-    tdesc.tex_type = A840_TEX_2D;
+    tdesc.mtl_pixel_format = backingFmt;
+    tdesc.tex_type = texType;
     tdesc.width = (uint32_t)desc.width;
     tdesc.height = (uint32_t)desc.height;
     tdesc.depth = (uint32_t)(desc.depth ? desc.depth : 1u);
-    tdesc.array_layers = (uint32_t)(desc.arrayLength ? desc.arrayLength : 1u);
+    tdesc.array_layers = layers;
     tdesc.mip_levels = (uint32_t)(desc.mipmapLevelCount ? desc.mipmapLevelCount : 1u);
-    tdesc.samples = (uint32_t)(desc.sampleCount ? desc.sampleCount : 1u);
-    tdesc.tile_mode = (desc.storageMode == MTLStorageModePrivate) ? A840_TILE_UBWC : A840_TILE_LINEAR;
+    tdesc.samples = samples;
+    tdesc.tile_mode = tileMode;
     tdesc.highest_bank_bit = A840_KAANAPALI_HIGHEST_BANK_BIT;
     tdesc.placement_offset = offset;
     tdesc.usage_flags = A840_TEX_USAGE_SHADER_READ | A840_TEX_USAGE_RENDER_TARGET;
+    A840RtTextureDesc rtdesc{};
+    rtdesc.mtl_pixel_format = backingFmt;
+    rtdesc.tex_type = texType;
+    rtdesc.width = tdesc.width;
+    rtdesc.height = tdesc.height;
+    rtdesc.depth = tdesc.depth;
+    rtdesc.array_layers = layers;
+    rtdesc.mip_levels = tdesc.mip_levels;
+    rtdesc.samples = samples;
+    rtdesc.tile_mode = tileMode;
+    rtdesc.usage_flags = A840_TEX_USAGE_SHADER_READ | A840_TEX_USAGE_RENDER_TARGET;
+    if (desc.usage & MTLTextureUsageShaderWrite) rtdesc.usage_flags |= A840_TEX_USAGE_SHADER_WRITE;
+    if (desc.storageMode == MTLStorageModeShared) rtdesc.usage_flags |= A840_TEX_USAGE_CPU_VISIBLE;
     A840HeapSubAlloc *sub = nullptr;
+    A840RtTexture *rtTex = nullptr;
     @synchronized (_owner) {
         if (a840_heap_alloc_texture(h, &tdesc, &sub) != A840_RT_OK || !sub) return nil;
+        if (a840_rt_texture_create_on_buffer(_owner.runtime, h->backing_bo, sub->offset,
+                                             &rtdesc, &rtTex) != A840_RT_OK || !rtTex) {
+            a840_heap_suballoc_release(sub);
+            return nil;
+        }
     }
-    return [[A840MTLTexture alloc] initWithOwner:_owner heap:self subAlloc:sub descriptor:desc];
+    return [[A840MTLTexture alloc] initWithOwner:_owner heap:self subAlloc:sub native:rtTex descriptor:desc];
 }
 - (uint64_t)protectionOptions { return 0u; }
 - (id<MTLBuffer>)bufferWithLength:(NSUInteger)length options:(MTLResourceOptions)options offset:(NSUInteger)offset

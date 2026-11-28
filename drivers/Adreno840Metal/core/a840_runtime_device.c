@@ -697,6 +697,49 @@ void a840_rt_buffer_retain(A840RtBuffer *buffer)
     }
 }
 
+A840RtStatus a840_rt_buffer_create_subview(A840RtDevice *device,
+                                           A840RtBuffer *parent,
+                                           uint64_t offset,
+                                           uint64_t size_bytes,
+                                           A840RtBuffer **out_buffer)
+{
+    A840RtBuffer *sub;
+
+    if (!out_buffer) {
+        return A840_RT_INVALID_ARG;
+    }
+    *out_buffer = NULL;
+    if (!device || !parent || size_bytes == 0u || !a840_rt_device_owns_buffer(device, parent)) {
+        return A840_RT_INVALID_ARG;
+    }
+    if (offset > parent->alloc_bytes || size_bytes > parent->alloc_bytes - offset) {
+        return A840_RT_RANGE_ERROR;
+    }
+    sub = (A840RtBuffer *)calloc(1u, sizeof(*sub));
+    if (!sub) {
+        return A840_RT_OOM;
+    }
+    a840_rt_buffer_retain(parent);
+    sub->device = device;
+    sub->device_id = device->device_id;
+    sub->refcount = 1u;
+    sub->bo_handle = parent->bo_handle;
+    sub->gpu_va = parent->gpu_va + offset;
+    sub->size_bytes = size_bytes;
+    sub->alloc_bytes = size_bytes;
+    sub->alignment = 64u;
+    sub->usage_flags = parent->usage_flags;
+    sub->cpu_ptr = parent->cpu_ptr ? (void *)((uint8_t *)parent->cpu_ptr + (size_t)offset) : NULL;
+    sub->cpu_token = 0u;
+    sub->cpu_mapped = false;
+    sub->imported = parent->imported;
+    sub->parent_buffer = parent;
+    sub->parent_offset = offset;
+    device->live_buffers++;
+    *out_buffer = sub;
+    return A840_RT_OK;
+}
+
 void a840_rt_buffer_release(A840RtBuffer *buffer)
 {
     A840RtDevice *dev;
@@ -711,13 +754,17 @@ void a840_rt_buffer_release(A840RtBuffer *buffer)
     }
 
     dev = buffer->device;
-    memset(&unmap, 0, sizeof(unmap));
-    unmap.handle = buffer->bo_handle;
-    unmap.flags = A840_BO_UNMAP_GPU | (buffer->cpu_mapped ? A840_BO_UNMAP_CPU : 0u);
-    unmap.cpu_token = buffer->cpu_token;
-    dev->transport.ops->bo_unmap(dev->transport.ctx, &unmap);
-    dev->transport.ops->bo_free(dev->transport.ctx, buffer->bo_handle);
-    a840_va_allocator_free(&dev->va_alloc, buffer->gpu_va, buffer->alloc_bytes);
+    if (buffer->parent_buffer != NULL) {
+        a840_rt_buffer_release(buffer->parent_buffer);
+    } else {
+        memset(&unmap, 0, sizeof(unmap));
+        unmap.handle = buffer->bo_handle;
+        unmap.flags = A840_BO_UNMAP_GPU | (buffer->cpu_mapped ? A840_BO_UNMAP_CPU : 0u);
+        unmap.cpu_token = buffer->cpu_token;
+        dev->transport.ops->bo_unmap(dev->transport.ctx, &unmap);
+        dev->transport.ops->bo_free(dev->transport.ctx, buffer->bo_handle);
+        a840_va_allocator_free(&dev->va_alloc, buffer->gpu_va, buffer->alloc_bytes);
+    }
     if (dev->live_buffers > 0u) {
         dev->live_buffers--;
     }
@@ -939,13 +986,44 @@ A840RtStatus a840_rt_texture_create(A840RtDevice *device,
         return A840_RT_RANGE_ERROR;
     }
 
-    padded_rows = ((uint64_t)blocks_y + (uint64_t)row_align - 1u) /
-                  (uint64_t)row_align * (uint64_t)row_align;
-    if (padded_rows > UINT64_MAX / pitch_bytes) {
-        return A840_RT_RANGE_ERROR;
-    }
-    if (!align_up_u64(pitch_bytes * padded_rows, A840_RT_PAGE_BYTES, &slice_stride)) {
-        return A840_RT_RANGE_ERROR;
+    /* Exact Adreno 6xx/7xx/8xx FDL mip chain layout (Mesa fd6_layout.c:253-344). */
+    {
+        uint64_t chain_bytes = 0u;
+        uint64_t pitch_align = UINT64_C(1) << pitch_align_log2;
+        uint32_t lvl;
+        for (lvl = 0u; lvl < mips; ++lvl) {
+            uint32_t lw = (desc->width >> lvl) ? (desc->width >> lvl) : 1u;
+            uint32_t lh = (desc->height >> lvl) ? (desc->height >> lvl) : 1u;
+            uint32_t lby = (lh + caps->block_height - 1u) / caps->block_height;
+            uint64_t lpitch_raw = (pitch_bytes >> lvl) ? (pitch_bytes >> lvl) : 1u;
+            uint64_t lpitch = 0u;
+            uint64_t lrows;
+            (void)lw;
+            if (!align_up_u64(lpitch_raw, pitch_align, &lpitch) || lpitch > UINT32_MAX) {
+                return A840_RT_RANGE_ERROR;
+            }
+            if (desc->tile_mode != A840_TILE_LINEAR) {
+                lrows = ((uint64_t)lby + (uint64_t)row_align - 1u) /
+                        (uint64_t)row_align * (uint64_t)row_align;
+            } else {
+                lrows = (uint64_t)lby;
+                if (mips > 1u && lvl == mips - 1u) {
+                    lrows = (lrows + 3u) & ~UINT64_C(3);
+                }
+            }
+            if (lrows > UINT64_MAX / lpitch || lpitch * lrows > UINT64_MAX - chain_bytes) {
+                return A840_RT_RANGE_ERROR;
+            }
+            chain_bytes += lpitch * lrows;
+        }
+        padded_rows = ((uint64_t)blocks_y + (uint64_t)row_align - 1u) /
+                      (uint64_t)row_align * (uint64_t)row_align;
+        if (chain_bytes < pitch_bytes * padded_rows) {
+            chain_bytes = pitch_bytes * padded_rows;
+        }
+        if (!align_up_u64(chain_bytes, A840_RT_PAGE_BYTES, &slice_stride)) {
+            return A840_RT_RANGE_ERROR;
+        }
     }
     if ((uint64_t)total_slices > UINT64_MAX / slice_stride) {
         return A840_RT_RANGE_ERROR;
@@ -1093,10 +1171,19 @@ A840RtStatus a840_rt_texture_create_on_buffer(A840RtDevice *device,
 {
     const A840FormatCaps *caps;
     uint32_t blocks_x;
-    uint32_t blocks_y;
     uint32_t elem_bytes;
+    uint32_t depth;
+    uint32_t array_layers;
+    uint32_t total_slices;
+    uint32_t mips;
+    uint32_t samples;
+    uint32_t pitch_align_log2;
+    uint32_t row_align;
+    uint64_t pitch_align;
+    uint64_t base_align;
     uint64_t min_row_bytes;
     uint64_t pitch_bytes;
+    uint64_t chain_bytes;
     uint64_t needed_bytes;
     uint64_t slice_stride;
     A840TexDescInput tex_in;
@@ -1112,66 +1199,117 @@ A840RtStatus a840_rt_texture_create_on_buffer(A840RtDevice *device,
     if (!device || !backing_buffer || !desc || !a840_rt_device_owns_buffer(device, backing_buffer)) {
         return A840_RT_INVALID_ARG;
     }
-    if (desc->width == 0u || desc->height == 0u || desc->tex_type != A840_TEX_2D ||
-        desc->tile_mode != A840_TILE_LINEAR) {
+    if (desc->width == 0u || desc->height == 0u ||
+        desc->tex_type > A840_TEX_3D ||
+        (desc->tile_mode != A840_TILE_LINEAR && desc->tile_mode != A840_TILE_TILED)) {
         return A840_RT_UNSUPPORTED;
     }
     if (desc->width > A840_LIMIT_MAX_TEXTURE_SIZE || desc->height > A840_LIMIT_MAX_TEXTURE_SIZE) {
         return A840_RT_RANGE_ERROR;
     }
-    if ((backing_offset % 64u) != 0u) {
+    base_align = (desc->tile_mode == A840_TILE_LINEAR) ? 64u : A840_RT_PAGE_BYTES;
+    if ((backing_offset % base_align) != 0u) {
         return A840_RT_ALIGNMENT;
     }
     caps = a840_format_caps_lookup(desc->mtl_pixel_format);
     if (!caps || (caps->flags & A840_FORMAT_REQUIRES_XR_CODEC) != 0u) {
         return A840_RT_UNSUPPORTED;
     }
+    depth = desc->depth ? desc->depth : 1u;
+    array_layers = desc->array_layers ? desc->array_layers : (desc->tex_type == A840_TEX_CUBE ? 6u : 1u);
+    total_slices = (desc->tex_type == A840_TEX_3D) ? depth : array_layers;
+    mips = desc->mip_levels ? desc->mip_levels : 1u;
+    samples = desc->samples ? desc->samples : 1u;
+    if (mips > 15u ||
+        (samples != 1u && samples != 2u && samples != 4u)) {
+        return A840_RT_RANGE_ERROR;
+    }
 
     blocks_x = (desc->width + caps->block_width - 1u) / caps->block_width;
-    blocks_y = (desc->height + caps->block_height - 1u) / caps->block_height;
     elem_bytes = texture_element_bytes(caps);
-    min_row_bytes = (uint64_t)blocks_x * (uint64_t)elem_bytes;
+    min_row_bytes = (uint64_t)blocks_x * (uint64_t)elem_bytes * (uint64_t)samples;
+    if (desc->tile_mode == A840_TILE_LINEAR) {
+        pitch_align_log2 = 6u;
+        row_align = 1u;
+    } else {
+        compute_tiled_alignment(caps, samples, &pitch_align_log2, &row_align);
+    }
+    pitch_align = UINT64_C(1) << pitch_align_log2;
     if (desc->pitch_bytes != 0u) {
         if ((uint64_t)desc->pitch_bytes < min_row_bytes) {
             return A840_RT_RANGE_ERROR;
         }
-        if ((desc->pitch_bytes % 64u) != 0u) {
+        if ((desc->pitch_bytes % pitch_align) != 0u) {
             return A840_RT_ALIGNMENT;
         }
         pitch_bytes = (uint64_t)desc->pitch_bytes;
     } else {
-        if (!align_up_u64(min_row_bytes, 64u, &pitch_bytes)) {
+        if (!align_up_u64(min_row_bytes, pitch_align, &pitch_bytes)) {
             return A840_RT_RANGE_ERROR;
         }
     }
-    if (pitch_bytes > UINT32_MAX || (uint64_t)blocks_y > UINT64_MAX / pitch_bytes) {
+    if (pitch_bytes > UINT32_MAX) {
         return A840_RT_RANGE_ERROR;
     }
-    needed_bytes = pitch_bytes * (uint64_t)blocks_y;
+    chain_bytes = 0u;
+    for (i = 0u; i < mips; ++i) {
+        uint32_t lh = (desc->height >> i) ? (desc->height >> i) : 1u;
+        uint32_t lby = (lh + caps->block_height - 1u) / caps->block_height;
+        uint64_t lpitch_raw = (pitch_bytes >> i) ? (pitch_bytes >> i) : 1u;
+        uint64_t lpitch = 0u;
+        uint64_t lrows;
+        if (!align_up_u64(lpitch_raw, pitch_align, &lpitch) || lpitch > UINT32_MAX) {
+            return A840_RT_RANGE_ERROR;
+        }
+        if (desc->tile_mode != A840_TILE_LINEAR) {
+            lrows = ((uint64_t)lby + (uint64_t)row_align - 1u) / (uint64_t)row_align * (uint64_t)row_align;
+        } else {
+            lrows = (uint64_t)lby;
+            if (mips > 1u && i == mips - 1u) {
+                lrows = (lrows + 3u) & ~UINT64_C(3);
+            }
+        }
+        if (lrows > UINT64_MAX / lpitch || lpitch * lrows > UINT64_MAX - chain_bytes) {
+            return A840_RT_RANGE_ERROR;
+        }
+        chain_bytes += lpitch * lrows;
+    }
+    if (!align_up_u64(chain_bytes, A840_RT_PAGE_BYTES, &slice_stride)) {
+        return A840_RT_RANGE_ERROR;
+    }
+    if (total_slices > 1u) {
+        if ((uint64_t)(total_slices - 1u) > UINT64_MAX / slice_stride ||
+            chain_bytes > UINT64_MAX - slice_stride * (uint64_t)(total_slices - 1u)) {
+            return A840_RT_RANGE_ERROR;
+        }
+        needed_bytes = slice_stride * (uint64_t)(total_slices - 1u) + chain_bytes;
+    } else {
+        needed_bytes = chain_bytes;
+    }
     if (backing_offset > backing_buffer->alloc_bytes ||
         needed_bytes > backing_buffer->alloc_bytes - backing_offset) {
         return A840_RT_RANGE_ERROR;
     }
-    if (!align_up_u64(needed_bytes, A840_RT_PAGE_BYTES, &slice_stride)) {
-        slice_stride = needed_bytes;
-    }
 
     memset(&tex_in, 0, sizeof(tex_in));
-    tex_in.format_id = caps->a840_fmt_id;
-    tex_in.swap = caps->swap;
-    tex_in.type = A840_TEX_2D;
+    tex_in.format_id = (desc->tile_mode == A840_TILE_LINEAR) ? caps->a840_fmt_id : caps->tiled_fmt_id;
+    tex_in.swap = (desc->tile_mode == A840_TILE_LINEAR) ? caps->swap : caps->tiled_swap;
+    tex_in.type = desc->tex_type;
     tex_in.width = desc->width;
     tex_in.height = desc->height;
-    tex_in.depth = 1u;
-    tex_in.mip_levels = 1u;
-    tex_in.samples = 1u;
+    tex_in.depth = total_slices;
+    tex_in.mip_levels = mips;
+    tex_in.samples = samples;
     tex_in.pitch = (uint32_t)pitch_bytes;
     tex_in.slice_stride = slice_stride;
     tex_in.gpu_va = backing_buffer->gpu_va + backing_offset;
-    tex_in.tile_mode = A840_TILE_LINEAR;
+    tex_in.tile_mode = desc->tile_mode;
     tex_in.highest_bank_bit = device->chip_facts.highest_bank_bit;
     tex_in.srgb = (caps->flags & A840_FORMAT_SRGB) ? 1u : 0u;
-    tex_in.pitch_align_log2 = 6u;
+    tex_in.pitch_align_log2 = pitch_align_log2;
+    if (desc->tex_type == A840_TEX_3D) {
+        tex_in.min_slice_stride = (mips == 1u) ? slice_stride : A840_RT_PAGE_BYTES;
+    }
     if (desc->custom_swizzle) {
         for (i = 0; i < 4u; ++i) {
             tex_in.swizzle[i] = desc->swizzle[i];
@@ -1207,22 +1345,22 @@ A840RtStatus a840_rt_texture_create_on_buffer(A840RtDevice *device,
     tex->backing_offset = backing_offset;
     tex->mtl_pixel_format = desc->mtl_pixel_format;
     tex->format_caps = caps;
-    tex->tex_type = A840_TEX_2D;
+    tex->tex_type = desc->tex_type;
     tex->width = desc->width;
     tex->height = desc->height;
-    tex->depth = 1u;
-    tex->array_layers = 1u;
-    tex->mip_levels = 1u;
-    tex->samples = 1u;
-    tex->tile_mode = A840_TILE_LINEAR;
+    tex->depth = (desc->tex_type == A840_TEX_3D) ? depth : 1u;
+    tex->array_layers = (desc->tex_type == A840_TEX_3D) ? 1u : array_layers;
+    tex->mip_levels = mips;
+    tex->samples = samples;
+    tex->tile_mode = desc->tile_mode;
     tex->pitch_bytes = (uint32_t)pitch_bytes;
-    tex->pitch_align_log2 = 6u;
+    tex->pitch_align_log2 = pitch_align_log2;
     tex->slice_stride_bytes = slice_stride;
     tex->usage_flags = desc->usage_flags;
     tex->format_id = tex_in.format_id;
     tex->swap = tex_in.swap;
     tex->color_format_id = caps->color_fmt_id;
-    tex->color_swap = caps->color_swap;
+    tex->color_swap = (desc->tile_mode == A840_TILE_LINEAR) ? caps->color_swap : A840_WZYX;
     tex->srgb = tex_in.srgb != 0u;
     for (i = 0; i < 4u; ++i) {
         tex->swizzle[i] = tex_in.swizzle[i];
@@ -1281,7 +1419,48 @@ A840RtStatus a840_rt_texture_create_view(A840RtDevice *device,
         return A840_RT_UNSUPPORTED;
     }
 
-    slice_offset = (uint64_t)base_slice * parent->slice_stride_bytes;
+    uint64_t level_offset = 0u;
+    uint32_t level_pitch = parent->pitch_bytes;
+    uint64_t view_slice_stride = parent->slice_stride_bytes;
+    if (base_level > 0u) {
+        uint64_t tail_bytes = 0u;
+        uint32_t row_align = 1u;
+        uint32_t dummy_log2 = 6u;
+        uint64_t pitch_align = UINT64_C(1) << (parent->pitch_align_log2 ? parent->pitch_align_log2 : 6u);
+        if (parent->tile_mode != A840_TILE_LINEAR) {
+            compute_tiled_alignment(parent->format_caps, parent->samples ? parent->samples : 1u, &dummy_log2, &row_align);
+        }
+        for (i = 0u; i < base_level + level_count; ++i) {
+            uint32_t lh = (parent->height >> i) ? (parent->height >> i) : 1u;
+            uint32_t lby = (lh + parent->format_caps->block_height - 1u) / parent->format_caps->block_height;
+            uint64_t lpitch_raw = ((uint64_t)parent->pitch_bytes >> i) ? ((uint64_t)parent->pitch_bytes >> i) : 1u;
+            uint64_t lpitch = 0u;
+            uint64_t lrows;
+            if (!align_up_u64(lpitch_raw, pitch_align, &lpitch) || lpitch > UINT32_MAX) {
+                return A840_RT_RANGE_ERROR;
+            }
+            if (parent->tile_mode != A840_TILE_LINEAR) {
+                lrows = ((uint64_t)lby + (uint64_t)row_align - 1u) / (uint64_t)row_align * (uint64_t)row_align;
+            } else {
+                lrows = (uint64_t)lby;
+                if (parent->mip_levels > 1u && i == parent->mip_levels - 1u) {
+                    lrows = (lrows + 3u) & ~UINT64_C(3);
+                }
+            }
+            if (i < base_level) {
+                level_offset += lpitch * lrows;
+            } else {
+                if (i == base_level) level_pitch = (uint32_t)lpitch;
+                tail_bytes += lpitch * lrows;
+            }
+        }
+        if (slice_count == 1u) {
+            if (!align_up_u64(tail_bytes, A840_RT_PAGE_BYTES, &view_slice_stride)) {
+                view_slice_stride = parent->slice_stride_bytes;
+            }
+        }
+    }
+    slice_offset = (uint64_t)base_slice * parent->slice_stride_bytes + level_offset;
     if (slice_offset > parent->alloc_bytes) {
         return A840_RT_RANGE_ERROR;
     }
@@ -1295,8 +1474,8 @@ A840RtStatus a840_rt_texture_create_view(A840RtDevice *device,
     tex_in.depth = slice_count;
     tex_in.mip_levels = level_count;
     tex_in.samples = parent->samples ? parent->samples : 1u;
-    tex_in.pitch = parent->pitch_bytes;
-    tex_in.slice_stride = parent->slice_stride_bytes;
+    tex_in.pitch = level_pitch;
+    tex_in.slice_stride = view_slice_stride;
     tex_in.gpu_va = parent->gpu_va + slice_offset;
     tex_in.tile_mode = parent->tile_mode;
     tex_in.highest_bank_bit = device->chip_facts.highest_bank_bit;
@@ -1347,9 +1526,9 @@ A840RtStatus a840_rt_texture_create_view(A840RtDevice *device,
     view->mip_levels = level_count;
     view->samples = tex_in.samples;
     view->tile_mode = parent->tile_mode;
-    view->pitch_bytes = parent->pitch_bytes;
+    view->pitch_bytes = level_pitch;
     view->pitch_align_log2 = parent->pitch_align_log2;
-    view->slice_stride_bytes = parent->slice_stride_bytes;
+    view->slice_stride_bytes = view_slice_stride;
     view->usage_flags = parent->usage_flags;
     view->format_id = tex_in.format_id;
     view->swap = tex_in.swap;
@@ -1436,5 +1615,64 @@ A840RtStatus a840_rt_texture_as_attachment(const A840RtTexture *texture,
     out_storage->pitch_bytes = texture->pitch_bytes;
     out_storage->layer_stride_bytes = texture->slice_stride_bytes;
     out_storage->tile_mode = texture->tile_mode;
+    return A840_RT_OK;
+}
+
+A840RtStatus a840_rt_texture_get_subresource_layout(const A840RtTexture *texture,
+                                                    uint32_t level,
+                                                    uint32_t slice,
+                                                    uint64_t *out_offset,
+                                                    uint32_t *out_pitch_bytes,
+                                                    uint32_t *out_width,
+                                                    uint32_t *out_height)
+{
+    uint32_t total_slices;
+    uint32_t row_align = 1u;
+    uint32_t dummy_log2 = 6u;
+    uint64_t pitch_align;
+    uint64_t lvl_off = 0u;
+    uint32_t lvl_pitch;
+    uint32_t i;
+
+    if (!texture || !texture->format_caps) {
+        return A840_RT_INVALID_ARG;
+    }
+    total_slices = (texture->tex_type == A840_TEX_3D) ? texture->depth : texture->array_layers;
+    if (total_slices == 0u) total_slices = 1u;
+    if (level >= texture->mip_levels || slice >= total_slices) {
+        return A840_RT_RANGE_ERROR;
+    }
+    pitch_align = UINT64_C(1) << (texture->pitch_align_log2 ? texture->pitch_align_log2 : 6u);
+    if (texture->tile_mode != A840_TILE_LINEAR) {
+        compute_tiled_alignment(texture->format_caps, texture->samples ? texture->samples : 1u, &dummy_log2, &row_align);
+    }
+    lvl_pitch = texture->pitch_bytes;
+    for (i = 0u; i <= level; ++i) {
+        uint32_t lh = (texture->height >> i) ? (texture->height >> i) : 1u;
+        uint32_t lby = (lh + texture->format_caps->block_height - 1u) / texture->format_caps->block_height;
+        uint64_t lpitch_raw = ((uint64_t)texture->pitch_bytes >> i) ? ((uint64_t)texture->pitch_bytes >> i) : 1u;
+        uint64_t lpitch = 0u;
+        uint64_t lrows;
+        if (!align_up_u64(lpitch_raw, pitch_align, &lpitch) || lpitch > UINT32_MAX) {
+            return A840_RT_RANGE_ERROR;
+        }
+        if (texture->tile_mode != A840_TILE_LINEAR) {
+            lrows = ((uint64_t)lby + (uint64_t)row_align - 1u) / (uint64_t)row_align * (uint64_t)row_align;
+        } else {
+            lrows = (uint64_t)lby;
+            if (texture->mip_levels > 1u && i == texture->mip_levels - 1u) {
+                lrows = (lrows + 3u) & ~UINT64_C(3);
+            }
+        }
+        if (i < level) {
+            lvl_off += lpitch * lrows;
+        } else {
+            lvl_pitch = (uint32_t)lpitch;
+        }
+    }
+    if (out_offset) *out_offset = (uint64_t)slice * texture->slice_stride_bytes + lvl_off;
+    if (out_pitch_bytes) *out_pitch_bytes = lvl_pitch;
+    if (out_width) *out_width = (texture->width >> level) ? (texture->width >> level) : 1u;
+    if (out_height) *out_height = (texture->height >> level) ? (texture->height >> level) : 1u;
     return A840_RT_OK;
 }

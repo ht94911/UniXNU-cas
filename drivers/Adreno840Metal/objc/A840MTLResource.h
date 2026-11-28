@@ -33,6 +33,11 @@
                          heap:(A840MTLHeap *)heap
                      subAlloc:(A840HeapSubAlloc *)subAlloc
                       options:(MTLResourceOptions)options;
+- (instancetype)initWithOwner:(A840MTLDevice *)owner
+                         heap:(A840MTLHeap *)heap
+                     subAlloc:(A840HeapSubAlloc *)subAlloc
+                       native:(A840RtBuffer *)buffer
+                      options:(MTLResourceOptions)options;
 @property(nonatomic, readonly) A840RtBuffer *native;
 @end
 
@@ -55,6 +60,11 @@
 - (instancetype)initWithOwner:(A840MTLDevice *)owner
                          heap:(A840MTLHeap *)heap
                      subAlloc:(A840HeapSubAlloc *)subAlloc
+                   descriptor:(MTLTextureDescriptor *)descriptor;
+- (instancetype)initWithOwner:(A840MTLDevice *)owner
+                         heap:(A840MTLHeap *)heap
+                     subAlloc:(A840HeapSubAlloc *)subAlloc
+                       native:(A840RtTexture *)texture
                    descriptor:(MTLTextureDescriptor *)descriptor;
 - (instancetype)initWithOwner:(A840MTLDevice *)owner
                        native:(A840RtTexture *)texture

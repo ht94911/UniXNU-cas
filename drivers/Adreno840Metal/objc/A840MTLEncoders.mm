@@ -872,7 +872,11 @@ destinationBytesPerImage:(NSUInteger)destinationBytesPerImage
 
 static BOOL attachmentShape(MTLRenderPassAttachmentDescriptor *attachment)
 {
-    return attachment.level == 0 && attachment.slice == 0 && attachment.depthPlane == 0;
+    id<MTLTexture> tex = attachment.texture;
+    if (!tex) return YES;
+    const NSUInteger mips = tex.mipmapLevelCount ? tex.mipmapLevelCount : 1u;
+    const NSUInteger layers = tex.arrayLength ? tex.arrayLength : 1u;
+    return attachment.level < mips && attachment.slice < layers && attachment.depthPlane == 0u;
 }
 
 static uint32_t primitiveType(MTLPrimitiveType primitive)
@@ -1036,6 +1040,8 @@ static BOOL convertClear(id<MTLTexture> texture, MTLClearColor color, uint32_t o
     A840MTLBindings *_vertexBindings, *_fragmentBindings;
     id<MTLTexture> _colorTextures[A840_MAX_COLOR_TARGETS];
     uint32_t _colorTextureCount;
+    A840RtTexture *_transientAttachmentViews[A840_MAX_COLOR_TARGETS + 2u];
+    uint32_t _transientAttachmentViewCount;
     A840RtRenderStateDesc _state;
     BOOL _stateDirty;
     BOOL _useGmemScope;
@@ -1064,6 +1070,22 @@ static BOOL convertClear(id<MTLTexture> texture, MTLClearColor color, uint32_t o
     uint32_t naFlags = 0u;
     uint32_t badFmt = 0u, badLvl = 0u, badSlc = 0u;
     id<MTLTexture> first = nil;
+    NSUInteger firstLevel = 0u;
+    auto resolveAttachmentTarget = [&](MTLRenderPassAttachmentDescriptor *att, A840RtTexture *base) -> A840RtTexture * {
+        if (!base || (att.level == 0u && att.slice == 0u)) return base;
+        A840RtTexture *viewTex = nullptr;
+        @synchronized (command.owner) {
+            if (a840_rt_texture_create_view(command.owner.runtime, base, base->mtl_pixel_format,
+                                            A840_TEX_2D, (uint32_t)att.level, 1u,
+                                            (uint32_t)att.slice, 1u, false, nullptr, &viewTex) == A840_RT_OK && viewTex) {
+                if (_transientAttachmentViewCount < A840_MAX_COLOR_TARGETS + 2u) {
+                    _transientAttachmentViews[_transientAttachmentViewCount++] = viewTex;
+                }
+                return viewTex;
+            }
+        }
+        return nullptr;
+    };
     for (unsigned i = 0; i < A840_MAX_COLOR_TARGETS; ++i) {
         MTLRenderPassColorAttachmentDescriptor *attachment = original.colorAttachments[i];
         id<MTLTexture> texture = attachment.texture;
@@ -1071,15 +1093,16 @@ static BOOL convertClear(id<MTLTexture> texture, MTLClearColor color, uint32_t o
         [command useResource:attachment.resolveTexture];
         if (attachment.resolveTexture) descriptor.has_msaa_resolve = true;
         if (!texture) continue;
-        if (!first) first = texture;
+        if (!first) { first = texture; firstLevel = attachment.level; }
         descriptor.color_count = i + 1;
         _colorTextures[i] = texture;
         _colorTextureCount = i + 1u;
-        descriptor.color_targets[i] = nativeTexture(texture, command.owner);
+        A840RtTexture *baseTex = nativeTexture(texture, command.owner);
         if (texture.storageMode == MTLStorageModeMemoryless) descriptor.has_memoryless_attachment = true;
         if (texture.sampleCount > descriptor.sample_count) descriptor.sample_count = (uint32_t)texture.sampleCount;
-        if (!descriptor.color_targets[i]) { nativeAttachments = NO; naFlags |= 1u; badFmt = (uint32_t)texture.pixelFormat; }
         if (!attachmentShape(attachment)) { nativeAttachments = NO; naFlags |= 2u; badLvl = (uint32_t)attachment.level; badSlc = (uint32_t)attachment.slice; }
+        else { descriptor.color_targets[i] = resolveAttachmentTarget(attachment, baseTex); }
+        if (!descriptor.color_targets[i]) { nativeAttachments = NO; naFlags |= 1u; badFmt = (uint32_t)texture.pixelFormat; badLvl = (uint32_t)attachment.level; badSlc = (uint32_t)attachment.slice; }
         if (attachment.loadAction == MTLLoadActionClear) {
             descriptor.color_clear[i] = true;
             if (!convertClear(texture, attachment.clearColor, descriptor.color_clear_values[i])) {
@@ -1097,7 +1120,7 @@ static BOOL convertClear(id<MTLTexture> texture, MTLClearColor color, uint32_t o
         [command useResource:attachment.resolveTexture];
         if (attachment.resolveTexture) descriptor.has_msaa_resolve = true;
         if (!attachment.texture) continue;
-        if (!first) first = attachment.texture;
+        if (!first) { first = attachment.texture; firstLevel = attachment.level; }
         if (attachment.texture.storageMode == MTLStorageModeMemoryless) {
             descriptor.has_memoryless_attachment = true;
             _hasMemorylessDepth = YES;
@@ -1106,8 +1129,8 @@ static BOOL convertClear(id<MTLTexture> texture, MTLClearColor color, uint32_t o
             descriptor.sample_count = (uint32_t)attachment.texture.sampleCount;
         if (!attachmentShape(attachment)) { nativeAttachments = NO; naFlags |= 8u; badLvl = (uint32_t)attachment.level; badSlc = (uint32_t)attachment.slice; }
     }
-    descriptor.depth_target = nativeTexture(depth.texture, command.owner);
-    descriptor.stencil_target = nativeTexture(stencil.texture, command.owner);
+    descriptor.depth_target = (depth && attachmentShape(depth)) ? resolveAttachmentTarget(depth, nativeTexture(depth.texture, command.owner)) : nullptr;
+    descriptor.stencil_target = (stencil && attachmentShape(stencil)) ? resolveAttachmentTarget(stencil, nativeTexture(stencil.texture, command.owner)) : nullptr;
     if ((depth.texture && !descriptor.depth_target && depth.texture.storageMode != MTLStorageModeMemoryless) ||
         (stencil.texture && !descriptor.stencil_target && stencil.texture.storageMode != MTLStorageModeMemoryless)) {
         nativeAttachments = NO; naFlags |= 16u;
@@ -1115,11 +1138,13 @@ static BOOL convertClear(id<MTLTexture> texture, MTLClearColor color, uint32_t o
     }
 
     if (first) {
-        _passWidth = (uint32_t)first.width;
-        _passHeight = (uint32_t)first.height;
+        const uint32_t pw = (uint32_t)((first.width >> firstLevel) ? (first.width >> firstLevel) : 1u);
+        const uint32_t ph = (uint32_t)((first.height >> firstLevel) ? (first.height >> firstLevel) : 1u);
+        _passWidth = pw;
+        _passHeight = ph;
         /* Flip Metal clip-space +Y up to upper-left framebuffer coordinates using negative viewport height. */
-        _state.viewports[0] = {0.0f, (float)first.height, (float)first.width, -(float)first.height, 0.0f, 1.0f};
-        _state.scissors[0] = {0, 0, (uint32_t)first.width, (uint32_t)first.height};
+        _state.viewports[0] = {0.0f, (float)ph, (float)pw, -(float)ph, 0.0f, 1.0f};
+        _state.scissors[0] = {0, 0, pw, ph};
     }
 
     char scope[A840_HWTEST_SCOPE_MAX_BYTES];
@@ -1159,7 +1184,16 @@ static BOOL convertClear(id<MTLTexture> texture, MTLClearColor color, uint32_t o
 }
 - (void)dealloc
 {
-    @synchronized (self.command.owner) { a840_rt_render_destroy(_native); }
+    @synchronized (self.command.owner) {
+        a840_rt_render_destroy(_native);
+        for (uint32_t i = 0u; i < _transientAttachmentViewCount; ++i) {
+            if (_transientAttachmentViews[i]) {
+                a840_rt_texture_release(_transientAttachmentViews[i]);
+                _transientAttachmentViews[i] = nullptr;
+            }
+        }
+        _transientAttachmentViewCount = 0u;
+    }
 }
 - (void)endNative
 {

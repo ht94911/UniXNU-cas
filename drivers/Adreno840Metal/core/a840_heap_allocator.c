@@ -763,7 +763,6 @@ A840RtStatus a840_heap_alloc_texture(A840Heap *heap,
         uint32_t cpp = format_cpp_from_caps(caps);
         uint64_t row_bytes;
         uint64_t aligned_pitch = 0u;
-        uint64_t padded_h;
         uint64_t total_slices;
         if (!cpp) {
             return A840_RT_UNSUPPORTED;
@@ -775,12 +774,29 @@ A840RtStatus a840_heap_alloc_texture(A840Heap *heap,
                 return A840_RT_RANGE_ERROR;
             }
             pitch = (uint32_t)aligned_pitch;
-            padded_h = desc->height;
-            if (padded_h > UINT64_MAX / aligned_pitch) {
-                return A840_RT_RANGE_ERROR;
-            }
-            if (!align_up_u64(aligned_pitch * padded_h, A840_RT_PAGE_BYTES, &slice_stride)) {
-                return A840_RT_RANGE_ERROR;
+            pitch_align_log2 = 6u;
+            {
+                uint64_t chain_bytes = 0u;
+                uint32_t lvl;
+                for (lvl = 0u; lvl < mips; ++lvl) {
+                    uint32_t lh = (desc->height >> lvl) ? (desc->height >> lvl) : 1u;
+                    uint64_t lpitch_raw = (aligned_pitch >> lvl) ? (aligned_pitch >> lvl) : 1u;
+                    uint64_t lpitch = 0u;
+                    uint64_t lrows = (uint64_t)lh;
+                    if (!align_up_u64(lpitch_raw, 64u, &lpitch) || lpitch > UINT32_MAX) {
+                        return A840_RT_RANGE_ERROR;
+                    }
+                    if (mips > 1u && lvl == mips - 1u) {
+                        lrows = (lrows + 3u) & ~UINT64_C(3);
+                    }
+                    if (lrows > UINT64_MAX / lpitch || lpitch * lrows > UINT64_MAX - chain_bytes) {
+                        return A840_RT_RANGE_ERROR;
+                    }
+                    chain_bytes += lpitch * lrows;
+                }
+                if (!align_up_u64(chain_bytes, A840_RT_PAGE_BYTES, &slice_stride)) {
+                    return A840_RT_RANGE_ERROR;
+                }
             }
         } else {
             min_align = A840_RT_PAGE_BYTES;
@@ -789,14 +805,27 @@ A840RtStatus a840_heap_alloc_texture(A840Heap *heap,
             }
             pitch = (uint32_t)aligned_pitch;
             pitch_align_log2 = 8u;
-            if (!align_up_u64(desc->height, 16u, &padded_h)) {
-                return A840_RT_RANGE_ERROR;
-            }
-            if (padded_h > UINT64_MAX / aligned_pitch) {
-                return A840_RT_RANGE_ERROR;
-            }
-            if (!align_up_u64(aligned_pitch * padded_h, A840_RT_PAGE_BYTES, &slice_stride)) {
-                return A840_RT_RANGE_ERROR;
+            {
+                uint64_t chain_bytes = 0u;
+                uint32_t lvl;
+                for (lvl = 0u; lvl < mips; ++lvl) {
+                    uint32_t lh = (desc->height >> lvl) ? (desc->height >> lvl) : 1u;
+                    uint64_t lpitch_raw = (aligned_pitch >> lvl) ? (aligned_pitch >> lvl) : 1u;
+                    uint64_t lpitch = 0u;
+                    uint64_t lrows = 0u;
+                    if (!align_up_u64(lpitch_raw, 256u, &lpitch) || lpitch > UINT32_MAX) {
+                        return A840_RT_RANGE_ERROR;
+                    }
+                    if (!align_up_u64(lh, 16u, &lrows) ||
+                        lrows > UINT64_MAX / lpitch ||
+                        lpitch * lrows > UINT64_MAX - chain_bytes) {
+                        return A840_RT_RANGE_ERROR;
+                    }
+                    chain_bytes += lpitch * lrows;
+                }
+                if (!align_up_u64(chain_bytes, A840_RT_PAGE_BYTES, &slice_stride)) {
+                    return A840_RT_RANGE_ERROR;
+                }
             }
         }
         total_slices = (desc->tex_type == A840_TEX_3D) ? (uint64_t)depth : (uint64_t)layers;

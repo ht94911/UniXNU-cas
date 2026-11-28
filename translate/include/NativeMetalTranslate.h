@@ -173,7 +173,8 @@ enum {
     NMB_PUSH_TAIL_WORD = 15,
     NMB_PUSH_ZERO_U32 = 16,
     NMB_PUSH_ZERO_U64 = 17,
-    NMB_PUSH_FETCHED_COLOR = 18
+    NMB_PUSH_FETCHED_COLOR = 18,
+    NMB_PUSH_CONSTEXPR_SAMPLER = 19
 };
 
 typedef struct NmbSpirvPushField {
@@ -197,6 +198,44 @@ uint32_t nmb_encode_sampler_word(bool normalized_coordinates,
                                  uint32_t r_address_mode,
                                  uint32_t border_color, uint32_t compare_function);
 uint32_t nmb_encode_texture_word(uint32_t mtl_pixel_format);
+
+/* Additive reflected fixed-function vertex input & constexpr sampler metadata.
+ * Maps metal2vulkan's compacted SPIR-V Location directly to Metal buffer/offset/VkFormat. */
+typedef struct NmbSpirvVertexInput {
+    uint32_t location;           /* Compacted SPIR-V Location (matches vsIo slot - 15). */
+    uint32_t binding;            /* Vulkan vertex binding index. */
+    uint32_t metal_buffer_index; /* Metal [[buffer(N)]] slot index. */
+    uint32_t offset;             /* Byte offset within the vertex buffer. */
+    uint32_t vk_format;          /* Exact VkFormat raw numeric value (incl. USCALED/SSCALED). */
+    uint32_t stride;             /* Static byte stride, or UINT32_MAX if PerBind. */
+    uint32_t input_rate;         /* 0 = VERTEX, 1 = INSTANCE. */
+    uint32_t divisor;            /* Instance divisor (1 normal, 0 constant step). */
+} NmbSpirvVertexInput;
+
+typedef struct NmbSpirvConstexprSampler {
+    uint32_t min_filter;         /* 0 = nearest, 1 = linear. */
+    uint32_t mag_filter;         /* 0 = nearest, 1 = linear. */
+    uint32_t mip_filter;         /* 0 = none, 1 = nearest, 2 = linear. */
+    uint32_t address_u;          /* A840_ADDRESS_* (0=repeat,1=clamp,2=mirror,3=border,4=mirror_clamp). */
+    uint32_t address_v;
+    uint32_t address_w;
+    uint32_t max_aniso;          /* Power of two in 1..16. */
+    uint32_t compare_op;         /* 0..7 VkCompareOp, or 8 (A840_COMPARE_DISABLED). */
+    uint32_t border_color;       /* VkBorderColor raw numeric value. */
+    uint32_t unnormalized;       /* 0 or 1. */
+    uint32_t is_compare;         /* 0 or 1. */
+    uint32_t is_integer;         /* 0 or 1. */
+    float min_lod;
+    float max_lod;
+    float lod_bias;
+} NmbSpirvConstexprSampler;
+
+size_t nmb_spirv_vertex_input_count(const NmbSpirvResult *res);
+bool nmb_spirv_vertex_input(const NmbSpirvResult *res, size_t index,
+                            NmbSpirvVertexInput *out);
+size_t nmb_spirv_constexpr_sampler_count(const NmbSpirvResult *res);
+bool nmb_spirv_constexpr_sampler(const NmbSpirvResult *res, size_t index,
+                                 NmbSpirvConstexprSampler *out);
 
 /* Additive v2 pipeline API: function constant specialization + cross-library render stages. */
 typedef struct NmbFunctionConstant {

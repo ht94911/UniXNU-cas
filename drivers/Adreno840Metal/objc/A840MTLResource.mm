@@ -133,7 +133,19 @@
                      subAlloc:(A840HeapSubAlloc *)subAlloc
                       options:(MTLResourceOptions)options
 {
-    return [super initWithOwner:owner heap:heap subAlloc:subAlloc options:options];
+    return [self initWithOwner:owner heap:heap subAlloc:subAlloc native:nullptr options:options];
+}
+
+- (instancetype)initWithOwner:(A840MTLDevice *)owner
+                         heap:(A840MTLHeap *)heap
+                     subAlloc:(A840HeapSubAlloc *)subAlloc
+                       native:(A840RtBuffer *)buffer
+                      options:(MTLResourceOptions)options
+{
+    if ((self = [super initWithOwner:owner heap:heap subAlloc:subAlloc options:options])) {
+        _native = buffer;
+    }
+    return self;
 }
 
 - (void)dealloc
@@ -298,7 +310,17 @@
                      subAlloc:(A840HeapSubAlloc *)subAlloc
                    descriptor:(MTLTextureDescriptor *)descriptor
 {
+    return [self initWithOwner:owner heap:heap subAlloc:subAlloc native:nullptr descriptor:descriptor];
+}
+
+- (instancetype)initWithOwner:(A840MTLDevice *)owner
+                         heap:(A840MTLHeap *)heap
+                     subAlloc:(A840HeapSubAlloc *)subAlloc
+                       native:(A840RtTexture *)texture
+                   descriptor:(MTLTextureDescriptor *)descriptor
+{
     if ((self = [super initWithOwner:owner heap:heap subAlloc:subAlloc options:descriptor.resourceOptions])) {
+        _native = texture;
         _descriptor = [descriptor copy];
         _viewPixelFormat = descriptor.pixelFormat;
         _viewTextureType = descriptor.textureType;
@@ -512,17 +534,22 @@ static uint32_t a840MapTextureType(MTLTextureType t)
     if (!_native || !_native->format_caps)
         [NSException raise:NSInvalidArgumentException format:@"Invalid native 2-D texture transfer"];
     const NSUInteger pixelBytes = _native->format_caps->block_bits / 8u;
-    if (level || slice || region.origin.z || region.size.depth != 1 || !bytes || !_native->cpu_ptr ||
-        x > self.width || width > self.width - x || y > self.height || height > self.height - y ||
+    uint64_t subOffset = 0u;
+    uint32_t subPitch = 0u, subW = 0u, subH = 0u;
+    if (region.origin.z || region.size.depth != 1 || !bytes || !_native->cpu_ptr ||
+        a840_rt_texture_get_subresource_layout(_native, (uint32_t)level, (uint32_t)slice,
+                                               &subOffset, &subPitch, &subW, &subH) != A840_RT_OK ||
+        x > subW || width > subW - x || y > subH || height > subH - y ||
         width * pixelBytes > rowBytes || (height && rowBytes > NSUIntegerMax / height))
         [NSException raise:NSInvalidArgumentException format:@"Invalid native 2-D texture transfer"];
     if (!width || !height) return;
-    auto *surface = static_cast<uint8_t *>(_native->cpu_ptr) + y * _native->pitch_bytes + x * pixelBytes;
+    auto *surface = static_cast<uint8_t *>(_native->cpu_ptr) + (size_t)subOffset +
+                    y * (size_t)subPitch + x * pixelBytes;
     auto *user = static_cast<uint8_t *>(bytes);
     for (NSUInteger row = 0; row < height; ++row) {
         if (write) std::memcpy(surface, user, width * pixelBytes);
         else std::memcpy(user, surface, width * pixelBytes);
-        surface += _native->pitch_bytes;
+        surface += subPitch;
         user += rowBytes;
     }
 }

@@ -170,6 +170,103 @@ int a840_vfd_map_mtl_vertex_format(uint32_t mtl_vertex_format,
     return 1;
 }
 
+int a840_vfd_map_vk_vertex_format(uint32_t vk_format,
+                                  uint32_t *out_format_id,
+                                  uint32_t *out_swap,
+                                  uint8_t *out_is_float)
+{
+    uint32_t fmt = A840_FMT6_32_32_32_32_FLOAT;
+    uint32_t swap = A840_WZYX;
+    uint8_t is_float = 1u;
+    /* Exact Mesa fd6_format_table.c + tu_pipeline.cc (._float = !is_pure_integer). */
+    switch (vk_format) {
+    case 9u:   fmt = A840_FMT6_8_UNORM; is_float = 1u; break;              /* R8_UNORM */
+    case 10u:  fmt = A840_FMT6_8_SNORM; is_float = 1u; break;              /* R8_SNORM */
+    case 11u:  fmt = A840_FMT6_8_UINT; is_float = 1u; break;               /* R8_USCALED */
+    case 12u:  fmt = A840_FMT6_8_SINT; is_float = 1u; break;               /* R8_SSCALED */
+    case 13u:  fmt = A840_FMT6_8_UINT; is_float = 0u; break;               /* R8_UINT */
+    case 14u:  fmt = A840_FMT6_8_SINT; is_float = 0u; break;               /* R8_SINT */
+    case 16u:  fmt = A840_FMT6_8_8_UNORM; is_float = 1u; break;            /* R8G8_UNORM */
+    case 17u:  fmt = A840_FMT6_8_8_SNORM; is_float = 1u; break;            /* R8G8_SNORM */
+    case 18u:  fmt = A840_FMT6_8_8_UINT; is_float = 1u; break;             /* R8G8_USCALED */
+    case 19u:  fmt = A840_FMT6_8_8_SINT; is_float = 1u; break;             /* R8G8_SSCALED */
+    case 20u:  fmt = A840_FMT6_8_8_UINT; is_float = 0u; break;             /* R8G8_UINT */
+    case 21u:  fmt = A840_FMT6_8_8_SINT; is_float = 0u; break;             /* R8G8_SINT */
+    case 23u:  fmt = A840_FMT6_8_8_8_UNORM; is_float = 1u; break;          /* R8G8B8_UNORM */
+    case 24u:  fmt = A840_FMT6_8_8_8_SNORM; is_float = 1u; break;          /* R8G8B8_SNORM */
+    case 25u:  fmt = A840_FMT6_8_8_8_UINT; is_float = 1u; break;           /* R8G8B8_USCALED */
+    case 26u:  fmt = A840_FMT6_8_8_8_SINT; is_float = 1u; break;           /* R8G8B8_SSCALED */
+    case 27u:  fmt = A840_FMT6_8_8_8_UINT; is_float = 0u; break;           /* R8G8B8_UINT */
+    case 28u:  fmt = A840_FMT6_8_8_8_SINT; is_float = 0u; break;           /* R8G8B8_SINT */
+    case 37u:  fmt = A840_FMT6_8_8_8_8_UNORM; is_float = 1u; break;        /* R8G8B8A8_UNORM */
+    case 38u:  fmt = A840_FMT6_8_8_8_8_SNORM; is_float = 1u; break;        /* R8G8B8A8_SNORM */
+    case 39u:  fmt = A840_FMT6_8_8_8_8_UINT; is_float = 1u; break;         /* R8G8B8A8_USCALED */
+    case 40u:  fmt = A840_FMT6_8_8_8_8_SINT; is_float = 1u; break;         /* R8G8B8A8_SSCALED */
+    case 41u:  fmt = A840_FMT6_8_8_8_8_UINT; is_float = 0u; break;         /* R8G8B8A8_UINT */
+    case 42u:  fmt = A840_FMT6_8_8_8_8_SINT; is_float = 0u; break;         /* R8G8B8A8_SINT */
+    case 44u:  fmt = A840_FMT6_8_8_8_8_UNORM; swap = A840_WXYZ; is_float = 1u; break; /* B8G8R8A8_UNORM */
+    case 45u:  fmt = A840_FMT6_8_8_8_8_SNORM; swap = A840_WXYZ; is_float = 1u; break; /* B8G8R8A8_SNORM */
+    case 46u:  fmt = A840_FMT6_8_8_8_8_UINT; swap = A840_WXYZ; is_float = 1u; break;  /* B8G8R8A8_USCALED */
+    case 47u:  fmt = A840_FMT6_8_8_8_8_SINT; swap = A840_WXYZ; is_float = 1u; break;  /* B8G8R8A8_SSCALED */
+    case 48u:  fmt = A840_FMT6_8_8_8_8_UINT; swap = A840_WXYZ; is_float = 0u; break;  /* B8G8R8A8_UINT */
+    case 49u:  fmt = A840_FMT6_8_8_8_8_SINT; swap = A840_WXYZ; is_float = 0u; break;  /* B8G8R8A8_SINT */
+    case 64u:  fmt = A840_FMT6_10_10_10_2_UNORM; is_float = 1u; break;     /* A2B10G10R10_UNORM_PACK32 */
+    case 65u:  fmt = A840_FMT6_10_10_10_2_SNORM; is_float = 1u; break;     /* A2B10G10R10_SNORM_PACK32 */
+    case 66u:  fmt = A840_FMT6_10_10_10_2_UINT; is_float = 1u; break;      /* A2B10G10R10_USCALED_PACK32 */
+    case 67u:  fmt = A840_FMT6_10_10_10_2_SINT; is_float = 1u; break;      /* A2B10G10R10_SSCALED_PACK32 */
+    case 68u:  fmt = A840_FMT6_10_10_10_2_UINT; is_float = 0u; break;      /* A2B10G10R10_UINT_PACK32 */
+    case 69u:  fmt = A840_FMT6_10_10_10_2_SINT; is_float = 0u; break;      /* A2B10G10R10_SINT_PACK32 */
+    case 70u:  fmt = A840_FMT6_16_UNORM; is_float = 1u; break;             /* R16_UNORM */
+    case 71u:  fmt = A840_FMT6_16_SNORM; is_float = 1u; break;             /* R16_SNORM */
+    case 72u:  fmt = A840_FMT6_16_UINT; is_float = 1u; break;              /* R16_USCALED */
+    case 73u:  fmt = A840_FMT6_16_SINT; is_float = 1u; break;              /* R16_SSCALED */
+    case 74u:  fmt = A840_FMT6_16_UINT; is_float = 0u; break;              /* R16_UINT */
+    case 75u:  fmt = A840_FMT6_16_SINT; is_float = 0u; break;              /* R16_SINT */
+    case 76u:  fmt = A840_FMT6_16_FLOAT; is_float = 1u; break;             /* R16_SFLOAT */
+    case 77u:  fmt = A840_FMT6_16_16_UNORM; is_float = 1u; break;          /* R16G16_UNORM */
+    case 78u:  fmt = A840_FMT6_16_16_SNORM; is_float = 1u; break;          /* R16G16_SNORM */
+    case 79u:  fmt = A840_FMT6_16_16_UINT; is_float = 1u; break;           /* R16G16_USCALED */
+    case 80u:  fmt = A840_FMT6_16_16_SINT; is_float = 1u; break;           /* R16G16_SSCALED */
+    case 81u:  fmt = A840_FMT6_16_16_UINT; is_float = 0u; break;           /* R16G16_UINT */
+    case 82u:  fmt = A840_FMT6_16_16_SINT; is_float = 0u; break;           /* R16G16_SINT */
+    case 83u:  fmt = A840_FMT6_16_16_FLOAT; is_float = 1u; break;          /* R16G16_SFLOAT */
+    case 84u:  fmt = A840_FMT6_16_16_16_UNORM; is_float = 1u; break;       /* R16G16B16_UNORM */
+    case 85u:  fmt = A840_FMT6_16_16_16_SNORM; is_float = 1u; break;       /* R16G16B16_SNORM */
+    case 86u:  fmt = A840_FMT6_16_16_16_UINT; is_float = 1u; break;        /* R16G16B16_USCALED */
+    case 87u:  fmt = A840_FMT6_16_16_16_SINT; is_float = 1u; break;        /* R16G16B16_SSCALED */
+    case 88u:  fmt = A840_FMT6_16_16_16_UINT; is_float = 0u; break;        /* R16G16B16_UINT */
+    case 89u:  fmt = A840_FMT6_16_16_16_SINT; is_float = 0u; break;        /* R16G16B16_SINT */
+    case 90u:  fmt = A840_FMT6_16_16_16_FLOAT; is_float = 1u; break;       /* R16G16B16_SFLOAT */
+    case 91u:  fmt = A840_FMT6_16_16_16_16_UNORM; is_float = 1u; break;    /* R16G16B16A16_UNORM */
+    case 92u:  fmt = A840_FMT6_16_16_16_16_SNORM; is_float = 1u; break;    /* R16G16B16A16_SNORM */
+    case 93u:  fmt = A840_FMT6_16_16_16_16_UINT; is_float = 1u; break;     /* R16G16B16A16_USCALED */
+    case 94u:  fmt = A840_FMT6_16_16_16_16_SINT; is_float = 1u; break;     /* R16G16B16A16_SSCALED */
+    case 95u:  fmt = A840_FMT6_16_16_16_16_UINT; is_float = 0u; break;     /* R16G16B16A16_UINT */
+    case 96u:  fmt = A840_FMT6_16_16_16_16_SINT; is_float = 0u; break;     /* R16G16B16A16_SINT */
+    case 97u:  fmt = A840_FMT6_16_16_16_16_FLOAT; is_float = 1u; break;    /* R16G16B16A16_SFLOAT */
+    case 98u:  fmt = A840_FMT6_32_UINT; is_float = 0u; break;              /* R32_UINT */
+    case 99u:  fmt = A840_FMT6_32_SINT; is_float = 0u; break;              /* R32_SINT */
+    case 100u: fmt = A840_FMT6_32_FLOAT; is_float = 1u; break;             /* R32_SFLOAT */
+    case 101u: fmt = A840_FMT6_32_32_UINT; is_float = 0u; break;           /* R32G32_UINT */
+    case 102u: fmt = A840_FMT6_32_32_SINT; is_float = 0u; break;           /* R32G32_SINT */
+    case 103u: fmt = A840_FMT6_32_32_FLOAT; is_float = 1u; break;          /* R32G32_SFLOAT */
+    case 104u: fmt = A840_FMT6_32_32_32_UINT; is_float = 0u; break;        /* R32G32B32_UINT */
+    case 105u: fmt = A840_FMT6_32_32_32_SINT; is_float = 0u; break;        /* R32G32B32_SINT */
+    case 106u: fmt = A840_FMT6_32_32_32_FLOAT; is_float = 1u; break;       /* R32G32B32_SFLOAT */
+    case 107u: fmt = A840_FMT6_32_32_32_32_UINT; is_float = 0u; break;     /* R32G32B32A32_UINT */
+    case 108u: fmt = A840_FMT6_32_32_32_32_SINT; is_float = 0u; break;     /* R32G32B32A32_SINT */
+    case 109u: fmt = A840_FMT6_32_32_32_32_FLOAT; is_float = 1u; break;    /* R32G32B32A32_SFLOAT */
+    case 122u: fmt = A840_FMT6_11_11_10_FLOAT; is_float = 1u; break;       /* B10G11R11_UFLOAT_PACK32 */
+    case 123u: fmt = A840_FMT6_9_9_9_E5_FLOAT; is_float = 1u; break;       /* E5B9G9R9_UFLOAT_PACK32 */
+    default:
+        return 0;
+    }
+    if (out_format_id) *out_format_id = fmt;
+    if (out_swap) *out_swap = swap;
+    if (out_is_float) *out_is_float = is_float;
+    return 1;
+}
+
 A840EmitStatus a840_gfx_sds_emit_vfd(A840CmdStream *cs,
                                      uint32_t buffer_count,
                                      const A840GfxVfdBuffer *buffers,

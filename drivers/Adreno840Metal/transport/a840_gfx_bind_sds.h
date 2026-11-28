@@ -52,6 +52,12 @@ int a840_vfd_map_mtl_vertex_format(uint32_t mtl_vertex_format,
                                    uint32_t *out_swap,
                                    uint8_t *out_is_float);
 
+/* Map Vulkan VkFormat raw enum (including USCALED/SSCALED) to A8XX VFD format/swap/float. */
+int a840_vfd_map_vk_vertex_format(uint32_t vk_format,
+                                  uint32_t *out_format_id,
+                                  uint32_t *out_swap,
+                                  uint8_t *out_is_float);
+
 /* Emit VFD_VERTEX_BUFFER_0..N and VFD_FETCH_INSTR_0..M into SDS command stream. */
 A840EmitStatus a840_gfx_sds_emit_vfd(A840CmdStream *cs,
                                      uint32_t buffer_count,
