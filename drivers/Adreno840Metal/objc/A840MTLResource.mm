@@ -3,6 +3,7 @@
  * Wave 12 zero-fallback native resource wrappers: IOSurface, Heap aliasing,
  * Texture Views, Memoryless attachments, and probe006 sampler clamping. */
 #import "A840MTLResource.h"
+#import "A840MTLCommand.h"
 #import "A840MTLHeapAndEvents.h"
 #import "A840MTLDiagnostics.h"
 
@@ -11,6 +12,11 @@
 #include "NativeMetalTranslate.h"
 
 extern "C" void sys_dcache_flush(void *start, size_t length);
+
+@protocol A840MTLPlanQuery <NSObject>
+@optional
+- (NSUInteger)imageblockCellBytes;
+@end
 
 static const uint8_t *a840B3a8Xr10Lut()
 {
@@ -148,7 +154,10 @@ static const uint8_t *a840B3a8Xr10Lut()
     return 46; /* KERN_NOT_SUPPORTED */
 }
 - (void)setResponsibleProcess:(int)pid { (void)pid; }
-- (void)waitUntilComplete {}
+- (void)waitUntilComplete
+{
+    [A840MTLCommandBuffer waitForInFlightResource:self];
+}
 - (void)doesNotRecognizeSelector:(SEL)selector
 {
     a840diag::recordMissingSelector(object_getClassName(self), sel_getName(selector));
@@ -814,9 +823,18 @@ static uint32_t clampAnisoPow2(NSUInteger raw)
     const uint32_t maxAniso = norm ? clampAnisoPow2(descriptor.maxAnisotropy) : 1u;
     const uint32_t cmpFunc = (!norm || descriptor.compareFunction == MTLCompareFunctionNever)
         ? A840_COMPARE_DISABLED : (uint32_t)descriptor.compareFunction;
+    /* Adreno 840 has no native cubic sampler filter; match integration088
+     * (NativeMetalObjects.rs:2396) by mapping MTLSamplerMinMagFilterBicubic (2) -> Linear (1)
+     * so RenderBox / CoreImage / iconservicesagent never abort on nil sampler states. */
+    const uint32_t minF = (uint32_t)descriptor.minFilter >= A840_FILTER_LINEAR
+                              ? A840_FILTER_LINEAR : A840_FILTER_NEAREST;
+    const uint32_t magF = norm
+                              ? ((uint32_t)descriptor.magFilter >= A840_FILTER_LINEAR
+                                     ? A840_FILTER_LINEAR : A840_FILTER_NEAREST)
+                              : minF;
     const A840SampDescInput input{
-        (uint32_t)descriptor.minFilter,
-        norm ? (uint32_t)descriptor.magFilter : (uint32_t)descriptor.minFilter,
+        minF,
+        magF,
         mipFilter,
         addressMode(descriptor.sAddressMode), addressMode(descriptor.tAddressMode), addressMode(descriptor.rAddressMode),
         maxAniso, minLod, maxLod, 0.0f, cmpFunc,
@@ -826,7 +844,12 @@ static uint32_t clampAnisoPow2(NSUInteger raw)
     };
     if (a840_encode_samp_const(&input, _words) != A840_EMIT_OK) return nil;
     _owner = owner;
-    _descriptor = [descriptor copy];
+    MTLSamplerDescriptor *stored = [descriptor copy];
+    if (stored) {
+        if ((uint32_t)stored.minFilter > A840_FILTER_LINEAR) stored.minFilter = MTLSamplerMinMagFilterLinear;
+        if ((uint32_t)stored.magFilter > A840_FILTER_LINEAR) stored.magFilter = MTLSamplerMinMagFilterLinear;
+    }
+    _descriptor = stored;
     return self;
 }
 - (id<MTLDevice>)device { return _owner; }
@@ -894,6 +917,18 @@ static uint32_t clampAnisoPow2(NSUInteger raw)
 - (NSUInteger)maxTotalThreadsPerThreadgroup { return A840_LIMIT_THREADSIZE_BASE * A840_LIMIT_MAX_WAVES; }
 - (NSUInteger)threadExecutionWidth { return A840_LIMIT_THREADSIZE_BASE; }
 - (NSUInteger)staticThreadgroupMemoryLength { return _descriptor.stage ? _descriptor.stage->shared_mem_bytes : 0; }
+- (NSUInteger)imageblockMemoryLengthForDimensions:(MTLSize)imageblockDimensions
+{
+    if (_plan && [_plan respondsToSelector:@selector(imageblockCellBytes)]) {
+        const NSUInteger cellBytes = [(id<A840MTLPlanQuery>)_plan imageblockCellBytes];
+        if (cellBytes > 0u) {
+            const NSUInteger w = imageblockDimensions.width ? imageblockDimensions.width : 1u;
+            const NSUInteger h = imageblockDimensions.height ? imageblockDimensions.height : 1u;
+            return ((cellBytes * w * h) + 15u) & ~static_cast<NSUInteger>(15u);
+        }
+    }
+    return 0u;
+}
 - (BOOL)supportIndirectCommandBuffers { return YES; }
 - (const A840RtComputePipelineDesc *)nativeDescriptor { return _plan && _descriptor.stage ? &_descriptor : nullptr; }
 - (void)doesNotRecognizeSelector:(SEL)selector
@@ -926,7 +961,14 @@ static uint32_t clampAnisoPow2(NSUInteger raw)
 - (NSUInteger)imageblockSampleLength { return 0u; }
 - (NSUInteger)imageblockMemoryLengthForDimensions:(MTLSize)imageblockDimensions
 {
-    (void)imageblockDimensions;
+    if (_plan && [_plan respondsToSelector:@selector(imageblockCellBytes)]) {
+        const NSUInteger cellBytes = [(id<A840MTLPlanQuery>)_plan imageblockCellBytes];
+        if (cellBytes > 0u) {
+            const NSUInteger w = imageblockDimensions.width ? imageblockDimensions.width : 1u;
+            const NSUInteger h = imageblockDimensions.height ? imageblockDimensions.height : 1u;
+            return ((cellBytes * w * h) + 15u) & ~static_cast<NSUInteger>(15u);
+        }
+    }
     return 0u;
 }
 - (const A840RtGraphicsProgramDesc *)nativeDescriptor

@@ -174,8 +174,32 @@ enum {
     NMB_PUSH_ZERO_U32 = 16,
     NMB_PUSH_ZERO_U64 = 17,
     NMB_PUSH_FETCHED_COLOR = 18,
-    NMB_PUSH_CONSTEXPR_SAMPLER = 19
+    NMB_PUSH_CONSTEXPR_SAMPLER = 19,
+    NMB_PUSH_BICUBIC_TEXELS = 20
 };
+
+typedef enum NmbSpirvSpecKind {
+    NMB_SPEC_LOCAL_SIZE_X = 1,
+    NMB_SPEC_LOCAL_SIZE_Y = 2,
+    NMB_SPEC_LOCAL_SIZE_Z = 3,
+    NMB_SPEC_FLAT_LOCAL_SIZE = 4,
+    NMB_SPEC_DEEP_THREADGROUP = 5,
+    NMB_SPEC_WORKGROUP_SIZE_X = 6,
+    NMB_SPEC_WORKGROUP_SIZE_Y = 7,
+    NMB_SPEC_WORKGROUP_SIZE_Z = 8,
+    NMB_SPEC_IMAGEBLOCK_WIDTH = 9,
+    NMB_SPEC_IMAGEBLOCK_HEIGHT = 10,
+    NMB_SPEC_TG_LENGTH = 11,
+    NMB_SPEC_SAMPLE_COUNT = 12,
+    NMB_SPEC_MULTI_REGION = 13
+} NmbSpirvSpecKind;
+
+typedef struct NmbSpirvSpecConstant {
+    uint32_t spec_id;
+    uint32_t kind;          /* NmbSpirvSpecKind */
+    uint32_t index;         /* Threadgroup memory slot index for NMB_SPEC_TG_LENGTH */
+    uint32_t default_value; /* Default literal value */
+} NmbSpirvSpecConstant;
 
 typedef struct NmbSpirvPushField {
     uint32_t kind;         /* NMB_PUSH_* */
@@ -198,6 +222,18 @@ uint32_t nmb_encode_sampler_word(bool normalized_coordinates,
                                  uint32_t r_address_mode,
                                  uint32_t border_color, uint32_t compare_function);
 uint32_t nmb_encode_texture_word(uint32_t mtl_pixel_format);
+uint32_t nmb_encode_integer_channels_word(uint32_t mtl_pixel_format);
+uint32_t nmb_encode_bicubic_texels_word(uint32_t mtl_pixel_format);
+
+size_t nmb_spirv_spec_constant_count(const NmbSpirvResult *res, uint32_t stage_index);
+bool nmb_spirv_spec_constant(const NmbSpirvResult *res, uint32_t stage_index,
+                             size_t index, NmbSpirvSpecConstant *out);
+uint32_t nmb_spirv_compute_imageblock_cell_bytes(const NmbSpirvResult *res);
+bool nmb_patch_compute_spec_words(uint32_t *words, size_t word_count,
+                                  const NmbSpirvSpecConstant *specs, size_t spec_count,
+                                  const uint32_t local_size[3],
+                                  const uint32_t imageblock_size[2],
+                                  const uint32_t *tg_lengths, size_t tg_length_count);
 
 /* Additive reflected fixed-function vertex input & constexpr sampler metadata.
  * Maps metal2vulkan's compacted SPIR-V Location directly to Metal buffer/offset/VkFormat. */

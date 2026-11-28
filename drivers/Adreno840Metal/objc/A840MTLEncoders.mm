@@ -707,6 +707,9 @@ destinationBytesPerImage:(NSUInteger)destinationBytesPerImage
     A840MTLBindings *_bindings;
     id<MTLComputePipelineState> _pipeline, _boundPipeline;
     id _boundVariantPlan;
+    uint32_t _imageblockWidth;
+    uint32_t _imageblockHeight;
+    uint32_t _tgLengths[32];
 }
 
 - (MTLDispatchType)dispatchType { return MTLDispatchTypeSerial; }
@@ -714,6 +717,10 @@ destinationBytesPerImage:(NSUInteger)destinationBytesPerImage
 {
     if (!(self = [super initWithCommand:command])) return nil;
     _bindings = [A840MTLBindings new];
+    /* Metal default compute imageblock extent is 1x1 when setImageblockWidth:height: is not called. */
+    _imageblockWidth = 1u;
+    _imageblockHeight = 1u;
+    std::memset(_tgLengths, 0, sizeof(_tgLengths));
     (void)dispatchType;
     @synchronized (command.owner) {
         if (command.wantsRaw) {
@@ -776,7 +783,14 @@ destinationBytesPerImage:(NSUInteger)destinationBytesPerImage
     }
     if (![self checkActive]) return;
     [_bindings setTexture:texture index:index];
-    [self.command useWrittenResource:texture];
+    /* Only mark shader-writable compute textures as GPU write targets so read-only
+     * CPU-drawn 'b3a8' textures stay on their decoded shadow instead of reverting to raw XR10. */
+    const MTLTextureUsage csUsage = texture ? texture.usage : MTLTextureUsageUnknown;
+    if (texture && (csUsage == MTLTextureUsageUnknown || (csUsage & MTLTextureUsageShaderWrite) != 0u)) {
+        [self.command useWrittenResource:texture];
+    } else {
+        [self.command useResource:texture];
+    }
     if (texture && !nativeTexture(texture, self.command.owner))
         [self.command recordFailure:A840_RT_WRONG_DEVICE reason:@"wrong_dev_4"];
 }
@@ -812,9 +826,23 @@ destinationBytesPerImage:(NSUInteger)destinationBytesPerImage
 {
     if (![self checkActive]) return;
     if (index >= 32u || length > self.command.owner.systemCaps.max_threadgroup_memory_bytes) {
-        [self.command recordFailure:A840_RT_RANGE_ERROR];
+        [self.command recordFailure:A840_RT_RANGE_ERROR reason:@"cs_tg_mem_range"];
         return;
     }
+    /* Metal rounds threadgroup memory lengths up to 16-byte multiples. */
+    _tgLengths[index] = static_cast<uint32_t>((length + 15u) & ~static_cast<NSUInteger>(15u));
+}
+- (void)setImageblockWidth:(NSUInteger)width height:(NSUInteger)height
+{
+    if (![self checkActive]) return;
+    const BOOL wPow2 = (width > 0u) && ((width & (width - 1u)) == 0u);
+    const BOOL hPow2 = (height > 0u) && ((height & (height - 1u)) == 0u);
+    if (!wPow2 || !hPow2 || width > 1024u || height > 1024u || width * height > 1024u) {
+        [self.command recordFailure:A840_RT_RANGE_ERROR reason:@"cs_ib_size"];
+        return;
+    }
+    _imageblockWidth = static_cast<uint32_t>(width);
+    _imageblockHeight = static_cast<uint32_t>(height);
 }
 - (void)useResource:(id<MTLResource>)resource usage:(MTLResourceUsage)usage
 {
@@ -876,19 +904,35 @@ destinationBytesPerImage:(NSUInteger)destinationBytesPerImage
     const A840RtComputePipelineDesc *desc = state.nativeDescriptor;
     A840RtComputePipelineDesc variantDesc{};
     id activePlan = state.plan;
-    if (desc && state.device == cb.owner &&
-        (desc->stage->local_size[0] != local.width ||
-         desc->stage->local_size[1] != local.height ||
-         desc->stage->local_size[2] != local.depth) &&
-        [cb.owner.pipelineProvider respondsToSelector:@selector(prepareComputeVariantForPlan:localSize:forDevice:descriptor:)]) {
-        @synchronized (cb.owner) {
-            id variantPlan = [cb.owner.pipelineProvider prepareComputeVariantForPlan:state.plan
-                                                                           localSize:local
-                                                                           forDevice:cb.owner
-                                                                          descriptor:&variantDesc];
-            if (variantPlan && variantDesc.stage) {
-                activePlan = variantPlan;
-                desc = &variantDesc;
+    if (desc && state.device == cb.owner) {
+        if ([cb.owner.pipelineProvider respondsToSelector:@selector(prepareComputeVariantForPlan:localSize:imageblockWidth:imageblockHeight:threadgroupLengths:threadgroupLengthCount:forDevice:descriptor:)]) {
+            @synchronized (cb.owner) {
+                id variantPlan = [cb.owner.pipelineProvider prepareComputeVariantForPlan:state.plan
+                                                                               localSize:local
+                                                                         imageblockWidth:_imageblockWidth
+                                                                        imageblockHeight:_imageblockHeight
+                                                                      threadgroupLengths:_tgLengths
+                                                                  threadgroupLengthCount:32u
+                                                                               forDevice:cb.owner
+                                                                              descriptor:&variantDesc];
+                if (variantPlan && variantDesc.stage) {
+                    activePlan = variantPlan;
+                    desc = &variantDesc;
+                }
+            }
+        } else if ((desc->stage->local_size[0] != local.width ||
+                    desc->stage->local_size[1] != local.height ||
+                    desc->stage->local_size[2] != local.depth) &&
+                   [cb.owner.pipelineProvider respondsToSelector:@selector(prepareComputeVariantForPlan:localSize:forDevice:descriptor:)]) {
+            @synchronized (cb.owner) {
+                id variantPlan = [cb.owner.pipelineProvider prepareComputeVariantForPlan:state.plan
+                                                                               localSize:local
+                                                                               forDevice:cb.owner
+                                                                              descriptor:&variantDesc];
+                if (variantPlan && variantDesc.stage) {
+                    activePlan = variantPlan;
+                    desc = &variantDesc;
+                }
             }
         }
     }
@@ -1184,6 +1228,7 @@ static BOOL convertClear(id<MTLTexture> texture, MTLClearColor color,
     A840MTLDepthStencilState *_depthStencilState;
     A840MTLBindings *_vertexBindings, *_fragmentBindings;
     id<MTLTexture> _colorTextures[A840_MAX_COLOR_TARGETS];
+    A840RtTexture *_colorTargetNatives[A840_MAX_COLOR_TARGETS];
     uint32_t _colorTextureCount;
     A840RtTexture *_transientAttachmentViews[2u * A840_MAX_COLOR_TARGETS + 4u];
     uint32_t _transientAttachmentViewCount;
@@ -1269,6 +1314,7 @@ static BOOL convertClear(id<MTLTexture> texture, MTLClearColor color,
         if (texture.sampleCount > descriptor.sample_count) descriptor.sample_count = (uint32_t)texture.sampleCount;
         if (!attachmentShape(attachment)) { nativeAttachments = NO; naFlags |= 2u; badLvl = (uint32_t)attachment.level; badSlc = (uint32_t)attachment.slice; }
         else { descriptor.color_targets[i] = resolveAttachmentTarget(attachment, baseTex); }
+        _colorTargetNatives[i] = descriptor.color_targets[i];
         if (!descriptor.color_targets[i]) { nativeAttachments = NO; naFlags |= 1u; badFmt = (uint32_t)texture.pixelFormat; badLvl = (uint32_t)attachment.level; badSlc = (uint32_t)attachment.slice; }
         if (attachment.resolveTexture) {
             A840RtTexture *resBase = nativeTexture(attachment.resolveTexture, command.owner);
@@ -1903,7 +1949,14 @@ static BOOL convertClear(id<MTLTexture> texture, MTLClearColor color,
             }
         }
         A840RtStatus bindSt = A840_RT_OK;
-        if ([cb.owner.pipelineProvider respondsToSelector:@selector(bindRender:plan:vertexBindings:fragmentBindings:colorTargets:colorTargetCount:)]) {
+        if ([cb.owner.pipelineProvider respondsToSelector:@selector(bindRender:plan:vertexBindings:fragmentBindings:colorTargets:colorTargetNatives:colorTargetCount:)]) {
+            __unsafe_unretained id<MTLTexture> rawColors[A840_MAX_COLOR_TARGETS] = {};
+            const uint32_t colorLim = _colorTextureCount < A840_MAX_COLOR_TARGETS ? _colorTextureCount : A840_MAX_COLOR_TARGETS;
+            for (uint32_t ci = 0u; ci < colorLim; ++ci) rawColors[ci] = _colorTextures[ci];
+            bindSt = [cb.owner.pipelineProvider bindRender:_native plan:state.plan
+                vertexBindings:_vertexBindings fragmentBindings:_fragmentBindings
+                  colorTargets:rawColors colorTargetNatives:_colorTargetNatives colorTargetCount:colorLim];
+        } else if ([cb.owner.pipelineProvider respondsToSelector:@selector(bindRender:plan:vertexBindings:fragmentBindings:colorTargets:colorTargetCount:)]) {
             __unsafe_unretained id<MTLTexture> rawColors[A840_MAX_COLOR_TARGETS] = {};
             const uint32_t colorLim = _colorTextureCount < A840_MAX_COLOR_TARGETS ? _colorTextureCount : A840_MAX_COLOR_TARGETS;
             for (uint32_t ci = 0u; ci < colorLim; ++ci) rawColors[ci] = _colorTextures[ci];

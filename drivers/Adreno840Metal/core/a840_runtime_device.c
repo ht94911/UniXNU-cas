@@ -1862,6 +1862,105 @@ A840RtStatus a840_rt_texture_as_stencil_attachment(const A840RtTexture *texture,
     return a840_rt_texture_as_attachment(texture, out_storage);
 }
 
+A840RtStatus a840_rt_texture_encode_storage_level(const A840RtTexture *texture,
+                                                  uint32_t level,
+                                                  uint32_t out_words[A840_TEX_CONST_DWORDS])
+{
+    uint64_t level_offset = 0u;
+    uint32_t level_pitch = 0u;
+    uint64_t view_slice_stride = 0u;
+    A840TexDescInput tex_in;
+    A840EmitStatus est;
+    uint32_t i;
+
+    if (!texture || !out_words || !texture->format_caps || !texture->device) {
+        return A840_RT_INVALID_ARG;
+    }
+    if (level >= texture->mip_levels) {
+        return A840_RT_RANGE_ERROR;
+    }
+
+    level_pitch = texture->pitch_bytes;
+    view_slice_stride = texture->slice_stride_bytes;
+    if (level > 0u) {
+        uint64_t tail_bytes = 0u;
+        uint32_t row_align = 1u;
+        uint32_t dummy_log2 = 6u;
+        uint64_t pitch_align = UINT64_C(1) << (texture->pitch_align_log2 ? texture->pitch_align_log2 : 6u);
+        if (texture->tile_mode != A840_TILE_LINEAR) {
+            compute_tiled_alignment(texture->format_caps, texture->samples ? texture->samples : 1u,
+                                    &dummy_log2, &row_align);
+        }
+        for (i = 0u; i <= level; ++i) {
+            uint32_t lh = (texture->height >> i) ? (texture->height >> i) : 1u;
+            uint32_t lby = (lh + texture->format_caps->block_height - 1u) / texture->format_caps->block_height;
+            uint64_t lpitch_raw = ((uint64_t)texture->pitch_bytes >> i) ? ((uint64_t)texture->pitch_bytes >> i) : 1u;
+            uint64_t lpitch = 0u;
+            uint64_t lrows;
+            if (!align_up_u64(lpitch_raw, pitch_align, &lpitch) || lpitch > UINT32_MAX) {
+                return A840_RT_RANGE_ERROR;
+            }
+            if (texture->tile_mode != A840_TILE_LINEAR) {
+                lrows = ((uint64_t)lby + (uint64_t)row_align - 1u) / (uint64_t)row_align * (uint64_t)row_align;
+            } else {
+                lrows = (uint64_t)lby;
+                if (texture->mip_levels > 1u && i == texture->mip_levels - 1u) {
+                    lrows = (lrows + 3u) & ~UINT64_C(3);
+                }
+            }
+            if (i < level) {
+                level_offset += lpitch * lrows;
+            } else {
+                level_pitch = (uint32_t)lpitch;
+                tail_bytes = lpitch * lrows;
+            }
+        }
+        if (texture->array_layers <= 1u && texture->tex_type != A840_TEX_3D) {
+            if (!align_up_u64(tail_bytes, A840_RT_PAGE_BYTES, &view_slice_stride)) {
+                view_slice_stride = texture->slice_stride_bytes;
+            }
+        }
+    }
+    if (level_offset > texture->alloc_bytes) {
+        return A840_RT_RANGE_ERROR;
+    }
+
+    memset(&tex_in, 0, sizeof(tex_in));
+    tex_in.format_id = (texture->tile_mode == A840_TILE_LINEAR)
+                           ? texture->format_caps->a840_fmt_id
+                           : texture->format_caps->tiled_fmt_id;
+    tex_in.swap = (texture->tile_mode == A840_TILE_LINEAR)
+                      ? texture->format_caps->swap
+                      : texture->format_caps->tiled_swap;
+    /* Mesa fd6_view.cc:23,503: A8XX storage descriptors map CUBE -> 2D and clear SRGB. */
+    tex_in.type = (texture->tex_type == A840_TEX_CUBE) ? A840_TEX_2D : texture->tex_type;
+    tex_in.width = (texture->width >> level) ? (texture->width >> level) : 1u;
+    tex_in.height = (texture->height >> level) ? (texture->height >> level) : 1u;
+    if (texture->tex_type == A840_TEX_3D) {
+        tex_in.depth = (texture->depth >> level) ? (texture->depth >> level) : 1u;
+    } else {
+        tex_in.depth = texture->array_layers ? texture->array_layers : 1u;
+    }
+    tex_in.mip_levels = 1u;
+    tex_in.samples = texture->samples ? texture->samples : 1u;
+    tex_in.pitch = level_pitch;
+    tex_in.slice_stride = view_slice_stride;
+    tex_in.gpu_va = texture->gpu_va + level_offset;
+    tex_in.tile_mode = texture->tile_mode;
+    tex_in.highest_bank_bit = texture->device->chip_facts.highest_bank_bit;
+    tex_in.srgb = 0u;
+    tex_in.pitch_align_log2 = texture->pitch_align_log2;
+    if (tex_in.type == A840_TEX_3D) {
+        tex_in.min_slice_stride = view_slice_stride;
+    }
+    for (i = 0u; i < 4u; ++i) {
+        tex_in.swizzle[i] = texture->swizzle[i];
+    }
+
+    est = a840_encode_tex_const(&tex_in, out_words);
+    return a840_rt_status_from_emit(est);
+}
+
 A840RtStatus a840_rt_texture_get_subresource_layout(const A840RtTexture *texture,
                                                     uint32_t level,
                                                     uint32_t slice,

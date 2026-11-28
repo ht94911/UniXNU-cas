@@ -28,6 +28,10 @@
 #include <signal.h>
 #include <unistd.h>
 
+@protocol A840SelftestResourceSPI <NSObject>
+- (void)waitUntilComplete;
+@end
+
 static int gFailures = 0;
 
 #define REQUIRE(cond, msg)                                                                  \
@@ -383,10 +387,32 @@ int main(int argc, const char **argv)
         id<MTLComputeCommandEncoder> cenc = [ccb computeCommandEncoder];
         [cenc setComputePipelineState:cpso];
         [cenc setBuffer:b1 offset:0u atIndex:0u];
+        [cenc setImageblockWidth:16u height:16u];
+        [cenc setThreadgroupMemoryLength:256u atIndex:0u];
         [cenc dispatchThreadgroups:MTLSizeMake(1u, 1u, 1u) threadsPerThreadgroup:MTLSizeMake(16u, 1u, 1u)];
         [cenc endEncoding];
         [ccb commit];
+        if ([b1 respondsToSelector:@selector(waitUntilComplete)]) {
+            [(id<A840SelftestResourceSPI>)b1 waitUntilComplete];
+        }
         [ccb waitUntilCompleted];
+
+        /* sys016: Verify MTLSamplerMinMagFilterBicubic (2) maps cleanly to Linear (never returns nil). */
+        MTLSamplerDescriptor *bicubicSd = [MTLSamplerDescriptor new];
+        bicubicSd.minFilter = (MTLSamplerMinMagFilter)2;
+        bicubicSd.magFilter = (MTLSamplerMinMagFilter)2;
+        bicubicSd.mipFilter = MTLSamplerMipFilterLinear;
+        id<MTLSamplerState> bicubicSamp = [dev newSamplerStateWithDescriptor:bicubicSd];
+        REQUIRE(bicubicSamp != nil, "MTLSamplerMinMagFilterBicubic sampler mapped to Linear (non-nil)");
+        bicubicSamp = nil;
+
+        /* sys016: Verify read-only IOSurface texture creation succeeds (triggers kernel IO-coherent RO map). */
+        MTLTextureDescriptor *roTd = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
+                                                                                        width:64 height:64 mipmapped:NO];
+        roTd.usage = MTLTextureUsageShaderRead;
+        id<MTLTexture> roSurfTex = [dev newTextureWithDescriptor:roTd iosurface:surface plane:0];
+        REQUIRE(roSurfTex != nil, "read-only IOSurface texture creation succeeded");
+        roSurfTex = nil;
         if (ccb.status != MTLCommandBufferStatusCompleted || ccb.error != nil) {
             std::fprintf(stderr, "CCB_DIAG: status=%lu code=%ld err=%s\n",
                          (unsigned long)ccb.status, (long)ccb.error.code,

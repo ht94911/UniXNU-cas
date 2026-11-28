@@ -24,6 +24,39 @@ extern "C" void sys_dcache_flush(void *start, size_t length);
 
 static constexpr uint64_t fenceWaitNanoseconds = UINT64_C(15) * 1000000000;
 static thread_local bool gInCompletionCallback = false;
+static NSLock *gInFlightLock = nil;
+static NSMutableSet<A840MTLCommandBuffer *> *gInFlightBuffers = nil;
+
+static void a840InitInFlightTracking()
+{
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        gInFlightLock = [NSLock new];
+        gInFlightBuffers = [NSMutableSet new];
+    });
+}
+
+static uint32_t a840ResourceSurfaceId(id<MTLResource> res)
+{
+    if ([(id)res isKindOfClass:A840MTLTexture.class]) {
+        IOSurfaceRef s = ((A840MTLTexture *)res).iosurface;
+        if (s) return IOSurfaceGetID(s);
+    }
+    return 0u;
+}
+
+static uint64_t a840ResourceBoHandle(id<MTLResource> res)
+{
+    if ([(id)res isKindOfClass:A840MTLBuffer.class]) {
+        A840RtBuffer *b = ((A840MTLBuffer *)res).native;
+        return b ? b->bo_handle : 0u;
+    }
+    if ([(id)res isKindOfClass:A840MTLTexture.class]) {
+        A840RtTexture *t = ((A840MTLTexture *)res).native;
+        return t ? t->bo_handle : 0u;
+    }
+    return 0u;
+}
 
 @interface A840MTLCommandQueue ()
 - (void)reserve:(A840MTLCommandBuffer *)command;
@@ -512,7 +545,57 @@ static thread_local bool gInCompletionCallback = false;
         shouldSubmit = YES;
     }
     [_changed unlock];
-    if (shouldSubmit) [_queue ready:self];
+    if (shouldSubmit) {
+        a840InitInFlightTracking();
+        [gInFlightLock lock];
+        [gInFlightBuffers addObject:self];
+        [gInFlightLock unlock];
+        [_queue ready:self];
+    }
+}
+
+- (BOOL)referencesResource:(id<MTLResource>)target surfaceId:(uint32_t)targetSurfId boHandle:(uint64_t)targetBo
+{
+    BOOL found = NO;
+    [_changed lock];
+    if ([_resources containsObject:target]) {
+        found = YES;
+    } else if (targetSurfId != 0u || targetBo != 0u) {
+        for (id<MTLResource> res in _resources) {
+            if (targetSurfId != 0u && a840ResourceSurfaceId(res) == targetSurfId) {
+                found = YES;
+                break;
+            }
+            if (targetBo != 0u && a840ResourceBoHandle(res) == targetBo) {
+                found = YES;
+                break;
+            }
+        }
+    }
+    [_changed unlock];
+    return found;
+}
+
++ (void)waitForInFlightResource:(id<MTLResource>)resource
+{
+    if (!resource || gInCompletionCallback) return;
+    a840InitInFlightTracking();
+    const uint32_t surfId = a840ResourceSurfaceId(resource);
+    const uint64_t boHandle = a840ResourceBoHandle(resource);
+    NSMutableArray<A840MTLCommandBuffer *> *snapshot = nil;
+    [gInFlightLock lock];
+    if (gInFlightBuffers.count > 0u) {
+        snapshot = [NSMutableArray arrayWithCapacity:gInFlightBuffers.count];
+        for (A840MTLCommandBuffer *cb in gInFlightBuffers) {
+            [snapshot addObject:cb];
+        }
+    }
+    [gInFlightLock unlock];
+    for (A840MTLCommandBuffer *cb in snapshot) {
+        if ([cb referencesResource:resource surfaceId:surfId boHandle:boHandle]) {
+            [cb waitUntilCompleted];
+        }
+    }
 }
 
 - (void)publishScheduled
@@ -581,6 +664,10 @@ static thread_local bool gInCompletionCallback = false;
     });
     [_changed broadcast];
     [_changed unlock];
+    a840InitInFlightTracking();
+    [gInFlightLock lock];
+    [gInFlightBuffers removeObject:self];
+    [gInFlightLock unlock];
 }
 - (void)addScheduledHandler:(MTLCommandBufferHandler)handler
 {

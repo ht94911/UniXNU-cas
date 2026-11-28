@@ -294,6 +294,12 @@ A840RtStatus a840_rt_texture_get_subresource_layout(const A840RtTexture *texture
                                                     uint32_t *out_width,
                                                     uint32_t *out_height);
 
+/* Encode an A8XX storage image descriptor (sRGB bit cleared, CUBE->2D per Mesa fd6_view.cc:498-508)
+ * for a single mip level of a texture without heap allocation (used for storageImageSet & TextureLevelBase). */
+A840RtStatus a840_rt_texture_encode_storage_level(const A840RtTexture *texture,
+                                                  uint32_t level,
+                                                  uint32_t out_words[A840_TEX_CONST_DWORDS]);
+
 /* Utility status mapping from emit layer. */
 A840RtStatus a840_rt_status_from_emit(A840EmitStatus st);
 

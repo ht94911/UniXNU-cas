@@ -26,11 +26,12 @@ use metal2vulkan::metal::{
     SamplerMipFilter, TextureSwizzleChannels, VertexFormat, VertexStepFunction,
 };
 use metal2vulkan::pipeline::{
-    threadgroup_constants, BindingSource, ColorAttachmentDescriptor, ComputePipelineDescriptor,
-    FunctionDescriptor, LinkedFunction, LinkedFunctions, PipelineInterface, PipelineLayout,
-    PushField, PushLoc, RenderPipeline, RenderPipelineDescriptor, SamplerRef, SlotClass, Stage,
-    StageEntries, StageModule, StageSource, VertexAttributeDescriptor,
-    VertexBufferLayoutDescriptor, VertexDescriptor, VertexInputState, VertexStride,
+    threadgroup_constants, Axis, BindingSource, ColorAttachmentDescriptor,
+    ComputePipelineDescriptor, FunctionDescriptor, LinkedFunction, LinkedFunctions,
+    PipelineInterface, PipelineLayout, PushField, PushLoc, RenderPipeline,
+    RenderPipelineDescriptor, RuntimeDependency, RuntimeFact, SamplerRef, SlotClass, SpecKey, Stage, StageEntries,
+    StageModule, StageSource, VertexAttributeDescriptor, VertexBufferLayoutDescriptor,
+    VertexDescriptor, VertexInputState, VertexStride,
 };
 use metal2vulkan::{vk, Budget};
 
@@ -407,6 +408,49 @@ const NMB_PUSH_ZERO_U32: u32 = 16;
 const NMB_PUSH_ZERO_U64: u32 = 17;
 const NMB_PUSH_FETCHED_COLOR: u32 = 18;
 const NMB_PUSH_CONSTEXPR_SAMPLER: u32 = 19;
+const NMB_PUSH_BICUBIC_TEXELS: u32 = 20;
+
+const NMB_SPEC_LOCAL_SIZE_X: u32 = 1;
+const NMB_SPEC_LOCAL_SIZE_Y: u32 = 2;
+const NMB_SPEC_LOCAL_SIZE_Z: u32 = 3;
+const NMB_SPEC_FLAT_LOCAL_SIZE: u32 = 4;
+const NMB_SPEC_DEEP_THREADGROUP: u32 = 5;
+const NMB_SPEC_WORKGROUP_SIZE_X: u32 = 6;
+const NMB_SPEC_WORKGROUP_SIZE_Y: u32 = 7;
+const NMB_SPEC_WORKGROUP_SIZE_Z: u32 = 8;
+const NMB_SPEC_IMAGEBLOCK_WIDTH: u32 = 9;
+const NMB_SPEC_IMAGEBLOCK_HEIGHT: u32 = 10;
+const NMB_SPEC_TG_LENGTH: u32 = 11;
+const NMB_SPEC_SAMPLE_COUNT: u32 = 12;
+const NMB_SPEC_MULTI_REGION: u32 = 13;
+
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+pub struct NmbSpirvSpecConstant {
+    spec_id: u32,
+    kind: u32,
+    index: u32,
+    default_value: u32,
+}
+
+fn spec_key_to_nmb(key: SpecKey) -> Option<(u32, u32)> {
+    match key {
+        SpecKey::LocalSize(Axis::X) => Some((NMB_SPEC_LOCAL_SIZE_X, 0)),
+        SpecKey::LocalSize(Axis::Y) => Some((NMB_SPEC_LOCAL_SIZE_Y, 0)),
+        SpecKey::LocalSize(Axis::Z) => Some((NMB_SPEC_LOCAL_SIZE_Z, 0)),
+        SpecKey::FlatLocalSize => Some((NMB_SPEC_FLAT_LOCAL_SIZE, 0)),
+        SpecKey::DeepThreadgroup => Some((NMB_SPEC_DEEP_THREADGROUP, 0)),
+        SpecKey::WorkgroupSize(Axis::X) => Some((NMB_SPEC_WORKGROUP_SIZE_X, 0)),
+        SpecKey::WorkgroupSize(Axis::Y) => Some((NMB_SPEC_WORKGROUP_SIZE_Y, 0)),
+        SpecKey::WorkgroupSize(Axis::Z) => Some((NMB_SPEC_WORKGROUP_SIZE_Z, 0)),
+        SpecKey::ImageblockWidth => Some((NMB_SPEC_IMAGEBLOCK_WIDTH, 0)),
+        SpecKey::ImageblockHeight => Some((NMB_SPEC_IMAGEBLOCK_HEIGHT, 0)),
+        SpecKey::TgLength(i) => Some((NMB_SPEC_TG_LENGTH, i)),
+        SpecKey::SampleCount => Some((NMB_SPEC_SAMPLE_COUNT, 0)),
+        SpecKey::MultiRegion => Some((NMB_SPEC_MULTI_REGION, 0)),
+        _ => None,
+    }
+}
 
 #[repr(C)]
 #[derive(Clone, Copy, Default)]
@@ -601,6 +645,8 @@ pub struct NmbSpirvResult {
     arg_table_bytes: [u32; 2],
     vertex_inputs: Vec<NmbSpirvVertexInput>,
     constexpr_samplers: Vec<NmbSpirvConstexprSampler>,
+    spec_constants: [Vec<NmbSpirvSpecConstant>; 2],
+    compute_imageblock_cell_bytes: u32,
 }
 
 impl NmbSpirvResult {
@@ -608,12 +654,33 @@ impl NmbSpirvResult {
         stages: impl IntoIterator<Item = StageModule>,
         layout: PipelineLayout,
         interface: &PipelineInterface,
+        dependencies: &[RuntimeDependency],
         profile: &DeviceProfile,
         vertex_input: Option<&VertexInputState>,
     ) -> FfiResult<Self> {
         let raw_stages: Vec<StageModule> = stages.into_iter().collect();
         let is_compute =
             raw_stages.len() == 1 && raw_stages[0].stage == vk::ShaderStage::COMPUTE;
+        let mut spec_constants: [Vec<NmbSpirvSpecConstant>; 2] = [Vec::new(), Vec::new()];
+        for (idx, st) in raw_stages.iter().enumerate().take(2) {
+            for c in &st.specialization.constants {
+                if let Some((kind, slot_idx)) = spec_key_to_nmb(c.key) {
+                    spec_constants[idx].push(NmbSpirvSpecConstant {
+                        spec_id: c.id,
+                        kind,
+                        index: slot_idx,
+                        default_value: c.default as u32,
+                    });
+                }
+            }
+        }
+        let compute_imageblock_cell_bytes = dependencies
+            .iter()
+            .find_map(|d| match d.fact {
+                RuntimeFact::ImageblockSize { cell_bytes } => Some(cell_bytes),
+                _ => None,
+            })
+            .unwrap_or(0);
         let stages = raw_stages
             .into_iter()
             .map(|stage| {
@@ -742,6 +809,9 @@ impl NmbSpirvResult {
                     PushField::TextureIntegerChannels(slot) => {
                         (NMB_PUSH_INTEGER_CHANNELS, slot.index, 0u32)
                     }
+                    PushField::BicubicTexels(slot) => {
+                        (NMB_PUSH_BICUBIC_TEXELS, slot.index, 0u32)
+                    }
                     PushField::ArgumentTableAddress => {
                         (NMB_PUSH_ARGUMENT_TABLE_ADDRESS, NO_SLOT, 0u32)
                     }
@@ -836,6 +906,8 @@ impl NmbSpirvResult {
             arg_table_bytes,
             vertex_inputs,
             constexpr_samplers,
+            spec_constants,
+            compute_imageblock_cell_bytes,
         })
     }
 
@@ -1029,6 +1101,7 @@ pub unsafe extern "C" fn nmb_compile_compute_spirv(
             [pipeline.stage],
             pipeline.layout,
             &pipeline.interface,
+            &pipeline.dependencies,
             dev.translator.profile(),
             None,
         )?;
@@ -1064,7 +1137,7 @@ pub unsafe extern "C" fn nmb_compile_render_spirv(
             .translator
             .compile_render_pipeline(&desc, &Budget::default())
             .map_err(message)?;
-        Ok(Box::into_raw(Box::new(render_result(pipeline, dev.translator.profile())?)))
+        Ok(Box::into_raw(Box::new(render_result(pipeline, dev.translator.profile(), 1)?)))
     })
 }
 
@@ -1138,16 +1211,33 @@ fn render_descriptor(vertex: Function, fragment: Function) -> RenderPipelineDesc
     desc
 }
 
-fn render_result(pipeline: RenderPipeline, profile: &DeviceProfile) -> FfiResult<NmbSpirvResult> {
+fn render_result(
+    mut pipeline: RenderPipeline,
+    profile: &DeviceProfile,
+    sample_count: u32,
+) -> FfiResult<NmbSpirvResult> {
     if !matches!(&pipeline.stages[..], [vertex, fragment]
         if vertex.stage == vk::ShaderStage::VERTEX && fragment.stage == vk::ShaderStage::FRAGMENT)
     {
         return Err(c"render pipeline must emit one vertex and one fragment stage".into());
     }
+    let sc = sample_count.max(1);
+    for st in &mut pipeline.stages {
+        let mut overrides = BTreeMap::new();
+        for c in &st.specialization.constants {
+            if c.key == SpecKey::SampleCount {
+                overrides.insert(c.id, sc);
+            }
+        }
+        if !overrides.is_empty() {
+            patch_spirv_spec_constants(Arc::make_mut(&mut st.spirv), &overrides)?;
+        }
+    }
     NmbSpirvResult::new(
         pipeline.stages,
         pipeline.layout,
         &pipeline.interface,
+        &pipeline.dependencies,
         profile,
         Some(&pipeline.vertex_input),
     )
@@ -1497,7 +1587,7 @@ pub unsafe extern "C" fn nmb_compile_render_spirv_ex(
         let pipeline = translator
             .compile_render_pipeline(&desc, &budget)
             .map_err(message)?;
-        let mut result = render_result(pipeline, translator.profile())?;
+        let mut result = render_result(pipeline, translator.profile(), input.sample_count.max(1))?;
         result.pack_bindless()?;
         Ok(Box::into_raw(Box::new(result)))
     })
@@ -1700,6 +1790,150 @@ pub extern "C" fn nmb_encode_texture_word(mtl_pixel_format: u32) -> u32 {
     })
 }
 
+#[no_mangle]
+pub extern "C" fn nmb_encode_integer_channels_word(mtl_pixel_format: u32) -> u32 {
+    catch_ffi(0, || {
+        let Ok(pf) = PixelFormat::try_from(canonical_xr10_format(mtl_pixel_format)) else {
+            return 0;
+        };
+        metal::format::integer_channels_word(pf)
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn nmb_encode_bicubic_texels_word(mtl_pixel_format: u32) -> u32 {
+    catch_ffi(metal::format::BICUBIC_TEXELS_UNBOUND, || {
+        let Ok(pf) = PixelFormat::try_from(canonical_xr10_format(mtl_pixel_format)) else {
+            return metal::format::BICUBIC_TEXELS_UNBOUND;
+        };
+        metal::format::bicubic_texels_word(pf, TextureSwizzleChannels::DEFAULT)
+            .unwrap_or(metal::format::BICUBIC_TEXELS_UNBOUND)
+    })
+}
+
+/// # Safety
+/// The result handle must stay valid for this call.
+#[no_mangle]
+pub unsafe extern "C" fn nmb_spirv_spec_constant_count(
+    res: *const NmbSpirvResult,
+    stage_index: u32,
+) -> usize {
+    ffi(0, || {
+        let res = unsafe { borrowed(res, c"SPIR-V result is required") }?;
+        res.stage(stage_index)?;
+        Ok(res.spec_constants[stage_index as usize].len())
+    })
+}
+
+/// # Safety
+/// The result handle and writable output must stay valid for this call.
+#[no_mangle]
+pub unsafe extern "C" fn nmb_spirv_spec_constant(
+    res: *const NmbSpirvResult,
+    stage_index: u32,
+    index: usize,
+    out: *mut NmbSpirvSpecConstant,
+) -> bool {
+    ffi(false, || {
+        let res = unsafe { borrowed(res, c"SPIR-V result is required") }?;
+        if out.is_null() {
+            return Err(c"spec constant output is required".into());
+        }
+        res.stage(stage_index)?;
+        let entry = res.spec_constants[stage_index as usize]
+            .get(index)
+            .copied()
+            .ok_or(c"spec constant index is out of range")?;
+        unsafe { out.write(entry) };
+        Ok(true)
+    })
+}
+
+/// # Safety
+/// The result handle must stay valid for this call.
+#[no_mangle]
+pub unsafe extern "C" fn nmb_spirv_compute_imageblock_cell_bytes(
+    res: *const NmbSpirvResult,
+) -> u32 {
+    ffi(0, || {
+        let res = unsafe { borrowed(res, c"SPIR-V result is required") }?;
+        Ok(res.compute_imageblock_cell_bytes)
+    })
+}
+
+/// # Safety
+/// Pointers and slices must stay valid for this call.
+#[no_mangle]
+pub unsafe extern "C" fn nmb_patch_compute_spec_words(
+    words: *mut u32,
+    word_count: usize,
+    specs: *const NmbSpirvSpecConstant,
+    spec_count: usize,
+    local_size: *const u32,
+    imageblock_size: *const u32,
+    tg_lengths: *const u32,
+    tg_length_count: usize,
+) -> bool {
+    ffi(false, || {
+        if words.is_null() || word_count < 5 {
+            return Err(c"valid SPIR-V buffer is required".into());
+        }
+        if spec_count == 0 {
+            return Ok(true);
+        }
+        if specs.is_null() {
+            return Err(c"spec constant slice is required".into());
+        }
+        let spec_slice = unsafe { slice::from_raw_parts(specs, spec_count) };
+        let lsize = if local_size.is_null() {
+            [1u32, 1u32, 1u32]
+        } else {
+            let s = unsafe { slice::from_raw_parts(local_size, 3) };
+            [s[0].max(1), s[1].max(1), s[2].max(1)]
+        };
+        let ib = if imageblock_size.is_null() {
+            [1u32, 1u32]
+        } else {
+            let s = unsafe { slice::from_raw_parts(imageblock_size, 2) };
+            [s[0].max(1), s[1].max(1)]
+        };
+        let tgl = if tg_lengths.is_null() || tg_length_count == 0 {
+            &[][..]
+        } else {
+            unsafe { slice::from_raw_parts(tg_lengths, tg_length_count) }
+        };
+        let tg_map: BTreeMap<SpecKey, u32> = threadgroup_constants(lsize)
+            .into_iter()
+            .map(|(k, v)| (k, v as u32))
+            .collect();
+        let mut overrides = BTreeMap::new();
+        for sc in spec_slice {
+            let val = match sc.kind {
+                NMB_SPEC_LOCAL_SIZE_X => tg_map.get(&SpecKey::LocalSize(Axis::X)).copied(),
+                NMB_SPEC_LOCAL_SIZE_Y => tg_map.get(&SpecKey::LocalSize(Axis::Y)).copied(),
+                NMB_SPEC_LOCAL_SIZE_Z => tg_map.get(&SpecKey::LocalSize(Axis::Z)).copied(),
+                NMB_SPEC_FLAT_LOCAL_SIZE => tg_map.get(&SpecKey::FlatLocalSize).copied(),
+                NMB_SPEC_DEEP_THREADGROUP => tg_map.get(&SpecKey::DeepThreadgroup).copied(),
+                NMB_SPEC_WORKGROUP_SIZE_X => tg_map.get(&SpecKey::WorkgroupSize(Axis::X)).copied(),
+                NMB_SPEC_WORKGROUP_SIZE_Y => tg_map.get(&SpecKey::WorkgroupSize(Axis::Y)).copied(),
+                NMB_SPEC_WORKGROUP_SIZE_Z => tg_map.get(&SpecKey::WorkgroupSize(Axis::Z)).copied(),
+                NMB_SPEC_IMAGEBLOCK_WIDTH => Some(ib[0]),
+                NMB_SPEC_IMAGEBLOCK_HEIGHT => Some(ib[1]),
+                NMB_SPEC_TG_LENGTH => Some(tgl.get(sc.index as usize).copied().unwrap_or(0)),
+                _ => None,
+            };
+            if let Some(v) = val {
+                overrides.insert(sc.spec_id, v);
+            }
+        }
+        if !overrides.is_empty() {
+            let word_slice = unsafe { slice::from_raw_parts_mut(words, word_count) };
+            patch_spirv_spec_constants(word_slice, &overrides)?;
+        }
+        Ok(true)
+    })
+}
+
 // SPIR-V instructions used by the extended AOT projection. Values are from
 // the SPIR-V grammar in the pinned Mesa src/compiler/spirv/spirv.h.
 const SPV_OP_ENTRY_POINT: u32 = 15;
@@ -1858,25 +2092,19 @@ impl NmbSpirvResult {
     }
 }
 
-fn set_workgroup_defaults(stage: &mut StageModule, local_size: [u32; 3]) -> FfiResult<()> {
-    let mut key_values = BTreeMap::new();
-    for (key, value) in threadgroup_constants(local_size) {
-        if let Some(spec) = stage
-            .specialization
-            .constants
-            .iter()
-            .find(|spec| spec.key == key)
-        {
-            key_values.insert(spec.id, value as u32);
-        }
+fn patch_spirv_spec_constants(
+    words: &mut [u32],
+    spec_values: &BTreeMap<u32, u32>,
+) -> FfiResult<()> {
+    if spec_values.is_empty() {
+        return Ok(());
     }
-    let words = Arc::make_mut(&mut stage.spirv);
     let instructions = spirv_instructions(words)?;
     let mut ids = BTreeMap::new();
     for range in &instructions {
         if let [op, result, SPV_DEC_SPEC_ID, spec] = words[range.clone()] {
             if op & 0xffff == SPV_OP_DECORATE {
-                if let Some(&value) = key_values.get(&spec) {
+                if let Some(&value) = spec_values.get(&spec) {
                     ids.insert(result, value);
                 }
             }
@@ -1904,6 +2132,45 @@ fn set_workgroup_defaults(stage: &mut StageModule, local_size: [u32; 3]) -> FfiR
         }
     }
     Ok(())
+}
+
+fn set_workgroup_defaults(stage: &mut StageModule, local_size: [u32; 3]) -> FfiResult<()> {
+    let mut key_values = BTreeMap::new();
+    for (key, value) in threadgroup_constants(local_size) {
+        if let Some(spec) = stage
+            .specialization
+            .constants
+            .iter()
+            .find(|spec| spec.key == key)
+        {
+            key_values.insert(spec.id, value as u32);
+        }
+    }
+    // Metal default compute imageblock extent is 1x1 whenever setImageblockWidth:height:
+    // is not called (metal2vulkan-runtime encoder.rs:246-248, 492). Leaving raw SPIR-V 0x0
+    // causes Mesa IR3 constant folding to dead-code-eliminate the entire imageblock slice write!
+    for spec in &stage.specialization.constants {
+        match spec.key {
+            SpecKey::ImageblockWidth | SpecKey::ImageblockHeight => {
+                key_values.insert(spec.id, 1u32);
+            }
+            _ => {}
+        }
+    }
+    patch_spirv_spec_constants(Arc::make_mut(&mut stage.spirv), &key_values)
+}
+
+fn set_imageblock_default_only(stage: &mut StageModule) -> FfiResult<()> {
+    let mut key_values = BTreeMap::new();
+    for spec in &stage.specialization.constants {
+        match spec.key {
+            SpecKey::ImageblockWidth | SpecKey::ImageblockHeight => {
+                key_values.insert(spec.id, 1u32);
+            }
+            _ => {}
+        }
+    }
+    patch_spirv_spec_constants(Arc::make_mut(&mut stage.spirv), &key_values)
 }
 
 // vtn_variables.c records a null Workgroup initializer as a shader flag.
@@ -2155,6 +2422,8 @@ pub unsafe extern "C" fn nmb_compile_compute_spirv_ex(
                 return Err(c"local_size exceeds the kernel's threadgroup limit".into());
             }
             set_workgroup_defaults(&mut pipeline.stage, size)?;
+        } else {
+            set_imageblock_default_only(&mut pipeline.stage)?;
         }
         if let Some(words) =
             lower_zeroed_workgroup(&pipeline.stage.spirv, input.zeroed_threadgroup_memory != 0)?
@@ -2165,6 +2434,7 @@ pub unsafe extern "C" fn nmb_compile_compute_spirv_ex(
             [pipeline.stage],
             pipeline.layout,
             &pipeline.interface,
+            &pipeline.dependencies,
             dev.extended()?.profile(),
             None,
         )?;
@@ -2258,6 +2528,8 @@ pub unsafe extern "C" fn nmb_compile_compute_spirv_v2(
                 return Err(c"local_size exceeds the kernel's threadgroup limit".into());
             }
             set_workgroup_defaults(&mut pipeline.stage, size)?;
+        } else {
+            set_imageblock_default_only(&mut pipeline.stage)?;
         }
         if let Some(words) =
             lower_zeroed_workgroup(&pipeline.stage.spirv, input.zeroed_threadgroup_memory != 0)?
@@ -2268,6 +2540,7 @@ pub unsafe extern "C" fn nmb_compile_compute_spirv_v2(
             [pipeline.stage],
             pipeline.layout,
             &pipeline.interface,
+            &pipeline.dependencies,
             dev.extended()?.profile(),
             None,
         )?;
@@ -2329,7 +2602,7 @@ pub unsafe extern "C" fn nmb_compile_render_spirv_v2(
             .compile_render_pipeline(&desc, &budget)
             .map_err(message)?;
         let mut result = if has_fragment {
-            render_result(pipeline, translator.profile())?
+            render_result(pipeline, translator.profile(), input.sample_count.max(1))?
         } else {
             if !matches!(&pipeline.stages[..], [vertex] if vertex.stage == vk::ShaderStage::VERTEX)
             {
@@ -2339,6 +2612,7 @@ pub unsafe extern "C" fn nmb_compile_render_spirv_v2(
                 pipeline.stages,
                 pipeline.layout,
                 &pipeline.interface,
+                &pipeline.dependencies,
                 translator.profile(),
                 Some(&pipeline.vertex_input),
             )?
@@ -2520,6 +2794,8 @@ pub unsafe extern "C" fn nmb_compile_compute_spirv_v3(
                 return Err(c"local_size exceeds the kernel's threadgroup limit".into());
             }
             set_workgroup_defaults(&mut pipeline.stage, size)?;
+        } else {
+            set_imageblock_default_only(&mut pipeline.stage)?;
         }
         if let Some(words) =
             lower_zeroed_workgroup(&pipeline.stage.spirv, input.zeroed_threadgroup_memory != 0)?
@@ -2530,6 +2806,7 @@ pub unsafe extern "C" fn nmb_compile_compute_spirv_v3(
             [pipeline.stage],
             pipeline.layout,
             &pipeline.interface,
+            &pipeline.dependencies,
             dev.extended()?.profile(),
             None,
         )?;
@@ -2604,7 +2881,7 @@ pub unsafe extern "C" fn nmb_compile_render_spirv_v3(
             .compile_render_pipeline(&desc, &budget)
             .map_err(message)?;
         let mut result = if has_fragment {
-            render_result(pipeline, translator.profile())?
+            render_result(pipeline, translator.profile(), input.base.sample_count.max(1))?
         } else {
             if !matches!(&pipeline.stages[..], [vertex] if vertex.stage == vk::ShaderStage::VERTEX)
             {
@@ -2614,6 +2891,7 @@ pub unsafe extern "C" fn nmb_compile_render_spirv_v3(
                 pipeline.stages,
                 pipeline.layout,
                 &pipeline.interface,
+                &pipeline.dependencies,
                 translator.profile(),
                 Some(&pipeline.vertex_input),
             )?

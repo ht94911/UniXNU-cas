@@ -694,6 +694,17 @@ static NSData *a840ExtractMtlbBitcode(NSData *libData, const char *wantedName)
     MTLLinkedFunctions *computeLinkedFunctions;
     A840RtComputePipelineDesc computeDesc;
     NSMutableDictionary<NSString *, A840MTLCompiledPlan *> *computeVariants;
+    /* Base compute SPIR-V + specialization metadata for fast in-memory variant compilation
+     * on (localSize, imageblockWidth/Height, threadgroupMemoryLengths). */
+    std::vector<uint32_t> baseSpirvWords;
+    std::string baseEntryPoint;
+    std::vector<NmbSpirvBinding> baseBindings;
+    std::vector<NmbSpirvSpecConstant> specConstants;
+    uint32_t imageblockCellBytes;
+    BOOL usesImageblock;
+    uint32_t usedTgMask;
+    uint32_t activeImageblock[2];
+    uint32_t activeTgLengths[32];
     /* Hardware VFD vertex fetch metadata (packed 1:1 with VFD_DEST_CNTL_0..N-1). */
     uint32_t vfdInputCount;
     uint32_t vfdInputAttrLocations[A840_MAX_VERTEX_INPUTS];
@@ -721,11 +732,21 @@ static NSData *a840ExtractMtlbBitcode(NSData *libData, const char *wantedName)
         zeroPageBo = nullptr;
         transientBuffers = [NSMutableArray new];
         computeVariants = [NSMutableDictionary new];
+        imageblockCellBytes = 0u;
+        usesImageblock = NO;
+        usedTgMask = 0u;
+        activeImageblock[0] = 1u;
+        activeImageblock[1] = 1u;
+        std::memset(activeTgLengths, 0, sizeof(activeTgLengths));
         vfdInputCount = 0u;
         vertexAttributeCount = 0u;
         vertexLayoutCount = 0u;
     }
     return self;
+}
+- (NSUInteger)imageblockCellBytes
+{
+    return static_cast<NSUInteger>(imageblockCellBytes);
 }
 - (void)dealloc
 {
@@ -867,6 +888,7 @@ static NSData *a840ExtractMtlbBitcode(NSData *libData, const char *wantedName)
                         stageBindings:(A840MTLBindings *const *)stageBindings
                            stageCount:(uint32_t)stageCount
                          colorTargets:(id<MTLTexture> const __unsafe_unretained *)colorTargets
+                   colorTargetNatives:(A840RtTexture * const *)colorTargetNatives
                      colorTargetCount:(uint32_t)colorTargetCount
                              gridSize:(MTLSize)grid
                       threadgroupSize:(MTLSize)local
@@ -878,6 +900,7 @@ static NSData *a840ExtractMtlbBitcode(NSData *libData, const char *wantedName)
 
     /* 1. Assign 1-based global bindless slots (slot 0 is reserved null/zeroed). */
     NSMutableArray<A840MTLTexture *> *uniqueTextures = [NSMutableArray new];
+    std::vector<A840RtTexture *> uniqueTexNatives;
     NSMutableArray<A840MTLSamplerState *> *uniqueSamplers = [NSMutableArray new];
     NSMutableDictionary<NSString *, NSNumber *> *texSlotMap = [NSMutableDictionary new];
     NSMutableDictionary<NSString *, NSNumber *> *sampSlotMap = [NSMutableDictionary new];
@@ -904,6 +927,7 @@ static NSData *a840ExtractMtlbBitcode(NSData *libData, const char *wantedName)
             }
             if (slotIdx == 0u) {
                 [uniqueTextures addObject:tex];
+                uniqueTexNatives.push_back(tex.native);
                 slotIdx = static_cast<uint32_t>(uniqueTextures.count);
             }
             NSString *tag = [NSString stringWithFormat:@"%u:%u", s, key.unsignedIntValue];
@@ -937,19 +961,60 @@ static NSData *a840ExtractMtlbBitcode(NSData *libData, const char *wantedName)
             id<MTLTexture> rawTex = colorTargets[c];
             if (![rawTex isKindOfClass:[A840MTLTexture class]]) continue;
             auto *tex = static_cast<A840MTLTexture *>(rawTex);
-            if (!tex.native) continue;
+            A840RtTexture *targetRt = (colorTargetNatives && colorTargetNatives[c]) ? colorTargetNatives[c] : tex.native;
+            if (!targetRt) continue;
             uint32_t slotIdx = 0u;
             for (NSUInteger i = 0u; i < uniqueTextures.count; ++i) {
-                if (uniqueTextures[i] == tex) {
+                if (uniqueTextures[i] == tex && uniqueTexNatives[i] == targetRt) {
                     slotIdx = static_cast<uint32_t>(i + 1u);
                     break;
                 }
             }
             if (slotIdx == 0u) {
                 [uniqueTextures addObject:tex];
+                uniqueTexNatives.push_back(targetRt);
                 slotIdx = static_cast<uint32_t>(uniqueTextures.count);
             }
             fetchedColorSlots[c] = slotIdx;
+        }
+    }
+
+    /* Plan contiguous per-mip storage descriptor runs for NMB_PUSH_TEXTURE_LEVEL_BASE
+     * (e.g. QuartzCore variable_blur_downsample_compute writing mip levels > 0). */
+    struct StorageLevelRun {
+        A840RtTexture *rtTex;
+        uint32_t baseSlot;
+        uint32_t levelCount;
+    };
+    std::vector<StorageLevelRun> levelRuns;
+    NSMutableDictionary<NSString *, NSNumber *> *levelRunBaseMap = [NSMutableDictionary new];
+    uint32_t storageSlotCount = static_cast<uint32_t>(1u + uniqueTextures.count);
+    if (plan->storageImageSet >= 0) {
+        for (uint32_t s = 0u; s < stageCount; ++s) {
+            for (const NmbSpirvPushField &pf : plan->pushFields[s]) {
+                if (pf.kind != NMB_PUSH_TEXTURE_LEVEL_BASE) continue;
+                NSString *tag = [NSString stringWithFormat:@"%u:%u", s, pf.metal_slot];
+                if (levelRunBaseMap[tag]) continue;
+                NSNumber *slotNum = texSlotMap[tag];
+                if (!slotNum || slotNum.unsignedIntValue == 0u) continue;
+                A840RtTexture *rtTex = uniqueTexNatives[slotNum.unsignedIntValue - 1u];
+                if (!rtTex || rtTex->mip_levels <= 1u) {
+                    levelRunBaseMap[tag] = slotNum;
+                    continue;
+                }
+                uint32_t existingBase = 0u;
+                for (const auto &run : levelRuns) {
+                    if (run.rtTex == rtTex) { existingBase = run.baseSlot; break; }
+                }
+                if (existingBase != 0u) {
+                    levelRunBaseMap[tag] = @(existingBase);
+                } else {
+                    const uint32_t base = storageSlotCount;
+                    storageSlotCount += rtTex->mip_levels;
+                    levelRuns.push_back(StorageLevelRun{rtTex, base, rtTex->mip_levels});
+                    levelRunBaseMap[tag] = @(base);
+                }
+            }
         }
     }
 
@@ -973,7 +1038,7 @@ static NSData *a840ExtractMtlbBitcode(NSData *libData, const char *wantedName)
         if (static_cast<uint32_t>(setIdx + 1u) > outRes->activeSetCount) {
             outRes->activeSetCount = static_cast<uint32_t>(setIdx + 1u);
         }
-        cursor += (1u + uniqueTextures.count) * kIdentityBindlessSlotBytes;
+        cursor += static_cast<size_t>(storageSlotCount) * kIdentityBindlessSlotBytes;
     }
     /* Always bind samplerSet when present and populate slot 0 for constexpr samplers. */
     if (plan->samplerSet >= 0) {
@@ -1025,7 +1090,7 @@ static NSData *a840ExtractMtlbBitcode(NSData *libData, const char *wantedName)
     /* 3. Write 64B A8XX hardware descriptors into bindless sets. */
     for (NSUInteger i = 0u; i < uniqueTextures.count; ++i) {
         const size_t slotOff = (i + 1u) * kIdentityBindlessSlotBytes;
-        A840RtTexture *rtTex = uniqueTextures[i].native;
+        A840RtTexture *rtTex = uniqueTexNatives[i];
         if (plan->sampledImageSet >= 0) {
             const size_t setIdx = static_cast<size_t>(plan->sampledImageSet);
             if (outRes->setActive[setIdx]) {
@@ -1036,8 +1101,29 @@ static NSData *a840ExtractMtlbBitcode(NSData *libData, const char *wantedName)
         if (plan->storageImageSet >= 0) {
             const size_t setIdx = static_cast<size_t>(plan->storageImageSet);
             if (outRes->setActive[setIdx]) {
-                std::memcpy(baseCpu + outRes->setOffsets[setIdx] + slotOff,
-                            rtTex->tex_const, sizeof(rtTex->tex_const));
+                uint32_t storWords[A840_TEX_CONST_DWORDS] = {};
+                if (a840_rt_texture_encode_storage_level(rtTex, 0u, storWords) == A840_RT_OK) {
+                    std::memcpy(baseCpu + outRes->setOffsets[setIdx] + slotOff,
+                                storWords, sizeof(storWords));
+                } else {
+                    std::memcpy(baseCpu + outRes->setOffsets[setIdx] + slotOff,
+                                rtTex->tex_const, sizeof(rtTex->tex_const));
+                }
+            }
+        }
+    }
+    if (plan->storageImageSet >= 0 && !levelRuns.empty()) {
+        const size_t setIdx = static_cast<size_t>(plan->storageImageSet);
+        if (outRes->setActive[setIdx]) {
+            for (const auto &run : levelRuns) {
+                for (uint32_t lvl = 0u; lvl < run.levelCount; ++lvl) {
+                    uint32_t lvlWords[A840_TEX_CONST_DWORDS] = {};
+                    if (a840_rt_texture_encode_storage_level(run.rtTex, lvl, lvlWords) == A840_RT_OK) {
+                        const size_t lvlOff = static_cast<size_t>(run.baseSlot + lvl) * kIdentityBindlessSlotBytes;
+                        std::memcpy(baseCpu + outRes->setOffsets[setIdx] + lvlOff,
+                                    lvlWords, sizeof(lvlWords));
+                    }
+                }
             }
         }
     }
@@ -1221,9 +1307,36 @@ static NSData *a840ExtractMtlbBitcode(NSData *libData, const char *wantedName)
             case NMB_PUSH_TEXTURE_LEVEL_BASE: {
                 uint32_t baseSlot = 0u;
                 NSString *tag = [NSString stringWithFormat:@"%u:%u", s, pf.metal_slot];
-                NSNumber *slotNum = texSlotMap[tag];
-                if (slotNum) baseSlot = slotNum.unsignedIntValue;
+                NSNumber *runBase = levelRunBaseMap[tag];
+                if (runBase) {
+                    baseSlot = runBase.unsignedIntValue;
+                } else {
+                    NSNumber *slotNum = texSlotMap[tag];
+                    if (slotNum) baseSlot = slotNum.unsignedIntValue;
+                }
                 writeFieldBytes(outRes->pushBuf[s], kIdentityMaxPushBytes, argCpu, argCap, pf, &baseSlot, sizeof(baseSlot));
+                break;
+            }
+            case NMB_PUSH_INTEGER_CHANNELS: {
+                uint32_t word = 0u;
+                NSString *tag = [NSString stringWithFormat:@"%u:%u", s, pf.metal_slot];
+                NSNumber *slotNum = texSlotMap[tag];
+                if (slotNum && slotNum.unsignedIntValue > 0u) {
+                    A840MTLTexture *tex = uniqueTextures[slotNum.unsignedIntValue - 1u];
+                    word = nmb_encode_integer_channels_word(static_cast<uint32_t>(tex.pixelFormat));
+                }
+                writeFieldBytes(outRes->pushBuf[s], kIdentityMaxPushBytes, argCpu, argCap, pf, &word, sizeof(word));
+                break;
+            }
+            case NMB_PUSH_BICUBIC_TEXELS: {
+                uint32_t word = nmb_encode_bicubic_texels_word(0u);
+                NSString *tag = [NSString stringWithFormat:@"%u:%u", s, pf.metal_slot];
+                NSNumber *slotNum = texSlotMap[tag];
+                if (slotNum && slotNum.unsignedIntValue > 0u) {
+                    A840MTLTexture *tex = uniqueTextures[slotNum.unsignedIntValue - 1u];
+                    word = nmb_encode_bicubic_texels_word(static_cast<uint32_t>(tex.pixelFormat));
+                }
+                writeFieldBytes(outRes->pushBuf[s], kIdentityMaxPushBytes, argCpu, argCap, pf, &word, sizeof(word));
                 break;
             }
             case NMB_PUSH_ARGUMENT_TABLE_ADDRESS: {
@@ -1259,7 +1372,6 @@ static NSData *a840ExtractMtlbBitcode(NSData *libData, const char *wantedName)
                 break;
             }
             case NMB_PUSH_TAIL_WORD:
-            case NMB_PUSH_INTEGER_CHANNELS:
             case NMB_PUSH_STAGE_IN_REGION:
             case NMB_PUSH_ZERO_U32:
             case NMB_PUSH_ZERO_U64:
@@ -1433,6 +1545,24 @@ static uint32_t a840AlignConstlenForPush(uint32_t rawConstlenVec4, const NmbSpir
         nmb_spirv_result_free(spv);
         return nil;
     }
+    plan->baseSpirvWords.assign(spvWords, spvWords + (spvBytes / sizeof(uint32_t)));
+    plan->baseEntryPoint = spvEntry;
+    plan->baseBindings = bindings;
+    plan->imageblockCellBytes = nmb_spirv_compute_imageblock_cell_bytes(spv);
+    plan->specConstants.clear();
+    const size_t specCount = nmb_spirv_spec_constant_count(spv, 0u);
+    plan->specConstants.reserve(specCount);
+    for (size_t i = 0u; i < specCount; ++i) {
+        NmbSpirvSpecConstant sc{};
+        if (nmb_spirv_spec_constant(spv, 0u, i, &sc)) {
+            plan->specConstants.push_back(sc);
+            if (sc.kind == NMB_SPEC_IMAGEBLOCK_WIDTH || sc.kind == NMB_SPEC_IMAGEBLOCK_HEIGHT) {
+                plan->usesImageblock = YES;
+            } else if (sc.kind == NMB_SPEC_TG_LENGTH && sc.index < 32u) {
+                plan->usedTgMask |= (1u << sc.index);
+            }
+        }
+    }
     nmb_spirv_result_free(spv);
 
     const auto bpst = a840_binding_plan_build(bindings.empty() ? nullptr : bindings.data(),
@@ -1507,24 +1637,161 @@ static uint32_t a840AlignConstlenForPush(uint32_t rawConstlenVec4, const NmbSpir
                          forDevice:(A840MTLDevice *)device
                         descriptor:(A840RtComputePipelineDesc *)descriptor
 {
+    return [self prepareComputeVariantForPlan:planObj
+                                    localSize:localSize
+                              imageblockWidth:1u
+                             imageblockHeight:1u
+                           threadgroupLengths:nullptr
+                       threadgroupLengthCount:0u
+                                    forDevice:device
+                                   descriptor:descriptor];
+}
+
+- (id)prepareComputeVariantForPlan:(id)planObj
+                         localSize:(MTLSize)localSize
+                   imageblockWidth:(uint32_t)imageblockWidth
+                  imageblockHeight:(uint32_t)imageblockHeight
+                threadgroupLengths:(const uint32_t *)threadgroupLengths
+            threadgroupLengthCount:(uint32_t)threadgroupLengthCount
+                         forDevice:(A840MTLDevice *)device
+                        descriptor:(A840RtComputePipelineDesc *)descriptor
+{
     if (![planObj isKindOfClass:[A840MTLCompiledPlan class]] || !device || !descriptor) return nil;
     auto *base = static_cast<A840MTLCompiledPlan *>(planObj);
     if (!base->isCompute || !base->computeFunction) return nil;
-    if (base->stages[0].local_size[0] == localSize.width &&
+    if (localSize.width == 0u || localSize.height == 0u || localSize.depth == 0u ||
+        localSize.width > UINT32_MAX || localSize.height > UINT32_MAX || localSize.depth > UINT32_MAX) {
+        return nil;
+    }
+    const uint32_t effIbW = base->usesImageblock ? (imageblockWidth ? imageblockWidth : 1u) : 1u;
+    const uint32_t effIbH = base->usesImageblock ? (imageblockHeight ? imageblockHeight : 1u) : 1u;
+    uint32_t effTg[32] = {};
+    if (base->usedTgMask != 0u && threadgroupLengths && threadgroupLengthCount > 0u) {
+        const uint32_t lim = threadgroupLengthCount < 32u ? threadgroupLengthCount : 32u;
+        for (uint32_t i = 0u; i < lim; ++i) {
+            if ((base->usedTgMask & (1u << i)) != 0u) effTg[i] = threadgroupLengths[i];
+        }
+    }
+    bool matchesBase =
+        base->stages[0].local_size[0] == localSize.width &&
         base->stages[0].local_size[1] == localSize.height &&
-        base->stages[0].local_size[2] == localSize.depth) {
+        base->stages[0].local_size[2] == localSize.depth &&
+        (!base->usesImageblock || (base->activeImageblock[0] == effIbW && base->activeImageblock[1] == effIbH));
+    if (matchesBase && base->usedTgMask != 0u) {
+        for (uint32_t i = 0u; i < 32u; ++i) {
+            if ((base->usedTgMask & (1u << i)) != 0u && base->activeTgLengths[i] != effTg[i]) {
+                matchesBase = false;
+                break;
+            }
+        }
+    }
+    if (matchesBase) {
         *descriptor = base->computeDesc;
         return base;
     }
-    NSString *key = [NSString stringWithFormat:@"%lu:%lu:%lu",
-                     static_cast<unsigned long>(localSize.width),
-                     static_cast<unsigned long>(localSize.height),
-                     static_cast<unsigned long>(localSize.depth)];
+
+    NSMutableString *key = [NSMutableString stringWithFormat:@"%lu:%lu:%lu|%u:%u",
+                            static_cast<unsigned long>(localSize.width),
+                            static_cast<unsigned long>(localSize.height),
+                            static_cast<unsigned long>(localSize.depth),
+                            effIbW, effIbH];
+    if (base->usedTgMask != 0u) {
+        for (uint32_t i = 0u; i < 32u; ++i) {
+            if ((base->usedTgMask & (1u << i)) != 0u) {
+                [key appendFormat:@"|t%u=%u", i, effTg[i]];
+            }
+        }
+    }
     A840MTLCompiledPlan *cached = base->computeVariants[key];
     if (cached) {
         *descriptor = cached->computeDesc;
         return cached;
     }
+
+    /* Fast path: specialize cached base SPIR-V in-memory without re-parsing AIR bitcode! */
+    if (!base->baseSpirvWords.empty() && !base->baseEntryPoint.empty()) {
+        std::vector<uint32_t> patched = base->baseSpirvWords;
+        const uint32_t lsize[3] = {
+            static_cast<uint32_t>(localSize.width),
+            static_cast<uint32_t>(localSize.height),
+            static_cast<uint32_t>(localSize.depth),
+        };
+        const uint32_t ibSize[2] = {effIbW, effIbH};
+        if (nmb_patch_compute_spec_words(patched.data(), patched.size(),
+                                         base->specConstants.empty() ? nullptr : base->specConstants.data(),
+                                         base->specConstants.size(),
+                                         lsize, ibSize, effTg, 32u)) {
+            A840MTLCompiledPlan *variant = [A840MTLCompiledPlan new];
+            variant->isCompute = YES;
+            variant->rtDevice = device.runtime;
+            variant->stageCount = 1u;
+            variant->computeFunction = base->computeFunction;
+            variant->computeLinkedFunctions = base->computeLinkedFunctions;
+            variant->pushFields[0] = base->pushFields[0];
+            variant->argTableBytes[0] = base->argTableBytes[0];
+            variant->pushRanges[0] = base->pushRanges[0];
+            variant->sampledImageSet = base->sampledImageSet;
+            variant->storageImageSet = base->storageImageSet;
+            variant->samplerSet = base->samplerSet;
+            variant->constexprSamplers = base->constexprSamplers;
+            variant->imageblockCellBytes = base->imageblockCellBytes;
+            variant->usesImageblock = base->usesImageblock;
+            variant->usedTgMask = base->usedTgMask;
+            variant->activeImageblock[0] = effIbW;
+            variant->activeImageblock[1] = effIbH;
+            std::memcpy(variant->activeTgLengths, effTg, sizeof(effTg));
+
+            const A840CompileTarget target = makeKaanapaliTarget();
+            A840StageInput stageIn{};
+            stageIn.abi_version = ADRENO_COMPILE_ABI_VERSION;
+            stageIn.stage = A840_STAGE_COMPUTE;
+            stageIn.spirv_words = patched.data();
+            stageIn.spirv_bytes = patched.size() * sizeof(uint32_t);
+            stageIn.entry_point = base->baseEntryPoint.c_str();
+            stageIn.local_size[0] = lsize[0];
+            stageIn.local_size[1] = lsize[1];
+            stageIn.local_size[2] = lsize[2];
+            stageIn.sample_count = 1u;
+            stageIn.flags = target.flags;
+
+            char errBuf[256] = {};
+            const auto cst = a840_compile_stage(&target, &stageIn, &variant->stages[0], errBuf, sizeof(errBuf));
+            if (cst == A840_COMPILE_OK && a840_ir3_get_stage_io_info(&variant->stages[0], &variant->ioInfo[0])) {
+                variant->stages[0].constlen_vec4 =
+                    a840AlignConstlenForPush(variant->stages[0].constlen_vec4, variant->pushRanges[0]);
+                const auto bpst = a840_binding_plan_build(
+                    base->baseBindings.empty() ? nullptr : base->baseBindings.data(),
+                    base->baseBindings.size(), &variant->stages[0], 1u,
+                    &variant->pushRanges[0], &variant->bindingPlan);
+                if (bpst == A840_BINDING_PLAN_OK) {
+                    variant->codeBuffers[0] = uploadIsaBuffer(device.runtime, variant->stages[0].isa_words,
+                                                              variant->stages[0].isa_dwords);
+                    if (variant->codeBuffers[0] &&
+                        (variant->stages[0].private_mem_bytes == 0u ||
+                         (variant->privateBuffers[0] = allocPrivateScratch(device.runtime,
+                             variant->stages[0].private_mem_bytes)) != nullptr)) {
+                        std::memset(descriptor, 0, sizeof(*descriptor));
+                        descriptor->stage = &variant->stages[0];
+                        descriptor->code_buffer = variant->codeBuffers[0];
+                        descriptor->code_offset = 0u;
+                        descriptor->private_buffer = variant->privateBuffers[0];
+                        descriptor->private_offset = 0u;
+                        descriptor->bindless_tex = variant->ioInfo[0].bindless_tex != 0u;
+                        descriptor->bindless_samp = variant->ioInfo[0].bindless_samp != 0u;
+                        descriptor->bindless_uav = variant->ioInfo[0].bindless_uav != 0u;
+                        descriptor->bindless_ubo = variant->ioInfo[0].bindless_ubo != 0u;
+                        descriptor->local_id_regid = variant->ioInfo[0].cs_local_id_regid;
+                        descriptor->wg_id_regid = variant->ioInfo[0].cs_wg_id_regid;
+                        descriptor->linear_dispatch = true;
+                        variant->computeDesc = *descriptor;
+                        base->computeVariants[key] = variant;
+                        return variant;
+                    }
+                }
+            }
+        }
+    }
+
     A840MTLCompiledPlan *variant = [self compileComputeFunction:base->computeFunction
                                                 linkedFunctions:base->computeLinkedFunctions
                                                       localSize:localSize
@@ -2179,7 +2446,7 @@ static uint32_t a840AlignConstlenForPush(uint32_t rawConstlenVec4, const NmbSpir
         A840IdentityBindState idRes{};
         if (![self buildIdentityBindStateForPlan:plan renderEncoder:nullptr computeEncoder:encoder
                                    stageBindings:stageBindings stageCount:1u
-                                    colorTargets:nullptr colorTargetCount:0u
+                                    colorTargets:nullptr colorTargetNatives:nullptr colorTargetCount:0u
                                         gridSize:grid threadgroupSize:local nonuniform:nonuniform
                                           outRes:&idRes]) {
             return A840_RT_OOM;
@@ -2291,6 +2558,16 @@ static uint32_t a840AlignConstlenForPush(uint32_t rawConstlenVec4, const NmbSpir
               colorTargets:(id<MTLTexture> const __unsafe_unretained *)colorTargets
           colorTargetCount:(uint32_t)colorTargetCount
 {
+    return [self bindRender:encoder plan:planObj vertexBindings:vertex fragmentBindings:fragment
+               colorTargets:colorTargets colorTargetNatives:nullptr colorTargetCount:colorTargetCount];
+}
+
+- (A840RtStatus)bindRender:(A840RtRenderEncoder *)encoder plan:(id)planObj
+            vertexBindings:(A840MTLBindings *)vertex fragmentBindings:(A840MTLBindings *)fragment
+              colorTargets:(id<MTLTexture> const __unsafe_unretained *)colorTargets
+        colorTargetNatives:(A840RtTexture * const *)colorTargetNatives
+          colorTargetCount:(uint32_t)colorTargetCount
+{
     if (!encoder || ![planObj isKindOfClass:[A840MTLCompiledPlan class]]) return A840_RT_INVALID_ARG;
     auto *plan = static_cast<A840MTLCompiledPlan *>(planObj);
     if (plan->isCompute || plan->stageCount == 0u || plan->stageCount > 2u) return A840_RT_INVALID_ARG;
@@ -2307,7 +2584,8 @@ static uint32_t a840AlignConstlenForPush(uint32_t rawConstlenVec4, const NmbSpir
         A840IdentityBindState idRes{};
         if (![self buildIdentityBindStateForPlan:plan renderEncoder:encoder computeEncoder:nullptr
                                    stageBindings:stageBindings stageCount:plan->stageCount
-                                    colorTargets:colorTargets colorTargetCount:colorTargetCount
+                                    colorTargets:colorTargets colorTargetNatives:colorTargetNatives
+                                colorTargetCount:colorTargetCount
                                         gridSize:MTLSizeMake(1, 1, 1) threadgroupSize:MTLSizeMake(1, 1, 1)
                                       nonuniform:NO outRes:&idRes]) {
             return A840_RT_OOM;

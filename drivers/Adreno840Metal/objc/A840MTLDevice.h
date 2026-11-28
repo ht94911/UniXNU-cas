@@ -38,9 +38,22 @@
 - (id)prepareComputeVariantForPlan:(id)plan localSize:(MTLSize)localSize
                          forDevice:(A840MTLDevice *)device
                         descriptor:(A840RtComputePipelineDesc *)descriptor;
+- (id)prepareComputeVariantForPlan:(id)plan
+                         localSize:(MTLSize)localSize
+                   imageblockWidth:(uint32_t)imageblockWidth
+                  imageblockHeight:(uint32_t)imageblockHeight
+                threadgroupLengths:(const uint32_t *)threadgroupLengths
+            threadgroupLengthCount:(uint32_t)threadgroupLengthCount
+                         forDevice:(A840MTLDevice *)device
+                        descriptor:(A840RtComputePipelineDesc *)descriptor;
 - (A840RtStatus)bindRender:(A840RtRenderEncoder *)encoder plan:(id)plan
             vertexBindings:(A840MTLBindings *)vertex fragmentBindings:(A840MTLBindings *)fragment
               colorTargets:(id<MTLTexture> const __unsafe_unretained *)colorTargets
+          colorTargetCount:(uint32_t)colorTargetCount;
+- (A840RtStatus)bindRender:(A840RtRenderEncoder *)encoder plan:(id)plan
+            vertexBindings:(A840MTLBindings *)vertex fragmentBindings:(A840MTLBindings *)fragment
+              colorTargets:(id<MTLTexture> const __unsafe_unretained *)colorTargets
+        colorTargetNatives:(A840RtTexture * const *)colorTargetNatives
           colorTargetCount:(uint32_t)colorTargetCount;
 - (BOOL)planUsesFetchedColor:(id)plan;
 @end

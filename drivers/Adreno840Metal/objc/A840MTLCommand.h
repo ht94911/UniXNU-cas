@@ -46,6 +46,7 @@
                       tilesY:(uint32_t)tilesY;
 - (void)notePhase3UbwcExecuted:(BOOL)wroteBlocks;
 - (void)notePhase3ScanoutMode:(unsigned)mode;
++ (void)waitForInFlightResource:(id<MTLResource>)resource;
 @end
 
 #endif /* A840_MTL_COMMAND_H */

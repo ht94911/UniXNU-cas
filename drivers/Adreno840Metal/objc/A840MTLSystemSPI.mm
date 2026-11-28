@@ -333,7 +333,15 @@ static A840YcbcrFormat detectIOSurfaceYcbcr(IOSurfaceRef surface, MTLPixelFormat
             A840RtBufferDesc bdesc{};
             bdesc.size_bytes = alignedAlloc;
             bdesc.alignment = pageBytes;
-            bdesc.usage_flags = A840_BUF_USAGE_READ | A840_BUF_USAGE_WRITE | A840_BUF_USAGE_CPU_VISIBLE;
+            /* Kernel NativeAdrenoUserClient::mapBo maps imported BOs hardware IO-coherent
+             * (IOMMU_CACHE WB inner-shareable) ONLY when !(permissions & 2) (read-only).
+             * Since iOS 27 sys_dcache_flush() is a no-op (dsb ish; ret), keeping GPU-read-only
+             * CPU-drawn IOSurfaces (icons/glyphs/text) read-only eliminates 64B cache-line streaks. */
+            const MTLTextureUsage texUsage = descriptor.usage;
+            const BOOL gpuWritable = (texUsage == MTLTextureUsageUnknown) ||
+                ((texUsage & (MTLTextureUsageRenderTarget | MTLTextureUsageShaderWrite)) != 0u);
+            bdesc.usage_flags = A840_BUF_USAGE_READ | A840_BUF_USAGE_CPU_VISIBLE |
+                (gpuWritable ? A840_BUF_USAGE_WRITE : 0u);
             bdesc.host_import = true;
             bdesc.host_ptr = basePtr;
             A840RtBuffer *surfBo = nullptr;
